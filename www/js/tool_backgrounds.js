@@ -221,28 +221,59 @@
     return svg;
   }
 
+  // Idempotent helper'lar: ensureLayer() rastgele bir noktada cagrilabilecegi
+  // icin (server tarafindan onceden render edilmis bos .tool-bg-layer dahil),
+  // her cagri layer'i + heptagon + snippet alt katmanlarini eksiksiz hale
+  // getirmelidir. Erken donus ETMEZ; sadece eksikleri tamamlar.
+  function ensureHeptagonLayer(layer) {
+    if (!layer) return null;
+    var hept = layer.querySelector(':scope > .tool-bg-heptagon');
+    if (!hept) {
+      hept = document.createElement('div');
+      hept.className = 'tool-bg-heptagon';
+      // Heptagon, snippet'lerden once gelsin: stacking ve okuma sirasi icin
+      layer.insertBefore(hept, layer.firstChild);
+    }
+    // SVG cocugu yoksa uc katmanli yedigeni doldur
+    if (!hept.querySelector('svg')) {
+      hept.appendChild(buildHeptagonSvg(106));
+      hept.appendChild(buildHeptagonSvg(80));
+      hept.appendChild(buildHeptagonSvg(52));
+    }
+    return hept;
+  }
+
+  function ensureSnippetsHolder(layer) {
+    if (!layer) return null;
+    var snip = layer.querySelector(':scope > .tool-bg-snippets');
+    if (!snip) {
+      snip = document.createElement('div');
+      snip.className = 'tool-bg-snippets';
+      layer.appendChild(snip);
+    }
+    return snip;
+  }
+
   function ensureLayer(wrapper) {
     if (!wrapper) return null;
     var layer = wrapper.querySelector(':scope > .tool-bg-layer');
-    if (layer) return layer;
+    if (!layer) {
+      layer = document.createElement('div');
+      layer.className = 'tool-bg-layer';
+      layer.setAttribute('aria-hidden', 'true');
+      // Layer'i ilk cocuk olarak ekle ki diger gercek bilesenler ustte kalsin
+      wrapper.insertBefore(layer, wrapper.firstChild);
+    } else {
+      // Mevcut layer'da aria-hidden veya class doğru olmayabilir; sertçe ayarla
+      if (layer.getAttribute('aria-hidden') !== 'true') {
+        layer.setAttribute('aria-hidden', 'true');
+      }
+    }
 
-    layer = document.createElement('div');
-    layer.className = 'tool-bg-layer';
-    layer.setAttribute('aria-hidden', 'true');
+    // Her durumda alt katmanlari tamamla (idempotent)
+    ensureHeptagonLayer(layer);
+    ensureSnippetsHolder(layer);
 
-    var hept = document.createElement('div');
-    hept.className = 'tool-bg-heptagon';
-    hept.appendChild(buildHeptagonSvg(106));
-    hept.appendChild(buildHeptagonSvg(80));
-    hept.appendChild(buildHeptagonSvg(52));
-    layer.appendChild(hept);
-
-    var snip = document.createElement('div');
-    snip.className = 'tool-bg-snippets';
-    layer.appendChild(snip);
-
-    // Layer'i ilk cocuk olarak ekle ki diger gercek bilesenler ustte kalsin
-    wrapper.insertBefore(layer, wrapper.firstChild);
     return layer;
   }
 

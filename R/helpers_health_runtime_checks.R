@@ -65,9 +65,37 @@ health_check_sso_mode <- function() {
 
 health_check_git_version <- function() {
   start <- Sys.time()
-  version <- getOption("mergen.version", Sys.getenv("MERGEN_APP_VERSION", "N/A"))
-  commit <- Sys.getenv("GIT_COMMIT", Sys.getenv("MERGEN_GIT_COMMIT", "N/A"))
-  health_result("app.version", "Sürüm / Git Commit", "ok", paste("Sürüm:", version), paste("Commit:", commit), health_ms(start))
+  # Tek doğru sürüm kaynağı: get_app_version_label() (config_version_history.R)
+  # version_history.md "## v..." başlığı üzerinden çözer. Sidebar, Hakkında,
+  # welcome ve Sistem Durumu hep aynı değeri göstermelidir.
+  version <- tryCatch({
+    if (exists("get_app_version_label", mode = "function", inherits = TRUE)) {
+      get_app_version_label()
+    } else {
+      "v?"
+    }
+  }, error = function(e) "v?")
+
+  if (!is.character(version) || length(version) != 1L || !nzchar(version)) {
+    version <- "v?"
+  }
+
+  # Commit bilgisi opsiyonel ek detay; ortam değişkenlerinden okunur.
+  commit_raw <- Sys.getenv("GIT_COMMIT", Sys.getenv("MERGEN_GIT_COMMIT", ""))
+  commit_display <- if (!nzchar(commit_raw)) {
+    "Commit bilgisi yok"
+  } else {
+    paste("Commit:", commit_raw)
+  }
+
+  health_result(
+    "app.version",
+    "Sürüm",
+    "ok",
+    version,
+    commit_display,
+    health_ms(start)
+  )
 }
 
 health_check_bilge_yolac <- function() {

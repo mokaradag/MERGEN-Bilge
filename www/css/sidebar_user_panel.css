@@ -4,6 +4,16 @@
  * Açıklama: Yan menünün alt kısmında oturum açan kullanıcının kimliğini,
  *           tema anahtarını ve sürüm bilgisini gösteren kompakt panel
  *           stilleri. Hem koyu hem açık tema değişkenlerine uyum sağlar.
+ *
+ * Düzen kuralları (önemli):
+ *   - .mb-sidebar-user satırı: avatar + ad + Departman; Departman
+ *     uzun olabileceğinden ellipsis + title tooltip ile gösterilir.
+ *   - .mb-sidebar-controls-row: solda büyük tema butonu, sağda küçük
+ *     opsiyonel çıkış butonu. Eski "switch track + thumb" görseli
+ *     kaldırıldı; etiket + ikon yeterli.
+ *   - Tüm öğeler pointer-events normal değerini korur ve sidebar
+ *     menüsünün üstünde yer alır (z-index ile değil; doğal akış
+ *     position: absolute alt panel sayesinde garanti edilir).
  * ============================================================ */
 
 .sidebar-footer {
@@ -11,10 +21,12 @@
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 14px 14px 16px 14px;
+  padding: 12px 12px 14px 12px;
   text-align: center;
   border-top: 1px solid var(--color-border, #2a2a2a);
   background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.18) 100%);
+  /* Sidebar menüsü ile çakışmasını engelle: alt panel üstte */
+  z-index: 5;
 }
 
 html[data-theme="light"] .sidebar-footer {
@@ -23,14 +35,14 @@ html[data-theme="light"] .sidebar-footer {
 }
 
 /* ============================================================
- * 1. Kullanıcı kimliği (avatar + isim)
+ * 1. Kullanıcı kimliği (avatar + isim + departman)
  * ============================================================ */
 .mb-sidebar-user {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -98,6 +110,11 @@ html[data-theme="light"] .mb-sidebar-user-avatar {
   min-width: 0;
   flex: 1;
   text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  /* Kompakt yapı: uzun Departman metni dahi taşmasın */
+  overflow: hidden;
 }
 
 .mb-sidebar-user-name {
@@ -110,87 +127,65 @@ html[data-theme="light"] .mb-sidebar-user-avatar {
   letter-spacing: 0.01em;
 }
 
-.mb-sidebar-user-role {
+/* Departman metni: uzun olabilir; ellipsis + title tooltip. */
+.mb-sidebar-user-department {
   display: block;
-  font-size: 11px;
+  font-size: 10.5px;
+  line-height: 1.25;
   color: var(--color-muted, #999999);
-  margin-top: 1px;
+  margin-top: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: 0.01em;
+}
+
+.mb-sidebar-user-department-empty {
+  opacity: 0.65;
+  font-style: italic;
 }
 
 html[data-theme="light"] .mb-sidebar-user-name {
   color: var(--color-text, #0f1c33);
 }
 
-html[data-theme="light"] .mb-sidebar-user-role {
+html[data-theme="light"] .mb-sidebar-user-department {
   color: var(--color-muted, #5b6577);
-}
-
-/* Çıkış butonu (yalnızca SSO aktifken render edilir) */
-.mb-sidebar-user-logout {
-  flex: 0 0 28px;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--color-muted, #999999);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
-  font-family: inherit;
-  font-size: 12px;
-  padding: 0;
-}
-
-.mb-sidebar-user-logout:hover {
-  background: rgba(255, 65, 108, 0.12);
-  color: #ff8a9a;
-  border-color: rgba(255, 65, 108, 0.45);
-}
-
-.mb-sidebar-user-logout:focus-visible {
-  outline: 2px solid var(--color-primary, #ff6b35);
-  outline-offset: 2px;
-}
-
-html[data-theme="light"] .mb-sidebar-user-logout {
-  background: #ffffff;
-  border-color: rgba(0, 48, 135, 0.14);
-  color: var(--color-muted, #5b6577);
-}
-
-html[data-theme="light"] .mb-sidebar-user-logout:hover {
-  background: rgba(255, 86, 32, 0.10);
-  color: var(--mb-brand-accent, #FF5620);
-  border-color: var(--mb-brand-accent, #FF5620);
 }
 
 /* ============================================================
- * 2. Tema Anahtarı (toggle)
+ * 2. Kontrol satırı: tema butonu + opsiyonel çıkış butonu
+ *    Eski .mb-sidebar-theme-row tek satırlık layout korunur; bu
+ *    yeni .mb-sidebar-controls-row, tema butonunu çıkış butonu ile
+ *    aynı satırda tutar.
  * ============================================================ */
+.mb-sidebar-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+/* Geriye dönük uyumluluk: önceki satır adı kullanılırsa da aynı stil */
 .mb-sidebar-theme-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 8px;
 }
 
 .mb-theme-switch-btn {
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 8px;
   padding: 6px 10px;
-  height: 36px;
-  border-radius: 10px;
+  height: 32px;
+  min-height: 32px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   color: var(--color-text-soft, #e6e6e6);
   font-size: 12px;
   font-weight: 500;
@@ -199,6 +194,9 @@ html[data-theme="light"] .mb-sidebar-user-logout:hover {
   -webkit-appearance: none;
   appearance: none;
   font-family: inherit;
+  /* Sidebar menü öğelerinin üstünde olduğundan emin ol */
+  position: relative;
+  z-index: 6;
 }
 
 html[data-theme="light"] .mb-theme-switch-btn {
@@ -233,57 +231,25 @@ html[data-theme="light"] .mb-theme-switch-btn:focus-visible {
 .theme-switch-label {
   white-space: nowrap;
   letter-spacing: 0.01em;
+  pointer-events: none; /* Tıklama olayı butonun kendisine düşsün */
 }
 
-.theme-switch-track {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  width: 42px;
-  height: 22px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  padding: 2px;
-  flex-shrink: 0;
-}
-
-html[data-theme="light"] .theme-switch-track {
-  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%);
-  border-color: transparent;
-}
-
-.theme-switch-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #ffe1ce 0%, #ffb27a 100%);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-  transition: transform 220ms cubic-bezier(0.4, 0.0, 0.2, 1),
-              background 220ms ease;
-}
-
-.theme-switch-thumb[data-active="light"] {
-  transform: translateX(20px);
-  background: linear-gradient(135deg, #ffffff 0%, #f4f6fb 100%);
-}
-
+/* Eski switch track/thumb görselleri tamamen kaldırıldı; ancak
+ * tema butonu içindeki tek "anahtar" ikonu sade kalsın diye sadece
+ * .theme-switch-icons grubu kullanılır. Eski iz CSS'i temizlendi. */
 .theme-switch-icons {
   position: relative;
   display: inline-flex;
-  width: 14px;
-  height: 14px;
-  margin-right: 4px;
+  width: 16px;
+  height: 16px;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
 }
 
 .theme-switch-icons i {
   position: absolute;
-  font-size: 12px;
+  font-size: 13px;
   opacity: 0;
   transition: opacity 200ms ease;
   color: inherit;
@@ -292,6 +258,74 @@ html[data-theme="light"] .theme-switch-track {
 .theme-switch-sun.is-active,
 .theme-switch-moon.is-active {
   opacity: 1;
+}
+
+/* Çıkış butonu — kontrol satırının sağında küçük ikon butonu */
+.mb-sidebar-logout-btn {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--color-muted, #999999);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 0;
+}
+
+.mb-sidebar-logout-btn:hover {
+  background: rgba(255, 65, 108, 0.12);
+  color: #ff8a9a;
+  border-color: rgba(255, 65, 108, 0.45);
+}
+
+.mb-sidebar-logout-btn:focus-visible {
+  outline: 2px solid var(--color-primary, #ff6b35);
+  outline-offset: 2px;
+}
+
+html[data-theme="light"] .mb-sidebar-logout-btn {
+  background: #ffffff;
+  border-color: rgba(0, 48, 135, 0.14);
+  color: var(--color-muted, #5b6577);
+}
+
+html[data-theme="light"] .mb-sidebar-logout-btn:hover {
+  background: rgba(255, 86, 32, 0.10);
+  color: var(--mb-brand-accent, #FF5620);
+  border-color: var(--mb-brand-accent, #FF5620);
+}
+
+/* Geriye dönük uyumluluk: önceki çıkış butonu adı stilini koru */
+.mb-sidebar-user-logout {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--color-muted, #999999);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 0;
+}
+
+.mb-sidebar-user-logout:hover {
+  background: rgba(255, 65, 108, 0.12);
+  color: #ff8a9a;
+  border-color: rgba(255, 65, 108, 0.45);
 }
 
 /* ============================================================
@@ -358,7 +392,7 @@ html[data-theme="light"] .sidebar-version-value {
 @media (prefers-reduced-motion: reduce) {
   .mb-sidebar-user,
   .mb-theme-switch-btn,
-  .theme-switch-thumb {
+  .mb-sidebar-logout-btn {
     transition: none !important;
   }
 }
