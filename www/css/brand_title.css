@@ -15,28 +15,42 @@
  * ============================================================ */
 
 :root {
-  /* Marka tipografisi tokenları */
-  --mergen-brand-font-stack: var(--font-primary, "Segoe UI"),
-                             "JetBrains Mono", "Inter",
-                             system-ui, -apple-system, sans-serif;
+  /* Marka tipografisi tokenları
+   * Ana Söyleşi modern welcome başlığı (.modern-welcome-title-group h1)
+   * tek doğru görsel kaynaktır:
+   *   font-family: Inter / Roboto / Segoe UI / system-ui
+   *   font-weight: 700
+   *   letter-spacing: -0.015em (sıkı, harf aralıkları yakın)
+   *   text-transform: yok (HTML küçük/büyük harf kullanımı korunur)
+   * Diğer üç yer (navbar, alo-wordmark, deep-space-title) bu stile hizalanır;
+   * yalnız "Bilge" vurgu rengi/gradyanı yerden yere değişebilir. */
+  --mergen-brand-font-stack: "Inter", "Roboto", var(--font-primary, "Segoe UI"),
+                             -apple-system, BlinkMacSystemFont, system-ui,
+                             sans-serif;
   --mergen-brand-primary-weight: 700;
-  --mergen-brand-secondary-weight: 300;
-  --mergen-brand-primary-letter-spacing: 0.16em;
-  --mergen-brand-secondary-letter-spacing: 0.08em;
+  --mergen-brand-secondary-weight: 700;
+  --mergen-brand-primary-letter-spacing: -0.015em;
+  --mergen-brand-secondary-letter-spacing: -0.015em;
 
   /* Marka renkleri (tema bağımsız sabitler) */
   --mergen-brand-color-primary: #ffffff;
   --mergen-brand-color-secondary: var(--mb-brand-accent, #FF5620);
-  --mergen-brand-shadow-strong: 0 0 24px rgba(0, 0, 0, 0.45);
+  --mergen-brand-shadow-strong: 0 2px 4px rgba(0, 0, 0, 0.5);
   --mergen-brand-shadow-soft: 0 1px 0 rgba(0, 0, 0, 0.15);
+
+  /* "Bilge" vurgu gradyanı: modern-welcome-title-accent ile aynı */
+  --mergen-brand-accent-gradient:
+    linear-gradient(90deg, #00f2ff 0%, #0066ff 100%);
 }
 
 html[data-theme="light"] {
-  /* Açık temada karşı kontrast: lacivert + sıcak turuncu */
+  /* Açık temada karşı kontrast: lacivert ana, kurumsal mavi gradyan vurgu */
   --mergen-brand-color-primary: var(--mb-brand-primary, #003087);
-  --mergen-brand-color-secondary: var(--mb-brand-accent, #FF5620);
-  --mergen-brand-shadow-strong: 0 1px 3px rgba(0, 48, 135, 0.18);
+  --mergen-brand-color-secondary: var(--mb-brand-primary, #003087);
+  --mergen-brand-shadow-strong: 0 1px 2px rgba(0, 48, 135, 0.18);
   --mergen-brand-shadow-soft: 0 1px 0 rgba(0, 48, 135, 0.05);
+  --mergen-brand-accent-gradient:
+    linear-gradient(90deg, #0066ff 0%, #003087 100%);
 }
 
 /* ============================================================
@@ -45,10 +59,12 @@ html[data-theme="light"] {
 .mergen-brand-title {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.34em;
+  gap: 0.18em;
   font-family: var(--mergen-brand-font-stack);
   line-height: 1.05;
-  text-transform: uppercase;
+  /* text-transform yok: HTML büyük/küçük harfi korunur ("MERGEN Bilge") */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .mergen-brand-title-primary {
@@ -61,7 +77,12 @@ html[data-theme="light"] {
 .mergen-brand-title-secondary {
   font-weight: var(--mergen-brand-secondary-weight);
   letter-spacing: var(--mergen-brand-secondary-letter-spacing);
-  color: var(--mergen-brand-color-secondary);
+  /* "Bilge" vurgusu modern welcome ile aynı: cyan -> mavi gradyan metin */
+  background: var(--mergen-brand-accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--mergen-brand-color-secondary); /* fallback */
   text-shadow: var(--mergen-brand-shadow-soft);
 }
 
@@ -77,109 +98,187 @@ html[data-theme="light"] {
  * Mevcut sınıfların marka tipografisine hizalanması
  * ============================================================ */
 
-/* 1) Navbar brand (.brand-text / .brand-text-primary / .brand-text-secondary) */
+/* 1) Navbar brand (.brand-text / .brand-text-primary / .brand-text-secondary)
+ * HTML zaten "MERGEN" ve "Bilge" değerlerini ayrı span'larda taşır;
+ * burada text-transform uygulanmaz — kullanıcı modern welcome ile aynı
+ * "MERGEN Bilge" görünümünü ister. */
 .brand-text {
   font-family: var(--mergen-brand-font-stack) !important;
-  letter-spacing: 0 !important; /* tek tek alt span'lar kendi spacing'ini taşır */
-  text-transform: uppercase;
+  letter-spacing: 0 !important; /* alt span'lar kendi spacing'ini taşır */
+  text-transform: none !important;
   line-height: 1.1;
-  /* font-size mevcut layout.css (24px) tarafindan korunur; ozelistirma
-   * yalnizca font-weight/letter-spacing/color iizerinden yapilir. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* font-size mevcut layout.css (24px) tarafından korunur. */
 }
 
 .brand-text-primary {
   font-weight: var(--mergen-brand-primary-weight) !important;
   letter-spacing: var(--mergen-brand-primary-letter-spacing) !important;
   color: var(--mergen-brand-color-primary) !important;
+  text-transform: none !important;
 }
 
 .brand-text-secondary {
   font-weight: var(--mergen-brand-secondary-weight) !important;
   letter-spacing: var(--mergen-brand-secondary-letter-spacing) !important;
-  color: var(--mergen-brand-color-secondary) !important;
+  text-transform: none !important;
+  /* "Bilge" - modern welcome ile aynı cyan -> mavi gradyan metin */
+  background: var(--mergen-brand-accent-gradient) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: var(--mergen-brand-color-secondary) !important; /* fallback */
 }
 
-/* 2) Açılış yükleme ekranı wordmark (.alo-wordmark) */
+/* 2) Açılış yükleme ekranı wordmark (.alo-wordmark)
+ * HTML zaten "MERGEN" (alo-wordmark-primary) ve "Bilge" (alo-wordmark-accent)
+ * spanlarını taşır. Aynı sıkı stili uygula. */
 #app-loading-overlay .alo-wordmark {
   font-family: var(--mergen-brand-font-stack);
-  text-transform: uppercase;
-  gap: 0.34em;
+  text-transform: none;
+  gap: 0.18em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #app-loading-overlay .alo-wordmark-primary {
   font-weight: var(--mergen-brand-primary-weight);
   letter-spacing: var(--mergen-brand-primary-letter-spacing);
+  text-transform: none;
 }
 
 #app-loading-overlay .alo-wordmark-accent {
   font-weight: var(--mergen-brand-secondary-weight);
   letter-spacing: var(--mergen-brand-secondary-letter-spacing);
+  text-transform: none;
+  /* Açılış ekranında "Bilge" cyan -> mavi gradyan; loading sahnesinin
+   * mavi/teal/orange paletiyle uyumlu yumuşak vurgu. */
+  background: var(--mergen-brand-accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-/* 3) Deep-space animasyon marka yazısı (.deep-space-title) */
+/* 3) Deep-space animasyon marka yazısı (.deep-space-title)
+ * HTML zaten "MERGEN" ve "Bilge" spanlarını taşır (deep_space_intro). */
 .deep-space-branding .deep-space-title {
   font-family: var(--mergen-brand-font-stack) !important;
   font-weight: var(--mergen-brand-primary-weight) !important;
   letter-spacing: var(--mergen-brand-primary-letter-spacing) !important;
-  text-transform: uppercase;
+  text-transform: none !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   /* Mevcut renk/gölge varsayılan olarak koyu arka plan için kalır; light
    * temada aşağıdaki override devreye girer. */
 }
 
-html[data-theme="light"] .deep-space-branding .deep-space-title {
-  color: var(--mergen-brand-color-primary) !important;
-  text-shadow: 0 0 24px rgba(0, 48, 135, 0.45),
-               0 1px 1px rgba(255, 255, 255, 0.65) !important;
+/* Deep-space "MERGEN" ve "Bilge" alt span'ları varsa (.deep-space-title-primary
+ * / .deep-space-title-accent veya span > span yapısı), modern welcome ile aynı
+ * gradyan vurgu uygulanır. Span sırasına bağlı (kardeş seçici) ya da
+ * isimlendirilmiş alt sınıflar üzerinden çalışır. */
+.deep-space-branding .deep-space-title .deep-space-title-accent,
+.deep-space-branding .deep-space-title span:nth-of-type(2) {
+  font-weight: var(--mergen-brand-secondary-weight) !important;
+  letter-spacing: var(--mergen-brand-secondary-letter-spacing) !important;
+  background: var(--mergen-brand-accent-gradient) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
 }
 
-/* Deep-space versiyon rozet ve alt metin de light temada okunabilir kalmalı */
-html[data-theme="light"] .deep-space-subtitle {
-  color: rgba(15, 28, 51, 0.78) !important;
-  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.65) !important;
+/* Mevcut R yapısı: <h1 class="deep-space-title">MERGEN</h1>
+ *                  <h2 class="deep-space-subtitle">BİLGE</h2>
+ * h2 "BİLGE" de marka tipografisine hizalanır; cyan -> mavi gradyan vurgu
+ * "Bilge" görünümü için uygulanır. Font boyutu modern welcome ile uyumlu
+ * olarak h1'e yaklaşır (alt yazı değil, marka adının ikinci parçası gibi). */
+.deep-space-branding .deep-space-subtitle {
+  font-family: var(--mergen-brand-font-stack) !important;
+  font-weight: var(--mergen-brand-secondary-weight) !important;
+  letter-spacing: var(--mergen-brand-secondary-letter-spacing) !important;
+  text-transform: none !important;
+  font-size: clamp(1.4rem, 3.4vw, 2.4rem) !important;
+  margin-top: 6px !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--mergen-brand-accent-gradient) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+  text-shadow: none !important;
+}
+
+/* ============================================================
+ * Deep-space içeriği KOYU tema deneyimini her iki temada korur.
+ * Kullanıcı isteği: derin uzay arka planı zaten koyu olduğu için
+ * "MERGEN Bilge" başlığı, "Bir daha gösterme" metni, sürüm rozeti ve
+ * tüm Keşfet/deep-space modal kutuları light temada da DARK görünmeli.
+ * Bu nedenle html[data-theme="light"] override'ları KALDIRILDI; aşağıdaki
+ * !important kuralları light temanın global override'larını sabit dark
+ * davranışla geri alır.
+ * ============================================================ */
+html[data-theme="light"] .deep-space-branding .deep-space-title {
+  color: #ffffff !important;
+  text-shadow: 0 0 30px rgba(137, 207, 240, 0.6) !important;
+}
+
+html[data-theme="light"] .deep-space-branding .deep-space-subtitle {
+  /* Gradyan vurgu zaten yukarıdaki ana kuralda tanımlandı.
+   * Light temada da aynı vurguyu koru. */
+  background: var(--mergen-brand-accent-gradient) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+  text-shadow: none !important;
 }
 
 html[data-theme="light"] .deep-space-skip-checkbox label {
-  color: #0f1c33 !important;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5) !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55) !important;
 }
 
 html[data-theme="light"] .deep-space-skip-checkbox label:hover {
-  color: var(--mb-brand-primary, #003087) !important;
+  color: #ffffff !important;
 }
 
 html[data-theme="light"] .deep-space-skip-checkbox input[type="checkbox"] {
-  background: rgba(255, 255, 255, 0.85);
-  border-color: rgba(0, 48, 135, 0.5);
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
 }
 
 html[data-theme="light"] .deep-space-skip-checkbox input[type="checkbox"]:checked {
-  background: rgba(0, 48, 135, 0.85);
-  border-color: var(--mb-brand-primary, #003087);
+  background: rgba(0, 242, 255, 0.7) !important;
+  border-color: #00f2ff !important;
 }
 
 html[data-theme="light"] .deep-space-skip-checkbox input[type="checkbox"]:checked::after {
-  border-color: #ffffff;
+  border-color: #ffffff !important;
 }
 
-/* Deep-space versiyon rozet (sağ üstte) light temada okunaklı */
+/* Deep-space sürüm rozet ve alt metin — koyu uzay arka planında beyaz */
 html[data-theme="light"] .deep-space-version-badge,
 html[data-theme="light"] .deep-space-version-text {
-  color: var(--mb-brand-primary, #003087) !important;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.55) !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
 }
 
-/* Deep-space modal/dialog kutuları light temada okunaklı */
+/* Deep-space modal/dialog kutuları — koyu uzay deneyimi korunur */
 html[data-theme="light"] .ds-modal-overlay,
 html[data-theme="light"] .ds-version-modal-overlay {
-  background: rgba(15, 28, 51, 0.55) !important;
+  background: rgba(5, 8, 18, 0.78) !important;
 }
 
 html[data-theme="light"] .ds-modal-content,
 html[data-theme="light"] .ds-version-modal-content {
-  background: #ffffff !important;
-  color: var(--color-text, #0f1c33) !important;
-  border: 1px solid var(--color-border, #d8dde7) !important;
-  box-shadow: 0 18px 40px rgba(15, 28, 51, 0.22) !important;
+  background: rgba(10, 16, 38, 0.96) !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.55) !important;
 }
 
 html[data-theme="light"] .ds-modal-content *,
@@ -189,17 +288,19 @@ html[data-theme="light"] .ds-version-modal-content * {
 
 html[data-theme="light"] .ds-modal-title,
 html[data-theme="light"] .ds-version-modal-title {
-  color: var(--mb-brand-primary, #003087) !important;
+  color: #00f2ff !important;
+  text-shadow: 0 0 18px rgba(0, 242, 255, 0.35) !important;
 }
 
 html[data-theme="light"] .ds-modal-close,
 html[data-theme="light"] .ds-version-modal-close {
-  color: var(--color-muted, #5b6577) !important;
+  color: rgba(255, 255, 255, 0.75) !important;
 }
 
 html[data-theme="light"] .ds-modal-close:hover,
 html[data-theme="light"] .ds-version-modal-close:hover {
-  color: var(--mb-brand-primary, #003087) !important;
+  color: #00f2ff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
 }
 
 /* Çok küçük ekranlarda küçülme — kontrast korunur */

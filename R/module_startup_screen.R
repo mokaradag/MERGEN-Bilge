@@ -85,8 +85,10 @@ createStartupScreenUI <- function() {
         class = "deep-space-branding",
         tags$div(
           class = "deep-space-branding-inner",
+          # Modern welcome ile aynı yazım: "MERGEN" + "Bilge"
+          # (BİLGE değil, "Bilge" - büyük/küçük harf modern welcome ile eşleşir).
           tags$h1(class = "deep-space-title", "MERGEN"),
-          tags$h2(class = "deep-space-subtitle", "BİLGE")
+          tags$h2(class = "deep-space-subtitle", "Bilge")
         )
       ),
 
