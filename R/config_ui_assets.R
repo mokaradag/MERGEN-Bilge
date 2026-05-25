@@ -24,6 +24,7 @@ ui_asset_css_groups <- list(
     "css/theme_tokens.css",
     "css/theme_light.css",
     "css/theme_light_extras.css",
+    "css/theme_light_refinements.css",
     "css/animations.css",
     "css/layout.css",
     "css/components.css",

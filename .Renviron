@@ -46,6 +46,12 @@ SSO_TOKEN_REFRESH_MARGIN=300
 # SSO hata ayıklama modu (detaylı log çıktısı)
 SSO_DEBUG=FALSE
 
+# Çıkış (Logout) URL'si: Sidebar çıkış butonu tıklandığında yönlendirilecek
+# hedef URL. Boş bırakılırsa SSO modu için Keycloak logout_endpoint kullanılır;
+# yerel modda da boşsa çıkış butonu sidebar üzerinde gösterilmez.
+# Üretim ortamında doğru kurumsal çıkış adresine güncellenmelidir.
+MERGEN_LOGOUT_URL=
+
 # ------------------------------------------------------------------------------
 # DİĞER AYARLAR
 # ------------------------------------------------------------------------------

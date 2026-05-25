@@ -155,14 +155,36 @@ mb_sidebar_theme_switch <- function() {
 #'
 #' @param show_logout Mantıksal; SSO çıkışı kullanılabilir mi?
 #' @return Shiny div
-mb_sidebar_controls_row <- function(show_logout = FALSE) {
+mb_sidebar_controls_row <- function(show_logout = FALSE, logout_url = "") {
   logout_btn <- if (isTRUE(show_logout)) {
+    # Çıkış URL'si .Renviron tarafından kontrol edilir. URL varsa
+    # öncelikle SSO logout akışı denenir; yoksa doğrudan URL'ye gidilir.
+    # Bu sayede hem SSO modunda hem yerel/özel kurumsal çıkış senaryosunda
+    # buton tutarlı çalışır.
+    safe_url <- ""
+    if (is.character(logout_url) && length(logout_url) == 1 &&
+        !is.na(logout_url) && nzchar(logout_url)) {
+      # JS string olarak gömerken tek tırnak ve geri eğik çizgi kaçırma
+      safe_url <- gsub("'", "\\\\'",
+                       gsub("\\\\", "\\\\\\\\", logout_url, fixed = FALSE),
+                       fixed = FALSE)
+    }
+    onclick_js <- if (nzchar(safe_url)) {
+      paste0(
+        "if(window.ssoLogout){window.ssoLogout();}",
+        "else{window.location.href='", safe_url, "';}"
+      )
+    } else {
+      "if(window.ssoLogout){window.ssoLogout();}"
+    }
+
     tags$button(
       type = "button",
       class = "mb-sidebar-logout-btn",
       title = "Oturumu kapat",
       `aria-label` = "Oturumu kapat",
-      onclick = "if(window.ssoLogout){window.ssoLogout();}",
+      `data-logout-url` = if (nzchar(safe_url)) logout_url else NULL,
+      onclick = onclick_js,
       tags$i(class = "fas fa-right-from-bracket")
     )
   } else {
@@ -331,23 +353,28 @@ mb_sidebar_user_panel_server <- function(output,
     return(invisible(NULL))
   }
 
-  # SSO modunda window.ssoLogout mevcuttur; o yüzden çıkış butonunu yalnızca
-  # SSO aktifken göster. Yerel modda butona yer vermeyiz.
-  sso_logout_available <- tryCatch({
-    sso_on <- exists("SSO_ENABLED", inherits = TRUE) && isTRUE(get("SSO_ENABLED"))
-    if (!isTRUE(sso_on)) {
-      FALSE
+  # Çıkış butonu görünürlüğü artık merkezi logout URL helper'i (
+  # R/helpers_logout_url.R) tarafından belirlenir. URL .Renviron
+  # üzerinden gelir; yoksa SSO logout endpoint denenir. Helper boş URL
+  # dönerse buton sidebar üzerinde gösterilmez (kırık link sergilememek
+  # için).
+  resolved_logout_url <- tryCatch({
+    if (exists("mergen_resolve_logout_url", mode = "function", inherits = TRUE)) {
+      mergen_resolve_logout_url()
     } else {
-      cfg <- if (exists("SSO_CONFIG", inherits = TRUE)) get("SSO_CONFIG") else NULL
-      ep <- if (is.list(cfg)) cfg$logout_endpoint else NULL
-      !is.null(ep) && nzchar(as.character(ep)[1])
+      ""
     }
-  }, error = function(e) FALSE)
+  }, error = function(e) "")
+
+  sso_logout_available <- nzchar(resolved_logout_url)
 
   # Kontrol satırı (tema + opsiyonel çıkış) — bir kez render edilir, SSO
   # durumu değişmediği için reaktif olmaya gerek yok.
   output[[paste0(output_id, "_controls")]] <- shiny::renderUI({
-    mb_sidebar_controls_row(show_logout = isTRUE(sso_logout_available))
+    mb_sidebar_controls_row(
+      show_logout = isTRUE(sso_logout_available),
+      logout_url = resolved_logout_url
+    )
   })
 
   shiny::outputOptions(

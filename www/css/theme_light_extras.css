@@ -35,31 +35,63 @@ html[data-theme="light"] .modern-welcome-greeting-card {
   border-radius: 18px !important;
 }
 
-/* Son Konuşmalar - okunaklı kart, ikon arka planı kurumsal mavi */
+/* Son Konuşmalar — gerçek glassmorphism: yarı şeffaf yüzey + blur + ince
+ * iç parıltı. Eski "solid white block" ve garip mavi ikon kutusu yerine,
+ * yumuşak cam yüzey üzerinde yumuşak mavi tonlu ikon konteynerleri. */
 html[data-theme="light"] .modern-welcome-recent-item,
 html[data-theme="light"] .modern-welcome-preview-btn {
-  background: rgba(255, 255, 255, 0.85) !important;
+  background: rgba(255, 255, 255, 0.42) !important;
   color: var(--color-text-soft, #1f2a44) !important;
-  border: 1px solid rgba(0, 48, 135, 0.12) !important;
-  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.75) inset,
+    0 2px 8px rgba(15, 28, 51, 0.04) !important;
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
 }
 
+/* Hover: yumuşak parıltı, sert mavi blok yok. */
 html[data-theme="light"] .modern-welcome-recent-item:hover,
 html[data-theme="light"] .modern-welcome-preview-btn:hover {
-  background: #ffffff !important;
-  border-color: var(--mb-brand-primary, #003087) !important;
-  box-shadow: 0 6px 18px rgba(0, 48, 135, 0.12);
+  background: rgba(255, 255, 255, 0.74) !important;
+  border-color: rgba(0, 48, 135, 0.32) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 8px 22px rgba(0, 48, 135, 0.10) !important;
 }
 
+/* Son Konuşmalar ikon kutusu — yumuşak tonlu cam, "garip saturated mavi blok"
+ * yerine kurumsal mavinin yumuşak gradyanı ve içeride beyaz ikon. Hover'da
+ * hafif renk doygunluğu artar; renk kimliği korunur. */
 html[data-theme="light"] .modern-welcome-recent-icon,
 html[data-theme="light"] .modern-welcome-preview-icon,
 html[data-theme="light"] .modern-welcome-recent-item .icon,
 html[data-theme="light"] .modern-welcome-recent-item-icon,
 html[data-theme="light"] .modern-welcome-preview-icon-box {
-  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  background: linear-gradient(135deg,
+    rgba(0, 48, 135, 0.78) 0%,
+    rgba(45, 91, 168, 0.82) 100%) !important;
   color: #ffffff !important;
-  border: 1px solid rgba(0, 48, 135, 0.4) !important;
-  box-shadow: 0 2px 6px rgba(0, 48, 135, 0.20);
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.45) inset,
+    0 2px 6px rgba(0, 48, 135, 0.18);
+}
+
+/* "Son Konuşmalar" başlık ikonu (saat) — tek başına, kart dışında. Garip
+ * doygun mavi blok yerine yumuşak çevreli kurumsal mavi disk. */
+html[data-theme="light"] .modern-welcome-recent-header .modern-welcome-recent-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 48, 135, 0.12) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid rgba(0, 48, 135, 0.22) !important;
+  box-shadow: none !important;
+  font-size: 12px;
 }
 
 html[data-theme="light"] .modern-welcome-recent-icon i,
@@ -98,7 +130,11 @@ html[data-theme="light"] .welcome-neural-container {
     linear-gradient(135deg, #f7f9fd 0%, #eef2f8 100%) !important;
 }
 
-/* Welcome quick action kartları - cam panel */
+/* Welcome quick action kartları - cam panel.
+ * Hover kenarlığı bilinçli olarak YUMUŞAK: kullanıcı şikayeti "sert mavi
+ * solid border" olarak ifade etti. Hover'da yumuşak yarı şeffaf kenarlık
+ * + cam yüzey + gölge kullanılır; asıl belirginlik snake trail'den gelir.
+ */
 html[data-theme="light"] .modern-welcome-action-btn {
   background: rgba(255, 255, 255, 0.78) !important;
   color: var(--color-text, #0f1c33) !important;
@@ -108,9 +144,25 @@ html[data-theme="light"] .modern-welcome-action-btn {
 }
 
 html[data-theme="light"] .modern-welcome-action-btn:hover {
-  background: #ffffff !important;
-  border-color: var(--mb-brand-primary, #003087) !important;
-  box-shadow: 0 8px 22px rgba(0, 48, 135, 0.12);
+  background: rgba(255, 255, 255, 0.96) !important;
+  /* Sert solid mavi border yerine yumuşak yarı şeffaf kenarlık */
+  border-color: rgba(0, 48, 135, 0.22) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 10px 28px rgba(0, 48, 135, 0.10) !important;
+}
+
+/* İç katman: light temada hover sırasında ortaya çıkan sert kenarlığı
+ * temizler — snake trail dışında ek bir solid border görünmesin. */
+html[data-theme="light"] .modern-welcome-action-btn:hover .modern-welcome-action-inner {
+  border-color: rgba(0, 48, 135, 0.12) !important;
+}
+
+/* Açık tema için snake trail filter'ı yumuşatır ve gradient ile renk
+ * kimliği korunur; çevredeki sert border hissi yok olur. */
+html[data-theme="light"] .modern-welcome-action-border-trail svg rect {
+  filter: drop-shadow(0 0 4px currentColor);
+  opacity: 0.92;
 }
 
 html[data-theme="light"] .modern-welcome-action-title {
@@ -367,23 +419,30 @@ html[data-theme="light"] #chat_input_wrapper {
   overflow: visible !important;
 }
 
+/* Light tema chat input — dark tema ile birebir aynı geometri. min-height
+ * chat_input.css'teki 24px değeri korunur; üst/alt padding wrapper'a aittir.
+ * Eski regresyon: min-height 44px + padding 10px line-height ile çatışıyor,
+ * bir-satır halinde mini dikey scroll oluşuyordu.
+ */
 html[data-theme="light"] textarea.chat-input,
 html[data-theme="light"] .chat-input,
 html[data-theme="light"] textarea[name="user_input"],
 html[data-theme="light"] #user_input {
-  overflow-y: auto !important;
-  /* min-height ve line-height değerleri dark tema ile birebir aynı */
-  min-height: 44px !important;
+  min-height: 24px !important;
   line-height: 1.5 !important;
-  padding-top: 10px !important;
-  padding-bottom: 10px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
   resize: none !important;
   scrollbar-width: thin;
+  /* Tek satırda dikey scroll oluşmasın — JS auto-grow has-overflow class'ı
+   * ekledikçe scroll açılır. Varsayılan hidden olduğundan tek satır temiz. */
+  overflow-y: hidden !important;
 }
 
-/* Tek satır içinde dikey scroll oluşmasın */
-html[data-theme="light"] textarea.chat-input:not(:focus):not(.has-overflow) {
-  overflow-y: hidden !important;
+/* Çoklu satırda has-overflow ile scroll açılır */
+html[data-theme="light"] textarea.chat-input.has-overflow,
+html[data-theme="light"] #user_input.has-overflow {
+  overflow-y: auto !important;
 }
 
 /* ============================================================
@@ -1307,22 +1366,38 @@ html[data-theme="light"] .page-hero-header .hero-accent {
 }
 
 /* ============================================================
- * 43. Welcome glassmorphism güçlendirme
- *     Kullanıcı şikayeti: cam etki hâlâ düz/opak görünüyor.
- *     Çözüm: daha güçlü saturate + blur + iç parıltı.
+ * 43. Welcome glassmorphism — gerçek cam etki
+ *     Kullanıcı şikayeti: cam etki hâlâ düz/gri görünüyor.
+ *     Çözüm:
+ *       - Daha şeffaf yüzey (0.32 alpha) — gerçek cam hissi.
+ *       - Güçlü blur + saturate; ek olarak iç beyaz "highlight" çizgisi.
+ *       - Soluk mavi tonlu kenarlık; "gri overlay" hissini yok eder.
+ *       - Çift gölge: yukarıdan iç parıltı, aşağıdan yumuşak soft shadow.
+ *     NOT: Bu kural welcome card kapsayıcı için; iç actions/recent/greeting
+ *     kartları kendi yarı şeffaf yüzeylerini taşır.
  * ============================================================ */
 html[data-theme="light"] .modern-welcome-card,
 html[data-theme="light"] .modern-welcome-actions-card,
 html[data-theme="light"] .modern-welcome-recent-card,
 html[data-theme="light"] .modern-welcome-greeting-card {
-  background: rgba(255, 255, 255, 0.58) !important;
-  backdrop-filter: blur(22px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(22px) saturate(180%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.65) !important;
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.34) 0%,
+      rgba(255, 255, 255, 0.26) 100%) !important;
+  backdrop-filter: blur(26px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(190%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 0 22px rgba(0, 48, 135, 0.04) inset,
-    0 16px 44px rgba(15, 28, 51, 0.12) !important;
+    0 1px 0 rgba(255, 255, 255, 0.88) inset,
+    0 0 0 1px rgba(0, 48, 135, 0.04) inset,
+    0 14px 38px rgba(15, 28, 51, 0.10) !important;
+}
+
+/* Welcome card içindeki recent kart, içerik kartından farklı bir cam tonu
+ * taşıyarak hiyerarşi sağlar; opak gri overlay yerine ince beyaz parıltı. */
+html[data-theme="light"] .modern-welcome-recent-card {
+  background: rgba(255, 255, 255, 0.18) !important;
+  border: 1px solid rgba(255, 255, 255, 0.45) !important;
 }
 
 /* Son Konuşmalar - hover'da turuncu kazaen büyük renkli kazasını

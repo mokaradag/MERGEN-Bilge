@@ -93,6 +93,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_pk_analysis_security_summary.R",
   "R/helpers_pk_analysis_filters.R",
   "R/helpers_sso.R",
+  "R/helpers_logout_url.R",
   "R/helpers_destek_database.R",
   "R/helpers_admin_analytics.R",
   "R/helpers_health_formatters.R",
