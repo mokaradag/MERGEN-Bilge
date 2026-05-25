@@ -46,6 +46,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_chat_message_formatting.R",
   "R/helpers_db_chat_readers.R",
   "R/helpers_db_chat_mutations.R",
+  "R/helpers_db_feedback.R",
   "R/helpers_database.R",
   "R/library_queries.R",
   "R/config_sql_loader.R",

@@ -157,6 +157,7 @@ ui_asset_js_groups <- list(
     "js/toast.js",
     "js/markdown-parser.js",
     "js/layout-manager.js",
+    "js/tool_backgrounds_snippets.js",
     "js/tool_backgrounds.js"
   ),
   deferred = c(
