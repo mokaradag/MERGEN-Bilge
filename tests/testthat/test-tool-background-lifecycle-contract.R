@@ -161,3 +161,28 @@ test_that("config_ui_assets.R theme_light_refinements.css'i CSS manifestine ekle
     info = "theme_light_refinements.css UI asset manifestine eklenmelidir."
   )
 })
+
+test_that("saved chat ve localStorage geri yukleme akislari tool background'u temizler", {
+  saved_txt <- .read_repo_text_tool_bg_life("R/server_observers_saved_chats.R")
+  storage_txt <- .read_repo_text_tool_bg_life("R/server_observers_storage.R")
+  expect_true(nzchar(saved_txt), info = "R/server_observers_saved_chats.R okunamadi.")
+  expect_true(nzchar(storage_txt), info = "R/server_observers_storage.R okunamadi.")
+
+  expect_true(
+    grepl('"load_saved_chat"', saved_txt, fixed = TRUE) ||
+      grepl("'load_saved_chat'", saved_txt, fixed = TRUE),
+    info = paste(
+      "Kaydedilmis sohbet yuklenirken araç arka plan animasyonu",
+      "temizlenmelidir; reason='load_saved_chat' beklenir."
+    )
+  )
+
+  expect_true(
+    grepl('"load_chat_from_storage"', storage_txt, fixed = TRUE) ||
+      grepl("'load_chat_from_storage'", storage_txt, fixed = TRUE),
+    info = paste(
+      "localStorage geri yuklemesinde de tool background temizlenmelidir;",
+      "reason='load_chat_from_storage' beklenir."
+    )
+  )
+})

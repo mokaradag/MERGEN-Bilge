@@ -525,3 +525,144 @@ html[data-theme="light"] .character-card.selected {
     #ffffff 60%,
     var(--char-accent-soft, rgba(255, 86, 32, 0.04)) 100%) !important;
 }
+
+/* ============================================================
+ * 14. Keşfet / cinematic / explore modal İÇERİĞİ — koyu uzay
+ *     deneyimi her iki temada korunur; ancak iç metin / başlık /
+ *     açıklama kontrastı light tema global override'larından etkilenmemeli.
+ *     theme_light_extras.css iç içe boyamayı (white) önlüyor; burada
+ *     ek olarak metin/başlık/açıklama/buton kontrastı KORUNUR.
+ * ============================================================ */
+html[data-theme="light"] .cinematic-modal-container,
+html[data-theme="light"] .explore-modal,
+html[data-theme="light"] .explore-cinematic-modal,
+html[data-theme="light"] .character-explore-modal,
+html[data-theme="light"] .welcome-modal-content {
+  background: rgba(10, 16, 38, 0.95) !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.55) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-container *,
+html[data-theme="light"] .explore-modal *,
+html[data-theme="light"] .explore-cinematic-modal *,
+html[data-theme="light"] .character-explore-modal *,
+html[data-theme="light"] .welcome-modal-content * {
+  color: inherit;
+}
+
+html[data-theme="light"] .cinematic-modal-container h1,
+html[data-theme="light"] .cinematic-modal-container h2,
+html[data-theme="light"] .cinematic-modal-container h3,
+html[data-theme="light"] .explore-modal h1,
+html[data-theme="light"] .explore-modal h2,
+html[data-theme="light"] .explore-modal h3,
+html[data-theme="light"] .explore-cinematic-modal h2,
+html[data-theme="light"] .explore-cinematic-modal h3 {
+  color: #00f2ff !important;
+  text-shadow: 0 0 18px rgba(0, 242, 255, 0.35) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-container p,
+html[data-theme="light"] .cinematic-modal-container li,
+html[data-theme="light"] .explore-modal p,
+html[data-theme="light"] .explore-modal li,
+html[data-theme="light"] .explore-cinematic-modal p,
+html[data-theme="light"] .character-explore-modal p,
+html[data-theme="light"] .welcome-modal-content p {
+  color: rgba(255, 255, 255, 0.88) !important;
+  opacity: 1 !important;
+}
+
+/* Cinematic close button — light tema beyaz kalır */
+html[data-theme="light"] .cinematic-modal-close,
+html[data-theme="light"] .explore-modal-close,
+html[data-theme="light"] .welcome-modal-close {
+  color: rgba(255, 255, 255, 0.78) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-close:hover,
+html[data-theme="light"] .explore-modal-close:hover,
+html[data-theme="light"] .welcome-modal-close:hover {
+  color: #00f2ff !important;
+  background: rgba(255, 255, 255, 0.10) !important;
+  border-color: rgba(0, 242, 255, 0.45) !important;
+}
+
+/* Cinematic/explore buton ve kart içlerinde okunabilirlik */
+html[data-theme="light"] .cinematic-modal-container .btn,
+html[data-theme="light"] .explore-modal .btn,
+html[data-theme="light"] .welcome-modal-content .btn {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.30) !important;
+}
+
+/* ============================================================
+ * 15. Bilge Yolaç tool/komut blok başlıkları — light tema kontrastı
+ *     Kabuk çıktısı koyu kalmalı; ancak başlık şeritleri (cc-tool-name,
+ *     komut/yol vb.) light temada okunaklı olmalı.
+ * ============================================================ */
+html[data-theme="light"] .cc-tool-block .cc-tool-header {
+  background: linear-gradient(135deg,
+    rgba(0, 48, 135, 0.10) 0%,
+    rgba(247, 249, 253, 0.95) 100%) !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.18) !important;
+}
+
+html[data-theme="light"] .cc-tool-block .cc-tool-name,
+html[data-theme="light"] .cc-tool-block .cc-tool-label {
+  color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 600 !important;
+}
+
+html[data-theme="light"] .cc-tool-block .cc-tool-id,
+html[data-theme="light"] .cc-tool-block .cc-tool-meta {
+  color: var(--color-muted, #5b6577) !important;
+  font-family: "Consolas", "Cascadia Code", "JetBrains Mono", monospace;
+}
+
+/* Bilge Yolaç chat akış konteyner — gri vurgu yerine cam yüzey */
+html[data-theme="light"] .cc-chat-area,
+html[data-theme="light"] .cc-stream-container,
+html[data-theme="light"] .claude-code-output-wrap {
+  background: rgba(247, 249, 253, 0.45) !important;
+  border: 1px solid rgba(0, 48, 135, 0.08) !important;
+  border-radius: 12px;
+}
+
+/* Bilge Yolaç sol panel (Proje Dizini / Model / Hazır Senaryolar / Eklentiler)
+ * için yumuşak cam yüzey + okunabilir başlık */
+html[data-theme="light"] .cc-section-divider,
+html[data-theme="light"] .cc-side-panel-title {
+  color: var(--mb-brand-primary, #003087) !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.12) !important;
+}
+
+/* ============================================================
+ * 16. STT modal başlığı — ikon kırpılması düzeltmesi (genişletilmiş)
+ *     Tüm temalarda ikon padding'i korunsun; light temada özel olarak
+ *     yumuşak yüzeyle çevrelensin.
+ * ============================================================ */
+.stt-modal-header .modal-title,
+.stt-modal .modal-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 4px;
+}
+
+html[data-theme="light"] .stt-modal-header .modal-title i,
+html[data-theme="light"] .stt-modal .modal-title i {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin-right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
