@@ -133,11 +133,14 @@ html[data-theme="light"] {
 
 /* 2) Açılış yükleme ekranı wordmark (.alo-wordmark)
  * HTML zaten "MERGEN" (alo-wordmark-primary) ve "Bilge" (alo-wordmark-accent)
- * spanlarını taşır. Aynı sıkı stili uygula. */
+ * spanlarını taşır. Aynı sıkı stili uygula.
+ * NOT: font-size ve line-height/padding app_loading.css içinde yönetilir;
+ * harf descender'larının kırpılmaması için orada padding-bottom korunur.
+ */
 #app-loading-overlay .alo-wordmark {
   font-family: var(--mergen-brand-font-stack);
   text-transform: none;
-  gap: 0.18em;
+  gap: 0.22em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

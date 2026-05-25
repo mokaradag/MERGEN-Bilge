@@ -114,9 +114,14 @@ html[data-theme="light"] .sidebar-copyright {
 /* ============================================================
  * 4. Sohbet (Chat) Alanı
  * ============================================================ */
+/* Sohbet konteyneri light temada şeffaf bırakılır; aksi halde
+ * #chat_main_wrapper içindeki tool-bg-layer (yedigen + snippet'ler)
+ * arka planda görünmez (kullanıcı şikayeti: heptagon kırpılıyor).
+ * Solid yüzey gerektiğinde mesaj balonları kendi arka planlarını
+ * taşır; konteyner zeminini ana sayfa zemini sağlar. */
 html[data-theme="light"] .chat-container,
 html[data-theme="light"] #chat_content_container {
-  background-color: var(--color-bg) !important;
+  background-color: transparent !important;
   color: var(--color-text-soft) !important;
 }
 

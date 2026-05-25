@@ -638,6 +638,11 @@
   transform: scale(0.98);
 }
 
+/* Snake trail (hover'da görünen kıvrılan kenarlık animasyonu) HER ZAMAN
+ * butonun hover kenarlığının ÜSTÜNDE çizilir, içerik metin/ikonlarının
+ * ALTINDA kalır. Eski regresyon: trail z-index 5, içerik default; bazı
+ * tarayıcılarda hover border overlay altında kalıyordu.
+ */
 .modern-welcome-action-border-trail {
   position: absolute;
   inset: -3px;
@@ -646,7 +651,7 @@
   transition: opacity 300ms;
   pointer-events: none;
   overflow: visible;
-  z-index: 5;
+  z-index: 20; /* Snake trail hover border'ın üstünde */
 }
 
 .modern-welcome-action-border-trail svg {
@@ -668,8 +673,11 @@
   inset: 5px;
   border-radius: 1rem;
   background: rgba(18, 18, 18, 0.95);
+  z-index: 1;
 }
 
+/* İç katmanın açık bir z-index'i var; snake trail'in üstünde olmamalı
+ * ama metin/ikon içeriği için zemin oluşturmalı. */
 .modern-welcome-action-inner {
   position: absolute;
   inset: 0;
@@ -683,6 +691,13 @@
   width: 100%;
   height: 100%;
   padding: 0;
+  z-index: 10;
+}
+
+/* Metin/ikon içeriği snake trail'in de üstünde okunabilir kalır */
+.modern-welcome-action-inner > * {
+  position: relative;
+  z-index: 25;
 }
 
 .modern-welcome-action-btn:hover .modern-welcome-action-inner {

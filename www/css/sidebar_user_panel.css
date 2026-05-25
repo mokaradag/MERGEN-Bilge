@@ -117,14 +117,33 @@ html[data-theme="light"] .mb-sidebar-user-avatar {
   overflow: hidden;
 }
 
+/* Tam ad: 2 satıra kadar wrap edebilir; üçüncü satırı ellipsis ile keser.
+ * Eski "MEHMET ONUR KARA..." ellipsis görünümü yerine isim okunabilir kalır.
+ * title attribute (mb_sidebar_user_badge_ui) tam adı tooltip olarak korur.
+ */
 .mb-sidebar-user-name {
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text, #ffffff);
-  white-space: nowrap;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: 0.01em;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* line-clamp desteklenmeyen tarayıcılarda yedek: 2 satır max-height + ellipsis */
+@supports not (-webkit-line-clamp: 2) {
+  .mb-sidebar-user-name {
+    max-height: 2.5em;
+    display: block;
+    white-space: normal;
+  }
 }
 
 /* Departman metni: uzun olabilir; 2 satira kadar wrap edilebilir,

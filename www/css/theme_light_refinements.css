@@ -1,0 +1,668 @@
+/* ============================================================
+ * Başlık: Açık Tema İnce Ayarlar (Refinements)
+ * Dosya: www/css/theme_light_refinements.css
+ * Açıklama: theme_light.css ve theme_light_extras.css dosyalarını
+ *           ratchet limiti altında tutmak için ek light tema
+ *           kontrast / glassmorphism / animasyon onarımları burada
+ *           tutulur. Yalnızca <html data-theme="light"> uygulandığında
+ *           etkilidir.
+ *
+ * Bu dosya şu konuları ele alır:
+ *   1. Chat bubble başlıkları (AI / kullanıcı) kurumsal renk şeritleri
+ *   2. Mesaj eylem butonları (kopyala / yeniden dene / geri bildirim)
+ *      varsayılan görünüm
+ *   3. Dosya Önizleme modal başlığı (DataTable benzeri kurumsal mavi)
+ *   4. Yönetici nav bar — kurumsal mavi şerit ve okunaklı sekmeler
+ *   5. "Tümünü Temizle" buton kontrastı
+ *   6. "Derin Düşünme" buton görünürlüğü
+ *   7. Bilge Yolaç model butonları + Ajan rozeti
+ *   8. STT visualizer — beyaz panel + belirgin waveform vurgusu
+ *   9. Söyleşi tool/model rozetleri
+ *  10. Kişiselleştirme — karakter aksanı korunumu
+ *  11. Çıkış butonu (logout) light tema kontrastı
+ *  12. Tooltip tek katman
+ *
+ * NOT: Hiçbir CDN veya harici font yoktur.
+ * ============================================================ */
+
+/* ============================================================
+ * 1. Chat bubble başlık şeritleri
+ *    Kullanıcı şikayeti: AI ve kullanıcı baloncuk başlıkları light
+ *    temada silik; kurumsal renk şeridi olsun.
+ *      - AI bubble: kurumsal mavi (DataTable header gibi)
+ *      - User bubble: alternatif kurumsal teal (yumuşak yeşil-mavi)
+ * ============================================================ */
+html[data-theme="light"] .message-bubble.ai-message .message-header,
+html[data-theme="light"] .message-bubble.assistant-message .message-header,
+html[data-theme="light"] .message-bubble:not([class*="user"]) .message-header,
+html[data-theme="light"] .ai-bubble .message-header {
+  background: linear-gradient(135deg,
+    rgba(0, 48, 135, 0.94) 0%,
+    rgba(0, 45, 122, 0.96) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  padding: 6px 12px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+
+html[data-theme="light"] .message-bubble.ai-message .message-header *,
+html[data-theme="light"] .message-bubble.assistant-message .message-header *,
+html[data-theme="light"] .message-bubble:not([class*="user"]) .message-header *,
+html[data-theme="light"] .ai-bubble .message-header * {
+  color: inherit !important;
+}
+
+html[data-theme="light"] .message-bubble.user-message .message-header,
+html[data-theme="light"] .message-bubble[class*="user-message"] .message-header,
+html[data-theme="light"] .user-bubble .message-header {
+  background: linear-gradient(135deg,
+    rgba(9, 120, 128, 0.92) 0%,
+    rgba(43, 195, 201, 0.85) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(9, 120, 128, 0.30) !important;
+  padding: 6px 12px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+
+html[data-theme="light"] .message-bubble.user-message .message-header *,
+html[data-theme="light"] .message-bubble[class*="user-message"] .message-header *,
+html[data-theme="light"] .user-bubble .message-header * {
+  color: inherit !important;
+}
+
+/* Mesaj eylem butonları (kopyala/yeniden dene/feedback) — light temada
+ * varsayılan olarak GÖRÜNÜR (yalnızca hover bekleyici değil). Hover'da
+ * netleşir; bu sayede keşfedilebilirlik artar.
+ */
+html[data-theme="light"] .message-actions,
+html[data-theme="light"] .message-bubble .message-actions {
+  opacity: 0.78 !important;
+  visibility: visible !important;
+  transition: opacity 200ms ease;
+}
+
+html[data-theme="light"] .message-bubble:hover .message-actions {
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] .message-actions .action-btn,
+html[data-theme="light"] .message-actions .message-action-btn,
+html[data-theme="light"] .message-actions button {
+  background: rgba(255, 255, 255, 0.88) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.06);
+}
+
+html[data-theme="light"] .message-actions .action-btn:hover,
+html[data-theme="light"] .message-actions .message-action-btn:hover,
+html[data-theme="light"] .message-actions button:hover {
+  background: var(--mb-brand-primary, #003087) !important;
+  color: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* ============================================================
+ * 2. Dosya Önizleme modal başlığı — kurumsal mavi
+ * ============================================================ */
+html[data-theme="light"] .file-preview-modal .modal-header,
+html[data-theme="light"] #file_preview_modal .modal-header,
+html[data-theme="light"] .file-preview-dialog .modal-header,
+html[data-theme="light"] .dosya-onizleme-modal .modal-header {
+  background: linear-gradient(135deg,
+    var(--mb-brand-primary, #003087),
+    var(--mb-brand-primary-alt, #002D7A)) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.25) !important;
+}
+
+html[data-theme="light"] .file-preview-modal .modal-title,
+html[data-theme="light"] #file_preview_modal .modal-title,
+html[data-theme="light"] .file-preview-dialog .modal-title,
+html[data-theme="light"] .dosya-onizleme-modal .modal-title {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .file-preview-modal .close,
+html[data-theme="light"] #file_preview_modal .close,
+html[data-theme="light"] .file-preview-modal .modal-header .btn-close {
+  color: #ffffff !important;
+  opacity: 0.85;
+}
+
+html[data-theme="light"] .file-preview-modal .modal-body,
+html[data-theme="light"] #file_preview_modal .modal-body {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
+/* ============================================================
+ * 3. Yönetici Paneli nav bar — kurumsal mavi şerit
+ *    Kullanıcı isteği: nav bar arka planı kurumsal mavi olmalı;
+ *    seçili sekme turuncu kalır. Tooltip çift kenarlığı silinir.
+ * ============================================================ */
+html[data-theme="light"] .admin-nav,
+html[data-theme="light"] .admin-tabs,
+html[data-theme="light"] .admin-panel-nav,
+html[data-theme="light"] .yonetici-tabs,
+html[data-theme="light"] .health-tab-nav,
+html[data-theme="light"] .saglik-tab-nav,
+html[data-theme="light"] .nav-tabs.admin-tabs,
+html[data-theme="light"] .nav-tabs.health-tabs {
+  background: linear-gradient(180deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  border-radius: 10px 10px 0 0;
+  padding: 4px;
+  box-shadow: 0 2px 8px rgba(0, 48, 135, 0.18);
+}
+
+html[data-theme="light"] .admin-nav a,
+html[data-theme="light"] .admin-tabs a,
+html[data-theme="light"] .admin-panel-nav a,
+html[data-theme="light"] .health-tab-nav a,
+html[data-theme="light"] .nav-tabs.admin-tabs > li > a,
+html[data-theme="light"] .nav-tabs.health-tabs > li > a {
+  color: rgba(255, 255, 255, 0.88) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 6px;
+}
+
+html[data-theme="light"] .admin-nav a:hover,
+html[data-theme="light"] .admin-tabs a:hover,
+html[data-theme="light"] .health-tab-nav a:hover,
+html[data-theme="light"] .nav-tabs.admin-tabs > li > a:hover,
+html[data-theme="light"] .nav-tabs.health-tabs > li > a:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+/* Seçili sekme: turuncu gradient (kullanıcı isteği) + beyaz, okunaklı yazı */
+html[data-theme="light"] .admin-nav .active a,
+html[data-theme="light"] .admin-tabs .active a,
+html[data-theme="light"] .admin-tabs a.active,
+html[data-theme="light"] .nav-tabs.admin-tabs > li.active > a,
+html[data-theme="light"] .nav-tabs.health-tabs > li.active > a {
+  background: linear-gradient(135deg,
+    var(--mb-brand-accent, #FF5620) 0%,
+    #ff8022 100%) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 86, 32, 0.6) !important;
+  box-shadow: 0 2px 8px rgba(255, 86, 32, 0.30);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
+}
+
+/* Tooltip — tek katman (çift border düzeltmesi). Mevcut kuralı
+ * theme_light_extras.css de tanımlıyor; burada admin/health bağlamında
+ * ek pekiştirme yapılır. */
+html[data-theme="light"] .admin-content [title]:hover::after,
+html[data-theme="light"] .admin-tooltip::before,
+html[data-theme="light"] .health-tooltip,
+html[data-theme="light"] .tippy-box,
+html[data-theme="light"] .bootstrap-tooltip {
+  background: rgba(15, 28, 51, 0.96) !important;
+  color: #ffffff !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: 0 6px 18px rgba(15, 28, 51, 0.22) !important;
+}
+
+/* ============================================================
+ * 4. "Tümünü Temizle" buton — light tema kontrastı
+ * ============================================================ */
+html[data-theme="light"] .clear-all-btn,
+html[data-theme="light"] .btn-clear-all,
+html[data-theme="light"] .tumunu-temizle-btn,
+html[data-theme="light"] button.tumunu-temizle,
+html[data-theme="light"] .btn-danger.clear-all {
+  background: rgba(239, 68, 68, 0.06) !important;
+  color: #b91c1c !important;
+  border: 1px solid rgba(239, 68, 68, 0.35) !important;
+  font-weight: 600;
+}
+
+html[data-theme="light"] .clear-all-btn:hover,
+html[data-theme="light"] .btn-clear-all:hover,
+html[data-theme="light"] .tumunu-temizle-btn:hover,
+html[data-theme="light"] button.tumunu-temizle:hover {
+  background: #b91c1c !important;
+  color: #ffffff !important;
+  border-color: #b91c1c !important;
+}
+
+/* ============================================================
+ * 5. Derin Düşünme butonları — light temada görünür
+ *    Bazı araçlarda "Derin Düşünme" butonu hover dışı siyah görünüyor.
+ * ============================================================ */
+html[data-theme="light"] .deep-thinking-btn,
+html[data-theme="light"] .derin-dusunme-btn,
+html[data-theme="light"] .thinking-toggle-btn,
+html[data-theme="light"] [data-thinking-toggle],
+html[data-theme="light"] .btn-thinking {
+  background: rgba(139, 92, 246, 0.06) !important;
+  color: #6d28d9 !important;
+  border: 1px solid rgba(139, 92, 246, 0.35) !important;
+  font-weight: 500;
+}
+
+html[data-theme="light"] .deep-thinking-btn:hover,
+html[data-theme="light"] .derin-dusunme-btn:hover,
+html[data-theme="light"] .thinking-toggle-btn:hover,
+html[data-theme="light"] [data-thinking-toggle]:hover {
+  background: rgba(139, 92, 246, 0.15) !important;
+  color: #5b21b6 !important;
+  border-color: rgba(139, 92, 246, 0.55) !important;
+}
+
+html[data-theme="light"] .deep-thinking-btn.active,
+html[data-theme="light"] .derin-dusunme-btn.active,
+html[data-theme="light"] .thinking-toggle-btn.active,
+html[data-theme="light"] [data-thinking-toggle].active,
+html[data-theme="light"] .btn-thinking.active {
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9) !important;
+  color: #ffffff !important;
+  border-color: #6d28d9 !important;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.30);
+}
+
+html[data-theme="light"] .deep-thinking-btn i,
+html[data-theme="light"] .derin-dusunme-btn i {
+  color: inherit !important;
+}
+
+/* ============================================================
+ * 6. Bilge Yolaç model butonları (unselected/selected) + Ajan rozeti
+ * ============================================================ */
+html[data-theme="light"] .cc-model-btn,
+html[data-theme="light"] .cc-model-tier-btn,
+html[data-theme="light"] [data-cc-model-tier],
+html[data-theme="light"] .claude-code-model-tier {
+  background: rgba(255, 255, 255, 0.95) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid rgba(0, 48, 135, 0.20) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.06);
+  font-weight: 500;
+}
+
+html[data-theme="light"] .cc-model-btn:hover,
+html[data-theme="light"] .cc-model-tier-btn:hover,
+html[data-theme="light"] [data-cc-model-tier]:hover,
+html[data-theme="light"] .claude-code-model-tier:hover {
+  background: rgba(0, 48, 135, 0.05) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cc-model-btn.active,
+html[data-theme="light"] .cc-model-tier-btn.active,
+html[data-theme="light"] [data-cc-model-tier].active,
+html[data-theme="light"] .claude-code-model-tier.active {
+  background: linear-gradient(135deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow:
+    0 4px 14px rgba(0, 48, 135, 0.25),
+    0 0 0 2px rgba(0, 48, 135, 0.08) !important;
+  font-weight: 600;
+}
+
+/* "Ajan" rozeti — okunaklı kurumsal mavi yüzey + beyaz metin */
+html[data-theme="light"] .cc-agent-badge,
+html[data-theme="light"] .ajan-badge,
+html[data-theme="light"] .cc-ajan-rozet,
+html[data-theme="light"] [data-cc-badge="ajan"] {
+  background: linear-gradient(135deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(0, 48, 135, 0.40) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+  font-weight: 600;
+}
+
+/* Bilge Yolaç karakter rozetleri — aktif karakterin kimlik rengini taşır.
+ * --char-accent CSS değişkeni karakter seçilince ana root'a atanmaktadır;
+ * burada o renge yumuşak başvuru ile renkli yüzey oluşturulur. */
+html[data-theme="light"] .cc-character-badge,
+html[data-theme="light"] .karakter-rozet,
+html[data-theme="light"] [data-cc-badge="character"] {
+  background: linear-gradient(135deg,
+    var(--char-accent, var(--mb-brand-primary, #003087)) 0%,
+    var(--char-accent-hover, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--char-accent, var(--mb-brand-primary, #003087)) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
+  font-weight: 600;
+}
+
+/* ============================================================
+ * 7. STT visualizer — beyaz panel + belirgin waveform vurgusu
+ *    Kullanıcı isteği: gri arka plan zayıf görünüyor; waveform öne çıksın.
+ *    Çözüm: beyaz panel + canvas üstünde kurumsal mavi/turuncu vurgu.
+ *    JS canvas çiziminde currentColor kullanmıyorsa burada CSS değişkenleri
+ *    yedek olarak konfigüre edilir.
+ * ============================================================ */
+html[data-theme="light"] .stt-vis-canvas-container {
+  background: #ffffff !important;
+  border-top: 1px solid rgba(0, 48, 135, 0.08) !important;
+}
+
+html[data-theme="light"] .stt-vis-canvas-container canvas {
+  background: linear-gradient(180deg,
+    #ffffff 0%,
+    #f7f9fd 100%) !important;
+  --stt-wave-color: var(--mb-brand-primary, #003087);
+  --stt-wave-accent: var(--mb-brand-accent, #FF5620);
+}
+
+/* Visualizer ana panel — beyaz cam, ince mavi kenarlık */
+html[data-theme="light"] .stt-vis-panel,
+html[data-theme="light"] .stt-visualizer-panel,
+html[data-theme="light"] .stt-vis-canvas {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid rgba(0, 48, 135, 0.10) !important;
+}
+
+/* STT modal başlık ikonu — padding ile kırpılma engellenir */
+html[data-theme="light"] .stt-modal-header .stt-header-icon,
+html[data-theme="light"] .stt-modal-header .modal-title i {
+  padding: 6px 8px;
+  margin-right: 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ============================================================
+ * 8. Söyleşi tool/model rozetleri — light tema okunabilirliği
+ *    Mevcut .header-stat-item kuralları extras.css'te tanımlı.
+ *    Ek olarak tool ve model özel rozetleri için belirgin kurumsal
+ *    yüzey + kontrastlı yazı.
+ * ============================================================ */
+html[data-theme="light"] .header-tool-badge,
+html[data-theme="light"] .header-model-badge,
+html[data-theme="light"] .active-tool-badge,
+html[data-theme="light"] .active-model-badge,
+html[data-theme="light"] .chat-tool-indicator,
+html[data-theme="light"] .chat-model-indicator {
+  background: rgba(255, 255, 255, 0.95) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid rgba(0, 48, 135, 0.30) !important;
+  box-shadow: 0 1px 3px rgba(0, 48, 135, 0.08);
+  font-weight: 600;
+}
+
+html[data-theme="light"] .header-tool-badge.active,
+html[data-theme="light"] .active-tool-badge.active,
+html[data-theme="light"] .chat-tool-indicator.active {
+  background: linear-gradient(135deg,
+    var(--mb-brand-accent, #FF5620) 0%,
+    #ff8022 100%) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 86, 32, 0.6) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+}
+
+/* ============================================================
+ * 9. Çıkış (logout) butonu — light tema kontrastı
+ *    .Renviron MERGEN_LOGOUT_URL üzerinden gelen logout butonu sidebar'da
+ *    yumuşak yarı şeffaf görünür; hover'da turuncu vurgu.
+ * ============================================================ */
+html[data-theme="light"] .mb-sidebar-logout-btn {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .mb-sidebar-logout-btn:hover {
+  background: rgba(255, 86, 32, 0.08) !important;
+  color: var(--mb-brand-accent, #FF5620) !important;
+  border-color: var(--mb-brand-accent, #FF5620) !important;
+}
+
+/* ============================================================
+ * 10. Yardım Asistanı vari kurumsal mavi başlıkların navbar ile uyumu
+ *     Kullanıcı isteği: navbar marka + sayfa hero başlıkları aynı dile
+ *     sahip olsun. Navbar light temada beyazımsı kalır; "MERGEN Bilge"
+ *     yazısı brand_title.css içinden kurumsal mavi + gradient'tir.
+ *     Burada yalnız hover/zemin uyumu garanti edilir.
+ * ============================================================ */
+html[data-theme="light"] .main-header,
+html[data-theme="light"] .main-header .navbar {
+  background: linear-gradient(180deg, #ffffff 0%, #f7f9fd 100%) !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.10) !important;
+  box-shadow: 0 1px 4px rgba(15, 28, 51, 0.06);
+}
+
+html[data-theme="light"] .main-header .navbar-static-top {
+  background: transparent !important;
+}
+
+html[data-theme="light"] .navbar-brand,
+html[data-theme="light"] .logo .brand-text {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* ============================================================
+ * 11. Yenilikler bullet metin kontrastı — destek genişletme
+ *     theme_light_extras.css zaten bullet text rengini düzeltir; bullet
+ *     marker (madde işareti) renk vurgusu burada da güçlendirilir.
+ * ============================================================ */
+html[data-theme="light"] .yenilikler-page ul li,
+html[data-theme="light"] .surum-yenilikleri ul li,
+html[data-theme="light"] .yenilik-icerik ul li,
+html[data-theme="light"] .destek-surum ul li {
+  color: var(--color-text, #0f1c33) !important;
+  opacity: 1;
+}
+
+html[data-theme="light"] .yenilikler-page ul li::marker,
+html[data-theme="light"] .surum-yenilikleri ul li::marker,
+html[data-theme="light"] .yenilik-icerik ul li::marker,
+html[data-theme="light"] .destek-surum ul li::marker {
+  color: var(--mb-brand-accent, #FF5620);
+  font-weight: 700;
+}
+
+/* ============================================================
+ * 12. Geri Bildirim ve Hata — buton kenarlığı (FontAwesome rozetli)
+ *     Kullanıcı şikayeti: tag butonlarının kenarlığı yok; non-hovered
+ *     "Ekler" drop bölgesi kenarlığı silik.
+ * ============================================================ */
+html[data-theme="light"] .feedback-tag,
+html[data-theme="light"] .feedback-tag-btn,
+html[data-theme="light"] .feedback-form .feedback-tag,
+html[data-theme="light"] .destek-feedback-tag,
+html[data-theme="light"] .feedback-emoji,
+html[data-theme="light"] .satisfaction-emoji {
+  border: 1px solid rgba(0, 48, 135, 0.22) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05);
+}
+
+html[data-theme="light"] .feedback-tag.active,
+html[data-theme="light"] .feedback-tag-btn.active,
+html[data-theme="light"] .feedback-tag.selected,
+html[data-theme="light"] .feedback-emoji.active,
+html[data-theme="light"] .satisfaction-emoji.active {
+  border-color: var(--mb-brand-accent, #FF5620) !important;
+  background: linear-gradient(135deg,
+    rgba(255, 86, 32, 0.10) 0%,
+    rgba(255, 128, 34, 0.06) 100%) !important;
+  color: var(--mb-brand-accent, #FF5620) !important;
+  box-shadow: 0 4px 12px rgba(255, 86, 32, 0.18);
+}
+
+/* ============================================================
+ * 13. Yapılandırma ve Kişiselleştirme bağlamı için ek karakter
+ *     parıltı (torch) efekti — extras.css hover gradient'i pekiştirir.
+ *     Karakter kimlik aksanı (--char-accent) hover'da yumuşak halka.
+ * ============================================================ */
+html[data-theme="light"] .character-card:hover,
+html[data-theme="light"] .character-selector-card:hover {
+  box-shadow:
+    0 0 0 3px var(--char-accent, var(--mb-brand-primary, rgba(0, 48, 135, 0.18))) !important,
+    0 12px 32px rgba(15, 28, 51, 0.12) !important,
+    0 0 28px var(--char-accent-soft, rgba(0, 48, 135, 0.10)) !important;
+}
+
+/* Seçili karakter — kimlik gradient'i daha belirgin */
+html[data-theme="light"] .character-card.is-selected,
+html[data-theme="light"] .character-card.active,
+html[data-theme="light"] .character-card.selected {
+  background: linear-gradient(155deg,
+    var(--char-accent-soft, rgba(0, 48, 135, 0.10)) 0%,
+    #ffffff 60%,
+    var(--char-accent-soft, rgba(255, 86, 32, 0.04)) 100%) !important;
+}
+
+/* ============================================================
+ * 14. Keşfet / cinematic / explore modal İÇERİĞİ — koyu uzay
+ *     deneyimi her iki temada korunur; ancak iç metin / başlık /
+ *     açıklama kontrastı light tema global override'larından etkilenmemeli.
+ *     theme_light_extras.css iç içe boyamayı (white) önlüyor; burada
+ *     ek olarak metin/başlık/açıklama/buton kontrastı KORUNUR.
+ * ============================================================ */
+html[data-theme="light"] .cinematic-modal-container,
+html[data-theme="light"] .explore-modal,
+html[data-theme="light"] .explore-cinematic-modal,
+html[data-theme="light"] .character-explore-modal,
+html[data-theme="light"] .welcome-modal-content {
+  background: rgba(10, 16, 38, 0.95) !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.55) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-container *,
+html[data-theme="light"] .explore-modal *,
+html[data-theme="light"] .explore-cinematic-modal *,
+html[data-theme="light"] .character-explore-modal *,
+html[data-theme="light"] .welcome-modal-content * {
+  color: inherit;
+}
+
+html[data-theme="light"] .cinematic-modal-container h1,
+html[data-theme="light"] .cinematic-modal-container h2,
+html[data-theme="light"] .cinematic-modal-container h3,
+html[data-theme="light"] .explore-modal h1,
+html[data-theme="light"] .explore-modal h2,
+html[data-theme="light"] .explore-modal h3,
+html[data-theme="light"] .explore-cinematic-modal h2,
+html[data-theme="light"] .explore-cinematic-modal h3 {
+  color: #00f2ff !important;
+  text-shadow: 0 0 18px rgba(0, 242, 255, 0.35) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-container p,
+html[data-theme="light"] .cinematic-modal-container li,
+html[data-theme="light"] .explore-modal p,
+html[data-theme="light"] .explore-modal li,
+html[data-theme="light"] .explore-cinematic-modal p,
+html[data-theme="light"] .character-explore-modal p,
+html[data-theme="light"] .welcome-modal-content p {
+  color: rgba(255, 255, 255, 0.88) !important;
+  opacity: 1 !important;
+}
+
+/* Cinematic close button — light tema beyaz kalır */
+html[data-theme="light"] .cinematic-modal-close,
+html[data-theme="light"] .explore-modal-close,
+html[data-theme="light"] .welcome-modal-close {
+  color: rgba(255, 255, 255, 0.78) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-close:hover,
+html[data-theme="light"] .explore-modal-close:hover,
+html[data-theme="light"] .welcome-modal-close:hover {
+  color: #00f2ff !important;
+  background: rgba(255, 255, 255, 0.10) !important;
+  border-color: rgba(0, 242, 255, 0.45) !important;
+}
+
+/* Cinematic/explore buton ve kart içlerinde okunabilirlik */
+html[data-theme="light"] .cinematic-modal-container .btn,
+html[data-theme="light"] .explore-modal .btn,
+html[data-theme="light"] .welcome-modal-content .btn {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.30) !important;
+}
+
+/* ============================================================
+ * 15. Bilge Yolaç tool/komut blok başlıkları — light tema kontrastı
+ *     Kabuk çıktısı koyu kalmalı; ancak başlık şeritleri (cc-tool-name,
+ *     komut/yol vb.) light temada okunaklı olmalı.
+ * ============================================================ */
+html[data-theme="light"] .cc-tool-block .cc-tool-header {
+  background: linear-gradient(135deg,
+    rgba(0, 48, 135, 0.10) 0%,
+    rgba(247, 249, 253, 0.95) 100%) !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.18) !important;
+}
+
+html[data-theme="light"] .cc-tool-block .cc-tool-name,
+html[data-theme="light"] .cc-tool-block .cc-tool-label {
+  color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 600 !important;
+}
+
+html[data-theme="light"] .cc-tool-block .cc-tool-id,
+html[data-theme="light"] .cc-tool-block .cc-tool-meta {
+  color: var(--color-muted, #5b6577) !important;
+  font-family: "Consolas", "Cascadia Code", "JetBrains Mono", monospace;
+}
+
+/* Bilge Yolaç chat akış konteyner — gri vurgu yerine cam yüzey */
+html[data-theme="light"] .cc-chat-area,
+html[data-theme="light"] .cc-stream-container,
+html[data-theme="light"] .claude-code-output-wrap {
+  background: rgba(247, 249, 253, 0.45) !important;
+  border: 1px solid rgba(0, 48, 135, 0.08) !important;
+  border-radius: 12px;
+}
+
+/* Bilge Yolaç sol panel (Proje Dizini / Model / Hazır Senaryolar / Eklentiler)
+ * için yumuşak cam yüzey + okunabilir başlık */
+html[data-theme="light"] .cc-section-divider,
+html[data-theme="light"] .cc-side-panel-title {
+  color: var(--mb-brand-primary, #003087) !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.12) !important;
+}
+
+/* ============================================================
+ * 16. STT modal başlığı — ikon kırpılması düzeltmesi (genişletilmiş)
+ *     Tüm temalarda ikon padding'i korunsun; light temada özel olarak
+ *     yumuşak yüzeyle çevrelensin.
+ * ============================================================ */
+.stt-modal-header .modal-title,
+.stt-modal .modal-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 4px;
+}
+
+html[data-theme="light"] .stt-modal-header .modal-title i,
+html[data-theme="light"] .stt-modal .modal-title i {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin-right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+

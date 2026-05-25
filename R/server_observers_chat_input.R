@@ -65,6 +65,19 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       return()
     }
 
+    # Kullanıcı gerçek bir prompt gönderdiğinde araç bağlamlı arka plan
+    # animasyonu temizlenir. Animasyonlar yalnızca hızlı eylem tanıtım
+    # mesajı görünürken (henüz prompt gönderilmemişken) gösterilmelidir.
+    # Bu sunucu otoriter sinyaldir; tool_backgrounds.js bunu alır almaz
+    # snippet/heptagon katmanlarını gizler.
+    tryCatch(
+      session$sendCustomMessage("setToolBackgroundFamily", list(
+        clear = TRUE,
+        reason = "user_prompt"
+      )),
+      error = function(e) invisible(NULL)
+    )
+
     send_message(input$send_prompt_from_js$text)
   })
 

@@ -26,16 +26,18 @@
   var WRAPPER_SELECTOR = '#chat_main_wrapper';
   var WELCOME_SELECTOR = '#welcome_fullscreen_container';
 
-  // Sol 3 + sağ 3 = 6 lane. Bir snippet aktif iken bulunduğu lane "busy"
-  // işaretlenir; yeni snippet yalnızca boş lane'lere yerleşir. Üst üste
-  // binme imkansızdır.
+  // Sol 2 + orta 2 + sağ 2 = 6 lane. Snippet sayısı bilinçli olarak
+  // azaltıldı (max 3 aktif); rahatsız edici sahne önlenir. Orta lane'ler
+  // mevcut tasarımı zenginleştirir; iki orta lane farklı dikey yerleşim
+  // alır ve hafifçe daha şeffaf olur (CSS .alo-code-in opacity ile).
+  // Üst üste binme imkansızdır — bir lane "busy" iken kullanılmaz.
   var LANE_DEFS = [
-    { id: 'L1', side: 'left',  top: 8  },
-    { id: 'L2', side: 'left',  top: 32 },
-    { id: 'L3', side: 'left',  top: 58 },
-    { id: 'R1', side: 'right', top: 18 },
-    { id: 'R2', side: 'right', top: 44 },
-    { id: 'R3', side: 'right', top: 70 }
+    { id: 'L1', side: 'left',   top: 12 },
+    { id: 'L2', side: 'left',   top: 54 },
+    { id: 'M1', side: 'center', top: 24 },
+    { id: 'M2', side: 'center', top: 68 },
+    { id: 'R1', side: 'right',  top: 18 },
+    { id: 'R2', side: 'right',  top: 58 }
   ];
 
   var ACTION_TO_FAMILY = {
@@ -303,10 +305,8 @@
       if (built && built.el) {
         // Tool-bg konteyner sınıfı ekle (CSS opacity/transform için).
         built.el.classList.add('tool-bg-typed-snippet');
-        // Son satır sonuna yanıp sönen caret
-        var caret = document.createElement('span');
-        caret.className = 'tool-bg-caret alo-ch alo-ch-on';
-        built.el.appendChild(caret);
+        // Welcome loading progress sahnesi caret kullanmıyor; aynı görsel
+        // dili korumak için tool bg snippet'lerine de caret eklenmez.
         return built;
       }
     }
@@ -340,9 +340,8 @@
       }
       el.appendChild(lineEl);
     }
-    var caretEl = document.createElement('span');
-    caretEl.className = 'tool-bg-caret alo-ch alo-ch-on';
-    el.appendChild(caretEl);
+    // Welcome loading progress sahnesi caret kullanmıyor; yedek render
+    // yolu da aynı görsel sözleşmeyi korur (caret eklenmez).
     return { el: el, charSpans: charSpans };
   }
 
@@ -438,14 +437,20 @@
     }
   }
 
+  // Aktif snippet limiti (max 3); kullanıcı şikayeti: çok fazla snippet
+  // rahatsız edici görünüyor. Welcome loading progress ile uyumlu daha
+  // sakin sahne.
+  var MAX_ACTIVE_SNIPPETS = 3;
+
   function startSpawnLoop(family) {
     stopSpawnLoop();
     spawnTimer = window.setInterval(function () {
-      if (!currentFamily || ACTIVE_SNIPPETS.length >= 4) return;
+      if (!currentFamily || ACTIVE_SNIPPETS.length >= MAX_ACTIVE_SNIPPETS) return;
       spawnOneSnippet(currentFamily);
-    }, 1800);
-    window.setTimeout(function () { spawnOneSnippet(family); }, 200);
-    window.setTimeout(function () { spawnOneSnippet(family); }, 900);
+    }, 2200);
+    // İlk dalga sadece 2 snippet — sahne kalabalık başlamasın.
+    window.setTimeout(function () { spawnOneSnippet(family); }, 250);
+    window.setTimeout(function () { spawnOneSnippet(family); }, 1100);
   }
 
   function stopSpawnLoop() {
@@ -509,7 +514,15 @@
     if (!wrapper) return;
     if (v) {
       wrapper.classList.remove('tool-bg-disabled');
-      if (currentFamily && !welcomeVisible()) startSpawnLoop(currentFamily);
+      // Re-enable bug onarımı: katmanı yeniden kur, varsa mevcut aileyi
+      // tekrar uygula. Bu sayede ayar bir oturumda kapatılıp tekrar
+      // açıldığında animasyonlar güvenilir biçimde geri gelir.
+      ensureLayer(wrapper);
+      if (currentFamily && !welcomeVisible()) {
+        // Önce eski snippet ve timer'ları temizle, sonra başlat.
+        stopSpawnLoop();
+        startSpawnLoop(currentFamily);
+      }
     } else {
       wrapper.classList.add('tool-bg-disabled');
       stopSpawnLoop();

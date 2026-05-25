@@ -150,17 +150,26 @@ html[data-theme="light"] .tool-bg-corner-glow {
   pointer-events: none;
 }
 
-.tool-bg-snippet-lane[data-side="left"]  { left: 2vw; }
-.tool-bg-snippet-lane[data-side="right"] { right: 2vw; }
+.tool-bg-snippet-lane[data-side="left"]   { left: 2vw; }
+.tool-bg-snippet-lane[data-side="right"]  { right: 2vw; }
+/* Orta lane'ler ekranın tam ortasında dar bir şerit; snippet sayısı
+ * sınırlı (max 3) olduğundan üst üste binme tehlikesi yoktur. */
+.tool-bg-snippet-lane[data-side="center"] {
+  left: 50%;
+  transform: translateX(-50%);
+  width: 26vw;
+  max-width: 420px;
+  opacity: 0.85;  /* orta lane'ler hafifçe daha şeffaf */
+}
 
 /* Lane dikey konumları — top değeri JS tarafından inline stilde
  * uygulanır (LANE_DEFS); bu CSS yalnızca fallback olarak kalır. */
-.tool-bg-snippet-lane[data-lane="L1"] { top: 8vh; }
-.tool-bg-snippet-lane[data-lane="L2"] { top: 32vh; }
-.tool-bg-snippet-lane[data-lane="L3"] { top: 58vh; }
+.tool-bg-snippet-lane[data-lane="L1"] { top: 12vh; }
+.tool-bg-snippet-lane[data-lane="L2"] { top: 54vh; }
+.tool-bg-snippet-lane[data-lane="M1"] { top: 24vh; }
+.tool-bg-snippet-lane[data-lane="M2"] { top: 68vh; }
 .tool-bg-snippet-lane[data-lane="R1"] { top: 18vh; }
-.tool-bg-snippet-lane[data-lane="R2"] { top: 44vh; }
-.tool-bg-snippet-lane[data-lane="R3"] { top: 70vh; }
+.tool-bg-snippet-lane[data-lane="R2"] { top: 58vh; }
 
 /* ============================================================
  * 3. Alo-code-item snippet rendering (welcome loading ile aynı)

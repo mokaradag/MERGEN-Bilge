@@ -33,7 +33,18 @@ storageObserversInit <- function(input, session, output, values, settings_data,
     req(loaded_data)
     if (!is.list(loaded_data) || length(loaded_data) == 0) return(invisible(NULL))
     if (length(values$messages) == 0) {
-      
+
+      # localStorage'dan geçmiş sohbet geri yüklenirken araç bağlamlı arka
+      # plan animasyonu temizlenir; eski sohbet bağlamı yeni bir araç
+      # tanıtımı değildir.
+      tryCatch(
+        session$sendCustomMessage("setToolBackgroundFamily", list(
+          clear = TRUE,
+          reason = "load_chat_from_storage"
+        )),
+        error = function(e) invisible(NULL)
+      )
+
       removeUI(selector = "#chat_content_container > *", multiple = TRUE)
       
       values$messages <- input$load_chat_from_storage

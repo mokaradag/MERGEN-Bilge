@@ -227,35 +227,60 @@ html.mergen-skip-intro #deep-space-container {
   color: var(--alo-orange-soft);
 }
 
-/* Marka adı */
+/* Marka adı:
+ *   - line-height ve padding-bottom, "g" gibi descender'ların alt kısmının
+ *     kırpılmasını engeller (eski regresyon: alt-clip).
+ *   - font-size büyütüldü (modern welcome marka boyutuyla uyumlu).
+ *   - text-transform: none — brand_title.css "MERGEN Bilge" karışık
+ *     case'ini koruyor; uppercase, alt-span letter-spacing ile çelişiyordu.
+ *   - gap (harf grupları arası) sıkılaştırıldı; harfler ayrı görünmesin.
+ */
 #app-loading-overlay .alo-wordmark {
   display: flex;
   align-items: baseline;
-  gap: 0.34em;
-  font-size: 33px;
-  line-height: 1;
-  text-transform: uppercase;
+  gap: 0.22em;
+  font-size: 40px;
+  line-height: 1.18;
+  padding-bottom: 6px;
+  text-transform: none;
+  overflow: visible;
 }
 
 #app-loading-overlay .alo-wordmark-primary {
   font-weight: 700;
-  letter-spacing: 0.2em;
+  letter-spacing: -0.015em;
   color: var(--alo-text);
 }
 
 #app-loading-overlay .alo-wordmark-accent {
-  font-weight: 300;
-  letter-spacing: 0.14em;
+  font-weight: 700;
+  letter-spacing: -0.015em;
   color: var(--alo-orange);
 }
 
-/* İnce kurumsal ayraç */
+/* İnce kurumsal ayraç şerit:
+ *   - Açılışta yatay genişler (aloDivider).
+ *   - Sonrasında renkli ışıltı sürekli soldan sağa akar (aloDividerSheen)
+ *     — markanın altında zarif animasyonlu ribbon hissi.
+ *   - background-size: 220% renk noktalarının pozisyonu sürekli kayar.
+ */
 #app-loading-overlay .alo-divider {
   width: 0;
-  height: 1px;
+  height: 2px;
   margin: 18px 0 4px;
-  background: linear-gradient(90deg, transparent, rgba(255, 86, 32, 0.65), var(--alo-teal-bright), transparent);
-  animation: aloDivider 1.4s cubic-bezier(0.22, 1, 0.36, 1) 0.5s forwards;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255, 86, 32, 0.85) 25%,
+    var(--alo-teal-bright) 50%,
+    rgba(63, 111, 196, 0.85) 75%,
+    transparent 100%);
+  background-size: 220% 100%;
+  background-repeat: repeat-x;
+  border-radius: 2px;
+  filter: drop-shadow(0 0 6px rgba(255, 86, 32, 0.35));
+  animation:
+    aloDivider 1.4s cubic-bezier(0.22, 1, 0.36, 1) 0.5s forwards,
+    aloDividerSheen 4.8s linear 2s infinite;
 }
 
 /* Durum satırı */
@@ -410,7 +435,13 @@ html.mergen-skip-intro #deep-space-container {
 }
 
 @keyframes aloDivider {
-  to { width: 196px; }
+  to { width: 230px; }
+}
+
+/* Renkli ribbon ışıltı animasyonu — markanın altında soldan sağa kayar */
+@keyframes aloDividerSheen {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 220% 50%; }
 }
 
 /* Tamamlanma vurgusu */

@@ -85,7 +85,19 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     }
     
     load_chat_in_progress(TRUE)
-    
+
+    # Kaydedilmiş bir sohbet açılırken araç bağlamlı arka plan animasyonu
+    # temizlenir. Animasyonlar yalnızca hızlı eylem tanıtım mesajı görünürken
+    # gösterilmelidir; eski bir sohbeti açmak yeni bir oturum başlangıcı
+    # değildir ve önceki araç ailesi sahnesinde takılı kalmamalıdır.
+    tryCatch(
+      session$sendCustomMessage("setToolBackgroundFamily", list(
+        clear = TRUE,
+        reason = "load_saved_chat"
+      )),
+      error = function(e) invisible(NULL)
+    )
+
     chat_to_load <- values$saved_chats[[chat_id]]
     needs_hydrate <- is.null(chat_to_load)
     
