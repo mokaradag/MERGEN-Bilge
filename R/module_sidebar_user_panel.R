@@ -6,6 +6,16 @@
 #           SSO/yerel kimlik çözümünden alınır; tek bir resmi sürüm kaynağı
 #           olan get_current_version() üzerinden sürüm gösterilir. Bu modül
 #           uygulamada başka kimlik kopyası oluşturmaz.
+#
+# Düzen:
+#   1. Kullanıcı avatarı + tam ad + Departman (MB_Users) satırı
+#   2. Tema anahtarı (ikon + "Koyu Tema"/"Açık Tema" etiketi) ve
+#      yanında küçük çıkış butonu (yalnızca SSO + logout endpoint varsa)
+#   3. Sürüm satırı (tek doğru kaynak: get_current_version())
+#
+# Eski stil "switch track + thumb" görseli kaldırıldı; tek bir kompakt
+# buton korunur. Departman değeri MB_Users tablosundan gelir (user_cfg
+# üzerinden); "Mudurluk" görünür alan olarak gösterilmez.
 # ============================================================
 
 #' Kullanıcı baş harflerini güvenli şekilde üret
@@ -78,7 +88,46 @@ mb_sidebar_user_avatar_url <- function(user_id) {
   paste0("https://url......./", user_id, ".jpg")
 }
 
+#' Departman değerini güvenli şekilde çöz
+#'
+#' @description user_config nesnesinde MB_Users Departman alanını öncelikli
+#'   olarak okur. Bilinen alternatif alan adlarını (`Departman`, `departman`,
+#'   `department`) tolere eder. Değer yoksa boş dize döner.
+#'
+#'   Bu helper yeni bir DB sorgusu açmaz: kimlik kurulduğunda
+#'   `build_user_session_config()` zaten Departman değerini user_config'e
+#'   yerleştirir (SSO claim `department` veya `Departman`).
+#'
+#' @param user_cfg user_config listesi (NULL olabilir)
+#' @return Karakter (boş dize olabilir)
+mb_sidebar_user_department <- function(user_cfg = NULL) {
+  if (is.null(user_cfg)) return("")
+  if (!is.list(user_cfg)) return("")
+
+  pick <- function(key) {
+    val <- user_cfg[[key]]
+    if (is.null(val)) return("")
+    val <- as.character(val)[1]
+    if (is.na(val)) return("")
+    trimws(val)
+  }
+
+  # Tercih sırası: Departman -> departman -> department
+  candidates <- c(pick("Departman"), pick("departman"), pick("department"))
+  for (c in candidates) {
+    if (nzchar(c)) {
+      return(c)
+    }
+  }
+  ""
+}
+
 #' Sidebar kullanıcı paneli için tema anahtarı bileşeni
+#'
+#' @description Kompakt tek-satır tema butonu. Eski "switch track + thumb"
+#'   görseli kaldırıldı; ikon + etiket yeterli. Etiket "Koyu Tema" ile
+#'   başlar; istemci tarafı tema durumuna göre "Açık Tema" olarak
+#'   güncellenir.
 #'
 #' @return Shiny tag (button)
 mb_sidebar_theme_switch <- function() {
@@ -94,12 +143,36 @@ mb_sidebar_theme_switch <- function() {
       tags$i(class = "fas fa-sun theme-switch-sun"),
       tags$i(class = "fas fa-moon theme-switch-moon is-active")
     ),
-    tags$span(class = "theme-switch-label", "Koyu tema"),
-    tags$span(
-      class = "theme-switch-track",
-      `aria-hidden` = "true",
-      tags$span(class = "theme-switch-thumb", `data-active` = "dark")
+    tags$span(class = "theme-switch-label", "Koyu Tema")
+  )
+}
+
+#' Sidebar kompakt kontrol satırı (tema butonu + opsiyonel çıkış)
+#'
+#' @description Tema butonu büyük, çıkış butonu küçük; aynı satırda yer alır.
+#'   Çıkış butonu yalnızca SSO aktif ve logout endpoint mevcutsa render
+#'   edilir. Yerel modda yalnızca tema butonu görünür.
+#'
+#' @param show_logout Mantıksal; SSO çıkışı kullanılabilir mi?
+#' @return Shiny div
+mb_sidebar_controls_row <- function(show_logout = FALSE) {
+  logout_btn <- if (isTRUE(show_logout)) {
+    tags$button(
+      type = "button",
+      class = "mb-sidebar-logout-btn",
+      title = "Oturumu kapat",
+      `aria-label` = "Oturumu kapat",
+      onclick = "if(window.ssoLogout){window.ssoLogout();}",
+      tags$i(class = "fas fa-right-from-bracket")
     )
+  } else {
+    NULL
+  }
+
+  tags$div(
+    class = "mb-sidebar-controls-row",
+    mb_sidebar_theme_switch(),
+    logout_btn
   )
 }
 
@@ -117,17 +190,15 @@ mb_sidebar_user_panel_ui <- function(output_id = "sidebar_user_panel") {
     id = "sidebar-footer-container",
     # Kullanıcı kimliği (server tarafında doldurulur)
     uiOutput(output_id, inline = FALSE),
-    # Tema anahtarı (her zaman görünür; durumu istemci yönetir)
-    tags$div(
-      class = "mb-sidebar-theme-row",
-      mb_sidebar_theme_switch()
-    ),
+    # Kontrol satırı (tema butonu + opsiyonel çıkış) -- server tarafında
+    # doldurulur; SSO durumu reaktif olarak çözülür.
+    uiOutput(paste0(output_id, "_controls"), inline = FALSE),
     # Sürüm satırı (tek doğru kaynak: get_current_version)
     tags$p(
       class = "sidebar-version",
       tags$span(class = "sidebar-version-prefix", "MERGEN Bilge"),
       tags$span(class = "sidebar-version-value",
-                paste0("v", get_current_version()))
+                get_app_version_label())
     ),
     tags$p(
       class = "sidebar-copyright",
@@ -139,17 +210,18 @@ mb_sidebar_user_panel_ui <- function(output_id = "sidebar_user_panel") {
 #' Sidebar kullanıcı bilgisi render bileşeni
 #'
 #' @description Kullanıcı tam adı, baş harf ve avatar yedeğini üreten saf
-#'   UI fonksiyonudur. SSO/yerel ayrımı çağıran tarafta yapılır.
+#'   UI fonksiyonudur. SSO/yerel ayrımı çağıran tarafta yapılır. Çıkış
+#'   butonu burada değil, ayrı kontrol satırında gösterilir (alan tasarrufu).
 #'
 #' @param full_name Görünür tam ad
 #' @param first_name İlk ad (yedek)
 #' @param user_id Avatar URL'sini üretmek için ID
-#' @param role_text Alt satır rol metni (örn. "ASELSAN" / "Yerel Kullanıcı")
+#' @param department Görünür Departman metni (uzun olabilir; CSS ile ellipsis)
 #' @return Shiny div
 mb_sidebar_user_badge_ui <- function(full_name = NULL,
                                      first_name = NULL,
                                      user_id = NULL,
-                                     role_text = NULL) {
+                                     department = NULL) {
   display_name <- if (!is.null(full_name) && nzchar(as.character(full_name)[1])) {
     as.character(full_name)[1]
   } else if (!is.null(first_name) && nzchar(as.character(first_name)[1])) {
@@ -177,7 +249,21 @@ mb_sidebar_user_badge_ui <- function(full_name = NULL,
     tags$span(class = "mb-sidebar-user-avatar-fallback", initials)
   }
 
-  show_logout <- isTRUE(getOption("mergen.sidebar_show_logout", FALSE))
+  dept_text <- if (is.null(department)) "" else trimws(as.character(department)[1])
+
+  dept_tag <- if (nzchar(dept_text)) {
+    tags$span(
+      class = "mb-sidebar-user-department",
+      title = dept_text,
+      dept_text
+    )
+  } else {
+    tags$span(
+      class = "mb-sidebar-user-department mb-sidebar-user-department-empty",
+      title = "Departman bilgisi yok",
+      "Departman bilgisi yok"
+    )
+  }
 
   tags$div(
     class = "mb-sidebar-user",
@@ -187,21 +273,9 @@ mb_sidebar_user_badge_ui <- function(full_name = NULL,
     ),
     tags$div(
       class = "mb-sidebar-user-info",
-      tags$span(class = "mb-sidebar-user-name", display_name),
-      if (!is.null(role_text) && nzchar(role_text)) {
-        tags$span(class = "mb-sidebar-user-role", role_text)
-      }
-    ),
-    if (isTRUE(show_logout)) {
-      tags$button(
-        type = "button",
-        class = "mb-sidebar-user-logout",
-        title = "Oturumu kapat",
-        `aria-label` = "Oturumu kapat",
-        onclick = "if(window.ssoLogout){window.ssoLogout();}",
-        tags$i(class = "fas fa-right-from-bracket")
-      )
-    }
+      tags$span(class = "mb-sidebar-user-name", title = display_name, display_name),
+      dept_tag
+    )
   )
 }
 
@@ -211,6 +285,9 @@ mb_sidebar_user_badge_ui <- function(full_name = NULL,
 #'   live provider'ları kullanılır; SSO başlangıç anında değer hazır değilse
 #'   geçici bir "Hazırlanıyor..." baloncuk gösterilir, ardından kimlik
 #'   hazır olunca otomatik güncellenir.
+#'
+#'   Departman bilgisi user_config üzerinden okunur (MB_Users -> SSO claim).
+#'   Bu modül kendi DB sorgusunu açmaz.
 #'
 #' @param output Shiny output nesnesi
 #' @param identity runtime_ctx$identity benzeri kimlik sözleşmesi
@@ -236,7 +313,12 @@ mb_sidebar_user_panel_server <- function(output,
       !is.null(ep) && nzchar(as.character(ep)[1])
     }
   }, error = function(e) FALSE)
-  options(mergen.sidebar_show_logout = isTRUE(sso_logout_available))
+
+  # Kontrol satırı (tema + opsiyonel çıkış) — bir kez render edilir, SSO
+  # durumu değişmediği için reaktif olmaya gerek yok.
+  output[[paste0(output_id, "_controls")]] <- shiny::renderUI({
+    mb_sidebar_controls_row(show_logout = isTRUE(sso_logout_available))
+  })
 
   if (is.null(identity) ||
       !is.function(identity$get_display_name %||% NULL)) {
@@ -246,7 +328,7 @@ mb_sidebar_user_panel_server <- function(output,
         full_name = "Yerel Kullanıcı",
         first_name = NULL,
         user_id = NULL,
-        role_text = "MERGEN Bilge"
+        department = ""
       )
     })
     return(invisible(NULL))
@@ -258,7 +340,6 @@ mb_sidebar_user_panel_server <- function(output,
   is_auth_ready <- identity$is_auth_ready %||% function() TRUE
   is_sso_active <- identity$is_sso_active %||% function() FALSE
   get_user_config <- identity$get_user_config %||% function(default = NULL) default
-  get_auth_source <- identity$get_auth_source %||% function(default = NULL) default
 
   output[[output_id]] <- shiny::renderUI({
     # SSO modunda authenticated reaktifini izle; yerel modda no-op
@@ -279,7 +360,7 @@ mb_sidebar_user_panel_server <- function(output,
         full_name = "Oturum hazırlanıyor",
         first_name = NULL,
         user_id = NULL,
-        role_text = "Kimlik doğrulanıyor..."
+        department = "Kimlik doğrulanıyor..."
       ))
     }
 
@@ -290,17 +371,8 @@ mb_sidebar_user_panel_server <- function(output,
     uid <- tryCatch(resolve_uid(), error = function(e) 0L)
     user_cfg <- tryCatch(get_user_config(default = NULL),
                          error = function(e) NULL)
-    src <- tryCatch(get_auth_source(default = NULL),
-                    error = function(e) NULL)
 
-    role_text <- NULL
-    if (!is.null(user_cfg)) {
-      role_text <- user_cfg$mudurluk %||% user_cfg$department %||%
-                   user_cfg$sektor %||% NULL
-    }
-    if (is.null(role_text) || !nzchar(as.character(role_text)[1])) {
-      role_text <- if (identical(src, "keycloak")) "ASELSAN" else "MERGEN Bilge"
-    }
+    department_text <- mb_sidebar_user_department(user_cfg)
 
     sicil <- if (!is.null(user_cfg)) user_cfg$sicil else NULL
     avatar_id <- if (!is.null(sicil) && nzchar(as.character(sicil)[1])) sicil else uid
@@ -313,7 +385,7 @@ mb_sidebar_user_panel_server <- function(output,
       full_name = full_name,
       first_name = first_name,
       user_id = avatar_id,
-      role_text = role_text
+      department = department_text
     )
   })
 

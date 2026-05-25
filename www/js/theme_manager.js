@@ -7,6 +7,11 @@
 //           alanına yazılır. JS devre dışıysa veya değer yoksa varsayılan
 //           koyu tema korunur. Tüm bileşenler temadan haberdar olabilsin
 //           diye "mergen:themechange" özel olayı yayınlanır.
+//
+// NOT: Tema butonu sidebar dinamik render edildiği için tek seferlik
+//      doğrudan binding yerine document seviyesinde delegated click
+//      handler kullanılır. Bu sayede DOM yeniden çizilse bile tıklama
+//      her zaman çalışır.
 // ============================================================
 
 (function () {
@@ -16,6 +21,7 @@
   var DEFAULT_THEME = 'dark';
   var SETTINGS_KEY = 'mergen_settings';
   var THEME_KEY_LEGACY = 'mergen_theme';
+  var TOGGLE_SELECTOR = '[data-mergen-theme-toggle]';
 
   function isValidTheme(value) {
     return typeof value === 'string' && THEMES.indexOf(value) !== -1;
@@ -110,6 +116,21 @@
     }
   }
 
+  function notifyServerTheme(theme) {
+    if (!window.Shiny ||
+        typeof window.Shiny.setInputValue !== 'function') {
+      return;
+    }
+    try {
+      window.Shiny.setInputValue('mergen_theme_changed', {
+        theme: theme,
+        ts: Date.now()
+      }, { priority: 'event' });
+    } catch (e) {
+      // Shiny henüz bağlı değilse sorun değil; tema yine uygulanmış olur
+    }
+  }
+
   function applyTheme(theme, options) {
     options = options || {};
     var resolved = applyThemeAttribute(isValidTheme(theme) ? theme : DEFAULT_THEME);
@@ -118,17 +139,8 @@
       persistTheme(resolved);
     }
 
-    if (options.notifyServer !== false &&
-        window.Shiny &&
-        typeof window.Shiny.setInputValue === 'function') {
-      try {
-        window.Shiny.setInputValue('mergen_theme_changed', {
-          theme: resolved,
-          ts: Date.now()
-        }, { priority: 'event' });
-      } catch (e) {
-        // Shiny henüz bağlı değilse sorun değil; tema yine uygulanmış olur
-      }
+    if (options.notifyServer !== false) {
+      notifyServerTheme(resolved);
     }
 
     if (options.animate !== false) {
@@ -186,9 +198,7 @@
   // ============================================================
   // R tarafı session$sendCustomMessage("saveSettings"/"loadSettings"/
   // "clearSettings", ...) çağrılarını localStorage senkronizasyonu için
-  // burada güvenli ve idempotent biçimde sağlıyoruz. Eğer ileride başka
-  // bir modül de aynı isimde handler kayıt ederse Shiny uyarı verebilir;
-  // yine de istemci tarafı tema/araç arka planı zaten kendi başına çalışır.
+  // burada güvenli ve idempotent biçimde sağlıyoruz.
   function registerSettingsBridge() {
     if (!window.Shiny || typeof window.Shiny.addCustomMessageHandler !== 'function') {
       return;
@@ -287,6 +297,7 @@
       }
     }
     registerSettingsBridge();
+    syncThemeToggleVisuals(window.MergenTheme.get());
   });
 
   // Bazı durumlarda Shiny zaten bağlıdır; bu yüzden Shiny global'i hazırsa
@@ -299,17 +310,70 @@
     });
   }
 
-  // Sayfa hazır olduğunda kenar çubuğundaki tema anahtarını bağla
-  document.addEventListener('DOMContentLoaded', function () {
-    bindThemeToggleButton();
-    syncThemeToggleVisuals(window.MergenTheme.get());
-  });
+  // ============================================================
+  // DELEGATED click handler — sidebar dinamik render edilse bile çalışır
+  // ============================================================
+  function handleToggleEvent(ev) {
+    if (!ev) return;
+    var startTarget = ev.target;
+    if (!startTarget || !startTarget.closest) return;
+    var btn = startTarget.closest(TOGGLE_SELECTOR);
+    if (!btn) return;
+    if (btn.getAttribute('aria-disabled') === 'true' || btn.disabled === true) {
+      ev.preventDefault();
+      return;
+    }
+    ev.preventDefault();
+    window.MergenTheme.toggle();
+  }
 
-  // Şiny tekrar bağlandığında veya sidebar yeniden çizildiğinde butonu yeniden bağla
+  function bindDelegatedToggle() {
+    if (window.__mergenThemeDelegatedBound) {
+      return;
+    }
+    window.__mergenThemeDelegatedBound = true;
+
+    // Capture phase: sidebar/diğer ebeveynlerin stopPropagation hatalarına karşı dayanıklı
+    document.addEventListener('click', handleToggleEvent, true);
+    document.addEventListener('touchend', function (ev) {
+      // touchend de tetiklensin; click bazı durumlarda gelmeyebilir
+      if (!ev) return;
+      var startTarget = ev.target;
+      if (!startTarget || !startTarget.closest) return;
+      var btn = startTarget.closest(TOGGLE_SELECTOR);
+      if (!btn) return;
+      // Çift tetikleme engelle: click zaten gelecek
+      ev.preventDefault();
+      window.MergenTheme.toggle();
+    }, true);
+
+    // Klavye erişimi (Enter / Space)
+    document.addEventListener('keydown', function (ev) {
+      if (!ev || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+      var t = document.activeElement;
+      if (!t || !t.closest) return;
+      var btn = t.closest(TOGGLE_SELECTOR);
+      if (!btn) return;
+      ev.preventDefault();
+      window.MergenTheme.toggle();
+    });
+  }
+
+  // Çoklu giriş noktaları: erken DOM, geç DOM, sidebar yeniden çizim
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      bindDelegatedToggle();
+      syncThemeToggleVisuals(window.MergenTheme.get());
+    });
+  } else {
+    bindDelegatedToggle();
+    syncThemeToggleVisuals(window.MergenTheme.get());
+  }
+
+  // Sidebar yeniden render edildiğinde görsel senkronizasyon
   document.addEventListener('shiny:value', function (event) {
     if (event && event.name === 'sidebar_user_panel') {
       window.setTimeout(function () {
-        bindThemeToggleButton();
         syncThemeToggleVisuals(window.MergenTheme.get());
       }, 30);
     }
@@ -320,35 +384,9 @@
     syncThemeToggleVisuals(t);
   });
 
-  function bindThemeToggleButton() {
-    var buttons = document.querySelectorAll('[data-mergen-theme-toggle]');
-    if (!buttons || buttons.length === 0) {
-      return;
-    }
-
-    buttons.forEach(function (btn) {
-      if (btn.getAttribute('data-mergen-theme-bound') === 'true') {
-        return;
-      }
-      btn.setAttribute('data-mergen-theme-bound', 'true');
-
-      btn.addEventListener('click', function (ev) {
-        ev.preventDefault();
-        window.MergenTheme.toggle();
-      });
-
-      btn.addEventListener('keydown', function (ev) {
-        if (ev.key === 'Enter' || ev.key === ' ') {
-          ev.preventDefault();
-          window.MergenTheme.toggle();
-        }
-      });
-    });
-  }
-
   function syncThemeToggleVisuals(theme) {
     var isLight = theme === 'light';
-    var buttons = document.querySelectorAll('[data-mergen-theme-toggle]');
+    var buttons = document.querySelectorAll(TOGGLE_SELECTOR);
     if (!buttons || buttons.length === 0) {
       return;
     }
@@ -360,11 +398,6 @@
       btn.setAttribute('title',
         isLight ? 'Koyu temaya geç' : 'Açık temaya geç');
 
-      var thumb = btn.querySelector('.theme-switch-thumb');
-      if (thumb) {
-        thumb.setAttribute('data-active', isLight ? 'light' : 'dark');
-      }
-
       var sunIcon = btn.querySelector('.theme-switch-sun');
       var moonIcon = btn.querySelector('.theme-switch-moon');
       if (sunIcon && moonIcon) {
@@ -375,7 +408,8 @@
 
       var label = btn.querySelector('.theme-switch-label');
       if (label) {
-        label.textContent = isLight ? 'Açık tema' : 'Koyu tema';
+        // Açık temadayken sonraki adım "Koyu Tema"; koyu temadayken "Açık Tema".
+        label.textContent = isLight ? 'Açık Tema' : 'Koyu Tema';
       }
     });
   }

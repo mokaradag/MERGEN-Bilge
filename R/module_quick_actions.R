@@ -222,18 +222,35 @@ quickActionsInit <- function(input, session, values, settings_data,
     # 2. Araçları kapat, sadece istenen aracı aç
     disable_all_tools()
     isolate({ settings_data[[tool_name]] <- TRUE })
-    
+
     # 3. UI checkbox'larını güncelle
     update_tool_checkboxes(tool_name)
-    
+
     # 4. Ayarları kaydet
     save_tool_settings(tool_name)
-    
+
     # 5. Bildirim göster
     showToast(session, toast_message, "success")
 
     # 6. LLM çağrısı yapmadan hazır yönlendirme mesajı göster
     show_quick_action_intro(action_id)
+
+    # 7. Sunucu otoriter olarak sohbet arka plan ailesini ayarla.
+    #    İstemci tarafındaki click listener erken görsel ipucu olarak
+    #    kalır; ancak gerçek aktivasyon yetkisi bu mesaja aittir. Bu
+    #    sayede DOM redraw veya stale tıklama durumlarında bile araç
+    #    arka plan animasyonu doğru ailede başlar.
+    family <- tool_cfg$family
+    if (is.null(family) || !nzchar(as.character(family)[1])) {
+      family <- ""
+    }
+    tryCatch(
+      session$sendCustomMessage("setToolBackgroundFamily", list(
+        action_id = action_id %||% "",
+        family = as.character(family)[1]
+      )),
+      error = function(e) invisible(NULL)
+    )
   }
   
   # ===========================================================================
@@ -360,8 +377,17 @@ quickActionsInit <- function(input, session, values, settings_data,
       session$sendCustomMessage("toggleImageMode", list(active = FALSE))
       session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
 
+      # Sunucu otoriter arka plan aile sinyali (handle_tool_action ile aynı sözleşme)
+      tryCatch(
+        session$sendCustomMessage("setToolBackgroundFamily", list(
+          action_id = "summarization",
+          family = "summarization"
+        )),
+        error = function(e) invisible(NULL)
+      )
+
       cat("[QUICK_TEMPLATE] Özetleme modu aktif edildi\n")
-	  
+
       show_quick_action_intro("summarization")
       
       current_files <- isolate(session_files())

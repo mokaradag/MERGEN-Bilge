@@ -15,6 +15,11 @@
 settingsInit <- function(session, parent_session = NULL) {
 
   # Tüm ayarların merkezi reaktif değerleri
+  # Not: settings$theme istemci tarafı (theme_manager.js) ile aktif olarak
+  # senkronize edilir. Aşağıdaki iki observer (mergen_theme_changed ve
+  # mergen_theme_initial) settings$theme'i istemci durumuna eşitler. Bu
+  # save_all_settings()'in eski bir tema değerini yanlışlıkla localStorage'a
+  # geri yazmasını engeller.
   settings <- reactiveValues(
     model_selection         = api_config$local_models[1],
     selected_character      = CHARACTER_DEFAULT_ID,
@@ -225,6 +230,49 @@ settingsInit <- function(session, parent_session = NULL) {
     }
   }, ignoreInit = TRUE)
 
+  # ---- İstemci tarafı tema değişikliği ile senkronizasyon ----
+  # theme_manager.js her toggle/set çağrısında Shiny'e
+  # input$mergen_theme_changed = list(theme = "dark"/"light", ts = ...)
+  # gönderir. Bu observer settings$theme'i istemci durumuna eşitler. Aksi
+  # halde save_all_settings() reactiveValuesToList() ile eski "dark"
+  # değerini saveSettings içine yazıp light tercihi localStorage'da
+  # silebilir.
+  observeEvent(session$input$mergen_theme_changed, {
+    payload <- session$input$mergen_theme_changed
+    if (is.null(payload)) return(invisible(NULL))
+    new_theme <- payload$theme
+    if (is.null(new_theme) || !nzchar(as.character(new_theme)[1])) {
+      return(invisible(NULL))
+    }
+    new_theme <- as.character(new_theme)[1]
+    if (!new_theme %in% c("dark", "light")) {
+      return(invisible(NULL))
+    }
+    if (!identical(isolate(settings$theme), new_theme)) {
+      settings$theme <- new_theme
+    }
+  }, ignoreInit = TRUE)
+
+  # Tarayıcı bağlandığında theme_manager.js başlangıç temasını da gönderir.
+  # Bu özellikle SSO + sayfa yenilemesi senaryosunda settings$theme'i doğru
+  # başlangıç değerine getirir, böylece ilk save işleminde stale "dark"
+  # değeri persistlenmez.
+  observeEvent(session$input$mergen_theme_initial, {
+    payload <- session$input$mergen_theme_initial
+    if (is.null(payload)) return(invisible(NULL))
+    initial_theme <- payload$theme
+    if (is.null(initial_theme) || !nzchar(as.character(initial_theme)[1])) {
+      return(invisible(NULL))
+    }
+    initial_theme <- as.character(initial_theme)[1]
+    if (!initial_theme %in% c("dark", "light")) {
+      return(invisible(NULL))
+    }
+    if (!identical(isolate(settings$theme), initial_theme)) {
+      settings$theme <- initial_theme
+    }
+  }, ignoreInit = TRUE)
+
   # ---- Kaydet (her iki alt sekmeden tetiklenebilir) ----
   save_all_settings <- function() {
     # Kişiselleştirme geçici değerlerini uygula
@@ -327,6 +375,18 @@ settingsInit <- function(session, parent_session = NULL) {
     to_save <- reactiveValuesToList(settings)
     to_save$experience_mode        <- settings$experience_mode
     to_save$skip_intro             <- !isTRUE(settings$show_intro_animation)
+    # Tema: settings$theme istemci olaylarıyla zaten senkronize. Yine de
+    # geçersiz değerleri ayıklayıp saveSettings içine yalnızca onaylı
+    # değerleri yaz. Belirsiz/eksik durumda anahtarı tamamen atla; bu
+    # halde theme_manager.js'in yazdığı mevcut localStorage tercihi
+    # korunur (Codex review #1 senaryosu).
+    current_theme <- isolate(settings$theme)
+    if (is.character(current_theme) && length(current_theme) == 1L &&
+        current_theme %in% c("dark", "light")) {
+      to_save$theme <- current_theme
+    } else {
+      to_save$theme <- NULL
+    }
     session$sendCustomMessage("saveSettings", to_save)
 
     showToast(session, "Ayarlar kaydedildi!", "success")
