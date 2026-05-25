@@ -71,6 +71,7 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - Deep-space başlangıç/sürüm modalları ve Keşfet/cinematic akışları, açık temada da bilinçli olarak koyu uzay atmosferini korur.
 - Karşılama ekranındaki hızlı işlem seçimleri, ilgili araç ailesine göre bağlamsal arka plan animasyonları gösterebilir; bu davranış Yapılandırma altındaki “Araç Arka Plan Animasyonları” anahtarıyla yönetilir.
 - Araç arka planlarında alt-sol köşe yedigen kümesi ve çakışmayı önleyen sabit snippet lane düzeni kullanılır; snippet üretimi karşılama yükleme ekranındaki ortak codestream rendering mantığıyla hizalıdır.
+- Araç arka planı snippet filtreleri ve yedek snippet kataloğu `www/js/tool_backgrounds_snippets.js` içine ayrılmıştır; `www/js/tool_backgrounds.js` ise çalışma zamanı davranışını, Shiny mesajlarını, katman yaşam döngüsünü ve `window.MergenToolBackgrounds` genel API sözleşmesini taşımaya devam eder.
 - “Yeni Söyleşi” akışı, önceki araç ailesinden kalan arka plan durumunu temizleyerek eski görsel bağlamın yeni sohbete sızmasını engeller.
 - “MERGEN Bilge” marka yazımı navbar, açılış yükleme ekranı, modern welcome başlığı ve deep-space başlığında `www/css/brand_title.css` üzerinden tek kaynaktan yönetilir; dış font/CDN kullanılmaz ve karışık küçük/büyük harf yazımı korunur.
 - Sinematik başlangıç ekranı
@@ -116,6 +117,7 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - SSO oturum kimliği için odak smoke testi bulunur: `tests/testthat/test-sso-session-identity-smoke.R`, SSO başlangıcındaki `user_id = 0` placeholder değerinin kimlik doğrulama tamamlandıktan sonra canlı `current_user_id` sağlayıcısı üzerinden gerçek kullanıcı kimliğine geçtiğini doğrular.
 - Destek merkezi
 - Geri bildirim ve hata bildirimi
+- Geri bildirim ve kullanım logu veritabanı yardımcıları `R/helpers_db_feedback.R` içine ayrılmıştır; `R/helpers_database.R` kullanıcı/profil odaklı DB işlemlerinde sade tutulur.
 - Sürüm bilgilendirme sayfası
 - Yönetici paneli ve analitik ekranlar
 - Hata Analizi ekranındaki Öncelik ve Kategori ısı haritası için veri hazırlama mantığı `R/helpers_admin_hata_heatmap_data.R` içinde tutulur. Bu yardımcı yalnızca kategori/öncelik etiketlerini ve heatmap matrisini hazırlar; Shiny çıktı üretimi, highcharter çizimi, detay tablo runtime'ı, ek dosya modalı ve durum güncelleme davranışı bu dosyaya taşınmamalıdır.
@@ -128,6 +130,7 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - URL query redaction, yalnızca hassas parametre değerini maskeleyip `id=42` gibi normal query parametrelerini koruyacak biçimde test edilir.
 - Test fixture’larında gerçek anahtar biçimine benzeyen örneklerin repoya girmemesi `test-secret-leak-contract.R` ile korunur; redaction testleri secret scanner’ı atlatmak için çalışma zamanında oluşturulan güvenli sahte değerler kullanır.
 - DB yazım sınırında kullanıcıya görünen metinler önce açık biçimde `normalize_db_visible_value()` ile hazırlanır; teknik alanlar ise `normalize_db_technical_value()` ile onarımsız korunur. Karma DB parametre listelerinde `repair_mojibake = TRUE` tüm listeye uygulanmamalıdır. Böylece sohbet başlığı, mesaj içeriği, reasoning içeriği, düzenlenmiş mesaj, kayıtlı asistan yanıtı, kullanıcı görünen adı, geri bildirim etiketi/yorumu ve görsel galeri görünür mesaj metinleri korunurken ID, enum, bayrak, model adı, kullanıcı adı, e-posta, sicil, Keycloak ID ve dosya yolu benzeri teknik değerler gereksiz dönüştürülmez.
+- `MB_Feedback` extended yazımlarında etiket ve yorum alanları kullanıcıya görünür metin olarak `normalize_db_visible_value()` ile hazırlanır; `FeedbackType` teknik enum alanı olarak `normalize_db_technical_value()` ile korunur. Bu sözleşme `R/helpers_db_feedback.R` içinde tutulur ve karma parametre listesine toplu `repair_mojibake = TRUE` uygulanmamalıdır.
 - DB okuma tarafındaki normalizasyon, eski veya kısmen bozulmuş kayıtların ekranda okunabilir görünmesine yardımcı olabilir; ancak asıl sözleşme yeni kayıtların MB tablolarına doğru yazılmasıdır. Bu nedenle DB yazım sınırındaki değişiklikler mutlaka VM üzerinde SSMS ile doğrulanmalıdır.
 - Windows VM / SSO / SQL Server ODBC ortamında DB yazım sınırı özellikle hassastır. `normalize_db_value()` ve `normalize_db_params()` kullanıcıya görünen metni onarırken DBI/ODBC parametre yazımında ortamın güvenli sınırını korumalıdır; yalnızca bağlantı seçeneği UTF-8 görünüyor diye ham UTF-8 metin zorla DB’ye gönderilmemelidir.
 - Üretim VM ortamında Türkçe metin yazımları için `DB_CLIENT_ENCODING=WINDOWS-1254` davranışı korunur. Bu ayar Türkçe karakterlerin `Ã§`, `Ä±`, `Ã¶`, `ÅŸ`, `ÄŸ` gibi mojibake biçiminde MB tablolarına yazılmasını önlemek için kritik bir üretim sözleşmesidir.
@@ -167,6 +170,7 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - `tests/testthat/test-frontend-maintainability-ratchet.R`, mevcut ön yüz taban çizgisinin sessizce büyümesini engeller. Vendor/minified dosyalar app-owned dosyalardan ayrı değerlendirilir.
 - Ana Söyleşi hoş geldin ekranındaki hızlı işlem tooltip davranışı `www/js/welcome_tooltip_manager.js` içine ayrılmıştır. Bu dosya `www/js/app_core.js` sonrasında ve `www/js/streaming_manager.js` öncesinde yüklenir; böylece kullanıcı deneyimi değişmeden `app_core.js` çekirdek uygulama yaşam döngüsüne daha odaklı kalır.
 - Bu sınır `tests/testthat/test-ui-asset-manifest-contract.R`, `tests/testthat/test-frontend-selector-contract.R`, `tests/testthat/test-frontend-maintainability-ratchet.R` ve `tests/testthat/test-maintainability-ratchet.R` ile korunur.
+- Bu ayrımlar `tests/testthat/test-frontend-maintainability-ratchet.R`, `tests/testthat/test-maintainability-ratchet.R`, `tests/testthat/test-tool-backgrounds-contract.R`, `tests/testthat/test-source-manifest-contract.R` ve `tests/testthat/test-db-user-visible-encoding-boundaries.R` ile korunur.
 
 #### Windows VM / SSO / SQL Server Türkçe Kodlama Güvencesi
 - Üretim benzeri Windows VM ortamında `.Renviron` içinde `DB_CLIENT_ENCODING=WINDOWS-1254` ve `DB_NAME_ENCODING=WINDOWS-1254` değerleri bulunmalıdır; değişiklikten sonra yalnızca tarayıcıyı yenilemek yeterli değildir, R süreci tamamen yeniden başlatılmalıdır.
