@@ -193,23 +193,36 @@ test_that("mb_sidebar_user_badge_ui() bos Departman icin temiz Turkce yedek meti
   )
 })
 
+.read_repo_bytes_sidebar_dept <- function(path) {
+  size <- suppressWarnings(file.info(path)$size[1])
+  if (is.na(size) || size <= 0) return("")
+  con <- file(path, open = "rb")
+  on.exit(close(con), add = TRUE)
+  raw_data <- readBin(con, what = "raw", n = size)
+  txt <- suppressWarnings(
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+  )
+  if (is.na(txt)) txt <- ""
+  txt <- gsub("\r\n?|\r", "\n", txt, perl = TRUE)
+  enc2utf8(txt)
+}
+
 test_that("module_sidebar_user_panel.R Mudurluk'u GORUNUR alan olarak secmez", {
   repo_root <- .repo_root_sidebar_dept()
   module_path <- file.path(repo_root, "R", "module_sidebar_user_panel.R")
-  txt <- paste(readLines(module_path, warn = FALSE, encoding = "UTF-8"),
-               collapse = "\n")
-  txt <- enc2utf8(txt)
+  txt <- .read_repo_bytes_sidebar_dept(module_path)
+  expect_true(nzchar(txt), info = "R/module_sidebar_user_panel.R okunamadi.")
 
   # mb_sidebar_user_department helper'i Departman/departman/department
   # alanlarini secmeli; mudurluk gorunur alan olarak DEGIL.
   expect_true(
-    grepl('pick("Departman")', txt, fixed = TRUE),
+    grepl('pick("Departman")', txt, fixed = TRUE, useBytes = TRUE),
     info = "mb_sidebar_user_department() Departman alanini okumalidir."
   )
 
   # Helper icinde mudurluk gorunur alan olarak tercih edilmemeli
   expect_false(
-    grepl('pick("mudurluk")', txt, fixed = TRUE),
+    grepl('pick("mudurluk")', txt, fixed = TRUE, useBytes = TRUE),
     info = paste(
       "Sidebar helper'inda mudurluk gorunur alan olarak DEGIL,",
       "Departman tercih edilmelidir."
@@ -217,7 +230,7 @@ test_that("module_sidebar_user_panel.R Mudurluk'u GORUNUR alan olarak secmez", {
   )
 
   expect_false(
-    grepl('pick("Mudurluk")', txt, fixed = TRUE),
+    grepl('pick("Mudurluk")', txt, fixed = TRUE, useBytes = TRUE),
     info = "Mudurluk gorunur alan olarak secilmemelidir."
   )
 })

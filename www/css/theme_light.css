@@ -55,13 +55,9 @@ html[data-theme="light"] .main-header {
   box-shadow: var(--shadow-card);
 }
 
-html[data-theme="light"] .brand-text-primary {
-  color: var(--mb-brand-primary) !important;
-}
-
-html[data-theme="light"] .brand-text-secondary {
-  color: var(--color-muted) !important;
-}
+/* .brand-text-primary ve .brand-text-secondary renkleri brand_title.css
+ * tarafindan tek dogru kaynak olarak yonetilir. Burada tekrar override
+ * etmek tipografi tutarliligini bozar. */
 
 html[data-theme="light"] .header-btn {
   color: var(--color-text-soft) !important;
@@ -130,16 +126,13 @@ html[data-theme="light"] .chat-header {
   color: var(--color-text) !important;
 }
 
-html[data-theme="light"] .input-container {
-  background: var(--color-surface) !important;
-  border-top: 1px solid var(--color-border) !important;
-  box-shadow: 0 -2px 16px rgba(15, 28, 51, 0.04);
-}
-
-html[data-theme="light"] .input-wrapper {
-  background: var(--color-surface-2) !important;
-  border: 1px solid var(--color-border) !important;
-}
+/* Eski sürümde .input-container koyu zemin önüne solid bir panel
+ * koyuyordu; bu, arka plandaki karakter videosunu ve neural animasyonu
+ * gizliyordu. Açık temada da koyu temadaki gibi sadece .input-wrapper
+ * gerçek bir cam yüzey olur; .input-container şeffaf kalır. Aşağıda
+ * "28. Karşılama Ekranı" bölümünde override edilir; tutarlılık için
+ * bu noktadaki eski kural kaldırıldı.
+ */
 
 html[data-theme="light"] .input-wrapper:focus-within {
   border-color: var(--mb-brand-primary) !important;
@@ -533,3 +526,810 @@ html[data-theme="light"] *::-webkit-scrollbar-thumb {
 html[data-theme="light"] *::-webkit-scrollbar-thumb:hover {
   background: var(--mb-brand-primary-60);
 }
+
+/* ============================================================
+ * 16. Sidebar - geliştirilmiş hover/active hiyerarşisi
+ *     (alt menü hover ana menüyü koyu yapmasın)
+ * ============================================================ */
+html[data-theme="light"] .sidebar-menu > li.treeview > a {
+  color: #2a3855 !important;
+  background: transparent !important;
+}
+
+html[data-theme="light"] .sidebar-menu > li.treeview.menu-open > a {
+  background: rgba(0, 48, 135, 0.06) !important;
+  color: var(--mb-brand-primary) !important;
+}
+
+html[data-theme="light"] .sidebar-menu > li.treeview:hover > a {
+  background: rgba(0, 48, 135, 0.05) !important;
+  color: var(--mb-brand-primary) !important;
+}
+
+/* Alt menü açıldığında üst başlık kontrastlı kalır */
+html[data-theme="light"] .sidebar-menu > li.treeview.menu-open .treeview-menu {
+  background: rgba(0, 48, 135, 0.025) !important;
+  border-left: 2px solid rgba(0, 48, 135, 0.18);
+  margin-left: 4px;
+}
+
+html[data-theme="light"] .sidebar-menu .treeview-menu > li > a {
+  color: #46506a !important;
+  background: transparent !important;
+}
+
+html[data-theme="light"] .sidebar-menu .treeview-menu > li > a:hover {
+  background: rgba(0, 48, 135, 0.08) !important;
+  color: var(--mb-brand-primary) !important;
+}
+
+html[data-theme="light"] .sidebar-menu .treeview-menu > li.active > a {
+  background: rgba(0, 48, 135, 0.12) !important;
+  color: var(--mb-brand-primary) !important;
+  font-weight: 600;
+}
+
+html[data-theme="light"] .sidebar-menu .treeview-menu > li.active > a::before {
+  background: var(--mb-brand-primary) !important;
+}
+
+/* ============================================================
+ * 17. Söyleşi Yönetimi: Ay başlığı (Kayıtlı + Galeri)
+ * ============================================================ */
+html[data-theme="light"] .month-group-header,
+html[data-theme="light"] .saved-chats-month-header,
+html[data-theme="light"] .gallery-month-header,
+html[data-theme="light"] .image-gallery-month-header,
+html[data-theme="light"] .history-month-header {
+  background: linear-gradient(135deg,
+    rgba(0, 48, 135, 0.06) 0%,
+    rgba(0, 48, 135, 0.02) 100%) !important;
+  color: var(--mb-brand-primary) !important;
+  border: 1px solid rgba(0, 48, 135, 0.12) !important;
+  border-radius: 10px !important;
+  padding: 10px 16px !important;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 2px rgba(15, 28, 51, 0.04);
+}
+
+html[data-theme="light"] .month-group-header *,
+html[data-theme="light"] .saved-chats-month-header * {
+  color: inherit !important;
+}
+
+/* ============================================================
+ * 18. İçerikte Ara / Search modal
+ * ============================================================ */
+html[data-theme="light"] .chat-search-modal-backdrop,
+html[data-theme="light"] .search-modal-backdrop,
+html[data-theme="light"] #chat_search_modal_container .modal-backdrop {
+  background: rgba(15, 28, 51, 0.45) !important;
+  backdrop-filter: blur(6px);
+}
+
+html[data-theme="light"] .chat-search-modal,
+html[data-theme="light"] .chat-search-modal-content,
+html[data-theme="light"] #chat_search_modal,
+html[data-theme="light"] .search-modal-content {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: 0 18px 40px rgba(15, 28, 51, 0.18) !important;
+}
+
+html[data-theme="light"] .chat-search-modal *,
+html[data-theme="light"] .search-modal-content * {
+  color: inherit;
+}
+
+html[data-theme="light"] .chat-search-modal-header,
+html[data-theme="light"] .search-modal-header {
+  background: var(--color-surface-2, #f7f8fc) !important;
+  border-bottom: 1px solid var(--color-border, #d8dde7) !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .chat-search-modal-title,
+html[data-theme="light"] .search-modal-title {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .chat-search-input,
+html[data-theme="light"] .search-modal-input {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .chat-search-input:focus,
+html[data-theme="light"] .search-modal-input:focus {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.15) !important;
+}
+
+html[data-theme="light"] .chat-search-result-item,
+html[data-theme="light"] .search-result-card {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid var(--color-border-soft, rgba(0, 48, 135, 0.10)) !important;
+}
+
+html[data-theme="light"] .chat-search-result-item:hover,
+html[data-theme="light"] .search-result-card:hover {
+  background: rgba(0, 48, 135, 0.04) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .chat-search-empty,
+html[data-theme="light"] .search-modal-empty {
+  color: var(--color-muted, #5b6577) !important;
+  background: var(--color-surface-2, #f7f8fc) !important;
+}
+
+html[data-theme="light"] .chat-search-modal-close,
+html[data-theme="light"] .search-modal-close {
+  color: var(--color-muted, #5b6577) !important;
+  background: transparent !important;
+}
+
+html[data-theme="light"] .chat-search-modal-close:hover,
+html[data-theme="light"] .search-modal-close:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* ============================================================
+ * 19. STT - Sesli İletişim modülü
+ * ============================================================ */
+html[data-theme="light"] .stt-modal,
+html[data-theme="light"] #sttModal,
+html[data-theme="light"] .stt-modal-content {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: 0 18px 40px rgba(15, 28, 51, 0.18) !important;
+}
+
+html[data-theme="light"] .stt-visualizer-container,
+html[data-theme="light"] .stt-visualizer-canvas,
+html[data-theme="light"] #sttVisualizer {
+  background: linear-gradient(180deg, #f7f8fc 0%, #eef1f7 100%) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  border-radius: 12px;
+}
+
+html[data-theme="light"] .stt-modal-title,
+html[data-theme="light"] .stt-status-text {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .stt-help-text,
+html[data-theme="light"] .stt-info-text {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .stt-action-btn,
+html[data-theme="light"] .stt-cancel-btn {
+  background: var(--color-surface-2, #f7f8fc) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .stt-action-btn:hover,
+html[data-theme="light"] .stt-cancel-btn:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .stt-recording-pulse {
+  background: rgba(194, 65, 12, 0.12) !important;
+  border-color: var(--mb-brand-accent, #FF5620) !important;
+}
+
+/* ============================================================
+ * 20. Bilge Yolaç - Light tema uyarlamaları
+ * ============================================================ */
+html[data-theme="light"] .claude-code-page,
+html[data-theme="light"] .cc-page,
+html[data-theme="light"] .cc-container {
+  background: var(--color-bg, #f4f6fb) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .claude-code-sidebar,
+html[data-theme="light"] .cc-sidebar {
+  background: var(--color-surface, #ffffff) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .cc-sidebar h1,
+html[data-theme="light"] .cc-sidebar h2,
+html[data-theme="light"] .cc-sidebar h3,
+html[data-theme="light"] .cc-sidebar h4 {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* Komut çıktı paneli */
+html[data-theme="light"] .cc-output,
+html[data-theme="light"] .cc-output-pane,
+html[data-theme="light"] .claude-code-output,
+html[data-theme="light"] #cc_command_output {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .cc-message,
+html[data-theme="light"] .cc-chat-message {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid var(--color-border-soft, rgba(0, 48, 135, 0.10)) !important;
+}
+
+html[data-theme="light"] .cc-user-message {
+  background: rgba(0, 48, 135, 0.05) !important;
+  border-color: rgba(0, 48, 135, 0.18) !important;
+}
+
+html[data-theme="light"] .cc-assistant-message {
+  background: var(--color-surface, #ffffff) !important;
+}
+
+html[data-theme="light"] .cc-tool-block,
+html[data-theme="light"] .cc-tool-use-block {
+  background: var(--color-surface-2, #f7f8fc) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .cc-tool-name {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cc-tool-id {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .cc-shell,
+html[data-theme="light"] .cc-shell-output,
+html[data-theme="light"] .cc-bash-output {
+  background: #0f1e3d !important;
+  color: #d6e0f5 !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  border-radius: 6px;
+}
+
+html[data-theme="light"] .cc-path-box,
+html[data-theme="light"] .cc-file-path {
+  background: var(--color-surface-2, #f7f8fc) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .cc-status-badge,
+html[data-theme="light"] .cc-status-badge,
+html[data-theme="light"] .cc-status-ok,
+html[data-theme="light"] .cc-status-error,
+html[data-theme="light"] .cc-status-checking,
+html[data-theme="light"] .cc-status-unknown,
+html[data-theme="light"] .cc-status-connected,
+html[data-theme="light"] .cc-status-disconnected {
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .cc-status-ok,
+html[data-theme="light"] .cc-status-connected {
+  background: rgba(22, 163, 74, 0.12) !important;
+  color: #166534 !important;
+  border-color: rgba(22, 163, 74, 0.35) !important;
+}
+
+html[data-theme="light"] .cc-status-error,
+html[data-theme="light"] .cc-status-disconnected {
+  background: rgba(194, 65, 12, 0.10) !important;
+  color: #9a3412 !important;
+  border-color: rgba(194, 65, 12, 0.35) !important;
+}
+
+html[data-theme="light"] .cc-status-checking,
+html[data-theme="light"] .cc-status-unknown {
+  background: rgba(0, 48, 135, 0.08) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border-color: rgba(0, 48, 135, 0.30) !important;
+}
+
+/* Karakter rozet (sağ üstte aktif karakter) */
+html[data-theme="light"] .cc-character-badge {
+  color: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.10) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.10) !important;
+}
+
+html[data-theme="light"] .cc-prompt-input,
+html[data-theme="light"] .cc-input-area {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .cc-prompt-input:focus,
+html[data-theme="light"] .cc-input-area:focus {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.15) !important;
+}
+
+/* Bilge Yolaç welcome ekranı oyun alanı koyu kalabilir, ancak çevreleyen
+ * paneller ve kontrolleri light tema yüzeyine uyarlanır. */
+html[data-theme="light"] .bilge-yolac-welcome,
+html[data-theme="light"] .by-welcome {
+  background: var(--color-bg, #f4f6fb) !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .by-welcome-card,
+html[data-theme="light"] .bilge-yolac-card {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .by-welcome-title,
+html[data-theme="light"] .bilge-yolac-title {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .by-welcome-subtitle,
+html[data-theme="light"] .bilge-yolac-subtitle {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+/* Plugin paneli & badge'leri */
+html[data-theme="light"] .cc-plugins-panel,
+html[data-theme="light"] .cc-plugin-card {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .cc-plugin-card:hover {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: var(--shadow-card-hover);
+}
+
+html[data-theme="light"] .cc-plugin-name {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cc-plugin-desc {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+/* Komut araç çıktı blok temizleme/çıktıyı temizle butonu kontrastı */
+html[data-theme="light"] .cc-clear-btn,
+html[data-theme="light"] #cc_clear_output_btn,
+html[data-theme="light"] .cc-clean-output {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .cc-clear-btn:hover,
+html[data-theme="light"] #cc_clear_output_btn:hover,
+html[data-theme="light"] .cc-clean-output:hover {
+  background: rgba(194, 65, 12, 0.10) !important;
+  border-color: var(--mb-brand-accent, #FF5620) !important;
+  color: var(--mb-brand-accent, #FF5620) !important;
+}
+
+/* ============================================================
+ * 21. Dosya Yönetimi - tüm yüzeyler
+ * ============================================================ */
+html[data-theme="light"] .file-manager-page,
+html[data-theme="light"] .file-manager-container {
+  background: var(--color-bg, #f4f6fb) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .file-manager-drop-zone,
+html[data-theme="light"] .main-drop-zone,
+html[data-theme="light"] #file_manager_module-main_drop_zone {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 2px dashed var(--color-border, #d8dde7) !important;
+  border-radius: 12px;
+}
+
+html[data-theme="light"] .file-manager-drop-zone:hover,
+html[data-theme="light"] .main-drop-zone:hover,
+html[data-theme="light"] .file-manager-drop-zone.drag-over {
+  background: rgba(0, 48, 135, 0.04) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .file-manager-help-text,
+html[data-theme="light"] .file-manager-explanation {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .file-extension-icon,
+html[data-theme="light"] .file-icon {
+  background: var(--color-surface-2, #f7f8fc) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .file-action-icon,
+html[data-theme="light"] .file-action-btn {
+  color: var(--color-muted, #5b6577) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+}
+
+html[data-theme="light"] .file-action-icon:hover,
+html[data-theme="light"] .file-action-btn:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .attach-checkbox,
+html[data-theme="light"] input.attach-checkbox {
+  accent-color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* ============================================================
+ * 22. Buton & rozetler ("Tümünü Temizle", "Bağlı", "Ajan")
+ * ============================================================ */
+html[data-theme="light"] .btn-clear-all,
+html[data-theme="light"] .clear-all-btn,
+html[data-theme="light"] button[aria-label*="Tümünü Temizle"] {
+  background: rgba(194, 65, 12, 0.08) !important;
+  color: #9a3412 !important;
+  border: 1px solid rgba(194, 65, 12, 0.35) !important;
+}
+
+html[data-theme="light"] .btn-clear-all:hover,
+html[data-theme="light"] .clear-all-btn:hover,
+html[data-theme="light"] button[aria-label*="Tümünü Temizle"]:hover {
+  background: rgba(194, 65, 12, 0.18) !important;
+  border-color: #c2410c !important;
+  color: #7c2d12 !important;
+}
+
+html[data-theme="light"] .status-badge,
+html[data-theme="light"] .connection-badge,
+html[data-theme="light"] .badge-status {
+  background: var(--color-surface-2, #f7f8fc) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  border-radius: 999px !important;
+  padding: 3px 10px !important;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+html[data-theme="light"] .status-connected,
+html[data-theme="light"] .badge-connected,
+html[data-theme="light"] .badge-status-success {
+  background: rgba(22, 163, 74, 0.12) !important;
+  color: #166534 !important;
+  border-color: rgba(22, 163, 74, 0.35) !important;
+}
+
+html[data-theme="light"] .status-agent,
+html[data-theme="light"] .badge-agent {
+  background: rgba(0, 48, 135, 0.08) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border-color: rgba(0, 48, 135, 0.30) !important;
+}
+
+html[data-theme="light"] .status-disconnected,
+html[data-theme="light"] .badge-disconnected {
+  background: rgba(194, 65, 12, 0.10) !important;
+  color: #9a3412 !important;
+  border-color: rgba(194, 65, 12, 0.35) !important;
+}
+
+/* Söyleşi başlık model/tool badge'leri */
+html[data-theme="light"] .chat-header .model-badge,
+html[data-theme="light"] .chat-header .tool-badge,
+html[data-theme="light"] .chat-header .mcp-badge,
+html[data-theme="light"] .chat-header .mode-badge,
+html[data-theme="light"] .chat-tool-pill,
+html[data-theme="light"] .chat-model-pill {
+  background: var(--color-surface-2, #f7f8fc) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  border-radius: 999px !important;
+  padding: 4px 12px !important;
+  font-size: 12px !important;
+  font-weight: 600;
+}
+
+html[data-theme="light"] .chat-header .model-badge:hover,
+html[data-theme="light"] .chat-header .tool-badge:hover {
+  background: rgba(0, 48, 135, 0.10) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* ============================================================
+ * 23. Kişiselleştirme / Yapılandırma kartları
+ * ============================================================ */
+html[data-theme="light"] .mode-card,
+html[data-theme="light"] .deneyim-modu-card,
+html[data-theme="light"] .character-card,
+html[data-theme="light"] .karakter-card,
+html[data-theme="light"] .character-selector-card,
+html[data-theme="light"] .settings-tool-card,
+html[data-theme="light"] .analysis-tools-card,
+html[data-theme="light"] .tool-config-card {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .mode-card:hover,
+html[data-theme="light"] .character-card:hover,
+html[data-theme="light"] .settings-tool-card:hover {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: var(--shadow-card-hover);
+}
+
+html[data-theme="light"] .mode-card.is-selected,
+html[data-theme="light"] .character-card.is-selected,
+html[data-theme="light"] .mode-card.selected,
+html[data-theme="light"] .character-card.selected {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  background: rgba(0, 48, 135, 0.05) !important;
+  box-shadow: 0 0 0 2px rgba(0, 48, 135, 0.20), var(--shadow-card-hover) !important;
+}
+
+html[data-theme="light"] .mode-card .mode-title,
+html[data-theme="light"] .character-card .character-name,
+html[data-theme="light"] .settings-tool-card .tool-title {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .mode-card .mode-description,
+html[data-theme="light"] .character-card .character-subtitle,
+html[data-theme="light"] .character-card .character-lore,
+html[data-theme="light"] .settings-tool-card .tool-description {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .character-info-panel,
+html[data-theme="light"] .character-detail-panel,
+html[data-theme="light"] .character-info-right {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .character-info-panel h1,
+html[data-theme="light"] .character-info-panel h2,
+html[data-theme="light"] .character-info-panel h3,
+html[data-theme="light"] .character-info-panel .character-name {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* ============================================================
+ * 24. Yardım Merkezi / Destek Chatbot başlığı
+ * ============================================================ */
+html[data-theme="light"] .destek-chatbot-container,
+html[data-theme="light"] .destek-yardim-chatbot,
+html[data-theme="light"] .yardim-assistant-card {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .destek-chatbot-header,
+html[data-theme="light"] .yardim-assistant-header {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border-radius: 12px 12px 0 0;
+}
+
+html[data-theme="light"] .destek-chatbot-header *,
+html[data-theme="light"] .yardim-assistant-header * {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .destek-chatbot-header .icon,
+html[data-theme="light"] .yardim-assistant-header .icon {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  border-radius: 50%;
+  padding: 6px;
+}
+
+/* ============================================================
+ * 25. Geri Bildirim & Hata - buton kenarları + drop alanı
+ * ============================================================ */
+html[data-theme="light"] .feedback-form .btn,
+html[data-theme="light"] .feedback-modal .btn,
+html[data-theme="light"] .hata-bildir-form .btn {
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .feedback-form .btn-primary,
+html[data-theme="light"] .feedback-modal .btn-primary,
+html[data-theme="light"] .hata-bildir-form .btn-primary {
+  border-color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .feedback-attachments-dropzone,
+html[data-theme="light"] .feedback-drop-zone,
+html[data-theme="light"] .hata-attachments-dropzone {
+  background: var(--color-surface-2, #f7f8fc) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 2px dashed var(--color-border, #d8dde7) !important;
+  border-radius: 10px;
+  padding: 24px;
+  transition: border-color 200ms ease, background 200ms ease;
+}
+
+html[data-theme="light"] .feedback-attachments-dropzone:hover,
+html[data-theme="light"] .feedback-drop-zone:hover,
+html[data-theme="light"] .hata-attachments-dropzone:hover,
+html[data-theme="light"] .feedback-drop-zone.drag-over {
+  background: rgba(0, 48, 135, 0.04) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* ============================================================
+ * 26. Yenilikler (Sürüm Bilgilendirme) bullet ve metinler
+ * ============================================================ */
+html[data-theme="light"] .surum-bilgilendirme,
+html[data-theme="light"] .surum-bilgilendirme * {
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .surum-bilgilendirme h1,
+html[data-theme="light"] .surum-bilgilendirme h2,
+html[data-theme="light"] .surum-bilgilendirme h3,
+html[data-theme="light"] .surum-bilgilendirme h4,
+html[data-theme="light"] .surum-bilgilendirme .surum-baslik,
+html[data-theme="light"] .surum-bilgilendirme .version-title {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .surum-bilgilendirme li,
+html[data-theme="light"] .surum-bilgilendirme ul li,
+html[data-theme="light"] .surum-bilgilendirme ol li {
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .surum-bilgilendirme ul li::marker,
+html[data-theme="light"] .surum-bilgilendirme ol li::marker {
+  color: var(--mb-brand-primary, #003087);
+}
+
+html[data-theme="light"] .surum-bilgilendirme .version-card,
+html[data-theme="light"] .surum-bilgilendirme .version-section {
+  background: var(--color-surface, #ffffff) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: var(--shadow-card);
+}
+
+/* ============================================================
+ * 27. Yönetici Paneli (admin)
+ * ============================================================ */
+html[data-theme="light"] .admin-panel,
+html[data-theme="light"] .admin-page,
+html[data-theme="light"] .admin-container {
+  background: var(--color-bg, #f4f6fb) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .admin-card,
+html[data-theme="light"] .admin-analytics-card,
+html[data-theme="light"] .health-card,
+html[data-theme="light"] .system-status-card,
+html[data-theme="light"] .admin-summary-card {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .admin-card h1,
+html[data-theme="light"] .admin-card h2,
+html[data-theme="light"] .admin-card h3,
+html[data-theme="light"] .admin-card .admin-card-title {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* Tooltip - tüm tooltip varyantları light temada okunaklı */
+html[data-theme="light"] .tooltip,
+html[data-theme="light"] .tooltip-inner,
+html[data-theme="light"] [role="tooltip"],
+html[data-theme="light"] .health-tooltip,
+html[data-theme="light"] .admin-tooltip,
+html[data-theme="light"] [data-health-tooltip]::after {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: 0 8px 22px rgba(15, 28, 51, 0.12) !important;
+  text-shadow: none !important;
+}
+
+html[data-theme="light"] .tooltip-arrow,
+html[data-theme="light"] .tooltip .arrow,
+html[data-theme="light"] [data-health-tooltip]::before {
+  border-top-color: var(--color-border, #d8dde7) !important;
+  background: #ffffff !important;
+}
+
+/* Sistem Durumu tabloları */
+html[data-theme="light"] .health-dashboard table,
+html[data-theme="light"] .system-status-table,
+html[data-theme="light"] .admin-table {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+html[data-theme="light"] .health-dashboard table thead th,
+html[data-theme="light"] .system-status-table thead th,
+html[data-theme="light"] .admin-table thead th {
+  background: var(--color-surface-2, #f7f8fc) !important;
+  color: var(--color-text, #0f1c33) !important;
+  font-weight: 600;
+  border-bottom: 2px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .health-dashboard table tbody tr,
+html[data-theme="light"] .system-status-table tbody tr,
+html[data-theme="light"] .admin-table tbody tr {
+  background: var(--color-surface, #ffffff) !important;
+  border-bottom: 1px solid var(--color-border-soft, rgba(0, 48, 135, 0.10)) !important;
+}
+
+html[data-theme="light"] .health-dashboard table tbody tr:hover,
+html[data-theme="light"] .system-status-table tbody tr:hover,
+html[data-theme="light"] .admin-table tbody tr:hover {
+  background: rgba(0, 48, 135, 0.04) !important;
+}
+
+html[data-theme="light"] .health-dashboard table tbody td,
+html[data-theme="light"] .system-status-table tbody td,
+html[data-theme="light"] .admin-table tbody td {
+  color: var(--color-text-soft, #1f2a44) !important;
+  border-color: var(--color-border-soft, rgba(0, 48, 135, 0.10)) !important;
+}
+
+/* Sistem Durumu status badge'leri */
+html[data-theme="light"] .health-status-ok,
+html[data-theme="light"] .health-badge-ok {
+  background: rgba(22, 163, 74, 0.12) !important;
+  color: #166534 !important;
+  border-color: rgba(22, 163, 74, 0.35) !important;
+}
+
+html[data-theme="light"] .health-status-warning,
+html[data-theme="light"] .health-badge-warning {
+  background: rgba(180, 83, 9, 0.12) !important;
+  color: #854d0e !important;
+  border-color: rgba(180, 83, 9, 0.35) !important;
+}
+
+html[data-theme="light"] .health-status-error,
+html[data-theme="light"] .health-status-fail,
+html[data-theme="light"] .health-badge-error {
+  background: rgba(194, 65, 12, 0.10) !important;
+  color: #9a3412 !important;
+  border-color: rgba(194, 65, 12, 0.35) !important;
+}
+

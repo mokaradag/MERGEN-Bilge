@@ -1,0 +1,353 @@
+/* ============================================================
+ * Başlık: Açık Tema Ek Bileşen Uyarlamaları
+ * Dosya: www/css/theme_light_extras.css
+ * Açıklama: theme_light.css dosyasını ratchet limiti altında tutmak
+ *           için karşılama (welcome) ekranı glassmorphism ve grafik
+ *           gridline (plotly / highcharter) override'ları burada
+ *           tutulur. Sadece <html data-theme="light"> uygulandığında
+ *           etkilidir (chart gridline override'ı her iki temayı da
+ *           kapsar; tek farkı opacity).
+ * ============================================================ */
+
+/* ============================================================
+ * 28. Karşılama (Welcome) Ekranı - Glassmorphism + Modal
+ * ============================================================ */
+
+/* Welcome - cam panel etkisi (glassmorphism) açık tema */
+html[data-theme="light"] .modern-welcome-root {
+  background:
+    radial-gradient(circle at 8% 12%, rgba(0, 48, 135, 0.10), transparent 40%),
+    radial-gradient(circle at 92% 88%, rgba(255, 86, 32, 0.07), transparent 45%),
+    linear-gradient(180deg, #f7f9fd 0%, #eef2f8 100%) !important;
+}
+
+html[data-theme="light"] .modern-welcome-card,
+html[data-theme="light"] .modern-welcome-actions-card,
+html[data-theme="light"] .modern-welcome-recent-card,
+html[data-theme="light"] .modern-welcome-greeting-card {
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(14px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(140%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 12px 36px rgba(15, 28, 51, 0.10) !important;
+  border-radius: 18px !important;
+}
+
+/* Son Konuşmalar - okunaklı kart, ikon arka planı kurumsal mavi */
+html[data-theme="light"] .modern-welcome-recent-item,
+html[data-theme="light"] .modern-welcome-preview-btn {
+  background: rgba(255, 255, 255, 0.85) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid rgba(0, 48, 135, 0.12) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05);
+}
+
+html[data-theme="light"] .modern-welcome-recent-item:hover,
+html[data-theme="light"] .modern-welcome-preview-btn:hover {
+  background: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 6px 18px rgba(0, 48, 135, 0.12);
+}
+
+html[data-theme="light"] .modern-welcome-recent-icon,
+html[data-theme="light"] .modern-welcome-preview-icon,
+html[data-theme="light"] .modern-welcome-recent-item .icon,
+html[data-theme="light"] .modern-welcome-recent-item-icon,
+html[data-theme="light"] .modern-welcome-preview-icon-box {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(0, 48, 135, 0.4) !important;
+  box-shadow: 0 2px 6px rgba(0, 48, 135, 0.20);
+}
+
+html[data-theme="light"] .modern-welcome-recent-icon i,
+html[data-theme="light"] .modern-welcome-preview-icon i,
+html[data-theme="light"] .modern-welcome-preview-icon-box i,
+html[data-theme="light"] .modern-welcome-preview-icon-box .modern-welcome-preview-icon {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .modern-welcome-preview-btn:hover .modern-welcome-preview-icon-box {
+  background: linear-gradient(135deg, var(--mb-brand-primary-alt, #002D7A) 0%, var(--mb-brand-accent, #FF5620) 100%) !important;
+}
+
+html[data-theme="light"] .modern-welcome-preview-title {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .modern-welcome-preview-btn:hover .modern-welcome-preview-title {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .modern-welcome-preview-snippet {
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .modern-welcome-preview-time {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+/* Neural animation arka planı light temada görünür */
+html[data-theme="light"] .modern-welcome-neural-canvas,
+html[data-theme="light"] #welcome_neural_canvas,
+html[data-theme="light"] .welcome-neural-container {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(0, 48, 135, 0.06), transparent 60%),
+    linear-gradient(135deg, #f7f9fd 0%, #eef2f8 100%) !important;
+}
+
+/* Welcome quick action kartları - cam panel */
+html[data-theme="light"] .modern-welcome-action-btn {
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid rgba(0, 48, 135, 0.14) !important;
+  box-shadow: 0 4px 12px rgba(15, 28, 51, 0.06);
+  backdrop-filter: blur(8px);
+}
+
+html[data-theme="light"] .modern-welcome-action-btn:hover {
+  background: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 8px 22px rgba(0, 48, 135, 0.12);
+}
+
+html[data-theme="light"] .modern-welcome-action-title {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .modern-welcome-action-desc {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+/* Ana Söyleşi input container şeffaf, ancak input wrapper solid */
+html[data-theme="light"] .input-container {
+  background: transparent !important;
+  border-top: none !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="light"] .input-wrapper,
+html[data-theme="light"] #chat_input_wrapper {
+  background: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid rgba(0, 48, 135, 0.14) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 8px 24px rgba(15, 28, 51, 0.10) !important;
+  border-radius: 14px;
+}
+
+html[data-theme="light"] .input-wrapper:focus-within,
+html[data-theme="light"] #chat_input_wrapper:focus-within {
+  background: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow:
+    0 0 0 3px rgba(0, 48, 135, 0.15),
+    0 12px 32px rgba(15, 28, 51, 0.12) !important;
+}
+
+/* Welcome / Keşfet / Bütünleşik mod modal'ları */
+html[data-theme="light"] .explore-modal,
+html[data-theme="light"] .explore-modal-content,
+html[data-theme="light"] .explore-cinematic-modal,
+html[data-theme="light"] .mode-modal,
+html[data-theme="light"] .deneyim-modal,
+html[data-theme="light"] .welcome-modal-content,
+html[data-theme="light"] .character-explore-modal,
+html[data-theme="light"] .modal-explore,
+html[data-theme="light"] .mode-selection-modal {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: 0 22px 52px rgba(15, 28, 51, 0.20) !important;
+}
+
+html[data-theme="light"] .explore-modal *,
+html[data-theme="light"] .explore-cinematic-modal *,
+html[data-theme="light"] .mode-modal *,
+html[data-theme="light"] .deneyim-modal *,
+html[data-theme="light"] .character-explore-modal * {
+  color: inherit;
+}
+
+html[data-theme="light"] .explore-modal-title,
+html[data-theme="light"] .explore-cinematic-title,
+html[data-theme="light"] .mode-modal-title,
+html[data-theme="light"] .deneyim-modal-title {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .explore-modal-description,
+html[data-theme="light"] .mode-modal-description,
+html[data-theme="light"] .deneyim-modal-description {
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .explore-modal-card,
+html[data-theme="light"] .mode-selection-card,
+html[data-theme="light"] .deneyim-modal-card {
+  background: var(--color-surface, #ffffff) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .explore-modal-card:hover,
+html[data-theme="light"] .mode-selection-card:hover,
+html[data-theme="light"] .deneyim-modal-card:hover {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  background: rgba(0, 48, 135, 0.04) !important;
+}
+
+html[data-theme="light"] .explore-modal-card.is-selected,
+html[data-theme="light"] .mode-selection-card.is-selected {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  background: rgba(0, 48, 135, 0.07) !important;
+  box-shadow: 0 0 0 2px rgba(0, 48, 135, 0.20);
+}
+
+html[data-theme="light"] .modal-overlay,
+html[data-theme="light"] .explore-modal-overlay,
+html[data-theme="light"] .mode-modal-overlay,
+html[data-theme="light"] .cinematic-modal-overlay {
+  background: rgba(15, 28, 51, 0.55) !important;
+  backdrop-filter: blur(6px);
+}
+
+/* Cinematic modal (Keşfet butonu acan) */
+html[data-theme="light"] .cinematic-modal-container {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: 0 22px 52px rgba(15, 28, 51, 0.22) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-container * {
+  color: inherit;
+}
+
+html[data-theme="light"] .cinematic-modal-title {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-subtitle {
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-close {
+  color: var(--color-muted, #5b6577) !important;
+  background: transparent !important;
+}
+
+html[data-theme="light"] .cinematic-modal-close:hover {
+  color: var(--mb-brand-primary, #003087) !important;
+  background: rgba(0, 48, 135, 0.06) !important;
+}
+
+html[data-theme="light"] .explore-modal-close,
+html[data-theme="light"] .mode-modal-close,
+html[data-theme="light"] .deneyim-modal-close,
+html[data-theme="light"] .welcome-modal-close {
+  color: var(--color-muted, #5b6577) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+}
+
+html[data-theme="light"] .explore-modal-close:hover,
+html[data-theme="light"] .mode-modal-close:hover,
+html[data-theme="light"] .deneyim-modal-close:hover,
+html[data-theme="light"] .welcome-modal-close:hover {
+  color: var(--mb-brand-primary, #003087) !important;
+  background: rgba(0, 48, 135, 0.06) !important;
+}
+
+html[data-theme="light"] .skip-intro-label,
+html[data-theme="light"] .bir-daha-gosterme-label,
+html[data-theme="light"] .do-not-show-again-label,
+html[data-theme="light"] .welcome-modal-skip-label {
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .skip-intro-checkbox,
+html[data-theme="light"] .bir-daha-gosterme-checkbox,
+html[data-theme="light"] .welcome-modal-skip-checkbox input[type="checkbox"] {
+  accent-color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* ============================================================
+ * 29. Plotly / Highcharter / chart gridlines - softer + dashed
+ * ============================================================ */
+/* Plotly gridline overrides via class targeting on SVGs */
+.plotly .gridlayer .xgrid,
+.plotly .gridlayer .ygrid,
+.plotly .zerolinelayer .xzl,
+.plotly .zerolinelayer .yzl {
+  stroke-dasharray: 4 4 !important;
+  stroke-opacity: 0.55 !important;
+}
+
+html[data-theme="light"] .plotly .gridlayer .xgrid,
+html[data-theme="light"] .plotly .gridlayer .ygrid {
+  stroke: rgba(15, 28, 51, 0.18) !important;
+}
+
+html[data-theme="light"] .plotly .gridlayer .xgrid path,
+html[data-theme="light"] .plotly .gridlayer .ygrid path {
+  stroke: rgba(15, 28, 51, 0.18) !important;
+  stroke-dasharray: 4 4 !important;
+}
+
+/* Highcharter / Highcharts grid lines */
+.highcharts-grid-line {
+  stroke-dasharray: 4 4 !important;
+  stroke-opacity: 0.55 !important;
+}
+
+html[data-theme="light"] .highcharts-grid-line {
+  stroke: rgba(15, 28, 51, 0.18) !important;
+}
+
+html[data-theme="light"] .highcharts-axis-line {
+  stroke: rgba(15, 28, 51, 0.30) !important;
+}
+
+html[data-theme="light"] .highcharts-tick {
+  stroke: rgba(15, 28, 51, 0.30) !important;
+}
+
+html[data-theme="light"] .highcharts-axis-labels text {
+  fill: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .highcharts-title,
+html[data-theme="light"] .highcharts-subtitle {
+  fill: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .highcharts-legend-item text {
+  fill: var(--color-text-soft, #1f2a44) !important;
+}
+
+/* ggplot/SVG axis lines */
+html[data-theme="light"] .recharts-cartesian-grid line,
+html[data-theme="light"] svg .grid line {
+  stroke-dasharray: 4 4 !important;
+  stroke: rgba(15, 28, 51, 0.18) !important;
+  stroke-opacity: 0.55 !important;
+}
+
+/* Dark theme - gridlines also dashed (softer overall) */
+html:not([data-theme="light"]) .plotly .gridlayer .xgrid,
+html:not([data-theme="light"]) .plotly .gridlayer .ygrid,
+html:not([data-theme="light"]) .plotly .gridlayer .xgrid path,
+html:not([data-theme="light"]) .plotly .gridlayer .ygrid path {
+  stroke-dasharray: 4 4 !important;
+  stroke-opacity: 0.40 !important;
+}
+
+html:not([data-theme="light"]) .highcharts-grid-line {
+  stroke-dasharray: 4 4 !important;
+  stroke-opacity: 0.40 !important;
+}

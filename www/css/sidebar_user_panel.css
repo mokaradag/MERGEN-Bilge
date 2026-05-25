@@ -127,17 +127,36 @@ html[data-theme="light"] .mb-sidebar-user-avatar {
   letter-spacing: 0.01em;
 }
 
-/* Departman metni: uzun olabilir; ellipsis + title tooltip. */
+/* Departman metni: uzun olabilir; 2 satira kadar wrap edilebilir,
+ * sonrasinda ellipsis + title tooltip. Bu sayede sidebar darken
+ * "Bilgi Sistemleri ve Uygulama Mühendisliği" gibi degerler 1
+ * yerine 2 satira yayilarak okunabilir kalir.
+ */
 .mb-sidebar-user-department {
-  display: block;
-  font-size: 10.5px;
-  line-height: 1.25;
+  display: -webkit-box;
+  display: box;
+  font-size: 11px;
+  line-height: 1.3;
   color: var(--color-muted, #999999);
-  margin-top: 0;
-  white-space: nowrap;
+  margin-top: 1px;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
   letter-spacing: 0.01em;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* line-clamp desteklenmeyen tarayicilarda yedek: max-height + ellipsis */
+@supports not (-webkit-line-clamp: 2) {
+  .mb-sidebar-user-department {
+    max-height: 2.6em;
+    display: block;
+    white-space: normal;
+  }
 }
 
 .mb-sidebar-user-department-empty {
@@ -395,4 +414,41 @@ html[data-theme="light"] .sidebar-version-value {
   .mb-sidebar-logout-btn {
     transition: none !important;
   }
+}
+
+/* ============================================================
+ * 6. Slot + İskelet: SSO/uiOutput geç gelse bile tema butonu ve
+ *    kullanıcı kartı ANINDA görünür. Server renderUI çıktısı
+ *    geldiğinde iskelet gizlenir, slot içeriği görünür.
+ *
+ *    Shiny uiOutput(container = ...) ile slot-output sınıfını
+ *    ekledik. Slot-output içinde içerik varsa (children > 0),
+ *    skeleton kardeşi gizlenir.
+ *
+ *    .mb-sidebar-user-slot-output ve .mb-sidebar-controls-slot-output
+ *    boş başlar; renderUI ile içerik doldurulunca skeleton kapatılır.
+ * ============================================================ */
+.mb-sidebar-user-slot,
+.mb-sidebar-controls-slot {
+  position: relative;
+}
+
+.mb-sidebar-user-slot-output:empty,
+.mb-sidebar-controls-slot-output:empty {
+  display: none;
+}
+
+.mb-sidebar-user-slot-output:not(:empty) ~ .mb-sidebar-user-skeleton,
+.mb-sidebar-controls-slot-output:not(:empty) ~ .mb-sidebar-controls-skeleton {
+  display: none;
+}
+
+.mb-sidebar-user-skeleton .mb-sidebar-user-name:empty::after {
+  content: "Yükleniyor…";
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.mb-sidebar-user-skeleton .mb-sidebar-user-department:empty::after {
+  content: "";
 }

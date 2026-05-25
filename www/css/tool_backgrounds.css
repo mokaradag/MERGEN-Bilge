@@ -1,15 +1,21 @@
 /* ============================================================
  * Başlık: Araç Bağlamlı Sohbet Arka Plan Animasyonları
  * Dosya: www/css/tool_backgrounds.css
- * Açıklama: Karşılama ekranından bir araç seçildiğinde Ana Söyleşi arka
- *           planında yer alan hafif heptagon + bağlama uygun kod/parçacık
- *           animasyon katmanlarının stilleri. Tüm katmanlar pointer-events
- *           tutamaz; metin seçimi, tıklama ve kaydırma etkilenmez.
- *           Hareket azaltma tercihi (prefers-reduced-motion) saygıyla
- *           ele alınır.
+ * Açıklama: Karşılama ekranından bir araç seçildiğinde Ana Söyleşi
+ *           arka planına eklenen hafif sahne stilleri. Tasarım,
+ *           açılış yükleme ekranı (app_loading) ile aynı yaklaşımı
+ *           kullanır:
+ *             1) Köşede 7 yedigenden oluşan rozet (sadece çeyrek
+ *                kesit görünür, sohbeti bastırmaz).
+ *             2) Sol/sağ kenarlarda sabit "lane"lere yerleştirilen,
+ *                karakter karakter beliren (yazılıyor hissi) parçalar.
+ *             3) Pointer-events tutmaz; chat etkileşimi etkilenmez.
+ *             4) prefers-reduced-motion saygıyla ele alınır.
+ *
+ * Önemli: Heptagon ortada DEĞİL, alt-sağ veya alt-sol köşededir.
+ *         Snippet'ler asla üst üste binmez (deterministik lane).
  * ============================================================ */
 
-/* Ana sarmalayıcı: chat_main_wrapper üzerinde araç aktifken aktif olur */
 .tool-bg-layer {
   position: absolute;
   inset: 0;
@@ -20,12 +26,7 @@
   transition: opacity 600ms ease;
 }
 
-/* #chat_main_wrapper zaten welcome_modern.css içinde position: relative tanımlı.
- * Tool-bg-layer position: absolute kullanır; bu nedenle stack context'inin
- * üstünde diğer çocukların doğru sırada görünmesi için chat-header ve
- * chat_content_container'a hafif z-index ile beraber relative pozisyon verilir.
- * input-container ve floating-actions kendi fixed/absolute pozisyonlarıyla
- * zaten üstte kalır; bu yüzden onlara dokunulmaz. */
+/* chat_main_wrapper içindeki diğer çocukları üstte tut */
 #chat_main_wrapper > .chat-header {
   position: relative;
   z-index: 1;
@@ -36,215 +37,275 @@
   z-index: 1;
 }
 
-/* Araç aktifken arka plan görünür hale gelir; chat_main_wrapper üzerinde
- * data-tool-bg attribute'u bulunduğunda devreye girer. Karşılama ekranı
- * (welcome_fullscreen_container) z-index 1000 ve katı arka plan ile bu
- * katmanı zaten örter; ayrıca istemci tarafı snippet'ler welcome görünürken
- * temizlenir. */
 #chat_main_wrapper[data-tool-bg]:not([data-tool-bg=""]) .tool-bg-layer {
   opacity: 1;
 }
 
-/* Yapılandırma ayarı kapalıyken layer asla görünmez */
 #chat_main_wrapper.tool-bg-disabled .tool-bg-layer {
   opacity: 0 !important;
   visibility: hidden;
 }
 
 /* ============================================================
- * 1. Heptagon (yedigen) çekirdek arka plan
+ * 1. Köşe Yedigen Kümelenmesi (corner heptagons)
+ *    Açılış ekranındaki alo-corner SVG yaklaşımı: tek bir SVG
+ *    iç içe 7 yedigen barındırır. Konum: alt-sol köşede çeyrek
+ *    kesit. Heptagon ASLA merkeze gelmez.
  * ============================================================ */
-.tool-bg-heptagon {
+.tool-bg-corner-heptagons {
   position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  bottom: -220px;
+  left: -220px;
+  width: 540px;
+  height: 540px;
+  pointer-events: none;
+  opacity: 0.22;
+  animation: toolBgCornerDrift 90s linear infinite;
+  will-change: transform;
 }
 
-.tool-bg-heptagon svg {
-  position: absolute;
-  width: 72vmin;
-  max-width: 1100px;
-  max-height: 1100px;
-  /* Yedigen sade ama hissedilir kalsin: cok soluk degil, ama sohbeti
-   * bastırmadan arka plana yerlessin. Onceki 0.10 / 0.07 / 0.05 degerleri
-   * gunluk kullanimda fark edilmiyordu. */
-  opacity: 0.18;
-  filter: blur(0.3px);
-  transform-origin: center center;
-  animation: toolBgHeptagonSpin 60s linear infinite;
-}
-
-html[data-theme="light"] .tool-bg-heptagon svg {
-  /* Acik temada cok hafif birakiyoruz; arkaplan beyaza yakin oldugu icin
-   * stroke kontrasti yine de kabul edilebilir. */
+html[data-theme="light"] .tool-bg-corner-heptagons {
   opacity: 0.14;
 }
 
-.tool-bg-heptagon svg:nth-child(2) {
-  width: 50vmin;
-  opacity: 0.13;
-  animation-duration: 95s;
-  animation-direction: reverse;
+.tool-bg-corner-heptagons svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
-html[data-theme="light"] .tool-bg-heptagon svg:nth-child(2) {
-  opacity: 0.10;
-}
-
-.tool-bg-heptagon svg:nth-child(3) {
-  width: 30vmin;
-  opacity: 0.10;
-  animation-duration: 130s;
-}
-
-html[data-theme="light"] .tool-bg-heptagon svg:nth-child(3) {
-  opacity: 0.08;
-}
-
-.tool-bg-heptagon polygon {
+.tool-bg-corner-heptagons polygon {
   fill: none;
-  stroke: var(--tool-bg-accent, #ff8a55);
-  stroke-width: 1.3;
+  stroke-width: 1;
+  stroke-linejoin: round;
 }
 
-html[data-theme="light"] .tool-bg-heptagon polygon {
-  stroke: var(--tool-bg-accent-light, #003087);
+/* Tema bağımsız: kurumsal turuncu + teal kombinasyonu (loading ile aynı) */
+.tool-bg-corner-heptagons .hept-1 { stroke: var(--tool-bg-stroke, #ff5620); opacity: 0.85; }
+.tool-bg-corner-heptagons .hept-2 { stroke: var(--tool-bg-stroke, #ff5620); opacity: 0.65; }
+.tool-bg-corner-heptagons .hept-3 { stroke: var(--tool-bg-stroke-alt, #097880); opacity: 0.65; }
+.tool-bg-corner-heptagons .hept-4 { stroke: var(--tool-bg-stroke-alt, #097880); opacity: 0.55; }
+.tool-bg-corner-heptagons .hept-5 { stroke: var(--tool-bg-stroke-alt, #097880); opacity: 0.55; }
+.tool-bg-corner-heptagons .hept-6 { stroke: var(--tool-bg-stroke-alt, #097880); opacity: 0.45; }
+.tool-bg-corner-heptagons .hept-7 { stroke: var(--tool-bg-stroke-alt, #097880); opacity: 0.40; }
+
+html[data-theme="light"] .tool-bg-corner-heptagons polygon {
+  stroke: var(--tool-bg-stroke-light, #003087);
 }
 
-@keyframes toolBgHeptagonSpin {
-  0%   { transform: rotate(0deg);   }
+html[data-theme="light"] .tool-bg-corner-heptagons .hept-1,
+html[data-theme="light"] .tool-bg-corner-heptagons .hept-2 {
+  stroke: var(--mb-brand-accent, #FF5620);
+}
+
+@keyframes toolBgCornerDrift {
+  0%   { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
 
-/* Hafif radyal halo: heptagonun arkasında renk akışı */
-.tool-bg-heptagon::before {
-  content: "";
+/* Halo glow corner (radyal geçiş arkasında) */
+.tool-bg-corner-glow {
   position: absolute;
-  inset: -10%;
+  bottom: -180px;
+  left: -180px;
+  width: 460px;
+  height: 460px;
   background:
     radial-gradient(circle at 50% 50%,
-                    rgba(255, 138, 85, 0.10),
-                    transparent 55%);
+                    rgba(255, 86, 32, 0.10),
+                    transparent 60%);
   filter: blur(40px);
-  opacity: 0.55;
+  opacity: 0.6;
+  pointer-events: none;
   animation: toolBgHaloPulse 12s ease-in-out infinite;
 }
 
-html[data-theme="light"] .tool-bg-heptagon::before {
+html[data-theme="light"] .tool-bg-corner-glow {
   background:
     radial-gradient(circle at 50% 50%,
                     rgba(0, 48, 135, 0.10),
-                    transparent 55%);
-  opacity: 0.6;
+                    transparent 60%);
+  opacity: 0.55;
 }
 
 @keyframes toolBgHaloPulse {
   0%, 100% { transform: scale(1);    opacity: 0.55; }
-  50%      { transform: scale(1.06); opacity: 0.78; }
+  50%      { transform: scale(1.08); opacity: 0.78; }
 }
 
 /* ============================================================
- * 2. Bağlam parçacıkları (snippet'ler)
+ * 2. Lane-tabanlı Snippet Düzeni
+ *    Sol/sağ kenarlarda sabit dikey "lane"ler. Bir lane "busy" iken
+ *    yeni snippet o lane'e yerleştirilmez. Bu sayede ÇAKIŞMA YOK.
  * ============================================================ */
-.tool-bg-snippets {
+.tool-bg-snippet-lanes {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 
-.tool-bg-snippet {
+.tool-bg-snippet-lane {
   position: absolute;
+  width: 32%;
+  max-width: 480px;
+  pointer-events: none;
+}
+
+.tool-bg-snippet-lane[data-side="left"]  { left: 1.5vw;  }
+.tool-bg-snippet-lane[data-side="right"] { right: 1.5vw; }
+
+/* Lane dikey konumları (welcome loading ile aynı yaklaşım) */
+.tool-bg-snippet-lane[data-lane="L1"] { top: 6%;  }
+.tool-bg-snippet-lane[data-lane="L2"] { top: 32%; }
+.tool-bg-snippet-lane[data-lane="L3"] { top: 58%; }
+.tool-bg-snippet-lane[data-lane="R1"] { top: 14%; }
+.tool-bg-snippet-lane[data-lane="R2"] { top: 42%; }
+.tool-bg-snippet-lane[data-lane="R3"] { top: 70%; }
+
+.tool-bg-typed-snippet {
+  position: relative;
   font-family: var(--font-mono, 'JetBrains Mono', 'Consolas', monospace);
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.22);
-  white-space: nowrap;
-  letter-spacing: 0.01em;
-  text-shadow: 0 0 6px rgba(255, 138, 85, 0.20);
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.32);
+  text-shadow: 0 0 8px rgba(255, 138, 85, 0.18);
   user-select: none;
-  will-change: transform, opacity;
-  animation: toolBgSnippetDrift linear infinite;
+  letter-spacing: 0.01em;
+  white-space: pre-line;
+  word-break: break-word;
   opacity: 0;
+  animation: toolBgSnippetFade 0.45s ease forwards;
+  padding: 6px 10px;
+  border-left: 2px solid rgba(255, 138, 85, 0.18);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+  backdrop-filter: blur(0.5px);
 }
 
-html[data-theme="light"] .tool-bg-snippet {
-  color: rgba(0, 48, 135, 0.32);
-  text-shadow: 0 0 8px rgba(0, 48, 135, 0.06);
+.tool-bg-snippet-lane[data-side="right"] .tool-bg-typed-snippet {
+  border-left: none;
+  border-right: 2px solid rgba(255, 138, 85, 0.18);
+  text-align: right;
 }
 
-@keyframes toolBgSnippetDrift {
-  0%   { opacity: 0;    transform: translateY(8px) translateX(0); }
-  8%   { opacity: 0.78; }
-  92%  { opacity: 0.78; }
-  100% { opacity: 0;    transform: translateY(-12vh) translateX(2vw); }
+html[data-theme="light"] .tool-bg-typed-snippet {
+  color: rgba(0, 48, 135, 0.45);
+  text-shadow: 0 0 6px rgba(0, 48, 135, 0.04);
+  border-left-color: rgba(0, 48, 135, 0.30);
+  background: rgba(0, 48, 135, 0.025);
 }
 
-/* Sohbet alanı içeriğinin okunabilirliği için snippet'ler kenarlara çekilir */
-.tool-bg-snippet[data-side="left"]  { left: 2vw;  }
-.tool-bg-snippet[data-side="right"] { right: 2vw; }
+html[data-theme="light"] .tool-bg-snippet-lane[data-side="right"] .tool-bg-typed-snippet {
+  border-right-color: rgba(0, 48, 135, 0.30);
+}
 
-/* Aile bazlı renk tonları (CSS custom property ile temaya uyumlu) */
+/* Yazılıyor benzeri her karakter ayrı kapsayıcıda olmadığı için,
+ * baştan kontrol edilen progressive reveal animasyonu kullanıyoruz.
+ * Snippet önce şeffaftan görünür hale gelir, opacity korunur,
+ * sonra yumuşakça çıkar. */
+@keyframes toolBgSnippetFade {
+  0%   { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 0.78; transform: translateY(0); }
+}
+
+.tool-bg-typed-snippet.is-leaving {
+  animation: toolBgSnippetExit 0.7s ease forwards;
+}
+
+@keyframes toolBgSnippetExit {
+  0%   { opacity: 0.78; transform: translateY(0); }
+  100% { opacity: 0;    transform: translateY(-10px); }
+}
+
+/* Yazılıyor (caret) görünümü - son satırın sonunda yanıp söner */
+.tool-bg-typed-snippet .tool-bg-caret {
+  display: inline-block;
+  width: 7px;
+  height: 0.95em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: currentColor;
+  opacity: 0.65;
+  animation: toolBgCaretBlink 1s steps(2, end) infinite;
+}
+
+@keyframes toolBgCaretBlink {
+  0%, 49%   { opacity: 0.65; }
+  50%, 100% { opacity: 0; }
+}
+
+/* Aile bazlı renk tonları */
 #chat_main_wrapper[data-tool-bg="coding"] {
-  --tool-bg-accent: #f59e0b;
-  --tool-bg-accent-light: #b45309;
+  --tool-bg-stroke: #f59e0b;
+  --tool-bg-stroke-alt: #097880;
+  --tool-bg-stroke-light: #b45309;
 }
 #chat_main_wrapper[data-tool-bg="app_expert"] {
-  --tool-bg-accent: #8b5cf6;
-  --tool-bg-accent-light: #5b21b6;
+  --tool-bg-stroke: #8b5cf6;
+  --tool-bg-stroke-alt: #097880;
+  --tool-bg-stroke-light: #5b21b6;
 }
 #chat_main_wrapper[data-tool-bg="mcp_excel"] {
-  --tool-bg-accent: #10b981;
-  --tool-bg-accent-light: #047857;
+  --tool-bg-stroke: #10b981;
+  --tool-bg-stroke-alt: #097880;
+  --tool-bg-stroke-light: #047857;
 }
 #chat_main_wrapper[data-tool-bg="sql_analysis"] {
-  --tool-bg-accent: #06b6d4;
-  --tool-bg-accent-light: #0e7490;
+  --tool-bg-stroke: #06b6d4;
+  --tool-bg-stroke-alt: #097880;
+  --tool-bg-stroke-light: #0e7490;
 }
 #chat_main_wrapper[data-tool-bg="process"] {
-  --tool-bg-accent: #3b82f6;
-  --tool-bg-accent-light: #1d4ed8;
+  --tool-bg-stroke: #3b82f6;
+  --tool-bg-stroke-alt: #097880;
+  --tool-bg-stroke-light: #1d4ed8;
 }
 #chat_main_wrapper[data-tool-bg="summarization"] {
-  --tool-bg-accent: #6366f1;
-  --tool-bg-accent-light: #3730a3;
+  --tool-bg-stroke: #6366f1;
+  --tool-bg-stroke-alt: #097880;
+  --tool-bg-stroke-light: #3730a3;
 }
 #chat_main_wrapper[data-tool-bg="image"] {
-  --tool-bg-accent: #ec4899;
-  --tool-bg-accent-light: #9d174d;
-}
-
-#chat_main_wrapper[data-tool-bg] .tool-bg-snippet {
-  text-shadow: 0 0 8px color-mix(in srgb, var(--tool-bg-accent, #ff8a55) 22%, transparent);
+  --tool-bg-stroke: #ec4899;
+  --tool-bg-stroke-alt: #097880;
+  --tool-bg-stroke-light: #9d174d;
 }
 
 /* ============================================================
  * 3. Performans ve erişilebilirlik
  * ============================================================ */
 @media (prefers-reduced-motion: reduce) {
-  .tool-bg-heptagon svg,
-  .tool-bg-heptagon::before {
+  .tool-bg-corner-heptagons,
+  .tool-bg-corner-glow,
+  .tool-bg-typed-snippet,
+  .tool-bg-caret {
     animation: none !important;
   }
-  .tool-bg-snippet {
-    animation: none !important;
-    /* Hareketsiz modda hafif sabit gri görünüm */
-    opacity: 0.18;
-  }
+  .tool-bg-typed-snippet { opacity: 0.45; }
+  .tool-bg-corner-heptagons { opacity: 0.12; }
 }
 
-/* Geniş ekran modunda sohbet sarmalayıcı genişlerse arka plan da uyumlu kalır */
-.chat-container.widescreen ~ .tool-bg-layer,
-#chat_main_wrapper.widescreen .tool-bg-layer {
-  /* layer mutlak konumlu, ek kural gerekmez ama isim kararlılığı için */
-}
-
-/* Düşük performans cihazlar için optimize: animasyon süresini uzat */
 @media (max-width: 768px) {
-  .tool-bg-heptagon svg {
-    animation-duration: 95s;
+  .tool-bg-corner-heptagons {
+    width: 360px;
+    height: 360px;
+    bottom: -140px;
+    left: -140px;
   }
-  .tool-bg-snippet {
-    font-size: 11px;
-  }
+  .tool-bg-typed-snippet { font-size: 11px; }
+  .tool-bg-snippet-lane { width: 42%; }
+}
+
+/* Sağ-alt köşe alternatifi: bazı aileler için */
+#chat_main_wrapper[data-tool-bg-corner="bottom-right"] .tool-bg-corner-heptagons {
+  bottom: -220px;
+  left: auto;
+  right: -220px;
+  transform: scaleX(-1);
+}
+
+#chat_main_wrapper[data-tool-bg-corner="bottom-right"] .tool-bg-corner-glow {
+  bottom: -180px;
+  left: auto;
+  right: -180px;
 }

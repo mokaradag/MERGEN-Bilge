@@ -256,3 +256,53 @@
     padding: 22px 18px;
   }
 }
+
+/* ============================================================= */
+/* AÇIK TEMA - Mode kart kontrast düzeltmeleri                  */
+/* ============================================================= */
+html[data-theme="light"] .mode-card-inner {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(0, 48, 135, 0.14) !important;
+  box-shadow: 0 4px 14px rgba(15, 28, 51, 0.08);
+}
+
+html[data-theme="light"] .mode-card:hover .mode-card-inner {
+  background: #ffffff !important;
+  border-color: rgba(0, 48, 135, 0.25) !important;
+  box-shadow: 0 8px 24px rgba(15, 28, 51, 0.12);
+}
+
+html[data-theme="light"] .mode-card.selected .mode-card-inner {
+  background: rgba(0, 48, 135, 0.04) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow:
+    0 0 0 2px rgba(0, 48, 135, 0.20),
+    0 12px 28px rgba(15, 28, 51, 0.14);
+}
+
+html[data-theme="light"] .mode-card-icon {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border: 1px solid rgba(0, 48, 135, 0.16) !important;
+}
+
+html[data-theme="light"] .mode-card-icon i {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .mode-card:hover .mode-card-icon i,
+html[data-theme="light"] .mode-card.selected .mode-card-icon i {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .mode-card-title {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .mode-card:hover .mode-card-title,
+html[data-theme="light"] .mode-card.selected .mode-card-title {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .mode-card-desc {
+  color: var(--color-muted, #5b6577) !important;
+}
