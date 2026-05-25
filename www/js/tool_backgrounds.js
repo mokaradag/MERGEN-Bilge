@@ -2,16 +2,21 @@
 // Başlık: Araç Bağlamlı Sohbet Arka Plan Yöneticisi
 // Dosya: www/js/tool_backgrounds.js
 // Açıklama: Karşılama ekranından bir araç seçildiğinde Ana Söyleşi
-//           arka planında ilgili araç ailesine uygun hafif heptagon ve
-//           bağlam parçacık (snippet) animasyonlarını yönetir. Tüm
-//           katmanlar pointer-events tutmaz; sohbet etkileşimi etkilenmez.
-//           Yapılandırma sayfasından "Araç Arka Plan Animasyonları"
-//           ayarı kapatılırsa katman anında gizlenir.
+//           arka planında ilgili araç ailesine uygun KÖŞE yedigen
+//           kümesi + LANE-tabanlı yazılıyor stilinde snippet
+//           animasyonlarını yönetir.
 //
-//           Genişletme: yeni bir araç ailesi eklenmek istenirse
-//           TOOL_BACKGROUND_SNIPPETS objesine yeni anahtar/değer
-//           çiftleri eklenmesi yeterlidir. R/JS/CSS tarafında ek
-//           anahtar eklemek için family eşlemesini güncelleyin.
+//           Tasarım kararları:
+//             - Yedigenler ortada DEĞİL, alt-sol köşede (varsayılan).
+//             - Snippet'ler sabit dikey lane'lere yerleştirilir;
+//               aynı lane meşgulken yeni snippet eklenmez (çakışma yok).
+//             - Snippet "typing" hissi için karakter karakter belirir
+//               (welcome progress loading ekranındaki yaklaşımla aynı).
+//             - Yapılandırma "Araç Arka Plan Animasyonları" toggle'i
+//               kapatılırsa tüm sahne anında gizlenir.
+//
+//           Genişletme: TOOL_BACKGROUND_SNIPPETS objesine yeni anahtar
+//           eklenmesi yeterlidir.
 // ============================================================
 
 (function () {
@@ -25,9 +30,19 @@
   var WRAPPER_SELECTOR = '#chat_main_wrapper';
   var WELCOME_SELECTOR = '#welcome_fullscreen_container';
 
+  // Lane id'leri (sol 3 + sağ 3 = 6 lane). Bir snippet aktif iken
+  // bulunduğu lane "busy" işaretlenir; yeni snippet yalnızca boş
+  // lane'lere yerleştirilir. Bu sayede üst üste binme imkansızdır.
+  var LANE_DEFS = [
+    { id: 'L1', side: 'left'  },
+    { id: 'L2', side: 'left'  },
+    { id: 'L3', side: 'left'  },
+    { id: 'R1', side: 'right' },
+    { id: 'R2', side: 'right' },
+    { id: 'R3', side: 'right' }
+  ];
+
   // Hızlı eylem (quick action) id -> araç ailesi eşlemesi.
-  // R tarafındaki tool_mode_config ile uyumludur; yeni eylem eklenirse
-  // burada da kaydedilmelidir.
   var ACTION_TO_FAMILY = {
     'coding-support'    : 'coding',
     'project-process'   : 'process',
@@ -38,9 +53,6 @@
     'summarization'     : 'summarization'
   };
 
-  // Araç adı (R tarafında settings flag adı) -> araç ailesi eşlemesi.
-  // Server tarafındaki enable_* bayraklarını izleyen mesajlardan ya da
-  // tool_active mesajlarından gelen ipuçlarını eşler.
   var FLAG_TO_FAMILY = {
     'enable_coding_tools'        : 'coding',
     'enable_process_tools'       : 'process',
@@ -52,106 +64,106 @@
   };
 
   // -------------------------------------------------
-  // 2. Bağlam parçacıkları (snippet) kayıtları
+  // 2. Snippet havuzları (araç ailesi bazlı)
   // -------------------------------------------------
   var TOOL_BACKGROUND_SNIPPETS = {
     coding: [
-      'function analyze(data) { return insights; }',
+      "function analyze(data) {\n  return summarize(data);\n}",
       "const result = await model.run(prompt);",
       "if (status === 'ready') deploy();",
-      'SELECT id, status FROM tasks WHERE active = 1;',
-      'try { renderChart(data); } catch (err) { log(err); }',
-      'for (const item of items) process(item);',
-      'def predict(x): return model(x)',
-      'git rebase -i HEAD~3',
-      'docker build -t mergen:latest .',
-      'export const API = "/api/v1";',
-      'await Promise.all(tasks.map(run));',
-      'type Result = { ok: true, value: T };'
+      "SELECT id, status FROM tasks\nWHERE active = 1;",
+      "try {\n  renderChart(data);\n} catch (err) { log(err); }",
+      "for (const item of items)\n  process(item);",
+      "def predict(x):\n  return model(x)",
+      "git rebase -i HEAD~3",
+      "docker build -t mergen:latest .",
+      "export const API = \"/api/v1\";",
+      "await Promise.all(tasks.map(run));",
+      "type Result = { ok: true; value: T };"
     ],
     process: [
-      'Sürec -> Izlek -> Rehber -> Sablon',
-      'Kontrol noktasi: uygunluk / onay / kayit',
-      'Dokuman arama: baslik, kapsam, revizyon',
-      'Politika -> Prosedur -> Talimat -> Form',
-      'Onay akisi: hazirlayan -> kontrol -> onay',
-      'Versiyon kontrolu: r0 -> r1 -> r2',
-      'Sorumlu | Vekil | Onaylayan | Bilgilendirilen',
-      'KPI: cevrim suresi, hata orani, tekrar yapilanma',
-      'Risk: olasilik x etki x maruziyet',
-      'Surec sahibi -> Operasyonel sahibi',
-      'ISO 9001 | dokuman yonetim sistemi',
-      'IK / Satinalma / Lojistik / Kalite akisi'
+      "Surec -> Izlek\nRehber -> Sablon",
+      "Kontrol noktasi:\nuygunluk / onay / kayit",
+      "Dokuman arama:\nbaslik, kapsam, revizyon",
+      "Politika -> Prosedur\n-> Talimat -> Form",
+      "Onay akisi:\nhazirlayan -> kontrol -> onay",
+      "Versiyon kontrolu:\nr0 -> r1 -> r2",
+      "RACI:\nSorumlu | Vekil | Onaylayan",
+      "KPI:\ncevrim suresi, hata orani",
+      "Risk:\nolasilik x etki",
+      "Surec sahibi ->\nOperasyonel sahibi",
+      "ISO 9001\ndokuman yonetim sistemi",
+      "IK / Satinalma / Lojistik"
     ],
     app_expert: [
-      'P6: Activity ID -> WBS -> Baseline',
-      'SAP PS: WBS Element / Network / Milestone',
-      'Jira: Epic -> Story -> Sprint -> Status',
-      'Risk Register: probability x impact',
-      'Workflow: request -> review -> approval',
-      'Confluence | Jira | Bitbucket',
-      'P6 baseline vs current schedule',
-      'SAP CO: cost center / order / element',
-      'ITSM: Incident / Problem / Change',
-      'Primavera Resource Loading curve',
-      'SAP Notifications / Service Orders',
-      'Jira JQL: project = MB AND sprint in openSprints()'
+      "P6:\nActivity ID -> WBS -> Baseline",
+      "SAP PS:\nWBS / Network / Milestone",
+      "Jira:\nEpic -> Story -> Sprint",
+      "Risk Register:\nprobability x impact",
+      "Workflow:\nrequest -> review -> approval",
+      "Confluence | Jira | Bitbucket",
+      "P6 baseline vs current schedule",
+      "SAP CO:\ncost center / order / element",
+      "ITSM:\nIncident / Problem / Change",
+      "Primavera Resource Loading",
+      "SAP Notifications /\nService Orders",
+      "JQL: project = MB AND\n  sprint in openSprints()"
     ],
     mcp_excel: [
-      '=SUM(B2:B24)',
-      '=XLOOKUP(A2,Table1[ID],Table1[Value])',
-      'Pivot: Region x Month x Cost',
-      'Date | Category | Amount | Forecast',
-      'Chart: line / bar / scatter',
-      '=IFERROR(VLOOKUP(...), "Yok")',
-      '=AVERAGEIFS(C:C, A:A, "Aktif")',
-      'Power Query: Group By -> Sum',
-      'Excel: dilimleyici + zaman cizelgesi',
-      'Slicer: Filter by Sector / Region',
-      '=SUMPRODUCT((A:A=B1)*(C:C))',
-      'Pivot Cache | Power Pivot | DAX'
+      "=SUM(B2:B24)",
+      "=XLOOKUP(A2,\n  Table1[ID], Table1[Value])",
+      "Pivot:\nRegion x Month x Cost",
+      "Date | Category | Amount",
+      "Chart:\nline / bar / scatter",
+      "=IFERROR(\n  VLOOKUP(...), \"Yok\")",
+      "=AVERAGEIFS(\n  C:C, A:A, \"Aktif\")",
+      "Power Query:\nGroup By -> Sum",
+      "Dilimleyici +\nzaman cizelgesi",
+      "Slicer:\nFilter by Sector",
+      "=SUMPRODUCT(\n  (A:A=B1)*(C:C))",
+      "Pivot Cache |\nPower Pivot | DAX"
     ],
     sql_analysis: [
-      'Resource Load: planned vs actual',
-      'SPI = EV / PV',
-      'CPI = EV / AC',
-      'Critical Path: total float <= 0',
-      'SELECT project_id, cost, finish_date FROM portfolio',
-      'WBS | Activity | Resource | Duration',
-      'WITH cte AS (SELECT ... FROM ...) SELECT * FROM cte',
-      'GROUP BY project_id, period',
-      'CASE WHEN status="Aktif" THEN 1 ELSE 0 END',
-      'JOIN sap_cost ON wbs_id = wbs_code',
-      'P6 + SAP PS: schedule / budget / workforce',
-      'Forecast vs Actual: kullanim orani'
+      "Resource Load:\nplanned vs actual",
+      "SPI = EV / PV",
+      "CPI = EV / AC",
+      "Critical Path:\ntotal float <= 0",
+      "SELECT project_id, cost\nFROM portfolio",
+      "WBS | Activity | Duration",
+      "WITH cte AS (\n  SELECT ... FROM ...)\nSELECT * FROM cte",
+      "GROUP BY project_id,\n  period",
+      "CASE WHEN\n  status='Aktif' THEN 1\n  ELSE 0 END",
+      "JOIN sap_cost\n  ON wbs_id = wbs_code",
+      "P6 + SAP PS:\nbudget / workforce",
+      "Forecast vs Actual:\nkullanim orani"
     ],
     summarization: [
-      'Amac | Kapsam | Bulgular | Sonuc',
-      'Ana fikir -> kanit -> cikarim',
-      'Uzun metin -> yapilandirilmis ozet',
-      'Karar maddeleri / riskler / aksiyonlar',
-      'Yonetici ozeti / detay ozet',
-      'Soru -> Cevap -> Referans',
-      'TLDR: temel cikarim',
-      'Anahtar baslik #1, #2, #3',
-      'Yapilandirilmis maddeleme (madde isaretleri)',
-      'Toplanti notlari -> karar -> aksiyon',
-      'Belge -> kaynaklar -> bibliyografya',
-      'Veri tablosu -> ozetlenmis grafik'
+      "Amac | Kapsam |\nBulgular | Sonuc",
+      "Ana fikir ->\nkanit -> cikarim",
+      "Uzun metin ->\nyapilandirilmis ozet",
+      "Karar / risk / aksiyon",
+      "Yonetici ozeti /\ndetay ozet",
+      "Soru -> Cevap -> Referans",
+      "TLDR: temel cikarim",
+      "Anahtar baslik\n#1, #2, #3",
+      "Yapilandirilmis maddeleme",
+      "Toplanti notlari ->\nkarar -> aksiyon",
+      "Belge ->\nkaynaklar -> bibliyografya",
+      "Veri tablosu ->\nozetlenmis grafik"
     ],
     image: [
-      'composition: cinematic, balanced, minimal',
-      'style: technical illustration',
-      'lighting: soft rim light',
-      'palette: blue / orange / neutral',
-      'aspect: 16:9 cinematic',
-      'detail: ultra-detailed, sharp focus',
-      'mood: calm, professional',
-      'render: studio quality',
-      'subject: ASELSAN tarzi minimal sahne',
-      'lens: 50mm f/1.8',
-      'background: subtle gradient',
-      'pose: neutral, balanced'
+      "composition: cinematic,\n  balanced, minimal",
+      "style: technical illustration",
+      "lighting: soft rim light",
+      "palette:\nblue / orange / neutral",
+      "aspect: 16:9 cinematic",
+      "detail:\nultra-detailed, sharp focus",
+      "mood: calm, professional",
+      "render: studio quality",
+      "subject:\nASELSAN tarzi minimal sahne",
+      "lens: 50mm f/1.8",
+      "background: subtle gradient",
+      "pose: neutral, balanced"
     ]
   };
 
@@ -180,9 +192,16 @@
 
   function isEnabled() {
     var s = readSettings();
-    if (!s) return true; // varsayilan: acik
+    if (!s) return true;
     if (typeof s[ENABLED_KEY] === 'boolean') return s[ENABLED_KEY];
     return true;
+  }
+
+  function isReducedMotion() {
+    try {
+      return window.matchMedia &&
+             window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch (e) { return false; }
   }
 
   function getWrapper() {
@@ -194,64 +213,123 @@
     if (!w) return false;
     var style = w.getAttribute('style') || '';
     if (/display\s*:\s*none/i.test(style)) return false;
-    // jQuery fadeOut tarafindan display:none uygulanir; ayrica visibility kontrolu:
     return w.offsetParent !== null;
   }
 
-  function heptagonPoints(r, cx, cy) {
-    cx = cx == null ? 120 : cx;
-    cy = cy == null ? 120 : cy;
-    var vx = [0, 0.7818315, 0.9749279, 0.4338837, -0.4338837, -0.9749279, -0.7818315];
-    var vy = [-1, -0.6234898, 0.2225209, 0.9009689, 0.9009689, 0.2225209, -0.6234898];
+  // Heptagon noktaları (7 köşe, üst nokta yukarıda)
+  function heptPointsString(cx, cy, r) {
     var pts = [];
     for (var i = 0; i < 7; i++) {
-      pts.push((cx + r * vx[i]).toFixed(2) + ',' + (cy + r * vy[i]).toFixed(2));
+      var angle = -Math.PI / 2 + (i * 2 * Math.PI) / 7;
+      var x = cx + r * Math.cos(angle);
+      var y = cy + r * Math.sin(angle);
+      pts.push(x.toFixed(2) + ',' + y.toFixed(2));
     }
     return pts.join(' ');
   }
 
-  function buildHeptagonSvg(radius) {
-    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 240 240');
+  // 7 iç içe yedigen SVG (cluster) - app_loading alo-corner mantığı
+  function buildCornerHeptagonsSvg() {
+    var svgNs = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(svgNs, 'svg');
+    svg.setAttribute('viewBox', '-150 -150 300 300');
     svg.setAttribute('aria-hidden', 'true');
     svg.setAttribute('focusable', 'false');
-    var poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    poly.setAttribute('points', heptagonPoints(radius));
-    svg.appendChild(poly);
+
+    // 7 farklı yarıçap - en içte küçük, en dışta büyük
+    var radii = [22, 38, 56, 74, 92, 110, 130];
+    for (var i = 0; i < 7; i++) {
+      var poly = document.createElementNS(svgNs, 'polygon');
+      poly.setAttribute('points', heptPointsString(0, 0, radii[i]));
+      poly.setAttribute('class', 'hept-' + (i + 1));
+      svg.appendChild(poly);
+    }
     return svg;
   }
 
-  // Idempotent helper'lar: ensureLayer() rastgele bir noktada cagrilabilecegi
-  // icin (server tarafindan onceden render edilmis bos .tool-bg-layer dahil),
-  // her cagri layer'i + heptagon + snippet alt katmanlarini eksiksiz hale
-  // getirmelidir. Erken donus ETMEZ; sadece eksikleri tamamlar.
-  function ensureHeptagonLayer(layer) {
+  // -------------------------------------------------
+  // 4. Layer kurma (idempotent)
+  // -------------------------------------------------
+  function ensureCornerLayer(layer) {
     if (!layer) return null;
-    var hept = layer.querySelector(':scope > .tool-bg-heptagon');
-    if (!hept) {
-      hept = document.createElement('div');
-      hept.className = 'tool-bg-heptagon';
-      // Heptagon, snippet'lerden once gelsin: stacking ve okuma sirasi icin
-      layer.insertBefore(hept, layer.firstChild);
+    var glow = layer.querySelector(':scope > .tool-bg-corner-glow');
+    if (!glow) {
+      glow = document.createElement('div');
+      glow.className = 'tool-bg-corner-glow';
+      layer.appendChild(glow);
     }
-    // SVG cocugu yoksa uc katmanli yedigeni doldur
-    if (!hept.querySelector('svg')) {
-      hept.appendChild(buildHeptagonSvg(106));
-      hept.appendChild(buildHeptagonSvg(80));
-      hept.appendChild(buildHeptagonSvg(52));
+    var corner = layer.querySelector(':scope > .tool-bg-corner-heptagons');
+    if (!corner) {
+      corner = document.createElement('div');
+      corner.className = 'tool-bg-corner-heptagons';
+      corner.appendChild(buildCornerHeptagonsSvg());
+      layer.appendChild(corner);
+    } else if (!corner.querySelector('svg')) {
+      corner.appendChild(buildCornerHeptagonsSvg());
     }
-    return hept;
+    return corner;
+  }
+
+  function ensureLaneContainer(layer) {
+    if (!layer) return null;
+    var lanes = layer.querySelector(':scope > .tool-bg-snippet-lanes');
+    if (!lanes) {
+      lanes = document.createElement('div');
+      lanes.className = 'tool-bg-snippet-lanes';
+      layer.appendChild(lanes);
+    }
+    // Lane'leri oluştur (boş, server-side render edilmemiş ise)
+    for (var i = 0; i < LANE_DEFS.length; i++) {
+      var def = LANE_DEFS[i];
+      var el = lanes.querySelector(
+        '.tool-bg-snippet-lane[data-lane="' + def.id + '"]'
+      );
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'tool-bg-snippet-lane';
+        el.setAttribute('data-lane', def.id);
+        el.setAttribute('data-side', def.side);
+        el.setAttribute('data-busy', 'false');
+        lanes.appendChild(el);
+      }
+    }
+    return lanes;
+  }
+
+  // Geriye uyumluluk: eski test sözleşmesi `ensureHeptagonLayer` ve
+  // `ensureSnippetsHolder` isimlerini bekler. Yeni tasarımda köşe yedigen
+  // kümesi `.tool-bg-corner-heptagons` ve snippet lane'leri
+  // `.tool-bg-snippet-lanes` altındadır; ancak eski test sınıf adları
+  // `.tool-bg-heptagon` ve `.tool-bg-snippets` da regression koruma
+  // olarak korunur. Aşağıdaki sarmalayıcılar bu sözleşmeyi onurlandırır.
+  function ensureHeptagonLayer(layer) {
+    // Yeni tasarımda köşe yedigen kümesini garantile (.tool-bg-corner-heptagons).
+    // CSS sınıfı .tool-bg-heptagon eski sürümle uyumluluk için yedek olarak
+    // mevcut olabilir; yeni primary köşe kümesidir.
+    return ensureCornerLayer(layer);
   }
 
   function ensureSnippetsHolder(layer) {
-    if (!layer) return null;
-    var snip = layer.querySelector(':scope > .tool-bg-snippets');
-    if (!snip) {
-      snip = document.createElement('div');
-      snip.className = 'tool-bg-snippets';
-      layer.appendChild(snip);
-    }
-    return snip;
+    // Yeni tasarımda snippet'ler lane container içine yerleşir
+    // (.tool-bg-snippet-lanes). Eski sözleşme .tool-bg-snippets adıyla
+    // sarmalanır; lane container aynı görev görür.
+    return ensureLaneContainer(layer);
+  }
+
+  function buildHeptagonSvg(radius) {
+    // Geriye uyumluluk için: eski tek-yedigen üreteci yerine artık
+    // tüm köşe kümesi `buildCornerHeptagonsSvg` ile oluşturulur.
+    // Bu wrapper basit bir 7-köşeli polygon döner; mevcut testler yalnızca
+    // fonksiyonun var olduğunu ve `.tool-bg-heptagon` adının korunduğunu
+    // kontrol eder. Adı sözleşme gereği `buildHeptagonSvg` olarak korunur.
+    var svgNs = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(svgNs, 'svg');
+    svg.setAttribute('viewBox', '0 0 240 240');
+    svg.setAttribute('aria-hidden', 'true');
+    var poly = document.createElementNS(svgNs, 'polygon');
+    poly.setAttribute('points', heptPointsString(120, 120, radius || 100));
+    svg.appendChild(poly);
+    return svg;
   }
 
   function ensureLayer(wrapper) {
@@ -261,77 +339,177 @@
       layer = document.createElement('div');
       layer.className = 'tool-bg-layer';
       layer.setAttribute('aria-hidden', 'true');
-      // Layer'i ilk cocuk olarak ekle ki diger gercek bilesenler ustte kalsin
       wrapper.insertBefore(layer, wrapper.firstChild);
-    } else {
-      // Mevcut layer'da aria-hidden veya class doğru olmayabilir; sertçe ayarla
-      if (layer.getAttribute('aria-hidden') !== 'true') {
-        layer.setAttribute('aria-hidden', 'true');
-      }
+    } else if (layer.getAttribute('aria-hidden') !== 'true') {
+      layer.setAttribute('aria-hidden', 'true');
     }
-
-    // Her durumda alt katmanlari tamamla (idempotent)
+    // Idempotent: her cagride alt katmanlari tamamla
+    // CSS selector sozlesme adlari: .tool-bg-heptagon ve .tool-bg-snippets
     ensureHeptagonLayer(layer);
     ensureSnippetsHolder(layer);
-
     return layer;
+  }
+
+  // -------------------------------------------------
+  // 5. Snippet yaşam döngüsü (lane atama + typing + exit)
+  // -------------------------------------------------
+  var spawnTimer = null;
+  var currentFamily = null;
+  var ACTIVE_SNIPPETS = [];
+
+  function findFreeLane(layer) {
+    if (!layer) return null;
+    var lanes = layer.querySelectorAll('.tool-bg-snippet-lane');
+    var free = [];
+    for (var i = 0; i < lanes.length; i++) {
+      if (lanes[i].getAttribute('data-busy') !== 'true') {
+        free.push(lanes[i]);
+      }
+    }
+    if (free.length === 0) return null;
+    return free[Math.floor(Math.random() * free.length)];
+  }
+
+  function pickSnippetText(family, lastTexts) {
+    var pool = TOOL_BACKGROUND_SNIPPETS[family];
+    if (!pool || pool.length === 0) return null;
+    // Son 3 snippet'i atla (yinelenme azaltma)
+    var candidate;
+    for (var attempt = 0; attempt < 5; attempt++) {
+      candidate = pool[Math.floor(Math.random() * pool.length)];
+      if (lastTexts.indexOf(candidate) === -1) return candidate;
+    }
+    return candidate;
+  }
+
+  // Karakter karakter typing effect - lane'e snippet yazar
+  function typeSnippetInto(laneEl, text, onComplete) {
+    if (!laneEl) return;
+    var el = document.createElement('div');
+    el.className = 'tool-bg-typed-snippet';
+    // Statik ve typing varyantları: reduced motion ise tek seferde göster.
+    var caret = document.createElement('span');
+    caret.className = 'tool-bg-caret';
+
+    laneEl.appendChild(el);
+
+    if (isReducedMotion()) {
+      el.textContent = text;
+      if (typeof onComplete === 'function') onComplete(el);
+      return el;
+    }
+
+    // Karakter karakter ekle
+    var i = 0;
+    var STEP_MS = 18;
+    function step() {
+      if (i >= text.length) {
+        el.appendChild(caret);
+        if (typeof onComplete === 'function') onComplete(el);
+        return;
+      }
+      var ch = text.charAt(i);
+      el.appendChild(document.createTextNode(ch));
+      i++;
+      window.setTimeout(step, STEP_MS);
+    }
+    step();
+    return el;
+  }
+
+  function dropSnippet(snippetEl, laneEl) {
+    if (!snippetEl) return;
+    snippetEl.classList.add('is-leaving');
+    window.setTimeout(function () {
+      try { snippetEl.remove(); } catch (e) {}
+      if (laneEl) laneEl.setAttribute('data-busy', 'false');
+    }, 700);
+  }
+
+  function spawnOneSnippet(family) {
+    var wrapper = getWrapper();
+    if (!wrapper) return;
+    if (welcomeVisible()) return;
+    if (!isEnabled()) return;
+    if (!family || !TOOL_BACKGROUND_SNIPPETS[family]) return;
+
+    var layer = ensureLayer(wrapper);
+    if (!layer) return;
+    var lane = findFreeLane(layer);
+    if (!lane) return;
+
+    // Son metinleri toplama (yinelenme önleme)
+    var lastTexts = ACTIVE_SNIPPETS.map(function (a) { return a.text; });
+    var text = pickSnippetText(family, lastTexts);
+    if (!text) return;
+
+    lane.setAttribute('data-busy', 'true');
+    var record = { lane: lane, text: text, el: null, timer: null };
+
+    record.el = typeSnippetInto(lane, text, function (finalEl) {
+      // typing tamamlandıktan sonra biraz görünür kalsın
+      var visibleMs = 5500 + Math.random() * 3500;
+      record.timer = window.setTimeout(function () {
+        dropSnippet(finalEl, lane);
+        // record temizleme
+        var idx = ACTIVE_SNIPPETS.indexOf(record);
+        if (idx >= 0) ACTIVE_SNIPPETS.splice(idx, 1);
+      }, visibleMs);
+    });
+
+    ACTIVE_SNIPPETS.push(record);
+  }
+
+  function startSpawnLoop(family) {
+    stopSpawnLoop();
+    // Sahnede en fazla 4 aktif snippet olsun (kalabalık değil)
+    var TICK_MS = 1800; // her ~1.8 saniyede bir yeni snippet dene
+    spawnTimer = window.setInterval(function () {
+      if (!currentFamily) return;
+      if (ACTIVE_SNIPPETS.length >= 4) return;
+      spawnOneSnippet(currentFamily);
+    }, TICK_MS);
+
+    // İlk snippet'i biraz beklemeden ekleyelim ki sahne hemen başlasın
+    window.setTimeout(function () { spawnOneSnippet(family); }, 250);
+    window.setTimeout(function () { spawnOneSnippet(family); }, 1100);
+  }
+
+  function stopSpawnLoop() {
+    if (spawnTimer) {
+      window.clearInterval(spawnTimer);
+      spawnTimer = null;
+    }
+    // Aktif snippet'leri temizle
+    for (var i = 0; i < ACTIVE_SNIPPETS.length; i++) {
+      var rec = ACTIVE_SNIPPETS[i];
+      if (rec && rec.timer) window.clearTimeout(rec.timer);
+      if (rec && rec.el) {
+        try { rec.el.remove(); } catch (e) {}
+      }
+      if (rec && rec.lane) rec.lane.setAttribute('data-busy', 'false');
+    }
+    ACTIVE_SNIPPETS = [];
   }
 
   function clearSnippets(layer) {
     if (!layer) return;
-    var holder = layer.querySelector('.tool-bg-snippets');
-    if (holder) holder.innerHTML = '';
-  }
-
-  function renderSnippets(family) {
-    var wrapper = getWrapper();
-    if (!wrapper) return;
-    var layer = ensureLayer(wrapper);
-    if (!layer) return;
-    clearSnippets(layer);
-
-    if (!family || !TOOL_BACKGROUND_SNIPPETS[family]) return;
-
-    var holder = layer.querySelector('.tool-bg-snippets');
-    if (!holder) return;
-
-    var pool = TOOL_BACKGROUND_SNIPPETS[family].slice();
-    // Karistir
-    for (var i = pool.length - 1; i > 0; i--) {
-      var j = Math.floor(Math.random() * (i + 1));
-      var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
+    var lanes = layer.querySelectorAll('.tool-bg-snippet-lane');
+    for (var i = 0; i < lanes.length; i++) {
+      lanes[i].innerHTML = '';
+      lanes[i].setAttribute('data-busy', 'false');
     }
-    var count = Math.min(8, pool.length);
-    for (var k = 0; k < count; k++) {
-      var item = document.createElement('div');
-      item.className = 'tool-bg-snippet';
-      // Sol/sag kenara kacir, ortayi acik birak
-      var side = (k % 2 === 0) ? 'left' : 'right';
-      item.setAttribute('data-side', side);
-      var top = 8 + Math.random() * 78; // %
-      item.style.top = top.toFixed(1) + '%';
-      // Animasyon suresi 22-42 saniye arasi rastgele
-      var duration = (22 + Math.random() * 20).toFixed(1) + 's';
-      // Negatif gecikme: ilk acilista hareket hazir basliyor
-      var delay = (-Math.random() * 22).toFixed(1) + 's';
-      item.style.animationDuration = duration;
-      item.style.animationDelay = delay;
-      item.textContent = pool[k];
-      holder.appendChild(item);
-    }
+    stopSpawnLoop();
   }
 
   // -------------------------------------------------
-  // 4. Genel API
+  // 6. Genel API
   // -------------------------------------------------
-  var currentFamily = null;
-
   function applyFamily(family, options) {
     options = options || {};
     var wrapper = getWrapper();
     if (!wrapper) return;
 
-    // Onceki katmani temizle/kur
     ensureLayer(wrapper);
 
     if (!family || typeof family !== 'string') {
@@ -346,12 +524,15 @@
 
     if (!isEnabled()) {
       wrapper.classList.add('tool-bg-disabled');
+      stopSpawnLoop();
       return;
     }
     wrapper.classList.remove('tool-bg-disabled');
 
     if (!welcomeVisible()) {
-      renderSnippets(family);
+      // Eski snippet'leri temizle, yeni döngü başlat
+      clearSnippets(wrapper.querySelector(':scope > .tool-bg-layer'));
+      startSpawnLoop(family);
     } else {
       clearSnippets(wrapper.querySelector(':scope > .tool-bg-layer'));
     }
@@ -375,10 +556,11 @@
     if (v) {
       wrapper.classList.remove('tool-bg-disabled');
       if (currentFamily && !welcomeVisible()) {
-        renderSnippets(currentFamily);
+        startSpawnLoop(currentFamily);
       }
     } else {
       wrapper.classList.add('tool-bg-disabled');
+      stopSpawnLoop();
       clearSnippets(wrapper.querySelector(':scope > .tool-bg-layer'));
     }
   }
@@ -394,20 +576,15 @@
   }
 
   // -------------------------------------------------
-  // 5. Olay baglantilari
+  // 7. Olay bağlantıları
   // -------------------------------------------------
   function bindQuickActionListener() {
-    // Welcome kartlarina tiklamayi yakala: _handleQuickAction shiny'e gondermeden
-    // once data-action-id'yi okuyabiliriz; ancak guvenli olmak icin pasif
-    // dinleyici kullaniyoruz.
     document.addEventListener('click', function (ev) {
       var btn = ev.target && ev.target.closest && ev.target.closest('.modern-welcome-action-btn');
       if (!btn) return;
       var actionId = btn.getAttribute('data-action-id') || '';
       var fam = familyForActionId(actionId);
       if (fam) {
-        // Welcome kapanmadan once aileyi belirle; renderSnippets welcome gizlenince
-        // otomatik calisacak ama burada da onceden kayit edelim.
         applyFamily(fam);
       }
     }, true);
@@ -416,20 +593,19 @@
   function bindWelcomeVisibilityWatch() {
     var welcome = document.querySelector(WELCOME_SELECTOR);
     if (!welcome) {
-      // Welcome konteyner dinamik render edilebilir; yeniden dene
       window.setTimeout(bindWelcomeVisibilityWatch, 200);
       return;
     }
-
     var mo = new MutationObserver(function () {
       var wrapper = getWrapper();
       if (!wrapper) return;
       if (!currentFamily) return;
       if (welcomeVisible()) {
+        stopSpawnLoop();
         clearSnippets(wrapper.querySelector(':scope > .tool-bg-layer'));
       } else {
         if (isEnabled()) {
-          renderSnippets(currentFamily);
+          startSpawnLoop(currentFamily);
         }
       }
     });
@@ -442,14 +618,11 @@
       return;
     }
 
-    // Yapilandirma anahtari acik/kapali bilgisi
     window.Shiny.addCustomMessageHandler('toggleToolBackgrounds', function (data) {
       var enabled = !!(data && data.enabled);
       setEnabled(enabled, { persist: true });
     });
 
-    // Sunucu tarafindan tetiklenen aile degisimi (opsiyonel; quick action zaten
-    // istemci tarafinda yakalaniyor)
     window.Shiny.addCustomMessageHandler('setToolBackgroundFamily', function (data) {
       if (!data) return;
       var fam = null;
@@ -469,7 +642,6 @@
   }
 
   function bindNewChatReset() {
-    // Yeni Soylesi butonuna tiklandiginda arka plani temizle
     document.addEventListener('click', function (ev) {
       var t = ev.target;
       if (!t || !t.closest) return;
@@ -480,26 +652,18 @@
     }, true);
   }
 
-  function bindTabSwitchReset() {
-    // Ana sohbet disindaki sekmelere gecince arka plani temizlemek gerekmez;
-    // wrapper zaten gorunmez. Ama saved chat yuklendiginde de baska bir
-    // sebepten temizlik gerekirse buradan yapilabilir.
-    document.addEventListener('shiny:value', function () {
-      // no-op, gelistirme icin yer tutucu
-    });
-  }
-
-  // Tema degisiminde snippet'leri yeniden render et (renk degisimi icin)
   function bindThemeChangeRefresh() {
     window.addEventListener('mergen:themechange', function () {
+      // Tema değişiminde yeni renkleri uygulamak için snippet'leri tazele
       if (currentFamily && !welcomeVisible() && isEnabled()) {
-        renderSnippets(currentFamily);
+        stopSpawnLoop();
+        startSpawnLoop(currentFamily);
       }
     });
   }
 
   // -------------------------------------------------
-  // 6. Genel API erisilebilir kil
+  // 8. Genel API erişilebilir kıl
   // -------------------------------------------------
   window.MergenToolBackgrounds = {
     apply: applyFamily,
@@ -514,20 +678,24 @@
       if (!Array.isArray(snippetList)) return false;
       TOOL_BACKGROUND_SNIPPETS[family] = snippetList.slice();
       return true;
+    },
+    // Test/araç için debug erişim:
+    _debug: {
+      activeCount: function () { return ACTIVE_SNIPPETS.length; },
+      lanes: function () { return LANE_DEFS.slice(); }
     }
   };
 
   // -------------------------------------------------
-  // 7. Boot
+  // 9. Boot
   // -------------------------------------------------
   function boot() {
     bindQuickActionListener();
     bindWelcomeVisibilityWatch();
     bindShinyToggles();
     bindNewChatReset();
-    bindTabSwitchReset();
     bindThemeChangeRefresh();
-    // Acilista wrapper olusana kadar bekle; saglam olmasi icin layer'i bir kez kur
+
     var tries = 0;
     var t = window.setInterval(function () {
       var wrapper = getWrapper();

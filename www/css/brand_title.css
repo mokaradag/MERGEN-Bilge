@@ -1,0 +1,209 @@
+/* ============================================================
+ * Başlık: MERGEN Bilge Marka Tek Doğru Kaynak Stilleri
+ * Dosya: www/css/brand_title.css
+ * Açıklama: "MERGEN Bilge" marka adının tek tutarlı görsel kaynağı.
+ *           Uygulamada bu yazıyı kullanan üç ana yer (navbar, açılış
+ *           yükleme/progress ekranı, deep-space animasyon sağ alt köşesi)
+ *           bu dosyadaki ortak token ve sınıfları paylaşır.
+ *
+ *           Tipografi:
+ *             - "MERGEN": kalın (700), geniş harf aralığı, kurumsal mavi
+ *             - "Bilge":  ince (300), turuncu vurgu, daha düşük letter-spacing
+ *
+ *           Hem koyu hem açık temada okunabilir kontrast korunur.
+ *           Tüm fontlar yereldir; CDN/internet bağımlılığı yoktur.
+ * ============================================================ */
+
+:root {
+  /* Marka tipografisi tokenları */
+  --mergen-brand-font-stack: var(--font-primary, "Segoe UI"),
+                             "JetBrains Mono", "Inter",
+                             system-ui, -apple-system, sans-serif;
+  --mergen-brand-primary-weight: 700;
+  --mergen-brand-secondary-weight: 300;
+  --mergen-brand-primary-letter-spacing: 0.16em;
+  --mergen-brand-secondary-letter-spacing: 0.08em;
+
+  /* Marka renkleri (tema bağımsız sabitler) */
+  --mergen-brand-color-primary: #ffffff;
+  --mergen-brand-color-secondary: var(--mb-brand-accent, #FF5620);
+  --mergen-brand-shadow-strong: 0 0 24px rgba(0, 0, 0, 0.45);
+  --mergen-brand-shadow-soft: 0 1px 0 rgba(0, 0, 0, 0.15);
+}
+
+html[data-theme="light"] {
+  /* Açık temada karşı kontrast: lacivert + sıcak turuncu */
+  --mergen-brand-color-primary: var(--mb-brand-primary, #003087);
+  --mergen-brand-color-secondary: var(--mb-brand-accent, #FF5620);
+  --mergen-brand-shadow-strong: 0 1px 3px rgba(0, 48, 135, 0.18);
+  --mergen-brand-shadow-soft: 0 1px 0 rgba(0, 48, 135, 0.05);
+}
+
+/* ============================================================
+ * Yeni paylaşılan sınıflar (modüller bunları kullanabilir)
+ * ============================================================ */
+.mergen-brand-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.34em;
+  font-family: var(--mergen-brand-font-stack);
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.mergen-brand-title-primary {
+  font-weight: var(--mergen-brand-primary-weight);
+  letter-spacing: var(--mergen-brand-primary-letter-spacing);
+  color: var(--mergen-brand-color-primary);
+  text-shadow: var(--mergen-brand-shadow-strong);
+}
+
+.mergen-brand-title-secondary {
+  font-weight: var(--mergen-brand-secondary-weight);
+  letter-spacing: var(--mergen-brand-secondary-letter-spacing);
+  color: var(--mergen-brand-color-secondary);
+  text-shadow: var(--mergen-brand-shadow-soft);
+}
+
+.mergen-brand-mark {
+  /* Marka ikon/logo için ortak çerçeve (opsiyonel) */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+}
+
+/* ============================================================
+ * Mevcut sınıfların marka tipografisine hizalanması
+ * ============================================================ */
+
+/* 1) Navbar brand (.brand-text / .brand-text-primary / .brand-text-secondary) */
+.brand-text {
+  font-family: var(--mergen-brand-font-stack) !important;
+  letter-spacing: 0 !important; /* tek tek alt span'lar kendi spacing'ini taşır */
+  text-transform: uppercase;
+  line-height: 1.1;
+  /* font-size mevcut layout.css (24px) tarafindan korunur; ozelistirma
+   * yalnizca font-weight/letter-spacing/color iizerinden yapilir. */
+}
+
+.brand-text-primary {
+  font-weight: var(--mergen-brand-primary-weight) !important;
+  letter-spacing: var(--mergen-brand-primary-letter-spacing) !important;
+  color: var(--mergen-brand-color-primary) !important;
+}
+
+.brand-text-secondary {
+  font-weight: var(--mergen-brand-secondary-weight) !important;
+  letter-spacing: var(--mergen-brand-secondary-letter-spacing) !important;
+  color: var(--mergen-brand-color-secondary) !important;
+}
+
+/* 2) Açılış yükleme ekranı wordmark (.alo-wordmark) */
+#app-loading-overlay .alo-wordmark {
+  font-family: var(--mergen-brand-font-stack);
+  text-transform: uppercase;
+  gap: 0.34em;
+}
+
+#app-loading-overlay .alo-wordmark-primary {
+  font-weight: var(--mergen-brand-primary-weight);
+  letter-spacing: var(--mergen-brand-primary-letter-spacing);
+}
+
+#app-loading-overlay .alo-wordmark-accent {
+  font-weight: var(--mergen-brand-secondary-weight);
+  letter-spacing: var(--mergen-brand-secondary-letter-spacing);
+}
+
+/* 3) Deep-space animasyon marka yazısı (.deep-space-title) */
+.deep-space-branding .deep-space-title {
+  font-family: var(--mergen-brand-font-stack) !important;
+  font-weight: var(--mergen-brand-primary-weight) !important;
+  letter-spacing: var(--mergen-brand-primary-letter-spacing) !important;
+  text-transform: uppercase;
+  /* Mevcut renk/gölge varsayılan olarak koyu arka plan için kalır; light
+   * temada aşağıdaki override devreye girer. */
+}
+
+html[data-theme="light"] .deep-space-branding .deep-space-title {
+  color: var(--mergen-brand-color-primary) !important;
+  text-shadow: 0 0 24px rgba(0, 48, 135, 0.45),
+               0 1px 1px rgba(255, 255, 255, 0.65) !important;
+}
+
+/* Deep-space versiyon rozet ve alt metin de light temada okunabilir kalmalı */
+html[data-theme="light"] .deep-space-subtitle {
+  color: rgba(15, 28, 51, 0.78) !important;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.65) !important;
+}
+
+html[data-theme="light"] .deep-space-skip-checkbox label {
+  color: #0f1c33 !important;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5) !important;
+}
+
+html[data-theme="light"] .deep-space-skip-checkbox label:hover {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .deep-space-skip-checkbox input[type="checkbox"] {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(0, 48, 135, 0.5);
+}
+
+html[data-theme="light"] .deep-space-skip-checkbox input[type="checkbox"]:checked {
+  background: rgba(0, 48, 135, 0.85);
+  border-color: var(--mb-brand-primary, #003087);
+}
+
+html[data-theme="light"] .deep-space-skip-checkbox input[type="checkbox"]:checked::after {
+  border-color: #ffffff;
+}
+
+/* Deep-space versiyon rozet (sağ üstte) light temada okunaklı */
+html[data-theme="light"] .deep-space-version-badge,
+html[data-theme="light"] .deep-space-version-text {
+  color: var(--mb-brand-primary, #003087) !important;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.55) !important;
+}
+
+/* Deep-space modal/dialog kutuları light temada okunaklı */
+html[data-theme="light"] .ds-modal-overlay,
+html[data-theme="light"] .ds-version-modal-overlay {
+  background: rgba(15, 28, 51, 0.55) !important;
+}
+
+html[data-theme="light"] .ds-modal-content,
+html[data-theme="light"] .ds-version-modal-content {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: 0 18px 40px rgba(15, 28, 51, 0.22) !important;
+}
+
+html[data-theme="light"] .ds-modal-content *,
+html[data-theme="light"] .ds-version-modal-content * {
+  color: inherit;
+}
+
+html[data-theme="light"] .ds-modal-title,
+html[data-theme="light"] .ds-version-modal-title {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .ds-modal-close,
+html[data-theme="light"] .ds-version-modal-close {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .ds-modal-close:hover,
+html[data-theme="light"] .ds-version-modal-close:hover {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* Çok küçük ekranlarda küçülme — kontrast korunur */
+@media (max-width: 480px) {
+  .brand-text { font-size: 18px; }
+  .deep-space-branding .deep-space-title { font-size: clamp(1.4rem, 6vw, 2.4rem); }
+}

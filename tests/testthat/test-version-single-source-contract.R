@@ -33,11 +33,25 @@
 }
 
 .read_version_file <- function(rel_path) {
+  # Byte-safe okuma: POSIX/C locale altinda readLines + grepl UTF-8 markaja
+  # ragmen "input string 1 is invalid UTF-8" uretebiliyor. readBin + iconv
+  # ile bytleri korur, grepl(..., useBytes = TRUE) ile arariz.
   repo_root <- .repo_root_version_single()
   full_path <- file.path(repo_root, rel_path)
   if (!file.exists(full_path)) return("")
-  txt <- paste(readLines(full_path, warn = FALSE, encoding = "UTF-8"),
-               collapse = "\n")
+
+  size <- suppressWarnings(file.info(full_path)$size[1])
+  if (is.na(size) || size <= 0) return("")
+
+  con <- file(full_path, open = "rb")
+  on.exit(close(con), add = TRUE)
+  raw_data <- readBin(con, what = "raw", n = size)
+
+  txt <- suppressWarnings(
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+  )
+  if (is.na(txt)) txt <- ""
+  txt <- gsub("\r\n?|\r", "\n", txt, perl = TRUE)
   enc2utf8(txt)
 }
 
@@ -46,7 +60,7 @@ test_that("Sistem Durumu Sürüm karti get_app_version_label kullanir", {
   expect_true(nzchar(txt), info = "R/helpers_health_runtime_checks.R okunamadi.")
 
   expect_true(
-    grepl("get_app_version_label()", txt, fixed = TRUE),
+    grepl("get_app_version_label()", txt, fixed = TRUE, useBytes = TRUE),
     info = paste(
       "helpers_health_runtime_checks.R Sürüm degerini get_app_version_label()",
       "uzerinden okumalidir; bu, sidebar/Hakkında ile ayni tek dogru kaynaktir."
@@ -65,7 +79,8 @@ test_that("Sistem Durumu Sürüm karti getOption('mergen.version', ...) BIRINCIL
     grepl(
       'getOption("mergen.version", Sys.getenv("MERGEN_APP_VERSION", "N/A"))',
       txt,
-      fixed = TRUE
+      fixed = TRUE,
+      useBytes = TRUE
     ),
     info = paste(
       "Sürüm karti birincil kaynak olarak getOption('mergen.version', ...)",
@@ -81,9 +96,20 @@ test_that("Sürüm health_result etiketi 'Sürüm' veya 'Sürüm / Git Commit'",
 
   # Etiket "Sürüm" olarak sade veya geriye uyumluluk icin
   # "Sürüm / Git Commit" olarak kabul edilir.
+  # UTF-8 byte dizisi: Sürüm -> S(0x53) ü(0xC3 0xBC) r(0x72) ü(0xC3 0xBC) m(0x6D)
+  utf8_surum <- rawToChar(as.raw(
+    c(0x22, 0x53, 0xC3, 0xBC, 0x72, 0xC3, 0xBC, 0x6D, 0x22)
+  ))
+  Encoding(utf8_surum) <- "UTF-8"
+  utf8_surum_git <- rawToChar(as.raw(
+    c(0x22, 0x53, 0xC3, 0xBC, 0x72, 0xC3, 0xBC, 0x6D, 0x20, 0x2F, 0x20,
+      0x47, 0x69, 0x74, 0x20, 0x43, 0x6F, 0x6D, 0x6D, 0x69, 0x74, 0x22)
+  ))
+  Encoding(utf8_surum_git) <- "UTF-8"
+
   expect_true(
-    grepl('"Sürüm"', txt, fixed = TRUE) ||
-      grepl('"Sürüm / Git Commit"', txt, fixed = TRUE),
+    grepl(utf8_surum, txt, fixed = TRUE, useBytes = TRUE) ||
+      grepl(utf8_surum_git, txt, fixed = TRUE, useBytes = TRUE),
     info = "Genel Bakış kartinda 'Sürüm' etiketi korunmalidir."
   )
 })
@@ -93,8 +119,8 @@ test_that("Sidebar UI get_app_version_label / get_current_version kullanir", {
   expect_true(nzchar(txt), info = "R/module_sidebar_user_panel.R okunamadi.")
 
   expect_true(
-    grepl("get_app_version_label()", txt, fixed = TRUE) ||
-      grepl("get_current_version()", txt, fixed = TRUE),
+    grepl("get_app_version_label()", txt, fixed = TRUE, useBytes = TRUE) ||
+      grepl("get_current_version()", txt, fixed = TRUE, useBytes = TRUE),
     info = paste(
       "Sidebar versiyon etiketi tek dogru kaynaktan (config_version_history.R)",
       "alinmalidir."
@@ -107,12 +133,12 @@ test_that("config_version_history.R get_current_version + get_app_version_label 
   expect_true(nzchar(txt), info = "R/config_version_history.R okunamadi.")
 
   expect_true(
-    grepl("get_current_version <- function()", txt, fixed = TRUE),
+    grepl("get_current_version <- function()", txt, fixed = TRUE, useBytes = TRUE),
     info = "get_current_version() tanimi bulunmalidir."
   )
 
   expect_true(
-    grepl("get_app_version_label <- function()", txt, fixed = TRUE),
+    grepl("get_app_version_label <- function()", txt, fixed = TRUE, useBytes = TRUE),
     info = "get_app_version_label() tanimi bulunmalidir."
   )
 })

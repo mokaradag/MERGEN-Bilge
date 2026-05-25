@@ -179,20 +179,50 @@ mb_sidebar_controls_row <- function(show_logout = FALSE) {
 #' Sidebar kullanıcı paneli UI'sı
 #'
 #' @description Server tarafında dinamik render edilecek alanları içeren
-#'   sabit kabuğu üretir. Gerçek isim, baş harf ve avatar değerleri
-#'   uiOutput("sidebar_user_panel") üzerinden döndürülür.
+#'   sabit kabuğu üretir. Tema butonu, kullanıcı iskeleti ve sürüm satırı
+#'   SAYFA İLK YÜKLENDİĞİNDE statik olarak gösterilir; reaktif renderUI
+#'   çıktısı geldikçe içerik güncellenir. Bu sayede oturum açıldığında
+#'   tema/kullanıcı/çıkış kontrolleri gecikmesiz görünür.
 #'
 #' @param output_id Sunucu çıktısı için ID (varsayılan: "sidebar_user_panel")
 #' @return Shiny div
 mb_sidebar_user_panel_ui <- function(output_id = "sidebar_user_panel") {
+  # Statik iskelet kullanıcı kartı — Shiny render edilene kadar görünür.
+  # SSO modunda gerçek değerle değiştirilecektir.
+  initial_user <- mb_sidebar_user_badge_ui(
+    full_name = "",
+    first_name = NULL,
+    user_id = NULL,
+    department = ""
+  )
+
+  # Tema butonu artık her zaman ilk renderda mevcut; controls uiOutput
+  # daha sonra logout butonu için yenilenebilir. Bu, "tema butonu geç
+  # geliyor" regresyonunu önler.
+  initial_controls <- mb_sidebar_controls_row(show_logout = FALSE)
+
   tags$div(
     class = "sidebar-footer",
     id = "sidebar-footer-container",
-    # Kullanıcı kimliği (server tarafında doldurulur)
-    uiOutput(output_id, inline = FALSE),
-    # Kontrol satırı (tema butonu + opsiyonel çıkış) -- server tarafında
-    # doldurulur; SSO durumu reaktif olarak çözülür.
-    uiOutput(paste0(output_id, "_controls"), inline = FALSE),
+    # Kullanıcı kimliği (server tarafında doldurulur; ilk yüklemede
+    # iskelet kartı görünür).
+    tags$div(
+      class = "mb-sidebar-user-slot",
+      uiOutput(output_id, inline = FALSE, container = function(...) {
+        tags$div(..., class = "shiny-html-output mb-sidebar-user-slot-output")
+      }),
+      tags$div(class = "mb-sidebar-user-skeleton", initial_user)
+    ),
+    # Kontrol satırı (tema butonu + opsiyonel çıkış) - statik iskelet ilk
+    # renderda görünür, server hazır olduğunda yerini güncel sürüm alır.
+    tags$div(
+      class = "mb-sidebar-controls-slot",
+      uiOutput(paste0(output_id, "_controls"), inline = FALSE,
+               container = function(...) {
+                 tags$div(..., class = "shiny-html-output mb-sidebar-controls-slot-output")
+               }),
+      tags$div(class = "mb-sidebar-controls-skeleton", initial_controls)
+    ),
     # Sürüm satırı (tek doğru kaynak: get_current_version)
     tags$p(
       class = "sidebar-version",
