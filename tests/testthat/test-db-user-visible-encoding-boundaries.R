@@ -272,7 +272,13 @@ test_that("MB_Users SSO writes repair visible fields only", {
 })
 
 test_that("MB_Feedback extended writes repair tags/comments only", {
-  txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_database.R")
+  txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_db_feedback.R")
+  db_txt <- .read_repo_text_for_db_encoding_boundary_tests("R/helpers_database.R")
+
+  expect_true(
+    .has_boundary_text(db_txt, "R/helpers_db_feedback.R içine taşındı."),
+    info = "helpers_database.R feedback helpers için yeni dosyaya yönlendirme notunu korumalıdır."
+  )
 
   expected <- c(
     "safe_tags <- normalize_db_visible_value(safe_tags)",
