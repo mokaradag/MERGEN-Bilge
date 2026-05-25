@@ -87,6 +87,71 @@ get_or_create_user <- function(username, sso_claims = NULL) {
   user_id
 }
 
+get_user_profile_from_db <- function(user_id = NULL, username = NULL) {
+  uid <- suppressWarnings(as.integer(user_id %||% NA_integer_))
+  uname <- normalize_db_technical_value(username %||% "")
+
+  if ((is.na(uid) || uid <= 0L) && !nzchar(uname)) {
+    return(NULL)
+  }
+
+  conn_info <- get_connection()
+  conn <- conn_info$conn
+  on.exit(release_connection(conn_info), add = TRUE)
+
+  if (!is.na(uid) && uid > 0L) {
+    where_clause <- "WHERE UserID = ?"
+    params <- list(uid)
+  } else {
+    where_clause <- "WHERE LOWER(KullaniciAdi) = LOWER(?)"
+    params <- list(uname)
+  }
+
+  result <- dbGetQuery(
+    conn,
+    paste(
+      "SELECT TOP (1)",
+      "UserID, KullaniciAdi, KaynakAdi, LastLoginDate,",
+      "Sicil, Email, Sektor, Departman, Mudurluk,",
+      "MasrafYeriKodu, SonGirisKaynagi",
+      "FROM MB_Users",
+      where_clause
+    ),
+    params = normalize_db_params(params)
+  )
+
+  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+    result <- normalize_text_frame_utf8(result, repair_mojibake = TRUE)
+  }
+
+  if (nrow(result) == 0L) {
+    return(NULL)
+  }
+
+  row <- as.list(result[1, , drop = FALSE])
+
+  visible_fields <- intersect(
+    c("KaynakAdi", "Sektor", "Departman", "Mudurluk"),
+    names(row)
+  )
+
+  for (field_name in visible_fields) {
+    row[[field_name]] <- normalize_db_visible_value(row[[field_name]])
+  }
+
+  technical_fields <- intersect(
+    c("KullaniciAdi", "Sicil", "Email", "MasrafYeriKodu", "SonGirisKaynagi"),
+    names(row)
+  )
+
+  for (field_name in technical_fields) {
+    row[[field_name]] <- normalize_db_technical_value(row[[field_name]])
+  }
+
+  row$user_id <- suppressWarnings(as.integer(row$UserID %||% uid))
+  row
+}
+
 # Sohbet listeleme, mesaj hidratasyonu ve geçmiş okuma yardımcıları
 # R/helpers_db_chat_readers.R içine taşındı.
 

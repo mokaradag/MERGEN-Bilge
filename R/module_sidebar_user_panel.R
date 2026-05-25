@@ -350,6 +350,12 @@ mb_sidebar_user_panel_server <- function(output,
     mb_sidebar_controls_row(show_logout = isTRUE(sso_logout_available))
   })
 
+  shiny::outputOptions(
+    output,
+    paste0(output_id, "_controls"),
+    suspendWhenHidden = FALSE
+  )
+
   if (is.null(identity) ||
       !is.function(identity$get_display_name %||% NULL)) {
     # Kimlik sözleşmesi yoksa basit yedek render
@@ -394,13 +400,31 @@ mb_sidebar_user_panel_server <- function(output,
       ))
     }
 
+    live_user_cfg <- NULL
+
+    # ÖNEMLİ:
+    # user_config_rv() burada doğrudan çağrılır; böylece SSO tamamlanıp
+    # MB_Users ile zenginleştirilmiş app_user_config yazıldığında sidebar
+    # kesin olarak yeniden render edilir.
+    if (is.function(identity$user_config_rv %||% NULL)) {
+      live_user_cfg <- tryCatch(
+        identity$user_config_rv(),
+        error = function(e) NULL
+      )
+    }
+
     full_name <- tryCatch(get_display_name(default = ""),
                           error = function(e) "")
     first_name <- tryCatch(get_first_name(default = ""),
                            error = function(e) "")
     uid <- tryCatch(resolve_uid(), error = function(e) 0L)
-    user_cfg <- tryCatch(get_user_config(default = NULL),
-                         error = function(e) NULL)
+
+    user_cfg <- if (!is.null(live_user_cfg)) {
+      live_user_cfg
+    } else {
+      tryCatch(get_user_config(default = NULL),
+               error = function(e) NULL)
+    }
 
     department_text <- mb_sidebar_user_department(user_cfg)
 
@@ -418,6 +442,12 @@ mb_sidebar_user_panel_server <- function(output,
       department = department_text
     )
   })
+
+  shiny::outputOptions(
+    output,
+    output_id,
+    suspendWhenHidden = FALSE
+  )
 
   invisible(NULL)
 }

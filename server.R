@@ -54,6 +54,9 @@ server <- function(input, output, session) {
 	  required_functions = c(
 	    "resolve_current_user_id",
 	    "current_user_id_provider",
+	    "is_auth_ready",
+	    "is_sso_active",
+	    "get_user_config",
 	    "get_first_name",
 	    "get_display_name"
 	  ),

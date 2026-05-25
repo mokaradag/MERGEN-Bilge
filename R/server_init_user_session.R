@@ -7,6 +7,7 @@
 local({
   gerekli_kimlik_yardimcilari <- c(
     "build_user_session_config",
+    "merge_user_profile_into_identity",
     "apply_user_session_identity",
     "make_current_user_id_provider",
     "make_user_session_data_accessors"
@@ -39,12 +40,22 @@ serverInitUserSession <- function(session,
                                   sso_enabled = SSO_ENABLED,
                                   resolve_identity_fn = resolveUserIdentity,
                                   get_or_create_user_fn = get_or_create_user,
+                                  get_user_profile_fn = NULL,
                                   touch_session_fn = NULL) {
   user_config_rv <- shiny::reactiveVal(NULL)
   current_user_id <- 0L
   auth_ready <- FALSE
   last_cache_dir <- NULL
   session_data <- make_user_session_data_accessors(session)
+  
+  if (is.null(get_user_profile_fn) &&
+      exists("get_user_profile_from_db", mode = "function", inherits = TRUE)) {
+    get_user_profile_fn <- get("get_user_profile_from_db", mode = "function", inherits = TRUE)
+  }
+
+  if (!is.null(get_user_profile_fn) && !is.function(get_user_profile_fn)) {
+    get_user_profile_fn <- NULL
+  }
 
   set_current_user_id <- function(user_id) {
     current_user_id <<- .normalize_user_session_id(
@@ -62,6 +73,28 @@ serverInitUserSession <- function(session,
 
   setup_user_identity <- function(user_identity, user_id, sso_active, auth_source) {
     uid <- set_current_user_id(user_id)
+
+    user_profile <- NULL
+
+    if (!is.null(get_user_profile_fn) && uid > 0L) {
+      user_profile <- tryCatch(
+        get_user_profile_fn(
+          user_id = uid,
+          username = user_identity$username %||% NULL
+        ),
+        error = function(e) {
+          if (exists("log_warn", mode = "function", inherits = TRUE)) {
+            log_warn("MB_Users kullanıcı profili okunamadı (UserID={uid}): {e$message}")
+          }
+          NULL
+        }
+      )
+    }
+
+    user_identity <- merge_user_profile_into_identity(
+      user_identity = user_identity,
+      user_profile = user_profile
+    )
 
     app_user_config <- build_user_session_config(
       user_identity = user_identity,

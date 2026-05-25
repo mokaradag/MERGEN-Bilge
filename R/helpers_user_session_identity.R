@@ -14,6 +14,88 @@
   uid
 }
 
+merge_user_profile_into_identity <- function(user_identity, user_profile = NULL) {
+  if (is.null(user_identity) || !is.list(user_identity)) {
+    user_identity <- list()
+  }
+
+  if (is.null(user_profile) || !is.list(user_profile)) {
+    return(user_identity)
+  }
+
+  pick_non_empty <- function(keys, fallback = NULL) {
+    for (key in keys) {
+      value <- user_profile[[key]]
+      if (!is.null(value)) {
+        value <- trimws(as.character(value)[1])
+        if (!is.na(value) && nzchar(value)) {
+          return(value)
+        }
+      }
+    }
+
+    fallback <- fallback %||% ""
+    fallback <- trimws(as.character(fallback)[1])
+    if (is.na(fallback)) "" else fallback
+  }
+
+  previous_full_name <- user_identity$full_name %||% ""
+
+  user_identity$username <- pick_non_empty(
+    c("KullaniciAdi", "username"),
+    user_identity$username
+  )
+
+  user_identity$full_name <- pick_non_empty(
+    c("KaynakAdi", "name", "full_name"),
+    user_identity$full_name
+  )
+
+  user_identity$sicil <- pick_non_empty(
+    c("Sicil", "sicil"),
+    user_identity$sicil
+  )
+
+  user_identity$email <- pick_non_empty(
+    c("Email", "email"),
+    user_identity$email
+  )
+
+  user_identity$sektor <- pick_non_empty(
+    c("Sektor", "sektor"),
+    user_identity$sektor
+  )
+
+  user_identity$department <- pick_non_empty(
+    c("Departman", "department", "departman"),
+    user_identity$department
+  )
+
+  user_identity$mudurluk <- pick_non_empty(
+    c("Mudurluk", "mudurluk"),
+    user_identity$mudurluk
+  )
+
+  user_identity$masraf_yeri_kodu <- pick_non_empty(
+    c("MasrafYeriKodu", "masraf_yeri_kodu"),
+    user_identity$masraf_yeri_kodu
+  )
+
+  # DB'deki KaynakAdi geldiyse first_name de ona göre güncellensin.
+  if (
+    nzchar(user_identity$full_name %||% "") &&
+    (
+      !nzchar(user_identity$first_name %||% "") ||
+      !identical(previous_full_name, user_identity$full_name)
+    ) &&
+    exists("extractFirstName", mode = "function", inherits = TRUE)
+  ) {
+    user_identity$first_name <- extractFirstName(user_identity$full_name)
+  }
+
+  user_identity
+}
+
 make_user_session_data_accessors <- function(session) {
   if (is.null(session) || is.null(session$userData)) {
     stop(
@@ -100,27 +182,42 @@ build_user_session_config <- function(user_identity,
   auth_source <- auth_source %||% user_identity$auth_source %||% "local"
   is_sso <- identical(auth_source, "keycloak")
 
+  full_name <- user_identity$full_name %||% ""
+  department <- user_identity$department %||% user_identity$Departman %||% ""
+  sektor <- user_identity$sektor %||% user_identity$Sektor %||% ""
+  mudurluk <- user_identity$mudurluk %||% user_identity$Mudurluk %||% ""
+  masraf_yeri_kodu <- user_identity$masraf_yeri_kodu %||%
+    user_identity$MasrafYeriKodu %||% ""
+
   list(
-    name       = user_identity$full_name,
+    name       = full_name,
+    KaynakAdi  = full_name,
     icon       = base_user_config$icon,
     userId     = if (is_sso) {
       user_identity$sicil %||% as.character(user_id)
     } else {
       as.character(user_id)
     },
+    KullaniciAdi = user_identity$username,
     auth_level = if (is_sso) {
       user_identity$auth_level %||% base_user_config$auth_level
     } else {
       base_user_config$auth_level
     },
     sicil             = user_identity$sicil,
+    Sicil             = user_identity$sicil,
     email             = user_identity$email,
+    Email             = user_identity$email,
     first_name        = user_identity$first_name,
     last_name         = user_identity$last_name,
-    sektor            = user_identity$sektor,
-    department        = user_identity$department,
-    mudurluk          = user_identity$mudurluk,
-    masraf_yeri_kodu  = user_identity$masraf_yeri_kodu
+    sektor            = sektor,
+    Sektor            = sektor,
+    department        = department,
+    Departman         = department,
+    mudurluk          = mudurluk,
+    Mudurluk          = mudurluk,
+    masraf_yeri_kodu  = masraf_yeri_kodu,
+    MasrafYeriKodu    = masraf_yeri_kodu
   )
 }
 
