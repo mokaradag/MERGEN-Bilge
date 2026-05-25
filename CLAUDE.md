@@ -164,6 +164,49 @@ Preferred validation escalation:
 - full profile for code changes or production-sensitive behavior,
 - full profile plus boot smoke for app boot/runtime confidence.
 
+### Theme system and light-theme contract
+
+- Dark theme remains the default.
+- Light theme is applied through `www/css/theme_tokens.css`, `www/css/theme_light.css`, `www/css/theme_light_extras.css`, and `www/js/theme_manager.js`.
+- Theme state is stored in `mergen_settings.theme` / localStorage and applied through `<html data-theme="...">`.
+- `R/module_settings.R` must synchronize `input$mergen_theme_changed` and `input$mergen_theme_initial`; only valid `dark` / `light` values may be persisted.
+- `theme_manager.js` must keep delegated click/touch/keyboard handling so the sidebar theme button still works after sidebar re-render.
+- Asset ordering in `R/config_ui_assets.R` must keep theme tokens before light theme CSS, light extras after `theme_light.css`, and `brand_title.css`, `sidebar_user_panel.css`, and `tool_backgrounds.css` after the theme layers.
+- Do not add CDN or external font dependencies.
+- Do not force deep-space / cinematic / Explore modal areas into white light surfaces; they intentionally preserve the dark space experience.
+
+### Sidebar user panel, Department, and version source contract
+
+- Sidebar user panel ownership: `R/module_sidebar_user_panel.R` and `www/css/sidebar_user_panel.css`.
+- It displays live identity-derived name/avatar, Department, theme button, version, and optional SSO logout.
+- Initial render must keep the static skeleton/slot-output behavior so theme/user/logout controls do not appear late or disappear.
+- Department selection order is `Departman`, `departman`, then `department`; do not fall back to `Mudurluk`.
+- Long Department text must remain safely truncated/wrapped with title tooltip behavior.
+- Visible version must use `get_app_version_label()` from `R/config_version_history.R`; do not reintroduce `getOption("mergen.version", ...)` as the primary source for visible UI version.
+- Protected tests: `test-sidebar-theme-sync-contract.R`, `test-sidebar-departman-contract.R`, `test-sidebar-instant-render-contract.R`, and `test-version-single-source-contract.R`.
+
+### Brand title single-source contract
+
+- Brand typography belongs in `www/css/brand_title.css`.
+- Navbar `.brand-text`, loading `.alo-wordmark`, modern welcome title, and deep-space title/subtitle must stay aligned through this single CSS source.
+- Keep the mixed-case product spelling `MERGEN Bilge`; do not force `BİLGE` through uppercase transforms.
+- Keep local/system font stacks only; no external fonts or CDN.
+- The `Bilge` emphasis uses the blue gradient direction established in the current implementation.
+- Protected test: `test-brand-title-single-source-contract.R`.
+
+### Tool contextual background animation contract
+
+- Runtime/settings ownership: `R/module_tool_background_settings.R`, `www/js/tool_backgrounds.js`, and `www/css/tool_backgrounds.css`.
+- Quick action handlers are server-authoritative for `setToolBackgroundFamily`; client click handling may only be an early visual hint.
+- New Chat must send clear/reset behavior so stale tool background families do not leak into new conversations.
+- The lower-left heptagon cluster must stay decorative and non-blocking; no centered heptagon overlay.
+- Snippets must use lane/busy-state logic to avoid overlap.
+- Tool background snippets should share the welcome loading codestream renderer exposed from `www/js/app_loading_codestream.js`, including `window.MergenLoadingCodestream.buildItem`, tokenizers, and comment marks.
+- Preserve backward-compatible helper/class names such as `ensureLayer`, `ensureHeptagonLayer`, `ensureSnippetsHolder`, `buildHeptagonSvg`, `.tool-bg-heptagon`, and `.tool-bg-snippets` unless the tests are intentionally updated.
+- Respect `prefers-reduced-motion`; decorative layers must not capture pointer events.
+- Keep `www/js/tool_backgrounds.js` under the current app-owned JS budget noted by the tests.
+- Protected test: `test-tool-backgrounds-contract.R`.
+
 ### Bilge Yolaç game behavior contract
 
 The Bilge Yolaç mini-game should preserve the recent control and level-flow fixes:

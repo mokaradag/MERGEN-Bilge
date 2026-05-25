@@ -66,6 +66,13 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 - AI Uzman konuşması, `settings_kisisel`, `admin_analytics` ve `health` sayfalarına geçişte etkinse nazikçe durdurulur; altyazı gizlenir ve müzik ducking durumu serbest bırakılır.
 - AI Uzman metinlerinde `Bilge Yolaç` adının `Bilge Yola` olarak üretilmesi altyazı ve TTS öncesinde merkezi olarak düzeltilir.
 ### Gelişmiş deneyim katmanları
+- Koyu tema varsayılan deneyim olarak korunur; açık tema ise `theme_tokens.css`, `theme_light.css`, `theme_light_extras.css` ve `theme_manager.js` üzerinden kurumsal renk paletiyle desteklenir. Tema seçimi `mergen_settings.theme` / localStorage ve `<html data-theme="...">` sözleşmesiyle kalıcı uygulanır.
+- Açık temada karşılama ekranı, Ana Söyleşi, Bilge Yolaç, STT, Dosya Yönetimi, Kişiselleştirme, Yenilikler, Yönetici Paneli, Kayıtlı Söyleşiler ve Görsel Galerisi için okunabilirlik, kontrast ve cam yüzey uyarlamaları güçlendirilmiştir.
+- Deep-space başlangıç/sürüm modalları ve Keşfet/cinematic akışları, açık temada da bilinçli olarak koyu uzay atmosferini korur.
+- Karşılama ekranındaki hızlı işlem seçimleri, ilgili araç ailesine göre bağlamsal arka plan animasyonları gösterebilir; bu davranış Yapılandırma altındaki “Araç Arka Plan Animasyonları” anahtarıyla yönetilir.
+- Araç arka planlarında alt-sol köşe yedigen kümesi ve çakışmayı önleyen sabit snippet lane düzeni kullanılır; snippet üretimi karşılama yükleme ekranındaki ortak codestream rendering mantığıyla hizalıdır.
+- “Yeni Söyleşi” akışı, önceki araç ailesinden kalan arka plan durumunu temizleyerek eski görsel bağlamın yeni sohbete sızmasını engeller.
+- “MERGEN Bilge” marka yazımı navbar, açılış yükleme ekranı, modern welcome başlığı ve deep-space başlığında `www/css/brand_title.css` üzerinden tek kaynaktan yönetilir; dış font/CDN kullanılmaz ve karışık küçük/büyük harf yazımı korunur.
 - Sinematik başlangıç ekranı
 - Uygulama açılışında SSO kimlik doğrulaması, Shiny bağlantısı, oturum kurulumu ve çalışma alanı hazırlığı boyunca tüm ekranı kaplayan modern, çok aşamalı yükleme katmanı gösterilir.
 - Açılış yükleme katmanı satır içi CSS/JS ile erken görünür hâle gelir; `skip_intro` ayarını, azaltılmış hareket tercihini ve olağan dışı durumlar için güvenlik zaman aşımını dikkate alır.
@@ -98,6 +105,10 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - Bilge Yolaç mini oyununda ekip kayması, otomatik ateş, fare hedefli ateş, `Çıktıyı Temizle` sonrası görünmeme ve seviye geçiş kilitlenmesi gibi akışlar düzeltilmiştir; BOŞLUK artık cooldown'lu manuel ateş tuşudur.
 - Bilge Yolaç oyun HUD, başlık, seviye ve galibiyet ekranı yazıları daha okunabilir boyutlara çıkarılmıştır.
 ### Kurumsal ve yönetimsel bileşenler
+- Sidebar alt kullanıcı paneli; canlı kimlikten gelen ad/avatar, Departman bilgisi, tema düğmesi, sürüm bilgisi ve SSO çıkış kısayolunu tek satırda görünür tutar; ilk render gecikmeleri statik iskelet görünümüyle karşılanır.
+- Departman gösterimi `Departman`, `departman`, `department` sırasını izler; `Mudurluk` alanı kullanıcı panelinde kaynak olarak kullanılmaz.
+- Sidebar tema düğmesi delegated click/touch/klavye işleyicisiyle sidebar yeniden render edilse bile çalışır; tema durumu yalnızca onaylı `dark` / `light` değerleriyle ayarlara yazılır.
+- Görünür sürüm bilgisi sidebar, Hakkında, welcome ve Sistem Durumu alanlarında `R/config_version_history.R` içindeki `get_app_version_label()` tek doğru kaynağından okunur.
 - SSO / Keycloak desteği
 - Kullanıcı bazlı sohbet ve dosya ayrımı
 - SSO oturum kimliği için odak smoke testi bulunur: `tests/testthat/test-sso-session-identity-smoke.R`, SSO başlangıcındaki `user_id = 0` placeholder değerinin kimlik doğrulama tamamlandıktan sonra canlı `current_user_id` sağlayıcısı üzerinden gerçek kullanıcı kimliğine geçtiğini doğrular.
