@@ -180,6 +180,10 @@ Preferred validation escalation:
 - Sidebar user panel ownership: `R/module_sidebar_user_panel.R` and `www/css/sidebar_user_panel.css`.
 - It displays live identity-derived name/avatar, Department, theme button, version, and optional SSO logout.
 - Initial render must keep the static skeleton/slot-output behavior so theme/user/logout controls do not appear late or disappear.
+- After SSO completes, the sidebar user panel must bind to the live `user_config_rv()` value, not only to isolated session/userData fallbacks, so the user badge re-renders when the authenticated profile is ready.
+- `MB_Users` is the authoritative fallback for sidebar-visible identity fields. Hydrate the runtime user identity from the `MB_Users` profile row before building `app_user_config`; this protects `KaynakAdi`, `Departman`, `Sicil`, `Email`, `Sektor`, `Mudurluk`, and `MasrafYeriKodu` display when Keycloak claims are incomplete or delayed.
+- The sidebar user output and sidebar controls output must use `shiny::outputOptions(..., suspendWhenHidden = FALSE)` so hidden/sidebar render timing cannot leave the UI stuck on the initial “Yerel Kullanıcı” / “Departman bilgisi yok” skeleton.
+- Do not query `Mudurluk` as a replacement for Department in the user panel. `Mudurluk` may be carried in config/profile data, but the visible Department line must continue to use the documented Department selection order.
 - Department selection order is `Departman`, `departman`, then `department`; do not fall back to `Mudurluk`.
 - Long Department text must remain safely truncated/wrapped with title tooltip behavior.
 - Visible version must use `get_app_version_label()` from `R/config_version_history.R`; do not reintroduce `getOption("mergen.version", ...)` as the primary source for visible UI version.

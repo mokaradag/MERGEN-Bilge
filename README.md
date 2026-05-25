@@ -106,6 +106,8 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - Bilge Yolaç oyun HUD, başlık, seviye ve galibiyet ekranı yazıları daha okunabilir boyutlara çıkarılmıştır.
 ### Kurumsal ve yönetimsel bileşenler
 - Sidebar alt kullanıcı paneli; canlı kimlikten gelen ad/avatar, Departman bilgisi, tema düğmesi, sürüm bilgisi ve SSO çıkış kısayolunu tek satırda görünür tutar; ilk render gecikmeleri statik iskelet görünümüyle karşılanır.
+- SSO sonrası sidebar kimliği, `user_config_rv()` üzerinden canlı biçimde yeniden render edilir ve `MB_Users` profil satırıyla zenginleştirilir; böylece Keycloak claim'leri eksik veya geç gelse bile `KaynakAdi` ve `Departman` bilgileri veritabanındaki doğru değerlerden gösterilir.
+- Sidebar kullanıcı ve kontrol çıktıları `suspendWhenHidden = FALSE` sözleşmesiyle korunur; gizli/yeniden render durumlarında panelin kalıcı olarak “Yerel Kullanıcı” / “Departman bilgisi yok” iskeletinde takılı kalması engellenir.
 - Departman gösterimi `Departman`, `departman`, `department` sırasını izler; `Mudurluk` alanı kullanıcı panelinde kaynak olarak kullanılmaz.
 - Sidebar tema düğmesi delegated click/touch/klavye işleyicisiyle sidebar yeniden render edilse bile çalışır; tema durumu yalnızca onaylı `dark` / `light` değerleriyle ayarlara yazılır.
 - Görünür sürüm bilgisi sidebar, Hakkında, welcome ve Sistem Durumu alanlarında `R/config_version_history.R` içindeki `get_app_version_label()` tek doğru kaynağından okunur.
