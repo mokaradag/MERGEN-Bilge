@@ -146,15 +146,17 @@ VM-only manual validation after any DB encoding change:
 
 
 ### AI agent validation rule
-Before giving a final technical answer about this repository, an AI agent must run `Rscript tests/scripts/ai_repo_check.R --profile quick`.
+Before giving a final technical answer about this repository, an AI agent must run `bash tools/ai_validate.sh quick`.
 
-For risky changes, runtime changes, source-order changes, SSO changes, DB encoding changes, file lifecycle changes, streaming changes, frontend asset order changes, Bilge Yolaç / Claude Code changes, security/path/download changes, or production/VM-sensitive changes, the AI agent must run `Rscript tests/scripts/ai_repo_check.R --profile full --boot-smoke`.
+For risky changes, runtime changes, source-order changes, SSO changes, DB encoding changes, file lifecycle changes, streaming changes, frontend asset order changes, Bilge Yolaç / Claude Code changes, security/path/download changes, or production/VM-sensitive changes, the AI agent must run `bash tools/ai_validate.sh full --boot-smoke`.
 
-If an AI agent drafts a long technical answer, it should first save the draft to `.ai/proposed_answer.md`, then validate it with `Rscript tests/scripts/ai_repo_check.R --profile quick --answer .ai/proposed_answer.md`.
+If an AI agent drafts a long technical answer, it should first save the draft to `.ai/proposed_answer.md`, then validate it with `bash tools/ai_validate.sh quick --answer .ai/proposed_answer.md`.
+
+The agent must not stop at `/bin/bash: Rscript: command not found`. If `Rscript` is missing, it must first run `bash tools/setup_ai_r_environment.sh` or use `bash tools/ai_validate.sh quick`, which performs bootstrap automatically.
 
 An AI agent must not say “tests passed”, “I verified”, “I ran the app”, “the check is green”, or similar unless the relevant command really completed successfully and the validation summary reports zero failed steps.
 
-If `Rscript` is unavailable, the AI agent must explicitly state that validation could not run because `Rscript` is unavailable, and must not imply the repository was validated.
+If `Rscript` is still unavailable after bootstrap, the AI agent must explicitly state that bootstrap failed, include the failing command, and must not imply the repository was validated.
 
 If a required validation script is missing, the AI agent must state exactly which script is missing and must not invent successful results.
 

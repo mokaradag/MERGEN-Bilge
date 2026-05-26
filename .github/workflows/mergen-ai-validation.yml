@@ -128,13 +128,13 @@ jobs:
       - name: Run AI repository validation
         shell: bash
         run: |
-          ARGS=(--profile "${{ steps.mode.outputs.profile }}")
+          ARGS=()
 
           if [[ "${{ steps.mode.outputs.boot_smoke }}" == "true" ]]; then
             ARGS+=(--boot-smoke)
           fi
 
-          Rscript tests/scripts/ai_repo_check.R "${ARGS[@]}"
+          bash tools/ai_validate.sh "${{ steps.mode.outputs.profile }}" "${ARGS[@]}"
 
       - name: Upload validation artifacts
         if: always()
