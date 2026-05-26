@@ -456,28 +456,12 @@ if (window.Shiny) {
     }
   });
   
+  // Model seçim kilidi merkezi MergenToolModelLock yöneticisine bırakılır.
   Shiny.addCustomMessageHandler('toggleImageMode', function(data) {
-    window.toggleImageControls(data.active);
+    window.toggleImageControls(data && data.active);
 
-    var modelWrapper = document.querySelector('.model-selector-wrapper');
-    if (modelWrapper) {
-      if (data.active) {
-        modelWrapper.classList.add('model-selector-locked');
-        modelWrapper.style.opacity = '0.5';
-        modelWrapper.style.pointerEvents = 'none';
-        modelWrapper.title = 'Görsel modunda model seçimi devre dışı';
-      } else {
-        modelWrapper.classList.remove('model-selector-locked');
-        var summaryControls = document.getElementById('summary_chat_controls');
-        var summaryActive = summaryControls && !summaryControls.classList.contains('hidden');
-        var analysisControls = document.getElementById('analysis_chat_controls');
-        var analysisActive = analysisControls && !analysisControls.classList.contains('hidden');
-        if (!summaryActive && !analysisActive) {
-          modelWrapper.style.opacity = '1';
-          modelWrapper.style.pointerEvents = 'auto';
-          modelWrapper.title = 'Model Değiştir';
-        }
-      }
+    if (window.MergenToolModelLock && typeof window.MergenToolModelLock.refresh === 'function') {
+      window.MergenToolModelLock.refresh();
     }
   });
   

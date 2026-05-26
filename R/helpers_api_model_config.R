@@ -294,6 +294,26 @@ resolve_tool_model_for_family <- function(tool_family, fallback_model = NULL, co
   as.character(model_id)[1]
 }
 
+#' Derin Düşünme aktifken araç ailesi + seviye için model çözümle
+#'
+#' Excel Analizi ve Kod Uzmanı araçlarında "Derin Düşünme" düğmesi aktifken
+#' kullanılacak modeli döndürür. Eşleşme yoksa veya tanımlı değilse NULL.
+#'
+#' @param tool_family Araç ailesi ("mcp_excel" veya "coding")
+#' @param deep_level "low" veya "high" (varsayılan dropdown seçimi)
+#' @param config api_config nesnesi
+#' @return Çözümlenmiş model kimliği (string) veya NULL
+resolve_deep_thinking_model <- function(tool_family, deep_level = "low", config = api_config) {
+  if (is.null(tool_family) || !nzchar(as.character(tool_family))) return(NULL)
+  dt_cfg <- config$deep_thinking_models %||% list()
+  family_cfg <- dt_cfg[[as.character(tool_family)]]
+  if (is.null(family_cfg)) return(NULL)
+  level_key <- if (identical(tolower(as.character(deep_level)), "high")) "high" else "low"
+  model_id <- family_cfg[[level_key]]
+  if (is.null(model_id) || !nzchar(as.character(model_id))) return(NULL)
+  as.character(model_id)[1]
+}
+
 resolve_tool_model_for_flag <- function(setting_flag, fallback_model = NULL, config = api_config) {
   cfg <- get_tool_mode_config(setting_flag, by = "setting_flag", config = config)
   model_id <- cfg$model_id %||% fallback_model %||% as.character(config$local_models[1]) %||% ""

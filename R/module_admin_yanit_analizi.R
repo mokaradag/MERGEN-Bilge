@@ -547,11 +547,10 @@ adminYanitAnaliziServer <- function(id) {
         '<span style="color:#ef4444;"><i class="fas fa-thumbs-down"></i> Beğenmeme</span>'
       )
 
-      data$tarih <- ifelse(
-        !is.na(data$FeedbackTimestamp),
-        format(as.POSIXct(data$FeedbackTimestamp), "%d.%m.%Y %H:%M"),
-        "-"
-      )
+      # Tarih sütununu görünür Türkçe biçim + DT için sıralanabilir ISO data-order ile sar
+      data$tarih <- ifelse(!is.na(data$FeedbackTimestamp),
+        paste0("<span data-order='", format(as.POSIXct(data$FeedbackTimestamp), "%Y-%m-%d %H:%M:%S"), "'>", format(as.POSIXct(data$FeedbackTimestamp), "%d.%m.%Y %H:%M"), "</span>"),
+        "-")
       data$kullanici <- ifelse(!is.na(data$KullaniciAdi) & nzchar(data$KullaniciAdi), data$KullaniciAdi, "-")
       data$etiketler <- ifelse(!is.na(data$FeedbackTags) & nzchar(data$FeedbackTags), data$FeedbackTags, "-")
       data$yorum <- ifelse(!is.na(data$FeedbackComment) & nzchar(data$FeedbackComment), data$FeedbackComment, "-")
@@ -573,7 +572,8 @@ adminYanitAnaliziServer <- function(id) {
             list(className = 'row-number-col', targets = 0),
             list(width = '40px', targets = 0),
             list(width = '200px', targets = c(4, 5)),
-            list(orderable = FALSE, targets = 0)
+            list(orderable = FALSE, targets = 0),
+            list(targets = 6, render = DT::JS("function(d,t){if(t==='sort'||t==='type'){var m=d&&d.match?d.match(/data-order='([^']+)'/):null;return m?m[1]:d;}return d;}"))
           ),
           headerCallback = admin_dt_header_callback
         ),

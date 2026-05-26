@@ -34,7 +34,9 @@ const AIExpertManager = {
     typeSpeed: 35,            // Karakter başına yazma hızı (ms)
     sentencePause: 250,       // Cümle sonu duraklaması (ms)
     fadeOutDelay: 2000,       // Ses bittikten sonra bekleme (ms)
-    maxVisibleChars: 300,     // Ekranda görünen maksimum karakter
+    // Ekranda görünen maksimum karakter sayısı. Uzun parçalarda (3. parça ve
+    // sonrası) altyazının ortadan kesilmemesi için yüksek tutulur.
+    maxVisibleChars: 2000,
     wordFadeThreshold: 250,   // Eski kelimelerin solmaya başladığı eşik
     chunkPollInterval: 150,   // Sonraki ses parçasını kontrol aralığı (ms)
     chunkWaitMaxMs: 90000     // Sonraki ses parçası için azami bekleme süresi (ms)

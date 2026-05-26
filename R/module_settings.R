@@ -44,6 +44,11 @@ settingsInit <- function(session, parent_session = NULL) {
     summary_focus_mode      = "general",
     analysis_deep_thinking  = FALSE,
     analysis_detail_level   = "standart",
+    # Excel Analizi / Kod Uzmanı için Derin Düşünme durumu ve seviyesi
+    excel_deep_thinking     = FALSE,
+    excel_deep_level        = "low",
+    coding_deep_thinking    = FALSE,
+    coding_deep_level       = "low",
     enable_followups        = FALSE,
     font_size               = "medium",
     enable_background_music = FALSE,
@@ -222,6 +227,20 @@ settingsInit <- function(session, parent_session = NULL) {
     if (!is.null(loaded$analysis_detail_level) && loaded$analysis_detail_level %in% c("ozet", "standart", "detayli")) {
       settings$analysis_detail_level <- loaded$analysis_detail_level
       yapilandirma$temp_analysis_detail_level(loaded$analysis_detail_level)
+    }
+
+    # Excel/Kod Derin Düşünme ayarları
+    if (!is.null(loaded$excel_deep_thinking)) {
+      settings$excel_deep_thinking <- isTRUE(loaded$excel_deep_thinking)
+    }
+    if (!is.null(loaded$excel_deep_level) && loaded$excel_deep_level %in% c("low", "high")) {
+      settings$excel_deep_level <- loaded$excel_deep_level
+    }
+    if (!is.null(loaded$coding_deep_thinking)) {
+      settings$coding_deep_thinking <- isTRUE(loaded$coding_deep_thinking)
+    }
+    if (!is.null(loaded$coding_deep_level) && loaded$coding_deep_level %in% c("low", "high")) {
+      settings$coding_deep_level <- loaded$coding_deep_level
     }
 
     # Giriş animasyonu ayarı

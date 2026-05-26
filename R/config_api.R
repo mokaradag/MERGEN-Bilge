@@ -23,6 +23,16 @@ secondary_llm_api_key  <- Sys.getenv("LOCAL_LLM_ENDPOINT_ALT_API_KEY", "")
 
 options(mergen.filter_model = Sys.getenv("FILTER_MODEL", "mergen-local-model"))
 
+# --- DERİN DÜŞÜNME MODELLERİ ---
+# Excel Analizi ve Kod Uzmanı araçlarında "Derin Düşünme" düğmesi etkinleştirildiğinde
+# kullanılacak ek modeller. Bu modeller normal "Model Değiştir" / Yapılandırma model
+# dropdown'larında listelenmez; yalnızca ilgili aracın derin düşünme modunda otomatik
+# olarak seçilir. Çevre değişkenleri tanımsızsa varsayılan teknik modele düşülür.
+excel_deep_low_model   <- Sys.getenv("EXCEL_DEEP_LOW_MODEL",   "technical name 3")
+excel_deep_high_model  <- Sys.getenv("EXCEL_DEEP_HIGH_MODEL",  "technical name 4")
+coding_deep_low_model  <- Sys.getenv("CODING_DEEP_LOW_MODEL",  "technical name 3")
+coding_deep_high_model <- Sys.getenv("CODING_DEEP_HIGH_MODEL", "technical name 4")
+
 # --- ANA API YAPILANDIRMASI ---
 api_config <- list(
   # Geriye dönük uyumluluk: eski tek-endpoint alanını koru
@@ -77,14 +87,28 @@ api_config <- list(
     "technical name 5" = "\U0001F310",
     "technical name 6" = "\U00002699"
   ),
-  # Her teknik model kimliğini bir uç nokta anahtarına eşle
-  local_model_endpoint_map = c(
-    "technical name 1" = "primary",
-    "technical name 2" = "primary",
-    "technical name 3" = "primary",
-    "technical name 4" = "primary",
-    "technical name 5" = "secondary",
-    "technical name 6" = "secondary"
+  # Her teknik model kimliğini bir uç nokta anahtarına eşle.
+  # Derin Düşünme modelleri eklenirken otomatik genişletilir (aşağıdaki
+  # birleştirme kuralı). Varsayılan uç nokta = "primary".
+  local_model_endpoint_map = unique(c(
+    c(
+      "technical name 1" = "primary",
+      "technical name 2" = "primary",
+      "technical name 3" = "primary",
+      "technical name 4" = "primary",
+      "technical name 5" = "secondary",
+      "technical name 6" = "secondary"
+    ),
+    stats::setNames(
+      rep("primary", 4),
+      c(excel_deep_low_model, excel_deep_high_model, coding_deep_low_model, coding_deep_high_model)
+    )
+  )),
+  # Excel/Kod araçlarındaki Derin Düşünme düğmesi için (family, level) -> model_id eşlemesi.
+  # Bu modeller dropdown'larda görünmez; sadece runtime'da seçilir.
+  deep_thinking_models = list(
+    mcp_excel = list(low = excel_deep_low_model,  high = excel_deep_high_model),
+    coding    = list(low = coding_deep_low_model, high = coding_deep_high_model)
   ),
   # Teknik kimlikler -> temel klasörler (sadece teknik kimlikleri kullan)
   local_model_paths = list(
@@ -226,6 +250,32 @@ api_config <- list(
     )
   )
 )
+
+# --- DERİN DÜŞÜNME MODEL YETENEKLERİ ---
+# Derin Düşünme modelleri (Excel ve Kod araçları için) thinking-capable kabul edilir.
+# Eğer model kimliği halihazırda local_model_capabilities içinde tanımlı değilse
+# güvenli varsayılanlarla eklenir. Var olan tanımlar dokunulmaz; üretim için
+# zaten tanımlı thinking modellerinin (örn. "technical name 3"/"technical name 4")
+# kapasiteleri korunur.
+.mb_deep_thinking_capability_template <- list(
+  thinking = TRUE,
+  omit_temperature = TRUE,
+  stream_reasoning = TRUE,
+  allow_reasoning_fallback = TRUE,
+  request_overrides = list(
+    chat_template_kwargs = list(
+      enable_thinking = TRUE
+    )
+  )
+)
+
+for (.mb_dt_model in unique(c(excel_deep_low_model, excel_deep_high_model,
+                              coding_deep_low_model, coding_deep_high_model))) {
+  if (!nzchar(.mb_dt_model)) next
+  if (!is.null(api_config$local_model_capabilities[[.mb_dt_model]])) next
+  api_config$local_model_capabilities[[.mb_dt_model]] <- .mb_deep_thinking_capability_template
+}
+rm(.mb_dt_model, .mb_deep_thinking_capability_template)
 
 # --- SES SENTEZİ (TTS) YAPILANDIRMASI ---
 # OpenAI uyumlu ses uç noktası

@@ -81,5 +81,25 @@ visualSettingsSyncInit <- function(input, settings_data) {
     }
   }, ignoreInit = TRUE)
 
+  # Excel Analizi Derin Düşünme (Sohbet -> Ayarlar)
+  observeEvent(input$chat_excel_deep_thinking, {
+    settings_data$excel_deep_thinking <- isTRUE(input$chat_excel_deep_thinking)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$chat_excel_deep_level, {
+    v <- input$chat_excel_deep_level
+    if (!is.null(v) && v %in% c("low", "high")) settings_data$excel_deep_level <- v
+  }, ignoreInit = TRUE)
+
+  # Kod Uzmanı Derin Düşünme (Sohbet -> Ayarlar)
+  observeEvent(input$chat_coding_deep_thinking, {
+    settings_data$coding_deep_thinking <- isTRUE(input$chat_coding_deep_thinking)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$chat_coding_deep_level, {
+    v <- input$chat_coding_deep_level
+    if (!is.null(v) && v %in% c("low", "high")) settings_data$coding_deep_level <- v
+  }, ignoreInit = TRUE)
+
   invisible(NULL)
 }
