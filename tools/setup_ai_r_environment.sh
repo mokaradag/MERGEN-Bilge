@@ -119,6 +119,107 @@ else
   fi
 fi
 
+# MERGEN_AI_SETUP_INSTALL_APT_R_PACKAGES=true olduğunda, CRAN'dan kaynak kod
+# derlemek yerine mevcut Ubuntu binary R paketlerini apt üzerinden kurmaya çalış.
+# Özellikle duckdb gibi uzun süren native derlemeleri Codex doğrulamasından önce
+# çözmek için best-effort çalışır.
+install_available_apt_r_packages() {
+  local requested_packages=(
+    r-cran-testthat
+    r-cran-withr
+    r-cran-processx
+    r-cran-callr
+    r-cran-jsonlite
+    r-cran-bit
+    r-cran-bit64
+    r-cran-duckdb
+    r-cran-dbi
+    r-cran-dplyr
+    r-cran-data.table
+    r-cran-dt
+    r-cran-shiny
+    r-cran-htmltools
+    r-cran-httr
+    r-cran-curl
+    r-cran-openssl
+    r-cran-pdftools
+    r-cran-readr
+    r-cran-readxl
+    r-cran-stringi
+    r-cran-stringr
+    r-cran-tibble
+    r-cran-tidyr
+    r-cran-xml2
+    r-cran-av
+    r-cran-arrow
+    r-cran-base64enc
+    r-cran-cellranger
+    r-cran-cli
+    r-cran-commonmark
+    r-cran-fastmatch
+    r-cran-future
+    r-cran-glue
+    r-cran-later
+    r-cran-lubridate
+    r-cran-markdown
+    r-cran-odbc
+    r-cran-pool
+    r-cran-promises
+    r-cran-purrr
+    r-cran-shinybs
+    r-cran-shinycssloaders
+    r-cran-shinydashboard
+    r-cran-shinyjs
+    r-cran-shinywidgets
+    r-cran-stringdist
+    r-cran-urltools
+    r-cran-writexl
+  )
+
+  local available_packages=()
+  local missing_packages=()
+
+  echo "Checking available Ubuntu binary R packages..."
+
+  for pkg in "${requested_packages[@]}"; do
+    if apt-cache show "${pkg}" >/dev/null 2>&1; then
+      available_packages+=("${pkg}")
+    else
+      missing_packages+=("${pkg}")
+    fi
+  done
+
+  if [[ "${#missing_packages[@]}" -gt 0 ]]; then
+    echo "WARNING: These apt R packages are not available in this image:"
+    printf '  %s\n' "${missing_packages[@]}"
+  fi
+
+  if [[ "${#available_packages[@]}" -eq 0 ]]; then
+    echo "No apt R packages are available to install."
+    return 0
+  fi
+
+  echo "Installing available Ubuntu binary R packages:"
+  printf '  %s\n' "${available_packages[@]}"
+
+  ${SUDO} apt-get install -y --no-install-recommends "${available_packages[@]}"
+}
+
+if [[ "${MERGEN_AI_SETUP_INSTALL_APT_R_PACKAGES:-false}" == "true" ]]; then
+  if ! command -v apt-get >/dev/null 2>&1; then
+    echo "WARNING: apt-get unavailable; skipping apt R package install."
+  else
+    if command -v sudo >/dev/null 2>&1; then
+      SUDO="sudo"
+    else
+      SUDO=""
+    fi
+
+    export DEBIAN_FRONTEND=noninteractive
+    install_available_apt_r_packages
+  fi
+fi
+
 if ! command -v Rscript >/dev/null 2>&1; then
   echo "ERROR: Rscript is still unavailable after setup." >&2
   exit 127
