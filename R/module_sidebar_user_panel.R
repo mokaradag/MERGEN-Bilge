@@ -180,8 +180,18 @@ mb_sidebar_controls_row <- function(show_logout = FALSE, logout_url = "") {
                        fixed = FALSE)
     }
     onclick_js <- if (nzchar(safe_url)) {
-      # Doğrudan ve tek adımlı yönlendirme; window.ssoLogout çağrılmaz.
-      paste0("window.location.href='", safe_url, "';")
+      # Tarayıcı yönlendirmeden ÖNCE Shiny tarafına bir oturum-kapatma
+      # olayı gönderilir. Sunucu tarafındaki observeEvent bu olayı görür,
+      # konsola logout işlemini yazar ve mevcut Shiny oturumunu kapatır.
+      # Bu sayede kullanıcı redirect olduktan sonra Shiny oturumu da
+      # gerçekten sonlandırılır (sızıntı önlenir, doğrulama mümkün olur).
+      paste0(
+        "try{if(window.Shiny&&window.Shiny.setInputValue){",
+        "Shiny.setInputValue('mergen_sidebar_logout',new Date().getTime(),{priority:'event'});",
+        "console.log('[MERGEN] Logout button clicked, redirecting to logout URL.');",
+        "}}catch(e){console.warn('[MERGEN] Logout signal failed:',e);}",
+        "setTimeout(function(){window.location.href='", safe_url, "';},150);"
+      )
     } else {
       # URL yoksa buton hiç render edilmemeli; emniyet için boş işlem.
       "void(0);"
@@ -340,6 +350,59 @@ mb_sidebar_user_badge_ui <- function(full_name = NULL,
   )
 }
 
+#' Sidebar çıkış (logout) olayı için sunucu tarafı işleyici
+#'
+#' @description Kullanıcı sidebar çıkış butonuna bastığında tarayıcı tarafı
+#'   Shiny.setInputValue('mergen_sidebar_logout', ...) tetikler.
+#'   `mb_sidebar_user_panel_server()` içindeki observer bu işleyiciyi çağırır;
+#'   böylece:
+#'     - sunucu konsolunda logout olayı doğrulanır (kullanıcı talebi),
+#'     - mevcut Shiny oturumu kapatılır (tarayıcı redirect olduktan sonra
+#'       sunucu tarafında oturum kalıntısı kalmaz),
+#'     - log dosyasına da logout olayı yazılır (varsa).
+#'
+#'   Hata güvenliği için try(..., silent = TRUE) kullanılır; tryCatch ile
+#'   ek anonymous handler tanımlamak dosya bakım fonksiyon sayısını
+#'   gereksiz şişirirdi.
+#'
+#' @param identity runtime_ctx$identity benzeri kimlik sözleşmesi (uid + ad)
+#' @param session Shiny session nesnesi (close() çağrısı için gerekli)
+#' @return Görünmez NULL
+mb_sidebar_handle_logout_event <- function(identity, session) {
+  uid <- NA
+  full_name <- ""
+
+  if (!is.null(identity) &&
+      is.function(identity$resolve_current_user_id %||% NULL)) {
+    uid_try <- try(identity$resolve_current_user_id(), silent = TRUE)
+    if (!inherits(uid_try, "try-error")) uid <- uid_try
+  }
+
+  if (!is.null(identity) &&
+      is.function(identity$get_display_name %||% NULL)) {
+    name_try <- try(identity$get_display_name(default = ""), silent = TRUE)
+    if (!inherits(name_try, "try-error")) full_name <- name_try
+  }
+
+  msg <- sprintf(
+    "[LOGOUT] Sidebar logout tetiklendi - kullanici_id=%s ad=%s zaman=%s",
+    as.character(uid),
+    full_name,
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  )
+  message(msg)
+
+  if (exists("log_info", mode = "function", inherits = TRUE)) {
+    try(log_info(msg), silent = TRUE)
+  }
+
+  if (!is.null(session)) {
+    try(session$close(), silent = TRUE)
+  }
+
+  invisible(NULL)
+}
+
 #' Sidebar kullanıcı paneli server tarafı
 #'
 #' @description Kimlik bilgilerini reaktif olarak render eder. user_session
@@ -354,12 +417,41 @@ mb_sidebar_user_badge_ui <- function(full_name = NULL,
 #' @param identity runtime_ctx$identity benzeri kimlik sözleşmesi
 #' @param sso_state SSO durum reaktifi (opsiyonel)
 #' @param output_id Sunucu çıktısı ID (varsayılan: "sidebar_user_panel")
+#' @param session Shiny session (logout observer için gerekli, opsiyonel)
+#' @param input Shiny input (logout observer için gerekli, opsiyonel)
 mb_sidebar_user_panel_server <- function(output,
                                          identity,
                                          sso_state = NULL,
-                                         output_id = "sidebar_user_panel") {
+                                         output_id = "sidebar_user_panel",
+                                         session = NULL,
+                                         input = NULL) {
   if (is.null(output)) {
     return(invisible(NULL))
+  }
+
+  # Çıkış (logout) olayı dinleyicisi - kullanıcı sidebar çıkış butonuna
+  # bastığında tarayıcı tarafı Shiny.setInputValue('mergen_sidebar_logout', ...)
+  # tetikler. Burada bu olayı yakalayıp sunucu konsoluna logout olayını
+  # yazıyoruz ve mevcut Shiny oturumunu kapatıyoruz. Bu, kullanıcı
+  # tarayıcısı logout URL'sine yönlendirilmeden hemen önce çalışır;
+  # 150ms'lik tarayıcı tarafı setTimeout bu observer'a yeterli süreyi
+  # tanır.
+  # Not: try(..., silent = TRUE) kullanılır; tryCatch(error = function(...))
+  # yapısı dosya bakım fonksiyon sayısını gereksiz şişirirdi.
+  if (!is.null(input) && !is.null(session)) {
+    observer_try <- try(
+      shiny::observeEvent(input$mergen_sidebar_logout, {
+        mb_sidebar_handle_logout_event(identity, session)
+      }, ignoreInit = TRUE),
+      silent = TRUE
+    )
+    if (inherits(observer_try, "try-error")) {
+      err_cond <- attr(observer_try, "condition")
+      err_msg <- if (!is.null(err_cond) && !is.null(err_cond$message)) {
+        err_cond$message
+      } else "bilinmiyor"
+      message(sprintf("[LOGOUT] Observer baglanamadi: %s", err_msg))
+    }
   }
 
   # Çıkış butonu görünürlüğü artık merkezi logout URL helper'i (

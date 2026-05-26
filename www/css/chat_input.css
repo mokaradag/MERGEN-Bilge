@@ -32,7 +32,9 @@
   border: 2px solid var(--border-color);
   padding: 12px 20px;
   display: flex;
-  align-items: flex-end;
+  /* Dikey ortalama: textarea ve butonlar wrapper'ın dikey eksenine
+   * göre ortalanır; tek satır metin görsel olarak ortada durur. */
+  align-items: center;
   gap: 12px;
   transition: all var(--transition-fast);
   position: relative;
@@ -101,8 +103,32 @@
   flex-grow: 1;
   min-height: 24px;
   max-height: 120px;
-  overflow-y: auto;
+  /* Varsayılan olarak kaydırma çubuğu gizli — Windows VM ve bazı
+   * tarayıcılarda tek satır içerikte bile kaydırma çubuğu boşluğu
+   * görünebiliyordu. utils.js içindeki adjustTextareaHeight() içerik
+   * 120px sınırını aştığında 'auto' olarak değiştirir. */
+  overflow-y: hidden;
   font-family: var(--font-primary) !important;
+  /* İnce, az dikkat dağıtıcı kaydırma çubuğu (gerektiğinde) */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.chat-input::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-input::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-input::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.chat-input::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 .chat-input::placeholder {

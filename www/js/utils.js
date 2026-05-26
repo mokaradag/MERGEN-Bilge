@@ -19,10 +19,16 @@ function debounce(func, wait) {
 }
 
 // Textarea yüksekliğini içeriğe göre ayarla
+// Kaydırma çubuğu yalnızca içerik 120 piksel sınırını aştığında görünür;
+// tek satır içerikte 'overflow-y: hidden' durumu korunur. Bu, Windows VM
+// üzerinde tek satır mesajda bile beliren kaydırma çubuğu regresyonunu
+// önler.
 window.adjustTextareaHeight = function(textarea) {
   if (!textarea) return;
   textarea.style.height = 'auto';
-  textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+  var newHeight = Math.min(textarea.scrollHeight, 120);
+  textarea.style.height = newHeight + 'px';
+  textarea.style.overflowY = textarea.scrollHeight > 120 ? 'auto' : 'hidden';
 };
 
 // Sohbet penceresini en alta kaydır
