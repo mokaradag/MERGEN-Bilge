@@ -6,6 +6,8 @@ MERGEN Bilge, modern kurumsal kullanım için tasarlanmış, Türkçe odaklı bi
 
 Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst seviye bir özet sunar; ayrıntılı operasyonel kurallar ve asistan davranış ilkeleri için sırasıyla `CLAUDE.md` ve `ai_rehber.md` dosyalarına başvurulmalıdır.
 
+Güncel dokümantasyon notu: Bugünkü güncelleme, `763059d3e4f2ee4060e7cd9df45f26aecef1ec82`, `60a38ab756d54972d366330e496975b5af134fec` ve `c8f11a443a000abb22af81af2b5e5ea1baadb364` kapsamındaki değişiklikleri özetler.
+
 ## AI Ajanları İçin Doğrulama Profilleri
 
 MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığında doğrulama komutları ortam yeteneklerine göre ayrılmıştır:
@@ -21,6 +23,7 @@ MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığ�
 ## Genel Özellikler
 
 ### Yapay zeka söyleşi deneyimi
+- Araç modu aktifken sohbet ekranındaki “Model Değiştir” düğmesi ve Yapılandırma sayfasındaki “Model Seçimi” alanı merkezi araç model kilidiyle devre dışı bırakılır; kullanıcıya hangi aracın özel modeli nedeniyle kilidin etkin olduğu tooltip ile açıklanır.
 - Gerçek zamanlı akış (streaming) ile yanıt üretimi
 - Türkçe odaklı sohbet deneyimi
 - Kod bloklarında sözdizimi vurgulama
@@ -38,6 +41,8 @@ MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığ�
 - Düşünme modeli tespiti, model adı regex tahminlerine değil yalnızca `R/config_api.R` içindeki `local_model_capabilities` bildirimlerine dayanır.
 - Bakım sınırında `R/helpers_llm_sse_events.R` SSE olay/delta ayrıştırmasını, `R/helpers_ai_expert_chunking.R` ise AI Uzman TTS metin parçalama yardımcılarını taşır; bu ayrımlar dosya satır/fonksiyon bütçesini korumak için geri alınmamalıdır.
 ### Dosya ve veri odaklı çalışma
+- Excel Analizi ve Kod Uzmanı araçları için sohbet içinde “Derin Düşünme” düğmesi ve düşük/yüksek seviye seçimi desteklenir; kullanılan alternatif modeller `.Renviron` değişkenleri (`EXCEL_DEEP_LOW_MODEL`, `EXCEL_DEEP_HIGH_MODEL`, `CODING_DEEP_LOW_MODEL`, `CODING_DEEP_HIGH_MODEL`) üzerinden ayarlanır ve normal model dropdown’larında listelenmez.
+- ChartLab çizgi/alan grafiklerinde tarih sütunu öncelikli X ekseni olarak seçilir; tarih yoksa kategorik X ekseni desteklenir ve tekrarlı kategoriler varsayılan olarak ortalama ile agrege edilerek scatter-benzeri hatalı çizgi grafikleri azaltılır.
 - Excel, PDF, Word, CSV, metin dosyaları ve diğer belgelerin yüklenmesi
 - Dosya önizleme
 - Dosyaların söyleşi bağlamına eklenmesi
@@ -76,8 +81,10 @@ MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığ�
 - AI Uzman konuşması, `settings_kisisel`, `admin_analytics` ve `health` sayfalarına geçişte etkinse nazikçe durdurulur; altyazı gizlenir ve müzik ducking durumu serbest bırakılır.
 - AI Uzman metinlerinde `Bilge Yolaç` adının `Bilge Yola` olarak üretilmesi altyazı ve TTS öncesinde merkezi olarak düzeltilir.
 ### Gelişmiş deneyim katmanları
-- Koyu tema varsayılan deneyim olarak korunur; açık tema ise `theme_tokens.css`, `theme_light.css`, `theme_light_extras.css` ve `theme_manager.js` üzerinden kurumsal renk paletiyle desteklenir. Tema seçimi `mergen_settings.theme` / localStorage ve `<html data-theme="...">` sözleşmesiyle kalıcı uygulanır.
+- Koyu tema varsayılan deneyim olarak korunur; açık tema ise `theme_tokens.css`, `theme_light.css`, `theme_light_extras.css`, `theme_light_overhaul.css`, `theme_light_overhaul_phase2.css`, `theme_light_user_polish.css`, `theme_light_user_polish_v2.css` ve `theme_manager.js` üzerinden kurumsal renk paletiyle desteklenir. Son cila katmanları `R/config_ui_assets.R` içinde sırayla en son yüklenir ve yalnızca `html[data-theme="light"]` kapsamını etkiler. Tema seçimi `mergen_settings.theme` / localStorage ve `<html data-theme="...">` sözleşmesiyle kalıcı uygulanır.
 - Açık temada karşılama ekranı, Ana Söyleşi, Bilge Yolaç, STT, Dosya Yönetimi, Kişiselleştirme, Yenilikler, Yönetici Paneli, Kayıtlı Söyleşiler ve Görsel Galerisi için okunabilirlik, kontrast ve cam yüzey uyarlamaları güçlendirilmiştir.
+- Açık tema Faz 2 ve kullanıcı cilası; kalıcı koyu yüzey sızıntılarını, Yönetici Paneli sekmelerini, Geri Bildirim butonlarını, Bilge Yolaç araç bloklarını, mesaj eylem düğmelerini, Yenilikler rozetlerini, Dosya Yönetimi yüzeylerini ve dosya önizleme modal başlığını açık tema içinde kurumsal mavi/teal/krem çizgiyle hizalar.
+- Açık temada sayfa hero başlıkları kurumsal mavi şerit olarak standardize edilmiştir; karşılama ekranı greeting/ikon/neural fonu, hızlı işlem kartları, Kişiselleştirme deneyim modu ve karakter aksanları ile Sistem Durumu kart kontrastı aynı cila katmanında korunur.
 - Deep-space başlangıç/sürüm modalları ve Keşfet/cinematic akışları, açık temada da bilinçli olarak koyu uzay atmosferini korur.
 - Karşılama ekranındaki hızlı işlem seçimleri, ilgili araç ailesine göre bağlamsal arka plan animasyonları gösterebilir; bu davranış Yapılandırma altındaki “Araç Arka Plan Animasyonları” anahtarıyla yönetilir.
 - Araç arka planlarında alt-sol köşe yedigen kümesi ve çakışmayı önleyen sabit snippet lane düzeni kullanılır; snippet üretimi karşılama yükleme ekranındaki ortak codestream rendering mantığıyla hizalıdır.
@@ -116,6 +123,7 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - Bilge Yolaç mini oyununda ekip kayması, otomatik ateş, fare hedefli ateş, `Çıktıyı Temizle` sonrası görünmeme ve seviye geçiş kilitlenmesi gibi akışlar düzeltilmiştir; BOŞLUK artık cooldown'lu manuel ateş tuşudur.
 - Bilge Yolaç oyun HUD, başlık, seviye ve galibiyet ekranı yazıları daha okunabilir boyutlara çıkarılmıştır.
 ### Kurumsal ve yönetimsel bileşenler
+- Yanıt Analizi tablosunda görünür Türkçe tarih biçimi korunurken DataTables sıralaması `data-order` içindeki ISO zaman değerine göre yapılır; böylece tarih sütunu görsel biçimden bağımsız olarak doğru sıralanır.
 - Sidebar alt kullanıcı paneli; canlı kimlikten gelen ad/avatar, Departman bilgisi, tema düğmesi, sürüm bilgisi ve SSO çıkış kısayolunu tek satırda görünür tutar; ilk render gecikmeleri statik iskelet görünümüyle karşılanır.
 - SSO sonrası sidebar kimliği, `user_config_rv()` üzerinden canlı biçimde yeniden render edilir ve `MB_Users` profil satırıyla zenginleştirilir; böylece Keycloak claim'leri eksik veya geç gelse bile `KaynakAdi` ve `Departman` bilgileri veritabanındaki doğru değerlerden gösterilir.
 - Sidebar kullanıcı ve kontrol çıktıları `suspendWhenHidden = FALSE` sözleşmesiyle korunur; gizli/yeniden render durumlarında panelin kalıcı olarak “Yerel Kullanıcı” / “Departman bilgisi yok” iskeletinde takılı kalması engellenir.
@@ -180,6 +188,8 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - `tests/testthat/test-frontend-maintainability-ratchet.R`, mevcut ön yüz taban çizgisinin sessizce büyümesini engeller. Vendor/minified dosyalar app-owned dosyalardan ayrı değerlendirilir.
 - Ana Söyleşi hoş geldin ekranındaki hızlı işlem tooltip davranışı `www/js/welcome_tooltip_manager.js` içine ayrılmıştır. Bu dosya `www/js/app_core.js` sonrasında ve `www/js/streaming_manager.js` öncesinde yüklenir; böylece kullanıcı deneyimi değişmeden `app_core.js` çekirdek uygulama yaşam döngüsüne daha odaklı kalır.
 - Bu sınır `tests/testthat/test-ui-asset-manifest-contract.R`, `tests/testthat/test-frontend-selector-contract.R`, `tests/testthat/test-frontend-maintainability-ratchet.R` ve `tests/testthat/test-maintainability-ratchet.R` ile korunur.
+- Açık tema cila katmanlarının sırası korunmalıdır: `theme_light_overhaul.css` sonrasında `theme_light_overhaul_phase2.css`, ardından `theme_light_user_polish.css` ve `theme_light_user_polish_v2.css` yüklenir. Bu dosyalar büyük tek dosya yerine ratchet sınırlarını aşmayan yerel CSS katmanları olarak tutulur.
+- Excel/Kod Derin Düşünme ve araç model kilidi için `www/js/excel_coding_deep_thinking.js`, `www/js/tools_model_lock.js` ve `www/css/tools_model_lock.css` manifestte tutulur; `analysis_tools.js` sonrasında ve ilgili araç JS dosyalarıyla uyumlu sırada yüklenmelidir.
 - Bu ayrımlar `tests/testthat/test-frontend-maintainability-ratchet.R`, `tests/testthat/test-maintainability-ratchet.R`, `tests/testthat/test-tool-backgrounds-contract.R`, `tests/testthat/test-source-manifest-contract.R` ve `tests/testthat/test-db-user-visible-encoding-boundaries.R` ile korunur.
 
 #### Windows VM / SSO / SQL Server Türkçe Kodlama Güvencesi
