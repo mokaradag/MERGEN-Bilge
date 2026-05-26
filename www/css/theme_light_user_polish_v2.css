@@ -258,35 +258,63 @@ html[data-theme="light"] [role="tab"][data-destek-target].active * {
   color: #ffffff !important;
 }
 
-/* Kategori / Öncelik / Etiket butonları (henüz seçilmemiş) - kenar görünür */
+/* Kategori / Öncelik / Etiket butonları (henüz seçilmemiş) - kenar görünür
+ * Gerçek HTML sınıfları: .destek-category-btn (Arayüz/Tasarım vb.),
+ *                         .destek-priority-btn (Düşük/Orta/Yüksek/Kritik),
+ *                         .destek-tag-btn (Geri Bildirim etiketleri)
+ */
+html[data-theme="light"] .destek-category-btn,
+html[data-theme="light"] .destek-priority-btn,
+html[data-theme="light"] .destek-tag-btn,
 html[data-theme="light"] .destek-kategori-btn,
 html[data-theme="light"] .destek-oncelik-btn,
 html[data-theme="light"] .destek-etiket-btn,
 html[data-theme="light"] .feedback-tag-btn,
-html[data-theme="light"] .hata-bildirim-form .category-btn,
-html[data-theme="light"] .destek-form .pill-btn,
-html[data-theme="light"] .hata-bildirim-tab .pill-btn,
-html[data-theme="light"] .geri-bildirim-tab .pill-btn,
-html[data-theme="light"] .hata-bildirim-form button[type="button"]:not(.btn-link):not(.btn-add-konu):not(.btn-submit):not(.feedback-submit-btn):not(.hata-bildirim-submit) {
+html[data-theme="light"] .hata-bildirim-form .category-btn {
   background: #ffffff !important;
   color: var(--color-text-soft, #1f2a44) !important;
   border: 1.5px solid rgba(0, 48, 135, 0.28) !important;
   border-radius: 999px !important;
   font-weight: 600 !important;
-  padding: 6px 14px !important;
-  box-shadow: 0 1px 2px rgba(15, 28, 51, 0.04) !important;
+  padding: 8px 16px !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05) !important;
 }
 
+html[data-theme="light"] .destek-category-btn:hover,
+html[data-theme="light"] .destek-priority-btn:hover,
+html[data-theme="light"] .destek-tag-btn:hover,
 html[data-theme="light"] .destek-kategori-btn:hover,
 html[data-theme="light"] .destek-oncelik-btn:hover,
-html[data-theme="light"] .destek-etiket-btn:hover,
-html[data-theme="light"] .feedback-tag-btn:hover {
+html[data-theme="light"] .destek-etiket-btn:hover {
   background: rgba(0, 48, 135, 0.06) !important;
   border-color: var(--mb-brand-primary, #003087) !important;
   color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 4px 10px rgba(0, 48, 135, 0.12) !important;
 }
 
-/* "Konu Ekle" buton */
+html[data-theme="light"] .destek-category-btn.active,
+html[data-theme="light"] .destek-category-btn.selected,
+html[data-theme="light"] .destek-priority-btn.active,
+html[data-theme="light"] .destek-priority-btn.selected,
+html[data-theme="light"] .destek-tag-btn.active,
+html[data-theme="light"] .destek-tag-btn.selected {
+  background: linear-gradient(135deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.30) !important;
+}
+
+html[data-theme="light"] .destek-category-btn.active *,
+html[data-theme="light"] .destek-priority-btn.active *,
+html[data-theme="light"] .destek-tag-btn.active * {
+  color: #ffffff !important;
+}
+
+/* "Konu Ekle" buton (gerçek sınıf: .destek-add-btn) */
+html[data-theme="light"] .destek-add-btn,
 html[data-theme="light"] .btn-add-konu,
 html[data-theme="light"] .destek-feedback .btn-add,
 html[data-theme="light"] [data-action="add-konu"] {
@@ -295,16 +323,25 @@ html[data-theme="light"] [data-action="add-konu"] {
   border: 1.5px solid var(--mb-brand-primary, #003087) !important;
   font-weight: 600 !important;
   border-radius: 8px !important;
-  padding: 6px 14px !important;
+  padding: 8px 16px !important;
+  box-shadow: 0 2px 6px rgba(0, 48, 135, 0.10) !important;
 }
 
+html[data-theme="light"] .destek-add-btn:hover,
 html[data-theme="light"] .btn-add-konu:hover,
 html[data-theme="light"] .destek-feedback .btn-add:hover {
   background: var(--mb-brand-primary, #003087) !important;
   color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.28) !important;
 }
 
-/* "Gönder" butonu (form submit) - belirgin kenarlık + gölge */
+html[data-theme="light"] .destek-add-btn i,
+html[data-theme="light"] .destek-add-btn svg {
+  color: inherit !important;
+}
+
+/* "Gönder" butonu (gerçek sınıf: .destek-submit-btn) */
+html[data-theme="light"] .destek-submit-btn,
 html[data-theme="light"] .destek-feedback button[type="submit"],
 html[data-theme="light"] .destek-feedback .btn-submit,
 html[data-theme="light"] .destek-form-submit,
@@ -326,6 +363,7 @@ html[data-theme="light"] .hata-bildirim-form button[type="submit"] {
   box-shadow: 0 4px 14px rgba(0, 48, 135, 0.28) !important;
 }
 
+html[data-theme="light"] .destek-submit-btn:hover,
 html[data-theme="light"] .destek-feedback button[type="submit"]:hover,
 html[data-theme="light"] .feedback-submit-btn:hover,
 html[data-theme="light"] .hata-bildirim-submit:hover {
@@ -335,7 +373,12 @@ html[data-theme="light"] .hata-bildirim-submit:hover {
   box-shadow: 0 6px 18px rgba(0, 48, 135, 0.36) !important;
 }
 
-/* Ekler (drag-drop) alanı - görünür kesik kenar + ikon */
+/* Ekler (drag-drop) alanı - gerçek sınıf: .destek-upload-zone
+ * (R/module_destek_hata_bildir.R). Görünür kesik mavi kenar + bulut ikonu. */
+html[data-theme="light"] .destek-upload-zone,
+html[data-theme="light"] .destek-file-drop-zone,
+html[data-theme="light"] .destek-attachment-area,
+html[data-theme="light"] .destek-ekler-drop,
 html[data-theme="light"] .destek-eklenti-alani,
 html[data-theme="light"] .destek-ek-drop-zone,
 html[data-theme="light"] .hata-bildirim-drop,
@@ -345,25 +388,49 @@ html[data-theme="light"] .destek-feedback .drop-zone,
 html[data-theme="light"] .hata-bildirim-form .drop-zone,
 html[data-theme="light"] .hata-bildirim-form .file-drop-area {
   background: #ffffff !important;
-  border: 2px dashed rgba(0, 48, 135, 0.28) !important;
+  border: 2px dashed rgba(0, 48, 135, 0.32) !important;
   border-radius: 12px !important;
   color: var(--color-text-soft, #1f2a44) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.04) !important;
 }
 
+html[data-theme="light"] .destek-upload-zone:hover,
+html[data-theme="light"] .destek-upload-zone.destek-drag-over,
+html[data-theme="light"] .destek-file-drop-zone:hover,
+html[data-theme="light"] .destek-attachment-area:hover,
+html[data-theme="light"] .destek-ekler-drop:hover,
 html[data-theme="light"] .destek-eklenti-alani:hover,
 html[data-theme="light"] .destek-ek-drop-zone:hover,
 html[data-theme="light"] .hata-bildirim-drop:hover,
 html[data-theme="light"] .feedback-attachment-drop:hover {
   background: rgba(0, 48, 135, 0.04) !important;
   border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.12) !important;
 }
 
+/* Upload zone içerik metni okunaklı */
+html[data-theme="light"] .destek-upload-zone .destek-upload-text,
+html[data-theme="light"] .destek-upload-zone .destek-upload-hint {
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .destek-upload-zone .destek-upload-link {
+  color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+html[data-theme="light"] .destek-upload-zone .destek-upload-icon,
+html[data-theme="light"] .destek-upload-zone i,
+html[data-theme="light"] .destek-file-drop-zone i,
+html[data-theme="light"] .destek-attachment-area i,
+html[data-theme="light"] .destek-ekler-drop i,
 html[data-theme="light"] .destek-eklenti-alani .upload-icon,
 html[data-theme="light"] .destek-eklenti-alani i.fa-cloud-upload-alt,
 html[data-theme="light"] .destek-eklenti-alani i.fa-upload,
 html[data-theme="light"] .feedback-attachment-drop i {
   color: var(--mb-brand-primary, #003087) !important;
-  opacity: 0.75;
+  opacity: 0.85;
 }
 
 /* ============================================================

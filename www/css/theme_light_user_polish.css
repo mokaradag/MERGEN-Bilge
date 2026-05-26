@@ -758,9 +758,12 @@ html[data-theme="light"] .mode-card-desc .typing-cursor {
 }
 
 /* ---------- KARAKTER BUTONLARI ----------
- * Aktif karakter butonu kendi accent rengiyle dolu olmalı.
- * Karakter butonu kendi data-character-id'sine göre --char-accent
- * değerini taşımalı; bu CSS o değerleri zorlar.
+ * Kişiselleştirme sayfası karakter butonları gerçekte
+ * `.character-btn` (R/module_settings_kisisel.R) sınıfını kullanır
+ * ve www/js/character_manager.js aktif buton üzerine inline olarak
+ * --character-accent, --character-accent-strong,
+ * --character-accent-outline, --character-accent-soft,
+ * --character-accent-glow değişkenlerini set eder.
  *
  * Karakter renkleri (R/config_characters.R):
  *   emre  → #7C4DFF (mor)
@@ -768,121 +771,206 @@ html[data-theme="light"] .mode-card-desc .typing-cursor {
  *   deniz → #12A97B (yeşil)
  *   can   → #B66A2C (koyu turuncu)
  *   ipek  → #E98686 (pembe)
- */
-html[data-theme="light"] .character-tab[data-character="emre"],
-html[data-theme="light"] .character-button[data-character="emre"],
-html[data-theme="light"] [data-character-id="emre"] {
-  --char-accent: #7C4DFF;
-  --char-accent-hover: #6B3FE0;
-  --char-accent-rgb: 124, 77, 255;
-  --char-accent-soft: rgba(124, 77, 255, 0.16);
+ *
+ * İnaktif buton için JS aksan değişkenlerini set etmez. Bu CSS,
+ * her .character-btn[data-character] kombinasyonuna karakter rengi
+ * varsayılanı koyar; aktifte JS değerlerini override eder. */
+html[data-theme="light"] .character-btn[data-character="emre"] {
+  --character-accent: #7C4DFF;
+  --character-accent-strong: #6B3FE0;
+  --character-accent-outline: #6B3FE0;
+  --character-accent-soft: rgba(124, 77, 255, 0.18);
+  --character-accent-glow: rgba(124, 77, 255, 0.40);
 }
 
-html[data-theme="light"] .character-tab[data-character="selin"],
-html[data-theme="light"] .character-button[data-character="selin"],
-html[data-theme="light"] [data-character-id="selin"] {
-  --char-accent: #2F6DF6;
-  --char-accent-hover: #1E58DC;
-  --char-accent-rgb: 47, 109, 246;
-  --char-accent-soft: rgba(47, 109, 246, 0.16);
+html[data-theme="light"] .character-btn[data-character="selin"] {
+  --character-accent: #2F6DF6;
+  --character-accent-strong: #1E58DC;
+  --character-accent-outline: #1E58DC;
+  --character-accent-soft: rgba(47, 109, 246, 0.18);
+  --character-accent-glow: rgba(47, 109, 246, 0.40);
 }
 
-html[data-theme="light"] .character-tab[data-character="deniz"],
-html[data-theme="light"] .character-button[data-character="deniz"],
-html[data-theme="light"] [data-character-id="deniz"] {
-  --char-accent: #0F8A58;
-  --char-accent-hover: #0B7349;
-  --char-accent-rgb: 15, 138, 88;
-  --char-accent-soft: rgba(15, 138, 88, 0.16);
+html[data-theme="light"] .character-btn[data-character="deniz"] {
+  --character-accent: #0F8A58;
+  --character-accent-strong: #0B7349;
+  --character-accent-outline: #0B7349;
+  --character-accent-soft: rgba(15, 138, 88, 0.18);
+  --character-accent-glow: rgba(15, 138, 88, 0.40);
 }
 
-html[data-theme="light"] .character-tab[data-character="can"],
-html[data-theme="light"] .character-button[data-character="can"],
-html[data-theme="light"] [data-character-id="can"] {
-  --char-accent: #B66A2C;
-  --char-accent-hover: #9A5520;
-  --char-accent-rgb: 182, 106, 44;
-  --char-accent-soft: rgba(182, 106, 44, 0.16);
+html[data-theme="light"] .character-btn[data-character="can"] {
+  --character-accent: #B66A2C;
+  --character-accent-strong: #9A5520;
+  --character-accent-outline: #9A5520;
+  --character-accent-soft: rgba(182, 106, 44, 0.18);
+  --character-accent-glow: rgba(182, 106, 44, 0.40);
 }
 
-html[data-theme="light"] .character-tab[data-character="ipek"],
-html[data-theme="light"] .character-button[data-character="ipek"],
-html[data-theme="light"] [data-character-id="ipek"] {
-  --char-accent: #D85A8A;
-  --char-accent-hover: #B94572;
-  --char-accent-rgb: 216, 90, 138;
-  --char-accent-soft: rgba(216, 90, 138, 0.16);
+html[data-theme="light"] .character-btn[data-character="ipek"] {
+  --character-accent: #D85A8A;
+  --character-accent-strong: #B94572;
+  --character-accent-outline: #B94572;
+  --character-accent-soft: rgba(216, 90, 138, 0.18);
+  --character-accent-glow: rgba(216, 90, 138, 0.40);
 }
 
-/* Aktif karakter butonu - SOLID accent + beyaz metin */
-html[data-theme="light"] .character-tab.is-selected,
-html[data-theme="light"] .character-tab.active,
-html[data-theme="light"] .character-tab.selected,
-html[data-theme="light"] .character-button.active,
-html[data-theme="light"] [data-character-id].active,
-html[data-theme="light"] .character-pick-btn.active {
-  background: linear-gradient(135deg,
-    var(--char-accent, var(--mb-brand-primary, #003087)) 0%,
-    var(--char-accent-hover, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
-  color: #ffffff !important;
-  border-color: var(--char-accent, var(--mb-brand-primary, #003087)) !important;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+/* İnaktif karakter butonu - krem cam yüzey + karakter rengi alt çizgi */
+html[data-theme="light"] .character-btn {
+  background: linear-gradient(155deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(247, 249, 253, 0.92) 100%) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid rgba(0, 48, 135, 0.16) !important;
+  border-bottom: 3px solid var(--character-accent, var(--mb-brand-primary, #003087)) !important;
   box-shadow:
-    0 0 0 3px var(--char-accent-soft, rgba(0, 48, 135, 0.18)),
-    0 12px 32px rgba(15, 28, 51, 0.20) !important;
+    0 4px 12px rgba(15, 28, 51, 0.06),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.55) !important;
+  text-shadow: none !important;
 }
 
-html[data-theme="light"] .character-tab.is-selected *,
-html[data-theme="light"] .character-tab.active *,
-html[data-theme="light"] .character-tab.selected *,
-html[data-theme="light"] .character-button.active *,
-html[data-theme="light"] [data-character-id].active * {
+/* Hover - karakter rengi torch/glow */
+html[data-theme="light"] .character-btn:hover {
+  background: linear-gradient(155deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    var(--character-accent-soft, rgba(0, 48, 135, 0.08)) 100%) !important;
+  color: var(--character-accent, var(--mb-brand-primary, #003087)) !important;
+  border-color: var(--character-accent, var(--mb-brand-primary, #003087)) !important;
+  border-bottom-color: var(--character-accent, var(--mb-brand-primary, #003087)) !important;
+  box-shadow:
+    0 0 0 3px var(--character-accent-soft, rgba(0, 48, 135, 0.10)),
+    0 0 32px var(--character-accent-soft, rgba(0, 48, 135, 0.16)),
+    0 14px 32px rgba(15, 28, 51, 0.10) !important;
+  transform: translateY(-3px) !important;
+}
+
+/* Aktif karakter butonu - SOLID karakter rengi gradient */
+html[data-theme="light"] .character-btn.active {
+  background: linear-gradient(
+    150deg,
+    var(--character-accent, var(--mb-brand-primary, #003087)) 0%,
+    var(--character-accent-strong, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--character-accent-outline,
+    var(--character-accent, var(--mb-brand-primary, #003087))) !important;
+  border-bottom: 1px solid var(--character-accent,
+    var(--mb-brand-primary, #003087)) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25) !important;
+  box-shadow:
+    0 0 0 3px var(--character-accent-soft, rgba(0, 48, 135, 0.22)),
+    0 14px 32px var(--character-accent-glow, rgba(0, 48, 135, 0.30)),
+    0 0 0 1px var(--character-accent-outline,
+      var(--character-accent, var(--mb-brand-primary, #003087))) !important;
+  transform: translateY(-2px) !important;
+}
+
+html[data-theme="light"] .character-btn.active:hover {
+  filter: brightness(1.04);
+  box-shadow:
+    0 0 0 3px var(--character-accent-soft, rgba(0, 48, 135, 0.24)),
+    0 18px 38px var(--character-accent-glow, rgba(0, 48, 135, 0.40)),
+    0 0 0 1px var(--character-accent-outline,
+      var(--character-accent, var(--mb-brand-primary, #003087))) !important;
+}
+
+html[data-theme="light"] .character-btn.active * {
   color: #ffffff !important;
 }
 
-/* Karakter info container - aksan tonunda yumuşak çerçeve */
-html[data-theme="light"] .character-info-container {
-  border-color: var(--char-accent, rgba(0, 48, 135, 0.18)) !important;
+/* Karakter selector kart kapsayıcısı - krem cam yüzey */
+html[data-theme="light"] .character-selector-card {
   background: linear-gradient(165deg,
     rgba(255, 255, 255, 0.94) 0%,
-    var(--char-accent-soft, rgba(0, 48, 135, 0.05)) 100%) !important;
+    rgba(247, 244, 235, 0.88) 100%) !important;
+  border: 1px solid rgba(0, 48, 135, 0.10) !important;
+  color: var(--color-text, #0f1c33) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    0 8px 24px rgba(15, 28, 51, 0.06) !important;
+}
+
+/* Karakter info container (sağ panel) - karakter aksanı tonunda çerçeve */
+html[data-theme="light"] .character-info-container,
+html[data-theme="light"] .character-display-area,
+html[data-theme="light"] .character-info,
+html[data-theme="light"] .karakter-info-card {
+  background: linear-gradient(165deg,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(247, 244, 235, 0.88) 100%) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--character-accent, rgba(0, 48, 135, 0.18)) !important;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.85) inset,
     0 14px 38px rgba(15, 28, 51, 0.08),
-    0 0 0 1px var(--char-accent-soft, rgba(0, 48, 135, 0.08)) !important;
+    0 0 0 1px var(--character-accent-soft, rgba(0, 48, 135, 0.08)) !important;
 }
 
+/* Karakter ismi + alt başlık aksan renginde */
 html[data-theme="light"] .character-info-container h1,
 html[data-theme="light"] .character-info-container h2,
 html[data-theme="light"] .character-info-container h3,
+html[data-theme="light"] .character-info-container h4,
 html[data-theme="light"] .character-info-container .character-name,
-html[data-theme="light"] .character-info-container .character-title {
-  color: var(--char-accent, var(--mb-brand-primary, #003087)) !important;
+html[data-theme="light"] .character-info-container .character-title,
+html[data-theme="light"] .character-display-area h1,
+html[data-theme="light"] .character-display-area h2,
+html[data-theme="light"] .character-display-area h3,
+html[data-theme="light"] .character-display-area h4,
+html[data-theme="light"] .character-display-area .character-name,
+html[data-theme="light"] .character-display-area .character-title {
+  color: var(--character-accent, var(--mb-brand-primary, #003087)) !important;
+  text-shadow: none !important;
+  font-weight: 700 !important;
 }
 
-/* Karakter metrik ilerleme barları artık karakter aksanı tonunda */
+/* Karakter ilerleme/metrik barları aksan renginde */
 html[data-theme="light"] .character-info-container .progress-bar,
 html[data-theme="light"] .character-info-container .progress > .progress-bar,
 html[data-theme="light"] .character-info-container .metric-bar > .metric-bar-fill,
 html[data-theme="light"] .character-info-container .character-metric-fill,
-html[data-theme="light"] .character-info-container .character-stat-fill {
+html[data-theme="light"] .character-info-container .character-stat-fill,
+html[data-theme="light"] .character-display-area .progress-bar,
+html[data-theme="light"] .character-display-area .progress > .progress-bar,
+html[data-theme="light"] .character-display-area .character-metric-fill,
+html[data-theme="light"] .character-display-area .character-stat-fill {
   background: linear-gradient(90deg,
-    var(--char-accent, var(--mb-brand-primary, #003087)) 0%,
-    var(--char-accent-hover, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
-  box-shadow: 0 0 8px var(--char-accent-soft, rgba(0, 48, 135, 0.30)) !important;
+    var(--character-accent, var(--mb-brand-primary, #003087)) 0%,
+    var(--character-accent-strong, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
+  box-shadow: 0 0 8px var(--character-accent-soft, rgba(0, 48, 135, 0.30)) !important;
 }
 
 html[data-theme="light"] .character-info-container .progress,
 html[data-theme="light"] .character-info-container .metric-bar,
 html[data-theme="light"] .character-info-container .character-metric-track,
-html[data-theme="light"] .character-info-container .character-stat-track {
+html[data-theme="light"] .character-info-container .character-stat-track,
+html[data-theme="light"] .character-display-area .progress,
+html[data-theme="light"] .character-display-area .metric-bar,
+html[data-theme="light"] .character-display-area .character-metric-track {
   background: rgba(15, 28, 51, 0.08) !important;
   border: 1px solid rgba(0, 48, 135, 0.08) !important;
 }
 
-/* Karakter imzası listesi - aksan tonunda madde işareti */
+/* Karakter imzası listesi madde işareti karakter aksanında */
 html[data-theme="light"] .character-info-container ul li::marker,
-html[data-theme="light"] .character-info-container .signature-list li::marker {
-  color: var(--char-accent, var(--mb-brand-primary, #003087)) !important;
+html[data-theme="light"] .character-info-container .signature-list li::marker,
+html[data-theme="light"] .character-display-area ul li::marker {
+  color: var(--character-accent, var(--mb-brand-primary, #003087)) !important;
+}
+
+/* Eski karakter-tab/character-button sınıfları (legacy varsa) -
+ * yedek uyumluluk; JS aynı --character-accent setlerini varsayar */
+html[data-theme="light"] .character-tab.is-selected,
+html[data-theme="light"] .character-tab.active,
+html[data-theme="light"] .character-button.active,
+html[data-theme="light"] .character-pick-btn.active {
+  background: linear-gradient(135deg,
+    var(--character-accent, var(--mb-brand-primary, #003087)) 0%,
+    var(--character-accent-strong, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
+  color: #ffffff !important;
+  border-color: var(--character-accent, var(--mb-brand-primary, #003087)) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+  box-shadow:
+    0 0 0 3px var(--character-accent-soft, rgba(0, 48, 135, 0.18)),
+    0 12px 32px rgba(15, 28, 51, 0.20) !important;
 }
 
