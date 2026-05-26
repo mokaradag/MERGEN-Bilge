@@ -86,22 +86,50 @@ cat(paste(packages, collapse = ", "), "\n\n")
 rspm_url <- Sys.getenv("RSPM", unset = "")
 cran_url  <- "https://cloud.r-project.org"
 
-repos <- if (nzchar(rspm_url)) {
-  probe_url <- paste0(rspm_url, "/src/contrib/PACKAGES")
-  reachable <- tryCatch({
-    con <- url(probe_url, open = "")
-    close(con)
-    TRUE
-  }, error = function(e) FALSE, warning = function(w) FALSE)
-  if (reachable) {
-    cat(sprintf("RSPM erişilebilir: %s\n", rspm_url))
-    rspm_url
-  } else {
+repository_index_reachable <- function(repo_url) {
+  probe_url <- paste0(repo_url, "/src/contrib/PACKAGES")
+
+  ok <- tryCatch({
+    con <- url(probe_url, open = "rt")
+    on.exit(close(con), add = TRUE)
+    first_line <- readLines(con, n = 1L, warn = FALSE)
+    length(first_line) > 0L
+  }, error = function(e) {
+    cat(sprintf("Repository probe failed for %s: %s\n", repo_url, conditionMessage(e)))
+    FALSE
+  }, warning = function(w) {
+    cat(sprintf("Repository probe warning for %s: %s\n", repo_url, conditionMessage(w)))
+    FALSE
+  })
+
+  isTRUE(ok)
+}
+
+repos <- if (nzchar(rspm_url) && repository_index_reachable(rspm_url)) {
+  cat(sprintf("RSPM erişilebilir: %s\n", rspm_url))
+  rspm_url
+} else if (repository_index_reachable(cran_url)) {
+  if (nzchar(rspm_url)) {
     cat(sprintf("RSPM erişilemiyor (%s), CRAN kullanılıyor.\n", rspm_url))
-    cran_url
+  } else {
+    cat(sprintf("CRAN kullanılıyor: %s\n", cran_url))
   }
-} else {
   cran_url
+} else {
+  stop(
+    sprintf(
+      paste(
+        "R paket deposuna erişilemiyor.",
+        "Denenen RSPM: %s",
+        "Denenen CRAN: %s",
+        "Codex ortamında agent internet allowlist ayarlarını kontrol edin.",
+        sep = "\n"
+      ),
+      if (nzchar(rspm_url)) rspm_url else "<unset>",
+      cran_url
+    ),
+    call. = FALSE
+  )
 }
 
 options(
