@@ -29,7 +29,7 @@ case "${PROFILE}" in
     ;;
   cloud-quick)
     AI_REPO_PROFILE="quick"
-    export MERGEN_AI_SKIP_SOURCE_PACKAGES="${MERGEN_AI_SKIP_SOURCE_PACKAGES:-duckdb,arrow}"
+    export MERGEN_AI_SKIP_SOURCE_PACKAGES="${MERGEN_AI_SKIP_SOURCE_PACKAGES:-duckdb,arrow,odbc,pool}"
     export MERGEN_AI_SKIP_APP_SOURCE_SMOKE="${MERGEN_AI_SKIP_APP_SOURCE_SMOKE:-true}"
     export MERGEN_AI_R_PKG_TYPE="${MERGEN_AI_R_PKG_TYPE:-source}"
     ;;
@@ -72,7 +72,7 @@ echo "== MERGEN AI validation =="
 echo "Profile: ${PROFILE}"
 echo "AI repo profile: ${AI_REPO_PROFILE}"
 if [[ "${PROFILE}" == "cloud-quick" ]]; then
-  echo "Cloud quick mode: skips heavy source packages and app source smoke."
+  echo "Cloud quick skips heavy/runtime source packages"
   echo "MERGEN_AI_SKIP_SOURCE_PACKAGES=${MERGEN_AI_SKIP_SOURCE_PACKAGES}"
   echo "MERGEN_AI_SKIP_APP_SOURCE_SMOKE=${MERGEN_AI_SKIP_APP_SOURCE_SMOKE}"
 fi
