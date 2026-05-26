@@ -6,6 +6,16 @@ MERGEN Bilge, modern kurumsal kullanım için tasarlanmış, Türkçe odaklı bi
 
 Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst seviye bir özet sunar; ayrıntılı operasyonel kurallar ve asistan davranış ilkeleri için sırasıyla `CLAUDE.md` ve `ai_rehber.md` dosyalarına başvurulmalıdır.
 
+## AI Ajanları İçin Doğrulama Profilleri
+
+MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığında doğrulama komutları ortam yeteneklerine göre ayrılmıştır:
+
+- Tam bağımlılıkların kurulabildiği yerel/CI ortamlarında normal hızlı doğrulama: `bash tools/ai_validate.sh quick`
+- Runtime, SSO, DB, streaming, kaynak sırası veya üretim VM etkili riskli değişikliklerde güçlü doğrulama: `bash tools/ai_validate.sh full --boot-smoke`
+- Codex/Claude bulut ortamlarında ağır derleme gerektiren paketler nedeniyle tam runtime doğrulama mümkün olmadığında bulut uyumlu geri dönüş doğrulaması: `bash tools/ai_validate.sh cloud-quick`
+
+`cloud-quick` modu, `duckdb`, `arrow`, `odbc` ve `pool` gibi ağır/runtime kaynak paketlerinin bulut ortamında uzun süren derlemelerine takılmamak için tasarlanmıştır. Bu mod, app source smoke / tam runtime boot doğrulamasını bilinçli olarak atlar; parse sanity ve odak sözleşme testlerini çalıştırır. AI ajanları `cloud-quick` kullandığında bunun tam runtime/VM doğrulaması olmadığını açıkça belirtmelidir.
+
 ---
 
 ## Genel Özellikler

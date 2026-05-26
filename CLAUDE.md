@@ -147,17 +147,40 @@ VM-only manual validation after any DB encoding change:
 
 ### AI agent validation rule
 
+Cloud fallback validation:
 
-Cloud fallback for Codex/Claude hosted environments:
 - Normal validation remains `bash tools/ai_validate.sh quick`.
-- Codex/Claude cloud fallback validation is `bash tools/ai_validate.sh cloud-quick`.
-- When `cloud-quick` is used, agents must clearly state that heavy runtime package installation and full runtime/app boot validation were intentionally not performed in that mode.
+- Risky/runtime validation remains `bash tools/ai_validate.sh full --boot-smoke`.
+- Cloud fallback validation is `bash tools/ai_validate.sh cloud-quick`.
+
+In Codex / Claude Code cloud environments where full package installation or runtime validation is impractical because heavy packages such as `duckdb`, `arrow`, `odbc`, or `pool` cannot be installed quickly or safely, the agent must run:
+
+`bash tools/ai_validate.sh cloud-quick`
+
+This is a cloud-safe fallback profile. It maps to the quick repository profile, skips heavy/runtime source packages, and intentionally skips app source smoke. It is valid evidence that parse sanity and focused contract tests ran in the cloud, but it is not full runtime/app boot validation.
+
+When `cloud-quick` is used, the final answer must explicitly say:
+
+- `bash tools/ai_validate.sh cloud-quick` was run,
+- whether it exited successfully,
+- the `summary.json` path if produced,
+- `failed_steps`,
+- `skipped_steps`,
+- that full runtime/app boot validation was intentionally not performed.
+
+Do not claim “full validation passed”, “runtime validation passed”, “the app booted”, or “VM validation passed” based only on `cloud-quick`.
 
 Before giving a final technical answer about this repository, an AI agent must run `bash tools/ai_validate.sh quick`.
 
 For risky changes, runtime changes, source-order changes, SSO changes, DB encoding changes, file lifecycle changes, streaming changes, frontend asset order changes, Bilge Yolaç / Claude Code changes, security/path/download changes, or production/VM-sensitive changes, the AI agent must run `bash tools/ai_validate.sh full --boot-smoke`.
 
 If an AI agent drafts a long technical answer, it should first save the draft to `.ai/proposed_answer.md`, then validate it with `bash tools/ai_validate.sh quick --answer .ai/proposed_answer.md`.
+
+The “Rscript unavailable” rule must follow this sequence:
+
+- first try the normal validation command when the environment supports it,
+- if full cloud dependency/runtime validation is blocked by heavy packages, use `cloud-quick`,
+- only report inability to validate if both the appropriate validation command and the cloud fallback cannot run.
 
 The agent must not stop at `/bin/bash: Rscript: command not found`. If `Rscript` is missing, it must first run `bash tools/setup_ai_r_environment.sh` or use `bash tools/ai_validate.sh quick`, which performs bootstrap automatically.
 
