@@ -72,11 +72,16 @@ server <- function(input, output, session) {
 	# Sidebar alt kullanıcı paneli (avatar, tam ad, tema anahtarı, sürüm).
 	# Kimlik live provider'ları üzerinden render edildiğinden SSO oturumu
 	# hazırlandığında otomatik güncellenir.
+	# session ve input parametreleri logout observer için iletilir; bunlar
+	# sayesinde sidebar çıkış butonu tıklandığında sunucu konsoluna logout
+	# olayı yazılır ve Shiny oturumu kapatılır.
 	mb_sidebar_user_panel_server(
 	  output = output,
 	  identity = identity,
 	  sso_state = sso_state,
-	  output_id = "sidebar_user_panel"
+	  output_id = "sidebar_user_panel",
+	  session = session,
+	  input = input
 	)
 
   # API anahtarı modülünü bağla

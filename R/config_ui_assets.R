@@ -40,6 +40,13 @@ ui_asset_css_groups <- list(
     "css/theme_light_bilge_yolac.css",
     "css/theme_light_personalization.css",
     "css/theme_light_polish.css",
+    # Kullanıcı geri bildirimi toplu light tema cilası: TÜM diğer
+    # theme_light_*.css dosyalarından SONRA yüklenir, çünkü onların
+    # kurallarını son kez ezerek navbar şeridi, ay grubu nötr gri,
+    # chat baloncuk başlıkları, Bilge Yolaç tool şeritleri, Dosya
+    # Yönetimi notları, Yenilikler rozetleri ve diğer onarımları
+    # garantiler.
+    "css/theme_light_overhaul.css",
     "css/animations.css",
     "css/layout.css",
     "css/components.css",
