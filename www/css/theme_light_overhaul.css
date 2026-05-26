@@ -478,15 +478,11 @@ html[data-theme="light"] .file-preview-modal .modal-header * {
 }
 
 /* ============================================================
- * 9) Ay grubu başlıkları - rozet kaldırılır, nötr gri (BOTH temalar)
- *    Kullanıcı şikayeti: "245 Söyleşi" / "7 görsel" rozet/turuncu
- *    iyi görünmüyor. Talep:
- *      - Rozet değil, sade metin
- *      - Altı çizgi yok
- *      - Gri ton; her iki temada okunaklı
- *      - Hover effect uyumlu
+ * 9) Ay grubu başlıkları - kurumsal teal vurgu (BOTH temalar)
+ *    Kullanıcı şikayeti: rozet/turuncu yerine kurumsal renk; başlık
+ *    altı çizgi olmayacak; rozet pill kapsayıcısı kalkacak.
  *
- *    Bu kural BİLEREK her iki temada uygulanır.
+ *    Bu kural BİLEREK her iki temada uygulanır (kullanıcı talebi).
  * ============================================================ */
 
 /* Sayacı yan span (R modüllerinde inline style ile turuncu yazılmış) */
@@ -505,40 +501,44 @@ html[data-theme="light"] .file-preview-modal .modal-header * {
   padding: 0 !important;
   box-shadow: none !important;
   text-decoration: none !important;
-  /* Nötr gri ton — dark temada açık gri, light temada koyu gri */
-  color: rgba(255, 255, 255, 0.55) !important;
-  font-weight: 500 !important;
+  /* Kurumsal teal vurgu - hem koyu hem açık temada okunaklı */
+  color: var(--mb-brand-support-teal, #077780) !important;
+  font-weight: 600 !important;
   font-size: 14px !important;
   margin-left: 8px !important;
   letter-spacing: 0;
   vertical-align: baseline;
 }
 
-/* Ay başlığı h4 - altı çizgi kaldırma, nötr gri */
+/* Ay başlığı h4 - altı çizgi kaldırma, kurumsal teal vurgu */
 .month-group > h4,
 .gallery-month-group > h4,
 .saved-chats-month-group > h4,
 .image-gallery-month-group > h4 {
-  color: rgba(255, 255, 255, 0.75) !important;
+  color: var(--mb-brand-support-teal, #077780) !important;
   text-decoration: none !important;
   text-decoration-line: none !important;
   text-decoration-color: transparent !important;
   text-underline-offset: 0 !important;
-  font-weight: 600 !important;
+  font-weight: 700 !important;
   letter-spacing: 0.01em;
 }
 
-/* Ay grubu kapsayıcı kenar/zemin - inline rgba(255,138,0) turuncu kenar
- * yerine nötr ve okunaklı */
+/* Ay grubu kapsayıcı - hover crop sorunu: overflow visible olmalı ki
+ * üst row kartlarının translateY ile yukarı kaymasında üst kenarları
+ * kırpılmasın. */
 .month-group,
 .gallery-month-group,
 .saved-chats-month-group,
 .image-gallery-month-group {
-  border: 1px solid rgba(255, 255, 255, 0.10) !important;
-  background: rgba(18, 18, 18, 0.40) !important; /* daha hafif koyu zemin */
+  border: 1px solid rgba(7, 119, 128, 0.18) !important;
+  background: rgba(18, 18, 18, 0.40) !important;
+  overflow: visible !important;
+  /* Hover'da yukarı kayan kartlar için üstte hafif iç boşluk */
+  padding-top: 18px !important;
 }
 
-/* Light temada nötr gri yazı + beyaz cam yüzey */
+/* Light temada beyaz cam yüzey + kurumsal teal yazı */
 html[data-theme="light"] .month-group h4 > span,
 html[data-theme="light"] .gallery-month-group h4 > span,
 html[data-theme="light"] .saved-chats-month-group h4 > span,
@@ -547,7 +547,7 @@ html[data-theme="light"] .month-group .gallery-month-count,
 html[data-theme="light"] .gallery-month-group .gallery-month-count,
 html[data-theme="light"] .saved-chats-month-count,
 html[data-theme="light"] .month-count-badge {
-  color: var(--color-muted, #5b6577) !important;
+  color: var(--mb-brand-support-teal, #077780) !important;
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -557,7 +557,7 @@ html[data-theme="light"] .month-group > h4,
 html[data-theme="light"] .gallery-month-group > h4,
 html[data-theme="light"] .saved-chats-month-group > h4,
 html[data-theme="light"] .image-gallery-month-group > h4 {
-  color: var(--color-text-soft, #1f2a44) !important;
+  color: var(--mb-brand-support-teal, #077780) !important;
   text-decoration: none !important;
   text-shadow: none !important;
 }
@@ -567,13 +567,16 @@ html[data-theme="light"] .gallery-month-group,
 html[data-theme="light"] .saved-chats-month-group,
 html[data-theme="light"] .image-gallery-month-group {
   background: linear-gradient(180deg,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(247, 249, 253, 0.92) 100%) !important;
-  border: 1px solid rgba(0, 48, 135, 0.10) !important;
-  box-shadow: 0 4px 14px rgba(15, 28, 51, 0.05);
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 252, 252, 0.94) 100%) !important;
+  border: 1px solid rgba(7, 119, 128, 0.20) !important;
+  box-shadow: 0 4px 14px rgba(7, 119, 128, 0.06);
 }
 
-/* Saved chat kartı hover - light tema uyumlu kurumsal mavi vurgu */
+/* Saved chat kartı hover - light tema uyumlu kurumsal mavi vurgu.
+ * NOT: translateY kaldırıldı; aksi halde ay grubu kapsayıcısının üst
+ * kenarında yukarı kayan kartlar kırpılıyor. Bunun yerine hafif halka
+ * + gölge + scale ile vurgu yapılır. */
 html[data-theme="light"] .saved-chat-card:hover,
 html[data-theme="light"] .saved-chat-card-small:hover {
   border-color: var(--mb-brand-primary, #003087) !important;
@@ -581,9 +584,9 @@ html[data-theme="light"] .saved-chat-card-small:hover {
     rgba(255, 255, 255, 1) 0%,
     rgba(243, 247, 252, 0.96) 100%) !important;
   box-shadow:
-    0 0 0 2px rgba(0, 48, 135, 0.08),
-    0 10px 24px rgba(0, 48, 135, 0.12) !important;
-  transform: translateY(-2px);
+    0 0 0 2px rgba(0, 48, 135, 0.12),
+    0 10px 24px rgba(0, 48, 135, 0.14) !important;
+  transform: none !important;
 }
 
 html[data-theme="light"] .saved-chat-card,
@@ -1340,3 +1343,4 @@ html[data-theme="light"] .destek-yardim-page-header {
 
 /* Genel "card" üzerine fazladan beyazlık katma — kart kendi yüzeyini
  * korusun; sadece body/zemin sıcak nötr. */
+

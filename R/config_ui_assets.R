@@ -47,6 +47,13 @@ ui_asset_css_groups <- list(
     # Yönetimi notları, Yenilikler rozetleri ve diğer onarımları
     # garantiler.
     "css/theme_light_overhaul.css",
+    # Faz 2 saldırgan onarımları: koyu yüzey leak'lerini kapatma,
+    # admin nav-pills, destek-tab-btn, mesaj eylem butonları,
+    # Bilge Yolaç tool dark hover regresyonu, vb. theme_light_overhaul
+    # dosyasından sonra yüklenir ki onun kurallarını da son adımda
+    # pekiştirebilir; ratchet limitini aşmamak için ikinci dosyaya
+    # bölündü.
+    "css/theme_light_overhaul_phase2.css",
     "css/animations.css",
     "css/layout.css",
     "css/components.css",
