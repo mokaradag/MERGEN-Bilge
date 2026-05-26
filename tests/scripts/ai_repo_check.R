@@ -9,6 +9,11 @@
 #   Rscript tests/scripts/ai_repo_check.R --profile quick
 #   Rscript tests/scripts/ai_repo_check.R --profile full --boot-smoke
 #   Rscript tests/scripts/ai_repo_check.R --profile quick --answer .ai/proposed_answer.md
+#
+# AI cloud notu:
+#   Codex / Claude Code cloud ortamlarında ağır runtime paketleri intentionally
+#   atlanıyorsa, app.R kaynak smoke testi şu bayrakla atlanabilir:
+#   MERGEN_AI_SKIP_APP_SOURCE_SMOKE=true
 # ==============================================================================
 
 options(warn = 1)
@@ -42,6 +47,12 @@ continue_on_error <- has_flag("--continue-on-error")
 if (!profile %in% c("quick", "full")) {
   stop("--profile must be quick or full.", call. = FALSE)
 }
+
+env_flag_true <- function(name) {
+  identical(tolower(Sys.getenv(name, unset = "false")), "true")
+}
+
+skip_app_source_smoke <- env_flag_true("MERGEN_AI_SKIP_APP_SOURCE_SMOKE")
 
 find_repo_root <- function() {
   candidates <- c(".", "..", "../..", "../../..")
@@ -80,10 +91,19 @@ cat(sprintf("Profile: %s\n", profile))
 cat(sprintf("Rscript: %s\n", rscript))
 cat(sprintf("Artifacts: %s\n", artifact_root))
 cat(sprintf("Boot smoke: %s\n", boot_smoke))
+cat(sprintf("Skip app source smoke: %s\n", skip_app_source_smoke))
 if (!is.null(answer_path)) {
   cat(sprintf("Answer check: %s\n", answer_path))
 }
 cat("\n")
+
+`%||%` <- function(x, y) {
+  if (is.null(x)) y else x
+}
+
+env_pair <- function(name, default = "") {
+  paste0(name, "=", Sys.getenv(name, unset = default))
+}
 
 # LANG=C.utf8: POSIX lokalinde R, UTF-8 kaynak dosyalarını (Türkçe karakter içeren)
 # "invalid input" uyarısıyla okuyabilir. C.utf8 hem taşınabilir hem UTF-8 güvenlidir.
@@ -95,7 +115,10 @@ base_env <- c(
   "MERGEN_DISABLE_FUTURES=true",
   "LOCAL_LLM_ENDPOINT=http://test.local/v1",
   "DB_DSN=test-dsn",
-  "AI_KEYS_MASTER=test-master-key-0123456789"
+  "AI_KEYS_MASTER=test-master-key-0123456789",
+  env_pair("MERGEN_AI_SKIP_APP_SOURCE_SMOKE", "false"),
+  env_pair("MERGEN_AI_SKIP_SOURCE_PACKAGES", ""),
+  env_pair("MERGEN_AI_R_PKG_TYPE", "")
 )
 
 safe_name <- function(x) {
@@ -115,18 +138,54 @@ json_escape <- function(x) {
   x
 }
 
-`%||%` <- function(x, y) {
-  if (is.null(x)) y else x
+steps <- list()
+
+record_step <- function(label, status, duration_seconds, log_path, skipped = FALSE) {
+  result <- list(
+    label = label,
+    status = as.integer(status),
+    duration_seconds = as.numeric(duration_seconds),
+    log = log_path,
+    skipped = isTRUE(skipped)
+  )
+
+  steps[[length(steps) + 1L]] <<- result
+  invisible(result)
 }
 
-steps <- list()
+record_skipped_step <- function(label, reason) {
+  step_id <- sprintf("%02d-%s", length(steps) + 1L, safe_name(label))
+  log_path <- file.path(artifact_root, paste0(step_id, ".log"))
+
+  writeLines(
+    c(
+      sprintf("[%s] SKIPPED", label),
+      sprintf("Reason: %s", reason),
+      "Full runtime/app boot validation was not performed in this mode."
+    ),
+    con = log_path,
+    useBytes = TRUE
+  )
+
+  cat(sprintf("\n[%s] SKIPPED\n", label))
+  cat(sprintf("Reason: %s\n", reason))
+  cat("Full runtime/app boot validation was not performed in this mode.\n")
+
+  record_step(
+    label = label,
+    status = 0L,
+    duration_seconds = 0,
+    log_path = log_path,
+    skipped = TRUE
+  )
+}
 
 # system2() bu konteynerde '-e' argümanı içindeki parantezleri sh üzerinden
 # çalıştırırken yanlış yorumlayabiliyor. R ifadesini geçici bir .R dosyasına
 # yazıp o dosyayı çalıştırmak daha güvenli ve taşınabilirdir.
 run_rscript_expr <- function(label, expr_string, env = base_env) {
   tmp <- tempfile(fileext = ".R")
-  writeLines(expr_string, tmp)
+  writeLines(expr_string, tmp, useBytes = TRUE)
   on.exit(unlink(tmp), add = TRUE)
   run_step(label, rscript, tmp, env = env)
 }
@@ -167,14 +226,13 @@ run_step <- function(label, command, cmd_args = character(0), env = base_env) {
 
   duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
 
-  result <- list(
+  record_step(
     label = label,
     status = status,
     duration_seconds = duration,
-    log = log_path
+    log_path = log_path,
+    skipped = FALSE
   )
-
-  steps[[length(steps) + 1L]] <<- result
 
   if (identical(status, 0L)) {
     cat(sprintf("[%s] OK in %.1fs\n", label, duration))
@@ -194,12 +252,14 @@ run_step <- function(label, command, cmd_args = character(0), env = base_env) {
     }
   }
 
-  invisible(result)
+  invisible(status)
 }
 
 write_summary_and_exit <- function(status = NULL) {
   failed <- vapply(steps, function(s) !identical(s$status, 0L), logical(1))
+  skipped <- vapply(steps, function(s) isTRUE(s$skipped), logical(1))
   failed_count <- sum(failed)
+  skipped_count <- sum(skipped)
 
   summary_path <- file.path(artifact_root, "summary.json")
 
@@ -210,13 +270,15 @@ write_summary_and_exit <- function(status = NULL) {
         "\"label\":\"%s\",",
         "\"status\":%d,",
         "\"duration_seconds\":%.3f,",
-        "\"log\":\"%s\"",
+        "\"log\":\"%s\",",
+        "\"skipped\":%s",
         "}"
       ),
       json_escape(s$label),
       as.integer(s$status),
       as.numeric(s$duration_seconds),
-      json_escape(normalizePath(s$log, winslash = "/", mustWork = FALSE))
+      json_escape(normalizePath(s$log, winslash = "/", mustWork = FALSE)),
+      if (isTRUE(s$skipped)) "true" else "false"
     )
   }, character(1))
 
@@ -227,7 +289,9 @@ write_summary_and_exit <- function(status = NULL) {
     sprintf("  \"artifact_root\":\"%s\",\n", json_escape(normalizePath(artifact_root, winslash = "/", mustWork = FALSE))),
     sprintf("  \"total_steps\":%d,\n", length(steps)),
     sprintf("  \"failed_steps\":%d,\n", failed_count),
+    sprintf("  \"skipped_steps\":%d,\n", skipped_count),
     sprintf("  \"boot_smoke\":%s,\n", if (isTRUE(boot_smoke)) "true" else "false"),
+    sprintf("  \"skip_app_source_smoke\":%s,\n", if (isTRUE(skip_app_source_smoke)) "true" else "false"),
     sprintf("  \"answer_path\":%s,\n", if (is.null(answer_path)) "null" else sprintf("\"%s\"", json_escape(answer_path))),
     "  \"steps\":[\n    ",
     paste(step_json, collapse = ",\n    "),
@@ -239,6 +303,7 @@ write_summary_and_exit <- function(status = NULL) {
 
   cat(sprintf("\nSummary written: %s\n", summary_path))
   cat(sprintf("Failed steps: %d\n", failed_count))
+  cat(sprintf("Skipped steps: %d\n", skipped_count))
 
   if (is.null(status)) {
     status <- if (failed_count > 0L) 1L else 0L
@@ -271,19 +336,26 @@ run_step(
   c("tests/scripts/parse_sanity_check.R")
 )
 
-run_rscript_expr(
-  "app source smoke",
-  paste(
-    "Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', TZ='UTC')",
-    "if (!nzchar(Sys.getenv('LOCAL_LLM_ENDPOINT'))) Sys.setenv(LOCAL_LLM_ENDPOINT='http://test.local/v1')",
-    "if (!nzchar(Sys.getenv('DB_DSN'))) Sys.setenv(DB_DSN='test-dsn')",
-    "if (!nzchar(Sys.getenv('AI_KEYS_MASTER'))) Sys.setenv(AI_KEYS_MASTER='test-master-key-0123456789')",
-    "source('app.R', encoding='UTF-8')",
-    "validate_boot_state()",
-    "cat('OK: app.R sourced and boot state validated.\\n')",
-    sep = "\n"
+if (isTRUE(skip_app_source_smoke)) {
+  record_skipped_step(
+    "app source smoke",
+    "MERGEN_AI_SKIP_APP_SOURCE_SMOKE=true for AI cloud light validation."
   )
-)
+} else {
+  run_rscript_expr(
+    "app source smoke",
+    paste(
+      "Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', TZ='UTC')",
+      "if (!nzchar(Sys.getenv('LOCAL_LLM_ENDPOINT'))) Sys.setenv(LOCAL_LLM_ENDPOINT='http://test.local/v1')",
+      "if (!nzchar(Sys.getenv('DB_DSN'))) Sys.setenv(DB_DSN='test-dsn')",
+      "if (!nzchar(Sys.getenv('AI_KEYS_MASTER'))) Sys.setenv(AI_KEYS_MASTER='test-master-key-0123456789')",
+      "source('app.R', encoding='UTF-8')",
+      "validate_boot_state()",
+      "cat('OK: app.R sourced and boot state validated.\\n')",
+      sep = "\n"
+    )
+  )
+}
 
 quick_tests <- c(
   "tests/testthat/test-source-manifest-contract.R",

@@ -158,6 +158,19 @@ is_installed <- function(pkg) {
 
 missing <- packages[!vapply(packages, is_installed, logical(1))]
 
+skip_source_raw <- Sys.getenv("MERGEN_AI_SKIP_SOURCE_PACKAGES", unset = "")
+skip_source_packages <- trimws(unlist(strsplit(skip_source_raw, ",", fixed = TRUE)))
+skip_source_packages <- unique(skip_source_packages[nzchar(skip_source_packages)])
+
+skipped_missing <- intersect(missing, skip_source_packages)
+install_queue <- setdiff(missing, skipped_missing)
+
+if (length(skipped_missing) > 0L) {
+  cat("WARNING: Skipping heavy source packages for AI cloud bootstrap:\n")
+  cat(paste(skipped_missing, collapse = ", "), "\n")
+  cat("These packages remain required by the real app; this skip only affects AI validation bootstrap.\n\n")
+}
+
 if (length(missing) == 0L) {
   cat("OK: all packages already installed.\n")
   quit(status = 0)
@@ -165,6 +178,11 @@ if (length(missing) == 0L) {
 
 cat(sprintf("Missing packages: %d\n", length(missing)))
 cat(paste(missing, collapse = ", "), "\n\n")
+
+cat(sprintf("Install queue after AI skip list: %d\n", length(install_queue)))
+if (length(install_queue) > 0L) {
+  cat(paste(install_queue, collapse = ", "), "\n\n")
+}
 
 install_one <- function(pkg) {
   cat(sprintf("\n--- Installing package: %s ---\n", pkg))
@@ -205,14 +223,25 @@ install_one <- function(pkg) {
   FALSE
 }
 
-results <- vapply(missing, install_one, logical(1))
+results <- vapply(install_queue, install_one, logical(1))
 
 still_missing <- packages[!vapply(packages, is_installed, logical(1))]
+blocking_missing <- setdiff(still_missing, skipped_missing)
 
 if (length(still_missing) > 0L) {
   cat("\nThe following packages are still missing:\n")
   cat(paste(still_missing, collapse = ", "), "\n")
+}
+
+if (length(blocking_missing) > 0L) {
+  cat("\nThe following non-skipped packages are still missing:\n")
+  cat(paste(blocking_missing, collapse = ", "), "\n")
   quit(status = 1)
+}
+
+if (length(skipped_missing) > 0L) {
+  cat("\nOK with AI cloud skipped packages still missing:\n")
+  cat(paste(skipped_missing, collapse = ", "), "\n")
 }
 
 cat("\nOK: all requested packages are installed and loadable.\n")

@@ -22,12 +22,20 @@ cd "${REPO_ROOT}"
 PROFILE="${1:-quick}"
 shift || true
 
+AI_REPO_PROFILE="${PROFILE}"
+
 case "${PROFILE}" in
   quick|full)
     ;;
+  cloud-quick)
+    AI_REPO_PROFILE="quick"
+    export MERGEN_AI_SKIP_SOURCE_PACKAGES="${MERGEN_AI_SKIP_SOURCE_PACKAGES:-duckdb,arrow}"
+    export MERGEN_AI_SKIP_APP_SOURCE_SMOKE="${MERGEN_AI_SKIP_APP_SOURCE_SMOKE:-true}"
+    export MERGEN_AI_R_PKG_TYPE="${MERGEN_AI_R_PKG_TYPE:-source}"
+    ;;
   *)
-    echo "ERROR: First argument must be 'quick' or 'full'." >&2
-    echo "Usage: bash tools/ai_validate.sh quick|full [--boot-smoke] [--answer path]" >&2
+    echo "ERROR: First argument must be 'quick', 'full', or 'cloud-quick'." >&2
+    echo "Usage: bash tools/ai_validate.sh quick|full|cloud-quick [--boot-smoke] [--answer path]" >&2
     exit 2
     ;;
 esac
@@ -57,6 +65,12 @@ export AI_KEYS_MASTER="${AI_KEYS_MASTER:-test-master-key-0123456789}"
 
 echo "== MERGEN AI validation =="
 echo "Profile: ${PROFILE}"
+echo "AI repo profile: ${AI_REPO_PROFILE}"
+if [[ "${PROFILE}" == "cloud-quick" ]]; then
+  echo "Cloud quick mode: skips heavy source packages and app source smoke."
+  echo "MERGEN_AI_SKIP_SOURCE_PACKAGES=${MERGEN_AI_SKIP_SOURCE_PACKAGES}"
+  echo "MERGEN_AI_SKIP_APP_SOURCE_SMOKE=${MERGEN_AI_SKIP_APP_SOURCE_SMOKE}"
+fi
 echo "Rscript: $(command -v Rscript)"
 
-Rscript tests/scripts/ai_repo_check.R --profile "${PROFILE}" "$@"
+Rscript tests/scripts/ai_repo_check.R --profile "${AI_REPO_PROFILE}" "$@"
