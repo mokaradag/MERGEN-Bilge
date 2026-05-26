@@ -1,0 +1,286 @@
+/* ============================================================
+ * Başlık: Açık Tema - Karşılama (Welcome) Cam Yüzey Onarımları
+ * Dosya: www/css/theme_light_welcome.css
+ * Açıklama: Ana Söyleşi karşılama ekranında light tema cam efektini
+ *           daha şeffaf ve premium hale getirir. Önceki versiyondaki
+ *           "muddy gray" ve aşırı blur sorununu çözer. Ek olarak:
+ *             - Son Konuşmalar butonlarında beyaz solid yerine yumuşak
+ *               cam yüzey
+ *             - Yorum simgesi (comment icon) etrafındaki garip ince
+ *               beyaz kenarlığı kaldırır
+ *             - Welcome panellerinin etrafındaki sert beyaz
+ *               kenarlıkları yumuşatır
+ *             - Hızlı işlem (quick action) butonlarındaki çerçeveyi
+ *               kullanıcı bakışını yormayacak biçimde tonlar
+ *
+ *           Bu dosya theme_light_extras.css içindeki welcome glass
+ *           kurallarını ÜZERİNE yazar (cascading); eski kurallara
+ *           dokunmadan light cam ayarını yeniden dengelemek için
+ *           bağımsız bir dosya olarak tutulur.
+ * ============================================================ */
+
+/* ============================================================
+ * 1) Welcome ana karta gerçek cam: daha şeffaf, daha az blur
+ *    Önceki ayar: rgba(255,255,255,0.34..0.26) + 26px blur +
+ *      saturate(190%) -> kullanıcı şikayeti "muddy/gri" görünüyor.
+ *    Yeni ayar: 0.20..0.16 (daha şeffaf) + 18px blur + saturate(160%)
+ *      -> arkadaki video/neural arka plan görünür kalır.
+ * ============================================================ */
+html[data-theme="light"] .modern-welcome-card,
+html[data-theme="light"] .modern-welcome-actions-card,
+html[data-theme="light"] .modern-welcome-recent-card,
+html[data-theme="light"] .modern-welcome-greeting-card {
+  /* Gerçek cam hissi: koyu temadaki rgba(0,0,0,0.20)+blur(8) ile aynı
+   * felsefede; light temada ters açıdan rgba(255,255,255,0.22) ve daha
+   * makul blur. */
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.22) 0%,
+      rgba(255, 255, 255, 0.16) 100%) !important;
+  backdrop-filter: blur(18px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(160%) !important;
+  /* Sert beyaz dış kenarlık yerine yumuşak mavi tonlu ince çerçeve;
+   * kullanıcı şikayetine göre çok beyaz solid çerçeve gözü yoruyor. */
+  border: 1px solid rgba(255, 255, 255, 0.24) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.45) inset,
+    0 0 0 1px rgba(0, 48, 135, 0.03) inset,
+    0 14px 38px rgba(15, 28, 51, 0.10) !important;
+}
+
+/* Sol panel — opak değil, hafif daha kapalı (içeride okunabilirlik için)
+ * ancak yine arka plan dışarıdan hissedilir. */
+html[data-theme="light"] .modern-welcome-left-panel {
+  background: rgba(255, 255, 255, 0.18) !important;
+  backdrop-filter: blur(18px) saturate(160%) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.22) !important;
+}
+
+html[data-theme="light"] .modern-welcome-right-panel {
+  background: rgba(255, 255, 255, 0.20) !important;
+  backdrop-filter: blur(18px) saturate(150%) !important;
+}
+
+/* Son Konuşmalar konteyneri - cam yüzey, sert beyaz çerçeve değil */
+html[data-theme="light"] .modern-welcome-recent-card {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border: 1px solid rgba(255, 255, 255, 0.30) !important;
+}
+
+/* ============================================================
+ * 2) Son Konuşmalar buton — gerçek cam
+ *    Kullanıcı şikayetleri:
+ *      - hover'da solid beyaz blok haline geliyor
+ *      - ikon etrafında ince beyaz kenarlık var
+ *      - butonlar etrafındaki beyaz çerçeveler sert
+ * ============================================================ */
+html[data-theme="light"] .modern-welcome-recent-item,
+html[data-theme="light"] .modern-welcome-preview-btn {
+  background: rgba(255, 255, 255, 0.32) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  /* Beyaz solid çerçeve yerine mavi tonlu yumuşak çerçeve */
+  border: 1px solid rgba(0, 48, 135, 0.16) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.60) inset,
+    0 2px 6px rgba(15, 28, 51, 0.04) !important;
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+
+/* Hover - solid beyaza geçmesin; cam parıltı + kurumsal mavi vurgu */
+html[data-theme="light"] .modern-welcome-recent-item:hover,
+html[data-theme="light"] .modern-welcome-preview-btn:hover {
+  background: rgba(255, 255, 255, 0.48) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border-color: rgba(0, 48, 135, 0.34) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 8px 20px rgba(0, 48, 135, 0.10) !important;
+}
+
+/* ============================================================
+ * 3) Son Konuşmalar ikon kutusu — beyaz solid çerçeve kaldır
+ *    Önceki kural: border: 1px solid rgba(255,255,255,0.4)
+ *      -> ekrana "tiny white border" olarak yansıyor
+ *    Yeni davranış: kenarlık yok; yalnızca yumuşak iç parıltı
+ * ============================================================ */
+html[data-theme="light"] .modern-welcome-recent-icon,
+html[data-theme="light"] .modern-welcome-preview-icon,
+html[data-theme="light"] .modern-welcome-recent-item .icon,
+html[data-theme="light"] .modern-welcome-recent-item-icon,
+html[data-theme="light"] .modern-welcome-preview-icon-box {
+  background: linear-gradient(135deg,
+    rgba(0, 48, 135, 0.85) 0%,
+    rgba(45, 91, 168, 0.92) 100%) !important;
+  color: #ffffff !important;
+  /* Beyaz kenarlık yerine içeri yumuşak halka */
+  border: none !important;
+  box-shadow:
+    0 0 0 1px rgba(0, 48, 135, 0.16) inset,
+    0 0 0 2px rgba(255, 255, 255, 0.22) inset,
+    0 2px 6px rgba(0, 48, 135, 0.16) !important;
+}
+
+/* Hover'da gradient renk kimliği korunsun */
+html[data-theme="light"] .modern-welcome-preview-btn:hover .modern-welcome-preview-icon-box,
+html[data-theme="light"] .modern-welcome-recent-item:hover .modern-welcome-recent-icon {
+  background: linear-gradient(135deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow:
+    0 0 0 1px rgba(0, 48, 135, 0.32) inset,
+    0 2px 8px rgba(0, 48, 135, 0.24) !important;
+}
+
+/* Yorum simgesi (FontAwesome comment) — etrafında ince beyaz kalıntı yok */
+html[data-theme="light"] .modern-welcome-recent-icon i,
+html[data-theme="light"] .modern-welcome-preview-icon i,
+html[data-theme="light"] .modern-welcome-preview-icon-box i,
+html[data-theme="light"] .modern-welcome-recent-item .icon i {
+  color: #ffffff !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* "Son Konuşmalar" başlık satırı tek küçük ikon - ayrı disk görünümü */
+html[data-theme="light"] .modern-welcome-recent-header .modern-welcome-recent-icon {
+  background: rgba(0, 48, 135, 0.14) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid rgba(0, 48, 135, 0.22) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="light"] .modern-welcome-recent-header .modern-welcome-recent-icon i {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* ============================================================
+ * 4) Hızlı İşlem (Quick Action) butonları — beyaz solid border
+ *    yumuşatması. Snake trail kenarlığı zaten dinamik vurguyu sağlar;
+ *    statik çerçeve yumuşak ve gözü yormayan tonlardadır.
+ * ============================================================ */
+html[data-theme="light"] .modern-welcome-action-btn {
+  background: rgba(255, 255, 255, 0.70) !important;
+  color: var(--color-text, #0f1c33) !important;
+  /* Beyaz veya sert mavi solid kenarlık yerine yumuşak yarı şeffaf çerçeve */
+  border: 1px solid rgba(0, 48, 135, 0.10) !important;
+  box-shadow: 0 4px 12px rgba(15, 28, 51, 0.05);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+}
+
+html[data-theme="light"] .modern-welcome-action-btn:hover {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(0, 48, 135, 0.16) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 10px 24px rgba(0, 48, 135, 0.08) !important;
+}
+
+/* İç katman da yumuşak çerçeve - snake trail dışında ek solid çizgi olmasın */
+html[data-theme="light"] .modern-welcome-action-inner {
+  border-color: rgba(0, 48, 135, 0.06) !important;
+}
+
+html[data-theme="light"] .modern-welcome-action-btn:hover .modern-welcome-action-inner {
+  border-color: rgba(0, 48, 135, 0.08) !important;
+}
+
+/* İç arka plan beyaz - dark "rgba(18,18,18,0.95)" yerine */
+html[data-theme="light"] .modern-welcome-action-bg {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(0, 48, 135, 0.06) !important;
+}
+
+/* İkon alanı yumuşak mavi tonlu cam */
+html[data-theme="light"] .modern-welcome-action-icon-area {
+  background: rgba(0, 48, 135, 0.06) !important;
+  border-right: 1px solid rgba(0, 48, 135, 0.08) !important;
+}
+
+html[data-theme="light"] .modern-welcome-action-btn:hover .modern-welcome-action-icon-area {
+  background: rgba(0, 48, 135, 0.10) !important;
+  border-right-color: rgba(0, 48, 135, 0.14) !important;
+}
+
+/* ============================================================
+ * 5) Welcome metinleri (greeting, action title, recent title)
+ *    netlik & gözü yormayan kontrast
+ * ============================================================ */
+html[data-theme="light"] .modern-welcome-greeting-text,
+html[data-theme="light"] .modern-welcome-actions-title,
+html[data-theme="light"] .modern-welcome-recent-title {
+  color: var(--color-text, #0f1c33) !important;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.55);
+}
+
+/* "Hızlı Başlangıç" ikonu - eski koyu temadaki tona kalıyor; light için
+ * kurumsal mavi imzaya çek */
+html[data-theme="light"] .modern-welcome-zap-icon,
+html[data-theme="light"] .modern-welcome-actions-title-row i {
+  color: var(--mb-brand-primary, #003087) !important;
+  filter: drop-shadow(0 0 6px rgba(0, 48, 135, 0.18));
+}
+
+/* Eylem türü başlığı - "HIZLI İŞLEM" tag */
+html[data-theme="light"] .modern-welcome-action-label,
+html[data-theme="light"] .modern-welcome-action-tag {
+  color: var(--mb-brand-accent, #FF5620) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.06em;
+}
+
+/* Eylem başlığı (büyük metin) - koyu okuyan */
+html[data-theme="light"] .modern-welcome-action-title {
+  color: var(--color-text, #0f1c33) !important;
+  font-weight: 600 !important;
+}
+
+/* Eylem ok (chevron right) ikonu */
+html[data-theme="light"] .modern-welcome-action-arrow {
+  color: var(--mb-brand-primary, #003087) !important;
+  opacity: 0.85;
+}
+
+html[data-theme="light"] .modern-welcome-action-btn:hover .modern-welcome-action-arrow {
+  color: var(--mb-brand-accent, #FF5620) !important;
+  opacity: 1;
+  transform: translateX(3px);
+}
+
+/* ============================================================
+ * 6) Welcome card üst gradient çubuğu - light temada belirgin
+ *    "purple-cyan" gradient yerine kurumsal mavi tonlamasına geç
+ * ============================================================ */
+html[data-theme="light"] .modern-welcome-card::before {
+  background: linear-gradient(90deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-80, #33599F) 50%,
+    var(--mb-brand-accent, #FF5620) 100%) !important;
+  opacity: 0.85;
+}
+
+/* ============================================================
+ * 7) Önizleme metinleri - kullanıcı şikayeti: snippet/title soluk
+ * ============================================================ */
+html[data-theme="light"] .modern-welcome-preview-title {
+  color: var(--color-text, #0f1c33) !important;
+  font-weight: 600 !important;
+}
+
+html[data-theme="light"] .modern-welcome-preview-btn:hover .modern-welcome-preview-title {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .modern-welcome-preview-snippet {
+  color: var(--color-text-soft, #1f2a44) !important;
+  opacity: 0.85;
+}
+
+html[data-theme="light"] .modern-welcome-preview-time {
+  color: var(--color-muted, #5b6577) !important;
+  font-weight: 500;
+}

@@ -1,0 +1,343 @@
+/* ============================================================
+ * Başlık: Açık Tema - Söyleşi Bileşenleri Onarımları
+ * Dosya: www/css/theme_light_chat.css
+ * Açıklama: Light temada söyleşi alanı için odaklı düzeltmeler:
+ *           1) Chat input gri kenarlık kaldırma (kullanıcı şikayeti)
+ *           2) Chat baloncuk başlıkları (AI + Kullanıcı) belirgin
+ *              kurumsal renk şeritleri
+ *           3) Mesaj eylem butonları (kopya/yeniden dene/feedback)
+ *              varsayılan görünür ve okunaklı, hover'da başlığa
+ *              uyumlu kontrast
+ *           4) Söyleşi başlığındaki tool/model rozetleri okunaklı
+ *           5) "Tümünü Temizle" buton kırmızısı belirgin
+ *           6) Sohbet konteyneri yumuşak cam yüzey
+ *
+ *           Bu dosya dark temayı bozmaz; yalnızca
+ *           <html data-theme="light"> altında etkilidir.
+ * ============================================================ */
+
+/* ============================================================
+ * 1) Chat input gri kenarlık temizliği
+ *    Mevcut chat_input.css `.input-wrapper` için 2px solid border
+ *    tanımlıyor; light temada gri/dolgulu görünüyor. Kaldırılır,
+ *    yerine cam yüzey + yumuşak alt gölge ile süzme efekti
+ *    bırakılır. Auto-grow ve çoklu satır davranışı bozulmaz.
+ * ============================================================ */
+html[data-theme="light"] .input-wrapper {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border: 1px solid transparent !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 6px 18px rgba(15, 28, 51, 0.06) !important;
+}
+
+/* Yazma sırasında belirgin kurumsal halka — odak görünür kalsın */
+html[data-theme="light"] .input-wrapper:focus-within {
+  border-color: transparent !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 0 0 3px rgba(0, 48, 135, 0.14),
+    0 10px 24px rgba(0, 48, 135, 0.08) !important;
+}
+
+html[data-theme="light"] .input-wrapper.sending {
+  background: rgba(247, 249, 253, 0.95) !important;
+  opacity: 0.85;
+}
+
+/* Textarea — kenarlık yok, beyaz arka plan; küçük gri scrollbar regresyonunu
+ * tetiklememek için yalnızca ihtiyaç halinde görünür scrollbar */
+html[data-theme="light"] .chat-input,
+html[data-theme="light"] textarea.chat-input {
+  background: transparent !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: none !important;
+  outline: none !important;
+}
+
+html[data-theme="light"] .chat-input::placeholder {
+  color: var(--color-muted, #5b6577) !important;
+  opacity: 0.85;
+}
+
+/* ============================================================
+ * 2) Chat baloncuk başlıkları — kurumsal renk şeridi
+ *    AI baloncuk: kurumsal mavi (DataTable header gibi)
+ *    Kullanıcı baloncuk: yeşil-mavi destek tonu
+ *    Eski refinements kuralı varsa pekiştirilir; eski ai/assistant
+ *    sınıfları için ek seçici kapsamı genişletilir.
+ * ============================================================ */
+html[data-theme="light"] .message.ai .message-header,
+html[data-theme="light"] .message.ai-message .message-header,
+html[data-theme="light"] .ai-message .message-header,
+html[data-theme="light"] .message-bubble.ai-message .message-header,
+html[data-theme="light"] .message-bubble.assistant-message .message-header,
+html[data-theme="light"] .message.assistant .message-header,
+html[data-theme="light"] .ai-bubble .message-header,
+html[data-theme="light"] .assistant-bubble .message-header,
+html[data-theme="light"] .chat-message.ai .message-header,
+html[data-theme="light"] .chat-message-bubble.ai .message-header,
+html[data-theme="light"] .chat-message[data-message-type="ai"] .message-header,
+html[data-theme="light"] .chat-message[data-message-type="assistant"] .message-header {
+  background: linear-gradient(135deg,
+    rgba(0, 48, 135, 0.96) 0%,
+    rgba(0, 45, 122, 0.98) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.32) !important;
+  padding: 8px 14px !important;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+html[data-theme="light"] .message.user .message-header,
+html[data-theme="light"] .message.user-message .message-header,
+html[data-theme="light"] .user-message .message-header,
+html[data-theme="light"] .message-bubble.user-message .message-header,
+html[data-theme="light"] .user-bubble .message-header,
+html[data-theme="light"] .chat-message.user .message-header,
+html[data-theme="light"] .chat-message-bubble.user .message-header,
+html[data-theme="light"] .chat-message[data-message-type="user"] .message-header {
+  background: linear-gradient(135deg,
+    rgba(7, 119, 128, 0.96) 0%,
+    rgba(43, 187, 196, 0.92) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(7, 119, 128, 0.30) !important;
+  padding: 8px 14px !important;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+}
+
+/* Başlık içindeki tüm metin/ikon beyaz okur */
+html[data-theme="light"] .message.ai .message-header *,
+html[data-theme="light"] .message.user .message-header *,
+html[data-theme="light"] .ai-message .message-header *,
+html[data-theme="light"] .user-message .message-header *,
+html[data-theme="light"] .message-bubble.ai-message .message-header *,
+html[data-theme="light"] .message-bubble.user-message .message-header *,
+html[data-theme="light"] .message-bubble.assistant-message .message-header *,
+html[data-theme="light"] .ai-bubble .message-header *,
+html[data-theme="light"] .user-bubble .message-header * {
+  color: inherit !important;
+}
+
+/* Karakter / model adı (başlık içindeki) belirgin, üst rengi miras alır */
+html[data-theme="light"] .message-header .character-name,
+html[data-theme="light"] .message-header .model-name,
+html[data-theme="light"] .message-header .message-author,
+html[data-theme="light"] .message-header .author-name,
+html[data-theme="light"] .message-header h4,
+html[data-theme="light"] .message-header h5 {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  opacity: 0.96;
+}
+
+/* Baloncuk gövdesi yüzeyi - hafif beyaz; başlığın canlı rengi öne çıkar */
+html[data-theme="light"] .message.ai .message-content,
+html[data-theme="light"] .message.user .message-content,
+html[data-theme="light"] .message-bubble.ai-message .message-content,
+html[data-theme="light"] .message-bubble.user-message .message-content,
+html[data-theme="light"] .ai-bubble .message-content,
+html[data-theme="light"] .user-bubble .message-content {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
+/* ============================================================
+ * 3) Mesaj eylem butonları — varsayılan görünür ve okunaklı
+ *    Renkleri başlık rengiyle uyumlu: koyu metin + beyaz cam yüzey
+ *    Hover'da kurumsal mavi öne çıkar (başlık zemini ile çelişmesin)
+ * ============================================================ */
+html[data-theme="light"] .message-actions,
+html[data-theme="light"] .message-bubble .message-actions {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+html[data-theme="light"] .message-actions .action-btn,
+html[data-theme="light"] .message-actions .message-action-btn,
+html[data-theme="light"] .message-actions button,
+html[data-theme="light"] .message-actions .feedback-action-btn {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid rgba(0, 48, 135, 0.22) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.08);
+  transition: all 180ms ease;
+}
+
+html[data-theme="light"] .message-actions .action-btn:hover,
+html[data-theme="light"] .message-actions .message-action-btn:hover,
+html[data-theme="light"] .message-actions button:hover,
+html[data-theme="light"] .message-actions .feedback-action-btn:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  transform: translateY(-1px);
+}
+
+html[data-theme="light"] .message-actions .action-btn i,
+html[data-theme="light"] .message-actions .message-action-btn i,
+html[data-theme="light"] .message-actions button i {
+  color: inherit !important;
+}
+
+/* Like aksiyonu hover'da yeşil */
+html[data-theme="light"] .message-actions .feedback-action-btn[data-feedback="like"]:hover,
+html[data-theme="light"] .message-actions .action-btn.btn-like:hover,
+html[data-theme="light"] .message-actions .like-btn:hover {
+  background: rgba(22, 163, 74, 0.10) !important;
+  border-color: rgba(22, 163, 74, 0.55) !important;
+  color: #15803d !important;
+}
+
+/* Dislike aksiyonu hover'da kırmızı */
+html[data-theme="light"] .message-actions .feedback-action-btn[data-feedback="dislike"]:hover,
+html[data-theme="light"] .message-actions .action-btn.btn-dislike:hover,
+html[data-theme="light"] .message-actions .dislike-btn:hover {
+  background: rgba(220, 38, 38, 0.10) !important;
+  border-color: rgba(220, 38, 38, 0.55) !important;
+  color: #b91c1c !important;
+}
+
+/* ============================================================
+ * 4) Söyleşi başlık rozetleri — tool, model, mod, mesaj sayacı
+ *    Hover/aktif durumda da okunaklı kontrast.
+ * ============================================================ */
+html[data-theme="light"] .chat-header-info .header-stat-item,
+html[data-theme="light"] .chat-header .header-stat-item,
+html[data-theme="light"] .header-stat-item,
+html[data-theme="light"] .chat-mode-indicator,
+html[data-theme="light"] .chat-tool-indicator,
+html[data-theme="light"] .chat-model-indicator {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid rgba(0, 48, 135, 0.30) !important;
+  box-shadow: 0 1px 3px rgba(0, 48, 135, 0.08);
+  font-weight: 600;
+}
+
+html[data-theme="light"] .chat-header-info .header-stat-item i,
+html[data-theme="light"] .header-stat-item i {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* Mesaj sayacı turuncu vurguya geç */
+html[data-theme="light"] .header-stat-item.messages-count,
+html[data-theme="light"] .header-stat-item[data-stat="messages"],
+html[data-theme="light"] .chat-message-count {
+  color: var(--mb-brand-accent, #FF5620) !important;
+  border-color: rgba(255, 86, 32, 0.36) !important;
+}
+
+html[data-theme="light"] .header-stat-item.messages-count i,
+html[data-theme="light"] .chat-message-count i {
+  color: var(--mb-brand-accent, #FF5620) !important;
+}
+
+/* Aktif tool/mod rozeti turuncu gradient */
+html[data-theme="light"] .header-stat-item.active,
+html[data-theme="light"] .chat-tool-indicator.active,
+html[data-theme="light"] .chat-mode-indicator.active {
+  background: linear-gradient(135deg,
+    var(--mb-brand-accent, #FF5620) 0%,
+    var(--mb-brand-accent-2, #FF8022) 100%) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 86, 32, 0.55) !important;
+  box-shadow: 0 4px 12px rgba(255, 86, 32, 0.24);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
+}
+
+html[data-theme="light"] .header-stat-item.active i,
+html[data-theme="light"] .chat-tool-indicator.active i,
+html[data-theme="light"] .chat-mode-indicator.active i {
+  color: #ffffff !important;
+}
+
+/* ============================================================
+ * 5) "Tümünü Temizle" buton — daha pronounced kırmızı
+ *    Sidebar veya araç çubuğunda kullanılan tüm "Tümünü Temizle"
+ *    varyantları light temada daha güçlü görünür.
+ * ============================================================ */
+html[data-theme="light"] .clear-all-btn,
+html[data-theme="light"] .btn-clear-all,
+html[data-theme="light"] .tumunu-temizle-btn,
+html[data-theme="light"] button.tumunu-temizle,
+html[data-theme="light"] .btn-danger.clear-all,
+html[data-theme="light"] .gallery-clear-all-btn,
+html[data-theme="light"] .saved-chats-clear-btn {
+  background: linear-gradient(135deg,
+    rgba(220, 38, 38, 0.10) 0%,
+    rgba(220, 38, 38, 0.04) 100%) !important;
+  color: #b91c1c !important;
+  border: 1px solid rgba(220, 38, 38, 0.50) !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 3px rgba(220, 38, 38, 0.10);
+}
+
+html[data-theme="light"] .clear-all-btn i,
+html[data-theme="light"] .btn-clear-all i,
+html[data-theme="light"] .tumunu-temizle-btn i,
+html[data-theme="light"] button.tumunu-temizle i {
+  color: #b91c1c !important;
+}
+
+html[data-theme="light"] .clear-all-btn:hover,
+html[data-theme="light"] .btn-clear-all:hover,
+html[data-theme="light"] .tumunu-temizle-btn:hover,
+html[data-theme="light"] button.tumunu-temizle:hover,
+html[data-theme="light"] .gallery-clear-all-btn:hover,
+html[data-theme="light"] .saved-chats-clear-btn:hover {
+  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%) !important;
+  color: #ffffff !important;
+  border-color: #b91c1c !important;
+  box-shadow: 0 6px 16px rgba(220, 38, 38, 0.30);
+}
+
+html[data-theme="light"] .clear-all-btn:hover i,
+html[data-theme="light"] .btn-clear-all:hover i,
+html[data-theme="light"] .tumunu-temizle-btn:hover i {
+  color: #ffffff !important;
+}
+
+/* ============================================================
+ * 6) Sohbet konteyneri yüzeyi - yumuşak cam, kart gibi
+ * ============================================================ */
+html[data-theme="light"] #chat_content_container,
+html[data-theme="light"] .chat-container,
+html[data-theme="light"] .chat-content-wrapper {
+  background: linear-gradient(180deg,
+    rgba(247, 249, 253, 0.45) 0%,
+    rgba(255, 255, 255, 0.85) 100%) !important;
+}
+
+/* ============================================================
+ * 7) Söyleşi karakter avatarı yanındaki "stop" / "send" buton zemini
+ *    karanlık kalmasın
+ * ============================================================ */
+html[data-theme="light"] #send_stop_btn,
+html[data-theme="light"] #send_message_btn,
+html[data-theme="light"] .send-message-btn {
+  background: linear-gradient(135deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.20);
+}
+
+html[data-theme="light"] #send_stop_btn:hover,
+html[data-theme="light"] #send_message_btn:hover {
+  background: linear-gradient(135deg,
+    var(--mb-brand-primary-alt, #002D7A) 0%,
+    var(--mb-brand-accent, #FF5620) 100%) !important;
+  box-shadow: 0 6px 18px rgba(0, 48, 135, 0.28);
+}
+
+html[data-theme="light"] #send_stop_btn.stop-mode,
+html[data-theme="light"] #send_stop_btn[data-mode="stop"] {
+  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%) !important;
+  border-color: #991b1b !important;
+}

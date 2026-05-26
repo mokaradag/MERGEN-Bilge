@@ -217,12 +217,14 @@ imageGalleryServer <- function(id, current_user_id) {
           if (nrow(month_rows) == 0) return(NULL)
 
           div(
-            class = "month-group gallery-month-group",
+            class = "month-group gallery-month-group image-gallery-month-group",
             style = "margin: 0 15px 20px 0; background: rgba(18, 18, 18, 0.6); padding: 15px; border-radius: 12px; border: 1px solid rgba(255, 138, 0, 0.2); backdrop-filter: blur(10px);",
             h4(
               month_rows$month_label[1],
+              # Aylık görsel sayısı rozeti - light tema CSS bu sınıfı
+              # turuncu/güçlü kontrast ile gösterir (theme_light_modals.css).
               tags$span(
-                class = "gallery-month-count",
+                class = "gallery-month-count month-count-badge",
                 sprintf("(%d görsel)", nrow(month_rows))
               ),
               style = "color: #ff8a00; margin-bottom: 20px; font-size: 20px; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(255, 138, 0, 0.3); text-underline-offset: 5px;"

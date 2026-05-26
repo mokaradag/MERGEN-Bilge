@@ -235,3 +235,54 @@ test_that(".Renviron MERGEN_LOGOUT_URL anahtarını içerir (boş olabilir)", {
     info = ".Renviron MERGEN_LOGOUT_URL anahtarını içermelidir."
   )
 })
+
+test_that("R/module_sidebar_user_panel.R çıkış butonu doğrudan URL'ye gider", {
+  # Kullanıcı sözleşmesi: butona basınca DOĞRUDAN MERGEN_LOGOUT_URL
+  # adresine yönlendirilmeli; window.ssoLogout() ara adımı kullanılmamalı
+  # (Keycloak logout ekranı sonrası uygulamaya geri dönmemeli).
+  txt <- .read_repo_text_logout_url("R/module_sidebar_user_panel.R")
+  expect_true(nzchar(txt), info = "R/module_sidebar_user_panel.R okunamadı.")
+
+  # mb_sidebar_controls_row gövdesini izole et (Türkçe karakter bozulmasın)
+  # ve fonksiyon içinde window.ssoLogout çağrısı bulunmamalı.
+  start_idx <- regexpr(
+    "mb_sidebar_controls_row\\s*<-\\s*function",
+    txt,
+    perl = TRUE,
+    useBytes = TRUE
+  )
+  expect_true(
+    start_idx[1] > 0,
+    info = "mb_sidebar_controls_row tanımı bulunamadı."
+  )
+
+  # Fonksiyon gövdesini sonraki ~3000 karakterle sınırlandır
+  body_start <- as.integer(start_idx[1])
+  body_end <- min(nchar(txt, type = "bytes"), body_start + 3000L)
+  body_chunk <- substring(txt, body_start, body_end)
+
+  # Yorum satırlarını çıkar (R yorumları # ile başlar). Roxygen (#') ve
+  # gövde içi # yorumları aynı temizlikle elenir.
+  body_lines <- strsplit(body_chunk, "\n", fixed = TRUE)[[1]]
+  body_no_comments <- sub("#.*$", "", body_lines)
+  body_no_comments_joined <- paste(body_no_comments, collapse = "\n")
+
+  expect_false(
+    grepl("window.ssoLogout", body_no_comments_joined,
+          fixed = TRUE, useBytes = TRUE),
+    info = paste(
+      "Sidebar çıkış butonu artık window.ssoLogout() çağrısı içermemelidir.",
+      "Ara Keycloak adımı sonrası uygulama yükleme ekranına dönüyordu;",
+      "buton doğrudan MERGEN_LOGOUT_URL'ye yönlendirmeli."
+    )
+  )
+
+  expect_true(
+    grepl("window.location.href", body_no_comments_joined,
+          fixed = TRUE, useBytes = TRUE),
+    info = paste(
+      "Çıkış butonu onclick'i window.location.href ile yapılandırılmış",
+      "URL'ye yönlendirmelidir."
+    )
+  )
+})

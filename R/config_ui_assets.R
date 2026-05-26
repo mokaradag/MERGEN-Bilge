@@ -25,6 +25,21 @@ ui_asset_css_groups <- list(
     "css/theme_light.css",
     "css/theme_light_extras.css",
     "css/theme_light_refinements.css",
+    # Açık tema cilası: odaklı küçük dosyalara bölünerek ratchet limitleri
+    # altında tutulur. Yükleme sırası burada kasıtlıdır:
+    #   1. welcome (en alttaki cam yüzey önce yerleşir)
+    #   2. chat (söyleşi giriş + baloncuk başlığı + rozet override'ları)
+    #   3. modals (feedback / dosya önizleme / STT - en üst katman)
+    #   4. bilge_yolac (Bilge Yolaç light chat + komut blokları)
+    #   5. personalization (Kişiselleştirme + Yapılandırma kart yüzeyleri)
+    #   6. polish (admin tooltip, hero başlık, file manager notları,
+    #      Yenilikler madde işareti, sidebar logout)
+    "css/theme_light_welcome.css",
+    "css/theme_light_chat.css",
+    "css/theme_light_modals.css",
+    "css/theme_light_bilge_yolac.css",
+    "css/theme_light_personalization.css",
+    "css/theme_light_polish.css",
     "css/animations.css",
     "css/layout.css",
     "css/components.css",
