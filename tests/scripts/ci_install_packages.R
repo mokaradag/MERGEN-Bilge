@@ -87,14 +87,13 @@ rspm_url <- Sys.getenv("RSPM", unset = "")
 cran_url  <- "https://cloud.r-project.org"
 
 repository_index_reachable <- function(repo_url) {
-  repo_url <- sub("/+$", "", repo_url)
   probe_url <- paste0(repo_url, "/src/contrib/PACKAGES")
 
   ok <- tryCatch({
     con <- url(probe_url, open = "rt")
     on.exit(close(con), add = TRUE)
     first_line <- readLines(con, n = 1L, warn = FALSE)
-    length(first_line) > 0L && any(nzchar(first_line))
+    length(first_line) > 0L
   }, error = function(e) {
     cat(sprintf("Repository probe failed for %s: %s\n", repo_url, conditionMessage(e)))
     FALSE
@@ -133,8 +132,15 @@ repos <- if (nzchar(rspm_url) && repository_index_reachable(rspm_url)) {
   )
 }
 
+repo_is_linux_binary <- grepl("/__linux__/", repos, fixed = TRUE)
+pkg_type <- if (repo_is_linux_binary) "binary" else "source"
+
+cat(sprintf("Selected repository: %s\n", repos))
+cat(sprintf("Selected package type: %s\n", pkg_type))
+
 options(
   repos = c(CRAN = repos),
+  pkgType = pkg_type,
   install.packages.compile.from.source = "never"
 )
 
@@ -171,7 +177,12 @@ install_one <- function(pkg) {
 
     tryCatch(
       {
-        install.packages(pkg, dependencies = TRUE, lib = lib)
+		install.packages(
+		  pkg,
+		  dependencies = TRUE,
+		  lib = lib,
+		  type = getOption("pkgType", "source")
+		)
         ok <<- requireNamespace(pkg, quietly = TRUE)
       },
       error = function(e) {
