@@ -87,13 +87,14 @@ rspm_url <- Sys.getenv("RSPM", unset = "")
 cran_url  <- "https://cloud.r-project.org"
 
 repository_index_reachable <- function(repo_url) {
+  repo_url <- sub("/+$", "", repo_url)
   probe_url <- paste0(repo_url, "/src/contrib/PACKAGES")
 
   ok <- tryCatch({
     con <- url(probe_url, open = "rt")
     on.exit(close(con), add = TRUE)
     first_line <- readLines(con, n = 1L, warn = FALSE)
-    length(first_line) > 0L
+    length(first_line) > 0L && any(nzchar(first_line))
   }, error = function(e) {
     cat(sprintf("Repository probe failed for %s: %s\n", repo_url, conditionMessage(e)))
     FALSE
