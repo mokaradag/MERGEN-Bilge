@@ -111,6 +111,7 @@ ui_asset_css_groups <- list(
     "css/settings_tools.css",
     "css/settings_model_info.css",
     "css/analysis_tools.css",
+    "css/tools_model_lock.css",
     "css/citation_styles.css",
     "css/ai_expert_subtitle.css",
     "css/destek_page.css",
@@ -232,6 +233,8 @@ ui_asset_js_groups <- list(
     "js/settings_tools.js",
     "js/settings_model_info.js",
     "js/analysis_tools.js",
+    "js/excel_coding_deep_thinking.js",
+    "js/tools_model_lock.js",
     "js/citation_handler.js",
     "js/ai_expert_manager.js",
     "js/destek_form.js",
@@ -391,6 +394,8 @@ ui_asset_js_order_rules <- list(
 
   c("js/image_tools.js", "js/summarization_tools.js"),
   c("js/summarization_tools.js", "js/analysis_tools.js"),
+  c("js/analysis_tools.js", "js/excel_coding_deep_thinking.js"),
+  c("js/excel_coding_deep_thinking.js", "js/tools_model_lock.js"),
 
   c("js/claude_code_pixel_chars.js", "js/claude_code.js"),
   c("js/claude_code.js", "js/claude_code_streaming.js"),

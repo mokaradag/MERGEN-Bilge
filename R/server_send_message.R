@@ -381,6 +381,17 @@ sendMessageInit <- function(
       fallback_model = current_settings$model_selection
     )
 
+    # Excel/Kod araçlarında "Derin Düşünme" düğmesi aktifken alternatif
+    # modeli kullan; settings$excel_deep_thinking / settings$coding_deep_thinking
+    # ile birlikte düşük/yüksek seviye dropdown'larından gelir.
+    if (identical(tool_family, "mcp_excel") && isTRUE(settings_data$excel_deep_thinking)) {
+      dt_model <- resolve_deep_thinking_model("mcp_excel", settings_data$excel_deep_level)
+      if (!is.null(dt_model) && nzchar(dt_model)) model_selected <- dt_model
+    } else if (identical(tool_family, "coding") && isTRUE(settings_data$coding_deep_thinking)) {
+      dt_model <- resolve_deep_thinking_model("coding", settings_data$coding_deep_level)
+      if (!is.null(dt_model) && nzchar(dt_model)) model_selected <- dt_model
+    }
+
     current_settings$model_selection <- model_selected
 
     current_settings$current_user_id <- effective_user_id

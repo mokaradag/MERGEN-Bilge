@@ -291,6 +291,62 @@ ui <- dashboardPage(
                       )
                     )
                   ),
+                  # Excel Analizi: Derin Düşünme düğmesi + Düşük/Yüksek seviye dropdown
+                  div(
+                    id = "excel_chat_controls",
+                    class = "excel-chat-controls hidden",
+                    div(
+                      class = "excel-control-item",
+                      tags$button(
+                        id = "chat_excel_deep_thinking_toggle",
+                        class = "deep-thinking-toggle excel-deep-thinking-toggle",
+                        type = "button",
+                        title = "Derin Düşünme: Pasif - Excel için temel düşünen modeli kullan",
+                        tags$i(class = "fas fa-brain toggle-icon"),
+                        tags$span(class = "toggle-label", "Derin Düşünme")
+                      )
+                    ),
+                    div(class = "excel-control-separator"),
+                    div(
+                      class = "excel-control-item",
+                      tags$select(
+                        id = "chat_excel_deep_level",
+                        class = "deep-thinking-level-select",
+                        title = "Derin Düşünme Seviyesi: Düşük/Yüksek alternatif düşünen modeli seçer",
+                        disabled = "disabled",
+                        tags$option(value = "low", selected = "selected", "Düşük"),
+                        tags$option(value = "high", "Yüksek")
+                      )
+                    )
+                  ),
+                  # Kod Uzmanı: Derin Düşünme düğmesi + Düşük/Yüksek seviye dropdown
+                  div(
+                    id = "coding_chat_controls",
+                    class = "coding-chat-controls hidden",
+                    div(
+                      class = "coding-control-item",
+                      tags$button(
+                        id = "chat_coding_deep_thinking_toggle",
+                        class = "deep-thinking-toggle coding-deep-thinking-toggle",
+                        type = "button",
+                        title = "Derin Düşünme: Pasif - Kod için temel düşünen modeli kullan",
+                        tags$i(class = "fas fa-brain toggle-icon"),
+                        tags$span(class = "toggle-label", "Derin Düşünme")
+                      )
+                    ),
+                    div(class = "coding-control-separator"),
+                    div(
+                      class = "coding-control-item",
+                      tags$select(
+                        id = "chat_coding_deep_level",
+                        class = "deep-thinking-level-select",
+                        title = "Derin Düşünme Seviyesi: Düşük/Yüksek alternatif düşünen modeli seçer",
+                        disabled = "disabled",
+                        tags$option(value = "low", selected = "selected", "Düşük"),
+                        tags$option(value = "high", "Yüksek")
+                      )
+                    )
+                  ),
                   div(class = "model-selector-wrapper",
                       uiOutput("chat_model_selector_ui", style = "display:inline-block;")
                   ),

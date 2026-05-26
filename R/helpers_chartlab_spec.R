@@ -164,6 +164,30 @@ chartlab_auto_guess_spec <- function(sp) {
   sp
 }
 
+chartlab_aggregate_line_data <- function(df, x, y, grp = NULL, agg = NULL) {
+  # Çizgi grafiği için kategorik/karakter X tekrarlı geçiyorsa Y değerlerini
+  # agrege eder. Varsayılan agregasyon "mean" (ortalama). Tarih/sayısal X
+  # veya zaten benzersiz satırlarda ham veri olduğu gibi döndürülür.
+  if (is.null(df) || !is.data.frame(df) || is.null(x) || is.null(y)) return(df)
+  if (!(x %in% names(df)) || !(y %in% names(df))) return(df)
+
+  x_is_cat <- is.character(df[[x]]) || is.factor(df[[x]])
+  if (!x_is_cat) return(df)
+  if (nrow(df) <= length(unique(df[[x]]))) return(df)
+
+  f <- tolower(agg %||% "mean")
+  fun <- switch(f, sum = sum, mean = mean, median = median, min = min, max = max, mean)
+
+  if (is.null(grp) || !(grp %in% names(df))) {
+    dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) fun(z, na.rm = TRUE))
+    names(dd) <- c(x, y)
+  } else {
+    dd <- aggregate(df[[y]], by = list(df[[x]], df[[grp]]), FUN = function(z) fun(z, na.rm = TRUE))
+    names(dd) <- c(x, grp, y)
+  }
+  dd
+}
+
 chartlab_aggregate_values <- function(z, f = "sum") {
   f <- tolower(f %||% "sum")
 

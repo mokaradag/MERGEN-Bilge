@@ -147,33 +147,15 @@ document.addEventListener('DOMContentLoaded', function() {
 if (window.Shiny) {
 
   /**
-   * Analiz modunu aç/kapat (model seçiciyi kilitle/aç)
+   * Analiz modunu aç/kapat. Model seçim kilidi merkezi MergenToolModelLock
+   * yöneticisine (tools_model_lock.js) bırakılır; böylece Görsel/Özet/Excel/Kod
+   * gibi diğer araçların kilit durumu ile çakışma olmaz.
    */
   Shiny.addCustomMessageHandler('toggleAnalysisMode', function(data) {
-    window.toggleAnalysisControls(data.active);
+    window.toggleAnalysisControls(data && data.active);
 
-    // Model seçicisini kilitle/aç
-    var modelWrapper = document.querySelector('.model-selector-wrapper');
-    if (modelWrapper) {
-      if (data.active) {
-        modelWrapper.classList.add('model-selector-locked');
-        modelWrapper.style.opacity = '0.5';
-        modelWrapper.style.pointerEvents = 'none';
-        modelWrapper.title = 'Analiz modunda model seçimi devre dışı';
-      } else {
-        modelWrapper.classList.remove('model-selector-locked');
-        // Diğer modların kilidi kontrol et
-        var imageControls = document.getElementById('image_chat_controls');
-        var summaryControls = document.getElementById('summary_chat_controls');
-        var imageActive = imageControls && !imageControls.classList.contains('hidden');
-        var summaryActive = summaryControls && !summaryControls.classList.contains('hidden');
-
-        if (!imageActive && !summaryActive) {
-          modelWrapper.style.opacity = '1';
-          modelWrapper.style.pointerEvents = 'auto';
-          modelWrapper.title = 'Model Değiştir';
-        }
-      }
+    if (window.MergenToolModelLock && typeof window.MergenToolModelLock.refresh === 'function') {
+      window.MergenToolModelLock.refresh();
     }
   });
 

@@ -1,0 +1,228 @@
+/* ==============================================================================
+ * Dosya Yolu: www/css/tools_model_lock.css
+ * Açıklama:   Araç aktifken sohbet "Model Değiştir" düğmesi ve Yapılandırma
+ *             "Model Seçimi" dropdown'unun tematik kilit görünümü + hover
+ *             tooltip stilleri. Excel Analizi ve Kod Uzmanı için yeni
+ *             "Derin Düşünme" kontrol panelleri.
+ *
+ *             Bu dosya tools_model_lock.js (merkezi kilit yöneticisi) ve
+ *             excel_coding_deep_thinking.js (Excel/Kod derin düşünme) ile
+ *             birlikte çalışır.
+ * ============================================================================== */
+
+/* ------------------------------------------------------------------------------
+ * SOHBET MODEL DEĞİŞTİR DÜĞMESİ — KİLİTLİ DURUM
+ * Tema rengi turuncu/sarı uyarı tonu; hover'da tooltip görünür.
+ * ------------------------------------------------------------------------------ */
+
+.model-selector-wrapper.tool-mode-locked {
+  position: relative;
+  filter: grayscale(0.4) saturate(0.85);
+  border-radius: 8px;
+  outline: 1px dashed rgba(245, 158, 11, 0.45);
+  outline-offset: 1px;
+  transition: outline 0.2s ease, filter 0.2s ease;
+}
+
+.model-selector-wrapper.tool-mode-locked::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(245, 158, 11, 0.06);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+/* CSS tabanlı tooltip: kilit sebebi data-tool-lock-tooltip ile sağlanır */
+.model-selector-wrapper.tool-mode-locked[data-tool-lock-tooltip]:hover::after {
+  content: attr(data-tool-lock-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  max-width: 280px;
+  width: max-content;
+  padding: 8px 11px;
+  background: rgba(15, 23, 42, 0.97);
+  color: #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  white-space: normal;
+}
+
+/* ------------------------------------------------------------------------------
+ * YAPILANDIRMA SAYFASI MODEL SEÇİMİ — KİLİTLİ DURUM
+ * ------------------------------------------------------------------------------ */
+
+.setting-item.tool-mode-locked {
+  position: relative;
+  opacity: 0.65;
+  filter: saturate(0.85);
+}
+
+.setting-item.tool-mode-locked select {
+  cursor: not-allowed !important;
+  background-color: rgba(245, 158, 11, 0.05) !important;
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+
+.setting-item.tool-mode-locked[data-tool-lock-tooltip]:hover::after {
+  content: attr(data-tool-lock-tooltip);
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  max-width: 320px;
+  width: max-content;
+  padding: 9px 12px;
+  background: rgba(15, 23, 42, 0.97);
+  color: #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  white-space: normal;
+}
+
+/* ------------------------------------------------------------------------------
+ * EXCEL ANALİZİ — SOHBET İÇİ KONTROL PANELİ
+ * Tema rengi: yeşil (Excel'in marka tonuna yakın)
+ * ------------------------------------------------------------------------------ */
+
+.excel-chat-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  margin-right: 8px;
+  transition: all 0.3s ease;
+}
+
+.excel-chat-controls.hidden {
+  display: none !important;
+}
+
+.excel-control-item {
+  display: flex;
+  align-items: center;
+}
+
+.excel-control-separator {
+  width: 1px;
+  height: 16px;
+  background: rgba(16, 185, 129, 0.3);
+  margin: 0 2px;
+}
+
+/* ------------------------------------------------------------------------------
+ * KOD UZMANI — SOHBET İÇİ KONTROL PANELİ
+ * Tema rengi: amber/sarı (kodlama temasına uygun)
+ * ------------------------------------------------------------------------------ */
+
+.coding-chat-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: rgba(245, 158, 11, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  margin-right: 8px;
+  transition: all 0.3s ease;
+}
+
+.coding-chat-controls.hidden {
+  display: none !important;
+}
+
+.coding-control-item {
+  display: flex;
+  align-items: center;
+}
+
+.coding-control-separator {
+  width: 1px;
+  height: 16px;
+  background: rgba(245, 158, 11, 0.3);
+  margin: 0 2px;
+}
+
+/* Kod araç teması düğmeyi sarımtırak gösterir (yeşil yerine) */
+.deep-thinking-toggle.coding-deep-thinking-toggle:hover {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.deep-thinking-toggle.coding-deep-thinking-toggle.active {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.2);
+}
+
+/* ------------------------------------------------------------------------------
+ * DERİN DÜŞÜNME SEVİYESİ DROPDOWN (Düşük/Yüksek) — Excel/Kod ortak
+ * ------------------------------------------------------------------------------ */
+
+.deep-thinking-level-select {
+  background: var(--bg-tertiary, #1e293b);
+  color: var(--text-primary, #f1f5f9);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  min-width: 80px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath fill='%2394a3b8' d='M0 0l4 5 4-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 20px;
+  transition: all 0.3s ease;
+}
+
+.deep-thinking-level-select:hover {
+  border-color: #10b981;
+}
+
+.deep-thinking-level-select:focus {
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.deep-thinking-level-select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Responsive: küçük ekranlarda etiketi gizle */
+@media (max-width: 768px) {
+  .excel-chat-controls,
+  .coding-chat-controls {
+    flex-wrap: wrap;
+    padding: 6px;
+  }
+
+  .deep-thinking-level-select {
+    min-width: 70px;
+    font-size: 11px;
+  }
+
+  .excel-control-separator,
+  .coding-control-separator {
+    display: none;
+  }
+}

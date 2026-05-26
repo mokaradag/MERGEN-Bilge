@@ -186,37 +186,56 @@ quickActionsInit <- function(input, session, values, settings_data,
       template_model <- resolved_model
     }
     
-    # 1. Görsel modu için özel model işleme
+    # 1. Tüm sohbet içi araç panelleri ön bilgisi: kapatma çağrıları her dalda
+    # tekrarlanmamak için yardımcı.
+    close_all_tool_panels <- function() {
+      session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+      session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
+      session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
+      session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
+      session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
+    }
+
     if (tool_name == "enable_image_tools") {
       # Görsel modu için dall-e-3 modeli zorunlu
       image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
       isolate({ settings_data$model_selection <- image_model })
       session$sendCustomMessage("saveSettings", list(model_selection = image_model))
+      close_all_tool_panels()
       session$sendCustomMessage("toggleImageMode", list(active = TRUE))
-      session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
     } else if (tool_name == "enable_summarization_tools") {
-      # Özetleme modu: model değiştir, kontrolleri göster
       change_model_if_provided(template_model)
-      session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+      close_all_tool_panels()
       session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
-      session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
     } else if (tool_name == "enable_rdata_tools") {
-      # Analiz modu: model değiştir, analiz kontrollerini göster, model seçiciyi kilitle
       change_model_if_provided(template_model)
-      session$sendCustomMessage("toggleImageMode", list(active = FALSE))
-      session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
+      close_all_tool_panels()
       session$sendCustomMessage("toggleAnalysisMode", list(active = TRUE))
-      # Mevcut analiz ayarlarını senkronize et
       session$sendCustomMessage("syncAnalysisSettingsToChat", list(
         deep_thinking = isTRUE(isolate(settings_data$analysis_deep_thinking)),
         detail_level = isolate(settings_data$analysis_detail_level) %||% "standart"
       ))
-    } else {
-      # Normal model değiştirme
+    } else if (tool_name == "enable_mcp_tools") {
+      # Excel Analizi: Derin Düşünme paneli görünür hale getirilir
       change_model_if_provided(template_model)
-      session$sendCustomMessage("toggleImageMode", list(active = FALSE))
-      session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
-      session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
+      close_all_tool_panels()
+      session$sendCustomMessage("toggleExcelMode", list(active = TRUE))
+      session$sendCustomMessage("syncExcelDeepThinkingToChat", list(
+        deep_thinking = isTRUE(isolate(settings_data$excel_deep_thinking)),
+        level = isolate(settings_data$excel_deep_level) %||% "low"
+      ))
+    } else if (tool_name == "enable_coding_tools") {
+      # Kod Uzmanı: Derin Düşünme paneli görünür hale getirilir
+      change_model_if_provided(template_model)
+      close_all_tool_panels()
+      session$sendCustomMessage("toggleCodingMode", list(active = TRUE))
+      session$sendCustomMessage("syncCodingDeepThinkingToChat", list(
+        deep_thinking = isTRUE(isolate(settings_data$coding_deep_thinking)),
+        level = isolate(settings_data$coding_deep_level) %||% "low"
+      ))
+    } else {
+      change_model_if_provided(template_model)
+      close_all_tool_panels()
     }
     
     # 2. Araçları kapat, sadece istenen aracı aç
@@ -372,10 +391,12 @@ quickActionsInit <- function(input, session, values, settings_data,
       update_tool_checkboxes("enable_summarization_tools")
       save_tool_settings("enable_summarization_tools")
 
-      # Özetleme kontrollerini göster, görsel kontrollerini gizle, model seçicisini devre dışı bırak
+      # Özetleme kontrollerini göster, diğer araç panellerini gizle
       session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
       session$sendCustomMessage("toggleImageMode", list(active = FALSE))
       session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
+      session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
+      session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
 
       # Sunucu otoriter arka plan aile sinyali (handle_tool_action ile aynı sözleşme)
       tryCatch(

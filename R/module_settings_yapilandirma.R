@@ -191,6 +191,10 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
       temp_analysis_detail_level(input$analysis_detail_level)
     }, ignoreInit = TRUE)
 
+    # Excel/Kod Derin Düşünme observer'ları, sohbet ekranındaki input'lar
+    # üst Shiny oturumuna ait olduğu için R/server_observers_settings.R
+    # içinde, normal chat_* dinleyicileri ile birlikte tanımlıdır.
+
     # Ana Söyleşi'den gelen değişiklikleri Yapılandırma sayfasına yansıt
     observeEvent(settings$image_size, {
       current_temp <- temp_image_size()
@@ -339,11 +343,37 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
             ))
           }
 
+          # Excel Analizi aktifleştirildiğinde sohbet kontrolleri (Derin Düşünme + seviye)
+          if (tool_name == "enable_mcp_tools") {
+            session$sendCustomMessage("toggleExcelMode", list(active = TRUE))
+            session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
+            session$sendCustomMessage("syncExcelDeepThinkingToChat", list(
+              deep_thinking = isTRUE(settings$excel_deep_thinking),
+              level = settings$excel_deep_level %||% "low"
+            ))
+          }
+
+          # Kod Uzmanı aktifleştirildiğinde sohbet kontrolleri
+          if (tool_name == "enable_coding_tools") {
+            session$sendCustomMessage("toggleCodingMode", list(active = TRUE))
+            session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
+            session$sendCustomMessage("syncCodingDeepThinkingToChat", list(
+              deep_thinking = isTRUE(settings$coding_deep_thinking),
+              level = settings$coding_deep_level %||% "low"
+            ))
+          }
+
           # Diğer araçlar aktifken kontrolleri gizle
-          if (!tool_name %in% c("enable_rdata_tools", "enable_image_tools", "enable_summarization_tools")) {
+          if (!tool_name %in% c("enable_rdata_tools", "enable_image_tools", "enable_summarization_tools", "enable_mcp_tools", "enable_coding_tools")) {
             session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
             session$sendCustomMessage("toggleImageMode", list(active = FALSE))
             session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
+            session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
+            session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
+          } else if (tool_name %in% c("enable_rdata_tools", "enable_image_tools", "enable_summarization_tools")) {
+            # Bu üç araç aktifken Excel/Kod kontrolleri kapanır
+            session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
+            session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
           }
         } else {
           # Görsel Uzmanı devre dışı bırakıldığında varsayılan modele dön
@@ -357,6 +387,14 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
 
           if (tool_name == "enable_rdata_tools") {
             session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
+          }
+
+          if (tool_name == "enable_mcp_tools") {
+            session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
+          }
+
+          if (tool_name == "enable_coding_tools") {
+            session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
           }
         }
       }, ignoreInit = TRUE)

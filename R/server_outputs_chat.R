@@ -18,17 +18,25 @@ chatOutputsInit <- function(output, settings_data) {
       display_name <- names(api_config$local_models)[api_config$local_models == selected_model_id]
       if (length(display_name) == 0) display_name <- selected_model_id
     }
-    
-    bg_color <- "rgba(255, 255, 255, 0.05)"
-    border_color <- "rgba(255, 255, 255, 0.1)"
-    
+
+    # Excel/Kod araçlarında Derin Düşünme aktifse runtime'da kullanılan modeli
+    # bilgi balonu olarak göster (dropdown'da seçilen değer değişmez; sadece
+    # araç-aktif kullanıcı için bilgi amaçlı).
+    runtime_hint <- NULL
+    if (isTRUE(settings_data$enable_mcp_tools) && isTRUE(settings_data$excel_deep_thinking)) {
+      runtime_hint <- resolve_deep_thinking_model("mcp_excel", settings_data$excel_deep_level)
+    } else if (isTRUE(settings_data$enable_coding_tools) && isTRUE(settings_data$coding_deep_thinking)) {
+      runtime_hint <- resolve_deep_thinking_model("coding", settings_data$coding_deep_level)
+    }
+    title_text <- paste0("Model: ", display_name)
+    if (!is.null(runtime_hint) && nzchar(runtime_hint)) {
+      title_text <- paste0(title_text, " (Derin Düşünme: ", runtime_hint, ")")
+    }
+
     div(
       class = "header-stat-item",
-      title = paste0("Model: ", display_name),
-      style = paste0(
-        "background: ", bg_color, "; ",
-        "border-color: ", border_color, ";"
-      ),
+      title = title_text,
+      style = "background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1);",
       span(
         style = "font-weight: 500; color: #b0b0b0;",
         paste0("Model: ", display_name)

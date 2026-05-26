@@ -170,17 +170,26 @@ helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FA
   first_or_null <- function(vec) if (length(vec)) vec[1] else NULL
 
   if (tolower(chart_type) %in% c("line", "area")) {
+    # Çizgi/alan grafiği için X ekseni öncelik sırası:
+    # 1) Tarih sütunu (varsa) -> zaman serisi gerçek çizgi grafik üretir
+    # 2) Kategorik sütun -> ay/bölge/kategori bazlı çizgi grafik (orijinal sırayı korur)
+    # 3) Sayısal sütun -> son çare; yalnızca tarih ve kategori yoksa kullanılır
+    # Eski mantık doğrudan num_cols'a düşüyor ve iki sayısal sütunu noktalarla
+    # eşleştirip görsel olarak scatter benzeri çıktı üretiyordu.
     if (is.null(x) || !nzchar(x)) {
       x <- first_or_null(date_cols)
+      if (is.null(x)) x <- first_or_null(cat_cols)
       if (is.null(x)) x <- first_or_null(num_cols)
     }
 
     if (is.null(y) || !nzchar(y)) {
       y <- first_or_null(setdiff(num_cols, x))
+      if (is.null(y)) y <- first_or_null(num_cols)
     }
 
-    if (is.null(group) && length(cat_cols) > 0) {
-      group <- first_or_null(cat_cols)
+    # Group sadece X kategorik DEĞİLSE atanır; aksi halde X ve group çakışır
+    if (is.null(group) && length(cat_cols) > 0 && !(x %in% cat_cols)) {
+      group <- first_or_null(setdiff(cat_cols, x))
     }
   }
 

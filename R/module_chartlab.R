@@ -152,16 +152,15 @@ chartLabServer <- function(id) {
       y <- sp$mapping$y
       g <- sp$mapping$group
 
-      # 2. Eksen Tahmini (Grafik türüne göre)
+      # 2. Eksen Tahmini: X öncelik Tarih > Kategori > Sayısal (scatter benzeri düşüşü önler)
       if (sp$type %in% c("line", "area")) {
-         # X: Tarih > Sayısal (Index)
          if (is.null(x)) x <- first_or_null(date_cols)
+         if (is.null(x)) x <- first_or_null(cat_cols)
          if (is.null(x)) x <- first_or_null(num_cols)
-         # Y: Sayısal (X olmayan)
          if (is.null(y)) y <- first_or_null(setdiff(num_cols, x))
-         # Group: Kategori
-         if (is.null(g)) g <- first_or_null(cat_cols)
-         
+         if (is.null(y)) y <- first_or_null(num_cols)
+         if (is.null(g) && length(cat_cols) > 0 && !(x %in% cat_cols)) g <- first_or_null(setdiff(cat_cols, x))
+
       } else if (sp$type %in% c("bar", "column", "pie", "donut", "pareto")) {
          # X: Kategori > Tarih
          if (is.null(x)) x <- first_or_null(cat_cols)
@@ -309,6 +308,7 @@ chartLabServer <- function(id) {
           } else if (identical(type,"line")) {
             req(x, y)
             ltype <- if (smooth) "spline" else "line"
+            df <- chartlab_aggregate_line_data(df, x, y, grp, agg) # kategorik X için Y agregasyonu
             if (is.null(grp)) {
               hc <- hc %>% hchart(df, ltype, hcaes(x = !!rlang::sym(x), y = !!rlang::sym(y)))
             } else {
