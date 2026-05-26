@@ -150,17 +150,27 @@ mb_sidebar_theme_switch <- function() {
 #' Sidebar kompakt kontrol satırı (tema butonu + opsiyonel çıkış)
 #'
 #' @description Tema butonu büyük, çıkış butonu küçük; aynı satırda yer alır.
-#'   Çıkış butonu yalnızca SSO aktif ve logout endpoint mevcutsa render
-#'   edilir. Yerel modda yalnızca tema butonu görünür.
+#'   Çıkış butonu yalnızca yapılandırılmış logout URL'si mevcutsa render
+#'   edilir.
 #'
-#' @param show_logout Mantıksal; SSO çıkışı kullanılabilir mi?
+#' Çıkış davranışı sözleşmesi:
+#'   - Kullanıcı çıkış butonuna bastığında DOĞRUDAN `.Renviron` üzerinden
+#'     gelen MERGEN_LOGOUT_URL adresine yönlendirilir.
+#'   - Hiçbir ara Keycloak logout akışı çalıştırılmaz; aksi halde tarayıcı
+#'     uygulamanın yükleme ekranına geri dönüyordu.
+#'   - URL boşsa buton zaten render edilmez (server tarafı koşulu).
+#'   - `window.ssoLogout` çağrılmaz çünkü o akış çıkıştan sonra uygulamayı
+#'     yeniden açıyordu; istek bunu önlemektir.
+#'
+#' @param show_logout Mantıksal; çıkış URL'si yapılandırılmış mı?
+#' @param logout_url .Renviron'dan çözümlenmiş hedef URL (boş olabilir)
 #' @return Shiny div
 mb_sidebar_controls_row <- function(show_logout = FALSE, logout_url = "") {
   logout_btn <- if (isTRUE(show_logout)) {
-    # Çıkış URL'si .Renviron tarafından kontrol edilir. URL varsa
-    # öncelikle SSO logout akışı denenir; yoksa doğrudan URL'ye gidilir.
-    # Bu sayede hem SSO modunda hem yerel/özel kurumsal çıkış senaryosunda
-    # buton tutarlı çalışır.
+    # Çıkış URL'si .Renviron (MERGEN_LOGOUT_URL) tarafından kontrol edilir.
+    # Buton tıklandığında SSO ara adımı atlanır; tarayıcı doğrudan URL'ye
+    # yönlendirilir. Bu hem yerel kurumsal portal hem SSO/Keycloak hem de
+    # özel bir landing sayfası senaryosunu basit ve öngörülebilir kılar.
     safe_url <- ""
     if (is.character(logout_url) && length(logout_url) == 1 &&
         !is.na(logout_url) && nzchar(logout_url)) {
@@ -170,12 +180,11 @@ mb_sidebar_controls_row <- function(show_logout = FALSE, logout_url = "") {
                        fixed = FALSE)
     }
     onclick_js <- if (nzchar(safe_url)) {
-      paste0(
-        "if(window.ssoLogout){window.ssoLogout();}",
-        "else{window.location.href='", safe_url, "';}"
-      )
+      # Doğrudan ve tek adımlı yönlendirme; window.ssoLogout çağrılmaz.
+      paste0("window.location.href='", safe_url, "';")
     } else {
-      "if(window.ssoLogout){window.ssoLogout();}"
+      # URL yoksa buton hiç render edilmemeli; emniyet için boş işlem.
+      "void(0);"
     }
 
     tags$button(

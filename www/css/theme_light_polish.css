@@ -1,0 +1,670 @@
+/* ============================================================
+ * Başlık: Açık Tema - Genel Cila (Polish) Onarımları
+ * Dosya: www/css/theme_light_polish.css
+ * Açıklama: Light temada küçük ama önemli ayrıntılar için tek dosya:
+ *           1) Yönetici tooltip çift kenarlık tek katmana indirme
+ *           2) Yönetici sayfa nav bar kurumsal mavi şerit
+ *           3) Sayfa hero (Yardım Asistanı tarzı) başlıkları
+ *              ve navbar-brand kurumsal mavi
+ *           4) Dosya Yönetimi açıklayıcı notları okunaklı
+ *           5) Geri Bildirim & Hata buton kenarlıkları
+ *           6) Yenilikler bullet madde işareti güçlü renk
+ *           7) Sidebar logout butonu light kontrastı
+ *           8) Bilge Yolaç ana kart çerçeve uyumu (tamamlayıcı)
+ *
+ *           Yalnızca <html data-theme="light"> altında etkilidir.
+ * ============================================================ */
+
+/* ============================================================
+ * 1) Yönetici Paneli tooltip - tek katman
+ *    Önceki sürümde tooltip içi solid kapsayıcı + dış transparent
+ *    halka yan yana çift kenarlık görünümü oluşturuyordu.
+ *    Burada kapsayıcılar tek katmana zorlanır.
+ * ============================================================ */
+html[data-theme="light"] .admin-tooltip,
+html[data-theme="light"] .admin-tooltip::before,
+html[data-theme="light"] .admin-tooltip::after,
+html[data-theme="light"] .admin-content [title]:hover::before,
+html[data-theme="light"] .admin-content [title]:hover::after,
+html[data-theme="light"] [data-bs-toggle="tooltip"] + .tooltip,
+html[data-theme="light"] .health-tooltip,
+html[data-theme="light"] .admin-chart-tooltip,
+html[data-theme="light"] .admin-stat-tooltip {
+  border: none !important;
+  outline: none !important;
+}
+
+/* Bootstrap tooltip - inner/arrow ayrı boyaması nedeniyle çift kenarlık
+ * görünüyordu. Tek temiz yüzey: koyu metin + beyaz arka plan + tek gölge. */
+html[data-theme="light"] .tooltip.show,
+html[data-theme="light"] .tooltip {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+html[data-theme="light"] .tooltip .tooltip-inner,
+html[data-theme="light"] .bs-tooltip-auto .tooltip-inner,
+html[data-theme="light"] .bs-tooltip-top .tooltip-inner,
+html[data-theme="light"] .bs-tooltip-bottom .tooltip-inner,
+html[data-theme="light"] .bs-tooltip-start .tooltip-inner,
+html[data-theme="light"] .bs-tooltip-end .tooltip-inner,
+html[data-theme="light"] .admin-tooltip-inner {
+  background: rgba(15, 28, 51, 0.96) !important;
+  color: #ffffff !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: 0 6px 18px rgba(15, 28, 51, 0.22) !important;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+html[data-theme="light"] .tooltip .tooltip-arrow,
+html[data-theme="light"] .tooltip .tooltip-arrow::before,
+html[data-theme="light"] .tooltip::before,
+html[data-theme="light"] .bs-tooltip-auto .tooltip-arrow::before,
+html[data-theme="light"] .bs-tooltip-top .tooltip-arrow::before,
+html[data-theme="light"] .bs-tooltip-bottom .tooltip-arrow::before {
+  border-color: rgba(15, 28, 51, 0.96) transparent !important;
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Title attribute CSS tooltips - varsa */
+html[data-theme="light"] .health-tooltip,
+html[data-theme="light"] [data-health-tooltip]::after,
+html[data-theme="light"] .tippy-box {
+  background: rgba(15, 28, 51, 0.96) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 6px 18px rgba(15, 28, 51, 0.22) !important;
+  border-radius: 8px;
+}
+
+/* ============================================================
+ * 2) Yönetici Paneli Navigation - Tüm sekme barları
+ *    Genel Analiz, Geri Bildirim Analizi, Hata Analizi, Yanıt
+ *    Geri Bildirimi, Sistem Durumu üst sekme barları kurumsal
+ *    mavi. Seçili sekme turuncu gradient (mevcut davranış korunur),
+ *    ancak metin kontrastı garantilenir.
+ * ============================================================ */
+html[data-theme="light"] .admin-nav,
+html[data-theme="light"] .admin-tabs,
+html[data-theme="light"] .admin-panel-nav,
+html[data-theme="light"] .yonetici-tabs,
+html[data-theme="light"] .yz-performans-tabs,
+html[data-theme="light"] .geri-bildirim-tabs,
+html[data-theme="light"] .hata-analizi-tabs,
+html[data-theme="light"] .yanit-analizi-tabs,
+html[data-theme="light"] .health-tab-nav,
+html[data-theme="light"] .saglik-tab-nav,
+html[data-theme="light"] .nav-tabs.admin-tabs,
+html[data-theme="light"] .nav-tabs.health-tabs,
+html[data-theme="light"] .admin-content .nav-tabs,
+html[data-theme="light"] .admin-panel .nav-tabs {
+  background: linear-gradient(180deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  border-radius: 10px 10px 0 0;
+  padding: 6px 6px 0 6px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 4px 14px rgba(0, 48, 135, 0.18);
+}
+
+html[data-theme="light"] .admin-nav a,
+html[data-theme="light"] .admin-tabs a,
+html[data-theme="light"] .admin-panel-nav a,
+html[data-theme="light"] .yonetici-tabs a,
+html[data-theme="light"] .health-tab-nav a,
+html[data-theme="light"] .nav-tabs.admin-tabs > li > a,
+html[data-theme="light"] .nav-tabs.health-tabs > li > a,
+html[data-theme="light"] .admin-content .nav-tabs > li > a,
+html[data-theme="light"] .admin-panel .nav-tabs > li > a {
+  color: rgba(255, 255, 255, 0.90) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 6px 6px 0 0;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+html[data-theme="light"] .admin-nav a:hover,
+html[data-theme="light"] .admin-tabs a:hover,
+html[data-theme="light"] .health-tab-nav a:hover,
+html[data-theme="light"] .nav-tabs.admin-tabs > li > a:hover,
+html[data-theme="light"] .nav-tabs.health-tabs > li > a:hover,
+html[data-theme="light"] .admin-content .nav-tabs > li > a:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+}
+
+/* Seçili sekme - turuncu gradient + okunaklı beyaz metin */
+html[data-theme="light"] .admin-nav .active a,
+html[data-theme="light"] .admin-tabs .active a,
+html[data-theme="light"] .admin-tabs a.active,
+html[data-theme="light"] .yonetici-tabs .active a,
+html[data-theme="light"] .health-tab-nav .active a,
+html[data-theme="light"] .nav-tabs.admin-tabs > li.active > a,
+html[data-theme="light"] .nav-tabs.health-tabs > li.active > a,
+html[data-theme="light"] .admin-content .nav-tabs > li.active > a,
+html[data-theme="light"] .admin-panel .nav-tabs > li.active > a {
+  background: linear-gradient(135deg,
+    var(--mb-brand-accent, #FF5620) 0%,
+    var(--mb-brand-accent-2, #FF8022) 100%) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 86, 32, 0.55) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 86, 32, 0.40),
+    0 4px 12px rgba(255, 86, 32, 0.28);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+  font-weight: 600 !important;
+}
+
+html[data-theme="light"] .admin-tabs a i,
+html[data-theme="light"] .nav-tabs.admin-tabs > li > a i {
+  color: inherit !important;
+  opacity: 0.92;
+}
+
+/* ============================================================
+ * 3) Sayfa hero başlıkları (Yardım Asistanı tarzı) + Navbar marka
+ *    Yardım Merkezi'ndeki kurumsal mavi başlık şeridi tüm sayfalara
+ *    yayılır: support, admin, page-header bileşenleri.
+ * ============================================================ */
+html[data-theme="light"] .page-hero,
+html[data-theme="light"] .page-header-hero,
+html[data-theme="light"] .destek-page-header,
+html[data-theme="light"] .destek-header,
+html[data-theme="light"] .yardim-page-header,
+html[data-theme="light"] .admin-page-header,
+html[data-theme="light"] .yonetici-page-header,
+html[data-theme="light"] .gelismis-analiz-header,
+html[data-theme="light"] .health-page-header,
+html[data-theme="light"] .saglik-page-header,
+html[data-theme="light"] .page-title-strip,
+html[data-theme="light"] .surum-page-header,
+html[data-theme="light"] .hakkinda-page-header {
+  background: linear-gradient(135deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-alt, #002D7A) 60%,
+    #1d4ed8 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(0, 48, 135, 0.30) !important;
+  border-radius: 14px;
+  padding: 18px 22px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 8px 22px rgba(0, 48, 135, 0.18);
+}
+
+html[data-theme="light"] .page-hero h1,
+html[data-theme="light"] .page-hero h2,
+html[data-theme="light"] .page-header-hero h1,
+html[data-theme="light"] .page-header-hero h2,
+html[data-theme="light"] .destek-page-header h1,
+html[data-theme="light"] .destek-page-header h2,
+html[data-theme="light"] .destek-page-header h3,
+html[data-theme="light"] .yardim-page-header h1,
+html[data-theme="light"] .yardim-page-header h2,
+html[data-theme="light"] .admin-page-header h1,
+html[data-theme="light"] .admin-page-header h2,
+html[data-theme="light"] .yonetici-page-header h1,
+html[data-theme="light"] .yonetici-page-header h2,
+html[data-theme="light"] .health-page-header h1,
+html[data-theme="light"] .health-page-header h2,
+html[data-theme="light"] .page-title-strip h1,
+html[data-theme="light"] .page-title-strip h2 {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  letter-spacing: 0.01em;
+}
+
+html[data-theme="light"] .page-hero p,
+html[data-theme="light"] .page-header-hero p,
+html[data-theme="light"] .destek-page-header p,
+html[data-theme="light"] .yardim-page-header p,
+html[data-theme="light"] .admin-page-header p,
+html[data-theme="light"] .yonetici-page-header p,
+html[data-theme="light"] .health-page-header p {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
+html[data-theme="light"] .page-hero i,
+html[data-theme="light"] .page-header-hero i,
+html[data-theme="light"] .destek-page-header i,
+html[data-theme="light"] .admin-page-header i,
+html[data-theme="light"] .yonetici-page-header i,
+html[data-theme="light"] .health-page-header i {
+  color: #ffffff !important;
+  opacity: 0.92;
+}
+
+/* Navbar (üst başlık çubuğu) - light tema beyaz arka plan,
+ * marka yazısı kurumsal mavi gradient (brand_title.css zaten
+ * gradient tanımlıyor; burada navbar zemini garanti ediyoruz). */
+html[data-theme="light"] .main-header,
+html[data-theme="light"] .main-header .navbar,
+html[data-theme="light"] .main-header .navbar-default,
+html[data-theme="light"] .navbar-default {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%) !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.10) !important;
+  box-shadow: 0 1px 4px rgba(15, 28, 51, 0.06);
+}
+
+html[data-theme="light"] .main-header .navbar-static-top {
+  background: transparent !important;
+}
+
+html[data-theme="light"] .logo,
+html[data-theme="light"] .main-header .logo,
+html[data-theme="light"] .navbar-brand,
+html[data-theme="light"] .logo .brand-text {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%) !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.10) !important;
+}
+
+/* "MERGEN Bilge" brand metni - brand_title.css kendi gradient'ini
+ * uygular; biz yalnızca light arka plan üzerinde okunabilirliği
+ * pekiştiriyoruz. */
+html[data-theme="light"] .navbar-brand,
+html[data-theme="light"] .logo .brand-text,
+html[data-theme="light"] .brand-text {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* Header üst sağdaki butonlar/menüler light yüzeye uyumlu */
+html[data-theme="light"] .navbar-custom-menu .navbar-nav > li > a,
+html[data-theme="light"] .main-header .navbar-custom-menu a {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .navbar-custom-menu .navbar-nav > li > a:hover,
+html[data-theme="light"] .main-header .navbar-custom-menu a:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* ============================================================
+ * 4) Dosya Yönetimi açıklayıcı notları okunaklı
+ *    "Birden fazla dosya seçebilirsiniz", "Maksimum dosya boyutu"
+ *    gibi notlar light arka planda soluk kalıyordu.
+ * ============================================================ */
+html[data-theme="light"] .file-manager-help,
+html[data-theme="light"] .file-manager-note,
+html[data-theme="light"] .file-manager-info-text,
+html[data-theme="light"] .file-manager-helper-text,
+html[data-theme="light"] .fm-drop-zone-help,
+html[data-theme="light"] .drop-zone-helper,
+html[data-theme="light"] .drop-zone-tip,
+html[data-theme="light"] .upload-help-text,
+html[data-theme="light"] .upload-info-text,
+html[data-theme="light"] .file-upload-help,
+html[data-theme="light"] .file-upload-tip {
+  color: var(--color-text-soft, #1f2a44) !important;
+  opacity: 0.95;
+}
+
+html[data-theme="light"] .file-manager .text-muted,
+html[data-theme="light"] .file-manager-container .text-muted,
+html[data-theme="light"] .fm-drop-zone .text-muted {
+  color: var(--color-muted, #5b6577) !important;
+  opacity: 1;
+}
+
+/* Drop zone (drag-drop bölgesi) - non-hover state belirgin kenarlık */
+html[data-theme="light"] .fm-drop-zone,
+html[data-theme="light"] .file-drop-zone,
+html[data-theme="light"] .upload-drop-zone,
+html[data-theme="light"] #file_manager_module-main_drop_zone {
+  background: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(247, 249, 253, 0.85) 100%) !important;
+  border: 2px dashed rgba(0, 48, 135, 0.32) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .fm-drop-zone:hover,
+html[data-theme="light"] .file-drop-zone:hover,
+html[data-theme="light"] .upload-drop-zone:hover,
+html[data-theme="light"] .fm-drop-zone.is-dragover,
+html[data-theme="light"] .upload-drop-zone.dragover,
+html[data-theme="light"] #file_manager_module-main_drop_zone.dragover {
+  border-color: var(--mb-brand-accent, #FF5620) !important;
+  background: linear-gradient(180deg,
+    rgba(255, 86, 32, 0.06) 0%,
+    rgba(255, 255, 255, 0.96) 100%) !important;
+  box-shadow: 0 0 0 2px rgba(255, 86, 32, 0.16);
+  color: var(--mb-brand-accent, #FF5620) !important;
+}
+
+html[data-theme="light"] .fm-drop-zone i,
+html[data-theme="light"] .file-drop-zone i,
+html[data-theme="light"] .upload-drop-zone i {
+  color: var(--mb-brand-primary, #003087) !important;
+  opacity: 0.85;
+}
+
+html[data-theme="light"] .fm-drop-zone:hover i,
+html[data-theme="light"] .file-drop-zone:hover i,
+html[data-theme="light"] .upload-drop-zone:hover i,
+html[data-theme="light"] .fm-drop-zone.is-dragover i {
+  color: var(--mb-brand-accent, #FF5620) !important;
+  opacity: 1;
+}
+
+/* Dosya tablosu içinde muted metin / dosya boyutu / tarih */
+html[data-theme="light"] .file-manager-table .file-meta,
+html[data-theme="light"] .file-manager-table .file-size,
+html[data-theme="light"] .file-manager-table .file-date,
+html[data-theme="light"] .file-manager-table .text-muted {
+  color: var(--color-muted, #5b6577) !important;
+  opacity: 1;
+}
+
+/* ============================================================
+ * 5) Geri Bildirim & Hata - tag butonları, Ekler drop zone, switch
+ * ============================================================ */
+html[data-theme="light"] .destek-feedback .feedback-tag,
+html[data-theme="light"] .destek-feedback-tag,
+html[data-theme="light"] .feedback-tag,
+html[data-theme="light"] .feedback-form .feedback-tag,
+html[data-theme="light"] .feedback-emoji,
+html[data-theme="light"] .satisfaction-emoji,
+html[data-theme="light"] .destek-tag-btn,
+html[data-theme="light"] .hata-tag-btn,
+html[data-theme="light"] .bug-tag-btn,
+html[data-theme="light"] .geri-bildirim-tag {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid rgba(0, 48, 135, 0.24) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.06);
+  font-weight: 500;
+}
+
+html[data-theme="light"] .destek-feedback .feedback-tag:hover,
+html[data-theme="light"] .feedback-tag:hover,
+html[data-theme="light"] .destek-tag-btn:hover,
+html[data-theme="light"] .geri-bildirim-tag:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .feedback-tag.active,
+html[data-theme="light"] .feedback-tag.selected,
+html[data-theme="light"] .destek-tag-btn.active,
+html[data-theme="light"] .geri-bildirim-tag.active,
+html[data-theme="light"] .feedback-emoji.active,
+html[data-theme="light"] .satisfaction-emoji.active {
+  background: linear-gradient(135deg,
+    var(--mb-brand-accent, #FF5620) 0%,
+    var(--mb-brand-accent-2, #FF8022) 100%) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 86, 32, 0.60) !important;
+  box-shadow: 0 4px 12px rgba(255, 86, 32, 0.22);
+  font-weight: 600;
+}
+
+/* Pozitif emoji aktif yeşil olmalı; orange ile çelişki olmasın
+ * destek formu için negatif/pozitif ayrımı yapılır */
+html[data-theme="light"] .feedback-emoji.satisfied.active,
+html[data-theme="light"] .feedback-emoji.very-satisfied.active,
+html[data-theme="light"] .feedback-emoji[data-rating="positive"].active,
+html[data-theme="light"] .satisfaction-emoji[data-rating="positive"].active {
+  background: linear-gradient(135deg,
+    rgba(22, 163, 74, 0.12) 0%,
+    rgba(22, 163, 74, 0.06) 100%) !important;
+  color: #15803d !important;
+  border-color: rgba(22, 163, 74, 0.55) !important;
+}
+
+html[data-theme="light"] .feedback-emoji.unsatisfied.active,
+html[data-theme="light"] .feedback-emoji.very-unsatisfied.active,
+html[data-theme="light"] .feedback-emoji[data-rating="negative"].active,
+html[data-theme="light"] .satisfaction-emoji[data-rating="negative"].active {
+  background: linear-gradient(135deg,
+    rgba(220, 38, 38, 0.10) 0%,
+    rgba(220, 38, 38, 0.04) 100%) !important;
+  color: #b91c1c !important;
+  border-color: rgba(220, 38, 38, 0.55) !important;
+}
+
+/* "Ekler" drag-drop bölgesi - normal halinde belirgin kenarlık */
+html[data-theme="light"] .destek-attachment-drop-zone,
+html[data-theme="light"] .ekler-drop-zone,
+html[data-theme="light"] .hata-attachment-zone,
+html[data-theme="light"] .bug-attachment-zone {
+  background: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(247, 249, 253, 0.88) 100%) !important;
+  border: 2px dashed rgba(0, 48, 135, 0.32) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border-radius: 12px;
+}
+
+html[data-theme="light"] .destek-attachment-drop-zone:hover,
+html[data-theme="light"] .ekler-drop-zone:hover,
+html[data-theme="light"] .destek-attachment-drop-zone.is-dragover,
+html[data-theme="light"] .ekler-drop-zone.dragover {
+  border-color: var(--mb-brand-accent, #FF5620) !important;
+  background: linear-gradient(180deg,
+    rgba(255, 86, 32, 0.06) 0%,
+    rgba(255, 255, 255, 0.96) 100%) !important;
+  color: var(--mb-brand-accent, #FF5620) !important;
+}
+
+/* ============================================================
+ * 6) Yenilikler bullet madde işareti güçlü renk
+ *    theme_light_refinements.css halen bullet ::marker tanımı
+ *    içeriyor; burada destek sürüm/yenilik/changelog kapsamı
+ *    genişletilir.
+ * ============================================================ */
+html[data-theme="light"] .yenilikler-page ul li,
+html[data-theme="light"] .surum-yenilikleri ul li,
+html[data-theme="light"] .yenilik-icerik ul li,
+html[data-theme="light"] .destek-surum ul li,
+html[data-theme="light"] .changelog-section ul li,
+html[data-theme="light"] .release-notes ul li,
+html[data-theme="light"] .new-features ul li,
+html[data-theme="light"] .improvements ul li,
+html[data-theme="light"] .surum-bilgi ul li {
+  color: var(--color-text, #0f1c33) !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] .yenilikler-page ul li::marker,
+html[data-theme="light"] .surum-yenilikleri ul li::marker,
+html[data-theme="light"] .yenilik-icerik ul li::marker,
+html[data-theme="light"] .destek-surum ul li::marker,
+html[data-theme="light"] .changelog-section ul li::marker,
+html[data-theme="light"] .release-notes ul li::marker,
+html[data-theme="light"] .new-features ul li::marker,
+html[data-theme="light"] .improvements ul li::marker,
+html[data-theme="light"] .surum-bilgi ul li::marker {
+  color: var(--mb-brand-accent, #FF5620);
+  font-weight: 700;
+}
+
+/* "Yeni Özellikler" / "İyileştirmeler" başlıkları belirgin */
+html[data-theme="light"] .new-features-title,
+html[data-theme="light"] .improvements-title,
+html[data-theme="light"] .yenilikler-page h3,
+html[data-theme="light"] .surum-yenilikleri h3,
+html[data-theme="light"] .destek-surum h3,
+html[data-theme="light"] .release-notes h3 {
+  color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.01em;
+}
+
+html[data-theme="light"] .yenilikler-page p,
+html[data-theme="light"] .surum-yenilikleri p,
+html[data-theme="light"] .destek-surum p,
+html[data-theme="light"] .release-notes p {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+/* Versiyon etiketi rozeti */
+html[data-theme="light"] .version-tag,
+html[data-theme="light"] .release-version-badge,
+html[data-theme="light"] .surum-versiyon-badge {
+  background: linear-gradient(135deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(0, 48, 135, 0.40);
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
+}
+
+/* ============================================================
+ * 7) Sidebar logout butonu - light yumuşak yüzey
+ * ============================================================ */
+html[data-theme="light"] .mb-sidebar-logout-btn {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid rgba(0, 48, 135, 0.22) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05);
+}
+
+html[data-theme="light"] .mb-sidebar-logout-btn:hover {
+  background: rgba(255, 86, 32, 0.08) !important;
+  color: var(--mb-brand-accent, #FF5620) !important;
+  border-color: var(--mb-brand-accent, #FF5620) !important;
+  box-shadow: 0 4px 12px rgba(255, 86, 32, 0.18);
+}
+
+html[data-theme="light"] .mb-sidebar-logout-btn i {
+  color: inherit !important;
+}
+
+/* ============================================================
+ * 8) Admin sayfa kartları yumuşak light cam
+ *    (Genel Bakış, KPI kartları, mini grafik kartları)
+ * ============================================================ */
+html[data-theme="light"] .admin-stat-card,
+html[data-theme="light"] .admin-kpi-card,
+html[data-theme="light"] .admin-summary-card,
+html[data-theme="light"] .admin-overview-card,
+html[data-theme="light"] .admin-mini-card,
+html[data-theme="light"] .yonetici-stat-card {
+  background: linear-gradient(180deg, #ffffff 0%, #f7f9fd 100%) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid rgba(0, 48, 135, 0.12) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05), 0 8px 18px rgba(15, 28, 51, 0.04);
+}
+
+html[data-theme="light"] .admin-stat-card .stat-value,
+html[data-theme="light"] .admin-kpi-card .kpi-value,
+html[data-theme="light"] .admin-summary-card .summary-value {
+  color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 700;
+}
+
+html[data-theme="light"] .admin-stat-card .stat-label,
+html[data-theme="light"] .admin-kpi-card .kpi-label,
+html[data-theme="light"] .admin-summary-card .summary-label {
+  color: var(--color-muted, #5b6577) !important;
+  font-weight: 500;
+}
+
+/* "Bugün Aktif" / "YZ Çağrısı" / "Ortalama Yanıt Süresi" gibi vurgular */
+html[data-theme="light"] .admin-stat-card.stat-success .stat-value,
+html[data-theme="light"] .admin-kpi-card.kpi-active .kpi-value {
+  color: #15803d !important;
+}
+
+html[data-theme="light"] .admin-stat-card.stat-warning .stat-value,
+html[data-theme="light"] .admin-kpi-card.kpi-warning .kpi-value {
+  color: #b45309 !important;
+}
+
+html[data-theme="light"] .admin-stat-card.stat-info .stat-value {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+/* ============================================================
+ * 9) DataTables - light tema başlık + filtre + sayfa kontrolleri
+ *    Önceki temada zaten kısmi destek var; pekiştir.
+ * ============================================================ */
+html[data-theme="light"] .dataTables_wrapper thead th,
+html[data-theme="light"] table.dataTable thead th,
+html[data-theme="light"] .dataTables_wrapper thead td {
+  background: linear-gradient(135deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-color: rgba(0, 48, 135, 0.40) !important;
+  font-weight: 600;
+}
+
+html[data-theme="light"] .dataTables_wrapper tbody td {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .dataTables_wrapper tbody tr:hover {
+  background: rgba(0, 48, 135, 0.04) !important;
+}
+
+html[data-theme="light"] .dataTables_filter label,
+html[data-theme="light"] .dataTables_length label,
+html[data-theme="light"] .dataTables_info {
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .dataTables_filter input,
+html[data-theme="light"] .dataTables_length select {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid rgba(0, 48, 135, 0.24) !important;
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+html[data-theme="light"] .dataTables_paginate .paginate_button {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid rgba(0, 48, 135, 0.22) !important;
+}
+
+html[data-theme="light"] .dataTables_paginate .paginate_button.current,
+html[data-theme="light"] .dataTables_paginate .paginate_button:hover {
+  background: var(--mb-brand-primary, #003087) !important;
+  color: #ffffff !important;
+}
+
+/* ============================================================
+ * 10) Toast bildirimleri light tema kontrastı
+ * ============================================================ */
+html[data-theme="light"] .shiny-notification,
+html[data-theme="light"] #shiny-notification-panel .shiny-notification {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  box-shadow: 0 8px 22px rgba(15, 28, 51, 0.16);
+}
+
+html[data-theme="light"] .shiny-notification.shiny-notification-success {
+  border-left: 4px solid #16a34a !important;
+}
+
+html[data-theme="light"] .shiny-notification.shiny-notification-warning {
+  border-left: 4px solid #f59e0b !important;
+}
+
+html[data-theme="light"] .shiny-notification.shiny-notification-error {
+  border-left: 4px solid #dc2626 !important;
+}
+
+html[data-theme="light"] .shiny-notification.shiny-notification-message {
+  border-left: 4px solid var(--mb-brand-primary, #003087) !important;
+}

@@ -326,11 +326,14 @@ savedChatsServer <- function(id, saved_chats) {
           month_rows <- month_rows[seq_len(min(nrow(month_rows), 25)), , drop = FALSE]
           
           div(
-            class = "month-group",
+            class = "month-group saved-chats-month-group",
             style = "margin: 0 15px 20px 0; background: rgba(18, 18, 18, 0.6); padding: 15px; border-radius: 12px; border: 1px solid rgba(255, 138, 0, 0.2); backdrop-filter: blur(10px);",
             h4(
               month_rows$month_label[1],
+              # Aylık söyleşi sayısı rozeti - light tema CSS bu sınıfı
+              # turuncu/güçlü kontrast ile gösterir (theme_light_modals.css).
               tags$span(
+                class = "saved-chats-month-count month-count-badge",
                 style = "margin-left: 8px; font-size: 16px; font-weight: 500; color: rgba(255, 138, 0, 0.85);",
                 sprintf("(%d söyleşi)", month_total)
               ),
