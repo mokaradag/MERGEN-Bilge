@@ -88,22 +88,17 @@ api_config <- list(
     "technical name 6" = "\U00002699"
   ),
   # Her teknik model kimliğini bir uç nokta anahtarına eşle.
-  # Derin Düşünme modelleri eklenirken otomatik genişletilir (aşağıdaki
-  # birleştirme kuralı). Varsayılan uç nokta = "primary".
-  local_model_endpoint_map = unique(c(
-    c(
-      "technical name 1" = "primary",
-      "technical name 2" = "primary",
-      "technical name 3" = "primary",
-      "technical name 4" = "primary",
-      "technical name 5" = "secondary",
-      "technical name 6" = "secondary"
-    ),
-    stats::setNames(
-      rep("primary", 4),
-      c(excel_deep_low_model, excel_deep_high_model, coding_deep_low_model, coding_deep_high_model)
-    )
-  )),
+  # Derin Düşünme modelleri yalnızca temel haritada bulunmuyorsa eklenir.
+  # NOT: unique() adlandırılmış karakter vektörlerde sadece DEĞERE göre dedup
+  # yapar ve isimleri kaybeder. Bu yüzden manuel ekleme döngüsü kullanılır.
+  local_model_endpoint_map = c(
+    "technical name 1" = "primary",
+    "technical name 2" = "primary",
+    "technical name 3" = "primary",
+    "technical name 4" = "primary",
+    "technical name 5" = "secondary",
+    "technical name 6" = "secondary"
+  ),
   # Excel/Kod araçlarındaki Derin Düşünme düğmesi için (family, level) -> model_id eşlemesi.
   # Bu modeller dropdown'larda görünmez; sadece runtime'da seçilir.
   deep_thinking_models = list(
@@ -272,8 +267,15 @@ api_config <- list(
 for (.mb_dt_model in unique(c(excel_deep_low_model, excel_deep_high_model,
                               coding_deep_low_model, coding_deep_high_model))) {
   if (!nzchar(.mb_dt_model)) next
-  if (!is.null(api_config$local_model_capabilities[[.mb_dt_model]])) next
-  api_config$local_model_capabilities[[.mb_dt_model]] <- .mb_deep_thinking_capability_template
+  if (is.null(api_config$local_model_capabilities[[.mb_dt_model]])) {
+    api_config$local_model_capabilities[[.mb_dt_model]] <- .mb_deep_thinking_capability_template
+  }
+  # Yeni Derin Düşünme modeli endpoint haritasında yoksa varsayılan olarak
+  # birincil (primary) endpoint'e eşle. Mevcut girdiler korunur.
+  if (is.null(api_config$local_model_endpoint_map[[.mb_dt_model]]) ||
+      is.na(api_config$local_model_endpoint_map[[.mb_dt_model]])) {
+    api_config$local_model_endpoint_map[[.mb_dt_model]] <- "primary"
+  }
 }
 rm(.mb_dt_model, .mb_deep_thinking_capability_template)
 

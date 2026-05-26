@@ -85,10 +85,21 @@
     }
   }
 
+  // refresh() durumu DOM'a yazar. Bu yazma işlemi `.input-actions` alt
+  // ağacında class değişimi olarak görünebilir ve MutationObserver tekrar
+  // tetikleyebilir. Yeniden giriş bayrağı ile geri besleme döngüsünü kırarız.
+  var refreshing = false;
   function refresh() {
-    var active = detectActiveTools();
-    applyChatModelLock(active);
-    applySettingsModelLock(active);
+    if (refreshing) return;
+    refreshing = true;
+    try {
+      var active = detectActiveTools();
+      applyChatModelLock(active);
+      applySettingsModelLock(active);
+    } finally {
+      // Mutationların sıralanması için bir sonraki microtask'a bırak
+      setTimeout(function() { refreshing = false; }, 0);
+    }
   }
 
   // Diğer tool JS dosyaları toggle*Mode handler'ları içerisinden çağırabilir.
@@ -115,18 +126,27 @@
     });
   }
 
-  document.addEventListener("DOMContentLoaded", function() {
-    bindObserver();
-    refresh();
-  });
-
-  // Shiny bağlandıktan sonra ilk render gecikmeli olabilir, gözlemciyi yeniden bağla.
-  $(document).on("shiny:connected shiny:value", function() {
-    setTimeout(function() {
+  function safeStart() {
+    try {
       bindObserver();
       refresh();
-    }, 80);
-  });
+    } catch (e) {
+      // Yüklemeyi engelleyecek şekilde hata fırlatma; sadece konsola yaz.
+      if (window.console && console.warn) {
+        console.warn("[TOOL_MODEL_LOCK] safeStart hatası:", e);
+      }
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", safeStart);
+
+  // Shiny bağlandıktan sonra ilk render gecikmeli olabilir, gözlemciyi yeniden bağla.
+  // jQuery yüklü değilse sessizce atla.
+  if (window.jQuery) {
+    window.jQuery(document).on("shiny:connected.toolModelLock shiny:sessioninitialized.toolModelLock", function() {
+      setTimeout(safeStart, 80);
+    });
+  }
 
   console.log("[TOOL_MODEL_LOCK] Yüklendi");
 })();
