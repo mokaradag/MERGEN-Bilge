@@ -51,8 +51,8 @@ if ! command -v Rscript >/dev/null 2>&1; then
 fi
 
 if [[ "${PROFILE}" == "cloud-quick" ]]; then
-  echo "Cloud quick mode: skipping eager full package bootstrap before validation."
-  MERGEN_AI_SETUP_INSTALL_PACKAGES=false bash tools/setup_ai_r_environment.sh
+  echo "Cloud quick mode: running cloud-safe package bootstrap before validation."
+  MERGEN_AI_SETUP_INSTALL_PACKAGES=true bash tools/setup_ai_r_environment.sh
 else
   echo "Ensuring R package dependencies are available for validation..."
   MERGEN_AI_SETUP_INSTALL_PACKAGES=true bash tools/setup_ai_r_environment.sh
