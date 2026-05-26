@@ -43,7 +43,40 @@ else
 
   export DEBIAN_FRONTEND=noninteractive
 
-  ${SUDO} apt-get update
+  apt_update_with_blocked_ppa_recovery() {
+    echo "Running apt-get update..."
+
+    if ${SUDO} apt-get update; then
+      return 0
+    fi
+
+    echo "WARNING: apt-get update failed. Attempting to disable blocked third-party PPAs..."
+
+    local apt_files=()
+    if [[ -f /etc/apt/sources.list ]]; then
+      apt_files+=("/etc/apt/sources.list")
+    fi
+
+    if compgen -G "/etc/apt/sources.list.d/*.list" >/dev/null; then
+      while IFS= read -r file; do
+        apt_files+=("${file}")
+      done < <(find /etc/apt/sources.list.d -maxdepth 1 -type f -name "*.list" | sort)
+    fi
+
+    for file in "${apt_files[@]}"; do
+      if grep -Eiq "deadsnakes|ondrej|ppa\.launchpadcontent\.net|launchpad\.net" "${file}"; then
+        echo "Disabling blocked PPA entries in ${file}"
+        ${SUDO} sed -i.bak -E \
+          '/deadsnakes|ondrej|ppa\.launchpadcontent\.net|launchpad\.net/I s/^/# disabled by MERGEN AI bootstrap: /' \
+          "${file}"
+      fi
+    done
+
+    echo "Retrying apt-get update after disabling blocked PPA entries..."
+    ${SUDO} apt-get update
+  }
+
+  apt_update_with_blocked_ppa_recovery
 
   ${SUDO} apt-get install -y --no-install-recommends \
     r-base \
