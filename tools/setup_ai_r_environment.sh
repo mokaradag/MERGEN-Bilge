@@ -144,7 +144,14 @@ if [[ -z "${RSPM:-}" ]]; then
 fi
 export RSPM
 
-echo "Installing/checking R package dependencies..."
-Rscript tests/scripts/ci_install_packages.R
+INSTALL_R_PACKAGES="${MERGEN_AI_SETUP_INSTALL_PACKAGES:-true}"
+
+if [[ "${INSTALL_R_PACKAGES}" == "true" ]]; then
+  echo "Installing/checking R package dependencies..."
+  Rscript tests/scripts/ci_install_packages.R
+else
+  echo "Skipping R package installation because MERGEN_AI_SETUP_INSTALL_PACKAGES=false."
+  echo "R packages will be installed later by the explicit validation step if requested."
+fi
 
 echo "OK: MERGEN AI R environment is ready."
