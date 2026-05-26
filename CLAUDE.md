@@ -186,6 +186,11 @@ The agent must not stop at `/bin/bash: Rscript: command not found`. If `Rscript`
 
 An AI agent must not say “tests passed”, “I verified”, “I ran the app”, “the check is green”, or similar unless the relevant command really completed successfully and the validation summary reports zero failed steps.
 
+Documentation-only exception:
+- If a requested change modifies only `README.md` and/or `CLAUDE.md`, do not run R validation, `Rscript`, `testthat`, app boot checks, VM preflight, or `tools/ai_validate.sh` unless the user explicitly asks for runtime validation.
+- For such docs-only changes, inspect the Markdown files and report `git diff -- README.md CLAUDE.md`.
+- This exception does not apply to R, JS, CSS, test, config, asset-manifest, encoding, SSO, DB, streaming, Bilge Yolaç, or production-sensitive changes.
+
 If `Rscript` is still unavailable after bootstrap, the AI agent must explicitly state that bootstrap failed, include the failing command, and must not imply the repository was validated.
 
 If a required validation script is missing, the AI agent must state exactly which script is missing and must not invent successful results.
@@ -200,11 +205,14 @@ Preferred validation escalation:
 ### Theme system and light-theme contract
 
 - Dark theme remains the default.
-- Light theme is applied through `www/css/theme_tokens.css`, `www/css/theme_light.css`, `www/css/theme_light_extras.css`, and `www/js/theme_manager.js`.
+- Light theme is applied through `www/css/theme_tokens.css`, `www/css/theme_light.css`, `www/css/theme_light_extras.css`, `www/css/theme_light_overhaul.css`, `www/css/theme_light_overhaul_phase2.css`, `www/css/theme_light_user_polish.css`, `www/css/theme_light_user_polish_v2.css`, and `www/js/theme_manager.js`.
 - Theme state is stored in `mergen_settings.theme` / localStorage and applied through `<html data-theme="...">`.
 - `R/module_settings.R` must synchronize `input$mergen_theme_changed` and `input$mergen_theme_initial`; only valid `dark` / `light` values may be persisted.
 - `theme_manager.js` must keep delegated click/touch/keyboard handling so the sidebar theme button still works after sidebar re-render.
-- Asset ordering in `R/config_ui_assets.R` must keep theme tokens before light theme CSS, light extras after `theme_light.css`, and `brand_title.css`, `sidebar_user_panel.css`, and `tool_backgrounds.css` after the theme layers.
+- Asset ordering in `R/config_ui_assets.R` must keep theme tokens before light theme CSS, light extras after `theme_light.css`, `theme_light_overhaul_phase2.css` after `theme_light_overhaul.css`, and `theme_light_user_polish.css` / `theme_light_user_polish_v2.css` after overhaul layers, with `brand_title.css`, `sidebar_user_panel.css`, and `tool_backgrounds.css` after the theme layers.
+- `theme_light_user_polish.css` and `theme_light_user_polish_v2.css` must remain scoped to `html[data-theme="light"]`.
+- Do not collapse polish layers into one large CSS file just to simplify the manifest; the split is part of the frontend maintainability ratchet.
+- Preserve corporate blue hero headers, light cream surfaces, teal month-group accents, feedback/admin tab polish, Bilge Yolaç light tool surfaces, message action buttons, file preview modal header polish, and welcome quick-action light-theme polish.
 - Do not add CDN or external font dependencies.
 - Do not force deep-space / cinematic / Explore modal areas into white light surfaces; they intentionally preserve the dark space experience.
 
@@ -245,6 +253,19 @@ Preferred validation escalation:
 - Respect `prefers-reduced-motion`; decorative layers must not capture pointer events.
 - Keep `www/js/tool_backgrounds.js` under the current app-owned JS budget noted by the tests.
 - Protected tests: `test-tool-backgrounds-contract.R`, `test-frontend-maintainability-ratchet.R`, and `test-source-manifest-contract.R`.
+
+### Tool-mode model lock and Excel/Coding deep-thinking contract
+
+Current contract:
+
+- `www/js/tools_model_lock.js` is the central browser-side model-lock coordinator for active tool modes. It detects active tool control panels and disables the chat `Model Değiştir` control plus the settings `Model Seçimi` dropdown with an explanatory tooltip.
+- Individual tool scripts should call `window.MergenToolModelLock.refresh()` after showing or hiding their controls instead of implementing separate lock logic.
+- `www/js/excel_coding_deep_thinking.js` owns the chat-side Deep Thinking toggle and low/high level dropdown for Excel Analysis and Coding Expert.
+- Deep-thinking model resolution belongs server-side in `resolve_deep_thinking_model()` and `api_config$deep_thinking_models`.
+- Deep-thinking model IDs are supplied by `EXCEL_DEEP_LOW_MODEL`, `EXCEL_DEEP_HIGH_MODEL`, `CODING_DEEP_LOW_MODEL`, and `CODING_DEEP_HIGH_MODEL`. They are runtime tool models, not normal user-facing model dropdown entries.
+- If a deep-thinking model is not already listed in `local_model_capabilities`, it may be added with thinking-capable defaults, but existing explicit capability definitions must not be overwritten.
+- Do not duplicate model-lock logic in `analysis_tools.js`, `image_tools.js`, `summarization_tools.js`, or future tool scripts.
+- For ChartLab line/area charts, preserve the X-axis preference order: date column first, then categorical column, then numeric fallback. When categorical X values repeat, aggregate numeric Y values, defaulting to mean unless a specific aggregation is provided. Do not revert to the older behavior that selected numeric X too early and made line charts behave like scatter plots.
 
 ### Bilge Yolaç game behavior contract
 
@@ -469,6 +490,7 @@ Current contract:
 - `tests/testthat/test-frontend-maintainability-ratchet.R` protects the current frontend baseline. Its first baseline must respect the current real report values; after that, growth should fail until the relevant frontend code is split or refactored.
 - App-owned frontend assets are budgeted separately from vendor/minified assets. Do not loosen app-owned thresholds merely because a third-party/minified file is large.
 - New app-owned runtime CSS/JS files must not silently remain outside `R/config_ui_assets.R`. Add them to the manifest in the correct local/offline load order and update manifest/order tests when needed.
+- Keep `www/js/excel_coding_deep_thinking.js` loaded after `www/js/analysis_tools.js`, and keep `www/js/tools_model_lock.js` after the tool-control scripts it coordinates. Keep `www/css/tools_model_lock.css` in the CSS manifest. These files centralize Excel/Coding deep-thinking controls and tool-mode model-lock UI; do not move that behavior back into individual tool scripts.
 - Forbidden legacy selectors such as `message_input`, `chat_content_wrapper`, and `#_content_container` must not be reintroduced.
 - For large or mixed frontend files, prefer one focused local split at a time instead of adding more unrelated behavior to the same file. Good split candidates should preserve UX and cascade/order behavior.
 - Welcome quick-action tooltip behavior for the Ana Söyleşi welcome screen lives in `www/js/welcome_tooltip_manager.js`, not in `www/js/app_core.js`. Do not move that tooltip/event-observer block back into `app_core.js`; the split keeps `app_core.js` focused on core app lifecycle, message observers, reconnection handling, and capability-message submission.
