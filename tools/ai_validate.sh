@@ -50,8 +50,13 @@ if ! command -v Rscript >/dev/null 2>&1; then
   exit 127
 fi
 
-echo "Ensuring R package dependencies are available for validation..."
-MERGEN_AI_SETUP_INSTALL_PACKAGES=true bash tools/setup_ai_r_environment.sh
+if [[ "${PROFILE}" == "cloud-quick" ]]; then
+  echo "Cloud quick mode: skipping eager full package bootstrap before validation."
+  MERGEN_AI_SETUP_INSTALL_PACKAGES=false bash tools/setup_ai_r_environment.sh
+else
+  echo "Ensuring R package dependencies are available for validation..."
+  MERGEN_AI_SETUP_INSTALL_PACKAGES=true bash tools/setup_ai_r_environment.sh
+fi
 
 # POSIX lokalinde R, UTF-8 Türkçe kaynak dosyalarını "invalid input" uyarısıyla
 # okuyabilir. Ortamda LANG yoksa C.utf8 kullan.
