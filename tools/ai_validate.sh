@@ -42,6 +42,9 @@ if ! command -v Rscript >/dev/null 2>&1; then
   exit 127
 fi
 
+# POSIX lokalinde R, UTF-8 Türkçe kaynak dosyalarını "invalid input" uyarısıyla
+# okuyabilir. Ortamda LANG yoksa C.utf8 kullan.
+export LANG="${LANG:-C.utf8}"
 export TZ="${TZ:-UTC}"
 export MERGEN_RUN_APP="${MERGEN_RUN_APP:-false}"
 export MERGEN_DISABLE_FUTURES="${MERGEN_DISABLE_FUTURES:-true}"

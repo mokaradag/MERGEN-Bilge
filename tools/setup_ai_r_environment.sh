@@ -43,40 +43,45 @@ else
 
   export DEBIAN_FRONTEND=noninteractive
 
-  apt_update_with_blocked_ppa_recovery() {
-    echo "Running apt-get update..."
-
-    if ${SUDO} apt-get update; then
+  # apt-get update güvenli çalıştırıcı: engellenen PPA'lar (deadsnakes, ondrej,
+  # ppa.launchpadcontent.net) HTTP 403 döndürdüğünde ilgili kaynak dosyalarını
+  # devre dışı bırakıp tekrar dener; yalnızca ikinci deneme de başarısız olursa
+  # hata verir. Hem klasik .list hem de deb822 .sources formatını destekler.
+  _safe_apt_update() {
+    if ${SUDO} apt-get update 2>&1; then
       return 0
     fi
+    echo "apt-get update failed. Disabling blocked PPAs and retrying..." >&2
+    local blocked_pattern='deadsnakes|ondrej|ppa\.launchpadcontent\.net|launchpad\.net'
 
-    echo "WARNING: apt-get update failed. Attempting to disable blocked third-party PPAs..."
-
-    local apt_files=()
-    if [[ -f /etc/apt/sources.list ]]; then
-      apt_files+=("/etc/apt/sources.list")
-    fi
-
-    if compgen -G "/etc/apt/sources.list.d/*.list" >/dev/null; then
-      while IFS= read -r file; do
-        apt_files+=("${file}")
-      done < <(find /etc/apt/sources.list.d -maxdepth 1 -type f -name "*.list" | sort)
-    fi
-
-    for file in "${apt_files[@]}"; do
-      if grep -Eiq "deadsnakes|ondrej|ppa\.launchpadcontent\.net|launchpad\.net" "${file}"; then
-        echo "Disabling blocked PPA entries in ${file}"
-        ${SUDO} sed -i.bak -E \
-          '/deadsnakes|ondrej|ppa\.launchpadcontent\.net|launchpad\.net/I s/^/# disabled by MERGEN AI bootstrap: /' \
-          "${file}"
+    # Klasik .list dosyaları: deb satırlarını yorum satırına çevir
+    while IFS= read -r f; do
+      [[ -f "${f}" ]] || continue
+      if grep -Eiq "${blocked_pattern}" "${f}" 2>/dev/null; then
+        echo "  Commenting out blocked entries in: ${f}" >&2
+        ${SUDO} sed -i -E \
+          "s|^(deb[[:space:]].*(deadsnakes|ondrej|ppa\.launchpadcontent\.net|launchpad\.net).*)$|# DISABLED-BLOCKED-PPA \1|I" \
+          "${f}" || true
       fi
-    done
+    done < <(find /etc/apt/sources.list /etc/apt/sources.list.d/ -name '*.list' 2>/dev/null || true)
 
-    echo "Retrying apt-get update after disabling blocked PPA entries..."
+    # deb822 .sources dosyaları: 'Enabled: no' ekle veya güncelle
+    while IFS= read -r f; do
+      [[ -f "${f}" ]] || continue
+      if grep -Eiq "${blocked_pattern}" "${f}" 2>/dev/null; then
+        echo "  Disabling blocked deb822 source: ${f}" >&2
+        if grep -qi '^Enabled:' "${f}" 2>/dev/null; then
+          ${SUDO} sed -i -E 's|^(Enabled:.*)$|Enabled: no|I' "${f}" || true
+        else
+          ${SUDO} sed -i '1s|^|Enabled: no\n|' "${f}" || true
+        fi
+      fi
+    done < <(find /etc/apt/sources.list.d/ -name '*.sources' 2>/dev/null || true)
+
     ${SUDO} apt-get update
   }
 
-  apt_update_with_blocked_ppa_recovery
+  _safe_apt_update
 
   ${SUDO} apt-get install -y --no-install-recommends \
     r-base \
@@ -122,13 +127,22 @@ fi
 echo "Rscript: $(command -v Rscript)"
 Rscript --version
 
+export LANG="${LANG:-C.utf8}"
 export TZ="${TZ:-UTC}"
 export MERGEN_RUN_APP="${MERGEN_RUN_APP:-false}"
 export MERGEN_DISABLE_FUTURES="${MERGEN_DISABLE_FUTURES:-true}"
 export LOCAL_LLM_ENDPOINT="${LOCAL_LLM_ENDPOINT:-http://test.local/v1}"
 export DB_DSN="${DB_DSN:-test-dsn}"
 export AI_KEYS_MASTER="${AI_KEYS_MASTER:-test-master-key-0123456789}"
-export RSPM="${RSPM:-https://packagemanager.posit.co/cran/__linux__/jammy/latest}"
+# Ubuntu Noble (24.04) üzerinde jammy RSPM URL'si çalışmaz; noble veya CRAN kullan.
+if [[ -z "${RSPM:-}" ]]; then
+  if grep -qi 'noble\|24\.04' /etc/os-release 2>/dev/null; then
+    RSPM="https://packagemanager.posit.co/cran/__linux__/noble/latest"
+  else
+    RSPM="https://packagemanager.posit.co/cran/__linux__/jammy/latest"
+  fi
+fi
+export RSPM
 
 echo "Installing/checking R package dependencies..."
 Rscript tests/scripts/ci_install_packages.R
