@@ -133,7 +133,18 @@ repos <- if (nzchar(rspm_url) && repository_index_reachable(rspm_url)) {
 }
 
 repo_is_linux_binary <- grepl("/__linux__/", repos, fixed = TRUE)
-pkg_type <- if (repo_is_linux_binary) "binary" else "source"
+default_pkg_type <- if (repo_is_linux_binary) "binary" else "source"
+pkg_type_env <- tolower(trimws(Sys.getenv("MERGEN_AI_R_PKG_TYPE", unset = "")))
+
+if (nzchar(pkg_type_env) && pkg_type_env %in% c("source", "binary")) {
+  pkg_type <- pkg_type_env
+  cat(sprintf("Package type override from MERGEN_AI_R_PKG_TYPE: %s\n", pkg_type))
+} else {
+  pkg_type <- default_pkg_type
+  if (nzchar(pkg_type_env)) {
+    cat(sprintf("WARNING: Invalid MERGEN_AI_R_PKG_TYPE=%s. Falling back to %s.\n", pkg_type_env, default_pkg_type))
+  }
+}
 
 cat(sprintf("Selected repository: %s\n", repos))
 cat(sprintf("Selected package type: %s\n", pkg_type))

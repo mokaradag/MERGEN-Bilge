@@ -146,6 +146,13 @@ VM-only manual validation after any DB encoding change:
 
 
 ### AI agent validation rule
+
+
+Cloud fallback for Codex/Claude hosted environments:
+- Normal validation remains `bash tools/ai_validate.sh quick`.
+- Codex/Claude cloud fallback validation is `bash tools/ai_validate.sh cloud-quick`.
+- When `cloud-quick` is used, agents must clearly state that heavy runtime package installation and full runtime/app boot validation were intentionally not performed in that mode.
+
 Before giving a final technical answer about this repository, an AI agent must run `bash tools/ai_validate.sh quick`.
 
 For risky changes, runtime changes, source-order changes, SSO changes, DB encoding changes, file lifecycle changes, streaming changes, frontend asset order changes, Bilge Yolaç / Claude Code changes, security/path/download changes, or production/VM-sensitive changes, the AI agent must run `bash tools/ai_validate.sh full --boot-smoke`.
