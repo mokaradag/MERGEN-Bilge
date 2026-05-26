@@ -244,6 +244,81 @@
     }
   }
 
+  function extractSsoTokenFromHashForBoot() {
+    var hash = window.location.hash || "";
+    if (hash.length < 2) return null;
+
+    var parts = hash.substring(1).split("&");
+    for (var i = 0; i < parts.length; i++) {
+      var kv = parts[i].split("=");
+      if (kv.length >= 2 && decodeURIComponent(kv[0]) === "access_token") {
+        return decodeURIComponent(kv.slice(1).join("="));
+      }
+    }
+    return null;
+  }
+
+  function getStoredSsoTokenForBoot() {
+    try {
+      return localStorage.getItem("mergen_bilge_jwt_token");
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function isSsoTokenExpiredForBoot(token) {
+    try {
+      var parts = String(token || "").split(".");
+      if (parts.length !== 3) return true;
+
+      var payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+      while (payload.length % 4 !== 0) {
+        payload += "=";
+      }
+
+      var decoded = JSON.parse(atob(payload));
+      if (!decoded.exp) return false;
+
+      return Math.floor(Date.now() / 1000) >= decoded.exp;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  function isSsoPreAuthRedirectPass() {
+    // R/module_sso.R içindeki ssoPreflightScriptUI zaten yönlendirme başlattıysa
+    // bu sayfa boot ilerlemesini hiç başlatmamalıdır.
+    if (window.__mergenSsoPreflightRedirecting === true) {
+      return true;
+    }
+
+    try {
+      var cfgEl = document.getElementById("sso_module-sso_config_data");
+      if (!cfgEl) return false;
+
+      var cfg = JSON.parse(cfgEl.textContent || "{}");
+      if (!cfg || cfg.enabled !== true) return false;
+
+      var token = extractSsoTokenFromHashForBoot() || getStoredSsoTokenForBoot();
+      if (token && !isSsoTokenExpiredForBoot(token)) {
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function holdForSsoPreAuthRedirect() {
+    // Bu geçiş gerçek uygulama başlangıcı değildir; Keycloak'a giden
+    // kimlik doğrulama sıçramasıdır. Bu nedenle yüzde ilerlemesi verilmez.
+    if (statusText) {
+      statusText.textContent = "Kimlik doğrulama yönlendiriliyor";
+    }
+    applyProgress();
+  }
+
   // Karşılama ekranı sinematik arka plan videolarını önceden yükle (tarayıcı
   // önbelleği ısıtılır; karşılama ekranı görseli gecikmesiz başlar). Eksik
   // dosyalar sessizce yok sayılır. Karakter persona videoları ayrı dosya
@@ -275,6 +350,11 @@
   }
 
   function boot() {
+    if (isSsoPreAuthRedirectPass()) {
+      holdForSsoPreAuthRedirect();
+      return;
+    }
+
     setStage("boot");
     installBootReadinessHandler();
 

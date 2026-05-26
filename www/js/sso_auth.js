@@ -50,6 +50,9 @@
 
     var NS_PREFIX = config.ns_prefix || 'sso_module-';
 
+    // Shiny mesaj dinleyicilerinin birden fazla kez eklenmesini engelle
+    var shinyHandlersRegistered = false;
+
     // ===========================================================================
     // TOKEN YÖNETİMİ
     // ===========================================================================
@@ -138,24 +141,42 @@
     /**
      * Kullanıcıyı Keycloak giriş sayfasına yönlendir
      */
-    function redirectToKeycloak() {
-      // redirect_uri: Keycloak kimlik doğrulama sonrası kullanıcıyı geri yönlendirir.
-      // Bu URL'nin Keycloak client ayarlarında "Valid Redirect URIs" listesinde
-      // tam olarak kayıtlı olması gerekir (örn: https://sunucu-adresi/ veya * ile wildcard).
-      var baseUrl = window.location.origin + window.location.pathname;
-      // Sondaki eğik çizgiyi normalize et (Keycloak eşleşme hassasiyeti için)
-      if (!baseUrl.endsWith('/')) {
-        baseUrl = baseUrl + '/';
-      }
-      var authUrl = config.auth_endpoint +
-        '?client_id='     + encodeURIComponent(config.client_id) +
-        '&redirect_uri='  + encodeURIComponent(baseUrl) +
-        '&response_type=' + encodeURIComponent(config.response_type) +
-        '&scope='         + encodeURIComponent(config.scope);
+	function markSsoRedirecting(authUrl) {
+	  // SSO ön kapısı herhangi bir nedenle çalışmadıysa, fallback akışta da
+	  // açılış yükleme ekranının ilerlemeye başlamaması için global bayrak basılır.
+	  try {
+		window.__mergenSsoPreflightRedirecting = true;
+		window.__mergenSsoPreflight = {
+		  enabled: true,
+		  redirecting: true,
+		  authUrl: authUrl
+		};
+		document.documentElement.classList.add('mergen-sso-preflight-redirect');
+	  } catch (e) {}
+	}
 
-      console.log('[SSO] Keycloak\'a yönlendiriliyor:', authUrl);
-      window.location.href = authUrl;
-    }
+	function redirectToKeycloak() {
+	  // redirect_uri: Keycloak kimlik doğrulama sonrası kullanıcıyı geri yönlendirir.
+	  // Bu URL'nin Keycloak client ayarlarında "Valid Redirect URIs" listesinde
+	  // tam olarak kayıtlı olması gerekir (örn: https://sunucu-adresi/ veya * ile wildcard).
+	  var baseUrl = window.location.origin + window.location.pathname;
+	  // Sondaki eğik çizgiyi normalize et (Keycloak eşleşme hassasiyeti için)
+	  if (!baseUrl.endsWith('/')) {
+		baseUrl = baseUrl + '/';
+	  }
+	  var authUrl = config.auth_endpoint +
+		'?client_id='     + encodeURIComponent(config.client_id) +
+		'&redirect_uri='  + encodeURIComponent(baseUrl) +
+		'&response_type=' + encodeURIComponent(config.response_type) +
+		'&scope='         + encodeURIComponent(config.scope);
+
+	  console.log('[SSO] Keycloak\'a yönlendiriliyor:', authUrl);
+	  markSsoRedirecting(authUrl);
+
+	  // href yerine replace kullanılır: ilk yetkisiz geçiş tarayıcı geçmişine
+	  // eklenmez ve geri tuşunda tekrar boş-token boot döngüsü oluşmaz.
+	  window.location.replace(authUrl);
+	}
 
     // ===========================================================================
     // UI KONTROL
@@ -189,6 +210,45 @@
     }
 
     // ===========================================================================
+    // SHINY UYUMLULUK YARDIMCILARI
+    // ===========================================================================
+
+    /**
+     * Shiny tarafında giriş değeri göndermek için gerekli fonksiyonların
+     * hazır olup olmadığını kontrol et
+     */
+    function canSendInputToShiny() {
+      return typeof Shiny !== 'undefined' &&
+        Shiny &&
+        (
+          typeof Shiny.setInputValue === 'function' ||
+          typeof Shiny.onInputChange === 'function'
+        );
+    }
+
+    /**
+     * Farklı Shiny sürümleri için uyumlu input gönderimi yap
+     * Yeni sürümlerde setInputValue, eski sürümlerde onInputChange kullanılır
+     */
+    function setShinyInputValueCompat(name, value, options) {
+      if (typeof Shiny === 'undefined' || !Shiny) {
+        return false;
+      }
+
+      if (typeof Shiny.setInputValue === 'function') {
+        Shiny.setInputValue(name, value, options || { priority: 'event' });
+        return true;
+      }
+
+      if (typeof Shiny.onInputChange === 'function') {
+        Shiny.onInputChange(name, value);
+        return true;
+      }
+
+      return false;
+    }
+
+    // ===========================================================================
     // SHINY MESAJ DİNLEYİCİLERİ
     // ===========================================================================
 
@@ -196,6 +256,10 @@
      * Shiny hazır olduğunda mesaj dinleyicilerini kaydet
      */
     function registerShinyHandlers() {
+      // Aynı dinleyicileri tekrar tekrar ekleme
+      if (shinyHandlersRegistered) return;
+      if (typeof Shiny === 'undefined' || typeof Shiny.addCustomMessageHandler !== 'function') return;
+
       // Başarılı giriş - katmanı gizle
       Shiny.addCustomMessageHandler('sso_auth_success', function(data) {
         console.log('[SSO] Kimlik doğrulama başarılı:', data.username);
@@ -221,6 +285,8 @@
           );
         }
       });
+
+      shinyHandlersRegistered = true;
     }
 
     // ===========================================================================
@@ -259,27 +325,42 @@
         return;
       }
 
-      // 3. Geçerli token var - Shiny'ye gönder
-      console.log('[SSO] Geçerli token bulundu - Shiny\'ye gönderiliyor');
-      sendTokenToShiny(token);
+		// 3. Geçerli token var - Shiny'ye gönder
+		try {
+		  window.__mergenSsoPreflightRedirecting = false;
+		  if (window.__mergenSsoPreflight) {
+			window.__mergenSsoPreflight.redirecting = false;
+		  }
+		  document.documentElement.classList.remove('mergen-sso-preflight-redirect');
+		} catch (e) {}
+
+		console.log('[SSO] Geçerli token bulundu - Shiny\'ye gönderiliyor');
+		sendTokenToShiny(token);
     }
 
     /**
      * Token'ı Shiny sunucusuna gönder
      * Shiny hazır olana kadar bekler
+     * Farklı Shiny sürümleri için uyumlu gönderim yolu kullanır
      */
     function sendTokenToShiny(token) {
       var inputName = NS_PREFIX + 'sso_jwt_token';
-      var maxAttempts = 200;  // 200 * 100ms = 20 saniye (Shiny yüklenmesi için yeterli)
+      var maxAttempts = 200;  // 200 * 100ms = 20 saniye
       var attempt = 0;
 
       function trySetInput() {
         attempt++;
-        if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+
+        if (canSendInputToShiny()) {
           registerShinyHandlers();
-          Shiny.setInputValue(inputName, token, { priority: 'event' });
-          console.log('[SSO] Token Shiny sunucusuna gönderildi (deneme #' + attempt + ')');
-        } else if (attempt < maxAttempts) {
+
+          if (setShinyInputValueCompat(inputName, token, { priority: 'event' })) {
+            console.log('[SSO] Token Shiny sunucusuna gönderildi (deneme #' + attempt + ')');
+            return;
+          }
+        }
+
+        if (attempt < maxAttempts) {
           setTimeout(trySetInput, 100);
         } else {
           console.error('[SSO] Shiny bağlantısı kurulamadı (' + maxAttempts + ' deneme sonrası)');

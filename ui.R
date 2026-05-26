@@ -97,12 +97,17 @@ ui <- dashboardPage(
     ))),
     tags$meta(charset = "UTF-8"),
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1.0"),
-    tags$link(rel = "icon", type = "image/png", href = "img/mergen_avatar.png"),
+	tags$link(rel = "icon", type = "image/png", href = "img/mergen_avatar.png"),
 
-    # --- Yerel UI varlıkları ---
-    ui_asset_tags(),
+	# SSO ön kapısı: Geçerli token yoksa Shiny istemcisi ve açılış yükleme
+	# katmanı başlamadan önce Keycloak'a gider. Bu, SSO dönüşünde 0% -> 6%
+	# -> tekrar 0% görünen çift başlangıcı engeller.
+	ssoPreflightScriptUI(),
 
-    tags$div(id = "toast-container", class = "toast-container")
+	# --- Yerel UI varlıkları ---
+	ui_asset_tags(),
+
+	tags$div(id = "toast-container", class = "toast-container")
   ),
       
     # SSO kimlik doğrulama katmanı (SSO_ENABLED=TRUE ise görünür)

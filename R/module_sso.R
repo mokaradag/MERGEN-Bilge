@@ -72,6 +72,134 @@ ssoAuthUI <- function(id) {
   )
 }
 
+# ==============================================================================
+# SSO ÖN KAPI BETİĞİ
+# ==============================================================================
+#' SSO Ön Kapı Betiği
+#' @description SSO aktifken, tarayıcıda geçerli token yoksa Shiny websocket
+#'   kurulmadan önce Keycloak'a yönlendirme yapar. Böylece ilk yetkisiz sayfa
+#'   geçişinde açılış yükleme ekranı ve ağır server observer'ları başlamaz.
+#' @return Head içine yerleştirilecek script etiketi
+ssoPreflightScriptUI <- function() {
+  if (!isTRUE(SSO_ENABLED) || !nzchar(SSO_CONFIG$auth_endpoint %||% "")) {
+    return(tags$script(HTML(
+      "window.__mergenSsoPreflight = { enabled: false, redirecting: false };"
+    )))
+  }
+
+  preflight_config <- list(
+    enabled       = TRUE,
+    auth_endpoint = SSO_CONFIG$auth_endpoint %||% "",
+    client_id     = SSO_CONFIG$client_id %||% "",
+    response_type = SSO_CONFIG$response_type %||% "token",
+    scope         = SSO_CONFIG$scope %||% "openid"
+  )
+
+  tags$script(HTML(paste0(
+"(function() {
+  'use strict';
+
+  var config = ", jsonlite::toJSON(preflight_config, auto_unbox = TRUE), ";
+
+  window.__mergenSsoPreflight = {
+    enabled: !!config.enabled,
+    redirecting: false
+  };
+
+  if (!config.enabled || !config.auth_endpoint || !config.client_id) {
+    return;
+  }
+
+  function extractTokenFromHash() {
+    var hash = window.location.hash || '';
+    if (hash.length < 2) return null;
+
+    var parts = hash.substring(1).split('&');
+    for (var i = 0; i < parts.length; i++) {
+      var kv = parts[i].split('=');
+      if (kv.length >= 2 && decodeURIComponent(kv[0]) === 'access_token') {
+        return decodeURIComponent(kv.slice(1).join('='));
+      }
+    }
+    return null;
+  }
+
+  function getStoredToken() {
+    try {
+      return localStorage.getItem('mergen_bilge_jwt_token');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clearStoredToken() {
+    try {
+      localStorage.removeItem('mergen_bilge_jwt_token');
+    } catch (e) {}
+  }
+
+  function isTokenExpired(token) {
+    try {
+      var parts = String(token || '').split('.');
+      if (parts.length !== 3) return true;
+
+      var payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      while (payload.length % 4 !== 0) {
+        payload += '=';
+      }
+
+      var decoded = JSON.parse(atob(payload));
+      if (!decoded.exp) return false;
+
+      var now = Math.floor(Date.now() / 1000);
+      return now >= decoded.exp;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  function buildAuthUrl() {
+    var baseUrl = window.location.origin + window.location.pathname;
+
+    // Keycloak Valid Redirect URIs eşleşmesi için mevcut davranış korunur.
+    if (!baseUrl.endsWith('/')) {
+      baseUrl = baseUrl + '/';
+    }
+
+    return config.auth_endpoint +
+      '?client_id='     + encodeURIComponent(config.client_id) +
+      '&redirect_uri='  + encodeURIComponent(baseUrl) +
+      '&response_type=' + encodeURIComponent(config.response_type || 'token') +
+      '&scope='         + encodeURIComponent(config.scope || 'openid');
+  }
+
+  // Keycloak dönüşünde hash içinde token varsa sayfayı başlat; token daha sonra
+  // www/js/sso_auth.js tarafından Shiny'ye iletilecek.
+  var hashToken = extractTokenFromHash();
+  if (hashToken) {
+    return;
+  }
+
+  var storedToken = getStoredToken();
+  if (storedToken && !isTokenExpired(storedToken)) {
+    return;
+  }
+
+  if (storedToken) {
+    clearStoredToken();
+  }
+
+  // Bu ilk yetkisiz geçiştir. Shiny bağlantısı ve açılış yükleme ekranı
+  // başlamadan önce Keycloak'a git.
+  window.__mergenSsoPreflight.redirecting = true;
+  window.__mergenSsoPreflightRedirecting = true;
+  document.documentElement.classList.add('mergen-sso-preflight-redirect');
+
+  window.location.replace(buildAuthUrl());
+})();"
+  )))
+}
+
 
 # ==============================================================================
 # SSO MODÜL SUNUCU
