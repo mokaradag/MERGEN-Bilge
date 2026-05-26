@@ -54,6 +54,16 @@ ui_asset_css_groups <- list(
     # pekiştirebilir; ratchet limitini aşmamak için ikinci dosyaya
     # bölündü.
     "css/theme_light_overhaul_phase2.css",
+    # Kullanıcı geri bildirimi cilası (Faz 1 + Faz 2): EN SON yüklenir.
+    # Hero başlık kurumsal mavisi, karşılama greeting/icon, Bilge Yolaç
+    # light tool yüzeyleri, Kişiselleştirme deneyim modu + karakter
+    # aksanı, Sistem Durumu kart kontrastı, Geri Bildirim sekme buton
+    # kenarları, Yenilikler madde/rozet/italik kontrastı, Söyleşi
+    # baloncuk başlık + eylem butonları ve dosya önizleme modal başlığı
+    # için kapsamlı kurumsal mavi cilası içerir. İki dosya birlikte
+    # 1600 satır ratchet limitinin altında kalır.
+    "css/theme_light_user_polish.css",
+    "css/theme_light_user_polish_v2.css",
     "css/animations.css",
     "css/layout.css",
     "css/components.css",
