@@ -40,8 +40,9 @@ read_utf8 <- function(path) {
 extract_required_packages <- function(path) {
   txt <- read_utf8(path)
 
+  # (?s) DOTALL modu: required_packages <- c(...) bloğu birden fazla satıra yayılabilir.
   hit <- regexpr(
-    "required_packages\\s*<-\\s*c\\((.*?)\\)",
+    "(?s)required_packages\\s*<-\\s*c\\((.*?)\\)",
     txt,
     perl = TRUE
   )
@@ -81,10 +82,27 @@ packages <- sort(unique(c(repo_packages, extra_ci_packages)))
 cat(sprintf("Packages requested: %d\n", length(packages)))
 cat(paste(packages, collapse = ", "), "\n\n")
 
-repos <- Sys.getenv(
-  "RSPM",
-  unset = "https://cloud.r-project.org"
-)
+# RSPM erişilemezse CRAN'a geri dön.
+rspm_url <- Sys.getenv("RSPM", unset = "")
+cran_url  <- "https://cloud.r-project.org"
+
+repos <- if (nzchar(rspm_url)) {
+  probe_url <- paste0(rspm_url, "/src/contrib/PACKAGES")
+  reachable <- tryCatch({
+    con <- url(probe_url, open = "")
+    close(con)
+    TRUE
+  }, error = function(e) FALSE, warning = function(w) FALSE)
+  if (reachable) {
+    cat(sprintf("RSPM erişilebilir: %s\n", rspm_url))
+    rspm_url
+  } else {
+    cat(sprintf("RSPM erişilemiyor (%s), CRAN kullanılıyor.\n", rspm_url))
+    cran_url
+  }
+} else {
+  cran_url
+}
 
 options(
   repos = c(CRAN = repos),

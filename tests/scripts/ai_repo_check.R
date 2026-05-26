@@ -85,7 +85,11 @@ if (!is.null(answer_path)) {
 }
 cat("\n")
 
+# LANG=C.utf8: POSIX lokalinde R, UTF-8 kaynak dosyalarını (Türkçe karakter içeren)
+# "invalid input" uyarısıyla okuyabilir. C.utf8 hem taşınabilir hem UTF-8 güvenlidir.
+utf8_lang <- if (nzchar(Sys.getenv("LANG"))) Sys.getenv("LANG") else "C.utf8"
 base_env <- c(
+  paste0("LANG=", utf8_lang),
   "TZ=UTC",
   "MERGEN_RUN_APP=false",
   "MERGEN_DISABLE_FUTURES=true",
@@ -116,6 +120,16 @@ json_escape <- function(x) {
 }
 
 steps <- list()
+
+# system2() bu konteynerde '-e' argümanı içindeki parantezleri sh üzerinden
+# çalıştırırken yanlış yorumlayabiliyor. R ifadesini geçici bir .R dosyasına
+# yazıp o dosyayı çalıştırmak daha güvenli ve taşınabilirdir.
+run_rscript_expr <- function(label, expr_string, env = base_env) {
+  tmp <- tempfile(fileext = ".R")
+  writeLines(expr_string, tmp)
+  on.exit(unlink(tmp), add = TRUE)
+  run_step(label, rscript, tmp, env = env)
+}
 
 run_step <- function(label, command, cmd_args = character(0), env = base_env) {
   step_id <- sprintf("%02d-%s", length(steps) + 1L, safe_name(label))
@@ -239,19 +253,15 @@ on.exit({
   }
 }, add = TRUE)
 
-run_step(
+run_rscript_expr(
   "environment",
-  rscript,
-  c(
-    "-e",
-    paste(
-      "cat('R version:', R.version.string, '\\n')",
-      "cat('Rscript:', Sys.which('Rscript'), '\\n')",
-      "cat('Working directory:', getwd(), '\\n')",
-      "cat('Platform:', R.version$platform, '\\n')",
-      "cat('Locale:', Sys.getlocale(), '\\n')",
-      sep = "; "
-    )
+  paste(
+    "cat('R version:', R.version.string, '\\n')",
+    "cat('Rscript:', Sys.which('Rscript'), '\\n')",
+    "cat('Working directory:', getwd(), '\\n')",
+    "cat('Platform:', .Platform[['OS.type']], '\\n')",
+    "cat('Locale:', Sys.getlocale(), '\\n')",
+    sep = "\n"
   )
 )
 
@@ -261,21 +271,17 @@ run_step(
   c("tests/scripts/parse_sanity_check.R")
 )
 
-run_step(
+run_rscript_expr(
   "app source smoke",
-  rscript,
-  c(
-    "-e",
-    paste(
-      "Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', TZ='UTC')",
-      "if (!nzchar(Sys.getenv('LOCAL_LLM_ENDPOINT'))) Sys.setenv(LOCAL_LLM_ENDPOINT='http://test.local/v1')",
-      "if (!nzchar(Sys.getenv('DB_DSN'))) Sys.setenv(DB_DSN='test-dsn')",
-      "if (!nzchar(Sys.getenv('AI_KEYS_MASTER'))) Sys.setenv(AI_KEYS_MASTER='test-master-key-0123456789')",
-      "source('app.R', encoding='UTF-8')",
-      "validate_boot_state()",
-      "cat('OK: app.R sourced and boot state validated.\\n')",
-      sep = "; "
-    )
+  paste(
+    "Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', TZ='UTC')",
+    "if (!nzchar(Sys.getenv('LOCAL_LLM_ENDPOINT'))) Sys.setenv(LOCAL_LLM_ENDPOINT='http://test.local/v1')",
+    "if (!nzchar(Sys.getenv('DB_DSN'))) Sys.setenv(DB_DSN='test-dsn')",
+    "if (!nzchar(Sys.getenv('AI_KEYS_MASTER'))) Sys.setenv(AI_KEYS_MASTER='test-master-key-0123456789')",
+    "source('app.R', encoding='UTF-8')",
+    "validate_boot_state()",
+    "cat('OK: app.R sourced and boot state validated.\\n')",
+    sep = "\n"
   )
 )
 
@@ -320,11 +326,7 @@ if (profile == "quick") {
     "}"
   )
 
-  run_step(
-    "focused contract tests",
-    rscript,
-    c("-e", test_expr)
-  )
+  run_rscript_expr("focused contract tests", test_expr)
 } else {
   run_step(
     "full testthat suite",
