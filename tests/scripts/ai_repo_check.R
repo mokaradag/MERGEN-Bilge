@@ -382,14 +382,27 @@ quick_tests <- c(
 
 quick_tests <- quick_tests[file.exists(quick_tests)]
 
+r_string_literal <- function(x) {
+  x <- gsub("\\\\", "\\\\\\\\", x, perl = TRUE)
+  x <- gsub("\"", "\\\\\"", x, perl = TRUE)
+  sprintf("\"%s\"", x)
+}
+
+r_character_vector_literal <- function(x) {
+  if (length(x) == 0L) {
+    return("character(0)")
+  }
+  paste0("c(", paste(r_string_literal(x), collapse = ", "), ")")
+}
+
 if (profile == "quick") {
+  quick_tests_literal <- r_character_vector_literal(quick_tests)
+
   test_expr <- paste0(
     "Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', TZ='UTC'); ",
     "library(testthat); ",
     "testthat::local_edition(3); ",
-    "tests <- c(",
-    paste(sprintf("%s", deparse(quick_tests)), collapse = ","),
-    "); ",
+    "tests <- ", quick_tests_literal, "; ",
     "tests <- tests[file.exists(tests)]; ",
     "cat('Focused tests:', length(tests), '\\n'); ",
     "for (f in tests) { ",
