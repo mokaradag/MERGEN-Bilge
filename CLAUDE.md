@@ -235,6 +235,8 @@ Useful commands:
 - `bash tools/validation_doctor.sh all`
 
 The doctor writes a JSON summary under `artifacts/validation-doctor/`. This artifact is guidance only. It must not be used to claim that runtime boot, browser UX smoke, Windows VM / SSO / SQL Server behavior, Turkish SQL Server transactional write/read, or manual fragile-flow evidence has passed. Those claims require the corresponding validation commands to be run directly.
+Latest validation-doctor contract hardening: `tests/testthat/test-validation-doctor-contract.R` now more explicitly protects secret-like environment values from leaking through doctor output or artifacts. Values such as `LOCAL_LLM_ENDPOINT`, `MERGEN_BROWSER_BIN`, DSNs, URLs, keys, tokens, secrets, and passwords must be reported only as safe metadata such as presence, character length, boolean-style flags, and `value=<hidden>`, never as raw values. The same contract keeps `cloud-quick` as a wrapper-level alias in `tools/ai_validate.sh` that maps to the quick repository profile; do not add `cloud-quick` as a third internal profile in `tests/scripts/ai_repo_check.R`. This is validation contract hardening only and must not be described as a runtime UX change.
+
 
 Cloud fallback validation:
 
@@ -286,6 +288,7 @@ An AI agent must not say “tests passed”, “I verified”, “I ran the app�
 Documentation-only exception:
 - If a requested change modifies only `README.md` and/or `CLAUDE.md`, do not run R validation, `Rscript`, `testthat`, app boot checks, VM preflight, or `tools/ai_validate.sh` unless the user explicitly asks for runtime validation.
 - For such docs-only changes, inspect the Markdown files and report `git diff -- README.md CLAUDE.md`.
+- For docs-only validation-profile wording changes, it is enough to inspect the edited Markdown and show the docs-only diff; do not run R validation unless the user explicitly asks for it.
 - This exception does not apply to R, JS, CSS, test, config, asset-manifest, encoding, SSO, DB, streaming, Bilge Yolaç, or production-sensitive changes.
 
 If `Rscript` is still unavailable after bootstrap, the AI agent must explicitly state that bootstrap failed, include the failing command, and must not imply the repository was validated.
