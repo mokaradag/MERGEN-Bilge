@@ -313,6 +313,13 @@ Kırılgan kullanıcı akışları için ek manuel preflight:
 Uygulamadaki ana sayfalar aşağıdaki gibidir:
 
 ### Frontend varlık manifesti ve bakım koruması
+- Frontend bakım kapsamı, runtime UX'e dokunmadan izlenebilir hâle getirildi.
+- `tests/scripts/frontend_maintainability_report.R`, en büyük JS/CSS dosyalarını, yüksek fonksiyon sayısını, event/Shiny handler yoğunluğunu, yinelenen CSS seçicilerini, manifest dışı runtime varlıkları ve smoke-only varlıkları top-risk özeti olarak raporlar.
+- `tests/scripts/frontend_complexity_doctor.R`, mevcut bakım raporunu okuyarak insan-okur bir özet ve UTF-8 JSON artifact üretir.
+- Üretilen artifact yolu: `artifacts/frontend-complexity-doctor/frontend-complexity-doctor-*.json`
+- `www/smoke/ux-smoke-probes.js` smoke-only dosyadır; `R/config_ui_assets.R` production manifestine eklenmemelidir.
+- Bu mekanizma runtime davranışı değiştirmez; TTS/STT/müzik, streaming markdown güvenliği, Ana Söyleşi welcome, Bilge Yolaç ve browser smoke davranışları korunur.
+- Frontend runtime JS/CSS refactor'ı gerekiyorsa ayrı bir değişiklikte, küçük ve test destekli yapılmalıdır.
 - Ön yüz CSS/JS varlıkları `R/config_ui_assets.R` üzerinden açık gruplar ve açık yükleme sırası ile yönetilir; çevrimdışı/on-prem çalışma sözleşmesi gereği CDN, bundling veya minification tabanlı gizli kaynak akışı kullanılmaz.
 - `tests/scripts/frontend_maintainability_report.R`, `www/js/*.js` ve `www/css/*.css` dosyaları için satır, byte, yaklaşık fonksiyon sayısı, event handler sayısı, Shiny özel mesaj handler sayısı, manifestte yer alma durumu, CSS tekrar eden seçiciler ve yasak eski seçici eşleşmelerini raporlar.
 - `tests/testthat/test-frontend-maintainability-ratchet.R`, mevcut üretim taban çizgisini bozmadan app-owned frontend dosyalarının sessizce büyümesini, yeni runtime CSS/JS dosyalarının manifest dışında kalmasını ve eski kırılgan seçicilerin geri dönmesini engeller.
