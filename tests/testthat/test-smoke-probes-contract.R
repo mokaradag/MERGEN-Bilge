@@ -131,7 +131,9 @@ testthat::test_that("navigation and file-manager probes stay aligned with real U
     c(
       'menuItem("Ana Söyleşi", tabName = "chat"',
       'menuItem("Bilge Yolaç", tabName = "claude_code"',
-      'tabItem(tabName = "chat"',
+      "tabItems(",
+      "tabItem(",
+      'tabName = "chat"',
       'tabItem(tabName = "claude_code", claudeCodeUI("claude_code_module"))',
       'tabItem(tabName = "files", fileManagerUI("file_manager_module"))'
     ),

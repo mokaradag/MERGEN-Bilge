@@ -3,13 +3,50 @@
 # Açıklama: www/smoke/ux-smoke.html manuel browser smoke kapsamını korur.
 # ==============================================================================
 
+.ux_smoke_browser_read_text <- function(...) {
+  full_path <- file.path(resolve_repo_root_for_tests(), ...)
+
+  if (!file.exists(full_path)) {
+    stop(sprintf("Beklenen dosya bulunamadı: %s", full_path), call. = FALSE)
+  }
+
+  size <- suppressWarnings(file.info(full_path)$size[1])
+  if (is.na(size) || size <= 0) {
+    return("")
+  }
+
+  con <- file(full_path, open = "rb")
+  on.exit(close(con), add = TRUE)
+
+  raw_data <- readBin(con, what = "raw", n = size)
+
+  txt <- suppressWarnings(
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+  )
+
+  if (is.na(txt)) {
+    txt <- ""
+  }
+
+  txt <- gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE)
+  enc2utf8(txt)
+}
+
 test_that("UX smoke keeps media lifecycle and saved-chat TTS probes", {
   repo_root <- resolve_repo_root_for_tests()
   smoke_path <- file.path(repo_root, "www", "smoke", "ux-smoke.html")
+  smoke_probe_path <- file.path(repo_root, "www", "smoke", "ux-smoke-probes.js")
 
   expect_true(file.exists(smoke_path))
+  expect_true(file.exists(smoke_probe_path))
 
-  smoke <- paste(readLines(smoke_path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  smoke <- paste(
+    c(
+      .ux_smoke_browser_read_text("www", "smoke", "ux-smoke.html"),
+      .ux_smoke_browser_read_text("www", "smoke", "ux-smoke-probes.js")
+    ),
+    collapse = "\n"
+  )
 
   required_tokens <- c(
     "UX_SMOKE_DONE:PASS",
