@@ -67,19 +67,21 @@ validation_proof_run_git <- function(repo_root,
   on.exit(setwd(old_wd), add = TRUE)
   setwd(repo_root)
 
-  out <- tryCatch(
-    {
-      system2(
-        command = git_bin,
-        args = args,
-        stdout = TRUE,
-        stderr = TRUE
-      )
-    },
-    error = function(e) {
-      structure(character(0), status = 127L)
-    }
-  )
+	out <- tryCatch(
+	  {
+		suppressWarnings(
+		  system2(
+			command = git_bin,
+			args = args,
+			stdout = TRUE,
+			stderr = TRUE
+		  )
+		)
+	  },
+	  error = function(e) {
+		structure(character(0), status = 127L)
+	  }
+	)
 
   status <- attr(out, "status", exact = TRUE)
   if (is.null(status)) {

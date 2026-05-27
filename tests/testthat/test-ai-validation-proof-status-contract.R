@@ -271,6 +271,52 @@ testthat::test_that("missing git does not fail proof metadata collection", {
   testthat::expect_equal(git_info$dirty_working_tree_status, "unknown")
 })
 
+testthat::test_that("git metadata collection does not warn when git command fails", {
+  repo_root <- .ai_validation_proof_repo_root()
+  source(
+    file.path(repo_root, "tests", "scripts", "helpers_validation_proof_status.R"),
+    encoding = "UTF-8"
+  )
+
+  fake_git <- tempfile("fake-git-", fileext = if (.Platform$OS.type == "windows") ".bat" else ".sh")
+
+  if (.Platform$OS.type == "windows") {
+    writeLines(
+      c(
+        "@echo off",
+        "echo simulated git failure 1>&2",
+        "exit /b 128"
+      ),
+      fake_git,
+      useBytes = TRUE
+    )
+  } else {
+    writeLines(
+      c(
+        "#!/usr/bin/env sh",
+        "echo simulated git failure 1>&2",
+        "exit 128"
+      ),
+      fake_git,
+      useBytes = TRUE
+    )
+    Sys.chmod(fake_git, mode = "0755")
+  }
+
+  testthat::expect_warning(
+    git_info <- validation_proof_collect_git_info(
+      repo_root = repo_root,
+      git_bin = fake_git
+    ),
+    regexp = NA
+  )
+
+  testthat::expect_true(git_info$git_available)
+  testthat::expect_true(is.na(git_info$current_branch))
+  testthat::expect_true(is.na(git_info$current_commit_sha))
+  testthat::expect_equal(git_info$dirty_working_tree_status, "unknown")
+})
+
 testthat::test_that("validation doctor is not represented as execution proof", {
   repo_root <- .ai_validation_proof_repo_root()
   doctor <- .ai_validation_proof_read_text(
@@ -329,21 +375,23 @@ testthat::test_that("answer self-check catches validation overclaims from proof 
     useBytes = TRUE
   )
 
-  output <- withr::with_dir(
-    repo_root,
-    system2(
-      rscript,
-      c(
-        "tests/scripts/ai_answer_check.R",
-        "--answer",
-        answer_file,
-        "--summary",
-        summary_file
-      ),
-      stdout = TRUE,
-      stderr = TRUE
-    )
-  )
+	output <- withr::with_dir(
+	  repo_root,
+	  suppressWarnings(
+		system2(
+		  rscript,
+		  c(
+			"tests/scripts/ai_answer_check.R",
+			"--answer",
+			answer_file,
+			"--summary",
+			summary_file
+		  ),
+		  stdout = TRUE,
+		  stderr = TRUE
+		)
+	  )
+	)
 
   status <- attr(output, "status", exact = TRUE)
 
