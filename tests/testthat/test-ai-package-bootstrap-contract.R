@@ -75,8 +75,8 @@ testthat::test_that("setup script keeps noble/jammy RSPM wiring and no browser s
   .ai_bootstrap_expect_all(
     setup_script,
     c(
-      "noble)",
-      "jammy)",
+      "__linux__/noble/latest",
+      "__linux__/jammy/latest",
       "https://packagemanager.posit.co/cran/__linux__/"
     ),
     "setup_ai_r_environment RSPM sözleşmesi eksik:"
