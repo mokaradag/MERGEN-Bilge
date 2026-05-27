@@ -223,7 +223,11 @@ test_that("server-side final markdown HTML ham HTML'i kaçırır", {
   expect_false(grepl("<script", html, fixed = TRUE))
   expect_false(grepl("<img", html, fixed = TRUE))
   expect_false(grepl("<a href=\"javascript:", html, fixed = TRUE))
-  expect_false(grepl("onerror=", html, fixed = TRUE))
+
+  # onerror= metni kaçırılmış düz metin içinde kalabilir; tehlikeli olan,
+  # gerçek bir HTML etiketi üzerinde olay işleyici attribute'u oluşmasıdır.
+  expect_false(grepl("<[^>]+\\sonerror\\s*=", html, perl = TRUE, ignore.case = TRUE))
+
   expect_true(grepl("&lt;script&gt;alert(1)&lt;/script&gt;", html, fixed = TRUE))
   expect_true(grepl("&lt;img src=x onerror=alert(1)&gt;", html, fixed = TRUE))
   expect_true(grepl("&lt;a href=", html, fixed = TRUE))
