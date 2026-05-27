@@ -27,6 +27,7 @@ MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığ�
 - Gerçek zamanlı akış (streaming) ile yanıt üretimi
 - Türkçe odaklı sohbet deneyimi
 - Kod bloklarında sözdizimi vurgulama
+- Streaming ve nihai mesaj markdown HTML güvenliği güçlendirilmiştir: tarayıcı tarafında `www/js/streaming_markdown_safety.js` ve `www/js/markdown-parser.js`, sunucu tarafında `R/helpers_markdown_safety.R` ham HTML/script/event-handler geçişini kaçırarak işler; başlık, kalın/italik metin, inline code, madde listeleri, kod blokları, eksik streaming kod blokları ve satır sonları korunur. Bu sözleşme `tests/testthat/test-streaming-markdown-safety-contract.R`, `tests/testthat/test-ui-asset-manifest-contract.R` ve `www/smoke/ux-smoke.html` ile izlenir.
 - Yapılandırma üzerinden açılıp kapatılabilen, streaming yanıtlar sonrasında da güvenilir çalışan takip sorusu önerileri ve mesaj eylemleri
 - Farklı model ve araç aileleriyle çalışma
 - Düşünebilen modeller (`thinking=TRUE`) için premium akıl yürütme kartı ve canlı düşünce akışı paneli

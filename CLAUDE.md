@@ -80,6 +80,27 @@ Current contract:
 - Be careful with R constants: use exactly `NA_character_`. A typo such as `NA_character__` can break app startup through DB parameter normalization.
 - Do not add CDN or external dependencies for encoding repair.
 
+### 1C) Streaming and final markdown HTML safety boundary
+
+Browser-rendered markdown is a protected security boundary. User-controlled and LLM-controlled prose must never pass to `innerHTML` as raw HTML.
+
+Current contract:
+
+- Browser-side streaming markdown escaping belongs in `www/js/streaming_markdown_safety.js` and `www/js/markdown-parser.js`.
+- `www/js/markdown-parser.js` must escape raw prose before converting markdown tokens into the small allowed HTML subset used by the app.
+- The allowed streaming markdown output is intentionally small: headings, strong/emphasis, inline code, fenced code blocks, line breaks, unordered lists, and the existing app-controlled code block wrappers.
+- `www/js/streaming_manager.js` may assign to `innerHTML` only from the safe markdown parser. Parser-missing fallback must use `textContent`, not raw accumulated text as HTML.
+- UI asset order is part of the safety boundary: `www/js/streaming_markdown_safety.js` must load before `www/js/markdown-parser.js`, and `www/js/markdown-parser.js` must load before `www/js/streaming_manager.js`.
+- Server-side final and saved message markdown rendering must use `render_safe_markdown_html()` from `R/helpers_markdown_safety.R` for user/LLM-controlled prose. Do not call `commonmark::markdown_html()` directly on such prose unless raw HTML has first been escaped.
+- Raw HTML/script/event-handler patterns such as script tags, image error handlers, javascript links, and malformed tags split across streaming chunks must remain escaped or inert.
+- Do not add CDN dependencies, runtime downloads, external sanitization libraries, bundling, or minification for this boundary.
+
+Protected by:
+
+- `tests/testthat/test-streaming-markdown-safety-contract.R`
+- `tests/testthat/test-ui-asset-manifest-contract.R`
+- `www/smoke/ux-smoke.html`
+
 Protected by:
 
 - `tests/testthat/test-text-encoding-utils.R`
@@ -90,6 +111,7 @@ Protected by:
 - `tests/testthat/test-claude-code-process-refactor-contract.R`
 - `tests/testthat/test-claude-code-document-download-link-encoding.R`
 - `tests/testthat/test-ui-asset-manifest-contract.R`
+- `tests/testthat/test-streaming-markdown-safety-contract.R`
 - `tests/testthat/test-db-user-visible-encoding-boundaries.R`
 - `tests/scripts/run_vm_encoding_preflight_real.R`
 - `tests/scripts/repair_mb_messages_mojibake.R`
