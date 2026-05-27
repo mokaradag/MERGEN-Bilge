@@ -179,7 +179,7 @@ The smoke harness covers:
 - streaming lifecycle: init, delta append, stale `requestId` rejection, finalize, action button restore, follow-up pending cleanup, and duplicate assistant-message prevention;
 - streaming safety: dangerous HTML-like payloads remain inert text and must not become active HTML;
 - audio lifecycle: single background music source, TTS ducking, STT ducking, overlapping TTS/STT duck owners, and no saved-chat historical TTS autoplay;
-- navigation/video lifecycle: Bilge Yolaç ↔ Ana Söyleşi transitions must not leave stale tool/audio state, and the welcome video must not be unnecessarily destroyed or reinitialized;
+- navigation/video lifecycle: Bilge Yolaç ↔ Ana Söyleşi transitions must not leave stale active tool/page panel state, stale URL hash state, stale modal/backdrop residue, or stale audio/TTS ownership, and the welcome video must not be unnecessarily destroyed or reinitialized;
 - File Manager display names: Turkish names such as `Türkçe_çalışma_özeti_İstanbul.pdf` must remain readable after synthetic refresh/listing without a real DB.
 
 Smoke-only seams must stay namespaced and inert in production:
@@ -198,7 +198,7 @@ Relevant static contracts:
 - `tests/testthat/test-true-streaming-reset-ui-contract.R`
 
 Validation interpretation:
-- In the maintainer VM/local environment, `bash tools/ai_validate.sh quick`, `bash tools/ai_validate.sh full --boot-smoke`, and manual same-origin `/smoke/ux-smoke.html` have passed.
+- In the maintainer VM/local environment, `bash tools/ai_validate.sh quick`, `bash tools/ai_validate.sh full --boot-smoke`, and `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke` have passed, and browser UX smoke ended with `UX_SMOKE_DONE:PASS` on the same-origin `/smoke/ux-smoke.html` route.
 - If Codex Cloud fails before testthat starts because R package bootstrap cannot install packages such as `arrow`, `duckdb`, `odbc`, `pool`, or `shinyWidgets`, classify that as an environment/bootstrap failure, not as a code/test failure.
 
 Browser UX smoke execution rules:
