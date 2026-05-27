@@ -226,6 +226,13 @@ When `cloud-quick` is used, the final answer must explicitly say:
 
 Do not claim “full validation passed”, “runtime validation passed”, “the app booted”, or “VM validation passed” based only on `cloud-quick`.
 
+
+Bootstrap package-type contract:
+- `tests/scripts/ci_install_packages.R` must keep Linux-safe default package type as `source`.
+- `MERGEN_AI_R_PKG_TYPE` override must remain supported only when explicitly set (`source` or `binary`).
+- The static guard is `tests/testthat/test-ai-package-bootstrap-contract.R`.
+- RSPM wiring checks in that contract must use stable URL fragments (for example `__linux__/noble/latest` and `__linux__/jammy/latest`) rather than brittle token shapes that may not exist in shell code formatting.
+
 Before giving a final technical answer about this repository, an AI agent must run `bash tools/ai_validate.sh quick`.
 
 For risky changes, runtime changes, source-order changes, SSO changes, DB encoding changes, file lifecycle changes, streaming changes, frontend asset order changes, Bilge Yolaç / Claude Code changes, security/path/download changes, or production/VM-sensitive changes, the AI agent must run `bash tools/ai_validate.sh full --boot-smoke`.

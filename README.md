@@ -18,6 +18,8 @@ MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığ�
 
 `cloud-quick` modu, `duckdb`, `arrow`, `odbc` ve `pool` gibi ağır/runtime kaynak paketlerinin bulut ortamında uzun süren derlemelerine takılmamak için tasarlanmıştır. Bu mod, app source smoke / tam runtime boot doğrulamasını bilinçli olarak atlar; parse sanity ve odak sözleşme testlerini çalıştırır. AI ajanları `cloud-quick` kullandığında bunun tam runtime/VM doğrulaması olmadığını açıkça belirtmelidir.
 
+`tests/scripts/ci_install_packages.R` için Linux paket tipi sözleşmesi ayrıca statik olarak korunur: varsayılan `pkgType` değeri Linux ortamında `source` kalmalı, `MERGEN_AI_R_PKG_TYPE` yalnızca açıkça verildiğinde (`source`/`binary`) override edilmelidir. Bu sözleşme `tests/testthat/test-ai-package-bootstrap-contract.R` ile izlenir ve `tools/setup_ai_r_environment.sh` içindeki RSPM denetimi kırılgan token eşleştirmeleriyle değil, kararlı URL parçaları (`__linux__/noble/latest`, `__linux__/jammy/latest`) üzerinden doğrulanır.
+
 ### Tarayıcı UX smoke kapsamı
 
 En kırılgan istemci tarafı akışları için hafif gerçek tarayıcı smoke yolu korunur. `www/smoke/ux-smoke.html`, aynı origin üzerinde çalışan uygulamayı iframe içinde açar ve smoke-only `www/smoke/ux-smoke-probes.js` yardımcısını yükler. Başarılı koşumun son işareti `UX_SMOKE_DONE:PASS` olmalıdır.
