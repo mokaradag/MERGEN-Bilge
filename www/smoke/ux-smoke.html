@@ -623,6 +623,12 @@
       "</div>";
     chat.appendChild(wrapper);
 
+    var originalAlert = win.alert;
+    var alertCount = 0;
+    win.alert = function () {
+      alertCount += 1;
+    };
+
     win.MergenStreamingSmoke.init({
       id: "ux_stream_ai",
       content: "",
@@ -654,6 +660,59 @@
       doc.getElementById("ux_stream_ai").textContent.indexOf("STALE") < 0,
       "stale requestId delta yoksayılır"
     );
+
+    win.MergenStreamingSmoke.delta({
+      id: "ux_stream_ai",
+      delta:
+        "\n# Güvenli başlık <img src=x onerror=alert(1)>\n" +
+        "**Kalın <scr",
+      requestId: "req-stream-1"
+    });
+
+    win.MergenStreamingSmoke.delta({
+      id: "ux_stream_ai",
+      delta:
+        "ipt>alert(1)</script>**\n" +
+        "- Madde <a href=\"java",
+      requestId: "req-stream-1"
+    });
+
+    win.MergenStreamingSmoke.delta({
+      id: "ux_stream_ai",
+      delta:
+        "script:alert(1)\">x</a>\n" +
+        "`<img src=x onerror=alert(1)>`\n" +
+        "```js\nconst tehlike = \"<script>alert(1)</script>\";\n",
+      requestId: "req-stream-1"
+    });
+
+    await wait(120);
+
+    var streamingEl = doc.getElementById("ux_stream_ai");
+
+    assert(!!streamingEl.querySelector("h1"), "streaming markdown başlık üretir");
+    assert(!!streamingEl.querySelector("strong"), "streaming markdown kalın metin üretir");
+    assert(!!streamingEl.querySelector("ul li"), "streaming markdown madde listesi üretir");
+    assert(!!streamingEl.querySelector("code.inline-code"), "streaming markdown inline code üretir");
+    assert(
+      !!streamingEl.querySelector(".streaming-code pre code"),
+      "streaming markdown eksik kod bloğunu güvenli wrapper ile gösterir"
+    );
+
+    assert(!streamingEl.querySelector("script"), "streaming markdown script elementi üretmez");
+    assert(!streamingEl.querySelector("img"), "streaming markdown img elementi üretmez");
+    assert(!streamingEl.querySelector("a"), "streaming markdown a elementi üretmez");
+    assert(alertCount === 0, "streaming markdown tehlikeli HTML çalıştırmaz");
+    assert(
+      streamingEl.innerHTML.indexOf("&lt;script&gt;alert(1)&lt;/script&gt;") >= 0,
+      "streaming markdown script metnini escape eder"
+    );
+    assert(
+      streamingEl.textContent.indexOf("javascript:alert(1)") >= 0,
+      "streaming markdown javascript: metnini yalnızca metin olarak tutar"
+    );
+
+    win.alert = originalAlert;
 
     win.MergenStreamingSmoke.finalize({
       id: "ux_stream_ai",

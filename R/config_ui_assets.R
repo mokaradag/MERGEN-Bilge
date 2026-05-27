@@ -193,10 +193,11 @@ ui_asset_js_groups <- list(
     "js/interaction_handlers.js",
     "js/app_core.js",
     "js/welcome_tooltip_manager.js",
+    "js/streaming_markdown_safety.js",
+    "js/markdown-parser.js",
     "js/streaming_manager.js",
     "js/premium_reasoning.js",
     "js/toast.js",
-    "js/markdown-parser.js",
     "js/layout-manager.js",
     "js/tool_backgrounds_snippets.js",
     "js/tool_backgrounds.js"
@@ -370,6 +371,10 @@ ui_asset_js_order_rules <- list(
   c("js/utils.js", "js/input_handlers.js"),
   c("js/input_handlers.js", "js/app_core.js"),
   c("js/app_core.js", "js/welcome_tooltip_manager.js"),
+  c("js/welcome_tooltip_manager.js", "js/streaming_markdown_safety.js"),
+  c("js/streaming_markdown_safety.js", "js/markdown-parser.js"),
+  c("js/streaming_markdown_safety.js", "js/streaming_manager.js"),
+  c("js/markdown-parser.js", "js/streaming_manager.js"),
   c("js/welcome_tooltip_manager.js", "js/streaming_manager.js"),
   c("js/app_core.js", "js/tool_backgrounds.js"),
 

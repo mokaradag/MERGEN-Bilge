@@ -35,11 +35,13 @@ $(document).ready(function() {
         const state = getStreamingState(messageDiv);
         const contentDiv = getStreamingContentDiv(messageDiv);
 
-        const formattedHtml = typeof parseStreamingMarkdown === 'function'
-            ? parseStreamingMarkdown(state.accumulatedText)
-            : state.accumulatedText;
+        if (typeof parseStreamingMarkdown === 'function') {
+            contentDiv.innerHTML = parseStreamingMarkdown(state.accumulatedText);
+        } else {
+            // Parser yüklenemezse raw metni innerHTML'e vermeyiz.
+            contentDiv.textContent = state.accumulatedText || '';
+        }
 
-        contentDiv.innerHTML = formattedHtml;
         state.renderTimer = null;
 
         if (typeof window.smartScrollToBottom === 'function') {
