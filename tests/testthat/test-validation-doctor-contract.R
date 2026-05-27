@@ -188,7 +188,9 @@ testthat::test_that("validation doctor output and artifact do not leak raw secre
     "fake_db_password_abcdefghijklmnopqrstuvwxyz",
     "fake_sso_secret_abcdefghijklmnopqrstuvwxyz",
     "Server=tcp;Uid=fake_user;Pwd=fake_pwd_abcdefghijklmnopqrstuvwxyz",
-    "https://sso.example.invalid/realms/fake-sensitive-realm"
+    "https://sso.example.invalid/realms/fake-sensitive-realm",
+    "https://llm.example.invalid/v1/fake-sensitive-endpoint",
+    "C:/Sensitive/Browser/bin/fake-chrome.exe"
   )
 
   secret_env <- c(
@@ -198,7 +200,8 @@ testthat::test_that("validation doctor output and artifact do not leak raw secre
     SSO_CLIENT_SECRET = secret_values[[4]],
     DB_DSN = secret_values[[5]],
     SSO_KEYCLOAK_URL = secret_values[[6]],
-    LOCAL_LLM_ENDPOINT = "https://llm.example.invalid/v1",
+    LOCAL_LLM_ENDPOINT = secret_values[[7]],
+    MERGEN_BROWSER_BIN = secret_values[[8]],
     DB_CLIENT_ENCODING = "WINDOWS-1254",
     DB_NAME_ENCODING = "WINDOWS-1254"
   )
@@ -258,6 +261,43 @@ testthat::test_that("validation doctor output and artifact do not leak raw secre
       "Summary artifact:"
     ),
     "Validation doctor secret-safe özet alanları eksik:"
+  )
+})
+
+testthat::test_that("cloud-quick wrapper remains a declared quick-profile alias only", {
+  validate_script <- .validation_doctor_read_text("tools", "ai_validate.sh")
+  repo_check <- .validation_doctor_read_text("tests", "scripts", "ai_repo_check.R")
+
+  .validation_doctor_expect_all(
+    validate_script,
+    c(
+      "case \"${PROFILE}\" in",
+      "quick|full)",
+      "cloud-quick)",
+      "AI_REPO_PROFILE=\"quick\"",
+      "export MERGEN_AI_SKIP_SOURCE_PACKAGES=\"${MERGEN_AI_SKIP_SOURCE_PACKAGES:-duckdb,arrow,odbc,pool}\"",
+      "export MERGEN_AI_SKIP_APP_SOURCE_SMOKE=\"${MERGEN_AI_SKIP_APP_SOURCE_SMOKE:-true}\"",
+      "export MERGEN_AI_R_PKG_TYPE=\"${MERGEN_AI_R_PKG_TYPE:-source}\"",
+      "Rscript tests/scripts/ai_repo_check.R --profile \"${AI_REPO_PROFILE}\" \"$@\""
+    ),
+    "cloud-quick wrapper sözleşmesi eksik:"
+  )
+
+  .validation_doctor_expect_all(
+    repo_check,
+    c(
+      "if (!profile %in% c(\"quick\", \"full\"))",
+      "record_skipped_step(",
+      "\"MERGEN_AI_SKIP_APP_SOURCE_SMOKE=true for AI cloud light validation.\"",
+      "\"full testthat suite\"",
+      "\"browser UX smoke\""
+    ),
+    "ai_repo_check quick/full davranışı veya cloud skip kaydı eksik:"
+  )
+
+  expect_false(
+    grepl("cloud-quick", repo_check, fixed = TRUE, useBytes = TRUE),
+    info = "cloud-quick ai_repo_check içine yeni profil olarak eklenmemeli; wrapper içinde quick alias olarak kalmalıdır."
   )
 })
 
