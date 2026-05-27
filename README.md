@@ -36,6 +36,16 @@ Temel kullanım:
 Çıktı ayrıca `artifacts/validation-doctor/` altında küçük bir JSON özet artifact’i üretir. Bu rehber özellikle `cloud-quick` sonucunun tam runtime, gerçek browser veya VM/SSO/SQL Server doğrulaması gibi yorumlanmasını engellemek için kullanılmalıdır. Gerçek güvence yine ilgili profillerin kendisinden gelir: `bash tools/ai_validate.sh cloud-quick`, `bash tools/ai_validate.sh quick`, `bash tools/ai_validate.sh full --boot-smoke`, `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke`, VM preflight scriptleri ve manuel fragile-flow kanıtı ayrı ayrı değerlendirilmelidir.
 Son sözleşme güçlendirmesi: `tests/testthat/test-validation-doctor-contract.R`, doğrulama doktorunun ham secret-benzeri ortam değerlerini sızdırmamasını daha sıkı korur. `LOCAL_LLM_ENDPOINT`, `MERGEN_BROWSER_BIN`, DSN, URL, anahtar, token, secret ve parola benzeri değerler yalnızca `present`, `nchar`, boolean/metaveri ve `value=<hidden>` biçiminde raporlanmalıdır. Aynı sözleşme `cloud-quick` yolunun `tools/ai_validate.sh` içinde yalnızca `quick` repo profiline bağlanan bir sarmalayıcı alias olarak kalmasını; `tests/scripts/ai_repo_check.R` içine ayrı bir üçüncü profil olarak taşınmamasını korur. Bu güçlendirme çalışma zamanı kullanıcı deneyimini değiştirmez; yalnızca doğrulama profillerinin yanlış yorumlanmasını azaltır.
 
+### Codex bulut çıktılarının yorumu
+
+Codex/AI bulut ortamındaki `cloud-quick` sonucu yararlıdır; ancak tek başına kurum içi çalışma zamanı doğrulamasının yerine geçmez. Bu ortamda `git status --short` çıktısının temiz olması yalnızca yerel çalışma ağacında değişiklik olmadığını gösterir; `origin` remote yoksa veya fetch yapılamıyorsa checkout'ın güncel GitHub `main` ile aynı olduğu kanıtlanmış sayılmaz. Böyle bir durumda çelişkili Codex çıktıları `STALE/INCONCLUSIVE` olarak değerlendirilmelidir.
+
+Başarılı bir `cloud-quick` koşumunda beklenen özet şudur: `environment: OK`, `parse sanity: OK`, `app source smoke: SKIPPED`, `focused contract tests: OK`, `failed_steps: 0`, `skipped_steps: 1`. Bu sonuç yine de tam runtime boot, gerçek tarayıcı, VM/SSO, gerçek DB veya SQL Server Türkçe kodlama doğrulaması anlamına gelmez.
+
+`R/helpers_db_connection.R` için güncel sözleşme, `odbc` ve `pool` paketlerinin top-level `library()` ile zorunlu yüklenmemesidir. Bu sayede `cloud-quick` ağır DB runtime paketlerine takılmadan test bootstrap yolunu source edebilir. Gerçek DB bağlantısı açan fonksiyonlar kendi içinde `requireNamespace()` ile net hata vermeye devam eder; VM/SSO ve SQL Server güvencesi ayrıca VM preflight scriptleriyle alınmalıdır.
+
+Kurum içi sunucu/VM testleri başarıyla geçtiyse ve Codex bulut çıktısı checkout, remote veya bootstrap kısıtları nedeniyle çelişkili görünüyorsa, çalışan kurum içi kod yalnızca Codex çıktısı yüzünden değiştirilmemelidir. Önce Codex'in hangi commit'i ve hangi artifact'i kullandığı kanıtlanmalıdır.
+
 
 ### Tarayıcı UX smoke kapsamı
 

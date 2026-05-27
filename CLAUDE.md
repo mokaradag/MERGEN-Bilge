@@ -262,6 +262,18 @@ When `cloud-quick` is used, the final answer must explicitly say:
 
 Do not claim “full validation passed”, “runtime validation passed”, “the app booted”, or “VM validation passed” based only on `cloud-quick`.
 
+### Cloud validation and stale-checkout discipline
+
+`cloud-quick` is the intended lightweight Codex/cloud validation path. It is useful for parse sanity and focused contract tests, but it intentionally does not prove app source smoke, full runtime boot, real browser UX, Windows VM/SSO behavior, real DB behavior, or SQL Server Turkish encoding.
+
+A clean `git status --short` in Codex only proves that the local working tree has no local changes. It does not prove that the checkout matches current GitHub `main`. If the environment has no `origin` remote, cannot fetch, or cannot compare `HEAD` to `origin/main`, contradictory Codex results must be reported as `STALE/INCONCLUSIVE` rather than treated as production regressions.
+
+The expected successful `cloud-quick` summary is: `environment: OK`, `parse sanity: OK`, `app source smoke: SKIPPED`, `focused contract tests: OK`, `failed_steps: 0`, and `skipped_steps: 1`.
+
+Keep `R/helpers_db_connection.R` compatible with `cloud-quick`: it must not top-level load `odbc` or `pool` with `library()` or `require()`. Use lightweight top-level `DBI` availability checks only, and keep `odbc` checks inside the actual connection functions. This preserves cloud bootstrap compatibility without weakening real DB validation; real DB/SSO/SQL Server confidence still comes from the VM preflight scripts.
+
+When in-house server/VM validation passes and Codex cloud reports a contradictory failure, do not change working runtime code until the Codex checkout, commit, and latest artifact log are proven current. Treat missing package bootstrap, no remote, stale artifacts, and long source compilation as environment limitations unless a current failing log proves otherwise.
+
 
 Bootstrap package-type contract:
 - `tests/scripts/ci_install_packages.R` must keep Linux-safe default package type as `source`.
