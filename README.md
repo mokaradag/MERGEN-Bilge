@@ -20,6 +20,21 @@ MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığ�
 
 `tests/scripts/ci_install_packages.R` için Linux paket tipi sözleşmesi ayrıca statik olarak korunur: varsayılan `pkgType` değeri Linux ortamında `source` kalmalı, `MERGEN_AI_R_PKG_TYPE` yalnızca açıkça verildiğinde (`source`/`binary`) override edilmelidir. Bu sözleşme `tests/testthat/test-ai-package-bootstrap-contract.R` ile izlenir ve `tools/setup_ai_r_environment.sh` içindeki RSPM denetimi kırılgan token eşleştirmeleriyle değil, kararlı URL parçaları (`__linux__/noble/latest`, `__linux__/jammy/latest`) üzerinden doğrulanır.
 
+### Doğrulama doktoru
+
+Profil karışıklığını azaltmak için hafif bir doğrulama rehberi eklenmiştir: `tests/scripts/validation_doctor.R` ve kolaylık sarmalayıcısı olarak `tools/validation_doctor.sh`. Bu yol ağır test çalıştırmaz; uygulamayı, gerçek DB bağlantısını veya tarayıcıyı başlatmaz. Bunun yerine ortam sınıflandırmasını, tarayıcı ikilisi bulunabilirliğini, hassas ortam değişkenlerini yalnızca var/yok, uzunluk ve boolean-tarzı metaveriyle (ham değer olmadan), önerilen komut sırasını, her komutun neyi kanıtlayıp neyi kanıtlamadığını ve bloklayıcı/uyarı niteliğindeki kontrolleri raporlar.
+
+Temel kullanım:
+
+- `Rscript tests/scripts/validation_doctor.R --profile cloud`
+- `Rscript tests/scripts/validation_doctor.R --profile local`
+- `Rscript tests/scripts/validation_doctor.R --profile vm`
+- `Rscript tests/scripts/validation_doctor.R --profile all`
+- `bash tools/validation_doctor.sh --profile all`
+- `bash tools/validation_doctor.sh all`
+
+Çıktı ayrıca `artifacts/validation-doctor/` altında küçük bir JSON özet artifact’i üretir. Bu rehber özellikle `cloud-quick` sonucunun tam runtime, gerçek browser veya VM/SSO/SQL Server doğrulaması gibi yorumlanmasını engellemek için kullanılmalıdır. Gerçek güvence yine ilgili profillerin kendisinden gelir: `bash tools/ai_validate.sh cloud-quick`, `bash tools/ai_validate.sh quick`, `bash tools/ai_validate.sh full --boot-smoke`, `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke`, VM preflight scriptleri ve manuel fragile-flow kanıtı ayrı ayrı değerlendirilmelidir.
+
 ### Tarayıcı UX smoke kapsamı
 
 En kırılgan istemci tarafı akışları için hafif gerçek tarayıcı smoke yolu korunur. `www/smoke/ux-smoke.html`, aynı origin üzerinde çalışan uygulamayı iframe içinde açar ve smoke-only `www/smoke/ux-smoke-probes.js` yardımcısını yükler. Başarılı koşumun son işareti `UX_SMOKE_DONE:PASS` olmalıdır.
