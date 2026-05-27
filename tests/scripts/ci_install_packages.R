@@ -132,8 +132,6 @@ repos <- if (nzchar(rspm_url) && repository_index_reachable(rspm_url)) {
   )
 }
 
-repo_is_linux_binary <- grepl("/__linux__/", repos, fixed = TRUE)
-
 # Posit Package Manager Linux binary repositories are still consumed by R through
 # install.packages() using source-style package type on Linux. Setting
 # pkgType = "binary" on Linux can fail with:
