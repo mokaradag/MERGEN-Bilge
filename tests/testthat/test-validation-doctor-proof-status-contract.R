@@ -82,26 +82,26 @@ testthat::test_that("validation doctor explicitly says its own artifact is not v
     "validation_doctor.R"
   )
 
-  .validation_doctor_proof_expect_all(
-    doctor,
-    c(
-      "Doctor execution status:",
-      "doctor_execution_notes <- c(",
-      "NOT RUN: This doctor did not run bash tools/ai_validate.sh cloud-quick.",
-      "NOT RUN: This doctor did not run bash tools/ai_validate.sh quick.",
-      "NOT RUN: This doctor did not run bash tools/ai_validate.sh full --boot-smoke.",
-      "NOT RUN: This doctor did not run MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke.",
-      "NOT RUN: This doctor did not source tests/scripts/run_vm_preflight_real.R.",
-      "NOT RUN: This doctor did not source tests/scripts/run_vm_encoding_preflight_real.R.",
-      "NOT RUN: This doctor did not source tests/scripts/run_fragile_flow_manual_preflight.R.",
-      "Use the listed commands as separate evidence gates; the doctor artifact is guidance, not validation evidence.",
-      "\"doctor_runs_heavy_checks\"",
-      "\"validation_execution_status\"",
-      "not_run_by_validation_doctor",
-      "\"doctor_execution_notes\""
-    ),
-    "Validation doctor kendi çıktı/artifact sınırını açıkça belirtmiyor:"
-  )
+	.validation_doctor_proof_expect_all(
+	  doctor,
+	  c(
+		"Doctor execution status:",
+		"doctor_execution_notes <- c(",
+		"NOT RUN: This doctor did not run bash tools/ai_validate.sh cloud-quick.",
+		"NOT RUN: This doctor did not run bash tools/ai_validate.sh quick.",
+		"NOT RUN: This doctor did not run bash tools/ai_validate.sh full --boot-smoke.",
+		"NOT RUN: This doctor did not run MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke.",
+		"NOT RUN: This doctor did not source tests/scripts/run_vm_preflight_real.R.",
+		"NOT RUN: This doctor did not source tests/scripts/run_vm_encoding_preflight_real.R.",
+		"NOT RUN: This doctor did not source tests/scripts/run_fragile_flow_manual_preflight.R.",
+		"Use the listed commands as separate evidence gates; the doctor artifact is guidance, not validation evidence.",
+		"doctor_runs_heavy_checks",
+		"validation_execution_status",
+		"not_run_by_validation_doctor",
+		"doctor_execution_notes"
+	  ),
+	  "Validation doctor kendi çıktı/artifact sınırını açıkça belirtmiyor:"
+	)
 })
 
 testthat::test_that("validation doctor proof-status artifact is emitted and remains secret-safe", {
