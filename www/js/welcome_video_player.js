@@ -16,6 +16,8 @@ window.WelcomeVideoPlayer = (function() {
   let activeIndex = 0;
   let currentSources = ["", ""];
   let isInitialized = false;
+  let smokeInitCount = 0;
+  let smokeDestroyCount = 0;
 
   // İsimlendirilmiş olay dinleyicileri (temizlik için)
   let _endHandlers = [null, null];
@@ -49,6 +51,8 @@ window.WelcomeVideoPlayer = (function() {
 
     container = containerElement;
     if (!container) return;
+
+    smokeInitCount++;
 
     const shuffled = shuffleArray(VIDEO_URLS);
     currentSources = [shuffled[0], shuffled[1]];
@@ -214,6 +218,10 @@ window.WelcomeVideoPlayer = (function() {
   }
 
   function destroy() {
+    if (isInitialized || videoElements[0] || videoElements[1]) {
+      smokeDestroyCount++;
+    }
+
     // İsimlendirilmiş dinleyicileri temizle
     for (var i = 0; i < 2; i++) {
       if (videoElements[i]) {
@@ -233,8 +241,24 @@ window.WelcomeVideoPlayer = (function() {
     currentSources = ["", ""];
   }
 
+  function getSmokeState() {
+    return {
+      isInitialized: isInitialized,
+      activeIndex: activeIndex,
+      currentSources: currentSources.slice(),
+      initCount: smokeInitCount,
+      destroyCount: smokeDestroyCount,
+      hasContainer: !!(container && document.contains(container))
+    };
+  }
+
   return {
     init: init,
-    destroy: destroy
+    destroy: destroy,
+    getSmokeState: getSmokeState
   };
 })();
+
+window.MergenWelcomeVideoSmoke = {
+  getState: window.WelcomeVideoPlayer.getSmokeState
+};

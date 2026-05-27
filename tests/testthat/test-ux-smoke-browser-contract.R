@@ -13,10 +13,15 @@ test_that("UX smoke keeps media lifecycle and saved-chat TTS probes", {
 
   required_tokens <- c(
     "UX_SMOKE_DONE:PASS",
+    "ux-smoke-probes.js",
     "testMediaAndSavedChat",
+    "testNavigationAndFileManagerSmoke",
+    "MergenUxSmokeProbes",
+    "runNavigationAndFileManagerSmoke",
     "MusicManager global API var",
     "TTS global API var",
     "STT global API var",
+    "Audio lifecycle smoke API var",
 
     # TTS/media duck probe: use ASCII structural anchors instead of Turkish
     # assertion text so Windows native encoding cannot break the contract.
@@ -24,6 +29,7 @@ test_that("UX smoke keeps media lifecycle and saved-chat TTS probes", {
     "win.MusicManager.state.isDucked === true",
     "win.MergenAudioLifecycle.activeDuckOwners()",
     "win.MergenAudioLifecycle.releaseAll(\"ux-smoke-start\")",
+    "tek background music source aktif kalır",
 
     # Overlapping owner probe: TTS release must not restore while STT owns duck.
     "win.MusicManager.duck(\"tts\")",
@@ -38,12 +44,31 @@ test_that("UX smoke keeps media lifecycle and saved-chat TTS probes", {
     "win.MusicManager.state._sttActive === false",
     "win.MusicManager.state.isDucked === false",
 
+    # Streaming lifecycle + finalize probe.
+    "testStreamingLifecycle",
+    "MergenStreamingSmoke",
+    "streaming delta görünür içeriğe işlendi",
+    "stale requestId delta yoksayılır",
+    "followup_container_ux_stream_ai",
+    "class='followup-container pending'",
+    "stream finalize follow-up pending state temizlenir",
+    "stream action butonları geri açılır",
+    "stream finalize duplicate mesaj üretmez",
+
     # Saved-chat historical TTS non-autoplay probe.
     "load_chat_from_storage",
     "historicalMessages",
     "win.mergenTTS.queue.length === 0",
     "win.mergenTTS.isPlaying !== true",
-    "!win.mergenTTS.currentAudio"
+    "!win.mergenTTS.currentAudio",
+
+    # Navigation / video lifecycle / File Manager display-name probe.
+    "Navigation/File Manager smoke probe tamamlandı",
+    "WelcomeVideoPlayer smoke state API var",
+    "Bilge Yolaç sekme linki tıklanabilir",
+    "Ana Söyleşi dönüşü welcome video gereksiz reinit etmez",
+    "File Manager synthetic refresh sonrası Türkçe adı korur",
+    "Türkçe_çalışma_özeti_İstanbul.pdf"
   )
 
   missing <- required_tokens[!vapply(

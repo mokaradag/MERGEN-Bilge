@@ -189,6 +189,17 @@
     cleanupTransient: cleanupTransient
   };
 
+  // Browser smoke test seam:
+  // Üretim davranışını değiştirmez; ux-smoke.html sadece mevcut sahiplik
+  // durumunu sentetik olarak gözlemek ve temizlemek için kullanır.
+  window.MergenAudioLifecycleSmoke = {
+    duck: duck,
+    release: release,
+    releaseAll: releaseAll,
+    activeDuckOwners: ownerList,
+    applyMusicDuckState: applyMusicDuckState
+  };
+
   window.addEventListener('pagehide', function() {
     cleanupTransient('pagehide');
   });

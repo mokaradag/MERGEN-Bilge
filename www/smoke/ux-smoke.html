@@ -49,6 +49,7 @@
   </div>
   <iframe id="app-frame" title="MERGEN UX smoke target"></iframe>
 
+<script src="ux-smoke-probes.js"></script>
 <script>
 (function () {
   "use strict";
@@ -620,7 +621,8 @@
       "<div class='message-bubble ai-message streaming-message'>" +
         "<div id='ux_stream_ai'></div>" +
         "<button class='streaming-hidden' disabled>copy</button>" +
-      "</div>";
+      "</div>" +
+      "<div id='followup_container_ux_stream_ai' class='followup-container pending'></div>";
     chat.appendChild(wrapper);
 
     var rawScriptPrefix = "<scr";
@@ -737,6 +739,13 @@
     assert(messageDiv.dataset.streaming === "false", "stream finalize dataset temizler");
     assert(state && state.finalized === true, "stream finalize state finalized yapar");
     assert(actionButton && actionButton.disabled === false, "stream action butonları geri açılır");
+
+    var followupBox = doc.getElementById("followup_container_ux_stream_ai");
+    assert(
+      followupBox && !followupBox.classList.contains("pending"),
+      "stream finalize follow-up pending state temizlenir"
+    );
+
     assert(wrapper.querySelectorAll("#ux_stream_ai").length === 1, "stream finalize duplicate mesaj üretmez");
 
     if (wrapper && wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
@@ -749,6 +758,16 @@
     assert(!!win.MusicManager, "MusicManager global API var");
     assert(!!win.mergenTTS, "TTS global API var");
     assert(!!win.STT_Client, "STT global API var");
+    assert(!!win.MergenAudioLifecycleSmoke, "Audio lifecycle smoke API var");
+
+    if (window.MergenUxSmokeProbes &&
+        typeof window.MergenUxSmokeProbes.snapshotTransientState === "function") {
+      var initialAudioSnapshot = window.MergenUxSmokeProbes.snapshotTransientState(win);
+      assert(
+        initialAudioSnapshot.backgroundMusicSourceCount <= 1,
+        "tek background music source aktif kalır"
+      );
+    }
 
     win.MusicManager.init({ enabled: false, volume: 0.6, character: "emre" });
     win.MusicManager.state.enabled = true;
@@ -943,6 +962,19 @@
     });
   }
 
+  async function testNavigationAndFileManagerSmoke(app) {
+    assert(!!window.MergenUxSmokeProbes, "UX smoke probe API var");
+
+    await window.MergenUxSmokeProbes.runNavigationAndFileManagerSmoke(app, {
+      assert: assert,
+      pass: pass,
+      fail: fail,
+      log: log,
+      wait: wait,
+      waitFor: waitFor
+    });
+  }
+
   function testConsoleNoise() {
     var badPatterns = [
       /Cannot read (properties|property)/i,
@@ -1007,6 +1039,7 @@
       await testChatInput(app);
       await testStreamingLifecycle(app);
       await testMediaAndSavedChat(app);
+      await testNavigationAndFileManagerSmoke(app);
 
       testConsoleNoise();
     } catch (e) {

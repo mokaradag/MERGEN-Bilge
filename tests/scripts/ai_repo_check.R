@@ -362,6 +362,9 @@ quick_tests <- c(
   "tests/testthat/test-server-core-observer-runtime-contract.R",
   "tests/testthat/test-global-source-manifest-contract.R",
   "tests/testthat/test-ui-asset-manifest-contract.R",
+  "tests/testthat/test-browser-smoke-harness-contract.R",
+  "tests/testthat/test-ux-smoke-browser-contract.R",
+  "tests/testthat/test-smoke-probes-contract.R",
   "tests/testthat/test-maintainability-ratchet-contract.R",
   "tests/testthat/test-frontend-maintainability-ratchet.R",
   "tests/testthat/test-text-encoding-utils.R",
@@ -375,6 +378,7 @@ quick_tests <- c(
   "tests/testthat/test-claude-code-run-lifecycle-contract.R",
   "tests/testthat/test-streaming-abort-lifecycle-smoke.R",
   "tests/testthat/test-true-streaming-reset-ui-contract.R",
+  "tests/testthat/test-audio-lifecycle-owner-smoke.R",
   "tests/testthat/test-chat-input-stop-button-smoke.R",
   "tests/testthat/test-character-personas-contract.R",
   "tests/testthat/test-production-contracts.R"
