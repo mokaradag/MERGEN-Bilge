@@ -195,6 +195,41 @@ run_rscript_expr <- function(label, expr_string, env = base_env) {
 run_step <- function(label, command, cmd_args = character(0), env = base_env) {
   step_id <- sprintf("%02d-%s", length(steps) + 1L, safe_name(label))
   log_path <- file.path(artifact_root, paste0(step_id, ".log"))
+  stdout_path <- paste0(log_path, ".stdout")
+  stderr_path <- paste0(log_path, ".stderr")
+
+  combine_step_logs <- function() {
+    parts <- character(0)
+
+    if (file.exists(stdout_path)) {
+      stdout_lines <- tryCatch(
+        readLines(stdout_path, warn = FALSE, encoding = "UTF-8"),
+        error = function(e) sprintf("STDOUT READ ERROR: %s", conditionMessage(e))
+      )
+
+      if (length(stdout_lines) > 0L) {
+        parts <- c(parts, "--- stdout ---", stdout_lines)
+      }
+    }
+
+    if (file.exists(stderr_path)) {
+      stderr_lines <- tryCatch(
+        readLines(stderr_path, warn = FALSE, encoding = "UTF-8"),
+        error = function(e) sprintf("STDERR READ ERROR: %s", conditionMessage(e))
+      )
+
+      if (length(stderr_lines) > 0L) {
+        parts <- c(parts, "--- stderr ---", stderr_lines)
+      }
+    }
+
+    if (length(parts) == 0L) {
+      parts <- "No stdout/stderr captured."
+    }
+
+    writeLines(enc2utf8(parts), con = log_path, useBytes = TRUE)
+    unlink(c(stdout_path, stderr_path), force = TRUE)
+  }
 
   cat(sprintf("\n[%s] START\n", label))
   cat(sprintf("Command: %s %s\n", command, paste(shQuote(cmd_args), collapse = " ")))
@@ -204,24 +239,28 @@ run_step <- function(label, command, cmd_args = character(0), env = base_env) {
 
   status <- tryCatch(
     {
-      system2(
-        command = command,
-        args = cmd_args,
-        stdout = log_path,
-        stderr = log_path,
-        env = env,
-        wait = TRUE
+      suppressWarnings(
+        system2(
+          command = command,
+          args = cmd_args,
+          stdout = stdout_path,
+          stderr = stderr_path,
+          env = env,
+          wait = TRUE
+        )
       )
     },
     error = function(e) {
       writeLines(
         paste("SYSTEM2 ERROR:", conditionMessage(e)),
-        con = log_path,
+        con = stderr_path,
         useBytes = TRUE
       )
       127L
     }
   )
+
+  combine_step_logs()
 
   if (is.null(status)) status <- 0L
   status <- as.integer(status)
