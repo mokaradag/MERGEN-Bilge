@@ -69,6 +69,49 @@
 
 .bootstrap_api_model_config_contract()
 
+test_that("config_api.R bilinmeyen deep-thinking modellerini endpoint map'e güvenli ekler", {
+  repo_root <- resolve_repo_root_for_tests()
+
+  old_env <- Sys.getenv(c(
+    "EXCEL_DEEP_LOW_MODEL",
+    "EXCEL_DEEP_HIGH_MODEL",
+    "CODING_DEEP_LOW_MODEL",
+    "CODING_DEEP_HIGH_MODEL"
+  ), unset = NA_character_)
+
+	on.exit({
+	  for (nm in names(old_env)) {
+		if (is.na(old_env[[nm]])) {
+		  Sys.unsetenv(nm)
+		} else {
+		  do.call(Sys.setenv, stats::setNames(list(old_env[[nm]]), nm))
+		}
+	  }
+	}, add = TRUE)
+
+  Sys.setenv(
+    EXCEL_DEEP_LOW_MODEL = "unknown-excel-deep-low-model",
+    EXCEL_DEEP_HIGH_MODEL = "unknown-excel-deep-high-model",
+    CODING_DEEP_LOW_MODEL = "unknown-coding-deep-low-model",
+    CODING_DEEP_HIGH_MODEL = "unknown-coding-deep-high-model"
+  )
+
+  expect_silent(
+    source(file.path(repo_root, "R", "config_api.R"),
+           encoding = "UTF-8", local = globalenv())
+  )
+
+  expect_identical(
+    unname(api_config$local_model_endpoint_map["unknown-excel-deep-low-model"]),
+    "primary"
+  )
+
+  expect_identical(
+    unname(api_config$local_model_endpoint_map["unknown-coding-deep-high-model"]),
+    "primary"
+  )
+})
+
 test_that("API model config helper public fonksiyonları source sonrası mevcuttur", {
   expected_functions <- c(
     "get_local_model_capabilities",

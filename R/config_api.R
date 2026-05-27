@@ -266,15 +266,37 @@ api_config <- list(
 
 for (.mb_dt_model in unique(c(excel_deep_low_model, excel_deep_high_model,
                               coding_deep_low_model, coding_deep_high_model))) {
-  if (!nzchar(.mb_dt_model)) next
+  .mb_dt_model <- as.character(.mb_dt_model)[1]
+
+  if (is.na(.mb_dt_model) || !nzchar(.mb_dt_model)) {
+    next
+  }
+
   if (is.null(api_config$local_model_capabilities[[.mb_dt_model]])) {
     api_config$local_model_capabilities[[.mb_dt_model]] <- .mb_deep_thinking_capability_template
   }
+
   # Yeni Derin Düşünme modeli endpoint haritasında yoksa varsayılan olarak
   # birincil (primary) endpoint'e eşle. Mevcut girdiler korunur.
-  if (is.null(api_config$local_model_endpoint_map[[.mb_dt_model]]) ||
-      is.na(api_config$local_model_endpoint_map[[.mb_dt_model]])) {
-    api_config$local_model_endpoint_map[[.mb_dt_model]] <- "primary"
+  #
+  # ÖNEMLİ:
+  # local_model_endpoint_map adlandırılmış karakter vektörüdür.
+  # Eksik ada [[...]] ile erişmek "altindis sınırlar dışında" hatası verir.
+  endpoint_map <- api_config$local_model_endpoint_map
+  if (is.null(endpoint_map)) {
+    endpoint_map <- character()
+  }
+
+  endpoint_map_names <- names(endpoint_map)
+
+  endpoint_mapped <- !is.null(endpoint_map_names) &&
+    .mb_dt_model %in% endpoint_map_names &&
+    !is.na(endpoint_map[.mb_dt_model]) &&
+    nzchar(as.character(endpoint_map[.mb_dt_model])[1])
+
+  if (!isTRUE(endpoint_mapped)) {
+    endpoint_map[.mb_dt_model] <- "primary"
+    api_config$local_model_endpoint_map <- endpoint_map
   }
 }
 rm(.mb_dt_model, .mb_deep_thinking_capability_template)

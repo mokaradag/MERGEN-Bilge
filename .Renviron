@@ -144,3 +144,12 @@ CLAUDE_CODE_ALLOW_USER_SELECTED_WORKDIRS=TRUE
 CLAUDE_CODE_PERMISSION_MODE=acceptEdits
 CLAUDE_CODE_ALLOWED_TOOLS=Read;Write;Edit;MultiEdit;Glob;Grep;LS;Bash
 CLAUDE_CODE_DISALLOWED_TOOLS=
+
+# ------------------------------------------------------------------------------
+# Araç Modelleri Yapılandırması
+# ------------------------------------------------------------------------------
+
+EXCEL_DEEP_LOW_MODEL=<teknik model adı 1>
+EXCEL_DEEP_HIGH_MODEL=<teknik model adı 2>
+CODING_DEEP_LOW_MODEL=<teknik model adı 1>
+CODING_DEEP_HIGH_MODEL=<teknik model adı 2>
