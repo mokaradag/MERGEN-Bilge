@@ -34,6 +34,8 @@ Temel kullanım:
 - `bash tools/validation_doctor.sh all`
 
 Çıktı ayrıca `artifacts/validation-doctor/` altında küçük bir JSON özet artifact’i üretir. Bu rehber özellikle `cloud-quick` sonucunun tam runtime, gerçek browser veya VM/SSO/SQL Server doğrulaması gibi yorumlanmasını engellemek için kullanılmalıdır. Gerçek güvence yine ilgili profillerin kendisinden gelir: `bash tools/ai_validate.sh cloud-quick`, `bash tools/ai_validate.sh quick`, `bash tools/ai_validate.sh full --boot-smoke`, `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke`, VM preflight scriptleri ve manuel fragile-flow kanıtı ayrı ayrı değerlendirilmelidir.
+Son sözleşme güçlendirmesi: `tests/testthat/test-validation-doctor-contract.R`, doğrulama doktorunun ham secret-benzeri ortam değerlerini sızdırmamasını daha sıkı korur. `LOCAL_LLM_ENDPOINT`, `MERGEN_BROWSER_BIN`, DSN, URL, anahtar, token, secret ve parola benzeri değerler yalnızca `present`, `nchar`, boolean/metaveri ve `value=<hidden>` biçiminde raporlanmalıdır. Aynı sözleşme `cloud-quick` yolunun `tools/ai_validate.sh` içinde yalnızca `quick` repo profiline bağlanan bir sarmalayıcı alias olarak kalmasını; `tests/scripts/ai_repo_check.R` içine ayrı bir üçüncü profil olarak taşınmamasını korur. Bu güçlendirme çalışma zamanı kullanıcı deneyimini değiştirmez; yalnızca doğrulama profillerinin yanlış yorumlanmasını azaltır.
+
 
 ### Tarayıcı UX smoke kapsamı
 
