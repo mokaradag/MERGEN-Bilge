@@ -5158,6 +5158,14 @@ Do not assume a plain `runApp(".")` workflow is the safest path for this repo.
 
 ## Recommended Validation After a Patch
 
+### Evidence hierarchy for Codex/cloud versus VM validation
+
+For docs-only updates, do not run R validation unless the user explicitly asks for it. Use lightweight text inspection and `git diff` only.
+
+When Codex/cloud validation is available, interpret it strictly by the generated proof fields. A passing `cloud-quick` run is supplementary evidence for cloud-safe parse and focused contract scope only. It must not be described as full validation, app boot proof, browser UX proof, VM/SSO/DB proof, SQL Server Turkish encoding proof, or manual fragile-flow proof. `validation_doctor` is guidance only and must never be cited as execution proof.
+
+If Codex/cloud `quick` or `full --boot-smoke` cannot complete because it enters heavy package bootstrap or compile paths, do not treat that as stronger evidence than a successful Windows VM run. For runtime, SSO, DB, and SQL Server Turkish encoding boundaries, the authoritative evidence is the VM-side run: `quick`, `full --boot-smoke`, `run_vm_preflight_real.R`, and `run_vm_encoding_preflight_real.R` with `MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE`. If those VM gates pass, report Codex `cloud-quick` as supplementary only and clearly state what it does not prove.
+
 After changing anything non-trivial, test:
 
 ### Core
