@@ -133,7 +133,12 @@ repos <- if (nzchar(rspm_url) && repository_index_reachable(rspm_url)) {
 }
 
 repo_is_linux_binary <- grepl("/__linux__/", repos, fixed = TRUE)
-default_pkg_type <- if (repo_is_linux_binary) "binary" else "source"
+
+# Posit Package Manager Linux binary repositories are still consumed by R through
+# install.packages() using source-style package type on Linux. Setting
+# pkgType = "binary" on Linux can fail with:
+#   type 'binary' is not supported on this platform
+default_pkg_type <- "source"
 pkg_type_env <- tolower(trimws(Sys.getenv("MERGEN_AI_R_PKG_TYPE", unset = "")))
 
 if (nzchar(pkg_type_env) && pkg_type_env %in% c("source", "binary")) {
