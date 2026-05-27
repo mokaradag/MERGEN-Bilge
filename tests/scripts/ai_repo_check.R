@@ -107,11 +107,16 @@ env_pair <- function(name, default = "") {
   paste0(name, "=", Sys.getenv(name, unset = default))
 }
 
-# LANG=C.utf8: POSIX lokalinde R, UTF-8 kaynak dosyalarını (Türkçe karakter içeren)
-# "invalid input" uyarısıyla okuyabilir. C.utf8 hem taşınabilir hem UTF-8 güvenlidir.
-utf8_lang <- if (nzchar(Sys.getenv("LANG"))) Sys.getenv("LANG") else "C.utf8"
+# LANG=C.utf8 yalnızca POSIX/Linux benzeri ortamlarda güvenli varsayımdır.
+# Windows/RStudio/kurumsal VM ortamında child Rscript sürecine LANG=C.utf8
+# zorlamak Rscript.exe çökmesine yol açabilir. Bu nedenle Windows'ta LANG
+# override edilmez; mevcut sistem locale'i korunur.
 base_env <- c(
-  paste0("LANG=", utf8_lang),
+  if (.Platform$OS.type == "windows") {
+    character(0)
+  } else {
+    paste0("LANG=", if (nzchar(Sys.getenv("LANG"))) Sys.getenv("LANG") else "C.utf8")
+  },
   "TZ=UTC",
   "MERGEN_RUN_APP=false",
   "MERGEN_DISABLE_FUTURES=true",
