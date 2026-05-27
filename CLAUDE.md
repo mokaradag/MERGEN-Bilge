@@ -95,6 +95,8 @@ Current contract:
 - UI asset order is part of the safety boundary: `www/js/streaming_markdown_safety.js` must load before `www/js/markdown-parser.js`, and `www/js/markdown-parser.js` must load before `www/js/streaming_manager.js`.
 - Server-side final and saved message markdown rendering must use `render_safe_markdown_html()` from `R/helpers_markdown_safety.R` for user/LLM-controlled prose. Do not call `commonmark::markdown_html()` directly on such prose unless raw HTML has first been escaped.
 - Raw HTML/script/event-handler patterns such as script tags, image error handlers, javascript links, and malformed tags split across streaming chunks must remain escaped or inert.
+- The browser UX smoke harness is part of this safety boundary, not a demo page. Keep `www/smoke/ux-smoke.html` and `www/smoke/ux-smoke-probes.js` explicit about streaming init/delta/stale requestId/finalize behavior, dangerous HTML-like payload inertness, finalize cleanup, audio duck ownership, saved-chat TTS non-autoplay, navigation cleanup, welcome-video init/destroy counters, and synthetic File Manager Turkish display-name refresh checks.
+- Smoke-only seams must remain namespaced and inert in production: `window.MergenStreamingSmoke`, `window.MergenAudioLifecycleSmoke`, `window.MergenWelcomeVideoSmoke`, and `window.MergenUxSmokeProbes`. Do not add `www/smoke/ux-smoke-probes.js` to `R/config_ui_assets.R`.
 - Do not add CDN dependencies, runtime downloads, external sanitization libraries, bundling, or minification for this boundary.
 
 Protected by:
@@ -104,6 +106,12 @@ Protected by:
 - `tests/testthat/test-streaming-markdown-safety-contract.R`
 - `tests/testthat/test-ui-asset-manifest-contract.R`
 - `www/smoke/ux-smoke.html`
+- `www/smoke/ux-smoke-probes.js`
+- `tests/scripts/ai_browser_ux_smoke.R`
+- `tests/testthat/test-ux-smoke-browser-contract.R`
+- `tests/testthat/test-browser-smoke-harness-contract.R`
+- `tests/testthat/test-browser-ux-smoke-runner-contract.R`
+- `tests/testthat/test-smoke-probes-contract.R`
 
 Protected by:
 
