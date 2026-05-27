@@ -307,9 +307,9 @@ validation_paths <- data.frame(
     "bash tools/ai_validate.sh quick",
     "bash tools/ai_validate.sh full --boot-smoke",
     "MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke",
-    "source(\"tests/scripts/run_vm_preflight_real.R\", encoding = \"UTF-8\")",
-    "Sys.setenv(MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=\"TRUE\"); source(\"tests/scripts/run_vm_encoding_preflight_real.R\", encoding = \"UTF-8\")",
-    "source(\"tests/scripts/run_fragile_flow_manual_preflight.R\", encoding = \"UTF-8\")"
+    'source("tests/scripts/run_vm_preflight_real.R", encoding = "UTF-8")',
+    'Sys.setenv(MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST="TRUE"); source("tests/scripts/run_vm_encoding_preflight_real.R", encoding = "UTF-8")',
+    'source("tests/scripts/run_fragile_flow_manual_preflight.R", encoding = "UTF-8")'
   ),
   proves = c(
     "Cloud/AI lightweight validation: parse sanity and focused contract tests that can run without heavy runtime packages.",

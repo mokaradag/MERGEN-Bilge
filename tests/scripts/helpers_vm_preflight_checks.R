@@ -635,29 +635,35 @@ vm_preflight_check_log_redaction_contract <- function() {
 
   old_env <- Sys.getenv(
     c("AI_KEYS_MASTER", "LOCAL_LLM_API_KEY", "DB_PASSWORD", "SSO_CLIENT_SECRET"),
-    unset = ""
+    unset = NA_character_
   )
 
-	fake_values <- stats::setNames(
-	  c(
-		"fake_master_key_abcdef1234",
-		"fake_llm_key_abcdef1234",
-		paste0("fake_db_", "password_abcdef1234"),
-		paste0("fake_sso_", "secret_abcdef1234")
-	  ),
-	  c(
-		"AI_KEYS_MASTER",
-		"LOCAL_LLM_API_KEY",
-		"DB_PASSWORD",
-		"SSO_CLIENT_SECRET"
-	  )
-	)
+  fake_values <- stats::setNames(
+    c(
+      "fake_master_key_abcdef1234",
+      "fake_llm_key_abcdef1234",
+      paste0("fake_db_", "password_abcdef1234"),
+      paste0("fake_sso_", "secret_abcdef1234")
+    ),
+    c(
+      "AI_KEYS_MASTER",
+      "LOCAL_LLM_API_KEY",
+      "DB_PASSWORD",
+      "SSO_CLIENT_SECRET"
+    )
+  )
 
-	on.exit({
-	  for (nm in names(old_env)) {
-		Sys.setenv(structure(as.list(old_env[[nm]]), names = nm))
-	  }
-	}, add = TRUE)
+  on.exit({
+    for (nm in names(old_env)) {
+      old_value <- old_env[[nm]]
+
+      if (is.na(old_value)) {
+        Sys.unsetenv(nm)
+      } else {
+        do.call(Sys.setenv, stats::setNames(list(old_value), nm))
+      }
+    }
+  }, add = TRUE)
 
 	do.call(Sys.setenv, as.list(fake_values))
 

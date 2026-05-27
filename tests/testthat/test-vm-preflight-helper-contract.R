@@ -63,6 +63,44 @@ test_that("VM preflight helper kritik fonksiyonları tanımlar", {
   )
 })
 
+test_that("VM preflight log redaction env restore uses named setenv calls", {
+  helper_txt <- .read_vm_preflight_text(
+    file.path("tests", "scripts", "helpers_vm_preflight_checks.R")
+  )
+
+  expected_patterns <- c(
+    "old_env <- Sys.getenv(",
+    "unset = NA_character_",
+    "old_value <- old_env[[nm]]",
+    "Sys.unsetenv(nm)",
+    "do.call(Sys.setenv, stats::setNames(list(old_value), nm))"
+  )
+
+  found <- vapply(
+    expected_patterns,
+    function(pattern) grepl(pattern, helper_txt, fixed = TRUE),
+    logical(1)
+  )
+
+  expect_true(
+    all(found),
+    info = paste(
+      "VM preflight log redaction env restore sözleşmesi eksik:",
+      paste(expected_patterns[!found], collapse = ", ")
+    )
+  )
+
+  expect_false(
+    grepl(
+      "Sys.setenv(structure(as.list(old_env[[nm]]), names = nm))",
+      helper_txt,
+      fixed = TRUE,
+      useBytes = TRUE
+    ),
+    info = "Sys.setenv() named ... yerine positional list ile çağrılmamalıdır."
+  )
+})
+
 test_that("run_vm_preflight_real helper dosyasını kaynaklar ve kritik kontrolleri çağırır", {
   script_txt <- .read_vm_preflight_text(
     file.path("tests", "scripts", "run_vm_preflight_real.R")

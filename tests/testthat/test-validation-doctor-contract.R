@@ -23,8 +23,18 @@
   stop("Validation doctor contract repo kökü bulunamadı.", call. = FALSE)
 }
 
+.validation_doctor_is_absolute_path <- function(path) {
+  grepl("^([A-Za-z]:|/|\\\\\\\\)", as.character(path)[1])
+}
+
 .validation_doctor_read_text <- function(...) {
-  path <- file.path(.validation_doctor_repo_root(), ...)
+  parts <- c(...)
+  path <- if (length(parts) == 1L &&
+              .validation_doctor_is_absolute_path(parts[[1]])) {
+    parts[[1]]
+  } else {
+    file.path(.validation_doctor_repo_root(), ...)
+  }
 
   if (!file.exists(path)) {
     stop(sprintf("Beklenen dosya bulunamadı: %s", path), call. = FALSE)
@@ -181,29 +191,33 @@ testthat::test_that("validation doctor output and artifact do not leak raw secre
     "https://sso.example.invalid/realms/fake-sensitive-realm"
   )
 
+  secret_env <- c(
+    AI_KEYS_MASTER = secret_values[[1]],
+    LOCAL_LLM_API_KEY = secret_values[[2]],
+    DB_PASSWORD = secret_values[[3]],
+    SSO_CLIENT_SECRET = secret_values[[4]],
+    DB_DSN = secret_values[[5]],
+    SSO_KEYCLOAK_URL = secret_values[[6]],
+    LOCAL_LLM_ENDPOINT = "https://llm.example.invalid/v1",
+    DB_CLIENT_ENCODING = "WINDOWS-1254",
+    DB_NAME_ENCODING = "WINDOWS-1254"
+  )
+
   output <- withr::with_dir(
     repo_root,
-    system2(
-      rscript,
-      c(
-        "tests/scripts/validation_doctor.R",
-        "--profile",
-        "cloud",
-        "--artifact-root",
-        artifact_root
-      ),
-      stdout = TRUE,
-      stderr = TRUE,
-      env = c(
-        paste0("AI_KEYS_MASTER=", secret_values[[1]]),
-        paste0("LOCAL_LLM_API_KEY=", secret_values[[2]]),
-        paste0("DB_PASSWORD=", secret_values[[3]]),
-        paste0("SSO_CLIENT_SECRET=", secret_values[[4]]),
-        paste0("DB_DSN=", secret_values[[5]]),
-        paste0("SSO_KEYCLOAK_URL=", secret_values[[6]]),
-        "LOCAL_LLM_ENDPOINT=https://llm.example.invalid/v1",
-        "DB_CLIENT_ENCODING=WINDOWS-1254",
-        "DB_NAME_ENCODING=WINDOWS-1254"
+    withr::with_envvar(
+      secret_env,
+      system2(
+        rscript,
+        c(
+          "tests/scripts/validation_doctor.R",
+          "--profile",
+          "cloud",
+          "--artifact-root",
+          artifact_root
+        ),
+        stdout = TRUE,
+        stderr = TRUE
       )
     )
   )
