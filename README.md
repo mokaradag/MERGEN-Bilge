@@ -38,6 +38,7 @@ Doğrulamada yerel/VM sonucu esas alınır: `bash tools/ai_validate.sh quick`, `
 - Türkçe odaklı sohbet deneyimi
 - Kod bloklarında sözdizimi vurgulama
 - Streaming ve nihai mesaj markdown HTML güvenliği güçlendirilmiştir: tarayıcı tarafında `www/js/streaming_markdown_safety.js` ve `www/js/markdown-parser.js`, sunucu tarafında `R/helpers_markdown_safety.R` ham HTML/script/event-handler geçişini kaçırarak işler; başlık, kalın/italik metin, inline code, madde listeleri, kod blokları, eksik streaming kod blokları ve satır sonları korunur. Bu sözleşme `tests/testthat/test-streaming-markdown-safety-contract.R`, `tests/testthat/test-ui-asset-manifest-contract.R` ve `www/smoke/ux-smoke.html` ile izlenir.
+- Söyleşi Geçmişi tablosu ayrı bir HTML güvenlik sınırı olarak korunur: `R/module_chat_history.R` içindeki `DT::datatable(..., escape = TRUE)` ayarı, `Söyleşi Adı`, `Tarih`, `Soru` ve `Cevap` önizleme hücrelerinde eski kayıtlı test girdileri dahil kullanıcı/AI kontrollü metinlerin raw HTML olarak çalışmasını engeller. Bu sözleşme `tests/testthat/test-chat-history-datatable-safety-contract.R` ile izlenir.
 - Yapılandırma üzerinden açılıp kapatılabilen, streaming yanıtlar sonrasında da güvenilir çalışan takip sorusu önerileri ve mesaj eylemleri
 - Farklı model ve araç aileleriyle çalışma
 - Düşünebilen modeller (`thinking=TRUE`) için premium akıl yürütme kartı ve canlı düşünce akışı paneli
