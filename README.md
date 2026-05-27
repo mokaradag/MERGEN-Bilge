@@ -18,6 +18,16 @@ MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığ�
 
 `cloud-quick` modu, `duckdb`, `arrow`, `odbc` ve `pool` gibi ağır/runtime kaynak paketlerinin bulut ortamında uzun süren derlemelerine takılmamak için tasarlanmıştır. Bu mod, app source smoke / tam runtime boot doğrulamasını bilinçli olarak atlar; parse sanity ve odak sözleşme testlerini çalıştırır. AI ajanları `cloud-quick` kullandığında bunun tam runtime/VM doğrulaması olmadığını açıkça belirtmelidir.
 
+### Tarayıcı UX smoke kapsamı
+
+En kırılgan istemci tarafı akışları için hafif gerçek tarayıcı smoke yolu korunur. `www/smoke/ux-smoke.html`, aynı origin üzerinde çalışan uygulamayı iframe içinde açar ve smoke-only `www/smoke/ux-smoke-probes.js` yardımcısını yükler. Başarılı koşumun son işareti `UX_SMOKE_DONE:PASS` olmalıdır.
+
+Bu smoke yolu; streaming init/delta/stale requestId/finalize yaşam döngüsünü, tehlikeli HTML benzeri içeriğin etkin HTML'e dönüşmemesini, action button geri dönüşünü, follow-up pending temizliğini ve yinelenen asistan mesajı oluşmamasını doğrular. Ayrıca TTS/STT müzik duck sahipliği, tek arka plan müzik kaynağı, kayıtlı sohbet yüklenirken eski TTS'in otomatik başlamaması, Bilge Yolaç ↔ Ana Söyleşi geçişinde stale tool/audio state kalmaması, welcome video'nun gereksiz destroy/reinit edilmemesi ve `Türkçe_çalışma_özeti_İstanbul.pdf` gibi Dosya Yönetimi görünen adlarının sentetik yenilemede okunabilir kalması kapsanır.
+
+Bu yol üretim kullanıcı deneyimini değiştirmemelidir. Smoke arayüzleri yalnızca test amaçlı ve isim alanlıdır: `window.MergenStreamingSmoke`, `window.MergenAudioLifecycleSmoke`, `window.MergenWelcomeVideoSmoke`, `window.MergenUxSmokeProbes`. `www/smoke/ux-smoke-probes.js` üretim varlık manifestine (`R/config_ui_assets.R`) eklenmemelidir; CDN, runtime download veya ağır tarayıcı otomasyon bağımlılığı getirilmemelidir.
+
+Doğrulamada yerel/VM sonucu esas alınır: `bash tools/ai_validate.sh quick`, `bash tools/ai_validate.sh full --boot-smoke` ve aynı-origin `/smoke/ux-smoke.html` manuel koşumu `UX_SMOKE_DONE:PASS` ile tamamlanmalıdır. Codex/Claude bulut ortamlarında R paket bootstrap aşaması testler başlamadan önce `arrow`, `duckdb`, `odbc`, `pool`, `shinyWidgets` gibi paketlerde başarısız olursa bu durum kod/test hatası değil, ortam/bootstrap kısıtı olarak raporlanmalıdır.
+
 ---
 
 ## Genel Özellikler

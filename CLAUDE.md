@@ -167,6 +167,36 @@ VM-only manual validation after any DB encoding change:
 
 
 
+### 1D) Browser UX smoke coverage boundary
+
+The fragile client-side UX flows are protected by a lightweight same-origin browser smoke harness. `www/smoke/ux-smoke.html` loads the live app in an iframe and also loads the smoke-only helper `www/smoke/ux-smoke-probes.js`. A successful manual run must end with `UX_SMOKE_DONE:PASS`.
+
+The smoke harness covers:
+- streaming lifecycle: init, delta append, stale `requestId` rejection, finalize, action button restore, follow-up pending cleanup, and duplicate assistant-message prevention;
+- streaming safety: dangerous HTML-like payloads remain inert text and must not become active HTML;
+- audio lifecycle: single background music source, TTS ducking, STT ducking, overlapping TTS/STT duck owners, and no saved-chat historical TTS autoplay;
+- navigation/video lifecycle: Bilge Yolaç ↔ Ana Söyleşi transitions must not leave stale tool/audio state, and the welcome video must not be unnecessarily destroyed or reinitialized;
+- File Manager display names: Turkish names such as `Türkçe_çalışma_özeti_İstanbul.pdf` must remain readable after synthetic refresh/listing without a real DB.
+
+Smoke-only seams must stay namespaced and inert in production:
+- `window.MergenStreamingSmoke`
+- `window.MergenAudioLifecycleSmoke`
+- `window.MergenWelcomeVideoSmoke`
+- `window.MergenUxSmokeProbes`
+
+Do not add `www/smoke/ux-smoke-probes.js` to the production runtime asset manifest in `R/config_ui_assets.R`. Do not introduce CDN dependencies, runtime downloads, Playwright, Selenium, Cypress, chromote, or another heavy browser dependency unless the repo already supports it and the change is explicitly justified.
+
+Relevant static contracts:
+- `tests/testthat/test-browser-smoke-harness-contract.R`
+- `tests/testthat/test-ux-smoke-browser-contract.R`
+- `tests/testthat/test-smoke-probes-contract.R`
+- `tests/testthat/test-audio-lifecycle-owner-smoke.R`
+- `tests/testthat/test-true-streaming-reset-ui-contract.R`
+
+Validation interpretation:
+- In the maintainer VM/local environment, `bash tools/ai_validate.sh quick`, `bash tools/ai_validate.sh full --boot-smoke`, and manual same-origin `/smoke/ux-smoke.html` have passed.
+- If Codex Cloud fails before testthat starts because R package bootstrap cannot install packages such as `arrow`, `duckdb`, `odbc`, `pool`, or `shinyWidgets`, classify that as an environment/bootstrap failure, not as a code/test failure.
+
 ### AI agent validation rule
 
 Cloud fallback validation:
