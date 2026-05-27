@@ -69,6 +69,8 @@ find_repo_root <- function() {
 repo_root <- find_repo_root()
 setwd(repo_root)
 
+source("tests/scripts/helpers_validation_proof_status.R", encoding = "UTF-8")
+
 rscript <- Sys.which("Rscript")
 if (!nzchar(rscript)) {
   stop(
@@ -263,40 +265,14 @@ write_summary_and_exit <- function(status = NULL) {
 
   summary_path <- file.path(artifact_root, "summary.json")
 
-  step_json <- vapply(steps, function(s) {
-    sprintf(
-      paste0(
-        "{",
-        "\"label\":\"%s\",",
-        "\"status\":%d,",
-        "\"duration_seconds\":%.3f,",
-        "\"log\":\"%s\",",
-        "\"skipped\":%s",
-        "}"
-      ),
-      json_escape(s$label),
-      as.integer(s$status),
-      as.numeric(s$duration_seconds),
-      json_escape(normalizePath(s$log, winslash = "/", mustWork = FALSE)),
-      if (isTRUE(s$skipped)) "true" else "false"
-    )
-  }, character(1))
-
-  json <- paste0(
-    "{\n",
-    sprintf("  \"profile\":\"%s\",\n", json_escape(profile)),
-    sprintf("  \"repo_root\":\"%s\",\n", json_escape(repo_root)),
-    sprintf("  \"artifact_root\":\"%s\",\n", json_escape(normalizePath(artifact_root, winslash = "/", mustWork = FALSE))),
-    sprintf("  \"total_steps\":%d,\n", length(steps)),
-    sprintf("  \"failed_steps\":%d,\n", failed_count),
-    sprintf("  \"skipped_steps\":%d,\n", skipped_count),
-    sprintf("  \"boot_smoke\":%s,\n", if (isTRUE(boot_smoke)) "true" else "false"),
-    sprintf("  \"skip_app_source_smoke\":%s,\n", if (isTRUE(skip_app_source_smoke)) "true" else "false"),
-    sprintf("  \"answer_path\":%s,\n", if (is.null(answer_path)) "null" else sprintf("\"%s\"", json_escape(answer_path))),
-    "  \"steps\":[\n    ",
-    paste(step_json, collapse = ",\n    "),
-    "\n  ]\n",
-    "}\n"
+  json <- validation_proof_render_ai_summary(
+    profile = profile,
+    repo_root = repo_root,
+    artifact_root = artifact_root,
+    steps = steps,
+    boot_smoke = boot_smoke,
+    skip_app_source_smoke = skip_app_source_smoke,
+    answer_path = answer_path
   )
 
   writeLines(json, summary_path, useBytes = TRUE)
@@ -366,6 +342,7 @@ quick_tests <- c(
   "tests/testthat/test-browser-ux-smoke-runner-contract.R",
   "tests/testthat/test-validation-doctor-contract.R",
   "tests/testthat/test-validation-doctor-proof-status-contract.R",
+  "tests/testthat/test-ai-validation-proof-status-contract.R",
   "tests/testthat/test-ux-smoke-browser-contract.R",
   "tests/testthat/test-smoke-probes-contract.R",
   "tests/testthat/test-maintainability-ratchet-contract.R",

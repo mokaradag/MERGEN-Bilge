@@ -294,12 +294,82 @@ claims_tests_passed <- grepl(
   perl = TRUE
 )
 
-read_failed_steps <- function(path) {
+read_summary_text <- function(path) {
   if (is.null(path) || !file.exists(path)) {
+    return("")
+  }
+
+  read_utf8(path)
+}
+
+summary_text <- read_summary_text(summary_path)
+
+summary_value_for_message <- function(value) {
+  if (length(value) == 0L || is.na(value[1])) {
+    return("<missing>")
+  }
+
+  as.character(value[1])
+}
+
+read_summary_string_field <- function(text, field) {
+  if (!nzchar(text)) {
+    return(NA_character_)
+  }
+
+  pattern <- sprintf('"%s"\\s*:\\s*(null|"(?:\\\\.|[^"\\\\])*")', field)
+  hit <- regexpr(pattern, text, perl = TRUE)
+
+  if (hit[1] < 0) {
+    return(NA_character_)
+  }
+
+  raw <- regmatches(text, hit)
+  value <- sub(sprintf('^"%s"\\s*:\\s*', field), "", raw, perl = TRUE)
+
+  if (identical(value, "null")) {
+    return(NA_character_)
+  }
+
+  value <- sub('^"', "", value)
+  value <- sub('"$', "", value)
+  value <- gsub("\\\\n", "\n", value, fixed = TRUE)
+  value <- gsub("\\\\r", "\r", value, fixed = TRUE)
+  value <- gsub("\\\\t", "\t", value, fixed = TRUE)
+  value <- gsub("\\\\\"", "\"", value, fixed = TRUE)
+  value <- gsub("\\\\\\\\", "\\\\", value, fixed = TRUE)
+
+  enc2utf8(value)
+}
+
+read_summary_bool_field <- function(text, field) {
+  if (!nzchar(text)) {
+    return(NA)
+  }
+
+  pattern <- sprintf('"%s"\\s*:\\s*(true|false)', field)
+  hit <- regexpr(pattern, text, perl = TRUE)
+
+  if (hit[1] < 0) {
+    return(NA)
+  }
+
+  raw <- regmatches(text, hit)
+  value <- sub(sprintf('^"%s"\\s*:\\s*', field), "", raw, perl = TRUE)
+  identical(value, "true")
+}
+
+read_failed_steps <- function(path) {
+  txt <- if (identical(path, summary_path)) {
+    summary_text
+  } else {
+    read_summary_text(path)
+  }
+
+  if (!nzchar(txt)) {
     return(NA_integer_)
   }
 
-  txt <- read_utf8(path)
   hit <- regexpr("\"failed_steps\"\\s*:\\s*[0-9]+", txt, perl = TRUE)
 
   if (hit[1] < 0) return(NA_integer_)
@@ -307,6 +377,108 @@ read_failed_steps <- function(path) {
   raw <- regmatches(txt, hit)
   as.integer(sub("^.*:\\s*", "", raw, perl = TRUE))
 }
+
+claim_matches <- function(...) {
+  grepl(
+    paste(c(...), collapse = "|"),
+    answer,
+    ignore.case = TRUE,
+    perl = TRUE
+  )
+}
+
+claims_full_validation_passed <- claim_matches(
+  "full\\s+validation\\s+(passed|pass|green|successful)",
+  "full\\s+profile\\s+(passed|pass|green|successful)",
+  "tam\\s+doğrulama\\s+(geçti|başarılı)",
+  "full\\s+doğrulama\\s+(geçti|başarılı)"
+)
+
+claims_cloud_quick_passed <- claim_matches(
+  "cloud-quick\\s+(passed|pass|green|successful)",
+  "cloud-quick\\s+(geçti|başarılı)"
+)
+
+claims_quick_validation_passed <- claim_matches(
+  "quick\\s+validation\\s+(passed|pass|green|successful)",
+  "quick\\s+doğrulama\\s+(geçti|başarılı)"
+)
+
+claims_app_source_smoke_passed <- claim_matches(
+  "app\\s+source\\s+smoke\\s+(passed|pass|green|successful)",
+  "app\\s+source\\s+smoke\\s+(geçti|başarılı)"
+)
+
+claims_boot_smoke_passed <- claim_matches(
+  "(shiny\\s+boot|app\\s+boot|boot)\\s+smoke\\s+(passed|pass|green|successful)",
+  "(shiny\\s+boot|app\\s+boot|boot)\\s+smoke\\s+(geçti|başarılı)"
+)
+
+claims_browser_smoke_passed <- claim_matches(
+  "browser\\s+UX\\s+smoke\\s+(passed|pass|green|successful)",
+  "browser\\s+UX\\s+smoke\\s+(geçti|başarılı)"
+)
+
+claims_vm_sso_db_passed <- claim_matches(
+  "(VM|SSO|DB).{0,40}(preflight|validation|doğrulama).{0,40}(passed|pass|successful|completed|geçti|başarılı|tamamlandı)",
+  "run_vm_preflight_real\\.R.{0,80}(passed|pass|successful|completed|geçti|başarılı|tamamlandı)"
+)
+
+claims_sql_encoding_passed <- claim_matches(
+  "(SQL Server|Turkish encoding|Türkçe kodlama|encoding preflight).{0,80}(passed|pass|successful|completed|geçti|başarılı|tamamlandı)",
+  "run_vm_encoding_preflight_real\\.R.{0,80}(passed|pass|successful|completed|geçti|başarılı|tamamlandı)"
+)
+
+specific_validation_claim <- any(c(
+  claims_full_validation_passed,
+  claims_cloud_quick_passed,
+  claims_quick_validation_passed,
+  claims_app_source_smoke_passed,
+  claims_boot_smoke_passed,
+  claims_browser_smoke_passed,
+  claims_vm_sso_db_passed,
+  claims_sql_encoding_passed
+))
+
+summary_profile_requested <- read_summary_string_field(summary_text, "profile_requested")
+summary_profile_effective <- read_summary_string_field(summary_text, "profile_effective")
+
+if (is.na(summary_profile_requested)) {
+  summary_profile_requested <- read_summary_string_field(summary_text, "profile")
+}
+
+if (is.na(summary_profile_effective)) {
+  summary_profile_effective <- read_summary_string_field(summary_text, "profile")
+}
+
+summary_execution_status <- read_summary_string_field(
+  summary_text,
+  "validation_execution_status"
+)
+summary_app_source_status <- read_summary_string_field(
+  summary_text,
+  "app_source_smoke_status"
+)
+summary_boot_status <- read_summary_string_field(
+  summary_text,
+  "shiny_boot_smoke_status"
+)
+summary_browser_status <- read_summary_string_field(
+  summary_text,
+  "browser_smoke_status"
+)
+summary_vm_sso_status <- read_summary_string_field(
+  summary_text,
+  "vm_sso_preflight_status"
+)
+summary_sql_encoding_status <- read_summary_string_field(
+  summary_text,
+  "sql_server_turkish_encoding_preflight_status"
+)
+summary_browser_required <- read_summary_bool_field(
+  summary_text,
+  "browser_required"
+)
 
 if (isTRUE(claims_tests_passed)) {
   failed_steps <- read_failed_steps(summary_path)
@@ -318,6 +490,103 @@ if (isTRUE(claims_tests_passed)) {
   } else if (failed_steps > 0L) {
     add_error(
       "Answer appears to claim tests/checks passed, but summary.json has failed_steps=%d.",
+      failed_steps
+    )
+  }
+}
+
+if (isTRUE(specific_validation_claim) && !nzchar(summary_text)) {
+  add_error(
+    "Answer makes specific validation proof claims, but no readable summary.json was provided."
+  )
+}
+
+if (nzchar(summary_text)) {
+  failed_steps <- read_failed_steps(summary_path)
+
+  if (identical(summary_execution_status, "not_run_by_validation_doctor") &&
+      isTRUE(specific_validation_claim)) {
+    add_error(
+      "Answer appears to use validation doctor guidance as execution proof. validation_execution_status=%s.",
+      summary_value_for_message(summary_execution_status)
+    )
+  }
+
+  if (isTRUE(claims_full_validation_passed) &&
+      !identical(summary_profile_effective, "full")) {
+    add_error(
+      "Answer claims full validation passed, but summary profile_requested=%s profile_effective=%s.",
+      summary_value_for_message(summary_profile_requested),
+      summary_value_for_message(summary_profile_effective)
+    )
+  }
+
+  if (isTRUE(claims_cloud_quick_passed) &&
+      !identical(summary_profile_requested, "cloud-quick")) {
+    add_error(
+      "Answer claims cloud-quick passed, but summary profile_requested=%s.",
+      summary_value_for_message(summary_profile_requested)
+    )
+  }
+
+  if (isTRUE(claims_quick_validation_passed) &&
+      !identical(summary_profile_effective, "quick")) {
+    add_error(
+      "Answer claims quick validation passed, but summary profile_effective=%s.",
+      summary_value_for_message(summary_profile_effective)
+    )
+  }
+
+  if (isTRUE(claims_app_source_smoke_passed) &&
+      !identical(summary_app_source_status, "passed")) {
+    add_error(
+      "Answer claims app source smoke passed, but summary app_source_smoke_status=%s.",
+      summary_value_for_message(summary_app_source_status)
+    )
+  }
+
+  if (isTRUE(claims_boot_smoke_passed) &&
+      !identical(summary_boot_status, "passed")) {
+    add_error(
+      "Answer claims boot smoke passed, but summary shiny_boot_smoke_status=%s.",
+      summary_value_for_message(summary_boot_status)
+    )
+  }
+
+  if (isTRUE(claims_browser_smoke_passed) &&
+      !identical(summary_browser_status, "passed")) {
+    add_error(
+      paste(
+        "Answer claims browser UX smoke passed, but summary",
+        "browser_smoke_status=%s browser_required=%s."
+      ),
+      summary_value_for_message(summary_browser_status),
+      summary_value_for_message(summary_browser_required)
+    )
+  }
+
+  if (isTRUE(claims_vm_sso_db_passed) &&
+      !identical(summary_vm_sso_status, "performed")) {
+    add_error(
+      "Answer claims VM/SSO/DB preflight passed, but summary vm_sso_preflight_status=%s.",
+      summary_value_for_message(summary_vm_sso_status)
+    )
+  }
+
+  if (isTRUE(claims_sql_encoding_passed) &&
+      !identical(summary_sql_encoding_status, "performed")) {
+    add_error(
+      paste(
+        "Answer claims SQL Server Turkish encoding preflight passed, but summary",
+        "sql_server_turkish_encoding_preflight_status=%s."
+      ),
+      summary_value_for_message(summary_sql_encoding_status)
+    )
+  }
+
+  if (!is.na(failed_steps) && failed_steps > 0L && isTRUE(specific_validation_claim)) {
+    add_error(
+      "Answer makes specific validation pass claims, but summary.json has failed_steps=%d.",
       failed_steps
     )
   }

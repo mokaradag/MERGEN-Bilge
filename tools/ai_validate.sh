@@ -40,6 +40,9 @@ case "${PROFILE}" in
     ;;
 esac
 
+export MERGEN_AI_REQUESTED_PROFILE="${PROFILE}"
+export MERGEN_AI_EFFECTIVE_PROFILE="${AI_REPO_PROFILE}"
+
 if ! command -v Rscript >/dev/null 2>&1; then
   echo "Rscript is unavailable. Running full setup first..."
   MERGEN_AI_SETUP_INSTALL_PACKAGES=true bash tools/setup_ai_r_environment.sh

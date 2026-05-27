@@ -235,6 +235,8 @@ Useful commands:
 - `bash tools/validation_doctor.sh all`
 
 The doctor writes a JSON summary under `artifacts/validation-doctor/`. This artifact is guidance only and not an execution gate: it must explicitly record `doctor_runs_heavy_checks=false`, `validation_execution_status="not_run_by_validation_doctor"`, and `doctor_execution_notes`. Agents must not cite this artifact as proof that `cloud-quick`, `quick`, `full --boot-smoke`, browser-required smoke, VM/SSO preflight, SQL Server Turkish encoding preflight, or manual fragile-flow evidence actually ran. Those remain separate evidence gates and require the corresponding validation commands to be run directly.
+
+The execution artifact written by `tools/ai_validate.sh` / `tests/scripts/ai_repo_check.R` is `artifacts/ai-validation/<timestamp>/summary.json`. Treat this as machine-readable execution proof only for the checks it says actually ran. It must carry `validation_execution_status="ran_by_ai_repo_check"`, `profile_requested`, `profile_effective`, timestamp, git branch/SHA/dirty summary when available, app source smoke status, Shiny boot smoke status, browser smoke status, browser-required flag, VM/SSO/DB status, SQL Server Turkish encoding status, manual fragile-flow status, failed/skipped step labels, and `proof_boundary_notes`. It must not expose raw DSN, endpoint, token, key, secret, password, cookie, or auth header values.
 Latest validation-doctor contract hardening: `tests/testthat/test-validation-doctor-contract.R` now more explicitly protects secret-like environment values from leaking through doctor output or artifacts. Values such as `LOCAL_LLM_ENDPOINT`, `MERGEN_BROWSER_BIN`, DSNs, URLs, keys, tokens, secrets, and passwords must be reported only as safe metadata such as presence, character length, boolean-style flags, and `value=<hidden>`, never as raw values. The same contract keeps `cloud-quick` as a wrapper-level alias in `tools/ai_validate.sh` that maps to the quick repository profile; do not add `cloud-quick` as a third internal profile in `tests/scripts/ai_repo_check.R`. This is validation contract hardening only and must not be described as a runtime UX change.
 
 
@@ -255,9 +257,17 @@ When `cloud-quick` is used, the final answer must explicitly say:
 - `bash tools/ai_validate.sh cloud-quick` was run,
 - whether it exited successfully,
 - the `summary.json` path if produced,
+- `profile_requested`,
+- `profile_effective`,
+- `validation_execution_status`,
 - `failed_steps`,
 - `skipped_steps`,
-- that full runtime/app boot validation was intentionally not performed.
+- `app_source_smoke_status`,
+- `shiny_boot_smoke_status`,
+- `browser_smoke_status`,
+- `db_sso_vm_validation_performed`,
+- `sql_server_turkish_encoding_preflight_status`,
+- that full runtime/app boot/browser/VM/SQL Server/manual fragile-flow validation was intentionally not performed unless the corresponding separate evidence gate was also run.
 - if validation doctor was used, the profile, summary artifact path, and proof boundaries it reported (and that it is not a substitute for the validation gate).
 
 Do not claim “full validation passed”, “runtime validation passed”, “the app booted”, or “VM validation passed” based only on `cloud-quick`.
