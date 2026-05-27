@@ -42,6 +42,7 @@ MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığ�
 - Bakım sınırında `R/helpers_llm_sse_events.R` SSE olay/delta ayrıştırmasını, `R/helpers_ai_expert_chunking.R` ise AI Uzman TTS metin parçalama yardımcılarını taşır; bu ayrımlar dosya satır/fonksiyon bütçesini korumak için geri alınmamalıdır.
 ### Dosya ve veri odaklı çalışma
 - Excel Analizi ve Kod Uzmanı araçları için sohbet içinde “Derin Düşünme” düğmesi ve düşük/yüksek seviye seçimi desteklenir; kullanılan alternatif modeller `.Renviron` değişkenleri (`EXCEL_DEEP_LOW_MODEL`, `EXCEL_DEEP_HIGH_MODEL`, `CODING_DEEP_LOW_MODEL`, `CODING_DEEP_HIGH_MODEL`) üzerinden ayarlanır ve normal model dropdown’larında listelenmez.
+- Derin Düşünme modelleri `.Renviron` üzerinden tanımlandığında, `R/config_api.R` bilinmeyen model kimliklerini başlangıçta güvenli biçimde `local_model_capabilities` ve `local_model_endpoint_map` kapsamına alır; endpoint eşlemesi eksikse varsayılan `primary` kullanılır. Bu koruma, eksik isimli vektör erişiminden kaynaklanabilecek “altindis sınırlar dışında” başlangıç çökmesini engeller ve `tests/testthat/test-api-model-config-refactor-contract.R` ile korunur.
 - ChartLab çizgi/alan grafiklerinde tarih sütunu öncelikli X ekseni olarak seçilir; tarih yoksa kategorik X ekseni desteklenir ve tekrarlı kategoriler varsayılan olarak ortalama ile agrege edilerek scatter-benzeri hatalı çizgi grafikleri azaltılır.
 - Excel, PDF, Word, CSV, metin dosyaları ve diğer belgelerin yüklenmesi
 - Dosya önizleme

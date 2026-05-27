@@ -264,6 +264,9 @@ Current contract:
 - Deep-thinking model resolution belongs server-side in `resolve_deep_thinking_model()` and `api_config$deep_thinking_models`.
 - Deep-thinking model IDs are supplied by `EXCEL_DEEP_LOW_MODEL`, `EXCEL_DEEP_HIGH_MODEL`, `CODING_DEEP_LOW_MODEL`, and `CODING_DEEP_HIGH_MODEL`. They are runtime tool models, not normal user-facing model dropdown entries.
 - If a deep-thinking model is not already listed in `local_model_capabilities`, it may be added with thinking-capable defaults, but existing explicit capability definitions must not be overwritten.
+- Deep-thinking model IDs from environment variables may be absent from `api_config$local_model_endpoint_map`. That map is a named character vector, so missing-name checks must use `%in% names(endpoint_map)` and reads should use `endpoint_map[model_id]`; do not use `endpoint_map[[model_id]]` to test missing names.
+- Missing deep-thinking endpoint mappings should be added with `endpoint_map[model_id] <- "primary"` while preserving the named character-vector shape. Do not convert the endpoint map to a list for this path.
+- This guard prevents startup failures such as `subscript out of bounds` / `altindis sınırlar dışında` while `global.R` loads `R/config_api.R` through the source manifest, and is protected by `tests/testthat/test-api-model-config-refactor-contract.R`.
 - Do not duplicate model-lock logic in `analysis_tools.js`, `image_tools.js`, `summarization_tools.js`, or future tool scripts.
 - For ChartLab line/area charts, preserve the X-axis preference order: date column first, then categorical column, then numeric fallback. When categorical X values repeat, aggregate numeric Y values, defaulting to mean unless a specific aggregation is provided. Do not revert to the older behavior that selected numeric X too early and made line charts behave like scatter plots.
 
