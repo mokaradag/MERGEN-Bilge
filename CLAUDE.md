@@ -221,6 +221,21 @@ Browser UX smoke execution rules:
 
 ### AI agent validation rule
 
+Validation doctor:
+
+Use the lightweight validation doctor when there is any risk that an agent or developer may confuse validation profiles. The doctor is available as `tests/scripts/validation_doctor.R` and `tools/validation_doctor.sh`. It does not run heavy checks, does not launch the app, does not open a browser, and does not connect to the real DB. It only reports environment classification, browser binary availability, secret-safe environment metadata, recommended command order, what each command proves and does not prove, and blocking versus warning-only checks.
+
+Useful commands:
+
+- `Rscript tests/scripts/validation_doctor.R --profile cloud`
+- `Rscript tests/scripts/validation_doctor.R --profile local`
+- `Rscript tests/scripts/validation_doctor.R --profile vm`
+- `Rscript tests/scripts/validation_doctor.R --profile all`
+- `bash tools/validation_doctor.sh --profile all`
+- `bash tools/validation_doctor.sh all`
+
+The doctor writes a JSON summary under `artifacts/validation-doctor/`. This artifact is guidance only. It must not be used to claim that runtime boot, browser UX smoke, Windows VM / SSO / SQL Server behavior, Turkish SQL Server transactional write/read, or manual fragile-flow evidence has passed. Those claims require the corresponding validation commands to be run directly.
+
 Cloud fallback validation:
 
 - Normal validation remains `bash tools/ai_validate.sh quick`.
@@ -241,6 +256,7 @@ When `cloud-quick` is used, the final answer must explicitly say:
 - `failed_steps`,
 - `skipped_steps`,
 - that full runtime/app boot validation was intentionally not performed.
+- if validation doctor was used, the profile, summary artifact path, and proof boundaries it reported (and that it is not a substitute for the validation gate).
 
 Do not claim “full validation passed”, “runtime validation passed”, “the app booted”, or “VM validation passed” based only on `cloud-quick`.
 
