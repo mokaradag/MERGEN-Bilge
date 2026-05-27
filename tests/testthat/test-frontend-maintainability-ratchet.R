@@ -58,6 +58,8 @@ test_that("frontend maintainability report JS/CSS dosyalarını kapsar", {
     "file",
     "type",
     "manifest_listed",
+    "budget_scope",
+    "is_vendor",
     "lines",
     "bytes",
     "functions",
@@ -249,6 +251,64 @@ test_that("yeni app-owned frontend varlıkları manifest dışında sessizce kal
       paste(utils::capture.output(print(unmanifested_app_assets, row.names = FALSE)), collapse = "\n"),
       sep = "\n"
     )
+  )
+})
+
+test_that("frontend bakım raporu top-risk özetini üretir", {
+  report <- .load_frontend_maint_report()
+  top_risk_summary <- attr(report, "top_risk_summary", exact = TRUE)
+
+  expect_true(is.list(top_risk_summary))
+
+  required_sections <- c(
+    "largest_js",
+    "largest_css",
+    "highest_function_js",
+    "highest_event_handler_js",
+    "highest_shiny_handler_js",
+    "duplicate_css_selectors",
+    "legacy_selector_hits",
+    "unmanifested_app_assets",
+    "allowlisted_unmanifested_assets",
+    "smoke_only_assets"
+  )
+
+  expect_equal(
+    setdiff(required_sections, names(top_risk_summary)),
+    character(0),
+    info = "Frontend top-risk summary beklenen bölümlerin tamamını üretmelidir."
+  )
+
+  invisible(lapply(required_sections, function(section) {
+    expect_true(
+      is.data.frame(top_risk_summary[[section]]),
+      info = sprintf("top_risk_summary$%s data.frame olmalıdır.", section)
+    )
+  }))
+
+  expect_gt(nrow(top_risk_summary$largest_js), 0L)
+  expect_gt(nrow(top_risk_summary$largest_css), 0L)
+  expect_gt(nrow(top_risk_summary$highest_function_js), 0L)
+  expect_gt(nrow(top_risk_summary$highest_event_handler_js), 0L)
+  expect_gt(nrow(top_risk_summary$highest_shiny_handler_js), 0L)
+
+  smoke_assets <- top_risk_summary$smoke_only_assets
+  probe_row <- smoke_assets[smoke_assets$file == "www/smoke/ux-smoke-probes.js", , drop = FALSE]
+
+  expect_equal(
+    nrow(probe_row),
+    1L,
+    info = "ux-smoke-probes.js top-risk özetinde smoke-only asset olarak görünmelidir."
+  )
+
+  expect_false(
+    probe_row$manifest_listed[[1]],
+    info = "ux-smoke-probes.js production UI asset manifestine eklenmemelidir."
+  )
+
+  expect_true(
+    all(c("file", "type", "exists", "manifest_listed", "budget_scope", "note") %in% names(smoke_assets)),
+    info = "Smoke-only asset özeti dosya, tür, varlık ve manifest durumunu göstermelidir."
   )
 })
 

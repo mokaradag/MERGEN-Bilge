@@ -281,6 +281,143 @@ if (is.null(legacy_hits)) {
   )
 }
 
+unmanifested_app_assets <- subset(
+  report,
+  budget_scope == "app" & !manifest_listed,
+  select = c("file", "type", "lines", "bytes", "functions", "event_handlers", "shiny_handlers")
+)
+
+frontend_metric_columns <- c(
+  "file",
+  "type",
+  "manifest_listed",
+  "budget_scope",
+  "lines",
+  "bytes",
+  "functions",
+  "event_handlers",
+  "shiny_handlers"
+)
+
+frontend_select_columns <- function(data, columns = frontend_metric_columns) {
+  if (is.null(data) || nrow(data) == 0) {
+    return(data.frame(stringsAsFactors = FALSE))
+  }
+
+  existing_columns <- intersect(columns, names(data))
+  data[, existing_columns, drop = FALSE]
+}
+
+frontend_top_rows <- function(data,
+                              order_columns,
+                              columns = frontend_metric_columns,
+                              n = 12L) {
+  if (is.null(data) || nrow(data) == 0) {
+    return(data.frame(stringsAsFactors = FALSE))
+  }
+
+  order_columns <- intersect(order_columns, names(data))
+
+  if (length(order_columns) == 0) {
+    return(frontend_select_columns(utils::head(data, n), columns))
+  }
+
+  order_args <- lapply(order_columns, function(column) {
+    -data[[column]]
+  })
+
+  if ("file" %in% names(data)) {
+    order_args <- c(order_args, list(data$file))
+  }
+
+  row_order <- do.call(order, order_args)
+  frontend_select_columns(utils::head(data[row_order, , drop = FALSE], n), columns)
+}
+
+frontend_top_duplicate_selectors <- function(data, n = 25L) {
+  if (is.null(data) || nrow(data) == 0) {
+    return(data.frame(stringsAsFactors = FALSE))
+  }
+
+  ordered <- data[order(-data$count, data$selector), , drop = FALSE]
+  utils::head(ordered, n)
+}
+
+frontend_smoke_only_assets <- function() {
+  smoke_paths <- c(
+    "www/smoke/ux-smoke.html",
+    "www/smoke/ux-smoke-probes.js"
+  )
+
+  smoke_abs <- normalizePath(
+    file.path(repo_root, smoke_paths),
+    winslash = "/",
+    mustWork = FALSE
+  )
+
+  data.frame(
+    file = smoke_paths,
+    type = tools::file_ext(smoke_paths),
+    exists = file.exists(file.path(repo_root, smoke_paths)),
+    manifest_listed = smoke_abs %in% manifest_paths,
+    budget_scope = "smoke_only",
+    note = c(
+      "Browser UX smoke harness; production UI manifestine eklenmez.",
+      "Smoke-only probe helper; production UI manifestine eklenmez."
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+build_frontend_top_risk_summary <- function(report,
+                                            duplicate_selectors,
+                                            legacy_hits,
+                                            unmanifested_app_assets,
+                                            allowlisted_unmanifested_frontend_files) {
+  app_report <- subset(report, budget_scope == "app")
+  app_js_report <- subset(app_report, type == "js")
+  app_css_report <- subset(app_report, type == "css")
+
+  allowlisted_rows <- report[
+    report$file %in% allowlisted_unmanifested_frontend_files,
+    ,
+    drop = FALSE
+  ]
+
+  list(
+    largest_js = frontend_top_rows(app_js_report, "lines"),
+    largest_css = frontend_top_rows(app_css_report, "lines"),
+    highest_function_js = frontend_top_rows(app_js_report, c("functions", "lines")),
+    highest_event_handler_js = frontend_top_rows(app_js_report, c("event_handlers", "lines")),
+    highest_shiny_handler_js = frontend_top_rows(app_js_report, c("shiny_handlers", "lines")),
+    duplicate_css_selectors = frontend_top_duplicate_selectors(duplicate_selectors),
+    legacy_selector_hits = legacy_hits,
+    unmanifested_app_assets = unmanifested_app_assets,
+    allowlisted_unmanifested_assets = frontend_select_columns(allowlisted_rows),
+    smoke_only_assets = frontend_smoke_only_assets()
+  )
+}
+
+print_frontend_top_risk_table <- function(title, value, n = 12L) {
+  cat(sprintf("\n%s:\n", title))
+
+  if (is.null(value) || nrow(value) == 0) {
+    cat("(yok)\n")
+    return(invisible(NULL))
+  }
+
+  print(utils::head(value, n), row.names = FALSE)
+  invisible(NULL)
+}
+
+top_risk_summary <- build_frontend_top_risk_summary(
+  report = report,
+  duplicate_selectors = duplicate_selectors,
+  legacy_hits = legacy_hits,
+  unmanifested_app_assets = unmanifested_app_assets,
+  allowlisted_unmanifested_frontend_files = allowlisted_unmanifested_frontend_files
+)
+
 cat("\nEn büyük JS dosyaları:\n")
 print(utils::head(subset(report, type == "js")[order(-subset(report, type == "js")$lines), ], 12), row.names = FALSE)
 
@@ -297,11 +434,16 @@ print(utils::head(duplicate_selectors, 25), row.names = FALSE)
 cat("\nYasak eski seçici eşleşmeleri:\n")
 print(legacy_hits, row.names = FALSE)
 
-unmanifested_app_assets <- subset(
-  report,
-  budget_scope == "app" & !manifest_listed,
-  select = c("file", "type", "lines", "bytes", "functions", "event_handlers", "shiny_handlers")
-)
+cat("\nFrontend top-risk summary:\n")
+print_frontend_top_risk_table("Top app-owned JS by lines", top_risk_summary$largest_js)
+print_frontend_top_risk_table("Top app-owned CSS by lines", top_risk_summary$largest_css)
+print_frontend_top_risk_table("Top app-owned JS by function count", top_risk_summary$highest_function_js)
+print_frontend_top_risk_table("Top app-owned JS by event/handler count", top_risk_summary$highest_event_handler_js)
+print_frontend_top_risk_table("Top app-owned JS by Shiny handler count", top_risk_summary$highest_shiny_handler_js)
+print_frontend_top_risk_table("Duplicate CSS selectors", top_risk_summary$duplicate_css_selectors, n = 25L)
+print_frontend_top_risk_table("Unmanifested app-owned runtime assets", top_risk_summary$unmanifested_app_assets)
+print_frontend_top_risk_table("Allowlisted unmanifested assets", top_risk_summary$allowlisted_unmanifested_assets)
+print_frontend_top_risk_table("Smoke-only assets", top_risk_summary$smoke_only_assets)
 
 attr(report, "score_report") <- report
 attr(report, "css_duplicate_selectors") <- duplicate_selectors
@@ -309,5 +451,6 @@ attr(report, "legacy_selector_hits") <- legacy_hits
 attr(report, "unmanifested_app_assets") <- unmanifested_app_assets
 attr(report, "vendor_frontend_files") <- vendor_frontend_files
 attr(report, "allowlisted_unmanifested_frontend_files") <- allowlisted_unmanifested_frontend_files
+attr(report, "top_risk_summary") <- top_risk_summary
 
 invisible(report)

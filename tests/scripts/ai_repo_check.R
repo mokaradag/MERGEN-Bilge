@@ -370,6 +370,7 @@ quick_tests <- c(
   "tests/testthat/test-smoke-probes-contract.R",
   "tests/testthat/test-maintainability-ratchet-contract.R",
   "tests/testthat/test-frontend-maintainability-ratchet.R",
+  "tests/testthat/test-frontend-complexity-doctor-contract.R",
   "tests/testthat/test-text-encoding-utils.R",
   "tests/testthat/test-db-normalization-contract.R",
   "tests/testthat/test-db-refactor-contract.R",

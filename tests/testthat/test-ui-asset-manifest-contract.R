@@ -187,6 +187,63 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
   }))
 })
 
+test_that("smoke-only UX probe dosyaları production manifestine eklenmez", {
+  asset_env <- .source_ui_asset_config_for_tests()
+  root <- resolve_repo_root_for_tests()
+
+  js_paths <- asset_env$ui_asset_all_js()
+  css_paths <- asset_env$ui_asset_all_css()
+  all_manifest_paths <- c(js_paths, css_paths)
+
+  smoke_only_paths <- c(
+    "smoke/ux-smoke.html",
+    "smoke/ux-smoke-probes.js"
+  )
+
+  expect_true(all(file.exists(file.path(root, "www", smoke_only_paths))))
+
+  expect_equal(
+    intersect(smoke_only_paths, all_manifest_paths),
+    character(0),
+    info = "Smoke-only UX harness/probe dosyaları R/config_ui_assets.R production manifestine eklenmemelidir."
+  )
+
+  expect_false(
+    any(grepl("ux-smoke-probes\\.js$", all_manifest_paths, perl = TRUE)),
+    info = "www/smoke/ux-smoke-probes.js yalnızca /smoke/ux-smoke.html tarafından yüklenmelidir."
+  )
+
+  expect_true("js/streaming_markdown_safety.js" %in% js_paths)
+  expect_true("js/markdown-parser.js" %in% js_paths)
+  expect_true("js/streaming_manager.js" %in% js_paths)
+
+  expect_lt(
+    .ui_asset_contract_position(js_paths, "js/streaming_markdown_safety.js"),
+    .ui_asset_contract_position(js_paths, "js/markdown-parser.js")
+  )
+
+  expect_lt(
+    .ui_asset_contract_position(js_paths, "js/markdown-parser.js"),
+    .ui_asset_contract_position(js_paths, "js/streaming_manager.js")
+  )
+
+  explicit_rules <- vapply(
+    asset_env$ui_asset_js_order_rules,
+    function(rule) paste(rule, collapse = " -> "),
+    character(1)
+  )
+
+  expect_true(
+    "js/streaming_markdown_safety.js -> js/markdown-parser.js" %in% explicit_rules,
+    info = "Streaming markdown safety yükleme sırası açık sıra kuralı olarak kalmalıdır."
+  )
+
+  expect_true(
+    "js/markdown-parser.js -> js/streaming_manager.js" %in% explicit_rules,
+    info = "Markdown parser, streaming manager'dan önce açık sıra kuralıyla korunmalıdır."
+  )
+})
+
 test_that("ui.R varlık listesini helper üzerinden kullanır", {
   ui_text <- .read_repo_text_ui_asset_contract("ui.R")
   manifest_text <- .read_repo_text_ui_asset_contract("R/config_source_manifest.R")
