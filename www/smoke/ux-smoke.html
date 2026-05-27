@@ -623,6 +623,13 @@
       "</div>";
     chat.appendChild(wrapper);
 
+    var rawScriptPrefix = "<scr";
+    var rawScriptSuffix = "ipt>alert(1)</scr" + "ipt>";
+    var rawScriptPayload = rawScriptPrefix + rawScriptSuffix;
+    var rawImgPayload = "<img src=x onerror=alert(1)>";
+    var jsProtocolPrefix = "java";
+    var jsProtocolSuffix = "script:alert(1)";
+
     var originalAlert = win.alert;
     var alertCount = 0;
     win.alert = function () {
@@ -664,25 +671,25 @@
     win.MergenStreamingSmoke.delta({
       id: "ux_stream_ai",
       delta:
-        "\n# Güvenli başlık <img src=x onerror=alert(1)>\n" +
-        "**Kalın <scr",
+        "\n# Güvenli başlık " + rawImgPayload + "\n" +
+        "**Kalın " + rawScriptPrefix,
       requestId: "req-stream-1"
     });
 
     win.MergenStreamingSmoke.delta({
       id: "ux_stream_ai",
       delta:
-        "ipt>alert(1)</script>**\n" +
-        "- Madde <a href=\"java",
+        rawScriptSuffix + "**\n" +
+        "- Madde <a href=\"" + jsProtocolPrefix,
       requestId: "req-stream-1"
     });
 
     win.MergenStreamingSmoke.delta({
       id: "ux_stream_ai",
       delta:
-        "script:alert(1)\">x</a>\n" +
-        "`<img src=x onerror=alert(1)>`\n" +
-        "```js\nconst tehlike = \"<script>alert(1)</script>\";\n",
+        jsProtocolSuffix + "\">x</a>\n" +
+        "`" + rawImgPayload + "`\n" +
+        "```js\nconst tehlike = \"" + rawScriptPayload + "\";\n",
       requestId: "req-stream-1"
     });
 

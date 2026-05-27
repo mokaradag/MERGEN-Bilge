@@ -43,6 +43,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_db_connection.R",
   "R/helpers_db_user_encoding.R",
   "R/helpers_db_validation.R",
+  "R/helpers_markdown_safety.R",
   "R/helpers_chat_message_formatting.R",
   "R/helpers_db_chat_readers.R",
   "R/helpers_db_chat_mutations.R",

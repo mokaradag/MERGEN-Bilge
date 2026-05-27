@@ -1,4 +1,7 @@
-# R/helpers_messaging.R
+# Dosya Yolu: R/helpers_messaging.R
+# Açıklama: Mesaj içeriklerini güvenli HTML'e dönüştüren, kod bloklarını
+#            CodeMirror uyumlu bileşenler halinde hazırlayan ve kullanıcı/AI/
+#            sistem mesaj balonlarını render eden yardımcı fonksiyonlar.
 
 # Düşünen modellerin akıl yürütme metnini, yanıt balonunun üstünde
 # daraltılabilir bir "Düşünce Akışı" paneli olarak render eder.
@@ -37,23 +40,23 @@ build_reasoning_details_block <- function(reasoning_text,
   )
 }
 
-#' Create HTML for a Code Block
+#' Kod Bloğu İçin HTML Oluştur
 #'
-#' Generates a complete HTML structure for a syntax-highlighted code block,
-#' including a header with the language name, a copy button, and line numbers.
+#' Sözdizimi vurgulamalı bir kod bloğu için; dil adı, kopyalama düğmesi
+#' ve satır numaralarını içeren tam HTML yapısını üretir.
 #'
-#' @param code The raw code string to be formatted.
-#' @param language The programming language key (e.g., "r", "python").
-#'                 If "auto", the language will be detected automatically.
-#' @return An HTML object created with `htmltools::HTML`.
+#' @param code Biçimlendirilecek ham kod metni.
+#' @param language Programlama dili anahtarı (örn. "r", "python").
+#'                 "auto" ise dil otomatik olarak algılanır.
+#' @return `htmltools::HTML` ile oluşturulmuş bir HTML nesnesi.
 
-# --- Safe fallback: detect_code_content ---
-# Ensure the function exists and always returns a single TRUE/FALSE
+# --- Güvenli yedek: detect_code_content ---
+# Fonksiyonun var olduğundan ve her zaman tek bir TRUE/FALSE döndürdüğünden emin olur
 if (!exists("detect_code_content") || !is.function(detect_code_content)) {
   detect_code_content <- function(text) {
     if (is.null(text) || length(text) == 0) return(FALSE)
-    # Very light heuristic; always returns length-1 logical
-    # (adjust to your needs if you have a real detector elsewhere)
+    # Çok hafif sezgisel kontrol; her zaman uzunluğu 1 olan mantıksal değer döndürür
+    # (başka yerde gerçek bir algılayıcınız varsa ihtiyacınıza göre uyarlayın)
     any(grepl("```|^\\s*def\\s+|^\\s*function\\s*\\(|<-\\s*function\\s*\\(",
               paste(text, collapse = "\n")))
   }
@@ -66,8 +69,8 @@ create_code_block_html <- function(code, language = "auto") {
   raw_display_language <- LANG_MAP[[detected_lang]] %||% detected_lang
   display_language <- stringr::str_to_upper(raw_display_language, locale = "en")
   
-  # The new structure uses a simple <textarea> that CodeMirror will enhance.
-  # The 'data-lang' attribute is used by our JavaScript to set the correct language mode.
+  # Yeni yapı, CodeMirror tarafından zenginleştirilecek sade bir <textarea> kullanır.
+  # 'data-lang' özniteliği JavaScript tarafında doğru dil modunu ayarlamak için kullanılır.
   HTML(sprintf(
     '<div class="code-container" id="%s">
        <div class="code-header">
@@ -94,17 +97,17 @@ create_code_block_html <- function(code, language = "auto") {
   ))
 }
 
-#' Robustly Parse AI Response with a Single Code Block
+#' AI Yanıtını Tek Kod Bloğuyla Dayanıklı Biçimde Ayrıştır
 #'
-#' A specialized parser for AI responses that are expected to contain one primary
-#' code block surrounded by explanatory text.
+#' Açıklayıcı metinle çevrelenmiş tek bir ana kod bloğu içermesi beklenen
+#' AI yanıtları için özelleştirilmiş ayrıştırıcıdır.
 #'
-#' @param content The raw string content from the AI response.
-#' @return A list containing the final HTML (`html`) and a boolean (`has_code`).
+#' @param content AI yanıtından gelen ham metin içeriği.
+#' @return Nihai HTML'i (`html`) ve kod varlığı bilgisini (`has_code`) içeren bir liste.
 parse_ai_response_robustly <- function(content) {
   content <- gsub("\\\\n", "\n", content)
 
-  # If the content has actual reference URLs at the bottom, make them clickable
+  # İçeriğin altında gerçek kaynak URL'leri varsa bunları tıklanabilir hale getir
   content <- gsub("\\[1\\]:\\s*(https?://[^\\s]+)", '[1]: <a href="\\1" target="_blank">\\1</a>', content)
   content <- gsub("\\[2\\]:\\s*(https?://[^\\s]+)", '[2]: <a href="\\1" target="_blank">\\1</a>', content)
   content <- gsub("\\[3\\]:\\s*(https?://[^\\s]+)", '[3]: <a href="\\1" target="_blank">\\1</a>', content)
@@ -112,10 +115,14 @@ parse_ai_response_robustly <- function(content) {
   content <- gsub("\\[5\\]:\\s*(https?://[^\\s]+)", '[5]: <a href="\\1" target="_blank">\\1</a>', content)
   content <- gsub("\\[6\\]:\\s*(https?://[^\\s]+)", '[6]: <a href="\\1" target="_blank">\\1</a>', content)
 
-  # NEW: Guard - if no code fences, just return markdown
+  # YENİ: Koruma - kod çitleri yoksa yalnızca markdown döndür
   fences <- stringr::str_locate_all(content, "```")[[1]]
   if (is.null(fences) || NROW(fences) < 2) {
-    html_content <- commonmark::markdown_html(content, hardbreaks = TRUE, extensions = c("strikethrough", "table"))
+    html_content <- render_safe_markdown_html(
+      content,
+      hardbreaks = TRUE,
+      extensions = c("strikethrough", "table")
+    )
     return(list(html = html_content, has_code = FALSE))
   }
 
@@ -134,25 +141,33 @@ parse_ai_response_robustly <- function(content) {
   
   html_parts <- list()
   if (nchar(trimws(text_before)) > 0) {
-    html_parts <- append(html_parts, commonmark::markdown_html(text_before, hardbreaks = TRUE, extensions = c("strikethrough", "table")))
+    html_parts <- append(html_parts, render_safe_markdown_html(
+      text_before,
+      hardbreaks = TRUE,
+      extensions = c("strikethrough", "table")
+    ))
   }
   html_parts <- append(html_parts, create_code_block_html(trimws(code_content), language))
   if (nchar(trimws(text_after)) > 0) {
-    html_parts <- append(html_parts, commonmark::markdown_html(text_after, hardbreaks = TRUE, extensions = c("strikethrough", "table")))
+    html_parts <- append(html_parts, render_safe_markdown_html(
+      text_after,
+      hardbreaks = TRUE,
+      extensions = c("strikethrough", "table")
+    ))
   }
   
   return(list(html = paste(html_parts, collapse = ""), has_code = TRUE))
 }
 
-#' Process Message Content into HTML
+#' Mesaj İçeriğini HTML'e Dönüştür
 #'
-#' The main message processor.
+#' Ana mesaj işleyicisidir.
 #'
-#' @param content The raw string content of the message.
-#' @param type A character string, either "user" or "ai".
-#' @return A list containing the final HTML (`html`) and a boolean (`has_code`).
+#' @param content Mesajın ham metin içeriği.
+#' @param type "user" veya "ai" değerlerinden biri olan karakter dizisi.
+#' @return Nihai HTML'i (`html`) ve kod varlığı bilgisini (`has_code`) içeren bir liste.
 process_message_content <- function(content, type = "user") {
-  # --- DEBUG GUARD + LOG ---
+  # --- HATA AYIKLAMA KORUMASI + LOG ---
   if (!is.character(content) || length(content) == 0) {
     cat("[MSG_RENDER] content is length-0; substituting empty string. type=", type, "\n", sep = "")
     content <- ""
@@ -172,7 +187,7 @@ process_message_content <- function(content, type = "user") {
   content <- gsub("\\\\n", "\n", content)
   content <- trimws(content)
   
-  # For user messages with detected code (safe)
+  # Kod algılanan kullanıcı mesajları için güvenli işleme
   has_user_code <- FALSE
 	if (identical(type, "user")) {
 	  dc <- try(detect_code_content(content), silent = TRUE)
@@ -185,45 +200,52 @@ process_message_content <- function(content, type = "user") {
 	  split_result <- tryCatch(split_text_and_code(content), error = function(e) NULL)
 	  if (!is.null(split_result)) {
 	    html_parts <- list()
-	    if (nchar(trimws(split_result$text_before)) > 0) {
-	      html_parts <- append(html_parts,
-	        commonmark::markdown_html(split_result$text_before, hardbreaks = TRUE))
-	    }
-	    html_parts <- append(html_parts,
-	      as.character(create_code_block_html(split_result$code)))
-	    if (nchar(trimws(split_result$text_after)) > 0) {
-	      html_parts <- append(html_parts,
-	        commonmark::markdown_html(split_result$text_after, hardbreaks = TRUE))
-	    }
+		if (nchar(trimws(split_result$text_before)) > 0) {
+		  html_parts <- append(html_parts,
+			render_safe_markdown_html(split_result$text_before, hardbreaks = TRUE))
+		}
+		html_parts <- append(html_parts,
+		  as.character(create_code_block_html(split_result$code)))
+		if (nchar(trimws(split_result$text_after)) > 0) {
+		  html_parts <- append(html_parts,
+			render_safe_markdown_html(split_result$text_after, hardbreaks = TRUE))
+		}
 	    return(list(html = paste(html_parts, collapse = ""), has_code = TRUE))
 	  }
 	  # Tamamen kod ise mevcut davranışı koru
 	  return(list(html = as.character(create_code_block_html(content)), has_code = TRUE))
 	}
   
-  # Check for code blocks with triple backticks
+  # Üç ters tırnaklı kod bloklarını kontrol et
   if (!grepl("```", content, fixed = TRUE)) {
-    # No code blocks, just process as markdown
-    html_content <- commonmark::markdown_html(content, hardbreaks = TRUE, extensions = c("strikethrough", "table"))
+    # Kod bloğu yoksa ham HTML'i kaçırarak markdown'a dönüştür.
+    html_content <- render_safe_markdown_html(
+      content,
+      hardbreaks = TRUE,
+      extensions = c("strikethrough", "table")
+    )
     return(list(html = html_content, has_code = FALSE))
   }
   
-  # Split content by code blocks
+  # İçeriği kod bloklarına göre böl
   parts <- strsplit(content, "```", fixed = TRUE)[[1]]
   html_parts <- list()
   has_code <- FALSE
   
   for (i in seq_along(parts)) {
     if (i %% 2 == 1) {
-      # Text part (odd indices)
+      # Metin bölümü (tek sayılı indeksler)
       if (nchar(trimws(parts[i])) > 0) {
-        html_parts <- append(html_parts, 
-          commonmark::markdown_html(parts[i], hardbreaks = TRUE, extensions = c("strikethrough", "table")))
+        html_parts <- append(html_parts, render_safe_markdown_html(
+          parts[i],
+          hardbreaks = TRUE,
+          extensions = c("strikethrough", "table")
+        ))
       }
     } else {
-      # Code part (even indices)
+      # Kod bölümü (çift sayılı indeksler)
       has_code <- TRUE
-      # Extract language from first line
+      # İlk satırdan dili çıkar
       lines <- strsplit(parts[i], "\n", fixed = TRUE)[[1]]
       language <- if (length(lines) > 0 && nchar(lines[1]) > 0 && !grepl(" ", lines[1])) {
         lines[1]
@@ -231,7 +253,7 @@ process_message_content <- function(content, type = "user") {
         "auto"
       }
       
-      # Get code content (skip language line if present)
+      # Kod içeriğini al (varsa dil satırını atla)
       code_content <- if (language != "auto" && length(lines) > 1) {
         paste(lines[-1], collapse = "\n")
       } else {
@@ -288,8 +310,8 @@ build_followup_container <- function(message_id, followups = NULL, pending = FAL
   )
 }
 
-#' Pure UI builder for message bubbles (no access to values$)
-#' Pass liked_ids / disliked_ids explicitly.
+#' Mesaj balonları için saf UI oluşturucu; values$ erişimi yoktur.
+#' liked_ids / disliked_ids değerlerini açıkça iletin.
 render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE,
                                      character_data = NULL,
                                      liked_ids = character(0), disliked_ids = character(0)) {

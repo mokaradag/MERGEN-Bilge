@@ -199,16 +199,69 @@ test_that("parseMarkdownWithoutCode raw HTML'i doğrudan geçirmez", {
   expect_false(grepl("onerror", parser_text, fixed = TRUE))
 })
 
+test_that("server-side final markdown HTML ham HTML'i kaçırır", {
+  skip_if_not_installed("commonmark")
+
+  repo_root <- .find_repo_root_streaming_markdown_safety()
+  helper_path <- file.path(repo_root, "R/helpers_markdown_safety.R")
+
+  expect_true(file.exists(helper_path))
+
+  helper_env <- new.env(parent = globalenv())
+  source(helper_path, encoding = "UTF-8", local = helper_env)
+
+  html <- helper_env$render_safe_markdown_html(
+    paste(
+      "# Başlık <script>alert(1)</script>",
+      "**Kalın <img src=x onerror=alert(1)>**",
+      "- Madde <a href=\"javascript:alert(1)\">x</a>",
+      "[x](javascript:alert(1))",
+      sep = "\n"
+    )
+  )
+
+  expect_false(grepl("<script", html, fixed = TRUE))
+  expect_false(grepl("<img", html, fixed = TRUE))
+  expect_false(grepl("<a href=\"javascript:", html, fixed = TRUE))
+  expect_false(grepl("onerror=", html, fixed = TRUE))
+  expect_true(grepl("&lt;script&gt;alert(1)&lt;/script&gt;", html, fixed = TRUE))
+  expect_true(grepl("&lt;img src=x onerror=alert(1)&gt;", html, fixed = TRUE))
+  expect_true(grepl("&lt;a href=", html, fixed = TRUE))
+  expect_true(grepl("data-mergen-unsafe-href=\"removed\"", html, fixed = TRUE))
+})
+
+test_that("server-side markdown safety helper kaynak manifestinde doğru sıradadır", {
+  manifest_text <- .read_repo_text_streaming_markdown_safety("R/config_source_manifest.R")
+  messaging_text <- .read_repo_text_streaming_markdown_safety("R/helpers_messaging.R")
+  formatting_text <- .read_repo_text_streaming_markdown_safety("R/helpers_chat_message_formatting.R")
+
+  safety_pos <- regexpr('"R/helpers_markdown_safety.R"', manifest_text, fixed = TRUE)[[1]]
+  formatting_pos <- regexpr('"R/helpers_chat_message_formatting.R"', manifest_text, fixed = TRUE)[[1]]
+  messaging_pos <- regexpr('"R/helpers_messaging.R"', manifest_text, fixed = TRUE)[[1]]
+
+  expect_gt(safety_pos, 0)
+  expect_gt(formatting_pos, 0)
+  expect_gt(messaging_pos, 0)
+  expect_lt(safety_pos, formatting_pos)
+  expect_lt(safety_pos, messaging_pos)
+
+  expect_true(grepl("render_safe_markdown_html", messaging_text, fixed = TRUE))
+  expect_true(grepl("render_safe_markdown_html", formatting_text, fixed = TRUE))
+  expect_false(grepl("commonmark::markdown_html", messaging_text, fixed = TRUE))
+})
+
 test_that("tehlikeli streaming fixture'ları statik ve browser smoke kapsamındadır", {
   smoke_text <- .read_repo_text_streaming_markdown_safety("www/smoke/ux-smoke.html")
   parser_text <- .read_repo_text_streaming_markdown_safety("www/js/markdown-parser.js")
 
+  # Not: ux-smoke.html inline <script> içinde gerçek </script> yazılamaz;
+  # aksi durumda HTML parser script'i erken kapatır. Bu nedenle fixture'lar
+  # smoke içinde parçalı kurulur ve burada parçalı sözleşme aranır.
   dangerous_fixtures <- c(
-    "<script>alert(1)</script>",
-    "<img src=x onerror=alert(1)>",
-    "javascript:alert(1)",
     "<scr",
-    "ipt>alert(1)</script>",
+    "ipt>alert(1)</scr",
+    "ipt>",
+    "<img src=x onerror=alert(1)>",
     "java",
     "script:alert(1)"
   )
@@ -236,18 +289,21 @@ test_that("tehlikeli streaming fixture'ları statik ve browser smoke kapsamında
   expect_true(grepl("alertCount === 0", smoke_text, fixed = TRUE))
   expect_true(grepl(".streaming-code pre code", smoke_text, fixed = TRUE))
 
-  allowed_generated_tags <- c(
-    "<h1", "<h2", "<h3", "<strong", "<em", "<code", "<pre",
-    "<br", "<ul", "<li", "<div", "<span", "<i"
+  expect_true(grepl("'<h' + level + '>'", parser_text, fixed = TRUE))
+  expect_true(grepl("'</h' + level + '>'", parser_text, fixed = TRUE))
+
+  allowed_generated_constructs <- c(
+    "<strong", "<em", "<code", "<pre", "<br", "<ul", "<li",
+    "<div", "<span", "<i"
   )
 
-  missing_allowed_tags <- allowed_generated_tags[
+  missing_allowed_constructs <- allowed_generated_constructs[
     !vapply(
-      allowed_generated_tags,
+      allowed_generated_constructs,
       function(tag) grepl(tag, parser_text, fixed = TRUE),
       logical(1)
     )
   ]
 
-  expect_equal(missing_allowed_tags, character(0))
+  expect_equal(missing_allowed_constructs, character(0))
 })

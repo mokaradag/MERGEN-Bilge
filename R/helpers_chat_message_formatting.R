@@ -170,7 +170,7 @@ db_message_process_text_content <- function(content_text, msg_type, message_id) 
   }
 
   list(
-    html = commonmark::markdown_html(content_text, hardbreaks = TRUE),
+    html = render_safe_markdown_html(content_text, hardbreaks = TRUE),
     has_code = FALSE
   )
 }
