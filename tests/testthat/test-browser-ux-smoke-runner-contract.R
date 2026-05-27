@@ -70,7 +70,7 @@ testthat::test_that("browser UX smoke runner is optional and dependency-light", 
     runner,
     c(
       "Dosya Yolu: tests/scripts/ai_browser_ux_smoke.R",
-      "www/smoke/ux-smoke.html",
+      "/smoke/ux-smoke.html",
       "MERGEN_BROWSER_BIN",
       "MERGEN_REQUIRE_BROWSER_UX_SMOKE",
       "--require-browser",
@@ -95,6 +95,11 @@ testthat::test_that("browser UX smoke runner is optional and dependency-light", 
     "Headless browser UX smoke runner sözleşmesi eksik:"
   )
 
+  # Yasak bağımlılık taraması yorum satırlarını değil, çalıştırılabilir kodu
+  # hedeflemelidir. Aksi halde "npm kullanmaz" gibi güvenli açıklama yorumları
+  # yanlış pozitif üretir.
+  runner_code <- gsub("(?m)^\\s*#.*$", "", runner, perl = TRUE)
+
   forbidden <- c(
     "chromote::",
     "RSelenium",
@@ -109,7 +114,7 @@ testthat::test_that("browser UX smoke runner is optional and dependency-light", 
 
   found_forbidden <- forbidden[vapply(
     forbidden,
-    function(token) grepl(token, runner, fixed = TRUE, useBytes = TRUE),
+    function(token) grepl(token, runner_code, fixed = TRUE, useBytes = TRUE),
     logical(1)
   )]
 
