@@ -101,6 +101,57 @@
     };
   }
 
+  function readToolSettingKeys(win) {
+    if (!win || !win.localStorage) return [];
+
+    try {
+      var raw = win.localStorage.getItem("mergen_settings") || "{}";
+      var settings = JSON.parse(raw);
+
+      return Object.keys(settings).filter(function(key) {
+        return /^enable_.*_tools$/.test(key) && settings[key] === true;
+      }).sort();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function snapshotToolState(win) {
+    var doc = win && win.document;
+
+    if (!doc) {
+      return {
+        activePaneId: "",
+        activePaneLooksBilgeYolac: false,
+        hash: "",
+        openModalCount: 0,
+        toolSettingKeys: []
+      };
+    }
+
+    // Smoke-only sayfa/araç durumu: gerçek UI'ı değiştirmez, yalnızca
+    // Bilge Yolaç ↔ Ana Söyleşi geçişinde stale panel/modal/hash sızıntısını yakalar.
+    var activePane = queryAny(doc, [
+      "#shiny-tab-chat.active",
+      "#shiny-tab-claude_code.active",
+      ".tab-pane.active[id^='shiny-tab-']",
+      ".tab-content > .active[id^='shiny-tab-']"
+    ]);
+
+    var activePaneId = activePane ? (activePane.id || "") : "";
+    var activeText = activePane ? (activePane.textContent || "") : "";
+    var activeHtml = activePane ? (activePane.innerHTML || "") : "";
+    var combined = activePaneId + " " + activeText + " " + activeHtml;
+
+    return {
+      activePaneId: activePaneId,
+      activePaneLooksBilgeYolac: /shiny-tab-claude_code|claude-code-container|Bilge Yolaç/i.test(combined),
+      hash: String((win.location && win.location.hash) || ""),
+      openModalCount: doc.querySelectorAll(".modal.show, .modal.in, .modal-backdrop").length,
+      toolSettingKeys: readToolSettingKeys(win)
+    };
+  }
+
   function normalizeSyntheticDisplayName(file) {
     var raw = String(
       (file && (file.displayName || file.originalName || file.name || file.storageName)) ||
@@ -237,6 +288,12 @@
     }, "Bilge Yolaç görünür", 6000);
 
     var yolacSnapshot = snapshotTransientState(win);
+    var yolacToolSnapshot = snapshotToolState(win);
+
+    assert(
+      yolacToolSnapshot.activePaneLooksBilgeYolac === true,
+      "Bilge Yolaç geçişinde doğru tool paneli aktif görünür"
+    );
 
     assert(
       yolacSnapshot.backgroundMusicSourceCount <= 1,
@@ -278,6 +335,29 @@
       );
     }
 
+    var finalToolSnapshot = snapshotToolState(win);
+
+    assert(
+      finalToolSnapshot.activePaneId === "shiny-tab-chat" ||
+        !!doc.querySelector(".modern-welcome-root"),
+      "Ana Söyleşi dönüşü chat paneli aktif kalır"
+    );
+
+    assert(
+      finalToolSnapshot.activePaneLooksBilgeYolac === false,
+      "Ana Söyleşi dönüşü stale Bilge Yolaç tool paneli aktif kalmaz"
+    );
+
+    assert(
+      finalToolSnapshot.hash.indexOf("claude_code") < 0,
+      "Ana Söyleşi dönüşü URL hash stale Bilge Yolaç state taşımaz"
+    );
+
+    assert(
+      finalToolSnapshot.openModalCount === 0,
+      "Ana Söyleşi dönüşü stale tool modal/backdrop kalmaz"
+    );
+
     var finalSnapshot = snapshotTransientState(win);
 
     assert(
@@ -297,6 +377,7 @@
 
   window.MergenUxSmokeProbes = {
     snapshotTransientState: snapshotTransientState,
+    snapshotToolState: snapshotToolState,
     renderSyntheticFileManagerListing: renderSyntheticFileManagerListing,
     runFileManagerDisplayNameSmoke: runFileManagerDisplayNameSmoke,
     runNavigationAndFileManagerSmoke: runNavigationAndFileManagerSmoke

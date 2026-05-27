@@ -101,9 +101,14 @@ test_that("UX smoke keeps media lifecycle and saved-chat TTS probes", {
 
     # Navigation / video lifecycle / File Manager display-name probe.
     "Navigation/File Manager smoke probe tamamlandı",
+    "snapshotToolState",
     "WelcomeVideoPlayer smoke state API var",
     "Bilge Yolaç sekme linki tıklanabilir",
+    "Bilge Yolaç geçişinde doğru tool paneli aktif görünür",
     "Ana Söyleşi dönüşü welcome video gereksiz reinit etmez",
+    "Ana Söyleşi dönüşü stale Bilge Yolaç tool paneli aktif kalmaz",
+    "Ana Söyleşi dönüşü URL hash stale Bilge Yolaç state taşımaz",
+    "Ana Söyleşi dönüşü stale tool modal/backdrop kalmaz",
     "File Manager synthetic refresh sonrası Türkçe adı korur",
     "Türkçe_çalışma_özeti_İstanbul.pdf"
   )
