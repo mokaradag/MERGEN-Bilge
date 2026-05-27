@@ -314,6 +314,62 @@ validation_proof_build_notes <- function(profile_requested,
   unique(enc2utf8(notes))
 }
 
+validation_proof_gate_statuses <- function(profile_requested,
+                                           profile_effective,
+                                           failed_labels,
+                                           app_source_smoke_status,
+                                           focused_contract_tests_status,
+                                           full_testthat_suite_status) {
+  no_failed_steps <- length(failed_labels) == 0L
+
+  cloud_quick_validation_status <- "not_requested"
+  if (identical(profile_requested, "cloud-quick")) {
+    cloud_quick_validation_status <- if (
+      isTRUE(no_failed_steps) &&
+        identical(profile_effective, "quick") &&
+        identical(app_source_smoke_status, "skipped") &&
+        identical(focused_contract_tests_status, "passed")
+    ) {
+      "passed"
+    } else {
+      "failed"
+    }
+  }
+
+  quick_repo_validation_status <- "not_requested"
+  if (identical(profile_requested, "quick") &&
+      identical(profile_effective, "quick")) {
+    quick_repo_validation_status <- if (
+      isTRUE(no_failed_steps) &&
+        identical(app_source_smoke_status, "passed") &&
+        identical(focused_contract_tests_status, "passed")
+    ) {
+      "passed"
+    } else {
+      "failed"
+    }
+  }
+
+  full_validation_status <- "not_requested"
+  if (identical(profile_effective, "full")) {
+    full_validation_status <- if (
+      isTRUE(no_failed_steps) &&
+        identical(app_source_smoke_status, "passed") &&
+        identical(full_testthat_suite_status, "passed")
+    ) {
+      "passed"
+    } else {
+      "failed"
+    }
+  }
+
+  list(
+    cloud_quick_validation_status = cloud_quick_validation_status,
+    quick_repo_validation_status = quick_repo_validation_status,
+    full_validation_status = full_validation_status
+  )
+}
+
 validation_proof_status <- function(profile,
                                     repo_root,
                                     steps,
@@ -343,6 +399,16 @@ validation_proof_status <- function(profile,
     "app source smoke"
   )
 
+  focused_contract_tests_status <- validation_proof_step_outcome(
+    steps,
+    "focused contract tests"
+  )
+
+  full_testthat_suite_status <- validation_proof_step_outcome(
+    steps,
+    "full testthat suite"
+  )
+
   shiny_boot_smoke_status <- validation_proof_step_outcome(
     steps,
     "shiny boot smoke"
@@ -359,6 +425,15 @@ validation_proof_status <- function(profile,
 
   browser_required <- validation_proof_env_flag_true(
     "MERGEN_REQUIRE_BROWSER_UX_SMOKE"
+  )
+
+  gate_statuses <- validation_proof_gate_statuses(
+    profile_requested = profile_requested,
+    profile_effective = profile_effective,
+    failed_labels = failed_labels,
+    app_source_smoke_status = app_source_smoke_status,
+    focused_contract_tests_status = focused_contract_tests_status,
+    full_testthat_suite_status = full_testthat_suite_status
   )
 
   git <- validation_proof_collect_git_info(repo_root)
@@ -383,14 +458,24 @@ validation_proof_status <- function(profile,
     current_commit_sha = git$current_commit_sha,
     dirty_working_tree_status = git$dirty_working_tree_status,
     dirty_working_tree_entries = git$dirty_working_tree_entries,
+    focused_contract_tests_status = focused_contract_tests_status,
+    full_testthat_suite_status = full_testthat_suite_status,
+    cloud_quick_validation_status = gate_statuses$cloud_quick_validation_status,
+    quick_repo_validation_status = gate_statuses$quick_repo_validation_status,
+    full_validation_status = gate_statuses$full_validation_status,
     app_source_smoke_status = app_source_smoke_status,
     shiny_boot_smoke_status = shiny_boot_smoke_status,
+    app_boot_smoke_status = shiny_boot_smoke_status,
     browser_smoke_status = browser_smoke_status,
+    browser_ux_smoke_status = browser_smoke_status,
     browser_required = browser_required,
     db_sso_vm_validation_performed = FALSE,
+    db_sso_vm_validation_status = "not_performed_by_ai_validate",
     vm_sso_preflight_status = "not_performed_by_ai_validate",
     sql_server_turkish_encoding_preflight_status = "not_performed_by_ai_validate",
+    sql_server_turkish_encoding_validation_status = "not_performed_by_ai_validate",
     manual_fragile_flow_evidence_status = "not_performed_by_ai_validate",
+    manual_fragile_flow_validation_status = "not_performed_by_ai_validate",
     failed_step_labels = failed_labels,
     skipped_step_labels = skipped_labels,
     proof_boundary_notes = proof_boundary_notes,
@@ -481,14 +566,24 @@ validation_proof_render_ai_summary <- function(profile,
     sprintf("  \"skipped_step_labels\":%s,\n", validation_proof_json_array(proof$skipped_step_labels)),
     sprintf("  \"boot_smoke\":%s,\n", validation_proof_json_bool(proof$boot_smoke)),
     sprintf("  \"skip_app_source_smoke\":%s,\n", validation_proof_json_bool(proof$skip_app_source_smoke)),
+    sprintf("  \"focused_contract_tests_status\":%s,\n", validation_proof_json_string(proof$focused_contract_tests_status)),
+    sprintf("  \"full_testthat_suite_status\":%s,\n", validation_proof_json_string(proof$full_testthat_suite_status)),
+    sprintf("  \"cloud_quick_validation_status\":%s,\n", validation_proof_json_string(proof$cloud_quick_validation_status)),
+    sprintf("  \"quick_repo_validation_status\":%s,\n", validation_proof_json_string(proof$quick_repo_validation_status)),
+    sprintf("  \"full_validation_status\":%s,\n", validation_proof_json_string(proof$full_validation_status)),
     sprintf("  \"app_source_smoke_status\":%s,\n", validation_proof_json_string(proof$app_source_smoke_status)),
     sprintf("  \"shiny_boot_smoke_status\":%s,\n", validation_proof_json_string(proof$shiny_boot_smoke_status)),
+    sprintf("  \"app_boot_smoke_status\":%s,\n", validation_proof_json_string(proof$app_boot_smoke_status)),
     sprintf("  \"browser_smoke_status\":%s,\n", validation_proof_json_string(proof$browser_smoke_status)),
+    sprintf("  \"browser_ux_smoke_status\":%s,\n", validation_proof_json_string(proof$browser_ux_smoke_status)),
     sprintf("  \"browser_required\":%s,\n", validation_proof_json_bool(proof$browser_required)),
     sprintf("  \"db_sso_vm_validation_performed\":%s,\n", validation_proof_json_bool(proof$db_sso_vm_validation_performed)),
+    sprintf("  \"db_sso_vm_validation_status\":%s,\n", validation_proof_json_string(proof$db_sso_vm_validation_status)),
     sprintf("  \"vm_sso_preflight_status\":%s,\n", validation_proof_json_string(proof$vm_sso_preflight_status)),
     sprintf("  \"sql_server_turkish_encoding_preflight_status\":%s,\n", validation_proof_json_string(proof$sql_server_turkish_encoding_preflight_status)),
+    sprintf("  \"sql_server_turkish_encoding_validation_status\":%s,\n", validation_proof_json_string(proof$sql_server_turkish_encoding_validation_status)),
     sprintf("  \"manual_fragile_flow_evidence_status\":%s,\n", validation_proof_json_string(proof$manual_fragile_flow_evidence_status)),
+    sprintf("  \"manual_fragile_flow_validation_status\":%s,\n", validation_proof_json_string(proof$manual_fragile_flow_validation_status)),
     sprintf("  \"proof_boundary_notes\":%s,\n", validation_proof_json_array(proof$proof_boundary_notes)),
     sprintf("  \"answer_path\":%s,\n", validation_proof_json_nullable_string(answer_path)),
     "  \"steps\":[\n    ",

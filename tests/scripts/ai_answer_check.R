@@ -359,6 +359,14 @@ read_summary_bool_field <- function(text, field) {
   identical(value, "true")
 }
 
+summary_string_or <- function(value, fallback) {
+  if (length(value) == 0L || is.na(value[1])) {
+    return(fallback)
+  }
+
+  as.character(value[1])
+}
+
 read_failed_steps <- function(path) {
   txt <- if (identical(path, summary_path)) {
     summary_text
@@ -429,6 +437,11 @@ claims_sql_encoding_passed <- claim_matches(
   "run_vm_encoding_preflight_real\\.R.{0,80}(passed|pass|successful|completed|geçti|başarılı|tamamlandı)"
 )
 
+claims_manual_fragile_flow_passed <- claim_matches(
+  "(manual fragile-flow|fragile-flow|manual fragile flow|manuel kırılgan akış|kırılgan akış).{0,80}(passed|pass|successful|completed|geçti|başarılı|tamamlandı)",
+  "run_fragile_flow_manual_preflight\\.R.{0,80}(passed|pass|successful|completed|geçti|başarılı|tamamlandı)"
+)
+
 specific_validation_claim <- any(c(
   claims_full_validation_passed,
   claims_cloud_quick_passed,
@@ -437,7 +450,8 @@ specific_validation_claim <- any(c(
   claims_boot_smoke_passed,
   claims_browser_smoke_passed,
   claims_vm_sso_db_passed,
-  claims_sql_encoding_passed
+  claims_sql_encoding_passed,
+  claims_manual_fragile_flow_passed
 ))
 
 summary_profile_requested <- read_summary_string_field(summary_text, "profile_requested")
@@ -479,6 +493,38 @@ summary_browser_required <- read_summary_bool_field(
   summary_text,
   "browser_required"
 )
+summary_cloud_quick_validation_status <- read_summary_string_field(
+  summary_text,
+  "cloud_quick_validation_status"
+)
+summary_quick_repo_validation_status <- read_summary_string_field(
+  summary_text,
+  "quick_repo_validation_status"
+)
+summary_full_validation_status <- read_summary_string_field(
+  summary_text,
+  "full_validation_status"
+)
+summary_app_boot_status <- summary_string_or(
+  read_summary_string_field(summary_text, "app_boot_smoke_status"),
+  summary_boot_status
+)
+summary_browser_ux_status <- summary_string_or(
+  read_summary_string_field(summary_text, "browser_ux_smoke_status"),
+  summary_browser_status
+)
+summary_db_sso_vm_status <- summary_string_or(
+  read_summary_string_field(summary_text, "db_sso_vm_validation_status"),
+  summary_vm_sso_status
+)
+summary_sql_encoding_validation_status <- summary_string_or(
+  read_summary_string_field(summary_text, "sql_server_turkish_encoding_validation_status"),
+  summary_sql_encoding_status
+)
+summary_manual_fragile_flow_status <- read_summary_string_field(
+  summary_text,
+  "manual_fragile_flow_validation_status"
+)
 
 if (isTRUE(claims_tests_passed)) {
   failed_steps <- read_failed_steps(summary_path)
@@ -513,26 +559,40 @@ if (nzchar(summary_text)) {
   }
 
   if (isTRUE(claims_full_validation_passed) &&
-      !identical(summary_profile_effective, "full")) {
+      !identical(summary_full_validation_status, "passed")) {
     add_error(
-      "Answer claims full validation passed, but summary profile_requested=%s profile_effective=%s.",
+      paste(
+        "Answer claims full validation passed, but summary",
+        "full_validation_status=%s profile_requested=%s profile_effective=%s."
+      ),
+      summary_value_for_message(summary_full_validation_status),
       summary_value_for_message(summary_profile_requested),
       summary_value_for_message(summary_profile_effective)
     )
   }
 
   if (isTRUE(claims_cloud_quick_passed) &&
-      !identical(summary_profile_requested, "cloud-quick")) {
+      !identical(summary_cloud_quick_validation_status, "passed")) {
     add_error(
-      "Answer claims cloud-quick passed, but summary profile_requested=%s.",
-      summary_value_for_message(summary_profile_requested)
+      paste(
+        "Answer claims cloud-quick passed, but summary",
+        "cloud_quick_validation_status=%s profile_requested=%s profile_effective=%s."
+      ),
+      summary_value_for_message(summary_cloud_quick_validation_status),
+      summary_value_for_message(summary_profile_requested),
+      summary_value_for_message(summary_profile_effective)
     )
   }
 
   if (isTRUE(claims_quick_validation_passed) &&
-      !identical(summary_profile_effective, "quick")) {
+      !identical(summary_quick_repo_validation_status, "passed")) {
     add_error(
-      "Answer claims quick validation passed, but summary profile_effective=%s.",
+      paste(
+        "Answer claims quick validation passed, but summary",
+        "quick_repo_validation_status=%s profile_requested=%s profile_effective=%s."
+      ),
+      summary_value_for_message(summary_quick_repo_validation_status),
+      summary_value_for_message(summary_profile_requested),
       summary_value_for_message(summary_profile_effective)
     )
   }
@@ -546,41 +606,49 @@ if (nzchar(summary_text)) {
   }
 
   if (isTRUE(claims_boot_smoke_passed) &&
-      !identical(summary_boot_status, "passed")) {
+      !identical(summary_app_boot_status, "passed")) {
     add_error(
-      "Answer claims boot smoke passed, but summary shiny_boot_smoke_status=%s.",
-      summary_value_for_message(summary_boot_status)
+      "Answer claims boot smoke passed, but summary app_boot_smoke_status=%s.",
+      summary_value_for_message(summary_app_boot_status)
     )
   }
 
   if (isTRUE(claims_browser_smoke_passed) &&
-      !identical(summary_browser_status, "passed")) {
+      !identical(summary_browser_ux_status, "passed")) {
     add_error(
       paste(
         "Answer claims browser UX smoke passed, but summary",
-        "browser_smoke_status=%s browser_required=%s."
+        "browser_ux_smoke_status=%s browser_required=%s."
       ),
-      summary_value_for_message(summary_browser_status),
+      summary_value_for_message(summary_browser_ux_status),
       summary_value_for_message(summary_browser_required)
     )
   }
 
   if (isTRUE(claims_vm_sso_db_passed) &&
-      !identical(summary_vm_sso_status, "performed")) {
+      !identical(summary_db_sso_vm_status, "passed")) {
     add_error(
-      "Answer claims VM/SSO/DB preflight passed, but summary vm_sso_preflight_status=%s.",
-      summary_value_for_message(summary_vm_sso_status)
+      "Answer claims VM/SSO/DB preflight passed, but summary db_sso_vm_validation_status=%s.",
+      summary_value_for_message(summary_db_sso_vm_status)
     )
   }
 
   if (isTRUE(claims_sql_encoding_passed) &&
-      !identical(summary_sql_encoding_status, "performed")) {
+      !identical(summary_sql_encoding_validation_status, "passed")) {
     add_error(
       paste(
         "Answer claims SQL Server Turkish encoding preflight passed, but summary",
-        "sql_server_turkish_encoding_preflight_status=%s."
+        "sql_server_turkish_encoding_validation_status=%s."
       ),
-      summary_value_for_message(summary_sql_encoding_status)
+      summary_value_for_message(summary_sql_encoding_validation_status)
+    )
+  }
+
+  if (isTRUE(claims_manual_fragile_flow_passed) &&
+      !identical(summary_manual_fragile_flow_status, "passed")) {
+    add_error(
+      "Answer claims manual fragile-flow evidence passed, but summary manual_fragile_flow_validation_status=%s.",
+      summary_value_for_message(summary_manual_fragile_flow_status)
     )
   }
 

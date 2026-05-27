@@ -188,3 +188,45 @@ test_that("repo kişisel mutlak Windows kullanıcı yolu içermiyor", {
     )
   )
 })
+
+test_that("validation report scripts avoid raw endpoint and DB-content echo patterns", {
+  repo_root <- resolve_repo_root_for_tests()
+
+  vm_preflight <- .read_repo_text_secret_contract(
+    file.path(repo_root, "tests", "scripts", "run_vm_preflight_real.R")
+  )
+
+  vm_encoding_preflight <- .read_repo_text_secret_contract(
+    file.path(repo_root, "tests", "scripts", "run_vm_encoding_preflight_real.R")
+  )
+
+  expect_true(
+    grepl("preflight_redact_sensitive_text", vm_preflight, fixed = TRUE, useBytes = TRUE),
+    info = "VM preflight hata metinlerini secret-safe redaction yolundan geçirmelidir."
+  )
+
+  expect_true(
+    grepl("preflight_value_metadata", vm_preflight, fixed = TRUE, useBytes = TRUE),
+    info = "VM preflight endpoint/client gibi değerleri ham yazmak yerine metadata yazmalıdır."
+  )
+
+  expect_false(
+    grepl("issuer=%s", vm_preflight, fixed = TRUE, useBytes = TRUE),
+    info = "VM preflight raw issuer endpoint yazmamalıdır."
+  )
+
+  expect_false(
+    grepl("client_id=%s", vm_preflight, fixed = TRUE, useBytes = TRUE),
+    info = "VM preflight raw client_id yazmamalıdır; metadata yeterlidir."
+  )
+
+  expect_false(
+    grepl(", Preview=", vm_encoding_preflight, fixed = TRUE, useBytes = TRUE),
+    info = "VM encoding preflight MB_Messages içerik preview'i yazmamalıdır."
+  )
+
+  expect_true(
+    grepl("MessageContentBytes=", vm_encoding_preflight, fixed = TRUE, useBytes = TRUE),
+    info = "VM encoding preflight içerik yerine byte sayısı gibi güvenli metadata yazmalıdır."
+  )
+})

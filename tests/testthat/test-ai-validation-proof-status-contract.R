@@ -131,14 +131,24 @@ testthat::test_that("summary JSON contains machine-readable proof fields", {
       "\"current_branch\"",
       "\"current_commit_sha\"",
       "\"dirty_working_tree_status\"",
+      "\"focused_contract_tests_status\":\"passed\"",
+      "\"full_testthat_suite_status\":\"not_requested\"",
+      "\"cloud_quick_validation_status\":\"passed\"",
+      "\"quick_repo_validation_status\":\"not_requested\"",
+      "\"full_validation_status\":\"not_requested\"",
       "\"app_source_smoke_status\":\"skipped\"",
       "\"shiny_boot_smoke_status\":\"not_requested\"",
+      "\"app_boot_smoke_status\":\"not_requested\"",
       "\"browser_smoke_status\":\"not_requested\"",
+      "\"browser_ux_smoke_status\":\"not_requested\"",
       "\"browser_required\":false",
       "\"db_sso_vm_validation_performed\":false",
+      "\"db_sso_vm_validation_status\":\"not_performed_by_ai_validate\"",
       "\"vm_sso_preflight_status\":\"not_performed_by_ai_validate\"",
       "\"sql_server_turkish_encoding_preflight_status\":\"not_performed_by_ai_validate\"",
+      "\"sql_server_turkish_encoding_validation_status\":\"not_performed_by_ai_validate\"",
       "\"manual_fragile_flow_evidence_status\":\"not_performed_by_ai_validate\"",
+      "\"manual_fragile_flow_validation_status\":\"not_performed_by_ai_validate\"",
       "\"failed_step_labels\"",
       "\"skipped_step_labels\"",
       "\"proof_boundary_notes\""
@@ -193,6 +203,10 @@ testthat::test_that("cloud-quick, quick and full boot boundaries are represented
   testthat::expect_equal(cloud_proof$app_source_smoke_status, "skipped")
   testthat::expect_equal(cloud_proof$browser_smoke_status, "not_requested")
   testthat::expect_false(cloud_proof$db_sso_vm_validation_performed)
+  testthat::expect_equal(cloud_proof$focused_contract_tests_status, "passed")
+  testthat::expect_equal(cloud_proof$cloud_quick_validation_status, "passed")
+  testthat::expect_equal(cloud_proof$quick_repo_validation_status, "not_requested")
+  testthat::expect_equal(cloud_proof$full_validation_status, "not_requested")
 
   quick_steps <- list(
     .ai_validation_proof_step("environment"),
@@ -219,6 +233,10 @@ testthat::test_that("cloud-quick, quick and full boot boundaries are represented
   testthat::expect_equal(quick_proof$app_source_smoke_status, "passed")
   testthat::expect_equal(quick_proof$shiny_boot_smoke_status, "not_requested")
   testthat::expect_equal(quick_proof$browser_smoke_status, "not_requested")
+  testthat::expect_equal(quick_proof$focused_contract_tests_status, "passed")
+  testthat::expect_equal(quick_proof$cloud_quick_validation_status, "not_requested")
+  testthat::expect_equal(quick_proof$quick_repo_validation_status, "passed")
+  testthat::expect_equal(quick_proof$full_validation_status, "not_requested")
 
   full_steps <- list(
     .ai_validation_proof_step("environment"),
@@ -251,6 +269,12 @@ testthat::test_that("cloud-quick, quick and full boot boundaries are represented
   testthat::expect_equal(full_proof$shiny_boot_smoke_status, "passed")
   testthat::expect_equal(full_proof$browser_smoke_status, "passed")
   testthat::expect_true(full_proof$browser_required)
+  testthat::expect_equal(full_proof$full_testthat_suite_status, "passed")
+  testthat::expect_equal(full_proof$cloud_quick_validation_status, "not_requested")
+  testthat::expect_equal(full_proof$quick_repo_validation_status, "not_requested")
+  testthat::expect_equal(full_proof$full_validation_status, "passed")
+  testthat::expect_equal(full_proof$app_boot_smoke_status, "passed")
+  testthat::expect_equal(full_proof$browser_ux_smoke_status, "passed")
 })
 
 testthat::test_that("missing git does not fail proof metadata collection", {
@@ -350,7 +374,8 @@ testthat::test_that("answer self-check catches validation overclaims from proof 
       "Full validation passed.",
       "Browser UX smoke passed.",
       "VM/SSO preflight passed.",
-      "SQL Server Turkish encoding preflight passed."
+      "SQL Server Turkish encoding preflight passed.",
+      "Manual fragile-flow evidence passed."
     ),
     answer_file,
     useBytes = TRUE
@@ -363,12 +388,20 @@ testthat::test_that("answer self-check catches validation overclaims from proof 
       "  \"profile_requested\":\"cloud-quick\",",
       "  \"profile_effective\":\"quick\",",
       "  \"failed_steps\":0,",
+      "  \"cloud_quick_validation_status\":\"passed\",",
+      "  \"quick_repo_validation_status\":\"not_requested\",",
+      "  \"full_validation_status\":\"not_requested\",",
       "  \"app_source_smoke_status\":\"skipped\",",
       "  \"shiny_boot_smoke_status\":\"not_requested\",",
+      "  \"app_boot_smoke_status\":\"not_requested\",",
       "  \"browser_smoke_status\":\"not_requested\",",
+      "  \"browser_ux_smoke_status\":\"not_requested\",",
       "  \"browser_required\":false,",
+      "  \"db_sso_vm_validation_status\":\"not_performed_by_ai_validate\",",
       "  \"vm_sso_preflight_status\":\"not_performed_by_ai_validate\",",
-      "  \"sql_server_turkish_encoding_preflight_status\":\"not_performed_by_ai_validate\"",
+      "  \"sql_server_turkish_encoding_validation_status\":\"not_performed_by_ai_validate\",",
+      "  \"sql_server_turkish_encoding_preflight_status\":\"not_performed_by_ai_validate\",",
+      "  \"manual_fragile_flow_validation_status\":\"not_performed_by_ai_validate\"",
       "}"
     ),
     summary_file,
@@ -405,7 +438,8 @@ testthat::test_that("answer self-check catches validation overclaims from proof 
       "Answer claims full validation passed",
       "Answer claims browser UX smoke passed",
       "Answer claims VM/SSO/DB preflight passed",
-      "Answer claims SQL Server Turkish encoding preflight passed"
+      "Answer claims SQL Server Turkish encoding preflight passed",
+      "Answer claims manual fragile-flow evidence passed"
     ),
     "Answer-check overclaim hatalarını yakalamadı:"
   )

@@ -399,8 +399,8 @@ tryCatch({
 			paste0(
 			  "MessageID=", bad_rows$MessageID,
 			  ", ChatID=", bad_rows$ChatID,
-			  ", Preview=",
-			  substr(bad_rows$MessageContent %||% "", 1, 120)
+			  ", MessageContentBytes=",
+			  nchar(bad_rows$MessageContent %||% "", type = "bytes", allowNA = FALSE)
 			),
 			5
 		  ),

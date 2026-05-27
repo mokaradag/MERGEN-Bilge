@@ -48,6 +48,42 @@ require_preflight_env_vars <- function(vars, label = "zorunlu ortam değişkenle
   invisible(TRUE)
 }
 
+preflight_redact_sensitive_text <- function(text) {
+  sensitive_env_names <- c(
+    "LOCAL_LLM_ENDPOINT",
+    "LOCAL_LLM_API_KEY",
+    "DB_DSN",
+    "DB_PASSWORD",
+    "AI_KEYS_MASTER",
+    "SSO_KEYCLOAK_URL",
+    "SSO_CLIENT_SECRET",
+    "COOKIE",
+    "AUTHORIZATION"
+  )
+
+  sensitive_values <- Sys.getenv(sensitive_env_names, unset = "")
+  sensitive_values <- unique(sensitive_values[nzchar(sensitive_values)])
+  sensitive_values <- sensitive_values[order(nchar(sensitive_values), decreasing = TRUE)]
+
+  out <- as.character(text %||% "")
+
+  for (value in sensitive_values) {
+    out <- gsub(value, "<hidden>", out, fixed = TRUE)
+  }
+
+  enc2utf8(out)
+}
+
+preflight_value_metadata <- function(value) {
+  value <- as.character(value %||% "")
+
+  sprintf(
+    "present=%s nchar=%d",
+    if (nzchar(value)) "true" else "false",
+    nchar(value, type = "bytes", allowNA = FALSE)
+  )
+}
+
 preflight_require_sso <- normalize_preflight_bool(
   Sys.getenv("MERGEN_PREFLIGHT_REQUIRE_SSO", "TRUE"),
   default = TRUE,
@@ -185,9 +221,12 @@ if (isTRUE(preflight_sso_enabled)) {
   }
 
   cat(sprintf(
-    "OK: SSO preflight yapılandırması doğrulandı. issuer=%s, client_id=%s\n",
-    SSO_CONFIG$issuer_url,
-    SSO_CONFIG$client_id
+    paste(
+      "OK: SSO preflight yapılandırması doğrulandı.",
+      "issuer_meta=(%s), client_id_meta=(%s)\n"
+    ),
+    preflight_value_metadata(SSO_CONFIG$issuer_url),
+    preflight_value_metadata(SSO_CONFIG$client_id)
   ))
 }
 
@@ -268,7 +307,10 @@ if (!requireNamespace("curl", quietly = TRUE)) {
       res <- curl::curl_fetch_memory(url, handle = handle)
       is.list(res) && !is.null(res$status_code)
     }, error = function(e) {
-      cat(sprintf("[LLM CHECK HEAD ERROR] %s\n", conditionMessage(e)))
+      cat(sprintf(
+        "[LLM CHECK HEAD ERROR] %s\n",
+        preflight_redact_sensitive_text(conditionMessage(e))
+      ))
       FALSE
     })
 
@@ -287,7 +329,10 @@ if (!requireNamespace("curl", quietly = TRUE)) {
       res <- curl::curl_fetch_memory(url, handle = handle)
       is.list(res) && !is.null(res$status_code)
     }, error = function(e) {
-      cat(sprintf("[LLM CHECK GET ERROR] %s\n", conditionMessage(e)))
+      cat(sprintf(
+        "[LLM CHECK GET ERROR] %s\n",
+        preflight_redact_sensitive_text(conditionMessage(e))
+      ))
       FALSE
     })
   }
