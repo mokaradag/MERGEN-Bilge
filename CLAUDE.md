@@ -300,6 +300,7 @@ An AI agent must not say “tests passed”, “I verified”, “I ran the app�
 Documentation-only exception:
 - If a requested change modifies only `README.md` and/or `CLAUDE.md`, do not run R validation, `Rscript`, `testthat`, app boot checks, VM preflight, or `tools/ai_validate.sh` unless the user explicitly asks for runtime validation.
 - For such docs-only changes, inspect the Markdown files and report `git diff -- README.md CLAUDE.md`.
+- For such docs-only changes, do not run `Rscript`, `testthat`, or `tools/ai_validate.sh` unless the user explicitly asks for validation; report explicitly that validation was not run because the task was docs-only.
 - For docs-only validation-profile wording changes, it is enough to inspect the edited Markdown and show the docs-only diff; do not run R validation unless the user explicitly asks for it.
 - This exception does not apply to R, JS, CSS, test, config, asset-manifest, encoding, SSO, DB, streaming, Bilge Yolaç, or production-sensitive changes.
 
@@ -1522,6 +1523,15 @@ Bilge Yolaç pixel character frame data is intentionally split from runtime beha
 - `R/config_ui_assets.R` must load `js/claude_code_pixel_chars.js` before `js/claude_code.js`, and `js/claude_code.js` before `js/claude_code_streaming.js`.
 
 Frontend maintainability is measured by `tests/scripts/frontend_maintainability_report.R` and protected by `tests/testthat/test-frontend-maintainability-ratchet.R`. The report shows the largest JS/CSS files, approximate JS function and event-handler counts, Shiny custom message handlers, duplicate CSS selectors, and forbidden legacy selector hits. The ratchet is intentionally baseline-aware: it should prevent silent growth without forcing an immediate large refactor of existing frontend files. Duplicate CSS selectors are reported for visibility; do not make broad CSS rewrites only to satisfy cosmetics unless a targeted refactor is planned.
+
+### Frontend complexity doctor
+
+- Frontend maintainability is monitored without changing runtime UX.
+- `tests/scripts/frontend_maintainability_report.R` exposes a top-risk summary covering largest JS/CSS files, highest function counts, event handler counts, Shiny handler counts, duplicate CSS selectors, unmanifested runtime assets, allowlisted non-runtime assets, and smoke-only assets.
+- `tests/scripts/frontend_complexity_doctor.R` reads that report and writes a UTF-8 JSON artifact under `artifacts/frontend-complexity-doctor/frontend-complexity-doctor-*.json`.
+- `www/smoke/ux-smoke-probes.js` is smoke-only and must not be added to `R/config_ui_assets.R`.
+- Do not refactor runtime frontend files such as `music_manager.js`, `tts_manager.js`, `stt_client.js`, `streaming_manager.js`, or `claude_code_streaming.js` unless there is a small, explicit, test-backed reason.
+- For docs-only changes, do not run R validation; just inspect the Markdown diff.
 
 Focused validation after touching frontend JS/CSS assets, UI asset order, or Bilge Yolaç frontend files:
 - `source("tests/scripts/frontend_maintainability_report.R", encoding = "UTF-8")`
