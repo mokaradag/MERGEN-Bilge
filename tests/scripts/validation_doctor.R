@@ -441,7 +441,6 @@ for (item in blocking_checks) {
 }
 cat("\n")
 
-cat("Warning-only checks:\n")
 warning_checks <- c(
   "In normal full --boot-smoke mode, browser UX smoke can SKIP when no browser binary exists.",
   "Historical MB_Messages mojibake scan is warning-only unless MERGEN_PREFLIGHT_FAIL_ON_LEGACY_MOJIBAKE=TRUE.",
@@ -449,7 +448,25 @@ warning_checks <- c(
   "Validation doctor itself does not prove runtime behavior; it only prevents profile misuse."
 )
 
+doctor_execution_notes <- c(
+  "NOT RUN: This doctor did not run bash tools/ai_validate.sh cloud-quick.",
+  "NOT RUN: This doctor did not run bash tools/ai_validate.sh quick.",
+  "NOT RUN: This doctor did not run bash tools/ai_validate.sh full --boot-smoke.",
+  "NOT RUN: This doctor did not run MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke.",
+  "NOT RUN: This doctor did not source tests/scripts/run_vm_preflight_real.R.",
+  "NOT RUN: This doctor did not source tests/scripts/run_vm_encoding_preflight_real.R.",
+  "NOT RUN: This doctor did not source tests/scripts/run_fragile_flow_manual_preflight.R.",
+  "Use the listed commands as separate evidence gates; the doctor artifact is guidance, not validation evidence."
+)
+
+cat("Warning-only checks:\n")
 for (item in warning_checks) {
+  cat(sprintf(" - %s\n", item))
+}
+cat("\n")
+
+cat("Doctor execution status:\n")
+for (item in doctor_execution_notes) {
   cat(sprintf(" - %s\n", item))
 }
 cat("\n")
@@ -509,7 +526,10 @@ summary_json <- paste0(
   paste(command_json, collapse = ",\n"),
   "\n  ],\n",
   sprintf("  \"blocking_checks\": %s,\n", json_array(blocking_checks)),
-  sprintf("  \"warning_only_checks\": %s\n", json_array(warning_checks)),
+  sprintf("  \"warning_only_checks\": %s,\n", json_array(warning_checks)),
+  sprintf("  \"doctor_runs_heavy_checks\": %s,\n", json_bool(FALSE)),
+  sprintf("  \"validation_execution_status\": %s,\n", json_string("not_run_by_validation_doctor")),
+  sprintf("  \"doctor_execution_notes\": %s\n", json_array(doctor_execution_notes)),
   "}\n"
 )
 
