@@ -201,6 +201,16 @@ Validation interpretation:
 - In the maintainer VM/local environment, `bash tools/ai_validate.sh quick`, `bash tools/ai_validate.sh full --boot-smoke`, and manual same-origin `/smoke/ux-smoke.html` have passed.
 - If Codex Cloud fails before testthat starts because R package bootstrap cannot install packages such as `arrow`, `duckdb`, `odbc`, `pool`, or `shinyWidgets`, classify that as an environment/bootstrap failure, not as a code/test failure.
 
+Browser UX smoke execution rules:
+- `bash tools/ai_validate.sh full --boot-smoke` runs Shiny boot smoke first, then runs `tests/scripts/ai_browser_ux_smoke.R` opportunistically when a local Chrome/Chromium/Edge binary is available.
+- Normal `--boot-smoke` may SKIP browser smoke (exit 0) when no local browser binary is found; VM/local environments that are expected to have a browser must enforce it with `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke` or `Rscript tests/scripts/ai_browser_ux_smoke.R --require-browser`.
+- Use `MERGEN_BROWSER_BIN="/path/to/chrome-or-msedge"` when the browser lives outside default discovery paths.
+- The browser route contract is the served path `/smoke/ux-smoke.html` (not repository path `www/smoke/ux-smoke.html`), and successful runs must end with `UX_SMOKE_DONE:PASS`.
+- Smoke-only interfaces must remain namespaced and production-inert; `www/smoke/ux-smoke-probes.js` must not be added to `R/config_ui_assets.R`.
+- Do not add CDN/runtime-download or heavy browser automation dependencies (npm, Playwright, Selenium, chromote, RSelenium, etc.) to this path.
+- Forbidden dependency scans in the runner contract must ignore R comment lines before scanning so explanatory comments do not create false positives.
+- Do not revert Linux/RSPM package bootstrap defaults to `pkgType = "binary"`; keep source-style defaults unless `MERGEN_AI_R_PKG_TYPE` is explicitly set.
+
 ### AI agent validation rule
 
 Cloud fallback validation:
