@@ -2,7 +2,7 @@
 
 MERGEN Bilge, Türkçe odaklı, kurumsal kullanım için tasarlanmış, R/Shiny tabanlı gelişmiş bir yapay zeka asistanı uygulamasıdır. Uygulama; sohbet, dosya analizi, görsel üretimi, özetleme, süreç rehberliği, sesli etkileşim, destek merkezi ve kod odaklı çalışma alanı gibi çok sayıda yeteneği tek bir arayüzde bir araya getirir.
 
-MERGEN Bilge, modern kurumsal kullanım için tasarlanmış, Türkçe odaklı bir yapay zekâ asistanıdır. Karakter sistemi, mitolojik temalar yerine farklı çalışma tarzlarını temsil eden modern ve kurgusal Türk AI persona'larından oluşur. Bu persona'lar kullanıcı deneyimine hem görsel hem davranışsal bir katman ekler ve her biri ayrı bir yaklaşım sunar.
+MERGEN Bilge, modern kurumsal kullanım için tasarlanmış, Türkçe odaklı bir yapay zekâ asistanıdır. Karakter sistemi, farklı çalışma tarzlarını temsil eden modern ve kurgusal Türk AI persona'larından oluşur. Bu persona'lar kullanıcı deneyimine hem görsel hem davranışsal bir katman ekler ve her biri ayrı bir yaklaşım sunar.
 
 Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst seviye bir özet sunar; ayrıntılı operasyonel kurallar ve asistan davranış ilkeleri için sırasıyla `CLAUDE.md` ve `ai_rehber.md` dosyalarına başvurulmalıdır.
 
@@ -958,7 +958,7 @@ Varsayılan persona **Emre Onat**'tır.
 
 Persona sisteminin tek kaynağı `R/config_characters.R` dosyasıdır. Kanonik persona kimlikleri `emre`, `selin`, `deniz`, `can` ve `ipek`'tir. Yeni modüller doğrudan karakter adı veya klasör switch'i yazmamalı; `get_characters_data()`, `get_character_record()`, `get_character_asset_paths()` ve `normalize_character_id()` yardımcılarını kullanmalıdır.
 
-Eski mitolojik karakter kimlikleri (mergen, ulgen, kayra, erlik, umay, umay_ana) yalnızca `normalize_character_id()` sınırında desteklenir. Eski kayıtlı kullanıcı tercihleri otomatik olarak yeni kimliklere taşınır: `mergen → emre`, `ulgen → selin`, `kayra → deniz`, `erlik → can`, `umay/umay_ana → ipek`. "MERGEN Bilge" ürün adı korunur; Mergen artık seçilebilir bir persona değildir.
+Persona sistemi güncel kimlikler üzerinden yönetilir; önerilen kullanım `emre`, `selin`, `deniz`, `can` ve `ipek` persona kimlikleridir.
 
 ---
 
