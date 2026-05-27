@@ -4,9 +4,13 @@
 #           güvenli DB bağlantı yardımcılarını içerir.
 # ==============================================================================
 
-library(DBI)
-library(odbc)
-library(pool)
+# Bu dosya test bootstrap içinde cloud-quick modunda da source edilir.
+# Bu nedenle odbc/pool gibi ağır runtime paketleri top-level library() ile
+# zorunlu kılınmaz; gerçek bağlantı açan fonksiyonlar kendi içinde
+# requireNamespace() ile net hata verir.
+if (!requireNamespace("DBI", quietly = TRUE)) {
+  stop("R/helpers_db_connection.R requires the 'DBI' package.", call. = FALSE)
+}
 
 if (!exists("resolve_db_client_encoding", mode = "function", inherits = TRUE) ||
     !exists("normalize_db_params", mode = "function", inherits = TRUE)) {

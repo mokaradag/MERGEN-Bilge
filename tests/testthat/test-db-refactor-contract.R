@@ -187,6 +187,53 @@ test_that("helpers_db_connection.R beklenen bağlantı yardımcılarını içeri
   )
 })
 
+test_that("helpers_db_connection.R cloud-quick bootstrap icin top-level odbc/pool yuklemez", {
+  txt <- .read_repo_text_db_refactor_contract("R/helpers_db_connection.R")
+
+  forbidden <- c(
+    "library(odbc)",
+    "library(pool)",
+    "require(odbc)",
+    "require(pool)"
+  )
+
+  matched <- forbidden[vapply(
+    forbidden,
+    function(pattern) grepl(pattern, txt, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )]
+
+  expect_equal(
+    matched,
+    character(0),
+    info = paste(
+      "helpers_db_connection.R top-level agir DB paketlerini yuklememelidir; cloud-quick bootstrap bozulur:",
+      paste(matched, collapse = ", ")
+    )
+  )
+
+  expected <- c(
+    "requireNamespace(\"DBI\", quietly = TRUE)",
+    "requireNamespace(\"odbc\", quietly = TRUE)",
+    "Worker/process requires 'odbc' and 'DBI' packages installed.",
+    "Worker needs 'odbc' and 'DBI' packages installed."
+  )
+
+  found <- vapply(
+    expected,
+    function(pattern) grepl(pattern, txt, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  )
+
+  expect_true(
+    all(found),
+    info = paste(
+      "helpers_db_connection.R lazy DB dependency guard eksik:",
+      paste(expected[!found], collapse = ", ")
+    )
+  )
+})
+
 test_that("helpers_db_connection.R kodlama monolitini geri almıyor", {
   txt <- .read_repo_text_db_refactor_contract("R/helpers_db_connection.R")
 
