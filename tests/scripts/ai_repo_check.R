@@ -364,6 +364,7 @@ quick_tests <- c(
   "tests/testthat/test-ui-asset-manifest-contract.R",
   "tests/testthat/test-browser-smoke-harness-contract.R",
   "tests/testthat/test-browser-ux-smoke-runner-contract.R",
+  "tests/testthat/test-validation-doctor-contract.R",
   "tests/testthat/test-ux-smoke-browser-contract.R",
   "tests/testthat/test-smoke-probes-contract.R",
   "tests/testthat/test-maintainability-ratchet-contract.R",
