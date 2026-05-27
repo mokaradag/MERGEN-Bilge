@@ -86,6 +86,8 @@ Browser-rendered markdown is a protected security boundary. User-controlled and 
 
 Current contract:
 
+- Chat history tables are a separate browser display boundary. `R/module_chat_history.R` must keep the `Söyleşi Geçmişi` DataTable on `escape = TRUE` because `Söyleşi Adı`, `Tarih`, `Soru`, and `Cevap` are plain-text previews of stored user/LLM-controlled content. Do not switch this table back to `escape = FALSE` unless every rendered column is explicitly sanitized and the contract test is updated.
+
 - Browser-side streaming markdown escaping belongs in `www/js/streaming_markdown_safety.js` and `www/js/markdown-parser.js`.
 - `www/js/markdown-parser.js` must escape raw prose before converting markdown tokens into the small allowed HTML subset used by the app.
 - The allowed streaming markdown output is intentionally small: headings, strong/emphasis, inline code, fenced code blocks, line breaks, unordered lists, and the existing app-controlled code block wrappers.
@@ -96,6 +98,8 @@ Current contract:
 - Do not add CDN dependencies, runtime downloads, external sanitization libraries, bundling, or minification for this boundary.
 
 Protected by:
+
+- `tests/testthat/test-chat-history-datatable-safety-contract.R`
 
 - `tests/testthat/test-streaming-markdown-safety-contract.R`
 - `tests/testthat/test-ui-asset-manifest-contract.R`
