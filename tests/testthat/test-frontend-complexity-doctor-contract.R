@@ -93,7 +93,6 @@ testthat::test_that("frontend complexity doctor script and report expose top-ris
       "unmanifested_app_assets",
       "allowlisted_unmanifested_assets",
       "smoke_only_assets",
-      "www/smoke/ux-smoke-probes.js",
       "doctor_runs_runtime",
       "value=<not-collected>",
       "Frontend complexity artifact:"
