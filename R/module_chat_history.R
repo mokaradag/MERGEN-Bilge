@@ -344,7 +344,7 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       DT::datatable(
         filtered_history(),
         colnames = c("Söyleşi Adı", "Tarih", "Soru", "Cevap"),
-        escape = FALSE,
+        escape = TRUE,
         class = "display compact stripe hover dark-table",
         options = list(
           selection = "none",
