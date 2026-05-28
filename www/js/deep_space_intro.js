@@ -265,9 +265,9 @@ window.DeepSpaceIntro = (function() {
     applyRendererPixelRatio(true);
     _renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
-    // Güneş ve gündüz tarafı bir miktar güçlendirilir; önceki aşırı beyazlama
-    // seviyesine dönmemek için pozlama kontrollü tutulur.
-    _renderer.toneMappingExposure = 0.78;
+    // Güneşin görünür parlaklığı solar modülde yönetilir. Dünya pozlaması
+    // ayrı tutulur ki Sahara/Arabistan gibi açık kara dokuları patlamasın.
+    _renderer.toneMappingExposure = 0.72;
     // v0.147.0: outputEncoding kullanılır (outputColorSpace yerine)
     _renderer.outputEncoding = THREE.sRGBEncoding;
     _renderer.shadowMap.enabled = true;
@@ -367,86 +367,26 @@ window.DeepSpaceIntro = (function() {
 
       // Gündüz tarafı canlı kalır; çöl/parlak kara bölgeleri shader içinde
       // ayrıca sıkıştırıldığı için Sahara/Arabistan tekrar patlamaz.
-      color: new THREE.Color(0xdce4ea),
-      roughness: 0.91,
+      color: new THREE.Color(0xd4dde5),
+      roughness: 0.93,
       metalness: 0.0,
-      specularIntensity: 0.024,
+      specularIntensity: 0.018,
       ior: 1.333,
       clearcoat: 0.0,
       clearcoatRoughness: 0.82,
       clearcoatMap: earthSpecularMap,
       emissiveMap: earthLightsMap,
       emissive: new THREE.Color(0xfff1c2),
-      emissiveIntensity: 0.43,
+      emissiveIntensity: 0.4,
       sheen: 0.0
     });
 
-    // Gündüz/gece shader düzenlemesi (v0.147.0 uyumlu)
-    _globeMat.onBeforeCompile = function(shader) {
-      shader.uniforms.uSunDirWorld = { value: new THREE.Vector3(0, 0, 1) };
-      _globeMat.userData.shader = shader;
-
-      // Vertex shader: dünya normali hesaplama
-      shader.vertexShader = shader.vertexShader.replace(
-        'varying vec3 vViewPosition;',
-        'varying vec3 vViewPosition;\nvarying vec3 vWorldNormalCustom;'
-      ).replace(
-        '#include <defaultnormal_vertex>',
-        '#include <defaultnormal_vertex>\nvWorldNormalCustom = normalize( ( modelMatrix * vec4( objectNormal, 0.0 ) ).xyz );'
-      );
-
-      // Fragment shader değişkenleri: gece ışıkları ve terminator hesabı için
-      // vertex shader'dan gelen dünya normali ve güneş yönü burada tanımlanır.
-      shader.fragmentShader = shader.fragmentShader.replace(
-        'varying vec3 vViewPosition;',
-        'varying vec3 vViewPosition;\nvarying vec3 vWorldNormalCustom;\nuniform vec3 uSunDirWorld;'
-      );
-
-      // Harita dokusu düzeltmesi:
-      // Sahara/Arabistan gibi sıcak ve çok parlak çöl tonları güneşte
-      // aşırı öne çıkabiliyor. mapTexelToLinear kullanılmaz; mevcut Three.js
-      // v0.147.0 shader yolunda bu çağrı WebGL derleme hatası üretiyordu.
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <map_fragment>',
-        [
-          '#ifdef USE_MAP',
-          '  vec4 sampledDiffuseColor = texture2D( map, vUv );',
-          '  float texLuma = dot(sampledDiffuseColor.rgb, vec3(0.299, 0.587, 0.114));',
-          '  float warmMask = smoothstep(0.48, 0.78, sampledDiffuseColor.r) *',
-          '                   smoothstep(0.40, 0.68, sampledDiffuseColor.g) *',
-          '                   (1.0 - smoothstep(0.20, 0.42, sampledDiffuseColor.b));',
-          '  float desertMask = warmMask * smoothstep(0.50, 0.82, texLuma);',
-          '  sampledDiffuseColor.rgb = mix(',
-          '    sampledDiffuseColor.rgb,',
-          '    sampledDiffuseColor.rgb * vec3(0.78, 0.82, 0.9),',
-          '    clamp(desertMask * 0.34, 0.0, 0.34)',
-          '  );',
-          '  diffuseColor *= sampledDiffuseColor;',
-          '#endif'
-        ].join('\n')
-      );
-
-      // Fragment shader: gece ışıkları maskeleme
-      // v0.147.0: vUv kullanılır (vEmissiveMapUv yerine)
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <emissivemap_fragment>',
-        [
-          '#ifdef USE_EMISSIVEMAP',
-          '  vec4 emissiveColor = texture2D( emissiveMap, vUv );',
-          '  float sunDot = dot(normalize(vWorldNormalCustom), normalize(uSunDirWorld));',
-          '',
-          '  // Terminator geçişi geniş ve düzgün tutulur. Ters smoothstep',
-          '  // yerine tanımlı aralık kullanılır; bu piksel piksel görünen',
-          '  // gündüz/gece sınırını yumuşatır.',
-          '  float nightMask = 1.0 - smoothstep(-0.34, 0.10, sunDot);',
-          '  nightMask = pow(clamp(nightMask, 0.0, 1.0), 1.12);',
-          '',
-          '  emissiveColor.rgb *= nightMask;',
-          '  totalEmissiveRadiance *= emissiveColor.rgb;',
-          '#endif'
-        ].join('\n')
-      );
-    };
+    // Dünya shader düzeltmeleri ayrı dosyada tutulur; bu dosya bakım ratchet
+    // sınırının altında kalır.
+    if (window.DeepSpaceIntroEarthShader &&
+        typeof window.DeepSpaceIntroEarthShader.apply === 'function') {
+      window.DeepSpaceIntroEarthShader.apply(THREE, _globeMat);
+    }
 
     _globe = new THREE.Mesh(globeGeo, _globeMat);
     _globe.castShadow = true;

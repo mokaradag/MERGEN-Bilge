@@ -38,11 +38,11 @@ window.DeepSpaceIntroSolar = (function() {
     var hctx = haloCanvas.getContext('2d');
     var haloGrad = hctx.createRadialGradient(128, 128, 0, 128, 128, 128);
 
-    // Güneş halesi güçlendirilir; sıcak renk kıta dokularını beyazlatmadan
-    // güneşi daha görünür ve sinematik yapar.
-    haloGrad.addColorStop(0, 'rgba(255,252,232,1)');
-    haloGrad.addColorStop(0.18, 'rgba(255,225,155,0.76)');
-    haloGrad.addColorStop(0.48, 'rgba(255,185,80,0.22)');
+    // Uzaydan bakışta Güneş beyaza yakın algılanır. Hafif mavi-beyaz hale,
+    // Dünya yüzeyini sarartmadan görünür güneşi güçlendirir.
+    haloGrad.addColorStop(0, 'rgba(255,255,255,1)');
+    haloGrad.addColorStop(0.16, 'rgba(245,248,255,0.82)');
+    haloGrad.addColorStop(0.46, 'rgba(210,225,255,0.24)');
     haloGrad.addColorStop(1, 'rgba(0,0,0,0)');
 
     hctx.fillStyle = haloGrad;
@@ -80,9 +80,11 @@ window.DeepSpaceIntroSolar = (function() {
 
       // Bloom güneş/lens etkisini güçlendirir; eşik yüksek tutulduğu için
       // kıta, bulut ve çöl dokuları yeniden beyazlamaz.
-      bloom.threshold = 0.86;
-      bloom.strength = 0.58;
-      bloom.radius = 0.62;
+      // Eşik yüksek tutulur: bloom görünür güneşi büyütür, çöl/kara dokularına
+      // yeniden yayılmaz.
+      bloom.threshold = 0.92;
+      bloom.strength = 0.72;
+      bloom.radius = 0.68;
 
       composer.addPass(bloom);
       return composer;
@@ -106,7 +108,7 @@ window.DeepSpaceIntroSolar = (function() {
     var sunPos = new THREE.Vector3(1100, 0, 850);
 
     // Güneş ışığı, yüzey ayrıntısını patlatmadan bir miktar güçlendirilir.
-    var sunLight = new THREE.DirectionalLight(0xfff1d6, 3.65);
+    var sunLight = new THREE.DirectionalLight(0xffffff, 3.25);
     sunLight.position.copy(sunPos);
     sunLight.castShadow = true;
 
@@ -125,9 +127,9 @@ window.DeepSpaceIntroSolar = (function() {
     scene.add(sunLight);
 
     if (typeof THREE.Lensflare !== 'undefined') {
-      var textureFlare0 = createFlareTexture(THREE, 255, 245, 218, 512, 1.0);
-      var textureFlare3 = createFlareTexture(THREE, 255, 216, 160, 128, 0.56);
-      var textureFlareHex = createFlareTexture(THREE, 255, 235, 200, 256, 0.16);
+      var textureFlare0 = createFlareTexture(THREE, 255, 255, 255, 512, 1.0);
+      var textureFlare3 = createFlareTexture(THREE, 225, 235, 255, 128, 0.56);
+      var textureFlareHex = createFlareTexture(THREE, 245, 248, 255, 256, 0.16);
 
       var lensflare = new THREE.Lensflare();
       lensflare.addElement(new THREE.LensflareElement(textureFlare0, 860, 0));
@@ -139,8 +141,8 @@ window.DeepSpaceIntroSolar = (function() {
 
     // Güneş geometrisi: görünen güneş biraz büyütülür, ancak Dünya ışığı
     // ayrı DirectionalLight ile yönetildiği için kıtalar aşırı parlamaz.
-    var sunGeo = new THREE.SphereGeometry(38, 64, 64);
-    var sunMat = new THREE.MeshBasicMaterial({ color: 0xffffee });
+    var sunGeo = new THREE.SphereGeometry(40, 64, 64);
+    var sunMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     var sunMesh = new THREE.Mesh(sunGeo, sunMat);
     sunMesh.position.copy(sunPos);
     scene.add(sunMesh);
@@ -154,7 +156,7 @@ window.DeepSpaceIntroSolar = (function() {
     });
 
     var sunGlow = new THREE.Sprite(glowMat);
-    sunGlow.scale.set(680, 680, 1.0);
+    sunGlow.scale.set(760, 760, 1.0);
     sunMesh.add(sunGlow);
 
     // Day/night sınırı çok sert görünmesin diye çok düşük ortam ışığı verilir.

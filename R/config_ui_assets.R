@@ -233,6 +233,7 @@ ui_asset_js_groups <- list(
     "js/image_gallery.js",
     "js/summarization_tools.js",
     "js/chat_search_modal.js",
+    "js/deep_space_intro_earth_shader.js",
     "js/deep_space_intro_solar.js",
     "js/deep_space_intro.js",
     "js/mode_selection.js",
