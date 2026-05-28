@@ -448,9 +448,23 @@ claims_manual_fragile_flow_passed <- claim_matches(
 )
 
 claims_all_validation_passed <- claim_matches(
-  sprintf("(all|complete|entire)\\s+(validation|validations|checks|tests?|gates?)\\s+(%s)", validation_pass_words_en),
+  sprintf(
+    "(all|complete|entire)\\s+(validation\\s+)?(validations|checks|tests?|gates?)\\s+(%s)",
+    validation_pass_words_en
+  ),
+  sprintf(
+    "(all|complete|entire)\\s+validation\\s+(checks|tests?|gates?)\\s+(%s)",
+    validation_pass_words_en
+  ),
   sprintf("(everything|all)\\s+(%s)", validation_pass_words_en),
-  sprintf("tüm\\s+(doğrulama|kontrol|test|kapılar)\\s+(%s)", validation_pass_words_tr),
+  sprintf(
+    "tüm\\s+(doğrulama\\s+)?(doğrulama|kontrol|test|kapılar)\\s+(%s)",
+    validation_pass_words_tr
+  ),
+  sprintf(
+    "tüm\\s+doğrulama\\s+(kontrolleri|testleri|kapıları)\\s+(%s)",
+    validation_pass_words_tr
+  ),
   sprintf("hepsi\\s+(%s)", validation_pass_words_tr)
 )
 
