@@ -141,18 +141,21 @@
     removeHealthTooltips();
   }
 
-  if (window.Shiny && Shiny.addCustomMessageHandler) {
-    Shiny.addCustomMessageHandler("initHealthTooltips", function() {
-      window.setTimeout(function() {
-        bindHealthPathButtons();
-        bindTooltipCleanup();
-        initHealthTooltips();
-      }, 80);
-    });
-    Shiny.addCustomMessageHandler("removeHealthTooltips", function() {
-      removeHealthTooltips();
-    });
-  }
+	if (window.Shiny && Shiny.addCustomMessageHandler) {
+	  Shiny.addCustomMessageHandler('initHealthTooltips', function(message) {
+		// Shiny yeni sürümlerde handler fonksiyonunun tek argüman almasını bekler.
+		// Bu mesajda içerik kullanılmıyor; argüman sadece Shiny sözleşmesini korumak içindir.
+		window.setTimeout(function() {
+		  bootstrapHealthDashboard();
+		  initHealthTooltips();
+		}, 80);
+	  });
+
+	  Shiny.addCustomMessageHandler('removeHealthTooltips', function(message) {
+		// Shiny mesaj içeriği kullanılmıyor; tek argüman sözleşme uyumu içindir.
+		removeHealthTooltips();
+	  });
+	}
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", bootstrapHealthDashboard);
