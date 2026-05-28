@@ -1,47 +1,67 @@
 # R/module_chat_history.R (Updated with "Bugün" button functionality)
 
 # Erişilebilir tarih aralığı girdisi üretir.
-# Shiny dateRangeInput varsayılan olarak label[for=inputId] üretir;
-# inputId gerçek <input> değil kapsayıcı <div> olduğu için Chrome erişilebilirlik uyarısı verir.
-# Bu yardımcı, Shiny'nin tarih seçici bağını korur; yalnızca hatalı <label> düğümünü kaldırır.
+# Bootstrap datepicker yerine tarayıcının yerel tarih alanları kullanılır.
+# Böylece Shiny'nin bootstrap-datepicker-js-1.9.0 bağımlılığı ve vendor
+# deprecation uyarıları uygulama başlangıcında yüklenmez.
 history_accessible_date_range_input <- function(ns) {
   input_id <- ns("date_range")
+  start_id <- ns("date_range_start")
+  end_id <- ns("date_range_end")
   label_id <- paste0(input_id, "-label")
 
-  date_range <- dateRangeInput(
-    inputId = input_id,
-    label = NULL,
-    start = Sys.Date() - 30,
-    end = Sys.Date(),
-    language = "tr",
-    separator = " - ",
-    format = "dd/mm/yyyy",
-    width = "300px"
-  )
+  today <- Sys.Date()
+  start_value <- format(today - 30, "%Y-%m-%d")
+  end_value <- format(today, "%Y-%m-%d")
 
-  # Shiny'nin ürettiği gizli label[for=inputId] düğümü Chrome Issues uyarısına yol açıyor.
-  # Girdilerin aria-labelledby bağı korunacağı için aynı id ile <div> başlık ekliyoruz.
-  date_range$children <- Filter(
-    f = function(child) {
-      !(inherits(child, "shiny.tag") &&
-          identical(child$name, "label") &&
-          identical(child$attribs$id, label_id))
-    },
-    x = date_range$children
-  )
+  tags$div(
+    class = "history-native-date-range shiny-input-container",
+    `data-shiny-input-id` = input_id,
+    `aria-labelledby` = label_id,
 
-  date_range$children <- c(
-    list(
-      tags$div(
-        "Tarih Aralığı:",
-        id = label_id,
-        class = "control-label history-date-range-label"
-      )
+    tags$div(
+      "Tarih Aralığı:",
+      id = label_id,
+      class = "control-label history-date-range-label"
     ),
-    date_range$children
-  )
 
-  date_range
+    tags$div(
+      class = "history-native-date-fields",
+
+      tags$label(
+        "Başlangıç tarihi",
+        `for` = start_id,
+        class = "sr-only"
+      ),
+      tags$input(
+        id = start_id,
+        type = "date",
+        class = "form-control history-native-date-input",
+        value = start_value,
+        `data-history-date-role` = "start",
+        `aria-label` = "Başlangıç tarihi"
+      ),
+
+      tags$span(
+        class = "history-native-date-separator",
+        " - "
+      ),
+
+      tags$label(
+        "Bitiş tarihi",
+        `for` = end_id,
+        class = "sr-only"
+      ),
+      tags$input(
+        id = end_id,
+        type = "date",
+        class = "form-control history-native-date-input",
+        value = end_value,
+        `data-history-date-role` = "end",
+        `aria-label` = "Bitiş tarihi"
+      )
+    )
+  )
 }
 
 historyUI <- function(id) {
@@ -149,6 +169,37 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
 
       NA_real_
     }
+	
+    history_normalize_date_range <- function(date_range) {
+      if (is.null(date_range)) {
+        return(NULL)
+      }
+
+      values <- unlist(date_range, use.names = FALSE)
+      if (length(values) != 2L) {
+        return(NULL)
+      }
+
+      values <- trimws(as.character(values))
+      if (any(!nzchar(values))) {
+        return(NULL)
+      }
+
+      parsed <- suppressWarnings(as.Date(
+        values,
+        tryFormats = c("%Y-%m-%d", "%d/%m/%Y", "%d.%m.%Y")
+      ))
+
+      if (any(is.na(parsed))) {
+        return(NULL)
+      }
+
+      if (parsed[1] > parsed[2]) {
+        parsed <- rev(parsed)
+      }
+
+      parsed
+    }
 
     history_chat_ids_for_date_range <- function(chats, date_range = NULL) {
       all_chat_ids <- setdiff(names(chats %||% list()), "current_chat")
@@ -157,13 +208,14 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
         return(character(0))
       }
 
-      if (is.null(date_range) || length(date_range) != 2L ||
-          any(is.na(as.Date(date_range)))) {
+      active_date_range <- history_normalize_date_range(date_range)
+
+      if (is.null(active_date_range)) {
         return(all_chat_ids)
       }
 
-      start_num <- as.numeric(as.Date(date_range[1]))
-      end_num <- as.numeric(as.Date(date_range[2]))
+      start_num <- as.numeric(active_date_range[1])
+      end_num <- as.numeric(active_date_range[2])
 
       chat_days <- vapply(
         all_chat_ids,
@@ -268,10 +320,12 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     }
 	
     refresh_history_cache <- function(chats = latest_chats(), force = FALSE, date_range = NULL) {
-		chats <- chats %||% list()
+      chats <- chats %||% list()
 
-        active_date_range <- date_range %||% shiny::isolate(input$date_range)
-		chat_ids <- history_chat_ids_for_date_range(chats, active_date_range)
+      active_date_range <- history_normalize_date_range(
+        date_range %||% shiny::isolate(input$date_range)
+      )
+      chat_ids <- history_chat_ids_for_date_range(chats, active_date_range)
 
       if (isTRUE(force)) {
         messages_cache(list())
@@ -293,11 +347,26 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       invisible(NULL)
     }
 
-    # FIX #5: Add "Bugün" button handler
+    # Bugün düğmesi: yerel tarih alanlarını istemci tarafında günceller.
     observeEvent(input$today_filter, {
-      updateDateRangeInput(session, "date_range",
-                          start = Sys.Date(),
-                          end = Sys.Date())
+      today <- Sys.Date()
+      today_value <- format(today, "%Y-%m-%d")
+
+      session$sendCustomMessage(
+        type = "history-date-range-set",
+        message = list(
+          inputId = session$ns("date_range"),
+          start = today_value,
+          end = today_value
+        )
+      )
+
+      refresh_history_cache(
+        chats = latest_chats(),
+        force = TRUE,
+        date_range = c(today, today)
+      )
+
       showToast(session, "Bugünün kayıtları gösteriliyor.", "info")
     })
 	
@@ -311,17 +380,19 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
         refresh_history_cache(
           chats = chats,
           force = FALSE,
-          date_range = shiny::isolate(input$date_range)
+          date_range = history_normalize_date_range(shiny::isolate(input$date_range))
         )
       }
     }, ignoreNULL = FALSE, priority = 1)
 
     observeEvent(input$date_range, {
-      req(input$date_range)
+      active_date_range <- history_normalize_date_range(input$date_range)
+      req(!is.null(active_date_range))
+
       refresh_history_cache(
         chats = latest_chats(),
         force = TRUE,
-        date_range = input$date_range
+        date_range = active_date_range
       )
     }, ignoreInit = TRUE)
 	
@@ -352,18 +423,20 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
 
       history_data <- data.table::rbindlist(history_list)
 
-      # Apply date filter
-      if (!is.null(input$date_range) && length(input$date_range) == 2) {
+      # Tarih filtresini yerel tarih aralığı girdisine göre uygula.
+      active_date_range <- history_normalize_date_range(input$date_range)
+
+      if (!is.null(active_date_range) && length(active_date_range) == 2L) {
         dates <- tryCatch(
           as.Date(history_data$Tarih, format = "%d.%m.%Y - %H:%M"),
           error = function(e) as.Date(NA)
         )
 
         if (any(!is.na(dates))) {
-          mask <- dates >= input$date_range[1] & dates <= input$date_range[2]
+          mask <- dates >= active_date_range[1] & dates <= active_date_range[2]
           history_data <- history_data[mask & !is.na(mask), ]
         }
-	  }
+      }
 
       # Sort by date
       if (nrow(history_data) > 0) {

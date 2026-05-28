@@ -211,6 +211,7 @@ ui_asset_js_groups <- list(
     "js/file_handlers.js",
     "js/chart_renderer.js",
     "js/table_scroll_handler.js",
+    "js/history_date_range.js",
     "js/codemirror-manager.js",
     "js/cinematic_video.js",
     "js/character_typing.js",
