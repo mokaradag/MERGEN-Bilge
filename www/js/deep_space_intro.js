@@ -19,7 +19,21 @@ window.DeepSpaceIntro = (function() {
   var _controls = null;
   var _clock = null;
   var _resizeHandler = null;
+  var _resizeRafId = null;
   var _containerEl = null;
+
+  // Performans durumu: Chrome DevTools "Violation" kayıtlarını azaltmak için
+  // görsel etkiyi kapatmadan yalnızca piksel yoğunluğunu uyarlanabilir yönetir.
+  var _qualityScale = 1.0;
+  var _slowFrameHits = 0;
+  var _lastPixelRatio = 0;
+  var _loadingTimerId = null;
+
+  // Görsel kalite korunur; çok yüksek DPI ekranlarda gereksiz GPU yükü sınırlanır.
+  var MAX_DEVICE_PIXEL_RATIO = 1.75;
+  var MIN_QUALITY_SCALE = 0.72;
+  var SLOW_FRAME_MS = 48;
+  var SLOW_FRAME_HITS_TO_ADAPT = 6;
 
   // Sahne nesneleri
   var _globe = null;
@@ -52,6 +66,64 @@ window.DeepSpaceIntro = (function() {
   function getKeplerSpeed(r) {
     var GM = 0.5;
     return Math.sqrt(GM / r) * 0.15;
+  }
+
+  // Yardımcı: Güvenli piksel oranı
+  // Amaç: Retina/çok yüksek DPI ekranlarda aynı sahneyi gereksiz büyüklükte
+  // çizmemek; görsel efektler korunur, yalnızca GPU işi dengelenir.
+  function getSafePixelRatio() {
+    var dpr = window.devicePixelRatio || 1;
+    if (!isFinite(dpr) || dpr < 1) dpr = 1;
+    return Math.max(1, Math.min(dpr, MAX_DEVICE_PIXEL_RATIO) * _qualityScale);
+  }
+
+  // Yardımcı: Renderer piksel oranını yalnızca gerektiğinde uygula
+  function applyRendererPixelRatio(force) {
+    if (!_renderer) return;
+
+    var nextPixelRatio = getSafePixelRatio();
+    if (force || Math.abs(nextPixelRatio - _lastPixelRatio) > 0.05) {
+      _renderer.setPixelRatio(nextPixelRatio);
+      _lastPixelRatio = nextPixelRatio;
+    }
+  }
+
+  // Yardımcı: Konteyner boyutuna güvenli yeniden boyutlandırma
+  function resizeRendererToContainer(force) {
+    if (!_camera || !_renderer || !_containerEl) return;
+
+    var w = _containerEl.clientWidth;
+    var h = _containerEl.clientHeight;
+    if (w === 0 || h === 0) return;
+
+    applyRendererPixelRatio(force);
+
+    _camera.aspect = w / h;
+    _camera.updateProjectionMatrix();
+    _renderer.setSize(w, h);
+
+    if (_composer) {
+      _composer.setSize(w, h);
+    }
+  }
+
+  // Yardımcı: Sürekli yavaş karelerde kaliteyi küçük adımlarla uyarlama
+  // Not: Bloom, atmosfer, yörünge ve kamera deneyimi kapatılmaz.
+  function adaptQualityAfterFrame(frameMs) {
+    if (frameMs <= SLOW_FRAME_MS) {
+      if (_slowFrameHits > 0) _slowFrameHits--;
+      return;
+    }
+
+    _slowFrameHits++;
+    if (_slowFrameHits < SLOW_FRAME_HITS_TO_ADAPT) return;
+    if (_qualityScale <= MIN_QUALITY_SCALE) return;
+
+    _qualityScale = Math.max(MIN_QUALITY_SCALE, _qualityScale - 0.12);
+    _slowFrameHits = 0;
+
+    applyRendererPixelRatio(true);
+    resizeRendererToContainer(true);
   }
 
   // Doku yükleme yardımcısı (v0.147.0 uyumlu)
@@ -148,12 +220,19 @@ window.DeepSpaceIntro = (function() {
   // Yükleme göstergesini gizle
   function hideLoadingIndicator() {
     var loadingEl = document.getElementById('deep-space-loading');
-    if (loadingEl) {
-      loadingEl.style.opacity = '0';
-      setTimeout(function() {
-        loadingEl.style.display = 'none';
-      }, 1000);
+    if (!loadingEl) return;
+
+    loadingEl.style.opacity = '0';
+
+    if (_loadingTimerId) {
+      clearTimeout(_loadingTimerId);
+      _loadingTimerId = null;
     }
+
+    _loadingTimerId = setTimeout(function() {
+      loadingEl.style.display = 'none';
+      _loadingTimerId = null;
+    }, 1000);
   }
 
   // Ana başlatma fonksiyonu
@@ -204,8 +283,11 @@ window.DeepSpaceIntro = (function() {
       alpha: true
     });
     _renderer.setSize(container.clientWidth, container.clientHeight);
-    // Cihazın gerçek piksel oranını kullan (bulanıklığı önlemek için sınırlamadan)
-    _renderer.setPixelRatio(window.devicePixelRatio);
+
+    // Çok yüksek DPI ekranlarda WebGL tuvali aşırı büyüyerek ilk karelerde
+    // Chrome "requestAnimationFrame handler took..." uyarılarına yol açabiliyor.
+    // Görsel efektleri kapatmadan güvenli üst sınır uygulanır.
+    applyRendererPixelRatio(true);
     _renderer.toneMapping = THREE.ACESFilmicToneMapping;
     _renderer.toneMappingExposure = 0.85;
     // v0.147.0: outputEncoding kullanılır (outputColorSpace yerine)
@@ -619,8 +701,20 @@ window.DeepSpaceIntro = (function() {
       if (_destroyed) return;
       _animFrameId = requestAnimationFrame(animate);
 
-      var dt = _clock.getDelta() * SIMULATION_SPEED;
-      var elapsed = _clock.getElapsedTime();
+      // Sekme görünür değilken sahneyi çizmeyerek gereksiz GPU yükünü önle.
+      // Saat delta değeri tüketilir; sekmeye dönünce animasyon sıçramaz.
+      if (document.hidden || !_renderer || !_scene || !_camera) {
+        if (_clock) _clock.getDelta();
+        return;
+      }
+
+      var frameStart = performance.now();
+
+      // getElapsedTime() ayrıca getDelta() çağırdığı için burada doğrudan
+      // elapsedTime okunur. Böylece saat iki kez ilerletilmez.
+      var rawDt = _clock.getDelta();
+      var dt = Math.min(rawDt, 0.05) * SIMULATION_SPEED;
+      var elapsed = _clock.elapsedTime;
 
       // Açılış animasyonu: kamerayı yaklaştır
       if (introAnim) {
@@ -664,20 +758,22 @@ window.DeepSpaceIntro = (function() {
       } else {
         _renderer.render(_scene, _camera);
       }
+
+      adaptQualityAfterFrame(performance.now() - frameStart);
     }
 
     // Pencere boyut değişikliği
     _resizeHandler = function() {
-      if (!_camera || !_renderer || !_containerEl) return;
-      var w = _containerEl.clientWidth;
-      var h = _containerEl.clientHeight;
-      if (w === 0 || h === 0) return;
-      _camera.aspect = w / h;
-      _camera.updateProjectionMatrix();
-      _renderer.setSize(w, h);
-      if (_composer) {
-        _composer.setSize(w, h);
+      if (_resizeRafId) {
+        cancelAnimationFrame(_resizeRafId);
       }
+
+      // Yeniden boyutlandırmayı tarayıcının çizim ritmine bağla.
+      // Böylece ardışık resize olayları tek WebGL güncellemesine indirgenir.
+      _resizeRafId = requestAnimationFrame(function() {
+        _resizeRafId = null;
+        resizeRendererToContainer(true);
+      });
     };
     window.addEventListener('resize', _resizeHandler);
 
@@ -693,6 +789,16 @@ window.DeepSpaceIntro = (function() {
 
     // Gövde sınıfını kaldır
     document.body.classList.remove('deep-space-active');
+	
+    if (_loadingTimerId) {
+      clearTimeout(_loadingTimerId);
+      _loadingTimerId = null;
+    }
+
+    if (_resizeRafId) {
+      cancelAnimationFrame(_resizeRafId);
+      _resizeRafId = null;
+    }
 
     if (_animFrameId) {
       cancelAnimationFrame(_animFrameId);
@@ -787,11 +893,26 @@ window.DeepSpaceIntro = (function() {
     }
   }
 
+  function scheduleAutoInitDeepSpace() {
+    var start = function() {
+      // İlk boyama fırsatını tarayıcıya bırak; ardından boş zamanda WebGL kur.
+      // Bu, giriş hissini bozmaz ama "setTimeout handler took..." uyarısını azaltır.
+      requestAnimationFrame(function() {
+        if (typeof window.requestIdleCallback === 'function') {
+          window.requestIdleCallback(autoInitDeepSpace, { timeout: 1200 });
+        } else {
+          requestAnimationFrame(autoInitDeepSpace);
+        }
+      });
+    };
+
+    start();
+  }
+
   // DOM hazır olur olmaz başlat
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', autoInitDeepSpace);
+    document.addEventListener('DOMContentLoaded', scheduleAutoInitDeepSpace, { once: true });
   } else {
-    // DOM zaten hazır, küçük bir gecikmeyle başlat (elemanların eklenmesini bekle)
-    setTimeout(autoInitDeepSpace, 50);
+    scheduleAutoInitDeepSpace();
   }
 })();
