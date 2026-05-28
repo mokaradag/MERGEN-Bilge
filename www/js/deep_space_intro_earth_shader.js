@@ -30,28 +30,32 @@ window.DeepSpaceIntroEarthShader = (function() {
 
       // Çöl parlaklığı sıkıştırması:
       // Sahara/Arabistan gibi sıcak ve yüksek luma bölgeleri gündüz tarafında
-      // aşırı parlamasın. Okyanus, orman ve gece ışığı dokusu korunur.
+      // aşırı parlamasın. Sıkıştırma yalnızca sıcak-kum renk aralığında çalışır.
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <map_fragment>',
         [
           '#ifdef USE_MAP',
           '  vec4 sampledDiffuseColor = texture2D( map, vUv );',
           '  float texLuma = dot(sampledDiffuseColor.rgb, vec3(0.299, 0.587, 0.114));',
-          '  float redDominance = smoothstep(0.04, 0.24, sampledDiffuseColor.r - sampledDiffuseColor.b);',
-          '  float warmMask = smoothstep(0.46, 0.74, sampledDiffuseColor.r) *',
-          '                   smoothstep(0.38, 0.64, sampledDiffuseColor.g) *',
-          '                   (1.0 - smoothstep(0.24, 0.50, sampledDiffuseColor.b)) *',
-          '                   redDominance;',
-          '  float desertMask = warmMask * smoothstep(0.46, 0.76, texLuma);',
-          '  vec3 desertCompressed = sampledDiffuseColor.rgb * vec3(0.56, 0.64, 0.82);',
+          '  float redDominance = smoothstep(0.03, 0.20, sampledDiffuseColor.r - sampledDiffuseColor.b);',
+          '  float greenWarmth = smoothstep(0.02, 0.18, sampledDiffuseColor.g - sampledDiffuseColor.b);',
+          '  float warmMask = smoothstep(0.42, 0.72, sampledDiffuseColor.r) *',
+          '                   smoothstep(0.34, 0.62, sampledDiffuseColor.g) *',
+          '                   (1.0 - smoothstep(0.22, 0.48, sampledDiffuseColor.b)) *',
+          '                   redDominance * greenWarmth;',
+          '  float desertMask = warmMask * smoothstep(0.42, 0.72, texLuma);',
+          '',
+          '  vec3 desertCompressed = sampledDiffuseColor.rgb * vec3(0.46, 0.56, 0.78);',
           '  sampledDiffuseColor.rgb = mix(',
           '    sampledDiffuseColor.rgb,',
           '    desertCompressed,',
-          '    clamp(desertMask * 0.62, 0.0, 0.62)',
+          '    clamp(desertMask * 0.78, 0.0, 0.78)',
           '  );',
+          '',
           '  float compressedLuma = dot(sampledDiffuseColor.rgb, vec3(0.299, 0.587, 0.114));',
-          '  float lumaLimiter = min(1.0, 0.62 / max(compressedLuma, 0.001));',
-          '  sampledDiffuseColor.rgb *= mix(1.0, lumaLimiter, clamp(desertMask * 0.55, 0.0, 0.55));',
+          '  float lumaLimiter = min(1.0, 0.54 / max(compressedLuma, 0.001));',
+          '  sampledDiffuseColor.rgb *= mix(1.0, lumaLimiter, clamp(desertMask * 0.7, 0.0, 0.7));',
+          '',
           '  diffuseColor *= sampledDiffuseColor;',
           '#endif'
         ].join('\n')

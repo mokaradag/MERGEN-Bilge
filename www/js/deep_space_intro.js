@@ -573,6 +573,24 @@ window.DeepSpaceIntro = (function() {
     var introAnim = true;
     var sunDirView = new THREE.Vector3();
     var sunDirWorld = new THREE.Vector3();
+	
+    // İlk WebGL render maliyetini animasyon döngüsünden önce ısıt.
+    // Shader derleme / texture upload ilk animate karesine kalırsa Chrome
+    // requestAnimationFrame violation olarak raporlar.
+    function warmUpRendererOnce() {
+      try {
+        if (_renderer && _scene && _camera) {
+          _renderer.compile(_scene, _camera);
+          if (_composer) {
+            _composer.render();
+          } else {
+            _renderer.render(_scene, _camera);
+          }
+        }
+      } catch (e) {
+        // Isıtma başarısız olursa normal animasyon döngüsü yine çalışır.
+      }
+    }
 
     // Animasyon döngüsü
     function animate() {
@@ -652,9 +670,13 @@ window.DeepSpaceIntro = (function() {
     };
     window.addEventListener('resize', _resizeHandler);
 
-    // Animasyonu başlat
-    animate();
-    console.log('[DeepSpaceIntro] Sahne başarıyla oluşturuldu.');
+    // Animasyonu başlatmadan önce ilk render maliyetini ısıt.
+    warmUpRendererOnce();
+
+    requestAnimationFrame(function() {
+      animate();
+      console.log('[DeepSpaceIntro] Sahne başarıyla oluşturuldu.');
+    });
   }
 
   // Temizleme fonksiyonu
@@ -769,19 +791,12 @@ window.DeepSpaceIntro = (function() {
   }
 
   function scheduleAutoInitDeepSpace() {
-    var start = function() {
-      // İlk boyama fırsatını tarayıcıya bırak; ardından boş zamanda WebGL kur.
-      // Bu, giriş hissini bozmaz ama "setTimeout handler took..." uyarısını azaltır.
-      requestAnimationFrame(function() {
-        if (typeof window.requestIdleCallback === 'function') {
-          window.requestIdleCallback(autoInitDeepSpace, { timeout: 1200 });
-        } else {
-          requestAnimationFrame(autoInitDeepSpace);
-        }
-      });
-    };
-
-    start();
+    // requestIdleCallback içinde tam WebGL kurulumu yapmak Chrome DevTools'ta
+    // gereksiz "requestIdleCallback handler took..." verbose kaydı üretir.
+    // Başlatma bir sonraki makro görevde yapılır; kullanıcı deneyimi değişmez.
+    window.setTimeout(function() {
+      autoInitDeepSpace();
+    }, 0);
   }
 
   // DOM hazır olur olmaz başlat
