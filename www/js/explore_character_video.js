@@ -112,7 +112,12 @@
       // Resmi henüz gizleme - video 'playing' olayında gizlenecek
       // Bu sayede siyah ekran görünmez
       this._videoEl.style.display = 'block';
+
+      // Gerçek oynatma anında tam kaliteyle yükle. Açılış ekranında gizli
+      // tam-buffer video tutulmadığı için RAM ve ses çakışması oluşmaz.
+      this._videoEl.preload = 'auto';
       this._videoEl.src = src;
+
       // Kullanıcı bu noktaya gelene kadar zaten tıklama yapmış (Keşfet + Bütünleşik)
       // Bu nedenle ses doğrudan açık olmalı
       this._videoEl.muted = false;

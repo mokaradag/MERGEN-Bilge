@@ -333,13 +333,20 @@
       (function (index) {
         window.setTimeout(function () {
           if (finished) return;
+
           var video = document.createElement("video");
-          video.preload = "auto";
+
+          // Açılış müziği çalarken video decode/buffer yarışına girmemek için
+          // yalnızca metadata ısıtılır. Gerçek oynatma anında kalite değişmez.
+          video.preload = "metadata";
           video.muted = true;
           video.playsInline = true;
+          video.setAttribute("aria-hidden", "true");
+
           video.addEventListener("error", function () {
             if (video.parentNode) video.parentNode.removeChild(video);
           });
+
           video.src = "videos/cinematic/video" + index + ".mp4";
           holder.appendChild(video);
         }, index * 240);

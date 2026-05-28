@@ -22,18 +22,15 @@ window.DeepSpaceIntro = (function() {
   var _resizeRafId = null;
   var _containerEl = null;
 
-  // Performans durumu: Chrome DevTools "Violation" kayıtlarını azaltmak için
-  // görsel etkiyi kapatmadan yalnızca piksel yoğunluğunu uyarlanabilir yönetir.
-  var _qualityScale = 1.0;
-  var _slowFrameHits = 0;
+  // Performans durumu: renderer piksel oranı yalnızca cihaz DPI üst sınırına
+  // göre sabitlenir; çalışma sırasında kalite düşürülmez.
   var _lastPixelRatio = 0;
   var _loadingTimerId = null;
 
-  // Görsel kalite korunur; çok yüksek DPI ekranlarda gereksiz GPU yükü sınırlanır.
-  var MAX_DEVICE_PIXEL_RATIO = 1.75;
-  var MIN_QUALITY_SCALE = 0.72;
-  var SLOW_FRAME_MS = 48;
-  var SLOW_FRAME_HITS_TO_ADAPT = 6;
+  // Görsel keskinliği korumak için adaptif düşürme yapılmaz. 2.0 üst sınırı,
+  // çok yüksek DPI ekranlarda aşırı tuval büyümesini engellerken yörünge
+  // izlerinin netliğini korur.
+  var MAX_DEVICE_PIXEL_RATIO = 2.0;
 
   // Sahne nesneleri
   var _globe = null;
@@ -69,12 +66,12 @@ window.DeepSpaceIntro = (function() {
   }
 
   // Yardımcı: Güvenli piksel oranı
-  // Amaç: Retina/çok yüksek DPI ekranlarda aynı sahneyi gereksiz büyüklükte
-  // çizmemek; görsel efektler korunur, yalnızca GPU işi dengelenir.
+  // Kalite çalışma sırasında düşürülmez; yalnızca aşırı yüksek DPI üst sınırı
+  // uygulanır. Bu, yörünge izlerinin piksel piksel görünmesini engeller.
   function getSafePixelRatio() {
     var dpr = window.devicePixelRatio || 1;
     if (!isFinite(dpr) || dpr < 1) dpr = 1;
-    return Math.max(1, Math.min(dpr, MAX_DEVICE_PIXEL_RATIO) * _qualityScale);
+    return Math.min(dpr, MAX_DEVICE_PIXEL_RATIO);
   }
 
   // Yardımcı: Renderer piksel oranını yalnızca gerektiğinde uygula
@@ -105,25 +102,6 @@ window.DeepSpaceIntro = (function() {
     if (_composer) {
       _composer.setSize(w, h);
     }
-  }
-
-  // Yardımcı: Sürekli yavaş karelerde kaliteyi küçük adımlarla uyarlama
-  // Not: Bloom, atmosfer, yörünge ve kamera deneyimi kapatılmaz.
-  function adaptQualityAfterFrame(frameMs) {
-    if (frameMs <= SLOW_FRAME_MS) {
-      if (_slowFrameHits > 0) _slowFrameHits--;
-      return;
-    }
-
-    _slowFrameHits++;
-    if (_slowFrameHits < SLOW_FRAME_HITS_TO_ADAPT) return;
-    if (_qualityScale <= MIN_QUALITY_SCALE) return;
-
-    _qualityScale = Math.max(MIN_QUALITY_SCALE, _qualityScale - 0.12);
-    _slowFrameHits = 0;
-
-    applyRendererPixelRatio(true);
-    resizeRendererToContainer(true);
   }
 
   // Doku yükleme yardımcısı (v0.147.0 uyumlu)
@@ -186,14 +164,29 @@ window.DeepSpaceIntro = (function() {
     ].join('\n');
 
     var curve = new THREE.EllipseCurve(0, 0, radius, radius, 0, 2 * Math.PI, false, 0);
-    var points = curve.getPoints(512);
+
+    // Yörünge izleri çok ince olduğu için düşük piksel oranı veya az segment
+    // durumunda piksellenmiş görünebilir. Segment sayısı ve tüp kesiti hafifçe
+    // artırılır; görsel kalite artar, sahne yükü belirgin artmaz.
+    var orbitSegments = 768;
+    var orbitTubeRadius = 0.024;
+    var orbitRadialSegments = 24;
+
+    var points = curve.getPoints(orbitSegments);
     var path = new THREE.CatmullRomCurve3(points.map(function(p) {
       return new THREE.Vector3(p.x, 0, p.y);
     }));
     path.closed = true;
 
-    var geometry = new THREE.TubeGeometry(path, 512, 0.02, 16, true);
+    var geometry = new THREE.TubeGeometry(
+      path,
+      orbitSegments,
+      orbitTubeRadius,
+      orbitRadialSegments,
+      true
+    );
     var material = new THREE.ShaderMaterial({
+      precision: 'highp',
       uniforms: {
         uTime: { value: 0 },
         uColor: { value: new THREE.Color(color) },
@@ -289,7 +282,8 @@ window.DeepSpaceIntro = (function() {
     // Görsel efektleri kapatmadan güvenli üst sınır uygulanır.
     applyRendererPixelRatio(true);
     _renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    _renderer.toneMappingExposure = 0.85;
+    // Kıta dokularında aşırı beyazlamayı önlemek için pozlama dengelenir.
+    _renderer.toneMappingExposure = 0.72;
     // v0.147.0: outputEncoding kullanılır (outputColorSpace yerine)
     _renderer.outputEncoding = THREE.sRGBEncoding;
     _renderer.shadowMap.enabled = true;
@@ -384,18 +378,21 @@ window.DeepSpaceIntro = (function() {
     _globeMat = new THREE.MeshPhysicalMaterial({
       map: earthDayMap,
       normalMap: earthNormalMap,
-      normalScale: new THREE.Vector2(1.5, 1.5),
-      color: new THREE.Color(0xeaeaea),
-      roughness: 0.85,
+      normalScale: new THREE.Vector2(1.35, 1.35),
+
+      // Gündüz tarafındaki kıtaların "yanmış beyaz" görünmesini önler.
+      // Doku kalitesi korunur; yalnızca albedo/ışık dengesi yumuşatılır.
+      color: new THREE.Color(0xd7dde3),
+      roughness: 0.92,
       metalness: 0.0,
-      specularIntensity: 0.05,
+      specularIntensity: 0.025,
       ior: 1.333,
-      clearcoat: 0.03,
-      clearcoatRoughness: 0.6,
+      clearcoat: 0.0,
+      clearcoatRoughness: 0.8,
       clearcoatMap: earthSpecularMap,
       emissiveMap: earthLightsMap,
-      emissive: new THREE.Color(0xffffcc),
-      emissiveIntensity: 0.6,
+      emissive: new THREE.Color(0xfff2c2),
+      emissiveIntensity: 0.45,
       sheen: 0.0
     });
 
@@ -582,11 +579,16 @@ window.DeepSpaceIntro = (function() {
 
     // Güneş ışığı
     var sunPos = new THREE.Vector3(1000, 300, 800);
-    _sunLight = new THREE.DirectionalLight(0xffffff, 4.8);
+    // Aşırı güçlü beyaz ışık kıta dokularını patlatıyordu. Daha sıcak ve
+    // dengeli güneş ışığı, sinematik etkiyi koruyarak yüzey detayını geri getirir.
+    _sunLight = new THREE.DirectionalLight(0xfff4df, 3.35);
     _sunLight.position.copy(sunPos);
     _sunLight.castShadow = true;
-    _sunLight.shadow.mapSize.width = 4096;
-    _sunLight.shadow.mapSize.height = 4096;
+
+    // 4096 gölge haritası açılışta gereksiz GPU belleği tüketir. Bu sahnede
+    // 2048 görünür kaliteyi korurken bellek ve sürücü baskısını düşürür.
+    _sunLight.shadow.mapSize.width = 2048;
+    _sunLight.shadow.mapSize.height = 2048;
     _sunLight.shadow.camera.near = 10;
     _sunLight.shadow.camera.far = 5000;
     _sunLight.shadow.bias = -0.0005;
@@ -664,9 +666,11 @@ window.DeepSpaceIntro = (function() {
           new THREE.Vector2(container.clientWidth, container.clientHeight),
           1.5, 0.4, 0.85
         );
-        bloom.threshold = 0.5;
-        bloom.strength = 0.5;
-        bloom.radius = 0.6;
+        // Bloom yalnızca gerçekten parlak güneş/lens öğelerine binsin;
+        // kıta ve bulut dokularını beyazlatmasın.
+        bloom.threshold = 0.82;
+        bloom.strength = 0.38;
+        bloom.radius = 0.55;
         _composer.addPass(bloom);
       } catch (e) {
         _composer = null;
@@ -707,8 +711,6 @@ window.DeepSpaceIntro = (function() {
         if (_clock) _clock.getDelta();
         return;
       }
-
-      var frameStart = performance.now();
 
       // getElapsedTime() ayrıca getDelta() çağırdığı için burada doğrudan
       // elapsedTime okunur. Böylece saat iki kez ilerletilmez.
@@ -759,7 +761,6 @@ window.DeepSpaceIntro = (function() {
         _renderer.render(_scene, _camera);
       }
 
-      adaptQualityAfterFrame(performance.now() - frameStart);
     }
 
     // Pencere boyut değişikliği

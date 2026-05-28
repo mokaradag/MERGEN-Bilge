@@ -1,23 +1,13 @@
 // www/js/app_loading_media.js
 // Dosya Yolu: www/js/app_loading_media.js
-// Açıklama: Açılış yükleme ekranı sırasında TÜM karakter (persona) intro
-//   videolarını önceden yükleyen katman. Amaç: kullanıcı yükleme
-//   animasyonunu izlerken karakter videolarının tarayıcı önbelleğine
-//   ısıtılması; böylece deep-space sahnesine geçildiğinde ve Bütünleşik
-//   mod karakter adımına gelindiğinde varsayılan persona (emre) dahil
-//   tüm persona intro videoları gecikmesiz oynar.
+// Açıklama: Açılış yükleme ekranı sırasında karakter video URL'lerini düşük
+//   maliyetli biçimde ön ısıtan katman. Tam video decode/buffer yapılmaz;
+//   bunun yerine varsayılan karakter öne alınır, diğer dosyalar metadata ve
+//   düşük öncelikli prefetch ipuçlarıyla hazırlanır.
 //
-//   Akış:
-//     1. Shiny bağlandığında "explore_request_all_char_videos" gönderilir.
-//     2. Server "loadExploreAllCharVideos" ile tüm persona video URL'lerini
-//        döner (R/module_startup_screen.R içindeki mevcut observer).
-//     3. Her personanın TÜM intro videoları gizli <video preload="auto">
-//        ile tamponlanır (varsayılan persona 'emre' önce sıraya alınır).
-//        Oynatma sırasında intro listesinden rastgele biri seçildiği için
-//        tek bir video değil, intro listesinin tamamı ısıtılır.
-//     4. Tüm videolar hazır olunca (ya da emniyet zaman aşımında)
-//        "character_media_preload_ready" gönderilir; bu da boot kontrol
-//        noktası "character_media_ready" olarak işaretlenir.
+//   Amaç: açılış müziği ve WebGL sahnesiyle video decoder yarışını önlemek,
+//   tarayıcı RAM kullanımını sınırlamak ve karakter adımındaki ilk oynatma
+//   deneyimini korumaktır.
 //
 //   Bu dosya R/module_app_loading.R tarafından açılış katmanına satır içi
 //   gömülür; bilinçli olarak normal UI varlık manifestine eklenmez.
@@ -79,35 +69,85 @@
     return holder;
   }
 
-  // Tek bir intro videosunu gerçek <video> ile tamponla. onReady tam
-  // tampon (canplaythrough), ilk kare + kısa bekleme, hata ya da emniyet
-  // zaman aşımında en fazla bir kez çağrılır. Video DOM'da kalır; böylece
-  // arka planda tamponlanmaya devam eder ve önbellek sıcak kalır.
-  function warmVideo(url, onReady) {
+  // Video URL'si için düşük maliyetli tarayıcı önbellek ipucu ekle.
+  // Bu yöntem video decoder açmaz; ses/müzik tarafıyla yarış oluşturmaz.
+  function addVideoHint(url, highPriority) {
+    if (!url) return;
+
+    try {
+      var existing = document.querySelector(
+        'link[data-mergen-char-video-hint="1"][href="' + url.replace(/"/g, '\\"') + '"]'
+      );
+      if (existing) return;
+
+      var link = document.createElement("link");
+      link.rel = highPriority ? "preload" : "prefetch";
+      link.as = "video";
+      link.href = url;
+      link.setAttribute("data-mergen-char-video-hint", "1");
+      document.head.appendChild(link);
+    } catch (e) {
+      // Ön yükleme ipucu desteklenmiyorsa sessiz geçilir.
+    }
+  }
+
+  // Tek bir intro videosunu düşük maliyetle ısıt.
+  // Varsayılan karakter için ilk kareye kadar, diğerlerinde yalnızca metadata
+  // seviyesine kadar gidilir. Video elemanı iş bitince kaldırılır; DOM'da
+  // kalıcı gizli decoder bırakılmaz.
+  function warmVideo(url, onReady, highPriority) {
     if (!url) {
       onReady();
       return;
     }
 
+    addVideoHint(url, highPriority);
+
     var done = false;
+    var video = document.createElement("video");
+    var timeoutId = null;
+
+    function cleanup() {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+
+      try {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      } catch (e) {}
+
+      if (video.parentNode) {
+        video.parentNode.removeChild(video);
+      }
+    }
+
     function finishOnce() {
       if (done) return;
       done = true;
+      cleanup();
       onReady();
     }
 
-    var video = document.createElement("video");
-    video.preload = "auto";
+    video.preload = highPriority ? "auto" : "metadata";
     video.muted = true;
     video.playsInline = true;
-    video.style.cssText = "width:0;height:0;opacity:0;";
-    video.addEventListener("canplaythrough", finishOnce);
-    video.addEventListener("loadeddata", function () {
-      window.setTimeout(finishOnce, 1800);
-    });
-    video.addEventListener("error", finishOnce);
-    // Video başına emniyet zaman aşımı (yavaş ağ).
-    window.setTimeout(finishOnce, 7500);
+    video.setAttribute("aria-hidden", "true");
+    video.style.cssText = "width:0;height:0;opacity:0;pointer-events:none;";
+
+    if (highPriority) {
+      video.addEventListener("loadeddata", finishOnce, { once: true });
+    } else {
+      video.addEventListener("loadedmetadata", finishOnce, { once: true });
+    }
+
+    video.addEventListener("error", finishOnce, { once: true });
+
+    // Video başına kısa emniyet zaman aşımı: boot ekranı medya yüzünden uzamasın.
+    timeoutId = window.setTimeout(finishOnce, highPriority ? 3500 : 1800);
+
     video.src = url;
     preloadHolder().appendChild(video);
   }
@@ -122,44 +162,68 @@
       return;
     }
 
-    // Tüm persona intro URL'lerini topla; varsayılan persona 'emre' öne.
-    var urls = [];
-    function addUrls(list) {
+    // Varsayılan persona öne alınır; diğerleri düşük öncelikli hazırlanır.
+    // Tüm URL'ler aynı anda video decoder'a verilmez.
+    var primaryUrls = [];
+    var secondaryUrls = [];
+
+    function addUnique(target, list) {
       for (var n = 0; n < list.length; n++) {
-        if (urls.indexOf(list[n]) === -1) {
-          urls.push(list[n]);
+        if (primaryUrls.indexOf(list[n]) === -1 &&
+            secondaryUrls.indexOf(list[n]) === -1) {
+          target.push(list[n]);
         }
       }
     }
+
     for (var i = 0; i < chars.length; i++) {
       var c = chars[i];
       if (c && (c.character === "emre" || c.id === "emre")) {
-        addUrls(collectIntroUrls(c));
-      }
-    }
-    for (var j = 0; j < chars.length; j++) {
-      var c2 = chars[j];
-      if (c2 && c2.character !== "emre" && c2.id !== "emre") {
-        addUrls(collectIntroUrls(c2));
+        addUnique(primaryUrls, collectIntroUrls(c));
       }
     }
 
+    for (var j = 0; j < chars.length; j++) {
+      var c2 = chars[j];
+      if (c2 && c2.character !== "emre" && c2.id !== "emre") {
+        addUnique(secondaryUrls, collectIntroUrls(c2));
+      }
+    }
+
+    var urls = primaryUrls.concat(secondaryUrls);
     if (urls.length === 0) {
       signalReady("no-videos");
       return;
     }
 
-    // Tüm videolar tamponlanınca kontrol noktasını işaretle.
     var pending = urls.length;
+    var cursor = 0;
+    var highPriorityCount = Math.min(primaryUrls.length, 2);
+
     function oneReady() {
       pending -= 1;
       if (pending <= 0) {
-        signalReady("all-warm");
+        signalReady("metadata-warm");
       }
     }
-    for (var k = 0; k < urls.length; k++) {
-      warmVideo(urls[k], oneReady);
+
+    function warmNext() {
+      if (cursor >= urls.length) return;
+
+      var idx = cursor;
+      var highPriority = idx < highPriorityCount;
+      cursor += 1;
+
+      warmVideo(urls[idx], function() {
+        oneReady();
+
+        // Medya ön ısıtmayı seri ve düşük baskılı tut. Bu, açılış müziğinde
+        // cızırtı/bozulma oluşturan decoder ve disk I/O çakışmasını engeller.
+        window.setTimeout(warmNext, highPriority ? 120 : 220);
+      }, highPriority);
     }
+
+    warmNext();
   }
 
   function requestCharacterVideos() {
