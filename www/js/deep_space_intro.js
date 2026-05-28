@@ -120,24 +120,6 @@ window.DeepSpaceIntro = (function() {
     return tex;
   }
 
-  // Lens parlama dokusu oluştur
-  function createFlareTexture(r, g, b, size, alpha) {
-    var canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    var ctx = canvas.getContext('2d');
-    var gradient = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
-    gradient.addColorStop(0, 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')');
-    gradient.addColorStop(0.4, 'rgba(' + r + ',' + g + ',' + b + ',' + (alpha * 0.3) + ')');
-    gradient.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, size, size);
-    var tex = new THREE.CanvasTexture(canvas);
-    // v0.147.0: encoding kullanılır
-    tex.encoding = THREE.sRGBEncoding;
-    return tex;
-  }
-
   // Yörünge oluşturma
   function createOrbit(radius, speed, color, incX, incY, incZ) {
     var trailVert = [
@@ -378,23 +360,24 @@ window.DeepSpaceIntro = (function() {
     var globeGeo = new THREE.SphereGeometry(3.5, 128, 128);
 
     _globeMat = new THREE.MeshPhysicalMaterial({
+      precision: 'highp',
       map: earthDayMap,
       normalMap: earthNormalMap,
-      normalScale: new THREE.Vector2(1.35, 1.35),
+      normalScale: new THREE.Vector2(1.32, 1.32),
 
-      // Gündüz tarafı hafifçe güçlendirilir; kıta dokularındaki ayrıntı
-      // korunur, eski "yanmış beyaz" görünümüne dönülmez.
-      color: new THREE.Color(0xe0e5ea),
-      roughness: 0.9,
+      // Gündüz tarafı canlı kalır; çöl/parlak kara bölgeleri shader içinde
+      // ayrıca sıkıştırıldığı için Sahara/Arabistan tekrar patlamaz.
+      color: new THREE.Color(0xdce4ea),
+      roughness: 0.91,
       metalness: 0.0,
-      specularIntensity: 0.03,
+      specularIntensity: 0.024,
       ior: 1.333,
       clearcoat: 0.0,
-      clearcoatRoughness: 0.78,
+      clearcoatRoughness: 0.82,
       clearcoatMap: earthSpecularMap,
       emissiveMap: earthLightsMap,
-      emissive: new THREE.Color(0xfff4c8),
-      emissiveIntensity: 0.46,
+      emissive: new THREE.Color(0xfff1c2),
+      emissiveIntensity: 0.43,
       sheen: 0.0
     });
 
@@ -412,18 +395,46 @@ window.DeepSpaceIntro = (function() {
         '#include <defaultnormal_vertex>\nvWorldNormalCustom = normalize( ( modelMatrix * vec4( objectNormal, 0.0 ) ).xyz );'
       );
 
+      // Harita dokusu düzeltmesi:
+      // Sahara/Arabistan gibi sıcak ve çok parlak çöl tonları güneşte
+      // aşırı öne çıkabiliyor. Sadece bu renk aralığı sıkıştırılır; okyanus,
+      // orman ve gece ışıkları etkilenmez.
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <map_fragment>',
+        [
+          '#ifdef USE_MAP',
+          '  vec4 sampledDiffuseColor = texture2D( map, vUv );',
+          '  sampledDiffuseColor = mapTexelToLinear( sampledDiffuseColor );',
+          '  float texLuma = dot(sampledDiffuseColor.rgb, vec3(0.299, 0.587, 0.114));',
+          '  float warmMask = smoothstep(0.48, 0.78, sampledDiffuseColor.r) *',
+          '                   smoothstep(0.40, 0.68, sampledDiffuseColor.g) *',
+          '                   (1.0 - smoothstep(0.20, 0.42, sampledDiffuseColor.b));',
+          '  float desertMask = warmMask * smoothstep(0.50, 0.82, texLuma);',
+          '  sampledDiffuseColor.rgb = mix(',
+          '    sampledDiffuseColor.rgb,',
+          '    sampledDiffuseColor.rgb * vec3(0.78, 0.82, 0.9),',
+          '    clamp(desertMask * 0.34, 0.0, 0.34)',
+          '  );',
+          '  diffuseColor *= sampledDiffuseColor;',
+          '#endif'
+        ].join('\n')
+      );
+
       // Fragment shader: gece ışıkları maskeleme
       // v0.147.0: vUv kullanılır (vEmissiveMapUv yerine)
       shader.fragmentShader = shader.fragmentShader.replace(
-        'varying vec3 vViewPosition;',
-        'varying vec3 vViewPosition;\nvarying vec3 vWorldNormalCustom;\nuniform vec3 uSunDirWorld;'
-      ).replace(
         '#include <emissivemap_fragment>',
         [
           '#ifdef USE_EMISSIVEMAP',
           '  vec4 emissiveColor = texture2D( emissiveMap, vUv );',
           '  float sunDot = dot(normalize(vWorldNormalCustom), normalize(uSunDirWorld));',
-          '  float nightMask = smoothstep(0.0, -0.2, sunDot);',
+          '',
+          '  // Terminator geçişi geniş ve düzgün tutulur. Ters smoothstep',
+          '  // yerine tanımlı aralık kullanılır; bu piksel piksel görünen',
+          '  // gündüz/gece sınırını yumuşatır.',
+          '  float nightMask = 1.0 - smoothstep(-0.34, 0.10, sunDot);',
+          '  nightMask = pow(clamp(nightMask, 0.0, 1.0), 1.12);',
+          '',
           '  emissiveColor.rgb *= nightMask;',
           '  totalEmissiveRadiance *= emissiveColor.rgb;',
           '#endif'
@@ -585,115 +596,18 @@ window.DeepSpaceIntro = (function() {
       mainGroup.add(sat.precessionPivot);
     }
 
-    // Güneş ışığı
-    // Fiziksel tutarlılık: sahnenin ekliptik düzlemi XZ düzlemidir. Güneş,
-    // Dünya-Ay sistemiyle aynı referans düzleminde tutulur; Dünya'nın 23.5°
-    // eksen eğimi ayrı uygulanır.
-    var sunPos = new THREE.Vector3(1100, 0, 850);
-
-    // Güneş ve gündüz tarafı hafifçe güçlendirilir; bloom eşiği yüksek
-    // kalacağı için kıtalar yeniden parlamaz.
-    _sunLight = new THREE.DirectionalLight(0xfff2dc, 3.85);
-    _sunLight.position.copy(sunPos);
-    _sunLight.castShadow = true;
-
-    // 4096 gölge haritası açılışta gereksiz GPU belleği tüketir. Bu sahnede
-    // 2048 görünür kaliteyi korurken bellek ve sürücü baskısını düşürür.
-    _sunLight.shadow.mapSize.width = 2048;
-    _sunLight.shadow.mapSize.height = 2048;
-    _sunLight.shadow.camera.near = 10;
-    _sunLight.shadow.camera.far = 5000;
-    _sunLight.shadow.bias = -0.0005;
-    var shadowSize = 100;
-    _sunLight.shadow.camera.left = -shadowSize;
-    _sunLight.shadow.camera.right = shadowSize;
-    _sunLight.shadow.camera.top = shadowSize;
-    _sunLight.shadow.camera.bottom = -shadowSize;
-    _scene.add(_sunLight);
-
-    // Lens parlama
-    if (typeof THREE.Lensflare !== 'undefined') {
-      var textureFlare0 = createFlareTexture(255, 245, 220, 512, 1.0);
-      var textureFlare3 = createFlareTexture(255, 220, 170, 128, 0.48);
-      var textureFlareHex = createFlareTexture(255, 240, 210, 256, 0.14);
-
-      var lensflare = new THREE.Lensflare();
-      lensflare.addElement(new THREE.LensflareElement(textureFlare0, 760, 0));
-      lensflare.addElement(new THREE.LensflareElement(textureFlareHex, 72, 0.3));
-      lensflare.addElement(new THREE.LensflareElement(textureFlare3, 86, 0.5));
-      lensflare.addElement(new THREE.LensflareElement(textureFlareHex, 145, 0.4));
-      _sunLight.add(lensflare);
-    }
-
-    // Güneş geometrisi
-    var sunGeo = new THREE.SphereGeometry(34, 64, 64);
-    var sunMat = new THREE.MeshBasicMaterial({ color: 0xfff4dc });
-    var sunMesh = new THREE.Mesh(sunGeo, sunMat);
-    sunMesh.position.copy(sunPos);
-    _scene.add(sunMesh);
-
-    // Güneş halesi
-    var haloCanvas = document.createElement('canvas');
-    haloCanvas.width = 128;
-    haloCanvas.height = 128;
-    var hctx = haloCanvas.getContext('2d');
-    var haloGrad = hctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    // Güneş halesi biraz güçlendirilir; renk sıcak tutulur ki sahne
-    // beyaz patlama yerine sinematik bir güneş etkisi versin.
-    haloGrad.addColorStop(0, 'rgba(255,248,220,1)');
-    haloGrad.addColorStop(0.22, 'rgba(255,220,150,0.62)');
-    haloGrad.addColorStop(0.55, 'rgba(255,190,90,0.16)');
-    haloGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    hctx.fillStyle = haloGrad;
-    hctx.fillRect(0, 0, 128, 128);
-    var glowTex = new THREE.CanvasTexture(haloCanvas);
-    var glowMat = new THREE.SpriteMaterial({
-      map: glowTex,
-      color: 0xffffff,
-      transparent: true,
-      blending: THREE.AdditiveBlending
+    // Güneş, lens parlama, ortam ışığı ve bloom kurulumu ayrı modüldedir.
+    // Böylece bu dosya bakım ratchet sınırının altında kalır.
+    var solarSetup = window.DeepSpaceIntroSolar.setup({
+      THREE: THREE,
+      scene: _scene,
+      renderer: _renderer,
+      camera: _camera,
+      container: container
     });
-    var sunGlow = new THREE.Sprite(glowMat);
-    sunGlow.scale.set(500, 500, 1.0);
-    sunMesh.add(sunGlow);
 
-    // Ortam ışığı
-    var fillLight = new THREE.AmbientLight(0x404040, 0.005);
-    _scene.add(fillLight);
-
-    // Post-processing (Bloom efekti)
-    // Gerekli bağımlılıklar eksikse sessizce normal render'a dön
-    var hasPostProcessing =
-      typeof THREE.EffectComposer === 'function' &&
-      typeof THREE.RenderPass === 'function' &&
-      typeof THREE.UnrealBloomPass === 'function' &&
-      typeof THREE.ShaderPass === 'function' &&
-      typeof THREE.CopyShader !== 'undefined' &&
-      typeof THREE.LuminosityHighPassShader !== 'undefined';
-
-    if (hasPostProcessing) {
-      try {
-        _composer = new THREE.EffectComposer(_renderer);
-        _composer.addPass(new THREE.RenderPass(_scene, _camera));
-
-        var bloom = new THREE.UnrealBloomPass(
-          new THREE.Vector2(container.clientWidth, container.clientHeight),
-          1.5, 0.4, 0.85
-        );
-        // Bloom güneş/lens etkisini güçlendirir; eşik yüksek tutulduğu için
-        // kıta ve bulut dokuları tekrar beyazlamaz.
-        bloom.threshold = 0.84;
-        bloom.strength = 0.48;
-        bloom.radius = 0.6;
-        _composer.addPass(bloom);
-      } catch (e) {
-        _composer = null;
-        console.warn('[DeepSpaceIntro] Post-processing devre dışı bırakıldı:', e.message);
-      }
-    } else {
-      _composer = null;
-      console.log('[DeepSpaceIntro] Post-processing bağımlılıkları bulunamadı, doğrudan render kullanılacak.');
-    }
+    _sunLight = solarSetup.sunLight;
+    _composer = solarSetup.composer;
 
     // Kamera kontrolleri
     if (typeof THREE.OrbitControls !== 'undefined') {
