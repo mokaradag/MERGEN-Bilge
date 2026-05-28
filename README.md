@@ -42,6 +42,14 @@ Son sözleşme güçlendirmesi: `tests/testthat/test-validation-doctor-contract.
 
 Codex/AI bulut ortamındaki `cloud-quick` sonucu yararlıdır; ancak tek başına kurum içi çalışma zamanı doğrulamasının yerine geçmez. Bu ortamda `git status --short` çıktısının temiz olması yalnızca yerel çalışma ağacında değişiklik olmadığını gösterir; `origin` remote yoksa veya fetch yapılamıyorsa checkout'ın güncel GitHub `main` ile aynı olduğu kanıtlanmış sayılmaz. Böyle bir durumda çelişkili Codex çıktıları `STALE/INCONCLUSIVE` olarak değerlendirilmelidir.
 
+### Yanlış doğrulama iddialarını önleme
+
+- Gerçek yürütüm kanıtı yalnızca `artifacts/ai-validation/<timestamp>/summary.json` içindeki `ai_validate` özetidir.
+- `artifacts/validation-doctor/` altındaki `validation_doctor` artifact’i yalnızca rehberdir; `validation_execution_status=not_run_by_validation_doctor` ve `doctor_runs_heavy_checks=false` alanları bunun yürütüm kanıtı olmadığını açıkça belirtir.
+- `cloud-quick` sonucu yalnızca kendi hafif kapsamı için geçerlidir; full validation, app boot, browser UX, VM/SSO/DB, SQL Server Türkçe kodlama veya manual fragile-flow kanıtı olarak raporlanmamalıdır.
+- Answer self-check, kanıt alanlarıyla çelişen “Full validation passed”, “All validation gates passed” ve “Validation doctor passed” gibi geniş iddiaları yakalayacak şekilde güçlendirilmiştir.
+- Dokümantasyon-only değişikliklerde R doğrulaması çalıştırılmamalıdır; yalnızca metin farkı gözden geçirmesi yeterlidir. Kod/doğrulama mantığı değişirse ilgili `ai_validate` profilleri ayrı kanıt olarak çalıştırılmalıdır.
+
 ### Codex ve VM kanıtı birlikte nasıl yorumlanır
 
 Codex/cloud ortamında `cloud-quick` sonucunun başarılı olması yararlı fakat sınırlı bir kanıttır. Bu sonuç yalnızca bulut-uyumlu parse ve odak sözleşme kapsamı için geçerlidir; app source smoke, Shiny HTTP boot, gerçek tarayıcı UX smoke, VM/SSO/DB, SQL Server Türkçe kodlama veya manuel kırılgan akış kanıtı yerine geçmez. Codex ortamında `quick` veya `full --boot-smoke` ağır paket bootstrap/derleme yoluna girip tamamlanamazsa, bu tek başına VM doğrulamasını geçersiz kılmaz; yalnızca Codex tarafında ilgili artifact üretilmediği anlamına gelir.
