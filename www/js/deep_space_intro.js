@@ -395,16 +395,22 @@ window.DeepSpaceIntro = (function() {
         '#include <defaultnormal_vertex>\nvWorldNormalCustom = normalize( ( modelMatrix * vec4( objectNormal, 0.0 ) ).xyz );'
       );
 
+      // Fragment shader değişkenleri: gece ışıkları ve terminator hesabı için
+      // vertex shader'dan gelen dünya normali ve güneş yönü burada tanımlanır.
+      shader.fragmentShader = shader.fragmentShader.replace(
+        'varying vec3 vViewPosition;',
+        'varying vec3 vViewPosition;\nvarying vec3 vWorldNormalCustom;\nuniform vec3 uSunDirWorld;'
+      );
+
       // Harita dokusu düzeltmesi:
       // Sahara/Arabistan gibi sıcak ve çok parlak çöl tonları güneşte
-      // aşırı öne çıkabiliyor. Sadece bu renk aralığı sıkıştırılır; okyanus,
-      // orman ve gece ışıkları etkilenmez.
+      // aşırı öne çıkabiliyor. mapTexelToLinear kullanılmaz; mevcut Three.js
+      // v0.147.0 shader yolunda bu çağrı WebGL derleme hatası üretiyordu.
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <map_fragment>',
         [
           '#ifdef USE_MAP',
           '  vec4 sampledDiffuseColor = texture2D( map, vUv );',
-          '  sampledDiffuseColor = mapTexelToLinear( sampledDiffuseColor );',
           '  float texLuma = dot(sampledDiffuseColor.rgb, vec3(0.299, 0.587, 0.114));',
           '  float warmMask = smoothstep(0.48, 0.78, sampledDiffuseColor.r) *',
           '                   smoothstep(0.40, 0.68, sampledDiffuseColor.g) *',
