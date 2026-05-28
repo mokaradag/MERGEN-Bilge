@@ -132,3 +132,11 @@
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
 }
+
+/* Tarih aralığı erişilebilir başlık stili */
+.history-date-range-label {
+  display: inline-block;
+  max-width: 100%;
+  margin-bottom: 5px;
+  font-weight: 700;
+}

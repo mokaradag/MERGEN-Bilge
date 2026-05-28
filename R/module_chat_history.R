@@ -1,5 +1,49 @@
 # R/module_chat_history.R (Updated with "Bugün" button functionality)
 
+# Erişilebilir tarih aralığı girdisi üretir.
+# Shiny dateRangeInput varsayılan olarak label[for=inputId] üretir;
+# inputId gerçek <input> değil kapsayıcı <div> olduğu için Chrome erişilebilirlik uyarısı verir.
+# Bu yardımcı, Shiny'nin tarih seçici bağını korur; yalnızca hatalı <label> düğümünü kaldırır.
+history_accessible_date_range_input <- function(ns) {
+  input_id <- ns("date_range")
+  label_id <- paste0(input_id, "-label")
+
+  date_range <- dateRangeInput(
+    inputId = input_id,
+    label = NULL,
+    start = Sys.Date() - 30,
+    end = Sys.Date(),
+    language = "tr",
+    separator = " - ",
+    format = "dd/mm/yyyy",
+    width = "300px"
+  )
+
+  # Shiny'nin ürettiği gizli label[for=inputId] düğümü Chrome Issues uyarısına yol açıyor.
+  # Girdilerin aria-labelledby bağı korunacağı için aynı id ile <div> başlık ekliyoruz.
+  date_range$children <- Filter(
+    f = function(child) {
+      !(inherits(child, "shiny.tag") &&
+          identical(child$name, "label") &&
+          identical(child$attribs$id, label_id))
+    },
+    x = date_range$children
+  )
+
+  date_range$children <- c(
+    list(
+      tags$div(
+        "Tarih Aralığı:",
+        id = label_id,
+        class = "control-label history-date-range-label"
+      )
+    ),
+    date_range$children
+  )
+
+  date_range
+}
+
 historyUI <- function(id) {
   ns <- NS(id)
   
@@ -18,19 +62,10 @@ historyUI <- function(id) {
       ),
       div(
         class = "scrollable-content",
-        div(
-          class = "history-controls date-filter dark-date-picker",
-          dateRangeInput(
-            inputId = ns("date_range"),
-            label = "Tarih Aralığı:",
-            start = Sys.Date() - 30,
-            end = Sys.Date(),
-            language = "tr",
-            separator = " - ",
-            format = "dd/mm/yyyy",
-            width = "300px"
-          )
-        ),
+		div(
+		  class = "history-controls date-filter dark-date-picker",
+		  history_accessible_date_range_input(ns)
+		),
         div(
           class = "history-table-card",
 		  tags$style(HTML(sprintf("#%s table.dataTable thead th { text-align: center !important; }", ns("history_table")))),
