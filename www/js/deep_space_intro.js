@@ -282,8 +282,10 @@ window.DeepSpaceIntro = (function() {
     // Görsel efektleri kapatmadan güvenli üst sınır uygulanır.
     applyRendererPixelRatio(true);
     _renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    // Kıta dokularında aşırı beyazlamayı önlemek için pozlama dengelenir.
-    _renderer.toneMappingExposure = 0.72;
+
+    // Güneş ve gündüz tarafı bir miktar güçlendirilir; önceki aşırı beyazlama
+    // seviyesine dönmemek için pozlama kontrollü tutulur.
+    _renderer.toneMappingExposure = 0.78;
     // v0.147.0: outputEncoding kullanılır (outputColorSpace yerine)
     _renderer.outputEncoding = THREE.sRGBEncoding;
     _renderer.shadowMap.enabled = true;
@@ -380,19 +382,19 @@ window.DeepSpaceIntro = (function() {
       normalMap: earthNormalMap,
       normalScale: new THREE.Vector2(1.35, 1.35),
 
-      // Gündüz tarafındaki kıtaların "yanmış beyaz" görünmesini önler.
-      // Doku kalitesi korunur; yalnızca albedo/ışık dengesi yumuşatılır.
-      color: new THREE.Color(0xd7dde3),
-      roughness: 0.92,
+      // Gündüz tarafı hafifçe güçlendirilir; kıta dokularındaki ayrıntı
+      // korunur, eski "yanmış beyaz" görünümüne dönülmez.
+      color: new THREE.Color(0xe0e5ea),
+      roughness: 0.9,
       metalness: 0.0,
-      specularIntensity: 0.025,
+      specularIntensity: 0.03,
       ior: 1.333,
       clearcoat: 0.0,
-      clearcoatRoughness: 0.8,
+      clearcoatRoughness: 0.78,
       clearcoatMap: earthSpecularMap,
       emissiveMap: earthLightsMap,
-      emissive: new THREE.Color(0xfff2c2),
-      emissiveIntensity: 0.45,
+      emissive: new THREE.Color(0xfff4c8),
+      emissiveIntensity: 0.46,
       sheen: 0.0
     });
 
@@ -539,6 +541,12 @@ window.DeepSpaceIntro = (function() {
     earthTiltGroup.add(_atmosphere);
 
     // Ay kurulumu
+    // Fiziksel not:
+    // - mainGroup sahnenin ekliptik düzlemini temsil eder.
+    // - Dünya'nın 23.5° eksen eğimi yalnızca earthTiltGroup üzerinde uygulanır.
+    // - Ay, Dünya'nın ekvator düzleminde değil; ekliptiğe yaklaşık 5.14°
+    //   eğimli kendi yörünge düzleminde dolaşır.
+    // Bu yüzden Ay grubu earthTiltGroup içine alınmamalıdır.
     var moonSystemGroup = new THREE.Group();
     moonSystemGroup.rotation.z = MOON_INCLINATION;
     mainGroup.add(moonSystemGroup);
@@ -578,10 +586,14 @@ window.DeepSpaceIntro = (function() {
     }
 
     // Güneş ışığı
-    var sunPos = new THREE.Vector3(1000, 300, 800);
-    // Aşırı güçlü beyaz ışık kıta dokularını patlatıyordu. Daha sıcak ve
-    // dengeli güneş ışığı, sinematik etkiyi koruyarak yüzey detayını geri getirir.
-    _sunLight = new THREE.DirectionalLight(0xfff4df, 3.35);
+    // Fiziksel tutarlılık: sahnenin ekliptik düzlemi XZ düzlemidir. Güneş,
+    // Dünya-Ay sistemiyle aynı referans düzleminde tutulur; Dünya'nın 23.5°
+    // eksen eğimi ayrı uygulanır.
+    var sunPos = new THREE.Vector3(1100, 0, 850);
+
+    // Güneş ve gündüz tarafı hafifçe güçlendirilir; bloom eşiği yüksek
+    // kalacağı için kıtalar yeniden parlamaz.
+    _sunLight = new THREE.DirectionalLight(0xfff2dc, 3.85);
     _sunLight.position.copy(sunPos);
     _sunLight.castShadow = true;
 
@@ -601,21 +613,21 @@ window.DeepSpaceIntro = (function() {
 
     // Lens parlama
     if (typeof THREE.Lensflare !== 'undefined') {
-      var textureFlare0 = createFlareTexture(255, 255, 255, 512, 1.0);
-      var textureFlare3 = createFlareTexture(200, 220, 255, 128, 0.4);
-      var textureFlareHex = createFlareTexture(255, 255, 255, 256, 0.1);
+      var textureFlare0 = createFlareTexture(255, 245, 220, 512, 1.0);
+      var textureFlare3 = createFlareTexture(255, 220, 170, 128, 0.48);
+      var textureFlareHex = createFlareTexture(255, 240, 210, 256, 0.14);
 
       var lensflare = new THREE.Lensflare();
-      lensflare.addElement(new THREE.LensflareElement(textureFlare0, 600, 0));
-      lensflare.addElement(new THREE.LensflareElement(textureFlareHex, 60, 0.3));
-      lensflare.addElement(new THREE.LensflareElement(textureFlare3, 70, 0.5));
-      lensflare.addElement(new THREE.LensflareElement(textureFlareHex, 120, 0.4));
+      lensflare.addElement(new THREE.LensflareElement(textureFlare0, 760, 0));
+      lensflare.addElement(new THREE.LensflareElement(textureFlareHex, 72, 0.3));
+      lensflare.addElement(new THREE.LensflareElement(textureFlare3, 86, 0.5));
+      lensflare.addElement(new THREE.LensflareElement(textureFlareHex, 145, 0.4));
       _sunLight.add(lensflare);
     }
 
     // Güneş geometrisi
-    var sunGeo = new THREE.SphereGeometry(30, 64, 64);
-    var sunMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    var sunGeo = new THREE.SphereGeometry(34, 64, 64);
+    var sunMat = new THREE.MeshBasicMaterial({ color: 0xfff4dc });
     var sunMesh = new THREE.Mesh(sunGeo, sunMat);
     sunMesh.position.copy(sunPos);
     _scene.add(sunMesh);
@@ -626,9 +638,11 @@ window.DeepSpaceIntro = (function() {
     haloCanvas.height = 128;
     var hctx = haloCanvas.getContext('2d');
     var haloGrad = hctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    haloGrad.addColorStop(0, 'rgba(255,255,255,1)');
-    haloGrad.addColorStop(0.2, 'rgba(240,240,255,0.5)');
-    haloGrad.addColorStop(0.5, 'rgba(200,200,255,0.1)');
+    // Güneş halesi biraz güçlendirilir; renk sıcak tutulur ki sahne
+    // beyaz patlama yerine sinematik bir güneş etkisi versin.
+    haloGrad.addColorStop(0, 'rgba(255,248,220,1)');
+    haloGrad.addColorStop(0.22, 'rgba(255,220,150,0.62)');
+    haloGrad.addColorStop(0.55, 'rgba(255,190,90,0.16)');
     haloGrad.addColorStop(1, 'rgba(0,0,0,0)');
     hctx.fillStyle = haloGrad;
     hctx.fillRect(0, 0, 128, 128);
@@ -640,7 +654,7 @@ window.DeepSpaceIntro = (function() {
       blending: THREE.AdditiveBlending
     });
     var sunGlow = new THREE.Sprite(glowMat);
-    sunGlow.scale.set(400, 400, 1.0);
+    sunGlow.scale.set(500, 500, 1.0);
     sunMesh.add(sunGlow);
 
     // Ortam ışığı
@@ -666,11 +680,11 @@ window.DeepSpaceIntro = (function() {
           new THREE.Vector2(container.clientWidth, container.clientHeight),
           1.5, 0.4, 0.85
         );
-        // Bloom yalnızca gerçekten parlak güneş/lens öğelerine binsin;
-        // kıta ve bulut dokularını beyazlatmasın.
-        bloom.threshold = 0.82;
-        bloom.strength = 0.38;
-        bloom.radius = 0.55;
+        // Bloom güneş/lens etkisini güçlendirir; eşik yüksek tutulduğu için
+        // kıta ve bulut dokuları tekrar beyazlamaz.
+        bloom.threshold = 0.84;
+        bloom.strength = 0.48;
+        bloom.radius = 0.6;
         _composer.addPass(bloom);
       } catch (e) {
         _composer = null;
