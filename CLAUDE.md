@@ -240,6 +240,15 @@ The execution artifact written by `tools/ai_validate.sh` / `tests/scripts/ai_rep
 Latest validation-doctor contract hardening: `tests/testthat/test-validation-doctor-contract.R` now more explicitly protects secret-like environment values from leaking through doctor output or artifacts. Values such as `LOCAL_LLM_ENDPOINT`, `MERGEN_BROWSER_BIN`, DSNs, URLs, keys, tokens, secrets, and passwords must be reported only as safe metadata such as presence, character length, boolean-style flags, and `value=<hidden>`, never as raw values. The same contract keeps `cloud-quick` as a wrapper-level alias in `tools/ai_validate.sh` that maps to the quick repository profile; do not add `cloud-quick` as a third internal profile in `tests/scripts/ai_repo_check.R`. This is validation contract hardening only and must not be described as a runtime UX change.
 
 
+### Validation proof and overclaim boundary
+
+- Treat `artifacts/ai-validation/<timestamp>/summary.json` as the only machine-readable execution proof emitted by `ai_validate`.
+- Treat `artifacts/validation-doctor/*.json` as guidance only, never as execution proof.
+- Never claim full validation, app boot, browser UX, VM/SSO/DB, SQL Server Turkish encoding, or manual fragile-flow proof unless the matching summary field explicitly says `passed`.
+- `cloud-quick` remains a wrapper over quick and intentionally skips app source smoke; report it only within cloud-quick scope.
+- `ai_answer_check.R` rejects broad overclaims (for example “All validation gates passed” or “Validation doctor passed”) when proof fields do not support those claims.
+- For docs-only updates to `README.md` and `CLAUDE.md`, do not run R validation; inspect only the documentation diff. Run validation only when code, tests, commands, validation scripts, or runtime behavior changes.
+
 Cloud fallback validation:
 
 - Normal validation remains `bash tools/ai_validate.sh quick`.
