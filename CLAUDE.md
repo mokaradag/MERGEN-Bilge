@@ -1536,6 +1536,15 @@ Focused validation:
 
 Frontend JS/CSS assets are protected by the explicit UI asset manifest and by a lightweight maintainability ratchet. Keep all frontend assets local/offline and loaded through `R/config_ui_assets.R`. Do not bundle, minify, hide source code, or introduce CDN dependencies.
 
+### Frontend Console Hygiene Notes
+
+- Keep the Chrome Issues date-range accessibility fix in place. In `R/module_chat_history.R`, `history_accessible_date_range_input()` intentionally avoids Shiny’s default `dateRangeInput` label wiring that can produce an invalid `label[for=inputId]` against a wrapper `div`; it uses an accessible `aria-labelledby` target instead.
+- Do not introduce `src = ""` on `img` tags. For intentionally empty placeholders, use the transparent 1x1 GIF data URI: `data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==`.
+- `www/js/console_error_probe.js` is an optional diagnostic helper. It is intentionally loaded from `R/config_ui_assets.R` in the diagnostics JS group before normal app JS, and intentionally silent unless `localStorage.MERGEN_DEBUG_CONSOLE_ERRORS === "1"`.
+- Do not remove `console_error_probe.js` only because it appears quiet. Its gate is intentional; when enabled it helps expose resource failures (`MERGEN_DEBUG_RESOURCE_ERROR`) and runtime/promise failures (`MERGEN_DEBUG_ERROR`, `MERGEN_DEBUG_PROMISE`).
+- Do not use the probe to hide or suppress errors; it is diagnosis-only.
+- After these fixes, Chrome DevTools may still show a stale grouped blank `<other>` / “1 error” counter. If Console has no live error, Network has no failed request, and the probe emits no resource/runtime event, treat it as a DevTools grouping/cache/state artifact unless a reproducible source URL, failing DOM element, stack trace, or network failure is identified.
+
 Bilge Yolaç pixel character frame data is intentionally split from runtime behavior:
 - `www/js/claude_code_pixel_chars.js` contains only static 16x16 pixel character frame data exposed through `window.MergenClaudeCodePixelCharsMini`.
 - `www/js/claude_code.js` owns runtime behavior: animation drawing, message rendering, thinking/status UI, prompt syncing, keyboard shortcuts, and click feedback.
