@@ -336,6 +336,16 @@ Preferred validation escalation:
 - full profile for code changes or production-sensitive behavior,
 - full profile plus boot smoke for app boot/runtime confidence.
 
+### Deep Space intro maintenance notes
+- Keep `www/js/deep_space_intro.js` as the scene orchestrator; do not bloat it with specialized shader or solar-lighting internals.
+- Keep Earth shader/material logic in `www/js/deep_space_intro_earth_shader.js` (desert brightness compression, day/night terminator smoothing, and night-light masking).
+- Keep Sun/lens flare/halo/ambient/bloom setup in `www/js/deep_space_intro_solar.js`.
+- Preserve asset load order in `R/config_ui_assets.R`: `js/deep_space_intro_earth_shader.js`, `js/deep_space_intro_solar.js`, then `js/deep_space_intro.js`.
+- Preserve Moon physics separation: `moonSystemGroup` belongs under `mainGroup`, not `earthTiltGroup`.
+- Chrome DevTools Verbose cold-start Three.js load violations are profiling hints, not functional failures, when browser console Errors and Warnings are both zero.
+- Do not reintroduce hidden full-buffer video preloading during startup; this previously increased memory pressure and could interfere with audio behavior.
+- For this docs-only task type, do not run R validation; review markdown diff only.
+
 ### Theme system and light-theme contract
 
 - Dark theme remains the default.
