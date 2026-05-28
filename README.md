@@ -250,6 +250,15 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - `R/helpers_mcp_bootstrap.R` yalnızca MCP ortamını ve temel yol yardımcılarını hazırlar; downstream MCP helper dosyalarını gizli/dinamik biçimde source etmez.
 - Bu sözleşme `test-source-manifest-contract.R`, `test-global-source-manifest-contract.R` ve MCP refactor testleriyle korunur; amaç kullanıcı deneyimini değiştirmeden boot/load-order kırılganlığını azaltmaktır.
 
+### Derin Uzay Giriş Sahnesi Notları
+- Deep Space giriş sahnesi render sorumlulukları bakım sınırlarını korumak için üç dosyaya ayrılmıştır: `www/js/deep_space_intro.js` (orkestrasyon), `www/js/deep_space_intro_earth_shader.js` (Dünya shader ayarları) ve `www/js/deep_space_intro_solar.js` (Güneş/flare/halo/bloom).
+- `R/config_ui_assets.R` içindeki yükleme sırası korunmalıdır: önce `js/deep_space_intro_earth_shader.js`, sonra `js/deep_space_intro_solar.js`, en son `js/deep_space_intro.js`.
+- Earth shader yardımcısı çöl parlaklığı sıkıştırması, gündüz/gece sınırı (terminator) yumuşatma ve gece ışıkları maskelemesini bilinçli olarak yönetir.
+- Solar yardımcı katman, uzay perspektifinde Güneş’in beyaz/parlak görünümünü korurken Dünya/Sahra-Arabistan bölgelerinde aşırı pozlamayı önlemeyi hedefler.
+- Ay fiziği koruması: `moonSystemGroup` yalnızca `mainGroup` altında kalmalı; `earthTiltGroup` altına taşınmamalıdır. `earthTiltGroup` sadece Dünya eksen eğikliğini (23.5°) Dünya/bulut/atmosfer bileşenlerine uygular.
+- Chrome DevTools’ta cold-refresh sırasında görülen verbose Three.js yükleme ihlalleri profil ipucudur; console `Errors` ve `Warnings` sıfırsa işlevsel hata sayılmaz.
+- Bu özel dokümantasyon güncellemesi için R doğrulaması çalıştırılmaz; yalnızca metin farkı (text diff) gözden geçirmesi yeterlidir.
+
 ### Ön yüz varlık manifesti ve bakım koruması
 - Çalışma zamanı CSS/JS varlıkları `R/config_ui_assets.R` üzerinden açık ve sıralı biçimde yüklenir; CDN, bundle/minify veya gizli kaynak yükleme kullanılmaz.
 - Ön yüz bakım raporu `tests/scripts/frontend_maintainability_report.R` ile üretilir. Bu rapor JS/CSS dosya boyutlarını, yaklaşık fonksiyon ve event handler yoğunluğunu, manifest dışı app-owned varlıkları, yinelenen CSS seçicileri ve yasak eski seçici kalıntılarını görünür kılar.
