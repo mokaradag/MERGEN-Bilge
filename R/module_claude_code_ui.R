@@ -136,15 +136,38 @@ $(function(){
                   )
                 })
               ),
-              tags$script(sprintf(
-                "$(function(){Shiny.setInputValue('%s','%s');});",
-                ns("model"),
-                if (nzchar(varsayilan_model)) {
-                  gsub("'", "\\\\'", varsayilan_model)
-                } else {
-                  ""
-                }
-              ))
+				tags$script(HTML(sprintf(
+				"
+				(function() {
+				  // Bilge Yolaç varsayılan model değeri yalnızca Shiny bağlantısı hazırken gönderilir.
+				  // DOM hazır olsa bile SSO/varlık yükleme sırası nedeniyle Shiny.setInputValue gecikebilir.
+				  var inputId = %s;
+				  var defaultModel = %s;
+				  var sent = false;
+
+				  function sendDefaultModel() {
+					if (sent) return true;
+
+					if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+					  window.Shiny.setInputValue(inputId, defaultModel, { priority: 'event' });
+					  sent = true;
+					  return true;
+					}
+
+					return false;
+				  }
+
+				  if (!sendDefaultModel()) {
+					$(document).one('shiny:connected', sendDefaultModel);
+				  }
+				})();
+				",
+				  jsonlite::toJSON(ns("model"), auto_unbox = TRUE),
+				  jsonlite::toJSON(
+					if (nzchar(varsayilan_model)) varsayilan_model else "",
+					auto_unbox = TRUE
+				  )
+				)))
             )
           ),
 

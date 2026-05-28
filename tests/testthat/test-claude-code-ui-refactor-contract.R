@@ -115,3 +115,26 @@ test_that("Bilge Yolaç UI ve server dosyaları parse edilebilir kalır", {
     encoding = "UTF-8"
   ))
 })
+
+test_that("Bilge Yolaç varsayılan model gönderimi Shiny bağlantısını bekler", {
+  ui_text <- .read_repo_text_cc_ui_contract("R/module_claude_code_ui.R")
+
+  expect_true(
+    grepl("shiny:connected", ui_text, fixed = TRUE),
+    info = "Varsayılan model gönderimi Shiny bağlantısı kurulmadan çalışmamalıdır."
+  )
+
+  expect_true(
+    grepl(
+      "typeof window\\.Shiny\\.setInputValue\\s*===\\s*['\"]function['\"]",
+      ui_text,
+      perl = TRUE
+    ),
+    info = "Shiny.setInputValue çağrısı fonksiyon varlığı kontrol edilerek yapılmalıdır."
+  )
+
+  expect_false(
+    grepl("\\$\\(function\\(\\)\\s*\\{\\s*Shiny\\.setInputValue", ui_text, perl = TRUE),
+    info = "DOM-ready içinde doğrudan Shiny.setInputValue çağrısı tekrar eklenmemelidir."
+  )
+})
