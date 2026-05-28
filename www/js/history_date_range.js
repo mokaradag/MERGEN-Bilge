@@ -23,29 +23,48 @@
     return null;
   }
 
+  function setShinyInputValue(inputId, value) {
+    if (!window.Shiny) return false;
+
+    // Yeni Shiny istemcilerinde tercih edilen yol budur.
+    if (typeof window.Shiny.setInputValue === 'function') {
+      window.Shiny.setInputValue(inputId, value, { priority: 'event' });
+      return true;
+    }
+
+    // Eski Shiny istemcileri için geriye dönük uyumluluk yolu.
+    if (typeof window.Shiny.onInputChange === 'function') {
+      window.Shiny.onInputChange(inputId, value);
+      return true;
+    }
+
+    return false;
+  }
+
   function emitRange(container) {
-    if (!window.Shiny || !container) return;
+    if (!container) return false;
 
     var inputId = container.getAttribute('data-shiny-input-id');
-    if (!inputId) return;
+    if (!inputId) return false;
 
     var startEl = container.querySelector('[data-history-date-role="start"]');
     var endEl = container.querySelector('[data-history-date-role="end"]');
 
-    if (!startEl || !endEl) return;
+    if (!startEl || !endEl) return false;
 
-    window.Shiny.setInputValue(
+    return setShinyInputValue(
       inputId,
-      [startEl.value || '', endEl.value || ''],
-      { priority: 'event' }
+      [startEl.value || '', endEl.value || '']
     );
   }
 
   function initContainer(container) {
     if (!container || container.dataset.initialized === 'true') return;
 
-    container.dataset.initialized = 'true';
-    emitRange(container);
+    // Shiny hazır değilse initialized yazma; shiny:connected ile tekrar denenecek.
+    if (emitRange(container)) {
+      container.dataset.initialized = 'true';
+    }
   }
 
   function initAll() {
@@ -111,6 +130,5 @@
     emitRange(target.closest('.history-native-date-range'));
   });
 
-  initAll();
-  registerMessageHandler();
+  // İlk kurulum DOMContentLoaded ve shiny:connected olaylarında yapılır.
 })();
