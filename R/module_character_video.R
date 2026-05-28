@@ -86,8 +86,10 @@ characterVideoUI <- function(id) {
       )
     ),
     # CinematicVideoManager bileşenini başlatan ve elemanları bağlayan betik
-    # Başlatma betiği: Daha uzun süre dener, bulamazsa sekme geçişinde yedek mekanizma devreye girer
-    tags$script(sprintf("
+    # Başlatma betiği: Daha uzun süre dener, bulamazsa sekme geçişinde yedek mekanizma devreye girer.
+    # Not: JavaScript içeriği HTML() ile işaretlenir; aksi halde && ve < gibi operatörler
+    #       HTML entity olarak kaçırılır ve tarayıcıda söz dizimi hatası oluşur.
+    tags$script(HTML(sprintf("
       (function() {
         var videoId = '%s';
         var imageId = '%s';
@@ -116,7 +118,7 @@ characterVideoUI <- function(id) {
           document.addEventListener('DOMContentLoaded', function() { setTimeout(tryInit, 100); });
         }
       })();
-    ", ns("character_player"), ns("character_static_img")))
+    ", ns("character_player"), ns("character_static_img"))))
   )
 }
 
