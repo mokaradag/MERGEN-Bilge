@@ -34,6 +34,11 @@ doğrudan render ile görüntülenir).
 - **LuminosityHighPassShader.js** (UnrealBloomPass bağımlılığı)
   - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/shaders/LuminosityHighPassShader.js
 
+- **Pass.js** (Post-processing geçişlerinin temel sınıfı)
+  - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/postprocessing/Pass.js
+  - NOT: `ShaderPass.js`, `RenderPass.js` ve `UnrealBloomPass.js` dosyaları
+    `THREE.Pass` sınıfını beklediği için bu dosya onlardan önce yüklenmelidir.
+
 - **ShaderPass.js** (EffectComposer bağımlılığı)
   - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/postprocessing/ShaderPass.js
 
@@ -133,6 +138,7 @@ www/
 │       ├── OrbitControls.js
 │       ├── CopyShader.js
 │       ├── LuminosityHighPassShader.js
+│       ├── Pass.js
 │       ├── ShaderPass.js
 │       ├── EffectComposer.js
 │       ├── RenderPass.js

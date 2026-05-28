@@ -94,6 +94,7 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
       "lib/threejs/OrbitControls.js",
       "lib/threejs/CopyShader.js",
       "lib/threejs/LuminosityHighPassShader.js",
+      "lib/threejs/Pass.js",
       "lib/threejs/ShaderPass.js",
       "lib/threejs/EffectComposer.js",
       "lib/threejs/RenderPass.js",
