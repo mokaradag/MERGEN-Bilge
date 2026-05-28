@@ -135,6 +135,9 @@ ui_asset_css_groups <- list(
 )
 
 ui_asset_js_groups <- list(
+  diagnostics = c(
+    "js/console_error_probe.js"
+  ),
   codemirror_core = c(
     "codemirror/codemirror.min.js"
   ),
@@ -271,6 +274,7 @@ ui_asset_js_groups <- list(
 ui_asset_deferred_js_groups <- c("threejs", "deferred", "bilge_yolac")
 
 ui_asset_js_render_plan <- list(
+  list(group = "diagnostics", defer = FALSE),
   list(group = "codemirror_core", defer = FALSE),
   list(group = "codemirror_modes", defer = FALSE),
   list(group = "codemirror_addons", defer = FALSE),
@@ -354,6 +358,10 @@ ui_asset_validate_js_render_plan <- function(render_plan = ui_asset_js_render_pl
 # Bu kurallar kullanıcı deneyimini değiştirmez; manifest bakımında yanlış
 # sıralamayı erken yakalamak için doğrulanır.
 ui_asset_js_order_rules <- list(
+  c("js/console_error_probe.js", "codemirror/codemirror.min.js"),
+  c("js/console_error_probe.js", "js/sso_auth.js"),
+  c("js/console_error_probe.js", "js/utils.js"),
+
   c("codemirror/codemirror.min.js", "codemirror/mode/r.min.js"),
   c("codemirror/codemirror.min.js", "codemirror/addon/fold/foldcode.min.js"),
 
