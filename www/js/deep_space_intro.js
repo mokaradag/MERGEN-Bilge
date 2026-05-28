@@ -350,10 +350,25 @@ window.DeepSpaceIntro = (function() {
     var earthLightsMap = loadTex(textureLoader, basePath + 'earth_lights_2048.png', _renderer);
     var moonMap = loadTex(textureLoader, basePath + 'moon_1024.jpg', _renderer);
 
-    // Yükleme sayacını doku başarı/hata geri çağırma ile de artır
-    // (loadTex zaten hata durumunu logluyor)
-    THREE.DefaultLoadingManager.onLoad = function() {
+    // Animasyon, dokular gerçekten hazır olduktan sonra başlatılır.
+    // Böylece ilk shader/texture yükü animasyon karesine kalıp rAF violation üretmez.
+    var animationStarted = false;
+
+    function startAnimationOnce(reason) {
+      if (animationStarted || _destroyed) return;
+      animationStarted = true;
+
       hideLoadingIndicator();
+      warmUpRendererOnce();
+
+      requestAnimationFrame(function() {
+        animate();
+        console.log('[DeepSpaceIntro] Sahne başarıyla oluşturuldu:', reason || 'ready');
+      });
+    }
+
+    THREE.DefaultLoadingManager.onLoad = function() {
+      startAnimationOnce('textures_loaded');
     };
 
     // Dünya geometrisi ve materyali
@@ -670,13 +685,12 @@ window.DeepSpaceIntro = (function() {
     };
     window.addEventListener('resize', _resizeHandler);
 
-    // Animasyonu başlatmadan önce ilk render maliyetini ısıt.
-    warmUpRendererOnce();
-
-    requestAnimationFrame(function() {
-      animate();
-      console.log('[DeepSpaceIntro] Sahne başarıyla oluşturuldu.');
-    });
+    // Animasyon burada doğrudan başlatılmaz.
+    // THREE.DefaultLoadingManager.onLoad dokular hazır olduğunda startAnimationOnce()
+    // çağırır. Emniyet için kısa bir geri dönüş kapısı bırakılır.
+    window.setTimeout(function() {
+      startAnimationOnce('fallback_timeout');
+    }, 3500);
   }
 
   // Temizleme fonksiyonu
@@ -791,12 +805,10 @@ window.DeepSpaceIntro = (function() {
   }
 
   function scheduleAutoInitDeepSpace() {
-    // requestIdleCallback içinde tam WebGL kurulumu yapmak Chrome DevTools'ta
-    // gereksiz "requestIdleCallback handler took..." verbose kaydı üretir.
-    // Başlatma bir sonraki makro görevde yapılır; kullanıcı deneyimi değişmez.
-    window.setTimeout(function() {
-      autoInitDeepSpace();
-    }, 0);
+    // WebGL kurulumunu setTimeout/requestIdleCallback içine almak Chrome
+    // DevTools'ta yalnızca callback adını "Violation" olarak görünür yapıyor.
+    // Bu dosya DOM hazır olduktan sonra yüklendiği için doğrudan başlatılır.
+    autoInitDeepSpace();
   }
 
   // DOM hazır olur olmaz başlat
