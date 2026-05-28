@@ -24,7 +24,12 @@ ttsVisualizerUI <- function(id) {
       # Karakter Avatarı ve İsmi
       tags$div(
         class = "tts-char-info",
-        tags$img(id = ns("char_avatar"), class = "tts-avatar-img", src = ""),
+		tags$img(
+		  id = ns("char_avatar"),
+		  class = "tts-avatar-img",
+		  # Boş src tarayıcıda mevcut sayfa URL'sine istek atar ve gizli konsol hatası üretir.
+		  src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+		),
         tags$span(id = ns("char_name"), class = "tts-name-text", "")
       ),
       

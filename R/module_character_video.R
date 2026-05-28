@@ -79,11 +79,12 @@ characterVideoUI <- function(id) {
         preload = "none"
       ),
       # Video yüklenene kadar veya hata durumunda gösterilecek statik resim
-      tags$img(
-        id = ns("character_static_img"),
-        class = "character-static-image",
-        src = ""
-      )
+		tags$img(
+		  id = ns("character_static_img"),
+		  class = "character-static-image",
+		  # Boş src tarayıcıda mevcut sayfa URL'sine istek atar ve gizli konsol hatası üretir.
+		  src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+		)
     ),
     # CinematicVideoManager bileşenini başlatan ve elemanları bağlayan betik
     # Başlatma betiği: Daha uzun süre dener, bulamazsa sekme geçişinde yedek mekanizma devreye girer.

@@ -23,11 +23,12 @@ aiExpertSubtitleUI <- function(id) {
     # Sol: Karakter avatarı
     tags$div(
       class = "ai-expert-avatar-wrapper",
-      tags$img(
-        id = ns("subtitle_avatar"),
-        class = "ai-expert-subtitle-avatar",
-        src = ""
-      )
+		tags$img(
+		  id = ns("subtitle_avatar"),
+		  class = "ai-expert-subtitle-avatar",
+		  # Boş src tarayıcıda mevcut sayfa URL'sine istek atar ve gizli konsol hatası üretir.
+		  src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+		)
     ),
 
     # Orta: Altyazı metin alanı
