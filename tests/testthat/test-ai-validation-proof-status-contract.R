@@ -372,6 +372,8 @@ testthat::test_that("answer self-check catches validation overclaims from proof 
   writeLines(
     c(
       "Full validation passed.",
+      "All validation gates passed.",
+      "Validation doctor passed.",
       "Browser UX smoke passed.",
       "VM/SSO preflight passed.",
       "SQL Server Turkish encoding preflight passed.",
@@ -436,6 +438,8 @@ testthat::test_that("answer self-check catches validation overclaims from proof 
     combined,
     c(
       "Answer claims full validation passed",
+      "Answer claims all validation gates passed",
+      "Answer treats validation doctor output as a pass/fail gate",
       "Answer claims browser UX smoke passed",
       "Answer claims VM/SSO/DB preflight passed",
       "Answer claims SQL Server Turkish encoding preflight passed",

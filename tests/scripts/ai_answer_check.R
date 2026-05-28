@@ -395,51 +395,68 @@ claim_matches <- function(...) {
   )
 }
 
+validation_pass_words_en <- "passed|pass|green|successful|succeeded|completed"
+validation_pass_words_tr <- "geçti|başarılı|tamamlandı"
+validation_pass_words <- paste(validation_pass_words_en, validation_pass_words_tr, sep = "|")
+
 claims_full_validation_passed <- claim_matches(
-  "full\\s+validation\\s+(passed|pass|green|successful)",
-  "full\\s+profile\\s+(passed|pass|green|successful)",
-  "tam\\s+doğrulama\\s+(geçti|başarılı)",
-  "full\\s+doğrulama\\s+(geçti|başarılı)"
+  sprintf("full\\s+validation\\s+(%s)", validation_pass_words_en),
+  sprintf("full\\s+profile\\s+(%s)", validation_pass_words_en),
+  sprintf("tam\\s+doğrulama\\s+(%s)", validation_pass_words_tr),
+  sprintf("full\\s+doğrulama\\s+(%s)", validation_pass_words_tr)
 )
 
 claims_cloud_quick_passed <- claim_matches(
-  "cloud-quick\\s+(passed|pass|green|successful)",
-  "cloud-quick\\s+(geçti|başarılı)"
+  sprintf("cloud-quick\\s+(%s)", validation_pass_words),
+  sprintf("cloud\\s+quick\\s+(%s)", validation_pass_words)
 )
 
 claims_quick_validation_passed <- claim_matches(
-  "quick\\s+validation\\s+(passed|pass|green|successful)",
-  "quick\\s+doğrulama\\s+(geçti|başarılı)"
+  sprintf("quick\\s+validation\\s+(%s)", validation_pass_words_en),
+  sprintf("quick\\s+repo\\s+validation\\s+(%s)", validation_pass_words_en),
+  sprintf("quick\\s+doğrulama\\s+(%s)", validation_pass_words_tr)
 )
 
 claims_app_source_smoke_passed <- claim_matches(
-  "app\\s+source\\s+smoke\\s+(passed|pass|green|successful)",
-  "app\\s+source\\s+smoke\\s+(geçti|başarılı)"
+  sprintf("app\\s+source\\s+smoke\\s+(%s)", validation_pass_words),
+  sprintf("app\\s+source\\s+smoke.{0,40}(%s)", validation_pass_words)
 )
 
 claims_boot_smoke_passed <- claim_matches(
-  "(shiny\\s+boot|app\\s+boot|boot)\\s+smoke\\s+(passed|pass|green|successful)",
-  "(shiny\\s+boot|app\\s+boot|boot)\\s+smoke\\s+(geçti|başarılı)"
+  sprintf("(shiny\\s+boot|app\\s+boot|boot)\\s+smoke\\s+(%s)", validation_pass_words),
+  sprintf("(shiny\\s+boot|app\\s+boot|boot)\\s+smoke.{0,40}(%s)", validation_pass_words)
 )
 
 claims_browser_smoke_passed <- claim_matches(
-  "browser\\s+UX\\s+smoke\\s+(passed|pass|green|successful)",
-  "browser\\s+UX\\s+smoke\\s+(geçti|başarılı)"
+  sprintf("browser\\s+UX\\s+smoke\\s+(%s)", validation_pass_words),
+  sprintf("browser\\s+UX\\s+smoke.{0,40}(%s)", validation_pass_words)
 )
 
 claims_vm_sso_db_passed <- claim_matches(
-  "(VM|SSO|DB).{0,40}(preflight|validation|doğrulama).{0,40}(passed|pass|successful|completed|geçti|başarılı|tamamlandı)",
-  "run_vm_preflight_real\\.R.{0,80}(passed|pass|successful|completed|geçti|başarılı|tamamlandı)"
+  sprintf("(VM|SSO|DB).{0,40}(preflight|validation|doğrulama).{0,40}(%s)", validation_pass_words),
+  sprintf("run_vm_preflight_real\\.R.{0,80}(%s)", validation_pass_words)
 )
 
 claims_sql_encoding_passed <- claim_matches(
-  "(SQL Server|Turkish encoding|Türkçe kodlama|encoding preflight).{0,80}(passed|pass|successful|completed|geçti|başarılı|tamamlandı)",
-  "run_vm_encoding_preflight_real\\.R.{0,80}(passed|pass|successful|completed|geçti|başarılı|tamamlandı)"
+  sprintf("(SQL Server|Turkish encoding|Türkçe kodlama|encoding preflight).{0,80}(%s)", validation_pass_words),
+  sprintf("run_vm_encoding_preflight_real\\.R.{0,80}(%s)", validation_pass_words)
 )
 
 claims_manual_fragile_flow_passed <- claim_matches(
-  "(manual fragile-flow|fragile-flow|manual fragile flow|manuel kırılgan akış|kırılgan akış).{0,80}(passed|pass|successful|completed|geçti|başarılı|tamamlandı)",
-  "run_fragile_flow_manual_preflight\\.R.{0,80}(passed|pass|successful|completed|geçti|başarılı|tamamlandı)"
+  sprintf("(manual fragile-flow|fragile-flow|manual fragile flow|manuel kırılgan akış|kırılgan akış).{0,80}(%s)", validation_pass_words),
+  sprintf("run_fragile_flow_manual_preflight\\.R.{0,80}(%s)", validation_pass_words)
+)
+
+claims_all_validation_passed <- claim_matches(
+  sprintf("(all|complete|entire)\\s+(validation|validations|checks|tests?|gates?)\\s+(%s)", validation_pass_words_en),
+  sprintf("(everything|all)\\s+(%s)", validation_pass_words_en),
+  sprintf("tüm\\s+(doğrulama|kontrol|test|kapılar)\\s+(%s)", validation_pass_words_tr),
+  sprintf("hepsi\\s+(%s)", validation_pass_words_tr)
+)
+
+claims_validation_doctor_passed <- claim_matches(
+  sprintf("validation\\s+doctor\\s+(%s)", validation_pass_words_en),
+  sprintf("doğrulama\\s+doktoru\\s+(%s)", validation_pass_words_tr)
 )
 
 specific_validation_claim <- any(c(
@@ -451,7 +468,9 @@ specific_validation_claim <- any(c(
   claims_browser_smoke_passed,
   claims_vm_sso_db_passed,
   claims_sql_encoding_passed,
-  claims_manual_fragile_flow_passed
+  claims_manual_fragile_flow_passed,
+  claims_all_validation_passed,
+  claims_validation_doctor_passed
 ))
 
 summary_profile_requested <- read_summary_string_field(summary_text, "profile_requested")
@@ -541,6 +560,15 @@ if (isTRUE(claims_tests_passed)) {
   }
 }
 
+if (isTRUE(claims_validation_doctor_passed)) {
+  add_error(
+    paste(
+      "Answer treats validation doctor output as a pass/fail gate.",
+      "validation_doctor is guidance only; cite it only as guidance, not execution proof."
+    )
+  )
+}
+
 if (isTRUE(specific_validation_claim) && !nzchar(summary_text)) {
   add_error(
     "Answer makes specific validation proof claims, but no readable summary.json was provided."
@@ -556,6 +584,36 @@ if (nzchar(summary_text)) {
       "Answer appears to use validation doctor guidance as execution proof. validation_execution_status=%s.",
       summary_value_for_message(summary_execution_status)
     )
+  }
+
+  if (isTRUE(claims_all_validation_passed)) {
+    aggregate_required_statuses <- c(
+      full_validation = summary_full_validation_status,
+      app_source_smoke = summary_app_source_status,
+      app_boot_smoke = summary_app_boot_status,
+      browser_ux_smoke = summary_browser_ux_status,
+      db_sso_vm_validation = summary_db_sso_vm_status,
+      sql_server_turkish_encoding = summary_sql_encoding_validation_status,
+      manual_fragile_flow = summary_manual_fragile_flow_status
+    )
+
+    not_passed <- aggregate_required_statuses[
+      !(aggregate_required_statuses %in% "passed")
+    ]
+
+    if (length(not_passed) > 0L) {
+      add_error(
+        "Answer claims all validation gates passed, but not all proof gates are passed: %s.",
+        paste(
+          sprintf(
+            "%s=%s",
+            names(not_passed),
+            vapply(not_passed, summary_value_for_message, character(1))
+          ),
+          collapse = ", "
+        )
+      )
+    }
   }
 
   if (isTRUE(claims_full_validation_passed) &&
