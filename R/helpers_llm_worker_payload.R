@@ -74,7 +74,10 @@ llm_worker_detect_chart_type_from_text <- function(text) {
   if (grepl("\\b(donut|halka)\\b", txt, perl = TRUE)) return("donut")
   if (grepl("\\b(area|alan)\\b", txt, perl = TRUE)) return("area")
   if (grepl("\\b(pareto)\\b", txt, perl = TRUE)) return("pareto")
-  if (grepl("\\b(scatter|saçılım|nokta|dağılım|serpilme)\\b", txt, perl = TRUE)) return("scatter")
+  # "dağılım" tek başına dağılım/histogram anlamındadır (normalize_chart_type ile
+  # tutarlı). Scatter yalnızca açık saçılım terimleriyle eşleşmelidir; böylece
+  # çizgi (line) ile saçılım (scatter) niyeti karışmaz.
+  if (grepl("\\b(scatter|saçılım|serpilme|nokta grafiği)\\b", txt, perl = TRUE)) return("scatter")
 
   "auto"
 }

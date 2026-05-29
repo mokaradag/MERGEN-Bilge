@@ -341,3 +341,149 @@ html[data-theme="light"] #send_stop_btn[data-mode="stop"] {
   background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%) !important;
   border-color: #991b1b !important;
 }
+
+/* ============================================================
+ * 8) Düşünce Akışı (Premium Reasoning) paneli - açık tema
+ *    Koyu degrade zemin yerine açık yüzey; metin koyu lacivert.
+ *    Açık temada hiç override tanımı yoktu; panel/başlık/gövde
+ *    koyu kalıyor ve kontrast bozuluyordu.
+ * ============================================================ */
+html[data-theme="light"] .reasoning-panel.rp-live {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f6fb 100%) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  color: var(--color-text, #0f1c33) !important;
+  box-shadow: var(--shadow-card);
+}
+html[data-theme="light"] .rp-header {
+  background: linear-gradient(180deg, #eef2fb 0%, #ffffff 100%) !important;
+  border-bottom: 1px solid var(--color-border-soft, rgba(0, 48, 135, 0.10)) !important;
+}
+html[data-theme="light"] .rp-title { color: var(--color-text, #0f1c33) !important; }
+html[data-theme="light"] .rp-subtitle,
+html[data-theme="light"] .rp-model,
+html[data-theme="light"] .rp-host,
+html[data-theme="light"] .rp-timer { color: var(--color-muted, #5b6577) !important; }
+html[data-theme="light"] .rp-body { background: #ffffff !important; }
+html[data-theme="light"] .rp-stream { color: var(--color-text-soft, #1f2a44) !important; }
+html[data-theme="light"] .rp-toggle {
+  background: rgba(0, 48, 135, 0.05) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border-color: var(--color-border, #d8dde7) !important;
+}
+html[data-theme="light"] .rp-toggle:hover {
+  background: rgba(0, 48, 135, 0.10) !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+html[data-theme="light"] .rp-caret { color: var(--color-muted, #5b6577) !important; }
+html[data-theme="light"] .rp-body::-webkit-scrollbar-thumb { background: rgba(0, 48, 135, 0.18) !important; }
+
+/* ============================================================
+ * 9) "Derin Düşünme" düğmeleri ve seviye/detay dropdown'ları - açık tema
+ *    analysis_tools.css var(--bg-tertiary, #1e293b) gibi KOYU fallback'lar
+ *    kullanıyor; açık temada bu değişken tanımlı olmadığı için düğmeler
+ *    siyah görünüyordu. Açık tema değerleriyle override edilir.
+ * ============================================================ */
+html[data-theme="light"] .deep-thinking-toggle {
+  background: #ffffff !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+html[data-theme="light"] .deep-thinking-toggle:hover {
+  border-color: rgba(16, 185, 129, 0.55) !important;
+  background: rgba(16, 185, 129, 0.10) !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+html[data-theme="light"] .deep-thinking-toggle.active {
+  border-color: #16a34a !important;
+  background: rgba(22, 163, 74, 0.14) !important;
+  color: #15803d !important;
+}
+html[data-theme="light"] .deep-thinking-toggle.active .toggle-icon { color: #15803d !important; }
+html[data-theme="light"] .deep-thinking-level-select,
+html[data-theme="light"] .analysis-detail-select,
+html[data-theme="light"] .summary-detail-select,
+html[data-theme="light"] .summary-focus-select {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+html[data-theme="light"] .deep-thinking-level-select:disabled,
+html[data-theme="light"] .analysis-detail-select:disabled {
+  background: #eef1f7 !important;
+  color: var(--color-muted, #5b6577) !important;
+}
+
+/* ============================================================
+ * 10) Sohbet cevabındaki kod blokları (highlight.js) - açık tema
+ *     code_highlighting.css koyu (#1e1e1e) zemin kullanıyor; açık temada
+ *     GitHub-light benzeri bir palet uygulanır (başlık, dil etiketi, satır
+ *     numarası ve sözdizimi renkleri kontrast sorunsuz).
+ * ============================================================ */
+html[data-theme="light"] .code-container {
+  background: #f6f8fa !important;
+  border: 1px solid #d0d7de !important;
+}
+html[data-theme="light"] .code-header {
+  background: #eaeef2 !important;
+  border-bottom: 1px solid #d0d7de !important;
+}
+html[data-theme="light"] .code-language { color: #57606a !important; }
+html[data-theme="light"] .code-copy-btn { color: #57606a !important; }
+html[data-theme="light"] .code-copy-btn:hover {
+  background: rgba(0, 48, 135, 0.08) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+html[data-theme="light"] .hljs { background: #f6f8fa !important; color: #1f2328 !important; }
+html[data-theme="light"] .hljs-comment,
+html[data-theme="light"] .hljs-quote { color: #6e7781 !important; }
+html[data-theme="light"] .hljs-keyword,
+html[data-theme="light"] .hljs-doctag,
+html[data-theme="light"] .hljs-formula,
+html[data-theme="light"] .hljs-section,
+html[data-theme="light"] .hljs-name,
+html[data-theme="light"] .hljs-selector-tag,
+html[data-theme="light"] .hljs-deletion,
+html[data-theme="light"] .hljs-subst { color: #cf222e !important; }
+html[data-theme="light"] .hljs-string,
+html[data-theme="light"] .hljs-regexp,
+html[data-theme="light"] .hljs-addition,
+html[data-theme="light"] .hljs-meta-string { color: #0a3069 !important; }
+html[data-theme="light"] .hljs-literal,
+html[data-theme="light"] .hljs-number,
+html[data-theme="light"] .hljs-variable,
+html[data-theme="light"] .hljs-template-variable,
+html[data-theme="light"] .hljs-type,
+html[data-theme="light"] .hljs-attr,
+html[data-theme="light"] .hljs-attribute { color: #0550ae !important; }
+html[data-theme="light"] .hljs-built_in,
+html[data-theme="light"] .hljs-class .hljs-title,
+html[data-theme="light"] .hljs-title { color: #8250df !important; }
+
+/* ============================================================
+ * 11) CodeMirror editör/önizleme - açık tema (Bilge Yolaç ve kod alanları)
+ * ============================================================ */
+html[data-theme="light"] .CodeMirror {
+  background: #f6f8fa !important;
+  color: #1f2328 !important;
+  border-color: var(--color-border, #d8dde7) !important;
+}
+html[data-theme="light"] .CodeMirror-gutters {
+  background: #eaeef2 !important;
+  border-right: 1px solid #d0d7de !important;
+}
+html[data-theme="light"] .CodeMirror-linenumber { color: #8c959f !important; }
+html[data-theme="light"] .CodeMirror-cursor { border-left-color: #1f2328 !important; }
+html[data-theme="light"] .cm-keyword,
+html[data-theme="light"] .cm-operator { color: #cf222e !important; }
+html[data-theme="light"] .cm-string,
+html[data-theme="light"] .cm-string-2 { color: #0a3069 !important; }
+html[data-theme="light"] .cm-comment { color: #6e7781 !important; }
+html[data-theme="light"] .cm-number,
+html[data-theme="light"] .cm-atom { color: #0550ae !important; }
+html[data-theme="light"] .cm-variable,
+html[data-theme="light"] .cm-variable-2,
+html[data-theme="light"] .cm-def,
+html[data-theme="light"] .cm-property { color: #1f2328 !important; }
+html[data-theme="light"] .cm-tag,
+html[data-theme="light"] .cm-builtin { color: #116329 !important; }
+html[data-theme="light"] .CodeMirror-selected { background: rgba(0, 48, 135, 0.12) !important; }

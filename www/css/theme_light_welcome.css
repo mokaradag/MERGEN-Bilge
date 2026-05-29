@@ -163,17 +163,19 @@ html[data-theme="light"] .modern-welcome-recent-header .modern-welcome-recent-ic
  *    statik çerçeve yumuşak ve gözü yormayan tonlardadır.
  * ============================================================ */
 html[data-theme="light"] .modern-welcome-action-btn {
-  background: rgba(255, 255, 255, 0.70) !important;
+  /* Solid beyaz yerine "Son Konuşmalar" butonlarındaki cam tonu (rgba ~0.32)
+     uygulanır; sayfanın açık/krem arka planı butonun arkasından hissedilir ve
+     göz yormaz (kullanıcı: solid beyaz göz yoruyor). */
+  background: rgba(255, 255, 255, 0.34) !important;
   color: var(--color-text, #0f1c33) !important;
-  /* Beyaz veya sert mavi solid kenarlık yerine yumuşak yarı şeffaf çerçeve */
-  border: 1px solid rgba(0, 48, 135, 0.10) !important;
+  border: 1px solid rgba(0, 48, 135, 0.12) !important;
   box-shadow: 0 4px 12px rgba(15, 28, 51, 0.05);
-  backdrop-filter: blur(12px) saturate(150%);
-  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
 }
 
 html[data-theme="light"] .modern-welcome-action-btn:hover {
-  background: rgba(255, 255, 255, 0.92) !important;
+  background: rgba(255, 255, 255, 0.52) !important;
   border-color: rgba(0, 48, 135, 0.16) !important;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.85) inset,
@@ -189,9 +191,10 @@ html[data-theme="light"] .modern-welcome-action-btn:hover .modern-welcome-action
   border-color: rgba(0, 48, 135, 0.08) !important;
 }
 
-/* İç arka plan beyaz - dark "rgba(18,18,18,0.95)" yerine */
+/* İç arka plan: solid beyaz (0.92) "göz yoran" görünüme yol açıyordu; dış
+   butonun bulanık camı arkadan görünsün diye cam tonuna çekildi. */
 html[data-theme="light"] .modern-welcome-action-bg {
-  background: rgba(255, 255, 255, 0.92) !important;
+  background: rgba(255, 255, 255, 0.30) !important;
   border: 1px solid rgba(0, 48, 135, 0.06) !important;
 }
 

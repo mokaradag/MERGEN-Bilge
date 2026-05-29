@@ -16,6 +16,11 @@
 (function() {
   "use strict";
 
+  // Sunucu tarafından ilan edilen aktif araç kilidi etiketi. Süreç Yönetimi ve
+  // Uygulama Uzmanı gibi sohbet kontrol paneli OLMAYAN araçlarda kilit sinyali
+  // DOM tespiti yerine sunucudan (server-authoritative) gelir.
+  var serverLockLabel = null;
+
   // Aktif araçları DOM üzerinden tespit eder; her aracın kendi kontrol paneli
   // gizli/aktif olarak işaretlenir.
   function detectActiveTools() {
@@ -94,6 +99,11 @@
     refreshing = true;
     try {
       var active = detectActiveTools();
+      // Panelsiz araçların (Süreç/Uygulama) sunucudan gelen kilit etiketini
+      // DOM tespitiyle birleştir; ikisinden biri aktifse kilit uygulanır.
+      if (serverLockLabel && active.indexOf(serverLockLabel) === -1) {
+        active = [serverLockLabel].concat(active);
+      }
       applyChatModelLock(active);
       applySettingsModelLock(active);
     } finally {
@@ -102,11 +112,31 @@
     }
   }
 
+  // Sunucu, panelsiz araçlar (Süreç/Uygulama) için kilit etiketini bildirir.
+  // Boş/null etiket kilidi serbest bırakır.
+  function setServerLock(label) {
+    serverLockLabel = (typeof label === "string" && label.length) ? label : null;
+    refresh();
+  }
+
   // Diğer tool JS dosyaları toggle*Mode handler'ları içerisinden çağırabilir.
   window.MergenToolModelLock = {
     refresh: refresh,
-    detect: detectActiveTools
+    detect: detectActiveTools,
+    setServerLock: setServerLock
   };
+
+  // Sunucu otoriter kilit mesajı: Süreç/Uygulama gibi panelsiz araçlar aktif
+  // olduğunda model seçimi kilitlenir. active=FALSE kilidi serbest bırakır.
+  if (window.Shiny && typeof Shiny.addCustomMessageHandler === "function") {
+    Shiny.addCustomMessageHandler("setToolModelLock", function(data) {
+      if (!data || !data.active) {
+        setServerLock(null);
+      } else {
+        setServerLock(data.label || "Bu araç");
+      }
+    });
+  }
 
   // DOM değişimleri (sohbet sekmesi yeniden render edilebilir) için defensiv
   // gözlemci: input-actions blokunda hidden sınıfının değişmesi takip edilir.

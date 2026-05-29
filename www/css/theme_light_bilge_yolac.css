@@ -465,6 +465,23 @@ html[data-theme="light"] .cc-shell-visibility-toggle:hover {
   border-color: var(--mb-brand-primary, #003087) !important;
 }
 
+/* Kabuk anahtarı ikonu: koyu temada açık yeşil (#81C784) açık zeminde
+   okunmuyordu. Açık temada kurumsal mavi, kapalıyken soluk gri. */
+html[data-theme="light"] .cc-shell-visibility-toggle i {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+html[data-theme="light"] .cc-shell-toggle-off i {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+/* Araç sonucu (bash/komut çıktısı) bloğu açık temada hâlâ koyu kalıyordu;
+   açık yüzey + koyu metin ile okunur hale getirilir. */
+html[data-theme="light"] .cc-tool-result-pre {
+  background: #f3f5fa !important;
+  border: 1px solid rgba(0, 48, 135, 0.12) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
 /* Tool sonuç bekliyor durumu */
 html[data-theme="light"] .cc-tool-result-pending,
 html[data-theme="light"] .cc-tool-result-loading {
@@ -495,27 +512,34 @@ html[data-theme="light"] .cc-input-area {
   border-top: 1px solid rgba(0, 48, 135, 0.14) !important;
 }
 
+/* Komut giriş kutusu: koyu temadaki gibi yalnızca metin alanı çerçevelenir.
+   Önceki açık tema kuralı tüm sarmalayıcıyı kutuluyor ve Çalıştır/Durdur
+   düğmeleri ile karakter rozetlerini kutunun İÇİNDE gösteriyordu. Kutu
+   textarea'ya taşınarak düğme/rozetler kutunun dışında kalır. */
 html[data-theme="light"] .cc-input-wrapper {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="light"] .cc-input-area textarea,
+html[data-theme="light"] .cc-input-area input[type="text"] {
   background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
   border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  border-radius: 10px !important;
+  outline: none !important;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.85) inset,
     0 4px 12px rgba(15, 28, 51, 0.06);
 }
 
-html[data-theme="light"] .cc-input-wrapper:focus-within {
+html[data-theme="light"] .cc-input-area textarea:focus,
+html[data-theme="light"] .cc-input-area input[type="text"]:focus {
   border-color: var(--mb-brand-primary, #003087) !important;
   box-shadow:
     0 0 0 3px rgba(0, 48, 135, 0.14),
     0 4px 12px rgba(15, 28, 51, 0.08);
-}
-
-html[data-theme="light"] .cc-input-area textarea,
-html[data-theme="light"] .cc-input-area input[type="text"] {
-  background: transparent !important;
-  color: var(--color-text, #0f1c33) !important;
-  border: none !important;
-  outline: none !important;
 }
 
 html[data-theme="light"] .cc-input-area textarea::placeholder {

@@ -85,6 +85,13 @@ chatUIObserversInit <- function(input, session, values, start_new_chat,
     # Karşılama ekranına dönüldüğünde "aşağı kaydır" butonunu gizle
     shinyjs::runjs("$('#scroll_to_bottom_container').removeClass('show');")
 
+    # Yeni söyleşide model seçim kilidini de serbest bırak (panelsiz Süreç/
+    # Uygulama Uzmanı araçları için sunucu otoriter kilit temizliği).
+    tryCatch(
+      session$sendCustomMessage("setToolModelLock", list(active = FALSE)),
+      error = function(e) invisible(NULL)
+    )
+
     # Sunucu otoriter olarak araç arka plan ailesini temizle. İstemci
     # tarafında bind edilen #new_chat_btn click handler stale duruma
     # düşerse de bu mesaj sayesinde arka plan animasyonu güvenle silinir.
