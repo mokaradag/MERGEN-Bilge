@@ -270,6 +270,18 @@ quickActionsInit <- function(input, session, values, settings_data,
       )),
       error = function(e) invisible(NULL)
     )
+
+    # 8. Süreç / Uygulama Uzmanı gibi sohbet paneli OLMAYAN araçlarda model seçim
+    #    kilidi sunucudan bildirilir. Panelli araçlar (Görsel, Özetleme, Analiz,
+    #    Excel, Kod) DOM tespitiyle kilitlendiği için burada serbest bırakılır.
+    if (as.character(family)[1] %in% c("process", "app_expert")) {
+      session$sendCustomMessage("setToolModelLock", list(
+        active = TRUE,
+        label = tool_cfg$title %||% "Bu araç"
+      ))
+    } else {
+      session$sendCustomMessage("setToolModelLock", list(active = FALSE))
+    }
   }
   
   # ===========================================================================

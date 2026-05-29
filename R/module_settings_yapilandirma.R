@@ -315,6 +315,20 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
             session$sendCustomMessage("saveSettings", list(model_selection = resolved_tool_model))
           }
 
+          # Süreç / Uygulama Uzmanı gibi sohbet paneli OLMAYAN araçlar için model
+          # seçim kilidi sunucudan bildirilir; panelli araçlar (Görsel, Özetleme,
+          # Analiz, Excel, Kod) DOM tespitiyle kilitlendiği için burada serbest
+          # bırakılır (tools_model_lock.js).
+          if (tool_name %in% c("enable_process_tools", "enable_app_expert_tools")) {
+            lock_cfg <- get_tool_mode_config(tool_name, by = "setting_flag")
+            session$sendCustomMessage("setToolModelLock", list(
+              active = TRUE,
+              label = lock_cfg$title %||% "Bu araç"
+            ))
+          } else {
+            session$sendCustomMessage("setToolModelLock", list(active = FALSE))
+          }
+
           # Görsel Uzmanı aktifleştirildiğinde otomatik model ayarla
           if (tool_name == "enable_image_tools") {
             image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
@@ -395,6 +409,11 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
 
           if (tool_name == "enable_coding_tools") {
             session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
+          }
+
+          # Süreç/Uygulama Uzmanı pasifleştirildiğinde model seçim kilidini serbest bırak.
+          if (tool_name %in% c("enable_process_tools", "enable_app_expert_tools")) {
+            session$sendCustomMessage("setToolModelLock", list(active = FALSE))
           }
         }
       }, ignoreInit = TRUE)
