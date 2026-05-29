@@ -1322,6 +1322,16 @@ Responsibilities:
 * `R/config_api.R`: environment loading, global API configuration objects, `api_config`, TTS/STT configuration, and API-key validation orchestration.
 * `R/helpers_api_model_config.R`: pure model capability, request override, endpoint credential, validation-target, tool-mode, and main-action model resolution helpers.
 
+Personal API keys are user-owned credentials. They must be loaded/saved only after authenticated application identity is available, and must never fall back to `Sys.info()[["user"]]` or the Shiny/Windows service account. Session key state is cleared at session/module start, and a session key is accepted only when its owner marker matches the authenticated user. LLM request paths should use the effective-key helpers rather than directly trusting `session$userData$ai_api_key`.
+
+The server-managed default API key is configured through deployment environment variables, not through a user key file and not in GitHub. A personal user key always takes precedence. The default key is used only when `MERGEN_ALLOW_DEFAULT_API_KEY=TRUE` and `MERGEN_REQUIRE_PERSONAL_API_KEY` is not `TRUE`; do not print or expose it in validation reports or logs.
+
+```ini
+MERGEN_ALLOW_DEFAULT_API_KEY=TRUE
+MERGEN_REQUIRE_PERSONAL_API_KEY=FALSE
+MERGEN_DEFAULT_API_KEY=<company-default-api-key>
+```
+
 `R/helpers_api_model_config.R` owns these public helper functions:
 
 ```text
@@ -3810,6 +3820,9 @@ If one is missing, startup stops with an explicit error.
 - `FILTER_MODEL`
 - `AI_EXPERT_MODEL`
 - `DESTEK_CHATBOT_MODEL`
+- `MERGEN_ALLOW_DEFAULT_API_KEY`
+- `MERGEN_REQUIRE_PERSONAL_API_KEY`
+- `MERGEN_DEFAULT_API_KEY`
 
 #### TTS
 - `LOCAL_TTS_ENDPOINT`
@@ -4588,6 +4601,23 @@ Core files:
 
 Bilge Yolaç is a web wrapper around Claude Code CLI-like behavior.
 
+Bilge Yolaç / Claude Code must not rely on a hardcoded auth token in `~/.claude/settings.json`. Keep model/base URL/certificate settings there, but inject the effective API key into the child process environment at runtime. Personal user keys take precedence; Bilge Yolaç must also continue to work with an allowed default key. Never write the runtime token to files or logs.
+
+Safe `settings.json` shape:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "<internal-url>",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "<model-1>",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "<model-2>",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "<model-3>",
+    "NODE_EXTRA_CA_CERTS": "<certificate-path>"
+  },
+  "model": "<model-1>"
+}
+```
+
 It includes:
 
 - folder browsing,
@@ -5213,7 +5243,7 @@ Do not assume a plain `runApp(".")` workflow is the safest path for this repo.
 
 ### Evidence hierarchy for Codex/cloud versus VM validation
 
-For docs-only updates, do not run R validation unless the user explicitly asks for it. Use lightweight text inspection and `git diff` only.
+For documentation-only edits limited to `README.md` and `CLAUDE.md`, do not run R validation; a text diff review is sufficient.
 
 When Codex/cloud validation is available, interpret it strictly by the generated proof fields. A passing `cloud-quick` run is supplementary evidence for cloud-safe parse and focused contract scope only. It must not be described as full validation, app boot proof, browser UX proof, VM/SSO/DB proof, SQL Server Turkish encoding proof, or manual fragile-flow proof. `validation_doctor` is guidance only and must never be cited as execution proof.
 
