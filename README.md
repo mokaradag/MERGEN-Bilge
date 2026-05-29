@@ -24,6 +24,10 @@ Destek alanındaki açık tema deneyimi daha okunabilir ve tutarlı hale getiril
 
 Yardım Merkezi içindeki Yardım Asistanı sohbet ekranında açık tema okunabilirliği güçlendirildi. Kullanıcı mesaj balonu artık kurumsal destek teal tonu (`--mb-brand-support-teal`) üzerinden belirgin bir yüzey kullanır; bot yanıtları ise açık temada okunabilir kart yüzeyiyle ayrışır. Markdown kaynaklı kalın metinler (`<strong>`), vurgu, başlık, liste ve satır içi kod görünümleri açık zeminde kontrast kaybetmeyecek şekilde dengelendi. Değişiklik yalnızca açık temaya uygulanır; koyu tema davranışı korunur.
 
+### Yardım Merkezi e-posta kodlama düzeltmesi
+
+Yardım Merkezi içindeki “E-posta Destek” bağlantısının konu ve gövde alanları artık UTF-8 bayt temelli percent-encoding ile oluşturulur. Bu sayede Outlook/mailto açılışında “İyi çalışmalar dilerim,” gibi Türkçe karakter içeren varsayılan destek metinleri Windows yerel kod sayfasına bağlı bozulmadan doğru gösterilir. Düzeltme yalnızca bağlantı üretim sınırını etkiler; Yardım Merkezi’nin görünümü ve kullanıcı akışı değişmez.
+
 ## AI Ajanları İçin Doğrulama Profilleri
 
 MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığında doğrulama komutları ortam yeteneklerine göre ayrılmıştır:
