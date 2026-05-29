@@ -515,6 +515,7 @@ settingsInit <- function(session, parent_session = NULL) {
     ycfg_ns <- "settings_yapilandirma_module-"
     updateSelectInput(session, paste0(ycfg_ns, "model_selection"), selected = unname(default_model))
     updateCheckboxInput(session, paste0(ycfg_ns, "enable_tts_audio"), value = FALSE)
+    updateCheckboxInput(session, paste0(ycfg_ns, "enable_background_music"), value = FALSE)
     updateCheckboxInput(session, paste0(ycfg_ns, "enable_ai_expert"), value = FALSE)
     updateCheckboxInput(session, paste0(ycfg_ns, "show_intro_animation"), value = TRUE)
     updateCheckboxInput(session, paste0(ycfg_ns, "enable_rdata_tools"), value = FALSE)
