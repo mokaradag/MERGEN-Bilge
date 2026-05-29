@@ -103,7 +103,11 @@ chartlab_auto_guess_spec <- function(sp) {
     if (length(date_cols) > 0 && length(num_cols) > 0) {
       sp$type <- "line"
     } else if (length(num_cols) >= 2 && length(cat_cols) == 0) {
-      sp$type <- "scatter"
+      # İki+ sayısal sütun ve kategorik sütun yokken analitik bağlamda beklenen
+      # davranış trend/çizgi grafiğidir. Saçılım (scatter) yalnızca kullanıcı
+      # açıkça istediğinde (type="scatter") kullanılır; otomatik tahminde çizgiye
+      # düşmek "çizgi istendi ama scatter çizildi" regresyonunu önler.
+      sp$type <- "line"
     } else if (length(cat_cols) > 0 && length(num_cols) > 0) {
       sp$type <- "bar"
     } else if (length(num_cols) >= 1) {

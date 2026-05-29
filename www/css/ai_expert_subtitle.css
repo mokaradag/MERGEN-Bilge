@@ -108,8 +108,11 @@
   line-height: 1.65 !important;
   letter-spacing: 0.01em;
   font-feature-settings: "locl" 1;
+  /* Altyazı kutusu sabit yükseklikte kalır; JS her güncellemede en alta
+     kaydırarak en güncel (3. ve sonraki) parçaları görünür tutar. Önceki
+     "text-overflow: ellipsis" çok satırlı altyazıda parçaların alttan
+     kırpılmasına yol açıyordu, bu yüzden kaldırıldı. */
   overflow: hidden;
-  text-overflow: ellipsis;
   max-height: 8em;
 }
 

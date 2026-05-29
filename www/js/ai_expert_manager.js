@@ -285,6 +285,11 @@ const AIExpertManager = {
 
       textEl.textContent = visible;
 
+      // Altyazıyı en güncel metne kaydır. Uzun konuşmalarda metin sabit
+      // yükseklikteki kutuyu aşınca (overflow gizli) 3. ve sonraki parçalar
+      // alttan kırpılıyordu; en alta kaydırmak tüm parçaların okunmasını sağlar.
+      try { textEl.scrollTop = textEl.scrollHeight; } catch (e) {}
+
       // Cümle sonu duraklaması (. ! ?)
       var currentChar = text[self.state.displayedChars - 1];
       if ('.!?'.indexOf(currentChar) >= 0 && self.state.displayedChars < text.length) {
