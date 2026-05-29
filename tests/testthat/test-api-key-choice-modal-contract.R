@@ -110,6 +110,30 @@ test_that("seçim modalı iki yollu/tek yollu mantığı, input id'leri ve donts
   expect_true(grepl("default_available", helper_text, fixed = TRUE))
   # "Bu ekranı bir daha gösterme" kutusu (yalnızca varsayılan anahtar varken).
   expect_true(grepl("akc-dontshow", helper_text, fixed = TRUE))
+  # Anahtar giriş alanı her zaman görünür olmalı (JS'e bağlı aç/kapa yok);
+  # kullanıcı anahtarını doğrudan girip kaydedebilmeli.
+  expect_false(grepl("akc-reveal", helper_text, fixed = TRUE))
+})
+
+test_that("onboarding kararı istemci bastırma bayrağı için tolerans penceresi kullanır", {
+  module_text <- .akc_text("R/module_api_key.R")
+  # Modal, istemci tercihi gelmeden açılıp "bir daha gösterme" seçeneğini
+  # işlevsiz bırakmamalı: bayrak gelene kadar veya tolerans dolana kadar bekle.
+  expect_true(grepl("flag_arrived", module_text, fixed = TRUE))
+  expect_true(grepl("api_key_decision_start", module_text, fixed = TRUE))
+})
+
+test_that("modal merkezleme, sayfa bulanıklığı ve animasyonlar CSS ile çalışır", {
+  css_text <- .akc_text("www/css/api_key_choice_modal.css")
+  # Dikey + yatay ortalama (Bootstrap 3 uyumlu, JS'siz).
+  expect_true(grepl("vertical-align: middle", css_text, fixed = TRUE))
+  expect_true(grepl("margin: 0 auto", css_text, fixed = TRUE))
+  # Global 60vh modal-body kaydırma kısıtı bu modalda kaldırılır.
+  expect_true(grepl("max-height: none !important", css_text, fixed = TRUE))
+  # Sayfa (modal arkası) bulanıklığı CSS ile.
+  expect_true(grepl("backdrop-filter: blur", css_text, fixed = TRUE))
+  # Giriş animasyonları mevcut.
+  expect_true(grepl("@keyframes akcCardIn", css_text, fixed = TRUE))
 })
 
 test_that("seçim modalı yerel arka plan videosu/posteri kullanır (uzak değil)", {

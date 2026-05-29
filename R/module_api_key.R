@@ -127,48 +127,70 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
     # --- Başlangıçta: anahtarı yükle veya kullanıcıdan iste ---
     # SSO kimliği hazır olmadan kişisel anahtar aranmaz. Böylece paylaşımlı
     # Shiny OS hesabına ait dosya yanlışlıkla yüklenmez.
+    #
+    # Bastırma bayrağı (api_key_onboarding_suppressed) istemciden asenkron
+    # gelir. Eğer karar bu bayrak gelmeden verilirse, "bir daha gösterme"
+    # seçeneği işe yaramaz ve modal her açılışta tekrar görünür. Bu yüzden:
+    #   - Kimlik hazır olduktan sonra istemci tercihinin gelmesi için kısa bir
+    #     "tolerans" süresi (poll) tanırız.
+    #   - Bayrak geldiğinde (TRUE/FALSE) hemen karar veririz.
+    #   - Tolerans dolarsa varsayılan davranışa (göster) düşeriz.
+    api_key_decision_start <- NULL
     api_key_load_observer <- NULL
     api_key_load_observer <- shiny::observe({
-      shiny::invalidateLater(200, session)
+      shiny::invalidateLater(150, session)
 
       owner <- mb_api_key_resolve_owner(session, require_auth = TRUE)
       if (is.null(owner)) {
         return(invisible(NULL))
       }
 
+      # Kimlik hazır olduğu anı işaretle; tolerans penceresini buradan ölç.
+      if (is.null(api_key_decision_start)) {
+        api_key_decision_start <<- Sys.time()
+      }
+
       loaded_key <- try(load_user_api_key(owner$username), silent = TRUE)
       if (!inherits(loaded_key, "try-error") && nzchar(loaded_key %||% "")) {
         # Kişisel anahtar mevcut: modal gösterilmez, normal akış devam eder.
         mb_api_key_set_session_key(session, loaded_key, owner = owner)
-      } else {
-        default_available <- nzchar(mb_api_key_get_default_key())
-
-        # İstemciden gelen bastırma bayrağı (anahtar değil): kullanıcı "bir
-        # daha gösterme" dediyse veya Yapılandırma'dan kapattıysa TRUE olur.
-        suppressed <- tryCatch(
-          isTRUE(shiny::isolate(input$api_key_onboarding_suppressed)),
-          error = function(e) FALSE
-        )
-
-        if (isTRUE(session$userData$api_key_onboarding_done)) {
-          # Bu oturumda zaten bir seçim yapıldı; tekrar sorma.
-        } else if (isTRUE(suppressed) && default_available) {
-          # Kullanıcı bu ekranı bir daha görmek istemiyor VE varsayılan kurum
-          # anahtarı mevcut; modalı göstermeden varsayılan akışla devam et.
-          # Not: varsayılan anahtar yoksa bastırma yok sayılır, aksi halde
-          # kullanıcı anahtarsız kalır.
-          session$userData$api_key_onboarding_done <- TRUE
-        } else {
-          # Kişisel anahtar yok: premium seçim modalını göster. Varsayılan
-          # kurum anahtarı varsa iki yol, yoksa yalnızca kişisel yol sunulur.
-          shinyjs::delay(400, openModal())
-        }
-      }
-
-      if (!is.null(api_key_load_observer)) {
         api_key_load_observer$destroy()
+        return(invisible(NULL))
       }
 
+      if (isTRUE(session$userData$api_key_onboarding_done)) {
+        # Bu oturumda zaten bir seçim yapıldı; tekrar sorma.
+        api_key_load_observer$destroy()
+        return(invisible(NULL))
+      }
+
+      default_available <- nzchar(mb_api_key_get_default_key())
+
+      # İstemciden gelen bastırma bayrağı (anahtar değil). NULL ise henüz
+      # gelmemiş demektir; mantıksal değilse de "gelmemiş" kabul edilir.
+      raw_flag <- shiny::isolate(input$api_key_onboarding_suppressed)
+      flag_arrived <- is.logical(raw_flag) && length(raw_flag) == 1L && !is.na(raw_flag)
+      suppressed <- isTRUE(flag_arrived && raw_flag)
+
+      elapsed <- as.numeric(difftime(Sys.time(), api_key_decision_start, units = "secs"))
+
+      # Bastırma yalnızca varsayılan kurum anahtarı varken geçerlidir; aksi
+      # halde kullanıcı anahtarsız kalır, bu yüzden yine de modalı gösteririz.
+      if (suppressed && default_available) {
+        session$userData$api_key_onboarding_done <- TRUE
+        api_key_load_observer$destroy()
+        return(invisible(NULL))
+      }
+
+      # Bayrak geldiyse (ve bastırma yoksa) ya da tolerans dolduysa karar ver.
+      if (flag_arrived || elapsed >= 2.5) {
+        session$userData$api_key_onboarding_done <- TRUE
+        api_key_load_observer$destroy()
+        shinyjs::delay(300, openModal())
+        return(invisible(NULL))
+      }
+
+      # Aksi halde bayrağın gelmesini bekle (tolerans penceresi).
       invisible(NULL)
     })
 

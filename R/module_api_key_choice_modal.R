@@ -82,50 +82,32 @@ api_key_choice_request_url <- function(service_desk = NULL) {
       class = "akc-list akc-list--con",
       tags$li(icon("info-circle"), tags$span("Önce API anahtarı talep etmeniz gerekir"))
     ),
-    div(
-      class = "akc-card-actions",
-      request_action,
-      tags$button(
-        type = "button",
-        class = "akc-btn akc-btn--primary akc-reveal-toggle",
-        `data-akc-reveal` = "personal",
-        `aria-expanded` = "false",
-        icon("key"),
-        tags$span("Anahtarımı Gireyim")
-      )
-    ),
-    # Anahtar giriş çekmecesi: observer'ların bağlanabilmesi için DOM'da
-    # her zaman hazır; görünürlüğü .akc-entry-open kontrol eder.
+    # Anahtar giriş alanı her zaman görünür ve kullanıma hazırdır; JS'e
+    # bağımlı bir "aç/kapa" davranışı yoktur. Böylece kullanıcı anahtarını
+    # doğrudan girip kaydedebilir.
     div(
       class = "akc-key-entry",
       `data-akc-entry` = "personal",
-      div(
-        class = "akc-key-entry-inner",
-        passwordInput(
-          ns("api_key_plain_input"),
-          label = "API Anahtarı",
-          width = "100%"
-        ),
-        tags$p(
-          class = "akc-secure-note",
-          icon("lock"),
-          tags$span(
-            "Anahtarınız AES-256-GCM ile şifrelenerek saklanır; ekranda hiçbir zaman gösterilmez."
-          )
-        ),
-        div(
-          class = "akc-key-entry-actions",
-          actionButton(
-            ns("api_key_clear_btn"),
-            label = tagList(icon("eraser"), "Temizle"),
-            class = "akc-btn akc-btn--ghost"
-          ),
-          actionButton(
-            ns("api_key_save_btn"),
-            label = tagList(icon("save"), "Kaydet ve Devam Et"),
-            class = "akc-btn akc-btn--primary"
-          )
+      passwordInput(
+        ns("api_key_plain_input"),
+        label = "API Anahtarınızı buraya girin",
+        width = "100%"
+      ),
+      tags$p(
+        class = "akc-secure-note",
+        icon("lock"),
+        tags$span(
+          "Anahtarınız AES-256-GCM ile şifrelenerek saklanır; ekranda gösterilmez."
         )
+      )
+    ),
+    div(
+      class = "akc-card-actions",
+      request_action,
+      actionButton(
+        ns("api_key_save_btn"),
+        label = tagList(icon("save"), "Kaydet ve Devam Et"),
+        class = "akc-btn akc-btn--primary"
       )
     )
   )
@@ -218,14 +200,18 @@ api_key_choice_modal_dialog <- function(ns,
     # Arka plan videosu OPSİYONEL ve YERELDİR. Dosya
     # www/assets/api-key-choice/backdrop.mp4 mevcutsa oynatılır; yoksa
     # poster (yerel SVG) ve altındaki gradyan katmanı görünür kalır.
+    # Boolean video öznitelikleri açık string olarak verilir; bazı
+    # htmltools/Shiny sürümlerinde NA öznitelik render'ı tutarsız olabilir.
+    # autoplay + muted + playsinline tarayıcıların sessiz otomatik oynatma
+    # kuralını karşılar.
     tags$video(
       class = "akc-video",
       `aria-hidden` = "true",
       tabindex = "-1",
-      autoplay = NA,
-      muted = NA,
-      loop = NA,
-      playsinline = NA,
+      autoplay = "autoplay",
+      muted = "muted",
+      loop = "loop",
+      playsinline = "playsinline",
       preload = "auto",
       poster = "assets/api-key-choice/backdrop-poster.svg",
       tags$source(

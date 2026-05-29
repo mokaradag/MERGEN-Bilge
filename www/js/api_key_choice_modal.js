@@ -1,31 +1,28 @@
 /* ============================================================
  * Dosya: www/js/api_key_choice_modal.js
- * Açıklama: API Anahtarı Seçim Modalı için küçük istemci tarafı
- *           geliştirmeleri. Sorumlulukları:
- *             1) Modal açıldığında birincil eyleme odaklanma,
- *             2) "Anahtarımı Gireyim" çekmecesini açma/kapama + odak,
- *             3) Yerel arka plan videosunu sessize alıp oynatma (azaltılmış
- *                harekette durdurma),
- *             4) Modal dışı bölgeyi bulanıklaştırma (backdrop blur),
- *             5) "Bu ekranı bir daha gösterme" tercihini ve Yapılandırma
- *                anahtarını yönetme.
+ * Açıklama: API Anahtarı Seçim Modalı için küçük istemci tarafı yardımcıları.
  *
- *           Tercih, mergen_settings localStorage nesnesi içindeki
- *           "api_key_onboarding_suppressed" bayrağında tutulur. Bu yalnızca
- *           hassas OLMAYAN bir bayraktır; hiçbir API anahtarı (kişisel veya
+ *           ÖNEMLİ: Modalın KRİTİK davranışları (anahtar girişi, merkezleme,
+ *           arka plan bulanıklığı, animasyonlar, video) tamamen R/CSS/HTML ile
+ *           çalışır ve bu dosyaya BAĞIMLI DEĞİLDİR. Bu dosya yalnızca
+ *           "Bu ekranı bir daha gösterme" kolaylık tercihini yönetir:
+ *             1) Tercihi mergen_settings localStorage bayrağında saklar,
+ *             2) Modal içindeki onay kutusu ve Yapılandırma anahtarını eşitler,
+ *             3) Tercihi sunucuya bildirir (R modalı tekrar göstermesin diye).
+ *
+ *           Tercih yalnızca hassas OLMAYAN bir bayraktır
+ *           (api_key_onboarding_suppressed). Hiçbir API anahtarı (kişisel veya
  *           varsayılan) bu dosyada okunmaz, saklanmaz veya loglanmaz.
- *           CDN / uzak kaynak yoktur; tamamen yereldir.
+ *           Zamanlamaya dayanmamak için olay delegasyonu kullanılır.
+ *           CDN/uzak kaynak yoktur; tamamen yereldir.
  * ============================================================ */
 
 (function () {
   "use strict";
 
-  // mergen_settings nesnesi içindeki bastırma bayrağı anahtarı.
   var SUPPRESS_KEY = "api_key_onboarding_suppressed";
   var SETTINGS_LS = "mergen_settings";
 
-  // localStorage erişimi bazı kurumsal/gizli oturum profillerinde kapalı
-  // olabilir; sessizce güvenli geri düşüş uygula.
   function readSettings() {
     try {
       return JSON.parse(window.localStorage.getItem(SETTINGS_LS) || "{}") || {};
@@ -34,7 +31,7 @@
     }
   }
 
-  // Mevcut mergen_settings nesnesini KORUYARAK tek bir anahtarı yaz (merge).
+  // Mevcut mergen_settings nesnesini KORUYARAK tek anahtarı yaz (merge).
   function writeSettingKey(key, value) {
     try {
       var s = readSettings();
@@ -49,211 +46,131 @@
     return readSettings()[SUPPRESS_KEY] === true;
   }
 
-  function getModalRoot() {
-    return document.querySelector(".api-key-choice-modal-root");
-  }
-
-  function focusElement(el) {
-    if (!el || typeof el.focus !== "function") {
+  // Sunucuya güncel bastırma bayrağını bildir (varsa kayıtlı namespaced id'ye).
+  function reportToServer() {
+    if (!window.Shiny || typeof Shiny.setInputValue !== "function") {
       return;
     }
-    try {
-      el.focus({ preventScroll: true });
-    } catch (e) {
-      el.focus();
-    }
-  }
-
-  function prefersReducedMotion() {
-    try {
-      return (
-        window.matchMedia &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      );
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // Yerel arka plan videosu: sessize al ve oynatmayı dene. Azaltılmış hareket
-  // tercihinde durdur; dosya yoksa/oynatma reddedilirse poster + gradyan kalır.
-  function setupVideo(root) {
-    var video = root.querySelector(".akc-video");
-    if (!video) {
-      return;
-    }
-    try {
-      video.muted = true;
-    } catch (e) {
-      /* yoksay */
-    }
-    if (prefersReducedMotion()) {
-      try {
-        video.pause();
-      } catch (e) {
-        /* yoksay */
-      }
-      return;
-    }
-    var playing = video.play && video.play();
-    if (playing && typeof playing.catch === "function") {
-      playing.catch(function () {
-        /* autoplay reddi: poster/gradyan görünür kalır */
+    if (window.MergenApiKeyChoice._inputId) {
+      Shiny.setInputValue(window.MergenApiKeyChoice._inputId, isSuppressed(), {
+        priority: "event"
       });
     }
-  }
-
-  // "Anahtarımı Gireyim" çekmecesini aç/kapa ve açılınca alana odaklan.
-  function wireRevealToggles(root) {
-    var toggles = root.querySelectorAll(".akc-reveal-toggle");
-    Array.prototype.forEach.call(toggles, function (toggle) {
-      if (toggle.getAttribute("data-akc-bound") === "1") {
-        return;
-      }
-      toggle.setAttribute("data-akc-bound", "1");
-      toggle.addEventListener("click", function () {
-        var card = toggle.closest(".akc-card");
-        if (!card) {
-          return;
-        }
-        var opened = card.classList.toggle("akc-entry-open");
-        toggle.setAttribute("aria-expanded", opened ? "true" : "false");
-        if (opened) {
-          var input = card.querySelector(".akc-key-entry input");
-          if (input) {
-            setTimeout(function () {
-              focusElement(input);
-            }, 200);
-          }
-        }
-      });
-    });
-  }
-
-  // Modal içindeki "Bu ekranı bir daha gösterme" kutusu. Değiştikçe tercih
-  // hemen localStorage'a (mergen_settings) yazılır; anahtar değeri tutulmaz.
-  function wireDontShow(root) {
-    var box = root.querySelector(".akc-dontshow-input");
-    if (!box || box.getAttribute("data-akc-bound") === "1") {
-      return;
-    }
-    box.setAttribute("data-akc-bound", "1");
-    box.checked = isSuppressed();
-    box.addEventListener("change", function () {
-      writeSettingKey(SUPPRESS_KEY, !!box.checked);
-    });
-  }
-
-  // Modal dışı bölgeyi bulanıklaştır (yalnızca bu modal açıkken).
-  function enableBackdropBlur() {
-    try {
-      document.body.classList.add("akc-blur-backdrop");
-    } catch (e) {
-      /* yoksay */
-    }
-    if (window.jQuery) {
-      try {
-        window.jQuery("#shiny-modal").one("hidden.bs.modal", function () {
-          try {
-            document.body.classList.remove("akc-blur-backdrop");
-          } catch (e) {
-            /* yoksay */
-          }
-        });
-      } catch (e) {
-        /* yoksay */
-      }
-    }
-  }
-
-  function focusFirstAction(root) {
-    var target = root.querySelector(
-      ".akc-btn--primary, .akc-btn--corporate, a.akc-btn, .akc-btn"
-    );
-    focusElement(target);
   }
 
   // Yapılandırma sayfasındaki "API anahtarı seçim ekranını göster" anahtarını
-  // localStorage ile görsel olarak eşitle. Bu kontrol tamamen istemci
-  // tarafında yönetilir; sunucu bu Shiny input'unu okumaz.
-  function syncSettingsToggle() {
-    var toggles = document.querySelectorAll(
+  // localStorage durumuyla görsel olarak eşitle ("göster" = bastırılmamış).
+  function syncSettingsToggle(scope) {
+    var root = scope && scope.querySelectorAll ? scope : document;
+    var toggles = root.querySelectorAll(
       'input[type="checkbox"][id$="show_api_key_onboarding"]'
     );
     Array.prototype.forEach.call(toggles, function (el) {
-      el.checked = !isSuppressed(); // "göster" = bastırılmamış
+      el.checked = !isSuppressed();
     });
   }
 
-  if (window.Shiny && typeof Shiny.addCustomMessageHandler === "function") {
-    // Modal gösterildiğinde sunucudan gelen güvenli başlatma mesajı.
-    Shiny.addCustomMessageHandler("mergenApiKeyChoiceInit", function () {
-      // Modal DOM'a eklendikten sonra geliştirmeleri bağla.
-      setTimeout(function () {
-        var root = getModalRoot();
-        if (!root) {
-          return;
-        }
-        setupVideo(root);
-        wireRevealToggles(root);
-        wireDontShow(root);
-        enableBackdropBlur();
-        focusFirstAction(root);
-      }, 40);
-    });
+  // Modal içindeki "bu ekranı bir daha gösterme" kutusunu localStorage'dan
+  // başlangıç durumuna getir.
+  function syncDontShowBox() {
+    var box = document.querySelector(".api-key-choice-modal-root .akc-dontshow-input");
+    if (box) {
+      box.checked = isSuppressed();
+    }
+  }
 
-    // Sunucu, oturum başında bastırma bayrağını ister. Yanıt yalnızca bir
-    // boolean'dır; anahtar içermez.
+  // ---- Olay delegasyonu: zamanlamadan bağımsız, güvenilir ----
+
+  // Tüm checkbox değişikliklerini tek noktadan yakala.
+  document.addEventListener(
+    "change",
+    function (e) {
+      var el = e.target;
+      if (!el || el.type !== "checkbox") {
+        return;
+      }
+
+      // Modal içindeki "bir daha gösterme" kutusu.
+      if (el.classList && el.classList.contains("akc-dontshow-input")) {
+        writeSettingKey(SUPPRESS_KEY, !!el.checked);
+        reportToServer();
+        syncSettingsToggle();
+        return;
+      }
+
+      // Yapılandırma sayfasındaki "göster" anahtarı (ns ön ekli olabilir).
+      if (el.id && /show_api_key_onboarding$/.test(el.id)) {
+        // "göster" kapalıysa onboarding bastırılır.
+        writeSettingKey(SUPPRESS_KEY, !el.checked);
+        reportToServer();
+        return;
+      }
+    },
+    true
+  );
+
+  // Yapılandırma anahtarı her bağlandığında/yeniden render edildiğinde doğru
+  // görünür duruma çek. Shiny her binding'de bu olayı tetikler.
+  document.addEventListener("shiny:bound", function (e) {
+    var el = e && e.target;
+    if (el && el.id && /show_api_key_onboarding$/.test(el.id)) {
+      el.checked = !isSuppressed();
+    }
+  });
+
+  if (window.Shiny && typeof Shiny.addCustomMessageHandler === "function") {
+    // R, oturum başında bastırma bayrağını ister ve namespaced input id'sini
+    // verir. Bunu saklayıp güncel bayrağı bildiririz. Bu yol DOM'a dokunmaz,
+    // bu nedenle zamanlama açısından güvenilirdir.
     Shiny.addCustomMessageHandler(
       "mergenApiKeyChoiceReportPref",
       function (message) {
         if (!message || !message.inputId) {
           return;
         }
-        if (window.Shiny && typeof Shiny.setInputValue === "function") {
-          Shiny.setInputValue(message.inputId, isSuppressed(), {
-            priority: "event"
-          });
-        }
+        window.MergenApiKeyChoice._inputId = message.inputId;
+        reportToServer();
       }
     );
+
+    // Modal gösterildiğinde yalnızca onay kutusu/anahtar görünür durumunu
+    // eşitle. Kritik davranış değil; başarısız olsa bile varsayılan görünür
+    // durum doğrudur. DOM hazır olana kadar birkaç kez dener.
+    Shiny.addCustomMessageHandler("mergenApiKeyChoiceInit", function () {
+      var tries = 0;
+      var timer = setInterval(function () {
+        tries += 1;
+        var root = document.querySelector(".api-key-choice-modal-root");
+        if (root) {
+          syncDontShowBox();
+          syncSettingsToggle();
+          clearInterval(timer);
+        } else if (tries >= 20) {
+          clearInterval(timer);
+        }
+      }, 80);
+    });
   }
 
-  // Yapılandırma anahtarının değişimini delegasyonla yakala ve localStorage'a
-  // yaz. id, modül ad alanı (ns) ön eki taşıyabilir; sonek ile eşleştirilir.
-  document.addEventListener(
-    "change",
-    function (e) {
-      var el = e.target;
-      if (!el || el.type !== "checkbox" || !el.id) {
-        return;
-      }
-      if (!/show_api_key_onboarding$/.test(el.id)) {
-        return;
-      }
-      // "göster" kapalıysa onboarding bastırılır.
-      writeSettingKey(SUPPRESS_KEY, !el.checked);
-    },
-    true
-  );
-
-  // Sayfa bağlandığında/hazır olduğunda Yapılandırma anahtarını eşitle.
+  // Sayfa bağlandığında Yapılandırma anahtarını eşitle.
   document.addEventListener("shiny:connected", function () {
-    setTimeout(syncSettingsToggle, 120);
-  });
-  document.addEventListener("DOMContentLoaded", function () {
-    setTimeout(syncSettingsToggle, 200);
+    setTimeout(function () {
+      syncSettingsToggle();
+    }, 150);
   });
 
   // Küçük, isim alanlı kontrol yüzeyi (test/araç erişimi için).
   window.MergenApiKeyChoice = {
+    _inputId: null,
     settingsKey: SUPPRESS_KEY,
     isSuppressed: isSuppressed,
     suppress: function () {
       writeSettingKey(SUPPRESS_KEY, true);
+      reportToServer();
     },
     allow: function () {
       writeSettingKey(SUPPRESS_KEY, false);
+      reportToServer();
     }
   };
 })();
