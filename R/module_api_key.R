@@ -12,99 +12,26 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
     # uygulama kullanıcısına ait anahtar tekrar yüklenir.
     mb_api_key_clear_session_key(session)
 
-    # --- İç işlem: modalı aç ---
-    openModal <- function(title = "API Anahtarı Eksik") {
-      showModal(modalDialog(
-        title = title,
-        easyClose = FALSE, footer = NULL, size = "l",
-        div(
-          id = "api_key_modal",
-          class = "setting-item",
+    # İstemci tercihini (yalnızca bastırma bayrağı; ANAHTAR DEĞİL) erken oku.
+    # Kullanıcı "bu ekranı bir daha gösterme" dediyse veya Yapılandırma'dan
+    # kapattıysa, mergen_settings.api_key_onboarding_suppressed=true olur ve
+    # onboarding modalı yeni oturumda tekrar gösterilmez.
+    session$sendCustomMessage("mergenApiKeyChoiceReportPref", list(
+      inputId     = ns("api_key_onboarding_suppressed"),
+      settingsKey = "api_key_onboarding_suppressed"
+    ))
 
-          # Parola giriş alanı için tam genişliği zorunlu uygula.
-          tags$style(HTML(sprintf("
-            #api_key_modal #%s { 
-              width: 400px !important;
-              min-width: 400px !important;
-              max-width: 400px !important;
-              box-sizing: border-box;
-            }
-            #api_key_modal .shiny-input-container { width: auto !important; }
-
-            #api_key_modal #secure_tooltip {
-              display: inline-block;
-              color: #93c5fd;
-              text-decoration: underline dotted;
-              text-underline-offset: 2px;
-              cursor: help;
-              transition: color .15s ease, text-shadow .15s ease;
-            }
-            #api_key_modal #secure_tooltip:hover,
-            #api_key_modal #secure_tooltip:focus {
-              color: #bfdbfe;
-              text-shadow: 0 0 6px rgba(147, 197, 253, .35);
-              outline: none;
-            }
-          ", ns("api_key_plain_input")))),
-
-          # \U0001F512 bilgi + ipucu
-          tags$p(HTML(
-            'API anahtarınız sistemde <span id="secure_tooltip" tabindex="0" data-toggle="tooltip" data-placement="top" data-container="body" data-html="true" title="&lt;i class=&quot;fa fa-lock&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt; AES-256-GCM ile şifreleme yapılır">güvenle</span> saklanır.'
-          )),
-
-          div(
-            style = "margin-top: 6px;",
-            passwordInput(
-              ns("api_key_plain_input"),
-              label = "API Anahtarı"
-            )
-          ),
-
-          div(
-            style = "display:flex; gap:10px; justify-content:space-between; align-items:center; margin-top:12px; flex-wrap:wrap;",
-            # Sol yardımcılar
-            div(
-              style = "display:flex; gap:10px; flex-wrap:wrap;",
-              tags$a(
-                href   = serviceDesk$api_key_request_url,
-                target = "_blank",
-                class  = "btn-modern btn-secondary",
-                role   = "button",
-                tagList(icon("external-link-alt"), "API Anahtarı Talep Et")
-              ),
-              actionButton(
-                ns("api_key_clear_btn"),
-                label = tagList(icon("eraser"), "Temizle"),
-                class = "btn-modern btn-secondary"
-              )
-            ),
-            # Sağ birincil işlemler
-            div(
-              style = "display:flex; gap:10px;",
-              actionButton(
-                ns("api_key_save_btn"),
-                label = tagList(icon("save"), "Kaydet"),
-                class = "btn-modern btn-primary"
-              ),
-              tags$button(
-                type = "button",
-                class = "btn-modern btn-secondary",
-                `data-dismiss` = "modal",
-                tagList(icon("times"), "Kapat")
-              )
-            )
-          )
-        )
-      ))
-
-      # Modal DOM'a eklendikten sonra Bootstrap ipucunu başlat.
-      shinyjs::runjs(
-        "setTimeout(function(){
-            var el = document.getElementById('secure_tooltip');
-            if (el && typeof $(el).tooltip === 'function') {
-              $(el).tooltip({ html: true, container: 'body', placement: 'top', trigger: 'hover focus' });
-            }
-          }, 50);"
+    # --- İç işlem: premium API anahtarı seçim modalını aç ---
+    # Modal içeriği R/module_api_key_choice_modal.R içinde üretilir. Burada
+    # yalnızca varsayılan kurum anahtarının kullanılabilir olup olmadığına
+    # göre iki yollu / tek yollu görünüm seçilir. Hiçbir anahtar değeri
+    # bu fonksiyonda okunmaz, saklanmaz veya gösterilmez.
+    openModal <- function(title = NULL) {
+      default_available <- nzchar(mb_api_key_get_default_key())
+      show_api_key_choice_modal(
+        session,
+        default_available = default_available,
+        service_desk = serviceDesk
       )
     }
 
@@ -158,6 +85,8 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       tryCatch({
         save_user_api_key(owner$username, key_plain)
         mb_api_key_set_session_key(session, key_plain, owner = owner)
+        # Bu oturumda onboarding kararı verildi; modal tekrar açılmasın.
+        session$userData$api_key_onboarding_done <- TRUE
         removeModal()
         success_msg <- vres$message %||% "API anahtarı kaydedildi."
 		if (isTRUE(target$fallback_used)) {
@@ -180,6 +109,21 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       shinyjs::runjs(sprintf("$('#%s').val('');", ns("api_key_plain_input")))
     }, ignoreInit = TRUE)
 
+    # --- "Varsayılan kurum anahtarı ile devam et" işleyicisi ---
+    # Varsayılan kurum anahtarı tamamen sunucu tarafında (MERGEN_DEFAULT_API_KEY)
+    # yönetilir. Burada hiçbir anahtar saklanmaz, yazılmaz, loglanmaz veya
+    # istemciye gönderilmez. Yalnızca modal kapatılır; uygulama mevcut etkin
+    # anahtar yardımcıları üzerinden varsayılan anahtar akışıyla devam eder.
+    observeEvent(input$api_key_use_default_btn, {
+      if (!nzchar(mb_api_key_get_default_key())) {
+        showToast(session, "Varsayılan kurum API anahtarı bu ortamda kullanılamıyor.", "warning")
+        return()
+      }
+      session$userData$api_key_onboarding_done <- TRUE
+      removeModal()
+      showToast(session, "Varsayılan kurum API anahtarıyla devam ediyorsunuz.", "info")
+    }, ignoreInit = TRUE)
+
     # --- Başlangıçta: anahtarı yükle veya kullanıcıdan iste ---
     # SSO kimliği hazır olmadan kişisel anahtar aranmaz. Böylece paylaşımlı
     # Shiny OS hesabına ait dosya yanlışlıkla yüklenmez.
@@ -194,15 +138,31 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
 
       loaded_key <- try(load_user_api_key(owner$username), silent = TRUE)
       if (!inherits(loaded_key, "try-error") && nzchar(loaded_key %||% "")) {
+        # Kişisel anahtar mevcut: modal gösterilmez, normal akış devam eder.
         mb_api_key_set_session_key(session, loaded_key, owner = owner)
-      } else if (nzchar(mb_api_key_get_default_key())) {
-        showToast(
-          session,
-          "Kişisel API anahtarınız bulunamadı; varsayılan kurum API anahtarı kullanılacak.",
-          "info"
-        )
       } else {
-        shinyjs::delay(400, openModal("API Anahtarı Eksik"))
+        default_available <- nzchar(mb_api_key_get_default_key())
+
+        # İstemciden gelen bastırma bayrağı (anahtar değil): kullanıcı "bir
+        # daha gösterme" dediyse veya Yapılandırma'dan kapattıysa TRUE olur.
+        suppressed <- tryCatch(
+          isTRUE(shiny::isolate(input$api_key_onboarding_suppressed)),
+          error = function(e) FALSE
+        )
+
+        if (isTRUE(session$userData$api_key_onboarding_done)) {
+          # Bu oturumda zaten bir seçim yapıldı; tekrar sorma.
+        } else if (isTRUE(suppressed) && default_available) {
+          # Kullanıcı bu ekranı bir daha görmek istemiyor VE varsayılan kurum
+          # anahtarı mevcut; modalı göstermeden varsayılan akışla devam et.
+          # Not: varsayılan anahtar yoksa bastırma yok sayılır, aksi halde
+          # kullanıcı anahtarsız kalır.
+          session$userData$api_key_onboarding_done <- TRUE
+        } else {
+          # Kişisel anahtar yok: premium seçim modalını göster. Varsayılan
+          # kurum anahtarı varsa iki yol, yoksa yalnızca kişisel yol sunulur.
+          shinyjs::delay(400, openModal())
+        }
       }
 
       if (!is.null(api_key_load_observer)) {

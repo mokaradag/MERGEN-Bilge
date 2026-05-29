@@ -334,6 +334,18 @@ settingsYapilandirmaUIImpl <- function(id) {
                         p(
                           "Uygulama açılışında derin uzay giriş ekranını gösterir",
                           class = "setting-description"
+                        ),
+                        div(
+                          class = "checkbox-item",
+                          checkboxInput(
+                            inputId = ns("show_api_key_onboarding"),
+                            label = "API anahtarı seçim ekranını göster",
+                            value = TRUE
+                          )
+                        ),
+                        p(
+                          "Kişisel API anahtarınız yoksa açılışta API anahtarı seçim ekranını gösterir. Kapatırsanız tekrar sorulmaz; varsayılan kurum anahtarıyla devam edebilirsiniz.",
+                          class = "setting-description"
                         )
                       )
                     )

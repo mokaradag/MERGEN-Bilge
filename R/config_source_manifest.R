@@ -162,6 +162,7 @@ source_manifest_after_future_paths <- c(
   "R/module_settings_yapilandirma_ui.R",
   "R/module_settings_yapilandirma.R",
   "R/module_settings.R",
+  "R/module_api_key_choice_modal.R",
   "R/module_api_key.R",
 
   "R/module_ai_processing.R",

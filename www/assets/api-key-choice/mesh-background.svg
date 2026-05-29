@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320" fill="none">
+  <!-- Dekoratif ince ızgara dokusu. CSS background-image olarak tekrarlanır.
+       Renk yarı saydam beyazdır; koyu temada hafif, açık temada CSS opaklık
+       ile zaten kısılır. Tamamen yereldir; dış kaynak yoktur. -->
+  <defs>
+    <pattern id="akcGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+      <circle cx="0" cy="0" r="1.1" fill="rgba(255,255,255,0.10)"/>
+    </pattern>
+  </defs>
+  <rect width="320" height="320" fill="url(#akcGrid)"/>
+</svg>
