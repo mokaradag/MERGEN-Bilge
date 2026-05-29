@@ -43,8 +43,12 @@
   content: attr(data-health-tooltip);
   position: absolute;
   left: 50%;
-  bottom: calc(100% + 10px);
-  transform: translateX(-50%) translateY(4px);
+  /* Tooltip kartın ALTINDA gösterilir. Önceki "bottom: 100%+10px" üst sticky
+     sekme çubuğunun bölgesine taşıp kırpıldığı/altında kaldığı için tooltip
+     sekme seçicinin arkasında görünüyordu. Aşağı konumlandırma sekme çubuğuyla
+     çakışmaz ve tooltip üstte kalır. */
+  top: calc(100% + 10px);
+  transform: translateX(-50%) translateY(-4px);
   max-width: 320px;
   width: max-content;
   white-space: normal;
@@ -211,4 +215,58 @@
   .health-worker-grid { grid-template-columns: 1fr; }
   .health-worker-visual-card { grid-template-columns: 1fr; }
   .health-hero { grid-template-columns: 1fr; }
+}
+
+/* =============================================================================
+ * Açık Tema (Light) - Sistem Durumu kartları
+ * Sabit koyu renkler (rgba(15,23,42,...), #f8fafc) açık temada okunmuyordu.
+ * Kartlar temiz beyaz yüzeylere, metinler koyu lacivert tonlara çekilir;
+ * durum (ok/uyarı/kritik) vurgu renkleri açık zeminde kontrastlı tutulur.
+ * "İşçi izleyici" ve sağlık işçi görsel kartındaki beyaz font sorunu giderilir.
+ * ============================================================================= */
+html[data-theme="light"] .health-dashboard-container {
+  background: var(--color-bg, #f4f6fb) !important;
+}
+html[data-theme="light"] .health-hero {
+  background: linear-gradient(135deg, #ffffff, #f4f6fb) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+html[data-theme="light"] .health-hero-copy h2 { color: var(--color-text, #0f1c33) !important; }
+html[data-theme="light"] .health-hero-copy p { color: var(--color-text-soft, #1f2a44) !important; }
+html[data-theme="light"] .health-hero-meta { color: var(--color-muted, #5b6577) !important; }
+html[data-theme="light"] .health-score-ring span { color: var(--color-text, #0f1c33) !important; }
+html[data-theme="light"] .health-score-ring small { color: var(--color-muted, #5b6577) !important; }
+html[data-theme="light"] .health-metric-tile {
+  background: #ffffff !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+html[data-theme="light"] .health-metric-label,
+html[data-theme="light"] .health-metric-title { color: var(--color-muted, #5b6577) !important; }
+html[data-theme="light"] .health-metric-value { color: var(--color-text, #0f1c33) !important; }
+html[data-theme="light"] .health-metric-tile.health-status-ok .health-metric-value { color: #15803d !important; }
+html[data-theme="light"] .health-metric-tile.health-status-warning .health-metric-value { color: #b45309 !important; }
+html[data-theme="light"] .health-metric-tile.health-status-critical .health-metric-value { color: #b91c1c !important; }
+html[data-theme="light"] .health-section-card .card-title { color: var(--color-text, #0f1c33) !important; }
+html[data-theme="light"] .health-path-summary > div,
+html[data-theme="light"] .health-table-wrap {
+  background: #ffffff !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+html[data-theme="light"] .health-worker-visual-card {
+  background:
+    radial-gradient(circle at 35% 30%, rgba(0, 48, 135, 0.10), transparent 34%),
+    radial-gradient(circle at 70% 65%, rgba(22, 163, 74, 0.10), transparent 32%),
+    linear-gradient(145deg, #ffffff, #eef2fb) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+html[data-theme="light"] .health-worker-visual-card .health-worker-visual-title,
+html[data-theme="light"] .health-worker-visual-card .health-worker-legend,
+html[data-theme="light"] .health-worker-visual-card span,
+html[data-theme="light"] .health-worker-visual-card small,
+html[data-theme="light"] .health-worker-visual-card div {
+  color: var(--color-text-soft, #1f2a44) !important;
 }

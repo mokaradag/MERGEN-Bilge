@@ -668,3 +668,26 @@ html[data-theme="light"] .shiny-notification.shiny-notification-error {
 html[data-theme="light"] .shiny-notification.shiny-notification-message {
   border-left: 4px solid var(--mb-brand-primary, #003087) !important;
 }
+
+/* ============================================================
+ * Highcharts veri etiketleri (data labels) - açık tema
+ * Koyu temada beyaz (#fff) ayarlanan grafik içi etiketler açık zeminde
+ * görünmüyordu (örn. Memnuniyet Dağılımı / Durum Dağılımı donut grafikleri:
+ * beyaz etiket + beyaz/açık zemin). SVG text/tspan fill'i koyu lacivertle
+ * ezilir; highcharter inline stilleri !important olmadığından CSS kazanır.
+ * ============================================================ */
+html[data-theme="light"] .highcharts-data-label text,
+html[data-theme="light"] .highcharts-data-label tspan,
+html[data-theme="light"] .highcharts-data-labels text,
+html[data-theme="light"] .highcharts-data-labels tspan {
+  fill: #1f2328 !important;
+  color: #1f2328 !important;
+  text-shadow: none !important;
+}
+
+/* Pasta/halka dilim etiketleri renkli dilim üzerindeyse okunurluk için
+ * ince beyaz dış hat; çizgi/sütun değer etiketleri açık zeminde koyu kalır. */
+html[data-theme="light"] .highcharts-pie-series .highcharts-data-label text,
+html[data-theme="light"] .highcharts-pie-series .highcharts-data-label tspan {
+  fill: #1f2328 !important;
+}
