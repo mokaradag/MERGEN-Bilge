@@ -168,7 +168,10 @@ test_that("etkin API anahtarı kişisel anahtarı varsayılan kurum anahtarına 
       if (is.na(old_env[[nm]])) {
         Sys.unsetenv(nm)
       } else {
-        Sys.setenv(stats::setNames(old_env[[nm]], nm))
+        do.call(
+          Sys.setenv,
+          as.list(stats::setNames(old_env[[nm]], nm))
+        )
       }
     }
   }, add = TRUE)
@@ -211,7 +214,10 @@ test_that("etkin API anahtarı kişisel anahtar yoksa izinli varsayılan kurum a
       if (is.na(old_env[[nm]])) {
         Sys.unsetenv(nm)
       } else {
-        Sys.setenv(stats::setNames(old_env[[nm]], nm))
+        do.call(
+          Sys.setenv,
+          as.list(stats::setNames(old_env[[nm]], nm))
+        )
       }
     }
   }, add = TRUE)
