@@ -1,10 +1,18 @@
-# R/module_api_key.R
-# Simple, safe module to handle the API key modal + persistence/validation
+# ==============================================================================
+# Dosya Yolu: R/module_api_key.R
+# Açıklama:   API anahtarı modalını, kalıcılığını ve doğrulamasını yöneten
+#             güvenli Shiny sunucu modülü.
+# ==============================================================================
+
 apiKeyServer <- function(id, serviceDesk, api_config) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # --- internal: open the modal ---
+    # Her yeni oturumda anahtar önce boşaltılır; yalnızca doğrulanmış
+    # uygulama kullanıcısına ait anahtar tekrar yüklenir.
+    mb_api_key_clear_session_key(session)
+
+    # --- İç işlem: modalı aç ---
     openModal <- function(title = "API Anahtarı Eksik") {
       showModal(modalDialog(
         title = title,
@@ -13,7 +21,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
           id = "api_key_modal",
           class = "setting-item",
 
-          # enforce exact width for the password input (namespaced)
+          # Parola giriş alanı için tam genişliği zorunlu uygula.
           tags$style(HTML(sprintf("
             #api_key_modal #%s { 
               width: 400px !important;
@@ -39,7 +47,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
             }
           ", ns("api_key_plain_input")))),
 
-          # \U0001F512 info + tooltip
+          # \U0001F512 bilgi + ipucu
           tags$p(HTML(
             'API anahtarınız sistemde <span id="secure_tooltip" tabindex="0" data-toggle="tooltip" data-placement="top" data-container="body" data-html="true" title="&lt;i class=&quot;fa fa-lock&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt; AES-256-GCM ile şifreleme yapılır">güvenle</span> saklanır.'
           )),
@@ -54,7 +62,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
 
           div(
             style = "display:flex; gap:10px; justify-content:space-between; align-items:center; margin-top:12px; flex-wrap:wrap;",
-            # Left helpers
+            # Sol yardımcılar
             div(
               style = "display:flex; gap:10px; flex-wrap:wrap;",
               tags$a(
@@ -70,7 +78,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
                 class = "btn-modern btn-secondary"
               )
             ),
-            # Right primaries
+            # Sağ birincil işlemler
             div(
               style = "display:flex; gap:10px;",
               actionButton(
@@ -89,7 +97,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         )
       ))
 
-      # Initialize Bootstrap tooltip after modal is in the DOM
+      # Modal DOM'a eklendikten sonra Bootstrap ipucunu başlat.
       shinyjs::runjs(
         "setTimeout(function(){
             var el = document.getElementById('secure_tooltip');
@@ -100,12 +108,18 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       )
     }
 
-    # --- Save handler ---
+    # --- Kaydetme işleyicisi ---
     observeEvent(input$api_key_save_btn, {
       req(input$api_key_plain_input)
       key_plain <- trimws(input$api_key_plain_input)
       if (!nzchar(key_plain)) {
         showToast(session, "Anahtar boş olamaz.", "warning"); return()
+      }
+
+      owner <- mb_api_key_resolve_owner(session, require_auth = TRUE)
+      if (is.null(owner)) {
+        showToast(session, "Kimlik doğrulama tamamlanmadan API anahtarı kaydedilemez.", "warning")
+        return()
       }
 
       target <- determine_api_key_validation_target(NULL, api_config)
@@ -140,12 +154,10 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         return()
       }
 
-      # persist (encrypted) + expose to session
+      # Kalıcı olarak sakla (şifreli) ve oturuma aç.
       tryCatch({
-        # prefer the username set by app, else fallback
-        system_username <- session$userData$system_username %||% Sys.info()[["user"]]
-        save_user_api_key(system_username, key_plain)
-        session$userData$ai_api_key <- key_plain
+        save_user_api_key(owner$username, key_plain)
+        mb_api_key_set_session_key(session, key_plain, owner = owner)
         removeModal()
         success_msg <- vres$message %||% "API anahtarı kaydedildi."
 		if (isTRUE(target$fallback_used)) {
@@ -162,23 +174,39 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       })
     }, ignoreInit = TRUE)
 
-    # --- Clear handler ---
+    # --- Temizleme işleyicisi ---
     observeEvent(input$api_key_clear_btn, {
       try(updateTextInput(session, "api_key_plain_input", value = ""), silent = TRUE)
       shinyjs::runjs(sprintf("$('#%s').val('');", ns("api_key_plain_input")))
     }, ignoreInit = TRUE)
 
-    # --- On init: load key or ask user ---
-    shiny::observeEvent(TRUE, {
-      loaded_key <- try(load_user_api_key(session$userData$system_username %||% Sys.info()[["user"]]), silent = TRUE)
+    # --- Başlangıçta: anahtarı yükle veya kullanıcıdan iste ---
+    # SSO kimliği hazır olmadan kişisel anahtar aranmaz. Böylece paylaşımlı
+    # Shiny OS hesabına ait dosya yanlışlıkla yüklenmez.
+    api_key_load_observer <- NULL
+    api_key_load_observer <- shiny::observe({
+      shiny::invalidateLater(200, session)
+
+      owner <- mb_api_key_resolve_owner(session, require_auth = TRUE)
+      if (is.null(owner)) {
+        return(invisible(NULL))
+      }
+
+      loaded_key <- try(load_user_api_key(owner$username), silent = TRUE)
       if (!inherits(loaded_key, "try-error") && nzchar(loaded_key %||% "")) {
-        session$userData$ai_api_key <- loaded_key
+        mb_api_key_set_session_key(session, loaded_key, owner = owner)
       } else {
         shinyjs::delay(400, openModal("API Anahtarı Eksik"))
       }
-    }, once = TRUE)
 
-    # return a small API
+      if (!is.null(api_key_load_observer)) {
+        api_key_load_observer$destroy()
+      }
+
+      invisible(NULL)
+    })
+
+    # Küçük bir modül API'si döndür.
     list(
       open = function(title = "API Anahtarı") openModal(title)
     )

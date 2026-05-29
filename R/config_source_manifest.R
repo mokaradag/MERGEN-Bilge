@@ -34,6 +34,7 @@ source_manifest_after_future_paths <- c(
   "R/config_version_history.R",
   "R/config_api.R",
   "R/helpers_api_model_config.R",
+  "R/helpers_api_key_identity.R",
   "R/config_claude_code.R",
   "R/config_claude_code_plugins.R",
   "R/config_ui_assets.R",

@@ -47,7 +47,11 @@ handle_summarization_mode <- function(ctx) {
 
   log_debug("[SUMMARIZATION] Mod parametreleri - Detay: {summary_detail}, Odak: {summary_focus}")
 
-  api_key_val <- tryCatch(as.character(ctx$session$userData$ai_api_key)[1], error = function(e) "")
+  api_key_val <- tryCatch(
+    mb_api_key_get_session_key(ctx$session, require_auth = TRUE),
+    error = function(e) ""
+  )
+
   if (!nzchar(api_key_val)) {
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE

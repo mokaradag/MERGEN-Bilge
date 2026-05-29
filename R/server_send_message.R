@@ -363,7 +363,11 @@ sendMessageInit <- function(
 
     # API anahtarı kontrolü
     {
-      api_key_val <- tryCatch(as.character(session$userData$ai_api_key)[1], error = function(e) "")
+      api_key_val <- tryCatch(
+        mb_api_key_get_session_key(session, require_auth = TRUE),
+        error = function(e) ""
+      )
+
       if (!nzchar(api_key_val)) {
         abort_send_message(
           message = "API anahtarı eksik. Ayarlar > Model Ayarları > API Anahtarı Güncelleme üzerinden girin.",

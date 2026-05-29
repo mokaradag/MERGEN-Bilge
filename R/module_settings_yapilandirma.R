@@ -29,6 +29,7 @@ settingsYapilandirmaUI <- function(id) {
 settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+    app_session <- parent_session %||% session
 
     # Kaydet/Sıfırla tetikleyicileri (koordinatör tarafından dinlenir)
     save_trigger <- reactiveVal(0)
@@ -88,6 +89,12 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
         showToast(session, "Anahtar boş olamaz.", "warning"); return()
       }
 
+      owner <- mb_api_key_resolve_owner(app_session, require_auth = TRUE)
+      if (is.null(owner)) {
+        showToast(session, "Kimlik doğrulama tamamlanmadan API anahtarı kaydedilemez.", "warning")
+        return()
+      }
+
       target <- determine_api_key_validation_target(isolate(settings$model_selection), api_config)
       if (!isTRUE(target$allow_user_key) || !nzchar(target$endpoint)) {
         showToast(session, "Bu model için kullanıcı tarafından yönetilen bir API anahtarı yok.", "error")
@@ -123,9 +130,8 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
 
       # Kaydet + oturuma yaz
       tryCatch({
-        system_username <- session$userData$system_username %||% Sys.info()[["user"]]
-        save_user_api_key(system_username, key_plain)
-        session$userData$ai_api_key <- key_plain
+        save_user_api_key(owner$username, key_plain)
+        mb_api_key_set_session_key(app_session, key_plain, owner = owner)
         removeModal()
         success_msg <- vres$message %||% "API anahtarı güncellendi."
         if (isTRUE(target$fallback_used)) {
