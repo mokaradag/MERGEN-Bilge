@@ -111,6 +111,7 @@ repo_root_for_tests <- resolve_repo_root_for_tests()
 # Testlerde kullanılan yardımcı fonksiyon ve dosyaları global ortama yükler.
 source(file.path(repo_root_for_tests, "R", "utils_safe_source.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "utils_text_encoding.R"), encoding = "UTF-8", local = .test_global)
+source(file.path(repo_root_for_tests, "R", "helpers_mailto_encoding.R"), encoding = "UTF-8", local = .test_global)
 # Persona kimliği tek kaynağı; normalize_character_id / get_character_record
 # gibi yardımcılar downstream helper'lar ve testler tarafından kullanılır.
 source(file.path(repo_root_for_tests, "R", "config_characters.R"), encoding = "UTF-8", local = .test_global)

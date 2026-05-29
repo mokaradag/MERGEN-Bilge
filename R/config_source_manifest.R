@@ -9,6 +9,7 @@ source_manifest_group_1_paths <- c(
   "R/config_packages.R",
   "R/utils_common.R",
   "R/utils_text_encoding.R",
+  "R/helpers_mailto_encoding.R",
   "R/config_logging.R",
   "R/utils_rate_limiter.R",
   "R/helpers_worker_monitor.R"

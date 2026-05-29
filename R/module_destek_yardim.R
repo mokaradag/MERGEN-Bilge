@@ -41,24 +41,24 @@ destekYardimUI <- function(id) {
             p(class = "destek-contact-desc",
               "Her türlü sorunuz, öneriniz veya şikayetiniz için bize e-posta gönderebilirsiniz."
             ),
-            tags$a(
-              href = paste0(
-                "mailto:destek@mergen.ai",
-                "?subject=", utils::URLencode("MERGEN Bilge - Destek Talebi"),
-                "&body=", utils::URLencode(paste0(
-                  "Merhaba MERGEN Bilge Destek Ekibi,\n\n",
-                  "Aşağıdaki konu hakkında desteğinize ihtiyacım bulunmaktadır:\n\n",
-                  "Konu: \n",
-                  "Açıklama: \n\n",
-                  "İyi çalışmalar dilerim,\n\n",
-                  "Uygulama: ", get_app_version_full_label(), "\n",
-                  "Tarih: ", format(Sys.Date(), "%d.%m.%Y")
-                ))
-              ),
-              class = "destek-contact-link",
-              icon("arrow-right"),
-              "destek@mergen.ai"
-            )
+			tags$a(
+			  href = mergen_mailto_href(
+				to = "destek@mergen.ai",
+				subject = "MERGEN Bilge - Destek Talebi",
+				body = paste0(
+				  "Merhaba MERGEN Bilge Destek Ekibi,\n\n",
+				  "Aşağıdaki konu hakkında desteğinize ihtiyacım bulunmaktadır:\n\n",
+				  "Konu: \n",
+				  "Açıklama: \n\n",
+				  "İyi çalışmalar dilerim,\n\n",
+				  "Uygulama: ", get_app_version_full_label(), "\n",
+				  "Tarih: ", format(Sys.Date(), "%d.%m.%Y")
+				)
+			  ),
+			  class = "destek-contact-link",
+			  icon("arrow-right"),
+			  "destek@mergen.ai"
+			)
           )
         ),
         # Telefon kartı
