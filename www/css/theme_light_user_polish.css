@@ -241,6 +241,30 @@ html[data-theme="light"] .modern-welcome-title-accent {
   background-clip: text !important;
 }
 
+/* Kişisel selamlama başlığı - açık tema kontrast düzeltmesi.
+ * welcome_greeting_personal.css içindeki turuncu/sarı vurgu light zeminde
+ * zor okunabildiği için selamlama ve kullanıcı adı kurumsal koyu tonlara çekilir. */
+html[data-theme="light"] .modern-welcome-title-group h1.personal-greeting-title {
+  color: var(--color-text, #0f1c33) !important;
+  filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.65)) !important;
+}
+
+html[data-theme="light"] .modern-welcome-title-group .greeting-time-text {
+  background: linear-gradient(90deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-80, #33599F) 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .modern-welcome-title-group .greeting-name-text {
+  color: var(--color-text, #0f1c33) !important;
+  -webkit-text-fill-color: var(--color-text, #0f1c33) !important;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.72) !important;
+}
+
 /* Karşılama greeting kutusu - cyan vurgu yerine kurumsal mavi */
 html[data-theme="light"] .modern-welcome-greeting-box {
   border-left: 2px solid rgba(0, 48, 135, 0.55) !important;
@@ -271,17 +295,21 @@ html[data-theme="light"] .modern-welcome-recent-icon {
   color: var(--mb-brand-primary, #003087) !important;
 }
 
-/* Karşılama kartı dış kapsayıcı - kurumsal cam.
-   Eski kural backdrop-filter içermediği için kart düz yarı saydam beyaz
-   kalıyordu ve glassmorphism kayboluyordu (kullanıcı raporu + ekran görüntüsü).
-   Saydamlık artırılıp arka plan bulanıklığı eklenerek koyu temadaki cam hissi
-   açık temada da geri getirildi. */
+/* Karşılama kartı dış kapsayıcı - açık temada daha geçirgen cam.
+   Önceki ayar iyileşti; bu sürüm camı bir kademe daha açar.
+   Amaç: arka plan video/nöral katmanı görünür kalsın, kart ise hâlâ
+   okunabilir bir cam yüzey gibi davransın. Koyu tema etkilenmez. */
 html[data-theme="light"] .modern-welcome-card {
-  background: rgba(255, 255, 255, 0.42) !important;
-  border: 1px solid rgba(0, 48, 135, 0.10) !important;
-  box-shadow: 0 25px 50px -12px rgba(15, 28, 51, 0.18) !important;
-  backdrop-filter: blur(22px) saturate(150%) !important;
-  -webkit-backdrop-filter: blur(22px) saturate(150%) !important;
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.18) 0%,
+      rgba(255, 255, 255, 0.11) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.34) inset,
+    0 25px 50px -12px rgba(15, 28, 51, 0.12) !important;
+  backdrop-filter: blur(10px) saturate(132%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(132%) !important;
 }
 
 html[data-theme="light"] .modern-welcome-card::before {
@@ -289,22 +317,22 @@ html[data-theme="light"] .modern-welcome-card::before {
     var(--mb-brand-primary, #003087) 0%,
     var(--mb-brand-accent, #FF5620) 50%,
     var(--mb-brand-primary, #003087) 100%) !important;
-  opacity: 0.55 !important;
+  opacity: 0.42 !important;
 }
 
-/* Sol panel (video tarafı): krem cam ton */
+/* Sol panel (video tarafı): daha açık cam ton */
 html[data-theme="light"] .modern-welcome-left-panel {
-  background: rgba(247, 244, 235, 0.55) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
-  border-right: 1px solid rgba(0, 48, 135, 0.06) !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  backdrop-filter: blur(10px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(130%) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.18) !important;
 }
 
-/* Sağ panel (hızlı eylemler): krem cam ton */
+/* Sağ panel (hızlı eylemler): daha açık cam ton */
 html[data-theme="light"] .modern-welcome-right-panel {
-  background: rgba(250, 247, 242, 0.55) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
+  background: rgba(255, 255, 255, 0.18) !important;
+  backdrop-filter: blur(10px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(130%) !important;
 }
 
 html[data-theme="light"] .modern-welcome-actions-title,
@@ -326,30 +354,41 @@ html[data-theme="light"] .modern-welcome-preview-btn:hover {
   box-shadow: 0 6px 18px rgba(15, 28, 51, 0.10) !important;
 }
 
-/* Hızlı eylem kartları - GLASSMORPHISM (kullanıcı önerisi)
- * Solid beyaz yerine krem cam yüzey + ince kurumsal kenar. */
+/* Hızlı eylem kartları - açık tema krem cam yüzey.
+ * Solid beyaz yerine karşılama/neural zeminindeki sıcak krem tona yakın,
+ * hafif glassmorphism uygulanır. */
 html[data-theme="light"] .modern-welcome-action-bg {
-  background: rgba(250, 247, 242, 0.78) !important;
-  backdrop-filter: blur(18px) !important;
-  -webkit-backdrop-filter: blur(18px) !important;
+  background:
+    linear-gradient(180deg,
+      rgba(251, 248, 241, 0.38) 0%,
+      rgba(243, 237, 224, 0.30) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.20) !important;
+  backdrop-filter: blur(10px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(130%) !important;
 }
 
 html[data-theme="light"] .modern-welcome-action-inner {
-  background: rgba(255, 255, 255, 0.55) !important;
-  border: 1px solid rgba(0, 48, 135, 0.16) !important;
-  backdrop-filter: blur(14px) !important;
-  -webkit-backdrop-filter: blur(14px) !important;
+  background:
+    linear-gradient(180deg,
+      rgba(251, 248, 241, 0.42) 0%,
+      rgba(243, 237, 224, 0.30) 100%) !important;
+  border: 1px solid rgba(0, 48, 135, 0.10) !important;
+  backdrop-filter: blur(10px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(130%) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
-    0 1px 3px rgba(15, 28, 51, 0.06) !important;
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 1px 3px rgba(15, 28, 51, 0.05) !important;
 }
 
 html[data-theme="light"] .modern-welcome-action-btn:hover .modern-welcome-action-inner {
-  background: rgba(255, 255, 255, 0.78) !important;
-  border-color: rgba(var(--theme-r, 0), var(--theme-g, 48), var(--theme-b, 135), 0.45) !important;
+  background:
+    linear-gradient(180deg,
+      rgba(251, 248, 241, 0.58) 0%,
+      rgba(243, 237, 224, 0.42) 100%) !important;
+  border-color: rgba(var(--theme-r, 0), var(--theme-g, 48), var(--theme-b, 135), 0.24) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.65),
-    0 12px 28px rgba(15, 28, 51, 0.12) !important;
+    inset 0 1px 0 rgba(255, 255, 255, 0.46),
+    0 10px 24px rgba(15, 28, 51, 0.09) !important;
 }
 
 html[data-theme="light"] .modern-welcome-action-icon-area {
@@ -380,11 +419,16 @@ html[data-theme="light"] .modern-welcome-action-desc {
   opacity: 0.85;
 }
 
-/* Nöral ağ canvas arkaplanı - krem ton, canvas çizimi üzerinde kalır */
-html[data-theme="light"] .modern-welcome-neural-side {
-  background: linear-gradient(135deg,
-    #fbf8f1 0%,
-    #f3ede0 100%) !important;
+/* Nöral ağ canvas arkaplanı - açık temanın sıcak krem/yellowish zeminine uyumlu */
+html[data-theme="light"] .modern-welcome-neural-side,
+html[data-theme="light"] .modern-welcome-neural-canvas,
+html[data-theme="light"] #welcome_neural_canvas,
+html[data-theme="light"] .welcome-neural-container {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(0, 48, 135, 0.045), transparent 58%),
+    linear-gradient(135deg,
+      #fbf8f1 0%,
+      #f3ede0 100%) !important;
 }
 
 html[data-theme="light"] .modern-welcome-neural-canvas-wrapper {
@@ -393,8 +437,8 @@ html[data-theme="light"] .modern-welcome-neural-canvas-wrapper {
 
 html[data-theme="light"] .modern-welcome-neural-vignette {
   background: radial-gradient(circle at center,
-    transparent 30%,
-    rgba(15, 28, 51, 0.04) 100%) !important;
+    transparent 34%,
+    rgba(15, 28, 51, 0.035) 100%) !important;
 }
 
 /* Video tarafı vignette / overlay - aşırı koyulaştırmasın */
@@ -979,4 +1023,3 @@ html[data-theme="light"] .character-pick-btn.active {
     0 0 0 3px var(--character-accent-soft, rgba(0, 48, 135, 0.18)),
     0 12px 32px rgba(15, 28, 51, 0.20) !important;
 }
-
