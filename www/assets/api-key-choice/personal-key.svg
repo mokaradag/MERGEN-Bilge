@@ -1,7 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
-  <!-- Kişisel anahtar ikonu. CSS mask olarak kullanılır; renk gradyandan
-       gelir. Tamamen yereldir. -->
-  <circle cx="17" cy="17" r="9" fill="none" stroke="#000" stroke-width="4"/>
-  <circle cx="17" cy="17" r="2.5" fill="#000"/>
-  <path d="M23.5 23.5 L39 39 M34.5 39 H40 V33.5" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <!-- Düzgün anahtar ikonu (FontAwesome "key" silüeti). CSS mask olarak
+       kullanılır; renk gradyandan gelir. Halka/sap/diş yapısı net bir
+       anahtar gösterir. Tamamen yereldir; dış kaynak yoktur. -->
+  <path fill="#000" d="M336 0C238.8 0 160 78.8 160 176c0 19.3 3.1 37.8 8.8 55.2L7 393c-4.5 4.5-7 10.6-7 17v78c0 13.3 10.7 24 24 24h64c13.3 0 24-10.7 24-24v-40h40c13.3 0 24-10.7 24-24v-40h37.2c6.8 0 13.3-2.9 17.9-8l24.1-27.1C313.8 350.9 324.8 352 336 352c97.2 0 176-78.8 176-176S433.2 0 336 0zm48 176c-26.5 0-48-21.5-48-48s21.5-48 48-48 48 21.5 48 48-21.5 48-48 48z"/>
 </svg>
