@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <!-- Güvenlik amblemi (kalkan + anahtar deliği + yörünge). CSS mask olarak
+       kullanılır; bu nedenle yalnızca alfa/şekil önemlidir, renk gradyandan
+       gelir. Tamamen yereldir. -->
+  <ellipse cx="32" cy="31" rx="25" ry="14" fill="none" stroke="#000" stroke-width="2" opacity="0.5" transform="rotate(-18 32 31)"/>
+  <circle cx="55" cy="22" r="3" fill="#000"/>
+  <path d="M32 7 L50 14 V28 C50 40 42 48 32 53 C22 48 14 40 14 28 V14 Z" fill="none" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="32" cy="27" r="4.5" fill="#000"/>
+  <path d="M30 30 H34 L33 40 H31 Z" fill="#000"/>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
+  <!-- Kişisel anahtar ikonu. CSS mask olarak kullanılır; renk gradyandan
+       gelir. Tamamen yereldir. -->
+  <circle cx="17" cy="17" r="9" fill="none" stroke="#000" stroke-width="4"/>
+  <circle cx="17" cy="17" r="2.5" fill="#000"/>
+  <path d="M23.5 23.5 L39 39 M34.5 39 H40 V33.5" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

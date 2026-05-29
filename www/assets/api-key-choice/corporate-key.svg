@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
+  <!-- Kurumsal/paylaşımlı anahtar ikonu (sütunlu bina silüeti). CSS mask
+       olarak kullanılır; renk gradyandan gelir. Tamamen yereldir. -->
+  <path d="M24 6 L42 16 H6 Z" fill="#000"/>
+  <rect x="10" y="20" width="4" height="15" fill="#000"/>
+  <rect x="18" y="20" width="4" height="15" fill="#000"/>
+  <rect x="26" y="20" width="4" height="15" fill="#000"/>
+  <rect x="34" y="20" width="4" height="15" fill="#000"/>
+  <rect x="6" y="37" width="36" height="5" rx="1.5" fill="#000"/>
+</svg>
