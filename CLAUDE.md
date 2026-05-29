@@ -105,6 +105,10 @@ The Ana Söyleşi modern welcome screen has a protected light-theme UX boundary.
 
 The right-side neural network animation must only react to pointer movement inside the neural animation region. Do not restore global attraction behavior that follows the pointer over the video side, welcome card, quick action buttons, or other non-neural areas. Multi-monitor exit behavior is also protected: when the pointer leaves the browser window, especially toward a second display, the neural mouse target must reset instead of continuing to pull nodes toward the last browser-edge coordinate.
 
+### Help Center chatbot light-theme contrast boundary
+
+The Yardım Merkezi / Yardım Asistanı chatbot has a protected light-theme contrast boundary. User chat bubbles in light mode should use the support teal brand token (`--mb-brand-support-teal`, fallback `#077780`) so user messages remain visually distinct from bot responses. Bot answer bubbles should remain readable light cards, and Markdown-generated rich text such as `<strong>`, emphasis, headings, lists, and inline code must keep sufficient contrast on light surfaces. Keep these changes CSS-only and scoped to `html[data-theme="light"]`; do not regress the dark theme or alter chatbot runtime behavior.
+
 Protected by:
 
 - `tests/testthat/test-chat-history-datatable-safety-contract.R`
