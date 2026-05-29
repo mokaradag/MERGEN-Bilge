@@ -34,6 +34,8 @@ MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığ�
 
 `cloud-quick` modu, `duckdb`, `arrow`, `odbc` ve `pool` gibi ağır/runtime kaynak paketlerinin bulut ortamında uzun süren derlemelerine takılmamak için tasarlanmıştır. Bu mod, app source smoke / tam runtime boot doğrulamasını bilinçli olarak atlar; parse sanity ve odak sözleşme testlerini çalıştırır. AI ajanları `cloud-quick` kullandığında bunun tam runtime/VM doğrulaması olmadığını açıkça belirtmelidir.
 
+Yalnızca `README.md` / `CLAUDE.md` dokümantasyon değişikliklerinde R doğrulaması çalıştırılmaz; metin farkı incelemesi yeterlidir.
+
 `tests/scripts/ci_install_packages.R` için Linux paket tipi sözleşmesi ayrıca statik olarak korunur: varsayılan `pkgType` değeri Linux ortamında `source` kalmalı, `MERGEN_AI_R_PKG_TYPE` yalnızca açıkça verildiğinde (`source`/`binary`) override edilmelidir. Bu sözleşme `tests/testthat/test-ai-package-bootstrap-contract.R` ile izlenir ve `tools/setup_ai_r_environment.sh` içindeki RSPM denetimi kırılgan token eşleştirmeleriyle değil, kararlı URL parçaları (`__linux__/noble/latest`, `__linux__/jammy/latest`) üzerinden doğrulanır.
 
 ### Doğrulama doktoru
@@ -501,6 +503,23 @@ VM encoding preflight, eski/historik mojibake kalıntılarını varsayılan olar
 Claude Code tabanlı, web arayüzüne entegre edilmiş kod odaklı ajan sayfasıdır. Klasör seçimi, senaryo şablonları, model katmanları ve canlı akışlı araç kullanım görünümü içerir.
 
 Bilge Yolaç canlı akışı, Türkçe karakter ve emoji bütünlüğünü korumak için hem sunucu tarafındaki `R/utils_text_encoding.R` normalizasyon sınırından hem de istemci tarafındaki `www/js/encoding_utils.js` savunmacı fallback katmanından geçer. Bu yapı, Windows VM/SSO ortamlarında görülebilen çift kodlama ve mojibake risklerini kullanıcı deneyimini azaltmadan merkezi biçimde yönetir.
+
+Bilge Yolaç çalıştırmalarında API anahtarı `C:\Users\<username>\.claude\settings.json` içine sabit yazılmamalıdır. `settings.json` yalnızca base URL, model adları ve sertifika ayarlarını taşımalı; MERGEN etkin anahtarı çalışma anında child process ortamına aktarır. Öncelik kişisel kullanıcı anahtarındadır; kişisel anahtar yoksa ve izinliyse varsayılan kurum anahtarı kullanılır. Anahtar dosyaya yazılmaz ve loglanmamalıdır.
+
+Güvenli `settings.json` örneği:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "<internal-url>",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "<model-1>",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "<model-2>",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "<model-3>",
+    "NODE_EXTRA_CA_CERTS": "<certificate-path>"
+  },
+  "model": "<model-1>"
+}
+```
 
 #### Bilge Yolaç güvenli CLI çalıştırma politikası
 
@@ -1706,6 +1725,8 @@ Bu durumda:
 - kullanıcı veritabanı kaydı doğrulanır/güncellenir,
 - oturum bilgileri token doğrulaması sonrası tamamlanır.
 
+API anahtarı sahipliği kullanıcı oturumu üzerinden izole edilir. Kişisel anahtarlar yalnızca SSO/uygulama kimliği tamamlanmış kullanıcı için yüklenir veya kaydedilir; Shiny/Windows sunucu OS kullanıcısına düşülmez. Oturum başlangıcında geçici API key state'i temizlenir ve oturumdaki anahtar yalnızca owner bilgisi doğrulanan kullanıcı için geçerli kabul edilir; bir kullanıcının kişisel anahtarı başka kullanıcı oturumunda kullanılamaz.
+
 SSO ile ilgili ana yapılandırma `R/config_sso.R` içinde tanımlanır.
 
 ---
@@ -1927,6 +1948,11 @@ FILTER_MODEL=your-default-model
 AI_EXPERT_MODEL=your-ai-expert-model
 DESTEK_CHATBOT_MODEL=your-support-chatbot-model
 
+# İsteğe bağlı - sunucu yönetimli kurum API anahtarı
+MERGEN_ALLOW_DEFAULT_API_KEY=TRUE
+MERGEN_REQUIRE_PERSONAL_API_KEY=FALSE
+MERGEN_DEFAULT_API_KEY=<kurum-api-anahtari>
+
 # TTS
 LOCAL_TTS_ENDPOINT=https://your-tts-endpoint.example.com/v1
 LOCAL_TTS_API_KEY=your-tts-key
@@ -1966,6 +1992,8 @@ CLAUDE_CODE_PERSIST_SESSIONS=TRUE
 # MCP dosya deposu
 MCP_FILES_BASE=
 ```
+
+Varsayılan kurum API anahtarı istenirse `.Renviron` üzerinden yönetilir. Kişisel API anahtarı varsa her zaman önceliklidir; kişisel anahtar yoksa ve varsayılan anahtar izinliyse sunucu-yönetimli kurum anahtarı kullanılır. Bu değer GitHub'a yazılmamalı ve loglarda gösterilmemelidir. Kişisel anahtar zorunlu mod için `MERGEN_ALLOW_DEFAULT_API_KEY=FALSE` ve `MERGEN_REQUIRE_PERSONAL_API_KEY=TRUE` kullanılır. `.Renviron` değişikliklerinin etkili olması için tarayıcı yenilemesi değil, tam R process restart gerekir.
 
 ---
 
