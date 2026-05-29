@@ -381,16 +381,33 @@ sendMessageInit <- function(
       fallback_model = current_settings$model_selection
     )
 
-    # Excel/Kod araçlarında "Derin Düşünme" düğmesi aktifken alternatif
-    # modeli kullan; settings$excel_deep_thinking / settings$coding_deep_thinking
-    # ile birlikte düşük/yüksek seviye dropdown'larından gelir.
-    if (identical(tool_family, "mcp_excel") && isTRUE(settings_data$excel_deep_thinking)) {
-      dt_model <- resolve_deep_thinking_model("mcp_excel", settings_data$excel_deep_level)
+    # Excel/Kod araçlarında "Derin Düşünme" düğmesi aktifken alternatif düşünen
+    # modeli kullan. Durum hem senkronize ayardan (settings_data) hem de canlı
+    # sohbet girdisinden (input$chat_*_deep_thinking) okunur; böylece gözlemci
+    # senkronizasyon zamanlaması model değişimini sessizce engelleyemez.
+    excel_deep_on <- isTRUE(settings_data$excel_deep_thinking) ||
+      isTRUE(shiny::isolate(input$chat_excel_deep_thinking))
+    excel_deep_level <- settings_data$excel_deep_level %||%
+      shiny::isolate(input$chat_excel_deep_level) %||% "low"
+    coding_deep_on <- isTRUE(settings_data$coding_deep_thinking) ||
+      isTRUE(shiny::isolate(input$chat_coding_deep_thinking))
+    coding_deep_level <- settings_data$coding_deep_level %||%
+      shiny::isolate(input$chat_coding_deep_level) %||% "low"
+
+    if (identical(tool_family, "mcp_excel") && isTRUE(excel_deep_on)) {
+      dt_model <- resolve_deep_thinking_model("mcp_excel", excel_deep_level)
       if (!is.null(dt_model) && nzchar(dt_model)) model_selected <- dt_model
-    } else if (identical(tool_family, "coding") && isTRUE(settings_data$coding_deep_thinking)) {
-      dt_model <- resolve_deep_thinking_model("coding", settings_data$coding_deep_level)
+    } else if (identical(tool_family, "coding") && isTRUE(coding_deep_on)) {
+      dt_model <- resolve_deep_thinking_model("coding", coding_deep_level)
       if (!is.null(dt_model) && nzchar(dt_model)) model_selected <- dt_model
     }
+
+    # Derin Düşünme model seçimini VM tarafında doğrulayabilmek için kaydet.
+    log_info(sprintf(
+      "[DERIN DUSUNME] arac=%s excel=%s/%s coding=%s/%s -> model=%s",
+      tool_family, excel_deep_on, excel_deep_level,
+      coding_deep_on, coding_deep_level, model_selected
+    ))
 
     current_settings$model_selection <- model_selected
 

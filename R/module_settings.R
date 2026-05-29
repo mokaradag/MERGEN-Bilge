@@ -434,7 +434,9 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$enable_streaming         <- TRUE
     settings$enable_widescreen        <- TRUE
     settings$enable_tool_backgrounds  <- mb_tool_bg_default_enabled()
-    settings$enable_tts_audio         <- TRUE
+    # Varsayılan: Yanıtları Seslendir KAPALI olmalı. Aksi halde sıfırlamada
+    # TTS görselleştirici, hiçbir konuşma seçeneği seçili olmadan görünüyordu.
+    settings$enable_tts_audio         <- FALSE
     settings$enable_rdata_tools       <- FALSE
     settings$enable_mcp_tools         <- FALSE
     settings$enable_summarization_tools <- FALSE
@@ -458,6 +460,11 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$summary_focus_mode       <- "general"
     settings$analysis_deep_thinking   <- FALSE
     settings$analysis_detail_level    <- "standart"
+    # Excel/Kod Derin Düşünme durum ve seviyelerini de varsayılana çek
+    settings$excel_deep_thinking      <- FALSE
+    settings$excel_deep_level         <- "low"
+    settings$coding_deep_thinking     <- FALSE
+    settings$coding_deep_level        <- "low"
 
     # Kişiselleştirme geçici değerlerini sıfırla
     kisisel$temp_selected_character(CHARACTER_DEFAULT_ID)
@@ -491,6 +498,32 @@ settingsInit <- function(session, parent_session = NULL) {
       detail_level = "standart"
     ))
     session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
+    # Diğer tüm araç modlarını da kapat ki sohbet içi kontroller (Excel/Kod
+    # Derin Düşünme, özetleme, görsel) ve merkezi model seçim kilidi serbest kalsın.
+    session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
+    session$sendCustomMessage("toggleImageMode", list(active = FALSE))
+    session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
+    session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
+    session$sendCustomMessage("syncExcelDeepThinkingToChat", list(deep_thinking = FALSE, level = "low"))
+    session$sendCustomMessage("syncCodingDeepThinkingToChat", list(deep_thinking = FALSE, level = "low"))
+    # Tüm araçlar pasif olduğundan model seçim kilidini serbest bırak.
+    session$sendCustomMessage("setToolModelLock", list(active = FALSE))
+
+    # Yapılandırma sayfasındaki girdi bileşenlerini varsayılana çek; aksi halde
+    # sıfırlama sonrası görünür seçimler bayat kalır ve sonraki "Ayarları Kaydet"
+    # ile eski değerler yeniden uygulanır (görünür/uygulanan durum uyumsuzluğu).
+    ycfg_ns <- "settings_yapilandirma_module-"
+    updateSelectInput(session, paste0(ycfg_ns, "model_selection"), selected = unname(default_model))
+    updateCheckboxInput(session, paste0(ycfg_ns, "enable_tts_audio"), value = FALSE)
+    updateCheckboxInput(session, paste0(ycfg_ns, "enable_ai_expert"), value = FALSE)
+    updateCheckboxInput(session, paste0(ycfg_ns, "show_intro_animation"), value = TRUE)
+    updateCheckboxInput(session, paste0(ycfg_ns, "enable_rdata_tools"), value = FALSE)
+    updateCheckboxInput(session, paste0(ycfg_ns, "enable_mcp_tools"), value = FALSE)
+    updateCheckboxInput(session, paste0(ycfg_ns, "enable_summarization_tools"), value = FALSE)
+    updateCheckboxInput(session, paste0(ycfg_ns, "enable_coding_tools"), value = FALSE)
+    updateCheckboxInput(session, paste0(ycfg_ns, "enable_process_tools"), value = FALSE)
+    updateCheckboxInput(session, paste0(ycfg_ns, "enable_app_expert_tools"), value = FALSE)
+    updateCheckboxInput(session, paste0(ycfg_ns, "enable_image_tools"), value = FALSE)
 
     # localStorage'ı önce temizle. Aşağıdaki tema ve araç arka plan ayarları
     # varsayılana çekilirken yeniden persist edilir; sıralama korunmalıdır.
