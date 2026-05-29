@@ -126,7 +126,7 @@ test_that("API anahtarı helper manifestte modüllerden önce yüklenir", {
   expect_lt(helper_pos, settings_module_pos)
 })
 
-test_that("LLM çağrı yolları sahiplik doğrulayan session key helper'ını kullanır", {
+test_that("LLM çağrı yolları sahiplik doğrulayan etkin API anahtarı helper'ını kullanır", {
   send_message_lines <- readLines(
     file.path(repo_root_for_tests, "R", "server_send_message.R"),
     warn = FALSE,
@@ -145,7 +145,90 @@ test_that("LLM çağrı yolları sahiplik doğrulayan session key helper'ını k
     encoding = "UTF-8"
   )
 
-  expect_true(any(grepl("mb_api_key_get_session_key\\(session", send_message_lines)))
-  expect_true(any(grepl("mb_api_key_get_session_key\\(ctx\\$session", summarization_lines)))
-  expect_true(any(grepl("mb_api_key_get_session_key\\(sess", ai_processing_lines)))
+  expect_true(any(grepl("mb_api_key_get_effective_key\\(", send_message_lines)))
+  expect_true(any(grepl("mb_api_key_get_effective_key_value\\(", summarization_lines)))
+  expect_true(any(grepl("mb_api_key_get_effective_key_value\\(", ai_processing_lines)))
+
+  expect_false(any(grepl("session\\$userData\\$ai_api_key", send_message_lines, fixed = TRUE)))
+  expect_false(any(grepl("ctx\\$session\\$userData\\$ai_api_key", summarization_lines, fixed = TRUE)))
+})
+
+test_that("etkin API anahtarı kişisel anahtarı varsayılan kurum anahtarına tercih eder", {
+  old_env <- Sys.getenv(
+    c(
+      "MERGEN_ALLOW_DEFAULT_API_KEY",
+      "MERGEN_REQUIRE_PERSONAL_API_KEY",
+      "MERGEN_DEFAULT_API_KEY"
+    ),
+    unset = NA_character_
+  )
+
+  on.exit({
+    for (nm in names(old_env)) {
+      if (is.na(old_env[[nm]])) {
+        Sys.unsetenv(nm)
+      } else {
+        Sys.setenv(stats::setNames(old_env[[nm]], nm))
+      }
+    }
+  }, add = TRUE)
+
+  Sys.setenv(
+    MERGEN_ALLOW_DEFAULT_API_KEY = "TRUE",
+    MERGEN_REQUIRE_PERSONAL_API_KEY = "FALSE",
+    MERGEN_DEFAULT_API_KEY = "test-default-key"
+  )
+
+  session <- .make_api_key_identity_session(
+    auth_initialized = TRUE,
+    system_username = "user_a"
+  )
+
+  mb_api_key_set_session_key(
+    session,
+    "test-personal-key",
+    owner = list(username = "user_a")
+  )
+
+  plan <- mb_api_key_get_effective_key(session, require_auth = TRUE)
+
+  expect_equal(plan$key, "test-personal-key")
+  expect_equal(plan$source, "personal")
+})
+
+test_that("etkin API anahtarı kişisel anahtar yoksa izinli varsayılan kurum anahtarını döner", {
+  old_env <- Sys.getenv(
+    c(
+      "MERGEN_ALLOW_DEFAULT_API_KEY",
+      "MERGEN_REQUIRE_PERSONAL_API_KEY",
+      "MERGEN_DEFAULT_API_KEY"
+    ),
+    unset = NA_character_
+  )
+
+  on.exit({
+    for (nm in names(old_env)) {
+      if (is.na(old_env[[nm]])) {
+        Sys.unsetenv(nm)
+      } else {
+        Sys.setenv(stats::setNames(old_env[[nm]], nm))
+      }
+    }
+  }, add = TRUE)
+
+  Sys.setenv(
+    MERGEN_ALLOW_DEFAULT_API_KEY = "TRUE",
+    MERGEN_REQUIRE_PERSONAL_API_KEY = "FALSE",
+    MERGEN_DEFAULT_API_KEY = "test-default-key"
+  )
+
+  session <- .make_api_key_identity_session(
+    auth_initialized = TRUE,
+    system_username = "user_without_personal_key"
+  )
+
+  plan <- mb_api_key_get_effective_key(session, require_auth = TRUE)
+
+  expect_equal(plan$key, "test-default-key")
+  expect_equal(plan$source, "default")
 })
