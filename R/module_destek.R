@@ -43,19 +43,25 @@ destekUI <- function(id, sayfa = "yardim") {
           )
         )
       ),
-      # İçerik alanı (tam genişlik, sidebar yok)
-      div(
-        class = "destek-content-full",
-        if (sayfa == "yardim") {
-          div(class = "destek-page", destekYardimUI(ns("yardim_module")))
-        } else if (sayfa == "geri_bildirim") {
-          div(class = "destek-page", destekGeriBildirimUI(ns("geri_bildirim_module")))
-        } else if (sayfa == "surum") {
-          div(class = "destek-page", destekSurumUI(ns("surum_module")))
-        } else if (sayfa == "hakkinda") {
-          div(class = "destek-page", destekHakkindaUI(ns("hakkinda_module")))
-        }
-      )
+		# İçerik alanı (tam genişlik, sidebar yok)
+		div(
+		  class = paste(
+			c(
+			  "destek-content-full",
+			  if (identical(sayfa, "surum")) "destek-content-full-surum"
+			),
+			collapse = " "
+		  ),
+		  if (sayfa == "yardim") {
+			div(class = "destek-page", destekYardimUI(ns("yardim_module")))
+		  } else if (sayfa == "geri_bildirim") {
+			div(class = "destek-page", destekGeriBildirimUI(ns("geri_bildirim_module")))
+		  } else if (sayfa == "surum") {
+			div(class = "destek-page destek-page-surum", destekSurumUI(ns("surum_module")))
+		  } else if (sayfa == "hakkinda") {
+			div(class = "destek-page", destekHakkindaUI(ns("hakkinda_module")))
+		  }
+		)
     )
   )
 }

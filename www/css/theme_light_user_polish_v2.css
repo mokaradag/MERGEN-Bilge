@@ -258,6 +258,22 @@ html[data-theme="light"] [role="tab"][data-destek-target].active * {
   color: #ffffff !important;
 }
 
+/* NPS 0-10 puan butonları - açık temada pasif kenarlar görünür kalsın.
+ * Yalnızca pasif durumu kapsar; seçili puanın renk kodlu aktif stili korunur. */
+html[data-theme="light"] .destek-nps-btn:not(.active) {
+  background: #ffffff !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1.5px solid rgba(0, 48, 135, 0.30) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05) !important;
+}
+
+html[data-theme="light"] .destek-nps-btn:not(.active):hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 4px 10px rgba(0, 48, 135, 0.12) !important;
+}
+
 /* Kategori / Öncelik / Etiket butonları (henüz seçilmemiş) - kenar görünür
  * Gerçek HTML sınıfları: .destek-category-btn (Arayüz/Tasarım vb.),
  *                         .destek-priority-btn (Düşük/Orta/Yüksek/Kritik),

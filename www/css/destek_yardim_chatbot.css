@@ -504,6 +504,60 @@ h4.destek-chat-heading {
 }
 
 /* ==============================================================================
+   AÇIK TEMA - YARDIM ASİSTANI MESAJ BALONU KONTRASTI
+   ============================================================================== */
+
+/* Kullanıcı mesaj balonu açık temada support teal yüzey alır.
+   Koyu tema etkilenmez; yalnızca html[data-theme="light"] altında çalışır. */
+html[data-theme="light"] .destek-chatbot-message-user .destek-chatbot-bubble {
+  background: linear-gradient(135deg,
+    var(--mb-brand-support-teal, #077780) 0%,
+    #045a60 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(7, 119, 128, 0.48) !important;
+  box-shadow: 0 4px 12px rgba(7, 119, 128, 0.24) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+}
+
+/* Bot balonu açık temada okunabilir beyaz kart olur. */
+html[data-theme="light"] .destek-chatbot-message-bot .destek-chatbot-bubble {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid rgba(0, 48, 135, 0.14) !important;
+  box-shadow: 0 2px 8px rgba(15, 28, 51, 0.06) !important;
+}
+
+/* AI yanıtlarında Markdown **kalın** metin kontrastı. */
+html[data-theme="light"] .destek-chatbot-message-bot .destek-chatbot-bubble strong {
+  color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 700 !important;
+}
+
+/* AI yanıtlarında italik ve başlık kontrastı da light yüzeye uyumlu kalır. */
+html[data-theme="light"] .destek-chatbot-message-bot .destek-chatbot-bubble em {
+  color: var(--mb-brand-primary-alt, #002D7A) !important;
+  font-style: italic;
+}
+
+html[data-theme="light"] .destek-chatbot-message-bot .destek-chat-heading {
+  color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 700 !important;
+}
+
+/* Bot yanıtındaki liste ve düz metin içeriği koyu metinde kalır. */
+html[data-theme="light"] .destek-chatbot-message-bot .destek-chat-list,
+html[data-theme="light"] .destek-chatbot-message-bot .destek-chat-list li {
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+/* Satır içi kod açık temada seçilebilir ama fazla parlak olmayan bir yüzey alır. */
+html[data-theme="light"] .destek-chatbot-message-bot .destek-inline-code {
+  background: rgba(0, 48, 135, 0.08) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+}
+
+/* ==============================================================================
    DUYARLI TASARIM
    ============================================================================== */
 

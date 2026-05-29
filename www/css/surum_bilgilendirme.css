@@ -46,9 +46,14 @@
   );
   background-size: 300% 300%;
   animation: versionBorderGlow 6s ease-in-out infinite;
+
+  /* Standart mask modern tarayıcılar için; WebKit prefiksi
+   * Safari/Chromium border-only gradient uyumluluğu için korunur. */
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
-  mask-composite: exclude;
+
   pointer-events: none;
 }
 
@@ -416,12 +421,33 @@
 /* DESTEK SAYFASI SÜRÜM GÖRÜNTÜLEME                              */
 /* ============================================================= */
 
-.destek-surum-container {
-  max-width: 100%;
-  margin: 0 auto;
+/* Yenilikler sayfasında scroll yalnızca sürüm kartı alanında çalışır.
+ * Hero ve sürüm rozetleri üstte sabit kalır; kural tema bağımsızdır. */
+.destek-content-full-surum {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.destek-content-full-surum .destek-page-surum {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.destek-surum-container {
+  max-width: 100%;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
   height: 100%;
+  overflow: hidden;
 }
 
 /* Hero */
@@ -531,10 +557,13 @@
 
 /* Sürüm içerik - kaydırılabilir alan */
 .destek-surum-content {
-  padding-bottom: 40px;
-  flex: 1;
-  overflow-y: auto;
+  flex: 1 1 auto;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 40px;
+  padding-right: 4px;
+  overscroll-behavior: contain;
 }
 
 /* Sürüm içerik kaydırma çubuğu */
@@ -669,13 +698,46 @@ html[data-theme="light"] .surum-modal-tabs {
   border-bottom: 1px solid var(--color-border, #d8dde7) !important;
 }
 
+/* Sürüm seçim rozetleri (v1.1 / v1.0 / v0.9).
+ * Gerçek buton sınıfı .destek-surum-tab olduğu için light tema burada
+ * açıkça tanımlanır. */
+html[data-theme="light"] .destek-surum-tab,
 html[data-theme="light"] .surum-modal-tab {
-  color: var(--color-muted, #5b6577) !important;
+  background: #ffffff !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1.5px solid rgba(0, 48, 135, 0.30) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.06) !important;
+  font-weight: 700 !important;
 }
 
-html[data-theme="light"] .surum-modal-tab.active,
+html[data-theme="light"] .destek-surum-tab:hover,
 html[data-theme="light"] .surum-modal-tab:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
   color: var(--mb-brand-primary, #003087) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 4px 10px rgba(0, 48, 135, 0.12) !important;
+}
+
+html[data-theme="light"] .destek-surum-tab.active,
+html[data-theme="light"] .surum-modal-tab.active {
+  background: linear-gradient(135deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22) !important;
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.28) !important;
+}
+
+/* Kart içindeki sürüm rozeti (örn. "Yeni") light temada da yüksek kontrastlı kalır. */
+html[data-theme="light"] .surum-card-badge {
+  background: linear-gradient(135deg,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--mb-brand-primary, #003087) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22) !important;
+  box-shadow: 0 2px 6px rgba(0, 48, 135, 0.22) !important;
 }
 
 html[data-theme="light"] .surum-modal-body,
