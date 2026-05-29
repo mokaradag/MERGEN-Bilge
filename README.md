@@ -8,6 +8,10 @@ Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst 
 
 Güncel dokümantasyon notu: Bugünkü güncelleme, `763059d3e4f2ee4060e7cd9df45f26aecef1ec82`, `60a38ab756d54972d366330e496975b5af134fec` ve `c8f11a443a000abb22af81af2b5e5ea1baadb364` kapsamındaki değişiklikleri özetler.
 
+### Karşılama ekranı açık tema cilası
+
+Ana Söyleşi modern karşılama ekranında açık tema cam yüzeyleri yeniden dengelendi. Karşılama kartı daha geçirgen bir glassmorphism görünümüne çekildi; hızlı işlem kartları solid beyaz yerine açık temanın sıcak krem/yellowish zeminine uyumlu cam yüzeylerle yumuşatıldı. Kişisel selamlama başlığındaki kontrast iyileştirildi ve sağdaki nöral ağ animasyon zemini açık tema paletiyle uyumlu hale getirildi. Nöral ağ etkileşimi de yalnızca animasyon bölgesi içindeki imleç hareketlerine tepki verecek şekilde sınırlandı; video, hızlı başlangıç kartları ve tarayıcı dışına/ikinci ekrana çıkış durumlarında son imleç noktası artık düğümleri çekmeye devam etmez.
+
 ## AI Ajanları İçin Doğrulama Profilleri
 
 MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığında doğrulama komutları ortam yeteneklerine göre ayrılmıştır:

@@ -99,6 +99,12 @@ Current contract:
 - Smoke-only seams must remain namespaced and inert in production: `window.MergenStreamingSmoke`, `window.MergenAudioLifecycleSmoke`, `window.MergenWelcomeVideoSmoke`, and `window.MergenUxSmokeProbes`. Do not add `www/smoke/ux-smoke-probes.js` to `R/config_ui_assets.R`.
 - Do not add CDN dependencies, runtime downloads, external sanitization libraries, bundling, or minification for this boundary.
 
+### 1D) Modern welcome light-theme and neural pointer boundary
+
+The Ana Söyleşi modern welcome screen has a protected light-theme UX boundary. Light-theme glassmorphism for the welcome card, quick action buttons, personal greeting title, and neural-side background is intentionally tuned through scoped `html[data-theme="light"]` overrides. Keep these changes CSS-only unless behavior truly requires JavaScript. Do not regress the dark theme while adjusting light-theme surfaces.
+
+The right-side neural network animation must only react to pointer movement inside the neural animation region. Do not restore global attraction behavior that follows the pointer over the video side, welcome card, quick action buttons, or other non-neural areas. Multi-monitor exit behavior is also protected: when the pointer leaves the browser window, especially toward a second display, the neural mouse target must reset instead of continuing to pull nodes toward the last browser-edge coordinate.
+
 Protected by:
 
 - `tests/testthat/test-chat-history-datatable-safety-contract.R`
