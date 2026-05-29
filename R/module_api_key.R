@@ -195,6 +195,12 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       loaded_key <- try(load_user_api_key(owner$username), silent = TRUE)
       if (!inherits(loaded_key, "try-error") && nzchar(loaded_key %||% "")) {
         mb_api_key_set_session_key(session, loaded_key, owner = owner)
+      } else if (nzchar(mb_api_key_get_default_key())) {
+        showToast(
+          session,
+          "Kişisel API anahtarınız bulunamadı; varsayılan kurum API anahtarı kullanılacak.",
+          "info"
+        )
       } else {
         shinyjs::delay(400, openModal("API Anahtarı Eksik"))
       }

@@ -21,6 +21,18 @@ primary_llm_endpoint   <- Sys.getenv("LOCAL_LLM_ENDPOINT", "")
 secondary_llm_endpoint <- Sys.getenv("LOCAL_LLM_ENDPOINT_ALT", primary_llm_endpoint)
 secondary_llm_api_key  <- Sys.getenv("LOCAL_LLM_ENDPOINT_ALT_API_KEY", "")
 
+mergen_default_api_key_enabled <- isTRUE(as.logical(
+  Sys.getenv("MERGEN_ALLOW_DEFAULT_API_KEY", "FALSE")
+)) && !isTRUE(as.logical(
+  Sys.getenv("MERGEN_REQUIRE_PERSONAL_API_KEY", "FALSE")
+))
+
+mergen_default_api_key <- if (isTRUE(mergen_default_api_key_enabled)) {
+  Sys.getenv("MERGEN_DEFAULT_API_KEY", "")
+} else {
+  ""
+}
+
 options(mergen.filter_model = Sys.getenv("FILTER_MODEL", "mergen-local-model"))
 
 # --- DERİN DÜŞÜNME MODELLERİ ---
@@ -43,7 +55,7 @@ api_config <- list(
     secondary = secondary_llm_endpoint
   ),
   local_llm_endpoint_keys = list(
-    primary   = NULL,
+    primary   = mergen_default_api_key,
     secondary = secondary_llm_api_key
   ),
   local_llm_endpoint_user_managed = c(

@@ -39,7 +39,16 @@ aiProcessingServer <- function(id) {
 	if (allow_user_key) {
 	  api_key_val <- try({
 		sess <- settings_copy$shiny_session
-		if (!is.null(sess)) mb_api_key_get_session_key(sess, require_auth = TRUE) else NULL
+		if (!is.null(sess)) {
+		  mb_api_key_get_effective_key_value(
+		    session = sess,
+		    require_auth = TRUE,
+		    allow_default = NULL,
+		    clear_on_mismatch = TRUE
+		  )
+		} else {
+		  NULL
+		}
 	  }, silent = TRUE)
 
 	  if (inherits(api_key_val, "try-error")) {
@@ -214,7 +223,16 @@ aiProcessingServer <- function(id) {
 	if (allow_user_key) {
 	  api_key_val <- try({
 		sess <- settings_for_llm$shiny_session
-		if (!is.null(sess)) mb_api_key_get_session_key(sess, require_auth = TRUE) else NULL
+		if (!is.null(sess)) {
+		  mb_api_key_get_effective_key_value(
+		    session = sess,
+		    require_auth = TRUE,
+		    allow_default = NULL,
+		    clear_on_mismatch = TRUE
+		  )
+		} else {
+		  NULL
+		}
 	  }, silent = TRUE)
 
 	  if (inherits(api_key_val, "try-error")) {

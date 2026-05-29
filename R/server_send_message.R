@@ -362,13 +362,21 @@ sendMessageInit <- function(
     }
 
     # API anahtarı kontrolü
+    api_key_plan <- NULL
     {
-      api_key_val <- tryCatch(
-        mb_api_key_get_session_key(session, require_auth = TRUE),
-        error = function(e) ""
+      api_key_plan <- tryCatch(
+        mb_api_key_get_effective_key(
+          session = session,
+          require_auth = TRUE,
+          allow_default = NULL,
+          clear_on_mismatch = TRUE
+        ),
+        error = function(e) list(key = "", source = "missing", owner = NULL)
       )
 
-      if (!nzchar(api_key_val)) {
+      api_key_val <- as.character(api_key_plan$key %||% "")[1]
+
+      if (is.na(api_key_val) || !nzchar(api_key_val)) {
         abort_send_message(
           message = "API anahtarı eksik. Ayarlar > Model Ayarları > API Anahtarı Güncelleme üzerinden girin.",
           type = "error"
@@ -425,6 +433,7 @@ sendMessageInit <- function(
     current_settings$uploaded_files   <- uploaded_names
     current_settings$shiny_session    <- session
     current_settings$api_key_override <- api_key_val
+    current_settings$api_key_source <- api_key_plan$source %||% "unknown"
 
     mcp_registry_info <- mergen_prepare_mcp_session_files(
       session = session,

@@ -63,6 +63,12 @@ LOCAL_LLM_ENDPOINT=https://your-actual-api-endpoint.com/v1/chat/completions
 LOCAL_LLM_ENDPOINT_ALT=https://your-secondary-endpoint.com/v1/chat/completions
 LOCAL_LLM_ENDPOINT_ALT_API_KEY=secondary-endpoint-api-key
 
+# Varsayılan kurum API anahtarı.
+# Bu değer GitHub'a yazılmaz, loglanmaz, kullanıcıya gösterilmez.
+MERGEN_ALLOW_DEFAULT_API_KEY=TRUE
+MERGEN_REQUIRE_PERSONAL_API_KEY=FALSE
+MERGEN_DEFAULT_API_KEY=paste-the-default-company-api-key-here
+
 # Persisted base folder for MCP-file uploads (UNC or local path)
 MCP_FILES_BASE=//mainserver/share/mergen_uploads
 

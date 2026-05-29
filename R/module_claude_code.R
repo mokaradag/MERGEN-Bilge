@@ -134,6 +134,19 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
       effective_user_id <- user_check$user_id
 
+      api_key_plan <- cc_resolve_runtime_api_key(session)
+      if (!isTRUE(api_key_plan$ok)) {
+        cc_abort_run_before_streaming(rv, run_request_id)
+
+        cc_send_run_blocked_message(
+          session = session,
+          ns = ns,
+          message = api_key_plan$message
+        )
+
+        return()
+      }
+
       if (is.null(calisma_dizini) || !nzchar(calisma_dizini)) {
         if (effective_user_id > 0) {
           calisma_dizini <- get_user_workspace(effective_user_id)
@@ -466,6 +479,13 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
         # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
         komut <- build_processx_command(cli_yolu, cli_args, workdir = calisma_dizini)
+
+        # API anahtarı dosyaya yazılmaz; yalnızca bu process için ortam
+        # değişkeni olarak aktarılır. Loglarda ham anahtar gösterilmez.
+        komut$env <- cc_apply_runtime_api_key_env(
+          env = komut$env,
+          api_key = api_key_plan$key
+        )
 
 		proc <- processx::process$new(
 		  command = komut$command,

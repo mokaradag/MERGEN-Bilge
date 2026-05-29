@@ -48,7 +48,12 @@ handle_summarization_mode <- function(ctx) {
   log_debug("[SUMMARIZATION] Mod parametreleri - Detay: {summary_detail}, Odak: {summary_focus}")
 
   api_key_val <- tryCatch(
-    mb_api_key_get_session_key(ctx$session, require_auth = TRUE),
+    mb_api_key_get_effective_key_value(
+      session = ctx$session,
+      require_auth = TRUE,
+      allow_default = NULL,
+      clear_on_mismatch = TRUE
+    ),
     error = function(e) ""
   )
 

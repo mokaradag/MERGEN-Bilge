@@ -167,3 +167,93 @@ mb_api_key_get_session_key <- function(session,
 
   key_plain
 }
+
+mb_api_key_default_allowed <- function() {
+  require_personal <- isTRUE(as.logical(
+    Sys.getenv("MERGEN_REQUIRE_PERSONAL_API_KEY", "FALSE")
+  ))
+
+  allow_default <- isTRUE(as.logical(
+    Sys.getenv("MERGEN_ALLOW_DEFAULT_API_KEY", "FALSE")
+  ))
+
+  isTRUE(allow_default) && !isTRUE(require_personal)
+}
+
+mb_api_key_get_default_key <- function(allow_default = NULL) {
+  if (is.null(allow_default)) {
+    allow_default <- mb_api_key_default_allowed()
+  }
+
+  if (!isTRUE(allow_default)) {
+    return("")
+  }
+
+  default_key <- Sys.getenv("MERGEN_DEFAULT_API_KEY", "")
+  default_key <- as.character(default_key %||% "")[1]
+
+  if (is.na(default_key) || !nzchar(default_key)) {
+    return("")
+  }
+
+  default_key
+}
+
+mb_api_key_get_effective_key <- function(session,
+                                         require_auth = TRUE,
+                                         allow_default = NULL,
+                                         clear_on_mismatch = TRUE) {
+  owner <- mb_api_key_resolve_owner(session, require_auth = require_auth)
+
+  if (isTRUE(require_auth) && (is.null(owner) || !nzchar(owner$username %||% ""))) {
+    return(list(
+      key = "",
+      source = "missing",
+      owner = NULL
+    ))
+  }
+
+  personal_key <- mb_api_key_get_session_key(
+    session = session,
+    require_auth = require_auth,
+    clear_on_mismatch = clear_on_mismatch
+  )
+
+  if (nzchar(personal_key)) {
+    return(list(
+      key = personal_key,
+      source = "personal",
+      owner = owner
+    ))
+  }
+
+  default_key <- mb_api_key_get_default_key(allow_default = allow_default)
+
+  if (nzchar(default_key)) {
+    return(list(
+      key = default_key,
+      source = "default",
+      owner = owner
+    ))
+  }
+
+  list(
+    key = "",
+    source = "missing",
+    owner = owner
+  )
+}
+
+mb_api_key_get_effective_key_value <- function(session,
+                                               require_auth = TRUE,
+                                               allow_default = NULL,
+                                               clear_on_mismatch = TRUE) {
+  plan <- mb_api_key_get_effective_key(
+    session = session,
+    require_auth = require_auth,
+    allow_default = allow_default,
+    clear_on_mismatch = clear_on_mismatch
+  )
+
+  as.character(plan$key %||% "")[1]
+}

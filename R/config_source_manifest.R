@@ -109,6 +109,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_claude_code_session_context.R",
   "R/helpers_claude_code_dir_ui.R",
   "R/helpers_claude_code_process.R",
+  "R/helpers_claude_code_api_key.R",
   "R/helpers_claude_code_runtime_resolver.R",
   "R/helpers_claude_code_runtime_workdir.R",
   "R/helpers_claude_code_security_policy.R",

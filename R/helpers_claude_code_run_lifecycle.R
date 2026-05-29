@@ -336,7 +336,12 @@ cc_handle_document_summary_run <- function(session,
   ))
 
   dokuman_api_key <- tryCatch(
-    as.character(session$userData$ai_api_key %||% "")[1],
+    mb_api_key_get_effective_key_value(
+      session = session,
+      require_auth = TRUE,
+      allow_default = NULL,
+      clear_on_mismatch = TRUE
+    ),
     error = function(e) ""
   )
 
