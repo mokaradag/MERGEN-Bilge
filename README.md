@@ -12,6 +12,14 @@ Güncel dokümantasyon notu: Bugünkü güncelleme, `763059d3e4f2ee4060e7cd9df45
 
 Ana Söyleşi modern karşılama ekranında açık tema cam yüzeyleri yeniden dengelendi. Karşılama kartı daha geçirgen bir glassmorphism görünümüne çekildi; hızlı işlem kartları solid beyaz yerine açık temanın sıcak krem/yellowish zeminine uyumlu cam yüzeylerle yumuşatıldı. Kişisel selamlama başlığındaki kontrast iyileştirildi ve sağdaki nöral ağ animasyon zemini açık tema paletiyle uyumlu hale getirildi. Nöral ağ etkileşimi de yalnızca animasyon bölgesi içindeki imleç hareketlerine tepki verecek şekilde sınırlandı; video, hızlı başlangıç kartları ve tarayıcı dışına/ikinci ekrana çıkış durumlarında son imleç noktası artık düğümleri çekmeye devam etmez.
 
+### Destek ve Yenilikler ekranları açık tema cilası
+
+Destek alanındaki açık tema deneyimi daha okunabilir ve tutarlı hale getirildi. “Geri Bildirim & Hata” sayfasındaki 0-10 NPS puan düğmelerinin pasif kenarlıkları açık temada görünür olacak şekilde netleştirildi. “Yenilikler” sayfasında sürüm rozetleri ve kart içi “Yeni” rozeti için yüksek kontrastlı açık tema stilleri tanımlandı; sürüm seçici rozetleri gerçek sınıfı olan `.destek-surum-tab` üzerinden kapsanır.
+
+“Yenilikler” sayfasında üst bölümün daha kullanışlı kalması için hero alanı ve sürüm rozetleri sabit kalacak, yalnızca alttaki sürüm kartı alanı dikey kaydırılacak şekilde düzenlendi. Sürüm bildirim rozetindeki ince parlayan kenar efekti korunurken standart `mask` bildirimi WebKit uyumluluk bildirimiyle birlikte kullanılır; böylece GitHub uyarısı anlaşılır hale gelirken mevcut görsel UX kaybedilmez.
+
+“Yardım Merkezi” içindeki Yardım Asistanı sohbetinde açık tema balon kontrastı iyileştirildi. Kullanıcı mesaj balonu, tema token’ındaki `--mb-brand-support-teal` rengiyle yeşil/teal yüzey alır; bot yanıtları açık kart yüzeyinde okunabilir kalır. Bot yanıtlarında Markdown’dan gelen `<strong>`, italik, başlık, liste ve satır içi kod içerikleri açık temada kontrast sorunları oluşturmadan gösterilir.
+
 ### Yardım Merkezi açık tema sohbet cilası
 
 Yardım Merkezi içindeki Yardım Asistanı sohbet ekranında açık tema okunabilirliği güçlendirildi. Kullanıcı mesaj balonu artık kurumsal destek teal tonu (`--mb-brand-support-teal`) üzerinden belirgin bir yüzey kullanır; bot yanıtları ise açık temada okunabilir kart yüzeyiyle ayrışır. Markdown kaynaklı kalın metinler (`<strong>`), vurgu, başlık, liste ve satır içi kod görünümleri açık zeminde kontrast kaybetmeyecek şekilde dengelendi. Değişiklik yalnızca açık temaya uygulanır; koyu tema davranışı korunur.
