@@ -144,18 +144,21 @@
 /* Yerel tarih aralığı alanları: Bootstrap datepicker yerine tarayıcı alanı kullanılır. */
 .history-native-date-range {
   display: block;
-  max-width: 360px;
+  max-width: 420px;
 }
 
 .history-native-date-fields {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  width: 100%;
 }
 
 .history-native-date-input {
-  width: 145px !important;
+  flex: 0 0 170px;
+  width: 170px !important;
+  min-width: 0;
   min-height: 34px;
 }
 
