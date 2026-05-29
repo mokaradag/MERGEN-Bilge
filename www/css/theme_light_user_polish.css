@@ -271,11 +271,17 @@ html[data-theme="light"] .modern-welcome-recent-icon {
   color: var(--mb-brand-primary, #003087) !important;
 }
 
-/* Karşılama kartı dış kapsayıcı - kurumsal cam */
+/* Karşılama kartı dış kapsayıcı - kurumsal cam.
+   Eski kural backdrop-filter içermediği için kart düz yarı saydam beyaz
+   kalıyordu ve glassmorphism kayboluyordu (kullanıcı raporu + ekran görüntüsü).
+   Saydamlık artırılıp arka plan bulanıklığı eklenerek koyu temadaki cam hissi
+   açık temada da geri getirildi. */
 html[data-theme="light"] .modern-welcome-card {
-  background: rgba(255, 255, 255, 0.66) !important;
+  background: rgba(255, 255, 255, 0.42) !important;
   border: 1px solid rgba(0, 48, 135, 0.10) !important;
   box-shadow: 0 25px 50px -12px rgba(15, 28, 51, 0.18) !important;
+  backdrop-filter: blur(22px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(150%) !important;
 }
 
 html[data-theme="light"] .modern-welcome-card::before {

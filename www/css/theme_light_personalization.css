@@ -415,3 +415,38 @@ html[data-theme="light"] .character-image-container {
 html[data-theme="light"] .character-image {
   filter: drop-shadow(0 8px 18px rgba(15, 28, 51, 0.12));
 }
+
+/* ============================================================
+ * 9) Karakter aksan renkleri (light tema)
+ *    --char-accent hiçbir yerde tanımlı olmadığından aktif karakter
+ *    butonları ve metrik (progress) barları kurumsal maviye düşüyordu.
+ *    Her personaya kendi tema rengi atanır:
+ *      Emre = mor, Selin = mavi, Deniz = yeşil, Can = turuncu/kızıl, İpek = pembe.
+ *    [data-character-id] taşıyan butonlar ve aktif karakter bilgi/metrik
+ *    paneli bu değişkenleri devralır; renkler açık zeminde kontrastlıdır.
+ * ============================================================ */
+html[data-theme="light"] [data-character-id="emre"] {
+  --char-accent: #7c4dff;
+  --char-accent-hover: #6a3df0;
+  --char-accent-soft: rgba(124, 77, 255, 0.18);
+}
+html[data-theme="light"] [data-character-id="selin"] {
+  --char-accent: #2563eb;
+  --char-accent-hover: #1d4ed8;
+  --char-accent-soft: rgba(37, 99, 235, 0.18);
+}
+html[data-theme="light"] [data-character-id="deniz"] {
+  --char-accent: #16a34a;
+  --char-accent-hover: #15803d;
+  --char-accent-soft: rgba(22, 163, 74, 0.18);
+}
+html[data-theme="light"] [data-character-id="can"] {
+  --char-accent: #ea580c;
+  --char-accent-hover: #c2410c;
+  --char-accent-soft: rgba(234, 88, 12, 0.18);
+}
+html[data-theme="light"] [data-character-id="ipek"] {
+  --char-accent: #ec4899;
+  --char-accent-hover: #db2777;
+  --char-accent-soft: rgba(236, 72, 153, 0.18);
+}

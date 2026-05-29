@@ -467,17 +467,22 @@ fetch_user_last_login <- function(user_id) {
 get_ai_expert_generation_config <- function(scenario = "idle_chat",
                                             talk_length = "orta",
                                             talk_style = "profesyonel") {
+  # Konuşma metni token tavanı. Eski değerler (220/150/240) modelin tam
+  # konuşmayı bitirmesine yetmiyordu; uzun konuşmalarda metin cümle ortasında
+  # kesiliyor ve TTS/altyazı genelde 3. parçadan sonra eksik kalıyordu. Tavan,
+  # modelin doğal yanıtını tamamlamasına yetecek kadar yükseltildi. Asıl
+  # uzunluk yine talk_length (kisa/orta/uzun) ve sistem istemiyle yönlendirilir.
   base_max_tokens <- switch(scenario,
-    "greeting" = 220L,
-    "page_guidance" = 150L,
-    "idle_chat" = 240L,
-    220L
+    "greeting" = 480L,
+    "page_guidance" = 360L,
+    "idle_chat" = 560L,
+    480L
   )
 
   max_tokens <- switch(talk_length %||% "orta",
-    "kisa" = max(90L, as.integer(round(base_max_tokens * 0.60))),
+    "kisa" = max(200L, as.integer(round(base_max_tokens * 0.55))),
     "orta" = base_max_tokens,
-    "uzun" = as.integer(round(base_max_tokens * 1.60)),
+    "uzun" = as.integer(round(base_max_tokens * 1.80)),
     base_max_tokens
   )
 
