@@ -105,6 +105,21 @@ The Ana Söyleşi modern welcome screen has a protected light-theme UX boundary.
 
 The right-side neural network animation must only react to pointer movement inside the neural animation region. Do not restore global attraction behavior that follows the pointer over the video side, welcome card, quick action buttons, or other non-neural areas. Multi-monitor exit behavior is also protected: when the pointer leaves the browser window, especially toward a second display, the neural mouse target must reset instead of continuing to pull nodes toward the last browser-edge coordinate.
 
+### 1E) Support and version-page light-theme UX boundary
+
+The support pages have a protected light-theme UX boundary. Keep support-page refinements scoped and CSS-first unless behavior truly requires JavaScript or R structure changes.
+
+Current protected expectations:
+- The “Geri Bildirim & Hata” feedback tab uses visible light-theme borders for the 0-10 NPS score buttons. Preserve the existing dark-theme NPS color behavior and keep any light override scoped under `html[data-theme="light"]`.
+- The “Yenilikler” page must keep version selector badges readable in light mode. The generated version selector buttons use `.destek-surum-tab`; do not target only non-existent or modal-only badge classes when fixing this page.
+- The “Yenilikler” page UX should keep the hero and version selector area stable while the version card area scrolls vertically. Avoid reverting the layout to a page-wide scroll where the hero and badges move away.
+- The startup/version notification badge uses a masked pseudo-element to preserve the thin animated glowing border. Keep the standard `mask` declaration with the WebKit-prefixed fallback unless a cross-browser visual test proves the fallback is no longer needed.
+- The Yardım Merkezi “Yardım Asistanı” chat must have a distinct light-theme user bubble. The user bubble should use the support teal token `--mb-brand-support-teal` with sufficient white-text contrast.
+- Yardım Asistanı bot responses can contain Markdown-derived HTML such as `strong`, `em`, headings, lists, and inline code. Light-theme CSS must explicitly preserve contrast for these elements inside bot bubbles without weakening the Markdown/HTML safety boundary.
+
+Validation note for this documentation-only update:
+- Do not run R validation for this specific docs-only change. Manual Markdown review is sufficient unless code files are changed later in a separate task.
+
 ### Help Center chatbot light-theme contrast boundary
 
 The Yardım Merkezi / Yardım Asistanı chatbot has a protected light-theme contrast boundary. User chat bubbles in light mode should use the support teal brand token (`--mb-brand-support-teal`, fallback `#077780`) so user messages remain visually distinct from bot responses. Bot answer bubbles should remain readable light cards, and Markdown-generated rich text such as `<strong>`, emphasis, headings, lists, and inline code must keep sufficient contrast on light surfaces. Keep these changes CSS-only and scoped to `html[data-theme="light"]`; do not regress the dark theme or alter chatbot runtime behavior.
