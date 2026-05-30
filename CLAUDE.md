@@ -4268,6 +4268,27 @@ When `SSO_ENABLED=TRUE`:
 
 If anything “works locally but not on VM”, SSO and encoding are the first things to inspect.
 
+### SSO JWT signature and fail-closed authorization boundary
+
+The SSO authentication boundary is security-sensitive. JWT claims must not be trusted until the token signature has been verified against Keycloak JWKS public keys.
+
+Current contract:
+- `R/helpers_sso_signature.R` owns JWT signature verification, JWK/JWKS handling, public-key conversion, and signature checking helpers.
+- `R/helpers_sso_signature.R` must be loaded before `R/helpers_sso.R` through `R/config_source_manifest.R`.
+- `validate_jwt_token()` must verify the JWT signature before trusting issuer, expiry, username, role, or any other claim.
+- Keep algorithm-confusion protection intact: reject `alg=none`, HMAC/HS algorithms, malformed tokens, tampered payloads, tampered signatures, missing or unknown `kid` values, and unusable JWKS keys.
+- The allowed asymmetric algorithms are RS256, RS384, and RS512 unless the implementation and focused tests are intentionally updated together.
+- `SSO_VALIDATE_SIGNATURE` defaults to TRUE. Treat disabling it as a temporary operational escape hatch only, not normal production behavior.
+- `SSO_JWKS_URL` is an optional JWKS endpoint override; otherwise the endpoint is derived from the configured issuer/Keycloak realm.
+- `SSO_JWKS_CACHE_TTL` controls JWKS cache lifetime. Unknown key IDs must be handled safely for key rotation and must not silently bypass verification.
+- Authorization must remain fail-closed. DB connection failures, query errors, empty usernames, missing users, and ambiguous authorization states must deny access rather than granting fallback USER access.
+
+Protected by:
+- `tests/testthat/test-sso-jwt-signature.R`
+- `tests/testthat/test-sso-authorization-failclosed.R`
+- `tests/testthat/test-sso-signature-parsing.R`
+- `tests/testthat/test-sso-jwt.R`
+
 #### Windows VM / SSO / SQL Server Encoding Guardrails
 - In production-like Windows VM runs, `.Renviron` must define `DB_CLIENT_ENCODING=WINDOWS-1254` and `DB_NAME_ENCODING=WINDOWS-1254`.
 - Restart the full R process after changing these values; a browser refresh is not enough.
@@ -5179,6 +5200,7 @@ Practical rule:
 - `R/server_observers_startup.R` is especially sensitive here
 
 ### 8B) Path helper edge cases
+- `R/utils_path_helpers.R` owns scalar path normalization, path existence checks, Turkish mojibake path detection/repair, safe environment path reading, and Windows short-path fallback behavior. It should use the shared repair path from `R/utils_text_encoding.R`; do not add scattered local mojibake maps or ad hoc path repair logic in feature modules. Turkish mojibake path behavior is protected by `tests/testthat/test-path-helpers-mojibake-behavior.R`.
 - `safe_join_path()` must accept safe descendant paths on Windows VM and must not regress into false negatives for non-existing but valid child paths.
 - Preserve defenses against traversal, absolute paths, and dot-only suspicious segments.
 - Do not reintroduce brittle embedded-NUL tests that rely on normal R string construction on Windows.
