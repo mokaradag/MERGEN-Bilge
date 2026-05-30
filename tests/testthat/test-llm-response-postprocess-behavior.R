@@ -114,3 +114,62 @@ testthat::test_that("extract_llm_content_and_sources içerik ve kaynakları çı
   testthat::expect_identical(r_src$content, "cevap metni")
   testthat::expect_false(is.null(r_src$sources))
 })
+
+# ------------------------------------------------------------------------------
+# append_clickable_sources: Kaynakça (sources) HTML üretimi + kaçışlama
+# Not: mergen_debug_cat varsayılan kapalı bir debug logger'dır; ortak source-once
+# guard erken dönerse fonksiyon adının çözünür olması için no-op stub eklenir.
+# htmltools::htmlEscape üretim bağımlılığıdır (VM'de mevcut).
+# ------------------------------------------------------------------------------
+.llm_postprocess_ensure_debug_cat <- function() {
+  if (!exists("mergen_debug_cat", mode = "function", inherits = TRUE)) {
+    assign("mergen_debug_cat", function(...) invisible(NULL), envir = globalenv())
+  }
+  invisible(TRUE)
+}
+
+testthat::test_that("append_clickable_sources boş/metadata'sız kaynaklarda içeriği değiştirmez", {
+  .llm_postprocess_source_once()
+  .llm_postprocess_ensure_debug_cat()
+
+  testthat::expect_identical(append_clickable_sources("Cevap metni", NULL), "Cevap metni")
+  testthat::expect_identical(append_clickable_sources("Cevap metni", list()), "Cevap metni")
+  # metadata alanı olmayan kaynak => Kaynakça eklenmez.
+  testthat::expect_identical(append_clickable_sources("Cevap", list(list(foo = 1))), "Cevap")
+})
+
+testthat::test_that("append_clickable_sources metadata'dan tıklanabilir Kaynakça üretir", {
+  .llm_postprocess_source_once()
+  .llm_postprocess_ensure_debug_cat()
+
+  sl <- list(list(metadata = list(list(name = "rapor.pdf"), list(name = "veri.docx"))))
+  out <- append_clickable_sources("Ana cevap.", sl)
+
+  # Orijinal içerik korunur, Kaynakça sonuna eklenir.
+  testthat::expect_true(startsWith(out, "Ana cevap."))
+  testthat::expect_true(grepl("Kaynakça:", out, fixed = TRUE))
+  # Uzantıya göre ikon.
+  testthat::expect_true(grepl("fa-file-pdf", out, fixed = TRUE))
+  testthat::expect_true(grepl("fa-file-word", out, fixed = TRUE))
+  # Tıklanabilir kaynak data-filename taşır.
+  testthat::expect_true(grepl("data-filename='rapor.pdf'", out, fixed = TRUE))
+})
+
+testthat::test_that("append_clickable_sources kaynakları tekilleştirir ve dosya adını kaçışlar", {
+  .llm_postprocess_source_once()
+  .llm_postprocess_ensure_debug_cat()
+
+  sl <- list(list(metadata = list(
+    list(name = "a.pdf"),
+    list(name = "a.pdf"),       # yinelenen -> teke iner
+    list(source = "<x>.txt")    # name yoksa source kullanılır
+  )))
+  out <- append_clickable_sources("X", sl)
+
+  # Yinelenen kaldırılır: 2 Kaynakça girişi (a.pdf + <x>.txt).
+  giris_sayisi <- lengths(regmatches(out, gregexpr("data-entry=", out, fixed = TRUE)))
+  testthat::expect_identical(giris_sayisi, 2L)
+  # XSS: ham < > tarayıcıya verilmez.
+  testthat::expect_true(grepl("&lt;x&gt;.txt", out, fixed = TRUE))
+  testthat::expect_false(grepl("<x>.txt", out, fixed = TRUE))
+})

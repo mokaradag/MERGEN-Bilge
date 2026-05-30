@@ -63,3 +63,48 @@ testthat::test_that("split_text_for_ai_expert_tts cümleleri birleştirip parça
   testthat::expect_true(grepl("Bir.", out[[1]], fixed = TRUE))
   testthat::expect_true(grepl("Uc.", out[[1]], fixed = TRUE))
 })
+
+# ------------------------------------------------------------------------------
+# .ai_expert_split_long_piece (iç yardımcı: uzun parça bölme)
+# split_text_for_ai_expert_tts'in çağırdığı düşük seviyeli bölücü.
+# ------------------------------------------------------------------------------
+testthat::test_that(".ai_expert_split_long_piece boş/kısa girdileri ele alır", {
+  .ai_expert_chunking_source_once()
+  # Boş/yalnızca boşluk => character(0).
+  testthat::expect_identical(.ai_expert_split_long_piece(""), character(0))
+  testthat::expect_identical(.ai_expert_split_long_piece("   "), character(0))
+  # max'tan kısa => tek parça (aynen).
+  testthat::expect_identical(.ai_expert_split_long_piece("kisa cumle"), "kisa cumle")
+  testthat::expect_identical(.ai_expert_split_long_piece("kisa cumle", 220L), "kisa cumle")
+})
+
+testthat::test_that(".ai_expert_split_long_piece virgül/sınır noktalarında böler", {
+  .ai_expert_chunking_source_once()
+  giris <- "birinci bolum buraya, ikinci bolum biraz daha uzun, ucuncu bolum da var"
+  res <- .ai_expert_split_long_piece(giris, 30L)
+  testthat::expect_identical(
+    res,
+    c("birinci bolum buraya,", "ikinci bolum biraz daha uzun,", "ucuncu bolum da var")
+  )
+  # Her parça sınırı aşmaz.
+  testthat::expect_true(all(nchar(res) <= 30L))
+})
+
+testthat::test_that(".ai_expert_split_long_piece virgül yoksa kelime kelime böler", {
+  .ai_expert_chunking_source_once()
+  giris <- paste(rep("kelime", 10), collapse = " ")
+  res <- .ai_expert_split_long_piece(giris, 20L)
+  testthat::expect_identical(
+    res,
+    c("kelime kelime kelime", "kelime kelime kelime", "kelime kelime kelime", "kelime")
+  )
+  testthat::expect_true(all(nchar(res) <= 20L))
+})
+
+testthat::test_that(".ai_expert_split_long_piece bölünemeyen tek uzun kelimeyi korur", {
+  .ai_expert_chunking_source_once()
+  # Tek kelime sınırı aşsa bile bölünemez; olduğu gibi döner.
+  testthat::expect_identical(.ai_expert_split_long_piece("supercalifragilistic", 5L),
+                             "supercalifragilistic")
+  testthat::expect_type(.ai_expert_split_long_piece("a b c d e f g h", 5L), "character")
+})
