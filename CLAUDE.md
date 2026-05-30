@@ -122,6 +122,19 @@ Current protected expectations:
 Validation note for this documentation-only update:
 - Do not run R validation for this specific docs-only change. Manual Markdown review is sufficient unless code files are changed later in a separate task.
 
+### 1F) Effective API key resolution for non-chat AI features
+
+TTS, AI Expert speech generation, and other non-chat AI features must not read `session$userData$ai_api_key` directly or invent separate institutional-key fallback logic. They should use the centralized feature helper in `R/helpers_feature_api_key.R`, which builds on the ownership-safe API key helpers in `R/helpers_api_key_identity.R`.
+
+The intended resolution contract is:
+
+- personal user key first, when it belongs to the authenticated application user;
+- feature-specific service key next only when that feature explicitly needs it, such as TTS;
+- allowed institutional default key when personal keys are absent and default-key use is enabled;
+- legacy fallback key only as the final compatibility fallback.
+
+This keeps “continue with institutional key” behavior consistent across normal chat, “Yanıtları Seslendir”, and “AI Uzman Konuşması” without changing runtime UX. Never log, print, expose, or include raw key, token, endpoint secret, cookie, password, or auth header values in documentation, validation reports, or diagnostics.
+
 ### API key choice modal boundary
 
 The API key choice onboarding modal is a protected Shiny/browser boundary. Keep its runtime UX stable while preserving browser-console hygiene and secret safety.
