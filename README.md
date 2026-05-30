@@ -26,6 +26,10 @@ Yardım Merkezi içindeki Yardım Asistanı sohbet ekranında açık tema okunab
 
 Yardım Merkezi içindeki “E-posta Destek” bağlantısının konu ve gövde alanları artık UTF-8 bayt temelli percent-encoding ile oluşturulur. Bu sayede Outlook/mailto açılışında “İyi çalışmalar dilerim,” gibi Türkçe karakter içeren varsayılan destek metinleri Windows yerel kod sayfasına bağlı bozulmadan doğru gösterilir. Düzeltme yalnızca bağlantı üretim sınırını etkiler; Yardım Merkezi’nin görünümü ve kullanıcı akışı değişmez.
 
+### Unicode test fikstürlerinde platform kararlılığı
+
+DB Unicode kaçış davranışını doğrulayan odak testleri, konsol veya işletim sistemi kod sayfasına bağlı bozulmaları önlemek için artık emoji ve Latin-1 kapsamındaki örnek karakterleri kaynak içinde doğrudan taşımak yerine `intToUtf8(as.integer(codepoint))` ile deterministik olarak üretir. Bu düzenleme yalnızca test fikstürlerinin platformlar arası kararlılığını güçlendirir; DB istemci kodlaması, `[[MERGEN-U+...]]` kaçış biçimi, okuma sınırında geri açma davranışı ve görünür kullanıcı deneyimi değişmez.
+
 ### API anahtarı seçim modalı kararlılık ve tarayıcı hijyeni
 
 Kişisel API anahtarı bulunmayan kullanıcılar için gösterilen “API Anahtarı Seçimi” onboarding modalı, Shiny özel mesaj işleyici sözleşmesine ve tarayıcı parola-formu beklentilerine uyumlu olacak şekilde güçlendirildi. İstemci tarafındaki yardımcı artık Shiny mesajlarını tek argümanlı handler’larla karşılar, kontrol yüzeyini handler kayıtlarından önce hazırlar ve yalnızca hassas olmayan `api_key_onboarding_suppressed` tercih bayrağını bildirir.
