@@ -286,6 +286,9 @@ test_that("API anahtarı parola alanları ortak göster/gizle bileşenini kullan
   expect_true(grepl("\"password\"", js_text, fixed = TRUE))
   expect_true(grepl("\"text\"", js_text, fixed = TRUE))
   expect_true(grepl("visible ? \"fa-eye\" : \"fa-eye-slash\"", js_text, fixed = TRUE))
+  expect_true(grepl("document.createElement(\"i\")", js_text, fixed = TRUE))
+  expect_true(grepl("svg-inline--fa", js_text, fixed = TRUE))
+  expect_true(grepl("button.insertBefore(createIcon(visible), button.firstChild)", js_text, fixed = TRUE))
   expect_true(grepl("API anahtarı görünür", js_text, fixed = TRUE))
   expect_true(grepl("API anahtarı gizli", js_text, fixed = TRUE))
 

@@ -23,14 +23,32 @@
     return target.closest(TOGGLE_SELECTOR);
   }
 
-  function setIcon(button, visible) {
-    var icon = button.querySelector(".fa, .fas");
-    if (!icon || !icon.classList) {
-      return;
-    }
+  function removeExistingIcons(button) {
+    var icons = button.querySelectorAll(
+      ".fa, .fas, .far, .fab, .fa-solid, .fa-regular, .svg-inline--fa, svg"
+    );
 
-    icon.classList.remove("fa-eye", "fa-eye-slash");
-    icon.classList.add(visible ? "fa-eye" : "fa-eye-slash");
+    Array.prototype.forEach.call(icons, function (icon) {
+      if (!icon || !icon.parentNode) {
+        return;
+      }
+
+      icon.parentNode.removeChild(icon);
+    });
+  }
+
+  function createIcon(visible) {
+    var icon = document.createElement("i");
+
+    icon.className = "fas " + (visible ? "fa-eye" : "fa-eye-slash");
+    icon.setAttribute("aria-hidden", "true");
+
+    return icon;
+  }
+
+  function setIcon(button, visible) {
+    removeExistingIcons(button);
+    button.insertBefore(createIcon(visible), button.firstChild);
   }
 
   function setAccessibleState(button, visible) {
