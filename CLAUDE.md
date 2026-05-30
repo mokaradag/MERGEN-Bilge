@@ -122,6 +122,19 @@ Current protected expectations:
 Validation note for this documentation-only update:
 - Do not run R validation for this specific docs-only change. Manual Markdown review is sufficient unless code files are changed later in a separate task.
 
+### API key choice modal boundary
+
+The API key choice onboarding modal is a protected Shiny/browser boundary. Keep its runtime UX stable while preserving browser-console hygiene and secret safety.
+
+Current contract:
+- `www/js/api_key_choice_modal.js` must register Shiny custom message handlers with exactly one message argument. Do not reintroduce zero-argument custom message handlers.
+- Initialize `window.MergenApiKeyChoice` before registering handlers, keep `_inputId` null-safe, and do not replace the namespace object after `_inputId` may have been set.
+- Client-side code may store or report only the non-sensitive `api_key_onboarding_suppressed` preference flag under `mergen_settings`. It must never read, store, print, or log personal API keys, the default institution API key, tokens, secrets, passwords, cookies, DSNs, endpoints, or auth headers.
+- `R/module_api_key_choice_modal.R` must keep the Shiny ids `api_key_plain_input`, `api_key_save_btn`, `api_key_clear_btn`, and `api_key_use_default_btn` stable so existing server observers continue to bind without UX changes.
+- The password input should remain inside a non-submitting form used only to satisfy browser password-form heuristics. Keep save/clear action buttons outside the form.
+- The actual password input should keep `autocomplete="new-password"`, and the same form should include a hidden username field with `autocomplete="username"` to avoid Chrome DevTools password-form verbose messages.
+- Regression coverage for this boundary belongs in `tests/testthat/test-api-key-choice-modal-contract.R`. Prefer small focused assertions there rather than broad runtime tests for this browser-hygiene contract.
+
 ### Help Center chatbot light-theme contrast boundary
 
 The Yardım Merkezi / Yardım Asistanı chatbot has a protected light-theme contrast boundary. User chat bubbles in light mode should use the support teal brand token (`--mb-brand-support-teal`, fallback `#077780`) so user messages remain visually distinct from bot responses. Bot answer bubbles should remain readable light cards, and Markdown-generated rich text such as `<strong>`, emphasis, headings, lists, and inline code must keep sufficient contrast on light surfaces. Keep these changes CSS-only and scoped to `html[data-theme="light"]`; do not regress the dark theme or alter chatbot runtime behavior.
