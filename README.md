@@ -32,6 +32,12 @@ Kişisel API anahtarı bulunmayan kullanıcılar için gösterilen “API Anahta
 
 Modal içindeki API anahtarı alanı görünür kullanıcı akışını değiştirmeden non-submit form içinde, `autocomplete="new-password"` ve gizli `username` alanı ile render edilir. Böylece Chrome DevTools parola-formu verbose uyarıları kaldırılırken aynı input id’leri, kaydet/temizle düğmeleri, kurum anahtarıyla devam akışı ve güvenli anahtar saklama/doğrulama sınırı korunur. Ham API anahtarı, varsayılan kurum anahtarı veya herhangi bir secret istemciye yazılmaz ve loglanmaz.
 
+### TTS ve AI Uzman için kurum anahtarı uyumu
+
+Sohbet dışı ses akışları artık sohbetle aynı etkin API anahtarı çözümleme sözleşmesini kullanır. `R/helpers_feature_api_key.R`, kişisel anahtar, özellik-özel servis anahtarı, izinli varsayılan kurum anahtarı ve eski fallback anahtarı küçük ve merkezi bir yardımcıyla çözer.
+
+Bu sayede kişisel API anahtarı bulunmayan ve “Varsayılan kurum API anahtarıyla devam et” seçeneğini kullanan kullanıcılar için normal sohbetin yanı sıra “Yanıtları Seslendir” ve “AI Uzman Konuşması” da aynı kurumsal anahtar akışıyla çalışır. Değişiklik görünür kullanıcı deneyimini değiştirmez; ham anahtarlar istemciye, loglara veya doğrulama raporlarına yazılmaz.
+
 ### SSO güvenliği ve Türkçe yol dayanıklılığı
 
 SSO güvenlik sınırı güçlendirildi: Keycloak üzerinden gelen JWT token’ları artık claim değerleri güvenilir kabul edilmeden önce JWKS genel anahtarlarıyla kriptografik olarak doğrulanır. `SSO_VALIDATE_SIGNATURE=TRUE` güvenli varsayılandır; gerekirse `SSO_JWKS_URL` ile JWKS uç noktası elle verilebilir ve `SSO_JWKS_CACHE_TTL` ile anahtar önbellek süresi yönetilir. Yetkilendirme tarafında DB bağlantısı veya sorgu hatası oluşursa erişim fail-closed biçimde reddedilir; hata durumunda varsayılan kullanıcı yetkisi verilmez.
