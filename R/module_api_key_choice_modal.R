@@ -105,6 +105,11 @@ api_key_choice_request_url <- function(service_desk = NULL) {
       class = "akc-card-actions",
       request_action,
       actionButton(
+        ns("api_key_clear_btn"),
+        label = tagList(icon("eraser"), "Temizle"),
+        class = "akc-btn akc-btn--ghost"
+      ),
+      actionButton(
         ns("api_key_save_btn"),
         label = tagList(icon("save"), "Kaydet ve Devam Et"),
         class = "akc-btn akc-btn--primary"

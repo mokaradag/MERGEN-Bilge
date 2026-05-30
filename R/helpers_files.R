@@ -188,10 +188,16 @@ dataframeToMarkdown <- function(df) {
     return("Excel dosyası boş veya okunamadı.")
   }
 
+  temp_file <- tempfile(fileext = ".csv")
+  on.exit(unlink(temp_file), add = TRUE)
+
   tryCatch({
-    temp_file <- tempfile(fileext = ".csv")
-    data.table::fwrite(df, temp_file, bom = TRUE)
-    paste(readLines(temp_file, encoding = "UTF-8", warn = FALSE), collapse = "\n")
+    data.table::fwrite(df, temp_file, bom = FALSE)
+
+    con <- file(temp_file, open = "r", encoding = "UTF-8")
+    on.exit(close(con), add = TRUE)
+
+    paste(readLines(con, warn = FALSE), collapse = "\n")
   }, error = function(e) {
     "Excel dosyası metne dönüştürülürken bir hata oluştu."
   })
