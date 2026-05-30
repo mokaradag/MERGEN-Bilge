@@ -105,6 +105,9 @@ test_that("seçim modalı iki yollu/tek yollu mantığı, input id'leri ve donts
   expect_true(grepl("tags$form", helper_text, fixed = TRUE))
   expect_true(grepl("data-akc-password-form", helper_text, fixed = TRUE))
   expect_true(grepl("onsubmit = \"return false;\"", helper_text, fixed = TRUE))
+  expect_true(grepl("htmltools::tagQuery", helper_text, fixed = TRUE))
+  expect_true(grepl("$find(\"input\")", helper_text, fixed = TRUE))
+  expect_true(grepl("autocomplete = \"new-password\"", helper_text, fixed = TRUE))
   expect_true(grepl("api_key_save_btn", helper_text, fixed = TRUE))
   expect_true(grepl("api_key_clear_btn", helper_text, fixed = TRUE))
   # Varsayılan kurum anahtarı yolu için ayrı eylem.

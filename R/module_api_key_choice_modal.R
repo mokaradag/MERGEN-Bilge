@@ -94,11 +94,15 @@ api_key_choice_request_url <- function(service_desk = NULL) {
 		novalidate = "novalidate",
 		onsubmit = "return false;",
 		`data-akc-password-form` = "1",
-		passwordInput(
-		  ns("api_key_plain_input"),
-		  label = "API Anahtarınızı buraya girin",
-		  width = "100%"
-		),
+		htmltools::tagQuery(
+		  passwordInput(
+		    ns("api_key_plain_input"),
+		    label = "API Anahtarınızı buraya girin",
+		    width = "100%"
+		  )
+		)$find("input")$addAttrs(
+		  autocomplete = "new-password"
+		)$allTags(),
 		tags$p(
 		  class = "akc-secure-note",
 		  icon("lock"),
