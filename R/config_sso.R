@@ -34,6 +34,19 @@ SSO_CONFIG <- list(
   validate_issuer   = as.logical(Sys.getenv("SSO_VALIDATE_ISSUER", "TRUE")),
   validate_expiry   = as.logical(Sys.getenv("SSO_VALIDATE_EXPIRY", "TRUE")),
 
+  # JWT imza (signature) doğrulaması. Varsayılan AÇIK (güvenli varsayılan):
+  # token'ın gerçekten Keycloak tarafından imzalandığı JWKS genel anahtarı ile
+  # kriptografik olarak doğrulanır. JWKS uygulama sunucusundan erişilemiyorsa
+  # operatör SSO_VALIDATE_SIGNATURE=FALSE ile geçici olarak kapatabilir.
+  validate_signature = as.logical(Sys.getenv("SSO_VALIDATE_SIGNATURE", "TRUE")),
+
+  # JWKS uç noktası override'ı (boşsa issuer'dan türetilir).
+  jwks_url            = Sys.getenv("SSO_JWKS_URL", ""),
+
+  # JWKS önbellek ömrü (saniye). Anahtarlar bu süre boyunca yeniden alınmaz;
+  # bilinmeyen kid (anahtar rotasyonu) durumunda süreye bakılmaksızın yenilenir.
+  jwks_cache_ttl_secs = as.integer(Sys.getenv("SSO_JWKS_CACHE_TTL", "3600")),
+
   # Oturum yönetimi
   token_refresh_margin_secs = as.integer(Sys.getenv("SSO_TOKEN_REFRESH_MARGIN", "300")),
 
@@ -44,8 +57,10 @@ SSO_CONFIG <- list(
 # NA güvenlik düzeltmeleri
 if (is.na(SSO_CONFIG$validate_issuer)) SSO_CONFIG$validate_issuer <- TRUE
 if (is.na(SSO_CONFIG$validate_expiry)) SSO_CONFIG$validate_expiry <- TRUE
+if (is.na(SSO_CONFIG$validate_signature)) SSO_CONFIG$validate_signature <- TRUE
 if (is.na(SSO_CONFIG$debug_mode))      SSO_CONFIG$debug_mode <- FALSE
 if (is.na(SSO_CONFIG$token_refresh_margin_secs)) SSO_CONFIG$token_refresh_margin_secs <- 300L
+if (is.na(SSO_CONFIG$jwks_cache_ttl_secs)) SSO_CONFIG$jwks_cache_ttl_secs <- 3600L
 
 # ==============================================================================
 # KEYCLOAK URL'LERİ (TÜRETME)
@@ -75,9 +90,24 @@ if (nzchar(SSO_CONFIG$keycloak_base_url)) {
   SSO_CONFIG$auth_endpoint   <- paste0(issuer_base, "/protocol/openid-connect/auth")
   SSO_CONFIG$logout_endpoint <- paste0(issuer_base, "/protocol/openid-connect/logout")
   SSO_CONFIG$token_endpoint  <- paste0(issuer_base, "/protocol/openid-connect/token")
+  # JWKS (genel imza anahtarları) uç noktası. Override verilmemişse issuer'dan türetilir.
+  SSO_CONFIG$jwks_endpoint   <- if (nzchar(SSO_CONFIG$jwks_url)) {
+    SSO_CONFIG$jwks_url
+  } else {
+    paste0(issuer_base, "/protocol/openid-connect/certs")
+  }
 } else if (isTRUE(SSO_ENABLED)) {
   warning("SSO_ENABLED=TRUE ancak SSO_KEYCLOAK_URL tanımlanmamış! Keycloak çalışmayacak.")
 }
+
+# Issuer türetilemese bile açık bir JWKS override verilmişse onu kullan.
+.sso_jwks_ep <- SSO_CONFIG$jwks_endpoint
+if (is.null(.sso_jwks_ep) || length(.sso_jwks_ep) == 0 || !nzchar(.sso_jwks_ep)) {
+  if (nzchar(SSO_CONFIG$jwks_url)) {
+    SSO_CONFIG$jwks_endpoint <- SSO_CONFIG$jwks_url
+  }
+}
+rm(.sso_jwks_ep)
 
 # ==============================================================================
 # KEYCLOAK ALAN HARITALAMA (CLAIM MAPPING)
@@ -105,6 +135,8 @@ if (isTRUE(SSO_ENABLED)) {
   log_info("SSO Keycloak URL (girilen): {SSO_CONFIG$keycloak_base_url}")
   log_info("SSO Issuer URL (türetilen): {SSO_CONFIG$issuer_url}")
   log_info("SSO Auth Endpoint: {SSO_CONFIG$auth_endpoint}")
+  log_info("SSO JWKS Endpoint: {SSO_CONFIG$jwks_endpoint %||% 'YOK'}")
+  log_info("SSO İmza doğrulaması: {if (isTRUE(SSO_CONFIG$validate_signature)) 'AÇIK' else 'KAPALI'}")
   log_info("SSO Realm: {SSO_CONFIG$realm}")
   log_info("SSO Client ID: {SSO_CONFIG$client_id}")
 } else {

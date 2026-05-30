@@ -77,13 +77,27 @@ validate_jwt_token <- function(token) {
     return(list(valid = FALSE, payload = NULL, error = "Token çözümlenemedi"))
   }
 
-  # 2. Zorunlu alan kontrolü: preferred_username
+  # 2. İmza (signature) doğrulaması.
+  #    GÜVENLİK: İmza, issuer/exp gibi claim'lerden ÖNCE doğrulanır. Token
+  #    gerçekten Keycloak tarafından imzalanmadıysa payload alanlarına
+  #    güvenilemez. Doğrulama SSO_CONFIG$validate_signature ile yönetilir ve
+  #    açıkken fail-closed davranır (anahtar/imza doğrulanamazsa token reddedilir).
+  sig_result <- sso_validate_jwt_signature(token)
+  if (!isTRUE(sig_result$valid)) {
+    return(list(
+      valid = FALSE,
+      payload = payload,
+      error = sig_result$error %||% "Token imzası doğrulanamadı"
+    ))
+  }
+
+  # 3. Zorunlu alan kontrolü: preferred_username
   username <- payload[[SSO_CLAIM_MAP$username]]
   if (is.null(username) || !nzchar(username)) {
     return(list(valid = FALSE, payload = payload, error = "Token'da kullanıcı adı (preferred_username) bulunamadı"))
   }
 
-  # 3. Issuer doğrulaması
+  # 4. Issuer doğrulaması
   if (isTRUE(SSO_CONFIG$validate_issuer) && nzchar(SSO_CONFIG$issuer_url %||% "")) {
     token_issuer <- payload[["iss"]]
     if (is.null(token_issuer) || !identical(token_issuer, SSO_CONFIG$issuer_url)) {
@@ -92,7 +106,7 @@ validate_jwt_token <- function(token) {
     }
   }
 
-  # 4. Süre dolum kontrolü
+  # 5. Süre dolum kontrolü
   if (isTRUE(SSO_CONFIG$validate_expiry)) {
     exp_time <- payload[["exp"]]
     if (!is.null(exp_time)) {
@@ -290,7 +304,10 @@ check_user_authorization <- function(username, sicil = NULL) {
     }
   }, error = function(e) {
     log_error("Yetkilendirme sorgusu hatası: {e$message}")
-    # Veritabanı hatası durumunda varsayılan yetki ile devam et
-    list(authorized = TRUE, yetki = "USER", masraf_yeri_kodu = NULL, kaynak_adi = NULL)
+    # GÜVENLİK (fail-closed): Veritabanı hatasında yetki AÇILMAZ. Geçici bir DB
+    # kesintisi veya sorgu hatası, yetkisiz erişime yol açmamalıdır. Önceki
+    # davranış hata durumunda "USER" yetkisi veriyordu (fail-open); bu, DB
+    # erişilemezken yetkisiz kullanıcıların geçmesine neden olabilirdi.
+    list(authorized = FALSE, yetki = NULL, masraf_yeri_kodu = NULL, kaynak_adi = NULL)
   })
 }
