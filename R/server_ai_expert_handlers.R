@@ -83,14 +83,16 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       char_id <- normalize_character_id(selected_char_id %||% isolate(settings_data$selected_character))
 	  model_name <- safe_trimws(Sys.getenv("AI_EXPERT_MODEL", ""))
 	  endpoint <- safe_trimws(Sys.getenv("LOCAL_LLM_ENDPOINT", ""))
-	  api_key <- safe_trimws(Sys.getenv("LOCAL_LLM_API_KEY", ""))
-	  user_api_key <- NULL
+	  legacy_llm_key <- safe_trimws(Sys.getenv("LOCAL_LLM_API_KEY", ""))
 
-	  if (!is.null(session$userData$ai_api_key)) {
-		user_api_key <- safe_trimws(session$userData$ai_api_key)
-	  }
-
-	  final_api_key <- if (!is.null(user_api_key) && safe_nzchar(user_api_key)) user_api_key else api_key
+	  final_api_key <- mb_api_key_get_feature_key_value(
+		session = session,
+		service_key = "",
+		fallback_key = legacy_llm_key,
+		require_auth = TRUE,
+		clear_on_mismatch = TRUE,
+		prefer_service_key_after_personal = FALSE
+	  )
 
 	  chars_data <- get_characters_data()
 	  char_info <- Find(function(x) x$id == char_id, chars_data$styles)

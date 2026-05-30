@@ -40,29 +40,19 @@ ttsProcessingServer <- function(id) {
     }
 
     #' TTS uç noktası için API anahtarını belirle
-    #' Öncelik: oturum anahtarı > TTS anahtarı > birincil LLM anahtarı
+    #' Öncelik: kişisel anahtar > TTS servis anahtarı > izinli kurum anahtarı > eski LLM anahtarı
     resolve_tts_api_key <- function() {
-      # 1. Oturuma özel anahtarı dene (kullanıcının LLM API anahtarı)
-      user_key <- tryCatch({
-        sess_key <- session$userData$ai_api_key %||% NULL
-        if (is.null(sess_key) || !nzchar(sess_key)) return(NULL)
-        as.character(sess_key)[1]
-      }, error = function(e) NULL)
+      tts_service_key <- tts_config$api_key %||% ""
+      legacy_llm_key <- tryCatch(Sys.getenv("LOCAL_LLM_API_KEY", ""), error = function(e) "")
 
-      if (!is.null(user_key) && nzchar(user_key)) {
-        return(user_key)
-      }
-
-      # 2. TTS'e özel yapılandırma anahtarını dene
-      default_key <- tts_config$api_key %||% ""
-      if (is.null(default_key) || is.na(default_key)) default_key <- ""
-      if (nzchar(default_key)) return(default_key)
-
-      # 3. Birincil LLM API anahtarını dene (TTS anahtarı boşsa yedek)
-      llm_key <- tryCatch(Sys.getenv("LOCAL_LLM_API_KEY", ""), error = function(e) "")
-      if (!is.null(llm_key) && nzchar(llm_key)) return(llm_key)
-
-      ""
+      mb_api_key_get_feature_key_value(
+        session = session,
+        service_key = tts_service_key,
+        fallback_key = legacy_llm_key,
+        require_auth = TRUE,
+        clear_on_mismatch = TRUE,
+        prefer_service_key_after_personal = TRUE
+      )
     }
 
     #' Asenkron olarak ses sentezle
