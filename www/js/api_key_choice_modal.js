@@ -67,14 +67,35 @@
   }
 
   // Yapılandırma sayfasındaki "API anahtarı seçim ekranını göster" anahtarını
-  // localStorage durumuyla görsel olarak eşitle ("göster" = bastırılmamış).
-  function syncSettingsToggle(scope) {
+  // localStorage durumuyla eşitle ("göster" = bastırılmamış). Programatik
+  // güncellemede Shiny input değerini de bildiririz; aksi halde tarayıcıda
+  // görünen durum ile Shiny'nin son bildiği değer ayrışabilir.
+  function setSettingsToggleChecked(el, checked, notifyShiny) {
+    if (!el) {
+      return;
+    }
+
+    if (el.checked !== checked) {
+      el.checked = checked;
+    }
+
+    if (notifyShiny !== false &&
+        window.Shiny &&
+        typeof Shiny.setInputValue === "function" &&
+        el.id) {
+      Shiny.setInputValue(el.id, checked, {
+        priority: "event"
+      });
+    }
+  }
+
+  function syncSettingsToggle(scope, notifyShiny) {
     var root = scope && scope.querySelectorAll ? scope : document;
     var toggles = root.querySelectorAll(
       'input[type="checkbox"][id$="show_api_key_onboarding"]'
     );
     Array.prototype.forEach.call(toggles, function (el) {
-      el.checked = !isSuppressed();
+      setSettingsToggleChecked(el, !isSuppressed(), notifyShiny);
     });
   }
 
@@ -122,7 +143,7 @@
   document.addEventListener("shiny:bound", function (e) {
     var el = e && e.target;
     if (el && el.id && /show_api_key_onboarding$/.test(el.id)) {
-      el.checked = !isSuppressed();
+      setSettingsToggleChecked(el, !isSuppressed(), true);
     }
   });
 
@@ -163,12 +184,28 @@
     });
   }
 
-  // Sayfa bağlandığında Yapılandırma anahtarını eşitle.
-  document.addEventListener("shiny:connected", function () {
+  function syncSettingsToggleSoon() {
     setTimeout(function () {
-      syncSettingsToggle();
+      syncSettingsToggle(document, true);
+    }, 0);
+
+    setTimeout(function () {
+      syncSettingsToggle(document, true);
     }, 150);
-  });
+  }
+
+  // Sayfa bağlandığında Yapılandırma anahtarını eşitle.
+  document.addEventListener("shiny:connected", syncSettingsToggleSoon);
+
+  // Bu dosya ertelenmiş yüklenebildiği için shiny:connected/shiny:bound
+  // olayları daha önce kaçmış olabilir. Yükleme anında da bir kez eşitle.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", syncSettingsToggleSoon, {
+      once: true
+    });
+  } else {
+    syncSettingsToggleSoon();
+  }
 
   // Küçük, isim alanlı kontrol yüzeyi (test/araç erişimi için).
   // Nesneyi yeniden atama; erken gelen _inputId değerini koru.

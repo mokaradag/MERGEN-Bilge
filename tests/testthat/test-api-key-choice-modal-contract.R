@@ -165,9 +165,27 @@ test_that("module_api_key.R seçim modalını çağırır ve bastırma bayrağı
   expect_false(grepl("secure_tooltip", module_text, fixed = TRUE))
 })
 
-test_that("Yapılandırma sayfası onboarding'i tekrar açma anahtarını içerir", {
-  ui_text <- .akc_text("R/module_settings_yapilandirma_ui.R")
-  expect_true(grepl("show_api_key_onboarding", ui_text, fixed = TRUE))
+test_that("Yapılandırma onboarding anahtarı geç yükleme ve Shiny input senkronunu korur", {
+  js_text <- .akc_text("www/js/api_key_choice_modal.js")
+
+  # api_key_choice_modal.js ertelenmiş yüklenebildiği için ilk
+  # shiny:connected/shiny:bound olayları kaçsa bile, dosya yüklenince
+  # Yapılandırma anahtarı localStorage durumuna yeniden çekilmelidir.
+  expect_true(grepl("function syncSettingsToggleSoon", js_text, fixed = TRUE))
+  expect_true(grepl("DOMContentLoaded", js_text, fixed = TRUE))
+  expect_true(grepl(
+    "document.addEventListener(\"shiny:connected\", syncSettingsToggleSoon)",
+    js_text,
+    fixed = TRUE
+  ))
+
+  # Görsel checked durumu ile Shiny input değeri ayrışmamalıdır.
+  expect_true(grepl("Shiny.setInputValue(el.id, checked", js_text, fixed = TRUE))
+  expect_true(grepl(
+    "setSettingsToggleChecked(el, !isSuppressed(), true)",
+    js_text,
+    fixed = TRUE
+  ))
 })
 
 test_that("seçim modalı varlıkları yereldir (CDN/uzak kaynak yok)", {
