@@ -43,6 +43,12 @@ test_that("decode_jwt_payload geçersiz formatta NULL döndürür", {
 
 # preferred_username yoksa validate_jwt_token başarısız olmalıdır.
 test_that("validate_jwt_token preferred_username yoksa reddeder", {
+  # Bu testler sentetik (imzasız) token kullanır; imza doğrulamasını kapatıp
+  # claim doğrulama davranışını izole ederiz. İmza yolu ayrı dosyada test edilir.
+  eski_validate_signature <- SSO_CONFIG$validate_signature
+  SSO_CONFIG$validate_signature <<- FALSE
+  on.exit(SSO_CONFIG$validate_signature <<- eski_validate_signature)
+
   token <- .make_jwt_token(list(
     name = "Sadece Ad",
     exp  = as.integer(Sys.time()) + 3600L
@@ -55,11 +61,14 @@ test_that("validate_jwt_token preferred_username yoksa reddeder", {
 test_that("validate_jwt_token süresi dolmuş token'ı reddeder", {
   eski_validate_expiry <- SSO_CONFIG$validate_expiry
   eski_validate_issuer <- SSO_CONFIG$validate_issuer
+  eski_validate_signature <- SSO_CONFIG$validate_signature
   SSO_CONFIG$validate_expiry <<- TRUE
   SSO_CONFIG$validate_issuer <<- FALSE
+  SSO_CONFIG$validate_signature <<- FALSE
   on.exit({
     SSO_CONFIG$validate_expiry <<- eski_validate_expiry
     SSO_CONFIG$validate_issuer <<- eski_validate_issuer
+    SSO_CONFIG$validate_signature <<- eski_validate_signature
   })
 
   token <- .make_jwt_token(list(
@@ -77,14 +86,17 @@ test_that("validate_jwt_token yanlış issuer'ı reddeder", {
   eski_validate_issuer <- SSO_CONFIG$validate_issuer
   eski_issuer_url      <- SSO_CONFIG$issuer_url
   eski_validate_expiry <- SSO_CONFIG$validate_expiry
+  eski_validate_signature <- SSO_CONFIG$validate_signature
 
   SSO_CONFIG$validate_issuer <<- TRUE
   SSO_CONFIG$issuer_url      <<- "https://dogru.ornek.com/realms/test"
   SSO_CONFIG$validate_expiry <<- FALSE
+  SSO_CONFIG$validate_signature <<- FALSE
   on.exit({
     SSO_CONFIG$validate_issuer <<- eski_validate_issuer
     SSO_CONFIG$issuer_url      <<- eski_issuer_url
     SSO_CONFIG$validate_expiry <<- eski_validate_expiry
+    SSO_CONFIG$validate_signature <<- eski_validate_signature
   })
 
   token <- .make_jwt_token(list(
@@ -101,8 +113,13 @@ test_that("validate_jwt_token yanlış issuer'ı reddeder", {
 # Geçerli token tüm doğrulamaları geçmelidir.
 test_that("validate_jwt_token geçerli token'ı kabul eder", {
   eski_validate_issuer <- SSO_CONFIG$validate_issuer
+  eski_validate_signature <- SSO_CONFIG$validate_signature
   SSO_CONFIG$validate_issuer <<- FALSE
-  on.exit(SSO_CONFIG$validate_issuer <<- eski_validate_issuer)
+  SSO_CONFIG$validate_signature <<- FALSE
+  on.exit({
+    SSO_CONFIG$validate_issuer <<- eski_validate_issuer
+    SSO_CONFIG$validate_signature <<- eski_validate_signature
+  })
 
   token <- .make_jwt_token(list(
     preferred_username = "gecerli_user",
