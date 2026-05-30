@@ -28,6 +28,12 @@ Yardım Merkezi içindeki Yardım Asistanı sohbet ekranında açık tema okunab
 
 Yardım Merkezi içindeki “E-posta Destek” bağlantısının konu ve gövde alanları artık UTF-8 bayt temelli percent-encoding ile oluşturulur. Bu sayede Outlook/mailto açılışında “İyi çalışmalar dilerim,” gibi Türkçe karakter içeren varsayılan destek metinleri Windows yerel kod sayfasına bağlı bozulmadan doğru gösterilir. Düzeltme yalnızca bağlantı üretim sınırını etkiler; Yardım Merkezi’nin görünümü ve kullanıcı akışı değişmez.
 
+### API anahtarı seçim modalı kararlılık ve tarayıcı hijyeni
+
+Kişisel API anahtarı bulunmayan kullanıcılar için gösterilen “API Anahtarı Seçimi” onboarding modalı, Shiny özel mesaj işleyici sözleşmesine ve tarayıcı parola-formu beklentilerine uyumlu olacak şekilde güçlendirildi. İstemci tarafındaki yardımcı artık Shiny mesajlarını tek argümanlı handler’larla karşılar, kontrol yüzeyini handler kayıtlarından önce hazırlar ve yalnızca hassas olmayan `api_key_onboarding_suppressed` tercih bayrağını bildirir.
+
+Modal içindeki API anahtarı alanı görünür kullanıcı akışını değiştirmeden non-submit form içinde, `autocomplete="new-password"` ve gizli `username` alanı ile render edilir. Böylece Chrome DevTools parola-formu verbose uyarıları kaldırılırken aynı input id’leri, kaydet/temizle düğmeleri, kurum anahtarıyla devam akışı ve güvenli anahtar saklama/doğrulama sınırı korunur. Ham API anahtarı, varsayılan kurum anahtarı veya herhangi bir secret istemciye yazılmaz ve loglanmaz.
+
 ## AI Ajanları İçin Doğrulama Profilleri
 
 MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığında doğrulama komutları ortam yeteneklerine göre ayrılmıştır:
