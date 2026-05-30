@@ -200,3 +200,55 @@ test_that("seçim modalı CSS/JS dosyaları UI varlık manifestinde kayıtlı", 
   expect_true(grepl("css/api_key_choice_modal.css", manifest_text, fixed = TRUE))
   expect_true(grepl("js/api_key_choice_modal.js", manifest_text, fixed = TRUE))
 })
+
+test_that("seçim modalı Shiny custom message handler imzalarını korur", {
+  js_lines <- .akc_read("www/js/api_key_choice_modal.js")
+  js_text <- paste(js_lines, collapse = "\n")
+
+  # Shiny >= 1.11 custom message handler imzasını denetler:
+  # handler tek argüman almalıdır. Sıfır argümanlı handler kayıt hatası üretir.
+  zero_arg_handler_lines <- grep(
+    "addCustomMessageHandler\\s*\\([^\\n]*function\\s*\\(\\s*\\)",
+    js_lines,
+    value = TRUE,
+    perl = TRUE
+  )
+
+  expect_equal(zero_arg_handler_lines, character(0))
+  expect_true(grepl(
+    "mergenApiKeyChoiceInit[^\\n]*function\\s*\\(\\s*message\\s*\\)",
+    js_text,
+    perl = TRUE
+  ))
+  expect_true(grepl("void message;", js_text, fixed = TRUE))
+})
+
+test_that("seçim modalı kontrol yüzeyini handler'lardan önce hazırlar", {
+  js_lines <- .akc_read("www/js/api_key_choice_modal.js")
+  js_text <- paste(js_lines, collapse = "\n")
+
+  init_pos <- grep(
+    "window\\.MergenApiKeyChoice = window\\.MergenApiKeyChoice \\|\\| \\{\\};",
+    js_lines
+  )
+  handler_pos <- grep("Shiny\\.addCustomMessageHandler", js_lines)
+
+  expect_true(length(init_pos) >= 1L)
+  expect_true(length(handler_pos) >= 1L)
+  expect_lt(min(init_pos), min(handler_pos))
+
+  # reportToServer erken/bozuk durumlarda tanımsız nesneye erişmemeli.
+  expect_true(grepl(
+    "var choice = window.MergenApiKeyChoice || {};",
+    js_text,
+    fixed = TRUE
+  ))
+
+  # Dosya sonunda nesne yeniden atanmamalı; erken gelen _inputId korunmalı.
+  expect_false(grepl("window.MergenApiKeyChoice = {", js_text, fixed = TRUE))
+  expect_true(grepl(
+    "window.MergenApiKeyChoice._inputId = window.MergenApiKeyChoice._inputId || null;",
+    js_text,
+    fixed = TRUE
+  ))
+})

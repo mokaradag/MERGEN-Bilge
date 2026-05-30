@@ -23,6 +23,12 @@
   var SUPPRESS_KEY = "api_key_onboarding_suppressed";
   var SETTINGS_LS = "mergen_settings";
 
+  // Shiny custom message handler'ları dosya yüklenirken kaydolur.
+  // Handler kayıt hatası veya erken mesaj durumunda kontrol yüzeyi
+  // tanımsız kalmamalıdır.
+  window.MergenApiKeyChoice = window.MergenApiKeyChoice || {};
+  window.MergenApiKeyChoice._inputId = window.MergenApiKeyChoice._inputId || null;
+
   function readSettings() {
     try {
       return JSON.parse(window.localStorage.getItem(SETTINGS_LS) || "{}") || {};
@@ -51,8 +57,10 @@
     if (!window.Shiny || typeof Shiny.setInputValue !== "function") {
       return;
     }
-    if (window.MergenApiKeyChoice._inputId) {
-      Shiny.setInputValue(window.MergenApiKeyChoice._inputId, isSuppressed(), {
+
+    var choice = window.MergenApiKeyChoice || {};
+    if (choice._inputId) {
+      Shiny.setInputValue(choice._inputId, isSuppressed(), {
         priority: "event"
       });
     }
@@ -128,6 +136,7 @@
         if (!message || !message.inputId) {
           return;
         }
+        window.MergenApiKeyChoice = window.MergenApiKeyChoice || {};
         window.MergenApiKeyChoice._inputId = message.inputId;
         reportToServer();
       }
@@ -136,7 +145,9 @@
     // Modal gösterildiğinde yalnızca onay kutusu/anahtar görünür durumunu
     // eşitle. Kritik davranış değil; başarısız olsa bile varsayılan görünür
     // durum doğrudur. DOM hazır olana kadar birkaç kez dener.
-    Shiny.addCustomMessageHandler("mergenApiKeyChoiceInit", function () {
+    Shiny.addCustomMessageHandler("mergenApiKeyChoiceInit", function (message) {
+      void message;
+
       var tries = 0;
       var timer = setInterval(function () {
         tries += 1;
@@ -160,17 +171,15 @@
   });
 
   // Küçük, isim alanlı kontrol yüzeyi (test/araç erişimi için).
-  window.MergenApiKeyChoice = {
-    _inputId: null,
-    settingsKey: SUPPRESS_KEY,
-    isSuppressed: isSuppressed,
-    suppress: function () {
-      writeSettingKey(SUPPRESS_KEY, true);
-      reportToServer();
-    },
-    allow: function () {
-      writeSettingKey(SUPPRESS_KEY, false);
-      reportToServer();
-    }
+  // Nesneyi yeniden atama; erken gelen _inputId değerini koru.
+  window.MergenApiKeyChoice.settingsKey = SUPPRESS_KEY;
+  window.MergenApiKeyChoice.isSuppressed = isSuppressed;
+  window.MergenApiKeyChoice.suppress = function () {
+    writeSettingKey(SUPPRESS_KEY, true);
+    reportToServer();
+  };
+  window.MergenApiKeyChoice.allow = function () {
+    writeSettingKey(SUPPRESS_KEY, false);
+    reportToServer();
   };
 })();
