@@ -5371,6 +5371,30 @@ testthat::test_file("tests/testthat/test-production-contracts.R")
 
 Recent production-hardening coverage adds focused contract tests for source manifest integrity, secret leakage, runtime network boundaries, and expanded UTF-8 parse coverage of high-risk production files. The runtime network-boundary test is intended to catch accidental public internet/CDN dependencies in executable runtime code, not harmless documentation/license references: it strips R/JS/CSS comments, allows SVG namespace URLs, `example.*` placeholders, known internal/intranet hosts, and skips vendored offline assets such as `www/js/highlight.min.js` and `www/css/all.min.css`. Use `MERGEN_ALLOWED_INTERNAL_URL_REGEX` only for additional organization-specific internal URL allowlisting.
 
+### Focused behavioral coverage from claude/lucid-mayer-U1iHC
+
+Commit `32dd9afd0d993e3590b51db296999c9ca78dd1af` added or strengthened the following protected focused coverage list:
+
+- tests/testthat/test-ai-expert-chunking-behavior.R
+- tests/testthat/test-api-key-identity-resolution-behavior.R
+- tests/testthat/test-claude-code-plugin-components-behavior.R
+- tests/testthat/test-claude-code-prompt-path-policy-behavior.R
+- tests/testthat/test-claude-code-tool-use-html-behavior.R
+- tests/testthat/test-deep-thinking-model-resolution-behavior.R
+- tests/testthat/test-detect-tool-type-behavior.R
+- tests/testthat/test-file-index-search-behavior.R
+- tests/testthat/test-health-formatters-behavior.R
+- tests/testthat/test-llm-response-postprocess-behavior.R
+- tests/testthat/test-llm-sse-event-parsing-behavior.R
+- tests/testthat/test-llm-tool-formatters-behavior.R
+- tests/testthat/test-log-redact-internals-behavior.R
+- tests/testthat/test-rate-limiter-behavior.R
+- tests/testthat/test-split-text-and-code-behavior.R
+- tests/testthat/test-summarization-user-prompt-behavior.R
+- tests/testthat/test-version-history-parsing-behavior.R
+
+These are behavior-level regression tests. They should not be weakened to make unrelated changes pass. They are intended to preserve current behavior while allowing future refactors. If future code changes touch any of these domains, the corresponding focused test file is the minimum relevant check, in addition to the normal validation profile for code changes.
+
 If a patch touches path-validation helpers, confirm behavior with Windows-style separators and Turkish-character file names, and avoid platform-brittle assertions for embedded NUL character construction.
 
 
