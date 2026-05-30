@@ -85,22 +85,29 @@ api_key_choice_request_url <- function(service_desk = NULL) {
     # Anahtar giriş alanı her zaman görünür ve kullanıma hazırdır; JS'e
     # bağımlı bir "aç/kapa" davranışı yoktur. Böylece kullanıcı anahtarını
     # doğrudan girip kaydedebilir.
-    div(
-      class = "akc-key-entry",
-      `data-akc-entry` = "personal",
-      passwordInput(
-        ns("api_key_plain_input"),
-        label = "API Anahtarınızı buraya girin",
-        width = "100%"
-      ),
-      tags$p(
-        class = "akc-secure-note",
-        icon("lock"),
-        tags$span(
-          "Anahtarınız AES-256-GCM ile şifrelenerek saklanır; ekranda gösterilmez."
-        )
-      )
-    ),
+	div(
+	  class = "akc-key-entry",
+	  `data-akc-entry` = "personal",
+	  tags$form(
+		class = "akc-key-form",
+		autocomplete = "off",
+		novalidate = "novalidate",
+		onsubmit = "return false;",
+		`data-akc-password-form` = "1",
+		passwordInput(
+		  ns("api_key_plain_input"),
+		  label = "API Anahtarınızı buraya girin",
+		  width = "100%"
+		),
+		tags$p(
+		  class = "akc-secure-note",
+		  icon("lock"),
+		  tags$span(
+			"Anahtarınız AES-256-GCM ile şifrelenerek saklanır; ekranda gösterilmez."
+		  )
+		)
+	  )
+	),
     div(
       class = "akc-card-actions",
       request_action,

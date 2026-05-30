@@ -436,6 +436,10 @@
   margin-top: 14px;
 }
 
+.api-key-choice-modal-root .akc-key-form {
+  margin: 0;
+}
+
 .api-key-choice-modal-root .akc-key-entry .shiny-input-container {
   width: 100% !important;
   margin-bottom: 6px;

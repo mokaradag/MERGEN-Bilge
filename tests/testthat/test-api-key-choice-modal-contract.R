@@ -102,6 +102,9 @@ test_that("seçim modalı iki yollu/tek yollu mantığı, input id'leri ve donts
 
   # Mevcut kaydet/temizle observer'larının bağlanabilmesi için aynı input id'leri.
   expect_true(grepl("api_key_plain_input", helper_text, fixed = TRUE))
+  expect_true(grepl("tags$form", helper_text, fixed = TRUE))
+  expect_true(grepl("data-akc-password-form", helper_text, fixed = TRUE))
+  expect_true(grepl("onsubmit = \"return false;\"", helper_text, fixed = TRUE))
   expect_true(grepl("api_key_save_btn", helper_text, fixed = TRUE))
   expect_true(grepl("api_key_clear_btn", helper_text, fixed = TRUE))
   # Varsayılan kurum anahtarı yolu için ayrı eylem.
@@ -130,6 +133,8 @@ test_that("modal merkezleme, sayfa bulanıklığı ve animasyonlar CSS ile çal�
   expect_true(grepl("margin: 0 auto", css_text, fixed = TRUE))
   # Global 60vh modal-body kaydırma kısıtı bu modalda kaldırılır.
   expect_true(grepl("max-height: none !important", css_text, fixed = TRUE))
+  expect_true(grepl(".akc-key-form", css_text, fixed = TRUE))
+  expect_true(grepl("margin: 0", css_text, fixed = TRUE))
   # Sayfa (modal arkası) bulanıklığı CSS ile.
   expect_true(grepl("backdrop-filter: blur", css_text, fixed = TRUE))
   # Giriş animasyonları mevcut.
