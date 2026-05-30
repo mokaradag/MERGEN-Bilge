@@ -103,15 +103,13 @@ api_key_choice_request_url <- function(service_desk = NULL) {
 		  tabindex = "-1",
 		  `aria-hidden` = "true"
 		),
-		htmltools::tagQuery(
-		  passwordInput(
-		    ns("api_key_plain_input"),
-		    label = "API Anahtarınızı buraya girin",
-		    width = "100%"
-		  )
-		)$find("input")$addAttrs(
-		  autocomplete = "new-password"
-		)$allTags(),
+		api_key_password_input_with_toggle(
+		  ns,
+		  input_id = "api_key_plain_input",
+		  label = "API Anahtarınızı buraya girin",
+		  width = "100%",
+		  wrapper_class = "api-key-password-field--choice"
+		),
 		tags$p(
 		  class = "akc-secure-note",
 		  icon("lock"),

@@ -59,9 +59,12 @@ test_that("seçim modalı yardımcısı yeni R/CSS/JS/varlık dosyaları repoda 
   # ortamda yerel kopyalanır). Eksikliği bir hata değildir; poster + gradyan
   # geri düşüşü çalışır.
   expected <- c(
+    "R/helpers_api_key_password_toggle.R",
     "R/module_api_key_choice_modal.R",
     "www/css/api_key_choice_modal.css",
+    "www/css/api_key_password_toggle.css",
     "www/js/api_key_choice_modal.js",
+    "www/js/api_key_password_toggle.js",
     "www/assets/api-key-choice/mesh-background.svg",
     "www/assets/api-key-choice/security-orbit.svg",
     "www/assets/api-key-choice/personal-key.svg",
@@ -98,7 +101,11 @@ test_that("seçim modalı varsayılan kurum anahtarı değerini gömmez / sızd�
 })
 
 test_that("seçim modalı iki yollu/tek yollu mantığı, input id'leri ve dontshow kutusunu korur", {
-  helper_text <- .akc_text("R/module_api_key_choice_modal.R")
+  helper_text <- paste(
+    .akc_text("R/module_api_key_choice_modal.R"),
+    .akc_text("R/helpers_api_key_password_toggle.R"),
+    sep = "\n"
+  )
 
   # Mevcut kaydet/temizle observer'larının bağlanabilmesi için aynı input id'leri.
   expect_true(grepl("api_key_plain_input", helper_text, fixed = TRUE))
@@ -147,6 +154,15 @@ test_that("modal merkezleme, sayfa bulanıklığı ve animasyonlar CSS ile çal�
   expect_true(grepl("@keyframes akcCardIn", css_text, fixed = TRUE))
 })
 
+test_that("seçim modalı yatay kaydırma taşmasını ve video karartmasını dengeler", {
+  css_text <- .akc_text("www/css/api_key_choice_modal.css")
+
+  expect_true(grepl("overflow-x: hidden", css_text, fixed = TRUE))
+  expect_true(grepl("scrollbar-gutter: stable", css_text, fixed = TRUE))
+  expect_true(grepl("--akc-video-opacity: 0.68", css_text, fixed = TRUE))
+  expect_true(grepl("--akc-video-opacity: 0.36", css_text, fixed = TRUE))
+})
+
 test_that("seçim modalı yerel arka plan videosu/posteri kullanır (uzak değil)", {
   helper_text <- .akc_text("R/module_api_key_choice_modal.R")
 
@@ -192,7 +208,10 @@ test_that("seçim modalı varlıkları yereldir (CDN/uzak kaynak yok)", {
   # CSS/JS/R üretici içinde uzak URL olmamalı (yalnızca yerel yollar).
   for (rel in c(
     "www/css/api_key_choice_modal.css",
+    "www/css/api_key_password_toggle.css",
     "www/js/api_key_choice_modal.js",
+    "www/js/api_key_password_toggle.js",
+    "R/helpers_api_key_password_toggle.R",
     "R/module_api_key_choice_modal.R"
   )) {
     text <- .akc_text(rel)
@@ -227,7 +246,35 @@ test_that("seçim modalı varlıkları yereldir (CDN/uzak kaynak yok)", {
 test_that("seçim modalı CSS/JS dosyaları UI varlık manifestinde kayıtlı", {
   manifest_text <- .akc_text("R/config_ui_assets.R")
   expect_true(grepl("css/api_key_choice_modal.css", manifest_text, fixed = TRUE))
+  expect_true(grepl("css/api_key_password_toggle.css", manifest_text, fixed = TRUE))
   expect_true(grepl("js/api_key_choice_modal.js", manifest_text, fixed = TRUE))
+  expect_true(grepl("js/api_key_password_toggle.js", manifest_text, fixed = TRUE))
+})
+
+test_that("API anahtarı parola alanları ortak göster/gizle bileşenini kullanır", {
+  helper_text <- .akc_text("R/helpers_api_key_password_toggle.R")
+  choice_text <- .akc_text("R/module_api_key_choice_modal.R")
+  settings_text <- .akc_text("R/module_settings_yapilandirma.R")
+  css_text <- .akc_text("www/css/api_key_password_toggle.css")
+  js_text <- .akc_text("www/js/api_key_password_toggle.js")
+
+  expect_true(grepl("api_key_password_input_with_toggle <- function", helper_text, fixed = TRUE))
+  expect_true(grepl("data-api-key-password-input", helper_text, fixed = TRUE))
+  expect_true(grepl("data-api-key-password-toggle", helper_text, fixed = TRUE))
+
+  expect_true(grepl("api_key_password_input_with_toggle", choice_text, fixed = TRUE))
+  expect_true(grepl("api_key_password_input_with_toggle", settings_text, fixed = TRUE))
+
+  expect_true(grepl("html[data-theme=\"light\"]", css_text, fixed = TRUE))
+  expect_true(grepl("api-key-password-toggle", css_text, fixed = TRUE))
+
+  expect_true(grepl("input.type", js_text, fixed = TRUE))
+  expect_true(grepl("\"password\"", js_text, fixed = TRUE))
+  expect_true(grepl("\"text\"", js_text, fixed = TRUE))
+
+  # Toggle davranışı API anahtarı değerini okumamalı/loglamamalı.
+  expect_false(grepl("\\.value", js_text, perl = TRUE))
+  expect_false(grepl("console\\.log", js_text, perl = TRUE))
 })
 
 test_that("seçim modalı Shiny custom message handler imzalarını korur", {

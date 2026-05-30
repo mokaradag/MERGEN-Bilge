@@ -74,7 +74,16 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
       showModal(modalDialog(
         title = "API Anahtarı Güncelleme",
         easyClose = TRUE, size = "m",
-        passwordInput(ns("api_key_plain_input"), label = "Yeni API Anahtarı", width = "100%"),
+        div(
+          class = "api-key-update-modal",
+          api_key_password_input_with_toggle(
+            ns,
+            input_id = "api_key_plain_input",
+            label = "Yeni API Anahtarı",
+            width = "100%",
+            wrapper_class = "api-key-password-field--settings"
+          )
+        ),
         footer = tagList(
           tags$button("Kapat", class = "btn-modern btn-secondary", `data-dismiss` = "modal"),
           actionButton(ns("api_key_save_btn"), "Kaydet", class = "btn-modern btn-primary")

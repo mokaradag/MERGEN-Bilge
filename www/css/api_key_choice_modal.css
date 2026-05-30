@@ -35,8 +35,8 @@
   --akc-shadow: 0 40px 110px rgba(0, 0, 0, 0.62);
   --akc-mesh-opacity: 0.4;
   --akc-aurora-opacity: 0.5;
-  --akc-video-opacity: 0.55;
-  --akc-scrim: linear-gradient(180deg, rgba(10, 12, 20, 0.30) 0%, rgba(12, 14, 22, 0.62) 100%);
+  --akc-video-opacity: 0.68;
+  --akc-scrim: linear-gradient(180deg, rgba(10, 12, 20, 0.22) 0%, rgba(12, 14, 22, 0.54) 100%);
 }
 
 /* ============================================================
@@ -48,6 +48,7 @@
 .api-key-choice-modal-root .modal {
   text-align: center;
   padding: 2.5vh 14px !important;
+  overflow-x: hidden;
   overflow-y: auto;
   background: rgba(8, 11, 20, 0.46);
   -webkit-backdrop-filter: blur(14px) saturate(118%);
@@ -67,6 +68,7 @@
   display: inline-block;
   vertical-align: middle;
   text-align: left;
+  box-sizing: border-box;
   width: min(1080px, 96vw);
   max-width: 1080px;
   margin: 0 auto;
@@ -96,9 +98,13 @@
 /* ---- İçerik kabuğu + giriş animasyonu ---- */
 .api-key-choice-modal-root .akc-shell {
   position: relative;
+  box-sizing: border-box;
+  width: 100%;
   /* Çok kısa ekranlarda son çare kaydırma; normalde tek seferde sığar. */
   max-height: 92vh;
+  overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 30px 32px 24px;
   animation: akcShellIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -690,8 +696,8 @@ html[data-theme="light"] .api-key-choice-modal-root {
   --akc-shadow: 0 36px 90px rgba(15, 28, 51, 0.28);
   --akc-mesh-opacity: 0.18;
   --akc-aurora-opacity: 0.28;
-  --akc-video-opacity: 0.30;
-  --akc-scrim: linear-gradient(180deg, rgba(255, 255, 255, 0.30) 0%, rgba(244, 247, 252, 0.70) 100%);
+  --akc-video-opacity: 0.36;
+  --akc-scrim: linear-gradient(180deg, rgba(255, 255, 255, 0.24) 0%, rgba(244, 247, 252, 0.62) 100%);
 }
 
 html[data-theme="light"] .api-key-choice-modal-root .modal {
