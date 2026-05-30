@@ -48,6 +48,7 @@ Current contract:
 - `R/utils_text_encoding.R` must be loaded early through `R/config_source_manifest.R`, before logging, DB helpers, and downstream text consumers. The DB helper order must remain explicit: `R/helpers_db_unicode_escape.R`, then `R/helpers_db_encoding.R`, then `R/helpers_db_connection.R`, followed by DB user encoding, validation, chat formatting, chat readers, chat mutations, `R/helpers_db_feedback.R`, and `R/helpers_database.R`.
 - `www/js/encoding_utils.js` must be loaded through `R/config_ui_assets.R` before `www/js/shiny_message_handlers.js` and before `www/js/claude_code_streaming.js`.
 - DB write parameters, DB read/hydration paths, saved chat reloads, version-history/Yenilikler reads, uploaded-file display names, Bilge Yolaç process/stream output, JSON/text boundaries, and logs should use the shared helper path instead of local encoding fixes.
+- `dataframeToMarkdown()` in `R/helpers_files.R` must keep producing simple CSV text for data.frame previews without reintroducing UTF-8 BOM/readLines regressions on Windows. It writes preview CSV without BOM and reads through an explicit UTF-8 connection; protect this with `tests/testthat/test-files-dataframe-markdown-behavior.R`.
 - DB normalization is intentionally opt-in for mojibake repair. User-visible DB text must be prepared explicitly with `normalize_db_visible_value()` before parameter binding. Technical string values must use `normalize_db_technical_value()` or remain on the default no-repair path. Do not apply `repair_mojibake = TRUE` to an entire mixed parameter list that also contains IDs, enums, flags, model names, usernames, emails, sicil values, Keycloak IDs, file paths, or other non-user-visible values.
 - The SQL Server DB write boundary is production-sensitive on the Windows VM / SSO deployment. Do not force raw UTF-8 into DBI/ODBC parameter writes merely because the configured client encoding says UTF-8. That behavior can store Turkish text as mojibake across MB tables.
 - For the production VM, Turkish DB writes must preserve the stable Windows-native / `WINDOWS-1254` behavior. `DB_CLIENT_ENCODING=WINDOWS-1254` is the safe operational setting unless a live VM + SSMS validation proves otherwise.
@@ -1327,6 +1328,20 @@ Personal API keys are user-owned credentials. They must be loaded/saved only aft
 
 The server-managed default API key is configured through deployment environment variables, not through a user key file and not in GitHub. A personal user key always takes precedence. The default key is used only when `MERGEN_ALLOW_DEFAULT_API_KEY=TRUE` and `MERGEN_REQUIRE_PERSONAL_API_KEY` is not `TRUE`; do not print or expose it in validation reports or logs.
 
+### API key onboarding and choice modal contract
+
+The premium API key choice/onboarding modal is part of the security boundary, not just a visual layer. Preserve these rules when touching API-key UI, settings, source order, or frontend assets:
+
+- `R/module_api_key_choice_modal.R` must load before `R/module_api_key.R` through `R/config_source_manifest.R`.
+- When a default corporate key is available, the modal presents both `Personal API Key` and `Default Corporate Key`; when it is unavailable, only the personal-key path is shown.
+- Keep assets local/offline under `www/assets/api-key-choice/`, `www/css/api_key_choice_modal.css`, and `www/js/api_key_choice_modal.js`. `www/assets/api-key-choice/backdrop.mp4` is optional and may be absent; `www/assets/api-key-choice/backdrop-poster.svg` is the local fallback.
+- Never send a personal API key value or the default API key value to the browser. `MERGEN_DEFAULT_API_KEY` must not appear in client-side files or modal markup.
+- The only localStorage state for this flow is the non-secret `mergen_settings.api_key_onboarding_suppressed` preference. The “do not show again” checkbox is available only when a default corporate key exists, and `R/module_api_key.R` intentionally waits briefly for the client suppression flag before deciding whether to open the modal.
+- `api_key_plain_input` must remain present and directly usable. `api_key_save_btn`, `api_key_clear_btn`, and `api_key_use_default_btn` are protected input IDs because server observers depend on them; keep `api_key_clear_btn` in the modal UI so the clear observer can reset the password input.
+- Do not reintroduce the old reveal/toggle style for personal API key entry. Keep the modal centered with Bootstrap 3-compatible CSS and keep this modal exempt from the global `modal-body` 60vh scroll restriction.
+- The choice screen must remain reopenable from settings through `show_api_key_onboarding`.
+- Protected coverage: `tests/testthat/test-api-key-choice-modal-contract.R`; keep this test aligned with the modal contract and with the protected files above.
+
 ```ini
 MERGEN_ALLOW_DEFAULT_API_KEY=TRUE
 MERGEN_REQUIRE_PERSONAL_API_KEY=FALSE
@@ -1711,6 +1726,8 @@ Because some JS files can contain invalid UTF-8 byte sequences in Windows VM env
 The repository now has a deterministic E2E-style regression foundation for quick actions and true-streaming request lifecycle behavior. It intentionally uses `testthat` plus local state/service stubs instead of adding a browser automation dependency. This keeps the suite compatible with offline/on-prem Windows VM environments and avoids real DB, real LLM, TTS/STT, image endpoint, or public internet requirements.
 
 The latest behavioral coverage pass also strengthens focused unit/integration checks for quick-action routing, duplicate quick-action configuration protection, LLM response parsing, request-scoped send-message cleanup, File Manager storage and upload policy, MCP Excel context cleanup, refresh guard behavior, Bilge Yolaç stale finalization and directory observation, document-summary CLI context reset, and SSO identity readiness. These tests are intentionally fast, deterministic, and service-free: they must not require a real DB, real LLM endpoint, real SSO/Keycloak server, browser automation, API keys, or internet access.
+
+The newer offline behavior and `testServer` smoke coverage should be preferred over brittle static string checks when adding regression coverage. It exercises follow-up helpers, chat title/saved-chat runtime helpers, summarization modes and prompt builders, language/code detection, AI Expert TTS chunking, common utilities, ChartLab spec inference, markdown safety and HTML builders, quick-action name resolution, admin tag counts, `dataframeToMarkdown()`, SSO/JWT edge cases, LLM post-processing, SSE chunk decoding, Bilge Yolaç stream-json chunk parsing, LLM tool formatters/`fast_profile`, deep-analysis detail configuration, and settings/visual/startup/file/chat observer smoke paths. Source-once helper bootstraps, ASCII anchors for byte-sensitive scans, `skip_if_not_installed(...)` guards, and save/restore of globals/options are intentional Windows/VM stability patterns; do not remove them just to make a test look shorter. These offline tests do not replace full runtime, browser, VM/SSO, or DB validation for risky code changes.
 
 Current files:
 

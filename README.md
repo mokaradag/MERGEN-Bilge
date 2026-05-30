@@ -148,6 +148,7 @@ Son kabul notu: bu güncelleme sonrasında gerçek tarayıcı smoke koşumu `UX_
 - Bu ayrım; `tests/testthat/test-server-core-observer-runtime-contract.R`, `tests/testthat/test-file-manager-module-policy-wiring.R`, `tests/testthat/test-frontend-selector-contract.R`, `tests/testthat/test-production-contracts.R`, `tests/testthat/test-source-manifest-contract.R` ve `tests/testthat/test-maintainability-ratchet.R` ile korunur. File Manager kimlik hazır olma kararı, canlı kullanıcı kimliği sağlayıcısı ve kaynak manifest sırası bu sınırda korunmalıdır.
 - `tests/testthat/test-file-store-persistence-roundtrip-smoke.R`, PDF/DOCX/TXT/CSV/XLSX ve Türkçe dosya adları için tekrarlı listeleme/yenileme-benzeri çağrılarda görünen ad kalıcılığını doğrular; adların okunabilir ve tekil kaldığını, storage zaman damgası/hex adlarının UI'a sızmadığını güvenceye alır.
 - Kalıcı dosya indeksi kısmen eski kaldığında yalnızca aynı kullanıcı klasöründe güvenli filesystem fallback uygulanır; çapraz kullanıcı/çapraz bucket çözümleme varsayılan olarak kapalı kalır.
+- Dataframe/CSV önizlemeleri, Windows VM uyarılarını azaltacak şekilde UTF-8 okuma sınırını korur ve basit tablo metnini BOM eklemeden üretir; böylece dosya analizinde `a,b` / `1,x` gibi beklenen CSV çıktısı sade kalır.
 - Dosya Yönetimi listeleme yolu, aynı fiziksel dosyanın indeks ve filesystem fallback üzerinden iki kez tabloya düşmesini engelleyecek şekilde görünen dosya adı kimliğiyle tekilleştirilir.
 - Dosya Özetleme modu yalnızca Model Bağlamı seçili ve desteklenen belge türlerini kullanır; Excel dosyaları özetleme bağlamından çıkarılır ve MCP Excel analiz akışında kullanılmaya devam eder.
 - MCP dosya çözümleme normal kullanıcı akışlarında mutlak dosya yolu argümanlarını kabul etmez; dosya adı veya seçili dosya jetonu kullanılmalıdır.
@@ -213,6 +214,7 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - Bilge Yolaç mini oyununda ekip kayması, otomatik ateş, fare hedefli ateş, `Çıktıyı Temizle` sonrası görünmeme ve seviye geçiş kilitlenmesi gibi akışlar düzeltilmiştir; BOŞLUK artık cooldown'lu manuel ateş tuşudur.
 - Bilge Yolaç oyun HUD, başlık, seviye ve galibiyet ekranı yazıları daha okunabilir boyutlara çıkarılmıştır.
 ### Kurumsal ve yönetimsel bileşenler
+- API anahtarı başlangıç/onboarding akışı, kurum anahtarı mevcutsa kullanıcıya “Kişisel API Key” veya “Varsayılan Kurum Anahtarı” seçeneklerini sunar; kurum anahtarı yoksa yalnızca kişisel anahtar yolu gösterilir. Bu ekran Yapılandırma sayfasından tekrar açılabilir, kişisel veya varsayılan anahtar değeri tarayıcıya gönderilmez ve yalnızca gizli olmayan `mergen_settings.api_key_onboarding_suppressed` tercihi saklanır.
 - Yanıt Analizi tablosunda görünür Türkçe tarih biçimi korunurken DataTables sıralaması `data-order` içindeki ISO zaman değerine göre yapılır; böylece tarih sütunu görsel biçimden bağımsız olarak doğru sıralanır.
 - Sidebar alt kullanıcı paneli; canlı kimlikten gelen ad/avatar, Departman bilgisi, tema düğmesi, sürüm bilgisi ve SSO çıkış kısayolunu tek satırda görünür tutar; ilk render gecikmeleri statik iskelet görünümüyle karşılanır.
 - SSO sonrası sidebar kimliği, `user_config_rv()` üzerinden canlı biçimde yeniden render edilir ve `MB_Users` profil satırıyla zenginleştirilir; böylece Keycloak claim'leri eksik veya geç gelse bile `KaynakAdi` ve `Departman` bilgileri veritabanındaki doğru değerlerden gösterilir.
@@ -224,6 +226,7 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - Kullanıcı bazlı sohbet ve dosya ayrımı
 - SSO oturum kimliği için odak smoke testi bulunur: `tests/testthat/test-sso-session-identity-smoke.R`, SSO başlangıcındaki `user_id = 0` placeholder değerinin kimlik doğrulama tamamlandıktan sonra canlı `current_user_id` sağlayıcısı üzerinden gerçek kullanıcı kimliğine geçtiğini doğrular.
 - Destek merkezi
+- Yardım Merkezi e-posta destek bağlantıları, konu/gövde metnini UTF-8 bayt temelli mailto encoding ile üretir; bu sayede Outlook/Windows VM ortamlarında “İyi çalışmalar dilerim,” gibi Türkçe varsayılan metinler bozulmadan açılır.
 - Geri bildirim ve hata bildirimi
 - Geri bildirim ve kullanım logu veritabanı yardımcıları `R/helpers_db_feedback.R` içine ayrılmıştır; `R/helpers_database.R` kullanıcı/profil odaklı DB işlemlerinde sade tutulur.
 - Sürüm bilgilendirme sayfası
@@ -258,6 +261,7 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - Emoji kalıcılığı ham emoji karakterlerini SQL Server’a zorla yazma anlamına gelmez; üretim VM üzerinde `DB_CLIENT_ENCODING=WINDOWS-1254` ve `DB_NAME_ENCODING=WINDOWS-1254` sözleşmesi korunur.
 - Test ortamında da çalışma zamanı kaynak sırası korunur: `tests/testthat/helper_bootstrap.R`, DB yardımcılarından önce `R/utils_text_encoding.R` dosyasını yükler. Böylece tekil `testthat::test_file(...)` çalıştırmalarında da mojibake onarımı gerçek uygulama davranışıyla aynı kalır.
 - İstemci tarafında `www/js/encoding_utils.js`; genel Shiny mesajları, HTML metin/öznitelik onarımı ve Bilge Yolaç canlı akışı için ortak mojibake düzeltme/fallback katmanı sağlar.
+- Dosya/dataframe önizleme sınırında CSV metni BOM eklenmeden ve açık UTF-8 okuma bağlantısıyla korunur; bu davranış Windows invalid-input uyarılarını azaltır ve dosya analizi çıktısını kullanıcıya sade metin olarak gösterir.
 - Bilge Yolaç streaming kodu büyük yerel mojibake haritaları taşımak yerine bu ortak istemci yardımcısını kullanır; böylece kullanıcı deneyimi korunurken bakım yükü azaltılır.
 - Bilge Yolaç doküman özeti indirme sınırında `.txt` dosyaları `write_claude_code_utf8_bom_text_file()` ile UTF-8 BOM içerecek şekilde yazılır. Bu yalnızca indirilebilir metin dosyası algılamasını güçlendirir; DB yazım kodlaması, `DB_CLIENT_ENCODING` sözleşmesi ve SQL Server/ODBC sınırıyla karıştırılmamalıdır.
 - Dosya Yönetimi görünen adları ve kalıcı dosya indeksi; Türkçe dosya adları, storage-prefix temizleme ve eski mojibake kayıtlarının okunabilir hâle getirilmesi için aynı merkezi normalizasyon hattını kullanır.
@@ -2028,6 +2032,9 @@ Bu repodaki test altyapısı `testthat` tabanlıdır. Ana çalıştırıcı dosy
 `helper_bootstrap.R`, testlerde dosya sistemi ve log yollarını temp sandbox ortam değişkenleriyle izole edecek şekilde kurgulanmıştır; özellikle `MERGEN_LOG_DIR` ve dosya-deposu köklerinin (`MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MERGEN_MCP_BASE_DIR`) sözleşmesi bu izolasyona uyumlu kalmalıdır.
 
 Mevcut birim test kapsamı çekirdek olarak şu alanları içerir:
+
+Son kapsam genişlemesiyle çevrimdışı davranış ve `testServer` smoke testleri, yalnızca statik metin aramak yerine gerçek helper kararlarını ve seçilmiş reaktif observer akışlarını doğrular. Kapsam; takip sorusu yardımcıları, sohbet/saved-chat runtime mantığı, özetleme modları, dil/kod tespiti, AI Uzman TTS parçalama, ChartLab normalizasyonu, markdown güvenliği, SSO/JWT kenarları, LLM SSE/post-process/tool formatter davranışları, Bilge Yolaç stream-json parçalama ve ayar/görsel/startup/dosya/sohbet observer smoke akışlarını gruplar; yine de riskli runtime, tarayıcı, VM/SSO veya DB değişikliklerinde tam doğrulama ihtiyacını ortadan kaldırmaz.
+
 - `safe_source`
 - BOM işaretli UTF-8 dosyalarının `safe_source()` ile güvenli yüklenmesi
 - `tracked_future_promise` görev defteri temizleme davranışı
