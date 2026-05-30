@@ -18,6 +18,10 @@
   invisible(TRUE)
 }
 
+.txtenc_u <- function(codepoint) {
+  intToUtf8(as.integer(codepoint))
+}
+
 testthat::test_that("unicode_to_win1252_byte ASCII/Latin1/özel eşlemeyi ve eşlenemezi doğru döndürür", {
   .txtenc_source_once()
   testthat::expect_identical(unicode_to_win1252_byte(utf8ToInt("A")), 65L)   # ASCII
@@ -66,13 +70,34 @@ testthat::test_that("decode_win1252_mojibake_once tek geçişte çözer ve ASCII
 
 testthat::test_that("strip_ansi_sequences renk/biçim ve OSC dizilerini temizler", {
   .txtenc_source_once()
+
+  dotless_i <- .txtenc_u(0x0131)
+  s_cedilla <- .txtenc_u(0x015F)
+  c_cedilla <- .txtenc_u(0x00E7)
+  u_diaeresis <- .txtenc_u(0x00FC)
+
+  red <- paste0("K", dotless_i, "rm", dotless_i, "z", dotless_i)
+  green <- paste0("Ye", s_cedilla, "il")
+  title <- paste0("ba", s_cedilla, "l", dotless_i, "k")
+  content <- paste0("i", c_cedilla, "erik")
+  plain_text <- paste0("d", u_diaeresis, "z metin")
+
   # CSI renk dizisi.
-  testthat::expect_identical(strip_ansi_sequences("\033[31mKırmızı\033[0m"), "Kırmızı")
-  testthat::expect_identical(strip_ansi_sequences("\033[1;32mYeşil\033[0m metin"), "Yeşil metin")
+  testthat::expect_identical(strip_ansi_sequences(paste0("\033[31m", red, "\033[0m")), red)
+  testthat::expect_identical(
+    strip_ansi_sequences(paste0("\033[1;32m", green, "\033[0m metin")),
+    paste0(green, " metin")
+  )
+
   # OSC başlık dizisi (ESC ] ... BEL).
-  testthat::expect_identical(strip_ansi_sequences("\033]0;başlık\007içerik"), "içerik")
+  testthat::expect_identical(
+    strip_ansi_sequences(paste0("\033]0;", title, "\007", content)),
+    content
+  )
+
   # ANSI içermeyen metin dokunulmaz.
-  testthat::expect_identical(strip_ansi_sequences("düz metin"), "düz metin")
+  testthat::expect_identical(strip_ansi_sequences(plain_text), plain_text)
+
   # Vektör + NA.
   testthat::expect_identical(
     strip_ansi_sequences(c("\033[0mA", NA, "B")),

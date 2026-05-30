@@ -20,6 +20,10 @@
   invisible(TRUE)
 }
 
+.dbesc_u <- function(codepoint) {
+  intToUtf8(as.integer(codepoint))
+}
+
 testthat::test_that("db_unicode_escape_token kod noktasını ASCII belirtece çevirir", {
   .dbesc_source_once()
   testthat::expect_identical(db_unicode_escape_token(0x1F680), "[[MERGEN-U+1F680]]")
@@ -28,41 +32,52 @@ testthat::test_that("db_unicode_escape_token kod noktasını ASCII belirtece çe
 
 testthat::test_that("db_unicode_codepoint_supported_by_encoding kodlama kapsamını doğru raporlar", {
   .dbesc_source_once()
+  e_acute <- utf8ToInt(.dbesc_u(0x00E9))
+
   # ASCII: yalnızca temel ASCII desteklenir.
   testthat::expect_true(db_unicode_codepoint_supported_by_encoding(utf8ToInt("A"), "ASCII"))
-  testthat::expect_false(db_unicode_codepoint_supported_by_encoding(utf8ToInt("é"), "ASCII"))
+  testthat::expect_false(db_unicode_codepoint_supported_by_encoding(e_acute, "ASCII"))
   testthat::expect_false(db_unicode_codepoint_supported_by_encoding(0x1F680, "ASCII"))
-  # latin1: é desteklenir, emoji desteklenmez.
-  testthat::expect_true(db_unicode_codepoint_supported_by_encoding(utf8ToInt("é"), "latin1"))
+
+  # latin1: e-acute desteklenir, emoji desteklenmez.
+  testthat::expect_true(db_unicode_codepoint_supported_by_encoding(e_acute, "latin1"))
   testthat::expect_false(db_unicode_codepoint_supported_by_encoding(0x1F680, "latin1"))
   testthat::expect_false(db_unicode_codepoint_supported_by_encoding(NA, "ASCII"))
 })
 
 testthat::test_that("db_unicode_escape_for_client_encoding desteklenmeyen karakteri kaçırır, desteklenenleri korur", {
   .dbesc_source_once()
+  rocket <- .dbesc_u(0x1F680)
+  e_acute <- .dbesc_u(0x00E9)
+  cafe_accented <- paste0("Caf", e_acute)
+
   # ASCII istemci kodlaması: emoji kaçar, ASCII metin aynı kalır.
   testthat::expect_identical(
-    db_unicode_escape_for_client_encoding("Cafe\U0001F680", "ASCII"),
+    db_unicode_escape_for_client_encoding(paste0("Cafe", rocket), "ASCII"),
     "Cafe[[MERGEN-U+1F680]]"
   )
-  # latin1 istemci kodlaması: é korunur, emoji kaçar.
+
+  # latin1 istemci kodlaması: e-acute korunur, emoji kaçar.
   testthat::expect_identical(
-    db_unicode_escape_for_client_encoding("Café\U0001F680", "latin1"),
-    "Café[[MERGEN-U+1F680]]"
+    db_unicode_escape_for_client_encoding(paste0(cafe_accented, rocket), "latin1"),
+    paste0(cafe_accented, "[[MERGEN-U+1F680]]")
   )
+
   # NA ve boş kodlama güvenli işlenir.
   testthat::expect_identical(
     db_unicode_escape_for_client_encoding(c("A", NA), "ASCII"),
     c("A", NA)
   )
   testthat::expect_identical(
-    db_unicode_escape_for_client_encoding("A\U0001F680", ""),
-    "A\U0001F680"
+    db_unicode_escape_for_client_encoding(paste0("A", rocket), ""),
+    paste0("A", rocket)
   )
 })
 
 testthat::test_that("db_unicode_escape_for_client_encoding UTF-8 istemcisinde dokunmaz", {
   .dbesc_source_once()
+  rocket <- .dbesc_u(0x1F680)
+
   # UTF-8 istemci kodlamasında kaçış uygulanmamalı.
   had <- exists("db_client_encoding_is_utf8", envir = globalenv(), inherits = FALSE)
   old <- if (had) get("db_client_encoding_is_utf8", envir = globalenv()) else NULL
@@ -77,26 +92,35 @@ testthat::test_that("db_unicode_escape_for_client_encoding UTF-8 istemcisinde do
   }, add = TRUE)
 
   testthat::expect_identical(
-    db_unicode_escape_for_client_encoding("A\U0001F680", "UTF-8"),
-    "A\U0001F680"
+    db_unicode_escape_for_client_encoding(paste0("A", rocket), "UTF-8"),
+    paste0("A", rocket)
   )
 })
 
 testthat::test_that("db_unicode_restore_escapes belirteçleri orijinal karaktere geri açar", {
   .dbesc_source_once()
-  testthat::expect_identical(db_unicode_restore_escapes("[[MERGEN-U+1F680]]"), "\U0001F680")
+  rocket <- .dbesc_u(0x1F680)
+  u_diaeresis <- .dbesc_u(0x00FC)
+  plain_text <- paste0("d", u_diaeresis, "z metin")
+
+  testthat::expect_identical(db_unicode_restore_escapes("[[MERGEN-U+1F680]]"), rocket)
   testthat::expect_identical(
     db_unicode_restore_escapes("Merhaba [[MERGEN-U+1F680]] dunya"),
-    "Merhaba \U0001F680 dunya"
+    paste0("Merhaba ", rocket, " dunya")
   )
+
   # Belirteç yoksa metin değişmez.
-  testthat::expect_identical(db_unicode_restore_escapes("düz metin"), "düz metin")
+  testthat::expect_identical(db_unicode_restore_escapes(plain_text), plain_text)
 })
 
 testthat::test_that("kaçış + geri açma tam tur eder (round-trip)", {
   .dbesc_source_once()
-  original <- "Veri\U0001F680Analizi-\U0001F4CA"  # iki emoji
+  rocket <- .dbesc_u(0x1F680)
+  chart <- .dbesc_u(0x1F4CA)
+  original <- paste0("Veri", rocket, "Analizi-", chart)
+
   escaped <- db_unicode_escape_for_client_encoding(original, "ASCII")
+
   # Kaçış sonrası ASCII güvenli olmalı (yüksek bayt içermemeli).
   testthat::expect_false(any(utf8ToInt(escaped) > 127L))
   testthat::expect_identical(db_unicode_restore_escapes(escaped), original)
@@ -104,16 +128,19 @@ testthat::test_that("kaçış + geri açma tam tur eder (round-trip)", {
 
 testthat::test_that("normalize_db_read_visible_value ve frame okuma sınırında geri açar", {
   .dbesc_source_once()
+  rocket <- .dbesc_u(0x1F680)
+
   testthat::expect_identical(
     normalize_db_read_visible_value("Mesaj [[MERGEN-U+1F680]]"),
-    "Mesaj \U0001F680"
+    paste0("Mesaj ", rocket)
   )
+
   df <- data.frame(
     MessageContent = c("A [[MERGEN-U+1F680]]", "B"),
     MessageID = c("1", "2"),
     stringsAsFactors = FALSE
   )
   out <- normalize_db_read_visible_frame(df)
-  testthat::expect_identical(out$MessageContent[1], "A \U0001F680")
+  testthat::expect_identical(out$MessageContent[1], paste0("A ", rocket))
   testthat::expect_identical(out$MessageID, c("1", "2"))  # teknik kolon değişmez
 })
