@@ -30,15 +30,19 @@
     }
 
     icon.classList.remove("fa-eye", "fa-eye-slash");
-    icon.classList.add(visible ? "fa-eye-slash" : "fa-eye");
+    icon.classList.add(visible ? "fa-eye" : "fa-eye-slash");
   }
 
   function setAccessibleState(button, visible) {
-    var label = visible ? "API anahtarını gizle" : "API anahtarını göster";
+    var label = visible ?
+      "API anahtarı görünür; gizlemek için tıklayın" :
+      "API anahtarı gizli; göstermek için tıklayın";
+    var title = visible ? "API anahtarı görünür" : "API anahtarı gizli";
     var text = button.querySelector(".api-key-password-toggle-text");
 
     button.setAttribute("aria-label", label);
     button.setAttribute("aria-pressed", visible ? "true" : "false");
+    button.setAttribute("title", title);
 
     if (text) {
       text.textContent = label;

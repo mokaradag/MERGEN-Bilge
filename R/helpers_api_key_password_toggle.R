@@ -28,26 +28,35 @@ api_key_password_input_with_toggle <- function(ns,
   div(
     class = paste(class_values, collapse = " "),
     `data-api-key-password-field` = "1",
-    htmltools::tagQuery(
-      passwordInput(
-        inputId = ns(input_id),
-        label = label,
-        width = width
-      )
-    )$find("input")$addAttrs(
-      autocomplete = "new-password",
-      `data-api-key-password-input` = "1"
-    )$allTags(),
-    tags$button(
-      type = "button",
-      class = "api-key-password-toggle",
-      `data-api-key-password-toggle` = "1",
-      `aria-label` = "API anahtarını göster",
-      `aria-pressed` = "false",
-      icon("eye"),
-      tags$span(
-        class = "api-key-password-toggle-text sr-only",
-        "API anahtarını göster"
+    tags$label(
+      class = "api-key-password-label",
+      `for` = ns(input_id),
+      label
+    ),
+    div(
+      class = "api-key-password-control",
+      htmltools::tagQuery(
+        passwordInput(
+          inputId = ns(input_id),
+          label = NULL,
+          width = width
+        )
+      )$find("input")$addAttrs(
+        autocomplete = "new-password",
+        `data-api-key-password-input` = "1"
+      )$allTags(),
+      tags$button(
+        type = "button",
+        class = "api-key-password-toggle",
+        `data-api-key-password-toggle` = "1",
+        `aria-label` = "API anahtarı gizli; göstermek için tıklayın",
+        `aria-pressed` = "false",
+        title = "API anahtarı gizli",
+        icon("eye-slash"),
+        tags$span(
+          class = "api-key-password-toggle-text sr-only",
+          "API anahtarı gizli; göstermek için tıklayın"
+        )
       )
     )
   )

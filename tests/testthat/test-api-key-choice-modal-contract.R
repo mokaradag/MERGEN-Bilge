@@ -163,6 +163,14 @@ test_that("seçim modalı yatay kaydırma taşmasını ve video karartmasını d
   expect_true(grepl("--akc-video-opacity: 0.36", css_text, fixed = TRUE))
 })
 
+test_that("seçim modalı koyu temada düşük kontrastlı gri madde metinlerini güçlendirir", {
+  css_text <- .akc_text("www/css/api_key_choice_modal.css")
+
+  expect_true(grepl("--akc-con-text: #d7deec", css_text, fixed = TRUE))
+  expect_true(grepl("color: var(--akc-con-text)", css_text, fixed = TRUE))
+  expect_true(grepl("--akc-con-text: #5b6577", css_text, fixed = TRUE))
+})
+
 test_that("seçim modalı yerel arka plan videosu/posteri kullanır (uzak değil)", {
   helper_text <- .akc_text("R/module_api_key_choice_modal.R")
 
@@ -261,16 +269,25 @@ test_that("API anahtarı parola alanları ortak göster/gizle bileşenini kullan
   expect_true(grepl("api_key_password_input_with_toggle <- function", helper_text, fixed = TRUE))
   expect_true(grepl("data-api-key-password-input", helper_text, fixed = TRUE))
   expect_true(grepl("data-api-key-password-toggle", helper_text, fixed = TRUE))
+  expect_true(grepl("api-key-password-label", helper_text, fixed = TRUE))
+  expect_true(grepl("api-key-password-control", helper_text, fixed = TRUE))
+  expect_true(grepl("icon(\"eye-slash\")", helper_text, fixed = TRUE))
 
   expect_true(grepl("api_key_password_input_with_toggle", choice_text, fixed = TRUE))
   expect_true(grepl("api_key_password_input_with_toggle", settings_text, fixed = TRUE))
 
   expect_true(grepl("html[data-theme=\"light\"]", css_text, fixed = TRUE))
   expect_true(grepl("api-key-password-toggle", css_text, fixed = TRUE))
+  expect_true(grepl("api-key-password-control", css_text, fixed = TRUE))
+  expect_true(grepl("top: 50%", css_text, fixed = TRUE))
+  expect_true(grepl("translateY(-50%)", css_text, fixed = TRUE))
 
   expect_true(grepl("input.type", js_text, fixed = TRUE))
   expect_true(grepl("\"password\"", js_text, fixed = TRUE))
   expect_true(grepl("\"text\"", js_text, fixed = TRUE))
+  expect_true(grepl("visible ? \"fa-eye\" : \"fa-eye-slash\"", js_text, fixed = TRUE))
+  expect_true(grepl("API anahtarı görünür", js_text, fixed = TRUE))
+  expect_true(grepl("API anahtarı gizli", js_text, fixed = TRUE))
 
   # Toggle davranışı API anahtarı değerini okumamalı/loglamamalı.
   expect_false(grepl("\\.value", js_text, perl = TRUE))
