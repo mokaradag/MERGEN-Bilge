@@ -232,7 +232,6 @@ ui_asset_js_groups <- list(
     "js/shortcuts_manager.js",
     "js/feedback_modal.js",
     "js/api_key_choice_modal.js",
-    "js/api_key_password_toggle.js",
     "js/image_tools.js",
     "js/image_gallery.js",
     "js/summarization_tools.js",

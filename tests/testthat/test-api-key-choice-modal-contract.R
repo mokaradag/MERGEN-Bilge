@@ -58,20 +58,19 @@ test_that("seçim modalı yardımcısı yeni R/CSS/JS/varlık dosyaları repoda 
   # Not: backdrop.mp4 BİLİNÇLİ olarak repoda yoktur (opsiyonel, internetsiz
   # ortamda yerel kopyalanır). Eksikliği bir hata değildir; poster + gradyan
   # geri düşüşü çalışır.
-  expected <- c(
-    "R/helpers_api_key_password_toggle.R",
-    "R/module_api_key_choice_modal.R",
-    "www/css/api_key_choice_modal.css",
-    "www/css/api_key_password_toggle.css",
-    "www/js/api_key_choice_modal.js",
-    "www/js/api_key_password_toggle.js",
-    "www/assets/api-key-choice/mesh-background.svg",
-    "www/assets/api-key-choice/security-orbit.svg",
-    "www/assets/api-key-choice/personal-key.svg",
-    "www/assets/api-key-choice/corporate-key.svg",
-    "www/assets/api-key-choice/backdrop-poster.svg",
-    "www/assets/api-key-choice/README.md"
-  )
+	expected <- c(
+	  "R/helpers_api_key_password_toggle.R",
+	  "R/module_api_key_choice_modal.R",
+	  "www/css/api_key_choice_modal.css",
+	  "www/css/api_key_password_toggle.css",
+	  "www/js/api_key_choice_modal.js",
+	  "www/assets/api-key-choice/mesh-background.svg",
+	  "www/assets/api-key-choice/security-orbit.svg",
+	  "www/assets/api-key-choice/personal-key.svg",
+	  "www/assets/api-key-choice/corporate-key.svg",
+	  "www/assets/api-key-choice/backdrop-poster.svg",
+	  "www/assets/api-key-choice/README.md"
+	)
 
   missing <- expected[!file.exists(file.path(root, expected))]
   expect_equal(missing, character(0))
@@ -214,14 +213,13 @@ test_that("Yapılandırma onboarding anahtarı geç yükleme ve Shiny input senk
 
 test_that("seçim modalı varlıkları yereldir (CDN/uzak kaynak yok)", {
   # CSS/JS/R üretici içinde uzak URL olmamalı (yalnızca yerel yollar).
-  for (rel in c(
-    "www/css/api_key_choice_modal.css",
-    "www/css/api_key_password_toggle.css",
-    "www/js/api_key_choice_modal.js",
-    "www/js/api_key_password_toggle.js",
-    "R/helpers_api_key_password_toggle.R",
-    "R/module_api_key_choice_modal.R"
-  )) {
+	for (rel in c(
+	  "www/css/api_key_choice_modal.css",
+	  "www/css/api_key_password_toggle.css",
+	  "www/js/api_key_choice_modal.js",
+	  "R/helpers_api_key_password_toggle.R",
+	  "R/module_api_key_choice_modal.R"
+	)) {
     text <- .akc_text(rel)
     expect_false(
       grepl("https?://", text, perl = TRUE),
@@ -256,45 +254,37 @@ test_that("seçim modalı CSS/JS dosyaları UI varlık manifestinde kayıtlı", 
   expect_true(grepl("css/api_key_choice_modal.css", manifest_text, fixed = TRUE))
   expect_true(grepl("css/api_key_password_toggle.css", manifest_text, fixed = TRUE))
   expect_true(grepl("js/api_key_choice_modal.js", manifest_text, fixed = TRUE))
-  expect_true(grepl("js/api_key_password_toggle.js", manifest_text, fixed = TRUE))
+  expect_false(grepl("js/api_key_password_toggle.js", manifest_text, fixed = TRUE))
 })
 
-test_that("API anahtarı parola alanları ortak göster/gizle bileşenini kullanır", {
+test_that("API anahtarı parola alanları tarayıcı yerleşik göster/gizle kontrolünü kullanır", {
   helper_text <- .akc_text("R/helpers_api_key_password_toggle.R")
   choice_text <- .akc_text("R/module_api_key_choice_modal.R")
   settings_text <- .akc_text("R/module_settings_yapilandirma.R")
   css_text <- .akc_text("www/css/api_key_password_toggle.css")
-  js_text <- .akc_text("www/js/api_key_password_toggle.js")
 
   expect_true(grepl("api_key_password_input_with_toggle <- function", helper_text, fixed = TRUE))
   expect_true(grepl("data-api-key-password-input", helper_text, fixed = TRUE))
-  expect_true(grepl("data-api-key-password-toggle", helper_text, fixed = TRUE))
   expect_true(grepl("api-key-password-label", helper_text, fixed = TRUE))
   expect_true(grepl("api-key-password-control", helper_text, fixed = TRUE))
-  expect_true(grepl("icon(\"eye-slash\")", helper_text, fixed = TRUE))
+
+  # Özel göster/gizle düğmesi artık üretilmemeli; tarayıcı yerleşik kontrolü kullanılır.
+  expect_false(grepl("data-api-key-password-toggle", helper_text, fixed = TRUE))
+  expect_false(grepl("api-key-password-toggle", helper_text, fixed = TRUE))
+  expect_false(grepl("tags$button", helper_text, fixed = TRUE))
+  expect_false(grepl("icon(\"eye-slash\")", helper_text, fixed = TRUE))
 
   expect_true(grepl("api_key_password_input_with_toggle", choice_text, fixed = TRUE))
   expect_true(grepl("api_key_password_input_with_toggle", settings_text, fixed = TRUE))
 
-  expect_true(grepl("html[data-theme=\"light\"]", css_text, fixed = TRUE))
-  expect_true(grepl("api-key-password-toggle", css_text, fixed = TRUE))
   expect_true(grepl("api-key-password-control", css_text, fixed = TRUE))
-  expect_true(grepl("top: 50%", css_text, fixed = TRUE))
-  expect_true(grepl("translateY(-50%)", css_text, fixed = TRUE))
+  expect_true(grepl("color-scheme: dark", css_text, fixed = TRUE))
+  expect_true(grepl("color-scheme: light", css_text, fixed = TRUE))
+  expect_true(grepl("::-ms-reveal", css_text, fixed = TRUE))
 
-  expect_true(grepl("input.type", js_text, fixed = TRUE))
-  expect_true(grepl("\"password\"", js_text, fixed = TRUE))
-  expect_true(grepl("\"text\"", js_text, fixed = TRUE))
-  expect_true(grepl("visible ? \"fa-eye\" : \"fa-eye-slash\"", js_text, fixed = TRUE))
-  expect_true(grepl("document.createElement(\"i\")", js_text, fixed = TRUE))
-  expect_true(grepl("svg-inline--fa", js_text, fixed = TRUE))
-  expect_true(grepl("button.insertBefore(createIcon(visible), button.firstChild)", js_text, fixed = TRUE))
-  expect_true(grepl("API anahtarı görünür", js_text, fixed = TRUE))
-  expect_true(grepl("API anahtarı gizli", js_text, fixed = TRUE))
-
-  # Toggle davranışı API anahtarı değerini okumamalı/loglamamalı.
-  expect_false(grepl("\\.value", js_text, perl = TRUE))
-  expect_false(grepl("console\\.log", js_text, perl = TRUE))
+  # CSS artık özel toggle sınıfı veya konumlandırması taşımamalı.
+  expect_false(grepl("api-key-password-toggle", css_text, fixed = TRUE))
+  expect_false(grepl("translateY(-50%)", css_text, fixed = TRUE))
 })
 
 test_that("seçim modalı Shiny custom message handler imzalarını korur", {

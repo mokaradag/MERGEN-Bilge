@@ -1,8 +1,9 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_api_key_password_toggle.R
-# Açıklama:   API anahtarı parola alanları için ortak göster/gizle UI yardımcısı.
-#             Yalnızca güvenli UI öznitelikleri üretir; anahtar değerini okumaz,
-#             saklamaz, loglamaz veya istemciye yazmaz.
+# Açıklama:   API anahtarı parola alanları için ortak UI yardımcısı.
+#             Tarayıcının yerleşik göster/gizle kontrolünü kullanır; özel
+#             istemci tarafı düğme üretmez. Anahtar değerini okumaz, saklamaz,
+#             loglamaz veya istemciye yazmaz.
 # ==============================================================================
 
 api_key_password_input_with_toggle <- function(ns,
@@ -44,20 +45,7 @@ api_key_password_input_with_toggle <- function(ns,
       )$find("input")$addAttrs(
         autocomplete = "new-password",
         `data-api-key-password-input` = "1"
-      )$allTags(),
-      tags$button(
-        type = "button",
-        class = "api-key-password-toggle",
-        `data-api-key-password-toggle` = "1",
-        `aria-label` = "API anahtarı gizli; göstermek için tıklayın",
-        `aria-pressed` = "false",
-        title = "API anahtarı gizli",
-        icon("eye-slash"),
-        tags$span(
-          class = "api-key-password-toggle-text sr-only",
-          "API anahtarı gizli; göstermek için tıklayın"
-        )
-      )
+      )$allTags()
     )
   )
 }
