@@ -60,6 +60,10 @@ MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığ�
 
 Yalnızca `README.md` / `CLAUDE.md` dokümantasyon değişikliklerinde R doğrulaması çalıştırılmaz; metin farkı incelemesi yeterlidir.
 
+### Davranışsal test kapsamı güncellemesi
+
+`32dd9afd0d993e3590b51db296999c9ca78dd1af` güncellemesi, görünür kullanıcı akışını değiştirmeden odaklı davranışsal regresyon kapsamını genişletti. Kapsam; AI Uzman metin parçalama davranışı, API anahtarı kimlik ve varsayılan kurum anahtarı çözümleme sınırı, Bilge Yolaç plugin bileşen tespiti, prompt yol güvenliği ve araç kullanımı HTML kaçışlama sınırı, derin düşünme model çözümleme, araç türü tespiti, dosya indeksi ipuçlu arama, Sistem Durumu saf biçimlendiricileri, LLM/SSE kaynak ayrıştırma ve kaynakça üretimi, araç sonucu kısa yanıt biçimlendirme, log redaksiyonu iç yardımcıları, kullanıcı ve global hız sınırlama, metin/kod ayrıştırma, özetleme kullanıcı promptu üretimi ve sürüm geçmişi ayrıştırma alanlarını korur. Bu odak testler, ürün davranışını sabit tutarken ilerideki refaktörlerin güvenli yapılmasına yardımcı olur.
+
 `tests/scripts/ci_install_packages.R` için Linux paket tipi sözleşmesi ayrıca statik olarak korunur: varsayılan `pkgType` değeri Linux ortamında `source` kalmalı, `MERGEN_AI_R_PKG_TYPE` yalnızca açıkça verildiğinde (`source`/`binary`) override edilmelidir. Bu sözleşme `tests/testthat/test-ai-package-bootstrap-contract.R` ile izlenir ve `tools/setup_ai_r_environment.sh` içindeki RSPM denetimi kırılgan token eşleştirmeleriyle değil, kararlı URL parçaları (`__linux__/noble/latest`, `__linux__/jammy/latest`) üzerinden doğrulanır.
 
 ### Doğrulama doktoru
