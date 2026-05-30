@@ -32,6 +32,12 @@ Kişisel API anahtarı bulunmayan kullanıcılar için gösterilen “API Anahta
 
 Modal içindeki API anahtarı alanı görünür kullanıcı akışını değiştirmeden non-submit form içinde, `autocomplete="new-password"` ve gizli `username` alanı ile render edilir. Böylece Chrome DevTools parola-formu verbose uyarıları kaldırılırken aynı input id’leri, kaydet/temizle düğmeleri, kurum anahtarıyla devam akışı ve güvenli anahtar saklama/doğrulama sınırı korunur. Ham API anahtarı, varsayılan kurum anahtarı veya herhangi bir secret istemciye yazılmaz ve loglanmaz.
 
+### SSO güvenliği ve Türkçe yol dayanıklılığı
+
+SSO güvenlik sınırı güçlendirildi: Keycloak üzerinden gelen JWT token’ları artık claim değerleri güvenilir kabul edilmeden önce JWKS genel anahtarlarıyla kriptografik olarak doğrulanır. `SSO_VALIDATE_SIGNATURE=TRUE` güvenli varsayılandır; gerekirse `SSO_JWKS_URL` ile JWKS uç noktası elle verilebilir ve `SSO_JWKS_CACHE_TTL` ile anahtar önbellek süresi yönetilir. Yetkilendirme tarafında DB bağlantısı veya sorgu hatası oluşursa erişim fail-closed biçimde reddedilir; hata durumunda varsayılan kullanıcı yetkisi verilmez.
+
+Türkçe karakter içeren Windows/VM yol sınırları için mojibake tespiti ve onarımı merkezi yardımcılar üzerinden korunur. `R/utils_text_encoding.R` ve `R/utils_path_helpers.R` davranışları; `test-sso-jwt-signature.R`, `test-sso-authorization-failclosed.R`, `test-sso-signature-parsing.R` ve `test-path-helpers-mojibake-behavior.R` odaklı davranış testleriyle güvence altına alınmıştır. Bu güncelleme görünür kullanıcı akışını değiştirmekten çok üretim güvenliği, kodlama bütünlüğü ve işletim güvenilirliğini artırır.
+
 ## AI Ajanları İçin Doğrulama Profilleri
 
 MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığında doğrulama komutları ortam yeteneklerine göre ayrılmıştır:
