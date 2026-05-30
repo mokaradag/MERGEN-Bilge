@@ -94,6 +94,15 @@ api_key_choice_request_url <- function(service_desk = NULL) {
 		novalidate = "novalidate",
 		onsubmit = "return false;",
 		`data-akc-password-form` = "1",
+		tags$input(
+		  type = "text",
+		  name = "api_key_username",
+		  autocomplete = "username",
+		  value = "",
+		  hidden = "hidden",
+		  tabindex = "-1",
+		  `aria-hidden` = "true"
+		),
 		htmltools::tagQuery(
 		  passwordInput(
 		    ns("api_key_plain_input"),
