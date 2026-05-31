@@ -16,14 +16,11 @@
 .dbuserenc_source_once <- function() {
   root <- resolve_repo_root_for_tests()
 
-  # utils_common.R'deki ile aynı küçük operatör; yalnızca izole çalıştırmalarda
-  # eksikse tanımlanır (db_client_encoding_is_utf8 çalışma anında kullanır).
+  # utils_common.R'deki ile birebir aynı küçük operatör; yalnızca izole
+  # çalıştırmalarda eksikse tanımlanır (db_client_encoding_is_utf8 çalışma
+  # anında kullanır). Üretim tanımıyla aynı tutulur.
   if (!exists("%||%", inherits = TRUE)) {
-    assign(
-      "%||%",
-      function(a, b) if (is.null(a) || length(a) == 0) b else a,
-      envir = globalenv()
-    )
+    assign("%||%", function(a, b) if (is.null(a)) b else a, envir = globalenv())
   }
   if (!exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
     source(file.path(root, "R", "utils_text_encoding.R"),
