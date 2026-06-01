@@ -50,7 +50,12 @@ call_local_llm_sse_worker <- function(chat_history,
     selected_model <- current_settings$model_selection
     model_caps <- get_local_model_capabilities(selected_model)
     stream_reasoning <- isTRUE(model_caps$stream_reasoning)
-    allow_reasoning_fallback <- isTRUE(model_caps$allow_reasoning_fallback)
+
+    allow_reasoning_fallback <- if (!is.null(current_settings$allow_reasoning_fallback_override)) {
+      isTRUE(current_settings$allow_reasoning_fallback_override)
+    } else {
+      isTRUE(model_caps$allow_reasoning_fallback)
+    }
 
     request_start_unix <- suppressWarnings(as.numeric(current_settings$request_start_unix %||% NA_real_))
     future_submit_unix <- suppressWarnings(as.numeric(current_settings$future_submit_unix %||% NA_real_))

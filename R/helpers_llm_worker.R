@@ -606,11 +606,10 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           sse_settings$shiny_session <- NULL
           sse_settings$api_key_override <- api_key %||% settings$api_key_override %||% ""
 
-          log_info(sprintf(
-            "[MCP REASONING STREAM] second_pass=SSE model=%s stream_file=%s",
-            selected_model,
-            mcp_reasoning_stream_file
-          ))
+          # MCP Excel ikinci geçişinde reasoning canlı panelde gösterilir.
+          # Reasoning metni boş cevap durumunda asıl yanıt gövdesi olarak
+          # kullanılmamalıdır; aksi halde "Thinking Process" mesaj gövdesine basılır.
+          sse_settings$allow_reasoning_fallback_override <- FALSE
 
           log_info(sprintf(
             "[MCP REASONING STREAM] second_pass=SSE model=%s stream_file=%s",
@@ -638,7 +637,21 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           stream_content <- as.character(stream_res2$content %||% "")[1]
           if (is.na(stream_content)) stream_content <- ""
 
-          if (isTRUE(stream_res2$success) && nzchar(stream_content)) {
+          stream_reasoning <- as.character(stream_res2$reasoning %||% "")[1]
+          if (is.na(stream_reasoning)) stream_reasoning <- ""
+
+          stream_content_looks_like_reasoning <- nzchar(stream_content) && (
+            identical(trimws(stream_content), trimws(stream_reasoning)) ||
+              grepl(
+                "^\\s*(Thinking Process:|\\*\\*Analyze the Request:|1\\.\\s*\\*\\*Analyze the Request|Okay, I will|Let's assemble|I will structure it)",
+                stream_content,
+                ignore.case = TRUE
+              )
+          )
+
+          if (isTRUE(stream_res2$success) &&
+              nzchar(stream_content) &&
+              !isTRUE(stream_content_looks_like_reasoning)) {
             ai2 <- stream_content
             reasoning2 <- stream_res2$reasoning %||% ""
           } else {
