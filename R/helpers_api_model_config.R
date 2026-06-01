@@ -314,6 +314,56 @@ resolve_deep_thinking_model <- function(tool_family, deep_level = "low", config 
   as.character(model_id)[1]
 }
 
+# Runtime modelini tek noktadan çöz:
+# - aktif araç ailesi
+# - normal araç modeli
+# - Excel/Kod Derin Düşünme durumu
+# - düşük/yüksek seviye
+# aynı sonuç hem LLM isteğine hem Düşünce Akışı badge'ine verilir.
+resolve_runtime_model_for_request <- function(tool_family,
+                                              fallback_model = NULL,
+                                              excel_deep_on = FALSE,
+                                              excel_deep_level = "low",
+                                              coding_deep_on = FALSE,
+                                              coding_deep_level = "low",
+                                              config = api_config) {
+  model_id <- resolve_tool_model_for_family(
+    tool_family = tool_family,
+    fallback_model = fallback_model,
+    config = config
+  )
+
+  if (identical(tool_family, "mcp_excel") && isTRUE(excel_deep_on)) {
+    deep_model <- resolve_deep_thinking_model(
+      tool_family = "mcp_excel",
+      deep_level = excel_deep_level,
+      config = config
+    )
+
+    if (!is.null(deep_model) && nzchar(deep_model)) {
+      model_id <- deep_model
+    }
+
+  } else if (identical(tool_family, "coding") && isTRUE(coding_deep_on)) {
+    deep_model <- resolve_deep_thinking_model(
+      tool_family = "coding",
+      deep_level = coding_deep_level,
+      config = config
+    )
+
+    if (!is.null(deep_model) && nzchar(deep_model)) {
+      model_id <- deep_model
+    }
+  }
+
+  model_id <- as.character(model_id %||% "")[1]
+  if (is.na(model_id) || !nzchar(model_id)) {
+    model_id <- as.character(config$local_models[1] %||% "")[1]
+  }
+
+  model_id
+}
+
 resolve_tool_model_for_flag <- function(setting_flag, fallback_model = NULL, config = api_config) {
   cfg <- get_tool_mode_config(setting_flag, by = "setting_flag", config = config)
   model_id <- cfg$model_id %||% fallback_model %||% as.character(config$local_models[1]) %||% ""

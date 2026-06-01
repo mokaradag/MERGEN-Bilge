@@ -312,7 +312,12 @@ call_local_llm_sse_worker <- function(chat_history,
 	  )
 	}
 
-    log_info(sprintf("[CHAT PERF] SSE işçi HTTP isteği başladı - model=%s", selected_model))
+    log_info(sprintf(
+      "[LLM REQUEST FINAL] path=sse_worker stream=%s payload_model=%s endpoint=%s",
+      as.character(body$stream %||% NA),
+      as.character(body$model %||% ""),
+      api_url
+    ))
 
     process_single_event <- function(parsed_event) {
       if (is.null(parsed_event)) {

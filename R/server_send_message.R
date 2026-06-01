@@ -199,10 +199,46 @@ sendMessageInit <- function(
       }
     })
 
+    # Runtime modelini istek başında bir kez çöz.
+    # Aynı model hem LLM isteğine hem Düşünce Akışı badge'ine verilecek.
+    excel_deep_on <- isTRUE(settings_data$excel_deep_thinking) ||
+      isTRUE(shiny::isolate(input$chat_excel_deep_thinking))
+
+    excel_deep_level <- settings_data$excel_deep_level %||%
+      shiny::isolate(input$chat_excel_deep_level) %||%
+      "low"
+
+    coding_deep_on <- isTRUE(settings_data$coding_deep_thinking) ||
+      isTRUE(shiny::isolate(input$chat_coding_deep_thinking))
+
+    coding_deep_level <- settings_data$coding_deep_level %||%
+      shiny::isolate(input$chat_coding_deep_level) %||%
+      "low"
+
+    model_selected <- resolve_runtime_model_for_request(
+      tool_family = tool_family,
+      fallback_model = current_settings$model_selection,
+      excel_deep_on = excel_deep_on,
+      excel_deep_level = excel_deep_level,
+      coding_deep_on = coding_deep_on,
+      coding_deep_level = coding_deep_level
+    )
+
+    log_info(sprintf(
+      "[MODEL RESOLVE] arac=%s excel=%s/%s coding=%s/%s -> resolved_model=%s",
+      tool_family,
+      excel_deep_on,
+      excel_deep_level,
+      coding_deep_on,
+      coding_deep_level,
+      model_selected
+    ))
+
     values$typing <- TRUE
     thinking_panel_plan <- mergen_build_thinking_panel_plan(
       tool_family = tool_family,
-      settings_data = settings_data
+      settings_data = settings_data,
+      resolved_model_id = model_selected
     )
     mergen_show_send_message_thinking_wrapper(session, thinking_panel_plan, request_id = req_id)
 
@@ -387,41 +423,16 @@ sendMessageInit <- function(
 
     chat_id_val <- isolate(values$current_chat_id)
 
-    # Modeli araç ailesine göre server-side kesin olarak çöz
-    model_selected <- resolve_tool_model_for_family(
-      tool_family,
-      fallback_model = current_settings$model_selection
-    )
-
-    # Excel/Kod araçlarında "Derin Düşünme" düğmesi aktifken alternatif düşünen
-    # modeli kullan. Durum hem senkronize ayardan (settings_data) hem de canlı
-    # sohbet girdisinden (input$chat_*_deep_thinking) okunur; böylece gözlemci
-    # senkronizasyon zamanlaması model değişimini sessizce engelleyemez.
-    excel_deep_on <- isTRUE(settings_data$excel_deep_thinking) ||
-      isTRUE(shiny::isolate(input$chat_excel_deep_thinking))
-    excel_deep_level <- settings_data$excel_deep_level %||%
-      shiny::isolate(input$chat_excel_deep_level) %||% "low"
-    coding_deep_on <- isTRUE(settings_data$coding_deep_thinking) ||
-      isTRUE(shiny::isolate(input$chat_coding_deep_thinking))
-    coding_deep_level <- settings_data$coding_deep_level %||%
-      shiny::isolate(input$chat_coding_deep_level) %||% "low"
-
-    if (identical(tool_family, "mcp_excel") && isTRUE(excel_deep_on)) {
-      dt_model <- resolve_deep_thinking_model("mcp_excel", excel_deep_level)
-      if (!is.null(dt_model) && nzchar(dt_model)) model_selected <- dt_model
-    } else if (identical(tool_family, "coding") && isTRUE(coding_deep_on)) {
-      dt_model <- resolve_deep_thinking_model("coding", coding_deep_level)
-      if (!is.null(dt_model) && nzchar(dt_model)) model_selected <- dt_model
-    }
-
-    # Derin Düşünme model seçimini VM tarafında doğrulayabilmek için kaydet.
+    # Model daha önce tek noktadan çözüldü; burada yalnızca ayarlara sabitlenir.
     log_info(sprintf(
       "[DERIN DUSUNME] arac=%s excel=%s/%s coding=%s/%s -> model=%s",
-      tool_family, excel_deep_on, excel_deep_level,
-      coding_deep_on, coding_deep_level, model_selected
+      tool_family,
+      excel_deep_on,
+      excel_deep_level,
+      coding_deep_on,
+      coding_deep_level,
+      model_selected
     ))
-
-    current_settings$model_selection <- model_selected
 
     current_settings$current_user_id <- effective_user_id
     current_settings$tool_family <- tool_family
@@ -469,6 +480,8 @@ sendMessageInit <- function(
     if (is.null(model_selected) || model_selected == "") {
       model_selected <- api_config$local_models[1]
     }
+
+    current_settings$model_selection <- model_selected
 
 	# Düşünmeli modellerde SQL analizi akışını streaming yerine non-streaming çalıştır.
 	# Model yetenekleri R/config_api.R içindeki local_model_capabilities tarafından

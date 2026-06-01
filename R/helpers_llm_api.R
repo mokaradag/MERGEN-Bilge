@@ -122,15 +122,22 @@ call_local_llm <- function(chat_history, current_settings) {
 	  request_timeout_sec <- 900
 	}
 
-	response <- tryCatch({
-	  httr::POST(
-		url = api_url,
-		body = body,
-		encode = "json",
-		do.call(httr::add_headers, hds),
-		httr::timeout(request_timeout_sec)
-	  )
-	}, error = function(e) {
+  log_info(sprintf(
+    "[LLM REQUEST FINAL] path=local_llm stream=%s payload_model=%s endpoint=%s",
+    as.character(body$stream %||% NA),
+    as.character(body$model %||% ""),
+    api_url
+  ))
+
+  response <- tryCatch({
+    httr::POST(
+      url = api_url,
+      body = body,
+      encode = "json",
+      do.call(httr::add_headers, hds),
+      httr::timeout(request_timeout_sec)
+    )
+  }, error = function(e) {
 	  stop(sprintf("API_CONNECTION_ERROR: %s", conditionMessage(e)))
 	})
 

@@ -126,6 +126,8 @@ test_that("API model config helper public fonksiyonları source sonrası mevcutt
     "determine_api_key_validation_target",
     "get_tool_mode_config",
     "resolve_tool_model_for_family",
+    "resolve_deep_thinking_model",
+    "resolve_runtime_model_for_request",
     "resolve_tool_model_for_flag",
     "build_main_actions_data_from_config"
   )
@@ -290,4 +292,54 @@ test_that("tool mode model çözümleme ve ana aksiyon verisi korunur", {
   expect_identical(action_ids, c("summarization", "project-process"))
   expect_identical(actions[[1]]$model_value, "summary-model")
   expect_identical(actions[[2]]$model_value, "process-model")
+})
+
+test_that("Excel Analizi Derin Düşünme yüksek seviyesi EXCEL_DEEP_HIGH modelini çözer", {
+  fake_config <- list(
+    local_models = c("Varsayılan" = "fallback-model"),
+    tool_mode_config = list(
+      mcp_excel = list(
+        family = "mcp_excel",
+        model_id = "excel-normal-model"
+      ),
+      coding = list(
+        family = "coding",
+        model_id = "coding-normal-model"
+      )
+    ),
+    deep_thinking_models = list(
+      mcp_excel = list(
+        low = "excel-deep-low-model",
+        high = "excel-deep-high-model"
+      ),
+      coding = list(
+        low = "coding-deep-low-model",
+        high = "coding-deep-high-model"
+      )
+    )
+  )
+
+  resolved <- resolve_runtime_model_for_request(
+    tool_family = "mcp_excel",
+    fallback_model = "fallback-model",
+    excel_deep_on = TRUE,
+    excel_deep_level = "high",
+    coding_deep_on = FALSE,
+    coding_deep_level = "low",
+    config = fake_config
+  )
+
+  expect_identical(resolved, "excel-deep-high-model")
+
+  normal_resolved <- resolve_runtime_model_for_request(
+    tool_family = "mcp_excel",
+    fallback_model = "fallback-model",
+    excel_deep_on = FALSE,
+    excel_deep_level = "high",
+    coding_deep_on = FALSE,
+    coding_deep_level = "low",
+    config = fake_config
+  )
+
+  expect_identical(normal_resolved, "excel-normal-model")
 })

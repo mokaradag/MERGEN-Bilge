@@ -308,3 +308,38 @@ test_that("thinking panel plan gerçek streaming dışındaki yollarda simulated
   expect_true(tts_plan$show_thinking_wrapper)
   expect_true(tts_plan$panel_simulated)
 })
+
+test_that("Düşünce Akışı badge çözülen runtime modelini gösterir", {
+  old_thinking_exists <- exists("is_thinking_model", envir = globalenv(), inherits = FALSE)
+  old_thinking <- if (old_thinking_exists) get("is_thinking_model", envir = globalenv()) else NULL
+
+  on.exit({
+    if (old_thinking_exists) {
+      assign("is_thinking_model", old_thinking, envir = globalenv())
+    } else {
+      rm("is_thinking_model", envir = globalenv())
+    }
+  }, add = TRUE)
+
+  assign(
+    "is_thinking_model",
+    function(model_id) identical(model_id, "excel-deep-high-model"),
+    envir = globalenv()
+  )
+
+  plan <- mergen_build_thinking_panel_plan(
+    tool_family = "mcp_excel",
+    settings_data = list(
+      model_selection = "dropdown-default-model",
+      enable_streaming = FALSE,
+      enable_tts_audio = FALSE,
+      enable_typing_indicator = FALSE
+    ),
+    resolved_model_id = "excel-deep-high-model"
+  )
+
+  expect_identical(plan$panel_model_id, "excel-deep-high-model")
+  expect_true(plan$thinking_model_active)
+  expect_true(plan$show_thinking_wrapper)
+  expect_true(plan$panel_simulated)
+})

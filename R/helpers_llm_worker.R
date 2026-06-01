@@ -201,14 +201,22 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     if (!is.null(api_key) && nzchar(api_key)) {
       hdrs$Authorization <- paste("Bearer", api_key)
     }
+
+    log_info(sprintf(
+      "[LLM REQUEST FINAL] path=worker tool_family=%s stream=%s payload_model=%s endpoint=%s",
+      tool_family %||% "none",
+      as.character(body$stream %||% NA),
+      as.character(body$model %||% ""),
+      api_endpoint
+    ))
     
   response <- httr::POST(
     api_endpoint,
     do.call(httr::add_headers, hdrs),
     body = jsonlite::toJSON(body, auto_unbox = TRUE),
-      encode = "raw",
-      httr::timeout(300)
-    )
+    encode = "raw",
+    httr::timeout(300)
+  )
 
   status <- httr::status_code(response)
 
@@ -222,6 +230,15 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     mergen_debug_cat("[RETRY] 400 & tools not supported -> retrying without tool schema...\n")
     body$tools <- NULL
     body$tool_choice <- NULL
+
+    log_info(sprintf(
+      "[LLM REQUEST FINAL] path=worker_retry_no_tools tool_family=%s stream=%s payload_model=%s endpoint=%s",
+      tool_family %||% "none",
+      as.character(body$stream %||% NA),
+      as.character(body$model %||% ""),
+      api_endpoint
+    ))
+
     response <- httr::POST(
       api_endpoint,
       do.call(httr::add_headers, hdrs),

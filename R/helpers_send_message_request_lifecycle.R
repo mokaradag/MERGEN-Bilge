@@ -139,11 +139,24 @@ mergen_clear_welcome_for_send_message <- function(session, values) {
   invisible(TRUE)
 }
 
-mergen_build_thinking_panel_plan <- function(tool_family, settings_data) {
-  panel_model_id <- tryCatch(
-    resolve_tool_model_for_family(tool_family, fallback_model = settings_data$model_selection),
-    error = function(e) settings_data$model_selection
-  )
+mergen_build_thinking_panel_plan <- function(tool_family,
+                                             settings_data,
+                                             resolved_model_id = NULL) {
+  panel_model_id <- tryCatch({
+    supplied_model <- as.character(resolved_model_id %||% "")[1]
+
+    if (!is.na(supplied_model) && nzchar(supplied_model)) {
+      supplied_model
+    } else {
+      resolve_tool_model_for_family(
+        tool_family,
+        fallback_model = settings_data$model_selection
+      )
+    }
+  }, error = function(e) {
+    settings_data$model_selection
+  })
+
   panel_model_id <- tryCatch(as.character(panel_model_id %||% "")[1], error = function(e) "")
   if (is.na(panel_model_id)) panel_model_id <- ""
 
