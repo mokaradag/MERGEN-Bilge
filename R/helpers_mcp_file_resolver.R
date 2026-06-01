@@ -86,15 +86,18 @@ helpers_mcp_tools$register_uploaded_file <- function(session = NULL, token, abs_
   if (is.null(token) || !nzchar(token)) return(invisible(FALSE))
 
   normalize_for_registry <- function(p) {
-    if (exists("normalize_mcp_path", mode = "function")) {
-      out <- try(normalize_mcp_path(p, must_exist = FALSE), silent = TRUE)
-      if (!inherits(out, "try-error") && nzchar(out)) return(out)
+    out <- try(helpers_mcp_tools$normalize_excel_path(p), silent = TRUE)
+
+    if (!inherits(out, "try-error") &&
+        !is.null(out) &&
+        is.character(out) &&
+        length(out) > 0L &&
+        !is.na(out[1]) &&
+        nzchar(out[1])) {
+      return(out[1])
     }
 
-    out <- try(helpers_mcp_tools$normalize_excel_path(p), silent = TRUE)
-    if (!inherits(out, "try-error") && !is.null(out) && nzchar(out)) return(out)
-
-    p
+    as.character(p[1])
   }
 
   normalized_path <- normalize_for_registry(abs_path)
