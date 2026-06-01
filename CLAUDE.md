@@ -120,6 +120,14 @@ Current protected expectations:
 - The Yardım Merkezi “Yardım Asistanı” chat must have a distinct light-theme user bubble. The user bubble should use the support teal token `--mb-brand-support-teal` with sufficient white-text contrast.
 - Yardım Asistanı bot responses can contain Markdown-derived HTML such as `strong`, `em`, headings, lists, and inline code. Light-theme CSS must explicitly preserve contrast for these elements inside bot bubbles without weakening the Markdown/HTML safety boundary.
 
+### 1E.1) Light Theme Header and Badge Consistency
+
+- Light-theme page headers are kept pixel-aligned with the MERGEN Bilge top navbar/header band.
+- Header alignment rules must not force 50px `line-height` onto nested badges; AJAN, Bağlı, and ADMIN badges must keep compact badge-specific line-height.
+- The Bilge Yolaç AJAN badge and Yönetici Paneli ADMIN badges use the same red pill-style badge language in light theme.
+- The relevant CSS maintenance points are `www/css/chat_header.css`, `www/css/claude_code.css`, and `www/css/admin_analytics.css`.
+- When touching these areas, verify visually in light theme on Bilge Yolaç and all Yönetici Paneli subpages: Genel Analiz, Geri Bildirim Analizi, Hata Analizi, Yanıt Geri Bildirimi, and Sistem Durumu.
+
 Validation note for this documentation-only update:
 - Do not run R validation for this specific docs-only change. Manual Markdown review is sufficient unless code files are changed later in a separate task.
 
