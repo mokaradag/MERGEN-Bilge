@@ -179,9 +179,40 @@ log_ai_call <- function(user_id, model, duration, success, tokens = NA) {
 
 # --- BAĞLAMLI HATA LOGLAMA ---
 log_error_with_context <- function(error, context = "unknown") {
-  error_msg <- if (inherits(error, "error")) error$message else as.character(error)
-  log_error("Error in {context}: {error_msg}")
-  
+  # Yapılandırılmış ve sır-redakteli kayıt üret (yardımcı yoksa NULL döner).
+  record <- tryCatch(
+    mergen_build_runtime_error_record(error, context),
+    error = function(e) NULL
+  )
+
+  if (!is.null(record)) {
+    # Redakte edilmiş bağlam/mesaj ile insan-okur log satırı.
+    ctx <- record$context
+    msg <- record$message
+    log_error("Error in {ctx}: {msg}")
+
+    # İzlenebilir tek satır yapılandırılmış kayıt; olay incelemesinde aranır.
+    structured <- tryCatch(
+      jsonlite::toJSON(record, auto_unbox = TRUE, null = "null"),
+      error = function(e) NULL
+    )
+    if (!is.null(structured)) {
+      structured_line <- as.character(structured)
+      log_debug("[RUNTIME_ERROR] {structured_line}")
+    }
+  } else {
+    # Geriye dönük güvenli yol: yardımcı kullanılamıyorsa eski davranışı koru,
+    # ancak yine de mümkünse mesajı redakte et.
+    error_msg <- if (inherits(error, "error")) error$message else as.character(error)
+    if (exists("redact_sensitive_text", mode = "function")) {
+      error_msg <- tryCatch(
+        as.character(redact_sensitive_text(error_msg))[1],
+        error = function(e) error_msg
+      )
+    }
+    log_error("Error in {context}: {error_msg}")
+  }
+
   # Stack trace al
   stack <- sys.calls()
   if (length(stack) > 0) {

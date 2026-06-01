@@ -139,3 +139,61 @@ redact_sensitive_text <- function(x) {
     metin
   }, character(1), USE.NAMES = FALSE)
 }
+
+# Runtime hatalarını yapılandırılmış, sır-redakteli ve yan etkisiz bir kayda
+# çevirir. Çağıran taraf bu kaydı tek satır halinde loglayabilir veya bir olay
+# izleme akışına gönderebilir. Bilinçli olarak Shiny/DB/dosya/HTTP içermez;
+# böylece izole test edilebilir ve hata yolunda kendisi yeni hata üretmez.
+mergen_build_runtime_error_record <- function(error,
+                                              context = "unknown",
+                                              redact_fn = NULL,
+                                              now = Sys.time()) {
+  # Redaksiyon fonksiyonu verilmediyse aynı modüldeki güvenli redaktörü kullan.
+  if (is.null(redact_fn) && exists("redact_sensitive_text", mode = "function")) {
+    redact_fn <- get("redact_sensitive_text", mode = "function")
+  }
+
+  # Hata mesajını koşula göre güvenli biçimde çöz.
+  error_msg <- tryCatch({
+    if (inherits(error, "condition")) {
+      conditionMessage(error)
+    } else if (is.null(error)) {
+      ""
+    } else {
+      paste(as.character(error), collapse = " ")
+    }
+  }, error = function(e) "")
+
+  # Hata sınıfı (R sınıf adları) tanılama için saklanır; sır taşımaz.
+  error_class <- tryCatch({
+    cls <- class(error)
+    if (length(cls)) paste(cls, collapse = ",") else "unknown"
+  }, error = function(e) "unknown")
+
+  # Hem bağlam hem mesaj redakte edilir; hata metni token/DSN/parola taşıyabilir.
+  redact_one <- function(value) {
+    value <- as.character(value)[1]
+    if (is.na(value)) value <- ""
+    if (is.function(redact_fn)) {
+      value <- tryCatch(as.character(redact_fn(value))[1], error = function(e) value)
+      if (is.na(value)) value <- ""
+    }
+    enc2utf8(value)
+  }
+
+  captured_at <- tryCatch(
+    format(now, "%Y-%m-%dT%H:%M:%S%z"),
+    error = function(e) ""
+  )
+  if (length(captured_at) != 1L || is.na(captured_at)) {
+    captured_at <- ""
+  }
+
+  list(
+    type = "runtime_error",
+    context = redact_one(context),
+    message = redact_one(error_msg),
+    error_class = enc2utf8(error_class),
+    captured_at = captured_at
+  )
+}
