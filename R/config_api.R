@@ -614,3 +614,51 @@ verify_user_api_key <- function(system_username, candidate_plain) {
   hash_hex <- .hash_key_hex(candidate_plain, salt)
   isTRUE(identical(tolower(hash_hex), tolower(rec$hash_hex %||% "")))
 }
+
+# ------------------------------------------------------------------------------
+# Derin Düşünme modellerinin yeteneklerini otomatik kaydet
+# ------------------------------------------------------------------------------
+# EXCEL_DEEP_LOW_MODEL / EXCEL_DEEP_HIGH_MODEL / CODING_* modelleri .Renviron'dan
+# gelebilir. Bu modeller local_model_capabilities içinde ayrıca yazılmadıysa
+# Düşünce Akışı tarafından düşünmeyen model sanılır. Bu blok, derin düşünme
+# modellerini varsayılan olarak thinking model kabul eder; mevcut tanım varsa
+# onu korur.
+.deep_thinking_capability_defaults <- list(
+  thinking = TRUE,
+  omit_temperature = TRUE,
+  stream_reasoning = TRUE,
+  allow_reasoning_fallback = TRUE,
+  request_overrides = list()
+)
+
+.deep_model_ids <- unique(unname(unlist(
+  api_config$deep_thinking_models,
+  recursive = TRUE,
+  use.names = FALSE
+)))
+
+.deep_model_ids <- .deep_model_ids[
+  !is.na(.deep_model_ids) &
+    nzchar(as.character(.deep_model_ids))
+]
+
+for (.deep_model_id in .deep_model_ids) {
+  .existing_caps <- api_config$local_model_capabilities[[.deep_model_id]]
+
+  if (!is.list(.existing_caps)) {
+    .existing_caps <- list()
+  }
+
+  api_config$local_model_capabilities[[.deep_model_id]] <- utils::modifyList(
+    .deep_thinking_capability_defaults,
+    .existing_caps,
+    keep.null = TRUE
+  )
+}
+
+rm(
+  .deep_thinking_capability_defaults,
+  .deep_model_ids,
+  .deep_model_id,
+  .existing_caps
+)

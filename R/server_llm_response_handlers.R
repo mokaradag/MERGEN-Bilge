@@ -44,11 +44,19 @@ llmResponseHandlersInit <- function(
     chat_id_val,
     model_selected,
     last_user_text = NULL,
-    current_user_id = NULL
+    current_user_id = NULL,
+    request_id = NULL
   ) {
- 
-    # Benzersiz istek kimliği oluştur
-    req_id <- paste0("req_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sample(1000:9999, 1))
+
+    # send_message tarafından oluşturulan request_id'yi koru.
+    # Düşünce Akışı paneli bu request_id ile başlatıldığı için,
+    # non-streaming/MCP tarafı yeni bir request_id üretmemeli.
+    req_id <- as.character(request_id %||% "")[1]
+
+    if (is.na(req_id) || !nzchar(req_id)) {
+      req_id <- paste0("req_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sample(1000:9999, 1))
+    }
+
     active_request_id(req_id)
  
     # Debug için ayarları kaydet (session hariç)

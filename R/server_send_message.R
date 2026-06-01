@@ -703,7 +703,8 @@ sendMessageInit <- function(
         chat_id_val,
         model_selected,
         last_user_text = user_message_text,
-        current_user_id = effective_user_id
+        current_user_id = effective_user_id,
+        request_id = req_id
       )
     }
 
