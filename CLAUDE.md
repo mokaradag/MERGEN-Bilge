@@ -123,6 +123,7 @@ Current protected expectations:
 Validation note for this documentation-only update:
 - Do not run R validation for this specific docs-only change. Manual Markdown review is sufficient unless code files are changed later in a separate task.
 
+
 ### 1F) Effective API key resolution for non-chat AI features
 
 TTS, AI Expert speech generation, and other non-chat AI features must not read `session$userData$ai_api_key` directly or invent separate institutional-key fallback logic. They should use the centralized feature helper in `R/helpers_feature_api_key.R`, which builds on the ownership-safe API key helpers in `R/helpers_api_key_identity.R`.
@@ -3417,6 +3418,41 @@ Reasoning/SSE contract tests must remain runnable both through `source("tests/te
 Individual tests passing is not enough; tests that inspect source files must also pass when run through the full `source("tests/testthat.R", encoding = "UTF-8")` suite, because the full suite runs in a shared R session and is more sensitive to leaked warnings.
 
 When a refactor introduces a new helper file that is also loaded indirectly by another helper, test both paths: direct `source("R/new_helper.R", ...)` and indirect source through the older public entry file. In this repo, isolated tests often source helper files before `global.R`; fallback source guards must therefore be working-directory independent and warning-free.
+
+
+### Focused behavioral regression contracts
+
+Merge commit `517f80406badfd8f393f9e0648793c3481520ea7` / PR #425 added 25 focused behavioral regression files from the 19 Sunday 31.05.2026 commits, with additions only. Treat this as contract coverage for existing helpers, not runtime feature churn; the commits compactly cover API key and endpoint fallback, Bilge Yolaç model/config/download/security/path/session helpers, UTF-8 and DB normalization boundaries, upload/MCP/Project Analysis helpers, AI Expert pronunciation, persona migration, LLM bundle extraction, quick-action intro text, and version-history label sourcing.
+
+Future coding agents must not weaken or delete these behavioral tests to make unrelated changes pass. Treat them as executable documentation for existing helper contracts; when one fails, keep the change surgical by fixing the production helper or the narrow contract rather than rewriting the whole subsystem. Keep Turkish/UTF-8 fixtures deterministic and Windows/VM-safe. For docs-only `README.md` / `CLAUDE.md` edits, do not run R validation; review the Markdown diff only. If later code changes touch any covered boundary, run the relevant focused test(s) separately.
+
+Protected behavioral test files:
+- `tests/testthat/test-ai-expert-pronunciation-behavior.R`
+- `tests/testthat/test-api-key-effective-resolution-behavior.R`
+- `tests/testthat/test-api-model-endpoint-resolution-behavior.R`
+- `tests/testthat/test-atomic-write-text-behavior.R`
+- `tests/testthat/test-character-identity-behavior.R`
+- `tests/testthat/test-claude-code-detail-level-behavior.R`
+- `tests/testthat/test-claude-code-downloads-helpers-behavior.R`
+- `tests/testthat/test-claude-code-model-config-behavior.R`
+- `tests/testthat/test-claude-code-security-policy-behavior.R`
+- `tests/testthat/test-claude-code-streaming-parsers-behavior.R`
+- `tests/testthat/test-claude-code-workdir-scan-behavior.R`
+- `tests/testthat/test-db-user-encoding-normalization-behavior.R`
+- `tests/testthat/test-destek-db-text-normalization-behavior.R`
+- `tests/testthat/test-llm-sse-delta-bundle-behavior.R`
+- `tests/testthat/test-llm-text-bundle-behavior.R`
+- `tests/testthat/test-mailto-encoding-behavior.R`
+- `tests/testthat/test-mcp-excel-summary-behavior.R`
+- `tests/testthat/test-mcp-path-normalize-behavior.R`
+- `tests/testthat/test-pk-analysis-core-behavior.R`
+- `tests/testthat/test-quick-action-intro-message-behavior.R`
+- `tests/testthat/test-session-runtime-store-behavior.R`
+- `tests/testthat/test-text-encoding-log-frame-behavior.R`
+- `tests/testthat/test-upload-validator-internals-behavior.R`
+- `tests/testthat/test-utils-common-text-behavior.R`
+- `tests/testthat/test-version-history-label-behavior.R`
+
 
 ### Strict test runner rule
 `tests/testthat.R` is a strict gate and should keep:
