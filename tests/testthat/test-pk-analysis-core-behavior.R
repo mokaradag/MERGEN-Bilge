@@ -249,16 +249,22 @@ testthat::test_that("normalize_pk_dataframe_utf8 NULL ve data.frame-olmayanı de
 testthat::test_that("normalize_pk_dataframe_utf8 isim+metin sütununu normalize eder, sayısalı korur", {
   .pkcore_source_once()
   df <- data.frame(
-    Sıra = c(1L, 2L),
-    Ad = c("Çağrı", "Ömer"),
-    stringsAsFactors = FALSE
+    .pk_sira = c(1L, 2L),
+    .pk_ad = c("\u00C7a\u011Fr\u0131", "\u00D6mer"),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
   )
+  names(df) <- c("S\u0131ra", "Ad")
+
   donen <- normalize_pk_dataframe_utf8(df)
-  testthat::expect_identical(enc2utf8(names(donen)), enc2utf8(c("Sıra", "Ad")))
+  testthat::expect_identical(enc2utf8(names(donen)), enc2utf8(c("S\u0131ra", "Ad")))
   # Sayısal sütun (ilk sütun) içerik olarak korunur
   testthat::expect_identical(donen[[1]], c(1L, 2L))
   # Metin sütunu Türkçe değerlerini korur
-  testthat::expect_identical(enc2utf8(donen[[2]]), enc2utf8(c("Çağrı", "Ömer")))
+  testthat::expect_identical(
+    enc2utf8(donen[[2]]),
+    enc2utf8(c("\u00C7a\u011Fr\u0131", "\u00D6mer"))
+  )
 })
 
 # ------------------------------------------------------------------------------
