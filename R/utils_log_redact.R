@@ -13,6 +13,10 @@
 .redact_env_var_names <- function() {
   c(
     "AI_KEYS_MASTER",
+    # Kurumsal varsayılan API anahtarı. CLAUDE.md gereği asla loglanmamalıdır;
+    # prose içinde çıplak geçtiğinde key-value deseni yakalamaz, bu yüzden
+    # env-değer redaksiyonuna açıkça eklenir.
+    "MERGEN_DEFAULT_API_KEY",
     "LOCAL_LLM_API_KEY",
     "LOCAL_LLM_ENDPOINT_ALT_API_KEY",
     "LOCAL_TTS_API_KEY",
