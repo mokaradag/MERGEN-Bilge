@@ -24,6 +24,25 @@
   invisible(TRUE)
 }
 
+testthat::test_that("version_history.md repo kökünden okunur; test çalışma dizinine bağlı değildir", {
+  .verlabel_source_once()
+
+  eski_wd <- getwd()
+  on.exit(setwd(eski_wd), add = TRUE)
+
+  setwd(file.path(resolve_repo_root_for_tests(), "tests", "testthat"))
+
+  vh <- NULL
+  testthat::expect_warning({
+    vh <- get_version_history()
+  }, NA)
+
+  testthat::expect_true(is.list(vh))
+  testthat::expect_true(is.character(vh$current_version))
+  testthat::expect_length(vh$current_version, 1L)
+  testthat::expect_true(nzchar(trimws(vh$current_version)))
+})
+
 testthat::test_that("get_current_version boş olmayan tek bir karakter sürüm döndürür", {
   .verlabel_source_once()
   cv <- get_current_version()

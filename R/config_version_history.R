@@ -3,12 +3,49 @@
 # Açıklama: Sürüm geçmişi verilerini version_history.md dosyasından okur ve ayrıştırır.
 # Yeni sürüm eklemek için sadece version_history.md dosyasını güncellemek yeterlidir.
 
+# version_history.md repo kökünde durur. testthat::test_file() bazı
+# koşullarda çalışma dizinini tests/testthat altına aldığı için getwd()
+# doğrudan kullanılmaz; önce açık kök bilgileri, sonra üst dizinler denenir.
+resolve_version_history_md_path <- function(start_dir = getwd()) {
+  normalize_dir <- function(path) {
+    if (is.null(path) || length(path) == 0L || is.na(path[1]) || !nzchar(path[1])) {
+      return(NA_character_)
+    }
+
+    tryCatch(
+      normalizePath(path[1], winslash = "/", mustWork = TRUE),
+      error = function(e) path[1]
+    )
+  }
+
+  current <- normalize_dir(start_dir)
+
+  if (!is.na(current) && nzchar(current)) {
+    repeat {
+      md_path <- file.path(current, "version_history.md")
+
+      if (file.exists(md_path)) {
+        return(normalizePath(md_path, winslash = "/", mustWork = TRUE))
+      }
+
+      parent <- dirname(current)
+      if (identical(parent, current)) {
+        break
+      }
+
+      current <- parent
+    }
+  }
+
+  file.path(start_dir, "version_history.md")
+}
+
 #' Markdown Dosyasından Sürüm Geçmişini Ayrıştır
 #'
 #' @description version_history.md dosyasını okur ve yapılandırılmış listeye dönüştürür.
 #' @return Sürüm listesi: current_version ve versions içerir.
 get_version_history <- function() {
-  md_path <- file.path(getwd(), "version_history.md")
+  md_path <- resolve_version_history_md_path()
 
   if (!file.exists(md_path)) {
     warning("[VERSİYON] version_history.md dosyası bulunamadı: ", md_path)
