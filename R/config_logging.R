@@ -133,6 +133,23 @@ shiny_error_handler <- function(e = NULL) {
   
   # Log dosyasına yaz
   log_error("[ERROR] {msg}")
+
+  # Yapılandırılmış, sır-redakteli kayıt: yakalanmamış Shiny hataları olay
+  # incelemesinde [RUNTIME_ERROR] satırı olarak aranabilir. Yardımcı yoksa veya
+  # üretim başarısız olursa sessizce atlanır; bu global handler asla kırılmamalı.
+  if (exists("mergen_build_runtime_error_record", mode = "function")) {
+    structured_err <- tryCatch({
+      rec <- mergen_build_runtime_error_record(
+        if (!is.null(e)) e else msg,
+        "shiny_uncaught"
+      )
+      as.character(jsonlite::toJSON(rec, auto_unbox = TRUE, null = "null"))
+    }, error = function(err) NULL)
+
+    if (!is.null(structured_err)) {
+      log_error("[RUNTIME_ERROR] {structured_err}")
+    }
+  }
   
   # Debug modunda stack trace göster
   if (isTRUE(as.logical(Sys.getenv("MERGEN_DEBUG", "FALSE")))) {
