@@ -284,11 +284,25 @@ llmResponseHandlersInit <- function(
             }
           }, error = function(e) NULL)
 
+          # MCP canlı Düşünce Akışı aktifken reasoning_content'i ilk render'a verme.
+          # Aksi halde aynı mesaj içinde hem canlı panel hem de arşiv <details>
+          # bloğu oluşur ve Düşünce Akışı iki kez görünür.
+          reasoning_for_render <- if (isTRUE(current_settings$enable_mcp_reasoning_stream)) {
+            NULL
+          } else {
+            reasoning_for_db
+          }
+
+          ai_msg <- NULL
+
           # AI mesajını ekle
           tryCatch({
-            ai_msg <- add_message_fn(result$content, "ai",
-                                     followups = followup_questions,
-                                     reasoning_content = reasoning_for_db)
+            ai_msg <- add_message_fn(
+              result$content,
+              "ai",
+              followups = followup_questions,
+              reasoning_content = reasoning_for_render
+            )
           }, error = function(e) {
             cat("[AI_RESP][ADD_MESSAGE_ERROR] ", conditionMessage(e), "\n", sep="")
             cat("[AI_RESP][ADD_MESSAGE_ERROR] dput(content)= "); dput(result$content); cat("\n")
@@ -296,7 +310,7 @@ llmResponseHandlersInit <- function(
             # Sohbet akışını bozmamak için placeholder mesaj ekle
             ai_msg <- add_message_fn("\U000026A0\U0000FE0F Model boş bir yanıt döndürdü (loglandı).", "ai")
           })
-		  
+
           if (isTRUE(current_settings$enable_mcp_reasoning_stream) &&
               !is.null(ai_msg) &&
               !is.null(ai_msg$id)) {
@@ -306,6 +320,15 @@ llmResponseHandlersInit <- function(
               id = ai_msg$id,
               requestId = req_id
             ))
+
+            # Görselde ikinci arşiv bloğunu üretmeden DB'de reasoning'i koru.
+            # Böylece mevcut cevapta tek canlı panel kalır; geçmişten açıldığında
+            # reasoning DB'den arşiv olarak render edilebilir.
+            if (!is.null(reasoning_for_db) &&
+                !is.null(ai_msg$db_id) &&
+                exists("update_message_reasoning_content", mode = "function", inherits = TRUE)) {
+              try(update_message_reasoning_content(ai_msg$db_id, reasoning_for_db), silent = TRUE)
+            }
           }
  
           # TTS'i tetikle (eğer mesaj eklendiyse ve durdurulmadıysa)
