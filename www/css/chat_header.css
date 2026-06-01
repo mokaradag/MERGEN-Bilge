@@ -153,3 +153,67 @@
     height: 16px !important;
   }
 }
+
+/* Açık tema: üst başlık piksel hizalama düzeltmesi.
+ * line-height yalnızca başlık metnine verilir; rozetlere miras kalmaz.
+ */
+html[data-theme="light"] .main-header,
+html[data-theme="light"] .main-header .logo,
+html[data-theme="light"] .main-header .navbar,
+html[data-theme="light"] .main-header .navbar-brand {
+  height: 50px !important;
+  min-height: 50px !important;
+  max-height: 50px !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  box-sizing: border-box !important;
+}
+
+html[data-theme="light"] .main-header .navbar-brand {
+  display: flex !important;
+  align-items: center !important;
+  line-height: normal !important;
+}
+
+html[data-theme="light"] .chat-header,
+html[data-theme="light"] .settings-header-fixed,
+html[data-theme="light"] .files-header,
+html[data-theme="light"] .admin-header-fixed {
+  height: 50px !important;
+  min-height: 50px !important;
+  max-height: 50px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  box-sizing: border-box !important;
+}
+
+html[data-theme="light"] .chat-header,
+html[data-theme="light"] .files-header {
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* Admin başlık wrapper'ında iç chat-header margin'i taşma yaratmasın. */
+html[data-theme="light"] .admin-header-fixed > .chat-header {
+  margin-bottom: 0 !important;
+}
+
+/* 50px line-height sadece başlık yazısında kullanılır. */
+html[data-theme="light"] .chat-header .page-title,
+html[data-theme="light"] .files-header .page-title,
+html[data-theme="light"] .settings-header-fixed .page-title {
+  line-height: 50px !important;
+}
+
+/* Rozetleri kompakt tut: AJAN, Bağlı ve ADMIN 50px line-height mirası almaz. */
+html[data-theme="light"] .chat-header .cc-badge,
+html[data-theme="light"] .chat-header .cc-status-badge,
+html[data-theme="light"] .chat-header .admin-badge,
+html[data-theme="light"] .admin-header-fixed .admin-badge,
+html[data-theme="light"] .chat-header .header-stat-item {
+  line-height: 1.2 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}

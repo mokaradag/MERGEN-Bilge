@@ -1019,3 +1019,38 @@
     display: none;
   }
 }
+
+/* =============================================================================
+   Bilge Yolaç üst başlık AJAN rozeti - light tema ADMIN rozetiyle uyumlu
+   ============================================================================= */
+
+html[data-theme="light"] .claude-code-container .chat-header .cc-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+
+  background: linear-gradient(135deg, #f87171 0%, #dc2626 100%) !important;
+  color: #ffffff !important;
+
+  padding: 4px 12px !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(255, 255, 255, 0.40) !important;
+
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0.5px !important;
+  text-transform: uppercase !important;
+
+  margin-left: 12px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.30) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18) !important;
+
+  animation: none !important;
+  vertical-align: middle !important;
+}

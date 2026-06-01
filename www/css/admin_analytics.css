@@ -585,3 +585,47 @@ section.content,
 .admin-datatable thead th.dt-right {
   text-align: right !important;
 }
+
+/* =============================================================================
+   Açık tema: Yönetici Paneli ADMIN rozetleri
+   Genel Analiz, Geri Bildirim Analizi, Hata Analizi,
+   Yanıt Geri Bildirimi ve Sistem Durumu başlıklarında ortak görünüm.
+   ============================================================================= */
+
+html[data-theme="light"] .admin-header-fixed .admin-badge,
+html[data-theme="light"] .admin-header-fixed .chat-header .admin-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+
+  background: linear-gradient(135deg, #f87171 0%, #dc2626 100%) !important;
+  color: #ffffff !important;
+
+  padding: 4px 12px !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(255, 255, 255, 0.40) !important;
+
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0.5px !important;
+  text-transform: uppercase !important;
+
+  margin-left: 12px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.30) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18) !important;
+
+  vertical-align: middle !important;
+  align-self: center !important;
+}
+
+html[data-theme="light"] .admin-header-fixed .admin-badge i,
+html[data-theme="light"] .admin-header-fixed .chat-header .admin-badge i {
+  color: #ffffff !important;
+  line-height: 1 !important;
+}
