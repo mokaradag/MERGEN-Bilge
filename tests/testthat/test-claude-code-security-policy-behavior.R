@@ -231,3 +231,87 @@ testthat::test_that("cc_policy_dangerous_permissions_allowed oturum ayarı TEK B
     )
   )
 })
+
+# ------------------------------------------------------------------------------
+# cc_policy_permission_args (CLI izin bayrakları birleştirme)
+# ------------------------------------------------------------------------------
+# Bu CLI sözleşmesini sabit env ile çağıran yardımcı (config alanlarını test eder).
+.ccsec_perm_args <- function(config) {
+  .ccsec_with(
+    config,
+    list(
+      CLAUDE_CODE_PERMISSION_MODE = "",
+      CLAUDE_CODE_ALLOWED_TOOLS = "",
+      CLAUDE_CODE_DISALLOWED_TOOLS = ""
+    ),
+    cc_policy_permission_args()
+  )
+}
+
+testthat::test_that("cc_policy_permission_args izin modu ve izinli araçları CLI bayraklarına çevirir", {
+  .ccsec_source_once()
+  args <- .ccsec_perm_args(
+    .ccsec_neutral_cfg(permission_mode = "acceptEdits", allowed_tools = "Read;Write;Edit")
+  )
+  testthat::expect_identical(
+    args,
+    c("--permission-mode", "acceptEdits", "--allowedTools", "Read", "Write", "Edit")
+  )
+})
+
+testthat::test_that("cc_policy_permission_args 'default' modunda --permission-mode bayrağı eklemez", {
+  .ccsec_source_once()
+  args <- .ccsec_perm_args(
+    .ccsec_neutral_cfg(permission_mode = "default", allowed_tools = "Read")
+  )
+  testthat::expect_false("--permission-mode" %in% args)
+  testthat::expect_identical(args, c("--allowedTools", "Read"))
+})
+
+testthat::test_that("cc_policy_permission_args disallowedTools'ı ayrı bayrakla ekler", {
+  .ccsec_source_once()
+  args <- .ccsec_perm_args(
+    .ccsec_neutral_cfg(disallowed_tools = "WebFetch;Bash")
+  )
+  testthat::expect_identical(args, c("--disallowedTools", "WebFetch", "Bash"))
+})
+
+testthat::test_that("cc_policy_permission_args mod ve araç yoksa boş argüman döndürür", {
+  .ccsec_source_once()
+  args <- .ccsec_perm_args(.ccsec_neutral_cfg())
+  testthat::expect_identical(args, character(0))
+})
+
+testthat::test_that("cc_policy_permission_args env ve config araçlarını birleştirip tekilleştirir", {
+  .ccsec_source_once()
+  args <- .ccsec_with(
+    .ccsec_neutral_cfg(permission_mode = "plan", allowed_tools = "Read"),
+    list(
+      CLAUDE_CODE_PERMISSION_MODE = "",
+      CLAUDE_CODE_ALLOWED_TOOLS = "Read;Grep",
+      CLAUDE_CODE_DISALLOWED_TOOLS = ""
+    ),
+    cc_policy_permission_args()
+  )
+  # Read hem config hem env'de var; tekilleştirilir
+  testthat::expect_identical(
+    args,
+    c("--permission-mode", "plan", "--allowedTools", "Read", "Grep")
+  )
+})
+
+testthat::test_that("cc_policy_permission_args settings_data izin modunu onurlar", {
+  .ccsec_source_once()
+  args <- .ccsec_with(
+    .ccsec_neutral_cfg(),
+    list(
+      CLAUDE_CODE_PERMISSION_MODE = "",
+      CLAUDE_CODE_ALLOWED_TOOLS = "",
+      CLAUDE_CODE_DISALLOWED_TOOLS = ""
+    ),
+    cc_policy_permission_args(
+      settings_data = list(claude_code_permission_mode = "acceptEdits")
+    )
+  )
+  testthat::expect_identical(args, c("--permission-mode", "acceptEdits"))
+})
