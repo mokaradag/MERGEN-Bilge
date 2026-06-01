@@ -1721,6 +1721,13 @@ Varsayılan üretim politikası dosya başına 25 MB’tır. Bu değer `MERGEN_U
 - Windows kısa yol (8.3) davranışı nedeniyle fiziksel path basename’i her zaman kullanıcı dostu/orijinal dosya adıyla aynı olmayabilir; kullanıcıya görünen ad için `display`/`display_name` alanı esas alınmalıdır.
 - Bu davranış için küçük bir regresyon testi eklendi: MCP Excel çözümleme zincirinde helper ortamı ve session registry tabanlı dosya bulma yeniden test kapsamına alınmıştır.
 
+MCP dosya kayıt defteri, yüklenen dosyaların kullanıcı tarafından seçilen adla kararlı biçimde çözümlenmesini korur:
+- Yüklenen dosyalar oturum kayıt defterinde dosya jetonu, görünen ad ve basename üzerinden çözümlenir.
+- Kayıt sırasında yol normalizasyonu yalnızca resolver ortamındaki `normalize_excel_path` helper'ı üzerinden yapılmalıdır.
+- Global `normalize_mcp_path` gibi başka bir normalizasyon yolunun Windows 8.3 kısa yollarına düşmesi engellenir.
+- Bu sayede `.xlsx` dosyaları yanlışlıkla `.xls` gibi algılanmaz ve `Çalışma.xlsx` gibi Türkçe karakterli dosya adları korunur.
+- Kullanıcılar tam mutlak yol yerine seçili dosya adını veya dosya jetonunu kullanmalıdır.
+
 ### Son bakım notu (mimari)
 Son bakım turunda özellikle dosya yöneticisi tarafında davranış değiştirmeden tekrar eden politika metinleri azaltılmış, izinli uzantı/politika yardımcıları merkezileştirilmiş ve tekrar eden satır/aksiyon/bağlama-ekle hücre üretimleri küçük yardımcı yapılarla ayrıştırılmıştır.
 

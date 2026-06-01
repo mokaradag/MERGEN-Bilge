@@ -3398,6 +3398,13 @@ On Windows VM, contract tests should prioritize stable behavioral invariants ove
 - MCP/file resolver helpers should not assume path helpers are available only from `globalenv()`. Keep local fallbacks such as `helpers_mcp_tools$normalize_excel_path()` for worker and isolated-test contexts.
 - Resolver diagnostics must go through `helpers_mcp_tools$mcp_debug_log(...)`; do not reintroduce raw `cat("[RESOLVE] ...")` output inside `resolve_file_argument()`. Production debug output must stay off by default and be enabled only through `MERGEN_MCP_DEBUG=true` or `options(mergen.mcp.debug = TRUE)`.
 
+MCP file resolver registry contract:
+- Uploaded files must resolve through the session registry by token, display name, and basename.
+- `register_uploaded_file` must preserve the registered path shape by using the resolver environment dependency `helpers_mcp_tools$normalize_excel_path`.
+- Do not call or reintroduce global `normalize_mcp_path` in the registry normalization path because it can produce Windows 8.3 short-path variants.
+- Avoid regressions where `.xlsx` uploads become short-path `.XLS`-looking names and are misread by Excel tooling.
+- Keep absolute path rejection intact; users and tools should pass file tokens or selected/display names.
+
 ### 9B) Logging wrappers must preserve caller-frame glue evaluation
 
 - `R/config_logging.R` içindeki güvenli log sarmalayıcıları hassas karakter verilerini redakte edebilir; ancak `logger` glue çözümlemesini bozmamalıdır.
@@ -5365,7 +5372,7 @@ Do not assume a plain `runApp(".")` workflow is the safest path for this repo.
 
 ### Evidence hierarchy for Codex/cloud versus VM validation
 
-For documentation-only edits limited to `README.md` and `CLAUDE.md`, do not run R validation; a text diff review is sufficient.
+For documentation-only edits limited to `README.md` and `CLAUDE.md`, do not run R/testthat validation unless the task explicitly asks for runtime validation; a text diff review is sufficient.
 
 When Codex/cloud validation is available, interpret it strictly by the generated proof fields. A passing `cloud-quick` run is supplementary evidence for cloud-safe parse and focused contract scope only. It must not be described as full validation, app boot proof, browser UX proof, VM/SSO/DB proof, SQL Server Turkish encoding proof, or manual fragile-flow proof. `validation_doctor` is guidance only and must never be cited as execution proof.
 
