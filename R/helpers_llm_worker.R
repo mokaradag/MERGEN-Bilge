@@ -612,8 +612,24 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
             mcp_reasoning_stream_file
           ))
 
+          log_info(sprintf(
+            "[MCP REASONING STREAM] second_pass=SSE model=%s stream_file=%s",
+            selected_model,
+            mcp_reasoning_stream_file
+          ))
+
+          sse_roles <- vapply(messages_payload2, function(m) {
+            as.character(m$role %||% "user")[1]
+          }, character(1))
+
+          log_info(sprintf(
+            "[MCP REASONING STREAM] second_pass=SSE normalized_messages=%d roles=%s",
+            length(messages_payload2),
+            paste(sse_roles, collapse = " > ")
+          ))
+
           stream_res2 <- call_local_llm_sse_worker(
-            chat_history = chat_history,
+            chat_history = messages_payload2,
             current_settings = sse_settings,
             stream_file = mcp_reasoning_stream_file,
             stop_file = NULL
