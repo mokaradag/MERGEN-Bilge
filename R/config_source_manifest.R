@@ -35,6 +35,7 @@ source_manifest_after_future_paths <- c(
   "R/config_version_history.R",
   "R/config_api.R",
   "R/helpers_api_model_config.R",
+  "R/helpers_api_model_tool_runtime.R",
   "R/helpers_api_key_identity.R",
   "R/helpers_feature_api_key.R",
   "R/helpers_api_key_password_toggle.R",
@@ -86,6 +87,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_file_manager_table_runtime.R",
   "R/helpers_chat_runtime.R",
   "R/helpers_send_message_request_lifecycle.R",
+  "R/helpers_send_message_model_runtime.R",
   "R/helpers_streaming_abort_lifecycle.R",
   "R/helpers_send_message_core.R",
   "R/helpers_send_message_prompting.R",
@@ -142,6 +144,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_llm_sse.R",
   "R/helpers_llm_worker_payload.R",
   "R/helpers_llm_worker_tool_results.R",
+  "R/helpers_llm_worker_second_pass.R",
   "R/helpers_llm_worker.R",
 
   "R/module_chat_history_background.R",

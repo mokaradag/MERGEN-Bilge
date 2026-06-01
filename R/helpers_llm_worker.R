@@ -558,203 +558,26 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
         })
         }
         
-        # İKİNCİ GEÇİŞ: modeli araç sonuçlarıyla tekrar çağır (araçlar KAPALI)
-        messages_payload2 <- lapply(chat_history, function(msg) {
-          role_val <- if (!is.null(msg$type)) {
-            if (identical(msg$type, "user")) "user"
-            else if (identical(msg$type, "system")) "system"
-            else "assistant"
-          } else if (!is.null(msg$role)) {
-            tolower(as.character(msg$role))
-          } else {
-            "user"
-          }
-          content_val <- msg$content %||% msg$message %||% as.character(msg)
-          list(role = role_val, content = content_val)
-        })
-
-        messages_payload2 <- merge_system_messages_to_front(messages_payload2)
-        
-        body2 <- list(
-          model = selected_model,
-          messages = messages_payload2,
-          stream = FALSE
+        ikinci_gecis <- llm_worker_run_mcp_second_pass(
+          chat_history = chat_history,
+          selected_model = selected_model,
+          settings = settings,
+          api_endpoint = api_endpoint,
+          api_key = api_key,
+          temp_value = temp_value,
+          tool_results_raw = tool_results_raw,
+          chart_blocks_text = chart_blocks_text,
+          charts_to_store = charts_to_store,
+          add_fallback_chart = add_fallback_chart,
+          worker_start_time = worker_start_time
         )
 
-        if (!should_omit_temperature(selected_model)) {
-          body2$temperature <- temp_value
-        }
-        
-        hdrs2 <- list(`Content-Type` = "application/json")
-        if (!is.null(api_key) && nzchar(api_key)) {
-          hdrs2$Authorization <- paste("Bearer", api_key)
-        }
-        
-        mcp_reasoning_stream_file <- as.character(settings$mcp_reasoning_stream_file %||% "")[1]
-        if (is.na(mcp_reasoning_stream_file)) {
-          mcp_reasoning_stream_file <- ""
+        if (!isTRUE(ikinci_gecis$ok)) {
+          return(ikinci_gecis$response)
         }
 
-        mcp_reasoning_stream_enabled <- isTRUE(settings$enable_mcp_reasoning_stream) &&
-          nzchar(mcp_reasoning_stream_file) &&
-          exists("call_local_llm_sse_worker", mode = "function", inherits = TRUE)
-
-        if (isTRUE(mcp_reasoning_stream_enabled)) {
-          sse_settings <- settings
-          sse_settings$model_selection <- selected_model
-          sse_settings$enable_mcp_tools <- FALSE
-          sse_settings$shiny_session <- NULL
-          sse_settings$api_key_override <- api_key %||% settings$api_key_override %||% ""
-
-          # MCP Excel ikinci geçişinde reasoning canlı panelde gösterilir.
-          # Reasoning metni boş cevap durumunda asıl yanıt gövdesi olarak
-          # kullanılmamalıdır; aksi halde "Thinking Process" mesaj gövdesine basılır.
-          sse_settings$allow_reasoning_fallback_override <- FALSE
-
-          log_info(sprintf(
-            "[MCP REASONING STREAM] second_pass=SSE model=%s stream_file=%s",
-            selected_model,
-            mcp_reasoning_stream_file
-          ))
-
-          sse_roles <- vapply(messages_payload2, function(m) {
-            as.character(m$role %||% "user")[1]
-          }, character(1))
-
-          log_info(sprintf(
-            "[MCP REASONING STREAM] second_pass=SSE normalized_messages=%d roles=%s",
-            length(messages_payload2),
-            paste(sse_roles, collapse = " > ")
-          ))
-
-          stream_res2 <- call_local_llm_sse_worker(
-            chat_history = messages_payload2,
-            current_settings = sse_settings,
-            stream_file = mcp_reasoning_stream_file,
-            stop_file = NULL
-          )
-
-          stream_content <- as.character(stream_res2$content %||% "")[1]
-          if (is.na(stream_content)) stream_content <- ""
-
-          stream_reasoning <- as.character(stream_res2$reasoning %||% "")[1]
-          if (is.na(stream_reasoning)) stream_reasoning <- ""
-
-          stream_content_looks_like_reasoning <- nzchar(stream_content) && (
-            identical(trimws(stream_content), trimws(stream_reasoning)) ||
-              grepl(
-                "^\\s*(Thinking Process:|\\*\\*Analyze the Request:|1\\.\\s*\\*\\*Analyze the Request|Okay, I will|Let's assemble|I will structure it)",
-                stream_content,
-                ignore.case = TRUE
-              )
-          )
-
-          if (isTRUE(stream_res2$success) &&
-              nzchar(stream_content) &&
-              !isTRUE(stream_content_looks_like_reasoning)) {
-            ai2 <- stream_content
-            reasoning2 <- stream_res2$reasoning %||% ""
-          } else {
-            log_warn(sprintf(
-              "[MCP REASONING STREAM] second_pass=SSE failed_or_empty; retrying non-streaming. success=%s error=%s content_chars=%d reasoning_chars=%d",
-              isTRUE(stream_res2$success),
-              as.character(stream_res2$error %||% ""),
-              nchar(stream_content %||% ""),
-              nchar(as.character(stream_res2$reasoning %||% "")[1])
-            ))
-
-            # SSE başarısızsa cevabı öldürme; eski çalışan non-streaming ikinci
-            # geçişe geri düş. Canlı reasoning gelmeyebilir ama cevap üretilir.
-            response2 <- httr::POST(
-              api_endpoint,
-              do.call(httr::add_headers, hdrs2),
-              body = jsonlite::toJSON(body2, auto_unbox = TRUE),
-              encode = "raw",
-              httr::timeout(300)
-            )
-
-            status2 <- httr::status_code(response2)
-            if (status2 != 200) {
-              resp_txt2_raw <- try(httr::content(response2, "text", encoding = "UTF-8"), silent = TRUE)
-              resp_txt2 <- if (!inherits(resp_txt2_raw, "try-error") &&
-                               is.character(resp_txt2_raw) &&
-                               length(resp_txt2_raw) > 0) {
-                resp_txt2_raw[[1]]
-              } else {
-                ""
-              }
-
-              log_warn(sprintf(
-                "[MCP REASONING STREAM] non-streaming retry also failed status=%s body=%s",
-                status2,
-                substr(resp_txt2, 1, 500)
-              ))
-
-              fb <- format_answer_from_tool_results(tool_results_raw)
-              if (!(is.character(fb) && length(fb) > 0 && nzchar(trimws(fb[1])))) {
-                fb <- "Araç çıktıları alındı ancak yanıt üretilemedi."
-              }
-              if (is.character(chart_blocks_text) && nzchar(chart_blocks_text)) {
-                fb <- paste0(fb, "\n\n", chart_blocks_text)
-              }
-              fb <- add_fallback_chart(fb)
-
-              return(list(
-                content  = fb,
-                duration = as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")),
-                chart_store = charts_to_store,
-                reasoning_content = stream_res2$reasoning %||% NULL
-              ))
-            }
-
-            rc2 <- httr::content(response2, "parsed")
-
-            ayristirilmis_yanit2 <- extract_llm_content_and_sources(
-              rc2,
-              model_id = selected_model
-            )
-
-            ai2 <- ayristirilmis_yanit2$content
-            reasoning2 <- ayristirilmis_yanit2$reasoning %||% stream_res2$reasoning %||% ""
-          }
-
-        } else {
-          response2 <- httr::POST(
-            api_endpoint,
-            do.call(httr::add_headers, hdrs2),
-            body = jsonlite::toJSON(body2, auto_unbox = TRUE),
-            encode = "raw",
-            httr::timeout(300)
-          )
-
-          status2 <- httr::status_code(response2)
-          if (status2 != 200) {
-            fb <- format_answer_from_tool_results(tool_results_raw)
-            if (!(is.character(fb) && length(fb) > 0 && nzchar(trimws(fb[1])))) {
-              fb <- "Araç çıktıları alındı ancak yanıt üretilemedi."
-            }
-            if (is.character(chart_blocks_text) && nzchar(chart_blocks_text)) {
-              fb <- paste0(fb, "\n\n", chart_blocks_text)
-            }
-            fb <- add_fallback_chart(fb)
-
-            return(list(
-              content  = fb,
-              duration = as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")),
-              chart_store = charts_to_store
-            ))
-          }
-
-          rc2 <- httr::content(response2, "parsed")
-
-          ayristirilmis_yanit2 <- extract_llm_content_and_sources(
-            rc2,
-            model_id = selected_model
-          )
-
-          ai2 <- ayristirilmis_yanit2$content
-          reasoning2 <- ayristirilmis_yanit2$reasoning %||% ""
-        }
+        ai2 <- ikinci_gecis$ai2
+        reasoning2 <- ikinci_gecis$reasoning2
         
     if (!(is.character(ai2) && length(ai2) > 0 && nzchar(ai2[1]))) {
       fb <- format_answer_from_tool_results(tool_results_raw)
