@@ -83,6 +83,17 @@ Current contract:
 - Be careful with R constants: use exactly `NA_character_`. A typo such as `NA_character__` can break app startup through DB parameter normalization.
 - Do not add CDN or external dependencies for encoding repair.
 
+### Version history path resolution contract
+
+- `version_history.md` remains at the repository root for real application version data.
+- `get_version_history()` must call `resolve_version_history_md_path()`; do not revert it to `file.path(getwd(), "version_history.md")`.
+- The resolver must first honor a local `version_history.md` in the current working directory, then walk upward through parent directories.
+- Do not globally prefer the repository root before checking `getwd()`; parsing tests intentionally create synthetic temporary `version_history.md` files and must keep reading those local fixtures.
+- `testthat` runs from `tests/testthat` should find the root `version_history.md` through upward search.
+- Empty temporary directories without `version_history.md` must still produce the warning plus default fallback behavior.
+- Keep `tests/testthat/test-version-history-label-behavior.R` and `tests/testthat/test-version-history-parsing-behavior.R` aligned with this contract.
+- Do not solve this by broad boot, working-directory, or global path changes.
+
 ### 1C) Streaming and final markdown HTML safety boundary
 
 Browser-rendered markdown is a protected security boundary. User-controlled and LLM-controlled prose must never pass to `innerHTML` as raw HTML.

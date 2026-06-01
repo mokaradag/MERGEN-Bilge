@@ -60,6 +60,10 @@ MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığ�
 
 Yalnızca `README.md` / `CLAUDE.md` dokümantasyon değişikliklerinde R doğrulaması çalıştırılmaz; metin farkı incelemesi yeterlidir.
 
+### Sürüm geçmişi dosya yolu çözümleme kararlılığı
+
+`version_history.md` dosyası repo kökünde kalır; `R/config_version_history.R` içindeki `resolve_version_history_md_path()` önce mevcut çalışma dizinindeki yerel `version_history.md` dosyasını dikkate alır, sonra üst dizinlere doğru arama yapar. Bu davranış, `tests/testthat` altından çalışan sürüm etiketi testlerinin repo kökündeki gerçek dosyayı bulmasını sağlarken, `getwd()` altında sentetik `version_history.md` oluşturan ayrıştırma testlerinin kendi geçici dosyalarını kullanmasını korur; boş/geçici dizinde dosya yoksa beklenen uyarı ve varsayılan sürüm davranışı korunur. Görünür kullanıcı arayüzü değişikliği yoktur.
+
 ### Davranışsal test kapsamı güncellemesi
 
 `32dd9afd0d993e3590b51db296999c9ca78dd1af` güncellemesi, görünür kullanıcı akışını değiştirmeden odaklı davranışsal regresyon kapsamını genişletti. Kapsam; AI Uzman metin parçalama davranışı, API anahtarı kimlik ve varsayılan kurum anahtarı çözümleme sınırı, Bilge Yolaç plugin bileşen tespiti, prompt yol güvenliği ve araç kullanımı HTML kaçışlama sınırı, derin düşünme model çözümleme, araç türü tespiti, dosya indeksi ipuçlu arama, Sistem Durumu saf biçimlendiricileri, LLM/SSE kaynak ayrıştırma ve kaynakça üretimi, araç sonucu kısa yanıt biçimlendirme, log redaksiyonu iç yardımcıları, kullanıcı ve global hız sınırlama, metin/kod ayrıştırma, özetleme kullanıcı promptu üretimi ve sürüm geçmişi ayrıştırma alanlarını korur. Bu odak testler, ürün davranışını sabit tutarken ilerideki refaktörlerin güvenli yapılmasına yardımcı olur.
