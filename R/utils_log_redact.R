@@ -20,6 +20,7 @@
     "LOCAL_LLM_API_KEY",
     "LOCAL_LLM_ENDPOINT_ALT_API_KEY",
     "LOCAL_TTS_API_KEY",
+    "LOCAL_STT_API_KEY",
     "SERVICE_DESK_API_KEY_URL",
     "ANTHROPIC_API_KEY",
     "CLAUDE_CODE_API_KEY",
@@ -72,6 +73,16 @@ redact_sensitive_text <- function(x) {
     if (is.na(elem) || !nzchar(elem)) return(elem)
 
     metin <- elem
+
+    # 0) PEM özel anahtar blokları: -----BEGIN ... PRIVATE KEY----- ... END.
+    # TLS/NODE_EXTRA_CA_CERTS/SSO bağlamında bir hata veya yapılandırma dökümü
+    # özel anahtar gövdesini loglara taşıyabilir. (?s) çok satırlı eşleşme sağlar.
+    metin <- gsub(
+      "(?s)-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+      "<private-key-redacted>",
+      metin,
+      perl = TRUE
+    )
 
     # 1) JWT formatı: header.payload.signature (URL-safe base64 parçaları).
     # Üretimde decode edilmiş token'ların log'a girmesi en yaygın risktir.
