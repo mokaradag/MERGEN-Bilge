@@ -70,7 +70,8 @@ api_config <- list(
     "Dropdown display model 3" = "technical name 3",
     "Dropdown display model 4" = "technical name 4",
     "Dropdown display model 5" = "technical name 5",
-    "Dropdown display model 6" = "technical name 6"
+	"Dropdown display model 6" = "technical name 6",
+    "Dropdown display model 7" = "technical name 7"
   ),
   # Model açıklamaları (tooltip'ler için)
   local_model_descriptions = list(
@@ -79,7 +80,8 @@ api_config <- list(
     "technical name 3" = "Gelişmiş akıl yürütme",
     "technical name 4" = "Yüksek hassasiyet, detaylı analiz",
     "technical name 5" = "İkincil endpoint modeli",
-    "technical name 6" = "Özel görevler için optimize"
+    "technical name 6" = "Özel görevler için optimize",
+	"technical name 7" = "Özel görevler için optimize"
   ),
   # Model bağlam penceresi boyutları
   local_model_context_sizes = list(
@@ -88,7 +90,8 @@ api_config <- list(
     "technical name 3" = "256K",
     "technical name 4" = "128K",
     "technical name 5" = "200K",
-    "technical name 6" = "128K"
+    "technical name 6" = "256K",
+	"technical name 7" = "128K"
   ),
   # Dropdown'da model adlarının yanında gösterilecek Unicode ikonlar
   local_model_icons = list(
@@ -96,8 +99,9 @@ api_config <- list(
     "technical name 2" = "\U0001F680",
     "technical name 3" = "\U0001F9E0",
     "technical name 4" = "\U0001F50D",
-    "technical name 5" = "\U0001F310",
-    "technical name 6" = "\U00002699"
+	"technical name 5" = "\U0001F50D",
+    "technical name 6" = "\U0001F310",
+    "technical name 7" = "\U00002699"
   ),
   # Her teknik model kimliğini bir uç nokta anahtarına eşle.
   # Derin Düşünme modelleri yalnızca temel haritada bulunmuyorsa eklenir.
@@ -108,8 +112,9 @@ api_config <- list(
     "technical name 2" = "primary",
     "technical name 3" = "primary",
     "technical name 4" = "primary",
-    "technical name 5" = "secondary",
-    "technical name 6" = "secondary"
+	"technical name 5" = "primary",
+    "technical name 6" = "secondary",
+    "technical name 7" = "secondary"
   ),
   # Excel/Kod araçlarındaki Derin Düşünme düğmesi için (family, level) -> model_id eşlemesi.
   # Bu modeller dropdown'larda görünmez; sadece runtime'da seçilir.
@@ -244,16 +249,24 @@ api_config <- list(
 	  )
 	),
     "technical name 5" = list(
-      thinking = FALSE,
-      omit_temperature = FALSE,
-      stream_reasoning = FALSE,
-      allow_reasoning_fallback = FALSE
-    ),
+	  thinking = TRUE,
+	  omit_temperature = TRUE,
+	  stream_reasoning = TRUE,
+	  allow_reasoning_fallback = TRUE,
+	  request_overrides = list()
+    )
     "technical name 6" = list(
       thinking = FALSE,
       omit_temperature = FALSE,
       stream_reasoning = FALSE,
       allow_reasoning_fallback = FALSE
+    ),
+    "technical name 7" = list(
+	  thinking = TRUE,
+	  omit_temperature = TRUE,
+	  stream_reasoning = TRUE,
+	  allow_reasoning_fallback = TRUE,
+	  request_overrides = list()
     )
   )
 )
@@ -269,11 +282,10 @@ api_config <- list(
   omit_temperature = TRUE,
   stream_reasoning = TRUE,
   allow_reasoning_fallback = TRUE,
-  request_overrides = list(
-    chat_template_kwargs = list(
-      enable_thinking = TRUE
-    )
-  )
+
+  # Güvenli varsayılan: bilinmeyen deep model için ekstra body alanı ekleme.
+  # Model özel override gerekiyorsa local_model_capabilities içinde açıkça tanımlanmalı.
+  request_overrides = list()
 )
 
 for (.mb_dt_model in unique(c(excel_deep_low_model, excel_deep_high_model,
