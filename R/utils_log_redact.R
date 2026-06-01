@@ -88,7 +88,7 @@ redact_sensitive_text <- function(x) {
 
     # 3) URL query string parametreleri: ?token=, &password=, &api_key=, &secret=
     metin <- gsub(
-      "(?i)([?&](?:token|password|passwd|api[_-]?key|apikey|secret|access[_-]?token)=)[^&#\\s]+",
+      "(?i)([?&](?:token|password|passwd|pwd|api[_-]?key|apikey|secret|access[_-]?token)=)[^&#\\s]+",
       "\\1<redacted>",
       metin,
       perl = TRUE
@@ -96,6 +96,8 @@ redact_sensitive_text <- function(x) {
 
     # 3B) Header / key-value biçimindeki sırları maskele:
     # api_key = ..., x-api-key: ..., password: ..., client_secret=...
+    # ODBC/SQL Server bağlantı dizeleri "Pwd=..." kullandığı için "pwd" de eklenir;
+    # aksi halde loglanan bir DSN-less bağlantı dizesi parolayı sızdırabilir.
     secret_key_pattern <- paste(
       c(
         "api[_-]?key",
@@ -107,7 +109,8 @@ redact_sensitive_text <- function(x) {
         "secret",
         "client[_-]?secret",
         "password",
-        "passwd"
+        "passwd",
+        "pwd"
       ),
       collapse = "|"
     )
