@@ -28,27 +28,50 @@
 
 repo_root_llm_worker_second_pass <- .find_repo_root_llm_worker_second_pass()
 
-if (!exists("%||%", mode = "function", inherits = TRUE)) {
-  `%||%` <- function(x, y) if (is.null(x)) y else x
-}
+assign(
+  "%||%",
+  function(x, y) if (is.null(x)) y else x,
+  envir = globalenv()
+)
 
-log_info <- function(...) invisible(NULL)
-log_warn <- function(...) invisible(NULL)
+assign(
+  "log_info",
+  function(...) invisible(NULL),
+  envir = globalenv()
+)
 
-should_omit_temperature <- function(model_id) {
-  identical(model_id, "temperature-omitting-test-model")
-}
+assign(
+  "log_warn",
+  function(...) invisible(NULL),
+  envir = globalenv()
+)
 
-format_answer_from_tool_results <- function(tool_results_raw) {
-  "Araç sonucu yedek yanıtı"
-}
+assign(
+  "should_omit_temperature",
+  function(model_id) {
+    identical(model_id, "temperature-omitting-test-model")
+  },
+  envir = globalenv()
+)
 
-extract_llm_content_and_sources <- function(parsed, model_id = NULL) {
-  list(
-    content = parsed$content %||% "",
-    reasoning = parsed$reasoning %||% ""
-  )
-}
+assign(
+  "format_answer_from_tool_results",
+  function(tool_results_raw) {
+    "Araç sonucu yedek yanıtı"
+  },
+  envir = globalenv()
+)
+
+assign(
+  "extract_llm_content_and_sources",
+  function(parsed, model_id = NULL) {
+    list(
+      content = parsed$content %||% "",
+      reasoning = parsed$reasoning %||% ""
+    )
+  },
+  envir = globalenv()
+)
 
 source(
   file.path(repo_root_llm_worker_second_pass, "R", "helpers_llm_worker_payload.R"),
