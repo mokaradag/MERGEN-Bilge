@@ -28,6 +28,36 @@
 
 repo_root_llm_worker_second_pass <- .find_repo_root_llm_worker_second_pass()
 
+.second_pass_stub_names <- c(
+  "%||%",
+  "log_info",
+  "log_warn",
+  "should_omit_temperature",
+  "format_answer_from_tool_results",
+  "extract_llm_content_and_sources"
+)
+
+.second_pass_old_bindings <- lapply(.second_pass_stub_names, function(nm) {
+  if (exists(nm, envir = globalenv(), inherits = FALSE)) {
+    list(exists = TRUE, value = get(nm, envir = globalenv(), inherits = FALSE))
+  } else {
+    list(exists = FALSE, value = NULL)
+  }
+})
+names(.second_pass_old_bindings) <- .second_pass_stub_names
+
+testthat::teardown({
+  for (nm in names(.second_pass_old_bindings)) {
+    old_binding <- .second_pass_old_bindings[[nm]]
+
+    if (isTRUE(old_binding$exists)) {
+      assign(nm, old_binding$value, envir = globalenv())
+    } else if (exists(nm, envir = globalenv(), inherits = FALSE)) {
+      rm(list = nm, envir = globalenv())
+    }
+  }
+})
+
 assign(
   "%||%",
   function(x, y) if (is.null(x)) y else x,
@@ -48,7 +78,7 @@ assign(
 
 assign(
   "should_omit_temperature",
-  function(model_id) {
+  function(model_id, config = NULL) {
     identical(model_id, "temperature-omitting-test-model")
   },
   envir = globalenv()
