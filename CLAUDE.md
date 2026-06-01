@@ -3405,7 +3405,28 @@ MCP file resolver registry contract:
 - Avoid regressions where `.xlsx` uploads become short-path `.XLS`-looking names and are misread by Excel tooling.
 - Keep absolute path rejection intact; users and tools should pass file tokens or selected/display names.
 
-### 9B) Logging wrappers must preserve caller-frame glue evaluation
+### 9B) Tool-Specific Runtime Model Resolution and Reasoning Streams
+
+Runtime model selection must remain a single source of truth. Resolve the request model once from the active tool family, deep-thinking enabled state, deep-thinking level, and current mode, then use that same resolved model for the LLM payload, the Düşünce Akışı badge, and final-boundary request logging. The badge must never read directly from the normal model dropdown or default model when a tool-specific deep-thinking model is active.
+
+MCP Excel uses a two-pass flow: the first pass performs tool execution, and the second pass produces the final synthesis. When enabled for a thinking-capable model, the second MCP Excel synthesis pass may use SSE to stream reasoning into the Düşünce Akışı panel. The second pass must use normalized messages rather than raw ad hoc chat history. If SSE fails or produces reasoning-like text as content, fall back to non-streaming second-pass answer generation. Do not use reasoning text as the final user-visible answer body. Avoid duplicated reasoning panels; live reasoning and persisted reasoning must not render as two visible panels in the same answer.
+
+Model names are deployment configuration, not contract. Tests and docs must use generic model IDs or configuration keys such as `EXCEL_DEEP_LOW_MODEL`, `EXCEL_DEEP_HIGH_MODEL`, `CODING_DEEP_LOW_MODEL`, `CODING_DEEP_HIGH_MODEL`, `api_config$local_model_capabilities`, and `api_config$local_model_endpoint_map` rather than hardcoded live production model names.
+
+Files to touch:
+- Runtime model resolver changes belong in `R/helpers_api_model_tool_runtime.R`.
+- Send-message runtime preparation belongs in `R/helpers_send_message_model_runtime.R`.
+- MCP second-pass/SSE/fallback behavior belongs in `R/helpers_llm_worker_second_pass.R`.
+- Do not add large new logic back into `R/server_send_message.R` or `R/helpers_llm_worker.R`.
+- Keep `R/config_source_manifest.R` ordering correct when new helper files are introduced.
+
+Testing expectations:
+- Prefer behavior tests with synthetic model IDs.
+- Do not write tests that depend on current production model names.
+- Relevant regression tests include `tests/testthat/test-send-message-model-runtime-contract.R`, `tests/testthat/test-llm-worker-second-pass-contract.R`, `tests/testthat/test-api-model-config-refactor-contract.R`, `tests/testthat/test-send-message-request-lifecycle-contract.R`, and `tests/testthat/test-maintainability-ratchet.R`.
+- Maintainability ratchet should be satisfied by refactoring into focused helpers, not by increasing thresholds.
+
+### 9C) Logging wrappers must preserve caller-frame glue evaluation
 
 - `R/config_logging.R` içindeki güvenli log sarmalayıcıları hassas karakter verilerini redakte edebilir; ancak `logger` glue çözümlemesini bozmamalıdır.
 - `{nchar(token)}` gibi ifadeler, log çağrısının yapıldığı gerçek çağıran ortamda çözülmeye devam etmelidir (ör. SSO observer scope'u).
