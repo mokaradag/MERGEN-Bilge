@@ -590,42 +590,95 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           hdrs2$Authorization <- paste("Bearer", api_key)
         }
         
-        response2 <- httr::POST(
-          api_endpoint,
-          do.call(httr::add_headers, hdrs2),
-          body = jsonlite::toJSON(body2, auto_unbox = TRUE),
-          encode = "raw",
-          httr::timeout(300)
-        )
-        
-    status2 <- httr::status_code(response2)
-    if (status2 != 200) {
-      fb <- format_answer_from_tool_results(tool_results_raw)
-      if (!(is.character(fb) && length(fb) > 0 && nzchar(trimws(fb[1])))) {
-      fb <- "Araç çıktıları alındı ancak yanıt üretilemedi."
-      }
-      if (is.character(chart_blocks_text) && nzchar(chart_blocks_text)) {
-      fb <- paste0(fb, "\n\n", chart_blocks_text)
-      }
-      # Eğer grafik hâlâ yoksa zorunlu yedek grafiği ekle
-      fb <- add_fallback_chart(fb)
+        mcp_reasoning_stream_file <- as.character(settings$mcp_reasoning_stream_file %||% "")[1]
+        if (is.na(mcp_reasoning_stream_file)) {
+          mcp_reasoning_stream_file <- ""
+        }
 
-      return(list(
-      content  = fb,
-      duration = as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")),
-      chart_store = charts_to_store
-      ))
-    }
+        mcp_reasoning_stream_enabled <- isTRUE(settings$enable_mcp_reasoning_stream) &&
+          nzchar(mcp_reasoning_stream_file) &&
+          exists("call_local_llm_sse_worker", mode = "function", inherits = TRUE)
 
-    rc2 <- httr::content(response2, "parsed")
+        if (isTRUE(mcp_reasoning_stream_enabled)) {
+          sse_settings <- settings
+          sse_settings$model_selection <- selected_model
+          sse_settings$enable_mcp_tools <- FALSE
+          sse_settings$shiny_session <- NULL
+          sse_settings$api_key_override <- api_key %||% settings$api_key_override %||% ""
 
-    ayristirilmis_yanit2 <- extract_llm_content_and_sources(
-      rc2,
-      model_id = selected_model
-    )
+          log_info(sprintf(
+            "[MCP REASONING STREAM] second_pass=SSE model=%s stream_file=%s",
+            selected_model,
+            mcp_reasoning_stream_file
+          ))
 
-    ai2 <- ayristirilmis_yanit2$content
-    reasoning2 <- ayristirilmis_yanit2$reasoning %||% ""
+          stream_res2 <- call_local_llm_sse_worker(
+            chat_history = chat_history,
+            current_settings = sse_settings,
+            stream_file = mcp_reasoning_stream_file,
+            stop_file = NULL
+          )
+
+          status2 <- if (isTRUE(stream_res2$success)) 200L else 500L
+
+          if (status2 != 200) {
+            fb <- format_answer_from_tool_results(tool_results_raw)
+            if (!(is.character(fb) && length(fb) > 0 && nzchar(trimws(fb[1])))) {
+              fb <- "Araç çıktıları alındı ancak yanıt üretilemedi."
+            }
+            if (is.character(chart_blocks_text) && nzchar(chart_blocks_text)) {
+              fb <- paste0(fb, "\n\n", chart_blocks_text)
+            }
+            fb <- add_fallback_chart(fb)
+
+            return(list(
+              content  = fb,
+              duration = as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")),
+              chart_store = charts_to_store,
+              reasoning_content = stream_res2$reasoning %||% NULL
+            ))
+          }
+
+          ai2 <- stream_res2$content %||% ""
+          reasoning2 <- stream_res2$reasoning %||% ""
+
+        } else {
+          response2 <- httr::POST(
+            api_endpoint,
+            do.call(httr::add_headers, hdrs2),
+            body = jsonlite::toJSON(body2, auto_unbox = TRUE),
+            encode = "raw",
+            httr::timeout(300)
+          )
+
+          status2 <- httr::status_code(response2)
+          if (status2 != 200) {
+            fb <- format_answer_from_tool_results(tool_results_raw)
+            if (!(is.character(fb) && length(fb) > 0 && nzchar(trimws(fb[1])))) {
+              fb <- "Araç çıktıları alındı ancak yanıt üretilemedi."
+            }
+            if (is.character(chart_blocks_text) && nzchar(chart_blocks_text)) {
+              fb <- paste0(fb, "\n\n", chart_blocks_text)
+            }
+            fb <- add_fallback_chart(fb)
+
+            return(list(
+              content  = fb,
+              duration = as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")),
+              chart_store = charts_to_store
+            ))
+          }
+
+          rc2 <- httr::content(response2, "parsed")
+
+          ayristirilmis_yanit2 <- extract_llm_content_and_sources(
+            rc2,
+            model_id = selected_model
+          )
+
+          ai2 <- ayristirilmis_yanit2$content
+          reasoning2 <- ayristirilmis_yanit2$reasoning %||% ""
+        }
         
     if (!(is.character(ai2) && length(ai2) > 0 && nzchar(ai2[1]))) {
       fb <- format_answer_from_tool_results(tool_results_raw)

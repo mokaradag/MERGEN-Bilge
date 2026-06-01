@@ -141,7 +141,8 @@ mergen_clear_welcome_for_send_message <- function(session, values) {
 
 mergen_build_thinking_panel_plan <- function(tool_family,
                                              settings_data,
-                                             resolved_model_id = NULL) {
+                                             resolved_model_id = NULL,
+                                             reasoning_will_stream_override = NULL) {
   panel_model_id <- tryCatch({
     supplied_model <- as.character(resolved_model_id %||% "")[1]
 
@@ -165,12 +166,16 @@ mergen_build_thinking_panel_plan <- function(tool_family,
     error = function(e) FALSE
   )
 
-  reasoning_will_stream <- isTRUE(settings_data$enable_streaming) &&
-    !identical(tool_family, "mcp_excel") &&
-    !identical(tool_family, "sql_analysis") &&
-    !identical(tool_family, "image") &&
-    !identical(tool_family, "summarization") &&
-    !isTRUE(settings_data$enable_tts_audio)
+  reasoning_will_stream <- if (!is.null(reasoning_will_stream_override)) {
+    isTRUE(reasoning_will_stream_override)
+  } else {
+    isTRUE(settings_data$enable_streaming) &&
+      !identical(tool_family, "mcp_excel") &&
+      !identical(tool_family, "sql_analysis") &&
+      !identical(tool_family, "image") &&
+      !identical(tool_family, "summarization") &&
+      !isTRUE(settings_data$enable_tts_audio)
+  }
 
   classic_indicator_requested <- isTRUE(settings_data$enable_typing_indicator)
   panel_simulated <- !isTRUE(thinking_model_active) || !isTRUE(reasoning_will_stream)

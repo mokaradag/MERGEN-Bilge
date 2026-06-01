@@ -98,13 +98,40 @@ aiProcessingServer <- function(id) {
 		  meta = list(
 			model = model_selected
 		  ),
-		  globals = list(
-			call_llm_worker = call_llm_worker,
-			history_copy = history_copy,
-			settings_copy = settings_copy,
-			api_endpoint = api_endpoint,
-			api_key_val = api_key_val
-		  )
+          globals = list(
+            call_llm_worker = call_llm_worker,
+            call_local_llm_sse_worker = call_local_llm_sse_worker,
+            history_copy = history_copy,
+            settings_copy = settings_copy,
+            api_endpoint = api_endpoint,
+            api_key_val = api_key_val,
+            get_local_model_capabilities = get_local_model_capabilities,
+            should_omit_temperature = should_omit_temperature,
+            should_allow_reasoning_fallback = should_allow_reasoning_fallback,
+            apply_model_request_overrides = apply_model_request_overrides,
+            normalize_llm_text_node = normalize_llm_text_node,
+            extract_first_nonempty_llm_text = extract_first_nonempty_llm_text,
+            extract_llm_text_bundle = extract_llm_text_bundle,
+            extract_llm_delta_bundle = extract_llm_delta_bundle,
+            `%||%` = `%||%`,
+            resolve_local_llm_endpoint = resolve_local_llm_endpoint,
+            resolve_local_llm_credentials = resolve_local_llm_credentials,
+            extract_llm_content_and_sources = extract_llm_content_and_sources,
+            normalize_llm_scalar_content = normalize_llm_scalar_content,
+            strip_planner_text = strip_planner_text,
+            decode_utf8_raw_chunk = decode_utf8_raw_chunk,
+            create_utf8_stream_decoder = create_utf8_stream_decoder,
+            find_last_utf8_boundary = find_last_utf8_boundary,
+            parse_llm_sse_event = parse_llm_sse_event,
+            extract_llm_delta_text = extract_llm_delta_text,
+            extract_llm_event_sources = extract_llm_event_sources,
+            append_stream_delta_line = append_stream_delta_line,
+            append_stream_reasoning_line = append_stream_reasoning_line,
+            streaming_should_stop = streaming_should_stop,
+            log_info = log_info,
+            log_warn = log_warn,
+            api_config = api_config
+          )
 		)
       
       # Transform promise to standardized format

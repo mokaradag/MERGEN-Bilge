@@ -58,6 +58,88 @@ llmResponseHandlersInit <- function(
     }
 
     active_request_id(req_id)
+	
+    mcp_reasoning_stream_file <- NULL
+    mcp_reasoning_stream_observer <- NULL
+    mcp_reasoning_lines_read <- 0L
+
+    drain_mcp_reasoning_stream <- function() {
+      if (is.null(mcp_reasoning_stream_file) ||
+          !nzchar(mcp_reasoning_stream_file) ||
+          !file.exists(mcp_reasoning_stream_file)) {
+        return(invisible(NULL))
+      }
+
+      satirlar <- tryCatch(
+        suppressWarnings(readLines(mcp_reasoning_stream_file, warn = FALSE, encoding = "UTF-8")),
+        error = function(e) {
+          tryCatch(
+            suppressWarnings(readLines(mcp_reasoning_stream_file, warn = FALSE)),
+            error = function(e2) character(0)
+          )
+        }
+      )
+
+      if (length(satirlar) <= mcp_reasoning_lines_read) {
+        return(invisible(NULL))
+      }
+
+      yeni_satirlar <- satirlar[seq.int(mcp_reasoning_lines_read + 1L, length(satirlar))]
+      mcp_reasoning_lines_read <<- length(satirlar)
+
+      reasoning_batch <- character(0)
+
+      for (satir in yeni_satirlar) {
+        payload <- tryCatch(
+          jsonlite::fromJSON(satir, simplifyVector = TRUE),
+          error = function(e) NULL
+        )
+
+        if (is.null(payload)) next
+
+        payload_type <- as.character(payload$type %||% "")
+
+        if (identical(payload_type, "stream_debug")) {
+          debug_text <- decode_stream_delta_payload(payload)
+          if (nzchar(debug_text)) log_info(debug_text)
+          next
+        }
+
+        if (identical(payload_type, "reasoning_delta")) {
+          reasoning_text <- decode_stream_delta_payload(payload)
+          if (nzchar(reasoning_text)) {
+            reasoning_batch <- c(reasoning_batch, reasoning_text)
+          }
+        }
+      }
+
+      if (length(reasoning_batch) > 0) {
+        session$sendCustomMessage("streamingReasoningDelta", list(
+          delta = paste0(reasoning_batch, collapse = ""),
+          started = TRUE,
+          requestId = req_id
+        ))
+      }
+
+      invisible(NULL)
+    }
+
+    if (isTRUE(current_settings$enable_mcp_reasoning_stream)) {
+      mcp_reasoning_stream_file <- tempfile(
+        pattern = paste0("mcp_reasoning_", req_id, "_"),
+        fileext = ".jsonl"
+      )
+
+      file.create(mcp_reasoning_stream_file)
+
+      current_settings$mcp_reasoning_stream_file <- mcp_reasoning_stream_file
+      current_settings$mcp_reasoning_request_id <- req_id
+
+      mcp_reasoning_stream_observer <- shiny::observe({
+        shiny::invalidateLater(80, session)
+        drain_mcp_reasoning_stream()
+      })
+    }
  
     # Debug için ayarları kaydet (session hariç)
     safe_settings <- current_settings
@@ -214,6 +296,17 @@ llmResponseHandlersInit <- function(
             # Sohbet akışını bozmamak için placeholder mesaj ekle
             ai_msg <- add_message_fn("\U000026A0\U0000FE0F Model boş bir yanıt döndürdü (loglandı).", "ai")
           })
+		  
+          if (isTRUE(current_settings$enable_mcp_reasoning_stream) &&
+              !is.null(ai_msg) &&
+              !is.null(ai_msg$id)) {
+            try(drain_mcp_reasoning_stream(), silent = TRUE)
+
+            session$sendCustomMessage("premiumReasoningStreamStart", list(
+              id = ai_msg$id,
+              requestId = req_id
+            ))
+          }
  
           # TTS'i tetikle (eğer mesaj eklendiyse ve durdurulmadıysa)
           if (!is.null(ai_msg) && !isTRUE(stop_generation())) {
@@ -282,6 +375,17 @@ llmResponseHandlersInit <- function(
  
     # Promise tamamlandığında her zaman temizlik yap
     promises::finally(p2, onFinally = function() {
+      try(drain_mcp_reasoning_stream(), silent = TRUE)
+
+      if (!is.null(mcp_reasoning_stream_observer)) {
+        try(mcp_reasoning_stream_observer$destroy(), silent = TRUE)
+        mcp_reasoning_stream_observer <- NULL
+      }
+
+      if (!is.null(mcp_reasoning_stream_file) && nzchar(mcp_reasoning_stream_file)) {
+        try(unlink(mcp_reasoning_stream_file, force = TRUE), silent = TRUE)
+      }
+
       reset_chat_state_fn()
     })
  

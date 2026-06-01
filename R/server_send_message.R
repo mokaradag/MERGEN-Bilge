@@ -234,11 +234,32 @@ sendMessageInit <- function(
       model_selected
     ))
 
+    thinking_model_detected_early <- tryCatch(
+      isTRUE(is_thinking_model(model_selected)),
+      error = function(e) FALSE
+    )
+
+    mcp_reasoning_stream_on <- identical(tool_family, "mcp_excel") &&
+      isTRUE(thinking_model_detected_early) &&
+      isTRUE(current_settings$enable_streaming) &&
+      !isTRUE(settings_data$enable_tts_audio)
+
+    current_settings$enable_mcp_reasoning_stream <- mcp_reasoning_stream_on
+    current_settings$mcp_reasoning_request_id <- req_id
+
+    log_info(sprintf(
+      "[MCP REASONING STREAM] enabled=%s tool=%s model=%s",
+      mcp_reasoning_stream_on,
+      tool_family,
+      model_selected
+    ))
+
     values$typing <- TRUE
     thinking_panel_plan <- mergen_build_thinking_panel_plan(
       tool_family = tool_family,
       settings_data = settings_data,
-      resolved_model_id = model_selected
+      resolved_model_id = model_selected,
+      reasoning_will_stream_override = if (isTRUE(mcp_reasoning_stream_on)) TRUE else NULL
     )
     mergen_show_send_message_thinking_wrapper(session, thinking_panel_plan, request_id = req_id)
 
