@@ -293,6 +293,47 @@ Browser UX smoke execution rules:
 - Forbidden dependency scans in the runner contract must ignore R comment lines before scanning so explanatory comments do not create false positives.
 - Do not revert Linux/RSPM package bootstrap defaults to `pkgType = "binary"`; keep source-style defaults unless `MERGEN_AI_R_PKG_TYPE` is explicitly set.
 
+### Claude Code on the web (cloud session) R environment contract
+
+This repo is a Shiny app, and Claude Code web sessions need R installed before
+tests can run. The provisioning is intentionally split and must stay aligned.
+
+Current contract:
+
+- `.claude/hooks/session-start.sh` is a SessionStart hook (matcher
+  `startup|resume`) registered in `.claude/settings.json` alongside the existing
+  `Stop` validation hook. It runs only in the remote/web environment
+  (`CLAUDE_CODE_REMOTE=true`), is idempotent, persists test-mode env vars through
+  `CLAUDE_ENV_FILE` (`TZ=UTC`, `MERGEN_RUN_APP=false`,
+  `MERGEN_DISABLE_FUTURES=true`, plus placeholder `LOCAL_LLM_ENDPOINT`/`DB_DSN`/
+  `AI_KEYS_MASTER`), and then calls `tools/setup_ai_r_environment.sh`. It must
+  degrade gracefully (warn, exit 0) if package repos are unreachable so the
+  session is not bricked.
+- The hook must not duplicate the package list. `tools/setup_ai_r_environment.sh`
+  remains the single installer and reads `required_packages` from
+  `R/config_packages.R` via `tests/scripts/ci_install_packages.R`.
+- For "install once and reuse" (environment caching), the heavy install belongs
+  in the cloud environment **Setup script** field (`bash tools/setup_ai_r_environment.sh`),
+  which is snapshotted and skipped on later sessions. The SessionStart hook is the
+  per-session idempotent safety net and env-var setter, not the cache owner.
+- Network access: the web environment must allowlist `packagemanager.posit.co`
+  (RSPM) and `cloud.r-project.org` (CRAN + the apt repo for the latest R). R is
+  not in the default Trusted list; without these, package repos return HTTP 403.
+- R version policy: `tools/setup_ai_r_environment.sh` installs the latest R from
+  the CRAN apt repo (`<codename>-cran40`) by default to track the on-prem VM
+  (currently R 4.5.1, upgraded over time), with graceful fallback to the distro
+  `r-base`. Override with `MERGEN_AI_INSTALL_LATEST_R=false`. Do not pin a single
+  hard-coded R version in the installer; on-prem parity and CI (R 4.4 / 4.5) must
+  keep working as the on-prem version advances.
+- Do not add CDN/runtime-download dependencies or duplicate the CI workflows for
+  this path. GitHub CI (`.github/workflows/mergen-ai-validation.yml`,
+  `tests.yml`) already covers validation independently.
+- Operator/setup details live in `.claude/web-environment.md`; keep that file and
+  this contract aligned when changing the hook, installer, or network policy.
+- This is cloud-bootstrap/provisioning infrastructure, not app logic. A passing
+  cloud session still does not prove runtime/VM/SSO/DB or SQL Server Turkish
+  encoding behavior; those remain the VM preflight gates in `RUNBOOK.md`.
+
 ### AI agent validation rule
 
 Validation doctor:
