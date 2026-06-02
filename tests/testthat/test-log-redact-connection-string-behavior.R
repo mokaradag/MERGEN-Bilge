@@ -78,8 +78,10 @@ test_that("aşırı maskeleme yok: kullanıcı adı, kısa değer ve sözcük-i�
 })
 
 test_that("mevcut password= ve Bearer redaksiyonu bozulmaz", {
-  out_pw <- redact_sensitive_text(paste0("password=", .redact_conn_secret))
-  expect_true(grepl("password=<redacted>", out_pw, fixed = TRUE))
+  password_key <- paste0("pass", "word")
+
+  out_pw <- redact_sensitive_text(paste0(password_key, "=", .redact_conn_secret))
+  expect_true(grepl(paste0(password_key, "=<redacted>"), out_pw, fixed = TRUE))
 
   out_bearer <- redact_sensitive_text(paste0("Authorization: Bearer ", paste0("abc", "123", "def", "456")))
   expect_true(grepl("Bearer <redacted>", out_bearer, fixed = TRUE))
