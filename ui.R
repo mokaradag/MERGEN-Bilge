@@ -199,8 +199,8 @@ ui <- dashboardPage(
               div(
                 id = "chat_input_wrapper",
                 class = "input-wrapper",
-                div(id = "drop_zone", class = "drop-zone hidden", tags$i(class = "fas fa-cloud-upload-alt fa-3x"), p("Dosyaları buraya sürükleyin")),
-                tags$textarea(id = "user_input", class = "chat-input", placeholder = "MERGEN'e bir mesaj yazın... (Dosya yüklemek için sürükleyip bırakın veya ataç simgesine tıklayın.)", rows = 1, autofocus = "autofocus"),
+                div(id = "drop_zone", class = "drop-zone hidden", role = "status", `aria-live` = "polite", `aria-label` = "Dosya bırakma alanı", tags$i(class = "fas fa-cloud-upload-alt fa-3x", `aria-hidden` = "true"), p("Dosyaları buraya sürükleyin")),
+                tags$textarea(id = "user_input", class = "chat-input", `aria-label` = "Mesaj giriş alanı", placeholder = "MERGEN'e bir mesaj yazın... (Dosya yüklemek için sürükleyip bırakın veya ataç simgesine tıklayın.)", rows = 1, autofocus = "autofocus"),
                 div(
                   class = "input-actions",
                   # Görsel oluşturma kontrolleri (Görsel Uzmanı aktifken görünür)
@@ -213,6 +213,7 @@ ui <- dashboardPage(
                         id = "chat_image_size",
                         class = "image-size-select",
                         title = "Görsel Boyutu",
+                        `aria-label` = "Görsel boyutu seçimi",
                         tags$option(value = "1024x1024", "Kare"),
                         tags$option(value = "1792x1024", "Yatay"),
                         tags$option(value = "1024x1792", "Dikey")
@@ -243,6 +244,7 @@ ui <- dashboardPage(
                         id = "chat_summary_detail",
                         class = "summary-detail-select",
                         title = "Detay Seviyesi: Özetin ne kadar ayrıntılı olacağını belirler",
+                        `aria-label` = "Özet detay seviyesi",
                         tags$option(value = "brief", "Kısa Özet"),
                         tags$option(value = "standard", selected = "selected", "Standart"),
                         tags$option(value = "detailed", "Detaylı")
@@ -255,6 +257,7 @@ ui <- dashboardPage(
                         id = "chat_summary_focus",
                         class = "summary-focus-select",
                         title = "Odak Modu: Özetin hangi konulara ağırlık vereceğini belirler",
+                        `aria-label` = "Özet odak modu",
                         tags$option(value = "general", selected = "selected", "Genel"),
                         tags$option(value = "numerical", "Sayısal Veri"),
                         tags$option(value = "decisions", "Karar & Öneri"),
@@ -273,7 +276,7 @@ ui <- dashboardPage(
                         class = "deep-thinking-toggle",
                         type = "button",
                         title = "Derin Düşünme: Pasif - Tek sorgu analizi yapılacak",
-                        tags$i(class = "fas fa-brain toggle-icon"),
+                        tags$i(class = "fas fa-brain toggle-icon", `aria-hidden` = "true"),
                         tags$span(class = "toggle-label", "Derin Düşünme")
                       )
                     ),
@@ -284,6 +287,7 @@ ui <- dashboardPage(
                         id = "chat_analysis_detail",
                         class = "analysis-detail-select",
                         title = "Detay Seviyesi: Yanıtın ne kadar ayrıntılı olacağını belirler",
+                        `aria-label` = "Analiz detay seviyesi",
                         disabled = "disabled",
                         tags$option(value = "ozet", "Özet"),
                         tags$option(value = "standart", selected = "selected", "Standart"),
@@ -302,7 +306,7 @@ ui <- dashboardPage(
                         class = "deep-thinking-toggle excel-deep-thinking-toggle",
                         type = "button",
                         title = "Derin Düşünme: Pasif - Excel için temel düşünen modeli kullan",
-                        tags$i(class = "fas fa-brain toggle-icon"),
+                        tags$i(class = "fas fa-brain toggle-icon", `aria-hidden` = "true"),
                         tags$span(class = "toggle-label", "Derin Düşünme")
                       )
                     ),
@@ -313,6 +317,7 @@ ui <- dashboardPage(
                         id = "chat_excel_deep_level",
                         class = "deep-thinking-level-select",
                         title = "Derin Düşünme Seviyesi: Düşük/Yüksek alternatif düşünen modeli seçer",
+                        `aria-label` = "Excel derin düşünme seviyesi",
                         disabled = "disabled",
                         tags$option(value = "low", selected = "selected", "Düşük"),
                         tags$option(value = "high", "Yüksek")
@@ -330,7 +335,7 @@ ui <- dashboardPage(
                         class = "deep-thinking-toggle coding-deep-thinking-toggle",
                         type = "button",
                         title = "Derin Düşünme: Pasif - Kod için temel düşünen modeli kullan",
-                        tags$i(class = "fas fa-brain toggle-icon"),
+                        tags$i(class = "fas fa-brain toggle-icon", `aria-hidden` = "true"),
                         tags$span(class = "toggle-label", "Derin Düşünme")
                       )
                     ),
@@ -341,6 +346,7 @@ ui <- dashboardPage(
                         id = "chat_coding_deep_level",
                         class = "deep-thinking-level-select",
                         title = "Derin Düşünme Seviyesi: Düşük/Yüksek alternatif düşünen modeli seçer",
+                        `aria-label` = "Kod derin düşünme seviyesi",
                         disabled = "disabled",
                         tags$option(value = "low", selected = "selected", "Düşük"),
                         tags$option(value = "high", "Yüksek")
@@ -350,14 +356,15 @@ ui <- dashboardPage(
                   div(class = "model-selector-wrapper",
                       uiOutput("chat_model_selector_ui", style = "display:inline-block;")
                   ),
-				  div(id = "file_btn_container", class = "action-btn file-btn", title = "Dosya Ekle (Ctrl+Alt+U)", tags$label(`for` = "file_upload", tags$i(class = "fas fa-paperclip"))),
-                  actionButton(inputId = "voice_btn", label = "", icon = icon("microphone"), class = "action-btn voice-btn", title = "Sesli Giriş"),
+				  div(id = "file_btn_container", class = "action-btn file-btn", title = "Dosya Ekle (Ctrl+Alt+U)", tags$label(`for` = "file_upload", `aria-label` = "Dosya ekle", tags$i(class = "fas fa-paperclip", `aria-hidden` = "true"))),
+                  actionButton(inputId = "voice_btn", label = "", icon = icon("microphone"), class = "action-btn voice-btn", title = "Sesli Giriş", `aria-label` = "Sesli giriş"),
                   actionButton(
                     inputId = "send_stop_btn",
                     label = "",
                     icon = icon("paper-plane"),
                     class = "send-button",
-                    title = "Gönder (Enter)"
+                    title = "Gönder (Enter)",
+                    `aria-label` = "Mesajı gönder"
                   )
                 ),
                 div(style = "display: none;", fileInput("file_upload", label = NULL, multiple = FALSE))
