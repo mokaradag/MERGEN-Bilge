@@ -13,9 +13,14 @@
 .redact_env_var_names <- function() {
   c(
     "AI_KEYS_MASTER",
+    # Kurumsal varsayılan API anahtarı. CLAUDE.md gereği asla loglanmamalıdır;
+    # prose içinde çıplak geçtiğinde key-value deseni yakalamaz, bu yüzden
+    # env-değer redaksiyonuna açıkça eklenir.
+    "MERGEN_DEFAULT_API_KEY",
     "LOCAL_LLM_API_KEY",
     "LOCAL_LLM_ENDPOINT_ALT_API_KEY",
     "LOCAL_TTS_API_KEY",
+    "LOCAL_STT_API_KEY",
     "SERVICE_DESK_API_KEY_URL",
     "ANTHROPIC_API_KEY",
     "CLAUDE_CODE_API_KEY",
@@ -69,6 +74,16 @@ redact_sensitive_text <- function(x) {
 
     metin <- elem
 
+    # 0) PEM özel anahtar blokları: -----BEGIN ... PRIVATE KEY----- ... END.
+    # TLS/NODE_EXTRA_CA_CERTS/SSO bağlamında bir hata veya yapılandırma dökümü
+    # özel anahtar gövdesini loglara taşıyabilir. (?s) çok satırlı eşleşme sağlar.
+    metin <- gsub(
+      "(?s)-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+      "<private-key-redacted>",
+      metin,
+      perl = TRUE
+    )
+
     # 1) JWT formatı: header.payload.signature (URL-safe base64 parçaları).
     # Üretimde decode edilmiş token'ların log'a girmesi en yaygın risktir.
     metin <- gsub(
@@ -88,7 +103,7 @@ redact_sensitive_text <- function(x) {
 
     # 3) URL query string parametreleri: ?token=, &password=, &api_key=, &secret=
     metin <- gsub(
-      "(?i)([?&](?:token|password|passwd|api[_-]?key|apikey|secret|access[_-]?token)=)[^&#\\s]+",
+      "(?i)([?&](?:token|password|passwd|pwd|api[_-]?key|apikey|secret|access[_-]?token)=)[^&#\\s]+",
       "\\1<redacted>",
       metin,
       perl = TRUE
@@ -96,6 +111,8 @@ redact_sensitive_text <- function(x) {
 
     # 3B) Header / key-value biçimindeki sırları maskele:
     # api_key = ..., x-api-key: ..., password: ..., client_secret=...
+    # ODBC/SQL Server bağlantı dizeleri "Pwd=..." kullandığı için "pwd" de eklenir;
+    # aksi halde loglanan bir DSN-less bağlantı dizesi parolayı sızdırabilir.
     secret_key_pattern <- paste(
       c(
         "api[_-]?key",
@@ -107,7 +124,8 @@ redact_sensitive_text <- function(x) {
         "secret",
         "client[_-]?secret",
         "password",
-        "passwd"
+        "passwd",
+        "pwd"
       ),
       collapse = "|"
     )
@@ -138,4 +156,62 @@ redact_sensitive_text <- function(x) {
 
     metin
   }, character(1), USE.NAMES = FALSE)
+}
+
+# Runtime hatalarını yapılandırılmış, sır-redakteli ve yan etkisiz bir kayda
+# çevirir. Çağıran taraf bu kaydı tek satır halinde loglayabilir veya bir olay
+# izleme akışına gönderebilir. Bilinçli olarak Shiny/DB/dosya/HTTP içermez;
+# böylece izole test edilebilir ve hata yolunda kendisi yeni hata üretmez.
+mergen_build_runtime_error_record <- function(error,
+                                              context = "unknown",
+                                              redact_fn = NULL,
+                                              now = Sys.time()) {
+  # Redaksiyon fonksiyonu verilmediyse aynı modüldeki güvenli redaktörü kullan.
+  if (is.null(redact_fn) && exists("redact_sensitive_text", mode = "function")) {
+    redact_fn <- get("redact_sensitive_text", mode = "function")
+  }
+
+  # Hata mesajını koşula göre güvenli biçimde çöz.
+  error_msg <- tryCatch({
+    if (inherits(error, "condition")) {
+      conditionMessage(error)
+    } else if (is.null(error)) {
+      ""
+    } else {
+      paste(as.character(error), collapse = " ")
+    }
+  }, error = function(e) "")
+
+  # Hata sınıfı (R sınıf adları) tanılama için saklanır; sır taşımaz.
+  error_class <- tryCatch({
+    cls <- class(error)
+    if (length(cls)) paste(cls, collapse = ",") else "unknown"
+  }, error = function(e) "unknown")
+
+  # Hem bağlam hem mesaj redakte edilir; hata metni token/DSN/parola taşıyabilir.
+  redact_one <- function(value) {
+    value <- as.character(value)[1]
+    if (is.na(value)) value <- ""
+    if (is.function(redact_fn)) {
+      value <- tryCatch(as.character(redact_fn(value))[1], error = function(e) value)
+      if (is.na(value)) value <- ""
+    }
+    enc2utf8(value)
+  }
+
+  captured_at <- tryCatch(
+    format(now, "%Y-%m-%dT%H:%M:%S%z"),
+    error = function(e) ""
+  )
+  if (length(captured_at) != 1L || is.na(captured_at)) {
+    captured_at <- ""
+  }
+
+  list(
+    type = "runtime_error",
+    context = redact_one(context),
+    message = redact_one(error_msg),
+    error_class = enc2utf8(error_class),
+    captured_at = captured_at
+  )
 }

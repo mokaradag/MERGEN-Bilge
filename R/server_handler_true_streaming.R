@@ -99,7 +99,14 @@ handle_true_streaming_mode <- function(ctx) {
       if (length(user_idx) > 0) {
         new_db_id <- tryCatch({
           save_message_safely(values$current_chat_id, values$messages[[user_idx]], ctx$current_user_id)
-        }, error = function(e) NULL)
+        }, error = function(e) {
+          # Kullanıcı mesajının kalıcılaştırılması sessizce başarısız olmamalı;
+          # yapılandırılmış [RUNTIME_ERROR] kaydı tanılama için bırakılır.
+          if (exists("log_error_with_context", mode = "function")) {
+            log_error_with_context(e, "TRUE_STREAM_SAVE_USER_MSG")
+          }
+          NULL
+        })
 
         if (!is.null(new_db_id)) {
           values$messages[[user_idx]]$db_id <- new_db_id

@@ -133,6 +133,23 @@ shiny_error_handler <- function(e = NULL) {
   
   # Log dosyasına yaz
   log_error("[ERROR] {msg}")
+
+  # Yapılandırılmış, sır-redakteli kayıt: yakalanmamış Shiny hataları olay
+  # incelemesinde [RUNTIME_ERROR] satırı olarak aranabilir. Yardımcı yoksa veya
+  # üretim başarısız olursa sessizce atlanır; bu global handler asla kırılmamalı.
+  if (exists("mergen_build_runtime_error_record", mode = "function")) {
+    structured_err <- tryCatch({
+      rec <- mergen_build_runtime_error_record(
+        if (!is.null(e)) e else msg,
+        "shiny_uncaught"
+      )
+      as.character(jsonlite::toJSON(rec, auto_unbox = TRUE, null = "null"))
+    }, error = function(err) NULL)
+
+    if (!is.null(structured_err)) {
+      log_error("[RUNTIME_ERROR] {structured_err}")
+    }
+  }
   
   # Debug modunda stack trace göster
   if (isTRUE(as.logical(Sys.getenv("MERGEN_DEBUG", "FALSE")))) {
@@ -179,9 +196,40 @@ log_ai_call <- function(user_id, model, duration, success, tokens = NA) {
 
 # --- BAĞLAMLI HATA LOGLAMA ---
 log_error_with_context <- function(error, context = "unknown") {
-  error_msg <- if (inherits(error, "error")) error$message else as.character(error)
-  log_error("Error in {context}: {error_msg}")
-  
+  # Yapılandırılmış ve sır-redakteli kayıt üret (yardımcı yoksa NULL döner).
+  record <- tryCatch(
+    mergen_build_runtime_error_record(error, context),
+    error = function(e) NULL
+  )
+
+  if (!is.null(record)) {
+    # Redakte edilmiş bağlam/mesaj ile insan-okur log satırı.
+    ctx <- record$context
+    msg <- record$message
+    log_error("Error in {ctx}: {msg}")
+
+    # İzlenebilir tek satır yapılandırılmış kayıt; olay incelemesinde aranır.
+    structured <- tryCatch(
+      jsonlite::toJSON(record, auto_unbox = TRUE, null = "null"),
+      error = function(e) NULL
+    )
+    if (!is.null(structured)) {
+      structured_line <- as.character(structured)
+      log_debug("[RUNTIME_ERROR] {structured_line}")
+    }
+  } else {
+    # Geriye dönük güvenli yol: yardımcı kullanılamıyorsa eski davranışı koru,
+    # ancak yine de mümkünse mesajı redakte et.
+    error_msg <- if (inherits(error, "error")) error$message else as.character(error)
+    if (exists("redact_sensitive_text", mode = "function")) {
+      error_msg <- tryCatch(
+        as.character(redact_sensitive_text(error_msg))[1],
+        error = function(e) error_msg
+      )
+    }
+    log_error("Error in {context}: {error_msg}")
+  }
+
   # Stack trace al
   stack <- sys.calls()
   if (length(stack) > 0) {
