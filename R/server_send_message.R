@@ -207,7 +207,9 @@ sendMessageInit <- function(
     # Durdur butonunu göster
     shinyjs::runjs("$('#send_stop_btn i').attr('class', 'fa-solid fa-stop');")
     shinyjs::runjs("$('#send_stop_btn').addClass('stop-mode');")
-    shinyjs::runjs("$('#send_stop_btn').attr('title', 'Durdur');")
+    # Erişilebilirlik: durdur moduna geçişte görsel ipucunun yanı sıra ekran
+    # okuyucu etiketi (aria-label) de güncellenir.
+    shinyjs::runjs("$('#send_stop_btn').attr('title', 'Durdur').attr('aria-label', 'Üretimi durdur');")
 
     values$is_sending <- TRUE
     stop_generation(FALSE)

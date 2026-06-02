@@ -2,8 +2,26 @@
 
 as_llm_settings_list <- function(settings) {
   if (is.null(settings)) return(list())
+
+  # reaktif değerler (reactiveValues) is.list() kontrolünde TRUE döndürür; bu
+  # nedenle düz liste kontrolünden ÖNCE yakalanmalıdır. Aksi halde canlı reaktif
+  # nesne, anlık görüntüye çevrilmeden worker/arka plan bağlamına sızabilir ve
+  # "reactive value outside consumer" hatasına yol açabilir
+  # (CLAUDE.md: worker'a canlı reaktif nesne geçirme, önce düz değer yakala).
+  # isolate ile reaktif olmayan bağlamda da güvenli anlık görüntü alınır.
+  if (shiny::is.reactivevalues(settings)) {
+    return(tryCatch(
+      shiny::isolate(shiny::reactiveValuesToList(settings)),
+      error = function(e) list()
+    ))
+  }
+
   if (is.list(settings)) return(settings)
-  tryCatch(reactiveValuesToList(settings), error = function(e) list())
+
+  tryCatch(
+    shiny::isolate(shiny::reactiveValuesToList(settings)),
+    error = function(e) list()
+  )
 }
 
 summarize_file_with_llm <- function(file_text, filename, settings) {

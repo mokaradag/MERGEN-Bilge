@@ -15,7 +15,8 @@ chat_reset_state <- function(session, values) {
 
   shinyjs::runjs("$('#send_stop_btn i').attr('class', 'fa-solid fa-paper-plane');")
   shinyjs::runjs("$('#send_stop_btn').removeClass('stop-mode');")
-  shinyjs::runjs("$('#send_stop_btn').attr('title', 'Gönder (Enter)');")
+  # Erişilebilirlik: gönder moduna dönüşte ekran okuyucu etiketi de sıfırlanır.
+  shinyjs::runjs("$('#send_stop_btn').attr('title', 'Gönder (Enter)').attr('aria-label', 'Mesajı gönder');")
   shinyjs::runjs("const chatInput = $('.chat-input')[0]; if (chatInput) { window.adjustTextareaHeight(chatInput); }")
 }
 
