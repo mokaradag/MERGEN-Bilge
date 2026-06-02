@@ -81,6 +81,34 @@ else
     ${SUDO} apt-get update
   }
 
+  # En güncel R sürümünü (on-prem VM ile uyum için, ör. R 4.5.x) CRAN apt
+  # deposundan kurmayı dene. Bu en iyi çaba ile çalışır; anahtar/depo eklenemezse
+  # dağıtımın varsayılan r-base sürümüne (ör. Ubuntu Noble 4.3.x) sessizce geri
+  # düşülür. cloud.r-project.org ağ allowlist'inde açık olmalıdır.
+  # Kapatmak/sabitlemek için: MERGEN_AI_INSTALL_LATEST_R=false
+  _add_cran_apt_repo_for_latest_r() {
+    command -v curl >/dev/null 2>&1 || return 0
+
+    local codename=""
+    if [[ -r /etc/os-release ]]; then
+      codename="$(. /etc/os-release 2>/dev/null && echo "${VERSION_CODENAME:-}")"
+    fi
+    [[ -n "${codename}" ]] || return 0
+
+    echo "CRAN apt deposu ekleniyor (en güncel R): ${codename}-cran40"
+    if curl -fsSL https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
+         | ${SUDO} tee /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc >/dev/null 2>&1; then
+      echo "deb https://cloud.r-project.org/bin/linux/ubuntu ${codename}-cran40/" \
+        | ${SUDO} tee /etc/apt/sources.list.d/cran-r.list >/dev/null 2>&1 || true
+    else
+      echo "WARN: CRAN apt anahtarı alınamadı; dağıtımın varsayılan R sürümü kullanılacak." >&2
+    fi
+  }
+
+  if [[ "${MERGEN_AI_INSTALL_LATEST_R:-true}" == "true" ]]; then
+    _add_cran_apt_repo_for_latest_r
+  fi
+
   _safe_apt_update
 
   ${SUDO} apt-get install -y --no-install-recommends \

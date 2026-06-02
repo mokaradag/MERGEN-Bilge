@@ -202,3 +202,37 @@ Otomatik kapılar güçlüdür, ancak **üretim olgunluğunun** bir bölümü ya
 kazanılır: gerçek kullanıcı yükü, eşzamanlılık, olay-ve-kurtarma geçmişi. Bu kılavuz
 operasyonel olgunluğu (tekrarlanabilir dağıtım, dağıtım sonrası doğrulama, geri alma,
 izlenebilir hatalar) artırır; ancak hiçbir commit "saha denenmişliği" üretemez.
+
+---
+
+## 9. Claude Code Web Oturumları (Bulut R Ortamı)
+
+Claude Code'un web/bulut oturumlarında testleri çalıştırabilmesi için R çalışma
+zamanı oturum başında kurulur. Bu, **üretim VM'i değildir**; yalnızca ajan
+doğrulaması (parse + testthat) için izole bir bulut ortamıdır.
+
+**Bir kez yapılacak bulut ayarları** (Claude Code web → "Update cloud environment"
+→ `MERGEN-Bilge` ortamı). Değişiklikler **sonraki** oturumda (önbellek yeniden
+oluşturulurken) devreye girer, çalışan oturumu etkilemez:
+
+1. **Network access → Custom**: `packagemanager.posit.co` ve `cloud.r-project.org`
+   ekleyin; "ortak paket yöneticileri varsayılan listesi" işaretli kalsın. R
+   varsayılan Trusted listesinde yoktur → bu olmadan paket depoları HTTP 403 döner.
+2. **Setup script** alanı: `bash tools/setup_ai_r_environment.sh`. Kurulum bir kez
+   çalışır ve dosya sistemi anlık görüntüsü (snapshot) önbelleğe alınır; sonraki
+   oturumlar yeniden kurmaz. (Paket kurulumu jeton/token harcamaz; testler yalnızca
+   açıkça veya değişiklik varsa `Stop` hook ile çalışır, her komutta değil.)
+
+**Repo tarafı parçalar** (commit'li): `.claude/hooks/session-start.sh` (SessionStart
+hook, env değişkenlerini yazar + idempotent kurulum çağrısı) ve
+`tools/setup_ai_r_environment.sh` (tek kurucu; paket listesini
+`R/config_packages.R`'den okur).
+
+**R sürüm uyumu:** kurucu varsayılan olarak en güncel R'yi CRAN apt deposundan
+kurar (on-prem VM ile uyum; şu an R 4.5.1). Erişilemezse dağıtım `r-base`'ine geri
+düşer. Sabitlemek için `MERGEN_AI_INSTALL_LATEST_R=false`.
+
+**Kanıt sınırı:** bir bulut oturumunun geçmesi yalnızca parse + sözleşme/birim test
+kapsamını kanıtlar; runtime/VM/SSO/DB ve SQL Server Türkçe kodlama hâlâ bu kılavuzun
+1-3. bölümlerindeki VM kapılarıyla doğrulanmalıdır. Ayrıntılı operatör notları:
+`.claude/web-environment.md`.

@@ -2124,6 +2124,40 @@ Not: GitHub CI ve `run_ci_local.R` gerçek on-prem DB/LLM bağlantısına gitmez
 
 GitHub Actions iş akışı Ubuntu ve Windows üzerinde, R 4.4 ve R 4.5 kombinasyonlarında sırasıyla (1) parse sanity check, (2) app boot smoke, (3) testthat adımlarını çalıştırır. Bu CI hattı bilinçli olarak altyapıdan bağımsızdır ve gerçek kurum içi LLM/DB sistemlerine bağlanmaz.
 
+### Claude Code web (bulut oturumu) ile test çalıştırma
+
+Claude Code'un web/bulut oturumlarında testleri yanıt vermeden önce çalıştırabilmesi
+için R çalışma zamanı oturum başında otomatik kurulur. İki repo tarafı parça ve iki
+defalık manuel bulut ayarı vardır:
+
+- `.claude/hooks/session-start.sh`: SessionStart hook'u (matcher `startup|resume`).
+  Yalnızca uzak/web ortamda (`CLAUDE_CODE_REMOTE=true`) çalışır, idempotenttir,
+  test modu ortam değişkenlerini (`TZ=UTC`, `MERGEN_RUN_APP=false`,
+  `MERGEN_DISABLE_FUTURES=true` ve yalnızca placeholder
+  `LOCAL_LLM_ENDPOINT`/`DB_DSN`/`AI_KEYS_MASTER`) `CLAUDE_ENV_FILE` üzerinden tüm
+  oturuma yazar, ardından `tools/setup_ai_r_environment.sh` betiğini çağırır. Paket
+  listesi tekrar tanımlanmaz; tek kaynak `R/config_packages.R`'dir.
+- Bulut ortamı ayarları (Claude Code web "Update cloud environment" diyaloğu),
+  bir kez yapılır ve sonraki oturumda devreye girer:
+  1. **Network access → Custom**: `packagemanager.posit.co` ve `cloud.r-project.org`
+     alan adlarını ekleyin ("ortak paket yöneticileri varsayılan listesini de dahil
+     et" kutusu işaretli kalsın). R varsayılan Trusted listesinde yoktur; bu olmadan
+     paket depoları HTTP 403 döner.
+  2. **Setup script** alanına `bash tools/setup_ai_r_environment.sh` yazın. Böylece
+     kurulum **bir kez** çalışır ve önbelleğe alınır; sonraki oturumlar yeniden
+     kurmaz (her komutta/oturumda indirme yapılmaz ve paket kurulumu jeton/token
+     harcamaz).
+
+R sürüm politikası: `tools/setup_ai_r_environment.sh` varsayılan olarak en güncel R
+sürümünü CRAN apt deposundan (`<codename>-cran40`) kurar; böylece on-prem Windows VM
+(şu an R 4.5.1, zamanla güncellenecek) ile uyumlu kalır. CRAN apt deposu
+eklenemezse dağıtımın varsayılan `r-base` sürümüne (ör. Ubuntu Noble 4.3.x) sessizce
+geri düşülür. Sabit/eski sürüm için: `MERGEN_AI_INSTALL_LATEST_R=false`.
+
+Ayrıntılı operatör adımları için `.claude/web-environment.md` dosyasına bakın. Bir
+bulut oturumunun geçmesi runtime/VM/SSO/DB veya SQL Server Türkçe kodlama davranışını
+KANITLAMAZ; bunlar `RUNBOOK.md` içindeki VM preflight kapılarıyla doğrulanır.
+
 ### Tüm testleri çalıştırma
 ```r
 source("tests/testthat.R", encoding = "UTF-8")
