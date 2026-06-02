@@ -21,16 +21,16 @@ for the `MERGEN-Bilge` environment):
 
 2. **Setup script** field → paste:
    ```bash
-   bash "${CLAUDE_PROJECT_DIR}/tools/setup_ai_r_environment.sh"
+   bash /home/user/MERGEN-Bilge/tools/setup_ai_r_environment.sh
    ```
    This makes the install run **once** and get **cached** (see "Environment
    caching" below), so future sessions start fast and don't reinstall.
 
-   > **Important:** Use `"${CLAUDE_PROJECT_DIR}/tools/setup_ai_r_environment.sh"`
-   > (with the variable), **not** `bash tools/setup_ai_r_environment.sh`. The
-   > Setup Script may run from a different working directory than the project
-   > root, so the relative path `tools/...` causes exit 127 (file not found).
-   > `$CLAUDE_PROJECT_DIR` is always set to the correct project path.
+   > **Important:** Use the full absolute path. `$CLAUDE_PROJECT_DIR` is **not**
+   > set during Setup Script execution (only in hooks), so
+   > `"${CLAUDE_PROJECT_DIR}/tools/..."` expands to `/tools/...` and fails with
+   > exit 127. Relative paths also fail because the cwd may not be the project
+   > root when the Setup Script runs.
 
 Changing either of these triggers a one-time cache rebuild on your **next**
 session. Changes do **not** apply to an already-running session.
