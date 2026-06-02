@@ -52,7 +52,7 @@ fi
 # R + sistem kütüphaneleri + R paketlerini kur (idempotent).
 # Sıcak (cache'lenmiş) konteynerde Rscript ve paketler zaten kuruluysa hızlı geçer.
 echo "== MERGEN SessionStart: R ortamı hazırlanıyor =="
-if bash tools/setup_ai_r_environment.sh; then
+if bash "${PROJECT_DIR}/tools/setup_ai_r_environment.sh"; then
   echo "== MERGEN SessionStart: R ortamı hazır =="
 else
   # Kurulum tam tamamlanmazsa (ör. ağ allowlist eksikse) oturumu bloklama;

@@ -313,9 +313,12 @@ Current contract:
   remains the single installer and reads `required_packages` from
   `R/config_packages.R` via `tests/scripts/ci_install_packages.R`.
 - For "install once and reuse" (environment caching), the heavy install belongs
-  in the cloud environment **Setup script** field (`bash tools/setup_ai_r_environment.sh`),
+  in the cloud environment **Setup script** field (`bash "${CLAUDE_PROJECT_DIR}/tools/setup_ai_r_environment.sh"`),
   which is snapshotted and skipped on later sessions. The SessionStart hook is the
   per-session idempotent safety net and env-var setter, not the cache owner.
+  Use the `$CLAUDE_PROJECT_DIR`-prefixed path — not a bare relative `tools/...`
+  path — because the Setup Script may run from a directory other than the project
+  root and a relative path causes exit 127 (file not found).
 - Network access: the web environment must allowlist `packagemanager.posit.co`
   (RSPM) and `cloud.r-project.org` (CRAN + the apt repo for the latest R). R is
   not in the default Trusted list; without these, package repos return HTTP 403.
