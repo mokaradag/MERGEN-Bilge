@@ -1,13 +1,27 @@
 // www/js/app_loading_media.js
 // Dosya Yolu: www/js/app_loading_media.js
-// Açıklama: Açılış yükleme ekranı sırasında karakter video URL'lerini düşük
-//   maliyetli biçimde ön ısıtan katman. Tam video decode/buffer yapılmaz;
-//   bunun yerine varsayılan karakter öne alınır, diğer dosyalar metadata ve
-//   düşük öncelikli prefetch ipuçlarıyla hazırlanır.
+// Açıklama: Açılış yükleme ekranı sırasında karşılama arka plan videolarını ve
+//   TÜM personaların intro videolarını tarayıcı HTTP önbelleğine TAM olarak
+//   ısıtan tek yetkili medya ön yükleyici. Daha önce bu sorumluluk hem bu
+//   dosyada (yalnızca metadata) hem de www/js/explore_media_preload.js içinde
+//   (tam tampon) ayrı ayrı vardı; iki ayrı Shiny mesaj işleyicisi aynı
+//   "loadExploreAllCharVideos" adını kaydettiği için hangisinin kazanacağı
+//   yükleme sırasına bağlı bir yarış durumuydu. Bu dosya artık tek yetkili
+//   ön yükleyicidir; explore_media_preload.js kaldırılmıştır.
 //
-//   Amaç: açılış müziği ve WebGL sahnesiyle video decoder yarışını önlemek,
-//   tarayıcı RAM kullanımını sınırlamak ve karakter adımındaki ilk oynatma
-//   deneyimini korumaktır.
+//   Strateji (kullanıcı isteği: "%100 = her şey hazır"):
+//     - Videolar SERİ (sıralı) biçimde, her seferinde bir tane ısıtılır;
+//       böylece açılış müziğiyle decoder/disk I/O çakışması en aza iner.
+//     - Her video için "canplaythrough" beklenir (kesintisiz oynatılabilir);
+//       ardından gizli <video> elemanı KALDIRILIR. İndirilen baytlar tarayıcı
+//       HTTP önbelleğinde kalır, ancak bellekte canlı bir decoder bırakılmaz.
+//       Böylece gerçek oynatma anında (karşılama arka planı veya Bütünleşik
+//       karakter adımı) video önbellekten anında başlar.
+//     - İlerleme, app_loading.js'deki ilerleme çubuğuna GERÇEK olarak yansıtılır
+//       (window.MergenAppLoading.reportMediaProgress). Sahte/yapay animasyon yok.
+//     - character_media_ready kontrol noktası YALNIZCA tüm bilinen videolar
+//       tamponlandıktan sonra bildirilir; böylece %100, medyanın gerçekten
+//       hazır olduğu an demektir.
 //
 //   Bu dosya R/module_app_loading.R tarafından açılış katmanına satır içi
 //   gömülür; bilinçli olarak normal UI varlık manifestine eklenmez.
@@ -15,28 +29,183 @@
 (function () {
   "use strict";
 
+  // Karşılama ekranı sinematik arka plan videoları. www/js/welcome_video_player.js
+  // içindeki VIDEO_URLS ile aynı liste olmalıdır; bu sayede karşılama arka planı
+  // %100'de önbellekten anında oynar.
+  var WELCOME_BG_URLS = [
+    "videos/cinematic/video1.mp4",
+    "videos/cinematic/video2.mp4",
+    "videos/cinematic/video3.mp4",
+    "videos/cinematic/video4.mp4",
+    "videos/cinematic/video5.mp4",
+    "videos/cinematic/video6.mp4"
+  ];
+
   var requested = false;
   var signaled = false;
+  var charDataReceived = false;
   var installAttempts = 0;
   var requestAttempts = 0;
+
+  // Seri tampon kuyruğu durumu
+  var knownSet = {};       // url -> true (kuyruğa eklendi)
+  var queue = [];          // bekleyen url'ler
+  var bufferedCount = 0;   // tamamlanan url sayısı
+  var totalKnown = 0;      // bilinen toplam url
+  var draining = false;
+  var holder = null;
+
+  function preloadHolder() {
+    if (!holder || !document.body.contains(holder)) {
+      holder = document.getElementById("mergen-char-media-preload");
+      if (!holder) {
+        holder = document.createElement("div");
+        holder.id = "mergen-char-media-preload";
+        holder.style.cssText =
+          "position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none;";
+        document.body.appendChild(holder);
+      }
+    }
+    return holder;
+  }
+
+  // İlerleme çubuğuna gerçek medya ilerlemesini bildir (0..1). Karakter listesi
+  // henüz gelmeden yalnızca arka plan videoları sayıldığında bandın tamamını
+  // doldurup yanıltıcı erken %100 oluşturmamak için fraksiyon sınırlandırılır.
+  function reportProgress() {
+    var denom = totalKnown > 0 ? totalKnown : 1;
+    var frac = bufferedCount / denom;
+    if (!charDataReceived) {
+      frac = Math.min(frac, 1) * 0.4;
+    } else if (frac > 1) {
+      frac = 1;
+    }
+    try {
+      if (window.MergenAppLoading &&
+          typeof window.MergenAppLoading.reportMediaProgress === "function") {
+        window.MergenAppLoading.reportMediaProgress(frac);
+      }
+    } catch (e) {}
+  }
 
   // Boot kontrol noktasını yalnızca bir kez işaretle.
   function signalReady(reason) {
     if (signaled) return;
     signaled = true;
+    reportProgress();
     try {
       if (window.Shiny && Shiny.setInputValue) {
         Shiny.setInputValue(
           "character_media_preload_ready",
-          { ts: Date.now(), reason: reason || "ok" },
+          {
+            ts: Date.now(),
+            reason: reason || "ok",
+            buffered: bufferedCount,
+            total: totalKnown
+          },
           { priority: "event" }
         );
       }
     } catch (e) {}
   }
 
+  // Tek bir videoyu HTTP önbelleğine TAM olarak ısıt. canplaythrough = kesintisiz
+  // oynatılabilecek kadar tamponlandı. İş bittiğinde gizli <video> kaldırılır:
+  // indirilen baytlar tarayıcı önbelleğinde kalır, canlı decoder serbest bırakılır.
+  function bufferUrl(url, onDone) {
+    if (!url) {
+      onDone();
+      return;
+    }
+
+    var done = false;
+    var video = document.createElement("video");
+    var timeoutId = null;
+
+    function cleanup() {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      try {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      } catch (e) {}
+      if (video.parentNode) {
+        video.parentNode.removeChild(video);
+      }
+    }
+
+    function finishOnce() {
+      if (done) return;
+      done = true;
+      cleanup();
+      onDone();
+    }
+
+    video.preload = "auto";
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute("aria-hidden", "true");
+    video.style.cssText = "width:0;height:0;opacity:0;pointer-events:none;";
+
+    video.addEventListener("canplaythrough", finishOnce, { once: true });
+    video.addEventListener("error", finishOnce, { once: true });
+    // Eksik/yavaş tek bir dosya tüm açılışı kilitlemesin: video başına emniyet.
+    timeoutId = window.setTimeout(finishOnce, 15000);
+
+    video.src = url;
+    preloadHolder().appendChild(video);
+    try {
+      video.load();
+    } catch (e) {}
+  }
+
+  function maybeSignalReady() {
+    if (signaled) return;
+    // Hazır bildirimi yalnızca karakter verisi alındıktan VE kuyruk tamamen
+    // boşaldıktan sonra yapılır. Böylece %100, tüm medyanın hazır olduğu andır.
+    if (charDataReceived && queue.length === 0 && !draining) {
+      signalReady("buffered");
+    }
+  }
+
+  function drain() {
+    if (draining) return;
+    if (queue.length === 0) {
+      maybeSignalReady();
+      return;
+    }
+    draining = true;
+    var url = queue.shift();
+    bufferUrl(url, function () {
+      bufferedCount += 1;
+      reportProgress();
+      draining = false;
+      // Seri ve düşük baskılı tut: açılış müziği/derin uzay sahnesiyle decoder
+      // ve disk I/O çakışmasını azaltmak için kısa bir aralık bırak.
+      window.setTimeout(drain, 80);
+    });
+  }
+
+  function enqueue(urls) {
+    if (!urls || !urls.length) return;
+    for (var i = 0; i < urls.length; i++) {
+      var u = urls[i];
+      if (u && knownSet[u] !== true) {
+        knownSet[u] = true;
+        queue.push(u);
+        totalKnown += 1;
+      }
+    }
+    reportProgress();
+    drain();
+  }
+
   // intro alanı dizi ya da tekil string olabilir (jsonlite auto_unbox).
-  // Personanın TÜM intro video URL'lerini döndürür.
+  // Personanın TÜM intro video URL'lerini döndürür. (loop/select talep anında
+  // akışla yüklenir; kullanıcının seçtiği persona ilk olarak burada hazırlanır.)
   function collectIntroUrls(charData) {
     if (!charData || !charData.videos) return [];
     var intro = charData.videos.intro;
@@ -56,174 +225,31 @@
     return [];
   }
 
-  // Gizli ön yükleme tutucusunu döndür (gerekirse oluştur).
-  function preloadHolder() {
-    var holder = document.getElementById("mergen-char-media-preload");
-    if (!holder) {
-      holder = document.createElement("div");
-      holder.id = "mergen-char-media-preload";
-      holder.style.cssText =
-        "position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none;";
-      document.body.appendChild(holder);
-    }
-    return holder;
-  }
-
-  // Video URL'si için düşük maliyetli tarayıcı önbellek ipucu ekle.
-  // Bu yöntem video decoder açmaz; ses/müzik tarafıyla yarış oluşturmaz.
-  function addVideoHint(url, highPriority) {
-    if (!url) return;
-
-    try {
-      var existing = document.querySelector(
-        'link[data-mergen-char-video-hint="1"][href="' + url.replace(/"/g, '\\"') + '"]'
-      );
-      if (existing) return;
-
-      var link = document.createElement("link");
-      link.rel = highPriority ? "preload" : "prefetch";
-      link.as = "video";
-      link.href = url;
-      link.setAttribute("data-mergen-char-video-hint", "1");
-      document.head.appendChild(link);
-    } catch (e) {
-      // Ön yükleme ipucu desteklenmiyorsa sessiz geçilir.
-    }
-  }
-
-  // Tek bir intro videosunu düşük maliyetle ısıt.
-  // Varsayılan karakter için ilk kareye kadar, diğerlerinde yalnızca metadata
-  // seviyesine kadar gidilir. Video elemanı iş bitince kaldırılır; DOM'da
-  // kalıcı gizli decoder bırakılmaz.
-  function warmVideo(url, onReady, highPriority) {
-    if (!url) {
-      onReady();
-      return;
-    }
-
-    addVideoHint(url, highPriority);
-
-    var done = false;
-    var video = document.createElement("video");
-    var timeoutId = null;
-
-    function cleanup() {
-      if (timeoutId) {
-        window.clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-
-      try {
-        video.pause();
-        video.removeAttribute("src");
-        video.load();
-      } catch (e) {}
-
-      if (video.parentNode) {
-        video.parentNode.removeChild(video);
-      }
-    }
-
-    function finishOnce() {
-      if (done) return;
-      done = true;
-      cleanup();
-      onReady();
-    }
-
-    video.preload = highPriority ? "auto" : "metadata";
-    video.muted = true;
-    video.playsInline = true;
-    video.setAttribute("aria-hidden", "true");
-    video.style.cssText = "width:0;height:0;opacity:0;pointer-events:none;";
-
-    if (highPriority) {
-      video.addEventListener("loadeddata", finishOnce, { once: true });
-    } else {
-      video.addEventListener("loadedmetadata", finishOnce, { once: true });
-    }
-
-    video.addEventListener("error", finishOnce, { once: true });
-
-    // Video başına kısa emniyet zaman aşımı: boot ekranı medya yüzünden uzamasın.
-    timeoutId = window.setTimeout(finishOnce, highPriority ? 3500 : 1800);
-
-    video.src = url;
-    preloadHolder().appendChild(video);
-  }
-
   function handleCharacterVideos(data) {
+    charDataReceived = true;
+
     var chars = data && data.characters ? data.characters : [];
     if (!Array.isArray(chars)) {
       chars = chars ? [chars] : [];
     }
-    if (chars.length === 0) {
-      signalReady("no-characters");
-      return;
-    }
 
-    // Varsayılan persona öne alınır; diğerleri düşük öncelikli hazırlanır.
-    // Tüm URL'ler aynı anda video decoder'a verilmez.
-    var primaryUrls = [];
-    var secondaryUrls = [];
-
-    function addUnique(target, list) {
-      for (var n = 0; n < list.length; n++) {
-        if (primaryUrls.indexOf(list[n]) === -1 &&
-            secondaryUrls.indexOf(list[n]) === -1) {
-          target.push(list[n]);
-        }
-      }
-    }
-
+    // Varsayılan persona (emre) intro'su önce, diğerleri sonra kuyruğa alınır:
+    // en olası ilk deneyim önce hazır olur. Tümü %100'den önce tamponlanır.
+    var primary = [];
+    var secondary = [];
     for (var i = 0; i < chars.length; i++) {
       var c = chars[i];
+      var urls = collectIntroUrls(c);
       if (c && (c.character === "emre" || c.id === "emre")) {
-        addUnique(primaryUrls, collectIntroUrls(c));
+        primary = primary.concat(urls);
+      } else {
+        secondary = secondary.concat(urls);
       }
     }
 
-    for (var j = 0; j < chars.length; j++) {
-      var c2 = chars[j];
-      if (c2 && c2.character !== "emre" && c2.id !== "emre") {
-        addUnique(secondaryUrls, collectIntroUrls(c2));
-      }
-    }
-
-    var urls = primaryUrls.concat(secondaryUrls);
-    if (urls.length === 0) {
-      signalReady("no-videos");
-      return;
-    }
-
-    var pending = urls.length;
-    var cursor = 0;
-    var highPriorityCount = Math.min(primaryUrls.length, 2);
-
-    function oneReady() {
-      pending -= 1;
-      if (pending <= 0) {
-        signalReady("metadata-warm");
-      }
-    }
-
-    function warmNext() {
-      if (cursor >= urls.length) return;
-
-      var idx = cursor;
-      var highPriority = idx < highPriorityCount;
-      cursor += 1;
-
-      warmVideo(urls[idx], function() {
-        oneReady();
-
-        // Medya ön ısıtmayı seri ve düşük baskılı tut. Bu, açılış müziğinde
-        // cızırtı/bozulma oluşturan decoder ve disk I/O çakışmasını engeller.
-        window.setTimeout(warmNext, highPriority ? 120 : 220);
-      }, highPriority);
-    }
-
-    warmNext();
+    enqueue(primary);
+    enqueue(secondary);
+    maybeSignalReady();
   }
 
   function requestCharacterVideos() {
@@ -243,10 +269,16 @@
         { priority: "event" }
       );
     } catch (e) {}
-    // Veri/medya hiç gelmezse boot ekranı takılmasın: emniyet zaman aşımı.
+
+    // Karakter verisi hiç gelmezse boot ekranı takılmasın: arka plan videoları
+    // yine de tamponlanır ve emniyet süresi sonunda hazır bildirilir.
     window.setTimeout(function () {
-      signalReady("request-timeout");
-    }, 11000);
+      if (!charDataReceived) {
+        charDataReceived = true;
+        reportProgress();
+        maybeSignalReady();
+      }
+    }, 12000);
   }
 
   function installHandler() {
@@ -261,6 +293,11 @@
     window.__mergenCharMediaHandlerInstalled = true;
     Shiny.addCustomMessageHandler("loadExploreAllCharVideos", handleCharacterVideos);
   }
+
+  // Bilinen karşılama arka plan videolarını sunucu yanıtını beklemeden hemen
+  // ısıtmaya başla. (Karakter intro URL'leri yalnızca sunucudan gelebildiği için
+  // onlar loadExploreAllCharVideos yanıtında kuyruğa eklenir.)
+  enqueue(WELCOME_BG_URLS);
 
   installHandler();
 

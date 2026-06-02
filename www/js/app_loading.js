@@ -24,18 +24,30 @@
 
   // Aşamalar: her anahtar gerçek bir boot kontrol noktasıdır. Yüzdeler
   // yalnızca artar; ilerleme asla geri gitmez. Sıralama, kontrol
-  // noktalarının tipik tamamlanma sırasına göredir; en yavaş olan
-  // (karakter medyası) sona yakın konumlandırılır ki çubuk pürüzsüz aksın.
+  // noktalarının tipik tamamlanma sırasına göredir. En yavaş ve en maliyetli
+  // adım karakter/karşılama medyasının TAM tamponlanmasıdır; bu nedenle
+  // file_index_ready (32) ile character_media_ready (96) arasındaki geniş bant
+  // gerçek medya tamponlama ilerlemesiyle (reportMediaProgress) sürülür. Böylece
+  // çubuk gerçek işi yansıtır; sahte/yapay animasyon yoktur.
   var STAGES = [
-    { key: "boot", label: "Başlatılıyor", pct: 6 },
-    { key: "connect", label: "Bağlantı kuruluyor", pct: 18 },
-    { key: "auth_ready", label: "Kimlik doğrulandı", pct: 32 },
-    { key: "saved_chats_preview_ready", label: "Son konuşmalar hazırlanıyor", pct: 46 },
-    { key: "file_index_ready", label: "Dosyalar hazırlanıyor", pct: 60 },
-    { key: "welcome_client_ready", label: "Görsel bileşenler başlatılıyor", pct: 74 },
-    { key: "character_media_ready", label: "Asistan medyası hazırlanıyor", pct: 91 },
+    { key: "boot", label: "Başlatılıyor", pct: 5 },
+    { key: "connect", label: "Bağlantı kuruluyor", pct: 12 },
+    { key: "auth_ready", label: "Kimlik doğrulandı", pct: 20 },
+    { key: "saved_chats_preview_ready", label: "Son konuşmalar hazırlanıyor", pct: 26 },
+    { key: "file_index_ready", label: "Dosyalar hazırlanıyor", pct: 32 },
+    { key: "welcome_client_ready", label: "Görsel bileşenler başlatılıyor", pct: 44 },
+    { key: "character_media_ready", label: "Asistan medyası hazırlanıyor", pct: 96 },
     { key: "ready", label: "Hazır", pct: 99 }
   ];
+
+  // Gerçek medya tamponlama bandı: bu iki aşamanın yüzdesi arasında
+  // reportMediaProgress(0..1) ile pürüzsüzce dolar.
+  function stagePct(key, fallback) {
+    for (var i = 0; i < STAGES.length; i++) {
+      if (STAGES[i].key === key) return STAGES[i].pct;
+    }
+    return fallback;
+  }
 
   var stageIndex = -1;
   var finished = false;
@@ -48,6 +60,15 @@
   var displayPct = 0;
   var targetPct = 0;
   var rafId = null;
+
+  // Stall (takılma) izleme: gerçek ilerleme oldukça zaman damgası tazelenir.
+  // Emniyet kapanışı artık MUTLAK bir 22 sn değil; "22 sn boyunca HİÇ ilerleme
+  // olmazsa" tetiklenen bir gözcüdür. Böylece tüm karakter/karşılama videoları
+  // tamponlanırken uzun ama GERÇEK ilerleme erken kapanışla kesilmez.
+  var lastProgressTs = Date.now();
+  function markProgress() {
+    lastProgressTs = Date.now();
+  }
 
   var statusText = overlay.querySelector(".alo-status-text");
   var readoutNum = overlay.querySelector(".alo-readout-num");
@@ -124,9 +145,29 @@
   function setTarget(pct) {
     if (pct > targetPct) {
       targetPct = pct > 100 ? 100 : pct;
+      markProgress();
       if (rafId === null && displayPct < targetPct) {
         rafId = window.requestAnimationFrame(progressFrame);
       }
+    }
+  }
+
+  // Gerçek medya tamponlama ilerlemesini (0..1) çubuğa yansıt. app_loading_media.js
+  // her video HTTP önbelleğine tam ısıtıldıkça bu fonksiyonu çağırır. Hedef
+  // yalnızca ileri alındığı için (setTarget monoton) çubuk asla geri gitmez.
+  function reportMediaProgress(fraction) {
+    if (typeof fraction !== "number" || isNaN(fraction)) return;
+    if (fraction < 0) fraction = 0;
+    if (fraction > 1) fraction = 1;
+
+    var bandStart = stagePct("file_index_ready", 32);
+    var bandEnd = stagePct("character_media_ready", 96);
+    setTarget(bandStart + (bandEnd - bandStart) * fraction);
+
+    // Medya tamponlama sürerken durum etiketini bu adıma sabitle. Bu noktada
+    // erken aşama etiketleri (auth/dosya) zaten geçmiş olduğundan titreme olmaz.
+    if (statusText && !finished && fraction > 0 && fraction < 1) {
+      statusText.textContent = "Asistan medyası hazırlanıyor";
     }
   }
 
@@ -164,6 +205,9 @@
 
     Shiny.addCustomMessageHandler("bootReadinessCheckpoint", function (msg) {
       if (!msg || !msg.key) return;
+
+      // Her gerçek kontrol noktası ilerleme etkinliği sayılır (stall gözcüsü).
+      markProgress();
 
       setStage(msg.key);
 
@@ -319,42 +363,11 @@
     applyProgress();
   }
 
-  // Karşılama ekranı sinematik arka plan videolarını önceden yükle (tarayıcı
-  // önbelleği ısıtılır; karşılama ekranı görseli gecikmesiz başlar). Eksik
-  // dosyalar sessizce yok sayılır. Karakter persona videoları ayrı dosya
-  // www/js/app_loading_media.js tarafından önceden yüklenir.
-  function preloadWelcomeMedia() {
-    var holder = document.createElement("div");
-    holder.className = "alo-preload";
-    holder.style.cssText =
-      "position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none;";
-
-    for (var i = 1; i <= 6; i++) {
-      (function (index) {
-        window.setTimeout(function () {
-          if (finished) return;
-
-          var video = document.createElement("video");
-
-          // Açılış müziği çalarken video decode/buffer yarışına girmemek için
-          // yalnızca metadata ısıtılır. Gerçek oynatma anında kalite değişmez.
-          video.preload = "metadata";
-          video.muted = true;
-          video.playsInline = true;
-          video.setAttribute("aria-hidden", "true");
-
-          video.addEventListener("error", function () {
-            if (video.parentNode) video.parentNode.removeChild(video);
-          });
-
-          video.src = "videos/cinematic/video" + index + ".mp4";
-          holder.appendChild(video);
-        }, index * 240);
-      })(i);
-    }
-
-    overlay.appendChild(holder);
-  }
+  // NOT: Karşılama sinematik arka plan videolarının ve tüm persona intro
+  // videolarının ön yüklemesi artık tek yetkili medya ön yükleyici olan
+  // www/js/app_loading_media.js içinde yapılır (TAM tampon + gerçek ilerleme).
+  // Burada ayrıca metadata ısıtması yapılmaz; aksi halde aynı dosyalar için
+  // çift indirme/decoder baskısı oluşurdu.
 
   function boot() {
     if (isSsoPreAuthRedirectPass()) {
@@ -372,12 +385,16 @@
       }
     }
 
-    window.setTimeout(preloadWelcomeMedia, 650);
     detectSso();
   }
 
-  // Dış denetim yüzeyi
-  window.MergenAppLoading = { finish: finish, setStage: setStage };
+  // Dış denetim yüzeyi (küçük tutulur). reportMediaProgress, app_loading_media.js
+  // tarafından gerçek video tamponlama ilerlemesini çubuğa yansıtmak için çağrılır.
+  window.MergenAppLoading = {
+    finish: finish,
+    setStage: setStage,
+    reportMediaProgress: reportMediaProgress
+  };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);
@@ -393,10 +410,25 @@
     finish();
   });
 
-  // Güvenlik zaman aşımı: hiçbir kontrol noktası tamamlanmazsa 22 sn sonra
-  // ekranı yine de kapat (boot kontrol noktaları normalde çok daha hızlı
-  // tamamlanır; bu yalnızca son çare backstop'tur).
-  window.setTimeout(function () {
-    finish();
-  }, 22000);
+  // Güvenlik gözcüsü (stall watchdog): ekran, GERÇEK ilerleme oldukça açık
+  // kalır. Yalnızca 22 sn boyunca HİÇBİR ilerleme (aşama, kontrol noktası veya
+  // medya tamponlama) olmazsa son çare olarak kapatılır. Ayrıca mutlak bir üst
+  // sınır (180 sn) hiçbir koşulda sonsuza dek takılı kalınmamasını garanti eder.
+  // Bu, "yükleme %100 = her şey gerçekten hazır" hedefiyle uyumludur: tüm
+  // karakter/karşılama videoları tamponlanırken uzun ama gerçek ilerleme erken
+  // kapanışla kesilmez.
+  var STALL_MS = 22000;
+  var HARD_CAP_MS = 180000;
+  var watchdogStart = Date.now();
+  var watchdogTimer = window.setInterval(function () {
+    if (finished) {
+      window.clearInterval(watchdogTimer);
+      return;
+    }
+    var now = Date.now();
+    if ((now - lastProgressTs) > STALL_MS || (now - watchdogStart) > HARD_CAP_MS) {
+      window.clearInterval(watchdogTimer);
+      finish();
+    }
+  }, 1000);
 })();

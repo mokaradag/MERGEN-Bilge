@@ -193,7 +193,6 @@ ui_asset_js_groups <- list(
     "js/encoding_utils.js",
     "js/theme_manager.js",
 	"js/shiny_message_handlers.js",
-	"js/explore_media_preload.js",
 	"js/ui_init.js",
     "js/input_handlers.js",
     "js/interaction_handlers.js",
