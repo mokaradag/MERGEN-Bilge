@@ -131,3 +131,63 @@ testthat::test_that("characterVideoUI ad alanlı oynatıcı/görsel elemanların
   # Başlatma betiği CinematicVideoManager'a bağlanmalı.
   testthat::expect_true(grepl("CinematicVideoManager", html, fixed = TRUE))
 })
+
+# ------------------------------------------------------------------------------
+# characterVideoServer: karakter değişiminde updateCharacterVideo mesajı
+# ------------------------------------------------------------------------------
+testthat::test_that("characterVideoServer tetikleyici karakteri için updateCharacterVideo gönderir", {
+  testthat::skip_if_not_installed("shiny")
+  suppressMessages(library(shiny))
+  env <- .source_character_video_for_test()
+  rec <- new.env(); rec$msgs <- list()
+
+  # cat() çıktısını yutmak için tüm testServer çağrısını capture.output içine al.
+  invisible(utils::capture.output(
+    shiny::testServer(
+      env$characterVideoServer,
+      args = list(selected_character_trigger = shiny::reactive("emre")),
+      {
+        root <- .subset2(session, "parent")
+        root$sendCustomMessage <- function(type, message) {
+          rec$msgs[[length(rec$msgs) + 1L]] <- list(type = type, message = message)
+          invisible(TRUE)
+        }
+        session$flushReact()
+      }
+    )
+  ))
+
+  tipler <- vapply(rec$msgs, function(m) m$type, character(1))
+  testthat::expect_true("updateCharacterVideo" %in% tipler)
+  msg <- rec$msgs[[which(tipler == "updateCharacterVideo")[1]]]$message
+  # Gönderilen veri normalize edilmiş persona kimliğini ve video yapısını içerir.
+  testthat::expect_identical(msg$character, "emre")
+  testthat::expect_named(msg$videos, c("intro", "loop", "select"))
+})
+
+testthat::test_that("characterVideoServer eski persona kimliğini normalize ederek gönderir", {
+  testthat::skip_if_not_installed("shiny")
+  suppressMessages(library(shiny))
+  env <- .source_character_video_for_test()
+  rec <- new.env(); rec$msgs <- list()
+
+  invisible(utils::capture.output(
+    shiny::testServer(
+      env$characterVideoServer,
+      args = list(selected_character_trigger = shiny::reactive("kayra")),  # eski kimlik
+      {
+        root <- .subset2(session, "parent")
+        root$sendCustomMessage <- function(type, message) {
+          rec$msgs[[length(rec$msgs) + 1L]] <- list(type = type, message = message)
+          invisible(TRUE)
+        }
+        session$flushReact()
+      }
+    )
+  ))
+
+  tipler <- vapply(rec$msgs, function(m) m$type, character(1))
+  msg <- rec$msgs[[which(tipler == "updateCharacterVideo")[1]]]$message
+  # kayra -> deniz (göç sözleşmesi).
+  testthat::expect_identical(msg$character, "deniz")
+})
