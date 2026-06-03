@@ -135,9 +135,15 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 			))
 		  })
 
-		  # Açılış yükleme ekranı, welcome istemci bileşenleri gerçekten hazır
-		  # olmadan kapanmasın: sol video, dinamik karşılama ve Son Konuşmalar
-		  # bölümü DOM/oynatma açısından kontrol edilir.
+		  # Açılış yükleme ekranı, welcome istemci bileşenleri GERÇEKTEN hazır
+		  # olmadan kapanmasın: sol arka plan videosunun OYNUYOR olması, dinamik
+		  # karşılama ve Son Konuşmalar bölümünün varlığı kontrol edilir.
+		  # Arka plan videoları açılışta app_loading_media.js tarafından HTTP
+		  # önbelleğine tam ısıtıldığı için bgPlaying normalde ~1 sn içinde true
+		  # olur. Backstop bilinçli olarak uzun tutulur (eski 3 sn yerine ~12 sn):
+		  # böylece checkpoint, video gerçekten oynamadan erken/yanıltıcı biçimde
+		  # gönderilmez. Açılış çubuğu stall gözcüsü ilerleme oldukça beklemeyi
+		  # sürdürdüğü için bu uzun pencere erken kapanışa yol açmaz.
 		  shinyjs::delay(220, {
 			shinyjs::runjs("
 			  (function() {
@@ -156,7 +162,7 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 				  var greetingReady = !!document.getElementById('dynamic-greeting-text');
 				  var recentReady = !!document.querySelector('.modern-welcome-footer-section');
 
-				  if ((bgPlaying && greetingReady && recentReady) || attempts >= 30) {
+				  if ((bgPlaying && greetingReady && recentReady) || attempts >= 120) {
 					clearInterval(timer);
 					Shiny.setInputValue('welcome_client_ready', {
 					  bg_playing: bgPlaying,

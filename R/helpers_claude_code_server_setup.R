@@ -57,14 +57,25 @@ cc_bind_server_setup <- function(input,
     }
   }, priority = 90)
 
-  # --- Otomatik bağlantı testi ---
-  observe({
-    req(is.null(rv$connection_ok))
+  # --- Otomatik bağlantı testi (açılış kritik yolundan ERTELENİR) ---
+  # check_claude_code_status(), `claude.cmd --version` alt sürecini SENKRON
+  # çalıştırır (processx + proc$wait). Windows .cmd/UNC ortamında bu birkaç
+  # saniye sürebilir. Doğrudan oturum açılışında çalıştırılırsa Shiny olay
+  # döngüsünü bloke eder ve açılış ilerleme çubuğunu "takılı" gösterir (boot
+  # kontrol noktaları tek seferde toplu olarak akar). Bu nedenle alt süreç testi,
+  # açılış kontrol noktaları (kimlik/dosya/karşılama/medya) tipik olarak akıp
+  # bittikten SONRA kısa bir gecikmeyle çalıştırılır. Bağlantı rozeti yalnızca
+  # Bilge Yolaç sayfasında görünür ve o ana kadar "kontrol ediliyor" durumunda
+  # kalır; bu yüzden erteleme görünür bir UX gerilemesi yaratmaz.
+  cc_baglanti_testi_planlandi <- FALSE
+
+  cc_run_connection_check <- function() {
+    if (!is.null(rv$connection_ok)) return(invisible(NULL))
 
     cli_yolu <- rv$cli_path_resolved
     if (is.null(cli_yolu)) {
       rv$connection_ok <- FALSE
-      return()
+      return(invisible(NULL))
     }
 
     durum <- tryCatch({
@@ -81,6 +92,20 @@ cc_bind_server_setup <- function(input,
       temiz_hata <- gsub("[{}]", "", durum$error %||% "")
       log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "CLI erişilemez:", temiz_hata))
     }
+
+    invisible(NULL)
+  }
+
+  observe({
+    req(is.null(rv$connection_ok))
+    req(!is.null(rv$cli_path_resolved))
+    if (isTRUE(cc_baglanti_testi_planlandi)) return()
+    cc_baglanti_testi_planlandi <<- TRUE
+
+    # Alt süreç testini açılış ilerleme çubuğunu bloke etmeyecek şekilde ertele.
+    shinyjs::delay(6000, {
+      cc_run_connection_check()
+    })
   }, priority = 50)
 
   # --- Yapılandırma sayfasından bağlantı testi sonucunu dinle ---
