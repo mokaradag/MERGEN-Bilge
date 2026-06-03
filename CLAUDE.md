@@ -3970,6 +3970,10 @@ Fallback behavior is intentionally defensive and BOM-aware:
 
 This design exists because this codebase has had real encoding sensitivity, especially on Windows and SSO-enabled VM environments, including BOM-marked UTF-8 files.
 
+### Source manifest newline normalization contract
+
+The source manifest parser is sensitive to line-ending normalization. In `R/bootstrap_source_manifest.R`, `source_manifest_read_file_with_encoding()` must normalize Windows CRLF and legacy CR line endings to a real LF newline character before `parse(text = ...)` validation. Do not replace this with a literal escaped newline replacement that turns line breaks into the character "n"; doing so can make valid multi-line R files fail with "unexpected symbol" during manifest validation. This boundary protects parse validation only and should not be used as a reason to broaden encoding or source-loading changes.
+
 ### Practical rule
 If you add a new R file, it should be source-safe and UTF-8 safe.
 

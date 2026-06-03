@@ -60,6 +60,10 @@ MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığ�
 
 Yalnızca `README.md` / `CLAUDE.md` dokümantasyon değişikliklerinde R doğrulaması çalıştırılmaz; metin farkı incelemesi yeterlidir.
 
+### Kaynak manifesti CRLF parse kararlılığı
+
+Kaynak manifesti parse doğrulaması, Windows CRLF ve eski Mac CR satır sonlarını gerçek LF karakterine normalize edecek şekilde güçlendirildi. Böylece geçerli çok satırlı R dosyaları doğrulama sırasında literal "n" karakterleriyle bozulmaz ve "unexpected symbol" türü hatalı parse sonuçları üretilmez. Değişiklik yalnızca manifest parse doğrulama sınırını etkiler; görünür kullanıcı akışı ve uygulama davranışı değişmez.
+
 ### Sürüm geçmişi dosya yolu çözümleme kararlılığı
 
 `version_history.md` dosyası repo kökünde kalır; `R/config_version_history.R` içindeki `resolve_version_history_md_path()` önce mevcut çalışma dizinindeki yerel `version_history.md` dosyasını dikkate alır, sonra üst dizinlere doğru arama yapar. Bu davranış, `tests/testthat` altından çalışan sürüm etiketi testlerinin repo kökündeki gerçek dosyayı bulmasını sağlarken, `getwd()` altında sentetik `version_history.md` oluşturan ayrıştırma testlerinin kendi geçici dosyalarını kullanmasını korur; boş/geçici dizinde dosya yoksa beklenen uyarı ve varsayılan sürüm davranışı korunur. Görünür kullanıcı arayüzü değişikliği yoktur.
