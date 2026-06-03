@@ -101,7 +101,7 @@ chartLabServer <- function(id) {
     have_hc <- reactive({ requireNamespace("highcharter", quietly = TRUE) })
     have_pl <- reactive({ requireNamespace("plotly", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE) })
 
-    make_id <- function() paste0("cl_", as.integer(as.numeric(Sys.time())*1000), "_", sample(1000:9999,1))
+    make_id <- function() paste0("cl_", sprintf("%.0f", as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))  # as.integer(ms~1.78e12) 32-bit tasmasi NA/uyari uretirdi; sprintf ile tam sayisal damga
 	
 	# === NEW: auto-guess mapping/type when tool spec lacks them ===
     auto_guess_chart_spec <- function(sp) {
