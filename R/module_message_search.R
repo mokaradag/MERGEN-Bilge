@@ -22,7 +22,11 @@ messageSearchInit <- function(input, session, values, messages_reactive) {
     for (msg in msgs) {
       txt <- msg$content %||% ""
       if (is.character(txt) && length(txt) > 0 && nzchar(txt[1])) {
-        pos <- gregexpr(term, txt[1], ignore.case = TRUE, fixed = TRUE)[[1]]
+        # Not: fixed = TRUE iken R, ignore.case argümanını sessizce yok sayar ve
+        # her aramada "argument 'ignore.case = TRUE' will be ignored" uyarısı
+        # üretir. Argüman zaten etkisiz olduğundan kaldırıldı; eşleşme konumları
+        # birebir aynı kalır (davranış değişmez), yalnızca sahte uyarı giderilir.
+        pos <- gregexpr(term, txt[1], fixed = TRUE)[[1]]
         if (!is.na(pos[1]) && pos[1] != -1) {
           for (p in pos) all <- append(all, list(list(msg_id = msg$id, position = p)))
         }
