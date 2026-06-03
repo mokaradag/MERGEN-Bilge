@@ -321,8 +321,16 @@ Current contract:
   Script execution (only in hooks), so variable-expanded or relative paths both
   fail with exit 127.
 - Network access: the web environment must allowlist `packagemanager.posit.co`
-  (RSPM) and `cloud.r-project.org` (CRAN + the apt repo for the latest R). R is
-  not in the default Trusted list; without these, package repos return HTTP 403.
+  (RSPM index), `rspm-sync.rstudio.com` (RSPM package-file CDN), and
+  `cloud.r-project.org` (CRAN + the apt repo for the latest R). R is not in the
+  default Trusted list; without these, package repos return HTTP 403. RSPM
+  307-redirects every `.tar.gz` download to `rspm-sync.rstudio.com`, so missing
+  that host makes the `PACKAGES` index resolve (200) while downloads fail with
+  `downloaded length 0`. `tests/scripts/ci_install_packages.R` verifies a real
+  package download (not just the index) and auto-falls back to CRAN
+  (`cloud.r-project.org` serves files directly) when the RSPM CDN is blocked, so
+  bootstrap still works on the current allowlist — only slower, since CRAN
+  compiles heavy packages from source instead of using RSPM binaries.
 - R version policy: `tools/setup_ai_r_environment.sh` installs the latest R from
   the CRAN apt repo (`<codename>-cran40`) by default to track the on-prem VM
   (currently R 4.5.1, upgraded over time), with graceful fallback to the distro

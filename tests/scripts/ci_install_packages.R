@@ -105,12 +105,62 @@ repository_index_reachable <- function(repo_url) {
   isTRUE(ok)
 }
 
-repos <- if (nzchar(rspm_url) && repository_index_reachable(rspm_url)) {
-  cat(sprintf("RSPM erişilebilir: %s\n", rspm_url))
+# RSPM (packagemanager.posit.co) gerçek paket dosyalarını HTTP 307 ile farklı bir
+# CDN host'una (ör. rspm-sync.rstudio.com) yönlendirir. PACKAGES indexi 200 dönse
+# bile bu yönlendirme host'u ağ allowlist'inde değilse .tar.gz indirmeleri
+# "downloaded length 0" / 403 ile başarısız olur. Bu nedenle index erişiminin
+# yanında gerçek bir küçük paket indirmesini de doğrularız ve indirme çalışmıyorsa
+# doğrudan dosya sunan CRAN'a (cloud.r-project.org) güvenle geri düşeriz.
+repository_download_works <- function(repo_url) {
+  probe_pkg <- "magrittr"
+
+  ok <- tryCatch({
+    tmpd <- tempfile("repo_dl_probe_")
+    dir.create(tmpd, recursive = TRUE, showWarnings = FALSE)
+    on.exit(unlink(tmpd, recursive = TRUE, force = TRUE), add = TRUE)
+
+    available <- available.packages(repos = repo_url)
+    if (!(probe_pkg %in% rownames(available))) {
+      # Bilinen küçük paket index'te yoksa indirme kontrolünü atla, index'e güven.
+      return(TRUE)
+    }
+
+    res <- suppressWarnings(download.packages(
+      probe_pkg,
+      destdir = tmpd,
+      available = available,
+      repos = repo_url,
+      type = "source",
+      quiet = TRUE
+    ))
+
+    is.matrix(res) &&
+      nrow(res) >= 1L &&
+      file.exists(res[1, 2]) &&
+      isTRUE(file.info(res[1, 2])$size > 0)
+  }, error = function(e) {
+    cat(sprintf("Repository download probe failed for %s: %s\n", repo_url, conditionMessage(e)))
+    FALSE
+  }, warning = function(w) {
+    cat(sprintf("Repository download probe warning for %s: %s\n", repo_url, conditionMessage(w)))
+    FALSE
+  })
+
+  isTRUE(ok)
+}
+
+repos <- if (nzchar(rspm_url) &&
+             repository_index_reachable(rspm_url) &&
+             repository_download_works(rspm_url)) {
+  cat(sprintf("RSPM erişilebilir ve indirme doğrulandı: %s\n", rspm_url))
   rspm_url
-} else if (repository_index_reachable(cran_url)) {
+} else if (repository_index_reachable(cran_url) &&
+           repository_download_works(cran_url)) {
   if (nzchar(rspm_url)) {
-    cat(sprintf("RSPM erişilemiyor (%s), CRAN kullanılıyor.\n", rspm_url))
+    cat(sprintf(
+      "RSPM kullanılamıyor (index erişilebilir olsa bile paket indirmesi başarısız: %s), CRAN kullanılıyor.\n",
+      rspm_url
+    ))
   } else {
     cat(sprintf("CRAN kullanılıyor: %s\n", cran_url))
   }
@@ -119,10 +169,13 @@ repos <- if (nzchar(rspm_url) && repository_index_reachable(rspm_url)) {
   stop(
     sprintf(
       paste(
-        "R paket deposuna erişilemiyor.",
+        "R paket deposuna erişilemiyor (index veya gerçek paket indirmesi başarısız).",
         "Denenen RSPM: %s",
         "Denenen CRAN: %s",
-        "Codex ortamında agent internet allowlist ayarlarını kontrol edin.",
+        "Cloud/Codex ortamında ağ allowlist ayarlarını kontrol edin.",
+        "RSPM paket dosyalarını rspm-sync.rstudio.com host'una yönlendirir;",
+        "RSPM kullanılacaksa bu host da allowlist'te olmalıdır.",
+        "CRAN (cloud.r-project.org) dosyaları doğrudan sunar ve yönlendirme gerektirmez.",
         sep = "\n"
       ),
       if (nzchar(rspm_url)) rspm_url else "<unset>",
@@ -130,6 +183,22 @@ repos <- if (nzchar(rspm_url) && repository_index_reachable(rspm_url)) {
     ),
     call. = FALSE
   )
+}
+
+# RSPM seçildiyse, Linux'ta source-style install ile önceden derlenmiş binary
+# paketleri almak için dağıtımı bildiren bir HTTP User-Agent gönderilir. Bu,
+# pkgType="source" sözleşmesini bozmadan (Linux'ta binary desteklenmez) arrow,
+# duckdb gibi ağır kaynak derlemelerini ortadan kaldırır. CRAN seçildiğinde bu
+# blok çalışmaz ve davranış değişmez.
+using_rspm <- nzchar(rspm_url) && identical(repos, rspm_url)
+if (using_rspm) {
+  rspm_user_agent <- sprintf(
+    "R/%s R (%s)",
+    getRversion(),
+    paste(getRversion(), R.version$platform, R.version$arch, R.version$os)
+  )
+  options(HTTPUserAgent = rspm_user_agent)
+  cat(sprintf("RSPM binary User-Agent ayarlandı: %s\n", rspm_user_agent))
 }
 
 # Posit Package Manager Linux binary repositories are still consumed by R through

@@ -14,10 +14,22 @@ for the `MERGEN-Bilge` environment):
    *"Also include default list of common package managers"* checked):
    ```
    packagemanager.posit.co
+   rspm-sync.rstudio.com
    cloud.r-project.org
    ```
    R is **not** in the default Trusted allowlist, so without this the package
    repos return HTTP 403 and nothing installs.
+
+   > **Critical:** `rspm-sync.rstudio.com` is mandatory if you want RSPM.
+   > `packagemanager.posit.co` only serves the `PACKAGES` **index**; the actual
+   > `.tar.gz` downloads are **307-redirected** to `rspm-sync.rstudio.com`
+   > (both source `…/v4/1/packages/…` and binary `…/bin/<R>-<codename>/…`).
+   > If that host is missing, the index returns 200 but every download dies with
+   > `downloaded length 0 != reported length …` / HTTP 403 — the exact symptom of
+   > a failed Setup script. The installer detects this and **auto-falls back to
+   > CRAN** (`cloud.r-project.org`, which serves files directly), so the env still
+   > works without it — just slower, because CRAN compiles heavy packages
+   > (`arrow`, `duckdb`) from source instead of fetching RSPM binaries.
 
 2. **Setup script** field → paste:
    ```bash
@@ -86,11 +98,18 @@ on-prem. Runtime/VM/SSO/DB behavior is still proven only by the VM preflights
 Allow outbound access to:
 
 - Ubuntu apt mirrors (system libraries, R base) — covered by the default list.
-- `https://packagemanager.posit.co` — Posit Package Manager (RSPM). On Ubuntu
-  Noble this serves **precompiled binaries**, so heavy packages (`duckdb`,
-  `arrow`, `odbc`) install in seconds instead of compiling for many minutes.
+- `https://packagemanager.posit.co` — Posit Package Manager (RSPM) `PACKAGES`
+  index. On Ubuntu Noble RSPM can serve **precompiled binaries**, so heavy
+  packages (`duckdb`, `arrow`, `odbc`) install in seconds instead of compiling
+  for many minutes.
+- `https://rspm-sync.rstudio.com` — RSPM's package-file CDN. RSPM **307-redirects**
+  every `.tar.gz` download here, so without this host the index resolves but
+  downloads fail (HTTP 403 / `downloaded length 0`). Required for any RSPM use.
+  `tests/scripts/ci_install_packages.R` verifies a real download (not just the
+  index) and falls back to CRAN when this redirect is blocked.
 - `https://cloud.r-project.org` — CRAN (package fallback **and** the apt repo for
-  the latest R).
+  the latest R). Serves files directly with no cross-host redirect, so it works
+  even when RSPM's CDN is blocked.
 
 ## Environment caching (why it's not "every prompt")
 
