@@ -37,7 +37,12 @@
     return(as.numeric(as.POSIXct(value, tz = "UTC")))
   }
 
-  parsed <- suppressWarnings(as.POSIXct(as.character(value), tz = "UTC"))
+  # as.POSIXct ayrıştırılamayan string'lerde uyarı değil HATA fırlatır; tryCatch ile
+  # NA'ya indirgeyerek aşağıdaki 0 geri dönüşünü (tasarlanan güvenli varsayılan) koru.
+  parsed <- tryCatch(
+    suppressWarnings(as.POSIXct(as.character(value), tz = "UTC")),
+    error = function(e) NA
+  )
   if (length(parsed) == 0L || is.na(parsed[1])) {
     return(0)
   }
