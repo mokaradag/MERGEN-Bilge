@@ -152,6 +152,23 @@ testthat::test_that("validate_parse geçerli R dosyalarında TRUE döner", {
   testthat::expect_true(env$source_manifest_validate_parse("R/ok.R", repo_root = repo))
 })
 
+testthat::test_that("validate_parse CRLF satır sonlarını doğru işler", {
+  env <- .source_manifest_bootstrap_for_test()
+
+  repo <- withr::local_tempdir()
+  dir.create(file.path(repo, "R"), recursive = TRUE, showWarnings = FALSE)
+
+  con <- file(file.path(repo, "R", "crlf.R"), open = "wb")
+  tryCatch(
+    writeBin(charToRaw("f <- function(x) {\r\n  x + 1\r\n}"), con),
+    finally = close(con)
+  )
+
+  testthat::expect_true(
+    env$source_manifest_validate_parse("R/crlf.R", repo_root = repo)
+  )
+})
+
 testthat::test_that("validate_parse söz dizimi hatalı dosyayı reddeder", {
   env <- .source_manifest_bootstrap_for_test()
   repo <- .make_manifest_repo(list("R/bozuk.R" = c("f <- function(x {", "  x + 1")))

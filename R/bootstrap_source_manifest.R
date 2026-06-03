@@ -43,7 +43,10 @@ source_manifest_read_file_with_encoding <- function(path, encoding_name) {
     return(NA_character_)
   }
 
-  txt <- gsub("\\r\\n?|\\r", "\\n", txt, perl = TRUE)
+  # Windows CRLF / eski Mac CR satır sonlarını gerçek LF karakterine çevir.
+  # "\\n" kullanılmamalıdır; bu değer replacement tarafında literal "n"e
+  # dönüşerek geçerli R dosyalarının parse edilmesini bozabilir.
+  txt <- gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE)
   enc2utf8(txt)
 }
 
