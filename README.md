@@ -64,7 +64,7 @@ Yalnızca `README.md` / `CLAUDE.md` dokümantasyon değişikliklerinde R doğrul
 
 Kaynak manifesti parse doğrulaması, Windows CRLF ve eski Mac CR satır sonlarını gerçek LF karakterine normalize edecek şekilde güçlendirildi. Böylece geçerli çok satırlı R dosyaları doğrulama sırasında literal "n" karakterleriyle bozulmaz ve "unexpected symbol" türü hatalı parse sonuçları üretilmez. Değişiklik yalnızca manifest parse doğrulama sınırını etkiler; görünür kullanıcı akışı ve uygulama davranışı değişmez.
 
-### 02-03 Haziran 2026 teknik güncelleme özeti
+### Teknik güncelleme özeti
 
 - **Açılış ve medya hazırlığı:** Açılış ilerleme çubuğu artık pseudo/zaman bazlı dolum yerine gerçek boot kontrol noktaları ve medya tamponlama ilerlemesiyle ilerler. Karakter videoları ve karşılama arka plan videoları sırayla tarayıcı HTTP önbelleğine ısıtılır; yüzde 100, medya/kimlik/dosya indeksi hazır olduğunda anlamlıdır. Bilge Yolaç CLI bağlantı testi de açılış kritik yolundan ertelenerek ilerleme çubuğunu dondurmaması sağlanmıştır.
 
