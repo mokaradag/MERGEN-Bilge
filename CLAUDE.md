@@ -122,6 +122,21 @@ Future changes should preserve the intent of these tests:
 
 For documentation-only edits to `README.md` and `CLAUDE.md`, do not run R/testthat validation. Manual Markdown diff review is sufficient unless code files are changed in a separate task.
 
+### Async stale-request guards, startup parity, and File Manager refresh boundary
+
+Long-running non-streaming handlers must not let stale async callbacks mutate the state of a newer request. Image generation and summarization callbacks now carry the active request id and stop-generation check from the send-message context and must use the existing `mergen_is_current_request` pattern before touching UI, chat state, typing state, or reset callbacks. Do not replace this with a parallel abstraction. Future async handlers should follow the same small request-id snapshot plus callback-entry guard pattern and should be covered with deterministic promise/later tests.
+
+The startup skip-intro path must remain behaviorally aligned with the experience-mode path for persona-driven UI state. In particular, skip-intro must continue sending the selected/default persona neural color update so the neural animation tint matches the persona even when the intro is skipped.
+
+The File Manager header now includes a refresh action next to the clear action. Keep the refresh action scoped to reloading the file table from the persistent user folder through the existing refresh mechanism. Do not merge it with the destructive clear flow, and keep the refresh button visually distinct from the danger/clear button in both dark and light themes.
+
+Fallback source guards for isolated test/debug loading must be working-directory independent. When a helper needs to source a sibling file only because the normal manifest/global load order is absent, candidate paths should cover the repository root, `tests/testthat`, and `MERGEN_REPO_ROOT` where applicable. Avoid `getwd()`-only assumptions.
+
+Behavior tests affected by helper-file refactors must source the real owning helper file, not an older file that happens to work only in the full suite. For API model/tool runtime helpers, source the runtime helper file when the function lives there so individual `testthat::test_file(...)` runs remain standalone.
+
+Docs-only validation note:
+Keep the existing rule that README.md / CLAUDE.md-only edits do not require R or testthat validation. For this specific change, do not run R validation; review only the Markdown diff.
+
 ### Version history path resolution contract
 
 - `version_history.md` remains at the repository root for real application version data.
