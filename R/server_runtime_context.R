@@ -5,7 +5,7 @@
 #           yayılımını azaltmak ve eksik/yanlış init sırasını erken yakalamaktır.
 # ==============================================================================
 
-.server_runtime_contract_sources <- file.path("R", c("helpers_server_runtime_contracts.R", "helpers_server_runtime_named_contracts.R"))
+.server_runtime_contract_files <- c("helpers_server_runtime_contracts.R", "helpers_server_runtime_named_contracts.R")
 .server_runtime_contract_helpers <- c(
   "is_server_runtime_context", ".server_runtime_stop",
   ".server_runtime_require_context", ".server_runtime_require_values",
@@ -15,8 +15,17 @@
 .server_runtime_missing_contract_helpers <- .server_runtime_contract_helpers[!vapply(.server_runtime_contract_helpers, exists, logical(1), mode = "function", inherits = TRUE)]
 
 if (length(.server_runtime_missing_contract_helpers) > 0L) {
-  for (.contract_source in .server_runtime_contract_sources[file.exists(.server_runtime_contract_sources)]) {
-    source(.contract_source, encoding = "UTF-8", local = globalenv())
+  # Yedek yükleme yalnızca izole test/hata ayıklama bağlamında devreye girer.
+  # testthat tests/testthat'a setwd ettiğinden göreli "R/<dosya>" yolu güvenilmez;
+  # WD-bağımsız aday köklerden (getwd, üst dizinler, MERGEN_REPO_ROOT) çözeriz.
+  .server_runtime_roots <- unique(c(getwd(), dirname(getwd()), dirname(dirname(getwd())),
+    Sys.getenv("MERGEN_REPO_ROOT", unset = NA_character_),
+    if (exists("repo_root_for_tests", inherits = TRUE)) as.character(repo_root_for_tests)[1] else NA_character_))
+  .server_runtime_roots <- .server_runtime_roots[!is.na(.server_runtime_roots) & nzchar(.server_runtime_roots)]
+  for (.server_runtime_cfile in .server_runtime_contract_files) {
+    .server_runtime_paths <- file.path(.server_runtime_roots, "R", .server_runtime_cfile)
+    .server_runtime_paths <- .server_runtime_paths[file.exists(.server_runtime_paths)]
+    if (length(.server_runtime_paths) > 0L) source(.server_runtime_paths[1], encoding = "UTF-8", local = globalenv())
   }
   .server_runtime_missing_contract_helpers <- .server_runtime_contract_helpers[!vapply(.server_runtime_contract_helpers, exists, logical(1), mode = "function", inherits = TRUE)]
 }
@@ -29,8 +38,8 @@ if (length(.server_runtime_missing_contract_helpers) > 0L) {
 }
 
 rm(list = intersect(c(
-  ".server_runtime_contract_sources", ".server_runtime_contract_helpers",
-  ".server_runtime_missing_contract_helpers", ".contract_source"
+  ".server_runtime_contract_files", ".server_runtime_contract_helpers",
+  ".server_runtime_missing_contract_helpers", ".server_runtime_roots", ".server_runtime_cfile", ".server_runtime_paths"
 ), ls()))
 
 serverRuntimeRequireIdentity <- function(ctx,

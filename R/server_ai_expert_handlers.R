@@ -500,7 +500,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 		temperature_val = temperature_val
 	  )
 	) %...>% (function(guidance_text) {
-      if (!is.null(guidance_text) && nzchar(guidance_text) && !is_stt_modal_active()) {
+      if (!is.null(guidance_text) && nzchar(guidance_text) && !is_stt_modal_active() && identical(isolate(input$tabs), page)) {
         # Konuşma sırasında aktif konuşma varsa durdurup yenisini başlat
         if (isTRUE(ai_expert$is_speaking())) {
           ai_expert$stop_speaking(0)

@@ -6,6 +6,10 @@
 #           doğrulanır. DB/LLM/tarayıcı gerekmez.
 # ==============================================================================
 
+# İzole çalıştırma için: build_* yardımcıları shiny tags/HTML'i niteliksiz çağırır.
+# Tam suite'te shiny başka testlerce attach edilir; tek başına koşumda gerekir.
+suppressMessages(library(shiny))
+
 .messaging_builders_source_once <- function() {
   if (exists("build_reasoning_details_block", envir = globalenv(),
              mode = "function", inherits = TRUE) &&

@@ -62,6 +62,15 @@ source(
   local = globalenv()
 )
 
+# Refactor sonrası tool-mode helperları (get_tool_mode_config,
+# build_main_actions_data_from_config, resolve_tool_model_for_family)
+# helpers_api_model_tool_runtime.R dosyasına taşındı; izole koşumda yüklenmeli.
+source(
+  file.path(repo_root_quick_action_routing, "R", "helpers_api_model_tool_runtime.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
 source(
   file.path(repo_root_quick_action_routing, "R", "helpers_quick_action_intro_messages.R"),
   encoding = "UTF-8",

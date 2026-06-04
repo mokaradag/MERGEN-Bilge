@@ -157,12 +157,12 @@ llmResponseHandlersInit <- function(
     p2 <- promises::then(
       p,
       onFulfilled = function(result) {
-        # İstek durdurulduysa veya farklı bir istek aktifse çık
-        if (isTRUE(stop_generation()) || !identical(active_request_id(), req_id)) {
+        # Bayatlık kontrolü: bu istek artık güncel değilse (durduruldu ya da
+        # daha yeni bir istek başladı) paylaşılan UI/typing durumunu EZME.
+        # Daha yeni isteğin yazma sarmalayıcısını ve gönderme durumunu bayat
+        # geri çağrı bozmamalıdır; nihai temizlik finally bloğunda yapılır.
+        if (!mergen_is_current_request(active_request_id, req_id, stop_generation)) {
           perf_tracker$track_error()
-          shiny::removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-          values$typing <- FALSE
-          reset_chat_state_fn()
           return(invisible(NULL))
         }
  
@@ -382,6 +382,15 @@ llmResponseHandlersInit <- function(
       onRejected = function(err) {
         # Promise reddedildiğinde hata işleme
         perf_tracker$track_error()
+
+        # Bayatlık kontrolü: yeni bir istek aktifse ya da istek durdurulduysa
+        # bu bayat hata, yeni isteğin UI/typing durumunu EZMEMELİ ve kullanıcıya
+        # bayat hata toast'ı gösterilmemeli. Temizlik finally'de istek-kapsamlı
+        # olarak yapılır.
+        if (!mergen_is_current_request(active_request_id, req_id, stop_generation)) {
+          return(invisible(NULL))
+        }
+
         shiny::removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
         values$typing <- FALSE
 
@@ -409,7 +418,18 @@ llmResponseHandlersInit <- function(
         try(unlink(mcp_reasoning_stream_file, force = TRUE), silent = TRUE)
       }
 
-      reset_chat_state_fn()
+      # Sohbet durumunu yalnızca daha YENİ bir istek aktif DEĞİLSE sıfırla.
+      # Aksi halde bayat finally, yeni isteğin gönderme/typing durumunu ve
+      # yazma sarmalayıcısını bozar (stale-request yarışı koruması). İptal
+      # (cancelled_) ve normal tamamlanma durumlarında sıfırlamaya izin verilir.
+      current_active_id <- tryCatch(active_request_id(), error = function(e) NULL)
+      current_active_id <- if (is.null(current_active_id)) "" else as.character(current_active_id)[1]
+      newer_request_active <- nzchar(current_active_id) &&
+        !identical(current_active_id, as.character(req_id)[1]) &&
+        !startsWith(current_active_id, "cancelled_")
+      if (!isTRUE(newer_request_active)) {
+        reset_chat_state_fn()
+      }
     })
  
     return(p2)
