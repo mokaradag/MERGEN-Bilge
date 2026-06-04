@@ -58,11 +58,23 @@ MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığ�
 
 `cloud-quick` modu, `duckdb`, `arrow`, `odbc` ve `pool` gibi ağır/runtime kaynak paketlerinin bulut ortamında uzun süren derlemelerine takılmamak için tasarlanmıştır. Bu mod, app source smoke / tam runtime boot doğrulamasını bilinçli olarak atlar; parse sanity ve odak sözleşme testlerini çalıştırır. AI ajanları `cloud-quick` kullandığında bunun tam runtime/VM doğrulaması olmadığını açıkça belirtmelidir.
 
-Yalnızca `README.md` / `CLAUDE.md` dokümantasyon değişikliklerinde R doğrulaması çalıştırılmaz; metin farkı incelemesi yeterlidir.
+Yalnızca `README.md` / `CLAUDE.md` dokümantasyon değişikliklerinde R doğrulaması çalıştırılmaz; yalnızca markdown farkı incelenir.
 
 ### Kaynak manifesti CRLF parse kararlılığı
 
 Kaynak manifesti parse doğrulaması, Windows CRLF ve eski Mac CR satır sonlarını gerçek LF karakterine normalize edecek şekilde güçlendirildi. Böylece geçerli çok satırlı R dosyaları doğrulama sırasında literal "n" karakterleriyle bozulmaz ve "unexpected symbol" türü hatalı parse sonuçları üretilmez. Değişiklik yalnızca manifest parse doğrulama sınırını etkiler; görünür kullanıcı akışı ve uygulama davranışı değişmez.
+
+### Teknik güncelleme özeti
+
+- **Açılış ve medya hazırlığı:** Açılış ilerleme çubuğu artık pseudo/zaman bazlı dolum yerine gerçek boot kontrol noktaları ve medya tamponlama ilerlemesiyle ilerler. Karakter videoları ve karşılama arka plan videoları sırayla tarayıcı HTTP önbelleğine ısıtılır; yüzde 100, medya/kimlik/dosya indeksi hazır olduğunda anlamlıdır. Bilge Yolaç CLI bağlantı testi de açılış kritik yolundan ertelenerek ilerleme çubuğunu dondurmaması sağlanmıştır.
+
+- **Erişilebilirlik:** Ana söyleşi giriş alanı, ikon-yalnız kontroller, açılır menüler ve toast bildirimleri ekran okuyucu erişilebilirliği için `aria-label`, `aria-hidden`, `role` ve `aria-live` sözleşmeleriyle güçlendirildi. Gönder/Durdur düğmesinin erişilebilir etiketi, düğmenin aktif moduna göre güncellenir.
+
+- **Tanılama ve güvenilirlik:** Yakalanmamış Shiny hataları ve true streaming kullanıcı mesajı DB kaydetme hataları artık sır-redakteli `[RUNTIME_ERROR]` kayıtlarıyla tanılanabilir. Bu değişiklik görünür kullanıcı akışını değiştirmekten çok üretim ortamında hata kök nedeni bulma kabiliyetini artırır.
+
+- **Claude Code / Codex bulut bootstrap dayanıklılığı:** Claude Code web oturumları için `SessionStart` hook ve bulut `Setup Script` yolu netleştirildi. RSPM indirme yönlendirmesi nedeniyle `rspm-sync.rstudio.com` allowlist gereklidir; installer gerçek paket indirmesini doğrular ve gerekirse CRAN'a düşer. Bu alan uygulama runtime/VM/DB/SSO kanıtı değil, bulut bootstrap sürecini kolaylaştıran altyapıdır.
+
+- **Davranışsal test kapsamı:** 02-03 Haziran güncellemeleriyle app loading/boot readiness, health, support, chat actions/search/export, admin UI/analytics/error analysis, image generation, STT, ChartLab, AI Expert, user identity, messaging render, DB chat readers, logging resolvers, music URL encoding ve version history resolver gibi çok sayıda modül ve yardımcı için çevrimdışı, deterministik davranışsal test kapsamı genişletildi. Ayrıca `message_search` `gregexpr` uyarısı, DB chat timestamp parsing güvenli varsayılanı ve ChartLab milisaniye ID overflow uyarısı gibi küçük cerrahi düzeltmeler testlerle korunur.
 
 ### Sürüm geçmişi dosya yolu çözümleme kararlılığı
 

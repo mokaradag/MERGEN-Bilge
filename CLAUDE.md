@@ -790,8 +790,27 @@ Startup loading overlay contract:
 - Character/welcome media preloading is single-source and authoritative in `www/js/app_loading_media.js`. It requests all persona videos, then fully warms the welcome cinematic background videos AND every persona's intro video into the browser HTTP cache, SEQUENTIALLY, waiting for `canplaythrough` and then removing each hidden `<video>` element (cache stays warm, no live decoders linger). It reports real progress through `window.MergenAppLoading.reportMediaProgress` and signals `character_media_preload_ready` only after the queue drains. Do not reintroduce a second competing `loadExploreAllCharVideos` / `character_media_preload_ready` handler (the old `www/js/explore_media_preload.js` was removed because two handlers raced); do not weaken it back to metadata-only warming, and do not add it to `R/config_ui_assets.R`.
 - The Bilge Yolaç CLI auto connection test (`check_claude_code_status()` → `claude.cmd --version` via `processx` + `proc$wait`) is a synchronous subprocess and MUST stay off the boot-critical path. `R/helpers_claude_code_server_setup.R` defers it with `shinyjs::delay(...)` so it cannot block the boot event loop / freeze the progress bar; the connection badge stays in its "checking" state until then. Do not move this check back to an eager session-init `observe()`.
 - Keep `window.MergenAppLoading` as the small external control surface for startup loading state (`finish`, `setStage`, `reportMediaProgress`).
+
+### Startup media readiness and real-progress contract
+
+- Startup loading progress must be driven by real boot readiness checkpoints and media buffering progress, not by synthetic/time-based trickle.
+- The authoritative media preloader is `www/js/app_loading_media.js`.
+- Do not reintroduce `www/js/explore_media_preload.js` or any second competing `character_media_preload_ready` / `loadExploreAllCharVideos` handler.
+- Persona intro videos and welcome background videos must be buffered sequentially, wait for `canplaythrough`, report progress through `window.MergenAppLoading.reportMediaProgress`, and remove hidden video elements after warming so no persistent hidden decoder remains.
+- The 22-second rule is a progress-aware stall watchdog; do not convert it back to an absolute 22-second close. Keep the 180-second absolute hard cap.
+- The Bilge Yolaç CLI status check must stay deferred and off the boot-critical path because `claude.cmd --version` via `processx` / `proc$wait` can block the Shiny event loop.
+- Overlay assets remain inline through `R/module_app_loading.R` and must not be moved into `R/config_ui_assets.R`.
 - The corporate heptagon emblem, ASELSAN colour palette and the atmospheric code-stream layer are part of the intended look; do not strip them to simplify the file.
 - Do not move this startup overlay into normal frontend asset manifests, CDN assets, bundled files, or delayed scripts.
+
+### Accessibility contract for main chat controls and toast notifications
+
+- Icon-only controls in the main chat input area must keep accessible names through `aria-label`.
+- Decorative icons must remain hidden from screen readers with `aria-hidden`.
+- Toast notifications must remain live regions using `role` / `aria-live`, and icon-only close controls must keep `aria-label`.
+- The send/stop button must update both `title` and `aria-label` when switching between send and stop modes.
+- Protect this with `tests/testthat/test-accessibility-contract.R`.
+- Do not remove existing ids/classes or dark-theme behavior when changing accessibility attributes.
 
 Protected by:
 
@@ -3502,6 +3521,14 @@ Testing expectations:
 - Console color logging is opt-in. Keep `MERGEN_LOG_CONSOLE_COLORS=false` as the production default so ANSI color escape sequences do not leak into Windows VM/service logs.
 - Do not replace this with unconditional `layout_glue_colors` for console logs. Local colored console output may be enabled temporarily with `MERGEN_LOG_CONSOLE_COLORS=true`.
 
+### Structured runtime error logging contract
+
+- `shiny_error_handler()` may emit secret-redacted structured `[RUNTIME_ERROR]` JSON via `mergen_build_runtime_error_record()`.
+- The global error handler must never fail because structured logging fails; keep `tryCatch` / fallback behavior.
+- true streaming user-message persistence failures must be logged with `log_error_with_context(e, "TRUE_STREAM_SAVE_USER_MSG")` instead of disappearing silently.
+- Do not add noisy structured logging inside hot streaming JSON-line parse loops unless there is an explicit throttling/aggregation design.
+- Logs must remain secret-redacted.
+
 ---
 
 ## Test Suite and Execution Rules
@@ -4624,6 +4651,14 @@ future({
 
 This repo is highly sensitive to reactive-scope mistakes.
 
+### Worker payload snapshot contract
+
+- Never pass live `reactiveValues`, reactive expressions, or session-bound reactive objects into workers/background promises.
+- Convert `reactiveValues` to a plain list snapshot before worker boundaries.
+- `as_llm_settings_list()` must detect `shiny::is.reactivevalues(settings)` before the generic `is.list(settings)` branch, because `reactiveValues` can satisfy `is.list()`.
+- Use `shiny::isolate(shiny::reactiveValuesToList(settings))` and fall back safely to `list()` on error.
+- This contract protects `summarize_file_with_llm()` and other background/worker payloads from "reactive value outside consumer" errors.
+
 ---
 
 ## 4) File Storage and Indexing
@@ -5521,6 +5556,15 @@ testthat::test_file("tests/testthat/test-production-contracts.R")
 ```
 
 Recent production-hardening coverage adds focused contract tests for source manifest integrity, secret leakage, runtime network boundaries, and expanded UTF-8 parse coverage of high-risk production files. The runtime network-boundary test is intended to catch accidental public internet/CDN dependencies in executable runtime code, not harmless documentation/license references: it strips R/JS/CSS comments, allows SVG namespace URLs, `example.*` placeholders, known internal/intranet hosts, and skips vendored offline assets such as `www/js/highlight.min.js` and `www/css/all.min.css`. Use `MERGEN_ALLOWED_INTERNAL_URL_REGEX` only for additional organization-specific internal URL allowlisting.
+
+### Behavioral test coverage expansion notes from 02-03 June 2026
+
+- The 02-03 June 2026 commits added broad offline, deterministic behavioral coverage for previously untested modules/server files and pure helpers.
+- PR #439 covered 42 previously untested R/Shiny modules/server files, added around 34 new test files, reached about 627 assertions after that wave, and included the behavior-preserving `message_search` `gregexpr(..., fixed = TRUE)` warning fix.
+- PR #441 covered 20+ additional modules/helpers, including image generation, AI Expert, admin error analysis, file-manager runtime, startup screen, STT, ChartLab, user identity, messaging rendering, DB chat readers, Claude Code formatting, package validation, logging resolvers, health formatters, version history resolver, and welcome builders.
+- New behavioral tests must stay offline and deterministic: use local stubs, isolated environments, `MockShinySession` / `testServer`, and no real LLM/TTS/DB/browser/network unless explicitly required by an existing validation gate.
+- Warnings in focused behavior tests should be treated as regressions where the test path expects zero warnings. If production emits a spurious warning, fix it surgically with a regression test rather than suppressing it globally.
+- Preserve Turkish comments and `test_that` descriptions with proper UTF-8 Turkish characters.
 
 ### Focused behavioral coverage from claude/lucid-mayer-U1iHC
 
