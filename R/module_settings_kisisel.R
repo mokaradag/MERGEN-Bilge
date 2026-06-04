@@ -181,18 +181,21 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
     # Not: Bu fonksiyon hem reaktif bağlamdan (observeEvent) hem de reaktif
     # olmayan bağlamdan (onFlushed) çağrılabilir. get_characters_data() düz
     # bir fonksiyondur (reaktif değil), bu yüzden her iki bağlamda da güvenlidir.
-    update_character_display <- function(char_id) {
+    update_character_display <- function(char_id, committed = TRUE) {
       # Eski kimlikler de güvenle çözülsün diye normalleştir
       char_id <- normalize_character_id(char_id)
       char <- get_character_record(char_id)
       if (is.null(char)) return()
 
-      # Buton durumlarını güncelle
+      # Buton durumlarını güncelle.
+      # committed = FALSE ise bu sadece Yapılandırma/Kişiselleştirme sayfasındaki
+      # geçici önizlemedir; Ana Söyleşi neural rengi kesinlikle değiştirilmemelidir.
       session$sendCustomMessage("updateCharacterButtons", list(
         character = char_id,
         accent = char$accent,
         accent_active = char$accent_active,
-        accent_hover  = char$accent_hover
+        accent_hover  = char$accent_hover,
+        committed = isTRUE(committed)
       ))
 
       # Persona görseli config'ten gelir; modül kendi dosya adı switch'ini yazmaz
@@ -225,7 +228,10 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
       cat(sprintf("[SETTINGS-KISISEL] Karakter tıklandı: %s\n", char_id))
 
       temp_selected_character(char_id)
-      update_character_display(char_id)
+
+      # Yalnızca geçici önizleme: Ana Söyleşi neural rengi değişmemeli.
+      # Gerçek uygulama sadece "Ayarları Kaydet" ile yapılır.
+      update_character_display(char_id, committed = FALSE)
 
       Sys.sleep(0.05)
 

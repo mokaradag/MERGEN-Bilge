@@ -41,24 +41,32 @@ $(document).ready(function() {
     activeBtn.style.setProperty('--character-accent-soft', hexToRgba(accentBase, 0.24));
     activeBtn.style.setProperty('--character-accent-glow', hexToRgba(accentHover, 0.48));
 
-    // Neural network animasyonunu karakter rengine göre güncelle.
-    // Ana Söyleşi sekmesi gizliyken canvas'ı destroy/init yapmak 0px ölçülü
-    // bir animasyon bırakabilir; görünür değilse sadece rengi sakla/güncelle.
-    window.MERGEN_ACTIVE_CHARACTER = data.character || null;
-    window.MERGEN_ACTIVE_CHARACTER_ACCENT = accentBase;
+    // Neural network animasyonunu yalnızca KAYDEDİLMİŞ karakter rengine göre güncelle.
+    // Yapılandırma/Kişiselleştirme sayfasındaki karakter tıklaması committed = FALSE
+    // gelir; bu sadece önizlemedir ve Ana Söyleşi neural rengini değiştirmemelidir.
+    const isCommittedCharacter = data.committed !== false;
 
-    var neuralCanvas = document.querySelector('.modern-welcome-neural-canvas');
-    if (neuralCanvas && window.WelcomeNeuralNetwork) {
-      var rect = neuralCanvas.getBoundingClientRect();
-      var canvasVisible = document.body.contains(neuralCanvas) &&
-        rect.width > 0 &&
-        rect.height > 0;
+    if (isCommittedCharacter) {
+      window.MERGEN_ACTIVE_CHARACTER = data.character || null;
+      window.MERGEN_ACTIVE_CHARACTER_ACCENT = accentBase;
 
-      if (canvasVisible) {
-        window.WelcomeNeuralNetwork.destroy();
-        window.WelcomeNeuralNetwork.init(neuralCanvas, accentBase);
-      } else if (typeof window.WelcomeNeuralNetwork.updateColor === 'function') {
-        window.WelcomeNeuralNetwork.updateColor(accentBase);
+      // Daha açık isim: Ana Söyleşi tarafı yalnızca kaydedilmiş aksanı kullanmalı.
+      window.MERGEN_SAVED_CHARACTER = data.character || null;
+      window.MERGEN_SAVED_CHARACTER_ACCENT = accentBase;
+
+      var neuralCanvas = document.querySelector('.modern-welcome-neural-canvas');
+      if (neuralCanvas && window.WelcomeNeuralNetwork) {
+        var rect = neuralCanvas.getBoundingClientRect();
+        var canvasVisible = document.body.contains(neuralCanvas) &&
+          rect.width > 0 &&
+          rect.height > 0;
+
+        if (canvasVisible) {
+          window.WelcomeNeuralNetwork.destroy();
+          window.WelcomeNeuralNetwork.init(neuralCanvas, accentBase);
+        } else if (typeof window.WelcomeNeuralNetwork.updateColor === 'function') {
+          window.WelcomeNeuralNetwork.updateColor(accentBase);
+        }
       }
     }
   });

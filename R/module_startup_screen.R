@@ -452,13 +452,13 @@ startupScreenObserversInit <- function(input, session, settings_data, boot_ready
 	  char_id <- normalize_character_id(settings_data$selected_character)
 	  char <- get_character_record(char_id)
 	  if (!is.null(char)) {
-		session$sendCustomMessage("updateNeuralColor", list(accent = char$accent))
-		session$sendCustomMessage("updateCharacterButtons", list(
-		  character = char_id,
-		  accent = char$accent,
-		  accent_active = char$accent_active,
-		  accent_hover = char$accent_hover
-		))
+        session$sendCustomMessage("updateCharacterButtons", list(
+          character = char_id,
+          accent = char$accent,
+          accent_active = char$accent_active,
+          accent_hover = char$accent_hover,
+          committed = TRUE
+        ))
 	  }
 
       # Giriş atlandığında, kayıtlı moda göre uygulama arka plan müziğini
@@ -578,12 +578,13 @@ startupScreenObserversInit <- function(input, session, settings_data, boot_ready
 
 		if (!is.null(char)) {
 		  # Yapılandırma sayfasındaki karakter butonlarını güncelle
-		  session$sendCustomMessage("updateCharacterButtons", list(
-			character = char_id,
-			accent = char$accent,
-			accent_active = char$accent_active,
-			accent_hover = char$accent_hover
-		  ))
+          session$sendCustomMessage("updateCharacterButtons", list(
+            character = char_id,
+            accent = char$accent,
+            accent_active = char$accent_active,
+            accent_hover = char$accent_hover,
+            committed = TRUE
+          ))
 
 		  # Hoşgeldin ekranındaki neural network rengini güncelle
 		  session$sendCustomMessage("updateNeuralColor", list(

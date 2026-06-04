@@ -297,6 +297,10 @@ settingsInit <- function(session, parent_session = NULL) {
     # Kişiselleştirme geçici değerlerini uygula
     settings$selected_character <- kisisel$temp_selected_character()
 
+    # Karakter rengi/görseli artık gerçekten kaydedildi.
+    # Bu çağrı committed = TRUE olduğu için Ana Söyleşi neural rengi şimdi güncellenebilir.
+    kisisel$update_character_display(settings$selected_character, committed = TRUE)
+
     # Deneyim modu değişikliği varsa uygula (sadece kaydet butonunda)
     # Kullanıcı mod kartına tıkladıysa aynı mod olsa bile tekrar uygula
     mode_changed <- FALSE

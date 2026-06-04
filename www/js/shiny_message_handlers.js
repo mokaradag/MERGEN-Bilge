@@ -322,19 +322,24 @@ $(document).ready(function() {
 		}, 800);
 	  }
 
-	  if (neuralCanvas) {
-		var accentColor = message && message.accentColor ? message.accentColor : null;
-		if (!accentColor && window.MERGEN_ACTIVE_CHARACTER_ACCENT) {
-		  accentColor = window.MERGEN_ACTIVE_CHARACTER_ACCENT;
-		}
-		if (!accentColor) {
-		  var activeBtn = document.querySelector('.character-btn.active');
-		  if (activeBtn) {
-			accentColor = getComputedStyle(activeBtn).getPropertyValue('--character-accent').trim() || null;
-		  }
-		}
-		window.WelcomeNeuralNetwork.init(neuralCanvas, accentColor);
-	  }
+      if (neuralCanvas) {
+        var accentColor = message && message.accentColor ? message.accentColor : null;
+
+        // Ana Söyleşi neural animasyonu yalnızca kaydedilmiş karakter rengini kullanmalı.
+        // .character-btn.active okunmaz; çünkü Yapılandırma/Kişiselleştirme sayfasındaki
+        // kaydedilmemiş önizleme de bu sınıfı geçici olarak değiştirebilir.
+        if (!accentColor && window.MERGEN_SAVED_CHARACTER_ACCENT) {
+          accentColor = window.MERGEN_SAVED_CHARACTER_ACCENT;
+        }
+
+        // Geriye dönük güvenli fallback: yeni kodda MERGEN_ACTIVE_CHARACTER_ACCENT
+        // artık sadece committed seçimlerde güncellenir.
+        if (!accentColor && window.MERGEN_ACTIVE_CHARACTER_ACCENT) {
+          accentColor = window.MERGEN_ACTIVE_CHARACTER_ACCENT;
+        }
+
+        window.WelcomeNeuralNetwork.init(neuralCanvas, accentColor);
+      }
 
 	  if (greetingText) {
 		window.WelcomeGreeting.init(greetingText);
