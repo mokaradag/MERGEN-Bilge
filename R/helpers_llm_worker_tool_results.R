@@ -6,6 +6,35 @@
 #             sonuçlarını deterministik metin çıktısına çevirir.
 # ==============================================================================
 
+llm_worker_extract_preview_df <- function(raw) {
+  if (!is.list(raw)) {
+    return(NULL)
+  }
+
+  raw_names <- names(raw)
+  candidate_names <- c("sonuç_önizleme", "sonuc_onizleme", "preview")
+
+  if (!is.null(raw_names)) {
+    raw_names_utf8 <- enc2utf8(raw_names)
+    candidate_names_utf8 <- enc2utf8(candidate_names)
+
+    matched_idx <- match(candidate_names_utf8, raw_names_utf8)
+    matched_idx <- matched_idx[!is.na(matched_idx)]
+
+    if (length(matched_idx)) {
+      return(raw[[matched_idx[[1]]]])
+    }
+  }
+
+  dataframe_idx <- which(vapply(raw, is.data.frame, logical(1)))
+
+  if (length(dataframe_idx) == 1L) {
+    return(raw[[dataframe_idx[[1]]]])
+  }
+
+  NULL
+}
+
 llm_worker_format_single_tool_result <- function(raw,
                                                  tool_name,
                                                  chart_summary_fn = llm_worker_build_chart_summary) {
@@ -14,18 +43,16 @@ llm_worker_format_single_tool_result <- function(raw,
   mergen_debug_cat("[GLOBAL] raw değişkeni class:", class(raw), "\n")
   mergen_debug_cat("[GLOBAL] raw değişkeni names:", paste(names(raw), collapse = ", "), "\n")
 
-  # sonuç_önizleme veya preview'i bul.
-  # Not: Önce is.list(raw) kontrolü yapılır. Böylece karakter vektörü döndüren
-  # araçlar, aşağıdaki is.character(raw) fallback dalına güvenli şekilde ulaşır.
-  df <- NULL
-  if (is.list(raw) && !is.null(raw$`sonuç_önizleme`)) {
-    mergen_debug_cat("[GLOBAL] sonuç_önizleme bulundu\n")
-    df <- raw$`sonuç_önizleme`
-  } else if (is.list(raw) && !is.null(raw$preview)) {
-    mergen_debug_cat("[GLOBAL] preview bulundu\n")
-    df <- raw$preview
+  # sonuç_önizleme / sonuc_onizleme / preview'i bul.
+  # Not: Türkçe alan adları bazı Windows/RStudio koşullarında farklı encoding ile
+  # gelebilir. Bu nedenle doğrudan raw$`sonuç_önizleme` yerine normalize edilmiş
+  # isim eşleştirmesi yapan yardımcı fonksiyon kullanılır.
+  df <- llm_worker_extract_preview_df(raw)
+
+  if (!is.null(df)) {
+    mergen_debug_cat("[GLOBAL] veri önizleme bulundu\n")
   } else {
-    mergen_debug_cat("[GLOBAL] *** UYARI: Ne sonuç_önizleme ne de preview bulundu! ***\n")
+    mergen_debug_cat("[GLOBAL] *** UYARI: sonuç_önizleme/preview bulunamadı! ***\n")
   }
 
   mergen_debug_cat("[GLOBAL] df class:", class(df), "\n")
@@ -142,7 +169,7 @@ llm_worker_format_tool_results_for_prompt <- function(tool_calls,
         mergen_debug_cat("[GLOBAL] *** HATA VAR ***: ", raw$error, "\n")
       }
 
-      df <- raw$`sonuç_önizleme` %||% raw$preview
+      df <- llm_worker_extract_preview_df(raw)
       if (is.data.frame(df)) {
         mergen_debug_cat("[GLOBAL] DataFrame bulundu - Satır:", nrow(df), " Sütun:", ncol(df), "\n")
         if (nrow(df) > 0) {
