@@ -565,6 +565,13 @@ moduleServer(id, function(input, output, session) {
       message_trigger(message_trigger() + 1)
     }, ignoreInit = TRUE)
 
+    # Yenile butonu: dosya tablosunu kalıcı kullanıcı klasöründen yeniden yükler.
+    # Mevcut refresh_from_user_folder mekanizmasını kullanır (yeni yardımcı eklemez).
+    observeEvent(input$refresh_files, {
+      refresh_from_user_folder("manual")
+      showToast(session, "Dosya listesi yenilendi.", "info")
+    }, ignoreInit = TRUE)
+
     observeEvent(input$clear_files, {
       if (nrow(module_values$files) == 0) return(showToast(session, "Temizlenecek dosya yok.", "info"))
       showModal(modalDialog(

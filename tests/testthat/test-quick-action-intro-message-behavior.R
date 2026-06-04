@@ -21,8 +21,12 @@
     assign("%||%", function(a, b) if (is.null(a)) b else a, envir = globalenv())
   }
   # build_quick_action_intro_message, get_tool_mode_config'e bağlıdır.
+  # get_tool_mode_config araç-runtime ayrımıyla helpers_api_model_tool_runtime.R'a
+  # taşındı; olası bağımlılıklar için config dosyası önce yüklenir.
   if (!exists("get_tool_mode_config", mode = "function", inherits = TRUE)) {
     source(file.path(root, "R", "helpers_api_model_config.R"),
+           encoding = "UTF-8", local = globalenv())
+    source(file.path(root, "R", "helpers_api_model_tool_runtime.R"),
            encoding = "UTF-8", local = globalenv())
   }
   if (!exists("build_quick_action_intro_message",

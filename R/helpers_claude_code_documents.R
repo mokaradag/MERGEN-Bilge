@@ -10,12 +10,30 @@
 if (!exists("extract_supported_document_text_for_claude", mode = "function", inherits = TRUE) ||
     !exists("get_office_document_reader_template_path", mode = "function", inherits = TRUE)) {
 
-  claude_doc_extractors_path <- file.path(
-    "R",
-    "helpers_claude_code_document_extractors.R"
+  # Çalışma dizininden bağımsız aday yolları dene. Üretimde global.R bu dosyayı
+  # extractor'dan SONRA yüklediği için bu dal normalde hiç çalışmaz; ancak izole
+  # test/debug source bağlamında getwd() repo kökü olmayabilir. Bu yüzden repo
+  # kökü, tests/testthat ve MERGEN_REPO_ROOT adayları sırayla denenir.
+  claude_doc_extractors_candidates <- c(
+    file.path("R", "helpers_claude_code_document_extractors.R"),
+    file.path("..", "..", "R", "helpers_claude_code_document_extractors.R"),
+    if (nzchar(Sys.getenv("MERGEN_REPO_ROOT"))) {
+      file.path(Sys.getenv("MERGEN_REPO_ROOT"), "R", "helpers_claude_code_document_extractors.R")
+    } else {
+      NULL
+    }
   )
 
-  if (!file.exists(claude_doc_extractors_path)) {
+  claude_doc_extractors_path <- NULL
+  for (claude_doc_cand in claude_doc_extractors_candidates) {
+    if (!is.null(claude_doc_cand) && nzchar(claude_doc_cand) &&
+        isTRUE(tryCatch(file.exists(claude_doc_cand), error = function(e) FALSE))) {
+      claude_doc_extractors_path <- claude_doc_cand
+      break
+    }
+  }
+
+  if (is.null(claude_doc_extractors_path)) {
     stop(
       "R/helpers_claude_code_document_extractors.R bulunamadı; helpers_claude_code_documents.R yüklenemiyor.",
       call. = FALSE

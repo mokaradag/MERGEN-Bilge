@@ -1,4 +1,4 @@
-# PROMPT — Behavioral test coverage, session 3 (deep runtime + service-bound logic)
+# PROMPT — Behavioral test coverage, session 4 (deep runtime + service-bound logic)
 
 TASK: Continue eliminating the **"Module / runtime-logic test coverage"** weakness in this
 R/Shiny repo (MERGEN Bilge) by adding MANY focused, deterministic, OFFLINE behavioral tests under
@@ -16,23 +16,35 @@ Read `CLAUDE.md` first — it is the binding operational guide; follow every con
   If for some reason no branch is assigned, create a brand-new one (e.g. `claude/test-coverage-s3-*`).
 - When you finish, **open a NEW pull request** for your fresh branch. Commit messages in Turkish.
 
-## CONTEXT — what sessions 1 & 2 already did (do NOT redo)
-- ~130+ `tests/testthat/test-*-behavior.R` / `-contract.R` files already exist.
-- Session 2 added 23 behavioral files (~442 assertions, 0 fail/warn/skip) covering the previously
-  file-untested modules AND the easy **pure top-level** helpers:
-  - module_*: file_manager_attach_client, file_manager_table_runtime, stt, chartlab,
-    image_generation, startup_screen, ai_expert, admin_hata_analizi.
-  - pure helpers: user_identity (Turkish case), server_music_handlers (UTF-8 URL encode),
-    helpers_db_chat_readers (.db_chat_*), helpers_messaging, config_version_history resolver,
-    sidebar_user_panel initials/avatar, welcome_screen_modern builders, helpers_followup_questions
-    resolve_followup_enabled, helpers_files readFileContentToString, health_formatters
-    (escape/pill/render), config_packages validate_required_packages,
-    claude_code_workdir_snapshot normalize, admin badge HTML, config_logging resolvers,
-    helpers_claude_code format_output / get_thinking_message.
-- Two surgical bugs were found-and-fixed (with regression tests): `module_chartlab make_id`
-  32-bit `as.integer` overflow → `sprintf("%.0f", ...)`; `helpers_db_chat_readers`
-  `.db_chat_as_numeric_timestamp` `as.POSIXct("garbage")` **errors** (not warns) → wrapped in
-  `tryCatch(..., error = NA)`. Do NOT reintroduce either bug.
+## CONTEXT — what sessions 1, 2 & 3 already did (do NOT redo)
+- ~140+ `tests/testthat/test-*-behavior.R` / `-contract.R` files already exist.
+- Session 2 added 23 behavioral files (~442 assertions) covering previously file-untested modules and
+  the easy **pure top-level** helpers (file_manager_attach_client/table_runtime, stt, chartlab,
+  image_generation, startup_screen, ai_expert, admin_hata_analizi; plus user_identity, music URL
+  encode, .db_chat_*, messaging, version-history resolver, sidebar initials, welcome builders,
+  followup flag, readFileContentToString, health_formatters, validate_required_packages,
+  workdir_snapshot normalize, config_logging resolvers, claude_code format/thinking).
+- Session 2 surgical bugs (do NOT reintroduce): `module_chartlab make_id` 32-bit `as.integer`
+  overflow → `sprintf("%.0f", ...)`; `.db_chat_as_numeric_timestamp` `as.POSIXct("garbage")` error →
+  `tryCatch(..., error = NA)`.
+- **Session 3 (branch `claude/confident-wright-9crdA`) added 10 behavioral files (~165 assertions)** and
+  several fixes. Already COVERED (do NOT redo): file_manager_session_registry (`.fm_registry_chr`,
+  `fm_session_registry_entry`, `fm_normalize_session_registry_path`, register/unregister),
+  config_file_store_listing_helpers (`.file_store_deduplicate_rows`/`_lifecycle_key`/`_index_record_row`/
+  `_list_user_files_relaxed`/`_file_size_safe`/`_merge_same_user_filesystem`/`_user_dir_paths`),
+  `.normalize_user_session_id`, `.mb_feature_api_key_scalar`, `.fm_context_chr`,
+  `llm_worker_format_single_tool_result` (all 6 branches), helpers_admin_hata_analizi UI builders
+  (`admin_ha_overview_ui`/`_oncelik_ui`/`_detay_ui`/`_zaman_ui`), config_ui_assets tag builders
+  (`ui_asset_css_tag`/`script_tag`/`flatten_groups`/`css_tags`/`js_tags`/`validate_js_render_plan`),
+  `load_image_descriptions_for_user` (DBI-mocked), `.sanitize_log_value`, and the image/summarization
+  stale-request race guard (with `test-async-handler-stale-request-race-behavior.R`).
+- Session 3 found/fixed REAL bugs (do NOT reintroduce): (a) two server-side staleness races in
+  `server_handler_image_generation.R` and `server_handler_summarization.R` (async callbacks now use
+  `mergen_is_current_request`); (b) `module_startup_screen.R` skip-intro path was missing the
+  `updateNeuralColor` send that the experience-mode path has → added (persona neural tint on skip);
+  (c) `helpers_claude_code_documents.R` extractor fallback guard made working-directory-independent;
+  (d) 3 behavior tests sourced the wrong helper after the api-model tool-runtime split — they now
+  source `helpers_api_model_tool_runtime.R` so they pass standalone.
 
 ## STEP 1 — TARGET the remaining UNTESTED logic (the harder, higher-value stuff)
 The cheap pure functions are mostly done. What remains is where bugs hide: **nested closures inside
@@ -69,15 +81,16 @@ Highest-value remaining clusters (verify each is still 0-ref before writing — 
   `health_check_db_connection` / `health_check_db_schema` / `health_check_llm_endpoint` /
   `health_check_reasoning_readiness` — these return the structured `health_result(...)` contract; mock
   `get_connection`/`httr` and assert status/severity/remediation fields. Must NOT hit real DB/network.
-- **config_api crypto/key-file helpers** (need `AI_KEYS_MASTER`, set in test env): `.hash_key_hex`,
-  `.enc_key`/`.dec_key` (assert round-trip), `save_user_api_key`/`load_user_api_key`/`user_api_key_exists`/
-  `verify_user_api_key` (use a temp `.api_user_file` dir; assert a key written then read/verified, wrong key
-  rejected). `derive_models_url` (pure URL derivation). NEVER print real key material; use fake values.
+- ~~**config_api crypto/key-file helpers**~~ — ALREADY COVERED by `test-config-api-key-crypto-behavior.R`;
+  do NOT duplicate. `validate_api_key`/`derive_models_url` (nested in `validate_api_key`) still need an
+  `httr`-mocked test if you want endpoint-validation coverage.
 - **helpers_destek_database** (mock DB): `destek_geri_bildirim_listele`, `destek_hata_bildirim_listele`,
   `destek_hata_durum_guncelle`, ... — `local_mocked_bindings` `get_connection`/`dbGetQuery`/`dbExecute`.
 - **helpers_llm_tool_formatters**: `build_excel_digest_json`, `mcp_excel_tool_fallback` (pure-ish).
-- **helpers_image_gallery**: `get_image_thumbnail_base64`, `get_chat_title_for_image` (mock DB / temp file).
-- **config_file_store_listing_helpers** `.file_store_*` (pure list/df transforms — high value, all 0-ref).
+- **helpers_image_gallery**: `get_image_thumbnail_base64`, `get_chat_title_for_image` (mock DB / temp
+  file). NOTE: `load_image_descriptions_for_user` is now COVERED (session 3, DBI-mocked).
+- ~~**config_file_store_listing_helpers** `.file_store_*`~~ — COVERED in session 3
+  (`test-file-store-listing-helpers-behavior.R`). Do NOT redo.
 - **config_sql_loader** `.remove_utf8_bom`, `.sql_has_text`, `.sql_placeholder_text`, `.read_sql_file_text`:
   the file `stop()`s at source time without `query_library` — source `R/library_queries.R` FIRST, or
   `tryCatch(source(...), error=...)` (functions defined before the stop remain in env), then test.
@@ -142,6 +155,24 @@ NEW SESSION-2 GOTCHAS (save hours):
   assert the real contract, not the assumed one.
 - `withr::defer(env$fn <- .orig)` to restore env stubs you mutate inside a `test_that`.
 - `cat()`-noisy fns → wrap calls in `invisible(utils::capture.output(res <- expr)); res`.
+
+NEW SESSION-3 GOTCHAS:
+- **Wrong-source-after-split trap**: a helper may have MOVED files in a refactor. Several tool-mode
+  helpers (`get_tool_mode_config`, `resolve_tool_model_for_family`, `build_main_actions_data_from_config`,
+  `resolve_deep_thinking_model`) now live in `helpers_api_model_tool_runtime.R`, NOT
+  `helpers_api_model_config.R`. If your test sources the old file it passes in the FULL suite (the runtime
+  file is loaded by `global.R`) but ERRORS standalone. Before writing a source-guard, `grep -rn 'fn <-
+  function' R/` to find the REAL owner. Make tests self-contained for individual runs.
+- **Promise/async handlers**: to drive `%...>%`/`promises::then` callbacks, stub the worker
+  (`tracked_future_promise`/`call_llm_non_streaming`) to return `promises::promise_resolve(x)` /
+  `promise_reject(e)`, then drain with a bounded `while(!later::loop_empty()) later::run_now(timeout=0)`
+  loop. Mock `shinyjs::runjs` via `local_mocked_bindings(.package="shinyjs")`. See
+  `test-async-handler-stale-request-race-behavior.R`.
+- **CRLF files**: many `R/*.R` and `www/css/*.css` files are CRLF. Editing them with an LF-only tool can
+  corrupt line endings. Prefer a small R `readLines()/writeLines(..., sep="\r\n", useBytes=TRUE)` script
+  for CRLF files; verify with `grep -c $'\r' file` == `wc -l`.
+- **FontAwesome 6 icon aliases**: `icon("sync-alt")` renders as `fa-rotate`, `icon("trash-alt")` as
+  `far fa-trash-can`. Don't assert the alias name; assert the rendered class or be tolerant.
 
 WARNINGS = FAILURES under the strict runner (`stop_on_warning=TRUE`): every test must be 0 WARN. Watch
 `gregexpr(fixed=TRUE, ignore.case=TRUE)`, unguarded `as.integer(...)` (overflow), `as.POSIXct("garbage")`

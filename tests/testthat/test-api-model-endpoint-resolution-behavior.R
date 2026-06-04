@@ -26,6 +26,12 @@
     source(file.path(root, "R", "helpers_api_model_config.R"),
            encoding = "UTF-8", local = globalenv())
   }
+  # get_tool_mode_config / resolve_tool_model_for_family / build_main_actions_data_from_config
+  # araç-runtime ayrımıyla helpers_api_model_tool_runtime.R'a taşındı.
+  if (!exists("get_tool_mode_config", mode = "function", inherits = TRUE)) {
+    source(file.path(root, "R", "helpers_api_model_tool_runtime.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
   invisible(TRUE)
 }
 

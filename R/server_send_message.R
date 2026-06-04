@@ -342,6 +342,10 @@ sendMessageInit <- function(
         settings_data = settings_data,
         user_message_text = user_message_text,
         current_user_id = effective_user_id,
+        # Yarış koruması: bayat görsel sonucunun yeni isteğin durumunu
+        # ezmemesi için aktif istek kimliği ve durdurma kontrolü taşınır.
+        stop_generation = stop_generation,
+        active_request_id = active_request_id,
         add_message_fn = add_message_fn, reset_chat_state_fn = reset_chat_state_fn
       )
       handle_image_generation_mode(image_ctx)

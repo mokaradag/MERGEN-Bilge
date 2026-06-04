@@ -115,10 +115,18 @@ fileManagerUI <- function(id) {
       div(
         class = "files-header",
         h3("Toplu Dosya Yükleme", class = "page-title"),
-        actionButton(
-          ns("clear_files"),
-          label = tagList(icon("trash-alt"), "Tümünü Temizle"),
-          class = "btn-modern btn-danger"
+        div(
+          class = "files-header-actions",
+          actionButton(
+            ns("refresh_files"),
+            label = tagList(icon("sync-alt"), "Yenile"),
+            class = "btn-modern btn-refresh"
+          ),
+          actionButton(
+            ns("clear_files"),
+            label = tagList(icon("trash-alt"), "Tümünü Temizle"),
+            class = "btn-modern btn-danger"
+          )
         )
       ),
       div(

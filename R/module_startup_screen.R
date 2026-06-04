@@ -459,6 +459,12 @@ startupScreenObserversInit <- function(input, session, settings_data, boot_ready
           accent_hover = char$accent_hover,
           committed = TRUE
         ))
+
+        # Giriş atlandığında da seçili/varsayılan persona renginin neural
+        # animasyona uygulanması için (deneyim-modu akışıyla tutarlı olsun).
+        session$sendCustomMessage("updateNeuralColor", list(
+          accent = char$accent
+        ))
 	  }
 
       # Giriş atlandığında, kayıtlı moda göre uygulama arka plan müziğini
