@@ -58,7 +58,9 @@ safe_windows_short_path <- function(path, must_exist = FALSE) {
     return(candidate)
   }
 
-  candidate_norm <- gsub("\\\\", "/", candidate, fixed = TRUE)
+  # fixed = TRUE kullanıldığında "\\" tek Windows ters slash karakterini temsil eder.
+  # "\\\\" ise iki ardışık ters slash arar ve normal C:\... yollarını dönüştürmez.
+  candidate_norm <- gsub("\\", "/", candidate, fixed = TRUE)
 
   # UNC ağ paylaşımı için shortPathName kullanma.
   # Bu çağrı bazı Windows/SMB ortamlarda baştaki çift eğik çizgiyi bozup
@@ -71,7 +73,7 @@ safe_windows_short_path <- function(path, must_exist = FALSE) {
     return(unc_fixed)
   }
 
-  candidate_fs <- gsub("/", "\\\\", candidate_norm, fixed = TRUE)
+  candidate_fs <- gsub("/", "\\", candidate_norm, fixed = TRUE)
   if (isTRUE(must_exist) && !.path_exists_any(candidate_fs)) {
     return(candidate_norm)
   }
@@ -85,7 +87,7 @@ safe_windows_short_path <- function(path, must_exist = FALSE) {
     short_raw <- candidate_fs
   }
 
-  short_norm <- gsub("\\\\", "/", short_raw, fixed = TRUE)
+  short_norm <- gsub("\\", "/", short_raw, fixed = TRUE)
   short_norm
 }
 
