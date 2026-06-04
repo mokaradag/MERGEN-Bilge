@@ -83,6 +83,14 @@ Current contract:
 - Be careful with R constants: use exactly `NA_character_`. A typo such as `NA_character__` can break app startup through DB parameter normalization.
 - Do not add CDN or external dependencies for encoding repair.
 
+### File Reading, Encoding, and Ratchet Notes
+- File text extraction should use the shared `read_text_lines_utf8()` helper from `R/utils_text_encoding.R`; avoid adding new local text-decoding helpers inside `R/helpers_files.R`.
+- `R/helpers_files.R` is protected by the maintainability ratchet and must stay within its line/function budget.
+- For text file content extraction in `readFileContentToString()`, use the shared UTF-8-safe helper and preserve large-file truncation behavior.
+- Tests that depend on environment-driven configuration, such as image generation endpoint settings, should explicitly isolate or override those values instead of relying on the developer machine’s `.Renviron`.
+- Startup-screen tests should avoid passing optional runtime-only arguments unless the test explicitly validates that contract.
+- For docs-only changes, do not run R/testthat validation unless the user explicitly asks.
+
 ### Version history path resolution contract
 
 - `version_history.md` remains at the repository root for real application version data.
