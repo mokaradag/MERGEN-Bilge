@@ -91,6 +91,20 @@ Current contract:
 - Startup-screen tests should avoid passing optional runtime-only arguments unless the test explicitly validates that contract.
 - For docs-only changes, do not run R/testthat validation unless the user explicitly asks.
 
+### Windows VM focused test coverage and path/API-key encoding contract
+
+Recent VM-focused coverage converted several previously skipped tests into runnable local/Windows assertions. Keep these boundaries intact:
+- `tests/testthat/test-config-sql-loader-helpers-behavior.R` intentionally isolates `query_library` while sourcing `R/config_sql_loader.R` so the pure helper functions remain available before the loader’s production cleanup boundary.
+- `tests/testthat/test-downloads-outputs-behavior.R` must test the plotly-missing graceful fallback through a lexical `requireNamespace()` mock in the sourced environment. Do not require uninstalling `plotly` from the app VM.
+- `tests/testthat/test-path-helpers-mojibake-behavior.R` must exercise real Windows behavior for `safe_windows_short_path()` instead of skipping on Windows.
+- Strict offline runtime scanning is opt-in and should be enabled in VM/local validation with `MERGEN_STRICT_OFFLINE_TESTS=true`.
+
+Encoding/path contracts protected by those tests:
+- API-key crypto helpers must encrypt `enc2utf8()` text bytes and decode decrypted raw bytes back as UTF-8 so Turkish API key values round-trip on Windows.
+- `safe_windows_short_path()` must normalize single Windows backslash separators to `/`; do not revert to a two-backslash-only replacement that leaves ordinary `C:\...` paths unnormalized.
+- Returned app-facing paths should preserve the repository’s forward-slash convention unless a function explicitly documents otherwise.
+- These tests are deterministic and do not require DB, LLM, browser, or network access.
+
 ### Service-dependent behavioral tests and API-key salt guard
 
 The service-dependent runtime tests added in this area are behavioral contract tests, not broad integration proof. They should remain offline and deterministic: use stubs, temporary directories, and mocked DBI/HTTP dependencies rather than real SQL Server, browser sessions, LLM endpoints, network calls, production services, or secrets.
