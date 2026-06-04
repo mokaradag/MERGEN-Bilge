@@ -11,8 +11,16 @@
              mode = "function", inherits = TRUE)) {
     return(invisible(TRUE))
   }
+  # resolve_deep_thinking_model araç-runtime ayrımıyla
+  # helpers_api_model_tool_runtime.R'a taşındı; olası bağımlılıklar için config
+  # dosyası önce yüklenir.
+  root <- resolve_repo_root_for_tests()
   source(
-    file.path(resolve_repo_root_for_tests(), "R", "helpers_api_model_config.R"),
+    file.path(root, "R", "helpers_api_model_config.R"),
+    encoding = "UTF-8", local = globalenv()
+  )
+  source(
+    file.path(root, "R", "helpers_api_model_tool_runtime.R"),
     encoding = "UTF-8", local = globalenv()
   )
   invisible(TRUE)
