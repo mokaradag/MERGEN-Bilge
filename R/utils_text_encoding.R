@@ -266,7 +266,8 @@ normalize_text_for_log <- function(x) {
 
 read_text_lines_utf8 <- function(path,
                                  encodings = c("UTF-8", "WINDOWS-1254", "CP1254", "latin1"),
-                                 repair_mojibake = FALSE) {
+                                 repair_mojibake = FALSE,
+                                 max_bytes = NULL) {
   if (!file.exists(path)) {
     return(character(0))
   }
@@ -276,14 +277,20 @@ read_text_lines_utf8 <- function(path,
     return(character(0))
   }
 
+  read_size <- raw_size
+  if (!is.null(max_bytes)) {
+    read_size <- min(raw_size, suppressWarnings(as.numeric(max_bytes)))
+  }
+
   con <- file(path, open = "rb")
   on.exit(close(con), add = TRUE)
 
-  raw_content <- readBin(con, what = "raw", n = raw_size)
+  raw_content <- readBin(con, what = "raw", n = read_size)
+  iconv_sub <- if (is.null(max_bytes)) NA_character_ else ""
 
   for (encoding_name in encodings) {
     txt <- tryCatch(
-      iconv(list(raw_content), from = encoding_name, to = "UTF-8", sub = NA_character_)[[1]],
+      iconv(list(raw_content), from = encoding_name, to = "UTF-8", sub = iconv_sub)[[1]],
       error = function(e) NA_character_
     )
 

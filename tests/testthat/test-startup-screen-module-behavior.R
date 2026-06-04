@@ -170,21 +170,21 @@ test_that("startup_skip_intro FALSE iken initDeepSpace mesajı gönderilir, atla
     .package = "shinyjs"
   )
 
-  shiny::testServer(
-    function(input, output, session) {
-      session$sendCustomMessage <- function(type, message) kayit$msgs[[type]] <- message
-      sd <- shiny::reactiveValues(selected_character = "emre", enable_background_music = TRUE)
-      .startup_env$startupScreenObserversInit(input, session, sd, boot_ready = NULL)
-    },
-    {
-      # once = TRUE gözlemci: tek setInputs ile gerçek değeri okuyarak bir kez tetiklenir.
-      session$setInputs(startup_skip_intro = FALSE)
-      session$flushReact()
+	shiny::testServer(
+	  function(input, output, session) {
+		session$sendCustomMessage <- function(type, message) kayit$msgs[[type]] <- message
+		sd <- shiny::reactiveValues(selected_character = "emre", enable_background_music = TRUE)
+		.startup_env$startupScreenObserversInit(input, session, sd)
+	  },
+	  {
+		# once = TRUE gözlemci: tek setInputs ile gerçek değeri okuyarak bir kez tetiklenir.
+		session$setInputs(startup_skip_intro = FALSE)
+		session$flushReact()
 
-      expect_true("initDeepSpace" %in% names(kayit$msgs))
-      expect_false(isTRUE(session$userData$deep_space_dismissed))
-    }
-  )
+		expect_true("initDeepSpace" %in% names(kayit$msgs))
+		expect_false(isTRUE(session$userData$deep_space_dismissed))
+	  }
+	)
 })
 
 test_that("startup_skip_intro TRUE iken giriş ekranı atlanır ve initDeepSpace gönderilmez", {
@@ -198,22 +198,22 @@ test_that("startup_skip_intro TRUE iken giriş ekranı atlanır ve initDeepSpace
     .package = "shinyjs"
   )
 
-  shiny::testServer(
-    function(input, output, session) {
-      session$sendCustomMessage <- function(type, message) kayit$msgs[[type]] <- message
-      sd <- shiny::reactiveValues(selected_character = "emre", enable_background_music = TRUE)
-      .startup_env$startupScreenObserversInit(input, session, sd, boot_ready = NULL)
-    },
-    {
-      # once = TRUE gözlemci: tek setInputs ile gerçek değeri okuyarak bir kez tetiklenir.
-      session$setInputs(startup_skip_intro = TRUE)
-      session$flushReact()
+	shiny::testServer(
+	  function(input, output, session) {
+		session$sendCustomMessage <- function(type, message) kayit$msgs[[type]] <- message
+		sd <- shiny::reactiveValues(selected_character = "emre", enable_background_music = TRUE)
+		.startup_env$startupScreenObserversInit(input, session, sd)
+	  },
+	  {
+		# once = TRUE gözlemci: tek setInputs ile gerçek değeri okuyarak bir kez tetiklenir.
+		session$setInputs(startup_skip_intro = TRUE)
+		session$flushReact()
 
-      # Atlama işaretlenmeli ve derin uzay sahnesi başlatılmamalı.
-      expect_true(isTRUE(session$userData$deep_space_dismissed))
-      expect_false("initDeepSpace" %in% names(kayit$msgs))
-      # Varsayılan persona rengi/güncellemesi yayınlanmalı.
-      expect_true("updateNeuralColor" %in% names(kayit$msgs))
-    }
-  )
+		# Atlama işaretlenmeli ve derin uzay sahnesi başlatılmamalı.
+		expect_true(isTRUE(session$userData$deep_space_dismissed))
+		expect_false("initDeepSpace" %in% names(kayit$msgs))
+		# Varsayılan persona rengi/güncellemesi yayınlanmalı.
+		expect_true("updateNeuralColor" %in% names(kayit$msgs))
+	  }
+	)
 })
