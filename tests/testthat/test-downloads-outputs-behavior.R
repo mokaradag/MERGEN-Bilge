@@ -75,16 +75,23 @@ testthat::test_that("widgetDependencyOutputsInit eksik widget paketlerinde hatas
   suppressMessages(library(shiny))
   env <- .source_downloads_for_test()
 
-  # plotly kuruluysa else dalı çalışmaz; bu test plotly-yok yolunu hedefler.
-  testthat::skip_if(requireNamespace("plotly", quietly = TRUE),
-                    "plotly kurulu; zarif-düşüş dalı bu ortamda test edilemez")
+  # App VM'de plotly kurulu olsa bile bu test fallback dalını hedefler.
+  # widgetDependencyOutputsInit() fonksiyonu env içinde source edildiği için,
+  # requireNamespace burada lexical lookup ile env$requireNamespace üzerinden çözülür.
+  env$requireNamespace <- function(package, quietly = FALSE, ...) {
+    if (identical(package, "plotly")) {
+      return(FALSE)
+    }
+
+    base::requireNamespace(package, quietly = quietly, ...)
+  }
 
   testthat::expect_no_error(
     shiny::testServer(function(input, output, session) {
       env$widgetDependencyOutputsInit(output)
     }, {
-      # plotly yoksa deps_pl/plotly_html renderUI(NULL) olarak tanımlanır;
-      # okuma hata fırlatmamalı.
+      # plotly yokmuş gibi davranıldığında deps_pl/plotly_html renderUI(NULL)
+      # olarak tanımlanır; okuma hata fırlatmamalı.
       testthat::expect_no_error(force(output$deps_pl))
       testthat::expect_no_error(force(output$plotly_html))
     })

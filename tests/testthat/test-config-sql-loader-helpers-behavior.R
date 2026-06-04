@@ -13,8 +13,32 @@ testthat::local_edition(3)
 # tanımlanan yardımcı fonksiyonlar tryCatch ile yutulan kaynak sonrası ortamda
 # kalır. cat() çıktısı capture.output ile bastırılır.
 .sqll_env <- new.env(parent = globalenv())
+
 local({
   kok <- resolve_repo_root_for_tests()
+
+  # Bu test yalnızca config_sql_loader.R içindeki saf yardımcıları test eder.
+  # Eğer global ortamda query_library varsa config_sql_loader.R sona kadar çalışır
+  # ve dosyanın sonundaki rm(...) helper fonksiyonları siler. Bu yüzden source()
+  # sırasında query_library geçici olarak kaldırılır; dosya guard noktasında stop()
+  # eder, fakat helper fonksiyonlar .sqll_env içinde kalır.
+  had_query_library <- exists("query_library", envir = globalenv(), inherits = FALSE)
+  old_query_library <- if (had_query_library) {
+    get("query_library", envir = globalenv(), inherits = FALSE)
+  } else {
+    NULL
+  }
+
+  if (had_query_library) {
+    rm(query_library, envir = globalenv())
+  }
+
+  on.exit({
+    if (had_query_library) {
+      assign("query_library", old_query_library, envir = globalenv())
+    }
+  }, add = TRUE)
+
   invisible(utils::capture.output(suppressMessages(suppressWarnings(tryCatch(
     source(file.path(kok, "R", "config_sql_loader.R"), encoding = "UTF-8", local = .sqll_env),
     error = function(e) NULL

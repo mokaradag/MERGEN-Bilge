@@ -106,12 +106,40 @@ testthat::test_that("read_env_path_safe mojibake ortam yolunu onarır, temizi ve
   testthat::expect_identical(read_env_path_safe(var, fallback = "/yedek"), "/yedek")
 })
 
-testthat::test_that("safe_windows_short_path Windows dışında yolu değiştirmeden döndürür", {
+testthat::test_that("safe_windows_short_path platforma göre güvenli sonuç döndürür", {
   .pathhelp_source_once()
-  # Linux/Mac'te (test ortamı) yol olduğu gibi döner.
+
   if (.Platform$OS.type != "windows") {
-    testthat::expect_identical(safe_windows_short_path("/home/user/proje"), "/home/user/proje")
+    # Linux/Mac'te yol olduğu gibi dönmeli.
+    testthat::expect_identical(
+      safe_windows_short_path("/home/user/proje"),
+      "/home/user/proje"
+    )
   } else {
-    testthat::skip("Windows-özel davranış bu ortamda test edilmiyor")
+    # Boş girdi güvenle boş dönmeli.
+    testthat::expect_identical(
+      safe_windows_short_path(""),
+      ""
+    )
+
+    # must_exist = TRUE ve yol yoksa shortPathName zorlanmadan normalize yol dönmeli.
+    missing_path <- file.path(tempdir(), "kesinlikle-yok-12345")
+    expected_missing <- gsub("\\", "/", missing_path, fixed = TRUE)
+
+    testthat::expect_identical(
+      safe_windows_short_path(missing_path, must_exist = TRUE),
+      expected_missing
+    )
+
+    # Var olan dosyada sonuç boş olmamalı, ters slash içermemeli ve dosya erişilebilir kalmalı.
+    tf <- tempfile(pattern = "turkce_test_", fileext = ".txt")
+    writeLines("test", tf, useBytes = TRUE)
+    on.exit(unlink(tf), add = TRUE)
+
+    out <- safe_windows_short_path(tf, must_exist = TRUE)
+
+    testthat::expect_true(nzchar(out))
+    testthat::expect_false(grepl("\\", out, fixed = TRUE))
+    testthat::expect_true(file.exists(out))
   }
 })
