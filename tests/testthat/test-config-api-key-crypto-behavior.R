@@ -15,6 +15,9 @@ testthat::local_edition(3)
 .api_keys_tmp <- file.path(tempdir(), paste0("apikeys_test_", as.integer(stats::runif(1, 1, 1e7))))
 dir.create(.api_keys_tmp, showWarnings = FALSE, recursive = TRUE)
 
+# Windows'ta C:\... ve C:/... ayrımından kaynaklanan sahte test hatalarını önle.
+.api_keys_tmp <- normalizePath(.api_keys_tmp, winslash = "/", mustWork = TRUE)
+
 local({
   Sys.setenv(AI_KEYS_MASTER = .api_master)
   # Repo kökü mutlak yol olarak with_dir öncesinde çözülür (with_dir içinde

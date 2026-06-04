@@ -511,6 +511,9 @@ dir.create(API_KEYS_DIR, showWarnings = FALSE, recursive = TRUE)
 .enc_key <- function(plain_text, master) {
   stopifnot(is.character(plain_text), length(plain_text) == 1)
 
+  # Türkçe karakterler dahil tüm metinleri platformdan bağımsız UTF-8 baytlarıyla şifrele.
+  plain_raw <- charToRaw(enc2utf8(plain_text))
+
   # 32 baytlık anahtar türet
   k <- openssl::sha256(charToRaw(master))
 
@@ -518,11 +521,11 @@ dir.create(API_KEYS_DIR, showWarnings = FALSE, recursive = TRUE)
   use_gcm <- isTRUE(exists("aes_gcm_encrypt", where = asNamespace("openssl"), inherits = FALSE))
   if (use_gcm) {
     iv12 <- openssl::rand_bytes(12L)
-    gcm  <- openssl::aes_gcm_encrypt(
-      data = charToRaw(plain_text),
-      key  = k,
-      iv   = iv12
-    )
+	gcm  <- openssl::aes_gcm_encrypt(
+	  data = plain_raw,
+	  key  = k,
+	  iv   = iv12
+	)
 
     # Bazı openssl sürümleri list(data=raw, tag=raw) döndürür, bazıları farklı
     if (is.list(gcm) && !is.null(gcm$data) && is.raw(gcm$data) && !is.null(gcm$tag) && is.raw(gcm$tag)) {
@@ -538,7 +541,7 @@ dir.create(API_KEYS_DIR, showWarnings = FALSE, recursive = TRUE)
 
   # Yedek: AES-256-CBC (her zaman mevcut)
   iv16 <- openssl::rand_bytes(16L)
-  ct   <- openssl::aes_cbc_encrypt(charToRaw(plain_text), key = k, iv = iv16)
+  ct   <- openssl::aes_cbc_encrypt(plain_raw, key = k, iv = iv16)
   list(
     alg        = "aes-256-cbc",
     iv_b64     = base64enc::base64encode(iv16),
@@ -555,7 +558,15 @@ dir.create(API_KEYS_DIR, showWarnings = FALSE, recursive = TRUE)
     stop("Kayıt bozuk: iv/cipher alanı yok.")
   }
 
-  k <- openssl::sha256(charToRaw(master))
+	k <- openssl::sha256(charToRaw(master))
+
+	# Şifre çözme sonrası raw baytları açıkça UTF-8 metne çevir.
+	# Bu, Windows/RStudio ortamında Türkçe karakterlerin ÅŸ/ÄŸ gibi bozulmasını önler.
+	.decode_utf8_raw <- function(raw_value) {
+	  out <- rawToChar(raw_value)
+	  Encoding(out) <- "UTF-8"
+	  enc2utf8(out)
+	}
 
   # Önce GCM varsay: tag varsa GCM çöz
   if (!is.null(enc_obj$tag_b64)) {
@@ -569,13 +580,13 @@ dir.create(API_KEYS_DIR, showWarnings = FALSE, recursive = TRUE)
       iv   = iv,
       tag  = tg
     )
-    return(rawToChar(raw))
+    return(.decode_utf8_raw(raw))
   }
 
   # Geriye dönük: eski CBC kayıtları için çözüm
   iv <- base64enc::base64decode(enc_obj$iv_b64 %||% "")
   ct <- base64enc::base64decode(enc_obj$cipher_b64 %||% "")
-  rawToChar(openssl::aes_cbc_decrypt(ct, key = k, iv = iv))
+  .decode_utf8_raw(openssl::aes_cbc_decrypt(ct, key = k, iv = iv))
 }
 
 # Kullanıcı API anahtarını şifrele ve kaydet
