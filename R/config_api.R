@@ -584,7 +584,12 @@ save_user_api_key <- function(system_username, key_plain) {
   master <- Sys.getenv("AI_KEYS_MASTER", "")
   if (!nzchar(master)) stop("AI_KEYS_MASTER is missing in .Renviron")
 
+  # openssl::rand_bytes() 0x00 bayt üretebilir; .hash_key_hex() tuzu rawToChar()
+  # ile metne çevirdiği için gömülü NUL "embedded nul in string" hatası verir ve
+  # kaydı ~%6 olasılıkla çökertir. Tuz yalnızca hash karıştırması içindir; NUL
+  # baytları 0x01'e eşlenerek hash algoritması ve mevcut kayıtlarla uyum korunur.
   salt <- openssl::rand_bytes(16L)
+  salt[salt == as.raw(0L)] <- as.raw(1L)
   hash_hex <- .hash_key_hex(key_plain, salt)
   enc <- .enc_key(key_plain, master)
 
