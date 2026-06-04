@@ -64,6 +64,14 @@ Bu kapsam çalışması sırasında, yalnızca yapısal kapsama sahip olduğu i�
 
 Bu değişiklikler yalnızca test ve iki nokta atışı düzeltmedir; görünür kullanıcı deneyimi, kodlama sözleşmeleri ve kaynak sırası değişmez. Testler `new.env(parent = globalenv())` ile yalıtılır, ağ/DB/LLM gerektirmez ve Türkçe açıklamalarla yazılmıştır.
 
+### Servis bağımlı davranış testleri ve API anahtarı kayıt kararlılığı
+
+Servis bağımlı ve derin runtime alanları için çevrimdışı, deterministik davranışsal regresyon kapsamı genişletildi. Yeni testler gerçek DB, tarayıcı, LLM veya ağ bağlantısı gerektirmeden stub/mock verilerle çalışır; amaç görünür kullanıcı deneyimini değiştirmek değil, mevcut çıktı sözleşmelerini ve hassas yardımcı davranışlarını refaktörlere karşı korumaktır.
+
+Kapsama alınan başlıca alanlar; Yönetici Paneli grafik ve tabloları (Genel Bakış, Gelişmiş Analizler, Geri Bildirim, Sohbet Kalitesi, YZ Performansı, Zaman Analizi ve Hata Detayı ekleri), Sistem Durumu probe/UI oluşturucuları, Bilge Yolaç eklenti paneli, dosya deposu ve SQL loader yardımcıları, UI asset manifest yardımcıları, destek/geri bildirim DB yardımcıları, görsel galeri akışları, MCP/Excel araç biçimlendiricileri, PK/RLS yetki çözümleme yardımcıları, modern karşılama hızlı işlem butonları ve worker monitor defteri davranışlarıdır.
+
+Ayrıca kişisel API anahtarı kaydında aralıklı görülebilecek bir tuz üretimi hatası cerrahi biçimde giderildi. `openssl::rand_bytes()` tarafından üretilebilen `0x00` baytları, hash yolunda `rawToChar()` nedeniyle `embedded nul in string` hatasına yol açabiliyordu; `save_user_api_key()` artık tuzdaki NUL baytlarını hash öncesinde `0x01` değerine eşleyerek mevcut şifreleme/doğrulama akışını korur ve kayıt işleminin rastlantısal olarak çökmesini engeller.
+
 ## AI Ajanları İçin Doğrulama Profilleri
 
 MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığında doğrulama komutları ortam yeteneklerine göre ayrılmıştır:

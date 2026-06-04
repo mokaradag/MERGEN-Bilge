@@ -91,6 +91,20 @@ Current contract:
 - Startup-screen tests should avoid passing optional runtime-only arguments unless the test explicitly validates that contract.
 - For docs-only changes, do not run R/testthat validation unless the user explicitly asks.
 
+### Service-dependent behavioral tests and API-key salt guard
+
+The service-dependent runtime tests added in this area are behavioral contract tests, not broad integration proof. They should remain offline and deterministic: use stubs, temporary directories, and mocked DBI/HTTP dependencies rather than real SQL Server, browser sessions, LLM endpoints, network calls, production services, or secrets.
+
+Future changes should preserve the intent of these tests:
+- Admin analytics/output tests should verify stable chart/table contracts such as series names, colors, categories, ordering, empty-data guards, and Turkish labels. Do not turn them into pixel-perfect rendering tests.
+- Health-check tests should keep public internet endpoints on the skipped/warning path and mock local endpoint responses when checking success behavior.
+- DB helper tests should keep DBI calls mocked and must not require SQL Server, live credentials, or a production schema.
+- API-key crypto tests must use fake keys and isolated temporary directories only. Never introduce real API keys, tokens, passwords, DSNs, cookies, or endpoint secrets into fixtures, logs, docs, or artifacts.
+- The `save_user_api_key()` NUL-salt mapping is a protected regression guard. `openssl::rand_bytes()` can produce `0x00`; the hash path converts salt through `rawToChar()`, so embedded NUL bytes can fail with `embedded nul in string`. Do not remove `salt[salt == as.raw(0L)] <- as.raw(1L)` unless the hash path is redesigned and the corresponding regression test is updated.
+- File-store, SQL-loader, UI asset, image-gallery, MCP/Excel formatter, PK/RLS, welcome-action, plugin UI, and worker-monitor tests should remain small input-output checks with no runtime boot requirement.
+
+For documentation-only edits to `README.md` and `CLAUDE.md`, do not run R/testthat validation. Manual Markdown diff review is sufficient unless code files are changed in a separate task.
+
 ### Version history path resolution contract
 
 - `version_history.md` remains at the repository root for real application version data.
