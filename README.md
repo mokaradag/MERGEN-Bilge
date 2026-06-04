@@ -78,6 +78,16 @@ Kapsama alınan başlıca alanlar; Yönetici Paneli grafik ve tabloları (Genel 
 
 Ayrıca kişisel API anahtarı kaydında aralıklı görülebilecek bir tuz üretimi hatası cerrahi biçimde giderildi. `openssl::rand_bytes()` tarafından üretilebilen `0x00` baytları, hash yolunda `rawToChar()` nedeniyle `embedded nul in string` hatasına yol açabiliyordu; `save_user_api_key()` artık tuzdaki NUL baytlarını hash öncesinde `0x01` değerine eşleyerek mevcut şifreleme/doğrulama akışını korur ve kayıt işleminin rastlantısal olarak çökmesini engeller.
 
+### Asenkron istek güvenliği, giriş ekranı tutarlılığı ve dosya listesi yenileme
+
+Görsel üretimi ve özetleme gibi uzun sürebilen asenkron işlemlerde bayat istek sonuçlarının yeni kullanıcı isteğinin arayüzünü, sohbet durumunu veya yazıyor göstergesini ezmemesi için aktif istek kimliği ve durdurma durumu denetimi güçlendirildi. Bu davranış, gerçek LLM, görsel servisi, DB veya tarayıcı gerektirmeyen deterministik davranış testleriyle korunur.
+
+Derin Uzay giriş ekranında “girişi atla” akışı, deneyim modu seçim akışıyla aynı persona/nöral renk güncellemesini gönderecek şekilde hizalandı. Böylece seçili veya varsayılan persona rengi, giriş animasyonu atlandığında da nöral animasyon tarafında tutarlı uygulanır.
+
+Dosya Yönetimi başlığına “Yenile” düğmesi eklendi. Bu düğme mevcut kalıcı kullanıcı klasörü okuma mekanizmasını kullanarak dosya tablosunu yeniden yükler; “Tümünü Temizle” akışı korunur. Koyu ve açık tema stilleri ayrı tutulur; yeni buton kırmızı temizleme aksiyonundan görsel olarak ayrışır.
+
+Aynı kapsamda, Bilge Yolaç doküman yardımcılarının izole test/debug kaynaklama sırasında repo kökü, tests/testthat çalışma dizini ve MERGEN_REPO_ROOT ortam değişkeni üzerinden güvenli fallback yapması belgelenen sözleşmeye uygun hale getirildi. API model/araç runtime ayrımından sonra taşınan yardımcılar için davranış testlerinin doğru kaynak dosyasını yüklemesi sağlandı.
+
 ## AI Ajanları İçin Doğrulama Profilleri
 
 MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığında doğrulama komutları ortam yeteneklerine göre ayrılmıştır:
