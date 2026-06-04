@@ -112,6 +112,18 @@ Kaynak manifesti parse doğrulaması, Windows CRLF ve eski Mac CR satır sonlar�
 
 `tests/scripts/ci_install_packages.R` için Linux paket tipi sözleşmesi ayrıca statik olarak korunur: varsayılan `pkgType` değeri Linux ortamında `source` kalmalı, `MERGEN_AI_R_PKG_TYPE` yalnızca açıkça verildiğinde (`source`/`binary`) override edilmelidir. Bu sözleşme `tests/testthat/test-ai-package-bootstrap-contract.R` ile izlenir ve `tools/setup_ai_r_environment.sh` içindeki RSPM denetimi kırılgan token eşleştirmeleriyle değil, kararlı URL parçaları (`__linux__/noble/latest`, `__linux__/jammy/latest`) üzerinden doğrulanır.
 
+### Windows VM test kapsamı ve UTF-8 yol/anahtar kararlılığı
+
+Windows VM üzerinde daha önce ortam gerekçesiyle atlanan bazı odak testler artık gerçek koşum kapsamına alınmıştır. SQL loader saf yardımcı testleri, `query_library` varlığı nedeniyle helper fonksiyonların dosya sonunda temizlenmesine takılmamak için kaynaklama sınırını izole eder. Plotly zarif-düşüş testi, VM’de `plotly` kurulu olsa bile fallback dalını lexical `requireNamespace()` mock’u ile doğrular. `safe_windows_short_path()` için Windows’a özel davranış artık atlanmaz; boş yol, olmayan yol ve var olan geçici dosya senaryoları gerçek Windows ayracı davranışıyla test edilir.
+
+Aynı kapsamda kişisel API anahtarı şifreleme/çözme sınırı Türkçe karakterler için güçlendirildi: anahtar metni şifreleme öncesinde açıkça UTF-8 baytlarına çevrilir ve çözme sonrası metin UTF-8 olarak geri işaretlenir. Windows kısa yol yardımcısı da tek ters slash ayracını doğru biçimde `/` standardına çevirir. Bu güncelleme görünür kullanıcı akışını değiştirmez; Windows VM’de test güvenilirliğini, Türkçe karakter bütünlüğünü ve yol normalizasyon sözleşmesini güçlendirir.
+
+Sıkı offline runtime sözleşmesini yerel/VM koşumuna dahil etmek için:
+- `Sys.setenv(MERGEN_STRICT_OFFLINE_TESTS = "true")`
+- ardından ilgili `testthat::test_file(...)` veya tam `testthat::test_dir("tests/testthat")` koşumu çalıştırılır.
+
+Yalnızca dokümantasyon değişikliklerinde R doğrulaması çalıştırılmaz; markdown farkının incelenmesi yeterlidir.
+
 ### Doğrulama doktoru
 
 Profil karışıklığını azaltmak için hafif bir doğrulama rehberi eklenmiştir: `tests/scripts/validation_doctor.R` ve kolaylık sarmalayıcısı olarak `tools/validation_doctor.sh`. Bu yol ağır test çalıştırmaz; uygulamayı, gerçek DB bağlantısını veya tarayıcıyı başlatmaz. Bunun yerine ortam sınıflandırmasını, tarayıcı ikilisi bulunabilirliğini, hassas ortam değişkenlerini yalnızca var/yok, uzunluk ve boolean-tarzı metaveriyle (ham değer olmadan), önerilen komut sırasını, her komutun neyi kanıtlayıp neyi kanıtlamadığını ve bloklayıcı/uyarı niteliğindeki kontrolleri raporlar.
