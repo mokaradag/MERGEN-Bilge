@@ -148,6 +148,22 @@ handle_summarization_mode <- function(ctx) {
 
   log_info("[SUMMARIZATION PERF] Non-streaming yedek yol kullanılıyor")
 
+  # Yarış koruması: özetleme uzun sürebildiğinden, kullanıcı durdurup yeni bir
+  # istek başlatırsa bu bayat geri çağrının yeni isteğin durumunu ezmemesi için
+  # aktif istek kimliğini yakala.
+  summary_active_request_id <- ctx$active_request_id
+  summary_stop_generation <- ctx$stop_generation
+  summary_req_id <- tryCatch(
+    if (is.function(summary_active_request_id)) summary_active_request_id() else NULL,
+    error = function(e) NULL
+  )
+  is_stale_summary_request <- function() {
+    if (!is.function(summary_active_request_id) || is.null(summary_req_id)) {
+      return(FALSE)
+    }
+    !mergen_is_current_request(summary_active_request_id, summary_req_id, summary_stop_generation)
+  }
+
   p <- ctx$ai_processor$call_llm_non_streaming(
     prep_result$messages,
     prep_result$current_settings,
@@ -157,6 +173,10 @@ handle_summarization_mode <- function(ctx) {
   promises::then(
     p,
     onFulfilled = function(result) {
+      if (isTRUE(is_stale_summary_request())) {
+        return(invisible(NULL))
+      }
+
       removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
       ctx$values$typing <- FALSE
 
@@ -173,6 +193,10 @@ handle_summarization_mode <- function(ctx) {
       ctx$reset_chat_state_fn()
     },
     onRejected = function(err) {
+      if (isTRUE(is_stale_summary_request())) {
+        return(invisible(NULL))
+      }
+
       removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
       ctx$values$typing <- FALSE
       showToast(ctx$session, paste("Özetleme hatası:", conditionMessage(err)), "error")

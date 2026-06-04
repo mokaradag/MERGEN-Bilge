@@ -60,6 +60,25 @@ handle_image_generation_mode <- function(ctx) {
   image_quality_local <- image_quality
   api_key_local <- api_key_for_image
 
+  # Yarış koruması: bu isteğin kimliğini yakala. Görsel oluşturma 30 sn ile
+  # 2 dk arası sürebildiğinden, kullanıcı durdurup yeni bir istek başlatırsa
+  # bayat sonucun yeni isteğin yazma alanını/sohbetini ezmemesi gerekir.
+  active_request_id_local <- ctx$active_request_id
+  stop_generation_local <- ctx$stop_generation
+  req_id_local <- tryCatch(
+    if (is.function(active_request_id_local)) active_request_id_local() else NULL,
+    error = function(e) NULL
+  )
+
+  # Bayatlık kontrolü: yalnızca aktif istek kimliği bilinebiliyor ve istek
+  # gerçekten bayatlamışsa TRUE döner. Kimlik yoksa eski davranış korunur.
+  is_stale_image_request <- function() {
+    if (!is.function(active_request_id_local) || is.null(req_id_local)) {
+      return(FALSE)
+    }
+    !mergen_is_current_request(active_request_id_local, req_id_local, stop_generation_local)
+  }
+
 	tracked_future_promise(
 	  task_fn = function() {
 		generate_image(
@@ -78,6 +97,12 @@ handle_image_generation_mode <- function(ctx) {
 		quality = image_quality_local
 	  )
 	) %...>% (function(result) {
+    # Bayat sonuç: kullanıcı durdurup yeni istek başlattıysa hiçbir UI
+    # mutasyonu yapma. Görsel zaten galeriye kaydedildiği için kaybolmaz.
+    if (isTRUE(is_stale_image_request())) {
+      return(invisible(NULL))
+    }
+
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE
 
@@ -103,6 +128,11 @@ handle_image_generation_mode <- function(ctx) {
 
     ctx$reset_chat_state_fn()
   }) %...!% (function(err) {
+    # Bayat hata sonucu da yeni isteğin durumunu etkilememeli.
+    if (isTRUE(is_stale_image_request())) {
+      return(invisible(NULL))
+    }
+
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE
     ctx$add_message_fn(paste0("\U0000274C Görsel oluşturma hatası: ", err$message), "ai")
