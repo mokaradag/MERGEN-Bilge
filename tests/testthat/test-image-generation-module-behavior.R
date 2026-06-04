@@ -157,8 +157,13 @@ test_that("translate_revised_prompt_to_turkish: başarılı çağrıda çevrilmi
 # -----------------------------------------------------------------------------
 
 test_that("generate_image: endpoint yapılandırılmamışsa hata döndürür", {
-  # Varsayılan: image_gen_config$endpoint == ""
+  withr::defer(.imggen_env$image_gen_config <- .imggen_config_orig)
+
+  # Test, kullanıcının gerçek .Renviron değerlerinden bağımsız olmalıdır.
+  .imggen_env$image_gen_config$endpoint <- ""
+
   sonuc <- .sessiz(.imggen_env$generate_image("kedi", "anahtar"))
+
   expect_false(isTRUE(sonuc$success))
   expect_true(grepl("endpoint", sonuc$error, ignore.case = TRUE))
 })

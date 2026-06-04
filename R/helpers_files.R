@@ -213,20 +213,48 @@ readFileContentToString <- function(file_info) {
 
     file_ext  <- tolower(tools::file_ext(file_info$name))
     file_size <- file.info(file_info$datapath)$size
+    if (is.na(file_size)) file_size <- 0
+
+    # Metin dosyalarını raw byte olarak okuyup güvenli biçimde UTF-8'e çevirir.
+    # Windows/RStudio locale farklarında Türkçe karakterlerin bozulmasını önler.
+    read_text_file_utf8 <- function(path, max_bytes = NULL) {
+      n_bytes <- if (is.null(max_bytes)) file.info(path)$size else max_bytes
+      if (is.na(n_bytes) || n_bytes < 0) n_bytes <- 0
+      n_bytes <- as.integer(min(n_bytes, .Machine$integer.max))
+
+      con <- file(path, open = "rb")
+      on.exit(close(con), add = TRUE)
+
+      raw_bytes <- readBin(con, what = "raw", n = n_bytes)
+      if (length(raw_bytes) == 0) return("")
+
+      raw_text <- rawToChar(raw_bytes)
+
+      utf8_text <- suppressWarnings(iconv(raw_text, from = "UTF-8", to = "UTF-8", sub = NA))
+
+      if (is.na(utf8_text)) {
+        utf8_text <- suppressWarnings(iconv(raw_text, from = "", to = "UTF-8", sub = ""))
+      }
+
+      if (is.na(utf8_text)) {
+        utf8_text <- enc2utf8(raw_text)
+      }
+
+      Encoding(utf8_text) <- "UTF-8"
+      gsub("\r\n?", "\n", utf8_text)
+    }
 
     content <- switch(file_ext,
       "txt" = , "csv" = , "json" = , "r" = , "py" = , "md" = , "log" = {
-        if (file_size > 1024 * 1024) {  # 1 MB üzerindeki dosyalar kısaltılarak okunur.
-          con <- file(file_info$datapath, "r", encoding = "UTF-8")
-          on.exit(close(con))
-          content <- readChar(con, min(50000, file_size))
-          if (file_size > 50000) {
-            content <- paste0(content, "\n... [Dosya kısaltıldı, ilk 50KB gösteriliyor]")
-          }
-          content
-        } else {
-          paste(readLines(file_info$datapath, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+        max_bytes <- if (file_size > 1024 * 1024) min(50000, file_size) else NULL
+
+        content <- read_text_file_utf8(file_info$datapath, max_bytes = max_bytes)
+
+        if (file_size > 50000) {
+          content <- paste0(content, "\n... [Dosya kısaltıldı, ilk 50KB gösteriliyor]")
         }
+
+        content
       },
       "pdf" = {
         paste(pdftools::pdf_text(file_info$datapath), collapse = "\n\n--- Sayfa Sonu ---\n\n")
