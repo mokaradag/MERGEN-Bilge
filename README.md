@@ -48,6 +48,22 @@ SSO güvenlik sınırı güçlendirildi: Keycloak üzerinden gelen JWT token’l
 
 Türkçe karakter içeren Windows/VM yol sınırları için mojibake tespiti ve onarımı merkezi yardımcılar üzerinden korunur. `R/utils_text_encoding.R` ve `R/utils_path_helpers.R` davranışları; `test-sso-jwt-signature.R`, `test-sso-authorization-failclosed.R`, `test-sso-signature-parsing.R` ve `test-path-helpers-mojibake-behavior.R` odaklı davranış testleriyle güvence altına alınmıştır. Bu güncelleme görünür kullanıcı akışını değiştirmekten çok üretim güvenliği, kodlama bütünlüğü ve işletim güvenilirliğini artırır.
 
+### Davranışsal test kapsamının genişletilmesi ve iki gizli hata düzeltmesi
+
+Modül ve çalışma-zamanı mantığı için davranışsal (input→output) test kapsamı belirgin biçimde genişletildi. Daha önce yalnızca yapısal/sözleşme tarayıcılarınca (kaynak sırası, fonksiyon varlığı, ratchet) anılan ama gerçek davranışı doğrulanmayan kaynaklar için; gerçek bir DB/LLM/tarayıcı gerektirmeyen, deterministik ve çevrimdışı testler eklendi. Bu çalışmada 23 yeni `tests/testthat/test-*-behavior.R` dosyası ve yaklaşık 442 doğrulama (assertion) eklendi; hepsi tekil ve toplu koşumda 0 hata / 0 uyarı / 0 atlama ile geçti.
+
+Kapsama alınan başlıca alanlar:
+
+- Modül davranışları: Dosya Yönetimi istemci ek-durum kaydı ve DT tablo runtime'ı, STT modal aç/iptal/onayla akışı ve paket kilidi, ChartLab otomatik grafik türü/eksen tahmini, Görsel Oluşturma çeviri kapısı/koruma yolları/HTML üretimi ve XSS kaçışı, Derin Uzay giriş ekranı UI ve deneyim-modu eşlemesi, AI Uzman `can_speak` kapısı ve konuşma akışı, Yönetici Hata Analizi sekme UI'si ile durum/öncelik etiket+renk eşlemesi.
+- Saf yardımcılar: Türkçe büyük/küçük harf dönüşümü ve kimlik çözümü, müzik URL'lerinde UTF-8 percent-encoding (Ü→%C3%9C; native %DC asla üretilmez), sohbet okuyucularındaki kullanıcı-id/zaman damgası mantığı, mesaj/Markdown→HTML işleme, sürüm geçmişi yol çözümleyici, kenar çubuğu kullanıcı baş harfleri/avatarı, modern karşılama UI oluşturucuları, toleranslı takip-sorusu bayrağı, dosya içeriği okuma, sağlık paneli biçimlendiricileri, gerekli paket doğrulaması, Bilge Yolaç metin/UTF-8 normalize ve çıktı biçimleme, log dizini/eşiği çözümleyicileri ve rozet HTML üreticileri.
+
+Bu kapsam çalışması sırasında, yalnızca yapısal kapsama sahip olduğu için gözden kaçmış **iki gerçek gizli hata** tespit edilip cerrahi biçimde düzeltildi ve birer regresyon testiyle korunmaya alındı:
+
+- `R/module_chartlab.R` → `make_id()`: `as.integer(as.numeric(Sys.time()) * 1000)` ifadesi 32-bit tamsayı aralığını aştığı için her grafik eklemede `NA` üretiyor ve "NAs introduced by coercion" uyarısı çıkarıyordu; grafik kimliği zaman damgasını kaybediyordu. `sprintf("%.0f", ...)` ile taşmasız tam sayısal damgaya çevrildi (davranış ve satır bütçesi korunur).
+- `R/helpers_db_chat_readers.R` → `.db_chat_as_numeric_timestamp()`: `as.POSIXct()` ayrıştırılamayan bir metinde uyarı değil **hata** fırlattığından, fonksiyonun tasarlanan `0` güvenli geri dönüşü ulaşılamıyor ve sohbet listesi sıralaması bozuk bir zaman damgasında çökebiliyordu; `tryCatch(..., error = NA)` ile `0` geri dönüşü güvenceye alındı.
+
+Bu değişiklikler yalnızca test ve iki nokta atışı düzeltmedir; görünür kullanıcı deneyimi, kodlama sözleşmeleri ve kaynak sırası değişmez. Testler `new.env(parent = globalenv())` ile yalıtılır, ağ/DB/LLM gerektirmez ve Türkçe açıklamalarla yazılmıştır.
+
 ## AI Ajanları İçin Doğrulama Profilleri
 
 MERGEN Bilge üzerinde Codex veya Claude Code gibi AI ajanları işlem yaptığında doğrulama komutları ortam yeteneklerine göre ayrılmıştır:
