@@ -253,7 +253,11 @@ api_config <- list(
 	  omit_temperature = TRUE,
 	  stream_reasoning = TRUE,
 	  allow_reasoning_fallback = TRUE,
-	  request_overrides = list()
+	  request_overrides = list(
+		chat_template_kwargs = list(
+		  enable_thinking = TRUE
+		)
+	  )
     ),
     "technical name 6" = list(
       thinking = FALSE,
@@ -266,7 +270,11 @@ api_config <- list(
 	  omit_temperature = TRUE,
 	  stream_reasoning = TRUE,
 	  allow_reasoning_fallback = TRUE,
-	  request_overrides = list()
+	  request_overrides = list(
+		chat_template_kwargs = list(
+		  enable_thinking = TRUE
+		)
+	  )
     )
   )
 )
