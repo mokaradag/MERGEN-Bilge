@@ -47,7 +47,7 @@ $(document).ready(function() {
 
   Shiny.addCustomMessageHandler('showToast', function(data) {
     if (typeof window.showToast === 'function') {
-      window.showToast(normalizeMessageText(data.message), data.type || 'info');
+      window.showToast(normalizeMessageText(data.message), data.type || 'info', data.duration);
     }
   });
 

@@ -514,9 +514,13 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
   })
 }
 
-showToast <- function(session, message, type = 'info', duration = 3000) {
-  session$sendCustomMessage(
-    type = 'showToast',
-    message = list(message = message, type = type, duration = duration)
-  )
+showToast <- function(session, message, type = 'info', duration = NULL) {
+  # Süre varsayılan olarak gönderilmez; istemci (toast.js) mesaj uzunluğuna göre
+  # okunabilir bir süre hesaplar (kısa ~5 sn, uzun en fazla 12 sn). Açık süre
+  # verilirse iletilir ve istemci ona uyar.
+  payload <- list(message = message, type = type)
+  if (!is.null(duration)) {
+    payload$duration <- duration
+  }
+  session$sendCustomMessage(type = 'showToast', message = payload)
 }
