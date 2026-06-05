@@ -143,6 +143,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_llm_sse_events.R",
   "R/helpers_llm_sse.R",
   "R/helpers_llm_worker_payload.R",
+  "R/helpers_llm_worker_tool_results_preview.R",
   "R/helpers_llm_worker_tool_results.R",
   "R/helpers_llm_worker_second_pass.R",
   "R/helpers_llm_worker.R",
