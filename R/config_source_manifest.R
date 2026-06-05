@@ -105,6 +105,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_destek_database.R",
   "R/helpers_admin_analytics.R",
   "R/helpers_health_formatters.R",
+  "R/helpers_health_table.R",
   "R/helpers_health_runtime_checks.R",
   "R/helpers_health_checks.R",
   "R/helpers_ai_expert.R",

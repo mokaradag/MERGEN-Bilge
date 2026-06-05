@@ -56,6 +56,7 @@ withr::local_envvar(
     MERGEN_UPLOADS_DIR = .test_uploads_dir,
     MERGEN_INDEX_PATH = .test_index_path,
     MERGEN_MCP_BASE_DIR = .test_mcp_base_dir,
+    MCP_FILES_BASE = .test_mcp_base_dir,
     MERGEN_LOG_DIR = .test_logs_dir
   ),
   .local_envir = .testthat_teardown_env

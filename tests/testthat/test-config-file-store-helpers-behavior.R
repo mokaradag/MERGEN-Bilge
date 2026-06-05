@@ -9,9 +9,20 @@
 
 testthat::local_edition(3)
 
+if (exists("reset_file_store_runtime_for_tests", mode = "function", inherits = TRUE)) {
+  reset_file_store_runtime_for_tests()
+}
+
 .cfs_ready <- exists("env_or_default_path", mode = "function", inherits = TRUE) &&
   exists("mergen_clear_user_bucket", mode = "function", inherits = TRUE) &&
   exists(".load_index", mode = "function", inherits = TRUE)
+
+if (isTRUE(.cfs_ready)) {
+  testthat::expect_false(
+    grepl("^//rehisds|^\\\\\\\\rehisds|MERGEN Bilge", MERGEN_INDEX_PATH, ignore.case = TRUE),
+    info = paste("MERGEN_INDEX_PATH testte gerçek/ağ yolda kalmamalı:", MERGEN_INDEX_PATH)
+  )
+}
 
 # -----------------------------------------------------------------------------
 # env_or_default_path

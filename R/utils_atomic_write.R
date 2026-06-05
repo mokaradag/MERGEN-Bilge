@@ -1,29 +1,55 @@
 # ==============================================================================
 # Dosya Yolu: R/utils_atomic_write.R
 # Açıklama: Disk üzerine dosya yazımı için atomik (hepsi-ya-hiçbiri) yardımcıları.
-# Windows VM ortamında file.rename tek bir işlem gibi davranır; kısmi yazım
-# nedeniyle bozuk kalan index/json dosyalarını önlemek için tüm kritik yazımlar
-# bu yardımcıdan geçmelidir. jsonlite paketi zaten config_packages.R tarafından
-# yüklü olduğu için ek bağımlılık gerektirmez.
+#           Windows VM ortamında file.rename başarısız olursa file.copy fallback
+#           yolunu kullanır. UTF-8 içerik binary modda yazılarak Windows native
+#           codepage bozulmaları ve kısmi JSON/index yazımları önlenir.
 # ==============================================================================
 
 # Verilen içeriği aynı dizinde geçici dosyaya yazar, ardından file.rename ile
-# hedefe taşır. Başarısızlık durumunda kopya+silme ile fallback yapar ve
-# kalıcı hata üretir. final_path üzerinde kısmi yazım kalması engellenir.
+# hedefe taşır. Başarısızlık durumunda file.copy + unlink fallback kullanır.
+# final_path üzerinde kısmi yazım kalması engellenir.
+#
 # ÖNEMLİ:
-# - Yazım BINARY modda yapılır.
-# - Böylece Windows VM native codepage'e (örn. CP1254) düşmez.
-# - Diske her zaman gerçek UTF-8 baytları yazılır.
+# - file.rename() ve file.copy() burada bilerek namespace ile çağrılmaz.
+#   tests/testthat/test-atomic-write-fallback.R bu fonksiyonları izole
+#   atomic_env içinde stub ederek fallback davranışını doğrular.
+# - Yazım binary modda yapılır; böylece Windows VM native codepage'e düşülmez.
 atomic_write_text <- function(content, final_path, encoding = "UTF-8") {
-  if (!is.character(final_path) || length(final_path) != 1L || !nzchar(final_path)) {
+  if (!is.character(final_path) ||
+      length(final_path) != 1L ||
+      is.na(final_path) ||
+      !nzchar(final_path)) {
     stop("atomic_write_text: 'final_path' tek elemanli, bos olmayan karakter olmali.")
   }
+
   if (!is.character(content)) {
     stop("atomic_write_text: 'content' karakter vektoru olmali.")
   }
 
+  final_path <- suppressWarnings(
+    normalizePath(final_path, winslash = "/", mustWork = FALSE)
+  )
+
   dir_path <- dirname(final_path)
-  dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+
+  if (!dir.exists(dir_path)) {
+    dir_ready <- tryCatch({
+      if (requireNamespace("fs", quietly = TRUE)) {
+        fs::dir_create(dir_path, recurse = TRUE)
+      } else {
+        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+      }
+      TRUE
+    }, error = function(e) FALSE)
+
+    if (!isTRUE(dir_ready) || !dir.exists(dir_path)) {
+      stop(sprintf(
+        "atomic_write_text: hedef dizin oluşturulamadı: %s",
+        dir_path
+      ))
+    }
+  }
 
   tmp_path <- tempfile(
     pattern = "atomic_",
@@ -37,16 +63,32 @@ atomic_write_text <- function(content, final_path, encoding = "UTF-8") {
     }
   }, add = TRUE)
 
-  # Icerigi tek metne indir ve UTF-8'e zorla.
-  # writeLines(..., encoding=...) Windows VM'de native codepage yazabiliyor.
-  # Bu nedenle dogrudan UTF-8 baytlarini binary olarak yaziyoruz.
-  icerik_utf8 <- enc2utf8(paste(content, collapse = "\n"))
-  icerik_raw <- charToRaw(icerik_utf8)
+  if (!dir.exists(dirname(tmp_path))) {
+    stop(sprintf(
+      "atomic_write_text: geçici dosya dizini bulunamadı: %s",
+      dirname(tmp_path)
+    ))
+  }
 
-  con <- file(tmp_path, open = "wb")
+  # İçeriği tek UTF-8 metne indir ve raw byte dizisine çevir.
+  # Bu değişkenin adı aşağıdaki writeBin() ile aynı kalmalıdır.
+  content_utf8 <- enc2utf8(paste(content, collapse = "\n"))
+  content_raw <- charToRaw(content_utf8)
+
+  con <- tryCatch(
+    file(tmp_path, open = "wb"),
+    error = function(e) {
+      stop(sprintf(
+        "atomic_write_text: geçici dosya açılamadı: %s | %s",
+        tmp_path,
+        conditionMessage(e)
+      ), call. = FALSE)
+    }
+  )
+
   tryCatch(
     {
-      writeBin(icerik_raw, con)
+      writeBin(content_raw, con)
       flush(con)
     },
     finally = {
@@ -60,12 +102,15 @@ atomic_write_text <- function(content, final_path, encoding = "UTF-8") {
   }
 
   moved <- suppressWarnings(file.rename(tmp_path, final_path))
+
   if (!isTRUE(moved)) {
-    # Windows VM'de kilitli dosya senaryolarinda file.rename basarisiz olabilir;
-    # kopya+silme fallback'i ile atomiklige en yakin davranis korunur.
-    moved <- isTRUE(file.copy(tmp_path, final_path, overwrite = TRUE))
-    if (isTRUE(moved)) {
+    # Windows VM'de kilitli dosya / rename başarısızlığı görülebilir.
+    # Testler bu fallback yolunun çalıştığını doğrular.
+    copied <- suppressWarnings(file.copy(tmp_path, final_path, overwrite = TRUE))
+
+    if (isTRUE(copied)) {
       try(unlink(tmp_path, force = TRUE), silent = TRUE)
+      moved <- TRUE
     }
   }
 
