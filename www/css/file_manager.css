@@ -480,13 +480,13 @@
 }
 
 /* Yenile butonu (koyu tema): teal kimlik, kırmızı 'Temizle'den ayrışır */
-.files-header .btn-refresh {
+.btn-modern.btn-refresh {
   background: linear-gradient(135deg, rgba(20, 184, 166, 0.25), rgba(13, 148, 136, 0.15)) !important;
   color: #2dd4bf !important;
   border-color: rgba(20, 184, 166, 0.35) !important;
 }
 
-.files-header .btn-refresh:hover {
+.btn-modern.btn-refresh:hover {
   background: linear-gradient(135deg, rgba(20, 184, 166, 0.35), rgba(13, 148, 136, 0.25)) !important;
   border-color: rgba(20, 184, 166, 0.55) !important;
   box-shadow: 0 4px 12px rgba(20, 184, 166, 0.3) !important;

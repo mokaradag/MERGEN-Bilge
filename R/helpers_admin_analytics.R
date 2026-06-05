@@ -265,7 +265,7 @@ admin_page_layout <- function(ns, page_title, page_icon = "chart-bar",
             actionButton(
               ns(refresh_btn_id),
               label = tagList(icon("sync-alt"), "Yenile"),
-              class = "btn-modern btn-primary"
+              class = "btn-modern btn-refresh"
             )
           )
         )

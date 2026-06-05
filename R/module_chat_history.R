@@ -75,7 +75,7 @@ historyUI <- function(id) {
         h3("Söyleşi Geçmişi", class = "page-title"),
         div(
           class = "history-actions",
-          actionButton(ns("refresh_history"), label = tagList(icon("sync-alt"), "Yenile"), class = "btn-modern btn-primary"),
+          actionButton(ns("refresh_history"), label = tagList(icon("sync-alt"), "Yenile"), class = "btn-modern btn-refresh"),
           actionButton(ns("today_filter"), label = tagList(icon("calendar-day"), "Bugün"), class = "btn-modern btn-info"),
           downloadButton(ns("export_history"), label = "Excel'e Aktar", class = "btn-modern btn-success")
         )

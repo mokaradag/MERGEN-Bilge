@@ -11,7 +11,7 @@ tagList(
         h3("Kayıtlı Söyleşiler", class = "page-title"),
         div(
           class = "chat-actions",
-          actionButton(ns("refresh_saved_chats"), label = tagList(icon("sync-alt"), "Yenile"), class = "btn-modern btn-primary"),
+          actionButton(ns("refresh_saved_chats"), label = tagList(icon("sync-alt"), "Yenile"), class = "btn-modern btn-refresh"),
           actionButton(ns("clear_all_chats"), label = tagList(icon("trash-alt"), "Tümünü Temizle"), class = "btn-modern btn-danger")
         )
       ),
