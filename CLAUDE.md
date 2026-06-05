@@ -921,6 +921,16 @@ Current contract:
 - Do not re-inline these helper sources directly into individual tests.
 - Do not re-merge `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, and `R/config_file_store_registry.R` back into `R/config_file_store.R`.
 
+File Store and Health Dashboard Guardrails:
+
+- Do not bypass `atomic_write_json()` for File Store index writes; index persistence must use atomic UTF-8 JSON writes to reduce partial or corrupt `index.json` risk.
+- Keep `atomic_write_text()` binary-safe for UTF-8 content and preserve the `file.rename()` to `file.copy()` fallback behavior for cross-filesystem or locked-file cases.
+- Do not let tests write File Store index/upload/MCP data to real repo, user, or network paths; force temporary roots for `MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MERGEN_MCP_BASE_DIR`, and `MCP_FILES_BASE`.
+- Persistence smoke coverage must keep supported upload display names stable across repeated listings and must not expose timestamp/hash storage names.
+- Keep health path copyability strict: only an existing file or existing directory is copyable, not a missing child path whose parent exists.
+- Keep base health status/value/path formatting in `R/helpers_health_formatters.R`, keep the health checks table UI builder in `R/helpers_health_table.R`, and preserve source order as formatters first, then table builder, then downstream health modules.
+- Preserve maintainability ratchet constraints: no new 800+ line runtime files, no new 25+ function runtime files, and avoid adding anonymous function handlers to `R/helpers_health_formatters.R` unless absolutely necessary.
+
 Key files:
 
 - R/config_file_store.R
