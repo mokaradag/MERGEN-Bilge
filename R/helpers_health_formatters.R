@@ -159,43 +159,64 @@ health_status_pill <- function(status, label = NULL) {
   )
 }
 
+health_is_storage_path_id <- function(id) {
+  id <- as.character(id %||% "")[1]
+
+  allowed_ids <- c(
+    "storage.files_root", "storage.uploads_root", "storage.index_json",
+    "storage.log_dir", "storage.mcp_base"
+  )
+
+  id %in% allowed_ids || startsWith(id, "storage.path.")
+}
+
+health_as_windows_explorer_path <- function(value) {
+  value <- as.character(value %||% "")[1]
+  if (!nzchar(value)) return(value)
+
+  chartr("/", "\\", value)
+}
+
 health_is_copyable_path <- function(value, id = "") {
   value <- as.character(value %||% "")[1]
   id <- as.character(id %||% "")[1]
   if (!nzchar(value)) return(FALSE)
   if (tolower(value) %in% c("n/a", "na", "configured", "missing", "tanımlı değil")) return(FALSE)
   if (tolower(value) %in% health_status_levels) return(FALSE)
-
-  allowed_ids <- c(
-    "storage.files_root", "storage.uploads_root", "storage.index_json",
-    "storage.log_dir", "storage.mcp_base"
-  )
-  if (!(id %in% allowed_ids || startsWith(id, "storage.path."))) return(FALSE)
+  if (!health_is_storage_path_id(id)) return(FALSE)
 
   path <- normalizePath(value, winslash = "\\", mustWork = FALSE)
-  file.exists(path) || dir.exists(path)
+
+  file.exists(path) || dir.exists(path) || dir.exists(dirname(path))
 }
 
 health_render_value <- function(value, id = "") {
   value <- as.character(value %||% "")
   id <- as.character(id %||% "")
   normalized <- health_normalize_status(value)
+
   if (tolower(value) %in% health_status_levels) {
     return(health_status_pill(normalized))
+  }
+
+  display_value <- if (health_is_storage_path_id(id)) {
+    health_as_windows_explorer_path(value)
+  } else {
+    value
   }
 
   if (health_is_copyable_path(value, id)) {
     return(tags$button(
       type = "button",
       class = "health-path-copy-btn",
-      `data-health-path` = value,
+      `data-health-path` = display_value,
       `data-health-tooltip` = "Bu tam yolu panoya kopyala. Windows Dosya Gezgini adres çubuğuna yapıştırıp Enter'a basın.",
       icon("copy"),
-      tags$span(health_escape(value))
+      tags$span(health_escape(display_value))
     ))
   }
 
-  health_escape(value)
+  health_escape(display_value)
 }
 
 health_metric_tile <- function(title, value, icon_name = "info-circle", status = "unknown", subtitle = NULL) {

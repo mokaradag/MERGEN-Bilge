@@ -84,6 +84,13 @@ MERGEN_DEFAULT_API_KEY=paste-the-default-company-api-key-here
 # MCP dosya yüklemeleri için kalıcı temel klasör (UNC veya yerel yol)
 MCP_FILES_BASE=//mainserver/share/mergen_uploads
 
+# MERGEN dosya deposu sağlık kontrolleri
+MERGEN_FILES_ROOT="//mainserver/MERGEN Bilge/data"
+MERGEN_UPLOADS_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
+MERGEN_INDEX_PATH="//mainserver/MERGEN Bilge/data/index.json"
+MERGEN_MCP_BASE_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
+MERGEN_LOG_DIR="//mainserver/MERGEN Bilge/logs"
+
 SERVICE_DESK_API_KEY_URL=https://<your-servicedesk>/api-key
 SERVICE_DESK_RATE_LIMIT_URL=https://<your-servicedesk>/rate-limit
 

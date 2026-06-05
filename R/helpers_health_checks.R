@@ -111,6 +111,22 @@ health_check_disk_free <- function(path = getwd(), id = "storage.disk_free", lab
   health_safe_check(id, label, {
     start <- Sys.time()
     path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+
+    path_slash <- gsub("\\", "/", path, fixed = TRUE)
+    is_unc_path <- grepl("^//[^/]+/[^/]+", path_slash)
+
+    if (.Platform$OS.type == "windows" && is_unc_path) {
+      return(health_result(
+        id,
+        label,
+        "ok",
+        "UNC paylaşım",
+        "Ağ paylaşımı yazılabilir; boş alan bilgisi Windows WMIC ile okunmaz.",
+        health_ms(start),
+        remediation = ""
+      ))
+    }
+
     free_bytes <- NA_real_
     detail <- "Disk bilgisi alınamadı."
 
