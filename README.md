@@ -1827,6 +1827,14 @@ Son bakım turunda özellikle dosya yöneticisi tarafında davranış değiştir
 
 Not: Dosya deposu kökleri artık ortam değişkenleriyle override edilebilir yapıdadır (`MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`) ve testlerde izole geçici dizinlerle (temp sandbox) doğrulanacak şekilde özellikle test edilebilir tutulur.
 
+### Dosya Deposu ve Sağlık Paneli Notları
+
+- Dosya deposu index yazımları atomik UTF-8 yazım kullanır.
+- Geçici veya kısmi `index.json` yazımı riskini azaltmak için kritik JSON yazımları `atomic_write_json` üzerinden yapılmalıdır.
+- Testlerde dosya deposu gerçek ağ, kullanıcı veya repo dizinlerine yazmamalı; testler geçici dizinlere izole edilmelidir.
+- Yüklenen dosyaların kullanıcıya görünen adları tekrar listelemelerde korunmalı, zaman damgası/hash içeren depolama adları sızmamalıdır.
+- Sağlık panelinde yalnızca gerçekten var olan dosya veya dizin yolları kopyalanabilir kabul edilir.
+
 ### Zorunlu ortam değişkeni kontrolü
 Uygulama açılışta şu değişkenleri kontrol eder:
 - `LOCAL_LLM_ENDPOINT`
