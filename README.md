@@ -2128,6 +2128,12 @@ MCP_FILES_BASE=
 
 Varsayılan kurum API anahtarı istenirse `.Renviron` üzerinden yönetilir. Kişisel API anahtarı varsa her zaman önceliklidir; kişisel anahtar yoksa ve varsayılan anahtar izinliyse sunucu-yönetimli kurum anahtarı kullanılır. Bu değer GitHub'a yazılmamalı ve loglarda gösterilmemelidir. Kişisel anahtar zorunlu mod için `MERGEN_ALLOW_DEFAULT_API_KEY=FALSE` ve `MERGEN_REQUIRE_PERSONAL_API_KEY=TRUE` kullanılır. `.Renviron` değişikliklerinin etkili olması için tarayıcı yenilemesi değil, tam R process restart gerekir.
 
+### Sistem Durumu üretim yol yapılandırması notu
+
+Son üretim Windows VM stabilizasyonunda Sistem Durumu panelinin %100 sağlıklı duruma gelmesi için aşağıdaki yol kuralları doğrulanmıştır. Üretim Windows VM `.Renviron` dosyasında `MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MCP_FILES_BASE`, `MERGEN_MCP_BASE_DIR` ve `MERGEN_LOG_DIR` değerleri açıkça tanımlanmalıdır. `.Renviron` içinde yollar forward-slash UNC biçiminde yazılmalıdır (`//server/share/path`); kaçış gerektiren ters bölü yollar kullanılmamalıdır. Sistem Durumu arayüzü, kopyalanabilir yolları Windows Explorer uyumlu ters bölü biçimine otomatik çevirir; bu dönüşüm yalnızca UI/kopyalama gösterimi içindir.
+
+`MERGEN_FILES_ROOT` kök veri dizininde bitmelidir (ör. `.../MERGEN Bilge/data`), yanlışlıkla `.../MERGEN Bilge/data/data` olmamalıdır. `MERGEN_LOG_DIR`, Log Dizini’nin göreli veya mapped-drive yola düşmemesi için ayrıca ayarlanmalıdır. Windows VM dağıtımlarında yolda `Geliştirme` gibi Türkçe karakterler varsa `.Renviron` dosyasını mojibake oluşmaması için tercihen Windows-1254 / ANSI kodlamasıyla kaydedin.
+
 ---
 
 ## Çalıştırma

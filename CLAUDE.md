@@ -3466,6 +3466,12 @@ Secrets must always be redacted: never print raw credentials, tokens, or API key
 
 Path actions intentionally copy full paths to clipboard instead of attempting direct folder open; users then paste into Windows File Explorer and press Enter.
 
+### Health Dashboard path configuration notes
+
+This is documentation-only operational guidance from the latest production Windows VM stabilization that brought the Health Dashboard to 100%. Production Windows VM `.Renviron` files should explicitly define `MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MCP_FILES_BASE`, `MERGEN_MCP_BASE_DIR`, and `MERGEN_LOG_DIR`. Keep `.Renviron` path values in forward-slash UNC form and do not double-escape backslashes there; Windows Explorer-compatible backslash conversion belongs only to Health Dashboard display/copy rendering.
+
+`MERGEN_FILES_ROOT` must not accidentally include duplicated `/data/data`, and `MERGEN_LOG_DIR` should be explicit. UNC upload-root free-space checks may be treated as healthy when the share is writable even if WMIC cannot read the remote free-space value. For Turkish-character paths on Windows, save `.Renviron` using Windows-1254 / ANSI to avoid mojibake.
+
 Health tooltips use CSS-only `data-health-tooltip`. Do **not** reintroduce Bootstrap tooltip initialization for health dashboard elements; it previously caused frozen tooltip artifacts during refresh/navigation.
 
 Every new health check should return a structured result contract:
