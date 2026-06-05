@@ -385,11 +385,22 @@ moduleServer(id, function(input, output, session) {
             if (exists("validate_uploaded_file", envir = globalenv(), inherits = FALSE)) {
 			  max_mb <- fm_upload_limit_mb()
 
+              # Uzantı beyaz listesi kalıcı klasöre KOPYALAMADAN ÖNCE uygulanır.
+              # Aksi halde desteklenmeyen dosya diske kaydedilip tabloda
+              # gösterilmiyordu (saved-but-hidden sızıntısı). İzin verilen liste
+              # process_uploaded_file ile aynı kaynaktan (fm_normal_allowed_extensions)
+              # gelir; böylece iki kapı tutarlı kalır.
+              allowed_upload_exts <- if (exists("fm_normal_allowed_extensions", mode = "function", inherits = TRUE)) {
+                fm_normal_allowed_extensions()
+              } else {
+                NULL
+              }
+
               dogrulama <- validate_uploaded_file(
                 path = upload_path,
                 filename = upload_name,
                 max_size_mb = max_mb,
-                allowed_ext = NULL
+                allowed_ext = allowed_upload_exts
               )
 
               if (!isTRUE(dogrulama$ok)) {

@@ -146,7 +146,7 @@ fileManagerUI <- function(id) {
                 multiple = TRUE,
                 buttonLabel = tagList(icon("folder-open"), "Göz At"),
                 placeholder = "Henüz dosya seçilmedi",
-                accept = c(".txt", ".pdf", ".docx", ".xlsx", ".xls", ".csv", ".json", ".R", ".r", ".py", ".md", ".log", ".xml", ".html")
+                accept = c(".txt", ".pdf", ".docx", ".xlsx", ".xls", ".csv", ".json", ".R", ".r", ".py", ".md", ".log", ".xml", ".html", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg")
               )
             ),
             p(class = "upload-hint", "Birden fazla dosya seçebilirsiniz"),
@@ -158,7 +158,7 @@ fileManagerUI <- function(id) {
             p(
               class = "upload-hint",
               style = "margin-top: 8px; font-size: 12px;",
-              "Desteklenen dosya türleri: TXT, PDF, DOCX, XLSX, XLS, CSV, JSON, R, PY, MD, LOG, XML, HTML"
+              "Desteklenen dosya türleri: TXT, PDF, DOCX, XLSX, XLS, CSV, JSON, R, PY, MD, LOG, XML, HTML, JPG, JPEG, PNG, GIF, WEBP, BMP, SVG"
             ),
             div(
               id = ns("execute_bulk_upload_container"),

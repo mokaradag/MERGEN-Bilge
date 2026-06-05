@@ -249,6 +249,14 @@ readFileContentToString <- function(file_info) {
           digest_trimmed
         )
       },
+      # Görsel dosyalar: ikili içerik metin olarak okunmaz. Bağlama eklenirse
+      # modele ham bayt yerine açık bir Türkçe not iletilir (vision yok).
+      "jpg" = , "jpeg" = , "png" = , "gif" = , "webp" = , "bmp" = , "svg" = {
+        sprintf(
+          "Görsel dosya: %s\n(Bu sürümde görsel içeriği yapay zekâ tarafından analiz edilmemektedir.)",
+          file_info$name
+        )
+      },
       paste("Hata: '", file_ext, "' dosya türünün içeriği okunamadı.", sep = "")
     )
 
