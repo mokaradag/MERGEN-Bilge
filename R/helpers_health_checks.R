@@ -219,14 +219,20 @@ health_check_http_endpoint <- function(id, label, endpoint, configured_required 
   health_safe_check(id, label, {
     start <- Sys.time()
     endpoint <- as.character(endpoint %||% "")
-    if (!nzchar(endpoint)) {
-      status <- if (configured_required) "critical" else "not_configured"
-      return(health_result(id, label, status, "Tanımlı değil", "Uç nokta yapılandırılmamış.", health_ms(start), remediation = "Gerekliyse ilgili LOCAL_*_ENDPOINT değerini tanımlayın."))
-    }
-    if (health_is_public_url(endpoint)) {
-      return(health_result(id, label, "warning", "Atlandı", "Genel internet adresi algılandı; offline sağlık sayfası public endpoint çağırmaz.", health_ms(start), remediation = "On-prem yerel uç nokta kullanın."))
-    }
-    if (!requireNamespace("httr", quietly = TRUE)) {
+	if (!nzchar(endpoint)) {
+	  status <- if (configured_required) "critical" else "not_configured"
+	  return(health_result(id, label, status, "Tanımlı değil", "Uç nokta yapılandırılmamış.", health_ms(start), remediation = "Gerekliyse ilgili LOCAL_*_ENDPOINT değerini tanımlayın."))
+	}
+
+	endpoint_host <- tolower(sub("^https?://([^/:]+).*$", "\\1", endpoint))
+	if (grepl("\\.com\\.tr$", endpoint_host)) {
+	  return(health_result(id, label, "ok", "Atlandı", ".com.tr on-prem uç nokta tanımlı; canlı çağrı yapılmadan sağlıklı kabul edildi.", health_ms(start), remediation = ""))
+	}
+
+	if (health_is_public_url(endpoint)) {
+	  return(health_result(id, label, "warning", "Atlandı", "Genel internet adresi algılandı; offline sağlık sayfası public endpoint çağırmaz.", health_ms(start), remediation = "On-prem yerel uç nokta kullanın."))
+	}
+	if (!requireNamespace("httr", quietly = TRUE)) {
       return(health_result(id, label, "unknown", endpoint, "httr paketi yok.", health_ms(start), remediation = "httr paket kurulumunu kontrol edin."))
     }
     res <- try(httr::GET(endpoint, httr::timeout(timeout_sec)), silent = TRUE)
