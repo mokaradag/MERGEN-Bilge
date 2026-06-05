@@ -32,9 +32,9 @@ DB Unicode kaçış davranışını doğrulayan odak testleri, konsol veya işle
 
 ### LLM araç sonuçlarında veri önizleme kararlılığı
 
-LLM ikinci geçişine aktarılan MCP araç sonuçlarında dataframe önizlemesi artık Türkçe alan adı kodlamasına daha dayanıklıdır. `R/helpers_llm_worker_tool_results.R`, `sonuç_önizleme`, `sonuc_onizleme` ve `preview` alanlarını ortak bir önizleme çözümleme sınırından geçirir; böylece Windows/RStudio/VM kodlama farklarında gerçek veri bloğunun JSON fallback'e düşmesi engellenir.
+LLM ikinci geçişine aktarılan MCP araç sonuçlarında dataframe önizlemesi artık Türkçe alan adı kodlamasına daha dayanıklıdır. MCP/LLM araç sonucu dataframe önizleme çıkarımı `R/helpers_llm_worker_tool_results_preview.R` içinde izole edilmiştir; bu küçük helper `sonuç_önizleme`, `sonuc_onizleme` ve `preview` alanlarını tek noktadan çözer. `R/helpers_llm_worker_tool_results.R` araç sonucu biçimlendirme sorumluluğunda kalır ve maintainability ratchet fonksiyon bütçesini korur.
 
-Bu değişiklik görünür kullanıcı akışını değiştirmez. Araç sonucu hâlâ “VERİTABANINDAN GELEN GERÇEK VERİ” başlığı, markdown tablo, dönen satır/sütun bilgisi, `source_table` uyarısı/değer listesi ve boş dataframe uyarısı sözleşmesini korur. Amaç, Excel Analizi ve SQL/MCP araç çıktılarında ikinci LLM sentez geçişine giden gerçek veri bağlamını daha deterministik hâle getirmektir.
+Bu değişiklik görünür kullanıcı akışını değiştirmez. Araç sonucu hâlâ “VERİTABANINDAN GELEN GERÇEK VERİ” başlığı, markdown tablo, dönen satır/sütun bilgisi, `source_table` uyarısı/değer listesi ve boş dataframe uyarısı sözleşmesini korur. Amaç, Excel Analizi ve SQL/MCP araç çıktılarında ikinci LLM sentez geçişine giden gerçek veri bağlamını daha deterministik hâle getirmektir. Bu sınır `test-maintainability-ratchet.R`, `test-source-manifest-contract.R` ve `test-llm-worker-tool-results-refactor-contract.R` kapsamıyla korunur.
 
 ### API anahtarı seçim modalı kararlılık ve tarayıcı hijyeni
 
