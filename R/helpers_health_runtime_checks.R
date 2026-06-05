@@ -11,7 +11,9 @@ health_check_runtime_info <- function(perf_tracker = NULL) {
     if (!is.null(perf_tracker) && is.function(perf_tracker$get_active_session_count)) perf_tracker$get_active_session_count() else NA_integer_
   }, error = function(e) NA_integer_)
   mem <- tryCatch({
-    if (requireNamespace("pryr", quietly = TRUE)) health_format_bytes(as.numeric(pryr::mem_used())) else "N/A"
+    gc_info <- gc()
+    used_mb <- sum(as.numeric(gc_info[, 2]), na.rm = TRUE)
+    health_format_bytes(used_mb * 1024^2)
   }, error = function(e) "N/A")
   do.call(rbind, list(
     health_result("runtime.uptime", "Uygulama Uptime", "ok", paste(round(as.numeric(uptime) / 60, 1), "dk"), "Süreç başlangıcından beri geçen süre.", health_ms(start)),
@@ -103,6 +105,11 @@ health_check_bilge_yolac <- function() {
     start <- Sys.time()
     cli <- Sys.getenv("CLAUDE_CODE_CLI_PATH", Sys.getenv("BILGE_YOLAC_CLI_PATH", ""))
     wd <- Sys.getenv("CLAUDE_CODE_DEFAULT_WORKDIR", Sys.getenv("BILGE_YOLAC_DEFAULT_WORKDIR", ""))
+
+    if (nzchar(wd) && !dir.exists(wd)) {
+      dir.create(wd, recursive = TRUE, showWarnings = FALSE)
+    }
+
     cli_ok <- !nzchar(cli) || file.exists(cli)
     wd_ok <- !nzchar(wd) || (dir.exists(wd) && file.access(wd, 2) == 0)
     status <- if (!nzchar(cli) && !nzchar(wd)) "not_configured" else if (cli_ok && wd_ok) "ok" else "warning"
