@@ -477,6 +477,55 @@ filePreviewServer <- function(id) {
             size = "l", easyClose = TRUE, footer = footer
           ))
 
+        } else if (file_ext %in% c("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg")) {
+          # Görsel dosyalar için önizleme: dosya doğrudan Shiny oturumu üzerinden
+          # sunulur (base64 şişmesi olmadan) ve modalda <img> ile gösterilir.
+          # Aynı registerDataObj deseni büyük PDF önizlemesinde de kullanılıyor.
+          img_content_type <- switch(
+            file_ext,
+            "jpg" = , "jpeg" = "image/jpeg",
+            "png"  = "image/png",
+            "gif"  = "image/gif",
+            "webp" = "image/webp",
+            "bmp"  = "image/bmp",
+            "svg"  = "image/svg+xml",
+            "application/octet-stream"
+          )
+          img_obj_name <- paste0("img_", gsub("[^a-zA-Z0-9]", "_", basename(datapath)))
+          img_url <- session$registerDataObj(
+            name = img_obj_name,
+            data = list(path = datapath, ctype = img_content_type),
+            filterFunc = function(data, req) {
+              fpath <- data$path
+              if (!file.exists(fpath)) {
+                return(shiny::httpResponse(
+                  status = 404L,
+                  content_type = "text/plain; charset=UTF-8",
+                  content = "Dosya bulunamadi"
+                ))
+              }
+              raw_bytes <- readBin(fpath, "raw", file.info(fpath)$size)
+              shiny::httpResponse(
+                status = 200L,
+                content_type = data$ctype,
+                content = raw_bytes
+              )
+            }
+          )
+
+          showModal(modalDialog(
+            title = modalTitle,
+            div(
+              style = "text-align: center; max-height: 520px; overflow: auto;",
+              tags$img(
+                src = img_url,
+                alt = display_name,
+                style = "max-width: 100%; max-height: 500px; height: auto; border-radius: 8px;"
+              )
+            ),
+            size = "l", easyClose = TRUE, footer = footer
+          ))
+
         } else {
           # Desteklenmeyen Dosya Türleri İçin Uyarı
           showModal(modalDialog(
