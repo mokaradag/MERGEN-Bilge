@@ -68,13 +68,21 @@ Read `CLAUDE.md` first — it is the binding operational guide; follow every con
   in isolation); (d) 8 test files made standalone-runnable (missing `library(shiny)` / moved-helper
   sources); (e) Dosya Yönetimi "saved-but-hidden" upload leak — `execute_bulk_upload` now validates the
   extension before `copy_to_mcp_base`; images are now an allowed type (`fm_image_extensions()`).
-- Session 4/5 also added the **renv dependency-lock scaffolding** (`.Rprofile`, `renv/activate.R`,
-  `tools/renv_snapshot.R`, `docs/dependency-locking.md`, ci-restore fallback) and merged current `main`
-  (which made the maintainability ratchet fully GREEN). Covered by `test-renv-lock-contract.R` (do NOT
-  redo). `renv.lock` itself is NOT generated yet — it is a USER/VM action (`Rscript tools/renv_snapshot.R`
-  on the Windows VM R 4.6.0). One KNOWN cloud-only test failure remains: `test-runtime-network-boundary-contract.R`
-  (a redacted `https://url......./` avatar placeholder in `helpers_messaging.R` / `module_sidebar_user_panel.R`,
-  pre-existing on `main`, not a session-4/5 regression).
+- Session 4/5 also added the **renv dependency-lock scaffolding** (`.Rprofile` with a populated-library
+  guard, `renv/activate.R`, `tools/renv_snapshot.R`, `docs/dependency-locking.md`, ci-restore fallback,
+  `RENV_LOCK_STATUS.md` marker) and merged current `main` (ratchet fully GREEN). Covered by
+  `test-renv-lock-contract.R`. The user GENERATED `renv.lock` on the Windows VM (R 4.6.0, ~116 pkgs); it
+  is a USER/VM action — never generate it from Linux/cloud. Also added **image inline preview**
+  (`module_file_preview.R` via `registerDataObj`); covered behaviorally by `test-image-upload-allowed-behavior.R`.
+- **WINDOWS-VM TEST LESSON (critical — cloud masks it):** the renv/image/api-key tests passed on Linux but
+  FAILED on the user's Windows VM full suite (passed individually). Causes + fixes now applied: tests that
+  scan repo files MUST use the byte-safe reader (`readBin`+`iconv(sub="byte")`+`grepl(useBytes=TRUE)` over
+  ASCII anchors), NOT `readLines(encoding="UTF-8")+grepl` over Turkish-commented files; do NOT assert
+  `!is.na(iconv(x,"UTF-8","UTF-8"))` on possibly-native-encoded strings; and `.Rprofile`/`tools/renv_snapshot.R`
+  are ASCII-only. After a refactor moves a function, update the test's `source(...)` to the new owner
+  (main's `_preview.R` split moved `llm_worker_extract_preview_df`). Apply these to EVERY new file-scanning test.
+  One KNOWN cloud-only failure remains: `test-runtime-network-boundary-contract.R` (redacted `https://url......./`
+  avatar placeholder in `helpers_messaging.R`/`module_sidebar_user_panel.R`, pre-existing on `main`, green on VM).
 
 ## STEP 1 — TARGET the remaining UNTESTED logic (the harder, higher-value stuff)
 The cheap pure functions are mostly done. What remains is where bugs hide: **nested closures inside

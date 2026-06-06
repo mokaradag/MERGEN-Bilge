@@ -484,6 +484,32 @@ Bootstrap package-type contract:
 - The static guard is `tests/testthat/test-ai-package-bootstrap-contract.R`.
 - RSPM wiring checks in that contract must use stable URL fragments (for example `__linux__/noble/latest` and `__linux__/jammy/latest`) rather than brittle token shapes that may not exist in shell code formatting.
 
+### renv dependency-lock contract
+
+MERGEN Bilge pins exact package versions with `renv`. `R/config_packages.R` stays the human-readable manifest (its startup `requireNamespace` validation MUST NOT be removed); `renv.lock` is the exact-version source. The `renv.lock` MUST be generated on the working Windows VM (R 4.6.0), NOT from Linux/cloud. Full guide: `docs/dependency-locking.md`.
+
+Protected behaviors (do not regress):
+
+- The root `.Rprofile` is a deliberately CONDITIONAL, offline-safe loader. It activates renv ONLY when all of these hold: `renv/activate.R` exists, `renv.lock` exists, `renv` is installed, AND `renv/library` is actually populated (at least one installed package, checked with a bounded `Sys.glob(file.path("renv","library","*","*","*","*","DESCRIPTION"))`). Otherwise it is a NO-OP (global/system library) and never downloads renv and never crashes startup (wrapped in `tryCatch`). Escape hatch: `MERGEN_DISABLE_RENV_AUTOLOAD=true`.
+  - The populated-library condition is critical: `tools/renv_snapshot.R` only RECORDS `renv.lock`; it does NOT populate `renv/library`. So on a production VM that generated the lock but did not run `renv::restore()`, the project library is empty and the app must keep using the global library. Do NOT replace this with the standard unconditional `source("renv/activate.R")` — that breaks cloud/CI/VM by switching `.libPaths()` to an empty project library.
+  - `.Rprofile` and `tools/renv_snapshot.R` are intentionally ASCII-only (no Turkish special characters), because they are sourced at every startup and read/`parse()`-ed by tests on the Windows/Turkish-locale VM where non-ASCII can produce `input string 1 is invalid UTF-8`.
+- `tools/renv_snapshot.R` is the VM helper that writes `renv.lock` (scoped to `required_packages` + test/CI extras + renv) from the current library, without touching `.Rprofile`. Do NOT call `renv::init()` (it overwrites `.Rprofile` with the unconditional form).
+- `tests/scripts/ci_install_packages.R` prefers `renv::restore(prompt = FALSE)` when `renv.lock` exists and renv is available, then falls back to the existing RSPM/CRAN flow for anything still missing; when `renv.lock` is absent the existing behavior is unchanged. The mergen-ai-validation cache key includes `renv.lock`.
+- `.gitignore` policy: commit `renv.lock`, `renv/activate.R`, `renv/settings.json`, and `renv/.gitignore`; never commit `renv/library/`, `renv/cellar/`, `renv/staging/`, `renv/sandbox/`, `renv/python/`, `renv/local/`, `renv/lock/`. Do not reintroduce a blanket `renv/` ignore (it would hide `activate.R`).
+- `RENV_LOCK_STATUS.md` is a marker (NOT a real lock) recording that the on-prem `renv.lock` was generated (Windows VM, R 4.6.0, ~116 packages). It must never be named `renv.lock`.
+
+Tests that scan these files (`tests/testthat/test-renv-lock-contract.R`) MUST use the byte-safe reader pattern (`readBin` + `iconv(..., sub = "byte")`) with `grepl(..., useBytes = TRUE)` over ASCII anchors. Plain `readLines(..., encoding = "UTF-8") + grepl()` over Turkish-commented files fails on the Windows VM with `invalid UTF-8` (this is why those tests pass individually but failed inside the full suite). The same Windows-safe rule applies to any new test that scans repo files for content.
+
+Protected by:
+- `tests/testthat/test-renv-lock-contract.R`
+- `tests/testthat/test-ai-package-bootstrap-contract.R`
+
+### Image upload, preview, and the (missing) vision pipeline
+
+- Image files (`jpg`, `jpeg`, `png`, `gif`, `webp`, `bmp`, `svg`) are an allowed upload type via `fm_image_extensions()` inside `fm_normal_allowed_extensions()` (single source). The Dosya Yönetimi bulk-upload path validates the extension BEFORE copying to disk, so unsupported types no longer leak (saved-but-hidden). See `tests/testthat/test-image-upload-allowed-behavior.R`.
+- The Dosya Yönetimi file preview (`R/module_file_preview.R`) renders images inline by serving the file through `session$registerDataObj(...)` (same pattern as large-PDF preview) and showing an `<img>`; it must not regress to "Desteklenmeyen Dosya Türü" for these extensions.
+- KNOWN LIMITATION (vision): attaching an image to Model Bağlamı and asking about it does NOT work — there is no vision pipeline. `readFileContentToString` returns a clean text note for images (no binary garbage), but the LLM request never includes image data. Wiring base64 image parts into the chat request is a real feature for a future session (gate behind config, only if the deployed model supports vision); do not fake it.
+
 Before giving a final technical answer about this repository, an AI agent must run `bash tools/ai_validate.sh quick`.
 
 For risky changes, runtime changes, source-order changes, SSO changes, DB encoding changes, file lifecycle changes, streaming changes, frontend asset order changes, Bilge Yolaç / Claude Code changes, security/path/download changes, or production/VM-sensitive changes, the AI agent must run `bash tools/ai_validate.sh full --boot-smoke`.

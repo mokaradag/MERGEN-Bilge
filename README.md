@@ -6,6 +6,12 @@ MERGEN Bilge, modern kurumsal kullanım için tasarlanmış, Türkçe odaklı bi
 
 Dokümantasyon Notu: Bu README, ürün kapsamını hızlıca anlamak için üst seviye bir özet sunar; ayrıntılı operasyonel kurallar ve asistan davranış ilkeleri için sırasıyla `CLAUDE.md` ve `ai_rehber.md` dosyalarına başvurulmalıdır.
 
+### Görsel yükleme/önizleme, toast süresi, Yenile butonları ve renv bağımlılık kilidi
+
+Dosya Yönetimi ve Ana Söyleşi yükleme alanlarında görsel dosyalar (JPG, JPEG, PNG, GIF, WEBP, BMP, SVG) artık yüklenebilir ve tabloda listelenir; desteklenmeyen tür diske kopyalanmadan önce reddedildiği için "kaydedildi ama görünmüyor" sızıntısı giderildi. Yüklenen görseller Dosya Yönetimi önizlemesinde artık doğrudan görüntülenir. (Not: bu sürümde görsel İÇERİĞİ yapay zekâ tarafından analiz edilmez; Model Bağlamı'na görsel eklenip içeriği sorulamaz — görsel/vision yeteneği gelecek bir sürüm konusudur.) Toast bildirimleri sabit kısa süre yerine mesaj uzunluğuna göre 5–12 sn görünür. Söyleşi Geçmişi, Kayıtlı Söyleşiler, Görsel Galerisi ve tüm Yönetici/Sistem Durumu sayfalarındaki "Yenile" butonları Dosya Yönetimi ile aynı koyu/açık tema stiline getirildi.
+
+Ayrıca uygulama artık `renv` ile bağımlılık kilidi kullanır: `R/config_packages.R` insan-okunur manifest olarak kalır, kesin sürümler `renv.lock` içinde sabitlenir. Kilit dosyası çalışan Windows VM (R 4.6.0) ortamında `Rscript tools/renv_snapshot.R` ile üretilir; kök `.Rprofile` offline/üretim güvenlidir (renv yalnızca kilit ve dolu proje kütüphanesi hazırsa etkinleşir, aksi halde global kütüphaneyle normal çalışır). Ayrıntı: `docs/dependency-locking.md`.
+
 ### Karşılama ekranı açık tema cilası
 
 Ana Söyleşi modern karşılama ekranında açık tema cam yüzeyleri yeniden dengelendi. Karşılama kartı daha geçirgen bir glassmorphism görünümüne çekildi; hızlı işlem kartları solid beyaz yerine açık temanın sıcak krem/yellowish zeminine uyumlu cam yüzeylerle yumuşatıldı. Kişisel selamlama başlığındaki kontrast iyileştirildi ve sağdaki nöral ağ animasyon zemini açık tema paletiyle uyumlu hale getirildi. Nöral ağ etkileşimi de yalnızca animasyon bölgesi içindeki imleç hareketlerine tepki verecek şekilde sınırlandı; video, hızlı başlangıç kartları ve tarayıcı dışına/ikinci ekrana çıkış durumlarında son imleç noktası artık düğümleri çekmeye devam etmez.
