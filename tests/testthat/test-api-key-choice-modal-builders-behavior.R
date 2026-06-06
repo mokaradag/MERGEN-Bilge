@@ -74,7 +74,10 @@ testthat::test_that("api_key_choice_modal_dialog varsayılan anahtar YOKKEN tekl
 
 testthat::test_that("llm_worker_extract_preview_df liste olmayan girdide NULL döner", {
   env <- new.env(parent = globalenv())
-  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_llm_worker_tool_results.R"),
+  # llm_worker_extract_preview_df, main merge'i sonrasi _preview.R'ye TASINDI
+  # (CLAUDE.md sozlesmesi). Eski _tool_results.R'den source etmek "fonksiyon
+  # olmayana uygulama" hatasi verir.
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_llm_worker_tool_results_preview.R"),
          encoding = "UTF-8", local = env)
   testthat::expect_null(env$llm_worker_extract_preview_df(42))
   testthat::expect_null(env$llm_worker_extract_preview_df("metin"))
@@ -82,7 +85,10 @@ testthat::test_that("llm_worker_extract_preview_df liste olmayan girdide NULL d�
 
 testthat::test_that("llm_worker_extract_preview_df Türkçe 'sonuç_önizleme' adını çözer", {
   env <- new.env(parent = globalenv())
-  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_llm_worker_tool_results.R"),
+  # llm_worker_extract_preview_df, main merge'i sonrasi _preview.R'ye TASINDI
+  # (CLAUDE.md sozlesmesi). Eski _tool_results.R'den source etmek "fonksiyon
+  # olmayana uygulama" hatasi verir.
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_llm_worker_tool_results_preview.R"),
          encoding = "UTF-8", local = env)
 
   # Türkçe alan adı deterministik biçimde (intToUtf8) kurulur: "sonuç_önizleme".
@@ -98,7 +104,10 @@ testthat::test_that("llm_worker_extract_preview_df Türkçe 'sonuç_önizleme' a
 
 testthat::test_that("llm_worker_extract_preview_df ASCII 'preview' ve tek-data.frame yedeğini çözer", {
   env <- new.env(parent = globalenv())
-  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_llm_worker_tool_results.R"),
+  # llm_worker_extract_preview_df, main merge'i sonrasi _preview.R'ye TASINDI
+  # (CLAUDE.md sozlesmesi). Eski _tool_results.R'den source etmek "fonksiyon
+  # olmayana uygulama" hatasi verir.
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_llm_worker_tool_results_preview.R"),
          encoding = "UTF-8", local = env)
 
   # ASCII 'preview' alanı

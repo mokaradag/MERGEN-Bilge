@@ -2,30 +2,37 @@
 
 # ==============================================================================
 # Dosya Yolu: tools/renv_snapshot.R
-# Açıklama:
-#   MERGEN Bilge için renv.lock kilit dosyasını üretir/günceller.
-#   ÇALIŞAN Windows VM (R 4.6.0 + güncel paket kütüphanesi) üzerinde çalıştırın.
+# Aciklama:
+#   MERGEN Bilge icin renv.lock kilit dosyasini uretir/gunceller.
+#   CALISAN Windows VM (R 4.6.0 + guncel paket kutuphanesi) uzerinde calistirin.
+#
+#   ASCII-only: bu betik testlerce parse()/okunur ve Windows VM (Turkce locale)
+#   uzerinde Turkce ozel karakterler "invalid UTF-8" sorunlari uretebildigi icin
+#   bilincli olarak ASCII tutulmustur.
 #
 #   Bu betik:
-#     - R/config_packages.R içindeki required_packages listesini STATİK okur
-#       (source ETMEZ; eksik paket varsa config_packages.R bilinçli stop() üretir),
-#     - CI/test için gereken birkaç ekstra paketi (testthat, withr, processx,
+#     - R/config_packages.R icindeki required_packages listesini STATIK okur
+#       (source ETMEZ; eksik paket varsa config_packages.R bilincli stop() uretir),
+#     - CI/test icin gereken birkac ekstra paketi (testthat, withr, processx,
 #       callr) ve renv'in kendisini ekler,
-#     - mevcut (global/aktif) kütüphanedeki SÜRÜMLERLE renv.lock yazar,
-#     - .Rprofile dosyasına DOKUNMAZ (koşullu/offline-güvenli profil korunur).
+#     - mevcut (global/aktif) kutuphanedeki SURUMLERLE renv.lock yazar,
+#     - .Rprofile dosyasina DOKUNMAZ (kosullu/offline-guvenli profil korunur).
 #
-#   NOT: `renv::init()` ÇAĞIRMAYIN. init(), .Rprofile'ı koşulsuz sürümle ezer ve
-#   repo'nun offline/bulut güvenli davranışını bozar. Kilit üretmek için yalnızca
-#   bu betiği (veya doğrudan renv::snapshot) kullanın.
+#   NOT: renv init fonksiyonunu CAGIRMAYIN. O fonksiyon .Rprofile'i kosulsuz
+#   surumle ezer ve repo'nun offline/bulut guvenli davranisini bozar. Kilit
+#   uretmek icin yalnizca bu betigi (veya dogrudan renv::snapshot) kullanin.
 #
-#   Kullanım (repo kökünden):
+#   Onemli: bu betik yalnizca renv.lock'u KAYDEDER; renv/library'yi DOLDURMAZ.
+#   Temiz bir ortamda kilitten kurulum icin: renv::restore(prompt = FALSE).
+#
+#   Kullanim (repo kokunden):
 #       Rscript tools/renv_snapshot.R
 #
-#   Ayrıntılı rehber: docs/dependency-locking.md
+#   Ayrintili rehber: docs/dependency-locking.md
 # ==============================================================================
 
 options(warn = 1)
-cat("== MERGEN renv snapshot (renv.lock üretici) ==\n")
+cat("== MERGEN renv snapshot (renv.lock uretici) ==\n")
 
 find_repo_root <- function() {
   candidates <- c(".", "..", "../..")
@@ -35,19 +42,19 @@ find_repo_root <- function() {
       return(normalizePath(cand, winslash = "/", mustWork = TRUE))
     }
   }
-  stop("Repo kökü bulunamadı. Bu betiği repo içinde çalıştırın.", call. = FALSE)
+  stop("Repo koku bulunamadi. Bu betigi repo icinde calistirin.", call. = FALSE)
 }
 
 repo_root <- find_repo_root()
 setwd(repo_root)
-cat(sprintf("Repo kökü: %s\n", repo_root))
+cat(sprintf("Repo koku: %s\n", repo_root))
 
 if (!requireNamespace("renv", quietly = TRUE)) {
   stop(
     paste(
-      "renv paketi kurulu değil.",
-      "Önce kurun:  install.packages(\"renv\")",
-      "Sonra tekrar çalıştırın:  Rscript tools/renv_snapshot.R",
+      "renv paketi kurulu degil.",
+      "Once kurun:  install.packages(\"renv\")",
+      "Sonra tekrar calistirin:  Rscript tools/renv_snapshot.R",
       sep = "\n"
     ),
     call. = FALSE
@@ -56,15 +63,15 @@ if (!requireNamespace("renv", quietly = TRUE)) {
 
 config_path <- file.path(repo_root, "R", "config_packages.R")
 if (!file.exists(config_path)) {
-  stop("R/config_packages.R bulunamadı.", call. = FALSE)
+  stop("R/config_packages.R bulunamadi.", call. = FALSE)
 }
 
-# required_packages <- c(...) bloğunu statik olarak ayıkla (source etmeden).
+# required_packages <- c(...) blogunu statik olarak ayikla (source etmeden).
 extract_required_packages <- function(path) {
   txt <- paste(enc2utf8(readLines(path, warn = FALSE, encoding = "UTF-8")), collapse = "\n")
   hit <- regexpr("(?s)required_packages\\s*<-\\s*c\\((.*?)\\)", txt, perl = TRUE)
   if (hit[1] < 0) {
-    stop("required_packages <- c(...) bloğu bulunamadı.", call. = FALSE)
+    stop("required_packages <- c(...) blogu bulunamadi.", call. = FALSE)
   }
   block <- regmatches(txt, hit)
   string_hits <- gregexpr("\"[^\"]+\"|'[^']+'", block, perl = TRUE)[[1]]
@@ -78,29 +85,29 @@ extract_required_packages <- function(path) {
 
 repo_packages <- extract_required_packages(config_path)
 
-# CI / test akışı için gereken ekstralar (tests/scripts/ci_install_packages.R ile
-# hizalı) ve renv'in kendisi. Böylece renv::restore() ile temiz bir ortamda hem
-# uygulama hem de testler çalışabilir.
+# CI / test akisi icin gereken ekstralar (tests/scripts/ci_install_packages.R ile
+# hizali) ve renv'in kendisi. Boylece renv::restore() ile temiz bir ortamda hem
+# uygulama hem de testler calisabilir.
 extra_packages <- c("testthat", "withr", "processx", "callr", "renv")
 
 requested <- sort(unique(c(repo_packages, extra_packages)))
-cat(sprintf("Kilit kapsamına alınacak paket sayısı (recursive bağımlılıklar hariç): %d\n",
+cat(sprintf("Kilit kapsamina alinacak paket sayisi (recursive bagimliliklar haric): %d\n",
             length(requested)))
 
-# Hangi istenen paketler aktif kütüphanede kurulu değil? (uyarı amaçlı)
+# Hangi istenen paketler aktif kutuphanede kurulu degil? (uyari amacli)
 not_installed <- requested[!vapply(requested, function(p) requireNamespace(p, quietly = TRUE), logical(1))]
 if (length(not_installed) > 0L) {
-  cat("UYARI: Aşağıdaki istenen paketler aktif kütüphanede KURULU DEĞİL ve\n")
-  cat("kilit dosyasına eklenemeyecek. Önce bunları kurun:\n")
+  cat("UYARI: Asagidaki istenen paketler aktif kutuphanede KURULU DEGIL ve\n")
+  cat("kilit dosyasina eklenemeyecek. Once bunlari kurun:\n")
   cat(paste(not_installed, collapse = ", "), "\n\n")
 }
 
 snapshot_packages <- setdiff(requested, not_installed)
 if (length(snapshot_packages) == 0L) {
-  stop("Kilitlenecek kurulu paket bulunamadı. Önce paketleri kurun.", call. = FALSE)
+  stop("Kilitlenecek kurulu paket bulunamadi. Once paketleri kurun.", call. = FALSE)
 }
 
-cat("renv::snapshot() çalıştırılıyor (mevcut kütüphane sürümleriyle)...\n")
+cat("renv::snapshot() calistiriliyor (mevcut kutuphane surumleriyle)...\n")
 renv::snapshot(
   project  = repo_root,
   packages = snapshot_packages,
@@ -111,12 +118,12 @@ renv::snapshot(
 lock_path <- file.path(repo_root, "renv.lock")
 if (file.exists(lock_path)) {
   locked <- tryCatch(names(jsonlite::fromJSON(lock_path)$Packages), error = function(e) character(0))
-  cat(sprintf("\nOK: renv.lock yazıldı (%s).\n", lock_path))
-  cat(sprintf("Kilitlenen toplam paket (recursive bağımlılıklar dahil): %d\n", length(locked)))
-  cat("\nSonraki adımlar:\n")
-  cat("  1) Temiz bir ortamda doğrula:  Rscript -e 'renv::restore(prompt = FALSE)'\n")
-  cat("  2) Testleri çalıştır:          Rscript tests/testthat.R\n")
-  cat("  3) renv.lock'u commit edin (renv/library COMMIT EDİLMEZ).\n")
+  cat(sprintf("\nOK: renv.lock yazildi (%s).\n", lock_path))
+  cat(sprintf("Kilitlenen toplam paket (recursive bagimliliklar dahil): %d\n", length(locked)))
+  cat("\nSonraki adimlar:\n")
+  cat("  1) Temiz bir ortamda dogrula:  Rscript -e 'renv::restore(prompt = FALSE)'\n")
+  cat("  2) Testleri calistir:          Rscript tests/testthat.R\n")
+  cat("  3) renv.lock'u commit edin (renv/library COMMIT EDILMEZ).\n")
 } else {
-  stop("renv.lock üretilemedi.", call. = FALSE)
+  stop("renv.lock uretilemedi.", call. = FALSE)
 }

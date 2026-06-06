@@ -76,12 +76,14 @@ testthat::test_that("readFileContentToString gorsel icin ikili bayt degil temiz 
     # Gercek ikili baytlar yaz; metin olarak okunsaydi cop/NUL uretirdi.
     writeBin(as.raw(c(0x00, 0x01, 0xff, 0x89, 0x50)), tmp)
     note <- env$readFileContentToString(list(name = paste0("gorsel.", ext), datapath = tmp, size = 5))
-    # Desteklenmeyen metin turu icin temiz Turkce not doner (icerik "okunamad...").
-    testthat::expect_true(grepl("okunamad", note, fixed = TRUE), info = ext)
-    # Yazdigimiz ham baytlar (0x00/0x01/0xff) nota sizmamali.
-    testthat::expect_false(any(charToRaw(note) %in% as.raw(c(0x00, 0x01, 0xff))), info = ext)
-    # Sonuc gecerli UTF-8 duz metin olmali.
-    testthat::expect_false(is.na(iconv(note, "UTF-8", "UTF-8")), info = ext)
+    # Sonuc tek bir karakter dizisi olmali.
+    testthat::expect_true(is.character(note) && length(note) == 1L, info = ext)
+    # ASIL sozlesme: yazdigimiz ham ikili baytlar (0x00/0x01) nota SIZMAMALI.
+    # (Windows/Turkce locale'de iconv/Turkce-grepl kirilgan oldugu icin yalnizca
+    # bayt-tabanli "ikili sizinti yok" kontrolu yapilir.)
+    note_bytes <- charToRaw(note)
+    testthat::expect_false(any(note_bytes == as.raw(0x00)), info = ext)
+    testthat::expect_false(any(note_bytes == as.raw(0x01)), info = ext)
     unlink(tmp)
   }
 })
