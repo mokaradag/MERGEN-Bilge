@@ -49,7 +49,8 @@ Current contract:
 - `www/js/encoding_utils.js` must be loaded through `R/config_ui_assets.R` before `www/js/shiny_message_handlers.js` and before `www/js/claude_code_streaming.js`.
 - DB write parameters, DB read/hydration paths, saved chat reloads, version-history/Yenilikler reads, uploaded-file display names, Bilge Yolaç process/stream output, JSON/text boundaries, and logs should use the shared helper path instead of local encoding fixes.
 - `dataframeToMarkdown()` in `R/helpers_files.R` must keep producing simple CSV text for data.frame previews without reintroducing UTF-8 BOM/readLines regressions on Windows. It writes preview CSV without BOM and reads through an explicit UTF-8 connection; protect this with `tests/testthat/test-files-dataframe-markdown-behavior.R`.
-- MCP/LLM worker tool-result dataframe preview extraction belongs in `R/helpers_llm_worker_tool_results.R`. Do not rely only on direct `$` access to Turkish list names such as `raw$sonuç_önizleme`; use the shared preview extraction boundary so `sonuç_önizleme`, `sonuc_onizleme`, and `preview` remain stable across Windows/RStudio/VM encoding differences.
+- MCP/LLM worker tool-result dataframe preview extraction belongs in `R/helpers_llm_worker_tool_results_preview.R`. Do not move `llm_worker_extract_preview_df()` back into `R/helpers_llm_worker_tool_results.R`, and do not rely only on direct `$` access to Turkish list names such as `raw$sonuç_önizleme`; keep support for `sonuç_önizleme`, `sonuc_onizleme`, and `preview` through the shared preview extraction boundary across Windows/RStudio/VM encoding differences.
+- `R/helpers_llm_worker_tool_results.R` must remain focused on formatting tool results for the second-pass LLM prompt and stay within the maintainability ratchet function budget. The runtime manifest must load `R/helpers_llm_worker_tool_results_preview.R` before `R/helpers_llm_worker_tool_results.R`; isolated tests that source the formatting helper directly must source the preview helper first.
 - The formatted real-data output contract is protected: keep the `VERİTABANINDAN GELEN GERÇEK VERİ` heading, markdown table, returned row/column counts, missing-`source_table` warning, `source_table değerleri:` listing, and empty-dataframe warning behavior intact. This boundary feeds the second-pass LLM synthesis prompt and must not silently fall back to JSON when a valid dataframe preview is present.
 - Focused regression coverage belongs in `tests/testthat/test-llm-worker-format-tool-result-behavior.R`. For documentation-only updates to this note, do not run R/testthat validation unless code files are changed in a separate task.
 - DB normalization is intentionally opt-in for mojibake repair. User-visible DB text must be prepared explicitly with `normalize_db_visible_value()` before parameter binding. Technical string values must use `normalize_db_technical_value()` or remain on the default no-repair path. Do not apply `repair_mojibake = TRUE` to an entire mixed parameter list that also contains IDs, enums, flags, model names, usernames, emails, sicil values, Keycloak IDs, file paths, or other non-user-visible values.
@@ -919,6 +920,16 @@ Current contract:
 - That helper must source `R/helpers_files_path.R` before the split `config_file_store_*` files so `normalize_for_path_compare` is available.
 - Do not re-inline these helper sources directly into individual tests.
 - Do not re-merge `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, and `R/config_file_store_registry.R` back into `R/config_file_store.R`.
+
+File Store and Health Dashboard Guardrails:
+
+- Do not bypass `atomic_write_json()` for File Store index writes; index persistence must use atomic UTF-8 JSON writes to reduce partial or corrupt `index.json` risk.
+- Keep `atomic_write_text()` binary-safe for UTF-8 content and preserve the `file.rename()` to `file.copy()` fallback behavior for cross-filesystem or locked-file cases.
+- Do not let tests write File Store index/upload/MCP data to real repo, user, or network paths; force temporary roots for `MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MERGEN_MCP_BASE_DIR`, and `MCP_FILES_BASE`.
+- Persistence smoke coverage must keep supported upload display names stable across repeated listings and must not expose timestamp/hash storage names.
+- Keep health path copyability strict: only an existing file or existing directory is copyable, not a missing child path whose parent exists.
+- Keep base health status/value/path formatting in `R/helpers_health_formatters.R`, keep the health checks table UI builder in `R/helpers_health_table.R`, and preserve source order as formatters first, then table builder, then downstream health modules.
+- Preserve maintainability ratchet constraints: no new 800+ line runtime files, no new 25+ function runtime files, and avoid adding anonymous function handlers to `R/helpers_health_formatters.R` unless absolutely necessary.
 
 Key files:
 
@@ -3464,6 +3475,12 @@ Health checks must remain safe, non-destructive, lightweight, and offline-compat
 Secrets must always be redacted: never print raw credentials, tokens, or API keys.
 
 Path actions intentionally copy full paths to clipboard instead of attempting direct folder open; users then paste into Windows File Explorer and press Enter.
+
+### Health Dashboard path configuration notes
+
+This is documentation-only operational guidance from the latest production Windows VM stabilization that brought the Health Dashboard to 100%. Production Windows VM `.Renviron` files should explicitly define `MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MCP_FILES_BASE`, `MERGEN_MCP_BASE_DIR`, and `MERGEN_LOG_DIR`. Keep `.Renviron` path values in forward-slash UNC form and do not double-escape backslashes there; Windows Explorer-compatible backslash conversion belongs only to Health Dashboard display/copy rendering.
+
+`MERGEN_FILES_ROOT` must not accidentally include duplicated `/data/data`, and `MERGEN_LOG_DIR` should be explicit. UNC upload-root free-space checks may be treated as healthy when the share is writable even if WMIC cannot read the remote free-space value. For Turkish-character paths on Windows, save `.Renviron` using Windows-1254 / ANSI to avoid mojibake.
 
 Health tooltips use CSS-only `data-health-tooltip`. Do **not** reintroduce Bootstrap tooltip initialization for health dashboard elements; it previously caused frozen tooltip artifacts during refresh/navigation.
 

@@ -13,8 +13,15 @@ if (requireNamespace("shiny", quietly = TRUE)) {
 }
 
 .hfui_env <- new.env(parent = globalenv())
+
 source(
   file.path(resolve_repo_root_for_tests(), "R", "helpers_health_formatters.R"),
+  encoding = "UTF-8",
+  local = .hfui_env
+)
+
+source(
+  file.path(resolve_repo_root_for_tests(), "R", "helpers_health_table.R"),
   encoding = "UTF-8",
   local = .hfui_env
 )

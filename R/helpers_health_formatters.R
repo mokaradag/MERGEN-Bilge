@@ -159,43 +159,70 @@ health_status_pill <- function(status, label = NULL) {
   )
 }
 
-health_is_copyable_path <- function(value, id = "") {
-  value <- as.character(value %||% "")[1]
+health_is_storage_path_id <- function(id) {
   id <- as.character(id %||% "")[1]
-  if (!nzchar(value)) return(FALSE)
-  if (tolower(value) %in% c("n/a", "na", "configured", "missing", "tanımlı değil")) return(FALSE)
-  if (tolower(value) %in% health_status_levels) return(FALSE)
 
   allowed_ids <- c(
     "storage.files_root", "storage.uploads_root", "storage.index_json",
     "storage.log_dir", "storage.mcp_base"
   )
-  if (!(id %in% allowed_ids || startsWith(id, "storage.path."))) return(FALSE)
 
-  path <- normalizePath(value, winslash = "\\", mustWork = FALSE)
-  file.exists(path) || dir.exists(path)
+  id %in% allowed_ids || startsWith(id, "storage.path.")
+}
+
+health_as_windows_explorer_path <- function(value) {
+  value <- as.character(value %||% "")[1]
+  if (!nzchar(value)) return(value)
+
+  chartr("/", "\\", value)
+}
+
+health_is_copyable_path <- function(value, id = "") {
+  value <- as.character(value %||% "")[1]
+  id <- as.character(id %||% "")[1]
+
+  if (!nzchar(value)) return(FALSE)
+  if (tolower(value) %in% c("n/a", "na", "configured", "missing", "tanımlı değil")) return(FALSE)
+  if (tolower(value) %in% health_status_levels) return(FALSE)
+  if (!health_is_storage_path_id(id)) return(FALSE)
+
+  normalized_path <- suppressWarnings(
+    normalizePath(value, winslash = "\\", mustWork = FALSE)
+  )
+
+  isTRUE(file.exists(value)) ||
+    isTRUE(dir.exists(value)) ||
+    isTRUE(file.exists(normalized_path)) ||
+    isTRUE(dir.exists(normalized_path))
 }
 
 health_render_value <- function(value, id = "") {
   value <- as.character(value %||% "")
   id <- as.character(id %||% "")
   normalized <- health_normalize_status(value)
+
   if (tolower(value) %in% health_status_levels) {
     return(health_status_pill(normalized))
+  }
+
+  display_value <- if (health_is_storage_path_id(id)) {
+    health_as_windows_explorer_path(value)
+  } else {
+    value
   }
 
   if (health_is_copyable_path(value, id)) {
     return(tags$button(
       type = "button",
       class = "health-path-copy-btn",
-      `data-health-path` = value,
+      `data-health-path` = display_value,
       `data-health-tooltip` = "Bu tam yolu panoya kopyala. Windows Dosya Gezgini adres çubuğuna yapıştırıp Enter'a basın.",
       icon("copy"),
-      tags$span(health_escape(value))
+      tags$span(health_escape(display_value))
     ))
   }
 
-  health_escape(value)
+  health_escape(display_value)
 }
 
 health_metric_tile <- function(title, value, icon_name = "info-circle", status = "unknown", subtitle = NULL) {
@@ -225,36 +252,5 @@ health_section_card <- function(title, icon_name, ..., class = NULL, tooltip = N
           icon("info-circle")
         )),
     ...
-  )
-}
-
-health_checks_table <- function(checks, max_height = 420) {
-  if (is.null(checks) || !nrow(checks)) {
-    return(div(class = "health-empty", "Gösterilecek kontrol sonucu yok."))
-  }
-  rows <- lapply(seq_len(nrow(checks)), function(i) {
-    row <- checks[i, ]
-    tags$tr(
-      tags$td(health_status_pill(row$status)),
-      tags$td(strong(health_escape(row$label)), tags$div(class = "health-check-id", health_escape(row$id))),
-      tags$td(health_render_value(row$value, row$id)),
-      tags$td(health_escape(row$detail)),
-      tags$td(ifelse(is.na(row$duration_ms), "—", paste0(row$duration_ms, " ms"))),
-      tags$td(health_escape(row$checked_at)),
-      tags$td(health_escape(row$remediation))
-    )
-  })
-  div(
-    class = "health-table-wrap",
-    style = paste0("max-height:", as.integer(max_height), "px;"),
-    `data-health-tooltip` = "Tablo başlığı sabittir; çok satırlı sonuçlarda tablo içinde kaydırma yapılır.",
-    tags$table(
-      class = "health-table",
-      tags$thead(tags$tr(
-        tags$th("Durum"), tags$th("Kontrol"), tags$th("Değer"), tags$th("Detay"),
-        tags$th("Süre"), tags$th("Zaman"), tags$th("Öneri")
-      )),
-      tags$tbody(rows)
-    )
   )
 }

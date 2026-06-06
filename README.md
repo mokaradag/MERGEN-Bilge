@@ -32,9 +32,9 @@ DB Unicode kaçış davranışını doğrulayan odak testleri, konsol veya işle
 
 ### LLM araç sonuçlarında veri önizleme kararlılığı
 
-LLM ikinci geçişine aktarılan MCP araç sonuçlarında dataframe önizlemesi artık Türkçe alan adı kodlamasına daha dayanıklıdır. `R/helpers_llm_worker_tool_results.R`, `sonuç_önizleme`, `sonuc_onizleme` ve `preview` alanlarını ortak bir önizleme çözümleme sınırından geçirir; böylece Windows/RStudio/VM kodlama farklarında gerçek veri bloğunun JSON fallback'e düşmesi engellenir.
+LLM ikinci geçişine aktarılan MCP araç sonuçlarında dataframe önizlemesi artık Türkçe alan adı kodlamasına daha dayanıklıdır. MCP/LLM araç sonucu dataframe önizleme çıkarımı `R/helpers_llm_worker_tool_results_preview.R` içinde izole edilmiştir; bu küçük helper `sonuç_önizleme`, `sonuc_onizleme` ve `preview` alanlarını tek noktadan çözer. `R/helpers_llm_worker_tool_results.R` araç sonucu biçimlendirme sorumluluğunda kalır ve maintainability ratchet fonksiyon bütçesini korur.
 
-Bu değişiklik görünür kullanıcı akışını değiştirmez. Araç sonucu hâlâ “VERİTABANINDAN GELEN GERÇEK VERİ” başlığı, markdown tablo, dönen satır/sütun bilgisi, `source_table` uyarısı/değer listesi ve boş dataframe uyarısı sözleşmesini korur. Amaç, Excel Analizi ve SQL/MCP araç çıktılarında ikinci LLM sentez geçişine giden gerçek veri bağlamını daha deterministik hâle getirmektir.
+Bu değişiklik görünür kullanıcı akışını değiştirmez. Araç sonucu hâlâ “VERİTABANINDAN GELEN GERÇEK VERİ” başlığı, markdown tablo, dönen satır/sütun bilgisi, `source_table` uyarısı/değer listesi ve boş dataframe uyarısı sözleşmesini korur. Amaç, Excel Analizi ve SQL/MCP araç çıktılarında ikinci LLM sentez geçişine giden gerçek veri bağlamını daha deterministik hâle getirmektir. Bu sınır `test-maintainability-ratchet.R`, `test-source-manifest-contract.R` ve `test-llm-worker-tool-results-refactor-contract.R` kapsamıyla korunur.
 
 ### API anahtarı seçim modalı kararlılık ve tarayıcı hijyeni
 
@@ -1827,6 +1827,14 @@ Son bakım turunda özellikle dosya yöneticisi tarafında davranış değiştir
 
 Not: Dosya deposu kökleri artık ortam değişkenleriyle override edilebilir yapıdadır (`MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`) ve testlerde izole geçici dizinlerle (temp sandbox) doğrulanacak şekilde özellikle test edilebilir tutulur.
 
+### Dosya Deposu ve Sağlık Paneli Notları
+
+- Dosya deposu index yazımları atomik UTF-8 yazım kullanır.
+- Geçici veya kısmi `index.json` yazımı riskini azaltmak için kritik JSON yazımları `atomic_write_json` üzerinden yapılmalıdır.
+- Testlerde dosya deposu gerçek ağ, kullanıcı veya repo dizinlerine yazmamalı; testler geçici dizinlere izole edilmelidir.
+- Yüklenen dosyaların kullanıcıya görünen adları tekrar listelemelerde korunmalı, zaman damgası/hash içeren depolama adları sızmamalıdır.
+- Sağlık panelinde yalnızca gerçekten var olan dosya veya dizin yolları kopyalanabilir kabul edilir.
+
 ### Zorunlu ortam değişkeni kontrolü
 Uygulama açılışta şu değişkenleri kontrol eder:
 - `LOCAL_LLM_ENDPOINT`
@@ -2127,6 +2135,12 @@ MCP_FILES_BASE=
 ```
 
 Varsayılan kurum API anahtarı istenirse `.Renviron` üzerinden yönetilir. Kişisel API anahtarı varsa her zaman önceliklidir; kişisel anahtar yoksa ve varsayılan anahtar izinliyse sunucu-yönetimli kurum anahtarı kullanılır. Bu değer GitHub'a yazılmamalı ve loglarda gösterilmemelidir. Kişisel anahtar zorunlu mod için `MERGEN_ALLOW_DEFAULT_API_KEY=FALSE` ve `MERGEN_REQUIRE_PERSONAL_API_KEY=TRUE` kullanılır. `.Renviron` değişikliklerinin etkili olması için tarayıcı yenilemesi değil, tam R process restart gerekir.
+
+### Sistem Durumu üretim yol yapılandırması notu
+
+Son üretim Windows VM stabilizasyonunda Sistem Durumu panelinin %100 sağlıklı duruma gelmesi için aşağıdaki yol kuralları doğrulanmıştır. Üretim Windows VM `.Renviron` dosyasında `MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MCP_FILES_BASE`, `MERGEN_MCP_BASE_DIR` ve `MERGEN_LOG_DIR` değerleri açıkça tanımlanmalıdır. `.Renviron` içinde yollar forward-slash UNC biçiminde yazılmalıdır (`//server/share/path`); kaçış gerektiren ters bölü yollar kullanılmamalıdır. Sistem Durumu arayüzü, kopyalanabilir yolları Windows Explorer uyumlu ters bölü biçimine otomatik çevirir; bu dönüşüm yalnızca UI/kopyalama gösterimi içindir.
+
+`MERGEN_FILES_ROOT` kök veri dizininde bitmelidir (ör. `.../MERGEN Bilge/data`), yanlışlıkla `.../MERGEN Bilge/data/data` olmamalıdır. `MERGEN_LOG_DIR`, Log Dizini’nin göreli veya mapped-drive yola düşmemesi için ayrıca ayarlanmalıdır. Windows VM dağıtımlarında yolda `Geliştirme` gibi Türkçe karakterler varsa `.Renviron` dosyasını mojibake oluşmaması için tercihen Windows-1254 / ANSI kodlamasıyla kaydedin.
 
 ---
 
