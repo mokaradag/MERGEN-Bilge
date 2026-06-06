@@ -63,14 +63,39 @@ write boundary), `test-normalize-claude-code-text-files-behavior.R`.
 - **Image uploads now ALLOWED** (`fm_image_extensions()`; jpg/jpeg/png/gif/webp/bmp/svg in
   `fm_normal_allowed_extensions()`). The Dosya Yönetimi "saved-but-hidden" leak is fixed:
   `execute_bulk_upload` now validates the extension (`validate_uploaded_file(allowed_ext = ...)`) BEFORE
-  `copy_to_mcp_base`. `readFileContentToString` returns a clean Turkish note for images (no binary
-  garbage). **NOTE: there is still NO image/vision pipeline** — uploaded images cannot be analyzed by the
-  LLM yet (see "New candidate weaknesses" below). Test: `test-image-upload-allowed-behavior.R`.
+  `copy_to_mcp_base`; the chat-upload path (`helpers_file_pipeline.R`) was centralized onto the same list.
+  `readFileContentToString`'s existing default switch case already returns a clean Turkish "okunamadı"
+  string for images (no binary garbage) — verified by test; do NOT add a per-image case, `helpers_files.R`
+  is at its exact 260-line budget. **NOTE: there is still NO image/vision pipeline** — uploaded images
+  cannot be analyzed by the LLM yet (see "New candidate weaknesses"). Test: `test-image-upload-allowed-behavior.R`.
 - **Toasts** now display 5–12 s scaled by message length (was a flat 3 s): `www/js/toast.js`
   smart default, `shiny_message_handlers.js` passes `data.duration`, R `showToast` default → `NULL`.
 - **"Yenile" buttons unified**: all refresh buttons (Söyleşi Geçmişi, Kayıtlı Söyleşiler, Görsel Galerisi,
   all Yönetici pages, Sistem Durumu) now use `btn-modern btn-refresh`; `.btn-modern.btn-refresh` is now
   container-agnostic in both `file_manager.css` (dark teal) and `theme_light_user_polish.css` (light blue).
+
+**renv dependency lock (this session — SCAFFOLDING ONLY; lock NOT yet generated):**
+- Added offline-safe **conditional** `.Rprofile` (activates renv ONLY when `renv.lock` + renv both
+  present; no-op otherwise; never downloads; escape hatch `MERGEN_DISABLE_RENV_AUTOLOAD=true`), canonical
+  `renv/activate.R` + `renv/.gitignore`, refined root `.gitignore` (commit `renv.lock`/`activate.R`,
+  ignore `renv/library` etc.), `tools/renv_snapshot.R` (VM helper), `docs/dependency-locking.md`,
+  RUNBOOK §10, a renv-restore preference in `ci_install_packages.R` (falls back to RSPM/CRAN), and
+  `renv.lock` in the mergen-ai-validation cache key. Test: `test-renv-lock-contract.R` (21/21).
+- **`renv.lock` is NOT committed** — it MUST be generated on the user's Windows VM (R 4.6.0) via
+  `Rscript tools/renv_snapshot.R`, then committed. Do NOT generate it from Linux/cloud. Until then the
+  `.Rprofile` is a no-op and everything works on the global library.
+
+**Branch maintenance (this session):** merged current `origin/main` into the branch (clean, no conflicts).
+This pulled main's `helpers_llm_worker_tool_results.R` → `_preview.R` split, which **resolved the 2
+previously "pre-existing" maintainability-ratchet failures** — the ratchet is now fully GREEN on this branch.
+
+**KNOWN pre-existing failure (NOT caused by this work, do not chase blindly):**
+`test-runtime-network-boundary-contract.R` fails in the cloud checkout because `R/helpers_messaging.R:337`
+and `R/module_sidebar_user_panel.R:88` contain a **redacted** avatar URL `paste0("https://url......./", ...)`.
+This placeholder is unchanged since the merge-base, untouched by this session, and is almost certainly a
+cloud-side redaction of the real internal avatar host (which the network-boundary allowlist /
+`MERGEN_ALLOWED_INTERNAL_URL_REGEX` would accept on the real VM). Investigate whether the redaction should
+be allowlisted or the placeholder normalized — but do NOT "fix" it by inventing a public URL.
 
 ---
 
@@ -139,11 +164,9 @@ under `stop_on_warning=TRUE`, and run green BOTH standalone and in a `test_dir` 
 ## PRIORITY 6 — Maintainability headroom (do NOT regress the ratchet)
 If a fix would push a near-limit file over its budget, extract a small focused helper into a new sourced
 file (update `R/config_source_manifest.R` + order tests) rather than growing the dense file. Do NOT loosen
-any threshold in `test-maintainability-ratchet.R`. **Known PRE-EXISTING ratchet failures on clean `main`**
-(R 4.6 cloud checkout, NOT caused by recent work; the function-count regex counts 3 vs a locked budget of
-2): `R/helpers_llm_worker_tool_results.R` and `R/helpers_llm_worker.R`. Leave them unless you are
-deliberately asked to recalibrate that single file budget WITH a documented reason — do not loosen the
-global thresholds.
+any threshold in `test-maintainability-ratchet.R`. NOTE: the 2 ratchet failures that earlier sessions saw
+(`helpers_llm_worker_tool_results.R` / `helpers_llm_worker.R`) were RESOLVED by main's `_preview.R` split
+and merged in; the ratchet is now fully GREEN. Keep it that way.
 
 ## NEW CANDIDATE WEAKNESSES (investigate; pick the highest-value ones)
 - **Image/vision pipeline (feature-shaped, optional):** images now upload but the LLM request payload
@@ -159,6 +182,14 @@ global thresholds.
   on the old fixed 3 s, and consider a contract test for the smart-duration JS (node-checkable).
 - **Frontend duplicate-CSS-selector report:** `tests/scripts/frontend_maintainability_report.R` lists
   duplicate selectors — review for any genuine conflicts (not cosmetic).
+- **renv lock generation (USER/VM action, not cloud):** the renv scaffolding is in place but `renv.lock`
+  is NOT generated. It must be produced on the Windows VM (R 4.6.0) via `Rscript tools/renv_snapshot.R`
+  and committed. Do NOT generate it from Linux/cloud. After it is committed, verify `tests.yml`'s
+  `setup-r-dependencies@v2` still works with the lock (see `docs/dependency-locking.md` §6); the
+  `test-renv-lock-contract.R` consistency check will then enforce `required_packages` ⊆ `renv.lock`.
+- **Redacted avatar URL vs network-boundary test (see KNOWN failure above):** decide whether to allowlist
+  the redacted `https://url......./` placeholder or normalize it, so `test-runtime-network-boundary-contract.R`
+  is green in the cloud checkout too.
 
 ---
 
@@ -166,8 +197,10 @@ global thresholds.
 - After EVERY new/edited test: `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-X.R",
   reporter="summary")'` → require 0 FAIL / 0 WARN / 0 accidental SKIP, standalone AND in a `test_dir` batch.
 - After any R edit: `Rscript tests/scripts/parse_sanity_check.R` and
-  `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")` (expect only the 2 PRE-EXISTING
-  failures above; confirm your files are NOT among them).
+  `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")` (must be fully GREEN now — the
+  earlier pre-existing failures were resolved by the main merge; do not regress it).
+- Known cloud-only failure to expect: `test-runtime-network-boundary-contract.R` (redacted avatar URL,
+  see above). Confirm your changes are NOT the cause before touching it.
 - After JS edits: `node --check <file>` if node is available; verify CRLF preserved.
 - Run the repo gate: `bash tools/ai_validate.sh quick`. If app-source-smoke fails because the cloud
   checkout is missing vendored assets (`www/css/all.min.css`, `www/codemirror/*`, `www/lib/threejs/*`),
