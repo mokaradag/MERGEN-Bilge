@@ -133,6 +133,12 @@ user's `source("tests/testthat.R")` on the Windows VM (R 4.6.0). Two concrete it
 - **renv on the VM:** confirm the user committed the real `renv.lock` (or remind them to `git add renv.lock`
   from the VM). Confirm `tests.yml`'s `setup-r-dependencies@v2` works with the lock once committed
   (`docs/dependency-locking.md` §6). Never generate `renv.lock` from Linux/cloud.
+  - **`renv/library` is intentionally EMPTY on the production VM and that is OK** — the app runs on the
+    global library; `renv.lock` is just the version RECORD. Populating `renv/library` via
+    `renv::restore()` (which then makes `.Rprofile` switch to the project-local library) is an OPTIONAL
+    project-isolation decision, NOT a requirement. Discuss with the user before running `renv::restore()`
+    on the production VM; if they want global-library behavior to stay, leave `renv/library` empty (the
+    `.Rprofile` populated-library guard already keeps this safe).
 
 ## PRIORITY 1 — Concurrency / stale-request race audit (highest correctness value)
 Most async paths are now guarded (see "done" above). Re-run the audit for anything new or missed. For each
