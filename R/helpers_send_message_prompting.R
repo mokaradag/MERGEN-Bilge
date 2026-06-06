@@ -4,6 +4,29 @@
 #           hazırlığını tek yerde toplar.
 # ==============================================================================
 
+# Vision (görsel bağlam) yardımcıları normalde manifest ile yüklenir; izole
+# test/worker bağlamında yoksa çalışma-dizininden bağımsız olarak yüklenir.
+if (!exists("mergen_vision_active", mode = "function", inherits = TRUE)) {
+  .mb_vision_candidates <- c(
+    file.path("R", "helpers_vision_context.R"),
+    file.path("..", "..", "R", "helpers_vision_context.R"),
+    if (nzchar(Sys.getenv("MERGEN_REPO_ROOT"))) {
+      file.path(Sys.getenv("MERGEN_REPO_ROOT"), "R", "helpers_vision_context.R")
+    } else {
+      NULL
+    }
+  )
+  for (.mb_vision_cand in .mb_vision_candidates) {
+    if (!is.null(.mb_vision_cand) && nzchar(.mb_vision_cand) &&
+        isTRUE(tryCatch(file.exists(.mb_vision_cand), error = function(e) FALSE))) {
+      source(.mb_vision_cand, encoding = "UTF-8", local = globalenv())
+      break
+    }
+  }
+  if (exists(".mb_vision_cand", inherits = FALSE)) rm(.mb_vision_cand)
+  if (exists(".mb_vision_candidates", inherits = FALSE)) rm(.mb_vision_candidates)
+}
+
 mergen_build_citation_instruction <- function(uploaded_count) {
   if (uploaded_count > 0) {
     paste0(
@@ -128,7 +151,9 @@ mergen_build_uploaded_files_context_messages <- function(tool_family,
                                                          recent_messages,
                                                          system_msg,
                                                          session,
-                                                         messages_to_process) {
+                                                         messages_to_process,
+                                                         model_selected = NULL,
+                                                         api_config = NULL) {
   if (identical(tool_family, "mcp_excel") && uploaded_count > 0) {
     file_list_text <- paste0(
       "\n\nDOSYA BİLGİSİ:\n",
@@ -161,51 +186,47 @@ mergen_build_uploaded_files_context_messages <- function(tool_family,
   }
 
   if (identical(tool_family, "none") && uploaded_count > 0) {
-    file_blocks <- character(0)
     total_budget <- 120000
     per_file_cap <- max(4000, floor(total_budget / max(1, uploaded_count)))
 
     summary_store <- session_user_data_get_list(session, "file_summaries")
     current_file_store <- session_user_data_get_list(session, "current_session_files")
 
-    for (fname in uploaded_names) {
-      sumtxt <- summary_store[[fname]] %||% ""
+    # Vision yalnızca bayrak + model yeteneği birlikte açıkken aktiftir; aksi
+    # halde metin yolu birebir korunur ve görseller için açık not eklenir.
+    vision_active <- mergen_vision_active(model_selected, api_config)
 
-      if (!is.character(sumtxt) || !nzchar(sumtxt[1])) {
-        fobj <- current_file_store[[fname]] %||% NULL
-
-        if (is.list(fobj)) {
-          fpath <- fobj$datapath %||% fobj$path %||% ""
-
-          if (nzchar(fpath) && path_exists_relaxed(fpath)) {
-            rawtxt <- readFileContentToString(list(
-              name = fname,
-              datapath = fpath,
-              size = file.info(fpath)$size
-            ))
-            sumtxt <- substr(rawtxt %||% "", 1, per_file_cap)
-          }
-        }
-      } else {
-        sumtxt <- as.character(sumtxt[1])
-        if (nchar(sumtxt) > per_file_cap) sumtxt <- substr(sumtxt, 1, per_file_cap)
-      }
-
-      block <- paste0("### ", fname, "\n", sumtxt)
-      file_blocks <- c(file_blocks, block)
-    }
+    blocks <- mergen_vision_prepare_context_blocks(
+      uploaded_names = uploaded_names,
+      summary_store = summary_store,
+      current_file_store = current_file_store,
+      per_file_cap = per_file_cap,
+      vision_active = vision_active
+    )
+    file_blocks <- blocks$file_blocks
+    image_data_urls <- blocks$image_data_urls
 
     citation_files_list <- paste(paste0(seq_along(uploaded_names), ") ", uploaded_names), collapse = "\n")
     user_question <- tail(recent_messages, 1)[[1]]$content
 
+    context_text <- paste0(
+      "Aşağıdaki dosya özetlerini ve/veya alıntılarını kullanarak isteği yanıtla. Araç KULLANILMAYACAKTIR (MCP kapalı).\n\n",
+      paste(file_blocks, collapse = "\n\n"),
+      "\n\nSoru: ", user_question,
+      "\n\nKaynakça:\n", citation_files_list
+    )
+
+    # Vision aktif ve gerçekten kodlanmış görsel varsa kullanıcı içeriği OpenAI
+    # uyumlu çok-kipli diziye dönüşür; aksi halde metin (string) olarak kalır.
+    final_content <- if (isTRUE(vision_active) && length(image_data_urls) > 0) {
+      mergen_build_vision_user_content(context_text, image_data_urls)
+    } else {
+      context_text
+    }
+
     final_context_prompt <- list(
       type = "user",
-      content = paste0(
-        "Aşağıdaki dosya özetlerini ve/veya alıntılarını kullanarak isteği yanıtla. Araç KULLANILMAYACAKTIR (MCP kapalı).\n\n",
-        paste(file_blocks, collapse = "\n\n"),
-        "\n\nSoru: ", user_question,
-        "\n\nKaynakça:\n", citation_files_list
-      )
+      content = final_content
     )
 
     return(list(

@@ -31,8 +31,9 @@ fm_summarization_allowed_extensions <- function() {
 }
 
 # Desteklenen görsel uzantıları. Görseller yüklenip Dosya Yönetimi tablosunda
-# listelenebilir; ancak bu sürümde içerikleri yapay zekâ tarafından analiz
-# edilmez (görsel/vision pipeline'ı henüz yoktur). Tek kaynak burada tutulur.
+# listelenebilir. İçerik analizi (vision) varsayılan olarak KAPALIDIR; yalnızca
+# MERGEN_ENABLE_VISION bayrağı ve modelin vision yeteneği birlikte açıkken
+# R/helpers_vision_context.R üzerinden devreye girer. Tek kaynak burada tutulur.
 fm_image_extensions <- function() {
   c("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg")
 }

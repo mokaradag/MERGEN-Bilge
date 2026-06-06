@@ -90,6 +90,7 @@ source_manifest_after_future_paths <- c(
   "R/helpers_send_message_model_runtime.R",
   "R/helpers_streaming_abort_lifecycle.R",
   "R/helpers_send_message_core.R",
+  "R/helpers_vision_context.R",
   "R/helpers_send_message_prompting.R",
   "R/helpers_quick_action_intro_messages.R",
   "R/helpers_summarization_modes.R",

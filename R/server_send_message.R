@@ -359,7 +359,11 @@ sendMessageInit <- function(
         recent_messages = recent_messages,
         system_msg = system_msg,
         session = session,
-        messages_to_process = messages_to_process
+        messages_to_process = messages_to_process,
+        # Vision (görsel anlama) yalnızca bayrak + model yeteneği açıkken devreye
+        # girer; aksi halde metin yolu birebir korunur.
+        model_selected = model_selected,
+        api_config = api_config
       )
 
       messages_to_process <- context_plan$messages_to_process

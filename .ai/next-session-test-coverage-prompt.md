@@ -16,6 +16,26 @@ Read `CLAUDE.md` first — it is the binding operational guide; follow every con
   If for some reason no branch is assigned, create a brand-new one (e.g. `claude/test-coverage-s3-*`).
 - When you finish, **open a NEW pull request** for your fresh branch. Commit messages in Turkish.
 
+## CONTEXT — what the LATEST session (`claude/exciting-knuth-pTGt1`) added (do NOT redo)
+- **Vision feature** `R/helpers_vision_context.R` + send-message `none`-branch wiring (config-gated,
+  OFF by default). Covered by `test-vision-context-behavior.R` (pure helpers, none-branch ON/OFF,
+  multimodal builder, image-unreadable fallback, `toJSON` round-trip). See the eliminate-weaknesses prompt.
+- **3 new behavioral files, ~65 assertions (0 fail/0 warn, standalone + batch):**
+  - `test-claude-code-runtime-path-pure-behavior.R`: `is_windows_single_slash_network_path` (non-Windows),
+    `.cc_runtime_workdir_token`, `.cc_runtime_workdir_reusable`.
+  - `test-health-formatters-path-behavior.R`: `health_is_storage_path_id`, `health_as_windows_explorer_path`.
+  - `test-ai-expert-prompt-builders-behavior.R`: `get_ai_expert_generation_config`,
+    `build_ai_expert_system_prompt`, `build_ai_expert_user_context` (DB off via `include_recent_prompts=FALSE`).
+- Re-ran the untested-function scan: **104** top-level fns still unreferenced by name. Highest-value NOT-yet-done
+  clusters for NEXT session (verify 0-ref first): admin `*_outputs` renderers (genel_bakis, yz_performans,
+  geri_bildirim_genel, sohbet_kalitesi, zaman_analizi, gelismis_analizler, yanit_analizi) via `testServer`;
+  `helpers_destek_database` (mock DB); `helpers_deep_analysis` builders; `helpers_claude_code_documents`
+  builders (`build_claude_code_document_prompt`/`_inline_payload`/`write_*_manifest`); `helpers_send_message_*`
+  (`mergen_prepare_mcp_session_files`, `mergen_prepare_send_message_chat`, `mergen_clear_welcome_for_send_message`);
+  `module_*` servers via `testServer` (`apiKeyServer`, `claudeCodePluginsServer`, `ssoAuthServer`,
+  `quickActionsInit`); `helpers_mcp_tools` (`get_openai_tools`, `parse_tool_calls_from_text`).
+- Did a full concurrency re-audit (PRIORITY 1) — re-confirmed clean; no new bug. Did NOT manufacture a fix.
+
 ## CONTEXT — what sessions 1, 2 & 3 already did (do NOT redo)
 - ~140+ `tests/testthat/test-*-behavior.R` / `-contract.R` files already exist.
 - Session 2 added 23 behavioral files (~442 assertions) covering previously file-untested modules and

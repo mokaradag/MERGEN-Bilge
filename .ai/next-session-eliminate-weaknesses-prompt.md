@@ -21,6 +21,70 @@ behavioral-test technique catalog and the up-to-date "already covered, do NOT re
 - Do NOT reopen or force-push any prior session branch/PR.
 
 ## WHAT'S ALREADY DONE (do NOT redo — re-verify before duplicating)
+
+### ✅ THIS LATEST SESSION (`claude/exciting-knuth-pTGt1`) — merged via a new PR
+**VISION GAP CLOSED (PRIORITY 0 — config-gated, real, not faked):**
+- New pure helper file `R/helpers_vision_context.R` (sourced in manifest BEFORE
+  `helpers_send_message_prompting.R`): `mergen_vision_image_extensions`,
+  `mergen_is_image_file`, `mergen_image_mime_type`, `mergen_vision_enabled`
+  (option `mergen.vision_enabled` → env `MERGEN_ENABLE_VISION`, default FALSE),
+  `mergen_is_vision_model` (reads `api_config$local_model_capabilities[[m]]$vision`,
+  mirrors `is_thinking_model`), `mergen_vision_active` (BOTH gates),
+  `mergen_vision_unavailable_note` (explicit Turkish note), `mergen_build_image_data_url`
+  (base64 data-url, 5 MB cap, NULL on fail), `mergen_build_vision_user_content`
+  (OpenAI multimodal `[{type:text},{type:image_url,image_url:{url}}]`),
+  `mergen_vision_prepare_context_blocks` (owns the `none`-branch file-block loop).
+- `R/helpers_send_message_prompting.R` `none` branch is now vision-aware (with a
+  wd-independent fallback source-guard at the top so the file is standalone-sourceable):
+  when `mergen_vision_active(model_selected, api_config)` AND a real image encodes →
+  the final user message `content` becomes a multimodal ARRAY (image_url base64 parts);
+  otherwise content stays a STRING and images get the explicit
+  "…bu sürümde analiz edilemiyor…" note instead of the silent generic "okunamadı".
+  Both `helpers_llm_api.R` and `helpers_llm_sse.R` already preserve list-content and
+  serialize via `toJSON(..., auto_unbox=TRUE)`, so the array survives to the body
+  UNCHANGED. `server_send_message.R` call site now passes `model_selected`+`api_config`.
+- **Vision is OFF by default → production text path is byte-identical to before.** The
+  full base64-into-HTTP-body path is real but UNTESTED against a live vision endpoint
+  (no endpoint in cloud); the deterministic tests prove the message/body STRUCTURE.
+- Tests: `tests/testthat/test-vision-context-behavior.R` (~63 assertions): pure helpers,
+  data-url build+size-cap, multimodal builder, none-branch vision ON (image_url part)
+  / OFF (explicit note + string) / image-unreadable fallback, and a `toJSON` round-trip
+  asserting `"type":"image_url"` + `"url":"data:image/png;base64,…"`.
+- `helpers_send_message_prompting.R` stays within its 260-line/8-fn budget (now 244 lines);
+  ratchet fully GREEN. `fm_image_extensions()` comment updated (vision is now optional, not "yok").
+
+**CONCURRENCY RE-AUDIT (PRIORITY 1) — re-confirmed clean, NO new fix needed:**
+- Independently audited all 18 async-callback files. The prior session's fixes hold.
+  Remaining flags are benign: TTS `attach_tts_audio` is keyed by stable `message_id`
+  (correct target even if a newer msg exists), `module_ai_processing` chart_store is
+  append-only/id-keyed with a request-guarded consumer, `trigger_idle_chat` is guarded
+  by `can_speak()` (which re-checks MUTED_PAGES/enable/mode/cooldown at completion),
+  settings Claude-Code connection test is button-disabled + singleton status,
+  `helpers_file_pipeline` summary is per-file with synchronous pre-registration.
+  **Did NOT manufacture a fix where there is no real cross-request clobber.**
+
+**BEHAVIORAL COVERAGE (PRIORITY 5) — 3 new files, ~65 assertions, 0 fail/warn:**
+- `test-claude-code-runtime-path-pure-behavior.R`: `is_windows_single_slash_network_path`
+  (non-Windows contract), `.cc_runtime_workdir_token` (sanitize+`run_` prefix),
+  `.cc_runtime_workdir_reusable` (only under `/claude_code_runtime/user_<id>/` + dir.exists).
+- `test-health-formatters-path-behavior.R`: `health_is_storage_path_id`,
+  `health_as_windows_explorer_path`.
+- `test-ai-expert-prompt-builders-behavior.R`: `get_ai_expert_generation_config`
+  (exact token/temperature for scenario×length×style + 200 floor),
+  `build_ai_expert_system_prompt` (scenario branches + conditional name instruction),
+  `build_ai_expert_user_context` (unit/login/session branches, `include_recent_prompts=FALSE`).
+
+**renv (PRIORITY 0):** STILL NOT committed in git (only `RENV_LOCK_STATUS.md` marker
+present; `renv.lock` absent, `renv/library` empty as expected). MUST be `git add`ed by the
+user from the Windows VM (R 4.6.0) — never generate from cloud. Re-verify next session.
+
+**Validation run:** per-file testthat (all new files 0 fail/0 warn standalone AND in a
+`test_dir` batch = 127 pass), `parse_sanity_check.R` (698 files OK), manifest contracts
+(165+12), maintainability ratchet GREEN, send-message ratchet GREEN. Repo gate via
+`tools/ai_validate.sh cloud-quick` (cloud lacks vendored www assets + .Renviron, so full
+`quick` app-source-smoke can't run — documented limitation).
+
+### Earlier sessions (still valid)
 Assume the previous session's branch (`claude/clever-carson-fV8c3`) is merged. It delivered:
 
 **Concurrency / stale-request races (FIXED):**
@@ -123,13 +187,14 @@ be allowlisted or the placeholder normalized — but do NOT "fix" it by inventin
 The cloud/Linux env MASKS Windows-specific failures (locale/encoding, full-suite pollution). Do NOT declare
 "all green" from cloud runs alone for file-scanning/encoding-sensitive tests. The authoritative signal is the
 user's `source("tests/testthat.R")` on the Windows VM (R 4.6.0). Two concrete items to close:
-- **Vision gap (user-reported, real):** attaching an image to Model Bağlamı and asking about it returns no
-  usable answer — there is NO vision pipeline. This is the highest-value FEATURE to scope: if the deployed
-  local model supports vision, wire base64 image parts into the chat request (`R/server_send_message.R` /
-  `R/helpers_send_message_prompting.R` / `helpers_llm_*`), gated behind a config flag, without regressing the
-  text path. If the model does NOT support vision, instead make the context note explicit/helpful (e.g. a
-  clear "görsel içeriği bu sürümde analiz edilemez" line in the assembled prompt) rather than the generic
-  "okunamadı". Add deterministic tests. Do NOT fake vision.
+- **Vision gap — DONE this session (config-gated plumbing + explicit note), VERIFY LIVE NEXT.**
+  The pipeline now exists (`R/helpers_vision_context.R`; see "THIS LATEST SESSION" above). OFF by default.
+  REMAINING for next session: (a) on the Windows VM, determine whether the deployed local model actually
+  supports vision; if yes, add `vision = TRUE` to that model's `api_config$local_model_capabilities[[m]]`
+  entry and set `MERGEN_ENABLE_VISION=TRUE` in `.Renviron`, then send a real image + question and confirm a
+  usable answer end-to-end (the base64-into-HTTP-body path is real but was UNTESTED against a live endpoint).
+  (b) If the model lacks vision, leave it OFF — the explicit Turkish note already ships. (c) Optionally add a
+  size/cap config (`max_bytes`) and a settings/Yapılandırma toggle. Do NOT fake vision; do NOT regress the text path.
 - **renv on the VM:** confirm the user committed the real `renv.lock` (or remind them to `git add renv.lock`
   from the VM). Confirm `tests.yml`'s `setup-r-dependencies@v2` works with the lock once committed
   (`docs/dependency-locking.md` §6). Never generate `renv.lock` from Linux/cloud.
