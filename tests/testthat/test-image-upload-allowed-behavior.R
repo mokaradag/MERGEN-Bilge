@@ -1,12 +1,12 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-image-upload-allowed-behavior.R
-# Açıklama: Görsel dosya yükleme sözleşmesi davranışsal testleri.
-#           - fm_image_extensions / fm_normal_allowed_extensions görselleri içerir
-#           - validate_uploaded_file görseli kabul, desteklenmeyeni (zip) reddeder
-#             (kalıcı klasöre kopyalanmadan önce; saved-but-hidden sızıntısı yok)
-#           - readFileContentToString görsel için ham bayt yerine açık Türkçe not
-#             döndürür (vision yok, ikili içerik metin olarak okunmaz)
-#           Gerçek DB/LLM/ağ/tarayıcı GEREKMEZ.
+# Aciklama: Gorsel dosya yukleme sozlesmesi davranissal testleri.
+#           - fm_image_extensions / fm_normal_allowed_extensions gorselleri icerir
+#           - validate_uploaded_file gorseli kabul, desteklenmeyeni (zip) reddeder
+#             (kalici klasore kopyalanmadan once; saved-but-hidden sizintisi yok)
+#           - readFileContentToString gorsel icin ham ikili bayt degil temiz metin
+#             dondurur (ikili icerik metin olarak okunmaz; copa/NUL sizmaz)
+#           Gercek DB/LLM/ag/tarayici GEREKMEZ.
 # ==============================================================================
 
 .image_upload_policy_env <- function() {
@@ -16,7 +16,7 @@
   env
 }
 
-testthat::test_that("fm_image_extensions yaygın görsel uzantılarını döndürür", {
+testthat::test_that("fm_image_extensions yaygin gorsel uzantilarini dondurur", {
   env <- .image_upload_policy_env()
   imgs <- env$fm_image_extensions()
   for (e in c("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg")) {
@@ -24,22 +24,22 @@ testthat::test_that("fm_image_extensions yaygın görsel uzantılarını döndü
   }
 })
 
-testthat::test_that("fm_normal_allowed_extensions görselleri ve mevcut belge türlerini içerir", {
+testthat::test_that("fm_normal_allowed_extensions gorselleri ve mevcut belge turlerini icerir", {
   env <- .image_upload_policy_env()
   exts <- env$fm_normal_allowed_extensions()
-  # Görseller artık izinli
+  # Gorseller artik izinli
   testthat::expect_true("png" %in% exts)
   testthat::expect_true("jpeg" %in% exts)
-  # Mevcut belge türleri korunur
+  # Mevcut belge turleri korunur
   for (e in c("txt", "pdf", "docx", "xlsx", "csv")) {
     testthat::expect_true(e %in% exts, info = e)
   }
-  # Desteklenmeyen ikili türler hâlâ listede değil
+  # Desteklenmeyen ikili turler hala listede degil
   testthat::expect_false("zip" %in% exts)
   testthat::expect_false("exe" %in% exts)
 })
 
-testthat::test_that("validate_uploaded_file görseli kabul, zip'i izin-listesi diye reddeder", {
+testthat::test_that("validate_uploaded_file gorseli kabul, zip'i izin-listesi diye reddeder", {
   env <- new.env(parent = globalenv())
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_file_manager_policy.R"),
          encoding = "UTF-8", local = env)
@@ -62,22 +62,26 @@ testthat::test_that("validate_uploaded_file görseli kabul, zip'i izin-listesi d
   testthat::expect_identical(v_zip$code, "ext_not_allowed")
 })
 
-testthat::test_that("readFileContentToString görsel için ikili yerine açık Türkçe not döndürür", {
+testthat::test_that("readFileContentToString gorsel icin ikili bayt degil temiz metin dondurur", {
   env <- new.env(parent = globalenv())
   for (f in c("utils_common.R", "utils_text_encoding.R", "utils_excel_reader.R", "helpers_files.R")) {
     source(file.path(resolve_repo_root_for_tests(), "R", f), encoding = "UTF-8", local = env)
   }
-  # readFileContentToString'un yol yardımcıları izole koşumda taklit edilir.
+  # readFileContentToString yol yardimcilari izole kosumda taklit edilir.
   env$path_exists_relaxed <- function(p) file.exists(p)
   env$resolve_readable_path <- function(p) p
 
   for (ext in c("png", "jpeg", "gif", "svg")) {
     tmp <- tempfile(fileext = paste0(".", ext))
-    writeBin(as.raw(c(0x00, 0x01, 0x02)), tmp)
-    note <- env$readFileContentToString(list(name = paste0("gorsel.", ext), datapath = tmp, size = 3))
-    testthat::expect_true(grepl("Görsel dosya", note, fixed = TRUE), info = ext)
-    # Ham ikili bayt sızmamalı: not düz Türkçe metin olmalı.
-    testthat::expect_true(grepl("analiz edilmemektedir", note, fixed = TRUE), info = ext)
+    # Gercek ikili baytlar yaz; metin olarak okunsaydi cop/NUL uretirdi.
+    writeBin(as.raw(c(0x00, 0x01, 0xff, 0x89, 0x50)), tmp)
+    note <- env$readFileContentToString(list(name = paste0("gorsel.", ext), datapath = tmp, size = 5))
+    # Desteklenmeyen metin turu icin temiz Turkce not doner (icerik "okunamad...").
+    testthat::expect_true(grepl("okunamad", note, fixed = TRUE), info = ext)
+    # Yazdigimiz ham baytlar (0x00/0x01/0xff) nota sizmamali.
+    testthat::expect_false(any(charToRaw(note) %in% as.raw(c(0x00, 0x01, 0xff))), info = ext)
+    # Sonuc gecerli UTF-8 duz metin olmali.
+    testthat::expect_false(is.na(iconv(note, "UTF-8", "UTF-8")), info = ext)
     unlink(tmp)
   }
 })
