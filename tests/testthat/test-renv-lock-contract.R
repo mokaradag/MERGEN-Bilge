@@ -125,8 +125,11 @@ testthat::test_that("renv.lock VARSA required_packages ile tutarli; YOKSA atlani
   locked <- names(lock$Packages)
   testthat::expect_true(length(locked) > 0)
 
+  # Paket adi karsilastirmasi BUYUK/kucuk harf duyarsiz yapilir: renv anlik
+  # gorunum/normalizasyon farklari (or. shinyWidgets vs shinywidgets) yanlis
+  # eksiklik raporlamasin.
   req <- setdiff(.renv_required_packages(), .renv_base_recommended)
-  missing_in_lock <- setdiff(req, locked)
+  missing_in_lock <- req[!(tolower(req) %in% tolower(locked))]
   testthat::expect_identical(
     missing_in_lock, character(0),
     info = paste("renv.lock'ta eksik required_packages:",
