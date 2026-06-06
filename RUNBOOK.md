@@ -236,3 +236,34 @@ düşer. Sabitlemek için `MERGEN_AI_INSTALL_LATEST_R=false`.
 kapsamını kanıtlar; runtime/VM/SSO/DB ve SQL Server Türkçe kodlama hâlâ bu kılavuzun
 1-3. bölümlerindeki VM kapılarıyla doğrulanmalıdır. Ayrıntılı operatör notları:
 `.claude/web-environment.md`.
+
+## 10. Bağımlılık Kilitleme (renv)
+
+MERGEN Bilge, kesin paket sürümlerini `renv.lock` ile sabitler. **`renv.lock`
+ÇALIŞAN Windows VM'inizden (R 4.6.0 + güncel kütüphane) üretilmelidir;**
+Linux/bulut ortamında ÜRETMEYİN.
+
+- İnsan-okunur manifest: `R/config_packages.R` (açılış doğrulaması korunur).
+- Kesin sürüm kaynağı: `renv.lock`.
+- Otomatik yükleyici: kök `.Rprofile` → `renv/activate.R` (yalnızca kilit + renv
+  varsa etkinleşir; offline/üretim güvenli).
+
+**Windows VM'de ilk kilit (repo kökünde, R 4.6.0):**
+
+```r
+install.packages("renv")          # bir kez
+# renv::init() ÇAĞIRMAYIN — .Rprofile'ı ezer.
+```
+
+```bat
+Rscript tools/renv_snapshot.R     :: renv.lock üretir (global kütüphaneden)
+Rscript -e "renv::restore(prompt = FALSE)"   :: temiz ortamda doğrula (önerilir)
+Rscript tests/testthat.R          :: testler
+```
+
+Sonra R oturumunu yeniden başlatın ve `renv.lock`'u commit edin (`renv/library`
+ASLA commit edilmez). Paket yükseltmesinden sonra kilidi `tools/renv_snapshot.R`
+ile yeniden üretin. Tam rehber ve kontrol listesi: **`docs/dependency-locking.md`**.
+
+CI/AI önyükleme: `tests/scripts/ci_install_packages.R`, `renv.lock` varsa
+`renv::restore()` tercih eder; yoksa mevcut RSPM/CRAN akışına geri düşer.

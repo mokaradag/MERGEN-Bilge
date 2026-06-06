@@ -99,7 +99,7 @@ jobs:
             ~/.cache/R
             ~/R
             /home/runner/work/_temp/Library
-          key: r-lib-${{ runner.os }}-${{ hashFiles('R/config_packages.R', 'tests/scripts/ci_install_packages.R') }}
+          key: r-lib-${{ runner.os }}-${{ hashFiles('R/config_packages.R', 'tests/scripts/ci_install_packages.R', 'renv.lock') }}
           restore-keys: |
             r-lib-${{ runner.os }}-
 

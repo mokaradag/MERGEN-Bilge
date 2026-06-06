@@ -82,6 +82,55 @@ packages <- sort(unique(c(repo_packages, extra_ci_packages)))
 cat(sprintf("Packages requested: %d\n", length(packages)))
 cat(paste(packages, collapse = ", "), "\n\n")
 
+# ------------------------------------------------------------------------------
+# renv tercihli yol: renv.lock VARSA ve renv kullanılabilirse kilitten geri yükle.
+# renv.lock YOKSA (mevcut durum) bu blok atlanır ve aşağıdaki klasik akış çalışır.
+# Böylece çevrimdışı/on-prem ve bulut/CI önyüklemesini bozmadan kilit desteği
+# eklenir. Kilit dosyası Windows VM'de tools/renv_snapshot.R ile üretilir.
+# ------------------------------------------------------------------------------
+renv_lock_path <- file.path(repo_root, "renv.lock")
+if (file.exists(renv_lock_path)) {
+  cat("renv.lock bulundu; renv::restore() tercih ediliyor.\n")
+
+  if (!requireNamespace("renv", quietly = TRUE)) {
+    cat("renv kurulu değil; kurulmaya çalışılıyor...\n")
+    try(
+      install.packages(
+        "renv",
+        repos = c(CRAN = Sys.getenv("RSPM", unset = "https://cloud.r-project.org"))
+      ),
+      silent = TRUE
+    )
+  }
+
+  if (requireNamespace("renv", quietly = TRUE)) {
+    restore_ok <- tryCatch({
+      renv::restore(prompt = FALSE)
+      TRUE
+    }, error = function(e) {
+      cat(sprintf("renv::restore() başarısız: %s\n", conditionMessage(e)))
+      cat("Klasik ci_install_packages akışına geçiliyor.\n")
+      FALSE
+    })
+
+    if (isTRUE(restore_ok)) {
+      still_missing_after_restore <- packages[!vapply(
+        packages, function(p) requireNamespace(p, quietly = TRUE), logical(1)
+      )]
+      if (length(still_missing_after_restore) == 0L) {
+        cat("OK: Tüm paketler renv.lock'tan geri yüklendi (renv::restore).\n")
+        quit(status = 0)
+      }
+      cat("renv::restore() sonrası hâlâ eksik paketler var; klasik akış tamamlayacak:\n")
+      cat(paste(still_missing_after_restore, collapse = ", "), "\n\n")
+    }
+  } else {
+    cat("renv kullanılamıyor; klasik ci_install_packages akışına geçiliyor.\n")
+  }
+} else {
+  cat("renv.lock yok; klasik ci_install_packages akışı kullanılıyor.\n")
+}
+
 # RSPM erişilemezse CRAN'a geri dön.
 rspm_url <- Sys.getenv("RSPM", unset = "")
 cran_url  <- "https://cloud.r-project.org"
