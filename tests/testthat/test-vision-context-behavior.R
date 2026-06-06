@@ -36,6 +36,13 @@ source(file.path(repo_root_vision, "R/helpers_send_message_prompting.R"), encodi
   tf
 }
 
+test_that("mergen_vision_image_extensions Dosya Yönetimi politikasıyla aynı listeyi verir", {
+  exts <- .vision_env$mergen_vision_image_extensions()
+  expect_true(all(c("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg") %in% exts))
+  # Dosya Yönetimi tek-kaynak politikası ile birebir aynı olmalı
+  expect_setequal(exts, .vision_env$fm_image_extensions())
+})
+
 test_that("mergen_is_image_file uzantıyı doğru sınıflandırır", {
   expect_true(.vision_env$mergen_is_image_file("kedi.png"))
   expect_true(.vision_env$mergen_is_image_file("FOTO.JPG"))
