@@ -1,12 +1,14 @@
 # renv.lock Durumu (On-Prem / Windows VM)
 
-> Bu dosya bir **durum işaretçisidir** (marker). Gerçek `renv.lock` DEĞİLDİR.
-> Amaç: gelecekteki Claude Code / Codex / ChatGPT oturumlarına ve operatörlere,
-> bağımlılık kilidinin on-prem ortamda **gerçekten üretilmiş** olduğunu bildirmek.
+> Bu dosya bir **durum işaretçisidir** (marker). Gerçek `renv.lock` DEĞİLDİR
+> ve onun yerine geçmez. `renv.lock`, Windows VM production repository içinde
+> commit edilmiştir. Bu dosya yalnızca kilidin ne zaman/nerede üretildiğini,
+> nasıl restore edileceğini ve hangi dosyaların commit edilmemesi gerektiğini
+> belgeleyen operasyonel bir provenance/status notudur.
 
 ## Özet
 
-- **Durum:** ✅ `renv.lock` çalışan Windows VM'de üretildi (sahibi commit edecek).
+- **Durum:** ✅ Gerçek `renv.lock`, çalışan Windows VM production repository içinde commit edilmiştir.
 - **Üreten ortam:** Windows VM, **R 4.6.0**, uygulamanın çalıştığı güncel paket kütüphanesi.
 - **Üretim tarihi:** 2026-06-06.
 - **Üretim komutu:** `source("tools/renv_snapshot.R")` (repo kökünde).
@@ -14,19 +16,14 @@
 - **Kilitlenen paket sayısı (recursive bağımlılıklar dahil):** 116.
 - **Satır sayısı:** ~4295.
 
-## Neden bu repoda gerçek `renv.lock` görünmeyebilir?
+## Operasyonel kapsam ve commit sınırı
 
-`renv.lock` (~4295 satır) doğrudan GitHub web arayüzünden yapıştırılamadı. Gerçek
-kilit dosyası on-prem VM'dedir. Gerçek dosyayı repoya almak için VM'de Git ile:
+`renv.lock` is committed in the Windows VM production repository. This file remains
+only as an operational note documenting when and where the lock was produced, how
+it should be restored, and which files must not be committed.
 
-```bat
-cd /d "\\rehisds\uygulamalar\Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
-git add renv.lock
-git commit -m "chore(renv): on-prem Windows VM R 4.6.0 renv.lock"
-git push
-```
-
-`renv/library/` ASLA commit edilmez (kök `.gitignore` zaten yok sayar).
+`renv/library/` ASLA commit edilmez (kök `.gitignore` zaten yok sayar); yalnızca
+`renv.lock` dependency kilidi olarak izlenir.
 
 ## Davranış notu (önemli)
 
