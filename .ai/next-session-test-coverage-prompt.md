@@ -45,6 +45,36 @@ Read `CLAUDE.md` first — it is the binding operational guide; follow every con
   (c) `helpers_claude_code_documents.R` extractor fallback guard made working-directory-independent;
   (d) 3 behavior tests sourced the wrong helper after the api-model tool-runtime split — they now
   source `helpers_api_model_tool_runtime.R` so they pass standalone.
+- **Session 4/5 (branch `claude/clever-carson-fV8c3`) added 9 behavioral files (~190 assertions)** plus
+  fixes. Already COVERED (do NOT redo): UI builders `historyUI`/`savedChatsUI`/`imageGalleryUI`/`sttUI`/
+  `chartLabUI`/`destekHataBildirUI`/`settingsKisiselUI`/`healthUI` + `history_accessible_date_range_input`
+  (aria-labelledby) + `health_source_optional` (`test-module-ui-builders-behavior.R`); api-key-choice
+  modal builders `api_key_choice_request_url`/`.api_key_choice_personal_card`/`_corporate_card`/
+  `api_key_choice_modal_dialog` + `llm_worker_extract_preview_df` (Turkish-name tolerance)
+  (`test-api-key-choice-modal-builders-behavior.R`); `admin_users_outputs` (highcharter series + empty-data
+  + DT) (`test-admin-users-outputs-behavior.R`); `push_followup_update` + `update_messages_after_bulk_deletion`
+  guard (`test-chat-runtime-followup-push-behavior.R`); `update_sso_fields` (DBI-mocked SSO write boundary)
+  (`test-update-sso-fields-behavior.R`); `normalize_claude_code_text_files`
+  (`test-normalize-claude-code-text-files-behavior.R`); the non-streaming LLM stale-request race
+  (`test-nonstreaming-handler-stale-request-race-behavior.R`); the AI Expert page-guidance stale-speech
+  guard (`test-ai-expert-page-guidance-stale-behavior.R` — note the `aiExpertHandlersInit` testServer
+  WRAPPER pattern: `library(promises)`+`library(shiny)`, source `utils_common.R`+`helpers_ai_expert.R`,
+  stub `tracked_future_promise` by `task_type`, mock `shinyjs::delay/runjs`, PRIME-THEN-SET `input$tabs`);
+  image-upload policy (`test-image-upload-allowed-behavior.R`).
+- Session 4/5 found/fixed REAL bugs (do NOT reintroduce): (a) non-streaming LLM handler stale-request
+  race in `server_llm_response_handlers.R` (onRejected/finally now request-scoped); (b) AI Expert
+  page-guidance spoke stale guidance after navigating to a muted page → page-staleness check added;
+  (c) `server_runtime_context.R` fallback guard made working-directory-independent (fixed 5 server tests
+  in isolation); (d) 8 test files made standalone-runnable (missing `library(shiny)` / moved-helper
+  sources); (e) Dosya Yönetimi "saved-but-hidden" upload leak — `execute_bulk_upload` now validates the
+  extension before `copy_to_mcp_base`; images are now an allowed type (`fm_image_extensions()`).
+- Session 4/5 also added the **renv dependency-lock scaffolding** (`.Rprofile`, `renv/activate.R`,
+  `tools/renv_snapshot.R`, `docs/dependency-locking.md`, ci-restore fallback) and merged current `main`
+  (which made the maintainability ratchet fully GREEN). Covered by `test-renv-lock-contract.R` (do NOT
+  redo). `renv.lock` itself is NOT generated yet — it is a USER/VM action (`Rscript tools/renv_snapshot.R`
+  on the Windows VM R 4.6.0). One KNOWN cloud-only test failure remains: `test-runtime-network-boundary-contract.R`
+  (a redacted `https://url......./` avatar placeholder in `helpers_messaging.R` / `module_sidebar_user_panel.R`,
+  pre-existing on `main`, not a session-4/5 regression).
 
 ## STEP 1 — TARGET the remaining UNTESTED logic (the harder, higher-value stuff)
 The cheap pure functions are mostly done. What remains is where bugs hide: **nested closures inside
@@ -69,12 +99,13 @@ for (f in rfiles) {
 
 Highest-value remaining clusters (verify each is still 0-ref before writing — some may get covered):
 - **Admin `*_outputs` renderers** (testServer + stubbed `*_collect_data`/query fns, then read
-  `output$...` and assert highcharter series / DT rows): `module_admin_genel_bakis admin_overview_outputs`,
-  `module_admin_kullanici_analizi admin_users_outputs`, `module_admin_yz_performans admin_ai_perf_outputs`,
-  `module_admin_geri_bildirim_genel admin_feedback_outputs`, `module_admin_sohbet_kalitesi`,
-  `module_admin_zaman_analizi`, `module_admin_gelismis_analizler`, `module_admin_yanit_analizi`. Pattern is
-  proven in `test-admin-hata-analizi-module-behavior.R` (stub helpers in env, read `output$x` JSON, parse
-  with `jsonlite::fromJSON` → `$x$hc_opts$series`).
+  `output$...` and assert highcharter series / DT rows). `admin_users_outputs` is now COVERED
+  (`test-admin-users-outputs-behavior.R`); REMAINING: `module_admin_genel_bakis admin_overview_outputs`,
+  `module_admin_yz_performans admin_ai_perf_outputs`, `module_admin_geri_bildirim_genel admin_feedback_outputs`,
+  `module_admin_sohbet_kalitesi`, `module_admin_zaman_analizi`, `module_admin_gelismis_analizler`,
+  `module_admin_yanit_analizi`. Pattern proven in `test-admin-users-outputs-behavior.R` and
+  `test-admin-hata-analizi-module-behavior.R` (stub helpers in env, read `output$x` JSON, parse with
+  `jsonlite::fromJSON` → `$x$hc_opts$series`).
 - **helpers_admin_hata_detail_runtime**: `admin_ha_detail_datatable`, `admin_ha_attachment_public_path`,
   `admin_ha_attachment_download_button`, `admin_ha_show_modal` (DT/HTML builders — partly pure).
 - **helpers_health_checks** (mock the probe seams): `health_check_disk_free`, `health_check_app_boot`,
@@ -98,10 +129,12 @@ Highest-value remaining clusters (verify each is still 0-ref before writing — 
   `module_claude_code_plugins claudeCodePluginsServer` (+ `refresh_local_plugins`), `module_image_gallery
   imageGalleryServer` (coerce_user_id/empty_images_df/gallery_images_same), `module_performance`
   count/cleanup helpers.
-- **UI builders still untested**: `module_chat_history historyUI` / `history_accessible_date_range_input`,
-  `module_saved_chats savedChatsUI`, `module_image_gallery imageGalleryUI`, `module_health healthUI`,
-  `module_api_key_choice_modal` card builders + `api_key_choice_request_url`,
-  `ui_asset_css_tag`/`ui_asset_script_tag`/`ui_asset_flatten_groups`.
+- ~~**UI builders**: `historyUI`/`history_accessible_date_range_input`, `savedChatsUI`, `imageGalleryUI`,
+  `healthUI`, `sttUI`, `chartLabUI`, `destekHataBildirUI`, `settingsKisiselUI`, `module_api_key_choice_modal`
+  card builders + `api_key_choice_request_url`~~ — ALL COVERED in session 4/5
+  (`test-module-ui-builders-behavior.R`, `test-api-key-choice-modal-builders-behavior.R`). Do NOT redo.
+  REMAINING UI builders: `module_chartlab` other builders, `adminYanitAnaliziUI`, and the
+  `ui_asset_css_tag`/`ui_asset_script_tag`/`ui_asset_flatten_groups` manifest tag helpers (if still 0-ref).
 
 When a function is a NESTED closure (not column-0), test it **through its module** via `testServer`
 (returned closures = `session$returned$...`; renderers = read `output$...`). Stub the heavy deps in the

@@ -2,6 +2,10 @@
 # R/config_packages.R
 # Uygulama genelinde kullanılan tüm paketlerin yüklenmesi.
 # global.R tarafından en başta source() ile çağrılır.
+#
+# Bu dosya, insan-okunur uygulama bağımlılık manifestidir (required_packages) ve
+# açılıştaki eksik-paket doğrulamasını yapar. KESİN sürümler renv.lock içinde
+# sabitlenir (Windows VM R 4.6.0'da üretilir). Ayrıntı: docs/dependency-locking.md
 # ==============================================================================
 
 required_packages <- c(

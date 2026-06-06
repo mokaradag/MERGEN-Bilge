@@ -15,7 +15,7 @@ imageGalleryUI <- function(id) {
         h3("Görsel Galerisi", class = "page-title"),
         div(
           class = "gallery-actions",
-          actionButton(ns("refresh_gallery"), label = tagList(icon("sync-alt"), "Yenile"), class = "btn-modern btn-primary"),
+          actionButton(ns("refresh_gallery"), label = tagList(icon("sync-alt"), "Yenile"), class = "btn-modern btn-refresh"),
           actionButton(ns("clear_all_images"), label = tagList(icon("trash-alt"), "Tümünü Temizle"), class = "btn-modern btn-danger")
         )
       ),

@@ -255,7 +255,14 @@ handle_file_upload_batch <- function(uploads_df,
     }
     uf <- uploads[[i]]
 	
-    allowed_exts <- c("txt","pdf","docx","xlsx","xls","csv","json","r","py","md","log","xml","html")
+    # İzin verilen uzantılar tek kaynaktan (fm_normal_allowed_extensions) gelir;
+    # böylece Ana Söyleşi ve Dosya Yönetimi yükleme yolları tutarlı kalır.
+    allowed_exts <- if (exists("fm_normal_allowed_extensions", mode = "function", inherits = TRUE)) {
+      fm_normal_allowed_extensions()
+    } else {
+      c("txt","pdf","docx","xlsx","xls","csv","json","r","py","md","log","xml","html",
+        "jpg","jpeg","png","gif","webp","bmp","svg")
+    }
     ext <- tolower(tools::file_ext(uf$name))
     
     if (!ext %in% allowed_exts) {

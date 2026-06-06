@@ -22,7 +22,16 @@ manifest.json
 shiny_cache/
 
 # Package management directories
-renv/
+# renv: kilit dosyası (renv.lock), renv/activate.R, renv/settings.json ve
+# renv/.gitignore COMMIT EDİLİR; yerel paket kütüphanesi / önbellek / staging
+# COMMIT EDİLMEZ (aşağıdaki alt yollar yok sayılır).
+renv/library/
+renv/local/
+renv/cellar/
+renv/lock/
+renv/python/
+renv/sandbox/
+renv/staging/
 packrat/
 
 # Log files

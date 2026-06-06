@@ -48,6 +48,7 @@ if (!exists("e2e_regression_config", envir = globalenv(), inherits = FALSE)) {
 
 source(file.path(repo_root_e2e, "R", "utils_common.R"), encoding = "UTF-8", local = globalenv())
 source(file.path(repo_root_e2e, "R", "helpers_api_model_config.R"), encoding = "UTF-8", local = globalenv())
+source(file.path(repo_root_e2e, "R", "helpers_api_model_tool_runtime.R"), encoding = "UTF-8", local = globalenv())
 source(file.path(repo_root_e2e, "R", "helpers_quick_action_intro_messages.R"), encoding = "UTF-8", local = globalenv())
 source(file.path(repo_root_e2e, "R", "helpers_llm_stream_io.R"), encoding = "UTF-8", local = globalenv())
 source(file.path(repo_root_e2e, "R", "helpers_send_message_request_lifecycle.R"), encoding = "UTF-8", local = globalenv())

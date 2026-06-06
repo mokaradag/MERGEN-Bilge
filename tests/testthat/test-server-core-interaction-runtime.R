@@ -18,6 +18,22 @@ source(
   local = globalenv()
 )
 
+# serverBindCoreInteractionRuntime varsayılan core_observer_runtime_fn olarak
+# serverBindCoreObserverRuntime'ı çağırır; izole koşumda sahibini yükleriz.
+source(
+  file.path(repo_root, "R", "server_core_observer_runtime.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
+# bootReadinessInit() server_core_interaction_runtime tarafından çağrılır;
+# izole koşumda gerçek sahibini (module_boot_readiness.R) açıkça yükleriz.
+source(
+  file.path(repo_root, "R", "module_boot_readiness.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
 .fake_core_session <- function() {
   list(
     userData = new.env(parent = emptyenv()),

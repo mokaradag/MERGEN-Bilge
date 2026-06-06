@@ -6,6 +6,10 @@
 #           çağrılmaz. DB/LLM/tarayıcı gerekmez.
 # ==============================================================================
 
+# İzole çalıştırma için: create_code_block_html() shiny::HTML'i niteliksiz çağırır.
+# Tam suite'te shiny başka testlerce attach edilir; tek başına koşumda gerekir.
+suppressMessages(library(shiny))
+
 .create_code_block_source_once <- function() {
   if (exists("create_code_block_html", envir = globalenv(),
              mode = "function", inherits = TRUE) &&

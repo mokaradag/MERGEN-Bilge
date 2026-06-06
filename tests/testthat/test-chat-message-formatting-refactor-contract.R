@@ -5,6 +5,16 @@
 #           üretim/test source sırasına doğru eklendiğini doğrular.
 # ==============================================================================
 
+# İzole çalıştırma güvencesi: format_chat_messages render_safe_markdown_html'e
+# (helpers_markdown_safety.R) bağlıdır. helper_bootstrap bunu yüklemediği için
+# tek başına koşumda eksik kalır. WD-bağımsız repo kökünden yalnızca yoksa yükle.
+if (!exists("render_safe_markdown_html", mode = "function")) {
+  source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_markdown_safety.R"),
+    encoding = "UTF-8", local = globalenv()
+  )
+}
+
 .read_repo_text_chat_format_contract <- function(path) {
   repo_root <- resolve_repo_root_for_tests()
   full_path <- file.path(repo_root, path)

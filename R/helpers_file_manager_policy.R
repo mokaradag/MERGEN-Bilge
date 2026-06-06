@@ -30,10 +30,18 @@ fm_summarization_allowed_extensions <- function() {
   c("doc", "docx", "pdf", "txt")
 }
 
+# Desteklenen görsel uzantıları. Görseller yüklenip Dosya Yönetimi tablosunda
+# listelenebilir; ancak bu sürümde içerikleri yapay zekâ tarafından analiz
+# edilmez (görsel/vision pipeline'ı henüz yoktur). Tek kaynak burada tutulur.
+fm_image_extensions <- function() {
+  c("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg")
+}
+
 fm_normal_allowed_extensions <- function() {
   c(
     "txt", "pdf", "docx", "xlsx", "xls", "csv", "json",
-    "r", "py", "md", "log", "xml", "html"
+    "r", "py", "md", "log", "xml", "html",
+    fm_image_extensions()
   )
 }
 

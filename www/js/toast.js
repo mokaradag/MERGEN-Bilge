@@ -2,7 +2,13 @@
 (function() {
   'use strict';
 
-  function showToast(message, type = 'info', duration = 3000) {
+  function showToast(message, type = 'info', duration) {
+    // Süre verilmediyse mesaj uzunluğuna göre okunabilir bir süre hesapla:
+    // kısa bildirimler ~5 sn, uzun bildirimler en fazla 12 sn görünür.
+    if (typeof duration !== 'number' || !isFinite(duration) || duration <= 0) {
+      var msgLen = String(message == null ? '' : message).length;
+      duration = Math.min(12000, Math.max(5000, msgLen * 70));
+    }
     if (!document.getElementById('toast-container')) {
       const tc = document.createElement('div');
       tc.id = 'toast-container';

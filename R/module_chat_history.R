@@ -75,7 +75,7 @@ historyUI <- function(id) {
         h3("Söyleşi Geçmişi", class = "page-title"),
         div(
           class = "history-actions",
-          actionButton(ns("refresh_history"), label = tagList(icon("sync-alt"), "Yenile"), class = "btn-modern btn-primary"),
+          actionButton(ns("refresh_history"), label = tagList(icon("sync-alt"), "Yenile"), class = "btn-modern btn-refresh"),
           actionButton(ns("today_filter"), label = tagList(icon("calendar-day"), "Bugün"), class = "btn-modern btn-info"),
           downloadButton(ns("export_history"), label = "Excel'e Aktar", class = "btn-modern btn-success")
         )
@@ -514,9 +514,13 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
   })
 }
 
-showToast <- function(session, message, type = 'info', duration = 3000) {
-  session$sendCustomMessage(
-    type = 'showToast',
-    message = list(message = message, type = type, duration = duration)
-  )
+showToast <- function(session, message, type = 'info', duration = NULL) {
+  # Süre varsayılan olarak gönderilmez; istemci (toast.js) mesaj uzunluğuna göre
+  # okunabilir bir süre hesaplar (kısa ~5 sn, uzun en fazla 12 sn). Açık süre
+  # verilirse iletilir ve istemci ona uyar.
+  payload <- list(message = message, type = type)
+  if (!is.null(duration)) {
+    payload$duration <- duration
+  }
+  session$sendCustomMessage(type = 'showToast', message = payload)
 }
