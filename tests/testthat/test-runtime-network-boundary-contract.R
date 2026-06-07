@@ -160,7 +160,10 @@
       "^https?://[^/]*\\.internal(/|$)",
       "^https?://korykos\\.",
       "^https?://mergen\\.",
-      "^https?://wiki\\.sirket\\.com"
+      "^https?://wiki\\.sirket\\.com",
+      # Redakte edilmiş kurum içi avatar host yer-tutucusu (https://url......./).
+      # Gerçek public bağımlılık değildir; commit öncesi redaksiyon yer-tutucusudur.
+      "^https?://url\\.+/"
     ),
     collapse = "|"
   )

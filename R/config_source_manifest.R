@@ -33,6 +33,7 @@ source_manifest_after_future_paths <- c(
   "R/config_file_store_registry.R",
   "R/config_characters.R",
   "R/config_version_history.R",
+  "R/helpers_vision_model_capabilities.R",
   "R/config_api.R",
   "R/helpers_api_model_config.R",
   "R/helpers_api_model_tool_runtime.R",

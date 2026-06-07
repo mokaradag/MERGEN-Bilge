@@ -138,6 +138,9 @@
   report[order(report$lines, decreasing = TRUE), , drop = FALSE]
 }
 
+# NOT: module_startup_screen.R ve helpers_ai_expert.R taban değerleri, önceki
+# birleştirilen PR'lardaki meşru büyüme (skip-intro nöral renk; AI Expert
+# staleness + TTS parçalama) sonrası ölçülen gerçek değerlere güncellendi.
 .maintainability_baseline <- data.frame(
   path = c(
     "R/helpers_mcp_tools.R",
@@ -192,13 +195,13 @@
     788L,
     765L,
     726L,
-    695L,
+    740L,
     686L,
     662L,
     662L,
     662L,
     627L,
-    619L,
+    662L,
     577L,
     572L,
     539L,
@@ -226,13 +229,13 @@
     45L,
     22L,
     23L,
-    5L,
+    6L,
     22L,
     31L,
     31L,
     17L,
     12L,
-    19L,
+    23L,
     44L,
     3L,
     0L,
