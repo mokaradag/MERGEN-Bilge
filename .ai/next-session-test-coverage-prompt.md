@@ -16,6 +16,46 @@ Read `CLAUDE.md` first — it is the binding operational guide; follow every con
   If for some reason no branch is assigned, create a brand-new one (e.g. `claude/test-coverage-s3-*`).
 - When you finish, **open a NEW pull request** for your fresh branch. Commit messages in Turkish.
 
+## CONTEXT — what session 5 (`claude/exciting-einstein-JGkKQ`) added (do NOT redo)
+- **Vision finished** (config + capability-primary kill-switch): `R/helpers_vision_model_capabilities.R`
+  (`parse_vision_models_env`, `apply_vision_model_capabilities`) covered by
+  `test-vision-model-capabilities-behavior.R`; multimodal `image_url` serialization through the REAL
+  `call_local_llm` (httr) + `call_local_llm_sse_worker` (curl) covered by
+  `test-vision-llm-payload-serialization-behavior.R`; `test-vision-context-behavior.R` updated for
+  default-ON gating. See the eliminate-weaknesses prompt for full details.
+- **7 NEW behavioral files (~290 assertions, 0 fail/0 warn standalone + batch):**
+  - `test-claude-code-document-builders-behavior.R`: `build_claude_code_document_prompt`,
+    `build_claude_code_document_inline_payload`, `build_claude_code_document_summary_messages`,
+    `write_claude_code_document_manifest`.
+  - `test-send-message-lifecycle-helpers-behavior.R`: `mergen_clear_welcome_for_send_message`,
+    `mergen_prepare_send_message_chat` (defer/DB branches), `mergen_prepare_mcp_session_files`
+    (non-mcp_excel + no-files branches).
+  - `test-deep-analysis-context-builder-behavior.R`: `build_deep_analysis_context`.
+  - `test-mcp-tools-parse-behavior.R`: `parse_tool_calls_from_text`, `get_mcp_tools_prompt`,
+    `get_openai_tools` (full MCP chain source-once into globalenv, guarded).
+  - `test-claude-code-plugins-server-behavior.R`: `claudeCodePluginsServer` + `refresh_local_plugins`
+    via `testServer` (real plugin scan).
+  - `test-ai-expert-db-fetch-behavior.R`: `fetch_user_last_login`, `fetch_recent_user_prompts`,
+    `fetch_user_work_context` (DBI-mocked).
+- **NEW GOTCHAS (session 5):**
+  - `claudeCodePluginsServer`/`scan_local_plugins()` resolves the plugin dir via
+    `resolve_app_root()` → `shiny::getShinyOption("appDir")` FIRST. In `testServer` that points
+    elsewhere, so set `shiny::shinyOptions(appDir = repo_root)` (with restore) inside the expr or the
+    scan returns 0 plugins. Deps: source `helpers_claude_code_path_policy.R` +
+    `config_claude_code_plugins.R` + `helpers_claude_code_plugins.R` (path_policy provides
+    `cc_policy_path_inside_roots`).
+  - `parse_tool_calls_from_text` requires the FULL MCP chain (context→bootstrap→table_readers→
+    file_resolver→schema→basic→chart→analyze→tools) because `helpers_mcp_tools.R` bootstrap
+    VALIDATES all are loaded (`stop()` otherwise). A `<tool_call>{json}</tool_call>` legitimately
+    matches BOTH the block path and the inline-JSON path → 2 entries (assert real behavior, not count=1).
+  - `get_openai_tools()` returns `list(tools = list(<defs>))` (named, wrapped) — access `out$tools[[i]]$type`.
+  - Functions called UNQUALIFIED that belong to non-attached packages (e.g. `removeUI` from shiny when
+    shiny isn't `library()`'d) cannot be intercepted by `local_mocked_bindings(.package=...)`; assign the
+    stub directly into the helper's sourced env (`env$removeUI <- ...`).
+  - **CRLF + non-UTF-8-locale = mojibake:** any R `readLines()+writeBin` rewrite of a Turkish/CRLF file
+    MUST run with `LANG=C.UTF-8 LC_ALL=C.UTF-8`; otherwise Turkish bytes become literal `<c4><b1>` text.
+    Verify with `grep -c '<c3>\|<c4>\|<c5>' file` == 0 and a small `git diff --stat`.
+
 ## CONTEXT — what the LATEST session (`claude/exciting-knuth-pTGt1`) added (do NOT redo)
 - **Vision feature** `R/helpers_vision_context.R` + send-message `none`-branch wiring (config-gated,
   OFF by default). Covered by `test-vision-context-behavior.R` (pure helpers, none-branch ON/OFF,

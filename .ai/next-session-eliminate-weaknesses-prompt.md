@@ -22,7 +22,109 @@ behavioral-test technique catalog and the up-to-date "already covered, do NOT re
 
 ## WHAT'S ALREADY DONE (do NOT redo — re-verify before duplicating)
 
-### ✅ THIS LATEST SESSION (`claude/exciting-knuth-pTGt1`) — merged via a new PR
+### ✅ THIS LATEST SESSION (`claude/exciting-einstein-JGkKQ`) — open PR
+**VISION FINISHED (PRIORITY 0 — config + capability-primary gating + live-serialize proof):**
+- `R/config_api.R`: every `local_model_capabilities` entry now carries a per-model
+  `vision` attribute (default FALSE), driven by a NEW pure helper
+  `R/helpers_vision_model_capabilities.R` (manifest BEFORE `config_api.R`):
+  `parse_vision_models_env` (splits `MERGEN_VISION_MODELS` on `;`/`,` ONLY — model
+  IDs may contain spaces, so do NOT split on whitespace) and
+  `apply_vision_model_capabilities(api_config, extra_vision_models, env_value)`
+  (normalizes vision=FALSE on all caps, then sets TRUE for env list + caller extras).
+  `config_api.R` calls it via a guarded `if (exists("apply_vision_model_capabilities", ...))`
+  with `extra_vision_models = c(coding_deep_low_model, coding_deep_high_model)` (Kodlama
+  Uzmanı deep models support Image Input per the model catalog). **config_api.R stayed at
+  its EXACT 700-line per-file ratchet budget** (extracted to the helper + trimmed one
+  redundant comment to net-zero — the budget in `test-maintainability-ratchet.R` is OFF-LIMITS).
+- `mergen_vision_enabled()` flipped to a **capability-primary kill-switch**: default ENABLED,
+  disabled ONLY by an explicit false value (`false`/`f`/`0`/`no`/`off`/`hayır`/`kapalı`) on
+  `options(mergen.vision_enabled)` or `MERGEN_ENABLE_VISION`. So marking a model
+  `vision = TRUE` is now SUFFICIENT to enable vision for it; non-capable models still get the
+  explicit Turkish "analiz edilemiyor" note (text path byte-identical).
+- Confirmed the multimodal `image_url` array survives serialization through the REAL
+  `call_local_llm` (httr `encode="json"`) AND `call_local_llm_sse_worker` (curl `postfields`
+  `toJSON(auto_unbox=TRUE)`) — body-capture tests, not just an isolated toJSON.
+- Tests: updated `test-vision-context-behavior.R` (default-ON semantics; OFF cases now use
+  explicit FALSE or a non-vision model), NEW `test-vision-model-capabilities-behavior.R`
+  (helper), NEW `test-vision-llm-payload-serialization-behavior.R` (real API+SSE body capture).
+  All green standalone + batch (109 + 17 assertions).
+- **REMAINING for next session (VM-only):** decide which deployed model IDs actually support
+  Image Input, set `MERGEN_VISION_MODELS=...` (and/or rely on the CODING_DEEP_* defaults) in
+  `.Renviron`, then send a real image + question and confirm an end-to-end answer (the
+  base64→HTTP-body path is real but still UNTESTED against a live vision endpoint). Optionally
+  add a Yapılandırma toggle + `max_bytes` config.
+
+**KNOWN pre-existing failure #2 RESOLVED (ratchet-contract):** bumped ONLY the two per-file
+baselines in `test-maintainability-ratchet-contract.R` to real measured values
+(`module_startup_screen.R` 695→740 lines / 5→6 fns; `helpers_ai_expert.R` 619→662 lines /
+19→23 fns) with a Turkish comment. This is the per-file baseline's intended maintenance; the
+GLOBAL ratchet (`test-maintainability-ratchet.R`) was NOT touched (still 100/100).
+
+**KNOWN cloud-only failure RESOLVED (network-boundary):** allowlisted the redacted internal
+avatar host placeholder `https://url......./` in `test-runtime-network-boundary-contract.R`
+(regex `^https?://url\.+/`). It is an intentional commit-time redaction (like `technical name 1`),
+not a public dependency. Test is now green in the cloud checkout too.
+
+**PRIORITY 4 (wd-independent fallback guard):** `R/helpers_llm_sse.R` previously loaded its
+sibling helpers (`helpers_llm_stream_io.R`, `helpers_llm_sse_events.R`) via a `getwd()`-relative
+`file.path("R", ...)` only → isolated source from `tests/testthat` cwd lost
+`append_stream_delta_line`. Now uses the proven candidate pattern (repo root / `../../` /
+`MERGEN_REPO_ROOT`). REMAINING getwd-relative guards (DORMANT in prod, contract-protected, lower
+priority): the 5 MCP helper files (`helpers_mcp_chart_tools/_schema_helpers/_basic_tools/
+_file_resolver/_table_readers.R` → `.mcp_context_path <- file.path("R", ...)` with a hard
+`stop()`) and `helpers_health_checks.R` (`runtime_checks_path`). These only fire when sourced
+in isolation from a non-repo-root cwd AND the helper env isn't already loaded — note them, fix
+only if an isolated test actually breaks.
+
+**PRIORITY 1 concurrency re-audit — re-confirmed clean, NO new fix:** re-audited every flagged
+async file. `server_handler_summarization.R` (fast-stream propagates `active_request_id`+
+`stop_generation`; non-streaming uses `mergen_is_current_request`), `module_settings_yapilandirma.R`
+(button-disabled singleton), `server_observers_startup.R` (one-time hydration), `helpers_file_pipeline.R`
+(per-file, callbacks run sequentially on the single main thread → no read-modify-write race),
+`module_ai_processing.R` (pure transform; consumer is request-guarded), `module_chat_history_background.R`
+(id-keyed cache warming). The ONE real-but-low-probability finding is DEFERRED (see New candidates).
+
+**PRIORITY 5 behavioral coverage — 7 NEW files (+1 updated), ~290 assertions, 0 fail/0 warn:**
+- `test-claude-code-document-builders-behavior.R`: `build_claude_code_document_prompt`,
+  `_inline_payload`, `_summary_messages`, `write_claude_code_document_manifest`.
+- `test-send-message-lifecycle-helpers-behavior.R`: `mergen_clear_welcome_for_send_message`,
+  `mergen_prepare_send_message_chat` (defer/DB branches), `mergen_prepare_mcp_session_files`.
+- `test-deep-analysis-context-builder-behavior.R`: `build_deep_analysis_context` (error-only,
+  data_analysis, max_tokens scaling + 8192 ceiling, failed-note).
+- `test-mcp-tools-parse-behavior.R`: `parse_tool_calls_from_text` (tool_call/inline JSON/plain
+  SQL fallback/empty), `get_mcp_tools_prompt`, `get_openai_tools` (full MCP chain source-once).
+- `test-claude-code-plugins-server-behavior.R`: `claudeCodePluginsServer` via `testServer`
+  (real `bilge_yolac_plugins/` scan; **gotcha: set `shiny::shinyOptions(appDir = repo_root)` so
+  `resolve_app_root()` finds the dir — testServer's default appDir points elsewhere**).
+- `test-ai-expert-db-fetch-behavior.R`: `fetch_user_last_login`, `fetch_recent_user_prompts`,
+  `fetch_user_work_context` (DBI-mocked via `local_mocked_bindings(.package="DBI")`).
+- Plus the 2 vision test files above.
+
+**CRITICAL ENCODING LESSON (cost me two corruptions this session — do NOT repeat):** when
+rewriting a CRLF file with an R `readLines()+writeBin(charToRaw(enc2utf8(...)))` script, you MUST
+run that script with `LANG=C.UTF-8 LC_ALL=C.UTF-8` set. WITHOUT a UTF-8 locale, `readLines` +
+`enc2utf8`/`charToRaw` MANGLES every Turkish byte into the literal ASCII text `<c4><b1>` (a
+catastrophic whole-file mojibake diff). Always: set the locale, run the edit, then verify with
+`grep -c '<c3>\|<c4>\|<c5>' file` (must be 0) AND `git diff --stat` (must be small). LF files are
+safe with the normal Edit tool.
+
+**Validation run:** per-file testthat for all 9 touched/new files = 0 fail/0 warn standalone AND
+in a `test_dir` batch (222+ assertions); `parse_sanity_check.R` (710 files OK); contracts GREEN
+(`source-manifest` 165, `global-source-manifest` 12, `api-model-config` 35, `llm-reasoning-overrides`
+14, `llm-content-reasoning-fallback` 24, `send-message-prompting` 21, `send-message-request-lifecycle`
+42, `maintainability-ratchet` 156, `maintainability-ratchet-contract` 3, `runtime-network-boundary`
+2, `secret-leak` 8, `production-contracts` 21, `renv-lock-contract` 23). Repo gate
+`bash tools/ai_validate.sh cloud-quick` = failed_steps 0 / skipped_steps 1
+(`profile_requested=cloud-quick`, `profile_effective=quick`, `app_source_smoke_status=skipped`,
+`db_sso_vm_validation_performed=false`). `quick` itself reached app-source-smoke then hit the
+documented heavy-package limit (`logger` not installed; vendored www assets + `.Renviron` absent).
+
+**renv (PRIORITY 0):** STILL NOT in this git checkout (`git ls-files renv.lock` empty; only
+`RENV_LOCK_STATUS.md` marker, which claims a 2026-06-06 R 4.6.0 VM commit). `renv-lock-contract`
+passes with it absent. **User action:** `git add renv.lock && git push` from the Windows VM if it
+should land in GitHub. Do NOT generate it from Linux/cloud.
+
+### Earlier session (`claude/exciting-knuth-pTGt1`) — merged via a new PR
 **VISION GAP CLOSED (PRIORITY 0 — config-gated, real, not faked):**
 - New pure helper file `R/helpers_vision_context.R` (sourced in manifest BEFORE
   `helpers_send_message_prompting.R`): `mergen_vision_image_extensions`,
@@ -173,7 +275,9 @@ update the test's `source(...)` to the NEW owner. ALWAYS apply these patterns to
 This pulled main's `helpers_llm_worker_tool_results.R` → `_preview.R` split, which **resolved the 2
 previously "pre-existing" maintainability-ratchet failures** — the ratchet is now fully GREEN on this branch.
 
-**KNOWN pre-existing failure #2 (NOT caused by this session — verify on the VM):**
+**KNOWN pre-existing failure #2 — ✅ RESOLVED in `claude/exciting-einstein-JGkKQ`** (per-file
+baselines bumped to real measured values with a Turkish comment; global ratchet untouched).
+Original note kept for context:
 `test-maintainability-ratchet-contract.R` (the PER-FILE baseline contract, distinct from
 `test-maintainability-ratchet.R` which is GREEN) fails on a CLEAN `origin/main` worktree in the cloud:
 `R/module_startup_screen.R` is ~740 lines (baseline 695, limit 730) and `R/helpers_ai_expert.R` is
@@ -188,7 +292,9 @@ current measured values with a Turkish comment noting the legitimate merged grow
 baseline mechanism's intended maintenance and does NOT loosen the global ratchet. Do NOT touch the global
 thresholds in `test-maintainability-ratchet.R`.
 
-**KNOWN pre-existing failure (NOT caused by this work, do not chase blindly):**
+**KNOWN cloud-only failure — ✅ RESOLVED in `claude/exciting-einstein-JGkKQ`** (allowlisted the
+redacted `https://url......./` placeholder via regex `^https?://url\.+/`; it is a commit-time
+redaction, not a public dependency). Original note kept for context:
 `test-runtime-network-boundary-contract.R` fails in the cloud checkout because `R/helpers_messaging.R:337`
 and `R/module_sidebar_user_panel.R:88` contain a **redacted** avatar URL `paste0("https://url......./", ...)`.
 This placeholder is unchanged since the merge-base, untouched by this session, and is almost certainly a
@@ -202,14 +308,14 @@ be allowlisted or the placeholder normalized — but do NOT "fix" it by inventin
 The cloud/Linux env MASKS Windows-specific failures (locale/encoding, full-suite pollution). Do NOT declare
 "all green" from cloud runs alone for file-scanning/encoding-sensitive tests. The authoritative signal is the
 user's `source("tests/testthat.R")` on the Windows VM (R 4.6.0). Two concrete items to close:
-- **Vision gap — DONE this session (config-gated plumbing + explicit note), VERIFY LIVE NEXT.**
-  The pipeline now exists (`R/helpers_vision_context.R`; see "THIS LATEST SESSION" above). OFF by default.
-  REMAINING for next session: (a) on the Windows VM, determine whether the deployed local model actually
-  supports vision; if yes, add `vision = TRUE` to that model's `api_config$local_model_capabilities[[m]]`
-  entry and set `MERGEN_ENABLE_VISION=TRUE` in `.Renviron`, then send a real image + question and confirm a
-  usable answer end-to-end (the base64-into-HTTP-body path is real but was UNTESTED against a live endpoint).
-  (b) If the model lacks vision, leave it OFF — the explicit Turkish note already ships. (c) Optionally add a
-  size/cap config (`max_bytes`) and a settings/Yapılandırma toggle. Do NOT fake vision; do NOT regress the text path.
+- **Vision — ✅ config + capability-primary gating + serialization proof DONE in
+  `claude/exciting-einstein-JGkKQ` (see "THIS LATEST SESSION" above). NOW DEFAULT-ENABLED per
+  capability.** REMAINING (VM-only): on the Windows VM set `MERGEN_VISION_MODELS=<real image-capable
+  model IDs>` in `.Renviron` (the CODING_DEEP_* models are auto-marked), confirm the deployed model
+  truly accepts `image_url` parts, then send a real image + question and confirm an end-to-end answer
+  (the base64→HTTP-body path is real but UNTESTED against a live endpoint). Global kill-switch:
+  `MERGEN_ENABLE_VISION=false` disables everywhere. Optionally add a Yapılandırma toggle + `max_bytes`.
+  Do NOT fake vision; do NOT regress the text path (non-capable models still get the explicit note).
 - **renv on the VM:** confirm the user committed the real `renv.lock` (or remind them to `git add renv.lock`
   from the VM). Confirm `tests.yml`'s `setup-r-dependencies@v2` works with the lock once committed
   (`docs/dependency-locking.md` §6). Never generate `renv.lock` from Linux/cloud.
@@ -290,6 +396,23 @@ any threshold in `test-maintainability-ratchet.R`. NOTE: the 2 ratchet failures 
 and merged in; the ratchet is now fully GREEN. Keep it that way.
 
 ## NEW CANDIDATE WEAKNESSES (investigate; pick the highest-value ones)
+- **DOCX preview async clobber (DEFERRED this session — real but very-low-probability, needs a
+  testServer proof):** `R/module_file_preview.R` lines ~378-393 — for a DOCX > `SYNC_B64_THRESHOLD`
+  (10 MB), base64 encoding runs in a `future` and the `%...>%` callback sends `openDocxPreview` to the
+  FIXED `ns("docx_preview_container")`. If the user opens DOCX A (>10 MB, async), then opens DOCX B
+  before A finishes, A's late callback renders A's content into B's modal (wrong document shown). Fix:
+  a `docx_preview_seq <- reactiveVal(0L)` token incremented on each DOCX modal open, captured in the
+  async closure, and guard the send with `identical(isolate(docx_preview_seq()), captured)`. It's LF
+  so the Edit tool is safe. NOTE: a top-level extractable helper would bump `module_file_preview.R`'s
+  `function(` count (currently ~24-26 — near the global 25-fn ratchet); prefer an INLINE guard (no new
+  `function(`) + a `testServer` test that stubs `future::future` to defer A's resolution past B's open.
+  Was deferred only because a clean deterministic test (futures + modal timing) is involved and the
+  race is cosmetic/transient (preview-only, self-corrects on reopen).
+- **Remaining getwd-relative fallback guards (PRIORITY 4 leftovers):** see the PRIORITY 4 note in
+  "THIS LATEST SESSION" — 5 MCP helper files + `helpers_health_checks.R` still use
+  `file.path("R", ...)` in their `if (!exists(...))` guards. Dormant in prod; fix with the candidate
+  pattern only if an isolated test actually breaks (the MCP ones `stop()` hard, so be careful — they
+  are contract-protected by `test-mcp-*-refactor-contract.R`).
 - **Vision pipeline (TOP — see PRIORITY 0):** image UPLOAD, leak-fix, and inline PREVIEW are done
   (`module_file_preview.R` renders images via `registerDataObj`). What is NOT done: the LLM cannot answer
   questions about an attached image (no base64 image parts in the request). This is the user's main
