@@ -488,6 +488,8 @@ Bootstrap package-type contract:
 
 MERGEN Bilge pins exact package versions with `renv`. `R/config_packages.R` stays the human-readable manifest (its startup `requireNamespace` validation MUST NOT be removed); `renv.lock` is the exact-version source. The `renv.lock` MUST be generated on the working Windows VM (R 4.6.0), NOT from Linux/cloud. Full guide: `docs/dependency-locking.md`.
 
+**WHERE `renv.lock` LIVES (read this before reporting it "missing"):** the real `renv.lock` is COMMITTED in the **on-premise Windows VM production repository** — the working copy that actually runs the app (`//rehisds/.../MERGEN Bilge/renv.lock`, R 4.6.0, ~116 packages). It is INTENTIONALLY NOT present in the GitHub repository that Claude Code / Codex cloud sessions check out, so `git ls-files renv.lock` will be empty in a cloud checkout. This is EXPECTED, not a defect. An AI agent in a cloud session must NOT claim `renv.lock` is "missing from the repo", must NOT treat its absence as a bug, and must NEVER generate/reconstruct `renv.lock` from Linux/cloud (it would record wrong/incomplete versions). The committed `RENV_LOCK_STATUS.md` marker documents this provenance; the cloud checkout intentionally ships only the marker. If the operator ever wants the lock mirrored to GitHub too, that is a manual `git add renv.lock && git push` from the VM — not a cloud-session task.
+
 Protected behaviors (do not regress):
 
 - The root `.Rprofile` is a deliberately CONDITIONAL, offline-safe loader. It activates renv ONLY when all of these hold: `renv/activate.R` exists, `renv.lock` exists, `renv` is installed, AND `renv/library` is actually populated (at least one installed package, checked with a bounded `Sys.glob(file.path("renv","library","*","*","*","*","DESCRIPTION"))`). Otherwise it is a NO-OP (global/system library) and never downloads renv and never crashes startup (wrapped in `tryCatch`). Escape hatch: `MERGEN_DISABLE_RENV_AUTOLOAD=true`.
@@ -496,7 +498,7 @@ Protected behaviors (do not regress):
 - `tools/renv_snapshot.R` is the VM helper that writes `renv.lock` (scoped to `required_packages` + test/CI extras + renv) from the current library, without touching `.Rprofile`. Do NOT call `renv::init()` (it overwrites `.Rprofile` with the unconditional form).
 - `tests/scripts/ci_install_packages.R` prefers `renv::restore(prompt = FALSE)` when `renv.lock` exists and renv is available, then falls back to the existing RSPM/CRAN flow for anything still missing; when `renv.lock` is absent the existing behavior is unchanged. The mergen-ai-validation cache key includes `renv.lock`.
 - `.gitignore` policy: commit `renv.lock`, `renv/activate.R`, `renv/settings.json`, and `renv/.gitignore`; never commit `renv/library/`, `renv/cellar/`, `renv/staging/`, `renv/sandbox/`, `renv/python/`, `renv/local/`, `renv/lock/`. Do not reintroduce a blanket `renv/` ignore (it would hide `activate.R`).
-- `RENV_LOCK_STATUS.md` is a marker (NOT a real lock) recording that the on-prem `renv.lock` was generated (Windows VM, R 4.6.0, ~116 packages). It must never be named `renv.lock`.
+- `RENV_LOCK_STATUS.md` is a marker (NOT a real lock) recording that the real `renv.lock` is committed in the on-prem Windows VM production repo (R 4.6.0, ~116 packages). It must never be named `renv.lock`. In a cloud checkout this marker is the ONLY renv-lock artifact present, and that is expected — see "WHERE `renv.lock` LIVES" above. `tests/testthat/test-renv-lock-contract.R` is written to PASS whether or not `renv.lock` is physically present (it only enforces `required_packages` ⊆ `renv.lock` WHEN the lock exists); a green run with the lock absent is NOT a failure to chase.
 
 Tests that scan these files (`tests/testthat/test-renv-lock-contract.R`) MUST use the byte-safe reader pattern (`readBin` + `iconv(..., sub = "byte")`) with `grepl(..., useBytes = TRUE)` over ASCII anchors. Plain `readLines(..., encoding = "UTF-8") + grepl()` over Turkish-commented files fails on the Windows VM with `invalid UTF-8` (this is why those tests pass individually but failed inside the full suite). The same Windows-safe rule applies to any new test that scans repo files for content.
 
@@ -504,11 +506,17 @@ Protected by:
 - `tests/testthat/test-renv-lock-contract.R`
 - `tests/testthat/test-ai-package-bootstrap-contract.R`
 
-### Image upload, preview, and the (missing) vision pipeline
+### Image upload, preview, and the vision (görsel anlama) pipeline
 
 - Image files (`jpg`, `jpeg`, `png`, `gif`, `webp`, `bmp`, `svg`) are an allowed upload type via `fm_image_extensions()` inside `fm_normal_allowed_extensions()` (single source). The Dosya Yönetimi bulk-upload path validates the extension BEFORE copying to disk, so unsupported types no longer leak (saved-but-hidden). See `tests/testthat/test-image-upload-allowed-behavior.R`.
 - The Dosya Yönetimi file preview (`R/module_file_preview.R`) renders images inline by serving the file through `session$registerDataObj(...)` (same pattern as large-PDF preview) and showing an `<img>`; it must not regress to "Desteklenmeyen Dosya Türü" for these extensions.
-- KNOWN LIMITATION (vision): attaching an image to Model Bağlamı and asking about it does NOT work — there is no vision pipeline. `readFileContentToString` returns a clean text note for images (no binary garbage), but the LLM request never includes image data. Wiring base64 image parts into the chat request is a real feature for a future session (gate behind config, only if the deployed model supports vision); do not fake it.
+- VISION IS IMPLEMENTED (capability-primary, real — NOT faked). Attaching an image to Model Bağlamı and asking about it works when (a) the selected model is vision-capable and (b) the global kill-switch is not explicitly disabled. This replaces the old "no vision pipeline" limitation.
+  - Pure helpers: `R/helpers_vision_context.R` (image detection, MIME, base64 data-url with a 5 MB cap, OpenAI multimodal content builder, the `none`-branch context-block loop, the explicit Turkish "analiz edilemiyor" note, and the `mergen_vision_enabled()` kill-switch) and `R/helpers_vision_model_capabilities.R` (the pure `parse_vision_models_env()` + `apply_vision_model_capabilities()` that mark `api_config$local_model_capabilities[[m]]$vision`). Keep `R/helpers_vision_model_capabilities.R` loaded BEFORE `R/config_api.R` in the manifest, and `R/helpers_vision_context.R` BEFORE `R/helpers_send_message_prompting.R`. Neither file touches Shiny/reactive/network/DB.
+  - Capability is the single source of truth: `mergen_is_vision_model(model, api_config)` reads `caps[[m]]$vision` only (mirrors `is_thinking_model`). `config_api.R` defaults `vision = FALSE` on every `local_model_capabilities` entry, then sets `vision = TRUE` for the IDs in `MERGEN_VISION_MODELS` (`;`/`,`-separated — model IDs may contain spaces, so split on `;`/`,` ONLY, never whitespace) plus the Kodlama Uzmanı deep-thinking models (`CODING_DEEP_LOW_MODEL`/`CODING_DEEP_HIGH_MODEL`). Do NOT hardcode model names in functions; drive it from config/data + env. `config_api.R` must stay within its 700-line per-file ratchet budget — the marking lives in the helper, called via a guarded `exists("apply_vision_model_capabilities", ...)`.
+  - `mergen_vision_enabled()` is a DEFAULT-ENABLED kill-switch: active unless `options(mergen.vision_enabled)` / `MERGEN_ENABLE_VISION` is EXPLICITLY false (`false`/`f`/`0`/`no`/`off`/`hayır`/`kapalı`). So marking a model `vision = TRUE` is sufficient to enable vision for it; `MERGEN_ENABLE_VISION=false` disables vision globally.
+  - When `mergen_vision_active(model, api_config)` is true AND a real image encodes, the `none`-branch final user message `content` becomes an OpenAI multimodal ARRAY (`[{type:text},{type:image_url,image_url:{url:"data:...;base64,..."}}]`); otherwise it stays a STRING and images get the explicit Turkish note. Both `R/helpers_llm_api.R` (non-streaming) and `R/helpers_llm_sse.R` (streaming) preserve list-content and serialize via `toJSON(..., auto_unbox = TRUE)`, so the array survives to the HTTP body UNCHANGED. Do NOT regress the text path (non-capable models must still get the explicit Turkish note); do NOT fake vision.
+  - Protected by `tests/testthat/test-vision-context-behavior.R`, `tests/testthat/test-vision-model-capabilities-behavior.R`, and `tests/testthat/test-vision-llm-payload-serialization-behavior.R`.
+  - VM-only live check (NOT provable in cloud — there is no real vision endpoint there, and `MERGEN_VISION_MODELS` is unset): on the Windows VM set `MERGEN_VISION_MODELS=<real image-capable model IDs>` in `.Renviron`, attach an image, ask about it, and confirm a usable answer end-to-end. The base64→HTTP-body path is real but has not yet been exercised against a live vision endpoint.
 
 Before giving a final technical answer about this repository, an AI agent must run `bash tools/ai_validate.sh quick`.
 
@@ -4136,6 +4144,10 @@ If one is missing, startup stops with an explicit error.
 - `MERGEN_REQUIRE_PERSONAL_API_KEY`
 - `MERGEN_DEFAULT_API_KEY`
 
+#### Vision (görsel anlama)
+- `MERGEN_VISION_MODELS` — `;`/`,`-separated list of model IDs that support image input (Image Input). Optional; the Kodlama Uzmanı deep-thinking models (`CODING_DEEP_*`) are auto-marked vision-capable regardless. Model IDs may contain spaces, so the list is split on `;`/`,` only.
+- `MERGEN_ENABLE_VISION` — global kill-switch. Default ENABLED (capability-primary); set to `false`/`0`/`off`/`hayır`/`kapalı` to disable vision everywhere. Equivalent option: `options(mergen.vision_enabled = FALSE)`.
+
 #### TTS
 - `LOCAL_TTS_ENDPOINT`
 - `LOCAL_TTS_API_KEY`
@@ -4238,9 +4250,12 @@ Defines application-wide configuration:
 - `R/config_file_store_registry.R`
 - `R/config_characters.R`
 - `R/config_version_history.R`
+- `R/helpers_vision_model_capabilities.R`
 - `R/config_api.R`
 - `R/config_claude_code.R`
 - `R/config_claude_code_plugins.R`
+
+> `R/helpers_vision_model_capabilities.R` is loaded BEFORE `R/config_api.R` so the config can mark per-model `vision` capability at build time (see the vision pipeline section).
 
 ### Group 3 - Database and SQL
 Core persistence and DB access:
@@ -4281,6 +4296,7 @@ Shared utilities used across modules:
 - `R/helpers_file_manager_storage.R`
 - `R/helpers_chat_runtime.R`
 - `R/helpers_send_message_core.R`
+- `R/helpers_vision_context.R`
 - `R/helpers_quick_action_intro_messages.R`
 - `R/helpers_summarization_modes.R`
 - `R/helpers_summarization_prompts.R`
