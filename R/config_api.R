@@ -654,11 +654,7 @@ verify_user_api_key <- function(system_username, candidate_plain) {
 # ------------------------------------------------------------------------------
 # Derin Düşünme modellerinin yeteneklerini otomatik kaydet
 # ------------------------------------------------------------------------------
-# EXCEL_DEEP_LOW_MODEL / EXCEL_DEEP_HIGH_MODEL / CODING_* modelleri .Renviron'dan
-# gelebilir. Bu modeller local_model_capabilities içinde ayrıca yazılmadıysa
-# Düşünce Akışı tarafından düşünmeyen model sanılır. Bu blok, derin düşünme
-# modellerini varsayılan olarak thinking model kabul eder; mevcut tanım varsa
-# onu korur.
+# Derin Düşünme modelleri (.Renviron EXCEL_DEEP_*/CODING_*) varsayılan thinking kabul edilir; mevcut tanım korunur.
 .deep_thinking_capability_defaults <- list(
   thinking = TRUE,
   omit_temperature = TRUE,
@@ -698,3 +694,7 @@ rm(
   .deep_model_id,
   .existing_caps
 )
+# Vision (Image Input) yetenek işaretleme (bkz. R/helpers_vision_model_capabilities.R).
+if (exists("apply_vision_model_capabilities", mode = "function", inherits = TRUE)) {
+  api_config <- apply_vision_model_capabilities(api_config, c(coding_deep_low_model, coding_deep_high_model))
+}

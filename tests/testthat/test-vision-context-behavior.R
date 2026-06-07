@@ -61,21 +61,35 @@ test_that("mergen_image_mime_type doğru MIME döndürür", {
   expect_identical(.vision_env$mergen_image_mime_type("a.bin"), "application/octet-stream")
 })
 
-test_that("mergen_vision_enabled varsayılan KAPALI, bayrakla açılır", {
+test_that("mergen_vision_enabled yetenek-öncelikli kill-switch'tir (varsayılan AÇIK)", {
+  # Ayarlanmamış -> varsayılan AÇIK (gating'i model yeteneği belirler)
   .with_vision_flags(NULL, {
-    expect_false(.vision_env$mergen_vision_enabled())
+    expect_true(.vision_env$mergen_vision_enabled())
   })
+  # Açıkça TRUE -> AÇIK
   .with_vision_flags(TRUE, {
     expect_true(.vision_env$mergen_vision_enabled())
+  })
+  # Açıkça FALSE -> KAPALI (yalnızca açık kapatma devre dışı bırakır)
+  .with_vision_flags(FALSE, {
+    expect_false(.vision_env$mergen_vision_enabled())
   })
   # Ortam değişkeni yolu
   old_env <- Sys.getenv("MERGEN_ENABLE_VISION", unset = NA)
   on.exit(if (is.na(old_env)) Sys.unsetenv("MERGEN_ENABLE_VISION") else Sys.setenv(MERGEN_ENABLE_VISION = old_env), add = TRUE)
   options(mergen.vision_enabled = NULL)
+  Sys.unsetenv("MERGEN_ENABLE_VISION")
+  expect_true(.vision_env$mergen_vision_enabled())   # ayarlanmamış -> AÇIK
   Sys.setenv(MERGEN_ENABLE_VISION = "true")
   expect_true(.vision_env$mergen_vision_enabled())
+  Sys.setenv(MERGEN_ENABLE_VISION = "false")
+  expect_false(.vision_env$mergen_vision_enabled())  # açık kapatma
+  Sys.setenv(MERGEN_ENABLE_VISION = "0")
+  expect_false(.vision_env$mergen_vision_enabled())  # 0 da kapatır
+  Sys.setenv(MERGEN_ENABLE_VISION = "off")
+  expect_false(.vision_env$mergen_vision_enabled())  # off da kapatır
   Sys.setenv(MERGEN_ENABLE_VISION = "garbage")
-  expect_false(.vision_env$mergen_vision_enabled())
+  expect_true(.vision_env$mergen_vision_enabled())   # tanınmayan değer KAPATMAZ
 })
 
 test_that("mergen_is_vision_model yalnızca yapılandırılmış yeteneğe güvenir", {
@@ -92,11 +106,18 @@ test_that("mergen_is_vision_model yalnızca yapılandırılmış yeteneğe güve
 
 test_that("mergen_vision_active iki kapıyı birlikte ister", {
   cfg <- list(local_model_capabilities = list("vmod" = list(vision = TRUE)))
+  # Bayrak açıkça AÇIK + model vision -> aktif
   .with_vision_flags(TRUE, {
     expect_true(.vision_env$mergen_vision_active("vmod", cfg))
     expect_false(.vision_env$mergen_vision_active("tmod", cfg))
   })
+  # Bayrak varsayılan (AÇIK) + model vision -> aktif (yetenek-öncelikli; işaret yeterli)
   .with_vision_flags(NULL, {
+    expect_true(.vision_env$mergen_vision_active("vmod", cfg))
+    expect_false(.vision_env$mergen_vision_active("tmod", cfg))
+  })
+  # Bayrak açıkça KAPALI -> model vision olsa bile aktif değil (global kill-switch)
+  .with_vision_flags(FALSE, {
     expect_false(.vision_env$mergen_vision_active("vmod", cfg))
   })
 })
@@ -183,7 +204,8 @@ test_that("send_message none dalı: vision KAPALI metin (string) içerik üretir
 
   recent_messages <- list(list(type = "user", content = "Bu görselde ne var?"))
 
-  .with_vision_flags(NULL, {
+  # Global kill-switch açıkça KAPALI: model vision olsa bile metin (string) yolu korunur.
+  .with_vision_flags(FALSE, {
     plan <- .vision_env$mergen_build_uploaded_files_context_messages(
       tool_family = "none",
       uploaded_count = 1L,
@@ -201,6 +223,34 @@ test_that("send_message none dalı: vision KAPALI metin (string) içerik üretir
   expect_true(is.character(final))
   expect_true(grepl("analiz edilemiyor", final, fixed = TRUE))
   expect_true(grepl("Kaynakça:", final, fixed = TRUE))
+})
+
+test_that("send_message none dalı: vision modeli değilse metin notu (yetenek kapısı)", {
+  # Bayrak varsayılan AÇIK ama model vision-capable değil -> metin yolu + açık not.
+  session <- list(userData = new.env(parent = emptyenv()))
+  session$userData$file_summaries <- list()
+  session$userData$current_session_files <- list("kedi.png" = list(datapath = .make_tmp_png()))
+  on.exit(unlink(session$userData$current_session_files[["kedi.png"]]$datapath), add = TRUE)
+
+  recent_messages <- list(list(type = "user", content = "Bu görselde ne var?"))
+
+  plan <- .with_vision_flags(NULL, {
+    .vision_env$mergen_build_uploaded_files_context_messages(
+      tool_family = "none",
+      uploaded_count = 1L,
+      uploaded_names = c("kedi.png"),
+      recent_messages = recent_messages,
+      system_msg = list(type = "system", content = "SYS"),
+      session = session,
+      messages_to_process = recent_messages,
+      model_selected = "metin-modeli",
+      api_config = list(local_model_capabilities = list("metin-modeli" = list(vision = FALSE)))
+    )
+  })
+
+  final <- plan$messages_to_process[[2]]$content
+  expect_true(is.character(final))
+  expect_true(grepl("analiz edilemiyor", final, fixed = TRUE))
 })
 
 test_that("send_message none dalı: vision AÇIK çok-kipli image_url parçası ekler", {
@@ -233,6 +283,37 @@ test_that("send_message none dalı: vision AÇIK çok-kipli image_url parçası 
   expect_true("image_url" %in% types)
   img_part <- Find(function(p) identical(p$type, "image_url"), final)
   expect_true(startsWith(img_part$image_url$url, "data:image/png;base64,"))
+})
+
+test_that("send_message none dalı: varsayılan bayrak + vision modeli çok-kipli üretir", {
+  # Yetenek-öncelikli: bayrak ayarlanmamış (varsayılan AÇIK) olsa bile model
+  # vision-capable ise çok-kipli image_url parçası eklenmelidir.
+  tf <- .make_tmp_png()
+  on.exit(unlink(tf), add = TRUE)
+  session <- list(userData = new.env(parent = emptyenv()))
+  session$userData$file_summaries <- list()
+  session$userData$current_session_files <- list("kedi.png" = list(datapath = tf))
+
+  recent_messages <- list(list(type = "user", content = "Bu görselde ne var?"))
+
+  plan <- .with_vision_flags(NULL, {
+    .vision_env$mergen_build_uploaded_files_context_messages(
+      tool_family = "none",
+      uploaded_count = 1L,
+      uploaded_names = c("kedi.png"),
+      recent_messages = recent_messages,
+      system_msg = list(type = "system", content = "SYS"),
+      session = session,
+      messages_to_process = recent_messages,
+      model_selected = "vmod",
+      api_config = list(local_model_capabilities = list("vmod" = list(vision = TRUE)))
+    )
+  })
+
+  final <- plan$messages_to_process[[2]]$content
+  expect_true(is.list(final))
+  types <- vapply(final, function(p) p$type %||% "", character(1))
+  expect_true("image_url" %in% types)
 })
 
 test_that("vision AÇIK ama görsel okunamazsa metin yoluna güvenli düşer", {

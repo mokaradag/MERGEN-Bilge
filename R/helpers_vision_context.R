@@ -48,18 +48,32 @@ mergen_image_mime_type <- function(name) {
   )
 }
 
-# Vision özelliği yapılandırmadan açık mı?
-# Önce options(mergen.vision_enabled), sonra ortam değişkeni MERGEN_ENABLE_VISION.
-# Varsayılan KAPALIDIR; geçersiz/boş değerler FALSE kabul edilir.
+# Vision GLOBAL kill-switch'i (yetenek-öncelikli tasarım).
+# Gating'i asıl olarak modelin vision yeteneği belirler; bu bayrak yalnızca
+# AÇIKÇA kapatıldığında (options(mergen.vision_enabled) veya
+# MERGEN_ENABLE_VISION = false/0/hayır/off ...) vision'ı tamamen devre dışı
+# bırakır. Ayarlanmamış veya tanınmayan değer KAPATMAZ; varsayılan AÇIK'tır.
+# Böylece capabilities tablosunda bir modeli vision = TRUE işaretlemek yeterlidir.
 mergen_vision_enabled <- function() {
-  opt <- getOption("mergen.vision_enabled", NULL)
-  if (!is.null(opt)) {
-    val <- suppressWarnings(as.logical(opt[1]))
-    return(isTRUE(val))
+  # Yalnızca açıkça "kapalı/false" anlamına gelen değerler vision'ı devre dışı bırakır.
+  .vision_is_explicit_false <- function(x) {
+    if (is.null(x) || length(x) < 1L) return(FALSE)
+    if (is.logical(x)) return(isFALSE(x[1]))
+    if (is.numeric(x)) return(!is.na(x[1]) && x[1] == 0)
+    if (is.character(x)) {
+      val <- tolower(trimws(x[1]))
+      return(val %in% c("false", "f", "0", "no", "off",
+                        "hayir", "hayır", "pasif", "kapali", "kapalı"))
+    }
+    FALSE
   }
+
+  opt <- getOption("mergen.vision_enabled", NULL)
+  if (!is.null(opt)) return(!.vision_is_explicit_false(opt))
+
   env <- Sys.getenv("MERGEN_ENABLE_VISION", "")
-  if (!nzchar(env)) return(FALSE)
-  isTRUE(suppressWarnings(as.logical(env[1])))
+  if (!nzchar(env)) return(TRUE)
+  !.vision_is_explicit_false(env)
 }
 
 # Modelin vision yeteneği var mı? Yetenekler yalnızca
