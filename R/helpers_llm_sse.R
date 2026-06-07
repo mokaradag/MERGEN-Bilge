@@ -8,19 +8,33 @@
 # Akış dosyası satır protokolü ve SSE olay/delta ayrıştırma yardımcıları ayrı
 # dosyalardadır. İzole test/debug source kullanımında bu dosyaların önce
 # yüklenmiş olduğundan emin olmak için küçük fallback köprüsü:
-.helpers_llm_sse_stream_io_path <- file.path("R", "helpers_llm_stream_io.R")
-if (!exists("append_stream_delta_line", mode = "function", inherits = TRUE) &&
-    file.exists(.helpers_llm_sse_stream_io_path)) {
-  source(.helpers_llm_sse_stream_io_path, encoding = "UTF-8", local = globalenv())
+# Çalışma dizininden bağımsız kardeş dosya kaynaklayıcı (repo kökü, üst dizin,
+# MERGEN_REPO_ROOT). İzole test/debug source kullanımında doğru yolu bulur.
+.helpers_llm_sse_source_sibling <- function(filename, needed_symbol) {
+  if (exists(needed_symbol, mode = "function", inherits = TRUE)) {
+    return(invisible(NULL))
+  }
+  candidates <- c(
+    file.path("R", filename),
+    file.path("..", "..", "R", filename),
+    if (nzchar(Sys.getenv("MERGEN_REPO_ROOT"))) {
+      file.path(Sys.getenv("MERGEN_REPO_ROOT"), "R", filename)
+    } else {
+      NULL
+    }
+  )
+  for (cand in candidates) {
+    if (!is.null(cand) && nzchar(cand) &&
+        isTRUE(tryCatch(file.exists(cand), error = function(e) FALSE))) {
+      source(cand, encoding = "UTF-8", local = globalenv())
+      break
+    }
+  }
+  invisible(NULL)
 }
-rm(.helpers_llm_sse_stream_io_path)
-
-.helpers_llm_sse_events_path <- file.path("R", "helpers_llm_sse_events.R")
-if (!exists("extract_llm_delta_bundle", mode = "function", inherits = TRUE) &&
-    file.exists(.helpers_llm_sse_events_path)) {
-  source(.helpers_llm_sse_events_path, encoding = "UTF-8", local = globalenv())
-}
-rm(.helpers_llm_sse_events_path)
+.helpers_llm_sse_source_sibling("helpers_llm_stream_io.R", "append_stream_delta_line")
+.helpers_llm_sse_source_sibling("helpers_llm_sse_events.R", "extract_llm_delta_bundle")
+rm(.helpers_llm_sse_source_sibling)
 
 # ------------------------------------------------------------------------------
 # SSE OLAY/DELTA AYRIŞTIRMA YARDIMCILARI
