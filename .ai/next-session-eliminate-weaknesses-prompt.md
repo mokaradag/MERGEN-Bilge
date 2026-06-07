@@ -173,6 +173,21 @@ update the test's `source(...)` to the NEW owner. ALWAYS apply these patterns to
 This pulled main's `helpers_llm_worker_tool_results.R` → `_preview.R` split, which **resolved the 2
 previously "pre-existing" maintainability-ratchet failures** — the ratchet is now fully GREEN on this branch.
 
+**KNOWN pre-existing failure #2 (NOT caused by this session — verify on the VM):**
+`test-maintainability-ratchet-contract.R` (the PER-FILE baseline contract, distinct from
+`test-maintainability-ratchet.R` which is GREEN) fails on a CLEAN `origin/main` worktree in the cloud:
+`R/module_startup_screen.R` is ~740 lines (baseline 695, limit 730) and `R/helpers_ai_expert.R` is
+~661 lines / over its fn baseline (baseline 619, limit 650). These two files grew in EARLIER merged
+PRs (skip-intro neural-color fix; AI-Expert staleness + TTS chunking) that updated the GLOBAL ratchet
+baseline but NOT this per-file contract baseline. This session did NOT touch either file (verified:
+empty `git diff origin/main` on both). The user's Windows VM full-suite run reached DONE past it (their
+checkout/strict-runner differs), so it was not blocking them. **NEXT SESSION:** confirm on the VM, then
+either (a) split a small focused helper out of each file to get back under baseline (preferred per CLAUDE.md),
+or (b) bump ONLY these two per-file entries in `test-maintainability-ratchet-contract.R` to their real
+current measured values with a Turkish comment noting the legitimate merged growth — this is the per-file
+baseline mechanism's intended maintenance and does NOT loosen the global ratchet. Do NOT touch the global
+thresholds in `test-maintainability-ratchet.R`.
+
 **KNOWN pre-existing failure (NOT caused by this work, do not chase blindly):**
 `test-runtime-network-boundary-contract.R` fails in the cloud checkout because `R/helpers_messaging.R:337`
 and `R/module_sidebar_user_panel.R:88` contain a **redacted** avatar URL `paste0("https://url......./", ...)`.

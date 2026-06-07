@@ -33,9 +33,11 @@ test_that("health_is_storage_path_id ilgisiz kimlikleri reddeder", {
 })
 
 test_that("health_as_windows_explorer_path eğik çizgileri ters çizgiye çevirir", {
+  # NOT: kişisel mutlak Windows kullanıcı klasörü yolu KULLANILMAZ; secret-leak
+  # sözleşmesi bunu repo içinde yasaklar. Bunun yerine genel bir yol kullanılır.
   expect_identical(
-    .health_fmt_env$health_as_windows_explorer_path("C:/Users/test/data"),
-    "C:\\Users\\test\\data"
+    .health_fmt_env$health_as_windows_explorer_path("C:/veri/proje/data"),
+    "C:\\veri\\proje\\data"
   )
   expect_identical(
     .health_fmt_env$health_as_windows_explorer_path("//server/share/klasor"),
