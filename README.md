@@ -76,6 +76,14 @@ Bu kapsam çalışması sırasında, yalnızca yapısal kapsama sahip olduğu i�
 
 Bu değişiklikler yalnızca test ve iki nokta atışı düzeltmedir; görünür kullanıcı deneyimi, kodlama sözleşmeleri ve kaynak sırası değişmez. Testler `new.env(parent = globalenv())` ile yalıtılır, ağ/DB/LLM gerektirmez ve Türkçe açıklamalarla yazılmıştır.
 
+### DOCX önizleme yarış koşulu ve yeni davranış testleri
+
+Büyük DOCX dosyalarının önizleme modalında asenkron base64 hazırlama sonucu artık oturum belirteciyle korunur. `R/module_file_preview.R` içindeki `docx_preview_seq` değeri her DOCX modal açılışında artırılır; başarı ve hata geri çağrıları yalnızca kendi açılış belirteci hâlâ güncelse `docx_preview_container` alanına yazar veya toast gösterir. Böylece önce açılan büyük bir DOCX dosyasının geç gelen sonucu, daha sonra açılan başka bir DOCX modalını ezmez. Eski sonuçlar kullanıcı arayüzüne basılmaz; uygun olduğunda yalnızca önbelleğe alınır.
+
+Bu sınır `tests/testthat/test-file-preview-docx-async-clobber-behavior.R` ile korunur. Test gerçek büyük dosya gerektirmez; `future::future` deterministik biçimde stub'lanır ve olmayan bir datapath üzerinden asenkron dal tetiklenir.
+
+Aynı güncellemede davranışsal test kapsamı da genişletildi: `call_llm_with_retry`, DER/TLV yardımcıları, dosya deposu mutasyon yardımcıları, kenar çubuğu kullanıcı paneli, Claude runtime kaynak dizini çözümleme ve DB kullanıcı profili okuma davranışları için çevrimdışı ve deterministik testler eklendi. MCP dosya çözümleyicide mutlak yol güvenlik sözleşmesi de kırılgan İngilizce debug metnine değil, kalıcı davranışa bağlandı: normal kullanıcı akışında mutlak dosya yolu argümanları kabul edilmez ve Türkçe ret mesajı korunur.
+
 ### Servis bağımlı davranış testleri ve API anahtarı kayıt kararlılığı
 
 Servis bağımlı ve derin runtime alanları için çevrimdışı, deterministik davranışsal regresyon kapsamı genişletildi. Yeni testler gerçek DB, tarayıcı, LLM veya ağ bağlantısı gerektirmeden stub/mock verilerle çalışır; amaç görünür kullanıcı deneyimini değiştirmek değil, mevcut çıktı sözleşmelerini ve hassas yardımcı davranışlarını refaktörlere karşı korumaktır.
