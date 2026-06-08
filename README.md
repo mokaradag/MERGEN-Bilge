@@ -29,6 +29,18 @@ MERGEN Bilge, kurum içi/on-prem ortamlarda çalışmaya uygun bir yapay zekâ d
 - Bilge Yolaç: Claude Code ile web üzerinden çalışan kodlama ajanı alanı ve eklenti sistemi.
 - SSO/Keycloak hazır kimlik doğrulama sınırı ve yerel geliştirme modu.
 
+## Modern persona sistemi
+
+MERGEN Bilge, farklı çalışma tarzlarını temsil eden beş modern ve kurgusal Türk AI persona'sı kullanır. Bu çerçeve kullanıcıya uygun yanıt tarzını seçilebilir kılar.
+
+| Persona | Rol |
+|---|---|
+| Emre Onat | Ana Asistan; dengeli, pragmatik ve profesyonel varsayılan yardımcı. |
+| Selin Sezgin | Yapıcı Uzman; çözüm odaklı ve ilerletici değerlendirme yapar. |
+| Deniz Özgün | Stratejist; uzun vadeli, yapısal düşünür ve karar çerçevesi kurar. |
+| Can Yalın | Eleştirel Eş; varsayımları, riskleri ve eksik verileri görünür kılar. |
+| İpek Duru | Rehber; karmaşık konuları küçük adımlara böler ve sade örneklerle anlatır. |
+
 ## Hızlı başlangıç
 
 ### 1. Depoyu açın ve yapılandırmayı inceleyin
