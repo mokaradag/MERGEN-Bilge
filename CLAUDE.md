@@ -1,5 +1,37 @@
 # CLAUDE.md - MERGEN Bilge Codebase Guide
 
+
+## Read this first
+
+This file is the authoritative coding-agent and maintainer contract for the MERGEN Bilge repository. Read it before changing code, validation behavior, deployment behavior, or safety-critical documentation. The detailed rules below remain authoritative; this section is only a short entry point.
+
+Non-negotiable rules:
+
+1. Preserve Turkish text integrity everywhere; files must stay UTF-8 and Turkish characters must not be Latinized.
+2. Do not introduce mojibake, and do not weaken the centralized encoding, DB normalization, mailto, JSON, log, or browser text boundaries.
+3. Keep documentation-only tasks documentation-only; do not change runtime behavior, tests, deployment scripts, DB logic, UI behavior, or validation logic unless the task explicitly requires it.
+4. Never add secrets, API keys, passwords, tokens, private DSNs, auth headers, or sensitive internal endpoints to code, docs, logs, PR text, or validation artifacts.
+5. Respect source/load order, especially `R/config_source_manifest.R`, helper bootstrap order, DB helper order, and frontend asset order in `R/config_ui_assets.R`.
+6. Respect DB encoding boundaries: do not bypass DB-safe Unicode escape/restore, DB read/write normalization, or mojibake guards because legacy data is dirty.
+7. Respect Windows VM/on-prem assumptions, including UNC paths, Turkish path behavior, SSO profile behavior, and production launcher constraints.
+8. Do not generate `renv.lock` from Linux/cloud/Codex sessions; dependency locking is governed by the Windows VM/on-prem workflow.
+9. Run only validation appropriate to the change, and be explicit about what the command proves and does not prove.
+10. Do not claim full validation, VM validation, browser smoke, app boot, or test success unless the relevant command actually ran and passed with zero failed steps.
+11. Preserve maintainability ratchets, browser/UX smoke seams, security-path-download protections, and Bilge Yolaç/Claude Code execution boundaries.
+
+Where to go next:
+
+- Product overview and first run: [`README.md`](README.md)
+- Documentation hub: [`docs/README.md`](docs/README.md)
+- User-facing assistant behavior: [`ai_rehber.md`](ai_rehber.md)
+- Architecture map: [`docs/architecture-map.md`](docs/architecture-map.md)
+- Database schema: [`docs/database-schema.md`](docs/database-schema.md)
+- Operations/runbook: [`RUNBOOK.md`](RUNBOOK.md)
+- Dependency locking: [`docs/dependency-locking.md`](docs/dependency-locking.md)
+- Release notes: [`docs/release-notes.md`](docs/release-notes.md)
+- Agent summary: [`AGENTS.md`](AGENTS.md)
+
+---
 ## Purpose of This File
 
 This document is the operational guide for coding agents working inside the **MERGEN Bilge** repository. It explains how the application is structured, how it boots, which files are critical, which areas are fragile, and what repo-specific working style must be followed.

@@ -1,0 +1,186 @@
+# MERGEN Bilge Veritabanı Tablo Yapısı
+
+Bu belge, MERGEN Bilge uygulamasının güncel R kaynaklarında kullanılan veritabanı tablolarını ve tablo etkileşimlerini özetler. Canlı SQL Server şemasından otomatik üretilmiş DDL değildir; uygulama kodundaki sorgular, yazma yardımcıları, yönetici sorguları ve VM preflight beklentileri temel alınarak hazırlanmış operasyonel referanstır.
+
+> **Kritik sınır:** DB yazma/okuma yollarında Türkçe karakter bütünlüğü, DB-safe Unicode escape/restore ve mojibake guard'ları korunmalıdır. DB helper veya şema değişikliği öncesinde [`../CLAUDE.md`](../CLAUDE.md), [`architecture-map.md`](architecture-map.md) ve [`../RUNBOOK.md`](../RUNBOOK.md) okunmalıdır.
+
+## Kanıt Kaynakları
+
+| Kaynak | Kapsam |
+|---|---|
+| `R/helpers_database.R` | `MB_Users` oluşturma/güncelleme, `DC01_user_base` kullanıcı adı/tam ad okuması, kullanıcı profili okuma. |
+| `R/helpers_db_user_encoding.R` | `MB_Users` SSO alanlarının koşullu güncellenmesi ve kolon varlığı kontrolü. |
+| `R/helpers_db_chat_mutations.R` | `MB_Chats`, `MB_Messages`, `MB_Usage_Log` yazma/güncelleme/soft-delete davranışı. |
+| `R/helpers_db_chat_readers.R` | Sohbet listesi, arama ve mesaj hidratasyonu için `MB_Chats`/`MB_Messages` okuma davranışı. |
+| `R/helpers_db_feedback.R` | `MB_Feedback` merge/delete/read ve `MB_Usage_Log` insert davranışı. |
+| `R/helpers_destek_database.R` | `MB_Destek_Geri_Bildirim` ve `MB_Destek_Hata_Bildir` insert/list/update davranışı. |
+| `R/helpers_admin_geri_bildirim_queries.R`, `R/helpers_admin_hata_analizi.R`, `R/helpers_admin_yanit_analizi.R` | Yönetici panelleri için join, trend ve analiz sorguları. |
+| `R/helpers_sso.R` | `DC01_user_base` yetkilendirme okuması. |
+| `tests/scripts/run_vm_encoding_preflight_real.R` | VM/SQL Server Türkçe kodlama preflight için kritik tablo/kolon beklentileri. |
+
+## Tablo Akış Diyagramı
+
+```mermaid
+erDiagram
+    MB_Users ||--o{ MB_Chats : owns
+    MB_Chats ||--o{ MB_Messages : contains
+    MB_Users ||--o{ MB_Feedback : gives
+    MB_Messages ||--o{ MB_Feedback : receives
+    MB_Users ||--o{ MB_Usage_Log : triggers
+    MB_Chats ||--o{ MB_Usage_Log : records
+    MB_Messages ||--o{ MB_Usage_Log : prompt_message
+    MB_Users ||--o{ MB_Destek_Geri_Bildirim : submits
+    MB_Users ||--o{ MB_Destek_Hata_Bildir : reports
+    DC01_user_base ||..o{ MB_Users : enriches_authorizes
+    DC01_userr ||..o{ MB_Users : email_lookup
+```
+
+## Uygulama Sahipliğindeki Ana Tablolar
+
+### `MB_Users`
+
+Kullanıcı kimliği ve SSO ile zenginleşen profil alanlarını tutar. `KullaniciAdi` teknik kimliktir; kullanıcıya görünen ad ve organizasyon alanları merkezi DB encoding helper'larından geçmelidir.
+
+| Kolon | Yaklaşık tip | Kullanım / not |
+|---|---|---|
+| `UserID` | `INT` veya `BIGINT` | Uygulama içi kullanıcı anahtarı; insert sonrası `OUTPUT INSERTED.UserID` ile alınır. |
+| `KullaniciAdi` | `NVARCHAR(255)` | Teknik kullanıcı adı; `DC01_user_base.KullaniciAdi`, SSO `preferred_username` ve session identity ile eşleşir. |
+| `KaynakAdi` | `NVARCHAR(255)` | Kullanıcıya görünen tam ad; SSO `full_name` veya `DC01_user_base.KaynakAdi` ile beslenir. |
+| `LastLoginDate` | `DATETIME` | Kullanıcı bulunduğunda veya oluşturulduğunda `GETDATE()` ile güncellenir. |
+| `Sicil` | `NVARCHAR(50)` | SSO claim alanı; kolon varsa güncellenir. |
+| `Email` | `NVARCHAR(255)` | SSO claim alanı; kolon varsa güncellenir. |
+| `Sektor` | `NVARCHAR(100)` | Kullanıcıya görünen SSO organizasyon alanı; kolon varsa güncellenir. |
+| `Departman` | `NVARCHAR(200)` | Sidebar ve profil zenginleştirmede kullanılan SSO organizasyon alanı; kolon varsa güncellenir. |
+| `Mudurluk` | `NVARCHAR(200)` | SSO organizasyon alanı; kolon varsa güncellenir. |
+| `MasrafYeriKodu` | `NVARCHAR(200)` | Teknik SSO/organizasyon alanı; kolon varsa güncellenir. |
+| `SonGirisKaynagi` | `NVARCHAR(50)` | SSO güncellemesinde `keycloak` olarak yazılır; yerel/SSO ayrımı için kullanılır. |
+
+### `MB_Chats`
+
+Sohbet oturumlarının üst verisini tutar. Silme işlemleri fiziksel delete değil `IsDeleted = 1` soft-delete olarak uygulanır.
+
+| Kolon | Yaklaşık tip | Kullanım / not |
+|---|---|---|
+| `ChatID` | `INT` veya `BIGINT` | Sohbet anahtarı; insert sonrası `OUTPUT INSERTED.ChatID` ile alınır. |
+| `UserID` | `INT` veya `BIGINT` | `MB_Users.UserID` ile ilişkilidir; listeleme ve soft-delete kullanıcıya göre filtrelenir. |
+| `ChatTitle` | `NVARCHAR(500)` | İlk istemden veya kullanıcı düzenlemesinden gelen başlık; güncellenebilir. |
+| `CreateTimestamp` | `DATETIME` | Sohbet oluşturma zamanı; listeleme ve aramada kullanılır. |
+| `IsDeleted` | `BIT` veya `TINYINT` | Soft-delete bayrağı; okuma sorguları `ISNULL(c.IsDeleted, 0) = 0` filtresini kullanır. |
+
+### `MB_Messages`
+
+Kullanıcı, asistan ve sistem mesajlarını tutar. Mesaj sırası `MessageOrder` ile korunur; yeni mesaj yazımında ilgili sohbet için `MAX(MessageOrder) + 1` hesaplanır ve SQL Server lock hint'leriyle yarış koşulu azaltılır.
+
+| Kolon | Yaklaşık tip | Kullanım / not |
+|---|---|---|
+| `MessageID` | `INT` veya `BIGINT` | Mesaj anahtarı; insert sonrası `OUTPUT INSERTED.MessageID` ile alınır. |
+| `ChatID` | `INT` veya `BIGINT` | `MB_Chats.ChatID` ile ilişkilidir. |
+| `MessageContent` | `NVARCHAR(MAX)` | Görünen mesaj metni; DB-safe encoding ve read/hydration normalizasyonu kritiktir. |
+| `MessageType` | `NVARCHAR(50)` | `user`, `ai` veya sistem benzeri mesaj türleri. |
+| `MessageTimestamp` | `DATETIME` | Mesaj oluşturma zamanı; listeleme, arama ve fallback trend hesaplarında kullanılır. |
+| `MessageOrder` | `INT` | Sohbet içi sıralama. |
+| `ReasoningContent` | `NVARCHAR(MAX)` | Thinking modellerinin akıl yürütme içeriği; kolon varlığı runtime'da kontrol edilir ve yoksa legacy fallback kullanılır. |
+
+### `MB_Feedback`
+
+Kullanıcıların asistan mesajlarına verdiği yanıt geri bildirimini tutar. Uygulama `UserID + MessageID` kombinasyonunu merge anahtarı gibi kullanır.
+
+| Kolon | Yaklaşık tip | Kullanım / not |
+|---|---|---|
+| `UserID` | `INT` veya `BIGINT` | Geri bildirimi veren kullanıcı; `MB_Users.UserID` ile ilişkilidir. |
+| `MessageID` | `INT` veya `BIGINT` | Geri bildirim verilen mesaj; `MB_Messages.MessageID` ile ilişkilidir. |
+| `FeedbackType` | `NVARCHAR(50)` | `like`, `dislike` vb. teknik değer. |
+| `FeedbackTags` | `NVARCHAR(500)` | Seçilen etiketler; opsiyonel. |
+| `FeedbackComment` | `NVARCHAR(MAX)` | Serbest metin yorum; opsiyonel. |
+| `FeedbackTimestamp` | `DATETIME2(0)` | Extended feedback merge sırasında `CAST(GETDATE() AS datetime2(0))` ile yazılır/güncellenir. |
+
+### `MB_Usage_Log`
+
+LLM/API çağrılarının performans ve başarı izini tutar. Yanıt analizi ve yönetici panelleri için kullanılır.
+
+| Kolon | Yaklaşık tip | Kullanım / not |
+|---|---|---|
+| `LogID` | `INT` veya `BIGINT` | Günlük kaydı anahtarı; uygulama insert sırasında açıkça yazmaz. |
+| `ChatID` | `INT` veya `BIGINT` | Çağrının bağlı olduğu sohbet. |
+| `MessageID` | `INT` veya `BIGINT` | Çağrıyı tetikleyen kullanıcı mesajı. |
+| `UserID` | `INT` veya `BIGINT` | Çağrıyı tetikleyen kullanıcı. |
+| `ModelUsed` | `NVARCHAR(100)` veya daha geniş | Kullanılan model kimliği; teknik değer olarak normalize edilir. |
+| `ResponseDuration` | `DECIMAL`, `FLOAT` veya benzeri | Yanıt süresi. |
+| `ResponseSuccess` | `BIT` veya `TINYINT` | Başarı bayrağı. |
+
+## Destek ve Yönetici Panelleri Tabloları
+
+### `MB_Destek_Geri_Bildirim`
+
+Destek sayfasındaki memnuniyet/NPS/öneri formunu ve yönetici geri bildirim analizi verisini tutar.
+
+| Kolon | Yaklaşık tip | Kullanım / not |
+|---|---|---|
+| `GeriBildirimID` | `INT` veya `BIGINT` | Kayıt anahtarı; insert sonrası `OUTPUT INSERTED.GeriBildirimID` ile alınır. |
+| `UserID` | `INT` veya `BIGINT` | Gönderen kullanıcı; `MB_Users.UserID` ile ilişkilidir. |
+| `Memnuniyet` | `INT` | 1-5 memnuniyet puanı. |
+| `NPS_Puan` | `INT` | 0-10 NPS puanı; opsiyonel olabilir. |
+| `Etiketler` | `NVARCHAR(500)` | Seçilen etiketler; virgülle ayrılmış olabilir. |
+| `EnCokSevilen` | `NVARCHAR(500)` | Serbest metin alanı; opsiyonel. |
+| `Gelistirme` | `NVARCHAR(500)` | Serbest metin alanı; opsiyonel. |
+| `IletisimIzni` | `BIT` veya `TINYINT` | Kullanıcının iletişim izni. |
+| `OlusturmaTarihi` | `DATETIME` | `GETDATE()` ile yazılır; trend ve sıralama sorgularında kullanılır. |
+
+### `MB_Destek_Hata_Bildir`
+
+Destek sayfasındaki hata bildirimi formunu, durum takibini ve hata analizi paneli verisini tutar.
+
+| Kolon | Yaklaşık tip | Kullanım / not |
+|---|---|---|
+| `HataBildirimID` | `INT` veya `BIGINT` | Kayıt anahtarı; insert sonrası `OUTPUT INSERTED.HataBildirimID` ile alınır. |
+| `UserID` | `INT` veya `BIGINT` | Bildirimi gönderen kullanıcı; `MB_Users.UserID` ile ilişkilidir. |
+| `Konular` | `NVARCHAR(MAX)` | Hata konuları; çoklu değerler uygulama tarafında metin olarak tutulur. |
+| `Kategoriler` | `NVARCHAR(500)` | Seçilen kategoriler; analiz sorgularında ayrıştırılır. |
+| `Oncelik` | `NVARCHAR(50)` | `dusuk`, `orta`, `yuksek`, `kritik` gibi teknik değerler. |
+| `Aciklama` | `NVARCHAR(MAX)` | Kullanıcı açıklaması / yeniden üretme adımları. |
+| `EkDosyaYollari` | `NVARCHAR(MAX)` | Ek dosya yolları; teknik/path değeri olarak normalize edilmelidir. |
+| `Durum` | `NVARCHAR(50)` | Varsayılan `acik`; yönetici panelinden `inceleme`, `cozuldu`, `kapandi`, `reddedildi` değerlerine güncellenebilir. |
+| `OlusturmaTarihi` | `DATETIME` | `GETDATE()` ile yazılır; trend ve sıralama sorgularında kullanılır. |
+
+## Harici / Kurumsal Kaynak Tablolar
+
+### `DC01_user_base`
+
+Kullanıcı tam adı, yetki ve masraf yeri bilgisini sağlayan kurumsal kaynak tablodur. SSO yetkilendirme fail-closed davranışı bu tabloya erişimi kritik kabul eder.
+
+| Kolon | Yaklaşık tip | Kullanım / not |
+|---|---|---|
+| `KullaniciAdi` | `NVARCHAR(255)` | SSO `preferred_username` veya yedek sicil eşleşmesinde kullanılır. |
+| `KaynakAdi` | `NVARCHAR(255)` | Tam ad; `MB_Users.KaynakAdi` için fallback kaynak olabilir. |
+| `Yetki` | `VARCHAR`/`NVARCHAR` | SSO yetki seviyesi; erişim kontrolünde kullanılır. |
+| `MasrafYeriKodu` | `NVARCHAR(200)` | Organizasyon/masraf yeri bilgisi; teknik değer olarak normalize edilir. |
+
+### `DC01_userr`
+
+Yönetici geri bildirim analizi ekranında kullanıcı e-posta adresi zenginleştirmesi için kullanılan harici kaynak tablodur.
+
+| Kolon | Yaklaşık tip | Kullanım / not |
+|---|---|---|
+| `Name` | `NVARCHAR(255)` | `MB_Users.KullaniciAdi` ile join edilir. |
+| `EmailAddress` | `NVARCHAR(255)` | Yönetici panelinde iletişim/e-posta bağlamı için okunur. |
+
+## Sorgu ve Etkileşim Özetleri
+
+| Akış | Tablolar | Not |
+|---|---|---|
+| Kullanıcı oturumu | `DC01_user_base` → `MB_Users` | SSO claim varsa profil alanları güncellenir; yerel modda kullanıcı adıyla kayıt oluşturulur/güncellenir. |
+| Sohbet oluşturma | `MB_Users` → `MB_Chats` | Her sohbet kullanıcıya bağlıdır; başlık daha sonra güncellenebilir. |
+| Mesaj yazma | `MB_Chats` → `MB_Messages` | `MessageOrder` sohbet bazında hesaplanır; `ReasoningContent` kolon varlığına göre yazılır. |
+| Yanıt geri bildirimi | `MB_Users` + `MB_Messages` → `MB_Feedback` | Merge davranışı kullanıcı/mesaj kombinasyonunu günceller veya ekler. |
+| LLM kullanım logu | `MB_Users` + `MB_Chats` + `MB_Messages` → `MB_Usage_Log` | Model, süre ve başarı bilgisi yazılır. |
+| Destek geri bildirimi | `MB_Users` → `MB_Destek_Geri_Bildirim` | Yönetici analizleri memnuniyet, NPS, trend ve etiket dağılımı üretir. |
+| Hata bildirimi | `MB_Users` → `MB_Destek_Hata_Bildir` | Durum yönetici panelinden güncellenir; kategori/öncelik/trend analizleri yapılır. |
+| E-posta zenginleştirme | `MB_Users` → `DC01_userr` | Geri bildirim analizinde `KullaniciAdi = Name` join'i kullanılır. |
+
+## Bakım Notları
+
+- `MB_Messages.ReasoningContent`, `MB_Feedback.FeedbackTags` ve `MB_Feedback.FeedbackComment` kritik metin kolonları olarak VM encoding preflight kapsamındadır.
+- `MB_Users` SSO alanları bazı ortamlarda opsiyonel/koşullu olabilir; uygulama kolon varlığını kontrol ederek günceller.
+- `MB_Chats.IsDeleted` soft-delete davranışıdır; geçmiş veri fiziksel olarak silinmiş varsayılmamalıdır.
+- DB repair veya DDL değişikliği destructive işlem sayılabilir; önce yedek, rollback planı ve VM/on-prem doğrulama kanıtı gerekir.
+- Bu dosya gerçek secret, DSN, sunucu adı veya private endpoint içermez ve içermemelidir.
