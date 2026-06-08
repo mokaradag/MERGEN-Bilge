@@ -8,6 +8,110 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/sharp-brown-inTxI` (assume merged)
+
+This session shipped the **admin documentation viewer** (primary feature) plus a
+focused hardening/coverage batch. Do NOT redo:
+
+### NEW FEATURE — admin-only in-app documentation viewer (DONE)
+
+- New page **"Yönetici Paneli > Dokümantasyon"** (`tabName = "admin_dokumantasyon"`),
+  consistent with the other admin tabs (uses `admin_page_layout()` pills + ADMIN badge).
+- `R/helpers_admin_documentation.R` (PURE, 20 fns / 445 lines): allowlist registry
+  (`admin_doc_registry`, 10 docs in 4 Turkish groups), path safety
+  (`admin_doc_resolve_path` — unknown id / `..` / absolute => `""`, root containment),
+  UTF-8 read (`admin_doc_read_markdown` via `read_text_lines_utf8`), Turkish-aware
+  ASCII slug (`admin_doc_slugify` — chartr lower, NOT `tolower`, locale-safe),
+  tag-WHITELIST sanitizer (`admin_doc_sanitize_html` + `admin_doc_html_has_risk`),
+  TOC + heading-id injection (`admin_doc_extract_toc`), high-level render
+  (`admin_doc_render_markdown` / `admin_doc_render_document`).
+- `R/module_admin_documentation.R` (6 fns / 246 lines): `adminDokumantasyonUI`,
+  group pills, doc cards, TOC, render cache, `adminDokumantasyonServer`.
+- `www/css/admin_documentation.css` (theme-aware, light overrides scoped to
+  `html[data-theme="light"]`), `www/js/admin_documentation.js` (one delegated click
+  handler: card select -> namespaced `doc_select` input, TOC scroll, TOC toggle).
+- **CLAUDE.md and AGENTS.md are intentionally NOT in the registry** (AI-agent contracts).
+- **Rendering decision (IMPORTANT):** docs are full of R code with `<-`. The project
+  `render_safe_markdown_html()` PRE-escapes `<`/`>`, which corrupts code blocks
+  (`x <- 1` -> `x &lt;- 1` -> displays `&lt;`). So the viewer renders with
+  `commonmark::markdown_html(..., extensions=c("strikethrough","table"))` directly
+  (allowed — only `helpers_messaging.R` is contract-banned from direct commonmark;
+  `helpers_chartlab.R`/`helpers_claude_code.R` already call it) THEN runs the
+  tag-whitelist output sanitizer. Docs are TRUSTED allowlisted repo files; the
+  sanitizer is defense-in-depth (escapes script/iframe/style/etc., strips on*/style,
+  neutralizes javascript:/vbscript:/data:text/html). DO NOT switch the viewer to
+  `render_safe_markdown_html` — it breaks R code display.
+- **Perf:** `admin_doc_html_has_risk` is a fast single-pass risk scan; if NO xss
+  pattern exists the expensive tokenize is skipped. This took technical-reference.md
+  (240 KB) from ~7.8 s to ~0.42 s. Renders are cached per doc per session. Do NOT
+  remove the fast path; the whole-string tokenize on a 270 KB string is ~5 s
+  (gregexpr+regmatches splice), so only run it when risk is actually present.
+- Wiring: `R/config_source_manifest.R` (helper before module, after admin_yanit),
+  `R/config_ui_assets.R` (css in `page` group after `admin_yanit_analizi.css`; js in
+  `deferred` group after `health_dashboard.js`), `ui.R` tabItem,
+  `R/server_observers_misc.R` menuSubItem + `adminDokumantasyonServer(...)` init.
+- Test `tests/testthat/test-admin-documentation-behavior.R` (135 assertions, 0/0/0/0):
+  registry/allowlist, CLAUDE/AGENTS exclusion, path safety, UTF-8, code/table/list
+  render, XSS boundary (direct + indirect), TOC anchors + uniqueness, slugify,
+  all-docs render, UI builders, `testServer` (group switch / doc select / unknown-id
+  reject / refresh toast). NOTE: the refresh observer is `ignoreInit=TRUE` ->
+  PRIME-THEN-SET (`setInputs(refresh_analytics=1); setInputs(refresh_analytics=2)`).
+
+### PRIORITY 1 — concurrency: NOT triggered
+
+The new module uses NO async primitives (`%...>%`/`promises`/`later`/
+`tracked_future_promise`). No async audit was needed. The DOCX clobber fix from the
+prior session is still the only known concrete async bug and is already fixed.
+
+### PRIORITY 5 — 2 new behavioral test files (+39 assertions, 0/0/0/0)
+
+- `test-source-manifest-read-parse-behavior.R` (19): `source_manifest_read_file_with_encoding`
+  (BOM strip, **CRLF/CR -> real LF** contract — proves no literal "n" corruption,
+  result parses), `source_manifest_try_parse_file` (valid->TRUE, CRLF-valid->TRUE,
+  syntax-error->stop). Temp files written with `writeBin(charToRaw(...))` for exact bytes.
+- `test-server-runtime-contracts-behavior.R` (20): `is_server_runtime_context`,
+  `.server_runtime_require_context`/`_require_values`/`_require_functions`/
+  `_invoke_auth_ready_callback` (contracts file) and `.server_runtime_require_named_functions`/
+  `_require_environment` (named-contracts file). Pure guards; assert Turkish error
+  + owner label propagation.
+- Untested top-level fn count: 83 -> **73** (admin_doc internals + the above now covered).
+
+### VALIDATION (this session)
+
+- `Rscript tests/scripts/parse_sanity_check.R` -> OK (722 files).
+- `test-maintainability-ratchet.R` -> 156 pass / 0 fail / 0 warn, **score 100/100**,
+  max file lines 765, max fns 24, 0 over-budget. (New files: helper 445/20, module 246/6.)
+- New/changed tests standalone + `test_dir` batch -> 174 assertions, 0 fail/warn/skip.
+- Contract regressions clean: `test-runtime-network-boundary-contract.R`,
+  `test-frontend-selector-contract.R`, `test-production-contracts.R`,
+  `test-streaming-markdown-safety-contract.R`, `test-accessibility-contract.R`,
+  `test-source-manifest-contract.R`, `test-global-source-manifest-contract.R`,
+  `test-frontend-maintainability-ratchet.R` all PASS.
+- `bash tools/ai_validate.sh quick` -> FAILED at app-source-smoke (cloud: `logger`
+  package absent). Fell back to `bash tools/ai_validate.sh cloud-quick` -> PASS:
+  `failed_steps=0`, `skipped_steps=1`, `profile_requested=cloud-quick`,
+  `profile_effective=quick`, `app_source_smoke_status=skipped`,
+  `db_sso_vm_validation_performed=false`,
+  `sql_server_turkish_encoding_preflight_status=not_performed_by_ai_validate`.
+- KNOWN cloud-only: `test-ui-asset-manifest-contract.R` still fails on MISSING VENDORED
+  assets (`css/all.min.css`, `codemirror/*`, `lib/threejs/*`) — pre-existing, NOT my
+  files (`css/admin_documentation.css` / `js/admin_documentation.js` exist & pass the
+  ordering checks). App boot / browser / VM / DB / SQL-Server Turkish encoding were
+  NOT proven (cloud limit, not a regression). No screenshot (cloud cannot boot the app).
+
+### NEW LESSONS
+
+- `commonmark::markdown_html` has NO `safe`/escape arg in this version, and PASSES
+  raw HTML blocks/tags through unescaped -> sanitize the OUTPUT, do not trust it.
+- PRE-escaping `<`/`>` before commonmark corrupts code blocks (`<-` -> `&lt;-` ->
+  rendered `&amp;lt;`). For docs with code, render then sanitize, don't pre-escape.
+- `gregexpr`/`regmatches<-` on a 270 KB string is ~2 s EACH -> guard expensive
+  tokenization behind a cheap whole-string risk grep.
+- Turkish `tolower("I")` -> "ı" (locale-dependent) -> for ASCII slugs transliterate
+  Turkish first, then `chartr("A-Z","a-z")`, never `tolower`.
+
+---
+
 ## LATEST SESSION RESULTS — `claude/beautiful-goodall-8yK70` (assume merged)
 
 This session is COMPLETE. Do NOT redo the following:

@@ -111,6 +111,7 @@ miscObserversInit <- function(input, output, session, values,
         menuSubItem("Geri Bildirim Analizi", tabName = "admin_geri_bildirim", icon = icon("comment-dots")),
         menuSubItem("Hata Analizi", tabName = "admin_hata_analizi", icon = icon("bug")),
         menuSubItem("Yanıt Geri Bildirimi", tabName = "admin_yanit_analizi", icon = icon("thumbs-up")),
+        menuSubItem("Dokümantasyon", tabName = "admin_dokumantasyon", icon = icon("book")),
         menuSubItem("Sistem Durumu", tabName = "health", icon = icon("heartbeat"))
       )
     }
@@ -129,6 +130,7 @@ miscObserversInit <- function(input, output, session, values,
     adminGeriBildirimServer("admin_geri_bildirim_module")
     adminHataAnaliziServer("admin_hata_analizi_module")
     adminYanitAnaliziServer("admin_yanit_analizi_module")
+    adminDokumantasyonServer("admin_dokumantasyon_module")
   }, ignoreInit = FALSE)
   
   # Mesaj sayısı çıktısı

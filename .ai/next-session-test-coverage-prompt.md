@@ -16,6 +16,40 @@ Read `CLAUDE.md` first — it is the binding operational guide; follow every con
   If for some reason no branch is assigned, create a brand-new one (e.g. `claude/test-coverage-s3-*`).
 - When you finish, **open a NEW pull request** for your fresh branch. Commit messages in Turkish.
 
+## CONTEXT — what the LATEST session (`claude/sharp-brown-inTxI`) added (do NOT redo)
+- **NEW FEATURE: admin documentation viewer** ("Yönetici Paneli > Dokümantasyon").
+  Pure helper `R/helpers_admin_documentation.R` + module `R/module_admin_documentation.R`
+  + `www/css/admin_documentation.css` + `www/js/admin_documentation.js`. Renders
+  allowlisted repo docs (README/RUNBOOK/RENV_LOCK_STATUS/ai_rehber/docs/*; CLAUDE.md &
+  AGENTS.md excluded) as safe rich HTML with a TOC. Renders via
+  `commonmark::markdown_html` directly THEN a tag-whitelist output sanitizer (NOT
+  `render_safe_markdown_html`, which pre-escapes `<`/`>` and would corrupt R code
+  `x <- 1`). Fast risk-scan (`admin_doc_html_has_risk`) skips the expensive tokenize
+  for clean docs (240 KB doc: 7.8 s -> 0.42 s).
+- **3 behavioral test deliverables (174 assertions total, 0 fail/0 warn/0 skip,
+  standalone + batch):**
+  - `test-admin-documentation-behavior.R` (135): registry/allowlist, CLAUDE/AGENTS
+    exclusion, path safety (unknown/`..`/absolute -> ""), UTF-8 Turkish, code(`<-`)/
+    table/list render, XSS boundary (script/iframe/on*/javascript: neutralized — direct
+    `admin_doc_sanitize_html`/`_html_has_risk`/`_clean_attributes`/`_clean_one_tag`/
+    `_extract_toc` AND via render), TOC anchors + Turkish ASCII slug + uniqueness, all-10-docs
+    render, UI builders (`admin_doc_card_list_ui`/`_toc_ui`/`_build_content_ui`),
+    `testServer` (group switch / doc select / unknown-id reject / refresh toast).
+  - `test-source-manifest-read-parse-behavior.R` (19): `source_manifest_read_file_with_encoding`
+    (BOM strip, **CRLF/CR -> real LF** — proves no literal "n" corruption + parses) and
+    `source_manifest_try_parse_file` (valid->TRUE, CRLF-valid->TRUE, syntax->stop). Temp
+    files via `writeBin(charToRaw(...))` for exact bytes.
+  - `test-server-runtime-contracts-behavior.R` (20): `is_server_runtime_context`,
+    `.server_runtime_require_context`/`_require_values`/`_require_functions`/
+    `_invoke_auth_ready_callback` + `.server_runtime_require_named_functions`/
+    `_require_environment` (pure boot-contract guards; Turkish error + owner label).
+- **GOTCHAS confirmed this session:** the doc-viewer refresh observer is
+  `observeEvent(input$refresh_analytics, ignoreInit=TRUE)` -> a SINGLE `setInputs` is
+  consumed as init; use PRIME-THEN-SET. `commonmark::markdown_html` passes raw HTML
+  through (no safe arg) -> sanitize the OUTPUT. Turkish `tolower("I")` -> "ı" -> for
+  ASCII slugs transliterate then `chartr`, never `tolower`. Untested top-level fn
+  count is now ~73 (admin_doc internals + manifest IO + runtime-contract guards covered).
+
 ## CONTEXT — what session `claude/beautiful-goodall-8yK70` added (do NOT redo)
 - **DOCX async clobber FIXED** in `R/module_file_preview.R` (inline `docx_preview_seq`
   reactiveVal guard on the large-DOCX `%...>%`/`%...!%` callbacks) +

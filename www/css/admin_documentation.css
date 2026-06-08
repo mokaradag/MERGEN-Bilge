@@ -1,0 +1,388 @@
+/* ==========================================================================
+   Dosya Yolu: www/css/admin_documentation.css
+   Açıklama: Yönetici paneli "Dokümantasyon" sayfası stilleri.
+             Tema-duyarlıdır: yüzey/metin için tema değişkenleri (variables.css
+             + theme_tokens.css) kullanılır; koyu tema varsayılan, açık tema
+             html[data-theme="light"] altında ezilir. Koyu tema regresyona
+             uğratılmaz.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Genel yerleşim
+   -------------------------------------------------------------------------- */
+.mb-doc-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+/* Belge seçici kartlar (yatay, sarmalı) */
+.mb-doc-card-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.mb-doc-card {
+  flex: 1 1 220px;
+  max-width: 320px;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--background-light, #2a2a2a);
+  color: var(--text-primary, #fff);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+}
+
+.mb-doc-card:hover {
+  border-color: var(--mb-brand-support-teal, #077780);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  transform: translateY(-1px);
+}
+
+.mb-doc-card-active {
+  border-color: var(--mb-brand-support-teal, #077780);
+  box-shadow: 0 0 0 2px rgba(7, 119, 128, 0.35);
+}
+
+.mb-doc-card-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.mb-doc-card-desc {
+  font-size: 12px;
+  opacity: 0.78;
+  line-height: 1.35;
+}
+
+/* Araç çubuğu: İçindekiler aç/kapat + kaynak dosya */
+.mb-doc-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mb-doc-toc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mb-doc-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  opacity: 0.82;
+}
+
+.mb-doc-source code {
+  background: rgba(127, 127, 127, 0.18);
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* İki sütunlu yerleşim: İçindekiler + gövde */
+.mb-doc-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+/* İçindekiler gizlendiğinde tek sütun */
+.mb-doc-toc-collapsed .mb-doc-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mb-doc-toc-collapsed .mb-doc-toc {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   İçindekiler (TOC)
+   -------------------------------------------------------------------------- */
+.mb-doc-toc {
+  position: sticky;
+  top: 8px;
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 12px;
+  background: var(--background-light, #2a2a2a);
+  padding: 12px 14px;
+}
+
+.mb-doc-toc-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 8px;
+  color: var(--mb-brand-support-teal, #14b8c4);
+}
+
+.mb-doc-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mb-doc-toc-item {
+  margin: 2px 0;
+}
+
+.mb-doc-toc-lvl1 { padding-left: 0; }
+.mb-doc-toc-lvl2 { padding-left: 12px; }
+.mb-doc-toc-lvl3 { padding-left: 24px; }
+
+.mb-doc-toc-link {
+  display: block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--text-primary, #e6e6e6);
+  text-decoration: none;
+  opacity: 0.85;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.mb-doc-toc-link:hover {
+  background: rgba(7, 119, 128, 0.16);
+  opacity: 1;
+  text-decoration: none;
+}
+
+.mb-doc-toc-empty {
+  font-size: 12px;
+  opacity: 0.7;
+  margin: 4px 0 0;
+}
+
+/* --------------------------------------------------------------------------
+   Belge gövdesi (Markdown -> HTML)
+   -------------------------------------------------------------------------- */
+.mb-doc-body-wrap {
+  min-width: 0;
+}
+
+.mb-doc-body {
+  border: 1px solid var(--border-color, #333);
+  border-radius: 12px;
+  background: var(--background-light, #232323);
+  color: var(--text-primary, #e6e6e6);
+  padding: 22px 26px;
+  font-size: 14.5px;
+  line-height: 1.7;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.mb-doc-body h1,
+.mb-doc-body h2,
+.mb-doc-body h3,
+.mb-doc-body h4,
+.mb-doc-body h5,
+.mb-doc-body h6 {
+  line-height: 1.3;
+  font-weight: 700;
+  margin: 1.4em 0 0.6em;
+  scroll-margin-top: 16px;
+}
+
+.mb-doc-body h1 {
+  font-size: 1.7em;
+  border-bottom: 2px solid var(--border-color, #3a3a3a);
+  padding-bottom: 0.3em;
+}
+
+.mb-doc-body h2 {
+  font-size: 1.4em;
+  border-bottom: 1px solid var(--border-color, #3a3a3a);
+  padding-bottom: 0.25em;
+}
+
+.mb-doc-body h3 { font-size: 1.2em; }
+.mb-doc-body h4 { font-size: 1.05em; }
+.mb-doc-body h5 { font-size: 0.95em; }
+.mb-doc-body h6 { font-size: 0.9em; opacity: 0.85; }
+
+.mb-doc-body p { margin: 0.7em 0; }
+
+.mb-doc-body a {
+  color: #5eb8ff;
+  text-decoration: none;
+}
+
+.mb-doc-body a:hover { text-decoration: underline; }
+
+.mb-doc-body ul,
+.mb-doc-body ol {
+  margin: 0.6em 0;
+  padding-left: 1.6em;
+}
+
+.mb-doc-body li { margin: 0.25em 0; }
+
+.mb-doc-body blockquote {
+  margin: 0.9em 0;
+  padding: 0.4em 1em;
+  border-left: 4px solid var(--mb-brand-support-teal, #077780);
+  background: rgba(7, 119, 128, 0.10);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary, #cfcfcf);
+}
+
+.mb-doc-body blockquote p { margin: 0.3em 0; }
+
+/* Satır içi kod */
+.mb-doc-body code {
+  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+  font-size: 0.88em;
+  background: rgba(127, 127, 127, 0.20);
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+
+/* Kod blokları */
+.mb-doc-body pre {
+  margin: 0.9em 0;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #15171c;
+  border: 1px solid var(--border-color, #333);
+  overflow-x: auto;
+}
+
+.mb-doc-body pre code {
+  display: block;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: 0.85em;
+  line-height: 1.55;
+  color: #e6edf3;
+}
+
+/* Tablolar */
+.mb-doc-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  display: block;
+  overflow-x: auto;
+}
+
+.mb-doc-body th,
+.mb-doc-body td {
+  border: 1px solid var(--border-color, #3a3a3a);
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 13.5px;
+}
+
+.mb-doc-body th {
+  background: rgba(7, 119, 128, 0.18);
+  font-weight: 600;
+}
+
+.mb-doc-body tr:nth-child(even) td {
+  background: rgba(127, 127, 127, 0.07);
+}
+
+.mb-doc-body hr {
+  border: none;
+  border-top: 1px solid var(--border-color, #3a3a3a);
+  margin: 1.4em 0;
+}
+
+.mb-doc-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+/* Salt okunur notu + boş durum */
+.mb-doc-readonly-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.mb-doc-empty {
+  text-align: center;
+  padding: 40px 20px;
+  opacity: 0.85;
+}
+
+.mb-doc-empty .fa,
+.mb-doc-empty svg {
+  font-size: 28px;
+  color: var(--warning-color, #f59e0b);
+  margin-bottom: 10px;
+}
+
+/* --------------------------------------------------------------------------
+   Açık tema ezmeleri (yalnızca html[data-theme="light"])
+   -------------------------------------------------------------------------- */
+html[data-theme="light"] .mb-doc-card:hover {
+  box-shadow: 0 6px 18px rgba(15, 28, 51, 0.10);
+}
+
+html[data-theme="light"] .mb-doc-body a {
+  color: #1d4ed8;
+}
+
+html[data-theme="light"] .mb-doc-body pre {
+  background: #f3f5fb;
+  border-color: var(--border-color, #d8dde7);
+}
+
+html[data-theme="light"] .mb-doc-body pre code {
+  color: #0f1c33;
+}
+
+html[data-theme="light"] .mb-doc-body code {
+  background: rgba(15, 28, 51, 0.08);
+}
+
+html[data-theme="light"] .mb-doc-source code {
+  background: rgba(15, 28, 51, 0.08);
+}
+
+html[data-theme="light"] .mb-doc-toc-title {
+  color: var(--mb-brand-support-teal, #077780);
+}
+
+/* --------------------------------------------------------------------------
+   Duyarlı (responsive)
+   -------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .mb-doc-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mb-doc-toc {
+    position: relative;
+    max-height: 280px;
+    top: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mb-doc-card {
+    transition: none;
+  }
+}
