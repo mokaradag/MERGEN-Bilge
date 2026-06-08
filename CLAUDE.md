@@ -510,6 +510,26 @@ Protected by:
 
 - Image files (`jpg`, `jpeg`, `png`, `gif`, `webp`, `bmp`, `svg`) are an allowed upload type via `fm_image_extensions()` inside `fm_normal_allowed_extensions()` (single source). The Dosya Yönetimi bulk-upload path validates the extension BEFORE copying to disk, so unsupported types no longer leak (saved-but-hidden). See `tests/testthat/test-image-upload-allowed-behavior.R`.
 - The Dosya Yönetimi file preview (`R/module_file_preview.R`) renders images inline by serving the file through `session$registerDataObj(...)` (same pattern as large-PDF preview) and showing an `<img>`; it must not regress to "Desteklenmeyen Dosya Türü" for these extensions.
+
+### DOCX preview async clobber guard
+
+`R/module_file_preview.R` has a protected DOCX-preview concurrency boundary. Large DOCX previews encode asynchronously and write into the fixed `docx_preview_container` target. Keep the inline `docx_preview_seq <- reactiveVal(0L)` module-scope token. Each DOCX modal open must increment it, capture `docx_open_token`, and guard both the async success `%...>%` callback and the error `%...!%` callback with `identical(isolate(docx_preview_seq()), docx_open_token)` before sending UI messages or stale error toasts.
+
+A stale callback may store a valid base64 result in the cache, but it must not write into the current modal and must not show a stale toast. Do not remove this guard, do not replace it with a global flag, and do not add a large top-level helper just for this boundary.
+
+Regression coverage belongs in `tests/testthat/test-file-preview-docx-async-clobber-behavior.R`. Keep that test deterministic: use `testServer`, mock `future::future` with `local_mocked_bindings(.package = "future")`, return a manually resolved `promises::promise`, and use a non-existent datapath so the async branch is reached without a large fixture.
+
+### Behavioral-test maintenance lessons
+
+Do not redo recently completed behavioral-coverage work: DOCX async clobber protection is already implemented, the MCP absolute-path security contract is re-anchored to stable behavior, and behavioral coverage exists for `call_llm_with_retry`, `.sso_der_*`, file-store mutation helpers, sidebar user panel helpers/server behavior, `resolve_claude_runtime_source_dir`, and `get_user_profile_from_db`.
+
+Keep these lessons in mind for future tests:
+- The base cloud checkout may not have `logger`; do not source `R/config_logging.R` in a zero-skip test unless `logger` is installed first.
+- Do not use fragile frame-counting `glue(.envir = parent.frame(N))` stubs for logger capture.
+- Turkish `toupper` is locale-dependent; assert locale-independent markers instead of uppercased Turkish strings.
+- `testServer` observers with `ignoreInit = TRUE` often need PRIME-THEN-SET input changes.
+- For module custom-message capture, override the root session via `.subset2(session, "parent")`.
+- Mock `future::future({...})` with a manually resolvable `promises::promise` when testing async behavior; do not force real workers or large fixtures.
 - VISION IS IMPLEMENTED (capability-primary, real — NOT faked). Attaching an image to Model Bağlamı and asking about it works when (a) the selected model is vision-capable and (b) the global kill-switch is not explicitly disabled. This replaces the old "no vision pipeline" limitation.
   - Pure helpers: `R/helpers_vision_context.R` (image detection, MIME, base64 data-url with a 5 MB cap, OpenAI multimodal content builder, the `none`-branch context-block loop, the explicit Turkish "analiz edilemiyor" note, and the `mergen_vision_enabled()` kill-switch) and `R/helpers_vision_model_capabilities.R` (the pure `parse_vision_models_env()` + `apply_vision_model_capabilities()` that mark `api_config$local_model_capabilities[[m]]$vision`). Keep `R/helpers_vision_model_capabilities.R` loaded BEFORE `R/config_api.R` in the manifest, and `R/helpers_vision_context.R` BEFORE `R/helpers_send_message_prompting.R`. Neither file touches Shiny/reactive/network/DB.
   - Capability is the single source of truth: `mergen_is_vision_model(model, api_config)` reads `caps[[m]]$vision` only (mirrors `is_thinking_model`). `config_api.R` defaults `vision = FALSE` on every `local_model_capabilities` entry, then sets `vision = TRUE` for the IDs in `MERGEN_VISION_MODELS` (`;`/`,`-separated — model IDs may contain spaces, so split on `;`/`,` ONLY, never whitespace) plus the Kodlama Uzmanı deep-thinking models (`CODING_DEEP_LOW_MODEL`/`CODING_DEEP_HIGH_MODEL`). Do NOT hardcode model names in functions; drive it from config/data + env. `config_api.R` must stay within its 700-line per-file ratchet budget — the marking lives in the helper, called via a guarded `exists("apply_vision_model_capabilities", ...)`.
@@ -5669,18 +5689,18 @@ testthat::test_file("tests/testthat/test-production-contracts.R")
 
 Recent production-hardening coverage adds focused contract tests for source manifest integrity, secret leakage, runtime network boundaries, and expanded UTF-8 parse coverage of high-risk production files. The runtime network-boundary test is intended to catch accidental public internet/CDN dependencies in executable runtime code, not harmless documentation/license references: it strips R/JS/CSS comments, allows SVG namespace URLs, `example.*` placeholders, known internal/intranet hosts, and skips vendored offline assets such as `www/js/highlight.min.js` and `www/css/all.min.css`. Use `MERGEN_ALLOWED_INTERNAL_URL_REGEX` only for additional organization-specific internal URL allowlisting.
 
-### Behavioral test coverage expansion notes from 02-03 June 2026
+### Behavioral test coverage expansion notes
 
-- The 02-03 June 2026 commits added broad offline, deterministic behavioral coverage for previously untested modules/server files and pure helpers.
+- Recent behavioral-coverage updates added broad offline, deterministic behavioral coverage for previously untested modules/server files and pure helpers.
 - PR #439 covered 42 previously untested R/Shiny modules/server files, added around 34 new test files, reached about 627 assertions after that wave, and included the behavior-preserving `message_search` `gregexpr(..., fixed = TRUE)` warning fix.
 - PR #441 covered 20+ additional modules/helpers, including image generation, AI Expert, admin error analysis, file-manager runtime, startup screen, STT, ChartLab, user identity, messaging rendering, DB chat readers, Claude Code formatting, package validation, logging resolvers, health formatters, version history resolver, and welcome builders.
 - New behavioral tests must stay offline and deterministic: use local stubs, isolated environments, `MockShinySession` / `testServer`, and no real LLM/TTS/DB/browser/network unless explicitly required by an existing validation gate.
 - Warnings in focused behavior tests should be treated as regressions where the test path expects zero warnings. If production emits a spurious warning, fix it surgically with a regression test rather than suppressing it globally.
 - Preserve Turkish comments and `test_that` descriptions with proper UTF-8 Turkish characters.
 
-### Focused behavioral coverage from claude/lucid-mayer-U1iHC
+### Focused behavioral regression coverage
 
-Commit `32dd9afd0d993e3590b51db296999c9ca78dd1af` added or strengthened the following protected focused coverage list:
+The following focused coverage list is protected and should remain behavior-level regression coverage:
 
 - tests/testthat/test-ai-expert-chunking-behavior.R
 - tests/testthat/test-api-key-identity-resolution-behavior.R
