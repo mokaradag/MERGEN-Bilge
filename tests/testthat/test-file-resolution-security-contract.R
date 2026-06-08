@@ -134,9 +134,18 @@ test_that("runtime çağrı noktaları güvenlik bayraklarını açmaz", {
 test_that("MCP resolver mutlak path argümanını doğrudan kabul etmez", {
   txt <- .read_security_contract_text("R/helpers_mcp_file_resolver.R")
 
+  # NOT: Üretim kodundaki güvenlik davranışı "ignored" yerine daha güçlü olan
+  # "rejected" (ok = FALSE + Türkçe kullanıcı hatası) ile uygulanıyor. Bu
+  # sözleşme artık kararlı davranış çıpalarına dayanır: hem mutlak-yol
+  # reddetme kontrolü (is_abs) hem de kullanıcıya dönen Türkçe ret mesajı.
   expect_true(
-    grepl("Absolute path argument ignored", txt, fixed = TRUE),
-    info = "MCP resolver mutlak path argümanlarını doğrudan dosya okuma yetkisine çevirmemelidir."
+    grepl("is_abs", txt, fixed = TRUE),
+    info = "MCP resolver mutlak yol argümanını tespit eden is_abs kontrolünü korumalıdır."
+  )
+
+  expect_true(
+    grepl("Mutlak dosya yolu kabul edilmez", txt, fixed = TRUE),
+    info = "MCP resolver mutlak path argümanlarını doğrudan dosya okuma yetkisine çevirmemeli; reddetmelidir."
   )
 
   expect_false(
