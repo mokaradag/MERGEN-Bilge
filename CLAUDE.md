@@ -2899,9 +2899,12 @@ Do not reintroduce a separate static JS-only rendering path as the primary saved
 
 Do not move chart type aliasing, mapping guessing, or aggregation helpers back into `R/helpers_chartlab.R`.
 
+ChartLab (and the interactive `R/module_chartlab.R`) renders charts through **highcharter only**. The previous `highcharter → plotly+ggplot2 → error` fallback chain was removed: in this deployment charts always render with highcharter (`ui.R` already references `highcharter::highchartOutput` for the hidden dependency loader, and the on-prem `renv.lock` pins highcharter). The container selection is now `highchartOutput` when highcharter is present and `shiny::uiOutput` otherwise; `wire_chart_output(...)` / `render_one(...)` render with `renderHighchart` when highcharter is present and degrade to a `renderUI` error message otherwise (graceful, no crash). Do not reintroduce a `plotly::renderPlotly` / `ggplot()` / `geom_*` chart-render fallback in `R/helpers_chartlab.R` or `R/module_chartlab.R`. The dead `have_plotly_gg` / `have_highcharter` flags were removed from `R/config_file_store.R`. This change does not touch the `R/server_outputs_downloads.R` + `ui.R` plotly dependency-preloader (`deps_pl`/`plotly_html`), which remains contract-protected by `tests/testthat/test-downloads-outputs-behavior.R`; removing plotly entirely (preloader + making highcharter a required package) is a separate follow-up.
+
 Protected by:
 
 ```text
+tests/testthat/test-chart-engine-highcharter-only-contract.R
 tests/testthat/test-chartlab-spec-refactor-contract.R
 tests/testthat/test-chat-message-formatting-refactor-contract.R
 tests/testthat/test-mcp-chart-tools-refactor-contract.R

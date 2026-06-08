@@ -99,7 +99,6 @@ chartLabServer <- function(id) {
 
     # helpers ---------------------------------------------------------
     have_hc <- reactive({ requireNamespace("highcharter", quietly = TRUE) })
-    have_pl <- reactive({ requireNamespace("plotly", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE) })
 
     make_id <- function() paste0("cl_", sprintf("%.0f", as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))  # as.integer(ms~1.78e12) 32-bit tasmasi NA/uyari uretirdi; sprintf ile tam sayisal damga
 	
@@ -384,106 +383,9 @@ chartLabServer <- function(id) {
         return(TRUE)
       }
 
-      if (have_pl()) {
-        output[[out_id]] <- plotly::renderPlotly({
-          library(ggplot2); library(plotly)
-          p <- NULL
-          if (identical(type,"hist")) {
-            req(x); p <- ggplot(df, aes(x = .data[[x]])) + geom_histogram(bins = ifelse(isTRUE(!is.na(bins)), bins, 30))
-
-          } else if (identical(type, "pie") || identical(type, "donut")) {
-            req(x)
-            if (!is.null(y)) {
-              f <- if (is.null(agg)) "sum" else tolower(agg)
-              fun <- switch(f, sum = sum, mean = mean, median = median, min = min, max = max, sum)
-              dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) fun(z, na.rm = TRUE))
-              names(dd) <- c(x, "val")
-            } else {
-              dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
-              names(dd) <- c(x, "val")
-            }
-            if (isTRUE(!is.na(top_n))) dd <- head(dd, top_n)
-            return(plotly::plot_ly(dd, labels = ~ .data[[x]], values = ~ val, type = "pie",
-                                   hole = if (identical(type,"donut") || donut) 0.6 else 0))
-
-          } else if (identical(type,"bar")) {
-            chart_type <- if (orientation %in% c("h","horizontal")) "bar" else "column"
-            if (!is.null(y)) {
-              f <- if (is.null(agg)) "sum" else tolower(agg)
-              fun <- switch(f, sum = sum, mean = mean, median = median, min = min, max = max, sum)
-              if (is.null(grp)) {
-                dd <- aggregate(df[[y]], by=list(df[[x]]), FUN = function(z) fun(z, na.rm = TRUE))
-                names(dd) <- c(x, "val")
-                p <- ggplot(dd, aes(x = .data[[x]], y = val)) + geom_col()
-              } else {
-                dd <- stats::aggregate(df[[y]], by=list(df[[x]], df[[grp]]),
-                                       FUN = function(z) fun(z, na.rm = TRUE))
-                names(dd) <- c(x, grp, "val")
-                pos <- if (stack == "percent") "fill" else "stack"
-                p <- ggplot(dd, aes(x = .data[[x]], y = val, fill = .data[[grp]])) + geom_col(position = pos)
-              }
-            } else {
-              dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
-              names(dd) <- c(x, "n")
-              if (isTRUE(!is.na(top_n))) dd <- head(dd, top_n)
-              p <- ggplot(dd, aes(x = .data[[x]], y = n)) + geom_col()
-            }
-            if (orientation %in% c("h","horizontal")) {
-              p <- p + coord_flip()
-            }
-
-          } else if (identical(type,"line")) {
-            req(x, y)
-            p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], color = .data[[grp]])) +
-              { if (smooth) geom_smooth(se = FALSE, method = "loess", span = 0.6) else geom_line() }
-
-          } else if (identical(type,"scatter")) {
-            req(x, y)
-            p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], color = .data[[grp]])) + geom_point(alpha = 0.8)
-
-          } else if (identical(type,"area")) {
-            req(x, y)
-            geom_fun <- if (stack == "percent") geom_area else geom_area
-            p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], fill = .data[[grp]])) +
-              { if (smooth) geom_smooth(aes(group = .data[[grp]]), se = FALSE, method = "loess", span = 0.6) else geom_fun(position = "stack") }
-
-          } else if (identical(type,"pareto")) {
-            req(x)
-            if (!is.null(y)) {
-              f <- if (is.null(agg)) "sum" else tolower(agg)
-              fun <- switch(f, sum = sum, mean = mean, median = median, min = min, max = max, sum)
-              dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) fun(z, na.rm = TRUE))
-              names(dd) <- c(x, "val")
-            } else {
-              dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE))
-              names(dd) <- c(x, "val")
-            }
-            dd <- dd[order(dd$val, decreasing = TRUE), , drop = FALSE]
-            if (isTRUE(!is.na(top_n))) dd <- head(dd, top_n)
-            dd$cum <- cumsum(dd$val)
-            tot <- sum(dd$val, na.rm = TRUE)
-            dd$cum_pct <- if (tot > 0) 100 * dd$cum / tot else 0
-
-            return(
-              plotly::plot_ly() %>%
-                plotly::add_bars(x = dd[[x]], y = dd$val, name = "Değer", yaxis = "y1") %>%
-                plotly::add_lines(x = dd[[x]], y = dd$cum_pct, name = "Kümülatif %", yaxis = "y2") %>%
-                plotly::layout(
-                  yaxis2 = list(overlaying = "y", side = "right", range = c(0,100), ticksuffix = "%")
-                )
-            )
-
-          } else {
-            stop("Unknown chart type")
-          }
-          plotly::ggplotly(p)
-        })
-        return(TRUE)
-      }
-
-      # no engine available:
+      # highcharter yoksa (üretimde her zaman kuruludur):
       output[[out_id]] <- renderUI({
-        div(style="color:#f87171", "Ne highcharter ne de plotly+ggplot2 kurulu. Lütfen birini yükleyin.")
+        div(style="color:#f87171", "Grafik motoru (highcharter) kurulu değil. Lütfen highcharter paketini yükleyin.")
       })
       FALSE
     }
@@ -513,8 +415,6 @@ chartLabServer <- function(id) {
                   paste0("x=", sp$mapping$x %||% "-", "  y=", sp$mapping$y %||% "-", "  group=", sp$mapping$group %||% "-")),
               if (requireNamespace("highcharter", quietly = TRUE))
                 highcharter::highchartOutput(ns(paste0("hc_", id)), height = "380px")
-              else if (requireNamespace("plotly", quietly = TRUE))
-                plotly::plotlyOutput(ns(paste0("hc_", id)), height = "380px")
               else
                 uiOutput(ns(paste0("hc_", id)))
           ),

@@ -7,14 +7,9 @@
 # global.R tarafından utils_path_helpers.R'den sonra source() ile çağrılır.
 # ==============================================================================
 
-# --- ORTAM DEĞİŞKENLERİ AES-GCM VE OPSİYONEL VİZ KÜTÜPHANELERİ ---
+# --- ORTAM DEĞİŞKENLERİ: AES-GCM ---
 # Ortamda AES-GCM var mı? Eski openssl sürümlerinde bu fonksiyon yoktur.
 HAVE_AES_GCM <- isTRUE("aes_gcm_encrypt" %in% getNamespaceExports("openssl"))
-
-# Opsiyonel görselleştirme kütüphaneleri (yoksa hata verme)
-have_highcharter <- requireNamespace("highcharter", quietly = TRUE)
-have_plotly_gg   <- (requireNamespace("plotly", quietly = TRUE) &&
-                     requireNamespace("ggplot2", quietly = TRUE))
 
 # ==============================================================================
 # PAYLAŞIMLI DOSYA DEPOSU (ana süreç + worker'lar için ortak)

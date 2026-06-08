@@ -16,6 +16,16 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 Aşağıdaki bölüm, güncel değişiklik notlarını kronolojik/tematik bakım izi kaybolmadan izler.
 
+### Karmaşıklık azaltma: grafik render yolu tek motorlu (highcharter) hale getirildi
+
+ChartLab grafikleri (`R/helpers_chartlab.R`) ve etkileşimli ChartLab modülü (`R/module_chartlab.R`) her zaman highcharter ile render edilir; eski `highcharter → plotly+ggplot2 → hata` fallback zinciri ulaşılamayan ölü koddu. Bu deployment'ta highcharter daima kuruludur (`ui.R` gizli bağımlılık yükleyicisi zaten `highcharter::highchartOutput` kullanır ve on-prem `renv.lock` highcharter'ı sabitler), dolayısıyla plotly+ggplot2 dalları gerçekte hiç çalışmıyordu.
+
+Bu render fallback'i kaldırıldı: container seçimi artık highcharter varsa `highchartOutput`, yoksa `shiny::uiOutput`; `wire_chart_output()` / `render_one()` highcharter varsa `renderHighchart`, yoksa zarif bir `renderUI` hata mesajı üretir (çökme yok). Kullanılmayan `have_plotly_gg` / `have_highcharter` bayrakları `R/config_file_store.R`'den temizlendi. Toplam ~208 satır ölü/ulaşılamayan kod kaldırıldı (`helpers_chartlab.R` 449→345, `module_chartlab.R` 531→432, `config_file_store.R` −5); maintainability skoru 100/100 ve en büyük dosya metriği değişmedi.
+
+Davranış korunur: canlı highcharter render dalı bu değişiklikle hiç değişmedi (kaynak düzeyinde highcharter render satırları HEAD ile birebir aynı). `R/server_outputs_downloads.R` + `ui.R` içindeki plotly bağımlılık-önyükleyicisine (`deps_pl`/`plotly_html`) dokunulmadı; bu ayrı bir önyükleme mekanizmasıdır ve `test-downloads-outputs-behavior.R` ile korunur. Plotly'yi tamamen kaldırmak (önyükleyici + highcharter'ı zorunlu pakete almak) ayrı bir takip işidir.
+
+Koruma: yeni `tests/testthat/test-chart-engine-highcharter-only-contract.R` sözleşme testi, render dosyalarında plotly/ggplot2 render fallback işaretçilerinin (`plotly::`, `renderPlotly`, `ggplot(`, `geom_`, `have_pl(`) bulunmadığını, highcharter render yolunun (`highchartOutput`, `renderHighchart`) ve highcharter-yoksa zarif hata davranışının korunduğunu dondurur. Mevcut ChartLab/MCP grafik testleri yeşil kalır (81 geçti, 8 atlandı — atlananlar zaten highcharter/plotly kurulu olmayan ortamda atlanan testler). Doğrulama: parse sanity + odaklı sözleşme testleri (`bash tools/ai_validate.sh cloud-quick`) yeşil; tam runtime/app boot, tarayıcı UX ve Windows VM/SSO/DB doğrulaması bu bulut oturumunda yapılmadı.
+
 ### Karmaşıklık azaltma: Yapılandırma ayarları UI'si odaklı kart yapıcılarına bölündü
 
 Ayarlar sayfasının "Yapılandırma" alt sekmesi UI'si tek bir 710 satırlık `settingsYapilandirmaUIImpl(id)` fonksiyonuydu; kod tabanındaki en büyük tek fonksiyondu ve gezinmesi zordu. Bu fonksiyon artık ince bir kompozitör olup her ayar kartını odaklı, saf bir `.syap_*(ns)` yapıcısına delege eder: `.syap_header_row`, `.syap_model_card`, `.syap_api_key_card`, `.syap_tools_card`, `.syap_claude_code_card`, `.syap_interface_shortcuts_row`, `.syap_audio_card`, `.syap_ai_expert_card`, `.syap_image_card`, `.syap_summarization_card`, `.syap_analysis_card`.
