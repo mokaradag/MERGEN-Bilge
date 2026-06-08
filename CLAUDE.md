@@ -2603,6 +2603,13 @@ The expected initialization boundary is `R/server_init_session_state.R`, which p
 
 MCP registry snapshot synchronization in `R/server_session_cache.R` should flow through `session_runtime_store_snapshot_mcp(session, files_snapshot)`.
 
+Vision / uploaded image session boundary:
+
+- `session$userData$current_session_files` is shared by MCP file preparation and the vision/Image Input path. Do not clear it on non-`mcp_excel` requests.
+- `mergen_prepare_mcp_session_files()` may return an empty MCP registry snapshot for non-MCP paths, but it must preserve the existing `current_session_files` store so follow-up questions about the same uploaded image keep working without relogin.
+- Isolated tests that source `R/helpers_send_message_core.R` and exercise this helper must also source `R/utils_session_cleanup.R`, because this path uses `session_user_data_get_list()`.
+- Keep `.Renviron` / `.Renviron.example` vision model IDs separated only by `;` or `,`; do not split model IDs on whitespace.
+
 The file upload/summary pipeline, file-click observers, and new-chat cleanup should use `session_runtime_store_*` helpers instead of assuming another module already created the list.
 
 This prevents hidden source-order and state-orchestration coupling around file context, MCP Excel visibility, summaries, and chart storage.
