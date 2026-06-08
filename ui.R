@@ -410,6 +410,7 @@ ui <- dashboardPage(
       tabItem(tabName = "admin_geri_bildirim", adminGeriBildirimUI("admin_geri_bildirim_module")),
       tabItem(tabName = "admin_hata_analizi", adminHataAnaliziUI("admin_hata_analizi_module")),
       tabItem(tabName = "admin_yanit_analizi", adminYanitAnaliziUI("admin_yanit_analizi_module")),
+      tabItem(tabName = "admin_dokumantasyon", adminDokumantasyonUI("admin_dokumantasyon_module")),
 
       # Sistem Durumu Sekmesi (Yönetici paneli altında)
       tabItem(tabName = "health", healthUI("health_module"))

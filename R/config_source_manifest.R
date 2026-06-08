@@ -224,6 +224,8 @@ source_manifest_after_future_paths <- c(
   "R/module_admin_hata_analizi.R",
   "R/helpers_admin_yanit_analizi.R",
   "R/module_admin_yanit_analizi.R",
+  "R/helpers_admin_documentation.R",
+  "R/module_admin_documentation.R",
   "R/module_health_worker_metrics.R",
   "R/module_health_overview.R",
   "R/module_health_connectivity.R",
