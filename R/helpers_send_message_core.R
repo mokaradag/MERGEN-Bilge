@@ -150,9 +150,19 @@ mergen_prepare_mcp_session_files <- function(
   tool_family
 ) {
   if (!(identical(tool_family, "mcp_excel") && length(uploaded_names) > 0)) {
-    session$userData$current_session_files <- list()
+    # MCP dışı yollarda current_session_files temizlenmez.
+    # Aynı store görsel anlama (vision) tarafından da kullanılır; burada
+    # temizlenirse ilk görsel sorusundan sonra sonraki sorularda görsel yolu
+    # kaybolur ve kullanıcı yeniden giriş yapmadan görsel tekrar analiz edilemez.
+    mevcut_dosya_kaydi <- session_user_data_get_list(
+      session,
+      "current_session_files",
+      default = list(),
+      create = FALSE
+    )
+
     return(list(
-      current_session_files = list(),
+      current_session_files = mevcut_dosya_kaydi,
       mcp_snapshot = update_mcp_registry_snapshot_fn(list())
     ))
   }

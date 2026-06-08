@@ -111,6 +111,10 @@ LOCAL_STT_API_KEY=
 # Filtreleme için kullanılacak model
 FILTER_MODEL=technical name 1
 
+# Görsel anlama destekli modeller (Image Input)
+# Model kimliklerini yalnızca ";" veya "," ile ayırın.
+MERGEN_VISION_MODELS=your-vision-model-id-1;your-vision-model-id-2
+
 # ------------------------------------------------------------------------------
 # GÖRSEL OLUŞTURMA AYARLARI (IMAGE GENERATION)
 # ------------------------------------------------------------------------------
