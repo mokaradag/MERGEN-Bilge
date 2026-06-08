@@ -8,6 +8,121 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/beautiful-goodall-8yK70` (assume merged)
+
+This session is COMPLETE. Do NOT redo the following:
+
+### PRIORITY 1 — DOCX async clobber: FIXED + proven
+
+- `R/module_file_preview.R`: added an inline `docx_preview_seq <- reactiveVal(0L)`
+  in the module scope, increment-on-open with a captured `docx_open_token`, and
+  guarded BOTH the async success `%...>%` and error `%...!%` callbacks with
+  `identical(isolate(docx_preview_seq()), docx_open_token)`. A stale large-DOCX
+  callback no longer renders the wrong document into a newer modal; the error
+  toast is also suppressed for stale opens. No new top-level helper (function
+  count stayed 22 ≤ 24; ratchet green).
+- Regression test `tests/testthat/test-file-preview-docx-async-clobber-behavior.R`
+  (15 assertions) is deterministic via `testServer` + a `local_mocked_bindings(
+  future = ..., .package = "future")` stub that returns a manually-resolvable
+  `promises::promise` (task_fn never forced → no real file/base64enc). Uses a
+  NON-EXISTENT datapath so `file.info()$size` is NA → async branch taken without
+  a 10 MB fixture. PROVEN: neutralizing the guard (`if (FALSE && ...)`) makes the
+  test fail; restoring it passes.
+- Re-ran the async audit (`%...>%`/`%...!%`/`promises::then`/`later::later`):
+  the DOCX path was the ONLY unguarded fixed-target cross-modal clobber. All
+  others are request-scoped (`mergen_is_current_request`/`req_id`), state-guarded
+  (`is_speaking()` in `module_ai_expert.R`), or benign worker results. Did NOT
+  manufacture fixes.
+
+### PRIORITY 3 — fixed one PRE-EXISTING red contract test
+
+- `tests/testthat/test-file-resolution-security-contract.R` test "MCP resolver
+  mutlak path argümanını doğrudan kabul etmez" was RED on pristine `origin/main`
+  (standalone AND in-suite): it grepped for the literal `"Absolute path argument
+  ignored"`, but the production code was strengthened to REJECT (line ~224 of
+  `R/helpers_mcp_file_resolver.R`: `"Absolute path argument rejected"` + `ok =
+  FALSE` + Turkish error `"Mutlak dosya yolu kabul edilmez"`). Re-anchored the
+  contract on STABLE behavioral anchors (`is_abs` check + the Turkish rejection
+  message) instead of a drift-prone English debug string. Security guarantee
+  NOT weakened — absolute paths are still rejected. Now green standalone (10
+  assertions).
+
+### PRIORITY 4 — no fallback guards needed
+
+- Spot-checked standalone: all 5 MCP refactor-contract tests
+  (`test-mcp-{chart-tools,schema-helpers,basic-tools,file-resolver,table-readers}-
+  refactor-contract.R`) and all 4 health-check tests pass standalone (0 fail/err/
+  skip). The `getwd()`-relative fallback guards in those MCP helpers and
+  `helpers_health_checks.R` do NOT break any isolated test → left UNTOUCHED per
+  the "fix only if an isolated test breaks" rule.
+
+### PRIORITY 5 — 6 new behavioral test files (~78 new assertions, 0 fail/0 warn/0 skip)
+
+- `test-llm-call-retry-behavior.R` (10): `call_llm_with_retry` — first-try
+  success, character→list wrap, N-1-fail-then-success (Sys.sleep stubbed),
+  exhausted-retries re-stop.
+- `test-sso-der-tlv-behavior.R` (16): `.sso_der_length` (short/long form),
+  `.sso_der_tlv` (TLV layout), `.sso_der_integer` (leading-zero strip + 0x00
+  sign byte). Deterministic byte assertions.
+- `test-file-store-mutation-helpers-behavior.R` (14):
+  `.file_store_drop_stale_entries` / `.file_store_apply_rehydrated_paths` — stub
+  `.file_store_mutate_index` over a controlled in-memory index; real
+  `normalize_for_path_compare` (source `helpers_files_path.R` first).
+- `test-sidebar-user-panel-server-behavior.R` (20): `mb_sidebar_theme_switch`
+  (UI), `mb_sidebar_handle_logout_event` (session close + log), and
+  `mb_sidebar_user_panel_server` via a `moduleServer` testServer wrapper —
+  fallback / "Oturum hazırlanıyor" / full-identity badge renders, logout-button
+  visibility, and the `mergen_sidebar_logout` observer (PRIME-THEN-SET).
+- `test-claude-runtime-source-dir-behavior.R` (6): `resolve_claude_runtime_source_dir`
+  — empty/NA, relaxed-resolver priority, real existing dir, non-existent → "".
+- `test-get-user-profile-from-db-behavior.R` (12): `get_user_profile_from_db` —
+  DBI-mocked early-NULL, UserID vs KullaniciAdi WHERE routing + params,
+  no-rows→NULL, visible vs technical field normalization.
+
+### NEW LESSONS (apply next time)
+
+- **`logger` is NOT installed in the base cloud checkout.** Any test that
+  `source()`s `R/config_logging.R` will be auto-SKIPPED (`{logger} is not
+  installed`) → violates "0 skip". Either `install.packages("logger")` from RSPM
+  first, OR avoid sourcing config_logging.R. I DROPPED a `log_error_with_context`
+  test because (a) logger absent, and (b) capturing the interpolated message via
+  a `log_error`/`log_debug` stub needs `glue(..., .envir = parent.frame(N))` and
+  the correct `N` DIFFERS between a direct call (1) and a call nested inside
+  `test_that` (2) — a fragile, environment-dependent frame count that "passes on
+  Linux, fails on VM". Do NOT ship frame-count-dependent capture stubs.
+- **Turkish `toupper` is locale-dependent** (C.UTF-8 vs Turkish): assert a
+  locale-independent marker (e.g. a `"VIS:"` prefix stub) instead of asserting an
+  uppercased Turkish string (`"BILGI İŞLEM"` vs `"BILGI IŞLEM"`).
+- testServer `observeEvent(..., ignoreInit = TRUE)` needs PRIME-THEN-SET
+  (`setInputs(x=1); setInputs(x=2)`) to fire; a single `setInputs` is consumed as
+  the init.
+- For module testServer custom-message capture, override the ROOT session:
+  `root <- .subset2(session, "parent"); root$sendCustomMessage <- function(...)`.
+- The `future::future({...})` async path is mockable with
+  `local_mocked_bindings(future = stub, .package = "future")` where the stub
+  returns a `promises::promise` and never forces the expr; drain with a bounded
+  `while(!later::loop_empty()) later::run_now(timeout=0)`.
+
+### VALIDATION RUN (this session)
+
+- `Rscript tests/scripts/parse_sanity_check.R` → OK (716 files).
+- `test-maintainability-ratchet.R` + `-contract.R` → 0 fail / 0 warn (max fns 24,
+  0 over-budget files).
+- Batch of all 7 new/changed test files via `test_dir(filter=...)` → 43 tests,
+  93 assertions, 0 fail / 0 warn / 0 skip.
+- `bash tools/ai_validate.sh quick` → FAILED at app-source-smoke (cloud limit:
+  `R/config_sql_loader.R` needs SQL library files + placeholder index folders
+  absent in the cloud checkout). Fell back to `bash tools/ai_validate.sh
+  cloud-quick` → PASS: `failed_steps=0`, `skipped_steps=1`,
+  `profile_requested=cloud-quick`, `profile_effective=quick`,
+  `app_source_smoke_status=skipped`, `shiny_boot_smoke_status=not_requested`,
+  `browser_smoke_status=not_requested`, `db_sso_vm_validation_performed=false`,
+  `sql_server_turkish_encoding_preflight_status=not_performed_by_ai_validate`.
+  App boot / browser / VM / DB / SQL-Server Turkish encoding / manual fragile-flow
+  were NOT proven (cloud limitation, not a regression).
+
+---
+
 ## BRANCH / PR RULES
 
 - Start with a **fresh branch** from the latest `origin/main` or the latest merged state.
@@ -585,3 +700,68 @@ The updates must record:
 Then open a NEW pull request with a Turkish description.
 
 Begin by reading `CLAUDE.md`, `.ai/next-session-eliminate-weaknesses-prompt.md`, and `.ai/next-session-test-coverage-prompt.md`; then run the untested-function scan and standalone-test-isolation scan, show both lists, and work top-down by priority.
+
+---
+
+## COPY-PASTE PROMPT FOR THE NEXT SESSION
+
+> Continue hardening MERGEN Bilge (R/Shiny). Read `CLAUDE.md` FIRST and in full,
+> then `.ai/next-session-eliminate-weaknesses-prompt.md` and
+> `.ai/next-session-test-coverage-prompt.md`. The session
+> `claude/beautiful-goodall-8yK70` is MERGED — do NOT rebuild/push to it.
+> Start a FRESH branch from latest `origin/main`. Surgical, additive only. Turkish
+> comments with real Turkish chars (ç ğ ı İ ö ş ü). Byte-safe readers for any
+> repo-scanning test. NEVER write a Windows user-profile absolute path literal in
+> test code OR comments. No CDN/heavy/browser deps. Respect source-manifest order.
+> Do NOT loosen `test-maintainability-ratchet.R`. Use `LANG=C.UTF-8 LC_ALL=C.UTF-8`
+> for any R readLines/writeBin rewrite of CRLF/Turkish files (then verify
+> `grep -c '<c3>\|<c4>\|<c5>' file` is 0).
+>
+> ALREADY DONE — do NOT redo: the DOCX-preview async clobber is FIXED with a
+> `docx_preview_seq` reactiveVal guard + `test-file-preview-docx-async-clobber-
+> behavior.R`. The async audit found no other unguarded fixed-target clobber. A
+> pre-existing red security contract test (`test-file-resolution-security-contract.R`,
+> the "MCP resolver mutlak path" anchor) was re-anchored to stable behavior
+> (`is_abs` + "Mutlak dosya yolu kabul edilmez"). New behavioral coverage added
+> for: `call_llm_with_retry`, `.sso_der_*`, `.file_store_drop_stale_entries` /
+> `_apply_rehydrated_paths`, `mb_sidebar_*` (theme switch / logout / panel server),
+> `resolve_claude_runtime_source_dir`, `get_user_profile_from_db`. Vision is
+> VM-live-verified. MCP/health `getwd()` fallback guards do NOT break isolated
+> tests — leave them.
+>
+> PRIORITY 1 (concurrency): re-run the async audit if you touch any `%...>%` /
+> `%...!%` / `promises::then` / `later::later` / `tracked_future_promise` path.
+> Only fix REAL cross-request/cross-modal clobbers; do not manufacture fixes.
+>
+> PRIORITY 5 (behavioral coverage — the #1 weakness): re-run the FIXED-string
+> untested-function scan (see test-coverage prompt; ~73 candidates remain after
+> this session). Highest-value clean/deterministic targets still open: module
+> servers via `testServer` (`apiKeyServer`, `ssoAuthServer`, `quickActionsInit`,
+> `imageGalleryServer` with its `coerce_user_id`/`empty_images_df`/
+> `gallery_images_same` helpers), `chat_add_message`/`chat_simulate_streaming`
+> (heavy — stub removeUI/insertUI/persist), `admin_ha_show_modal`, `sso_fetch_jwks`
+> (httr-mocked), `config_logging` log_ai_call/log_user_action/log_error_with_context
+> (ONLY if you `install.packages("logger")` first AND capture via a real logger
+> appender, NOT a frame-counting glue stub), `monitor_workers`/`stop_future_cluster`,
+> and the deep-analysis / pk-analysis service-bound helpers (LLM/DB-mocked). Every
+> test: real input→output, deterministic, OFFLINE, 0 fail / 0 warn / 0 skip,
+> green standalone AND in a `test_dir` batch with `new.env(parent=globalenv())`.
+> Watch the Turkish `toupper` locale trap and the testServer `ignoreInit`
+> PRIME-THEN-SET gotcha.
+>
+> PRIORITY 3 (isolation): re-run the standalone scan. `test-ui-asset-manifest-
+> contract.R` remains the only known cloud-blocked one (missing vendored www
+> assets). Fix any NEW standalone-ERROR test by sourcing the real owner helper.
+> Watch for more stale-anchor contract drift like the MCP one fixed this session.
+>
+> PRIORITY 6 (maintainability): do not regress the ratchet; extract a small sourced
+> helper + update `R/config_source_manifest.R` + manifest-order tests if a fix
+> would exceed a budget.
+>
+> Validate: per-file `testthat::test_file(..., reporter="summary")` (0 fail/warn/
+> skip), `Rscript tests/scripts/parse_sanity_check.R`, `test-maintainability-
+> ratchet.R`, then `bash tools/ai_validate.sh quick` (fall back to `cloud-quick`
+> if app-source-smoke is blocked by missing SQL/assets/heavy packages and report
+> the summary.json fields honestly). NEVER claim app boot / VM / DB / vision /
+> full-suite proof from the cloud checkout. At the END, update BOTH `.ai` prompts
+> and open a NEW pull request with a Turkish description.

@@ -19,6 +19,14 @@ filePreviewServer <- function(id) {
     # Aynı dosya tekrar önizlendiğinde base64 üretimini tekrar yapmamak için önbellek
     preview_b64_cache <- reactiveVal(list())
 
+    # DOCX önizleme modalı için sıra (oturum) belirteci. Büyük DOCX dosyaları
+    # asenkron kodlandığı için, kullanıcı A dosyasını açıp kodlama bitmeden
+    # B dosyasını açarsa, A'nın geç gelen geri çağrısı sabit hedef kapsayıcıya
+    # (docx_preview_container) yazıp B'nin modalına yanlış belge basabilir.
+    # Bu belirteç her DOCX modal açılışında artırılır; asenkron geri çağrı
+    # yalnızca belirteç hâlâ kendi açılışıyla aynıysa UI mesajını gönderir.
+    docx_preview_seq <- reactiveVal(0L)
+
     # Dosya yolu + boyut + değişiklik zamanına göre önbellek anahtarı üretir
     build_preview_cache_key <- function(path) {
       dp <- if (exists("resolve_readable_path", mode = "function")) {
@@ -345,6 +353,12 @@ filePreviewServer <- function(id) {
             size = "l", easyClose = TRUE, footer = footer
           ))
 
+          # Bu DOCX açılışına ait belirteci üret ve yakala. Asenkron yol bu
+          # yakalanan değeri, geri çağrı çalıştığında güncel belirteçle
+          # karşılaştırarak eski sonucun yeni modalı ezmesini engeller.
+          docx_preview_seq(docx_preview_seq() + 1L)
+          docx_open_token <- docx_preview_seq()
+
           # Önbellekten kontrol et; varsa doğrudan göster
           cached_docx <- get_cached_base64(datapath)
 
@@ -379,6 +393,15 @@ filePreviewServer <- function(id) {
               future::future({
                 encode_file_base64_sync(datapath)
               }) %...>% (function(b64){
+                # Eski açılışın geç gelen sonucu, daha yeni bir DOCX modalını
+                # ezmemeli. Belirteç değiştiyse bu sonucu sessizce yok say
+                # (yalnızca önbelleğe yazılır, UI'a basılmaz).
+                if (!identical(isolate(docx_preview_seq()), docx_open_token)) {
+                  if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
+                    store_cached_base64(datapath, b64[1])
+                  }
+                  return(invisible(NULL))
+                }
                 if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
                   store_cached_base64(datapath, b64[1])
                   session$sendCustomMessage(
@@ -389,6 +412,10 @@ filePreviewServer <- function(id) {
                   showToast(session, "DOCX içeriği hazırlanamadı.", "error")
                 }
               }) %...!% (function(e){
+                # Hata mesajını da yalnızca bu açılış hâlâ güncelse göster.
+                if (!identical(isolate(docx_preview_seq()), docx_open_token)) {
+                  return(invisible(NULL))
+                }
                 showToast(session, paste("DOCX okunamadı:", conditionMessage(e)), "error")
               })
             }
