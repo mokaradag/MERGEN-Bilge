@@ -305,6 +305,71 @@ testthat::test_that("admin_doc_build_content_ui hata durumunda mesaj gösterir",
 })
 
 # ------------------------------------------------------------------------------
+# Güvenlik yardımcıları (doğrudan)
+# ------------------------------------------------------------------------------
+testthat::test_that("admin_doc_html_has_risk riskli/temiz HTML'i ayırt eder", {
+  env <- .source_admin_doc_env()
+  testthat::expect_false(env$admin_doc_html_has_risk("<p>güvenli metin</p><a href=\"https://x\">b</a>"))
+  testthat::expect_true(env$admin_doc_html_has_risk("<p>x</p><script>e()</script>"))
+  testthat::expect_true(env$admin_doc_html_has_risk("<a onclick=\"x()\">y</a>"))
+  testthat::expect_true(env$admin_doc_html_has_risk("<a href=\"javascript:x()\">y</a>"))
+  testthat::expect_true(env$admin_doc_html_has_risk("<iframe src=\"http://x\"></iframe>"))
+})
+
+testthat::test_that("admin_doc_sanitize_html hızlı yolda temiz HTML'i değiştirmez", {
+  env <- .source_admin_doc_env()
+  safe <- "<h2>Başlık</h2>\n<p>İçerik <code>x &lt;- 1</code></p>\n<ul>\n<li>a</li>\n</ul>"
+  testthat::expect_identical(env$admin_doc_sanitize_html(safe), safe)
+})
+
+testthat::test_that("admin_doc_sanitize_html riskli etiket/öznitelikleri etkisizleştirir", {
+  env <- .source_admin_doc_env()
+  out <- env$admin_doc_sanitize_html(
+    "<p>iyi</p><script>bad()</script><img src=x onerror=\"e()\"><a href=\"javascript:z()\">l</a>"
+  )
+  testthat::expect_true(grepl("<p>iyi</p>", out, fixed = TRUE))
+  testthat::expect_false(grepl("<script>", out, fixed = TRUE))
+  testthat::expect_true(grepl("&lt;script&gt;", out, fixed = TRUE))
+  testthat::expect_false(grepl("onerror", out, fixed = TRUE))
+  testthat::expect_false(grepl("javascript:", out, fixed = TRUE))
+})
+
+testthat::test_that("admin_doc_clean_attributes olay/style/protokolleri temizler, sınıfı korur", {
+  env <- .source_admin_doc_env()
+  cleaned <- env$admin_doc_clean_attributes(
+    " class=\"ok\" onclick=\"x()\" style=\"color:red\" href=\"javascript:y()\""
+  )
+  testthat::expect_true(grepl("class=\"ok\"", cleaned, fixed = TRUE))
+  testthat::expect_false(grepl("onclick", cleaned, fixed = TRUE))
+  testthat::expect_false(grepl("style=", cleaned, fixed = TRUE))
+  testthat::expect_true(grepl("href=\"#\"", cleaned, fixed = TRUE))
+})
+
+testthat::test_that("admin_doc_clean_one_tag izinli/izinsiz/yorum etiketleri doğru işler", {
+  env <- .source_admin_doc_env()
+  testthat::expect_identical(env$admin_doc_clean_one_tag("<p>"), "<p>")
+  testthat::expect_identical(env$admin_doc_clean_one_tag("</p>"), "</p>")
+  testthat::expect_identical(env$admin_doc_clean_one_tag("<!-- yorum -->"), "")
+  testthat::expect_true(grepl("&lt;script&gt;",
+                              env$admin_doc_clean_one_tag("<script>"), fixed = TRUE))
+  img <- env$admin_doc_clean_one_tag("<img src=x onerror=alert(1)>")
+  testthat::expect_false(grepl("onerror", img, fixed = TRUE))
+})
+
+testthat::test_that("admin_doc_extract_toc id enjekte eder ve benzersizlik sağlar", {
+  env <- .source_admin_doc_env()
+  res <- env$admin_doc_extract_toc("<h2>Aynı</h2>\n<h3>Aynı</h3>")
+  testthat::expect_equal(length(res$toc), 2L)
+  ids <- vapply(res$toc, function(t) t$id, character(1))
+  testthat::expect_equal(length(unique(ids)), 2L)
+  testthat::expect_true(grepl(paste0("id=\"", ids[1], "\""), res$html, fixed = TRUE))
+  # Başlık yoksa toc boş, html değişmez
+  bos <- env$admin_doc_extract_toc("<p>yok</p>")
+  testthat::expect_equal(length(bos$toc), 0L)
+  testthat::expect_identical(bos$html, "<p>yok</p>")
+})
+
+# ------------------------------------------------------------------------------
 # Sunucu davranışı (testServer)
 # ------------------------------------------------------------------------------
 testthat::test_that("adminDokumantasyonServer belge seçimi ve grup geçişini yönetir", {
