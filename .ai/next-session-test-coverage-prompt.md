@@ -16,6 +16,48 @@ Read `CLAUDE.md` first — it is the binding operational guide; follow every con
   If for some reason no branch is assigned, create a brand-new one (e.g. `claude/test-coverage-s3-*`).
 - When you finish, **open a NEW pull request** for your fresh branch. Commit messages in Turkish.
 
+## CONTEXT — what session `claude/beautiful-goodall-8yK70` added (do NOT redo)
+- **DOCX async clobber FIXED** in `R/module_file_preview.R` (inline `docx_preview_seq`
+  reactiveVal guard on the large-DOCX `%...>%`/`%...!%` callbacks) +
+  `test-file-preview-docx-async-clobber-behavior.R` (testServer; `future::future`
+  stubbed via `local_mocked_bindings(.package="future")` returning a manually-resolvable
+  `promises::promise`; NON-EXISTENT datapath → `file.info()$size` NA → async branch
+  without a 10 MB fixture; proven fails-before/passes-after).
+- **6 new behavioral files (~78 assertions, 0 fail/warn/skip, standalone + batch):**
+  - `test-llm-call-retry-behavior.R`: `call_llm_with_retry` (stub `call_local_llm` +
+    `Sys.sleep`).
+  - `test-sso-der-tlv-behavior.R`: `.sso_der_length`/`.sso_der_tlv`/`.sso_der_integer`
+    (deterministic DER bytes).
+  - `test-file-store-mutation-helpers-behavior.R`: `.file_store_drop_stale_entries`/
+    `.file_store_apply_rehydrated_paths` (stub `.file_store_mutate_index` over an
+    in-memory index; real `normalize_for_path_compare` via `helpers_files_path.R`).
+  - `test-sidebar-user-panel-server-behavior.R`: `mb_sidebar_theme_switch`,
+    `mb_sidebar_handle_logout_event`, `mb_sidebar_user_panel_server` (moduleServer
+    testServer wrapper; badge render states + logout observer).
+  - `test-claude-runtime-source-dir-behavior.R`: `resolve_claude_runtime_source_dir`.
+  - `test-get-user-profile-from-db-behavior.R`: `get_user_profile_from_db` (DBI-mocked
+    WHERE routing + visible/technical normalization).
+- **Fixed a PRE-EXISTING red contract test**: `test-file-resolution-security-contract.R`
+  (the "MCP resolver mutlak path" test) grepped the stale string `"Absolute path
+  argument ignored"`; production was strengthened to `"Absolute path argument
+  rejected"` (+ `ok=FALSE` + Turkish error). Re-anchored to `is_abs` + "Mutlak dosya
+  yolu kabul edilmez" (stable behavior, not a debug-log string).
+- **NEW GOTCHAS (this session):**
+  - **`logger` is NOT installed in base cloud** → sourcing `config_logging.R` auto-SKIPs
+    the test (`{logger} is not installed`). Install it from RSPM first if you must, OR
+    avoid sourcing it. I DROPPED a `log_error_with_context` test: capturing the
+    interpolated message via a `log_error` stub needs `glue(.envir=parent.frame(N))`
+    and the correct `N` differs between a direct call vs nested-in-`test_that` —
+    a fragile frame count that passes on Linux but would fail on the VM. Do NOT ship it.
+  - **Turkish `toupper` is locale-dependent** — assert a locale-independent marker
+    stub (e.g. `"VIS:"` prefix), not an uppercased Turkish string.
+  - `future::future({...})` is mockable with `local_mocked_bindings(future = stub,
+    .package="future")` returning a `promises::promise` whose executor pushes
+    `resolve/reject` to a queue; never force the expr; drain with a bounded
+    `while(!later::loop_empty()) later::run_now(timeout=0)`.
+  - MCP/health `getwd()`-relative fallback guards do NOT break any isolated test —
+    do not touch them.
+
 ## CONTEXT — what session 5 (`claude/exciting-einstein-JGkKQ`) added (do NOT redo)
 - **Vision finished** (config + capability-primary kill-switch): `R/helpers_vision_model_capabilities.R`
   (`parse_vision_models_env`, `apply_vision_model_capabilities`) covered by
