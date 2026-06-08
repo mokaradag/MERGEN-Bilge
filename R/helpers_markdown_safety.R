@@ -55,3 +55,50 @@ render_safe_markdown_html <- function(content,
 
   mergen_sanitize_markdown_links(html)
 }
+
+# ------------------------------------------------------------------------------
+# Oluşturulan görsel kartı için kanonik güvenli HTML üretir.
+# Aynı kart işaretlemesi (filigran + indir/kopyala/yazdır butonları + isteğe
+# bağlı açıklama) görsel oluşturma ve sohbet mesajı biçimlendirme yollarında
+# tekrarlanıyordu. Tek kaynak burada toplanır; böylece XSS kaçış sınırı tek bir
+# yerde korunur.
+#
+# Güvenlik sözleşmesi:
+#   - message_id ve description HTML kaçışına tabi tutulur (XSS koruması).
+#   - img_src çağıran tarafça güvenli kabul edilen URL/data-URI'dir ve src
+#     içine olduğu gibi yerleştirilir (mevcut davranışla aynıdır).
+# ------------------------------------------------------------------------------
+mergen_generated_image_card_html <- function(message_id, img_src, description = NULL) {
+  description_html <- if (!is.null(description) && nzchar(description)) {
+    sprintf(
+      '<div class="image-description"><p>%s</p></div>',
+      htmltools::htmlEscape(description)
+    )
+  } else {
+    ""
+  }
+
+  sprintf(
+    '<div class="generated-image-container" data-message-id="%s">
+       <div class="image-wrapper">
+         <img src="%s" alt="Oluşturulan görsel" class="generated-image" loading="lazy" />
+         <div class="image-watermark">MERGEN Bilge</div>
+       </div>
+       <div class="image-actions">
+         <button class="image-action-btn-modern" onclick="window.downloadGeneratedImage(this)" title="İndir">
+           <i class="fas fa-download"></i>
+         </button>
+         <button class="image-action-btn-modern" onclick="window.copyGeneratedImage(this)" title="Kopyala">
+           <i class="fas fa-copy"></i>
+         </button>
+         <button class="image-action-btn-modern" onclick="window.printGeneratedImage(this)" title="Yazdır">
+           <i class="fas fa-print"></i>
+         </button>
+       </div>
+       %s
+     </div>',
+    htmltools::htmlEscape(as.character(message_id)),
+    img_src,
+    description_html
+  )
+}
