@@ -1,5 +1,293 @@
 # MERGEN Bilge - Üretim Operasyon Kılavuzu (RUNBOOK)
 
+Bu belge MERGEN Bilge için **kanonik operasyon kılavuzudur**. Windows VM / on-prem çalışma, SSO profili, bağımlılık geri yükleme, dağıtım, doğrulama, sağlık izleme, rollback ve güvenli sorun giderme adımları burada tutulur. README yalnızca ilk giriş belgesidir; üretim kararı verirken bu runbook, [`CLAUDE.md`](CLAUDE.md), [`docs/dependency-locking.md`](docs/dependency-locking.md) ve [`RENV_LOCK_STATUS.md`](RENV_LOCK_STATUS.md) birlikte okunmalıdır.
+
+## 0. Hızlı Referans
+
+| İhtiyaç | Komut / belge |
+|---|---|
+| Hafif ajan doğrulaması | `bash tools/ai_validate.sh quick` |
+| Bulut/Codex fallback doğrulaması | `bash tools/ai_validate.sh cloud-quick` |
+| Üretim launcher self-test | `powershell -ExecutionPolicy Bypass -File tools/test_mergen_prod_launcher.ps1` |
+| Üretim başlangıcı | `run_mergen_prod.bat` veya `Rscript run_mergen_prod.R` |
+| Son logu görüntüleme | `view_latest_mergen_app_log.bat` |
+| `renv.lock` politikası | [`docs/dependency-locking.md`](docs/dependency-locking.md) |
+| On-prem kilit durumu | [`RENV_LOCK_STATUS.md`](RENV_LOCK_STATUS.md) |
+| Mimari yön bulma | [`docs/architecture-map.md`](docs/architecture-map.md) |
+| Değişiklik notları | [`docs/release-notes.md`](docs/release-notes.md) |
+
+## 1. Amaç ve Kapsam
+
+Bu runbook şu kitleler içindir:
+
+- Windows VM / on-prem ortamında MERGEN Bilge çalıştıran operatörler,
+- SSO, DB, dosya deposu, API anahtarı veya paket sorunlarını inceleyen bakımcılar,
+- üretime yakın doğrulama kanıtı toplayan geliştiriciler ve kodlama ajanları.
+
+Bu belge uygulama davranışını değiştirmez; yalnızca güvenli çalıştırma ve doğrulama akışını açıklar.
+
+## 2. Varsayımlar
+
+- Üretim hedefi Windows VM / on-prem ortamıdır.
+- SSO profili kullanılabilir; yerel geliştirme modu `SSO_ENABLED=FALSE` ile ayrı değerlendirilir.
+- `renv.lock` üretimi, çalışan Windows VM R 4.6.0 ortamında yapılır; Linux/cloud/Codex ortamında kilit üretilmez.
+- Ağ kısıtlı veya offline çalışma olasılığı vardır; `.Rprofile` bu yüzden koşullu/offline-güvenli tasarlanmıştır.
+- Gerçek `.Renviron` dosyası repoya commit edilmez.
+- DB, SSO, UNC path, Türkçe karakterli path ve encoding davranışı ancak uygun VM ortamında tam kanıtlanabilir.
+
+## 3. İlk Başlangıç Kontrol Listesi
+
+- [ ] Depo Windows VM üzerinde doğru çalışma dizinine alınmış.
+- [ ] `.Renviron.example` incelenmiş ve gerçek `.Renviron` yerel/üretim ortamında oluşturulmuş.
+- [ ] Gerçek secrets, API key, token, parola, DSN ve özel endpoint değerleri repoya eklenmemiş.
+- [ ] `R/config_packages.R`, `docs/dependency-locking.md` ve `RENV_LOCK_STATUS.md` okunmuş.
+- [ ] Uygun R oturumu ve kütüphane yolu kullanıldığı doğrulanmış.
+- [ ] Dosya deposu, upload dizinleri ve log dizinleri Windows/UNC yol kurallarına göre erişilebilir.
+- [ ] SSO kullanılacaksa Keycloak/JWKS/issuer yapılandırması ve fail-closed beklentisi kontrol edilmiş.
+
+## 4. `.Renviron` Kontrol Listesi
+
+`.Renviron.example` güvenli şablondur. Gerçek `.Renviron` için şu gruplar kontrol edilir:
+
+- DB bağlantıları: `DB_CLIENT_ENCODING`, `DB_NAME_ENCODING`, DSN/server alanları.
+- SSO: `SSO_ENABLED`, Keycloak URL/realm/client, issuer/expiry/signature doğrulama ve JWKS ayarları.
+- API key güvenliği: `AI_KEYS_MASTER`, kurum varsayılan anahtar politikası ve feature-specific anahtarlar.
+- LLM/model endpointleri: ana/alternatif endpoint, model adları ve araç modeli değişkenleri.
+- Görsel anlama: `MERGEN_VISION_MODELS` ve gerekiyorsa `MERGEN_ENABLE_VISION`.
+- Görsel üretimi: image generation endpoint/model/timeout ayarları.
+- TTS/STT: endpoint, model, voice, timeout ve SSL doğrulama seçenekleri.
+- Dosya deposu: `MCP_FILES_BASE`, `MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MERGEN_MCP_BASE_DIR`, `MERGEN_LOG_DIR`.
+- Bilge Yolaç: Claude Code CLI/Node path, çalışma dizini, izin modu ve tool listesi.
+
+> Gerçek secret değerlerini dokümantasyona, PR açıklamasına, log kesitine veya validation artifact içine koymayın.
+
+## 5. Bağımlılık Restore ve `renv` İş Akışı
+
+`R/config_packages.R` insan-okunur paket manifestidir. Kesin sürüm kilidi `renv.lock` ile yönetilir; ancak bu kilit şirket içi Windows VM/on-prem üretim deposunda bulunabilir ve çevrimiçi GitHub/Codex kopyasında bilinçli olarak görünmeyebilir.
+
+Temiz veya yeni VM ortamında:
+
+```r
+# renv kurulu değilse yalnızca VM'de ve kontrollü şekilde kurun
+install.packages("renv")
+
+# Kilit dosyası mevcutsa restore denenebilir
+renv::restore(prompt = FALSE)
+```
+
+Kilit üretme/güncelleme yalnızca Windows VM R 4.6.0 ortamında:
+
+```sh
+Rscript tools/renv_snapshot.R
+```
+
+> **`renv::init()` çağırmayın.** Bu komut `.Rprofile` davranışını ezebilir ve offline/bulut güvenli akışı bozabilir.
+
+Ayrıntı ve commit sınırları için [`docs/dependency-locking.md`](docs/dependency-locking.md) zorunlu referanstır.
+
+## 6. Normal Uygulama Başlatma
+
+Windows üretim başlangıcı için tercih edilen yol:
+
+```bat
+run_mergen_prod.bat
+```
+
+Alternatif Rscript yolu:
+
+```sh
+Rscript run_mergen_prod.R
+```
+
+Yerel geliştirme için R oturumundan:
+
+```r
+shiny::runApp()
+```
+
+Başlatma sonrası logları izlemek için:
+
+```bat
+view_latest_mergen_app_log.bat
+```
+
+## 7. Doğrulama İş Akışı
+
+### 7.1 Dokümantasyon-only değişiklikler
+
+Dokümantasyon-only değişikliklerde runtime davranışı değişmediyse tam R/testthat veya browser smoke çalıştırmak genellikle gerekli değildir. Ancak repo politikası final teknik yanıt öncesi en az hafif doğrulama ister:
+
+```sh
+bash tools/ai_validate.sh quick
+```
+
+Uzun teknik yanıt taslağı gerektiğinde:
+
+```sh
+bash tools/ai_validate.sh quick --answer .ai/proposed_answer.md
+```
+
+### 7.2 Bulut/Codex fallback doğrulaması
+
+```sh
+bash tools/ai_validate.sh cloud-quick
+```
+
+`cloud-quick`, ağır runtime paket bootstrap'ını ve app source smoke adımlarını bilinçli olarak atlayabilir. Bu mod çalıştıysa, “tam runtime/app boot doğrulaması yapılmadı” açıkça belirtilmelidir.
+
+### 7.3 Riskli değişiklikler
+
+Runtime, SSO, DB encoding, source-order, file lifecycle, streaming, frontend asset order, Bilge Yolaç/Claude Code, security-path-download veya production-VM etkili değişikliklerde daha geniş kapı gerekir:
+
+```sh
+bash tools/ai_validate.sh full --boot-smoke
+```
+
+Ek doğrulama araçları:
+
+```sh
+Rscript tests/testthat.R
+Rscript tests/scripts/smoke_app_boot.R
+Rscript tests/scripts/run_post_deploy_smoke.R
+Rscript tests/scripts/validation_doctor.R
+Rscript tests/scripts/frontend_complexity_doctor.R
+Rscript tests/scripts/maintainability_report.R
+```
+
+Yalnızca gerçekten başarıyla biten komutlar için “geçti” denir.
+
+## 8. Dağıtım Öncesi Kapılar
+
+1. Değişiklik türünü sınıflandırın: docs-only, UI, runtime, DB, SSO, file lifecycle, streaming, Bilge Yolaç veya deployment.
+2. Uygun doğrulama seviyesini seçin.
+3. `.Renviron` ve secret hygiene kontrolü yapın.
+4. Windows VM üzerinde path, encoding ve kütüphane yolu beklentilerini doğrulayın.
+5. Eğer `renv.lock` değişiyorsa kilidin VM'de üretildiğini ve `renv/library` commit edilmediğini doğrulayın.
+6. Deployment öncesi rollback planını hazır tutun.
+
+## 9. Dağıtım Adımları (Windows VM / SSO)
+
+1. Repo çalışma kopyasını güncelleyin.
+2. `.Renviron` dosyasını gerçek üretim değerleriyle, secret sızdırmadan doğrulayın.
+3. Gerekirse paket restore/kurulum adımlarını çalıştırın.
+4. Launcher self-test çalıştırın:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tools/test_mergen_prod_launcher.ps1
+   ```
+
+5. Uygulamayı başlatın:
+
+   ```bat
+   run_mergen_prod.bat
+   ```
+
+6. Logları ve sağlık panelini izleyin.
+7. Post-deploy smoke testlerini tamamlayın.
+
+## 10. Dağıtım Sonrası Smoke Testleri
+
+- Ana sayfa açılıyor mu?
+- Yerel/SSO kullanıcı kimliği beklenen şekilde çözülüyor mu?
+- Türkçe karakterli kullanıcı adı, dosya adı ve mesajlar bozulmadan görünüyor mu?
+- Basit sohbet isteği beklenen model/API key sınırıyla yanıtlıyor mu?
+- Dosya yükleme, listeleme ve önizleme çalışıyor mu?
+- Görsel anlama kullanılacaksa seçili model yeteneği ve `MERGEN_VISION_MODELS` uyumlu mu?
+- Destek/Yenilikler sayfaları açılıyor mu?
+- Sistem Durumu / Health paneli anlamlı sinyal veriyor mu?
+- Bilge Yolaç kullanılacaksa çalışma dizini, CLI path ve güvenlik politikası beklenen şekilde mi?
+
+Script tabanlı post-deploy smoke için:
+
+```sh
+Rscript tests/scripts/run_post_deploy_smoke.R
+```
+
+## 11. Sağlık Paneli, Loglar ve İzleme
+
+- Health panel, dosya deposu, log dizini, runtime ve sistem sinyallerini değerlendirmek için kullanılır.
+- Log dizini `.Renviron` içindeki `MERGEN_LOG_DIR` veya uygulama varsayımlarıyla belirlenir.
+- Son uygulama logunu görüntülemek için `view_latest_mergen_app_log.bat` kullanılabilir.
+- Loglarda secret, token, API key, auth header veya parola bulunmamalıdır.
+
+## 12. Geri Alma (Rollback)
+
+1. Son bilinen iyi commit/tag/dağıtım paketini belirleyin.
+2. `.Renviron` gibi ortam dosyalarının yanlışlıkla değişmediğini kontrol edin.
+3. Eğer paket kilidi değiştiyse, ilgili `renv.lock` ve kütüphane durumunu birlikte geri alın.
+4. Uygulamayı tekrar başlatın.
+5. Smoke testlerini ve health panelini yeniden kontrol edin.
+6. Rollback kanıtını tarih/saat ve çalıştırılan komutlarla kaydedin; çalıştırılmayan testler için başarı iddiasında bulunmayın.
+
+## 13. Türkçe Kodlama / Mojibake Bakımı
+
+- UTF-8 Markdown ve R kaynakları korunmalıdır.
+- DB write/read normalizasyon helper'ları bypass edilmemelidir.
+- Legacy veride mojibake görülmesi, guard'ları zayıflatma gerekçesi değildir.
+- Toplu DB repair veya destructive düzeltme yalnızca bilinçli, yedekli ve kapsamı açık operasyon olarak yapılmalıdır.
+- Mailto, JSON, log, file path ve tarayıcı rendering sınırlarında merkezi helper yaklaşımı korunmalıdır.
+- Türkçe karakterli dosya adları ve UNC path davranışı VM üzerinde doğrulanmalıdır.
+
+## 14. Yaygın Hatalar ve Kontrol Noktaları
+
+| Senaryo | Kontrol et |
+|---|---|
+| Paket eksik | Doğru R oturumu/kütüphane yolu, `R/config_packages.R`, `renv::restore()`, `docs/dependency-locking.md`. |
+| `renv.lock` karışıklığı | Kilidin GitHub/Codex kopyasında olmamasının bilinçli olabileceğini `RENV_LOCK_STATUS.md` ile doğrula. |
+| Boş renv library | `.Rprofile` koşullarını, `renv/activate.R`, kilit dosyası ve kurulu `renv` paketini kontrol et. |
+| Yanlış R session/library | `.libPaths()`, Windows VM R sürümü ve launcher'ın kullandığı R yolu. |
+| Türkçe karakter bozulması | Encoding helper sırası, DB client/name encoding, dosya okuma/yazma sınırı, tarayıcı fallback. |
+| DB bağlantı sorunu | DSN/server ayarları, network, driver, `DB_CLIENT_ENCODING`, `DB_NAME_ENCODING`. |
+| API key sorunu | Kişisel anahtar, kurum varsayılan anahtar politikası, feature-specific TTS/STT anahtarları, log sızıntısı. |
+| SSO/JWT sorunu | `SSO_ENABLED`, issuer/realm/client, JWKS erişimi, signature/expiry doğrulama. |
+| Shiny başlangıç hatası | `run_mergen_prod.R`, `run_mergen_prod.bat`, paketler, `.Renviron`, son log. |
+| Türkçe karakterli file path sorunu | UNC erişimi, safe path helper'ları, dosya deposu dizinleri. |
+| UNC path / launcher sorunu | Launcher self-test, çalışma dizini, ağ paylaşımı erişimi. |
+| Vision/model capability sorunu | `MERGEN_VISION_MODELS`, `MERGEN_ENABLE_VISION`, seçili modelin Image Input desteği. |
+| Cloud validation sınırı | `cloud-quick` çıktısını tam VM/app boot kanıtı gibi sunma. |
+
+## 15. Güvenli Sorun Giderme İlkeleri
+
+- Önce gözlemle: log, health panel, validation artifact ve exact command output topla.
+- Reprodüksiyon adımlarını küçük tut.
+- Secrets içeren çıktı paylaşma; gerekirse redaction uygula.
+- DB veya dosya deposu üzerinde destructive işlem yapmadan önce yedek ve rollback planı hazırla.
+- Encoding guard'larını geçici “kolay çözüm” olarak kaldırma.
+- Load-order sorunlarında manifestleri ve helper bootstrap sırasını birlikte değerlendir.
+- Kanıt dürüstlüğü koru: çalıştırılmayan test için başarı iddia etme.
+
+## 16. Ne Yapılmamalı?
+
+- Linux/cloud/Codex ortamında `renv.lock` üretmeyin.
+- `renv::init()` ile `.Rprofile`'ı ezmeyin.
+- `renv/library`, cache, staging veya sandbox dizinlerini commit etmeyin.
+- Secrets, API keys, token'lar, parolalar, gerçek DSN'ler veya private endpoint'leri dokümantasyona/loglara eklemeyin.
+- DB'ye körlemesine UTF-8 yazmaya zorlamayın; merkezi DB encoding helper sınırını kullanın.
+- Destructive DB repair işlemini günlük troubleshooting gibi çalıştırmayın.
+- Legacy veri kirli diye mojibake guard'larını zayıflatmayın.
+- Yalnızca `cloud-quick` çalıştıysa tam doğrulama veya app boot geçti demeyin.
+- Dokümantasyon-only görevde runtime davranışı değiştirmeyin.
+
+## 17. İlgili Belgeler
+
+- İlk giriş: [`README.md`](README.md)
+- Kodlama ajanı sözleşmesi: [`CLAUDE.md`](CLAUDE.md)
+- Ajan özeti: [`AGENTS.md`](AGENTS.md)
+- Mimari harita: [`docs/architecture-map.md`](docs/architecture-map.md)
+- Bağımlılık kilitleme: [`docs/dependency-locking.md`](docs/dependency-locking.md)
+- On-prem kilit durumu: [`RENV_LOCK_STATUS.md`](RENV_LOCK_STATUS.md)
+- Değişiklik notları: [`docs/release-notes.md`](docs/release-notes.md)
+- Dokümantasyon hub'ı: [`docs/README.md`](docs/README.md)
+
+---
+
+## Ek: Önceki Runbook'tan Korunan Operasyonel Notlar
+
+Aşağıdaki bölüm önceki runbook'un ana operasyonel ruhunu korumak için bırakılmıştır; yukarıdaki yapı kanonik navigasyondur.
+
+
+# MERGEN Bilge - Üretim Operasyon Kılavuzu (RUNBOOK)
+
 Bu dosya, MERGEN Bilge'nin Windows VM / SSO üretim profilinde **dağıtım, doğrulama,
 izleme, olay müdahalesi ve geri alma** adımlarını tek bir operatör kaynağında toplar.
 

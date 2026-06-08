@@ -1,0 +1,122 @@
+# MERGEN Bilge Mimari Haritası
+
+Bu belge, MERGEN Bilge koduna dokunmadan önce yön bulmak isteyen geliştiriciler, bakımcılar, kodlama ajanları ve üretim operatörleri için hazırlanmıştır. Amaç, uygulamanın gerçek depo yapısını ve korunması gereken sınırları hızlıca göstermektir; sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) otoritatif kalır.
+
+## Üst Seviye Bakış
+
+MERGEN Bilge, R/Shiny tabanlı bir kurumsal yapay zekâ uygulamasıdır. Kök girişleri `app.R`, `global.R`, `ui.R` ve `server.R` dosyalarıdır. `global.R`, kaynak manifesti üzerinden R dosyalarını sıralı yükler; `ui.R` görsel kabuğu kurar; `server.R` server modüllerini ve observer katmanını bağlar.
+
+```text
+Kullanıcı / Tarayıcı
+        |
+        v
+R/Shiny uygulama kabuğu: app.R -> global.R -> ui.R + server.R
+        |
+        +-- UI modülleri, CSS/JS varlıkları, medya ve smoke seam'leri
+        +-- Server modülleri, session runtime context ve observer katmanı
+        +-- LLM/model entegrasyonu, tool model çözümleme ve streaming
+        +-- Dosya yükleme, dosya deposu, önizleme ve analiz yardımcıları
+        +-- DB/persistence, SSO/JWT, API anahtarı ve kullanıcı kimliği sınırları
+        +-- TTS/STT, AI Uzman, Destek, Yönetici/Sistem Durumu ve Bilge Yolaç
+```
+
+## Ana Runtime Katmanları
+
+| Katman | Gerçek depo kanıtı | Ne işe yarar? |
+|---|---|---|
+| R/Shiny uygulama kabuğu | `app.R`, `global.R`, `ui.R`, `server.R`, `run_mergen_prod.R`, `run_mergen_prod.bat` | Uygulama başlangıcı, kaynak yükleme, UI/server bağlama ve üretim başlangıcı. |
+| Kaynak manifesti | `R/config_source_manifest.R` | R kaynaklarının açık ve test edilebilir sırayla yüklenmesi. Load-order değişiklikleri risklidir. |
+| UI asset manifesti | `R/config_ui_assets.R` | CSS/JS varlıklarının sırası; encoding, streaming ve smoke sınırları için kritiktir. |
+| Yapılandırma | `.Renviron.example`, `R/config_api.R`, `R/config_packages.R`, `R/config_sso.R`, `R/config_file_store.R`, `R/config_claude_code.R` | Ortam değişkenleri, modeller, paket manifesti, SSO, dosya deposu ve Bilge Yolaç ayarları. |
+| UI modülleri | `R/module_*.R`, `www/css/`, `www/js/`, `www/assets/`, `www/characters/`, `www/videos/` | Sayfa ve bileşen deneyimi, tema, medya, tarayıcı davranışları. |
+| Server logic | `server.R`, `R/helpers_*runtime*.R`, `R/module_*` | Session state, observer katmanı, modül server bağlama ve runtime context. |
+| LLM/model entegrasyonu | `R/helpers_llm_*.R`, `R/helpers_api_model_config.R`, `R/helpers_api_model_tool_runtime.R`, `R/helpers_send_message_*.R` | Chat/completion istekleri, SSE/streaming, tool sonuçları, model çözümleme ve worker payload sınırı. |
+| Model yeteneği ve görsel anlama | `R/helpers_vision_model_capabilities.R`, `R/helpers_vision_context.R`, `R/config_api.R`, `.Renviron.example` | Image Input destekli modellerin çözülmesi ve görsel bağlamın LLM isteğine eklenmesi. |
+| Görsel üretimi | `R/module_image_generation.R`, `R/module_image_gallery.R`, `R/helpers_image_gallery.R`, `.Renviron.example` | Görsel üretimi ve galeri akışları. |
+| Dosya yönetimi | `R/helpers_file_*`, `R/helpers_files*.R`, `R/module_file_manager*.R`, `R/module_file_preview.R` | Upload, indeks, kullanıcı izolasyonu, önizleme, dosya deposu ve analiz hazırlığı. |
+| DB/persistence | `R/helpers_db_unicode_escape.R`, `R/helpers_db_encoding.R`, `R/helpers_db_connection.R`, `R/helpers_db_chat_readers.R`, `R/helpers_db_chat_mutations.R`, `R/helpers_database.R`, [`database-schema.md`](database-schema.md) | DB bağlantısı, encoding guard'ları, chat/feedback okuma-yazma, tablo yapısı ve kalıcılık. |
+| SSO/auth | `R/config_sso.R`, `R/helpers_sso.R`, `R/helpers_sso_signature.R`, `R/helpers_logout_url.R` | Yerel geliştirme ve Keycloak/JWT sınırı. |
+| API anahtarı | `R/helpers_api_key_identity.R`, `R/helpers_feature_api_key.R`, `R/helpers_api_key_password_toggle.R`, `www/js/api_key_choice_modal.js` | Kişisel/kurumsal anahtar çözümleme, modal UX ve secret safety. |
+| TTS/STT/audio | `R/helpers_ai_expert.R`, `R/helpers_ai_expert_chunking.R`, ilgili UI/JS/CSS varlıkları ve `.Renviron.example` | AI Uzman konuşması, TTS/STT ve ses yaşam döngüsü. |
+| Destek/Yardım/Yenilikler | `R/helpers_destek_database.R`, `version_history.md`, destek modülleri ve CSS/JS varlıkları | Yardım Merkezi, Geri Bildirim & Hata, Yenilikler ve Hakkında alanları. |
+| Admin/Sistem Durumu | `R/helpers_admin_analytics.R`, `R/helpers_health_*.R`, admin modülleri | Yönetim panelleri, hata/feedback analizleri, sağlık kontrolleri. |
+| Bilge Yolaç / Claude Code | `R/helpers_claude_code_*.R`, `R/config_claude_code*.R`, `bilge_yolac_plugins/` | Web-wrapped Claude Code oturumu, güvenli çalışma dizini, streaming, download ve eklenti sistemi. |
+
+## Kaynak Manifesti ve Yükleme Sırası
+
+`R/config_source_manifest.R`, `global.R` tarafından kullanılan sıralı kaynak listesini tanımlar. Dosya; temel altyapı, yapılandırma, DB/SQL, core helper, LLM, modül ve server handler katmanlarını açık listeler. Özellikle şu sıralar korunmalıdır:
+
+- `R/utils_text_encoding.R`, logging/DB/metin tüketicilerinden önce yüklenir.
+- `R/helpers_mailto_encoding.R`, `R/utils_text_encoding.R` sonrasında erken yüklenir.
+- DB tarafında Unicode escape, encoding, connection ve üst seviye DB helper sırası korunur.
+- `R/helpers_vision_model_capabilities.R`, model/API yapılandırması bağlamında yüklenir.
+- Bilge Yolaç helper zinciri ve LLM worker/streaming helper zinciri birlikte değerlendirilmelidir.
+
+`R/config_ui_assets.R`, frontend asset sırasının tek görünür manifestidir. Encoding JS, Shiny message handler'ları ve Claude Code streaming dosyalarının sırası tarayıcı tarafı regresyonları önlemek için kritiktir.
+
+## Kritik Korunan Sınırlar
+
+| Sınır | Neden kritik? | Önce okunacak belge/dosya |
+|---|---|---|
+| Türkçe karakter bütünlüğü ve mojibake | Windows VM, SQL Server/DB encoding, mailto, JSON/log ve UI sınırlarında veri bozulmasını önler. | [`../CLAUDE.md`](../CLAUDE.md), `R/utils_text_encoding.R`, `R/helpers_db_encoding.R` |
+| DB write/read normalizasyonu | Legacy veri kirli olabilir; guard'lar zayıflatılmamalıdır. | [`../CLAUDE.md`](../CLAUDE.md), DB helper dosyaları |
+| Source/load order | Erken yardımcılar geç yüklenirse runtime veya test davranışı bozulur. | `R/config_source_manifest.R`, `tests/testthat/helper_bootstrap.R` |
+| Frontend asset order | Encoding, streaming, toast, smoke seam ve tema davranışı sıra bağımlıdır. | `R/config_ui_assets.R`, ilgili asset manifest testleri |
+| Windows/on-prem yol davranışı | UNC yollar, Türkçe karakterli path'ler, launcher ve SSO profili Windows VM üzerinde doğrulanır. | [`../RUNBOOK.md`](../RUNBOOK.md), `run_mergen_prod.bat`, `run_mergen_prod.R` |
+| Dosya depolama ve upload lifecycle | Kullanıcı izolasyonu, güvenli yol çözümleme, önizleme ve cleanup davranışları hassastır. | Dosya helper/modül dosyaları, [`../CLAUDE.md`](../CLAUDE.md) |
+| API key ve secret safety | Anahtarlar loglanmaz, dokümantasyona yazılmaz, kullanıcıya sızdırılmaz. | `.Renviron.example`, API key helper'ları, [`../CLAUDE.md`](../CLAUDE.md) |
+| SSO/JWT sınırı | Üretimde fail-closed davranış ve imza doğrulaması önemlidir. | `R/config_sso.R`, `R/helpers_sso_signature.R`, [`../RUNBOOK.md`](../RUNBOOK.md) |
+| Bağımlılık kilitleme / renv | `renv.lock` üretimi Windows VM/on-prem kuralına bağlıdır. | [`dependency-locking.md`](dependency-locking.md), [`../RENV_LOCK_STATUS.md`](../RENV_LOCK_STATUS.md) |
+| Doğrulama kanıtı | `cloud-quick` ile tam VM doğrulaması aynı şey değildir. | [`../CLAUDE.md`](../CLAUDE.md), [`../RUNBOOK.md`](../RUNBOOK.md), `tools/ai_validate.sh` |
+| Maintainability ratchet ve browser smoke | Frontend karmaşıklığı ve UX regresyonları kontrollü tutulur. | `tests/scripts/frontend_complexity_doctor.R`, `tests/scripts/ai_browser_ux_smoke.R` |
+
+## Ana Dizinler
+
+| Dizin/dosya | İçerik |
+|---|---|
+| `R/` | Uygulama modülleri, helper katmanları, yapılandırma manifestleri ve entegrasyon kodu. |
+| `www/` | Statik frontend varlıkları: CSS, JS, karakterler, video/müzik, smoke probeları ve lokal kütüphaneler. |
+| `docs/` | Dokümantasyon merkezi, mimari harita, değişiklik notları ve bağımlılık kilitleme rehberi. |
+| `tests/` | `testthat` testleri, smoke script'leri, CI/AI doğrulama yardımcıları ve bakım raporları. |
+| `tools/` | `ai_validate.sh`, `renv_snapshot.R`, R ortam hazırlama, validation doctor ve launcher self-test. |
+| `bilge_yolac_plugins/` | Bilge Yolaç eklenti dizinleri: code review, doc-gen, feature-dev, security-audit vb. |
+| `MergenLauncher/` | Windows launcher ilişkili yardımcı alan. |
+| `.Renviron.example` | Gerçek secret içermeyen yapılandırma örneği. |
+| `RENV_LOCK_STATUS.md` | On-prem `renv.lock` görünürlük/commit sınırı açıklaması. |
+
+## “X'i Düzenlemeden Önce Y'yi Oku” Tablosu
+
+| Değişiklik alanı | Önce oku / kontrol et |
+|---|---|
+| DB helper'ları veya SQL bağlantısı | [`../CLAUDE.md`](../CLAUDE.md) encoding/DB kuralları, [`database-schema.md`](database-schema.md), `R/helpers_db_unicode_escape.R`, `R/helpers_db_encoding.R`, `R/helpers_db_connection.R`. |
+| Dosya upload/preview/file manager | Bu dosyanın dosya lifecycle bölümü, `R/helpers_file_*`, `R/module_file_manager*.R`, ilgili testler. |
+| Model routing, tool model veya vision | `R/config_api.R`, `R/helpers_api_model_config.R`, `R/helpers_vision_model_capabilities.R`, [`release-notes.md`](release-notes.md). |
+| UI asset veya tema | `R/config_ui_assets.R`, `www/css/`, `www/js/`, asset manifest/front-end testleri. |
+| Streaming veya Markdown/HTML güvenliği | `R/helpers_llm_sse*.R`, `R/helpers_markdown_safety.R`, `www/js/claude_code_streaming.js`, [`../CLAUDE.md`](../CLAUDE.md). |
+| TTS/STT veya AI Uzman konuşması | `R/helpers_ai_expert.R`, `R/helpers_ai_expert_chunking.R`, API key helper'ları ve `.Renviron.example`. |
+| SSO veya kimlik | `R/config_sso.R`, `R/helpers_sso.R`, `R/helpers_sso_signature.R`, [`../RUNBOOK.md`](../RUNBOOK.md). |
+| Bilge Yolaç / Claude Code | `R/config_claude_code.R`, `R/helpers_claude_code_*.R`, `bilge_yolac_plugins/`, [`../CLAUDE.md`](../CLAUDE.md). |
+| Deployment, VM veya launcher | [`../RUNBOOK.md`](../RUNBOOK.md), `run_mergen_prod.bat`, `run_mergen_prod.R`, `tools/test_mergen_prod_launcher.ps1`. |
+| Paket veya `renv` | [`dependency-locking.md`](dependency-locking.md), [`../RENV_LOCK_STATUS.md`](../RENV_LOCK_STATUS.md), `R/config_packages.R`, `tools/renv_snapshot.R`. |
+| Dokümantasyon-only değişiklik | README/dokümantasyon haritası, [`../AGENTS.md`](../AGENTS.md), uygun hafif doğrulama komutu. |
+
+## Yeni Katkıcı Kontrol Listesi
+
+- [ ] Önce [`../README.md`](../README.md) ile ürün kapsamını, sonra bu mimari haritayla depo yönünü anladım.
+- [ ] Kodlama ajanı veya bakımcıysam [`../CLAUDE.md`](../CLAUDE.md) dosyasındaki İngilizce sözleşmenin otoritatif olduğunu biliyorum.
+- [ ] Turkish encoding, DB normalization, source/load order ve secret safety sınırlarına dokunmadan önce ilgili helper/testleri okudum.
+- [ ] Windows VM/on-prem davranışını README'den değil [`../RUNBOOK.md`](../RUNBOOK.md) üzerinden değerlendiriyorum.
+- [ ] `renv.lock` üretimi için Linux/cloud/Codex ortamını kullanmayacağım.
+- [ ] Yalnızca gerçekten çalıştırdığım doğrulama komutlarını kanıt olarak raporlayacağım.
+
+## İlgili Belgeler
+
+- İlk giriş: [`../README.md`](../README.md)
+- Kodlama ajanı sözleşmesi: [`../CLAUDE.md`](../CLAUDE.md)
+- Ajan özeti: [`../AGENTS.md`](../AGENTS.md)
+- Operasyon kılavuzu: [`../RUNBOOK.md`](../RUNBOOK.md)
+- Değişiklik notları: [`release-notes.md`](release-notes.md)
+- Bağımlılık kilitleme: [`dependency-locking.md`](dependency-locking.md)
+- Veritabanı tablo yapısı: [`database-schema.md`](database-schema.md)
+- renv durumu: [`../RENV_LOCK_STATUS.md`](../RENV_LOCK_STATUS.md)
+- Kullanıcı/asistan davranışı: [`../ai_rehber.md`](../ai_rehber.md)
