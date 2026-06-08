@@ -11,6 +11,13 @@ repo_root_sml <- resolve_repo_root_for_tests()
 .sml_env <- new.env(parent = globalenv())
 .sml_env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
 .sml_env$log_info <- function(...) invisible(NULL)
+
+# MCP oturum dosyası yardımcısı artık current_session_files kaydını
+# session_user_data_get_list() üzerinden korur; izole test ortamında bu
+# bağımlılık açıkça yüklenmelidir.
+source(file.path(repo_root_sml, "R/utils_session_cleanup.R"),
+       encoding = "UTF-8", local = .sml_env)
+
 source(file.path(repo_root_sml, "R/helpers_send_message_request_lifecycle.R"),
        encoding = "UTF-8", local = .sml_env)
 source(file.path(repo_root_sml, "R/helpers_send_message_core.R"),
@@ -106,9 +113,11 @@ test_that("mergen_prepare_send_message_chat: erteleme kapalıyken DB'de oluştur
   expect_identical(values$current_chat_id, 123L)
 })
 
-test_that("mergen_prepare_mcp_session_files: mcp_excel olmayan dal session dosyalarını temizler", {
+test_that("mergen_prepare_mcp_session_files: mcp_excel olmayan dal session dosyalarını korur", {
   session <- list(userData = new.env(parent = emptyenv()))
-  session$userData$current_session_files <- list("eski.xlsx" = list(name = "eski.xlsx"))
+  mevcut_dosyalar <- list("eski.xlsx" = list(name = "eski.xlsx"))
+  session$userData$current_session_files <- mevcut_dosyalar
+
   snapshot_arg <- NULL
   res <- .sml_env$mergen_prepare_mcp_session_files(
     session = session,
@@ -120,14 +129,18 @@ test_that("mergen_prepare_mcp_session_files: mcp_excel olmayan dal session dosya
     update_mcp_registry_snapshot_fn = function(x) { snapshot_arg <<- x; list(snapshot = x) },
     tool_family = "none"
   )
-  expect_identical(res$current_session_files, list())
-  expect_identical(session$userData$current_session_files, list())
-  expect_identical(snapshot_arg, list())  # boş kayıt anlık görüntüsü
+
+  expect_identical(res$current_session_files, mevcut_dosyalar)
+  expect_identical(session$userData$current_session_files, mevcut_dosyalar)
+  expect_identical(snapshot_arg, list())  # MCP kayıt anlık görüntüsü boş kalır
 })
 
-test_that("mergen_prepare_mcp_session_files: mcp_excel ama dosya yoksa yine temizler", {
+test_that("mergen_prepare_mcp_session_files: mcp_excel ama dosya yoksa session dosyalarını korur", {
   session <- list(userData = new.env(parent = emptyenv()))
-  session$userData$current_session_files <- list("x" = 1)
+  mevcut_dosyalar <- list("x" = 1)
+  session$userData$current_session_files <- mevcut_dosyalar
+
+  snapshot_arg <- NULL
   res <- .sml_env$mergen_prepare_mcp_session_files(
     session = session,
     file_manager_data = list(file_contents = function() list()),
@@ -135,8 +148,11 @@ test_that("mergen_prepare_mcp_session_files: mcp_excel ama dosya yoksa yine temi
     effective_user_id = 7L,
     current_settings = list(),
     cache_mcp_file_locally_fn = function(...) NULL,
-    update_mcp_registry_snapshot_fn = function(x) list(snapshot = x),
+    update_mcp_registry_snapshot_fn = function(x) { snapshot_arg <<- x; list(snapshot = x) },
     tool_family = "mcp_excel"
   )
-  expect_identical(res$current_session_files, list())
+
+  expect_identical(res$current_session_files, mevcut_dosyalar)
+  expect_identical(session$userData$current_session_files, mevcut_dosyalar)
+  expect_identical(snapshot_arg, list())  # MCP kayıt anlık görüntüsü boş kalır
 })
