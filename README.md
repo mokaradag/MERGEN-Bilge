@@ -128,7 +128,7 @@ Kaynak manifesti parse doğrulaması, Windows CRLF ve eski Mac CR satır sonlar�
 
 - **Claude Code / Codex bulut bootstrap dayanıklılığı:** Claude Code web oturumları için `SessionStart` hook ve bulut `Setup Script` yolu netleştirildi. RSPM indirme yönlendirmesi nedeniyle `rspm-sync.rstudio.com` allowlist gereklidir; installer gerçek paket indirmesini doğrular ve gerekirse CRAN'a düşer. Bu alan uygulama runtime/VM/DB/SSO kanıtı değil, bulut bootstrap sürecini kolaylaştıran altyapıdır.
 
-- **Davranışsal test kapsamı:** 02-03 Haziran güncellemeleriyle app loading/boot readiness, health, support, chat actions/search/export, admin UI/analytics/error analysis, image generation, STT, ChartLab, AI Expert, user identity, messaging render, DB chat readers, logging resolvers, music URL encoding ve version history resolver gibi çok sayıda modül ve yardımcı için çevrimdışı, deterministik davranışsal test kapsamı genişletildi. Ayrıca `message_search` `gregexpr` uyarısı, DB chat timestamp parsing güvenli varsayılanı ve ChartLab milisaniye ID overflow uyarısı gibi küçük cerrahi düzeltmeler testlerle korunur.
+- **Davranışsal test kapsamı:** App loading/boot readiness, health, support, chat actions/search/export, admin UI/analytics/error analysis, image generation, STT, ChartLab, AI Expert, user identity, messaging render, DB chat readers, logging resolvers, music URL encoding ve version history resolver gibi çok sayıda modül ve yardımcı için çevrimdışı, deterministik davranışsal test kapsamı genişletildi. Ayrıca `message_search` `gregexpr` uyarısı, DB chat timestamp parsing güvenli varsayılanı ve ChartLab milisaniye ID overflow uyarısı gibi küçük cerrahi düzeltmeler testlerle korunur.
 
 ### Sürüm geçmişi dosya yolu çözümleme kararlılığı
 

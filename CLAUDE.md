@@ -519,9 +519,9 @@ A stale callback may store a valid base64 result in the cache, but it must not w
 
 Regression coverage belongs in `tests/testthat/test-file-preview-docx-async-clobber-behavior.R`. Keep that test deterministic: use `testServer`, mock `future::future` with `local_mocked_bindings(.package = "future")`, return a manually resolved `promises::promise`, and use a non-existent datapath so the async branch is reached without a large fixture.
 
-### Behavioral-test lessons from `claude/beautiful-goodall-8yK70`
+### Behavioral-test maintenance lessons
 
-Do not redo the work from `claude/beautiful-goodall-8yK70`: DOCX async clobber protection is already implemented, the MCP absolute-path security contract is re-anchored to stable behavior, and behavioral coverage was added for `call_llm_with_retry`, `.sso_der_*`, file-store mutation helpers, sidebar user panel helpers/server behavior, `resolve_claude_runtime_source_dir`, and `get_user_profile_from_db`.
+Do not redo recently completed behavioral-coverage work: DOCX async clobber protection is already implemented, the MCP absolute-path security contract is re-anchored to stable behavior, and behavioral coverage exists for `call_llm_with_retry`, `.sso_der_*`, file-store mutation helpers, sidebar user panel helpers/server behavior, `resolve_claude_runtime_source_dir`, and `get_user_profile_from_db`.
 
 Keep these lessons in mind for future tests:
 - The base cloud checkout may not have `logger`; do not source `R/config_logging.R` in a zero-skip test unless `logger` is installed first.
@@ -5689,18 +5689,18 @@ testthat::test_file("tests/testthat/test-production-contracts.R")
 
 Recent production-hardening coverage adds focused contract tests for source manifest integrity, secret leakage, runtime network boundaries, and expanded UTF-8 parse coverage of high-risk production files. The runtime network-boundary test is intended to catch accidental public internet/CDN dependencies in executable runtime code, not harmless documentation/license references: it strips R/JS/CSS comments, allows SVG namespace URLs, `example.*` placeholders, known internal/intranet hosts, and skips vendored offline assets such as `www/js/highlight.min.js` and `www/css/all.min.css`. Use `MERGEN_ALLOWED_INTERNAL_URL_REGEX` only for additional organization-specific internal URL allowlisting.
 
-### Behavioral test coverage expansion notes from 02-03 June 2026
+### Behavioral test coverage expansion notes
 
-- The 02-03 June 2026 commits added broad offline, deterministic behavioral coverage for previously untested modules/server files and pure helpers.
+- Recent behavioral-coverage updates added broad offline, deterministic behavioral coverage for previously untested modules/server files and pure helpers.
 - PR #439 covered 42 previously untested R/Shiny modules/server files, added around 34 new test files, reached about 627 assertions after that wave, and included the behavior-preserving `message_search` `gregexpr(..., fixed = TRUE)` warning fix.
 - PR #441 covered 20+ additional modules/helpers, including image generation, AI Expert, admin error analysis, file-manager runtime, startup screen, STT, ChartLab, user identity, messaging rendering, DB chat readers, Claude Code formatting, package validation, logging resolvers, health formatters, version history resolver, and welcome builders.
 - New behavioral tests must stay offline and deterministic: use local stubs, isolated environments, `MockShinySession` / `testServer`, and no real LLM/TTS/DB/browser/network unless explicitly required by an existing validation gate.
 - Warnings in focused behavior tests should be treated as regressions where the test path expects zero warnings. If production emits a spurious warning, fix it surgically with a regression test rather than suppressing it globally.
 - Preserve Turkish comments and `test_that` descriptions with proper UTF-8 Turkish characters.
 
-### Focused behavioral coverage from claude/lucid-mayer-U1iHC
+### Focused behavioral regression coverage
 
-Commit `32dd9afd0d993e3590b51db296999c9ca78dd1af` added or strengthened the following protected focused coverage list:
+The following focused coverage list is protected and should remain behavior-level regression coverage:
 
 - tests/testthat/test-ai-expert-chunking-behavior.R
 - tests/testthat/test-api-key-identity-resolution-behavior.R
