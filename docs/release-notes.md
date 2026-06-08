@@ -16,6 +16,14 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 Aşağıdaki bölüm, güncel değişiklik notlarını kronolojik/tematik bakım izi kaybolmadan izler.
 
+### Karmaşıklık azaltma: Yapılandırma ayarları UI'si odaklı kart yapıcılarına bölündü
+
+Ayarlar sayfasının "Yapılandırma" alt sekmesi UI'si tek bir 710 satırlık `settingsYapilandirmaUIImpl(id)` fonksiyonuydu; kod tabanındaki en büyük tek fonksiyondu ve gezinmesi zordu. Bu fonksiyon artık ince bir kompozitör olup her ayar kartını odaklı, saf bir `.syap_*(ns)` yapıcısına delege eder: `.syap_header_row`, `.syap_model_card`, `.syap_api_key_card`, `.syap_tools_card`, `.syap_claude_code_card`, `.syap_interface_shortcuts_row`, `.syap_audio_card`, `.syap_ai_expert_card`, `.syap_image_card`, `.syap_summarization_card`, `.syap_analysis_card`.
+
+Bu yalnızca okunabilirlik (bilişsel yük) iyileştirmesidir; davranış birebir korunur. Bölme öncesi ve sonrası render edilen HTML **bayt-bayt aynıdır** (30.629 karakter) ve sunucuya bağlanan 47 Shiny input/output kimliğinin tümü değişmeden kalır. Dosya tek dosyada tutulduğu için kaynak manifesti, yükleme sırası veya yeni dosya sözleşmeleri etkilenmez. Fonksiyon başına bilişsel yük 1×710 satırdan 1 kompozitör + 11 küçük yapıcıya indi; dosya 710 → 758 satır oldu (raporun en büyük dosya metriği 760'ta kaldığından gerileme yoktur) ve maintainability skoru 100/100 korunur.
+
+Koruma: yeni `tests/testthat/test-settings-yapilandirma-ui-id-surface-behavior.R` karakterizasyon testi UI'yi render edip 47 kimliğin tamamını, tüm kart başlıklarını ve özel yapıları (model `data-model-meta`, eşit yükseklik satırı, araç seçici, derin düşünme anahtarı) dondurur; herhangi bir kimliğin düşmesi/yeniden adlandırılması testi kırar. Mevcut `test-settings-yapilandirma-ui-refactor-contract.R` sözleşme testi yeşil kalır. Doğrulama: parse sanity + odaklı sözleşme testleri (`bash tools/ai_validate.sh cloud-quick`) yeşil; tam runtime/app boot, tarayıcı UX ve Windows VM/SSO/DB doğrulaması bu bulut oturumunda yapılmadı.
+
 ### Karmaşıklık azaltma: oluşturulan görsel kartı HTML'i tek kanonik yardımcıda toplandı
 
 Oluşturulan görsel kartı işaretlemesi (görsel + `MERGEN Bilge` filigranı + indir/kopyala/yazdır butonları + isteğe bağlı açıklama) üç ayrı yerde birebir aynı şekilde tekrarlanıyordu: `R/module_image_generation.R` içindeki `render_generated_image_html()` ve `render_image_from_saved_path()` ile `R/helpers_chat_message_formatting.R` içindeki `db_message_render_image_html()` (kaydedilmiş söyleşi yeniden yükleme yolu). Bu çoğaltma, kart işaretlemesinde (buton ekleme, kaçış düzeltmesi, filigran metni) yapılacak her değişikliğin üç yeri birden gerektirdiği bir bakım ve XSS sınır riskiydi.

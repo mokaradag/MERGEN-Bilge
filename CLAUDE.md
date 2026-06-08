@@ -3345,9 +3345,12 @@ Responsibilities:
 
 Do not move the large Yapılandırma UI card layout back into `R/module_settings_yapilandirma.R`. Do not move runtime observers, `reactiveVal(...)`, `moduleServer(...)`, or `session$sendCustomMessage(...)` into `R/module_settings_yapilandirma_ui.R`.
 
+Inside `R/module_settings_yapilandirma_ui.R`, `settingsYapilandirmaUIImpl(id)` is a thin composer that delegates each settings card to a focused, pure `.syap_*(ns)` sub-builder (`.syap_header_row`, `.syap_model_card`, `.syap_api_key_card`, `.syap_tools_card`, `.syap_claude_code_card`, `.syap_interface_shortcuts_row`, `.syap_audio_card`, `.syap_ai_expert_card`, `.syap_image_card`, `.syap_summarization_card`, `.syap_analysis_card`). This is a readability split only: the produced tag tree and every server-bound `ns(...)` input/output id must stay byte-identical. The sub-builders must remain pure UI (no `moduleServer`/observers/`reactiveVal`/`sendCustomMessage`). Do not re-merge them back into one giant function, and do not drop or rename any of the 47 protected ids. The exact id surface and card structure are frozen by `tests/testthat/test-settings-yapilandirma-ui-id-surface-behavior.R`, which renders the UI and asserts the full id set plus card titles.
+
 This split is protected by:
 
 * `tests/testthat/test-settings-yapilandirma-ui-refactor-contract.R`
+* `tests/testthat/test-settings-yapilandirma-ui-id-surface-behavior.R`
 * `tests/testthat/test-source-manifest-contract.R`
 * `tests/testthat/test-maintainability-ratchet.R`
 
