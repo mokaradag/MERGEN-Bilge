@@ -6,6 +6,71 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-09 — Dosya Yönetimi görünen dosya adı normalizasyon sınırı
+
+### Seçilen iz(ler)
+- **Track B — Complex runtime kodundan saf yardımcı çıkarımı** (`R/helpers_file_manager_state_runtime.R` yükleme yolu → `R/helpers_file_manager_table.R::fm_normalize_uploaded_file_info()`).
+- **Track E — Duplicate mechanism consolidation** (upload state ve tablo satırı görünen ad temizliği artık aynı kanonik helper zincirini kullanır).
+
+### Özet ve gerekçe
+Dosya Yönetimi içinde yükleme state yolu, storage-prefix taşıyan kalıcı dosya adlarını elle `recover_display_name_from_storage_name()` ile temizliyordu; tablo satırı yolu ise `fm_clean_file_display_name()` üzerinden benzer fallback zinciri taşıyordu. Bu iki mekanizma aynı görünür davranışı hedeflediği halde farklı noktalarda tutulduğu için Türkçe dosya adı, storage-prefix ve `display` metadata önceliği bakımında gizli coupling oluşturuyordu.
+
+`fm_normalize_uploaded_file_info()` adlı saf yardımcı eklendi. Yardımcı, mümkün olduğunda kanonik `normalize_file_display_name()` davranışına delege eder; `display` metadata önceliğini, storage-prefix temizliğini ve UTF-8/Türkçe karakter onarımını tek sınırda toplar. `fm_clean_file_display_name()` geriye uyumlu wrapper olarak korundu ve aynı yardımcıya bağlandı. `process_uploaded_file()` artık kendi dosya adı temizleme bloğunu taşımıyor; normalize edilmiş `file_info` ve `file_name` değerlerini saf yardımcıdan alıyor.
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_file_manager_table.R` — `fm_normalize_uploaded_file_info()` eklendi; `fm_clean_file_display_name()` uyumluluk wrapper'ı aynı helper'a delege edecek şekilde sadeleştirildi.
+- `R/helpers_file_manager_state_runtime.R` — upload işleme yolundaki yerel storage-prefix temizleme bloğu kaldırıldı ve yeni saf helper çağrısına indirildi.
+
+**Test**
+- `tests/testthat/test-file-manager-table-contract.R` — dosya deposu normalizasyon helper'ı test ortamına yüklendi; Türkçe storage-prefix temizliği ve `display` metadata önceliği için deterministik saf helper testleri eklendi.
+
+**Dokümantasyon**
+- `docs/architecture-map.md` — Dosya Yönetimi ownership satırı, görünen dosya adı sınırını ve kanonik helper delegasyonunu açıklar.
+- `docs/technical-reference.md` — Dosya Yönetimi runtime notlarına upload/tablo görünen ad normalizasyon sınırı eklendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: upload state yolu ve tablo yolu benzer görünen ad temizleme kararlarını ayrı bloklarda taşıyordu.
+- Sonra: storage-prefix temizliği, `display` metadata önceliği ve UTF-8/Türkçe onarım tek saf yardımcıyla karakterize edildi; wrapper adı korundu.
+- Runtime modül davranışı değişmeden, side-effect içeren `process_uploaded_file()` dosya adı kararından arındırıldı ve daha ince bir orkestratöre dönüştü.
+
+### Korunan davranış sözleşmeleri
+- Dosya Yönetimi tablo kolonları, HTML class/selector değerleri, Shiny download/attach ID kalıpları değişmedi.
+- Storage-prefix kullanıcıya gösterilmez; `İhale_çalışması.pdf` gibi Türkçe karakterli dosya adları korunur.
+- Explicit `display` metadata, storage dosya adından öncelikli kalır.
+- File upload/list/preview/analyze, Excel MCP yolu, DB schema, SSO ve frontend asset/source manifest sırası değiştirilmedi.
+
+### Eklenen / güncellenen testler
+- `test-file-manager-table-contract.R` içindeki yeni testler:
+  - `fm_normalize_uploaded_file_info()` storage-prefix içeren Türkçe dosya adını okunabilir kullanıcı adına indirger.
+  - `fm_clean_file_display_name()` compatibility wrapper'ı aynı sonucu üretir.
+  - Explicit `display` metadata storage dosya adına üstün gelir.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- `Rscript tests/scripts/maintainability_report.R` → geçti; skor 100/100, refactor adayı eşiği ihlali yok.
+- `Rscript -e "testthat::test_file('tests/testthat/test-file-manager-table-contract.R')"` → geçti.
+- `Rscript -e "testthat::test_file('tests/testthat/test-file-lifecycle-hardening-contract.R'); testthat::test_file('tests/testthat/test-file-manager-table-contract.R'); testthat::test_file('tests/testthat/test-file-manager-state-runtime-contract.R')"` → geçti.
+- `bash tools/ai_validate.sh quick` → geçti; `failed_steps: 0`, `skipped_steps: 0`.
+- `Rscript tests/testthat.R` → başarısız; bu oturumda unrelated environment/repo fixture failures görüldü (`test-claude-code-security-policy-contract.R`, `.Renviron` logout URL fixture, eksik vendored UI assets, upload-validator fixture path). Odak Dosya Yönetimi testleri aynı oturumda geçti.
+- `bash tools/ai_validate.sh full --boot-smoke` → başarısız; full suite adımında yukarıdaki unrelated testthat failure sınıfı nedeniyle `failed_steps: 1`. Boot-smoke adımına geçilemedi. Artifact: `artifacts/ai-validation/20260609-143057/summary.json`.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Uygulamayı normal Windows VM launcher ile başlatın; kırmızı hata ve yeni browser console hatası olmadığını doğrulayın.
+- Dosya Yönetimi sekmesine gidin.
+- `İhale_çalışması_çğıİöşü.txt` gibi Türkçe karakterli bir TXT yükleyin; listede ve preview/attach davranışında okunabilir kaldığını doğrulayın.
+- CSV/TXT içinde Türkçe karakterler yükleyip önizleme ve bağlama ekleme davranışını doğrulayın.
+- Aynı isimli dosya tekrar yükleme davranışının değişmediğini kontrol edin.
+- Excel dosyası yükleyin; yanlış özetleme yoluna girmediğini ve amaçlanan Excel/MCP analiz yolu için kullanılabilir kaldığını kontrol edin.
+- Kaydedilmiş söyleşiye dosya referansı ekleyip reload/history sonrasında görünen adın ve Türkçe karakterlerin korunduğunu doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Bu refactor dosya adı kararını saf helper'a taşıdı; DB schema, frontend varlıkları, SSO ve Excel okuyucu davranışı bilerek değiştirilmedi.
+- Windows VM launcher ve gerçek tarayıcı smoke bu cloud/container oturumunda çalıştırılmadı; kullanıcı tarafı manuel QA gereklidir.
+
+---
+
+
 ## 2026-06-09 — Proje/Kaynak Analizi sezgisel sorgu skorlamasının saf yardımcıya çıkarılması
 
 ### Seçilen iz(ler)

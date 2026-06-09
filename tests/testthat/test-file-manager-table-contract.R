@@ -14,6 +14,12 @@
   )
 
   source(
+    file.path(repo_root, "R", "config_file_store_index_mutation.R"),
+    encoding = "UTF-8",
+    local = helper_env
+  )
+
+  source(
     file.path(repo_root, "R", "helpers_file_manager_table.R"),
     encoding = "UTF-8",
     local = helper_env
@@ -92,4 +98,32 @@ test_that("file manager tablo satırı kullanıcıya görünen alanları korur",
   expect_equal(row$Yuklenme_Tarihi[[1]], "2024-01-02 03:04")
   expect_true(grepl("data-download-id=\"f1\"", row$Islemler[[1]], fixed = TRUE))
   expect_true(grepl("id=\"fm-attach_f1\"", row$Model_Baglam[[1]], fixed = TRUE))
+})
+
+test_that("file manager upload display normalization is canonical and Turkish-safe", {
+  env <- .load_file_manager_table_helpers()
+
+  storage_name <- "20260515120000_abcd1111_İhale_çalışması.pdf"
+  normalized <- env$fm_normalize_uploaded_file_info(list(
+    name = storage_name,
+    datapath = tempfile(fileext = ".pdf"),
+    size = 1024
+  ))
+
+  expect_equal(normalized$file_name, "İhale_çalışması.pdf")
+  expect_equal(normalized$file_info$name, "İhale_çalışması.pdf")
+  expect_equal(env$fm_clean_file_display_name(storage_name), "İhale_çalışması.pdf")
+})
+
+test_that("file manager upload display normalization prefers explicit display metadata", {
+  env <- .load_file_manager_table_helpers()
+
+  normalized <- env$fm_normalize_uploaded_file_info(list(
+    name = "20260515120000_abcd1111_storage-name.pdf",
+    display = "Görünen İsim.pdf",
+    datapath = tempfile(fileext = ".pdf")
+  ))
+
+  expect_equal(normalized$file_name, "Görünen İsim.pdf")
+  expect_equal(normalized$file_info$name, "Görünen İsim.pdf")
 })
