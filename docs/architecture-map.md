@@ -44,7 +44,29 @@ R/Shiny uygulama kabuğu: app.R -> global.R -> ui.R + server.R
 
 ## Kaynak Manifesti ve Yükleme Sırası
 
-`R/config_source_manifest.R`, `global.R` tarafından kullanılan sıralı kaynak listesini tanımlar. Dosya; temel altyapı, yapılandırma, DB/SQL, core helper, LLM, modül ve server handler katmanlarını açık listeler. Özellikle şu sıralar korunmalıdır:
+`R/config_source_manifest.R`, `global.R` tarafından kullanılan sıralı kaynak listesini tanımlar. Dosya; temel altyapı, yapılandırma, DB/SQL, core helper, LLM, modül ve server handler katmanlarını açık listeler.
+
+### Özellik bölümleri (onboarding haritası)
+
+255+ R dosyası içinde yön bulmayı kolaylaştırmak için manifest, özellik/katman ailelerine göre adlandırılmış bölümlerden oluşan tek bir sıralı liste (`source_manifest_sections`) olarak düzenlenmiştir. "X özelliği hangi dosyalarda?" sorusunun ilk cevabı bu bölümlerdir. Üç kanonik nesne (`source_manifest_group_1_paths`, `source_manifest_after_future_paths`, `source_manifest_runtime_paths`) bu bölümlerden türetilir ve yükleme sırası bölümlerin sırayla birleştirilmesiyle birebir korunur.
+
+Öne çıkan bölümler ve karşılık geldikleri özellikler:
+
+| Bölüm anahtarı | Özellik / katman | Tipik giriş noktası |
+|---|---|---|
+| `foundation` / `post_future_utils` | Temel altyapı (encoding, log, yol, upload doğrulama, indeks) | `R/utils_*.R` |
+| `config_app_core` / `config_api_model_keys` | SSO/dosya deposu/karakter yapılandırması, model ve API anahtarı çözümleme | `R/config_*.R`, `R/helpers_api_*` |
+| `database` / `sql_library` | DB encoding/bağlantı/okuma-yazma ve SQL kütüphanesi | `R/helpers_db_*`, `R/helpers_database.R` |
+| `mcp_tools` / `chartlab_helpers` | MCP araç zinciri ve ChartLab | `R/helpers_mcp_*`, `R/helpers_chartlab*.R` |
+| `files_preview_pipeline` / `file_manager_helpers` | Dosya yaşam döngüsü, önizleme, Dosya Yönetimi yardımcıları | `R/helpers_file*`, `R/module_file_manager*.R` |
+| `chat_send_message_runtime` / `llm_pipeline` | Sohbet/gönderme akışı ve LLM/SSE/worker hattı | `R/helpers_send_message_*`, `R/helpers_llm_*` |
+| `claude_code_helpers` / `module_claude_code` | Bilge Yolaç yardımcıları ve modülleri | `R/helpers_claude_code_*`, `R/module_claude_code*.R` |
+| `module_*` aileleri | Sohbet, dosya/medya, ayarlar, AI/ses, kimlik/başlangıç, destek, admin, sağlık UI modülleri | `R/module_*.R` |
+| `server_init_runtime` / `server_core_outputs_welcome` / `server_observers` / `server_handlers_send_message` | Server init/runtime context, observer katmanı ve handler/gönderme hattı | `R/server_*.R` |
+
+Yeni bir runtime dosyası eklerken doğru bölüme, doğru sırada eklenmelidir. Bölüm sırası ve sınır dosyaları `tests/testthat/test-source-manifest-sections-contract.R` tarafından dondurulur; kritik ikili yükleme sırası kuralları ise `R/bootstrap_source_manifest.R` içindeki `source_manifest_required_order` ile doğrulanır.
+
+Özellikle şu sıralar korunmalıdır:
 
 - `R/utils_text_encoding.R`, logging/DB/metin tüketicilerinden önce yüklenir.
 - `R/helpers_mailto_encoding.R`, `R/utils_text_encoding.R` sonrasında erken yüklenir.

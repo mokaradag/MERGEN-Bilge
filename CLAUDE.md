@@ -1392,12 +1392,12 @@ The current source-manifest layers are:
 
 - `R/utils_safe_source.R`: defines UTF-8-safe `safe_source()` and preserves the Windows/VM fallback behavior.
 - `R/bootstrap_source_manifest.R`: defines manifest object-shape validation, critical order rules, parse/file checks, explicit-path validation, and `source_manifest_load()`.
-- `R/config_source_manifest.R`: defines the explicit runtime source order through `source_manifest_group_1_paths`, `source_manifest_after_future_paths`, and `source_manifest_runtime_paths`.
+- `R/config_source_manifest.R`: defines the explicit runtime source order. It is organized into a single ordered, named, feature/layer list `source_manifest_sections` (e.g. `foundation`, `database`, `mcp_tools`, `file_manager_helpers`, `claude_code_helpers`, `llm_pipeline`, `module_*`, `server_*`). The three canonical objects are DERIVED from it and remain the public contract: `source_manifest_group_1_paths` is `source_manifest_sections$foundation`, `source_manifest_after_future_paths` is the concatenation of the remaining sections (`unlist(source_manifest_sections[-1L], use.names = FALSE)`), and `source_manifest_runtime_paths` is their union. Sections are purely organizational; the runtime load order is byte-for-byte identical to the concatenation of the sections in order.
 - `global.R`: validates `R/config_source_manifest.R` before sourcing it, validates the manifest objects, validates runtime paths, and loads files through `safe_source()` without owning or reconstructing the full list inline.
 
 When adding, moving, or splitting a runtime file:
 
-- add the file to the correct position in `R/config_source_manifest.R`,
+- add the file to the correct named section (and correct position within it) of `source_manifest_sections` in `R/config_source_manifest.R`; do not add a new top-level path vector outside the sections list,
 - for file-store lifecycle splits, preserve the order `R/config_file_store.R`, `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, then `R/config_file_store_registry.R`,
 - for server runtime/module-wiring splits, preserve the order `R/helpers_server_runtime_contracts.R`, `R/helpers_server_runtime_named_contracts.R`, `R/server_runtime_context.R`, `R/server_runtime_function_slot.R`, `R/server_module_wiring.R`, `R/server_chat_engine_dependencies.R`, `R/server_chat_engine_runtime.R`, then the session/chat runtime init files,
 - keep dependency order explicit and reviewable,
@@ -1406,6 +1406,7 @@ When adding, moving, or splitting a runtime file:
 - keep loading through `safe_source()`; do not replace it with plain `source()`,
 - keep `global.R` validating `R/config_source_manifest.R` before sourcing it and loading manifest groups through `source_manifest_load(...)`; do not manually duplicate group entries with individual `safe_source()` calls,
 - keep `source_manifest_runtime_paths` exactly equal to `c(source_manifest_group_1_paths, source_manifest_after_future_paths)`; do not maintain a separate divergent runtime list,
+- keep the three canonical objects DERIVED from `source_manifest_sections` (do not hand-maintain them separately), so `unlist(source_manifest_sections, use.names = FALSE)` always equals `source_manifest_runtime_paths`; if you add/rename/reorder a section, update `tests/testthat/test-source-manifest-sections-contract.R` (frozen section order + per-section boundary anchors) in the same change,
 - update `source_manifest_required_order` in `R/bootstrap_source_manifest.R` only for genuinely critical dependency boundaries,
 - keep `R/bootstrap_source_manifest.R` small, bootstrap-only, and free of feature/module loading,
 - do not add automatic directory sourcing, alphabetical sourcing, package-style discovery, or runtime source-order inference,
@@ -1436,6 +1437,7 @@ Protected by:
 - `tests/testthat/helper_source_manifest_contract.R`
 - `tests/testthat/test-global-source-manifest-contract.R`
 - `tests/testthat/test-source-manifest-contract.R`
+- `tests/testthat/test-source-manifest-sections-contract.R`
 - `tests/testthat/test-e2e-boot-welcome-regression.R`
 - `tests/testthat/test-production-contracts.R`
 - `tests/testthat/test-maintainability-ratchet.R`
@@ -1444,6 +1446,7 @@ Focused validation:
 
 - `testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")`
 - `testthat::test_file("tests/testthat/test-source-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-source-manifest-sections-contract.R")`
 - `testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")`
 - `testthat::test_file("tests/testthat/test-production-contracts.R")`
 - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
