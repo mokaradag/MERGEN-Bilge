@@ -190,12 +190,13 @@ source_manifest_sections <- list(
   ),
 
   # analysis_helpers: Derin analiz ve Proje/Kaynak Analizi çekirdek/RLS-güvenlik
-  # özeti/filtre yardımcıları.
+  # özeti/filtre/sorgu-seçimi yardımcıları.
   analysis_helpers = c(
     "R/helpers_deep_analysis.R",
     "R/helpers_pk_analysis_core.R",
     "R/helpers_pk_analysis_security_summary.R",
-    "R/helpers_pk_analysis_filters.R"
+    "R/helpers_pk_analysis_filters.R",
+    "R/helpers_pk_analysis_query_selection.R"
   ),
 
   # sso_identity_helpers: SSO imza doğrulama, SSO akışı ve logout URL

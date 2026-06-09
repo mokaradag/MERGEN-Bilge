@@ -196,6 +196,7 @@ Current contract:
 - UI asset order is part of the safety boundary: `www/js/streaming_markdown_safety.js` must load before `www/js/markdown-parser.js`, and `www/js/markdown-parser.js` must load before `www/js/streaming_manager.js`.
 - Server-side final and saved message markdown rendering must use `render_safe_markdown_html()` from `R/helpers_markdown_safety.R` for user/LLM-controlled prose. Do not call `commonmark::markdown_html()` directly on such prose unless raw HTML has first been escaped.
 - The generated-image card markup (image + `MERGEN Bilge` watermark + download/copy/print action buttons + optional description) is a single canonical builder: `mergen_generated_image_card_html()` in `R/helpers_markdown_safety.R`. It escapes `message_id` and `description` (XSS boundary) and places the caller-trusted `img_src` into `src` as-is. It is loaded before `R/helpers_chat_message_formatting.R` and `R/module_image_generation.R`. The live image path (`render_generated_image_html()`, `render_image_from_saved_path()` in `R/module_image_generation.R`) and the saved-chat reload path (`db_message_render_image_html()` in `R/helpers_chat_message_formatting.R`) must delegate the card markup to this helper. Do not re-inline the `image-action-btn-modern` button markup in those consumers, and do not duplicate the card template in a third site. The not-found / not-loaded placeholder branches in `db_message_render_image_html()` are intentionally different (no image, no buttons) and stay local. Protected by `tests/testthat/test-generated-image-card-html-contract.R`.
+- User image `img_src` is served session-scoped, not inlined as base64. The canonical serving helper is `mergen_serve_image_data_url()` in `R/helpers_markdown_safety.R`: when an active Shiny session exists it serves the file via `session$registerDataObj(...)` (session-scoped, unguessable URL → preserves per-user isolation; the browser fetches the image directly/lazily/in parallel, avoiding multi-MB base64 over the websocket), and per-session it memoizes one registered URL per file path through `session$userData$mergen_image_url_cache`. With no session (tests/non-reactive context) or on registration error it falls back to the original `data:image/png;base64,...` data URI, so existing no-session behavior and tests are unchanged. The two consumers — `get_image_web_url()` (`R/module_image_generation.R`, live generation) and `db_message_get_image_base64()` (`R/helpers_chat_message_formatting.R`, saved-chat/gallery reload) — must prefer this helper through a guarded `exists("mergen_serve_image_data_url", ...)` check and keep their inline base64 path as the fallback. Do not regress this back to unconditional inline base64; that reintroduces the slow Görsel Galerisi conversation load. Do not switch user images to a plain `addResourcePath()` public path (that would break user isolation with guessable cross-user URLs).
 - Raw HTML/script/event-handler patterns such as script tags, image error handlers, javascript links, and malformed tags split across streaming chunks must remain escaped or inert.
 - The browser UX smoke harness is part of this safety boundary, not a demo page. Keep `www/smoke/ux-smoke.html` and `www/smoke/ux-smoke-probes.js` explicit about streaming init/delta/stale requestId/finalize behavior, dangerous HTML-like payload inertness, finalize cleanup, audio duck ownership, saved-chat TTS non-autoplay, navigation cleanup, welcome-video init/destroy counters, and synthetic File Manager Turkish display-name refresh checks.
 - Smoke-only seams must remain namespaced and inert in production: `window.MergenStreamingSmoke`, `window.MergenAudioLifecycleSmoke`, `window.MergenWelcomeVideoSmoke`, and `window.MergenUxSmokeProbes`. Do not add `www/smoke/ux-smoke-probes.js` to `R/config_ui_assets.R`.
@@ -3258,6 +3259,30 @@ The split is protected by:
 * `tests/testthat/test-pk-analysis-core-refactor-contract.R`
 * `tests/testthat/test-pk-analysis-maintainability-contract.R`
 
+### Proje/Kaynak Analizi query-selection modularization contract
+
+The Proje/Kaynak Analizi "Akıllı Sorgu Seçici" (Smart Query Selector) heuristic scoring and score-table reporting are intentionally split out of the large module. Preserve this source order in `R/config_source_manifest.R` (the helper is in the `analysis_helpers` section, after `R/helpers_pk_analysis_filters.R` and before `R/module_proje_kaynak_analizi.R`):
+
+```r
+safe_source("R/helpers_pk_analysis_filters.R",          encoding = "UTF-8")
+safe_source("R/helpers_pk_analysis_query_selection.R",  encoding = "UTF-8")
+safe_source("R/module_proje_kaynak_analizi.R",          encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/helpers_pk_analysis_query_selection.R`: pure heuristic query-relevance scoring and score-table reporting. It owns `pk_init_query_score_table()` (the `all_scores` skeleton with `query_id`/`query_name`/`ai_score`/`heuristic_score`/`final_score`), `pk_score_query_relevance()` (per-query raw score), `pk_compute_heuristic_query_scores()` (full library scoring + `%100` normalization + `THRESHOLD_RAW=2`/`THRESHOLD_PCT=30` decision), and `print_score_table()` (console diagnostic). Its only permitted side effect is `print_score_table()`'s `cat()` output; no Shiny observer/render/runtime, no live DB connection, no LLM call.
+* `R/module_proje_kaynak_analizi.R`: keeps the `select_smart_query()` orchestrator (AI selection loop, session/`cat` orchestration, final result assembly) and calls the extracted pure helpers.
+
+Do not move `select_smart_query()` into the helper (it calls `find_best_query_with_ai()` which stays in the module, and is itself called by `R/helpers_deep_analysis.R`). Do not move `pk_init_query_score_table()`, `pk_score_query_relevance()`, `pk_compute_heuristic_query_scores()`, or `print_score_table()` back into the module. The scoring formula (name substring `+50`, name-word match `×10`, description-word match `×2`, the seven Turkish domain-keyword bonuses `+8`, max-normalized `%100`, `THRESHOLD_RAW=2`/`THRESHOLD_PCT=30`) and the `all_scores` table shape must be preserved exactly; the seven domain-bonus `grepl()` Turkish patterns are encoding-sensitive and must stay byte-identical.
+
+The split is protected by:
+
+* `tests/testthat/test-pk-analysis-query-selection-refactor-contract.R`
+* `tests/testthat/test-pk-analysis-query-selection-behavior.R`
+* `tests/testthat/test-pk-analysis-maintainability-contract.R`
+* `tests/testthat/test-source-manifest-sections-contract.R`
+
 ### File Manager modularization contract
 
 The File Manager layer is intentionally split to keep the large runtime module from growing again. Preserve this source order in `R/config_source_manifest.R`:
@@ -4373,6 +4398,7 @@ Shared utilities used across modules:
 - `R/helpers_deep_analysis.R`
 - `R/helpers_pk_analysis_core.R`
 - `R/helpers_pk_analysis_filters.R`
+- `R/helpers_pk_analysis_query_selection.R`
 - `R/helpers_sso.R`
 - `R/helpers_destek_database.R`
 - `R/helpers_admin_analytics.R`

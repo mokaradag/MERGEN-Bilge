@@ -312,13 +312,15 @@ window.printGeneratedImage = function(button) {
   printFrame.id = 'mergen-generated-image-print-frame';
   printFrame.title = 'MERGEN Bilge - Görsel Yazdır';
   printFrame.setAttribute('aria-hidden', 'true');
+  // Ekran dışında ama GERÇEK boyutlu bir iframe kullanılır. 1px/opacity:0 gizli
+  // çerçeve, görseli ~1px olarak düzenleyip yazdırma önizlemesinin boş açılıp
+  // anında kapanmasına ("ekran titreyip hiçbir şey olmaz") yol açabiliyordu.
   printFrame.style.position = 'fixed';
-  printFrame.style.right = '0';
-  printFrame.style.bottom = '0';
-  printFrame.style.width = '1px';
-  printFrame.style.height = '1px';
+  printFrame.style.left = '-10000px';
+  printFrame.style.top = '0';
+  printFrame.style.width = '1024px';
+  printFrame.style.height = '768px';
   printFrame.style.border = '0';
-  printFrame.style.opacity = '0';
   printFrame.style.pointerEvents = 'none';
 
   document.body.appendChild(printFrame);
@@ -346,15 +348,21 @@ window.printGeneratedImage = function(button) {
     if (didPrint) return;
     didPrint = true;
 
-    try {
-      printWindow.focus();
-      printWindow.print();
-      cleanup(60000);
-    } catch (err) {
-      console.error('[IMAGE_TOOLS] Yazdırma hatası:', err);
-      cleanup(1000);
-      showToast('Yazdırma başlatılamadı', 'error');
-    }
+    // Önbellekteki (yeni oluşturulmuş) görsel için load/complete senkron
+    // gerçekleşir; print() iframe içeriği düzenlenip boyanmadan çağrılırsa
+    // yazdırma önizlemesi boş açılıp kapanır. Tarayıcıya bir tik vererek
+    // iframe'in görseli boyamasını bekle, sonra yazdır.
+    window.setTimeout(function() {
+      try {
+        printWindow.focus();
+        printWindow.print();
+        cleanup(60000);
+      } catch (err) {
+        console.error('[IMAGE_TOOLS] Yazdırma hatası:', err);
+        cleanup(1000);
+        showToast('Yazdırma başlatılamadı', 'error');
+      }
+    }, 150);
   };
 
   printWindow.onafterprint = function() {

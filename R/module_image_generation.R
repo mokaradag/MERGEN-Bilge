@@ -524,11 +524,17 @@ get_image_web_url <- function(local_path) {
  if (is.null(local_path) || !file.exists(local_path)) {
    return(NULL)
  }
- 
- # Göreli yolu hesapla (www klasörüne göre)
- # user_images klasörü www altında değilse, farklı bir yöntem kullanılmalı
- # Burada doğrudan base64 encoding kullanacağız
- 
+
+ # Aktif oturum varsa görseli session-scoped URL ile sun (satır içi base64
+ # şişmesini önler; tarayıcı görseli doğrudan/tembel çeker). Yardımcı yüklü
+ # değilse veya oturum yoksa aşağıdaki base64 yoluna güvenli biçimde düşülür.
+ if (exists("mergen_serve_image_data_url", mode = "function")) {
+   served <- mergen_serve_image_data_url(local_path)
+   if (!is.null(served) && nzchar(served)) {
+     return(served)
+   }
+ }
+
  tryCatch({
    img_data <- base64enc::base64encode(local_path)
    paste0("data:image/png;base64,", img_data)

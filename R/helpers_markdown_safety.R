@@ -102,3 +102,92 @@ mergen_generated_image_card_html <- function(message_id, img_src, description = 
     description_html
   )
 }
+
+# ------------------------------------------------------------------------------
+# Görseli oturum-kapsamlı (session-scoped) bir URL üzerinden sunar.
+#
+# Eski yol her görseli satır içi base64 data-URI olarak gömüyordu; bu, uzun
+# görsel söyleşilerinde çok megabaytlık metni Shiny websocket'i üzerinden
+# göndererek belirgin gecikme yaratıyordu. Bunun yerine dosya, session$registerDataObj
+# ile yalnızca o oturuma ait (tahmin edilemez, kullanıcı izolasyonunu koruyan)
+# bir URL üzerinden sunulur; tarayıcı görseli doğrudan/tembel ve paralel çeker.
+#
+# Aynı oturumda aynı dosya için tek bir kayıt yapılır (URL yeniden kullanılır),
+# böylece tekrarlı render'larda handler birikmesi önlenir. Kayıtlı filtre dosyayı
+# her istekte taze okuduğu için dosya içeriği değişse bile doğru bayt sunulur.
+# ------------------------------------------------------------------------------
+.mergen_register_image_data_obj <- function(session, local_path) {
+  norm_path <- normalizePath(local_path, winslash = "/", mustWork = FALSE)
+
+  cache <- session$userData$mergen_image_url_cache
+  if (is.null(cache)) cache <- list()
+  if (!is.null(cache[[norm_path]]) && nzchar(cache[[norm_path]])) {
+    return(cache[[norm_path]])
+  }
+
+  ext <- tolower(tools::file_ext(local_path))
+  content_type <- switch(
+    ext,
+    "jpg" = , "jpeg" = "image/jpeg",
+    "png"  = "image/png",
+    "gif"  = "image/gif",
+    "webp" = "image/webp",
+    "bmp"  = "image/bmp",
+    "svg"  = "image/svg+xml",
+    "image/png"
+  )
+
+  obj_name <- paste0("mergen_img_", gsub("[^a-zA-Z0-9]", "_", basename(local_path)))
+
+  url <- session$registerDataObj(
+    name = obj_name,
+    data = list(path = norm_path, ctype = content_type),
+    filterFunc = function(data, req) {
+      fpath <- data$path
+      if (!file.exists(fpath)) {
+        return(shiny::httpResponse(
+          status = 404L,
+          content_type = "text/plain; charset=UTF-8",
+          content = "Gorsel bulunamadi"
+        ))
+      }
+      raw_bytes <- readBin(fpath, "raw", file.info(fpath)$size)
+      shiny::httpResponse(
+        status = 200L,
+        content_type = data$ctype,
+        content = raw_bytes
+      )
+    }
+  )
+
+  cache[[norm_path]] <- url
+  session$userData$mergen_image_url_cache <- cache
+  url
+}
+
+# Görsel için sunulabilir bir kaynak döndürür. Aktif bir Shiny oturumu varsa
+# session-scoped URL üretir; oturum yoksa (test/oturumsuz bağlam) veya kayıt
+# başarısız olursa eski base64 data-URI davranışına güvenli biçimde düşer.
+mergen_serve_image_data_url <- function(local_path,
+                                        session = shiny::getDefaultReactiveDomain()) {
+  if (is.null(local_path) || length(local_path) != 1L || !nzchar(local_path) ||
+      !file.exists(local_path)) {
+    return(NULL)
+  }
+
+  if (!is.null(session) && !is.null(session$registerDataObj)) {
+    served <- tryCatch(
+      .mergen_register_image_data_obj(session, local_path),
+      error = function(e) NULL
+    )
+    if (!is.null(served) && nzchar(served)) {
+      return(served)
+    }
+  }
+
+  # base64 yedeği (oturumsuz/hata durumu) — eski davranışı korur.
+  tryCatch(
+    paste0("data:image/png;base64,", base64enc::base64encode(local_path)),
+    error = function(e) NULL
+  )
+}
