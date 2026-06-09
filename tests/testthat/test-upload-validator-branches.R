@@ -19,7 +19,7 @@ load_upload_env_for_tests <- function() {
 }
 
 .make_dummy_upload_file <- function(size_bytes = 128L, filename = "RAPOR.PDF") {
-  gecici_dir <- withr::local_tempdir(pattern = "upload-validator-")
+  gecici_dir <- withr::local_tempdir(pattern = "upload-validator-", .local_envir = parent.frame())
   hedef <- file.path(gecici_dir, filename)
 
   con <- file(hedef, open = "wb")

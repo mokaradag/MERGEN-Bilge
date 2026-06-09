@@ -227,12 +227,12 @@ test_that("R/config_source_manifest.R helpers_logout_url.R'yi yükler", {
   )
 })
 
-test_that(".Renviron MERGEN_LOGOUT_URL anahtarını içerir (boş olabilir)", {
-  txt <- .read_repo_text_logout_url(".Renviron")
-  expect_true(nzchar(txt), info = ".Renviron okunamadı.")
+test_that(".Renviron.example MERGEN_LOGOUT_URL anahtarını içerir (boş olabilir)", {
+  txt <- .read_repo_text_logout_url(".Renviron.example")
+  expect_true(nzchar(txt), info = ".Renviron.example okunamadı.")
   expect_true(
     grepl("MERGEN_LOGOUT_URL", txt, fixed = TRUE),
-    info = ".Renviron MERGEN_LOGOUT_URL anahtarını içermelidir."
+    info = ".Renviron.example MERGEN_LOGOUT_URL anahtarını içermelidir."
   )
 })
 
