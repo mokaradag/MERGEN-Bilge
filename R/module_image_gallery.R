@@ -270,8 +270,15 @@ imageGalleryServer <- function(id, current_user_id) {
                     class = "gallery-card-image-wrapper",
                     onclick = if (chat_id_valid) {
                       sprintf(
-                        "Shiny.setInputValue('%s', {chat_id: '%s', file_path: '%s'}, {priority: 'event'});",
-                        ns("navigate_to_chat"), row$chat_id, gsub("'", "\\\\'", row$file_path)
+                        "Shiny.setInputValue('%s', %s, {priority: 'event'});",
+                        ns("navigate_to_chat"),
+                        jsonlite::toJSON(
+                          list(
+                            chat_id = as.character(row$chat_id),
+                            file_path = as.character(row$file_path)
+                          ),
+                          auto_unbox = TRUE
+                        )
                       )
                     } else {
                       sprintf("showToast('Bu görselin ait olduğu söyleşi bilgisi bulunamadı.', 'warning');")
@@ -314,11 +321,16 @@ imageGalleryServer <- function(id, current_user_id) {
                       class = "gallery-delete-btn",
                       title = "Görseli Sil",
                       onclick = sprintf(
-                        "event.stopPropagation(); Shiny.setInputValue('%s', {file_path: decodeURIComponent('%s'), chat_id: '%s', filename: '%s'}, {priority: 'event'});",
+                        "event.stopPropagation(); Shiny.setInputValue('%s', %s, {priority: 'event'});",
                         ns("delete_image_request"),
-                        URLencode(row$file_path, reserved = TRUE),
-                        row$chat_id,
-                        gsub("'", "\\\\'", row$filename)
+                        jsonlite::toJSON(
+                          list(
+                            file_path = as.character(row$file_path),
+                            chat_id = as.character(row$chat_id),
+                            filename = as.character(row$filename)
+                          ),
+                          auto_unbox = TRUE
+                        )
                       ),
                       tags$i(class = "fas fa-trash-alt")
                     )
@@ -396,20 +408,28 @@ imageGalleryServer <- function(id, current_user_id) {
     })
 
     observeEvent(input$refresh_gallery, {
-      # Galeri zaten önbellekten anında görünür; sekme geçişinde sessizce
-      # yeniden taranır. Görünür fadeOut/fadeIn ve her geçişte tekrar eden
-      # bilgi mesajı kaldırıldı (gereksiz titreme/UX bozulması önlendi).
-      refresh_gallery_cache(force = TRUE)
-      showToast(session, "Galeri yenilendi.", "success")
+      # Navigasyon gözlemcisi bu input'a Unix zaman damgası gönderir; bu durumda
+      # başlangıç/sekme geçişinde görünür zorunlu re-render yapma. Kullanıcının
+      # gerçek Yenile düğmesi ise actionButton sayacı (küçük integer) olarak gelir
+      # ve bilinçli bir ekran tazelemesi ister.
+      from_navigation <- is.numeric(input$refresh_gallery) &&
+        length(input$refresh_gallery) == 1L &&
+        is.finite(input$refresh_gallery) &&
+        input$refresh_gallery > 1000000000
+
+      if (isTRUE(from_navigation)) {
+        refresh_trigger(refresh_trigger() + 1)
+      } else {
+        refresh_gallery_cache(force = TRUE)
+        showToast(session, "Galeri yenilendi.", "success")
+      }
     })
 
     return(list(
       delete_image = delete_image_trigger,
       clear_all_images = clear_all_trigger,
       navigate_to_chat = navigate_to_chat_trigger,
-      refresh = function() {
-        refresh_gallery_cache(force = TRUE)
-      }
+      refresh = function() refresh_trigger(refresh_trigger() + 1)
     ))
   })
 }

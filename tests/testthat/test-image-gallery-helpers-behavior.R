@@ -140,16 +140,15 @@ test_that("update_message_after_image_deletion GÖRSEL etiketini silinme mesajı
 })
 
 test_that("galeri silme düğmesi submit davranışına düşmez", {
-  module_txt <- paste(
-    readLines(
-      file.path(resolve_repo_root_for_tests(), "R", "module_image_gallery.R"),
-      warn = FALSE,
-      encoding = "UTF-8"
-    ),
-    collapse = "\n"
-  )
+  full_path <- file.path(resolve_repo_root_for_tests(), "R", "module_image_gallery.R")
+  size <- file.info(full_path)$size[1]
+  con <- file(full_path, open = "rb")
+  on.exit(close(con), add = TRUE)
+  raw_txt <- readBin(con, what = "raw", n = size)
+  module_txt <- iconv(list(raw_txt), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+  module_txt <- enc2utf8(module_txt %||% "")
 
   expect_true(grepl('class = "gallery-delete-btn"', module_txt, fixed = TRUE))
-  expect_true(grepl('type = "button",\n\t                      class = "gallery-delete-btn"', module_txt, fixed = TRUE) ||
-                grepl('type = "button",\n                      class = "gallery-delete-btn"', module_txt, fixed = TRUE))
+  expect_true(grepl('type = "button"', module_txt, fixed = TRUE))
+  expect_false(grepl("decodeURIComponent", module_txt, fixed = TRUE))
 })

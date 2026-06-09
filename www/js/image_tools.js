@@ -301,17 +301,65 @@ window.printGeneratedImage = function(button) {
     return;
   }
 
-  // Yazdırma penceresi oluştur. Pencereyi otomatik kapatmak bazı tarayıcılarda
-  // yazdırma diyaloğu açılmadan sekmenin anlık kapanmasına/flicker'a yol açıyor;
-  // bu nedenle pencere açık bırakılır ve kullanıcı normal şekilde kapatabilir.
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    showToast('Açılır pencere engellendi', 'error');
+  // Popup yerine görünmeyen bir iframe kullanılır. Böylece tarayıcı yeni sekmeyi
+  // anlık açıp kapatmaz; kullanıcı sadece işletim sistemi yazdırma diyaloğunu görür.
+  const previousFrame = document.getElementById('mergen-generated-image-print-frame');
+  if (previousFrame && previousFrame.parentNode) {
+    previousFrame.parentNode.removeChild(previousFrame);
+  }
+
+  const printFrame = document.createElement('iframe');
+  printFrame.id = 'mergen-generated-image-print-frame';
+  printFrame.title = 'MERGEN Bilge - Görsel Yazdır';
+  printFrame.setAttribute('aria-hidden', 'true');
+  printFrame.style.position = 'fixed';
+  printFrame.style.right = '0';
+  printFrame.style.bottom = '0';
+  printFrame.style.width = '1px';
+  printFrame.style.height = '1px';
+  printFrame.style.border = '0';
+  printFrame.style.opacity = '0';
+  printFrame.style.pointerEvents = 'none';
+
+  document.body.appendChild(printFrame);
+
+  const printWindow = printFrame.contentWindow;
+  const printDoc = printFrame.contentDocument || (printWindow && printWindow.document);
+  if (!printWindow || !printDoc) {
+    showToast('Yazdırma penceresi hazırlanamadı', 'error');
     return;
   }
 
-  const printDoc = printWindow.document;
-  const safeTitle = 'MERGEN Bilge - Görsel Yazdır';
+  let didPrint = false;
+  let cleanupTimer = null;
+
+  const cleanup = function(delay) {
+    window.clearTimeout(cleanupTimer);
+    cleanupTimer = window.setTimeout(function() {
+      if (printFrame.parentNode) {
+        printFrame.parentNode.removeChild(printFrame);
+      }
+    }, delay || 1000);
+  };
+
+  const triggerPrint = function() {
+    if (didPrint) return;
+    didPrint = true;
+
+    try {
+      printWindow.focus();
+      printWindow.print();
+      cleanup(60000);
+    } catch (err) {
+      console.error('[IMAGE_TOOLS] Yazdırma hatası:', err);
+      cleanup(1000);
+      showToast('Yazdırma başlatılamadı', 'error');
+    }
+  };
+
+  printWindow.onafterprint = function() {
+    cleanup(250);
+  };
 
   printDoc.open();
   printDoc.write(`
@@ -319,32 +367,28 @@ window.printGeneratedImage = function(button) {
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>${safeTitle}</title>
+      <base href="${document.baseURI}">
+      <title>MERGEN Bilge - Görsel Yazdır</title>
       <style>
-        body {
+        html, body {
           margin: 0;
-          padding: 20px;
-          min-height: 100vh;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          font-family: Arial, sans-serif;
+          padding: 0;
           background: #fff;
         }
+        body {
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
         img {
-          max-width: 100%;
-          max-height: 90vh;
+          max-width: 100vw;
+          max-height: 100vh;
           object-fit: contain;
         }
-        .watermark {
-          margin-top: 10px;
-          font-size: 12px;
-          color: #666;
-        }
+        @page { margin: 0; }
         @media print {
-          body { padding: 0; min-height: auto; }
-          .watermark { display: none; }
+          html, body { width: 100%; height: 100%; }
         }
       </style>
     </head>
@@ -355,29 +399,16 @@ window.printGeneratedImage = function(button) {
 
   const printableImg = printDoc.createElement('img');
   printableImg.alt = img.alt || 'Oluşturulan görsel';
-  printableImg.src = img.src;
-
-  const watermark = printDoc.createElement('p');
-  watermark.className = 'watermark';
-  watermark.textContent = 'MERGEN Bilge ile oluşturuldu';
-
+  printableImg.addEventListener('load', triggerPrint, { once: true });
+  printableImg.addEventListener('error', function() {
+    cleanup(1000);
+    showToast('Görsel yazdırmaya hazırlanamadı', 'error');
+  }, { once: true });
   printDoc.body.appendChild(printableImg);
-  printDoc.body.appendChild(watermark);
-
-  const triggerPrint = function() {
-    printWindow.focus();
-    printWindow.setTimeout(function() {
-      printWindow.print();
-    }, 150);
-  };
+  printableImg.src = img.src;
 
   if (printableImg.complete && printableImg.naturalWidth > 0) {
     triggerPrint();
-  } else {
-    printableImg.addEventListener('load', triggerPrint, { once: true });
-    printableImg.addEventListener('error', function() {
-      showToast('Görsel yazdırmaya hazırlanamadı', 'error');
-    }, { once: true });
   }
 };
 

@@ -25,7 +25,7 @@
     rec$toasts[[length(rec$toasts) + 1L]] <- list(message = message, type = type)
     invisible(NULL)
   }
-  env$load_chat_messages_from_db <- if (is.function(db_impl)) db_impl else function(chat_id_int) {
+  env$load_chat_messages_from_db <- if (is.function(db_impl)) db_impl else function(chat_id_int, ...) {
     rec$db_calls <- rec$db_calls + 1L
     NULL
   }

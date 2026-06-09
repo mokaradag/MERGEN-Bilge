@@ -50,6 +50,21 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
 
     load_chat_in_progress(TRUE)
 
+    # Kullanıcıya anında geri bildirim ver: DB hidrasyonu veya uzun mesaj render'ı
+    # bitmeden sohbet sekmesine geçip hafif bir yükleniyor durumunu göster.
+    if (exists("updateTabItems", mode = "function", inherits = TRUE)) {
+      updateTabItems(session, "tabs", "chat")
+    } else if (requireNamespace("shinydashboard", quietly = TRUE)) {
+      shinydashboard::updateTabItems(session, "tabs", "chat")
+    }
+    shinyjs::runjs("
+      $('#welcome_fullscreen_container').addClass('hidden').empty();
+      $('#chat_content_container')
+        .show()
+        .css('display','block')
+        .html('<div class=\"chat-loading-state image-gallery-chat-loading\"><i class=\"fas fa-spinner fa-spin\"></i><span>Söyleşi yükleniyor...</span></div>');
+    ")
+
     # Önce mevcut önbelleğe bak
     chat_to_load <- values$saved_chats[[chat_id]]
 
@@ -165,8 +180,6 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       }
     }
 
-    # Önce sekmeyi değiştir, sonra mesajları ekle (görünürlük sorunu önlenir)
-    updateTabItems(session, "tabs", "chat")
     chat_title <- chat_to_load$title %||% "Söyleşi"
 
     # Sekme geçişi sonrası mesajları tek DOM eklemesiyle yerleştir. Her mesaj için
