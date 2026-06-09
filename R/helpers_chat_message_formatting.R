@@ -18,6 +18,16 @@ db_message_get_image_base64 <- function(file_path) {
     return(NULL)
   }
 
+  # Aktif oturum varsa görseli session-scoped URL ile sun (base64 şişmesini
+  # önler; kaydedilmiş/galeri söyleşilerinin yüklenmesini hızlandırır). Yardımcı
+  # yüklü değilse veya oturum yoksa aşağıdaki base64 yoluna düşülür.
+  if (exists("mergen_serve_image_data_url", mode = "function")) {
+    served <- mergen_serve_image_data_url(file_path)
+    if (!is.null(served) && nzchar(served)) {
+      return(served)
+    }
+  }
+
   tryCatch({
     raw_data <- readBin(file_path, "raw", file.info(file_path)$size)
     base64_str <- base64enc::base64encode(raw_data)
