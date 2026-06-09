@@ -1,0 +1,1 @@
+/* MERGEN offline CodeMirror extension placeholder. */

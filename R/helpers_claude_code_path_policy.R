@@ -25,6 +25,68 @@ cc_policy_split_roots <- function(value) {
   unique(trimws(parcalar[nzchar(trimws(parcalar))]))
 }
 
+
+cc_policy_collapse_dot_segments <- function(path) {
+  yol <- as.character(path %||% "")[1]
+  if (is.na(yol) || !nzchar(yol)) return("")
+
+  yol <- gsub("\\", "/", yol, fixed = TRUE)
+  unc_prefix <- ""
+  drive_prefix <- ""
+  absolute <- startsWith(yol, "/")
+
+  if (grepl("^//[^/]+/[^/]+", yol, perl = TRUE)) {
+    parcalar <- strsplit(sub("^//", "", yol), "/+", perl = TRUE)[[1]]
+    if (length(parcalar) >= 2) {
+      unc_prefix <- paste0("//", parcalar[1], "/", parcalar[2])
+      parcalar <- parcalar[-c(1, 2)]
+      absolute <- TRUE
+    }
+  } else if (grepl("^[A-Za-z]:/", yol, perl = TRUE)) {
+    drive_prefix <- substr(yol, 1, 2)
+    yol <- substring(yol, 4)
+    absolute <- TRUE
+    parcalar <- strsplit(yol, "/+", perl = TRUE)[[1]]
+  } else {
+    parcalar <- strsplit(sub("^/+", "", yol), "/+", perl = TRUE)[[1]]
+  }
+
+  if (!length(parcalar) || identical(parcalar, character(0))) {
+    parcalar <- character(0)
+  }
+
+  stack <- character(0)
+  for (parca in parcalar) {
+    if (!nzchar(parca) || identical(parca, ".")) {
+      next
+    }
+
+    if (identical(parca, "..")) {
+      if (length(stack) && !identical(stack[length(stack)], "..")) {
+        stack <- stack[-length(stack)]
+      } else if (!isTRUE(absolute)) {
+        stack <- c(stack, parca)
+      }
+      next
+    }
+
+    stack <- c(stack, parca)
+  }
+
+  govde <- paste(stack, collapse = "/")
+  if (nzchar(unc_prefix)) {
+    return(if (nzchar(govde)) paste0(unc_prefix, "/", govde) else unc_prefix)
+  }
+  if (nzchar(drive_prefix)) {
+    return(if (nzchar(govde)) paste0(drive_prefix, "/", govde) else paste0(drive_prefix, "/"))
+  }
+  if (isTRUE(absolute)) {
+    return(paste0("/", govde))
+  }
+
+  govde
+}
+
 cc_policy_normalize_path <- function(path, must_exist = FALSE) {
   path <- as.character(path %||% "")[1]
   if (is.na(path) || !nzchar(path)) return("")
@@ -90,6 +152,7 @@ cc_policy_normalize_path <- function(path, must_exist = FALSE) {
   # bir karma slash kalırsa tek ters slash'a göre değiştirme yaparız (çiftli
   # gsub baştaki çift slash dışında diğer ters slash'ları kaçırırdı).
   sonuc <- gsub("\\", "/", sonuc, fixed = TRUE)
+  sonuc <- cc_policy_collapse_dot_segments(sonuc)
   sub("/+$", "", sonuc, perl = TRUE)
 }
 
