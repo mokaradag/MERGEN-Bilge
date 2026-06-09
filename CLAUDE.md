@@ -1258,6 +1258,7 @@ The following UX behaviors are protected contracts:
 - TTS autoplay must be limited to new AI responses. Loading saved or old chats must not auto-play historical answers.
 - The stop button must stop generation and also clean active TTS playback.
 - True streaming abort/cancel decisions must stay delegated to `mergen_stream_abort_cleanup_plan()` in `R/helpers_streaming_abort_lifecycle.R`; do not move this logic back into an untestable inline branch.
+- True streaming poll-loop decisions must stay delegated to the pure helpers in `R/helpers_streaming_poll_lifecycle.R`: `mergen_stream_classify_poll_lines()` (JSONL delta/reasoning/debug classification), `mergen_stream_reasoning_recovery_plan()` (worker-return reasoning recovery so `MB_Messages.ReasoningContent` does not stay NULL when reasoning arrives only in the final chunk), `mergen_stream_poll_interval_ms()`, and `mergen_stream_persist_delay()`. Do not re-inline this logic into `R/server_handler_true_streaming.R`; the boundary is protected by `tests/testthat/test-streaming-poll-lifecycle-contract.R` and `tests/testthat/test-streaming-poll-lifecycle-behavior.R`.
 - Reasoning/thinking panels must not break chat scroll, must appear for thinking-capable flows, and must clean up safely after completion or stop.
 
 Implementation constraints:
@@ -1402,7 +1403,7 @@ When adding, moving, or splitting a runtime file:
 - for file-store lifecycle splits, preserve the order `R/config_file_store.R`, `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, then `R/config_file_store_registry.R`,
 - for server runtime/module-wiring splits, preserve the order `R/helpers_server_runtime_contracts.R`, `R/helpers_server_runtime_named_contracts.R`, `R/server_runtime_context.R`, `R/server_runtime_function_slot.R`, `R/server_module_wiring.R`, `R/server_chat_engine_dependencies.R`, `R/server_chat_engine_runtime.R`, then the session/chat runtime init files,
 - keep dependency order explicit and reviewable,
-- Keep `R/helpers_streaming_abort_lifecycle.R` loaded before `R/server_handler_true_streaming.R`; the true streaming handler depends on the abort cleanup plan helper.
+- Keep `R/helpers_streaming_abort_lifecycle.R` and `R/helpers_streaming_poll_lifecycle.R` loaded before `R/server_handler_true_streaming.R`; the true streaming handler depends on the abort cleanup plan helper and on the pure poll-loop decision helpers (line classification, reasoning recovery, poll interval, persist delay).
 - when splitting Claude Code security helpers, preserve the order `R/helpers_claude_code_security_policy.R` before `R/helpers_claude_code_prompt_security_policy.R`, and keep both before the Claude Code runtime, process, streaming, lifecycle, and module files that call the policy helpers.
 - keep loading through `safe_source()`; do not replace it with plain `source()`,
 - keep `global.R` validating `R/config_source_manifest.R` before sourcing it and loading manifest groups through `source_manifest_load(...)`; do not manually duplicate group entries with individual `safe_source()` calls,

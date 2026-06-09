@@ -6,6 +6,73 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-09 — True streaming yoklama döngüsü kararlarının saf yardımcıya çıkarılması
+
+### Seçilen iz(ler)
+- **Track B — Complex runtime kodundan saf yardımcı çıkarımı** (`R/server_handler_true_streaming.R` → `R/helpers_streaming_poll_lifecycle.R`).
+- Tamamlayıcı: var olan streaming yaşam döngüsü desenini (`R/helpers_streaming_abort_lifecycle.R` / `mergen_stream_abort_cleanup_plan()`) yoklama tarafına genişletir.
+
+### Özet ve gerekçe
+`handle_true_streaming_mode()` içindeki yoklama (poll) observer'ı; akış JSONL satırlarının delta / akıl yürütme / debug olarak sınıflandırılmasını, worker dönüşünde gelen reasoning metninin canlı panelle uzlaştırılmasını (tam metin mi, eksik kuyruk mu, hiçbir şey mi gönderileceği kararı), yoklama aralığı normalizasyonunu ve ertelenen sohbet kalıcılaştırma gecikmesi kararını Shiny observer gövdesine gömülü taşıyordu. Bu kararlar kullanıcıya en görünür regresyon yüzeyidir (akış metni, Düşünce Akışı paneli, `MB_Messages.ReasoningContent` kalıcılığı) ama hiçbiri Shiny/DB/LLM başlatmadan test edilemiyordu.
+
+Dört saf yardımcı `R/helpers_streaming_poll_lifecycle.R` dosyasına çıkarıldı: `mergen_stream_classify_poll_lines()` (satır sınıflandırma; bozuk/yarım satırlar sessizce atlanır, sıra korunur), `mergen_stream_reasoning_recovery_plan()` (none / replace_full / append_suffix kararı; reasoning'in yalnızca final chunk'ta geldiği uçlarda DB'de ReasoningContent'in NULL kalmasını engelleyen yolun saf çekirdeği), `mergen_stream_poll_interval_ms()` ve `mergen_stream_persist_delay()`. Handler aynı custom message payload'larını (`streamingReasoningDelta`, `streamingDelta`, `streamingUpdate`) aynı sırayla gönderen ince bir orkestratöre dönüştü; tüm statik sözleşme çapaları (request-id, finalize/cleanup, reasoning alanları) yerinde kaldı.
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_streaming_poll_lifecycle.R` (yeni, ~203 satır) — dört saf karar yardımcısı; Shiny/DB/dosya/LLM yan etkisi yok.
+- `R/server_handler_true_streaming.R` — inline sınıflandırma döngüsü, reasoning geri kazanım bloğu, poll aralığı ve persist gecikmesi karar satırları helper çağrılarıyla değiştirildi. **690 → 647 satır.**
+- `R/config_source_manifest.R` — yeni helper `chat_send_message_runtime` bölümüne `R/helpers_streaming_abort_lifecycle.R` sonrasına eklendi; bölüm yorumu güncellendi.
+
+**Test**
+- `tests/testthat/test-streaming-poll-lifecycle-behavior.R` (yeni) — 67 assertion: satır sınıflandırma (bozuk JSON/boş delta/bilinmeyen tip atlanır, sıra korunur, gerçek `decode_stream_delta_payload` ile Türkçe + emoji base64 round-trip), reasoning geri kazanım planının tüm dalları (UTF-8 çok baytlı önek/kuyruk sınırı dahil), yoklama aralığı ve persist gecikmesi kararları.
+- `tests/testthat/test-streaming-poll-lifecycle-contract.R` (yeni) — 25 assertion: helper dosyası varlığı ve fonksiyon yüzeyi, manifest sırası (abort → poll → handler), handler delegasyonu, inline mantığın geri dönmemesi, helper'ın yan-etkisiz kalması.
+- `tests/testthat/test-source-manifest-sections-contract.R` — `chat_send_message_runtime` bölüm sayısı 8→9, toplam kaynak sayısı 254→255 güncellendi.
+
+**Dokümantasyon**
+- `CLAUDE.md` — UX sözleşmeleri bölümüne poll-loop delegasyon kuralı eklendi; kaynak manifest sözleşmesindeki yükleme sırası notu iki streaming helper'ı kapsayacak şekilde genişletildi.
+- `docs/architecture-map.md` — LLM/model entegrasyonu ownership satırı ve `chat_send_message_runtime` bölüm satırı `R/helpers_streaming_*` ailesini gösterir.
+- `docs/technical-reference.md` — streaming notlarına yoklama döngüsü saf yardımcı sınırı eklendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: satır sınıflandırma + accumulate + ilk-delta logu + custom message gönderimi tek observer gövdesinde iç içeydi; reasoning geri kazanım kararı yalnızca canlı SSE akışıyla uçtan uca tetiklenebiliyordu.
+- Sonra: karar mantığı (hangi satır hangi kanala, hangi reasoning parçası gönderilecek, hangi aralık/gecikme) saf fonksiyonlarda; observer yalnızca state yazma ve mesaj gönderme yan etkilerini taşır. 92 yeni deterministik assertion bu kararları offline karakterize eder.
+- Maintainability skoru 100/100 korunur; handler 690→647 satıra indi, yeni helper bütçe eşiklerinin çok altında.
+
+### Korunan davranış sözleşmeleri
+- Custom message adları, payload alanları ve gönderim sırası değişmedi: reasoning batch'i delta batch'inden önce gönderilir; `started` bayrağı, `requestId` ve mesaj id alanları birebir aynı.
+- `test-true-streaming-reset-ui-contract.R`, `test-e2e-premium-reasoning-ui-regression.R`, `test-e2e-streaming-client-request-id-regression.R`, `test-sse-worker-export-contract.R` çapalarının tamamı yerinde (hepsi bu oturumda yeşil).
+- Stop/cancel davranışı, `mergen_stream_abort_cleanup_plan()` delegasyonu, stop dosyası üretimi ve `reset_chat_state_fn()` çağrı yolu değişmedi.
+- Türkçe/emoji akış metni davranışı korunur: sınıflandırma `decode_stream_delta_payload` (base64 + UTF-8) üzerinden aynı çözücüyle çalışır; davranış testi Türkçe + emoji round-trip'i kanıtlar.
+- DB şeması, SSO, dosya yaşam döngüsü, frontend asset/source manifest yükleme davranışı değişmedi (manifest yalnızca yeni helper satırı kazandı).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- `Rscript -e "testthat::test_file('tests/testthat/test-streaming-poll-lifecycle-behavior.R')"` → geçti (67 PASS / 0 FAIL / 0 WARN / 0 SKIP).
+- `Rscript -e "testthat::test_file('tests/testthat/test-streaming-poll-lifecycle-contract.R')"` → geçti (25 PASS).
+- Korunan streaming/manifest sözleşmeleri tek tek çalıştırıldı ve geçti: `test-true-streaming-reset-ui-contract.R` (6), `test-e2e-premium-reasoning-ui-regression.R` (40), `test-e2e-streaming-client-request-id-regression.R` (5), `test-sse-worker-export-contract.R` (3), `test-source-manifest-contract.R` (165), `test-source-manifest-sections-contract.R` (150), `test-global-source-manifest-contract.R` (12), `test-send-message-request-lifecycle-contract.R` (42), `test-streaming-abort-lifecycle-smoke.R` (16), `test-e2e-quick-actions-streaming-regression.R` (75), `test-maintainability-ratchet.R` (156), `test-production-contracts.R` (21); tümünde 0 FAIL / 0 WARN.
+- Diferansiyel parite kontrolleri (oturum içi geçici script, repoya eklenmedi): eski inline sınıflandırma algoritması ile `mergen_stream_classify_poll_lines()` 300 rastgele fixture denemesinde (Türkçe, emoji, satır sonu, bozuk JSON, boş metin, bilinmeyen tip, base64/düz karışık) 0 uyumsuzluk; eski inline reasoning geri kazanım dalları ile `mergen_stream_reasoning_recovery_plan()` 84 kombinasyonda 0 uyumsuzluk.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100, refactor adayı yok (260→261 dosya).
+- `source("tests/scripts/parse_sanity_check.R")` → OK (732 dosya parse edildi).
+- `bash tools/ai_validate.sh quick` → geçti; `failed_steps: 0`, `skipped_steps: 0`. Artifact: `artifacts/ai-validation/20260609-181259/summary.json`.
+- `bash tools/ai_validate.sh full --boot-smoke` → geçti; environment OK, parse sanity OK, app source smoke OK, **tam strict testthat suite geçti (132.7 sn)**, Shiny boot smoke geçti; browser UX smoke bu container'da tarayıcı ikilisi olmadığı için bloklamayan SKIP (beklenen davranış). `failed_steps: 0`, `skipped_steps: 0`, `full_validation_status: "passed"`. Artifact: `artifacts/ai-validation/20260609-181405/summary.json`.
+- Not: bu cloud container'da R oturumu varsayılan olarak "C" locale ile başlıyor; tüm komutlar `LANG=C.UTF-8 LC_ALL=C.UTF-8` ile çalıştırıldı (önceden var olan ortam kısıtı, kod değişikliğiyle ilgisiz; önceki oturumda görülen unrelated tam-suite hataları bu locale ile yeniden üretilmedi).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Uygulamayı normal Windows VM launcher ile başlatın; kırmızı hata ve yeni browser console hatası olmadığını doğrulayın.
+- Ana Söyleşi'de `ç ğ ı İ ö ş ü` içeren basit bir Türkçe mesaj gönderin; akış metninin doğru render edildiğini ve geçmişe doğru kaydedildiğini doğrulayın.
+- Uzun bir yanıt başlatıp Durdur'a basın; gönder düğmesinin normale döndüğünü, typing/streaming durumunun takılı kalmadığını ve sonrasında yeni mesajın çalıştığını doğrulayın.
+- Düşünme destekli bir modelle (Düşünüyorum=TRUE) soru sorun; Düşünce Akışı panelinin canlı aktığını, yanıt bitince panelin arşiv olarak kaldığını ve kayıtlı sohbeti yeniden yüklediğinizde reasoning arşivinin göründüğünü (SSMS'te `MB_Messages.ReasoningContent` dolu) doğrulayın.
+- Reasoning'i yalnızca yanıt sonunda üreten bir uç durum varsa (kısa yanıt + uzun düşünme), panelin yine dolduğunu doğrulayın (geri kazanım yolu).
+- Hızlı profil yollarını (Kodlama Desteği hızlı akışı) bir kez deneyin; ilk parçaların gecikmeden aktığını doğrulayın.
+- Saved chat reload sonrası eski TTS otomatik oynatma olmadığını teyit edin.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Davranış birebir korunacak şekilde tasarlandı; tek bilinçli mikro fark, aynı poll tick'i içinde `stream_debug` log satırlarının artık delta loglarından önce yazılması (yalnızca tanılama log sırası; UI/DB/payload etkisi yok).
+- Windows VM launcher, gerçek tarayıcı smoke (`UX_SMOKE_DONE:PASS`), VM/SSO/gerçek DB preflight, SQL Server Türkçe encoding preflight ve gerçek SSE uç noktasıyla canlı akış bu cloud/container oturumunda çalıştırılmadı (summary.json bu sınırları `not_performed_by_ai_validate` olarak işaretler); kullanıcı tarafı manuel QA gereklidir.
+- `decode_stream_delta_payload()` içinde önceden var olan bir uç durum gözlemlendi (boş metnin base64'ü `text_b64` alanında `[]`'e dönüşürse `if` koşulu NA üretebilir); üretim yazıcısı `create_stream_line_appender()` boş metni hiç yazmadığı için bu uç gerçek akışta oluşmaz, eski ve yeni yol aynı çözücüyü aynı şekilde çağırır. Bilerek bu oturumda dokunulmadı (cerrahi kapsam); ileride ayrı küçük bir görev olarak ele alınabilir.
+
+---
+
 ## 2026-06-09 — Dosya Yönetimi görünen dosya adı normalizasyon sınırı
 
 ### Seçilen iz(ler)

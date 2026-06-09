@@ -76,7 +76,7 @@
   chartlab_helpers = list(first = "R/helpers_chartlab_spec.R", last = "R/helpers_chartlab.R", n = 2L),
   files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_files.R", n = 5L),
   file_manager_helpers = list(first = "R/helpers_file_manager_policy.R", last = "R/helpers_file_manager_table_runtime.R", n = 10L),
-  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 8L),
+  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 9L),
   summarization_followup = list(first = "R/helpers_summarization_modes.R", last = "R/helpers_followup_questions.R", n = 3L),
   analysis_helpers = list(first = "R/helpers_deep_analysis.R", last = "R/helpers_pk_analysis_query_selection.R", n = 5L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
@@ -194,7 +194,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   env <- .load_source_manifest_env_for_sections()
   runtime <- get("source_manifest_runtime_paths", envir = env, inherits = FALSE)
 
-  expect_equal(length(runtime), 254L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 255L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

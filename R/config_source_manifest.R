@@ -168,13 +168,14 @@ source_manifest_sections <- list(
   ),
 
   # chat_send_message_runtime: Sohbet runtime ve send_message hattı: istek
-  # yaşam döngüsü, model runtime, streaming abort, core, görsel bağlam,
-  # prompting ve hızlı eylem giriş mesajları.
+  # yaşam döngüsü, model runtime, streaming abort/poll kararları, core,
+  # görsel bağlam, prompting ve hızlı eylem giriş mesajları.
   chat_send_message_runtime = c(
     "R/helpers_chat_runtime.R",
     "R/helpers_send_message_request_lifecycle.R",
     "R/helpers_send_message_model_runtime.R",
     "R/helpers_streaming_abort_lifecycle.R",
+    "R/helpers_streaming_poll_lifecycle.R",
     "R/helpers_send_message_core.R",
     "R/helpers_vision_context.R",
     "R/helpers_send_message_prompting.R",
