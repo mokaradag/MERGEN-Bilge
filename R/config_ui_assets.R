@@ -4,6 +4,10 @@
 #           Yükleme sırası bu dosyada açık gruplarla korunur.
 # ==============================================================================
 
+ui_asset_flatten_groups <- function(groups) {
+  unname(unlist(groups, use.names = FALSE))
+}
+
 ui_asset_css_groups <- list(
   critical = c(
     "css/fonts.css",
@@ -19,12 +23,14 @@ ui_asset_css_groups <- list(
     "css/stt.css",
     "css/music_slider.css"
   ),
-  page = c(
-    "css/variables.css",
-    "css/theme_tokens.css",
-    "css/theme_light.css",
-    "css/theme_light_extras.css",
-    "css/theme_light_refinements.css",
+  page = ui_asset_flatten_groups(list(
+    theme_base = c(
+      "css/variables.css",
+      "css/theme_tokens.css",
+      "css/theme_light.css",
+      "css/theme_light_extras.css",
+      "css/theme_light_refinements.css"
+    ),
     # Açık tema cilası: odaklı küçük dosyalara bölünerek ratchet limitleri
     # altında tutulur. Yükleme sırası burada kasıtlıdır:
     #   1. welcome (en alttaki cam yüzey önce yerleşir)
@@ -34,102 +40,114 @@ ui_asset_css_groups <- list(
     #   5. personalization (Kişiselleştirme + Yapılandırma kart yüzeyleri)
     #   6. polish (admin tooltip, hero başlık, file manager notları,
     #      Yenilikler madde işareti, sidebar logout)
-    "css/theme_light_welcome.css",
-    "css/theme_light_chat.css",
-    "css/theme_light_modals.css",
-    "css/theme_light_bilge_yolac.css",
-    "css/theme_light_personalization.css",
-    "css/theme_light_polish.css",
-    # Kullanıcı geri bildirimi toplu light tema cilası: TÜM diğer
-    # theme_light_*.css dosyalarından SONRA yüklenir, çünkü onların
-    # kurallarını son kez ezerek navbar şeridi, ay grubu nötr gri,
-    # chat baloncuk başlıkları, Bilge Yolaç tool şeritleri, Dosya
-    # Yönetimi notları, Yenilikler rozetleri ve diğer onarımları
-    # garantiler.
-    "css/theme_light_overhaul.css",
-    # Faz 2 saldırgan onarımları: koyu yüzey leak'lerini kapatma,
-    # admin nav-pills, destek-tab-btn, mesaj eylem butonları,
-    # Bilge Yolaç tool dark hover regresyonu, vb. theme_light_overhaul
-    # dosyasından sonra yüklenir ki onun kurallarını da son adımda
-    # pekiştirebilir; ratchet limitini aşmamak için ikinci dosyaya
-    # bölündü.
-    "css/theme_light_overhaul_phase2.css",
-    # Kullanıcı geri bildirimi cilası (Faz 1 + Faz 2): EN SON yüklenir.
-    # Hero başlık kurumsal mavisi, karşılama greeting/icon, Bilge Yolaç
-    # light tool yüzeyleri, Kişiselleştirme deneyim modu + karakter
-    # aksanı, Sistem Durumu kart kontrastı, Geri Bildirim sekme buton
-    # kenarları, Yenilikler madde/rozet/italik kontrastı, Söyleşi
-    # baloncuk başlık + eylem butonları ve dosya önizleme modal başlığı
-    # için kapsamlı kurumsal mavi cilası içerir. İki dosya birlikte
-    # 1600 satır ratchet limitinin altında kalır.
-    "css/theme_light_user_polish.css",
-    "css/theme_light_user_polish_v2.css",
-    "css/animations.css",
-    "css/layout.css",
-    "css/components.css",
-    "css/brand_title.css",
-    "css/sidebar_user_panel.css",
-    "css/tool_backgrounds.css",
-    "css/code_highlighting.css",
-    "css/welcome_screen.css",
-    "css/datatables.css",
-    "css/chat_messages.css",
-    "css/chat_input.css",
-    "css/date_picker.css",
-    "css/cinematic_intro.css",
-    "css/deep_space_intro.css",
-    "css/mode_selection.css",
-    "css/explore_cinematic.css",
-    "css/mcp_indicator.css",
-    "css/file_manager.css",
-    "css/history_saved_chats.css",
-    "css/settings_page.css",
-    "css/health_check.css",
-    "css/health_dashboard.css",
-    "css/disconnect_overlay.css",
-    "css/chat_header.css",
-    "css/quick_templates.css",
-    "css/capabilities.css",
-    "css/custom_buttons.css",
-    "css/utilities.css",
-    "css/responsive.css",
-    "css/accessibility.css",
-    "css/layout_overrides.css",
-    "css/pagination_custom.css",
-    "css/modals_custom.css",
-    "css/welcome_styles.css",
-    "css/recent_chats_custom.css",
-    "css/empty_state.css",
-    "css/animations_extra.css",
-    "css/message_actions.css",
-    "css/feedback_modal.css",
-    "css/api_key_choice_modal.css",
-    "css/api_key_password_toggle.css",
-    "css/image_tools.css",
-    "css/image_gallery.css",
-    "css/summarization_tools.css",
-    "css/code_collapse.css",
-    "css/chat_search_modal.css",
-    "css/settings_tools.css",
-    "css/settings_model_info.css",
-    "css/analysis_tools.css",
-    "css/tools_model_lock.css",
-    "css/citation_styles.css",
-    "css/ai_expert_subtitle.css",
-    "css/destek_page.css",
-    "css/destek_yardim_chatbot.css",
-    "css/admin_destek_analytics.css",
-    "css/admin_yanit_analizi.css",
-    "css/admin_documentation.css",
-    "css/explore_character_step.css",
-    "css/surum_bilgilendirme.css",
-	"css/sso_auth.css",
-	"css/claude_code.css",
-	"css/claude_code_generated_files.css",
-	"css/claude_code_streaming.css",
-	"css/claude_code_plugins.css",
-	"css/bilge_yolac_welcome.css"
-  ),
+    theme_light_modules = c(
+      "css/theme_light_welcome.css",
+      "css/theme_light_chat.css",
+      "css/theme_light_modals.css",
+      "css/theme_light_bilge_yolac.css",
+      "css/theme_light_personalization.css",
+      "css/theme_light_polish.css"
+    ),
+    theme_light_overrides = c(
+      # Kullanıcı geri bildirimi toplu light tema cilası: TÜM diğer
+      # theme_light_*.css dosyalarından SONRA yüklenir, çünkü onların
+      # kurallarını son kez ezerek navbar şeridi, ay grubu nötr gri,
+      # chat baloncuk başlıkları, Bilge Yolaç tool şeritleri, Dosya
+      # Yönetimi notları, Yenilikler rozetleri ve diğer onarımları
+      # garantiler.
+      "css/theme_light_overhaul.css",
+      # Faz 2 saldırgan onarımları: koyu yüzey leak'lerini kapatma,
+      # admin nav-pills, destek-tab-btn, mesaj eylem butonları,
+      # Bilge Yolaç tool dark hover regresyonu, vb. theme_light_overhaul
+      # dosyasından sonra yüklenir ki onun kurallarını da son adımda
+      # pekiştirebilir; ratchet limitini aşmamak için ikinci dosyaya
+      # bölündü.
+      "css/theme_light_overhaul_phase2.css",
+      # Kullanıcı geri bildirimi cilası (Faz 1 + Faz 2): EN SON yüklenir.
+      # Hero başlık kurumsal mavisi, karşılama greeting/icon, Bilge Yolaç
+      # light tool yüzeyleri, Kişiselleştirme deneyim modu + karakter
+      # aksanı, Sistem Durumu kart kontrastı, Geri Bildirim sekme buton
+      # kenarları, Yenilikler madde/rozet/italik kontrastı, Söyleşi
+      # baloncuk başlık + eylem butonları ve dosya önizleme modal başlığı
+      # için kapsamlı kurumsal mavi cilası içerir. İki dosya birlikte
+      # 1600 satır ratchet limitinin altında kalır.
+      "css/theme_light_user_polish.css",
+      "css/theme_light_user_polish_v2.css"
+    ),
+    layout_foundation = c(
+      "css/animations.css",
+      "css/layout.css",
+      "css/components.css",
+      "css/brand_title.css",
+      "css/sidebar_user_panel.css",
+      "css/tool_backgrounds.css",
+      "css/code_highlighting.css",
+      "css/welcome_screen.css",
+      "css/datatables.css",
+      "css/chat_messages.css",
+      "css/chat_input.css",
+      "css/date_picker.css"
+    ),
+    navigation_and_tools = c(
+      "css/cinematic_intro.css",
+      "css/deep_space_intro.css",
+      "css/mode_selection.css",
+      "css/explore_cinematic.css",
+      "css/mcp_indicator.css",
+      "css/file_manager.css",
+      "css/history_saved_chats.css",
+      "css/settings_page.css",
+      "css/health_check.css",
+      "css/health_dashboard.css",
+      "css/disconnect_overlay.css",
+      "css/chat_header.css",
+      "css/quick_templates.css",
+      "css/capabilities.css",
+      "css/custom_buttons.css",
+      "css/utilities.css",
+      "css/responsive.css",
+      "css/accessibility.css",
+      "css/layout_overrides.css",
+      "css/pagination_custom.css",
+      "css/modals_custom.css",
+      "css/welcome_styles.css",
+      "css/recent_chats_custom.css",
+      "css/empty_state.css",
+      "css/animations_extra.css",
+      "css/message_actions.css"
+    ),
+    feature_surfaces = c(
+      "css/feedback_modal.css",
+      "css/api_key_choice_modal.css",
+      "css/api_key_password_toggle.css",
+      "css/image_tools.css",
+      "css/image_gallery.css",
+      "css/summarization_tools.css",
+      "css/code_collapse.css",
+      "css/chat_search_modal.css",
+      "css/settings_tools.css",
+      "css/settings_model_info.css",
+      "css/analysis_tools.css",
+      "css/tools_model_lock.css",
+      "css/citation_styles.css",
+      "css/ai_expert_subtitle.css",
+      "css/destek_page.css",
+      "css/destek_yardim_chatbot.css",
+      "css/admin_destek_analytics.css",
+      "css/admin_yanit_analizi.css",
+      "css/admin_documentation.css",
+      "css/explore_character_step.css",
+      "css/surum_bilgilendirme.css"
+    ),
+    enterprise_and_bilge_yolac = c(
+      "css/sso_auth.css",
+      "css/claude_code.css",
+      "css/claude_code_generated_files.css",
+      "css/claude_code_streaming.css",
+      "css/claude_code_plugins.css",
+      "css/bilge_yolac_welcome.css"
+    )
+  )),
   codemirror = c(
     "codemirror/codemirror.min.css",
     "codemirror/theme/material-darker.min.css",
@@ -208,59 +226,67 @@ ui_asset_js_groups <- list(
     "js/tool_backgrounds_snippets.js",
     "js/tool_backgrounds.js"
   ),
-  deferred = c(
-    "js/code-collapse.js",
-    "js/file_handlers.js",
-    "js/chart_renderer.js",
-    "js/table_scroll_handler.js",
-    "js/history_date_range.js",
-    "js/codemirror-manager.js",
-    "js/cinematic_video.js",
-    "js/character_typing.js",
-    "js/tts_visualizer.js",
-    "js/music_manager.js",
-    "js/audio_lifecycle_guard.js",
-    "js/stt_client.js",
-    "js/intro_animation.js",
-    "js/neural_welcome.js",
-    "js/welcome_video_player.js",
-    "js/welcome_neural_modern.js",
-    "js/welcome_greeting.js",
-    "js/welcome_greeting_personal.js",
-    "js/tts_manager.js",
-    "js/character_manager.js",
-    "js/shortcuts_manager.js",
-    "js/feedback_modal.js",
-    "js/api_key_choice_modal.js",
-    "js/image_tools.js",
-    "js/image_gallery.js",
-    "js/summarization_tools.js",
-    "js/chat_search_modal.js",
-    "js/deep_space_intro_earth_shader.js",
-    "js/deep_space_intro_solar.js",
-    "js/deep_space_intro.js",
-    "js/mode_selection.js",
-    "js/explore_cinematic.js",
-    "js/settings_tools.js",
-    "js/settings_model_info.js",
-    "js/analysis_tools.js",
-    "js/excel_coding_deep_thinking.js",
-    "js/tools_model_lock.js",
-    "js/citation_handler.js",
-    "js/ai_expert_manager.js",
-    "js/destek_form.js",
-    "js/destek_yardim_chatbot.js",
-    "js/health_dashboard.js",
-    "js/admin_documentation.js",
-    "js/space_intro_music.js",
-    "js/explore_character_video.js",
-    "js/explore_character_step.js",
-    "js/surum_bilgilendirme.js",
-    "js/claude_code_pixel_chars.js",
-    "js/claude_code.js",
-    "js/claude_code_streaming.js",
-    "js/claude_code_plugins.js"
-  ),
+  deferred = ui_asset_flatten_groups(list(
+    code_and_tables = c(
+      "js/code-collapse.js",
+      "js/file_handlers.js",
+      "js/chart_renderer.js",
+      "js/table_scroll_handler.js",
+      "js/history_date_range.js",
+      "js/codemirror-manager.js"
+    ),
+    welcome_and_media = c(
+      "js/cinematic_video.js",
+      "js/character_typing.js",
+      "js/tts_visualizer.js",
+      "js/music_manager.js",
+      "js/audio_lifecycle_guard.js",
+      "js/stt_client.js",
+      "js/intro_animation.js",
+      "js/neural_welcome.js",
+      "js/welcome_video_player.js",
+      "js/welcome_neural_modern.js",
+      "js/welcome_greeting.js",
+      "js/welcome_greeting_personal.js",
+      "js/tts_manager.js",
+      "js/character_manager.js",
+      "js/shortcuts_manager.js"
+    ),
+    modal_and_analysis_tools = c(
+      "js/feedback_modal.js",
+      "js/api_key_choice_modal.js",
+      "js/image_tools.js",
+      "js/image_gallery.js",
+      "js/summarization_tools.js",
+      "js/chat_search_modal.js",
+      "js/deep_space_intro_earth_shader.js",
+      "js/deep_space_intro_solar.js",
+      "js/deep_space_intro.js",
+      "js/mode_selection.js",
+      "js/explore_cinematic.js",
+      "js/settings_tools.js",
+      "js/settings_model_info.js",
+      "js/analysis_tools.js",
+      "js/excel_coding_deep_thinking.js",
+      "js/tools_model_lock.js",
+      "js/citation_handler.js"
+    ),
+    admin_and_enterprise = c(
+      "js/ai_expert_manager.js",
+      "js/destek_form.js",
+      "js/destek_yardim_chatbot.js",
+      "js/health_dashboard.js",
+      "js/admin_documentation.js",
+      "js/space_intro_music.js",
+      "js/explore_character_video.js",
+      "js/explore_character_step.js",
+      "js/surum_bilgilendirme.js",
+      "js/claude_code_pixel_chars.js",
+      "js/claude_code.js",
+      "js/claude_code_streaming.js",
+      "js/claude_code_plugins.js"
+    )
+  )),
   bilge_yolac = c(
     "js/bilge_yolac_motor.js",
     "js/bilge_yolac_fizik.js",
@@ -440,10 +466,6 @@ ui_asset_js_order_rules <- list(
   c("js/bilge_yolac_etkilesim.js", "js/bilge_yolac_oyun.js"),
   c("js/bilge_yolac_oyun.js", "js/bilge_yolac_kopru.js")
 )
-
-ui_asset_flatten_groups <- function(groups) {
-  unname(unlist(groups, use.names = FALSE))
-}
 
 ui_asset_all_css <- function() {
   ui_asset_flatten_groups(ui_asset_css_groups)
