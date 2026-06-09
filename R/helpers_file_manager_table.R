@@ -16,29 +16,55 @@ fm_empty_files_df <- function() {
 }
 
 fm_clean_file_display_name <- function(file_name, file_info = NULL) {
+  normalized_info <- if (is.list(file_info)) file_info else list()
+  normalized_info$name <- file_name
+
+  normalized <- fm_normalize_uploaded_file_info(normalized_info)
+
+  normalized$file_name
+}
+
+fm_normalize_uploaded_file_info <- function(file_info) {
+  normalized_info <- file_info %||% list()
+  raw_file_name <- as.character(normalized_info$name %||% "")[1]
+
+  if (is.na(raw_file_name)) {
+    raw_file_name <- ""
+  }
+
+  file_name <- raw_file_name
+
   if (exists("normalize_file_display_name", mode = "function", inherits = TRUE)) {
-    return(normalize_file_display_name(file_name, file_info = file_info))
-  }
-
-  display_name <- as.character(file_name %||% "")[1]
-  if (is.na(display_name)) {
-    display_name <- ""
-  }
-
-  if (exists("recover_display_name_from_storage_name", mode = "function", inherits = TRUE)) {
-    display_name <- tryCatch(
-      recover_display_name_from_storage_name(display_name),
-      error = function(e) display_name
+    file_name <- tryCatch(
+      normalize_file_display_name(raw_file_name, file_info = normalized_info),
+      error = function(e) raw_file_name
+    )
+  } else if (exists("recover_display_name_from_storage_name", mode = "function", inherits = TRUE)) {
+    file_name <- tryCatch(
+      recover_display_name_from_storage_name(raw_file_name),
+      error = function(e) raw_file_name
     )
   }
 
-  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
-    display_name <- normalize_text_utf8(display_name, repair_mojibake = TRUE)
-  } else {
-    display_name <- enc2utf8(display_name)
+  file_name <- as.character(file_name %||% "")[1]
+  if (is.na(file_name)) {
+    file_name <- ""
   }
 
-  display_name
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    file_name <- normalize_text_utf8(file_name, repair_mojibake = TRUE)
+  } else {
+    file_name <- enc2utf8(file_name)
+  }
+
+  if (nzchar(file_name)) {
+    normalized_info$name <- file_name
+  }
+
+  list(
+    file_info = normalized_info,
+    file_name = file_name
+  )
 }
 
 fm_build_file_actions_html <- function(file_id, ns) {
