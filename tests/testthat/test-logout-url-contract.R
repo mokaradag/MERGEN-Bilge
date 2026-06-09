@@ -227,12 +227,28 @@ test_that("R/config_source_manifest.R helpers_logout_url.R'yi yükler", {
   )
 })
 
-test_that(".Renviron MERGEN_LOGOUT_URL anahtarını içerir (boş olabilir)", {
-  txt <- .read_repo_text_logout_url(".Renviron")
-  expect_true(nzchar(txt), info = ".Renviron okunamadı.")
+test_that("logout yapılandırma şablonu veya yerel .Renviron MERGEN_LOGOUT_URL anahtarını içerir", {
+  # Windows VM üretim kopyalarında .Renviron.example bulunmayabilir; gerçek
+  # çalışma zamanı .Renviron üzerinden yönetilir. Repo şablonu varsa onu,
+  # yoksa yerel .Renviron'u kabul ederek kontratı ortamdan bağımsız koru.
+  config_paths <- c(".Renviron.example", ".Renviron")
+  config_texts <- vapply(config_paths, .read_repo_text_logout_url, character(1))
+  readable <- nzchar(config_texts)
+
   expect_true(
-    grepl("MERGEN_LOGOUT_URL", txt, fixed = TRUE),
-    info = ".Renviron MERGEN_LOGOUT_URL anahtarını içermelidir."
+    any(readable),
+    info = paste(
+      "Logout yapılandırması için .Renviron.example veya .Renviron okunmalıdır.",
+      "Windows VM'de şablon dosya yoksa yerel .Renviron yeterlidir."
+    )
+  )
+
+  expect_true(
+    any(grepl("MERGEN_LOGOUT_URL", config_texts[readable], fixed = TRUE)),
+    info = paste(
+      ".Renviron.example veya .Renviron MERGEN_LOGOUT_URL anahtarını",
+      "içermelidir (değer boş olabilir)."
+    )
   )
 })
 

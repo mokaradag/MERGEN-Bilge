@@ -123,7 +123,7 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
   )
 
   deferred_paths <- asset_env$ui_asset_deferred_js_paths()
-  
+
   expect_true("js/audio_lifecycle_guard.js" %in% deferred_paths)
   expect_lt(
     .ui_asset_contract_position(js_paths, "js/music_manager.js"),
@@ -186,6 +186,152 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
 
     expect_lt(before_pos, after_pos)
   }))
+})
+
+test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", {
+  asset_env <- .source_ui_asset_config_for_tests()
+
+  expected_page_css <- c(
+    "css/variables.css",
+    "css/theme_tokens.css",
+    "css/theme_light.css",
+    "css/theme_light_extras.css",
+    "css/theme_light_refinements.css",
+    "css/theme_light_welcome.css",
+    "css/theme_light_chat.css",
+    "css/theme_light_modals.css",
+    "css/theme_light_bilge_yolac.css",
+    "css/theme_light_personalization.css",
+    "css/theme_light_polish.css",
+    "css/theme_light_overhaul.css",
+    "css/theme_light_overhaul_phase2.css",
+    "css/theme_light_user_polish.css",
+    "css/theme_light_user_polish_v2.css",
+    "css/animations.css",
+    "css/layout.css",
+    "css/components.css",
+    "css/brand_title.css",
+    "css/sidebar_user_panel.css",
+    "css/tool_backgrounds.css",
+    "css/code_highlighting.css",
+    "css/welcome_screen.css",
+    "css/datatables.css",
+    "css/chat_messages.css",
+    "css/chat_input.css",
+    "css/date_picker.css",
+    "css/cinematic_intro.css",
+    "css/deep_space_intro.css",
+    "css/mode_selection.css",
+    "css/explore_cinematic.css",
+    "css/mcp_indicator.css",
+    "css/file_manager.css",
+    "css/history_saved_chats.css",
+    "css/settings_page.css",
+    "css/health_check.css",
+    "css/health_dashboard.css",
+    "css/disconnect_overlay.css",
+    "css/chat_header.css",
+    "css/quick_templates.css",
+    "css/capabilities.css",
+    "css/custom_buttons.css",
+    "css/utilities.css",
+    "css/responsive.css",
+    "css/accessibility.css",
+    "css/layout_overrides.css",
+    "css/pagination_custom.css",
+    "css/modals_custom.css",
+    "css/welcome_styles.css",
+    "css/recent_chats_custom.css",
+    "css/empty_state.css",
+    "css/animations_extra.css",
+    "css/message_actions.css",
+    "css/feedback_modal.css",
+    "css/api_key_choice_modal.css",
+    "css/api_key_password_toggle.css",
+    "css/image_tools.css",
+    "css/image_gallery.css",
+    "css/summarization_tools.css",
+    "css/code_collapse.css",
+    "css/chat_search_modal.css",
+    "css/settings_tools.css",
+    "css/settings_model_info.css",
+    "css/analysis_tools.css",
+    "css/tools_model_lock.css",
+    "css/citation_styles.css",
+    "css/ai_expert_subtitle.css",
+    "css/destek_page.css",
+    "css/destek_yardim_chatbot.css",
+    "css/admin_destek_analytics.css",
+    "css/admin_yanit_analizi.css",
+    "css/admin_documentation.css",
+    "css/explore_character_step.css",
+    "css/surum_bilgilendirme.css",
+    "css/sso_auth.css",
+    "css/claude_code.css",
+    "css/claude_code_generated_files.css",
+    "css/claude_code_streaming.css",
+    "css/claude_code_plugins.css",
+    "css/bilge_yolac_welcome.css"
+  )
+
+  expected_deferred_js <- c(
+    "js/code-collapse.js",
+    "js/file_handlers.js",
+    "js/chart_renderer.js",
+    "js/table_scroll_handler.js",
+    "js/history_date_range.js",
+    "js/codemirror-manager.js",
+    "js/cinematic_video.js",
+    "js/character_typing.js",
+    "js/tts_visualizer.js",
+    "js/music_manager.js",
+    "js/audio_lifecycle_guard.js",
+    "js/stt_client.js",
+    "js/intro_animation.js",
+    "js/neural_welcome.js",
+    "js/welcome_video_player.js",
+    "js/welcome_neural_modern.js",
+    "js/welcome_greeting.js",
+    "js/welcome_greeting_personal.js",
+    "js/tts_manager.js",
+    "js/character_manager.js",
+    "js/shortcuts_manager.js",
+    "js/feedback_modal.js",
+    "js/api_key_choice_modal.js",
+    "js/image_tools.js",
+    "js/image_gallery.js",
+    "js/summarization_tools.js",
+    "js/chat_search_modal.js",
+    "js/deep_space_intro_earth_shader.js",
+    "js/deep_space_intro_solar.js",
+    "js/deep_space_intro.js",
+    "js/mode_selection.js",
+    "js/explore_cinematic.js",
+    "js/settings_tools.js",
+    "js/settings_model_info.js",
+    "js/analysis_tools.js",
+    "js/excel_coding_deep_thinking.js",
+    "js/tools_model_lock.js",
+    "js/citation_handler.js",
+    "js/ai_expert_manager.js",
+    "js/destek_form.js",
+    "js/destek_yardim_chatbot.js",
+    "js/health_dashboard.js",
+    "js/admin_documentation.js",
+    "js/space_intro_music.js",
+    "js/explore_character_video.js",
+    "js/explore_character_step.js",
+    "js/surum_bilgilendirme.js",
+    "js/claude_code_pixel_chars.js",
+    "js/claude_code.js",
+    "js/claude_code_streaming.js",
+    "js/claude_code_plugins.js"
+  )
+
+  expect_identical(asset_env$ui_asset_css_groups$page, expected_page_css)
+  expect_identical(asset_env$ui_asset_js_groups$deferred, expected_deferred_js)
+  expect_null(names(asset_env$ui_asset_css_groups$page))
+  expect_null(names(asset_env$ui_asset_js_groups$deferred))
 })
 
 test_that("smoke-only UX probe dosyaları production manifestine eklenmez", {
