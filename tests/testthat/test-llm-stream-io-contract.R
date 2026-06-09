@@ -82,3 +82,51 @@ test_that("boş metin stream dosyası oluşturmaz", {
 
   expect_false(file.exists(stream_path))
 })
+# ------------------------------------------------------------------------------
+# decode_stream_delta_payload skaler dönüş garantisi
+# ------------------------------------------------------------------------------
+# Bozuk/yarım yazılmış satırlardan gelen liste/boş alan şekilleri if() içinde
+# NA veya logical(0) üretmemelidir; fonksiyon her girişte tek elemanlı karakter
+# döndürmelidir. (Üretim yazıcısı boş metni hiç yazmaz; bu guard yalnızca bozuk
+# satır uçlarını okuyucu tarafında zararsızlaştırır.)
+
+test_that("decode_stream_delta_payload bozuk alan şekillerinde güvenli skaler döner", {
+  # text_b64 boş listeye çözünen satır ([] -> list()): eskiden NA koşulu üretirdi.
+  bozuk_b64 <- jsonlite::fromJSON('{"type":"delta","text_b64":[]}', simplifyVector = TRUE)
+  expect_identical(decode_stream_delta_payload(bozuk_b64), "")
+
+  # text alanı boş listeye çözünen satır: character(0) yerine "" dönmelidir.
+  bozuk_text <- jsonlite::fromJSON('{"type":"delta","text":[]}', simplifyVector = TRUE)
+  expect_identical(decode_stream_delta_payload(bozuk_text), "")
+
+  # NULL payload ve alansız payload "" döner.
+  expect_identical(decode_stream_delta_payload(NULL), "")
+  expect_identical(decode_stream_delta_payload(list(type = "delta")), "")
+
+  # NA değerli alanlar "" döner (nzchar(NA) tuzağına düşülmez).
+  expect_identical(decode_stream_delta_payload(list(text_b64 = NA_character_)), "")
+  expect_identical(decode_stream_delta_payload(list(text = NA_character_)), "")
+})
+
+test_that("decode_stream_delta_payload geçerli b64 ve düz metin davranışını korur", {
+  turkce <- "Türkçe akış: çğıİöşü"
+  gecerli_b64 <- list(
+    type = "delta",
+    text_b64 = base64enc::base64encode(charToRaw(enc2utf8(turkce)))
+  )
+  expect_identical(decode_stream_delta_payload(gecerli_b64), turkce)
+
+  # Düz text alanı (eski biçim) skaler olarak korunur.
+  expect_identical(
+    decode_stream_delta_payload(list(type = "delta", text = "düz metin")),
+    "düz metin"
+  )
+
+  # Hem b64 hem text varsa b64 önceliklidir (mevcut davranış).
+  ikili <- list(
+    type = "delta",
+    text_b64 = base64enc::base64encode(charToRaw(enc2utf8("b64 kazanır"))),
+    text = "düz kaybeder"
+  )
+  expect_identical(decode_stream_delta_payload(ikili), "b64 kazanır")
+})

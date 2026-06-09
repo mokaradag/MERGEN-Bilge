@@ -66,7 +66,7 @@
   foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_monitor.R", n = 7L),
   post_future_utils = list(first = "R/utils_path_helpers.R", last = "R/utils_excel_reader.R", n = 9L),
   config_app_core = list(first = "R/config_sso.R", last = "R/config_version_history.R", n = 7L),
-  config_api_model_keys = list(first = "R/helpers_vision_model_capabilities.R", last = "R/helpers_api_key_password_toggle.R", n = 7L),
+  config_api_model_keys = list(first = "R/helpers_vision_model_capabilities.R", last = "R/helpers_api_key_password_toggle.R", n = 9L),
   config_claude_code = list(first = "R/config_claude_code.R", last = "R/config_claude_code_plugins.R", n = 2L),
   config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_assets.R", n = 1L),
   database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 11L),
@@ -194,7 +194,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   env <- .load_source_manifest_env_for_sections()
   runtime <- get("source_manifest_runtime_paths", envir = env, inherits = FALSE)
 
-  expect_equal(length(runtime), 255L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 257L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

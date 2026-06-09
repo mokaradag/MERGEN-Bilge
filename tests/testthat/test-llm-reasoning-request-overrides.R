@@ -80,6 +80,10 @@
            encoding = "UTF-8", local = globalenv())
   }
 
+  # Derin Düşünme yetenek kaydı saf helper'dadır; izole source bağlamında
+  # config_api.R'den ÖNCE yüklenmelidir.
+  source(file.path(repo_root, "R", "helpers_deep_thinking_model_capabilities.R"),
+         encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "config_api.R"),
          encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_api_model_config.R"),

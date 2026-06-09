@@ -173,9 +173,16 @@ decode_stream_delta_payload <- function(payload) {
     return("")
   }
 
-  if (!is.null(payload$text_b64) && nzchar(as.character(payload$text_b64 %||% ""))) {
+  # Alan değerleri her zaman skaler karaktere indirgenir. Bozuk/yarım yazılmış
+  # bir satırda text_b64 boş listeye ([] -> list()) dönüşebilir; o durumda
+  # as.character(...) character(0) verir ve [1] NA üretir. NA/boş skaler
+  # b64 adayı sayılmaz; böylece if koşulu asla NA'ya düşmez ve fonksiyon
+  # her zaman tek elemanlı karakter döndürür.
+  b64_value <- as.character(payload$text_b64 %||% "")[1]
+
+  if (!is.null(payload$text_b64) && !is.na(b64_value) && nzchar(b64_value)) {
     decoded_raw <- tryCatch(
-      base64enc::base64decode(as.character(payload$text_b64)[1]),
+      base64enc::base64decode(b64_value),
       error = function(e) NULL
     )
 
@@ -187,7 +194,11 @@ decode_stream_delta_payload <- function(payload) {
   }
 
   if (!is.null(payload$text)) {
-    return(enc2utf8(as.character(payload$text %||% "")))
+    text_value <- as.character(payload$text %||% "")[1]
+    if (is.na(text_value)) {
+      return("")
+    }
+    return(enc2utf8(text_value))
   }
 
   ""

@@ -281,7 +281,12 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
 
   assert_file_budget("R/module_admin_geri_bildirim.R", 799L, 5L)
   assert_file_budget("R/helpers_admin_geri_bildirim_queries.R", 260L, 3L)
-  assert_file_budget("R/config_api.R", 700L, 14L)
+  # config_api.R bölünmesi sonrası sıkılaştırılmış bütçe: Derin Düşünme yetenek
+  # kaydı helpers_deep_thinking_model_capabilities.R, API anahtarı kripto katmanı
+  # helpers_api_key_crypto.R içindedir; bu dosyaya geri taşınarak bütçe tüketilemez.
+  assert_file_budget("R/config_api.R", 520L, 6L)
+  assert_file_budget("R/helpers_deep_thinking_model_capabilities.R", 160L, 4L)
+  assert_file_budget("R/helpers_api_key_crypto.R", 220L, 12L)
   assert_file_budget("R/helpers_api_model_config.R", 360L, 18L)
   assert_file_budget("R/helpers_llm_worker.R", 799L, 8L)
   assert_file_budget("R/helpers_llm_worker_tool_results.R", 260L, 2L)

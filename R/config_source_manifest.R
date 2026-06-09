@@ -64,14 +64,17 @@ source_manifest_sections <- list(
     "R/config_version_history.R"
   ),
 
-  # config_api_model_keys: Model yeteneği/görsel anlama, API yapılandırması
-  # (config_api.R), model/araç runtime çözümleme ve API anahtarı
-  # kimlik/özellik yardımcıları.
+  # config_api_model_keys: Model yeteneği/görsel anlama/derin düşünme işaretleme,
+  # API yapılandırması (config_api.R), model/araç runtime çözümleme ve API
+  # anahtarı kripto/kimlik/özellik yardımcıları. Yetenek işaretleme helper'ları
+  # config_api.R'den ÖNCE yüklenmelidir (source-time guard'lı çağrı).
   config_api_model_keys = c(
     "R/helpers_vision_model_capabilities.R",
+    "R/helpers_deep_thinking_model_capabilities.R",
     "R/config_api.R",
     "R/helpers_api_model_config.R",
     "R/helpers_api_model_tool_runtime.R",
+    "R/helpers_api_key_crypto.R",
     "R/helpers_api_key_identity.R",
     "R/helpers_feature_api_key.R",
     "R/helpers_api_key_password_toggle.R"

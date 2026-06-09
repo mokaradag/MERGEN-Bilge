@@ -566,7 +566,7 @@ Keep these lessons in mind for future tests:
 - Mock `future::future({...})` with a manually resolvable `promises::promise` when testing async behavior; do not force real workers or large fixtures.
 - VISION IS IMPLEMENTED (capability-primary, real — NOT faked). Attaching an image to Model Bağlamı and asking about it works when (a) the selected model is vision-capable and (b) the global kill-switch is not explicitly disabled. This replaces the old "no vision pipeline" limitation.
   - Pure helpers: `R/helpers_vision_context.R` (image detection, MIME, base64 data-url with a 5 MB cap, OpenAI multimodal content builder, the `none`-branch context-block loop, the explicit Turkish "analiz edilemiyor" note, and the `mergen_vision_enabled()` kill-switch) and `R/helpers_vision_model_capabilities.R` (the pure `parse_vision_models_env()` + `apply_vision_model_capabilities()` that mark `api_config$local_model_capabilities[[m]]$vision`). Keep `R/helpers_vision_model_capabilities.R` loaded BEFORE `R/config_api.R` in the manifest, and `R/helpers_vision_context.R` BEFORE `R/helpers_send_message_prompting.R`. Neither file touches Shiny/reactive/network/DB.
-  - Capability is the single source of truth: `mergen_is_vision_model(model, api_config)` reads `caps[[m]]$vision` only (mirrors `is_thinking_model`). `config_api.R` defaults `vision = FALSE` on every `local_model_capabilities` entry, then sets `vision = TRUE` for the IDs in `MERGEN_VISION_MODELS` (`;`/`,`-separated — model IDs may contain spaces, so split on `;`/`,` ONLY, never whitespace) plus the Kodlama Uzmanı deep-thinking models (`CODING_DEEP_LOW_MODEL`/`CODING_DEEP_HIGH_MODEL`). Do NOT hardcode model names in functions; drive it from config/data + env. `config_api.R` must stay within its 700-line per-file ratchet budget — the marking lives in the helper, called via a guarded `exists("apply_vision_model_capabilities", ...)`.
+  - Capability is the single source of truth: `mergen_is_vision_model(model, api_config)` reads `caps[[m]]$vision` only (mirrors `is_thinking_model`). `config_api.R` defaults `vision = FALSE` on every `local_model_capabilities` entry, then sets `vision = TRUE` for the IDs in `MERGEN_VISION_MODELS` (`;`/`,`-separated — model IDs may contain spaces, so split on `;`/`,` ONLY, never whitespace) plus the Kodlama Uzmanı deep-thinking models (`CODING_DEEP_LOW_MODEL`/`CODING_DEEP_HIGH_MODEL`). Do NOT hardcode model names in functions; drive it from config/data + env. `config_api.R` must stay within its 520-line / 6-function per-file ratchet budget — the vision marking lives in `R/helpers_vision_model_capabilities.R` and the deep-thinking capability/endpoint registration lives in `R/helpers_deep_thinking_model_capabilities.R`, both called via guarded `exists(...)` checks.
   - `mergen_vision_enabled()` is a DEFAULT-ENABLED kill-switch: active unless `options(mergen.vision_enabled)` / `MERGEN_ENABLE_VISION` is EXPLICITLY false (`false`/`f`/`0`/`no`/`off`/`hayır`/`kapalı`). So marking a model `vision = TRUE` is sufficient to enable vision for it; `MERGEN_ENABLE_VISION=false` disables vision globally.
   - When `mergen_vision_active(model, api_config)` is true AND a real image encodes, the `none`-branch final user message `content` becomes an OpenAI multimodal ARRAY (`[{type:text},{type:image_url,image_url:{url:"data:...;base64,..."}}]`); otherwise it stays a STRING and images get the explicit Turkish note. Both `R/helpers_llm_api.R` (non-streaming) and `R/helpers_llm_sse.R` (streaming) preserve list-content and serialize via `toJSON(..., auto_unbox = TRUE)`, so the array survives to the HTTP body UNCHANGED. Do NOT regress the text path (non-capable models must still get the explicit Turkish note); do NOT fake vision.
   - Protected by `tests/testthat/test-vision-context-behavior.R`, `tests/testthat/test-vision-model-capabilities-behavior.R`, and `tests/testthat/test-vision-llm-payload-serialization-behavior.R`.
@@ -1593,15 +1593,23 @@ API model/endpoint/tool-mode helper logic is intentionally split from the main A
 Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
-safe_source("R/config_api.R",               encoding = "UTF-8")
-safe_source("R/helpers_api_model_config.R", encoding = "UTF-8")
-safe_source("R/config_claude_code.R",       encoding = "UTF-8")
+safe_source("R/helpers_vision_model_capabilities.R",        encoding = "UTF-8")
+safe_source("R/helpers_deep_thinking_model_capabilities.R", encoding = "UTF-8")
+safe_source("R/config_api.R",                               encoding = "UTF-8")
+safe_source("R/helpers_api_model_config.R",                 encoding = "UTF-8")
+safe_source("R/helpers_api_model_tool_runtime.R",           encoding = "UTF-8")
+safe_source("R/helpers_api_key_crypto.R",                   encoding = "UTF-8")
+safe_source("R/helpers_api_key_identity.R",                 encoding = "UTF-8")
 ```
 
 Responsibilities:
 
 * `R/config_api.R`: environment loading, global API configuration objects, `api_config`, TTS/STT configuration, and API-key validation orchestration.
+* `R/helpers_deep_thinking_model_capabilities.R`: the pure `collect_deep_thinking_model_ids()` + `apply_deep_thinking_model_capabilities()` registration boundary. It consolidates what used to be two separate source-time blocks in `config_api.R`: safe thinking-capable defaults for unknown deep models, completion of missing capability fields on already-defined deep models (existing explicit values always win), and missing endpoint-map entries defaulting to `"primary"` while the map stays a named character vector. `config_api.R` calls it through a guarded `exists(...)` check like the vision helper. Keep it loaded BEFORE `R/config_api.R`; isolated tests that source `config_api.R` directly must source this helper first. Do not re-inline either legacy block into `config_api.R`.
+* `R/helpers_api_key_crypto.R`: the user API key encrypted storage layer moved out of `config_api.R`: `API_KEYS_DIR`, `.api_user_file()`, `.hash_key_hex()`, `.enc_key()`, `.dec_key()`, `save_user_api_key()`, `load_user_api_key()`, `user_api_key_exists()`, and `verify_user_api_key()`. Behavior, the NUL-salt regression guard, UTF-8 round-trip, and the atomic JSON write path are unchanged. Do not move these back into `config_api.R`.
 * `R/helpers_api_model_config.R`: pure model capability, request override, endpoint credential, validation-target, tool-mode, and main-action model resolution helpers.
+
+This split is protected by `tests/testthat/test-config-api-split-contract.R` and `tests/testthat/test-deep-thinking-model-capabilities-behavior.R`; the crypto behavior coverage lives in `tests/testthat/test-config-api-key-crypto-behavior.R` (now sourcing the crypto helper directly). The `R/config_api.R` ratchet budget is tightened to 520 lines / 6 functions — do not consume the freed headroom by moving logic back.
 
 Personal API keys are user-owned credentials. They must be loaded/saved only after authenticated application identity is available, and must never fall back to `Sys.info()[["user"]]` or the Shiny/Windows service account. Session key state is cleared at session/module start, and a session key is accepted only when its owner marker matches the authenticated user. LLM request paths should use the effective-key helpers rather than directly trusting `session$userData$ai_api_key`.
 
@@ -4346,11 +4354,13 @@ Defines application-wide configuration:
 - `R/config_characters.R`
 - `R/config_version_history.R`
 - `R/helpers_vision_model_capabilities.R`
+- `R/helpers_deep_thinking_model_capabilities.R`
 - `R/config_api.R`
+- `R/helpers_api_key_crypto.R`
 - `R/config_claude_code.R`
 - `R/config_claude_code_plugins.R`
 
-> `R/helpers_vision_model_capabilities.R` is loaded BEFORE `R/config_api.R` so the config can mark per-model `vision` capability at build time (see the vision pipeline section).
+> `R/helpers_vision_model_capabilities.R` and `R/helpers_deep_thinking_model_capabilities.R` are loaded BEFORE `R/config_api.R` so the config can mark per-model `vision` capability and register Derin Düşünme capability/endpoint entries at build time (see the vision pipeline and API model configuration sections). `R/helpers_api_key_crypto.R` owns the user API key encrypted storage layer and loads after `R/config_api.R`.
 
 ### Group 3 - Database and SQL
 Core persistence and DB access:

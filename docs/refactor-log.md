@@ -6,6 +6,74 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-09 — config_api.R baş boşluğu: Derin Düşünme kayıt konsolidasyonu + API anahtarı kripto katmanı ayrımı
+
+### Seçilen iz(ler)
+- **Track E — Duplicate mechanism consolidation**: `config_api.R` içinde İKİ ayrı source-time blok olarak yaşayan Derin Düşünme yetenek/endpoint kayıt mekanizması tek saf yardımcıda birleştirildi (`R/helpers_deep_thinking_model_capabilities.R`).
+- **Track B/A — Cohesive boundary extraction**: kullanıcı API anahtarı şifreli saklama katmanı (~152 satır) `R/helpers_api_key_crypto.R` dosyasına taşındı.
+- Tamamlayıcı cerrahi düzeltme: bir önceki oturumda "bilinen risk" olarak belgelenen `decode_stream_delta_payload()` skaler dönüş ucu kapatıldı.
+
+### Özet ve gerekçe
+`R/config_api.R` repodaki EN sıkışık dosyaydı: 699 satır / 700 satırlık dosya-özel ratchet bütçesi — yani 1 satır boşluk. Her yeni model, env değişkeni veya yetenek alanı bu dosyaya dokunmak zorunda olduğundan, ilk masum değişiklik plansız bir refactor'ü başka birinin görevine zorlamış olacaktı.
+
+İki yapısal sorun çözüldü: (1) Derin Düşünme model kayıt mantığı dosyada iki ayrı blokta yaşıyordu — biri tabloda olmayan modele şablon + endpoint ekleyen erken blok, diğeri dosya sonunda `modifyList` ile eksik alanları tamamlayan ikinci blok. İki mekanizmanın bileşimi belgesizdi ve gelecekte tek tarafın değiştirilmesi sessiz davranış kayması üretirdi. Mekanizma, vision işaretleme deseniyle birebir aynı şekilde (`config_api.R`'den ÖNCE yüklenen saf helper + guard'lı çağrı) tek sahibe indirildi; birleşik davranışın eski iki-blok bileşimiyle **birebir aynı** olduğu hem test içi denklik fixture'larıyla hem de oturum içi git-HEAD diferansiyel karşılaştırmasıyla kanıtlandı (4 env senaryosunda `identical(api_config_eski, api_config_yeni) == TRUE`: varsayılan, bilinmeyen deep modeller, vision+deep birlikte, boş deep env). (2) Anahtar şifreleme/saklama katmanı (API_KEYS_DIR, hash, AES-GCM/CBC, save/load/exists/verify) yapılandırma dosyasının içinde yaşıyordu; kendi başına tutarlı bir sorumluluk olarak ayrı dosyaya taşındı (kod birebir, davranış değişikliği yok).
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_deep_thinking_model_capabilities.R` (yeni, 113 satır) — `collect_deep_thinking_model_ids()`, `apply_deep_thinking_model_capabilities()`; Shiny/DB/ağ/dosya yan etkisi yok.
+- `R/helpers_api_key_crypto.R` (yeni, 167 satır) — kripto/saklama katmanı `config_api.R`'den birebir taşındı; NUL-tuz regresyon guard'ı, UTF-8 gidiş-dönüş ve atomik JSON yazımı korunur.
+- `R/config_api.R` — iki Derin Düşünme bloğu guard'lı tek helper çağrısıyla değiştirildi; kripto bloğu kaldırıldı (yerinde yönlendirme yorumu). **699 → 468 satır / 12 → 2 fonksiyon (rapor metriği).**
+- `R/helpers_llm_stream_io.R` — `decode_stream_delta_payload()` artık her girişte skaler karakter döndürür; bozuk satırdan gelen `[]`/NA alan şekilleri `if()` içinde NA üretemez. Geçerli b64/düz metin davranışı değişmedi.
+- `R/config_source_manifest.R` — `config_api_model_keys` bölümü: deep helper vision sonrası/config_api öncesi, kripto helper tool-runtime sonrası/api_key_identity öncesi eklendi (7 → 9 dosya).
+
+**Test**
+- `tests/testthat/test-deep-thinking-model-capabilities-behavior.R` (yeni, 28 assertion) — kimlik toplama, bilinmeyen model varsayılanları, açık tanımın kazanması, endpoint onarımı, boş/geçersiz girişler ve eski iki-blok mekanizmasına karşı 4 fixture'lı birebir denklik.
+- `tests/testthat/test-config-api-split-contract.R` (yeni, 36 assertion) — iki helper'ın varlığı/yüzeyi, manifest sırası (vision → deep → config_api → crypto → identity), guard'lı delegasyon, taşınan mantığın `config_api.R`'ye geri dönmemesi, deep helper'ın yan-etkisizliği.
+- `tests/testthat/test-config-api-key-crypto-behavior.R` — bootstrap artık `config_api.R` yerine doğrudan `helpers_api_key_crypto.R` source eder (32 assertion değişmeden geçer).
+- `tests/testthat/test-api-model-config-refactor-contract.R` ve `tests/testthat/test-llm-reasoning-request-overrides.R` — izole `config_api.R` source bağlamlarına deep helper ön-yüklemesi eklendi (belgelenmiş izole-test deseni).
+- `tests/testthat/test-llm-stream-io-contract.R` — decode skaler dönüş regresyon testleri eklendi (bozuk `[]`/NA şekilleri, NULL/alansız payload, Türkçe b64 round-trip, b64 önceliği).
+- `tests/testthat/test-source-manifest-sections-contract.R` — `config_api_model_keys` n 7→9, toplam 255→257.
+- `tests/testthat/test-maintainability-ratchet.R` — `R/config_api.R` bütçesi 700L/14F → **520L/6F** sıkılaştırıldı; iki yeni helper için 160L/4F ve 220L/12F bütçeleri eklendi.
+
+**Dokümantasyon**
+- `CLAUDE.md` — "API model configuration contract" bölümü yeni kaynak sırası ve iki helper sorumluluğuyla güncellendi; vision bölümündeki 700-satır bütçe referansı 520/6 olarak düzeltildi; Group 2 yükleme listesi güncellendi.
+- `docs/architecture-map.md` — model yeteneği ve API anahtarı ownership satırları yeni dosyaları gösterir.
+- `docs/technical-reference.md` — Derin Düşünme kayıt tek-sahip notu, kripto taşıma notu ve decode skaler garanti notu eklendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `config_api.R` 699/700 satır (1 satır boşluk); Derin Düşünme kaydı iki kopya mekanizmada; kripto katmanı yapılandırma dosyasına gömülü; decode ucu belgelenmiş ama açık.
+- Sonra: `config_api.R` 468 satır / 2 fonksiyon (≈%33 küçülme, yeni bütçeyle ~52 satır gerçek boşluk + bütçe kilidi); kayıt mekanizması tek saf sahip + 28 deterministik assertion; kripto katmanı kendi dosyasında aynı davranış testleriyle; decode her zaman skaler.
+
+### Korunan davranış sözleşmeleri
+- `api_config` nesnesi 4 env senaryosunda git-HEAD sürümüyle `identical()` — model yetenekleri, endpoint haritası, tool-mode yapılandırması, TTS/STT yapılandırması bayt-denk.
+- Kripto fonksiyon adları/davranışı değişmedi; çağıranlar (`R/module_api_key.R`, `R/module_settings_yapilandirma.R`) dokunulmadı. NUL-tuz guard'ı, AES-GCM→CBC düşüşü, UTF-8 anahtar gidiş-dönüşü, atomik yazım aynen.
+- `validate_api_key()` orkestrasyonu, `user_config`, `SERVICE_DESK`, endpoint/env okuma config_api.R'de kaldı.
+- Streaming: geçerli b64/düz metin decode çıktıları birebir aynı; üretim yazıcısının boş metin yazmama guard'ı zaten koruyordu, okuyucu artık ek olarak sağlam.
+- DB, SSO, dosya yaşam döngüsü, frontend varlıkları, Shiny ID'leri ve UX'e dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Git-HEAD diferansiyeli (oturum içi geçici script): eski `config_api.R` (HEAD) + vision helper ile yeni zincir (vision + deep helper + yeni config_api) 4 env senaryosunda `identical(api_config) == TRUE`.
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni davranış (28), yeni split sözleşmesi (36), kripto davranış (32), api-model-config refactor (35), llm-reasoning overrides (14), stream-io (19), source manifest (165), sections (150), global manifest (12), maintainability ratchet (162), deep-thinking model resolution (16), runtime model resolution (24), api-key effective/identity resolution (35+37), streaming poll lifecycle (67+25), utf8 stream decoder (30), secret leak (8), network boundary (2), production contracts (21), production env policy (8).
+- `bash tools/ai_validate.sh full --boot-smoke` → geçti; **tam strict testthat suite dahil**, `failed_steps: 0`, `skipped_steps: 0` (browser UX smoke bu container'da tarayıcı olmadığından bloklamayan SKIP). Artifact yolu aşağıdaki commit mesajında ve `artifacts/ai-validation/` altında.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; `config_api.R` 468/2.
+- Tüm komutlar `LANG=C.UTF-8 LC_ALL=C.UTF-8` ile çalıştırıldı (container'ın C-locale varsayılanı, koddan bağımsız ortam kısıtı).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Uygulamayı normal Windows VM launcher ile başlatın; başlangıçta kırmızı hata olmadığını ve modellerin Model Değiştir/Yapılandırma listelerinde göründüğünü doğrulayın.
+- Excel Analizi ve Kodlama Desteği araçlarında Derin Düşünme düğmesini düşük/yüksek seviyelerde açın; Düşünce Akışı rozetinin beklenen deep modeli gösterdiğini ve yanıtın aktığını doğrulayın.
+- Yapılandırma → kişisel API anahtarı kaydedin (sahte/test anahtarı değil, gerçek akışınız neyse o); kaydet → doğrula → temizle akışının çalıştığını, Türkçe karakter içeren bir anahtar değerinin kaydet/yükle sonrası bozulmadığını doğrulayın.
+- `api_keys/<kullanıcı>_api_key` dosyasının oluştuğunu ve düz metin anahtar içermediğini (şifreli JSON) doğrulayın.
+- Var olan kayıtlı anahtarın (bu değişiklikten önce kaydedilmiş) yeniden yüklenebildiğini doğrulayın (format değişmedi; geriye dönük uyum beklenir).
+- Normal Türkçe sohbet + streaming + Durdur akışını bir kez doğrulayın (config_api zinciri her istekte kullanılır).
+
+### Bilinen riskler / atlanan doğrulamalar
+- `helpers_api_key_crypto.R` kaynak anında `getwd()/api_keys` klasörünü oluşturur (config_api.R'deki davranışın birebir taşınması). Manifest yük sırası içinde `getwd()` uygulama köküdür; davranış değişmedi.
+- Windows VM launcher, gerçek tarayıcı smoke, VM/SSO/gerçek DB preflight ve SQL Server Türkçe encoding preflight bu cloud oturumunda çalıştırılmadı; kullanıcı tarafı manuel QA gereklidir.
+- `.Renviron`'daki gerçek üretim deep model kimlikleri cloud'da görünmez; VM'de Derin Düşünme rozet/akış kontrolü önerilir (yukarıdaki QA maddesi).
+
+---
+
 ## 2026-06-09 — True streaming yoklama döngüsü kararlarının saf yardımcıya çıkarılması
 
 ### Seçilen iz(ler)
