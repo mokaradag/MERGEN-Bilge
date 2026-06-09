@@ -30,6 +30,7 @@ Bu sayfa, MERGEN Bilge dokümantasyonunda doğru belgeye hızlı gitmek için ha
 | [`../RENV_LOCK_STATUS.md`](../RENV_LOCK_STATUS.md) | `renv.lock` dosyasının on-prem üretim deposu ile GitHub/Codex görünürlüğü arasındaki fark. |
 | [`release-notes.md`](release-notes.md) | Uzun değişiklik notları ve güncel bakım özeti. |
 | [`technical-reference.md`](technical-reference.md) | Ayrıntılı teknik referans. |
+| [`refactor-log.md`](refactor-log.md) | Davranışı değiştirmeden karmaşıklık/onboarding yükünü azaltan yapısal iyileştirmelerin günlüğü. |
 
 ## Kısa Uyarılar
 
