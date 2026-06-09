@@ -12,7 +12,7 @@ required_packages <- c(
   "arrow", "base64enc", "cellranger", "cli", "commonmark", "curl",
   "data.table", "DBI", "dplyr", "DT", "duckdb", "fastmatch",
   "future", "glue", "htmltools", "httr", "jsonlite", "later",
-  "lubridate", "markdown", "odbc", "openssl", "pdftools", "pool",
+  "logger", "lubridate", "markdown", "odbc", "openssl", "pdftools", "pool",
   "promises", "purrr", "readr", "readxl", "shiny", "shinyBS",
   "shinycssloaders", "shinydashboard", "shinyjs", "shinyWidgets",
   "stringdist", "stringi", "stringr", "tibble", "tidyr", "urltools",
