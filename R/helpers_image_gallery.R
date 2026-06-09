@@ -43,8 +43,11 @@ scan_user_images <- function(user_id) {
     "October" = "Ekim", "November" = "Kasım", "December" = "Aralık"
   )
 
-  # Veritabanından görsel açıklamalarını toplu olarak al
+  # Veritabanından görsel açıklamalarını ve söyleşi başlıklarını toplu olarak al.
+  # Kart render aşamasında her görsel için tekrar DB sorgusu yapılmaz; bu hem
+  # Yenile düğmesini hem de galeriden söyleşiye dönüş akışını hızlandırır.
   descriptions_map <- load_image_descriptions_for_user(user_id)
+  chat_titles_map <- load_image_chat_titles_for_user(user_id)
 
   records <- lapply(image_files, function(fp) {
     fi <- file.info(fp)
@@ -66,9 +69,9 @@ scan_user_images <- function(user_id) {
     # Açıklamayı dosya adına göre bul
     desc <- descriptions_map[[fname]] %||% ""
 
-    # Söyleşi başlığını bul
+    # Söyleşi başlığını toplu yüklenen haritadan bul
     chat_title <- if (!is.na(cid)) {
-      get_chat_title_for_image(cid, user_id) %||% ""
+      chat_titles_map[[as.character(cid)]] %||% ""
     } else ""
 
     data.frame(
@@ -89,6 +92,46 @@ scan_user_images <- function(user_id) {
   result <- result[order(result$created_at, decreasing = TRUE), , drop = FALSE]
   rownames(result) <- NULL
   return(result)
+}
+
+
+#' Kullanıcının görsel içeren söyleşi başlıklarını toplu yükle
+#' @param user_id Kullanıcı ID
+#' @return İsimli liste: chat_id -> başlık
+load_image_chat_titles_for_user <- function(user_id) {
+  result_map <- list()
+
+  tryCatch({
+    conn_info <- get_connection()
+    conn <- conn_info$conn
+    on.exit(release_connection(conn_info))
+
+    query <- "
+      SELECT ChatID, ChatTitle
+      FROM MB_Chats
+      WHERE UserID = ? AND IsDeleted = 0
+    "
+
+    rows <- DBI::dbGetQuery(
+      conn,
+      query,
+      params = normalize_db_params(list(user_id))
+    )
+
+    if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+      rows <- normalize_text_frame_utf8(rows, repair_mojibake = TRUE)
+    }
+
+    if (nrow(rows) > 0) {
+      for (i in seq_len(nrow(rows))) {
+        result_map[[as.character(rows$ChatID[i])]] <- rows$ChatTitle[i] %||% ""
+      }
+    }
+  }, error = function(e) {
+    cat("[IMAGE_GALLERY] Söyleşi başlığı toplu yükleme hatası:", e$message, "\n")
+  })
+
+  result_map
 }
 
 #' Kullanıcının tüm görsel mesajlarından açıklamaları toplu yükle

@@ -71,6 +71,32 @@ test_that("get_chat_title_for_image geçerli chat_id'de başlık döner, boşta 
   expect_null(env$get_chat_title_for_image(5, 7))
 })
 
+
+test_that("load_image_chat_titles_for_user başlıkları tek sorguda haritalar", {
+  env <- .ig_make_env()
+  yakalanan <- new.env()
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, statement, params = NULL, ...) {
+      yakalanan$q <- statement
+      yakalanan$p <- params
+      data.frame(
+        ChatID = c(5L, 8L),
+        ChatTitle = c("Görsel Söyleşi", "İkinci Söyleşi"),
+        stringsAsFactors = FALSE
+      )
+    },
+    .package = "DBI"
+  )
+
+  titles <- env$load_image_chat_titles_for_user(7L)
+
+  expect_identical(titles[["5"]], "Görsel Söyleşi")
+  expect_identical(titles[["8"]], "İkinci Söyleşi")
+  expect_true(grepl("MB_Chats", yakalanan$q, fixed = TRUE))
+  expect_true(grepl("IsDeleted = 0", yakalanan$q, fixed = TRUE))
+  expect_identical(yakalanan$p, list(7L))
+})
+
 # -----------------------------------------------------------------------------
 # update_message_after_image_deletion
 # -----------------------------------------------------------------------------
@@ -111,4 +137,19 @@ test_that("update_message_after_image_deletion GÖRSEL etiketini silinme mesajı
   # Yeni içerik silinme mesajını taşımalı, GÖRSEL etiketini değil.
   expect_true(grepl("silinmi", yakalanan$p[[1]], fixed = TRUE))
   expect_false(grepl("[GÖRSEL:foo.png]", yakalanan$p[[1]], fixed = TRUE))
+})
+
+test_that("galeri silme düğmesi submit davranışına düşmez", {
+  module_txt <- paste(
+    readLines(
+      file.path(resolve_repo_root_for_tests(), "R", "module_image_gallery.R"),
+      warn = FALSE,
+      encoding = "UTF-8"
+    ),
+    collapse = "\n"
+  )
+
+  expect_true(grepl('class = "gallery-delete-btn"', module_txt, fixed = TRUE))
+  expect_true(grepl('type = "button",\n\t                      class = "gallery-delete-btn"', module_txt, fixed = TRUE) ||
+                grepl('type = "button",\n                      class = "gallery-delete-btn"', module_txt, fixed = TRUE))
 })

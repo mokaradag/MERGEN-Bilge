@@ -69,6 +69,7 @@ imageGalleryServer <- function(id, current_user_id) {
     images_per_page <- 24
     current_page <- reactiveVal(1)
     refresh_trigger <- reactiveVal(0)
+    gallery_revision <- reactiveVal(0)
     effective_user_id <- reactiveVal(coerce_user_id(resolve_current_user_id()))
     cached_images <- reactiveVal(empty_images_df())
 
@@ -86,7 +87,7 @@ imageGalleryServer <- function(id, current_user_id) {
       setequal(a_key, b_key)
     }
 
-    refresh_gallery_cache <- function() {
+    refresh_gallery_cache <- function(force = FALSE) {
       uid <- coerce_user_id(resolve_current_user_id())
       effective_user_id(uid)
 
@@ -101,8 +102,11 @@ imageGalleryServer <- function(id, current_user_id) {
       # Galeri zaten önbellekten anında görünür; sekme geçişlerinde gereksiz
       # yeniden render ve titreme bu sayede önlenir. Yeni veya silinen görsel
       # olduğunda tarama farklı olur ve önbellek güncellenir.
-      if (!gallery_images_same(isolate(cached_images()), scanned)) {
+      if (isTRUE(force) || !gallery_images_same(isolate(cached_images()), scanned)) {
         cached_images(scanned)
+      }
+      if (isTRUE(force)) {
+        gallery_revision(gallery_revision() + 1)
       }
       invisible(NULL)
     }
@@ -126,9 +130,10 @@ imageGalleryServer <- function(id, current_user_id) {
 
     # Arama: açıklama, dosya adı, ay etiketi ve sohbet başlığı üzerinden filtrele
     filtered_images <- reactive({
-      # refresh_trigger bağımlılığı bilinçli olarak kaldırıldı: tarama sonucu
-      # değişmediğinde cached_images güncellenmez, böylece sekme geçişlerinde
-      # galeri gereksiz yere yeniden render edilmez (titreme önlenir).
+      # Normal sekme geçişlerinde önbellek değişmedikçe render tetiklenmez;
+      # kullanıcının açık Yenile tıklaması ise gallery_revision üzerinden
+      # aynı dosya listesinde bile ekranı bilinçli olarak tazeler.
+      gallery_revision()
       imgs <- cached_images()
       term <- search_term_debounced()
 
@@ -237,7 +242,8 @@ imageGalleryServer <- function(id, current_user_id) {
 
                 file_size_kb <- round(row$file_size / 1024, 1)
                 created_str <- format(row$created_at, "%d.%m.%Y %H:%M")
-                chat_title <- get_chat_title_for_image(row$chat_id, effective_user_id()) %||% "Bilinmeyen Söyleşi"
+                chat_title <- row$chat_title %||% ""
+                if (!nzchar(chat_title)) chat_title <- "Bilinmeyen Söyleşi"
 
                 # Açıklama metnini tooltip olarak göster
                 desc_text <- if (nzchar(row$description)) row$description else ""
@@ -304,6 +310,7 @@ imageGalleryServer <- function(id, current_user_id) {
                       tags$span(class = "gallery-card-size", paste0(file_size_kb, " KB"))
                     ),
 					tags$button(
+                      type = "button",
                       class = "gallery-delete-btn",
                       title = "Görseli Sil",
                       onclick = sprintf(
@@ -336,7 +343,7 @@ imageGalleryServer <- function(id, current_user_id) {
         paste0("'", fname, "' görselini silmek istediğinizden emin misiniz? İlgili söyleşideki mesajda görselin silindiği belirtilecektir."),
         footer = tagList(
           actionButton(ns("confirm_delete_image"), "Evet, Sil", class = "btn-modern btn-danger"),
-          tags$button("İptal", class = "btn-modern btn-success", `data-dismiss` = "modal")
+          tags$button("İptal", type = "button", class = "btn-modern btn-success", `data-dismiss` = "modal", `data-bs-dismiss` = "modal")
         ),
         easyClose = TRUE
       ))
@@ -365,7 +372,7 @@ imageGalleryServer <- function(id, current_user_id) {
           sprintf("Toplam %d görselinizi silmek istediğinizden emin misiniz? Bu işlem geri alınamaz. İlgili söyleşilerdeki mesajlarda görsellerin silindiği belirtilecektir.", nrow(cached_images())),
           footer = tagList(
             actionButton(ns("confirm_clear_all_images"), "Evet, Tümünü Sil", class = "btn-modern btn-danger"),
-            tags$button("İptal", class = "btn-modern btn-success", `data-dismiss` = "modal")
+            tags$button("İptal", type = "button", class = "btn-modern btn-success", `data-dismiss` = "modal", `data-bs-dismiss` = "modal")
           ),
           easyClose = TRUE
         ))
@@ -392,14 +399,17 @@ imageGalleryServer <- function(id, current_user_id) {
       # Galeri zaten önbellekten anında görünür; sekme geçişinde sessizce
       # yeniden taranır. Görünür fadeOut/fadeIn ve her geçişte tekrar eden
       # bilgi mesajı kaldırıldı (gereksiz titreme/UX bozulması önlendi).
-      refresh_trigger(refresh_trigger() + 1)
+      refresh_gallery_cache(force = TRUE)
+      showToast(session, "Galeri yenilendi.", "success")
     })
 
     return(list(
       delete_image = delete_image_trigger,
       clear_all_images = clear_all_trigger,
       navigate_to_chat = navigate_to_chat_trigger,
-      refresh = function() refresh_trigger(refresh_trigger() + 1)
+      refresh = function() {
+        refresh_gallery_cache(force = TRUE)
+      }
     ))
   })
 }

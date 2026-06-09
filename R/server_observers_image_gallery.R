@@ -66,7 +66,10 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     # Önbellekte yoksa veya mesajlar yüklenmemişse veritabanından yükle
     if (isTRUE(needs_hydrate)) {
       detail <- tryCatch(
-        load_chat_messages_from_db(chat_id_int),
+        load_chat_messages_from_db(
+          chat_id_int,
+          user_id = resolve_runtime_user_id()
+        ),
         error = function(e) {
           warning(sprintf("[IMAGE_GALLERY] Söyleşi yüklenemedi (ChatID: %s): %s", chat_id, e$message))
           NULL
@@ -166,79 +169,75 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     updateTabItems(session, "tabs", "chat")
     chat_title <- chat_to_load$title %||% "Söyleşi"
 
-    # Sekme geçişi sonrası mesajları ekle
-    shinyjs::delay(150, {
-      # Konteynerin görünür ve boş olduğundan emin ol
-      shinyjs::runjs("
-        $('#welcome_fullscreen_container').addClass('hidden').empty();
-        $('#chat_content_container').show().css('display','block').empty();
-      ")
+    # Sekme geçişi sonrası mesajları tek DOM eklemesiyle yerleştir. Her mesaj için
+    # ayrı insertUI çağırmak uzun görsel söyleşilerinde belirgin gecikme yaratıyordu.
+    shinyjs::runjs("
+      $('#welcome_fullscreen_container').addClass('hidden').empty();
+      $('#chat_content_container').show().css('display','block').empty();
+    ")
 
-      # Mesaj balonlarını sırayla ekle
-      for (i in seq_along(values$messages)) {
-        msg <- values$messages[[i]]
-        is_last_user_msg <- (msg$type == "user" && i == length(values$messages))
+    message_ui <- tagList(lapply(seq_along(values$messages), function(i) {
+      msg <- values$messages[[i]]
+      is_last_user_msg <- (msg$type == "user" && i == length(values$messages))
 
-        ui_to_insert <- render_message_bubble_ui(
-          msg, settings_data,
-          is_last_user_message = is_last_user_msg,
-          character_data = character_data,
-          liked_ids = values$liked_messages,
-          disliked_ids = values$disliked_messages
-        )
+      render_message_bubble_ui(
+        msg, settings_data,
+        is_last_user_message = is_last_user_msg,
+        character_data = character_data,
+        liked_ids = values$liked_messages,
+        disliked_ids = values$disliked_messages
+      )
+    }))
 
-        insertUI(selector = "#chat_content_container", where = "beforeEnd", ui = ui_to_insert)
+    insertUI(selector = "#chat_content_container", where = "beforeEnd", ui = message_ui)
 
-        wrapper_id <- paste0("message_wrapper_", msg$id)
-        if (isTRUE(msg$has_code)) {
-          shinyjs::runjs(sprintf("
-            setTimeout(function() {
-              var wrapper = document.getElementById('%s');
-              if (wrapper) {
-                var editors = wrapper.querySelectorAll('.CodeMirror');
-                editors.forEach(function(cm) {
-                  if (cm.CodeMirror) cm.CodeMirror.refresh();
-                });
-              }
-            }, 200);
-          ", wrapper_id))
-        }
+    code_wrapper_ids <- vapply(values$messages, function(msg) {
+      if (isTRUE(msg$has_code)) paste0("message_wrapper_", msg$id) else NA_character_
+    }, character(1))
+    code_wrapper_ids <- code_wrapper_ids[!is.na(code_wrapper_ids)]
 
-        if (msg$type == "ai" && grepl("data-chartlab-spec", msg$html_content %||% "", fixed = TRUE)) {
-          shinyjs::delay(300, {
-            shinyjs::runjs(sprintf(
-              "window.renderSavedCharts && window.renderSavedCharts('%s');",
-              wrapper_id
-            ))
-          })
-        }
-      }
+    if (length(code_wrapper_ids) > 0) {
+      shinyjs::runjs(sprintf("
+        setTimeout(function() {
+          %s.forEach(function(id) {
+            var wrapper = document.getElementById(id);
+            if (!wrapper) return;
+            var editors = wrapper.querySelectorAll('.CodeMirror');
+            editors.forEach(function(cm) {
+              if (cm.CodeMirror) cm.CodeMirror.refresh();
+            });
+          });
+        }, 120);
+      ", jsonlite::toJSON(code_wrapper_ids, auto_unbox = TRUE)))
+    }
 
-      # Hedef görsele veya sohbet sonuna kaydır
-      if (!is.null(target_message_id)) {
-        shinyjs::runjs(sprintf("
-          setTimeout(function() {
-            var targetEl = document.getElementById('message_wrapper_%s');
-            if (targetEl) {
-              targetEl.scrollIntoView({behavior: 'auto', block: 'center'});
-              // Görseli kısa süreliğine vurgula
-              targetEl.style.transition = 'box-shadow 0.5s ease';
-              targetEl.style.boxShadow = '0 0 0 3px rgba(255, 138, 0, 0.5)';
-              setTimeout(function() { targetEl.style.boxShadow = ''; }, 2500);
-            } else {
-              scrollToBottom(false);
-            }
-          }, 400);
-        ", target_message_id))
-      } else {
-        shinyjs::runjs("setTimeout(function() { scrollToBottom(false); }, 300);")
-      }
-      showToast(session, paste("Söyleşi yüklendi:", chat_title), "info")
+    if (any(vapply(values$messages, function(msg) {
+      (msg$type %||% "") == "ai" && grepl("data-chartlab-spec", msg$html_content %||% "", fixed = TRUE)
+    }, logical(1)))) {
+      shinyjs::runjs("setTimeout(function() { window.renderSavedCharts && window.renderSavedCharts('chat_content_container'); }, 180);")
+    }
 
-      shinyjs::delay(500, {
-        load_chat_in_progress(FALSE)
-      })
-    })
+    # Hedef görsele veya sohbet sonuna kaydır
+    if (!is.null(target_message_id)) {
+      shinyjs::runjs(sprintf("
+        setTimeout(function() {
+          var targetEl = document.getElementById('message_wrapper_%s');
+          if (targetEl) {
+            targetEl.scrollIntoView({behavior: 'auto', block: 'center'});
+            // Görseli kısa süreliğine vurgula
+            targetEl.style.transition = 'box-shadow 0.5s ease';
+            targetEl.style.boxShadow = '0 0 0 3px rgba(255, 138, 0, 0.5)';
+            setTimeout(function() { targetEl.style.boxShadow = ''; }, 2500);
+          } else {
+            scrollToBottom(false);
+          }
+        }, 80);
+      ", target_message_id))
+    } else {
+      shinyjs::runjs("setTimeout(function() { scrollToBottom(false); }, 80);")
+    }
+    showToast(session, paste("Söyleşi yüklendi:", chat_title), "info")
+    shinyjs::delay(120, { load_chat_in_progress(FALSE) })
   })
 
   # Tekil görsel silindikten sonra ilgili söyleşinin önbelleğini yenile
@@ -254,7 +253,10 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       # Önbellekteki söyleşiyi silmek yerine veritabanından yeniden yükle
       if (!is.na(chat_id_int)) {
         refreshed <- tryCatch(
-          load_chat_messages_from_db(chat_id_int),
+          load_chat_messages_from_db(
+            chat_id_int,
+            user_id = resolve_runtime_user_id()
+          ),
           error = function(e) NULL
         )
         if (!is.null(refreshed)) {
@@ -268,7 +270,10 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       # Eğer şu an o söyleşi aktifse, mesajları da yeniden yükle
       if (identical(as.character(values$current_chat_id), chat_key)) {
         detail <- tryCatch(
-          load_chat_messages_from_db(chat_id_int),
+          load_chat_messages_from_db(
+            chat_id_int,
+            user_id = resolve_runtime_user_id()
+          ),
           error = function(e) NULL
         )
         if (!is.null(detail)) {
@@ -317,7 +322,10 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
           chat_id_int <- suppressWarnings(as.integer(chat_key))
           if (!is.na(chat_id_int)) {
             refreshed <- tryCatch(
-              load_chat_messages_from_db(chat_id_int),
+              load_chat_messages_from_db(
+                chat_id_int,
+                user_id = resolve_runtime_user_id()
+              ),
               error = function(e) NULL
             )
             if (!is.null(refreshed)) {
@@ -337,7 +345,10 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     # Aktif söyleşi varsa mesajları veritabanından yeniden yükle
     if (!is.null(values$current_chat_id)) {
       detail <- tryCatch(
-        load_chat_messages_from_db(values$current_chat_id),
+        load_chat_messages_from_db(
+          values$current_chat_id,
+          user_id = resolve_runtime_user_id()
+        ),
         error = function(e) NULL
       )
       if (!is.null(detail)) {
