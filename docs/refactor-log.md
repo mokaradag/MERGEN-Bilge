@@ -194,3 +194,64 @@ Bu değişiklik runtime davranışını değiştirmez, ancak boot manifestine do
 ### Bilinen riskler / bilinçli atlanan doğrulamalar
 - Bu cloud checkout'unda `.Renviron` ve bazı `www` varlıkları bulunmadığından tam strict suite (`tests/testthat.R`) eksiksiz tamamlanmaz. `test-logout-url-contract.R` (2), `test-ui-asset-manifest-contract.R` (1) ve `test-claude-code-security-policy-contract.R` (2) başarısızlıkları ORİJİNAL manifestle de birebir oluşur; bu değişiklikten kaynaklanmaz (CLAUDE.md cloud notlarıyla uyumlu, ortam kaynaklı).
 - `cloud-quick` tam runtime/app boot, gerçek tarayıcı UX, VM/SSO/DB veya SQL Server Türkçe encoding doğrulaması DEĞİLDİR; bunlar VM tarafı gate'leridir ve bu oturumda çalıştırılmadı.
+
+---
+
+## 2026-06-09 — UI asset manifest sectioning without order change
+
+### Seçilen iz(ler)
+- **Track D — Manifest Sectioning Without Load-Order Change** (`R/config_ui_assets.R` CSS `page` ve JS `deferred` listeleri).
+
+### Özet ve gerekçe
+`R/config_ui_assets.R` içinde en uzun onboarding yükü, tek blok hâlindeki `page` CSS listesi ve `deferred` JS listesindeydi. Bu listeler çalışma zamanı açısından hassas olduğu için dosya taşımak, selector değiştirmek veya asset sırasını değiştirmek yerine yalnızca manifestin okunabilirlik sınırı iyileştirildi.
+
+CSS `page` listesi tema tabanı, light theme modülleri, light override katmanları, layout temeli, navigasyon/araç yüzeyleri, feature yüzeyleri ve enterprise/Bilge Yolaç katmanı olarak adlandırıldı. JS `deferred` listesi code/table, welcome/media, modal/analysis tools ve admin/enterprise alt bölümlerine ayrıldı. Her iki yol da `ui_asset_flatten_groups()` ile aynı adsız vektöre indirildiği için UI tag üretimi, `defer` planı ve tarayıcı yükleme sırası değişmedi.
+
+### Değişen dosyalar
+**Kaynak**
+- `R/config_ui_assets.R` — `ui_asset_flatten_groups()` helper'ı manifest listelerinden önce tanımlandı; uzun `page` CSS ve `deferred` JS listeleri named alt bölümlere ayrıldı; `ui_asset_public_root()` içindeki unreachable duplicate `return(root)` temizlendi.
+
+**Test**
+- `tests/testthat/test-ui-asset-manifest-contract.R` — sectioning refactor'ının `ui_asset_css_groups$page` ve `ui_asset_js_groups$deferred` vektörlerini birebir değiştirmediğini doğrulayan sıra sözleşmesi eklendi.
+
+**Dokümantasyon**
+- `docs/architecture-map.md` — UI asset manifestinin bölümleme/onboarding sınırı ve order-stability testi açıklandı.
+- `docs/technical-reference.md` — sectioning'in runtime/tag/defer sözleşmesini değiştirmediği ve ilgili test koruması eklendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: maintainer'ın uzun CSS/JS vektörlerinde tema, feature, media, admin ve Bilge Yolaç assetlerini tek listede zihinsel olarak ayırması gerekiyordu.
+- Sonra: uzun listeler feature/layer başlıklarıyla okunuyor; final vektör tek kaynakta kalıyor ve order stability testle donduruluyor.
+- Runtime dosyaları, frontend selector'ları, Shiny input/output ID'leri, browser message adları veya asset dosya adları değiştirilmedi.
+
+### Korunan davranış sözleşmeleri
+- CSS/JS dosya sırası ve `ui_asset_all_css()` / `ui_asset_all_js()` çıktıları korunur.
+- `ui_asset_js_render_plan`, `ui_asset_deferred_js_groups`, `defer` davranışı ve `ui_asset_js_order_rules` korunur.
+- Encoding, streaming markdown safety, TTS/STT/media, SSO, Bilge Yolaç, admin/health ve tema assetleri aynı dosya yollarıyla yüklenmeye devam eder.
+- Türkçe dokümantasyon metni UTF-8 korunarak yazıldı; DB schema, renv.lock, source manifest ve runtime davranışı değiştirilmedi.
+
+### Eklenen / güncellenen testler
+- `test-ui-asset-manifest-contract.R` içindeki yeni test:
+  - `ui_asset_css_groups$page` tam vektörünün sectioning sonrası beklenen sırayla birebir aynı kaldığını doğrular.
+  - `ui_asset_js_groups$deferred` tam vektörünün sectioning sonrası beklenen sırayla birebir aynı kaldığını doğrular.
+  - Flatten edilmiş manifest vektörlerinde isim sızıntısı olmadığını doğrular.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- `Rscript tests/scripts/maintainability_report.R` → geçti; skor 100/100.
+- `Rscript -e "source('R/config_ui_assets.R', encoding='UTF-8'); ui_asset_validate(root='.', check_files=FALSE); cat(length(ui_asset_all_css()), length(ui_asset_all_js()), '\n')"` → geçti; CSS/JS sayıları `95 120`.
+- `Rscript -e "testthat::test_file('tests/testthat/test-ui-asset-manifest-contract.R')"` → başarısız; yeni sıra testi geçti, ancak mevcut fixture ortamında vendored `www/codemirror`, `www/lib/threejs` ve `www/css/all.min.css` dosyaları eksik olduğu için aynı test dosyasının `check_files = TRUE` offline asset varlık kontrolü başarısız oldu.
+- `Rscript tests/testthat.R` → başarısız; mevcut fixture/env sınıfında Bilge Yolaç security prompt traversal beklentisi, eksik `.Renviron` logout URL fixture'ı, eksik vendored UI assets ve upload-validator fixture path kontrolleri fail verdi. Yeni UI manifest sıra testi bu koşuda geçti (`ui-asset-manifest-contract: ....5.6.....................` çıktı nokta/başarılı assertion akışında yeni test assertion'larını içerir), ancak dosyanın mevcut asset varlık kontrolü aynı eksik vendored assetlerle başarısız kaldı.
+- `bash tools/ai_validate.sh quick` → geçti; `failed_steps: 0`, `skipped_steps: 0`, artifact: `artifacts/ai-validation/20260609-153404/summary.json`.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Uygulamayı normal Windows VM launcher ile başlatın; kırmızı hata ve yeni browser console hatası olmadığını doğrulayın.
+- Hard refresh yapın; dark theme ve welcome ekranının aynı render edildiğini kontrol edin.
+- Light theme destekleniyorsa açık temaya geçin; welcome, chat, modal, Dosya Yönetimi, admin/health, destek ve Bilge Yolaç yüzeylerinde yeni koyu/leaky yüzey olmadığını kontrol edin.
+- Ana Söyleşi'de Türkçe karakterli bir mesaj (`ç, ğ, ı, İ, ö, ş, ü`) gönderin; streaming ve Stop davranışını kontrol edin.
+- Dosya Yönetimi'nde Türkçe adlı TXT/CSV yükleyin; liste/önizleme görünümünün değişmediğini kontrol edin.
+- Bilge Yolaç sekmesini açın; arayüz ve streaming/cancel davranışında console hatası olmadığını kontrol edin.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Bu refactor frontend dosyalarının içeriğine dokunmadı; browser smoke manuel VM QA'ya bırakıldı.
+- `check_files = TRUE` asset varlık testi mevcut cloud/container fixture'ında eksik vendored assetler nedeniyle başarısız olabiliyor; Windows/on-prem paketlenmiş asset ortamında ayrıca doğrulanmalıdır.
+- Source manifest, DB schema/encoding, SSO, file lifecycle, streaming logic ve `renv.lock` bilerek değiştirilmedi.
