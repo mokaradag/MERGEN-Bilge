@@ -3258,6 +3258,30 @@ The split is protected by:
 * `tests/testthat/test-pk-analysis-core-refactor-contract.R`
 * `tests/testthat/test-pk-analysis-maintainability-contract.R`
 
+### Proje/Kaynak Analizi query-selection modularization contract
+
+The Proje/Kaynak Analizi "Akıllı Sorgu Seçici" (Smart Query Selector) heuristic scoring and score-table reporting are intentionally split out of the large module. Preserve this source order in `R/config_source_manifest.R` (the helper is in the `analysis_helpers` section, after `R/helpers_pk_analysis_filters.R` and before `R/module_proje_kaynak_analizi.R`):
+
+```r
+safe_source("R/helpers_pk_analysis_filters.R",          encoding = "UTF-8")
+safe_source("R/helpers_pk_analysis_query_selection.R",  encoding = "UTF-8")
+safe_source("R/module_proje_kaynak_analizi.R",          encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/helpers_pk_analysis_query_selection.R`: pure heuristic query-relevance scoring and score-table reporting. It owns `pk_init_query_score_table()` (the `all_scores` skeleton with `query_id`/`query_name`/`ai_score`/`heuristic_score`/`final_score`), `pk_score_query_relevance()` (per-query raw score), `pk_compute_heuristic_query_scores()` (full library scoring + `%100` normalization + `THRESHOLD_RAW=2`/`THRESHOLD_PCT=30` decision), and `print_score_table()` (console diagnostic). Its only permitted side effect is `print_score_table()`'s `cat()` output; no Shiny observer/render/runtime, no live DB connection, no LLM call.
+* `R/module_proje_kaynak_analizi.R`: keeps the `select_smart_query()` orchestrator (AI selection loop, session/`cat` orchestration, final result assembly) and calls the extracted pure helpers.
+
+Do not move `select_smart_query()` into the helper (it calls `find_best_query_with_ai()` which stays in the module, and is itself called by `R/helpers_deep_analysis.R`). Do not move `pk_init_query_score_table()`, `pk_score_query_relevance()`, `pk_compute_heuristic_query_scores()`, or `print_score_table()` back into the module. The scoring formula (name substring `+50`, name-word match `×10`, description-word match `×2`, the seven Turkish domain-keyword bonuses `+8`, max-normalized `%100`, `THRESHOLD_RAW=2`/`THRESHOLD_PCT=30`) and the `all_scores` table shape must be preserved exactly; the seven domain-bonus `grepl()` Turkish patterns are encoding-sensitive and must stay byte-identical.
+
+The split is protected by:
+
+* `tests/testthat/test-pk-analysis-query-selection-refactor-contract.R`
+* `tests/testthat/test-pk-analysis-query-selection-behavior.R`
+* `tests/testthat/test-pk-analysis-maintainability-contract.R`
+* `tests/testthat/test-source-manifest-sections-contract.R`
+
 ### File Manager modularization contract
 
 The File Manager layer is intentionally split to keep the large runtime module from growing again. Preserve this source order in `R/config_source_manifest.R`:
@@ -4373,6 +4397,7 @@ Shared utilities used across modules:
 - `R/helpers_deep_analysis.R`
 - `R/helpers_pk_analysis_core.R`
 - `R/helpers_pk_analysis_filters.R`
+- `R/helpers_pk_analysis_query_selection.R`
 - `R/helpers_sso.R`
 - `R/helpers_destek_database.R`
 - `R/helpers_admin_analytics.R`
