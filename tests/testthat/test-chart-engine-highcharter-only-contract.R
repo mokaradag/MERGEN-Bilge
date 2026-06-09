@@ -106,3 +106,44 @@ test_that("config_file_store.R kullanılmayan görselleştirme bayraklarını ta
     info = "Kullanılmayan have_highcharter bayrağı kaldırılmalıdır."
   )
 })
+
+test_that("plotly çalışma zamanı (R + ui.R + server.R) kodundan tamamen kaldırıldı", {
+  repo_root <- resolve_repo_root_for_tests()
+  runtime_files <- c(
+    list.files(file.path(repo_root, "R"), pattern = "\\.R$", full.names = FALSE) |>
+      (\(x) file.path("R", x))(),
+    "ui.R",
+    "server.R"
+  )
+
+  # Yalnızca gerçek kod desenleri taranır; yorumlardaki "plotly" kelimesine
+  # (kaldırma açıklaması gibi) takılmaz.
+  forbidden_code <- c(
+    "plotly::", "\"plotly\"", "plotlyOutput", "renderPlotly",
+    "plotly_empty", "plotly_html", "deps_pl"
+  )
+
+  offenders <- character(0)
+  for (path in runtime_files) {
+    full <- file.path(repo_root, path)
+    if (!file.exists(full)) next
+    txt <- .read_repo_text_chart_engine(path)
+    hits <- forbidden_code[vapply(
+      forbidden_code,
+      function(tok) grepl(tok, txt, fixed = TRUE),
+      logical(1)
+    )]
+    if (length(hits)) {
+      offenders <- c(offenders, sprintf("%s -> %s", path, paste(hits, collapse = ", ")))
+    }
+  }
+
+  expect_equal(
+    offenders,
+    character(0),
+    info = paste(
+      "Çalışma zamanı kodunda plotly bağımlılık referansları bulundu:",
+      paste(offenders, collapse = " | ")
+    )
+  )
+})

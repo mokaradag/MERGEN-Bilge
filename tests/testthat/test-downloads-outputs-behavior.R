@@ -6,8 +6,9 @@
 #           Kapsananlar (shiny::testServer ile):
 #           - downloadOutputsInit -> file_prompt_indicator_ui: ekli dosya
 #             göstergesi (dosya yoksa boş, varsa sayı + adlar).
-#           - widgetDependencyOutputsInit: highcharter/plotly yoksa bile hata
-#             vermeden çıktı tanımlama (zarif düşüş).
+#           - widgetDependencyOutputsInit: highcharter yoksa bile hata
+#             vermeden çalışma (zarif düşüş). Plotly bağımlılığı tamamen
+#             kaldırıldığı için artık plotly çıktısı tanımlanmaz.
 #
 #           Gerçek DB/LLM/indirme GEREKMEZ; fetch_user_activity_logs stub'lanır.
 # ==============================================================================
@@ -75,11 +76,11 @@ testthat::test_that("widgetDependencyOutputsInit eksik widget paketlerinde hatas
   suppressMessages(library(shiny))
   env <- .source_downloads_for_test()
 
-  # App VM'de plotly kurulu olsa bile bu test fallback dalını hedefler.
-  # widgetDependencyOutputsInit() fonksiyonu env içinde source edildiği için,
-  # requireNamespace burada lexical lookup ile env$requireNamespace üzerinden çözülür.
+  # highcharter yokmuş gibi davranıldığında bile fonksiyon hatasız çalışmalıdır.
+  # widgetDependencyOutputsInit() env içinde source edildiği için requireNamespace
+  # lexical lookup ile env$requireNamespace üzerinden çözülür.
   env$requireNamespace <- function(package, quietly = FALSE, ...) {
-    if (identical(package, "plotly")) {
+    if (identical(package, "highcharter")) {
       return(FALSE)
     }
 
@@ -90,10 +91,19 @@ testthat::test_that("widgetDependencyOutputsInit eksik widget paketlerinde hatas
     shiny::testServer(function(input, output, session) {
       env$widgetDependencyOutputsInit(output)
     }, {
-      # plotly yokmuş gibi davranıldığında deps_pl/plotly_html renderUI(NULL)
-      # olarak tanımlanır; okuma hata fırlatmamalı.
-      testthat::expect_no_error(force(output$deps_pl))
-      testthat::expect_no_error(force(output$plotly_html))
+      # highcharter yokken deps_hc tanımlanmaz; fonksiyon yine de hatasız döner.
+      testthat::expect_true(TRUE)
     })
   )
+})
+
+testthat::test_that("widgetDependencyOutputsInit plotly çıktısı tanımlamaz", {
+  env <- .source_downloads_for_test()
+  src <- paste(
+    deparse(body(env$widgetDependencyOutputsInit)),
+    collapse = "\n"
+  )
+  testthat::expect_false(grepl("plotly", src, fixed = TRUE))
+  testthat::expect_false(grepl("deps_pl", src, fixed = TRUE))
+  testthat::expect_false(grepl("plotly_html", src, fixed = TRUE))
 })

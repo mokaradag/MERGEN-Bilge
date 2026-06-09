@@ -16,6 +16,14 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 Aşağıdaki bölüm, güncel değişiklik notlarını kronolojik/tematik bakım izi kaybolmadan izler.
 
+### Karmaşıklık azaltma: plotly bağımlılığı çalışma zamanından tamamen kaldırıldı
+
+Grafik render yolu highcharter'a indirildikten sonra plotly'nin tek kalan kullanımı, artık hiçbir grafik tarafından kullanılmayan bağımlılık-önyükleyiciydi. Bu önyükleyici de kaldırıldı: `R/server_outputs_downloads.R` içindeki `widgetDependencyOutputsInit()` artık yalnızca highcharter `deps_hc` yükleyicisini tanımlar (`deps_pl` ve kullanılmayan `plotly_html` çıktıları silindi) ve `ui.R` içindeki gizli `plotly::plotlyOutput("deps_pl")` yükleyicisi kaldırıldı. Sonuç olarak çalışma zamanı kodunda (`R/*.R`, `ui.R`, `server.R`) hiçbir plotly referansı kalmadı.
+
+Davranış korunur: highcharter bağımlılık yükleyicisi (`deps_hc`) ve grafik render yolu değişmedi. Plotly zaten `required_packages` içinde değildi (opsiyonel yumuşak bağımlılıktı); on-prem `renv.lock`, plotly'yi düşürmek için VM tarafında yeniden snapshot edilmelidir (bulut oturumundan `renv.lock` üretilmez).
+
+Koruma: `tests/testthat/test-downloads-outputs-behavior.R`, `widgetDependencyOutputsInit()`'in highcharter yokken hatasız çalıştığını ve hiçbir plotly çıktısı tanımlamadığını doğrular; `tests/testthat/test-chart-engine-highcharter-only-contract.R`'ye eklenen yeni tarama, tüm çalışma zamanı R + `ui.R` + `server.R` dosyalarında plotly kod referansı (`plotly::`, `plotlyOutput`, `renderPlotly`, `"plotly"`, `deps_pl`, `plotly_html`) bulunmadığını dondurur. Doğrulama: parse sanity + odaklı sözleşme/davranış testleri (`bash tools/ai_validate.sh cloud-quick`) yeşil; tam runtime/app boot, tarayıcı UX ve Windows VM/SSO/DB doğrulaması bu bulut oturumunda yapılmadı.
+
 ### Karmaşıklık azaltma: grafik render yolu tek motorlu (highcharter) hale getirildi
 
 ChartLab grafikleri (`R/helpers_chartlab.R`) ve etkileşimli ChartLab modülü (`R/module_chartlab.R`) her zaman highcharter ile render edilir; eski `highcharter → plotly+ggplot2 → hata` fallback zinciri ulaşılamayan ölü koddu. Bu deployment'ta highcharter daima kuruludur (`ui.R` gizli bağımlılık yükleyicisi zaten `highcharter::highchartOutput` kullanır ve on-prem `renv.lock` highcharter'ı sabitler), dolayısıyla plotly+ggplot2 dalları gerçekte hiç çalışmıyordu.
