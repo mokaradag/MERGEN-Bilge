@@ -165,3 +165,15 @@ test_that("kanonik kart yardımcısı helpers_markdown_safety.R içinde tanımla
     )
   )
 })
+
+test_that("printGeneratedImage yazdırma sekmesini erken kapatmaz", {
+  image_tools_js <- .read_repo_text_img_card("www/js/image_tools.js")
+
+  expect_true(grepl("window.printGeneratedImage", image_tools_js, fixed = TRUE))
+  expect_true(grepl("printWindow.print()", image_tools_js, fixed = TRUE))
+  expect_false(
+    grepl("window.close()", image_tools_js, fixed = TRUE) ||
+      grepl("printWindow.close()", image_tools_js, fixed = TRUE),
+    info = "Yazdır penceresini otomatik kapatmak tarayıcıda anlık flicker'a ve iptal edilen yazdırmaya yol açabilir."
+  )
+})
