@@ -1,0 +1,1 @@
+SELECT 'q001' AS QueryID, 'placeholder_for_cloud_validation' AS LoaderStatus;
