@@ -66,13 +66,11 @@ ui <- dashboardPage(
 
     sttUI("stt_module"),
     
-    # --- Gizli widget bağımlılık yükleyicileri (Metin olarak eklenen çıktılar için kritik) ---
+    # --- Gizli widget bağımlılık yükleyicisi (Metin olarak eklenen çıktılar için kritik) ---
     tags$div(
     style = "position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;",
     if (requireNamespace("highcharter", quietly = TRUE))
-      highcharter::highchartOutput("deps_hc", height = "1px"),
-    if (requireNamespace("plotly", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE))
-      plotly::plotlyOutput("deps_pl", height = "1px")
+      highcharter::highchartOutput("deps_hc", height = "1px")
     ),
 
     # --- Başlık İçeriği (Head Content) ---

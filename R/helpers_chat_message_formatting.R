@@ -111,28 +111,12 @@ db_message_render_image_html <- function(image_path, description, message_id) {
     ))
   }
 
-  sprintf(
-    '<div class="generated-image-container" data-message-id="%s">
-       <div class="image-wrapper">
-         <img src="%s" alt="Oluşturulan görsel" class="generated-image" loading="lazy" />
-         <div class="image-watermark">MERGEN Bilge</div>
-       </div>
-       <div class="image-actions">
-         <button class="image-action-btn-modern" onclick="window.downloadGeneratedImage(this)" title="İndir">
-           <i class="fas fa-download"></i>
-         </button>
-         <button class="image-action-btn-modern" onclick="window.copyGeneratedImage(this)" title="Kopyala">
-           <i class="fas fa-copy"></i>
-         </button>
-         <button class="image-action-btn-modern" onclick="window.printGeneratedImage(this)" title="Yazdır">
-           <i class="fas fa-print"></i>
-         </button>
-       </div>
-       %s
-     </div>',
-    htmltools::htmlEscape(as.character(message_id)),
-    img_src,
-    description_html
+  # Kart işaretlemesi kanonik güvenli yardımcıdan üretilir (XSS sınırı tek yerde).
+  # description ham olarak geçilir; kaçış yardımcının içinde yapılır.
+  mergen_generated_image_card_html(
+    message_id = message_id,
+    img_src = img_src,
+    description = description
   )
 }
 

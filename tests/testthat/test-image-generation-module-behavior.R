@@ -15,6 +15,18 @@ if (requireNamespace("shiny", quietly = TRUE)) {
 }
 
 .imggen_env <- new.env(parent = globalenv())
+
+# render_* fonksiyonları artık kanonik mergen_generated_image_card_html
+# (helpers_markdown_safety.R) yardımcısına delege eder. helper_bootstrap bunu
+# yüklemediği izole koşumlarda WD-bağımsız repo kökünden yalnızca yoksa yükle.
+if (!exists("mergen_generated_image_card_html", mode = "function")) {
+  source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_markdown_safety.R"),
+    encoding = "UTF-8",
+    local = .imggen_env
+  )
+}
+
 source(
   file.path(resolve_repo_root_for_tests(), "R", "module_image_generation.R"),
   encoding = "UTF-8",

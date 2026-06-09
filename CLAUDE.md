@@ -131,7 +131,7 @@ Current contract:
 
 Recent VM-focused coverage converted several previously skipped tests into runnable local/Windows assertions. Keep these boundaries intact:
 - `tests/testthat/test-config-sql-loader-helpers-behavior.R` intentionally isolates `query_library` while sourcing `R/config_sql_loader.R` so the pure helper functions remain available before the loader’s production cleanup boundary.
-- `tests/testthat/test-downloads-outputs-behavior.R` must test the plotly-missing graceful fallback through a lexical `requireNamespace()` mock in the sourced environment. Do not require uninstalling `plotly` from the app VM.
+- `tests/testthat/test-downloads-outputs-behavior.R` must test that `widgetDependencyOutputsInit()` degrades gracefully when highcharter is missing (lexical `requireNamespace()` mock in the sourced environment) and that it defines no plotly output. Plotly has been fully removed; do not reintroduce a `plotly`/`deps_pl`/`plotly_html` output here.
 - `tests/testthat/test-path-helpers-mojibake-behavior.R` must exercise real Windows behavior for `safe_windows_short_path()` instead of skipping on Windows.
 - Strict offline runtime scanning is opt-in and should be enabled in VM/local validation with `MERGEN_STRICT_OFFLINE_TESTS=true`.
 
@@ -195,6 +195,7 @@ Current contract:
 - `www/js/streaming_manager.js` may assign to `innerHTML` only from the safe markdown parser. Parser-missing fallback must use `textContent`, not raw accumulated text as HTML.
 - UI asset order is part of the safety boundary: `www/js/streaming_markdown_safety.js` must load before `www/js/markdown-parser.js`, and `www/js/markdown-parser.js` must load before `www/js/streaming_manager.js`.
 - Server-side final and saved message markdown rendering must use `render_safe_markdown_html()` from `R/helpers_markdown_safety.R` for user/LLM-controlled prose. Do not call `commonmark::markdown_html()` directly on such prose unless raw HTML has first been escaped.
+- The generated-image card markup (image + `MERGEN Bilge` watermark + download/copy/print action buttons + optional description) is a single canonical builder: `mergen_generated_image_card_html()` in `R/helpers_markdown_safety.R`. It escapes `message_id` and `description` (XSS boundary) and places the caller-trusted `img_src` into `src` as-is. It is loaded before `R/helpers_chat_message_formatting.R` and `R/module_image_generation.R`. The live image path (`render_generated_image_html()`, `render_image_from_saved_path()` in `R/module_image_generation.R`) and the saved-chat reload path (`db_message_render_image_html()` in `R/helpers_chat_message_formatting.R`) must delegate the card markup to this helper. Do not re-inline the `image-action-btn-modern` button markup in those consumers, and do not duplicate the card template in a third site. The not-found / not-loaded placeholder branches in `db_message_render_image_html()` are intentionally different (no image, no buttons) and stay local. Protected by `tests/testthat/test-generated-image-card-html-contract.R`.
 - Raw HTML/script/event-handler patterns such as script tags, image error handlers, javascript links, and malformed tags split across streaming chunks must remain escaped or inert.
 - The browser UX smoke harness is part of this safety boundary, not a demo page. Keep `www/smoke/ux-smoke.html` and `www/smoke/ux-smoke-probes.js` explicit about streaming init/delta/stale requestId/finalize behavior, dangerous HTML-like payload inertness, finalize cleanup, audio duck ownership, saved-chat TTS non-autoplay, navigation cleanup, welcome-video init/destroy counters, and synthetic File Manager Turkish display-name refresh checks.
 - Smoke-only seams must remain namespaced and inert in production: `window.MergenStreamingSmoke`, `window.MergenAudioLifecycleSmoke`, `window.MergenWelcomeVideoSmoke`, and `window.MergenUxSmokeProbes`. Do not add `www/smoke/ux-smoke-probes.js` to `R/config_ui_assets.R`.
@@ -2898,9 +2899,12 @@ Do not reintroduce a separate static JS-only rendering path as the primary saved
 
 Do not move chart type aliasing, mapping guessing, or aggregation helpers back into `R/helpers_chartlab.R`.
 
+ChartLab (and the interactive `R/module_chartlab.R`) renders charts through **highcharter only**. The previous `highcharter → plotly+ggplot2 → error` fallback chain was removed: in this deployment charts always render with highcharter (`ui.R` already references `highcharter::highchartOutput` for the hidden dependency loader, and the on-prem `renv.lock` pins highcharter). The container selection is now `highchartOutput` when highcharter is present and `shiny::uiOutput` otherwise; `wire_chart_output(...)` / `render_one(...)` render with `renderHighchart` when highcharter is present and degrade to a `renderUI` error message otherwise (graceful, no crash). Do not reintroduce a `plotly::renderPlotly` / `ggplot()` / `geom_*` chart-render fallback in `R/helpers_chartlab.R` or `R/module_chartlab.R`. The dead `have_plotly_gg` / `have_highcharter` flags were removed from `R/config_file_store.R`. Plotly has since been removed entirely from the runtime: the `deps_pl`/`plotly_html` preloader in `R/server_outputs_downloads.R` and the `plotly::plotlyOutput("deps_pl")` loader in `ui.R` are gone — `widgetDependencyOutputsInit()` now only defines the highcharter `deps_hc` loader. No runtime R / `ui.R` / `server.R` code references plotly; this is locked by `tests/testthat/test-chart-engine-highcharter-only-contract.R` (the "plotly çalışma zamanı kodundan tamamen kaldırıldı" scan). Plotly is not in `required_packages` and never was; the on-prem `renv.lock` should be re-snapshotted on the VM to drop plotly. Making highcharter an explicit `required_packages` entry remains an optional separate follow-up.
+
 Protected by:
 
 ```text
+tests/testthat/test-chart-engine-highcharter-only-contract.R
 tests/testthat/test-chartlab-spec-refactor-contract.R
 tests/testthat/test-chat-message-formatting-refactor-contract.R
 tests/testthat/test-mcp-chart-tools-refactor-contract.R
@@ -3344,9 +3348,12 @@ Responsibilities:
 
 Do not move the large Yapılandırma UI card layout back into `R/module_settings_yapilandirma.R`. Do not move runtime observers, `reactiveVal(...)`, `moduleServer(...)`, or `session$sendCustomMessage(...)` into `R/module_settings_yapilandirma_ui.R`.
 
+Inside `R/module_settings_yapilandirma_ui.R`, `settingsYapilandirmaUIImpl(id)` is a thin composer that delegates each settings card to a focused, pure `.syap_*(ns)` sub-builder (`.syap_header_row`, `.syap_model_card`, `.syap_api_key_card`, `.syap_tools_card`, `.syap_claude_code_card`, `.syap_interface_shortcuts_row`, `.syap_audio_card`, `.syap_ai_expert_card`, `.syap_image_card`, `.syap_summarization_card`, `.syap_analysis_card`). This is a readability split only: the produced tag tree and every server-bound `ns(...)` input/output id must stay byte-identical. The sub-builders must remain pure UI (no `moduleServer`/observers/`reactiveVal`/`sendCustomMessage`). Do not re-merge them back into one giant function, and do not drop or rename any of the 47 protected ids. The exact id surface and card structure are frozen by `tests/testthat/test-settings-yapilandirma-ui-id-surface-behavior.R`, which renders the UI and asserts the full id set plus card titles.
+
 This split is protected by:
 
 * `tests/testthat/test-settings-yapilandirma-ui-refactor-contract.R`
+* `tests/testthat/test-settings-yapilandirma-ui-id-surface-behavior.R`
 * `tests/testthat/test-source-manifest-contract.R`
 * `tests/testthat/test-maintainability-ratchet.R`
 

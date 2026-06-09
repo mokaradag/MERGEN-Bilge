@@ -60,8 +60,6 @@ build_chartlab_message <- function(raw_text, message_id, session) {
       } else {
         container_html <- if (requireNamespace("highcharter", quietly = TRUE)) {
           as.character(highcharter::highchartOutput(out_id, height = "380px"))
-        } else if (requireNamespace("plotly", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE)) {
-          as.character(plotly::plotlyOutput(out_id, height = "380px"))
         } else {
           as.character(shiny::uiOutput(out_id, height = "380px"))
         }
@@ -236,108 +234,8 @@ wire_chart_output <- function(output, out_id, spec) {
     return(invisible(TRUE))
   }
 
-  if (requireNamespace("plotly", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE)) {
-    output[[out_id]] <- plotly::renderPlotly({
-      tryCatch({
-        library(ggplot2); library(plotly)
-        aggfun <- chartlab_aggregate_values
-        p <- NULL
-        if (identical(type,"hist")) {
-          req(x); p <- ggplot(df, aes(x = .data[[x]])) + geom_histogram(bins = ifelse(isTRUE(!is.na(bins)), bins, 30))
-        } else if (identical(type,"bar")) {
-          if (!is.null(y)) {
-            req(x)
-            if (is.null(grp)) {
-              dd <- aggregate(df[[y]], by=list(df[[x]]), FUN = function(z) aggfun(z, agg)); names(dd) <- c(x, "val")
-              p <- ggplot(dd, aes(x = .data[[x]], y = val)) + geom_col()
-            } else {
-              dd <- stats::aggregate(df[[y]], by=list(df[[x]], df[[grp]]), FUN = function(z) aggfun(z, agg)); names(dd) <- c(x, grp, "val")
-              p <- ggplot(dd, aes(x = .data[[x]], y = val, fill = .data[[grp]])) + geom_col(position = "stack")
-            }
-          } else {
-            req(x)
-            dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE)); names(dd) <- c(x, "n")
-            if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
-            p <- ggplot(dd, aes(x = .data[[x]], y = n)) + geom_col()
-          }
-        } else if (identical(type,"pie") || identical(type,"donut")) {
-          req(x)
-          if (!is.null(y)) {
-            dd <- aggregate(df[[y]], by = list(df[[x]]),
-                            FUN = function(z) { f <- tolower(agg %||% "sum"); fun <- switch(f, sum=sum, mean=mean, median=median, min=min, max=max, sum); fun(z, na.rm = TRUE) })
-            names(dd) <- c(x, "val")
-          } else {
-            dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE)); names(dd) <- c(x, "val")
-          }
-          if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
-          return(plotly::plot_ly(dd, labels = ~ .data[[x]], values = ~ val, type = "pie",
-                                 hole = if (identical(type,"donut") || isTRUE(params$donut)) 0.6 else 0))
-        } else if (identical(type, "pareto")) {
-          req(x)
-          if (!is.null(y)) {
-            dd <- aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, agg))
-            names(dd) <- c(x, "val")
-          } else {
-            dd <- as.data.frame(sort(table(df[[x]]), decreasing = TRUE)); names(dd) <- c(x, "val")
-          }
-          dd <- dd[order(dd$val, decreasing = TRUE), , drop = FALSE]
-          if (isTRUE(!is.na(topn))) dd <- head(dd, topn)
-          dd$cum <- cumsum(dd$val); tot <- sum(dd$val, na.rm = TRUE)
-          dd$cum_pct <- if (tot > 0) 100 * dd$cum / tot else 0
-
-          return(
-            plotly::plot_ly() %>%
-              plotly::add_bars(x = dd[[x]], y = dd$val, name = "Değer", yaxis = "y1") %>%
-              plotly::add_lines(x = dd[[x]], y = dd$cum_pct, name = "Kümülatif %", yaxis = "y2") %>%
-              plotly::layout(yaxis2 = list(overlaying = "y", side = "right", range = c(0,100), ticksuffix = "%"))
-          )
-        } else if (identical(type,"line")) {
-          req(x, y)
-          if (is.null(grp)) {
-            dd <- stats::aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, agg %||% "mean"))
-            names(dd) <- c(x, "val")
-            dd <- dd[order(dd[[x]]), , drop = FALSE]
-            p <- ggplot(dd, aes(x = .data[[x]], y = val, group = 1)) + geom_line()
-          } else {
-            dd <- stats::aggregate(df[[y]], by = list(df[[x]], df[[grp]]), FUN = function(z) aggfun(z, agg %||% "mean"))
-            names(dd) <- c(x, grp, "val")
-            dd <- dd[order(dd[[grp]], dd[[x]]), , drop = FALSE]
-            p <- ggplot(dd, aes(x = .data[[x]], y = val, color = .data[[grp]], group = .data[[grp]])) + geom_line()
-          }
-        } else if (identical(type,"scatter")) {
-          req(x, y)
-          if (is.null(grp)) {
-            p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]])) + geom_point(alpha = 0.8)
-          } else {
-            p <- ggplot(df, aes(x = .data[[x]], y = .data[[y]], color = .data[[grp]])) + geom_point(alpha = 0.8)
-          }
-        } else if (identical(type,"area")) {
-          req(x, y)
-          if (is.null(grp)) {
-            dd <- stats::aggregate(df[[y]], by = list(df[[x]]), FUN = function(z) aggfun(z, agg %||% "mean"))
-            names(dd) <- c(x, "val")
-            dd <- dd[order(dd[[x]]), , drop = FALSE]
-            p <- ggplot(dd, aes(x = .data[[x]], y = val, group = 1)) + geom_area()
-          } else {
-            dd <- stats::aggregate(df[[y]], by = list(df[[x]], df[[grp]]), FUN = function(z) aggfun(z, agg %||% "mean"))
-            names(dd) <- c(x, grp, "val")
-            dd <- dd[order(dd[[grp]], dd[[x]]), , drop = FALSE]
-            p <- ggplot(dd, aes(x = .data[[x]], y = val, fill = .data[[grp]], group = .data[[grp]])) + geom_area(position = "stack")
-          }
-        } else {
-          p <- ggplot() + ggtitle("Bilinmeyen grafik türü")
-        }
-        plotly::ggplotly(p)
-      }, error = function(e) {
-        plotly::plot_ly() %>%
-          plotly::layout(title = list(text = paste0("Grafik oluşturulamadı: ", htmltools::htmlEscape(conditionMessage(e)))))
-      })
-    })
-    return(invisible(TRUE))
-  }
-
   output[[out_id]] <- shiny::renderUI({
-    div(style="color:#f87171", "Grafik motoru bulunamadı (highcharter veya plotly+ggplot2 yükleyin).")
+    div(style="color:#f87171", "Grafik motoru (highcharter) bulunamadı. Lütfen highcharter paketini yükleyin.")
   })
   invisible(FALSE)
 }
@@ -423,9 +321,6 @@ build_chartlab_message_static <- function(raw_text, message_id) {
       } else {
         container_html <- if (requireNamespace("highcharter", quietly = TRUE)) {
           as.character(highcharter::highchartOutput(out_id, height = "380px"))
-        } else if (requireNamespace("plotly", quietly = TRUE) &&
-                   requireNamespace("ggplot2", quietly = TRUE)) {
-          as.character(plotly::plotlyOutput(out_id, height = "380px"))
         } else {
           as.character(shiny::uiOutput(out_id, height = "380px"))
         }

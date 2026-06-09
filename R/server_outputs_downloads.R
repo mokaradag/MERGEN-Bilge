@@ -61,34 +61,19 @@ downloadOutputsInit <- function(output, session, session_files, current_user_id)
   invisible(NULL)
 }
 
-#' Widget Bağımlılık Çıktılarını Başlat
-#' @description Highcharter ve Plotly için bağımlılık yükleyici çıktıları tanımlar
+#' Widget Bağımlılık Çıktısını Başlat
+#' @description Highcharter için bağımlılık yükleyici çıktısı tanımlar.
+#'   Grafikler tek motorla (highcharter) render edilir; plotly bağımlılığı
+#'   tamamen kaldırılmıştır.
 #' @param output Shiny output nesnesi
 widgetDependencyOutputsInit <- function(output) {
-  
+
   # Highcharter bağımlılık yükleyicisi
   if (requireNamespace("highcharter", quietly = TRUE)) {
-    output$deps_hc <- highcharter::renderHighchart({ 
-      highcharter::highchart() 
+    output$deps_hc <- highcharter::renderHighchart({
+      highcharter::highchart()
     })
   }
-  
-  # Plotly bağımlılık yükleyicileri
-  if (requireNamespace("plotly", quietly = TRUE) && requireNamespace("ggplot2", quietly = TRUE)) {
-    # Başlangıç uyarılarını bastırmak için açık bir trace ile önceden yükle
-    output$deps_pl <- plotly::renderPlotly({
-      plotly::plotly_empty(type = "scatter", mode = "markers")
-    })
-    
-    # Eski kodların başvurduğu 'plotly_html' çıktısı için gizli yer tutucu
-    output$plotly_html <- plotly::renderPlotly({
-      plotly::plotly_empty(type = "scatter", mode = "markers")
-    })
-  } else {
-    # Plotly yoksa bile bu çıktıları tanımla (hata/uyarı önleme)
-    output$deps_pl <- renderUI(NULL)
-    output$plotly_html <- renderUI(NULL)
-  }
-  
+
   invisible(NULL)
 }
