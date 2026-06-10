@@ -25,6 +25,7 @@ Where to go next:
 - Documentation hub: [`docs/README.md`](docs/README.md)
 - User-facing assistant behavior: [`ai_rehber.md`](ai_rehber.md)
 - Architecture map: [`docs/architecture-map.md`](docs/architecture-map.md)
+- Seam/zone ownership map: `R/config_seam_registry.R`, `R/config_ui_asset_zones.R` (validate with `bash tools/seam_doctor.sh`)
 - Database schema: [`docs/database-schema.md`](docs/database-schema.md)
 - Operations/runbook: [`RUNBOOK.md`](RUNBOOK.md)
 - Dependency locking: [`docs/dependency-locking.md`](docs/dependency-locking.md)
@@ -376,6 +377,7 @@ Browser UX smoke execution rules:
 - `bash tools/ai_validate.sh full --boot-smoke` runs Shiny boot smoke first, then runs `tests/scripts/ai_browser_ux_smoke.R` opportunistically when a local Chrome/Chromium/Edge binary is available.
 - Normal `--boot-smoke` may SKIP browser smoke (exit 0) when no local browser binary is found; VM/local environments that are expected to have a browser must enforce it with `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke` or `Rscript tests/scripts/ai_browser_ux_smoke.R --require-browser`.
 - Use `MERGEN_BROWSER_BIN="/path/to/chrome-or-msedge"` when the browser lives outside default discovery paths.
+- Explicit `MERGEN_BROWSER_BIN` configuration is BLOCKING: when it is set, the runner auto-enables require mode (silent SKIP is disabled), and an unusable path/command fails early with a clear `MERGEN_BROWSER_BIN kullanılamıyor` error instead of a late processx failure. Environments that declare a browser cannot silently skip browser smoke anymore.
 - The browser route contract is the served path `/smoke/ux-smoke.html` (not repository path `www/smoke/ux-smoke.html`), and successful runs must end with `UX_SMOKE_DONE:PASS`.
 - Smoke-only interfaces must remain namespaced and production-inert; `www/smoke/ux-smoke-probes.js` must not be added to `R/config_ui_assets.R`.
 - Do not add CDN/runtime-download or heavy browser automation dependencies (npm, Playwright, Selenium, chromote, RSelenium, etc.) to this path.
@@ -624,6 +626,7 @@ Preferred validation escalation:
 - `R/module_settings.R` must synchronize `input$mergen_theme_changed` and `input$mergen_theme_initial`; only valid `dark` / `light` values may be persisted.
 - `theme_manager.js` must keep delegated click/touch/keyboard handling so the sidebar theme button still works after sidebar re-render.
 - Asset ordering in `R/config_ui_assets.R` must keep theme tokens before light theme CSS, light extras after `theme_light.css`, `theme_light_overhaul_phase2.css` after `theme_light_overhaul.css`, and `theme_light_user_polish.css` / `theme_light_user_polish_v2.css` after overhaul layers, with `brand_title.css`, `sidebar_user_panel.css`, and `tool_backgrounds.css` after the theme layers.
+- These theme-layer ordering relationships are executable, not prose-only: `ui_asset_css_order_rules` in `R/config_ui_assets.R` declares the cascade chain and `ui_asset_validate_css_order()` is wired into `ui_asset_validate(...)`, so a broken theme cascade order fails early at UI build exactly like a broken JS dependency order. Do not remove rules to make a reordering pass; update the rule set consciously together with `tests/testthat/test-ui-asset-manifest-contract.R`.
 - `theme_light_user_polish.css` and `theme_light_user_polish_v2.css` must remain scoped to `html[data-theme="light"]`.
 - Do not collapse polish layers into one large CSS file just to simplify the manifest; the split is part of the frontend maintainability ratchet.
 - Preserve corporate blue hero headers, light cream surfaces, teal month-group accents, feedback/admin tab polish, Bilge Yolaç light tool surfaces, message action buttons, file preview modal header polish, and welcome quick-action light-theme polish.
@@ -907,6 +910,7 @@ Current contract:
 - `tests/testthat/test-frontend-maintainability-ratchet.R` protects the current frontend baseline. Its first baseline must respect the current real report values; after that, growth should fail until the relevant frontend code is split or refactored.
 - App-owned frontend assets are budgeted separately from vendor/minified assets. Do not loosen app-owned thresholds merely because a third-party/minified file is large.
 - New app-owned runtime CSS/JS files must not silently remain outside `R/config_ui_assets.R`. Add them to the manifest in the correct local/offline load order and update manifest/order tests when needed.
+- Every manifest CSS/JS asset must also be assigned to exactly one frontend ownership zone in `R/config_ui_asset_zones.R`; intentionally unmanifested runtime/smoke assets must be owned through `ui_asset_unmanifested_ownership` with a reason. The zone map declares ownership only — load order stays single-owned by `R/config_ui_assets.R`.
 - Keep `www/js/excel_coding_deep_thinking.js` loaded after `www/js/analysis_tools.js`, and keep `www/js/tools_model_lock.js` after the tool-control scripts it coordinates. Keep `www/css/tools_model_lock.css` in the CSS manifest. These files centralize Excel/Coding deep-thinking controls and tool-mode model-lock UI; do not move that behavior back into individual tool scripts.
 - Forbidden legacy selectors such as `message_input`, `chat_content_wrapper`, and `#_content_container` must not be reintroduced.
 - For large or mixed frontend files, prefer one focused local split at a time instead of adding more unrelated behavior to the same file. Good split candidates should preserve UX and cascade/order behavior.
@@ -1400,6 +1404,7 @@ The current source-manifest layers are:
 When adding, moving, or splitting a runtime file:
 
 - add the file to the correct named section (and correct position within it) of `source_manifest_sections` in `R/config_source_manifest.R`; do not add a new top-level path vector outside the sections list,
+- keep seam ownership intact: every manifest section must remain owned by exactly one seam in `R/config_seam_registry.R`, and a brand-new section must be assigned to a seam in the same change (see the seam registry and frontend ownership zone contract),
 - for file-store lifecycle splits, preserve the order `R/config_file_store.R`, `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, then `R/config_file_store_registry.R`,
 - for server runtime/module-wiring splits, preserve the order `R/helpers_server_runtime_contracts.R`, `R/helpers_server_runtime_named_contracts.R`, `R/server_runtime_context.R`, `R/server_runtime_function_slot.R`, `R/server_module_wiring.R`, `R/server_chat_engine_dependencies.R`, `R/server_chat_engine_runtime.R`, then the session/chat runtime init files,
 - keep dependency order explicit and reviewable,
@@ -1454,6 +1459,38 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
 - `source("tests/scripts/maintainability_report.R", encoding = "UTF-8")`
 - `source("tests/testthat.R", encoding = "UTF-8")`
+
+### Seam registry and frontend ownership zone contract
+
+Production-critical seam ownership is now declared in one machine-readable governance layer. This layer is pure data plus pure validators; it must never change runtime behavior, and it must never become a service locator or a dynamic loader.
+
+Current contract:
+
+- `R/config_seam_registry.R` owns `mergen_seam_registry()`: the canonical map of the 12 production-critical seams (`temel_altyapi`, `veritabani_kodlama`, `kimlik_sso`, `api_anahtar_model`, `sohbet_llm_akis`, `mcp_analiz`, `dosya_yasam_dongusu`, `medya_ses`, `bilge_yolac`, `destek_yonetici_saglik`, `shiny_calisma_zamani`, `frontend_varlik`). Each seam declares its owned source-manifest sections, manifest-external runtime files, guard tests, focused validation commands, and related seams.
+- Every `source_manifest_sections` section is owned by exactly one seam. Adding a manifest section without assigning a seam owner, or assigning two owners, fails `tests/testthat/test-seam-registry-contract.R`.
+- The seam registry's `extra_runtime_files` is the only allowlist for runtime R files outside the source manifest (currently `app.R`, `global.R`, `server.R`, `ui.R`, `R/utils_safe_source.R`, `R/bootstrap_source_manifest.R`, `R/config_source_manifest.R`). The contract test enforces "no orphan runtime R files": every file under `R/` must be in the manifest or in this allowlist.
+- `R/config_ui_asset_zones.R` owns `ui_asset_ownership_zones`: 23 frontend ownership zones. Every CSS/JS asset listed in `R/config_ui_assets.R` belongs to exactly ONE zone; each zone declares a single owner seam and at least one guard test. `ui_asset_unmanifested_ownership` covers the intentionally unmanifested frontend files (the inlined app-loading overlay assets, `css/admin_analytics.css`, and the smoke-only files) with an explicit reason.
+- The zone map declares OWNERSHIP only. Load order stays single-owned by `R/config_ui_assets.R` (`ui_asset_js_order_rules`, `ui_asset_js_render_plan`); do not duplicate ordering logic into the zone map, and do not derive load order from zones.
+- Physical coverage is enforced: every `.css`/`.js` file directly under `www/css/` and `www/js/` must be owned through a zone (via the manifest) or through `ui_asset_unmanifested_ownership`. A new frontend file without declared ownership fails `tests/testthat/test-ui-asset-zones-contract.R`.
+- The frozen seam id and zone id lists in the contract tests require conscious updates together with `docs/architecture-map.md`.
+- The governance layer loads through the manifest (`config_ui_assets` section carries `R/config_ui_asset_zones.R` after `R/config_ui_assets.R`; the `architecture_governance` section carries `R/config_seam_registry.R`). Validation functions are NOT called at boot; enforcement lives in the contract tests and the seam doctor.
+- `tests/scripts/seam_doctor.R` (wrapper: `bash tools/seam_doctor.sh`) is the operational report: it validates registry/zones/manifest consistency, reports per-seam section/file/zone/guard-test counts, and writes a secret-safe JSON artifact under `artifacts/seam-doctor/`. It runs no app boot, browser, DB, LLM, or network work, and it is `source(...)`-safe (no `quit()`); structural drift fails it through `stop()`. The doctor artifact is guidance plus structural proof only — it is never evidence that runtime, browser, VM/SSO/DB, or encoding validation ran.
+- When a seam boundary genuinely changes (new section, renamed seam, moved zone), update `R/config_seam_registry.R` / `R/config_ui_asset_zones.R`, the frozen lists in the contract tests, and `docs/architecture-map.md` in the same change. Do not weaken the partition checks to make an unowned file pass.
+
+Protected by:
+
+- `tests/testthat/test-seam-registry-contract.R`
+- `tests/testthat/test-ui-asset-zones-contract.R`
+- `tests/testthat/test-seam-doctor-contract.R`
+- `tests/testthat/test-source-manifest-sections-contract.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-seam-registry-contract.R")`
+- `testthat::test_file("tests/testthat/test-ui-asset-zones-contract.R")`
+- `testthat::test_file("tests/testthat/test-seam-doctor-contract.R")`
+- `testthat::test_file("tests/testthat/test-source-manifest-sections-contract.R")`
+- `Rscript tests/scripts/seam_doctor.R`
 
 ### File resolution, upload-size, and user-isolation contract
 
@@ -1845,6 +1882,7 @@ Current contract:
 - Keep deferred feature scripts deferred unless there is a demonstrated dependency that requires synchronous loading.
 - Keep Bilge Yolaç modules in their explicit dependency order, starting with `js/bilge_yolac_motor.js` and ending with `js/bilge_yolac_kopru.js`.
 - Keep `ui_asset_js_order_rules` as the manifest-level source of truth for critical browser dependency boundaries. Do not duplicate the same ordering logic in tests as a separate hard-coded list.
+- Keep `ui_asset_css_order_rules` as the manifest-level source of truth for the theme override cascade (`variables` -> `theme_tokens` -> `theme_light` -> extras/refinements -> theme-light modules -> `overhaul` -> `overhaul_phase2` -> `user_polish` -> `user_polish_v2`), the post-theme surfaces (`brand_title.css`, `sidebar_user_panel.css`, `tool_backgrounds.css`), and the Bilge Yolaç CSS chain. Keep `ui_asset_validate_css_order()` wired into `ui_asset_validate(...)` so bad cascade ordering fails early before the UI is rendered.
 - Keep `ui_asset_validate_js_order()` wired into `ui_asset_validate(...)` so bad asset ordering fails early before the UI is rendered.
 - Keep `ui_asset_deferred_js_paths()` as the single helper for resolving deferred JS groups; do not hand-flatten deferred groups in tests or UI rendering code.
 - Keep `ui_asset_js_render_plan` as the single render-order plan for JS groups. `ui_asset_js_tags()` must render scripts from this plan rather than duplicating another hard-coded group order.
@@ -1861,14 +1899,15 @@ Current contract:
 - Keep deferred welcome handlers resilient to first-connect timing. `www/js/welcome_neural_modern.js` must register `updateNeuralColor` idempotently even when the script loads after the initial `shiny:connected` event; do not move this handler behind a connect-only registration that can be missed until reconnect.
 - Keep `js/streaming_manager.js` before `js/claude_code_streaming.js`, and keep `js/claude_code.js`, `js/claude_code_streaming.js`, and `js/claude_code_plugins.js` in that order.
 - Tests must continue to scan loaded JS files for duplicate `Shiny.addCustomMessageHandler(...)` message names.
-- Asset-manifest tests should validate files that are intentionally loaded by the manifest. Do not require every physical file under `www/css` or `www/js` to appear in the manifest, because optional, legacy, or feature-specific public files may exist without being globally loaded.
-- When adding, removing, renaming, or moving a frontend asset, update `R/config_ui_assets.R` and the asset manifest tests together.
+- Asset-manifest tests should validate files that are intentionally loaded by the manifest. Do not require every physical file under `www/css` or `www/js` to appear in the manifest, because optional, legacy, or feature-specific public files may exist without being globally loaded. Ownership is still mandatory: such files must be declared in `ui_asset_unmanifested_ownership` (`R/config_ui_asset_zones.R`) with an owner seam and reason, so no frontend file is unaccounted for.
+- When adding, removing, renaming, or moving a frontend asset, update `R/config_ui_assets.R`, the zone assignment in `R/config_ui_asset_zones.R`, and the asset manifest/zone tests together.
 - Do not add CDN usage. The app must remain fully offline/on-prem.
 - Do not register duplicate `Shiny.addCustomMessageHandler(...)` handlers for the same message type.
 
 Protected by:
 
 - `tests/testthat/test-ui-asset-manifest-contract.R`
+- `tests/testthat/test-ui-asset-zones-contract.R`
 - `tests/testthat/test-frontend-selector-contract.R`
 - `tests/testthat/test-e2e-boot-welcome-regression.R`
 - `tests/testthat/test-e2e-health-dashboard-regression.R`
@@ -1876,6 +1915,7 @@ Protected by:
 Focused validation:
 
 - `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
+- `testthat::test_file("tests/testthat/test-ui-asset-zones-contract.R")`
 - `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
 - `testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R")`
 - `testthat::test_file("tests/testthat/test-e2e-health-dashboard-regression.R")`

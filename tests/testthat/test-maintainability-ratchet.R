@@ -203,6 +203,12 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/module_ai_expert.R", 686L, 22L)
   assert_current_budget("R/helpers_mcp_tools.R", 535L, 20L)
   assert_current_budget("R/module_chartlab.R", 532L, 20L)
+
+  # Yönetişim katmanı (seam kayıt defteri + frontend bölge haritası) saf veri
+  # dosyalarıdır; bütçeler bölge/seam başına birkaç yeni varlık satırına izin
+  # verir ama dosyaların runtime mantığıyla şişmesini erken yakalar.
+  assert_current_budget("R/config_ui_asset_zones.R", 780L, 12L)
+  assert_current_budget("R/config_seam_registry.R", 580L, 8L)
 })
 
 test_that("module_claude_code.R setup extraction kazanımı geri alınmaz", {

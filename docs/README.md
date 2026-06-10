@@ -35,6 +35,7 @@ Bu sayfa, MERGEN Bilge dokümantasyonunda doğru belgeye hızlı gitmek için ha
 ## Kısa Uyarılar
 
 - `CLAUDE.md` İngilizcedir ve bu durum bilinçlidir; kodlama ajanı/bakımcı davranışında otoritatif kaynak odur.
+- Üretim-kritik sınır sahipliği (seam kayıt defteri, `R/config_seam_registry.R`) ve frontend bölge sahipliği (`R/config_ui_asset_zones.R`) [`architecture-map.md`](architecture-map.md) içindeki yönetişim katmanı bölümünde haritalanır; yeni runtime R dosyası veya frontend varlığı eklerken oradaki disiplin kuralları geçerlidir (`bash tools/seam_doctor.sh` ile doğrulanabilir).
 - Windows VM, SSO, DB encoding, dosya lifecycle ve `renv.lock` davranışları README'den değil runbook ve sözleşme belgelerinden yönetilir.
 - Türkçe karakter bütünlüğü korunmalıdır; UTF-8 bozulmamalı, mojibake üretilmemelidir.
 - Secrets, API key, token, parola, gerçek DSN ve private endpoint bilgileri dokümantasyona eklenmez.

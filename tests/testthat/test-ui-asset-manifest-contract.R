@@ -188,6 +188,61 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
   }))
 })
 
+test_that("UI CSS katman/kaskad sıra kuralları manifest düzeyinde doğrulanır", {
+  asset_env <- .source_ui_asset_config_for_tests()
+  css_paths <- asset_env$ui_asset_all_css()
+
+  # Kural nesnesi var ve boş değil; tema override zinciri ile Bilge Yolaç CSS
+  # zinciri makine tarafından doğrulanabilir kurallar olarak bildirilmiştir.
+  expect_true(is.list(asset_env$ui_asset_css_order_rules))
+  expect_gt(length(asset_env$ui_asset_css_order_rules), 0)
+
+  # Korunan tema sözleşmesi çapaları: tokens -> light -> extras, overhaul
+  # zinciri ve tema-sonrası yüzeyler kurallarda açıkça yer almalıdır.
+  rule_keys <- vapply(
+    asset_env$ui_asset_css_order_rules,
+    function(rule) paste(rule, collapse = " -> "),
+    character(1)
+  )
+
+  expect_true("css/theme_tokens.css -> css/theme_light.css" %in% rule_keys)
+  expect_true("css/theme_light.css -> css/theme_light_extras.css" %in% rule_keys)
+  expect_true("css/theme_light_overhaul.css -> css/theme_light_overhaul_phase2.css" %in% rule_keys)
+  expect_true("css/theme_light_user_polish.css -> css/theme_light_user_polish_v2.css" %in% rule_keys)
+  expect_true("css/theme_light_user_polish_v2.css -> css/brand_title.css" %in% rule_keys)
+  expect_true("css/theme_light_user_polish_v2.css -> css/sidebar_user_panel.css" %in% rule_keys)
+  expect_true("css/theme_light_user_polish_v2.css -> css/tool_backgrounds.css" %in% rule_keys)
+  expect_true("css/claude_code.css -> css/claude_code_generated_files.css" %in% rule_keys)
+
+  # Her kural gerçek manifest sırasında sağlanır.
+  invisible(lapply(asset_env$ui_asset_css_order_rules, function(rule) {
+    expect_length(rule, 2)
+
+    before_pos <- .ui_asset_contract_position(css_paths, rule[[1]])
+    after_pos <- .ui_asset_contract_position(css_paths, rule[[2]])
+
+    expect_lt(before_pos, after_pos)
+  }))
+
+  # Doğrulayıcı gerçek manifestte sessizce geçer, sentetik ihlali yakalar.
+  expect_silent(asset_env$ui_asset_validate_css_order(css_paths))
+
+  swapped_paths <- css_paths
+  token_pos <- match("css/theme_tokens.css", swapped_paths)
+  light_pos <- match("css/theme_light.css", swapped_paths)
+  swapped_paths[c(token_pos, light_pos)] <- swapped_paths[c(light_pos, token_pos)]
+
+  expect_error(
+    asset_env$ui_asset_validate_css_order(swapped_paths),
+    regexp = "CSS varl"
+  )
+
+  # CSS sıra doğrulayıcısı ui_asset_validate(...) zincirine bağlı kalmalıdır;
+  # böylece bozuk kaskad sırası UI render edilmeden önce erken yakalanır.
+  validate_body <- paste(deparse(asset_env$ui_asset_validate), collapse = "\n")
+  expect_true(grepl("ui_asset_validate_css_order", validate_body, fixed = TRUE))
+})
+
 test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", {
   asset_env <- .source_ui_asset_config_for_tests()
 

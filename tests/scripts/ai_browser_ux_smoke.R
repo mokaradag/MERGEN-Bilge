@@ -7,6 +7,12 @@
 #   Chrome/Chromium/Edge yoksa varsayılan olarak SKIP olur; --require-browser
 #   veya MERGEN_REQUIRE_BROWSER_UX_SMOKE=true ile bloklayıcı yapılabilir.
 #
+#   Sıkılaştırılmış uygulama kuralı: MERGEN_BROWSER_BIN açıkça verilmişse
+#   ortam tarayıcı desteği BİLDİRMİŞ sayılır; bu durumda sessiz SKIP devre
+#   dışı kalır (require modu otomatik açılır) ve kullanılamayan bir
+#   MERGEN_BROWSER_BIN yolu geç processx hatası yerine erken ve açık bir
+#   hata ile bloklar.
+#
 # Not:
 #   CDN, runtime download, chromote, Selenium, Playwright veya npm kullanmaz.
 #   Yalnızca yerelde zaten kurulu bir tarayıcı binary'sini processx ile çağırır.
@@ -61,8 +67,15 @@ if (!nzchar(rscript)) {
   stop("Rscript bulunamadı.", call. = FALSE)
 }
 
+# MERGEN_BROWSER_BIN açıkça ayarlanmışsa ortam tarayıcı desteği bildirmiştir;
+# sessiz SKIP bu durumda bir yanlış-yapılandırma tuzağı olur. Bu yüzden
+# explicit binary yapılandırması require modunu otomatik etkinleştirir.
+browser_bin_env <- Sys.getenv("MERGEN_BROWSER_BIN", unset = "")
+browser_bin_explicit <- nzchar(browser_bin_env)
+
 require_browser <- has_flag("--require-browser") ||
-  env_flag_true("MERGEN_REQUIRE_BROWSER_UX_SMOKE")
+  env_flag_true("MERGEN_REQUIRE_BROWSER_UX_SMOKE") ||
+  browser_bin_explicit
 
 port <- suppressWarnings(as.integer(arg_value("--port", NA)))
 if (is.na(port) || port < 1024L || port > 65535L) {
@@ -112,6 +125,7 @@ cat(sprintf("Virtual time budget: %dms\n", virtual_time_budget_ms))
 cat(sprintf("Log: %s\n", log_file))
 cat(sprintf("DOM artifact: %s\n", dom_file))
 cat(sprintf("Require browser: %s\n", require_browser))
+cat(sprintf("Explicit MERGEN_BROWSER_BIN: %s\n", browser_bin_explicit))
 
 if (!requireNamespace("processx", quietly = TRUE)) {
   stop(
@@ -123,7 +137,25 @@ if (!requireNamespace("processx", quietly = TRUE)) {
 find_browser_bin <- function() {
   env_bin <- Sys.getenv("MERGEN_BROWSER_BIN", unset = "")
   if (nzchar(env_bin)) {
-    return(env_bin)
+    # Açık yapılandırma doğrulanır: var olmayan/erişilemeyen bir binary geç
+    # ve kafa karıştırıcı bir processx hatası yerine erken ve net bloklar.
+    resolved_bin <- env_bin
+
+    if (!file.exists(resolved_bin)) {
+      resolved_bin <- unname(Sys.which(env_bin))
+    }
+
+    if (!nzchar(resolved_bin) || !file.exists(resolved_bin)) {
+      stop(
+        sprintf(
+          "MERGEN_BROWSER_BIN kullanılamıyor (dosya veya PATH komutu bulunamadı): %s",
+          env_bin
+        ),
+        call. = FALSE
+      )
+    }
+
+    return(resolved_bin)
   }
 
   path_candidates <- c(

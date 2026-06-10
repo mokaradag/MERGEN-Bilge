@@ -8,6 +8,7 @@ Bu belge MERGEN Bilge için **kanonik operasyon kılavuzudur**. Windows VM / on-
 |---|---|
 | Hafif ajan doğrulaması | `bash tools/ai_validate.sh quick` |
 | Bulut/Codex fallback doğrulaması | `bash tools/ai_validate.sh cloud-quick` |
+| Seam/bölge sahiplik doğrulaması | `bash tools/seam_doctor.sh` |
 | Üretim launcher self-test | `powershell -ExecutionPolicy Bypass -File tools/test_mergen_prod_launcher.ps1` |
 | Üretim başlangıcı | `run_mergen_prod.bat` veya `Rscript run_mergen_prod.R` |
 | Son logu görüntüleme | `view_latest_mergen_app_log.bat` |
@@ -152,9 +153,34 @@ Rscript tests/scripts/run_post_deploy_smoke.R
 Rscript tests/scripts/validation_doctor.R
 Rscript tests/scripts/frontend_complexity_doctor.R
 Rscript tests/scripts/maintainability_report.R
+Rscript tests/scripts/seam_doctor.R
 ```
 
 Yalnızca gerçekten başarıyla biten komutlar için “geçti” denir.
+
+### 7.4 Seam/bölge sahiplik doğrulaması (yapısal)
+
+Üretim-kritik dikiş (seam) kayıt defteri ve frontend bölge sahiplik haritası, kaynak/varlık manifestleriyle birlikte yapısal olarak doğrulanır:
+
+```sh
+bash tools/seam_doctor.sh
+# veya
+Rscript tests/scripts/seam_doctor.R
+```
+
+- Çıktı `SEAM_DOCTOR_RESULT: OK` ile bitmeli ve `artifacts/seam-doctor/` altına JSON artifact yazılmalıdır.
+- Yapısal sahiplik bozulmuşsa (sahipsiz manifest bölümü, sahipsiz `R/` dosyası, sahipsiz `www/css|js` varlığı, bilinmeyen seam/bölge referansı) komut sıfır-dışı çıkışla biter; bu durumda dağıtım öncesi `R/config_seam_registry.R` / `R/config_ui_asset_zones.R` güncellenmelidir.
+- Bu araç ağır doğrulama ÇALIŞTIRMAZ: app boot, tarayıcı smoke, VM/SSO/DB veya Türkçe encoding preflight kanıtı yerine geçmez.
+
+### 7.5 Tarayıcı smoke zorlaması
+
+Tarayıcısı olan ortamlar (VM/yerel) browser UX smoke'u bloklayıcı çalıştırmalıdır:
+
+```sh
+MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke
+```
+
+`MERGEN_BROWSER_BIN` açıkça ayarlanmışsa require modu OTOMATİK etkinleşir: sessiz SKIP devre dışıdır ve kullanılamayan binary yolu erken ve açık hata verir. Tarayıcı bildirilen bir ortamda browser smoke artık sessizce atlanamaz.
 
 ## 8. Dağıtım Öncesi Kapılar
 
