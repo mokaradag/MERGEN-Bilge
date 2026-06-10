@@ -64,14 +64,17 @@ source_manifest_sections <- list(
     "R/config_version_history.R"
   ),
 
-  # config_api_model_keys: Model yeteneği/görsel anlama, API yapılandırması
-  # (config_api.R), model/araç runtime çözümleme ve API anahtarı
-  # kimlik/özellik yardımcıları.
+  # config_api_model_keys: Model yeteneği/görsel anlama/derin düşünme işaretleme,
+  # API yapılandırması (config_api.R), model/araç runtime çözümleme ve API
+  # anahtarı kripto/kimlik/özellik yardımcıları. Yetenek işaretleme helper'ları
+  # config_api.R'den ÖNCE yüklenmelidir (source-time guard'lı çağrı).
   config_api_model_keys = c(
     "R/helpers_vision_model_capabilities.R",
+    "R/helpers_deep_thinking_model_capabilities.R",
     "R/config_api.R",
     "R/helpers_api_model_config.R",
     "R/helpers_api_model_tool_runtime.R",
+    "R/helpers_api_key_crypto.R",
     "R/helpers_api_key_identity.R",
     "R/helpers_feature_api_key.R",
     "R/helpers_api_key_password_toggle.R"
@@ -168,13 +171,14 @@ source_manifest_sections <- list(
   ),
 
   # chat_send_message_runtime: Sohbet runtime ve send_message hattı: istek
-  # yaşam döngüsü, model runtime, streaming abort, core, görsel bağlam,
-  # prompting ve hızlı eylem giriş mesajları.
+  # yaşam döngüsü, model runtime, streaming abort/poll kararları, core,
+  # görsel bağlam, prompting ve hızlı eylem giriş mesajları.
   chat_send_message_runtime = c(
     "R/helpers_chat_runtime.R",
     "R/helpers_send_message_request_lifecycle.R",
     "R/helpers_send_message_model_runtime.R",
     "R/helpers_streaming_abort_lifecycle.R",
+    "R/helpers_streaming_poll_lifecycle.R",
     "R/helpers_send_message_core.R",
     "R/helpers_vision_context.R",
     "R/helpers_send_message_prompting.R",
@@ -323,8 +327,8 @@ source_manifest_sections <- list(
 
   # module_identity_startup: Kimlik/başlangıç modülleri: SSO, oturum zaman
   # aşımı, performans, kullanıcı kimliği, boot hazırlığı, başlangıç ekranı,
-  # yükleme overlay, araç arka planı, kenar çubuğu kullanıcı paneli ve hızlı
-  # eylemler.
+  # yükleme overlay, araç arka planı, kenar çubuğu kullanıcı paneli (saf
+  # görünüm yardımcıları + modül) ve hızlı eylemler.
   module_identity_startup = c(
     "R/module_sso.R",
     "R/module_session_timeout.R",
@@ -334,6 +338,7 @@ source_manifest_sections <- list(
     "R/module_startup_screen.R",
     "R/module_app_loading.R",
     "R/module_tool_background_settings.R",
+    "R/helpers_sidebar_user_display.R",
     "R/module_sidebar_user_panel.R",
     "R/module_quick_actions.R"
   ),

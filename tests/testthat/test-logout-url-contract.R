@@ -236,12 +236,14 @@ test_that(".Renviron.example MERGEN_LOGOUT_URL anahtarını içerir (boş olabil
   )
 })
 
-test_that("R/module_sidebar_user_panel.R çıkış butonu doğrudan URL'ye gider", {
+test_that("sidebar çıkış butonu doğrudan URL'ye gider", {
   # Kullanıcı sözleşmesi: butona basınca DOĞRUDAN MERGEN_LOGOUT_URL
   # adresine yönlendirilmeli; window.ssoLogout() ara adımı kullanılmamalı
   # (Keycloak logout ekranı sonrası uygulamaya geri dönmemeli).
-  txt <- .read_repo_text_logout_url("R/module_sidebar_user_panel.R")
-  expect_true(nzchar(txt), info = "R/module_sidebar_user_panel.R okunamadı.")
+  # mb_sidebar_controls_row() artık R/helpers_sidebar_user_display.R
+  # dosyasının sahipliğindedir; statik tarama yeni sahibe bakar.
+  txt <- .read_repo_text_logout_url("R/helpers_sidebar_user_display.R")
+  expect_true(nzchar(txt), info = "R/helpers_sidebar_user_display.R okunamadı.")
 
   # mb_sidebar_controls_row gövdesini izole et (Türkçe karakter bozulmasın)
   # ve fonksiyon içinde window.ssoLogout çağrısı bulunmamalı.

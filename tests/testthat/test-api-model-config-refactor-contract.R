@@ -59,6 +59,10 @@
            encoding = "UTF-8", local = globalenv())
   }
 
+  # Derin Düşünme yetenek/endpoint kaydı artık saf helper'dadır ve config_api.R
+  # guard'lı çağırır; izole source bağlamında helper ÖNCE yüklenmelidir.
+  source(file.path(repo_root, "R", "helpers_deep_thinking_model_capabilities.R"),
+         encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "config_api.R"),
          encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_api_model_config.R"),
@@ -98,10 +102,12 @@ test_that("config_api.R bilinmeyen deep-thinking modellerini endpoint map'e güv
     CODING_DEEP_HIGH_MODEL = "unknown-coding-deep-high-model"
   )
 
-  expect_silent(
+  expect_silent({
+    source(file.path(repo_root, "R", "helpers_deep_thinking_model_capabilities.R"),
+           encoding = "UTF-8", local = globalenv())
     source(file.path(repo_root, "R", "config_api.R"),
            encoding = "UTF-8", local = globalenv())
-  )
+  })
 
   expect_identical(
     unname(api_config$local_model_endpoint_map["unknown-excel-deep-low-model"]),

@@ -18,6 +18,12 @@ suppressMessages({
 .sidebar_env <- function() {
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  # Saf görünüm yardımcıları manifest sırasına uygun olarak modülden önce
+  # yüklenir (R/helpers_sidebar_user_display.R).
+  suppressMessages(source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_sidebar_user_display.R"),
+    encoding = "UTF-8", local = env
+  ))
   suppressMessages(source(
     file.path(resolve_repo_root_for_tests(), "R", "module_sidebar_user_panel.R"),
     encoding = "UTF-8", local = env

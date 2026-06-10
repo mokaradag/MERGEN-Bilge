@@ -18,10 +18,7 @@ handle_true_streaming_mode <- function(ctx) {
   istek_baslangici <- ctx$request_start_time %||% baslangic_zamani
   stream_profile <- ctx$stream_profile %||% list()
   use_delta_transport <- isTRUE(stream_profile$use_delta_transport)
-  poll_interval_ms <- as.integer(stream_profile$poll_interval_ms %||% 50L)
-  if (is.na(poll_interval_ms) || poll_interval_ms < 15L) {
-    poll_interval_ms <- 50L
-  }
+  poll_interval_ms <- mergen_stream_poll_interval_ms(stream_profile)
 
   req_id <- ctx$request_id %||% mergen_new_send_message_request_id()
 
@@ -131,7 +128,7 @@ handle_true_streaming_mode <- function(ctx) {
 
     stream_env$chat_persist_scheduled <- TRUE
 
-    persist_delay <- if ((stream_profile$label %||% "") %in% c("plain_fast", "coding_fast")) 0.30 else 0
+    persist_delay <- mergen_stream_persist_delay(stream_profile$label %||% "")
 
     later::later(function() {
       stream_env$chat_persist_scheduled <- FALSE
@@ -505,68 +502,44 @@ handle_true_streaming_mode <- function(ctx) {
         yeni_satirlar <- satirlar[seq.int(stream_env$processed_line_count + 1L, length(satirlar))]
         stream_env$processed_line_count <- length(satirlar)
 
-        delta_batch <- character(0)
-        reasoning_batch <- character(0)
+        # Yeni JSONL satırları saf sınıflandırma yardımcısıyla delta /
+        # akıl yürütme / debug gruplarına ayrılır; bozuk satırlar yardımcı
+        # içinde sessizce atlanır.
+        batches <- mergen_stream_classify_poll_lines(
+          yeni_satirlar,
+          decode_fn = decode_stream_delta_payload
+        )
 
-        for (satir in yeni_satirlar) {
-          payload <- tryCatch(
-            jsonlite::fromJSON(satir, simplifyVector = TRUE),
-            error = function(e) NULL
-          )
+        for (debug_text in batches$debug_lines) {
+          log_info(debug_text)
+        }
 
-          if (is.null(payload)) {
-            next
-          }
+        if (batches$delta_count > 0) {
+          stream_env$accumulated_text <- paste0(stream_env$accumulated_text, batches$delta_text)
 
-          payload_type <- as.character(payload$type %||% "")
-
-          if (identical(payload_type, "stream_debug")) {
-            debug_text <- decode_stream_delta_payload(payload)
-            if (nzchar(debug_text)) {
-              log_info(debug_text)
-            }
-            next
-
-          } else if (identical(payload_type, "delta")) {
-            delta_text <- decode_stream_delta_payload(payload)
-            if (!nzchar(delta_text)) {
-              next
-            }
-
-            stream_env$accumulated_text <- paste0(stream_env$accumulated_text, delta_text)
-            delta_batch <- c(delta_batch, delta_text)
-
-            if (!isTRUE(stream_env$first_delta_logged)) {
-              stream_env$first_delta_logged <- TRUE
-              log_info(sprintf(
-                "[CHAT PERF] İlk delta gözlendi - %.3f sn",
-                as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs"))
-              ))
-            }
-
-          } else if (identical(payload_type, "reasoning_delta")) {
-            reasoning_text <- decode_stream_delta_payload(payload)
-            if (!nzchar(reasoning_text)) {
-              next
-            }
-
-            stream_env$accumulated_reasoning <- paste0(stream_env$accumulated_reasoning, reasoning_text)
-            reasoning_batch <- c(reasoning_batch, reasoning_text)
+          if (!isTRUE(stream_env$first_delta_logged)) {
+            stream_env$first_delta_logged <- TRUE
+            log_info(sprintf(
+              "[CHAT PERF] İlk delta gözlendi - %.3f sn",
+              as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs"))
+            ))
           }
         }
 
         # Düşünce akışı parçalarını ayrı kanalla istemciye ilet.
-        if (length(reasoning_batch) > 0) {
+        if (batches$reasoning_count > 0) {
+          stream_env$accumulated_reasoning <- paste0(stream_env$accumulated_reasoning, batches$reasoning_text)
+
           session$sendCustomMessage("streamingReasoningDelta", list(
             id = stream_env$msg_id,
-            delta = paste0(reasoning_batch, collapse = ""),
+            delta = batches$reasoning_text,
             started = !isTRUE(stream_env$reasoning_stream_started),
             requestId = stream_env$req_id
           ))
           stream_env$reasoning_stream_started <- TRUE
         }
 
-        if (length(delta_batch) > 0) {
+        if (batches$delta_count > 0) {
           if (!isTRUE(stream_env$ui_started)) {
             ensure_stream_ui_started()
           }
@@ -579,7 +552,7 @@ handle_true_streaming_mode <- function(ctx) {
           if (isTRUE(use_delta_transport)) {
             session$sendCustomMessage("streamingDelta", list(
               id = stream_env$msg_id,
-              delta = paste0(delta_batch, collapse = ""),
+              delta = batches$delta_text,
               requestId = stream_env$req_id
             ))
           } else {
@@ -617,43 +590,28 @@ handle_true_streaming_mode <- function(ctx) {
     }
 
     # Worker dönüşünde reasoning alanı varsa ama polling sırasında stream_env'e
-    # düşmemişse burada geri kazan. Bu özellikle reasoning'in final chunk'ta geldiği
-    # veya <think> ayrıştırmasının worker tarafında tamamlandığı uçlarda DB NULL
-    # kalmasını engeller.
-    result_reasoning <- enc2utf8(normalize_llm_scalar_content(result$reasoning %||% ""))
+    # düşmemişse saf geri kazanım planıyla geri kazan. Bu özellikle reasoning'in
+    # final chunk'ta geldiği veya <think> ayrıştırmasının worker tarafında
+    # tamamlandığı uçlarda DB'de ReasoningContent'in NULL kalmasını engeller.
+    recovery_plan <- mergen_stream_reasoning_recovery_plan(
+      accumulated_reasoning = stream_env$accumulated_reasoning,
+      result_reasoning = result$reasoning,
+      stream_started = stream_env$reasoning_stream_started,
+      normalize_fn = normalize_llm_scalar_content
+    )
 
-    if (nzchar(result_reasoning)) {
-      mevcut_reasoning <- enc2utf8(stream_env$accumulated_reasoning %||% "")
+    if (!identical(recovery_plan$action, "none")) {
+      stream_env$accumulated_reasoning <- recovery_plan$accumulated
 
-      if (!nzchar(mevcut_reasoning)) {
-        stream_env$accumulated_reasoning <- result_reasoning
+      session$sendCustomMessage("streamingReasoningDelta", list(
+        id = stream_env$msg_id,
+        delta = recovery_plan$delta,
+        started = recovery_plan$started_payload,
+        requestId = stream_env$req_id
+      ))
 
-        session$sendCustomMessage("streamingReasoningDelta", list(
-          id = stream_env$msg_id,
-          delta = result_reasoning,
-          started = !isTRUE(stream_env$reasoning_stream_started),
-          requestId = stream_env$req_id
-        ))
+      if (isTRUE(recovery_plan$mark_stream_started)) {
         stream_env$reasoning_stream_started <- TRUE
-
-      } else if (!identical(mevcut_reasoning, result_reasoning) &&
-                 startsWith(result_reasoning, mevcut_reasoning)) {
-        eksik_parca <- substr(
-          result_reasoning,
-          nchar(mevcut_reasoning) + 1L,
-          nchar(result_reasoning)
-        )
-
-        if (nzchar(eksik_parca)) {
-          stream_env$accumulated_reasoning <- result_reasoning
-
-          session$sendCustomMessage("streamingReasoningDelta", list(
-            id = stream_env$msg_id,
-            delta = eksik_parca,
-            started = FALSE,
-            requestId = stream_env$req_id
-          ))
-        }
       }
     }
 

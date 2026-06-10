@@ -1,15 +1,18 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-config-api-key-crypto-behavior.R
-# Açıklama: R/config_api.R kullanıcı API anahtarı kripto/dosya yardımcılarının
-#           davranışsal testleri. .hash_key_hex determinizmi, .enc_key/.dec_key
-#           gidiş-dönüşü, save/load/verify dosya akışı ve hatalı anahtar reddi
-#           doğrulanır. Gerçek anahtar/secret kullanılmaz; sahte değerler verilir.
+# Açıklama: R/helpers_api_key_crypto.R kullanıcı API anahtarı kripto/dosya
+#           yardımcılarının davranışsal testleri. .hash_key_hex determinizmi,
+#           .enc_key/.dec_key gidiş-dönüşü, save/load/verify dosya akışı ve
+#           hatalı anahtar reddi doğrulanır. Gerçek anahtar/secret kullanılmaz;
+#           sahte değerler verilir. (Kripto katmanı config_api.R'den
+#           R/helpers_api_key_crypto.R dosyasına taşınmıştır.)
 # ==============================================================================
 
 testthat::local_edition(3)
 
-# config_api.R kaynak anında getwd()/api_keys oluşturur; repoyu kirletmemek için
-# geçici dizinde source edilir ve sonra API_KEYS_DIR test klasörüne yönlendirilir.
+# helpers_api_key_crypto.R kaynak anında getwd()/api_keys oluşturur; repoyu
+# kirletmemek için geçici dizinde source edilir ve sonra API_KEYS_DIR test
+# klasörüne yönlendirilir.
 .api_env <- new.env(parent = globalenv())
 .api_master <- "test-master-key-0123456789"
 .api_keys_tmp <- file.path(tempdir(), paste0("apikeys_test_", as.integer(stats::runif(1, 1, 1e7))))
@@ -27,7 +30,7 @@ local({
   src_tmp <- file.path(tempdir(), paste0("apisrc_", as.integer(stats::runif(1, 1, 1e7))))
   dir.create(src_tmp, showWarnings = FALSE, recursive = TRUE)
   withr::with_dir(src_tmp, {
-    source(file.path(kok, "R", "config_api.R"), encoding = "UTF-8", local = .api_env)
+    source(file.path(kok, "R", "helpers_api_key_crypto.R"), encoding = "UTF-8", local = .api_env)
   })
 })
 

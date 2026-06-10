@@ -280,58 +280,16 @@ api_config <- list(
 )
 
 # --- DERİN DÜŞÜNME MODEL YETENEKLERİ ---
-# Derin Düşünme modelleri (Excel ve Kod araçları için) thinking-capable kabul edilir.
-# Eğer model kimliği halihazırda local_model_capabilities içinde tanımlı değilse
-# güvenli varsayılanlarla eklenir. Var olan tanımlar dokunulmaz; üretim için
-# zaten tanımlı thinking modellerinin (örn. "technical name 3"/"technical name 4")
-# kapasiteleri korunur.
-.mb_deep_thinking_capability_template <- list(
-  thinking = TRUE,
-  omit_temperature = TRUE,
-  stream_reasoning = TRUE,
-  allow_reasoning_fallback = TRUE,
-
-  # Güvenli varsayılan: bilinmeyen deep model için ekstra body alanı ekleme.
-  # Model özel override gerekiyorsa local_model_capabilities içinde açıkça tanımlanmalı.
-  request_overrides = list()
-)
-
-for (.mb_dt_model in unique(c(excel_deep_low_model, excel_deep_high_model,
-                              coding_deep_low_model, coding_deep_high_model))) {
-  .mb_dt_model <- as.character(.mb_dt_model)[1]
-
-  if (is.na(.mb_dt_model) || !nzchar(.mb_dt_model)) {
-    next
-  }
-
-  if (is.null(api_config$local_model_capabilities[[.mb_dt_model]])) {
-    api_config$local_model_capabilities[[.mb_dt_model]] <- .mb_deep_thinking_capability_template
-  }
-
-  # Yeni Derin Düşünme modeli endpoint haritasında yoksa varsayılan olarak
-  # birincil (primary) endpoint'e eşle. Mevcut girdiler korunur.
-  #
-  # ÖNEMLİ:
-  # local_model_endpoint_map adlandırılmış karakter vektörüdür.
-  # Eksik ada [[...]] ile erişmek "altindis sınırlar dışında" hatası verir.
-  endpoint_map <- api_config$local_model_endpoint_map
-  if (is.null(endpoint_map)) {
-    endpoint_map <- character()
-  }
-
-  endpoint_map_names <- names(endpoint_map)
-
-  endpoint_mapped <- !is.null(endpoint_map_names) &&
-    .mb_dt_model %in% endpoint_map_names &&
-    !is.na(endpoint_map[.mb_dt_model]) &&
-    nzchar(as.character(endpoint_map[.mb_dt_model])[1])
-
-  if (!isTRUE(endpoint_mapped)) {
-    endpoint_map[.mb_dt_model] <- "primary"
-    api_config$local_model_endpoint_map <- endpoint_map
-  }
+# Derin Düşünme modelleri (Excel ve Kod araçları için) thinking-capable kabul
+# edilir. Kayıt mekanizması saf yardımcıda tek sahiptedir
+# (bkz. R/helpers_deep_thinking_model_capabilities.R): tabloda olmayan model
+# güvenli varsayılanlarla açılır, var olan açık tanımların değerleri korunur ve
+# eksik endpoint eşlemesi "primary" ile tamamlanır. İzole test/debug bağlamında
+# bu dosya tek başına source edilirse helper yüklü olmayabilir; o bağlamlar
+# helper'ı config_api.R'den ÖNCE source etmelidir.
+if (exists("apply_deep_thinking_model_capabilities", mode = "function", inherits = TRUE)) {
+  api_config <- apply_deep_thinking_model_capabilities(api_config)
 }
-rm(.mb_dt_model, .mb_deep_thinking_capability_template)
 
 # --- SES SENTEZİ (TTS) YAPILANDIRMASI ---
 # OpenAI uyumlu ses uç noktası
@@ -499,201 +457,11 @@ user_config <- list(
 )
 
 # --- KULLANICI API ANAHTARI YÖNETİMİ ---
-API_KEYS_DIR <- normalizePath(file.path(getwd(), "api_keys"), winslash = "/", mustWork = FALSE)
-dir.create(API_KEYS_DIR, showWarnings = FALSE, recursive = TRUE)
+# Kullanıcı API anahtarı şifreleme/saklama katmanı (API_KEYS_DIR, .api_user_file,
+# .hash_key_hex, .enc_key, .dec_key, save/load/exists/verify) artık
+# R/helpers_api_key_crypto.R içindedir ve manifest üzerinden bu dosyadan sonra
+# yüklenir. Buraya geri taşımayın; sınır test sözleşmeleriyle korunur.
 
-# Kullanıcıya özel anahtar dosya yolu
-.api_user_file <- function(system_username) {
-  file.path(API_KEYS_DIR, sprintf("%s_api_key", system_username))
-}
-
-# Tuzlu hash oluştur (SHA256 hex): SHA256(salt || key)
-.hash_key_hex <- function(key_plain, salt_raw) {
-  stopifnot(is.character(key_plain), length(key_plain) == 1)
-  openssl::sha256(paste0(rawToChar(salt_raw), key_plain)) |>
-    as.character() # hex string
-}
-
-# AES-256-GCM (kimlik doğrulamalı) şifreleme
-# Geriye dönük uyumluluk: GCM yoksa CBC'ye düşer
-.enc_key <- function(plain_text, master) {
-  stopifnot(is.character(plain_text), length(plain_text) == 1)
-
-  # Türkçe karakterler dahil tüm metinleri platformdan bağımsız UTF-8 baytlarıyla şifrele.
-  plain_raw <- charToRaw(enc2utf8(plain_text))
-
-  # 32 baytlık anahtar türet
-  k <- openssl::sha256(charToRaw(master))
-
-  # GCM mevcutsa ve beklenen yapıyı döndürüyorsa tercih et
-  use_gcm <- isTRUE(exists("aes_gcm_encrypt", where = asNamespace("openssl"), inherits = FALSE))
-  if (use_gcm) {
-    iv12 <- openssl::rand_bytes(12L)
-	gcm  <- openssl::aes_gcm_encrypt(
-	  data = plain_raw,
-	  key  = k,
-	  iv   = iv12
-	)
-
-    # Bazı openssl sürümleri list(data=raw, tag=raw) döndürür, bazıları farklı
-    if (is.list(gcm) && !is.null(gcm$data) && is.raw(gcm$data) && !is.null(gcm$tag) && is.raw(gcm$tag)) {
-      return(list(
-        alg        = "aes-256-gcm",
-        iv_b64     = base64enc::base64encode(iv12),
-        cipher_b64 = base64enc::base64encode(gcm$data),
-        tag_b64    = base64enc::base64encode(gcm$tag)
-      ))
-    }
-    # GCM var ama beklenen yapıyı döndürmedi -> CBC'ye düş
-  }
-
-  # Yedek: AES-256-CBC (her zaman mevcut)
-  iv16 <- openssl::rand_bytes(16L)
-  ct   <- openssl::aes_cbc_encrypt(plain_raw, key = k, iv = iv16)
-  list(
-    alg        = "aes-256-cbc",
-    iv_b64     = base64enc::base64encode(iv16),
-    cipher_b64 = base64enc::base64encode(ct)
-    # CBC'de tag_b64 yok
-  )
-}
-
-# AES-256-GCM / CBC çözme (geriye dönük uyumlu)
-.dec_key <- function(enc_obj, master) {
-
-  # Basit doğrulama: zorunlu alanlar
-  if (is.null(enc_obj$iv_b64) || is.null(enc_obj$cipher_b64)) {
-    stop("Kayıt bozuk: iv/cipher alanı yok.")
-  }
-
-	k <- openssl::sha256(charToRaw(master))
-
-	# Şifre çözme sonrası raw baytları açıkça UTF-8 metne çevir.
-	# Bu, Windows/RStudio ortamında Türkçe karakterlerin ÅŸ/ÄŸ gibi bozulmasını önler.
-	.decode_utf8_raw <- function(raw_value) {
-	  out <- rawToChar(raw_value)
-	  Encoding(out) <- "UTF-8"
-	  enc2utf8(out)
-	}
-
-  # Önce GCM varsay: tag varsa GCM çöz
-  if (!is.null(enc_obj$tag_b64)) {
-    iv <- base64enc::base64decode(enc_obj$iv_b64 %||% "")
-    ct <- base64enc::base64decode(enc_obj$cipher_b64 %||% "")
-    tg <- base64enc::base64decode(enc_obj$tag_b64 %||% "")
-
-    raw <- openssl::aes_gcm_decrypt(
-      data = ct,
-      key  = k,
-      iv   = iv,
-      tag  = tg
-    )
-    return(.decode_utf8_raw(raw))
-  }
-
-  # Geriye dönük: eski CBC kayıtları için çözüm
-  iv <- base64enc::base64decode(enc_obj$iv_b64 %||% "")
-  ct <- base64enc::base64decode(enc_obj$cipher_b64 %||% "")
-  .decode_utf8_raw(openssl::aes_cbc_decrypt(ct, key = k, iv = iv))
-}
-
-# Kullanıcı API anahtarını şifrele ve kaydet
-save_user_api_key <- function(system_username, key_plain) {
-  f <- .api_user_file(system_username)
-  master <- Sys.getenv("AI_KEYS_MASTER", "")
-  if (!nzchar(master)) stop("AI_KEYS_MASTER is missing in .Renviron")
-
-  # openssl::rand_bytes() 0x00 bayt üretebilir; .hash_key_hex() tuzu rawToChar()
-  # ile metne çevirdiği için gömülü NUL "embedded nul in string" hatası verir ve
-  # kaydı ~%6 olasılıkla çökertir. Tuz yalnızca hash karıştırması içindir; NUL
-  # baytları 0x01'e eşlenerek hash algoritması ve mevcut kayıtlarla uyum korunur.
-  salt <- openssl::rand_bytes(16L)
-  salt[salt == as.raw(0L)] <- as.raw(1L)
-  hash_hex <- .hash_key_hex(key_plain, salt)
-  enc <- .enc_key(key_plain, master)
-
-  rec <- list(
-    user = system_username,
-    salt_b64 = base64enc::base64encode(salt),
-    hash_hex = hash_hex,
-    enc = enc,
-    created_utc = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
-  )
-  # API anahtarı kayıt dosyası kısmi yazıma karşı kritiktir; atomik yardımcıdan
-  # geçirilir (tmp -> rename) ve Windows VM'de kilitli dosya durumunda kopya
-  # fallback davranışı korunur.
-  atomic_write_json(rec, f, pretty = TRUE, auto_unbox = TRUE)
-  normalizePath(f, winslash = "/", mustWork = FALSE)
-}
-
-# Kullanıcı API anahtarını çöz ve döndür
-load_user_api_key <- function(system_username) {
-  f <- .api_user_file(system_username)
-  if (!file.exists(f)) return(NULL)
-  master <- Sys.getenv("AI_KEYS_MASTER", "")
-  if (!nzchar(master)) return(NULL)
-  rec <- try(jsonlite::read_json(f, simplifyVector = TRUE), silent = TRUE)
-  if (inherits(rec, "try-error") || is.null(rec$enc)) return(NULL)
-  tryCatch(.dec_key(rec$enc, master), error = function(e) NULL)
-}
-
-# Kullanıcının kayıtlı API anahtarı var mı?
-user_api_key_exists <- function(system_username) file.exists(.api_user_file(system_username))
-
-# Kullanıcının girdiği anahtarı mevcut kayıtla doğrula (hash karşılaştırması)
-verify_user_api_key <- function(system_username, candidate_plain) {
-  f <- .api_user_file(system_username)
-  if (!file.exists(f)) return(FALSE)
-  rec <- try(jsonlite::read_json(f, simplifyVector = TRUE), silent = TRUE)
-  if (inherits(rec, "try-error")) return(FALSE)
-  salt <- base64enc::base64decode(rec$salt_b64 %||% "")
-  hash_hex <- .hash_key_hex(candidate_plain, salt)
-  isTRUE(identical(tolower(hash_hex), tolower(rec$hash_hex %||% "")))
-}
-
-# ------------------------------------------------------------------------------
-# Derin Düşünme modellerinin yeteneklerini otomatik kaydet
-# ------------------------------------------------------------------------------
-# Derin Düşünme modelleri (.Renviron EXCEL_DEEP_*/CODING_*) varsayılan thinking kabul edilir; mevcut tanım korunur.
-.deep_thinking_capability_defaults <- list(
-  thinking = TRUE,
-  omit_temperature = TRUE,
-  stream_reasoning = TRUE,
-  allow_reasoning_fallback = TRUE,
-  request_overrides = list()
-)
-
-.deep_model_ids <- unique(unname(unlist(
-  api_config$deep_thinking_models,
-  recursive = TRUE,
-  use.names = FALSE
-)))
-
-.deep_model_ids <- .deep_model_ids[
-  !is.na(.deep_model_ids) &
-    nzchar(as.character(.deep_model_ids))
-]
-
-for (.deep_model_id in .deep_model_ids) {
-  .existing_caps <- api_config$local_model_capabilities[[.deep_model_id]]
-
-  if (!is.list(.existing_caps)) {
-    .existing_caps <- list()
-  }
-
-  api_config$local_model_capabilities[[.deep_model_id]] <- utils::modifyList(
-    .deep_thinking_capability_defaults,
-    .existing_caps,
-    keep.null = TRUE
-  )
-}
-
-rm(
-  .deep_thinking_capability_defaults,
-  .deep_model_ids,
-  .deep_model_id,
-  .existing_caps
-)
 # Vision (Image Input) yetenek işaretleme (bkz. R/helpers_vision_model_capabilities.R).
 if (exists("apply_vision_model_capabilities", mode = "function", inherits = TRUE)) {
   api_config <- apply_vision_model_capabilities(api_config, c(coding_deep_low_model, coding_deep_high_model))

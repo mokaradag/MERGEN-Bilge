@@ -566,7 +566,7 @@ Keep these lessons in mind for future tests:
 - Mock `future::future({...})` with a manually resolvable `promises::promise` when testing async behavior; do not force real workers or large fixtures.
 - VISION IS IMPLEMENTED (capability-primary, real — NOT faked). Attaching an image to Model Bağlamı and asking about it works when (a) the selected model is vision-capable and (b) the global kill-switch is not explicitly disabled. This replaces the old "no vision pipeline" limitation.
   - Pure helpers: `R/helpers_vision_context.R` (image detection, MIME, base64 data-url with a 5 MB cap, OpenAI multimodal content builder, the `none`-branch context-block loop, the explicit Turkish "analiz edilemiyor" note, and the `mergen_vision_enabled()` kill-switch) and `R/helpers_vision_model_capabilities.R` (the pure `parse_vision_models_env()` + `apply_vision_model_capabilities()` that mark `api_config$local_model_capabilities[[m]]$vision`). Keep `R/helpers_vision_model_capabilities.R` loaded BEFORE `R/config_api.R` in the manifest, and `R/helpers_vision_context.R` BEFORE `R/helpers_send_message_prompting.R`. Neither file touches Shiny/reactive/network/DB.
-  - Capability is the single source of truth: `mergen_is_vision_model(model, api_config)` reads `caps[[m]]$vision` only (mirrors `is_thinking_model`). `config_api.R` defaults `vision = FALSE` on every `local_model_capabilities` entry, then sets `vision = TRUE` for the IDs in `MERGEN_VISION_MODELS` (`;`/`,`-separated — model IDs may contain spaces, so split on `;`/`,` ONLY, never whitespace) plus the Kodlama Uzmanı deep-thinking models (`CODING_DEEP_LOW_MODEL`/`CODING_DEEP_HIGH_MODEL`). Do NOT hardcode model names in functions; drive it from config/data + env. `config_api.R` must stay within its 700-line per-file ratchet budget — the marking lives in the helper, called via a guarded `exists("apply_vision_model_capabilities", ...)`.
+  - Capability is the single source of truth: `mergen_is_vision_model(model, api_config)` reads `caps[[m]]$vision` only (mirrors `is_thinking_model`). `config_api.R` defaults `vision = FALSE` on every `local_model_capabilities` entry, then sets `vision = TRUE` for the IDs in `MERGEN_VISION_MODELS` (`;`/`,`-separated — model IDs may contain spaces, so split on `;`/`,` ONLY, never whitespace) plus the Kodlama Uzmanı deep-thinking models (`CODING_DEEP_LOW_MODEL`/`CODING_DEEP_HIGH_MODEL`). Do NOT hardcode model names in functions; drive it from config/data + env. `config_api.R` must stay within its 520-line / 6-function per-file ratchet budget — the vision marking lives in `R/helpers_vision_model_capabilities.R` and the deep-thinking capability/endpoint registration lives in `R/helpers_deep_thinking_model_capabilities.R`, both called via guarded `exists(...)` checks.
   - `mergen_vision_enabled()` is a DEFAULT-ENABLED kill-switch: active unless `options(mergen.vision_enabled)` / `MERGEN_ENABLE_VISION` is EXPLICITLY false (`false`/`f`/`0`/`no`/`off`/`hayır`/`kapalı`). So marking a model `vision = TRUE` is sufficient to enable vision for it; `MERGEN_ENABLE_VISION=false` disables vision globally.
   - When `mergen_vision_active(model, api_config)` is true AND a real image encodes, the `none`-branch final user message `content` becomes an OpenAI multimodal ARRAY (`[{type:text},{type:image_url,image_url:{url:"data:...;base64,..."}}]`); otherwise it stays a STRING and images get the explicit Turkish note. Both `R/helpers_llm_api.R` (non-streaming) and `R/helpers_llm_sse.R` (streaming) preserve list-content and serialize via `toJSON(..., auto_unbox = TRUE)`, so the array survives to the HTTP body UNCHANGED. Do NOT regress the text path (non-capable models must still get the explicit Turkish note); do NOT fake vision.
   - Protected by `tests/testthat/test-vision-context-behavior.R`, `tests/testthat/test-vision-model-capabilities-behavior.R`, and `tests/testthat/test-vision-llm-payload-serialization-behavior.R`.
@@ -632,7 +632,7 @@ Preferred validation escalation:
 
 ### Sidebar user panel, Department, and version source contract
 
-- Sidebar user panel ownership: `R/module_sidebar_user_panel.R` and `www/css/sidebar_user_panel.css`.
+- Sidebar user panel ownership: `R/helpers_sidebar_user_display.R` (pure display/decision helpers: `mb_sidebar_user_initials()`, `mb_sidebar_user_avatar_url()`, `mb_sidebar_user_department()`, `mb_sidebar_theme_switch()`, `mb_sidebar_controls_row()`, `mb_sidebar_user_badge_ui()`), `R/module_sidebar_user_panel.R` (UI shell, logout event, server render orchestration), and `www/css/sidebar_user_panel.css`. Keep the display helper loaded before the module in `R/config_source_manifest.R`; do not move the pure helpers back into the module (it previously sat at the 24-function global ratchet ceiling). The split is protected by `tests/testthat/test-sidebar-user-display-split-contract.R`.
 - It displays live identity-derived name/avatar, Department, theme button, version, and optional SSO logout.
 - Initial render must keep the static skeleton/slot-output behavior so theme/user/logout controls do not appear late or disappear.
 - After SSO completes, the sidebar user panel must bind to the live `user_config_rv()` value, not only to isolated session/userData fallbacks, so the user badge re-renders when the authenticated profile is ready.
@@ -642,7 +642,7 @@ Preferred validation escalation:
 - Department selection order is `Departman`, `departman`, then `department`; do not fall back to `Mudurluk`.
 - Long Department text must remain safely truncated/wrapped with title tooltip behavior.
 - Visible version must use `get_app_version_label()` from `R/config_version_history.R`; do not reintroduce `getOption("mergen.version", ...)` as the primary source for visible UI version.
-- Protected tests: `test-sidebar-theme-sync-contract.R`, `test-sidebar-departman-contract.R`, `test-sidebar-instant-render-contract.R`, and `test-version-single-source-contract.R`.
+- Protected tests: `test-sidebar-theme-sync-contract.R`, `test-sidebar-departman-contract.R`, `test-sidebar-instant-render-contract.R`, `test-sidebar-user-display-split-contract.R`, and `test-version-single-source-contract.R`.
 
 ### Brand title single-source contract
 
@@ -1258,6 +1258,7 @@ The following UX behaviors are protected contracts:
 - TTS autoplay must be limited to new AI responses. Loading saved or old chats must not auto-play historical answers.
 - The stop button must stop generation and also clean active TTS playback.
 - True streaming abort/cancel decisions must stay delegated to `mergen_stream_abort_cleanup_plan()` in `R/helpers_streaming_abort_lifecycle.R`; do not move this logic back into an untestable inline branch.
+- True streaming poll-loop decisions must stay delegated to the pure helpers in `R/helpers_streaming_poll_lifecycle.R`: `mergen_stream_classify_poll_lines()` (JSONL delta/reasoning/debug classification), `mergen_stream_reasoning_recovery_plan()` (worker-return reasoning recovery so `MB_Messages.ReasoningContent` does not stay NULL when reasoning arrives only in the final chunk), `mergen_stream_poll_interval_ms()`, and `mergen_stream_persist_delay()`. Do not re-inline this logic into `R/server_handler_true_streaming.R`; the boundary is protected by `tests/testthat/test-streaming-poll-lifecycle-contract.R` and `tests/testthat/test-streaming-poll-lifecycle-behavior.R`.
 - Reasoning/thinking panels must not break chat scroll, must appear for thinking-capable flows, and must clean up safely after completion or stop.
 
 Implementation constraints:
@@ -1402,7 +1403,7 @@ When adding, moving, or splitting a runtime file:
 - for file-store lifecycle splits, preserve the order `R/config_file_store.R`, `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, then `R/config_file_store_registry.R`,
 - for server runtime/module-wiring splits, preserve the order `R/helpers_server_runtime_contracts.R`, `R/helpers_server_runtime_named_contracts.R`, `R/server_runtime_context.R`, `R/server_runtime_function_slot.R`, `R/server_module_wiring.R`, `R/server_chat_engine_dependencies.R`, `R/server_chat_engine_runtime.R`, then the session/chat runtime init files,
 - keep dependency order explicit and reviewable,
-- Keep `R/helpers_streaming_abort_lifecycle.R` loaded before `R/server_handler_true_streaming.R`; the true streaming handler depends on the abort cleanup plan helper.
+- Keep `R/helpers_streaming_abort_lifecycle.R` and `R/helpers_streaming_poll_lifecycle.R` loaded before `R/server_handler_true_streaming.R`; the true streaming handler depends on the abort cleanup plan helper and on the pure poll-loop decision helpers (line classification, reasoning recovery, poll interval, persist delay).
 - when splitting Claude Code security helpers, preserve the order `R/helpers_claude_code_security_policy.R` before `R/helpers_claude_code_prompt_security_policy.R`, and keep both before the Claude Code runtime, process, streaming, lifecycle, and module files that call the policy helpers.
 - keep loading through `safe_source()`; do not replace it with plain `source()`,
 - keep `global.R` validating `R/config_source_manifest.R` before sourcing it and loading manifest groups through `source_manifest_load(...)`; do not manually duplicate group entries with individual `safe_source()` calls,
@@ -1592,15 +1593,23 @@ API model/endpoint/tool-mode helper logic is intentionally split from the main A
 Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
-safe_source("R/config_api.R",               encoding = "UTF-8")
-safe_source("R/helpers_api_model_config.R", encoding = "UTF-8")
-safe_source("R/config_claude_code.R",       encoding = "UTF-8")
+safe_source("R/helpers_vision_model_capabilities.R",        encoding = "UTF-8")
+safe_source("R/helpers_deep_thinking_model_capabilities.R", encoding = "UTF-8")
+safe_source("R/config_api.R",                               encoding = "UTF-8")
+safe_source("R/helpers_api_model_config.R",                 encoding = "UTF-8")
+safe_source("R/helpers_api_model_tool_runtime.R",           encoding = "UTF-8")
+safe_source("R/helpers_api_key_crypto.R",                   encoding = "UTF-8")
+safe_source("R/helpers_api_key_identity.R",                 encoding = "UTF-8")
 ```
 
 Responsibilities:
 
 * `R/config_api.R`: environment loading, global API configuration objects, `api_config`, TTS/STT configuration, and API-key validation orchestration.
+* `R/helpers_deep_thinking_model_capabilities.R`: the pure `collect_deep_thinking_model_ids()` + `apply_deep_thinking_model_capabilities()` registration boundary. It consolidates what used to be two separate source-time blocks in `config_api.R`: safe thinking-capable defaults for unknown deep models, completion of missing capability fields on already-defined deep models (existing explicit values always win), and missing endpoint-map entries defaulting to `"primary"` while the map stays a named character vector. `config_api.R` calls it through a guarded `exists(...)` check like the vision helper. Keep it loaded BEFORE `R/config_api.R`; isolated tests that source `config_api.R` directly must source this helper first. Do not re-inline either legacy block into `config_api.R`.
+* `R/helpers_api_key_crypto.R`: the user API key encrypted storage layer moved out of `config_api.R`: `API_KEYS_DIR`, `.api_user_file()`, `.hash_key_hex()`, `.enc_key()`, `.dec_key()`, `save_user_api_key()`, `load_user_api_key()`, `user_api_key_exists()`, and `verify_user_api_key()`. Behavior, the NUL-salt regression guard, UTF-8 round-trip, and the atomic JSON write path are unchanged. Do not move these back into `config_api.R`.
 * `R/helpers_api_model_config.R`: pure model capability, request override, endpoint credential, validation-target, tool-mode, and main-action model resolution helpers.
+
+This split is protected by `tests/testthat/test-config-api-split-contract.R` and `tests/testthat/test-deep-thinking-model-capabilities-behavior.R`; the crypto behavior coverage lives in `tests/testthat/test-config-api-key-crypto-behavior.R` (now sourcing the crypto helper directly). The `R/config_api.R` ratchet budget is tightened to 520 lines / 6 functions — do not consume the freed headroom by moving logic back.
 
 Personal API keys are user-owned credentials. They must be loaded/saved only after authenticated application identity is available, and must never fall back to `Sys.info()[["user"]]` or the Shiny/Windows service account. Session key state is cleared at session/module start, and a session key is accepted only when its owner marker matches the authenticated user. LLM request paths should use the effective-key helpers rather than directly trusting `session$userData$ai_api_key`.
 
@@ -4345,11 +4354,13 @@ Defines application-wide configuration:
 - `R/config_characters.R`
 - `R/config_version_history.R`
 - `R/helpers_vision_model_capabilities.R`
+- `R/helpers_deep_thinking_model_capabilities.R`
 - `R/config_api.R`
+- `R/helpers_api_key_crypto.R`
 - `R/config_claude_code.R`
 - `R/config_claude_code_plugins.R`
 
-> `R/helpers_vision_model_capabilities.R` is loaded BEFORE `R/config_api.R` so the config can mark per-model `vision` capability at build time (see the vision pipeline section).
+> `R/helpers_vision_model_capabilities.R` and `R/helpers_deep_thinking_model_capabilities.R` are loaded BEFORE `R/config_api.R` so the config can mark per-model `vision` capability and register Derin Düşünme capability/endpoint entries at build time (see the vision pipeline and API model configuration sections). `R/helpers_api_key_crypto.R` owns the user API key encrypted storage layer and loads after `R/config_api.R`.
 
 ### Group 3 - Database and SQL
 Core persistence and DB access:

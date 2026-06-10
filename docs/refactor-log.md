@@ -6,6 +6,201 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-09 — Sidebar kullanıcı paneli saf görünüm yardımcılarının ayrılması
+
+### Seçilen iz(ler)
+- **Track B — Complex runtime kodundan saf yardımcı çıkarımı** (`R/module_sidebar_user_panel.R` → `R/helpers_sidebar_user_display.R`).
+- Tamamlayıcı: dosya, 24-fonksiyon küresel ratchet tavanında oturan üç dosyadan biriydi; bölünme bu dosyayı tavandan indirir ve korunan Departman/tema/iskelet sözleşmelerine bağımsız test edilebilir bir sahip verir.
+
+### Özet ve gerekçe
+`R/module_sidebar_user_panel.R` (581 satır / 24 fonksiyon) saf görünüm kararlarını (Türkçe-güvenli baş harf üretimi, avatar URL placeholder reddi, korunan `Departman → departman → department` seçim sırası, tema anahtarı/kontrol satırı/kullanıcı rozeti HTML üreticileri) Shiny render/observer orkestrasyonuyla aynı dosyada taşıyordu. Dosya küresel 24-fonksiyon tavanında oturduğundan, panele eklenecek herhangi bir küçük yardımcı küresel ratchet'i kırardı.
+
+Altı saf yardımcı (`mb_sidebar_user_initials`, `mb_sidebar_user_avatar_url`, `mb_sidebar_user_department`, `mb_sidebar_theme_switch`, `mb_sidebar_controls_row`, `mb_sidebar_user_badge_ui`) birebir `R/helpers_sidebar_user_display.R` dosyasına taşındı. Modül; UI kabuğu (`mb_sidebar_user_panel_ui`), logout olayı (`mb_sidebar_handle_logout_event`) ve server render (`mb_sidebar_user_panel_server`) sorumluluklarına odaklı kaldı. Üretilen tag ağacı, sınıf adları, logout onclick JS'i ve iskelet davranışı bayt-denk korunur.
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_sidebar_user_display.R` (yeni, 285 satır / 9 fonksiyon) — altı saf görünüm yardımcısı, roxygen açıklamalarıyla birlikte birebir taşındı.
+- `R/module_sidebar_user_panel.R` — taşınan tanımlar kaldırıldı; başlığa yeni sahiplik notu eklendi. **581 → 316 satır / 24 → 15 fonksiyon.**
+- `R/config_source_manifest.R` — `module_identity_startup` bölümüne helper, modülden hemen önce eklendi (10 → 11 dosya).
+
+**Test**
+- `tests/testthat/test-sidebar-user-display-split-contract.R` (yeni, 32 assertion) — helper varlığı/yüzeyi, manifest sırası (helper → modül), taşınan tanımların modüle geri dönmemesi, modülün orkestrasyon sorumluluklarını korunması, helper'ın Shiny-bağsız kalması ve davranış sözleşmeleri (Türkçe baş harf, Departman sırası, Mudurluk reddi, placeholder avatar reddi).
+- `tests/testthat/test-sidebar-user-panel-behavior.R` — bootstrap'e helper source eklendi (12 assertion değişmeden geçer).
+- `tests/testthat/test-sidebar-departman-contract.R` — izole yükleyici helper'ı da source eder; `pick("Departman")` statik taraması yeni sahibe (helper dosyası) yönlendirildi; Mudurluk negatif taraması her İKİ dosyada da korunur (16 assertion).
+- `tests/testthat/test-sidebar-theme-sync-contract.R` — tema butonu attribute taraması yeni sahibe yönlendirildi (19 assertion).
+- `tests/testthat/test-source-manifest-sections-contract.R` — `module_identity_startup` n 10→11, toplam 257→258.
+- `tests/testthat/test-maintainability-ratchet.R` — yeni dosya-özel bütçeler: modül 360L/17F, helper 320L/11F (24-fonksiyon tavanına geri tırmanma kilitlendi).
+
+**Dokümantasyon**
+- `CLAUDE.md` — sidebar ownership satırı iki dosyalı yapıya güncellendi; korunan test listesine split sözleşmesi eklendi.
+- `docs/technical-reference.md` — sidebar notuna saf yardımcı sınırı eklendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: tek dosyada saf karar + Shiny orkestrasyon karışımı; dosya 24-fonksiyon küresel tavanında; Departman/tema sözleşmeleri yalnızca modül-dosyası statik taramasıyla korunuyordu.
+- Sonra: saf yardımcılar Shiny olmadan source edilip test edilebilir; modül 15 fonksiyona indi; her iki dosya dosya-özel bütçeyle kilitli. Küresel 24-fonksiyon tavanı İKİ başka dosya (`helpers_file_manager_runtime.R`, `helpers_health_formatters.R`) tarafından tutulduğu için küresel değer BİLEREK sıkılaştırılmadı (dürüst sınır: bu oturum yalnızca sidebar'ı tavandan indirir).
+
+### Korunan davranış sözleşmeleri
+- Üretilen HTML/tag ağacı, sınıf adları (`mb-sidebar-*`, `theme-switch-*`), `data-mergen-theme-toggle` attribute'u, logout onclick JS'i ve `mergen_sidebar_logout` Shiny olayı birebir aynı.
+- Departman seçim sırası `Departman → departman → department`; `Mudurluk` görünür alan olarak ASLA seçilmez (statik + davranışsal olarak iki dosyada da doğrulanır).
+- İskelet/instant-render sözleşmesi: `mb-sidebar-user-skeleton`, `mb-sidebar-controls-skeleton`, slot-output sınıfları ve `mb_sidebar_controls_row(show_logout = FALSE)` çağrısı modülde kaldı (test anchorsları değişmedi).
+- Görünür sürüm tek kaynağı `get_app_version_label()` modülde; tema senkronizasyonu, SSO auth-ready yeniden render ve `suspendWhenHidden = FALSE` davranışı dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni split sözleşmesi (32), sidebar davranış (12), sidebar server davranış (20), departman (16), tema-sync (19), instant-render (11), version-single-source (11), logout-url (33), source manifest (165), sections (150), global manifest (12), maintainability ratchet (168), network boundary (2), secret leak (8), production contracts (21), e2e boot/welcome (29), UX guardrails (28).
+- İlk tam koşu, taşınan tanımlara modül dosyasında bakan iki ek statik sözleşmeyi yakaladı (`test-logout-url-contract.R` çıkış-butonu taraması ve `test-sidebar-user-panel-server-behavior.R` izole source); her ikisi yeni sahibe yönlendirildi/bootstrap'e helper eklendi — davranış sözleşmeleri zayıflatılmadı.
+- `bash tools/ai_validate.sh full --boot-smoke` (düzeltme sonrası) → geçti; **tam strict testthat suite geçti**, Shiny boot smoke geçti, `failed_steps: 0`, `skipped_steps: 0` (browser UX smoke container'da tarayıcı olmadığından bloklamayan SKIP). Artifact: `artifacts/ai-validation/20260610-031858/summary.json`.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; modül 316/15, helper 285/9.
+- Tüm komutlar `LANG=C.UTF-8 LC_ALL=C.UTF-8` ile çalıştırıldı.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Uygulamayı normal Windows VM launcher ile başlatın; sol menü altındaki kullanıcı panelinin İLK renderda iskeletle birlikte geldiğini doğrulayın.
+- SSO girişi sonrası ad/avatar ve Departman değerinin (MB_Users) doğru göründüğünü; Türkçe karakterli adların baş harflerinin bozulmadığını doğrulayın.
+- Tema düğmesine tıklayın: koyu/açık geçişin çalıştığını ve etiketin güncellendiğini doğrulayın; sidebar yeniden render sonrası düğmenin çalışmaya devam ettiğini kontrol edin.
+- `MERGEN_LOGOUT_URL` tanımlıysa çıkış butonunun göründüğünü, tıklayınca konsola logout logunun düştüğünü ve tarayıcının hedef URL'ye gittiğini doğrulayın.
+- Sürüm satırının doğru sürümü gösterdiğini kontrol edin.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Küresel 24-fonksiyon ratchet değeri sıkılaştırılMAdı; tavanı hâlâ `helpers_file_manager_runtime.R` ve `helpers_health_formatters.R` tutuyor (her ikisi de belgelenmiş yoğun-tasarım dosyaları; ayrı oturum kararı gerektirir).
+- Windows VM launcher ve gerçek tarayıcı/SSO doğrulaması bu cloud oturumunda çalıştırılmadı; sidebar SSO yeniden render davranışı için kullanıcı tarafı QA gereklidir.
+
+---
+
+## 2026-06-09 — config_api.R baş boşluğu: Derin Düşünme kayıt konsolidasyonu + API anahtarı kripto katmanı ayrımı
+
+### Seçilen iz(ler)
+- **Track E — Duplicate mechanism consolidation**: `config_api.R` içinde İKİ ayrı source-time blok olarak yaşayan Derin Düşünme yetenek/endpoint kayıt mekanizması tek saf yardımcıda birleştirildi (`R/helpers_deep_thinking_model_capabilities.R`).
+- **Track B/A — Cohesive boundary extraction**: kullanıcı API anahtarı şifreli saklama katmanı (~152 satır) `R/helpers_api_key_crypto.R` dosyasına taşındı.
+- Tamamlayıcı cerrahi düzeltme: bir önceki oturumda "bilinen risk" olarak belgelenen `decode_stream_delta_payload()` skaler dönüş ucu kapatıldı.
+
+### Özet ve gerekçe
+`R/config_api.R` repodaki EN sıkışık dosyaydı: 699 satır / 700 satırlık dosya-özel ratchet bütçesi — yani 1 satır boşluk. Her yeni model, env değişkeni veya yetenek alanı bu dosyaya dokunmak zorunda olduğundan, ilk masum değişiklik plansız bir refactor'ü başka birinin görevine zorlamış olacaktı.
+
+İki yapısal sorun çözüldü: (1) Derin Düşünme model kayıt mantığı dosyada iki ayrı blokta yaşıyordu — biri tabloda olmayan modele şablon + endpoint ekleyen erken blok, diğeri dosya sonunda `modifyList` ile eksik alanları tamamlayan ikinci blok. İki mekanizmanın bileşimi belgesizdi ve gelecekte tek tarafın değiştirilmesi sessiz davranış kayması üretirdi. Mekanizma, vision işaretleme deseniyle birebir aynı şekilde (`config_api.R`'den ÖNCE yüklenen saf helper + guard'lı çağrı) tek sahibe indirildi; birleşik davranışın eski iki-blok bileşimiyle **birebir aynı** olduğu hem test içi denklik fixture'larıyla hem de oturum içi git-HEAD diferansiyel karşılaştırmasıyla kanıtlandı (4 env senaryosunda `identical(api_config_eski, api_config_yeni) == TRUE`: varsayılan, bilinmeyen deep modeller, vision+deep birlikte, boş deep env). (2) Anahtar şifreleme/saklama katmanı (API_KEYS_DIR, hash, AES-GCM/CBC, save/load/exists/verify) yapılandırma dosyasının içinde yaşıyordu; kendi başına tutarlı bir sorumluluk olarak ayrı dosyaya taşındı (kod birebir, davranış değişikliği yok).
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_deep_thinking_model_capabilities.R` (yeni, 113 satır) — `collect_deep_thinking_model_ids()`, `apply_deep_thinking_model_capabilities()`; Shiny/DB/ağ/dosya yan etkisi yok.
+- `R/helpers_api_key_crypto.R` (yeni, 167 satır) — kripto/saklama katmanı `config_api.R`'den birebir taşındı; NUL-tuz regresyon guard'ı, UTF-8 gidiş-dönüş ve atomik JSON yazımı korunur.
+- `R/config_api.R` — iki Derin Düşünme bloğu guard'lı tek helper çağrısıyla değiştirildi; kripto bloğu kaldırıldı (yerinde yönlendirme yorumu). **699 → 468 satır / 12 → 2 fonksiyon (rapor metriği).**
+- `R/helpers_llm_stream_io.R` — `decode_stream_delta_payload()` artık her girişte skaler karakter döndürür; bozuk satırdan gelen `[]`/NA alan şekilleri `if()` içinde NA üretemez. Geçerli b64/düz metin davranışı değişmedi.
+- `R/config_source_manifest.R` — `config_api_model_keys` bölümü: deep helper vision sonrası/config_api öncesi, kripto helper tool-runtime sonrası/api_key_identity öncesi eklendi (7 → 9 dosya).
+
+**Test**
+- `tests/testthat/test-deep-thinking-model-capabilities-behavior.R` (yeni, 28 assertion) — kimlik toplama, bilinmeyen model varsayılanları, açık tanımın kazanması, endpoint onarımı, boş/geçersiz girişler ve eski iki-blok mekanizmasına karşı 4 fixture'lı birebir denklik.
+- `tests/testthat/test-config-api-split-contract.R` (yeni, 36 assertion) — iki helper'ın varlığı/yüzeyi, manifest sırası (vision → deep → config_api → crypto → identity), guard'lı delegasyon, taşınan mantığın `config_api.R`'ye geri dönmemesi, deep helper'ın yan-etkisizliği.
+- `tests/testthat/test-config-api-key-crypto-behavior.R` — bootstrap artık `config_api.R` yerine doğrudan `helpers_api_key_crypto.R` source eder (32 assertion değişmeden geçer).
+- `tests/testthat/test-api-model-config-refactor-contract.R` ve `tests/testthat/test-llm-reasoning-request-overrides.R` — izole `config_api.R` source bağlamlarına deep helper ön-yüklemesi eklendi (belgelenmiş izole-test deseni).
+- `tests/testthat/test-llm-stream-io-contract.R` — decode skaler dönüş regresyon testleri eklendi (bozuk `[]`/NA şekilleri, NULL/alansız payload, Türkçe b64 round-trip, b64 önceliği).
+- `tests/testthat/test-source-manifest-sections-contract.R` — `config_api_model_keys` n 7→9, toplam 255→257.
+- `tests/testthat/test-maintainability-ratchet.R` — `R/config_api.R` bütçesi 700L/14F → **520L/6F** sıkılaştırıldı; iki yeni helper için 160L/4F ve 220L/12F bütçeleri eklendi.
+
+**Dokümantasyon**
+- `CLAUDE.md` — "API model configuration contract" bölümü yeni kaynak sırası ve iki helper sorumluluğuyla güncellendi; vision bölümündeki 700-satır bütçe referansı 520/6 olarak düzeltildi; Group 2 yükleme listesi güncellendi.
+- `docs/architecture-map.md` — model yeteneği ve API anahtarı ownership satırları yeni dosyaları gösterir.
+- `docs/technical-reference.md` — Derin Düşünme kayıt tek-sahip notu, kripto taşıma notu ve decode skaler garanti notu eklendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `config_api.R` 699/700 satır (1 satır boşluk); Derin Düşünme kaydı iki kopya mekanizmada; kripto katmanı yapılandırma dosyasına gömülü; decode ucu belgelenmiş ama açık.
+- Sonra: `config_api.R` 468 satır / 2 fonksiyon (≈%33 küçülme, yeni bütçeyle ~52 satır gerçek boşluk + bütçe kilidi); kayıt mekanizması tek saf sahip + 28 deterministik assertion; kripto katmanı kendi dosyasında aynı davranış testleriyle; decode her zaman skaler.
+
+### Korunan davranış sözleşmeleri
+- `api_config` nesnesi 4 env senaryosunda git-HEAD sürümüyle `identical()` — model yetenekleri, endpoint haritası, tool-mode yapılandırması, TTS/STT yapılandırması bayt-denk.
+- Kripto fonksiyon adları/davranışı değişmedi; çağıranlar (`R/module_api_key.R`, `R/module_settings_yapilandirma.R`) dokunulmadı. NUL-tuz guard'ı, AES-GCM→CBC düşüşü, UTF-8 anahtar gidiş-dönüşü, atomik yazım aynen.
+- `validate_api_key()` orkestrasyonu, `user_config`, `SERVICE_DESK`, endpoint/env okuma config_api.R'de kaldı.
+- Streaming: geçerli b64/düz metin decode çıktıları birebir aynı; üretim yazıcısının boş metin yazmama guard'ı zaten koruyordu, okuyucu artık ek olarak sağlam.
+- DB, SSO, dosya yaşam döngüsü, frontend varlıkları, Shiny ID'leri ve UX'e dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Git-HEAD diferansiyeli (oturum içi geçici script): eski `config_api.R` (HEAD) + vision helper ile yeni zincir (vision + deep helper + yeni config_api) 4 env senaryosunda `identical(api_config) == TRUE`.
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni davranış (28), yeni split sözleşmesi (36), kripto davranış (32), api-model-config refactor (35), llm-reasoning overrides (14), stream-io (19), source manifest (165), sections (150), global manifest (12), maintainability ratchet (162), deep-thinking model resolution (16), runtime model resolution (24), api-key effective/identity resolution (35+37), streaming poll lifecycle (67+25), utf8 stream decoder (30), secret leak (8), network boundary (2), production contracts (21), production env policy (8).
+- `bash tools/ai_validate.sh full --boot-smoke` → geçti; **tam strict testthat suite dahil**, `failed_steps: 0`, `skipped_steps: 0` (browser UX smoke bu container'da tarayıcı olmadığından bloklamayan SKIP). Artifact yolu aşağıdaki commit mesajında ve `artifacts/ai-validation/` altında.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; `config_api.R` 468/2.
+- Tüm komutlar `LANG=C.UTF-8 LC_ALL=C.UTF-8` ile çalıştırıldı (container'ın C-locale varsayılanı, koddan bağımsız ortam kısıtı).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Uygulamayı normal Windows VM launcher ile başlatın; başlangıçta kırmızı hata olmadığını ve modellerin Model Değiştir/Yapılandırma listelerinde göründüğünü doğrulayın.
+- Excel Analizi ve Kodlama Desteği araçlarında Derin Düşünme düğmesini düşük/yüksek seviyelerde açın; Düşünce Akışı rozetinin beklenen deep modeli gösterdiğini ve yanıtın aktığını doğrulayın.
+- Yapılandırma → kişisel API anahtarı kaydedin (sahte/test anahtarı değil, gerçek akışınız neyse o); kaydet → doğrula → temizle akışının çalıştığını, Türkçe karakter içeren bir anahtar değerinin kaydet/yükle sonrası bozulmadığını doğrulayın.
+- `api_keys/<kullanıcı>_api_key` dosyasının oluştuğunu ve düz metin anahtar içermediğini (şifreli JSON) doğrulayın.
+- Var olan kayıtlı anahtarın (bu değişiklikten önce kaydedilmiş) yeniden yüklenebildiğini doğrulayın (format değişmedi; geriye dönük uyum beklenir).
+- Normal Türkçe sohbet + streaming + Durdur akışını bir kez doğrulayın (config_api zinciri her istekte kullanılır).
+
+### Bilinen riskler / atlanan doğrulamalar
+- `helpers_api_key_crypto.R` kaynak anında `getwd()/api_keys` klasörünü oluşturur (config_api.R'deki davranışın birebir taşınması). Manifest yük sırası içinde `getwd()` uygulama köküdür; davranış değişmedi.
+- Windows VM launcher, gerçek tarayıcı smoke, VM/SSO/gerçek DB preflight ve SQL Server Türkçe encoding preflight bu cloud oturumunda çalıştırılmadı; kullanıcı tarafı manuel QA gereklidir.
+- `.Renviron`'daki gerçek üretim deep model kimlikleri cloud'da görünmez; VM'de Derin Düşünme rozet/akış kontrolü önerilir (yukarıdaki QA maddesi).
+
+---
+
+## 2026-06-09 — True streaming yoklama döngüsü kararlarının saf yardımcıya çıkarılması
+
+### Seçilen iz(ler)
+- **Track B — Complex runtime kodundan saf yardımcı çıkarımı** (`R/server_handler_true_streaming.R` → `R/helpers_streaming_poll_lifecycle.R`).
+- Tamamlayıcı: var olan streaming yaşam döngüsü desenini (`R/helpers_streaming_abort_lifecycle.R` / `mergen_stream_abort_cleanup_plan()`) yoklama tarafına genişletir.
+
+### Özet ve gerekçe
+`handle_true_streaming_mode()` içindeki yoklama (poll) observer'ı; akış JSONL satırlarının delta / akıl yürütme / debug olarak sınıflandırılmasını, worker dönüşünde gelen reasoning metninin canlı panelle uzlaştırılmasını (tam metin mi, eksik kuyruk mu, hiçbir şey mi gönderileceği kararı), yoklama aralığı normalizasyonunu ve ertelenen sohbet kalıcılaştırma gecikmesi kararını Shiny observer gövdesine gömülü taşıyordu. Bu kararlar kullanıcıya en görünür regresyon yüzeyidir (akış metni, Düşünce Akışı paneli, `MB_Messages.ReasoningContent` kalıcılığı) ama hiçbiri Shiny/DB/LLM başlatmadan test edilemiyordu.
+
+Dört saf yardımcı `R/helpers_streaming_poll_lifecycle.R` dosyasına çıkarıldı: `mergen_stream_classify_poll_lines()` (satır sınıflandırma; bozuk/yarım satırlar sessizce atlanır, sıra korunur), `mergen_stream_reasoning_recovery_plan()` (none / replace_full / append_suffix kararı; reasoning'in yalnızca final chunk'ta geldiği uçlarda DB'de ReasoningContent'in NULL kalmasını engelleyen yolun saf çekirdeği), `mergen_stream_poll_interval_ms()` ve `mergen_stream_persist_delay()`. Handler aynı custom message payload'larını (`streamingReasoningDelta`, `streamingDelta`, `streamingUpdate`) aynı sırayla gönderen ince bir orkestratöre dönüştü; tüm statik sözleşme çapaları (request-id, finalize/cleanup, reasoning alanları) yerinde kaldı.
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_streaming_poll_lifecycle.R` (yeni, ~203 satır) — dört saf karar yardımcısı; Shiny/DB/dosya/LLM yan etkisi yok.
+- `R/server_handler_true_streaming.R` — inline sınıflandırma döngüsü, reasoning geri kazanım bloğu, poll aralığı ve persist gecikmesi karar satırları helper çağrılarıyla değiştirildi. **690 → 647 satır.**
+- `R/config_source_manifest.R` — yeni helper `chat_send_message_runtime` bölümüne `R/helpers_streaming_abort_lifecycle.R` sonrasına eklendi; bölüm yorumu güncellendi.
+
+**Test**
+- `tests/testthat/test-streaming-poll-lifecycle-behavior.R` (yeni) — 67 assertion: satır sınıflandırma (bozuk JSON/boş delta/bilinmeyen tip atlanır, sıra korunur, gerçek `decode_stream_delta_payload` ile Türkçe + emoji base64 round-trip), reasoning geri kazanım planının tüm dalları (UTF-8 çok baytlı önek/kuyruk sınırı dahil), yoklama aralığı ve persist gecikmesi kararları.
+- `tests/testthat/test-streaming-poll-lifecycle-contract.R` (yeni) — 25 assertion: helper dosyası varlığı ve fonksiyon yüzeyi, manifest sırası (abort → poll → handler), handler delegasyonu, inline mantığın geri dönmemesi, helper'ın yan-etkisiz kalması.
+- `tests/testthat/test-source-manifest-sections-contract.R` — `chat_send_message_runtime` bölüm sayısı 8→9, toplam kaynak sayısı 254→255 güncellendi.
+
+**Dokümantasyon**
+- `CLAUDE.md` — UX sözleşmeleri bölümüne poll-loop delegasyon kuralı eklendi; kaynak manifest sözleşmesindeki yükleme sırası notu iki streaming helper'ı kapsayacak şekilde genişletildi.
+- `docs/architecture-map.md` — LLM/model entegrasyonu ownership satırı ve `chat_send_message_runtime` bölüm satırı `R/helpers_streaming_*` ailesini gösterir.
+- `docs/technical-reference.md` — streaming notlarına yoklama döngüsü saf yardımcı sınırı eklendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: satır sınıflandırma + accumulate + ilk-delta logu + custom message gönderimi tek observer gövdesinde iç içeydi; reasoning geri kazanım kararı yalnızca canlı SSE akışıyla uçtan uca tetiklenebiliyordu.
+- Sonra: karar mantığı (hangi satır hangi kanala, hangi reasoning parçası gönderilecek, hangi aralık/gecikme) saf fonksiyonlarda; observer yalnızca state yazma ve mesaj gönderme yan etkilerini taşır. 92 yeni deterministik assertion bu kararları offline karakterize eder.
+- Maintainability skoru 100/100 korunur; handler 690→647 satıra indi, yeni helper bütçe eşiklerinin çok altında.
+
+### Korunan davranış sözleşmeleri
+- Custom message adları, payload alanları ve gönderim sırası değişmedi: reasoning batch'i delta batch'inden önce gönderilir; `started` bayrağı, `requestId` ve mesaj id alanları birebir aynı.
+- `test-true-streaming-reset-ui-contract.R`, `test-e2e-premium-reasoning-ui-regression.R`, `test-e2e-streaming-client-request-id-regression.R`, `test-sse-worker-export-contract.R` çapalarının tamamı yerinde (hepsi bu oturumda yeşil).
+- Stop/cancel davranışı, `mergen_stream_abort_cleanup_plan()` delegasyonu, stop dosyası üretimi ve `reset_chat_state_fn()` çağrı yolu değişmedi.
+- Türkçe/emoji akış metni davranışı korunur: sınıflandırma `decode_stream_delta_payload` (base64 + UTF-8) üzerinden aynı çözücüyle çalışır; davranış testi Türkçe + emoji round-trip'i kanıtlar.
+- DB şeması, SSO, dosya yaşam döngüsü, frontend asset/source manifest yükleme davranışı değişmedi (manifest yalnızca yeni helper satırı kazandı).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- `Rscript -e "testthat::test_file('tests/testthat/test-streaming-poll-lifecycle-behavior.R')"` → geçti (67 PASS / 0 FAIL / 0 WARN / 0 SKIP).
+- `Rscript -e "testthat::test_file('tests/testthat/test-streaming-poll-lifecycle-contract.R')"` → geçti (25 PASS).
+- Korunan streaming/manifest sözleşmeleri tek tek çalıştırıldı ve geçti: `test-true-streaming-reset-ui-contract.R` (6), `test-e2e-premium-reasoning-ui-regression.R` (40), `test-e2e-streaming-client-request-id-regression.R` (5), `test-sse-worker-export-contract.R` (3), `test-source-manifest-contract.R` (165), `test-source-manifest-sections-contract.R` (150), `test-global-source-manifest-contract.R` (12), `test-send-message-request-lifecycle-contract.R` (42), `test-streaming-abort-lifecycle-smoke.R` (16), `test-e2e-quick-actions-streaming-regression.R` (75), `test-maintainability-ratchet.R` (156), `test-production-contracts.R` (21); tümünde 0 FAIL / 0 WARN.
+- Diferansiyel parite kontrolleri (oturum içi geçici script, repoya eklenmedi): eski inline sınıflandırma algoritması ile `mergen_stream_classify_poll_lines()` 300 rastgele fixture denemesinde (Türkçe, emoji, satır sonu, bozuk JSON, boş metin, bilinmeyen tip, base64/düz karışık) 0 uyumsuzluk; eski inline reasoning geri kazanım dalları ile `mergen_stream_reasoning_recovery_plan()` 84 kombinasyonda 0 uyumsuzluk.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100, refactor adayı yok (260→261 dosya).
+- `source("tests/scripts/parse_sanity_check.R")` → OK (732 dosya parse edildi).
+- `bash tools/ai_validate.sh quick` → geçti; `failed_steps: 0`, `skipped_steps: 0`. Artifact: `artifacts/ai-validation/20260609-181259/summary.json`.
+- `bash tools/ai_validate.sh full --boot-smoke` → geçti; environment OK, parse sanity OK, app source smoke OK, **tam strict testthat suite geçti (132.7 sn)**, Shiny boot smoke geçti; browser UX smoke bu container'da tarayıcı ikilisi olmadığı için bloklamayan SKIP (beklenen davranış). `failed_steps: 0`, `skipped_steps: 0`, `full_validation_status: "passed"`. Artifact: `artifacts/ai-validation/20260609-181405/summary.json`.
+- Not: bu cloud container'da R oturumu varsayılan olarak "C" locale ile başlıyor; tüm komutlar `LANG=C.UTF-8 LC_ALL=C.UTF-8` ile çalıştırıldı (önceden var olan ortam kısıtı, kod değişikliğiyle ilgisiz; önceki oturumda görülen unrelated tam-suite hataları bu locale ile yeniden üretilmedi).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Uygulamayı normal Windows VM launcher ile başlatın; kırmızı hata ve yeni browser console hatası olmadığını doğrulayın.
+- Ana Söyleşi'de `ç ğ ı İ ö ş ü` içeren basit bir Türkçe mesaj gönderin; akış metninin doğru render edildiğini ve geçmişe doğru kaydedildiğini doğrulayın.
+- Uzun bir yanıt başlatıp Durdur'a basın; gönder düğmesinin normale döndüğünü, typing/streaming durumunun takılı kalmadığını ve sonrasında yeni mesajın çalıştığını doğrulayın.
+- Düşünme destekli bir modelle (Düşünüyorum=TRUE) soru sorun; Düşünce Akışı panelinin canlı aktığını, yanıt bitince panelin arşiv olarak kaldığını ve kayıtlı sohbeti yeniden yüklediğinizde reasoning arşivinin göründüğünü (SSMS'te `MB_Messages.ReasoningContent` dolu) doğrulayın.
+- Reasoning'i yalnızca yanıt sonunda üreten bir uç durum varsa (kısa yanıt + uzun düşünme), panelin yine dolduğunu doğrulayın (geri kazanım yolu).
+- Hızlı profil yollarını (Kodlama Desteği hızlı akışı) bir kez deneyin; ilk parçaların gecikmeden aktığını doğrulayın.
+- Saved chat reload sonrası eski TTS otomatik oynatma olmadığını teyit edin.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Davranış birebir korunacak şekilde tasarlandı; tek bilinçli mikro fark, aynı poll tick'i içinde `stream_debug` log satırlarının artık delta loglarından önce yazılması (yalnızca tanılama log sırası; UI/DB/payload etkisi yok).
+- Windows VM launcher, gerçek tarayıcı smoke (`UX_SMOKE_DONE:PASS`), VM/SSO/gerçek DB preflight, SQL Server Türkçe encoding preflight ve gerçek SSE uç noktasıyla canlı akış bu cloud/container oturumunda çalıştırılmadı (summary.json bu sınırları `not_performed_by_ai_validate` olarak işaretler); kullanıcı tarafı manuel QA gereklidir.
+- `decode_stream_delta_payload()` içinde önceden var olan bir uç durum gözlemlendi (boş metnin base64'ü `text_b64` alanında `[]`'e dönüşürse `if` koşulu NA üretebilir); üretim yazıcısı `create_stream_line_appender()` boş metni hiç yazmadığı için bu uç gerçek akışta oluşmaz, eski ve yeni yol aynı çözücüyü aynı şekilde çağırır. Bilerek bu oturumda dokunulmadı (cerrahi kapsam); ileride ayrı küçük bir görev olarak ele alınabilir.
+
+---
+
 ## 2026-06-09 — Dosya Yönetimi görünen dosya adı normalizasyon sınırı
 
 ### Seçilen iz(ler)
