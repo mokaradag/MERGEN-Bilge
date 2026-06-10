@@ -6,6 +6,77 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-10 — Seam kayıt defteri, frontend bölge sahipliği ve CSS kaskad kuralları (yönetişim katmanı)
+
+### Seçilen iz(ler)
+- **Track A — Üretim-kritik seam dağınıklığı:** Shiny runtime, DB/encoding, SSO/JWT, LLM streaming, dosya yaşam döngüsü, API anahtarları, medya/ses, yönetici panelleri ve Bilge Yolaç sınırlarının sahipliği tek makine-okur haritada toplandı.
+- **Track B — Frontend kırılganlığı:** Sıralı CSS/JS katmanları, tema override zinciri, streaming handler sırası ve varlık sahipliği için bölge haritası + makine doğrulamalı CSS kaskad kuralları + tarayıcı smoke zorlaması sıkılaştırması eklendi.
+
+### Özet ve gerekçe
+Sahiplik bilgisi CLAUDE.md düzyazısına ve onlarca sözleşme testine dağılmıştı; "bu dosyaya kim bakar, hangi test korur?" sorusunun tek cevabı yoktu. Yeni runtime R dosyaları manifest'e, yeni frontend dosyaları manifest+rapora eklenebiliyor ama hiçbir katman sahiplik bildirimi ZORLAMIYORDU. Tema override zinciri (tokens → light → extras → modüller → overhaul → user_polish) yalnızca dondurulmuş vektör sırasıyla korunuyordu; JS'teki gibi anlamlı ikili sıra kuralları yoktu.
+
+Çözüm runtime davranışını değiştirmeyen üç saf katman: (1) `R/config_seam_registry.R` — 12 seam'in bölüm/dosya/guard-test/odaklı-doğrulama sahipliği; (2) `R/config_ui_asset_zones.R` — manifestteki her CSS/JS varlığının tam olarak bir bölgeye (23 bölge) atanması + manifest dışı bilinçli varlıkların gerekçeli sahiplik kaydı; (3) `ui_asset_css_order_rules` + `ui_asset_validate_css_order()` — tema/Bilge Yolaç CSS kaskadının JS kuralları gibi hem boot'ta hem testte zorlanması. Operasyonel rapor için `tests/scripts/seam_doctor.R` (+ `tools/seam_doctor.sh`) eklendi. Tarayıcı smoke: `MERGEN_BROWSER_BIN` açıkça verilmişse require modu otomatik açılır ve kullanılamayan binary erken/net hata verir.
+
+### Değişen dosyalar
+**Kaynak (yeni)**
+- `R/config_seam_registry.R` (539 satır / 6 fonksiyon) — 12 seam kaydı + `mergen_seam_registry_validate()` (bölüm tekil sahiplik, guard-test/dosya varlığı, bölge sahibi çapraz kontrolü) + `mergen_seam_runtime_allowlist()` (manifest dışı runtime R dosyaları için TEK allowlist).
+- `R/config_ui_asset_zones.R` (764 satır / 10 fonksiyon) — 23 bölge, `ui_asset_zones_validate()` (çift yönlü tam bölümleme), `ui_asset_unmanifested_ownership` (app_loading*, admin_analytics.css, smoke dosyaları), `ui_asset_frontend_ownership_gaps()` (fiziksel www/css|js kapsama).
+- `tests/scripts/seam_doctor.R`, `tools/seam_doctor.sh` — yapısal doğrulama + secret-safe JSON artifact (`artifacts/seam-doctor/`); `source(...)`-güvenli (quit yok, drift'te `stop()`).
+
+**Kaynak (güncellenen)**
+- `R/config_source_manifest.R` — `config_ui_assets` bölümüne bölge haritası eklendi (n: 1→2); yeni `architecture_governance` bölümü (`R/config_seam_registry.R`); toplam 258→260 dosya.
+- `R/config_ui_assets.R` — `ui_asset_css_order_rules` (21 kural: variables→tokens→light→extras→refinements→6 tema modülü→overhaul→phase2→user_polish→v2; tema-sonrası brand_title/sidebar_user_panel/tool_backgrounds; welcome_modern→theme_light_welcome; Bilge Yolaç CSS zinciri) + `ui_asset_validate_css_order()` `ui_asset_validate(...)` zincirine bağlandı. Üretilen tag çıktısı bayt-denk değişmedi.
+- `tests/scripts/ai_browser_ux_smoke.R` — explicit `MERGEN_BROWSER_BIN` ⇒ require modu otomatik + kullanılamayan binary için erken `MERGEN_BROWSER_BIN kullanılamıyor` hatası.
+- `tests/scripts/ai_repo_check.R` — quick profiline 4 yeni sözleşme testi eklendi (sections, seam-registry, ui-asset-zones, seam-doctor).
+- `.gitignore` — `artifacts/seam-doctor/`, `artifacts/frontend-complexity-doctor/`, `artifacts/validation-doctor/` eklendi.
+
+**Test**
+- `tests/testthat/test-seam-registry-contract.R` (yeni, 6 test / 12 assertion) — dondurulmuş seam id listesi, manifest/bölge/dosya gerçekliği doğrulaması, bölüm→seam tekil sahiplik, R/ sahipsiz dosya yasağı, kök giriş dosyaları sahipliği, erişim yardımcıları.
+- `tests/testthat/test-ui-asset-zones-contract.R` (yeni, 7 test / 13 assertion) — dondurulmuş bölge id listesi, manifest tam bölümleme, fiziksel sahiplik boşluğu yasağı, bölge sahiplerinin gerçek seam olması, seam→bölge türetimi, smoke sızıntı yasağı, bilinmeyen grup referansı hataları.
+- `tests/testthat/test-seam-doctor-contract.R` (yeni, 2 test / 6 assertion) — statik hafiflik/secret-safety/source-güvenlik sözleşmesi + doctor'ın gerçek repoda sorunsuz çalışıp artifact üretmesi (warn seviyesi test sonunda geri yüklenir).
+- `tests/testthat/test-ui-asset-manifest-contract.R` — yeni CSS kural bloğu (kural çapaları, gerçek manifestte sağlama, sentetik ihlal yakalama, validate zinciri bağlılığı): 178→233 assertion.
+- `tests/testthat/test-source-manifest-sections-contract.R` — bölüm anahtarları + çapalar + toplam (260) bilinçli güncellendi.
+- `tests/testthat/test-browser-ux-smoke-runner-contract.R` — yeni zorlama tokenları (`browser_bin_explicit`, `MERGEN_BROWSER_BIN kullanılamıyor`) donduruldu.
+- `tests/testthat/test-maintainability-ratchet.R` — yönetişim dosyalarına dosya-özel bütçe: zones 780L/12F, registry 580L/8F.
+
+**Dokümantasyon**
+- `CLAUDE.md` — yeni "Seam registry and frontend ownership zone contract" bölümü; manifest ekleme kurallarına seam sahipliği maddesi; UI asset sözleşmesine bölge + CSS kural maddeleri; tema sözleşmesine yürütülebilir kaskad notu; browser smoke kurallarına explicit-bin zorlaması; "Where to go next" işaretçisi.
+- `docs/architecture-map.md` — yönetişim katmanı bölümü (seam tablosu, disiplin kuralları, CSS kaskad notu); kritik sınırlar ve "önce oku" tabloları güncellendi.
+- `RUNBOOK.md` — hızlı referans + 7.4 seam/bölge doğrulaması + 7.5 tarayıcı smoke zorlaması.
+- `docs/technical-reference.md`, `docs/README.md` — yönetişim katmanı referansları.
+
+### Önce / sonra karmaşıklık notları
+- Önce: 35 manifest bölümü ve 215 manifest frontend varlığı için sahiplik yalnızca düzyazıda; R/ ve www/ altına sahipsiz dosya eklemek mümkündü; tema kaskadı yalnızca dondurulmuş vektörle korunuyordu; tarayıcı bildiren ortamda smoke sessizce atlanabiliyordu.
+- Sonra: 36 bölüm → 12 seam (tekil sahiplik, testle zorlanır); 95 CSS + 120 JS manifest varlığı → 23 bölge (çift yönlü tam bölümleme); www/css|js fiziksel kapsama + R/ sahipsiz dosya yasağı; 21 yürütülebilir CSS kaskad kuralı boot+test seviyesinde; explicit browser yapılandırması bloklayıcı. Maintainability skoru 100/100 korunur; yeni dosyalar dosya-özel bütçeyle kilitli.
+
+### Korunan davranış sözleşmeleri
+- Çalışma zamanı UX bayt-denk: yönetişim dosyaları saf veri+fonksiyon tanımlar, boot'ta doğrulama çağrılmaz (CSS sıra doğrulayıcısı hariç — o da mevcut `ui_asset_validate(...)` kalıbının genişletilmesidir ve gerçek manifestte sessiz geçer).
+- Yükleme sırası sahipliği değişmedi: kaynak sırası `R/config_source_manifest.R`, varlık sırası `R/config_ui_assets.R`.
+- Hiçbir mevcut test/ratchet/guard zayıflatılmadı; sections sözleşmesi bilinçli genişletildi, ratchet bütçeleri yalnızca SIKILAŞTIRILDI.
+- Smoke-only dosyalar üretim manifestine eklenmedi; CDN/ağ bağımlılığı yok; secret yazılmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- `Rscript tests/testthat.R` (tam strict suite, `stop_on_failure`/`stop_on_warning`) → **exit 0**; 0 FAIL / 0 WARN; 5 ortam-koşullu SKIP (Windows-only .cmd testi, openxlsx kurulu değil ×3, strict-offline opt-in) — tümü önceden var olan, dokümante skip semantiği.
+- Odaklı testler (0 FAIL / 0 WARN / 0 SKIP): seam-registry (12), ui-asset-zones (13), seam-doctor (6), sections (154), source-manifest (165), global-manifest (12), ui-asset-manifest (233), maintainability-ratchet (174), frontend-ratchet (86), all-runtime-parse (2), production-contracts (21), secret-leak (8), network-boundary (2), browser-ux-runner (5), e2e-boot-welcome (29).
+- `Rscript tests/scripts/parse_sanity_check.R` → 744 dosya parse OK.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; 0 refactor adayı; 800+/25+ dosya yok.
+- `Rscript tests/scripts/frontend_complexity_doctor.R` → artifact üretildi; manifest dışı app-owned varlık 0.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`, 12 seam / 36 bölüm / 23 bölge / 9 manifest-dışı sahipli dosya; artifact yazıldı.
+- App boot smoke: `source("app.R")` + `validate_boot_state()` → OK; seam registry + bölge haritası runtime'da yüklü (CSS sıra doğrulayıcısı boot zincirinde sessiz geçti).
+- `bash tools/ai_validate.sh full --boot-smoke` → **geçti**: 6/6 adım OK (`environment`, `parse sanity`, `app source smoke`, `full testthat suite` 111.3s, `shiny boot smoke`, `browser UX smoke` adımı), `failed_steps: 0`, `skipped_steps: 0`, `full_testthat_suite_status: "passed"`, `shiny_boot_smoke_status: "passed"`; `browser_smoke_status: "skipped"` — adım çalıştı ama konteynerde tarayıcı binary'si olmadığından kendi içinde bloklamayan SKIP üretti. Artifact: `artifacts/ai-validation/20260610-155750/summary.json`.
+- Tüm komutlar `LANG=C.utf8` ile çalıştırıldı.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Windows VM'de SSO ile normal başlatma: karşılama ekranı, koyu/açık tema geçişi (özellikle açık tema cilası: navbar şeridi, chat baloncukları, Bilge Yolaç yüzeyleri), hızlı eylemler ve Bilge Yolaç akışının görsel olarak değişmediğini doğrulayın.
+- Tarayıcılı ortamda `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke` ile `UX_SMOKE_DONE:PASS` alın; `MERGEN_BROWSER_BIN` ayarlıysa artık otomatik bloklayıcı olduğunu bilin.
+- `bash tools/seam_doctor.sh` çalıştırıp `SEAM_DOCTOR_RESULT: OK` görün.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Browser UX smoke bu oturumda gerçek tarayıcıyla ÇALIŞTIRILMADI (konteynerde Chrome/Chromium/Edge yok); statik harness/runner sözleşmeleri geçti. VM'de bloklayıcı modda koşulmalıdır.
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding kapıları bu oturumun kapsamı dışındadır (runtime davranışı değişmedi); normal VM preflight rutini yeterlidir.
+
+---
+
 ## 2026-06-09 — Sidebar kullanıcı paneli saf görünüm yardımcılarının ayrılması
 
 ### Seçilen iz(ler)

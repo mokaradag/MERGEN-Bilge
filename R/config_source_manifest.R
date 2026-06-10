@@ -88,9 +88,18 @@ source_manifest_sections <- list(
   ),
 
   # config_ui_assets: Frontend CSS/JS varlık manifesti (yükleme sırası
-  # sözleşmesi).
+  # sözleşmesi) ve frontend bölge (zone) sahiplik haritası. Bölge haritası
+  # manifestten SONRA yüklenir; yükleme sırasının tek sahibi manifest kalır.
   config_ui_assets = c(
-    "R/config_ui_assets.R"
+    "R/config_ui_assets.R",
+    "R/config_ui_asset_zones.R"
+  ),
+
+  # architecture_governance: Üretim-kritik dikiş (seam) kayıt defteri. Saf
+  # veri + saf doğrulama yardımcıları; çalışma zamanı davranışı değiştirmez.
+  # Bölüm -> seam sahipliği test-seam-registry-contract.R ile doğrulanır.
+  architecture_governance = c(
+    "R/config_seam_registry.R"
   ),
 
   # database: DB sınırları: Unicode escape, encoding guard, bağlantı, kullanıcı

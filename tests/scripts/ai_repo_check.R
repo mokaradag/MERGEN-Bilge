@@ -379,6 +379,10 @@ if (isTRUE(skip_app_source_smoke)) {
 
 quick_tests <- c(
   "tests/testthat/test-source-manifest-contract.R",
+  "tests/testthat/test-source-manifest-sections-contract.R",
+  "tests/testthat/test-seam-registry-contract.R",
+  "tests/testthat/test-ui-asset-zones-contract.R",
+  "tests/testthat/test-seam-doctor-contract.R",
   "tests/testthat/test-server-core-observer-runtime-contract.R",
   "tests/testthat/test-global-source-manifest-contract.R",
   "tests/testthat/test-ui-asset-manifest-contract.R",

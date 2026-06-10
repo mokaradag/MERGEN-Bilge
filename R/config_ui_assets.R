@@ -467,6 +467,43 @@ ui_asset_js_order_rules <- list(
   c("js/bilge_yolac_oyun.js", "js/bilge_yolac_kopru.js")
 )
 
+# Kritik CSS katman/kaskad sırası kuralları.
+# Açık tema override zinciri (variables -> tokens -> theme_light -> extras ->
+# refinements -> tema modülleri -> overhaul -> overhaul_phase2 -> user_polish
+# -> user_polish_v2) ve tema katmanlarından SONRA gelmesi gereken yüzeyler
+# (brand_title, sidebar_user_panel, tool_backgrounds) kaskad sırasına
+# bağımlıdır. Bilge Yolaç CSS zinciri de sıra bağımlıdır. Bu kurallar
+# görünümü değiştirmez; manifest bakımında yanlış sıralamayı JS kurallarıyla
+# aynı şekilde erken yakalar.
+ui_asset_css_order_rules <- list(
+  c("css/variables.css", "css/theme_tokens.css"),
+  c("css/theme_tokens.css", "css/theme_light.css"),
+  c("css/theme_light.css", "css/theme_light_extras.css"),
+  c("css/theme_light_extras.css", "css/theme_light_refinements.css"),
+
+  c("css/theme_light_refinements.css", "css/theme_light_welcome.css"),
+  c("css/theme_light_welcome.css", "css/theme_light_chat.css"),
+  c("css/theme_light_chat.css", "css/theme_light_modals.css"),
+  c("css/theme_light_modals.css", "css/theme_light_bilge_yolac.css"),
+  c("css/theme_light_bilge_yolac.css", "css/theme_light_personalization.css"),
+  c("css/theme_light_personalization.css", "css/theme_light_polish.css"),
+
+  c("css/theme_light_polish.css", "css/theme_light_overhaul.css"),
+  c("css/theme_light_overhaul.css", "css/theme_light_overhaul_phase2.css"),
+  c("css/theme_light_overhaul_phase2.css", "css/theme_light_user_polish.css"),
+  c("css/theme_light_user_polish.css", "css/theme_light_user_polish_v2.css"),
+
+  c("css/theme_light_user_polish_v2.css", "css/brand_title.css"),
+  c("css/theme_light_user_polish_v2.css", "css/sidebar_user_panel.css"),
+  c("css/theme_light_user_polish_v2.css", "css/tool_backgrounds.css"),
+
+  c("css/welcome_modern.css", "css/theme_light_welcome.css"),
+
+  c("css/claude_code.css", "css/claude_code_generated_files.css"),
+  c("css/claude_code_generated_files.css", "css/claude_code_streaming.css"),
+  c("css/claude_code_streaming.css", "css/claude_code_plugins.css")
+)
+
 ui_asset_all_css <- function() {
   ui_asset_flatten_groups(ui_asset_css_groups)
 }
@@ -487,6 +524,49 @@ ui_asset_deferred_js_paths <- function() {
   }
 
   ui_asset_flatten_groups(ui_asset_js_groups[ui_asset_deferred_js_groups])
+}
+
+ui_asset_validate_css_order <- function(css_paths = ui_asset_all_css()) {
+  for (rule in ui_asset_css_order_rules) {
+    if (!is.character(rule) || length(rule) != 2) {
+      stop("UI CSS sıra kuralı iki dosyadan oluşmalıdır.", call. = FALSE)
+    }
+
+    before_path <- rule[[1]]
+    after_path <- rule[[2]]
+
+    before_pos <- match(before_path, css_paths)
+    after_pos <- match(after_path, css_paths)
+
+    if (is.na(before_pos)) {
+      stop(
+        "UI CSS sıra kuralının ilk dosyası manifestte yok: ",
+        before_path,
+        call. = FALSE
+      )
+    }
+
+    if (is.na(after_pos)) {
+      stop(
+        "UI CSS sıra kuralının ikinci dosyası manifestte yok: ",
+        after_path,
+        call. = FALSE
+      )
+    }
+
+    if (before_pos >= after_pos) {
+      stop(
+        "UI CSS varlık yükleme sırası bozuldu: ",
+        before_path,
+        " dosyası ",
+        after_path,
+        " dosyasından önce yüklenmelidir.",
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
 }
 
 ui_asset_validate_js_order <- function(js_paths = ui_asset_all_js()) {
@@ -568,6 +648,7 @@ ui_asset_validate <- function(root = getwd(), check_files = FALSE) {
     )
   }
 
+  ui_asset_validate_css_order(css_paths)
   ui_asset_validate_js_order(js_paths)
   ui_asset_deferred_js_paths()
   ui_asset_validate_js_render_plan()

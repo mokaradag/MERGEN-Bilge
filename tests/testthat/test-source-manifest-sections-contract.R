@@ -29,6 +29,7 @@
   "config_api_model_keys",
   "config_claude_code",
   "config_ui_assets",
+  "architecture_governance",
   "database",
   "sql_library",
   "language_messaging",
@@ -68,7 +69,8 @@
   config_app_core = list(first = "R/config_sso.R", last = "R/config_version_history.R", n = 7L),
   config_api_model_keys = list(first = "R/helpers_vision_model_capabilities.R", last = "R/helpers_api_key_password_toggle.R", n = 9L),
   config_claude_code = list(first = "R/config_claude_code.R", last = "R/config_claude_code_plugins.R", n = 2L),
-  config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_assets.R", n = 1L),
+  config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_asset_zones.R", n = 2L),
+  architecture_governance = list(first = "R/config_seam_registry.R", last = "R/config_seam_registry.R", n = 1L),
   database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 11L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
   language_messaging = list(first = "R/helpers_language.R", last = "R/helpers_messaging.R", n = 2L),
@@ -194,7 +196,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   env <- .load_source_manifest_env_for_sections()
   runtime <- get("source_manifest_runtime_paths", envir = env, inherits = FALSE)
 
-  expect_equal(length(runtime), 258L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 260L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

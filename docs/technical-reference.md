@@ -200,6 +200,13 @@ Bilge Yolaç bakım sınırında canlı akış yoklama, durdurma ve klavye gönd
 - `R/helpers_mcp_bootstrap.R` yalnızca MCP ortamını ve temel yol yardımcılarını hazırlar; downstream MCP helper dosyalarını gizli/dinamik biçimde source etmez.
 - Bu sözleşme `test-source-manifest-contract.R`, `test-global-source-manifest-contract.R` ve MCP refactor testleriyle korunur; amaç kullanıcı deneyimini değiştirmeden boot/load-order kırılganlığını azaltmaktır.
 
+### Seam kayıt defteri ve frontend bölge sahipliği (yönetişim katmanı)
+- Üretim-kritik sınırların sahipliği iki saf veri haritasında toplanır: `R/config_seam_registry.R` (12 seam: temel altyapı, DB/encoding, SSO/kimlik, API anahtarı/model, sohbet/LLM akışı, MCP/analiz, dosya yaşam döngüsü, medya/ses, Bilge Yolaç, destek/yönetici/sağlık, Shiny çalışma zamanı, frontend varlık) ve `R/config_ui_asset_zones.R` (23 frontend bölgesi).
+- Her source-manifest bölümü tam olarak bir seam'e aittir; her manifest CSS/JS varlığı tam olarak bir bölgeye aittir; her bölgenin tek sahibi bir seam ve en az bir guard testi vardır.
+- `R/` altında manifest + seam allowlist (`app.R`, `global.R`, `server.R`, `ui.R`, bootstrap/manifest dosyaları) dışında sahipsiz runtime R dosyası; `www/css|js` altında bölge ya da `ui_asset_unmanifested_ownership` kaydı olmayan dosya kalamaz.
+- Bu katman çalışma zamanı davranışını değiştirmez ve boot sırasında doğrulama çağırmaz; zorlamayı `tests/testthat/test-seam-registry-contract.R`, `tests/testthat/test-ui-asset-zones-contract.R`, `tests/testthat/test-seam-doctor-contract.R` ve operasyonel `tests/scripts/seam_doctor.R` (`tools/seam_doctor.sh`) yapar.
+- Yükleme sırasının tek sahibi `R/config_ui_assets.R` kalır; bölge haritası sırayı değil sahipliği bildirir. Ayrıntılı harita için `docs/architecture-map.md` bölümüne bakın.
+
 ### Derin Uzay Giriş Sahnesi Notları
 - Deep Space giriş sahnesi render sorumlulukları bakım sınırlarını korumak için üç dosyaya ayrılmıştır: `www/js/deep_space_intro.js` (orkestrasyon), `www/js/deep_space_intro_earth_shader.js` (Dünya shader ayarları) ve `www/js/deep_space_intro_solar.js` (Güneş/flare/halo/bloom).
 - `R/config_ui_assets.R` içindeki yükleme sırası korunmalıdır: önce `js/deep_space_intro_earth_shader.js`, sonra `js/deep_space_intro_solar.js`, en son `js/deep_space_intro.js`.
@@ -295,6 +302,9 @@ Uygulamadaki ana sayfalar aşağıdaki gibidir:
 - `tests/scripts/frontend_complexity_doctor.R`, mevcut bakım raporunu okuyarak insan-okur bir özet ve UTF-8 JSON artifact üretir.
 - Üretilen artifact yolu: `artifacts/frontend-complexity-doctor/frontend-complexity-doctor-*.json`
 - `www/smoke/ux-smoke-probes.js` smoke-only dosyadır; `R/config_ui_assets.R` production manifestine eklenmemelidir.
+- Manifestteki her CSS/JS varlığı `R/config_ui_asset_zones.R` içinde tam olarak bir frontend bölgesine atanır; manifest dışı bilinçli varlıklar (`app_loading*`, `admin_analytics.css`, smoke dosyaları) `ui_asset_unmanifested_ownership` kaydında gerekçesiyle sahiplenilir. Sahipsiz frontend dosyası `tests/testthat/test-ui-asset-zones-contract.R` testini düşürür.
+- Tema override kaskadı ve Bilge Yolaç CSS zinciri `ui_asset_css_order_rules` ile bildirilir ve `ui_asset_validate_css_order()` üzerinden hem boot doğrulamasında hem manifest sözleşme testinde zorlanır; açık tema cilası katman sırası artık yalnızca dondurulmuş vektörle değil, anlamlı ikili kurallarla da korunur.
+- Tarayıcı smoke zorlaması: `MERGEN_BROWSER_BIN` açıkça ayarlanmış ortamlarda `tests/scripts/ai_browser_ux_smoke.R` require modunu otomatik açar; sessiz SKIP devre dışıdır ve kullanılamayan binary yolu erken hata verir.
 - Bu mekanizma runtime davranışı değiştirmez; TTS/STT/müzik, streaming markdown güvenliği, Ana Söyleşi welcome, Bilge Yolaç ve browser smoke davranışları korunur.
 - Frontend runtime JS/CSS refactor'ı gerekiyorsa ayrı bir değişiklikte, küçük ve test destekli yapılmalıdır.
 

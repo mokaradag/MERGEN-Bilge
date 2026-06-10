@@ -76,6 +76,42 @@ Yeni bir runtime dosyası eklerken doğru bölüme, doğru sırada eklenmelidir.
 
 `R/config_ui_assets.R`, frontend asset sırasının tek görünür manifestidir. Encoding JS, Shiny message handler'ları ve Claude Code streaming dosyalarının sırası tarayıcı tarafı regresyonları önlemek için kritiktir. Uzun `page` CSS ve `deferred` JS manifestleri artık `ui_asset_flatten_groups(list(...))` içindeki named feature/layer bölümleriyle okunur; bu bölümler yalnızca onboarding amaçlıdır ve üretilen final CSS/JS vektör sırası `tests/testthat/test-ui-asset-manifest-contract.R` içindeki birebir sıra sözleşmesiyle korunur.
 
+## Seam Kayıt Defteri ve Frontend Bölge Sahipliği (Yönetişim Katmanı)
+
+Üretim-kritik sınırların sahipliği artık iki makine tarafından okunabilir haritada toplanır. Bu katman çalışma zamanı davranışını değiştirmez; saf veri + saf doğrulama yardımcılarından oluşur ve sözleşme testleriyle gerçekliğe karşı doğrulanır.
+
+| Yönetişim dosyası | İçerik | Koruyan test |
+|---|---|---|
+| `R/config_seam_registry.R` | 12 üretim-kritik seam: her seam'in sahiplendiği manifest bölümleri, manifest dışı runtime dosyaları, guard testleri, odaklı doğrulama komutları ve ilişkili seam'ler. | `tests/testthat/test-seam-registry-contract.R` |
+| `R/config_ui_asset_zones.R` | 23 frontend bölgesi: manifestteki HER CSS/JS varlığının tam olarak BİR bölgeye atanması, bölge başına sahip seam + guard testleri, manifest dışı (inline/smoke) varlıkların gerekçeli sahiplik kaydı. | `tests/testthat/test-ui-asset-zones-contract.R` |
+| `tests/scripts/seam_doctor.R` (`tools/seam_doctor.sh`) | Seam/bölge/manifest tutarlılığını raporlayan hafif operasyonel araç; `artifacts/seam-doctor/` altına secret-safe JSON artifact yazar. Ağır doğrulama çalıştırmaz. | `tests/testthat/test-seam-doctor-contract.R` |
+
+Seam listesi (id -> sahiplenilen manifest bölümleri):
+
+| Seam | Manifest bölümleri | Örnek guard testleri |
+|---|---|---|
+| `temel_altyapi` | `foundation`, `post_future_utils`, `config_app_core`, `architecture_governance` (+ `app.R`, `global.R`, bootstrap/manifest dosyaları) | source-manifest + production contracts |
+| `veritabani_kodlama` | `database`, `sql_library` | DB normalization/refactor, text-encoding |
+| `kimlik_sso` | `sso_identity_helpers`, `module_identity_startup` | JWT imza, fail-closed yetkilendirme, SSO readiness |
+| `api_anahtar_model` | `config_api_model_keys`, `module_settings_api_key` | config-api split, anahtar kripto, anahtar modalı |
+| `sohbet_llm_akis` | `language_messaging`, `chat_send_message_runtime`, `summarization_followup`, `llm_pipeline`, `module_chat`, `server_handlers_send_message` | istek yaşam döngüsü, stream I/O, markdown güvenliği |
+| `mcp_analiz` | `mcp_tools`, `chartlab_helpers`, `analysis_helpers`, `module_analysis` | MCP excel/bootstrap, PK analiz RLS |
+| `dosya_yasam_dongusu` | `files_preview_pipeline`, `file_manager_helpers`, `module_files_media` | dosya lifecycle, çözümleme güvenliği, upload doğrulama |
+| `medya_ses` | `ai_expert_helpers`, `module_ai_audio` | ses yaşam döngüsü, TTS autoplay koruması |
+| `bilge_yolac` | `config_claude_code`, `claude_code_helpers`, `module_claude_code` | güvenlik politikası, run lifecycle, stream HTML güvenliği |
+| `destek_yonetici_saglik` | `support_admin_health_helpers`, `module_support`, `module_admin`, `module_health_chartlab` | admin refactor sözleşmeleri, sağlık panosu |
+| `shiny_calisma_zamani` | `server_init_runtime`, `server_core_outputs_welcome`, `server_observers` (+ `server.R`, `ui.R`) | runtime context, core interaction/observer, module wiring |
+| `frontend_varlik` | `config_ui_assets` | UI asset manifest, bölge sözleşmesi, frontend ratchet |
+
+Disiplin kuralları:
+
+- Her source-manifest bölümü tam olarak bir seam'e aittir; sahipsiz bölüm veya çift sahiplik sözleşme testini düşürür.
+- `R/` altında manifest + seam allowlist dışında sahipsiz runtime R dosyası kalamaz.
+- `www/css/` ve `www/js/` altındaki her fiziksel dosya ya manifest üzerinden bir bölgeye ya da `ui_asset_unmanifested_ownership` kaydına (gerekçesiyle) bağlanır.
+- Yükleme sırasının tek sahibi `R/config_ui_assets.R` kalır; bölge haritası sırayı DEĞİL sahipliği bildirir.
+- Tema override kaskadı (tokens -> light -> extras -> modüller -> overhaul -> user_polish) ve Bilge Yolaç CSS zinciri artık `ui_asset_css_order_rules` ile makine doğrulamalıdır; `ui_asset_validate_css_order()` JS sıra kuralları gibi UI render edilmeden önce çalışır.
+- Yeni seam/bölge eklemek bilinçli bir karardır: dondurulmuş id listeleri ve bu belge birlikte güncellenir.
+
 ## Kritik Korunan Sınırlar
 
 | Sınır | Neden kritik? | Önce okunacak belge/dosya |
@@ -90,7 +126,8 @@ Yeni bir runtime dosyası eklerken doğru bölüme, doğru sırada eklenmelidir.
 | SSO/JWT sınırı | Üretimde fail-closed davranış ve imza doğrulaması önemlidir. | `R/config_sso.R`, `R/helpers_sso_signature.R`, [`../RUNBOOK.md`](../RUNBOOK.md) |
 | Bağımlılık kilitleme / renv | `renv.lock` üretimi Windows VM/on-prem kuralına bağlıdır. | [`dependency-locking.md`](dependency-locking.md), [`../RENV_LOCK_STATUS.md`](../RENV_LOCK_STATUS.md) |
 | Doğrulama kanıtı | `cloud-quick` ile tam VM doğrulaması aynı şey değildir. | [`../CLAUDE.md`](../CLAUDE.md), [`../RUNBOOK.md`](../RUNBOOK.md), `tools/ai_validate.sh` |
-| Maintainability ratchet ve browser smoke | Frontend karmaşıklığı ve UX regresyonları kontrollü tutulur. | `tests/scripts/frontend_complexity_doctor.R`, `tests/scripts/ai_browser_ux_smoke.R` |
+| Maintainability ratchet ve browser smoke | Frontend karmaşıklığı ve UX regresyonları kontrollü tutulur. `MERGEN_BROWSER_BIN` açıkça verilmişse browser smoke artık bloklayıcıdır (sessiz SKIP yok). | `tests/scripts/frontend_complexity_doctor.R`, `tests/scripts/ai_browser_ux_smoke.R` |
+| Seam/bölge sahiplik yönetişimi | Üretim-kritik sınırların sahipliği, guard testleri ve manifest disiplini tek haritadan doğrulanır. | `R/config_seam_registry.R`, `R/config_ui_asset_zones.R`, `tests/scripts/seam_doctor.R` |
 
 ## Ana Dizinler
 
@@ -113,7 +150,8 @@ Yeni bir runtime dosyası eklerken doğru bölüme, doğru sırada eklenmelidir.
 | DB helper'ları veya SQL bağlantısı | [`../CLAUDE.md`](../CLAUDE.md) encoding/DB kuralları, [`database-schema.md`](database-schema.md), `R/helpers_db_unicode_escape.R`, `R/helpers_db_encoding.R`, `R/helpers_db_connection.R`. |
 | Dosya upload/preview/file manager | Bu dosyanın dosya lifecycle bölümü, `R/helpers_file_*`, `R/module_file_manager*.R`, ilgili testler. |
 | Model routing, tool model veya vision | `R/config_api.R`, `R/helpers_api_model_config.R`, `R/helpers_vision_model_capabilities.R`, [`release-notes.md`](release-notes.md). |
-| UI asset veya tema | `R/config_ui_assets.R`, `www/css/`, `www/js/`, asset manifest/front-end testleri. |
+| UI asset veya tema | `R/config_ui_assets.R`, `R/config_ui_asset_zones.R`, `www/css/`, `www/js/`, asset manifest/bölge/front-end testleri. |
+| Yeni runtime R dosyası veya frontend varlığı | Bu belgenin seam/bölge bölümü, `R/config_seam_registry.R`, `R/config_ui_asset_zones.R`, `tests/testthat/test-seam-registry-contract.R`, `tests/testthat/test-ui-asset-zones-contract.R`. |
 | Streaming veya Markdown/HTML güvenliği | `R/helpers_llm_sse*.R`, `R/helpers_markdown_safety.R`, `www/js/claude_code_streaming.js`, [`../CLAUDE.md`](../CLAUDE.md). |
 | TTS/STT veya AI Uzman konuşması | `R/helpers_ai_expert.R`, `R/helpers_ai_expert_chunking.R`, API key helper'ları ve `.Renviron.example`. |
 | SSO veya kimlik | `R/config_sso.R`, `R/helpers_sso.R`, `R/helpers_sso_signature.R`, [`../RUNBOOK.md`](../RUNBOOK.md). |
