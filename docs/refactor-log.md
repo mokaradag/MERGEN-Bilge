@@ -6,6 +6,66 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-09 — Sidebar kullanıcı paneli saf görünüm yardımcılarının ayrılması
+
+### Seçilen iz(ler)
+- **Track B — Complex runtime kodundan saf yardımcı çıkarımı** (`R/module_sidebar_user_panel.R` → `R/helpers_sidebar_user_display.R`).
+- Tamamlayıcı: dosya, 24-fonksiyon küresel ratchet tavanında oturan üç dosyadan biriydi; bölünme bu dosyayı tavandan indirir ve korunan Departman/tema/iskelet sözleşmelerine bağımsız test edilebilir bir sahip verir.
+
+### Özet ve gerekçe
+`R/module_sidebar_user_panel.R` (581 satır / 24 fonksiyon) saf görünüm kararlarını (Türkçe-güvenli baş harf üretimi, avatar URL placeholder reddi, korunan `Departman → departman → department` seçim sırası, tema anahtarı/kontrol satırı/kullanıcı rozeti HTML üreticileri) Shiny render/observer orkestrasyonuyla aynı dosyada taşıyordu. Dosya küresel 24-fonksiyon tavanında oturduğundan, panele eklenecek herhangi bir küçük yardımcı küresel ratchet'i kırardı.
+
+Altı saf yardımcı (`mb_sidebar_user_initials`, `mb_sidebar_user_avatar_url`, `mb_sidebar_user_department`, `mb_sidebar_theme_switch`, `mb_sidebar_controls_row`, `mb_sidebar_user_badge_ui`) birebir `R/helpers_sidebar_user_display.R` dosyasına taşındı. Modül; UI kabuğu (`mb_sidebar_user_panel_ui`), logout olayı (`mb_sidebar_handle_logout_event`) ve server render (`mb_sidebar_user_panel_server`) sorumluluklarına odaklı kaldı. Üretilen tag ağacı, sınıf adları, logout onclick JS'i ve iskelet davranışı bayt-denk korunur.
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_sidebar_user_display.R` (yeni, 285 satır / 9 fonksiyon) — altı saf görünüm yardımcısı, roxygen açıklamalarıyla birlikte birebir taşındı.
+- `R/module_sidebar_user_panel.R` — taşınan tanımlar kaldırıldı; başlığa yeni sahiplik notu eklendi. **581 → 316 satır / 24 → 15 fonksiyon.**
+- `R/config_source_manifest.R` — `module_identity_startup` bölümüne helper, modülden hemen önce eklendi (10 → 11 dosya).
+
+**Test**
+- `tests/testthat/test-sidebar-user-display-split-contract.R` (yeni, 32 assertion) — helper varlığı/yüzeyi, manifest sırası (helper → modül), taşınan tanımların modüle geri dönmemesi, modülün orkestrasyon sorumluluklarını korunması, helper'ın Shiny-bağsız kalması ve davranış sözleşmeleri (Türkçe baş harf, Departman sırası, Mudurluk reddi, placeholder avatar reddi).
+- `tests/testthat/test-sidebar-user-panel-behavior.R` — bootstrap'e helper source eklendi (12 assertion değişmeden geçer).
+- `tests/testthat/test-sidebar-departman-contract.R` — izole yükleyici helper'ı da source eder; `pick("Departman")` statik taraması yeni sahibe (helper dosyası) yönlendirildi; Mudurluk negatif taraması her İKİ dosyada da korunur (16 assertion).
+- `tests/testthat/test-sidebar-theme-sync-contract.R` — tema butonu attribute taraması yeni sahibe yönlendirildi (19 assertion).
+- `tests/testthat/test-source-manifest-sections-contract.R` — `module_identity_startup` n 10→11, toplam 257→258.
+- `tests/testthat/test-maintainability-ratchet.R` — yeni dosya-özel bütçeler: modül 360L/17F, helper 320L/11F (24-fonksiyon tavanına geri tırmanma kilitlendi).
+
+**Dokümantasyon**
+- `CLAUDE.md` — sidebar ownership satırı iki dosyalı yapıya güncellendi; korunan test listesine split sözleşmesi eklendi.
+- `docs/technical-reference.md` — sidebar notuna saf yardımcı sınırı eklendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: tek dosyada saf karar + Shiny orkestrasyon karışımı; dosya 24-fonksiyon küresel tavanında; Departman/tema sözleşmeleri yalnızca modül-dosyası statik taramasıyla korunuyordu.
+- Sonra: saf yardımcılar Shiny olmadan source edilip test edilebilir; modül 15 fonksiyona indi; her iki dosya dosya-özel bütçeyle kilitli. Küresel 24-fonksiyon tavanı İKİ başka dosya (`helpers_file_manager_runtime.R`, `helpers_health_formatters.R`) tarafından tutulduğu için küresel değer BİLEREK sıkılaştırılmadı (dürüst sınır: bu oturum yalnızca sidebar'ı tavandan indirir).
+
+### Korunan davranış sözleşmeleri
+- Üretilen HTML/tag ağacı, sınıf adları (`mb-sidebar-*`, `theme-switch-*`), `data-mergen-theme-toggle` attribute'u, logout onclick JS'i ve `mergen_sidebar_logout` Shiny olayı birebir aynı.
+- Departman seçim sırası `Departman → departman → department`; `Mudurluk` görünür alan olarak ASLA seçilmez (statik + davranışsal olarak iki dosyada da doğrulanır).
+- İskelet/instant-render sözleşmesi: `mb-sidebar-user-skeleton`, `mb-sidebar-controls-skeleton`, slot-output sınıfları ve `mb_sidebar_controls_row(show_logout = FALSE)` çağrısı modülde kaldı (test anchorsları değişmedi).
+- Görünür sürüm tek kaynağı `get_app_version_label()` modülde; tema senkronizasyonu, SSO auth-ready yeniden render ve `suspendWhenHidden = FALSE` davranışı dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni split sözleşmesi (32), sidebar davranış (12), sidebar server davranış (20), departman (16), tema-sync (19), instant-render (11), version-single-source (11), logout-url (33), source manifest (165), sections (150), global manifest (12), maintainability ratchet (168), network boundary (2), secret leak (8), production contracts (21), e2e boot/welcome (29), UX guardrails (28).
+- İlk tam koşu, taşınan tanımlara modül dosyasında bakan iki ek statik sözleşmeyi yakaladı (`test-logout-url-contract.R` çıkış-butonu taraması ve `test-sidebar-user-panel-server-behavior.R` izole source); her ikisi yeni sahibe yönlendirildi/bootstrap'e helper eklendi — davranış sözleşmeleri zayıflatılmadı.
+- `bash tools/ai_validate.sh full --boot-smoke` (düzeltme sonrası) → geçti; **tam strict testthat suite geçti**, Shiny boot smoke geçti, `failed_steps: 0`, `skipped_steps: 0` (browser UX smoke container'da tarayıcı olmadığından bloklamayan SKIP). Artifact: `artifacts/ai-validation/20260610-031858/summary.json`.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; modül 316/15, helper 285/9.
+- Tüm komutlar `LANG=C.UTF-8 LC_ALL=C.UTF-8` ile çalıştırıldı.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Uygulamayı normal Windows VM launcher ile başlatın; sol menü altındaki kullanıcı panelinin İLK renderda iskeletle birlikte geldiğini doğrulayın.
+- SSO girişi sonrası ad/avatar ve Departman değerinin (MB_Users) doğru göründüğünü; Türkçe karakterli adların baş harflerinin bozulmadığını doğrulayın.
+- Tema düğmesine tıklayın: koyu/açık geçişin çalıştığını ve etiketin güncellendiğini doğrulayın; sidebar yeniden render sonrası düğmenin çalışmaya devam ettiğini kontrol edin.
+- `MERGEN_LOGOUT_URL` tanımlıysa çıkış butonunun göründüğünü, tıklayınca konsola logout logunun düştüğünü ve tarayıcının hedef URL'ye gittiğini doğrulayın.
+- Sürüm satırının doğru sürümü gösterdiğini kontrol edin.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Küresel 24-fonksiyon ratchet değeri sıkılaştırılMAdı; tavanı hâlâ `helpers_file_manager_runtime.R` ve `helpers_health_formatters.R` tutuyor (her ikisi de belgelenmiş yoğun-tasarım dosyaları; ayrı oturum kararı gerektirir).
+- Windows VM launcher ve gerçek tarayıcı/SSO doğrulaması bu cloud oturumunda çalıştırılmadı; sidebar SSO yeniden render davranışı için kullanıcı tarafı QA gereklidir.
+
+---
+
 ## 2026-06-09 — config_api.R baş boşluğu: Derin Düşünme kayıt konsolidasyonu + API anahtarı kripto katmanı ayrımı
 
 ### Seçilen iz(ler)

@@ -1,8 +1,9 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-sidebar-user-panel-behavior.R
-# Açıklama: R/module_sidebar_user_panel.R saf yardımcılarının davranışsal
-#           testleri: mb_sidebar_user_initials (ad -> baş harfler, Türkçe güvenli)
+# Açıklama: Sidebar kullanıcı paneli saf yardımcılarının davranışsal testleri:
+#           mb_sidebar_user_initials (ad -> baş harfler, Türkçe güvenli)
 #           ve mb_sidebar_user_avatar_url (placeholder kullanıcı id reddi).
+#           Saf yardımcılar artık R/helpers_sidebar_user_display.R içindedir.
 #           turkish_toupper'ın gerçek davranışı için module_user_identity de
 #           aynı ortama yüklenir.
 # ==============================================================================
@@ -12,6 +13,7 @@ testthat::local_edition(3)
 .sb_env <- new.env(parent = globalenv())
 # first_char() turkish_toupper'ı kullanır; gerçek yolu test etmek için yükle.
 source(file.path(resolve_repo_root_for_tests(), "R", "module_user_identity.R"), encoding = "UTF-8", local = .sb_env)
+source(file.path(resolve_repo_root_for_tests(), "R", "helpers_sidebar_user_display.R"), encoding = "UTF-8", local = .sb_env)
 source(file.path(resolve_repo_root_for_tests(), "R", "module_sidebar_user_panel.R"), encoding = "UTF-8", local = .sb_env)
 
 # -----------------------------------------------------------------------------

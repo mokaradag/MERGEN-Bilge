@@ -327,8 +327,8 @@ source_manifest_sections <- list(
 
   # module_identity_startup: Kimlik/başlangıç modülleri: SSO, oturum zaman
   # aşımı, performans, kullanıcı kimliği, boot hazırlığı, başlangıç ekranı,
-  # yükleme overlay, araç arka planı, kenar çubuğu kullanıcı paneli ve hızlı
-  # eylemler.
+  # yükleme overlay, araç arka planı, kenar çubuğu kullanıcı paneli (saf
+  # görünüm yardımcıları + modül) ve hızlı eylemler.
   module_identity_startup = c(
     "R/module_sso.R",
     "R/module_session_timeout.R",
@@ -338,6 +338,7 @@ source_manifest_sections <- list(
     "R/module_startup_screen.R",
     "R/module_app_loading.R",
     "R/module_tool_background_settings.R",
+    "R/helpers_sidebar_user_display.R",
     "R/module_sidebar_user_panel.R",
     "R/module_quick_actions.R"
   ),

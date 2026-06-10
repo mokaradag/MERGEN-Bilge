@@ -164,9 +164,11 @@ test_that("theme_manager.js etiket metni Koyu Tema/Acik Tema kullanir", {
   )
 })
 
-test_that("module_sidebar_user_panel.R tema butonu data attribute'unu tasir", {
-  txt <- .read_repo_text_sidebar_theme_sync("R/module_sidebar_user_panel.R")
-  expect_true(nzchar(txt), info = "R/module_sidebar_user_panel.R okunamadi.")
+test_that("sidebar tema butonu data attribute'unu tasir", {
+  # mb_sidebar_theme_switch() artik R/helpers_sidebar_user_display.R
+  # dosyasinin sahipligindedir; statik tarama yeni sahibe bakar.
+  txt <- .read_repo_text_sidebar_theme_sync("R/helpers_sidebar_user_display.R")
+  expect_true(nzchar(txt), info = "R/helpers_sidebar_user_display.R okunamadi.")
 
   expect_true(
     grepl("`data-mergen-theme-toggle` = \"true\"", txt, fixed = TRUE),

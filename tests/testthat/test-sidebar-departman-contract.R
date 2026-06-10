@@ -75,6 +75,13 @@
     env$get_current_version <- function() "?"
   }
 
+  # Saf görünüm yardımcıları (Departman seçimi dahil) ayrı dosyadadır ve
+  # manifest sırasına uygun olarak modülden ÖNCE yüklenir.
+  helper_path <- file.path(repo_root, "R", "helpers_sidebar_user_display.R")
+  if (!file.exists(helper_path)) {
+    stop("R/helpers_sidebar_user_display.R yok: ", helper_path, call. = FALSE)
+  }
+  source(helper_path, local = env, encoding = "UTF-8")
   source(module_path, local = env, encoding = "UTF-8")
   env
 }
@@ -207,11 +214,14 @@ test_that("mb_sidebar_user_badge_ui() bos Departman icin temiz Turkce yedek meti
   enc2utf8(txt)
 }
 
-test_that("module_sidebar_user_panel.R Mudurluk'u GORUNUR alan olarak secmez", {
+test_that("sidebar gorunum yardimcisi Mudurluk'u GORUNUR alan olarak secmez", {
   repo_root <- .repo_root_sidebar_dept()
-  module_path <- file.path(repo_root, "R", "module_sidebar_user_panel.R")
-  txt <- .read_repo_bytes_sidebar_dept(module_path)
-  expect_true(nzchar(txt), info = "R/module_sidebar_user_panel.R okunamadi.")
+
+  # mb_sidebar_user_department() artik R/helpers_sidebar_user_display.R
+  # dosyasinin sahipligindedir; statik tarama yeni sahibe bakar.
+  helper_path <- file.path(repo_root, "R", "helpers_sidebar_user_display.R")
+  txt <- .read_repo_bytes_sidebar_dept(helper_path)
+  expect_true(nzchar(txt), info = "R/helpers_sidebar_user_display.R okunamadi.")
 
   # mb_sidebar_user_department helper'i Departman/departman/department
   # alanlarini secmeli; mudurluk gorunur alan olarak DEGIL.
@@ -232,5 +242,15 @@ test_that("module_sidebar_user_panel.R Mudurluk'u GORUNUR alan olarak secmez", {
   expect_false(
     grepl('pick("Mudurluk")', txt, fixed = TRUE, useBytes = TRUE),
     info = "Mudurluk gorunur alan olarak secilmemelidir."
+  )
+
+  # Modul dosyasi da Mudurluk'u gorunur alana dusurmemelidir (negatif tarama
+  # her iki dosyada da korunur).
+  module_txt <- .read_repo_bytes_sidebar_dept(
+    file.path(repo_root, "R", "module_sidebar_user_panel.R")
+  )
+  expect_false(
+    grepl('pick("Mudurluk")', module_txt, fixed = TRUE, useBytes = TRUE),
+    info = "Modul dosyasi Mudurluk'u gorunur alan olarak secmemelidir."
   )
 })

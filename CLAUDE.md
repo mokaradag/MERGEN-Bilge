@@ -632,7 +632,7 @@ Preferred validation escalation:
 
 ### Sidebar user panel, Department, and version source contract
 
-- Sidebar user panel ownership: `R/module_sidebar_user_panel.R` and `www/css/sidebar_user_panel.css`.
+- Sidebar user panel ownership: `R/helpers_sidebar_user_display.R` (pure display/decision helpers: `mb_sidebar_user_initials()`, `mb_sidebar_user_avatar_url()`, `mb_sidebar_user_department()`, `mb_sidebar_theme_switch()`, `mb_sidebar_controls_row()`, `mb_sidebar_user_badge_ui()`), `R/module_sidebar_user_panel.R` (UI shell, logout event, server render orchestration), and `www/css/sidebar_user_panel.css`. Keep the display helper loaded before the module in `R/config_source_manifest.R`; do not move the pure helpers back into the module (it previously sat at the 24-function global ratchet ceiling). The split is protected by `tests/testthat/test-sidebar-user-display-split-contract.R`.
 - It displays live identity-derived name/avatar, Department, theme button, version, and optional SSO logout.
 - Initial render must keep the static skeleton/slot-output behavior so theme/user/logout controls do not appear late or disappear.
 - After SSO completes, the sidebar user panel must bind to the live `user_config_rv()` value, not only to isolated session/userData fallbacks, so the user badge re-renders when the authenticated profile is ready.
@@ -642,7 +642,7 @@ Preferred validation escalation:
 - Department selection order is `Departman`, `departman`, then `department`; do not fall back to `Mudurluk`.
 - Long Department text must remain safely truncated/wrapped with title tooltip behavior.
 - Visible version must use `get_app_version_label()` from `R/config_version_history.R`; do not reintroduce `getOption("mergen.version", ...)` as the primary source for visible UI version.
-- Protected tests: `test-sidebar-theme-sync-contract.R`, `test-sidebar-departman-contract.R`, `test-sidebar-instant-render-contract.R`, and `test-version-single-source-contract.R`.
+- Protected tests: `test-sidebar-theme-sync-contract.R`, `test-sidebar-departman-contract.R`, `test-sidebar-instant-render-contract.R`, `test-sidebar-user-display-split-contract.R`, and `test-version-single-source-contract.R`.
 
 ### Brand title single-source contract
 

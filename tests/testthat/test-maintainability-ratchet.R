@@ -281,6 +281,11 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
 
   assert_file_budget("R/module_admin_geri_bildirim.R", 799L, 5L)
   assert_file_budget("R/helpers_admin_geri_bildirim_queries.R", 260L, 3L)
+  # Sidebar kullanıcı paneli bölünmesi: saf görünüm yardımcıları
+  # helpers_sidebar_user_display.R içindedir; modül Shiny orkestrasyonuna
+  # odaklı kalır. 24-fonksiyon tavanına geri tırmanmayı engeller.
+  assert_file_budget("R/module_sidebar_user_panel.R", 360L, 17L)
+  assert_file_budget("R/helpers_sidebar_user_display.R", 320L, 11L)
   # config_api.R bölünmesi sonrası sıkılaştırılmış bütçe: Derin Düşünme yetenek
   # kaydı helpers_deep_thinking_model_capabilities.R, API anahtarı kripto katmanı
   # helpers_api_key_crypto.R içindedir; bu dosyaya geri taşınarak bütçe tüketilemez.

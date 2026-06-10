@@ -1,0 +1,285 @@
+# ============================================================
+# Başlık: Sidebar Kullanıcı Paneli Saf Görünüm Yardımcıları
+# Dosya: R/helpers_sidebar_user_display.R
+# Açıklama: Kenar çubuğu kullanıcı panelinin SAF görünüm/karar yardımcıları:
+#           baş harf üretimi, avatar URL çözümü, Departman alan seçimi
+#           (Departman -> departman -> department; Mudurluk ASLA görünür alan
+#           olarak seçilmez), tema anahtarı, kontrol satırı ve kullanıcı rozeti
+#           HTML üreticileri. R/module_sidebar_user_panel.R'den taşınmıştır;
+#           fonksiyon adları ve üretilen tag ağacı birebir korunur.
+#
+#           Bu dosya Shiny output/observer/reaktif durum içermez; yalnızca
+#           girdi -> tag/karakter dönüşümü yapar. Modül (UI kabuğu, logout
+#           olayı, server render) R/module_sidebar_user_panel.R içinde kalır.
+# ============================================================
+
+#' Kullanıcı baş harflerini güvenli şekilde üret
+#'
+#' @description SSO veya yerel kullanıcı tam adından/ad bilgisinden iki harfli
+#'   güvenli bir kısaltma üretir. Türkçe karakterler büyütülürken
+#'   bozulmamalıdır.
+#'
+#' @param full_name Tam ad (örn. "Mustafa Karadağ")
+#' @param first_name Yedek olarak ilk ad (örn. "Mustafa")
+#' @return Baş harf (örn. "MK")
+mb_sidebar_user_initials <- function(full_name = NULL, first_name = NULL) {
+  pick <- function(value) {
+    if (is.null(value)) return("")
+    value <- trimws(as.character(value)[1])
+    if (is.na(value) || !nzchar(value)) return("")
+    value
+  }
+
+  primary <- pick(full_name)
+  if (!nzchar(primary)) {
+    primary <- pick(first_name)
+  }
+
+  if (!nzchar(primary)) {
+    return("MB")
+  }
+
+  parts <- strsplit(primary, "\\s+", perl = TRUE)[[1]]
+  parts <- parts[nzchar(parts)]
+  if (length(parts) == 0L) {
+    return("MB")
+  }
+
+  first_char <- function(token) {
+    if (!nzchar(token)) return("")
+    # Tek karakterli baş harf; Türkçe karakter bozulmasın
+    if (exists("turkish_toupper", mode = "function", inherits = TRUE)) {
+      return(turkish_toupper(substring(token, 1L, 1L)))
+    }
+    toupper(substring(token, 1L, 1L))
+  }
+
+  if (length(parts) >= 2L) {
+    initials <- paste0(first_char(parts[1L]), first_char(parts[length(parts)]))
+  } else {
+    initials <- first_char(parts[1L])
+  }
+
+  if (!nzchar(initials)) {
+    return("MB")
+  }
+  substring(initials, 1L, 2L)
+}
+
+#' Kullanıcı görsel URL'sini güvenli şekilde çöz
+#'
+#' @description Sohbet baloncuklarında kullanılan kullanıcı avatar URL
+#'   şablonu burada da paylaşılır. URL yüklenemezse istemci tarafında
+#'   onerror ile baş harf yedek ekrana geçilir.
+#'
+#' @param user_id Sayısal/karakter kullanıcı kimliği (sicil veya iç ID)
+#' @return Karakter URL ya da boş dize
+mb_sidebar_user_avatar_url <- function(user_id) {
+  if (is.null(user_id)) return("")
+  user_id <- as.character(user_id)[1]
+  if (is.na(user_id) || !nzchar(user_id) || user_id %in% c("0", "unknown")) {
+    return("")
+  }
+  paste0("https://url......./", user_id, ".jpg")
+}
+
+#' Departman değerini güvenli şekilde çöz
+#'
+#' @description user_config nesnesinde MB_Users Departman alanını öncelikli
+#'   olarak okur. Bilinen alternatif alan adlarını (`Departman`, `departman`,
+#'   `department`) tolere eder. Değer yoksa boş dize döner.
+#'
+#'   Bu helper yeni bir DB sorgusu açmaz: kimlik kurulduğunda
+#'   `build_user_session_config()` zaten Departman değerini user_config'e
+#'   yerleştirir (SSO claim `department` veya `Departman`).
+#'
+#' @param user_cfg user_config listesi (NULL olabilir)
+#' @return Karakter (boş dize olabilir)
+mb_sidebar_user_department <- function(user_cfg = NULL) {
+  if (is.null(user_cfg)) return("")
+  if (!is.list(user_cfg)) return("")
+
+  pick <- function(key) {
+    val <- user_cfg[[key]]
+    if (is.null(val)) return("")
+    val <- as.character(val)[1]
+    if (is.na(val)) return("")
+    trimws(val)
+  }
+
+  # Tercih sırası: Departman -> departman -> department
+  candidates <- c(pick("Departman"), pick("departman"), pick("department"))
+  for (c in candidates) {
+    if (nzchar(c)) {
+      return(c)
+    }
+  }
+  ""
+}
+
+#' Sidebar kullanıcı paneli için tema anahtarı bileşeni
+#'
+#' @description Kompakt tek-satır tema butonu. Eski "switch track + thumb"
+#'   görseli kaldırıldı; ikon + etiket yeterli. Etiket "Koyu Tema" ile
+#'   başlar; istemci tarafı tema durumuna göre "Açık Tema" olarak
+#'   güncellenir.
+#'
+#' @return Shiny tag (button)
+mb_sidebar_theme_switch <- function() {
+  tags$button(
+    type = "button",
+    class = "mb-theme-switch-btn",
+    `data-mergen-theme-toggle` = "true",
+    `aria-pressed` = "false",
+    `aria-label` = "Temayı değiştir",
+    title = "Temayı değiştir",
+    tags$span(
+      class = "theme-switch-icons",
+      tags$i(class = "fas fa-sun theme-switch-sun"),
+      tags$i(class = "fas fa-moon theme-switch-moon is-active")
+    ),
+    tags$span(class = "theme-switch-label", "Koyu Tema")
+  )
+}
+
+#' Sidebar kompakt kontrol satırı (tema butonu + opsiyonel çıkış)
+#'
+#' @description Tema butonu büyük, çıkış butonu küçük; aynı satırda yer alır.
+#'   Çıkış butonu yalnızca yapılandırılmış logout URL'si mevcutsa render
+#'   edilir.
+#'
+#' Çıkış davranışı sözleşmesi:
+#'   - Kullanıcı çıkış butonuna bastığında DOĞRUDAN `.Renviron` üzerinden
+#'     gelen MERGEN_LOGOUT_URL adresine yönlendirilir.
+#'   - Hiçbir ara Keycloak logout akışı çalıştırılmaz; aksi halde tarayıcı
+#'     uygulamanın yükleme ekranına geri dönüyordu.
+#'   - URL boşsa buton zaten render edilmez (server tarafı koşulu).
+#'   - `window.ssoLogout` çağrılmaz çünkü o akış çıkıştan sonra uygulamayı
+#'     yeniden açıyordu; istek bunu önlemektir.
+#'
+#' @param show_logout Mantıksal; çıkış URL'si yapılandırılmış mı?
+#' @param logout_url .Renviron'dan çözümlenmiş hedef URL (boş olabilir)
+#' @return Shiny div
+mb_sidebar_controls_row <- function(show_logout = FALSE, logout_url = "") {
+  logout_btn <- if (isTRUE(show_logout)) {
+    # Çıkış URL'si .Renviron (MERGEN_LOGOUT_URL) tarafından kontrol edilir.
+    # Buton tıklandığında SSO ara adımı atlanır; tarayıcı doğrudan URL'ye
+    # yönlendirilir. Bu hem yerel kurumsal portal hem SSO/Keycloak hem de
+    # özel bir landing sayfası senaryosunu basit ve öngörülebilir kılar.
+    safe_url <- ""
+    if (is.character(logout_url) && length(logout_url) == 1 &&
+        !is.na(logout_url) && nzchar(logout_url)) {
+      # JS string olarak gömerken tek tırnak ve geri eğik çizgi kaçırma
+      safe_url <- gsub("'", "\\\\'",
+                       gsub("\\\\", "\\\\\\\\", logout_url, fixed = FALSE),
+                       fixed = FALSE)
+    }
+    onclick_js <- if (nzchar(safe_url)) {
+      # Tarayıcı yönlendirmeden ÖNCE Shiny tarafına bir oturum-kapatma
+      # olayı gönderilir. Sunucu tarafındaki observeEvent bu olayı görür,
+      # konsola logout işlemini yazar ve mevcut Shiny oturumunu kapatır.
+      # Bu sayede kullanıcı redirect olduktan sonra Shiny oturumu da
+      # gerçekten sonlandırılır (sızıntı önlenir, doğrulama mümkün olur).
+      paste0(
+        "try{if(window.Shiny&&window.Shiny.setInputValue){",
+        "Shiny.setInputValue('mergen_sidebar_logout',new Date().getTime(),{priority:'event'});",
+        "console.log('[MERGEN] Logout button clicked, redirecting to logout URL.');",
+        "}}catch(e){console.warn('[MERGEN] Logout signal failed:',e);}",
+        "setTimeout(function(){window.location.href='", safe_url, "';},150);"
+      )
+    } else {
+      # URL yoksa buton hiç render edilmemeli; emniyet için boş işlem.
+      "void(0);"
+    }
+
+    tags$button(
+      type = "button",
+      class = "mb-sidebar-logout-btn",
+      title = "Oturumu kapat",
+      `aria-label` = "Oturumu kapat",
+      `data-logout-url` = if (nzchar(safe_url)) logout_url else NULL,
+      onclick = onclick_js,
+      tags$i(class = "fas fa-right-from-bracket")
+    )
+  } else {
+    NULL
+  }
+
+  tags$div(
+    class = "mb-sidebar-controls-row",
+    mb_sidebar_theme_switch(),
+    logout_btn
+  )
+}
+
+#' Sidebar kullanıcı bilgisi render bileşeni
+#'
+#' @description Kullanıcı tam adı, baş harf ve avatar yedeğini üreten saf
+#'   UI fonksiyonudur. SSO/yerel ayrımı çağıran tarafta yapılır. Çıkış
+#'   butonu burada değil, ayrı kontrol satırında gösterilir (alan tasarrufu).
+#'
+#' @param full_name Görünür tam ad
+#' @param first_name İlk ad (yedek)
+#' @param user_id Avatar URL'sini üretmek için ID
+#' @param department Görünür Departman metni (uzun olabilir; CSS ile ellipsis)
+#' @return Shiny div
+mb_sidebar_user_badge_ui <- function(full_name = NULL,
+                                     first_name = NULL,
+                                     user_id = NULL,
+                                     department = NULL) {
+  display_name <- if (!is.null(full_name) && nzchar(as.character(full_name)[1])) {
+    as.character(full_name)[1]
+  } else if (!is.null(first_name) && nzchar(as.character(first_name)[1])) {
+    as.character(first_name)[1]
+  } else {
+    "Yerel Kullanıcı"
+  }
+
+  initials <- mb_sidebar_user_initials(full_name = display_name,
+                                       first_name = first_name)
+  avatar_url <- mb_sidebar_user_avatar_url(user_id)
+
+  avatar_inner <- if (nzchar(avatar_url)) {
+    tagList(
+      tags$img(
+        src = avatar_url,
+        alt = display_name,
+        onerror = "this.style.display='none'; var p=this.parentElement; if(p){var f=p.querySelector('.mb-sidebar-user-avatar-fallback'); if(f){f.style.display='flex';}}"
+      ),
+      tags$span(class = "mb-sidebar-user-avatar-fallback",
+                style = "display:none;",
+                initials)
+    )
+  } else {
+    tags$span(class = "mb-sidebar-user-avatar-fallback", initials)
+  }
+
+  dept_text <- if (is.null(department)) "" else trimws(as.character(department)[1])
+
+  dept_tag <- if (nzchar(dept_text)) {
+    tags$span(
+      class = "mb-sidebar-user-department",
+      title = dept_text,
+      dept_text
+    )
+  } else {
+    tags$span(
+      class = "mb-sidebar-user-department mb-sidebar-user-department-empty",
+      title = "Departman bilgisi yok",
+      "Departman bilgisi yok"
+    )
+  }
+
+  tags$div(
+    class = "mb-sidebar-user",
+    tags$div(
+      class = "mb-sidebar-user-avatar",
+      avatar_inner
+    ),
+    tags$div(
+      class = "mb-sidebar-user-info",
+      tags$span(class = "mb-sidebar-user-name", title = display_name, display_name),
+      dept_tag
+    )
+  )
+}
