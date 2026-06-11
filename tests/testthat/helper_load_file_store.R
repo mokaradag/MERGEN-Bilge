@@ -155,6 +155,12 @@ source(
 )
 
 source(
+  file.path(repo_root_for_tests, "R", "config_file_store_index_lock.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
+source(
   file.path(repo_root_for_tests, "R", "config_file_store_index_mutation.R"),
   encoding = "UTF-8",
   local = globalenv()

@@ -53,10 +53,11 @@ source_manifest_sections <- list(
   ),
 
   # config_app_core: Çekirdek yapılandırma: SSO, dosya deposu
-  # (indeks/listeleme/registry), karakter/persona ve sürüm geçmişi.
+  # (kilit/indeks/listeleme/registry), karakter/persona ve sürüm geçmişi.
   config_app_core = c(
     "R/config_sso.R",
     "R/config_file_store.R",
+    "R/config_file_store_index_lock.R",
     "R/config_file_store_index_mutation.R",
     "R/config_file_store_listing_helpers.R",
     "R/config_file_store_registry.R",

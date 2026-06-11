@@ -1029,7 +1029,7 @@ Current contract:
 - Isolated File Store tests must load the refactored public API through `tests/testthat/helper_load_file_store.R`.
 - That helper must source `R/helpers_files_path.R` before the split `config_file_store_*` files so `normalize_for_path_compare` is available.
 - Do not re-inline these helper sources directly into individual tests.
-- Do not re-merge `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, and `R/config_file_store_registry.R` back into `R/config_file_store.R`.
+- Do not re-merge `R/config_file_store_index_lock.R`, `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, and `R/config_file_store_registry.R` back into `R/config_file_store.R`. The index lock helper (`.file_store_with_index_lock`, stale-lock breaking, lock owner marker) lives in `R/config_file_store_index_lock.R`; do not move it back into the mutation file.
 
 File Store and Health Dashboard Guardrails:
 
@@ -1044,6 +1044,7 @@ File Store and Health Dashboard Guardrails:
 Key files:
 
 - R/config_file_store.R
+- R/config_file_store_index_lock.R
 - R/config_file_store_index_mutation.R
 - R/config_file_store_listing_helpers.R
 - R/config_file_store_registry.R
@@ -1423,7 +1424,7 @@ When adding, moving, or splitting a runtime file:
 
 - add the file to the correct named section (and correct position within it) of `source_manifest_sections` in `R/config_source_manifest.R`; do not add a new top-level path vector outside the sections list,
 - keep seam ownership intact: every manifest section must remain owned by exactly one seam in `R/config_seam_registry.R`, and a brand-new section must be assigned to a seam in the same change (see the seam registry and frontend ownership zone contract),
-- for file-store lifecycle splits, preserve the order `R/config_file_store.R`, `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, then `R/config_file_store_registry.R`,
+- for file-store lifecycle splits, preserve the order `R/config_file_store.R`, `R/config_file_store_index_lock.R`, `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, then `R/config_file_store_registry.R`,
 - for server runtime/module-wiring splits, preserve the order `R/helpers_server_runtime_contracts.R`, `R/helpers_server_runtime_named_contracts.R`, `R/server_runtime_context.R`, `R/server_runtime_function_slot.R`, `R/server_module_wiring.R`, `R/server_chat_engine_dependencies.R`, `R/server_chat_engine_runtime.R`, then the session/chat runtime init files,
 - keep dependency order explicit and reviewable,
 - Keep `R/helpers_streaming_abort_lifecycle.R` and `R/helpers_streaming_poll_lifecycle.R` loaded before `R/server_handler_true_streaming.R`; the true streaming handler depends on the abort cleanup plan helper and on the pure poll-loop decision helpers (line classification, reasoning recovery, poll interval, persist delay).
@@ -2990,6 +2991,7 @@ The file-store layer is split so that path/root initialization stays separate fr
 
 ```r
 safe_source("R/config_file_store.R",                encoding = "UTF-8")
+safe_source("R/config_file_store_index_lock.R",     encoding = "UTF-8")
 safe_source("R/config_file_store_index_mutation.R", encoding = "UTF-8")
 safe_source("R/config_file_store_registry.R",       encoding = "UTF-8")
 ```
@@ -2997,7 +2999,8 @@ safe_source("R/config_file_store_registry.R",       encoding = "UTF-8")
 Responsibilities:
 
 * `R/config_file_store.R`: file-store root paths, low-level UTF-8 index load/save helpers, environment validation, memory management, and scheduler-related configuration.
-* `R/config_file_store_index_mutation.R`: index write/mutation guard, upload registration, display-name repair, storage-name recovery, public `global_register_file()` wrapper, and index removal.
+* `R/config_file_store_index_lock.R`: the index lock boundary: `.file_store_with_index_lock`, stale-lock breaking by age, the lock owner marker file for Windows/UNC mtime reliability, and availability-first lock acquisition.
+* `R/config_file_store_index_mutation.R`: index mutation through the shared lock (`.file_store_mutate_index`), upload registration, display-name repair, storage-name recovery, public `global_register_file()` wrapper, and index removal.
 * `R/config_file_store_registry.R`: uploaded-file resolution, user upload directory resolution, display-name lookup, user file listing, stale index pruning, and filesystem fallback listing.
 
 Do not move `mergen_register_uploaded_file()`, `global_register_file()`, `resolve_uploaded_file()`, `mergen_user_upload_dir()`, `mergen_resolve_display_name()`, `recover_display_name_from_storage_name()`, `mergen_list_user_files()`, or `mergen_remove_from_index()` back into `R/config_file_store.R`.
@@ -4408,6 +4411,7 @@ Defines application-wide configuration:
 
 - `R/config_sso.R`
 - `R/config_file_store.R`
+- `R/config_file_store_index_lock.R`
 - `R/config_file_store_index_mutation.R`
 - `R/config_file_store_registry.R`
 - `R/config_characters.R`
@@ -4936,6 +4940,7 @@ This repo is highly sensitive to reactive-scope mistakes.
 Core files:
 
 - `R/config_file_store.R`
+- `R/config_file_store_index_lock.R`
 - `R/config_file_store_index_mutation.R`
 - `R/config_file_store_registry.R`
 

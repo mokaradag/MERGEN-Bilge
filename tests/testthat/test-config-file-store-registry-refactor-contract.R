@@ -99,13 +99,21 @@ test_that("file store public registry fonksiyonları config_file_store.R dışı
 })
 
 test_that("file store indeks mutasyonları yarış koruması kullanır", {
+  # Kilit yardımcısı fonksiyon-yoğunluk bölmesiyle kendi dosyasına taşındı;
+  # çapalar yeni sahibi (R/config_file_store_index_lock.R) doğrular.
+  lock_txt <- .read_file_store_contract_text("R/config_file_store_index_lock.R")
   mutation_txt <- .read_file_store_contract_text("R/config_file_store_index_mutation.R")
   listing_txt <- .read_file_store_contract_text("R/config_file_store_listing_helpers.R")
   registry_txt <- .read_file_store_contract_text("R/config_file_store_registry.R")
 
   expect_true(
+    grepl(".file_store_with_index_lock <- function", lock_txt, fixed = TRUE),
+    info = "File Store indeks kilidi R/config_file_store_index_lock.R içinde kalmalıdır."
+  )
+
+  expect_false(
     grepl(".file_store_with_index_lock <- function", mutation_txt, fixed = TRUE),
-    info = "File Store indeks mutasyonları için lock helper korunmalıdır."
+    info = "Kilit yardımcısı mutasyon dosyasına geri taşınmamalıdır (bölme sözleşmesi)."
   )
 
   expect_true(
@@ -114,8 +122,19 @@ test_that("file store indeks mutasyonları yarış koruması kullanır", {
   )
 
   expect_true(
-    grepl("dir.create(lock_dir", mutation_txt, fixed = TRUE),
+    grepl("dir.create(lock_dir", lock_txt, fixed = TRUE),
     info = "İndeks kilidi warning-safe lock dizini oluşturma yaklaşımını kullanmalıdır."
+  )
+
+  # Stale kilit kırma ve kilit sahibi marker'ı kilit dosyasında korunmalıdır.
+  expect_true(
+    grepl("stale_lock_sec", lock_txt, fixed = TRUE),
+    info = "Çökmüş süreç kilitleri yaş eşiğiyle kırılabilmelidir."
+  )
+
+  expect_true(
+    grepl(".write_lock_marker", lock_txt, fixed = TRUE),
+    info = "Windows/UNC güvenilirliği için kilit sahibi marker dosyası yazılmalıdır."
   )
 
   expect_true(
@@ -141,6 +160,7 @@ test_that("file store indeks mutasyonları yarış koruması kullanır", {
 
 test_that("file store refactor fonksiyon yoğunluğunu dosyalar arasında böler", {
   config_txt <- .read_file_store_contract_text("R/config_file_store.R")
+  lock_txt <- .read_file_store_contract_text("R/config_file_store_index_lock.R")
   mutation_txt <- .read_file_store_contract_text("R/config_file_store_index_mutation.R")
   listing_txt <- .read_file_store_contract_text("R/config_file_store_listing_helpers.R")
   registry_txt <- .read_file_store_contract_text("R/config_file_store_registry.R")
@@ -148,6 +168,11 @@ test_that("file store refactor fonksiyon yoğunluğunu dosyalar arasında böler
   expect_true(
     .file_store_function_count(config_txt) < 25L,
     info = "R/config_file_store.R refactor sonrası 25 fonksiyon eşiğinin altında kalmalıdır."
+  )
+
+  expect_true(
+    .file_store_function_count(lock_txt) < 25L,
+    info = "R/config_file_store_index_lock.R yeni function-heavy dosya olmamalıdır."
   )
 
   expect_true(

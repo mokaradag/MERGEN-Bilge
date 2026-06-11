@@ -198,33 +198,62 @@ test_that("sarmalayici betik repo kokunden Rscript ile kapiyi cagirir", {
   )
 })
 
+test_that("kanit kapisi betigi ascii-guvenli kalir (sessiz kirpilma korumasi)", {
+  # Operasyonel giriş noktası betikleri POSIX/C veya Windows/Türkçe locale
+  # altında source(...) edilirken non-ASCII içerik sessizce kırpılabilir ve
+  # kapı HİÇ ÇALIŞMADAN exit 0 verebilir (.Rprofile / tools/renv_snapshot.R
+  # ile aynı kural). Bu test kısıtı çalıştırılabilir kılar: kapı betiğine
+  # Türkçe özel karakter eklemek yerine diakritiksiz Türkçe yorum kullanın.
+  raw_bytes <- readBin(.evg_script_path, what = "raw", n = file.info(.evg_script_path)$size)
+  non_ascii_count <- sum(as.integer(raw_bytes) > 127L)
+
+  expect_identical(
+    non_ascii_count,
+    0L,
+    info = paste(
+      "run_vm_evidence_gate.R ASCII-güvenli kalmalıdır;",
+      non_ascii_count,
+      "non-ASCII bayt bulundu. POSIX/C locale altında source() bu dosyayı",
+      "sessizce kırpar ve kapı hiç çalışmadan exit 0 verebilir.",
+      "Diakritiksiz Türkçe yorum kullanın (orn. 'dogrulama', 'kanit')."
+    )
+  )
+})
+
 test_that("gecersiz profil degeri acik hata uretir (hafif davranis kontrolu)", {
   # Yalnızca profil doğrulama dalını tetikler; hiçbir adım koşulmaz.
   rscript_bin <- file.path(R.home("bin"), "Rscript")
   if (.Platform$OS.type == "windows") rscript_bin <- paste0(rscript_bin, ".exe")
   skip_if_not(file.exists(rscript_bin), "Rscript bulunamadı.")
 
-	out_log <- tempfile(fileext = ".log")
-	# Çocuk oturum testin çalışma dizinini miras alır; betik mutlak yolla verilir.
-	# Windows'ta system2(env=...) davranışı kırılgan olabildiği için profil değeri
-	# çocuk R ifadesinin içinde set edilir.
-	child_expr <- sprintf(
-	  'Sys.setenv(MERGEN_EVIDENCE_PROFILE = "bozuk_profil"); source(%s, encoding = "UTF-8")',
-	  dQuote(normalizePath(.evg_script_path, winslash = "/", mustWork = TRUE))
-	)
-	status <- suppressWarnings(system2(
-	  rscript_bin,
-	  args = c("--vanilla", "-e", shQuote(child_expr)),
-	  stdout = out_log,
-	  stderr = out_log
-	))
+  # Windows'ta system2(env=...) ve -e tırnaklama kırılgan olabildiği için repo
+  # kuralına uygun olarak geçici ASCII runner dosyası yazılır ve doğrudan
+  # çalıştırılır; profil değeri runner içinde set edilir.
+  out_log <- tempfile(fileext = ".log")
+  runner_file <- tempfile(pattern = "evg_invalid_profile_", fileext = ".R")
+
+  runner_lines <- c(
+    'Sys.setenv(MERGEN_EVIDENCE_PROFILE = "bozuk_profil")',
+    sprintf(
+      'source("%s", encoding = "UTF-8")',
+      normalizePath(.evg_script_path, winslash = "/", mustWork = TRUE)
+    )
+  )
+  writeLines(runner_lines, runner_file, useBytes = TRUE)
+
+  status <- suppressWarnings(system2(
+    rscript_bin,
+    args = c("--vanilla", runner_file),
+    stdout = out_log,
+    stderr = out_log
+  ))
 
   expect_false(identical(status, 0L), info = "Geçersiz profil sıfır-dışı çıkış üretmelidir.")
 
-	log_text <- .evg_read_text(out_log)
-	expect_true(
-	  grepl("MERGEN_EVIDENCE_PROFILE", log_text, fixed = TRUE, useBytes = TRUE),
-	  info = "Hata mesajı geçersiz profil değişkenini açıkça adlandırmalıdır."
-	)
-	unlink(out_log, force = TRUE)
+  log_text <- .evg_read_text(out_log)
+  expect_true(
+    grepl("MERGEN_EVIDENCE_PROFILE", log_text, fixed = TRUE, useBytes = TRUE),
+    info = "Hata mesajı geçersiz profil değişkenini açıkça adlandırmalıdır."
+  )
+  unlink(c(out_log, runner_file), force = TRUE)
 })
