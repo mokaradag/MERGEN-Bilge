@@ -85,6 +85,7 @@ Yeni bir runtime dosyası eklerken doğru bölüme, doğru sırada eklenmelidir.
 | `R/config_seam_registry.R` | 12 üretim-kritik seam: her seam'in sahiplendiği manifest bölümleri, manifest dışı runtime dosyaları, guard testleri, odaklı doğrulama komutları ve ilişkili seam'ler. | `tests/testthat/test-seam-registry-contract.R` |
 | `R/config_ui_asset_zones.R` | 23 frontend bölgesi: manifestteki HER CSS/JS varlığının tam olarak BİR bölgeye atanması, bölge başına sahip seam + guard testleri, manifest dışı (inline/smoke) varlıkların gerekçeli sahiplik kaydı. | `tests/testthat/test-ui-asset-zones-contract.R` |
 | `tests/scripts/seam_doctor.R` (`tools/seam_doctor.sh`) | Seam/bölge/manifest tutarlılığını raporlayan hafif operasyonel araç; `artifacts/seam-doctor/` altına secret-safe JSON artifact yazar. Ağır doğrulama çalıştırmaz. | `tests/testthat/test-seam-doctor-contract.R` |
+| `tests/scripts/run_vm_evidence_gate.R` (`tools/vm_evidence_gate.sh`) | TEK tekrarlanabilir preflight kanıt kapısı: mevcut doğrulama betiklerini temiz çocuk R oturumlarında sıralı adımlar olarak koşar; `artifacts/vm-evidence/<timestamp>/evidence.json` altına secret-safe kanıt artifact'ı yazar. Profiller: `vm` (VM-yalnız kapılar zorunlu) / `cloud` (gerekçeli SKIP). | `tests/testthat/test-vm-evidence-gate-contract.R` |
 
 Seam listesi (id -> sahiplenilen manifest bölümleri):
 
@@ -108,6 +109,7 @@ Disiplin kuralları:
 - Her source-manifest bölümü tam olarak bir seam'e aittir; sahipsiz bölüm veya çift sahiplik sözleşme testini düşürür.
 - `R/` altında manifest + seam allowlist dışında sahipsiz runtime R dosyası kalamaz.
 - `www/css/` ve `www/js/` altındaki her fiziksel dosya ya manifest üzerinden bir bölgeye ya da `ui_asset_unmanifested_ownership` kaydına (gerekçesiyle) bağlanır.
+- `ui_asset_unmanifested_ownership` içinde `optional_in_checkout = TRUE` taşıyan girdiler (örn. `js/fontfaceobserver.js`, `js/highlight.min.js`) yalnızca on-prem VM çalışma kopyasında fiziksel olarak bulunur (renv.lock provenance deseni); cloud/CI checkout'unda yoklukları yapısal sorun değildir, VM'de mevcutken sahiplik boşluğu raporlanmaz.
 - Yükleme sırasının tek sahibi `R/config_ui_assets.R` kalır; bölge haritası sırayı DEĞİL sahipliği bildirir.
 - Tema override kaskadı (tokens -> light -> extras -> modüller -> overhaul -> user_polish) ve Bilge Yolaç CSS zinciri artık `ui_asset_css_order_rules` ile makine doğrulamalıdır; `ui_asset_validate_css_order()` JS sıra kuralları gibi UI render edilmeden önce çalışır.
 - Yeni seam/bölge eklemek bilinçli bir karardır: dondurulmuş id listeleri ve bu belge birlikte güncellenir.

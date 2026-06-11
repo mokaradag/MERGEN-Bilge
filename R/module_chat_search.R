@@ -36,8 +36,17 @@ search_chats_content_from_db <- function(user_id, search_term) {
     ORDER BY m.MessageTimestamp DESC
   "
 
-  # Arama terimi için joker karakter ekle
-  like_term <- paste0("%", search_term, "%")
+  # Arama terimi, yazım yolundaki görünür-değer kodlama sınırından geçirilir;
+  # aksi halde WINDOWS-1254 istemci kodlamalı VM'de LIKE karşılaştırması
+  # Türkçe karakterlerde saklanan veriyle eşleşmeyebilir. Joker karakterler
+  # normalizasyondan SONRA eklenir ki '%' işaretleri dönüşüme girmesin.
+  term_for_db <- if (exists("normalize_db_visible_value", mode = "function", inherits = TRUE)) {
+    normalize_db_visible_value(search_term)
+  } else {
+    enc2utf8(search_term)
+  }
+
+  like_term <- paste0("%", term_for_db, "%")
 
   result <- tryCatch({
     rows <- DBI::dbGetQuery(conn, query, params = list(user_id, like_term))
@@ -50,6 +59,13 @@ search_chats_content_from_db <- function(user_id, search_term) {
         message_timestamp = character(),
         stringsAsFactors = FALSE
       ))
+    }
+
+    # Okuma sınırı: saklanan [[MERGEN-U+...]] kaçış token'ları geri açılır ve
+    # eski mojibake değerleri görüntü için onarılır; aksi halde arama sonucu
+    # listesinde ham token/mojibake kullanıcıya sızar.
+    if (exists("normalize_db_read_visible_frame", mode = "function", inherits = TRUE)) {
+      rows <- normalize_db_read_visible_frame(rows, repair_mojibake = TRUE)
     }
 
     data.frame(

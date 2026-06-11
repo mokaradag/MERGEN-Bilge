@@ -334,6 +334,7 @@ kanıtladığını ve hangi adımın hangi sırayla yapılacağını net biçimd
 | Bulut/parse doğrulaması | `bash tools/ai_validate.sh cloud-quick` | Codex/bulut |
 | Normal doğrulama | `bash tools/ai_validate.sh quick` | Yerel/CI |
 | Riskli/runtime doğrulaması | `bash tools/ai_validate.sh full --boot-smoke` | Yerel/VM |
+| **Tek kanıt kapısı (önerilen)** | `bash tools/vm_evidence_gate.sh` | Yerel/VM (profil otomatik) |
 | Üretim adayı kapısı | `Rscript tests/scripts/run_release_candidate_gate.R` | Yerel/VM |
 | VM gerçek preflight | `Rscript tests/scripts/run_vm_preflight_real.R` | VM (SSO açık) |
 | VM Türkçe kodlama preflight | `Rscript tests/scripts/run_vm_encoding_preflight_real.R` | VM (DB erişimli) |
@@ -382,6 +383,36 @@ geçmeden bir sonrakine geçmeyin.
 Manuel ama zorunlu: kırılgan akışlar için
 `Rscript tests/scripts/run_fragile_flow_manual_preflight.R` ile akış kontrol listesini
 kaydedin (streaming start/stop, yükleme kalıcılığı, kayıtlı söyleşi TTS, Türkçe dosya adı, TTS/STT/müzik).
+
+### 1A. Tek tekrarlanabilir kanıt kapısı: `tools/vm_evidence_gate.sh`
+
+Yukarıdaki kapıları (1)–(5) tek bir tekrarlanabilir koşumda toplayan ve
+secret-güvenli, makinece okunabilir kanıt artifact'ı üreten kapı:
+
+```bash
+bash tools/vm_evidence_gate.sh                       # profil otomatik: SSO_ENABLED=TRUE ise vm, değilse cloud
+MERGEN_EVIDENCE_PROFILE=vm bash tools/vm_evidence_gate.sh
+MERGEN_EVIDENCE_STEPS=seam_doctor,renv_status bash tools/vm_evidence_gate.sh   # alt küme yeniden koşum
+```
+
+- Kanıt artifact'ı: `artifacts/vm-evidence/<timestamp>/evidence.json` + adım başına log.
+- Adımlar TEMİZ ÇOCUK R oturumlarında koşulur; ham gizli değer asla yazılmaz
+  (yalnızca `present/nchar/value=<hidden>` metadata; loglar redakte edilir).
+- Kapsam: on-prem env varsayımları, parse sanity, app boot smoke, tam strict
+  testthat, maintainability skoru, frontend ratchet, seam doctor, source
+  manifest + UI asset manifest sözleşmeleri, tarayıcı UX smoke (varsa),
+  VM gerçek preflight (SSO/DB/LLM), DB kodlama transactional probe, renv durumu.
+- Dürüstlük: her adım `proves` / `does_not_prove` alanları taşır; `cloud`
+  profilinde VM-yalnız kapılar gerekçeli `skipped` olur ve KANIT SAYILMAZ.
+  VM/SSO/DB/SQL Server Türkçe kodlama kanıtı yalnızca `profile_effective=vm`
+  koşumunda ve ilgili adımlar `passed` olduğunda geçerlidir.
+- Tarayıcı UX smoke: `MERGEN_BROWSER_BIN` açıkça tanımlıysa veya
+  `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ise zorunludur; aksi halde tarayıcı
+  yoksa gerekçeli SKIP olur.
+- Yapısal sözleşme: `tests/testthat/test-vm-evidence-gate-contract.R`
+  (adım listesi, secret-güvenlik, çocuk-oturum izolasyonu, quit() yasağı).
+- Bu kapı mevcut kapıların YERİNE geçmez; onları tek artifact'ta birleştirir.
+  Manuel kırılgan-akış kontrol listesi ayrı bir kanıt kapısı olarak kalır.
 
 ---
 

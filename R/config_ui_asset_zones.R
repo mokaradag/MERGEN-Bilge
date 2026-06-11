@@ -483,13 +483,18 @@ ui_asset_unmanifested_ownership <- list(
     owner_seam = "frontend_varlik",
     reason = "Smoke-only probe katmanı; üretim manifestine eklenmez."
   ),
+  # optional_in_checkout = TRUE: dosya yalnızca on-prem VM çalışma kopyasında
+  # bulunur (renv.lock provenance deseni). Cloud checkout'unda yokluğu hata
+  # değildir; VM'de mevcutken sahiplik boşluğu raporlanmasını engeller.
   "js/fontfaceobserver.js" = list(
     owner_seam = "frontend_varlik",
-    reason = "Manifest dışı tutulan vendor/font yükleme yardımcı dosyası; üretim manifestiyle otomatik yüklenmez."
+    reason = "Manifest dışı tutulan vendor/font yükleme yardımcı dosyası; üretim manifestiyle otomatik yüklenmez. Yalnızca on-prem VM kopyasında bulunur.",
+    optional_in_checkout = TRUE
   ),
   "js/highlight.min.js" = list(
     owner_seam = "frontend_varlik",
-    reason = "Manifest dışı tutulan legacy/vendor syntax highlighting dosyası; üretim manifestiyle otomatik yüklenmez."
+    reason = "Manifest dışı tutulan legacy/vendor syntax highlighting dosyası; üretim manifestiyle otomatik yüklenmez. Yalnızca on-prem VM kopyasında bulunur.",
+    optional_in_checkout = TRUE
   )
 )
 
@@ -725,8 +730,16 @@ ui_asset_zones_validate <- function(zones = ui_asset_ownership_zones,
       ))
     }
 
-    missing_unmanifested <- unmanifested_paths[
-      !file.exists(file.path(repo_root, "www", unmanifested_paths))
+    # optional_in_checkout girdileri yalnızca on-prem VM kopyasında bulunur;
+    # cloud/CI checkout'unda yoklukları yapısal sorun sayılmaz.
+    required_unmanifested <- unmanifested_paths[!vapply(
+      unmanifested_paths,
+      function(path) isTRUE(unmanifested[[path]]$optional_in_checkout),
+      logical(1)
+    )]
+
+    missing_unmanifested <- required_unmanifested[
+      !file.exists(file.path(repo_root, "www", required_unmanifested))
     ]
 
     if (length(missing_unmanifested) > 0L) {

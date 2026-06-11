@@ -99,7 +99,13 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         }
         showToast(session, success_msg, "success")
       }, error = function(e) {
-        showToast(session, paste("API anahtarı kaydedilemedi:", conditionMessage(e)), "error")
+        # Anahtar işleme sınırında hata metni kullanıcıya gösterilmeden önce
+        # redakte edilir; hata bağlamı yanlışlıkla gizli değer taşıyabilir.
+        hata_metni <- conditionMessage(e)
+        if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
+          hata_metni <- redact_sensitive_text(hata_metni)
+        }
+        showToast(session, paste("API anahtarı kaydedilemedi:", hata_metni), "error")
       })
     }, ignoreInit = TRUE)
 

@@ -103,3 +103,80 @@ test_that("fetch_user_work_context: bağlantı yoksa boş bağlam döner", {
   expect_identical(ctx$department, "")
   expect_identical(ctx$display_text, "")
 })
+
+# ------------------------------------------------------------------------------
+# Okuma sınırı sözleşmesi: kullanıcıya görünen DB alanları kanonik profil
+# okuyucusuyla aynı görünür-değer normalizasyonundan geçmelidir.
+# ------------------------------------------------------------------------------
+
+.aix_env_with_read_boundary <- function() {
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+  for (.fn in c("log_info", "log_warn", "log_error", "log_debug")) {
+    env[[.fn]] <- function(...) invisible(NULL)
+  }
+  env$get_connection <- function() list(conn = "fake-conn")
+  env$release_connection <- function(...) invisible(NULL)
+
+  # Gerçek okuma sınırı yardımcıları: token geri açma + mojibake onarımı.
+  suppressWarnings(source(
+    file.path(repo_root_aix, "R/utils_text_encoding.R"),
+    encoding = "UTF-8", local = env
+  ))
+  suppressWarnings(source(
+    file.path(repo_root_aix, "R/helpers_db_unicode_escape.R"),
+    encoding = "UTF-8", local = env
+  ))
+  suppressWarnings(source(
+    file.path(repo_root_aix, "R/helpers_ai_expert.R"),
+    encoding = "UTF-8", local = env
+  ))
+
+  env
+}
+
+test_that("fetch_user_full_name: eski mojibake ad okuma sinirinda onarilir", {
+  env <- .aix_env_with_read_boundary()
+
+  # Deterministik bayt-kurulumlu mojibake: "GÃ¼l" -> "Gül"
+  mojibake_ad <- paste0("G", intToUtf8(c(0xC3L, 0xBCL)), "l Yilmaz")
+
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, statement, ...) {
+      data.frame(KaynakAdi = mojibake_ad, stringsAsFactors = FALSE)
+    },
+    .package = "DBI"
+  )
+
+  ad <- env$fetch_user_full_name(7L)
+  expect_identical(
+    ad,
+    "Gül Yilmaz",
+    info = "KaynakAdi, TTS/altyazı metnine sızmadan önce onarılmalıdır."
+  )
+})
+
+test_that("fetch_user_work_context: birim adlarinda kacis tokenlari geri acilir", {
+  env <- .aix_env_with_read_boundary()
+
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, statement, ...) {
+      data.frame(
+        Departman = "Strateji [[MERGEN-U+2728]] Birimi",
+        Mudurluk = NA_character_,
+        stringsAsFactors = FALSE
+      )
+    },
+    .package = "DBI"
+  )
+
+  ctx <- env$fetch_user_work_context(7L)
+  expect_false(
+    grepl("[[MERGEN-U+", ctx$department, fixed = TRUE),
+    info = "Departman alanında ham kaçış token'ı görünmemelidir."
+  )
+  expect_true(
+    grepl(intToUtf8(0x2728L), ctx$department, fixed = TRUE),
+    info = "Token orijinal karaktere geri açılmalıdır."
+  )
+})
