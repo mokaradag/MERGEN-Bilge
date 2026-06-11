@@ -482,6 +482,14 @@ ui_asset_unmanifested_ownership <- list(
   "smoke/ux-smoke-probes.js" = list(
     owner_seam = "frontend_varlik",
     reason = "Smoke-only probe katmanı; üretim manifestine eklenmez."
+  ),
+  "js/fontfaceobserver.js" = list(
+    owner_seam = "frontend_varlik",
+    reason = "Manifest dışı tutulan vendor/font yükleme yardımcı dosyası; üretim manifestiyle otomatik yüklenmez."
+  ),
+  "js/highlight.min.js" = list(
+    owner_seam = "frontend_varlik",
+    reason = "Manifest dışı tutulan legacy/vendor syntax highlighting dosyası; üretim manifestiyle otomatik yüklenmez."
   )
 )
 
