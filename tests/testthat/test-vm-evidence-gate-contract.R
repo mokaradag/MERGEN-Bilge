@@ -226,34 +226,70 @@ test_that("gecersiz profil degeri acik hata uretir (hafif davranis kontrolu)", {
   if (.Platform$OS.type == "windows") rscript_bin <- paste0(rscript_bin, ".exe")
   skip_if_not(file.exists(rscript_bin), "Rscript bulunamadı.")
 
-  # Windows'ta system2(env=...) ve -e tırnaklama kırılgan olabildiği için repo
-  # kuralına uygun olarak geçici ASCII runner dosyası yazılır ve doğrudan
-  # çalıştırılır; profil değeri runner içinde set edilir.
-  out_log <- tempfile(fileext = ".log")
+  # Çocuk süreç parent R oturumunun çalışma dizinini miras alır.
+  # Bu nedenle repo köküne parent süreçte geçilir; çocuk runner içine
+  # "Geliştirme" gibi non-ASCII karakter içeren mutlak repo yolu yazılmaz.
+  old_wd <- getwd()
+  setwd(.evg_repo_root)
+  on.exit(setwd(old_wd), add = TRUE)
+
+  path_for_r <- function(path) {
+    gsub("\\", "/", path, fixed = TRUE)
+  }
+
+  out_stdout_log <- tempfile(fileext = ".stdout.log")
+  out_stderr_log <- tempfile(fileext = ".stderr.log")
+  out_message_log <- tempfile(fileext = ".message.log")
   runner_file <- tempfile(pattern = "evg_invalid_profile_", fileext = ".R")
 
   runner_lines <- c(
     'Sys.setenv(MERGEN_EVIDENCE_PROFILE = "bozuk_profil")',
     sprintf(
-      'source("%s", encoding = "UTF-8")',
-      normalizePath(.evg_script_path, winslash = "/", mustWork = TRUE)
-    )
+      '.evg_message_log <- "%s"',
+      path_for_r(out_message_log)
+    ),
+    "tryCatch(",
+    '  source("tests/scripts/run_vm_evidence_gate.R", encoding = "UTF-8"),',
+    "  error = function(e) {",
+    "    writeLines(conditionMessage(e), .evg_message_log, useBytes = TRUE)",
+    "    stop(e)",
+    "  }",
+    ")"
   )
   writeLines(runner_lines, runner_file, useBytes = TRUE)
 
   status <- suppressWarnings(system2(
     rscript_bin,
     args = c("--vanilla", runner_file),
-    stdout = out_log,
-    stderr = out_log
+    stdout = out_stdout_log,
+    stderr = out_stderr_log
   ))
 
   expect_false(identical(status, 0L), info = "Geçersiz profil sıfır-dışı çıkış üretmelidir.")
 
-  log_text <- .evg_read_text(out_log)
+  log_text <- paste(
+    vapply(
+      c(out_message_log, out_stdout_log, out_stderr_log),
+      function(path) {
+        if (!file.exists(path) || isTRUE(file.info(path)$size == 0)) {
+          ""
+        } else {
+          .evg_read_text(path)
+        }
+      },
+      character(1)
+    ),
+    collapse = "\n"
+  )
+
   expect_true(
     grepl("MERGEN_EVIDENCE_PROFILE", log_text, fixed = TRUE, useBytes = TRUE),
-    info = "Hata mesajı geçersiz profil değişkenini açıkça adlandırmalıdır."
+    info = paste(
+      "Hata mesajı geçersiz profil değişkenini açıkça adlandırmalıdır.",
+      "Çocuk süreç logu:",
+      log_text
+    )
   )
-  unlink(c(out_log, runner_file), force = TRUE)
+
+  unlink(c(out_stdout_log, out_stderr_log, out_message_log, runner_file), force = TRUE)
 })
