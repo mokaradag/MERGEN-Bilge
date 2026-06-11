@@ -221,10 +221,10 @@ test_that("gecersiz profil degeri acik hata uretir (hafif davranis kontrolu)", {
 
   expect_false(identical(status, 0L), info = "Geçersiz profil sıfır-dışı çıkış üretmelidir.")
 
-  log_text <- paste(readLines(out_log, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
-  expect_true(
-    grepl("MERGEN_EVIDENCE_PROFILE", log_text, fixed = TRUE),
-    info = "Hata mesajı geçersiz profil değişkenini açıkça adlandırmalıdır."
-  )
-  unlink(out_log, force = TRUE)
+	log_text <- .evg_read_text(out_log)
+	expect_true(
+	  grepl("MERGEN_EVIDENCE_PROFILE", log_text, fixed = TRUE, useBytes = TRUE),
+	  info = "Hata mesajı geçersiz profil değişkenini açıkça adlandırmalıdır."
+	)
+	unlink(out_log, force = TRUE)
 })
