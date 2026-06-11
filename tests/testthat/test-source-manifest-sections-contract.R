@@ -66,7 +66,9 @@
 .expected_manifest_section_anchors <- list(
   foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_monitor.R", n = 7L),
   post_future_utils = list(first = "R/utils_path_helpers.R", last = "R/utils_excel_reader.R", n = 9L),
-  config_app_core = list(first = "R/config_sso.R", last = "R/config_version_history.R", n = 7L),
+  # config_app_core n = 7L -> 8L bilinçli güncelleme: indeks kilidi
+  # (R/config_file_store_index_lock.R) fonksiyon-yoğunluk bölmesiyle ayrı dosyaya alındı.
+  config_app_core = list(first = "R/config_sso.R", last = "R/config_version_history.R", n = 8L),
   config_api_model_keys = list(first = "R/helpers_vision_model_capabilities.R", last = "R/helpers_api_key_password_toggle.R", n = 9L),
   config_claude_code = list(first = "R/config_claude_code.R", last = "R/config_claude_code_plugins.R", n = 2L),
   config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_asset_zones.R", n = 2L),
@@ -196,7 +198,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   env <- .load_source_manifest_env_for_sections()
   runtime <- get("source_manifest_runtime_paths", envir = env, inherits = FALSE)
 
-  expect_equal(length(runtime), 260L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 260L -> 261L bilinçli güncelleme: R/config_file_store_index_lock.R
+  # fonksiyon-yoğunluk bölmesiyle manifest'e eklendi.
+  expect_equal(length(runtime), 261L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]
