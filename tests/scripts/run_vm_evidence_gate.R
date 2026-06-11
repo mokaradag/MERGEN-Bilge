@@ -1,45 +1,45 @@
 # ==============================================================================
 # Dosya Yolu: tests/scripts/run_vm_evidence_gate.R
-# Aciklama:
-#   MERGEN Bilge icin TEK tekrarlanabilir preflight dogrulama yolu. Var olan
-#   dogrulama betiklerini sirali adimlar halinde TEMIZ COCUK R OTURUMLARINDA
-#   calistirir ve secret-guvenli, makinece okunabilir tek bir kanit artifact'i
-#   uretir: artifacts/vm-evidence/<timestamp>/evidence.json (+ adim loglari).
+# Açıklama:
+#   MERGEN Bilge için TEK tekrarlanabilir preflight doğrulama yolu. Var olan
+#   doğrulama betiklerini sıralı adımlar halinde TEMİZ ÇOCUK R OTURUMLARINDA
+#   çalıştırır ve secret-güvenli, makinece okunabilir tek bir kanıt artifact'i
+#   üretir: artifacts/vm-evidence/<timestamp>/evidence.json (+ adım logları).
 #
-#   Kapsanan kanit alanlari:
-#     - on-prem yapilandirma varsayimlari (env metadata; ham deger YAZILMAZ)
+#   Kapsanan kanıt alanları:
+#     - on-prem yapılandırma varsayımları (env metadata; ham değer YAZILMAZ)
 #     - parse sanity ve uygulama boot smoke
 #     - tam strict testthat suiti
 #     - maintainability raporu (skor)
 #     - frontend maintainability ratchet
-#     - seam doctor (governance/manifest tutarliligi)
-#     - source manifest ve UI asset manifest sozlesme testleri
-#     - tarayici UX smoke (varsa; MERGEN_BROWSER_BIN acikca verilmisse zorunlu)
-#     - gercek VM preflight (SSO hazirligi + DB saglik + LLM erisilebilirlik)
+#     - seam doctor (governance/manifest tutarlılığı)
+#     - source manifest ve UI asset manifest sözleşme testleri
+#     - tarayıcı UX smoke (varsa; MERGEN_BROWSER_BIN açıkça verilmişse zorunlu)
+#     - gerçek VM preflight (SSO hazırlığı + DB sağlık + LLM erişilebilirlik)
 #     - DB kodlama yazma/okuma preflight (transactional probe)
 #     - renv kilit durumu
 #
 #   Profiller (MERGEN_EVIDENCE_PROFILE):
-#     - "vm"    : VM-yalniz kapilar (vm_preflight, db_encoding, renv kilidi)
-#                 ZORUNLUDUR; basarisizlik kapiyi dusurur.
-#     - "cloud" : VM-yalniz kapilar gerekceli SKIP olur; yapisal + suit
-#                 kaniti uretir. Varsayilan: SSO_ENABLED=TRUE ise "vm",
-#                 degilse "cloud".
+#     - "vm"    : VM-yalnız kapılar (vm_preflight, db_encoding, renv kilidi)
+#                 ZORUNLUDUR; başarısızlık kapıyı düşürür.
+#     - "cloud" : VM-yalnız kapılar gerekçeli SKIP olur; yapısal + suit
+#                 kanıtı üretir. Varsayılan: SSO_ENABLED=TRUE ise "vm",
+#                 değilse "cloud".
 #
-#   Durustluk sozlesmesi:
-#     - Her adim icin proves / does_not_prove alanlari yazilir.
-#     - SKIP edilen adim, kanit olarak RAPOR EDILEMEZ; evidence.json bunu
-#       acikca "skipped" olarak tasir.
-#     - Bu betik quit() CAGIRMAZ; source(...) ile guvenle calistirilabilir.
-#       Zorunlu adim basarisizliginda stop() ile biter (Rscript altinda
-#       sifir-disi cikis kodu uretir).
+#   Dürüstlük sözleşmesi:
+#     - Her adım için proves / does_not_prove alanları yazılır.
+#     - SKIP edilen adım, kanıt olarak RAPOR EDİLEMEZ; evidence.json bunu
+#       açıkça "skipped" olarak taşır.
+#     - Bu betik quit() ÇAĞIRMAZ; source(...) ile güvenle çalıştırılabilir.
+#       Zorunlu adım başarısızlığında stop() ile biter (Rscript altında
+#       sıfır-dışı çıkış kodu üretir).
 #
-#   NOT: Bu dosya BILEREK ASCII-guvenlidir (Turkce ozel karakter yok).
-#   Operasyonel giris noktasi betikleri (.Rprofile, tools/renv_snapshot.R gibi)
-#   POSIX/C veya Windows/Turkce locale altinda source(...) edilirken sessiz
-#   kirpilmaya ugramamalidir. Turkce ozel karakter EKLEMEYIN.
+#   NOT: Bu dosya BİLEREK ASCII-güvenlidir (Türkçe özel karakter yok).
+#   Operasyonel giriş noktası betikleri (.Rprofile, tools/renv_snapshot.R gibi)
+#   POSIX/C veya Windows/Türkçe locale altında source(...) edilirken sessiz
+#   kırpılmaya uğramamalıdır. Türkçe özel karakter EKLEMEYİN.
 #
-# Kullanim:
+# Kullanım:
 #   Rscript tests/scripts/run_vm_evidence_gate.R
 #   MERGEN_EVIDENCE_PROFILE=vm Rscript tests/scripts/run_vm_evidence_gate.R
 #   MERGEN_EVIDENCE_STEPS=seam_doctor,renv_status Rscript tests/scripts/run_vm_evidence_gate.R
@@ -72,7 +72,7 @@ if (!requireNamespace("jsonlite", quietly = TRUE)) {
 }
 
 # ------------------------------------------------------------------------------
-# Secret-guvenli yardimcilar: ham ortam degeri ASLA yazilmaz.
+# Secret-güvenli yardımcılar: ham ortam değeri ASLA yazılmaz.
 # ------------------------------------------------------------------------------
 
 evidence_value_metadata <- function(name) {
@@ -110,7 +110,7 @@ evidence_redact_text <- function(text) {
 }
 
 # ------------------------------------------------------------------------------
-# Profil ve adim secimi
+# Profil ve adım seçimi
 # ------------------------------------------------------------------------------
 
 profile_requested <- tolower(trimws(Sys.getenv("MERGEN_EVIDENCE_PROFILE", unset = "")))
@@ -137,8 +137,8 @@ steps_filter <- if (nzchar(steps_filter_raw)) {
   character(0)
 }
 
-# Cloud profilinde placeholder test env degerleri yalnizca EKSIKSE doldurulur;
-# VM profilinde gercek ortam degerlerine dokunulmaz.
+# Cloud profilinde placeholder test env değerleri yalnızca EKSİKSE doldurulur;
+# VM profilinde gerçek ortam değerlerine dokunulmaz.
 evidence_set_env_if_blank <- function(name, value) {
   if (!nzchar(Sys.getenv(name, unset = ""))) {
     do.call(Sys.setenv, stats::setNames(list(value), name))
@@ -153,7 +153,7 @@ if (identical(profile_effective, "cloud")) {
 }
 
 # ------------------------------------------------------------------------------
-# Artifact dizini ve cocuk oturum koscusu
+# Artifact dizini ve çocuk oturum koşucusu
 # ------------------------------------------------------------------------------
 
 gate_timestamp <- format(Sys.time(), "%Y%m%d-%H%M%S", tz = "UTC")
@@ -169,9 +169,9 @@ if (!file.exists(rscript_bin)) {
   stop(sprintf("Rscript bulunamadi: %s", rscript_bin), call. = FALSE)
 }
 
-# Cocuk runner basligi: once UTF-8 locale dene (POSIX/C ana surec altinda
-# Turkce icerikli betiklerin source(encoding='UTF-8') ile sessiz kirpilmasini
-# onler; Windows'ta sessizce basarisiz olur ve zarar vermez), sonra test modu.
+# Çocuk runner başlığı: önce UTF-8 locale dene (POSIX/C ana süreç altında
+# Türkçe içerikli betiklerin source(encoding='UTF-8') ile sessiz kırpılmasını
+# önler; Windows'ta sessizce başarısız olur ve zarar vermez), sonra test modu.
 child_runner_header <- c(
   "for (.loc in c('C.UTF-8', 'en_US.UTF-8', 'tr_TR.UTF-8')) {",
   "  ok <- tryCatch(nzchar(Sys.setlocale('LC_CTYPE', .loc)), error = function(e) FALSE, warning = function(w) FALSE)",
@@ -181,8 +181,8 @@ child_runner_header <- c(
   "options(warn = 1)"
 )
 
-# Bir adimi temiz cocuk R oturumunda calistirir; stdout/stderr'i secret-guvenli
-# bicimde adim log dosyasina yazar. extra_env yalnizca o cocuga uygulanir.
+# Bir adımı temiz çocuk R oturumunda çalıştırır; stdout/stderr'i secret-güvenli
+# biçimde adım log dosyasına yazar. extra_env yalnızca o çocuğa uygulanır.
 evidence_run_child_step <- function(step_id, code_lines, extra_env = character(0)) {
   runner_file <- file.path(artifact_dir, sprintf("step_%s_runner.R", step_id))
   log_file <- file.path(artifact_dir, sprintf("step_%s.log", step_id))
@@ -220,7 +220,7 @@ evidence_run_child_step <- function(step_id, code_lines, extra_env = character(0
 }
 
 # ------------------------------------------------------------------------------
-# Adim tanimlari: id, etiket, profil-gereksinimi ve kanit sinirlari tek yerde.
+# Adım tanımları: id, etiket, profil-gereksinimi ve kanıt sınırları tek yerde.
 # ------------------------------------------------------------------------------
 
 evidence_step_specs <- list(
@@ -318,7 +318,7 @@ evidence_step_specs <- list(
 )
 
 # ------------------------------------------------------------------------------
-# Adim uygulayicilari
+# Adım uygulayıcıları
 # ------------------------------------------------------------------------------
 
 run_step_env_config <- function() {
@@ -430,10 +430,10 @@ run_step_browser_ux_smoke <- function() {
     error = function(e) ""
   )
 
-  # Durustluk kurali: bu adim yalnizca gercek UX_SMOKE_DONE:PASS kanitiyla
-  # "passed" sayilir. Alt betik tarayici yokken exit 0 ile SKIP yazabilir;
-  # bu durum kanit DEGILDIR ve "skipped" olarak siniflandirilir. Tarayici
-  # zorunluysa SKIP de basarisizliktir.
+  # Dürüstlük kuralı: bu adım yalnızca gerçek UX_SMOKE_DONE:PASS kanıtıyla
+  # "passed" sayılır. Alt betik tarayıcı yokken exit 0 ile SKIP yazabilir;
+  # bu durum kanıt DEĞİLDİR ve "skipped" olarak sınıflandırılır. Tarayıcı
+  # zorunluysa SKIP de başarısızlıktır.
   smoke_pass_seen <- grepl("UX_SMOKE_DONE:PASS", log_text, fixed = TRUE)
   smoke_skip_seen <- grepl("SKIP", log_text, fixed = TRUE)
 
@@ -583,7 +583,7 @@ evidence_step_runners <- list(
 )
 
 # ------------------------------------------------------------------------------
-# Adimlari calistir
+# Adımları çalıştır
 # ------------------------------------------------------------------------------
 
 cat("== MERGEN VM kanit kapisi ==\n")
@@ -652,7 +652,7 @@ for (spec in evidence_step_specs) {
 }
 
 # ------------------------------------------------------------------------------
-# Kanit artifact'i
+# Kanıt artifact'i
 # ------------------------------------------------------------------------------
 
 git_field <- function(args) {
@@ -739,8 +739,8 @@ if (any(failed_optional)) {
   cat("WARN: Zorunlu olmayan adim(lar) basarisiz oldu; loglari inceleyin.\n")
 }
 
-# quit() kullanilmaz: source(...) ile guvenli; stop() Rscript altinda
-# sifir-disi cikis kodu uretir.
+# quit() kullanılmaz: source(...) ile güvenli; stop() Rscript altında
+# sıfır-dışı çıkış kodu üretir.
 if (identical(overall_status, "failed")) {
   stop(sprintf(
     "VM kanit kapisi basarisiz: %s. Ayrintilar: %s",
