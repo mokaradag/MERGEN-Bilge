@@ -204,16 +204,20 @@ test_that("gecersiz profil degeri acik hata uretir (hafif davranis kontrolu)", {
   if (.Platform$OS.type == "windows") rscript_bin <- paste0(rscript_bin, ".exe")
   skip_if_not(file.exists(rscript_bin), "Rscript bulunamadı.")
 
-  out_log <- tempfile(fileext = ".log")
-  # Çocuk oturum testin çalışma dizinini miras alır; betik mutlak yolla verilir.
-  child_expr <- sprintf('source("%s", encoding="UTF-8")', .evg_script_path)
-  status <- suppressWarnings(system2(
-    rscript_bin,
-    args = c("--vanilla", "-e", shQuote(child_expr)),
-    stdout = out_log,
-    stderr = out_log,
-    env = c("MERGEN_EVIDENCE_PROFILE=bozuk_profil")
-  ))
+	out_log <- tempfile(fileext = ".log")
+	# Çocuk oturum testin çalışma dizinini miras alır; betik mutlak yolla verilir.
+	# Windows'ta system2(env=...) davranışı kırılgan olabildiği için profil değeri
+	# çocuk R ifadesinin içinde set edilir.
+	child_expr <- sprintf(
+	  'Sys.setenv(MERGEN_EVIDENCE_PROFILE = "bozuk_profil"); source(%s, encoding = "UTF-8")',
+	  dQuote(normalizePath(.evg_script_path, winslash = "/", mustWork = TRUE))
+	)
+	status <- suppressWarnings(system2(
+	  rscript_bin,
+	  args = c("--vanilla", "-e", shQuote(child_expr)),
+	  stdout = out_log,
+	  stderr = out_log
+	))
 
   expect_false(identical(status, 0L), info = "Geçersiz profil sıfır-dışı çıkış üretmelidir.")
 

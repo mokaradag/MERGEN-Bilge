@@ -12,16 +12,50 @@
 #           helper_load_file_store.R tarafından tempdir altına alınmıştır.
 # ==============================================================================
 
+.lock_test_prepare_runtime <- function() {
+  if (exists("reset_file_store_runtime_for_tests", mode = "function", inherits = TRUE)) {
+    reset_file_store_runtime_for_tests()
+  } else if (exists(".file_store_force_test_paths", mode = "function", inherits = TRUE)) {
+    .file_store_force_test_paths()
+  }
+
+  .lock_test_cleanup()
+  invisible(TRUE)
+}
+
 .lock_test_lock_dir <- function() {
   paste0(MERGEN_INDEX_PATH, ".lock")
+}
+
+.lock_test_lock_marker <- function(lock_dir = .lock_test_lock_dir()) {
+  file.path(lock_dir, "owner")
 }
 
 .lock_test_cleanup <- function() {
   unlink(.lock_test_lock_dir(), recursive = TRUE, force = TRUE)
 }
 
+.lock_test_make_lock <- function(age_sec = NULL) {
+  lock_dir <- .lock_test_lock_dir()
+  dir.create(lock_dir, recursive = TRUE, showWarnings = FALSE)
+
+  marker <- .lock_test_lock_marker(lock_dir)
+  writeLines("test-lock", marker, useBytes = TRUE)
+
+  if (!is.null(age_sec)) {
+    eski_zaman <- Sys.time() - age_sec
+    marker_time_ok <- suppressWarnings(Sys.setFileTime(marker, eski_zaman))
+
+    if (!isTRUE(marker_time_ok)) {
+      skip("Test ortamında kilit marker dosyası mtime ayarlanamıyor.")
+    }
+  }
+
+  invisible(lock_dir)
+}
+
 test_that("kilit serbestken ifade kilit altinda calisir ve kilit temizlenir", {
-  .lock_test_cleanup()
+  .lock_test_prepare_runtime()
   withr::defer(.lock_test_cleanup())
 
   lock_dir <- .lock_test_lock_dir()
@@ -38,19 +72,14 @@ test_that("kilit serbestken ifade kilit altinda calisir ve kilit temizlenir", {
 })
 
 test_that("eski (stale) kilit kirilir ve mutasyon kilidi devralir", {
-  .lock_test_cleanup()
+  .lock_test_prepare_runtime()
   withr::defer(.lock_test_cleanup())
 
   lock_dir <- .lock_test_lock_dir()
 
-  # Çökmüş bir sürecin bıraktığı eski kilidi simüle et: kilit dizinini oluştur
-  # ve mtime değerini stale eşiğinin (test için 1 sn) gerisine çek.
-  dir.create(lock_dir, recursive = TRUE, showWarnings = FALSE)
-  eski_zaman <- Sys.time() - 3600
-  expect_true(
-    suppressWarnings(Sys.setFileTime(lock_dir, eski_zaman)),
-    info = "Test ortamında kilit dizini mtime ayarlanabilmelidir."
-  )
+  # Çökmüş bir sürecin bıraktığı eski kilidi simüle et: Windows/UNC üzerinde
+  # dizin mtime yerine marker dosyası mtime değeri kullanılır.
+  .lock_test_make_lock(age_sec = 3600)
 
   start_time <- Sys.time()
   result <- .file_store_with_index_lock(
@@ -76,13 +105,13 @@ test_that("eski (stale) kilit kirilir ve mutasyon kilidi devralir", {
 })
 
 test_that("taze kilit belgelenmis erisebilirlik-oncelikli davranisi korur", {
-  .lock_test_cleanup()
+  .lock_test_prepare_runtime()
   withr::defer(.lock_test_cleanup())
 
   lock_dir <- .lock_test_lock_dir()
 
-  # Başka bir sürecin AKTİF (taze) kilidini simüle et: mtime şu an.
-  dir.create(lock_dir, recursive = TRUE, showWarnings = FALSE)
+  # Başka bir sürecin AKTİF (taze) kilidini simüle et: marker mtime şu an.
+  .lock_test_make_lock()
 
   result <- .file_store_with_index_lock(
     {
@@ -105,14 +134,13 @@ test_that("taze kilit belgelenmis erisebilirlik-oncelikli davranisi korur", {
 })
 
 test_that("mutasyon yardimcisi stale kilit sonrasi indeks kaydini kaybetmez", {
-  .lock_test_cleanup()
+  .lock_test_prepare_runtime()
   withr::defer(.lock_test_cleanup())
 
   lock_dir <- .lock_test_lock_dir()
 
   # Eski kilit mevcutken gerçek bir indeks mutasyonu çalıştır.
-  dir.create(lock_dir, recursive = TRUE, showWarnings = FALSE)
-  suppressWarnings(Sys.setFileTime(lock_dir, Sys.time() - 3600))
+  .lock_test_make_lock(age_sec = 3600)
 
   marker_key <- paste0("stale_lock_probe_", as.integer(Sys.time()))
 
