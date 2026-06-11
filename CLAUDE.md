@@ -458,6 +458,24 @@ The execution artifact written by `tools/ai_validate.sh` / `tests/scripts/ai_rep
 Latest validation-doctor contract hardening: `tests/testthat/test-validation-doctor-contract.R` now more explicitly protects secret-like environment values from leaking through doctor output or artifacts. Values such as `LOCAL_LLM_ENDPOINT`, `MERGEN_BROWSER_BIN`, DSNs, URLs, keys, tokens, secrets, and passwords must be reported only as safe metadata such as presence, character length, boolean-style flags, and `value=<hidden>`, never as raw values. The same contract keeps `cloud-quick` as a wrapper-level alias in `tools/ai_validate.sh` that maps to the quick repository profile; do not add `cloud-quick` as a third internal profile in `tests/scripts/ai_repo_check.R`. This is validation contract hardening only and must not be described as a runtime UX change.
 
 
+### VM evidence gate contract (single repeatable preflight path)
+
+`tests/scripts/run_vm_evidence_gate.R` (wrapper: `bash tools/vm_evidence_gate.sh`) is the single repeatable preflight validation path. It orchestrates the EXISTING validation scripts as ordered steps in CLEAN CHILD R sessions and writes one secret-safe machine-readable evidence artifact: `artifacts/vm-evidence/<timestamp>/evidence.json` plus per-step logs.
+
+Frozen step list (conscious updates only, together with `tests/testthat/test-vm-evidence-gate-contract.R` and `RUNBOOK.md`): `env_config`, `parse_sanity`, `app_boot_smoke`, `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight`, `renv_status`.
+
+Rules:
+
+- Profiles: `MERGEN_EVIDENCE_PROFILE=vm` makes the VM-only gates (`vm_preflight_real`, `db_encoding_preflight`, `renv_status`) REQUIRED; `cloud` skips them with explicit reasons. Default resolves from `SSO_ENABLED`.
+- Honesty: every step carries `proves` / `does_not_prove`; skipped steps are NEVER evidence. The `browser_ux_smoke` step is `passed` only when the log contains a real `UX_SMOKE_DONE:PASS` marker — child exit 0 alone is not proof, because the underlying smoke script exits 0 on browser-missing SKIP.
+- Secret safety: environment values are reported only as `present/nchar/value=<hidden>` metadata; step logs and `evidence.json` pass through the gate's redaction helper. Never weaken this to print raw DSN/endpoint/key/token values.
+- The gate script is INTENTIONALLY ASCII-only (like `.Rprofile` and `tools/renv_snapshot.R`): operational entry-point scripts can be `source(...)`-d under POSIX/C or Windows/Turkish locales where non-ASCII content is silently truncated (which would make a gate exit 0 without running). Do not add Turkish special characters to it. Child runners set a UTF-8 `LC_CTYPE` before sourcing Turkish-content scripts; keep that header.
+- The gate is `source(...)`-safe (no `quit()`); required-step failure ends with `stop()`. It does not replace the individual gates or the manual fragile-flow checklist; it consolidates them into one artifact.
+- `MERGEN_EVIDENCE_STEPS=<comma-list>` re-runs a subset; filtered-out steps are recorded as skipped.
+- This gate's artifact is execution proof ONLY for steps it reports as `passed` (`validation_execution_status="ran_by_vm_evidence_gate"`). A cloud-profile run is NOT VM/SSO/DB/SQL Server Turkish encoding/browser proof.
+
+Protected by: `tests/testthat/test-vm-evidence-gate-contract.R`.
+
 ### Validation proof and overclaim boundary
 
 - Treat `artifacts/ai-validation/<timestamp>/summary.json` as the only machine-readable execution proof emitted by `ai_validate`.
@@ -1470,6 +1488,7 @@ Current contract:
 - Every `source_manifest_sections` section is owned by exactly one seam. Adding a manifest section without assigning a seam owner, or assigning two owners, fails `tests/testthat/test-seam-registry-contract.R`.
 - The seam registry's `extra_runtime_files` is the only allowlist for runtime R files outside the source manifest (currently `app.R`, `global.R`, `server.R`, `ui.R`, `R/utils_safe_source.R`, `R/bootstrap_source_manifest.R`, `R/config_source_manifest.R`). The contract test enforces "no orphan runtime R files": every file under `R/` must be in the manifest or in this allowlist.
 - `R/config_ui_asset_zones.R` owns `ui_asset_ownership_zones`: 23 frontend ownership zones. Every CSS/JS asset listed in `R/config_ui_assets.R` belongs to exactly ONE zone; each zone declares a single owner seam and at least one guard test. `ui_asset_unmanifested_ownership` covers the intentionally unmanifested frontend files (the inlined app-loading overlay assets, `css/admin_analytics.css`, and the smoke-only files) with an explicit reason.
+- `ui_asset_unmanifested_ownership` entries may carry `optional_in_checkout = TRUE` for vendored files that physically exist ONLY in the on-prem Windows VM working copy (the `renv.lock` provenance pattern; currently `js/fontfaceobserver.js` and `js/highlight.min.js`). `ui_asset_zones_validate()` does not treat their absence in a cloud/CI checkout as a structural problem, while the ownership entry still prevents an ownership-gap report on the VM where the file exists. Do not remove these entries to make a cloud checkout look cleaner, and do not mark a file optional merely because it is missing — optional means "intentionally on-prem-only". Non-optional unmanifested entries must keep failing validation when the file is absent; this split is protected by `tests/testthat/test-ui-asset-zones-contract.R`.
 - The zone map declares OWNERSHIP only. Load order stays single-owned by `R/config_ui_assets.R` (`ui_asset_js_order_rules`, `ui_asset_js_render_plan`); do not duplicate ordering logic into the zone map, and do not derive load order from zones.
 - Physical coverage is enforced: every `.css`/`.js` file directly under `www/css/` and `www/js/` must be owned through a zone (via the manifest) or through `ui_asset_unmanifested_ownership`. A new frontend file without declared ownership fails `tests/testthat/test-ui-asset-zones-contract.R`.
 - The frozen seam id and zone id lists in the contract tests require conscious updates together with `docs/architecture-map.md`.

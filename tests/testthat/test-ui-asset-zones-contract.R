@@ -190,6 +190,54 @@ test_that("smoke-only dosyalar üretim manifestine sızmaz ve sahiplidir", {
   )
 })
 
+test_that("optional_in_checkout girdileri checkout'ta dosya yokken sorun bildirmez, zorunlu girdiler bildirir", {
+  repo_root <- resolve_repo_root_for_tests()
+  env <- .load_ui_asset_zones_env()
+
+  # On-prem-only vendored girdiler optional_in_checkout = TRUE taşımalıdır;
+  # bu girdiler cloud checkout'unda fiziksel dosya olmadan da geçerlidir.
+  unmanifested <- env$ui_asset_unmanifested_ownership
+  on_prem_only_paths <- c("js/fontfaceobserver.js", "js/highlight.min.js")
+
+  for (path in on_prem_only_paths) {
+    expect_true(
+      isTRUE(unmanifested[[path]]$optional_in_checkout),
+      info = paste("On-prem-only vendored girdi optional_in_checkout = TRUE olmalıdır:", path)
+    )
+  }
+
+  # Zorunlu (optional olmayan) bir girdi için dosya yokluğu hâlâ yapısal
+  # sorun üretmelidir; doğrulayıcı yanlışlıkla tüm yokluk kontrolünü
+  # gevşetmemelidir.
+  fake_unmanifested <- unmanifested
+  fake_unmanifested[["js/olmayan_zorunlu_dosya_kontrati.js"]] <- list(
+    owner_seam = "frontend_varlik",
+    reason = "Test: zorunlu girdi yokluk kontrolü korunmalıdır."
+  )
+
+  problems <- env$ui_asset_zones_validate(
+    zones = env$ui_asset_ownership_zones,
+    css_paths = env$ui_asset_all_css(),
+    js_paths = env$ui_asset_all_js(),
+    css_groups = env$ui_asset_css_groups,
+    js_groups = env$ui_asset_js_groups,
+    unmanifested = fake_unmanifested,
+    repo_root = repo_root
+  )
+
+  expect_true(
+    any(grepl("js/olmayan_zorunlu_dosya_kontrati.js", problems, fixed = TRUE)),
+    info = "Zorunlu manifest dışı girdinin yokluğu yapısal sorun olarak bildirilmelidir."
+  )
+
+  # Optional girdiler aynı koşuda sorun listesinde görünmemelidir.
+  expect_false(
+    any(grepl("fontfaceobserver", problems, fixed = TRUE)) ||
+      any(grepl("highlight.min", problems, fixed = TRUE)),
+    info = "optional_in_checkout girdileri dosya yokken sorun olarak bildirilmemelidir."
+  )
+})
+
 test_that("bölge çözümleme yardımcıları bilinmeyen grup referansında açık hata verir", {
   env <- .load_ui_asset_zones_env()
 

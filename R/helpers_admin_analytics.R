@@ -77,7 +77,12 @@ admin_safe_query <- function(query) {
     on.exit(release_connection(conn_info))
     result <- DBI::dbGetQuery(conn_info$conn, query)
 
-    if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+    # Okuma sınırı: önce DB okuma yardımcısı tercih edilir; bu yol mojibake
+    # onarımına ek olarak [[MERGEN-U+...]] kaçış token'larını da geri açar.
+    # Yardımcı yüklü değilse eski UTF-8 çerçeve normalizasyonuna düşülür.
+    if (exists("normalize_db_read_visible_frame", mode = "function", inherits = TRUE)) {
+      result <- normalize_db_read_visible_frame(result, repair_mojibake = TRUE)
+    } else if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
       result <- normalize_text_frame_utf8(result, repair_mojibake = TRUE)
     }
 

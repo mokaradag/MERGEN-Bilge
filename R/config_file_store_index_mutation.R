@@ -5,10 +5,35 @@
 # R/config_file_store.R dosyasından sonra source edilmelidir.
 # ==============================================================================
 
-.file_store_with_index_lock <- function(expr, timeout_sec = 5, poll_sec = 0.05) {
+.file_store_with_index_lock <- function(expr, timeout_sec = 5, poll_sec = 0.05,
+                                        stale_lock_sec = 60) {
   lock_dir <- paste0(MERGEN_INDEX_PATH, ".lock")
   start_time <- Sys.time()
   acquired <- FALSE
+
+  # Çökmüş bir süreç kilit dizinini sonsuza dek bırakabilir; bu durumda her
+  # mutasyon timeout kadar bekleyip kilitsiz devam ederdi (kalıcı gecikme +
+  # kalıcı kilitsiz mod). Eski (stale) kilitler yaşına bakılarak kırılır.
+  .break_stale_lock_if_needed <- function() {
+    lock_info <- tryCatch(file.info(lock_dir), error = function(e) NULL)
+
+    if (is.null(lock_info) || is.na(lock_info$mtime[1])) {
+      return(invisible(FALSE))
+    }
+
+    lock_age <- as.numeric(difftime(Sys.time(), lock_info$mtime[1], units = "secs"))
+
+    if (is.finite(lock_age) && lock_age > stale_lock_sec) {
+      try(
+        log_warn("[INDEX] Eski indeks kilidi kırılıyor (yaş: {round(lock_age)} sn): {lock_dir}"),
+        silent = TRUE
+      )
+      unlink(lock_dir, recursive = TRUE, force = TRUE)
+      return(invisible(TRUE))
+    }
+
+    invisible(FALSE)
+  }
 
   repeat {
     acquired <- tryCatch(
@@ -20,6 +45,8 @@
     if (isTRUE(acquired)) {
       break
     }
+
+    .break_stale_lock_if_needed()
 
     elapsed <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
     if (!is.finite(elapsed) || elapsed >= timeout_sec) {

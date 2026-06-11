@@ -192,6 +192,14 @@ fetch_user_full_name <- function(user_id) {
 
   if (nrow(result) > 0 && !is.na(result$KaynakAdi[1])) {
     ad_soyad <- safe_trimws(as.character(result$KaynakAdi[1]))
+
+    # Okuma sınırı: kanonik profil okuyucusuyla (helpers_database.R) aynı
+    # görünür-değer normalizasyonu uygulanır; eski mojibake adlar TTS/altyazı
+    # metnine onarılmadan sızmasın.
+    if (exists("normalize_db_read_visible_value", mode = "function", inherits = TRUE)) {
+      ad_soyad <- normalize_db_read_visible_value(ad_soyad, repair_mojibake = TRUE)
+    }
+
     if (safe_nzchar(ad_soyad)) {
       return(ad_soyad)
     }
@@ -242,12 +250,22 @@ fetch_user_work_context <- function(user_id) {
   department <- ""
   mudurluk <- ""
 
+  # Okuma sınırı: kullanıcıya görünen birim adları, kanonik profil
+  # okuyucusuyla aynı görünür-değer normalizasyonundan geçer.
+  .aix_read_visible <- function(x) {
+    if (exists("normalize_db_read_visible_value", mode = "function", inherits = TRUE)) {
+      normalize_db_read_visible_value(x, repair_mojibake = TRUE)
+    } else {
+      x
+    }
+  }
+
   if ("Departman" %in% names(result) && !is.na(result$Departman[1])) {
-    department <- safe_trimws(as.character(result$Departman[1]))
+    department <- .aix_read_visible(safe_trimws(as.character(result$Departman[1])))
   }
 
   if ("Mudurluk" %in% names(result) && !is.na(result$Mudurluk[1])) {
-    mudurluk <- safe_trimws(as.character(result$Mudurluk[1]))
+    mudurluk <- .aix_read_visible(safe_trimws(as.character(result$Mudurluk[1])))
   }
 
   effective_unit <- if (safe_nzchar(department)) department else mudurluk

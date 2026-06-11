@@ -56,6 +56,7 @@ artifacts/ai-validation/
 artifacts/seam-doctor/
 artifacts/frontend-complexity-doctor/
 artifacts/validation-doctor/
+artifacts/vm-evidence/
 .ai/proposed_answer.md
 .ai/*.tmp.md
 .ai/*.log
