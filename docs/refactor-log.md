@@ -521,3 +521,40 @@ CSS `page` listesi tema tabanı, light theme modülleri, light override katmanla
 - Bu refactor frontend dosyalarının içeriğine dokunmadı; browser smoke manuel VM QA'ya bırakıldı.
 - `check_files = TRUE` asset varlık testi mevcut cloud/container fixture'ında eksik vendored assetler nedeniyle başarısız olabiliyor; Windows/on-prem paketlenmiş asset ortamında ayrıca doğrulanmalıdır.
 - Source manifest, DB schema/encoding, SSO, file lifecycle, streaming logic ve `renv.lock` bilerek değiştirilmedi.
+
+## 2026-06-11 — Açık tema mimarisinin alan-odaklı konsolidasyonu (13 dosyalık override zincirinin kaldırılması)
+
+### Sorun
+Açık tema, 13 dosyalık sıralı bir override/patch zinciriydi (`theme_light.css` + `extras` + `refinements` + 6 modül + `polish` + `overhaul` + `overhaul_phase2` + `user_polish` + `user_polish_v2`): toplam ~10.7k satır (tüm CSS'in ~%33'ü), aynı seçici 5-8 kez yeniden tanımlanıyor, ~2.480 `!important` bildirimi katmanlar arası savaşıyordu. Kaskad analizi iki yapısal sorunu kanıtladı: (1) tüm bildirimlerin %25'i (2.485/9.943) sonraki katmanlarca ezilen ÖLÜ bildirimdi; (2) benzersiz 2.334 (media, seçici) anahtarının 1.082'si (%46) DOM'da hiç var olmamış HAYALET sınıf/attribute'lara bağlıydı (`.fm-drop-zone`, `.file-preview-modal`, `.yenilikler-page`, `[data-cc-badge]`, `[data-thinking-toggle]` vb. — runtime R/JS kaynaklarında adı geçmeyen, tahminle yazılmış seçiciler). "Bazı açık tema seçenekleri beklendiği gibi davranmıyor" şikayetinin kök nedeni buydu: cila katmanları kısmen hiç eşleşmeyen seçicilere yazılmıştı.
+
+### Yapılan
+- Zincirin kaskad sonucu (media bağlamı + özgüllük + `!important` + kaynak sırası hesaplanarak) anahtar başına KAZANAN bildirim kümesi olarak çıkarıldı; bağımsız bir doğrulayıcı ile eski zincir ↔ yeni dosyalar birebir eşdeğer kanıtlandı (0 kayıp anahtar, 0 kazanan-bildirim farkı, 0 dosyalar-arası sıra riski).
+- Hayalet seçiciler iki aşamalı güvenlik filtresiyle ayıklandı: tam-ad grep (R/, www/js, www/smoke, kök R dosyaları, tema dışı CSS) + dinamik üretim öneki koruması (`paste0("health-status-", ...)`, `'cc-message-' +`, `toast-${...}` aileleri ASLA silinmedi) + vendor sınıf desenleri (Bootstrap/DataTables/Shiny/highcharts/CodeMirror) korundu.
+- Kalan 1.252 anahtar YEDİ alan dosyasına yerleştirildi (her seçici tam BİR kez): `theme_light_core.css` (kabuk), `welcome`, `chat`, `modals`, `bilge_yolac`, `personalization`, `pages`. En sık literal renkler token'lara bağlandı (`var(--mb-brand-primary)` vb.).
+- Plotly grid CSS'i (motor runtime'dan kaldırılmıştı) ve yalnızca hayalet kurallarca kullanılan `@keyframes mergen-cpu-core-pulse` ölü kod olarak silindi.
+- Manifest (`R/config_ui_assets.R` grupları + `ui_asset_css_order_rules`), bölge haritası (`R/config_ui_asset_zones.R` `tema` bölgesi), CLAUDE.md tema sözleşmesi, `docs/architecture-map.md` ve `docs/technical-reference.md` yeni mimariye güncellendi.
+- Gelecek koruması: `test-theme-light-modular-contract.R` yeniden yazıldı (dondurulmuş dosya kümesi + 8 eski dosya adı için tombstone + tema dosyaları arası TEK-TANIM sözleşmesi + `html[data-theme="light"]` kapsam disiplini ve belgeli kapsamsız allowlist + yalnızca GERÇEK seçici çapaları). `frontend_maintainability_report.R` artık tema bölgesi toplam satırını, dosyalar-arası light-tekrar seçici sayısını ve tombstone ihlalini raporluyor; `test-frontend-maintainability-ratchet.R` bunları bütçeyle bağlıyor (light-tekrar ≤ 44, tema bölgesi ≤ 6.400 satır, tombstone = 0).
+- `test-ui-asset-manifest-contract.R` ve `test-tool-background-lifecycle-contract.R` yeni zincire göre güncellendi; `module_saved_chats.R` / `module_image_gallery.R` içindeki bayat dosya-adı yorumları düzeltildi.
+
+### Sonuç
+- Tema bölgesi: ~10.7k → 5.6k satır (%48 küçülme); CSS toplamı ~32.0k → ~27.1k satır.
+- `html[data-theme="light"]` kapsamlı dosyalar-arası tekrar seçici: ~150+ çoklu-katman kopyasından 44 adede (tamamı bilinçli tema+bileşen 2x çifti) indi; tema dosyaları İÇİNDE tekrar 0.
+- Eski testin bazı çapalarının (örn. `blur(18px)`) hiç uygulanmayan ölü metin olduğu kanıtlandı; yeni test gerçek kazanan değerlere (`blur(10px) saturate(132%)`) çapalandı.
+- JS denetimi: manifest JS dosyalarında ölü dosya bulunamadı; tema-düşmanı inline renk ataması yok; `theme_manager.js` R senkronizasyonu sağlam. JS tarafında riskli cerrahi gerekmedi.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Node tabanlı kaskad eşdeğerlik doğrulayıcısı → `EŞDEĞER ✓` (0 kayıp / 0 fark / 0 sıra riski).
+- `Rscript tests/scripts/parse_sanity_check.R` → OK (749 dosya).
+- `testthat::test_file` yeşil: theme-light-modular (96), ui-asset-manifest (224), ui-asset-zones (17), frontend-maintainability-ratchet (89, yeni disiplin testi dahil), frontend-selector (80), tool-background-lifecycle (21), brand-title (22), sidebar-theme-sync (19), ux-regression-guardrails (28), accessibility (38), tool-backgrounds (39), browser-smoke-harness (12), smoke-probes (6), runtime-network-boundary (2), e2e-boot-welcome (29; `logger` paketi kurulduktan sonra tam geçti — ilk hata bu cloud ortamındaki eksik paketti, kod regresyonu değildi).
+- `bash tools/ai_validate.sh quick` → geçti; `failed_steps: 0`, `skipped_steps: 0`, app source smoke dahil. Artifact: `artifacts/ai-validation/20260611-185513/summary.json`.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Açık temaya geçin ve şu yüzeyleri gezin: karşılama ekranı (cam kart + hızlı eylemler + son konuşmalar), Ana Söyleşi (baloncuklar, giriş alanı, mesaj eylemleri, derin düşünme), modallar (geri bildirim, STT, dosya önizleme, API anahtarı), Bilge Yolaç (AJAN/karakter rozetleri, tool blokları), Kişiselleştirme + Yapılandırma, Dosya Yönetimi, Söyleşi Geçmişi/Kayıtlı/Galeri (ay grupları), Destek sayfaları (NPS butonları, Yenilikler rozetleri), Yönetici panelleri ve Sistem Durumu.
+- Koyu temada aynı yüzeylerde değişiklik OLMAMALI (kapsamsız taban kurallar korunmuştur).
+- Tema geçiş butonunu birkaç kez ileri-geri kullanın; sayfa yenilemesi sonrası tema kalıcılığını doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Eşdeğerlik kanıtı statik kaskad düzeyindedir; gerçek tarayıcı görsel doğrulaması bu cloud ortamında yapılamadı (tarayıcı yok) ve VM manuel QA'ya bırakıldı.
+- Hayalet seçici silme kararı tam-ad + üretim-öneki + vendor-desen taramasına dayanır; teorik kalan risk, kaynak dışından (ör. tarayıcı eklentisi) eklenen sınıflar içindir ve üretimde beklenmez.
+- Bileşen CSS dosyalarındaki (chat_header, sidebar_user_panel, surum_bilgilendirme vb.) component-owned light kuralları bilinçli yerinde bırakıldı; 44 adetlik 2x tema+bileşen çifti ratchet bütçesiyle sınırlandı.
+- `code_highlighting.css` içindeki `hljs-*` kuralları (highlight.min.js yalnızca on-prem VM kopyasında mevcut) ve `health_check.css` mirası bu kapsamda BİLEREK değiştirilmedi; ayrı değerlendirme gerektirir.

@@ -227,7 +227,7 @@ imageGalleryServer <- function(id, current_user_id) {
             h4(
               month_rows$month_label[1],
               # Aylık görsel sayısı rozeti - light tema CSS bu sınıfı
-              # turuncu/güçlü kontrast ile gösterir (theme_light_modals.css).
+              # turuncu/güçlü kontrast ile gösterir (theme_light_pages.css).
               tags$span(
                 class = "gallery-month-count month-count-badge",
                 sprintf("(%d görsel)", nrow(month_rows))

@@ -136,9 +136,11 @@ test_that("tool_backgrounds.js setEnabled(true) ensureLayer ve restart sirasini 
   )
 })
 
-test_that("theme_light.css chat_content_container'i light temada transparan birakir", {
-  txt <- .read_repo_text_tool_bg_life("www/css/theme_light.css")
-  expect_true(nzchar(txt), info = "www/css/theme_light.css okunamadi.")
+test_that("theme_light_chat.css chat_content_container'i light temada transparan birakir", {
+  # Acik tema kurallari alan dosyalarina konsolide edildi; soylesi yuzeyinin
+  # sahibi artik theme_light_chat.css'tir.
+  txt <- .read_repo_text_tool_bg_life("www/css/theme_light_chat.css")
+  expect_true(nzchar(txt), info = "www/css/theme_light_chat.css okunamadi.")
 
   # Solid var(--color-bg) kullanimi yerine transparent secimi tool-bg-layer
   # gorunurlugu icin gereklidir.
@@ -152,13 +154,18 @@ test_that("theme_light.css chat_content_container'i light temada transparan bira
   )
 })
 
-test_that("config_ui_assets.R theme_light_refinements.css'i CSS manifestine ekler", {
+test_that("config_ui_assets.R acik tema alan dosyalarini CSS manifestine ekler", {
   txt <- .read_repo_text_tool_bg_life("R/config_ui_assets.R")
   expect_true(nzchar(txt), info = "R/config_ui_assets.R okunamadi.")
 
   expect_true(
-    grepl('"css/theme_light_refinements.css"', txt, fixed = TRUE),
-    info = "theme_light_refinements.css UI asset manifestine eklenmelidir."
+    grepl('"css/theme_light_core.css"', txt, fixed = TRUE),
+    info = "theme_light_core.css UI asset manifestine eklenmelidir."
+  )
+
+  expect_true(
+    grepl('"css/theme_light_chat.css"', txt, fixed = TRUE),
+    info = "theme_light_chat.css UI asset manifestine eklenmelidir."
   )
 })
 

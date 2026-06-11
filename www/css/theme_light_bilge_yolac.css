@@ -1,64 +1,152 @@
 /* ============================================================
- * Başlık: Açık Tema - Bilge Yolaç Onarımları
+ * Başlık: Açık Tema — Bilge Yolaç
  * Dosya: www/css/theme_light_bilge_yolac.css
- * Açıklama: Bilge Yolaç (Claude Code) sayfasında light tema deneyimini
- *           kullanılabilir hale getirir. claude_code.css ve
- *           claude_code_streaming.css koyu tema için tasarlanmıştır;
- *           burada light tema altında:
- *             - Ana konteyner ve kabuk arka planları light/cam yüzeye geçer
- *             - Tool/komut blok başlıkları okunaklı (kabuk içeriği koyu
- *               kalır; terminal/kod blokları kontrastlı tasarlanmıştır)
- *             - Sol panel kartları (Proje Dizini, Model, Hazır Senaryolar,
- *               Eklentiler) light cam yüzey
- *             - Bilge Yolaç chat akışı arka planı beyaz/cam
- *             - Karakter rozetleri --char-accent kimliğini taşır
- *             - "Ajan" rozeti kurumsal mavi yüzey + beyaz metin
- *             - "Hazır Senaryo" butonları light cam, hover'da renkli
- *
- *           Terminal/kabuk komutu okuduğu içerik için belirli bloklar
- *           bilinçli olarak koyu kalır (terminal estetiği). Bu istisna
- *           dosyada açıkça işaretlenmiştir.
- *
- *           Yalnızca <html data-theme="light"> altında etkilidir; dark
- *           tema ve Bilge Yolaç game/canvas alanları korunur.
+ * Katman: tema 6/8
+ * Açıklama: Bilge Yolaç çalışma alanının açık tema yüzeyleri: AJAN ve
+ *           karakter rozetleri, araç (tool) blokları, çıktı/akış alanı,
+ *           komut giriş bölgesi ve üretilen dosya kartları. Karakter
+ *           renk kimliği --char-accent / --cc-theme-accent üzerinden
+ *           korunur.
  * ============================================================ */
 
-/* ============================================================
- * 1) Ana konteyner ve değişkenler
- *    --cc-theme-accent karakter bazlı değişir; light temada metin/border
- *    renklendirmesini bu kimlik üzerinden yapıyoruz.
- * ============================================================ */
-html[data-theme="light"] .claude-code-container {
-  background: linear-gradient(180deg, #f4f6fb 0%, #eef2f8 100%) !important;
+html[data-theme="light"] .cc-sidebar {
+  background: var(--color-surface, #ffffff) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .cc-sidebar h1,
+html[data-theme="light"] .cc-sidebar h2,
+html[data-theme="light"] .cc-sidebar h3,
+html[data-theme="light"] .cc-sidebar h4 {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cc-shell {
+  background: #0f1e3d !important;
+  color: #d6e0f5 !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  border-radius: 6px;
+}
+
+html[data-theme="light"] .cc-status-badge {
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .cc-input-area:focus {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.15) !important;
+}
+
+html[data-theme="light"] .cc-plugin-card {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .cc-plugin-card:hover {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: var(--shadow-card-hover);
+}
+
+html[data-theme="light"] .cc-plugin-name {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cc-plugin-desc {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .cc-clear-btn {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .cc-clear-btn:hover {
+  background: rgba(194, 65, 12, 0.10) !important;
+  border-color: var(--mb-brand-accent, #FF5620) !important;
+  color: var(--mb-brand-accent, #FF5620) !important;
+}
+
+html[data-theme="light"] .cc-config-card {
+  background: rgba(255, 255, 255, 0.88) !important;
+  border: 1px solid rgba(0, 48, 135, 0.12) !important;
+  box-shadow: 0 6px 18px rgba(15, 28, 51, 0.06) !important;
+}
+
+html[data-theme="light"] .cc-card:hover {
+  border-color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] #claude_code-workdir,
+html[data-theme="light"] #claude_code-cc_input {
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
   color: var(--color-text, #0f1c33) !important;
-  --input-bg: #ffffff;
-  --card-bg: #ffffff;
-  --border-color: rgba(0, 48, 135, 0.16);
-  --text-primary: #0f1c33;
-  --text-secondary: #5b6577;
 }
 
-/* Ana içerik düzeni - light yüzey */
-html[data-theme="light"] .cc-main-content {
-  background: transparent !important;
+html[data-theme="light"] #claude_code-workdir:focus,
+html[data-theme="light"] #claude_code-cc_input:focus {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.12) !important;
+  outline: none !important;
 }
 
-/* ============================================================
- * 2) Sol panel kartları (Proje Dizini, Model, Hazır Senaryolar,
- *    Dizin İçeriği, Eklentiler)
- * ============================================================ */
+html[data-theme="light"] .cc-browse-btn {
+  background: rgba(247, 249, 253, 0.95) !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cc-browse-btn:hover {
+  background: var(--mb-brand-primary, #003087) !important;
+  color: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cc-output {
+  box-shadow: var(--shadow-card);
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid rgba(0, 48, 135, 0.12) !important;
+}
+
+html[data-theme="light"] .cc-welcome-screen {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(0, 48, 135, 0.12) !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .cc-message-ai {
+  background: rgba(247, 249, 253, 0.95) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid rgba(0, 48, 135, 0.12) !important;
+}
+
+html[data-theme="light"] #claude_code-run_btn {
+  background: linear-gradient(135deg, var(--mb-brand-accent) 0%, var(--mb-brand-accent-2) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 86, 32, 0.6) !important;
+  box-shadow: 0 4px 12px rgba(255, 86, 32, 0.25) !important;
+}
+
 html[data-theme="light"] .cc-sidebar-panel {
   background: transparent !important;
 }
 
 html[data-theme="light"] .cc-settings-card,
+html[data-theme="light"] .cc-card {
+  box-shadow: 0 4px 12px rgba(15, 28, 51, 0.06) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f7f9fd 100%) !important;
+  border: 1px solid rgba(0, 48, 135, 0.14) !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
 html[data-theme="light"] .cc-side-panel,
-html[data-theme="light"] .cc-card,
-html[data-theme="light"] .cc-section,
 html[data-theme="light"] .cc-scenarios-card,
-html[data-theme="light"] .cc-plugins-card,
-html[data-theme="light"] .cc-directory-card,
-html[data-theme="light"] .cc-project-card {
+html[data-theme="light"] .cc-plugins-card {
   background: linear-gradient(180deg, #ffffff 0%, #f7f9fd 100%) !important;
   border: 1px solid rgba(0, 48, 135, 0.14) !important;
   color: var(--color-text, #0f1c33) !important;
@@ -70,25 +158,16 @@ html[data-theme="light"] .cc-side-panel:hover {
   border-color: rgba(0, 48, 135, 0.30) !important;
 }
 
-/* Bölüm başlıkları */
-html[data-theme="light"] .cc-section-divider,
-html[data-theme="light"] .cc-side-panel-title,
-html[data-theme="light"] .cc-card-title,
-html[data-theme="light"] .cc-section-title {
+html[data-theme="light"] .cc-card-title {
   color: var(--mb-brand-primary, #003087) !important;
   border-bottom: 1px solid rgba(0, 48, 135, 0.14) !important;
   font-weight: 600;
 }
 
-html[data-theme="light"] .cc-section-divider i,
-html[data-theme="light"] .cc-side-panel-title i,
 html[data-theme="light"] .cc-card-title i {
   color: var(--mb-brand-primary, #003087) !important;
 }
 
-/* Proje Dizini path input */
-html[data-theme="light"] .cc-project-input,
-html[data-theme="light"] .cc-workdir-input,
 html[data-theme="light"] .cc-settings-card input[type="text"],
 html[data-theme="light"] .cc-settings-card input[type="search"] {
   background: #ffffff !important;
@@ -97,18 +176,12 @@ html[data-theme="light"] .cc-settings-card input[type="search"] {
   box-shadow: 0 1px 2px rgba(15, 28, 51, 0.04) inset;
 }
 
-html[data-theme="light"] .cc-project-input:focus,
-html[data-theme="light"] .cc-workdir-input:focus,
 html[data-theme="light"] .cc-settings-card input:focus {
   border-color: var(--mb-brand-primary, #003087) !important;
-  box-shadow:
-    0 0 0 3px rgba(0, 48, 135, 0.14),
-    0 1px 2px rgba(15, 28, 51, 0.04) inset !important;
+  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.14), 0 1px 2px rgba(15, 28, 51, 0.04) inset !important;
 }
 
-/* Path action butonları (klasör seç / kopyala / yenile) */
 html[data-theme="light"] .cc-action-btn,
-html[data-theme="light"] .cc-icon-btn,
 html[data-theme="light"] .cc-sidebar-panel button {
   background: rgba(255, 255, 255, 0.96) !important;
   color: var(--mb-brand-primary, #003087) !important;
@@ -116,82 +189,43 @@ html[data-theme="light"] .cc-sidebar-panel button {
   box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05);
 }
 
-html[data-theme="light"] .cc-action-btn:hover,
-html[data-theme="light"] .cc-icon-btn:hover {
+html[data-theme="light"] .cc-action-btn:hover {
   background: rgba(0, 48, 135, 0.06) !important;
   border-color: var(--mb-brand-primary, #003087) !important;
   color: var(--mb-brand-primary, #003087) !important;
 }
 
-/* Dizin içeriği listesi */
-html[data-theme="light"] .cc-directory-list,
-html[data-theme="light"] .cc-file-list {
-  background: rgba(247, 249, 253, 0.65) !important;
-  border: 1px solid rgba(0, 48, 135, 0.08) !important;
-  border-radius: 8px;
-  color: var(--color-text, #0f1c33) !important;
-}
-
-html[data-theme="light"] .cc-directory-list .cc-file-item,
-html[data-theme="light"] .cc-file-list .cc-file-item {
-  color: var(--color-text-soft, #1f2a44) !important;
-  border-bottom: 1px solid rgba(0, 48, 135, 0.06);
-}
-
-html[data-theme="light"] .cc-directory-list .cc-file-item:hover {
-  background: rgba(0, 48, 135, 0.06) !important;
-  color: var(--mb-brand-primary, #003087) !important;
-}
-
-/* ============================================================
- * 3) Model tier butonları (Hızlı/Dengeli/Güçlü)
- *    Aktif modelin --cc-theme-accent rengini ödünç al; geri kalanlar
- *    light yüzeyde rahat okunur.
- * ============================================================ */
-html[data-theme="light"] .cc-model-btn,
-html[data-theme="light"] .cc-model-tier-btn,
-html[data-theme="light"] .cc-model-option,
-html[data-theme="light"] [data-cc-model-tier],
-html[data-theme="light"] .claude-code-model-tier {
+html[data-theme="light"] .cc-model-tier-btn {
+  font-weight: 500;
   background: rgba(255, 255, 255, 0.96) !important;
   color: var(--color-text-soft, #1f2a44) !important;
   border: 1px solid rgba(0, 48, 135, 0.20) !important;
   box-shadow: 0 1px 3px rgba(15, 28, 51, 0.06);
 }
 
-html[data-theme="light"] .cc-model-btn:hover,
-html[data-theme="light"] .cc-model-tier-btn:hover,
-html[data-theme="light"] .cc-model-option:hover {
+html[data-theme="light"] .cc-model-tier-btn:hover {
   background: rgba(0, 48, 135, 0.05) !important;
   border-color: var(--mb-brand-primary, #003087) !important;
   color: var(--mb-brand-primary, #003087) !important;
 }
 
-html[data-theme="light"] .cc-model-btn.active,
-html[data-theme="light"] .cc-model-tier-btn.active,
-html[data-theme="light"] .cc-model-option.active,
-html[data-theme="light"] [data-cc-model-tier].active {
-  background: linear-gradient(135deg,
-    var(--mb-brand-primary, #003087) 0%,
-    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+html[data-theme="light"] .cc-model-tier-btn.active {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
   color: #ffffff !important;
   border-color: var(--mb-brand-primary, #003087) !important;
-  box-shadow:
-    0 4px 14px rgba(0, 48, 135, 0.26),
-    0 0 0 2px rgba(0, 48, 135, 0.08) !important;
+  box-shadow: 0 4px 14px rgba(0, 48, 135, 0.26), 0 0 0 2px rgba(0, 48, 135, 0.08) !important;
   font-weight: 600;
 }
 
-html[data-theme="light"] .cc-model-btn.active i {
-  color: #ffffff !important;
+html[data-theme="light"] .cc-scenario-btn {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05);
+  font-weight: 500;
 }
 
-/* ============================================================
- * 4) Hazır Senaryolar - Kod İnceleme, Hata Ayıklama, vs.
- * ============================================================ */
-html[data-theme="light"] .cc-scenario-btn,
-html[data-theme="light"] .cc-scenarios-card .btn,
-html[data-theme="light"] [data-cc-scenario] {
+html[data-theme="light"] .cc-scenarios-card .btn {
   background: rgba(255, 255, 255, 0.96) !important;
   color: var(--color-text-soft, #1f2a44) !important;
   border: 1px solid rgba(0, 48, 135, 0.18) !important;
@@ -212,36 +246,15 @@ html[data-theme="light"] .cc-scenarios-card .btn i {
   color: var(--mb-brand-primary, #003087) !important;
 }
 
-/* ============================================================
- * 5) Chat / output wrapper - light cam yüzey
- *    Önemli: tek tek mesajların gövde alanları (cc-message-body)
- *    light okunabilir kalır; kabuk komutu (cc-shell-content) ve
- *    monospace kod blokları bilinçli olarak koyu kalır.
- * ============================================================ */
-html[data-theme="light"] .cc-output-wrapper,
-html[data-theme="light"] .cc-output-area,
-html[data-theme="light"] .cc-chat-area,
-html[data-theme="light"] .cc-stream-container,
-html[data-theme="light"] .claude-code-output-wrap {
-  background: linear-gradient(180deg,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(247, 249, 253, 0.92) 100%) !important;
-  border: 1px solid rgba(0, 48, 135, 0.08) !important;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.04);
-}
-
-/* Mesaj zarfı */
 html[data-theme="light"] .cc-message {
+  border: 1px solid var(--color-border-soft, rgba(0, 48, 135, 0.10)) !important;
   background: transparent !important;
   color: var(--color-text, #0f1c33) !important;
 }
 
 html[data-theme="light"] .cc-message-user {
-  background: transparent !important;
-}
-
-html[data-theme="light"] .cc-message-assistant {
+  color: #ffffff !important;
+  border: 1px solid rgba(0, 48, 135, 0.25) !important;
   background: transparent !important;
 }
 
@@ -251,7 +264,6 @@ html[data-theme="light"] .cc-message-error {
   border-radius: 8px;
 }
 
-/* Mesaj başlığı - light kurumsal şerit */
 html[data-theme="light"] .cc-message-header {
   color: var(--mb-brand-primary, #003087) !important;
   border-bottom: 1px solid rgba(0, 48, 135, 0.10) !important;
@@ -273,16 +285,6 @@ html[data-theme="light"] .cc-message-duration {
   font-weight: 500;
 }
 
-/* Kullanıcı komutu - light beyaz pre, ince mavi çerçeve */
-html[data-theme="light"] .cc-user-pre {
-  background: linear-gradient(180deg, #ffffff 0%, #f7f9fd 100%) !important;
-  color: var(--color-text, #0f1c33) !important;
-  border: 1px solid rgba(0, 48, 135, 0.14) !important;
-  border-radius: 8px;
-  padding: 10px 14px;
-}
-
-/* Mesaj gövdesi - genel okunaklı koyu metin */
 html[data-theme="light"] .cc-message-body {
   color: var(--color-text, #0f1c33) !important;
 }
@@ -311,7 +313,6 @@ html[data-theme="light"] .cc-message-body a:hover {
   color: var(--mb-brand-accent, #FF5620) !important;
 }
 
-/* Inline code - belirgin ama yumuşak */
 html[data-theme="light"] .cc-message-body code {
   background: rgba(0, 48, 135, 0.08) !important;
   color: var(--mb-brand-primary, #003087) !important;
@@ -320,9 +321,8 @@ html[data-theme="light"] .cc-message-body code {
   padding: 1px 6px;
 }
 
-/* Code block (pre) - terminal/kod estetiği için koyu kalır (bilinçli) */
 html[data-theme="light"] .cc-message-body pre {
-  background: #0f1c33 !important;
+  background: var(--color-text) !important;
   color: #e6ecf8 !important;
   border: 1px solid rgba(0, 48, 135, 0.18) !important;
   box-shadow: 0 2px 6px rgba(15, 28, 51, 0.10);
@@ -335,108 +335,10 @@ html[data-theme="light"] .cc-message-body pre code {
   padding: 0 !important;
 }
 
-/* ============================================================
- * 6) Araç kullanımı (ARAÇ KULLANIMLARI) blokları
- *    Başlık şeridi light yüzeyde okunaklı; içerik (komut/yol)
- *    light tona geçer ancak terminal sonuç bloğu koyu kalır.
- * ============================================================ */
-html[data-theme="light"] .cc-tool-section {
-  background: linear-gradient(180deg,
-    rgba(255, 255, 255, 0.92) 0%,
-    rgba(247, 249, 253, 0.88) 100%) !important;
-  border: 1px solid rgba(0, 48, 135, 0.16) !important;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-html[data-theme="light"] .cc-tool-section-header {
-  background: linear-gradient(135deg,
-    rgba(0, 48, 135, 0.10) 0%,
-    rgba(247, 249, 253, 0.95) 100%) !important;
-  color: var(--mb-brand-primary, #003087) !important;
-  border-bottom: 1px solid rgba(0, 48, 135, 0.14) !important;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-html[data-theme="light"] .cc-tool-section-header i {
-  color: var(--mb-brand-primary, #003087) !important;
-}
-
-html[data-theme="light"] .cc-tool-toggle-all {
-  color: var(--mb-brand-primary, #003087) !important;
-}
-
-html[data-theme="light"] .cc-tool-toggle-all:hover {
-  background: rgba(0, 48, 135, 0.06) !important;
-}
-
-html[data-theme="light"] .cc-tool-block {
-  border-top: 1px solid rgba(0, 48, 135, 0.08) !important;
-}
-
-html[data-theme="light"] .cc-tool-header {
-  color: var(--color-text-soft, #1f2a44) !important;
-  background: transparent !important;
-}
-
-html[data-theme="light"] .cc-tool-header:hover {
-  background: rgba(0, 48, 135, 0.04) !important;
-}
-
-html[data-theme="light"] .cc-tool-header i {
-  color: var(--mb-brand-primary, #003087) !important;
-}
-
-html[data-theme="light"] .cc-tool-toggle-icon {
-  color: var(--color-muted, #5b6577) !important;
-}
-
-html[data-theme="light"] .cc-tool-title,
-html[data-theme="light"] .cc-tool-name,
-html[data-theme="light"] .cc-tool-label {
-  color: var(--mb-brand-primary, #003087) !important;
-  font-weight: 600 !important;
-}
-
-html[data-theme="light"] .cc-tool-id,
-html[data-theme="light"] .cc-tool-meta {
-  color: var(--color-muted, #5b6577) !important;
-  font-family: "Consolas", "Cascadia Code", "JetBrains Mono", monospace;
-}
-
-/* Komut metni - bash komut bloğu (terminal estetiği için koyu kalır) */
-html[data-theme="light"] .cc-tool-command {
-  background: #0f1c33 !important;
-  color: #81C784 !important;
-  border: 1px solid rgba(0, 48, 135, 0.20) !important;
-  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.10);
-}
-
-/* Dosya yolu - mavi okuyabilir */
-html[data-theme="light"] .cc-tool-path {
-  color: var(--mb-brand-primary, #003087) !important;
-  background: rgba(0, 48, 135, 0.06);
-  padding: 2px 8px;
-  border-radius: 4px;
-}
-
-/* Araç sonuç pre - terminal estetiği için koyu kalır */
-html[data-theme="light"] .cc-tool-result pre {
-  background: #0f1c33 !important;
-  color: #e6ecf8 !important;
-  border: 1px solid rgba(0, 48, 135, 0.18) !important;
-}
-
-/* ============================================================
- * 7) Streaming kabuk blokları (terminal estetiği bilinçli koyu)
- *    Kabuk blok ARKA PLANI koyu kalır (kullanıcı terminale alışkın);
- *    ancak çevresindeki kart/kontrol şeritleri light olarak görünür.
- * ============================================================ */
 html[data-theme="light"] .cc-shell-block {
-  background: #0f1c33 !important;
-  border: 1px solid rgba(0, 48, 135, 0.20) !important;
+  background: var(--color-text) !important;
   color: #e6ecf8 !important;
+  border: 1px solid rgba(0, 48, 135, 0.20) !important;
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(15, 28, 51, 0.10);
 }
@@ -453,36 +355,14 @@ html[data-theme="light"] .cc-shell-prompt {
   color: #FFB74D !important;
 }
 
-/* Kabuk görünürlük anahtarı (light çerçeve) */
-html[data-theme="light"] .cc-shell-visibility-toggle {
-  background: rgba(255, 255, 255, 0.96) !important;
-  color: var(--mb-brand-primary, #003087) !important;
-  border: 1px solid rgba(0, 48, 135, 0.22) !important;
-}
-
-html[data-theme="light"] .cc-shell-visibility-toggle:hover {
-  background: rgba(0, 48, 135, 0.06) !important;
-  border-color: var(--mb-brand-primary, #003087) !important;
-}
-
-/* Kabuk anahtarı ikonu: koyu temada açık yeşil (#81C784) açık zeminde
-   okunmuyordu. Açık temada kurumsal mavi, kapalıyken soluk gri. */
 html[data-theme="light"] .cc-shell-visibility-toggle i {
   color: var(--mb-brand-primary, #003087) !important;
 }
+
 html[data-theme="light"] .cc-shell-toggle-off i {
   color: var(--color-muted, #5b6577) !important;
 }
 
-/* Araç sonucu (bash/komut çıktısı) bloğu açık temada hâlâ koyu kalıyordu;
-   açık yüzey + koyu metin ile okunur hale getirilir. */
-html[data-theme="light"] .cc-tool-result-pre {
-  background: #f3f5fa !important;
-  border: 1px solid rgba(0, 48, 135, 0.12) !important;
-  color: var(--color-text-soft, #1f2a44) !important;
-}
-
-/* Tool sonuç bekliyor durumu */
 html[data-theme="light"] .cc-tool-result-pending,
 html[data-theme="light"] .cc-tool-result-loading {
   color: var(--color-muted, #5b6577) !important;
@@ -504,22 +384,11 @@ html[data-theme="light"] .cc-streaming-indicator i {
   color: var(--mb-brand-accent, #FF5620) !important;
 }
 
-/* ============================================================
- * 8) Komut girişi (cc-input-area) - light yüzey
- * ============================================================ */
 html[data-theme="light"] .cc-input-area {
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
   background: linear-gradient(180deg, #ffffff 0%, #f7f9fd 100%) !important;
   border-top: 1px solid rgba(0, 48, 135, 0.14) !important;
-}
-
-/* Komut giriş kutusu: koyu temadaki gibi yalnızca metin alanı çerçevelenir.
-   Önceki açık tema kuralı tüm sarmalayıcıyı kutuluyor ve Çalıştır/Durdur
-   düğmeleri ile karakter rozetlerini kutunun İÇİNDE gösteriyordu. Kutu
-   textarea'ya taşınarak düğme/rozetler kutunun dışında kalır. */
-html[data-theme="light"] .cc-input-wrapper {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
 }
 
 html[data-theme="light"] .cc-input-area textarea,
@@ -529,30 +398,29 @@ html[data-theme="light"] .cc-input-area input[type="text"] {
   border: 1px solid rgba(0, 48, 135, 0.18) !important;
   border-radius: 10px !important;
   outline: none !important;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 4px 12px rgba(15, 28, 51, 0.06);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 4px 12px rgba(15, 28, 51, 0.06);
 }
 
 html[data-theme="light"] .cc-input-area textarea:focus,
 html[data-theme="light"] .cc-input-area input[type="text"]:focus {
   border-color: var(--mb-brand-primary, #003087) !important;
-  box-shadow:
-    0 0 0 3px rgba(0, 48, 135, 0.14),
-    0 4px 12px rgba(15, 28, 51, 0.08);
+  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.14), 0 4px 12px rgba(15, 28, 51, 0.08);
 }
 
 html[data-theme="light"] .cc-input-area textarea::placeholder {
   color: var(--color-muted, #5b6577) !important;
 }
 
-/* Çalıştır butonu */
-html[data-theme="light"] .cc-run-btn,
-html[data-theme="light"] #claude_code-run_command,
-html[data-theme="light"] [data-cc-action="run"] {
-  background: linear-gradient(135deg,
-    var(--mb-brand-accent, #FF5620) 0%,
-    var(--mb-brand-accent-2, #FF8022) 100%) !important;
+html[data-theme="light"] .cc-run-btn {
+  box-shadow: 0 4px 12px rgba(255, 86, 32, 0.25) !important;
+  background: linear-gradient(135deg, var(--mb-brand-accent, #FF5620) 0%, var(--mb-brand-accent-2, #FF8022) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 86, 32, 0.55) !important;
+  font-weight: 600;
+}
+
+html[data-theme="light"] #claude_code-run_command {
+  background: linear-gradient(135deg, var(--mb-brand-accent, #FF5620) 0%, var(--mb-brand-accent-2, #FF8022) 100%) !important;
   color: #ffffff !important;
   border: 1px solid rgba(255, 86, 32, 0.55) !important;
   box-shadow: 0 4px 12px rgba(255, 86, 32, 0.24);
@@ -561,14 +429,12 @@ html[data-theme="light"] [data-cc-action="run"] {
 
 html[data-theme="light"] .cc-run-btn:hover,
 html[data-theme="light"] #claude_code-run_command:hover {
-  background: linear-gradient(135deg, #e64a13 0%, #ff5620 100%) !important;
+  background: linear-gradient(135deg, #e64a13 0%, var(--mb-brand-accent) 100%) !important;
   box-shadow: 0 6px 18px rgba(255, 86, 32, 0.32);
 }
 
-/* Durdur butonu */
 html[data-theme="light"] .cc-stop-btn,
-html[data-theme="light"] #claude_code-stop_command,
-html[data-theme="light"] [data-cc-action="stop"] {
+html[data-theme="light"] #claude_code-stop_command {
   background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%) !important;
   color: #ffffff !important;
   border: 1px solid #991b1b !important;
@@ -576,87 +442,28 @@ html[data-theme="light"] [data-cc-action="stop"] {
   font-weight: 600;
 }
 
-/* ============================================================
- * 9) Karakter rozeti & "Ajan" rozeti
- *    Karakter rozeti --char-accent kimliğini taşır (Selin SEZGİN
- *    yeşil-mavi vs.). Ajan rozeti kurumsal mavi yüzey.
- * ============================================================ */
-html[data-theme="light"] .cc-character-badge,
-html[data-theme="light"] .karakter-rozet,
-html[data-theme="light"] [data-cc-badge="character"] {
-  background: linear-gradient(135deg,
-    var(--char-accent, var(--mb-brand-primary, #003087)) 0%,
-    var(--char-accent-hover, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
-  color: #ffffff !important;
-  border: 1px solid var(--char-accent, var(--mb-brand-primary, #003087)) !important;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
-  font-weight: 600;
-  box-shadow: 0 2px 6px rgba(15, 28, 51, 0.16);
-}
-
-/* Karakter rozetinin --cc-theme-accent ile uyumu */
-html[data-theme="light"] .cc-character-badge {
-  /* cc-theme-accent fallback: karakter manager seçilen karakter
-   * verisinden ayarlar; light temada ek olarak char-accent değişkeni
-   * üzerinden de güçlü kalır. */
-  background: linear-gradient(135deg,
-    var(--cc-theme-accent, var(--char-accent, var(--mb-brand-primary, #003087))) 0%,
-    var(--cc-theme-hover, var(--char-accent-hover, var(--mb-brand-primary-alt, #002D7A))) 100%) !important;
-}
-
-/* "Ajan" rozeti - cc-badge / cc-agent-badge */
-html[data-theme="light"] .cc-badge,
-html[data-theme="light"] .cc-agent-badge,
-html[data-theme="light"] .ajan-badge,
-html[data-theme="light"] [data-cc-badge="ajan"] {
-  background: linear-gradient(135deg,
-    var(--mb-brand-primary, #003087) 0%,
-    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
-  color: #ffffff !important;
-  border: 1px solid rgba(0, 48, 135, 0.55) !important;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
-  font-weight: 700;
-  letter-spacing: 0.10em;
-  box-shadow: 0 2px 8px rgba(0, 48, 135, 0.26);
-}
-
-/* ============================================================
- * 10) Durum rozeti (Bağlı / Bağlı Değil) - light yüzey
- * ============================================================ */
 html[data-theme="light"] .cc-status-ok {
+  border-color: rgba(22, 163, 74, 0.35) !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
   background: rgba(22, 163, 74, 0.10) !important;
   color: #15803d !important;
-  border: 1px solid rgba(22, 163, 74, 0.30);
 }
 
 html[data-theme="light"] .cc-status-error {
+  border-color: rgba(194, 65, 12, 0.35) !important;
+  border: 1px solid rgba(239, 68, 68, 0.30) !important;
   background: rgba(220, 38, 38, 0.10) !important;
   color: #b91c1c !important;
-  border: 1px solid rgba(220, 38, 38, 0.30);
 }
 
-html[data-theme="light"] .cc-status-unknown,
-html[data-theme="light"] .cc-status-checking {
+html[data-theme="light"] .cc-status-checking,
+html[data-theme="light"] .cc-status-unknown {
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  border-color: rgba(0, 48, 135, 0.30) !important;
   background: rgba(91, 101, 119, 0.08) !important;
-  color: #5b6577 !important;
-  border: 1px solid rgba(91, 101, 119, 0.22);
+  color: var(--color-muted) !important;
 }
 
-/* ============================================================
- * 11) Tool count badge (ARAÇ KULLANIMLARI (3) gibi)
- * ============================================================ */
-html[data-theme="light"] .cc-tool-count {
-  background: rgba(0, 48, 135, 0.10) !important;
-  color: var(--mb-brand-primary, #003087) !important;
-  border: 1px solid rgba(0, 48, 135, 0.22);
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 999px;
-}
-
-/* ============================================================
- * 12) Dosya önizlemesi (Dosya Yazma sonrası inline kart)
- * ============================================================ */
 html[data-theme="light"] .cc-file-preview,
 html[data-theme="light"] .cc-file-preview-content {
   background: #ffffff !important;
@@ -665,14 +472,11 @@ html[data-theme="light"] .cc-file-preview-content {
 }
 
 html[data-theme="light"] .cc-file-preview-header {
-  background: linear-gradient(135deg,
-    rgba(0, 48, 135, 0.10) 0%,
-    rgba(247, 249, 253, 0.95) 100%) !important;
+  background: linear-gradient(135deg, rgba(0, 48, 135, 0.10) 0%, rgba(247, 249, 253, 0.95) 100%) !important;
   color: var(--mb-brand-primary, #003087) !important;
   border-bottom: 1px solid rgba(0, 48, 135, 0.14) !important;
 }
 
-/* Üretilen dosya kartı (cc-generated-file-card) */
 html[data-theme="light"] .cc-generated-file-card {
   background: rgba(255, 255, 255, 0.98) !important;
   border: 1px solid rgba(0, 48, 135, 0.22) !important;
@@ -686,3 +490,296 @@ html[data-theme="light"] .cc-generated-file-card a {
 html[data-theme="light"] .cc-generated-file-card a:hover {
   color: var(--mb-brand-accent, #FF5620) !important;
 }
+
+html[data-theme="light"] .cc-tool-section-header i {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .cc-tool-toggle-all {
+  color: rgba(255, 255, 255, 0.92) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.24) !important;
+  border-radius: 6px;
+  padding: 2px 10px;
+}
+
+html[data-theme="light"] .cc-tool-toggle-all:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .cc-tool-count {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.32) !important;
+  font-weight: 700;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+
+html[data-theme="light"] .cc-tool-title,
+html[data-theme="light"] .cc-tool-block .cc-tool-title {
+  color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 700 !important;
+  font-size: 13px;
+}
+
+html[data-theme="light"] .cc-tool-header i,
+html[data-theme="light"] .cc-tool-block .cc-tool-header i {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cc-tool-toggle-icon {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cc-tool-command {
+  background: #0d1828 !important;
+  color: #98ee9f !important;
+  border: 1px solid rgba(0, 48, 135, 0.20) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.10);
+}
+
+html[data-theme="light"] .cc-tool-result pre {
+  background: #0d1828 !important;
+  color: #e6ecf8 !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+html[data-theme="light"] .cc-tool-path {
+  color: var(--mb-brand-primary, #003087) !important;
+  background: rgba(0, 48, 135, 0.08) !important;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 48, 135, 0.16) !important;
+  font-family: "Consolas", "Cascadia Code", "JetBrains Mono", monospace;
+}
+
+html[data-theme="light"] .cc-badge {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(0, 48, 135, 0.45) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.20);
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  box-shadow: 0 2px 8px rgba(0, 48, 135, 0.30);
+}
+
+html[data-theme="light"] .claude-code-container {
+  color: var(--color-text, #0f1c33) !important;
+  --border-color: rgba(0, 48, 135, 0.16);
+  --text-primary: var(--color-text);
+  --text-secondary: var(--color-muted);
+  background: linear-gradient(180deg, #faf7f2 0%, #f1ece1 100%) !important;
+  --input-bg: #ffffff !important;
+  --card-bg: #ffffff !important;
+}
+
+html[data-theme="light"] .cc-main-content {
+  background: linear-gradient(180deg, #faf7f2 0%, #f1ece1 100%) !important;
+  --card-bg: #ffffff !important;
+  --input-bg: #ffffff !important;
+}
+
+html[data-theme="light"] .cc-terminal-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #faf9f5 100%) !important;
+  border: 1px solid rgba(0, 48, 135, 0.14) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05) !important;
+}
+
+html[data-theme="light"] .cc-output-wrapper,
+html[data-theme="light"] .cc-output-area {
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.04);
+  background: transparent !important;
+  border: none !important;
+}
+
+html[data-theme="light"] .cc-message-assistant {
+  color: var(--color-text, #0f1c33) !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 48, 135, 0.10) !important;
+  border-left: 3px solid var(--cc-accent, var(--mb-brand-primary, #003087)) !important;
+  box-shadow: 0 2px 6px rgba(15, 28, 51, 0.04);
+}
+
+html[data-theme="light"] .cc-tool-section {
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 48, 135, 0.16) !important;
+}
+
+html[data-theme="light"] .cc-tool-section-header {
+  font-weight: 700 !important;
+  letter-spacing: 0.04em;
+  padding: 10px 14px !important;
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+html[data-theme="light"] .cc-tool-section-header * {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .cc-tool-block {
+  border: 1px solid rgba(0, 48, 135, 0.14) !important;
+  color: var(--color-text, #0f1c33) !important;
+  background: #ffffff !important;
+  border-top: 1px solid rgba(0, 48, 135, 0.10) !important;
+}
+
+html[data-theme="light"] .cc-tool-block .cc-tool-header {
+  border-bottom: 1px solid rgba(0, 48, 135, 0.10) !important;
+  padding: 8px 14px;
+  background: linear-gradient(180deg, rgba(247, 249, 253, 0.92) 0%, rgba(255, 255, 255, 0.98) 100%) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cc-tool-header {
+  border-bottom: 1px solid rgba(0, 48, 135, 0.10) !important;
+  padding: 8px 14px;
+  color: var(--mb-brand-primary, #003087) !important;
+  background: linear-gradient(180deg, rgba(247, 249, 253, 0.92) 0%, rgba(255, 255, 255, 0.98) 100%) !important;
+}
+
+html[data-theme="light"] .cc-tool-header *,
+html[data-theme="light"] .cc-tool-block .cc-tool-header * {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cc-tool-result {
+  background: #ffffff !important;
+  border-top: 1px solid rgba(0, 48, 135, 0.08) !important;
+  border: none !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .cc-user-pre {
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  border-left: 3px solid var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05);
+}
+
+html[data-theme="light"] .cc-tool-result-pre {
+  background: #f7f4ec !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  color: #1a1f2c !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+html[data-theme="light"] .cc-tool-result-pre * {
+  color: inherit !important;
+}
+
+html[data-theme="light"] .cc-shell-visibility-toggle,
+html[data-theme="light"] .cc-shell-toggle {
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid rgba(0, 48, 135, 0.28) !important;
+  box-shadow: 0 1px 3px rgba(0, 48, 135, 0.08);
+  font-weight: 600 !important;
+}
+
+html[data-theme="light"] .cc-shell-visibility-toggle:hover {
+  background: var(--mb-brand-primary, #003087) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.28) !important;
+}
+
+html[data-theme="light"] .cc-shell-toggle:hover {
+  background: var(--mb-brand-primary, #003087) !important;
+  color: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.28) !important;
+}
+
+html[data-theme="light"] .cc-shell-visibility-toggle *,
+html[data-theme="light"] .cc-shell-toggle * {
+  color: inherit !important;
+}
+
+html[data-theme="light"] .cc-prompt-input {
+  background: transparent !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+html[data-theme="light"] textarea.cc-prompt-input {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--color-text, #0f1c33) !important;
+  outline: none !important;
+}
+
+html[data-theme="light"] .cc-prompt-input:focus {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+}
+
+html[data-theme="light"] textarea.cc-prompt-input:focus {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+html[data-theme="light"] .cc-input-wrapper {
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 48, 135, 0.22) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.04) !important;
+  border-radius: 12px !important;
+}
+
+html[data-theme="light"] .cc-input-wrapper:focus-within {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.12), 0 2px 8px rgba(15, 28, 51, 0.06) !important;
+}
+
+html[data-theme="light"] .cc-tool-header:hover,
+html[data-theme="light"] .cc-tool-block .cc-tool-header:hover,
+html[data-theme="light"] .cc-tool-block:hover > .cc-tool-header,
+html[data-theme="light"] .cc-tool-block.expanded .cc-tool-header {
+  background: linear-gradient(180deg, rgba(0, 48, 135, 0.05) 0%, rgba(0, 48, 135, 0.10) 100%) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cc-tool-header:hover *,
+html[data-theme="light"] .cc-tool-block .cc-tool-header:hover *,
+html[data-theme="light"] .cc-tool-block:hover > .cc-tool-header * {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cc-character-badge {
+  color: #ffffff !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--cc-theme-accent, var(--char-accent, var(--mb-brand-primary, #003087))) 0%, var(--cc-theme-hover, var(--char-accent-hover, var(--mb-brand-primary-alt, #002D7A))) 100%) !important;
+  border: none !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.10) !important;
+  outline: none !important;
+}
+
+html[data-theme="light"] .chat-header .cc-character-badge {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.40) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10) !important;
+}
+

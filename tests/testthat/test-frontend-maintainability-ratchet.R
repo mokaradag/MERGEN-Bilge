@@ -312,6 +312,58 @@ test_that("frontend bakım raporu top-risk özetini üretir", {
   )
 })
 
+test_that("açık tema disiplini: tombstone, tekrar bütçesi ve tema satır bütçesi korunur", {
+  report <- .load_frontend_maint_report()
+
+  # 1. Tombstone: eski 13-dosyalık override/patch zincirinin kaldırılan
+  #    dosyaları geri getirilemez. Yeni açık tema kuralı, ilgili ALAN
+  #    dosyasındaki mevcut seçici genişletilerek eklenir.
+  tombstone_hits <- attr(report, "tombstone_hits", exact = TRUE)
+  expect_equal(
+    length(tombstone_hits),
+    0L,
+    info = paste(
+      "Kaldırılan eski açık tema patch dosyası geri gelmiş:",
+      paste(tombstone_hits, collapse = ", "),
+      "\nYeni override katmanı eklemek yerine ilgili theme_light_<alan>.css",
+      "dosyasındaki kuralı genişletin."
+    )
+  )
+
+  # 2. Light-scoped tekrar bütçesi: html[data-theme=\"light\"] kapsamlı bir
+  #    seçicinin dosyalar arasında tekrar tanımlanması override-zinciri
+  #    deseninin imzasıdır. Tema alan dosyaları İÇİNDE sıfır tekrar ayrıca
+  #    test-theme-light-modular-contract.R ile korunur; buradaki bütçe tema +
+  #    bileşen dosyası çiftlerini de sınırlar (taban: 44, hepsi 2x çift).
+  light_dups <- attr(report, "light_theme_duplicate_selectors", exact = TRUE)
+  max_light_dups <- .as_int_env_frontend("MERGEN_TEST_MAX_LIGHT_THEME_DUPLICATE_SELECTORS", 44L)
+  light_dup_count <- if (is.null(light_dups)) 0L else nrow(light_dups)
+
+  expect_true(
+    light_dup_count <= max_light_dups,
+    info = sprintf(
+      "Light-scoped tekrar seçici sayısı arttı: %d > %d. Aynı seçiciyi ikinci bir dosyada yeniden tanımlamayın.",
+      light_dup_count,
+      max_light_dups
+    )
+  )
+
+  # 3. Tema bölgesi toplam satır bütçesi: eski zincir ~10.7k satırdı; alan
+  #    konsolidasyonu sonrası taban ~5.9k'dır. Bütçe, patchwork'ün sessizce
+  #    geri büyümesini engeller.
+  theme_lines <- attr(report, "theme_zone_css_total_lines", exact = TRUE)
+  max_theme_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_THEME_ZONE_CSS_LINES", 6400L)
+
+  expect_true(
+    is.numeric(theme_lines) && theme_lines <= max_theme_lines,
+    info = sprintf(
+      "Tema bölgesi CSS toplam satırı bütçeyi aştı: %d > %d.",
+      theme_lines,
+      max_theme_lines
+    )
+  )
+})
+
 test_that("kritik frontend dosyaları kendi taban çizgilerinden büyümez", {
   report <- .load_frontend_maint_report()
 

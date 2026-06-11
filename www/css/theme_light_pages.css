@@ -1,0 +1,1174 @@
+/* ============================================================
+ * Başlık: Açık Tema — Sayfa Yüzeyleri
+ * Dosya: www/css/theme_light_pages.css
+ * Katman: tema 8/8
+ * Açıklama: Dosya Yönetimi, Söyleşi Geçmişi / Kayıtlı Söyleşiler /
+ *           Görsel Galerisi (ay grupları dahil), Destek sayfaları
+ *           (Yardım Merkezi, Geri Bildirim ve Hata, Yenilikler,
+ *           Hakkında) ile Yönetici panelleri ve Sistem Durumu panosu.
+ * ============================================================ */
+
+html[data-theme="light"] .file-btn {
+  background: var(--color-surface-2) !important;
+  color: var(--mb-brand-primary) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+html[data-theme="light"] .file-btn:hover {
+  background: rgba(0, 48, 135, 0.08) !important;
+  border-color: var(--mb-brand-primary) !important;
+}
+
+html[data-theme="light"] .destek-feature-card,
+html[data-theme="light"] .destek-guide-card,
+html[data-theme="light"] .destek-contact-card,
+html[data-theme="light"] .destek-hakkinda-container,
+html[data-theme="light"] .destek-hakkinda-stats {
+  background: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-soft) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .destek-hakkinda-section-title {
+  color: var(--color-text) !important;
+}
+
+html[data-theme="light"] .file-icon {
+  background: var(--color-surface-2, #f7f8fc) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .file-action-btn {
+  color: var(--color-muted, #5b6577) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+}
+
+html[data-theme="light"] .file-action-btn:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .attach-checkbox,
+html[data-theme="light"] input.attach-checkbox {
+  accent-color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .destek-chatbot-container {
+  background: var(--color-surface, #ffffff) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .destek-chatbot-header {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border-radius: 12px 12px 0 0;
+}
+
+html[data-theme="light"] .destek-chatbot-header * {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .destek-chatbot-header .icon {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  border-radius: 50%;
+  padding: 6px;
+}
+
+html[data-theme="light"] .health-dashboard table {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+html[data-theme="light"] .health-dashboard table thead th {
+  background: var(--color-surface-2, #f7f8fc) !important;
+  color: var(--color-text, #0f1c33) !important;
+  font-weight: 600;
+  border-bottom: 2px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .health-dashboard table tbody tr {
+  background: var(--color-surface, #ffffff) !important;
+  border-bottom: 1px solid var(--color-border-soft, rgba(0, 48, 135, 0.10)) !important;
+}
+
+html[data-theme="light"] .health-dashboard table tbody tr:hover {
+  background: rgba(0, 48, 135, 0.04) !important;
+}
+
+html[data-theme="light"] .surum-modal-container,
+html[data-theme="light"] .destek-surum-container {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .health-card {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid rgba(0, 48, 135, 0.12) !important;
+  box-shadow: 0 4px 12px rgba(15, 28, 51, 0.06) !important;
+}
+
+html[data-theme="light"] .health-card h3,
+html[data-theme="light"] .health-card h4 {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .health-metric-value {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .health-table {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid rgba(0, 48, 135, 0.10) !important;
+}
+
+html[data-theme="light"] .health-table thead th {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087), var(--mb-brand-primary-alt, #002D7A)) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.25) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+}
+
+html[data-theme="light"] .health-table tbody tr:hover td {
+  background: rgba(0, 48, 135, 0.04) !important;
+}
+
+html[data-theme="light"] .admin-badge.success,
+html[data-theme="light"] .status-badge.healthy {
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: #047857 !important;
+  border-color: rgba(16, 185, 129, 0.30) !important;
+}
+
+html[data-theme="light"] .admin-badge.warning {
+  background: rgba(245, 158, 11, 0.12) !important;
+  color: #92400e !important;
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+
+html[data-theme="light"] .admin-badge.error,
+html[data-theme="light"] .admin-badge.danger {
+  background: rgba(239, 68, 68, 0.10) !important;
+  color: #b91c1c !important;
+  border-color: rgba(239, 68, 68, 0.30) !important;
+}
+
+html[data-theme="light"] #file_manager_module-main_drop_zone:hover {
+  background: linear-gradient(135deg, rgba(255, 86, 32, 0.10) 0%, rgba(255, 128, 34, 0.06) 100%) !important;
+  border-color: var(--mb-brand-accent, #FF5620) !important;
+  color: var(--mb-brand-accent, #FF5620) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 86, 32, 0.30), 0 8px 22px rgba(255, 86, 32, 0.15) !important;
+}
+
+html[data-theme="light"] .file-manager-table {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .destek-hakkinda-hero {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 60%, #1d4ed8 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(0, 48, 135, 0.35) !important;
+  box-shadow: 0 8px 24px rgba(0, 48, 135, 0.15) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+html[data-theme="light"] .summary-detail-select,
+html[data-theme="light"] .summary-focus-select {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .admin-tabs a i,
+html[data-theme="light"] .nav-tabs.admin-tabs > li > a i {
+  color: inherit !important;
+  opacity: 0.92;
+}
+
+html[data-theme="light"] #file_manager_module-main_drop_zone {
+  border-radius: 12px;
+  transition: all 0.25s ease;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(247, 249, 253, 0.85) 100%) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 2px dashed rgba(0, 48, 135, 0.32) !important;
+}
+
+html[data-theme="light"] #file_manager_module-main_drop_zone.dragover {
+  box-shadow: inset 0 0 0 1px rgba(255, 86, 32, 0.30), 0 8px 22px rgba(255, 86, 32, 0.15) !important;
+  background: linear-gradient(180deg, rgba(255, 86, 32, 0.06) 0%, rgba(255, 255, 255, 0.96) 100%) !important;
+  border-color: var(--mb-brand-accent, #FF5620) !important;
+  color: var(--mb-brand-accent, #FF5620) !important;
+}
+
+html[data-theme="light"] .file-manager-table .text-muted {
+  color: var(--color-muted, #5b6577) !important;
+  opacity: 1;
+}
+
+html[data-theme="light"] .improvements ul li {
+  color: var(--color-text, #0f1c33) !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] .improvements ul li::marker {
+  color: var(--mb-brand-accent, #FF5620);
+  font-weight: 700;
+}
+
+html[data-theme="light"] .destek-surum h3,
+html[data-theme="light"] .release-notes h3 {
+  color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.01em;
+}
+
+html[data-theme="light"] .destek-surum p,
+html[data-theme="light"] .release-notes p {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] #file_manager_page_header {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 60%, #1d4ed8 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(0, 48, 135, 0.30) !important;
+  border-radius: 14px;
+  padding: 18px 22px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.10) inset, 0 8px 22px rgba(0, 48, 135, 0.18);
+}
+
+.month-group h4 > span,
+.gallery-month-group h4 > span,
+.saved-chats-month-group h4 > span,
+.image-gallery-month-group h4 > span,
+.month-group .gallery-month-count,
+.gallery-month-group .gallery-month-count,
+.saved-chats-month-count,
+.month-count-badge {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  text-decoration: none !important;
+  color: var(--mb-brand-support-teal, #077780) !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  margin-left: 8px !important;
+  letter-spacing: 0;
+  vertical-align: baseline;
+}
+
+.month-group > h4,
+.gallery-month-group > h4,
+.saved-chats-month-group > h4,
+.image-gallery-month-group > h4 {
+  color: var(--mb-brand-support-teal, #077780) !important;
+  text-decoration: none !important;
+  text-decoration-line: none !important;
+  text-decoration-color: transparent !important;
+  text-underline-offset: 0 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.01em;
+}
+
+.month-group,
+.gallery-month-group,
+.saved-chats-month-group,
+.image-gallery-month-group {
+  border: 1px solid rgba(7, 119, 128, 0.18) !important;
+  background: rgba(18, 18, 18, 0.40) !important;
+  overflow: visible !important;
+  padding-top: 18px !important;
+}
+
+html[data-theme="light"] .month-group h4 > span,
+html[data-theme="light"] .gallery-month-group h4 > span,
+html[data-theme="light"] .saved-chats-month-group h4 > span,
+html[data-theme="light"] .image-gallery-month-group h4 > span {
+  font-weight: 700 !important;
+  border-radius: 999px;
+  padding: 2px 10px;
+  margin-left: 10px !important;
+  font-size: 14px !important;
+  display: inline-block;
+  vertical-align: middle;
+  text-shadow: none !important;
+  letter-spacing: 0.01em;
+  color: var(--mb-brand-support-teal, #077780) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="light"] .month-group .gallery-month-count,
+html[data-theme="light"] .gallery-month-group .gallery-month-count {
+  font-weight: 700 !important;
+  border-radius: 999px;
+  padding: 2px 10px;
+  margin-left: 10px !important;
+  font-size: 14px !important;
+  display: inline-block;
+  vertical-align: middle;
+  color: var(--mb-brand-support-teal, #077780) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="light"] .saved-chats-month-count,
+html[data-theme="light"] .month-count-badge {
+  color: var(--mb-brand-support-teal, #077780) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="light"] .month-group > h4,
+html[data-theme="light"] .gallery-month-group > h4,
+html[data-theme="light"] .saved-chats-month-group > h4,
+html[data-theme="light"] .image-gallery-month-group > h4 {
+  text-decoration-color: rgba(255, 86, 32, 0.55) !important;
+  color: var(--mb-brand-support-teal, #077780) !important;
+  text-shadow: none !important;
+  text-decoration: none !important;
+}
+
+html[data-theme="light"] .month-group,
+html[data-theme="light"] .saved-chats-month-group,
+html[data-theme="light"] .image-gallery-month-group {
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 252, 252, 0.94) 100%) !important;
+  border: 1px solid rgba(7, 119, 128, 0.20) !important;
+  box-shadow: 0 4px 14px rgba(7, 119, 128, 0.06);
+}
+
+html[data-theme="light"] .gallery-month-group {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 252, 252, 0.94) 100%) !important;
+  border: 1px solid rgba(7, 119, 128, 0.20) !important;
+  box-shadow: 0 4px 14px rgba(7, 119, 128, 0.06);
+}
+
+html[data-theme="light"] .saved-chat-card:hover {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 0 0 2px rgba(0, 48, 135, 0.12), 0 10px 24px rgba(0, 48, 135, 0.14) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1) 0%, rgba(243, 247, 252, 0.96) 100%) !important;
+  transform: none !important;
+}
+
+html[data-theme="light"] .saved-chat-card-small:hover {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1) 0%, rgba(243, 247, 252, 0.96) 100%) !important;
+  box-shadow: 0 0 0 2px rgba(0, 48, 135, 0.12), 0 10px 24px rgba(0, 48, 135, 0.14) !important;
+  transform: none !important;
+}
+
+html[data-theme="light"] .saved-chat-card {
+  background: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-soft) !important;
+  box-shadow: var(--shadow-card);
+  transition: all 200ms ease;
+}
+
+html[data-theme="light"] .saved-chat-card-small {
+  transition: all 200ms ease;
+}
+
+html[data-theme="light"] .destek-feedback .nav-tabs,
+html[data-theme="light"] .destek-feedback .nav-pills {
+  border-bottom: 1px solid rgba(0, 48, 135, 0.18) !important;
+  background: transparent !important;
+}
+
+html[data-theme="light"] .destek-feedback .nav-tabs > li > a,
+html[data-theme="light"] .destek-feedback .nav-pills > li > a {
+  background: #ffffff !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid rgba(0, 48, 135, 0.22) !important;
+  border-radius: 8px 8px 0 0 !important;
+  padding: 8px 16px !important;
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+html[data-theme="light"] .destek-feedback .nav-tabs > li > a:hover,
+html[data-theme="light"] .destek-feedback .nav-pills > li > a:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .destek-feedback .nav-tabs > li.active > a,
+html[data-theme="light"] .destek-feedback .nav-pills > li.active > a,
+html[data-theme="light"] .destek-feedback .nav-tabs a.active {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 600;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.22);
+}
+
+html[data-theme="light"] .destek-feedback .submit-btn {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--mb-brand-primary, #003087) !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.24);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+
+html[data-theme="light"] .destek-feedback .btn-submit:hover,
+html[data-theme="light"] .destek-feedback .btn-primary:hover {
+  background: linear-gradient(135deg, var(--mb-brand-primary-alt, #002D7A) 0%, var(--mb-brand-accent, #FF5620) 100%) !important;
+  border-color: var(--mb-brand-accent, #FF5620) !important;
+  box-shadow: 0 6px 18px rgba(0, 48, 135, 0.30);
+  transform: translateY(-1px);
+}
+
+html[data-theme="light"] .destek-feedback .btn-add-topic {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid rgba(0, 48, 135, 0.30) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.06);
+}
+
+html[data-theme="light"] .destek-feedback .btn-add-topic:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .release-notes {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .release-notes ul li,
+html[data-theme="light"] .destek-surum li {
+  color: var(--color-text, #0f1c33) !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] .release-notes ul li::marker {
+  color: var(--mb-brand-accent, #FF5620) !important;
+  font-weight: 700;
+}
+
+html[data-theme="light"] .health-tooltip {
+  text-shadow: none !important;
+  background: rgba(15, 28, 51, 0.96) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 8px 20px rgba(15, 28, 51, 0.30) !important;
+  outline: none !important;
+  border-radius: 8px;
+  padding: 7px 12px;
+}
+
+html[data-theme="light"] .admin-tabs,
+html[data-theme="light"] .nav-tabs.admin-tabs {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.32) !important;
+  border-radius: 10px 10px 0 0;
+  padding: 6px 6px 0 6px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.10) inset, 0 6px 18px rgba(0, 48, 135, 0.22);
+}
+
+html[data-theme="light"] .admin-tabs a,
+html[data-theme="light"] .nav-tabs.admin-tabs > li > a {
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.92) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 8px 8px 0 0;
+  font-weight: 500;
+}
+
+html[data-theme="light"] .admin-tabs a:hover,
+html[data-theme="light"] .nav-tabs.admin-tabs > li > a:hover {
+  border-color: transparent !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .admin-tabs .active a,
+html[data-theme="light"] .admin-tabs a.active,
+html[data-theme="light"] .nav-tabs.admin-tabs > li.active > a {
+  font-weight: 600 !important;
+  background: linear-gradient(135deg, var(--mb-brand-accent, #FF5620) 0%, var(--mb-brand-accent-2, #FF8022) 100%) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 86, 32, 0.60) !important;
+  box-shadow: 0 0 0 1px rgba(255, 86, 32, 0.40), 0 4px 12px rgba(255, 86, 32, 0.30);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+
+html[data-theme="light"] #shiny-tab-image_gallery {
+  background-color: #faf7f2 !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .admin-tabs-container .nav-pills,
+html[data-theme="light"] .admin-tabs-container .nav,
+html[data-theme="light"] .admin-tabs-container ul.nav {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  gap: 4px;
+}
+
+html[data-theme="light"] .admin-tabs-container .nav-pills > li,
+html[data-theme="light"] .admin-tabs-container .nav > li {
+  background: transparent !important;
+}
+
+html[data-theme="light"] .admin-tabs-container .nav-pills > li > a,
+html[data-theme="light"] .admin-tabs-container .nav > li > a,
+html[data-theme="light"] .admin-tabs-container .nav-pills .nav-link,
+html[data-theme="light"] .admin-tabs-container ul.nav > li > a {
+  background: rgba(255, 255, 255, 0.10) !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 8px !important;
+  padding: 8px 16px !important;
+  font-weight: 500;
+}
+
+html[data-theme="light"] .admin-tabs-container .nav-pills > li > a:hover,
+html[data-theme="light"] .admin-tabs-container .nav > li > a:hover,
+html[data-theme="light"] .admin-tabs-container .nav-pills .nav-link:hover {
+  background: rgba(255, 255, 255, 0.20) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.32) !important;
+}
+
+html[data-theme="light"] .admin-tabs-container .nav-pills > li.active > a,
+html[data-theme="light"] .admin-tabs-container .nav > li.active > a,
+html[data-theme="light"] .admin-tabs-container .nav-pills .nav-link.active,
+html[data-theme="light"] .admin-tabs-container ul.nav > li.active > a {
+  background: linear-gradient(135deg, var(--mb-brand-accent, #FF5620) 0%, var(--mb-brand-accent-2, #FF8022) 100%) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 86, 32, 0.60) !important;
+  box-shadow: 0 0 0 1px rgba(255, 86, 32, 0.40), 0 4px 12px rgba(255, 86, 32, 0.30);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+  font-weight: 600 !important;
+}
+
+html[data-theme="light"] .admin-header-fixed .admin-badge {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.30);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+
+html[data-theme="light"] .admin-header-fixed span,
+html[data-theme="light"] .admin-header-fixed [id$="last_update"] {
+  color: rgba(255, 255, 255, 0.86) !important;
+}
+
+html[data-theme="light"] .admin-analytics-container,
+html[data-theme="light"] .admin-scrollable-content {
+  background: transparent !important;
+}
+
+html[data-theme="light"] .destek-tabs {
+  background: transparent !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  padding: 4px !important;
+  box-shadow: 0 2px 6px rgba(0, 48, 135, 0.06);
+}
+
+html[data-theme="light"] .destek-tab-btn.active i,
+html[data-theme="light"] .destek-tab-btn.active .destek-tab-icon-star,
+html[data-theme="light"] .destek-tab-btn.active .destek-tab-icon-bug {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .destek-tab-btn span {
+  color: inherit !important;
+}
+
+html[data-theme="light"] .file-manager .text-muted,
+html[data-theme="light"] #file_manager_module-main_drop_zone p,
+html[data-theme="light"] #file_manager_module-main_drop_zone span,
+html[data-theme="light"] #file_manager_module-main_drop_zone .text-muted {
+  color: var(--color-text-soft, #1f2a44) !important;
+  opacity: 0.96 !important;
+}
+
+html[data-theme="light"] .destek-surum {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .destek-surum * {
+  color: var(--color-text, #0f1c33);
+}
+
+html[data-theme="light"] .destek-surum ul {
+  list-style-position: outside !important;
+  padding-left: 22px !important;
+}
+
+html[data-theme="light"] .destek-surum ul li::marker {
+  color: var(--mb-brand-accent, #FF5620) !important;
+  font-weight: 700;
+}
+
+html[data-theme="light"] .version-badge {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--mb-brand-primary, #003087) !important;
+  border-radius: 999px;
+  font-weight: 700;
+  padding: 3px 12px;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 2px 6px rgba(0, 48, 135, 0.22);
+}
+
+html[data-theme="light"] #file_manager_module-clear_all {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid #991b1b !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.28) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+}
+
+html[data-theme="light"] .admin-header-fixed .chat-header,
+html[data-theme="light"] .admin-header-fixed .settings-header-fixed,
+html[data-theme="light"] .files-header {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.10) inset, 0 4px 14px rgba(0, 48, 135, 0.18) !important;
+}
+
+html[data-theme="light"] .admin-header-fixed {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  box-shadow: 0 4px 14px rgba(0, 48, 135, 0.18) !important;
+}
+
+html[data-theme="light"] .admin-header-fixed h4,
+html[data-theme="light"] .admin-header-fixed .page-title,
+html[data-theme="light"] .files-header .page-title,
+html[data-theme="light"] .files-header h3,
+html[data-theme="light"] .files-header h4,
+html[data-theme="light"] .admin-header-fixed h3 {
+  color: #ffffff !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.20) !important;
+  font-weight: 600 !important;
+}
+
+html[data-theme="light"] .admin-header-fixed .chat-header-right span:not(.admin-badge) {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+html[data-theme="light"] .files-header .btn-modern,
+html[data-theme="light"] .admin-header-fixed .btn-modern {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.32) !important;
+  font-weight: 600 !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10) !important;
+}
+
+html[data-theme="light"] .files-header .btn-modern:hover,
+html[data-theme="light"] .admin-header-fixed .btn-modern:hover {
+  background: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.55) !important;
+}
+
+html[data-theme="light"] .files-header .btn-modern i,
+html[data-theme="light"] .admin-header-fixed .btn-modern i {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .files-header .btn-modern.btn-success,
+html[data-theme="light"] .admin-header-fixed .btn-modern.btn-success {
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
+  border-color: #15803d !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .files-header .btn-modern.btn-success:hover,
+html[data-theme="light"] .admin-header-fixed .btn-modern.btn-success:hover {
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%) !important;
+  border-color: #14532d !important;
+}
+
+html[data-theme="light"] .files-header .btn-modern.btn-danger,
+html[data-theme="light"] .admin-header-fixed .btn-modern.btn-danger {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+  border: 1px solid #991b1b !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22) !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.30) !important;
+}
+
+html[data-theme="light"] .files-header .btn-modern.btn-danger:hover,
+html[data-theme="light"] .admin-header-fixed .btn-modern.btn-danger:hover {
+  background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%) !important;
+  border-color: #7f1d1d !important;
+  box-shadow: 0 6px 18px rgba(220, 38, 38, 0.42) !important;
+}
+
+html[data-theme="light"] .btn-modern.btn-refresh {
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%) !important;
+  border: 1px solid #155e75 !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22) !important;
+  box-shadow: 0 4px 12px rgba(8, 145, 178, 0.30) !important;
+}
+
+html[data-theme="light"] .btn-modern.btn-refresh:hover {
+  background: linear-gradient(135deg, #0e7490 0%, #155e75 100%) !important;
+  border-color: #164e63 !important;
+  box-shadow: 0 6px 18px rgba(8, 145, 178, 0.42) !important;
+}
+
+html[data-theme="light"] .admin-badge {
+  background: linear-gradient(135deg, #f87171 0%, #dc2626 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.40) !important;
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.30) !important;
+}
+
+html[data-theme="light"] #bulk_upload_div .btn-file,
+html[data-theme="light"] [id$="bulk_upload"] + .btn-file,
+html[data-theme="light"] .input-group .btn-file {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  border: 1px solid var(--mb-brand-primary, #003087) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22) !important;
+  box-shadow: 0 2px 6px rgba(0, 48, 135, 0.22) !important;
+}
+
+html[data-theme="light"] #bulk_upload_div .btn-file:hover,
+html[data-theme="light"] .input-group .btn-file:hover {
+  background: linear-gradient(135deg, var(--mb-brand-primary-alt, #002D7A) 0%, #001f54 100%) !important;
+  border-color: #001f54 !important;
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.32) !important;
+}
+
+html[data-theme="light"] #bulk_upload_div .btn-file *,
+html[data-theme="light"] #bulk_upload_div .btn-file i {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .main-drop-zone {
+  border-radius: 12px;
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 2px dashed rgba(0, 48, 135, 0.28) !important;
+}
+
+html[data-theme="light"] .main-drop-zone:hover,
+html[data-theme="light"] .main-drop-zone.dragging {
+  background: rgba(0, 48, 135, 0.04) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .main-drop-zone i,
+html[data-theme="light"] .main-drop-zone .fa-upload {
+  color: var(--mb-brand-primary, #003087) !important;
+  opacity: 0.7;
+}
+
+html[data-theme="light"] .main-drop-zone h4 {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .upload-hint {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .file-upload-card {
+  background: rgba(255, 255, 255, 0.66) !important;
+  border: 1px solid rgba(0, 48, 135, 0.12) !important;
+}
+
+html[data-theme="light"] #shiny-tab-health .admin-analytics-container,
+html[data-theme="light"] .health-dashboard,
+html[data-theme="light"] .health-dashboard-container {
+  background: #faf7f2 !important;
+  background-image: none !important;
+}
+
+html[data-theme="light"] .health-card [style*="color: #fff"],
+html[data-theme="light"] .health-card [style*="color:#fff"] {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .health-card [style*="color: #60a5fa"] {
+  color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 600 !important;
+}
+
+html[data-theme="light"] .health-card [style*="color: #a78bfa"] {
+  color: var(--mb-brand-accent, #FF5620) !important;
+  font-weight: 700 !important;
+}
+
+html[data-theme="light"] .health-card [style*="color: #94a3b8"] {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .health-status-ok {
+  border-color: rgba(22, 163, 74, 0.35) !important;
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid #15803d !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+
+html[data-theme="light"] .health-status-warning {
+  border-color: rgba(180, 83, 9, 0.35) !important;
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid #b45309 !important;
+}
+
+html[data-theme="light"] .health-status-error,
+html[data-theme="light"] .health-status-fail {
+  border-color: rgba(194, 65, 12, 0.35) !important;
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid #b91c1c !important;
+}
+
+html[data-theme="light"] .health-status-undefined,
+html[data-theme="light"] .health-status-unknown {
+  background: rgba(15, 28, 51, 0.08) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+}
+
+html[data-theme="light"] .health-dashboard table tbody td {
+  border-color: var(--color-border-soft, rgba(0, 48, 135, 0.10)) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .health-table tbody td {
+  border-bottom: 1px solid rgba(0, 48, 135, 0.06) !important;
+  background: transparent !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .destek-tab-btn {
+  margin-right: 4px;
+  background: #ffffff !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1.5px solid rgba(0, 48, 135, 0.30) !important;
+  border-radius: 999px !important;
+  padding: 8px 22px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05) !important;
+  transition: all 200ms;
+}
+
+html[data-theme="light"] .destek-tabs .destek-tab-btn {
+  background: #ffffff !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1.5px solid rgba(0, 48, 135, 0.30) !important;
+  border-radius: 999px !important;
+  padding: 8px 22px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05) !important;
+  transition: all 200ms;
+}
+
+html[data-theme="light"] .destek-tab-btn:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .destek-tab-btn.active {
+  font-weight: 600 !important;
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.28) !important;
+}
+
+html[data-theme="light"] .destek-tab-btn.active * {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .destek-nps-btn:not(.active) {
+  background: #ffffff !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1.5px solid rgba(0, 48, 135, 0.30) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05) !important;
+}
+
+html[data-theme="light"] .destek-nps-btn:not(.active):hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 4px 10px rgba(0, 48, 135, 0.12) !important;
+}
+
+html[data-theme="light"] .destek-tag-btn {
+  background: #ffffff !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1.5px solid rgba(0, 48, 135, 0.28) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05) !important;
+  font-weight: 600 !important;
+  border-radius: 999px !important;
+  padding: 8px 16px !important;
+}
+
+html[data-theme="light"] .destek-category-btn,
+html[data-theme="light"] .destek-priority-btn {
+  background: #ffffff !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1.5px solid rgba(0, 48, 135, 0.28) !important;
+  border-radius: 999px !important;
+  font-weight: 600 !important;
+  padding: 8px 16px !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05) !important;
+}
+
+html[data-theme="light"] .destek-tag-btn:hover,
+html[data-theme="light"] .destek-category-btn:hover,
+html[data-theme="light"] .destek-priority-btn:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 4px 10px rgba(0, 48, 135, 0.12) !important;
+}
+
+html[data-theme="light"] .destek-tag-btn.active {
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.30) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+}
+
+html[data-theme="light"] .destek-category-btn.active,
+html[data-theme="light"] .destek-category-btn.selected,
+html[data-theme="light"] .destek-priority-btn.active,
+html[data-theme="light"] .destek-priority-btn.selected,
+html[data-theme="light"] .destek-tag-btn.selected {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.30) !important;
+}
+
+html[data-theme="light"] .destek-category-btn.active *,
+html[data-theme="light"] .destek-priority-btn.active *,
+html[data-theme="light"] .destek-tag-btn.active * {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .destek-add-btn,
+html[data-theme="light"] .destek-feedback .btn-add {
+  background: #ffffff !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1.5px solid var(--mb-brand-primary, #003087) !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
+  padding: 8px 16px !important;
+  box-shadow: 0 2px 6px rgba(0, 48, 135, 0.10) !important;
+}
+
+html[data-theme="light"] .destek-add-btn:hover,
+html[data-theme="light"] .destek-feedback .btn-add:hover {
+  background: var(--mb-brand-primary, #003087) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.28) !important;
+}
+
+html[data-theme="light"] .destek-add-btn i,
+html[data-theme="light"] .destek-add-btn svg {
+  color: inherit !important;
+}
+
+html[data-theme="light"] .destek-feedback .btn-submit,
+html[data-theme="light"] .destek-feedback button[type="submit"],
+html[data-theme="light"] .destek-feedback .btn-primary {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border: 1.5px solid var(--mb-brand-primary, #003087) !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 14px rgba(0, 48, 135, 0.28) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+  border-radius: 10px !important;
+  padding: 10px 24px !important;
+}
+
+html[data-theme="light"] .destek-submit-btn {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border: 1.5px solid var(--mb-brand-primary, #003087) !important;
+  border-radius: 10px !important;
+  padding: 10px 24px !important;
+  font-weight: 700 !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+  box-shadow: 0 4px 14px rgba(0, 48, 135, 0.28) !important;
+}
+
+html[data-theme="light"] .destek-feedback button[type="submit"]:hover {
+  border-color: var(--mb-brand-accent, #FF5620) !important;
+  transform: translateY(-1px);
+  background: linear-gradient(135deg, var(--mb-brand-primary-alt, #002D7A) 0%, #001f54 100%) !important;
+  box-shadow: 0 6px 18px rgba(0, 48, 135, 0.36) !important;
+}
+
+html[data-theme="light"] .destek-submit-btn:hover {
+  background: linear-gradient(135deg, var(--mb-brand-primary-alt, #002D7A) 0%, #001f54 100%) !important;
+  box-shadow: 0 6px 18px rgba(0, 48, 135, 0.36) !important;
+}
+
+html[data-theme="light"] .destek-upload-zone,
+html[data-theme="light"] .destek-feedback .drop-zone {
+  background: #ffffff !important;
+  border: 2px dashed rgba(0, 48, 135, 0.32) !important;
+  border-radius: 12px !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.04) !important;
+}
+
+html[data-theme="light"] .destek-upload-zone:hover,
+html[data-theme="light"] .destek-upload-zone.destek-drag-over {
+  background: rgba(0, 48, 135, 0.04) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.12) !important;
+}
+
+html[data-theme="light"] .destek-upload-zone .destek-upload-text,
+html[data-theme="light"] .destek-upload-zone .destek-upload-hint {
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .destek-upload-zone .destek-upload-link {
+  color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+html[data-theme="light"] .destek-upload-zone .destek-upload-icon,
+html[data-theme="light"] .destek-upload-zone i {
+  color: var(--mb-brand-primary, #003087) !important;
+  opacity: 0.85;
+}
+
+html[data-theme="light"] .surum-card {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border: 1px solid rgba(0, 48, 135, 0.12) !important;
+  box-shadow: 0 4px 14px rgba(15, 28, 51, 0.06) !important;
+}
+
+html[data-theme="light"] .surum-card.current {
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.96) 0%, rgba(0, 48, 135, 0.04) 100%) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 0 0 1px rgba(0, 48, 135, 0.18), 0 8px 24px rgba(0, 48, 135, 0.10) !important;
+}
+
+html[data-theme="light"] .surum-card-version {
+  color: var(--mb-brand-primary, #003087) !important;
+  text-shadow: none !important;
+}
+
+html[data-theme="light"] .surum-card-badge {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--mb-brand-primary, #003087) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+  box-shadow: 0 2px 6px rgba(0, 48, 135, 0.22);
+}
+
+html[data-theme="light"] .surum-card-date {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .surum-card-title {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .surum-highlight-tag {
+  background: rgba(0, 48, 135, 0.06) !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 600;
+}
+
+html[data-theme="light"] .surum-detail-title {
+  color: var(--mb-brand-primary, #003087) !important;
+  font-weight: 700 !important;
+}
+
+html[data-theme="light"] .surum-detail-title i {
+  color: var(--mb-brand-accent, #FF5620) !important;
+}
+
+html[data-theme="light"] .destek-surum ul li {
+  opacity: 1 !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  font-weight: 500 !important;
+}
+
+html[data-theme="light"] .surum-detail-list li {
+  color: var(--color-text-soft, #1f2a44) !important;
+  font-weight: 500 !important;
+}
+
+html[data-theme="light"] .surum-detail-list li::before {
+  background: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .surum-card em,
+html[data-theme="light"] .destek-surum em,
+html[data-theme="light"] .destek-page em {
+  color: var(--color-text, #0f1c33) !important;
+  opacity: 1 !important;
+  font-style: italic;
+}
+
+html[data-theme="light"] .admin-tabs-sticky-wrapper {
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 15px 25px 15px 25px !important;
+  box-shadow: none !important;
+  background-image: none !important;
+  background-color: transparent !important;
+  border: none !important;
+}
+
+html[data-theme="light"] .admin-tabs-container {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  border-radius: 10px !important;
+  padding: 8px !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.10) inset, 0 6px 18px rgba(0, 48, 135, 0.22) !important;
+}
+
+html[data-theme="light"] .files-header .stat-badge,
+html[data-theme="light"] .admin-header-fixed .stat-badge {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.36) !important;
+}
+

@@ -331,7 +331,7 @@ savedChatsServer <- function(id, saved_chats) {
             h4(
               month_rows$month_label[1],
               # Aylık söyleşi sayısı rozeti - light tema CSS bu sınıfı
-              # turuncu/güçlü kontrast ile gösterir (theme_light_modals.css).
+              # turuncu/güçlü kontrast ile gösterir (theme_light_pages.css).
               tags$span(
                 class = "saved-chats-month-count month-count-badge",
                 style = "margin-left: 8px; font-size: 16px; font-weight: 500; color: rgba(255, 138, 0, 0.85);",

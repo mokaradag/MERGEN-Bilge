@@ -252,6 +252,46 @@ forbidden_legacy_selectors <- c(
   "#_content_container"
 )
 
+# Açık tema disiplini metrikleri:
+#   - theme_zone_files: www/css/theme_*.css dosyaları (token + alan katmanları)
+#   - light_theme_duplicate_selectors: html[data-theme="light"] kapsamlı bir
+#     seçicinin birden fazla dosyada tanımlanması. Tema alan dosyaları içinde
+#     sıfır olmalıdır (tek-tanım sözleşmesi); tema + bileşen dosyası çiftleri
+#     bilinçli desendir ve toplam ratchet bütçesiyle sınırlanır.
+theme_zone_css_files <- function(report_data) {
+  report_data$file[grepl("^www/css/theme_", report_data$file)]
+}
+
+theme_zone_css_total_lines <- function(report_data) {
+  sum(report_data$lines[grepl("^www/css/theme_", report_data$file)])
+}
+
+light_theme_duplicate_selectors <- function(duplicate_data) {
+  if (is.null(duplicate_data) || nrow(duplicate_data) == 0) {
+    return(duplicate_data)
+  }
+
+  duplicate_data[
+    grepl('data-theme="light"', duplicate_data$selector, fixed = TRUE),
+    ,
+    drop = FALSE
+  ]
+}
+
+# Kaldırılan eski açık tema patch-zinciri dosyaları. Bu adlarla yeni dosya
+# eklemek yasaktır; ayrıntılı tombstone sözleşmesi
+# tests/testthat/test-theme-light-modular-contract.R içindedir.
+tombstoned_theme_files <- c(
+  "www/css/theme_light.css",
+  "www/css/theme_light_extras.css",
+  "www/css/theme_light_refinements.css",
+  "www/css/theme_light_polish.css",
+  "www/css/theme_light_overhaul.css",
+  "www/css/theme_light_overhaul_phase2.css",
+  "www/css/theme_light_user_polish.css",
+  "www/css/theme_light_user_polish_v2.css"
+)
+
 legacy_hits <- do.call(rbind, lapply(frontend_files, function(path) {
   text <- read_text(path)
   hits <- forbidden_legacy_selectors[
@@ -445,6 +485,22 @@ print_frontend_top_risk_table("Unmanifested app-owned runtime assets", top_risk_
 print_frontend_top_risk_table("Allowlisted unmanifested assets", top_risk_summary$allowlisted_unmanifested_assets)
 print_frontend_top_risk_table("Smoke-only assets", top_risk_summary$smoke_only_assets)
 
+light_theme_duplicates <- light_theme_duplicate_selectors(duplicate_selectors)
+theme_zone_lines <- theme_zone_css_total_lines(report)
+tombstone_hits <- tombstoned_theme_files[
+  file.exists(file.path(repo_root, tombstoned_theme_files))
+]
+
+cat("\nAçık tema disiplini:\n")
+cat(sprintf("  tema bölgesi CSS toplam satır: %d\n", theme_zone_lines))
+cat(sprintf("  light-scoped tekrar seçici (dosyalar arası): %d\n",
+            if (is.null(light_theme_duplicates)) 0L else nrow(light_theme_duplicates)))
+cat(sprintf("  tombstone ihlali: %d\n", length(tombstone_hits)))
+if (length(tombstone_hits) > 0) {
+  cat("  GERİ GELEN ESKİ TEMA DOSYALARI:\n")
+  for (hit in tombstone_hits) cat("    ", hit, "\n")
+}
+
 attr(report, "score_report") <- report
 attr(report, "css_duplicate_selectors") <- duplicate_selectors
 attr(report, "legacy_selector_hits") <- legacy_hits
@@ -452,5 +508,9 @@ attr(report, "unmanifested_app_assets") <- unmanifested_app_assets
 attr(report, "vendor_frontend_files") <- vendor_frontend_files
 attr(report, "allowlisted_unmanifested_frontend_files") <- allowlisted_unmanifested_frontend_files
 attr(report, "top_risk_summary") <- top_risk_summary
+attr(report, "light_theme_duplicate_selectors") <- light_theme_duplicates
+attr(report, "theme_zone_css_total_lines") <- theme_zone_lines
+attr(report, "tombstoned_theme_files") <- tombstoned_theme_files
+attr(report, "tombstone_hits") <- tombstone_hits
 
 invisible(report)
