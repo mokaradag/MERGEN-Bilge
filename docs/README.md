@@ -25,6 +25,7 @@ Bu sayfa, MERGEN Bilge dokümantasyonunda doğru belgeye hızlı gitmek için ha
 | [`../AGENTS.md`](../AGENTS.md) | Ajanlar için kısa repo notu, doğrulama dürüstlüğü ve belge yönlendirmeleri. |
 | [`../ai_rehber.md`](../ai_rehber.md) | Yardım Asistanı ve AI Uzman için kullanıcıya dönük davranış rehberi. |
 | [`architecture-map.md`](architecture-map.md) | Uygulama katmanları, gerçek dosya/dizin haritası ve korunan mimari sınırlar. |
+| [`feature-ownership-map.md`](feature-ownership-map.md) | Kritik özelliklerin (sohbet/streaming, dosya, DB/encoding, SSO, API anahtarı, görsel/vision, admin/sağlık, Bilge Yolaç, destek) birincil dosya/test/servis sahipliği ve sıradaki sertleştirme hedefleri. |
 | [`database-schema.md`](database-schema.md) | Uygulama kaynaklarına göre DB tablo yapısı, ilişkiler ve tablo akış diyagramı. |
 | [`../RUNBOOK.md`](../RUNBOOK.md) | Kanonik Windows VM/on-prem operasyon kılavuzu; `run_vm_evidence_gate.R`, mandatory browser UX smoke external-app workflow ve `artifacts/vm-evidence/<timestamp>/evidence.json` kanıt artifact'ları burada açıklanır. |
 | [`dependency-locking.md`](dependency-locking.md) | `renv`, `renv.lock`, Windows VM kilit üretimi ve CI/AI bootstrap davranışı. |
