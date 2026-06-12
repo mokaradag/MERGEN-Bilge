@@ -65,6 +65,12 @@ source(
 )
 
 source(
+  file.path(repo_root_llm_worker_tool_results, "R", "helpers_llm_worker_tool_results_preview.R"),
+  encoding = "UTF-8",
+  local = environment()
+)
+
+source(
   file.path(repo_root_llm_worker_tool_results, "R", "helpers_llm_worker_tool_results.R"),
   encoding = "UTF-8",
   local = environment()
