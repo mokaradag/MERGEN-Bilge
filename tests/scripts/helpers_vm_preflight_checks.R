@@ -115,17 +115,33 @@ vm_preflight_writable_dir_candidates <- function(dir_path) {
     return(character(0))
   }
 
-  slash_path <- gsub("\\", "/", dir_path, fixed = TRUE)
+	slash_path <- gsub("\\", "/", dir_path, fixed = TRUE)
 
-  candidates <- unique(Filter(nzchar, c(
-    dir_path,
-    slash_path,
-    enc2utf8(dir_path),
-    enc2native(dir_path),
-    gsub("/", "\\", slash_path, fixed = TRUE),
-    if (grepl("^/[^/]", slash_path)) paste0("/", slash_path) else NULL,
-    if (grepl("^/[^/]", slash_path)) gsub("/", "\\", paste0("/", slash_path), fixed = TRUE) else NULL
-  )))
+	mapped_drive_without_share_prefix <- character(0)
+	if (grepl("^[A-Za-z]:/[^/]+/[^/]+/.+", slash_path, perl = TRUE)) {
+	  mapped_drive_without_share_prefix <- sub(
+		"^([A-Za-z]:)/[^/]+/[^/]+/(.+)$",
+		"\\1/\\2",
+		slash_path,
+		perl = TRUE
+	  )
+	}
+
+	candidates <- unique(Filter(nzchar, c(
+	  dir_path,
+	  slash_path,
+	  mapped_drive_without_share_prefix,
+	  enc2utf8(dir_path),
+	  enc2native(dir_path),
+	  gsub("/", "\\", slash_path, fixed = TRUE),
+	  if (length(mapped_drive_without_share_prefix)) {
+		gsub("/", "\\", mapped_drive_without_share_prefix, fixed = TRUE)
+	  } else {
+		NULL
+	  },
+	  if (grepl("^/[^/]", slash_path)) paste0("/", slash_path) else NULL,
+	  if (grepl("^/[^/]", slash_path)) gsub("/", "\\", paste0("/", slash_path), fixed = TRUE) else NULL
+	)))
 
   if (exists("normalize_mcp_path", envir = globalenv(), mode = "function", inherits = TRUE)) {
     normalize_fn <- get("normalize_mcp_path", envir = globalenv(), inherits = TRUE)
