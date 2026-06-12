@@ -462,6 +462,8 @@ Latest validation-doctor contract hardening: `tests/testthat/test-validation-doc
 
 `tests/scripts/run_vm_evidence_gate.R` (wrapper: `bash tools/vm_evidence_gate.sh`) is the single repeatable preflight validation path. It orchestrates the EXISTING validation scripts as ordered steps in CLEAN CHILD R sessions and writes one secret-safe machine-readable evidence artifact: `artifacts/vm-evidence/<timestamp>/evidence.json` plus per-step logs.
 
+Milestone note: a Windows VM full evidence-gate run completed with `Toplam: 13 passed, 0 failed, 0 skipped`; `full_testthat`, `browser_ux_smoke`, `vm_preflight_real`, and `db_encoding_preflight` all passed. Example artifact: `artifacts/vm-evidence/20260612-211836/evidence.json`. This is strong on-prem VM readiness evidence only for the steps reported as `passed`; it does not replace long-running production load observation or manual fragile-flow QA.
+
 Frozen step list (conscious updates only, together with `tests/testthat/test-vm-evidence-gate-contract.R` and `RUNBOOK.md`): `env_config`, `parse_sanity`, `app_boot_smoke`, `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight`, `renv_status`.
 
 Rules:
@@ -471,7 +473,9 @@ Rules:
 - Secret safety: environment values are reported only as `present/nchar/value=<hidden>` metadata; step logs and `evidence.json` pass through the gate's redaction helper. Never weaken this to print raw DSN/endpoint/key/token values.
 - The gate script is INTENTIONALLY ASCII-only (like `.Rprofile` and `tools/renv_snapshot.R`): operational entry-point scripts can be `source(...)`-d under POSIX/C or Windows/Turkish locales where non-ASCII content is silently truncated (which would make a gate exit 0 without running). Do not add Turkish special characters to it. Child runners set a UTF-8 `LC_CTYPE` before sourcing Turkish-content scripts; keep that header.
 - The gate is `source(...)`-safe (no `quit()`); required-step failure ends with `stop()`. It does not replace the individual gates or the manual fragile-flow checklist; it consolidates them into one artifact.
-- `MERGEN_EVIDENCE_STEPS=<comma-list>` re-runs a subset; filtered-out steps are recorded as skipped.
+- `MERGEN_EVIDENCE_STEPS=<comma-list>` re-runs a subset; filtered-out steps are recorded as skipped. Clear it before intending to run the full gate.
+- Browser UX proof can be optional/non-blocking by default. `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` makes it blocking and requires `UX_SMOKE_DONE:PASS`. `MERGEN_BROWSER_UX_BASE_URL=<base-url>` activates external-app mode: the app must already be running at that URL, and the runner tests its `/smoke/ux-smoke.html` route instead of starting a temporary Shiny child process. This is the preferred VM-stable workflow for mandatory browser proof in locked-down Windows/VDI environments.
+- `full_testthat` uses `tests/scripts/run_full_testthat_isolated.R`, which runs sorted `tests/testthat/test-*.R` files one by one in clean `Rscript --vanilla` child processes. `MERGEN_TESTTHAT_START_INDEX` / `MERGEN_TESTTHAT_END_INDEX` may be used to resume a sorted-index range after failure. Child testthat processes must be protected from browser UX evidence-gating environment leakage.
 - This gate's artifact is execution proof ONLY for steps it reports as `passed` (`validation_execution_status="ran_by_vm_evidence_gate"`). A cloud-profile run is NOT VM/SSO/DB/SQL Server Turkish encoding/browser proof.
 
 Protected by: `tests/testthat/test-vm-evidence-gate-contract.R`.

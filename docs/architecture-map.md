@@ -89,7 +89,7 @@ Açık tema, `theme_tokens.css` token tabanı (koyu varsayılan + `html[data-the
 | `R/config_seam_registry.R` | 12 üretim-kritik seam: her seam'in sahiplendiği manifest bölümleri, manifest dışı runtime dosyaları, guard testleri, odaklı doğrulama komutları ve ilişkili seam'ler. | `tests/testthat/test-seam-registry-contract.R` |
 | `R/config_ui_asset_zones.R` | 23 frontend bölgesi: manifestteki HER CSS/JS varlığının tam olarak BİR bölgeye atanması, bölge başına sahip seam + guard testleri, manifest dışı (inline/smoke) varlıkların gerekçeli sahiplik kaydı. | `tests/testthat/test-ui-asset-zones-contract.R` |
 | `tests/scripts/seam_doctor.R` (`tools/seam_doctor.sh`) | Seam/bölge/manifest tutarlılığını raporlayan hafif operasyonel araç; `artifacts/seam-doctor/` altına secret-safe JSON artifact yazar. Ağır doğrulama çalıştırmaz. | `tests/testthat/test-seam-doctor-contract.R` |
-| `tests/scripts/run_vm_evidence_gate.R` (`tools/vm_evidence_gate.sh`) | TEK tekrarlanabilir preflight kanıt kapısı: mevcut doğrulama betiklerini temiz çocuk R oturumlarında sıralı adımlar olarak koşar; `artifacts/vm-evidence/<timestamp>/evidence.json` altına secret-safe kanıt artifact'ı yazar. Profiller: `vm` (VM-yalnız kapılar zorunlu) / `cloud` (gerekçeli SKIP). | `tests/testthat/test-vm-evidence-gate-contract.R` |
+| `tests/scripts/run_vm_evidence_gate.R` (`tools/vm_evidence_gate.sh`) | TEK tekrarlanabilir preflight kanıt kapısı: mevcut doğrulama betiklerini temiz çocuk R oturumlarında sıralı adımlar olarak koşar; `artifacts/vm-evidence/<timestamp>/evidence.json` altına secret-safe kanıt artifact'ı yazar. 2026-06-12 Windows VM milestone koşumunda 13/13 adım geçti (`full_testthat`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight` dahil; örnek artifact `artifacts/vm-evidence/20260612-211836/evidence.json`). Profiller: `vm` (VM-yalnız kapılar zorunlu) / `cloud` (gerekçeli SKIP). | `tests/testthat/test-vm-evidence-gate-contract.R` |
 
 Seam listesi (id -> sahiplenilen manifest bölümleri):
 
@@ -132,7 +132,7 @@ Disiplin kuralları:
 | SSO/JWT sınırı | Üretimde fail-closed davranış ve imza doğrulaması önemlidir. | `R/config_sso.R`, `R/helpers_sso_signature.R`, [`../RUNBOOK.md`](../RUNBOOK.md) |
 | Bağımlılık kilitleme / renv | `renv.lock` üretimi Windows VM/on-prem kuralına bağlıdır. | [`dependency-locking.md`](dependency-locking.md), [`../RENV_LOCK_STATUS.md`](../RENV_LOCK_STATUS.md) |
 | Doğrulama kanıtı | `cloud-quick` ile tam VM doğrulaması aynı şey değildir. | [`../CLAUDE.md`](../CLAUDE.md), [`../RUNBOOK.md`](../RUNBOOK.md), `tools/ai_validate.sh` |
-| Maintainability ratchet ve browser smoke | Frontend karmaşıklığı ve UX regresyonları kontrollü tutulur. `MERGEN_BROWSER_BIN` açıkça verilmişse browser smoke artık bloklayıcıdır (sessiz SKIP yok). | `tests/scripts/frontend_complexity_doctor.R`, `tests/scripts/ai_browser_ux_smoke.R` |
+| Maintainability ratchet ve browser smoke | Frontend karmaşıklığı ve UX regresyonları kontrollü tutulur. `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` veya açık `MERGEN_BROWSER_BIN` browser smoke'u bloklayıcı yapar; `MERGEN_BROWSER_UX_BASE_URL` external-app modunda zaten çalışan app'i test eder. Başarılı kanıt `UX_SMOKE_DONE:PASS` işaretidir. | `tests/scripts/frontend_complexity_doctor.R`, `tests/scripts/ai_browser_ux_smoke.R` |
 | Seam/bölge sahiplik yönetişimi | Üretim-kritik sınırların sahipliği, guard testleri ve manifest disiplini tek haritadan doğrulanır. | `R/config_seam_registry.R`, `R/config_ui_asset_zones.R`, `tests/scripts/seam_doctor.R` |
 
 ## Ana Dizinler

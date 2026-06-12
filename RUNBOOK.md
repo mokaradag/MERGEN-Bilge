@@ -384,35 +384,165 @@ Manuel ama zorunlu: kırılgan akışlar için
 `Rscript tests/scripts/run_fragile_flow_manual_preflight.R` ile akış kontrol listesini
 kaydedin (streaming start/stop, yükleme kalıcılığı, kayıtlı söyleşi TTS, Türkçe dosya adı, TTS/STT/müzik).
 
-### 1A. Tek tekrarlanabilir kanıt kapısı: `tools/vm_evidence_gate.sh`
+### 1A. Tek tekrarlanabilir kanıt kapısı: `run_vm_evidence_gate.R`
 
-Yukarıdaki kapıları (1)–(5) tek bir tekrarlanabilir koşumda toplayan ve
-secret-güvenli, makinece okunabilir kanıt artifact'ı üreten kapı:
+Yukarıdaki kapıları tek bir tekrarlanabilir koşumda toplayan ve secret-güvenli,
+makinece okunabilir kanıt artifact'ı üreten kapı `tests/scripts/run_vm_evidence_gate.R`
+betiğidir. Wrapper olarak `bash tools/vm_evidence_gate.sh` kullanılabilir; Windows VM
+operasyonu için normal tam koşum repo kökünden doğrudan Rscript ile çalıştırılır.
 
-```bash
-bash tools/vm_evidence_gate.sh                       # profil otomatik: SSO_ENABLED=TRUE ise vm, değilse cloud
-MERGEN_EVIDENCE_PROFILE=vm bash tools/vm_evidence_gate.sh
-MERGEN_EVIDENCE_STEPS=seam_doctor,renv_status bash tools/vm_evidence_gate.sh   # alt küme yeniden koşum
+#### Milestone: tam Windows VM evidence gate geçti
+
+2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone'u kaydedildi:
+
+- `Toplam: 13 passed, 0 failed, 0 skipped`
+- `full_testthat PASSED` — tam izole testthat suite geçti.
+- `browser_ux_smoke PASSED` — mandatory browser proof gerçek tarayıcıda `UX_SMOKE_DONE:PASS` üretti.
+- `vm_preflight_real PASSED` — VM/SSO/DB/LLM üretim-benzeri preflight geçti.
+- `db_encoding_preflight PASSED` — transactional Türkçe DB encoding preflight geçti.
+- Başarılı koşum örneği: `artifacts/vm-evidence/20260612-211836/evidence.json`.
+
+Bu, MERGEN Bilge'nin on-prem Windows VM readiness/release doğrulaması için önemli bir
+kilometre taşıdır. Kanıt kapısı yalnızca `evidence.json` içinde `passed` görünen adımlar
+için kanıt sağlar; uzun süreli saha yükü, manuel kırılgan-akış QA'sı veya eski legacy DB
+satırlarının temizliği gibi kapsamları otomatik olarak kanıtlamaz.
+
+#### Standart tam evidence gate komutu
+
+Repo kökünden tüm yapılandırılmış evidence adımlarını çalıştırmak için:
+
+```powershell
+$repo = "U:\Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
+Set-Location $repo
+
+$rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
+if (!(Test-Path $rscript)) { $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe" }
+
+Remove-Item Env:\MERGEN_EVIDENCE_STEPS -ErrorAction SilentlyContinue
+
+& $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
 ```
 
-- Kanıt artifact'ı: `artifacts/vm-evidence/<timestamp>/evidence.json` + adım başına log.
-- Adımlar TEMİZ ÇOCUK R oturumlarında koşulur; ham gizli değer asla yazılmaz
-  (yalnızca `present/nchar/value=<hidden>` metadata; loglar redakte edilir).
-- Kapsam: on-prem env varsayımları, parse sanity, app boot smoke, tam strict
-  testthat, maintainability skoru, frontend ratchet, seam doctor, source
-  manifest + UI asset manifest sözleşmeleri, tarayıcı UX smoke (varsa),
-  VM gerçek preflight (SSO/DB/LLM), DB kodlama transactional probe, renv durumu.
-- Dürüstlük: her adım `proves` / `does_not_prove` alanları taşır; `cloud`
-  profilinde VM-yalnız kapılar gerekçeli `skipped` olur ve KANIT SAYILMAZ.
-  VM/SSO/DB/SQL Server Türkçe kodlama kanıtı yalnızca `profile_effective=vm`
-  koşumunda ve ilgili adımlar `passed` olduğunda geçerlidir.
-- Tarayıcı UX smoke: `MERGEN_BROWSER_BIN` açıkça tanımlıysa veya
-  `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ise zorunludur; aksi halde tarayıcı
-  yoksa gerekçeli SKIP olur.
-- Yapısal sözleşme: `tests/testthat/test-vm-evidence-gate-contract.R`
-  (adım listesi, secret-güvenlik, çocuk-oturum izolasyonu, quit() yasağı).
-- Bu kapı mevcut kapıların YERİNE geçmez; onları tek artifact'ta birleştirir.
-  Manuel kırılgan-akış kontrol listesi ayrı bir kanıt kapısı olarak kalır.
+Bu komut tüm yapılandırılmış evidence adımlarını çalıştırır. Browser UX smoke zorunlu
+değilse ve ortam tarayıcı kanıtı üretemiyorsa yapılandırmaya bağlı olarak gerekçeli SKIP
+olabilir. Mandatory browser proof için aşağıdaki external-app workflow kullanılmalıdır.
+
+Kanıt artifact'ı her koşumda `artifacts/vm-evidence/<timestamp>/evidence.json` ve aynı
+dizin altında adım logları olarak yazılır. Adımlar temiz çocuk R oturumlarında koşulur;
+ham secret, DSN, endpoint, token veya key değerleri artifact/log içine yazılmamalıdır.
+Kapsam: `env_config`, `parse_sanity`, `app_boot_smoke`, `full_testthat`,
+`maintainability_report`, `frontend_ratchet`, `seam_doctor`,
+`source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`,
+`vm_preflight_real`, `db_encoding_preflight`, `renv_status`.
+
+#### Mandatory browser UX smoke: external-app iki-pencere workflow
+
+Kilitli Windows/VDI ortamlarında mandatory browser proof için VM-stable önerilen akış,
+uygulamayı ayrı bir PowerShell penceresinde açık tutup evidence gate'e çalışan app URL'ini
+vermektir.
+
+**Window 1 — app'i başlatın ve açık bırakın:**
+
+```powershell
+$repo = "U:\Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
+Set-Location $repo
+
+$rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
+if (!(Test-Path $rscript)) { $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe" }
+
+& $rscript -e "if (file.exists('.Renviron')) readRenviron('.Renviron'); Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', TZ='UTC'); cat('START_APP_BOOT_TEST\n'); source('app.R', encoding='UTF-8'); cat('SOURCE_OK\n'); run_mergen_app(host='127.0.0.1', port=28081L, launch.browser=FALSE, quiet=FALSE)"
+```
+
+Beklenen:
+
+- Pencere açık kalır.
+- App `http://127.0.0.1:28081` üzerinde dinler.
+- Smoke sayfası `http://127.0.0.1:28081/smoke/ux-smoke.html` olur.
+
+**Window 2 — mandatory browser proof ile tam evidence gate'i çalıştırın:**
+
+```powershell
+$repo = "U:\Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
+Set-Location $repo
+
+$rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
+if (!(Test-Path $rscript)) { $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe" }
+
+Remove-Item Env:\MERGEN_EVIDENCE_STEPS -ErrorAction SilentlyContinue
+
+$env:MERGEN_BROWSER_UX_BASE_URL = "http://127.0.0.1:28081"
+$env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
+
+& $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
+
+Remove-Item Env:\MERGEN_BROWSER_UX_BASE_URL -ErrorAction SilentlyContinue
+Remove-Item Env:\MERGEN_REQUIRE_BROWSER_UX_SMOKE -ErrorAction SilentlyContinue
+```
+
+- `MERGEN_BROWSER_UX_BASE_URL`, `ai_browser_ux_smoke.R` betiğine kendi geçici Shiny
+  child process'ini başlatmak yerine zaten çalışan app'i test etmesini söyler.
+- `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true`, browser UX smoke'u bloklayıcı yapar.
+- Window 1'deki app evidence gate bitene kadar açık kalmalıdır.
+- Koşum bitince Window 1'de app'i `Ctrl+C` ile durdurun.
+
+#### Browser smoke davranışı
+
+- Varsayılan durumda browser UX smoke opsiyonel/non-blocking olabilir.
+- `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ile bloklayıcıdır ve `UX_SMOKE_DONE:PASS`
+  üretmelidir.
+- `MERGEN_BROWSER_UX_BASE_URL` set edilmişse o base URL'de app önceden çalışıyor olmalıdır.
+- Elle çalışan background app normalde gerekli değildir; ancak kilitli Windows/VDI
+  ortamlarında mandatory browser proof için önerilen VM-stable workflow budur.
+- `MERGEN_BROWSER_BIN` açıkça tanımlıysa require modu otomatik etkinleşir; kullanılamayan
+  binary yolu erken hata verir.
+
+#### Full isolated testthat davranışı
+
+`full_testthat`, `tests/scripts/run_full_testthat_isolated.R` betiğini kullanır. Bu betik
+`tests/testthat/test-*.R` dosyalarını alfabetik sıralı liste üzerinden tek tek temiz
+`Rscript --vanilla` çocuk süreçlerinde çalıştırır.
+
+- RStudio console testthat koşumundan daha yavaştır.
+- Daha güvenilirdir; sıcak RStudio oturumunun gizleyebileceği eksik per-test bağımlılıkları yakalar.
+- Bu milestone sırasında bir dizi isolated-test dependency sorunu giderildi.
+
+Hata sonrası devamı hızlandırmak için aralık koşumu kullanılabilir; indexler alfabetik
+sıralanmış `tests/testthat/test-*.R` dosya listesine göre hesaplanır:
+
+```powershell
+$env:MERGEN_TESTTHAT_START_INDEX = "243"
+$env:MERGEN_TESTTHAT_END_INDEX = "441"
+
+& $rscript --vanilla tests/scripts/run_full_testthat_isolated.R
+
+Remove-Item Env:\MERGEN_TESTTHAT_START_INDEX -ErrorAction SilentlyContinue
+Remove-Item Env:\MERGEN_TESTTHAT_END_INDEX -ErrorAction SilentlyContinue
+```
+
+#### Milestone sırasında doğrulanan önemli düzeltmeler
+
+- Health runtime/tab UI isolated testleri gerekli health table helper'larını source eder.
+- LLM worker tool-result isolated testleri formatter'dan önce preview-dataframe helper'ını source eder.
+- `run_full_testthat_isolated.R`, hata sonrası hızlı devam için start/end index aralıklarını destekler.
+- Browser UX smoke, `MERGEN_BROWSER_UX_BASE_URL` ile external app modunu destekler.
+- Browser UX smoke, `MERGEN_REQUIRE_BROWSER_UX_SMOKE` değerine göre opsiyonel veya bloklayıcıdır.
+- Full testthat çocuk süreçleri browser UX evidence-gating environment leakage'a karşı korunur.
+- VM preflight path handling, Türkçe karakterli ve boşluklu Windows mapped-drive / UNC-style path'ler için sertleştirildi.
+- Evidence gate logları ve artifact'ları `artifacts/vm-evidence/<timestamp>/` altında kalır.
+
+#### Troubleshooting / gotchas
+
+- `testthat` eksikse gate'in kullandığı aynı Rscript için paketlerin kurulu/restored olduğundan emin olun.
+- Relative test path yok diyorsa PowerShell'in repo kökünde olduğunu doğrulayın.
+- External browser smoke “Could not connect to server” diyorsa Window 1'deki app gerçekten çalışmıyordur.
+- App boot eksik env var nedeniyle düşerse `.Renviron` yüklendiğini veya şu değişkenlerin tanımlı olduğunu kontrol edin: `LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`.
+- Tam gate amaçlanıyorsa `MERGEN_EVIDENCE_STEPS` set edilmiş bırakılmamalıdır.
+- `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` değişkenini niyetli değilseniz ad-hoc testthat koşumlarına sızdırmayın.
+
+Yapısal sözleşme: `tests/testthat/test-vm-evidence-gate-contract.R` (adım listesi,
+secret-güvenlik, çocuk-oturum izolasyonu, quit() yasağı). Bu kapı mevcut kapıların yerine
+geçmez; onları tek artifact'ta birleştirir. Manuel kırılgan-akış kontrol listesi ayrı
+bir kanıt kapısı olarak kalır.
 
 ---
 

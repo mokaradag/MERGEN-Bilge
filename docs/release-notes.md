@@ -16,6 +16,16 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 Aşağıdaki bölüm, güncel değişiklik notlarını kronolojik/tematik bakım izi kaybolmadan izler.
 
+
+### Windows VM evidence gate milestone: 13/13 adım geçti
+
+MERGEN Bilge'nin on-prem Windows VM doğrulamasında major readiness milestone kaydedildi. `tests/scripts/run_vm_evidence_gate.R` tam koşumu başarılı tamamlandı: `Toplam: 13 passed, 0 failed, 0 skipped`. Milestone statüsü özellikle şu adımları içerir: `full_testthat PASSED`, `browser_ux_smoke PASSED`, `vm_preflight_real PASSED`, `db_encoding_preflight PASSED`.
+
+Başarılı koşumda tam izole testthat suite'i, VM preflight, transactional DB encoding preflight ve mandatory browser UX smoke kanıtı aynı gate altında geçti. Browser proof external-app modunda alındı: app ayrı pencerede `http://127.0.0.1:28081` üzerinde çalışırken gate `MERGEN_BROWSER_UX_BASE_URL=http://127.0.0.1:28081` ve `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ile koşturuldu; browser smoke `UX_SMOKE_DONE:PASS` üretti. Örnek artifact: `artifacts/vm-evidence/20260612-211836/evidence.json`; genel artifact konumu `artifacts/vm-evidence/<timestamp>/evidence.json`.
+
+Bu milestone, release/readiness açısından güçlü bir VM kanıtıdır; ancak yalnızca artifact içinde `passed` görünen adımlar için kanıt sayılır. Uzun süreli gerçek kullanıcı yükü, manuel kırılgan-akış QA'sı ve legacy DB satırlarının temizliği ayrıca değerlendirilmelidir. Operasyonel komutlar ve troubleshooting için [`../RUNBOOK.md`](../RUNBOOK.md) içindeki evidence gate bölümü izlenir.
+
+
 ### Karmaşıklık azaltma: plotly bağımlılığı çalışma zamanından tamamen kaldırıldı
 
 Grafik render yolu highcharter'a indirildikten sonra plotly'nin tek kalan kullanımı, artık hiçbir grafik tarafından kullanılmayan bağımlılık-önyükleyiciydi. Bu önyükleyici de kaldırıldı: `R/server_outputs_downloads.R` içindeki `widgetDependencyOutputsInit()` artık yalnızca highcharter `deps_hc` yükleyicisini tanımlar (`deps_pl` ve kullanılmayan `plotly_html` çıktıları silindi) ve `ui.R` içindeki gizli `plotly::plotlyOutput("deps_pl")` yükleyicisi kaldırıldı. Sonuç olarak çalışma zamanı kodunda (`R/*.R`, `ui.R`, `server.R`) hiçbir plotly referansı kalmadı.
