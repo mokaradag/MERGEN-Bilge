@@ -52,10 +52,55 @@ test_files <- list.files(
 )
 
 test_files <- sort(test_files)
+all_test_files <- test_files
 
-if (length(test_files) == 0L) {
+if (length(all_test_files) == 0) {
   stop("tests/testthat altinda test-*.R dosyasi bulunamadi.", call. = FALSE)
 }
+
+parse_testthat_index <- function(env_name, default, upper_bound) {
+  raw <- trimws(Sys.getenv(env_name, unset = ""))
+
+  if (!nzchar(raw)) {
+    return(default)
+  }
+
+  value <- suppressWarnings(as.integer(raw))
+
+  if (is.na(value) || value < 1L || value > upper_bound) {
+    stop(sprintf(
+      "%s gecersiz: %s. 1-%d arasi tamsayi kullanin.",
+      env_name,
+      raw,
+      upper_bound
+    ), call. = FALSE)
+  }
+
+  value
+}
+
+range_start <- parse_testthat_index(
+  "MERGEN_TESTTHAT_START_INDEX",
+  1L,
+  length(all_test_files)
+)
+
+range_end <- parse_testthat_index(
+  "MERGEN_TESTTHAT_END_INDEX",
+  length(all_test_files),
+  length(all_test_files)
+)
+
+if (range_start > range_end) {
+  stop(sprintf(
+    "MERGEN_TESTTHAT_START_INDEX (%d) MERGEN_TESTTHAT_END_INDEX (%d) degerinden buyuk olamaz.",
+    range_start,
+    range_end
+  ), call. = FALSE)
+}
+
+selected_indices <- seq.int(range_start, range_end)
+test_files <- all_test_files[selected_indices]
 
 running_marker <- file.path(file_log_dir, "RUNNING_TEST_FILE.txt")
 summary_file <- file.path(file_log_dir, "SUMMARY.tsv")
@@ -66,21 +111,26 @@ writeLines(
   useBytes = TRUE
 )
 
-cat(sprintf("FULL_TESTTHAT_ISOLATED_TOTAL:%d\n", length(test_files)))
+cat(sprintf("FULL_TESTTHAT_ISOLATED_TOTAL:%d\n", length(all_test_files)))
+cat(sprintf("FULL_TESTTHAT_ISOLATED_RANGE:%d:%d\n", range_start, range_end))
+cat(sprintf("FULL_TESTTHAT_ISOLATED_SELECTED:%d\n", length(test_files)))
 
 failed <- list()
 
 for (i in seq_along(test_files)) {
+  original_index <- selected_indices[[i]]
   test_file <- test_files[[i]]
   test_name <- basename(test_file)
   safe_name <- gsub("[^A-Za-z0-9_.-]+", "_", test_name)
-  log_file <- file.path(file_log_dir, sprintf("%03d_%s.log", i, safe_name))
-  runner_file <- file.path(file_log_dir, sprintf("%03d_%s_runner.R", i, safe_name))
+  log_file <- file.path(file_log_dir, sprintf("%03d_%s.log", original_index, safe_name))
+  runner_file <- file.path(file_log_dir, sprintf("%03d_%s_runner.R", original_index, safe_name))
 
 writeLines(
   c(
-    sprintf("index=%d", i),
-    sprintf("total=%d", length(test_files)),
+    sprintf("index=%d", original_index),
+    sprintf("total=%d", length(all_test_files)),
+    sprintf("selected_index=%d", i),
+    sprintf("selected_total=%d", length(test_files)),
     sprintf("test_file=%s", path_for_r(test_file)),
     sprintf("started_at=%s", format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
   ),
@@ -110,7 +160,14 @@ writeLines(
 
   writeLines(runner_lines, runner_file, useBytes = TRUE)
 
-  cat(sprintf("[FULL_TESTTHAT_FILE %03d/%03d] %s ...", i, length(test_files), test_name))
+  cat(sprintf(
+    "[FULL_TESTTHAT_FILE %03d/%03d selected %03d/%03d] %s ...",
+    original_index,
+    length(all_test_files),
+    i,
+    length(test_files),
+    test_name
+  ))
   started <- Sys.time()
 
 child_env <- c(
@@ -154,13 +211,13 @@ status <- tryCatch(
   write(
     sprintf(
       "%d\t%d\t%s\t%s\t%d\t%.1f\t%s",
-      i,
-      length(test_files),
-      status_label,
-      path_for_r(test_file),
-      exit_status,
-      duration,
-      path_for_r(log_file)
+	  original_index,
+	  length(all_test_files),
+	  status_label,
+	  path_for_r(test_file),
+	  exit_status,
+	  duration,
+	  path_for_r(log_file)
     ),
     file = summary_file,
     append = TRUE

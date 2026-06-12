@@ -10,8 +10,15 @@
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
   env$mergen_debug_cat <- function(...) invisible(NULL)
+
+  repo_root <- resolve_repo_root_for_tests()
+
   source(
-    file.path(resolve_repo_root_for_tests(), "R", "helpers_llm_worker_tool_results.R"),
+    file.path(repo_root, "R", "helpers_llm_worker_tool_results_preview.R"),
+    encoding = "UTF-8", local = env
+  )
+  source(
+    file.path(repo_root, "R", "helpers_llm_worker_tool_results.R"),
     encoding = "UTF-8", local = env
   )
   env
