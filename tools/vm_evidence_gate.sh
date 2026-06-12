@@ -36,4 +36,5 @@ if ! command -v Rscript >/dev/null 2>&1; then
   exit 127
 fi
 
-Rscript tests/scripts/run_vm_evidence_gate.R "$@"
+# Ana betik .Renviron dosyasini kendi yukler; --vanilla .Rprofile yan etkilerini disarida tutar.
+Rscript --vanilla tests/scripts/run_vm_evidence_gate.R "$@"

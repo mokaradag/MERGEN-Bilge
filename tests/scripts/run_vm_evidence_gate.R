@@ -70,6 +70,37 @@ old_wd <- getwd()
 setwd(repo_root)
 on.exit(setwd(old_wd), add = TRUE)
 
+# Repo .Renviron yukleyici: ana Rscript --vanilla ile calissa bile gercek VM
+# ortam degerleri cocuk oturumlara aktarilir. Mevcut shell/PowerShell
+# degiskenleri .Renviron degerlerine gore onceliklidir.
+evidence_load_repo_renviron <- function(path = ".Renviron") {
+  if (!file.exists(path)) {
+    return(FALSE)
+  }
+
+  before_names <- names(Sys.getenv())
+  before_values <- Sys.getenv(before_names, unset = NA_character_)
+  before_keep <- before_names[!is.na(before_values) & nzchar(before_values)]
+
+  ok <- tryCatch(
+    readRenviron(path),
+    error = function(e) FALSE,
+    warning = function(w) FALSE
+  )
+
+  if (!isTRUE(ok)) {
+    return(FALSE)
+  }
+
+  for (name in before_keep) {
+    do.call(Sys.setenv, stats::setNames(list(unname(before_values[name])), name))
+  }
+
+  TRUE
+}
+
+repo_renviron_loaded <- evidence_load_repo_renviron(".Renviron")
+
 if (!requireNamespace("jsonlite", quietly = TRUE)) {
   stop("Kanit kapisi icin jsonlite paketi gereklidir (uygulamanin zorunlu paketi).", call. = FALSE)
 }
@@ -110,6 +141,32 @@ evidence_redact_text <- function(text) {
     out <- gsub(v, "<hidden>", out, fixed = TRUE)
   }
   enc2utf8(out)
+}
+
+# Windows loglari bazen native encoding ile gelir. Bu yardimci log metnini
+# byte-safe okur ve grepl()/JSON yazimi icin UTF-8'e temizler.
+evidence_read_text_file_safe <- function(path) {
+  if (!file.exists(path)) {
+    return("")
+  }
+
+  raw_bytes <- tryCatch(
+    readBin(path, what = "raw", n = file.info(path)$size),
+    error = function(e) raw()
+  )
+
+  if (length(raw_bytes) == 0L) {
+    return("")
+  }
+
+  text <- tryCatch(rawToChar(raw_bytes), error = function(e) "")
+  text <- iconv(text, from = "", to = "UTF-8", sub = "byte")
+
+  if (is.na(text)) {
+    return("")
+  }
+
+  enc2utf8(text)
 }
 
 # ------------------------------------------------------------------------------
@@ -207,10 +264,7 @@ evidence_run_child_step <- function(step_id, code_lines, extra_env = character(0
   ))
   duration <- as.numeric(difftime(Sys.time(), started, units = "secs"))
 
-  raw_log <- tryCatch(
-    paste(readLines(log_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n"),
-    error = function(e) ""
-  )
+  raw_log <- evidence_read_text_file_safe(log_file)
   writeLines(evidence_redact_text(raw_log), log_file, useBytes = TRUE)
 
   unlink(runner_file, force = TRUE)
@@ -383,6 +437,7 @@ run_step_env_config <- function() {
   )
 
   detail <- list(
+    repo_renviron_loaded = isTRUE(repo_renviron_loaded),
     sso_enabled = sso_enabled,
     db_client_encoding = if (nzchar(db_client_enc)) db_client_enc else "<bos>",
     db_name_encoding = if (nzchar(db_name_enc)) db_name_enc else "<bos>",
@@ -393,6 +448,7 @@ run_step_env_config <- function() {
   log_file <- file.path(artifact_dir, "step_env_config.log")
   writeLines(enc2utf8(c(
     sprintf("profile_effective=%s", profile_effective),
+    sprintf("repo_renviron_loaded=%s", isTRUE(repo_renviron_loaded)),
     sprintf("sso_enabled=%s", sso_enabled),
     sprintf("db_client_encoding=%s", detail$db_client_encoding),
     sprintf("db_name_encoding=%s", detail$db_name_encoding),
@@ -428,10 +484,7 @@ run_step_browser_ux_smoke <- function() {
     "source('tests/scripts/ai_browser_ux_smoke.R', encoding = 'UTF-8')"
   )
 
-  log_text <- tryCatch(
-    paste(readLines(res$log_file, warn = FALSE, encoding = "UTF-8"), collapse = "\n"),
-    error = function(e) ""
-  )
+  log_text <- evidence_read_text_file_safe(res$log_file)
 
   # Durustluk kurali: bu adim yalnizca gercek UX_SMOKE_DONE:PASS kanitiyla
   # "passed" sayilir. Alt betik tarayici yokken exit 0 ile SKIP yazabilir;
