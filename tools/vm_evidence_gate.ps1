@@ -7,7 +7,8 @@
 
 param(
   [string]$Profile = "vm",
-  [string]$RepoRoot = ""
+  [string]$RepoRoot = "",
+  [string]$RscriptPath = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
 )
 
 Set-StrictMode -Version Latest
@@ -17,6 +18,20 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
   $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
   $RepoRoot = Resolve-Path (Join-Path $ScriptDir "..")
 }
+
+if (-not (Test-Path $RscriptPath)) {
+  $RscriptPath = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe"
+}
+
+if (-not (Test-Path $RscriptPath)) {
+  throw "Rscript bulunamadi. R 4.6.0 beklenen yol: C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
+}
+
+$RscriptPath = (Resolve-Path $RscriptPath).Path
+$RBinDir = Split-Path -Parent $RscriptPath
+
+$env:MERGEN_RSCRIPT_BIN = $RscriptPath
+$env:PATH = "$RBinDir;$env:PATH"
 
 $env:MERGEN_EVIDENCE_PROFILE = $Profile
 
@@ -47,11 +62,16 @@ setlocal EnableDelayedExpansion
 pushd "$RepoRootForCmd"
 set "PUSHD_RC=!ERRORLEVEL!"
 if not "!PUSHD_RC!"=="0" exit /b !PUSHD_RC!
-Rscript --vanilla tests\scripts\run_vm_evidence_gate.R
+set "MERGEN_RSCRIPT_BIN=$RscriptPathForCmd"
+set "PATH=$RBinDirForCmd;!PATH!"
+"$RscriptPathForCmd" --vanilla tests\scripts\run_vm_evidence_gate.R
 set "GATE_RC=!ERRORLEVEL!"
 popd
 exit /b !GATE_RC!
 "@
+
+$RscriptPathForCmd = $RscriptPath.Replace('"', '""')
+$RBinDirForCmd = $RBinDir.Replace('"', '""')
 
 & cmd.exe /d /v:on /s /c $CmdLine
 

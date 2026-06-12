@@ -113,18 +113,38 @@ writeLines(
   cat(sprintf("[FULL_TESTTHAT_FILE %03d/%03d] %s ...", i, length(test_files), test_name))
   started <- Sys.time()
 
-  status <- suppressWarnings(system2(
+child_env <- c(
+  MERGEN_RUN_APP = "false",
+  MERGEN_DISABLE_FUTURES = "true",
+  TZ = "UTC",
+  MERGEN_EVIDENCE_ARTIFACT_DIR = artifact_dir
+)
+
+old_env <- Sys.getenv(names(child_env), unset = NA_character_)
+
+do.call(
+  Sys.setenv,
+  stats::setNames(as.list(unname(child_env)), names(child_env))
+)
+
+status <- tryCatch(
+  suppressWarnings(system2(
     rscript_bin,
     args = c("--vanilla", runner_file),
     stdout = log_file,
-    stderr = log_file,
-	env = c(
-	  "MERGEN_RUN_APP=false",
-	  "MERGEN_DISABLE_FUTURES=true",
-	  "TZ=UTC",
-	  sprintf("MERGEN_EVIDENCE_ARTIFACT_DIR=%s", artifact_dir)
-	)
-  ))
+    stderr = log_file
+  )),
+  finally = {
+    for (nm in names(child_env)) {
+      old_value <- old_env[[nm]]
+      if (is.na(old_value)) {
+        Sys.unsetenv(nm)
+      } else {
+        do.call(Sys.setenv, stats::setNames(list(old_value), nm))
+      }
+    }
+  }
+)
 
   duration <- round(as.numeric(difftime(Sys.time(), started, units = "secs")), 1)
   exit_status <- as.integer(status %||% 1L)

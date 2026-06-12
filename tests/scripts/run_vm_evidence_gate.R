@@ -220,10 +220,16 @@ gate_timestamp <- format(Sys.time(), "%Y%m%d-%H%M%S", tz = "UTC")
 artifact_dir <- file.path("artifacts", "vm-evidence", gate_timestamp)
 dir.create(artifact_dir, recursive = TRUE, showWarnings = FALSE)
 
-rscript_bin <- file.path(R.home("bin"), "Rscript")
-if (.Platform$OS.type == "windows") {
-  rscript_bin <- paste0(rscript_bin, ".exe")
+rscript_bin <- Sys.getenv("MERGEN_RSCRIPT_BIN", unset = "")
+
+if (!nzchar(rscript_bin)) {
+  rscript_bin <- file.path(R.home("bin"), "Rscript")
+  if (.Platform$OS.type == "windows") {
+    rscript_bin <- paste0(rscript_bin, ".exe")
+  }
 }
+
+rscript_bin <- normalizePath(rscript_bin, winslash = "/", mustWork = FALSE)
 
 if (!file.exists(rscript_bin)) {
   stop(sprintf("Rscript bulunamadi: %s", rscript_bin), call. = FALSE)
