@@ -28,7 +28,9 @@
 .makeChatEngineDeps <- function() {
   list(
     settings_data = list(model_selection = "test-model"),
-    api_key = "ham-anahtar-fonksiyon-olmak-zorunda-degil",
+    # api_key fonksiyon olmak zorunda değildir; değeri doğrulanmaz. Secret
+    # tarayıcı eşleşmesini önlemek için kısa, anlamsız bir yer tutucu.
+    api_key = "ph-key",
     user_config_rv = function() list(name = "Test"),
     perf_tracker = list(
       track_error = function(...) invisible(NULL),

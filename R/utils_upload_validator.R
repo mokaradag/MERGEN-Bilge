@@ -26,12 +26,28 @@
   any(as.integer(bytes) %in% c(0:31, 127))
 }
 
+# Dosya adında Unicode iki-yönlü (bidi) kontrol/override karakteri olup
+# olmadığını denetler. U+200E/200F, U+202A-202E ve U+2066-2069 karakterleri
+# "Trojan Source" / sağdan-sola override saldırılarında gerçek uzantıyı gizlemek
+# için kullanılır (örn. "fatura<U+202E>cod.exe" ekranda "faturaexe.doc" görünür).
+# Bu karakterlerin meşru dosya adlarında hiçbir kullanımı yoktur; Türkçe metin de
+# içermez. Kod nokta düzeyinde denetlenir, böylece geçerli UTF-8 Türkçe etkilenmez.
+.upload_has_bidi_control <- function(name) {
+  kod_noktalari <- utf8ToInt(enc2utf8(as.character(name)[1]))
+  if (length(kod_noktalari) == 0L || anyNA(kod_noktalari)) return(FALSE)
+  bidi <- c(0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+            0x2066, 0x2067, 0x2068, 0x2069)
+  any(kod_noktalari %in% bidi)
+}
+
 # Dosya adını normalleştirerek path traversal denemesi olup olmadığını anlar.
 # Beklenen: basename(name) ile birebir eşleşmesi. Aksi takdirde "/", "\" veya
-# ".." ile kaçış yapılmaya çalışılmıştır.
+# ".." ile kaçış yapılmaya çalışılmıştır. Bidi override karakterleri de güvensiz
+# sayılır (uzantı gizleme / görsel spoofing).
 .upload_has_traversal <- function(name) {
   if (!nzchar(name)) return(TRUE)
   if (.upload_has_control_bytes(name)) return(TRUE)
+  if (.upload_has_bidi_control(name)) return(TRUE)
   if (grepl("\\.\\.", name, fixed = FALSE)) return(TRUE)
   if (grepl("/", name, fixed = TRUE)) return(TRUE)
   if (grepl("\\\\", name, fixed = FALSE)) return(TRUE)

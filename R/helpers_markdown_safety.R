@@ -22,9 +22,14 @@ mergen_sanitize_markdown_links <- function(html) {
 
   safe_html <- enc2utf8(as.character(html[1]))
 
-  # Markdown linkleri üzerinden javascript: protokolü üretilirse tıklanamaz hale getir.
+  # Markdown linkleri üzerinden tehlikeli protokoller (javascript:, vbscript:,
+  # data:text/html) üretilirse tıklanamaz hale getir. Bu protokoller tarayıcıda
+  # betik yürütebilir; bu nedenle href "#" ile etkisizleştirilir. Güvenli
+  # data:image/... (görsel) ve normal http/https/göreli linkler etkilenmez.
+  tehlikeli_protokol <- "(?:(?:javascript|vbscript):|data:text/html)"
+
   safe_html <- gsub(
-    "href\\s*=\\s*\"\\s*javascript:[^\"]*\"",
+    sprintf("href\\s*=\\s*\"\\s*%s[^\"]*\"", tehlikeli_protokol),
     "href=\"#\" data-mergen-unsafe-href=\"removed\"",
     safe_html,
     ignore.case = TRUE,
@@ -32,7 +37,7 @@ mergen_sanitize_markdown_links <- function(html) {
   )
 
   safe_html <- gsub(
-    "href\\s*=\\s*'\\s*javascript:[^']*'",
+    sprintf("href\\s*=\\s*'\\s*%s[^']*'", tehlikeli_protokol),
     "href=\"#\" data-mergen-unsafe-href=\"removed\"",
     safe_html,
     ignore.case = TRUE,
