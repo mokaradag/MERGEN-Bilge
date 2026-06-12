@@ -101,24 +101,26 @@ testthat::test_that("summary JSON contains machine-readable proof fields", {
     .ai_validation_proof_step("focused contract tests")
   )
 
-  json <- withr::with_envvar(
-    c(
-      MERGEN_AI_REQUESTED_PROFILE = "cloud-quick",
-      MERGEN_AI_EFFECTIVE_PROFILE = "quick",
-      AI_KEYS_MASTER = secret_values[[1]],
-      DB_DSN = secret_values[[2]],
-      LOCAL_LLM_ENDPOINT = secret_values[[3]]
-    ),
-    validation_proof_render_ai_summary(
-      profile = "quick",
-      repo_root = repo_root,
-      artifact_root = tempfile("ai-validation-proof-artifact-"),
-      steps = steps,
-      boot_smoke = FALSE,
-      skip_app_source_smoke = TRUE,
-      answer_path = NULL
-    )
-  )
+	json <- withr::with_envvar(
+	  c(
+		MERGEN_AI_REQUESTED_PROFILE = "cloud-quick",
+		MERGEN_AI_EFFECTIVE_PROFILE = "quick",
+		MERGEN_REQUIRE_BROWSER_UX_SMOKE = "false",
+		MERGEN_BROWSER_UX_BASE_URL = "",
+		AI_KEYS_MASTER = secret_values[[1]],
+		DB_DSN = secret_values[[2]],
+		LOCAL_LLM_ENDPOINT = secret_values[[3]]
+	  ),
+	  validation_proof_render_ai_summary(
+		profile = "quick",
+		repo_root = repo_root,
+		artifact_root = tempfile("ai-validation-proof-artifact-"),
+		steps = steps,
+		boot_smoke = FALSE,
+		skip_app_source_smoke = TRUE,
+		answer_path = NULL
+	  )
+	)
 
   .ai_validation_proof_expect_all(
     json,

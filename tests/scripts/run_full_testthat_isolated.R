@@ -170,12 +170,14 @@ writeLines(
   ))
   started <- Sys.time()
 
-child_env <- c(
-  MERGEN_RUN_APP = "false",
-  MERGEN_DISABLE_FUTURES = "true",
-  TZ = "UTC",
-  MERGEN_EVIDENCE_ARTIFACT_DIR = artifact_dir
-)
+	child_env <- c(
+	  MERGEN_RUN_APP = "false",
+	  MERGEN_DISABLE_FUTURES = "true",
+	  TZ = "UTC",
+	  MERGEN_EVIDENCE_ARTIFACT_DIR = artifact_dir,
+	  MERGEN_REQUIRE_BROWSER_UX_SMOKE = "false",
+	  MERGEN_BROWSER_UX_BASE_URL = ""
+	)
 
 old_env <- Sys.getenv(names(child_env), unset = NA_character_)
 
