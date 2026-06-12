@@ -62,8 +62,16 @@ find_repo_root <- function() {
 repo_root <- find_repo_root()
 setwd(repo_root)
 
-rscript <- Sys.which("Rscript")
-if (!nzchar(rscript)) {
+rscript <- file.path(R.home("bin"), "Rscript")
+if (.Platform$OS.type == "windows") {
+  rscript <- paste0(rscript, ".exe")
+}
+
+if (!file.exists(rscript)) {
+  rscript <- Sys.which("Rscript")
+}
+
+if (!nzchar(rscript) || !file.exists(rscript)) {
   stop("Rscript bulunamadı.", call. = FALSE)
 }
 
@@ -216,25 +224,40 @@ if (!nzchar(browser_bin)) {
 
 cat(sprintf("Browser: %s\n", browser_bin))
 
-expr <- paste(
+app_runner_file <- file.path(
+  artifact_dir,
+  sprintf("shiny-browser-ux-runner-%s.R", port)
+)
+
+app_runner_lines <- c(
+  "options(warn = 1)",
+  "for (.loc in c('C.UTF-8', 'en_US.UTF-8', 'tr_TR.UTF-8')) {",
+  "  ok <- tryCatch(nzchar(Sys.setlocale('LC_CTYPE', .loc)), error = function(e) FALSE, warning = function(w) FALSE)",
+  "  if (isTRUE(ok)) break",
+  "}",
   "Sys.setenv(",
-  "MERGEN_RUN_APP='false',",
-  "MERGEN_DISABLE_FUTURES='true',",
-  "TZ='UTC',",
-  "LOCAL_LLM_ENDPOINT=ifelse(nzchar(Sys.getenv('LOCAL_LLM_ENDPOINT')), Sys.getenv('LOCAL_LLM_ENDPOINT'), 'http://test.local/v1'),",
-  "DB_DSN=ifelse(nzchar(Sys.getenv('DB_DSN')), Sys.getenv('DB_DSN'), 'test-dsn'),",
-  "AI_KEYS_MASTER=ifelse(nzchar(Sys.getenv('AI_KEYS_MASTER')), Sys.getenv('AI_KEYS_MASTER'), 'test-master-key-0123456789')",
-  ");",
-  "source('app.R', encoding='UTF-8');",
+  "  MERGEN_RUN_APP='false',",
+  "  MERGEN_DISABLE_FUTURES='true',",
+  "  TZ='UTC',",
+  "  LOCAL_LLM_ENDPOINT=ifelse(nzchar(Sys.getenv('LOCAL_LLM_ENDPOINT')), Sys.getenv('LOCAL_LLM_ENDPOINT'), 'http://test.local/v1'),",
+  "  DB_DSN=ifelse(nzchar(Sys.getenv('DB_DSN')), Sys.getenv('DB_DSN'), 'test-dsn'),",
+  "  AI_KEYS_MASTER=ifelse(nzchar(Sys.getenv('AI_KEYS_MASTER')), Sys.getenv('AI_KEYS_MASTER'), 'test-master-key-0123456789')",
+  ")",
+  "cat('SHINY_UX_RUNNER_START\\n')",
+  "source('app.R', encoding='UTF-8')",
+  "cat('SHINY_UX_RUNNER_BOOT_OK\\n')",
   sprintf(
     "run_mergen_app(host='127.0.0.1', port=%dL, launch.browser=FALSE, quiet=FALSE)",
     port
   )
 )
 
+writeLines(enc2utf8(app_runner_lines), app_runner_file, useBytes = TRUE)
+on.exit(unlink(app_runner_file, force = TRUE), add = TRUE)
+
 px <- processx::process$new(
   command = rscript,
-  args = c("-e", expr),
+  args = c("--vanilla", app_runner_file),
   stdout = log_file,
   stderr = log_file,
   supervise = TRUE

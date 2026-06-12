@@ -11,8 +11,9 @@
 #           - health_worker_core_visual(): çekirdek görselleştirme yapısı.
 #           - health_runtime_ui(): çalışma zamanı sekmesi UI yapısı.
 #
-#           Yardımcılar helpers_health_formatters.R'ye bağımlı olduğundan o dosya
-#           da izole ortama yüklenir. Ağ/DB/LLM GEREKMEZ.
+#           Yardımcılar helpers_health_formatters.R ve helpers_health_table.R'ye
+#           bağımlı olduğundan bu dosyalar izole ortama yüklenir. Ağ/DB/LLM
+#           GEREKMEZ.
 # ==============================================================================
 
 .source_health_runtime_for_test <- function() {
@@ -22,6 +23,7 @@
     env$`%||%` <- function(a, b) if (is.null(a)) b else a
   }
   source(file.path(repo_root, "R", "helpers_health_formatters.R"), encoding = "UTF-8", local = env)
+  source(file.path(repo_root, "R", "helpers_health_table.R"), encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "module_health_runtime.R"), encoding = "UTF-8", local = env)
   env
 }

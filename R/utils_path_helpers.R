@@ -266,7 +266,7 @@ read_env_path_safe <- function(var_name, fallback = "") {
   repaired_exists <- .path_exists_any(repaired)
 
   if (nzchar(repaired) && (isTRUE(repaired_exists) || !isTRUE(raw_exists))) {
-    log_warn("[MCP_FILES_BASE] Türkçe karakter bozulması tespit edildi; yol onarıldı.")
+    log_warn(sprintf("[%s] Türkçe karakter bozulması tespit edildi; yol onarıldı.", var_name))
     return(repaired)
   }
 

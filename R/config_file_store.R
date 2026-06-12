@@ -15,8 +15,13 @@ HAVE_AES_GCM <- isTRUE("aes_gcm_encrypt" %in% getNamespaceExports("openssl"))
 # PAYLAŞIMLI DOSYA DEPOSU (ana süreç + worker'lar için ortak)
 # ==============================================================================
 env_or_default_path <- function(env_name, default_path) {
-  env_value <- Sys.getenv(env_name, "")
-  chosen <- if (nzchar(env_value)) env_value else default_path
+  chosen <- if (exists("read_env_path_safe", mode = "function", inherits = TRUE)) {
+    read_env_path_safe(env_name, fallback = default_path)
+  } else {
+    env_value <- Sys.getenv(env_name, "")
+    if (nzchar(env_value)) env_value else default_path
+  }
+
   normalize_utf8_path(chosen, mustWork = FALSE)
 }
 
