@@ -242,7 +242,6 @@ html[data-theme="light"] .health-metric-tile {
   border: 1px solid var(--color-border, #d8dde7) !important;
   box-shadow: var(--shadow-card) !important;
 }
-html[data-theme="light"] .health-metric-label,
 html[data-theme="light"] .health-metric-title { color: var(--color-muted, #5b6577) !important; }
 html[data-theme="light"] .health-metric-value { color: var(--color-text, #0f1c33) !important; }
 html[data-theme="light"] .health-metric-tile.health-status-ok .health-metric-value { color: #15803d !important; }
@@ -263,7 +262,6 @@ html[data-theme="light"] .health-worker-visual-card {
   border: 1px solid var(--color-border, #d8dde7) !important;
   color: var(--color-text, #0f1c33) !important;
 }
-html[data-theme="light"] .health-worker-visual-card .health-worker-visual-title,
 html[data-theme="light"] .health-worker-visual-card .health-worker-legend,
 html[data-theme="light"] .health-worker-visual-card span,
 html[data-theme="light"] .health-worker-visual-card small,

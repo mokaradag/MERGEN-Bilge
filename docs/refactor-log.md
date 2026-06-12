@@ -588,3 +588,23 @@ Açık tema konsolidasyonu hayalet seçicilerin tema zinciriyle sınırlı olmad
 ### Bilinen riskler / atlanan doğrulamalar
 - Tarayıcı görsel doğrulaması yine cloud'da yapılamadı; silinen her kural "DOM'da eşleşmesi imkânsız" kanıtına dayanır (sınıf hiçbir runtime kaynağında yok + dinamik üretim önekleri korunmuş).
 - `brand_title.css` ölü kuralları ve `code_highlighting.css` hljs bloğu bilinçli yerinde; ayrı sözleşme kararı gerektirir.
+
+## 2026-06-12 — brand_title.css hayalet sınıf API'sinin kaldırılması ve sözleşmenin token mekanizmasına yeniden çapalanması
+
+### Karar
+`test-brand-title-single-source-contract.R`, DOM'da hiç var olmamış `.mergen-brand-title*` paralel sınıf API'sini metin olarak sabitliyordu. İnceleme, tek-kaynak hizalamanın GERÇEK mekanizmasının `--mergen-brand-*` token ailesi olduğunu doğruladı: üç canlı marka yüzeyi (`.brand-text`, `#app-loading-overlay .alo-wordmark`, `.deep-space-branding .deep-space-title`) aynı `var(--mergen-brand-font-stack)` tokenini tüketir. Bilinçli sözleşme güncellemesi yapıldı:
+- 10 ölü kural kaldırıldı (`.mergen-brand-title*`, `.mergen-brand-mark`, hayalet `.ds-modal-*` / `.ds-version-modal-*` ailesi, `.deep-space-title-accent`, `.deep-space-version-text`); brand_title.css 314 → 237 satır.
+- Test, token tanımları + üç canlı yüzeyin token TÜKETİMİ (≥3 `var(--mergen-brand-font-stack)`) üzerine yeniden çapalandı ve hayalet sınıf ailesinin geri eklenmesini açıkça YASAKLAYAN bir assertion eklendi.
+- Hayalet seçici ratchet tabanı 42 → 26'ya İNDİRİLDİ (kalan 26'nın tamamı canlı kuralların grup üyesi kalıntılarıdır; tek başına ölü kural kalmadı).
+
+### hljs doğrulaması (kayıt)
+`highlight.min.js` / `hljs` için R çalışma zamanı kaynaklarında (R/, ui.R, server.R, global.R) SIFIR yükleyici referansı doğrulandı: repo içinden bu dosyayı yükleyen hiçbir mekanizma yoktur; `code_highlighting.css` hljs bloğu repo-kanıtıyla ölüdür. Dosya yalnızca on-prem VM kopyasında fiziksel olarak bulunduğu için bloğun kaldırılması VM-doğrulamalı bir oturuma bırakılmıştır (vendor desenleri ratchet'te zaten korumalıdır; acil risk yok).
+
+### Doğrulamalar
+- `test-brand-title-single-source-contract.R` → 23 PASS / 0 FAIL.
+- Hayalet tarama yeni tabanı: toplam 26 (tema: 7).
+- Tam kapı (`ai_validate full --boot-smoke`) bu commit öncesi yeniden koşuldu; sonuç commit mesajında.
+
+## 2026-06-12 — Grup üyesi ölü seçicilerin budanması: hayalet seçici tabanı SIFIR
+
+Canlı kuralların grubunda kalan son 26 ölü seçici (hiçbir zaman eşleşemeyen grup üyeleri) 12 dosyadan budandı (kural gövdeleri bayt-bayt korunur; tamamen ölü kural 0 doğrulandı). `frontend_maintainability_report.R` hayalet taraması artık 0/0 raporlar ve ratchet bütçeleri SIFIRA indirildi (`MERGEN_TEST_MAX_FRONTEND_DEAD_SELECTORS=0`, `MERGEN_TEST_MAX_THEME_DEAD_SELECTORS=0`): bundan sonra eklenen HER hayalet seçici CI'da yakalanır. Odaklı süitler yeşil (ratchet 92, theme-modular 96, brand 23, manifest 224, tool-bg 21); tam kapı sonucu commit mesajında.

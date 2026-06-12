@@ -5,10 +5,16 @@
 #
 # Korunan sözleşmeler:
 #   1. www/css/brand_title.css var olmali ve manifest tarafindan yuklenmelidir.
-#   2. Brand title icin paylaşilan token ve sinif tanimlari icermelidir:
-#      .mergen-brand-title, .mergen-brand-title-primary, .mergen-brand-title-secondary
-#   3. Navbar (.brand-text), açilis ekrani (.alo-wordmark) ve deep-space
-#      (.deep-space-title) icin ortak typografya hizalamasi yapilmalidir.
+#   2. Tek-kaynak mekanizmasi PAYLASILAN TOKENLARDIR: --mergen-brand-* token
+#      ailesi :root'ta (koyu varsayilan) ve html[data-theme="light"]
+#      override'inda tanimlanir.
+#   3. Uc canli marka yuzeyi — navbar (.brand-text), acilis ekrani
+#      (.alo-wordmark) ve deep-space (.deep-space-title) — hizalamayi bu
+#      tokenlari TUKETEREK saglar (var(--mergen-brand-font-stack)).
+#
+# Not: Eski testin sabitledigi .mergen-brand-title* siniflari DOM'da hicbir
+# zaman var olmamis hayalet bir paralel API idi ve kaldirildi. Sozlesme,
+# hizalamanin gercek mekanizmasina (token tuketimi) yeniden capalandi.
 # ==============================================================================
 
 .find_repo_root_brand_title <- function() {
@@ -59,7 +65,7 @@ test_that("www/css/brand_title.css dosyasi mevcuttur", {
               info = "Brand title CSS dosyasi olmalidir.")
 })
 
-test_that("brand_title.css ortak token ve sinif tanimlarini icerir", {
+test_that("brand_title.css ortak token tanimlarini icerir", {
   txt <- .read_brand_title_file("www/css/brand_title.css")
   expect_true(nzchar(txt), info = "www/css/brand_title.css okunamadi.")
 
@@ -69,22 +75,26 @@ test_that("brand_title.css ortak token ve sinif tanimlarini icerir", {
   )
 
   expect_true(
+    grepl("--mergen-brand-primary-weight", txt, fixed = TRUE, useBytes = TRUE),
+    info = "--mergen-brand-primary-weight tokeni tanimlanmalidir."
+  )
+
+  expect_true(
+    grepl("--mergen-brand-accent-gradient", txt, fixed = TRUE, useBytes = TRUE),
+    info = "--mergen-brand-accent-gradient tokeni tanimlanmalidir."
+  )
+
+  # Hayalet paralel sinif API'si geri gelmemelidir; hizalama tokenlarla yapilir.
+  expect_false(
     grepl(".mergen-brand-title", txt, fixed = TRUE, useBytes = TRUE),
-    info = ".mergen-brand-title temel siniflari tanimlanmalidir."
-  )
-
-  expect_true(
-    grepl(".mergen-brand-title-primary", txt, fixed = TRUE, useBytes = TRUE),
-    info = ".mergen-brand-title-primary sinifi tanimlanmalidir."
-  )
-
-  expect_true(
-    grepl(".mergen-brand-title-secondary", txt, fixed = TRUE, useBytes = TRUE),
-    info = ".mergen-brand-title-secondary sinifi tanimlanmalidir."
+    info = paste(
+      "Hayalet .mergen-brand-title sinif ailesi geri eklenmemelidir;",
+      "yeni marka yuzeyi eklerken --mergen-brand-* tokenlarini tuketin."
+    )
   )
 })
 
-test_that("brand_title.css uc ana yer icin hizalama kurallari icerir", {
+test_that("uc canli marka yuzeyi paylasilan font-stack tokenini tuketir", {
   txt <- .read_brand_title_file("www/css/brand_title.css")
   expect_true(nzchar(txt), info = "www/css/brand_title.css okunamadi.")
 
@@ -104,6 +114,18 @@ test_that("brand_title.css uc ana yer icin hizalama kurallari icerir", {
   expect_true(
     grepl(".deep-space-title", txt, fixed = TRUE, useBytes = TRUE),
     info = "Brand title CSS deep-space .deep-space-title icin hizalama kurallari icermeli."
+  )
+
+  # Hizalamanin gercek kaniti: uc yuzey de ayni font-stack tokenini tuketir.
+  token_uses <- gregexpr("var(--mergen-brand-font-stack)", txt, fixed = TRUE)[[1]]
+  token_use_count <- if (identical(token_uses[1], -1L)) 0L else length(token_uses)
+
+  expect_true(
+    token_use_count >= 3L,
+    info = sprintf(
+      "Uc canli marka yuzeyi var(--mergen-brand-font-stack) tuketmelidir (bulunan: %d).",
+      token_use_count
+    )
   )
 })
 

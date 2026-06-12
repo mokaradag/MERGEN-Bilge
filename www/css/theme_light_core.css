@@ -28,8 +28,7 @@ html[data-theme="light"] div {
   color: inherit;
 }
 
-html[data-theme="light"] .page-title,
-html[data-theme="light"] .current-page-title {
+html[data-theme="light"] .page-title {
   color: var(--color-text) !important;
 }
 
@@ -884,14 +883,12 @@ html[data-theme="light"] .logo .brand-text-secondary {
 
 html[data-theme="light"] .navbar-custom-menu .navbar-nav > li > a,
 html[data-theme="light"] .main-header .navbar-custom-menu a,
-html[data-theme="light"] .main-header .header-btn,
 html[data-theme="light"] .sidebar-toggle {
   color: rgba(255, 255, 255, 0.92) !important;
 }
 
 html[data-theme="light"] .navbar-custom-menu .navbar-nav > li > a:hover,
 html[data-theme="light"] .main-header .navbar-custom-menu a:hover,
-html[data-theme="light"] .main-header .header-btn:hover,
 html[data-theme="light"] .sidebar-toggle:hover {
   background: rgba(255, 255, 255, 0.12) !important;
   color: #ffffff !important;
@@ -1008,7 +1005,6 @@ html[data-theme="light"] body {
 }
 
 html[data-theme="light"] .content-wrapper,
-html[data-theme="light"] .right-side,
 html[data-theme="light"] html,
 html[data-theme="light"] .wrapper,
 html[data-theme="light"] section.content,

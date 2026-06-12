@@ -187,7 +187,7 @@
 }
 
 /* Animasyon Yardımcı Sınıfları */
-.animate-fadeIn, .animate-slideUp {
+.animate-fadeIn {
   animation: none;
 }
 

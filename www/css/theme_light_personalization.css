@@ -535,14 +535,12 @@ html[data-theme="light"] .character-info {
 html[data-theme="light"] .character-info-container h1,
 html[data-theme="light"] .character-info-container h2,
 html[data-theme="light"] .character-info-container h3,
-html[data-theme="light"] .character-info-container .character-name,
 html[data-theme="light"] .character-info-container h4,
 html[data-theme="light"] .character-info-container .character-title,
 html[data-theme="light"] .character-display-area h1,
 html[data-theme="light"] .character-display-area h2,
 html[data-theme="light"] .character-display-area h3,
 html[data-theme="light"] .character-display-area h4,
-html[data-theme="light"] .character-display-area .character-name,
 html[data-theme="light"] .character-display-area .character-title {
   color: var(--character-accent, var(--mb-brand-primary, #003087)) !important;
   text-shadow: none !important;
