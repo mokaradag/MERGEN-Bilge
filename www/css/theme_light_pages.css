@@ -111,18 +111,6 @@ html[data-theme="light"] .destek-surum-container {
   color: var(--color-text, #0f1c33) !important;
 }
 
-html[data-theme="light"] .health-card {
-  background: #ffffff !important;
-  color: var(--color-text, #0f1c33) !important;
-  border: 1px solid rgba(0, 48, 135, 0.12) !important;
-  box-shadow: 0 4px 12px rgba(15, 28, 51, 0.06) !important;
-}
-
-html[data-theme="light"] .health-card h3,
-html[data-theme="light"] .health-card h4 {
-  color: var(--mb-brand-primary, #003087) !important;
-}
-
 html[data-theme="light"] .health-metric-value {
   color: var(--color-text, #0f1c33) !important;
 }
@@ -811,25 +799,6 @@ html[data-theme="light"] .health-dashboard-container {
   background-image: none !important;
 }
 
-html[data-theme="light"] .health-card [style*="color: #fff"],
-html[data-theme="light"] .health-card [style*="color:#fff"] {
-  color: var(--color-text, #0f1c33) !important;
-}
-
-html[data-theme="light"] .health-card [style*="color: #60a5fa"] {
-  color: var(--mb-brand-primary, #003087) !important;
-  font-weight: 600 !important;
-}
-
-html[data-theme="light"] .health-card [style*="color: #a78bfa"] {
-  color: var(--mb-brand-accent, #FF5620) !important;
-  font-weight: 700 !important;
-}
-
-html[data-theme="light"] .health-card [style*="color: #94a3b8"] {
-  color: var(--color-muted, #5b6577) !important;
-}
-
 html[data-theme="light"] .health-status-ok {
   border-color: rgba(22, 163, 74, 0.35) !important;
   background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
@@ -1163,12 +1132,5 @@ html[data-theme="light"] .admin-tabs-container {
   border-radius: 10px !important;
   padding: 8px !important;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.10) inset, 0 6px 18px rgba(0, 48, 135, 0.22) !important;
-}
-
-html[data-theme="light"] .files-header .stat-badge,
-html[data-theme="light"] .admin-header-fixed .stat-badge {
-  background: rgba(255, 255, 255, 0.16) !important;
-  color: #ffffff !important;
-  border: 1px solid rgba(255, 255, 255, 0.36) !important;
 }
 

@@ -56,10 +56,6 @@ html[data-theme="light"] .mode-card.active {
   box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.18), 0 12px 28px rgba(0, 48, 135, 0.12) !important;
 }
 
-html[data-theme="light"] .character-selector-card .character-name {
-  color: var(--color-text, #0f1c33) !important;
-}
-
 html[data-theme="light"] .character-extra-section,
 html[data-theme="light"] .character-extra {
   background: rgba(247, 249, 253, 0.88) !important;
@@ -117,12 +113,6 @@ html[data-theme="light"] .cinematic-modal-close:hover {
 html[data-theme="light"] .cinematic-modal-container .btn {
   color: #ffffff !important;
   border-color: rgba(255, 255, 255, 0.30) !important;
-}
-
-html[data-theme="light"] .message-header .character-name {
-  color: #ffffff !important;
-  font-weight: 600 !important;
-  opacity: 0.96;
 }
 
 html[data-theme="light"] #settings_kisisel {
@@ -236,13 +226,6 @@ html[data-theme="light"] .character-image-container {
 
 html[data-theme="light"] .character-image {
   filter: drop-shadow(0 8px 18px rgba(15, 28, 51, 0.12));
-}
-
-html[data-theme="light"] .message-bubble .message-header .character-name,
-html[data-theme="light"] .message .message-header .character-name {
-  color: #ffffff !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.02em;
 }
 
 html[data-theme="light"] .mode-card[data-mode="focus"] {

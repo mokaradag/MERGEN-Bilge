@@ -558,3 +558,33 @@ Açık tema, 13 dosyalık sıralı bir override/patch zinciriydi (`theme_light.c
 - Hayalet seçici silme kararı tam-ad + üretim-öneki + vendor-desen taramasına dayanır; teorik kalan risk, kaynak dışından (ör. tarayıcı eklentisi) eklenen sınıflar içindir ve üretimde beklenmez.
 - Bileşen CSS dosyalarındaki (chat_header, sidebar_user_panel, surum_bilgilendirme vb.) component-owned light kuralları bilinçli yerinde bırakıldı; 44 adetlik 2x tema+bileşen çifti ratchet bütçesiyle sınırlandı.
 - `code_highlighting.css` içindeki `hljs-*` kuralları (highlight.min.js yalnızca on-prem VM kopyasında mevcut) ve `health_check.css` mirası bu kapsamda BİLEREK değiştirilmedi; ayrı değerlendirme gerektirir.
+
+## 2026-06-11 — Bileşen CSS hayalet seçici temizliği ve kalıcı orphan taraması (Faz H)
+
+### Sorun
+Açık tema konsolidasyonu hayalet seçicilerin tema zinciriyle sınırlı olmadığını gösterdi. Aynı denetimli yöntem (tam-ad corpus taraması + İNCELENMİŞ dinamik üretim önekleri + vendor desenleri) tüm bileşen CSS'ine uygulandığında: tamamı ölü 3 dosya (`capabilities.css`, `health_check.css`, `recent_chats_custom.css` — modern karşılama öncesi eski welcome ailesi ve legacy sağlık stilleri) ve 29 dosyada ~149 ölü kural bulundu (eski welcome ekranı kalıntıları, BS4-stili kullanılmayan spacing utility'leri, var olmayan modal/sınıf adlarına yazılmış kurallar).
+
+### Kritik metodoloji bulgusu
+İlk önek listesi orta-string birleştirmeleri kaçırıyordu: `paste0("destek-tag-btn destek-tag-", renk)`, `"alo-ch alo-tok-" + tok.c`, `paste0("cc-dir-item cc-dir-", tip)`, `'... destek-chatbot-message-' + tip` gibi aileler corpus genelinde "önek-ile-biten string literal" taramasıyla TEK TEK incelenip korumaya alındı; `health-`/`index-health-` eşleşmelerinin tempfile pattern'i olduğu (sınıf üretimi OLMADIĞI) doğrulandı. İtilmiş tema konsolidasyonu bu sıkı listeye karşı yeniden doğrulandı: yanlış silinen kural YOK (0).
+
+### Yapılan
+- 3 tamamı-ölü dosya silindi; manifest (`navigation_and_tools`), bölge haritası (`sohbet_girisi_mesajlar`, `karsilama_intro`, `yonetici_saglik`) ve `test-ui-asset-manifest-contract.R` listesi birlikte güncellendi; `test-e2e-health-dashboard-regression.R` canlı stil kaynağına (`health_dashboard.css`) yeniden çapalandı.
+- 29 dosyada 149 ölü kural yerinde silindi (span-koruyucu araç: hayatta kalan kurallar bayt-bayt aynı; kurala bitişik yorumlar birlikte kaldırıldı; boşalan @media blokları temizlendi). Grup içinde canlı üyesi olan seçiciler BİLİNÇLİ bırakıldı (kural canlı).
+- BİLİNÇLİ atlananlar: `brand_title.css` (10 ölü kural — sözleşme testi ölü `.mergen-brand-*` sınıflarını metin olarak sabitliyor; bilinçli sözleşme güncellemesi gerektirir), `theme_tokens.css` (tek orphan grup üyesi), `tool-bg-caret` benzeri sözleşme-yorumunda anılan tarihsel sınıflar yalnızca test yorumunun izin verdiği biçimde kaldırıldı.
+- Kalıcılaştırma: hayalet seçici taraması `tests/scripts/frontend_maintainability_report.R` içine taşındı (runtime corpus + vendor desenleri + incelenmiş `frontend_orphan_constructed_prefixes` listesi); `test-frontend-maintainability-ratchet.R` toplamı bütçeyle bağladı: global ölü seçici ≤ 42 (taban: brand_title 18 + canlı-grup kalıntıları), tema alan dosyaları ≤ 7.
+
+### Sonuç
+- CSS ~26.9k → ~26.0k satır; tamamı-ölü kural kalan tek dosya bilinçli atlanan `brand_title.css`.
+- Yeni hayalet seçici eklemek artık ratchet kırar; yeni dinamik sınıf ailesi eklerken önek listesine bilinçli kayıt gerekir.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Odaklı süitler yeşil: frontend-maintainability-ratchet (92), ui-asset-manifest (224), ui-asset-zones (17), theme-light-modular (96), e2e-health-dashboard (45), tool-background-lifecycle (21), frontend-selector (80).
+- `bash tools/ai_validate.sh full --boot-smoke` bu girdinin yazıldığı sırada arka planda koşuyordu; sonucu commit mesajında ve oturum raporunda beyan edilir.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Sistem Durumu panosunu açın (stil kaynağı artık yalnız `health_dashboard.css`); kart/tooltip görünümünü iki temada doğrulayın.
+- Dosya Yönetimi başlığı ("Yüklenen Dosyalar" `.section-title`), karşılama ekranı, Yenilikler rozeti ve Bilge Yolaç yüzeylerinde değişiklik OLMAMALI.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Tarayıcı görsel doğrulaması yine cloud'da yapılamadı; silinen her kural "DOM'da eşleşmesi imkânsız" kanıtına dayanır (sınıf hiçbir runtime kaynağında yok + dinamik üretim önekleri korunmuş).
+- `brand_title.css` ölü kuralları ve `code_highlighting.css` hljs bloğu bilinçli yerinde; ayrı sözleşme kararı gerektirir.

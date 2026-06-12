@@ -116,22 +116,7 @@
   background: var(--background-dark);
 }
 
-.datepicker-dropdown .datepicker-footer .today-btn {
-  background: var(--primary-color) !important;
-  color: white !important;
-  border: none !important;
-  padding: 6px 20px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all var(--transition-fast);
-}
 
-.datepicker-dropdown .datepicker-footer .today-btn:hover {
-  background: var(--secondary-color) !important;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
-}
 
 /* Tarih aralığı erişilebilir başlık stili */
 .history-date-range-label {

@@ -362,6 +362,39 @@ test_that("açık tema disiplini: tombstone, tekrar bütçesi ve tema satır bü
       max_theme_lines
     )
   )
+
+  # 4. Hayalet (orphan) seçici bütçesi: CSS'te stillenen ama runtime
+  #    kaynaklarında hiç geçmeyen sınıflar DOM'da asla eşleşemez. Eski tema
+  #    zincirinin ~%46'sı böyleydi. Taban: 42 (bilinçli atlanan
+  #    brand_title.css + canlı grup üyesi kalıntılar); tema alan dosyaları
+  #    için taban: 7. Yeni hayalet seçici eklemek bütçeyi aşar — seçiciyi
+  #    gerçek DOM sınıfına bağlayın ya da dinamik üretim önekini rapora
+  #    bilinçli ekleyin (frontend_orphan_constructed_prefixes).
+  dead_rows <- attr(report, "dead_selector_rows", exact = TRUE)
+  theme_dead_rows <- attr(report, "theme_dead_selector_rows", exact = TRUE)
+  max_dead <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_DEAD_SELECTORS", 42L)
+  max_theme_dead <- .as_int_env_frontend("MERGEN_TEST_MAX_THEME_DEAD_SELECTORS", 7L)
+
+  expect_true(is.data.frame(dead_rows))
+  expect_true(
+    nrow(dead_rows) <= max_dead,
+    info = paste(
+      sprintf("Hayalet seçici sayısı arttı: %d > %d.", nrow(dead_rows), max_dead),
+      "Yeni eklenenler:",
+      paste(utils::head(
+        paste0(dead_rows$file, " :: ", dead_rows$selector), 8
+      ), collapse = " | ")
+    )
+  )
+
+  expect_true(
+    nrow(theme_dead_rows) <= max_theme_dead,
+    info = sprintf(
+      "Tema alan dosyalarında hayalet seçici arttı: %d > %d.",
+      nrow(theme_dead_rows),
+      max_theme_dead
+    )
+  )
 })
 
 test_that("kritik frontend dosyaları kendi taban çizgilerinden büyümez", {

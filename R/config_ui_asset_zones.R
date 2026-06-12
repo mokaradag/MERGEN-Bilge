@@ -195,8 +195,7 @@ ui_asset_ownership_zones <- list(
       "css/chat_header.css",
       "css/message_actions.css",
       "css/code_collapse.css",
-      "css/citation_styles.css",
-      "css/capabilities.css"
+      "css/citation_styles.css"
     ),
     js = c(
       "js/input_handlers.js",
@@ -228,7 +227,6 @@ ui_asset_ownership_zones <- list(
       "css/explore_cinematic.css",
       "css/quick_templates.css",
       "css/welcome_styles.css",
-      "css/recent_chats_custom.css",
       "css/explore_character_step.css"
     ),
     js = c(
@@ -395,7 +393,6 @@ ui_asset_ownership_zones <- list(
     css_groups = character(0),
     js_groups = character(0),
     css = c(
-      "css/health_check.css",
       "css/health_dashboard.css",
       "css/admin_destek_analytics.css",
       "css/admin_yanit_analizi.css",

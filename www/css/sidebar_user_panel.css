@@ -204,14 +204,6 @@ html[data-theme="light"] .mb-sidebar-user-department {
   margin-bottom: 8px;
 }
 
-/* Geriye dönük uyumluluk: önceki satır adı kullanılırsa da aynı stil */
-.mb-sidebar-theme-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
 .mb-theme-switch-btn {
   flex: 1 1 auto;
   display: flex;
@@ -339,31 +331,6 @@ html[data-theme="light"] .mb-sidebar-logout-btn:hover {
   background: rgba(255, 86, 32, 0.10);
   color: var(--mb-brand-accent, #FF5620);
   border-color: var(--mb-brand-accent, #FF5620);
-}
-
-/* Geriye dönük uyumluluk: önceki çıkış butonu adı stilini koru */
-.mb-sidebar-user-logout {
-  flex: 0 0 28px;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--color-muted, #999999);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
-  font-family: inherit;
-  font-size: 12px;
-  padding: 0;
-}
-
-.mb-sidebar-user-logout:hover {
-  background: rgba(255, 65, 108, 0.12);
-  color: #ff8a9a;
-  border-color: rgba(255, 65, 108, 0.45);
 }
 
 /* ============================================================

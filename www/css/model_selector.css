@@ -59,12 +59,6 @@
     padding: 6px !important;
 }
 
-/* İç kapsayıcı (Gerekirse) */
-.sw-dropdown-in {
-    background-color: transparent !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
 
 /* Özel liste sınıfı */
 .dropdown-menu-custom-list {
@@ -116,20 +110,7 @@
     font-size: 14px;
 }
 
-/* ShinyWidgets buton override'ları - en yüksek öncelik */
-.model-selector-wrapper .bttn-minimal.bttn-default,
-.model-selector-wrapper button.bttn-minimal.bttn-default,
-#chat_model_dropdown_container .bttn-minimal.bttn-default,
-#chat_model_dropdown_container button.bttn-minimal.bttn-default {
-    color: #999999 !important;
-}
 
-.model-selector-wrapper .bttn-minimal.bttn-md,
-.model-selector-wrapper button.bttn-minimal.bttn-md,
-#chat_model_dropdown_container .bttn-minimal.bttn-md,
-#chat_model_dropdown_container button.bttn-minimal.bttn-md {
-    font-size: 16px !important;
-}
 
 /* Başlık stili - turuncu renk ve icon için */
 .dropdown-menu-header {

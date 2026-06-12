@@ -33,15 +33,6 @@ html[data-theme="light"] .current-page-title {
   color: var(--color-text) !important;
 }
 
-html[data-theme="light"] .header-btn {
-  color: var(--color-text-soft) !important;
-}
-
-html[data-theme="light"] .header-btn:hover {
-  background: rgba(0, 48, 135, 0.06) !important;
-  color: var(--mb-brand-primary) !important;
-}
-
 html[data-theme="light"] .sidebar-menu > li > a {
   color: #2a3855 !important;
   border-left-color: transparent;

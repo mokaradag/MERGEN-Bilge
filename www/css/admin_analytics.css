@@ -270,9 +270,6 @@ section.content,
   min-height: 420px;
 }
 
-.equal-height-card-sm {
-  min-height: 360px;
-}
 
 .table-container {
   background: var(--background-dark);
@@ -286,10 +283,6 @@ section.content,
   overflow-y: auto;
 }
 
-.scrollable-table-fixed {
-  height: 280px;
-  overflow-y: auto;
-}
 
 .scrollable-table-equal {
   height: 320px;
@@ -297,10 +290,6 @@ section.content,
   flex: 1;
 }
 
-.scrollable-table-sm {
-  max-height: 250px;
-  overflow-y: auto;
-}
 
 .admin-datatable {
   width: 100% !important;

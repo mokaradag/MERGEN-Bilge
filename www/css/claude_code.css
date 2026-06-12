@@ -957,22 +957,8 @@
    YAPILANDIRMA SAYFASI CLAUDE CODE KARTI
    ============================================================================= */
 
-.cc-config-card .cc-config-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 16px;
-}
 
-.cc-config-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
 
-.cc-config-item label {
-  font-size: 12px;
-  color: var(--text-secondary, #aaa);
-}
 
 /* =============================================================================
    DUYARLI TASARIM

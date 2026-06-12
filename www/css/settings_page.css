@@ -191,21 +191,7 @@
   color: var(--text-secondary);
 }
 
-.settings-actions {
-  display: flex;
-  gap: 16px;
-  margin-top: 32px;
-  padding-top: 32px;
-  border-top: 1px solid var(--border-color);
-}
 
-.upload-complete-message {
-  color: var(--success-color) !important;
-}
-.upload-complete-message .fa-check-circle {
-  color: var(--success-color) !important;
-  margin-right: 8px;
-}
 
 .checkbox-item {
   margin-bottom: 30px !important;
