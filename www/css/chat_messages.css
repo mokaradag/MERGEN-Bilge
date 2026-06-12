@@ -200,13 +200,7 @@
   transition: all 0.3s ease;
 }
 
-.message-paragraph {
-  margin-bottom: 12px;
-}
 
-.message-paragraph:last-child {
-  margin-bottom: 0;
-}
 
 /* Zengin Metin Biçimlendirme Stilleri */
 
@@ -412,10 +406,6 @@
   display: none !important;
 }
 
-/* Akış tamamlandığında yumuşak geçiş */
-.streaming-complete {
-  animation: completeFlash 0.5s ease;
-}
 
 /* Akış sırasında mesaj baloncuğu düzeltmesi */
 .ai-message.streaming-message {
@@ -455,10 +445,6 @@
   cursor: wait;
 }
 
-/* Şu anki eşleşme vurgusu */
-.message-bubble.current-match {
-  animation: pulseCurrentMatch 2s ease-in-out;
-}
 
 /* Takip eden soru önerileri kutusu */
 .followup-suggestions-box {
@@ -558,23 +544,8 @@
 .message-content.font-large { font-size: 18px !important; }
 .message-content.font-xlarge { font-size: 20px !important; }
 
-/* Dar mod - kaydırmayı sağda tutarken içeriği ortalar */
-.narrow-wrapper .user-message {
-  max-width: 70%;
-  margin-left: auto;
-  margin-right: 0;
-}
 
-.narrow-wrapper .ai-message {
-  max-width: 80%;
-  margin-right: auto;
-  margin-left: 0;
-}
 
-.narrow-wrapper .system-message {
-  max-width: 60%;
-  margin: 16px auto;
-}
 
 /* Duyarlı Tasarım - Mesajlar için */
 @media (max-width: 768px) {

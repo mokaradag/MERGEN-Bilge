@@ -1,43 +1,243 @@
 /* ============================================================
- * Başlık: Açık Tema - Söyleşi Bileşenleri Onarımları
+ * Başlık: Açık Tema — Söyleşi Yüzeyi
  * Dosya: www/css/theme_light_chat.css
- * Açıklama: Light temada söyleşi alanı için odaklı düzeltmeler:
- *           1) Chat input gri kenarlık kaldırma (kullanıcı şikayeti)
- *           2) Chat baloncuk başlıkları (AI + Kullanıcı) belirgin
- *              kurumsal renk şeritleri
- *           3) Mesaj eylem butonları (kopya/yeniden dene/feedback)
- *              varsayılan görünür ve okunaklı, hover'da başlığa
- *              uyumlu kontrast
- *           4) Söyleşi başlığındaki tool/model rozetleri okunaklı
- *           5) "Tümünü Temizle" buton kırmızısı belirgin
- *           6) Sohbet konteyneri yumuşak cam yüzey
- *
- *           Bu dosya dark temayı bozmaz; yalnızca
- *           <html data-theme="light"> altında etkilidir.
+ * Katman: tema 4/8
+ * Açıklama: Söyleşi konteyneri, sohbet başlığı ve rozetleri, mesaj
+ *           baloncukları, mesaj eylem butonları, giriş alanı, model
+ *           seçici, derin düşünme kontrolleri, düşünce akışı paneli
+ *           ve takip önerileri.
  * ============================================================ */
 
-/* ============================================================
- * 1) Chat input gri kenarlık temizliği
- *    Mevcut chat_input.css `.input-wrapper` için 2px solid border
- *    tanımlıyor; light temada gri/dolgulu görünüyor. Kaldırılır,
- *    yerine cam yüzey + yumuşak alt gölge ile süzme efekti
- *    bırakılır. Auto-grow ve çoklu satır davranışı bozulmaz.
- * ============================================================ */
-html[data-theme="light"] .input-wrapper {
-  background: rgba(255, 255, 255, 0.96) !important;
-  border: 1px solid transparent !important;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 6px 18px rgba(15, 28, 51, 0.06) !important;
+html[data-theme="light"] .ai-message,
+html[data-theme="light"] .user-message {
+  background: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-soft) !important;
+  box-shadow: var(--shadow-card);
 }
 
-/* Yazma sırasında belirgin kurumsal halka — odak görünür kalsın */
+html[data-theme="light"] .message-content {
+  color: var(--color-text-soft) !important;
+}
+
+html[data-theme="light"] .message-author {
+  color: var(--mb-brand-primary) !important;
+}
+
+html[data-theme="light"] .message-time {
+  color: var(--color-muted) !important;
+}
+
+html[data-theme="light"] .message-actions .btn {
+  color: var(--color-muted) !important;
+}
+
+html[data-theme="light"] .message-actions .btn:hover {
+  color: var(--mb-brand-primary) !important;
+  background: rgba(0, 48, 135, 0.06) !important;
+}
+
+html[data-theme="light"] .send-button {
+  background: linear-gradient(135deg, var(--mb-brand-primary) 0%, var(--mb-brand-primary-alt) 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 6px 14px rgba(0, 48, 135, 0.22);
+}
+
+html[data-theme="light"] .send-button:hover {
+  background: linear-gradient(135deg, var(--mb-brand-primary-alt) 0%, #001f5c 100%) !important;
+  box-shadow: 0 8px 18px rgba(0, 48, 135, 0.28);
+}
+
+html[data-theme="light"] .chat-search-modal {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: 0 18px 40px rgba(15, 28, 51, 0.18) !important;
+}
+
+html[data-theme="light"] .chat-search-modal * {
+  color: inherit;
+}
+
+html[data-theme="light"] .chat-search-input {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .chat-search-input:focus {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.15) !important;
+}
+
+html[data-theme="light"] .chat-search-empty {
+  color: var(--color-muted, #5b6577) !important;
+  background: var(--color-surface-2, #f7f8fc) !important;
+}
+
+html[data-theme="light"] .chat-header .model-badge {
+  background: var(--color-surface-2, #f7f8fc) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  border-radius: 999px !important;
+  padding: 4px 12px !important;
+  font-size: 12px !important;
+  font-weight: 600;
+}
+
+html[data-theme="light"] .chat-header .model-badge:hover {
+  background: rgba(0, 48, 135, 0.10) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] #user_input {
+  min-height: 24px !important;
+  line-height: 1.5 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  resize: none !important;
+  scrollbar-width: thin;
+  overflow-y: hidden !important;
+}
+
+html[data-theme="light"] .tool-select-btn {
+  background: linear-gradient(155deg, #ffffff 0%, rgba(247, 249, 253, 0.95) 100%) !important;
+  border: 1px solid rgba(0, 48, 135, 0.16) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  box-shadow: 0 2px 6px rgba(15, 28, 51, 0.05), inset 0 0 0 1px rgba(255, 255, 255, 0.6) !important;
+}
+
+html[data-theme="light"] .tool-select-btn i {
+  color: var(--mb-brand-primary, #003087);
+  opacity: 0.8;
+}
+
+html[data-theme="light"] .tool-select-btn:hover {
+  background: linear-gradient(155deg, #ffffff, rgba(0, 48, 135, 0.05)) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 10px 22px rgba(0, 48, 135, 0.12) !important;
+}
+
+html[data-theme="light"] .tool-select-btn.active {
+  color: #ffffff !important;
+  background: linear-gradient(155deg, rgba(var(--tool-r, 0), var(--tool-g, 48), var(--tool-b, 135), 0.92), rgba(var(--tool-r, 0), var(--tool-g, 48), var(--tool-b, 135), 0.78)) !important;
+  border-color: var(--tool-accent, var(--mb-brand-primary, #003087)) !important;
+  box-shadow: 0 0 22px rgba(var(--tool-r, 0), var(--tool-g, 48), var(--tool-b, 135), 0.30), 0 6px 18px rgba(15, 28, 51, 0.12) !important;
+}
+
+html[data-theme="light"] .tool-select-btn.active i {
+  color: #ffffff !important;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.55));
+}
+
+html[data-theme="light"] .tool-description-area {
+  background: rgba(247, 249, 253, 0.80) !important;
+  border: 1px solid rgba(0, 48, 135, 0.10) !important;
+}
+
+html[data-theme="light"] .tool-description-area .tool-desc-subtext {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .tool-description-area .tool-desc-detail {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .chat-header .stat-item {
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .chat-header .stat-item i {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .header-stat-item:hover {
+  background: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 2px 6px rgba(0, 48, 135, 0.12) !important;
+}
+
+html[data-theme="light"] .chat-header .badge {
+  background: rgba(0, 48, 135, 0.08) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid rgba(0, 48, 135, 0.25) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05);
+}
+
+html[data-theme="light"] .mcp-indicator.active {
+  background: linear-gradient(135deg, var(--mb-brand-accent, #FF5620), #ff8022) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 86, 32, 0.6) !important;
+}
+
+html[data-theme="light"] .chat-header-right .btn-modern {
+  box-shadow: 0 2px 6px rgba(15, 28, 51, 0.06) !important;
+}
+
+html[data-theme="light"] .chat-header-right .btn-primary {
+  background: linear-gradient(135deg, var(--mb-brand-accent-2) 0%, var(--mb-brand-accent) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 86, 32, 0.55) !important;
+}
+
+html[data-theme="light"] .chat-header-right .btn-info {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(59, 130, 246, 0.55) !important;
+}
+
+html[data-theme="light"] .chat-header-right .btn-success {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(16, 185, 129, 0.55) !important;
+}
+
+html[data-theme="light"] .message-bubble:not([class*="user"]) .message-header {
+  background: linear-gradient(135deg, rgba(0, 48, 135, 0.94) 0%, rgba(0, 45, 122, 0.96) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  padding: 6px 12px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+
+html[data-theme="light"] .message-bubble:not([class*="user"]) .message-header * {
+  color: inherit !important;
+}
+
+html[data-theme="light"] .message-bubble[class*="user-message"] .message-header {
+  background: linear-gradient(135deg, rgba(9, 120, 128, 0.92) 0%, rgba(43, 195, 201, 0.85) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(9, 120, 128, 0.30) !important;
+  padding: 6px 12px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+
+html[data-theme="light"] .message-bubble[class*="user-message"] .message-header * {
+  color: inherit !important;
+}
+
+html[data-theme="light"] .message-bubble:hover .message-actions {
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] .input-wrapper {
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96) !important;
+  border: 1px solid transparent !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 6px 18px rgba(15, 28, 51, 0.06) !important;
+}
+
 html[data-theme="light"] .input-wrapper:focus-within {
+  background: #ffffff !important;
   border-color: transparent !important;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.95) inset,
-    0 0 0 3px rgba(0, 48, 135, 0.14),
-    0 10px 24px rgba(0, 48, 135, 0.08) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.95) inset, 0 0 0 3px rgba(0, 48, 135, 0.14), 0 10px 24px rgba(0, 48, 135, 0.08) !important;
 }
 
 html[data-theme="light"] .input-wrapper.sending {
@@ -45,10 +245,15 @@ html[data-theme="light"] .input-wrapper.sending {
   opacity: 0.85;
 }
 
-/* Textarea — kenarlık yok, beyaz arka plan; küçük gri scrollbar regresyonunu
- * tetiklememek için yalnızca ihtiyaç halinde görünür scrollbar */
 html[data-theme="light"] .chat-input,
 html[data-theme="light"] textarea.chat-input {
+  min-height: 24px !important;
+  line-height: 1.5 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  resize: none !important;
+  scrollbar-width: thin;
+  overflow-y: hidden !important;
   background: transparent !important;
   color: var(--color-text, #0f1c33) !important;
   border: none !important;
@@ -60,28 +265,10 @@ html[data-theme="light"] .chat-input::placeholder {
   opacity: 0.85;
 }
 
-/* ============================================================
- * 2) Chat baloncuk başlıkları — kurumsal renk şeridi
- *    AI baloncuk: kurumsal mavi (DataTable header gibi)
- *    Kullanıcı baloncuk: yeşil-mavi destek tonu
- *    Eski refinements kuralı varsa pekiştirilir; eski ai/assistant
- *    sınıfları için ek seçici kapsamı genişletilir.
- * ============================================================ */
 html[data-theme="light"] .message.ai .message-header,
 html[data-theme="light"] .message.ai-message .message-header,
-html[data-theme="light"] .ai-message .message-header,
-html[data-theme="light"] .message-bubble.ai-message .message-header,
-html[data-theme="light"] .message-bubble.assistant-message .message-header,
-html[data-theme="light"] .message.assistant .message-header,
-html[data-theme="light"] .ai-bubble .message-header,
-html[data-theme="light"] .assistant-bubble .message-header,
-html[data-theme="light"] .chat-message.ai .message-header,
-html[data-theme="light"] .chat-message-bubble.ai .message-header,
-html[data-theme="light"] .chat-message[data-message-type="ai"] .message-header,
-html[data-theme="light"] .chat-message[data-message-type="assistant"] .message-header {
-  background: linear-gradient(135deg,
-    rgba(0, 48, 135, 0.96) 0%,
-    rgba(0, 45, 122, 0.98) 100%) !important;
+html[data-theme="light"] .message.assistant .message-header {
+  background: linear-gradient(135deg, rgba(0, 48, 135, 0.96) 0%, rgba(0, 45, 122, 0.98) 100%) !important;
   color: #ffffff !important;
   border-bottom: 1px solid rgba(0, 48, 135, 0.32) !important;
   padding: 8px 14px !important;
@@ -91,16 +278,8 @@ html[data-theme="light"] .chat-message[data-message-type="assistant"] .message-h
 }
 
 html[data-theme="light"] .message.user .message-header,
-html[data-theme="light"] .message.user-message .message-header,
-html[data-theme="light"] .user-message .message-header,
-html[data-theme="light"] .message-bubble.user-message .message-header,
-html[data-theme="light"] .user-bubble .message-header,
-html[data-theme="light"] .chat-message.user .message-header,
-html[data-theme="light"] .chat-message-bubble.user .message-header,
-html[data-theme="light"] .chat-message[data-message-type="user"] .message-header {
-  background: linear-gradient(135deg,
-    rgba(7, 119, 128, 0.96) 0%,
-    rgba(43, 187, 196, 0.92) 100%) !important;
+html[data-theme="light"] .message.user-message .message-header {
+  background: linear-gradient(135deg, rgba(7, 119, 128, 0.96) 0%, rgba(43, 187, 196, 0.92) 100%) !important;
   color: #ffffff !important;
   border-bottom: 1px solid rgba(7, 119, 128, 0.30) !important;
   padding: 8px 14px !important;
@@ -109,24 +288,15 @@ html[data-theme="light"] .chat-message[data-message-type="user"] .message-header
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
 }
 
-/* Başlık içindeki tüm metin/ikon beyaz okur */
-html[data-theme="light"] .message.ai .message-header *,
-html[data-theme="light"] .message.user .message-header *,
-html[data-theme="light"] .ai-message .message-header *,
-html[data-theme="light"] .user-message .message-header *,
 html[data-theme="light"] .message-bubble.ai-message .message-header *,
 html[data-theme="light"] .message-bubble.user-message .message-header *,
-html[data-theme="light"] .message-bubble.assistant-message .message-header *,
-html[data-theme="light"] .ai-bubble .message-header *,
-html[data-theme="light"] .user-bubble .message-header * {
+html[data-theme="light"] .message.ai .message-header *,
+html[data-theme="light"] .message.user .message-header * {
   color: inherit !important;
 }
 
-/* Karakter / model adı (başlık içindeki) belirgin, üst rengi miras alır */
-html[data-theme="light"] .message-header .character-name,
 html[data-theme="light"] .message-header .model-name,
 html[data-theme="light"] .message-header .message-author,
-html[data-theme="light"] .message-header .author-name,
 html[data-theme="light"] .message-header h4,
 html[data-theme="light"] .message-header h5 {
   color: #ffffff !important;
@@ -134,356 +304,621 @@ html[data-theme="light"] .message-header h5 {
   opacity: 0.96;
 }
 
-/* Baloncuk gövdesi yüzeyi - hafif beyaz; başlığın canlı rengi öne çıkar */
 html[data-theme="light"] .message.ai .message-content,
-html[data-theme="light"] .message.user .message-content,
-html[data-theme="light"] .message-bubble.ai-message .message-content,
-html[data-theme="light"] .message-bubble.user-message .message-content,
-html[data-theme="light"] .ai-bubble .message-content,
-html[data-theme="light"] .user-bubble .message-content {
+html[data-theme="light"] .message.user .message-content {
   background: #ffffff !important;
   color: var(--color-text, #0f1c33) !important;
 }
 
-/* ============================================================
- * 3) Mesaj eylem butonları — varsayılan görünür ve okunaklı
- *    Renkleri başlık rengiyle uyumlu: koyu metin + beyaz cam yüzey
- *    Hover'da kurumsal mavi öne çıkar (başlık zemini ile çelişmesin)
- * ============================================================ */
+html[data-theme="light"] .message-actions .action-btn.btn-like:hover {
+  background: rgba(22, 163, 74, 0.10) !important;
+  border-color: rgba(22, 163, 74, 0.55) !important;
+  color: #15803d !important;
+}
+
+html[data-theme="light"] .message-actions .action-btn.btn-dislike:hover {
+  background: rgba(220, 38, 38, 0.10) !important;
+  border-color: rgba(220, 38, 38, 0.55) !important;
+  color: #b91c1c !important;
+}
+
+html[data-theme="light"] .btn-clear-all:hover i {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .reasoning-panel.rp-live {
+  background: linear-gradient(180deg, #ffffff 0%, var(--color-bg) 100%) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  color: var(--color-text, #0f1c33) !important;
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .rp-header {
+  background: linear-gradient(180deg, #eef2fb 0%, #ffffff 100%) !important;
+  border-bottom: 1px solid var(--color-border-soft, rgba(0, 48, 135, 0.10)) !important;
+}
+
+html[data-theme="light"] .rp-title {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .rp-subtitle,
+html[data-theme="light"] .rp-model,
+html[data-theme="light"] .rp-host,
+html[data-theme="light"] .rp-timer {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .rp-body {
+  background: #ffffff !important;
+}
+
+html[data-theme="light"] .rp-stream {
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .rp-toggle {
+  background: rgba(0, 48, 135, 0.05) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border-color: var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .rp-toggle:hover {
+  background: rgba(0, 48, 135, 0.10) !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .rp-caret {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .rp-body::-webkit-scrollbar-thumb {
+  background: rgba(0, 48, 135, 0.18) !important;
+}
+
+html[data-theme="light"] .deep-thinking-toggle {
+  background: #ffffff !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .deep-thinking-toggle:hover {
+  border-color: rgba(16, 185, 129, 0.55) !important;
+  background: rgba(16, 185, 129, 0.10) !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .deep-thinking-toggle.active {
+  border-color: #16a34a !important;
+  background: rgba(22, 163, 74, 0.14) !important;
+  color: #15803d !important;
+}
+
+html[data-theme="light"] .deep-thinking-toggle.active .toggle-icon {
+  color: #15803d !important;
+}
+
+html[data-theme="light"] .deep-thinking-level-select {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .deep-thinking-level-select:disabled {
+  background: #eef1f7 !important;
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .header-stat-item {
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05) !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1px solid rgba(0, 48, 135, 0.32) !important;
+  font-weight: 600;
+}
+
+html[data-theme="light"] .header-stat-item i {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .header-stat-item[data-stat="messages"] {
+  color: var(--mb-brand-accent, #FF5620) !important;
+  border-color: rgba(255, 86, 32, 0.40) !important;
+  background: rgba(255, 86, 32, 0.06) !important;
+}
+
+html[data-theme="light"] .header-stat-item.active {
+  background: linear-gradient(135deg, var(--mb-brand-accent, #FF5620) 0%, var(--mb-brand-accent-2, #FF8022) 100%) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 86, 32, 0.60) !important;
+  box-shadow: 0 4px 12px rgba(255, 86, 32, 0.26);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
+}
+
+html[data-theme="light"] .header-stat-item.active i {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .message-bubble .message-header,
+html[data-theme="light"] .chat-message .message-header,
+html[data-theme="light"] .message .message-header {
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  padding: 10px 16px !important;
+}
+
+html[data-theme="light"] .ai-message .message-header,
+html[data-theme="light"] .chat-message.ai .message-header {
+  padding: 8px 14px !important;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.20);
+}
+
+html[data-theme="light"] .user-message .message-header,
+html[data-theme="light"] .chat-message.user .message-header {
+  padding: 8px 14px !important;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  background: linear-gradient(135deg, var(--mb-brand-support-teal, #077780) 0%, #0a9aa3 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(7, 119, 128, 0.30) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.20);
+}
+
+html[data-theme="light"] .ai-message .message-header *,
+html[data-theme="light"] .user-message .message-header *,
+html[data-theme="light"] .message-bubble .message-header *,
+html[data-theme="light"] .chat-message .message-header *,
+html[data-theme="light"] .message .message-header * {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .message-bubble .message-header .model-name,
+html[data-theme="light"] .message-bubble .message-header h4,
+html[data-theme="light"] .message-bubble .message-header h5,
+html[data-theme="light"] .message-bubble .message-header .name {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em;
+}
+
+html[data-theme="light"] .message-bubble .message-header .time {
+  color: rgba(255, 255, 255, 0.88) !important;
+  font-weight: 400;
+}
+
+html[data-theme="light"] .message-bubble.ai-message .message-content,
+html[data-theme="light"] .message-bubble.user-message .message-content,
+html[data-theme="light"] .ai-message .message-content,
+html[data-theme="light"] .user-message .message-content {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
 html[data-theme="light"] .message-actions,
 html[data-theme="light"] .message-bubble .message-actions {
+  transition: opacity 200ms ease, transform 200ms ease;
   opacity: 1 !important;
   visibility: visible !important;
-  transition: opacity 200ms ease, transform 200ms ease;
 }
 
-html[data-theme="light"] .message-actions .action-btn,
-html[data-theme="light"] .message-actions .message-action-btn,
-html[data-theme="light"] .message-actions button,
-html[data-theme="light"] .message-actions .feedback-action-btn {
-  background: rgba(255, 255, 255, 0.96) !important;
-  color: var(--color-text-soft, #1f2a44) !important;
-  border: 1px solid rgba(0, 48, 135, 0.22) !important;
-  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.08);
-  transition: all 180ms ease;
+html[data-theme="light"] .message-actions .like-btn.active,
+html[data-theme="light"] .message-actions .action-btn.btn-like.active,
+html[data-theme="light"] .message-actions .action-btn.btn-feedback-positive.active,
+html[data-theme="light"] .message-actions button.liked {
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.18) 0%, rgba(22, 163, 74, 0.08) 100%) !important;
+  border-color: rgba(22, 163, 74, 0.65) !important;
+  color: #15803d !important;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.18), 0 4px 10px rgba(22, 163, 74, 0.20) !important;
 }
 
-html[data-theme="light"] .message-actions .action-btn:hover,
-html[data-theme="light"] .message-actions .message-action-btn:hover,
-html[data-theme="light"] .message-actions button:hover,
-html[data-theme="light"] .message-actions .feedback-action-btn:hover {
-  background: rgba(0, 48, 135, 0.06) !important;
-  border-color: var(--mb-brand-primary, #003087) !important;
-  color: var(--mb-brand-primary, #003087) !important;
-  transform: translateY(-1px);
-}
-
-html[data-theme="light"] .message-actions .action-btn i,
-html[data-theme="light"] .message-actions .message-action-btn i,
-html[data-theme="light"] .message-actions button i {
-  color: inherit !important;
-}
-
-/* Like aksiyonu hover'da yeşil */
-html[data-theme="light"] .message-actions .feedback-action-btn[data-feedback="like"]:hover,
-html[data-theme="light"] .message-actions .action-btn.btn-like:hover,
 html[data-theme="light"] .message-actions .like-btn:hover {
   background: rgba(22, 163, 74, 0.10) !important;
   border-color: rgba(22, 163, 74, 0.55) !important;
   color: #15803d !important;
 }
 
-/* Dislike aksiyonu hover'da kırmızı */
-html[data-theme="light"] .message-actions .feedback-action-btn[data-feedback="dislike"]:hover,
-html[data-theme="light"] .message-actions .action-btn.btn-dislike:hover,
+html[data-theme="light"] .message-actions .dislike-btn.active,
+html[data-theme="light"] .message-actions .action-btn.btn-dislike.active,
+html[data-theme="light"] .message-actions .action-btn.btn-feedback-negative.active,
+html[data-theme="light"] .message-actions button.disliked {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.16) 0%, rgba(220, 38, 38, 0.06) 100%) !important;
+  border-color: rgba(220, 38, 38, 0.65) !important;
+  color: #b91c1c !important;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.18), 0 4px 10px rgba(220, 38, 38, 0.20) !important;
+}
+
 html[data-theme="light"] .message-actions .dislike-btn:hover {
   background: rgba(220, 38, 38, 0.10) !important;
   border-color: rgba(220, 38, 38, 0.55) !important;
   color: #b91c1c !important;
 }
 
-/* ============================================================
- * 4) Söyleşi başlık rozetleri — tool, model, mod, mesaj sayacı
- *    Hover/aktif durumda da okunaklı kontrast.
- * ============================================================ */
-html[data-theme="light"] .chat-header-info .header-stat-item,
-html[data-theme="light"] .chat-header .header-stat-item,
-html[data-theme="light"] .header-stat-item,
-html[data-theme="light"] .chat-mode-indicator,
-html[data-theme="light"] .chat-tool-indicator,
-html[data-theme="light"] .chat-model-indicator {
-  background: rgba(255, 255, 255, 0.96) !important;
-  color: var(--mb-brand-primary, #003087) !important;
-  border: 1px solid rgba(0, 48, 135, 0.30) !important;
-  box-shadow: 0 1px 3px rgba(0, 48, 135, 0.08);
-  font-weight: 600;
-}
-
-html[data-theme="light"] .chat-header-info .header-stat-item i,
-html[data-theme="light"] .header-stat-item i {
-  color: var(--mb-brand-primary, #003087) !important;
-}
-
-/* Mesaj sayacı turuncu vurguya geç */
-html[data-theme="light"] .header-stat-item.messages-count,
-html[data-theme="light"] .header-stat-item[data-stat="messages"],
-html[data-theme="light"] .chat-message-count {
-  color: var(--mb-brand-accent, #FF5620) !important;
-  border-color: rgba(255, 86, 32, 0.36) !important;
-}
-
-html[data-theme="light"] .header-stat-item.messages-count i,
-html[data-theme="light"] .chat-message-count i {
-  color: var(--mb-brand-accent, #FF5620) !important;
-}
-
-/* Aktif tool/mod rozeti turuncu gradient */
-html[data-theme="light"] .header-stat-item.active,
-html[data-theme="light"] .chat-tool-indicator.active,
-html[data-theme="light"] .chat-mode-indicator.active {
-  background: linear-gradient(135deg,
-    var(--mb-brand-accent, #FF5620) 0%,
-    var(--mb-brand-accent-2, #FF8022) 100%) !important;
-  color: #ffffff !important;
-  border-color: rgba(255, 86, 32, 0.55) !important;
-  box-shadow: 0 4px 12px rgba(255, 86, 32, 0.24);
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
-}
-
-html[data-theme="light"] .header-stat-item.active i,
-html[data-theme="light"] .chat-tool-indicator.active i,
-html[data-theme="light"] .chat-mode-indicator.active i {
+html[data-theme="light"] .btn-clear-all i {
   color: #ffffff !important;
 }
 
-/* ============================================================
- * 5) "Tümünü Temizle" buton — daha pronounced kırmızı
- *    Sidebar veya araç çubuğunda kullanılan tüm "Tümünü Temizle"
- *    varyantları light temada daha güçlü görünür.
- * ============================================================ */
-html[data-theme="light"] .clear-all-btn,
-html[data-theme="light"] .btn-clear-all,
-html[data-theme="light"] .tumunu-temizle-btn,
-html[data-theme="light"] button.tumunu-temizle,
-html[data-theme="light"] .btn-danger.clear-all,
-html[data-theme="light"] .gallery-clear-all-btn,
-html[data-theme="light"] .saved-chats-clear-btn {
-  background: linear-gradient(135deg,
-    rgba(220, 38, 38, 0.10) 0%,
-    rgba(220, 38, 38, 0.04) 100%) !important;
-  color: #b91c1c !important;
-  border: 1px solid rgba(220, 38, 38, 0.50) !important;
+html[data-theme="light"] .btn-thinking {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(139, 92, 246, 0.04) 100%) !important;
+  color: #6d28d9 !important;
+  border: 1px solid rgba(139, 92, 246, 0.50) !important;
   font-weight: 600 !important;
-  box-shadow: 0 1px 3px rgba(220, 38, 38, 0.10);
+  box-shadow: 0 1px 3px rgba(139, 92, 246, 0.12);
 }
 
-html[data-theme="light"] .clear-all-btn i,
-html[data-theme="light"] .btn-clear-all i,
-html[data-theme="light"] .tumunu-temizle-btn i,
-html[data-theme="light"] button.tumunu-temizle i {
-  color: #b91c1c !important;
+html[data-theme="light"] .btn-thinking i {
+  color: inherit !important;
 }
 
-html[data-theme="light"] .clear-all-btn:hover,
-html[data-theme="light"] .btn-clear-all:hover,
-html[data-theme="light"] .tumunu-temizle-btn:hover,
-html[data-theme="light"] button.tumunu-temizle:hover,
-html[data-theme="light"] .gallery-clear-all-btn:hover,
-html[data-theme="light"] .saved-chats-clear-btn:hover {
-  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%) !important;
+html[data-theme="light"] .btn-thinking:hover {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.22) 0%, rgba(139, 92, 246, 0.10) 100%) !important;
+  color: #5b21b6 !important;
+  border-color: rgba(139, 92, 246, 0.70) !important;
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.24);
+}
+
+html[data-theme="light"] .btn-thinking.active {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%) !important;
   color: #ffffff !important;
-  border-color: #b91c1c !important;
-  box-shadow: 0 6px 16px rgba(220, 38, 38, 0.30);
+  border-color: #6d28d9 !important;
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.36);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
 }
 
-html[data-theme="light"] .clear-all-btn:hover i,
-html[data-theme="light"] .btn-clear-all:hover i,
-html[data-theme="light"] .tumunu-temizle-btn:hover i {
+html[data-theme="light"] .send-button.stop-mode {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
   color: #ffffff !important;
+  border: 1px solid #b91c1c !important;
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.30) !important;
 }
 
-/* ============================================================
- * 6) Sohbet konteyneri yüzeyi - yumuşak cam, kart gibi
- * ============================================================ */
-html[data-theme="light"] #chat_content_container,
+html[data-theme="light"] .message-bubble.ai-message,
+html[data-theme="light"] .message-bubble .ai-message,
+html[data-theme="light"] .message-bubble.user-message,
+html[data-theme="light"] .message-bubble .user-message,
+html[data-theme="light"] .chat-container .ai-message,
+html[data-theme="light"] .chat-container .user-message,
+html[data-theme="light"] #chat_content_container .ai-message,
+html[data-theme="light"] #chat_content_container .user-message,
+html[data-theme="light"] div.ai-message,
+html[data-theme="light"] div.user-message {
+  background: #ffffff !important;
+  background-image: none !important;
+  border: 1px solid rgba(0, 48, 135, 0.14) !important;
+  color: var(--color-text, #0f1c33) !important;
+  box-shadow: 0 4px 14px rgba(15, 28, 51, 0.06) !important;
+}
+
+html[data-theme="light"] .message-bubble {
+  background: transparent !important;
+  background-image: none !important;
+}
+
 html[data-theme="light"] .chat-container,
+html[data-theme="light"] #chat_content_container {
+  background-color: transparent !important;
+  color: var(--color-text-soft) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  background-image: none !important;
+}
+
 html[data-theme="light"] .chat-content-wrapper {
-  background: linear-gradient(180deg,
-    rgba(247, 249, 253, 0.45) 0%,
-    rgba(255, 255, 255, 0.85) 100%) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  background-image: none !important;
 }
 
-/* ============================================================
- * 7) Söyleşi karakter avatarı yanındaki "stop" / "send" buton zemini
- *    karanlık kalmasın
- * ============================================================ */
-html[data-theme="light"] #send_stop_btn,
-html[data-theme="light"] #send_message_btn,
-html[data-theme="light"] .send-message-btn {
-  background: linear-gradient(135deg,
-    var(--mb-brand-primary, #003087) 0%,
-    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+html[data-theme="light"] .btn-clear-all {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
   color: #ffffff !important;
-  border: 1px solid var(--mb-brand-primary, #003087) !important;
-  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.20);
+  border: 1px solid #991b1b !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.28) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
 }
 
-html[data-theme="light"] #send_stop_btn:hover,
-html[data-theme="light"] #send_message_btn:hover {
-  background: linear-gradient(135deg,
-    var(--mb-brand-primary-alt, #002D7A) 0%,
-    var(--mb-brand-accent, #FF5620) 100%) !important;
-  box-shadow: 0 6px 18px rgba(0, 48, 135, 0.28);
+html[data-theme="light"] .btn-clear-all * {
+  color: #ffffff !important;
 }
 
-html[data-theme="light"] #send_stop_btn.stop-mode,
-html[data-theme="light"] #send_stop_btn[data-mode="stop"] {
-  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%) !important;
-  border-color: #991b1b !important;
+html[data-theme="light"] .btn-clear-all:hover {
+  color: #ffffff !important;
+  transform: translateY(-1px);
+  background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%) !important;
+  border-color: #7f1d1d !important;
+  box-shadow: 0 6px 18px rgba(220, 38, 38, 0.40) !important;
 }
 
-/* ============================================================
- * 8) Düşünce Akışı (Premium Reasoning) paneli - açık tema
- *    Koyu degrade zemin yerine açık yüzey; metin koyu lacivert.
- *    Açık temada hiç override tanımı yoktu; panel/başlık/gövde
- *    koyu kalıyor ve kontrast bozuluyordu.
- * ============================================================ */
-html[data-theme="light"] .reasoning-panel.rp-live {
-  background: linear-gradient(180deg, #ffffff 0%, #f4f6fb 100%) !important;
-  border: 1px solid var(--color-border, #d8dde7) !important;
-  color: var(--color-text, #0f1c33) !important;
-  box-shadow: var(--shadow-card);
-}
-html[data-theme="light"] .rp-header {
-  background: linear-gradient(180deg, #eef2fb 0%, #ffffff 100%) !important;
-  border-bottom: 1px solid var(--color-border-soft, rgba(0, 48, 135, 0.10)) !important;
-}
-html[data-theme="light"] .rp-title { color: var(--color-text, #0f1c33) !important; }
-html[data-theme="light"] .rp-subtitle,
-html[data-theme="light"] .rp-model,
-html[data-theme="light"] .rp-host,
-html[data-theme="light"] .rp-timer { color: var(--color-muted, #5b6577) !important; }
-html[data-theme="light"] .rp-body { background: #ffffff !important; }
-html[data-theme="light"] .rp-stream { color: var(--color-text-soft, #1f2a44) !important; }
-html[data-theme="light"] .rp-toggle {
-  background: rgba(0, 48, 135, 0.05) !important;
-  color: var(--color-text-soft, #1f2a44) !important;
-  border-color: var(--color-border, #d8dde7) !important;
-}
-html[data-theme="light"] .rp-toggle:hover {
-  background: rgba(0, 48, 135, 0.10) !important;
-  color: var(--color-text, #0f1c33) !important;
-}
-html[data-theme="light"] .rp-caret { color: var(--color-muted, #5b6577) !important; }
-html[data-theme="light"] .rp-body::-webkit-scrollbar-thumb { background: rgba(0, 48, 135, 0.18) !important; }
-
-/* ============================================================
- * 9) "Derin Düşünme" düğmeleri ve seviye/detay dropdown'ları - açık tema
- *    analysis_tools.css var(--bg-tertiary, #1e293b) gibi KOYU fallback'lar
- *    kullanıyor; açık temada bu değişken tanımlı olmadığı için düğmeler
- *    siyah görünüyordu. Açık tema değerleriyle override edilir.
- * ============================================================ */
-html[data-theme="light"] .deep-thinking-toggle {
+html[data-theme="light"] .message-actions .action-btn,
+html[data-theme="light"] .message-actions .message-action-btn,
+html[data-theme="light"] .message-actions button {
+  transition: all 180ms ease;
   background: #ffffff !important;
-  border: 1px solid var(--color-border, #d8dde7) !important;
-  color: var(--color-text-soft, #1f2a44) !important;
-}
-html[data-theme="light"] .deep-thinking-toggle:hover {
-  border-color: rgba(16, 185, 129, 0.55) !important;
-  background: rgba(16, 185, 129, 0.10) !important;
-  color: var(--color-text, #0f1c33) !important;
-}
-html[data-theme="light"] .deep-thinking-toggle.active {
-  border-color: #16a34a !important;
-  background: rgba(22, 163, 74, 0.14) !important;
-  color: #15803d !important;
-}
-html[data-theme="light"] .deep-thinking-toggle.active .toggle-icon { color: #15803d !important; }
-html[data-theme="light"] .deep-thinking-level-select,
-html[data-theme="light"] .analysis-detail-select,
-html[data-theme="light"] .summary-detail-select,
-html[data-theme="light"] .summary-focus-select {
-  background: #ffffff !important;
-  color: var(--color-text, #0f1c33) !important;
-  border: 1px solid var(--color-border, #d8dde7) !important;
-}
-html[data-theme="light"] .deep-thinking-level-select:disabled,
-html[data-theme="light"] .analysis-detail-select:disabled {
-  background: #eef1f7 !important;
-  color: var(--color-muted, #5b6577) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1.5px solid var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 2px 6px rgba(0, 48, 135, 0.12) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
-/* ============================================================
- * 10) Sohbet cevabındaki kod blokları (highlight.js) - açık tema
- *     code_highlighting.css koyu (#1e1e1e) zemin kullanıyor; açık temada
- *     GitHub-light benzeri bir palet uygulanır (başlık, dil etiketi, satır
- *     numarası ve sözdizimi renkleri kontrast sorunsuz).
- * ============================================================ */
-html[data-theme="light"] .code-container {
-  background: #f6f8fa !important;
-  border: 1px solid #d0d7de !important;
+html[data-theme="light"] .message-bubble .message-actions button {
+  background: #ffffff !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1.5px solid var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 2px 6px rgba(0, 48, 135, 0.12) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
-html[data-theme="light"] .code-header {
-  background: #eaeef2 !important;
-  border-bottom: 1px solid #d0d7de !important;
-}
-html[data-theme="light"] .code-language { color: #57606a !important; }
-html[data-theme="light"] .code-copy-btn { color: #57606a !important; }
-html[data-theme="light"] .code-copy-btn:hover {
-  background: rgba(0, 48, 135, 0.08) !important;
+
+html[data-theme="light"] .message-actions .action-btn i,
+html[data-theme="light"] .message-actions .message-action-btn i,
+html[data-theme="light"] .message-actions button i {
   color: var(--mb-brand-primary, #003087) !important;
 }
-html[data-theme="light"] .hljs { background: #f6f8fa !important; color: #1f2328 !important; }
-html[data-theme="light"] .hljs-comment,
-html[data-theme="light"] .hljs-quote { color: #6e7781 !important; }
-html[data-theme="light"] .hljs-keyword,
-html[data-theme="light"] .hljs-doctag,
-html[data-theme="light"] .hljs-formula,
-html[data-theme="light"] .hljs-section,
-html[data-theme="light"] .hljs-name,
-html[data-theme="light"] .hljs-selector-tag,
-html[data-theme="light"] .hljs-deletion,
-html[data-theme="light"] .hljs-subst { color: #cf222e !important; }
-html[data-theme="light"] .hljs-string,
-html[data-theme="light"] .hljs-regexp,
-html[data-theme="light"] .hljs-addition,
-html[data-theme="light"] .hljs-meta-string { color: #0a3069 !important; }
-html[data-theme="light"] .hljs-literal,
-html[data-theme="light"] .hljs-number,
-html[data-theme="light"] .hljs-variable,
-html[data-theme="light"] .hljs-template-variable,
-html[data-theme="light"] .hljs-type,
-html[data-theme="light"] .hljs-attr,
-html[data-theme="light"] .hljs-attribute { color: #0550ae !important; }
-html[data-theme="light"] .hljs-built_in,
-html[data-theme="light"] .hljs-class .hljs-title,
-html[data-theme="light"] .hljs-title { color: #8250df !important; }
 
-/* ============================================================
- * 11) CodeMirror editör/önizleme - açık tema (Bilge Yolaç ve kod alanları)
- * ============================================================ */
-html[data-theme="light"] .CodeMirror {
-  background: #f6f8fa !important;
-  color: #1f2328 !important;
-  border-color: var(--color-border, #d8dde7) !important;
+html[data-theme="light"] .message-actions .action-btn:hover,
+html[data-theme="light"] .message-actions .message-action-btn:hover,
+html[data-theme="light"] .message-actions button:hover {
+  transform: translateY(-1px);
+  background: var(--mb-brand-primary, #003087) !important;
+  color: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.30) !important;
 }
-html[data-theme="light"] .CodeMirror-gutters {
-  background: #eaeef2 !important;
-  border-right: 1px solid #d0d7de !important;
+
+html[data-theme="light"] .message-actions .action-btn:hover i,
+html[data-theme="light"] .message-actions .message-action-btn:hover i,
+html[data-theme="light"] .message-actions button:hover i {
+  color: #ffffff !important;
 }
-html[data-theme="light"] .CodeMirror-linenumber { color: #8c959f !important; }
-html[data-theme="light"] .CodeMirror-cursor { border-left-color: #1f2328 !important; }
-html[data-theme="light"] .cm-keyword,
-html[data-theme="light"] .cm-operator { color: #cf222e !important; }
-html[data-theme="light"] .cm-string,
-html[data-theme="light"] .cm-string-2 { color: #0a3069 !important; }
-html[data-theme="light"] .cm-comment { color: #6e7781 !important; }
-html[data-theme="light"] .cm-number,
-html[data-theme="light"] .cm-atom { color: #0550ae !important; }
-html[data-theme="light"] .cm-variable,
-html[data-theme="light"] .cm-variable-2,
-html[data-theme="light"] .cm-def,
-html[data-theme="light"] .cm-property { color: #1f2328 !important; }
-html[data-theme="light"] .cm-tag,
-html[data-theme="light"] .cm-builtin { color: #116329 !important; }
-html[data-theme="light"] .CodeMirror-selected { background: rgba(0, 48, 135, 0.12) !important; }
+
+html[data-theme="light"] .chat-header {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.10) inset, 0 4px 14px rgba(0, 48, 135, 0.18) !important;
+}
+
+html[data-theme="light"] .destek-container .chat-header {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.10) inset, 0 4px 14px rgba(0, 48, 135, 0.18) !important;
+}
+
+html[data-theme="light"] .chat-header .page-title,
+html[data-theme="light"] .chat-header h4,
+html[data-theme="light"] .chat-header h3 {
+  color: #ffffff !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.20) !important;
+  font-weight: 600 !important;
+}
+
+html[data-theme="light"] .chat-header .btn-modern {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.32) !important;
+  font-weight: 600 !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10) !important;
+}
+
+html[data-theme="light"] .chat-header .btn-modern:hover {
+  background: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.55) !important;
+}
+
+html[data-theme="light"] .chat-header .btn-modern i {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .chat-header .btn-modern.btn-success {
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
+  border-color: #15803d !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .chat-header .btn-modern.btn-success:hover {
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%) !important;
+  border-color: #14532d !important;
+}
+
+html[data-theme="light"] .chat-header .btn-modern.btn-danger {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+  border: 1px solid #991b1b !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22) !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.30) !important;
+}
+
+html[data-theme="light"] .chat-header .btn-modern.btn-danger:hover {
+  background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%) !important;
+  border-color: #7f1d1d !important;
+  box-shadow: 0 6px 18px rgba(220, 38, 38, 0.42) !important;
+}
+
+html[data-theme="light"] .chat-header .header-stat-item {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.36) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10) !important;
+  font-weight: 600 !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22);
+}
+
+html[data-theme="light"] .chat-header .header-stat-item * {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .chat-header .header-stat-item i {
+  color: #ffffff !important;
+  opacity: 0.92;
+}
+
+html[data-theme="light"] .chat-header .header-stat-item[title*="Mesaj"],
+html[data-theme="light"] .chat-header .header-stat-item.message-count {
+  background: rgba(255, 255, 255, 0.22) !important;
+}
+
+html[data-theme="light"] .destek-container .chat-header h4,
+html[data-theme="light"] .destek-container .chat-header .page-title {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .header-stat-item.character-badge {
+  border: none !important;
+  outline: none !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.10) !important;
+}
+
+html[data-theme="light"] .message-bubble em,
+html[data-theme="light"] .message-bubble i:not(.fa):not(.fas):not(.far):not(.fab),
+html[data-theme="light"] .message-content em {
+  color: var(--color-text, #0f1c33) !important;
+  font-style: italic;
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] .system-message,
+html[data-theme="light"] .message-bubble.system-message {
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.96) 0%, rgba(0, 48, 135, 0.04) 100%) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid rgba(0, 48, 135, 0.18) !important;
+  border-left: 3px solid var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 2px 6px rgba(15, 28, 51, 0.05);
+}
+
+html[data-theme="light"] .system-message * {
+  color: inherit !important;
+}
+
+html[data-theme="light"] .system-message i {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .message-bubble.ai-message .message-header {
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.20);
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  padding: 12px 18px !important;
+  border-radius: 12px 12px 0 0;
+}
+
+html[data-theme="light"] .message-bubble:not(.user-message):not(.system-message) .message-header {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  border-radius: 12px 12px 0 0;
+  padding: 12px 18px !important;
+}
+
+html[data-theme="light"] .message-bubble.user-message .message-header {
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.20);
+  background: linear-gradient(135deg, var(--mb-brand-support-teal, #077780) 0%, #045d63 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(7, 119, 128, 0.40) !important;
+  padding: 12px 18px !important;
+  border-radius: 12px 12px 0 0;
+}
+
+html[data-theme="light"] .message-bubble .message-header .message-author {
+  font-weight: 600 !important;
+  letter-spacing: 0.02em;
+  color: #ffffff !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+}
+
+html[data-theme="light"] .message-bubble .message-header .message-info,
+html[data-theme="light"] .message-bubble .message-header .brand-text-primary,
+html[data-theme="light"] .message-bubble .message-header .brand-text-secondary {
+  color: #ffffff !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+}
+
+html[data-theme="light"] .message-bubble .message-header .message-time {
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.85) !important;
+  text-shadow: none;
+}
+
+html[data-theme="light"] .message-bubble .message-header .user-avatar,
+html[data-theme="light"] .message-bubble .message-header .ai-avatar {
+  background: rgba(255, 255, 255, 0.18) !important;
+  border: 1px solid rgba(255, 255, 255, 0.32) !important;
+}
+
+html[data-theme="light"] .message-bubble .message-header .message-actions {
+  background: transparent !important;
+}
+
+html[data-theme="light"] .message-bubble .message-header .message-actions .action-btn,
+html[data-theme="light"] .message-bubble .message-header .message-actions .message-action-btn,
+html[data-theme="light"] .message-bubble .message-header .message-actions button {
+  background: rgba(255, 255, 255, 0.20) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.40) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10) !important;
+  padding: 6px 10px !important;
+  border-radius: 8px !important;
+}
+
+html[data-theme="light"] .message-bubble .message-header .message-actions .action-btn i,
+html[data-theme="light"] .message-bubble .message-header .message-actions .message-action-btn i,
+html[data-theme="light"] .message-bubble .message-header .message-actions button i {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .message-bubble .message-header .message-actions .action-btn:hover,
+html[data-theme="light"] .message-bubble .message-header .message-actions .message-action-btn:hover,
+html[data-theme="light"] .message-bubble .message-header .message-actions button:hover {
+  background: rgba(255, 255, 255, 0.32) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.65) !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15) !important;
+}
+
+html[data-theme="light"] .message-bubble > .message-actions .action-btn,
+html[data-theme="light"] .message-bubble > .message-actions .message-action-btn,
+html[data-theme="light"] .message-bubble > .message-actions button,
+html[data-theme="light"] .message-actions:not(.message-header .message-actions) .action-btn,
+html[data-theme="light"] .message-actions:not(.message-header .message-actions) button {
+  background: #ffffff !important;
+  color: var(--mb-brand-primary, #003087) !important;
+  border: 1.5px solid var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 2px 6px rgba(0, 48, 135, 0.12) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+html[data-theme="light"] .message-bubble > .message-actions .action-btn:hover,
+html[data-theme="light"] .message-bubble > .message-actions .message-action-btn:hover,
+html[data-theme="light"] .message-bubble > .message-actions button:hover,
+html[data-theme="light"] .message-actions:not(.message-header .message-actions) .action-btn:hover {
+  background: var(--mb-brand-primary, #003087) !important;
+  color: #ffffff !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.30) !important;
+}
+
+html[data-theme="light"] .admin-header-fixed .header-stat-item {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.36) !important;
+}
+

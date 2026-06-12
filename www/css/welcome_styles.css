@@ -22,9 +22,6 @@
   margin-bottom: 10px !important;
 }
 
-.welcome-title-container {
-  text-align: center;
-}
 
 .welcome-title {
   font-size: 42px;
@@ -34,16 +31,4 @@
   font-family: var(--font-primary) !important;
 }
 
-.welcome-subtitle {
-  font-size: 18px;
-  color: var(--text-muted);
-  font-weight: 300;
-  margin: 4px 0 20px !important;
-  text-align: center;
-  line-height: 1.4;
-}
 
-.welcome-intro-subtitle {
-  margin-bottom: 2px !important;
-  margin-top: 0 !important;
-}

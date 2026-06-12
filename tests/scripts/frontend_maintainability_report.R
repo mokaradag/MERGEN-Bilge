@@ -252,6 +252,175 @@ forbidden_legacy_selectors <- c(
   "#_content_container"
 )
 
+# Açık tema disiplini metrikleri:
+#   - theme_zone_files: www/css/theme_*.css dosyaları (token + alan katmanları)
+#   - light_theme_duplicate_selectors: html[data-theme="light"] kapsamlı bir
+#     seçicinin birden fazla dosyada tanımlanması. Tema alan dosyaları içinde
+#     sıfır olmalıdır (tek-tanım sözleşmesi); tema + bileşen dosyası çiftleri
+#     bilinçli desendir ve toplam ratchet bütçesiyle sınırlanır.
+theme_zone_css_files <- function(report_data) {
+  report_data$file[grepl("^www/css/theme_", report_data$file)]
+}
+
+theme_zone_css_total_lines <- function(report_data) {
+  sum(report_data$lines[grepl("^www/css/theme_", report_data$file)])
+}
+
+light_theme_duplicate_selectors <- function(duplicate_data) {
+  if (is.null(duplicate_data) || nrow(duplicate_data) == 0) {
+    return(duplicate_data)
+  }
+
+  duplicate_data[
+    grepl('data-theme="light"', duplicate_data$selector, fixed = TRUE),
+    ,
+    drop = FALSE
+  ]
+}
+
+# ------------------------------------------------------------------------------
+# Hayalet (orphan) seçici taraması:
+# CSS'te stillenen bir sınıf, runtime kaynaklarının (R/, www/js, www/smoke,
+# kök R dosyaları) hiçbirinde geçmiyorsa o seçici DOM'da asla eşleşemez.
+# Eski 13 dosyalık açık tema zincirinin ~%46'sı böyle hayalet seçicilerden
+# oluşuyordu; bu tarama aynı desenin geri dönmesini görünür kılar ve ratchet
+# testi toplamı bütçeyle bağlar.
+#
+# Güvenlik modeli (yanlış pozitif engelleme):
+#   1. Vendor/runtime kütüphane sınıfları (Bootstrap, DataTables, Shiny,
+#      highcharts, CodeMirror, hljs, ...) ASLA hayalet sayılmaz.
+#   2. Dinamik üretilen sınıf aileleri ASLA hayalet sayılmaz. Bu liste,
+#      corpus genelinde "önek-ile-biten string literal" taramasının TEK TEK
+#      incelenmiş sonucudur (ör. paste0("destek-tag-", renk),
+#      "alo-ch alo-tok-" + tok.c, paste0("cc-dir-", tip)). Yeni bir dinamik
+#      sınıf ailesi eklerseniz bu listeye önekini ekleyin.
+#   3. :not(...) içindeki sınıflar seçiciyi ölü yapmaz.
+# ------------------------------------------------------------------------------
+frontend_orphan_vendor_patterns <- c(
+  "^dataTables?", "^paginate_", "^sorting", "^odd$", "^even$",
+  "^tooltip", "^bs-tooltip", "^popover", "^modal", "^dropdown", "^nav-", "^nav$",
+  "^active$", "^in$", "^fade$", "^show$", "^collapse", "^open$", "^disabled$",
+  "^btn(-|$)", "^form-", "^input-group", "^control-label", "^help-block",
+  "^checkbox", "^radio", "^label(-|$)", "^badge$", "^alert", "^well$",
+  "^table(-|$)", "^pagination", "^list-group", "^panel", "^progress",
+  "^shiny-", "^recalculating$", "^irs-", "^selectize", "^datepicker",
+  "^main-header$", "^main-sidebar$", "^main-footer$", "^content-wrapper$",
+  "^sidebar", "^navbar", "^logo(-|$)", "^treeview", "^skin-", "^wrapper$",
+  "^content$", "^tab-", "^box(-|$)", "^col-", "^row$", "^container",
+  "^highcharts-", "^CodeMirror", "^cm-", "^swal", "^fa(-|s$|r$|b$)", "^sr-only$",
+  "^dt-", "^dataTable$", "^header-fixed$", "^text-", "^bg-", "^pull-",
+  "^close$", "^caret$", "^divider$", "^glyphicon", "^has-feedback",
+  "^js-irs", "^slider", "^noUi-", "^leaflet", "^html-?widget", "^htmlwidget_container$",
+  "^hidden", "^visible", "^affix", "^carousel", "^jumbotron", "^media$",
+  "^action-button$", "^stripe$", "^hover$", "^compact$", "^cell-border$",
+  "^hljs", "^language-", "^MathJax", "^katex",
+  "^selected$", "^focus$", "^error$", "^success$", "^warning$", "^info$",
+  "^ui-", "^clearfix$", "^lead$", "^small$", "^mark$",
+  "^blockquote", "^dd$", "^dt$", "^figure", "^img-", "^thumbnail$"
+)
+
+# İncelenmiş dinamik üretim önekleri (health- / index-health- BİLİNÇLİ dışarıda:
+# tempfile pattern'leridir, sınıf üretimi değildir).
+frontend_orphan_constructed_prefixes <- c(
+  "alo-tok-", "cc-dir-", "cc-message-",
+  "destek-cat-", "destek-cat-icon-", "destek-chatbot-message-",
+  "destek-dot-", "destek-tag-", "destek-tag-icon-",
+  "font-", "health-status-", "hept-", "mbdoc-",
+  "settings_yapilandirma_module-", "sso_module-", "shiny-tab-",
+  "theme-", "toast-"
+)
+
+frontend_orphan_runtime_corpus <- function() {
+  corpus_files <- c(
+    list.files(file.path(repo_root, "R"), pattern = "\\.R$", full.names = TRUE, recursive = TRUE),
+    list.files(file.path(repo_root, "www", "js"), pattern = "\\.js$", full.names = TRUE, recursive = TRUE),
+    list.files(file.path(repo_root, "www", "smoke"), pattern = "\\.(js|html)$", full.names = TRUE, recursive = TRUE),
+    file.path(repo_root, c("ui.R", "server.R", "global.R", "welcome_screen.R"))
+  )
+  corpus_files <- corpus_files[file.exists(corpus_files)]
+  paste(vapply(corpus_files, read_text, character(1)), collapse = "\n")
+}
+
+frontend_orphan_class_is_protected <- function(cls, corpus) {
+  if (any(vapply(frontend_orphan_vendor_patterns,
+                 function(p) grepl(p, cls, perl = TRUE), logical(1)))) {
+    return(TRUE)
+  }
+  if (any(vapply(frontend_orphan_constructed_prefixes,
+                 function(p) startsWith(cls, p) || identical(cls, sub("-$", "", p)),
+                 logical(1)))) {
+    return(TRUE)
+  }
+  grepl(cls, corpus, fixed = TRUE, useBytes = TRUE)
+}
+
+# Tüm CSS seçicilerinden (file, selector, class) satırları üretir ve hayalet
+# sınıf içeren ÖLÜ seçicileri raporlar.
+frontend_dead_selector_report <- function(css_selector_rows) {
+  if (is.null(css_selector_rows) || nrow(css_selector_rows) == 0) {
+    return(data.frame(file = character(0), selector = character(0),
+                      orphan_class = character(0), stringsAsFactors = FALSE))
+  }
+
+  corpus <- frontend_orphan_runtime_corpus()
+
+  all_classes <- unique(unlist(regmatches(
+    css_selector_rows$selector,
+    gregexpr("\\.[A-Za-z_][A-Za-z0-9_-]*", css_selector_rows$selector, perl = TRUE)
+  ), use.names = FALSE))
+  all_classes <- sub("^\\.", "", all_classes)
+
+  orphan_classes <- all_classes[!vapply(
+    all_classes,
+    frontend_orphan_class_is_protected,
+    logical(1),
+    corpus = corpus
+  )]
+
+  if (length(orphan_classes) == 0) {
+    return(data.frame(file = character(0), selector = character(0),
+                      orphan_class = character(0), stringsAsFactors = FALSE))
+  }
+
+  rows <- list()
+  for (i in seq_len(nrow(css_selector_rows))) {
+    sel <- css_selector_rows$selector[i]
+    sel_no_not <- gsub(":not\\([^)]*\\)", "", sel, perl = TRUE)
+    cls_hits <- regmatches(sel_no_not, gregexpr("\\.[A-Za-z_][A-Za-z0-9_-]*", sel_no_not, perl = TRUE))[[1]]
+    cls_hits <- sub("^\\.", "", cls_hits)
+    dead_hit <- intersect(cls_hits, orphan_classes)
+    if (length(dead_hit) > 0) {
+      rows[[length(rows) + 1L]] <- data.frame(
+        file = css_selector_rows$file[i],
+        selector = sel,
+        orphan_class = dead_hit[1],
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  if (length(rows) == 0) {
+    return(data.frame(file = character(0), selector = character(0),
+                      orphan_class = character(0), stringsAsFactors = FALSE))
+  }
+
+  do.call(rbind, rows)
+}
+
+# Kaldırılan eski açık tema patch-zinciri dosyaları. Bu adlarla yeni dosya
+# eklemek yasaktır; ayrıntılı tombstone sözleşmesi
+# tests/testthat/test-theme-light-modular-contract.R içindedir.
+tombstoned_theme_files <- c(
+  "www/css/theme_light.css",
+  "www/css/theme_light_extras.css",
+  "www/css/theme_light_refinements.css",
+  "www/css/theme_light_polish.css",
+  "www/css/theme_light_overhaul.css",
+  "www/css/theme_light_overhaul_phase2.css",
+  "www/css/theme_light_user_polish.css",
+  "www/css/theme_light_user_polish_v2.css"
+)
+
 legacy_hits <- do.call(rbind, lapply(frontend_files, function(path) {
   text <- read_text(path)
   hits <- forbidden_legacy_selectors[
@@ -445,6 +614,36 @@ print_frontend_top_risk_table("Unmanifested app-owned runtime assets", top_risk_
 print_frontend_top_risk_table("Allowlisted unmanifested assets", top_risk_summary$allowlisted_unmanifested_assets)
 print_frontend_top_risk_table("Smoke-only assets", top_risk_summary$smoke_only_assets)
 
+light_theme_duplicates <- light_theme_duplicate_selectors(duplicate_selectors)
+theme_zone_lines <- theme_zone_css_total_lines(report)
+tombstone_hits <- tombstoned_theme_files[
+  file.exists(file.path(repo_root, tombstoned_theme_files))
+]
+dead_selector_rows <- frontend_dead_selector_report(css_selector_rows)
+theme_dead_selector_rows <- dead_selector_rows[
+  grepl("^www/css/theme_light_", dead_selector_rows$file),
+  ,
+  drop = FALSE
+]
+
+cat("\nAçık tema disiplini:\n")
+cat(sprintf("  tema bölgesi CSS toplam satır: %d\n", theme_zone_lines))
+cat(sprintf("  light-scoped tekrar seçici (dosyalar arası): %d\n",
+            if (is.null(light_theme_duplicates)) 0L else nrow(light_theme_duplicates)))
+cat(sprintf("  tombstone ihlali: %d\n", length(tombstone_hits)))
+if (length(tombstone_hits) > 0) {
+  cat("  GERİ GELEN ESKİ TEMA DOSYALARI:\n")
+  for (hit in tombstone_hits) cat("    ", hit, "\n")
+}
+
+cat("\nHayalet (orphan) seçici taraması:\n")
+cat(sprintf("  ölü seçici toplam: %d (tema alan dosyalarında: %d)\n",
+            nrow(dead_selector_rows), nrow(theme_dead_selector_rows)))
+if (nrow(dead_selector_rows) > 0) {
+  by_file <- sort(table(dead_selector_rows$file), decreasing = TRUE)
+  for (f in names(by_file)) cat(sprintf("    %s: %d\n", f, by_file[[f]]))
+}
+
 attr(report, "score_report") <- report
 attr(report, "css_duplicate_selectors") <- duplicate_selectors
 attr(report, "legacy_selector_hits") <- legacy_hits
@@ -452,5 +651,11 @@ attr(report, "unmanifested_app_assets") <- unmanifested_app_assets
 attr(report, "vendor_frontend_files") <- vendor_frontend_files
 attr(report, "allowlisted_unmanifested_frontend_files") <- allowlisted_unmanifested_frontend_files
 attr(report, "top_risk_summary") <- top_risk_summary
+attr(report, "light_theme_duplicate_selectors") <- light_theme_duplicates
+attr(report, "theme_zone_css_total_lines") <- theme_zone_lines
+attr(report, "tombstoned_theme_files") <- tombstoned_theme_files
+attr(report, "tombstone_hits") <- tombstone_hits
+attr(report, "dead_selector_rows") <- dead_selector_rows
+attr(report, "theme_dead_selector_rows") <- theme_dead_selector_rows
 
 invisible(report)

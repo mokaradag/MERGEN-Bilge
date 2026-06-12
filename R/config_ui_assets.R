@@ -24,55 +24,37 @@ ui_asset_css_groups <- list(
     "css/music_slider.css"
   ),
   page = ui_asset_flatten_groups(list(
+    # Tema mimarisi (tek-tanım sözleşmesi):
+    #   variables.css   -> eski değişken uyumluluk katmanı
+    #   theme_tokens.css-> koyu (varsayılan) + açık tema token tabanı
+    #   theme_light_*   -> açık temanın ALAN-ODAKLI katmanları; her seçici
+    #                      bu zincirde yalnızca BİR kez tanımlanır.
+    # Eski 13 dosyalık override/patch zinciri (extras, refinements, polish,
+    # overhaul, overhaul_phase2, user_polish, user_polish_v2) kaskad sonucu
+    # bire bir korunarak bu alan dosyalarına konsolide edilmiştir. Yeni açık
+    # tema kuralı eklerken İLGİLİ ALAN dosyasındaki mevcut seçiciyi
+    # genişletin; yeni bir "override katmanı" dosyası EKLEMEYİN
+    # (tests/testthat/test-theme-light-modular-contract.R bunu engeller).
     theme_base = c(
       "css/variables.css",
       "css/theme_tokens.css",
-      "css/theme_light.css",
-      "css/theme_light_extras.css",
-      "css/theme_light_refinements.css"
+      "css/theme_light_core.css"
     ),
-    # Açık tema cilası: odaklı küçük dosyalara bölünerek ratchet limitleri
-    # altında tutulur. Yükleme sırası burada kasıtlıdır:
-    #   1. welcome (en alttaki cam yüzey önce yerleşir)
-    #   2. chat (söyleşi giriş + baloncuk başlığı + rozet override'ları)
-    #   3. modals (feedback / dosya önizleme / STT - en üst katman)
-    #   4. bilge_yolac (Bilge Yolaç light chat + komut blokları)
-    #   5. personalization (Kişiselleştirme + Yapılandırma kart yüzeyleri)
-    #   6. polish (admin tooltip, hero başlık, file manager notları,
-    #      Yenilikler madde işareti, sidebar logout)
+    # Alan katmanları (yükleme sırası kasıtlıdır):
+    #   1. core (kabuk: gövde, kenar çubuğu, üst şerit, genel widget'lar)
+    #   2. welcome (karşılama cam yüzeyi, hızlı eylemler, son konuşmalar)
+    #   3. chat (söyleşi konteyneri, baloncuklar, giriş alanı, reasoning)
+    #   4. modals (feedback / dosya önizleme / STT / arama / toast)
+    #   5. bilge_yolac (AJAN-karakter rozetleri, tool blokları, akış)
+    #   6. personalization (Kişiselleştirme + Yapılandırma kart yüzeyleri)
+    #   7. pages (Dosya Yönetimi, geçmiş/galeri, Destek, Yönetici, Sağlık)
     theme_light_modules = c(
       "css/theme_light_welcome.css",
       "css/theme_light_chat.css",
       "css/theme_light_modals.css",
       "css/theme_light_bilge_yolac.css",
       "css/theme_light_personalization.css",
-      "css/theme_light_polish.css"
-    ),
-    theme_light_overrides = c(
-      # Kullanıcı geri bildirimi toplu light tema cilası: TÜM diğer
-      # theme_light_*.css dosyalarından SONRA yüklenir, çünkü onların
-      # kurallarını son kez ezerek navbar şeridi, ay grubu nötr gri,
-      # chat baloncuk başlıkları, Bilge Yolaç tool şeritleri, Dosya
-      # Yönetimi notları, Yenilikler rozetleri ve diğer onarımları
-      # garantiler.
-      "css/theme_light_overhaul.css",
-      # Faz 2 saldırgan onarımları: koyu yüzey leak'lerini kapatma,
-      # admin nav-pills, destek-tab-btn, mesaj eylem butonları,
-      # Bilge Yolaç tool dark hover regresyonu, vb. theme_light_overhaul
-      # dosyasından sonra yüklenir ki onun kurallarını da son adımda
-      # pekiştirebilir; ratchet limitini aşmamak için ikinci dosyaya
-      # bölündü.
-      "css/theme_light_overhaul_phase2.css",
-      # Kullanıcı geri bildirimi cilası (Faz 1 + Faz 2): EN SON yüklenir.
-      # Hero başlık kurumsal mavisi, karşılama greeting/icon, Bilge Yolaç
-      # light tool yüzeyleri, Kişiselleştirme deneyim modu + karakter
-      # aksanı, Sistem Durumu kart kontrastı, Geri Bildirim sekme buton
-      # kenarları, Yenilikler madde/rozet/italik kontrastı, Söyleşi
-      # baloncuk başlık + eylem butonları ve dosya önizleme modal başlığı
-      # için kapsamlı kurumsal mavi cilası içerir. İki dosya birlikte
-      # 1600 satır ratchet limitinin altında kalır.
-      "css/theme_light_user_polish.css",
-      "css/theme_light_user_polish_v2.css"
+      "css/theme_light_pages.css"
     ),
     layout_foundation = c(
       "css/animations.css",
@@ -97,12 +79,10 @@ ui_asset_css_groups <- list(
       "css/file_manager.css",
       "css/history_saved_chats.css",
       "css/settings_page.css",
-      "css/health_check.css",
       "css/health_dashboard.css",
       "css/disconnect_overlay.css",
       "css/chat_header.css",
       "css/quick_templates.css",
-      "css/capabilities.css",
       "css/custom_buttons.css",
       "css/utilities.css",
       "css/responsive.css",
@@ -111,7 +91,6 @@ ui_asset_css_groups <- list(
       "css/pagination_custom.css",
       "css/modals_custom.css",
       "css/welcome_styles.css",
-      "css/recent_chats_custom.css",
       "css/empty_state.css",
       "css/animations_extra.css",
       "css/message_actions.css"
@@ -468,34 +447,26 @@ ui_asset_js_order_rules <- list(
 )
 
 # Kritik CSS katman/kaskad sırası kuralları.
-# Açık tema override zinciri (variables -> tokens -> theme_light -> extras ->
-# refinements -> tema modülleri -> overhaul -> overhaul_phase2 -> user_polish
-# -> user_polish_v2) ve tema katmanlarından SONRA gelmesi gereken yüzeyler
-# (brand_title, sidebar_user_panel, tool_backgrounds) kaskad sırasına
-# bağımlıdır. Bilge Yolaç CSS zinciri de sıra bağımlıdır. Bu kurallar
-# görünümü değiştirmez; manifest bakımında yanlış sıralamayı JS kurallarıyla
-# aynı şekilde erken yakalar.
+# Açık tema zinciri (variables -> tokens -> core -> welcome -> chat ->
+# modals -> bilge_yolac -> personalization -> pages) ve tema katmanlarından
+# SONRA gelmesi gereken yüzeyler (brand_title, sidebar_user_panel,
+# tool_backgrounds) kaskad sırasına bağımlıdır. Bilge Yolaç CSS zinciri de
+# sıra bağımlıdır. Bu kurallar görünümü değiştirmez; manifest bakımında
+# yanlış sıralamayı JS kurallarıyla aynı şekilde erken yakalar.
 ui_asset_css_order_rules <- list(
   c("css/variables.css", "css/theme_tokens.css"),
-  c("css/theme_tokens.css", "css/theme_light.css"),
-  c("css/theme_light.css", "css/theme_light_extras.css"),
-  c("css/theme_light_extras.css", "css/theme_light_refinements.css"),
+  c("css/theme_tokens.css", "css/theme_light_core.css"),
 
-  c("css/theme_light_refinements.css", "css/theme_light_welcome.css"),
+  c("css/theme_light_core.css", "css/theme_light_welcome.css"),
   c("css/theme_light_welcome.css", "css/theme_light_chat.css"),
   c("css/theme_light_chat.css", "css/theme_light_modals.css"),
   c("css/theme_light_modals.css", "css/theme_light_bilge_yolac.css"),
   c("css/theme_light_bilge_yolac.css", "css/theme_light_personalization.css"),
-  c("css/theme_light_personalization.css", "css/theme_light_polish.css"),
+  c("css/theme_light_personalization.css", "css/theme_light_pages.css"),
 
-  c("css/theme_light_polish.css", "css/theme_light_overhaul.css"),
-  c("css/theme_light_overhaul.css", "css/theme_light_overhaul_phase2.css"),
-  c("css/theme_light_overhaul_phase2.css", "css/theme_light_user_polish.css"),
-  c("css/theme_light_user_polish.css", "css/theme_light_user_polish_v2.css"),
-
-  c("css/theme_light_user_polish_v2.css", "css/brand_title.css"),
-  c("css/theme_light_user_polish_v2.css", "css/sidebar_user_panel.css"),
-  c("css/theme_light_user_polish_v2.css", "css/tool_backgrounds.css"),
+  c("css/theme_light_pages.css", "css/brand_title.css"),
+  c("css/theme_light_pages.css", "css/sidebar_user_panel.css"),
+  c("css/theme_light_pages.css", "css/tool_backgrounds.css"),
 
   c("css/welcome_modern.css", "css/theme_light_welcome.css"),
 

@@ -33,9 +33,6 @@
   margin-bottom: 10px !important;
 }
 
-.welcome-title-container {
-  text-align: center;
-}
 
 .welcome-title {
   font-size: 42px;
@@ -45,32 +42,9 @@
   font-family: var(--font-primary) !important;
 }
 
-.welcome-subtitle {
-  font-size: 18px;
-  color: var(--text-muted);
-  font-weight: 300;
-  margin-bottom: 20px !important;
-  text-align: center;
-  line-height: 1.4;
-  margin-top: 40px !important;
-}
 
-.welcome-container h4.welcome-subtitle {
-  font-family: 'Roboto', sans-serif;
-  margin: 6px 0 6px !important;
-}
 
-.welcome-intro-subtitle {
-  margin-bottom: 2px !important;
-  margin-top: 0 !important;
-}
 
-/* Hızlı Şablonlar */
-.quick-templates-section {
-  width: 100%;
-  max-width: 1200px;
-  margin-bottom: 48px;
-}
 
 .section-title {
   font-size: 18px;
@@ -80,121 +54,18 @@
   text-align: center;
 }
 
-.quick-templates-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 12px;
-}
 
-.template-card {
-  background: var(--background-light);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 16px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
 
-.template-card:hover {
-  background: rgba(255, 107, 53, 0.1);
-  border-color: var(--primary-color);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
 
-.template-text {
-  margin: 0;
-  font-size: 14px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-}
 
-/* Yetenek Kartları Izgarası */
-.capabilities-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  max-width: none;
-  width: 100%;
-  margin-bottom: 0;
-  margin-top: 4px;
-}
 
-.capability-card {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 15px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  text-align: center;
-  backdrop-filter: blur(10px);
-  position: relative;
-  overflow: hidden;
-}
 
-.capability-card:hover {
-  transform: translateY(-4px);
-  background: rgba(255, 107, 53, 0.08);
-  border-color: var(--primary-color);
-  box-shadow: 0 8px 25px rgba(255, 107, 53, 0.15);
-}
 
-.capability-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--primary-color), transparent);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
 
-.capability-card:hover::before {
-  opacity: 1;
-}
 
-.capability-icon-wrapper {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 10px;
-  font-size: 18px;
-  color: white;
-  position: relative;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-}
 
-.capability-icon-wrapper::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 12px;
-  background: inherit;
-  filter: blur(10px);
-  opacity: 0.4;
-  z-index: -1;
-}
 
-.capability-card h3 {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 6px;
-  font-family: var(--font-primary);
-}
 
-.capability-card p {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin: 0;
-  line-height: 1.4;
-}
 
 /* Sinir Ağı Arka Planı */
 .neural-background {
@@ -220,40 +91,13 @@
   transition: opacity 0.5s ease;
 }
 
-/* Son Söyleşiler Kapsayıcısı */
-.welcome-container .recent-chats-container {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 8px;
-  margin-top: 15px;
-}
 
-.welcome-container .recent-chats-container .template-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
 
-.recent-chat-meta {
-  display: block;
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 2px;
-  line-height: 1.2;
-}
 
 /* Duyarlı Tasarım */
 @media (max-width: 1200px) {
   .welcome-container {
     padding: 12px 20px 20px;
-  }
-  .welcome-container .capabilities-grid {
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  }
-  .welcome-container .recent-chats-container {
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 }
 
@@ -265,11 +109,6 @@
   .welcome-container {
     padding: 12px 16px 20px;
     min-height: calc(100vh - 180px);
-  }
-  .welcome-container .capabilities-grid,
-  .welcome-container .recent-chats-container,
-  .quick-templates-grid {
-    grid-template-columns: 1fr;
   }
   .welcome-title {
     font-size: 36px;

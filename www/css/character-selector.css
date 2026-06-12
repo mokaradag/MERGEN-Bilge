@@ -338,15 +338,7 @@
   color: var(--text-secondary);
 }
 
-.character-title-animate {
-  animation: fadeIn 0.6s ease 0.2s forwards;
-  opacity: 0;
-}
 
-.character-lore-animate {
-  animation: fadeIn 0.8s ease 0.4s forwards;
-  opacity: 0;
-}
 
 @media (max-width: 1440px) {
   .character-image-container {

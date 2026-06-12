@@ -346,28 +346,10 @@
   font-size: 13px;
 }
 
-.chat-search-results .chat-search-item {
-  font-size: 15px;
-}
 
-.chat-search-results .chat-search-item .chat-search-title {
-  font-size: 16px;
-}
 
-.chat-search-results .chat-search-item .chat-search-snippet {
-  font-size: 14px;
-  line-height: 1.6;
-}
 
-.chat-search-results .chat-search-item .chat-search-meta {
-  color: #7a8699 !important;
-  font-size: 13px;
-}
 
-.chat-search-results .chat-search-item .chat-search-date {
-  color: #8b95a5 !important;
-  font-size: 13px;
-}
 
 .chat-search-initial p,
 .chat-search-empty p {

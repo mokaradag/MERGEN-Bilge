@@ -1,263 +1,156 @@
 /* ============================================================
- * Başlık: Açık Tema - Kişiselleştirme ve Yapılandırma Onarımları
+ * Başlık: Açık Tema — Ayarlar ve Kişiselleştirme
  * Dosya: www/css/theme_light_personalization.css
- * Açıklama: Kişiselleştirme sayfasında Deneyim Modu kartları,
- *           Karakter seçim butonları, Karakter Bilgi konteyneri ve
- *           ek alt bölümler (style-card, signature-wrapper, metrics)
- *           için light tema kontrast ve karakter renk kimliği
- *           korunumu. Yapılandırma sayfasında da kalıntı koyu
- *           panelleri light yüzeye çeker.
- *
- *           Önceki sürümde:
- *             - Karakter butonları (Emre/Selin/...) light arka planda
- *               kimlik renklerini kaybediyordu.
- *             - Hover'da "torch/glow" efekti light temada yoktu.
- *             - Karakter Bilgi alanı `.character-info-container`
- *               koyu kalıyor ve light arka planla çatışıyordu.
- *             - .character-style-card / .character-metric koyu yüzeyle
- *               içerikleri okunmuyordu.
- *             - Deneyim Modu kartlarının seçilmeyen halleri
- *               ayırt edilmiyordu.
- *
- *           Hedef:
- *             - Karakter rengi (--char-accent) light temada güçlü kalsın.
- *             - Cinematic Hover halkası light yüzey üzerinde de görünsün.
- *             - .character-extra-sections (style/signature/metrics)
- *               light kart yüzeyine geçsin; okunaklı tipografi.
- *             - Deneyim Modu kartlarının hover, default, selected
- *               durumları net olsun.
- *
- *           Yalnızca <html data-theme="light"> altında etkilidir.
+ * Katman: tema 7/8
+ * Açıklama: Kişiselleştirme (karakter seçimi, deneyim modu, sinematik
+ *           keşif) ve Yapılandırma sayfalarının açık tema yüzeyleri.
+ *           Karakter renk kimliği --char-accent değişkeni üzerinden
+ *           korunur. Derin uzay / sinematik alanlar bilinçli olarak
+ *           koyu kalır.
  * ============================================================ */
 
-/* ============================================================
- * 1) Kişiselleştirme sayfası ana yüzey light arka plan
- * ============================================================ */
-html[data-theme="light"] .settings-content,
-html[data-theme="light"] .kisisellestirme-page,
-html[data-theme="light"] #settings_kisisel,
-html[data-theme="light"] .settings-section {
+html[data-theme="light"] .mode-card.selected {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  background: rgba(0, 48, 135, 0.05) !important;
+  box-shadow: 0 0 0 2px rgba(0, 48, 135, 0.20), var(--shadow-card-hover) !important;
+}
+
+html[data-theme="light"] .skip-intro-checkbox {
+  accent-color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .settings-card {
+  color: var(--color-text-soft) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  border: 1px solid rgba(0, 48, 135, 0.12) !important;
+  box-shadow: 0 6px 18px rgba(15, 28, 51, 0.06) !important;
+}
+
+html[data-theme="light"] .settings-card .settings-title,
+html[data-theme="light"] .settings-card .setting-subtitle {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .settings-card .setting-description {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .mode-card {
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1.5px solid rgba(0, 48, 135, 0.14) !important;
+  box-shadow: 0 6px 18px rgba(15, 28, 51, 0.06);
+  transition: all 0.25s ease;
+}
+
+html[data-theme="light"] .mode-card:hover {
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 10px 26px rgba(0, 48, 135, 0.14), 0 0 0 4px rgba(0, 48, 135, 0.06) !important;
+  background: #ffffff !important;
+  transform: translateY(-2px);
+}
+
+html[data-theme="light"] .mode-card.active {
+  background: linear-gradient(160deg, rgba(0, 48, 135, 0.06) 0%, rgba(255, 255, 255, 0.98) 50%, rgba(255, 86, 32, 0.04) 100%) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.18), 0 12px 28px rgba(0, 48, 135, 0.12) !important;
+}
+
+html[data-theme="light"] .character-extra-section,
+html[data-theme="light"] .character-extra {
+  background: rgba(247, 249, 253, 0.88) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid rgba(0, 48, 135, 0.10) !important;
+  border-radius: 14px;
+}
+
+html[data-theme="light"] .character-extra-section *,
+html[data-theme="light"] .character-extra * {
+  color: inherit !important;
+}
+
+html[data-theme="light"] .character-extra-section h3,
+html[data-theme="light"] .character-extra-section h4 {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-container {
+  background: rgba(10, 16, 38, 0.95) !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.55) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-container * {
+  color: inherit;
+}
+
+html[data-theme="light"] .cinematic-modal-container h1,
+html[data-theme="light"] .cinematic-modal-container h2,
+html[data-theme="light"] .cinematic-modal-container h3 {
+  color: #00f2ff !important;
+  text-shadow: 0 0 18px rgba(0, 242, 255, 0.35) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-container p,
+html[data-theme="light"] .cinematic-modal-container li {
+  color: rgba(255, 255, 255, 0.88) !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] .cinematic-modal-close {
+  color: rgba(255, 255, 255, 0.78) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-close:hover {
+  color: #00f2ff !important;
+  background: rgba(255, 255, 255, 0.10) !important;
+  border-color: rgba(0, 242, 255, 0.45) !important;
+}
+
+html[data-theme="light"] .cinematic-modal-container .btn {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.30) !important;
+}
+
+html[data-theme="light"] #settings_kisisel {
   background: transparent !important;
   color: var(--color-text, #0f1c33) !important;
 }
 
-html[data-theme="light"] .settings-section-title,
-html[data-theme="light"] .settings-card-title,
-html[data-theme="light"] .settings-title,
-html[data-theme="light"] .kisisellestirme-page h2,
-html[data-theme="light"] .kisisellestirme-page h3 {
+html[data-theme="light"] .settings-title {
   color: var(--mb-brand-primary, #003087) !important;
   font-weight: 700;
   letter-spacing: 0.01em;
 }
 
-html[data-theme="light"] .settings-help-text,
-html[data-theme="light"] .settings-description,
-html[data-theme="light"] .settings-card-desc {
-  color: var(--color-text-soft, #1f2a44) !important;
-  opacity: 0.9;
-}
-
-/* ============================================================
- * 2) Deneyim Modu kartları (Odak / Dinamik / Bütünleşik)
- *    Hedef: seçilmeyen kartlar light cam, kartlar arasında
- *    ayrımı net olan default + hover + selected durumları.
- * ============================================================ */
-html[data-theme="light"] .mode-card .mode-card-inner {
-  background: rgba(255, 255, 255, 0.92) !important;
-  border: 1px solid rgba(0, 48, 135, 0.16) !important;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 6px 18px rgba(15, 28, 51, 0.07) !important;
-  color: var(--color-text, #0f1c33) !important;
-  backdrop-filter: blur(10px) saturate(140%);
-  -webkit-backdrop-filter: blur(10px) saturate(140%);
-}
-
-html[data-theme="light"] .mode-card:hover .mode-card-inner {
-  background: #ffffff !important;
-  border-color: rgba(0, 48, 135, 0.34) !important;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.95) inset,
-    0 0 0 1px rgba(0, 48, 135, 0.08),
-    0 12px 28px rgba(0, 48, 135, 0.14) !important;
-}
-
-html[data-theme="light"] .mode-card.selected .mode-card-inner {
-  background: linear-gradient(165deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(247, 249, 253, 0.92) 100%) !important;
-  border-color: var(--mode-accent, var(--mb-brand-primary, #003087)) !important;
-  box-shadow:
-    0 0 0 3px var(--mode-accent, var(--mb-brand-primary, #003087)),
-    0 0 32px rgba(var(--mode-accent-rgb, 0, 48, 135), 0.18),
-    0 12px 32px rgba(15, 28, 51, 0.12) !important;
-}
-
-/* Spotlight ışıması light temada da görünür (mix-blend-mode: multiply
- * light arka planda daha doğal sonuç verir) */
-html[data-theme="light"] .mode-card::before {
-  mix-blend-mode: multiply;
-}
-
-/* Kart başlığı/açıklama/ikon */
-html[data-theme="light"] .mode-card-title {
-  color: var(--color-text, #0f1c33) !important;
-  font-weight: 600 !important;
-}
-
-html[data-theme="light"] .mode-card.selected .mode-card-title {
-  color: var(--mode-accent, var(--mb-brand-primary, #003087)) !important;
-}
-
-html[data-theme="light"] .mode-card-desc {
-  color: var(--color-text-soft, #1f2a44) !important;
-  opacity: 0.9;
-}
-
 html[data-theme="light"] .mode-card-icon {
+  color: var(--mb-brand-primary, #003087) !important;
   background: rgba(255, 255, 255, 0.94) !important;
   border: 1px solid rgba(0, 48, 135, 0.14) !important;
   box-shadow: 0 4px 10px rgba(15, 28, 51, 0.06);
-}
-
-html[data-theme="light"] .mode-card:hover .mode-card-icon {
-  border-color: rgba(0, 48, 135, 0.30) !important;
-  box-shadow: 0 6px 14px rgba(0, 48, 135, 0.12);
-}
-
-html[data-theme="light"] .mode-card.selected .mode-card-icon {
-  background: linear-gradient(135deg,
-    var(--mode-accent, var(--mb-brand-primary, #003087)) 0%,
-    var(--mode-accent-hover, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
-  border-color: var(--mode-accent, var(--mb-brand-primary, #003087)) !important;
-  box-shadow:
-    0 0 0 2px rgba(0, 48, 135, 0.10),
-    0 8px 20px rgba(var(--mode-accent-rgb, 0, 48, 135), 0.25) !important;
 }
 
 html[data-theme="light"] .mode-card-icon i {
   color: var(--mb-brand-primary, #003087) !important;
 }
 
-html[data-theme="light"] .mode-card:hover .mode-card-icon i {
-  color: var(--mode-accent, var(--mb-brand-primary, #003087)) !important;
-}
-
-html[data-theme="light"] .mode-card.selected .mode-card-icon i {
-  color: #ffffff !important;
-}
-
-/* ============================================================
- * 3) Karakter seçim butonları
- *    Karakter ismi (Emre/Selin/Deniz/Can/İpek) butonları light
- *    temada kendi --char-accent kimliklerini korur.
- *    Seçilmeyen butonlar yumuşak cam, hover'da torch/glow + ince
- *    karakter halkası, seçili buton karakter gradient'i ile dolu.
- * ============================================================ */
-html[data-theme="light"] .character-tab,
-html[data-theme="light"] .character-selector-card,
-html[data-theme="light"] .character-button,
-html[data-theme="light"] [data-character-id],
-html[data-theme="light"] .character-pick-btn {
-  background: rgba(255, 255, 255, 0.94) !important;
-  color: var(--color-text-soft, #1f2a44) !important;
-  border: 1px solid rgba(0, 48, 135, 0.16) !important;
-  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05);
-  transition: all 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-/* Hover - torch/glow effect (light tema adaptasyonu)
- * Önceki dark temadaki sıcak parıltı, light yüzey üzerinde de
- * karakter aksanı tonunda görünür. */
-html[data-theme="light"] .character-tab:hover,
-html[data-theme="light"] .character-selector-card:hover,
-html[data-theme="light"] .character-button:hover,
-html[data-theme="light"] [data-character-id]:hover,
-html[data-theme="light"] .character-pick-btn:hover {
-  background: #ffffff !important;
-  color: var(--char-accent, var(--mb-brand-primary, #003087)) !important;
-  border-color: var(--char-accent, var(--mb-brand-primary, #003087)) !important;
-  box-shadow:
-    0 0 0 3px var(--char-accent-soft, rgba(0, 48, 135, 0.10)),
-    0 0 28px var(--char-accent-soft, rgba(0, 48, 135, 0.18)),
-    0 12px 28px rgba(15, 28, 51, 0.12) !important;
-  transform: translateY(-2px);
-}
-
-/* Seçili - karakter gradient'i tam dolu */
-html[data-theme="light"] .character-tab.is-selected,
-html[data-theme="light"] .character-tab.active,
-html[data-theme="light"] .character-tab.selected,
-html[data-theme="light"] .character-selector-card.is-selected,
-html[data-theme="light"] .character-selector-card.active,
-html[data-theme="light"] .character-selector-card.selected,
-html[data-theme="light"] .character-button.active,
-html[data-theme="light"] [data-character-id].active,
-html[data-theme="light"] .character-pick-btn.active {
-  background: linear-gradient(135deg,
-    var(--char-accent, var(--mb-brand-primary, #003087)) 0%,
-    var(--char-accent-hover, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
-  color: #ffffff !important;
-  border-color: var(--char-accent, var(--mb-brand-primary, #003087)) !important;
-  box-shadow:
-    0 0 0 3px var(--char-accent-soft, rgba(0, 48, 135, 0.18)),
-    0 12px 32px rgba(15, 28, 51, 0.20) !important;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
-}
-
-html[data-theme="light"] .character-tab.is-selected:hover,
-html[data-theme="light"] .character-tab.active:hover,
 html[data-theme="light"] .character-selector-card.active:hover {
   color: #ffffff !important;
   filter: brightness(1.04);
-}
-
-/* ============================================================
- * 4) Karakter Bilgi Konteyneri (character-info-container)
- *    Önceki tasarım koyu uzay teması idi; light temada beyaz/cam
- *    yüzeye çekilir; metin ve kartlar okunaklı kalır.
- * ============================================================ */
-html[data-theme="light"] .character-info-container {
-  background: linear-gradient(165deg,
-    rgba(255, 255, 255, 0.94) 0%,
-    rgba(247, 249, 253, 0.88) 100%) !important;
-  color: var(--color-text, #0f1c33) !important;
-  border: 1px solid rgba(0, 48, 135, 0.14) !important;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 14px 38px rgba(15, 28, 51, 0.08) !important;
-  /* Eski şablonda inset gölge koyu temaya göre kalıyordu */
-  --shadow-inset: inset 0 0 24px rgba(0, 48, 135, 0.04);
 }
 
 html[data-theme="light"] .character-info-container * {
   color: inherit;
 }
 
-html[data-theme="light"] .character-info-container h1,
-html[data-theme="light"] .character-info-container h2,
-html[data-theme="light"] .character-info-container h3,
-html[data-theme="light"] .character-info-container .character-name {
-  color: var(--char-accent, var(--mb-brand-primary, #003087)) !important;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.65);
-}
-
-html[data-theme="light"] .character-info-container .character-subtitle,
-html[data-theme="light"] .character-info-container .character-role {
-  color: var(--mb-brand-primary, #003087) !important;
-  opacity: 0.85;
-}
-
 html[data-theme="light"] .character-info-placeholder {
   color: var(--color-muted, #5b6577) !important;
 }
 
-/* Lore (uzun karakter açıklaması) - koyu metin light arka planda */
 html[data-theme="light"] .character-lore,
-html[data-theme="light"] .character-lore-text,
 html[data-theme="light"] .character-info-body {
   color: var(--color-text, #0f1c33) !important;
 }
@@ -266,30 +159,20 @@ html[data-theme="light"] .character-lore p {
   color: var(--color-text, #0f1c33) !important;
 }
 
-/* ============================================================
- * 5) Karakter Stil Kartı (character-style-card) ve İmza Hareketleri
- *    (character-signature-wrapper) - light kart yüzeyi.
- * ============================================================ */
 html[data-theme="light"] .character-style-card,
 html[data-theme="light"] .character-signature-wrapper {
-  background: linear-gradient(160deg,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(247, 249, 253, 0.92) 100%) !important;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 249, 253, 0.92) 100%) !important;
   border: 1px solid rgba(0, 48, 135, 0.14) !important;
   color: var(--color-text, #0f1c33) !important;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 14px 28px rgba(15, 28, 51, 0.08) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 14px 28px rgba(15, 28, 51, 0.08) !important;
 }
 
-html[data-theme="light"] .character-style-heading,
-html[data-theme="light"] .character-signature-heading {
+html[data-theme="light"] .character-style-heading {
   color: var(--mb-brand-primary, #003087) !important;
   font-weight: 600;
 }
 
-html[data-theme="light"] .character-style-body,
-html[data-theme="light"] .character-signature-body {
+html[data-theme="light"] .character-style-body {
   color: var(--color-text-soft, #1f2a44) !important;
 }
 
@@ -301,10 +184,6 @@ html[data-theme="light"] .character-signature-list li::marker {
   color: var(--char-accent, var(--mb-brand-accent, #FF5620));
 }
 
-/* ============================================================
- * 6) Karakter Metrikleri (character-metric) ve progress barlar
- *    Light yüzey + karakter kimlik renginde dolu çubuk.
- * ============================================================ */
 html[data-theme="light"] .character-metric {
   background: rgba(255, 255, 255, 0.96) !important;
   border: 1px solid rgba(0, 48, 135, 0.12) !important;
@@ -322,90 +201,23 @@ html[data-theme="light"] .character-metric .character-metric-value {
   font-weight: 700;
 }
 
-html[data-theme="light"] .character-metric-bar,
-html[data-theme="light"] .character-metric-track {
+html[data-theme="light"] .character-metric-bar {
   background: rgba(0, 48, 135, 0.10) !important;
   border-radius: 999px;
 }
 
-html[data-theme="light"] .character-metric-bar-fill,
-html[data-theme="light"] .character-metric-track-fill {
-  background: linear-gradient(90deg,
-    var(--char-accent, var(--mb-brand-primary, #003087)) 0%,
-    var(--char-accent-hover, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
+html[data-theme="light"] .character-metric-bar-fill {
+  background: linear-gradient(90deg, var(--char-accent, var(--mb-brand-primary, #003087)) 0%, var(--char-accent-hover, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
   box-shadow: 0 0 8px var(--char-accent-soft, rgba(0, 48, 135, 0.30));
 }
 
-/* ============================================================
- * 7) Yapılandırma (settings_yapilandirma) sayfasında kalıntı
- *    koyu yüzeyleri temizle (analysis-tool kartları, model-info
- *    panelleri vb.).
- * ============================================================ */
-html[data-theme="light"] .yapilandirma-page .settings-card,
-html[data-theme="light"] #settings_yapilandirma .settings-card,
-html[data-theme="light"] .yapilandirma-section .settings-card,
-html[data-theme="light"] .settings-tool-card,
-html[data-theme="light"] .settings-model-info,
-html[data-theme="light"] .analysis-tool-card,
-html[data-theme="light"] .quick-template-card {
+html[data-theme="light"] #settings_yapilandirma .settings-card {
   background: linear-gradient(180deg, #ffffff 0%, #f7f9fd 100%) !important;
   color: var(--color-text, #0f1c33) !important;
   border: 1px solid rgba(0, 48, 135, 0.14) !important;
   box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05), 0 6px 16px rgba(15, 28, 51, 0.04);
 }
 
-html[data-theme="light"] .yapilandirma-page .settings-card-title,
-html[data-theme="light"] .settings-tool-card h4,
-html[data-theme="light"] .settings-model-info h4,
-html[data-theme="light"] .analysis-tool-card h4 {
-  color: var(--mb-brand-primary, #003087) !important;
-}
-
-html[data-theme="light"] .yapilandirma-page .settings-card p,
-html[data-theme="light"] .settings-tool-card p,
-html[data-theme="light"] .settings-model-info p,
-html[data-theme="light"] .analysis-tool-card p {
-  color: var(--color-text-soft, #1f2a44) !important;
-}
-
-html[data-theme="light"] .settings-tool-card .form-control,
-html[data-theme="light"] .yapilandirma-page .form-control,
-html[data-theme="light"] .yapilandirma-page select,
-html[data-theme="light"] .yapilandirma-page input[type="text"],
-html[data-theme="light"] .yapilandirma-page input[type="number"] {
-  background: #ffffff !important;
-  color: var(--color-text, #0f1c33) !important;
-  border: 1px solid rgba(0, 48, 135, 0.22) !important;
-}
-
-html[data-theme="light"] .settings-tool-card .form-control:focus,
-html[data-theme="light"] .yapilandirma-page .form-control:focus {
-  border-color: var(--mb-brand-primary, #003087) !important;
-  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.14);
-}
-
-/* Yapılandırma tool aktif/seçili rozetleri ve switch'leri */
-html[data-theme="light"] .settings-tool-card .badge,
-html[data-theme="light"] .yapilandirma-page .badge {
-  background: rgba(0, 48, 135, 0.08) !important;
-  color: var(--mb-brand-primary, #003087) !important;
-  border: 1px solid rgba(0, 48, 135, 0.22);
-  font-weight: 600;
-}
-
-html[data-theme="light"] .settings-tool-card .badge.active,
-html[data-theme="light"] .yapilandirma-page .badge.active,
-html[data-theme="light"] .settings-tool-card .badge.is-enabled {
-  background: linear-gradient(135deg,
-    var(--mb-brand-accent, #FF5620) 0%,
-    var(--mb-brand-accent-2, #FF8022) 100%) !important;
-  color: #ffffff !important;
-  border-color: rgba(255, 86, 32, 0.55);
-}
-
-/* ============================================================
- * 8) Karakter Avatarı / Görsel Konteyneri kenarlığı yumuşat
- * ============================================================ */
 html[data-theme="light"] .character-image-container {
   background: rgba(255, 255, 255, 0.55) !important;
   border: 1px solid rgba(0, 48, 135, 0.10) !important;
@@ -416,37 +228,347 @@ html[data-theme="light"] .character-image {
   filter: drop-shadow(0 8px 18px rgba(15, 28, 51, 0.12));
 }
 
-/* ============================================================
- * 9) Karakter aksan renkleri (light tema)
- *    --char-accent hiçbir yerde tanımlı olmadığından aktif karakter
- *    butonları ve metrik (progress) barları kurumsal maviye düşüyordu.
- *    Her personaya kendi tema rengi atanır:
- *      Emre = mor, Selin = mavi, Deniz = yeşil, Can = turuncu/kızıl, İpek = pembe.
- *    [data-character-id] taşıyan butonlar ve aktif karakter bilgi/metrik
- *    paneli bu değişkenleri devralır; renkler açık zeminde kontrastlıdır.
- * ============================================================ */
-html[data-theme="light"] [data-character-id="emre"] {
-  --char-accent: #7c4dff;
-  --char-accent-hover: #6a3df0;
-  --char-accent-soft: rgba(124, 77, 255, 0.18);
+html[data-theme="light"] .mode-card[data-mode="focus"] {
+  --mode-accent: #d97706;
+  --mode-accent-hover: #b45309;
+  --mode-accent-rgb: 217, 119, 6;
+  --mode-accent-soft: rgba(217, 119, 6, 0.12);
 }
-html[data-theme="light"] [data-character-id="selin"] {
-  --char-accent: #2563eb;
-  --char-accent-hover: #1d4ed8;
-  --char-accent-soft: rgba(37, 99, 235, 0.18);
+
+html[data-theme="light"] .mode-card[data-mode="dinamik"],
+html[data-theme="light"] .mode-card[data-mode="dynamic"] {
+  --mode-accent: var(--mb-brand-primary, #003087);
+  --mode-accent-hover: var(--mb-brand-primary-alt, #002D7A);
+  --mode-accent-rgb: 0, 48, 135;
+  --mode-accent-soft: rgba(0, 48, 135, 0.10);
 }
-html[data-theme="light"] [data-character-id="deniz"] {
-  --char-accent: #16a34a;
-  --char-accent-hover: #15803d;
-  --char-accent-soft: rgba(22, 163, 74, 0.18);
+
+html[data-theme="light"] .mode-card[data-mode="butunlesik"],
+html[data-theme="light"] .mode-card[data-mode="integrated"] {
+  --mode-accent: #16a34a;
+  --mode-accent-hover: #15803d;
+  --mode-accent-rgb: 22, 163, 74;
+  --mode-accent-soft: rgba(22, 163, 74, 0.10);
 }
-html[data-theme="light"] [data-character-id="can"] {
-  --char-accent: #ea580c;
-  --char-accent-hover: #c2410c;
-  --char-accent-soft: rgba(234, 88, 12, 0.18);
+
+html[data-theme="light"] .mode-card:hover .mode-card-title {
+  color: var(--mode-accent, var(--mb-brand-primary, #003087)) !important;
 }
-html[data-theme="light"] [data-character-id="ipek"] {
-  --char-accent: #ec4899;
-  --char-accent-hover: #db2777;
-  --char-accent-soft: rgba(236, 72, 153, 0.18);
+
+html[data-theme="light"] .character-selector-card.active {
+  border-color: var(--char-accent, var(--mb-brand-primary, #003087)) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  background: linear-gradient(135deg, var(--char-accent, var(--mb-brand-primary, #003087)) 0%, var(--char-accent-hover, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
+  box-shadow: 0 0 0 3px var(--char-accent-soft, rgba(0, 48, 135, 0.20)), 0 12px 32px rgba(15, 28, 51, 0.18) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--char-accent, var(--mb-brand-primary, #003087)) !important;
 }
+
+html[data-theme="light"] .character-selector-card.selected {
+  border-color: var(--char-accent, var(--mb-brand-primary, #003087)) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  background: linear-gradient(135deg, var(--char-accent, var(--mb-brand-primary, #003087)) 0%, var(--char-accent-hover, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 3px var(--char-accent-soft, rgba(0, 48, 135, 0.20)), 0 12px 32px rgba(15, 28, 51, 0.18) !important;
+  border: 1px solid var(--char-accent, var(--mb-brand-primary, #003087)) !important;
+}
+
+html[data-theme="light"] .character-selector-card:hover {
+  background: #ffffff !important;
+  border-color: var(--char-accent, var(--mb-brand-primary, #003087)) !important;
+  transform: translateY(-2px);
+  color: var(--char-accent, var(--mb-brand-primary, #003087)) !important;
+  box-shadow: 0 0 0 3px var(--char-accent-soft, rgba(0, 48, 135, 0.10)), 0 12px 28px rgba(15, 28, 51, 0.14) !important;
+  border: 1px solid var(--char-accent, var(--mb-brand-primary, #003087)) !important;
+}
+
+html[data-theme="light"] .mode-card[data-mode="odak"] .mode-card-icon i,
+html[data-theme="light"] .mode-card[data-mode="focus"] .mode-card-icon i {
+  color: #d97706 !important;
+}
+
+html[data-theme="light"] .mode-card[data-mode="dinamik"] .mode-card-icon i,
+html[data-theme="light"] .mode-card[data-mode="dynamic"] .mode-card-icon i {
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .mode-card[data-mode="butunlesik"] .mode-card-icon i,
+html[data-theme="light"] .mode-card[data-mode="integrated"] .mode-card-icon i {
+  color: #16a34a !important;
+}
+
+html[data-theme="light"] .settings-header-fixed {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.10) inset, 0 4px 14px rgba(0, 48, 135, 0.18) !important;
+}
+
+html[data-theme="light"] .settings-header-fixed .page-title,
+html[data-theme="light"] .settings-header-fixed h3,
+html[data-theme="light"] .settings-header-fixed h4 {
+  color: #ffffff !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.20) !important;
+  font-weight: 600 !important;
+}
+
+html[data-theme="light"] .chat-header .character-badge {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.40) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10) !important;
+}
+
+html[data-theme="light"] .mode-card[data-mode="denge"] {
+  --mode-accent: rgba(47, 109, 246, 0.95) !important;
+  --mode-accent-bright: rgba(47, 109, 246, 1) !important;
+  --mode-accent-rgb: 47, 109, 246 !important;
+  --mode-accent-hover: rgba(30, 88, 220, 1) !important;
+  --glow-color: rgba(47, 109, 246, 0.55) !important;
+}
+
+html[data-theme="light"] .mode-card[data-mode="odak"] {
+  --mode-accent-soft: rgba(217, 119, 6, 0.12);
+  --mode-accent: rgba(217, 119, 6, 0.95) !important;
+  --mode-accent-hover: rgba(180, 83, 9, 1) !important;
+  --mode-accent-rgb: 217, 119, 6 !important;
+  --mode-accent-bright: rgba(217, 119, 6, 1) !important;
+  --glow-color: rgba(217, 119, 6, 0.55) !important;
+}
+
+html[data-theme="light"] .mode-card[data-mode="kesif"] {
+  --mode-accent: rgba(15, 138, 88, 0.95) !important;
+  --mode-accent-bright: rgba(15, 138, 88, 1) !important;
+  --mode-accent-rgb: 15, 138, 88 !important;
+  --mode-accent-hover: rgba(8, 109, 70, 1) !important;
+  --glow-color: rgba(15, 138, 88, 0.55) !important;
+}
+
+html[data-theme="light"] .mode-card .mode-card-icon {
+  background: rgb(var(--mode-accent-rgb, 0, 48, 135)) !important;
+  border: 1px solid rgba(var(--mode-accent-rgb, 0, 48, 135), 0.85) !important;
+  box-shadow: 0 6px 16px rgba(var(--mode-accent-rgb, 0, 48, 135), 0.25) !important;
+}
+
+html[data-theme="light"] .mode-card .mode-card-icon i {
+  color: #ffffff !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.20)) !important;
+}
+
+html[data-theme="light"] .mode-card:hover .mode-card-icon {
+  border-color: var(--mode-accent, var(--mb-brand-primary, #003087)) !important;
+  background: var(--mode-accent-soft, rgba(0, 48, 135, 0.08)) !important;
+  box-shadow: 0 0 0 4px rgba(var(--mode-accent-rgb, 0, 48, 135), 0.18), 0 10px 24px rgba(var(--mode-accent-rgb, 0, 48, 135), 0.35) !important;
+  transform: scale(1.08);
+}
+
+html[data-theme="light"] .mode-card:hover .mode-card-icon i {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .mode-card.selected .mode-card-icon {
+  border-color: var(--mode-accent, var(--mb-brand-primary, #003087)) !important;
+  background: linear-gradient(135deg, rgb(var(--mode-accent-rgb, 0, 48, 135)) 0%, var(--mode-accent-hover, rgba(var(--mode-accent-rgb, 0, 48, 135), 1)) 100%) !important;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85), 0 0 0 5px rgba(var(--mode-accent-rgb, 0, 48, 135), 0.45), 0 12px 28px rgba(var(--mode-accent-rgb, 0, 48, 135), 0.35) !important;
+}
+
+html[data-theme="light"] .mode-card.selected .mode-card-icon i {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .mode-card .mode-card-inner {
+  color: var(--color-text, #0f1c33) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  border: 1px solid rgba(0, 48, 135, 0.10) !important;
+  box-shadow: 0 4px 14px rgba(15, 28, 51, 0.05) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+}
+
+html[data-theme="light"] .mode-card:hover .mode-card-inner {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.85) !important;
+  border-color: rgba(var(--mode-accent-rgb, 0, 48, 135), 0.55) !important;
+  box-shadow: 0 0 0 2px rgba(var(--mode-accent-rgb, 0, 48, 135), 0.10), 0 14px 32px rgba(var(--mode-accent-rgb, 0, 48, 135), 0.18) !important;
+}
+
+html[data-theme="light"] .mode-card.selected .mode-card-inner {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgb(var(--mode-accent-rgb, 0, 48, 135)) !important;
+  box-shadow: 0 0 0 3px rgba(var(--mode-accent-rgb, 0, 48, 135), 0.22), 0 16px 36px rgba(var(--mode-accent-rgb, 0, 48, 135), 0.22) !important;
+}
+
+html[data-theme="light"] .mode-card::before {
+  mix-blend-mode: multiply !important;
+}
+
+html[data-theme="light"] .mode-card:hover::before {
+  opacity: 0.55 !important;
+}
+
+html[data-theme="light"] .mode-card::after {
+  background: linear-gradient( 90deg, transparent, rgb(var(--mode-accent-rgb, 0, 48, 135)), transparent ) !important;
+}
+
+html[data-theme="light"] .mode-card-title {
+  font-weight: 600 !important;
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .mode-card.selected .mode-card-title {
+  color: rgb(var(--mode-accent-rgb, 0, 48, 135)) !important;
+}
+
+html[data-theme="light"] .mode-card-desc {
+  opacity: 0.9;
+  color: var(--color-text-soft, #1f2a44) !important;
+}
+
+html[data-theme="light"] .mode-card-desc .typing-cursor {
+  background-color: rgb(var(--mode-accent-rgb, 0, 48, 135)) !important;
+}
+
+html[data-theme="light"] .character-btn[data-character="emre"] {
+  --character-accent: #7C4DFF;
+  --character-accent-strong: #6B3FE0;
+  --character-accent-outline: #6B3FE0;
+  --character-accent-soft: rgba(124, 77, 255, 0.18);
+  --character-accent-glow: rgba(124, 77, 255, 0.40);
+}
+
+html[data-theme="light"] .character-btn[data-character="selin"] {
+  --character-accent: #2F6DF6;
+  --character-accent-strong: #1E58DC;
+  --character-accent-outline: #1E58DC;
+  --character-accent-soft: rgba(47, 109, 246, 0.18);
+  --character-accent-glow: rgba(47, 109, 246, 0.40);
+}
+
+html[data-theme="light"] .character-btn[data-character="deniz"] {
+  --character-accent: #0F8A58;
+  --character-accent-strong: #0B7349;
+  --character-accent-outline: #0B7349;
+  --character-accent-soft: rgba(15, 138, 88, 0.18);
+  --character-accent-glow: rgba(15, 138, 88, 0.40);
+}
+
+html[data-theme="light"] .character-btn[data-character="can"] {
+  --character-accent: #B66A2C;
+  --character-accent-strong: #9A5520;
+  --character-accent-outline: #9A5520;
+  --character-accent-soft: rgba(182, 106, 44, 0.18);
+  --character-accent-glow: rgba(182, 106, 44, 0.40);
+}
+
+html[data-theme="light"] .character-btn[data-character="ipek"] {
+  --character-accent: #D85A8A;
+  --character-accent-strong: #B94572;
+  --character-accent-outline: #B94572;
+  --character-accent-soft: rgba(216, 90, 138, 0.18);
+  --character-accent-glow: rgba(216, 90, 138, 0.40);
+}
+
+html[data-theme="light"] .character-btn {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 249, 253, 0.92) 100%) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid rgba(0, 48, 135, 0.16) !important;
+  border-bottom: 3px solid var(--character-accent, var(--mb-brand-primary, #003087)) !important;
+  box-shadow: 0 4px 12px rgba(15, 28, 51, 0.06), inset 0 0 0 1px rgba(255, 255, 255, 0.55) !important;
+  text-shadow: none !important;
+}
+
+html[data-theme="light"] .character-btn:hover {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.98) 0%, var(--character-accent-soft, rgba(0, 48, 135, 0.08)) 100%) !important;
+  color: var(--character-accent, var(--mb-brand-primary, #003087)) !important;
+  border-color: var(--character-accent, var(--mb-brand-primary, #003087)) !important;
+  border-bottom-color: var(--character-accent, var(--mb-brand-primary, #003087)) !important;
+  box-shadow: 0 0 0 3px var(--character-accent-soft, rgba(0, 48, 135, 0.10)), 0 0 32px var(--character-accent-soft, rgba(0, 48, 135, 0.16)), 0 14px 32px rgba(15, 28, 51, 0.10) !important;
+  transform: translateY(-3px) !important;
+}
+
+html[data-theme="light"] .character-btn.active {
+  background: linear-gradient( 150deg, var(--character-accent, var(--mb-brand-primary, #003087)) 0%, var(--character-accent-strong, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--character-accent-outline, var(--character-accent, var(--mb-brand-primary, #003087))) !important;
+  border-bottom: 1px solid var(--character-accent, var(--mb-brand-primary, #003087)) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 0 0 3px var(--character-accent-soft, rgba(0, 48, 135, 0.22)), 0 14px 32px var(--character-accent-glow, rgba(0, 48, 135, 0.30)), 0 0 0 1px var(--character-accent-outline, var(--character-accent, var(--mb-brand-primary, #003087))) !important;
+  transform: translateY(-2px) !important;
+}
+
+html[data-theme="light"] .character-btn.active:hover {
+  filter: brightness(1.04);
+  box-shadow: 0 0 0 3px var(--character-accent-soft, rgba(0, 48, 135, 0.24)), 0 18px 38px var(--character-accent-glow, rgba(0, 48, 135, 0.40)), 0 0 0 1px var(--character-accent-outline, var(--character-accent, var(--mb-brand-primary, #003087))) !important;
+}
+
+html[data-theme="light"] .character-btn.active * {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .character-selector-card {
+  transition: all 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.94) 0%, rgba(247, 244, 235, 0.88) 100%) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid rgba(0, 48, 135, 0.10) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 8px 24px rgba(15, 28, 51, 0.06) !important;
+}
+
+html[data-theme="light"] .character-info-container {
+  --shadow-inset: inset 0 0 24px rgba(0, 48, 135, 0.04);
+  border-color: var(--char-accent, rgba(0, 48, 135, 0.20)) !important;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.94) 0%, rgba(247, 244, 235, 0.88) 100%) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--character-accent, rgba(0, 48, 135, 0.18)) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 14px 38px rgba(15, 28, 51, 0.08), 0 0 0 1px var(--character-accent-soft, rgba(0, 48, 135, 0.08)) !important;
+}
+
+html[data-theme="light"] .character-display-area,
+html[data-theme="light"] .character-info {
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.94) 0%, rgba(247, 244, 235, 0.88) 100%) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--character-accent, rgba(0, 48, 135, 0.18)) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 14px 38px rgba(15, 28, 51, 0.08), 0 0 0 1px var(--character-accent-soft, rgba(0, 48, 135, 0.08)) !important;
+}
+
+html[data-theme="light"] .character-info-container h1,
+html[data-theme="light"] .character-info-container h2,
+html[data-theme="light"] .character-info-container h3,
+html[data-theme="light"] .character-info-container .character-name,
+html[data-theme="light"] .character-info-container h4,
+html[data-theme="light"] .character-info-container .character-title,
+html[data-theme="light"] .character-display-area h1,
+html[data-theme="light"] .character-display-area h2,
+html[data-theme="light"] .character-display-area h3,
+html[data-theme="light"] .character-display-area h4,
+html[data-theme="light"] .character-display-area .character-name,
+html[data-theme="light"] .character-display-area .character-title {
+  color: var(--character-accent, var(--mb-brand-primary, #003087)) !important;
+  text-shadow: none !important;
+  font-weight: 700 !important;
+}
+
+html[data-theme="light"] .character-info-container .progress-bar,
+html[data-theme="light"] .character-info-container .progress > .progress-bar,
+html[data-theme="light"] .character-info-container .metric-bar > .metric-bar-fill,
+html[data-theme="light"] .character-display-area .progress-bar,
+html[data-theme="light"] .character-display-area .progress > .progress-bar {
+  background: linear-gradient(90deg, var(--character-accent, var(--mb-brand-primary, #003087)) 0%, var(--character-accent-strong, var(--mb-brand-primary-alt, #002D7A)) 100%) !important;
+  box-shadow: 0 0 8px var(--character-accent-soft, rgba(0, 48, 135, 0.30)) !important;
+}
+
+html[data-theme="light"] .character-info-container .progress,
+html[data-theme="light"] .character-info-container .metric-bar,
+html[data-theme="light"] .character-display-area .progress,
+html[data-theme="light"] .character-display-area .metric-bar {
+  background: rgba(15, 28, 51, 0.08) !important;
+  border: 1px solid rgba(0, 48, 135, 0.08) !important;
+}
+
+html[data-theme="light"] .character-info-container ul li::marker,
+html[data-theme="light"] .character-info-container .signature-list li::marker,
+html[data-theme="light"] .character-display-area ul li::marker {
+  color: var(--character-accent, var(--mb-brand-primary, #003087)) !important;
+}
+

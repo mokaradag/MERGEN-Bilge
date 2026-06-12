@@ -1,10 +1,6 @@
 /* www/css/history_saved_chats.css */
 /* Geçmiş ve Kayıtlı Söyleşiler Stilleri */
 
-/* Geçmiş Sayfası */
-.history-header {
-  margin-bottom: 32px;
-}
 
 .history-controls {
   display: flex;
@@ -20,33 +16,8 @@
   min-width: 300px;
 }
 
-/* Tarih aralığı girişlerini yan yana hizala */
-.history-controls .input-daterange {
-  display: flex !important;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
 
-.history-controls .input-daterange input.form-control {
-  flex: 1 1 0;
-  min-width: 0;
-}
 
-.history-controls .input-daterange .input-group-addon,
-.history-controls .input-daterange .input-group-prepend > .input-group-text,
-.history-controls .input-daterange .input-group-append > .input-group-text {
-  height: 38px;
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 28px;
-  font-weight: 600;
-  padding: 0 4px;
-}
 
 /* Tarih aralığı ayırıcı */
 .date-filter .input-group-addon {
@@ -62,10 +33,6 @@
   gap: 12px;
 }
 
-/* Kayıtlı Söyleşiler Sayfası */
-.saved-chats-header {
-  margin-bottom: 32px;
-}
 
 .saved-chats-controls {
   display: flex;
@@ -76,30 +43,9 @@
   gap: 16px;
 }
 
-.search-box {
-  flex: 1;
-  max-width: 400px;
-}
 
-/* Arama kutusu koyu tema */
-.search-box .form-control {
-  background-color: var(--background-dark) !important;
-  border: 1px solid var(--border-color) !important;
-  color: var(--text-secondary) !important;
-  border-radius: 8px !important;
-  padding: 10px 16px !important;
-}
 
-.search-box .form-control::placeholder {
-  color: var(--text-muted) !important;
-}
 
-.search-box .form-control:focus {
-  background-color: var(--background-dark) !important;
-  border-color: var(--primary-color) !important;
-  box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.2) !important;
-  color: var(--text-primary) !important;
-}
 
 .saved-chats-grid {
   display: grid;
@@ -159,12 +105,6 @@
   color: var(--text-muted);
 }
 
-/* Küçük kayıtlı sohbet kartları */
-.saved-chats-grid-small {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px; 
-}
 
 .saved-chat-card-small {
   background: var(--background-light);
@@ -206,17 +146,7 @@
   padding: 2px !important;
 }
 
-/* Son sohbet kartları için yüklenme durumu */
-.recent-chat-card.loading {
-  opacity: 0.6;
-  cursor: not-allowed;
-  background: rgba(255, 107, 53, 0.1);
-}
 
-.recent-chat-card.loading::after {
-  content: " ...";
-  animation: dots 1.5s steps(4, end) infinite;
-}
 
 /* ============================================
    Söyleşi Geçmişi Header Button Stilleri

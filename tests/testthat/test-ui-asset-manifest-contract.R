@@ -197,7 +197,7 @@ test_that("UI CSS katman/kaskad sıra kuralları manifest düzeyinde doğrulanı
   expect_true(is.list(asset_env$ui_asset_css_order_rules))
   expect_gt(length(asset_env$ui_asset_css_order_rules), 0)
 
-  # Korunan tema sözleşmesi çapaları: tokens -> light -> extras, overhaul
+  # Korunan tema sözleşmesi çapaları: tokens -> core -> alan katmanları
   # zinciri ve tema-sonrası yüzeyler kurallarda açıkça yer almalıdır.
   rule_keys <- vapply(
     asset_env$ui_asset_css_order_rules,
@@ -205,13 +205,16 @@ test_that("UI CSS katman/kaskad sıra kuralları manifest düzeyinde doğrulanı
     character(1)
   )
 
-  expect_true("css/theme_tokens.css -> css/theme_light.css" %in% rule_keys)
-  expect_true("css/theme_light.css -> css/theme_light_extras.css" %in% rule_keys)
-  expect_true("css/theme_light_overhaul.css -> css/theme_light_overhaul_phase2.css" %in% rule_keys)
-  expect_true("css/theme_light_user_polish.css -> css/theme_light_user_polish_v2.css" %in% rule_keys)
-  expect_true("css/theme_light_user_polish_v2.css -> css/brand_title.css" %in% rule_keys)
-  expect_true("css/theme_light_user_polish_v2.css -> css/sidebar_user_panel.css" %in% rule_keys)
-  expect_true("css/theme_light_user_polish_v2.css -> css/tool_backgrounds.css" %in% rule_keys)
+  expect_true("css/theme_tokens.css -> css/theme_light_core.css" %in% rule_keys)
+  expect_true("css/theme_light_core.css -> css/theme_light_welcome.css" %in% rule_keys)
+  expect_true("css/theme_light_welcome.css -> css/theme_light_chat.css" %in% rule_keys)
+  expect_true("css/theme_light_chat.css -> css/theme_light_modals.css" %in% rule_keys)
+  expect_true("css/theme_light_modals.css -> css/theme_light_bilge_yolac.css" %in% rule_keys)
+  expect_true("css/theme_light_bilge_yolac.css -> css/theme_light_personalization.css" %in% rule_keys)
+  expect_true("css/theme_light_personalization.css -> css/theme_light_pages.css" %in% rule_keys)
+  expect_true("css/theme_light_pages.css -> css/brand_title.css" %in% rule_keys)
+  expect_true("css/theme_light_pages.css -> css/sidebar_user_panel.css" %in% rule_keys)
+  expect_true("css/theme_light_pages.css -> css/tool_backgrounds.css" %in% rule_keys)
   expect_true("css/claude_code.css -> css/claude_code_generated_files.css" %in% rule_keys)
 
   # Her kural gerçek manifest sırasında sağlanır.
@@ -229,7 +232,7 @@ test_that("UI CSS katman/kaskad sıra kuralları manifest düzeyinde doğrulanı
 
   swapped_paths <- css_paths
   token_pos <- match("css/theme_tokens.css", swapped_paths)
-  light_pos <- match("css/theme_light.css", swapped_paths)
+  light_pos <- match("css/theme_light_core.css", swapped_paths)
   swapped_paths[c(token_pos, light_pos)] <- swapped_paths[c(light_pos, token_pos)]
 
   expect_error(
@@ -249,19 +252,13 @@ test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", 
   expected_page_css <- c(
     "css/variables.css",
     "css/theme_tokens.css",
-    "css/theme_light.css",
-    "css/theme_light_extras.css",
-    "css/theme_light_refinements.css",
+    "css/theme_light_core.css",
     "css/theme_light_welcome.css",
     "css/theme_light_chat.css",
     "css/theme_light_modals.css",
     "css/theme_light_bilge_yolac.css",
     "css/theme_light_personalization.css",
-    "css/theme_light_polish.css",
-    "css/theme_light_overhaul.css",
-    "css/theme_light_overhaul_phase2.css",
-    "css/theme_light_user_polish.css",
-    "css/theme_light_user_polish_v2.css",
+    "css/theme_light_pages.css",
     "css/animations.css",
     "css/layout.css",
     "css/components.css",
@@ -282,12 +279,10 @@ test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", 
     "css/file_manager.css",
     "css/history_saved_chats.css",
     "css/settings_page.css",
-    "css/health_check.css",
     "css/health_dashboard.css",
     "css/disconnect_overlay.css",
     "css/chat_header.css",
     "css/quick_templates.css",
-    "css/capabilities.css",
     "css/custom_buttons.css",
     "css/utilities.css",
     "css/responsive.css",
@@ -296,7 +291,6 @@ test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", 
     "css/pagination_custom.css",
     "css/modals_custom.css",
     "css/welcome_styles.css",
-    "css/recent_chats_custom.css",
     "css/empty_state.css",
     "css/animations_extra.css",
     "css/message_actions.css",

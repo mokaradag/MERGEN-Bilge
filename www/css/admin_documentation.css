@@ -141,10 +141,6 @@
   margin: 2px 0;
 }
 
-.mb-doc-toc-lvl1 { padding-left: 0; }
-.mb-doc-toc-lvl2 { padding-left: 12px; }
-.mb-doc-toc-lvl3 { padding-left: 24px; }
-
 .mb-doc-toc-link {
   display: block;
   padding: 4px 8px;

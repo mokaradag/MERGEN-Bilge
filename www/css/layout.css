@@ -113,32 +113,10 @@ body {
   color: var(--text-muted);
 }
 
-.intro-text-primary {
-  color: #FFFFFF !important;
-}
 
-.intro-text-secondary {
-  color: #999999 !important;
-}
 
-/* Üst Bilgi Butonları */
-.header-btn {
-  padding: 8px 16px !important;
-  color: var(--text-secondary) !important;
-  transition: var(--transition-fast);
-  border-radius: 8px;
-  margin: 0 4px;
-}
 
-.header-btn:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
-  color: var(--text-primary) !important;
-}
 
-.header-btn-text {
-  margin-left: 8px;
-  font-size: 14px;
-}
 
 /* Kenar Çubuğu (Sidebar) Stilleri */
 .main-sidebar {
@@ -202,22 +180,7 @@ body {
   display: none !important;
 }
 
-/* Statik Navigasyon Çubuğu */
-.static-navbar {
-  position: fixed;
-  top: 50px;
-  left: 250px;
-  right: 0;
-  height: 50px;
-  background: var(--background-light);
-  border-bottom: 1px solid var(--border-color);
-  z-index: 99;
-  transition: left var(--transition-medium);
-}
 
-.sidebar-collapse .static-navbar {
-  left: 50px;
-}
 
 .navbar-content {
   display: flex;
@@ -227,11 +190,6 @@ body {
   height: 100%;
 }
 
-.current-page-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
 
 .navbar-btn {
   background: transparent !important;
@@ -291,8 +249,3 @@ body {
   }
 }
 
-@media (max-width: 576px) {
-  .header-btn-text {
-    display: none;
-  }
-}

@@ -63,22 +63,8 @@
   text-align: right !important;
 }
 
-/* Boşluk (Margin) yardımcıları */
-.mt-1 { margin-top: 8px !important; }
-.mt-2 { margin-top: 16px !important; }
-.mt-3 { margin-top: 24px !important; }
-.mt-4 { margin-top: 32px !important; }
 
-.mb-1 { margin-bottom: 8px !important; }
-.mb-2 { margin-bottom: 16px !important; }
-.mb-3 { margin-bottom: 24px !important; }
-.mb-4 { margin-bottom: 32px !important; }
 
-/* Dolgu (Padding) yardımcıları */
-.p-1 { padding: 8px !important; }
-.p-2 { padding: 16px !important; }
-.p-3 { padding: 24px !important; }
-.p-4 { padding: 32px !important; }
 
 /* Gövde yazı boyutu sınıfları (body font size classes) */
 body.font-small {

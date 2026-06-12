@@ -114,31 +114,26 @@ ui_asset_ownership_zones <- list(
   ),
 
   tema = list(
-    title = "Tema sistemi (koyu varsayılan + açık tema katmanları)",
+    title = "Tema sistemi (koyu varsayılan + açık tema alan katmanları)",
     owner_seam = "frontend_varlik",
     css_groups = character(0),
     js_groups = character(0),
     css = c(
       "css/variables.css",
       "css/theme_tokens.css",
-      "css/theme_light.css",
-      "css/theme_light_extras.css",
-      "css/theme_light_refinements.css",
+      "css/theme_light_core.css",
       "css/theme_light_welcome.css",
       "css/theme_light_chat.css",
       "css/theme_light_modals.css",
       "css/theme_light_bilge_yolac.css",
       "css/theme_light_personalization.css",
-      "css/theme_light_polish.css",
-      "css/theme_light_overhaul.css",
-      "css/theme_light_overhaul_phase2.css",
-      "css/theme_light_user_polish.css",
-      "css/theme_light_user_polish_v2.css",
+      "css/theme_light_pages.css",
       "css/brand_title.css"
     ),
     js = c("js/theme_manager.js"),
     guard_tests = c(
       "tests/testthat/test-ui-asset-manifest-contract.R",
+      "tests/testthat/test-theme-light-modular-contract.R",
       "tests/testthat/test-brand-title-single-source-contract.R",
       "tests/testthat/test-sidebar-theme-sync-contract.R"
     )
@@ -200,8 +195,7 @@ ui_asset_ownership_zones <- list(
       "css/chat_header.css",
       "css/message_actions.css",
       "css/code_collapse.css",
-      "css/citation_styles.css",
-      "css/capabilities.css"
+      "css/citation_styles.css"
     ),
     js = c(
       "js/input_handlers.js",
@@ -233,7 +227,6 @@ ui_asset_ownership_zones <- list(
       "css/explore_cinematic.css",
       "css/quick_templates.css",
       "css/welcome_styles.css",
-      "css/recent_chats_custom.css",
       "css/explore_character_step.css"
     ),
     js = c(
@@ -400,7 +393,6 @@ ui_asset_ownership_zones <- list(
     css_groups = character(0),
     js_groups = character(0),
     css = c(
-      "css/health_check.css",
       "css/health_dashboard.css",
       "css/admin_destek_analytics.css",
       "css/admin_yanit_analizi.css",

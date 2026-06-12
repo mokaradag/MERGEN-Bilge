@@ -1,43 +1,117 @@
 /* ============================================================
- * Başlık: Açık Tema - Modal ve Popup Onarımları
+ * Başlık: Açık Tema — Modallar ve Katmanlı Yüzeyler
  * Dosya: www/css/theme_light_modals.css
- * Açıklama: Light temada feedback popup modali, Dosya Önizleme modali,
- *           STT modali, modal genel davranışı, info-note, başlık
- *           bandı ve textarea/buton kontrastı için odaklı düzeltmeler.
- *
- *           Önceki sürümde feedback popup metinleri okunmuyor, "like"
- *           feedback aktif etiketleri kırmızı görünüyor ve modal
- *           başlığı koyu kalıyordu. Bu dosya:
- *             1. Modal yüzeyini gerçek light/cam haline çevirir.
- *             2. Pozitif (like) seçili etiketleri YEŞİL, olumsuz
- *                (dislike) seçili etiketleri kırmızı yapar.
- *             3. Dosya Önizleme modal başlığını kurumsal mavi DataTable
- *                başlığı gibi hizalar.
- *             4. STT modal başlık ikonunu sınırdan uzaklaştırır.
- *             5. Ay grubu sayaç rozetlerini turuncu ve okunaklı yapar
- *                (içeri inline style ile yazılmış değer, !important ile
- *                aşılır).
- *
- *           Bu dosya yalnızca <html data-theme="light"> uygulandığında
- *           etkilidir; dark tema davranışı değişmez. CDN, harici font
- *           ya da dış kaynak yoktur.
+ * Katman: tema 5/8
+ * Açıklama: Bootstrap modalları, geri bildirim modalı, STT modalı,
+ *           dosya önizleme modalı, arama modalı ve toast bildirimleri.
  * ============================================================ */
 
-/* ============================================================
- * 1) Feedback (Geri Bildirim) Popup Modali — light tema yüzeyi
- *    Mevcut feedback_modal.css koyu temaya göre tasarlanmış; light
- *    temada şu sorunları çözeriz:
- *      - modal yüzeyi koyu gradient olarak kalmasın
- *      - başlık metni, info-note, etiket başlıkları, textarea, footer
- *        okunaklı renge geçsin
- *      - pozitif feedback aktif etiketleri YEŞİL, negatif KIRMIZI
- * ============================================================ */
+html[data-theme="light"] .modal-content {
+  background: var(--color-surface) !important;
+  color: var(--color-text-soft) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+html[data-theme="light"] .modal-header,
+html[data-theme="light"] .modal-footer {
+  border-color: var(--color-border) !important;
+}
+
+html[data-theme="light"] .modal-title {
+  color: var(--color-text) !important;
+}
+
+html[data-theme="light"] .toast-container .toast {
+  background: var(--color-surface) !important;
+  color: var(--color-text-soft) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: var(--shadow-elevated);
+}
+
+html[data-theme="light"] #chat_search_modal_container .modal-backdrop {
+  background: rgba(15, 28, 51, 0.45) !important;
+  backdrop-filter: blur(6px);
+}
+
+html[data-theme="light"] .stt-modal {
+  background: var(--color-surface, #ffffff) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+  box-shadow: 0 18px 40px rgba(15, 28, 51, 0.18) !important;
+}
+
+html[data-theme="light"] .feedback-modal .btn {
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .feedback-modal .btn-primary {
+  border-color: var(--mb-brand-primary, #003087) !important;
+}
+
+html[data-theme="light"] .stt-modal-dialog .modal-content {
+  background: #ffffff !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid var(--color-border, #d8dde7) !important;
+}
+
+html[data-theme="light"] .stt-modal-body {
+  background: rgba(247, 249, 253, 0.88) !important;
+}
+
+html[data-theme="light"] .stt-char-name {
+  color: var(--color-text, #0f1c33) !important;
+}
+
+html[data-theme="light"] .stt-char-status {
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .stt-tech-stats {
+  background: rgba(0, 48, 135, 0.06) !important;
+  color: var(--color-muted, #5b6577) !important;
+}
+
+html[data-theme="light"] .stt-stat-item i {
+  color: var(--mb-brand-primary, #003087) !important;
+  opacity: 0.6;
+}
+
+html[data-theme="light"] .stt-vis-canvas-container {
+  background: #ffffff !important;
+  border-top: 1px solid rgba(0, 48, 135, 0.08) !important;
+}
+
+html[data-theme="light"] .stt-vis-canvas-container canvas {
+  background: linear-gradient(180deg, #ffffff 0%, #f7f9fd 100%) !important;
+  --stt-wave-color: var(--mb-brand-primary, #003087);
+  --stt-wave-accent: var(--mb-brand-accent, #FF5620);
+}
+
+html[data-theme="light"] .stt-vis-canvas {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--color-text, #0f1c33) !important;
+  border: 1px solid rgba(0, 48, 135, 0.10) !important;
+}
+
+html[data-theme="light"] .feedback-tag-btn.active {
+  border-color: var(--mb-brand-accent, #FF5620) !important;
+  background: linear-gradient(135deg, rgba(255, 86, 32, 0.10) 0%, rgba(255, 128, 34, 0.06) 100%) !important;
+  color: var(--mb-brand-accent, #FF5620) !important;
+  box-shadow: 0 4px 12px rgba(255, 86, 32, 0.18);
+}
+
+.stt-modal-header .modal-title,
+.stt-modal .modal-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 4px;
+}
+
 html[data-theme="light"] .feedback-modal-content {
   background: linear-gradient(180deg, #ffffff 0%, #f7f9fd 100%) !important;
   border: 1px solid rgba(0, 48, 135, 0.16) !important;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 24px 60px rgba(15, 28, 51, 0.20) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 24px 60px rgba(15, 28, 51, 0.20) !important;
   color: var(--color-text, #0f1c33) !important;
 }
 
@@ -47,9 +121,7 @@ html[data-theme="light"] .feedback-modal-overlay {
 }
 
 html[data-theme="light"] .feedback-modal-header {
-  background: linear-gradient(135deg,
-    var(--mb-brand-primary, #003087) 0%,
-    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
   border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
@@ -101,86 +173,36 @@ html[data-theme="light"] .feedback-comment-section h4 {
   font-weight: 600 !important;
 }
 
-/* Etiket butonları varsayılan — light cam, kurumsal mavi metin */
-html[data-theme="light"] .feedback-tag-btn {
-  background: rgba(255, 255, 255, 0.95) !important;
-  border: 1px solid rgba(0, 48, 135, 0.22) !important;
-  color: var(--color-text-soft, #1f2a44) !important;
-  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05);
-  font-weight: 500;
-}
-
 html[data-theme="light"] .feedback-tag-btn:hover {
   background: rgba(0, 48, 135, 0.06) !important;
   border-color: rgba(0, 48, 135, 0.40) !important;
   color: var(--mb-brand-primary, #003087) !important;
 }
 
-/* POZİTİF (like) aktif etiket — YEŞİL/başarı tonu
- * Kullanıcı şikayeti: "like" feedback'te seçili etiketler kırmızı
- * görünüyordu. Burada doğru semantik olarak yeşil/başarı sunuyoruz. */
-html[data-theme="light"] .feedback-tag-btn.tag-like.active,
-html[data-theme="light"] .feedback-modal-content[data-feedback-type="like"] .feedback-tag-btn.active,
-html[data-theme="light"] .feedback-modal-content.feedback-positive .feedback-tag-btn.active {
-  background: linear-gradient(135deg,
-    rgba(22, 163, 74, 0.12) 0%,
-    rgba(22, 163, 74, 0.05) 100%) !important;
+html[data-theme="light"] .feedback-tag-btn.tag-like.active {
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.12) 0%, rgba(22, 163, 74, 0.05) 100%) !important;
   border-color: rgba(22, 163, 74, 0.55) !important;
   color: #15803d !important;
-  box-shadow:
-    0 0 0 2px rgba(22, 163, 74, 0.10),
-    0 4px 10px rgba(22, 163, 74, 0.16) !important;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.10), 0 4px 10px rgba(22, 163, 74, 0.16) !important;
   font-weight: 600 !important;
 }
 
-html[data-theme="light"] .feedback-tag-btn.tag-like.active i,
-html[data-theme="light"] .feedback-modal-content.feedback-positive .feedback-tag-btn.active i {
+html[data-theme="light"] .feedback-tag-btn.tag-like.active i {
   color: #15803d !important;
 }
 
-/* NEGATİF (dislike) aktif etiket — KIRMIZI/hata tonu */
-html[data-theme="light"] .feedback-tag-btn.tag-dislike.active,
-html[data-theme="light"] .feedback-modal-content[data-feedback-type="dislike"] .feedback-tag-btn.active,
-html[data-theme="light"] .feedback-modal-content.feedback-negative .feedback-tag-btn.active {
-  background: linear-gradient(135deg,
-    rgba(220, 38, 38, 0.10) 0%,
-    rgba(220, 38, 38, 0.04) 100%) !important;
+html[data-theme="light"] .feedback-tag-btn.tag-dislike.active {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.10) 0%, rgba(220, 38, 38, 0.04) 100%) !important;
   border-color: rgba(220, 38, 38, 0.55) !important;
   color: #b91c1c !important;
-  box-shadow:
-    0 0 0 2px rgba(220, 38, 38, 0.10),
-    0 4px 10px rgba(220, 38, 38, 0.16) !important;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.10), 0 4px 10px rgba(220, 38, 38, 0.16) !important;
   font-weight: 600 !important;
 }
 
-html[data-theme="light"] .feedback-tag-btn.tag-dislike.active i,
-html[data-theme="light"] .feedback-modal-content.feedback-negative .feedback-tag-btn.active i {
+html[data-theme="light"] .feedback-tag-btn.tag-dislike.active i {
   color: #b91c1c !important;
 }
 
-/* Memnuniyet emoji veya satisfaction butonları varsa light tema kontrastı */
-html[data-theme="light"] .feedback-emoji,
-html[data-theme="light"] .satisfaction-emoji {
-  background: rgba(255, 255, 255, 0.96) !important;
-  color: var(--color-text-soft, #1f2a44) !important;
-  border: 1px solid rgba(0, 48, 135, 0.20) !important;
-}
-
-html[data-theme="light"] .feedback-emoji.active.positive,
-html[data-theme="light"] .satisfaction-emoji.active.positive {
-  background: rgba(22, 163, 74, 0.10) !important;
-  border-color: rgba(22, 163, 74, 0.55) !important;
-  color: #15803d !important;
-}
-
-html[data-theme="light"] .feedback-emoji.active.negative,
-html[data-theme="light"] .satisfaction-emoji.active.negative {
-  background: rgba(220, 38, 38, 0.10) !important;
-  border-color: rgba(220, 38, 38, 0.55) !important;
-  color: #b91c1c !important;
-}
-
-/* Textarea — light tema, görünür kenarlık, beyaz arka plan */
 html[data-theme="light"] .feedback-textarea {
   background: #ffffff !important;
   color: var(--color-text, #0f1c33) !important;
@@ -191,9 +213,7 @@ html[data-theme="light"] .feedback-textarea {
 html[data-theme="light"] .feedback-textarea:focus {
   background: #ffffff !important;
   border-color: var(--mb-brand-primary, #003087) !important;
-  box-shadow:
-    0 0 0 3px rgba(0, 48, 135, 0.14),
-    0 1px 2px rgba(15, 28, 51, 0.05) inset !important;
+  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.14), 0 1px 2px rgba(15, 28, 51, 0.05) inset !important;
 }
 
 html[data-theme="light"] .feedback-textarea::placeholder {
@@ -201,7 +221,6 @@ html[data-theme="light"] .feedback-textarea::placeholder {
   opacity: 0.85;
 }
 
-/* Footer ve aksiyon butonları */
 html[data-theme="light"] .feedback-modal-footer {
   background: linear-gradient(180deg, #f7f9fd 0%, #eef2f8 100%) !important;
   border-top: 1px solid rgba(0, 48, 135, 0.12) !important;
@@ -209,97 +228,20 @@ html[data-theme="light"] .feedback-modal-footer {
   border-bottom-right-radius: 16px;
 }
 
-html[data-theme="light"] .btn-feedback-cancel {
-  background: rgba(255, 255, 255, 0.96) !important;
-  color: var(--color-text-soft, #1f2a44) !important;
-  border: 1px solid rgba(15, 28, 51, 0.18) !important;
-  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.06);
-  font-weight: 500;
-}
-
-html[data-theme="light"] .btn-feedback-cancel:hover {
-  background: rgba(15, 28, 51, 0.06) !important;
-  border-color: rgba(15, 28, 51, 0.36) !important;
-}
-
-html[data-theme="light"] .btn-feedback-submit {
-  background: linear-gradient(135deg,
-    var(--mb-brand-primary, #003087) 0%,
-    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
-  color: #ffffff !important;
-  border: 1px solid var(--mb-brand-primary, #003087) !important;
-  font-weight: 600 !important;
-  box-shadow: 0 4px 12px rgba(0, 48, 135, 0.22);
-}
-
-html[data-theme="light"] .btn-feedback-submit:hover {
-  background: linear-gradient(135deg,
-    var(--mb-brand-primary-alt, #002D7A) 0%,
-    var(--mb-brand-accent, #FF5620) 100%) !important;
-  box-shadow: 0 6px 18px rgba(0, 48, 135, 0.30);
-}
-
-/* ============================================================
- * 2) Dosya Önizleme Modali — kurumsal mavi başlık (DataTable benzeri)
- * ============================================================ */
-html[data-theme="light"] .file-preview-modal,
-html[data-theme="light"] #file_preview_modal,
-html[data-theme="light"] .file-preview-dialog,
-html[data-theme="light"] .dosya-onizleme-modal,
-html[data-theme="light"] .modal.file-preview-modal,
-html[data-theme="light"] .preview-modal-dialog {
-  color: var(--color-text, #0f1c33) !important;
-}
-
-html[data-theme="light"] .file-preview-modal .modal-content,
-html[data-theme="light"] #file_preview_modal .modal-content,
-html[data-theme="light"] .file-preview-dialog .modal-content,
-html[data-theme="light"] .dosya-onizleme-modal .modal-content {
+html[data-theme="light"] #file_preview_modal .modal-content {
   background: #ffffff !important;
   border: 1px solid rgba(0, 48, 135, 0.16) !important;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 28px 60px rgba(15, 28, 51, 0.22) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 28px 60px rgba(15, 28, 51, 0.22) !important;
   color: var(--color-text, #0f1c33) !important;
 }
 
-html[data-theme="light"] .file-preview-modal .modal-header,
-html[data-theme="light"] #file_preview_modal .modal-header,
-html[data-theme="light"] .file-preview-dialog .modal-header,
-html[data-theme="light"] .dosya-onizleme-modal .modal-header,
-html[data-theme="light"] .preview-modal-dialog .modal-header {
-  background: linear-gradient(135deg,
-    var(--mb-brand-primary, #003087) 0%,
-    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
-  color: #ffffff !important;
-  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
-  padding: 12px 20px !important;
-}
-
-html[data-theme="light"] .file-preview-modal .modal-title,
-html[data-theme="light"] #file_preview_modal .modal-title,
-html[data-theme="light"] .file-preview-dialog .modal-title,
-html[data-theme="light"] .dosya-onizleme-modal .modal-title,
-html[data-theme="light"] .preview-modal-dialog .modal-title {
-  color: #ffffff !important;
-  font-weight: 600 !important;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
-}
-
-html[data-theme="light"] .file-preview-modal .modal-title i,
 html[data-theme="light"] #file_preview_modal .modal-title i {
   color: #ffffff !important;
   opacity: 0.92;
 }
 
-html[data-theme="light"] .file-preview-modal .modal-header .close,
 html[data-theme="light"] #file_preview_modal .modal-header .close,
-html[data-theme="light"] .file-preview-modal .modal-header .btn-close,
-html[data-theme="light"] #file_preview_modal .modal-header .btn-close,
-html[data-theme="light"] .file-preview-modal .modal-header button.close,
-html[data-theme="light"] .dosya-onizleme-modal .modal-header .close {
+html[data-theme="light"] #file_preview_modal .modal-header .btn-close {
   color: #ffffff !important;
   background: rgba(255, 255, 255, 0.10) !important;
   border-radius: 6px;
@@ -307,71 +249,36 @@ html[data-theme="light"] .dosya-onizleme-modal .modal-header .close {
   padding: 4px 8px;
 }
 
-html[data-theme="light"] .file-preview-modal .modal-header .close:hover,
-html[data-theme="light"] #file_preview_modal .modal-header .close:hover,
-html[data-theme="light"] .dosya-onizleme-modal .modal-header .close:hover {
+html[data-theme="light"] #file_preview_modal .modal-header .close:hover {
   background: rgba(255, 255, 255, 0.22) !important;
   color: #ffffff !important;
   opacity: 1;
 }
 
-html[data-theme="light"] .file-preview-modal .modal-body,
-html[data-theme="light"] #file_preview_modal .modal-body,
-html[data-theme="light"] .file-preview-dialog .modal-body,
-html[data-theme="light"] .dosya-onizleme-modal .modal-body {
+html[data-theme="light"] #file_preview_modal .modal-body {
   background: #ffffff !important;
   color: var(--color-text, #0f1c33) !important;
   padding: 16px 20px !important;
 }
 
-html[data-theme="light"] .file-preview-modal .modal-footer,
-html[data-theme="light"] #file_preview_modal .modal-footer,
-html[data-theme="light"] .file-preview-dialog .modal-footer {
+html[data-theme="light"] #file_preview_modal .modal-footer {
   background: linear-gradient(180deg, #f7f9fd 0%, #eef2f8 100%) !important;
   border-top: 1px solid rgba(0, 48, 135, 0.12) !important;
   border-bottom-left-radius: 12px;
   border-bottom-right-radius: 12px;
 }
 
-/* Dosya önizleme içindeki DataTables başlığı da kurumsal maviye uyumlu */
-html[data-theme="light"] .file-preview-modal .dataTables_wrapper thead th,
-html[data-theme="light"] #file_preview_modal .dataTables_wrapper thead th,
-html[data-theme="light"] .file-preview-modal table.dataTable thead th {
-  background: linear-gradient(135deg,
-    var(--mb-brand-primary, #003087) 0%,
-    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
-  color: #ffffff !important;
-  border-color: rgba(0, 48, 135, 0.40) !important;
-}
-
-html[data-theme="light"] .file-preview-modal .dataTables_filter input,
-html[data-theme="light"] #file_preview_modal .dataTables_filter input,
-html[data-theme="light"] .file-preview-modal .dataTables_length select {
-  background: #ffffff !important;
-  color: var(--color-text, #0f1c33) !important;
-  border: 1px solid rgba(0, 48, 135, 0.24) !important;
-  border-radius: 6px;
-  padding: 4px 8px;
-}
-
-/* ============================================================
- * 3) STT Modal — başlık ikonu kırpılma önleme + light yüzey
- * ============================================================ */
 html[data-theme="light"] .stt-modal .modal-content,
 html[data-theme="light"] #stt_modal .modal-content {
   background: #ffffff !important;
   border: 1px solid rgba(0, 48, 135, 0.18) !important;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 28px 60px rgba(15, 28, 51, 0.22) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 28px 60px rgba(15, 28, 51, 0.22) !important;
 }
 
+html[data-theme="light"] .stt-modal-header,
 html[data-theme="light"] .stt-modal .modal-header,
-html[data-theme="light"] #stt_modal .modal-header,
-html[data-theme="light"] .stt-modal-header {
-  background: linear-gradient(135deg,
-    var(--mb-brand-primary, #003087) 0%,
-    var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+html[data-theme="light"] #stt_modal .modal-header {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
   color: #ffffff !important;
   border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
   padding: 14px 20px !important;
@@ -395,10 +302,33 @@ html[data-theme="light"] .stt-modal-header .modal-title {
   padding-left: 4px !important;
 }
 
-/* Başlık ikonu — yumuşak yarı şeffaf kapsayıcı, kenara yapışmasın */
-html[data-theme="light"] .stt-modal .modal-title i,
-html[data-theme="light"] #stt_modal .modal-title i,
 html[data-theme="light"] .stt-modal-header .modal-title i {
+  padding: 7px 9px !important;
+  margin-right: 4px !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, 0.18) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #ffffff !important;
+  font-size: 1.05rem !important;
+  flex-shrink: 0;
+}
+
+html[data-theme="light"] .stt-modal .modal-title i {
+  background: rgba(255, 255, 255, 0.18) !important;
+  border-radius: 10px !important;
+  padding: 7px 9px !important;
+  margin-right: 4px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #ffffff !important;
+  font-size: 1.05rem !important;
+  flex-shrink: 0;
+}
+
+html[data-theme="light"] #stt_modal .modal-title i {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -412,7 +342,6 @@ html[data-theme="light"] .stt-modal-header .modal-title i {
 }
 
 html[data-theme="light"] .stt-modal .close,
-html[data-theme="light"] #stt_modal .close,
 html[data-theme="light"] .stt-modal-header .close {
   color: #ffffff !important;
   background: rgba(255, 255, 255, 0.12) !important;
@@ -427,45 +356,21 @@ html[data-theme="light"] #stt_modal .modal-body {
   color: var(--color-text, #0f1c33) !important;
 }
 
-/* STT visualizer kart yüzeyi belirgin kurumsal mavi vurgulu çerçeve */
-html[data-theme="light"] .stt-vis-info-panel,
-html[data-theme="light"] .stt-info-panel {
+html[data-theme="light"] .stt-vis-info-panel {
+  border-left: 1px solid rgba(0, 48, 135, 0.14) !important;
+  box-shadow: -5px 0 15px rgba(15, 28, 51, 0.06) !important;
+  backdrop-filter: blur(8px);
   background: rgba(255, 255, 255, 0.96) !important;
   color: var(--color-text, #0f1c33) !important;
   border: 1px solid rgba(0, 48, 135, 0.16) !important;
-  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05);
 }
 
-html[data-theme="light"] .stt-vis-info-panel .stt-info-label,
-html[data-theme="light"] .stt-vis-info-panel .stt-info-value {
-  color: var(--color-text, #0f1c33) !important;
-}
-
-html[data-theme="light"] .stt-vis-info-panel .stt-info-label {
-  color: var(--mb-brand-primary, #003087) !important;
-  font-weight: 600;
-}
-
-/* STT character/avatar bölgesi */
-html[data-theme="light"] .stt-character-panel,
-html[data-theme="light"] .stt-vis-character {
-  background: rgba(255, 255, 255, 0.96) !important;
-  border: 1px solid rgba(0, 48, 135, 0.14) !important;
-  color: var(--color-text, #0f1c33) !important;
-}
-
-/* STT alt aksiyon butonları */
 html[data-theme="light"] .stt-modal .modal-footer .btn,
 html[data-theme="light"] #stt_modal .modal-footer .btn {
   border: 1px solid rgba(0, 48, 135, 0.20) !important;
   box-shadow: 0 1px 3px rgba(15, 28, 51, 0.06);
 }
 
-/* ============================================================
- * 4) Genel modal kurtarma — modal-content beyaz, başlık metni
- *    kontrastlı. Bilinmeyen modal sınıflarında bile light davranışı
- *    bozulmasın diye geniş ama dikkatli kapsam.
- * ============================================================ */
 html[data-theme="light"] .modal-dialog .modal-content {
   background: #ffffff !important;
   color: var(--color-text, #0f1c33) !important;
@@ -483,65 +388,110 @@ html[data-theme="light"] .modal-dialog .modal-body span {
   color: inherit;
 }
 
-/* ============================================================
- * 5) Ay grubu sayaç rozetleri — "245 Söyleşi" / "7 görsel"
- *    R modüllerinde inline style ile rgba(255,138,0,0.85) yazılmıştır.
- *    Light temada bu renk soluk kalır; !important ile belirgin turuncu
- *    + hafif rozet kapsayıcı uygulanır.
- * ============================================================ */
-html[data-theme="light"] .month-group h4 > span,
-html[data-theme="light"] .gallery-month-group h4 > span,
-html[data-theme="light"] .saved-chats-month-group h4 > span,
-html[data-theme="light"] .image-gallery-month-group h4 > span {
-  color: var(--mb-brand-accent, #FF5620) !important;
-  font-weight: 700 !important;
-  background: rgba(255, 86, 32, 0.10) !important;
-  border: 1px solid rgba(255, 86, 32, 0.30) !important;
-  border-radius: 999px;
-  padding: 2px 10px;
-  margin-left: 10px !important;
-  font-size: 14px !important;
-  display: inline-block;
-  vertical-align: middle;
-  text-shadow: none !important;
-  letter-spacing: 0.01em;
+html[data-theme="light"] .feedback-tag {
+  border: 1px solid rgba(0, 48, 135, 0.24) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.06);
+  font-weight: 500;
 }
 
-html[data-theme="light"] .month-group .gallery-month-count,
-html[data-theme="light"] .gallery-month-group .gallery-month-count {
-  color: var(--mb-brand-accent, #FF5620) !important;
-  font-weight: 700 !important;
-  background: rgba(255, 86, 32, 0.10) !important;
-  border: 1px solid rgba(255, 86, 32, 0.30) !important;
-  border-radius: 999px;
-  padding: 2px 10px;
-  margin-left: 10px !important;
-  font-size: 14px !important;
-  display: inline-block;
-  vertical-align: middle;
+html[data-theme="light"] .destek-feedback .feedback-tag {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  border: 1px solid rgba(0, 48, 135, 0.24) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.06);
+  font-weight: 500;
 }
 
-/* Ay grubu kart yüzeyi - inline style "rgba(18,18,18,0.6)" koyu kalır.
- * Light temada beyaz cama dönüştür, üst başlık turuncu altı çizgisi
- * okunaklı kalsın. */
-html[data-theme="light"] .month-group,
-html[data-theme="light"] .gallery-month-group,
-html[data-theme="light"] .saved-chats-month-group,
-html[data-theme="light"] .image-gallery-month-group {
-  background: linear-gradient(180deg,
-    rgba(255, 255, 255, 0.94) 0%,
-    rgba(247, 249, 253, 0.88) 100%) !important;
-  border: 1px solid rgba(255, 86, 32, 0.18) !important;
-  box-shadow: 0 4px 14px rgba(15, 28, 51, 0.05);
+html[data-theme="light"] .destek-feedback .feedback-tag:hover,
+html[data-theme="light"] .feedback-tag:hover {
+  background: rgba(0, 48, 135, 0.06) !important;
+  border-color: var(--mb-brand-primary, #003087) !important;
+  color: var(--mb-brand-primary, #003087) !important;
 }
 
-/* Inline h4 stili "color: #ff8a00" light arka planda okunabilir; ancak
- * altı çizgi rengi soluk kalıyor — belirginleştir. */
-html[data-theme="light"] .month-group > h4,
-html[data-theme="light"] .gallery-month-group > h4,
-html[data-theme="light"] .saved-chats-month-group > h4,
-html[data-theme="light"] .image-gallery-month-group > h4 {
-  color: var(--mb-brand-accent, #FF5620) !important;
-  text-decoration-color: rgba(255, 86, 32, 0.55) !important;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.85);
+html[data-theme="light"] .feedback-tag.active,
+html[data-theme="light"] .feedback-tag.selected {
+  border-color: rgba(255, 86, 32, 0.60) !important;
+  background: linear-gradient(135deg, var(--mb-brand-accent, #FF5620) 0%, var(--mb-brand-accent-2, #FF8022) 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(255, 86, 32, 0.22);
+  font-weight: 600;
 }
+
+html[data-theme="light"] #file_preview_modal .modal-header {
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  padding: 12px 20px !important;
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+}
+
+html[data-theme="light"] #file_preview_modal .modal-title {
+  font-weight: 600 !important;
+  color: #ffffff !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+html[data-theme="light"] #file_preview_modal .modal-title * {
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .feedback-tag-btn {
+  border: 1.5px solid rgba(0, 48, 135, 0.28) !important;
+  background: #ffffff !important;
+  color: var(--color-text-soft, #1f2a44) !important;
+  box-shadow: 0 1px 3px rgba(15, 28, 51, 0.05) !important;
+  font-weight: 600 !important;
+  border-radius: 999px !important;
+  padding: 8px 16px !important;
+}
+
+html[data-theme="light"] .modal-dialog .modal-header,
+html[data-theme="light"] .modal-content > .modal-header {
+  background: linear-gradient(135deg, var(--mb-brand-primary, #003087) 0%, var(--mb-brand-primary-alt, #002D7A) 100%) !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(0, 48, 135, 0.30) !important;
+  border-top-left-radius: 12px !important;
+  border-top-right-radius: 12px !important;
+}
+
+html[data-theme="light"] .modal-dialog .modal-header .modal-title,
+html[data-theme="light"] .modal-content > .modal-header .modal-title,
+html[data-theme="light"] .modal-dialog .modal-header h1,
+html[data-theme="light"] .modal-dialog .modal-header h2,
+html[data-theme="light"] .modal-dialog .modal-header h3,
+html[data-theme="light"] .modal-dialog .modal-header h4,
+html[data-theme="light"] .modal-dialog .modal-header h5,
+html[data-theme="light"] .modal-dialog .modal-header h6 {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.20);
+}
+
+html[data-theme="light"] .modal-dialog .modal-header .close,
+html[data-theme="light"] .modal-dialog .modal-header .btn-close,
+html[data-theme="light"] .modal-dialog .modal-header button.close {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-radius: 6px;
+  opacity: 0.92;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.30) !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.20);
+}
+
+html[data-theme="light"] .modal-dialog .modal-header .close:hover,
+html[data-theme="light"] .modal-dialog .modal-header .btn-close:hover {
+  background: rgba(255, 255, 255, 0.24) !important;
+  opacity: 1;
+}
+
+html[data-theme="light"] .modal-dialog .modal-header .modal-title i,
+html[data-theme="light"] .modal-dialog .modal-header i:first-child {
+  color: #ffffff !important;
+  opacity: 0.92;
+}
+

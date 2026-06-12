@@ -36,12 +36,4 @@
   cursor: pointer;
 }
 
-/* Mesaj mevcut eşleşme vurgusu */
-.message-bubble.current-match {
-  animation: pulseCurrentMatch 2s ease-in-out;
-}
 
-/* İndirme işleyici konteyneri */
-.download-handler-container .btn {
-  pointer-events: auto !important;
-}

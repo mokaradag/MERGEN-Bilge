@@ -250,7 +250,8 @@ test_that("runtime health dashboard files keep offline refresh and cleanup contr
   )
 
   expect_true(grepl("ui_asset_tags", ui_text, fixed = TRUE))
-  expect_true(grepl("css/health_check.css", ui_asset_text, fixed = TRUE))
+  # Not: legacy css/health_check.css tamamen ölü kurallardan oluştuğu için
+  # kaldırıldı; canlı Sistem Durumu stili css/health_dashboard.css'tedir.
   expect_true(grepl("css/health_dashboard.css", ui_asset_text, fixed = TRUE))
   expect_true(grepl("js/health_dashboard.js", ui_asset_text, fixed = TRUE))
   expect_false(grepl("https://", health_js_text, fixed = TRUE))

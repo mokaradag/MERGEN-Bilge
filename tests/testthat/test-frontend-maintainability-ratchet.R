@@ -312,6 +312,91 @@ test_that("frontend bakım raporu top-risk özetini üretir", {
   )
 })
 
+test_that("açık tema disiplini: tombstone, tekrar bütçesi ve tema satır bütçesi korunur", {
+  report <- .load_frontend_maint_report()
+
+  # 1. Tombstone: eski 13-dosyalık override/patch zincirinin kaldırılan
+  #    dosyaları geri getirilemez. Yeni açık tema kuralı, ilgili ALAN
+  #    dosyasındaki mevcut seçici genişletilerek eklenir.
+  tombstone_hits <- attr(report, "tombstone_hits", exact = TRUE)
+  expect_equal(
+    length(tombstone_hits),
+    0L,
+    info = paste(
+      "Kaldırılan eski açık tema patch dosyası geri gelmiş:",
+      paste(tombstone_hits, collapse = ", "),
+      "\nYeni override katmanı eklemek yerine ilgili theme_light_<alan>.css",
+      "dosyasındaki kuralı genişletin."
+    )
+  )
+
+  # 2. Light-scoped tekrar bütçesi: html[data-theme=\"light\"] kapsamlı bir
+  #    seçicinin dosyalar arasında tekrar tanımlanması override-zinciri
+  #    deseninin imzasıdır. Tema alan dosyaları İÇİNDE sıfır tekrar ayrıca
+  #    test-theme-light-modular-contract.R ile korunur; buradaki bütçe tema +
+  #    bileşen dosyası çiftlerini de sınırlar (taban: 44, hepsi 2x çift).
+  light_dups <- attr(report, "light_theme_duplicate_selectors", exact = TRUE)
+  max_light_dups <- .as_int_env_frontend("MERGEN_TEST_MAX_LIGHT_THEME_DUPLICATE_SELECTORS", 44L)
+  light_dup_count <- if (is.null(light_dups)) 0L else nrow(light_dups)
+
+  expect_true(
+    light_dup_count <= max_light_dups,
+    info = sprintf(
+      "Light-scoped tekrar seçici sayısı arttı: %d > %d. Aynı seçiciyi ikinci bir dosyada yeniden tanımlamayın.",
+      light_dup_count,
+      max_light_dups
+    )
+  )
+
+  # 3. Tema bölgesi toplam satır bütçesi: eski zincir ~10.7k satırdı; alan
+  #    konsolidasyonu sonrası taban ~5.9k'dır. Bütçe, patchwork'ün sessizce
+  #    geri büyümesini engeller.
+  theme_lines <- attr(report, "theme_zone_css_total_lines", exact = TRUE)
+  max_theme_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_THEME_ZONE_CSS_LINES", 6400L)
+
+  expect_true(
+    is.numeric(theme_lines) && theme_lines <= max_theme_lines,
+    info = sprintf(
+      "Tema bölgesi CSS toplam satırı bütçeyi aştı: %d > %d.",
+      theme_lines,
+      max_theme_lines
+    )
+  )
+
+  # 4. Hayalet (orphan) seçici bütçesi: CSS'te stillenen ama runtime
+  #    kaynaklarında hiç geçmeyen sınıflar DOM'da asla eşleşemez. Eski tema
+  #    zincirinin ~%46'sı böyleydi. Taban: 42 (bilinçli atlanan
+  #    brand_title.css + canlı grup üyesi kalıntılar); tema alan dosyaları
+  #    için taban: 7. Yeni hayalet seçici eklemek bütçeyi aşar — seçiciyi
+  #    gerçek DOM sınıfına bağlayın ya da dinamik üretim önekini rapora
+  #    bilinçli ekleyin (frontend_orphan_constructed_prefixes).
+  dead_rows <- attr(report, "dead_selector_rows", exact = TRUE)
+  theme_dead_rows <- attr(report, "theme_dead_selector_rows", exact = TRUE)
+  max_dead <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_DEAD_SELECTORS", 42L)
+  max_theme_dead <- .as_int_env_frontend("MERGEN_TEST_MAX_THEME_DEAD_SELECTORS", 7L)
+
+  expect_true(is.data.frame(dead_rows))
+  expect_true(
+    nrow(dead_rows) <= max_dead,
+    info = paste(
+      sprintf("Hayalet seçici sayısı arttı: %d > %d.", nrow(dead_rows), max_dead),
+      "Yeni eklenenler:",
+      paste(utils::head(
+        paste0(dead_rows$file, " :: ", dead_rows$selector), 8
+      ), collapse = " | ")
+    )
+  )
+
+  expect_true(
+    nrow(theme_dead_rows) <= max_theme_dead,
+    info = sprintf(
+      "Tema alan dosyalarında hayalet seçici arttı: %d > %d.",
+      nrow(theme_dead_rows),
+      max_theme_dead
+    )
+  )
+})
+
 test_that("kritik frontend dosyaları kendi taban çizgilerinden büyümez", {
   report <- .load_frontend_maint_report()
 
