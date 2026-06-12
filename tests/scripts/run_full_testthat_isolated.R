@@ -21,7 +21,10 @@ artifact_dir <- Sys.getenv(
   unset = file.path("artifacts", "vm-evidence", "manual-full-testthat-isolated")
 )
 
-artifact_dir <- normalizePath(artifact_dir, winslash = "/", mustWork = FALSE)
+# Bilerek normalizePath() kullanma: VM repo yolu UNC + non-ASCII karakterler
+# tasiyabilir. Cocuk Rscript runner'lari repo kokunden calistigi icin goreli
+# artifact yolu yeterlidir ve daha guvenlidir.
+artifact_dir <- gsub("\\", "/", artifact_dir, fixed = TRUE)
 file_log_dir <- file.path(artifact_dir, "step_full_testthat_files")
 dir.create(file_log_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -35,7 +38,11 @@ if (!file.exists(rscript_bin)) {
 }
 
 path_for_r <- function(path) {
-  gsub("\\", "/", normalizePath(path, winslash = "/", mustWork = TRUE), fixed = TRUE)
+  gsub("\\", "/", path, fixed = TRUE)
+}
+
+r_string <- function(path) {
+  encodeString(path_for_r(path), quote = "'")
 }
 
 test_files <- list.files(
@@ -70,16 +77,16 @@ for (i in seq_along(test_files)) {
   log_file <- file.path(file_log_dir, sprintf("%03d_%s.log", i, safe_name))
   runner_file <- file.path(file_log_dir, sprintf("%03d_%s_runner.R", i, safe_name))
 
-  writeLines(
-    c(
-      sprintf("index=%d", i),
-      sprintf("total=%d", length(test_files)),
-      sprintf("test_file=%s", path_for_r(test_file)),
-      sprintf("started_at=%s", format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
-    ),
-    running_marker,
-    useBytes = TRUE
-  )
+writeLines(
+  c(
+    sprintf("index=%d", i),
+    sprintf("total=%d", length(test_files)),
+    sprintf("test_file=%s", path_for_r(test_file)),
+    sprintf("started_at=%s", format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
+  ),
+  running_marker,
+  useBytes = TRUE
+)
 
   runner_lines <- c(
     "for (.loc in c('C.UTF-8', 'en_US.UTF-8', 'tr_TR.UTF-8')) {",
@@ -94,10 +101,10 @@ for (i in seq_along(test_files)) {
     "options(warn = 1)",
     "library(testthat)",
     "testthat::local_edition(3)",
-    sprintf(
-      "res <- testthat::test_file('%s', reporter = 'summary', stop_on_failure = TRUE, stop_on_warning = TRUE)",
-      path_for_r(test_file)
-    ),
+	sprintf(
+	  "res <- testthat::test_file(%s, reporter = 'summary', stop_on_failure = TRUE, stop_on_warning = TRUE)",
+	  r_string(test_file)
+	),
     "invisible(res)"
   )
 
@@ -111,12 +118,12 @@ for (i in seq_along(test_files)) {
     args = c("--vanilla", runner_file),
     stdout = log_file,
     stderr = log_file,
-    env = c(
-      "MERGEN_RUN_APP=false",
-      "MERGEN_DISABLE_FUTURES=true",
-      "TZ=UTC",
-      sprintf("MERGEN_EVIDENCE_ARTIFACT_DIR=%s", artifact_dir)
-    )
+	env = c(
+	  "MERGEN_RUN_APP=false",
+	  "MERGEN_DISABLE_FUTURES=true",
+	  "TZ=UTC",
+	  sprintf("MERGEN_EVIDENCE_ARTIFACT_DIR=%s", artifact_dir)
+	)
   ))
 
   duration <- round(as.numeric(difftime(Sys.time(), started, units = "secs")), 1)

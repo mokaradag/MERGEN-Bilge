@@ -250,7 +250,11 @@ evidence_run_child_step <- function(step_id, code_lines, extra_env = character(0
   writeLines(enc2utf8(c(child_runner_header, code_lines)), runner_file, useBytes = TRUE)
 
 base_env <- c(
-  MERGEN_EVIDENCE_ARTIFACT_DIR = normalizePath(artifact_dir, winslash = "/", mustWork = FALSE),
+  # Artifact yolu repo kokune gore goreli ve ASCII-guvenli kalmalidir.
+  # Windows VM'de mutlak UNC yol "Gelistirme/MERGEN Bilge" gibi non-ASCII
+  # ve bosluk iceren parcalar tasiyabilir; bu deger cocuk Rscript runner'larina
+  # yazildiginda native Rscript crash uretir.
+  MERGEN_EVIDENCE_ARTIFACT_DIR = artifact_dir,
   MERGEN_RUN_APP = "false",
   MERGEN_DISABLE_FUTURES = "true"
 )

@@ -171,6 +171,27 @@ test_that("full_testthat adimi dosya izolasyonlu crash-locator kosucusunu kullan
     grepl("RUNNING_TEST_FILE.txt", isolated_text, fixed = TRUE),
     info = "Native crash anında son çalışan test dosyası marker dosyasına yazılmalıdır."
   )
+  
+	expect_false(
+	  grepl("normalizePath(artifact_dir", isolated_text, fixed = TRUE),
+	  info = paste(
+		"İzole full_testthat koşucusu artifact_dir için normalizePath kullanmamalıdır;",
+		"VM UNC repo yolu non-ASCII karakter taşıyabilir."
+	  )
+	)
+
+	expect_false(
+	  grepl("normalizePath(path", isolated_text, fixed = TRUE),
+	  info = paste(
+		"İzole full_testthat koşucusu test dosyası yollarını mutlaklaştırmamalıdır;",
+		"çocuk runner içine Geliştirme gibi non-ASCII mutlak repo yolu yazılmamalıdır."
+	  )
+	)
+
+	expect_true(
+	  grepl("r_string <- function", isolated_text, fixed = TRUE),
+	  info = "Generated runner path değerleri güvenli R string quoting yardımcısından geçmelidir."
+	)
 })
 
 test_that("artifact yolu ve dogrulama-kanit alanlari sabittir", {
