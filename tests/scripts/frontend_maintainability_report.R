@@ -307,7 +307,7 @@ frontend_orphan_vendor_patterns <- c(
   "^main-header$", "^main-sidebar$", "^main-footer$", "^content-wrapper$",
   "^sidebar", "^navbar", "^logo(-|$)", "^treeview", "^skin-", "^wrapper$",
   "^content$", "^tab-", "^box(-|$)", "^col-", "^row$", "^container",
-  "^highcharts-", "^CodeMirror", "^cm-", "^swal", "^fa(-|s$|r$|b$)", "^sr-only$",
+  "^highcharts-", "^CodeMirror", "^cm-", "^swal", "^fa(-|s$|r$|b$)", "^sr-only$", "^sr-only-focusable$",
   "^dt-", "^dataTable$", "^header-fixed$", "^text-", "^bg-", "^pull-",
   "^close$", "^caret$", "^divider$", "^glyphicon", "^has-feedback",
   "^js-irs", "^slider", "^noUi-", "^leaflet", "^html-?widget", "^htmlwidget_container$",
