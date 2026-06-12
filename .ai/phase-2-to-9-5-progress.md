@@ -41,20 +41,53 @@ Başlangıç tespiti: untested top-level fonksiyon sayısı 85 (FIXED-string tar
 Admin renderer / health probe / destek DB / galeri kümeleri zaten kapalı olduğu
 için `.ai` prompt'larındaki o hedefler atlandı (yeniden doğrulandı, bayat değil).
 
-Bu oturum hedefleri:
+**TAMAMLANDI.** Yapılanlar:
 
-1. Faz 2: config_logging sink'leri, server wiring guard'ları, sso_fetch_jwks,
-   quickActionsInit + apiKeyServer testServer, rate limiter cluster,
-   cc_policy_collapse_dot_segments, admin_doc iç helper'ları,
-   mergen_serve_image_data_url.
-2. Faz 3: `R/helpers_release_evidence.R` (saf artifact okuyucu) + manifest
-   wiring + davranış testleri.
-3. Faz 4: `docs/feature-ownership-map.md`.
-4. Faz 5: `test-adversarial-hostile-input-behavior.R` (bidi dosya adları,
-   markdown javascript: link, split-tag, admin-doc svg/math/nested-splice,
-   %2e%2e ve UNC-child yol vektörleri).
+**Faz 2 — 9 yeni davranış testi (379 doğrulama, batch dahil 0 fail/warn/skip):**
+- `test-cc-path-policy-collapse-behavior.R` (18) — cc_policy_collapse_dot_segments.
+- `test-admin-doc-internal-helpers-behavior.R` (25) — admin_doc_lookup/repo_root/
+  strip_tags/allowed_tags.
+- `test-markdown-safety-image-serve-behavior.R` (21) — mergen_serve_image_data_url +
+  .mergen_register_image_data_obj (session-scoped URL, memoizasyon, base64 fallback,
+  içerik türü eşlemesi).
+- `test-server-wiring-guard-behavior.R` (35) — chat engine deps bundle + core
+  interaction/observer bundle guard'ları.
+- `test-sso-fetch-jwks-behavior.R` (16) — httr-mock JWKS getirme.
+- `test-config-logging-sinks-behavior.R` (21) — log_ai_call/log_user_action/
+  log_error_with_context/.forward_log_call gerçek dosya appender ile (9C glue).
+- `test-rate-limiter-worker-pool-behavior.R` (15) — monitor_workers + stop_future_cluster.
+- `test-quick-actions-server-behavior.R` (37) — quickActionsInit testServer.
+- `test-api-key-server-behavior.R` (26) — apiKeyServer testServer.
 
-(Oturum sonunda sonuçlarla güncellenecek.)
+**Faz 3 — release kanıt görünürlüğü:**
+- `R/helpers_release_evidence.R` (saf, secret-safe artifact okuyucu) +
+  manifest wiring (support_admin_health_helpers, health_checks'ten önce) +
+  `test-release-evidence-behavior.R` (49 doğrulama).
+- Sections contract anchor'ları bilinçli güncellendi (n 6→7, toplam 261→262).
+- UI bağlama (Sistem Durumu sekmesi) SONRAKİ oturuma bırakıldı.
+
+**Faz 4 — `docs/feature-ownership-map.md`** (9 özellik; tüm somut test referansları
+repoda doğrulandı; docs/README.md'ye bağlandı).
+
+**Faz 5 — adversarial + 2 cerrahi güvenlik sertleştirmesi:**
+- `mergen_sanitize_markdown_links`: javascript: yanında vbscript: ve data:text/html
+  link protokollerini de etkisizleştirir (güvenli data:image/http/https korunur).
+- `utils_upload_validator`: Unicode bidi-override (Trojan Source) dosya adlarını
+  reddeder (.upload_has_bidi_control). Türkçe adlar etkilenmez.
+- `test-adversarial-hostile-input-behavior.R` (116 doğrulama).
+
+**Doğrulama (bu container, R 4.6.0):**
+- `bash tools/ai_validate.sh quick` → failed_steps=0, app_source_smoke=passed.
+- `bash tools/ai_validate.sh full --boot-smoke` → failed_steps=0,
+  app_source_smoke=passed, **full testthat suite=passed (130.8s)**,
+  shiny_boot_smoke=passed, browser_smoke=**skipped** (browser binary yok — kanıt değil),
+  db_sso_vm_validation_performed=FALSE, sql_server Türkçe encoding=not_performed.
+- `parse_sanity_check.R` OK (762 dosya). `maintainability_report.R` 100/100
+  (max 24 fn, max 777 satır). `seam_doctor.R` OK. `frontend_complexity_doctor.R` OK.
+- Yeni 11 dosya hem tek tek hem `test_dir` batch'te 379 PASS / 0 fail/warn/skip.
+
+**Bu oturumda KANITLANMAYAN (cloud sınırı):** Windows VM/SSO/DB/SQL Server Türkçe
+encoding/gerçek browser UX smoke/vision live. Bunlar VM kapılarının işidir.
 
 ## Kalan yüksek değerli untested kümeler (sonraki oturumlar için)
 
