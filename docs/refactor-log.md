@@ -6,6 +6,16 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-12 — Windows VM evidence gate milestone
+
+`tests/scripts/run_vm_evidence_gate.R` tam Windows VM koşumu uçtan uca geçti: `Toplam: 13 passed, 0 failed, 0 skipped`. Milestone kapsamındaki önemli passed adımlar: `full_testthat`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight`. Örnek artifact: `artifacts/vm-evidence/20260612-211836/evidence.json`; kalıcı artifact düzeni `artifacts/vm-evidence/<timestamp>/evidence.json`.
+
+Operasyonel olarak browser proof, external-app modunda alındı: uygulama ayrı pencerede `http://127.0.0.1:28081` üzerinde açık tutuldu, gate ikinci pencerede `MERGEN_BROWSER_UX_BASE_URL=http://127.0.0.1:28081` ve `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ile çalıştırıldı. Bu mod `UX_SMOKE_DONE:PASS` üretmediği sürece blocking kabul edilir.
+
+Milestone sırasında doğrulanan bakım iyileştirmeleri: isolated health UI testleri gerekli health table helper'larını source eder; LLM worker tool-result isolated testleri preview-dataframe helper'ını formatter'dan önce source eder; `run_full_testthat_isolated.R` start/end index aralığıyla devam koşumunu destekler; full testthat çocuk süreçleri browser UX evidence env leakage'a karşı korunur; VM preflight path handling Türkçe karakterli ve boşluklu mapped-drive / UNC-style path'ler için sertleştirildi.
+
+Bu kayıt release/readiness kanıtıdır, davranış değişikliği iddiası değildir. Kanıt yalnızca `evidence.json` içinde `passed` görünen adımlar için geçerlidir; uzun süreli saha yükü ve manuel kırılgan-akış QA'sı ayrıca gerekir.
+
 ## 2026-06-10 — Seam kayıt defteri, frontend bölge sahipliği ve CSS kaskad kuralları (yönetişim katmanı)
 
 ### Seçilen iz(ler)

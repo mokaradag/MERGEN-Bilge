@@ -92,6 +92,12 @@ bash tools/ai_validate.sh cloud-quick
 
 `cloud-quick`, ağır runtime paket bootstrap'ını ve app source smoke kapsamını bilinçli olarak atlayabilir; tam Windows VM/üretim kanıtı yerine geçmez. Riskli runtime, SSO, DB encoding, source-order, file lifecycle, streaming, frontend asset order, Bilge Yolaç/Claude Code, security-path-download veya production-VM etkili değişikliklerde repo sözleşmelerine göre daha geniş doğrulama gerekir.
 
+### Windows VM evidence gate milestone
+
+MERGEN Bilge'nin on-prem Windows VM doğrulamasında önemli bir readiness/release kilometre taşı kaydedildi: `tests/scripts/run_vm_evidence_gate.R` tam koşumu VM üzerinde uçtan uca geçti. Başarılı koşumda `Toplam: 13 passed, 0 failed, 0 skipped` görüldü; özellikle `full_testthat`, `browser_ux_smoke`, `vm_preflight_real` ve `db_encoding_preflight` adımları `PASSED` oldu. Örnek kanıt artifact'ı: `artifacts/vm-evidence/20260612-211836/evidence.json`.
+
+Bu kanıt kapısı `artifacts/vm-evidence/<timestamp>/evidence.json` altında secret-safe makine-okunur sonuç üretir. Milestone; tam izole testthat suite'inin, VM preflight'ın, DB encoding preflight'ın ve gerçek browser UX smoke kanıtının aynı VM koşumunda geçtiğini gösterir. Uzun süreli saha yükü, manuel kırılgan-akış QA'sı veya eski legacy DB satırlarının temizliği gibi kapsamları otomatik olarak kanıtlamaz; ayrıntılı komutlar ve zorunlu browser UX smoke iki-pencere akışı için [`RUNBOOK.md`](RUNBOOK.md) izlenmelidir.
+
 ## Depo haritası
 
 | Yol | Amaç |
