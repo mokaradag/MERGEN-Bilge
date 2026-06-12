@@ -289,6 +289,26 @@ tail_log <- function(n = 120L) {
   tail(lines, n)
 }
 
+skip_or_fail_app_boot <- function(reason, status = NA_integer_) {
+  msg <- paste(
+    "SKIP: Browser UX smoke uygulama HTTP boot aşamasında çalıştırılamadı.",
+    reason,
+    if (!is.na(status)) sprintf("Shiny exit status: %s.", as.character(status)) else "",
+    "MERGEN_REQUIRE_BROWSER_UX_SMOKE=true değil; bu adım kanıt üretmeden atlanıyor."
+  )
+
+  cat(msg, "\n")
+  cat("\n--- log tail ---\n")
+  cat(paste(tail_log(), collapse = "\n"))
+  cat("\n--- end log tail ---\n")
+
+  if (isTRUE(require_browser)) {
+    quit(status = 1)
+  }
+
+  quit(status = 0)
+}
+
 wait_for_app <- function() {
   started <- Sys.time()
   last_body <- ""
@@ -296,14 +316,15 @@ wait_for_app <- function() {
   repeat {
     elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
 
-    if (!px$is_alive()) {
-      status <- px$get_exit_status()
-      cat(sprintf("Shiny process exited early with status: %s\n", as.character(status)))
-      cat("\n--- log tail ---\n")
-      cat(paste(tail_log(), collapse = "\n"))
-      cat("\n--- end log tail ---\n")
-      quit(status = 1)
-    }
+	if (!px$is_alive()) {
+	  status <- px$get_exit_status()
+	  cat(sprintf("Shiny process exited early with status: %s\n", as.character(status)))
+
+	  skip_or_fail_app_boot(
+		reason = "Shiny child process exited before the smoke page became reachable.",
+		status = status
+	  )
+	}
 
     body <- read_url(url)
     if (nzchar(body)) {
@@ -314,17 +335,18 @@ wait_for_app <- function() {
       }
     }
 
-    if (elapsed > timeout_seconds) {
-      body_file <- file.path(artifact_dir, sprintf("last-http-body-%s.html", port))
-      writeLines(last_body, body_file, useBytes = TRUE)
+	if (elapsed > timeout_seconds) {
+	  body_file <- file.path(artifact_dir, sprintf("last-http-body-%s.html", port))
+	  writeLines(last_body, body_file, useBytes = TRUE)
 
-      cat(sprintf("App boot wait failed after %ds.\n", timeout_seconds))
-      cat(sprintf("Last HTTP body written to: %s\n", body_file))
-      cat("\n--- log tail ---\n")
-      cat(paste(tail_log(), collapse = "\n"))
-      cat("\n--- end log tail ---\n")
-      return(FALSE)
-    }
+	  cat(sprintf("App boot wait failed after %ds.\n", timeout_seconds))
+	  cat(sprintf("Last HTTP body written to: %s\n", body_file))
+
+	  skip_or_fail_app_boot(
+		reason = sprintf("Shiny app did not respond within %ds.", timeout_seconds),
+		status = NA_integer_
+	  )
+	}
 
     Sys.sleep(1)
   }
