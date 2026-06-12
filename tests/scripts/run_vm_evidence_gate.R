@@ -249,10 +249,17 @@ evidence_run_child_step <- function(step_id, code_lines, extra_env = character(0
 
   writeLines(enc2utf8(c(child_runner_header, code_lines)), runner_file, useBytes = TRUE)
 
-  env_args <- character(0)
-  if (length(extra_env) > 0L) {
-    env_args <- paste0(names(extra_env), "=", unname(extra_env))
-  }
+base_env <- c(
+  MERGEN_EVIDENCE_ARTIFACT_DIR = normalizePath(artifact_dir, winslash = "/", mustWork = FALSE),
+  MERGEN_RUN_APP = "false",
+  MERGEN_DISABLE_FUTURES = "true"
+)
+
+env_args <- paste0(names(base_env), "=", unname(base_env))
+
+if (length(extra_env) > 0L) {
+  env_args <- c(env_args, paste0(names(extra_env), "=", unname(extra_env)))
+}
 
   started <- Sys.time()
   status <- suppressWarnings(system2(
@@ -264,10 +271,19 @@ evidence_run_child_step <- function(step_id, code_lines, extra_env = character(0
   ))
   duration <- as.numeric(difftime(Sys.time(), started, units = "secs"))
 
-  raw_log <- evidence_read_text_file_safe(log_file)
-  writeLines(evidence_redact_text(raw_log), log_file, useBytes = TRUE)
+raw_log <- evidence_read_text_file_safe(log_file)
+writeLines(evidence_redact_text(raw_log), log_file, useBytes = TRUE)
 
-  unlink(runner_file, force = TRUE)
+nested_log_dir <- file.path(artifact_dir, sprintf("step_%s_files", step_id))
+if (dir.exists(nested_log_dir)) {
+  nested_logs <- list.files(nested_log_dir, pattern = "\\.log$", full.names = TRUE)
+  for (nested_log in nested_logs) {
+    nested_raw <- evidence_read_text_file_safe(nested_log)
+    writeLines(evidence_redact_text(nested_raw), nested_log, useBytes = TRUE)
+  }
+}
+
+unlink(runner_file, force = TRUE)
 
   list(
     exit_status = as.integer(status %||% 1L),
@@ -561,11 +577,11 @@ evidence_step_runners <- list(
     "app_boot_smoke",
     "source('tests/scripts/smoke_app_boot.R', encoding = 'UTF-8')"
   ),
-  full_testthat = function() run_step_simple_child(
-    "full_testthat",
-    "source('tests/testthat.R', encoding = 'UTF-8')",
-    extra_env = c(TZ = "UTC")
-  ),
+full_testthat = function() run_step_simple_child(
+  "full_testthat",
+  "source('tests/scripts/run_full_testthat_isolated.R', encoding = 'UTF-8')",
+  extra_env = c(TZ = "UTC")
+),
   maintainability_report = function() run_step_simple_child(
     "maintainability_report",
     c(

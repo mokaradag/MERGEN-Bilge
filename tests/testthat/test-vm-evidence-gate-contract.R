@@ -136,6 +136,43 @@ test_that("adimlar temiz cocuk R oturumlarinda kosulur", {
   )
 })
 
+test_that("full_testthat adimi dosya izolasyonlu crash-locator kosucusunu kullanir", {
+  text <- .evg_read_text(.evg_script_path)
+  isolated_runner_path <- file.path(
+    .evg_repo_root,
+    "tests",
+    "scripts",
+    "run_full_testthat_isolated.R"
+  )
+
+  expect_true(
+    file.exists(isolated_runner_path),
+    info = "full_testthat crash-locator betigi mevcut olmalıdır."
+  )
+
+  expect_true(
+    grepl("run_full_testthat_isolated.R", text, fixed = TRUE),
+    info = "VM kanıt kapısı full_testthat için dosya izolasyonlu koşucuyu kullanmalıdır."
+  )
+
+  expect_true(
+    grepl("MERGEN_EVIDENCE_ARTIFACT_DIR", text, fixed = TRUE),
+    info = "Çocuk adımlar artifact dizinini alt koşuculara aktarmalıdır."
+  )
+
+  isolated_text <- .evg_read_text(isolated_runner_path)
+
+  expect_true(
+    grepl("testthat::test_file", isolated_text, fixed = TRUE),
+    info = "İzole koşucu testleri dosya dosya çalıştırmalıdır."
+  )
+
+  expect_true(
+    grepl("RUNNING_TEST_FILE.txt", isolated_text, fixed = TRUE),
+    info = "Native crash anında son çalışan test dosyası marker dosyasına yazılmalıdır."
+  )
+})
+
 test_that("artifact yolu ve dogrulama-kanit alanlari sabittir", {
   text <- .evg_read_text(.evg_script_path)
 
