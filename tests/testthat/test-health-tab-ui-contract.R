@@ -22,6 +22,7 @@
     env$`%||%` <- function(a, b) if (is.null(a)) b else a
   }
   source(file.path(repo_root, "R", "helpers_health_formatters.R"), encoding = "UTF-8", local = env)
+  source(file.path(repo_root, "R", "helpers_health_table.R"), encoding = "UTF-8", local = env)
   for (f in c("module_health_overview.R", "module_health_storage.R",
               "module_health_security.R", "module_health_connectivity.R",
               "module_health_diagnostics.R")) {
