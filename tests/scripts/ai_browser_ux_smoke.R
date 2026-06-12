@@ -290,11 +290,23 @@ tail_log <- function(n = 120L) {
 }
 
 skip_or_fail_app_boot <- function(reason, status = NA_integer_) {
+  prefix <- if (isTRUE(require_browser)) {
+    "FAILED: Browser UX smoke uygulama HTTP boot aşamasında çalıştırılamadı."
+  } else {
+    "SKIP: Browser UX smoke uygulama HTTP boot aşamasında çalıştırılamadı."
+  }
+
+  suffix <- if (isTRUE(require_browser)) {
+    "MERGEN_REQUIRE_BROWSER_UX_SMOKE=true olduğu için bu adım bloklayıcıdır."
+  } else {
+    "MERGEN_REQUIRE_BROWSER_UX_SMOKE=true değil; bu adım kanıt üretmeden atlanıyor."
+  }
+
   msg <- paste(
-    "SKIP: Browser UX smoke uygulama HTTP boot aşamasında çalıştırılamadı.",
+    prefix,
     reason,
     if (!is.na(status)) sprintf("Shiny exit status: %s.", as.character(status)) else "",
-    "MERGEN_REQUIRE_BROWSER_UX_SMOKE=true değil; bu adım kanıt üretmeden atlanıyor."
+    suffix
   )
 
   cat(msg, "\n")
