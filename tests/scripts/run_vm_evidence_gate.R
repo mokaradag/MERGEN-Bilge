@@ -259,20 +259,40 @@ base_env <- c(
   MERGEN_DISABLE_FUTURES = "true"
 )
 
-env_args <- paste0(names(base_env), "=", unname(base_env))
+# Windows/Rscript guvenli ortam aktarimi:
+# system2(env = c("A=B")) bazi Windows/R surumlerinde bu degeri komut
+# satiri argumani gibi Rscript'e gecirebilir. Bu durumda Rscript
+# "A=B" metnini script dosyasi sanip "No such file or directory" verir.
+# Bu nedenle ortam degerlerini parent R oturumunda gecici olarak set edip
+# cocuk Rscript'in miras almasini sagliyoruz; sonra eski degerleri geri aliyoruz.
+child_env <- c(base_env, extra_env)
+child_env <- child_env[!duplicated(names(child_env), fromLast = TRUE)]
 
-if (length(extra_env) > 0L) {
-  env_args <- c(env_args, paste0(names(extra_env), "=", unname(extra_env)))
-}
+old_env <- Sys.getenv(names(child_env), unset = NA_character_)
 
-  started <- Sys.time()
-  status <- suppressWarnings(system2(
-    rscript_bin,
-    args = c("--vanilla", runner_file),
-    stdout = log_file,
-    stderr = log_file,
-    env = env_args
-  ))
+do.call(
+  Sys.setenv,
+  stats::setNames(as.list(unname(child_env)), names(child_env))
+)
+
+on.exit({
+  for (nm in names(child_env)) {
+    old_value <- old_env[[nm]]
+    if (is.na(old_value)) {
+      Sys.unsetenv(nm)
+    } else {
+      do.call(Sys.setenv, stats::setNames(list(old_value), nm))
+    }
+  }
+}, add = TRUE)
+
+started <- Sys.time()
+status <- suppressWarnings(system2(
+  rscript_bin,
+  args = c("--vanilla", runner_file),
+  stdout = log_file,
+  stderr = log_file
+))
   duration <- as.numeric(difftime(Sys.time(), started, units = "secs"))
 
 raw_log <- evidence_read_text_file_safe(log_file)
