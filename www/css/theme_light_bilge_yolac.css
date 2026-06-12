@@ -456,8 +456,7 @@ html[data-theme="light"] .cc-status-error {
   color: #b91c1c !important;
 }
 
-html[data-theme="light"] .cc-status-checking,
-html[data-theme="light"] .cc-status-unknown {
+html[data-theme="light"] .cc-status-checking {
   border: 1px solid var(--color-border, #d8dde7) !important;
   border-color: rgba(0, 48, 135, 0.30) !important;
   background: rgba(91, 101, 119, 0.08) !important;

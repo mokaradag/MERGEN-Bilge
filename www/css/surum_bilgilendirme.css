@@ -740,20 +740,14 @@ html[data-theme="light"] .surum-card-badge {
   box-shadow: 0 2px 6px rgba(0, 48, 135, 0.22) !important;
 }
 
-html[data-theme="light"] .surum-modal-body,
 html[data-theme="light"] #surum-modal-content {
   color: var(--color-text-soft, #1f2a44) !important;
 }
 
-html[data-theme="light"] .surum-modal-body *,
 html[data-theme="light"] #surum-modal-content * {
   color: inherit;
 }
 
-html[data-theme="light"] .surum-modal-body h1,
-html[data-theme="light"] .surum-modal-body h2,
-html[data-theme="light"] .surum-modal-body h3,
-html[data-theme="light"] .surum-modal-body h4,
 html[data-theme="light"] #surum-modal-content h1,
 html[data-theme="light"] #surum-modal-content h2,
 html[data-theme="light"] #surum-modal-content h3,

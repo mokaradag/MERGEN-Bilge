@@ -62,7 +62,6 @@
   color: #F44336;
 }
 
-.cc-status-unknown,
 .cc-status-checking {
   background: rgba(158, 158, 158, 0.15);
   color: #9E9E9E;

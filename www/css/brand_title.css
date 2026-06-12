@@ -139,7 +139,6 @@ html[data-theme="light"] {
  * / .deep-space-title-accent veya span > span yapısı), modern welcome ile aynı
  * gradyan vurgu uygulanır. Span sırasına bağlı (kardeş seçici) ya da
  * isimlendirilmiş alt sınıflar üzerinden çalışır. */
-.deep-space-branding .deep-space-title .deep-space-title-accent,
 .deep-space-branding .deep-space-title span:nth-of-type(2) {
   font-weight: var(--mergen-brand-secondary-weight) !important;
   letter-spacing: var(--mergen-brand-secondary-letter-spacing) !important;
@@ -221,8 +220,7 @@ html[data-theme="light"] .deep-space-skip-checkbox input[type="checkbox"]:checke
 }
 
 /* Deep-space sürüm rozet ve alt metin — koyu uzay arka planında beyaz */
-html[data-theme="light"] .deep-space-version-badge,
-html[data-theme="light"] .deep-space-version-text {
+html[data-theme="light"] .deep-space-version-badge {
   color: rgba(255, 255, 255, 0.92) !important;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6) !important;
   background: rgba(255, 255, 255, 0.08) !important;

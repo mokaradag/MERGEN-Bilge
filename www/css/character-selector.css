@@ -323,16 +323,14 @@
   box-shadow: 0 0 6px rgba(255, 140, 66, 0.4);
 }
 
-.character-title,
-.character-title-animate {
+.character-title {
   font-size: clamp(18px, 1.6vw, 22px);
   font-weight: 700;
   letter-spacing: 0.03em;
   margin-bottom: 6px;
 }
 
-.character-lore,
-.character-lore-animate {
+.character-lore {
   font-size: clamp(15px, 1.2vw, 17px);
   line-height: 1.75;
   color: var(--text-secondary);
@@ -433,8 +431,7 @@ html[data-theme="light"] .character-info-container * {
 
 html[data-theme="light"] .character-info-container h1,
 html[data-theme="light"] .character-info-container h2,
-html[data-theme="light"] .character-info-container h3,
-html[data-theme="light"] .character-info-container .character-name {
+html[data-theme="light"] .character-info-container h3 {
   color: var(--mb-brand-primary, #003087) !important;
 }
 

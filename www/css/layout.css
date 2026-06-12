@@ -40,7 +40,7 @@ body {
 }
 
 /* Sayfa Düzeni Yapısı */
-.content-wrapper, .right-side {
+.content-wrapper {
   background-color: var(--background-dark) !important;
   color: var(--text-secondary) !important;
   min-height: 100vh;

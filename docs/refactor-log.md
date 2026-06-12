@@ -604,3 +604,7 @@ Açık tema konsolidasyonu hayalet seçicilerin tema zinciriyle sınırlı olmad
 - `test-brand-title-single-source-contract.R` → 23 PASS / 0 FAIL.
 - Hayalet tarama yeni tabanı: toplam 26 (tema: 7).
 - Tam kapı (`ai_validate full --boot-smoke`) bu commit öncesi yeniden koşuldu; sonuç commit mesajında.
+
+## 2026-06-12 — Grup üyesi ölü seçicilerin budanması: hayalet seçici tabanı SIFIR
+
+Canlı kuralların grubunda kalan son 26 ölü seçici (hiçbir zaman eşleşemeyen grup üyeleri) 12 dosyadan budandı (kural gövdeleri bayt-bayt korunur; tamamen ölü kural 0 doğrulandı). `frontend_maintainability_report.R` hayalet taraması artık 0/0 raporlar ve ratchet bütçeleri SIFIRA indirildi (`MERGEN_TEST_MAX_FRONTEND_DEAD_SELECTORS=0`, `MERGEN_TEST_MAX_THEME_DEAD_SELECTORS=0`): bundan sonra eklenen HER hayalet seçici CI'da yakalanır. Odaklı süitler yeşil (ratchet 92, theme-modular 96, brand 23, manifest 224, tool-bg 21); tam kapı sonucu commit mesajında.

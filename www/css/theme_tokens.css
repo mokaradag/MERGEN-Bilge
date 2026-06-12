@@ -128,7 +128,6 @@ html[data-theme="light"] {
  * Tüm öğelere uygulamak performansı düşürür; hedefli kullanım yeterli. */
 html.theme-anim body,
 html.theme-anim .content-wrapper,
-html.theme-anim .right-side,
 html.theme-anim .main-sidebar,
 html.theme-anim .main-header {
   transition: background-color var(--theme-transition-duration) var(--theme-transition-curve),
@@ -139,7 +138,6 @@ html.theme-anim .main-header {
 @media (prefers-reduced-motion: reduce) {
   html.theme-anim body,
   html.theme-anim .content-wrapper,
-  html.theme-anim .right-side,
   html.theme-anim .main-sidebar,
   html.theme-anim .main-header {
     transition: none !important;
