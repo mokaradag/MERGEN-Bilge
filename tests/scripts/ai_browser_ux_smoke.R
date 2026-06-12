@@ -121,6 +121,14 @@ dom_file <- file.path(artifact_dir, sprintf("browser-ux-dom-%s.html", port))
 stderr_file <- file.path(artifact_dir, sprintf("browser-ux-stderr-%s.log", port))
 
 url <- sprintf("http://127.0.0.1:%d", port)
+
+external_base_url <- trimws(Sys.getenv("MERGEN_BROWSER_UX_BASE_URL", unset = ""))
+use_external_app <- nzchar(external_base_url)
+
+if (isTRUE(use_external_app)) {
+  url <- sub("/+$", "", external_base_url)
+}
+
 smoke_url <- sprintf("%s/smoke/ux-smoke.html", url)
 
 cat("== MERGEN browser UX smoke ==\n")
@@ -224,38 +232,44 @@ if (!nzchar(browser_bin)) {
 
 cat(sprintf("Browser: %s\n", browser_bin))
 
-expr <- paste(
-  "Sys.setenv(",
-  "MERGEN_RUN_APP='false',",
-  "MERGEN_DISABLE_FUTURES='true',",
-  "TZ='UTC',",
-  "LOCAL_LLM_ENDPOINT=ifelse(nzchar(Sys.getenv('LOCAL_LLM_ENDPOINT')), Sys.getenv('LOCAL_LLM_ENDPOINT'), 'http://test.local/v1'),",
-  "DB_DSN=ifelse(nzchar(Sys.getenv('DB_DSN')), Sys.getenv('DB_DSN'), 'test-dsn'),",
-  "AI_KEYS_MASTER=ifelse(nzchar(Sys.getenv('AI_KEYS_MASTER')), Sys.getenv('AI_KEYS_MASTER'), 'test-master-key-0123456789')",
-  ");",
-  "cat('SHINY_UX_RUNNER_START\\n');",
-  "source('app.R', encoding='UTF-8');",
-  "cat('SHINY_UX_RUNNER_BOOT_OK\\n');",
-  sprintf(
-    "run_mergen_app(host='127.0.0.1', port=%dL, launch.browser=FALSE, quiet=FALSE)",
-    port
+px <- NULL
+
+if (!isTRUE(use_external_app)) {
+  expr <- paste(
+    "Sys.setenv(",
+    "MERGEN_RUN_APP='false',",
+    "MERGEN_DISABLE_FUTURES='true',",
+    "TZ='UTC',",
+    "LOCAL_LLM_ENDPOINT=ifelse(nzchar(Sys.getenv('LOCAL_LLM_ENDPOINT')), Sys.getenv('LOCAL_LLM_ENDPOINT'), 'http://test.local/v1'),",
+    "DB_DSN=ifelse(nzchar(Sys.getenv('DB_DSN')), Sys.getenv('DB_DSN'), 'test-dsn'),",
+    "AI_KEYS_MASTER=ifelse(nzchar(Sys.getenv('AI_KEYS_MASTER')), Sys.getenv('AI_KEYS_MASTER'), 'test-master-key-0123456789')",
+    ");",
+    "cat('SHINY_UX_RUNNER_START\\n');",
+    "source('app.R', encoding='UTF-8');",
+    "cat('SHINY_UX_RUNNER_BOOT_OK\\n');",
+    sprintf(
+      "run_mergen_app(host='127.0.0.1', port=%dL, launch.browser=FALSE, quiet=FALSE)",
+      port
+    )
   )
-)
 
-px <- processx::process$new(
-  command = rscript,
-  args = c("-e", expr),
-  stdout = log_file,
-  stderr = log_file,
-  supervise = TRUE
-)
+  px <- processx::process$new(
+    command = rscript,
+    args = c("-e", expr),
+    stdout = log_file,
+    stderr = log_file,
+    supervise = TRUE
+  )
 
-cleanup <- function() {
-  if (!is.null(px) && px$is_alive()) {
-    try(px$kill_tree(), silent = TRUE)
+  cleanup <- function() {
+    if (!is.null(px) && px$is_alive()) {
+      try(px$kill_tree(), silent = TRUE)
+    }
   }
+  on.exit(cleanup(), add = TRUE)
+} else {
+  cat(sprintf("Using externally running app: %s\n", url))
 }
-on.exit(cleanup(), add = TRUE)
 
 read_url <- function(target) {
   con <- NULL
@@ -328,7 +342,7 @@ wait_for_app <- function() {
   repeat {
     elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
 
-	if (!px$is_alive()) {
+	if (!isTRUE(use_external_app) && !px$is_alive()) {
 	  status <- px$get_exit_status()
 	  cat(sprintf("Shiny process exited early with status: %s\n", as.character(status)))
 
