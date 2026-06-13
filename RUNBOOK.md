@@ -182,6 +182,21 @@ MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke
 
 `MERGEN_BROWSER_BIN` açıkça ayarlanmışsa require modu OTOMATİK etkinleşir: sessiz SKIP devre dışıdır ve kullanılamayan binary yolu erken ve açık hata verir. Tarayıcı bildirilen bir ortamda browser smoke artık sessizce atlanamaz.
 
+
+### 7.6 VM evidence gate (güncel release kanıtı)
+
+13 Haziran 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son artifact `artifacts/vm-evidence/20260613-120951/evidence.json` altında beklenir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır.
+
+PowerShell external-app akışı için uygulama ayrı pencerede `http://127.0.0.1:28081` üzerinde açıkken gate şu ortamla koşturulur:
+
+```powershell
+$env:MERGEN_BROWSER_UX_BASE_URL = "http://127.0.0.1:28081"
+$env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
+& $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
+```
+
+Geçerli release kanıtı sayılması için özet satırında `Toplam: 13 passed, 0 failed, 0 skipped` görülmeli ve `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight`, `full_testthat` adımları `PASSED` olmalıdır.
+
 ## 8. Dağıtım Öncesi Kapılar
 
 1. Değişiklik türünü sınıflandırın: docs-only, UI, runtime, DB, SSO, file lifecycle, streaming, Bilge Yolaç veya deployment.
@@ -409,7 +424,7 @@ operasyonu için normal tam koşum repo kökünden doğrudan Rscript ile çalı�
 - `browser_ux_smoke PASSED` — mandatory browser proof gerçek tarayıcıda `UX_SMOKE_DONE:PASS` üretti.
 - `vm_preflight_real PASSED` — VM/SSO/DB/LLM üretim-benzeri preflight geçti.
 - `db_encoding_preflight PASSED` — transactional Türkçe DB encoding preflight geçti.
-- Başarılı koşum örneği: `artifacts/vm-evidence/20260612-211836/evidence.json`.
+- Başarılı koşum örneği: `artifacts/vm-evidence/20260613-120951/evidence.json`.
 
 Bu, MERGEN Bilge'nin on-prem Windows VM readiness/release doğrulaması için önemli bir
 kilometre taşıdır. Kanıt kapısı yalnızca `evidence.json` içinde `passed` görünen adımlar
