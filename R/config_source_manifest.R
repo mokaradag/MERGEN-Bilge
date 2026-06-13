@@ -229,6 +229,9 @@ source_manifest_sections <- list(
     "R/helpers_health_formatters.R",
     "R/helpers_health_table.R",
     "R/helpers_health_runtime_checks.R",
+    # Release/doğrulama kanıt artifact'larının secret-safe okuyucusu; sağlık
+    # kontrolleri ileride bu özetleri tüketebilsin diye health_checks'ten önce.
+    "R/helpers_release_evidence.R",
     "R/helpers_health_checks.R"
   ),
 

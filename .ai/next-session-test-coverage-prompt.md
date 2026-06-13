@@ -1,3 +1,57 @@
+# CONTEXT — Faz 2→9.5 oturumu `claude/peaceful-ritchie-hvd1y7` (do NOT redo)
+
+Bu oturum 11 yeni davranış testi (~444 doğrulama) ekledi ve 2 cerrahi güvenlik
+sertleştirmesi yaptı. Hepsi 0 fail/warn/skip (tek tek + `test_dir` batch).
+ZATEN KAPSANDI — tekrar etme:
+- `cc_policy_collapse_dot_segments` (`test-cc-path-policy-collapse-behavior.R`).
+- `admin_doc_lookup`/`admin_doc_repo_root`/`admin_doc_strip_tags`/
+  `admin_doc_allowed_tags` (`test-admin-doc-internal-helpers-behavior.R`).
+- `mergen_serve_image_data_url` + `.mergen_register_image_data_obj`
+  (`test-markdown-safety-image-serve-behavior.R`).
+- Server wiring guard'ları: `.server_wiring_*`, `serverBuildChatEngineDependencyBundle`,
+  `.server_core_interaction_require_bundle`, `.server_core_observer_require_bundle`
+  (`test-server-wiring-guard-behavior.R`).
+- `sso_fetch_jwks` httr-mock (`test-sso-fetch-jwks-behavior.R`).
+- `log_ai_call`/`log_user_action`/`log_error_with_context`/`.forward_log_call`
+  GERÇEK logger dosya appender'ı ile (`test-config-logging-sinks-behavior.R`) —
+  frame-sayımlı stub DEĞİL: config_logging.R'yi geçici MERGEN_LOG_DIR ile source et,
+  index-2 konsol appender'ını sustur, logger global durumunu withr::defer ile
+  geri yükle, dosyaya yazılan satırları oku. NOT: log_error_with_context "Stack
+  trace:" DEBUG satırı test kodunu deparse ettiği için `^ERROR` ile filtrele.
+- `monitor_workers` + `stop_future_cluster` (`test-rate-limiter-worker-pool-behavior.R`)
+  — parallel::stopCluster mock + future::plan geri yükleme.
+- `quickActionsInit` testServer (`test-quick-actions-server-behavior.R`) — GOTCHA:
+  `get_tool_mode_config` stub'ı ÜÇÜNCÜ `config` argümanını da almalı (intro builder
+  `build_quick_action_intro_message(..., config=api_config)` çağırır), yoksa
+  show_quick_action_intro sessizce patlar.
+- `apiKeyServer` testServer (`test-api-key-server-behavior.R`) — tüm anahtar
+  yardımcıları yerel sahte stub; gerçek anahtar/dosya/uç nokta yok.
+- `R/helpers_release_evidence.R` (Faz 3 yeni saf okuyucu) +
+  `test-release-evidence-behavior.R`.
+- Adversarial: `test-adversarial-hostile-input-behavior.R` (traversal/bidi/markdown/
+  görsel kartı XSS).
+
+İKİ CERRAHİ SERTLEŞTİRME (regresyon koruması var, geri alma):
+- `mergen_sanitize_markdown_links` artık vbscript: ve data:text/html link
+  protokollerini de nötrler (javascript: davranışı korunur; data:image/http/https
+  etkilenmez).
+- `utils_upload_validator` `.upload_has_bidi_control` ile bidi-override (U+200E/F,
+  U+202A-E, U+2066-9) dosya adlarını reddeder (Türkçe etkilenmez).
+
+GOTCHA — secret-leak contract: test fixture'larında `api_key = "..."` değeri 24+
+karakter olursa secret tarayıcı (`api[_-]?key\s*=\s*['"][...]{24,}['"]`) yakalar;
+kısa yer tutucu kullan.
+
+Doğrulama bu container'da (R 4.6.0): `ai_validate.sh full --boot-smoke` TAM geçti
+(full testthat suite 130.8s passed, shiny boot passed, app source smoke passed);
+browser UX smoke SKIPPED (browser yok), DB/SSO/SQL-Server Türkçe encoding NOT run.
+
+Kalan yüksek değerli untested kümeler `.ai/phase-2-to-9-5-progress.md` sonunda
+listelidir (sendMessageInit, ssoAuthServer, chat_add_message/simulate_streaming,
+call_llm_worker, deep_analysis/pk_analysis service-bound, claude_code streaming).
+
+---
+
 # PROMPT — Behavioral test coverage, session 4 (deep runtime + service-bound logic)
 
 TASK: Continue eliminating the **"Module / runtime-logic test coverage"** weakness in this

@@ -84,7 +84,9 @@
   summarization_followup = list(first = "R/helpers_summarization_modes.R", last = "R/helpers_followup_questions.R", n = 3L),
   analysis_helpers = list(first = "R/helpers_deep_analysis.R", last = "R/helpers_pk_analysis_query_selection.R", n = 5L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
-  support_admin_health_helpers = list(first = "R/helpers_destek_database.R", last = "R/helpers_health_checks.R", n = 6L),
+  # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
+  # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
+  support_admin_health_helpers = list(first = "R/helpers_destek_database.R", last = "R/helpers_health_checks.R", n = 7L),
   ai_expert_helpers = list(first = "R/helpers_ai_expert.R", last = "R/helpers_ai_expert_chunking.R", n = 2L),
   claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_run_lifecycle.R", n = 26L),
   llm_pipeline = list(first = "R/helpers_llm_tool_formatters.R", last = "R/helpers_llm_worker.R", n = 11L),
@@ -200,7 +202,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
 
   # 260L -> 261L bilinçli güncelleme: R/config_file_store_index_lock.R
   # fonksiyon-yoğunluk bölmesiyle manifest'e eklendi.
-  expect_equal(length(runtime), 261L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 261L -> 262L bilinçli güncelleme: R/helpers_release_evidence.R (release
+  # kanıt artifact okuyucusu) support_admin_health_helpers bölümüne eklendi.
+  expect_equal(length(runtime), 262L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

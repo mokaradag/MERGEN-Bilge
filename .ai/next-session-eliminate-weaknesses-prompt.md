@@ -8,6 +8,40 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/peaceful-ritchie-hvd1y7` (Faz 2→9.5 kampanyası)
+
+Bu oturum davranışsal kapsamayı derinleştirdi, release kanıt görünürlüğü
+katmanı ekledi, özellik sahiplik haritası oluşturdu ve 2 cerrahi güvenlik
+sertleştirmesi yaptı. Do NOT redo:
+
+- **11 yeni davranış testi (~444 doğrulama, 0 fail/warn/skip, tek tek + batch)** —
+  tam liste `.ai/next-session-test-coverage-prompt.md` başında. Öne çıkanlar:
+  `quickActionsInit`/`apiKeyServer` testServer, `sso_fetch_jwks`, config_logging
+  sink'leri (gerçek appender), wiring guard'ları, release evidence okuyucu,
+  adversarial battery.
+- **Faz 3 — `R/helpers_release_evidence.R`**: vm-evidence/ai-validation
+  artifact'larını ve günlük log ERROR/WARN sayaçlarını SECRET-SAFE okuyan saf
+  katman. Manifest'e `support_admin_health_helpers` içinde (health_checks'ten
+  önce) eklendi; sections contract n 6→7, toplam 261→262 bilinçli güncellendi.
+  Sistem Durumu UI bağlama SONRAKİ oturuma bırakıldı (saf helper + test hazır).
+- **Faz 4 — `docs/feature-ownership-map.md`**: 9 kritik özellik için dosya/test/
+  servis sahipliği + sıradaki hedefler; docs/README.md'ye bağlandı.
+- **2 cerrahi güvenlik sertleştirmesi (regresyon testli):**
+  - `mergen_sanitize_markdown_links` → vbscript: ve data:text/html link
+    protokollerini de nötrler (javascript: + data:image/http/https davranışı korunur).
+  - `utils_upload_validator` → `.upload_has_bidi_control` ile Unicode bidi-override
+    (Trojan Source) dosya adlarını reddeder; Türkçe adlar kod-noktası düzeyinde
+    denetlendiği için etkilenmez.
+
+VALIDATION (bu container, R 4.6.0): `ai_validate.sh quick` ve `full --boot-smoke`
+TAM geçti — full testthat suite passed (130.8s), shiny boot passed, app source
+smoke passed; browser UX smoke SKIPPED (browser binary yok); DB/SSO/SQL-Server
+Türkçe encoding NOT run (VM-only). `seam_doctor.R` OK, `frontend_complexity_doctor.R`
+OK, maintainability 100/100. Cloud koşumu VM/DB/SSO/vision/gerçek-browser kanıtı
+DEĞİLDİR.
+
+---
+
 ## LATEST SESSION RESULTS — `claude/sharp-brown-inTxI` (assume merged)
 
 This session shipped the **admin documentation viewer** (primary feature) plus a
