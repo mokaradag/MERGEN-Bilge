@@ -45,11 +45,20 @@ testthat::skip_if_not_installed("logger")
   env
 }
 
-# Bugünün log dosyasını okur (config_logging.R aynı adlandırmayı kullanır)
+# Bugünün log dosyasını okur (config_logging.R aynı adlandırmayı kullanır).
+# logger dosya appender'ı (appender_file -> cat) satırları SÜRECİN YEREL
+# kodlamasıyla yazar. Windows VM'de Türkçe karakterler Windows-1254 baytlarına
+# çevrilir (ör. "ı" -> 0xFD); bu yüzden dosyayı sabit `encoding = "UTF-8"`
+# varsayımıyla okumak VM'de "input string ... is invalid UTF-8" uyarısı verir ve
+# Türkçe içerik eşleşmeleri başarısız olur. Aynı süreç yazıp okuduğu için yerel
+# kodlamayla (`encoding = "unknown"`) okuyup enc2utf8() ile UTF-8'e çevirmek hem
+# Windows hem Linux'ta güvenli, kayıpsız bir tur sağlar. Bu, depodaki yerleşik
+# VM-güvenli log okuma deseniyle (test-logging-runtime-contract.R) aynıdır.
 .readTodaysLog <- function(log_dir) {
   yol <- file.path(log_dir, sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d")))
   if (!file.exists(yol)) return(character(0))
-  readLines(yol, warn = FALSE, encoding = "UTF-8")
+  satirlar <- suppressWarnings(readLines(yol, warn = FALSE, encoding = "unknown"))
+  enc2utf8(satirlar)
 }
 
 testthat::test_that("log_ai_call AI çağrı alanlarını dosya appender'ına interpolasyonla yazar", {
