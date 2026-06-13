@@ -1,3 +1,30 @@
+# CONTEXT — Faz 2→9.5 oturumu `claude/affectionate-bohr-ietfly` (2026-06-13, do NOT redo)
+
+Bu oturum Faz 3 release-kanıt UI bağlamasını tamamladı ve 2 Faz 2 davranış testi
+ekledi. Hepsi 0 fail/warn/skip (tek tek + `test_dir` batch). `ai_validate quick`
+TAM geçti (failed=0, skipped=0, app_source_smoke=passed). ZATEN YAPILDI — tekrar etme:
+- **Faz 3 UI:** `R/module_health_release.R` (`health_release_ui`,
+  `.health_release_pill`, `.health_release_steps_table`) Sistem Durumu'na
+  "Release Kanıtı" sekmesi olarak bağlandı (`R/module_health.R` switch +
+  refresh'e bağlı saf `release_evidence_overview` reactive; manifest
+  `module_health_chartlab` n 9→10, toplam 263). Kanıt: `test-health-release-ui-behavior.R`
+  (UI builder + secret-safe sınır + healthServer "release" yönlendirme testServer).
+- `parse_stream_event()` (helpers_claude_code_streaming.R) tüm stream-json olay
+  türleriyle kapsandı: `test-claude-code-parse-stream-event-behavior.R`. GOTCHA:
+  `content_block_start` text yolu normalize ETMEZ; yalnızca `content_block_delta`
+  text_delta/input_json_delta ve `result` normalize eder — testte
+  `normalize_text_utf8`'i env'e tanınabilir önekli stub ile koyup yolu kanıtla.
+- `release_evidence_artifact_root` / `release_evidence_read_json` /
+  `.release_evidence_scalar` doğrudan testleri `test-release-evidence-behavior.R`'a eklendi.
+
+Kalan en yüksek değerli untested küme (58, FIXED-string tarama): `ssoAuthServer`,
+`sendMessageInit`, `chat_simulate_streaming`, `call_llm_worker`, `call_ai_expert_llm`,
+deep_analysis/pk_analysis servis-bağlı helper'lar, `run_claude_code_streaming`/
+`check_claude_code_status` (processx mock), `module_settings_yapilandirma_ui` `.syap_*`
+kart builder'ları (id yüzeyi dolaylı korunuyor; düşük öncelik).
+
+---
+
 # CONTEXT — Faz 2→9.5 oturumu `claude/peaceful-ritchie-hvd1y7` (do NOT redo)
 
 Bu oturum 11 yeni davranış testi (~444 doğrulama) ekledi ve 2 cerrahi güvenlik

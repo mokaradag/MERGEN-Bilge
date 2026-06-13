@@ -8,6 +8,34 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/affectionate-bohr-ietfly` (2026-06-13, Faz 2→9.5)
+
+Bu oturum, önceki oturumun bıraktığı en somut adımı tamamladı: **Faz 3 release
+kanıt görünürlüğünün UI bağlaması.** Do NOT redo:
+
+- **Sistem Durumu > "Release Kanıtı" sekmesi (operatör görünürlüğü):**
+  `R/module_health_release.R` (YENİ) `helpers_release_evidence.R` saf okuyucusunun
+  secret-safe özetini (en son VM evidence gate, ai_validate summary, günlük log
+  ERROR/WARN) gösterir. `R/module_health.R`'a "release" sekme paneli + switch +
+  refresh'e bağlı saf `release_evidence_overview` reactive (DB/LLM/ağ yok) eklendi.
+  Manifest `module_health_chartlab` n 9→10 (toplam 263). Kanıt-yok dürüstlüğü
+  korunur; artifact yolu / ham log içeriği render edilmez.
+- **Davranış testleri (0 fail/warn/skip, tek tek + batch):**
+  `test-health-release-ui-behavior.R` (UI builder + secret-safe sınır +
+  healthServer "release" yönlendirme testServer), `test-claude-code-parse-stream-event-behavior.R`
+  (`parse_stream_event` tüm olay türleri), `test-release-evidence-behavior.R`
+  genişletildi (3 iç yardımcı).
+- **Doğrulama:** `ai_validate.sh quick` → failed=0, skipped=0, app_source_smoke=passed;
+  `full --boot-smoke` oturumda koşuldu. parse_sanity 764 dosya OK; sections/source-manifest/
+  seam-registry/ratchet/e2e-health contract'ları 0 fail. Cloud koşumu VM/SSO/DB/SQL
+  Server Türkçe encoding/gerçek browser/vision kanıtı DEĞİLDİR.
+
+Sıradaki yüksek değerli hedefler değişmedi: `ssoAuthServer` testServer (httr/jwt
+mock), deep_analysis/pk_analysis servis-bağlı helper'lar, `run_claude_code_streaming`/
+`check_claude_code_status` (processx mock). Faz 3 sonraki: log kategori/latency özeti.
+
+---
+
 ## LATEST SESSION RESULTS — `claude/peaceful-ritchie-hvd1y7` (Faz 2→9.5 kampanyası)
 
 Bu oturum davranışsal kapsamayı derinleştirdi, release kanıt görünürlüğü

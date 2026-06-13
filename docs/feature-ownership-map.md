@@ -131,16 +131,22 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `R/helpers_health_formatters.R`, `R/helpers_health_table.R`,
   `R/helpers_release_evidence.R` (release kanıt artifact okuyucu),
   `R/helpers_admin_analytics.R`, `R/helpers_admin_*` aileleri.
-- **UI/server modülleri:** `R/module_health*.R`, `R/module_admin_*.R`,
+- **UI/server modülleri:** `R/module_health*.R` (Sistem Durumu sekmeleri:
+  `R/module_health_overview.R`...`R/module_health_diagnostics.R` +
+  `R/module_health_release.R` "Release Kanıtı" sekmesi), `R/module_admin_*.R`,
   `www/js/health_dashboard.js`, `www/css/health_dashboard.css`.
 - **DB/servis:** `MB_*` analitik okumaları; DB/LLM/file-store sağlık probe'ları
-  (mock'lanır, gerçek internet uç noktası çağrılmaz).
+  (mock'lanır, gerçek internet uç noktası çağrılmaz); release kanıt sekmesi
+  yalnızca `artifacts/` ve günlük log dosyalarını okur (DB/ağ çağrısı yok).
 - **Testler:** `test-health-check*.R`, `test-health-checks-probes-behavior.R`,
-  `test-admin-*-outputs-behavior.R`, `test-release-evidence-behavior.R`.
+  `test-admin-*-outputs-behavior.R`, `test-release-evidence-behavior.R`,
+  `test-health-release-ui-behavior.R` (UI builder + healthServer yönlendirme).
 - **Smoke/kanıt:** VM evidence gate (`run_vm_evidence_gate.R`), seam doctor,
   frontend complexity doctor; `artifacts/vm-evidence/<ts>/evidence.json`.
-- **Bilinen risk / sıradaki hedef:** release kanıt okuyucu eklendi; Sistem Durumu
-  sayfasına operatör görünümü olarak bağlama henüz yapılmadı (sonraki oturum).
+- **Bilinen risk / sıradaki hedef:** release kanıt okuyucusu Sistem Durumu
+  "Release Kanıtı" sekmesine bağlandı (operatör görünürlüğü). Sıradaki:
+  post-deploy smoke durumu ve latency/hata-kategorisi özetleri için log
+  formatlarının değerlendirilmesi.
 
 ## Bilge Yolaç / Claude Code
 

@@ -35,7 +35,51 @@ Aşağıdakiler ÖNCEKİ oturumlarda tamamlandı (`.ai/next-session-*.md` ayrın
 
 ## Oturum kaydı
 
-### Oturum: 2026-06-12 — branch `claude/peaceful-ritchie-hvd1y7` (bu oturum)
+### Oturum: 2026-06-13 — branch `claude/affectionate-bohr-ietfly` (bu oturum)
+
+Önceki oturumun bıraktığı en somut "sonraki adım" tamamlandı: **Faz 3 release
+kanıt görünürlüğünün UI bağlaması.** Ek olarak Faz 2 davranışsal kapsama
+genişletildi. Cerrahi, additive; ratchet/manifest/seam/encoding sözleşmeleri yeşil.
+
+**Faz 3 — Sistem Durumu "Release Kanıtı" sekmesi (operatör görünürlüğü):**
+- `R/module_health_release.R` (YENİ): `health_release_ui` + `.health_release_pill` +
+  `.health_release_steps_table`. `helpers_release_evidence.R` saf okuyucusunun
+  secret-safe özetini (en son VM evidence gate, ai_validate summary, günlük log
+  ERROR/WARN sayaçları) mevcut sağlık UI bloklarıyla gösterir. Kanıt-yok
+  dürüstlüğü: "Bulunamadı" başarı değil, "Atlandı" (SKIP) kanıt değil; artifact
+  yolu / ham log içeriği render EDİLMEZ (savunma derinliği).
+- `R/module_health.R`: yeni "Release Kanıtı" sekme paneli, refresh tetikleyicisine
+  bağlı saf `release_evidence_overview` reactive'i (DB/LLM/ağ çağrısı yok),
+  `switch` yönlendirmesi (`release = health_release_ui(...)`).
+- `R/config_source_manifest.R`: `module_health_chartlab` bölümüne `module_health.R`
+  ÖNCESİNE eklendi (seam `destek_yonetici_saglik` sahipliği korunur).
+- Sections contract: `module_health_chartlab` n 9→10, toplam 262→263 bilinçli güncellendi.
+
+**Faz 2 — 2 davranış testi (önceki untested kümeden):**
+- `test-claude-code-parse-stream-event-behavior.R` — `parse_stream_event()` tüm
+  Anthropic stream-json olay türleri + normalizasyon sınırı + NULL düşüşleri.
+- `test-release-evidence-behavior.R` genişletildi — `release_evidence_artifact_root`,
+  `release_evidence_read_json`, `.release_evidence_scalar` doğrudan testleri.
+- `test-health-release-ui-behavior.R` — yeni UI builder davranışı + secret-safe
+  sınır + `healthServer` "release" yönlendirme testServer kanıtı.
+
+**Doğrulama (bu container, R 4.6.0):**
+- `bash tools/ai_validate.sh quick` → failed_steps=0, skipped_steps=0,
+  **app_source_smoke=passed** (manifest yeni modülü yükleyip uygulamayı sorunsuz
+  source ediyor), focused contract tests OK.
+- `bash tools/ai_validate.sh full --boot-smoke` → (oturumda koşuldu; sonuç oturum
+  kapanışında bu dosyaya işlenecek).
+- `parse_sanity_check.R` OK (764 dosya). Sections/source-manifest/seam-registry/
+  maintainability-ratchet contract testleri: 0 fail/warn. e2e-health-dashboard 0 fail.
+- Yeni/değişen 3 test dosyası tek tek + `test_dir` batch'te 147 PASS / 0 fail/warn/skip.
+- Untested top-level fn taraması: 61 → 58 (parse_stream_event + 3 release internals
+  artık kapsanıyor; yeni 3 health-release fonksiyonu da kapsanıyor).
+
+**Bu oturumda KANITLANMAYAN (cloud sınırı):** Windows VM/SSO/DB/SQL Server Türkçe
+encoding/gerçek browser UX smoke/vision live. Release Kanıtı sekmesinin gerçek
+artifact'larla canlı görünümü yalnızca VM'de (artifact üretildikten sonra) doğrulanır.
+
+### Oturum: 2026-06-12 — branch `claude/peaceful-ritchie-hvd1y7`
 
 Başlangıç tespiti: untested top-level fonksiyon sayısı 85 (FIXED-string tarama).
 Admin renderer / health probe / destek DB / galeri kümeleri zaten kapalı olduğu
@@ -102,7 +146,8 @@ encoding/gerçek browser UX smoke/vision live. Bunlar VM kapılarının işidir.
   `execute_single_deep_query` (helpers_deep_analysis.R) — LLM/DB mock ister.
 - `pk_analiz_process_request`, `find_best_query_with_ai` (module_proje_kaynak_analizi.R).
 - `summarize_file_with_llm`, `handle_file_upload_batch` (helpers_file_pipeline.R).
-- `run_claude_code_streaming`, `parse_stream_event` (helpers_claude_code_streaming.R).
+- `run_claude_code_streaming` (helpers_claude_code_streaming.R) — processx mock ister;
+  `parse_stream_event` 2026-06-13'te kapsandı.
 - `check_claude_code_status`, `test_claude_code_connection` (processx mock).
 - `prepare_claude_code_document_context`, `write_claude_code_document_summary_file`,
   `summarize_claude_code_documents_with_local_llm`.
@@ -117,10 +162,15 @@ encoding/gerçek browser UX smoke/vision live. Bunlar VM kapılarının işidir.
 
 ## Faz 3 sonraki adımlar
 
-- Helper katmanı bu oturumda eklendiyse: Sistem Durumu (health) sayfasına
-  "Release Kanıtı" sekmesi/karti olarak bağlamak (UI wiring) sonraki oturuma.
+- ✅ Sistem Durumu "Release Kanıtı" sekmesi UI bağlaması 2026-06-13'te tamamlandı
+  (`R/module_health_release.R` + `R/module_health.R` switch). Operatör artık
+  uygulamayı kapatmadan en son kanıt özetini görüyor.
 - Post-deploy smoke durumu ve hata kategorisi/latency özetleri için mevcut log
-  formatları incelenmeli (`logs/mergen_*.log` yapısı).
+  formatları incelenmeli (`logs/mergen_*.log` yapısı). `release_evidence_log_health`
+  şu an yalnızca ERROR/WARN sayar; kategori/latency çıkarımı eklenebilir (saf,
+  test-destekli olmalı).
+- Release Kanıtı sekmesinin gerçek artifact'larla VM canlı görünümü (artifact
+  üretildikten sonra) bir VM oturumunda gözle doğrulanmalı.
 
 ## Doğrulama kanıt sınırı (her oturum geçerli)
 
