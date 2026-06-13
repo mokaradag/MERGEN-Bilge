@@ -82,6 +82,9 @@ options(
 )
 
 Sys.setenv(
+  # Repo kökü runtime boyunca sabit kalsın; getwd() değişse bile artifact/www yolları doğru çözülür.
+  MERGEN_REPO_ROOT = repo_root,
+
   # app.R source edilirken otomatik runApp tetiklenmesin.
   MERGEN_RUN_APP = "false",
 

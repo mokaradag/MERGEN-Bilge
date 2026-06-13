@@ -52,16 +52,39 @@ fileClickObserversInit <- function(input, session, settings_data, api_config,
       return(invisible(NULL))
     }
     
-    filepath_clean <- trimws(as.character(filepath_raw))
-    
-    full_path <- NULL
-    if (startsWith(filepath_clean, "www/")) {
-      full_path <- file.path(getwd(), filepath_clean)
-    } else if (startsWith(filepath_clean, "/") || grepl("^[A-Za-z]:", filepath_clean)) {
-      full_path <- filepath_clean
-    } else {
-      full_path <- file.path(getwd(), "www", filepath_clean)
-    }
+	filepath_clean <- trimws(as.character(filepath_raw))
+
+	repo_root_for_files <- Sys.getenv("MERGEN_REPO_ROOT", unset = "")
+	repo_candidates <- unique(Filter(nzchar, c(
+	  repo_root_for_files,
+	  tryCatch(as.character(get0("repo_root", envir = globalenv(), inherits = TRUE) %||% "")[1],
+			   error = function(e) ""),
+	  getwd(),
+	  file.path(getwd(), ".."),
+	  file.path(getwd(), "../..")
+	)))
+
+	repo_root_for_files <- getwd()
+	for (cand in repo_candidates) {
+	  cand_norm <- tryCatch(normalizePath(cand, winslash = "/", mustWork = FALSE),
+							error = function(e) cand)
+	  if (file.exists(file.path(cand_norm, "app.R")) &&
+		  dir.exists(file.path(cand_norm, "www"))) {
+		repo_root_for_files <- cand_norm
+		break
+	  }
+	}
+
+	full_path <- NULL
+	if (startsWith(filepath_clean, "www/")) {
+	  full_path <- file.path(repo_root_for_files, filepath_clean)
+	} else if (startsWith(filepath_clean, "/") ||
+			   grepl("^//", filepath_clean) ||
+			   grepl("^[A-Za-z]:", filepath_clean)) {
+	  full_path <- filepath_clean
+	} else {
+	  full_path <- file.path(repo_root_for_files, "www", filepath_clean)
+	}
     
     full_path <- normalize_mcp_path(full_path, must_exist = FALSE)
     

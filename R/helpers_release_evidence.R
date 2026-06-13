@@ -15,9 +15,39 @@
 #             adımlar kanıt DEĞİLDİR.
 # ==============================================================================
 
-# Artifact kökünü çözer (repo kökü altındaki artifacts/ dizini)
-release_evidence_artifact_root <- function(repo_root = getwd()) {
-  file.path(repo_root, "artifacts")
+# Repo kökünü getwd() yerine sabit ve doğrulanmış adaylardan çözer.
+# Shiny runtime sırasında getwd() tests/testthat gibi geçici dizinlere kayabilir.
+release_evidence_resolve_repo_root <- function(repo_root = NULL) {
+  adaylar <- unique(Filter(nzchar, c(
+    as.character(repo_root %||% "")[1],
+    Sys.getenv("MERGEN_REPO_ROOT", unset = ""),
+    tryCatch(as.character(get0("repo_root", envir = globalenv(), inherits = TRUE) %||% "")[1],
+             error = function(e) ""),
+    getwd(),
+    file.path(getwd(), ".."),
+    file.path(getwd(), "../..")
+  )))
+
+  for (aday in adaylar) {
+    kok <- tryCatch(
+      normalizePath(aday, winslash = "/", mustWork = FALSE),
+      error = function(e) aday
+    )
+
+    if (file.exists(file.path(kok, "app.R")) &&
+        file.exists(file.path(kok, "global.R")) &&
+        dir.exists(file.path(kok, "R")) &&
+        dir.exists(file.path(kok, "www"))) {
+      return(kok)
+    }
+  }
+
+  normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+}
+
+# Artifact kökünü çözer: repo kökü altındaki artifacts/ dizini.
+release_evidence_artifact_root <- function(repo_root = NULL) {
+  file.path(release_evidence_resolve_repo_root(repo_root), "artifacts")
 }
 
 # Bir artifact ailesinin en yeni zaman damgalı alt dizinindeki hedef dosyayı
@@ -76,7 +106,9 @@ release_evidence_read_json <- function(path) {
 # VM kanıt kapısının (run_vm_evidence_gate.R) en son evidence.json özetini
 # beyaz-listeli alanlarla döndürür. Adım listesi yalnızca id/status/required
 # üçlüsüne indirgenir; log yolları, detaylar ve notlar dışarı taşınmaz.
-release_evidence_vm_summary <- function(repo_root = getwd()) {
+release_evidence_vm_summary <- function(repo_root = NULL) {
+  repo_root <- release_evidence_resolve_repo_root(repo_root)
+
   yol <- release_evidence_latest_artifact(
     file.path(release_evidence_artifact_root(repo_root), "vm-evidence"),
     "evidence.json"
@@ -123,7 +155,9 @@ release_evidence_vm_summary <- function(repo_root = getwd()) {
 
 # ai_validate (ai_repo_check.R) en son summary.json özetini döndürür.
 # Yalnızca dokümante kanıt alanları seçilir; ham adım çıktıları taşınmaz.
-release_evidence_ai_validation_summary <- function(repo_root = getwd()) {
+release_evidence_ai_validation_summary <- function(repo_root = NULL) {
+  repo_root <- release_evidence_resolve_repo_root(repo_root)
+
   yol <- release_evidence_latest_artifact(
     file.path(release_evidence_artifact_root(repo_root), "ai-validation"),
     "summary.json"
@@ -281,7 +315,9 @@ release_evidence_log_health <- function(log_dir = NULL, max_lines = 2000L) {
 # Operatör görünümü için birleşik release kanıt özeti. Tüm alt özetler
 # secret-safe alan seçiminden geçer; bulunamayan kanıtlar dürüstçe
 # not_found olarak işaretlenir ve asla kanıt yerine geçmez.
-release_evidence_overview <- function(repo_root = getwd(), log_dir = NULL) {
+release_evidence_overview <- function(repo_root = NULL, log_dir = NULL) {
+  repo_root <- release_evidence_resolve_repo_root(repo_root)
+
   list(
     generated_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
     vm_evidence = release_evidence_vm_summary(repo_root),

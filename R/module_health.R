@@ -5,14 +5,37 @@
 # ==============================================================================
 
 health_source_optional <- function(path) {
-  if (!file.exists(path)) {
+  candidate <- path
+
+  if (!file.exists(candidate) && !grepl("^(?:[A-Za-z]:|/|\\\\\\\\)", path)) {
+    repo_candidates <- unique(Filter(nzchar, c(
+      Sys.getenv("MERGEN_REPO_ROOT", unset = ""),
+      tryCatch(as.character(get0("repo_root", envir = globalenv(), inherits = TRUE) %||% "")[1],
+               error = function(e) ""),
+      getwd(),
+      file.path(getwd(), ".."),
+      file.path(getwd(), "../..")
+    )))
+
+    for (root in repo_candidates) {
+      root <- tryCatch(normalizePath(root, winslash = "/", mustWork = FALSE),
+                       error = function(e) root)
+      candidate2 <- file.path(root, path)
+      if (file.exists(candidate2)) {
+        candidate <- candidate2
+        break
+      }
+    }
+  }
+
+  if (!file.exists(candidate)) {
     return(invisible(FALSE))
   }
 
   if (exists("safe_source", mode = "function")) {
-    safe_source(path, encoding = "UTF-8")
+    safe_source(candidate, encoding = "UTF-8")
   } else {
-    source(path, encoding = "UTF-8", local = globalenv())
+    source(candidate, encoding = "UTF-8", local = globalenv())
   }
 
   invisible(TRUE)
@@ -150,7 +173,7 @@ healthServer <- function(id, perf_tracker) {
 		}
 
 		if (exists("release_evidence_overview", mode = "function")) {
-		  release_evidence_overview(repo_root = getwd())
+		  release_evidence_overview()
 		} else {
 		  NULL
 		}
