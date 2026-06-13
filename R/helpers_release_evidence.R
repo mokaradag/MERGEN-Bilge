@@ -169,9 +169,50 @@ release_evidence_ai_validation_summary <- function(repo_root = getwd()) {
   )
 }
 
+# ERROR satırlarındaki geliştirici-tanımlı bağlam (context) etiketlerini sayar.
+# Kaynak kalıp: "Error in <bağlam>: <mesaj>" (log_error_with_context çıktısı;
+# hem bağlam hem mesaj zaten redakte edilmiş yazılır). YALNIZCA <bağlam> alınır
+# (ilk iki noktaya kadar); mesaj İÇERİĞİ asla taşınmaz. Savunma derinliği için
+# bağlam güvenli karakter sınıfına indirgenir ve 60 karaktere kırpılır.
+# "Error in" kalıbına uymayan ERROR satırları "diğer" kovasına gider. En sık
+# top_n bağlam azalan sayı sırasıyla list(context=, count=) olarak döner.
+# Operatöre "hangi alt sistem en çok hata üretiyor?" görünürlüğü sağlar.
+release_evidence_summarize_error_contexts <- function(error_lines, top_n = 6L) {
+  if (is.null(error_lines) || !length(error_lines)) {
+    return(list())
+  }
+
+  ham_ctx <- vapply(error_lines, function(line) {
+    line <- as.character(line)[1]
+    if (is.na(line) || !nzchar(line)) {
+      return("diğer")
+    }
+    m <- regmatches(line, regexec("Error in ([^:]{1,120}):", line))[[1]]
+    if (length(m) >= 2L && nzchar(trimws(m[[2]]))) {
+      ctx <- trimws(m[[2]])
+      # Savunma derinliği: yalnızca güvenli karakterler kalsın, 60 ile sınırla
+      ctx <- gsub("[^A-Za-z0-9 ._/-]", "", ctx)
+      ctx <- trimws(substr(ctx, 1L, 60L))
+      if (!nzchar(ctx)) "diğer" else ctx
+    } else {
+      "diğer"
+    }
+  }, character(1), USE.NAMES = FALSE)
+
+  sayim <- sort(table(ham_ctx), decreasing = TRUE)
+  if (length(sayim) > top_n) {
+    sayim <- sayim[seq_len(top_n)]
+  }
+
+  lapply(seq_along(sayim), function(i) {
+    list(context = names(sayim)[i], count = as.integer(sayim[[i]]))
+  })
+}
+
 # Bugünün uygulama logundaki ERROR/WARN satırlarını sınırlı pencerede sayar.
-# Log satır İÇERİĞİ döndürülmez (redakte edilmiş olsa bile); yalnızca sayaç
-# ve son hata zaman öneki raporlanır. Dosya yoksa güvenli sıfır özeti döner.
+# Log satır İÇERİĞİ döndürülmez (redakte edilmiş olsa bile); yalnızca sayaç,
+# son hata zaman öneki ve (yeni) güvenli bağlam kategorisi sayımı raporlanır.
+# Dosya yoksa güvenli sıfır özeti döner.
 release_evidence_log_health <- function(log_dir = NULL, max_lines = 2000L) {
   if (is.null(log_dir) || !nzchar(log_dir %||% "")) {
     log_dir <- trimws(Sys.getenv("MERGEN_LOG_DIR", "logs"))
@@ -188,7 +229,8 @@ release_evidence_log_health <- function(log_dir = NULL, max_lines = 2000L) {
     window_lines = 0L,
     error_count = 0L,
     warn_count = 0L,
-    last_error_at = ""
+    last_error_at = "",
+    error_contexts = list()
   )
 
   if (!file.exists(log_yolu)) {
@@ -230,7 +272,9 @@ release_evidence_log_health <- function(log_dir = NULL, max_lines = 2000L) {
     window_lines = length(satirlar),
     error_count = length(hata_satirlari),
     warn_count = length(uyari_satirlari),
-    last_error_at = son_hata_zamani
+    last_error_at = son_hata_zamani,
+    # Yalnızca bağlam etiketi + sayım; mesaj içeriği taşınmaz (secret-safe)
+    error_contexts = release_evidence_summarize_error_contexts(hata_satirlari)
   )
 }
 
