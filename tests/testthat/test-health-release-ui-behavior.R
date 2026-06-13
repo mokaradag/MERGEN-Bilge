@@ -1,6 +1,6 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-health-release-ui-behavior.R
-# Açıklama: module_health_release.R "Release Kanıtı" sekmesi UI yardımcıları için
+# Açıklama: module_health_release.R "Doğrulama Kanıtı" sekmesi UI yardımcıları için
 #           davranış testleri. health_release_ui ve iç yardımcıların
 #           (.health_release_pill, .health_release_steps_table) gerçek
 #           girdi→çıktı davranışı, kanıt-yok dürüstlüğü ve secret-safe sınır
@@ -77,7 +77,7 @@ testthat::test_that("health_release_ui tam kanıt özetini gerçek alanlarla ren
   html <- paste(as.character(env$health_release_ui(.fullReleaseOverview())), collapse = "\n")
 
   # Başlık ve okuma zamanı
-  testthat::expect_true(grepl("Release Kanıtı", html, fixed = TRUE))
+  testthat::expect_true(grepl("Doğrulama Kanıtı", html, fixed = TRUE))
   testthat::expect_true(grepl("2026-06-13 09:00:00", html, fixed = TRUE))
 
   # VM evidence sayaçları metin olarak görünür
@@ -176,6 +176,56 @@ testthat::test_that(".health_release_steps_table adımları tabloya çevirir, bo
   testthat::expect_true(grepl("Başarısız", html, fixed = TRUE))
 })
 
+testthat::test_that("health_release_ui ns ve >=2 koşu varsa koşu seçici (dropdown) render eder", {
+  env <- .healthReleaseEnv()
+  ov <- .fullReleaseOverview()
+  ov$vm_evidence$available_runs <- c("20260613-133648", "20260101-080000")
+  ov$vm_evidence$selected_run <- "20260613-133648"
+
+  ns <- function(x) paste0("health-", x)
+  html <- paste(as.character(env$health_release_ui(ov, ns = ns)), collapse = "\n")
+
+  # Koşu seçici input'u ns ile üretilmiş id'yi ve sarmalayıcı sınıfı taşır
+  testthat::expect_true(grepl("health-release_run", html, fixed = TRUE))
+  testthat::expect_true(grepl("health-release-run-picker", html, fixed = TRUE))
+  # Her iki koşu zaman damgası da seçenek olarak görünür
+  testthat::expect_true(grepl("20260613-133648", html, fixed = TRUE))
+  testthat::expect_true(grepl("20260101-080000", html, fixed = TRUE))
+  # Hero meta gösterilen koşuyu belirtir
+  testthat::expect_true(grepl("Koşu:", html, fixed = TRUE))
+})
+
+testthat::test_that("health_release_ui ns yoksa veya tek koşu varsa dropdown render etmez", {
+  env <- .healthReleaseEnv()
+
+  # ns NULL: dropdown yok (izole/test bağlamı), koşular olsa bile
+  ov <- .fullReleaseOverview()
+  ov$vm_evidence$available_runs <- c("20260613-133648", "20260101-080000")
+  ov$vm_evidence$selected_run <- "20260613-133648"
+  html_ns_yok <- paste(as.character(env$health_release_ui(ov)), collapse = "\n")
+  testthat::expect_false(grepl("health-release-run-picker", html_ns_yok, fixed = TRUE))
+
+  # Tek koşu: seçilecek alternatif yok, dropdown gösterilmez
+  ov2 <- .fullReleaseOverview()
+  ov2$vm_evidence$available_runs <- c("20260613-133648")
+  ov2$vm_evidence$selected_run <- "20260613-133648"
+  ns <- function(x) paste0("health-", x)
+  html_tek <- paste(as.character(env$health_release_ui(ov2, ns = ns)), collapse = "\n")
+  testthat::expect_false(grepl("health-release-run-picker", html_tek, fixed = TRUE))
+})
+
+testthat::test_that("health_release_ui koşu seçici tam artifact yolunu sızdırmaz (secret-safe)", {
+  env <- .healthReleaseEnv()
+  ov <- .fullReleaseOverview()
+  ov$vm_evidence$available_runs <- c("20260613-133648", "20260101-080000")
+  ov$vm_evidence$selected_run <- "20260613-133648"
+  ns <- function(x) paste0("health-", x)
+  html <- paste(as.character(env$health_release_ui(ov, ns = ns)), collapse = "\n")
+  # Yalnızca zaman damgası adı render edilir; tam yol asla taşınmaz
+  testthat::expect_false(grepl("cok/gizli/yol", html, fixed = TRUE))
+  testthat::expect_false(grepl("artifacts/vm-evidence/x/evidence.json", html, fixed = TRUE))
+})
+
 # healthServer'ın "release" sekmesini gerçekten health_release_ui'ye yönlendirdiğini
 # kanıtlar. switch değerinde bir yazım hatası sessizce overview'a düşerdi; bu test
 # o regresyonu yakalar. Ağır bağımlılıklar (health_collect_checks,
@@ -223,7 +273,7 @@ testthat::test_that("healthServer 'release' sekmesi health_release_ui çıktıs�
   shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
     session$setInputs(health_tabs = "release")
     cikti <- paste(as.character(output$health_tab_content), collapse = "\n")
-    testthat::expect_true(grepl("Release Kanıtı", cikti, fixed = TRUE))
+    testthat::expect_true(grepl("Doğrulama Kanıtı", cikti, fixed = TRUE))
     testthat::expect_true(grepl("13 geçti / 0 başarısız / 0 atlandı", cikti, fixed = TRUE))
 
     # Kontrol amaçlı: overview sekmesi farklı içerik üretir (yanlış yönlenme yok)
