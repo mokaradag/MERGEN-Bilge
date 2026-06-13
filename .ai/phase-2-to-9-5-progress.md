@@ -35,7 +35,89 @@ Aşağıdakiler ÖNCEKİ oturumlarda tamamlandı (`.ai/next-session-*.md` ayrın
 
 ## Oturum kaydı
 
-### Oturum: 2026-06-13 — branch `claude/affectionate-bohr-ietfly` (bu oturum)
+### Oturum: 2026-06-13 (B) — branch `claude/serene-bell-3l1xw6` (bu oturum)
+
+Faz 2 davranışsal kapsama derinleştirildi (servis-bağlı runtime mantığı) ve Faz 3
+operatör görünürlüğü genişletildi (secret-safe hata kategorisi özeti). Cerrahi,
+additive; ratchet/manifest/seam/encoding sözleşmeleri yeşil.
+
+**Ek (kullanıcı "add a small batch"): admin UI builder testi (untested 37 → 34):**
+- `test-admin-ui-builders-behavior.R` — `adminYanitAnaliziUI` (4 sekme value/Türkçe
+  başlık/ns), `admin_doc_group_tab_panels` (her kayıt grubu için bir sekme),
+  `adminDokumantasyonUI` (Dokümantasyon sayfası). Gerçek `admin_page_layout`
+  (helpers_admin_analytics.R; `htmlwidgets::JS` source-time gerektirir → `library(htmlwidgets)`).
+  170 doğrulama batch'te 0 fail/warn/skip.
+- NOT: `.mcp_bootstrap_assign_global_function`/`_require_tool_functions` BİLİNÇLİ
+  geçici (bootstrap sonunda `rm()` edilir, runtime'da yok) — birim testi düşük
+  değerli/kırılgan; atlandı.
+
+**Faz 2 — 5 yeni davranış testi (servis-bağlı, daha derin runtime):**
+- `test-file-pipeline-summarize-behavior.R` — `summarize_file_with_llm`
+  (list($content)/karakter çıkarımı, boş/NA fallback, LLM hata fallback'i,
+  60000 karakter kısaltma, sistem talimatı "ÇIKARTMAK" + kullanıcı mesajına
+  dosya adı/içerik). `call_llm_with_retry` env'e stub.
+- `test-deep-analysis-execute-query-behavior.R` — `execute_single_deep_query`
+  erken-dönüş + GÜVENLİK dalları: durdurma talebi→NULL, bağlantı yok, boş SQL,
+  **tehlikeli SQL (DROP/DELETE/TRUNCATE/ALTER + noktalı virgül zinciri) reddi**,
+  boş sonuç, RLS sonrası boş veri (yetki hatası) ve başarılı orkestrasyon.
+  `get_connection`/`release_connection` env'e, `DBI::dbGetQuery` mock'a. Hem
+  Faz 2 (davranış) hem Faz 5 (SQL injection reddi) kapsar.
+- `test-deep-analysis-multi-query-behavior.R` — `find_multiple_queries_with_ai`
+  LLM JSON eşleşme→kütüphane sorgusu eşleme: NULL/boş matches→NULL, tekrarlı
+  match_id eleme, güven<30 atma, azalan sıralama, max_queries kapağı, aralık-dışı
+  id yok sayma, ```json çiti temizleme, geçersiz JSON→NULL, list($content).
+  `call_local_llm`/`resolve_local_llm_credentials` env'e stub; `mergen.filter_model`
+  option set (api_config'e dokunulmaz; R.utils::withTimeout gerçek koşar).
+- `test-mcp-execute-parsed-tool-behavior.R` — `helpers_mcp_tools$execute_parsed_tool`
+  yönlendirici: boş/bilinmeyen araç reddi, 8 araca yönlendirme + argüman alias
+  çözümü (x/xlabel/x_col, get_column_stats→get_column_statistics), limit/analysis_type
+  varsayılanları, büyük/küçük harf duyarsızlığı. MCP zinciri globalenv'e yüklenir;
+  yaprak araçlar test başına `withr::defer(envir=parent.frame())` ile geri yüklenir
+  (batch kirliliği yok — mcp-tools-parse + mcp-excel-resolve ile birlikte yeşil).
+- `test-server-core-runtime-guards-behavior.R` — wiring-guard testinde İSİMLE
+  çağrılmayan saf guard'lar: `.server_runtime_stop`, `.server_core_interaction_stop`/
+  `_require_context`/`_require_values`/`_require_functions`/`_resolve_bundle`
+  (NULL→inşa, geçerli→döndür, geçersiz→stop), `.server_core_observer_require_functions`,
+  `.server_core_observer_call_with_optional_boot_ready` (4 dal: explicit param/`...`/
+  NULL boot_ready/kabul etmeyen fn'e enjekte edilmez).
+
+**Faz 3 — release kanıt görünürlüğü: secret-safe hata kategorisi özeti:**
+- `R/helpers_release_evidence.R`: YENİ saf `release_evidence_summarize_error_contexts()`.
+  ERROR satırlarındaki `Error in <bağlam>:` (log_error_with_context çıktısı; bağlam
+  ve mesaj zaten redakte yazılır) kalıbından YALNIZCA bağlam etiketini sayar; mesaj
+  içeriği taşınmaz. Savunma derinliği: güvenli karakter sınıfı + 60 karakter sınırı;
+  eşleşmeyen ERROR satırları "diğer" kovasına; top_n azalan. `release_evidence_log_health()`
+  çıktısına additive `error_contexts` alanı eklendi (mevcut alan adları korunur).
+- `R/module_health_release.R`: YENİ `.health_release_error_contexts()` — "Günlük Log
+  Sağlığı" kartına bağlam etiketi + sayım listesi ekler (yalnızca alan doluysa;
+  yoksa eski UI değişmez → regresyon yok). Bu, görev tanımındaki "recent error
+  categories" sinyalini operatöre getirir.
+- Kanıt: `test-release-evidence-error-contexts-behavior.R` (saf özet sayım/sıralama/
+  top_n/güvenli-karakter ayıklama + **secret-safety: iki noktadan sonraki mesaj
+  taşınmaz** + log_health entegrasyonu + UI yüzeyi + eski-davranış regresyon yok).
+
+**Doğrulama (bu container, R 4.6.0):**
+- `bash tools/ai_validate.sh quick` → failed_steps=0, skipped_steps=0,
+  **app_source_smoke=passed**, focused contract tests OK
+  (`artifacts/ai-validation/20260613-125538/summary.json`).
+- `bash tools/ai_validate.sh full --boot-smoke` → failed_steps=0, skipped_steps=0,
+  **full testthat suite passed (138.8s)**, app_source_smoke=passed,
+  shiny_boot_smoke=passed, browser_smoke=**skipped** (browser binary yok — kanıt
+  değil), db_sso_vm_validation_performed=false, sql_server Türkçe encoding=not_performed
+  (`artifacts/ai-validation/20260613-125639/summary.json`).
+- `parse_sanity_check.R` OK (775 dosya). maintainability-ratchet 0 fail/warn
+  (max 24 fn, over-budget yok), source-manifest + seam-registry 0 fail/warn.
+- 6 yeni test dosyası tek tek + `test_dir` batch (10 dosya, 319 doğrulama)
+  0 fail/warn/skip. MCP yaprak-araç geri yükleme batch'te kanıtlandı.
+- Untested top-level fn taraması: **49 → 37** (summarize_file_with_llm,
+  execute_single_deep_query, find_multiple_queries_with_ai, execute_parsed_tool,
+  8 server core runtime guard fonksiyonu kapsandı).
+
+**Bu oturumda KANITLANMAYAN (cloud sınırı):** Windows VM/SSO/DB/SQL Server Türkçe
+encoding/gerçek browser UX smoke/vision live. Release Kanıtı sekmesindeki hata
+kategorisi gösterimi yalnızca gerçek `logs/mergen_*.log` ile VM'de canlı doğrulanır.
+
+### Oturum: 2026-06-13 — branch `claude/affectionate-bohr-ietfly`
 
 Önceki oturumun bıraktığı en somut "sonraki adım" tamamlandı: **Faz 3 release
 kanıt görünürlüğünün UI bağlaması.** Ek olarak Faz 2 davranışsal kapsama
@@ -161,29 +243,39 @@ encoding/gerçek browser UX smoke/vision live. Bunlar VM kapılarının işidir.
 
 ## Kalan yüksek değerli untested kümeler (sonraki oturumlar için)
 
-2026-06-12 taramasından, bu oturumda KAPSANMAYANLAR:
+Güncel tarama (2026-06-13 B oturumu sonrası): **37 untested top-level fn.** Kalanlar:
 
 - `sendMessageInit` (server_send_message.R) — ağır; testServer + yoğun stub ister.
 - `serverInitChatRuntime`, `sessionCacheInit` — testServer ile orta zorluk.
-- `chat_add_message`, `chat_simulate_streaming` (helpers_chat_runtime.R) — ağır.
+- `chat_simulate_streaming` (helpers_chat_runtime.R) — ağır.
 - `call_llm_worker` (helpers_llm_worker.R) — çok ağır; ikinci-pass zinciri.
-- `pk_deep_analysis_process`, `find_multiple_queries_with_ai`,
-  `execute_single_deep_query` (helpers_deep_analysis.R) — LLM/DB mock ister.
+- `pk_deep_analysis_process` (helpers_deep_analysis.R) — LLM/DB orkestrasyon; orta-ağır.
 - `pk_analiz_process_request`, `find_best_query_with_ai` (module_proje_kaynak_analizi.R).
-- `summarize_file_with_llm`, `handle_file_upload_batch` (helpers_file_pipeline.R).
-- `run_claude_code_streaming` (helpers_claude_code_streaming.R) — processx mock ister;
-  `parse_stream_event` 2026-06-13'te kapsandı.
+- `handle_file_upload_batch` (helpers_file_pipeline.R) — orta; showNotification/
+  copy_to_mcp_base/shinyjs::delay/processAndSummarizeFile stub'ları ister.
+  Uzantı-reddi dalı (Faz 5 değeri) deterministik test edilebilir.
+- `run_claude_code_streaming` (helpers_claude_code_streaming.R) — processx mock ister.
 - `prepare_claude_code_document_context`, `write_claude_code_document_summary_file`,
-  `summarize_claude_code_documents_with_local_llm`.
-- `execute_parsed_tool` (helpers_mcp_tools.R) — MCP zinciri source edilerek.
+  `summarize_claude_code_documents_with_local_llm` — erken-dönüş dalları deterministik;
+  tam çıkarım PDF/Excel/DOCX fixture ister (ağır).
 - `gc_scheduler`, `start_gc_scheduler_once` (config_file_store.R) — later mock.
-- `.syap_*` kart builder'ları — `test-settings-yapilandirma-ui-id-surface-behavior.R`
-  id yüzeyini dolaylı koruyor; doğrudan birim testi düşük öncelik.
-- `attach_required_packages`, `admin_ha_show_modal`,
+- `.syap_*` kart builder'ları (module_settings_yapilandirma_ui.R) —
+  `test-settings-yapilandirma-ui-id-surface-behavior.R` id yüzeyini dolaylı
+  koruyor; doğrudan birim testi DÜŞÜK öncelik.
+- UI builder'lar: `adminYanitAnaliziUI`, `adminDokumantasyonUI`,
+  `admin_doc_group_tab_panels` — saf/kolay; hızlı kazanım (KÜÇÜK).
+- `admin_ha_show_modal` (runjs string builder), `attach_required_packages`,
   `cc_refresh_user_file_manager_after_run`, `cc_bind_claude_code_stream_polling`,
-  `.mcp_bootstrap_*` — küçük/orta.
+  `.mcp_bootstrap_assign_global_function`/`_require_tool_functions`,
+  `.mcp_prepare_chart_data_fn`, `.helpers_llm_sse_source_sibling` — küçük/orta.
 
-2026-06-13 devamında KAPSANANLAR (yukarıdan çıkarıldı): `ssoAuthServer`,
+2026-06-13 (B) oturumunda KAPSANANLAR (yukarıdan çıkarıldı): `summarize_file_with_llm`,
+`execute_single_deep_query`, `find_multiple_queries_with_ai`, `execute_parsed_tool`,
+ve 8 server core runtime guard (`.server_runtime_stop`,
+`.server_core_interaction_stop/_require_context/_require_values/_require_functions/
+_resolve_bundle`, `.server_core_observer_require_functions/_call_with_optional_boot_ready`).
+
+2026-06-13 (A) oturumunda KAPSANANLAR: `ssoAuthServer`,
 `check_claude_code_status`/`test_claude_code_connection`, `call_ai_expert_llm`,
 `ui_asset_zone_get`, `.fm_runtime_is_reactivevalues`,
 `.path_text_encoding_helper_available`, `mergen_build_send_message_request_callbacks`,
@@ -194,12 +286,16 @@ encoding/gerçek browser UX smoke/vision live. Bunlar VM kapılarının işidir.
 - ✅ Sistem Durumu "Release Kanıtı" sekmesi UI bağlaması 2026-06-13'te tamamlandı
   (`R/module_health_release.R` + `R/module_health.R` switch). Operatör artık
   uygulamayı kapatmadan en son kanıt özetini görüyor.
-- Post-deploy smoke durumu ve hata kategorisi/latency özetleri için mevcut log
-  formatları incelenmeli (`logs/mergen_*.log` yapısı). `release_evidence_log_health`
-  şu an yalnızca ERROR/WARN sayar; kategori/latency çıkarımı eklenebilir (saf,
-  test-destekli olmalı).
-- Release Kanıtı sekmesinin gerçek artifact'larla VM canlı görünümü (artifact
-  üretildikten sonra) bir VM oturumunda gözle doğrulanmalı.
+- ✅ Hata kategorisi özeti 2026-06-13 (B) oturumunda eklendi
+  (`release_evidence_summarize_error_contexts` + `release_evidence_log_health$error_contexts`
+  + Release Kanıtı sekmesinde `.health_release_error_contexts`). `Error in <bağlam>:`
+  kalıbından secret-safe bağlam sayımı; mesaj içeriği taşınmaz.
+- KALAN: latency / istek-süresi özeti. Log satırlarında istek süresi/percentile
+  taşınıyorsa (önce log formatı doğrulanmalı) saf bir çıkarıcı eklenebilir; aksi
+  halde uygulanmaz (varsayımla format icat etme). Post-deploy smoke durumu için
+  ayrı bir artifact ailesi gerekir (henüz yok).
+- Release Kanıtı sekmesinin gerçek artifact'larla VM canlı görünümü (artifact +
+  gerçek `logs/mergen_*.log` üretildikten sonra) bir VM oturumunda gözle doğrulanmalı.
 
 ## Doğrulama kanıt sınırı (her oturum geçerli)
 

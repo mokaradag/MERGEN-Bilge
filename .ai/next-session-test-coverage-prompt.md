@@ -1,3 +1,60 @@
+# CONTEXT — Faz 2→9.5 oturumu `claude/serene-bell-3l1xw6` (2026-06-13 B, do NOT redo)
+
+Bu oturum servis-bağlı runtime mantığına 5 davranış testi + Faz 3 secret-safe hata
+kategorisi özeti ekledi. Hepsi 0 fail/warn/skip (tek tek + `test_dir` batch 319
+doğrulama). `ai_validate quick` TAM geçti (failed=0, skipped=0, app_source_smoke=passed)
+ve `full --boot-smoke` TAM geçti (full testthat suite **passed 138.8s**, shiny boot
+passed; browser smoke SKIPPED — browser yok). Untested fn 49 → 37. ZATEN YAPILDI:
+- `test-file-pipeline-summarize-behavior.R` — `summarize_file_with_llm`
+  (`call_llm_with_retry` env stub; list($content)/char/boş/NA/hata fallback,
+  60000 kısaltma, "ÇIKARTMAK" sistem talimatı).
+- `test-deep-analysis-execute-query-behavior.R` — `execute_single_deep_query`
+  erken-dönüş + GÜVENLİK (DROP/DELETE/TRUNCATE/ALTER + `;` zinciri reddi → "Güvenlik
+  ihlali."), bağlantı yok/boş SQL/boş sonuç/RLS-yetki, başarı orkestrasyonu.
+  GOTCHA: `get_connection`/`release_connection` env'e; `DBI::dbGetQuery`
+  `local_mocked_bindings(.package="DBI")`; disable_ai_filters=TRUE ile AI filtre
+  çağrısını atla; success path için `apply_rls_to_data`/`generate_statistical_summary`
+  env stub.
+- `test-deep-analysis-multi-query-behavior.R` — `find_multiple_queries_with_ai`
+  (LLM JSON→sorgu eşleme; dedup/güven<30/sıralama/max_queries/aralık-dışı/```json
+  çiti/geçersiz JSON/list($content)). GOTCHA: `withr::local_options(mergen.filter_model=...)`
+  set et ki getOption default'u (`api_config$local_models[1]`) tembel kalsın;
+  `call_local_llm`/`resolve_local_llm_credentials` env stub; R.utils kurulu olduğundan
+  `withTimeout` gerçek koşar (mock gerekmez).
+- `test-mcp-execute-parsed-tool-behavior.R` — `helpers_mcp_tools$execute_parsed_tool`
+  yönlendirme. GOTCHA: MCP zinciri globalenv'i ZORUNLU kılar (bootstrap
+  helpers_mcp_tools'u globalenv'de arar, fresh env'de "MCP helper ortamı
+  başlatılamadı" stop'u verir). Zinciri globalenv'e source-once yükle, yaprak
+  araçları (`analyze_uploaded_file` vb.) recorder ile değiştir, test başına
+  `withr::defer(envir=parent.frame())` ile ORİJİNALLERİ GERİ YÜKLE (batch'te
+  mcp-tools-parse/mcp-excel-resolve ile çakışmayı önler).
+- `test-server-core-runtime-guards-behavior.R` — wiring-guard testinde İSİMLE
+  çağrılmayan saf guard'lar: `.server_runtime_stop`, `.server_core_interaction_*`
+  (stop/require_context/require_values/require_functions/resolve_bundle),
+  `.server_core_observer_require_functions`, `_call_with_optional_boot_ready` (4 dal).
+- Faz 3: `R/helpers_release_evidence.R` `release_evidence_summarize_error_contexts`
+  (saf, `Error in <bağlam>:` etiketini sayar, mesaj taşımaz, güvenli karakter +
+  60 sınır, "diğer" kovası, top_n) + `release_evidence_log_health$error_contexts`
+  additive alanı + `R/module_health_release.R` `.health_release_error_contexts`
+  (Günlük Log Sağlığı kartına kategori listesi; alan yoksa eski UI değişmez).
+  Kanıt: `test-release-evidence-error-contexts-behavior.R` (secret-safety:
+  iki noktadan sonraki mesaj taşınmaz).
+
+Ek (aynı oturum, "small batch"): `test-admin-ui-builders-behavior.R` — `adminYanitAnaliziUI`/
+`adminDokumantasyonUI`/`admin_doc_group_tab_panels` (gerçek `admin_page_layout`;
+`library(htmlwidgets)` ŞART çünkü helpers_admin_analytics.R source-time `JS()` kullanır).
+NOT: `.mcp_bootstrap_*` bootstrap sonunda `rm()` ile silinen GEÇİCİ helper'lar —
+runtime'da yok; birim testi kırılgan, ATLA. Untested 37 → 34.
+
+Kalan en yüksek değerli untested küme (~34): `sendMessageInit`, `chat_simulate_streaming`,
+`call_llm_worker`, `pk_deep_analysis_process`/`pk_analiz_process_request`/
+`find_best_query_with_ai`, `handle_file_upload_batch` (uzantı-reddi dalı = Faz 5),
+`run_claude_code_streaming`, claude_code document orkestratörleri, UI builder'lar
+(`adminYanitAnaliziUI`/`adminDokumantasyonUI`/`admin_doc_group_tab_panels` — kolay),
+`admin_ha_show_modal`, `.mcp_bootstrap_*`, `gc_scheduler`/`start_gc_scheduler_once`.
+
+---
+
 # CONTEXT — Faz 2→9.5 oturumu `claude/affectionate-bohr-ietfly` (2026-06-13, do NOT redo)
 
 Bu oturum Faz 3 release-kanıt UI bağlamasını tamamladı ve 2 Faz 2 davranış testi

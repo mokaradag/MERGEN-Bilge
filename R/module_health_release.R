@@ -64,6 +64,28 @@
   )
 }
 
+# ERROR bağlam kategorilerini (etiket + sayım) güvenli bir özet listesine
+# çevirir. YALNIZCA geliştirici bağlam etiketi ve sayı gösterilir; log mesaj
+# içeriği taşınmaz. Kategori yoksa NULL döner (mevcut UI değişmez).
+.health_release_error_contexts <- function(error_contexts) {
+  if (is.null(error_contexts) || !length(error_contexts)) {
+    return(NULL)
+  }
+
+  satirlar <- lapply(error_contexts, function(ec) {
+    etiket <- health_escape(as.character(ec$context %||% "—"))
+    adet <- as.integer(ec$count %||% 0L)
+    div(strong(paste0(etiket, ":")), span(health_safe_value(adet)))
+  })
+
+  div(
+    class = "health-summary-list health-release-error-contexts",
+    `data-health-tooltip` = "ERROR satırlarının geliştirici bağlam etiketine göre dağılımı (içerik taşınmaz).",
+    div(strong("Hata kategorileri (bağlam):")),
+    satirlar
+  )
+}
+
 health_release_ui <- function(overview) {
   if (is.null(overview) || !is.list(overview)) {
     return(div(
@@ -173,11 +195,15 @@ health_release_ui <- function(overview) {
           "Günlük Log Sağlığı",
           "file-medical-alt",
           if (log_bulundu) {
-            div(class = "health-summary-list",
-                div(strong("İncelenen satır:"), span(health_safe_value(log_saglik$window_lines))),
-                div(strong("ERROR sayısı:"), span(health_safe_value(hata_sayisi))),
-                div(strong("WARN sayısı:"), span(health_safe_value(uyari_sayisi))),
-                div(strong("Son hata zamanı:"), span(health_safe_value(log_saglik$last_error_at))))
+            tagList(
+              div(class = "health-summary-list",
+                  div(strong("İncelenen satır:"), span(health_safe_value(log_saglik$window_lines))),
+                  div(strong("ERROR sayısı:"), span(health_safe_value(hata_sayisi))),
+                  div(strong("WARN sayısı:"), span(health_safe_value(uyari_sayisi))),
+                  div(strong("Son hata zamanı:"), span(health_safe_value(log_saglik$last_error_at)))),
+              # Yeni: ERROR satırlarının bağlam kategorisi dağılımı (secret-safe)
+              .health_release_error_contexts(log_saglik$error_contexts)
+            )
           } else {
             div(class = "health-empty", "Bugüne ait uygulama logu bulunamadı.")
           },

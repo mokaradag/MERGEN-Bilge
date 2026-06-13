@@ -8,6 +8,42 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/serene-bell-3l1xw6` (2026-06-13 B, Faz 2→9.5)
+
+Bu oturum servis-bağlı runtime mantığına davranışsal kapsama (Faz 2) ve operatör
+görünürlüğüne secret-safe hata-kategorisi özeti (Faz 3) ekledi. Cerrahi, additive.
+Do NOT redo:
+
+- **Faz 2 — 5 yeni davranış testi (servis-bağlı, 0 fail/warn/skip):**
+  `test-file-pipeline-summarize-behavior.R` (`summarize_file_with_llm`),
+  `test-deep-analysis-execute-query-behavior.R` (`execute_single_deep_query` —
+  erken-dönüş + **SQL DROP/DELETE/TRUNCATE/ALTER reddi** = Faz 5 örtüşmesi),
+  `test-deep-analysis-multi-query-behavior.R` (`find_multiple_queries_with_ai` —
+  dedup/güven<30/sıralama/cap), `test-mcp-execute-parsed-tool-behavior.R`
+  (`execute_parsed_tool` yönlendirme; MCP zinciri globalenv'e, yaprak araçlar
+  test başına geri yüklenir), `test-server-core-runtime-guards-behavior.R`
+  (8 saf server core runtime guard).
+- **Faz 3 — secret-safe hata kategorisi:** `release_evidence_summarize_error_contexts`
+  (`Error in <bağlam>:` etiketini sayar, mesaj taşımaz, güvenli karakter + 60
+  sınır, "diğer", top_n) + `release_evidence_log_health$error_contexts` additive
+  alan + `.health_release_error_contexts` (Sistem Durumu > Release Kanıtı > Günlük
+  Log Sağlığı kartı). Kanıt: `test-release-evidence-error-contexts-behavior.R`.
+- **VALIDATION (bu container, R 4.6.0):** `ai_validate quick` TAM (failed=0,
+  skipped=0, app_source_smoke=passed); `full --boot-smoke` TAM (**full testthat
+  suite passed 138.8s**, shiny boot passed; browser smoke SKIPPED — browser yok;
+  DB/SSO/SQL-Server Türkçe encoding NOT performed). parse_sanity 775 dosya OK;
+  maintainability-ratchet 0 fail (max 24 fn); seam-registry/source-manifest 0 fail.
+  Untested top-level fn 49 → 37. Cloud koşumu VM/DB/SSO/vision/gerçek-browser
+  kanıtı DEĞİLDİR.
+
+Sıradaki yüksek değerli hedefler: `handle_file_upload_batch` (uzantı-reddi dalı),
+`pk_deep_analysis_process`/`pk_analiz_process_request`, `run_claude_code_streaming`
+(processx mock), claude_code document orkestratörleri, kolay UI builder'lar
+(`adminYanitAnaliziUI`/`adminDokumantasyonUI`/`admin_doc_group_tab_panels`),
+`.mcp_bootstrap_*`. Faz 3 sıradaki: latency özeti (log formatı doğrulanırsa).
+
+---
+
 ## LATEST SESSION RESULTS — `claude/affectionate-bohr-ietfly` (2026-06-13, Faz 2→9.5)
 
 Bu oturum, önceki oturumun bıraktığı en somut adımı tamamladı: **Faz 3 release
@@ -883,53 +919,55 @@ Begin by reading `CLAUDE.md`, `.ai/next-session-eliminate-weaknesses-prompt.md`,
 ## COPY-PASTE PROMPT FOR THE NEXT SESSION
 
 > Continue hardening MERGEN Bilge (R/Shiny). Read `CLAUDE.md` FIRST and in full,
-> then `.ai/next-session-eliminate-weaknesses-prompt.md` and
-> `.ai/next-session-test-coverage-prompt.md`. The session
-> `claude/beautiful-goodall-8yK70` is MERGED — do NOT rebuild/push to it.
-> Start a FRESH branch from latest `origin/main`. Surgical, additive only. Turkish
-> comments with real Turkish chars (ç ğ ı İ ö ş ü). Byte-safe readers for any
-> repo-scanning test. NEVER write a Windows user-profile absolute path literal in
-> test code OR comments. No CDN/heavy/browser deps. Respect source-manifest order.
-> Do NOT loosen `test-maintainability-ratchet.R`. Use `LANG=C.UTF-8 LC_ALL=C.UTF-8`
-> for any R readLines/writeBin rewrite of CRLF/Turkish files (then verify
+> then `.ai/phase-2-to-9-5-progress.md`, `.ai/next-session-eliminate-weaknesses-prompt.md`
+> and `.ai/next-session-test-coverage-prompt.md`. The session
+> `claude/serene-bell-3l1xw6` is MERGED — do NOT rebuild/push to it.
+> Start/use a FRESH branch. Surgical, additive only. Turkish comments with real
+> Turkish chars (ç ğ ı İ ö ş ü). Byte-safe readers for any repo-scanning test.
+> NEVER write a Windows user-profile absolute path literal in test code OR comments.
+> No CDN/heavy/browser deps. Respect source-manifest order. Do NOT loosen
+> `test-maintainability-ratchet.R`. Use `LANG=C.UTF-8 LC_ALL=C.UTF-8` for any R
+> readLines/writeBin rewrite of CRLF/Turkish files (then verify
 > `grep -c '<c3>\|<c4>\|<c5>' file` is 0).
 >
-> ALREADY DONE — do NOT redo: the DOCX-preview async clobber is FIXED with a
-> `docx_preview_seq` reactiveVal guard + `test-file-preview-docx-async-clobber-
-> behavior.R`. The async audit found no other unguarded fixed-target clobber. A
-> pre-existing red security contract test (`test-file-resolution-security-contract.R`,
-> the "MCP resolver mutlak path" anchor) was re-anchored to stable behavior
-> (`is_abs` + "Mutlak dosya yolu kabul edilmez"). New behavioral coverage added
-> for: `call_llm_with_retry`, `.sso_der_*`, `.file_store_drop_stale_entries` /
-> `_apply_rehydrated_paths`, `mb_sidebar_*` (theme switch / logout / panel server),
-> `resolve_claude_runtime_source_dir`, `get_user_profile_from_db`. Vision is
-> VM-live-verified. MCP/health `getwd()` fallback guards do NOT break isolated
-> tests — leave them.
+> ALREADY DONE — do NOT redo (latest session `claude/serene-bell-3l1xw6`):
+> behavioral coverage for `summarize_file_with_llm`, `execute_single_deep_query`
+> (incl. SQL DROP/DELETE rejection), `find_multiple_queries_with_ai`,
+> `execute_parsed_tool` (MCP router; chain MUST source into globalenv, leaf tools
+> restored per-test), and 8 server core runtime guards. Faz 3: secret-safe
+> `release_evidence_summarize_error_contexts` + `log_health$error_contexts` +
+> `.health_release_error_contexts` UI (Release Kanıtı tab). Earlier sessions:
+> DOCX-preview async clobber FIXED; `call_llm_with_retry`, `.sso_der_*`,
+> `ssoAuthServer`, `apiKeyServer`, `quickActionsInit`, `parse_stream_event`,
+> `check_claude_code_status` covered. Vision is VM-live-verified. MCP/health
+> `getwd()` fallback guards do NOT break isolated tests — leave them.
 >
 > PRIORITY 1 (concurrency): re-run the async audit if you touch any `%...>%` /
 > `%...!%` / `promises::then` / `later::later` / `tracked_future_promise` path.
 > Only fix REAL cross-request/cross-modal clobbers; do not manufacture fixes.
 >
 > PRIORITY 5 (behavioral coverage — the #1 weakness): re-run the FIXED-string
-> untested-function scan (see test-coverage prompt; ~73 candidates remain after
-> this session). Highest-value clean/deterministic targets still open: module
-> servers via `testServer` (`apiKeyServer`, `ssoAuthServer`, `quickActionsInit`,
-> `imageGalleryServer` with its `coerce_user_id`/`empty_images_df`/
-> `gallery_images_same` helpers), `chat_add_message`/`chat_simulate_streaming`
-> (heavy — stub removeUI/insertUI/persist), `admin_ha_show_modal`, `sso_fetch_jwks`
-> (httr-mocked), `config_logging` log_ai_call/log_user_action/log_error_with_context
-> (ONLY if you `install.packages("logger")` first AND capture via a real logger
-> appender, NOT a frame-counting glue stub), `monitor_workers`/`stop_future_cluster`,
-> and the deep-analysis / pk-analysis service-bound helpers (LLM/DB-mocked). Every
-> test: real input→output, deterministic, OFFLINE, 0 fail / 0 warn / 0 skip,
-> green standalone AND in a `test_dir` batch with `new.env(parent=globalenv())`.
-> Watch the Turkish `toupper` locale trap and the testServer `ignoreInit`
-> PRIME-THEN-SET gotcha.
+> untested-function scan (see test-coverage prompt; ~37 candidates remain).
+> Highest-value clean/deterministic targets still open: `handle_file_upload_batch`
+> (extension-reject branch = Phase 5 value; stub showNotification/copy_to_mcp_base/
+> shinyjs::delay/processAndSummarizeFile), `pk_deep_analysis_process` /
+> `pk_analiz_process_request` / `find_best_query_with_ai` (LLM/DB-mocked),
+> `run_claude_code_streaming` (processx mock), claude_code document orchestrators
+> (`prepare_claude_code_document_context` early-return branches are deterministic),
+> easy UI builders (`adminYanitAnaliziUI`, `adminDokumantasyonUI`,
+> `admin_doc_group_tab_panels`), `admin_ha_show_modal`, `.mcp_bootstrap_*`,
+> `gc_scheduler`/`start_gc_scheduler_once` (later mock), and the heavy
+> `sendMessageInit`/`chat_simulate_streaming`/`call_llm_worker`. Every test: real
+> input→output, deterministic, OFFLINE, 0 fail / 0 warn / 0 skip, green standalone
+> AND in a `test_dir` batch with `new.env(parent=globalenv())`. Watch the Turkish
+> `toupper` locale trap, the testServer `ignoreInit` PRIME-THEN-SET gotcha, and the
+> MCP-chain-needs-globalenv + per-test leaf restore gotcha.
 >
 > PRIORITY 3 (isolation): re-run the standalone scan. `test-ui-asset-manifest-
 > contract.R` remains the only known cloud-blocked one (missing vendored www
-> assets). Fix any NEW standalone-ERROR test by sourcing the real owner helper.
-> Watch for more stale-anchor contract drift like the MCP one fixed this session.
+> assets) — note: in THIS container the full strict suite (`tests/testthat.R`)
+> DID complete (138.8s). Fix any NEW standalone-ERROR test by sourcing the real
+> owner helper.
 >
 > PRIORITY 6 (maintainability): do not regress the ratchet; extract a small sourced
 > helper + update `R/config_source_manifest.R` + manifest-order tests if a fix
@@ -938,7 +976,9 @@ Begin by reading `CLAUDE.md`, `.ai/next-session-eliminate-weaknesses-prompt.md`,
 > Validate: per-file `testthat::test_file(..., reporter="summary")` (0 fail/warn/
 > skip), `Rscript tests/scripts/parse_sanity_check.R`, `test-maintainability-
 > ratchet.R`, then `bash tools/ai_validate.sh quick` (fall back to `cloud-quick`
-> if app-source-smoke is blocked by missing SQL/assets/heavy packages and report
-> the summary.json fields honestly). NEVER claim app boot / VM / DB / vision /
-> full-suite proof from the cloud checkout. At the END, update BOTH `.ai` prompts
-> and open a NEW pull request with a Turkish description.
+> if app-source-smoke is blocked) and, for runtime/health/security changes,
+> `full --boot-smoke`. Report the summary.json fields honestly. NEVER claim app
+> boot / VM / DB / vision / browser proof from the cloud checkout (browser smoke
+> SKIPs without a binary). At the END, update `.ai/phase-2-to-9-5-progress.md`,
+> BOTH `.ai` prompts, `docs/feature-ownership-map.md`, and open a NEW pull request
+> with a Turkish description.

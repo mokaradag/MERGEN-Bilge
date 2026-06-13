@@ -50,11 +50,13 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **Testler:** `test-file-lifecycle-hardening-contract.R`,
   `test-file-resolution-security-contract.R`, `test-resolve-uploaded-file.R`,
   `test-upload-validator*.R`, `test-file-store-*`, `test-file-manager-*`,
+  `test-file-pipeline-summarize-behavior.R` (LLM ile içerik dökümü + fallback),
   `test-adversarial-hostile-input-behavior.R` (traversal/bidi/safe_join).
 - **Smoke/kanıt:** `run_fragile_flow_manual_preflight.R`, ux-smoke File Manager
   Türkçe display-name kontrolü.
-- **Bilinen risk / sıradaki hedef:** bidi-override reddi eklendi; `handle_file_upload_batch`,
-  `summarize_file_with_llm` davranışsal kapsama eksik.
+- **Bilinen risk / sıradaki hedef:** bidi-override reddi + `summarize_file_with_llm`
+  davranışsal kapsama eklendi; `handle_file_upload_batch` (uzantı-reddi dalı dahil)
+  hâlâ davranışsal test edilmedi.
 
 ## DB / Persistence ve Türkçe Kodlama
 
@@ -141,13 +143,14 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   yalnızca `artifacts/` ve günlük log dosyalarını okur (DB/ağ çağrısı yok).
 - **Testler:** `test-health-check*.R`, `test-health-checks-probes-behavior.R`,
   `test-admin-*-outputs-behavior.R`, `test-release-evidence-behavior.R`,
+  `test-release-evidence-error-contexts-behavior.R` (secret-safe hata kategorisi),
   `test-health-release-ui-behavior.R` (UI builder + healthServer yönlendirme).
 - **Smoke/kanıt:** VM evidence gate (`run_vm_evidence_gate.R`), seam doctor,
   frontend complexity doctor; `artifacts/vm-evidence/<ts>/evidence.json`.
 - **Bilinen risk / sıradaki hedef:** release kanıt okuyucusu Sistem Durumu
-  "Release Kanıtı" sekmesine bağlandı (operatör görünürlüğü). Sıradaki:
-  post-deploy smoke durumu ve latency/hata-kategorisi özetleri için log
-  formatlarının değerlendirilmesi.
+  "Release Kanıtı" sekmesine bağlandı; hata-kategorisi (bağlam) özeti de eklendi
+  (`release_evidence_summarize_error_contexts`, secret-safe). Sıradaki: latency/
+  istek-süresi özeti (log formatı doğrulanırsa) ve post-deploy smoke artifact'ı.
 
 ## Bilge Yolaç / Claude Code
 
