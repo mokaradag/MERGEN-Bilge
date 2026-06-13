@@ -64,12 +64,6 @@
   )
 }
 
-# ai-validation summary.json için tek satırlık alan gösterimi yardımcısı.
-.health_release_kv <- function(label, value) {
-  div(class = "health-summary-list",
-      div(strong(paste0(label, ":")), span(health_safe_value(value))))
-}
-
 health_release_ui <- function(overview) {
   if (is.null(overview) || !is.list(overview)) {
     return(div(
