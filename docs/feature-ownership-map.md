@@ -84,11 +84,12 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **DB/servis:** `MB_Users`; Keycloak (`SSO_KEYCLOAK_URL`, JWKS uç noktası).
 - **Testler:** `test-sso-jwt-signature.R`, `test-sso-authorization-failclosed.R`,
   `test-sso-signature-parsing.R`, `test-sso-jwt.R`, `test-sso-der-tlv-behavior.R`,
-  `test-sso-fetch-jwks-behavior.R`, `test-e2e-sso-identity-readiness-regression.R`.
+  `test-sso-fetch-jwks-behavior.R`, `test-sso-auth-server-behavior.R` (ssoAuthServer
+  fail-closed testServer akışı), `test-e2e-sso-identity-readiness-regression.R`.
 - **Smoke/kanıt:** `run_vm_preflight_real.R` (`MERGEN_PREFLIGHT_REQUIRE_SSO=TRUE`).
   **Gerçek Keycloak/SSO yalnızca VM'de kanıtlanır.**
-- **Bilinen risk / sıradaki hedef:** `ssoAuthServer` testServer kapsaması
-  (httr/jwt stub'lı) hâlâ açık.
+- **Bilinen risk / sıradaki hedef:** `ssoAuthServer` davranışsal testServer kapsaması
+  eklendi; gerçek Keycloak token/JWKS akışı yalnızca VM'de kanıtlanır.
 
 ## API Anahtarları
 
@@ -161,10 +162,13 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `bilge_yolac_plugins/`.
 - **Testler:** `test-claude-code-security-policy-*`, `test-claude-code-prompt-path-policy-behavior.R`,
   `test-claude-code-run-lifecycle-contract.R`, `test-claude-code-stream-html-safety-contract.R`,
-  `test-claude-code-workdir-*`, `test-cc-path-policy-collapse-behavior.R`.
+  `test-claude-code-workdir-*`, `test-cc-path-policy-collapse-behavior.R`,
+  `test-claude-code-parse-stream-event-behavior.R` (stream-json olay ayrıştırma),
+  `test-claude-code-connection-behavior.R` (check_claude_code_status processx-mock +
+  test_claude_code_connection).
 - **Smoke/kanıt:** Windows VM manuel akış (UNC/SSO/`.cmd`); cloud'da kanıtlanmaz.
-- **Bilinen risk / sıradaki hedef:** `run_claude_code_streaming`, `parse_stream_event`,
-  `check_claude_code_status`, doküman özet helper'ları davranışsal test edilmedi.
+- **Bilinen risk / sıradaki hedef:** `parse_stream_event` ve bağlantı durumu kapsandı;
+  `run_claude_code_streaming` (processx mock) ve doküman özet helper'ları hâlâ açık.
 
 ## Destek / Geri Bildirim
 
