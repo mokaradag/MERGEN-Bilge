@@ -41,6 +41,16 @@ Faz 2 davranışsal kapsama derinleştirildi (servis-bağlı runtime mantığı)
 operatör görünürlüğü genişletildi (secret-safe hata kategorisi özeti). Cerrahi,
 additive; ratchet/manifest/seam/encoding sözleşmeleri yeşil.
 
+**Ek (kullanıcı "add a small batch"): admin UI builder testi (untested 37 → 34):**
+- `test-admin-ui-builders-behavior.R` — `adminYanitAnaliziUI` (4 sekme value/Türkçe
+  başlık/ns), `admin_doc_group_tab_panels` (her kayıt grubu için bir sekme),
+  `adminDokumantasyonUI` (Dokümantasyon sayfası). Gerçek `admin_page_layout`
+  (helpers_admin_analytics.R; `htmlwidgets::JS` source-time gerektirir → `library(htmlwidgets)`).
+  170 doğrulama batch'te 0 fail/warn/skip.
+- NOT: `.mcp_bootstrap_assign_global_function`/`_require_tool_functions` BİLİNÇLİ
+  geçici (bootstrap sonunda `rm()` edilir, runtime'da yok) — birim testi düşük
+  değerli/kırılgan; atlandı.
+
 **Faz 2 — 5 yeni davranış testi (servis-bağlı, daha derin runtime):**
 - `test-file-pipeline-summarize-behavior.R` — `summarize_file_with_llm`
   (list($content)/karakter çıkarımı, boş/NA fallback, LLM hata fallback'i,

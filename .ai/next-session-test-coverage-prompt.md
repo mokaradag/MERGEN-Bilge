@@ -40,7 +40,13 @@ passed; browser smoke SKIPPED — browser yok). Untested fn 49 → 37. ZATEN YAP
   Kanıt: `test-release-evidence-error-contexts-behavior.R` (secret-safety:
   iki noktadan sonraki mesaj taşınmaz).
 
-Kalan en yüksek değerli untested küme (~37): `sendMessageInit`, `chat_simulate_streaming`,
+Ek (aynı oturum, "small batch"): `test-admin-ui-builders-behavior.R` — `adminYanitAnaliziUI`/
+`adminDokumantasyonUI`/`admin_doc_group_tab_panels` (gerçek `admin_page_layout`;
+`library(htmlwidgets)` ŞART çünkü helpers_admin_analytics.R source-time `JS()` kullanır).
+NOT: `.mcp_bootstrap_*` bootstrap sonunda `rm()` ile silinen GEÇİCİ helper'lar —
+runtime'da yok; birim testi kırılgan, ATLA. Untested 37 → 34.
+
+Kalan en yüksek değerli untested küme (~34): `sendMessageInit`, `chat_simulate_streaming`,
 `call_llm_worker`, `pk_deep_analysis_process`/`pk_analiz_process_request`/
 `find_best_query_with_ai`, `handle_file_upload_batch` (uzantı-reddi dalı = Faz 5),
 `run_claude_code_streaming`, claude_code document orkestratörleri, UI builder'lar
