@@ -27,6 +27,11 @@ if (!exists("health_collect_checks", mode = "function") ||
   health_source_optional("R/helpers_health_checks.R")
 }
 
+# Release Kanıtı sekmesi, global manifest eski/eksik yüklense bile kendi okuyucusunu yükleyebilmeli.
+if (!exists("release_evidence_overview", mode = "function")) {
+  health_source_optional("R/helpers_release_evidence.R")
+}
+
 # Sekme yardımcıları R/module_health.R içinde büyük HTML blokları oluşmasını engeller.
 health_source_optional("R/module_health_overview.R")
 health_source_optional("R/module_health_connectivity.R")
@@ -135,18 +140,22 @@ healthServer <- function(id, perf_tracker) {
       })
     })
 
-    # Release kanıt okuyucusu saf dosya okumadır; DB/LLM/ağ çağrısı yapmaz.
-    # Yenileme tetikleyicisine bağlıdır ki manuel/otomatik yenilemede tekrar okunsun.
-    release_evidence_data <- reactive({
-      health_refresh_trigger()
-      tryCatch({
-        if (exists("release_evidence_overview", mode = "function")) {
-          release_evidence_overview()
-        } else {
-          NULL
-        }
-      }, error = function(e) NULL)
-    })
+	# Release kanıt okuyucusu saf dosya okumadır; DB/LLM/ağ çağrısı yapmaz.
+	# Yenileme tetikleyicisine bağlıdır ki manuel/otomatik yenilemede tekrar okunsun.
+	release_evidence_data <- reactive({
+	  health_refresh_trigger()
+	  tryCatch({
+		if (!exists("release_evidence_overview", mode = "function")) {
+		  health_source_optional("R/helpers_release_evidence.R")
+		}
+
+		if (exists("release_evidence_overview", mode = "function")) {
+		  release_evidence_overview(repo_root = getwd())
+		} else {
+		  NULL
+		}
+	  }, error = function(e) NULL)
+	})
 
     output$health_tab_content <- renderUI({
       checks <- checks_data()

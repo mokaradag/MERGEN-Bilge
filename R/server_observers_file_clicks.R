@@ -65,11 +65,11 @@ fileClickObserversInit <- function(input, session, settings_data, api_config,
     
     full_path <- normalize_mcp_path(full_path, must_exist = FALSE)
     
-    if (!path_exists_relaxed(full_path)) {
-      showToast(session, paste("Dosya bulunamadı:", basename(filepath_clean)), "error")
-      log_error("[ANALYSIS_FILE] Dosya mevcut değil: {full_path}")
-      return(invisible(NULL))
-    }
+	if (!path_exists_relaxed(full_path)) {
+	  showToast(session, paste("Dosya bulunamadı:", basename(filepath_clean)), "error")
+	  log_error("[ANALYSIS_FILE] Dosya mevcut değil: {full_path}", full_path = full_path)
+	  return(invisible(NULL))
+	}
     
     file_info <- list(
       name = basename(full_path),
@@ -77,7 +77,7 @@ fileClickObserversInit <- function(input, session, settings_data, api_config,
       size = suppressWarnings(file.info(full_path)$size)
     )
     
-    log_info("[ANALYSIS_FILE] Önizleme açılıyor: {full_path}")
+    log_info("[ANALYSIS_FILE] Önizleme açılıyor: {full_path}", full_path = full_path)
     openAnyPreview(file_info, session, filePreview)
     
   }, ignoreInit = TRUE)

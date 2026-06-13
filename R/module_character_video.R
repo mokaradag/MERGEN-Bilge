@@ -9,11 +9,22 @@
 #' @param char_id Persona kimliği (emre, selin, deniz, can, ipek). Eski
 #'        kimlikler de normalize_character_id() ile güvenle çözülür.
 #' @return Personanın görsel yollarını ve video listelerini (intro, loop, select) içeren liste
+.character_video_debug <- function(msg, ...) {
+  if (exists("log_debug", mode = "function", inherits = TRUE)) {
+    log_debug(msg, ...)
+  }
+  invisible(NULL)
+}
+
 get_character_video_data <- function(char_id) {
   # Persona kimliğini yeni biçime normalleştir (eski kimlikler de çözülür)
   char_key <- normalize_character_id(char_id)
 
-  cat(sprintf("[VIDEO R] get_character_video_data çağrıldı: '%s' -> '%s'\n", char_id, char_key))
+  .character_video_debug(
+    "[VIDEO R] get_character_video_data çağrıldı: '{char_id}' -> '{char_key}'",
+    char_id = char_id,
+    char_key = char_key
+  )
 
   # Statik görsel yolu config_characters.R'den gelir; modül kendi dosya adı
   # switch'ini yazmaz (tek kaynak: get_character_record).
@@ -33,7 +44,12 @@ get_character_video_data <- function(char_id) {
 	  files <- list.files(sys_dir, pattern = "\\.(mp4|webm|MP4|WEBM)$", 
 						  full.names = FALSE, ignore.case = TRUE)
 	  
-	  cat(sprintf("[VIDEO R] %s - %s: %d dosya bulundu\n", char_key, type, length(files)))
+	  .character_video_debug(
+	    "[VIDEO R] {char_key} - {type}: {count} dosya bulundu",
+	    char_key = char_key,
+	    type = type,
+	    count = length(files)
+	  )
 	  
 	  if (length(files) == 0) {
 		return(list())  # Dosya yoksa boş liste

@@ -60,7 +60,24 @@ log_layout(layout_glue, index = 1)
 use_console_colors <- tolower(trimws(Sys.getenv("MERGEN_LOG_CONSOLE_COLORS", "false"))) %in%
   c("1", "true", "t", "yes", "y", "on")
 
-log_appender(appender_console, index = 2)
+# Windows PowerShell/R console bazen UTF-8 Türkçe karakterleri native geniş string'e
+# çeviremeyip "unable to translate ... to a wide string" uyarısı üretir.
+# Dosya logu UTF-8 kalır; yalnızca konsol çıktısı native-safe hale getirilir.
+mergen_console_appender <- function(lines) {
+  lines <- as.character(lines %||% "")
+  if (exists("normalize_text_for_log", mode = "function", inherits = TRUE)) {
+    lines <- normalize_text_for_log(lines)
+  } else {
+    lines <- enc2utf8(lines)
+  }
+
+  native_lines <- iconv(lines, from = "UTF-8", to = "", sub = "byte")
+  native_lines[is.na(native_lines)] <- "<log encoding conversion failed>"
+
+  cat(paste0(native_lines, collapse = "\n"), "\n", sep = "")
+}
+
+log_appender(mergen_console_appender, index = 2)
 
 if (isTRUE(use_console_colors)) {
   log_layout(layout_glue_colors, index = 2)
