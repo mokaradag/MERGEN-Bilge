@@ -8,6 +8,45 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/affectionate-bohr-ietfly` (2026-06-13, Faz 2→9.5)
+
+Bu oturum, önceki oturumun bıraktığı en somut adımı tamamladı: **Faz 3 release
+kanıt görünürlüğünün UI bağlaması.** Do NOT redo:
+
+- **Sistem Durumu > "Release Kanıtı" sekmesi (operatör görünürlüğü):**
+  `R/module_health_release.R` (YENİ) `helpers_release_evidence.R` saf okuyucusunun
+  secret-safe özetini (en son VM evidence gate, ai_validate summary, günlük log
+  ERROR/WARN) gösterir. `R/module_health.R`'a "release" sekme paneli + switch +
+  refresh'e bağlı saf `release_evidence_overview` reactive (DB/LLM/ağ yok) eklendi.
+  Manifest `module_health_chartlab` n 9→10 (toplam 263). Kanıt-yok dürüstlüğü
+  korunur; artifact yolu / ham log içeriği render edilmez.
+- **Davranış testleri (0 fail/warn/skip, tek tek + batch):**
+  `test-health-release-ui-behavior.R` (UI builder + secret-safe sınır +
+  healthServer "release" yönlendirme testServer), `test-claude-code-parse-stream-event-behavior.R`
+  (`parse_stream_event` tüm olay türleri), `test-release-evidence-behavior.R`
+  genişletildi (3 iç yardımcı).
+- **Aynı oturum devamı (kullanıcı "add more relevant tests") — 5 yeni test (93 doğrulama):**
+  `test-sso-auth-server-behavior.R` (ssoAuthServer fail-closed testServer),
+  `test-claude-code-connection-behavior.R` (check_claude_code_status processx-mock
+  + test_claude_code_connection), `test-ai-expert-call-llm-behavior.R` (httr-mock,
+  gövde yakalama + telaffuz), `test-misc-runtime-predicates-behavior.R`
+  (.path_text_encoding_helper_available / .fm_runtime_is_reactivevalues /
+  ui_asset_zone_get), `test-send-message-request-callbacks-behavior.R`
+  (mergen_build_send_message_request_callbacks req_id capture). Ölü kod
+  `.health_release_kv` kaldırıldı. GOTCHA'lar test-coverage prompt'unda.
+- **Doğrulama:** `ai_validate.sh quick` → failed=0, skipped=0, app_source_smoke=passed
+  (her iki commit setinden sonra); `full --boot-smoke` → full testthat suite passed
+  (121.5s), shiny boot passed, browser smoke SKIPPED (browser yok). parse_sanity 770
+  dosya OK; sections/source-manifest/seam-registry/ratchet/e2e-health 0 fail; seam_doctor
+  OK. Cloud koşumu VM/SSO/DB/SQL Server Türkçe encoding/gerçek browser/vision kanıtı DEĞİLDİR.
+
+Sıradaki yüksek değerli hedefler: deep_analysis/pk_analysis servis-bağlı helper'lar
+(LLM/DB mock), `run_claude_code_streaming` (processx mock), `execute_parsed_tool`
+(MCP zinciri), `sendMessageInit`/`chat_simulate_streaming` (ağır testServer).
+Faz 3 sonraki: log kategori/latency özeti.
+
+---
+
 ## LATEST SESSION RESULTS — `claude/peaceful-ritchie-hvd1y7` (Faz 2→9.5 kampanyası)
 
 Bu oturum davranışsal kapsamayı derinleştirdi, release kanıt görünürlüğü

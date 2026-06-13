@@ -34,6 +34,7 @@ health_source_optional("R/module_health_storage.R")
 health_source_optional("R/module_health_runtime.R")
 health_source_optional("R/module_health_security.R")
 health_source_optional("R/module_health_diagnostics.R")
+health_source_optional("R/module_health_release.R")
 
 healthUI <- function(id) {
   ns <- NS(id)
@@ -73,6 +74,10 @@ healthUI <- function(id) {
           tabPanel(
             title = tags$span(title = "Detaylı sağlık kayıtları", tagList(icon("clipboard-list"), " Tanılama")),
             value = "diagnostics"
+          ),
+          tabPanel(
+            title = tags$span(title = "En son doğrulama/release kanıt özeti", tagList(icon("clipboard-check"), " Release Kanıtı")),
+            value = "release"
           )
         )
       )
@@ -130,6 +135,19 @@ healthServer <- function(id, perf_tracker) {
       })
     })
 
+    # Release kanıt okuyucusu saf dosya okumadır; DB/LLM/ağ çağrısı yapmaz.
+    # Yenileme tetikleyicisine bağlıdır ki manuel/otomatik yenilemede tekrar okunsun.
+    release_evidence_data <- reactive({
+      health_refresh_trigger()
+      tryCatch({
+        if (exists("release_evidence_overview", mode = "function")) {
+          release_evidence_overview()
+        } else {
+          NULL
+        }
+      }, error = function(e) NULL)
+    })
+
     output$health_tab_content <- renderUI({
       checks <- checks_data()
       tab <- input$health_tabs %||% "overview"
@@ -141,6 +159,7 @@ healthServer <- function(id, perf_tracker) {
         runtime = health_runtime_ui(checks, worker_health_html()),
         security = health_security_ui(checks),
         diagnostics = health_diagnostics_ui(checks),
+        release = health_release_ui(release_evidence_data()),
         health_overview_ui(checks, health_last_update())
       )
     })

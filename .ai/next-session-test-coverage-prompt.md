@@ -1,3 +1,56 @@
+# CONTEXT — Faz 2→9.5 oturumu `claude/affectionate-bohr-ietfly` (2026-06-13, do NOT redo)
+
+Bu oturum Faz 3 release-kanıt UI bağlamasını tamamladı ve 2 Faz 2 davranış testi
+ekledi. Hepsi 0 fail/warn/skip (tek tek + `test_dir` batch). `ai_validate quick`
+TAM geçti (failed=0, skipped=0, app_source_smoke=passed). ZATEN YAPILDI — tekrar etme:
+- **Faz 3 UI:** `R/module_health_release.R` (`health_release_ui`,
+  `.health_release_pill`, `.health_release_steps_table`) Sistem Durumu'na
+  "Release Kanıtı" sekmesi olarak bağlandı (`R/module_health.R` switch +
+  refresh'e bağlı saf `release_evidence_overview` reactive; manifest
+  `module_health_chartlab` n 9→10, toplam 263). Kanıt: `test-health-release-ui-behavior.R`
+  (UI builder + secret-safe sınır + healthServer "release" yönlendirme testServer).
+- `parse_stream_event()` (helpers_claude_code_streaming.R) tüm stream-json olay
+  türleriyle kapsandı: `test-claude-code-parse-stream-event-behavior.R`. GOTCHA:
+  `content_block_start` text yolu normalize ETMEZ; yalnızca `content_block_delta`
+  text_delta/input_json_delta ve `result` normalize eder — testte
+  `normalize_text_utf8`'i env'e tanınabilir önekli stub ile koyup yolu kanıtla.
+- `release_evidence_artifact_root` / `release_evidence_read_json` /
+  `.release_evidence_scalar` doğrudan testleri `test-release-evidence-behavior.R`'a eklendi.
+
+Aynı oturum devamı (kullanıcı "add more relevant tests") — 5 yeni test (93 doğrulama),
+do NOT redo:
+- `test-sso-auth-server-behavior.R` — `ssoAuthServer` testServer (fail-closed SSO).
+  GOTCHA: `observeEvent(input$sso_jwt_token, ignoreInit=TRUE)` → PRIME-THEN-SET
+  (`setInputs(sso_jwt_token="__prime__"); setInputs(sso_jwt_token=REAL)`); custom
+  message yakalama için `root <- .subset2(session,"parent"); root$sendCustomMessage <- ...`.
+  SSO kapalı testinde `MERGEN_AUTH_LEVEL=NA` ile env'i KALDIR (boş "" değil) ki
+  `Sys.getenv(...,"ADMIN")` varsayılanı dönsün.
+- `test-claude-code-connection-behavior.R` — `check_claude_code_status` (5 dal:
+  CLI yok/başarı/sıfırdan farklı çıkış/zaman aşımı/başlatma hatası) ve
+  `test_claude_code_connection` (3 dal). GOTCHA: `processx::process` R6 üreticisi
+  `local_mocked_bindings(process = list(new=function(...) fake_proc), .package="processx")`
+  ile mock'lanır (fake_proc: wait/is_alive/read_all_output/read_all_error/
+  get_exit_status/kill).
+- `test-ai-expert-call-llm-behavior.R` — `call_ai_expert_llm` httr-mock. GOTCHA:
+  mock'u test_that bloğuna kapsamak için YARDIMCI fonksiyon içinde
+  `local_mocked_bindings(..., .env = parent.frame())` ŞART; yoksa mock yardımcı
+  dönünce kalkar ve gerçek `httr::POST` çalışır.
+- `test-misc-runtime-predicates-behavior.R` — `.path_text_encoding_helper_available`
+  (`environment(f) <- new.env(parent=baseenv())` ile arama yolunu kontrol et,
+  globalenv'deki gerçek normalize_text_utf8'i atlamak için), `.fm_runtime_is_reactivevalues`,
+  `ui_asset_zone_get`.
+- `test-send-message-request-callbacks-behavior.R` —
+  `mergen_build_send_message_request_callbacks` (cleanup/abort req_id capture).
+- Ölü kod kaldırıldı: `module_health_release.R` `.health_release_kv`.
+
+Kalan en yüksek değerli untested küme (~52): `sendMessageInit`, `chat_add_message`/
+`chat_simulate_streaming`, `call_llm_worker`, deep_analysis/pk_analysis servis-bağlı
+helper'lar, `run_claude_code_streaming`, `execute_parsed_tool`, claude_code document
+helper'ları, `cc_refresh_user_file_manager_after_run`, `admin_ha_show_modal`,
+`.syap_*` kart builder'ları (id yüzeyi dolaylı korunuyor; düşük öncelik).
+
+---
+
 # CONTEXT — Faz 2→9.5 oturumu `claude/peaceful-ritchie-hvd1y7` (do NOT redo)
 
 Bu oturum 11 yeni davranış testi (~444 doğrulama) ekledi ve 2 cerrahi güvenlik

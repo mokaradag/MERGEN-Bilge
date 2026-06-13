@@ -84,11 +84,12 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **DB/servis:** `MB_Users`; Keycloak (`SSO_KEYCLOAK_URL`, JWKS uç noktası).
 - **Testler:** `test-sso-jwt-signature.R`, `test-sso-authorization-failclosed.R`,
   `test-sso-signature-parsing.R`, `test-sso-jwt.R`, `test-sso-der-tlv-behavior.R`,
-  `test-sso-fetch-jwks-behavior.R`, `test-e2e-sso-identity-readiness-regression.R`.
+  `test-sso-fetch-jwks-behavior.R`, `test-sso-auth-server-behavior.R` (ssoAuthServer
+  fail-closed testServer akışı), `test-e2e-sso-identity-readiness-regression.R`.
 - **Smoke/kanıt:** `run_vm_preflight_real.R` (`MERGEN_PREFLIGHT_REQUIRE_SSO=TRUE`).
   **Gerçek Keycloak/SSO yalnızca VM'de kanıtlanır.**
-- **Bilinen risk / sıradaki hedef:** `ssoAuthServer` testServer kapsaması
-  (httr/jwt stub'lı) hâlâ açık.
+- **Bilinen risk / sıradaki hedef:** `ssoAuthServer` davranışsal testServer kapsaması
+  eklendi; gerçek Keycloak token/JWKS akışı yalnızca VM'de kanıtlanır.
 
 ## API Anahtarları
 
@@ -131,16 +132,22 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `R/helpers_health_formatters.R`, `R/helpers_health_table.R`,
   `R/helpers_release_evidence.R` (release kanıt artifact okuyucu),
   `R/helpers_admin_analytics.R`, `R/helpers_admin_*` aileleri.
-- **UI/server modülleri:** `R/module_health*.R`, `R/module_admin_*.R`,
+- **UI/server modülleri:** `R/module_health*.R` (Sistem Durumu sekmeleri:
+  `R/module_health_overview.R`...`R/module_health_diagnostics.R` +
+  `R/module_health_release.R` "Release Kanıtı" sekmesi), `R/module_admin_*.R`,
   `www/js/health_dashboard.js`, `www/css/health_dashboard.css`.
 - **DB/servis:** `MB_*` analitik okumaları; DB/LLM/file-store sağlık probe'ları
-  (mock'lanır, gerçek internet uç noktası çağrılmaz).
+  (mock'lanır, gerçek internet uç noktası çağrılmaz); release kanıt sekmesi
+  yalnızca `artifacts/` ve günlük log dosyalarını okur (DB/ağ çağrısı yok).
 - **Testler:** `test-health-check*.R`, `test-health-checks-probes-behavior.R`,
-  `test-admin-*-outputs-behavior.R`, `test-release-evidence-behavior.R`.
+  `test-admin-*-outputs-behavior.R`, `test-release-evidence-behavior.R`,
+  `test-health-release-ui-behavior.R` (UI builder + healthServer yönlendirme).
 - **Smoke/kanıt:** VM evidence gate (`run_vm_evidence_gate.R`), seam doctor,
   frontend complexity doctor; `artifacts/vm-evidence/<ts>/evidence.json`.
-- **Bilinen risk / sıradaki hedef:** release kanıt okuyucu eklendi; Sistem Durumu
-  sayfasına operatör görünümü olarak bağlama henüz yapılmadı (sonraki oturum).
+- **Bilinen risk / sıradaki hedef:** release kanıt okuyucusu Sistem Durumu
+  "Release Kanıtı" sekmesine bağlandı (operatör görünürlüğü). Sıradaki:
+  post-deploy smoke durumu ve latency/hata-kategorisi özetleri için log
+  formatlarının değerlendirilmesi.
 
 ## Bilge Yolaç / Claude Code
 
@@ -155,10 +162,13 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `bilge_yolac_plugins/`.
 - **Testler:** `test-claude-code-security-policy-*`, `test-claude-code-prompt-path-policy-behavior.R`,
   `test-claude-code-run-lifecycle-contract.R`, `test-claude-code-stream-html-safety-contract.R`,
-  `test-claude-code-workdir-*`, `test-cc-path-policy-collapse-behavior.R`.
+  `test-claude-code-workdir-*`, `test-cc-path-policy-collapse-behavior.R`,
+  `test-claude-code-parse-stream-event-behavior.R` (stream-json olay ayrıştırma),
+  `test-claude-code-connection-behavior.R` (check_claude_code_status processx-mock +
+  test_claude_code_connection).
 - **Smoke/kanıt:** Windows VM manuel akış (UNC/SSO/`.cmd`); cloud'da kanıtlanmaz.
-- **Bilinen risk / sıradaki hedef:** `run_claude_code_streaming`, `parse_stream_event`,
-  `check_claude_code_status`, doküman özet helper'ları davranışsal test edilmedi.
+- **Bilinen risk / sıradaki hedef:** `parse_stream_event` ve bağlantı durumu kapsandı;
+  `run_claude_code_streaming` (processx mock) ve doküman özet helper'ları hâlâ açık.
 
 ## Destek / Geri Bildirim
 

@@ -35,7 +35,77 @@ Aşağıdakiler ÖNCEKİ oturumlarda tamamlandı (`.ai/next-session-*.md` ayrın
 
 ## Oturum kaydı
 
-### Oturum: 2026-06-12 — branch `claude/peaceful-ritchie-hvd1y7` (bu oturum)
+### Oturum: 2026-06-13 — branch `claude/affectionate-bohr-ietfly` (bu oturum)
+
+Önceki oturumun bıraktığı en somut "sonraki adım" tamamlandı: **Faz 3 release
+kanıt görünürlüğünün UI bağlaması.** Ek olarak Faz 2 davranışsal kapsama
+genişletildi. Cerrahi, additive; ratchet/manifest/seam/encoding sözleşmeleri yeşil.
+
+**Faz 3 — Sistem Durumu "Release Kanıtı" sekmesi (operatör görünürlüğü):**
+- `R/module_health_release.R` (YENİ): `health_release_ui` + `.health_release_pill` +
+  `.health_release_steps_table`. `helpers_release_evidence.R` saf okuyucusunun
+  secret-safe özetini (en son VM evidence gate, ai_validate summary, günlük log
+  ERROR/WARN sayaçları) mevcut sağlık UI bloklarıyla gösterir. Kanıt-yok
+  dürüstlüğü: "Bulunamadı" başarı değil, "Atlandı" (SKIP) kanıt değil; artifact
+  yolu / ham log içeriği render EDİLMEZ (savunma derinliği).
+- `R/module_health.R`: yeni "Release Kanıtı" sekme paneli, refresh tetikleyicisine
+  bağlı saf `release_evidence_overview` reactive'i (DB/LLM/ağ çağrısı yok),
+  `switch` yönlendirmesi (`release = health_release_ui(...)`).
+- `R/config_source_manifest.R`: `module_health_chartlab` bölümüne `module_health.R`
+  ÖNCESİNE eklendi (seam `destek_yonetici_saglik` sahipliği korunur).
+- Sections contract: `module_health_chartlab` n 9→10, toplam 262→263 bilinçli güncellendi.
+
+**Faz 2 — davranış testleri (önceki untested kümeden):**
+- `test-claude-code-parse-stream-event-behavior.R` — `parse_stream_event()` tüm
+  Anthropic stream-json olay türleri + normalizasyon sınırı + NULL düşüşleri.
+- `test-release-evidence-behavior.R` genişletildi — `release_evidence_artifact_root`,
+  `release_evidence_read_json`, `.release_evidence_scalar` doğrudan testleri.
+- `test-health-release-ui-behavior.R` — yeni UI builder davranışı + secret-safe
+  sınır + `healthServer` "release" yönlendirme testServer kanıtı.
+
+**Faz 2 — devam (kullanıcı "add more relevant tests"): 5 yeni test (93 doğrulama):**
+- `test-sso-auth-server-behavior.R` — `ssoAuthServer` testServer fail-closed akışı
+  (en çok bayraklanan güvenlik boşluğu): SSO kapalı→ADMIN; boş/geçersiz token,
+  eksik claim, yetkisiz→authenticated FALSE + sso_auth_error; geçerli+yetkili→
+  DB zenginleştirme + sso_auth_success. GOTCHA: observeEvent ignoreInit=TRUE →
+  PRIME-THEN-SET; custom message yakalama için kök oturum override.
+- `test-claude-code-connection-behavior.R` — `check_claude_code_status` (5 dal,
+  `processx::process` R6 üreticisi `local_mocked_bindings` ile mock) +
+  `test_claude_code_connection` (3 dal, deps stub).
+- `test-ai-expert-call-llm-behavior.R` — `call_ai_expert_llm` httr-mock (gövde
+  yakalama + max_tokens/temperature kıstaslama + telaffuz düzeltmesi).
+  GOTCHA: httr mock'unu test_that bloğuna kapsamak için yardımcı içinde
+  `local_mocked_bindings(..., .env = parent.frame())` şart.
+- `test-misc-runtime-predicates-behavior.R` — `.path_text_encoding_helper_available`
+  (fonksiyon ortamı rebind ile FALSE/TRUE), `.fm_runtime_is_reactivevalues`,
+  `ui_asset_zone_get` (geçerli/geçersiz/bilinmeyen id).
+- `test-send-message-request-callbacks-behavior.R` —
+  `mergen_build_send_message_request_callbacks` cleanup/abort kapanışlarının
+  req_id'yi request-scoped yakalayıp ilettiği (bayat callback koruması).
+- Ayrıca `module_health_release.R`'den kullanılmayan `.health_release_kv` ölü kodu
+  kaldırıldı (taslak artığı).
+
+**Doğrulama (bu container, R 4.6.0):**
+- `bash tools/ai_validate.sh quick` → failed_steps=0, skipped_steps=0,
+  **app_source_smoke=passed** (her iki commit setinden sonra), focused contract tests OK.
+- `bash tools/ai_validate.sh full --boot-smoke` → failed_steps=0, skipped_steps=0,
+  **full testthat suite passed (121.5s)**, shiny_boot_smoke=passed,
+  app_source_smoke=passed, browser_smoke=**skipped** (browser binary yok — kanıt değil),
+  db_sso_vm=false, sql_server Türkçe encoding=not_performed.
+- `parse_sanity_check.R` OK (770 dosya). Sections/source-manifest/seam-registry/
+  maintainability-ratchet/e2e-health contract testleri: 0 fail/warn.
+- Tüm yeni/değişen test dosyaları tek tek + `test_dir` batch'te 0 fail/warn/skip
+  (Faz 3 üçlü batch 147 PASS; Faz 2 devam beşli batch 93 PASS).
+- `seam_doctor.R` OK (destek_yonetici_saglik runtime-dosya 41→42).
+- Untested top-level fn taraması: 61 → ~52 (parse_stream_event, release internals,
+  ssoAuthServer, check/test_claude_code_connection, call_ai_expert_llm,
+  3 misc predicate, mergen_build_send_message_request_callbacks kapsandı).
+
+**Bu oturumda KANITLANMAYAN (cloud sınırı):** Windows VM/SSO/DB/SQL Server Türkçe
+encoding/gerçek browser UX smoke/vision live. Release Kanıtı sekmesinin gerçek
+artifact'larla canlı görünümü yalnızca VM'de (artifact üretildikten sonra) doğrulanır.
+
+### Oturum: 2026-06-12 — branch `claude/peaceful-ritchie-hvd1y7`
 
 Başlangıç tespiti: untested top-level fonksiyon sayısı 85 (FIXED-string tarama).
 Admin renderer / health probe / destek DB / galeri kümeleri zaten kapalı olduğu
@@ -95,32 +165,41 @@ encoding/gerçek browser UX smoke/vision live. Bunlar VM kapılarının işidir.
 
 - `sendMessageInit` (server_send_message.R) — ağır; testServer + yoğun stub ister.
 - `serverInitChatRuntime`, `sessionCacheInit` — testServer ile orta zorluk.
-- `ssoAuthServer` (module_sso.R) — SSO akışı; httr/jwt stub'ları ile.
 - `chat_add_message`, `chat_simulate_streaming` (helpers_chat_runtime.R) — ağır.
 - `call_llm_worker` (helpers_llm_worker.R) — çok ağır; ikinci-pass zinciri.
 - `pk_deep_analysis_process`, `find_multiple_queries_with_ai`,
   `execute_single_deep_query` (helpers_deep_analysis.R) — LLM/DB mock ister.
 - `pk_analiz_process_request`, `find_best_query_with_ai` (module_proje_kaynak_analizi.R).
 - `summarize_file_with_llm`, `handle_file_upload_batch` (helpers_file_pipeline.R).
-- `run_claude_code_streaming`, `parse_stream_event` (helpers_claude_code_streaming.R).
-- `check_claude_code_status`, `test_claude_code_connection` (processx mock).
+- `run_claude_code_streaming` (helpers_claude_code_streaming.R) — processx mock ister;
+  `parse_stream_event` 2026-06-13'te kapsandı.
 - `prepare_claude_code_document_context`, `write_claude_code_document_summary_file`,
   `summarize_claude_code_documents_with_local_llm`.
 - `execute_parsed_tool` (helpers_mcp_tools.R) — MCP zinciri source edilerek.
 - `gc_scheduler`, `start_gc_scheduler_once` (config_file_store.R) — later mock.
 - `.syap_*` kart builder'ları — `test-settings-yapilandirma-ui-id-surface-behavior.R`
   id yüzeyini dolaylı koruyor; doğrudan birim testi düşük öncelik.
-- `attach_required_packages`, `ui_asset_zone_get`, `admin_ha_show_modal`,
+- `attach_required_packages`, `admin_ha_show_modal`,
   `cc_refresh_user_file_manager_after_run`, `cc_bind_claude_code_stream_polling`,
-  `mergen_build_send_message_request_callbacks`, `.fm_runtime_is_reactivevalues`,
-  `.path_text_encoding_helper_available`, `.mcp_bootstrap_*` — küçük/orta.
+  `.mcp_bootstrap_*` — küçük/orta.
+
+2026-06-13 devamında KAPSANANLAR (yukarıdan çıkarıldı): `ssoAuthServer`,
+`check_claude_code_status`/`test_claude_code_connection`, `call_ai_expert_llm`,
+`ui_asset_zone_get`, `.fm_runtime_is_reactivevalues`,
+`.path_text_encoding_helper_available`, `mergen_build_send_message_request_callbacks`,
+`parse_stream_event`, release evidence iç yardımcıları.
 
 ## Faz 3 sonraki adımlar
 
-- Helper katmanı bu oturumda eklendiyse: Sistem Durumu (health) sayfasına
-  "Release Kanıtı" sekmesi/karti olarak bağlamak (UI wiring) sonraki oturuma.
+- ✅ Sistem Durumu "Release Kanıtı" sekmesi UI bağlaması 2026-06-13'te tamamlandı
+  (`R/module_health_release.R` + `R/module_health.R` switch). Operatör artık
+  uygulamayı kapatmadan en son kanıt özetini görüyor.
 - Post-deploy smoke durumu ve hata kategorisi/latency özetleri için mevcut log
-  formatları incelenmeli (`logs/mergen_*.log` yapısı).
+  formatları incelenmeli (`logs/mergen_*.log` yapısı). `release_evidence_log_health`
+  şu an yalnızca ERROR/WARN sayar; kategori/latency çıkarımı eklenebilir (saf,
+  test-destekli olmalı).
+- Release Kanıtı sekmesinin gerçek artifact'larla VM canlı görünümü (artifact
+  üretildikten sonra) bir VM oturumunda gözle doğrulanmalı.
 
 ## Doğrulama kanıt sınırı (her oturum geçerli)
 

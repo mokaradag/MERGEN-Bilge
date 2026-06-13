@@ -417,6 +417,7 @@ source_manifest_sections <- list(
     "R/module_health_runtime.R",
     "R/module_health_security.R",
     "R/module_health_diagnostics.R",
+    "R/module_health_release.R",
     "R/module_health.R",
     "R/module_chartlab.R"
   ),

@@ -211,6 +211,62 @@ testthat::test_that("release_evidence_log_health sınırlı pencerede ERROR/WARN
   testthat::expect_identical(bos$error_count, 0L)
 })
 
+testthat::test_that("release_evidence_artifact_root repo kökü altındaki artifacts dizinini verir", {
+  env <- .releaseEvidenceEnv()
+
+  testthat::expect_identical(
+    env$release_evidence_artifact_root("/repo/kok"),
+    file.path("/repo/kok", "artifacts")
+  )
+  # Argümansız çağrı getwd() altındaki artifacts dizinini döndürür
+  testthat::expect_identical(
+    env$release_evidence_artifact_root(),
+    file.path(getwd(), "artifacts")
+  )
+})
+
+testthat::test_that("release_evidence_read_json geçerli JSON'u okur, bozuk/eksikte NULL döner", {
+  env <- .releaseEvidenceEnv()
+  dizin <- withr::local_tempdir()
+
+  # Geçersiz/eksik yollar güvenle NULL döner (durmaz)
+  testthat::expect_null(env$release_evidence_read_json(NULL))
+  testthat::expect_null(env$release_evidence_read_json(""))
+  testthat::expect_null(env$release_evidence_read_json(NA_character_))
+  testthat::expect_null(env$release_evidence_read_json(file.path(dizin, "yok.json")))
+
+  # Geçerli JSON liste olarak döner
+  iyi <- file.path(dizin, "iyi.json")
+  writeLines(jsonlite::toJSON(list(a = 1L, b = "iki"), auto_unbox = TRUE), iyi, useBytes = TRUE)
+  veri <- env$release_evidence_read_json(iyi)
+  testthat::expect_true(is.list(veri))
+  testthat::expect_identical(veri$b, "iki")
+
+  # Bozuk JSON NULL döner (başarı gibi gösterilmez)
+  bozuk <- file.path(dizin, "bozuk.json")
+  writeLines("{ bozuk", bozuk, useBytes = TRUE)
+  testthat::expect_null(env$release_evidence_read_json(bozuk))
+})
+
+testthat::test_that(".release_evidence_scalar tek skaler çeker, eksikte varsayılana düşer", {
+  env <- .releaseEvidenceEnv()
+
+  x <- list(ad = "deger", sayi = 7L, bos = NULL, eksik_na = NA, vektor = c("ilk", "ikinci"))
+
+  testthat::expect_identical(env$.release_evidence_scalar(x, "ad"), "deger")
+  # Sayısal skaler karaktere çevrilir
+  testthat::expect_identical(env$.release_evidence_scalar(x, "sayi"), "7")
+  # Vektörde yalnızca ilk eleman alınır
+  testthat::expect_identical(env$.release_evidence_scalar(x, "vektor"), "ilk")
+  # Yok olan isim varsayılanı döndürür
+  testthat::expect_identical(env$.release_evidence_scalar(x, "yok", default = "vars"), "vars")
+  # NULL ve NA değerler varsayılana düşer
+  testthat::expect_identical(env$.release_evidence_scalar(x, "bos", default = "vars"), "vars")
+  testthat::expect_identical(env$.release_evidence_scalar(x, "eksik_na", default = "vars"), "vars")
+  # Varsayılan belirtilmezse boş string
+  testthat::expect_identical(env$.release_evidence_scalar(x, "yok2"), "")
+})
+
 testthat::test_that("release_evidence_overview alt özetleri ve kanıt sınırı notunu birleştirir", {
   env <- .releaseEvidenceEnv()
   kok <- withr::local_tempdir()

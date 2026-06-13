@@ -99,7 +99,7 @@
   module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/module_proje_kaynak_analizi.R", n = 1L),
   module_support = list(first = "R/module_destek_yardim.R", last = "R/module_destek.R", n = 6L),
   module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 19L),
-  module_health_chartlab = list(first = "R/module_health_worker_metrics.R", last = "R/module_chartlab.R", n = 9L),
+  module_health_chartlab = list(first = "R/module_health_worker_metrics.R", last = "R/module_chartlab.R", n = 10L),
   server_init_runtime = list(first = "R/server_session_cache.R", last = "R/server_init_chat_runtime.R", n = 13L),
   server_core_outputs_welcome = list(first = "R/server_core_observer_runtime.R", last = "R/server_welcome_handlers.R", n = 7L),
   server_observers = list(first = "R/server_observers_startup.R", last = "R/server_observers_misc.R", n = 11L),
@@ -204,7 +204,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # fonksiyon-yoğunluk bölmesiyle manifest'e eklendi.
   # 261L -> 262L bilinçli güncelleme: R/helpers_release_evidence.R (release
   # kanıt artifact okuyucusu) support_admin_health_helpers bölümüne eklendi.
-  expect_equal(length(runtime), 262L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 262L -> 263L bilinçli güncelleme: R/module_health_release.R (Sistem Durumu
+  # "Release Kanıtı" sekmesi) module_health_chartlab bölümüne eklendi.
+  expect_equal(length(runtime), 263L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]
