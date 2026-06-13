@@ -83,6 +83,55 @@ testthat::test_that("release_evidence_latest_artifact en yeni timestamp dizinind
   testthat::expect_identical(env$release_evidence_latest_artifact(NULL, "x"), "")
 })
 
+testthat::test_that("release_evidence_list_runs hedef dosyalı koşuları en yeniden eskiye listeler", {
+  env <- .releaseEvidenceEnv()
+  kok <- withr::local_tempdir()
+  .makeVmEvidenceFixture(kok)
+  taban <- file.path(kok, "artifacts", "vm-evidence")
+
+  # Hedef dosyası olmayan daha yeni dizin listelenmemeli
+  dir.create(file.path(taban, "20270101-000000"), showWarnings = FALSE)
+
+  kosular <- env$release_evidence_list_runs(taban, "evidence.json")
+  testthat::expect_identical(kosular, c("20260612-211836", "20260101-080000"))
+
+  # Var olmayan/boş taban güvenli boş döner
+  testthat::expect_identical(
+    env$release_evidence_list_runs(file.path(kok, "yok"), "evidence.json"), character(0))
+  testthat::expect_identical(env$release_evidence_list_runs(NULL, "evidence.json"), character(0))
+})
+
+testthat::test_that(".release_evidence_safe_run_id yalnızca güvenli zaman damgası adını kabul eder", {
+  env <- .releaseEvidenceEnv()
+  testthat::expect_identical(env$.release_evidence_safe_run_id("20260613-133648"), "20260613-133648")
+  testthat::expect_identical(env$.release_evidence_safe_run_id("../gizli"), "")
+  testthat::expect_identical(env$.release_evidence_safe_run_id("a/b"), "")
+  testthat::expect_identical(env$.release_evidence_safe_run_id("x y"), "")
+  testthat::expect_identical(env$.release_evidence_safe_run_id(NULL), "")
+  testthat::expect_identical(env$.release_evidence_safe_run_id(NA_character_), "")
+})
+
+testthat::test_that("release_evidence_artifact_for_run run_id seçer, güvensiz/eksikte en yeniye düşer", {
+  env <- .releaseEvidenceEnv()
+  kok <- withr::local_tempdir()
+  yeni <- .makeVmEvidenceFixture(kok)
+  taban <- file.path(kok, "artifacts", "vm-evidence")
+  eski <- file.path(taban, "20260101-080000", "evidence.json")
+
+  # Geçerli run_id o koşuyu seçer
+  testthat::expect_identical(
+    env$release_evidence_artifact_for_run(taban, "20260101-080000", "evidence.json"), eski)
+  # run_id NULL -> en yeni koşu
+  testthat::expect_identical(
+    env$release_evidence_artifact_for_run(taban, NULL, "evidence.json"), yeni)
+  # Path traversal / güvensiz run_id reddedilir, en yeniye düşer
+  testthat::expect_identical(
+    env$release_evidence_artifact_for_run(taban, "../../etc", "evidence.json"), yeni)
+  # Var olmayan run_id en yeniye düşer
+  testthat::expect_identical(
+    env$release_evidence_artifact_for_run(taban, "29991231-000000", "evidence.json"), yeni)
+})
+
 testthat::test_that("release_evidence_vm_summary geçen kapıyı beyaz-listeli alanlarla özetler", {
   env <- .releaseEvidenceEnv()
   kok <- withr::local_tempdir()
@@ -109,6 +158,37 @@ testthat::test_that("release_evidence_vm_summary geçen kapıyı beyaz-listeli a
   duz_metin <- paste(utils::capture.output(utils::str(ozet)), collapse = "\n")
   testthat::expect_false(grepl("gizli/yol/olmamali", duz_metin, fixed = TRUE))
   testthat::expect_false(grepl("ham not disari", duz_metin, fixed = TRUE))
+})
+
+testthat::test_that("release_evidence_vm_summary koşu listesini verir ve run_id ile eski koşuyu seçer", {
+  env <- .releaseEvidenceEnv()
+  kok <- withr::local_tempdir()
+  .makeVmEvidenceFixture(kok)
+
+  # Varsayılan: en yeni koşu seçili; tüm koşular en yeniden eskiye
+  ozet <- env$release_evidence_vm_summary(repo_root = kok)
+  testthat::expect_identical(ozet$available_runs, c("20260612-211836", "20260101-080000"))
+  testthat::expect_identical(ozet$selected_run, "20260612-211836")
+  testthat::expect_identical(ozet$status, "passed")
+
+  # Belirli (eski) koşu seçilince o koşunun özeti döner
+  eski <- env$release_evidence_vm_summary(repo_root = kok, run_id = "20260101-080000")
+  testthat::expect_true(eski$found)
+  testthat::expect_identical(eski$selected_run, "20260101-080000")
+  testthat::expect_identical(eski$status, "failed")
+  testthat::expect_identical(eski$passed, 10L)
+  testthat::expect_identical(eski$failed, 3L)
+
+  # Güvensiz run_id en yeniye düşer (path traversal korunur)
+  guvenli <- env$release_evidence_vm_summary(repo_root = kok, run_id = "../../escape")
+  testthat::expect_identical(guvenli$selected_run, "20260612-211836")
+
+  # Artifact yokken bile mevcut koşular boş listeyle güvenle döner
+  bos_kok <- withr::local_tempdir()
+  bos_ozet <- env$release_evidence_vm_summary(repo_root = bos_kok)
+  testthat::expect_false(bos_ozet$found)
+  testthat::expect_identical(bos_ozet$available_runs, character(0))
+  testthat::expect_identical(bos_ozet$selected_run, "")
 })
 
 testthat::test_that("release_evidence_vm_summary artifact yokken veya bozukken dürüst not_found döner", {
@@ -211,6 +291,43 @@ testthat::test_that("release_evidence_log_health sınırlı pencerede ERROR/WARN
   testthat::expect_identical(bos$error_count, 0L)
 })
 
+# Kök neden regresyonu: Windows VM logları ANSI/WINDOWS-1254 bayt içerebilir.
+# Eski readLines(encoding="UTF-8") yolu geçersiz çok baytlı dizgede regexec ile
+# "input string is invalid" hatası fırlatır ve TÜM Doğrulama Kanıtı sekmesini
+# boşa düşürürdü. Byte-safe okuma bunu önlemeli; sayımlar yine doğru olmalı.
+testthat::test_that("release_evidence_log_health geçersiz UTF-8 (ANSI) log içeriğinde durmaz", {
+  env <- .releaseEvidenceEnv()
+  log_dir <- withr::local_tempdir()
+  log_yolu <- file.path(log_dir, sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d")))
+
+  # WINDOWS-1254 tek-bayt Türkçe karakterler (geçersiz UTF-8): 0xFD=ı, 0xFE=ş
+  con <- file(log_yolu, open = "wb")
+  satir1 <- c(
+    charToRaw("ERROR [2026-06-13 18:19:56] [INDEX] Error in INDEX_RESTORE: yedek al"),
+    as.raw(0xFD), charToRaw("nd"), as.raw(0xFD), charToRaw(" bo"), as.raw(0xFE),
+    as.raw(0x0A)
+  )
+  satir2 <- c(charToRaw("WARN [2026-06-13 18:20:00] bir uyar"), as.raw(0xFD), as.raw(0x0A))
+  writeBin(c(satir1, satir2), con)
+  close(con)
+
+  ozet <- env$release_evidence_log_health(log_dir = log_dir)
+  testthat::expect_true(ozet$found)
+  testthat::expect_identical(ozet$error_count, 1L)
+  testthat::expect_identical(ozet$warn_count, 1L)
+  testthat::expect_identical(ozet$last_error_at, "2026-06-13 18:19:56")
+  # Güvenli bağlam etiketi yine de çıkarılır
+  testthat::expect_identical(ozet$error_contexts[[1]]$context, "INDEX_RESTORE")
+
+  # Ve birleşik overview da durmadan üretilir (VM kanıtı + log birlikte)
+  kok <- withr::local_tempdir()
+  .makeVmEvidenceFixture(kok)
+  genel <- env$release_evidence_overview(repo_root = kok, log_dir = log_dir)
+  testthat::expect_true(genel$vm_evidence$found)
+  testthat::expect_true(genel$log_health$found)
+  testthat::expect_identical(genel$log_health$error_count, 1L)
+})
+
 testthat::test_that("release_evidence_artifact_root repo kökü altındaki artifacts dizinini verir", {
   env <- .releaseEvidenceEnv()
 
@@ -218,10 +335,10 @@ testthat::test_that("release_evidence_artifact_root repo kökü altındaki artif
     env$release_evidence_artifact_root("/repo/kok"),
     file.path("/repo/kok", "artifacts")
   )
-  # Argümansız çağrı getwd() altındaki artifacts dizinini döndürür
+  # Argümansız çağrı çözümlenen repo kökü altındaki artifacts dizinini döndürür
   testthat::expect_identical(
     env$release_evidence_artifact_root(),
-    file.path(getwd(), "artifacts")
+    file.path(env$release_evidence_resolve_repo_root(), "artifacts")
   )
 })
 

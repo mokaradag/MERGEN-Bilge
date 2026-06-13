@@ -250,15 +250,19 @@ Rscript tests/scripts/run_post_deploy_smoke.R
 - Log dizini `.Renviron` içindeki `MERGEN_LOG_DIR` veya uygulama varsayımlarıyla belirlenir.
 - Son uygulama logunu görüntülemek için `view_latest_mergen_app_log.bat` kullanılabilir.
 - Loglarda secret, token, API key, auth header veya parola bulunmamalıdır.
-- **Sistem Durumu > Release Kanıtı sekmesi:** Operatör, uygulamayı kapatmadan en
+- **Sistem Durumu > Doğrulama Kanıtı sekmesi:** Operatör, uygulamayı kapatmadan en
   son doğrulama kanıtlarını görebilir. Sekme `R/helpers_release_evidence.R` saf
   okuyucusuyla `artifacts/vm-evidence/<ts>/evidence.json` ve
   `artifacts/ai-validation/<ts>/summary.json` artifact'larının secret-safe özetini
-  ve bugünkü `mergen_*.log` ERROR/WARN sayaçlarını gösterir. Yalnızca
+  ve bugünkü `mergen_*.log` ERROR/WARN sayaçlarını gösterir. Varsayılan olarak en
+  yeni `vm-evidence/<ts>` koşusu gösterilir; birden fazla koşu varsa zaman damgalı
+  bir koşu seçici (dropdown) ile eski koşulara da bakılabilir. Yalnızca
   `passed` görünen adımlar ilgili kapsam için kanıttır; "Atlandı" (SKIP) kanıt
   değildir, "Bulunamadı" başarı sayılmaz. Sekme ham artifact yolu veya log
-  içeriği göstermez (savunma derinliği). Cloud profili koşumları VM/SSO/DB/SQL
-  Server Türkçe kodlama kanıtı üretmez; bu sekme bunu açıkça not eder.
+  içeriği göstermez (savunma derinliği); günlük log byte-safe okunur, böylece
+  Windows VM'deki ANSI/`WINDOWS-1254` log baytları sekmeyi boşa düşürmez. Cloud
+  profili koşumları VM/SSO/DB/SQL Server Türkçe kodlama kanıtı üretmez; bu sekme
+  bunu açıkça not eder.
 
 ## 12. Geri Alma (Rollback)
 

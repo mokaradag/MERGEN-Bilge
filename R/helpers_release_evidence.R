@@ -17,9 +17,21 @@
 
 # Repo kökünü getwd() yerine sabit ve doğrulanmış adaylardan çözer.
 # Shiny runtime sırasında getwd() tests/testthat gibi geçici dizinlere kayabilir.
+#
+# Açıkça verilen repo_root DOĞRUDAN onurlandırılır (çağıran kökü bilir; testler
+# kendi fixture dizinini, gelecekteki çağıranlar gerçek app kökünü geçebilir).
+# Yalnızca repo_root NULL/boş olduğunda app.R/global.R/R/www doğrulamalı
+# otomatik tespit yapılır. Önceki davranış açık repo_root'u yok sayıp getwd()'ye
+# düşebiliyordu; bu, fixture/explicit kök ile çağrıldığında artifact'ların yanlış
+# dizinde aranmasına yol açıyordu.
 release_evidence_resolve_repo_root <- function(repo_root = NULL) {
+  explicit <- as.character(repo_root %||% "")[1]
+  if (!is.na(explicit) && nzchar(explicit)) {
+    # mustWork = FALSE olduğu için normalize var olmayan yolda da güvenle döner.
+    return(normalizePath(explicit, winslash = "/", mustWork = FALSE))
+  }
+
   adaylar <- unique(Filter(nzchar, c(
-    as.character(repo_root %||% "")[1],
     Sys.getenv("MERGEN_REPO_ROOT", unset = ""),
     tryCatch(as.character(get0("repo_root", envir = globalenv(), inherits = TRUE) %||% "")[1],
              error = function(e) ""),
@@ -77,6 +89,62 @@ release_evidence_latest_artifact <- function(base_dir, file_name) {
   ""
 }
 
+# Bir artifact ailesindeki, hedef dosyayı içeren TÜM zaman damgalı koşu
+# dizinlerinin adlarını (basename) en yeniden eskiye sıralı döndürür. Operatöre
+# "hangi koşular mevcut?" görünürlüğü ve koşu seçici (dropdown) için kaynak verir.
+# Yalnızca dizin adı (ör. 20260613-133648) döner; tam yol taşınmaz.
+release_evidence_list_runs <- function(base_dir, file_name) {
+  if (is.null(base_dir) || length(base_dir) != 1L || is.na(base_dir) ||
+      !nzchar(base_dir) || !dir.exists(base_dir)) {
+    return(character(0))
+  }
+
+  alt_dizinler <- list.dirs(base_dir, full.names = TRUE, recursive = FALSE)
+  if (!length(alt_dizinler)) {
+    return(character(0))
+  }
+
+  # file.exists vektörel: hedef dosyayı içeren koşu dizinlerini seç.
+  iceren <- alt_dizinler[file.exists(file.path(alt_dizinler, file_name))]
+  if (!length(iceren)) {
+    return(character(0))
+  }
+
+  adlar <- basename(iceren)
+  adlar[order(adlar, decreasing = TRUE)]
+}
+
+# UI'den gelen koşu seçimini (run_id) güvenli bir zaman damgası adına indirger.
+# Path traversal, ayraç veya beklenmeyen karakter içeren değerleri reddeder
+# (savunma derinliği). Geçersizse "" döner; çağıran en yeni koşuya düşmelidir.
+.release_evidence_safe_run_id <- function(run_id) {
+  if (is.null(run_id) || length(run_id) != 1L || is.na(run_id)) {
+    return("")
+  }
+  run_id <- as.character(run_id)[1]
+  if (!nzchar(run_id) || !grepl("^[A-Za-z0-9._-]+$", run_id)) {
+    return("")
+  }
+  if (!identical(run_id, basename(run_id))) {
+    return("")
+  }
+  run_id
+}
+
+# Belirli bir koşu (run_id) dizinindeki hedef dosyayı döndürür. run_id boş,
+# güvensiz veya bulunamıyorsa en yeni koşuya güvenle düşer. Bulunamazsa "".
+release_evidence_artifact_for_run <- function(base_dir, run_id, file_name) {
+  guvenli <- .release_evidence_safe_run_id(run_id)
+  if (nzchar(guvenli) && !is.null(base_dir) && length(base_dir) == 1L &&
+      !is.na(base_dir) && nzchar(base_dir)) {
+    aday <- file.path(base_dir, guvenli, file_name)
+    if (file.exists(aday)) {
+      return(aday)
+    }
+  }
+  release_evidence_latest_artifact(base_dir, file_name)
+}
+
 # JSON artifact'ını güvenle okur; bozuk/eksik dosyada NULL döner, asla durmaz.
 release_evidence_read_json <- function(path) {
   if (is.null(path) || length(path) != 1L || is.na(path) ||
@@ -106,18 +174,23 @@ release_evidence_read_json <- function(path) {
 # VM kanıt kapısının (run_vm_evidence_gate.R) en son evidence.json özetini
 # beyaz-listeli alanlarla döndürür. Adım listesi yalnızca id/status/required
 # üçlüsüne indirgenir; log yolları, detaylar ve notlar dışarı taşınmaz.
-release_evidence_vm_summary <- function(repo_root = NULL) {
+release_evidence_vm_summary <- function(repo_root = NULL, run_id = NULL) {
   repo_root <- release_evidence_resolve_repo_root(repo_root)
 
-  yol <- release_evidence_latest_artifact(
-    file.path(release_evidence_artifact_root(repo_root), "vm-evidence"),
-    "evidence.json"
-  )
+  base_dir <- file.path(release_evidence_artifact_root(repo_root), "vm-evidence")
+
+  # Tüm mevcut koşular (en yeni başta) operatöre koşu seçimi/görünürlüğü sağlar.
+  mevcut_kosular <- release_evidence_list_runs(base_dir, "evidence.json")
+
+  # run_id verilmişse o koşu, aksi halde en yeni koşu okunur.
+  yol <- release_evidence_artifact_for_run(base_dir, run_id, "evidence.json")
 
   bulunamadi <- list(
     found = FALSE,
     status = "not_found",
     artifact_path = "",
+    available_runs = mevcut_kosular,
+    selected_run = "",
     generated_at_utc = "",
     profile_effective = "",
     passed = 0L,
@@ -130,6 +203,9 @@ release_evidence_vm_summary <- function(repo_root = NULL) {
   if (is.null(veri)) {
     return(bulunamadi)
   }
+
+  # Gösterilen koşunun zaman damgası adı (dizin basename'i; tam yol değil).
+  secili_kosu <- basename(dirname(yol))
 
   sayilar <- veri$counts
   adimlar <- lapply(veri$steps, function(s) {
@@ -144,6 +220,8 @@ release_evidence_vm_summary <- function(repo_root = NULL) {
     found = TRUE,
     status = .release_evidence_scalar(veri, "overall_status", default = "unknown"),
     artifact_path = yol,
+    available_runs = mevcut_kosular,
+    selected_run = secili_kosu,
     generated_at_utc = .release_evidence_scalar(veri, "generated_at_utc"),
     profile_effective = .release_evidence_scalar(veri, "profile_effective"),
     passed = as.integer(.release_evidence_scalar(sayilar, "passed", default = "0")),
@@ -271,10 +349,25 @@ release_evidence_log_health <- function(log_dir = NULL, max_lines = 2000L) {
     return(bos)
   }
 
-  satirlar <- tryCatch(
-    readLines(log_yolu, warn = FALSE, encoding = "UTF-8"),
-    error = function(e) character(0)
-  )
+  # Byte-safe okuma: Windows VM logları ANSI/WINDOWS-1254 bayt içerebilir
+  # (geçersiz UTF-8). Ham içerik startsWith/regexpr/regexec'i "input string is
+  # invalid" ile kırıp TÜM Doğrulama Kanıtı sekmesini boşa düşürürdü (kök neden).
+  # Öncelik byte-safe read_text_lines_utf8; izole bağlamda yoksa readBin + iconv.
+  satirlar <- tryCatch({
+    if (exists("read_text_lines_utf8", mode = "function")) {
+      read_text_lines_utf8(log_yolu, repair_mojibake = TRUE)
+    } else {
+      boyut <- suppressWarnings(file.info(log_yolu)$size[1])
+      ham <- readBin(log_yolu, what = "raw", n = if (is.na(boyut)) 0L else boyut)
+      metin <- iconv(list(ham), from = "WINDOWS-1254", to = "UTF-8", sub = "byte")[[1]]
+      if (length(metin) == 1L && !is.na(metin) && nzchar(metin)) {
+        strsplit(metin, "\r\n|\n|\r", perl = TRUE)[[1]]
+      } else {
+        character(0)
+      }
+    }
+  }, error = function(e) character(0))
+
   if (!length(satirlar)) {
     bos$found <- TRUE
     return(bos)
@@ -315,12 +408,15 @@ release_evidence_log_health <- function(log_dir = NULL, max_lines = 2000L) {
 # Operatör görünümü için birleşik release kanıt özeti. Tüm alt özetler
 # secret-safe alan seçiminden geçer; bulunamayan kanıtlar dürüstçe
 # not_found olarak işaretlenir ve asla kanıt yerine geçmez.
-release_evidence_overview <- function(repo_root = NULL, log_dir = NULL) {
+release_evidence_overview <- function(repo_root = NULL, log_dir = NULL, run_id = NULL) {
   repo_root <- release_evidence_resolve_repo_root(repo_root)
 
+  # Alt özetler içsel olarak güvenlidir: JSON okuma tryCatch'lidir ve log okuma
+  # byte-safe'dir; bu yüzden tek bir okuyucu artık tüm sekmeyi boşa düşürmez.
+  # (module_health.R reaktifi ayrıca üst düzey tryCatch ile sarmalar.)
   list(
     generated_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-    vm_evidence = release_evidence_vm_summary(repo_root),
+    vm_evidence = release_evidence_vm_summary(repo_root, run_id = run_id),
     ai_validation = release_evidence_ai_validation_summary(repo_root),
     log_health = release_evidence_log_health(log_dir),
     proof_note = paste(

@@ -50,7 +50,7 @@ if (!exists("health_collect_checks", mode = "function") ||
   health_source_optional("R/helpers_health_checks.R")
 }
 
-# Release Kanıtı sekmesi, global manifest eski/eksik yüklense bile kendi okuyucusunu yükleyebilmeli.
+# Doğrulama Kanıtı sekmesi, global manifest eski/eksik yüklense bile kendi okuyucusunu yükleyebilmeli.
 if (!exists("release_evidence_overview", mode = "function")) {
   health_source_optional("R/helpers_release_evidence.R")
 }
@@ -104,7 +104,7 @@ healthUI <- function(id) {
             value = "diagnostics"
           ),
           tabPanel(
-            title = tags$span(title = "En son doğrulama/release kanıt özeti", tagList(icon("clipboard-check"), " Release Kanıtı")),
+            title = tags$span(title = "En son doğrulama kanıt özeti", tagList(icon("clipboard-check"), " Doğrulama Kanıtı")),
             value = "release"
           )
         )
@@ -173,7 +173,7 @@ healthServer <- function(id, perf_tracker) {
 		}
 
 		if (exists("release_evidence_overview", mode = "function")) {
-		  release_evidence_overview()
+		  release_evidence_overview(run_id = input$release_run)
 		} else {
 		  NULL
 		}
@@ -191,7 +191,7 @@ healthServer <- function(id, perf_tracker) {
         runtime = health_runtime_ui(checks, worker_health_html()),
         security = health_security_ui(checks),
         diagnostics = health_diagnostics_ui(checks),
-        release = health_release_ui(release_evidence_data()),
+        release = health_release_ui(release_evidence_data(), ns = ns),
         health_overview_ui(checks, health_last_update())
       )
     })

@@ -1,6 +1,6 @@
 # ==============================================================================
 # Dosya Yolu: R/module_health_release.R
-# Açıklama: Sistem Durumu panelinin "Release Kanıtı" sekmesi için UI yardımcıları.
+# Açıklama: Sistem Durumu panelinin "Doğrulama Kanıtı" sekmesi için UI yardımcıları.
 #            R/helpers_release_evidence.R saf okuyucusunun ürettiği secret-safe
 #            özeti operatöre görünür hale getirir: en son VM evidence gate,
 #            ai-validation summary ve günlük log sağlık sayaçları.
@@ -86,11 +86,11 @@
   )
 }
 
-health_release_ui <- function(overview) {
+health_release_ui <- function(overview, ns = NULL) {
   if (is.null(overview) || !is.list(overview)) {
     return(div(
       class = "health-empty",
-      "Release kanıt okuyucusu kullanılamıyor veya henüz kanıt üretilmedi."
+      "Doğrulama kanıt okuyucusu kullanılamıyor veya henüz kanıt üretilmedi."
     ))
   }
 
@@ -105,13 +105,36 @@ health_release_ui <- function(overview) {
   hata_sayisi <- as.integer(log_saglik$error_count %||% 0L)
   uyari_sayisi <- as.integer(log_saglik$warn_count %||% 0L)
 
+  # Mevcut kanıt koşuları (en yeni başta) ve gösterilen koşunun zaman damgası.
+  mevcut_kosular <- as.character(vm$available_runs %||% character(0))
+  secili_kosu <- as.character(vm$selected_run %||% "")[1]
+
+  # Koşu seçici (bonus): birden fazla zaman damgalı kanıt koşusu varsa operatör
+  # eski koşulara da geçebilsin. Yalnızca zaman damgası adı gösterilir; tam
+  # artifact yolu UI'ye taşınmaz (secret-safe). ns yoksa (izole testler) gizli.
+  kosu_secici <- NULL
+  if (!is.null(ns) && length(mevcut_kosular) >= 2L) {
+    kosu_secici <- div(
+      class = "health-release-run-picker",
+      `data-health-tooltip` = "Görüntülenen VM kanıt koşusunu seçin. Varsayılan en yeni koşudur.",
+      shiny::selectInput(
+        inputId = ns("release_run"),
+        label = "Kanıt koşusu (zaman damgası)",
+        choices = mevcut_kosular,
+        selected = if (nzchar(secili_kosu)) secili_kosu else mevcut_kosular[1],
+        width = "320px"
+      )
+    )
+  }
+
   tagList(
+    kosu_secici,
     # Operatöre kanıt sınırını ve son okuma zamanını açıklayan kısa hero kartı.
     div(
       class = "health-hero health-status-unknown",
       `data-health-tooltip` = "Bu sekme yalnızca üretilmiş doğrulama artifact'larını okur; canlı bir kapı çalıştırmaz.",
       div(class = "health-hero-copy",
-          h2("Release Kanıtı"),
+          h2("Doğrulama Kanıtı"),
           p(paste(
             "En son doğrulama kapılarının secret-safe özeti.",
             "Yalnızca 'Geçti' adımlar ilgili kapsam için kanıttır."
@@ -120,6 +143,8 @@ health_release_ui <- function(overview) {
                                label = if (vm_bulundu) NULL else "VM Kanıtı Yok")),
       div(class = "health-hero-meta",
           span(icon("clock"), paste("Okuma:", health_safe_value(overview$generated_at))),
+          span(icon("layer-group"), paste("Koşu:",
+                                   health_safe_value(if (nzchar(secili_kosu)) secili_kosu else "—"))),
           span(icon("vial"), paste("VM profili:",
                                    health_safe_value(if (vm_bulundu) vm$profile_effective else "—"))))
     ),

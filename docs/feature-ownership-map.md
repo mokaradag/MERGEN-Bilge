@@ -136,7 +136,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `R/helpers_admin_analytics.R`, `R/helpers_admin_*` aileleri.
 - **UI/server modülleri:** `R/module_health*.R` (Sistem Durumu sekmeleri:
   `R/module_health_overview.R`...`R/module_health_diagnostics.R` +
-  `R/module_health_release.R` "Release Kanıtı" sekmesi), `R/module_admin_*.R`,
+  `R/module_health_release.R` "Doğrulama Kanıtı" sekmesi), `R/module_admin_*.R`,
   `www/js/health_dashboard.js`, `www/css/health_dashboard.css`.
 - **DB/servis:** `MB_*` analitik okumaları; DB/LLM/file-store sağlık probe'ları
   (mock'lanır, gerçek internet uç noktası çağrılmaz); release kanıt sekmesi
@@ -148,7 +148,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **Smoke/kanıt:** VM evidence gate (`run_vm_evidence_gate.R`), seam doctor,
   frontend complexity doctor; `artifacts/vm-evidence/<ts>/evidence.json`.
 - **Bilinen risk / sıradaki hedef:** release kanıt okuyucusu Sistem Durumu
-  "Release Kanıtı" sekmesine bağlandı; hata-kategorisi (bağlam) özeti de eklendi
+  "Doğrulama Kanıtı" sekmesine bağlandı; hata-kategorisi (bağlam) özeti de eklendi
   (`release_evidence_summarize_error_contexts`, secret-safe). Sıradaki: latency/
   istek-süresi özeti (log formatı doğrulanırsa) ve post-deploy smoke artifact'ı.
 
