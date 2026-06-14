@@ -321,6 +321,44 @@ release_evidence_summarize_error_contexts <- function(error_lines, top_n = 6L) {
   })
 }
 
+# AI çağrı log satırlarından istek süresi (latency) özetini secret-safe üretir.
+# Kaynak kalıp: log_ai_call() çıktısı
+# "AI Call: user=..., model=..., duration=<saniye>s, success=<TRUE/FALSE>, tokens=...".
+# YALNIZCA sayısal süreler (duration=<sayı>s) ve başarı/başarısızlık sayıları
+# döner; kullanıcı kimliği, model adı veya başka içerik ASLA taşınmaz. Süre
+# içermeyen/eşleşmeyen satırlar yok sayılır. Eşleşme yoksa boş liste döner; bu
+# sayede operatör UI'sinde eski davranış korunur (alan boşsa hiçbir şey gösterilmez).
+release_evidence_summarize_ai_call_latency <- function(ai_call_lines) {
+  if (is.null(ai_call_lines) || !length(ai_call_lines)) {
+    return(list())
+  }
+
+  # duration=<sayı>s kalıbından yalnızca sayısal süreyi çıkar (içerik taşınmaz)
+  eslesme <- regmatches(
+    ai_call_lines,
+    regexpr("duration=[0-9]+\\.?[0-9]*s", ai_call_lines)
+  )
+  if (!length(eslesme)) {
+    return(list())
+  }
+
+  sureler <- suppressWarnings(as.numeric(gsub("duration=|s", "", eslesme)))
+  sureler <- sureler[!is.na(sureler) & sureler >= 0]
+  if (!length(sureler)) {
+    return(list())
+  }
+
+  list(
+    count = length(sureler),
+    min = round(min(sureler), 2),
+    median = round(stats::median(sureler), 2),
+    mean = round(mean(sureler), 2),
+    max = round(max(sureler), 2),
+    success_count = as.integer(sum(grepl("success=TRUE", ai_call_lines, fixed = TRUE))),
+    fail_count = as.integer(sum(grepl("success=FALSE", ai_call_lines, fixed = TRUE)))
+  )
+}
+
 # Bugünün uygulama logundaki ERROR/WARN satırlarını sınırlı pencerede sayar.
 # Log satır İÇERİĞİ döndürülmez (redakte edilmiş olsa bile); yalnızca sayaç,
 # son hata zaman öneki ve (yeni) güvenli bağlam kategorisi sayımı raporlanır.
@@ -342,7 +380,8 @@ release_evidence_log_health <- function(log_dir = NULL, max_lines = 2000L) {
     error_count = 0L,
     warn_count = 0L,
     last_error_at = "",
-    error_contexts = list()
+    error_contexts = list(),
+    ai_call_latency = list()
   )
 
   if (!file.exists(log_yolu)) {
@@ -380,6 +419,8 @@ release_evidence_log_health <- function(log_dir = NULL, max_lines = 2000L) {
 
   hata_satirlari <- satirlar[startsWith(satirlar, "ERROR")]
   uyari_satirlari <- satirlar[startsWith(satirlar, "WARN")]
+  # AI çağrı süresi satırları (log_ai_call çıktısı); yalnızca sayısal özet alınır
+  ai_cagri_satirlari <- satirlar[grepl("AI Call:", satirlar, fixed = TRUE)]
 
   son_hata_zamani <- ""
   if (length(hata_satirlari)) {
@@ -401,7 +442,9 @@ release_evidence_log_health <- function(log_dir = NULL, max_lines = 2000L) {
     warn_count = length(uyari_satirlari),
     last_error_at = son_hata_zamani,
     # Yalnızca bağlam etiketi + sayım; mesaj içeriği taşınmaz (secret-safe)
-    error_contexts = release_evidence_summarize_error_contexts(hata_satirlari)
+    error_contexts = release_evidence_summarize_error_contexts(hata_satirlari),
+    # Yalnızca sayısal istek-süresi özeti; kullanıcı/model içeriği taşınmaz (secret-safe)
+    ai_call_latency = release_evidence_summarize_ai_call_latency(ai_cagri_satirlari)
   )
 }
 
