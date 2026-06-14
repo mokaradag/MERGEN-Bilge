@@ -51,12 +51,15 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-file-resolution-security-contract.R`, `test-resolve-uploaded-file.R`,
   `test-upload-validator*.R`, `test-file-store-*`, `test-file-manager-*`,
   `test-file-pipeline-summarize-behavior.R` (LLM ile içerik dökümü + fallback),
+  `test-file-pipeline-upload-batch-behavior.R` (`handle_file_upload_batch`:
+  uzantı-reddi + gizli kaydedilmiş-ama-geçersiz yükleme yok + kopyalama-hatası
+  temizliği + bildirim yaşam döngüsü),
   `test-adversarial-hostile-input-behavior.R` (traversal/bidi/safe_join).
 - **Smoke/kanıt:** `run_fragile_flow_manual_preflight.R`, ux-smoke File Manager
   Türkçe display-name kontrolü.
 - **Bilinen risk / sıradaki hedef:** bidi-override reddi + `summarize_file_with_llm`
-  davranışsal kapsama eklendi; `handle_file_upload_batch` (uzantı-reddi dalı dahil)
-  hâlâ davranışsal test edilmedi.
+  + `handle_file_upload_batch` (uzantı-reddi dalı dahil) davranışsal kapsama
+  eklendi; kalan açık alan kalmadı (yeni yükleme davranışı eklenince genişletilir).
 
 ## DB / Persistence ve Türkçe Kodlama
 
@@ -144,13 +147,17 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **Testler:** `test-health-check*.R`, `test-health-checks-probes-behavior.R`,
   `test-admin-*-outputs-behavior.R`, `test-release-evidence-behavior.R`,
   `test-release-evidence-error-contexts-behavior.R` (secret-safe hata kategorisi),
-  `test-health-release-ui-behavior.R` (UI builder + healthServer yönlendirme).
+  `test-release-evidence-ai-latency-behavior.R` (secret-safe AI çağrı istek-süresi
+  özeti), `test-health-release-ui-behavior.R` (UI builder + healthServer yönlendirme).
 - **Smoke/kanıt:** VM evidence gate (`run_vm_evidence_gate.R`), seam doctor,
   frontend complexity doctor; `artifacts/vm-evidence/<ts>/evidence.json`.
 - **Bilinen risk / sıradaki hedef:** release kanıt okuyucusu Sistem Durumu
-  "Doğrulama Kanıtı" sekmesine bağlandı; hata-kategorisi (bağlam) özeti de eklendi
-  (`release_evidence_summarize_error_contexts`, secret-safe). Sıradaki: latency/
-  istek-süresi özeti (log formatı doğrulanırsa) ve post-deploy smoke artifact'ı.
+  "Doğrulama Kanıtı" sekmesine bağlandı; hata-kategorisi (bağlam) özeti
+  (`release_evidence_summarize_error_contexts`) ve AI çağrı istek-süresi (latency)
+  özeti (`release_evidence_summarize_ai_call_latency`; `log_ai_call` "duration=<sn>s"
+  satırından yalnızca sayısal özet) eklendi — her ikisi secret-safe. Sıradaki:
+  post-deploy smoke artifact ailesi (üretici henüz yok). Latency/log özetleri
+  yalnızca VM'de gerçek `logs/mergen_*.log` ile canlı doğrulanır.
 
 ## Bilge Yolaç / Claude Code
 
@@ -168,10 +175,17 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-claude-code-workdir-*`, `test-cc-path-policy-collapse-behavior.R`,
   `test-claude-code-parse-stream-event-behavior.R` (stream-json olay ayrıştırma),
   `test-claude-code-connection-behavior.R` (check_claude_code_status processx-mock +
-  test_claude_code_connection).
+  test_claude_code_connection),
+  `test-claude-code-run-streaming-behavior.R` (`run_claude_code_streaming` processx-mock:
+  boş komut/CLI yok/workdir-prompt politika reddi/akış başarısı/çıkış kodu/zaman aşımı/
+  süreç başlatma hatası/on_chunk),
+  `test-claude-code-document-orchestration-behavior.R`
+  (`prepare_claude_code_document_context` + `write_claude_code_document_summary_file` +
+  `summarize_claude_code_documents_with_local_llm`; çıkarıcı/LLM stub'lı).
 - **Smoke/kanıt:** Windows VM manuel akış (UNC/SSO/`.cmd`); cloud'da kanıtlanmaz.
-- **Bilinen risk / sıradaki hedef:** `parse_stream_event` ve bağlantı durumu kapsandı;
-  `run_claude_code_streaming` (processx mock) ve doküman özet helper'ları hâlâ açık.
+- **Bilinen risk / sıradaki hedef:** `parse_stream_event`, bağlantı durumu,
+  `run_claude_code_streaming` ve doküman özet orkestratörleri kapsandı; gerçek CLI/
+  UNC/SSO davranışı yalnızca VM'de kanıtlanır.
 
 ## Destek / Geri Bildirim
 

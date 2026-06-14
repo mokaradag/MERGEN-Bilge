@@ -254,7 +254,12 @@ Rscript tests/scripts/run_post_deploy_smoke.R
   son doğrulama kanıtlarını görebilir. Sekme `R/helpers_release_evidence.R` saf
   okuyucusuyla `artifacts/vm-evidence/<ts>/evidence.json` ve
   `artifacts/ai-validation/<ts>/summary.json` artifact'larının secret-safe özetini
-  ve bugünkü `mergen_*.log` ERROR/WARN sayaçlarını gösterir. Varsayılan olarak en
+  ve bugünkü `mergen_*.log` ERROR/WARN sayaçlarını gösterir. "Günlük Log Sağlığı"
+  kartı ayrıca secret-safe iki ek özet içerir: ERROR satırlarının bağlam (context)
+  kategorileri ve `log_ai_call` "AI Call: ... duration=<sn>s ... success=..."
+  satırlarından çıkarılan **AI çağrı istek-süresi (latency)** özeti (çağrı sayısı,
+  medyan/ortalama, en düşük/en yüksek, başarılı/başarısız). Latency özeti yalnızca
+  sayısaldır; kullanıcı/model kimliği veya log içeriği taşınmaz. Varsayılan olarak en
   yeni `vm-evidence/<ts>` koşusu gösterilir; birden fazla koşu varsa zaman damgalı
   bir koşu seçici (dropdown) ile eski koşulara da bakılabilir. Yalnızca
   `passed` görünen adımlar ilgili kapsam için kanıttır; "Atlandı" (SKIP) kanıt

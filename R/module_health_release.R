@@ -86,6 +86,32 @@
   )
 }
 
+# AI çağrı istek-süresi (latency) özetini operatör kartı satırlarına çevirir.
+# Yalnızca sayısal değerler gösterilir (içerik taşınmaz). Alan boşsa NULL döner
+# ve eski UI değişmez (regresyon yok).
+.health_release_ai_latency <- function(ai_call_latency) {
+  if (is.null(ai_call_latency) || !length(ai_call_latency)) {
+    return(NULL)
+  }
+
+  div(
+    class = "health-summary-list health-release-ai-latency",
+    `data-health-tooltip` = "AI çağrı loglarından çıkarılan istek süresi özeti (yalnızca sayısal; içerik taşınmaz).",
+    div(strong("AI çağrı gecikmesi (saniye):")),
+    div(strong("Çağrı sayısı:"),
+        span(health_safe_value(as.integer(ai_call_latency$count %||% 0L)))),
+    div(strong("Medyan / Ortalama:"),
+        span(health_safe_value(paste0(ai_call_latency$median %||% 0, " / ",
+                                      ai_call_latency$mean %||% 0)))),
+    div(strong("En düşük / en yüksek:"),
+        span(health_safe_value(paste0(ai_call_latency$min %||% 0, " / ",
+                                      ai_call_latency$max %||% 0)))),
+    div(strong("Başarılı / başarısız:"),
+        span(health_safe_value(paste0(as.integer(ai_call_latency$success_count %||% 0L), " / ",
+                                      as.integer(ai_call_latency$fail_count %||% 0L)))))
+  )
+}
+
 health_release_ui <- function(overview, ns = NULL) {
   if (is.null(overview) || !is.list(overview)) {
     return(div(
@@ -227,7 +253,9 @@ health_release_ui <- function(overview, ns = NULL) {
                   div(strong("WARN sayısı:"), span(health_safe_value(uyari_sayisi))),
                   div(strong("Son hata zamanı:"), span(health_safe_value(log_saglik$last_error_at)))),
               # Yeni: ERROR satırlarının bağlam kategorisi dağılımı (secret-safe)
-              .health_release_error_contexts(log_saglik$error_contexts)
+              .health_release_error_contexts(log_saglik$error_contexts),
+              # Yeni: AI çağrı istek-süresi (latency) özeti (secret-safe, yalnızca sayısal)
+              .health_release_ai_latency(log_saglik$ai_call_latency)
             )
           } else {
             div(class = "health-empty", "Bugüne ait uygulama logu bulunamadı.")
