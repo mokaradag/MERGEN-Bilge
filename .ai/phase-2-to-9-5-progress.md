@@ -35,6 +35,98 @@ Aşağıdakiler ÖNCEKİ oturumlarda tamamlandı (`.ai/next-session-*.md` ayrın
 
 ## Oturum kaydı
 
+### Oturum: 2026-06-14 — branch `claude/affectionate-faraday-yksxki` (bu oturum)
+
+Faz 2 davranışsal kapsama görev önceliği sırasıyla derinleştirildi (dosya yaşam
+döngüsü → derin/proje analizi → Bilge Yolaç streaming → doküman orkestrasyonu) ve
+Faz 3 operatör görünürlüğü genişletildi (secret-safe AI çağrı istek-süresi/latency
+özeti). Cerrahi, additive; ratchet/manifest/seam/encoding sözleşmeleri yeşil.
+
+**Faz 2 — 5 yeni davranış testi (185 doğrulamanın 153'ü; 8 untested fn kapandı):**
+- `test-file-pipeline-upload-batch-behavior.R` (42) — `handle_file_upload_batch`:
+  NULL/boş df/okunamayan girdi, **desteklenmeyen uzantı reddi + HİÇBİR kalıcı yan
+  etki yok (gizli kaydedilmiş-ama-geçersiz yükleme yok = Faz 5)**, geçerli dosya
+  kopyala+indeksle+özetle, büyük-harf uzantı, karışık toplu yükleme, kopyalama
+  hatası temizliği (oturumda tut + uyar), liste-biçimli tek yükleme. GOTCHA:
+  `shinyjs::delay` `local_mocked_bindings(.package="shinyjs")` ile `force(expr)`
+  yapan stub → senkron özyineleme; copy_to_mcp_base/global_register_file/
+  processAndSummarizeFile/showToast/showNotification env'e kaydedici stub.
+- `test-deep-analysis-process-behavior.R` (16) — `pk_deep_analysis_process`
+  orkestrasyon: başlangıç/RLS-sonrası durdurma, yetki reddi, çoklu→tekil fallback,
+  boş-sonuç, sorgu-hatası→başarısız sonuç bağlama taşınır. get_connection/
+  get_user_rls_info/find_multiple_queries_with_ai/select_smart_query/
+  execute_single_deep_query/build_deep_analysis_context env stub.
+- `test-pk-analiz-process-request-behavior.R` (28) — `pk_analiz_process_request`
+  erken-dönüş + **YASAKLI SQL reddi (DELETE/DROP/TRUNCATE/ALTER → gerçek exec
+  ÇALIŞMAZ = Faz 5)**, SSO kimliği hazır değilse DB'ye GİTMEDEN döner (kimlik
+  sınırı), yapılandırma hataları (boş SQL/eksik dosya/yol algılama/geçersiz SQL);
+  ayrıca `find_best_query_with_ai` (LLM JSON match_id→sorgu, null/aralık-dışı/
+  ```json çiti/geçersiz JSON→NULL). GOTCHA: modül kaynak-zamanı `pk_required_helpers`
+  guard döngüsü; 12 yardımcı adı env'e ÖNCEDEN stub konarak `exists(inherits=TRUE)`
+  tatmin edilir → guard dosya kaynaklamayı atlar (globalenv kirliliği yok).
+- `test-claude-code-run-streaming-behavior.R` (24) — `run_claude_code_streaming`
+  processx-mock: boş komut, CLI yok, workdir/prompt politika reddi, normal akış
+  başarısı, çıkış kodu, zaman aşımı (süreç öldürülür), süreç başlatma hatası,
+  on_chunk her satır. GOTCHA: `processx::process` R6 üreticisi
+  `local_mocked_bindings(process=list(new=function(...) fake), .package="processx")`;
+  fake_proc is_alive sayaçlı (N kez TRUE sonra FALSE), poll_io/read_output_lines/
+  read_all_output/read_all_error/get_exit_status/kill. timeout_sec=-1 ile zaman
+  aşımı deterministik.
+- `test-claude-code-document-orchestration-behavior.R` (43) —
+  `prepare_claude_code_document_context` (okuma niyeti yok/oluşturma niyeti/doküman
+  yok/liste boş/tam çıkarım+manifest+prompt/desteklenmeyen uzantı/boş metin),
+  `write_claude_code_document_summary_file` (boş dizin-metin/geçerli BOM yaz/yazıcı
+  FALSE), `summarize_claude_code_documents_with_local_llm` (hazır-değil/başarı+dosya+
+  file_write tool_use/çıktı dizini yok/boş LLM/LLM hata). GOTCHA: kaynak-zamanı
+  extractor-guard'ı (extract_supported_document_text_for_claude +
+  get_office_document_reader_template_path) env'e ÖNCEDEN stub → guard atlanır;
+  gerçek PDF/Excel/DOCX fixture YOK (çıkarıcı stub).
+
+**Faz 3 — secret-safe AI çağrı istek-süresi (latency) özeti (log formatı doğrulandı):**
+- Log formatı KANITLANDI: `log_ai_call()` →
+  `"AI Call: user=..., model=..., duration=<sn>s, success=<TRUE/FALSE>, tokens=..."`.
+  Güvenilir sayısal süre verisi mevcut → latency özeti eklendi (uydurma format yok).
+- `R/helpers_release_evidence.R`: YENİ saf `release_evidence_summarize_ai_call_latency()`
+  — `duration=<sayı>s` kalıbından YALNIZCA sayısal süre + başarı/başarısızlık sayar;
+  kullanıcı/model içeriği ASLA taşınmaz. count/min/median/mean/max/success/fail döner;
+  eşleşme yoksa boş liste. `release_evidence_log_health()` çıktısına additive
+  `ai_call_latency` alanı (AI Call satırları `grepl("AI Call:", fixed=TRUE)` ile süzülür).
+- `R/module_health_release.R`: YENİ `.health_release_ai_latency()` — "Günlük Log
+  Sağlığı" kartına latency satırları (alan boşsa NULL → eski UI değişmez, regresyon yok).
+- Kanıt: `test-release-evidence-ai-latency-behavior.R` (32; saf özet/yuvarlama/
+  süre-içermeyen-satır yok sayma + **secret-safety: kullanıcı/model taşınmaz** +
+  log_health entegrasyonu + UI yüzeyi + eski-davranış regresyon yok).
+- Ratchet güvenli: `helpers_release_evidence.R` 20→21 fn, `module_health_release.R`
+  4→5 fn (rapor `(<-|=)\s*function\s*\(` sayar; anonim handler sayılmaz). Global cap
+  24 (helpers_ai_expert/helpers_file_manager_runtime/helpers_health_formatters); dokunulmadı.
+
+**Doğrulama (bu container, R 4.6.0 — Linux/cloud):**
+- `bash tools/ai_validate.sh quick` → **TAM GEÇTİ** (failed_steps=0, skipped_steps=0,
+  app_source_smoke=passed, focused contract tests OK) — hem behavioral commit hem
+  latency commit sonrası (`artifacts/ai-validation/20260614-073737/summary.json`).
+- `parse_sanity_check.R` OK (783 dosya). `maintainability-ratchet` 174 PASS / 0 fail
+  (max 24 fn korunur); `release-evidence-behavior` 98, `release-evidence-error-contexts`
+  37, `health-release-ui` 56, `e2e-health-dashboard` 45 — hepsi 0 fail/warn.
+- 6 yeni test dosyası tek tek + `test_dir` batch: **185 doğrulama, 0 fail/warn/skip**.
+- Untested top-level fn taraması: **36 → 28** (handle_file_upload_batch,
+  pk_deep_analysis_process, pk_analiz_process_request, find_best_query_with_ai,
+  run_claude_code_streaming, prepare_claude_code_document_context,
+  write_claude_code_document_summary_file,
+  summarize_claude_code_documents_with_local_llm kapandı; 2 yeni latency fn de kapsamlı).
+
+**KANITLANMAYAN / cloud sınırı + ÖNEMLİ NOT:**
+- `bash tools/ai_validate.sh full --boot-smoke` → full testthat suite 1 başarısız
+  adım: SADECE `test-file-click-observers-behavior.R` (satır 119/134). Bu test
+  benim DEĞİL (PR #464'te commit edildi), benim 5 dosyam YÜKLENMEDEN tek başına
+  da başarısız (`file.path(getwd(), "www/...")` üyelik + MockShinySession
+  prime-then-set coalescing → çalışma-dizini/sürüm duyarlı). **Kullanıcı onayı:
+  GitHub testthat suite uygulamayı çalıştıran Windows VM'de GEÇİYOR.** Bu yüzden
+  Linux/cloud-only artifact; gerçek regresyon değil. Benim 6 dosyam tam suite
+  içinde de geçti.
+- Windows VM/SSO/DB/SQL Server Türkçe encoding/gerçek browser UX/vision live
+  bu oturumda KANITLANMADI. Latency/log özetleri yalnızca VM'de gerçek
+  `logs/mergen_*.log` ile canlı doğrulanır.
+
 ### Oturum: 2026-06-13 (B) — branch `claude/serene-bell-3l1xw6` (bu oturum)
 
 Faz 2 davranışsal kapsama derinleştirildi (servis-bağlı runtime mantığı) ve Faz 3
@@ -243,22 +335,25 @@ encoding/gerçek browser UX smoke/vision live. Bunlar VM kapılarının işidir.
 
 ## Kalan yüksek değerli untested kümeler (sonraki oturumlar için)
 
-Güncel tarama (2026-06-13 B oturumu sonrası): **37 untested top-level fn.** Kalanlar:
+Güncel tarama (2026-06-14 oturumu sonrası): **28 untested top-level fn.** Kalanlar:
 
 - `sendMessageInit` (server_send_message.R) — ağır; testServer + yoğun stub ister.
 - `serverInitChatRuntime`, `sessionCacheInit` — testServer ile orta zorluk.
 - `chat_simulate_streaming` (helpers_chat_runtime.R) — ağır.
 - `call_llm_worker` (helpers_llm_worker.R) — çok ağır; ikinci-pass zinciri.
-- `pk_deep_analysis_process` (helpers_deep_analysis.R) — LLM/DB orkestrasyon; orta-ağır.
-- `pk_analiz_process_request`, `find_best_query_with_ai` (module_proje_kaynak_analizi.R).
-- `handle_file_upload_batch` (helpers_file_pipeline.R) — orta; showNotification/
-  copy_to_mcp_base/shinyjs::delay/processAndSummarizeFile stub'ları ister.
-  Uzantı-reddi dalı (Faz 5 değeri) deterministik test edilebilir.
-- `run_claude_code_streaming` (helpers_claude_code_streaming.R) — processx mock ister.
-- `prepare_claude_code_document_context`, `write_claude_code_document_summary_file`,
-  `summarize_claude_code_documents_with_local_llm` — erken-dönüş dalları deterministik;
-  tam çıkarım PDF/Excel/DOCX fixture ister (ağır).
 - `gc_scheduler`, `start_gc_scheduler_once` (config_file_store.R) — later mock.
+- `admin_ha_show_modal` (helpers_admin_hata_detail_runtime.R) — runjs string builder.
+- `cc_refresh_user_file_manager_after_run` (helpers_claude_code_run_lifecycle.R),
+  `cc_bind_claude_code_stream_polling` (module_claude_code_stream_poll.R) — orta.
+- `attach_required_packages` (config_packages.R), `mergen_console_appender`
+  (config_logging.R) — küçük.
+- `.mcp_prepare_chart_data_fn` (helpers_mcp_chart_tools.R) — orta.
+
+2026-06-14 oturumunda KAPSANANLAR (yukarıdan çıkarıldı): `handle_file_upload_batch`,
+`pk_deep_analysis_process`, `pk_analiz_process_request`, `find_best_query_with_ai`,
+`run_claude_code_streaming`, `prepare_claude_code_document_context`,
+`write_claude_code_document_summary_file`,
+`summarize_claude_code_documents_with_local_llm` (+ 2 yeni latency fn de kapsamlı).
 - `.syap_*` kart builder'ları (module_settings_yapilandirma_ui.R) —
   `test-settings-yapilandirma-ui-id-surface-behavior.R` id yüzeyini dolaylı
   koruyor; doğrudan birim testi DÜŞÜK öncelik.
@@ -290,10 +385,14 @@ _resolve_bundle`, `.server_core_observer_require_functions/_call_with_optional_b
   (`release_evidence_summarize_error_contexts` + `release_evidence_log_health$error_contexts`
   + Release Kanıtı sekmesinde `.health_release_error_contexts`). `Error in <bağlam>:`
   kalıbından secret-safe bağlam sayımı; mesaj içeriği taşınmaz.
-- KALAN: latency / istek-süresi özeti. Log satırlarında istek süresi/percentile
-  taşınıyorsa (önce log formatı doğrulanmalı) saf bir çıkarıcı eklenebilir; aksi
-  halde uygulanmaz (varsayımla format icat etme). Post-deploy smoke durumu için
-  ayrı bir artifact ailesi gerekir (henüz yok).
+- ✅ Latency / istek-süresi özeti 2026-06-14'te eklendi. Log formatı
+  doğrulandı (`log_ai_call` → `AI Call: ... duration=<sn>s, success=...`);
+  `release_evidence_summarize_ai_call_latency` (secret-safe, yalnızca sayısal) +
+  `log_health$ai_call_latency` additive alanı + `.health_release_ai_latency` UI
+  (Doğrulama Kanıtı > Günlük Log Sağlığı kartı). Uydurma format YOK.
+- KALAN: post-deploy smoke durumu için ayrı bir artifact ailesi gerekir (üretici
+  henüz yok — uydurma kanıt eklenmez). Latency özetinin gerçek `logs/mergen_*.log`
+  ile canlı görünümü bir VM oturumunda gözle doğrulanmalı.
 - Release Kanıtı sekmesinin gerçek artifact'larla VM canlı görünümü (artifact +
   gerçek `logs/mergen_*.log` üretildikten sonra) bir VM oturumunda gözle doğrulanmalı.
 

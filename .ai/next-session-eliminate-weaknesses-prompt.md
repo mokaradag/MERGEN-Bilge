@@ -8,6 +8,66 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/affectionate-faraday-yksxki` (2026-06-14, Faz 2→9.5)
+
+Bu oturum görev önceliği sırasıyla 8 untested fonksiyonu davranışsal kapattı (dosya
+yaşam döngüsü → derin/proje analizi → Bilge Yolaç streaming → doküman orkestrasyonu)
+ve Faz 3 latency özetini ekledi. Cerrahi, additive. Do NOT redo:
+
+- **Faz 2 — 5 yeni davranış testi (0 fail/warn/skip; tek tek + batch 185 doğrulama):**
+  `test-file-pipeline-upload-batch-behavior.R` (`handle_file_upload_batch` —
+  **uzantı reddi + gizli kaydedilmiş-ama-geçersiz yükleme YOK + kopyalama-hatası
+  temizliği** = Faz 5), `test-deep-analysis-process-behavior.R`
+  (`pk_deep_analysis_process` orkestrasyon/fallback/durdurma/yetki),
+  `test-pk-analiz-process-request-behavior.R` (`pk_analiz_process_request` erken-dönüş
+  + **YASAKLI SQL reddi DELETE/DROP/TRUNCATE/ALTER** = Faz 5; SSO-kimlik-hazır-değil
+  DB'ye gitmeden döner; + `find_best_query_with_ai` LLM JSON eşleme),
+  `test-claude-code-run-streaming-behavior.R` (`run_claude_code_streaming` processx-mock:
+  boş/CLI-yok/politika-reddi/akış/çıkış-kodu/zaman-aşımı/başlatma-hatası/on_chunk),
+  `test-claude-code-document-orchestration-behavior.R`
+  (`prepare_claude_code_document_context` + `write_claude_code_document_summary_file` +
+  `summarize_claude_code_documents_with_local_llm`; çıkarıcı/LLM stub'lı, gerçek
+  PDF/Excel/DOCX fixture YOK).
+- **Faz 3 — secret-safe AI çağrı latency özeti:** log formatı KANITLANDI
+  (`log_ai_call` → `AI Call: ... duration=<sn>s, success=...`).
+  `release_evidence_summarize_ai_call_latency` (saf; yalnızca sayısal süre +
+  başarı/başarısızlık; kullanıcı/model taşınmaz) + `log_health$ai_call_latency`
+  additive alanı + `.health_release_ai_latency` (Doğrulama Kanıtı > Günlük Log Sağlığı).
+  Kanıt: `test-release-evidence-ai-latency-behavior.R`. Ratchet güvenli
+  (helpers_release_evidence 20→21 fn, module_health_release 4→5; global cap 24 dokunulmadı).
+- **GOTCHA'lar:** (1) Modül kaynak-zamanı guard döngüleri
+  (`module_proje_kaynak_analizi.R` `pk_required_helpers`, `helpers_claude_code_documents.R`
+  extractor-guard) — guard'ın aradığı fonksiyon adlarını env'e ÖNCEDEN stub koy →
+  `exists(inherits=TRUE)` tatmin → guard `source(..., local=globalenv())` ATLANIR
+  (globalenv kirliliği yok, batch-safe). (2) `shinyjs::delay`
+  `local_mocked_bindings(delay=function(ms,expr){force(expr)}, .package="shinyjs")` ile
+  senkron özyineleme. (3) `processx::process$new` →
+  `local_mocked_bindings(process=list(new=...), .package="processx")` + is_alive sayaçlı
+  fake_proc; timeout_sec=-1 ile zaman aşımı deterministik. (4) Maintainability raporu
+  YALNIZCA `(<-|=)\s*function\s*\(` (atama) sayar; anonim `lapply(x, function(...))`
+  SAYILMAZ → saf summarizer'da anonim handler kullanmak ratchet'i etkilemez.
+- **VALIDATION (Linux/cloud, R 4.6.0):** `ai_validate quick` **TAM GEÇTİ** (failed=0,
+  skipped=0, app_source_smoke=passed) — hem behavioral hem latency commit sonrası.
+  parse_sanity 783 dosya OK; ratchet 174 PASS (max 24 fn korunur); release-evidence/
+  health-release/e2e-health 0 fail. Untested 36 → 28.
+- **ÖNEMLİ — `full --boot-smoke` testthat suite 1 başarısız adım: SADECE
+  `test-file-click-observers-behavior.R` (PR #464'te commit edildi, BENİM DEĞİL,
+  benim dosyalarım yüklenmeden TEK BAŞINA da başarısız).** Kök neden:
+  `file.path(getwd(),"www/...")` üyelik + MockShinySession prime-then-set coalescing →
+  Linux/cloud çalışma-dizini/sürüm duyarlı. **Kullanıcı onayı: GitHub testthat suite
+  uygulamayı çalıştıran Windows VM'de GEÇİYOR.** Linux/cloud-only artifact; gerçek
+  regresyon değil; DOKUNMA. Cloud koşumu VM/SSO/DB/SQL Server Türkçe encoding/gerçek
+  browser/vision live kanıtı DEĞİLDİR.
+
+Sıradaki yüksek değerli hedefler: `sendMessageInit`/`serverInitChatRuntime`/
+`sessionCacheInit`/`chat_simulate_streaming`/`call_llm_worker` (ağır testServer),
+`admin_ha_show_modal`, `cc_refresh_user_file_manager_after_run`,
+`cc_bind_claude_code_stream_polling`, `gc_scheduler`/`start_gc_scheduler_once` (later
+mock), `attach_required_packages`, `mergen_console_appender`. Faz 3 sıradaki:
+post-deploy smoke artifact ailesi (üretici yok → uydurma).
+
+---
+
 ## LATEST SESSION RESULTS — `claude/serene-bell-3l1xw6` (2026-06-13 B, Faz 2→9.5)
 
 Bu oturum servis-bağlı runtime mantığına davranışsal kapsama (Faz 2) ve operatör
@@ -921,7 +981,7 @@ Begin by reading `CLAUDE.md`, `.ai/next-session-eliminate-weaknesses-prompt.md`,
 > Continue hardening MERGEN Bilge (R/Shiny). Read `CLAUDE.md` FIRST and in full,
 > then `.ai/phase-2-to-9-5-progress.md`, `.ai/next-session-eliminate-weaknesses-prompt.md`
 > and `.ai/next-session-test-coverage-prompt.md`. The session
-> `claude/serene-bell-3l1xw6` is MERGED — do NOT rebuild/push to it.
+> `claude/affectionate-faraday-yksxki` is MERGED — do NOT rebuild/push to it.
 > Start/use a FRESH branch. Surgical, additive only. Turkish comments with real
 > Turkish chars (ç ğ ı İ ö ş ü). Byte-safe readers for any repo-scanning test.
 > NEVER write a Windows user-profile absolute path literal in test code OR comments.
@@ -930,44 +990,55 @@ Begin by reading `CLAUDE.md`, `.ai/next-session-eliminate-weaknesses-prompt.md`,
 > readLines/writeBin rewrite of CRLF/Turkish files (then verify
 > `grep -c '<c3>\|<c4>\|<c5>' file` is 0).
 >
-> ALREADY DONE — do NOT redo (latest session `claude/serene-bell-3l1xw6`):
-> behavioral coverage for `summarize_file_with_llm`, `execute_single_deep_query`
-> (incl. SQL DROP/DELETE rejection), `find_multiple_queries_with_ai`,
-> `execute_parsed_tool` (MCP router; chain MUST source into globalenv, leaf tools
-> restored per-test), and 8 server core runtime guards. Faz 3: secret-safe
-> `release_evidence_summarize_error_contexts` + `log_health$error_contexts` +
-> `.health_release_error_contexts` UI (Release Kanıtı tab). Earlier sessions:
-> DOCX-preview async clobber FIXED; `call_llm_with_retry`, `.sso_der_*`,
-> `ssoAuthServer`, `apiKeyServer`, `quickActionsInit`, `parse_stream_event`,
-> `check_claude_code_status` covered. Vision is VM-live-verified. MCP/health
-> `getwd()` fallback guards do NOT break isolated tests — leave them.
+> ALREADY DONE — do NOT redo (latest session `claude/affectionate-faraday-yksxki`):
+> behavioral coverage for `handle_file_upload_batch` (extension-reject + no-hidden-
+> invalid-upload + copy-fail cleanup = Phase 5), `pk_deep_analysis_process`,
+> `pk_analiz_process_request` (incl. DELETE/DROP/TRUNCATE/ALTER rejection = Phase 5;
+> SSO-not-ready returns before DB), `find_best_query_with_ai`,
+> `run_claude_code_streaming` (processx mock), and the 3 claude_code document
+> orchestrators (`prepare_claude_code_document_context`/
+> `write_claude_code_document_summary_file`/
+> `summarize_claude_code_documents_with_local_llm`; extractor/LLM stubbed, no real
+> doc fixtures). Faz 3: secret-safe `release_evidence_summarize_ai_call_latency`
+> (`AI Call: ... duration=<s>s` → numeric-only) + `log_health$ai_call_latency` +
+> `.health_release_ai_latency` UI (Doğrulama Kanıtı > Günlük Log Sağlığı). Earlier
+> sessions: `summarize_file_with_llm`, `execute_single_deep_query`,
+> `find_multiple_queries_with_ai`, `execute_parsed_tool`, server core runtime guards,
+> error-context summary, DOCX-preview async clobber FIXED, `ssoAuthServer`,
+> `apiKeyServer`, `quickActionsInit`, `parse_stream_event`, `check_claude_code_status`.
+> Vision is VM-live-verified. MCP/health `getwd()` fallback guards do NOT break
+> isolated tests — leave them.
+>
+> KNOWN CLOUD-ONLY FAILURE (do NOT chase): `test-file-click-observers-behavior.R`
+> (PR #464, NOT a recent session's file) fails standalone in Linux/cloud
+> (`file.path(getwd(),"www/...")` membership + MockShinySession prime-then-set
+> coalescing) but PASSES on the Windows VM that runs the app (user-confirmed). Trust
+> the VM over cloud; do not "fix" it.
 >
 > PRIORITY 1 (concurrency): re-run the async audit if you touch any `%...>%` /
 > `%...!%` / `promises::then` / `later::later` / `tracked_future_promise` path.
 > Only fix REAL cross-request/cross-modal clobbers; do not manufacture fixes.
 >
 > PRIORITY 5 (behavioral coverage — the #1 weakness): re-run the FIXED-string
-> untested-function scan (see test-coverage prompt; ~37 candidates remain).
-> Highest-value clean/deterministic targets still open: `handle_file_upload_batch`
-> (extension-reject branch = Phase 5 value; stub showNotification/copy_to_mcp_base/
-> shinyjs::delay/processAndSummarizeFile), `pk_deep_analysis_process` /
-> `pk_analiz_process_request` / `find_best_query_with_ai` (LLM/DB-mocked),
-> `run_claude_code_streaming` (processx mock), claude_code document orchestrators
-> (`prepare_claude_code_document_context` early-return branches are deterministic),
-> easy UI builders (`adminYanitAnaliziUI`, `adminDokumantasyonUI`,
-> `admin_doc_group_tab_panels`), `admin_ha_show_modal`, `.mcp_bootstrap_*`,
-> `gc_scheduler`/`start_gc_scheduler_once` (later mock), and the heavy
-> `sendMessageInit`/`chat_simulate_streaming`/`call_llm_worker`. Every test: real
-> input→output, deterministic, OFFLINE, 0 fail / 0 warn / 0 skip, green standalone
-> AND in a `test_dir` batch with `new.env(parent=globalenv())`. Watch the Turkish
-> `toupper` locale trap, the testServer `ignoreInit` PRIME-THEN-SET gotcha, and the
-> MCP-chain-needs-globalenv + per-test leaf restore gotcha.
+> untested-function scan (see test-coverage prompt; ~28 candidates remain).
+> Highest-value clean/deterministic targets still open: heavy testServer closures
+> `sendMessageInit`/`serverInitChatRuntime`/`sessionCacheInit`/
+> `chat_simulate_streaming`/`call_llm_worker`; medium `admin_ha_show_modal`
+> (runjs string builder), `cc_refresh_user_file_manager_after_run`,
+> `cc_bind_claude_code_stream_polling`, `gc_scheduler`/`start_gc_scheduler_once`
+> (later mock), `attach_required_packages`, `mergen_console_appender`,
+> `.mcp_prepare_chart_data_fn`. Every test: real input→output, deterministic,
+> OFFLINE, 0 fail / 0 warn / 0 skip, green standalone AND in a `test_dir` batch with
+> `new.env(parent=globalenv())`. Watch: module source-time guard loops (pre-populate
+> the guard's expected fn names in env so `exists(inherits=TRUE)` is satisfied and
+> `source(...,local=globalenv())` is SKIPPED — no globalenv pollution), the Turkish
+> `toupper` locale trap, the testServer `ignoreInit` PRIME-THEN-SET gotcha, the
+> `shinyjs::delay`/`processx::process$new` mock patterns, and that the maintainability
+> report counts ONLY `(<-|=)\s*function\s*\(` (anonymous handlers do NOT count).
 >
 > PRIORITY 3 (isolation): re-run the standalone scan. `test-ui-asset-manifest-
-> contract.R` remains the only known cloud-blocked one (missing vendored www
-> assets) — note: in THIS container the full strict suite (`tests/testthat.R`)
-> DID complete (138.8s). Fix any NEW standalone-ERROR test by sourcing the real
-> owner helper.
+> contract.R` remains the only documented cloud-blocked one (missing vendored www
+> assets). Fix any NEW standalone-ERROR test by sourcing the real owner helper.
 >
 > PRIORITY 6 (maintainability): do not regress the ratchet; extract a small sourced
 > helper + update `R/config_source_manifest.R` + manifest-order tests if a fix

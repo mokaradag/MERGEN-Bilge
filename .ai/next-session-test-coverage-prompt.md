@@ -1,3 +1,56 @@
+# CONTEXT — Faz 2→9.5 oturumu `claude/affectionate-faraday-yksxki` (2026-06-14, do NOT redo)
+
+Bu oturum görev önceliği sırasıyla 8 untested fonksiyonu davranışsal kapattı + Faz 3
+latency özetini ekledi. 6 yeni test, **185 doğrulama, 0 fail/warn/skip** (tek tek +
+`test_dir` batch). `ai_validate quick` TAM geçti (failed=0, skipped=0,
+app_source_smoke=passed). Untested 36 → 28. ZATEN YAPILDI — tekrar etme:
+- `test-file-pipeline-upload-batch-behavior.R` — `handle_file_upload_batch`. GOTCHA:
+  `shinyjs::delay` `local_mocked_bindings(delay=function(ms,expr){force(expr)},
+  .package="shinyjs")` → senkron özyineleme; copy_to_mcp_base/global_register_file/
+  processAndSummarizeFile/showToast/showNotification/cat env'e kaydedici stub; gerçek
+  temp dosya ile file.info boyutu doğrulanır. **Faz 5:** geçersiz uzantı → kopya/indeks/
+  UI/özet HİÇBİRİ çalışmaz (gizli kaydedilmiş-ama-geçersiz yükleme yok).
+- `test-deep-analysis-process-behavior.R` — `pk_deep_analysis_process` (orkestrasyon/
+  çoklu→tekil fallback/boş-sonuç/yetki/durdurma; tüm servis helper'ları env stub).
+- `test-pk-analiz-process-request-behavior.R` — `pk_analiz_process_request` (erken-dönüş
+  + **Faz 5 YASAKLI SQL reddi**; SSO-kimlik-hazır-değil DB'ye gitmeden döner) +
+  `find_best_query_with_ai`. **GOTCHA (kritik):** `module_proje_kaynak_analizi.R`
+  kaynak-zamanı `pk_required_helpers` guard döngüsü içerir — guard'ın aradığı 12
+  yardımcı adını env'e ÖNCEDEN `assign(fn, function(...) NULL, envir=env)` ile koy,
+  SONRA `source(module, local=env)`; `exists(inherits=TRUE)` tatmin → guard
+  `source(...,local=globalenv())` ATLAR (globalenv kirliliği yok). `find_best` için
+  `withr::local_options(mergen.filter_model="m1")` ile api_config default'unu tembel tut.
+- `test-claude-code-run-streaming-behavior.R` — `run_claude_code_streaming`. GOTCHA:
+  `local_mocked_bindings(process=list(new=function(...) fake), .package="processx")`;
+  fake_proc env'i is_alive sayaçlı (alive_times kez TRUE sonra FALSE) + poll_io/
+  read_output_lines (ilk çağrı satırlar, sonra character(0))/read_all_output/
+  read_all_error/get_exit_status/kill. timeout_sec=-1 ile zaman aşımı deterministik.
+- `test-claude-code-document-orchestration-behavior.R` — 3 doküman orkestratörü.
+  GOTCHA: `helpers_claude_code_documents.R` kaynak-zamanı extractor-guard'ı
+  (`extract_supported_document_text_for_claude` + `get_office_document_reader_template_path`)
+  — bu iki adı env'e ÖNCEDEN stub koy → guard atlanır + bunlar zaten test stub'ların.
+  Gerçek PDF/Excel/DOCX fixture YOK (çıkarıcı stub döndürür).
+- Faz 3: `release_evidence_summarize_ai_call_latency` (saf; `AI Call: ... duration=<sn>s`
+  → yalnızca sayısal; kullanıcı/model taşımaz) + `log_health$ai_call_latency` +
+  `.health_release_ai_latency` UI. Kanıt: `test-release-evidence-ai-latency-behavior.R`.
+  **GOTCHA:** maintainability raporu YALNIZCA `(<-|=)\s*function\s*\(` (atama) sayar;
+  anonim `lapply(x, function(...))` SAYILMAZ — saf summarizer ratchet'i etkilemedi
+  (helpers_release_evidence 20→21, module_health_release 4→5; global cap 24).
+
+ÖNEMLİ — `full --boot-smoke` testthat suite'inde TEK başarısız:
+`test-file-click-observers-behavior.R` (PR #464; BENİM DEĞİL; benim dosyalarım
+yüklenmeden TEK BAŞINA da fail). Linux/cloud çalışma-dizini/MockShinySession
+prime-then-set artifact'ı; **kullanıcı: Windows VM'de GitHub testthat suite GEÇİYOR.**
+Trust VM over cloud; DOKUNMA.
+
+Kalan en yüksek değerli untested küme (~28): `sendMessageInit`, `serverInitChatRuntime`,
+`sessionCacheInit`, `chat_simulate_streaming`, `call_llm_worker` (ağır testServer),
+`admin_ha_show_modal`, `cc_refresh_user_file_manager_after_run`,
+`cc_bind_claude_code_stream_polling`, `gc_scheduler`/`start_gc_scheduler_once`,
+`attach_required_packages`, `mergen_console_appender`, `.mcp_prepare_chart_data_fn`.
+
+---
+
 # CONTEXT — Faz 2→9.5 oturumu `claude/serene-bell-3l1xw6` (2026-06-13 B, do NOT redo)
 
 Bu oturum servis-bağlı runtime mantığına 5 davranış testi + Faz 3 secret-safe hata
