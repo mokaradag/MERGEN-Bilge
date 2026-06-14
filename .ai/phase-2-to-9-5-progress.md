@@ -148,6 +148,29 @@ Faz 3 operatör görünürlüğü genişletildi (secret-safe AI çağrı istek-s
   `ai_validate quick` TAM geçti (failed=0, skipped=0). Untested **28 → 23**.
   config_file_store.R testthat bağlamında temiz source olur (gc fn'leri tanımlı).
 
+**Devam-2 (aynı oturum, "cover the next targets") — 3 yeni test, 3 untested fn daha (36 doğrulama):**
+- `test-session-cache-init-behavior.R` (22) — `sessionCacheInit`: döndürülen API
+  (`cache_session_token` boş→sess_/güvensiz karakter sanitize, `setup_user_session`
+  kullanıcıya özel dizin + `onSessionEnded` kaydı, `cache_mcp_file_locally` geçici
+  dosyayı kopyala / boş-var olmayan→NULL, `update_mcp_registry_snapshot` snapshot
+  helper'ına devir, `get_cache_dir`, başlangıç snapshot kurulumu). Sahte oturum
+  (env) + yol/MCP bağımlılıkları env stub; gerçek geçici dosya sistemi.
+- `test-config-logging-console-appender-behavior.R` (6) — `mergen_console_appender`:
+  tek/çok satır cat, NULL güvenli, `normalize_text_for_log` mevcutsa kullanma
+  (önekli stub), Linux UTF-8'de Türkçe koruma. GOTCHA: config_logging.R kaynak-zamanı
+  logger global durumunu değiştirir → geçici MERGEN_LOG_DIR + `log_threshold`/
+  `log_appender(index=1/2)`/`log_layout` save/restore (test-config-logging-sinks
+  ile aynı korumalı desen); index 2 appender susturulur.
+- `test-mcp-prepare-chart-data-behavior.R` (8) — `helpers_mcp_tools$prepare_chart_data`
+  (kaynak-zamanı `.mcp_prepare_chart_data_fn` olarak tanımlanıp atanır ve rm edilir;
+  runtime'da YALNIZCA `helpers_mcp_tools$prepare_chart_data` üzerinden erişilir).
+  Erken-dönüş dalları: resolve_file_argument$ok=FALSE → list(error,ok=FALSE);
+  safe_read_table_generic hata → "Dosya okunamadı"; auto_file_name/normalize_chart_type
+  argüman normalizasyonu. MCP zinciri globalenv'e tekil yüklenir; yaprak araçlar
+  test başına override + `withr::defer` ile geri yüklenir (batch kirliliği yok).
+- Doğrulama: 3 dosya tek tek + `test_dir` batch 36 doğrulama 0 fail/warn/skip;
+  `ai_validate quick` TAM geçti (failed=0, skipped=0). Untested **23 → 20**.
+
 ### Oturum: 2026-06-13 (B) — branch `claude/serene-bell-3l1xw6` (bu oturum)
 
 Faz 2 davranışsal kapsama derinleştirildi (servis-bağlı runtime mantığı) ve Faz 3
@@ -356,20 +379,16 @@ encoding/gerçek browser UX smoke/vision live. Bunlar VM kapılarının işidir.
 
 ## Kalan yüksek değerli untested kümeler (sonraki oturumlar için)
 
-Güncel tarama (2026-06-14 continue sonrası): **23 untested top-level fn.** Kalanlar:
+Güncel tarama (2026-06-14 continue-2 sonrası): **20 untested top-level fn.** Kalanlar:
 
 - `sendMessageInit` (server_send_message.R) — ağır; testServer + yoğun stub ister.
-- `serverInitChatRuntime`, `sessionCacheInit` — testServer ile orta zorluk.
+- `serverInitChatRuntime` — testServer ile orta-ağır.
 - `chat_simulate_streaming` (helpers_chat_runtime.R) — ağır.
 - `call_llm_worker` (helpers_llm_worker.R) — çok ağır; ikinci-pass zinciri.
 - `cc_bind_claude_code_stream_polling` (module_claude_code_stream_poll.R) — büyük
   observer-bağlama; testServer + yoğun stub.
-- `mergen_console_appender` (config_logging.R) — config_logging source-time logger
-  yan etkisi (log_appender/log_layout); save/restore gerekir (orta).
-- `.mcp_prepare_chart_data_fn` (helpers_mcp_chart_tools.R) — tam helpers_mcp_tools
-  zincirini globalenv'e ister; erken-dönüş (file çözülemez/okunamaz) deterministik.
 - Kalan küçük bootstrap/debug helper'ları (`.mcp_bootstrap_*` runtime'da rm edilir,
-  `.helpers_llm_sse_source_sibling`, `.character_video_debug`) — düşük değer.
+  `.helpers_llm_sse_source_sibling`, `.character_video_debug`) — düşük değer/kırılgan.
 
 2026-06-14 oturumunda KAPSANANLAR (yukarıdan çıkarıldı): `handle_file_upload_batch`,
 `pk_deep_analysis_process`, `pk_analiz_process_request`, `find_best_query_with_ai`,
@@ -377,7 +396,9 @@ Güncel tarama (2026-06-14 continue sonrası): **23 untested top-level fn.** Kal
 `write_claude_code_document_summary_file`,
 `summarize_claude_code_documents_with_local_llm` (+ 2 latency fn); CONTINUE'da ayrıca
 `cc_refresh_user_file_manager_after_run`, `admin_ha_show_modal`,
-`attach_required_packages`, `gc_scheduler`, `start_gc_scheduler_once`.
+`attach_required_packages`, `gc_scheduler`, `start_gc_scheduler_once`; CONTINUE-2'de
+`sessionCacheInit`, `mergen_console_appender`, `.mcp_prepare_chart_data_fn`
+(runtime adı `helpers_mcp_tools$prepare_chart_data`).
 - `.syap_*` kart builder'ları (module_settings_yapilandirma_ui.R) —
   `test-settings-yapilandirma-ui-id-surface-behavior.R` id yüzeyini dolaylı
   koruyor; doğrudan birim testi DÜŞÜK öncelik.

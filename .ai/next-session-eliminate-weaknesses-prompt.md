@@ -67,14 +67,23 @@ untested 28 → 23):** `cc_refresh_user_file_manager_after_run`
 source-time validate/stop/attach yutulur), `gc_scheduler`/`start_gc_scheduler_once`
 (`test-gc-scheduler-behavior.R`; `later::later` mock + `.GlobalEnv` bayrağı
 `withr::defer` save/restore). config_file_store.R testthat'te temiz source olur.
-`ai_validate quick` yine TAM geçti.
+
+**DEVAM-2 (aynı oturum, "cover the next targets") — 3 yeni test, 3 untested fn daha
+(36 doğrulama, untested 23 → 20):** `sessionCacheInit`
+(`test-session-cache-init-behavior.R`; döndürülen cache API + sahte oturum env),
+`mergen_console_appender` (`test-config-logging-console-appender-behavior.R`; logger
+global durumu save/restore, geçici MERGEN_LOG_DIR), `helpers_mcp_tools$prepare_chart_data`
+(`test-mcp-prepare-chart-data-behavior.R`; kaynak-zamanı `.mcp_prepare_chart_data_fn`
+rm edilir → runtime'da YALNIZCA `prepare_chart_data` erişilir; erken-dönüş dalları +
+MCP zinciri globalenv'e tekil yükleme + yaprak override/restore). `ai_validate quick`
+her ikisinde de TAM geçti.
 
 Sıradaki yüksek değerli hedefler: `sendMessageInit`/`serverInitChatRuntime`/
-`sessionCacheInit`/`chat_simulate_streaming`/`call_llm_worker` (ağır testServer),
-`cc_bind_claude_code_stream_polling` (büyük observer-bağlama),
-`mergen_console_appender` (config_logging source save/restore),
-`.mcp_prepare_chart_data_fn` (MCP zinciri globalenv; erken-dönüş deterministik).
-Faz 3 sıradaki: post-deploy smoke artifact ailesi (üretici yok → uydurma).
+`chat_simulate_streaming`/`call_llm_worker` (ağır testServer + yoğun stub),
+`cc_bind_claude_code_stream_polling` (büyük observer-bağlama). Kalan küçük helper'lar
+(`.mcp_bootstrap_*` runtime'da rm edilir, `.helpers_llm_sse_source_sibling`,
+`.character_video_debug`) düşük değer/kırılgan. Faz 3 sıradaki: post-deploy smoke
+artifact ailesi (üretici yok → uydurma).
 
 ---
 
@@ -1015,7 +1024,11 @@ Begin by reading `CLAUDE.md`, `.ai/next-session-eliminate-weaknesses-prompt.md`,
 > session "continue": `cc_refresh_user_file_manager_after_run`, `admin_ha_show_modal`
 > (shinyjs::runjs mock), `attach_required_packages` (library mock + tryCatch source),
 > `gc_scheduler`/`start_gc_scheduler_once` (later::later mock + `.GlobalEnv` flag
-> save/restore). Earlier sessions: `summarize_file_with_llm`, `execute_single_deep_query`,
+> save/restore). Same session "continue-2": `sessionCacheInit` (returned cache API),
+> `mergen_console_appender` (logger global save/restore), and
+> `helpers_mcp_tools$prepare_chart_data` (source-time `.mcp_prepare_chart_data_fn` is
+> rm'd → only reachable as `prepare_chart_data`; early-return branches). Earlier
+> sessions: `summarize_file_with_llm`, `execute_single_deep_query`,
 > `find_multiple_queries_with_ai`, `execute_parsed_tool`, server core runtime guards,
 > error-context summary, DOCX-preview async clobber FIXED, `ssoAuthServer`,
 > `apiKeyServer`, `quickActionsInit`, `parse_stream_event`, `check_claude_code_status`.
@@ -1033,13 +1046,13 @@ Begin by reading `CLAUDE.md`, `.ai/next-session-eliminate-weaknesses-prompt.md`,
 > Only fix REAL cross-request/cross-modal clobbers; do not manufacture fixes.
 >
 > PRIORITY 5 (behavioral coverage — the #1 weakness): re-run the FIXED-string
-> untested-function scan (see test-coverage prompt; ~23 candidates remain).
-> Highest-value clean/deterministic targets still open: heavy testServer closures
-> `sendMessageInit`/`serverInitChatRuntime`/`sessionCacheInit`/
-> `chat_simulate_streaming`/`call_llm_worker`; `cc_bind_claude_code_stream_polling`
-> (big observer-binding), `mergen_console_appender` (config_logging source
-> save/restore — logger), `.mcp_prepare_chart_data_fn` (MCP chain into globalenv;
-> early-return file-unresolvable/unreadable branches are deterministic). Every
+> untested-function scan (see test-coverage prompt; ~20 candidates remain).
+> Highest-value targets still open are all HEAVY: `sendMessageInit`,
+> `serverInitChatRuntime`, `chat_simulate_streaming`, `call_llm_worker` (testServer +
+> heavy stubbing), `cc_bind_claude_code_stream_polling` (big observer-binding). The
+> remaining small ones (`.mcp_bootstrap_*` rm'd at runtime,
+> `.helpers_llm_sse_source_sibling`, `.character_video_debug`) are low-value/brittle —
+> prefer ONE reliable heavy test over many fragile ones. Every
 > test: real input→output, deterministic,
 > OFFLINE, 0 fail / 0 warn / 0 skip, green standalone AND in a `test_dir` batch with
 > `new.env(parent=globalenv())`. Watch: module source-time guard loops (pre-populate

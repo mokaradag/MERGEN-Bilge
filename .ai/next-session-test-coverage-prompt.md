@@ -60,11 +60,35 @@ untested 28 → 23). ZATEN YAPILDI — tekrar etme:
   testthat bağlamında temiz source olur (helper_bootstrap dışı standalone source
   testthat::teardown_env nedeniyle abort eder — test_file içinde çalıştır).
 
-Kalan en yüksek değerli untested küme (~23): `sendMessageInit`, `serverInitChatRuntime`,
-`sessionCacheInit`, `chat_simulate_streaming`, `call_llm_worker` (ağır testServer),
-`cc_bind_claude_code_stream_polling` (büyük observer-bağlama),
-`mergen_console_appender` (config_logging source save/restore),
-`.mcp_prepare_chart_data_fn` (MCP zinciri globalenv; erken-dönüş deterministik).
+DEVAM-2 (aynı oturum, "cover the next targets") — 3 yeni test, 3 untested fn daha
+(36 doğrulama, untested 23 → 20). ZATEN YAPILDI — tekrar etme:
+- `test-session-cache-init-behavior.R` — `sessionCacheInit`: döndürülen cache API
+  (cache_session_token/setup_user_session/cache_mcp_file_locally/
+  update_mcp_registry_snapshot/get_cache_dir). GOTCHA: sahte oturum env (token +
+  userData + onSessionEnded); yol/MCP serbest bağımlılıkları (safe_windows_short_path,
+  path_exists_relaxed→file.exists, normalize_excel_path, session_runtime_store_snapshot_mcp)
+  env stub; gerçek geçici dosya sistemi kullanılır.
+- `test-config-logging-console-appender-behavior.R` — `mergen_console_appender`.
+  GOTCHA: config_logging.R kaynak-zamanı logger global durumunu (threshold +
+  appender/layout index 1/2) değiştirir → geçici MERGEN_LOG_DIR + save/restore
+  (`logger::log_appender(index=1)`/`log_layout(index=1)`/`log_threshold()` yakala,
+  `withr::defer` ile geri yükle, index 2'yi `delete_logger_index` + sustur). cat
+  çıktısı `utils::capture.output` ile yakalanır.
+- `test-mcp-prepare-chart-data-behavior.R` — `helpers_mcp_tools$prepare_chart_data`.
+  GOTCHA (kritik): top-level `.mcp_prepare_chart_data_fn` kaynak sonunda
+  helpers_mcp_tools$prepare_chart_data'ya atanıp `rm` edilir → globalenv'de
+  `.mcp_prepare_chart_data_fn` YOK; runtime'da YALNIZCA `hmt$prepare_chart_data`
+  üzerinden çağrılır. MCP zinciri globalenv'e tekil yüklenir; yaprak araçlar
+  (auto_file_name/normalize_chart_type/resolve_file_argument/safe_read_table_generic)
+  test başına override + `withr::defer` ile geri yüklenir. Erken-dönüş dalları
+  (ok=FALSE / "Dosya okunamadı") + argüman normalizasyonu deterministik.
+
+Kalan en yüksek değerli untested küme (~20, hepsi AĞIR): `sendMessageInit`,
+`serverInitChatRuntime`, `chat_simulate_streaming`, `call_llm_worker` (testServer +
+yoğun stub), `cc_bind_claude_code_stream_polling` (büyük observer-bağlama). Kalan
+küçükler (`.mcp_bootstrap_*` rm'd, `.helpers_llm_sse_source_sibling`,
+`.character_video_debug`) düşük değer/kırılgan — bir güvenilir ağır test, çok sayıda
+kırılgan teste tercih edilir.
 
 ---
 
