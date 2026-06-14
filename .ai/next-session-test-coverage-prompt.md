@@ -43,11 +43,28 @@ yüklenmeden TEK BAŞINA da fail). Linux/cloud çalışma-dizini/MockShinySessio
 prime-then-set artifact'ı; **kullanıcı: Windows VM'de GitHub testthat suite GEÇİYOR.**
 Trust VM over cloud; DOKUNMA.
 
-Kalan en yüksek değerli untested küme (~28): `sendMessageInit`, `serverInitChatRuntime`,
+DEVAM (aynı oturum, "continue") — 4 yeni test, 5 untested fn daha (27 doğrulama,
+untested 28 → 23). ZATEN YAPILDI — tekrar etme:
+- `test-claude-code-refresh-fm-after-run-behavior.R` — `cc_refresh_user_file_manager_after_run`
+  (oturum/userData/fm_data/refresh guard'ları + "bilge_yolac_generated" + hata yutma).
+- `test-admin-ha-show-modal-behavior.R` — `admin_ha_show_modal`. GOTCHA: `shinyjs::runjs`
+  `local_mocked_bindings(.package="shinyjs")` ile yakalanır; ns(modal_id) JS string'i.
+- `test-config-packages-attach-behavior.R` — `attach_required_packages`. GOTCHA:
+  `library` env'e kaydedici stub; config_packages.R source-time validate+stop+attach
+  `tryCatch(source(...))` ile yutulur (fn tanımı stop'tan ÖNCE → env'de kalır);
+  kaynak-zamanı attach gürültüsünü test başında rec sıfırlayarak temizle.
+- `test-gc-scheduler-behavior.R` — `gc_scheduler`/`start_gc_scheduler_once`. GOTCHA:
+  `later::later` `local_mocked_bindings(.package="later")` ile yakalanır (gerçek
+  callback zamanlanmaz); `gc` env stub; `.mergen_gc_scheduler_started` `.GlobalEnv`
+  bayrağı `withr::defer` ile save/restore (batch kirliliği yok). config_file_store.R
+  testthat bağlamında temiz source olur (helper_bootstrap dışı standalone source
+  testthat::teardown_env nedeniyle abort eder — test_file içinde çalıştır).
+
+Kalan en yüksek değerli untested küme (~23): `sendMessageInit`, `serverInitChatRuntime`,
 `sessionCacheInit`, `chat_simulate_streaming`, `call_llm_worker` (ağır testServer),
-`admin_ha_show_modal`, `cc_refresh_user_file_manager_after_run`,
-`cc_bind_claude_code_stream_polling`, `gc_scheduler`/`start_gc_scheduler_once`,
-`attach_required_packages`, `mergen_console_appender`, `.mcp_prepare_chart_data_fn`.
+`cc_bind_claude_code_stream_polling` (büyük observer-bağlama),
+`mergen_console_appender` (config_logging source save/restore),
+`.mcp_prepare_chart_data_fn` (MCP zinciri globalenv; erken-dönüş deterministik).
 
 ---
 

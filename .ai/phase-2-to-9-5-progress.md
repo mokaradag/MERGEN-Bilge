@@ -127,6 +127,27 @@ Faz 3 operatör görünürlüğü genişletildi (secret-safe AI çağrı istek-s
   bu oturumda KANITLANMADI. Latency/log özetleri yalnızca VM'de gerçek
   `logs/mergen_*.log` ile canlı doğrulanır.
 
+**Devam (aynı oturum, "continue") — 4 yeni test, 5 untested fn daha kapandı (27 doğrulama):**
+- `test-claude-code-refresh-fm-after-run-behavior.R` (8) —
+  `cc_refresh_user_file_manager_after_run`: oturum/userData/file_manager_data/
+  refresh-fonksiyon guard'ları → FALSE; refresh varsa `"bilge_yolac_generated"`
+  tetikleyici + hata yutma → TRUE.
+- `test-admin-ha-show-modal-behavior.R` (6) — `admin_ha_show_modal`: `shinyjs::runjs`
+  `local_mocked_bindings(.package="shinyjs")` ile yakalanır; ns'lenmiş `#id` +
+  `appendTo('body')` + `moved-to-body` + `modal('show')` doğrulanır.
+- `test-config-packages-attach-behavior.R` (7) — `attach_required_packages`:
+  `library` env'e kaydedici stub; kaynak-zamanı validate+stop+attach
+  `tryCatch(source)` ile yutulur (fn tanımı stop'tan önce → env'de kalır);
+  her paket `character.only=TRUE` + sıra + varsayılan manifest.
+- `test-gc-scheduler-behavior.R` (6) — `gc_scheduler` (gc çalıştır + later 300sn;
+  gc hata → later 600sn) ve `start_gc_scheduler_once` (ilk TRUE+bayrak yaz, ikinci
+  FALSE). GOTCHA: `later::later` `local_mocked_bindings(.package="later")` ile
+  yakalanır (gerçek callback zamanlanmaz); `gc` env stub; `.mergen_gc_scheduler_started`
+  `.GlobalEnv` bayrağı `withr::defer` ile save/restore (batch kirliliği yok).
+- Doğrulama: 4 dosya tek tek + `test_dir` batch 27 doğrulama 0 fail/warn/skip;
+  `ai_validate quick` TAM geçti (failed=0, skipped=0). Untested **28 → 23**.
+  config_file_store.R testthat bağlamında temiz source olur (gc fn'leri tanımlı).
+
 ### Oturum: 2026-06-13 (B) — branch `claude/serene-bell-3l1xw6` (bu oturum)
 
 Faz 2 davranışsal kapsama derinleştirildi (servis-bağlı runtime mantığı) ve Faz 3
@@ -335,25 +356,28 @@ encoding/gerçek browser UX smoke/vision live. Bunlar VM kapılarının işidir.
 
 ## Kalan yüksek değerli untested kümeler (sonraki oturumlar için)
 
-Güncel tarama (2026-06-14 oturumu sonrası): **28 untested top-level fn.** Kalanlar:
+Güncel tarama (2026-06-14 continue sonrası): **23 untested top-level fn.** Kalanlar:
 
 - `sendMessageInit` (server_send_message.R) — ağır; testServer + yoğun stub ister.
 - `serverInitChatRuntime`, `sessionCacheInit` — testServer ile orta zorluk.
 - `chat_simulate_streaming` (helpers_chat_runtime.R) — ağır.
 - `call_llm_worker` (helpers_llm_worker.R) — çok ağır; ikinci-pass zinciri.
-- `gc_scheduler`, `start_gc_scheduler_once` (config_file_store.R) — later mock.
-- `admin_ha_show_modal` (helpers_admin_hata_detail_runtime.R) — runjs string builder.
-- `cc_refresh_user_file_manager_after_run` (helpers_claude_code_run_lifecycle.R),
-  `cc_bind_claude_code_stream_polling` (module_claude_code_stream_poll.R) — orta.
-- `attach_required_packages` (config_packages.R), `mergen_console_appender`
-  (config_logging.R) — küçük.
-- `.mcp_prepare_chart_data_fn` (helpers_mcp_chart_tools.R) — orta.
+- `cc_bind_claude_code_stream_polling` (module_claude_code_stream_poll.R) — büyük
+  observer-bağlama; testServer + yoğun stub.
+- `mergen_console_appender` (config_logging.R) — config_logging source-time logger
+  yan etkisi (log_appender/log_layout); save/restore gerekir (orta).
+- `.mcp_prepare_chart_data_fn` (helpers_mcp_chart_tools.R) — tam helpers_mcp_tools
+  zincirini globalenv'e ister; erken-dönüş (file çözülemez/okunamaz) deterministik.
+- Kalan küçük bootstrap/debug helper'ları (`.mcp_bootstrap_*` runtime'da rm edilir,
+  `.helpers_llm_sse_source_sibling`, `.character_video_debug`) — düşük değer.
 
 2026-06-14 oturumunda KAPSANANLAR (yukarıdan çıkarıldı): `handle_file_upload_batch`,
 `pk_deep_analysis_process`, `pk_analiz_process_request`, `find_best_query_with_ai`,
 `run_claude_code_streaming`, `prepare_claude_code_document_context`,
 `write_claude_code_document_summary_file`,
-`summarize_claude_code_documents_with_local_llm` (+ 2 yeni latency fn de kapsamlı).
+`summarize_claude_code_documents_with_local_llm` (+ 2 latency fn); CONTINUE'da ayrıca
+`cc_refresh_user_file_manager_after_run`, `admin_ha_show_modal`,
+`attach_required_packages`, `gc_scheduler`, `start_gc_scheduler_once`.
 - `.syap_*` kart builder'ları (module_settings_yapilandirma_ui.R) —
   `test-settings-yapilandirma-ui-id-surface-behavior.R` id yüzeyini dolaylı
   koruyor; doğrudan birim testi DÜŞÜK öncelik.

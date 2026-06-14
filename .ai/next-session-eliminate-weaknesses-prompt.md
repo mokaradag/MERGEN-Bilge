@@ -59,12 +59,22 @@ ve Faz 3 latency özetini ekledi. Cerrahi, additive. Do NOT redo:
   regresyon değil; DOKUNMA. Cloud koşumu VM/SSO/DB/SQL Server Türkçe encoding/gerçek
   browser/vision live kanıtı DEĞİLDİR.
 
+**DEVAM (aynı oturum, "continue") — 4 yeni test, 5 untested fn daha (27 doğrulama,
+untested 28 → 23):** `cc_refresh_user_file_manager_after_run`
+(`test-claude-code-refresh-fm-after-run-behavior.R`), `admin_ha_show_modal`
+(`test-admin-ha-show-modal-behavior.R`; shinyjs::runjs mock), `attach_required_packages`
+(`test-config-packages-attach-behavior.R`; library mock + `tryCatch(source)` ile
+source-time validate/stop/attach yutulur), `gc_scheduler`/`start_gc_scheduler_once`
+(`test-gc-scheduler-behavior.R`; `later::later` mock + `.GlobalEnv` bayrağı
+`withr::defer` save/restore). config_file_store.R testthat'te temiz source olur.
+`ai_validate quick` yine TAM geçti.
+
 Sıradaki yüksek değerli hedefler: `sendMessageInit`/`serverInitChatRuntime`/
 `sessionCacheInit`/`chat_simulate_streaming`/`call_llm_worker` (ağır testServer),
-`admin_ha_show_modal`, `cc_refresh_user_file_manager_after_run`,
-`cc_bind_claude_code_stream_polling`, `gc_scheduler`/`start_gc_scheduler_once` (later
-mock), `attach_required_packages`, `mergen_console_appender`. Faz 3 sıradaki:
-post-deploy smoke artifact ailesi (üretici yok → uydurma).
+`cc_bind_claude_code_stream_polling` (büyük observer-bağlama),
+`mergen_console_appender` (config_logging source save/restore),
+`.mcp_prepare_chart_data_fn` (MCP zinciri globalenv; erken-dönüş deterministik).
+Faz 3 sıradaki: post-deploy smoke artifact ailesi (üretici yok → uydurma).
 
 ---
 
@@ -1001,8 +1011,11 @@ Begin by reading `CLAUDE.md`, `.ai/next-session-eliminate-weaknesses-prompt.md`,
 > `summarize_claude_code_documents_with_local_llm`; extractor/LLM stubbed, no real
 > doc fixtures). Faz 3: secret-safe `release_evidence_summarize_ai_call_latency`
 > (`AI Call: ... duration=<s>s` → numeric-only) + `log_health$ai_call_latency` +
-> `.health_release_ai_latency` UI (Doğrulama Kanıtı > Günlük Log Sağlığı). Earlier
-> sessions: `summarize_file_with_llm`, `execute_single_deep_query`,
+> `.health_release_ai_latency` UI (Doğrulama Kanıtı > Günlük Log Sağlığı). Same
+> session "continue": `cc_refresh_user_file_manager_after_run`, `admin_ha_show_modal`
+> (shinyjs::runjs mock), `attach_required_packages` (library mock + tryCatch source),
+> `gc_scheduler`/`start_gc_scheduler_once` (later::later mock + `.GlobalEnv` flag
+> save/restore). Earlier sessions: `summarize_file_with_llm`, `execute_single_deep_query`,
 > `find_multiple_queries_with_ai`, `execute_parsed_tool`, server core runtime guards,
 > error-context summary, DOCX-preview async clobber FIXED, `ssoAuthServer`,
 > `apiKeyServer`, `quickActionsInit`, `parse_stream_event`, `check_claude_code_status`.
@@ -1020,14 +1033,14 @@ Begin by reading `CLAUDE.md`, `.ai/next-session-eliminate-weaknesses-prompt.md`,
 > Only fix REAL cross-request/cross-modal clobbers; do not manufacture fixes.
 >
 > PRIORITY 5 (behavioral coverage — the #1 weakness): re-run the FIXED-string
-> untested-function scan (see test-coverage prompt; ~28 candidates remain).
+> untested-function scan (see test-coverage prompt; ~23 candidates remain).
 > Highest-value clean/deterministic targets still open: heavy testServer closures
 > `sendMessageInit`/`serverInitChatRuntime`/`sessionCacheInit`/
-> `chat_simulate_streaming`/`call_llm_worker`; medium `admin_ha_show_modal`
-> (runjs string builder), `cc_refresh_user_file_manager_after_run`,
-> `cc_bind_claude_code_stream_polling`, `gc_scheduler`/`start_gc_scheduler_once`
-> (later mock), `attach_required_packages`, `mergen_console_appender`,
-> `.mcp_prepare_chart_data_fn`. Every test: real input→output, deterministic,
+> `chat_simulate_streaming`/`call_llm_worker`; `cc_bind_claude_code_stream_polling`
+> (big observer-binding), `mergen_console_appender` (config_logging source
+> save/restore — logger), `.mcp_prepare_chart_data_fn` (MCP chain into globalenv;
+> early-return file-unresolvable/unreadable branches are deterministic). Every
+> test: real input→output, deterministic,
 > OFFLINE, 0 fail / 0 warn / 0 skip, green standalone AND in a `test_dir` batch with
 > `new.env(parent=globalenv())`. Watch: module source-time guard loops (pre-populate
 > the guard's expected fn names in env so `exists(inherits=TRUE)` is satisfied and
