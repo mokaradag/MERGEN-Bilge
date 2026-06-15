@@ -331,10 +331,15 @@ testthat::test_that("release_evidence_log_health geçersiz UTF-8 (ANSI) log içe
 testthat::test_that("release_evidence_artifact_root repo kökü altındaki artifacts dizinini verir", {
   env <- .releaseEvidenceEnv()
 
-  testthat::expect_identical(
-    env$release_evidence_artifact_root("/repo/kok"),
-    file.path("/repo/kok", "artifacts")
-  )
+  # "/repo/kok" gibi sabit yol Windows'ta MUTLAK değildir (sürücü harfi/UNC yok),
+  # bu yüzden normalizePath onu çalışma dizinine göre çözer (UNC öneki eklenir).
+  # OS-bağımsız gerçek mutlak yol için tempdir kullanılır; beklenen değer üretim
+  # fonksiyonuyla aynı normalize edilmiş biçimde hesaplanır.
+  kok <- withr::local_tempdir()
+  beklenen <- file.path(normalizePath(kok, winslash = "/", mustWork = FALSE), "artifacts")
+  testthat::expect_identical(env$release_evidence_artifact_root(kok), beklenen)
+  testthat::expect_identical(basename(env$release_evidence_artifact_root(kok)), "artifacts")
+
   # Argümansız çağrı çözümlenen repo kökü altındaki artifacts dizinini döndürür
   testthat::expect_identical(
     env$release_evidence_artifact_root(),

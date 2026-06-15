@@ -115,8 +115,10 @@ testthat::test_that("analysis_file_clicked www/ önekli yolu çalışma dizini a
   fix <- .source_file_clicks_for_test()
   .drive_file_click(fix, "analysis_file_clicked",
                     list(filepath = "www/p/prime.png"), list(filepath = "www/img/x.png"))
-  beklenen <- file.path(getwd(), "www/img/x.png")
-  testthat::expect_true(beklenen %in% fix$rec$exists_paths)
+  # Üretim kodu repo kökünü normalizePath ile çözer; Windows UNC yollarında
+  # normalizePath '\\\\sunucu/...' verirken ham getwd() '//sunucu/...' verir.
+  # Bu yüzden mutlak önekten bağımsız, son ekle (suffix) doğrularız.
+  testthat::expect_true(any(endsWith(fix$rec$exists_paths, "www/img/x.png")))
 })
 
 testthat::test_that("analysis_file_clicked mutlak yolu olduğu gibi korur", {
@@ -130,8 +132,9 @@ testthat::test_that("analysis_file_clicked göreli yolu www altına yerleştirir
   fix <- .source_file_clicks_for_test()
   .drive_file_click(fix, "analysis_file_clicked",
                     list(filepath = "p/prime.png"), list(filepath = "rapor/z.png"))
-  beklenen <- file.path(getwd(), "www", "rapor/z.png")
-  testthat::expect_true(beklenen %in% fix$rec$exists_paths)
+  # www öneki olmayan göreli yol repo kökü altındaki www/ altına yerleştirilir.
+  # Mutlak önek normalizePath'e (Windows UNC) bağlı olduğundan suffix doğrularız.
+  testthat::expect_true(any(endsWith(fix$rec$exists_paths, "www/rapor/z.png")))
 })
 
 testthat::test_that("analysis_file_clicked dosya bulunamazsa basename ile uyarır ve önizleme açmaz", {
