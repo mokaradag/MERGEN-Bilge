@@ -28,12 +28,16 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **DB/servis:** `MB_Messages`, `MB_Chats`; yerel LLM uç noktası (`LOCAL_LLM_ENDPOINT`).
 - **Testler:** `test-send-message-*`, `test-true-streaming-reset-ui-contract.R`,
   `test-streaming-poll-lifecycle-*`, `test-llm-*`, `test-streaming-markdown-safety-contract.R`,
-  `test-e2e-streaming-client-request-id-regression.R`.
+  `test-e2e-streaming-client-request-id-regression.R`,
+  `test-server-init-chat-runtime-behavior.R` (`serverInitChatRuntime` fabrikası +
+  add_message canlı user-id sözleşmesi), `test-chat-simulate-streaming-behavior.R`
+  (`chat_simulate_streaming` TTS/stop KARAR ve erken-çıkış dalları), `test-chat-runtime-*`.
 - **Smoke/kanıt:** `www/smoke/ux-smoke.html` (streaming init/delta/stale/finalize),
   VM evidence `browser_ux_smoke`.
-- **Bilinen risk / sıradaki hedef:** `sendMessageInit`, `chat_add_message`,
-  `chat_simulate_streaming` ağır runtime closure'ları hâlâ davranışsal test
-  edilmedi (testServer + yoğun stub gerekir).
+- **Bilinen risk / sıradaki hedef:** `serverInitChatRuntime` ve
+  `chat_simulate_streaming` (KARAR/erken-çıkış dalları) kapsandı;
+  `chat_simulate_streaming` invalidateLater(25) akış döngüsü ile `sendMessageInit`
+  ve `call_llm_worker` hâlâ davranışsal test edilmedi (ağır testServer + yoğun stub).
 
 ## Dosya Yaşam Döngüsü
 
@@ -181,11 +185,19 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   süreç başlatma hatası/on_chunk),
   `test-claude-code-document-orchestration-behavior.R`
   (`prepare_claude_code_document_context` + `write_claude_code_document_summary_file` +
-  `summarize_claude_code_documents_with_local_llm`; çıkarıcı/LLM stub'lı).
+  `summarize_claude_code_documents_with_local_llm`; çıkarıcı/LLM stub'lı),
+  `test-claude-code-stream-poll-binding-behavior.R`
+  (`cc_bind_claude_code_stream_polling` testServer: stop gözlemcisi request-id
+  kapsamlı finalize + klavye gözlemcisi + poll durduruldu/zaman-aşımı erken dalları),
+  `test-claude-code-existing-file-link-security-behavior.R`
+  (`format_claude_code_existing_file_link_html`: izinli-kök-dışı reddi/traversal +
+  öznitelik escape XSS sınırı).
 - **Smoke/kanıt:** Windows VM manuel akış (UNC/SSO/`.cmd`); cloud'da kanıtlanmaz.
 - **Bilinen risk / sıradaki hedef:** `parse_stream_event`, bağlantı durumu,
-  `run_claude_code_streaming` ve doküman özet orkestratörleri kapsandı; gerçek CLI/
-  UNC/SSO davranışı yalnızca VM'de kanıtlanır.
+  `run_claude_code_streaming`, doküman özet orkestratörleri ve `cc_bind_claude_code_stream_polling`
+  (stop/poll erken dalları) kapsandı; doğrudan indirme bağlantısı artık öznitelik
+  bağlamında `htmlEscape(attribute=TRUE)` ile sertleştirildi (öznitelik enjeksiyonu
+  savunması). Gerçek CLI/UNC/SSO ve canlı akış tamamlanma dalı yalnızca VM'de kanıtlanır.
 
 ## Destek / Geri Bildirim
 

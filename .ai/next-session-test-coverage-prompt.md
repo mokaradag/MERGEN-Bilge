@@ -1,3 +1,58 @@
+# CONTEXT — Faz 2→9.5 oturumu `claude/zen-gauss-w423sz` (2026-06-15, do NOT redo)
+
+Bu oturum 3 AĞIR runtime closure'unu davranışsal kapattı (94 doğrulama, 0
+fail/warn/skip), 1 Faz-5 adversarial güvenlik boşluğu + 1 cerrahi sertleştirme
+yaptı ve kullanıcının Windows VM testthat suite'indeki 4 hatayı (3 dosya)
+düzeltti. Untested 20 → 17. ZATEN YAPILDI — tekrar etme:
+- `test-server-init-chat-runtime-behavior.R` — `serverInitChatRuntime` fabrikası
+  (4 kapanış + **add_message canlı user-id**). GOTCHA: dosyada tanımlı
+  temsilciler (`chat_reset_state`/`chat_add_message`/`chat_generate_title_from_prompt`/
+  `chat_simulate_streaming`) source SONRASI stub'lanmalı.
+- `test-chat-simulate-streaming-behavior.R` — `chat_simulate_streaming` KARAR/
+  erken-çıkış dalları. **GOTCHA (kritik):** tüm testler `stop_generation=function() TRUE`
+  → `shiny::observe`/`invalidateLater(25)` döngüsüne GİRİLMEZ (tam senkron,
+  kırılgan değil). Dosyada tanımlı `chat_reset_state`/`push_followup_update`/
+  `chat_store_message_in_saved_chats` source SONRASI stub'lanır; promise cat
+  çıktısı `.css_drain()` (later::run_now sınırlı döngü) ile `capture.output` İÇİNDE.
+- `test-claude-code-stream-poll-binding-behavior.R` — `cc_bind_claude_code_stream_polling`.
+  GOTCHA: bağlayıcı moduleServer DEĞİL → `function(id) moduleServer(id, ...)` ile
+  sar, rv döndür; `session$returned$is_running <- TRUE` + `session$flushReact()`
+  ile poll dalları tetiklenir (capture-in-place gerekiyorsa is_running=FALSE
+  başlat, root$sendCustomMessage override et, sonra flip). `shinyjs::click`
+  `local_mocked_bindings(.package="shinyjs")`; processx fake `new.env` (kill/
+  poll_io/read_*/is_alive/get_exit_status). stop gözlemcisi request-id kapsamlı
+  finalize'i kanıtlanır (korumalı sözleşme). invalidateLater ilerletilmez.
+- `test-claude-code-existing-file-link-security-behavior.R` (Faz 5) —
+  `format_claude_code_existing_file_link_html`. KEŞİF: mevcut encoding testinin
+  source helper'ı `helpers_claude_code_path_policy.R`'yi YÜKLEMEDİĞİ için
+  `cc_policy_path_inside_roots` `exists(...)` FALSE → izinli-kök-dışı reddi dalı
+  hiç sınanmamıştı. Yeni test gerçek path-policy'yi yükler. Cerrahi sertleştirme:
+  öznitelik bağlamı escape'i `attribute=TRUE` (fail-before/pass-after). Linux'ta
+  bir dosya adına `"`/`<`/`>` koyup XSS sınırı kanıtlanabilir.
+
+Windows VM hata düzeltmeleri (kullanıcı ekranı; do NOT redo):
+- `test-file-click-observers-behavior.R`: `file.path(getwd(),...)` + `%in%` →
+  `any(endsWith(exists_paths, "www/.../x.png"))`. Üretim `normalizePath(getwd(),
+  winslash="/")` ile UNC `\\sunucu/...` üretirken ham getwd() `//sunucu/...`
+  veriyor; suffix doğrulama platform-bağımsız.
+- `module_proje_kaynak_analizi.R:223` (ÜRETİM): yasaklı-SQL kapısı
+  `toupper(enc2utf8(final_sql))` + locale-grepl → Windows Türkçe locale'de hata.
+  `grepl(...,final_sql,ignore.case=TRUE,perl=TRUE,useBytes=TRUE)` (toupper YOK).
+  `helpers_deep_analysis.R:289` enc2utf8 kullanmadığından VM'de geçer → dokunma.
+- `test-release-evidence-behavior.R:334`: "/repo/kok" Windows'ta mutlak değil →
+  `withr::local_tempdir()` + `normalizePath(...,winslash="/")` ile beklenen.
+
+GENEL DERS: `getwd()`-tabanlı tam-yol test beklentileri ve sabit POSIX "/x"
+yolları Windows VM'de kırılır; suffix/`endsWith` + `withr::local_tempdir()`
+kullan. `enc2utf8`+`toupper`+`grepl` Windows Türkçe locale'de zehirlidir; ASCII
+anahtar taramasını `useBytes=TRUE` ile yerelden bağımsız yap.
+
+Kalan en yüksek değerli untested (~17, çoğu ağır): `sendMessageInit`,
+`call_llm_worker` (çok ağır testServer/ikinci-pass), `.syap_*` 11 UI builder
+(dolaylı korunuyor, düşük öncelik), küçük bootstrap/debug helper'ları.
+
+---
+
 # CONTEXT — Faz 2→9.5 oturumu `claude/affectionate-faraday-yksxki` (2026-06-14, do NOT redo)
 
 Bu oturum görev önceliği sırasıyla 8 untested fonksiyonu davranışsal kapattı + Faz 3

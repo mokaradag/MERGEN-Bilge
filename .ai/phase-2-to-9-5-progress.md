@@ -35,6 +35,108 @@ Aşağıdakiler ÖNCEKİ oturumlarda tamamlandı (`.ai/next-session-*.md` ayrın
 
 ## Oturum kaydı
 
+### Oturum: 2026-06-15 — branch `claude/zen-gauss-w423sz` (bu oturum)
+
+Faz 2 kalan AĞIR runtime closure'larından üçü davranışsal kapatıldı, Faz 5
+adversarial bir güvenlik boşluğu kapatılıp 1 cerrahi sertleştirme yapıldı ve
+kullanıcının Windows VM testthat suite'inde gördüğü 4 hata (3 dosya) giderildi.
+Cerrahi, additive; ratchet/manifest/seam/encoding sözleşmeleri yeşil.
+
+**Faz 2 — 3 yeni davranış testi (94 doğrulamanın 81'i; untested 20 → 17):**
+- `test-server-init-chat-runtime-behavior.R` (41) — `serverInitChatRuntime`
+  fabrikası: dört kapanış (`reset_chat_state`/`add_message`/
+  `generate_title_from_prompt`/`simulate_streaming_stoppable`) doğru temsilciye
+  yönlendirir; **`add_message` kullanıcı kimliğini ÇAĞRI ANINDA canlı
+  sağlayıcıdan çözer (SSO anlık görüntü değil)** — sağlayıcının dönüşü çağrılar
+  arası değiştirilerek kanıtlandı; tüm argümanlar + stop_generation iletilir.
+  Temsilciler source SONRASI stub'lanır.
+- `test-chat-simulate-streaming-behavior.R` (19) — `chat_simulate_streaming`
+  KARAR/ERKEN-ÇIKIŞ dalları: TTS yok→hemen başlat, boş yanıt→TTS beklenmez,
+  TTS promise başarılı/reddedilen/`success=FALSE`→akış yine başlatma yoluna
+  girer. **Tüm testler `stop_generation=function() TRUE` kullanır** → kırılgan
+  `shiny::observe`/`invalidateLater(25)` döngüsüne GİRİLMEZ; tamamen senkron.
+  GOTCHA: dosyada tanımlı `chat_reset_state`/`push_followup_update`/
+  `chat_store_message_in_saved_chats` source SONRASI stub'lanmalı (source onları
+  ezer); promise cat çıktısı `.css_drain()` ile capture.output İÇİNDE çalışır.
+- `test-claude-code-stream-poll-binding-behavior.R` (21) —
+  `cc_bind_claude_code_stream_polling` testServer: **stop gözlemcisi
+  request-id kapsamlı "Durduruldu" finalize + süreç kill + env$durduruldu +
+  cc-stream-end** (korumalı sözleşme); çalışmıyorken no-op; klavye gözlemcisi
+  run_command tıklar/tıklamaz; poll gözlemcisi `durduruldu` + zaman aşımı erken
+  dalları (request-id kapsamlı finalize + cc-add-message). `invalidateLater(200)`
+  ilerletilmez; her dal tek flush. GOTCHA: bağlayıcı moduleServer değil → küçük
+  modül sarmalayıcı rv döndürür; `session$returned$is_running <- TRUE` +
+  `session$flushReact()` ile poll dalları tetiklenir; `shinyjs::click`
+  `local_mocked_bindings(.package="shinyjs")`; processx fake env.
+
+**Faz 5 — adversarial güvenlik + 1 cerrahi sertleştirme:**
+- `test-claude-code-existing-file-link-security-behavior.R` (13) —
+  `format_claude_code_existing_file_link_html`: **izinli kök DIŞINDAKİ var olan
+  dosya → boş bağlantı (gerçek traversal/kaçış savunması)**. KEŞİF: mevcut
+  encoding testi `cc_policy_path_inside_roots`'u YÜKLEMEDİĞİ için bu dal
+  (helpers_claude_code_existing_file_link.R:48-56) davranışsal olarak hiç
+  sınanmamıştı → yeni test gerçek `helpers_claude_code_path_policy.R` yükler.
+  Ayrıca kök-içi→kart, kök-yok→boş, var-olmayan/dizin/boş/NA→boş, ve
+  HTML-metakarakterli dosya adı → htmlEscape.
+- Cerrahi sertleştirme: `R/helpers_claude_code_existing_file_link.R` öznitelik
+  bağlamındaki `href`/`download`/`title` değerleri artık
+  `htmlEscape(..., attribute = TRUE)` ile escape edilir; dosya adındaki çift/tek
+  tırnak öznitelikten kaçamaz (öznitelik enjeksiyonu savunması). XSS testi
+  fail-before/pass-after kanıtlı. Eleman metni (span) varsayılan escape'te kalır.
+  CLAUDE.md HTML güvenlik sınırı (1C) ile uyumlu.
+
+**Windows VM testthat hataları (kullanıcı ekran görüntüsü) — 4 hata / 3 dosya giderildi:**
+- `test-file-click-observers-behavior.R:119,134` (2 hata) — `analysis_file_clicked`
+  www-önekli + göreli yol testleri `beklenen <- file.path(getwd(), ...)` + `%in%`
+  kullanıyordu. Üretim kodu repo kökünü `normalizePath(getwd(), winslash="/")` ile
+  çözüyor; Windows UNC'de `normalizePath` `\\sunucu/...`, ham `getwd()` ise
+  `//sunucu/...` veriyor → önek uyuşmazlığı. **Düzeltme (test):** mutlak önekten
+  bağımsız `any(endsWith(exists_paths, "www/img/x.png"))` suffix doğrulaması.
+  Mutlak-yol testi (satır 126) zaten geçiyordu (kimlik stub) — analiz doğrulandı.
+- `test-pk-analiz-process-request-behavior.R:155` (1 hata) — yasaklı SQL reddi
+  testi `grepl("Guvenlik ihlali", res)` arıyordu. **Kök neden (üretim):**
+  `module_proje_kaynak_analizi.R:223` güvenlik kapısı `toupper(enc2utf8(final_sql))`
+  + locale-duyarlı `grepl` kullanıyordu; `final_sql` UTF-8 işaretli olduğundan
+  Windows Türkçe (UTF-8 olmayan) yerel ayarda bu kombinasyon HATA veriyor →
+  tryCatch yakalıyor → res "Veritabanı Hatası" içeriyor ama "Guvenlik ihlali"
+  içermiyor (satır 154 geçer, 155 başarısız). Karşılaştırma: `helpers_deep_analysis.R:289`
+  AYNI kapıyı `enc2utf8` OLMADAN kullanır → VM'de geçer (bu da `enc2utf8`+`toupper`
+  kombinasyonunu suçlu olarak teyit eder). **Düzeltme (üretim):** `toupper`
+  kaldırıldı; tarama `grepl(..., final_sql, ignore.case=TRUE, perl=TRUE,
+  useBytes=TRUE)` ile yerelden bağımsız yapıldı (ASCII anahtar kelimeler; kapı
+  her yerel ayarda güvenilir tetiklenir, false-positive yok, uyarı yok).
+  `helpers_deep_analysis.R` dokunulmadı (testi VM'de geçtiği için — cerrahi).
+- `test-release-evidence-behavior.R:334` (1 hata) — `release_evidence_artifact_root("/repo/kok")`
+  testi `/repo/kok/artifacts` bekliyordu ama VM'de `\\rehisds/uygulamalar/repo/kok/artifacts`
+  döndü. **Kök neden:** "/repo/kok" Windows'ta MUTLAK değil (sürücü/UNC yok) →
+  `release_evidence_resolve_repo_root` içindeki `normalizePath(..., mustWork=FALSE)`
+  onu UNC cwd'ye göre çözüyor. Üretim DOĞRU; test fixture'ı Linux'a özgüydü.
+  **Düzeltme (test):** `withr::local_tempdir()` (OS-bağımsız gerçek mutlak yol) +
+  beklenen değer üretim ile aynı normalize biçiminde + `basename(...)=="artifacts"`.
+
+**Doğrulama (bu container, R 4.6.0 — Linux/cloud):**
+- `bash tools/ai_validate.sh quick` → **TAM GEÇTİ** (failed=0, skipped=0,
+  app_source_smoke=passed) (`artifacts/ai-validation/20260615-074956/summary.json`).
+- `bash tools/ai_validate.sh full --boot-smoke` → **TAM GEÇTİ** (failed=0,
+  skipped=0; **full testthat suite passed 162.7s**, shiny_boot_smoke=passed,
+  app_source_smoke=passed; browser_smoke=**skipped** (browser binary yok — kanıt
+  değil); db_sso_vm=false; sql_server Türkçe encoding=not_performed)
+  (`artifacts/ai-validation/20260615-075105/summary.json`). **Önceki oturumlarda
+  full suite'te tek başarısız olan `test-file-click-observers-behavior.R` artık
+  Linux full suite'te de GEÇİYOR** (suffix düzeltmesi sayesinde).
+- `parse_sanity_check.R` OK (794 dosya). `maintainability-ratchet` 174 PASS
+  (skor 100/100, max 24 fn; +6/+8 satırlık üretim değişiklikleri bütçe içinde).
+  `seam_doctor.R` OK (yapısal sorun yok). pk/release/deep-analysis/security
+  contract testleri 0 fail/warn.
+- 4 yeni test tek tek + `test_dir` batch: **94 doğrulama, 0 fail/warn/skip.**
+  Güvenlik sertleştirmesi fail-before/pass-after kanıtlı.
+
+**KANITLANMAYAN / cloud sınırı:** Windows VM/SSO/DB/SQL Server Türkçe encoding/
+gerçek browser UX/vision live bu oturumda KANITLANMADI. VM hata düzeltmeleri
+yapı gereği Windows-taşınabilir; gerçek VM doğrulaması kullanıcının suite'inde
+yapılmalı. Bir önceki oturumun "VM'de geçiyor" iddiası `test-file-click-observers`
+için BAYATTI (kullanıcı VM'de fail gösterdi) — bu oturumda gerçekten düzeltildi.
+
 ### Oturum: 2026-06-14 — branch `claude/affectionate-faraday-yksxki` (bu oturum)
 
 Faz 2 davranışsal kapsama görev önceliği sırasıyla derinleştirildi (dosya yaşam
@@ -379,16 +481,21 @@ encoding/gerçek browser UX smoke/vision live. Bunlar VM kapılarının işidir.
 
 ## Kalan yüksek değerli untested kümeler (sonraki oturumlar için)
 
-Güncel tarama (2026-06-14 continue-2 sonrası): **20 untested top-level fn.** Kalanlar:
+Güncel tarama (2026-06-15 sonrası): **17 untested top-level fn.** Kalanlar:
 
-- `sendMessageInit` (server_send_message.R) — ağır; testServer + yoğun stub ister.
-- `serverInitChatRuntime` — testServer ile orta-ağır.
-- `chat_simulate_streaming` (helpers_chat_runtime.R) — ağır.
+- `sendMessageInit` (server_send_message.R) — çok ağır; testServer + yoğun stub ister.
 - `call_llm_worker` (helpers_llm_worker.R) — çok ağır; ikinci-pass zinciri.
-- `cc_bind_claude_code_stream_polling` (module_claude_code_stream_poll.R) — büyük
-  observer-bağlama; testServer + yoğun stub.
+- `.syap_*` kart builder'ları (module_settings_yapilandirma_ui.R, 11 adet) — saf
+  UI; `test-settings-yapilandirma-ui-id-surface-behavior.R` id yüzeyini DOLAYLI
+  koruyor → doğrudan birim testi DÜŞÜK öncelik (kazanım büyük ama redundant).
 - Kalan küçük bootstrap/debug helper'ları (`.mcp_bootstrap_*` runtime'da rm edilir,
   `.helpers_llm_sse_source_sibling`, `.character_video_debug`) — düşük değer/kırılgan.
+
+2026-06-15 oturumunda KAPSANANLAR (yukarıdan çıkarıldı): `serverInitChatRuntime`,
+`chat_simulate_streaming` (KARAR/erken-çıkış dalları; observer döngüsü hariç),
+`cc_bind_claude_code_stream_polling` (stop/klavye gözlemcileri + poll erken
+dalları). Ayrıca `format_claude_code_existing_file_link_html` traversal/öznitelik
+güvenlik kapsaması (zaten referanslıydı; davranışsal dal açığı kapandı).
 
 2026-06-14 oturumunda KAPSANANLAR (yukarıdan çıkarıldı): `handle_file_upload_batch`,
 `pk_deep_analysis_process`, `pk_analiz_process_request`, `find_best_query_with_ai`,
