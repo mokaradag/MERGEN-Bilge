@@ -6,9 +6,9 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
-## 2026-06-13 — Windows VM evidence gate rerun: güncel release kanıtı
+## 2026-06-15 — Windows VM evidence gate rerun: güncel release kanıtı
 
-`tests/scripts/run_vm_evidence_gate.R` tam Windows VM koşumu 13 Haziran 2026 tarihinde yeniden uçtan uca geçti: `Toplam: 13 passed, 0 failed, 0 skipped`. Güncel passed adımlar: `env_config`, `parse_sanity`, `app_boot_smoke`, `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight`, `renv_status`. Son artifact: `artifacts/vm-evidence/20260613-120951/evidence.json`; kalıcı artifact düzeni `artifacts/vm-evidence/<timestamp>/evidence.json`.
+`tests/scripts/run_vm_evidence_gate.R` tam Windows VM koşumu 15 Haziran 2026 tarihinde yeniden uçtan uca geçti: `Toplam: 13 passed, 0 failed, 0 skipped`. Güncel passed adımlar: `env_config`, `parse_sanity`, `app_boot_smoke`, `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight`, `renv_status`. Son artifact: `artifacts/vm-evidence/20260615-130127/evidence.json`; kalıcı artifact düzeni `artifacts/vm-evidence/<timestamp>/evidence.json`.
 
 Operasyonel olarak browser proof, external-app modunda alındı: uygulama ayrı pencerede `http://127.0.0.1:28081` üzerinde açık tutuldu, gate ikinci pencerede `MERGEN_BROWSER_UX_BASE_URL=http://127.0.0.1:28081` ve `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ile çalıştırıldı. Bu mod `UX_SMOKE_DONE:PASS` üretmediği sürece blocking kabul edilir.
 

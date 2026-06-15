@@ -185,7 +185,7 @@ MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke
 
 ### 7.6 VM evidence gate (güncel release kanıtı)
 
-13 Haziran 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son artifact `artifacts/vm-evidence/20260613-120951/evidence.json` altında beklenir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır.
+15 Haziran 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son artifact `artifacts/vm-evidence/20260615-130127/evidence.json` altında beklenir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır.
 
 PowerShell external-app akışı için uygulama ayrı pencerede `http://127.0.0.1:28081` üzerinde açıkken gate şu ortamla koşturulur:
 
@@ -426,14 +426,14 @@ operasyonu için normal tam koşum repo kökünden doğrudan Rscript ile çalı�
 
 #### Milestone: tam Windows VM evidence gate geçti
 
-2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone'u kaydedildi:
+2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone'u kaydedildi; son başarılı yeniden doğrulama 2026-06-15 tarihinde alındı:
 
 - `Toplam: 13 passed, 0 failed, 0 skipped`
 - `full_testthat PASSED` — tam izole testthat suite geçti.
 - `browser_ux_smoke PASSED` — mandatory browser proof gerçek tarayıcıda `UX_SMOKE_DONE:PASS` üretti.
 - `vm_preflight_real PASSED` — VM/SSO/DB/LLM üretim-benzeri preflight geçti.
 - `db_encoding_preflight PASSED` — transactional Türkçe DB encoding preflight geçti.
-- Başarılı koşum örneği: `artifacts/vm-evidence/20260613-120951/evidence.json`.
+- Başarılı koşum örneği: `artifacts/vm-evidence/20260615-130127/evidence.json`.
 
 Bu, MERGEN Bilge'nin on-prem Windows VM readiness/release doğrulaması için önemli bir
 kilometre taşıdır. Kanıt kapısı yalnızca `evidence.json` içinde `passed` görünen adımlar
