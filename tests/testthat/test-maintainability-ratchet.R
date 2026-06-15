@@ -201,6 +201,11 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/server_ai_expert_handlers.R", 726L, 23L)
   assert_current_budget("R/module_file_manager.R", 725L, 14L)
   assert_current_budget("R/module_ai_expert.R", 686L, 22L)
+  # AI Uzman yardımcı dosyası, worker-safe DB okuyucuları
+  # helpers_ai_expert_user_data.R'ye ayrıldıktan sonra 24-fonksiyon küresel
+  # tavanından indi (680/24 -> 507/13). Bütçe geri tırmanışı kilitler.
+  assert_current_budget("R/helpers_ai_expert.R", 540L, 15L)
+  assert_current_budget("R/helpers_ai_expert_user_data.R", 220L, 13L)
   assert_current_budget("R/helpers_mcp_tools.R", 535L, 20L)
   assert_current_budget("R/module_chartlab.R", 532L, 20L)
 

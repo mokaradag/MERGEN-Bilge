@@ -31,6 +31,7 @@ Bu belge, MERGEN Bilge'nin ürün kapsamı, sayfa davranışları, mimari notlar
 - Dosya Özetleme akışında mevcut premium düşünme paneli korunur; özetleme için eski tek satırlık halka göstergesine geri dönülmez ve simulated aşama metinleri tutarlı biçimde gösterilir.
 - Düşünme modeli tespiti, model adı regex tahminlerine değil yalnızca `R/config_api.R` içindeki `local_model_capabilities` bildirimlerine dayanır.
 - Bakım sınırında `R/helpers_llm_sse_events.R` SSE olay/delta ayrıştırmasını, `R/helpers_ai_expert_chunking.R` ise AI Uzman TTS metin parçalama yardımcılarını taşır; bu ayrımlar dosya satır/fonksiyon bütçesini korumak için geri alınmamalıdır.
+- AI Uzman worker-safe DB okuyucuları (`fetch_user_full_name`, `fetch_user_work_context`, `fetch_recent_user_prompts`, `fetch_user_last_login`) `R/helpers_ai_expert_user_data.R` dosyasında tutulur ve manifest'te `R/helpers_ai_expert.R`'den ÖNCE yüklenir (`build_ai_expert_user_context()` bunları çağırır). Bu ayrım `helpers_ai_expert.R`'yi 24-fonksiyon küresel tavanından indirdi (680/24 → 507/13); kullanıcıya görünen DB alanlarının `normalize_db_read_visible_value()` ile onarılması sözleşmesi korunur. Geri taşınmamalıdır.
 ### Dosya ve veri odaklı çalışma
 
 #### Dosya Okuma ve Türkçe Karakter Desteği

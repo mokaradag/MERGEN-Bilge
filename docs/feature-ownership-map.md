@@ -150,6 +150,39 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **Smoke/kanıt:** Vision VM-live doğrulandı (kullanıcı onayı, gerçek `MERGEN_VISION_MODELS`).
 - **Bilinen risk / sıradaki hedef:** opsiyonel Yapılandırma toggle / `max_bytes`.
 
+## Medya / Ses / AI Uzman
+
+- **Seam:** `medya_ses`
+- **Birincil R dosyaları:** `R/helpers_ai_expert.R` (sistem istemi + bağlam +
+  LLM çağrısı + telaffuz düzeltici), `R/helpers_ai_expert_user_data.R`
+  (worker-safe DB okuyucuları: `fetch_user_full_name`, `fetch_user_work_context`,
+  `fetch_recent_user_prompts`, `fetch_user_last_login`),
+  `R/helpers_ai_expert_chunking.R` (TTS metin parçalama).
+- **UI/server modülleri:** `R/module_ai_expert.R`, `R/server_ai_expert_handlers.R`,
+  `R/module_tts.R`, `R/module_tts_visualizer.R`, `R/module_stt.R`,
+  `R/module_character_video.R`, `R/server_tts_handlers.R`,
+  `R/server_music_handlers.R`.
+- **JS/CSS:** `www/js/ai_expert_manager.js`, `www/js/tts_manager.js`,
+  `www/js/tts_visualizer.js`, `www/js/stt_client.js`, `www/js/music_manager.js`,
+  ilgili CSS varlıkları.
+- **DB/servis:** `MB_Users` (AI Uzman bağlamı: ad/birim/son giriş), `MB_Messages`
+  (son mesajlar); TTS/STT uç noktaları (`LOCAL_TTS_ENDPOINT`,
+  `LOCAL_STT_ENDPOINT`), `AI_EXPERT_MODEL`; referans bilgi tabanı `ai_rehber.md`.
+- **Testler:** `test-ai-expert-db-fetch-behavior.R`,
+  `test-ai-expert-user-data-split-contract.R` (worker-safe DB okuyucu ayrımı +
+  kaynak sırası + okuma sınırı sözleşmesi), `test-ai-expert-prompt-builders-behavior.R`,
+  `test-ai-expert-page-guidance-stale-behavior.R`, `test-ai-expert-call-llm-behavior.R`,
+  `test-ai-expert-pronunciation-behavior.R`, `test-ai-expert-chunking-behavior.R`,
+  `test-e2e-media-audio-state-regression.R`, `test-audio-lifecycle-owner-smoke.R`,
+  `test-saved-chat-reload-no-tts-contract.R`.
+- **Smoke/kanıt:** ux-smoke ses/TTS/STT duck-restore yaşam döngüsü; kayıtlı sohbet
+  reload'da eski TTS otomatik oynatma yok.
+- **Bilinen risk / sıradaki hedef:** AI Uzman worker-safe DB okuyucuları ayrı
+  dosyaya alındı; `helpers_ai_expert.R` 24-fonksiyon küresel tavanından indi
+  (680/24 → 507/13). Sıradaki yakın-bütçe adayları: `R/server_ai_expert_handlers.R`
+  (726/23) ve `R/module_ai_expert.R` (686/22) — her ikisi de fonksiyon tavanına
+  yakın, saf karar/işleyici ayrımı için aday.
+
 ## Admin / Sistem Sağlığı
 
 - **Seam:** `destek_yonetici_saglik`

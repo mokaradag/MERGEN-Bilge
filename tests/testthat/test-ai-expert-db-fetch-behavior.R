@@ -2,8 +2,9 @@
 # Dosya Yolu: tests/testthat/test-ai-expert-db-fetch-behavior.R
 # Açıklama: AI Uzman veritabanı okuma yardımcılarının davranışını DBI taklit
 #           ederek doğrular: fetch_user_last_login, fetch_recent_user_prompts,
-#           fetch_user_work_context. Gerçek DB/ağ yok; get_connection ve
-#           DBI::dbGetQuery taklit edilir.
+#           fetch_user_work_context, fetch_user_full_name. Bu okuyucular
+#           R/helpers_ai_expert_user_data.R dosyasında yaşar. Gerçek DB/ağ yok;
+#           get_connection ve DBI::dbGetQuery taklit edilir.
 # ==============================================================================
 
 repo_root_aix <- resolve_repo_root_for_tests()
@@ -17,7 +18,7 @@ for (.fn in c("log_info", "log_warn", "log_error", "log_debug")) {
 .aix_env$get_connection <- function() list(conn = "fake-conn")
 .aix_env$release_connection <- function(...) invisible(NULL)
 suppressWarnings(source(
-  file.path(repo_root_aix, "R/helpers_ai_expert.R"),
+  file.path(repo_root_aix, "R/helpers_ai_expert_user_data.R"),
   encoding = "UTF-8", local = .aix_env
 ))
 
@@ -128,7 +129,7 @@ test_that("fetch_user_work_context: bağlantı yoksa boş bağlam döner", {
     encoding = "UTF-8", local = env
   ))
   suppressWarnings(source(
-    file.path(repo_root_aix, "R/helpers_ai_expert.R"),
+    file.path(repo_root_aix, "R/helpers_ai_expert_user_data.R"),
     encoding = "UTF-8", local = env
   ))
 
