@@ -39,6 +39,17 @@ ZATEN YAPILDI — tekrar etme:
   onayı/not-found/kök-dışı/boş-workdir dalları), SSO fail-closed derin dallar,
   `sendMessageInit` mod-dispatch sonrası akışlar.
 
+Devam (aynı oturum, "continue") — `test-sso-extract-user-claims-behavior.R`
+(`extract_user_claims` JWT payload→kimlik eşlemesi). KEŞİF: test-sso-jwt.R onu
+yalnızca yorumda anıyor (doğrudan test YOK); auth-server testi dolaylı. Kapatılan
+güvenlik dalları: NULL→NULL, SSO_CLAIM_MAP eşlemesi (sub→keycloak_sub vb.)+token
+meta, username küçük-harf+teknik normalize, **GÖRÜNEN vs TEKNİK mojibake ayrımı**
+(email/sicil/keycloak_sub/username repair=FALSE → onarılMAZ), first_name fallback,
+boş claim→"". GOTCHA: ayrımı `normalize_text_utf8`'i globalenv'de `V:/T:` kayıt-edici
+stub ile değiştirip `withr::defer` ile (had=FALSE ise `rm`) geri yükleyerek KONTROL
+AKIŞI düzeyinde kanıtla — kırılgan mojibake fixture YOK. SSO deps `helper_load_sso.R`.
+14-dosyalık SSO batch'te recorder sızmıyor.
+
 ---
 
 # CONTEXT — Faz 2→9.5 oturumu `claude/quirky-tesla-vbv62b` (2026-06-15 C, do NOT redo)

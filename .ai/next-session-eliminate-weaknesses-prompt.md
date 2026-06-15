@@ -44,6 +44,16 @@ Do NOT redo:
   browser/vision kanıtı DEĞİLDİR. Sıradaki: `cc_policy_validate_workdir` dalları,
   SSO fail-closed derin dallar, `sendMessageInit` mod-dispatch sonrası.
 
+- **Devam (aynı oturum, "continue") — `test-sso-extract-user-claims-behavior.R`:**
+  `extract_user_claims` (Keycloak JWT payload→kimlik eşlemesi). test-sso-jwt.R onu
+  yalnızca yorumda anıyor (doğrudan test YOK). Kapatılan güvenlik dalları: NULL→NULL,
+  SSO_CLAIM_MAP eşlemesi+token meta, username küçük-harf+teknik normalize, **görünen
+  vs teknik mojibake ayrımı** (email/sicil/keycloak_sub/username repair=FALSE), first_name
+  fallback, boş claim→"". GOTCHA: ayrımı `normalize_text_utf8`'i globalenv'de `V:/T:`
+  kayıt-edici stub ile geçici değiştirip `withr::defer` (had=FALSE→`rm`) ile geri
+  yükleyerek kontrol-akışı düzeyinde kanıtla (mojibake fixture YOK; Windows-VM güvenli).
+  14-dosyalık SSO batch yeşil (recorder sızmıyor). `ai_validate quick` TAM.
+
 ---
 
 ## LATEST SESSION RESULTS — `claude/quirky-tesla-vbv62b` (2026-06-15 C, Faz 2→9.5)

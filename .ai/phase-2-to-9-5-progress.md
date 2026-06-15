@@ -118,6 +118,31 @@ engelleme/boş-workdir dalları, yalnızca contract'ta dolaylı), SSO fail-close
 daha derin dallar, `sendMessageInit` mod-dispatch SONRASI akışlar (guard'lar
 zaten kapalı).
 
+**Devam (aynı oturum, "continue") — SSO claim eşleme güvenlik sınırı (24 doğrulama):**
+- `test-sso-extract-user-claims-behavior.R` (5 test / 24 doğrulama) —
+  `extract_user_claims()` Keycloak JWT payload → uygulama kimliği eşlemesi.
+  **KEŞİF:** mevcut `test-sso-jwt.R` yalnızca `decode_jwt_payload`/`validate_jwt_token`
+  sınıyor (extract_user_claims yorumda anılıyor ama doğrudan test EDİLMİYOR);
+  `test-sso-auth-server-behavior.R` onu yalnızca dolaylı çalıştırıyor. Doğrudan
+  kilitlenen güvenlik dalları: NULL payload → NULL (fail-safe); `SSO_CLAIM_MAP`
+  eşlemesi (`sub`→keycloak_sub, `sid`→keycloak_sid, `preferred_username`→username)
+  + token_exp/iat geçişi; kullanıcı adı KÜÇÜK harf + TEKNİK normalize (yetki
+  anahtarı tutarlılığı); **GÖRÜNEN vs TEKNİK mojibake ayrımı** (full_name/
+  first_name/last_name/sektor/department/mudurluk → `repair_mojibake=TRUE`;
+  email/sicil/keycloak_sid/keycloak_sub/username → `repair_mojibake=FALSE` —
+  teknik kimlik alanlarını onarmak kimlik eşleşmesini bozabilir = belgelenmiş
+  sözleşme); first_name eksikse full_name'den türetme; eksik/boş claim → "".
+  **GOTCHA:** görünen/teknik ayrımı `normalize_text_utf8`'i geçici kayıt-edici
+  stub (`V:`/`T:` öneki, repair bayrağını yansıtır) ile globalenv'de değiştirip
+  `withr::defer` ile geri yükleyerek KONTROL AKIŞI düzeyinde kanıtlanır (kırılgan
+  mojibake fixture'ı YOK, Windows-VM parse güvenli). Stub yoksa (had=FALSE)
+  `rm` ile temizlenir. SSO yardımcıları `helper_load_sso.R` ile sağlanır.
+- Doğrulama: tek tek 24 + 14-dosyalık SSO `test_dir` batch 0 fail/warn/skip
+  (recorder override sızmıyor — sso-jwt/sso-auth-server gerçek normalize ile
+  geçiyor). `ai_validate quick` TAM (failed=0, skipped=0, app_source_smoke=passed,
+  `artifacts/ai-validation/20260615-140108/summary.json`); parse_sanity 805;
+  ratchet 0 fail. `full --boot-smoke` koşulmadı (additive test, runtime değişmedi).
+
 ### Oturum: 2026-06-15 (C) — branch `claude/quirky-tesla-vbv62b` (bu oturum)
 
 Kullanıcının Windows VM testthat suite'indeki 1 hata giderildi ve Faz 2 kalan
