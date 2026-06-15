@@ -220,7 +220,15 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	cat(sprintf("[PK_ANALIZ] SQL DB'ye gonderiliyor (Ilk 100 kar.):\n--> %s...\n", substr(final_sql, 1, 100)))
 
 	raw_data <- tryCatch({
-	  if (grepl("\\b(DELETE|DROP|TRUNCATE|ALTER)\\b", toupper(final_sql))) {
+	  # final_sql enc2utf8 ile UTF-8 işaretli olduğundan, Windows Türkçe (UTF-8
+	  # olmayan) yerel ayarda toupper()+grepl yerel-bağımlı davranıp hata
+	  # verebiliyordu; bu da güvenlik kapısının "Guvenlik ihlali" yerine genel
+	  # "Veritabanı Hatası" üretmesine yol açıyordu. Yasaklı SQL anahtar
+	  # kelimeleri ASCII olduğundan tarama useBytes=TRUE + ignore.case ile
+	  # yerelden bağımsız yapılır (toupper kaldırıldı); kapı her yerel ayarda
+	  # güvenilir tetiklenir.
+	  if (grepl("\\b(DELETE|DROP|TRUNCATE|ALTER)\\b", final_sql,
+				ignore.case = TRUE, perl = TRUE, useBytes = TRUE)) {
 		stop("Guvenlik ihlali: Yasakli SQL komutu.")
 	  }
 
