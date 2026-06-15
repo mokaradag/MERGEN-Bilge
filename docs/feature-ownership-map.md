@@ -157,7 +157,10 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   LLM çağrısı + telaffuz düzeltici), `R/helpers_ai_expert_user_data.R`
   (worker-safe DB okuyucuları: `fetch_user_full_name`, `fetch_user_work_context`,
   `fetch_recent_user_prompts`, `fetch_user_last_login`),
-  `R/helpers_ai_expert_chunking.R` (TTS metin parçalama).
+  `R/helpers_ai_expert_chunking.R` (TTS metin parçalama),
+  `R/helpers_ai_expert_handlers_support.R` (handler saf karar yardımcıları:
+  `ai_expert_page_name_tr`, `ai_expert_first_idle_delay_ms`,
+  `ai_expert_idle_interval_ms`, `build_ai_expert_idle_user_context`).
 - **UI/server modülleri:** `R/module_ai_expert.R`, `R/server_ai_expert_handlers.R`,
   `R/module_tts.R`, `R/module_tts_visualizer.R`, `R/module_stt.R`,
   `R/module_character_video.R`, `R/server_tts_handlers.R`,
@@ -170,18 +173,26 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `LOCAL_STT_ENDPOINT`), `AI_EXPERT_MODEL`; referans bilgi tabanı `ai_rehber.md`.
 - **Testler:** `test-ai-expert-db-fetch-behavior.R`,
   `test-ai-expert-user-data-split-contract.R` (worker-safe DB okuyucu ayrımı +
-  kaynak sırası + okuma sınırı sözleşmesi), `test-ai-expert-prompt-builders-behavior.R`,
+  kaynak sırası + okuma sınırı sözleşmesi),
+  `test-ai-expert-handlers-support-behavior.R` (handler saf karar yardımcıları:
+  sayfa adı / sıklık→ms / boşta bağlam davranışı),
+  `test-ai-expert-handlers-support-contract.R` (handler saf karar ayrımı +
+  kaynak sırası + handler'ın inline mantığı geri almaması),
+  `test-ai-expert-prompt-builders-behavior.R`,
   `test-ai-expert-page-guidance-stale-behavior.R`, `test-ai-expert-call-llm-behavior.R`,
   `test-ai-expert-pronunciation-behavior.R`, `test-ai-expert-chunking-behavior.R`,
   `test-e2e-media-audio-state-regression.R`, `test-audio-lifecycle-owner-smoke.R`,
   `test-saved-chat-reload-no-tts-contract.R`.
 - **Smoke/kanıt:** ux-smoke ses/TTS/STT duck-restore yaşam döngüsü; kayıtlı sohbet
   reload'da eski TTS otomatik oynatma yok.
-- **Bilinen risk / sıradaki hedef:** AI Uzman worker-safe DB okuyucuları ayrı
-  dosyaya alındı; `helpers_ai_expert.R` 24-fonksiyon küresel tavanından indi
-  (680/24 → 507/13). Sıradaki yakın-bütçe adayları: `R/server_ai_expert_handlers.R`
-  (726/23) ve `R/module_ai_expert.R` (686/22) — her ikisi de fonksiyon tavanına
-  yakın, saf karar/işleyici ayrımı için aday.
+- **Bilinen risk / sıradaki hedef:** AI Uzman sunucu işleyicilerinin saf karar
+  mantığı (sayfa adı, sıklık→ms, boşta bağlam) `helpers_ai_expert_handlers_support.R`'ye
+  ayrıldı; `server_ai_expert_handlers.R` 24-fonksiyon küresel tavanının bir
+  altından iki altına indi (726/23 → 652/22). `helpers_ai_expert.R` daha önce
+  680/24 → 507/13 indirilmişti. Sıradaki yakın-bütçe adayı `R/module_ai_expert.R`
+  (617/22); ancak içeriği büyük ölçüde reaktif/promise tabanlı TTS orkestrasyonudur
+  (saf çıkarım sınırlı, ayrı oturum kararı gerektirir). AI Uzman LLM future
+  blokları VM-only async yoldur; cloud'da yeniden yapılandırılmamalıdır.
 
 ## Admin / Sistem Sağlığı
 

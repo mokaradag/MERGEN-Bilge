@@ -6,6 +6,138 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-15 — AI Uzman sunucu işleyicilerinden saf karar yardımcılarının ayrılması (yakın-bütçe handler küçültme)
+
+### Seçilen iz(ler)
+- **Track B — Complex runtime kodundan saf yardımcı çıkarımı**
+  (`R/server_ai_expert_handlers.R` → yeni `R/helpers_ai_expert_handlers_support.R`).
+- Aynı risk alanı (`medya_ses` / AI Uzman seam) içinde 3-4 bütünleşik saf
+  karar çıkarımı tek pakette toplandı.
+
+### Özet ve gerekçe
+`docs/feature-ownership-map.md` "sıradaki hedef" notu ve keşif raporları
+`R/server_ai_expert_handlers.R`'yi (726 satır / 23 fonksiyon) işaret ediyordu:
+dosya küresel 24-fonksiyon tavanının BİR ALTINDAydı; herhangi bir küçük AI Uzman
+eklemesi tavanı zorlayacaktı. Dosyada üç senaryo (karşılama / sayfa rehberliği /
+boşta konuşma) için tekrarlayan SAF karar mantığı vardı: iki ayrı yerde aynı
+sayfa→Türkçe ad `switch` haritası, iki sıklık→ms `switch` sarmalayıcısı ve ~44
+satırlık boşta konuşma bağlam metni kurulumu. Bunların hiçbiri Shiny/DB/LLM
+başlatmadan test edilemiyordu.
+
+Dört saf yardımcı yeni `R/helpers_ai_expert_handlers_support.R` dosyasına alındı:
+`ai_expert_page_name_tr()` (iki kopya sayfa haritasını tek kaynağa indirir),
+`ai_expert_first_idle_delay_ms()` / `ai_expert_idle_interval_ms()` (sıklık→ms),
+`build_ai_expert_idle_user_context()` (boşta bağlam metni, `Sys.time()` yerine
+dışarıdan `now_text` alır → deterministik). Handler aynı orkestrasyona odaklı
+kaldı. **VM-only async yol (üç `tracked_future_promise(call_ai_expert_llm)`
+bloğu) BİLEREK ELLENMEDİ**: worker globals export davranışı yalnızca VM'de
+kanıtlanır ve cloud'da doğrulanamaz; gereksiz regresyon riski alınmadı.
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_ai_expert_handlers_support.R` (yeni, 144 satır / 5 fonksiyon) — dört
+  saf karar yardımcısı + bir özel sıklık normalizasyonu; Shiny/DB/ağ/worker yan
+  etkisi yok. Türkçe etiketler birebir korundu.
+- `R/server_ai_expert_handlers.R` — iki sıklık sarmalayıcısı `current_talk_frequency()`
+  + saf helper çağrılarına, iki sayfa haritası tek `ai_expert_page_name_tr()`
+  çağrısına, boşta bağlam bloğu `build_ai_expert_idle_user_context()` çağrısına
+  indirildi. **726 → 652 satır / 23 → 22 fonksiyon.**
+- `R/config_source_manifest.R` — yeni dosya `ai_expert_helpers` bölümü sonuna
+  (handler'dan çok önce yüklenecek şekilde) eklendi (3 → 4 dosya; toplam 264 → 265).
+
+**Test**
+- `tests/testthat/test-ai-expert-handlers-support-behavior.R` (yeni, ~57 assertion)
+  — sayfa adı (bilinen/chat/bilinmeyen/geçersiz), sıklık→ms (az/orta/sik/varsayılan),
+  boşta bağlam (taban/departman+müdürlük/birim/müdürlük-boş düşüş/200-120 kırpma/
+  tam birleşim/NULL girişler) davranışı.
+- `tests/testthat/test-ai-expert-handlers-support-contract.R` (yeni, 16 assertion)
+  — yeni dosya varlığı + yüzey, manifest sırası (helper → handler), taşınan
+  mantığın handler'a geri dönmemesi, handler'ın yeni yardımcıları çağırması,
+  helper'ın Shiny/DB/ağ-bağsızlığı.
+- `tests/testthat/test-ai-expert-page-guidance-stale-behavior.R` — izole env yeni
+  support dosyasını da source eder (handler artık `ai_expert_page_name_tr` çağırır;
+  3 assertion değişmeden geçer).
+- `tests/testthat/test-source-manifest-sections-contract.R` — `ai_expert_helpers`
+  çapası (last/n=4) ve toplam (264 → 265) bilinçli güncellendi.
+- `tests/testthat/test-maintainability-ratchet.R` — `server_ai_expert_handlers.R`
+  bütçesi 726/23 → **660/22** sıkılaştırıldı; yeni dosya için 180L/8F bütçesi eklendi.
+
+**Dokümantasyon**
+- `CLAUDE.md` — Group 4 yükleme listesine yeni dosya eklendi.
+- `docs/architecture-map.md`, `docs/feature-ownership-map.md`,
+  `docs/technical-reference.md` — sahiplik/sıradaki hedef satırları güncellendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `server_ai_expert_handlers.R` 726/23 — küresel fonksiyon tavanının bir
+  altında; sayfa haritası iki kopya; boşta bağlam ve sıklık mantığı Shiny
+  observer gövdesine gömülü, test edilemez.
+- Sonra: handler 652/22 (tavandan iki altında, gerçek baş boşluk); saf karar
+  mantığı bağımsız, deterministik test edilebilir dosyada; her iki dosya da
+  dosya-özel bütçeyle kilitli. Maintainability skoru 100/100 korunur; değerlendirilen
+  dosya 270 → 271. Küresel 24-fonksiyon değeri sıkılaştırılMAdı (tavanı hâlâ
+  `helpers_file_manager_runtime.R` / `helpers_health_formatters.R` tutuyor).
+
+### Korunan davranış sözleşmeleri
+- Üç senaryo LLM çağrı bloğu (`tracked_future_promise` + `call_ai_expert_llm` +
+  globals export) ve promise zincirleri birebir aynı; worker dependency export
+  yolu DEĞİŞMEDİ.
+- Sayfa adı eşlemesi: `ai_expert_page_name_tr("chat")` → "Ana Söyleşi", bilinen
+  sekmeler → aynı Türkçe etiketler, bilinmeyen → NULL. Sayfa rehberliği yolu
+  "chat"a hiç ulaşmaz (erken dönüş korunur); boşta yol `%||% "Ana Söyleşi"` ile
+  aynı varsayılanı verir.
+- Sıklık→ms değerleri (30000/20000/12000 ve 60000/35000/20000), boşta bağlam
+  metninin tüm Türkçe cümleleri, 200/120 karakter kırpma ve `\n\n` birleştirme
+  birebir korundu (`now_text` dışarıdan verilir).
+- DB/SSO/frontend/UX/streaming sözleşmelerine dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni davranış,
+  yeni split sözleşmesi (16), page-guidance-stale (3), db-fetch (20),
+  prompt-builders (30), call-llm (14), pronunciation (11), chunking (22),
+  source-manifest (165), sections (154), global-manifest (12),
+  maintainability-ratchet (183), ratchet-contract (3), seam-registry (12),
+  ai-feature-api-key (13).
+- `bash tools/ai_validate.sh full --boot-smoke` → **geçti**: environment OK,
+  parse sanity OK, app source smoke OK (7.2s), **tam strict testthat suite geçti
+  (172.0s)**, shiny boot smoke OK (9.1s); `failed_steps: 0`, `skipped_steps: 0`.
+  `browser_smoke_status: "skipped"` (konteynerde tarayıcı binary'si yok —
+  bloklamayan). Artifact: `artifacts/ai-validation/20260615-192828/summary.json`
+  (`validation_execution_status="ran_by_ai_repo_check"`, profile full/full,
+  `app_source_smoke_status="passed"`, `shiny_boot_smoke_status="passed"`,
+  `db_sso_vm_validation_performed=FALSE`).
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; 271 dosya;
+  `server_ai_expert_handlers.R` 652/22; refactor adayı yok.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`; `medya_ses`
+  runtime-dosya 9 → 10 (yeni dosya sahipli), sahipsiz dosya yok.
+- App boot smoke (`tests/scripts/smoke_app_boot.R`) → OK. Tüm komutlar
+  `LANG=C.UTF-8` ile; `logger` paketi oturum içinde CRAN'dan kuruldu.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Windows VM'de SSO ile başlatın; Ana Söyleşi'ye girince AI Uzman karşılama
+  konuşmasının (ses + altyazı) eskisi gibi geldiğini doğrulayın.
+- Söyleşi Geçmişi / Kayıtlı Söyleşiler / Görsel Galerisi / Bilge Yolaç / Dosya
+  Yönetimi / Yapılandırma / Yardım Merkezi / Yenilikler / Hakkında sekmelerine
+  geçince sayfa rehberliği konuşmasının doğru Türkçe sayfa adıyla geldiğini;
+  yasaklı sayfaya (Kişiselleştirme/Yönetici/Sistem Durumu) geçince
+  seslendirilmediğini doğrulayın.
+- Boşta bekleyince (idle) AI Uzman konuşmasının son mesaj/departman bağlamıyla
+  geldiğini ve sıklık ayarının (az/orta/sık) gecikmeyi etkilediğini doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Browser UX smoke gerçek tarayıcıyla ÇALIŞTIRILMADI (konteynerde Chrome/Edge yok;
+  `browser_smoke_status="skipped"`); statik harness sözleşmeleri geçti, VM'de
+  bloklayıcı modda koşulmalıdır.
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding kapıları bu oturumda çalıştırılmadı
+  (`db_sso_vm_validation_performed=FALSE`); AI Uzman canlı ses/DB akışı yalnızca
+  VM'de kanıtlanır. Runtime davranışı değişmedi (4 saf yardımcı ayrı dosyaya +
+  manifest); LLM future blokları bilerek ellenmedi.
+- Küresel 24-fonksiyon ratchet değeri sıkılaştırılMAdı; sıradaki yakın-bütçe
+  adayı `R/module_ai_expert.R` (617/22) — ancak içeriği büyük ölçüde reaktif/
+  promise tabanlı TTS orkestrasyonudur (saf çıkarım sınırlı, ayrı oturum kararı).
+
+---
+
 ## 2026-06-15 — AI Uzman worker-safe DB okuyucularının ayrılması (24-fonksiyon tavanından indirme)
 
 ### Seçilen iz(ler)

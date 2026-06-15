@@ -4488,6 +4488,7 @@ Shared utilities used across modules:
 - `R/helpers_ai_expert_user_data.R`
 - `R/helpers_ai_expert.R`
 - `R/helpers_ai_expert_chunking.R`
+- `R/helpers_ai_expert_handlers_support.R`
 - `R/helpers_claude_code_upload_folder.R`
 - `R/helpers_claude_code_model_config.R`
 - `R/helpers_claude_code_session_context.R`
@@ -5909,6 +5910,12 @@ When navigation moves to muted pages such as `settings_kisisel`, `admin_analytic
 `R/helpers_ai_expert_chunking.R` owns pure text chunking helpers for AI Expert TTS, including `split_text_for_ai_expert_tts()` and `.ai_expert_split_long_piece()`. Keep this helper free of Shiny session access, reactive reads, filesystem writes, HTTP calls, database calls, and mutable runtime state.
 
 Do not move these chunking helpers back into `R/module_ai_expert.R`; the separation protects the module's maintainability budget while keeping TTS startup responsive.
+
+### AI Expert handler pure-decision support boundary
+
+`R/helpers_ai_expert_handlers_support.R` owns the pure decision helpers used by `R/server_ai_expert_handlers.R`: `ai_expert_page_name_tr()` (single-source page id → Turkish page name; returns `"Ana Söyleşi"` for `chat`, `NULL` for unknown), `ai_expert_first_idle_delay_ms()` / `ai_expert_idle_interval_ms()` (frequency → milliseconds), and `build_ai_expert_idle_user_context()` (idle-chat user-context string assembly; it takes `now_text` instead of calling `Sys.time()` so it stays deterministic). Keep this helper free of Shiny/reactive access, DB/network calls, `tracked_future_promise`, and mutable runtime state. Load it in the `ai_expert_helpers` manifest section before `R/server_ai_expert_handlers.R`.
+
+Do not move this pure decision logic (the page-name `switch` maps, the frequency `switch` wrappers, or the idle context-parts assembly) back into `R/server_ai_expert_handlers.R`; the split keeps the handler below its near-limit budget (652 lines / 22 functions). The three AI Expert LLM `tracked_future_promise(call_ai_expert_llm)` blocks are a VM-only async path proven only on the Windows VM; do not restructure their worker-globals export from cloud sessions. Protected by `tests/testthat/test-ai-expert-handlers-support-behavior.R` and `tests/testthat/test-ai-expert-handlers-support-contract.R`.
 ### Audio
 - TTS still plays,
 - STT modal still opens,

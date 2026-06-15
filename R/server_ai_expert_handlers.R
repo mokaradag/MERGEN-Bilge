@@ -41,26 +41,11 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 	  uid
 	}
 
-  # İlk boşta konuşma gecikmesini sıklık ayarına bağla
-  get_first_idle_delay_ms <- function() {
-    freq <- isolate(settings_data$ai_expert_talk_frequency) %||% "orta"
-    switch(freq,
-      "az" = 30000,
-      "orta" = 20000,
-      "sik" = 12000,
-      20000
-    )
-  }
-  
-  # Sıklık ayarına göre interval hesapla
-  get_idle_interval <- function() {
-    freq <- isolate(settings_data$ai_expert_talk_frequency) %||% "orta"
-    switch(freq,
-      "az"  = 60000,  # 60 saniye
-      "orta" = 35000, # 35 saniye
-      "sik" = 20000,  # 20 saniye
-      35000
-    )
+  # Sıklık ayarını her kullanım anında oturumdan izole oku.
+  # Saf sıklık -> ms eşlemesi R/helpers_ai_expert_handlers_support.R içindedir
+  # (ai_expert_first_idle_delay_ms / ai_expert_idle_interval_ms).
+  current_talk_frequency <- function() {
+    isolate(settings_data$ai_expert_talk_frequency) %||% "orta"
   }
 
   # --- Yardımcı: Temel konuşabilirlik kontrolü (bekleme süresini ATLAR) ---
@@ -187,7 +172,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
     cat(sprintf("[AI_EXPERT] Karşılama metni kullanılıyor (%d karakter)\n", nchar(greeting_text)))
     ai_expert$start_speaking(greeting_text, ai_expert$COOLDOWN_GREETING)
-    schedule_idle_chat(get_first_idle_delay_ms())
+    schedule_idle_chat(ai_expert_first_idle_delay_ms(current_talk_frequency()))
 
     invisible(TRUE)
   }
@@ -296,7 +281,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
         }
       } else if (isTRUE(greeting_waiting_to_play()) && !isTRUE(greeting_done())) {
         greeting_waiting_to_play(FALSE)
-        schedule_idle_chat(get_first_idle_delay_ms())
+        schedule_idle_chat(ai_expert_first_idle_delay_ms(current_talk_frequency()))
       }
     }) %...!% (function(e) {
       greeting_future_active(FALSE)
@@ -306,7 +291,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
       if (isTRUE(greeting_waiting_to_play()) && !isTRUE(greeting_done())) {
         greeting_waiting_to_play(FALSE)
-        schedule_idle_chat(get_first_idle_delay_ms())
+        schedule_idle_chat(ai_expert_first_idle_delay_ms(current_talk_frequency()))
       }
     })
 
@@ -370,7 +355,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
   # --- Boşta konuşma zamanlayıcısı yardımcısı ---
   schedule_idle_chat <- function(delay_ms = NULL) {
-    if (is.null(delay_ms)) delay_ms <- get_idle_interval()
+    if (is.null(delay_ms)) delay_ms <- ai_expert_idle_interval_ms(current_talk_frequency())
     shinyjs::delay(delay_ms, {
       trigger_idle_chat()
     })
@@ -427,21 +412,11 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     current <- isolate(input$tabs)
     if (!identical(current, page)) return()
 
-    # Sayfa adını Türkçe'ye çevir
-    # AI Uzman sayfa rehberliği verebileceği tüm görünür sekmeler burada tanımlanır.
-    page_name_tr <- switch(page,
-      "history"               = "Söyleşi Geçmişi",
-      "saved_chats"           = "Kayıtlı Söyleşiler",
-      "image_gallery"         = "Görsel Galerisi",
-      "claude_code"           = "Bilge Yolaç",
-      "files"                 = "Dosya Yönetimi",
-      "settings_yapilandirma" = "Yapılandırma",
-      "destek_yardim"         = "Yardım Merkezi",
-      "destek_geri_bildirim"  = "Geri Bildirim ve Hata Bildirimi",
-      "destek_surum"          = "Yenilikler",
-      "destek_hakkinda"       = "Hakkında",
-      NULL
-    )
+    # Sayfa adını Türkçe'ye çevir (tek kaynak eşleme:
+    # R/helpers_ai_expert_handlers_support.R::ai_expert_page_name_tr).
+    # Bu yol "chat" sayfasına hiç ulaşmaz (yukarıda erken dönülür); bilinmeyen
+    # sayfa NULL döner ve rehberlik verilmez.
+    page_name_tr <- ai_expert_page_name_tr(page)
     if (is.null(page_name_tr)) return()
 
     cat(sprintf("[AI_EXPERT] Sayfa rehberliği: %s (tekrar ziyaret: %s)\n", page_name_tr, is_revisit))
@@ -545,20 +520,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 	params <- prepare_llm_params()
 	current_page_val <- isolate(input$tabs) %||% "chat"
 
-	page_name_tr <- switch(current_page_val,
-	  "chat"                  = "Ana Söyleşi",
-	  "history"               = "Söyleşi Geçmişi",
-	  "saved_chats"           = "Kayıtlı Söyleşiler",
-	  "image_gallery"         = "Görsel Galerisi",
-	  "claude_code"           = "Bilge Yolaç",
-	  "files"                 = "Dosya Yönetimi",
-	  "settings_yapilandirma" = "Yapılandırma",
-	  "destek_yardim"         = "Yardım Merkezi",
-	  "destek_geri_bildirim"  = "Geri Bildirim ve Hata Bildirimi",
-	  "destek_surum"          = "Yenilikler",
-	  "destek_hakkinda"       = "Hakkında",
-	  "Ana Söyleşi"
-	)
+	page_name_tr <- ai_expert_page_name_tr(current_page_val) %||% "Ana Söyleşi"
 
 	idle_count_val <- current_count
 	session_msgs <- capture_session_messages(5)
@@ -590,50 +552,14 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 	  talk_length = talk_length_val, talk_style = talk_style_val
 	)
 
-	context_parts <- list()
-	context_parts <- c(context_parts, sprintf(
-	  "Kullanıcı şu anda '%s' sayfasında ve bir süredir etkileşimde bulunmadı.",
-	  page_name_tr
-	))
-
-	if (is.list(user_work_context)) {
-	  effective_unit <- safe_trimws(user_work_context$effective_unit %||% "")
-	  department <- safe_trimws(user_work_context$department %||% "")
-	  mudurluk <- safe_trimws(user_work_context$mudurluk %||% "")
-
-	  if (safe_nzchar(department) && safe_nzchar(mudurluk)) {
-		context_parts <- c(context_parts, sprintf(
-		  "Kullanıcının departmanı: %s. Bağlı olduğu müdürlük/direktörlük: %s. Bu bilgiyi yalnızca bağlam kurmak için kullan; kullanıcının güncel işi veya görevi hakkında varsayım üretme.",
-		  department, mudurluk
-		))
-	  } else if (safe_nzchar(effective_unit)) {
-		context_parts <- c(context_parts, sprintf(
-		  "Kullanıcının çalıştığı birim: %s. Bu bilgiyi yalnızca bağlam kurmak için kullan; kullanıcının güncel işi veya görevi hakkında varsayım üretme.",
-		  effective_unit
-		))
-	  }
-	}
-
-	context_parts <- c(context_parts, sprintf(
-	  "Bu oturumda %d. boşta konuşman. ÖNEMLİ: Selam verme, merhaba deme, hoş geldin deme. Bu zaten devam eden bir sohbet. Önceki konuşmalarını tekrarlama, her seferinde farklı bir konuya değin ve farklı bir giriş cümlesi kullan. Yaratıcı ol, sürpriz yap.",
-	  idle_count_val
-	))
-
-	if (!is.null(session_msgs) && length(session_msgs) > 0) {
-	  session_text <- paste(sprintf("- \"%s\"", substr(session_msgs, 1, 200)), collapse = "\n")
-	  context_parts <- c(context_parts, sprintf(
-		"Bu oturumdaki kullanıcı mesajları (EN GÜNCEL - bu konulara öncelik ver):\n%s",
-		session_text
-	  ))
-	}
-
-	if (!is.null(recent_prompts) && length(recent_prompts) > 0) {
-	  prompts_text <- paste(sprintf("- \"%s\"", substr(recent_prompts, 1, 120)), collapse = "\n")
-	  context_parts <- c(context_parts, sprintf("Veritabanından son konuşma konuları:\n%s", prompts_text))
-	}
-
-	context_parts <- c(context_parts, sprintf("Şimdi: %s", format(Sys.time(), "%d %B %Y %H:%M")))
-	user_context <- paste(context_parts, collapse = "\n\n")
+	user_context <- build_ai_expert_idle_user_context(
+	  page_name_tr = page_name_tr,
+	  user_work_context = user_work_context,
+	  idle_count = idle_count_val,
+	  session_msgs = session_msgs,
+	  recent_prompts = recent_prompts,
+	  now_text = format(Sys.time(), "%d %B %Y %H:%M")
+	)
 
 	model_name_val <- params$model_name
 	api_key_val <- params$api_key

@@ -238,10 +238,14 @@ source_manifest_sections <- list(
   # ai_expert_helpers: AI Uzman konuşma ve TTS metin parçalama yardımcıları.
   # Worker-safe DB okuyucuları (helpers_ai_expert_user_data.R) önce yüklenir;
   # helpers_ai_expert.R::build_ai_expert_user_context() bunları çağırır.
+  # helpers_ai_expert_handlers_support.R, R/server_ai_expert_handlers.R'nin
+  # kullandığı saf karar yardımcılarını (sayfa adı, sıklık, boşta bağlam) taşır;
+  # handler dosyasından çok önce yüklenir.
   ai_expert_helpers = c(
     "R/helpers_ai_expert_user_data.R",
     "R/helpers_ai_expert.R",
-    "R/helpers_ai_expert_chunking.R"
+    "R/helpers_ai_expert_chunking.R",
+    "R/helpers_ai_expert_handlers_support.R"
   ),
 
   # claude_code_helpers: Bilge Yolaç yardımcı zinciri: kullanıcı guard, upload
