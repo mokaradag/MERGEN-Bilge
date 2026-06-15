@@ -118,24 +118,57 @@ testthat::test_that("HTML metakarakterli dosya adı çıktıda htmlEscape ile n�
   testthat::skip_if_not_installed("shiny")
   env <- .cefl_env()
   allowed_dir <- tempfile("cefl_xss_"); dir.create(allowed_dir)
-  # Linux'ta dosya adında < > " gibi karakterler geçerlidir.
+
+  # Platformdan bağımsız bölüm: display_path (altyazı) eleman-metni escape'i.
+  # display_path tamamen çağıran kontrolündedir; gerçek dosya adına ihtiyaç
+  # duymaz, bu yüzden Windows dosya adı kısıtlamalarına (< > " yasak) takılmaz
+  # ve XSS sınırı her platformda gerçekten sınanır.
+  safe_file <- file.path(allowed_dir, "rapor.txt")
+  writeLines("gecerli", safe_file)
+  out_safe <- env$format_claude_code_existing_file_link_html(
+    file_path = safe_file,
+    user_id = 3L,
+    session_token = "sec_xss_safe",
+    allowed_roots = allowed_dir,
+    display_path = "kotu<b>altyazi"
+  )
+  testthat::expect_true(nzchar(out_safe))
+  # Altyazıdaki açı parantezleri eleman-metni bağlamında escape edilir.
+  testthat::expect_true(grepl("kotu&lt;b&gt;altyazi", out_safe, fixed = TRUE))
+  # Ham (escape edilmemiş) <b> etiketi altyazıdan çıktıya sızmamalı.
+  testthat::expect_false(grepl("<b>altyazi", out_safe, fixed = TRUE))
+
+  # Yalnızca dosya sisteminin izin verdiği platformlarda (ör. Linux): gerçek
+  # dosya adındaki < > " karakterleri öznitelik bağlamı escape'ini (&quot;)
+  # de sınar. Windows dosya adlarında bu karakterler GEÇERSİZ olduğundan dosya
+  # oluşturulamaz; bu durumda yalnızca öznitelik-escape doğrulaması atlanır,
+  # platformdan bağımsız bölüm yine de gerçek kapsama sağlar. tryCatch hem
+  # uyarıyı hem hatayı yutar (strict suite stop_on_warning = TRUE).
   evil_name <- "kotu<b>\"x.txt"
   evil_file <- file.path(allowed_dir, evil_name)
-  writeLines("x", evil_file)
-  testthat::skip_if_not(file.exists(evil_file))
-
-  out <- env$format_claude_code_existing_file_link_html(
-    file_path = evil_file,
-    user_id = 3L,
-    session_token = "sec_xss",
-    allowed_roots = allowed_dir,
-    display_path = evil_name
+  created <- tryCatch(
+    {
+      writeLines("x", evil_file)
+      isTRUE(file.exists(evil_file))
+    },
+    warning = function(w) FALSE,
+    error = function(e) FALSE
   )
 
-  testthat::expect_true(nzchar(out))
-  # Açı parantezleri ve çift tırnak escape edilmiş olmalı.
-  testthat::expect_true(grepl("&lt;b&gt;", out, fixed = TRUE))
-  testthat::expect_true(grepl("&quot;", out, fixed = TRUE))
-  # Ham (escape edilmemiş) dosya-adı etiketi çıktıda bulunmamalı.
-  testthat::expect_false(grepl("<b>", out, fixed = TRUE))
+  if (isTRUE(created)) {
+    out <- env$format_claude_code_existing_file_link_html(
+      file_path = evil_file,
+      user_id = 3L,
+      session_token = "sec_xss",
+      allowed_roots = allowed_dir,
+      display_path = evil_name
+    )
+
+    testthat::expect_true(nzchar(out))
+    # Açı parantezleri ve çift tırnak escape edilmiş olmalı.
+    testthat::expect_true(grepl("&lt;b&gt;", out, fixed = TRUE))
+    testthat::expect_true(grepl("&quot;", out, fixed = TRUE))
+    # Ham (escape edilmemiş) dosya-adı etiketi çıktıda bulunmamalı.
+    testthat::expect_false(grepl("<b>", out, fixed = TRUE))
+  }
 })
