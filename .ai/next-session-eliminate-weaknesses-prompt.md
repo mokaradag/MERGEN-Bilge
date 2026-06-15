@@ -66,6 +66,20 @@ additive. Do NOT redo:
   Windows UNC'de `normalizePath` önek farkıyla kırılır → suffix/endsWith kullan.
   (6) Sabit "/repo/kok" Windows'ta mutlak değil → `withr::local_tempdir()`.
 
+- **Devam (aynı oturum, "add more test") — 2 Faz-5 güvenlik testi + 1 sertleştirme
+  (35 doğrulama):** `test-claude-code-downloads-security-behavior.R`
+  (`resolve_claude_code_generated_path`/`list_claude_code_generated_file_paths`/
+  `stage_claude_code_downloads` — üretilen dosya yalnızca izinli kök içindeyse
+  indirilebilir; kök-dışı traversal düşürülür; daha önce yalnızca statik referanslı),
+  `test-claude-code-downloads-html-behavior.R`
+  (`format_claude_code_generated_downloads_html` kart + XSS sınırı). Cerrahi:
+  `R/helpers_claude_code_downloads_html.R` href/download/title artık
+  `htmlEscape(attribute=TRUE)` (existing-file-link ile aynı açık). GOTCHA:
+  `resolve_*` var-olmayan yolda 1.5sn `Sys.sleep` döngüsüne girer → var-olan
+  dosya + mutlak yol + `withr::local_dir(wd)` kullan; indirme kökünü
+  `withr::local_options(mergen.claude_code_download_root=tempdir)` ile yönlendir
+  (repo kirliliği yok).
+
 ---
 
 ## LATEST SESSION RESULTS — `claude/affectionate-faraday-yksxki` (2026-06-14, Faz 2→9.5)

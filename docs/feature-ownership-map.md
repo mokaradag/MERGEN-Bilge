@@ -191,11 +191,18 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   kapsamlı finalize + klavye gözlemcisi + poll durduruldu/zaman-aşımı erken dalları),
   `test-claude-code-existing-file-link-security-behavior.R`
   (`format_claude_code_existing_file_link_html`: izinli-kök-dışı reddi/traversal +
-  öznitelik escape XSS sınırı).
+  öznitelik escape XSS sınırı),
+  `test-claude-code-downloads-security-behavior.R`
+  (`resolve_claude_code_generated_path` / `list_claude_code_generated_file_paths` /
+  `stage_claude_code_downloads`: üretilen dosya yalnızca izin verilen kökler
+  içindeyse indirilebilir kart olur — kök-dışı traversal düşürülür),
+  `test-claude-code-downloads-html-behavior.R`
+  (`format_claude_code_generated_downloads_html`: kart HTML + öznitelik escape XSS sınırı).
 - **Smoke/kanıt:** Windows VM manuel akış (UNC/SSO/`.cmd`); cloud'da kanıtlanmaz.
 - **Bilinen risk / sıradaki hedef:** `parse_stream_event`, bağlantı durumu,
-  `run_claude_code_streaming`, doküman özet orkestratörleri ve `cc_bind_claude_code_stream_polling`
-  (stop/poll erken dalları) kapsandı; doğrudan indirme bağlantısı artık öznitelik
+  `run_claude_code_streaming`, doküman özet orkestratörleri, `cc_bind_claude_code_stream_polling`
+  (stop/poll erken dalları) ve üretilen-dosya indirme yolu çözümleme/staging/HTML
+  kartı güvenlik sınırı kapsandı; her iki indirme HTML üreticisi de öznitelik
   bağlamında `htmlEscape(attribute=TRUE)` ile sertleştirildi (öznitelik enjeksiyonu
   savunması). Gerçek CLI/UNC/SSO ve canlı akış tamamlanma dalı yalnızca VM'de kanıtlanır.
 

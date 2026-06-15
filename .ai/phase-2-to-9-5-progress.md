@@ -137,6 +137,33 @@ yapı gereği Windows-taşınabilir; gerçek VM doğrulaması kullanıcının su
 yapılmalı. Bir önceki oturumun "VM'de geçiyor" iddiası `test-file-click-observers`
 için BAYATTI (kullanıcı VM'de fail gösterdi) — bu oturumda gerçekten düzeltildi.
 
+**Devam (aynı oturum, "add more test") — 2 yeni Faz 5 güvenlik testi + 1 cerrahi
+sertleştirme (35 doğrulama):**
+- `test-claude-code-downloads-security-behavior.R` (18) — Bilge Yolaç üretilen-dosya
+  indirme GÜVENLİK sınırı (yalnızca statik referanslıydı, davranışsal değil):
+  `resolve_claude_code_generated_path` (izinli kök içi→normalize / **kök DIŞI
+  var-olan dosya→"" = traversal savunması** / göreli→workdir altında / boş→""),
+  `list_claude_code_generated_file_paths` (yalnızca write/edit araçları;
+  read/bash yok sayılır; **kök-dışı yazma yolu düşürülür**; dedup; boş→character(0)),
+  `stage_claude_code_downloads` (kök-içi dosya geçici indirme köküne kopyalanır;
+  **kök-dışı düşürülür**; boş→list()). GOTCHA: `resolve_*` var-olmayan yolda
+  1.5sn `Sys.sleep` bekleme döngüsüne girer → testler var-olan dosya + mutlak yol
+  + `withr::local_dir(wd)` kullanır (bekleme yok); indirme kökü
+  `withr::local_options(mergen.claude_code_download_root=tempdir)` ile yönlendirilir
+  (repo kirliliği yok).
+- `test-claude-code-downloads-html-behavior.R` (17) —
+  `format_claude_code_generated_downloads_html` (yalnızca policy-split contract'ında
+  statik referanslıydı): boş/NULL→"", geçerli/çoklu kayıt→kart, **HTML
+  metakarakterli url/dosya adı/yol → htmlEscape (XSS/öznitelik enjeksiyonu sınırı)**.
+- Cerrahi sertleştirme: `R/helpers_claude_code_downloads_html.R` da (existing-file-link
+  ile AYNI açık) `href`/`download`/`title` öznitelikleri artık
+  `htmlEscape(..., attribute=TRUE)` → tırnak öznitelikten kaçamaz. Fail-before/
+  pass-after kanıtlı. Ratchet güvenli (yorum +4 satır, bütçe içinde; 174 PASS).
+- Doğrulama: 6 yeni test dosyası `test_dir` batch **129 doğrulama, 0 fail/warn/skip**;
+  policy-split (47)/downloads-helpers (25)/stream-html-safety (6)/ratchet (174)
+  contract'ları 0 fail; parse_sanity 796 dosya OK; encoding 0 mojibake; stray
+  indirme artifact'ı YOK (options override).
+
 ### Oturum: 2026-06-14 — branch `claude/affectionate-faraday-yksxki` (bu oturum)
 
 Faz 2 davranışsal kapsama görev önceliği sırasıyla derinleştirildi (dosya yaşam

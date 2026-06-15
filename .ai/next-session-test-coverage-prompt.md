@@ -47,6 +47,21 @@ yolları Windows VM'de kırılır; suffix/`endsWith` + `withr::local_tempdir()`
 kullan. `enc2utf8`+`toupper`+`grepl` Windows Türkçe locale'de zehirlidir; ASCII
 anahtar taramasını `useBytes=TRUE` ile yerelden bağımsız yap.
 
+Devam (aynı oturum, "add more test") — 2 Faz-5 güvenlik testi + 1 sertleştirme:
+- `test-claude-code-downloads-security-behavior.R` —
+  `resolve_claude_code_generated_path`/`list_claude_code_generated_file_paths`/
+  `stage_claude_code_downloads` (yalnızca izinli kök içi indirilebilir; kök-dışı
+  traversal düşürülür). GOTCHA: `resolve_*` var-olmayan yolda 1.5sn `Sys.sleep`
+  döngüsü → var-olan dosya + mutlak yol + `withr::local_dir(wd)`; indirme kökü
+  `withr::local_options(mergen.claude_code_download_root=tempdir)`.
+- `test-claude-code-downloads-html-behavior.R` —
+  `format_claude_code_generated_downloads_html` kart + XSS sınırı; öznitelik
+  escape (`R/helpers_claude_code_downloads_html.R` href/download/title
+  `attribute=TRUE`'ya sertleştirildi).
+Genel ders: Bilge Yolaç indirme HTML üreticilerinde öznitelik bağlamı escape'i
+`attribute=TRUE` olmalı; downloads helper'larındaki `Sys.sleep` bekleme döngüleri
+için testlerde HEP var-olan dosya kullan.
+
 Kalan en yüksek değerli untested (~17, çoğu ağır): `sendMessageInit`,
 `call_llm_worker` (çok ağır testServer/ikinci-pass), `.syap_*` 11 UI builder
 (dolaylı korunuyor, düşük öncelik), küçük bootstrap/debug helper'ları.
