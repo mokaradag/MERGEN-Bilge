@@ -144,6 +144,26 @@ değişiklik; `quick` yeterli kanıt sınırı).
   skipped=0); parse_sanity 801 dosya OK. Kalan en derin dal: ikinci-geçiş
   helper'ının KENDİ iç SSE/non-stream akışı (ayrı, daha ağır hedef).
 
+**Devam-2 (aynı oturum, "continue") — ikinci-geçiş iç akış dalları (18 doğrulama):**
+- `test-llm-worker-second-pass-flow-behavior.R` (18) — `helpers_llm_worker_second_pass.R`
+  mevcut testlerinin (contract + pure-behavior) kapsamadığı GERÇEK akış dallarını
+  doldurur. KEŞİF: sözleşme testi `llm_worker_call_second_pass_non_streaming`'i HEP
+  stub'lıyordu (gerçek httr davranışı hiç test edilmemişti) ve YALNIZCA SSE-açık
+  yolu kapsıyordu; üretimdeki yaygın NON-SSE yolu hiç sınanmamıştı. Kapanan dallar:
+  (1) `llm_worker_call_second_pass_non_streaming` gerçek httr — 200→success+içerik/
+  reasoning+error_body="" / 200-dışı(500)→success=FALSE+status+error_body; (2)
+  `llm_worker_run_mcp_second_pass` NON-SSE — non-stream başarı→ok=TRUE/ai2/reasoning2,
+  non-stream hata→ok=FALSE/`format_answer_from_tool_results` yedeği; (3) SSE başarısız
+  + non-stream retry de başarısız → ok=FALSE/yedek, `reasoning_content` SSE canlı
+  düşünce metninden taşınır. **GOTCHA:** izole `.sp_env`'e source + stub'lar; gerçek
+  non-streaming yardımcısı source SONRASI saklanır (A testleri gerçeği sınar, B/C
+  `on.exit` ile override/restore eder); httr namespace `local_mocked_bindings`;
+  `call_local_llm_sse_worker` yalnızca C'de tanımlanıp `rm` ile temizlenir.
+  Doğrulama: tek tek 18 + beş worker/second-pass dosyası batch 83 doğrulama
+  0 fail/warn/skip; `ai_validate quick` TAM (failed=0, skipped=0); parse_sanity
+  802 dosya OK. İkinci-geçiş orkestrasyonu artık SSE + NON-SSE + retry-fallback
+  dallarıyla tam davranışsal kapsanıyor.
+
 ### Oturum: 2026-06-15 — branch `claude/zen-gauss-w423sz` (bu oturum)
 
 Faz 2 kalan AĞIR runtime closure'larından üçü davranışsal kapatıldı, Faz 5

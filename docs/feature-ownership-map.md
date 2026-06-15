@@ -39,15 +39,20 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   EMPTY_RESPONSE/UNKNOWN_ERROR/TIMEOUT, reasoning taşıma),
   `test-llm-worker-tool-path-behavior.R` (`call_llm_worker` mcp_excel araç yolu:
   araç-hata erken dönüş / strict_data_only / mcp_excel fallback+Kaynakça /
-  ikinci-geçiş ok=FALSE-TRUE-boş orkestrasyon dalları), `test-chat-runtime-*`.
+  ikinci-geçiş ok=FALSE-TRUE-boş orkestrasyon dalları),
+  `test-llm-worker-second-pass-{contract,pure-behavior,flow-behavior}.R`
+  (`llm_worker_run_mcp_second_pass` SSE + NON-SSE + retry-fallback;
+  `llm_worker_call_second_pass_non_streaming` gerçek httr 200/200-dışı),
+  `test-chat-runtime-*`.
 - **Smoke/kanıt:** `www/smoke/ux-smoke.html` (streaming init/delta/stale/finalize),
   VM evidence `browser_ux_smoke`.
 - **Bilinen risk / sıradaki hedef:** `serverInitChatRuntime`, `chat_simulate_streaming`
-  (KARAR/erken-çıkış dalları), `sendMessageInit` (send_message erken-dönüş korumaları)
-  ve `call_llm_worker` (araçsız yol + hata normalizasyon + araç-yürütme/ikinci-geçiş
-  orkestrasyon dalları) davranışsal kapsandı.
+  (KARAR/erken-çıkış dalları), `sendMessageInit` (send_message erken-dönüş korumaları),
+  `call_llm_worker` (araçsız + araç-yürütme/ikinci-geçiş dalları) ve ikinci-geçiş iç
+  akışı (`llm_worker_run_mcp_second_pass` SSE/NON-SSE/retry-fallback +
+  `llm_worker_call_second_pass_non_streaming` httr) davranışsal kapsandı.
   Kalan derin dallar: `chat_simulate_streaming` invalidateLater(25) akış döngüsü,
-  `llm_worker_run_mcp_second_pass` iç SSE/non-stream akışı, `sendMessageInit` mod-dispatch
+  `sendMessageInit` mod-dispatch
   sonrası tam akış — hepsi ağır testServer/yoğun stub ister, sıradaki hedef.
 
 ## Dosya Yaşam Döngüsü
