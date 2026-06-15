@@ -110,12 +110,16 @@ format_claude_code_existing_file_link_html <- function(file_path,
     '<i class="fas fa-folder-open"></i> Oluşturulan Dosyalar',
     '</div>',
     '<div class="cc-generated-files-list">',
+    # HTML öznitelik bağlamındaki değerler attribute = TRUE ile escape edilir;
+    # böylece dosya adı/yolundaki çift tırnak veya tek tırnak öznitelikten
+    # dışarı kaçamaz (öznitelik enjeksiyonu savunması). Eleman metni (span)
+    # bağlamı varsayılan escape ile kalır.
     '<a class="cc-generated-file-card" href="',
-    htmltools::htmlEscape(url),
+    htmltools::htmlEscape(url, attribute = TRUE),
     '" download="',
-    htmltools::htmlEscape(dosya_adi),
+    htmltools::htmlEscape(dosya_adi, attribute = TRUE),
     '" target="_blank" rel="noopener noreferrer" title="',
-    htmltools::htmlEscape(dosya_norm),
+    htmltools::htmlEscape(dosya_norm, attribute = TRUE),
     '">',
     '<span class="cc-generated-file-main">',
     '<span class="cc-generated-file-icon"><i class="fas fa-download"></i></span>',
