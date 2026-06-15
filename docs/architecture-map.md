@@ -37,7 +37,7 @@ R/Shiny uygulama kabuğu: app.R -> global.R -> ui.R + server.R
 | DB/persistence | `R/helpers_db_unicode_escape.R`, `R/helpers_db_encoding.R`, `R/helpers_db_connection.R`, `R/helpers_db_chat_readers.R`, `R/helpers_db_chat_mutations.R`, `R/helpers_database.R`, [`database-schema.md`](database-schema.md) | DB bağlantısı, encoding guard'ları, chat/feedback okuma-yazma, tablo yapısı ve kalıcılık. |
 | SSO/auth | `R/config_sso.R`, `R/helpers_sso.R`, `R/helpers_sso_signature.R`, `R/helpers_logout_url.R` | Yerel geliştirme ve Keycloak/JWT sınırı. |
 | API anahtarı | `R/helpers_api_key_crypto.R`, `R/helpers_api_key_identity.R`, `R/helpers_feature_api_key.R`, `R/helpers_api_key_password_toggle.R`, `www/js/api_key_choice_modal.js` | Kişisel anahtar şifreli saklama katmanı (`config_api.R`'den taşınan save/load/verify + NUL-tuz guard'ı), kişisel/kurumsal anahtar çözümleme, modal UX ve secret safety. |
-| TTS/STT/audio | `R/helpers_ai_expert.R`, `R/helpers_ai_expert_chunking.R`, ilgili UI/JS/CSS varlıkları ve `.Renviron.example` | AI Uzman konuşması, TTS/STT ve ses yaşam döngüsü. |
+| TTS/STT/audio | `R/helpers_ai_expert.R`, `R/helpers_ai_expert_user_data.R`, `R/helpers_ai_expert_chunking.R`, ilgili UI/JS/CSS varlıkları ve `.Renviron.example` | AI Uzman konuşması, TTS/STT ve ses yaşam döngüsü. `helpers_ai_expert_user_data.R` worker-safe DB okuyucularını (ad/birim/son mesaj/son giriş) ayrı tutar. |
 | Destek/Yardım/Yenilikler | `R/helpers_destek_database.R`, `version_history.md`, destek modülleri ve CSS/JS varlıkları | Yardım Merkezi, Geri Bildirim & Hata, Yenilikler ve Hakkında alanları. |
 | Admin/Sistem Durumu | `R/helpers_admin_analytics.R`, `R/helpers_health_*.R`, admin modülleri | Yönetim panelleri, hata/feedback analizleri, sağlık kontrolleri. |
 | Bilge Yolaç / Claude Code | `R/helpers_claude_code_*.R`, `R/config_claude_code*.R`, `bilge_yolac_plugins/` | Web-wrapped Claude Code oturumu, güvenli çalışma dizini, streaming, download ve eklenti sistemi. |
@@ -159,7 +159,7 @@ Disiplin kuralları:
 | UI asset veya tema | `R/config_ui_assets.R`, `R/config_ui_asset_zones.R`, `www/css/`, `www/js/`, asset manifest/bölge/front-end testleri. |
 | Yeni runtime R dosyası veya frontend varlığı | Bu belgenin seam/bölge bölümü, `R/config_seam_registry.R`, `R/config_ui_asset_zones.R`, `tests/testthat/test-seam-registry-contract.R`, `tests/testthat/test-ui-asset-zones-contract.R`. |
 | Streaming veya Markdown/HTML güvenliği | `R/helpers_llm_sse*.R`, `R/helpers_markdown_safety.R`, `www/js/claude_code_streaming.js`, [`../CLAUDE.md`](../CLAUDE.md). |
-| TTS/STT veya AI Uzman konuşması | `R/helpers_ai_expert.R`, `R/helpers_ai_expert_chunking.R`, API key helper'ları ve `.Renviron.example`. |
+| TTS/STT veya AI Uzman konuşması | `R/helpers_ai_expert.R`, `R/helpers_ai_expert_user_data.R`, `R/helpers_ai_expert_chunking.R`, API key helper'ları ve `.Renviron.example`. |
 | SSO veya kimlik | `R/config_sso.R`, `R/helpers_sso.R`, `R/helpers_sso_signature.R`, [`../RUNBOOK.md`](../RUNBOOK.md). |
 | Bilge Yolaç / Claude Code | `R/config_claude_code.R`, `R/helpers_claude_code_*.R`, `bilge_yolac_plugins/`, [`../CLAUDE.md`](../CLAUDE.md). |
 | Deployment, VM veya launcher | [`../RUNBOOK.md`](../RUNBOOK.md), `run_mergen_prod.bat`, `run_mergen_prod.R`, `tools/test_mergen_prod_launcher.ps1`. |

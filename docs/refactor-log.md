@@ -6,6 +6,133 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-15 — AI Uzman worker-safe DB okuyucularının ayrılması (24-fonksiyon tavanından indirme)
+
+### Seçilen iz(ler)
+- **Track 1 — Yakın-bütçe R dosyasından bütünleşik yardımcı çıkarımı**
+  (`R/helpers_ai_expert.R` → `R/helpers_ai_expert_user_data.R`).
+
+### Özet ve gerekçe
+Keşif raporları (skor 100/100, refactor adayı yok) sonrası en yüksek kaldıraçlı
+zayıflık küresel **fonksiyon tavanıydı**. Resmî bakım metriği (`(<-|=) function(`)
+ile üç dosya 24-fonksiyon küresel tavanında oturuyordu: `helpers_ai_expert.R`
+(680 satır), `helpers_file_manager_runtime.R` (259 satır) ve
+`helpers_health_formatters.R` (256 satır). Son ikisi belgelenmiş, küçük ve kararlı
+"yoğun-tasarım" yardımcılarıdır; `helpers_ai_expert.R` ise hem en büyük (680 satır)
+hem de aktif olarak geliştirilen bir özelliğin dosyası — yani bir sonraki AI Uzman
+değişikliğinde bütçeyi kıracak en olası aday.
+
+Dosyanın doğal sınırı netti: dört worker-safe DB okuyucusu (`fetch_user_full_name`,
+`fetch_user_work_context`, `fetch_recent_user_prompts`, `fetch_user_last_login`)
+hem bütünleşik bir sorumluluk (MB_Users/MB_Messages okuma) hem de çok sayıda
+`error = function(e)` anonim işleyici taşıdığından, taşınmaları **hem satır hem
+fonksiyon** sayısını birden düşürdü. Okuyucular `R/helpers_ai_expert_user_data.R`
+dosyasına birebir taşındı; `helpers_ai_expert.R` sistem istemi/bağlam/LLM-çağrısı/
+telaffuz orkestrasyonuna odaklı kaldı. `build_ai_expert_user_context()` çalışma
+zamanında `fetch_recent_user_prompts()`'u çağırdığından, yeni dosya manifest'te
+ÖNCE yüklenir.
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_ai_expert_user_data.R` (yeni, 187 satır / 11 fonksiyon) — dört
+  worker-safe DB okuyucusu, roxygen açıklamaları ve okuma-sınırı
+  (`normalize_db_read_visible_value`) sözleşmesiyle birebir taşındı.
+- `R/helpers_ai_expert.R` — dört okuyucu kaldırıldı; başlığa yeni dosyaya
+  yönlendirme notu eklendi. **680 → 507 satır / 24 → 13 fonksiyon.**
+- `R/config_source_manifest.R` — `ai_expert_helpers` bölümüne yeni dosya
+  `helpers_ai_expert.R`'den ÖNCE eklendi (2 → 3 dosya; toplam 263 → 264).
+
+**Test**
+- `tests/testthat/test-ai-expert-user-data-split-contract.R` (yeni, 19 assertion)
+  — yeni dosya varlığı + okuyucu yüzeyi, manifest sırası (okuyucular → helper),
+  okuyucuların `helpers_ai_expert.R`'ye geri dönmemesi, korunan orkestrasyon
+  fonksiyonları, okuma-sınırı (`normalize_db_read_visible_value`) ve Shiny-bağsızlık.
+- `tests/testthat/test-ai-expert-db-fetch-behavior.R` — iki source noktası
+  `helpers_ai_expert.R` yerine `helpers_ai_expert_user_data.R`'yi source eder
+  (20 assertion değişmeden geçer).
+- `tests/testthat/test-ai-expert-page-guidance-stale-behavior.R` — handler'ın
+  çağırdığı okuyucular için yeni dosya da source edilir; `fetch_user_full_name`
+  stub'ı yine override eder (2 assertion).
+- `tests/testthat/test-source-manifest-sections-contract.R` — `ai_expert_helpers`
+  çapası (first/n) ve toplam (263 → 264) bilinçli güncellendi.
+- `tests/testthat/test-maintainability-ratchet.R` — dosya-özel bütçe eklendi:
+  `helpers_ai_expert.R` 540L/15F, `helpers_ai_expert_user_data.R` 220L/13F
+  (24-fonksiyon tavanına geri tırmanış kilitlendi).
+
+**Dokümantasyon**
+- `CLAUDE.md` — Group 4 yükleme listesine yeni dosya eklendi (yük sırası doğruluğu).
+- `docs/architecture-map.md` — TTS/STT/audio ownership ve "önce oku" satırlarına
+  yeni dosya eklendi.
+- `docs/technical-reference.md` — AI Uzman worker-safe DB okuyucu sınırı notu.
+- `docs/feature-ownership-map.md` — yeni "Medya / Ses / AI Uzman" özellik bölümü
+  (eksik olan `medya_ses` seam satırı) eklendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `helpers_ai_expert.R` 680/24 — küresel fonksiyon tavanında; herhangi bir
+  küçük AI Uzman eklemesi global ratchet'i kıracaktı; DB okuma + prompt + LLM
+  çağrısı aynı dosyada karışıktı.
+- Sonra: `helpers_ai_expert.R` 507/13 (küresel tavandan indi); okuyucular ayrı,
+  bütünleşik, bağımsız test edilebilir dosyada; her iki dosya da dosya-özel
+  bütçeyle kilitli. Maintainability skoru 100/100 korunur, değerlendirilen dosya
+  269 → 270. Küresel 24-fonksiyon değeri BİLEREK sıkılaştırılmadı: tavanı hâlâ
+  `helpers_file_manager_runtime.R` ve `helpers_health_formatters.R` tutuyor
+  (belgelenmiş yoğun-tasarım dosyaları; ayrı oturum kararı).
+
+### Korunan davranış sözleşmeleri
+- Dört okuyucunun gövdesi, sorguları, `error = function(e)` güvenli düşüşleri,
+  `.aix_read_visible` iç yardımcısı ve `normalize_db_read_visible_value` okuma
+  sınırı birebir aynı (mevcut 20 davranış assertion'ı değişmeden geçer).
+- `build_ai_expert_user_context()`, `build_ai_expert_system_prompt()`,
+  `call_ai_expert_llm()`, `get_ai_expert_generation_config()`,
+  `sanitize_ai_expert_pronunciation()` `helpers_ai_expert.R`'de kaldı; çağrı
+  imzaları ve Türkçe metinler değişmedi.
+- Manifest yük sırası `helpers_ai_expert.R` → `helpers_claude_code_upload_folder.R`
+  ilişkisi korundu (yeni dosya daha erken bölümde). DB/SSO/frontend/UX'e dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni split sözleşmesi (19),
+  db-fetch davranış (20), prompt-builders (9), page-guidance-stale (2),
+  call-llm (7), pronunciation (4), chunking (8), sections (4 test bloğu),
+  source-manifest (11), global-manifest (6), maintainability-ratchet (12),
+  ratchet-contract (2), seam-registry (6), upload-folder-refactor (4).
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; 270 dosya;
+  refactor adayı yok; `helpers_ai_expert.R` 507/13.
+- App boot smoke (`tests/scripts/smoke_app_boot.R`) → OK; manifest yeni dosyayı
+  sırasıyla yükledi, `create_mergen_app()` shiny.appobj döndürdü.
+- `bash tools/ai_validate.sh full --boot-smoke` → **geçti**: environment OK,
+  parse sanity OK, app source smoke OK (4.6s), **tam strict testthat suite geçti
+  (130.3s)**, shiny boot smoke OK (5.8s); `failed_steps: 0`, `skipped_steps: 0`.
+  `browser_smoke_status: "skipped"` (konteynerde tarayıcı binary'si yok — bloklamayan).
+  Artifact: `artifacts/ai-validation/20260615-153048/summary.json`
+  (`validation_execution_status="ran_by_ai_repo_check"`,
+  `app_source_smoke_status="passed"`, `shiny_boot_smoke_status="passed"`).
+- Ortam notu: konteynerde yalnızca `logger` paketi eksikti (diğer ağır paketler
+  kuruluydu); oturum içinde CRAN'dan kuruldu. Tüm komutlar `LANG=C.UTF-8` ile.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Windows VM'de SSO ile başlatın; Ana Söyleşi'ye girince AI Uzman karşılama
+  konuşmasının (ses + altyazı) eskisi gibi geldiğini doğrulayın.
+- Farklı sayfalara (örn. Söyleşi Geçmişi) geçince sayfa rehberliği konuşmasının
+  geldiğini; yasaklı sayfaya (Kişiselleştirme/Yönetici/Sistem Durumu) geçince
+  bayat rehberliğin SESLENDİRİLMEDİĞİNİ doğrulayın.
+- Türkçe karakterli ad/birim bilgisinin (MB_Users) AI Uzman bağlamında doğru
+  göründüğünü; eski mojibake bir adın TTS/altyazıda onarılmış geldiğini doğrulayın.
+- Boşta bekleyince (idle) AI Uzman konuşmasının son mesaj bağlamıyla geldiğini
+  doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Browser UX smoke gerçek tarayıcıyla ÇALIŞTIRILMADI (konteynerde Chrome/Edge yok);
+  statik harness sözleşmeleri geçti, VM'de bloklayıcı modda koşulmalıdır.
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding kapıları bu oturumda çalıştırılmadı;
+  runtime davranışı değişmedi (yalnızca 4 fonksiyon ayrı dosyaya taşındı + manifest).
+  AI Uzman canlı ses/DB akışı yalnızca VM'de kanıtlanır.
+- Küresel 24-fonksiyon ratchet değeri sıkılaştırılMAdı; tavanı hâlâ
+  `helpers_file_manager_runtime.R` ve `helpers_health_formatters.R` tutuyor
+  (sıradaki olası hedefler veya kabul edilen yoğun-tasarım kararı).
+
+---
+
 ## 2026-06-15 — Windows VM evidence gate rerun: güncel release kanıtı
 
 `tests/scripts/run_vm_evidence_gate.R` tam Windows VM koşumu 15 Haziran 2026 tarihinde yeniden uçtan uca geçti: `Toplam: 13 passed, 0 failed, 0 skipped`. Güncel passed adımlar: `env_config`, `parse_sanity`, `app_boot_smoke`, `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight`, `renv_status`. Son artifact: `artifacts/vm-evidence/20260615-130127/evidence.json`; kalıcı artifact düzeni `artifacts/vm-evidence/<timestamp>/evidence.json`.

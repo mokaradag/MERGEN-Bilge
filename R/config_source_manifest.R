@@ -236,7 +236,10 @@ source_manifest_sections <- list(
   ),
 
   # ai_expert_helpers: AI Uzman konuşma ve TTS metin parçalama yardımcıları.
+  # Worker-safe DB okuyucuları (helpers_ai_expert_user_data.R) önce yüklenir;
+  # helpers_ai_expert.R::build_ai_expert_user_context() bunları çağırır.
   ai_expert_helpers = c(
+    "R/helpers_ai_expert_user_data.R",
     "R/helpers_ai_expert.R",
     "R/helpers_ai_expert_chunking.R"
   ),

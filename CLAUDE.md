@@ -4485,6 +4485,7 @@ Shared utilities used across modules:
 - `R/helpers_health_formatters.R`
 - `R/helpers_health_runtime_checks.R`
 - `R/helpers_health_checks.R`
+- `R/helpers_ai_expert_user_data.R`
 - `R/helpers_ai_expert.R`
 - `R/helpers_ai_expert_chunking.R`
 - `R/helpers_claude_code_upload_folder.R`

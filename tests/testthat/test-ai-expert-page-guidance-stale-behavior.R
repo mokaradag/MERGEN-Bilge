@@ -19,6 +19,9 @@ suppressMessages({
   # safe_trimws/safe_nzchar/%||% utils_common'da; helper_bootstrap yüklemez.
   source(file.path(resolve_repo_root_for_tests(), "R", "utils_common.R"),
          encoding = "UTF-8", local = env)
+  # Worker-safe DB okuyucuları ayrı dosyada; handler bunları çağırır.
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_ai_expert_user_data.R"),
+         encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_ai_expert.R"),
          encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "server_ai_expert_handlers.R"),
