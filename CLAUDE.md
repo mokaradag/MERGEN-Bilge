@@ -462,7 +462,7 @@ Latest validation-doctor contract hardening: `tests/testthat/test-validation-doc
 
 `tests/scripts/run_vm_evidence_gate.R` (wrapper: `bash tools/vm_evidence_gate.sh`) is the single repeatable preflight validation path. It orchestrates the EXISTING validation scripts as ordered steps in CLEAN CHILD R sessions and writes one secret-safe machine-readable evidence artifact: `artifacts/vm-evidence/<timestamp>/evidence.json` plus per-step logs.
 
-Milestone note: a Windows VM full evidence-gate run completed with `Toplam: 13 passed, 0 failed, 0 skipped`; `full_testthat`, `browser_ux_smoke`, `vm_preflight_real`, and `db_encoding_preflight` all passed. Example artifact: `artifacts/vm-evidence/20260612-211836/evidence.json`. This is strong on-prem VM readiness evidence only for the steps reported as `passed`; it does not replace long-running production load observation or manual fragile-flow QA.
+Milestone note: a Windows VM full evidence-gate run completed with `Toplam: 13 passed, 0 failed, 0 skipped`; `full_testthat`, `browser_ux_smoke`, `vm_preflight_real`, and `db_encoding_preflight` all passed. Latest rerun artifact: `artifacts/vm-evidence/20260615-130127/evidence.json`. This is strong on-prem VM readiness evidence only for the steps reported as `passed`; it does not replace long-running production load observation or manual fragile-flow QA.
 
 Frozen step list (conscious updates only, together with `tests/testthat/test-vm-evidence-gate-contract.R` and `RUNBOOK.md`): `env_config`, `parse_sanity`, `app_boot_smoke`, `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight`, `renv_status`.
 
