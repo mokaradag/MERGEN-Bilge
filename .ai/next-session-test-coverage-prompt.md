@@ -1,3 +1,44 @@
+# CONTEXT — Faz 2→9.5 oturumu `claude/quirky-tesla-vbv62b` (2026-06-15 C, do NOT redo)
+
+Bu oturum Windows VM testthat suite'indeki 1 hatayı giderdi ve Faz 2 kalan 14
+untested fonksiyonu davranışsal kapattı (**by-name untested 17 → 3**; 129 doğrulama,
+0 fail/warn/skip). Çalışma zamanı R kodu DEĞİŞMEDİ. ZATEN YAPILDI — tekrar etme:
+
+- **Windows VM fix:** `test-claude-code-existing-file-link-security-behavior.R:124` —
+  XSS testi diskte `kotu<b>"x.txt` oluşturuyordu; `< > "` Windows'ta GEÇERSİZ →
+  `writeLines` hatası + uyarı. Fix: platformdan bağımsız altyazı (`display_path`)
+  escape doğrulaması + Linux-only öznitelik (`&quot;`) dalı (`tryCatch(warning=,
+  error=)` ile yutulur). DERS: gerçek diskte Windows-yasaklı ADla dosya OLUŞTURMA.
+- `test-settings-yapilandirma-ui-cards-behavior.R` — 11 `.syap_*` kart yapıcısı TEK
+  TEK (sahiplik sınırı). GOTCHA: id-surface testi yalnızca BİRLEŞİK
+  `settingsYapilandirmaUIImpl`'i donduruyordu; yapıcıları isimle çağırmak ayrı
+  kapsama. Stub env (api_config/claude_code_config/%||%) + `as.character(tag)`.
+- `test-llm-worker-call-behavior.R` — `call_llm_worker` ARAÇSIZ yol + hata
+  normalizasyon. GOTCHA: izole env'e source + tüm `llm_worker_*` payload
+  helper'ları stub; `extract_llm_content_and_sources`/`strip_planner_text` test
+  başına override; httr `local_mocked_bindings(POST/status_code/content,
+  .package="httr")` (content `as="parsed"`→liste / `as="text"`→""); hata
+  testlerinde `expect_error(capture.output(...))` ile `cat("[ERROR]")` yut.
+  İkinci-geçiş/araç-yürütme zinciri mock dışı (çok ağır, ayrı hedef).
+- `test-send-message-init-guards-behavior.R` — `sendMessageInit` send_message
+  erken-dönüş korumaları. KEŞİF: fabrika gözlemci KAYDETMEZ
+  (`list(send_message=...)` döndürür) → testServer GEREKMEZ. GOTCHA: 24 argüman
+  NULL/stub (tembel), `SSO_ENABLED`/`showToast`/`resolve_effective_user_id`/
+  `mergen_clear_welcome_for_send_message`/`mergen_build_send_message_prompt_snapshot`
+  izole env'e (batch globalenv'i gölgeler); SSO-auth'un user-id'den ÖNCE geldiğini
+  resolve stub'ı `stop()` ile kanıtla; `values` env (in-place `$<-`).
+- `test-character-video-debug-behavior.R` — `.character_video_debug` forward/no-op.
+  GOTCHA: `new.env(parent=baseenv())`'e source → zincirde globalenv YOK →
+  `exists("log_debug",inherits=TRUE)` deterministik (batch'te sızmaz). `withVisible`.
+
+KALAN 3 by-name untested BİLİNÇLİ atlandı (runtime'da `rm()` edilir, sözleşme yok):
+`.helpers_llm_sse_source_sibling`, `.mcp_bootstrap_assign_global_function`,
+`.mcp_bootstrap_require_tool_functions`. By-name tarama tükendi; sıradaki kapsama
+işi DAL/ŞUBE derinleştirme (call_llm_worker ikinci-geçiş, sendMessageInit
+mod-dispatch sonrası) veya yeni runtime kodu olmalı.
+
+---
+
 # CONTEXT — Faz 2→9.5 oturumu `claude/zen-gauss-w423sz` (2026-06-15, do NOT redo)
 
 Bu oturum 3 AĞIR runtime closure'unu davranışsal kapattı (94 doğrulama, 0
