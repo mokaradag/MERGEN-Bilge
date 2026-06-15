@@ -124,6 +124,26 @@ gereği Windows-taşınabilir ama gerçek VM doğrulaması kullanıcının suite
 yapılmalı. `full --boot-smoke` bu oturumda koşulmadı (yalnızca test-only
 değişiklik; `quick` yeterli kanıt sınırı).
 
+**Devam (aynı oturum, "continue") — call_llm_worker araç-yolu derin dal kapsaması
+(10 doğrulama):**
+- `test-llm-worker-tool-path-behavior.R` (10) — `call_llm_worker` MCP araç yolu
+  (`enable_tools=TRUE`, `tool_family="mcp_excel"`) orkestrasyon sözleşmesi. Araçsız
+  yol + hata normalizasyonu zaten kapsanmıştı; bu test araç-yürütme + ikinci-geçiş
+  dallarını kilitler: araç `$error` → "Araç hatası:" ERKEN dönüş (ikinci geçişe
+  gitmez — stub `stop()` ile kanıtlı); `strict_data_only=TRUE` → yalnızca GERÇEK
+  VERİ metni (ikinci geçiş atlanır); araç çağrısı yok → `mcp_excel_tool_fallback`
+  + "Kaynakça:"; ikinci geçiş `ok=FALSE` → helper response aynen; `ok=TRUE`+içerik
+  → ai2 + reasoning_content; `ok=TRUE`+boş ai2 → `format_answer_from_tool_results`
+  yedeği. **GOTCHA:** httr mock `content` `as="parsed"` için test-başına değişen
+  `.clwt_env$.resp` döndürür (yapısal tool_calls vs düz yanıt); `helpers_mcp_tools`
+  liste-stub (yaprak fonksiyonlar test-başına override); ikinci-geçiş/biçimleme
+  yardımcıları (`llm_worker_run_mcp_second_pass`/`_format_tool_results_for_prompt`/
+  `format_answer_from_tool_results`/`mcp_excel_tool_fallback`) env stub; erken-dönüş
+  kanıtı için ikinci-geçiş stub'ı `stop()`. Doğrulama: tek tek 10 + iki llm-worker
+  dosyası batch 24 doğrulama 0 fail/warn/skip; `ai_validate quick` TAM (failed=0,
+  skipped=0); parse_sanity 801 dosya OK. Kalan en derin dal: ikinci-geçiş
+  helper'ının KENDİ iç SSE/non-stream akışı (ayrı, daha ağır hedef).
+
 ### Oturum: 2026-06-15 — branch `claude/zen-gauss-w423sz` (bu oturum)
 
 Faz 2 kalan AĞIR runtime closure'larından üçü davranışsal kapatıldı, Faz 5
