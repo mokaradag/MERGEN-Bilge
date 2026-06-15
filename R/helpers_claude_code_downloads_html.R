@@ -62,12 +62,16 @@ format_claude_code_generated_downloads_html <- function(downloads) {
     alt_metin <- gsub("^ • | • $", "", alt_metin)
 
     paste0(
+      # HTML öznitelik bağlamındaki değerler attribute = TRUE ile escape edilir;
+      # böylece url/dosya adı/yolundaki çift tırnak veya tek tırnak öznitelikten
+      # dışarı kaçamaz (öznitelik enjeksiyonu savunması). Eleman metni (span)
+      # bağlamı varsayılan escape ile kalır.
       '<a class="cc-generated-file-card" href="',
-      htmltools::htmlEscape(dosya$url %||% ""),
+      htmltools::htmlEscape(dosya$url %||% "", attribute = TRUE),
       '" download="',
-      htmltools::htmlEscape(dosya$download_name %||% dosya$display_name %||% "dosya"),
+      htmltools::htmlEscape(dosya$download_name %||% dosya$display_name %||% "dosya", attribute = TRUE),
       '" target="_blank" rel="noopener noreferrer" title="',
-      htmltools::htmlEscape(dosya$original_path %||% ""),
+      htmltools::htmlEscape(dosya$original_path %||% "", attribute = TRUE),
       '">',
       '<span class="cc-generated-file-main">',
       '<span class="cc-generated-file-icon"><i class="fas fa-download"></i></span>',
