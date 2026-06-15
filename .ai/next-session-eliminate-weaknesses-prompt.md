@@ -8,6 +8,44 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/pensive-davinci-8p2jkh` (2026-06-15 D, Faz 2→9.5)
+
+By-name untested taraması tükendiği için bu oturum **dal/şube derinleştirme +
+Faz 5 adversarial** önceliğine geçti. İki Bilge Yolaç GÜVENLİK sınırının
+davranışsal olarak hiç sınanmamış dalları kapatıldı (33 doğrulama, 0
+fail/warn/skip). Çalışma zamanı R kodu DEĞİŞMEDİ (2 yeni test, additive); gerçek
+bug bulunmadı — iki sınır da doğru davranıyor, testler sözleşmeyi kilitler.
+Do NOT redo:
+
+- **`test-claude-code-prompt-intent-validate-behavior.R`** — pre-CLI güvenlik
+  kapısı `cc_policy_validate_prompt_file_intent()` orkestratör DALLARI. Mevcut
+  sözleşme testi yalnızca 4 durumu + HER ZAMAN açık `allowed_roots` ile sınıyordu
+  (run-streaming STUB'lıyor, run-lifecycle statik grepl). Kapatılan dallar:
+  no-write-intent→ok, no-token→ok, **türetilen kökler** (`allowed_roots` boşken
+  `cc_policy_allowed_output_roots`; içeri izinli/dışarı engelli), göreli `../`+
+  boş-workdir→engel, `../` traversal→engel, `blocked_paths`+hata sözleşmesi
+  (`ok=FALSE`), uzantısız+var-olmayan dış token→ATLA (false-positive önleme).
+- **`test-claude-code-generated-file-filter-behavior.R`** —
+  `cc_policy_filter_generated_file_paths()` (üretilen-dosya indirme filtresi).
+  Sözleşme testi yalnızca 1 durum sınıyordu. Adversarial dallar: **`..` kökten
+  KAÇAN yol normalize-sonra-reddet** (download-bypass savunması), `..` geri dönen→
+  collapse korunur, boş/NULL→character(0), dedup, NA/boş elenir, çoklu kök-içi+dışı.
+- **GOTCHA'lar:** orkestrator bağımlılıkları 3 AYRI dosyada → PER-FILE source
+  guard (kardeş test yalnızca prompt-policy'yi globalenv'e yüklüyor → tek guard
+  yetmez). `cc_policy_extract_path_like_tokens` SLASH'sız (`rapor.txt`) veya
+  baştan-`/`-siz (`alt/x.txt`) göreli adı ÇIKARMAZ → göreli dalı `../...` ile sına.
+  Türetilen kökleri deterministik kılmak için `withr::local_envvar` ile
+  `CLAUDE_CODE_ALLOWED_*`/`DEFAULT_WORKDIR` temizle + dış dizin tempdir kardeşi.
+  Filtre `log_warn`+`CLAUDE_CODE_LOG_PREFIX` kullanır → izole `test_env`'e stub'la.
+- **VALIDATION (Linux/cloud, R 4.6.0):** `ai_validate quick` TAM (failed=0,
+  skipped=0, app_source_smoke=passed); parse_sanity 804; ratchet 0 fail
+  (test-only). `full --boot-smoke` koşulmadı (additive test; runtime değişmedi →
+  `quick` yeterli). Cloud koşumu VM/SSO/DB/SQL-Server Türkçe encoding/gerçek-
+  browser/vision kanıtı DEĞİLDİR. Sıradaki: `cc_policy_validate_workdir` dalları,
+  SSO fail-closed derin dallar, `sendMessageInit` mod-dispatch sonrası.
+
+---
+
 ## LATEST SESSION RESULTS — `claude/quirky-tesla-vbv62b` (2026-06-15 C, Faz 2→9.5)
 
 Bu oturum kullanıcının Windows VM testthat suite'indeki 1 hatayı giderdi ve Faz 2

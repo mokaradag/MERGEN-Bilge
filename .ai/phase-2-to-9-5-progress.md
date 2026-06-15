@@ -35,6 +35,89 @@ Aşağıdakiler ÖNCEKİ oturumlarda tamamlandı (`.ai/next-session-*.md` ayrın
 
 ## Oturum kaydı
 
+### Oturum: 2026-06-15 (D) — branch `claude/pensive-davinci-8p2jkh` (bu oturum)
+
+By-name untested taraması tükendiği için bu oturum **dal/şube derinleştirme +
+Faz 5 adversarial** önceliğine geçti: iki Bilge Yolaç GÜVENLİK sınırının
+davranışsal olarak hiç sınanmamış dalları kapatıldı. Çalışma zamanı R kodu
+DEĞİŞMEDİ (yalnızca 2 yeni test dosyası, additive). Gerçek bug bulunmadı — iki
+sınır da doğru davranıyor; testler sözleşmeyi kilitler.
+
+**2 yeni adversarial/dal testi (33 doğrulama, 0 fail/warn/skip; tek tek + batch):**
+
+- `test-claude-code-prompt-intent-validate-behavior.R` (8 test / 21 doğrulama) —
+  `cc_policy_validate_prompt_file_intent()` ORKESTRATÖRÜ (Claude Code CLI
+  BAŞLAMADAN ÖNCE çalışan pre-CLI güvenlik kapısı). **KEŞİF:** mevcut sözleşme
+  testi (security-policy-contract) bu kapıyı yalnızca DÖRT durumda ve HER ZAMAN
+  açık `allowed_roots` argümanıyla sınıyordu; run-streaming testi STUB'lıyor;
+  run-lifecycle yalnızca statik `grepl` ile kontrol ediyor. Davranışsal olarak
+  hiç sınanmamış güvenlik-kritik dallar kilitlendi: (1) yazma niyeti YOKSA dış
+  yol tokenı içeren istek engellenmez (yalnızca yazma niyeti kapıyı tetikler);
+  (2) yazma niyeti var ama yol tokenı yok → ok; (3) **`allowed_roots` boşken
+  köklerin `cc_policy_allowed_output_roots(user_id, workdir)` ile TÜRETİLMESİ** —
+  gerçek çalışma-zamanı yolu; türetilen köklerle çalışma dizini içine yazma
+  izinli, DIŞINA yazma engellenir (türetme güvenliği gevşetmez); (4) göreli `../`
+  token + BOŞ workdir → engellenir (doğrulanamaz); (5) `../` traversal workdir
+  altından → engellenir; (6) engellenen yol HAM token olarak `blocked_paths`'te +
+  hata mesajında listelenir, `ok=FALSE`; (7) uzantısız + var olmayan dış token →
+  ATLANIR (false-positive önleme; CLAUDE.md "düzyazıyı aşırı engelleme"
+  sözleşmesi); (8) çoklu engellenen token dedup + her ikisi hata mesajında.
+- `test-claude-code-generated-file-filter-behavior.R` (6 test / 12 doğrulama) —
+  `cc_policy_filter_generated_file_paths()` (çalıştırma sonunda hangi üretilen
+  dosyaların indirilebilir kart olacağına karar verir; izin verilen kök dışı
+  yolları DÜŞÜRÜR = download-link üretim güvenliği). **KEŞİF:** sözleşme testi
+  yalnızca TEK durumu (kök-içi+kök-dışı → içeri kalır) sınıyordu. Adversarial
+  dallar kilitlendi: **`..` ile kökten KAÇAN yol önce normalize edilir SONRA
+  reddedilir (traversal ile indirme filtresini atlatma savunması)**; `..` ile
+  köke geri dönen yol normalize edilmiş (collapse) biçimde KORUNUR; boş/NULL →
+  `character(0)`; aynı yol dedup; NA/boş string elenir; çoklu kök-içi korunur +
+  kök-dışı düşer.
+
+**GOTCHA'lar:**
+- `cc_policy_validate_prompt_file_intent` bağımlılıkları AYRI dosyalarda:
+  `helpers_files_path.R` (`path_exists_relaxed`), `helpers_claude_code_path_policy.R`
+  (`cc_policy_normalize_path`/`_allowed_output_roots`/`_path_inside_roots`),
+  `helpers_claude_code_prompt_security_policy.R` (orkestrator). Kardeş test
+  (`test-claude-code-prompt-path-policy-behavior.R`) yalnızca prompt-policy'yi
+  globalenv'e source ediyor → orkestrator var olsa bile path_policy eksik olabilir.
+  Çözüm: PER-FILE guard (her dosya için ayrı `exists()` kontrolü), tek guard değil.
+- `cc_policy_extract_path_like_tokens` yalnızca mutlak (`/...`, `C:\...`, `//...`)
+  ve `../...` tokenlarını çıkarır; SLASH'sız göreli ad (`rapor.txt`) veya
+  slash'lı-ama-baştan-`/`-siz (`alt/x.txt`) ÇIKARILMAZ → "no token → ok" dalına
+  girer. Göreli dalı test etmek için `../...` formu kullan.
+- Türetilen kökleri deterministik kılmak için `withr::local_envvar` ile
+  `CLAUDE_CODE_ALLOWED_OUTPUT_ROOTS`/`_WORKDIR_ROOTS`/`DEFAULT_WORKDIR` temizle;
+  dış dizin daima `withr::local_tempdir()` kardeşi (hiçbir varsayılan kök içermez)
+  → tam suite'te de "dışarısı engellenir" güvenli.
+- `cc_policy_filter_generated_file_paths` düşürmede `log_warn` + `CLAUDE_CODE_LOG_PREFIX`
+  kullanır → izole `test_env`'e stub'la (sözleşme testindeki kanıtlanmış desen)
+  + path_policy'yi oraya source et (logger bağımlılığından tamamen kurtulur).
+
+**Doğrulama (bu container, R 4.6.0 — Linux/cloud):**
+- `bash tools/ai_validate.sh quick` → **TAM GEÇTİ** (failed_steps=0,
+  skipped_steps=0, app_source_smoke=passed, focused contract tests OK)
+  (`artifacts/ai-validation/20260615-134411/summary.json`;
+  validation_execution_status=ran_by_ai_repo_check, shiny_boot_smoke=not_requested,
+  browser_smoke=not_requested, db_sso_vm=false, sql_server Türkçe encoding=
+  not_performed_by_ai_validate).
+- `parse_sanity_check.R` OK (804 dosya). `maintainability-ratchet` 0 fail (skor
+  değişmedi; max 24 fn, max 777 satır — değişiklikler test-only).
+- 2 yeni test tek tek + 9 dosyalık claude-code policy/güvenlik `test_dir` batch:
+  0 fail/warn/skip (security-policy-contract dahil leakage yok).
+
+**KANITLANMAYAN / cloud sınırı:** Windows VM/SSO/DB/SQL Server Türkçe encoding/
+gerçek browser UX/vision live bu oturumda KANITLANMADI. `full --boot-smoke`
+koşulmadı (yalnızca additive test; çalışma zamanı kodu değişmedi → `quick`
+yeterli kanıt sınırı). İki güvenlik sınırında gerçek bug YOK; testler mevcut
+doğru davranışı kilitler (fail-before/pass-after bir bug için DEĞİL, sözleşme
+korumasıdır).
+
+**Sıradaki en yüksek değerli hedefler:** `cc_policy_validate_workdir()` dal
+kapsaması (workdir doğrulama kapısı — selected-workdir onayı/not-found/kök-dışı
+engelleme/boş-workdir dalları, yalnızca contract'ta dolaylı), SSO fail-closed
+daha derin dallar, `sendMessageInit` mod-dispatch SONRASI akışlar (guard'lar
+zaten kapalı).
+
 ### Oturum: 2026-06-15 (C) — branch `claude/quirky-tesla-vbv62b` (bu oturum)
 
 Kullanıcının Windows VM testthat suite'indeki 1 hata giderildi ve Faz 2 kalan
@@ -650,6 +733,15 @@ işi, isimle çağrılan ama davranışsal olarak zayıf test edilen fonksiyonla
 dal/şube kapsamasını derinleştirmek (ör. `call_llm_worker` ikinci-geçiş/araç
 zinciri, `sendMessageInit` mod-dispatch sonrası akışlar) veya yeni eklenen
 runtime kodu olmalıdır.
+
+2026-06-15 (D) oturumunda DAL/ŞUBE derinleştirme ile kapatılanlar (yukarıdan):
+`cc_policy_validate_prompt_file_intent` orkestratör dalları (türetilen kökler,
+göreli+boş-workdir, no-write-intent, no-token, dedup/hata sözleşmesi,
+false-positive atlama) ve `cc_policy_filter_generated_file_paths` adversarial
+dalları (traversal-kaçış normalize-sonra-reddet, geri-dönen `..` korunur,
+boş/NULL/dedup/NA). Sıradaki dal/şube adayları: `cc_policy_validate_workdir`
+(selected-workdir onayı / not-found / kök-dışı engelleme / boş-workdir),
+`sendMessageInit` mod-dispatch sonrası, SSO fail-closed derin dallar.
 
 2026-06-15 (C) oturumunda KAPSANANLAR (yukarıdan çıkarıldı): 11 `.syap_*` kart
 yapıcısı (TEK TEK, sahiplik sınırı), `call_llm_worker` (araçsız yol + hata
