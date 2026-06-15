@@ -1,3 +1,57 @@
+# CONTEXT — Faz 2→9.5 oturumu `claude/pensive-davinci-8p2jkh` (2026-06-15 D, do NOT redo)
+
+By-name untested taraması tükendiği için bu oturum **dal/şube derinleştirme +
+Faz 5 adversarial** önceliğine geçti. İki Bilge Yolaç GÜVENLİK sınırının
+davranışsal olarak hiç sınanmamış dalları kapatıldı (33 doğrulama, 0
+fail/warn/skip; tek tek + 9-dosyalık claude-code policy batch). Çalışma zamanı
+R kodu DEĞİŞMEDİ; gerçek bug bulunmadı (testler doğru davranışı kilitler).
+ZATEN YAPILDI — tekrar etme:
+
+- `test-claude-code-prompt-intent-validate-behavior.R` — pre-CLI güvenlik kapısı
+  `cc_policy_validate_prompt_file_intent()` orkestratör DALLARI. Mevcut sözleşme
+  testi yalnızca 4 durumu + HER ZAMAN açık `allowed_roots` ile sınıyordu;
+  run-streaming STUB'lıyor; run-lifecycle yalnızca statik `grepl`. Kapatılan
+  dallar: no-write-intent→ok (dış yol tokenı olsa bile), no-token→ok, **türetilen
+  kökler** (`allowed_roots` boşken `cc_policy_allowed_output_roots(user_id,workdir)`;
+  içeri izinli/dışarı engelli), göreli `../`+boş-workdir→engel, `../` traversal→engel,
+  blocked_paths HAM token + hata mesajı sözleşmesi (`ok=FALSE`), uzantısız+var-olmayan
+  dış token→ATLA (false-positive önleme).
+- `test-claude-code-generated-file-filter-behavior.R` —
+  `cc_policy_filter_generated_file_paths()` (üretilen-dosya indirme filtresi).
+  Sözleşme testi yalnızca 1 durum sınıyordu. Adversarial dallar: **`..` kökten
+  KAÇAN yol normalize-sonra-reddet** (traversal ile indirme filtresini atlatma
+  savunması), `..` köke geri dönen→collapse korunur, boş/NULL→character(0),
+  dedup, NA/boş elenir, çoklu kök-içi korunur+kök-dışı düşer.
+- GOTCHA: orkestrator bağımlılıkları 3 AYRI dosyada → PER-FILE source guard
+  (tek guard değil; kardeş test yalnızca prompt-policy'yi globalenv'e yüklüyor).
+  `cc_policy_extract_path_like_tokens` SLASH'sız göreli adı (`rapor.txt`) veya
+  baştan-`/`-siz (`alt/x.txt`) ÇIKARMAZ → göreli dalı `../...` ile test et.
+  Türetilen kökleri deterministik kılmak için `withr::local_envvar` ile
+  `CLAUDE_CODE_ALLOWED_*`/`DEFAULT_WORKDIR` temizle + dış dizin `withr::local_tempdir()`
+  kardeşi. Filtre `log_warn`+`CLAUDE_CODE_LOG_PREFIX` kullanır → izole `test_env`'e
+  stub'la + path_policy'yi oraya source et (logger bağımlılığından kurtulur).
+- DOĞRULAMA: `ai_validate quick` TAM (failed=0, skipped=0, app_source_smoke=passed,
+  `artifacts/ai-validation/20260615-134411/summary.json`); parse_sanity 804;
+  ratchet 0 fail (test-only). `full --boot-smoke` koşulmadı (additive test;
+  runtime değişmedi). Cloud koşumu VM/SSO/DB/SQL-Server Türkçe encoding/gerçek
+  browser/vision kanıtı DEĞİLDİR.
+- Sıradaki dal/şube adayları: `cc_policy_validate_workdir` (selected-workdir
+  onayı/not-found/kök-dışı/boş-workdir dalları), SSO fail-closed derin dallar,
+  `sendMessageInit` mod-dispatch sonrası akışlar.
+
+Devam (aynı oturum, "continue") — `test-sso-extract-user-claims-behavior.R`
+(`extract_user_claims` JWT payload→kimlik eşlemesi). KEŞİF: test-sso-jwt.R onu
+yalnızca yorumda anıyor (doğrudan test YOK); auth-server testi dolaylı. Kapatılan
+güvenlik dalları: NULL→NULL, SSO_CLAIM_MAP eşlemesi (sub→keycloak_sub vb.)+token
+meta, username küçük-harf+teknik normalize, **GÖRÜNEN vs TEKNİK mojibake ayrımı**
+(email/sicil/keycloak_sub/username repair=FALSE → onarılMAZ), first_name fallback,
+boş claim→"". GOTCHA: ayrımı `normalize_text_utf8`'i globalenv'de `V:/T:` kayıt-edici
+stub ile değiştirip `withr::defer` ile (had=FALSE ise `rm`) geri yükleyerek KONTROL
+AKIŞI düzeyinde kanıtla — kırılgan mojibake fixture YOK. SSO deps `helper_load_sso.R`.
+14-dosyalık SSO batch'te recorder sızmıyor.
+
+---
+
 # CONTEXT — Faz 2→9.5 oturumu `claude/quirky-tesla-vbv62b` (2026-06-15 C, do NOT redo)
 
 Bu oturum Windows VM testthat suite'indeki 1 hatayı giderdi ve Faz 2 kalan 14
