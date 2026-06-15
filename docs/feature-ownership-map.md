@@ -31,13 +31,20 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-e2e-streaming-client-request-id-regression.R`,
   `test-server-init-chat-runtime-behavior.R` (`serverInitChatRuntime` fabrikası +
   add_message canlı user-id sözleşmesi), `test-chat-simulate-streaming-behavior.R`
-  (`chat_simulate_streaming` TTS/stop KARAR ve erken-çıkış dalları), `test-chat-runtime-*`.
+  (`chat_simulate_streaming` TTS/stop KARAR ve erken-çıkış dalları),
+  `test-send-message-init-guards-behavior.R` (`sendMessageInit` send_message
+  erken-dönüş korumaları: SSO-kimlik user-id'den önce / user-id<=0 / çift-gönderim /
+  boş mesaj), `test-llm-worker-call-behavior.R` (`call_llm_worker` araçsız yol +
+  HTTP/hata normalizasyon: RATE_LIMIT/AUTH_ERROR/SERVER_ERROR/API_ERROR/
+  EMPTY_RESPONSE/UNKNOWN_ERROR/TIMEOUT, reasoning taşıma), `test-chat-runtime-*`.
 - **Smoke/kanıt:** `www/smoke/ux-smoke.html` (streaming init/delta/stale/finalize),
   VM evidence `browser_ux_smoke`.
-- **Bilinen risk / sıradaki hedef:** `serverInitChatRuntime` ve
-  `chat_simulate_streaming` (KARAR/erken-çıkış dalları) kapsandı;
-  `chat_simulate_streaming` invalidateLater(25) akış döngüsü ile `sendMessageInit`
-  ve `call_llm_worker` hâlâ davranışsal test edilmedi (ağır testServer + yoğun stub).
+- **Bilinen risk / sıradaki hedef:** `serverInitChatRuntime`, `chat_simulate_streaming`
+  (KARAR/erken-çıkış dalları), `sendMessageInit` (send_message erken-dönüş korumaları)
+  ve `call_llm_worker` (araçsız yol + hata normalizasyon) davranışsal kapsandı.
+  Kalan derin dallar: `chat_simulate_streaming` invalidateLater(25) akış döngüsü,
+  `call_llm_worker` ikinci-geçiş/araç-yürütme zinciri, `sendMessageInit` mod-dispatch
+  sonrası tam akış — hepsi ağır testServer/yoğun stub ister, sıradaki hedef.
 
 ## Dosya Yaşam Döngüsü
 

@@ -8,6 +8,55 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/quirky-tesla-vbv62b` (2026-06-15 C, Faz 2→9.5)
+
+Bu oturum kullanıcının Windows VM testthat suite'indeki 1 hatayı giderdi ve Faz 2
+kalan 14 untested fonksiyonu davranışsal kapattı (**untested 17 → 3**; kalan 3'ü
+runtime'da `rm()` edilen bootstrap yardımcısı, bilinçli atlandı). Çalışma zamanı R
+kodu DEĞİŞMEDİ (1 test fix + 4 yeni test). Cerrahi, additive. Do NOT redo:
+
+- **Windows VM fix — `test-claude-code-existing-file-link-security-behavior.R:124`:**
+  XSS testi gerçek diskte `kotu<b>"x.txt` oluşturuyordu; `< > "` Windows'ta
+  GEÇERSİZ → `writeLines` "cannot open the connection" hatası + uyarı, `skip_if_not`
+  satırına ulaşılamıyordu. Fix: XSS sınırı iki bölüm — (1) platformdan bağımsız
+  altyazı (`display_path`) eleman-metni escape'i (gerçek dosya adı gerekmez); (2)
+  gerçek dosya adındaki `&quot;` öznitelik escape'i yalnızca Linux'ta, oluşturma
+  uyarısı/hatası `tryCatch(warning=,error=)` ile yutulur. Skip yok, Windows'ta hata
+  yok. **GENEL DERS:** gerçek diskte Windows-yasaklı ad (`< > : " | ? *`) ile dosya
+  oluşturan test YAZMA; ham string geçir veya güvenli ad (`özet.txt`) kullan +
+  caller-controlled display alanını escape doğrulaması için kullan.
+- **4 yeni davranış testi (129 doğrulama, 0 fail/warn/skip; tek tek + batch):**
+  `test-settings-yapilandirma-ui-cards-behavior.R` (11 `.syap_*` kart yapıcısı TEK
+  TEK — sahiplik sınırı: her kart yalnızca KENDİ ns kimliklerini üretir;
+  id-surface testi yalnızca birleşik UI'yi donduruyordu),
+  `test-llm-worker-call-behavior.R` (`call_llm_worker` araçsız yol + HTTP/hata
+  normalizasyon — httr `local_mocked_bindings`, payload helper'ları stub),
+  `test-send-message-init-guards-behavior.R` (`sendMessageInit` send_message
+  erken-dönüş korumaları — fabrika gözlemci kaydetmez, doğrudan çağrılır;
+  SSO-kimlik user-id'den ÖNCE, user-id<=0/NA, çift-gönderim, boş mesaj),
+  `test-character-video-debug-behavior.R` (`.character_video_debug` forward/no-op).
+- **GOTCHA'lar:** (1) `call_llm_worker` enclosing-env'de çözülen `llm_worker_*`
+  payload helper'larını stub'la + `extract_llm_content_and_sources`/
+  `strip_planner_text` env override; httr namespace mock `content` iki imzayı
+  karşılamalı (`as="parsed"`→liste / `as="text"`→""); error-handler `cat("[ERROR]")`
+  gürültüsünü `expect_error(capture.output(...))` ile yut. (2) `sendMessageInit`
+  bir FABRİKA (gözlemci yok) → testServer gereksiz; 24 argümanı NULL/stub geç
+  (tembel değerlendirme); `SSO_ENABLED`/`showToast`/`resolve_effective_user_id`'ı
+  izole env'e koy → batch globalenv'i gölgele; SSO-auth korumasının user-id'den
+  önce geldiğini resolve stub'ını `stop()` yaparak kanıtla. (3) Sadece-fonksiyon-
+  tanımı modülünü `new.env(parent=baseenv())`'e source et → `exists(...,inherits=TRUE)`
+  zincirinde globalenv yok, batch pollution'dan bağımsız deterministik.
+- **Kalan 3 untested bilinçli atlandı:** `.helpers_llm_sse_source_sibling`,
+  `.mcp_bootstrap_assign_global_function`, `.mcp_bootstrap_require_tool_functions` —
+  üçü de tanım sonrası `rm()` edilir (runtime'da yok). Test ETME.
+- **VALIDATION (Linux/cloud, R 4.6.0):** `ai_validate quick` TAM (failed=0,
+  skipped=0, app_source_smoke=passed); parse_sanity 800 dosya OK; ratchet 174 PASS
+  (test-only, skor değişmedi). `full --boot-smoke` koşulmadı (test-only değişiklik).
+  Cloud koşumu VM/SSO/DB/SQL-Server Türkçe encoding/gerçek-browser/vision kanıtı
+  DEĞİLDİR.
+
+---
+
 ## LATEST SESSION RESULTS — `claude/zen-gauss-w423sz` (2026-06-15, Faz 2→9.5)
 
 Bu oturum 3 AĞIR runtime closure'unu davranışsal kapattı, 1 Faz-5 adversarial

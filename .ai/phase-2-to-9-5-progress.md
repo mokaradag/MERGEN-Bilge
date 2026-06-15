@@ -35,6 +35,95 @@ Aşağıdakiler ÖNCEKİ oturumlarda tamamlandı (`.ai/next-session-*.md` ayrın
 
 ## Oturum kaydı
 
+### Oturum: 2026-06-15 (C) — branch `claude/quirky-tesla-vbv62b` (bu oturum)
+
+Kullanıcının Windows VM testthat suite'indeki 1 hata giderildi ve Faz 2 kalan
+14 untested fonksiyon davranışsal kapatıldı (untested 17 → 3). Cerrahi, additive;
+ratchet/manifest/seam/encoding sözleşmeleri yeşil. Çalışma zamanı R kodu
+DEĞİŞMEDİ (yalnızca 1 test düzeltmesi + 4 yeni test dosyası).
+
+**Windows VM hata düzeltmesi (kullanıcı ekran görüntüsü) — 1 hata / 1 dosya:**
+- `test-claude-code-existing-file-link-security-behavior.R:124` —
+  `format_claude_code_existing_file_link_html` XSS testi gerçek diskte
+  `kotu<b>"x.txt` adlı bir dosya oluşturmaya çalışıyordu. `<`, `>`, `"` Windows
+  dosya adlarında GEÇERSİZ olduğundan `writeLines` "cannot open the connection"
+  hatası (+ uyarı) veriyor ve `skip_if_not(file.exists(...))` satırına
+  ULAŞILAMADAN test patlıyordu (yazar yalnızca Linux'ta doğrulamış). **Düzeltme:**
+  XSS sınırı artık iki bölümde sınanır: (1) platformdan bağımsız bölüm — altyazı
+  (`display_path`) eleman-metni escape'i gerçek dosya adına ihtiyaç duymaz, her
+  platformda çalışır; (2) gerçek dosya adındaki `&quot;` öznitelik escape'i
+  yalnızca dosya sisteminin izin verdiği platformlarda (Linux) çalışır, oluşturma
+  uyarısı/hatası `tryCatch(warning=, error=)` ile yutulur. Skip YOK, Windows'ta
+  hata YOK, XSS kapsaması korunur. Sweep: tüm test dizininde gerçek diskte
+  Windows-yasaklı (`< > : " | ? *`) ADla dosya oluşturan TEK test buydu; diğer
+  XSS testleri ham string geçiriyor veya güvenli ad (`özet.txt`) kullanıyor.
+
+**Faz 2 — 4 yeni davranış testi (129 doğrulama, 0 fail/warn/skip; untested 17 → 3):**
+- `test-settings-yapilandirma-ui-cards-behavior.R` (91) — 11 `.syap_*` kart
+  yapıcısı TEK TEK. Mevcut id-surface testi yalnızca BİRLEŞİK
+  `settingsYapilandirmaUIImpl` çıktısını donduruyordu (yapıcıları isimle
+  çağırmıyordu). Bu test her yapıcıyı ayrı çağırır, kendi ns kimliklerini +
+  Türkçe başlığını üretir VE başka kartların temsilci kimliklerini SIZDIRMADIĞINI
+  (sahiplik sınırı) kanıtlar. Stub env (api_config/claude_code_config/%||%) +
+  `as.character(tag)` HTML doğrulaması.
+- `test-llm-worker-call-behavior.R` (14) — `call_llm_worker` ARAÇSIZ yol + hata
+  normalizasyon. **GOTCHA:** fonksiyon çok sayıda `llm_worker_*` payload
+  yardımcısını enclosing env'de çözer → izole env'e source edip hepsini
+  deterministik stub'la (chat_history_to_messages passthrough, add_fallback_chart
+  identity, merge_system_messages identity); `extract_llm_content_and_sources`/
+  `strip_planner_text` env stub (test başına override). httr namespace
+  `local_mocked_bindings(POST/status_code/content, .package="httr")` ile mock
+  (POST sentinel döndürür; content `as="parsed"`→liste, `as="text"`→""). Kapanan
+  dallar: mutlu yol (içerik+süre+boş chart_store+NULL reasoning), reasoning
+  taşıma, EMPTY_RESPONSE, HTTP 429→RATE_LIMIT / 401→AUTH_ERROR / 5xx→SERVER_ERROR
+  / 418→API_ERROR, genel hata→UNKNOWN_ERROR, Timeout→TIMEOUT. Hata testlerinde
+  error-handler `cat("[ERROR]")` gürültüsü `expect_error(capture.output(...))`
+  ile yutulur. İkinci-geçiş/araç-yürütme zinciri (çok ağır) mock dışı bırakıldı.
+- `test-send-message-init-guards-behavior.R` (14) — `sendMessageInit` send_message
+  erken-dönüş korumaları. **KEŞİF:** fabrika gözlemci KAYDETMEZ, yalnızca
+  `list(send_message=send_message)` döndürür → testServer GEREKMEZ, doğrudan
+  çağrılır. Kapanan korumalar: SSO açık+kimlik doğrulanmamış → kullanıcı-id
+  ÇÖZÜLMEDEN reddedilir (resolve stub `stop()` ile kanıtlanır — kimlik sınırı
+  user-id'den önce gelir); etkin kullanıcı-id<=0 (NA→0 dönüşümü dahil);
+  çift-gönderim (`values$is_sending=TRUE`); boş mesaj+yükleme yok (snapshot stub).
+  **GOTCHA:** `SSO_ENABLED`/`showToast`/`resolve_effective_user_id`/
+  `mergen_clear_welcome_for_send_message`/`mergen_build_send_message_prompt_snapshot`
+  izole env'e konur → batch globalenv'i gölgelenir (deterministik); 24 argüman
+  NULL/stub geçilir (tembel değerlendirme, fabrika çağrısında zorlanmaz);
+  `values` env (in-place `$<-`); toast'lar recorder env'de toplanır.
+- `test-character-video-debug-behavior.R` (10) — `.character_video_debug`:
+  log_debug varsa msg+... iletir, yoksa sessiz no-op + invisible(NULL).
+  **GOTCHA:** `exists("log_debug",inherits=TRUE)` deterministik olsun diye modül
+  `new.env(parent=baseenv())`'e source edilir (zincirde globalenv YOK → batch'te
+  globalenv'deki log_debug sızmaz). `withVisible` ile görünmezlik kanıtlanır.
+
+**Kalan 3 untested — BİLİNÇLİ atlandı (sözleşme dışı):**
+`.helpers_llm_sse_source_sibling` (helpers_llm_sse.R), `.mcp_bootstrap_assign_global_function`,
+`.mcp_bootstrap_require_tool_functions` (helpers_mcp_bootstrap.R) — ÜÇÜ DE
+tanımlandıktan sonra runtime'da `rm()` ile SİLİNİR (kalıcı çalışma-zamanı
+fonksiyonu değil). Kampanya kuralı: runtime'da kaldırılan bootstrap yardımcıları
+gerçek bir sözleşme korumadıkça test etme. Bunlar fallback source köprüleridir,
+gerçek davranış sözleşmesi taşımazlar → atlandı.
+
+**Doğrulama (bu container, R 4.6.0 — Linux/cloud):**
+- `bash tools/ai_validate.sh quick` → **TAM GEÇTİ** (failed_steps=0,
+  skipped_steps=0, app_source_smoke=passed, focused contract tests OK)
+  (`artifacts/ai-validation/20260615-100023/summary.json`;
+  validation_execution_status=ran_by_ai_repo_check, shiny_boot_smoke=not_requested,
+  browser_smoke=not_requested, db_sso_vm=false, sql_server Türkçe encoding=
+  not_performed_by_ai_validate).
+- `parse_sanity_check.R` OK (800 dosya). `maintainability-ratchet` 174 PASS
+  (skor değişmedi; max 24 fn, max 777 satır — değişiklikler test-only).
+- 4 yeni test tek tek + `test_dir` batch: **129 doğrulama, 0 fail/warn/skip.**
+- XSS test düzeltmesi: Linux'ta 16 PASS (her iki dal koşar); Windows'ta öznitelik
+  dalı sessizce atlanır, platformdan bağımsız dal yine koşar.
+
+**KANITLANMAYAN / cloud sınırı:** Windows VM/SSO/DB/SQL Server Türkçe encoding/
+gerçek browser UX/vision live bu oturumda KANITLANMADI. XSS test düzeltmesi yapı
+gereği Windows-taşınabilir ama gerçek VM doğrulaması kullanıcının suite'inde
+yapılmalı. `full --boot-smoke` bu oturumda koşulmadı (yalnızca test-only
+değişiklik; `quick` yeterli kanıt sınırı).
+
 ### Oturum: 2026-06-15 — branch `claude/zen-gauss-w423sz` (bu oturum)
 
 Faz 2 kalan AĞIR runtime closure'larından üçü davranışsal kapatıldı, Faz 5
@@ -508,15 +597,24 @@ encoding/gerçek browser UX smoke/vision live. Bunlar VM kapılarının işidir.
 
 ## Kalan yüksek değerli untested kümeler (sonraki oturumlar için)
 
-Güncel tarama (2026-06-15 sonrası): **17 untested top-level fn.** Kalanlar:
+Güncel tarama (2026-06-15 (C) sonrası): **3 untested top-level fn** — ÜÇÜ DE
+runtime'da `rm()` ile silinen bootstrap yardımcısı, gerçek sözleşme taşımıyor,
+BİLİNÇLİ atlandı:
 
-- `sendMessageInit` (server_send_message.R) — çok ağır; testServer + yoğun stub ister.
-- `call_llm_worker` (helpers_llm_worker.R) — çok ağır; ikinci-pass zinciri.
-- `.syap_*` kart builder'ları (module_settings_yapilandirma_ui.R, 11 adet) — saf
-  UI; `test-settings-yapilandirma-ui-id-surface-behavior.R` id yüzeyini DOLAYLI
-  koruyor → doğrudan birim testi DÜŞÜK öncelik (kazanım büyük ama redundant).
-- Kalan küçük bootstrap/debug helper'ları (`.mcp_bootstrap_*` runtime'da rm edilir,
-  `.helpers_llm_sse_source_sibling`, `.character_video_debug`) — düşük değer/kırılgan.
+- `.helpers_llm_sse_source_sibling` (helpers_llm_sse.R) — tanım sonrası `rm()`.
+- `.mcp_bootstrap_assign_global_function` (helpers_mcp_bootstrap.R) — `rm()`.
+- `.mcp_bootstrap_require_tool_functions` (helpers_mcp_bootstrap.R) — `rm()`.
+
+By-name taraması bu noktada pratik olarak tükenmiştir. Bundan sonraki kapsama
+işi, isimle çağrılan ama davranışsal olarak zayıf test edilen fonksiyonların
+dal/şube kapsamasını derinleştirmek (ör. `call_llm_worker` ikinci-geçiş/araç
+zinciri, `sendMessageInit` mod-dispatch sonrası akışlar) veya yeni eklenen
+runtime kodu olmalıdır.
+
+2026-06-15 (C) oturumunda KAPSANANLAR (yukarıdan çıkarıldı): 11 `.syap_*` kart
+yapıcısı (TEK TEK, sahiplik sınırı), `call_llm_worker` (araçsız yol + hata
+normalizasyon), `sendMessageInit` (send_message erken-dönüş korumaları),
+`.character_video_debug`.
 
 2026-06-15 oturumunda KAPSANANLAR (yukarıdan çıkarıldı): `serverInitChatRuntime`,
 `chat_simulate_streaming` (KARAR/erken-çıkış dalları; observer döngüsü hariç),
