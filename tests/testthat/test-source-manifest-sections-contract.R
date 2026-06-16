@@ -103,7 +103,10 @@
   module_claude_code = list(first = "R/module_claude_code_plugins.R", last = "R/module_claude_code.R", n = 5L),
   module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/module_proje_kaynak_analizi.R", n = 1L),
   module_support = list(first = "R/module_destek_yardim.R", last = "R/module_destek.R", n = 6L),
-  module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 19L),
+  # Bilinçli güncelleme: at-budget admin modüllerinin inline highcharter/DT
+  # renderer'ları *_outputs() dosyalarına çıkarıldı (geri_bildirim + yanit);
+  # her modül bölüme bir *_outputs dosyası ekledi. 19 -> 21.
+  module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 21L),
   module_health_chartlab = list(first = "R/module_health_worker_metrics.R", last = "R/module_chartlab.R", n = 10L),
   server_init_runtime = list(first = "R/server_session_cache.R", last = "R/server_init_chat_runtime.R", n = 13L),
   server_core_outputs_welcome = list(first = "R/server_core_observer_runtime.R", last = "R/server_welcome_handlers.R", n = 7L),
@@ -218,7 +221,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 265L -> 266L bilinçli güncelleme: R/config_ui_asset_zone_validators.R
   # (frontend bölge doğrulayıcı API'si; VERİ/DOĞRULAYICI ayrımı) config_ui_assets
   # bölümüne eklendi.
-  expect_equal(length(runtime), 266L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 266L -> 268L bilinçli güncelleme: at-budget admin modüllerinin inline
+  # renderer'ları R/module_admin_geri_bildirim_outputs.R ve
+  # R/module_admin_yanit_analizi_outputs.R dosyalarına çıkarıldı.
+  expect_equal(length(runtime), 268L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

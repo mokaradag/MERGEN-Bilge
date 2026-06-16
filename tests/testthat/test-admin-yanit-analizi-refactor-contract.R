@@ -194,3 +194,67 @@ test_that("Yanıt analizi UI sözleşmesi Türkçe metinleri ve output ID'lerini
     info = paste("Yanıt Analizi helper dosyasında beklenen output ID'leri eksik:", paste(missing_ids, collapse = ", "))
   )
 })
+
+.ya_expected_output_ids <- c(
+  "ya_gunluk_trend_chart", "ya_tip_pie_chart", "ya_uzunluk_chart", "ya_sure_chart",
+  "ya_model_bar_chart", "ya_haftalik_oran_chart", "ya_model_tablo",
+  "ya_etiket_treemap_chart", "ya_etiket_diverging_chart", "ya_yorum_tablo",
+  "ya_saat_gun_heatmap", "ya_saatlik_chart", "ya_kullanici_tablo"
+)
+
+test_that("yanıt analizi grafik/tablo renderer'ları admin_yanit_outputs dosyasına çıkarıldı", {
+  repo_root <- resolve_repo_root_for_tests()
+  outputs_path <- file.path(repo_root, "R/module_admin_yanit_analizi_outputs.R")
+
+  expect_true(
+    file.exists(outputs_path),
+    info = "R/module_admin_yanit_analizi_outputs.R dosyası eklenmelidir."
+  )
+
+  outputs_text <- .read_admin_yanit_refactor_text("R/module_admin_yanit_analizi_outputs.R")
+  module_text <- .read_admin_yanit_refactor_text("R/module_admin_yanit_analizi.R")
+
+  expect_true(
+    grepl("admin_yanit_outputs <- function", outputs_text, fixed = TRUE),
+    info = "admin_yanit_outputs() outputs dosyasında tanımlı olmalıdır."
+  )
+  expect_true(grepl("renderHighchart", outputs_text, fixed = TRUE))
+  expect_true(grepl("renderDT", outputs_text, fixed = TRUE))
+
+  # Modül outputs fonksiyonunu çağırır ve artık inline renderer içermez.
+  expect_true(
+    grepl("admin_yanit_outputs(", module_text, fixed = TRUE),
+    info = "module_admin_yanit_analizi.R admin_yanit_outputs() çağırmalıdır."
+  )
+  expect_false(
+    grepl("renderHighchart", module_text, fixed = TRUE),
+    info = "Grafik renderer'ları modülde kalmamalıdır (outputs dosyasına taşındı)."
+  )
+  expect_false(
+    grepl("renderDT", module_text, fixed = TRUE),
+    info = "Tablo renderer'ları modülde kalmamalıdır (outputs dosyasına taşındı)."
+  )
+
+  # Yenile tetikleyicisi (saat/saatlik grafikler) outputs dosyasında korunur.
+  expect_true(
+    grepl("refresh$trigger()", outputs_text, fixed = TRUE),
+    info = "ya_saat_gun_heatmap/ya_saatlik_chart refresh$trigger() bağımlılığı korunmalıdır."
+  )
+
+  for (id in .ya_expected_output_ids) {
+    expect_true(
+      grepl(paste0("output$", id), outputs_text, fixed = TRUE),
+      info = paste("Outputs dosyasında eksik output ID'si:", id)
+    )
+  }
+})
+
+test_that("yanıt analizi outputs dosyası modülden önce source ediliyor", {
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/module_admin_yanit_analizi_outputs.R",
+      "R/module_admin_yanit_analizi.R"
+    ),
+    label = "Yanıt analizi outputs/module source sırası bozulmuş:"
+  )
+})

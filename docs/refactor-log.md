@@ -6,6 +6,145 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-16 — At-budget admin modüllerinin inline renderer'larını *_outputs() dosyalarına çıkarma
+
+### Seçilen iz(ler)
+- **Track 1 — En büyük / yakın-bütçe R dosyalarından bütünleşik çıkarım**
+  (öncelik #1). İki at-budget admin modülü (`destek_yonetici_saglik` seam) tek pakette.
+- **Track 4 — belgelenmiş "sıradaki hedef" risk notunu gerçek davranış kapsamasına
+  çevirme** (golden grafik sözleşmeleri).
+
+### Özet ve gerekçe
+Önceki paketten sonra en büyük runtime dosyası 760'tı (`module_admin_geri_bildirim.R`)
+ve ona yakın `module_admin_yanit_analizi.R` (753) — her ikisi de ratchet'te at-budget
+PİN'lenmişti (760/5, 753/4). İkisi de aynı yapıya sahipti: ince bir veri/sekme
+orkestrasyon katmanı (zaten helper dosyalarında) üzerine ~700 satırlık inline
+highcharter/DT renderer bloğu. `feature-ownership-map.md` "sıradaki hedef" notu
+tam olarak bu extraction'ı işaret ediyordu; veri->sunum guardrail'i önceki oturumda
+hazırlanmıştı. Repoda zaten 7 admin modülü `admin_*_outputs(output, data_fn, ...)`
+desenini kullanıyordu (test edilebilir renderer-kayıt fonksiyonu); büyük modüller
+için ayrı dosya örneği `module_admin_hata_analizi.R` → helper dosyaları ayrımıydı.
+
+Her iki modülün renderer bloğu BİREBİR (byte-korumalı) yeni `*_outputs.R` dosyalarına
+taşındı; modüller veri/sekme orkestrasyonuna indi. Renderer'lar `JS`,
+`admin_turkish_dt_language`, `admin_dt_header_callback`, `admin_format_turkish_date`
+gibi global yardımcıları eskisi gibi çağrı anında çözer (globalenv'e source edildikleri
+için davranış aynı). Golden davranış testleri seri adı/renk/NPS hesabı/treemap/boş-veri/
+refresh-bağımlılığını kilitleyerek grafik sözleşmelerinin korunduğunu KANITLAR.
+
+### Değişen dosyalar
+**Kaynak**
+- `R/module_admin_geri_bildirim_outputs.R` (yeni, 728 satır / 5 fonksiyon) —
+  `admin_gb_outputs(output, gb_data, etiket_sayilari)`: 13 highcharter/DT renderer
+  (günlük trend, memnuniyet polar/column/trend, korelasyon, NPS gauge/dağılım/trend/pie,
+  etiket treemap/bar, kullanıcı + detay tabloları). Modülden BİREBİR çıkarıldı (CRLF korundu).
+- `R/module_admin_geri_bildirim.R` — **760 → 55 satır** (veri reaktifleri + sekme
+  yönlendirici + `admin_gb_outputs(...)` çağrısı).
+- `R/module_admin_yanit_analizi_outputs.R` (yeni, 678 satır / 3 fonksiyon) —
+  `admin_yanit_outputs(output, ya_data, etiket_sayilari, refresh)`: 13 renderer.
+  `ya_saat_gun_heatmap`/`ya_saatlik_chart` `refresh$trigger()` bağımlılığı için
+  `refresh` parametresi alır.
+- `R/module_admin_yanit_analizi.R` — **753 → 106 satır** (UI + veri/sekme orkestrasyonu
+  + `admin_yanit_outputs(...)` çağrısı).
+- `R/config_source_manifest.R` — `module_admin` bölümüne iki `*_outputs` dosyası
+  ilgili modülden ÖNCE eklendi (19 → 21 dosya; toplam 266 → 268).
+- `R/config_seam_registry.R` — `destek_yonetici_saglik` seam guard_tests listesine
+  iki yeni golden behavior testi eklendi (5 → 7).
+
+**Test**
+- `tests/testthat/test-admin-geri-bildirim-outputs-behavior.R` (yeni, 6 test) —
+  golden grafik sözleşmesi: çift-eksenli trend (column #06b6d4 + spline #f59e0b),
+  5-seviye memnuniyet pastası (Türkçe etiket + renk + cnt eşleme), NPS solid gauge
+  hesabı ((promoter-detractor)/toplam*100 = 45, sarı eşik), etiket treemap, boş-veri
+  korumaları, kullanıcı tablosu.
+- `tests/testthat/test-admin-yanit-analizi-outputs-behavior.R` (yeni, 6 test) —
+  areaspline trend (30-gün pencere, Beğeni yeşil/Beğenmeme kırmızı), tip pastası
+  (like/dislike → Türkçe + renk), model bar (oran sırası), etiket treemap, refresh-bağımlı
+  saat-gün ısı haritası (trigger() sayacı kontrolü), boş-veri korumaları.
+- `tests/testthat/test-admin-geri-bildirim-refactor-contract.R` /
+  `test-admin-yanit-analizi-refactor-contract.R` — yeni `*_outputs` dosyası varlığı +
+  `admin_*_outputs` tanımı + modülün çağrı yapması + modülde artık `renderHighchart`/
+  `renderDT` olmaması + 13 output ID'sinin outputs dosyasında bulunması + manifest sırası
+  (outputs → module) eklendi.
+- `test-source-manifest-sections-contract.R` — `module_admin` çapası (n=19→21) ve
+  toplam (266 → 268) güncellendi.
+- `test-maintainability-ratchet.R` — modül bütçeleri sıkılaştırıldı (geri_bildirim
+  760/5 → 90/3, yanit 753/4 → 140/4; dedicated env defaultları da 799→90 / 799→140);
+  yeni `*_outputs` dosyaları için 760/6 ve 710/5 bütçeleri eklendi.
+
+**Dokümantasyon**
+- `CLAUDE.md` — Admin Feedback/Yanıt Analizi modularization sözleşmeleri (kaynak
+  sırası + sorumluluklar + bütçeler + testler) + Group 6 admin yükleme listesi güncellendi.
+- `docs/feature-ownership-map.md` — Destek/Geri Bildirim seam'i: outputs dosyaları +
+  golden testler eklendi; at-budget risk notu "KALMADI" olarak güncellendi.
+- `docs/technical-reference.md` — Geri Bildirim/Yanıt Analizi outputs extraction notu +
+  bütçe eşikleri güncellendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: iki at-budget modül 760/753 satır; her biri ~700 satır inline renderer
+  + ince veri/orkestrasyon; küresel max-file-length metriğini ve ratchet pinlerini
+  süren dosyalar.
+- Sonra: modüller 55/106 satır (orkestrasyon-odaklı); renderer'lar 728/678 satırlık
+  tek-sorumluluk dosyalarında (düz, bağımsız renderer listeleri — düşük cyclomatic
+  karmaşıklık), dosya-özel bütçelerle kilitli. **Küresel en büyük runtime dosyası
+  760 → 758 satıra indi** (yeni en büyük `module_settings_yapilandirma_ui.R`, mevcut).
+  Değerlendirilen dosya 272 → 274; skor 100/100; 800+ satır / 25+ fonksiyon = 0.
+  At-budget admin pini KALMADI.
+
+### Korunan davranış sözleşmeleri
+- 26 renderer'ın (13+13) gövdeleri BİREBİR taşındı (byte-korumalı; CRLF/LF native
+  korundu). Seri adları, renk paletleri, NPS hesabı, treemap/pie/areaspline veri
+  eşlemeleri, boş-veri korumaları, `refresh$trigger()` bağımlılıkları ve Türkçe
+  etiketler golden testlerle kanıtlandı (highcharter kuruluyken gerçekten KOŞTU).
+- Bare global yardımcılar (`JS`, `admin_turkish_dt_language`, `admin_dt_header_callback`,
+  `admin_format_turkish_date`, `admin_turkish_days`) çağrı anında eskisi gibi çözülür;
+  veri reaktifleri (`gb_data`/`ya_data`/`etiket_sayilari`) ve `refresh` argüman olarak geçer.
+- Helper/UI ayrım sözleşmeleri (mevcut refactor-contract'lar) bozulmadan geçti.
+- DB/SSO/encoding/streaming/UX sözleşmelerine dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- İki golden behavior testi (6+6) highcharter KURULUYKEN tek tek geçti
+  (0 FAIL / 0 WARN / 0 SKIP) — grafik sözleşmeleri gerçekten doğrulandı, atlanmadı.
+- İki refactor-contract (6+5), query-contract (3), veri->sunum behavior (6),
+  maintainability-ratchet (12), source-manifest-sections (4), source-manifest-contract (11),
+  global-source-manifest (6) → tümü 0 FAIL / 0 WARN.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; 274 dosya;
+  en büyük 758; refactor adayı yok.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`; `destek_yonetici_saglik`
+  runtime-dosya 42 → 44 (iki yeni dosya sahipli); sahipsiz dosya yok.
+- `bash tools/ai_validate.sh full --boot-smoke` → **geçti**: environment OK, parse
+  sanity OK, **app source smoke OK (5.5s — yeni manifest boot'ta yükleniyor)**,
+  **tam strict testthat suite OK (161.0s; highcharter kurulu olduğundan tüm chart
+  testleri KOŞTU)**, shiny boot smoke OK (7.2s); `failed_steps: 0`, `skipped_steps: 0`.
+  Artifact: `artifacts/ai-validation/20260616-092004/summary.json`
+  (`validation_execution_status="ran_by_ai_repo_check"`, profile full/full,
+  `app_source_smoke_status="passed"`, `shiny_boot_smoke_status="passed"`,
+  `browser_smoke_status="skipped"`, `db_sso_vm_validation_performed=false`).
+  `highcharter` ve `logger` paketleri oturum içinde CRAN'dan kuruldu. Tüm komutlar `LANG=C.UTF-8`.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Yönetici Paneli → Geri Bildirim Analizi: Genel Bakış / Memnuniyet / NPS / Etiket &
+  İçerik sekmelerindeki tüm grafiklerin ve tabloların eskisi gibi render olduğunu doğrulayın.
+- Yönetici Paneli → Yanıt Geri Bildirimi Analizi: Genel Bakış / Model Performansı /
+  Etiket & Yorum / Zaman & Kullanıcı sekmelerindeki grafik/tabloları doğrulayın.
+- Yenile butonunun saat-gün ısı haritası ve saatlik grafikleri güncellediğini doğrulayın.
+- Davranış değişmedi; test grafik sözleşmelerini kilitler.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding/gerçek tarayıcı kanıtı alınmadı
+  (bulut oturumu; browser smoke SKIPPED). Renderer'lar grafik motoruna (highcharter)
+  bağlı; golden testler highcharter ile gerçek render JSON'ını doğruladı ama canlı
+  tarayıcıda görsel render yalnızca VM/manuel QA'da kanıtlanır.
+- Yeni `*_outputs` dosyaları büyük (728/678) ama tek-fonksiyon flat renderer listeleridir
+  (düşük öncelik). İstenirse tab bazında (overview/memnuniyet/nps/etiket) daha da
+  bölünebilir; bu pakette tek `*_outputs` dosyası (paket hedefi) tercih edildi.
+- Sıradaki paket adayı: bu seam dışında `module_settings_yapilandirma_ui.R` (758) ve
+  `module_startup_screen.R` (740) yakın-bütçe UI dosyaları; ya da frontend complexity
+  doctor'daki duplike CSS selector temizliği.
+
+---
+
 ## 2026-06-16 — Frontend bölge yönetişim katmanının VERİ/DOĞRULAYICI ayrımı (en büyük runtime dosyasını düşür)
 
 ### Seçilen iz(ler)

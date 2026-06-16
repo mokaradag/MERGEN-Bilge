@@ -295,7 +295,9 @@ mergen_seam_registry <- function() {
       guard_tests = c(
         "tests/testthat/test-admin-hata-analizi-refactor-contract.R",
         "tests/testthat/test-admin-geri-bildirim-refactor-contract.R",
+        "tests/testthat/test-admin-geri-bildirim-outputs-behavior.R",
         "tests/testthat/test-admin-yanit-analizi-refactor-contract.R",
+        "tests/testthat/test-admin-yanit-analizi-outputs-behavior.R",
         "tests/testthat/test-e2e-health-dashboard-regression.R",
         "tests/testthat/test-health-check-env-contract.R"
       ),

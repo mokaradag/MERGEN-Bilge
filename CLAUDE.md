@@ -3494,23 +3494,26 @@ Important: if isolated tests source `R/helpers_admin_hata_analizi.R` directly, k
 
 ### Admin Yanıt Analizi modularization contract
 
-Yanıt Geri Bildirimi Analizi sayfası, büyük admin modüllerinin kademeli küçültülmesi yaklaşımıyla ayrı yardımcı dosyaya bölünmüştür. Preserve this source order in `R/config_source_manifest.R`:
+Yanıt Geri Bildirimi Analizi sayfası, büyük admin modüllerinin kademeli küçültülmesi yaklaşımıyla ayrı yardımcı/çıktı dosyalarına bölünmüştür. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
-safe_source("R/helpers_admin_yanit_analizi.R", encoding = "UTF-8")
-safe_source("R/module_admin_yanit_analizi.R",  encoding = "UTF-8")
+safe_source("R/helpers_admin_yanit_analizi.R",        encoding = "UTF-8")
+safe_source("R/module_admin_yanit_analizi_outputs.R", encoding = "UTF-8")
+safe_source("R/module_admin_yanit_analizi.R",         encoding = "UTF-8")
 ```
 
 Responsibilities:
 
 * `R/helpers_admin_yanit_analizi.R`: MB_Feedback odaklı sorgu paketi, yanıt geri bildirim etiket çözümleme mantığı ve Yanıt Analizi sekme UI helperları.
-* `R/module_admin_yanit_analizi.R`: public `adminYanitAnaliziUI()` / `adminYanitAnaliziServer()` API'si, Shiny refresh/reactive orkestrasyonu, chart/table output render fonksiyonları ve modül wiring.
+* `R/module_admin_yanit_analizi_outputs.R`: `admin_yanit_outputs(output, ya_data, etiket_sayilari, refresh)` — tüm highcharter/DT render fonksiyonları (13 output). Modül server gövdesinden BİREBİR çıkarıldı; davranış değişmedi. `ya_saat_gun_heatmap`/`ya_saatlik_chart` `refresh$trigger()` bağımlılığını korur.
+* `R/module_admin_yanit_analizi.R`: public `adminYanitAnaliziUI()` / `adminYanitAnaliziServer()` API'si, Shiny refresh/reactive orkestrasyonu, sekme yönlendirici ve `admin_yanit_outputs(...)` çağrısı (artık 753 → 106 satır).
 
-Do not move `admin_yanit_collect_data()`, `admin_yanit_tag_counts()`, `admin_yanit_overview_ui()`, `admin_yanit_model_ui()`, `admin_yanit_etiket_ui()` or `admin_yanit_zaman_ui()` back into `R/module_admin_yanit_analizi.R`.
+Do not move `admin_yanit_collect_data()`, `admin_yanit_tag_counts()`, `admin_yanit_overview_ui()`, `admin_yanit_model_ui()`, `admin_yanit_etiket_ui()` or `admin_yanit_zaman_ui()` back into `R/module_admin_yanit_analizi.R`. Do not move the highcharter/DT render functions (`admin_yanit_outputs`) back into the module; keep the module under its 140-line budget.
 
 This split is protected by:
 
 * `tests/testthat/test-admin-yanit-analizi-refactor-contract.R`
+* `tests/testthat/test-admin-yanit-analizi-outputs-behavior.R`
 * `tests/testthat/test-source-manifest-contract.R`
 * `tests/testthat/test-maintainability-ratchet.R`
 
@@ -3959,17 +3962,18 @@ The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module
 `R/helpers_claude_code_workdir_snapshot.R` is budgeted at 450 lines and 24 functions.
 `R/helpers_claude_code.R` remains budgeted at 617 lines and 29 functions.
 
-Admin Feedback Analysis is now protected by `MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 799`and`MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_FUNCTIONS = 5`. The extracted SQL helper file `R/helpers_admin_geri_bildirim_queries.R` is protected with a 260-line and 3-function budget.
+Admin Feedback Analysis is now protected by `MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 90`and`MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_FUNCTIONS = 3` (inline render fonksiyonları `*_outputs()` dosyasına çıkarıldıktan sonra 799/5 → 90/3 sıkılaştırıldı). The extracted SQL helper file `R/helpers_admin_geri_bildirim_queries.R` is protected with a 260-line and 3-function budget; `R/module_admin_geri_bildirim_outputs.R` is budgeted at 760 lines / 6 functions.
 
 ### Admin Feedback Analysis modularization contract
 
-Admin Feedback Analysis is intentionally split across a small UI/data-helper boundary, a SQL-query boundary, and the Shiny server module.
+Admin Feedback Analysis is intentionally split across a small UI/data-helper boundary, a SQL-query boundary, a chart/table render-output boundary, and the Shiny server module.
 
 Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_admin_geri_bildirim.R",         encoding = "UTF-8")
 safe_source("R/helpers_admin_geri_bildirim_queries.R", encoding = "UTF-8")
+safe_source("R/module_admin_geri_bildirim_outputs.R",  encoding = "UTF-8")
 safe_source("R/module_admin_geri_bildirim.R",          encoding = "UTF-8")
 ```
 
@@ -3977,15 +3981,17 @@ Responsibilities:
 
 * `R/helpers_admin_geri_bildirim.R`: public `adminGeriBildirimUI()`, tab UI helpers, and pure tag-counting/data-presentation helpers. It should not create Shiny observers or query the database.
 * `R/helpers_admin_geri_bildirim_queries.R`: `admin_gb_feedback_queries()` and `admin_gb_fetch_data()`. This file owns the feedback SQL query package and the injectable query function boundary so tests can validate the contract without touching the database.
-* `R/module_admin_geri_bildirim.R`: Shiny server orchestration, refresh/reactive flow, tab routing, and chart/table render functions.
+* `R/module_admin_geri_bildirim_outputs.R`: `admin_gb_outputs(output, gb_data, etiket_sayilari)` — all highcharter/DT render functions (13 outputs). Extracted verbatim from the module server body; behavior unchanged.
+* `R/module_admin_geri_bildirim.R`: Shiny server orchestration, refresh/reactive flow, tab routing, and the `admin_gb_outputs(...)` call (now 760 → 55 lines).
 
-Do not move the SQL query list or the public UI shell back into `R/module_admin_geri_bildirim.R`. The module should remain below the 800-line threshold.
+Do not move the SQL query list or the public UI shell back into `R/module_admin_geri_bildirim.R`. Do not move the highcharter/DT render functions (`admin_gb_outputs`) back into the module; keep the module under its 90-line budget.
 
 Protected by:
 
 ```text
 tests/testthat/test-admin-geri-bildirim-refactor-contract.R
 tests/testthat/test-admin-geri-bildirim-query-contract.R
+tests/testthat/test-admin-geri-bildirim-outputs-behavior.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-maintainability-ratchet.R
 ```
@@ -4585,9 +4591,11 @@ User-facing and system-facing modules.
 - `R/module_admin_gelismis_analizler.R`
 - `R/module_admin_analytics.R`
 - `R/helpers_admin_geri_bildirim.R`
+- `R/module_admin_geri_bildirim_outputs.R`
 - `R/module_admin_geri_bildirim.R`
 - `R/module_admin_hata_analizi.R`
 - `R/helpers_admin_yanit_analizi.R`
+- `R/module_admin_yanit_analizi_outputs.R`
 - `R/module_admin_yanit_analizi.R`
 - `R/module_health_worker_metrics.R`
 - `R/module_health_overview.R`
