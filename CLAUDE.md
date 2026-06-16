@@ -3464,6 +3464,36 @@ This split is protected by:
 * `tests/testthat/test-source-manifest-contract.R`
 * `tests/testthat/test-maintainability-ratchet.R`
 
+### Startup screen UI/server split contract
+
+The deep-space startup screen is split so the large UI definition does not grow inside the runtime/observer module. Preserve this source order in `R/config_source_manifest.R` (both files are in the `module_identity_startup` section, owned by the `kimlik_sso` seam):
+
+```r
+safe_source("R/module_startup_screen_ui.R", encoding = "UTF-8")
+safe_source("R/module_startup_screen.R",    encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/module_startup_screen_ui.R`: `createStartupScreenUI()` plus the pure `.startup_*()` sub-builders (`.startup_intro_music_tag`, `.startup_company_logo`, `.startup_version_badge`, `.startup_version_modal`, `.startup_branding`, `.startup_explore_button`, `.startup_skip_checkbox`, `.startup_mode_modal`, `.startup_character_step`, plus the data-driven mode-card layer). UI only — no `observeEvent`, no `session$sendCustomMessage`, no reactive state.
+* `R/module_startup_screen.R`: `startupScreenObserversInit()` and `apply_experience_mode()` — the server-side observers (skip-intro decision, Three.js init, experience-mode → settings mapping, persona/music sync, character-media preload). No UI builder.
+
+The three experience-mode cards (Odak/Dinamik/Bütünleşik) are intentionally produced from a single data-driven builder, not hand-written three times:
+
+* `.startup_mode_feature_defs()` is the single source for the five feature indicators (`tts`, `followup`, `music`, `sound`, `character`) and their open/closed icons.
+* `.startup_mode_card_defs()` declares the three modes (title, icon, micro-animation, and the five per-feature open/closed states).
+* `.startup_mode_feature_icon(feature, on)` builds one indicator; `.startup_mode_card(def)` builds one card; `.startup_mode_modal()` renders the grid via `lapply(.startup_mode_card_defs(), .startup_mode_card)`.
+
+The rendered tag tree must stay byte-identical to the previous inline UI (verified during the refactor). Do not move `createStartupScreenUI()` or the `.startup_*` builders back into `R/module_startup_screen.R`, do not re-inline the three mode cards, and do not add observers/`sendCustomMessage`/reactive state to the UI file. The `ui.R` call site `createStartupScreenUI()` depends on the UI file loading before `ui.R` is built. Keep `R/module_app_loading.R` after `R/module_startup_screen.R` and before `R/module_quick_actions.R` (unchanged).
+
+Protected by:
+
+* `tests/testthat/test-startup-screen-ui-refactor-contract.R` (split contract + data-driven mode-card behavior for all three modes)
+* `tests/testthat/test-startup-screen-module-behavior.R` (UI structure + `apply_experience_mode` + skip-intro observer)
+* `tests/testthat/test-source-manifest-contract.R`
+* `tests/testthat/test-source-manifest-sections-contract.R`
+* `tests/testthat/test-maintainability-ratchet.R`
+
 ### Admin Hata Analizi modularization contract
 
 `R/module_admin_hata_analizi.R` has been reduced by extracting pure/query/UI helper responsibilities into `R/helpers_admin_hata_analizi.R`.
@@ -4563,6 +4593,7 @@ User-facing and system-facing modules.
 - `R/module_session_timeout.R`
 - `R/module_performance.R`
 - `R/module_user_identity.R`
+- `R/module_startup_screen_ui.R`
 - `R/module_startup_screen.R`
 - `R/module_quick_actions.R`
 - `R/module_claude_code_plugins.R`

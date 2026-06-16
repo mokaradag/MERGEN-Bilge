@@ -6,6 +6,139 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-16 — Derin uzay açılış ekranı UI/sunucu ayrımı + veri-odaklı mod-kartı dedup
+
+### Seçilen iz(ler)
+- **Track 1 — En büyük / yakın-bütçe R dosyasından bütünleşik (saf) UI çıkarımı**
+  (öncelik #1). `kimlik_sso` başlangıç seam'inde tek paket.
+- **Track 4 — belgelenmiş "sıradaki hedef" risk notunu gerçek davranış kapsamasına
+  çevirme**: üç deneyim-modu kartının veri-odaklı açık/kapalı özellik davranışı.
+
+### Özet ve gerekçe
+Keşif (maintainability 100/100; frontend yapısal temiz; seam doctor OK):
+`module_startup_screen.R` **#2 en büyük runtime dosyasıydı (740 satır / 6 fonksiyon)**
+ve hem refactor-log hem feature-ownership-map'te açık "sıradaki hedef" idi. Dosya
+TEK dosyada UI + sunucu mantığını karıştırıyordu: ~380 satırlık monolitik bir saf
+UI fonksiyonu (`createStartupScreenUI()`) + ~280 satırlık gözlemci kümesi
+(`startupScreenObserversInit()`) + `apply_experience_mode()`. UI içindeki üç deneyim-modu
+kartı (Odak/Dinamik/Bütünleşik) ~180 satır boyunca neredeyse birebir tekrar ediyordu
+(yalnızca beş özellik göstergesinin açık/kapalı durumu, ikon, başlık farklı).
+
+Repo'da güçlü bir UI/sunucu ayrım deseni mevcut (`module_file_manager_ui.R`,
+`module_settings_yapilandirma_ui.R`, `module_claude_code_ui.R`). Aynı desen izlendi:
+UI yeni dosyaya alındı ve saf `.startup_*()` alt-yapıcılarına bölündü; üç mod kartı tek
+veri-odaklı `.startup_mode_card()` + iki küçük veri tablosu + `.startup_mode_feature_icon()`
+ile üretilir (gerçek DRY/karmaşıklık azaltımı, yalnızca satır taşıma değil). Refactor'dan
+ÖNCE `createStartupScreenUI()` çıktısı altın referans olarak yakalandı; refactor'dan
+SONRA üretilen HTML **byte-birebir aynı** (md5 `5f763a51…`, `identical()` TRUE, diff yok).
+
+### Değişen dosyalar
+**Kaynak**
+- `R/module_startup_screen_ui.R` (yeni, 407 satır / 14 fonksiyon) — `createStartupScreenUI()`
+  ince kompozitör + saf `.startup_*()` yapıcıları (`.startup_intro_music_tag`,
+  `.startup_company_logo`, `.startup_version_badge`, `.startup_version_modal`,
+  `.startup_branding`, `.startup_explore_button`, `.startup_skip_checkbox`,
+  `.startup_mode_modal`, `.startup_character_step`) + veri-odaklı mod-kartı katmanı
+  (`.startup_mode_feature_defs`, `.startup_mode_card_defs`, `.startup_mode_feature_icon`,
+  `.startup_mode_card`).
+- `R/module_startup_screen.R` — **740 → 358 satır** (yalnızca `startupScreenObserversInit`
+  + `apply_experience_mode`; UI dosyasına işaret eden yeni başlık).
+- `R/config_source_manifest.R` — `module_identity_startup` bölümüne
+  `R/module_startup_screen_ui.R`, `R/module_startup_screen.R`'den ÖNCE eklendi
+  (11 → 12 dosya; toplam 268 → 269).
+- `R/bootstrap_source_manifest.R` — kritik sıra kuralı eklendi:
+  `module_startup_screen_ui.R` → `module_startup_screen.R`.
+- `R/config_seam_registry.R` — `kimlik_sso` guard_tests listesine yeni split-contract
+  testi eklendi (5 → 6).
+
+**Test**
+- `tests/testthat/test-startup-screen-ui-refactor-contract.R` (yeni, ~60 assertion) —
+  UI/sunucu ayrım sözleşmesi (UI yapıcısı UI dosyasında; sunucu dosyası yapıcıyı
+  içermez; manifest sırası UI→sunucu); kart kabuğunun kaynakta TEK kez tanımlanması +
+  `lapply(.startup_mode_card_defs(), .startup_mode_card)` ile üretilmesi (kopyalama-yok
+  regresyon koruması); `.startup_mode_feature_icon()` açık/kapalı sınıf+ikon+ipucu;
+  ÜÇ modun tamamı için kart HTML'inde özellik açık/kapalı ikon/ipucu (Odak hepsi
+  kapalı, Bütünleşik hepsi açık, Dinamik karışık).
+- `tests/testthat/test-startup-screen-module-behavior.R` — her iki dosyayı da source
+  edecek şekilde güncellendi (UI yapıcısı taşındı); mevcut UI/`apply_experience_mode`/
+  skip-intro gözlemci testleri korundu.
+- `tests/testthat/test-source-manifest-sections-contract.R` — `module_identity_startup`
+  n=11→12 ve toplam 268→269 bilinçli güncellendi.
+- `tests/testthat/test-maintainability-ratchet.R` — yeni dosya bütçeleri eklendi:
+  `module_startup_screen.R` 380/7, `module_startup_screen_ui.R` 430/16 (geri birleşmeyi
+  ve büyümeyi kilitler).
+
+**Dokümantasyon**
+- `CLAUDE.md` — yeni "Startup screen UI/server split contract" + Group 6 yükleme listesi.
+- `docs/feature-ownership-map.md` — SSO/Auth (kimlik_sso) seam'ine açılış UI/sunucu
+  dosyaları + iki test eklendi; stale "sıradaki hedef" işaretçileri (Destek + Frontend
+  bölümlerindeki `module_startup_screen.R 740` / tamamlanmış admin modülleri) güncellendi.
+- `docs/technical-reference.md` — açılış ekranı UI/sunucu ayrımı + bütçe + sözleşme notu.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `module_startup_screen.R` 740/6; UI + sunucu tek dosyada; ~380 satırlık
+  monolitik UI fonksiyonu; üç mod kartı ~180 satır tekrar.
+- Sonra: sunucu dosyası 358 satır (gözlemci-odaklı); UI dosyası 407 satır (kompozitör +
+  saf alt-yapıcılar, üç kart tek veri-odaklı yapıcıdan). Skor 100/100; en büyük runtime
+  dosyası 758 (settings UI, değişmedi); 800+ satır / 25+ fonksiyon = 0. Açılış ekranı
+  at-budget pini KALMADI.
+
+### Korunan davranış sözleşmeleri
+- `createStartupScreenUI()` üretilen HTML byte-birebir korundu (altın md5 eşleşti,
+  diff yok). Üç mod kartının `data-mode`, beş özellik göstergesi (açık/kapalı sınıf,
+  ikon, `data-tooltip`), ikon kutusu, başlık ve kısa metni golden testlerle kilitlendi.
+- Sunucu gözlemcileri (skip-intro kararı, Three.js init, deneyim-modu→ayar eşlemesi,
+  persona/müzik senkronizasyonu, karakter-medya preload) ve `apply_experience_mode`
+  mod tablosu birebir taşındı; davranış testleri korundu.
+- DB/SSO/encoding/streaming/UX çalışma-zamanı sözleşmelerine dokunulmadı (saf UI/sunucu
+  yeniden yapılandırma).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Refactor öncesi/sonrası altın HTML karşılaştırması: `identical()` TRUE, md5
+  `5f763a5152d1ad239b0f5c1d8915786a` eşleşti, `diff` boş.
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni split-contract,
+  güncellenen startup-behavior, source-manifest-contract, source-manifest-sections,
+  global-source-manifest, maintainability-ratchet, maintainability-ratchet-contract,
+  seam-registry-contract, seam-doctor-contract.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`; `kimlik_sso`
+  runtime-dosya 14 → 15, guard-test 5 → 6; sahipsiz dosya yok.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; en büyük 758;
+  refactor adayı yok.
+- `bash tools/ai_validate.sh full --boot-smoke` → **geçti**: environment OK, parse
+  sanity OK (820 dosya), **app source smoke OK (7.1s — yeni manifest + ui.R build)**,
+  **tam strict testthat suite OK (173.4s)**, shiny boot smoke OK (8.1s);
+  `failed_steps: 0`, `skipped_steps: 0`. Artifact:
+  `artifacts/ai-validation/20260616-134655/summary.json`
+  (`validation_execution_status="ran_by_ai_repo_check"`, profile full/full,
+  `app_source_smoke_status="passed"`, `full_testthat_suite_status="passed"`,
+  `shiny_boot_smoke_status="passed"`, `browser_smoke_status="skipped"`,
+  `db_sso_vm_validation_performed=false`). `logger`/`highcharter` oturum içinde kuruldu.
+  Tüm komutlar `LANG=C.UTF-8`.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- SSO etkin/devre-dışı başlat; derin uzay giriş ekranının (logo, sürüm rozeti, KEŞFET
+  butonu, "Bir daha gösterme", üç deneyim-modu kartı, karakter adımı) eskisi gibi
+  render olduğunu doğrulayın.
+- Üç modun (Odak/Dinamik/Bütünleşik) kartlarındaki özellik göstergelerinin (sesli yanıt,
+  takip, müzik, ses, karakter) açık/kapalı ikon ve ipuçlarının doğru olduğunu doğrulayın.
+- KEŞFET → mod seç → (Bütünleşik'te) karakter seç akışının ve "Bir daha gösterme"
+  atlama akışının eskisi gibi çalıştığını doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding/gerçek tarayıcı kanıtı alınmadı
+  (bulut oturumu; browser smoke SKIPPED, `db_sso_vm_validation_performed=false`).
+  Değişiklik saf UI/sunucu ayrımıdır ve HTML byte-birebir korunduğundan bu kapılar
+  bu paket için gerekli değildir; derin uzay Three.js sahnesi ve karakter video akışı
+  yalnızca VM/manuel tarayıcıda görsel olarak kanıtlanır.
+- Sıradaki paket adayları: `module_settings_yapilandirma_ui.R` (758, en büyük runtime
+  dosyası — zaten saf `.syap_*` alt-yapıcılı; yalnızca dosya boyutu) ayrı UI dosyasına
+  taşınabilir; ya da `module_image_generation.R` (730/22, iki eksende yakın-bütçe) saf
+  yardımcı çıkarımı; ya da frontend tarafında büyük CSS dosyaları (`destek_page.css` 1527,
+  `theme_light_core.css` 1148) — ancak CSS bölme görsel regresyon riski taşır ve VM QA ister.
+
+---
+
 ## 2026-06-16 — At-budget admin modüllerinin inline renderer'larını *_outputs() dosyalarına çıkarma
 
 ### Seçilen iz(ler)

@@ -415,6 +415,8 @@ source_manifest_required_order <- list(
   c("R/helpers_file_manager_attach_client.R", "R/module_file_manager.R"),
   c("R/module_file_manager_ui.R", "R/module_file_manager.R"),
 
+  c("R/module_startup_screen_ui.R", "R/module_startup_screen.R"),
+
   c("R/helpers_send_message_request_lifecycle.R", "R/helpers_send_message_core.R"),
   c("R/helpers_send_message_core.R", "R/helpers_send_message_prompting.R"),
   c("R/helpers_send_message_prompting.R", "R/server_send_message.R"),

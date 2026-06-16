@@ -359,6 +359,7 @@ source_manifest_sections <- list(
     "R/module_performance.R",
     "R/module_user_identity.R",
     "R/module_boot_readiness.R",
+    "R/module_startup_screen_ui.R",
     "R/module_startup_screen.R",
     "R/module_app_loading.R",
     "R/module_tool_background_settings.R",

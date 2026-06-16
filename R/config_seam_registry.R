@@ -105,7 +105,8 @@ mergen_seam_registry <- function() {
         "tests/testthat/test-sso-authorization-failclosed.R",
         "tests/testthat/test-sso-session-identity-smoke.R",
         "tests/testthat/test-e2e-sso-identity-readiness-regression.R",
-        "tests/testthat/test-e2e-boot-welcome-regression.R"
+        "tests/testthat/test-e2e-boot-welcome-regression.R",
+        "tests/testthat/test-startup-screen-ui-refactor-contract.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-sso-jwt-signature.R\")",

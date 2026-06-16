@@ -99,7 +99,7 @@
   module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 6L),
   module_settings_api_key = list(first = "R/module_settings_kisisel.R", last = "R/module_api_key.R", n = 6L),
   module_ai_audio = list(first = "R/module_ai_processing.R", last = "R/module_character_video.R", n = 6L),
-  module_identity_startup = list(first = "R/module_sso.R", last = "R/module_quick_actions.R", n = 11L),
+  module_identity_startup = list(first = "R/module_sso.R", last = "R/module_quick_actions.R", n = 12L),
   module_claude_code = list(first = "R/module_claude_code_plugins.R", last = "R/module_claude_code.R", n = 5L),
   module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/module_proje_kaynak_analizi.R", n = 1L),
   module_support = list(first = "R/module_destek_yardim.R", last = "R/module_destek.R", n = 6L),
@@ -224,7 +224,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 266L -> 268L bilinçli güncelleme: at-budget admin modüllerinin inline
   # renderer'ları R/module_admin_geri_bildirim_outputs.R ve
   # R/module_admin_yanit_analizi_outputs.R dosyalarına çıkarıldı.
-  expect_equal(length(runtime), 268L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 268L -> 269L bilinçli güncelleme: derin uzay giriş ekranı UI'si
+  # R/module_startup_screen_ui.R dosyasına çıkarıldı (UI/sunucu ayrımı).
+  expect_equal(length(runtime), 269L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

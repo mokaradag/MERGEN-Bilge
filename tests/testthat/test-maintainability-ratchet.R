@@ -219,6 +219,14 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/helpers_mcp_tools.R", 535L, 20L)
   assert_current_budget("R/module_chartlab.R", 532L, 20L)
 
+  # Derin uzay giriş ekranı UI/sunucu olarak bölündü: createStartupScreenUI()
+  # ve saf .startup_*() yapıcıları module_startup_screen_ui.R'ye taşındı; üç
+  # deneyim-modu kartı tek veri-odaklı .startup_mode_card() ile üretilir.
+  # module_startup_screen.R 740 -> 358 satıra indi. Bütçeler geri birleşmeyi
+  # ve büyümeyi yakalar.
+  assert_current_budget("R/module_startup_screen.R", 380L, 7L)
+  assert_current_budget("R/module_startup_screen_ui.R", 430L, 16L)
+
   # Yönetişim katmanı (seam kayıt defteri + frontend bölge haritası) saf veri
   # dosyalarıdır; bütçeler bölge/seam başına birkaç yeni varlık satırına izin
   # verir ama dosyaların runtime mantığıyla şişmesini erken yakalar.
