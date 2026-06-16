@@ -1,0 +1,574 @@
+/* Dosya Yolu: www/css/destek_forms.css */
+/* Açıklama: Destek geri bildirim/hata bildirim form kartları ve seçim alanları. */
+
+/* ==============================================================================
+   FORM KARTLARI
+   ============================================================================== */
+
+.destek-feedback-container {
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.destek-form-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  padding: 40px;
+}
+
+.destek-form-group {
+  margin-bottom: 36px;
+}
+
+.destek-form-label {
+  display: block;
+  color: rgba(199, 210, 254, 0.8);
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+
+.destek-label-required::after {
+  content: " *";
+  color: #f87171;
+}
+
+/* ==============================================================================
+   MEMNUNİYET SEÇİCİ (EMOJİ)
+   ============================================================================== */
+
+.destek-satisfaction-selector {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  padding: 20px 0;
+  flex-wrap: wrap;
+}
+
+.destek-satisfaction-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.5s ease;
+  opacity: 0.6;
+  padding: 16px 20px;
+  border-radius: 16px;
+}
+
+.destek-satisfaction-item:hover {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+.destek-satisfaction-item.active {
+  opacity: 1;
+  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.05);
+}
+
+.destek-emoji {
+  font-size: 48px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+}
+
+.destek-emoji-label {
+  font-size: 15px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.destek-satisfaction-item.active .destek-emoji-label {
+  color: var(--text-primary);
+}
+
+/* ==============================================================================
+   NPS SEÇİCİ
+   ============================================================================== */
+
+.destek-nps-container {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  justify-content: center;
+  flex-wrap: nowrap;
+}
+
+.destek-nps-label-left,
+.destek-nps-label-right {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: auto;
+  padding: 0 6px;
+  flex-shrink: 0;
+}
+
+.destek-nps-label-left { text-align: right; }
+.destek-nps-label-right { text-align: left; }
+
+.destek-nps-buttons {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 14px;
+  justify-content: center;
+}
+
+.destek-nps-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.destek-nps-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  transform: scale(1.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* NPS renk sınıfları - aktif olduğunda scale ve renk */
+.destek-nps-btn.active { transform: scale(1.1); color: white; }
+.destek-nps-btn.active[data-value="0"] { background: #dc2626; border-color: #b91c1c; box-shadow: 0 0 15px rgba(220, 38, 38, 0.4); }
+.destek-nps-btn.active[data-value="1"] { background: #ef4444; border-color: #dc2626; box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+.destek-nps-btn.active[data-value="2"] { background: #ea580c; border-color: #c2410c; box-shadow: 0 0 15px rgba(234, 88, 12, 0.4); }
+.destek-nps-btn.active[data-value="3"] { background: #f97316; border-color: #ea580c; box-shadow: 0 0 15px rgba(249, 115, 22, 0.4); }
+.destek-nps-btn.active[data-value="4"] { background: #f59e0b; border-color: #d97706; box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
+.destek-nps-btn.active[data-value="5"] { background: #eab308; border-color: #ca8a04; box-shadow: 0 0 15px rgba(234, 179, 8, 0.4); }
+.destek-nps-btn.active[data-value="6"] { background: #facc15; border-color: #eab308; box-shadow: 0 0 15px rgba(250, 204, 21, 0.4); color: #1a1a1a; }
+.destek-nps-btn.active[data-value="7"] { background: #84cc16; border-color: #65a30d; box-shadow: 0 0 15px rgba(132, 204, 22, 0.4); }
+.destek-nps-btn.active[data-value="8"] { background: #22c55e; border-color: #16a34a; box-shadow: 0 0 15px rgba(34, 197, 94, 0.4); }
+.destek-nps-btn.active[data-value="9"] { background: #16a34a; border-color: #15803d; box-shadow: 0 0 15px rgba(22, 163, 74, 0.4); }
+.destek-nps-btn.active[data-value="10"] { background: #166534; border-color: #14532d; box-shadow: 0 0 15px rgba(21, 128, 61, 0.4); }
+
+/* ==============================================================================
+   ETİKET SEÇİCİ
+   ============================================================================== */
+
+.destek-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.destek-tag-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 16px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.destek-tag-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.destek-tag-btn.active {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Etiket ikon animasyonları (her zaman aktif - orijinale uygun) */
+.destek-tag-btn .destek-tag-icon-sparkle i {
+  animation: destekTagSparkle 3s ease-in-out infinite;
+}
+
+@keyframes destekTagSparkle {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(15deg) scale(1.1); }
+  50% { transform: rotate(-15deg) scale(1); }
+  75% { transform: rotate(0deg) scale(1.1); }
+}
+
+.destek-tag-btn .destek-tag-icon-palette i {
+  animation: destekTagPalette 3s ease-in-out infinite;
+}
+
+@keyframes destekTagPalette {
+  0%, 100% { transform: rotate(-15deg); }
+  50% { transform: rotate(15deg); }
+}
+
+.destek-tag-btn .destek-tag-icon-alert i {
+  animation: destekTagAlert 1.5s ease-in-out infinite;
+  animation-delay: 2s;
+}
+
+@keyframes destekTagAlert {
+  0%, 100% { transform: rotate(0deg); }
+  16% { transform: rotate(15deg); }
+  33% { transform: rotate(-15deg); }
+  50% { transform: rotate(15deg); }
+  66% { transform: rotate(-15deg); }
+  83% { transform: rotate(0deg); }
+}
+
+.destek-tag-btn .destek-tag-icon-bolt i {
+  animation: destekTagBolt 2s ease-in-out infinite;
+}
+
+@keyframes destekTagBolt {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+.destek-tag-btn .destek-tag-icon-dots i {
+  animation: destekTagDots 2s ease-in-out infinite;
+}
+
+@keyframes destekTagDots {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.7; }
+}
+
+/* Etiket renk sınıfları (aktif durumda) */
+.destek-tag-indigo.active { background: rgba(99, 102, 241, 0.1); box-shadow: 0 0 15px rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.3); color: #a5b4fc; }
+.destek-tag-purple.active { background: rgba(168, 85, 247, 0.1); box-shadow: 0 0 15px rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.3); color: #c4b5fd; }
+.destek-tag-red.active { background: rgba(239, 68, 68, 0.1); box-shadow: 0 0 15px rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+.destek-tag-amber.active { background: rgba(245, 158, 11, 0.1); box-shadow: 0 0 15px rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.3); color: #fcd34d; }
+.destek-tag-cyan.active { background: rgba(6, 182, 212, 0.1); box-shadow: 0 0 15px rgba(6, 182, 212, 0.15); border-color: rgba(6, 182, 212, 0.3); color: #67e8f9; }
+
+/* ==============================================================================
+   METİN GİRİŞLERİ VE TEXTAREA
+   ============================================================================== */
+
+.destek-textarea-wrapper {
+  position: relative;
+}
+
+.destek-textarea {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 16px 20px;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-family: var(--font-primary);
+  resize: vertical;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  box-sizing: border-box;
+}
+
+.destek-textarea:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
+}
+
+.destek-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.destek-textarea-lg {
+  min-height: 160px;
+}
+
+.destek-char-counter {
+  display: block;
+  text-align: right;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.destek-char-counter.destek-limit-warning {
+  color: #f87171;
+}
+
+.destek-text-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 14px 18px;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-family: var(--font-primary);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  box-sizing: border-box;
+}
+
+.destek-text-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
+}
+
+.destek-text-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+/* ==============================================================================
+   KONU GİRİŞLERİ (ÇOKLU)
+   ============================================================================== */
+
+.destek-konular-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.destek-konu-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.destek-konu-row .destek-text-input {
+  flex: 1;
+}
+
+.destek-konu-sil-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  border: none;
+  color: #f87171;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.destek-konu-sil-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.destek-add-btn-wrapper {
+  margin-top: 10px;
+}
+
+.destek-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.destek-add-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: var(--text-primary);
+}
+
+/* ==============================================================================
+   KATEGORİ SEÇİCİ
+   ============================================================================== */
+
+.destek-category-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.destek-category-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 22px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 16px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.destek-category-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.destek-cat-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+/* Kategori ikon animasyonları (her zaman aktif - orijinale uygun) */
+.destek-cat-icon-wrapper.destek-cat-icon-purple i {
+  animation: destekCatPalette 3s ease-in-out infinite;
+}
+
+@keyframes destekCatPalette {
+  0%, 100% { transform: rotate(-15deg); }
+  50% { transform: rotate(15deg); }
+}
+
+.destek-cat-icon-wrapper.destek-cat-icon-blue i {
+  animation: destekCatWrench 2.5s ease-in-out infinite;
+}
+
+@keyframes destekCatWrench {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-45deg); }
+}
+
+.destek-cat-icon-wrapper.destek-cat-icon-amber i {
+  animation: destekCatBolt 2s ease-in-out infinite;
+}
+
+@keyframes destekCatBolt {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+.destek-cat-icon-wrapper.destek-cat-icon-red i {
+  animation: destekCatAlert 1.5s ease-in-out infinite;
+  animation-delay: 2s;
+}
+
+@keyframes destekCatAlert {
+  0%, 100% { transform: rotate(0deg); }
+  16% { transform: rotate(15deg); }
+  33% { transform: rotate(-15deg); }
+  50% { transform: rotate(15deg); }
+  66% { transform: rotate(-15deg); }
+  83% { transform: rotate(0deg); }
+}
+
+.destek-cat-icon-wrapper.destek-cat-icon-cyan i {
+  animation: destekCatDots 2s ease-in-out infinite;
+}
+
+@keyframes destekCatDots {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.7; }
+}
+
+/* Kategori renk sınıfları (aktif durumda) */
+.destek-cat-purple.active { background: rgba(168, 85, 247, 0.1); box-shadow: 0 0 15px rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.3); color: #c4b5fd; }
+.destek-cat-blue.active { background: rgba(59, 130, 246, 0.1); box-shadow: 0 0 15px rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); color: #93c5fd; }
+.destek-cat-amber.active { background: rgba(245, 158, 11, 0.1); box-shadow: 0 0 15px rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.3); color: #fcd34d; }
+.destek-cat-red.active { background: rgba(239, 68, 68, 0.1); box-shadow: 0 0 15px rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+.destek-cat-cyan.active { background: rgba(6, 182, 212, 0.1); box-shadow: 0 0 15px rgba(6, 182, 212, 0.15); border-color: rgba(6, 182, 212, 0.3); color: #67e8f9; }
+
+/* ==============================================================================
+   ÖNCELİK SEÇİCİ - Orijinale uygun renkli arka planlar
+   ============================================================================== */
+
+.destek-priority-container {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.destek-priority-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 16px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.destek-priority-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.destek-priority-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+  opacity: 0.5;
+}
+
+.destek-dot-blue { background: #3b82f6; }
+.destek-dot-amber { background: #f59e0b; }
+.destek-dot-orange { background: #f97316; }
+.destek-dot-red { background: #ef4444; }
+
+/* Aktif öncelik butonları - renkli arka plan */
+.destek-priority-btn.active {
+  transform: scale(1.02);
+}
+
+.destek-priority-btn.active .destek-priority-dot {
+  opacity: 1;
+  transform: scale(1.25);
+}
+
+.destek-priority-btn.active .destek-dot-blue { box-shadow: 0 0 8px rgba(59, 130, 246, 0.6); }
+.destek-priority-btn.active .destek-dot-amber { box-shadow: 0 0 8px rgba(245, 158, 11, 0.6); }
+.destek-priority-btn.active .destek-dot-orange { box-shadow: 0 0 8px rgba(249, 115, 22, 0.6); }
+.destek-priority-btn.active .destek-dot-red { box-shadow: 0 0 8px rgba(239, 68, 68, 0.6); }
+
+/* Renkli arka planlar - orijinale uygun */
+.destek-priority-btn[data-priority="dusuk"].active {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
+}
+
+.destek-priority-btn[data-priority="orta"].active {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.15);
+}
+
+.destek-priority-btn[data-priority="yuksek"].active {
+  background: rgba(249, 115, 22, 0.1);
+  border-color: rgba(249, 115, 22, 0.3);
+  color: #fdba74;
+  box-shadow: 0 0 15px rgba(249, 115, 22, 0.15);
+}
+
+.destek-priority-btn[data-priority="kritik"].active {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.15);
+}
+

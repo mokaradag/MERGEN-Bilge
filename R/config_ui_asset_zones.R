@@ -386,6 +386,9 @@ ui_asset_ownership_zones <- list(
     css = c(
       "css/feedback_modal.css",
       "css/destek_page.css",
+      "css/destek_forms.css",
+      "css/destek_submission.css",
+      "css/destek_about_responsive.css",
       "css/destek_yardim_chatbot.css",
       "css/surum_bilgilendirme.css"
     ),

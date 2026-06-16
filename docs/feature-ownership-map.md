@@ -323,9 +323,17 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   areaspline/tip pastası/model bar/treemap/refresh-bağımlı ısı haritası),
   `test-mailto-encoding*.R`,
   `test-adversarial-hostile-input-behavior.R` (kötü amaçlı geri bildirim/markdown).
+- **Frontend varlıkları:** `www/css/destek_page.css` (ana düzen/yardım merkezi/sekme),
+  `www/css/destek_forms.css` (form kartları ve seçim alanları),
+  `www/css/destek_submission.css` (dosya yükleme/gönderim/durum),
+  `www/css/destek_about_responsive.css` (Hakkında + duyarlı tasarım),
+  `www/css/destek_yardim_chatbot.css`, `www/js/destek_form.js`,
+  `www/js/destek_yardim_chatbot.js`.
 - **Smoke/kanıt:** geri bildirim/hata yazımları DB encoding preflight kapsamında.
 - **Bilinen risk / sıradaki hedef:** kullanıcı/LLM-kontrollü metin DB sınırlarında
-  görünür-vs-teknik normalizasyon ayrımı korunmalı. At-budget admin modüllerinin
+  görünür-vs-teknik normalizasyon ayrımı korunmalı. Destek sayfası CSS'i tek
+  1527 satırlık dosyadan dört sıralı manifest parçasına bölündü; destek CSS
+  için yakın-bütçe riski çözüldü ve frontend CSS ratchet'i 1150 satıra indirildi. At-budget admin modüllerinin
   (`module_admin_geri_bildirim.R` 760/5, `module_admin_yanit_analizi.R` 753/4)
   inline highcharter/DT renderer'ları `*_outputs()` dosyalarına çıkarıldı:
   modüller 55 ve 106 satıra indi, renderer'lar 728/678 satırlık tek-sorumluluk
