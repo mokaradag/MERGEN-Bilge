@@ -1494,12 +1494,12 @@ Current contract:
 - `R/config_seam_registry.R` owns `mergen_seam_registry()`: the canonical map of the 12 production-critical seams (`temel_altyapi`, `veritabani_kodlama`, `kimlik_sso`, `api_anahtar_model`, `sohbet_llm_akis`, `mcp_analiz`, `dosya_yasam_dongusu`, `medya_ses`, `bilge_yolac`, `destek_yonetici_saglik`, `shiny_calisma_zamani`, `frontend_varlik`). Each seam declares its owned source-manifest sections, manifest-external runtime files, guard tests, focused validation commands, and related seams.
 - Every `source_manifest_sections` section is owned by exactly one seam. Adding a manifest section without assigning a seam owner, or assigning two owners, fails `tests/testthat/test-seam-registry-contract.R`.
 - The seam registry's `extra_runtime_files` is the only allowlist for runtime R files outside the source manifest (currently `app.R`, `global.R`, `server.R`, `ui.R`, `R/utils_safe_source.R`, `R/bootstrap_source_manifest.R`, `R/config_source_manifest.R`). The contract test enforces "no orphan runtime R files": every file under `R/` must be in the manifest or in this allowlist.
-- `R/config_ui_asset_zones.R` owns `ui_asset_ownership_zones`: 23 frontend ownership zones. Every CSS/JS asset listed in `R/config_ui_assets.R` belongs to exactly ONE zone; each zone declares a single owner seam and at least one guard test. `ui_asset_unmanifested_ownership` covers the intentionally unmanifested frontend files (the inlined app-loading overlay assets, `css/admin_analytics.css`, and the smoke-only files) with an explicit reason.
+- `R/config_ui_asset_zones.R` owns `ui_asset_ownership_zones`: 23 frontend ownership zones. Every CSS/JS asset listed in `R/config_ui_assets.R` belongs to exactly ONE zone; each zone declares a single owner seam and at least one guard test. `ui_asset_unmanifested_ownership` covers the intentionally unmanifested frontend files (the inlined app-loading overlay assets, `css/admin_analytics.css`, and the smoke-only files) with an explicit reason. This file is DATA-ONLY (the two ownership maps); the zone resolution + partition validation API (pure functions `ui_asset_zone_ids/get/css_paths/js_paths`, `ui_asset_zone_owner_seams`, `ui_asset_zones_for_seam`, `ui_asset_zones_validate`, `ui_asset_frontend_ownership_gaps`) lives in `R/config_ui_asset_zone_validators.R`, loaded immediately after the data file (mirrors the `config_source_manifest.R` data + `bootstrap_source_manifest.R` validator pattern). Keep the data file free of function definitions; protected by `tests/testthat/test-ui-asset-zone-validators-split-contract.R`.
 - `ui_asset_unmanifested_ownership` entries may carry `optional_in_checkout = TRUE` for vendored files that physically exist ONLY in the on-prem Windows VM working copy (the `renv.lock` provenance pattern; currently `js/fontfaceobserver.js` and `js/highlight.min.js`). `ui_asset_zones_validate()` does not treat their absence in a cloud/CI checkout as a structural problem, while the ownership entry still prevents an ownership-gap report on the VM where the file exists. Do not remove these entries to make a cloud checkout look cleaner, and do not mark a file optional merely because it is missing — optional means "intentionally on-prem-only". Non-optional unmanifested entries must keep failing validation when the file is absent; this split is protected by `tests/testthat/test-ui-asset-zones-contract.R`.
 - The zone map declares OWNERSHIP only. Load order stays single-owned by `R/config_ui_assets.R` (`ui_asset_js_order_rules`, `ui_asset_js_render_plan`); do not duplicate ordering logic into the zone map, and do not derive load order from zones.
 - Physical coverage is enforced: every `.css`/`.js` file directly under `www/css/` and `www/js/` must be owned through a zone (via the manifest) or through `ui_asset_unmanifested_ownership`. A new frontend file without declared ownership fails `tests/testthat/test-ui-asset-zones-contract.R`.
 - The frozen seam id and zone id lists in the contract tests require conscious updates together with `docs/architecture-map.md`.
-- The governance layer loads through the manifest (`config_ui_assets` section carries `R/config_ui_asset_zones.R` after `R/config_ui_assets.R`; the `architecture_governance` section carries `R/config_seam_registry.R`). Validation functions are NOT called at boot; enforcement lives in the contract tests and the seam doctor.
+- The governance layer loads through the manifest (`config_ui_assets` section carries `R/config_ui_asset_zones.R` then `R/config_ui_asset_zone_validators.R` after `R/config_ui_assets.R`; the `architecture_governance` section carries `R/config_seam_registry.R`). Validation functions are NOT called at boot; enforcement lives in the contract tests and the seam doctor.
 - `tests/scripts/seam_doctor.R` (wrapper: `bash tools/seam_doctor.sh`) is the operational report: it validates registry/zones/manifest consistency, reports per-seam section/file/zone/guard-test counts, and writes a secret-safe JSON artifact under `artifacts/seam-doctor/`. It runs no app boot, browser, DB, LLM, or network work, and it is `source(...)`-safe (no `quit()`); structural drift fails it through `stop()`. The doctor artifact is guidance plus structural proof only — it is never evidence that runtime, browser, VM/SSO/DB, or encoding validation ran.
 - When a seam boundary genuinely changes (new section, renamed seam, moved zone), update `R/config_seam_registry.R` / `R/config_ui_asset_zones.R`, the frozen lists in the contract tests, and `docs/architecture-map.md` in the same change. Do not weaken the partition checks to make an unowned file pass.
 
@@ -1507,6 +1507,7 @@ Protected by:
 
 - `tests/testthat/test-seam-registry-contract.R`
 - `tests/testthat/test-ui-asset-zones-contract.R`
+- `tests/testthat/test-ui-asset-zone-validators-split-contract.R`
 - `tests/testthat/test-seam-doctor-contract.R`
 - `tests/testthat/test-source-manifest-sections-contract.R`
 
@@ -1514,6 +1515,7 @@ Focused validation:
 
 - `testthat::test_file("tests/testthat/test-seam-registry-contract.R")`
 - `testthat::test_file("tests/testthat/test-ui-asset-zones-contract.R")`
+- `testthat::test_file("tests/testthat/test-ui-asset-zone-validators-split-contract.R")`
 - `testthat::test_file("tests/testthat/test-seam-doctor-contract.R")`
 - `testthat::test_file("tests/testthat/test-source-manifest-sections-contract.R")`
 - `Rscript tests/scripts/seam_doctor.R`
@@ -3492,23 +3494,26 @@ Important: if isolated tests source `R/helpers_admin_hata_analizi.R` directly, k
 
 ### Admin Yanıt Analizi modularization contract
 
-Yanıt Geri Bildirimi Analizi sayfası, büyük admin modüllerinin kademeli küçültülmesi yaklaşımıyla ayrı yardımcı dosyaya bölünmüştür. Preserve this source order in `R/config_source_manifest.R`:
+Yanıt Geri Bildirimi Analizi sayfası, büyük admin modüllerinin kademeli küçültülmesi yaklaşımıyla ayrı yardımcı/çıktı dosyalarına bölünmüştür. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
-safe_source("R/helpers_admin_yanit_analizi.R", encoding = "UTF-8")
-safe_source("R/module_admin_yanit_analizi.R",  encoding = "UTF-8")
+safe_source("R/helpers_admin_yanit_analizi.R",        encoding = "UTF-8")
+safe_source("R/module_admin_yanit_analizi_outputs.R", encoding = "UTF-8")
+safe_source("R/module_admin_yanit_analizi.R",         encoding = "UTF-8")
 ```
 
 Responsibilities:
 
 * `R/helpers_admin_yanit_analizi.R`: MB_Feedback odaklı sorgu paketi, yanıt geri bildirim etiket çözümleme mantığı ve Yanıt Analizi sekme UI helperları.
-* `R/module_admin_yanit_analizi.R`: public `adminYanitAnaliziUI()` / `adminYanitAnaliziServer()` API'si, Shiny refresh/reactive orkestrasyonu, chart/table output render fonksiyonları ve modül wiring.
+* `R/module_admin_yanit_analizi_outputs.R`: `admin_yanit_outputs(output, ya_data, etiket_sayilari, refresh)` — tüm highcharter/DT render fonksiyonları (13 output). Modül server gövdesinden BİREBİR çıkarıldı; davranış değişmedi. `ya_saat_gun_heatmap`/`ya_saatlik_chart` `refresh$trigger()` bağımlılığını korur.
+* `R/module_admin_yanit_analizi.R`: public `adminYanitAnaliziUI()` / `adminYanitAnaliziServer()` API'si, Shiny refresh/reactive orkestrasyonu, sekme yönlendirici ve `admin_yanit_outputs(...)` çağrısı (artık 753 → 106 satır).
 
-Do not move `admin_yanit_collect_data()`, `admin_yanit_tag_counts()`, `admin_yanit_overview_ui()`, `admin_yanit_model_ui()`, `admin_yanit_etiket_ui()` or `admin_yanit_zaman_ui()` back into `R/module_admin_yanit_analizi.R`.
+Do not move `admin_yanit_collect_data()`, `admin_yanit_tag_counts()`, `admin_yanit_overview_ui()`, `admin_yanit_model_ui()`, `admin_yanit_etiket_ui()` or `admin_yanit_zaman_ui()` back into `R/module_admin_yanit_analizi.R`. Do not move the highcharter/DT render functions (`admin_yanit_outputs`) back into the module; keep the module under its 140-line budget.
 
 This split is protected by:
 
 * `tests/testthat/test-admin-yanit-analizi-refactor-contract.R`
+* `tests/testthat/test-admin-yanit-analizi-outputs-behavior.R`
 * `tests/testthat/test-source-manifest-contract.R`
 * `tests/testthat/test-maintainability-ratchet.R`
 
@@ -3957,17 +3962,18 @@ The Admin Hata Analizi extraction is now part of the ratchet baseline: `R/module
 `R/helpers_claude_code_workdir_snapshot.R` is budgeted at 450 lines and 24 functions.
 `R/helpers_claude_code.R` remains budgeted at 617 lines and 29 functions.
 
-Admin Feedback Analysis is now protected by `MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 799`and`MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_FUNCTIONS = 5`. The extracted SQL helper file `R/helpers_admin_geri_bildirim_queries.R` is protected with a 260-line and 3-function budget.
+Admin Feedback Analysis is now protected by `MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES = 90`and`MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_FUNCTIONS = 3` (inline render fonksiyonları `*_outputs()` dosyasına çıkarıldıktan sonra 799/5 → 90/3 sıkılaştırıldı). The extracted SQL helper file `R/helpers_admin_geri_bildirim_queries.R` is protected with a 260-line and 3-function budget; `R/module_admin_geri_bildirim_outputs.R` is budgeted at 760 lines / 6 functions.
 
 ### Admin Feedback Analysis modularization contract
 
-Admin Feedback Analysis is intentionally split across a small UI/data-helper boundary, a SQL-query boundary, and the Shiny server module.
+Admin Feedback Analysis is intentionally split across a small UI/data-helper boundary, a SQL-query boundary, a chart/table render-output boundary, and the Shiny server module.
 
 Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_admin_geri_bildirim.R",         encoding = "UTF-8")
 safe_source("R/helpers_admin_geri_bildirim_queries.R", encoding = "UTF-8")
+safe_source("R/module_admin_geri_bildirim_outputs.R",  encoding = "UTF-8")
 safe_source("R/module_admin_geri_bildirim.R",          encoding = "UTF-8")
 ```
 
@@ -3975,15 +3981,17 @@ Responsibilities:
 
 * `R/helpers_admin_geri_bildirim.R`: public `adminGeriBildirimUI()`, tab UI helpers, and pure tag-counting/data-presentation helpers. It should not create Shiny observers or query the database.
 * `R/helpers_admin_geri_bildirim_queries.R`: `admin_gb_feedback_queries()` and `admin_gb_fetch_data()`. This file owns the feedback SQL query package and the injectable query function boundary so tests can validate the contract without touching the database.
-* `R/module_admin_geri_bildirim.R`: Shiny server orchestration, refresh/reactive flow, tab routing, and chart/table render functions.
+* `R/module_admin_geri_bildirim_outputs.R`: `admin_gb_outputs(output, gb_data, etiket_sayilari)` — all highcharter/DT render functions (13 outputs). Extracted verbatim from the module server body; behavior unchanged.
+* `R/module_admin_geri_bildirim.R`: Shiny server orchestration, refresh/reactive flow, tab routing, and the `admin_gb_outputs(...)` call (now 760 → 55 lines).
 
-Do not move the SQL query list or the public UI shell back into `R/module_admin_geri_bildirim.R`. The module should remain below the 800-line threshold.
+Do not move the SQL query list or the public UI shell back into `R/module_admin_geri_bildirim.R`. Do not move the highcharter/DT render functions (`admin_gb_outputs`) back into the module; keep the module under its 90-line budget.
 
 Protected by:
 
 ```text
 tests/testthat/test-admin-geri-bildirim-refactor-contract.R
 tests/testthat/test-admin-geri-bildirim-query-contract.R
+tests/testthat/test-admin-geri-bildirim-outputs-behavior.R
 tests/testthat/test-source-manifest-contract.R
 tests/testthat/test-maintainability-ratchet.R
 ```
@@ -4583,9 +4591,11 @@ User-facing and system-facing modules.
 - `R/module_admin_gelismis_analizler.R`
 - `R/module_admin_analytics.R`
 - `R/helpers_admin_geri_bildirim.R`
+- `R/module_admin_geri_bildirim_outputs.R`
 - `R/module_admin_geri_bildirim.R`
 - `R/module_admin_hata_analizi.R`
 - `R/helpers_admin_yanit_analizi.R`
+- `R/module_admin_yanit_analizi_outputs.R`
 - `R/module_admin_yanit_analizi.R`
 - `R/module_health_worker_metrics.R`
 - `R/module_health_overview.R`

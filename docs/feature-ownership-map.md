@@ -281,25 +281,65 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **UI/server modülleri:** `R/module_destek.R`, `R/module_destek_yardim.R`,
   `R/module_destek_geri_bildirim.R`, `R/module_destek_hata_bildir.R`,
   `R/module_destek_surum.R`, `R/module_destek_hakkinda.R`,
-  `R/module_admin_geri_bildirim.R`, `R/module_admin_hata_analizi.R`,
-  `R/module_admin_yanit_analizi.R` + `R/helpers_admin_yanit_analizi.R`
+  `R/module_admin_geri_bildirim.R` (veri/sekme orkestrasyonu) +
+  `R/module_admin_geri_bildirim_outputs.R` (`admin_gb_outputs`: 13 highcharter/DT
+  renderer), `R/module_admin_hata_analizi.R`, `R/module_admin_yanit_analizi.R`
+  (veri/sekme orkestrasyonu) + `R/module_admin_yanit_analizi_outputs.R`
+  (`admin_yanit_outputs`: 13 renderer) + `R/helpers_admin_yanit_analizi.R`
   (Yanıt Geri Bildirimi Analizi: veri toplama + etiket sayımı + sekme UI'ları).
 - **DB/servis:** `MB_Feedback`, hata bildirim tabloları; Service Desk
   (`SERVICE_DESK_API_KEY_URL`).
 - **Testler:** `test-destek-database-helpers-behavior.R`,
-  `test-destek-db-text-normalization-behavior.R`, `test-admin-geri-bildirim-*`,
+  `test-destek-db-text-normalization-behavior.R`, `test-admin-geri-bildirim-*`
+  (refactor-contract + query-contract + `test-admin-geri-bildirim-outputs-behavior.R`
+  golden grafik sözleşmesi: seri adı/renk/NPS hesabı/treemap/boş-veri),
   `test-admin-hata-analizi-*`, `test-admin-yanit-tag-counts-behavior.R`,
   `test-admin-yanit-data-presentation-behavior.R` (`admin_yanit_collect_data`
   17-sorgu sözleşmesi + `admin_yanit_overview_ui` beğeni/yorum oranı hesaplaması,
-  toplam=0 / boş-çerçeve N/A korumaları, Türkçe metrik kartları), `test-mailto-encoding*.R`,
+  toplam=0 / boş-çerçeve N/A korumaları, Türkçe metrik kartları),
+  `test-admin-yanit-analizi-outputs-behavior.R` (golden grafik sözleşmesi:
+  areaspline/tip pastası/model bar/treemap/refresh-bağımlı ısı haritası),
+  `test-mailto-encoding*.R`,
   `test-adversarial-hostile-input-behavior.R` (kötü amaçlı geri bildirim/markdown).
 - **Smoke/kanıt:** geri bildirim/hata yazımları DB encoding preflight kapsamında.
 - **Bilinen risk / sıradaki hedef:** kullanıcı/LLM-kontrollü metin DB sınırlarında
-  görünür-vs-teknik normalizasyon ayrımı korunmalı. Yanıt Analizi veri->sunum
-  katmanı (`admin_yanit_collect_data` + `admin_yanit_overview_ui`) davranışsal
-  kapsandı; bu, gelecekte `module_admin_yanit_analizi.R`'nin satır bütçesinde sabit
-  duran (753/753) inline chart renderer'larını ayrı bir `*_outputs()` dosyasına
-  taşıma refactor'ü için guardrail hazırlar (chart kontratları VM görsel QA gerektirir).
+  görünür-vs-teknik normalizasyon ayrımı korunmalı. At-budget admin modüllerinin
+  (`module_admin_geri_bildirim.R` 760/5, `module_admin_yanit_analizi.R` 753/4)
+  inline highcharter/DT renderer'ları `*_outputs()` dosyalarına çıkarıldı:
+  modüller 55 ve 106 satıra indi, renderer'lar 728/678 satırlık tek-sorumluluk
+  dosyalarında, golden grafik davranış testleriyle kilitli. At-budget pini KALMADI.
+  Kalan büyük dosyalar bu seam'de `R/helpers_admin_yanit_analizi.R` (565) ve
+  yeni `*_outputs` dosyaları; bunlar tek-fonksiyon flat renderer listeleri olduğu
+  için düşük öncelik. Sıradaki repo-geneli yakın-bütçe adayı bu seam dışında
+  (`module_settings_yapilandirma_ui.R` 758, `module_startup_screen.R` 740).
+
+## Frontend Varlık ve Yönetişim
+
+- **Seam:** `frontend_varlik`
+- **Birincil R dosyaları:** `R/config_ui_assets.R` (CSS/JS varlık manifesti +
+  yükleme sırası kuralları + render planı — sıranın TEK sahibi),
+  `R/config_ui_asset_zones.R` (SAF VERİ: 23 frontend bölgesi + manifest dışı
+  sahiplik haritası), `R/config_ui_asset_zone_validators.R` (bölge çözümleme +
+  bölümleme/partition doğrulama API'si: `ui_asset_zone_ids/get/css_paths/js_paths`,
+  `ui_asset_zone_owner_seams`, `ui_asset_zones_for_seam`, `ui_asset_zones_validate`,
+  `ui_asset_frontend_ownership_gaps` — boot'ta çağrılmaz, yalnızca seam doctor +
+  sözleşme testleri kullanır).
+- **JS/CSS:** `www/css/*`, `www/js/*` (her varlık tam olarak bir bölgeye atanır;
+  manifest dışı/smoke varlıklar gerekçeli sahiplenilir).
+- **Testler:** `test-ui-asset-manifest-contract.R`, `test-ui-asset-zones-contract.R`,
+  `test-ui-asset-zone-validators-split-contract.R` (VERİ/DOĞRULAYICI ayrımı +
+  bölümleme korunumu), `test-frontend-maintainability-ratchet.R`,
+  `test-frontend-selector-contract.R`.
+- **Smoke/kanıt:** seam doctor (`tests/scripts/seam_doctor.R`), frontend complexity
+  doctor, `www/smoke/ux-smoke.html`.
+- **Bilinen risk / sıradaki hedef:** bölge VERİSİ ile bölge DOĞRULAYICI API'si
+  ayrı dosyalara bölündü; `config_ui_asset_zones.R` 777/10 → 502/0 (SADECE veri,
+  0 fonksiyonda kilitli), doğrulayıcı API `config_ui_asset_zone_validators.R`'de
+  (312/10). Bu, en büyük runtime dosyasını manifestten düşürdü (en büyük artık
+  760 satır). Sıradaki yakın-bütçe adayları: `R/module_admin_geri_bildirim.R`
+  (760/5) ve `R/module_admin_yanit_analizi.R` (753/4) — inline chart renderer'larını
+  `*_outputs()` desenine taşıma (chart kontratları VM görsel QA gerektirir;
+  veri->sunum guardrail'i artık mevcut).
 
 ---
 

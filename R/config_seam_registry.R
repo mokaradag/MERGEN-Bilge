@@ -295,7 +295,9 @@ mergen_seam_registry <- function() {
       guard_tests = c(
         "tests/testthat/test-admin-hata-analizi-refactor-contract.R",
         "tests/testthat/test-admin-geri-bildirim-refactor-contract.R",
+        "tests/testthat/test-admin-geri-bildirim-outputs-behavior.R",
         "tests/testthat/test-admin-yanit-analizi-refactor-contract.R",
+        "tests/testthat/test-admin-yanit-analizi-outputs-behavior.R",
         "tests/testthat/test-e2e-health-dashboard-regression.R",
         "tests/testthat/test-health-check-env-contract.R"
       ),
@@ -347,6 +349,7 @@ mergen_seam_registry <- function() {
       guard_tests = c(
         "tests/testthat/test-ui-asset-manifest-contract.R",
         "tests/testthat/test-ui-asset-zones-contract.R",
+        "tests/testthat/test-ui-asset-zone-validators-split-contract.R",
         "tests/testthat/test-frontend-selector-contract.R",
         "tests/testthat/test-frontend-maintainability-ratchet.R",
         "tests/testthat/test-browser-smoke-harness-contract.R",

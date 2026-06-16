@@ -193,8 +193,14 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/helpers_admin_hata_detail_runtime.R", 380L, 12L)
   assert_current_budget("R/module_image_generation.R", 765L, 22L)
   assert_current_budget("R/helpers_llm_sse.R", 762L, 20L)
-  assert_current_budget("R/module_admin_geri_bildirim.R", 760L, 5L)
-  assert_current_budget("R/module_admin_yanit_analizi.R", 753L, 4L)
+  # At-budget admin modüllerinin inline highcharter/DT renderer'ları *_outputs()
+  # dosyalarına çıkarıldı (davranış değişmedi). Modüller veri/sekme orkestrasyonuna
+  # odaklı kaldı; renderer'lar ayrı tek-sorumluluk dosyasında. Budgetler geri
+  # birleşmeyi yakalar.
+  assert_current_budget("R/module_admin_geri_bildirim.R", 90L, 3L)
+  assert_current_budget("R/module_admin_geri_bildirim_outputs.R", 760L, 6L)
+  assert_current_budget("R/module_admin_yanit_analizi.R", 140L, 4L)
+  assert_current_budget("R/module_admin_yanit_analizi_outputs.R", 710L, 5L)
   assert_current_budget("R/server_module_wiring.R", 735L, 14L)
   assert_current_budget("R/server_core_interaction_runtime.R", 360L, 8L)
   assert_current_budget("R/server_core_observer_runtime.R", 320L, 6L)
@@ -216,10 +222,14 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # Yönetişim katmanı (seam kayıt defteri + frontend bölge haritası) saf veri
   # dosyalarıdır; bütçeler bölge/seam başına birkaç yeni varlık satırına izin
   # verir ama dosyaların runtime mantığıyla şişmesini erken yakalar.
-  # Not: 780 -> 790 bilinçli güncelleme. optional_in_checkout alanı (yalnızca
-  # on-prem VM kopyasında bulunan vendored dosyaların sahiplik doğrulaması)
-  # doğrulayıcıya gerçek davranış ve kayıt defterine iki alan ekledi.
-  assert_current_budget("R/config_ui_asset_zones.R", 790L, 12L)
+  # Bilinçli güncelleme: frontend bölge dosyası VERİ + DOĞRULAYICI olarak
+  # bölündü (config_source_manifest.R / bootstrap_source_manifest.R deseni).
+  # config_ui_asset_zones.R artık SADECE veri (777/10 -> 502/0); doğrulayıcı
+  # API (saf fonksiyonlar) config_ui_asset_zone_validators.R'ye taşındı.
+  # Veri dosyası 0 fonksiyonda kilitlenir (runtime mantık sızması engellenir);
+  # doğrulayıcı dosyası 10 fonksiyonu taşır. Bütçeler geri birleşmeyi yakalar.
+  assert_current_budget("R/config_ui_asset_zones.R", 550L, 2L)
+  assert_current_budget("R/config_ui_asset_zone_validators.R", 360L, 12L)
   assert_current_budget("R/config_seam_registry.R", 580L, 8L)
 })
 
@@ -297,7 +307,11 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
     )
   }
 
-  assert_file_budget("R/module_admin_geri_bildirim.R", 799L, 5L)
+  # Renderer'lar *_outputs() dosyalarına çıkarıldıktan sonra modül tabanı düştü.
+  assert_file_budget("R/module_admin_geri_bildirim.R", 90L, 3L)
+  assert_file_budget("R/module_admin_geri_bildirim_outputs.R", 760L, 6L)
+  assert_file_budget("R/module_admin_yanit_analizi.R", 140L, 4L)
+  assert_file_budget("R/module_admin_yanit_analizi_outputs.R", 710L, 5L)
   assert_file_budget("R/helpers_admin_geri_bildirim_queries.R", 260L, 3L)
   # Sidebar kullanıcı paneli bölünmesi: saf görünüm yardımcıları
   # helpers_sidebar_user_display.R içindedir; modül Shiny orkestrasyonuna
@@ -613,8 +627,10 @@ test_that("module_admin_geri_bildirim.R refactor kazanımı geri alınmaz", {
     info = "R/module_admin_geri_bildirim.R maintainability raporunda tek satır olarak görünmelidir."
   )
 
-  max_gb_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES", 799L)
-  max_gb_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_FUNCTIONS", 5L)
+  # Inline highcharter/DT renderer'lar R/module_admin_geri_bildirim_outputs.R'ye
+  # çıkarıldıktan sonra modül 760 -> 55 satıra indi. Taban 799 -> 90.
+  max_gb_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_LINES", 90L)
+  max_gb_functions <- .as_int_env("MERGEN_TEST_MAX_ADMIN_GERI_BILDIRIM_FUNCTIONS", 3L)
 
   expect_true(
     gb_row$lines[1] <= max_gb_lines,
@@ -794,12 +810,14 @@ test_that("module_admin_yanit_analizi.R refactor kazanımı geri alınmaz", {
     info = "R/module_admin_yanit_analizi.R maintainability raporunda tek satır olarak görünmelidir."
   )
 
-  max_yanit_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_YANIT_ANALIZI_LINES", 799L)
+  # Inline highcharter/DT renderer'lar R/module_admin_yanit_analizi_outputs.R'ye
+  # çıkarıldıktan sonra modül 753 -> 106 satıra indi. Taban 799 -> 140.
+  max_yanit_lines <- .as_int_env("MERGEN_TEST_MAX_ADMIN_YANIT_ANALIZI_LINES", 140L)
 
   expect_true(
     yanit_row$lines[1] <= max_yanit_lines,
     info = sprintf(
-      "module_admin_yanit_analizi.R refactor sonrası 800 satır altı kalmalıdır: %d > %d.",
+      "module_admin_yanit_analizi.R refactor sonrası taban çizgisini aşmamalıdır: %d > %d.",
       yanit_row$lines[1],
       max_yanit_lines
     )

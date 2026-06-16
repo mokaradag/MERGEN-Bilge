@@ -91,9 +91,13 @@ source_manifest_sections <- list(
   # config_ui_assets: Frontend CSS/JS varlık manifesti (yükleme sırası
   # sözleşmesi) ve frontend bölge (zone) sahiplik haritası. Bölge haritası
   # manifestten SONRA yüklenir; yükleme sırasının tek sahibi manifest kalır.
+  # Bölge VERİSİ (config_ui_asset_zones.R) ile bölge DOĞRULAYICI API'si
+  # (config_ui_asset_zone_validators.R) ayrı dosyalardır; doğrulayıcı saf
+  # fonksiyonlar veriden hemen sonra yüklenir (boot'ta çağrılmaz).
   config_ui_assets = c(
     "R/config_ui_assets.R",
-    "R/config_ui_asset_zones.R"
+    "R/config_ui_asset_zones.R",
+    "R/config_ui_asset_zone_validators.R"
   ),
 
   # architecture_governance: Üretim-kritik dikiş (seam) kayıt defteri. Saf
@@ -403,12 +407,14 @@ source_manifest_sections <- list(
     "R/module_admin_analytics.R",
     "R/helpers_admin_geri_bildirim.R",
     "R/helpers_admin_geri_bildirim_queries.R",
+    "R/module_admin_geri_bildirim_outputs.R",
     "R/module_admin_geri_bildirim.R",
     "R/helpers_admin_hata_analizi.R",
     "R/helpers_admin_hata_heatmap_data.R",
     "R/helpers_admin_hata_detail_runtime.R",
     "R/module_admin_hata_analizi.R",
     "R/helpers_admin_yanit_analizi.R",
+    "R/module_admin_yanit_analizi_outputs.R",
     "R/module_admin_yanit_analizi.R",
     "R/helpers_admin_documentation.R",
     "R/module_admin_documentation.R"

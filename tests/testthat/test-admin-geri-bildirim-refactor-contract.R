@@ -165,3 +165,64 @@ test_that("admin_gb_count_tags Türkçe etiket çevirisini ve sayımı korur", {
   expect_equal(nrow(sikayet_row), 1L)
   expect_equal(sikayet_row$etiket_tr[1], "Şikâyet")
 })
+
+# Output renderer'larının (highcharter/DT) ayrı *_outputs dosyasına çıkarılması
+.gb_expected_output_ids <- c(
+  "gb_gunluk_trend_chart", "gb_memnuniyet_polar_chart", "gb_memnuniyet_column_chart",
+  "gb_memnuniyet_trend_chart", "gb_korelasyon_chart", "gb_kullanici_tablo",
+  "gb_nps_gauge_chart", "gb_nps_dagilim_chart", "gb_nps_trend_chart", "gb_nps_pie_chart",
+  "gb_etiket_treemap_chart", "gb_etiket_bar_chart", "gb_detay_tablo"
+)
+
+test_that("geri bildirim grafik/tablo renderer'ları admin_gb_outputs dosyasına çıkarıldı", {
+  repo_root <- resolve_repo_root_for_tests()
+  outputs_path <- file.path(repo_root, "R/module_admin_geri_bildirim_outputs.R")
+
+  expect_true(
+    file.exists(outputs_path),
+    info = "R/module_admin_geri_bildirim_outputs.R dosyası eklenmelidir."
+  )
+
+  outputs_text <- .read_repo_text_admin_gb("R/module_admin_geri_bildirim_outputs.R")
+  module_text <- .read_repo_text_admin_gb("R/module_admin_geri_bildirim.R")
+
+  # Outputs dosyası admin_gb_outputs tanımını ve render fonksiyonlarını içerir.
+  expect_true(
+    grepl("admin_gb_outputs\\s*<-\\s*function\\s*\\(", outputs_text, perl = TRUE),
+    info = "admin_gb_outputs() outputs dosyasında tanımlı olmalıdır."
+  )
+  expect_true(grepl("renderHighchart", outputs_text, fixed = TRUE))
+  expect_true(grepl("renderDT", outputs_text, fixed = TRUE))
+
+  # Modül outputs fonksiyonunu çağırır ve artık inline renderer içermez.
+  expect_true(
+    grepl("admin_gb_outputs\\s*\\(", module_text, perl = TRUE),
+    info = "module_admin_geri_bildirim.R admin_gb_outputs() çağırmalıdır."
+  )
+  expect_false(
+    grepl("renderHighchart", module_text, fixed = TRUE),
+    info = "Grafik renderer'ları modülde kalmamalıdır (outputs dosyasına taşındı)."
+  )
+  expect_false(
+    grepl("renderDT", module_text, fixed = TRUE),
+    info = "Tablo renderer'ları modülde kalmamalıdır (outputs dosyasına taşındı)."
+  )
+
+  # Beklenen output ID'leri outputs dosyasında output$ olarak bulunur.
+  for (id in .gb_expected_output_ids) {
+    expect_true(
+      grepl(paste0("output$", id), outputs_text, fixed = TRUE),
+      info = paste("Outputs dosyasında eksik output ID'si:", id)
+    )
+  }
+})
+
+test_that("geri bildirim outputs dosyası modülden önce source ediliyor", {
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/module_admin_geri_bildirim_outputs.R",
+      "R/module_admin_geri_bildirim.R"
+    ),
+    label = "Geri bildirim outputs/module source sırası bozulmuş:"
+  )
+})
