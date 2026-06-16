@@ -6,6 +6,95 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-16 — validate_api_key uç-nokta doğrulama dallarının davranışsal kapsanması (belgeli boşluğu kapat)
+
+### Seçilen iz(ler)
+- **Track — Belgelenmiş "bilinen risk" boşluğunun deterministik teste çevrilmesi**
+  (öncelik #4 + #6). `api_anahtar_model` seam'inin `docs/feature-ownership-map.md`
+  "sıradaki hedef" notu olan `validate_api_key`/`derive_models_url` httr-mock
+  kapsaması ele alındı.
+
+### Özet ve gerekçe
+Keşif: maintainability skoru 100/100, frontend yapısal olarak temiz (legacy
+selector/sahipsiz varlık yok), seam doctor OK. Yapısal öncelikler (#1-#3)
+büyük ölçüde çözülmüş; küresel 24-fonksiyon tavanını tutan iki dosya
+(`helpers_file_manager_runtime.R`, `helpers_health_formatters.R`) belgeli
+"yoğun-tasarım" kararı ve farklı seam'lerde olduğundan bölme = düşük değerli
+churn olurdu (skor zaten 100). `feature-ownership-map.md` "Bilinen risk /
+sıradaki hedef" notları (yönerge bunları tercih etmemi söylüyor) çoğunlukla
+davranış-kapsama boşluklarını işaret ediyordu.
+
+`R/config_api.R::validate_api_key()` — kişisel API anahtarı "Doğrula" akışının
+çekirdeği (kullanıcıya görünür) — DEDİKE davranış testi yoktu; yalnızca yapısal
+split sözleşmesinde anılıyordu. Fonksiyon zengin dallı (boş anahtar, `/v1/models`
+URL türetme, model-listesi GET 200/401/403/429/500, sağlık uç noktası, sohbet
+ping POST 200/401/429/hata, endpoint tanımsız) ve tamamı httr-mock'lanabilir.
+`derive_models_url` iç closure'u, mock'lanan `GET`'e geçen URL yakalanarak DOLAYLI
+sınandı. Bu paket TAMAMEN ADDITIVE'dir: çalışma zamanı R kodu DEĞİŞMEDİ; gerçek
+bir bug bulunmadı (test doğru davranışı kilitler). Bu da onu bulut oturumu için
+düşük riskli ve uygun kılar (VM/SSO/DB/tarayıcı kanıtı gerekmez).
+
+### Değişen dosyalar
+**Test (yeni)**
+- `tests/testthat/test-config-api-validate-api-key-behavior.R` (37 assertion) —
+  kanıtlanmış config_api bootstrap deseni (placeholder env + vision/deep-thinking
+  guard'lı + `config_api.R` globalenv'e guard'lı source); `httr` GET/POST/status_code
+  `local_mocked_bindings(.package="httr")` ile mock'lanır; URL yakalama ile
+  `derive_models_url` dolaylı doğrulanır. Sahte anahtar (`gecersiz-test-anahtari`,
+  gerçek önek yok) ile secret-safe.
+
+**Dokümantasyon**
+- `docs/feature-ownership-map.md` — API seam Testler listesine yeni dosya eklendi;
+  "Bilinen risk / sıradaki hedef" notu opsiyonel boşluktan "kapsandı"ya güncellendi
+  (öncelik #6: artık doğru olmayan risk notu temizlendi).
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `validate_api_key` (kullanıcıya görünür anahtar doğrulama) yalnızca yapısal
+  split sözleşmesinde anılıyordu; uç-nokta doğrulama dalları davranışsal olarak hiç
+  sınanmamıştı; `feature-ownership-map.md` bunu "opsiyonel" boşluk olarak belgeliyordu.
+- Sonra: 14 dal/durum 37 assertion ile deterministik (offline, httr-mock) kilitli;
+  belgeli boşluk kapatıldı. Runtime kodu/satır/fonksiyon sayıları değişmedi
+  (skor 100/100 korunur).
+
+### Korunan davranış sözleşmeleri
+- Hiçbir runtime R kodu değişmedi; `validate_api_key`/`derive_models_url` davranışı
+  testlerle kilitlendi, değiştirilmedi.
+- Secret safety: yalnızca sahte anahtar kullanıldı; gerçek anahtar/önek loglanmadı,
+  yazılmadı (`test-secret-leak-contract.R` geçer).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Yeni test tek başına: 37 pass / 0 fail / 0 warn / 0 skip.
+- Komşu config_api/api-key testleriyle AYNI oturumda (globalenv config_api.R
+  source çapraz-bulaşma kontrolü): yeni test + config-api-split (36) +
+  crypto (32) + reasoning-overrides (14) + api-model-config (35) +
+  endpoint-resolution (41) + ai-feature-api-key (13) + deep-thinking (28) →
+  TOTAL 0 fail / 0 warn.
+- `test-secret-leak-contract.R` (8) + `test-log-redact-default-api-key-behavior.R` (4)
+  → 0 fail/warn (sahte anahtar fixture'ı secret tarayıcısını tetiklemez).
+- `Rscript tests/scripts/parse_sanity_check.R` → 811 dosya OK.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; runtime
+  dosya/fonksiyon değişmedi.
+- `bash tools/ai_validate.sh full --boot-smoke` → (aşağıdaki commit'te artifact).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Yapılandırma → kişisel API anahtarı girip "Doğrula"ya basın; geçerli anahtarda
+  "doğrulandı", geçersizde "reddedildi" mesajının eskisi gibi geldiğini doğrulayın
+  (davranış değişmedi; test yalnızca mevcut davranışı kilitler).
+
+### Bilinen riskler / atlanan doğrulamalar
+- Additive test paketi; runtime davranışı değişmedi. Gerçek LLM/sağlık uç noktası
+  yanıtları yalnızca VM/canlı ortamda kanıtlanır (testler httr'yi mock'lar).
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding/gerçek tarayıcı kanıtı bu oturumda
+  alınmadı (bulut oturumu; kapsam dışı).
+- Sıradaki paket adayları: yapısal tarafta küresel fonksiyon-tavanı dosyaları
+  (belgeli yoğun-tasarım — ayrı karar gerektirir); kapsama tarafında
+  `.ai/next-session-test-coverage-prompt.md` aktif workstream'inin dal/şube
+  hedefleri (`cc_policy_validate_workdir`, SSO fail-closed derin dallar,
+  `sendMessageInit` mod-dispatch).
+
+---
+
 ## 2026-06-15 — AI Uzman sunucu işleyicilerinden saf karar yardımcılarının ayrılması (yakın-bütçe handler küçültme)
 
 ### Seçilen iz(ler)

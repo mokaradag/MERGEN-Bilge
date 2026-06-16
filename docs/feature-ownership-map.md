@@ -128,11 +128,17 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   varsayılan anahtarı `MERGEN_DEFAULT_API_KEY` (yalnızca sunucu tarafı).
 - **Testler:** `test-config-api-key-crypto-behavior.R`, `test-api-key-choice-modal-contract.R`,
   `test-api-key-choice-modal-builders-behavior.R`, `test-api-key-identity-resolution-behavior.R`,
-  `test-api-key-server-behavior.R` (apiKeyServer kaydet/temizle/varsayılan akışı).
+  `test-api-key-server-behavior.R` (apiKeyServer kaydet/temizle/varsayılan akışı),
+  `test-config-api-validate-api-key-behavior.R` (`validate_api_key` httr-mock uç-nokta
+  doğrulama dalları: boş anahtar / `derive_models_url` türetme / model-listesi
+  GET 200/401/403/429/500 / sağlık uç noktası / sohbet ping POST 200/401/429/hata /
+  endpoint tanımsız).
 - **Smoke/kanıt:** secret-leak contract (`test-secret-leak-contract.R`); anahtarlar
   asla loglanmaz/commit edilmez.
-- **Bilinen risk / sıradaki hedef:** `validate_api_key`/`derive_models_url` httr-mock
-  uç-nokta doğrulama kapsaması opsiyonel.
+- **Bilinen risk / sıradaki hedef:** `validate_api_key` uç-nokta doğrulama dalları
+  (`derive_models_url` dahil) httr-mock ile davranışsal kapsandı. Kalan opsiyonel
+  alan yok; gerçek LLM/sağlık uç noktası davranışı yalnızca VM/canlı ortamda
+  kanıtlanır.
 
 ## Görsel / Vision
 
