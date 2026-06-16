@@ -106,15 +106,26 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `R/helpers_sso_signature.R` (JWT imza/JWKS), `R/helpers_logout_url.R`,
   `R/server_init_user_session.R`, `R/helpers_user_session_identity.R`.
 - **UI/server modülleri:** `R/module_sso.R`, `www/js/sso_auth.js`, `www/css/sso_auth.css`.
+  Bu seam ayrıca açılış/başlangıç ekranını da kapsar (`module_identity_startup`
+  bölümü): `R/module_startup_screen_ui.R` (derin uzay giriş ekranı UI'si +
+  `createStartupScreenUI()` + saf `.startup_*()` yapıcıları; üç deneyim-modu kartı
+  tek veri-odaklı `.startup_mode_card()` ile üretilir) ve `R/module_startup_screen.R`
+  (skip-intro/Three.js/deneyim-modu/persona-müzik gözlemcileri + `apply_experience_mode`).
 - **DB/servis:** `MB_Users`; Keycloak (`SSO_KEYCLOAK_URL`, JWKS uç noktası).
 - **Testler:** `test-sso-jwt-signature.R`, `test-sso-authorization-failclosed.R`,
   `test-sso-signature-parsing.R`, `test-sso-jwt.R`, `test-sso-der-tlv-behavior.R`,
   `test-sso-fetch-jwks-behavior.R`, `test-sso-auth-server-behavior.R` (ssoAuthServer
-  fail-closed testServer akışı), `test-e2e-sso-identity-readiness-regression.R`.
+  fail-closed testServer akışı), `test-e2e-sso-identity-readiness-regression.R`,
+  `test-startup-screen-module-behavior.R` (UI yapısı + `apply_experience_mode` +
+  skip-intro gözlemcisi), `test-startup-screen-ui-refactor-contract.R` (UI/sunucu
+  ayrım sözleşmesi + üç mod kartının veri-odaklı açık/kapalı özellik davranışı).
 - **Smoke/kanıt:** `run_vm_preflight_real.R` (`MERGEN_PREFLIGHT_REQUIRE_SSO=TRUE`).
   **Gerçek Keycloak/SSO yalnızca VM'de kanıtlanır.**
 - **Bilinen risk / sıradaki hedef:** `ssoAuthServer` davranışsal testServer kapsaması
-  eklendi; gerçek Keycloak token/JWKS akışı yalnızca VM'de kanıtlanır.
+  eklendi; gerçek Keycloak token/JWKS akışı yalnızca VM'de kanıtlanır. Açılış ekranı
+  UI/sunucu olarak bölündü (`module_startup_screen.R` 740 → 358; UI
+  `module_startup_screen_ui.R` 407, üç mod kartı tek veri-odaklı yapıcıda) — at-budget
+  pini KALMADI. Derin uzay/karakter video akışı yalnızca VM/manuel tarayıcıda kanıtlanır.
 
 ## API Anahtarları
 
@@ -146,15 +157,26 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **Birincil R dosyaları:** `R/helpers_vision_model_capabilities.R`,
   `R/helpers_vision_context.R`, `R/helpers_image_gallery.R`,
   `R/helpers_markdown_safety.R` (görsel kartı + session-scoped sunum).
-- **UI/server modülleri:** `R/module_image_generation.R`, `R/module_image_gallery.R`,
-  `R/server_handler_image_generation.R`, `R/server_observers_image_gallery.R`.
+- **UI/server modülleri:** `R/module_image_generation.R` (IO/üretim/çeviri runtime
+  yardımcıları + `generate_image` worker-export global), `R/module_image_generation_ui.R`
+  (saf UI/HTML render katmanı: `imageSettingsUI`, `imageChatControlsUI`,
+  `render_generated_image_html`, `render_image_from_saved_path`),
+  `R/module_image_gallery.R`, `R/server_handler_image_generation.R`,
+  `R/server_observers_image_gallery.R`.
 - **DB/servis:** `MB_Messages` (görsel kayıtları); görsel üretim uç noktası
   (`IMAGE_GEN_ENDPOINT`), vision modelleri (`MERGEN_VISION_MODELS`).
 - **Testler:** `test-vision-context-behavior.R`, `test-vision-model-capabilities-behavior.R`,
   `test-vision-llm-payload-serialization-behavior.R`, `test-image-gallery-helpers-behavior.R`,
-  `test-generated-image-card-html-contract.R`, `test-markdown-safety-image-serve-behavior.R`.
+  `test-generated-image-card-html-contract.R`, `test-markdown-safety-image-serve-behavior.R`,
+  `test-image-generation-module-behavior.R` (çeviri/anahtar/endpoint/web URL/UI/HTML +
+  XSS), `test-image-generation-ui-refactor-contract.R` (UI/runtime ayrım sözleşmesi +
+  manifest sırası + worker-yolu bağımsızlığı).
 - **Smoke/kanıt:** Vision VM-live doğrulandı (kullanıcı onayı, gerçek `MERGEN_VISION_MODELS`).
-- **Bilinen risk / sıradaki hedef:** opsiyonel Yapılandırma toggle / `max_bytes`.
+- **Bilinen risk / sıradaki hedef:** görsel oluşturma UI/HTML render katmanı runtime
+  IO/üretim yardımcılarından ayrıldı (`module_image_generation.R` 730/22 → 545/17;
+  UI dosyası 194/5) — at-budget pini KALMADI; `generate_image` worker-export globali
+  ve iç çeviri/kaydetme çağrıları runtime dosyasında kaldığı için worker globals
+  çözümü etkilenmedi. Opsiyonel: Yapılandırma vision toggle / `max_bytes`.
 
 ## Medya / Ses / AI Uzman
 
@@ -311,7 +333,8 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   Kalan büyük dosyalar bu seam'de `R/helpers_admin_yanit_analizi.R` (565) ve
   yeni `*_outputs` dosyaları; bunlar tek-fonksiyon flat renderer listeleri olduğu
   için düşük öncelik. Sıradaki repo-geneli yakın-bütçe adayı bu seam dışında
-  (`module_settings_yapilandirma_ui.R` 758, `module_startup_screen.R` 740).
+  `module_settings_yapilandirma_ui.R` (758, en büyük runtime dosyası; zaten saf
+  `.syap_*` alt-yapıcılara bölünmüş — yalnızca dosya boyutu yüksek).
 
 ## Frontend Varlık ve Yönetişim
 
@@ -335,11 +358,13 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **Bilinen risk / sıradaki hedef:** bölge VERİSİ ile bölge DOĞRULAYICI API'si
   ayrı dosyalara bölündü; `config_ui_asset_zones.R` 777/10 → 502/0 (SADECE veri,
   0 fonksiyonda kilitli), doğrulayıcı API `config_ui_asset_zone_validators.R`'de
-  (312/10). Bu, en büyük runtime dosyasını manifestten düşürdü (en büyük artık
-  760 satır). Sıradaki yakın-bütçe adayları: `R/module_admin_geri_bildirim.R`
-  (760/5) ve `R/module_admin_yanit_analizi.R` (753/4) — inline chart renderer'larını
-  `*_outputs()` desenine taşıma (chart kontratları VM görsel QA gerektirir;
-  veri->sunum guardrail'i artık mevcut).
+  (312/10). At-budget admin modülleri (`module_admin_geri_bildirim.R`,
+  `module_admin_yanit_analizi.R`) ve açılış ekranı (`module_startup_screen.R`)
+  sonraki oturumlarda küçültüldü; `module_image_generation.R` (730/22) UI/HTML
+  render katmanı `module_image_generation_ui.R`'ye ayrılarak 545/17'ye indi.
+  Sıradaki repo-geneli yakın-bütçe adayı `R/module_settings_yapilandirma_ui.R`
+  (758, en büyük runtime dosyası — zaten saf `.syap_*` alt-yapıcılara bölünmüş;
+  yalnızca dosya boyutu yüksek, ayrı UI dosyasına bölünebilir).
 
 ---
 

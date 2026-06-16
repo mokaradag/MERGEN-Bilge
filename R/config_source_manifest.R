@@ -323,6 +323,7 @@ source_manifest_sections <- list(
     "R/module_file_manager.R",
     "R/module_file_preview.R",
     "R/module_image_generation.R",
+    "R/module_image_generation_ui.R",
     "R/module_image_gallery.R",
     "R/module_summarization.R"
   ),
@@ -359,6 +360,7 @@ source_manifest_sections <- list(
     "R/module_performance.R",
     "R/module_user_identity.R",
     "R/module_boot_readiness.R",
+    "R/module_startup_screen_ui.R",
     "R/module_startup_screen.R",
     "R/module_app_loading.R",
     "R/module_tool_background_settings.R",

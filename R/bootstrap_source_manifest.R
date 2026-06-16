@@ -415,6 +415,12 @@ source_manifest_required_order <- list(
   c("R/helpers_file_manager_attach_client.R", "R/module_file_manager.R"),
   c("R/module_file_manager_ui.R", "R/module_file_manager.R"),
 
+  c("R/module_startup_screen_ui.R", "R/module_startup_screen.R"),
+
+  # Görsel UI/HTML render katmanı runtime IO/üretim yardımcılarından SONRA yüklenir:
+  # render_* yapıcıları get_image_web_url ve IMAGE_SIZE_OPTIONS'ı çağrı anında çözer.
+  c("R/module_image_generation.R", "R/module_image_generation_ui.R"),
+
   c("R/helpers_send_message_request_lifecycle.R", "R/helpers_send_message_core.R"),
   c("R/helpers_send_message_core.R", "R/helpers_send_message_prompting.R"),
   c("R/helpers_send_message_prompting.R", "R/server_send_message.R"),
