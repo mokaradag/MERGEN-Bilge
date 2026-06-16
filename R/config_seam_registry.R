@@ -218,7 +218,8 @@ mergen_seam_registry <- function() {
         "tests/testthat/test-file-resolution-security-contract.R",
         "tests/testthat/test-resolve-uploaded-file.R",
         "tests/testthat/test-upload-validator.R",
-        "tests/testthat/test-upload-size-policy.R"
+        "tests/testthat/test-upload-size-policy.R",
+        "tests/testthat/test-image-generation-ui-refactor-contract.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-file-lifecycle-hardening-contract.R\")",

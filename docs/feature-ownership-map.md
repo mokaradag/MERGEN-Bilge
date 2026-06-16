@@ -157,15 +157,26 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **Birincil R dosyaları:** `R/helpers_vision_model_capabilities.R`,
   `R/helpers_vision_context.R`, `R/helpers_image_gallery.R`,
   `R/helpers_markdown_safety.R` (görsel kartı + session-scoped sunum).
-- **UI/server modülleri:** `R/module_image_generation.R`, `R/module_image_gallery.R`,
-  `R/server_handler_image_generation.R`, `R/server_observers_image_gallery.R`.
+- **UI/server modülleri:** `R/module_image_generation.R` (IO/üretim/çeviri runtime
+  yardımcıları + `generate_image` worker-export global), `R/module_image_generation_ui.R`
+  (saf UI/HTML render katmanı: `imageSettingsUI`, `imageChatControlsUI`,
+  `render_generated_image_html`, `render_image_from_saved_path`),
+  `R/module_image_gallery.R`, `R/server_handler_image_generation.R`,
+  `R/server_observers_image_gallery.R`.
 - **DB/servis:** `MB_Messages` (görsel kayıtları); görsel üretim uç noktası
   (`IMAGE_GEN_ENDPOINT`), vision modelleri (`MERGEN_VISION_MODELS`).
 - **Testler:** `test-vision-context-behavior.R`, `test-vision-model-capabilities-behavior.R`,
   `test-vision-llm-payload-serialization-behavior.R`, `test-image-gallery-helpers-behavior.R`,
-  `test-generated-image-card-html-contract.R`, `test-markdown-safety-image-serve-behavior.R`.
+  `test-generated-image-card-html-contract.R`, `test-markdown-safety-image-serve-behavior.R`,
+  `test-image-generation-module-behavior.R` (çeviri/anahtar/endpoint/web URL/UI/HTML +
+  XSS), `test-image-generation-ui-refactor-contract.R` (UI/runtime ayrım sözleşmesi +
+  manifest sırası + worker-yolu bağımsızlığı).
 - **Smoke/kanıt:** Vision VM-live doğrulandı (kullanıcı onayı, gerçek `MERGEN_VISION_MODELS`).
-- **Bilinen risk / sıradaki hedef:** opsiyonel Yapılandırma toggle / `max_bytes`.
+- **Bilinen risk / sıradaki hedef:** görsel oluşturma UI/HTML render katmanı runtime
+  IO/üretim yardımcılarından ayrıldı (`module_image_generation.R` 730/22 → 545/17;
+  UI dosyası 194/5) — at-budget pini KALMADI; `generate_image` worker-export globali
+  ve iç çeviri/kaydetme çağrıları runtime dosyasında kaldığı için worker globals
+  çözümü etkilenmedi. Opsiyonel: Yapılandırma vision toggle / `max_bytes`.
 
 ## Medya / Ses / AI Uzman
 
@@ -349,10 +360,11 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   0 fonksiyonda kilitli), doğrulayıcı API `config_ui_asset_zone_validators.R`'de
   (312/10). At-budget admin modülleri (`module_admin_geri_bildirim.R`,
   `module_admin_yanit_analizi.R`) ve açılış ekranı (`module_startup_screen.R`)
-  sonraki oturumlarda küçültüldü. Sıradaki repo-geneli yakın-bütçe adayı
-  `R/module_settings_yapilandirma_ui.R` (758, en büyük runtime dosyası — zaten saf
-  `.syap_*` alt-yapıcılara bölünmüş; yalnızca dosya boyutu) veya
-  `R/module_image_generation.R` (730/22, iki eksende de yakın-bütçe).
+  sonraki oturumlarda küçültüldü; `module_image_generation.R` (730/22) UI/HTML
+  render katmanı `module_image_generation_ui.R`'ye ayrılarak 545/17'ye indi.
+  Sıradaki repo-geneli yakın-bütçe adayı `R/module_settings_yapilandirma_ui.R`
+  (758, en büyük runtime dosyası — zaten saf `.syap_*` alt-yapıcılara bölünmüş;
+  yalnızca dosya boyutu yüksek, ayrı UI dosyasına bölünebilir).
 
 ---
 

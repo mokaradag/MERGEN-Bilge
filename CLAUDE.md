@@ -196,7 +196,7 @@ Current contract:
 - `www/js/streaming_manager.js` may assign to `innerHTML` only from the safe markdown parser. Parser-missing fallback must use `textContent`, not raw accumulated text as HTML.
 - UI asset order is part of the safety boundary: `www/js/streaming_markdown_safety.js` must load before `www/js/markdown-parser.js`, and `www/js/markdown-parser.js` must load before `www/js/streaming_manager.js`.
 - Server-side final and saved message markdown rendering must use `render_safe_markdown_html()` from `R/helpers_markdown_safety.R` for user/LLM-controlled prose. Do not call `commonmark::markdown_html()` directly on such prose unless raw HTML has first been escaped.
-- The generated-image card markup (image + `MERGEN Bilge` watermark + download/copy/print action buttons + optional description) is a single canonical builder: `mergen_generated_image_card_html()` in `R/helpers_markdown_safety.R`. It escapes `message_id` and `description` (XSS boundary) and places the caller-trusted `img_src` into `src` as-is. It is loaded before `R/helpers_chat_message_formatting.R` and `R/module_image_generation.R`. The live image path (`render_generated_image_html()`, `render_image_from_saved_path()` in `R/module_image_generation.R`) and the saved-chat reload path (`db_message_render_image_html()` in `R/helpers_chat_message_formatting.R`) must delegate the card markup to this helper. Do not re-inline the `image-action-btn-modern` button markup in those consumers, and do not duplicate the card template in a third site. The not-found / not-loaded placeholder branches in `db_message_render_image_html()` are intentionally different (no image, no buttons) and stay local. Protected by `tests/testthat/test-generated-image-card-html-contract.R`.
+- The generated-image card markup (image + `MERGEN Bilge` watermark + download/copy/print action buttons + optional description) is a single canonical builder: `mergen_generated_image_card_html()` in `R/helpers_markdown_safety.R`. It escapes `message_id` and `description` (XSS boundary) and places the caller-trusted `img_src` into `src` as-is. It is loaded before `R/helpers_chat_message_formatting.R`, `R/module_image_generation.R`, and `R/module_image_generation_ui.R`. The live image path (`render_generated_image_html()`, `render_image_from_saved_path()` in `R/module_image_generation_ui.R`) and the saved-chat reload path (`db_message_render_image_html()` in `R/helpers_chat_message_formatting.R`) must delegate the card markup to this helper. Do not re-inline the `image-action-btn-modern` button markup in those consumers, and do not duplicate the card template in a third site. The not-found / not-loaded placeholder branches in `db_message_render_image_html()` are intentionally different (no image, no buttons) and stay local. Protected by `tests/testthat/test-generated-image-card-html-contract.R`.
 - User image `img_src` is served session-scoped, not inlined as base64. The canonical serving helper is `mergen_serve_image_data_url()` in `R/helpers_markdown_safety.R`: when an active Shiny session exists it serves the file via `session$registerDataObj(...)` (session-scoped, unguessable URL → preserves per-user isolation; the browser fetches the image directly/lazily/in parallel, avoiding multi-MB base64 over the websocket), and per-session it memoizes one registered URL per file path through `session$userData$mergen_image_url_cache`. With no session (tests/non-reactive context) or on registration error it falls back to the original `data:image/png;base64,...` data URI, so existing no-session behavior and tests are unchanged. The two consumers — `get_image_web_url()` (`R/module_image_generation.R`, live generation) and `db_message_get_image_base64()` (`R/helpers_chat_message_formatting.R`, saved-chat/gallery reload) — must prefer this helper through a guarded `exists("mergen_serve_image_data_url", ...)` check and keep their inline base64 path as the fallback. Do not regress this back to unconditional inline base64; that reintroduces the slow Görsel Galerisi conversation load. Do not switch user images to a plain `addResourcePath()` public path (that would break user isolation with guessable cross-user URLs).
 - Raw HTML/script/event-handler patterns such as script tags, image error handlers, javascript links, and malformed tags split across streaming chunks must remain escaped or inert.
 - The browser UX smoke harness is part of this safety boundary, not a demo page. Keep `www/smoke/ux-smoke.html` and `www/smoke/ux-smoke-probes.js` explicit about streaming init/delta/stale requestId/finalize behavior, dangerous HTML-like payload inertness, finalize cleanup, audio duck ownership, saved-chat TTS non-autoplay, navigation cleanup, welcome-video init/destroy counters, and synthetic File Manager Turkish display-name refresh checks.
@@ -3494,6 +3494,30 @@ Protected by:
 * `tests/testthat/test-source-manifest-sections-contract.R`
 * `tests/testthat/test-maintainability-ratchet.R`
 
+### Image generation UI/runtime split contract
+
+The image-generation module is split so the UI/HTML rendering layer does not grow inside the IO/generation runtime helpers. Both files are in the `module_files_media` section (`dosya_yasam_dongusu` seam). Preserve this dependency-first source order in `R/config_source_manifest.R` (the UI builders resolve runtime symbols at call time, so the runtime file loads FIRST):
+
+```r
+safe_source("R/module_image_generation.R",    encoding = "UTF-8")
+safe_source("R/module_image_generation_ui.R", encoding = "UTF-8")
+```
+
+Responsibilities:
+
+* `R/module_image_generation.R`: runtime IO/generation/translation layer — `image_gen_config`, the `IMAGE_SIZE_OPTIONS`/`IMAGE_QUALITY_OPTIONS` constants, `get_user_image_dir()`, `translate_prompt_to_english()`, `translate_revised_prompt_to_turkish()`, `generate_image()`, `save_image_locally()`, `get_image_web_url()`. `generate_image()` is the worker-exported global (auto-derived via `tracked_future_promise` in `R/server_handler_image_generation.R`); its internal callees (`translate_*`, `save_image_locally`, `get_user_image_dir`) stay here so worker globals resolution is unaffected.
+* `R/module_image_generation_ui.R`: pure UI/HTML render layer — `imageSettingsUI()`, `imageChatControlsUI()`, `render_generated_image_html()`, `render_image_from_saved_path()`. These never run on the image-gen worker. `render_*` delegate card markup to `mergen_generated_image_card_html()` and resolve `get_image_web_url()`/`IMAGE_SIZE_OPTIONS` at call time.
+
+Do not move the UI/HTML builders back into `R/module_image_generation.R`, do not re-inline the `image-action-btn-modern` card markup (use the canonical helper), and do not move the IO/generation helpers (or `generate_image`'s callees) into the UI file. The render output must stay byte-identical (verified during the refactor). Module dropped 730/22 → 545/17; UI file is 194/5.
+
+Protected by:
+
+* `tests/testthat/test-image-generation-ui-refactor-contract.R` (split contract + manifest order + worker-path independence)
+* `tests/testthat/test-image-generation-module-behavior.R` (behavior: translation gate, key/endpoint guards, web URL, UI builders, generated-image HTML + XSS escaping — sources both files)
+* `tests/testthat/test-generated-image-card-html-contract.R` (canonical card-helper delegation in the UI file)
+* `tests/testthat/test-source-manifest-sections-contract.R`
+* `tests/testthat/test-maintainability-ratchet.R`
+
 ### Admin Hata Analizi modularization contract
 
 `R/module_admin_hata_analizi.R` has been reduced by extracting pure/query/UI helper responsibilities into `R/helpers_admin_hata_analizi.R`.
@@ -4570,6 +4594,7 @@ User-facing and system-facing modules.
 - `R/module_file_manager.R`
 - `R/module_file_preview.R`
 - `R/module_image_generation.R`
+- `R/module_image_generation_ui.R`
 - `R/module_image_gallery.R`
 - `R/module_summarization.R`
 

@@ -6,6 +6,118 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-16 — Görsel oluşturma UI/HTML render katmanının runtime'dan ayrılması
+
+### Seçilen iz(ler)
+- **Track 1 — En büyük / yakın-bütçe (iki eksende) R dosyasından bütünleşik (saf)
+  UI/HTML katmanı çıkarımı** (öncelik #1; "Move pure decision logic out of large
+  Shiny/server modules"). `dosya_yasam_dongusu` (görsel) seam'inde tek paket.
+
+### Özet ve gerekçe
+`module_image_generation.R` İKİ eksende de yakın-bütçeydi (730 satır / 22 fonksiyon;
+22, küresel 24-fonksiyon tavanına yakın) ve önceki oturumun belgelenmiş #2 adayıydı.
+Dosya aslında bir Shiny server modülü DEĞİL — IO/üretim/çeviri runtime yardımcıları
+(`generate_image`, `save_image_locally`, `translate_*`, `get_user_image_dir`,
+`get_image_web_url`) + saf UI/HTML render yapıcıları (`imageSettingsUI`,
+`imageChatControlsUI`, `render_generated_image_html`, `render_image_from_saved_path`)
+karışımıydı. UI/HTML render yapıcıları async görsel worker'ında HİÇ koşmaz
+(`generate_image` worker-export globalidir ve yalnızca runtime yardımcılarını çağırır),
+bu da UI katmanını ayırmayı en güvenli, en bütünleşik çıkarım yaptı.
+
+UI/HTML render katmanı yeni `R/module_image_generation_ui.R` dosyasına BİREBİR taşındı;
+runtime IO/üretim yardımcıları + `IMAGE_SIZE_OPTIONS` sabiti runtime dosyasında kaldı.
+render_* yapıcıları `get_image_web_url`/`IMAGE_SIZE_OPTIONS`/`mergen_generated_image_card_html`'i
+çağrı anında çözdüğü için dosyalar bağımlılık-önce sırada (runtime → ui) yüklenir.
+Refactor öncesi/sonrası dört yapıcının render çıktısı altın referansla doğrulandı:
+**byte-birebir aynı** (md5 `8887d208…`, `identical()` TRUE).
+
+### Değişen dosyalar
+**Kaynak**
+- `R/module_image_generation_ui.R` (yeni, 194 satır / 5 fonksiyon) — 4 UI/HTML render
+  yapıcısı (ayarlar paneli, sohbet kontrolleri, oluşturulan/kaydedilmiş görsel kartı HTML).
+- `R/module_image_generation.R` — **730/22 → 545/17** (yalnızca runtime IO/üretim/çeviri
+  yardımcıları + config/sabitler).
+- `R/config_source_manifest.R` — `module_files_media` bölümüne
+  `R/module_image_generation_ui.R`, `R/module_image_generation.R`'den SONRA eklendi
+  (6 → 7 dosya; toplam 269 → 270).
+- `R/bootstrap_source_manifest.R` — kritik sıra kuralı eklendi (bağımlılık-önce):
+  `module_image_generation.R` → `module_image_generation_ui.R`.
+- `R/config_seam_registry.R` — `dosya_yasam_dongusu` guard_tests listesine yeni
+  split-contract testi eklendi (6 → 7).
+
+**Test**
+- `tests/testthat/test-image-generation-ui-refactor-contract.R` (yeni) — UI/runtime
+  ayrım sözleşmesi (UI yapıcıları UI dosyasında; runtime dosyası onları içermez +
+  IO/üretim yardımcıları + `IMAGE_SIZE_OPTIONS` runtime'da kalır); manifest sırası
+  runtime→ui; runtime dosyasının UI render fonksiyonlarını ÇAĞIRMAMASI (worker-yolu
+  bağımsızlığı).
+- `tests/testthat/test-image-generation-module-behavior.R` — her iki dosyayı da source
+  edecek şekilde güncellendi; mevcut çeviri/anahtar/endpoint/web URL/UI/HTML+XSS
+  davranış kapsaması korundu.
+- `tests/testthat/test-generated-image-card-html-contract.R` — render_* tüketicileri
+  UI dosyasına taşındığından kanonik-kart-yardımcısı sözleşmesi `module_image_generation_ui.R`'yi
+  hedefleyecek şekilde güncellendi (re-inline yasağı UI dosyasını da kapsar; sözleşme korundu).
+- `tests/testthat/test-source-manifest-sections-contract.R` — `module_files_media`
+  n=6→7, toplam 269→270 bilinçli güncellendi.
+- `tests/testthat/test-maintainability-ratchet.R` — `module_image_generation.R`
+  765/22 → 560/18 sıkılaştırıldı; `module_image_generation_ui.R` 220/8 bütçesi eklendi.
+
+**Dokümantasyon**
+- `CLAUDE.md` — yeni "Image generation UI/runtime split contract"; kanonik görsel-kart
+  notu render_* konumunu UI dosyası olarak güncellendi; Group 6 yükleme listesi.
+- `docs/feature-ownership-map.md` — Görsel/Vision seam'ine UI dosyası + 2 test;
+  at-budget risk notu güncellendi; Frontend "sıradaki hedef" işaretçisi güncellendi.
+- `docs/technical-reference.md` — görsel UI/runtime ayrımı + bağımlılık-önce sıra notu.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `module_image_generation.R` 730/22 (iki eksende yakın-bütçe; 22, 24-fonksiyon
+  tavanına yakın). Sonra: runtime 545/17, UI 194/5; her ikisi dosya-özel bütçeyle kilitli.
+  Skor 100/100; 800+ satır / 25+ fonksiyon = 0. At-budget görsel pini KALMADI.
+
+### Korunan davranış sözleşmeleri
+- Dört UI/HTML render yapıcısının render çıktısı byte-birebir korundu (altın md5 eşleşti).
+  XSS kaçışı (`render_generated_image_html` hata kutusu + revised_prompt) ve kanonik
+  kart yardımcısı delegasyonu testlerle kilitli.
+- `generate_image` worker-export globali ve iç çeviri/kaydetme çağrıları runtime
+  dosyasında kaldı; worker globals (`tracked_future_promise` auto-derive) çözümü
+  değişmedi. UI yapıcıları worker görevinde koşmaz.
+- DB/SSO/encoding/streaming/UX çalışma-zamanı sözleşmelerine dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Altın render karşılaştırması (4 yapıcı): `identical()` TRUE, md5
+  `8887d2089226e171637ba09326241554` eşleşti.
+- Odak testler tek tek geçti (0 FAIL / 0 WARN): yeni split-contract, güncellenen
+  image-generation-module-behavior, generated-image-card-html-contract,
+  image-generation-handler-behavior, maintainability-ratchet, source-manifest-sections,
+  source-manifest-contract, global-source-manifest, seam-registry-contract,
+  seam-doctor-contract.
+- `Rscript tests/scripts/seam_doctor.R` → OK; `dosya_yasam_dongusu` runtime-dosya +1,
+  guard-test 6 → 7; sahipsiz dosya yok.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; en büyük 758;
+  refactor adayı yok.
+- `bash tools/ai_validate.sh full --boot-smoke` → (commit'te artifact); app source
+  smoke + tam strict testthat + shiny boot smoke.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Görsel Oluşturma hızlı eylemi: ayarlar panelinin (boyut/HD), sohbet içi görsel
+  kontrollerinin ve oluşturulan görsel kartının (görsel + MERGEN Bilge filigranı +
+  indir/kopyala/yazdır butonları + açıklama) eskisi gibi render olduğunu doğrulayın.
+- Görsel oluşturma akışının (Türkçe prompt → İngilizce çeviri → üretim → kaydetme →
+  Türkçe revised prompt) eskisi gibi çalıştığını doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek DB/SQL Server/gerçek tarayıcı/gerçek görsel-üretim uç noktası kanıtı
+  alınmadı (bulut oturumu; httr/worker mock'lu). Değişiklik saf UI/runtime ayrımıdır,
+  render çıktısı byte-birebir korundu; gerçek DALL-E/görsel uç noktası yalnızca VM/canlı
+  ortamda kanıtlanır.
+- Sıradaki paket adayı: `module_settings_yapilandirma_ui.R` (758, en büyük runtime
+  dosyası — zaten saf `.syap_*` alt-yapıcılı; ayrı UI dosyasına bölünebilir) ya da
+  frontend büyük CSS dosyaları (`destek_page.css` 1527 vb. — görsel regresyon riski,
+  VM QA ister).
+
+---
+
 ## 2026-06-16 — Derin uzay açılış ekranı UI/sunucu ayrımı + veri-odaklı mod-kartı dedup
 
 ### Seçilen iz(ler)

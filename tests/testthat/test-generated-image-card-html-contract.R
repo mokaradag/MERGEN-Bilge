@@ -121,6 +121,8 @@ test_that("oluşturulan görsel kart butonları yalnızca kanonik yardımcıda t
   # image-action-btn-modern buton sınıfı yalnızca tam kart işaretlemesinde geçer.
   markdown_safety_txt <- .read_repo_text_img_card("R/helpers_markdown_safety.R")
   image_module_txt <- .read_repo_text_img_card("R/module_image_generation.R")
+  # render_* tüketicileri UI/HTML katmanına (module_image_generation_ui.R) taşındı.
+  image_module_ui_txt <- .read_repo_text_img_card("R/module_image_generation_ui.R")
   chat_format_txt <- .read_repo_text_img_card("R/helpers_chat_message_formatting.R")
 
   expect_true(
@@ -134,18 +136,24 @@ test_that("oluşturulan görsel kart butonları yalnızca kanonik yardımcıda t
   )
 
   expect_false(
+    grepl("image-action-btn-modern", image_module_ui_txt, fixed = TRUE),
+    info = "module_image_generation_ui.R kart işaretlemesini tekrar inline etmemeli; kanonik yardımcıyı kullanmalı."
+  )
+
+  expect_false(
     grepl("image-action-btn-modern", chat_format_txt, fixed = TRUE),
     info = "helpers_chat_message_formatting.R kart işaretlemesini tekrar inline etmemeli; kanonik yardımcıyı kullanmalı."
   )
 })
 
 test_that("görsel kart tüketicileri kanonik yardımcıyı çağırır", {
-  image_module_txt <- .read_repo_text_img_card("R/module_image_generation.R")
+  # Canlı görsel render yapıcıları (render_*) UI/HTML katmanına taşındı.
+  image_module_ui_txt <- .read_repo_text_img_card("R/module_image_generation_ui.R")
   chat_format_txt <- .read_repo_text_img_card("R/helpers_chat_message_formatting.R")
 
   expect_true(
-    grepl("mergen_generated_image_card_html", image_module_txt, fixed = TRUE),
-    info = "module_image_generation.R kanonik kart yardımcısını çağırmalıdır."
+    grepl("mergen_generated_image_card_html", image_module_ui_txt, fixed = TRUE),
+    info = "module_image_generation_ui.R kanonik kart yardımcısını çağırmalıdır."
   )
 
   expect_true(

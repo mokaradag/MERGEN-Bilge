@@ -191,7 +191,11 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/server_send_message.R", 760L, 14L)
   assert_current_budget("R/module_admin_hata_analizi.R", 640L, 7L)
   assert_current_budget("R/helpers_admin_hata_detail_runtime.R", 380L, 12L)
-  assert_current_budget("R/module_image_generation.R", 765L, 22L)
+  # Görsel UI/HTML render katmanı (ayarlar paneli, sohbet kontrolleri, görsel kartı
+  # HTML üreticileri) R/module_image_generation_ui.R'ye çıkarıldı; runtime dosyası
+  # 730/22 -> 545/17'ye indi. Bütçeler geri birleşmeyi ve büyümeyi kilitler.
+  assert_current_budget("R/module_image_generation.R", 560L, 18L)
+  assert_current_budget("R/module_image_generation_ui.R", 220L, 8L)
   assert_current_budget("R/helpers_llm_sse.R", 762L, 20L)
   # At-budget admin modüllerinin inline highcharter/DT renderer'ları *_outputs()
   # dosyalarına çıkarıldı (davranış değişmedi). Modüller veri/sekme orkestrasyonuna

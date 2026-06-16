@@ -32,6 +32,13 @@ source(
   encoding = "UTF-8",
   local = .imggen_env
 )
+# UI/HTML render yapıcıları ayrı dosyada (UI/runtime ayrımı); runtime dosyasından
+# sonra source edilir (render_* yapıcıları get_image_web_url'i çağrı anında çözer).
+source(
+  file.path(resolve_repo_root_for_tests(), "R", "module_image_generation_ui.R"),
+  encoding = "UTF-8",
+  local = .imggen_env
+)
 
 # Çeviri yolu testleri için endpoint çözücüyü yalıtılmış ortamda stub'la.
 .imggen_env$resolve_local_llm_endpoint <- function(model) "http://llm.local/v1"
