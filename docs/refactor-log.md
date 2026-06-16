@@ -6,6 +6,44 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-16 — Yapılandırma gelişmiş UI kartlarının ana UI dosyasından ayrılması
+
+### Seçilen iz(ler)
+- **Track 1 — en büyük R dosyasını kontrollü saf UI çıkarımıyla küçültme.** `api_anahtar_model` / ayarlar seam'inde tek paket.
+
+### Özet ve gerekçe
+Keşif raporu `R/module_settings_yapilandirma_ui.R` dosyasını repo genelindeki en büyük R dosyası olarak gösterdi (758 satır / 12 fonksiyon). Dosya server/runtime mantığı taşımıyordu; ancak temel ayarlar kartları ile medya, AI Uzman, görsel oluşturma, özetleme ve analiz kartları aynı dosyada toplanmıştı. En düşük riskli iyileştirme, ileri/gelişmiş kartları ayrı saf UI dosyasına taşımak ve ana kompozitörün aynı `.syap_*` çağrı yüzeyini korumasıydı.
+
+### Değişen dosyalar
+- `R/module_settings_yapilandirma_advanced_ui.R` (yeni) — `.syap_audio_card`, `.syap_ai_expert_card`, `.syap_image_card`, `.syap_summarization_card`, `.syap_analysis_card` saf UI yapıcıları.
+- `R/module_settings_yapilandirma_ui.R` — ana kompozitör + header/model/API/tools/Claude Code/arayüz/kısayol kartları olarak küçültüldü.
+- `R/config_source_manifest.R` ve `R/bootstrap_source_manifest.R` — `module_settings_api_key` sırası advanced UI → UI → server olarak güncellendi.
+- `tests/testthat/test-settings-yapilandirma-ui-*.R`, `tests/testthat/test-source-manifest-sections-contract.R`, `tests/testthat/test-maintainability-ratchet.R` — izole source sırası, split sözleşmesi ve dosya bütçeleri güncellendi.
+- `CLAUDE.md`, `docs/architecture-map.md`, `docs/technical-reference.md`, `docs/feature-ownership-map.md`, `docs/refactor-log.md` — yeni sahiplik/sıra ve sıradaki hedef notları güncellendi.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `R/module_settings_yapilandirma_ui.R` 758/12; repo genelindeki en büyük R dosyasıydı.
+- Sonra: `R/module_settings_yapilandirma_ui.R` 411 satır; `R/module_settings_yapilandirma_advanced_ui.R` 353 satır. Maintainability skoru 100/100 kaldı; 800+ satır ve 25+ fonksiyon dosyası yok; en büyük dosya artık 728 satır.
+
+### Korunan davranış sözleşmeleri
+- Public `settingsYapilandirmaUI(id)` wrapper ve `settingsYapilandirmaUIImpl(id)` kompozitör yüzeyi değişmedi.
+- Sunucuya bağlanan 47 Shiny input/output id yüzeyi korundu.
+- Her kartın Türkçe başlığı ve kendi id sahipliği `test-settings-yapilandirma-ui-cards-behavior.R` ile korunmaya devam ediyor.
+- DB/SSO/encoding/frontend asset order/streaming davranışlarına dokunulmadı; değişiklik saf R/Shiny UI kaynak ayrımıdır.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; en büyük dosya 728; refactor adayı yok.
+- `Rscript tests/scripts/frontend_complexity_doctor.R` → rapor üretildi; frontend runtime varlığı değişmedi.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`.
+- Odak testler: `test-settings-yapilandirma-ui-cards-behavior.R`, `test-settings-yapilandirma-ui-id-surface-behavior.R`, `test-settings-yapilandirma-ui-refactor-contract.R`, `test-source-manifest-sections-contract.R`, `test-maintainability-ratchet.R` geçti.
+- `bash tools/ai_validate.sh quick` → final doğrulama için çalıştırıldı.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek DB/SQL Server/gerçek tarayıcı kanıtı alınmadı; paket saf UI dosya ayrımıdır ve bu kanıtları gerektiren boundary'lere dokunmadı.
+- Sıradaki paket adayı: `R/module_admin_geri_bildirim_outputs.R` (728 satırlık flat renderer listesi) veya davranışsal değeri daha yüksek ama riski daha fazla olan `R/server_send_message.R` (694).
+
+---
+
 ## 2026-06-16 — Görsel oluşturma UI/HTML render katmanının runtime'dan ayrılması
 
 ### Seçilen iz(ler)

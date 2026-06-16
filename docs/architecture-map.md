@@ -64,6 +64,8 @@ R/Shiny uygulama kabuğu: app.R -> global.R -> ui.R + server.R
 | `module_*` aileleri | Sohbet, dosya/medya, ayarlar, AI/ses, kimlik/başlangıç, destek, admin, sağlık UI modülleri | `R/module_*.R` |
 | `server_init_runtime` / `server_core_outputs_welcome` / `server_observers` / `server_handlers_send_message` | Server init/runtime context, observer katmanı ve handler/gönderme hattı | `R/server_*.R` |
 
+Yapılandırma sayfasında gelişmiş medya/görsel/analiz kartları `R/module_settings_yapilandirma_advanced_ui.R` içinde, ana kompozitör ve temel kartlar `R/module_settings_yapilandirma_ui.R` içinde, server/runtime ise `R/module_settings_yapilandirma.R` içinde tutulur; manifest sırası advanced UI → UI → server şeklindedir.
+
 Yeni bir runtime dosyası eklerken doğru bölüme, doğru sırada eklenmelidir. Bölüm sırası ve sınır dosyaları `tests/testthat/test-source-manifest-sections-contract.R` tarafından dondurulur; kritik ikili yükleme sırası kuralları ise `R/bootstrap_source_manifest.R` içindeki `source_manifest_required_order` ile doğrulanır.
 
 Özellikle şu sıralar korunmalıdır:

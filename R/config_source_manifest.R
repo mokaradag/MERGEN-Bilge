@@ -332,6 +332,7 @@ source_manifest_sections <- list(
   # UI/server, ayar koordinatörü ve API anahtarı seçim modalı/modülü.
   module_settings_api_key = c(
     "R/module_settings_kisisel.R",
+    "R/module_settings_yapilandirma_advanced_ui.R",
     "R/module_settings_yapilandirma_ui.R",
     "R/module_settings_yapilandirma.R",
     "R/module_settings.R",

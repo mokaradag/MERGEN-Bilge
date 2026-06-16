@@ -231,6 +231,12 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/module_startup_screen.R", 380L, 7L)
   assert_current_budget("R/module_startup_screen_ui.R", 430L, 16L)
 
+  # Yapılandırma UI'sinin medya/görsel/analiz kartları ayrı gelişmiş UI dosyasına
+  # çıkarıldı; ana kompozitör ve temel kartlar ayrı kaldı. Bütçeler geri birleşmeyi
+  # ve yeni en-büyük-dosya pinini yakalar.
+  assert_current_budget("R/module_settings_yapilandirma_ui.R", 430L, 8L)
+  assert_current_budget("R/module_settings_yapilandirma_advanced_ui.R", 370L, 6L)
+
   # Yönetişim katmanı (seam kayıt defteri + frontend bölge haritası) saf veri
   # dosyalarıdır; bütçeler bölge/seam başına birkaç yeni varlık satırına izin
   # verir ama dosyaların runtime mantığıyla şişmesini erken yakalar.
