@@ -61,3 +61,8 @@ artifacts/vm-evidence/
 .ai/*.tmp.md
 .ai/*.log
 !.ai/.gitkeep
+
+# Bilge Yolaç indirme klasörü çalışma zamanında doldurulur (kullanıcı/oturum
+# alt klasörleri). Yalnızca dizini koru; üretilen dosyaları izleme.
+bilge_yolac_downloads/*
+!bilge_yolac_downloads/.gitkeep
