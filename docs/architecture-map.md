@@ -74,7 +74,7 @@ Yeni bir runtime dosyası eklerken doğru bölüme, doğru sırada eklenmelidir.
 - `R/helpers_vision_model_capabilities.R`, model/API yapılandırması bağlamında yüklenir.
 - Bilge Yolaç helper zinciri ve LLM worker/streaming helper zinciri birlikte değerlendirilmelidir.
 
-`R/config_ui_assets.R`, frontend asset sırasının tek görünür manifestidir. Encoding JS, Shiny message handler'ları ve Claude Code streaming dosyalarının sırası tarayıcı tarafı regresyonları önlemek için kritiktir. Uzun `page` CSS ve `deferred` JS manifestleri artık `ui_asset_flatten_groups(list(...))` içindeki named feature/layer bölümleriyle okunur; bu bölümler yalnızca onboarding amaçlıdır ve üretilen final CSS/JS vektör sırası `tests/testthat/test-ui-asset-manifest-contract.R` içindeki birebir sıra sözleşmesiyle korunur.
+`R/config_ui_assets.R`, frontend asset sırasının tek görünür manifestidir. Encoding JS, Shiny message handler'ları ve Claude Code streaming dosyalarının sırası tarayıcı tarafı regresyonları önlemek için kritiktir. Uzun `page` CSS ve `deferred` JS manifestleri artık `ui_asset_flatten_groups(list(...))` içindeki named feature/layer bölümleriyle okunur; bu bölümler yalnızca onboarding amaçlıdır ve üretilen final CSS/JS vektör sırası `tests/testthat/test-ui-asset-manifest-contract.R` içindeki birebir sıra sözleşmesiyle korunur. Destek yüzeyi CSS'i de aynı sıraya duyarlı manifest disiplinindedir: `destek_page.css` → `destek_forms.css` → `destek_submission.css` → `destek_about_responsive.css` → `destek_yardim_chatbot.css`.
 
 ### Açık tema mimarisi (tek-tanım sözleşmesi)
 

@@ -1553,3 +1553,42 @@ Açık tema konsolidasyonu hayalet seçicilerin tema zinciriyle sınırlı olmad
 ## 2026-06-12 — Grup üyesi ölü seçicilerin budanması: hayalet seçici tabanı SIFIR
 
 Canlı kuralların grubunda kalan son 26 ölü seçici (hiçbir zaman eşleşemeyen grup üyeleri) 12 dosyadan budandı (kural gövdeleri bayt-bayt korunur; tamamen ölü kural 0 doğrulandı). `frontend_maintainability_report.R` hayalet taraması artık 0/0 raporlar ve ratchet bütçeleri SIFIRA indirildi (`MERGEN_TEST_MAX_FRONTEND_DEAD_SELECTORS=0`, `MERGEN_TEST_MAX_THEME_DEAD_SELECTORS=0`): bundan sonra eklenen HER hayalet seçici CI'da yakalanır. Odaklı süitler yeşil (ratchet 92, theme-modular 96, brand 23, manifest 224, tool-bg 21); tam kapı sonucu commit mesajında.
+
+## 2026-06-16 — Destek sayfası CSS modülerleştirme ve frontend CSS ratchet sıkılaştırması
+
+### Seçilen paket / zayıflık alanı
+Frontend karmaşıklığı paketinde, discovery raporunun en büyük app-owned CSS dosyası olarak işaretlediği `www/css/destek_page.css` hedeflendi. Dosya 1527 satırla 1500+ frontend dosya eşiğini tek başına tüketiyor ve destek yüzeyi için yükleme sırası/zone sahipliği tek büyük dosyaya bağlı kalıyordu.
+
+### Neden bu paket seçildi
+Öncelik listesinde R dosyalarında 800+ satır aday kalmadı; en yüksek kaldıraçlı açık risk frontend tarafındaki oversized CSS idi. Destek yüzeyi tek seam (`destek_yonetici_saglik`) altında kaldığı için kontrollü, davranış koruyucu bir paket olarak ayrıştırılabildi.
+
+### Değişen dosyalar
+- `www/css/destek_page.css`: ana destek kabuğu, yardım merkezi kartları ve sekme sistemi olarak küçültüldü.
+- `www/css/destek_forms.css`: form kartları, memnuniyet/NPS/etiket/metin/konu/kategori/öncelik seçimleri için yeni manifest parçası.
+- `www/css/destek_submission.css`: dosya yükleme, onay kutusu, gönderim butonu, hata ve başarı ekranları için yeni manifest parçası.
+- `www/css/destek_about_responsive.css`: Hakkında sayfası, ikon animasyonları ve responsive kurallar için yeni manifest parçası.
+- `R/config_ui_assets.R`, `R/config_ui_asset_zones.R`, `tests/testthat/test-ui-asset-manifest-contract.R`: yeni CSS parçaları aynı destek sırası ve aynı `geri_bildirim_destek` zone sahipliğiyle kaydedildi.
+- `tests/testthat/test-frontend-maintainability-ratchet.R`: frontend CSS satır bütçesi 1600 → 1150, 1500+ satır frontend dosya bütçesi 1 → 0 olarak sıkılaştırıldı.
+- `docs/feature-ownership-map.md`, `docs/architecture-map.md`: destek CSS sahipliği ve sıralı manifest sınırı güncellendi.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `www/css/destek_page.css` 1527 satırdı ve frontend raporunda en büyük app-owned CSS dosyasıydı; 1500+ satır dosya sayısı 1 idi.
+- Sonra: destek CSS parçaları 252 / 574 / 294 / 415 satır; en büyük app-owned CSS artık `theme_light_core.css` (1148 satır). 1500+ satır frontend dosya sayısı 0.
+- Seçici gövdeleri davranış koruyucu şekilde taşındı; kaskad sırası orijinal dosya içi sıra ile aynı kalacak biçimde manifestte ardışık listelendi.
+
+### Davranış korundu
+Kural içerikleri ve göreli sıraları korunarak yalnızca dosya sınırları değiştirildi. Yeni CSS dosyaları üretim manifestine ve zone haritasına eklendi; manifest dışı runtime varlık oluşturulmadı.
+
+### Testler / doğrulama
+- `Rscript tests/scripts/maintainability_report.R` → PASS (R maintainability discovery; 800+ R dosyası yok).
+- `Rscript tests/scripts/frontend_complexity_doctor.R` → PASS (başlangıç discovery; destek CSS 1527 satır riskini gösterdi).
+- `Rscript tests/scripts/seam_doctor.R` → PASS (başlangıç discovery; yapısal sorun yok).
+- `Rscript -e 'testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")'` → PASS.
+- `Rscript -e 'testthat::test_file("tests/testthat/test-ui-asset-zones-contract.R")'` → PASS.
+- `Rscript -e 'testthat::test_file("tests/testthat/test-frontend-maintainability-ratchet.R")'` → PASS.
+
+### Atlanan doğrulamalar ve neden
+Bu paket CSS dosya sınırı/manifest sahipliği refactor'ıdır; VM, DB, SSO ve gerçek tarayıcı smoke çalıştırılmadı. Görsel davranış korunumu statik manifest sırası ve dosya içeriği taşıma disiplinine dayanır; canlı tarayıcı görsel kanıtı bu oturumda üretilmedi.
+
+### Kalan riskler / sonraki adaylar
+Frontend raporunda en büyük CSS adayları artık açık tema alan dosyaları (`theme_light_core.css` 1148, `theme_light_pages.css` 1136) ve `claude_code.css` (1041). En iyi sonraki paket, tema alanlarından birini semantik alt parçalara ayırmak veya `deep_space_intro.js` / `ai_expert_manager.js` JS büyüklüğünü azaltmaktır.

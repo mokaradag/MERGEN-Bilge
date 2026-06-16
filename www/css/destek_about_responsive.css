@@ -1,0 +1,416 @@
+/* Dosya Yolu: www/css/destek_about_responsive.css */
+/* Açıklama: Destek hakkında sayfası, ikon animasyonları ve duyarlı tasarım kuralları. */
+
+/* ==============================================================================
+   HAKKINDA SAYFASI
+   ============================================================================== */
+
+.destek-hakkinda-container {
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* Hero */
+.destek-hakkinda-hero {
+  position: relative;
+  text-align: center;
+  padding: 48px 40px;
+  border-radius: 24px;
+  overflow: hidden;
+  margin-bottom: 48px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.destek-hakkinda-hero-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 50%, rgba(168, 85, 247, 0.08) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.destek-hakkinda-hero-content {
+  position: relative;
+  z-index: 1;
+}
+
+.destek-hakkinda-hero-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  margin-bottom: 24px;
+  font-size: 32px;
+  color: var(--primary-color);
+}
+
+.destek-hakkinda-title {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 14px;
+}
+
+.destek-hakkinda-subtitle {
+  font-size: 17px;
+  color: var(--text-muted);
+  max-width: 600px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* Özellik Kartları */
+.destek-hakkinda-section-title {
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.destek-features-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 48px;
+}
+
+.destek-feature-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 18px;
+  padding: 28px;
+  transition: all 0.3s ease;
+}
+
+.destek-feature-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  transform: translateY(-2px);
+}
+
+.destek-feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  margin-bottom: 16px;
+  font-size: 22px;
+}
+
+.destek-feature-amber .destek-feature-icon { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.destek-feature-emerald .destek-feature-icon { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.destek-feature-blue .destek-feature-icon { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.destek-feature-purple .destek-feature-icon { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
+
+.destek-feature-card h4 {
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.destek-feature-card p {
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* Sayfa Rehberi */
+.destek-hakkinda-guide {
+  margin-bottom: 48px;
+}
+
+.destek-hakkinda-guide-intro {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 16px;
+  margin-bottom: 28px;
+  line-height: 1.6;
+}
+
+.destek-guide-card {
+  display: flex;
+  gap: 24px;
+  padding: 28px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  margin-bottom: 16px;
+  transition: all 0.3s ease;
+}
+
+.destek-guide-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.destek-guide-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 14px;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.destek-guide-icon-chat { background: rgba(99, 102, 241, 0.1); color: #818cf8; }
+.destek-guide-icon-history { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.destek-guide-icon-files { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.destek-guide-icon-settings { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
+.destek-guide-icon-destek { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+
+.destek-guide-content h4 {
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.destek-guide-content p {
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+
+.destek-guide-sub {
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1.5;
+  margin-bottom: 8px;
+  padding-left: 10px;
+  border-left: 2px solid rgba(255, 255, 255, 0.08);
+}
+
+.destek-guide-sub strong {
+  color: var(--text-secondary);
+}
+
+.destek-guide-tips {
+  margin-top: 12px;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  font-size: 15px;
+}
+
+.destek-guide-tips strong {
+  color: var(--text-secondary);
+}
+
+.destek-guide-tips ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: var(--text-muted);
+}
+
+.destek-guide-tips li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+/* İstatistikler */
+.destek-hakkinda-stats {
+  padding: 36px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 18px;
+  margin-bottom: 36px;
+}
+
+.destek-stats-grid {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 56px;
+}
+
+.destek-stat-item {
+  text-align: center;
+}
+
+/* İstatistik ikon sarmalayıcı */
+.destek-stat-icon-wrapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  margin-bottom: 14px;
+  font-size: 24px;
+}
+
+.destek-stat-icon-green {
+  background: rgba(74, 222, 128, 0.1);
+  color: #4ade80;
+}
+
+.destek-stat-icon-green i {
+  animation: destekStatPulse 2s ease-in-out infinite;
+}
+
+.destek-stat-icon-blue {
+  background: rgba(99, 102, 241, 0.1);
+  color: #818cf8;
+}
+
+.destek-stat-icon-blue i {
+  animation: destekStatSpin 3s linear infinite;
+}
+
+@keyframes destekStatPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+@keyframes destekStatSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.destek-stat-number {
+  display: block;
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.destek-stat-label {
+  font-size: 16px;
+  color: var(--text-muted);
+}
+
+.destek-stat-divider {
+  width: 1px;
+  height: 52px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Alt Bilgi */
+.destek-hakkinda-footer {
+  text-align: center;
+  padding: 28px;
+}
+
+.destek-footer-content {
+  color: var(--text-muted);
+  font-size: 15px;
+}
+
+.destek-footer-content i {
+  color: #f87171;
+}
+
+.destek-footer-divider {
+  margin: 0 8px;
+}
+
+/* ==============================================================================
+   İKON ANİMASYONLARI
+   ============================================================================== */
+
+.destek-icon-pulse i {
+  animation: destekIconPulse 3s ease-in-out infinite;
+}
+
+@keyframes destekIconPulse {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(10deg) scale(1.05); }
+  50% { transform: rotate(-10deg) scale(1); }
+  75% { transform: rotate(0deg) scale(1.05); }
+}
+
+.destek-icon-float i {
+  animation: destekIconFloat 2.5s ease-in-out infinite;
+}
+
+@keyframes destekIconFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.destek-icon-rotate i {
+  animation: destekIconRotate 1s ease-in-out;
+  animation-delay: 3s;
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
+}
+
+@keyframes destekIconRotate {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(15deg); }
+  50% { transform: rotate(-15deg); }
+  75% { transform: rotate(15deg); }
+}
+
+.destek-icon-sparkle i {
+  animation: destekSparkle 3s ease-in-out infinite;
+}
+
+@keyframes destekSparkle {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(15deg) scale(1.1); }
+  50% { transform: rotate(-15deg) scale(1); }
+  75% { transform: rotate(0deg) scale(1.1); }
+}
+
+/* ==============================================================================
+   DUYARLI TASARIM
+   ============================================================================== */
+
+@media (max-width: 768px) {
+  .destek-content-full {
+    padding: 20px;
+  }
+
+  .destek-contact-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .destek-features-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .destek-nps-container {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .destek-nps-buttons {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .destek-nps-label-left,
+  .destek-nps-label-right {
+    text-align: center;
+    width: 100%;
+  }
+
+  .destek-satisfaction-selector {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .destek-guide-card {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .destek-priority-container {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
