@@ -198,7 +198,11 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/server_module_wiring.R", 735L, 14L)
   assert_current_budget("R/server_core_interaction_runtime.R", 360L, 8L)
   assert_current_budget("R/server_core_observer_runtime.R", 320L, 6L)
-  assert_current_budget("R/server_ai_expert_handlers.R", 726L, 23L)
+  # AI Uzman sunucu işleyicileri: saf karar yardımcıları (sayfa adı, sıklık,
+  # boşta bağlam) helpers_ai_expert_handlers_support.R'ye ayrıldıktan sonra
+  # 726/23 -> 652/22'ye indi. Bütçe geri tırmanışı kilitler.
+  assert_current_budget("R/server_ai_expert_handlers.R", 660L, 22L)
+  assert_current_budget("R/helpers_ai_expert_handlers_support.R", 180L, 8L)
   assert_current_budget("R/module_file_manager.R", 725L, 14L)
   assert_current_budget("R/module_ai_expert.R", 686L, 22L)
   # AI Uzman yardımcı dosyası, worker-safe DB okuyucuları

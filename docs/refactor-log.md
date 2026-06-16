@@ -6,6 +6,312 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-16 — Yanıt Analizi veri->sunum katmanının davranışsal kapsanması (at-budget modül için guardrail)
+
+### Seçilen iz(ler)
+- **Track — Belgelenmiş kapsama boşluğunun deterministik teste çevrilmesi**
+  (öncelik #4). `destek_yonetici_saglik` seam'inde Yanıt Geri Bildirimi Analizi
+  veri/sunum yardımcıları davranışsal olarak kapatıldı.
+
+### Özet ve gerekçe
+Keşif: skor 100/100, frontend temiz, seam doctor OK. Küresel 24-fonksiyon tavanını
+tutan iki dosya belgeli "yoğun-tasarım" + farklı seam (bölme = düşük değerli churn).
+At-budget dosyalar `module_admin_yanit_analizi.R` (753/753) ve
+`module_admin_geri_bildirim.R` (760/760) en net "yakın bütçe" sinyaliydi (öncelik #1);
+ancak bunları küçültmek inline chart renderer'ları ayrı dosyaya taşımayı gerektiriyor —
+chart kontratları (seri/renk/Türkçe etiket) VM görsel QA ister ve `*_outputs()` desenli
+TÜM admin modülleri zaten kapsanmış, kalan modüllerde ayrılmış outputs fonksiyonu YOK.
+Bulut oturumunda bu extraction yüksek riskli olduğundan, KONTROLLÜ ve TAMAMEN ADDITIVE
+bir alt-paket seçildi: at-budget Yanıt Analizi modülünün veri->sunum katmanını kapsamak.
+
+`R/helpers_admin_yanit_analizi.R` içinde `admin_yanit_collect_data` (17 MB_Feedback
+sorgusu toplayıcı) ve `admin_yanit_overview_ui` (beğeni/yorum oranı hesabı + N/A
+korumaları + Türkçe metrik kartları) davranışsal olarak SINANMAMIŞTI — kardeş
+`admin_gb_fetch_data` ise query-contract testine sahip (asimetrik boşluk). Bu paket
+o boşluğu kapatır ve gelecekteki renderer-extraction refactor'ü için guardrail kurar.
+
+### Değişen dosyalar
+**Test (yeni)**
+- `tests/testthat/test-admin-yanit-data-presentation-behavior.R` (25 assertion) —
+  izole env'e `utils_common.R` + `helpers_admin_yanit_analizi.R` source; admin
+  helper'ları (`admin_create_metric_card`/`admin_format_number`/`admin_create_info_button`)
+  env'de stub'lanır, `safe_query` mock'lanır. Kapsanan: collect_data 17-anahtar +
+  safe_query çağrı sözleşmesi + kilit SQL çapaları (MB_Feedback, 30-gün filtre +
+  MB_Messages JOIN, like/dislike ayrımı, FeedbackTags); overview_ui %.1f%% oran
+  hesabı (150/200=75.0%, 80/200=40.0%), toplam=0 ve boş-çerçeve N/A korumaları,
+  altı Türkçe metrik kartı etiketi.
+
+**Dokümantasyon**
+- `docs/feature-ownership-map.md` — Destek/Geri Bildirim seam'ine Yanıt Analizi
+  modül/helper'ı ve yeni test eklendi; "sıradaki hedef" notu at-budget renderer
+  extraction guardrail'ine güncellendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: Yanıt Analizi veri toplama + genel-bakış metrik hesabı (kullanıcıya görünür
+  oranlar/sayılar) davranışsal olarak sınanmamıştı; yalnızca yapısal refactor-contract
+  vardı. Kardeş geri_bildirim'in query-contract'ı varken yanit'ınki yoktu.
+- Sonra: 17-sorgu sözleşmesi + oran/N-A/etiket hesabı 25 assertion ile deterministik
+  (offline) kilitli. Runtime kodu/satır/fonksiyon değişmedi (skor 100/100 korunur).
+
+### Korunan davranış sözleşmeleri
+- Hiçbir runtime R kodu değişmedi; `admin_yanit_collect_data`/`admin_yanit_overview_ui`
+  davranışı testlerle kilitlendi, değiştirilmedi.
+- Türkçe metrik etiketleri (Toplam Geri Bildirim, Beğeni Oranı, Beğeni, Beğenmeme,
+  Bugün Gelen, Yorum İçeren) ve oran formülleri (begeni/toplam, yorumlu/toplam)
+  birebir doğrulandı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Yeni test tek başına: 25 pass / 0 fail / 0 warn / 0 skip (highcharter kuruluyken;
+  kurulu değilken overview_ui dalları zaman_analizi vb. ile aynı `skip_if_not_installed`
+  desenini izler).
+- `bash tools/ai_validate.sh full --boot-smoke` → geçti: parse sanity, app source
+  smoke, **tam strict testthat suite 185.0s** (highcharter kurulu olduğundan önceden
+  skip edilen tüm chart testleri DE koştu), shiny boot smoke; `failed_steps: 0`,
+  `skipped_steps: 0`. Artifact: `artifacts/ai-validation/20260616-050445/summary.json`.
+- `logger` ve `highcharter` paketleri oturum içinde CRAN'dan kuruldu (CI required
+  paket listesinde değiller; VM'de renv.lock ile mevcut). Tüm komutlar `LANG=C.UTF-8`.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Yönetici Paneli → Yanıt Geri Bildirimi Analizi → Genel Bakış: metrik kartlarının
+  (Toplam, Beğeni Oranı, Beğeni, Beğenmeme, Bugün, Yorum İçeren) doğru sayı/oranları
+  ve Türkçe etiketleri gösterdiğini, geri bildirim yokken N/A geldiğini doğrulayın
+  (davranış değişmedi; test mevcut davranışı kilitler).
+
+### Bilinen riskler / atlanan doğrulamalar
+- Additive test paketi; runtime davranışı değişmedi. Chart renderer'lar (highcharter
+  çıktıları) bu pakette KAPSANMADI — onların kapsanması için renderer'ların ayrı
+  `admin_yanit_outputs()` dosyasına taşınması (at-budget modülü küçülten refactor)
+  gerekir; bu chart kontratları için VM görsel QA gerektirir ve ayrı oturuma bırakıldı.
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding/gerçek tarayıcı kanıtı alınmadı.
+- Sıradaki paket adayı: `module_admin_yanit_analizi.R` (ve `module_admin_geri_bildirim.R`)
+  inline renderer'larını `*_outputs()` desenine taşıyıp at-budget pininden indirmek
+  (artık veri->sunum guardrail'i mevcut; chart-data prep için golden before/after
+  ve outputs-behavior testi ile de-risk edilebilir).
+
+---
+
+## 2026-06-16 — validate_api_key uç-nokta doğrulama dallarının davranışsal kapsanması (belgeli boşluğu kapat)
+
+### Seçilen iz(ler)
+- **Track — Belgelenmiş "bilinen risk" boşluğunun deterministik teste çevrilmesi**
+  (öncelik #4 + #6). `api_anahtar_model` seam'inin `docs/feature-ownership-map.md`
+  "sıradaki hedef" notu olan `validate_api_key`/`derive_models_url` httr-mock
+  kapsaması ele alındı.
+
+### Özet ve gerekçe
+Keşif: maintainability skoru 100/100, frontend yapısal olarak temiz (legacy
+selector/sahipsiz varlık yok), seam doctor OK. Yapısal öncelikler (#1-#3)
+büyük ölçüde çözülmüş; küresel 24-fonksiyon tavanını tutan iki dosya
+(`helpers_file_manager_runtime.R`, `helpers_health_formatters.R`) belgeli
+"yoğun-tasarım" kararı ve farklı seam'lerde olduğundan bölme = düşük değerli
+churn olurdu (skor zaten 100). `feature-ownership-map.md` "Bilinen risk /
+sıradaki hedef" notları (yönerge bunları tercih etmemi söylüyor) çoğunlukla
+davranış-kapsama boşluklarını işaret ediyordu.
+
+`R/config_api.R::validate_api_key()` — kişisel API anahtarı "Doğrula" akışının
+çekirdeği (kullanıcıya görünür) — DEDİKE davranış testi yoktu; yalnızca yapısal
+split sözleşmesinde anılıyordu. Fonksiyon zengin dallı (boş anahtar, `/v1/models`
+URL türetme, model-listesi GET 200/401/403/429/500, sağlık uç noktası, sohbet
+ping POST 200/401/429/hata, endpoint tanımsız) ve tamamı httr-mock'lanabilir.
+`derive_models_url` iç closure'u, mock'lanan `GET`'e geçen URL yakalanarak DOLAYLI
+sınandı. Bu paket TAMAMEN ADDITIVE'dir: çalışma zamanı R kodu DEĞİŞMEDİ; gerçek
+bir bug bulunmadı (test doğru davranışı kilitler). Bu da onu bulut oturumu için
+düşük riskli ve uygun kılar (VM/SSO/DB/tarayıcı kanıtı gerekmez).
+
+### Değişen dosyalar
+**Test (yeni)**
+- `tests/testthat/test-config-api-validate-api-key-behavior.R` (37 assertion) —
+  kanıtlanmış config_api bootstrap deseni (placeholder env + vision/deep-thinking
+  guard'lı + `config_api.R` globalenv'e guard'lı source); `httr` GET/POST/status_code
+  `local_mocked_bindings(.package="httr")` ile mock'lanır; URL yakalama ile
+  `derive_models_url` dolaylı doğrulanır. Sahte anahtar (`gecersiz-test-anahtari`,
+  gerçek önek yok) ile secret-safe.
+
+**Dokümantasyon**
+- `docs/feature-ownership-map.md` — API seam Testler listesine yeni dosya eklendi;
+  "Bilinen risk / sıradaki hedef" notu opsiyonel boşluktan "kapsandı"ya güncellendi
+  (öncelik #6: artık doğru olmayan risk notu temizlendi).
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `validate_api_key` (kullanıcıya görünür anahtar doğrulama) yalnızca yapısal
+  split sözleşmesinde anılıyordu; uç-nokta doğrulama dalları davranışsal olarak hiç
+  sınanmamıştı; `feature-ownership-map.md` bunu "opsiyonel" boşluk olarak belgeliyordu.
+- Sonra: 14 dal/durum 37 assertion ile deterministik (offline, httr-mock) kilitli;
+  belgeli boşluk kapatıldı. Runtime kodu/satır/fonksiyon sayıları değişmedi
+  (skor 100/100 korunur).
+
+### Korunan davranış sözleşmeleri
+- Hiçbir runtime R kodu değişmedi; `validate_api_key`/`derive_models_url` davranışı
+  testlerle kilitlendi, değiştirilmedi.
+- Secret safety: yalnızca sahte anahtar kullanıldı; gerçek anahtar/önek loglanmadı,
+  yazılmadı (`test-secret-leak-contract.R` geçer).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Yeni test tek başına: 37 pass / 0 fail / 0 warn / 0 skip.
+- Komşu config_api/api-key testleriyle AYNI oturumda (globalenv config_api.R
+  source çapraz-bulaşma kontrolü): yeni test + config-api-split (36) +
+  crypto (32) + reasoning-overrides (14) + api-model-config (35) +
+  endpoint-resolution (41) + ai-feature-api-key (13) + deep-thinking (28) →
+  TOTAL 0 fail / 0 warn.
+- `test-secret-leak-contract.R` (8) + `test-log-redact-default-api-key-behavior.R` (4)
+  → 0 fail/warn (sahte anahtar fixture'ı secret tarayıcısını tetiklemez).
+- `Rscript tests/scripts/parse_sanity_check.R` → 811 dosya OK.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; runtime
+  dosya/fonksiyon değişmedi.
+- `bash tools/ai_validate.sh full --boot-smoke` → (aşağıdaki commit'te artifact).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Yapılandırma → kişisel API anahtarı girip "Doğrula"ya basın; geçerli anahtarda
+  "doğrulandı", geçersizde "reddedildi" mesajının eskisi gibi geldiğini doğrulayın
+  (davranış değişmedi; test yalnızca mevcut davranışı kilitler).
+
+### Bilinen riskler / atlanan doğrulamalar
+- Additive test paketi; runtime davranışı değişmedi. Gerçek LLM/sağlık uç noktası
+  yanıtları yalnızca VM/canlı ortamda kanıtlanır (testler httr'yi mock'lar).
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding/gerçek tarayıcı kanıtı bu oturumda
+  alınmadı (bulut oturumu; kapsam dışı).
+- Sıradaki paket adayları: yapısal tarafta küresel fonksiyon-tavanı dosyaları
+  (belgeli yoğun-tasarım — ayrı karar gerektirir); kapsama tarafında
+  `.ai/next-session-test-coverage-prompt.md` aktif workstream'inin dal/şube
+  hedefleri (`cc_policy_validate_workdir`, SSO fail-closed derin dallar,
+  `sendMessageInit` mod-dispatch).
+
+---
+
+## 2026-06-15 — AI Uzman sunucu işleyicilerinden saf karar yardımcılarının ayrılması (yakın-bütçe handler küçültme)
+
+### Seçilen iz(ler)
+- **Track B — Complex runtime kodundan saf yardımcı çıkarımı**
+  (`R/server_ai_expert_handlers.R` → yeni `R/helpers_ai_expert_handlers_support.R`).
+- Aynı risk alanı (`medya_ses` / AI Uzman seam) içinde 3-4 bütünleşik saf
+  karar çıkarımı tek pakette toplandı.
+
+### Özet ve gerekçe
+`docs/feature-ownership-map.md` "sıradaki hedef" notu ve keşif raporları
+`R/server_ai_expert_handlers.R`'yi (726 satır / 23 fonksiyon) işaret ediyordu:
+dosya küresel 24-fonksiyon tavanının BİR ALTINDAydı; herhangi bir küçük AI Uzman
+eklemesi tavanı zorlayacaktı. Dosyada üç senaryo (karşılama / sayfa rehberliği /
+boşta konuşma) için tekrarlayan SAF karar mantığı vardı: iki ayrı yerde aynı
+sayfa→Türkçe ad `switch` haritası, iki sıklık→ms `switch` sarmalayıcısı ve ~44
+satırlık boşta konuşma bağlam metni kurulumu. Bunların hiçbiri Shiny/DB/LLM
+başlatmadan test edilemiyordu.
+
+Dört saf yardımcı yeni `R/helpers_ai_expert_handlers_support.R` dosyasına alındı:
+`ai_expert_page_name_tr()` (iki kopya sayfa haritasını tek kaynağa indirir),
+`ai_expert_first_idle_delay_ms()` / `ai_expert_idle_interval_ms()` (sıklık→ms),
+`build_ai_expert_idle_user_context()` (boşta bağlam metni, `Sys.time()` yerine
+dışarıdan `now_text` alır → deterministik). Handler aynı orkestrasyona odaklı
+kaldı. **VM-only async yol (üç `tracked_future_promise(call_ai_expert_llm)`
+bloğu) BİLEREK ELLENMEDİ**: worker globals export davranışı yalnızca VM'de
+kanıtlanır ve cloud'da doğrulanamaz; gereksiz regresyon riski alınmadı.
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_ai_expert_handlers_support.R` (yeni, 144 satır / 5 fonksiyon) — dört
+  saf karar yardımcısı + bir özel sıklık normalizasyonu; Shiny/DB/ağ/worker yan
+  etkisi yok. Türkçe etiketler birebir korundu.
+- `R/server_ai_expert_handlers.R` — iki sıklık sarmalayıcısı `current_talk_frequency()`
+  + saf helper çağrılarına, iki sayfa haritası tek `ai_expert_page_name_tr()`
+  çağrısına, boşta bağlam bloğu `build_ai_expert_idle_user_context()` çağrısına
+  indirildi. **726 → 652 satır / 23 → 22 fonksiyon.**
+- `R/config_source_manifest.R` — yeni dosya `ai_expert_helpers` bölümü sonuna
+  (handler'dan çok önce yüklenecek şekilde) eklendi (3 → 4 dosya; toplam 264 → 265).
+
+**Test**
+- `tests/testthat/test-ai-expert-handlers-support-behavior.R` (yeni, ~57 assertion)
+  — sayfa adı (bilinen/chat/bilinmeyen/geçersiz), sıklık→ms (az/orta/sik/varsayılan),
+  boşta bağlam (taban/departman+müdürlük/birim/müdürlük-boş düşüş/200-120 kırpma/
+  tam birleşim/NULL girişler) davranışı.
+- `tests/testthat/test-ai-expert-handlers-support-contract.R` (yeni, 16 assertion)
+  — yeni dosya varlığı + yüzey, manifest sırası (helper → handler), taşınan
+  mantığın handler'a geri dönmemesi, handler'ın yeni yardımcıları çağırması,
+  helper'ın Shiny/DB/ağ-bağsızlığı.
+- `tests/testthat/test-ai-expert-page-guidance-stale-behavior.R` — izole env yeni
+  support dosyasını da source eder (handler artık `ai_expert_page_name_tr` çağırır;
+  3 assertion değişmeden geçer).
+- `tests/testthat/test-source-manifest-sections-contract.R` — `ai_expert_helpers`
+  çapası (last/n=4) ve toplam (264 → 265) bilinçli güncellendi.
+- `tests/testthat/test-maintainability-ratchet.R` — `server_ai_expert_handlers.R`
+  bütçesi 726/23 → **660/22** sıkılaştırıldı; yeni dosya için 180L/8F bütçesi eklendi.
+
+**Dokümantasyon**
+- `CLAUDE.md` — Group 4 yükleme listesine yeni dosya eklendi.
+- `docs/architecture-map.md`, `docs/feature-ownership-map.md`,
+  `docs/technical-reference.md` — sahiplik/sıradaki hedef satırları güncellendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `server_ai_expert_handlers.R` 726/23 — küresel fonksiyon tavanının bir
+  altında; sayfa haritası iki kopya; boşta bağlam ve sıklık mantığı Shiny
+  observer gövdesine gömülü, test edilemez.
+- Sonra: handler 652/22 (tavandan iki altında, gerçek baş boşluk); saf karar
+  mantığı bağımsız, deterministik test edilebilir dosyada; her iki dosya da
+  dosya-özel bütçeyle kilitli. Maintainability skoru 100/100 korunur; değerlendirilen
+  dosya 270 → 271. Küresel 24-fonksiyon değeri sıkılaştırılMAdı (tavanı hâlâ
+  `helpers_file_manager_runtime.R` / `helpers_health_formatters.R` tutuyor).
+
+### Korunan davranış sözleşmeleri
+- Üç senaryo LLM çağrı bloğu (`tracked_future_promise` + `call_ai_expert_llm` +
+  globals export) ve promise zincirleri birebir aynı; worker dependency export
+  yolu DEĞİŞMEDİ.
+- Sayfa adı eşlemesi: `ai_expert_page_name_tr("chat")` → "Ana Söyleşi", bilinen
+  sekmeler → aynı Türkçe etiketler, bilinmeyen → NULL. Sayfa rehberliği yolu
+  "chat"a hiç ulaşmaz (erken dönüş korunur); boşta yol `%||% "Ana Söyleşi"` ile
+  aynı varsayılanı verir.
+- Sıklık→ms değerleri (30000/20000/12000 ve 60000/35000/20000), boşta bağlam
+  metninin tüm Türkçe cümleleri, 200/120 karakter kırpma ve `\n\n` birleştirme
+  birebir korundu (`now_text` dışarıdan verilir).
+- DB/SSO/frontend/UX/streaming sözleşmelerine dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni davranış,
+  yeni split sözleşmesi (16), page-guidance-stale (3), db-fetch (20),
+  prompt-builders (30), call-llm (14), pronunciation (11), chunking (22),
+  source-manifest (165), sections (154), global-manifest (12),
+  maintainability-ratchet (183), ratchet-contract (3), seam-registry (12),
+  ai-feature-api-key (13).
+- `bash tools/ai_validate.sh full --boot-smoke` → **geçti**: environment OK,
+  parse sanity OK, app source smoke OK (7.2s), **tam strict testthat suite geçti
+  (172.0s)**, shiny boot smoke OK (9.1s); `failed_steps: 0`, `skipped_steps: 0`.
+  `browser_smoke_status: "skipped"` (konteynerde tarayıcı binary'si yok —
+  bloklamayan). Artifact: `artifacts/ai-validation/20260615-192828/summary.json`
+  (`validation_execution_status="ran_by_ai_repo_check"`, profile full/full,
+  `app_source_smoke_status="passed"`, `shiny_boot_smoke_status="passed"`,
+  `db_sso_vm_validation_performed=FALSE`).
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; 271 dosya;
+  `server_ai_expert_handlers.R` 652/22; refactor adayı yok.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`; `medya_ses`
+  runtime-dosya 9 → 10 (yeni dosya sahipli), sahipsiz dosya yok.
+- App boot smoke (`tests/scripts/smoke_app_boot.R`) → OK. Tüm komutlar
+  `LANG=C.UTF-8` ile; `logger` paketi oturum içinde CRAN'dan kuruldu.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Windows VM'de SSO ile başlatın; Ana Söyleşi'ye girince AI Uzman karşılama
+  konuşmasının (ses + altyazı) eskisi gibi geldiğini doğrulayın.
+- Söyleşi Geçmişi / Kayıtlı Söyleşiler / Görsel Galerisi / Bilge Yolaç / Dosya
+  Yönetimi / Yapılandırma / Yardım Merkezi / Yenilikler / Hakkında sekmelerine
+  geçince sayfa rehberliği konuşmasının doğru Türkçe sayfa adıyla geldiğini;
+  yasaklı sayfaya (Kişiselleştirme/Yönetici/Sistem Durumu) geçince
+  seslendirilmediğini doğrulayın.
+- Boşta bekleyince (idle) AI Uzman konuşmasının son mesaj/departman bağlamıyla
+  geldiğini ve sıklık ayarının (az/orta/sık) gecikmeyi etkilediğini doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Browser UX smoke gerçek tarayıcıyla ÇALIŞTIRILMADI (konteynerde Chrome/Edge yok;
+  `browser_smoke_status="skipped"`); statik harness sözleşmeleri geçti, VM'de
+  bloklayıcı modda koşulmalıdır.
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding kapıları bu oturumda çalıştırılmadı
+  (`db_sso_vm_validation_performed=FALSE`); AI Uzman canlı ses/DB akışı yalnızca
+  VM'de kanıtlanır. Runtime davranışı değişmedi (4 saf yardımcı ayrı dosyaya +
+  manifest); LLM future blokları bilerek ellenmedi.
+- Küresel 24-fonksiyon ratchet değeri sıkılaştırılMAdı; sıradaki yakın-bütçe
+  adayı `R/module_ai_expert.R` (617/22) — ancak içeriği büyük ölçüde reaktif/
+  promise tabanlı TTS orkestrasyonudur (saf çıkarım sınırlı, ayrı oturum kararı).
+
+---
+
 ## 2026-06-15 — AI Uzman worker-safe DB okuyucularının ayrılması (24-fonksiyon tavanından indirme)
 
 ### Seçilen iz(ler)

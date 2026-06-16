@@ -24,6 +24,9 @@ suppressMessages({
          encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_ai_expert.R"),
          encoding = "UTF-8", local = env)
+  # Handler artık saf karar yardımcılarını (sayfa adı vb.) bu dosyadan çağırır.
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_ai_expert_handlers_support.R"),
+         encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "server_ai_expert_handlers.R"),
          encoding = "UTF-8", local = env)
 

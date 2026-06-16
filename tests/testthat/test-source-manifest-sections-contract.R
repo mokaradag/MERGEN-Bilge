@@ -87,7 +87,9 @@
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
   support_admin_health_helpers = list(first = "R/helpers_destek_database.R", last = "R/helpers_health_checks.R", n = 7L),
-  ai_expert_helpers = list(first = "R/helpers_ai_expert_user_data.R", last = "R/helpers_ai_expert_chunking.R", n = 3L),
+  # Bilinçli güncelleme: R/helpers_ai_expert_handlers_support.R (AI Uzman handler
+  # saf karar yardımcıları) bölüm sonuna eklendi; 3 -> 4 dosya.
+  ai_expert_helpers = list(first = "R/helpers_ai_expert_user_data.R", last = "R/helpers_ai_expert_handlers_support.R", n = 4L),
   claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_run_lifecycle.R", n = 26L),
   llm_pipeline = list(first = "R/helpers_llm_tool_formatters.R", last = "R/helpers_llm_worker.R", n = 11L),
   module_chat = list(first = "R/module_chat_history_background.R", last = "R/module_feedback.R", n = 9L),
@@ -208,7 +210,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # "Release Kanıtı" sekmesi) module_health_chartlab bölümüne eklendi.
   # 263L -> 264L bilinçli güncelleme: R/helpers_ai_expert_user_data.R (AI Uzman
   # worker-safe DB okuyucuları) ai_expert_helpers bölümüne eklendi.
-  expect_equal(length(runtime), 264L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 264L -> 265L bilinçli güncelleme: R/helpers_ai_expert_handlers_support.R
+  # (AI Uzman handler saf karar yardımcıları) ai_expert_helpers bölümüne eklendi.
+  expect_equal(length(runtime), 265L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]
