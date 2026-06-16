@@ -77,6 +77,7 @@
 test_that("Yapılandırma UI dosyası sunucu modülünden önce yüklenir", {
   expect_source_manifest_order_for_tests(
     c(
+      "R/module_settings_yapilandirma_advanced_ui.R",
       "R/module_settings_yapilandirma_ui.R",
       "R/module_settings_yapilandirma.R",
       "R/module_settings.R"
@@ -99,13 +100,6 @@ test_that("Yapılandırma UI dosyası yalnızca UI sorumluluğunu taşır", {
     "Analiz Araçları",
     "Claude Code Yapılandırma",
     "Arayüz Ayarları",
-    "Ses Ayarları",
-    "AI Uzman Konuşması",
-    "Görsel Oluşturma Ayarları",
-    "Özetleme Ayarları",
-    "Proje ve Kaynak Analizi Ayarları",
-    "enable_background_music",
-    "music_volume",
     "claude_code_timeout"
   )
 
@@ -143,6 +137,59 @@ test_that("Yapılandırma UI dosyası yalnızca UI sorumluluğunu taşır", {
     character(0),
     info = paste(
       "Yapılandırma UI dosyası runtime/server sorumluluğu içermemelidir:",
+      paste(leaked_runtime_anchors, collapse = ", ")
+    )
+  )
+})
+
+
+test_that("Yapılandırma gelişmiş UI dosyası medya/görsel/analiz kartlarını taşır", {
+  advanced_text <- .read_repo_text_settings_ui_refactor("R/module_settings_yapilandirma_advanced_ui.R")
+
+  required_anchors <- c(
+    "Ses Ayarları",
+    "AI Uzman Konuşması",
+    "Görsel Oluşturma Ayarları",
+    "Özetleme Ayarları",
+    "Proje ve Kaynak Analizi Ayarları",
+    "enable_background_music",
+    "music_volume"
+  )
+
+  missing_anchors <- required_anchors[!vapply(
+    required_anchors,
+    function(anchor) grepl(anchor, advanced_text, fixed = TRUE),
+    logical(1)
+  )]
+
+  expect_equal(
+    missing_anchors,
+    character(0),
+    info = paste(
+      "Yapılandırma gelişmiş UI dosyasında beklenen UI anchor'ları eksik:",
+      paste(missing_anchors, collapse = ", ")
+    )
+  )
+
+  forbidden_runtime_anchors <- c(
+    "settingsYapilandirmaServer <- function",
+    "moduleServer(",
+    "observeEvent(",
+    "reactiveVal(",
+    "sendCustomMessage("
+  )
+
+  leaked_runtime_anchors <- forbidden_runtime_anchors[vapply(
+    forbidden_runtime_anchors,
+    function(anchor) grepl(anchor, advanced_text, fixed = TRUE),
+    logical(1)
+  )]
+
+  expect_equal(
+    leaked_runtime_anchors,
+    character(0),
+    info = paste(
+      "Yapılandırma gelişmiş UI dosyası runtime/server sorumluluğu içermemelidir:",
       paste(leaked_runtime_anchors, collapse = ", ")
     )
   )

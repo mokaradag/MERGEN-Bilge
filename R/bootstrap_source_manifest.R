@@ -417,6 +417,10 @@ source_manifest_required_order <- list(
 
   c("R/module_startup_screen_ui.R", "R/module_startup_screen.R"),
 
+  # Yapılandırma gelişmiş kartları ana kompozitörden önce yüklenir.
+  c("R/module_settings_yapilandirma_advanced_ui.R", "R/module_settings_yapilandirma_ui.R"),
+  c("R/module_settings_yapilandirma_ui.R", "R/module_settings_yapilandirma.R"),
+
   # Görsel UI/HTML render katmanı runtime IO/üretim yardımcılarından SONRA yüklenir:
   # render_* yapıcıları get_image_web_url ve IMAGE_SIZE_OPTIONS'ı çağrı anında çözer.
   c("R/module_image_generation.R", "R/module_image_generation_ui.R"),

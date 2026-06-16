@@ -561,6 +561,8 @@ Son dosya yolu ve görüntüleme bakım güncellemesinde, dosya/UNC/path karşı
 İki alt sayfa içerir:
 - **Kişiselleştirme**
 - **Yapılandırma**
+  - Yapılandırma UI sınırı üç dosyalıdır: `R/module_settings_yapilandirma_advanced_ui.R` saf medya/AI uzman/görsel/özetleme/analiz kartlarını, `R/module_settings_yapilandirma_ui.R` ana kompozitör ve temel kartları, `R/module_settings_yapilandirma.R` ise server/runtime state ve observer mantığını taşır. Manifest sırası advanced UI → UI → server olarak korunur; 47 server-bound input/output id yüzeyi değişmez.
+
 
 ### Destek
 Dört alt sayfadan oluşur:
