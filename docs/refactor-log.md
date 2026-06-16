@@ -6,6 +6,91 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-16 — Yanıt Analizi veri->sunum katmanının davranışsal kapsanması (at-budget modül için guardrail)
+
+### Seçilen iz(ler)
+- **Track — Belgelenmiş kapsama boşluğunun deterministik teste çevrilmesi**
+  (öncelik #4). `destek_yonetici_saglik` seam'inde Yanıt Geri Bildirimi Analizi
+  veri/sunum yardımcıları davranışsal olarak kapatıldı.
+
+### Özet ve gerekçe
+Keşif: skor 100/100, frontend temiz, seam doctor OK. Küresel 24-fonksiyon tavanını
+tutan iki dosya belgeli "yoğun-tasarım" + farklı seam (bölme = düşük değerli churn).
+At-budget dosyalar `module_admin_yanit_analizi.R` (753/753) ve
+`module_admin_geri_bildirim.R` (760/760) en net "yakın bütçe" sinyaliydi (öncelik #1);
+ancak bunları küçültmek inline chart renderer'ları ayrı dosyaya taşımayı gerektiriyor —
+chart kontratları (seri/renk/Türkçe etiket) VM görsel QA ister ve `*_outputs()` desenli
+TÜM admin modülleri zaten kapsanmış, kalan modüllerde ayrılmış outputs fonksiyonu YOK.
+Bulut oturumunda bu extraction yüksek riskli olduğundan, KONTROLLÜ ve TAMAMEN ADDITIVE
+bir alt-paket seçildi: at-budget Yanıt Analizi modülünün veri->sunum katmanını kapsamak.
+
+`R/helpers_admin_yanit_analizi.R` içinde `admin_yanit_collect_data` (17 MB_Feedback
+sorgusu toplayıcı) ve `admin_yanit_overview_ui` (beğeni/yorum oranı hesabı + N/A
+korumaları + Türkçe metrik kartları) davranışsal olarak SINANMAMIŞTI — kardeş
+`admin_gb_fetch_data` ise query-contract testine sahip (asimetrik boşluk). Bu paket
+o boşluğu kapatır ve gelecekteki renderer-extraction refactor'ü için guardrail kurar.
+
+### Değişen dosyalar
+**Test (yeni)**
+- `tests/testthat/test-admin-yanit-data-presentation-behavior.R` (25 assertion) —
+  izole env'e `utils_common.R` + `helpers_admin_yanit_analizi.R` source; admin
+  helper'ları (`admin_create_metric_card`/`admin_format_number`/`admin_create_info_button`)
+  env'de stub'lanır, `safe_query` mock'lanır. Kapsanan: collect_data 17-anahtar +
+  safe_query çağrı sözleşmesi + kilit SQL çapaları (MB_Feedback, 30-gün filtre +
+  MB_Messages JOIN, like/dislike ayrımı, FeedbackTags); overview_ui %.1f%% oran
+  hesabı (150/200=75.0%, 80/200=40.0%), toplam=0 ve boş-çerçeve N/A korumaları,
+  altı Türkçe metrik kartı etiketi.
+
+**Dokümantasyon**
+- `docs/feature-ownership-map.md` — Destek/Geri Bildirim seam'ine Yanıt Analizi
+  modül/helper'ı ve yeni test eklendi; "sıradaki hedef" notu at-budget renderer
+  extraction guardrail'ine güncellendi.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: Yanıt Analizi veri toplama + genel-bakış metrik hesabı (kullanıcıya görünür
+  oranlar/sayılar) davranışsal olarak sınanmamıştı; yalnızca yapısal refactor-contract
+  vardı. Kardeş geri_bildirim'in query-contract'ı varken yanit'ınki yoktu.
+- Sonra: 17-sorgu sözleşmesi + oran/N-A/etiket hesabı 25 assertion ile deterministik
+  (offline) kilitli. Runtime kodu/satır/fonksiyon değişmedi (skor 100/100 korunur).
+
+### Korunan davranış sözleşmeleri
+- Hiçbir runtime R kodu değişmedi; `admin_yanit_collect_data`/`admin_yanit_overview_ui`
+  davranışı testlerle kilitlendi, değiştirilmedi.
+- Türkçe metrik etiketleri (Toplam Geri Bildirim, Beğeni Oranı, Beğeni, Beğenmeme,
+  Bugün Gelen, Yorum İçeren) ve oran formülleri (begeni/toplam, yorumlu/toplam)
+  birebir doğrulandı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Yeni test tek başına: 25 pass / 0 fail / 0 warn / 0 skip (highcharter kuruluyken;
+  kurulu değilken overview_ui dalları zaman_analizi vb. ile aynı `skip_if_not_installed`
+  desenini izler).
+- `bash tools/ai_validate.sh full --boot-smoke` → geçti: parse sanity, app source
+  smoke, **tam strict testthat suite 185.0s** (highcharter kurulu olduğundan önceden
+  skip edilen tüm chart testleri DE koştu), shiny boot smoke; `failed_steps: 0`,
+  `skipped_steps: 0`. Artifact: `artifacts/ai-validation/20260616-050445/summary.json`.
+- `logger` ve `highcharter` paketleri oturum içinde CRAN'dan kuruldu (CI required
+  paket listesinde değiller; VM'de renv.lock ile mevcut). Tüm komutlar `LANG=C.UTF-8`.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Yönetici Paneli → Yanıt Geri Bildirimi Analizi → Genel Bakış: metrik kartlarının
+  (Toplam, Beğeni Oranı, Beğeni, Beğenmeme, Bugün, Yorum İçeren) doğru sayı/oranları
+  ve Türkçe etiketleri gösterdiğini, geri bildirim yokken N/A geldiğini doğrulayın
+  (davranış değişmedi; test mevcut davranışı kilitler).
+
+### Bilinen riskler / atlanan doğrulamalar
+- Additive test paketi; runtime davranışı değişmedi. Chart renderer'lar (highcharter
+  çıktıları) bu pakette KAPSANMADI — onların kapsanması için renderer'ların ayrı
+  `admin_yanit_outputs()` dosyasına taşınması (at-budget modülü küçülten refactor)
+  gerekir; bu chart kontratları için VM görsel QA gerektirir ve ayrı oturuma bırakıldı.
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding/gerçek tarayıcı kanıtı alınmadı.
+- Sıradaki paket adayı: `module_admin_yanit_analizi.R` (ve `module_admin_geri_bildirim.R`)
+  inline renderer'larını `*_outputs()` desenine taşıyıp at-budget pininden indirmek
+  (artık veri->sunum guardrail'i mevcut; chart-data prep için golden before/after
+  ve outputs-behavior testi ile de-risk edilebilir).
+
+---
+
 ## 2026-06-16 — validate_api_key uç-nokta doğrulama dallarının davranışsal kapsanması (belgeli boşluğu kapat)
 
 ### Seçilen iz(ler)

@@ -281,16 +281,25 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **UI/server modülleri:** `R/module_destek.R`, `R/module_destek_yardim.R`,
   `R/module_destek_geri_bildirim.R`, `R/module_destek_hata_bildir.R`,
   `R/module_destek_surum.R`, `R/module_destek_hakkinda.R`,
-  `R/module_admin_geri_bildirim.R`, `R/module_admin_hata_analizi.R`.
+  `R/module_admin_geri_bildirim.R`, `R/module_admin_hata_analizi.R`,
+  `R/module_admin_yanit_analizi.R` + `R/helpers_admin_yanit_analizi.R`
+  (Yanıt Geri Bildirimi Analizi: veri toplama + etiket sayımı + sekme UI'ları).
 - **DB/servis:** `MB_Feedback`, hata bildirim tabloları; Service Desk
   (`SERVICE_DESK_API_KEY_URL`).
 - **Testler:** `test-destek-database-helpers-behavior.R`,
   `test-destek-db-text-normalization-behavior.R`, `test-admin-geri-bildirim-*`,
-  `test-admin-hata-analizi-*`, `test-mailto-encoding*.R`,
+  `test-admin-hata-analizi-*`, `test-admin-yanit-tag-counts-behavior.R`,
+  `test-admin-yanit-data-presentation-behavior.R` (`admin_yanit_collect_data`
+  17-sorgu sözleşmesi + `admin_yanit_overview_ui` beğeni/yorum oranı hesaplaması,
+  toplam=0 / boş-çerçeve N/A korumaları, Türkçe metrik kartları), `test-mailto-encoding*.R`,
   `test-adversarial-hostile-input-behavior.R` (kötü amaçlı geri bildirim/markdown).
 - **Smoke/kanıt:** geri bildirim/hata yazımları DB encoding preflight kapsamında.
 - **Bilinen risk / sıradaki hedef:** kullanıcı/LLM-kontrollü metin DB sınırlarında
-  görünür-vs-teknik normalizasyon ayrımı korunmalı.
+  görünür-vs-teknik normalizasyon ayrımı korunmalı. Yanıt Analizi veri->sunum
+  katmanı (`admin_yanit_collect_data` + `admin_yanit_overview_ui`) davranışsal
+  kapsandı; bu, gelecekte `module_admin_yanit_analizi.R`'nin satır bütçesinde sabit
+  duran (753/753) inline chart renderer'larını ayrı bir `*_outputs()` dosyasına
+  taşıma refactor'ü için guardrail hazırlar (chart kontratları VM görsel QA gerektirir).
 
 ---
 
