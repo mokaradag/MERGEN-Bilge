@@ -6,6 +6,124 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-16 — Frontend bölge yönetişim katmanının VERİ/DOĞRULAYICI ayrımı (en büyük runtime dosyasını düşür)
+
+### Seçilen iz(ler)
+- **Track 1 — En büyük / yakın-bütçe R dosyasından bütünleşik (saf) yardımcı
+  çıkarımı** (öncelik #1) + **Track 3 — yükleme sırası/manifest/bölge sahipliği
+  yönetişimini sağlamlaştırma** (öncelik #3). `frontend_varlik` seam'inde tek paket.
+
+### Özet ve gerekçe
+Keşif (maintainability 100/100, frontend temiz, seam doctor OK): `R/config_ui_asset_zones.R`
+**en büyük runtime dosyasıydı (777 satır)** — küresel `max-file-length` metriğini
+süren ve 800-satır tavanının 23 satır altındaki en net "yakın bütçe" sinyali.
+Dosya doğal olarak iki sorumluluğa ayrılıyordu: (a) SAF VERİ — iki sahiplik
+haritası (`ui_asset_ownership_zones` 23 bölge + `ui_asset_unmanifested_ownership`),
+(b) bölge çözümleme + bölümleme (partition) DOĞRULAMA API'si (8 adlandırılmış saf
+fonksiyon). Kritik gözlem: bu fonksiyonlar runtime UI render'ında (`ui_asset_validate`)
+HİÇ çağrılmaz — yalnızca seam doctor ve sözleşme testleri kullanır; bu da ayırmayı
+davranış-koruyan ve sıfır-runtime-riskli kılar. Ayrım, repoda zaten var olan
+`config_source_manifest.R` (veri) + `bootstrap_source_manifest.R` (doğrulayıcı)
+desenini birebir izler.
+
+### Değişen dosyalar
+**Kaynak**
+- `R/config_ui_asset_zone_validators.R` (yeni, 312 satır / 10 fonksiyon) — 8
+  adlandırılmış erişimci/doğrulayıcı + 2 anonim `error = function(e)` handler'ı
+  birebir taşındı; veri nesnelerine tembel-değerlendirilen varsayılan argümanlarla
+  referans verir (çağrı anında aynı ortamda görünür).
+- `R/config_ui_asset_zones.R` — fonksiyon bloğu fiziksel olarak kesilerek
+  (head -n 491; veri byte-korumalı) SADECE veriye indirildi; başlık VERİ/DOĞRULAYICI
+  ayrımını belgeler. **777/10 → 502/0** (artık fonksiyon içermez).
+- `R/config_source_manifest.R` — `config_ui_assets` bölümüne yeni dosya
+  `config_ui_asset_zones.R`'den HEMEN SONRA eklendi (2 → 3 dosya; toplam 265 → 266).
+- `R/config_seam_registry.R` — `frontend_varlik` seam guard_tests listesine yeni
+  split-contract testi eklendi (7 → 8 guard test).
+
+**Test**
+- `tests/testthat/test-ui-asset-zone-validators-split-contract.R` (yeni, 5 test) —
+  yeni dosya varlığı + 8 fonksiyon yüzeyi, manifest sırası (veri → doğrulayıcı),
+  veri dosyasının SADECE veri olması (hiç `<- function(` yok), doğrulayıcı dosyasının
+  veriyi yeniden tanımlamaması, ve **bölme sonrası bölümleme korunumu**
+  (`ui_asset_zones_validate()` gerçek manifeste karşı `character(0)` döner).
+- 5 source noktası yeni dosyayı da yükler: `tests/scripts/seam_doctor.R`,
+  `test-ui-asset-zones-contract.R`, `test-seam-registry-contract.R`,
+  `test-seam-doctor-contract.R` (+ required_tokens), `test-misc-runtime-predicates-behavior.R`
+  (`.miscPredicatesSource` çok-yollu hale getirildi; `ui_asset_zone_get` artık
+  doğrulayıcı dosyada).
+- `test-source-manifest-sections-contract.R` — `config_ui_assets` çapası
+  (last/n=2→3) ve toplam kaynak sayısı (265 → 266) bilinçli güncellendi.
+- `test-maintainability-ratchet.R` — `config_ui_asset_zones.R` 790/12 → **550/2**
+  (veri dosyası ~0 fonksiyonda kilitli; runtime mantık sızması erken yakalanır);
+  `config_ui_asset_zone_validators.R` için **360/12** bütçesi eklendi. Geri
+  birleşme kilitlenir.
+
+**Dokümantasyon**
+- `CLAUDE.md` — seam/zone yönetişim sözleşmesinde VERİ/DOĞRULAYICI ayrımı + manifest
+  yükleme şekli (3 dosya) + yeni test güncellendi.
+- `docs/architecture-map.md` — yönetişim tablosuna yeni doğrulayıcı dosyası satırı.
+- `docs/technical-reference.md` — frontend bölge katmanı VERİ + DOĞRULAYICI notu.
+- `docs/feature-ownership-map.md` — yeni "Frontend Varlık ve Yönetişim" bölümü.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `config_ui_asset_zones.R` 777/10 — en büyük runtime dosyası; küresel
+  max-file-length metriğini sürüyor; veri + doğrulama mantığı tek dosyada karışık.
+- Sonra: veri dosyası 502/0 (SADECE veri, fonksiyon yok), doğrulayıcı 312/10;
+  her ikisi dosya-özel bütçeyle kilitli. **Küresel en büyük runtime dosyası
+  777 → 760 satıra indi** (yeni en büyük `module_admin_geri_bildirim.R`).
+  Değerlendirilen dosya 271 → 272; skor 100/100 korunur; 800+ satır / 25+ fonksiyon
+  dosya sayısı 0 kalır.
+
+### Korunan davranış sözleşmeleri
+- 8 fonksiyonun gövdeleri, varsayılan argümanları, `error = function(e)` düşüşleri
+  ve `optional_in_checkout` (yalnızca on-prem VM dosyaları) doğrulama mantığı
+  birebir aynı; veri (23 bölge + manifest dışı kayıt) byte-korumalı taşındı.
+- `ui_asset_validate()` (runtime UI render) bu fonksiyonları HİÇ çağırmaz; yükleme
+  sırasının tek sahibi `R/config_ui_assets.R` kalır. Bölme sonrası bölümleme
+  korunumu test ile kanıtlandı (`ui_asset_zones_validate()` → `character(0)`).
+- DB/SSO/encoding/streaming/UX sözleşmelerine dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni split-contract (5),
+  ui-asset-zones-contract (8), ui-asset-manifest-contract (6),
+  misc-runtime-predicates (4), source-manifest-sections (güncel), source-manifest-contract (11),
+  seam-registry-contract, seam-doctor-contract (2), global-source-manifest (6),
+  maintainability-ratchet.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`; `frontend_varlik`
+  runtime-dosya 2 → 3 (yeni dosya sahipli), guard-test 7 → 8; sahipsiz dosya yok.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; 272 dosya;
+  en büyük dosya 760 satır; refactor adayı yok.
+- `bash tools/ai_validate.sh full --boot-smoke` → **geçti**: environment OK,
+  parse sanity OK, **app source smoke OK (5.8s — yeni manifest boot'ta yükleniyor)**,
+  **tam strict testthat suite OK (139.5s)**, shiny boot smoke OK (6.9s);
+  `failed_steps: 0`, `skipped_steps: 0`. Artifact:
+  `artifacts/ai-validation/20260616-084950/summary.json`
+  (`validation_execution_status="ran_by_ai_repo_check"`, profile full/full,
+  `app_source_smoke_status="passed"`, `shiny_boot_smoke_status="passed"`,
+  `browser_smoke_status="skipped"` — konteynerde tarayıcı yok,
+  `db_sso_vm_validation_performed=false`). `logger` paketi oturum içinde kuruldu.
+  Tüm komutlar `LANG=C.UTF-8`.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Bu yalnızca yönetişim (governance) veri/doğrulayıcı ayrımıdır; runtime UI render
+  yolunu DEĞİŞTİRMEZ. Özel kullanıcı-tarafı QA gerekmez; yine de uygulama açılışı
+  sonrası tüm sayfaların (frontend varlıkları) eskisi gibi yüklendiği doğrulanabilir.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding/gerçek tarayıcı kanıtı alınmadı
+  (bulut oturumu; `db_sso_vm_validation_performed=false`, browser smoke SKIPPED).
+  Değişiklik yapısal yönetişim/manifest ayrımıdır; runtime davranışı değişmedi,
+  bu yüzden bu kapılar bu paket için gerekli değildir ama tam VM kanıtı vermez.
+- Sıradaki paket adayları: at-budget admin modülleri `module_admin_geri_bildirim.R`
+  (760/5) ve `module_admin_yanit_analizi.R` (753/4) inline chart renderer'larını
+  `*_outputs()` desenine taşıyıp at-budget pininden indirmek (veri->sunum
+  guardrail'i mevcut; chart kontratları VM görsel QA ister). Frontend tarafında:
+  duplike CSS selector temizliği (frontend complexity doctor raporu) tek zone'da
+  toplanabilir.
+
+---
+
 ## 2026-06-16 — Yanıt Analizi veri->sunum katmanının davranışsal kapsanması (at-budget modül için guardrail)
 
 ### Seçilen iz(ler)

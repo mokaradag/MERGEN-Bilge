@@ -301,6 +301,34 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   duran (753/753) inline chart renderer'larını ayrı bir `*_outputs()` dosyasına
   taşıma refactor'ü için guardrail hazırlar (chart kontratları VM görsel QA gerektirir).
 
+## Frontend Varlık ve Yönetişim
+
+- **Seam:** `frontend_varlik`
+- **Birincil R dosyaları:** `R/config_ui_assets.R` (CSS/JS varlık manifesti +
+  yükleme sırası kuralları + render planı — sıranın TEK sahibi),
+  `R/config_ui_asset_zones.R` (SAF VERİ: 23 frontend bölgesi + manifest dışı
+  sahiplik haritası), `R/config_ui_asset_zone_validators.R` (bölge çözümleme +
+  bölümleme/partition doğrulama API'si: `ui_asset_zone_ids/get/css_paths/js_paths`,
+  `ui_asset_zone_owner_seams`, `ui_asset_zones_for_seam`, `ui_asset_zones_validate`,
+  `ui_asset_frontend_ownership_gaps` — boot'ta çağrılmaz, yalnızca seam doctor +
+  sözleşme testleri kullanır).
+- **JS/CSS:** `www/css/*`, `www/js/*` (her varlık tam olarak bir bölgeye atanır;
+  manifest dışı/smoke varlıklar gerekçeli sahiplenilir).
+- **Testler:** `test-ui-asset-manifest-contract.R`, `test-ui-asset-zones-contract.R`,
+  `test-ui-asset-zone-validators-split-contract.R` (VERİ/DOĞRULAYICI ayrımı +
+  bölümleme korunumu), `test-frontend-maintainability-ratchet.R`,
+  `test-frontend-selector-contract.R`.
+- **Smoke/kanıt:** seam doctor (`tests/scripts/seam_doctor.R`), frontend complexity
+  doctor, `www/smoke/ux-smoke.html`.
+- **Bilinen risk / sıradaki hedef:** bölge VERİSİ ile bölge DOĞRULAYICI API'si
+  ayrı dosyalara bölündü; `config_ui_asset_zones.R` 777/10 → 502/0 (SADECE veri,
+  0 fonksiyonda kilitli), doğrulayıcı API `config_ui_asset_zone_validators.R`'de
+  (312/10). Bu, en büyük runtime dosyasını manifestten düşürdü (en büyük artık
+  760 satır). Sıradaki yakın-bütçe adayları: `R/module_admin_geri_bildirim.R`
+  (760/5) ve `R/module_admin_yanit_analizi.R` (753/4) — inline chart renderer'larını
+  `*_outputs()` desenine taşıma (chart kontratları VM görsel QA gerektirir;
+  veri->sunum guardrail'i artık mevcut).
+
 ---
 
 ## Kanıt sınırı hatırlatması

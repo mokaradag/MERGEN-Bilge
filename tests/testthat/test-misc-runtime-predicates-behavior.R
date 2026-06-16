@@ -3,7 +3,7 @@
 # Açıklama: Küçük ama davranışsal test edilmemiş runtime yardımcıları:
 #           - utils_path_helpers.R .path_text_encoding_helper_available()
 #           - helpers_file_manager_runtime.R .fm_runtime_is_reactivevalues()
-#           - config_ui_asset_zones.R ui_asset_zone_get()
+#           - config_ui_asset_zone_validators.R ui_asset_zone_get()
 #           Hepsi saf/deterministik; gerçek DB/ağ/dosya gerektirmez.
 # ==============================================================================
 
@@ -11,7 +11,12 @@ suppressMessages(library(shiny))
 
 .miscPredicatesSource <- function(rel_path) {
   env <- new.env(parent = globalenv())
-  source(file.path(resolve_repo_root_for_tests(), rel_path), encoding = "UTF-8", local = env)
+  repo_root <- resolve_repo_root_for_tests()
+  # rel_path tek bir yol ya da (sıralı) yol vektörü olabilir; örn. veri dosyası
+  # + doğrulayıcı dosyası birlikte yüklenmesi gerektiğinde.
+  for (path in rel_path) {
+    source(file.path(repo_root, path), encoding = "UTF-8", local = env)
+  }
   env
 }
 
@@ -51,7 +56,7 @@ testthat::test_that(".fm_runtime_is_reactivevalues yalnızca reactivevalues içi
 })
 
 testthat::test_that("ui_asset_zone_get geçerli id'de bölgeyi döndürür, geçersizde durur", {
-  env <- .miscPredicatesSource("R/config_ui_asset_zones.R")
+  env <- .miscPredicatesSource(c("R/config_ui_asset_zones.R", "R/config_ui_asset_zone_validators.R"))
   f <- env$ui_asset_zone_get
 
   ornek <- list(
@@ -72,8 +77,9 @@ testthat::test_that("ui_asset_zone_get geçerli id'de bölgeyi döndürür, geç
 })
 
 testthat::test_that("ui_asset_zone_get gerçek sahiplik haritasından bilinen bölgeyi çözer", {
-  env <- .miscPredicatesSource("R/config_ui_asset_zones.R")
-  # Varsayılan zones = ui_asset_ownership_zones (aynı dosyada tanımlı)
+  env <- .miscPredicatesSource(c("R/config_ui_asset_zones.R", "R/config_ui_asset_zone_validators.R"))
+  # Varsayılan zones = ui_asset_ownership_zones (veri dosyasında tanımlı; fonksiyon
+  # config_ui_asset_zone_validators.R'de — ikisi de aynı ortama yüklenir).
   zone <- env$ui_asset_zone_get("vendor_codemirror")
   testthat::expect_identical(zone$owner_seam, "frontend_varlik")
   testthat::expect_true("codemirror" %in% zone$css_groups)

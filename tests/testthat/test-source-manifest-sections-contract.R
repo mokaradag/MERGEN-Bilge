@@ -71,7 +71,10 @@
   config_app_core = list(first = "R/config_sso.R", last = "R/config_version_history.R", n = 8L),
   config_api_model_keys = list(first = "R/helpers_vision_model_capabilities.R", last = "R/helpers_api_key_password_toggle.R", n = 9L),
   config_claude_code = list(first = "R/config_claude_code.R", last = "R/config_claude_code_plugins.R", n = 2L),
-  config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_asset_zones.R", n = 2L),
+  # Bilinçli güncelleme: bölge VERİSİ (config_ui_asset_zones.R) ile bölge
+  # DOĞRULAYICI API'si (config_ui_asset_zone_validators.R) ayrı dosyalara
+  # bölündü; en büyük runtime dosyası 777 satırdan iki dosyaya indi. 2 -> 3.
+  config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_asset_zone_validators.R", n = 3L),
   architecture_governance = list(first = "R/config_seam_registry.R", last = "R/config_seam_registry.R", n = 1L),
   database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 11L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
@@ -212,7 +215,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # worker-safe DB okuyucuları) ai_expert_helpers bölümüne eklendi.
   # 264L -> 265L bilinçli güncelleme: R/helpers_ai_expert_handlers_support.R
   # (AI Uzman handler saf karar yardımcıları) ai_expert_helpers bölümüne eklendi.
-  expect_equal(length(runtime), 265L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 265L -> 266L bilinçli güncelleme: R/config_ui_asset_zone_validators.R
+  # (frontend bölge doğrulayıcı API'si; VERİ/DOĞRULAYICI ayrımı) config_ui_assets
+  # bölümüne eklendi.
+  expect_equal(length(runtime), 266L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

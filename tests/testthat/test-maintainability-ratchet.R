@@ -216,10 +216,14 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # Yönetişim katmanı (seam kayıt defteri + frontend bölge haritası) saf veri
   # dosyalarıdır; bütçeler bölge/seam başına birkaç yeni varlık satırına izin
   # verir ama dosyaların runtime mantığıyla şişmesini erken yakalar.
-  # Not: 780 -> 790 bilinçli güncelleme. optional_in_checkout alanı (yalnızca
-  # on-prem VM kopyasında bulunan vendored dosyaların sahiplik doğrulaması)
-  # doğrulayıcıya gerçek davranış ve kayıt defterine iki alan ekledi.
-  assert_current_budget("R/config_ui_asset_zones.R", 790L, 12L)
+  # Bilinçli güncelleme: frontend bölge dosyası VERİ + DOĞRULAYICI olarak
+  # bölündü (config_source_manifest.R / bootstrap_source_manifest.R deseni).
+  # config_ui_asset_zones.R artık SADECE veri (777/10 -> 502/0); doğrulayıcı
+  # API (saf fonksiyonlar) config_ui_asset_zone_validators.R'ye taşındı.
+  # Veri dosyası 0 fonksiyonda kilitlenir (runtime mantık sızması engellenir);
+  # doğrulayıcı dosyası 10 fonksiyonu taşır. Bütçeler geri birleşmeyi yakalar.
+  assert_current_budget("R/config_ui_asset_zones.R", 550L, 2L)
+  assert_current_budget("R/config_ui_asset_zone_validators.R", 360L, 12L)
   assert_current_budget("R/config_seam_registry.R", 580L, 8L)
 })
 
