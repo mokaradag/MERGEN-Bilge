@@ -197,6 +197,48 @@ $env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
 
 Geçerli release kanıtı sayılması için özet satırında `Toplam: 13 passed, 0 failed, 0 skipped` görülmeli ve `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight`, `full_testthat` adımları `PASSED` olmalıdır.
 
+### 7.7 Operasyonel soak / yük kapısı (dayanıklılık kanıtı)
+
+Operasyonel soak kapısı (`tests/scripts/run_operational_soak_gate.R`) VM kanıt
+kapısından **ayrıdır** ve onun yerine geçmez. VM kanıt kapısı "yapı/boot/encoding
+doğru mu?" sorusunu, soak kapısı "uygulama yük altında dayanıklı mı?" sorusunu
+yanıtlar. Ayrıntılar: [`docs/operational-soak-gate.md`](docs/operational-soak-gate.md).
+
+Üç serit: **fake** (ana yüksek-eşzamanlılık, sıfır gerçek anahtar), **proxy**
+(kişisel anahtar yönlendirme/izolasyon kanıtı) ve **real-canary** (tek gerçek
+anahtar, çok düşük eşzamanlılık). Tek gerçek geliştirici anahtarı yalnızca
+canary/proxy içindir; ana çok-kullanıcılı soak ona bağlı değildir.
+
+Hızlı duman testi (varsayılan smoke profili):
+
+```bat
+Rscript tests/scripts/run_operational_soak_gate.R
+```
+
+Kurum-ölçeği (50–100 aktif kullanıcı; ilk ciddi hedef):
+
+```bat
+set MERGEN_SOAK_PROFILE=org
+set MERGEN_SOAK_CONCURRENT_USERS=100
+set MERGEN_SOAK_DURATION_MINUTES=120
+Rscript tests/scripts/run_operational_soak_gate.R
+```
+
+Proxy anahtar-yönlendirme/izolasyon:
+
+```bat
+set MERGEN_SOAK_PROFILE=proxy_llm
+Rscript tests/scripts/run_operational_soak_gate.R
+```
+
+Artifact'lar `artifacts/soak/<timestamp>/` altında üretilir (her zaman, başarısızlıkta
+bile). Eşik **etkin başarı oranına** (`effective_success_rate`) uygulanır; bu metrik
+kasıtlı enjekte edilen faultları hariç tutar, böylece beklenmeyen başarısızlıkları
+ölçer. Ölçülemeyen eşikler sessizce geçmez (`UNMEASURED` / `skipped_checks`). "1.000
+kullanıcı" bir kullanıcı tabanıdır; ilk ciddi aktif-eşzamanlılık hedefi 50–100'dür.
+Fake/proxy/canary koşumlarından gerçek 1.000 eşzamanlı kullanıcı hazırlığı iddia
+edilmez.
+
 ## 8. Dağıtım Öncesi Kapılar
 
 1. Değişiklik türünü sınıflandırın: docs-only, UI, runtime, DB, SSO, file lifecycle, streaming, Bilge Yolaç veya deployment.

@@ -123,6 +123,7 @@ Bu kanıt kapısı `artifacts/vm-evidence/<timestamp>/evidence.json` altında se
 | [`docs/architecture-map.md`](docs/architecture-map.md) | Kod veya dokümantasyon değişikliğinden önce mimari yön bulma. |
 | [`docs/database-schema.md`](docs/database-schema.md) | Güncel uygulama kaynaklarına göre DB tablo yapısı ve tablo akışları. |
 | [`RUNBOOK.md`](RUNBOOK.md) | Windows VM/on-prem operasyon, dağıtım, doğrulama ve sorun giderme. |
+| [`docs/operational-soak-gate.md`](docs/operational-soak-gate.md) | Operasyonel soak/yük kapısı: fake/proxy/real-canary seritleri, profiller, anahtar yönlendirme kanıtı ve 1.000 kullanıcı rollout planı. |
 | [`docs/dependency-locking.md`](docs/dependency-locking.md) | `renv`, `renv.lock`, VM kilit üretimi ve bağımlılık politikası. |
 | [`RENV_LOCK_STATUS.md`](RENV_LOCK_STATUS.md) | `renv.lock` dosyasının on-prem/GitHub görünürlüğü. |
 | [`docs/release-notes.md`](docs/release-notes.md) | Uzun güncelleme/değişiklik notları. |

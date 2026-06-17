@@ -17,6 +17,40 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 Aşağıdaki bölüm, güncel değişiklik notlarını kronolojik/tematik bakım izi kaybolmadan izler.
 
 
+### Operasyonel soak / yük kapısı eklendi (fake/proxy/real-canary seritleri)
+
+MERGEN Bilge'ye, uygulamanın operasyonel kırılganlığını kullanıcılar fark etmeden
+önce keşfetmek için **operasyonel soak/yük kapısı** eklendi:
+`tests/scripts/run_operational_soak_gate.R` (+ `soak_*` ve `mock_llm_server.R` /
+`proxy_llm_server.R` yardımcı modülleri). Tam belge:
+[`operational-soak-gate.md`](operational-soak-gate.md).
+
+Tasarım üç **serit** üzerine kuruludur: **fake** (yerel OpenAI-uyumlu sahte LLM;
+ana yüksek-eşzamanlılık seridi; sıfır gerçek anahtar), **proxy** (çok sayıda sahte
+kişisel anahtarla kişisel/varsayılan/eksik anahtar yönlendirme ve oturumlar arası
+izolasyon kanıtı; ham anahtar loglanmaz), ve **real-canary** (tek gerçek anahtar,
+çok düşük eşzamanlılık). Bu ayrım bilinçlidir: tek gerçek geliştirici anahtarı
+app-seviyesi soak'un darboğazı yapılmaz ve fake/proxy/canary koşumlarından gerçek
+1.000 eşzamanlı kullanıcı hazırlığı iddia edilmez. "1.000 kullanıcı" bir kullanıcı
+tabanıdır; ilk ciddi aktif-eşzamanlılık hedefi 50–100'dür.
+
+Kapı VM kanıt kapısının yerine geçmez; ayrı ve tamamlayıcıdır. Profiller:
+`smoke` (varsayılan), `pilot`, `org`, `stress`, `fake_llm`, `proxy_llm`,
+`real_llm`. Fake/proxy sunucular `httpuv` + `promises` + `later` ile bloklamayan
+gecikme uygular (tek thread'li event loop'ta gerçek eşzamanlılık); yük `curl`
+multi-handle havuzuyla sürülür. In-process alıştırmalar uygulamanın gerçek
+yardımcılarını çağırarak Türkçe/emoji DB-encoding round-trip'i, yükleme
+doğrulayıcı kabul/ret kararlarını, anahtar kaynak sınıflandırmasını ve oturumlar
+arası anahtar izolasyonunu doğrular. Yeni paket eklenmedi.
+
+Dürüstlük sözleşmesi VM kanıt kapısıyla aynıdır: her zaman artifact üretilir
+(`artifacts/soak/<timestamp>/`), eşik **etkin başarı oranına** uygulanır (kasıtlı
+enjekte edilen faultlar hariç → beklenmeyen başarısızlıkları ölçer), ölçülemeyen
+eşikler sessizce geçmez (`UNMEASURED`/`skipped_checks`), ve artifact'lar ham
+anahtar/token/sır içermeyecek şekilde redaksiyondan + redaksiyon kendi-doğrulamasından
+geçer. Statik + offline sözleşme koruması:
+`tests/testthat/test-operational-soak-gate-contract.R`.
+
 ### Windows VM evidence gate milestone: 13/13 adım geçti
 
 MERGEN Bilge'nin on-prem Windows VM doğrulamasında major readiness milestone kaydedildi ve **15 Haziran 2026** tarihinde yeniden doğrulandı. `tests/scripts/run_vm_evidence_gate.R` tam koşumu başarılı tamamlandı: `Toplam: 13 passed, 0 failed, 0 skipped`. Güncel statü özellikle şu adımları içerir: `full_testthat PASSED`, `browser_ux_smoke PASSED`, `vm_preflight_real PASSED`, `db_encoding_preflight PASSED`.

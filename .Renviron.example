@@ -157,3 +157,45 @@ EXCEL_DEEP_LOW_MODEL=<technical model name 1>
 EXCEL_DEEP_HIGH_MODEL=<technical model name 2>
 CODING_DEEP_LOW_MODEL=<technical model name 1>
 CODING_DEEP_HIGH_MODEL=<technical model name 2>
+# ------------------------------------------------------------------------------
+# Operasyonel Soak / Yük Kapısı (opsiyonel; tests/scripts/run_operational_soak_gate.R)
+# ------------------------------------------------------------------------------
+# Bu değişkenler yalnızca operasyonel soak/yük testini çalıştırırken gereklidir;
+# normal uygulama çalışması için ZORUNLU DEĞİLDİR. Ayrıntılar:
+# docs/operational-soak-gate.md
+#
+# Profil ve yoğunluk (profil varsayılanlarını override eder):
+#   MERGEN_SOAK_PROFILE=smoke         # smoke|pilot|org|stress|fake_llm|proxy_llm|real_llm
+#   MERGEN_SOAK_LLM_MODE=fake         # fake|proxy|real-canary
+#   MERGEN_SOAK_CONCURRENT_USERS=10
+#   MERGEN_SOAK_DURATION_MINUTES=30
+#   MERGEN_SOAK_USER_BASE_TARGET=1000
+#
+# Fake endpoint davranışı (Lane A):
+#   MERGEN_SOAK_FAKE_LATENCY_MS_MIN=80
+#   MERGEN_SOAK_FAKE_LATENCY_MS_MAX=600
+#   MERGEN_SOAK_FAKE_ERROR_RATE=0.02
+#   MERGEN_SOAK_FAKE_TIMEOUT_RATE=0.01
+#   MERGEN_SOAK_FAKE_STREAM=TRUE
+#   MERGEN_SOAK_FAKE_LONG_RESPONSE_RATE=0.05
+#
+# Proxy serit (Lane B):
+#   MERGEN_SOAK_PROXY_FORWARD_REAL=FALSE
+#   MERGEN_SOAK_MAX_REAL_LLM_RPM=3
+#
+# Gerçek endpoint canary (Lane C) - YALNIZCA gerektiğinde ayarlayın:
+#   MERGEN_SOAK_REAL_CANARY_USERS=2
+#   MERGEN_SOAK_REAL_CANARY_INTERVAL_SECONDS=60
+#   MERGEN_SOAK_REAL_ENDPOINT_URL=<gercek-endpoint>/v1/chat/completions
+#   MERGEN_SOAK_REAL_API_KEY=<gercek-anahtar>   # tek gerçek anahtar; canary/proxy dışında kullanılmaz
+#
+# Eşikler (ölçülemeyen eşikler sessizce geçmez):
+#   MERGEN_SOAK_SUCCESS_RATE_MIN=0.98
+#   MERGEN_SOAK_P95_LATENCY_MS_MAX=0            # 0 = raporla, eşik uygulama
+#   MERGEN_SOAK_MEMORY_GROWTH_MB_MAX=-1         # <0 = raporla, eşik yok
+#   MERGEN_SOAK_TEMP_GROWTH_MB_MAX=-1
+#   MERGEN_SOAK_FAIL_ON_MOJIBAKE=TRUE
+#   MERGEN_SOAK_FAIL_ON_SECRET_LEAK=TRUE
+#
+# Attach modu (çalışan uygulamaya HTTP-düzeyi erişilebilirlik):
+#   MERGEN_SOAK_APP_URL=http://127.0.0.1:8009/
