@@ -16,6 +16,25 @@
 `%||%` <- function(x, y) if (is.null(x) || length(x) == 0L || is.na(x[1])) y else x
 
 # ------------------------------------------------------------------------------
+# Curl POST ayarlarini Windows VM ile uyumlu sekilde yapar.
+# Not: Bazi Windows/curl derlemelerinde timeout_ms secenegi sorun cikarabildigi
+# icin saniye bazli timeout kullanilir.
+# ------------------------------------------------------------------------------
+soak_configure_post_handle <- function(h, body, timeout_ms) {
+  timeout_sec <- max(1, as.numeric(timeout_ms %||% 20000) / 1000)
+
+  curl::handle_setopt(
+    h,
+    post = TRUE,
+    postfields = body,
+    timeout = timeout_sec,
+    connecttimeout = min(10, timeout_sec)
+  )
+
+  invisible(h)
+}
+
+# ------------------------------------------------------------------------------
 # Kullanici anahtarlari (serit-bazli).
 # ------------------------------------------------------------------------------
 soak_make_user_keys <- function(n_users, lane, real_key = "") {
@@ -67,10 +86,10 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
     hdrs <- list("Content-Type" = "application/json")
     if (nzchar(key)) hdrs[["Authorization"]] <- paste("Bearer", key)
     if (identical(lane, "proxy")) hdrs[["X-Soak-User"]] <- user_label
-    do.call(curl::handle_setheaders, c(list(h), hdrs))
-    curl::handle_setopt(h, post = TRUE, postfields = body, timeout_ms = client_timeout_ms)
+	do.call(curl::handle_setheaders, c(list(h), hdrs))
+	soak_configure_post_handle(h, body, client_timeout_ms)
 
-    start <- Sys.time()
+	start <- Sys.time()
     scen_id <- scen$id
     inflight$n <- inflight$n + 1L
 
@@ -136,9 +155,9 @@ soak_real_canary_load <- function(url, real_key, cfg, metrics, duration_sec) {
       h <- curl::new_handle(url = url)
       hdrs <- list("Content-Type" = "application/json")
       if (nzchar(real_key)) hdrs[["Authorization"]] <- paste("Bearer", real_key)
-      do.call(curl::handle_setheaders, c(list(h), hdrs))
-      curl::handle_setopt(h, post = TRUE, postfields = body, timeout_ms = client_timeout_ms)
-      start <- Sys.time()
+	  do.call(curl::handle_setheaders, c(list(h), hdrs))
+	  soak_configure_post_handle(h, body, client_timeout_ms)
+	  start <- Sys.time()
       res <- tryCatch(curl::curl_fetch_memory(url, handle = h),
                       error = function(e) list(.fail = conditionMessage(e)))
       lat <- as.numeric(difftime(Sys.time(), start, units = "secs")) * 1000
@@ -174,10 +193,10 @@ soak_failure_probe <- function(url, cfg, metrics, lane = "fake") {
     h <- curl::new_handle(url = url)
     curl::handle_setheaders(h, "Content-Type" = "application/json",
                             "X-Soak-Force" = cc, "Authorization" = "Bearer sk-test-user001")
-    # timeout durumu icin client timeout'u kisa tut (gercek timeout uret).
-    to_ms <- if (identical(cc, "timeout")) 3000 else client_timeout_ms
-    curl::handle_setopt(h, post = TRUE, postfields = body, timeout_ms = to_ms)
-    start <- Sys.time()
+	# timeout durumu icin client timeout'u kisa tut (gercek timeout uret).
+	to_ms <- if (identical(cc, "timeout")) 3000 else client_timeout_ms
+	soak_configure_post_handle(h, body, to_ms)
+	start <- Sys.time()
     res <- tryCatch(curl::curl_fetch_memory(url, handle = h),
                     error = function(e) list(.fail = conditionMessage(e)))
     lat <- as.numeric(difftime(Sys.time(), start, units = "secs")) * 1000
