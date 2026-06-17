@@ -65,6 +65,7 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
   n_users <- length(user_keys)
   model <- "soak-fake-model"
   client_timeout_ms <- as.numeric(cfg$client_timeout_sec %||% 20) * 1000
+  app_http_mode <- !grepl("/v1/chat/completions/?$", url)
 
   # curl havuzu: host_con eszamanlilik kadar yuksek olmali (varsayilan 6 ise
   # serilesir). multiplex kapali tutulur (her istek ayri baglanti).
@@ -82,15 +83,28 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
     scen <- soak_pick_scenario(catalog)
     body <- soak_build_chat_body(scen, model)
 
-    h <- curl::new_handle(url = url)
-    hdrs <- list("Content-Type" = "application/json")
-    if (nzchar(key)) hdrs[["Authorization"]] <- paste("Bearer", key)
-    if (identical(lane, "proxy")) hdrs[["X-Soak-User"]] <- user_label
+    request_url <- url
+    h <- curl::new_handle()
+    hdrs <- list("X-Soak-User" = user_label)
+    if (isTRUE(app_http_mode)) {
+      sep <- if (grepl("?", request_url, fixed = TRUE)) "&" else "?"
+      request_url <- sprintf("%s%s_soak_user=%s&_soak_scenario=%s&_soak_t=%d",
+                             request_url, sep, utils::URLencode(user_label, reserved = TRUE),
+                             utils::URLencode(scen$id, reserved = TRUE),
+                             as.integer(as.numeric(Sys.time()) * 1000))
+      curl::handle_setopt(h, httpget = TRUE, timeout = max(1, client_timeout_ms / 1000),
+                          connecttimeout = min(10, max(1, client_timeout_ms / 1000)))
+    } else {
+      hdrs[["Content-Type"]] <- "application/json"
+      if (nzchar(key)) hdrs[["Authorization"]] <- paste("Bearer", key)
+      if (!identical(lane, "proxy")) hdrs[["X-Soak-User"]] <- NULL
+      soak_configure_post_handle(h, body, client_timeout_ms)
+    }
+    curl::handle_setopt(h, url = request_url)
 	do.call(curl::handle_setheaders, c(list(h), hdrs))
-	soak_configure_post_handle(h, body, client_timeout_ms)
 
 	start <- Sys.time()
-    scen_id <- scen$id
+    scen_id <- if (isTRUE(app_http_mode)) paste0("app_http_", scen$id) else scen$id
     inflight$n <- inflight$n + 1L
 
     curl::multi_add(
@@ -130,9 +144,15 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
   # Yuk-penceresi suresi (drain HARIC): throughput paydasi.
   soak_metrics_add_load_seconds(metrics, as.numeric(difftime(Sys.time(), loop_start, units = "secs")))
 
-  # Kalan ucustaki istekleri bosalt.
-  tryCatch(curl::multi_run(timeout = client_timeout_ms / 1000 + 5, pool = pool),
-           error = function(e) NULL)
+  # Kalan ucustaki istekleri bosalt. Bazi Windows/curl derlemelerinde tek
+  # multi_run() cagrisi tum callback'leri teslim etmeyebilir; kapali donguyu
+  # kisa ve sinirli bir drain penceresiyle surdurerek "0 istek olculdu" gibi
+  # yalanci UNMEASURED sonucunu engelleriz.
+  drain_deadline <- Sys.time() + max(5, client_timeout_ms / 1000 + 5)
+  while (inflight$n > 0L && Sys.time() < drain_deadline) {
+    tryCatch(curl::multi_run(timeout = 0.25, poll = TRUE, pool = pool),
+             error = function(e) NULL)
+  }
   invisible(metrics)
 }
 
