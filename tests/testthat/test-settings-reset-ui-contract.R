@@ -1,8 +1,8 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-settings-reset-ui-contract.R
-# Açıklama: Yapılandırma "Varsayılana Dön" akışının görünür UI girdilerini
-#           varsayılanlara geri senkronize ettiğini statik sözleşmeyle korur.
-#           App, tarayıcı, DB veya LLM başlatmaz.
+# Aciklama: Yapilandirma reset akisinin gorunur UI girdilerini
+#           varsayilanlara geri senkronize ettigini statik sozlesmeyle korur.
+#           App, tarayici, DB veya LLM baslatmaz.
 # ==============================================================================
 
 testthat::local_edition(3)
@@ -25,15 +25,15 @@ testthat::local_edition(3)
     }
   }
 
-  stop("Repo kökü bulunamadı.", call. = FALSE)
+  stop("Repo koku bulunamadi.", call. = FALSE)
 }
 
 .read_settings_module_reset_contract <- function() {
   path <- file.path(.find_repo_root_settings_reset_contract(), "R", "module_settings.R")
-  paste(readLines(path, encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  rawToChar(readBin(path, what = "raw", n = file.info(path)$size))
 }
 
-test_that("Yapılandırma reset akışı tüm görünür inputları varsayılana senkronize eder", {
+test_that("settings reset syncs visible inputs to defaults", {
   text <- .read_settings_module_reset_contract()
 
   expected_inputs <- c(
@@ -80,20 +80,20 @@ test_that("Yapılandırma reset akışı tüm görünür inputları varsayılana
     missing_inputs,
     character(0),
     info = paste(
-      "Varsayılana Dön görünür Yapılandırma inputlarını güncellemelidir. Eksik:",
+      "Settings reset must update visible configuration inputs. Missing:",
       paste(missing_inputs, collapse = ", ")
     )
   )
 })
 
-test_that("özel switch resetleri DOM checked durumunu ve Shiny input değerini temizler", {
+test_that("custom switch resets clear DOM checked state and Shiny input value", {
   text <- .read_settings_module_reset_contract()
 
   for (input_id in c("image_quality_hd", "analysis_deep_thinking")) {
     testthat::expect_true(
       grepl(input_id, text, fixed = TRUE) &&
         grepl("prop('checked', false).trigger('change')", text, fixed = TRUE),
-      info = paste(input_id, "özel switch resetinde DOM checked=false ve change trigger korunmalıdır.")
+      info = paste(input_id, "custom switch reset must keep DOM checked=false and change trigger.")
     )
   }
 })

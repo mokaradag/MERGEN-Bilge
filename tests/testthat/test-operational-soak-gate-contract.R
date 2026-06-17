@@ -105,6 +105,14 @@ testthat::test_that("config: varsayilan smoke + env override + public config sir
     testthat::expect_equal(cfg$llm_lane, "proxy")
   })
 
+  # Windows/RStudio .Renviron edits sometimes leave shell-style quotes in values.
+  withr::with_envvar(list(MERGEN_SOAK_PROFILE = "'smoke'",
+                          MERGEN_SOAK_LLM_MODE = "'fake'"), {
+    cfg <- env$soak_resolve_config()
+    testthat::expect_equal(cfg$profile, "smoke")
+    testthat::expect_equal(cfg$llm_lane, "fake")
+  })
+
   # real-canary kullanici tavani uygulanir.
   withr::with_envvar(list(MERGEN_SOAK_PROFILE = "real_llm",
                           MERGEN_SOAK_CONCURRENT_USERS = "500"), {

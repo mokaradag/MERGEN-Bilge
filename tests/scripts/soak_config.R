@@ -16,6 +16,14 @@
 
 soak_env_str <- function(name, default = "") {
   v <- trimws(Sys.getenv(name, unset = ""))
+  if (nzchar(v) && nchar(v, type = "bytes") >= 2L) {
+    first <- substr(v, 1L, 1L)
+    last <- substr(v, nchar(v), nchar(v))
+    if ((identical(first, "'") && identical(last, "'")) ||
+        (identical(first, "\"") && identical(last, "\""))) {
+      v <- trimws(substr(v, 2L, nchar(v) - 1L))
+    }
+  }
   if (nzchar(v)) v else default
 }
 
