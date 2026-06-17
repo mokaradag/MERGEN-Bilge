@@ -105,6 +105,15 @@ testthat::test_that("config: varsayilan smoke + env override + public config sir
     testthat::expect_equal(cfg$llm_lane, "proxy")
   })
 
+  # Windows/RStudio .Renviron edits sometimes leave shell-style quotes and
+  # trailing inline comments in values.
+  withr::with_envvar(list(MERGEN_SOAK_PROFILE = "'smoke'        # smoke|pilot|org",
+                          MERGEN_SOAK_LLM_MODE = "'fake'        # fake|proxy|real-canary"), {
+    cfg <- env$soak_resolve_config()
+    testthat::expect_equal(cfg$profile, "smoke")
+    testthat::expect_equal(cfg$llm_lane, "fake")
+  })
+
   # real-canary kullanici tavani uygulanir.
   withr::with_envvar(list(MERGEN_SOAK_PROFILE = "real_llm",
                           MERGEN_SOAK_CONCURRENT_USERS = "500"), {
@@ -366,9 +375,9 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
 
 # ------------------------------------------------------------------------------
 # Opsiyonel canli sunucu smoke (varsayilan KAPALI; deterministik kalmak icin).
-testthat::test_that("canli fake sunucu smoke (opsiyonel)", {
-  testthat::skip_if_not(tolower(Sys.getenv("MERGEN_SOAK_TEST_LIVE", "")) %in% c("true", "1", "yes"),
-                        "Canli sunucu smoke kapali (MERGEN_SOAK_TEST_LIVE=true ile acin).")
+# Kapaliyken test_that() kaydedilmez; boylece hizli lokal/VM kosular skip uretmez.
+if (tolower(Sys.getenv("MERGEN_SOAK_TEST_LIVE", "")) %in% c("true", "1", "yes")) {
+  testthat::test_that("canli fake sunucu smoke (opsiyonel)", {
   testthat::skip_if_not_installed("callr")
   testthat::skip_if_not_installed("curl")
   env <- new.env(); soak_source_modules(env)
@@ -400,4 +409,5 @@ testthat::test_that("canli fake sunucu smoke (opsiyonel)", {
   testthat::expect_equal(as.integer(r$status_code), 200L)
   parsed <- jsonlite::fromJSON(rawToChar(r$content), simplifyVector = FALSE)
   testthat::expect_true(nzchar(parsed$choices[[1]]$message$content))
-})
+  })
+}
