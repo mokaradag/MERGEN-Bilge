@@ -10,6 +10,7 @@
 - Architecture map: `docs/architecture-map.md`
 - Database table structure: `docs/database-schema.md`
 - Operations runbook: `RUNBOOK.md`
+- Operational soak/load gate: `docs/operational-soak-gate.md`
 - Dependency locking: `docs/dependency-locking.md`
 - `renv.lock` status: `RENV_LOCK_STATUS.md`
 - Release notes: `docs/release-notes.md`
@@ -28,3 +29,10 @@
 - If a required script is missing, clearly identify which script is missing; do not fabricate a successful result.
 - If validation fails, summarize the failed step and any produced artifact/log path; do not hide the failure.
 - Only say “tests passed,” “I verified,” “I ran the app,” or “the check is green” when the relevant command actually completed successfully and the validation summary contains zero failed steps.
+
+## Operational soak / load gate
+
+- The operational soak gate (`tests/scripts/run_operational_soak_gate.R`) is **separate** from the VM evidence gate and from `ai_validate`. It does not replace them.
+- It uses a three-lane design: **fake** LLM (main high-concurrency lane, zero real keys), **proxy** (personal-key routing/isolation proof), and **real-canary** (single real key, very low concurrency only).
+- Do not make the main multi-user soak depend on one real LLM API key, and do not claim real 1,000-concurrent-user readiness from fake/proxy/canary runs. See `docs/operational-soak-gate.md` for profiles, env vars, artifacts, and the `does_prove`/`does_not_prove` honesty contract.
+- Default profile is `smoke`. Run `Rscript tests/scripts/run_operational_soak_gate.R`; artifacts land in `artifacts/soak/<timestamp>/`.
