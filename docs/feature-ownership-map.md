@@ -143,7 +143,9 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-config-api-validate-api-key-behavior.R` (`validate_api_key` httr-mock uç-nokta
   doğrulama dalları: boş anahtar / `derive_models_url` türetme / model-listesi
   GET 200/401/403/429/500 / sağlık uç noktası / sohbet ping POST 200/401/429/hata /
-  endpoint tanımsız).
+  endpoint tanımsız), `test-settings-reset-ui-contract.R` (Yapılandırma `Varsayılana Dön`
+  görünür input senkronizasyonu: Görünüm, takip sorusu, AI Uzman, ses, görsel, özetleme,
+  analiz ve Claude Code zaman aşımı).
 - **Smoke/kanıt:** secret-leak contract (`test-secret-leak-contract.R`); anahtarlar
   asla loglanmaz/commit edilmez.
 - **Bilinen risk / sıradaki hedef:** `validate_api_key` uç-nokta doğrulama dalları

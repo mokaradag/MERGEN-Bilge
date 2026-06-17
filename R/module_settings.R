@@ -464,6 +464,7 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$summary_focus_mode       <- "general"
     settings$analysis_deep_thinking   <- FALSE
     settings$analysis_detail_level    <- "standart"
+    settings$claude_code_timeout      <- claude_code_config$timeout_seconds
     # Excel/Kod Derin Düşünme durum ve seviyelerini de varsayılana çek
     settings$excel_deep_thinking      <- FALSE
     settings$excel_deep_level         <- "low"
@@ -518,17 +519,51 @@ settingsInit <- function(session, parent_session = NULL) {
     # ile eski değerler yeniden uygulanır (görünür/uygulanan durum uyumsuzluğu).
     ycfg_ns <- "settings_yapilandirma_module-"
     updateSelectInput(session, paste0(ycfg_ns, "model_selection"), selected = unname(default_model))
-    updateCheckboxInput(session, paste0(ycfg_ns, "enable_tts_audio"), value = FALSE)
-    updateCheckboxInput(session, paste0(ycfg_ns, "enable_background_music"), value = FALSE)
-    updateCheckboxInput(session, paste0(ycfg_ns, "enable_ai_expert"), value = FALSE)
-    updateCheckboxInput(session, paste0(ycfg_ns, "show_intro_animation"), value = TRUE)
-    updateCheckboxInput(session, paste0(ycfg_ns, "enable_rdata_tools"), value = FALSE)
-    updateCheckboxInput(session, paste0(ycfg_ns, "enable_mcp_tools"), value = FALSE)
-    updateCheckboxInput(session, paste0(ycfg_ns, "enable_summarization_tools"), value = FALSE)
-    updateCheckboxInput(session, paste0(ycfg_ns, "enable_coding_tools"), value = FALSE)
-    updateCheckboxInput(session, paste0(ycfg_ns, "enable_process_tools"), value = FALSE)
-    updateCheckboxInput(session, paste0(ycfg_ns, "enable_app_expert_tools"), value = FALSE)
-    updateCheckboxInput(session, paste0(ycfg_ns, "enable_image_tools"), value = FALSE)
+    updateSelectInput(session, paste0(ycfg_ns, "font_size"), selected = "medium")
+    updateSelectInput(session, paste0(ycfg_ns, "ai_expert_talk_length"), selected = "orta")
+    updateSelectInput(session, paste0(ycfg_ns, "ai_expert_talk_frequency"), selected = "orta")
+    updateSelectInput(session, paste0(ycfg_ns, "ai_expert_talk_style"), selected = "profesyonel")
+    updateSelectInput(session, paste0(ycfg_ns, "image_size"), selected = "1024x1024")
+    updateSelectInput(session, paste0(ycfg_ns, "summary_detail_level"), selected = "standard")
+    updateSelectInput(session, paste0(ycfg_ns, "summary_focus_mode"), selected = "general")
+    updateSelectInput(session, paste0(ycfg_ns, "analysis_detail_level"), selected = "standart")
+    updateNumericInput(session, paste0(ycfg_ns, "claude_code_timeout"), value = claude_code_config$timeout_seconds)
+    updateSliderInput(session, paste0(ycfg_ns, "music_volume"), value = 0.3)
+
+    reset_true_checkboxes <- c(
+      "enable_timestamps",
+      "enable_typing_indicator",
+      "enable_animations",
+      "enable_widescreen",
+      "enable_streaming",
+      "enable_tool_backgrounds",
+      "enable_followups",
+      "show_intro_animation"
+    )
+    for (input_id in reset_true_checkboxes) {
+      updateCheckboxInput(session, paste0(ycfg_ns, input_id), value = TRUE)
+    }
+
+    reset_false_checkboxes <- c(
+      "enable_tts_audio",
+      "enable_background_music",
+      "enable_ai_expert",
+      "enable_rdata_tools",
+      "enable_mcp_tools",
+      "enable_summarization_tools",
+      "enable_coding_tools",
+      "enable_process_tools",
+      "enable_app_expert_tools",
+      "enable_image_tools"
+    )
+    for (input_id in reset_false_checkboxes) {
+      updateCheckboxInput(session, paste0(ycfg_ns, input_id), value = FALSE)
+    }
+
+    # Bu iki özel switch plain HTML <input type="checkbox"> olarak çizilir;
+    # updateCheckboxInput() yalnızca Shiny checkboxInput() bağları için yeterlidir.
+    shinyjs::runjs(sprintf("$('#%s').prop('checked', false).trigger('change');", paste0(ycfg_ns, "image_quality_hd")))
+    shinyjs::runjs(sprintf("$('#%s').prop('checked', false).trigger('change');", paste0(ycfg_ns, "analysis_deep_thinking")))
 
     # localStorage'ı önce temizle. Aşağıdaki tema ve araç arka plan ayarları
     # varsayılana çekilirken yeniden persist edilir; sıralama korunmalıdır.

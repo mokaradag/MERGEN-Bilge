@@ -6,6 +6,40 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-17 — Yapılandırma reset UI senkronizasyonu onarımı
+
+### Seçilen iz(ler)
+- **Kullanıcı bildirimiyle gelen davranış onarımı**: Yapılandırma sayfasında `Varsayılana Dön` merkezi ayar state'ini sıfırlıyor, ancak birçok görünür input aynı anda varsayılan UI değerine çekilmiyordu.
+
+### Özet ve gerekçe
+Önceki UI dosya ayrımı sonrasında yapılan manuel kontrolde `Varsayılana Dön` düğmesinin Görünüm checkbox'ları, AI Uzman konuşması seçimleri, müzik ses seviyesi, Görsel/Özetleme/Analiz ayarları, Claude Code zaman aşımı ve takip sorusu checkbox'ı üzerinde görünür etki üretmediği bildirildi. Kök neden, `reset_all_settings()` içinde reactive `settings` değerlerinin ve bazı araç checkbox'larının sıfırlanmasına rağmen, Yapılandırma alt modülündeki görünür Shiny inputlarının tamamına `update*Input()` / özel switch DOM reset mesajı gönderilmemesiydi.
+
+### Değişen dosyalar
+- `R/module_settings.R` — `reset_all_settings()` artık Yapılandırma sayfasındaki tüm ilgili select/numeric/slider/checkbox inputlarını varsayılanlara günceller; `image_quality_hd` ve `analysis_deep_thinking` özel HTML switch'leri için `checked=false` + `change` tetiklenir; `settings$claude_code_timeout` da varsayılana çekilir.
+- `tests/testthat/test-settings-reset-ui-contract.R` (yeni) — reset akışının kullanıcı tarafından bildirilen görünür inputların tamamını kapsadığını ve özel switch'lerin DOM/Shiny change reset yolunu koruduğunu statik sözleşmeyle doğrular.
+- `docs/feature-ownership-map.md`, `docs/technical-reference.md`, `docs/refactor-log.md` — reset davranışı ve yeni guard testi kaydedildi.
+
+### Önce / sonra karmaşıklık notları
+- Davranış onarımı küçük bir reset senkronizasyon bloğu ekledi; maintainability skoru 100/100 kaldı. Büyük dosya/fonksiyon ratchetleri zayıflatılmadı.
+
+### Korunan davranış sözleşmeleri
+- `settings` reactive değerleri için mevcut varsayılanlar korunur.
+- Reset sonrası görünen Yapılandırma UI değeri ile uygulanmış merkezi settings değeri tekrar hizalanır.
+- DB/SSO/encoding/source-order/frontend asset-order sınırlarına dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100.
+- `Rscript tests/scripts/frontend_complexity_doctor.R` → rapor üretildi; frontend varlığı değişmedi.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`.
+- `Rscript -e 'testthat::test_file("tests/testthat/test-settings-reset-ui-contract.R")'` → geçti.
+- `bash tools/ai_validate.sh quick` → final doğrulama için çalıştırıldı.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Bu ortamda gerçek tarayıcı/VM manuel tıklama kanıtı alınmadı. Kullanıcı tarafında özellikle Yapılandırma → `Varsayılana Dön` sonrası bildirilen tüm alanların görsel olarak varsayılanlara dönmesi manuel doğrulanmalıdır.
+- Sıradaki aday: bu reset sözleşmesini ileride browser smoke'a taşımak veya `shiny::testServer` ile daha davranışsal hale getirmek.
+
+---
+
 ## 2026-06-16 — Yapılandırma gelişmiş UI kartlarının ana UI dosyasından ayrılması
 
 ### Seçilen iz(ler)
