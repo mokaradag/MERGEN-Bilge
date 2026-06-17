@@ -52,6 +52,24 @@ soak_make_user_keys <- function(n_users, lane, real_key = "") {
 }
 
 # ------------------------------------------------------------------------------
+# App attach URL'sine cache-buster timestamp eklerken POSIX epoch milisaniyesi
+# 32-bit integer araligini asar. Windows VM konsollarinda as.integer(...) bu
+# durumda her istek icin uyari basar ve soak cikisini kullanilmaz hale getirir.
+# Timestamp string olarak tutulur; URL icin yalnizca benzersizlik gerekir.
+# ------------------------------------------------------------------------------
+soak_epoch_millis_text <- function(now = Sys.time()) {
+  sprintf("%.0f", as.numeric(now) * 1000)
+}
+
+soak_app_request_url <- function(base_url, user_label, scenario_id, now = Sys.time()) {
+  sep <- if (grepl("?", base_url, fixed = TRUE)) "&" else "?"
+  sprintf("%s%s_soak_user=%s&_soak_scenario=%s&_soak_t=%s",
+          base_url, sep, utils::URLencode(user_label, reserved = TRUE),
+          utils::URLencode(scenario_id, reserved = TRUE),
+          utils::URLencode(soak_epoch_millis_text(now), reserved = TRUE))
+}
+
+# ------------------------------------------------------------------------------
 # Kapali-dongu eszamanli HTTP yuk surucusu (curl multi).
 #   url           : POST hedefi (.../v1/chat/completions)
 #   metrics       : soak_metrics_new() ortami
@@ -87,11 +105,7 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
     h <- curl::new_handle()
     hdrs <- list("X-Soak-User" = user_label)
     if (isTRUE(app_http_mode)) {
-      sep <- if (grepl("?", request_url, fixed = TRUE)) "&" else "?"
-      request_url <- sprintf("%s%s_soak_user=%s&_soak_scenario=%s&_soak_t=%d",
-                             request_url, sep, utils::URLencode(user_label, reserved = TRUE),
-                             utils::URLencode(scen$id, reserved = TRUE),
-                             as.integer(as.numeric(Sys.time()) * 1000))
+      request_url <- soak_app_request_url(request_url, user_label, scen$id)
       curl::handle_setopt(h, httpget = TRUE, timeout = max(1, client_timeout_ms / 1000),
                           connecttimeout = min(10, max(1, client_timeout_ms / 1000)))
     } else {
