@@ -16,6 +16,20 @@
 
 soak_env_str <- function(name, default = "") {
   v <- trimws(Sys.getenv(name, unset = ""))
+  if (!nzchar(v)) return(default)
+
+  first <- substr(v, 1L, 1L)
+  if (first %in% c("'", "\"")) {
+    chars <- strsplit(v, "", fixed = TRUE)[[1]]
+    close <- which(chars == first & seq_along(chars) > 1L)
+    if (length(close) > 0L) {
+      v <- paste(chars[seq.int(2L, close[1L] - 1L)], collapse = "")
+    }
+  } else {
+    v <- sub("[[:space:]]+#.*$", "", v)
+  }
+
+  v <- trimws(v)
   if (nzchar(v)) v else default
 }
 
