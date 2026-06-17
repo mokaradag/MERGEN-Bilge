@@ -143,7 +143,9 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-config-api-validate-api-key-behavior.R` (`validate_api_key` httr-mock uç-nokta
   doğrulama dalları: boş anahtar / `derive_models_url` türetme / model-listesi
   GET 200/401/403/429/500 / sağlık uç noktası / sohbet ping POST 200/401/429/hata /
-  endpoint tanımsız).
+  endpoint tanımsız), `test-settings-reset-ui-contract.R` (Yapılandırma `Varsayılana Dön`
+  görünür input senkronizasyonu: Görünüm, takip sorusu, AI Uzman, ses, görsel, özetleme,
+  analiz ve Claude Code zaman aşımı).
 - **Smoke/kanıt:** secret-leak contract (`test-secret-leak-contract.R`); anahtarlar
   asla loglanmaz/commit edilmez.
 - **Bilinen risk / sıradaki hedef:** `validate_api_key` uç-nokta doğrulama dalları
@@ -341,8 +343,9 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   Kalan büyük dosyalar bu seam'de `R/helpers_admin_yanit_analizi.R` (565) ve
   yeni `*_outputs` dosyaları; bunlar tek-fonksiyon flat renderer listeleri olduğu
   için düşük öncelik. Sıradaki repo-geneli yakın-bütçe adayı bu seam dışında
-  `module_settings_yapilandirma_ui.R` (758, en büyük runtime dosyası; zaten saf
-  `.syap_*` alt-yapıcılara bölünmüş — yalnızca dosya boyutu yüksek).
+  `module_settings_yapilandirma_ui.R` küçültüldü (758 → 411) ve gelişmiş medya/görsel/analiz kartları
+  `module_settings_yapilandirma_advanced_ui.R` (353) dosyasına ayrıldı. Sıradaki repo-geneli adaylar
+  admin output renderer dosyaları ve `server_send_message.R` gibi 650–730 satır bandındaki dosyalardır.
 
 ## Frontend Varlık ve Yönetişim
 
@@ -370,9 +373,10 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `module_admin_yanit_analizi.R`) ve açılış ekranı (`module_startup_screen.R`)
   sonraki oturumlarda küçültüldü; `module_image_generation.R` (730/22) UI/HTML
   render katmanı `module_image_generation_ui.R`'ye ayrılarak 545/17'ye indi.
-  Sıradaki repo-geneli yakın-bütçe adayı `R/module_settings_yapilandirma_ui.R`
-  (758, en büyük runtime dosyası — zaten saf `.syap_*` alt-yapıcılara bölünmüş;
-  yalnızca dosya boyutu yüksek, ayrı UI dosyasına bölünebilir).
+  Sıradaki repo-geneli yakın-bütçe adayı artık `R/module_admin_geri_bildirim_outputs.R`
+  (728, flat renderer listesi) veya `R/server_send_message.R` (694, davranışsal risk daha yüksek).
+  `R/module_settings_yapilandirma_ui.R` 758 → 411'e indi; gelişmiş kartlar
+  `R/module_settings_yapilandirma_advanced_ui.R` içinde 353 satırlık saf UI dosyasıdır.
 
 ---
 

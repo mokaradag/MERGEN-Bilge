@@ -3442,6 +3442,7 @@ The Yapılandırma settings page is split so that the large UI layout does not g
 
 ```r
 safe_source("R/module_settings_kisisel.R", encoding = "UTF-8")
+safe_source("R/module_settings_yapilandirma_advanced_ui.R", encoding = "UTF-8")
 safe_source("R/module_settings_yapilandirma_ui.R", encoding = "UTF-8")
 safe_source("R/module_settings_yapilandirma.R", encoding = "UTF-8")
 safe_source("R/module_settings.R", encoding = "UTF-8")
@@ -3449,13 +3450,14 @@ safe_source("R/module_settings.R", encoding = "UTF-8")
 
 Responsibilities:
 
-* `R/module_settings_yapilandirma_ui.R`: `settingsYapilandirmaUIImpl(id)` and the Yapılandırma page UI cards/layout only.
+* `R/module_settings_yapilandirma_advanced_ui.R`: pure media/AI expert/image/summarization/analysis Yapılandırma card builders (`.syap_audio_card`, `.syap_ai_expert_card`, `.syap_image_card`, `.syap_summarization_card`, `.syap_analysis_card`).
+* `R/module_settings_yapilandirma_ui.R`: `settingsYapilandirmaUIImpl(id)` plus header/model/API/tools/Claude Code/interface/shortcut card layout; it delegates advanced cards to `R/module_settings_yapilandirma_advanced_ui.R`.
 * `R/module_settings_yapilandirma.R`: public `settingsYapilandirmaUI(id)` wrapper, `settingsYapilandirmaServer(...)`, temporary settings state, save/reset triggers, runtime outputs, and observer logic.
 * `R/module_settings.R`: central settings coordinator, localStorage restore, save/reset orchestration, and cross-module synchronization.
 
-Do not move the large Yapılandırma UI card layout back into `R/module_settings_yapilandirma.R`. Do not move runtime observers, `reactiveVal(...)`, `moduleServer(...)`, or `session$sendCustomMessage(...)` into `R/module_settings_yapilandirma_ui.R`.
+Do not move the large Yapılandırma UI card layout back into `R/module_settings_yapilandirma.R`. Do not move runtime observers, `reactiveVal(...)`, `moduleServer(...)`, or `session$sendCustomMessage(...)` into either Yapılandırma UI file.
 
-Inside `R/module_settings_yapilandirma_ui.R`, `settingsYapilandirmaUIImpl(id)` is a thin composer that delegates each settings card to a focused, pure `.syap_*(ns)` sub-builder (`.syap_header_row`, `.syap_model_card`, `.syap_api_key_card`, `.syap_tools_card`, `.syap_claude_code_card`, `.syap_interface_shortcuts_row`, `.syap_audio_card`, `.syap_ai_expert_card`, `.syap_image_card`, `.syap_summarization_card`, `.syap_analysis_card`). This is a readability split only: the produced tag tree and every server-bound `ns(...)` input/output id must stay byte-identical. The sub-builders must remain pure UI (no `moduleServer`/observers/`reactiveVal`/`sendCustomMessage`). Do not re-merge them back into one giant function, and do not drop or rename any of the 47 protected ids. The exact id surface and card structure are frozen by `tests/testthat/test-settings-yapilandirma-ui-id-surface-behavior.R`, which renders the UI and asserts the full id set plus card titles.
+Inside `R/module_settings_yapilandirma_ui.R`, `settingsYapilandirmaUIImpl(id)` is a thin composer that delegates each settings card to a focused, pure `.syap_*(ns)` sub-builder. The main UI file owns `.syap_header_row`, `.syap_model_card`, `.syap_api_key_card`, `.syap_tools_card`, `.syap_claude_code_card`, and `.syap_interface_shortcuts_row`; `R/module_settings_yapilandirma_advanced_ui.R` owns `.syap_audio_card`, `.syap_ai_expert_card`, `.syap_image_card`, `.syap_summarization_card`, and `.syap_analysis_card`. This is a readability split only: the produced tag tree and every server-bound `ns(...)` input/output id must stay byte-identical. The sub-builders must remain pure UI (no `moduleServer`/observers/`reactiveVal`/`sendCustomMessage`). Do not re-merge them back into one giant function, and do not drop or rename any of the 47 protected ids. The exact id surface and card structure are frozen by `tests/testthat/test-settings-yapilandirma-ui-id-surface-behavior.R`, which renders the UI and asserts the full id set plus card titles.
 
 This split is protected by:
 

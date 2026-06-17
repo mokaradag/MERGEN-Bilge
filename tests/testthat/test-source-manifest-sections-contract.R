@@ -97,7 +97,7 @@
   llm_pipeline = list(first = "R/helpers_llm_tool_formatters.R", last = "R/helpers_llm_worker.R", n = 11L),
   module_chat = list(first = "R/module_chat_history_background.R", last = "R/module_feedback.R", n = 9L),
   module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 7L),
-  module_settings_api_key = list(first = "R/module_settings_kisisel.R", last = "R/module_api_key.R", n = 6L),
+  module_settings_api_key = list(first = "R/module_settings_kisisel.R", last = "R/module_api_key.R", n = 7L),
   module_ai_audio = list(first = "R/module_ai_processing.R", last = "R/module_character_video.R", n = 6L),
   module_identity_startup = list(first = "R/module_sso.R", last = "R/module_quick_actions.R", n = 12L),
   module_claude_code = list(first = "R/module_claude_code_plugins.R", last = "R/module_claude_code.R", n = 5L),
@@ -228,7 +228,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # R/module_startup_screen_ui.R dosyasına çıkarıldı (UI/sunucu ayrımı).
   # 269L -> 270L bilinçli güncelleme: görsel oluşturma UI/HTML render katmanı
   # R/module_image_generation_ui.R dosyasına çıkarıldı (UI/runtime ayrımı).
-  expect_equal(length(runtime), 270L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 270L -> 271L bilinçli güncelleme: Yapılandırma gelişmiş UI kartları
+  # R/module_settings_yapilandirma_advanced_ui.R dosyasına çıkarıldı.
+  expect_equal(length(runtime), 271L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

@@ -34,6 +34,11 @@ suppressMessages(library(shiny))
 .syap_cards_env$`%||%` <- function(a, b) if (is.null(a)) b else a
 
 source(
+  file.path(resolve_repo_root_for_tests(), "R", "module_settings_yapilandirma_advanced_ui.R"),
+  encoding = "UTF-8",
+  local = .syap_cards_env
+)
+source(
   file.path(resolve_repo_root_for_tests(), "R", "module_settings_yapilandirma_ui.R"),
   encoding = "UTF-8",
   local = .syap_cards_env
