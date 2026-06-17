@@ -185,6 +185,25 @@ testthat::test_that("fake LLM yanit plani: OpenAI non-streaming + SSE + hata dur
   testthat::expect_true(any(utf8ToInt(content) > 127L))
 })
 
+
+# ------------------------------------------------------------------------------
+testthat::test_that("app HTTP soak URL timestamp does not overflow Windows integer range", {
+  env <- new.env(); soak_source_modules(env)
+
+  fixed_now <- as.POSIXct("2026-06-17 12:34:56", tz = "UTC")
+  millis <- testthat::expect_no_warning(env$soak_epoch_millis_text(fixed_now))
+  testthat::expect_type(millis, "character")
+  testthat::expect_match(millis, "^[0-9]+$")
+  testthat::expect_gt(as.numeric(millis), .Machine$integer.max)
+
+  url <- testthat::expect_no_warning(
+    env$soak_app_request_url("http://127.0.0.1:28081", "user001", "turkish_prompt", fixed_now)
+  )
+  testthat::expect_match(url, "[?]_soak_user=user001", fixed = FALSE)
+  testthat::expect_match(url, "&_soak_scenario=turkish_prompt", fixed = TRUE)
+  testthat::expect_match(url, paste0("&_soak_t=", millis), fixed = TRUE)
+})
+
 # ------------------------------------------------------------------------------
 testthat::test_that("proxy: kaynak siniflandirma, izolasyon ve kontaminasyon tespiti", {
   env <- new.env(); soak_source_modules(env)
