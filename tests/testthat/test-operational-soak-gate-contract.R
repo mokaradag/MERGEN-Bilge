@@ -270,6 +270,27 @@ testthat::test_that("metrikler: yuzdelik, dilim ozeti, enjekte-fault, etkin oran
 })
 
 # ------------------------------------------------------------------------------
+testthat::test_that("threshold outcome unmeasured enforced checks fail closed", {
+  env <- new.env(); soak_source_modules(env)
+
+  checks <- list(
+    list(name = "effective_success_rate", measured = FALSE, value = NA,
+         threshold = 0.98, pass = NA, note = "Hic HTTP istegi olculmedi."),
+    list(name = "raw_success_rate", measured = TRUE, value = NA,
+         threshold = "raporlandi (esik yok)", pass = TRUE, note = "raporlandi"),
+    list(name = "browser_console_errors", measured = FALSE, value = NA,
+         threshold = "raporlandi (esik yok)", pass = NA, note = "Bu gate olcmez."),
+    list(name = "no_server_crash", measured = FALSE, value = "n/a (real-canary; yerel sunucu yok)",
+         threshold = TRUE, pass = NA, note = "real-canary seritte yerel fake/proxy sunucu uygulanmaz.")
+  )
+  outcome <- env$soak_threshold_outcome(checks)
+  testthat::expect_false(outcome$pass)
+  testthat::expect_true(any(grepl("effective_success_rate", outcome$failure_reasons)))
+  testthat::expect_false(any(grepl("browser_console_errors", outcome$failure_reasons)))
+  testthat::expect_false(any(grepl("no_server_crash", outcome$failure_reasons)))
+})
+
+# ------------------------------------------------------------------------------
 testthat::test_that("senaryolar + key-routing matrisi + upload durumlari", {
   env <- new.env(); soak_source_modules(env)
   cat_ <- env$soak_scenario_catalog()

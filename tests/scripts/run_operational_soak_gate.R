@@ -219,7 +219,20 @@ main_result <- tryCatch({
     if (!isTRUE(server_handle$ok)) {
       stop(sprintf("LLM serit sunucusu hazir degil: %s", server_handle$error %||% "bilinmeyen"))
     }
-    cat(sprintf("[soak] sunucu hazir: %s\n", server_handle$url))
+    cat(sprintf("[soak] LLM serit sunucusu hazir: %s\n", server_handle$url))
+    if (!nzchar(cfg$app_url)) {
+      stop(paste(
+        "MERGEN_SOAK_APP_URL ayarlanmadi; fake/proxy yuk fazi uygulama URL'sine",
+        "karsi kosulmalidir. Yerel LLM serit endpoint'i sadece uygulamanin",
+        "LLM bagimliligini beslemek ve hata-probe/ozet icin kullanilir."
+      ))
+    }
+    if (!isTRUE(attach_result$reachable)) {
+      stop(sprintf("MERGEN_SOAK_APP_URL erisilebilir degil; yuk fazi baslatilmadi: %s",
+                   attach_result$note %||% "bilinmeyen"))
+    }
+    load_url <- cfg$app_url
+    cat(sprintf("[soak] uygulama yuk hedefi: %s\n", load_url))
     user_keys <- soak_make_user_keys(cfg$concurrent_users, cfg$llm_lane)
 
     if (isTRUE(cfg$capacity_curve_enabled)) {
@@ -228,7 +241,7 @@ main_result <- tryCatch({
         from_idx <- soak_metrics_count(metrics) + 1L
         uk <- soak_make_user_keys(uc, cfg$llm_lane)
         cat(sprintf("  - %d kullanici / %ds ...\n", uc, cfg$capacity_step_seconds))
-        soak_http_load(server_handle$url, cfg, metrics, cfg$capacity_step_seconds,
+        soak_http_load(load_url, cfg, metrics, cfg$capacity_step_seconds,
                        uc, uk, cfg$llm_lane)
         s <- soak_metrics_slice_summary(metrics, from_idx,
                                         wall_seconds = cfg$capacity_step_seconds)
@@ -243,7 +256,7 @@ main_result <- tryCatch({
     } else {
       cat(sprintf("[soak] yuk: %d eszamanli kullanici, %.0fs...\n",
                   cfg$concurrent_users, cfg$duration_sec))
-      soak_http_load(server_handle$url, cfg, metrics, cfg$duration_sec,
+      soak_http_load(load_url, cfg, metrics, cfg$duration_sec,
                      cfg$concurrent_users, user_keys, cfg$llm_lane)
     }
 

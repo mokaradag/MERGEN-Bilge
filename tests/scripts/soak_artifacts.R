@@ -180,11 +180,28 @@ soak_threshold_outcome <- function(checks) {
   enforced <- Filter(function(c) isTRUE(c$measured) && !is.na(c$pass), checks)
   failed <- Filter(function(c) isFALSE(c$pass), enforced)
   unmeasured <- Filter(function(c) !isTRUE(c$measured), checks)
-  list(
-    pass = length(failed) == 0L,
-    failure_reasons = vapply(failed, function(c) {
+  unmeasured_enforced <- Filter(function(c) {
+    if (isTRUE(c$measured)) return(FALSE)
+    threshold <- paste(as.character(c$threshold %||% ""), collapse = " ")
+    value <- paste(as.character(c$value %||% ""), collapse = " ")
+    note <- paste(as.character(c$note %||% ""), collapse = " ")
+    report_only <- grepl("esik yok|raporlandi", threshold, ignore.case = TRUE)
+    not_applicable <- grepl("^n/a", value, ignore.case = TRUE) ||
+      grepl("uygulanmaz|uygulanmadi", note, ignore.case = TRUE)
+    !report_only && !not_applicable
+  }, unmeasured)
+  unmeasured_reasons <- vapply(unmeasured_enforced, function(c) {
+    sprintf("%s (olculemedi, esik=%s)", c$name, as.character(c$threshold))
+  }, character(1))
+  failure_reasons <- c(
+    vapply(failed, function(c) {
       sprintf("%s (deger=%s, esik=%s)", c$name, as.character(c$value), as.character(c$threshold))
     }, character(1)),
+    unmeasured_reasons
+  )
+  list(
+    pass = length(failure_reasons) == 0L,
+    failure_reasons = failure_reasons,
     unmeasured_names = vapply(unmeasured, function(c) c$name, character(1))
   )
 }
