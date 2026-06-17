@@ -115,7 +115,12 @@ testthat::test_that("config: varsayilan smoke + env override + public config sir
   })
 
   # real-canary kullanici tavani uygulanir.
+  # Bu blok profil varsayilanini test eder; VM/RStudio .Renviron icindeki
+  # MERGEN_SOAK_LLM_MODE=fake/proxy gibi ortam degerleri sonucu kirletmemeli.
   withr::with_envvar(list(MERGEN_SOAK_PROFILE = "real_llm",
+                          MERGEN_SOAK_LLM_MODE = NA,
+                          MERGEN_SOAK_REAL_CANARY_USERS = NA,
+                          MERGEN_SOAK_REAL_CANARY_MAX_USERS = NA,
                           MERGEN_SOAK_CONCURRENT_USERS = "500"), {
     cfg <- env$soak_resolve_config()
     testthat::expect_equal(cfg$llm_lane, "real-canary")
