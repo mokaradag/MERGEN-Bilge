@@ -77,29 +77,3 @@ test_that("log sarmalayicisi wrapper fonksiyon parametresini de cozer", {
   expect_true(grepl("Kullanici=42", log_text, fixed = TRUE))
   expect_false(grepl("\\{user_id\\}", log_text))
 })
-
-test_that("gunluk dosya appender'i uzun calisan surecte tarihi yeniden cozer", {
-  tmp_root <- withr::local_tempdir(pattern = "mergen-log-daily-rollover-")
-  withr::local_dir(tmp_root)
-
-  test_log_dir <- file.path(tmp_root, "logs-case-rollover")
-  current_date <- as.Date("2026-06-12")
-
-  withr::local_options(list(
-    mergen.log.date_provider = function() current_date
-  ))
-
-  log_env <- load_logging_env_for_tests(test_log_dir)
-
-  log_env$log_info("ilk gun")
-  first_log <- file.path(test_log_dir, "mergen_20260612.log")
-  expect_true(file.exists(first_log))
-  expect_true(grepl("ilk gun", read_utf8_text(first_log), fixed = TRUE))
-
-  current_date <- as.Date("2026-06-17")
-  log_env$log_info("ikinci gun")
-
-  second_log <- file.path(test_log_dir, "mergen_20260617.log")
-  expect_true(file.exists(second_log))
-  expect_true(grepl("ikinci gun", read_utf8_text(second_log), fixed = TRUE))
-})

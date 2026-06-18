@@ -23,14 +23,6 @@ REM ============================================================
 pushd "%APP_DIR%"
 if errorlevel 1 goto ERR_APP_DIR
 
-if not exist "logs" mkdir "logs" >nul 2>&1
-for /f "delims=" %%I in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "MERGEN_LAUNCH_TS=%%I"
-if not defined MERGEN_LAUNCH_TS set "MERGEN_LAUNCH_TS=unknown"
-set "MERGEN_LAUNCHER_LOG=%APP_DIR%logs\launcher_%MERGEN_LAUNCH_TS%.log"
-if not defined MERGEN_LOG_DIR set "MERGEN_LOG_DIR=%APP_DIR%logs"
-call :LOG [INFO] Launcher log: %MERGEN_LAUNCHER_LOG%
-call :LOG [INFO] MERGEN_LOG_DIR=%MERGEN_LOG_DIR%
-
 echo [INFO] Current folder:
 cd
 echo.
@@ -125,7 +117,7 @@ REM ============================================================
 REM Start MERGEN Bilge through production R launcher
 REM ============================================================
 
-call :LOG [INFO] Starting MERGEN Bilge production app through run_mergen_prod.R...
+echo [INFO] Starting MERGEN Bilge production app through run_mergen_prod.R...
 echo.
 
 "%RSCRIPT_EXE%" "run_mergen_prod.R"
@@ -133,20 +125,10 @@ echo.
 set "EXITCODE=%ERRORLEVEL%"
 
 echo.
-call :LOG [INFO] MERGEN Bilge exited with code: %EXITCODE%
+echo [INFO] MERGEN Bilge exited with code: %EXITCODE%
 echo.
 
 goto FINISH
-
-
-REM ============================================================
-REM Logging helper
-REM ============================================================
-
-:LOG
-echo %*
-if defined MERGEN_LAUNCHER_LOG echo %date% %time% %*>>"%MERGEN_LAUNCHER_LOG%"
-exit /b 0
 
 
 REM ============================================================

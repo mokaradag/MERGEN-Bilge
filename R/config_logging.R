@@ -44,69 +44,15 @@ if (!dir.exists(mergen_log_dir)) {
 library(logger)
 log_threshold(resolve_mergen_log_threshold())
 
-current_mergen_log_date <- function() {
-  date_provider <- getOption("mergen.log.date_provider", NULL)
-
-  if (is.function(date_provider)) {
-    current_date <- date_provider()
-  } else {
-    current_date <- Sys.Date()
-  }
-
-  if (inherits(current_date, "Date")) {
-    return(current_date[1])
-  }
-
-  as.Date(current_date[1])
-}
-
-current_mergen_log_file_path <- function() {
-  file.path(
-    mergen_log_dir,
-    sprintf("mergen_%s.log", format(current_mergen_log_date(), "%Y%m%d"))
-  )
-}
-
-mergen_daily_file_appender <- function(lines) {
-  if (!dir.exists(mergen_log_dir)) {
-    dir.create(mergen_log_dir, recursive = TRUE, showWarnings = FALSE)
-  }
-
-  lines <- as.character(lines)
-  if (exists("normalize_text_for_log", mode = "function", inherits = TRUE)) {
-    lines <- normalize_text_for_log(lines)
-  } else {
-    lines <- enc2utf8(lines)
-  }
-
-  tryCatch(
-    cat(
-      paste0(lines, collapse = "\n"),
-      "\n",
-      file = current_mergen_log_file_path(),
-      append = TRUE,
-      sep = "",
-      useBytes = TRUE
-    ),
-    error = function(e) {
-      message(sprintf("[MERGEN LOGGING ERROR] Dosya logu yazılamadı: %s", conditionMessage(e)))
-    }
-  )
-}
-
-# Hem konsola hem dosyaya log yaz. Dosya appender'ı her log satırında güncel
-# tarihi yeniden çözer; böylece uzun süre açık kalan üretim süreci gece yarısından
-# sonra eski mergen_YYYYMMDD.log dosyasına yazmaya devam etmez.
-log_file_path <- current_mergen_log_file_path()
-
-dbg_log_path <- file.path(
+# Hem konsola hem dosyaya log yaz
+log_file_path <- file.path(
   mergen_log_dir,
-  sprintf("ai_debug_%s.log", format(current_mergen_log_date(), "%Y%m%d"))
+  sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d"))
 )
 
 # Çoklu appender yapılandırması
 # Dosya logu düz metin olmalı
-log_appender(mergen_daily_file_appender, index = 1)
+log_appender(appender_file(log_file_path), index = 1)
 log_layout(layout_glue, index = 1)
 
 # Konsol renkleri üretimde varsayılan kapalıdır.
@@ -118,10 +64,7 @@ use_console_colors <- tolower(trimws(Sys.getenv("MERGEN_LOG_CONSOLE_COLORS", "fa
 # çeviremeyip "unable to translate ... to a wide string" uyarısı üretir.
 # Dosya logu UTF-8 kalır; yalnızca konsol çıktısı native-safe hale getirilir.
 mergen_console_appender <- function(lines) {
-  if (is.null(lines)) {
-    lines <- ""
-  }
-  lines <- as.character(lines)
+  lines <- as.character(lines %||% "")
   if (exists("normalize_text_for_log", mode = "function", inherits = TRUE)) {
     lines <- normalize_text_for_log(lines)
   } else {
@@ -131,12 +74,7 @@ mergen_console_appender <- function(lines) {
   native_lines <- iconv(lines, from = "UTF-8", to = "", sub = "byte")
   native_lines[is.na(native_lines)] <- "<log encoding conversion failed>"
 
-  tryCatch(
-    cat(paste0(native_lines, collapse = "\n"), "\n", sep = ""),
-    error = function(e) {
-      message(sprintf("[MERGEN LOGGING ERROR] Konsol logu yazılamadı: %s", conditionMessage(e)))
-    }
-  )
+  cat(paste0(native_lines, collapse = "\n"), "\n", sep = "")
 }
 
 log_appender(mergen_console_appender, index = 2)
@@ -242,6 +180,12 @@ shiny_error_handler <- function(e = NULL) {
 
 options(shiny.error = shiny_error_handler)
 
+# --- DEBUG DUMPER (logs/ai_debug_YYYYMMDD.log) ---
+dbg_log_path <- file.path(
+  mergen_log_dir,
+  sprintf("ai_debug_%s.log", format(Sys.Date(), "%Y%m%d"))
+)
+
 dbg_dump <- function(label, payload) {
   try({
     payload_json <- jsonlite::toJSON(
@@ -257,11 +201,7 @@ dbg_dump <- function(label, payload) {
       sprintf("[%s] %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), label),
       payload_json,
       "\n---\n",
-      file = file.path(
-        mergen_log_dir,
-        sprintf("ai_debug_%s.log", format(current_mergen_log_date(), "%Y%m%d"))
-      ),
-      append = TRUE
+      file = dbg_log_path, append = TRUE
     )
   }, silent = TRUE)
 }
