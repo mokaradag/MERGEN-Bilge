@@ -182,28 +182,92 @@ soak_real_canary_load <- function(url, real_key, cfg, metrics, duration_sec) {
   soak_metrics_add_load_seconds(metrics, duration_sec)
   t_end <- Sys.time() + duration_sec
 
+  diag_path <- file.path(cfg$artifact_dir, "real_canary_diagnostics.jsonl")
+  if (file.exists(diag_path)) unlink(diag_path)
+
+  write_real_diag <- function(scen_id, model, stream, status, code, latency_ms,
+                              response_text = "", curl_error = "") {
+    rec <- list(
+      ts = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+      lane = "real-canary",
+      scenario = scen_id,
+      model = model,
+      stream = isTRUE(stream),
+      status = status,
+      http_code = if (is.na(code)) NULL else as.integer(code),
+      latency_ms = round(latency_ms, 1),
+      response_preview = substr(soak_redact_text(response_text %||% ""), 1L, 800L),
+      curl_error = substr(soak_redact_text(curl_error %||% ""), 1L, 800L)
+    )
+    cat(
+      as.character(jsonlite::toJSON(rec, auto_unbox = TRUE, null = "null")),
+      "\n",
+      file = diag_path,
+      append = TRUE
+    )
+  }
+
   repeat {
     for (u in seq_len(users)) {
       scen <- soak_pick_scenario()
       model <- cfg$real_canary$model %||% "soak-canary-model"
-      body <- soak_build_chat_body(scen, model = model)
+      stream_flag <- isTRUE(cfg$real_canary$stream)
+
+      body_obj <- list(
+        model = model,
+        messages = list(
+          list(role = "system", content = "Sen yardimci bir canary test asistanisin."),
+          list(role = "user", content = scen$prompt %||% "merhaba")
+        ),
+        stream = stream_flag,
+        max_tokens = as.integer(cfg$real_canary$max_tokens %||% 256L)
+      )
+
+      if (!isTRUE(cfg$real_canary$omit_temperature)) {
+        body_obj$temperature <- as.numeric(cfg$real_canary$temperature %||% 0.4)
+      }
+
+      body <- as.character(jsonlite::toJSON(body_obj, auto_unbox = TRUE, null = "null"))
+
       h <- curl::new_handle(url = url)
       hdrs <- list("Content-Type" = "application/json")
-      if (nzchar(real_key)) hdrs[["Authorization"]] <- paste("Bearer", real_key)
-	  do.call(curl::handle_setheaders, c(list(h), hdrs))
-	  soak_configure_post_handle(h, body, client_timeout_ms)
-	  start <- Sys.time()
-      res <- tryCatch(curl::curl_fetch_memory(url, handle = h),
-                      error = function(e) list(.fail = conditionMessage(e)))
+
+      auth_header <- cfg$real_canary$auth_header %||% "Authorization"
+      auth_scheme <- cfg$real_canary$auth_scheme %||% "Bearer"
+      if (nzchar(real_key) && nzchar(auth_header)) {
+        if (identical(tolower(auth_scheme), "none")) {
+          hdrs[[auth_header]] <- real_key
+        } else {
+          hdrs[[auth_header]] <- paste(auth_scheme, real_key)
+        }
+      }
+
+      do.call(curl::handle_setheaders, c(list(h), hdrs))
+      soak_configure_post_handle(h, body, client_timeout_ms)
+      start <- Sys.time()
+
+      res <- tryCatch(
+        curl::curl_fetch_memory(url, handle = h),
+        error = function(e) list(.fail = conditionMessage(e))
+      )
+
       lat <- as.numeric(difftime(Sys.time(), start, units = "secs")) * 1000
+
       if (!is.null(res$.fail)) {
         status <- if (grepl("tim(e|ed) ?out|timeout", res$.fail, ignore.case = TRUE)) "timeout" else "error"
         soak_metrics_record(metrics, "real-canary", scen$id, lat, status, NA_integer_, 0, "personal")
+        write_real_diag(scen$id, model, stream_flag, status, NA_integer_, lat,
+                        response_text = "", curl_error = res$.fail)
       } else {
         code <- as.integer(res$status_code)
         status <- if (code >= 200L && code < 300L) "ok" else "error"
+        response_text <- tryCatch(rawToChar(res$content %||% raw()), error = function(e) "")
         soak_metrics_record(metrics, "real-canary", scen$id, lat, status, code,
                             length(res$content %||% raw()), "personal")
+        if (!identical(status, "ok")) {
+          write_real_diag(scen$id, model, stream_flag, status, code, lat,
+                          response_text = response_text, curl_error = "")
+        }
       }
     }
     if (Sys.time() >= t_end) break

@@ -150,6 +150,15 @@ soak_resolve_config <- function() {
   real_canary_interval <- soak_env_int("MERGEN_SOAK_REAL_CANARY_INTERVAL_SECONDS", 60L)
   real_canary_model <- soak_env_str("MERGEN_SOAK_REAL_MODEL", "soak-canary-model")
 
+  # Real endpoint compatibility knobs. Defaults are conservative for canary:
+  # non-streaming, small output, normal Bearer auth.
+  real_canary_stream <- soak_env_flag("MERGEN_SOAK_REAL_STREAM", FALSE)
+  real_canary_max_tokens <- soak_env_int("MERGEN_SOAK_REAL_MAX_TOKENS", 256L)
+  real_canary_temperature <- soak_env_num("MERGEN_SOAK_REAL_TEMPERATURE", 0.4)
+  real_canary_omit_temperature <- soak_env_flag("MERGEN_SOAK_REAL_OMIT_TEMPERATURE", FALSE)
+  real_canary_auth_header <- soak_env_str("MERGEN_SOAK_REAL_AUTH_HEADER", "Authorization")
+  real_canary_auth_scheme <- soak_env_str("MERGEN_SOAK_REAL_AUTH_SCHEME", "Bearer")
+
   if (identical(lane, "real-canary")) {
     cap <- soak_env_int("MERGEN_SOAK_REAL_CANARY_MAX_USERS", 5L)
     if (users > cap) users <- cap
@@ -215,7 +224,13 @@ soak_resolve_config <- function() {
     real_canary = list(
       users = real_canary_users,
       interval_sec = real_canary_interval,
-      model = real_canary_model
+      model = real_canary_model,
+      stream = real_canary_stream,
+      max_tokens = real_canary_max_tokens,
+      temperature = real_canary_temperature,
+      omit_temperature = real_canary_omit_temperature,
+      auth_header = real_canary_auth_header,
+      auth_scheme = real_canary_auth_scheme
     ),
     app_url = app_url,
     in_process_exercises = in_process,

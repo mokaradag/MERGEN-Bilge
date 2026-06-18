@@ -190,6 +190,14 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   MERGEN_SOAK_REAL_MODEL=<gercek-model-adi>
 #   MERGEN_SOAK_REAL_API_KEY=<gercek-anahtar>   # tek gerçek anahtar; canary/proxy dışında kullanılmaz
 #
+#   # Uyumluluk ayarları:
+#   MERGEN_SOAK_REAL_STREAM=FALSE
+#   MERGEN_SOAK_REAL_MAX_TOKENS=256
+#   MERGEN_SOAK_REAL_TEMPERATURE=0.4
+#   MERGEN_SOAK_REAL_OMIT_TEMPERATURE=FALSE
+#   MERGEN_SOAK_REAL_AUTH_HEADER=Authorization
+#   MERGEN_SOAK_REAL_AUTH_SCHEME=Bearer
+#
 # Eşikler (ölçülemeyen eşikler sessizce geçmez):
 #   MERGEN_SOAK_SUCCESS_RATE_MIN=0.98
 #   MERGEN_SOAK_P95_LATENCY_MS_MAX=0            # 0 = raporla, eşik uygulama
