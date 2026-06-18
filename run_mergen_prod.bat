@@ -17,6 +17,25 @@ echo %APP_DIR%
 echo.
 
 REM ============================================================
+REM Startup diagnostics log
+REM ============================================================
+
+set "CONSOLE_LOG_DIR=%APP_DIR%logs"
+if not exist "%CONSOLE_LOG_DIR%" mkdir "%CONSOLE_LOG_DIR%" >nul 2>&1
+set "CONSOLE_LOG=%CONSOLE_LOG_DIR%\run_mergen_prod_console.log"
+
+echo ============================================================>> "%CONSOLE_LOG%"
+echo MERGEN Bilge production launcher started: %DATE% %TIME%>> "%CONSOLE_LOG%"
+echo Script: %~f0>> "%CONSOLE_LOG%"
+echo App folder: %APP_DIR%>> "%CONSOLE_LOG%"
+echo ============================================================>> "%CONSOLE_LOG%"
+echo.>> "%CONSOLE_LOG%"
+
+echo [INFO] Startup diagnostic log:
+echo %CONSOLE_LOG%
+echo.
+
+REM ============================================================
 REM Enter application folder
 REM ============================================================
 
@@ -86,7 +105,7 @@ REM R diagnostics
 REM ============================================================
 
 echo [INFO] R session diagnostics:
-"%RSCRIPT_EXE%" -e "cat('R.home = ', R.home(), '\n', sep=''); cat('R.version = ', R.version.string, '\n', sep=''); cat('R_LIBS_USER = ', Sys.getenv('R_LIBS_USER'), '\n', sep=''); cat('Library paths:\n'); print(.libPaths())"
+"%RSCRIPT_EXE%" -e "cat('R.home = ', R.home(), '\n', sep=''); cat('R.version = ', R.version.string, '\n', sep=''); cat('R_LIBS_USER = ', Sys.getenv('R_LIBS_USER'), '\n', sep=''); cat('Library paths:\n'); print(.libPaths())" 1>> "%CONSOLE_LOG%" 2>>&1
 
 set "R_DIAG_CODE=%ERRORLEVEL%"
 if not "%R_DIAG_CODE%"=="0" goto ERR_R_DIAG
@@ -106,7 +125,7 @@ REM ============================================================
 
 echo [INFO] Checking required package installation from this Rscript session...
 
-"%RSCRIPT_EXE%" -e "pkgs <- c('arrow','duckdb','fastmatch','pdftools','pool','shinyBS','stringdist','writexl','av'); ip <- rownames(installed.packages()); miss <- setdiff(pkgs, ip); if (length(miss)) { cat('Missing installed packages from this Rscript session:\n'); cat(paste(miss, collapse=', '), '\n'); quit(status=10) } else { cat('All required packages are installed and visible in the active R library paths.\n') }"
+"%RSCRIPT_EXE%" -e "pkgs <- c('arrow','duckdb','fastmatch','pdftools','pool','shinyBS','stringdist','writexl','av'); ip <- rownames(installed.packages()); miss <- setdiff(pkgs, ip); if (length(miss)) { cat('Missing installed packages from this Rscript session:\n'); cat(paste(miss, collapse=', '), '\n'); quit(status=10) } else { cat('All required packages are installed and visible in the active R library paths.\n') }" 1>> "%CONSOLE_LOG%" 2>>&1
 
 set "PKG_CHECK_CODE=%ERRORLEVEL%"
 if not "%PKG_CHECK_CODE%"=="0" goto ERR_PKG_CHECK
@@ -120,7 +139,7 @@ REM ============================================================
 echo [INFO] Starting MERGEN Bilge production app through run_mergen_prod.R...
 echo.
 
-"%RSCRIPT_EXE%" "run_mergen_prod.R"
+"%RSCRIPT_EXE%" "run_mergen_prod.R" 1>> "%CONSOLE_LOG%" 2>>&1
 
 set "EXITCODE=%ERRORLEVEL%"
 
@@ -199,6 +218,8 @@ popd
 :FINISH_NO_POPD
 echo.
 echo [INFO] Final launcher exit code: %EXITCODE%
+echo [INFO] Final launcher exit code: %EXITCODE%>> "%CONSOLE_LOG%" 2>nul
+echo.>> "%CONSOLE_LOG%" 2>nul
 echo.
 pause
 exit /b %EXITCODE%
