@@ -6,13 +6,15 @@ REM ============================================================
 REM Daily console log capture
 REM ============================================================
 REM This launcher is normally started from C:\MergenLauncher\start_mergen_prod.bat,
-REM which maps the production share and then CALLs this file.  Keep the
+REM which maps the production share and then CALLs this file. Keep the
 REM logging here so every production start creates/appends the daily app log
 REM next to the application, regardless of which external launcher called it.
 REM
-REM The inner invocation writes to normal console streams.  The outer
-REM PowerShell wrapper mirrors those streams to logs\mergen_yyyyMMdd.log so
+REM The inner invocation writes to normal console streams. The generated
+REM PowerShell helper mirrors those streams to logs\mergen_yyyyMMdd.log so
 REM the on-screen startup/app output and the saved log stay identical.
+
+set "MERGEN_LOG_WRAPPER_PS1=%TEMP%\mergen_log_wrapper_%RANDOM%_%RANDOM%.ps1"
 
 if not defined MERGEN_LOG_WRAPPED (
     set "MERGEN_LOG_WRAPPED=1"
@@ -21,8 +23,21 @@ if not defined MERGEN_LOG_WRAPPED (
 
     if not exist "%~dp0logs" mkdir "%~dp0logs" >nul 2>&1
 
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; $date = Get-Date -Format 'yyyyMMdd'; $logDir = Join-Path $env:MERGEN_LAUNCHER_DIR 'logs'; New-Item -ItemType Directory -Path $logDir -Force | Out-Null; $logFile = Join-Path $logDir ('mergen_' + $date + '.log'); Write-Host ('[INFO] Daily console log file: ' + $logFile); cmd.exe /d /c call ""$env:MERGEN_LAUNCHER_BAT"" 2>&1 | Tee-Object -FilePath $logFile -Append; exit $LASTEXITCODE"
-    exit /b %ERRORLEVEL%
+    > "%MERGEN_LOG_WRAPPER_PS1%" echo $ErrorActionPreference = 'Stop'
+    >> "%MERGEN_LOG_WRAPPER_PS1%" echo $date = Get-Date -Format 'yyyyMMdd'
+    >> "%MERGEN_LOG_WRAPPER_PS1%" echo $logDir = Join-Path $env:MERGEN_LAUNCHER_DIR 'logs'
+    >> "%MERGEN_LOG_WRAPPER_PS1%" echo New-Item -ItemType Directory -Path $logDir -Force ^| Out-Null
+    >> "%MERGEN_LOG_WRAPPER_PS1%" echo $logFile = Join-Path $logDir ('mergen_' + $date + '.log')
+    >> "%MERGEN_LOG_WRAPPER_PS1%" echo Write-Host ('[INFO] Daily console log file: ' + $logFile)
+    >> "%MERGEN_LOG_WRAPPER_PS1%" echo $cmd = 'call "' + $env:MERGEN_LAUNCHER_BAT + '"'
+    >> "%MERGEN_LOG_WRAPPER_PS1%" echo cmd.exe /d /c $cmd 2^>^&1 ^| Tee-Object -FilePath $logFile -Append
+    >> "%MERGEN_LOG_WRAPPER_PS1%" echo $exitCode = $LASTEXITCODE
+    >> "%MERGEN_LOG_WRAPPER_PS1%" echo exit $exitCode
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%MERGEN_LOG_WRAPPER_PS1%"
+    call set "EXITCODE=%%ERRORLEVEL%%"
+    del "%MERGEN_LOG_WRAPPER_PS1%" >nul 2>&1
+    call exit /b %%EXITCODE%%
 )
 
 REM ============================================================
