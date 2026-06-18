@@ -51,9 +51,16 @@ log_file_path <- file.path(
 )
 
 # Çoklu appender yapılandırması
-# Dosya logu düz metin olmalı
-log_appender(appender_file(log_file_path), index = 1)
-log_layout(layout_glue, index = 1)
+# Dosya logu düz metin olmalı. Dış launcher PowerShell Tee-Object ile tüm
+# konsol akışını mergen_yyyymmdd.log dosyasına aynen yazıyorsa, logger dosya
+# appender'ını kapalı tutarız; aksi halde logger satırları dosyada çiftlenir.
+external_console_tee <- tolower(trimws(Sys.getenv("MERGEN_EXTERNAL_CONSOLE_TEE", "false"))) %in%
+  c("1", "true", "t", "yes", "y", "on")
+
+if (!isTRUE(external_console_tee)) {
+  log_appender(appender_file(log_file_path), index = 1)
+  log_layout(layout_glue, index = 1)
+}
 
 # Konsol renkleri üretimde varsayılan kapalıdır.
 # Windows servis/VM koşullarında ANSI escape dizilerinin loglara karışmasını önler.

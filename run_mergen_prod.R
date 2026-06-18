@@ -96,8 +96,8 @@ Sys.setenv(
 )
 
 # Windows VM üzerinde Türkçe karakter davranışını iyileştirmek için en iyi çaba.
-try(suppressWarnings(Sys.setlocale("LC_CTYPE", "Turkish_Turkey.UTF-8")), silent = TRUE)
-try(suppressWarnings(Sys.setlocale("LC_COLLATE", "Turkish_Turkey.UTF-8")), silent = TRUE)
+invisible(try(suppressWarnings(Sys.setlocale("LC_CTYPE", "Turkish_Turkey.UTF-8")), silent = TRUE))
+invisible(try(suppressWarnings(Sys.setlocale("LC_COLLATE", "Turkish_Turkey.UTF-8")), silent = TRUE))
 
 # ------------------------------------------------------------------------------
 # 3. Repo .Renviron dosyasını çalışma dizini ayarlandıktan sonra elle yükle
