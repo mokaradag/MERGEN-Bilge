@@ -8,6 +8,39 @@ REM ============================================================
 
 set "APP_DIR=%~dp0"
 
+REM ============================================================
+REM Daily console log tee
+REM ============================================================
+REM The production launcher is normally called from C:\MergenLauncher.
+REM This script itself lives in the application folder on the mapped share,
+REM so create the daily mergen_yyyymmdd.log beside the app under logs\ and
+REM mirror the full console stream into it. The MERGEN_LOG_WRAPPED guard
+REM prevents recursive wrapping after PowerShell re-enters this batch file.
+
+if not defined MERGEN_LOG_WRAPPED (
+    set "LOG_DIR=%APP_DIR%logs"
+    if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
+
+    for /f "delims=" %%I in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Date -Format yyyyMMdd"') do (
+        set "LOG_DATE=%%I"
+    )
+
+    set "LOG_FILE=%LOG_DIR%\mergen_%LOG_DATE%.log"
+    set "MERGEN_SELF_BAT=%~f0"
+    set "MERGEN_LOG_FILE=%LOG_FILE%"
+
+    echo [INFO] Writing console log to:
+    echo %LOG_FILE%
+    echo.
+
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:MERGEN_LOG_WRAPPED='1'; $bat=$env:MERGEN_SELF_BAT; $log=$env:MERGEN_LOG_FILE; & $env:ComSpec /d /c ('^"' + $bat + '^"') 2>&1 | Tee-Object -FilePath $log -Append; exit $LASTEXITCODE"
+    exit /b %ERRORLEVEL%
+)
+
+echo [INFO] Console log file:
+echo %MERGEN_LOG_FILE%
+echo.
+
 echo [INFO] Script file:
 echo %~f0
 echo.

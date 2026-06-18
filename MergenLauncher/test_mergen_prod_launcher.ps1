@@ -219,6 +219,27 @@ Test-Step "run_mergen_prod.bat static safety checks" {
         Fail "run_mergen_prod.bat does not appear to start run_mergen_prod.R."
     }
 
+    if ($bat -match 'mergen_%LOG_DATE%\.log') {
+        Pass "run_mergen_prod.bat creates daily mergen_yyyymmdd.log files."
+    }
+    else {
+        Fail "run_mergen_prod.bat does not create daily mergen_yyyymmdd.log files."
+    }
+
+    if ($bat -match 'Tee-Object\s+-FilePath\s+\$log\s+-Append') {
+        Pass "run_mergen_prod.bat mirrors console output into the daily log."
+    }
+    else {
+        Fail "run_mergen_prod.bat does not mirror console output into the daily log."
+    }
+
+    if ($bat -match 'MERGEN_LOG_WRAPPED') {
+        Pass "run_mergen_prod.bat guards the logging wrapper against recursion."
+    }
+    else {
+        Fail "run_mergen_prod.bat does not guard the logging wrapper against recursion."
+    }
+
     if ($bat -match 'shiny::runApp') {
         Warn "run_mergen_prod.bat still contains shiny::runApp directly. Prefer run_mergen_prod.R."
     }
