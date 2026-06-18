@@ -219,11 +219,18 @@ Test-Step "run_mergen_prod.bat static safety checks" {
         Fail "run_mergen_prod.bat does not appear to start run_mergen_prod.R."
     }
 
-    if ($bat -match 'Tee-Object\s+-FilePath\s+\$LogFile\s+-Append') {
+    if ($bat -match 'Tee-Object\s+-FilePath\s+\$env:MERGEN_CONSOLE_LOG\s+-Append') {
         Pass "run_mergen_prod.bat tees R console output into the daily mergen_YYYYMMDD.log file."
     }
     else {
         Fail "run_mergen_prod.bat does not tee R console output into the daily mergen_YYYYMMDD.log file."
+    }
+
+    if ($bat -match '&\s+\$env:RSCRIPT_EXE\s+\$env:MERGEN_RUN_SCRIPT') {
+        Pass "run_mergen_prod.bat invokes Rscript through environment variables so paths with spaces stay quoted."
+    }
+    else {
+        Fail "run_mergen_prod.bat does not invoke Rscript through environment variables."
     }
 
     if ($bat -match 'set\s+"MERGEN_CONSOLE_LOG=%MERGEN_LOG_DIR%\\mergen_%MERGEN_LOG_DATE%\.log"') {
