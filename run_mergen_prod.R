@@ -47,6 +47,47 @@ resolve_script_dir <- function() {
 
 repo_root <- resolve_script_dir()
 
+resolve_prod_log_dir <- function(default = "logs") {
+  log_dir <- trimws(Sys.getenv("MERGEN_LOG_DIR", default))
+  if (!nzchar(log_dir)) {
+    log_dir <- default
+  }
+
+  if (!grepl("^(?:[A-Za-z]:|/|//|\\\\\\\\)", log_dir)) {
+    log_dir <- file.path(repo_root, log_dir)
+  }
+
+  normalizePath(log_dir, winslash = "/", mustWork = FALSE)
+}
+
+prod_log_file_path <- function() {
+  file.path(
+    resolve_prod_log_dir(),
+    sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d"))
+  )
+}
+
+write_prod_boot_log <- function(level = "INFO", message) {
+  log_file <- prod_log_file_path()
+  log_dir <- dirname(log_file)
+
+  if (!dir.exists(log_dir)) {
+    dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+
+  timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  line <- sprintf("%s [%s] [PROD_BOOT] %s", timestamp, level, enc2utf8(message))
+
+  tryCatch(
+    cat(line, "\n", file = log_file, append = TRUE, sep = "", useBytes = TRUE),
+    error = function(e) {
+      message(sprintf("[MERGEN PROD BOOT LOG ERROR] %s", conditionMessage(e)))
+    }
+  )
+
+  invisible(log_file)
+}
+
 required_paths <- c(
   "app.R",
   "global.R",
@@ -107,7 +148,9 @@ renviron_path <- file.path(repo_root, ".Renviron")
 
 if (file.exists(renviron_path)) {
   readRenviron(renviron_path)
+  write_prod_boot_log("INFO", sprintf(".Renviron yüklendi: %s", renviron_path))
 } else {
+  write_prod_boot_log("WARN", sprintf(".Renviron bulunamadı: %s", renviron_path))
   warning(
     sprintf(
       ".Renviron bulunamadı. Ortam değişkenlerinin sistem/user seviyesinde tanımlı olduğu varsayılıyor. Beklenen konum: %s",
@@ -134,6 +177,14 @@ normalize_prod_port <- function(value, default = 8009L) {
 prod_host <- Sys.getenv("MERGEN_HOST", "0.0.0.0")
 prod_port <- normalize_prod_port(Sys.getenv("MERGEN_PORT", "8009"), default = 8009L)
 
+write_prod_boot_log("INFO", sprintf(
+  "Üretim başlatma hazırlanıyor. repo_root=%s host=%s port=%s log_file=%s",
+  repo_root,
+  prod_host,
+  prod_port,
+  prod_log_file_path()
+))
+
 # ------------------------------------------------------------------------------
 # 5. Kritik ortam değişkenleri için erken, anlaşılır kontrol
 # ------------------------------------------------------------------------------
@@ -146,6 +197,13 @@ required_env <- c(
 missing_env <- required_env[!nzchar(Sys.getenv(required_env, unset = ""))]
 
 if (length(missing_env) > 0L) {
+  write_prod_boot_log(
+    "ERROR",
+    sprintf(
+      "Üretim başlatması durduruldu. Eksik zorunlu ortam değişkenleri: %s",
+      paste(missing_env, collapse = ", ")
+    )
+  )
   stop(
     sprintf(
       "MERGEN Bilge üretim başlatması durduruldu. Eksik zorunlu ortam değişkenleri: %s",
@@ -166,28 +224,41 @@ message(sprintf("Port      : %s", prod_port))
 message(sprintf("TZ        : %s", Sys.getenv("TZ")))
 message("app.R source ediliyor...")
 
-source("app.R", encoding = "UTF-8", local = globalenv())
+tryCatch({
+  write_prod_boot_log("INFO", "app.R source ediliyor...")
+  source("app.R", encoding = "UTF-8", local = globalenv())
+  write_prod_boot_log("INFO", "app.R source başarıyla tamamlandı.")
 
-if (!exists("run_mergen_app", envir = globalenv(), mode = "function")) {
-  stop(
-    "Boot tamamlanamadı: run_mergen_app() bulunamadı. app.R beklenen üretim API'sini yüklememiş görünüyor.",
-    call. = FALSE
-  )
-}
+  if (!exists("run_mergen_app", envir = globalenv(), mode = "function")) {
+    stop(
+      "Boot tamamlanamadı: run_mergen_app() bulunamadı. app.R beklenen üretim API'sini yüklememiş görünüyor.",
+      call. = FALSE
+    )
+  }
 
-if (exists("validate_boot_state", envir = globalenv(), mode = "function")) {
-  validate_boot_state()
-}
+  if (exists("validate_boot_state", envir = globalenv(), mode = "function")) {
+    write_prod_boot_log("INFO", "validate_boot_state() çalıştırılıyor...")
+    validate_boot_state()
+    write_prod_boot_log("INFO", "validate_boot_state() başarıyla tamamlandı.")
+  }
 
 # ------------------------------------------------------------------------------
 # 7. Uygulamayı başlat
 # ------------------------------------------------------------------------------
 
-message("MERGEN Bilge üretim modunda başlatılıyor...")
+  message("MERGEN Bilge üretim modunda başlatılıyor...")
+  write_prod_boot_log("INFO", "run_mergen_app() çağrılıyor...")
 
-run_mergen_app(
-  host = prod_host,
-  port = prod_port,
-  launch.browser = FALSE,
-  quiet = FALSE
-)
+  run_mergen_app(
+    host = prod_host,
+    port = prod_port,
+    launch.browser = FALSE,
+    quiet = FALSE
+  )
+}, error = function(e) {
+  write_prod_boot_log(
+    "ERROR",
+    sprintf("Üretim başlatması hata ile durdu: %s", conditionMessage(e))
+  )
+  stop(e)
+})
