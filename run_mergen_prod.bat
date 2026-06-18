@@ -28,6 +28,30 @@ cd
 echo.
 
 REM ============================================================
+REM Runtime log file (console tee + app logger target)
+REM ============================================================
+
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Date -Format yyyyMMdd"`) do set "MERGEN_LOG_STAMP=%%I"
+if "%MERGEN_LOG_STAMP%"=="" goto ERR_LOG_STAMP
+
+set "MERGEN_LOG_DIR=%CD%\logs"
+set "MERGEN_LOG_FILE=%MERGEN_LOG_DIR%\mergen_%MERGEN_LOG_STAMP%.log"
+
+if not exist "%MERGEN_LOG_DIR%" mkdir "%MERGEN_LOG_DIR%"
+if not exist "%MERGEN_LOG_DIR%" goto ERR_LOG_DIR
+
+>> "%MERGEN_LOG_FILE%" echo.
+>> "%MERGEN_LOG_FILE%" echo ============================================================
+>> "%MERGEN_LOG_FILE%" echo MERGEN Bilge production console start: %DATE% %TIME%
+>> "%MERGEN_LOG_FILE%" echo Script: %~f0
+>> "%MERGEN_LOG_FILE%" echo App folder: %CD%
+>> "%MERGEN_LOG_FILE%" echo ============================================================
+
+echo [INFO] Runtime log file:
+echo %MERGEN_LOG_FILE%
+echo.
+
+REM ============================================================
 REM Dynamically detect newest installed R under C:\Program Files\R
 REM ============================================================
 
@@ -86,7 +110,8 @@ REM R diagnostics
 REM ============================================================
 
 echo [INFO] R session diagnostics:
-"%RSCRIPT_EXE%" -e "cat('R.home = ', R.home(), '\n', sep=''); cat('R.version = ', R.version.string, '\n', sep=''); cat('R_LIBS_USER = ', Sys.getenv('R_LIBS_USER'), '\n', sep=''); cat('Library paths:\n'); print(.libPaths())"
+set "MERGEN_R_EXPR=cat('R.home = ', R.home(), '\n', sep=''); cat('R.version = ', R.version.string, '\n', sep=''); cat('R_LIBS_USER = ', Sys.getenv('R_LIBS_USER'), '\n', sep=''); cat('Library paths:\n'); print(.libPaths())"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& $env:RSCRIPT_EXE -e $env:MERGEN_R_EXPR 2>&1 | Tee-Object -FilePath $env:MERGEN_LOG_FILE -Append; exit $LASTEXITCODE"
 
 set "R_DIAG_CODE=%ERRORLEVEL%"
 if not "%R_DIAG_CODE%"=="0" goto ERR_R_DIAG
@@ -106,7 +131,8 @@ REM ============================================================
 
 echo [INFO] Checking required package installation from this Rscript session...
 
-"%RSCRIPT_EXE%" -e "pkgs <- c('arrow','duckdb','fastmatch','pdftools','pool','shinyBS','stringdist','writexl','av'); ip <- rownames(installed.packages()); miss <- setdiff(pkgs, ip); if (length(miss)) { cat('Missing installed packages from this Rscript session:\n'); cat(paste(miss, collapse=', '), '\n'); quit(status=10) } else { cat('All required packages are installed and visible in the active R library paths.\n') }"
+set "MERGEN_R_EXPR=pkgs <- c('arrow','duckdb','fastmatch','pdftools','pool','shinyBS','stringdist','writexl','av'); ip <- rownames(installed.packages()); miss <- setdiff(pkgs, ip); if (length(miss)) { cat('Missing installed packages from this Rscript session:\n'); cat(paste(miss, collapse=', '), '\n'); quit(status=10) } else { cat('All required packages are installed and visible in the active R library paths.\n') }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& $env:RSCRIPT_EXE -e $env:MERGEN_R_EXPR 2>&1 | Tee-Object -FilePath $env:MERGEN_LOG_FILE -Append; exit $LASTEXITCODE"
 
 set "PKG_CHECK_CODE=%ERRORLEVEL%"
 if not "%PKG_CHECK_CODE%"=="0" goto ERR_PKG_CHECK
@@ -120,7 +146,7 @@ REM ============================================================
 echo [INFO] Starting MERGEN Bilge production app through run_mergen_prod.R...
 echo.
 
-"%RSCRIPT_EXE%" "run_mergen_prod.R"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& $env:RSCRIPT_EXE 'run_mergen_prod.R' 2>&1 | Tee-Object -FilePath $env:MERGEN_LOG_FILE -Append; exit $LASTEXITCODE"
 
 set "EXITCODE=%ERRORLEVEL%"
 
@@ -141,6 +167,19 @@ echo %APP_DIR%
 echo.
 set "EXITCODE=1"
 goto FINISH_NO_POPD
+
+:ERR_LOG_STAMP
+echo [ERROR] Could not resolve today's log date stamp.
+echo.
+set "EXITCODE=1"
+goto FINISH
+
+:ERR_LOG_DIR
+echo [ERROR] Could not create log folder:
+echo %MERGEN_LOG_DIR%
+echo.
+set "EXITCODE=1"
+goto FINISH
 
 :ERR_RSCRIPT_NOT_FOUND
 echo [ERROR] Rscript.exe could not be found.
