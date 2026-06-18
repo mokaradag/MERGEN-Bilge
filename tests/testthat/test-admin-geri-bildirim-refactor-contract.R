@@ -220,6 +220,7 @@ test_that("geri bildirim grafik/tablo renderer'ları admin_gb_outputs dosyasına
 test_that("geri bildirim outputs dosyası modülden önce source ediliyor", {
   expect_source_manifest_order_for_tests(
     c(
+      "R/helpers_admin_geri_bildirim_output_tables.R",
       "R/module_admin_geri_bildirim_outputs.R",
       "R/module_admin_geri_bildirim.R"
     ),

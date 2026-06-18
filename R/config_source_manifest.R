@@ -410,6 +410,7 @@ source_manifest_sections <- list(
     "R/module_admin_analytics.R",
     "R/helpers_admin_geri_bildirim.R",
     "R/helpers_admin_geri_bildirim_queries.R",
+    "R/helpers_admin_geri_bildirim_output_tables.R",
     "R/module_admin_geri_bildirim_outputs.R",
     "R/module_admin_geri_bildirim.R",
     "R/helpers_admin_hata_analizi.R",
