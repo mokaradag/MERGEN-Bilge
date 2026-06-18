@@ -44,15 +44,58 @@ if (!dir.exists(mergen_log_dir)) {
 library(logger)
 log_threshold(resolve_mergen_log_threshold())
 
-# Hem konsola hem dosyaya log yaz
-log_file_path <- file.path(
+current_mergen_log_date <- function() {
+  date_provider <- getOption("mergen.log.date_provider", NULL)
+
+  if (is.function(date_provider)) {
+    current_date <- date_provider()
+  } else {
+    current_date <- Sys.Date()
+  }
+
+  if (inherits(current_date, "Date")) {
+    return(current_date[1])
+  }
+
+  as.Date(current_date[1])
+}
+
+current_mergen_log_file_path <- function() {
+  file.path(
+    mergen_log_dir,
+    sprintf("mergen_%s.log", format(current_mergen_log_date(), "%Y%m%d"))
+  )
+}
+
+mergen_daily_file_appender <- function(lines) {
+  if (!dir.exists(mergen_log_dir)) {
+    dir.create(mergen_log_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+
+  lines <- as.character(lines)
+
+  cat(
+    paste0(lines, collapse = "\n"),
+    "\n",
+    file = current_mergen_log_file_path(),
+    append = TRUE,
+    sep = ""
+  )
+}
+
+# Hem konsola hem dosyaya log yaz. Dosya appender'ı her log satırında güncel
+# tarihi yeniden çözer; böylece uzun süre açık kalan üretim süreci gece yarısından
+# sonra eski mergen_YYYYMMDD.log dosyasına yazmaya devam etmez.
+log_file_path <- current_mergen_log_file_path()
+
+dbg_log_path <- file.path(
   mergen_log_dir,
-  sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d"))
+  sprintf("ai_debug_%s.log", format(current_mergen_log_date(), "%Y%m%d"))
 )
 
 # Çoklu appender yapılandırması
 # Dosya logu düz metin olmalı
-log_appender(appender_file(log_file_path), index = 1)
+log_appender(mergen_daily_file_appender, index = 1)
 log_layout(layout_glue, index = 1)
 
 # Konsol renkleri üretimde varsayılan kapalıdır.
@@ -180,12 +223,6 @@ shiny_error_handler <- function(e = NULL) {
 
 options(shiny.error = shiny_error_handler)
 
-# --- DEBUG DUMPER (logs/ai_debug_YYYYMMDD.log) ---
-dbg_log_path <- file.path(
-  mergen_log_dir,
-  sprintf("ai_debug_%s.log", format(Sys.Date(), "%Y%m%d"))
-)
-
 dbg_dump <- function(label, payload) {
   try({
     payload_json <- jsonlite::toJSON(
@@ -201,7 +238,11 @@ dbg_dump <- function(label, payload) {
       sprintf("[%s] %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), label),
       payload_json,
       "\n---\n",
-      file = dbg_log_path, append = TRUE
+      file = file.path(
+        mergen_log_dir,
+        sprintf("ai_debug_%s.log", format(current_mergen_log_date(), "%Y%m%d"))
+      ),
+      append = TRUE
     )
   }, silent = TRUE)
 }
