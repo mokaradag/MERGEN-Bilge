@@ -73,13 +73,24 @@ mergen_daily_file_appender <- function(lines) {
   }
 
   lines <- as.character(lines)
+  if (exists("normalize_text_for_log", mode = "function", inherits = TRUE)) {
+    lines <- normalize_text_for_log(lines)
+  } else {
+    lines <- enc2utf8(lines)
+  }
 
-  cat(
-    paste0(lines, collapse = "\n"),
-    "\n",
-    file = current_mergen_log_file_path(),
-    append = TRUE,
-    sep = ""
+  tryCatch(
+    cat(
+      paste0(lines, collapse = "\n"),
+      "\n",
+      file = current_mergen_log_file_path(),
+      append = TRUE,
+      sep = "",
+      useBytes = TRUE
+    ),
+    error = function(e) {
+      message(sprintf("[MERGEN LOGGING ERROR] Dosya logu yazılamadı: %s", conditionMessage(e)))
+    }
   )
 }
 
@@ -107,7 +118,10 @@ use_console_colors <- tolower(trimws(Sys.getenv("MERGEN_LOG_CONSOLE_COLORS", "fa
 # çeviremeyip "unable to translate ... to a wide string" uyarısı üretir.
 # Dosya logu UTF-8 kalır; yalnızca konsol çıktısı native-safe hale getirilir.
 mergen_console_appender <- function(lines) {
-  lines <- as.character(lines %||% "")
+  if (is.null(lines)) {
+    lines <- ""
+  }
+  lines <- as.character(lines)
   if (exists("normalize_text_for_log", mode = "function", inherits = TRUE)) {
     lines <- normalize_text_for_log(lines)
   } else {
@@ -117,7 +131,12 @@ mergen_console_appender <- function(lines) {
   native_lines <- iconv(lines, from = "UTF-8", to = "", sub = "byte")
   native_lines[is.na(native_lines)] <- "<log encoding conversion failed>"
 
-  cat(paste0(native_lines, collapse = "\n"), "\n", sep = "")
+  tryCatch(
+    cat(paste0(native_lines, collapse = "\n"), "\n", sep = ""),
+    error = function(e) {
+      message(sprintf("[MERGEN LOGGING ERROR] Konsol logu yazılamadı: %s", conditionMessage(e)))
+    }
+  )
 }
 
 log_appender(mergen_console_appender, index = 2)
