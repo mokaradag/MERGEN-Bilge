@@ -6,6 +6,38 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-18 — Geri Bildirim tablo testi Windows/RStudio parse onarımı
+
+### Seçilen iz(ler)
+- **Test parse uyumluluğu / önceki paketin takip onarımı**: kullanıcı raporunda tam `testthat` koşumunun `test-admin-geri-bildirim-output-tables-behavior.R` içinde Türkçe kolon adına `$` ile erişim satırında parse hatası verdiği görüldü.
+
+### Özet ve gerekçe
+Yeni tablo helper testinde data.frame kolonları Türkçe başlıkları koruyordu; ancak test assertion'ları `sonuc$Kullanıcı` ve `sonuc$Geliştirilecek` gibi kaynak-kod parser'ına ortam/console encoding'e göre daha hassas non-ASCII `$` sembol erişimleri kullanıyordu. Davranış değişmeden, tüm kullanıcıya görünen Türkçe kolon kontrolleri `sonuc[["..."]]` biçimine çevrildi. Bu biçim UTF-8 string literal sınırını korur ve RStudio/Windows parse yolunda beklenmeyen end-of-file hatasını önler.
+
+### Değişen dosyalar
+- `tests/testthat/test-admin-geri-bildirim-output-tables-behavior.R` — Türkçe/non-syntactic kolon assertion'ları `$` yerine `[[...]]` ile okunur.
+- `docs/refactor-log.md` — takip onarım ve doğrulama kaydı.
+
+### Önce / sonra karmaşıklık notları
+- Runtime kod değişmedi; yalnızca test kaynak erişim biçimi düzeltildi. Maintainability tabanı değişmedi.
+
+### Korunan davranış sözleşmeleri
+- Türkçe kolon adları ve kullanıcıya görünen değerler aynen test edilmeye devam eder.
+- DB/SSO/encoding/source manifest/frontend asset order sınırlarına dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100, en büyük dosya 694.
+- `Rscript tests/scripts/frontend_complexity_doctor.R` → rapor üretildi; frontend değişikliği yapılmadı.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`.
+- `Rscript -e 'parse(file="tests/testthat/test-admin-geri-bildirim-output-tables-behavior.R", encoding="UTF-8"); testthat::test_file("tests/testthat/test-admin-geri-bildirim-output-tables-behavior.R")'` → geçti.
+- `Rscript tests/scripts/parse_sanity_check.R` → geçti; 836 dosya parse edildi.
+- `bash tools/ai_validate.sh quick` → geçti; failed steps 0, skipped steps 0 (`artifacts/ai-validation/20260618-161101/summary.json`).
+
+### Bilinen riskler / atlanan doğrulamalar
+- Gerçek Windows/RStudio tam testthat ekranı bu Linux/Codex ortamında birebir kanıtlanamaz; onarım, kullanıcının raporladığı parse satırındaki non-ASCII `$` sembol erişimini kaldırır.
+
+---
+
 ## 2026-06-18 — Geri Bildirim Analizi tablo hazırlama yardımcılarının renderer dosyasından ayrılması
 
 ### Seçilen iz(ler)
