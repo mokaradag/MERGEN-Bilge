@@ -3,6 +3,29 @@ setlocal EnableExtensions DisableDelayedExpansion
 chcp 65001 >nul
 
 REM ============================================================
+REM Daily console log capture
+REM ============================================================
+REM This launcher is normally started from C:\MergenLauncher\start_mergen_prod.bat,
+REM which maps the production share and then CALLs this file.  Keep the
+REM logging here so every production start creates/appends the daily app log
+REM next to the application, regardless of which external launcher called it.
+REM
+REM The inner invocation writes to normal console streams.  The outer
+REM PowerShell wrapper mirrors those streams to logs\mergen_yyyyMMdd.log so
+REM the on-screen startup/app output and the saved log stay identical.
+
+if not defined MERGEN_LOG_WRAPPED (
+    set "MERGEN_LOG_WRAPPED=1"
+    set "MERGEN_LAUNCHER_BAT=%~f0"
+    set "MERGEN_LAUNCHER_DIR=%~dp0"
+
+    if not exist "%~dp0logs" mkdir "%~dp0logs" >nul 2>&1
+
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; $date = Get-Date -Format 'yyyyMMdd'; $logDir = Join-Path $env:MERGEN_LAUNCHER_DIR 'logs'; New-Item -ItemType Directory -Path $logDir -Force | Out-Null; $logFile = Join-Path $logDir ('mergen_' + $date + '.log'); Write-Host ('[INFO] Daily console log file: ' + $logFile); cmd.exe /d /c call ""$env:MERGEN_LAUNCHER_BAT"" 2>&1 | Tee-Object -FilePath $logFile -Append; exit $LASTEXITCODE"
+    exit /b %ERRORLEVEL%
+)
+
+REM ============================================================
 REM MERGEN Bilge - Production Launcher
 REM ============================================================
 
