@@ -167,6 +167,85 @@ Rscript tests/scripts/run_operational_soak_gate.R
 
 ---
 
+### 4.1 Windows PowerShell attach örnekleri (üretim launcher portu 8009)
+
+Windows VM üretim launcher'ı MERGEN uygulamasını `8009` portunda açar. Canlı
+uygulamaya attach modunda koşarken `MERGEN_SOAK_APP_URL` şu köke ayarlanmalıdır:
+`http://127.0.0.1:8009/`. Daha önce bazı notlarda geçen `28081` değeri üretim
+uygulaması için doğru değildir; `28081` yalnızca bazı external-app/browser-smoke
+kanıt akışlarında geçici test portu olarak kullanılabilir.
+
+> **Ortam override uyarısı:** `.Renviron` içindeki değerler, mevcut PowerShell
+> oturumunda daha sonra set edilen `$env:...` değerleri tarafından override
+> edilebilir. Kontrollü deneylerde önce ilgili değişkenleri temizleyin, ardından
+> deney için gerekli `$env:MERGEN_SOAK_*` değerlerini açıkça yeniden set edin.
+
+Quick fake smoke (10 kullanıcı / 30 saniye):
+
+```powershell
+Remove-Item Env:MERGEN_SOAK_PROFILE,Env:MERGEN_SOAK_LLM_MODE,Env:MERGEN_SOAK_CONCURRENT_USERS,Env:MERGEN_SOAK_DURATION_SECONDS,Env:MERGEN_SOAK_CAPACITY_CURVE -ErrorAction SilentlyContinue
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
+$env:MERGEN_SOAK_PROFILE = "smoke"
+$env:MERGEN_SOAK_LLM_MODE = "fake"
+$env:MERGEN_SOAK_CONCURRENT_USERS = "10"
+$env:MERGEN_SOAK_DURATION_SECONDS = "30"
+$env:MERGEN_SOAK_CAPACITY_CURVE = "FALSE"
+Rscript tests/scripts/run_operational_soak_gate.R
+```
+
+20 kullanıcı / 5 dakika fake-lane kanıt koşumu:
+
+```powershell
+Remove-Item Env:MERGEN_SOAK_PROFILE,Env:MERGEN_SOAK_LLM_MODE,Env:MERGEN_SOAK_CONCURRENT_USERS,Env:MERGEN_SOAK_DURATION_SECONDS,Env:MERGEN_SOAK_CAPACITY_CURVE -ErrorAction SilentlyContinue
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
+$env:MERGEN_SOAK_PROFILE = "fake_llm"
+$env:MERGEN_SOAK_LLM_MODE = "fake"
+$env:MERGEN_SOAK_CONCURRENT_USERS = "20"
+$env:MERGEN_SOAK_DURATION_SECONDS = "300"
+$env:MERGEN_SOAK_CAPACITY_CURVE = "FALSE"
+Rscript tests/scripts/run_operational_soak_gate.R
+```
+
+Proxy/key-isolation temiz tek-yük koşumu:
+
+```powershell
+Remove-Item Env:MERGEN_SOAK_PROFILE,Env:MERGEN_SOAK_LLM_MODE,Env:MERGEN_SOAK_CONCURRENT_USERS,Env:MERGEN_SOAK_DURATION_SECONDS,Env:MERGEN_SOAK_CAPACITY_CURVE,Env:MERGEN_SOAK_PROXY_FORWARD_REAL -ErrorAction SilentlyContinue
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
+$env:MERGEN_SOAK_PROFILE = "proxy_llm"
+$env:MERGEN_SOAK_LLM_MODE = "proxy"
+$env:MERGEN_SOAK_CONCURRENT_USERS = "10"
+$env:MERGEN_SOAK_DURATION_SECONDS = "60"
+$env:MERGEN_SOAK_CAPACITY_CURVE = "FALSE"
+$env:MERGEN_SOAK_PROXY_FORWARD_REAL = "FALSE"
+Rscript tests/scripts/run_operational_soak_gate.R
+```
+
+Real-canary diagnostik koşumu (throughput testi değildir; gerçek endpoint + gerçek
+anahtar yalnız operatör ortamında set edilmelidir):
+
+```powershell
+Remove-Item Env:MERGEN_SOAK_PROFILE,Env:MERGEN_SOAK_LLM_MODE,Env:MERGEN_SOAK_CONCURRENT_USERS,Env:MERGEN_SOAK_DURATION_SECONDS,Env:MERGEN_SOAK_CAPACITY_CURVE -ErrorAction SilentlyContinue
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
+$env:MERGEN_SOAK_PROFILE = "real_llm"
+$env:MERGEN_SOAK_LLM_MODE = "real-canary"
+$env:MERGEN_SOAK_REAL_CANARY_USERS = "2"
+$env:MERGEN_SOAK_REAL_CANARY_INTERVAL_SECONDS = "60"
+$env:MERGEN_SOAK_DURATION_SECONDS = "60"
+$env:MERGEN_SOAK_CAPACITY_CURVE = "FALSE"
+$env:MERGEN_SOAK_REAL_STREAM = "FALSE"
+$env:MERGEN_SOAK_REAL_MAX_TOKENS = "64"
+$env:MERGEN_SOAK_REAL_OMIT_TEMPERATURE = "TRUE"
+$env:MERGEN_SOAK_REAL_AUTH_HEADER = "Authorization"
+$env:MERGEN_SOAK_REAL_AUTH_SCHEME = "Bearer"
+# Set only in the operator shell; never commit real values:
+# $env:MERGEN_SOAK_REAL_ENDPOINT_URL = "<gateway>/v1/chat/completions"
+# $env:MERGEN_SOAK_REAL_MODEL = "<real-model-name>"
+# $env:MERGEN_SOAK_REAL_API_KEY = "<real-api-key>"
+Rscript tests/scripts/run_operational_soak_gate.R
+```
+
+---
+
 ## 5. Ortam değişkenleri
 
 ### Profil ve yoğunluk
@@ -212,7 +291,13 @@ Rscript tests/scripts/run_operational_soak_gate.R
 | `MERGEN_SOAK_REAL_CANARY_USERS` | 2 |
 | `MERGEN_SOAK_REAL_CANARY_INTERVAL_SECONDS` | 60 |
 | `MERGEN_SOAK_REAL_ENDPOINT_URL` | (yalnız gerektiğinde) |
-| `MERGEN_SOAK_REAL_API_KEY` | (yalnız gerektiğinde) |
+| `MERGEN_SOAK_REAL_MODEL` | gerçek canary model adı |
+| `MERGEN_SOAK_REAL_API_KEY` | (yalnız gerektiğinde; gerçek değer artifact/PR/docs içine yazılmaz) |
+| `MERGEN_SOAK_REAL_STREAM` | FALSE |
+| `MERGEN_SOAK_REAL_MAX_TOKENS` | 64 |
+| `MERGEN_SOAK_REAL_OMIT_TEMPERATURE` | TRUE |
+| `MERGEN_SOAK_REAL_AUTH_HEADER` | Authorization; gateway için `api-key`, `x-api-key`, `Ocp-Apim-Subscription-Key` denenebilir |
+| `MERGEN_SOAK_REAL_AUTH_SCHEME` | Bearer; header key değerini çıplak bekliyorsa `none` |
 
 ### Eşik değerleri
 
@@ -243,6 +328,7 @@ Rscript tests/scripts/run_operational_soak_gate.R
 | `capacity_curve.csv` | Kapasite eğrisi (varsa) |
 | `logs/fake_llm.log` / `logs/proxy_llm.log` | Sunucu logları (redakteli) |
 | `logs/proxy_requests.jsonl` | Proxy istek kayıtları (takma adlı, ham anahtar YOK) |
+| `real_canary_diagnostics.jsonl` | Real-canary HTTP/payload/gateway ayrımı için redakteli diagnostik; `response_preview` alanı model/auth/gateway hatalarını ayırmak için kullanılır |
 
 Tüm metin artifact'ları redaksiyondan geçer; ardından dizin genelinde
 **redaksiyon kendi-doğrulaması** (`soak_redaction_self_check`) çalışır. Sızıntı
@@ -349,3 +435,101 @@ Rscript tests/scripts/run_operational_soak_gate.R
   (`soak_find_repo_root`), çalışma-dizininden bağımsızdır.
 - Yeni paket eklenmedi; tümü mevcut bağımlılıklarla çalışır (`httpuv`, `curl`,
   `jsonlite`, `callr`, `later`, `promises`, `openssl`/`digest`).
+
+---
+
+## 12. 2026-06-18 Windows VM Operational Soak Results
+
+Bu bölüm, 18 Haziran 2026 tarihinde Windows VM üzerinde canlı MERGEN uygulamasına
+attach edilerek alınan operasyonel soak/load-test bulgularını kaydeder. Attach kökü
+`MERGEN_SOAK_APP_URL=http://127.0.0.1:8009/` olarak kullanılmıştır; üretim launcher
+portu `8009`'dur. Daha önce kullanılan `28081` değeri üretim uygulaması için yanlış
+hedef kabul edilmelidir.
+
+### Fake-lane kapasite sınırı
+
+| Aktif eşzamanlı kullanıcı | Süre | Sonuç | Not |
+|---:|---:|---|---|
+| 10 | 30 sn | PASS | Short smoke sanity; `MERGEN_SOAK_DURATION_SECONDS` override doğrulandı. |
+| 15 | 60 sn | PASS | Kısa VM sanity için temiz kanıt. |
+| 20 | 60 sn | PASS | Fake-lane kapasite kanıtı. |
+| 20 | 300 sn | PASS | **En güçlü stabil kanıt:** 418 istek, 418 başarı, 0 hata, 0 timeout, `effective_success_rate=1.000`, `raw_success_rate=1.000`, `no_server_crash=TRUE`, `secret_leak=0`. |
+| 22 | 60 sn | PASS | Kısa kapasite keşfi. |
+| 23 | 60 sn | PASS | Timeout eşiğine çok yakın. |
+| 24 | 60 sn | FAIL | Timeout saturasyonu: 102 istek, 97 başarı, 5 timeout, `effective_success_rate=0.951` < 0.98. |
+| 25 | 60 sn | FAIL | Timeout saturasyonu. |
+| 30 | 60 sn | FAIL | Timeout saturasyonu. |
+| 100 | 30 sn | FAIL | Timeout saturasyonu; kapasite iddiası değildir. |
+
+Önerilen işletim yorumu:
+
+- Günlük hızlı sanity: **10 aktif kullanıcı / 30 saniye**.
+- Daha güçlü VM sanity: **15 aktif kullanıcı / 60 saniye**.
+- Mevcut güvenli test edilmiş kapasite: **20 aktif eşzamanlı kullanıcı / 300 saniye PASS**.
+- Gözlenen edge: **23 aktif eşzamanlı kullanıcı / 60 saniye PASS**, fakat timeout sınırına yakın.
+- Başlayan failure bölgesi: **24 aktif eşzamanlı kullanıcı / 60 saniye FAIL** (timeout saturasyonu).
+
+### Proxy-lane ve stress bulguları
+
+Proxy lane ve stress/capacity-curve denemeleri anahtar yönlendirme ve izolasyon
+kontrollerinin çalıştığını doğruladı. Proxy/stress kapasite eğrisinde 10 kullanıcı
+makul görünürken 25+ kullanıcı timeout saturasyonuna girdi; 50 ve 100 kullanıcı
+badly saturated olarak gözlendi. Bu sonuçlar normal smoke başarısızlığı değil,
+bilinçli stress/failure probe olarak yorumlanmalıdır.
+
+Pozitif kontroller: `key_routing_correct=PASS`, `cross_session_key_isolation=PASS`,
+`upload_validation_correct=PASS`, `secret_leak=0`, uygulanabilir koşularda
+`no_server_crash=TRUE`.
+
+### Real-canary gateway blocker
+
+`real_llm` / `real-canary` bir app kapasite testi değildir; yalnızca Windows VM'nin
+gerçek LLM endpoint'ine erişip erişemediğini düşük hızda doğrulayan canary'dir.
+Doğru gerçek model adı kullanıldıktan sonra canary hâlâ upstream gateway policy
+nedeniyle bloke kalmıştır. Diagnostik artifact:
+`artifacts/soak/<timestamp>/real_canary_diagnostics.jsonl`. Bu dosyadaki
+`response_preview`, payload/model/auth/gateway hata ayrımını yapmak için
+kullanılmalıdır.
+
+Gözlenen upstream yanıtı: HTTP 500, `faultCode` / `FaultCode` = `ERR-234`,
+`faultString` / `FaultString` = `Endpoint Rate Limit policy failed Error message is: null`,
+`faultStatusCode=500`, `responseFromApi` boş. Bu, gerçek gateway'e ulaşıldığını,
+ancak model yanıtı üretilmeden önce upstream rate-limit/auth/consumer policy'nin
+başarısız olduğunu gösterir. Bu bir MERGEN app load failure değildir.
+
+Olası nedenler:
+
+- API key gateway'e `Authorization: Bearer` yerine gateway-specific header ile
+gönderilmelidir.
+- Gateway `api-key`, `x-api-key`, `Ocp-Apim-Subscription-Key` veya başka bir
+consumer identity header bekliyor olabilir.
+- API key ilgili endpoint/product/rate-limit policy'ye map edilmemiş olabilir.
+- Gateway bu durum için ideal olarak 401/403/429 dönmeli; mevcut 500/`ERR-234`
+operatör/admin tarafında yorumlanmalıdır.
+
+Gateway/admin escalation note:
+
+> A minimal OpenAI-compatible POST to `/v1/chat/completions` reaches the gateway
+> but returns HTTP 500 / ERR-234: Endpoint Rate Limit policy failed. Please confirm
+> which header the rate-limit policy uses as consumer/key identity and whether the
+> API key is mapped to the endpoint/product/rate-limit policy.
+
+### Kanıt dürüstlüğü
+
+Bu koşumlar **kanıtlar**:
+
+- Operasyonel soak gate Windows VM'de çalışır.
+- Attach mode, çalışan uygulama köküne HTTP üzerinden ulaşır.
+- Fake LLM lane, 20 aktif eşzamanlı kullanıcıyı 5 dakika boyunca sıfır hata ve
+sıfır timeout ile sürdürebilir.
+- Key routing, cross-session key isolation, upload validation, secret-redaction
+kontrolleri ve encoding helper kontrolleri geçti.
+
+Bu koşumlar **kanıtlamaz**:
+
+- 1.000 gerçek aktif eşzamanlı kullanıcı.
+- 50/100 kullanıcı production throughput.
+- Browser/websocket Shiny session concurrency.
+- Gerçek LLM provider throughput veya real-canary throughput.
+- VM dışı production network latency.
+- At-rest SQL Server encoding davranışı.

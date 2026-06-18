@@ -209,27 +209,55 @@ yanıtlar. Ayrıntılar: [`docs/operational-soak-gate.md`](docs/operational-soak
 anahtar, çok düşük eşzamanlılık). Tek gerçek geliştirici anahtarı yalnızca
 canary/proxy içindir; ana çok-kullanıcılı soak ona bağlı değildir.
 
-Hızlı duman testi (varsayılan smoke profili):
+Windows VM üretim launcher attach portu `8009`'dur; operasyonel soak için
+`MERGEN_SOAK_APP_URL=http://127.0.0.1:8009/` kullanın. Daha önce bazı external-app
+browser-smoke akışlarında görülen `28081`, üretim app soak attach hedefi değildir.
+`.Renviron` değerleri aktif PowerShell `$env:MERGEN_SOAK_*` değerleriyle override
+edilebilir; kontrollü deneylerde env temizliği sonrası değerleri açıkça set edin.
 
-```bat
+Hızlı fake smoke (10 aktif kullanıcı / 30 saniye):
+
+```powershell
+Remove-Item Env:MERGEN_SOAK_PROFILE,Env:MERGEN_SOAK_LLM_MODE,Env:MERGEN_SOAK_CONCURRENT_USERS,Env:MERGEN_SOAK_DURATION_SECONDS,Env:MERGEN_SOAK_CAPACITY_CURVE -ErrorAction SilentlyContinue
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
+$env:MERGEN_SOAK_PROFILE = "smoke"
+$env:MERGEN_SOAK_LLM_MODE = "fake"
+$env:MERGEN_SOAK_CONCURRENT_USERS = "10"
+$env:MERGEN_SOAK_DURATION_SECONDS = "30"
+$env:MERGEN_SOAK_CAPACITY_CURVE = "FALSE"
 Rscript tests/scripts/run_operational_soak_gate.R
 ```
 
-Kurum-ölçeği (50–100 aktif kullanıcı; ilk ciddi hedef):
+20 kullanıcı / 5 dakika fake-lane kanıt koşumu:
 
-```bat
-set MERGEN_SOAK_PROFILE=org
-set MERGEN_SOAK_CONCURRENT_USERS=100
-set MERGEN_SOAK_DURATION_MINUTES=120
+```powershell
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
+$env:MERGEN_SOAK_PROFILE = "fake_llm"
+$env:MERGEN_SOAK_LLM_MODE = "fake"
+$env:MERGEN_SOAK_CONCURRENT_USERS = "20"
+$env:MERGEN_SOAK_DURATION_SECONDS = "300"
+$env:MERGEN_SOAK_CAPACITY_CURVE = "FALSE"
 Rscript tests/scripts/run_operational_soak_gate.R
 ```
 
-Proxy anahtar-yönlendirme/izolasyon:
+Proxy anahtar-yönlendirme/izolasyon temiz koşumu:
 
-```bat
-set MERGEN_SOAK_PROFILE=proxy_llm
+```powershell
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
+$env:MERGEN_SOAK_PROFILE = "proxy_llm"
+$env:MERGEN_SOAK_LLM_MODE = "proxy"
+$env:MERGEN_SOAK_CONCURRENT_USERS = "10"
+$env:MERGEN_SOAK_DURATION_SECONDS = "60"
+$env:MERGEN_SOAK_CAPACITY_CURVE = "FALSE"
+$env:MERGEN_SOAK_PROXY_FORWARD_REAL = "FALSE"
 Rscript tests/scripts/run_operational_soak_gate.R
 ```
+
+Real-canary diagnostik koşumu kapasite testi değildir; gateway erişimi ve upstream
+policy ayrımı içindir. Diagnostik ayrıntı `artifacts/soak/<timestamp>/real_canary_diagnostics.jsonl`
+altında, özellikle `response_preview` alanında incelenir. 2026-06-18 koşumunda
+real-canary upstream gateway policy `ERR-234` ile BLOCKED kalmıştır; fake/proxy soak
+kanıtını geçersiz kılmaz.
 
 Artifact'lar `artifacts/soak/<timestamp>/` altında üretilir (her zaman, başarısızlıkta
 bile). Eşik **etkin başarı oranına** (`effective_success_rate`) uygulanır; bu metrik
@@ -238,6 +266,13 @@ kasıtlı enjekte edilen faultları hariç tutar, böylece beklenmeyen başarıs
 kullanıcı" bir kullanıcı tabanıdır; ilk ciddi aktif-eşzamanlılık hedefi 50–100'dür.
 Fake/proxy/canary koşumlarından gerçek 1.000 eşzamanlı kullanıcı hazırlığı iddia
 edilmez.
+
+2026-06-18 Windows VM soak özeti: fake lane için en güçlü stabil kanıt **20 aktif
+eşzamanlı kullanıcı / 300 saniye PASS** (418/418 başarı, 0 hata, 0 timeout,
+`effective_success_rate=1.000`, `secret_leak=0`, `no_server_crash=TRUE`). 23 aktif
+kullanıcı / 60 saniye PASS olsa da timeout edge'e yakındır; 24 aktif kullanıcı /
+60 saniyede timeout saturasyonu nedeniyle FAIL başlamıştır. Bu sonuç 50/100 kullanıcı
+production throughput veya 1.000 gerçek aktif kullanıcı kanıtı değildir.
 
 ## 8. Dağıtım Öncesi Kapılar
 
