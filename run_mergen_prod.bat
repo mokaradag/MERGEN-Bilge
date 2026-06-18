@@ -28,6 +28,38 @@ cd
 echo.
 
 REM ============================================================
+REM Daily console log capture
+REM ============================================================
+
+set "MERGEN_LOG_DIR=%APP_DIR%logs"
+
+if not exist "%MERGEN_LOG_DIR%" (
+    mkdir "%MERGEN_LOG_DIR%" >nul 2>&1
+)
+
+if not exist "%MERGEN_LOG_DIR%" goto ERR_LOG_DIR
+
+set "MERGEN_LOG_DATE="
+for /f "delims=" %%I in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Date -Format yyyyMMdd"') do (
+    set "MERGEN_LOG_DATE=%%I"
+)
+
+if "%MERGEN_LOG_DATE%"=="" goto ERR_LOG_DATE
+
+set "MERGEN_CONSOLE_LOG=%MERGEN_LOG_DIR%\mergen_%MERGEN_LOG_DATE%.log"
+
+echo ============================================================>> "%MERGEN_CONSOLE_LOG%"
+echo MERGEN Bilge launcher started: %DATE% %TIME%>> "%MERGEN_CONSOLE_LOG%"
+echo Script: %~f0>> "%MERGEN_CONSOLE_LOG%"
+echo App folder: %APP_DIR%>> "%MERGEN_CONSOLE_LOG%"
+echo ============================================================>> "%MERGEN_CONSOLE_LOG%"
+echo.>> "%MERGEN_CONSOLE_LOG%"
+
+echo [INFO] Daily console log:
+echo %MERGEN_CONSOLE_LOG%
+echo.
+
+REM ============================================================
 REM Dynamically detect newest installed R under C:\Program Files\R
 REM ============================================================
 
@@ -120,7 +152,7 @@ REM ============================================================
 echo [INFO] Starting MERGEN Bilge production app through run_mergen_prod.R...
 echo.
 
-"%RSCRIPT_EXE%" "run_mergen_prod.R"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& { param([string]$RscriptExe, [string]$RunScript, [string]$LogFile) & $RscriptExe $RunScript 2>&1 | Tee-Object -FilePath $LogFile -Append; exit $LASTEXITCODE }" "%RSCRIPT_EXE%" "run_mergen_prod.R" "%MERGEN_CONSOLE_LOG%"
 
 set "EXITCODE=%ERRORLEVEL%"
 
@@ -147,6 +179,19 @@ echo [ERROR] Rscript.exe could not be found.
 echo.
 echo [DIAGNOSTIC] Expected something like:
 echo C:\Program Files\R\R-4.5.1\bin\Rscript.exe
+echo.
+set "EXITCODE=1"
+goto FINISH
+
+:ERR_LOG_DIR
+echo [ERROR] Log folder could not be created or reached:
+echo %MERGEN_LOG_DIR%
+echo.
+set "EXITCODE=1"
+goto FINISH
+
+:ERR_LOG_DATE
+echo [ERROR] Could not resolve today's date for the mergen_YYYYMMDD.log file.
 echo.
 set "EXITCODE=1"
 goto FINISH
