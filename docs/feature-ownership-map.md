@@ -307,7 +307,8 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `R/module_destek_surum.R`, `R/module_destek_hakkinda.R`,
   `R/module_admin_geri_bildirim.R` (veri/sekme orkestrasyonu) +
   `R/module_admin_geri_bildirim_outputs.R` (`admin_gb_outputs`: 13 highcharter/DT
-  renderer), `R/module_admin_hata_analizi.R`, `R/module_admin_yanit_analizi.R`
+  renderer) + `R/helpers_admin_geri_bildirim_output_tables.R` (kullanıcı/detay DT
+  tablo görünüm verisi), `R/module_admin_hata_analizi.R`, `R/module_admin_yanit_analizi.R`
   (veri/sekme orkestrasyonu) + `R/module_admin_yanit_analizi_outputs.R`
   (`admin_yanit_outputs`: 13 renderer) + `R/helpers_admin_yanit_analizi.R`
   (Yanıt Geri Bildirimi Analizi: veri toplama + etiket sayımı + sekme UI'ları).
@@ -316,7 +317,8 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **Testler:** `test-destek-database-helpers-behavior.R`,
   `test-destek-db-text-normalization-behavior.R`, `test-admin-geri-bildirim-*`
   (refactor-contract + query-contract + `test-admin-geri-bildirim-outputs-behavior.R`
-  golden grafik sözleşmesi: seri adı/renk/NPS hesabı/treemap/boş-veri),
+  golden grafik sözleşmesi: seri adı/renk/NPS hesabı/treemap/boş-veri +
+  `test-admin-geri-bildirim-output-tables-behavior.R` saf tablo veri hazırlama),
   `test-admin-hata-analizi-*`, `test-admin-yanit-tag-counts-behavior.R`,
   `test-admin-yanit-data-presentation-behavior.R` (`admin_yanit_collect_data`
   17-sorgu sözleşmesi + `admin_yanit_overview_ui` beğeni/yorum oranı hesaplaması,
@@ -373,7 +375,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `module_admin_yanit_analizi.R`) ve açılış ekranı (`module_startup_screen.R`)
   sonraki oturumlarda küçültüldü; `module_image_generation.R` (730/22) UI/HTML
   render katmanı `module_image_generation_ui.R`'ye ayrılarak 545/17'ye indi.
-  Sıradaki repo-geneli yakın-bütçe adayı artık `R/module_admin_geri_bildirim_outputs.R`
+  Sıradaki repo-geneli yakın-bütçe adayı artık `R/server_send_message.R`
   (728, flat renderer listesi) veya `R/server_send_message.R` (694, davranışsal risk daha yüksek).
   `R/module_settings_yapilandirma_ui.R` 758 → 411'e indi; gelişmiş kartlar
   `R/module_settings_yapilandirma_advanced_ui.R` içinde 353 satırlık saf UI dosyasıdır.

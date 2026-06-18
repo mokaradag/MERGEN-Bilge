@@ -91,7 +91,7 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 0L)
   max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 0L)
   max_very_large_files <- .as_int_env("MERGEN_TEST_MAX_1500_LINE_FILES", 0L)
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 796L)
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 694L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 24L)
 
   actual_large_files <- sum(score_report$lines >= 800)
@@ -202,7 +202,8 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # odaklı kaldı; renderer'lar ayrı tek-sorumluluk dosyasında. Budgetler geri
   # birleşmeyi yakalar.
   assert_current_budget("R/module_admin_geri_bildirim.R", 90L, 3L)
-  assert_current_budget("R/module_admin_geri_bildirim_outputs.R", 760L, 6L)
+  assert_current_budget("R/module_admin_geri_bildirim_outputs.R", 670L, 5L)
+  assert_current_budget("R/helpers_admin_geri_bildirim_output_tables.R", 145L, 5L)
   assert_current_budget("R/module_admin_yanit_analizi.R", 140L, 4L)
   assert_current_budget("R/module_admin_yanit_analizi_outputs.R", 710L, 5L)
   assert_current_budget("R/server_module_wiring.R", 735L, 14L)
@@ -327,7 +328,8 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
 
   # Renderer'lar *_outputs() dosyalarına çıkarıldıktan sonra modül tabanı düştü.
   assert_file_budget("R/module_admin_geri_bildirim.R", 90L, 3L)
-  assert_file_budget("R/module_admin_geri_bildirim_outputs.R", 760L, 6L)
+  assert_file_budget("R/module_admin_geri_bildirim_outputs.R", 670L, 5L)
+  assert_file_budget("R/helpers_admin_geri_bildirim_output_tables.R", 145L, 5L)
   assert_file_budget("R/module_admin_yanit_analizi.R", 140L, 4L)
   assert_file_budget("R/module_admin_yanit_analizi_outputs.R", 710L, 5L)
   assert_file_budget("R/helpers_admin_geri_bildirim_queries.R", 260L, 3L)

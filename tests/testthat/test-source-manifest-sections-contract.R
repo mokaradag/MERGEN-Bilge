@@ -106,7 +106,7 @@
   # Bilinçli güncelleme: at-budget admin modüllerinin inline highcharter/DT
   # renderer'ları *_outputs() dosyalarına çıkarıldı (geri_bildirim + yanit);
   # her modül bölüme bir *_outputs dosyası ekledi. 19 -> 21.
-  module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 21L),
+  module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 22L),
   module_health_chartlab = list(first = "R/module_health_worker_metrics.R", last = "R/module_chartlab.R", n = 10L),
   server_init_runtime = list(first = "R/server_session_cache.R", last = "R/server_init_chat_runtime.R", n = 13L),
   server_core_outputs_welcome = list(first = "R/server_core_observer_runtime.R", last = "R/server_welcome_handlers.R", n = 7L),
@@ -230,7 +230,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # R/module_image_generation_ui.R dosyasına çıkarıldı (UI/runtime ayrımı).
   # 270L -> 271L bilinçli güncelleme: Yapılandırma gelişmiş UI kartları
   # R/module_settings_yapilandirma_advanced_ui.R dosyasına çıkarıldı.
-  expect_equal(length(runtime), 271L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 271L -> 272L bilinçli güncelleme: Geri Bildirim Analizi detay/kullanıcı
+  # tablo veri hazırlama helpers_admin_geri_bildirim_output_tables.R dosyasına çıkarıldı.
+  expect_equal(length(runtime), 272L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]
