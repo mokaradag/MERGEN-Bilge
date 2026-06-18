@@ -154,7 +154,7 @@ echo.
 
 set "MERGEN_RUN_SCRIPT=run_mergen_prod.R"
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; & $env:RSCRIPT_EXE $env:MERGEN_RUN_SCRIPT 2>&1 | Tee-Object -FilePath $env:MERGEN_CONSOLE_LOG -Append; exit $LASTEXITCODE"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; $utf8NoBom = New-Object System.Text.UTF8Encoding($false); & $env:RSCRIPT_EXE $env:MERGEN_RUN_SCRIPT 2>&1 | ForEach-Object { $line = [string]$_; [Console]::Out.WriteLine($line); [System.IO.File]::AppendAllText($env:MERGEN_CONSOLE_LOG, $line + [Environment]::NewLine, $utf8NoBom) }; $code = $LASTEXITCODE; exit $code"
 
 set "EXITCODE=%ERRORLEVEL%"
 

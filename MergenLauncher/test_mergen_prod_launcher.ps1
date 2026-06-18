@@ -219,11 +219,25 @@ Test-Step "run_mergen_prod.bat static safety checks" {
         Fail "run_mergen_prod.bat does not appear to start run_mergen_prod.R."
     }
 
-    if ($bat -match 'Tee-Object\s+-FilePath\s+\$env:MERGEN_CONSOLE_LOG\s+-Append') {
-        Pass "run_mergen_prod.bat tees R console output into the daily mergen_YYYYMMDD.log file."
+    if ($bat -match 'AppendAllText\s*\(\s*\$env:MERGEN_CONSOLE_LOG[^)]*\$utf8NoBom') {
+        Pass "run_mergen_prod.bat appends R console output into the daily mergen_YYYYMMDD.log file with explicit UTF-8."
     }
     else {
-        Fail "run_mergen_prod.bat does not tee R console output into the daily mergen_YYYYMMDD.log file."
+        Fail "run_mergen_prod.bat does not explicitly append UTF-8 R console output into the daily mergen_YYYYMMDD.log file."
+    }
+
+    if ($bat -match 'New-Object\s+System\.Text\.UTF8Encoding\(\$false\)') {
+        Pass "run_mergen_prod.bat uses BOM-less UTF-8 for appended R console output."
+    }
+    else {
+        Fail "run_mergen_prod.bat does not create an explicit BOM-less UTF-8 encoder for appended R console output."
+    }
+
+    if ($bat -match 'Tee-Object\s+-FilePath\s+\$env:MERGEN_CONSOLE_LOG\s+-Append') {
+        Fail "run_mergen_prod.bat still uses Windows PowerShell Tee-Object append semantics for the daily log."
+    }
+    else {
+        Pass "run_mergen_prod.bat avoids Windows PowerShell Tee-Object append encoding semantics."
     }
 
     if ($bat -match '&\s+\$env:RSCRIPT_EXE\s+\$env:MERGEN_RUN_SCRIPT') {
