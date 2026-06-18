@@ -28,6 +28,31 @@ cd
 echo.
 
 REM ============================================================
+REM Log directory/bootstrap
+REM ============================================================
+
+set "MERGEN_LOG_DIR=%APP_DIR%logs"
+if not exist "%MERGEN_LOG_DIR%" mkdir "%MERGEN_LOG_DIR%"
+if not exist "%MERGEN_LOG_DIR%" goto ERR_LOG_DIR
+
+for /f "delims=" %%I in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Date -Format yyyyMMdd"') do set "MERGEN_LOG_DATE=%%I"
+if "%MERGEN_LOG_DATE%"=="" set "MERGEN_LOG_DATE=%DATE%"
+
+set "MERGEN_DAILY_LOG=%MERGEN_LOG_DIR%\mergen_%MERGEN_LOG_DATE%.log"
+set "MERGEN_CONSOLE_LOG=%MERGEN_LOG_DIR%\run_mergen_prod_console.log"
+
+echo [INFO] Log folder:
+echo %MERGEN_LOG_DIR%
+echo.
+>> "%MERGEN_DAILY_LOG%" echo [%DATE% %TIME%] [INFO] start_mergen_prod/run_mergen_prod launcher invoked.
+>> "%MERGEN_DAILY_LOG%" echo [%DATE% %TIME%] [INFO] APP_DIR=%APP_DIR%
+>> "%MERGEN_CONSOLE_LOG%" echo.
+>> "%MERGEN_CONSOLE_LOG%" echo ============================================================
+>> "%MERGEN_CONSOLE_LOG%" echo [%DATE% %TIME%] MERGEN Bilge launcher invoked
+>> "%MERGEN_CONSOLE_LOG%" echo APP_DIR=%APP_DIR%
+>> "%MERGEN_CONSOLE_LOG%" echo MERGEN_LOG_DIR=%MERGEN_LOG_DIR%
+
+REM ============================================================
 REM Dynamically detect newest installed R under C:\Program Files\R
 REM ============================================================
 
@@ -86,7 +111,7 @@ REM R diagnostics
 REM ============================================================
 
 echo [INFO] R session diagnostics:
-"%RSCRIPT_EXE%" -e "cat('R.home = ', R.home(), '\n', sep=''); cat('R.version = ', R.version.string, '\n', sep=''); cat('R_LIBS_USER = ', Sys.getenv('R_LIBS_USER'), '\n', sep=''); cat('Library paths:\n'); print(.libPaths())"
+"%RSCRIPT_EXE%" -e "cat('R.home = ', R.home(), '\n', sep=''); cat('R.version = ', R.version.string, '\n', sep=''); cat('R_LIBS_USER = ', Sys.getenv('R_LIBS_USER'), '\n', sep=''); cat('Library paths:\n'); print(.libPaths())" >> "%MERGEN_CONSOLE_LOG%" 2>&1
 
 set "R_DIAG_CODE=%ERRORLEVEL%"
 if not "%R_DIAG_CODE%"=="0" goto ERR_R_DIAG
@@ -106,7 +131,7 @@ REM ============================================================
 
 echo [INFO] Checking required package installation from this Rscript session...
 
-"%RSCRIPT_EXE%" -e "pkgs <- c('arrow','duckdb','fastmatch','pdftools','pool','shinyBS','stringdist','writexl','av'); ip <- rownames(installed.packages()); miss <- setdiff(pkgs, ip); if (length(miss)) { cat('Missing installed packages from this Rscript session:\n'); cat(paste(miss, collapse=', '), '\n'); quit(status=10) } else { cat('All required packages are installed and visible in the active R library paths.\n') }"
+"%RSCRIPT_EXE%" -e "pkgs <- c('arrow','duckdb','fastmatch','pdftools','pool','shinyBS','stringdist','writexl','av'); ip <- rownames(installed.packages()); miss <- setdiff(pkgs, ip); if (length(miss)) { cat('Missing installed packages from this Rscript session:\n'); cat(paste(miss, collapse=', '), '\n'); quit(status=10) } else { cat('All required packages are installed and visible in the active R library paths.\n') }" >> "%MERGEN_CONSOLE_LOG%" 2>&1
 
 set "PKG_CHECK_CODE=%ERRORLEVEL%"
 if not "%PKG_CHECK_CODE%"=="0" goto ERR_PKG_CHECK
@@ -120,7 +145,7 @@ REM ============================================================
 echo [INFO] Starting MERGEN Bilge production app through run_mergen_prod.R...
 echo.
 
-"%RSCRIPT_EXE%" "run_mergen_prod.R"
+"%RSCRIPT_EXE%" "run_mergen_prod.R" >> "%MERGEN_CONSOLE_LOG%" 2>&1
 
 set "EXITCODE=%ERRORLEVEL%"
 
@@ -134,6 +159,13 @@ goto FINISH
 REM ============================================================
 REM Error handlers
 REM ============================================================
+
+:ERR_LOG_DIR
+echo [ERROR] Log folder could not be created:
+echo %MERGEN_LOG_DIR%
+echo.
+set "EXITCODE=1"
+goto FINISH
 
 :ERR_APP_DIR
 echo [ERROR] Could not enter repository folder:

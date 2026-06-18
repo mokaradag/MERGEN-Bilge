@@ -104,9 +104,13 @@ try(suppressWarnings(Sys.setlocale("LC_COLLATE", "Turkish_Turkey.UTF-8")), silen
 # ------------------------------------------------------------------------------
 
 renviron_path <- file.path(repo_root, ".Renviron")
+launcher_log_dir <- Sys.getenv("MERGEN_LOG_DIR", unset = "")
 
 if (file.exists(renviron_path)) {
   readRenviron(renviron_path)
+  if (nzchar(launcher_log_dir)) {
+    Sys.setenv(MERGEN_LOG_DIR = launcher_log_dir)
+  }
 } else {
   warning(
     sprintf(
