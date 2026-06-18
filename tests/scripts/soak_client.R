@@ -185,7 +185,8 @@ soak_real_canary_load <- function(url, real_key, cfg, metrics, duration_sec) {
   repeat {
     for (u in seq_len(users)) {
       scen <- soak_pick_scenario()
-      body <- soak_build_chat_body(scen, model = "soak-canary-model")
+      model <- cfg$real_canary$model %||% "soak-canary-model"
+      body <- soak_build_chat_body(scen, model = model)
       h <- curl::new_handle(url = url)
       hdrs <- list("Content-Type" = "application/json")
       if (nzchar(real_key)) hdrs[["Authorization"]] <- paste("Bearer", real_key)

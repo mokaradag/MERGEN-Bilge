@@ -187,6 +187,7 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   MERGEN_SOAK_REAL_CANARY_USERS=2
 #   MERGEN_SOAK_REAL_CANARY_INTERVAL_SECONDS=60
 #   MERGEN_SOAK_REAL_ENDPOINT_URL=<gercek-endpoint>/v1/chat/completions
+#   MERGEN_SOAK_REAL_MODEL=<gercek-model-adi>
 #   MERGEN_SOAK_REAL_API_KEY=<gercek-anahtar>   # tek gerçek anahtar; canary/proxy dışında kullanılmaz
 #
 # Eşikler (ölçülemeyen eşikler sessizce geçmez):

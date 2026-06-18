@@ -148,6 +148,8 @@ soak_resolve_config <- function() {
   # Real-canary serit: emniyet icin kullanici/sure tavanlari uygulanir.
   real_canary_users <- soak_env_int("MERGEN_SOAK_REAL_CANARY_USERS", 2L)
   real_canary_interval <- soak_env_int("MERGEN_SOAK_REAL_CANARY_INTERVAL_SECONDS", 60L)
+  real_canary_model <- soak_env_str("MERGEN_SOAK_REAL_MODEL", "soak-canary-model")
+
   if (identical(lane, "real-canary")) {
     cap <- soak_env_int("MERGEN_SOAK_REAL_CANARY_MAX_USERS", 5L)
     if (users > cap) users <- cap
@@ -210,7 +212,11 @@ soak_resolve_config <- function() {
     client_timeout_sec = client_timeout_sec,
     fake = fake,
     proxy = proxy,
-    real_canary = list(users = real_canary_users, interval_sec = real_canary_interval),
+    real_canary = list(
+      users = real_canary_users,
+      interval_sec = real_canary_interval,
+      model = real_canary_model
+    ),
     app_url = app_url,
     in_process_exercises = in_process,
     capacity_curve_enabled = capacity_enabled,
