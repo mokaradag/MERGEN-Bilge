@@ -6,6 +6,45 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-18 — Geri Bildirim Analizi tablo hazırlama yardımcılarının renderer dosyasından ayrılması
+
+### Seçilen iz(ler)
+- **Track 1 — yakın-bütçe R dosyası sadeleştirme**: `destek_yonetici_saglik` seam'inde `R/module_admin_geri_bildirim_outputs.R` repo genelindeki en büyük dosyaydı (728 satır / 5 fonksiyon) ve flat renderer listesi içinde iki DT tablosunun görünüm veri hazırlığı da bulunuyordu.
+
+### Özet ve gerekçe
+Keşif raporu en büyük R dosyasını `R/module_admin_geri_bildirim_outputs.R` olarak gösterdi. Grafik/DT renderer kayıt davranışını değiştirmeden, kullanıcı memnuniyet tablosu ve detaylı geri bildirim tablosunun saf data.frame hazırlama mantığı yeni helper dosyasına taşındı. Böylece renderer dosyası yalnızca output kaydı + highcharter/DT seçeneklerine odaklandı; tablo dönüşümleri Shiny/DT başlatmadan test edilebilir hale geldi.
+
+### Değişen dosyalar
+- `R/helpers_admin_geri_bildirim_output_tables.R` (yeni) — kullanıcı bazlı memnuniyet ve detaylı geri bildirim tablosu görünüm verisi hazırlama yardımcıları.
+- `R/module_admin_geri_bildirim_outputs.R` — iki DT renderer artık saf helper çıktısını `DT::datatable()` içine bağlar.
+- `R/config_source_manifest.R`, `R/config_seam_registry.R` — yeni helper `module_admin` bölümünde outputs dosyasından önce yüklendi ve seam guard listesine davranış testi eklendi.
+- `tests/testthat/test-admin-geri-bildirim-output-tables-behavior.R` (yeni) — Türkçe kolon başlıkları, yuvarlatma, sıralama sütunları, iletişim izni, mailto ikon HTML'i ve boş/değer yedekleri test edildi.
+- `tests/testthat/test-admin-geri-bildirim-outputs-behavior.R`, `tests/testthat/test-admin-geri-bildirim-refactor-contract.R`, `tests/testthat/test-source-manifest-sections-contract.R`, `tests/testthat/test-maintainability-ratchet.R` — helper source sırası, manifest sayısı ve sıkılaştırılmış bütçeler güncellendi.
+- `docs/feature-ownership-map.md`, `docs/architecture-map.md`, `docs/technical-reference.md`, `docs/refactor-log.md` — sahiplik, source manifest yapısı ve yeni taban çizgisi kaydedildi.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `R/module_admin_geri_bildirim_outputs.R` 728 satır / 5 fonksiyon; repo genelindeki en büyük R dosyasıydı.
+- Sonra: `R/module_admin_geri_bildirim_outputs.R` 656 satır / 4 fonksiyon; yeni helper 134 satır / 4 fonksiyon. Repo genelinde en büyük dosya 694 satıra indi ve global `MERGEN_TEST_MAX_FILE_LINES` tabanı 796 → 694 olarak sıkılaştırıldı.
+
+### Korunan davranış sözleşmeleri
+- 13 output ID, highcharter chart seçenekleri ve DT seçenekleri korunur; renderer dosyası hâlâ output kayıt noktasıdır.
+- Tablo kolon başlıkları, sıralama yardımcı sütunları, memnuniyet/NPS gösterimi, iletişim izni ve mailto ikon üretimi davranışı focused test ile korunur.
+- DB/SSO/encoding/frontend asset order/runtime app boot sınırlarına dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- `Rscript tests/scripts/maintainability_report.R` → başlangıç raporu; skor 100/100, en büyük dosya 728.
+- `Rscript tests/scripts/frontend_complexity_doctor.R` → başlangıç raporu; frontend değişikliği yapılmadı.
+- `Rscript tests/scripts/seam_doctor.R` → başlangıçta `SEAM_DOCTOR_RESULT: OK`.
+- `Rscript -e 'testthat::test_file("tests/testthat/test-admin-geri-bildirim-output-tables-behavior.R")'` → geçti.
+- `Rscript -e 'testthat::test_file("tests/testthat/test-admin-geri-bildirim-outputs-behavior.R"); testthat::test_file("tests/testthat/test-admin-geri-bildirim-refactor-contract.R"); testthat::test_file("tests/testthat/test-source-manifest-sections-contract.R"); testthat::test_file("tests/testthat/test-maintainability-ratchet.R")'` → outputs behavior testinde `highcharter` eksikliği nedeniyle 6 skip; refactor/source-manifest/maintainability geçti.
+- `bash tools/ai_validate.sh quick` → geçti; failed steps 0, skipped steps 0 (`artifacts/ai-validation/20260618-154526/summary.json`).
+
+### Bilinen riskler / atlanan doğrulamalar
+- Gerçek tarayıcı, VM, DB, SSO veya admin panel manuel tıklama kanıtı alınmadı; paket davranış-preserving R helper extraction'dır.
+- Sıradaki yüksek kaldıraç adayları: `R/server_send_message.R` (694 satır), `R/config_ui_assets.R` (690 satır; asset-order hassas), veya frontend tarafında `www/js/deep_space_intro.js` / `www/js/ai_expert_manager.js`.
+
+---
+
 ## 2026-06-17 — Yapılandırma reset UI senkronizasyonu onarımı
 
 ### Seçilen iz(ler)

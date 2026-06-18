@@ -17,6 +17,11 @@ if (requireNamespace("shiny", quietly = TRUE)) {
 
 .gbo_env <- new.env(parent = globalenv())
 source(
+  file.path(resolve_repo_root_for_tests(), "R", "helpers_admin_geri_bildirim_output_tables.R"),
+  encoding = "UTF-8",
+  local = .gbo_env
+)
+source(
   file.path(resolve_repo_root_for_tests(), "R", "module_admin_geri_bildirim_outputs.R"),
   encoding = "UTF-8",
   local = .gbo_env

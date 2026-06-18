@@ -107,7 +107,7 @@ Seam listesi (id -> sahiplenilen manifest bölümleri):
 | `dosya_yasam_dongusu` | `files_preview_pipeline`, `file_manager_helpers`, `module_files_media` | dosya lifecycle, çözümleme güvenliği, upload doğrulama |
 | `medya_ses` | `ai_expert_helpers`, `module_ai_audio` | ses yaşam döngüsü, TTS autoplay koruması |
 | `bilge_yolac` | `config_claude_code`, `claude_code_helpers`, `module_claude_code` | güvenlik politikası, run lifecycle, stream HTML güvenliği |
-| `destek_yonetici_saglik` | `support_admin_health_helpers`, `module_support`, `module_admin`, `module_health_chartlab` | admin refactor sözleşmeleri, sağlık panosu |
+| `destek_yonetici_saglik` | `support_admin_health_helpers`, `module_support`, `module_admin`, `module_health_chartlab` | admin refactor + tablo helper sözleşmeleri, sağlık panosu |
 | `shiny_calisma_zamani` | `server_init_runtime`, `server_core_outputs_welcome`, `server_observers` (+ `server.R`, `ui.R`) | runtime context, core interaction/observer, module wiring |
 | `frontend_varlik` | `config_ui_assets` | UI asset manifest, bölge sözleşmesi, frontend ratchet |
 

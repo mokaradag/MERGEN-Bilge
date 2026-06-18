@@ -308,16 +308,8 @@ admin_gb_outputs <- function(output, gb_data, etiket_sayilari) {
 
     # Kullanıcı bazlı memnuniyet tablosu
     output$gb_kullanici_tablo <- DT::renderDT({
-      data <- gb_data()$kullanici_memnuniyet
-      if (nrow(data) == 0) return(DT::datatable(data.frame()))
-
-      data$row_num <- 1:nrow(data)
-      data$ort_memnuniyet <- round(data$ort_memnuniyet, 1)
-      data$ort_nps <- round(data$ort_nps, 1)
-      data$son_bildirim <- format(as.POSIXct(data$son_bildirim), "%d.%m.%Y %H:%M")
-
-      display_data <- data[, c("row_num", "KullaniciAdi", "bildirim_sayisi", "ort_memnuniyet", "ort_nps", "son_bildirim")]
-      colnames(display_data) <- c("#", "Kullanıcı", "Bildirim", "Ort. Memnuniyet", "Ort. NPS", "Son Bildirim")
+      display_data <- admin_gb_prepare_kullanici_table_data(gb_data()$kullanici_memnuniyet)
+      if (nrow(display_data) == 0) return(DT::datatable(data.frame()))
 
       DT::datatable(
         display_data,
@@ -633,72 +625,8 @@ admin_gb_outputs <- function(output, gb_data, etiket_sayilari) {
 
     # Detaylı geri bildirim tablosu
     output$gb_detay_tablo <- DT::renderDT({
-      data <- gb_data()$tumu
-      if (nrow(data) == 0) return(DT::datatable(data.frame()))
-
-      data$row_num <- 1:nrow(data)
-
-      # Memnuniyet emojisi (sıralama için gizli değer eklenir)
-      memn_emoji <- c("\U0001F621", "\U0001F61E", "\U0001F610", "\U0001F60A", "\U0001F929")
-      data$memn_display <- ifelse(
-        !is.na(data$Memnuniyet) & data$Memnuniyet >= 1 & data$Memnuniyet <= 5,
-        paste0(memn_emoji[data$Memnuniyet], " ", data$Memnuniyet, "/5"),
-        "-"
-      )
-      # Sıralama için sayısal değer (gizli sütun)
-      data$memn_sort <- ifelse(!is.na(data$Memnuniyet), data$Memnuniyet, 0)
-
-      # NPS puanı renkli gösterim
-      nps_renk <- function(puan) {
-        if (is.na(puan)) return("-")
-        renk <- if (puan >= 9) "#10b981" else if (puan >= 7) "#f59e0b" else "#ef4444"
-        sprintf('<span style="color:%s; font-weight:bold;">%d</span>', renk, puan)
-      }
-      data$nps_display <- sapply(data$NPS_Puan, nps_renk)
-      data$nps_sort <- ifelse(!is.na(data$NPS_Puan), data$NPS_Puan, -1)
-
-      data$tarih <- format(as.POSIXct(data$OlusturmaTarihi), "%d.%m.%Y %H:%M")
-      data$etiketler_display <- ifelse(!is.na(data$Etiketler) & nzchar(data$Etiketler), data$Etiketler, "-")
-      data$sevilen_display <- ifelse(!is.na(data$EnCokSevilen) & nzchar(data$EnCokSevilen), data$EnCokSevilen, "-")
-      data$gelistirme_display <- ifelse(!is.na(data$Gelistirme) & nzchar(data$Gelistirme), data$Gelistirme, "-")
-
-      # İletişim izni ikonu ve renkli gösterim
-      data$iletisim_display <- ifelse(
-        data$IletisimIzni == 1,
-        '<span style="color:#10b981;"><i class="fas fa-check-circle"></i> Evet</span>',
-        '<span style="color:#ef4444;"><i class="fas fa-times-circle"></i> Hayır</span>'
-      )
-
-      # E-posta sütunu: İletişim izni varsa mailto ikonu göster
-      data$eposta_display <- sapply(seq_len(nrow(data)), function(i) {
-        if (isTRUE(data$IletisimIzni[i] == 1) && !is.na(data$EmailAddress[i]) && nzchar(data$EmailAddress[i])) {
-          kullanici_adi <- ifelse(!is.na(data$KullaniciAdi[i]) && nzchar(data$KullaniciAdi[i]), data$KullaniciAdi[i], "Kullanıcı")
-          konu <- utils::URLencode(paste0("MERGEN Bilge - Geri Bildirim #", data$GeriBildirimID[i]))
-          govde <- utils::URLencode(paste0(
-            "Sayın ", kullanici_adi, ",\n\n",
-            "MERGEN Bilge uygulamasına bıraktığınız geri bildirim (", format(as.POSIXct(data$OlusturmaTarihi[i]), "%d.%m.%Y"), ") hakkında sizinle iletişime geçmek istiyoruz.\n\n",
-            "Saygılarımızla,\nMERGEN Bilge Yönetim Ekibi"
-          ))
-          sprintf(
-            '<a href="mailto:%s?subject=%s&body=%s" title="%s adresine e-posta gönder" class="admin-mail-icon"><i class="fas fa-envelope"></i></a>',
-            htmltools::htmlEscape(data$EmailAddress[i]), konu, govde,
-            htmltools::htmlEscape(data$EmailAddress[i])
-          )
-        } else {
-          ""
-        }
-      })
-
-      data$kullanici <- ifelse(!is.na(data$KullaniciAdi) & nzchar(data$KullaniciAdi), data$KullaniciAdi, "-")
-
-      display_data <- data[, c("row_num", "kullanici", "memn_display", "memn_sort",
-                                "nps_display", "nps_sort",
-                                "etiketler_display", "sevilen_display", "gelistirme_display",
-                                "iletisim_display", "eposta_display", "tarih")]
-      colnames(display_data) <- c("#", "Kullanıcı", "Memnuniyet", "memn_sort",
-                                   "NPS", "nps_sort",
-                                   "Etiketler", "En Çok Sevilen", "Geliştirilecek",
-                                   "İletişim İzni", "\U0001F4E7", "Tarih")
+      display_data <- admin_gb_prepare_detay_table_data(gb_data()$tumu)
+      if (nrow(display_data) == 0) return(DT::datatable(data.frame()))
 
       DT::datatable(
         display_data,

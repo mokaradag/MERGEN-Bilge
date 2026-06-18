@@ -298,6 +298,7 @@ mergen_seam_registry <- function() {
         "tests/testthat/test-admin-hata-analizi-refactor-contract.R",
         "tests/testthat/test-admin-geri-bildirim-refactor-contract.R",
         "tests/testthat/test-admin-geri-bildirim-outputs-behavior.R",
+        "tests/testthat/test-admin-geri-bildirim-output-tables-behavior.R",
         "tests/testthat/test-admin-yanit-analizi-refactor-contract.R",
         "tests/testthat/test-admin-yanit-analizi-outputs-behavior.R",
         "tests/testthat/test-e2e-health-dashboard-regression.R",
