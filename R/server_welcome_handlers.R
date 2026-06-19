@@ -115,12 +115,31 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 		$('#chat_content_container').empty().hide();
 	  ")
 
+	  welcome_ui_started <- Sys.time()
+	  welcome_ui <- createWelcomeScreen(saved_chats)
+	  welcome_ui_elapsed_ms <- as.numeric(
+		difftime(Sys.time(), welcome_ui_started, units = "secs")
+	  ) * 1000
+
+	  insert_started <- Sys.time()
 	  shiny::insertUI(
 		selector = "#welcome_fullscreen_container",
 		where = "beforeEnd",
-		ui = createWelcomeScreen(saved_chats),
+		ui = welcome_ui,
 		immediate = TRUE
 	  )
+	  insert_elapsed_ms <- as.numeric(
+		difftime(Sys.time(), insert_started, units = "secs")
+	  ) * 1000
+
+	  if (isTRUE(.env_flag_is_true(Sys.getenv("MERGEN_PERF_LOG", "false")))) {
+		cat(sprintf(
+		  "[PERF] welcome.full_render create_ms=%.1f insert_call_ms=%.1f saved_chats=%d\n",
+		  welcome_ui_elapsed_ms,
+		  insert_elapsed_ms,
+		  length(saved_chats %||% list())
+		))
+	  }
 
 	  session$userData$welcome_screen_attached <- TRUE
 

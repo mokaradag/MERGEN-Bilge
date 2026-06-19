@@ -60,6 +60,16 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	}, ignoreInit = TRUE)
 
 	observeEvent(input$welcome_client_ready, {
+	  if (isTRUE(.env_flag_is_true(Sys.getenv("MERGEN_PERF_LOG", "false")))) {
+		cat(sprintf(
+		  "[PERF] welcome.client_ready bg_playing=%s greeting_ready=%s recent_ready=%s timestamp=%s\n",
+		  isTRUE(input$welcome_client_ready$bg_playing),
+		  isTRUE(input$welcome_client_ready$greeting_ready),
+		  isTRUE(input$welcome_client_ready$recent_ready),
+		  as.character(input$welcome_client_ready$timestamp %||% NA)
+		))
+	  }
+
 	  mark_boot(
 		"welcome_client_ready",
 		"Ana Söyleşi görsel bileşenleri hazır",
@@ -113,6 +123,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	}
 
     # İlk ekranın hızlı gelmesi için önce hafif özet listeyi yükle.
+	preview_started <- Sys.time()
 	preview_chats <- tryCatch(
 	  load_chats_preview_from_db(effective_user_id, limit = 6L),
 	  error = function(e) {
@@ -120,6 +131,17 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		list()
 	  }
 	)
+	preview_elapsed_ms <- as.numeric(
+	  difftime(Sys.time(), preview_started, units = "secs")
+	) * 1000
+
+	if (isTRUE(.env_flag_is_true(Sys.getenv("MERGEN_PERF_LOG", "false")))) {
+	  cat(sprintf(
+		"[PERF] startup.saved_chats_preview elapsed_ms=%.1f count=%d\n",
+		preview_elapsed_ms,
+		length(preview_chats %||% list())
+	  ))
+	}
 
 	if (length(preview_chats) > 0) {
 	  values$saved_chats <- preview_chats
