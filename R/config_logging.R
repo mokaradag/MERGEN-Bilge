@@ -84,60 +84,38 @@ if (!mergen_log_dir_is_writable(mergen_log_dir)) {
 library(logger)
 log_threshold(resolve_mergen_log_threshold())
 
-# --- GÜNLÜK LOG DOSYASI ÇÖZÜMLEME (TARİH-DUYARLI) ---
-# Tarih her log satırında yeniden çözülür. Bu, Haziran regresyonunun iki olası
-# kök nedenini birden kapatır:
-#   1) Her yeniden başlatma o günün mergen_YYYYMMDD.log dosyasını oluşturur.
-#   2) Uzun süre açık kalan üretim süreci gece yarısını geçince otomatik olarak
-#      yeni güne ait dosyaya yazmaya başlar; başlangıç tarihindeki eski dosyada
-#      takılı kalmaz (son log 12.06 saat 23:51'de kalmıştı).
-# Testler tarihi mergen.log.date_provider option'ı ile enjekte edebilir.
-current_mergen_log_date <- function() {
-  date_provider <- getOption("mergen.log.date_provider", NULL)
-  current_date <- if (is.function(date_provider)) date_provider() else Sys.Date()
-  if (inherits(current_date, "Date")) {
-    return(current_date[1])
-  }
-  as.Date(current_date[1])
-}
-
-current_mergen_log_file_path <- function() {
-  file.path(
-    mergen_log_dir,
-    sprintf("mergen_%s.log", format(current_mergen_log_date(), "%Y%m%d"))
+# --- GÜNLÜK LOG DOSYASI YARDIMCILARI (ODAKLI DOSYA) ---
+# Tarih/yol çözümleme, dosya appender'ı ve açılış-garanti yardımcıları
+# R/config_logging_daily_file.R içindedir (maintainability fonksiyon-yoğunluk
+# bölmesi). Üretimde kaynak manifesti o dosyayı config_logging.R'den ÖNCE
+# yükler, bu yüzden aşağıdaki guard atlanır. İzole test/debug akışlarında
+# (config_logging.R doğrudan bir ortama source() edilir) yardımcılar henüz
+# tanımlı olmayabilir; bu durumda working-directory bağımsız adaylarla AYNI
+# ortama (envir = environment()) yüklenir, böylece `mergen_log_dir` ile aynı
+# çerçevede çözülürler.
+if (!exists("mergen_daily_file_appender", mode = "function",
+            envir = environment(), inherits = FALSE)) {
+  .mergen_log_daily_candidates <- c(
+    file.path(getwd(), "R", "config_logging_daily_file.R"),
+    file.path(getwd(), "config_logging_daily_file.R"),
+    file.path(getwd(), "..", "..", "R", "config_logging_daily_file.R"),
+    file.path(Sys.getenv("MERGEN_REPO_ROOT", "."), "R", "config_logging_daily_file.R"),
+    file.path("R", "config_logging_daily_file.R")
   )
+  for (.mergen_log_daily_path in .mergen_log_daily_candidates) {
+    if (file.exists(.mergen_log_daily_path)) {
+      source(.mergen_log_daily_path, encoding = "UTF-8", local = environment())
+      break
+    }
+  }
+  rm(list = intersect(
+    c(".mergen_log_daily_candidates", ".mergen_log_daily_path"),
+    ls(all.names = TRUE)
+  ))
 }
 
 # Geriye dönük uyumluluk: bazı testler/çağıranlar log_file_path değişkenini okur.
 log_file_path <- current_mergen_log_file_path()
-
-# Hem konsola hem dosyaya log yaz.
-# Bu appender, logger::appender_file ile AYNI yazım anlamını korur
-# (cat(lines, sep = "\n", append = TRUE)); böylece dosya içeriği, kodlaması ve
-# satır ayrımı eskisiyle bayt-bayt aynı kalır. Eklenen tek fark üç üretim
-# güvenilirliği iyileştirmesidir:
-#   1) Hedef dosya her satırda güncel tarihe göre yeniden çözülür (günlük devir).
-#   2) Log dizini her yazımdan önce garanti edilir (UNC/ağ paylaşımı dayanıklılığı).
-#   3) Yazma hatası SESSİZCE yutulmaz; konsola bildirilir; böylece bir paylaşım
-#      hatası günlerce fark edilmeden log üretimini durduramaz.
-# Not: cat() bir useBytes argümanı KABUL ETMEZ (o writeLines'a aittir); bu yüzden
-# burada kullanılmaz. Konsol native-dönüşümü ayrı appender'da yapılır.
-mergen_daily_file_appender <- function(lines) {
-  if (!dir.exists(mergen_log_dir)) {
-    dir.create(mergen_log_dir, recursive = TRUE, showWarnings = FALSE)
-  }
-
-  target_file <- current_mergen_log_file_path()
-  tryCatch(
-    cat(lines, sep = "\n", file = target_file, append = TRUE),
-    error = function(e) {
-      message(sprintf(
-        "[MERGEN LOGGING ERROR] Gunluk log dosyasina yazilamadi (%s): %s",
-        target_file, conditionMessage(e)
-      ))
-    }
-  )
-}
 
 # Çoklu appender yapılandırması
 # Dosya logu düz metin olmalı
@@ -145,40 +123,10 @@ log_appender(mergen_daily_file_appender, index = 1)
 log_layout(layout_glue, index = 1)
 
 # --- AÇILIŞTA GÜNLÜK DOSYAYI GARANTİLE (THRESHOLD-BAĞIMSIZ) ---
-# Haziran regresyonunun çekirdek belirtisi: uygulama açılışında
-# mergen_YYYYMMDD.log dosyası HİÇ oluşmuyordu (konsol logları çalışsa bile).
-# Kök neden ne olursa olsun (yüksek MERGEN_LOG_THRESHOLD ilk INFO satırını
-# filtreliyor; logger appender dağıtımı ilk çağrıda dosyaya ulaşmıyor; vb.),
-# logger appender'ı dosyayı YALNIZCA eşiği geçen bir satır yazıldığında
-# oluşturur. Bu yardımcı, her açılışta günün dosyasını DOĞRUDAN cat() ile
-# (logger ve threshold'dan tamamen bağımsız) oluşturup açılış başlığını yazar;
-# böylece dosyanın her gün, her yeniden başlatmada var olması garanti edilir.
-# Yazım anlamı dosya appender'ı ile aynıdır (cat(..., append = TRUE)), dosya
-# içeriği/kodlaması bayt-bayt uyumlu kalır.
-mergen_ensure_daily_log_file <- function() {
-  if (!dir.exists(mergen_log_dir)) {
-    dir.create(mergen_log_dir, recursive = TRUE, showWarnings = FALSE)
-  }
-  target_file <- current_mergen_log_file_path()
-  banner <- sprintf(
-    "INFO [%s] === MERGEN Bilge gunluk log dosyasi hazir: %s ===",
-    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-    target_file
-  )
-  tryCatch(
-    cat(banner, sep = "\n", file = target_file, append = TRUE),
-    error = function(e) {
-      message(sprintf(
-        "[MERGEN LOGGING ERROR] Acilis gunluk log dosyasi olusturulamadi (%s): %s",
-        target_file, conditionMessage(e)
-      ))
-    }
-  )
-  invisible(target_file)
-}
-
-# Açılış dosyasını HEMEN oluştur (konsol appender'ı ve diğer kurulumdan önce
-# yapılması gerekmez, ama açılışta dosyanın görünmesini garanti eder).
+# Açılış dosyasını HEMEN oluştur: mergen_ensure_daily_log_file() günün
+# mergen_YYYYMMDD.log dosyasını DOĞRUDAN cat() ile (logger/threshold'dan
+# bağımsız) oluşturup açılış başlığını yazar; böylece dosya her gün, her
+# yeniden başlatmada var olur. Tanım R/config_logging_daily_file.R içindedir.
 mergen_ensure_daily_log_file()
 
 # Konsol renkleri üretimde varsayılan kapalıdır.
