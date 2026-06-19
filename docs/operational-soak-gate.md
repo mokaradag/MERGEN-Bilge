@@ -438,36 +438,56 @@ Rscript tests/scripts/run_operational_soak_gate.R
 
 ---
 
-## 12. 2026-06-18 Windows VM Operational Soak Results
+## 12. 2026-06-19 Windows VM Operational Soak Results
 
-Bu bölüm, 18 Haziran 2026 tarihinde Windows VM üzerinde canlı MERGEN uygulamasına
-attach edilerek alınan operasyonel soak/load-test bulgularını kaydeder. Attach kökü
-`MERGEN_SOAK_APP_URL=http://127.0.0.1:8009/` olarak kullanılmıştır; üretim launcher
-portu `8009`'dur. Daha önce kullanılan `28081` değeri üretim uygulaması için yanlış
-hedef kabul edilmelidir.
+Bu bölüm, 18-19 Haziran 2026 tarihlerinde Windows VM üzerinde canlı MERGEN
+uygulamasına attach edilerek alınan operasyonel soak/load-test bulgularını
+kaydeder. Attach kökü `MERGEN_SOAK_APP_URL=http://127.0.0.1:8009/` olarak
+kullanılmıştır; üretim launcher portu `8009`'dur. Daha önce kullanılan `28081`
+değeri üretim uygulaması için yanlış hedef kabul edilmelidir. 19 Haziran
+kanıtları `MERGEN_SOAK_PROFILE=smoke`, `MERGEN_SOAK_LLM_MODE=fake`, fake LLM
+endpoint'i `/v1/chat/completions`, kullanıcı tabanı hedefi `1000`, kapasite
+ramp'i kapalı ve etkin başarı eşiği `0.98` ile alınmıştır.
 
 ### Fake-lane kapasite sınırı
 
+19 Haziran 2026 itibarıyla fake-LLM smoke operasyonel soak kapısında mütevazı
+bir kapasite/performance iyileşmesi gözlenmiştir: **22 aktif eşzamanlı kullanıcı
+/ 300 saniye PASS** artık en güçlü sürdürülebilir fake-lane kanıtıdır; **23 aktif
+eşzamanlı kullanıcı / 60 saniye PASS** ise yalnızca kısa süreli sınır kanıtıdır.
+**24 aktif eşzamanlı kullanıcı ve üzeri**, `effective_success_rate` 0.98 eşiğinin
+altına düştüğü için bu smoke/fake seridin belgelenmiş güvenilir işletim zarfının
+dışındadır. **25 aktif eşzamanlı kullanıcı / 30 saniye PASS** yalnızca kısa spike
+gözlemi olarak kaydedilir; sürdürülebilir kapasite diye belgelenmemelidir.
+
 | Aktif eşzamanlı kullanıcı | Süre | Sonuç | Not |
 |---:|---:|---|---|
-| 10 | 30 sn | PASS | Short smoke sanity; `MERGEN_SOAK_DURATION_SECONDS` override doğrulandı. |
-| 15 | 60 sn | PASS | Kısa VM sanity için temiz kanıt. |
-| 20 | 60 sn | PASS | Fake-lane kapasite kanıtı. |
-| 20 | 300 sn | PASS | **En güçlü stabil kanıt:** 418 istek, 418 başarı, 0 hata, 0 timeout, `effective_success_rate=1.000`, `raw_success_rate=1.000`, `no_server_crash=TRUE`, `secret_leak=0`. |
-| 22 | 60 sn | PASS | Kısa kapasite keşfi. |
-| 23 | 60 sn | PASS | Timeout eşiğine çok yakın. |
-| 24 | 60 sn | FAIL | Timeout saturasyonu: 102 istek, 97 başarı, 5 timeout, `effective_success_rate=0.951` < 0.98. |
-| 25 | 60 sn | FAIL | Timeout saturasyonu. |
-| 30 | 60 sn | FAIL | Timeout saturasyonu. |
-| 100 | 30 sn | FAIL | Timeout saturasyonu; kapasite iddiası değildir. |
+| 10 | 30 sn | PASS | 2026-06-18 short smoke sanity; `MERGEN_SOAK_DURATION_SECONDS` override doğrulandı. |
+| 15 | 60 sn | PASS | 2026-06-18 kısa VM sanity için temiz kanıt. |
+| 20 | 300 sn | PASS | 2026-06-18 önceki stabil kanıt: 418 istek, 418 başarı, 0 hata, 0 timeout, `effective_success_rate=1.000`. |
+| 22 | 300 sn | PASS | **2026-06-19 en güçlü sürdürülebilir fake-lane kanıtı:** `artifacts/soak/20260619-153052/soak_evidence.json`; 408 istek, 408 başarı, 0 hata, 0 timeout, `effective_success_rate=1.000`, `raw_success_rate=1.000`, p50/p95/p99 = 16983.3/18386.2/18791.0 ms, throughput 81.4 istek/dk, `secret_leak=0`, `no_server_crash=TRUE`. |
+| 23 | 60 sn | PASS | 2026-06-19 kısa sınır kanıtı: `artifacts/soak/20260619-152901/soak_evidence.json`; 100 istek, 100 başarı, 0 hata, 0 timeout, `effective_success_rate=1.000`, p50/p95/p99 = 16784.2/18948.5/19362.5 ms, throughput 100 istek/dk. |
+| 24 | 60 sn | FAIL | 2026-06-19 guardrail: `artifacts/soak/20260619-152715/soak_evidence.json`; 98 istek, 88 başarı, 10 timeout, `effective_success_rate=0.898` < 0.98. |
+| 24 | 300 sn | FAIL | 2026-06-19 guardrail: `artifacts/soak/20260619-153656/soak_evidence.json`; 383 istek, 49 başarı, 334 timeout, `effective_success_rate=0.1279` < 0.98. |
+| 25 | 30 sn | PASS | 2026-06-19 kısa spike gözlemi: `artifacts/soak/20260619-145315/soak_evidence.json`; 65 istek, 65 başarı, 0 hata, 0 timeout, throughput yaklaşık 129.4 istek/dk. **Sürdürülebilir kapasite kanıtı değildir.** |
+| 26 | 30 sn | FAIL | 2026-06-19 guardrail: `artifacts/soak/20260619-152033/soak_evidence.json`; 561 istek, 12 başarı, 549 hata, `effective_success_rate=0.0214` < 0.98. |
+| 30 | 60 sn | FAIL | 2026-06-18 timeout saturasyonu. |
+| 100 | 30 sn | FAIL | 2026-06-18 timeout saturasyonu; kapasite iddiası değildir. |
+
+22/300 sn ve 23/60 sn PASS koşularında doğruluk/güvenlik kontrolleri temizdir:
+anahtar yönlendirme 5/5, upload validation 7/7, encoding round-trip pass rate 1,
+cross-session key isolation `TRUE`, secret leak 0, server crash yok,
+`mojibake_hits=0`, redaction verified `TRUE`. `temp_growth_mb` yaklaşık 0.31 MB
+ile PASS'tir. `memory_growth_mb` ve `browser_console_errors` bu koşularda
+`UNMEASURED` olduğundan ölçülmüş PASS olarak sunulmamalıdır.
 
 Önerilen işletim yorumu:
 
 - Günlük hızlı sanity: **10 aktif kullanıcı / 30 saniye**.
 - Daha güçlü VM sanity: **15 aktif kullanıcı / 60 saniye**.
-- Mevcut güvenli test edilmiş kapasite: **20 aktif eşzamanlı kullanıcı / 300 saniye PASS**.
-- Gözlenen edge: **23 aktif eşzamanlı kullanıcı / 60 saniye PASS**, fakat timeout sınırına yakın.
-- Başlayan failure bölgesi: **24 aktif eşzamanlı kullanıcı / 60 saniye FAIL** (timeout saturasyonu).
+- Mevcut güvenli test edilmiş fake-lane kapasite: **22 aktif eşzamanlı kullanıcı / 300 saniye PASS**.
+- Kısa edge gözlemi: **23 aktif eşzamanlı kullanıcı / 60 saniye PASS**; sustained kapasite diye sunulmaz.
+- Başlayan failure bölgesi: **24 aktif eşzamanlı kullanıcı ve üzeri FAIL** (`effective_success_rate` 0.98 eşiğinin altına düşer).
 
 ### Proxy-lane ve stress bulguları
 
@@ -520,8 +540,9 @@ Bu koşumlar **kanıtlar**:
 
 - Operasyonel soak gate Windows VM'de çalışır.
 - Attach mode, çalışan uygulama köküne HTTP üzerinden ulaşır.
-- Fake LLM lane, 20 aktif eşzamanlı kullanıcıyı 5 dakika boyunca sıfır hata ve
-sıfır timeout ile sürdürebilir.
+- Fake LLM lane, 22 aktif eşzamanlı kullanıcıyı 5 dakika boyunca sıfır hata ve
+sıfır timeout ile sürdürebilir; 23 aktif kullanıcı yalnızca 60 saniyelik kısa edge
+kanıtıdır.
 - Key routing, cross-session key isolation, upload validation, secret-redaction
 kontrolleri ve encoding helper kontrolleri geçti.
 
