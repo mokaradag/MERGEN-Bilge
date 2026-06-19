@@ -30,14 +30,54 @@ resolve_mergen_log_threshold <- function(default = logger::INFO) {
   )
 }
 
-mergen_log_dir <- resolve_mergen_log_dir()
-
-if (!dir.exists(mergen_log_dir)) {
-  dir.create(mergen_log_dir, recursive = TRUE, showWarnings = FALSE)
+# Log dizininin gerçekten YAZILABİLİR olduğunu doğrular. Birincil dizin
+# (ör. UNC paylaşımı) yoksa oluşturmayı dener, sonra geçici bir sonda dosyasıyla
+# yazma iznini test eder. Bu, "dizin var ama yazılamıyor" durumunu da yakalar.
+mergen_log_dir_is_writable <- function(dir_path) {
+  if (is.null(dir_path) || !nzchar(dir_path)) {
+    return(FALSE)
+  }
+  if (!dir.exists(dir_path)) {
+    tryCatch(
+      dir.create(dir_path, recursive = TRUE, showWarnings = FALSE),
+      error = function(e) FALSE
+    )
+  }
+  if (!dir.exists(dir_path)) {
+    return(FALSE)
+  }
+  probe <- file.path(dir_path, sprintf(".mergen_log_write_test_%s", Sys.getpid()))
+  ok <- tryCatch({
+    cat("", file = probe, append = TRUE)
+    TRUE
+  }, error = function(e) FALSE)
+  if (file.exists(probe)) {
+    unlink(probe)
+  }
+  isTRUE(ok)
 }
 
-if (!dir.exists(mergen_log_dir)) {
-  stop(sprintf("Log dizini oluşturulamadı: %s", mergen_log_dir))
+mergen_log_dir <- resolve_mergen_log_dir()
+
+# Birincil log dizinine yazılamıyorsa (ör. UNC paylaşımı erişilemez/izinsiz),
+# uygulama loglarını SESSİZCE kaybetmek yerine repo kökündeki yerel "logs"
+# dizinine düşülür ve durum konsola yüksek sesle bildirilir. Bu, Haziran
+# regresyonundaki "konsol çalışıyor ama mergen_YYYYMMDD.log oluşmuyor"
+# durumunun sessizce sürmesini engeller.
+if (!mergen_log_dir_is_writable(mergen_log_dir)) {
+  fallback_log_dir <- normalizePath(
+    file.path(getwd(), "logs"),
+    winslash = "/", mustWork = FALSE
+  )
+  message(sprintf(
+    "[MERGEN LOGGING] Yapilandirilmis log dizinine yazilamiyor (%s). Yerel dizine dusuluyor: %s",
+    mergen_log_dir, fallback_log_dir
+  ))
+  mergen_log_dir <- fallback_log_dir
+}
+
+if (!mergen_log_dir_is_writable(mergen_log_dir)) {
+  stop(sprintf("Log dizini oluşturulamadı/yazılamıyor: %s", mergen_log_dir))
 }
 
 # --- LOGGER YAPILANDIRMASI ---
@@ -103,6 +143,43 @@ mergen_daily_file_appender <- function(lines) {
 # Dosya logu düz metin olmalı
 log_appender(mergen_daily_file_appender, index = 1)
 log_layout(layout_glue, index = 1)
+
+# --- AÇILIŞTA GÜNLÜK DOSYAYI GARANTİLE (THRESHOLD-BAĞIMSIZ) ---
+# Haziran regresyonunun çekirdek belirtisi: uygulama açılışında
+# mergen_YYYYMMDD.log dosyası HİÇ oluşmuyordu (konsol logları çalışsa bile).
+# Kök neden ne olursa olsun (yüksek MERGEN_LOG_THRESHOLD ilk INFO satırını
+# filtreliyor; logger appender dağıtımı ilk çağrıda dosyaya ulaşmıyor; vb.),
+# logger appender'ı dosyayı YALNIZCA eşiği geçen bir satır yazıldığında
+# oluşturur. Bu yardımcı, her açılışta günün dosyasını DOĞRUDAN cat() ile
+# (logger ve threshold'dan tamamen bağımsız) oluşturup açılış başlığını yazar;
+# böylece dosyanın her gün, her yeniden başlatmada var olması garanti edilir.
+# Yazım anlamı dosya appender'ı ile aynıdır (cat(..., append = TRUE)), dosya
+# içeriği/kodlaması bayt-bayt uyumlu kalır.
+mergen_ensure_daily_log_file <- function() {
+  if (!dir.exists(mergen_log_dir)) {
+    dir.create(mergen_log_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  target_file <- current_mergen_log_file_path()
+  banner <- sprintf(
+    "INFO [%s] === MERGEN Bilge gunluk log dosyasi hazir: %s ===",
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    target_file
+  )
+  tryCatch(
+    cat(banner, sep = "\n", file = target_file, append = TRUE),
+    error = function(e) {
+      message(sprintf(
+        "[MERGEN LOGGING ERROR] Acilis gunluk log dosyasi olusturulamadi (%s): %s",
+        target_file, conditionMessage(e)
+      ))
+    }
+  )
+  invisible(target_file)
+}
+
+# Açılış dosyasını HEMEN oluştur (konsol appender'ı ve diğer kurulumdan önce
+# yapılması gerekmez, ama açılışta dosyanın görünmesini garanti eder).
+mergen_ensure_daily_log_file()
 
 # Konsol renkleri üretimde varsayılan kapalıdır.
 # Windows servis/VM koşullarında ANSI escape dizilerinin loglara karışmasını önler.

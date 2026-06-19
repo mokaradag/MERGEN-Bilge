@@ -96,7 +96,11 @@ validate_boot_state <- function(app_env = globalenv()) {
   }
 
   ui_obj <- get("ui", envir = app_env, inherits = FALSE)
-  if (!inherits(ui_obj, c("shiny.tag", "shiny.tag.list", "html"))) {
+  # Shiny UI'si statik bir etiket nesnesi VEYA bir function(req) olabilir.
+  # Kök sayfa HTML önbelleği (R/helpers_index_page_cache.R) açıkken `ui` bir
+  # fonksiyondur; bu da geçerli bir Shiny UI sözleşmesidir.
+  if (!is.function(ui_obj) &&
+      !inherits(ui_obj, c("shiny.tag", "shiny.tag.list", "html"))) {
 	stop("Boot doğrulaması başarısız: ui nesnesi geçerli bir Shiny UI değil.", call. = FALSE)
   }
 

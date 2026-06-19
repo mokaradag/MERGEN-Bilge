@@ -64,7 +64,9 @@
 # Her bölümün ilk/son dosyası ve eleman sayısı. Bu çapalar; bir dosyanın
 # bölümler arasında kaymasını veya bölüm sınırlarının değişmesini yakalar.
 .expected_manifest_section_anchors <- list(
-  foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_monitor.R", n = 8L),
+  # Bilinçli güncelleme: kök sayfa (GET /) HTML önbelleği yardımcısı
+  # (R/helpers_index_page_cache.R) perf instrumentation'dan sonra eklendi. 8 -> 9.
+  foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_monitor.R", n = 9L),
   post_future_utils = list(first = "R/utils_path_helpers.R", last = "R/utils_excel_reader.R", n = 9L),
   # config_app_core n = 7L -> 8L bilinçli güncelleme: indeks kilidi
   # (R/config_file_store_index_lock.R) fonksiyon-yoğunluk bölmesiyle ayrı dosyaya alındı.
@@ -234,7 +236,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # tablo veri hazırlama helpers_admin_geri_bildirim_output_tables.R dosyasına çıkarıldı.
   # 272L -> 273L bilinçli güncelleme: opt-in performans ölçüm yardımcısı
   # logging sonrası foundation bölümüne eklendi.
-  expect_equal(length(runtime), 273L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 273L -> 274L bilinçli güncelleme: kök sayfa (GET /) HTML önbelleği yardımcısı
+  # R/helpers_index_page_cache.R foundation bölümüne eklendi.
+  expect_equal(length(runtime), 274L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

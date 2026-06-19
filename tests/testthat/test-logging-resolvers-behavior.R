@@ -76,3 +76,80 @@ test_that("config_logging açılışta bugünün günlük log dosyasını oluşt
     fixed = TRUE
   )
 })
+
+test_that("acilis gunluk log dosyasi YUKSEK threshold'da bile olusur (esik-bagimsiz)", {
+  # Haziran regresyonunun kok belirtisi: dosya yalnizca esigi (threshold) gecen
+  # bir logger satiri yazildiginda olusuyordu. MERGEN_LOG_THRESHOLD=warn/error
+  # ise acilistaki INFO satirlari filtrelenir ve gun boyu hic uyari/hata olmazsa
+  # dosya HIC olusmaz. mergen_ensure_daily_log_file() dogrudan cat() ile yazarak
+  # bu durumu kapatir: dosya, threshold ne olursa olsun acilista olusmalidir.
+  skip_if_not_installed("logger")
+
+  tmp <- withr::local_tempdir()
+  env <- new.env(parent = globalenv())
+
+  withr::with_envvar(c(MERGEN_LOG_DIR = tmp, MERGEN_LOG_THRESHOLD = "error"), {
+    expect_no_error(suppressMessages(source(
+      file.path(resolve_repo_root_for_tests(), "R", "config_logging.R"),
+      encoding = "UTF-8",
+      local = env
+    )))
+  })
+
+  log_file <- file.path(tmp, sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d")))
+  expect_true(file.exists(log_file))
+  # INFO satirlari error esiginde filtrelenir; ama dogrudan yazilan acilis basligi
+  # her zaman dosyada olmalidir.
+  expect_match(
+    paste(readLines(log_file, warn = FALSE), collapse = "\n"),
+    "gunluk log dosyasi hazir",
+    fixed = TRUE
+  )
+})
+
+test_that("yazilamayan birincil log dizini yerel 'logs' dizinine duser ve dosya yine olusur", {
+  # UNC paylasimi/izin sorununda loglari sessizce kaybetmek yerine repo kokundeki
+  # yerel logs dizinine dusulur ve durum konsola yuksek sesle bildirilir.
+  skip_if_not_installed("logger")
+
+  # Ebeveyni bir DOSYA olan yol: dir.create asla basaramaz -> yazilamaz birincil dizin.
+  blocker <- withr::local_tempfile()
+  file.create(blocker)
+  unwritable_dir <- file.path(blocker, "logs")
+
+  # config_logging.R yolunu calisma dizini degismeden ONCE coz: with_dir icinde
+  # repo koku tespiti calisma dizinine baglidir ve yanlis dizinde basarisiz olur.
+  config_logging_path <- file.path(
+    resolve_repo_root_for_tests(), "R", "config_logging.R"
+  )
+
+  work_root <- withr::local_tempdir()
+  env <- new.env(parent = globalenv())
+  captured <- character(0)
+
+  withr::with_dir(work_root, {
+    withr::with_envvar(c(MERGEN_LOG_DIR = unwritable_dir, MERGEN_LOG_THRESHOLD = "info"), {
+      withCallingHandlers(
+        suppressWarnings(source(
+          config_logging_path,
+          encoding = "UTF-8",
+          local = env
+        )),
+        message = function(m) {
+          captured <<- c(captured, conditionMessage(m))
+          invokeRestart("muffleMessage")
+        }
+      )
+    })
+  })
+
+  # Yerel 'logs' dizinine dusulmus olmali ve bu durum bildirilmis olmali.
+  expect_true(any(grepl("Yerel dizine dusuluyor", captured, fixed = TRUE)))
+  expect_equal(basename(env$mergen_log_dir), "logs")
+
+  fallback_file <- file.path(
+    env$mergen_log_dir,
+    sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d"))
+  )
+  expect_true(file.exists(fallback_file))
+})

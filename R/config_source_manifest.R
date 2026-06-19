@@ -34,6 +34,7 @@ source_manifest_sections <- list(
     "R/helpers_mailto_encoding.R",
     "R/config_logging.R",
     "R/helpers_performance_instrumentation.R",
+    "R/helpers_index_page_cache.R",
     "R/utils_rate_limiter.R",
     "R/helpers_worker_monitor.R"
   ),
