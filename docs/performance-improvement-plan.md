@@ -8,13 +8,13 @@ Known evidence at the start of this workstream:
 
 | Lane / probe | Result | Interpretation |
 |---|---:|---|
-| Fake lane steady run | 20 active concurrent users / 300 seconds PASS | Current safe tested fake-lane capacity. |
-| Fake lane boundary | 23 users / 60 seconds PASS, near timeout edge | Capacity headroom exists but is thin. |
-| Fake lane failure edge | ~24 users / 60 seconds timeout saturation | Primary near-term bottleneck to profile. |
+| Fake lane steady run | 22 active concurrent users / 300 seconds PASS (2026-06-19) | Current safe tested fake-lane capacity. |
+| Fake lane boundary | 23 users / 60 seconds PASS; 25 users / 30 seconds PASS only as a short spike | Capacity headroom exists but is thin; do not promote the 25-user spike to sustained capacity. |
+| Fake lane failure edge | 24 users / 60 seconds and 24 users / 300 seconds FAIL below `effective_success_rate >= 0.98` | Primary near-term bottleneck to profile. |
 | Proxy lane | Key routing/isolation confirmed; heavier proxy stress saturates | Proxy proves isolation, not app capacity at high stress. |
 | Real canary | Reaches real LLM gateway; blocked by HTTP 500 / ERR-234 rate-limit policy | Upstream gateway/admin configuration blocker, not MERGEN app-capacity proof. |
 
-Do not claim improved capacity until a comparable soak artifact demonstrates it.
+As of 2026-06-19, the comparable fake-lane smoke artifact demonstrates a modest improvement to 22 active concurrent users / 300 seconds PASS. Do not claim 24+ users as supported; 25 users passed only as a 30-second spike, while 24-user runs failed the effective-success threshold.
 
 ## Main runtime paths to inspect
 

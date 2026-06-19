@@ -16,6 +16,21 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 Aşağıdaki bölüm, güncel değişiklik notlarını kronolojik/tematik bakım izi kaybolmadan izler.
 
+### 2026-06-19 operasyonel soak fake-lane kapasite notu
+
+Fake-LLM `smoke` operasyonel soak kapısında küçük bir iyileşme belgelendi.
+`MERGEN_SOAK_PROFILE=smoke`, `MERGEN_SOAK_LLM_MODE=fake`, hedef
+`http://127.0.0.1:8009/`, endpoint `/v1/chat/completions`, kullanıcı tabanı
+hedefi `1000`, kapasite ramp'i kapalı ve `effective_success_rate >= 0.98` eşiği
+ile alınan son kanıtlarda 22 aktif eşzamanlı kullanıcı / 300 saniye PASS
+(`artifacts/soak/20260619-153052/soak_evidence.json`) ve 23 aktif eşzamanlı
+kullanıcı / 60 saniye PASS (`artifacts/soak/20260619-152901/soak_evidence.json`)
+görüldü. 24 aktif kullanıcı / 60 saniye ve 24 aktif kullanıcı / 300 saniye
+koşuları eşik altında kaldığı için FAIL'dir; 25 aktif kullanıcı / 30 saniye PASS
+yalnızca kısa spike gözlemidir ve sürdürülebilir kapasite olarak sunulmaz.
+`memory_growth_mb` ve `browser_console_errors` bu koşularda `UNMEASURED` kaldığı
+için ölçülmüş PASS olarak yorumlanmaz.
+
 
 ### Operasyonel soak / yük kapısı eklendi (fake/proxy/real-canary seritleri)
 

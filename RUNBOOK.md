@@ -267,12 +267,14 @@ kullanıcı" bir kullanıcı tabanıdır; ilk ciddi aktif-eşzamanlılık hedefi
 Fake/proxy/canary koşumlarından gerçek 1.000 eşzamanlı kullanıcı hazırlığı iddia
 edilmez.
 
-2026-06-18 Windows VM soak özeti: fake lane için en güçlü stabil kanıt **20 aktif
-eşzamanlı kullanıcı / 300 saniye PASS** (418/418 başarı, 0 hata, 0 timeout,
+2026-06-19 Windows VM soak özeti: fake lane için en güçlü stabil kanıt artık **22
+aktif eşzamanlı kullanıcı / 300 saniye PASS** (408/408 başarı, 0 hata, 0 timeout,
 `effective_success_rate=1.000`, `secret_leak=0`, `no_server_crash=TRUE`). 23 aktif
-kullanıcı / 60 saniye PASS olsa da timeout edge'e yakındır; 24 aktif kullanıcı /
-60 saniyede timeout saturasyonu nedeniyle FAIL başlamıştır. Bu sonuç 50/100 kullanıcı
-production throughput veya 1.000 gerçek aktif kullanıcı kanıtı değildir.
+kullanıcı / 60 saniye PASS yalnızca kısa edge kanıtıdır. 24 aktif kullanıcı / 60
+saniye ve 24 aktif kullanıcı / 300 saniye koşuları `effective_success_rate` 0.98
+eşiğinin altına düştüğü için FAIL'dir; 25 aktif kullanıcı / 30 saniye PASS yalnızca
+kısa spike gözlemidir ve sürdürülebilir kapasite olarak sunulmaz. Bu sonuç 50/100
+kullanıcı production throughput veya 1.000 gerçek aktif kullanıcı kanıtı değildir.
 
 ## 8. Dağıtım Öncesi Kapılar
 
