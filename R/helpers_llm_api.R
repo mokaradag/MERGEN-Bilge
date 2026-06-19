@@ -129,17 +129,21 @@ call_local_llm <- function(chat_history, current_settings) {
     api_url
   ))
 
-  response <- tryCatch({
-    httr::POST(
-      url = api_url,
-      body = body,
-      encode = "json",
-      do.call(httr::add_headers, hds),
-      httr::timeout(request_timeout_sec)
-    )
-  }, error = function(e) {
-	  stop(sprintf("API_CONNECTION_ERROR: %s", conditionMessage(e)))
-	})
+  response <- mergen_perf_time(
+    "llm.http_post",
+    tryCatch({
+      httr::POST(
+        url = api_url,
+        body = body,
+        encode = "json",
+        do.call(httr::add_headers, hds),
+        httr::timeout(request_timeout_sec)
+      )
+    }, error = function(e) {
+      stop(sprintf("API_CONNECTION_ERROR: %s", conditionMessage(e)))
+    }),
+    fields = list(model = selected_model, stream = FALSE, timeout_sec = request_timeout_sec)
+  )
 
   if (httr::status_code(response) >= 400) {
     error_content <- try(httr::content(response, "text", encoding = "UTF-8"), silent = TRUE)
@@ -148,7 +152,11 @@ call_local_llm <- function(chat_history, current_settings) {
                  if(!inherits(error_content, "try-error")) substr(error_content, 1, 200) else ""))
   }
 
-  response_content <- httr::content(response, "parsed")
+  response_content <- mergen_perf_time(
+    "llm.parse_response",
+    httr::content(response, "parsed"),
+    fields = list(model = selected_model, status = httr::status_code(response))
+  )
 
   # İçerik ve kaynakları çıkar
   ayristirilmis_yanit <- extract_llm_content_and_sources(
