@@ -37,6 +37,7 @@ As of 2026-06-19, the comparable fake-lane smoke artifact demonstrates a modest 
 4. File context/MCP registry preparation may repeatedly scan or copy session file metadata.
 5. Streaming/promise callback cleanup may add pressure when many requests time out simultaneously.
 6. A single Shiny process may be the long-term architecture limit; do not change deployment before measuring app-path bottlenecks.
+7. **[CONFIRMED for the soak number — static evidence 2026-06-19]** The fake/smoke soak lane is **GET-only** against the app root (`soak_client.R:86,108-110` `httpget=TRUE`; load target `cfg$app_url` per `run_operational_soak_gate.R:235`). It serves the static `dashboardPage` index (`ui.R:7`) by re-serializing the tag tree per request on one httpuv thread, and never opens a websocket session — so it does **not** exercise hypotheses 1–5 (chat/LLM/DB). The 22→24 cliff is single-threaded **index-serving** saturation. Therefore the soak-lane lever is per-request index serialization cost / multi-process serving, *not* DB pooling (which targets real chat sessions). See the session note for the full map and latency math.
 
 ## Planned phases
 
@@ -59,8 +60,82 @@ As of 2026-06-19, the comparable fake-lane smoke artifact demonstrates a modest 
 | 2026-06-19 | Added opt-in `[PERF] db.connection_open/db.connection_close` timing in `R/helpers_db_connection.R`; new `test-db-connection-perf-instrumentation.R`; mirrored perf helper in test bootstrap. | `testthat::test_file("tests/testthat/test-db-connection-perf-instrumentation.R")` | PASS (5 assertions) | Instrumentation only; quantifies per-call ODBC connect/disconnect overhead on the next VM run. No capacity claim. |
 | 2026-06-19 | Restored global maintainability ratchet: reverted `R/server_send_message.R` instrumentation bloat (722→693, broke the 694 cap in commit c10683e) and relocated the 4 send-message segment timers into their prep helpers. | `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`; `test-send-message-maintainability-ratchet.R`; `test-send-message-prompting-contract.R`; `test-send-message-request-lifecycle-contract.R` | PASS (ratchet max file = 694 ≤ 694; 0 fail/warn/skip) | No threshold weakened; profiling value preserved (timers moved, not deleted). |
 | 2026-06-19 | Whole-repo parse + cloud validation gate. | `tests/scripts/parse_sanity_check.R` (839 files); `bash tools/ai_validate.sh cloud-quick` | PASS (parse OK; cloud-quick failed_steps=0, skipped_steps=1) | cloud-quick proves parse + focused contract scope only; NOT app-boot/runtime/browser/VM/DB/SQL-Server/soak. |
+| 2026-06-19 | Soak HTTP-lane bottleneck attribution (analysis only; no code change). | Static request-path map (`run_operational_soak_gate.R:235`, `soak_client.R:86,108-110`, `ui.R:7`, `app.R:145-152`) + latency math vs `artifacts/soak/20260619-153052` | N/A (analysis) | Soak number is single-threaded index-serving bound, not DB-bound; DB pooling won't move it. No capacity claim; no soak artifact produced in cloud. |
 
 ## Session notes
+
+### 2026-06-19 — Phase 1 (cont.): soak HTTP-lane bottleneck attribution (analysis only, no code change, no capacity claim)
+
+Goal of this slice: before implementing any fix, pin down **what the headline soak
+number actually measures**, because the leading fix candidate (DB pooling, Phase 3.5)
+and the soak metric may not be measuring the same path.
+
+Request-path map for the fake/smoke lane (file:line evidence):
+
+- The load driver targets the **app URL**, not the mock LLM:
+  `run_operational_soak_gate.R:235` `load_url <- cfg$app_url`. The mock LLM
+  (`mock_llm_server.R`) only feeds the app's LLM dependency; it is not the load target.
+- For an app-root URL the driver runs in **GET mode**:
+  `soak_client.R:86` `app_http_mode <- !grepl("/v1/chat/completions/?$", url)` and
+  `soak_client.R:108-110` set `httpget = TRUE`. So each request is a plain
+  `GET /?_soak_user=...&_soak_scenario=...&_soak_t=...`.
+- The app has **no `_soak_*` request handler** (repo-wide grep is empty), so those
+  query params are ignored.
+- `ui` is a **static object built once** (`ui.R:7` `ui <- dashboardPage(...)`), passed
+  as `shiny::shinyApp(ui = ui, ...)` (`app.R:145-152`); `onStart` runs once, not per
+  request. There is no custom per-request httpuv handler.
+
+Conclusion (high confidence, static): the fake/smoke HTTP lane measures **single-threaded
+httpuv index-page serving** — Shiny re-serializes the large static `dashboardPage` tag
+tree to HTML on **every** GET. It does **not** open a websocket Shiny session and therefore
+does **not** exercise the server function, chat send, streaming, or the DB write path
+(`finalize_stream_message()` / `get_connection()`), which only run on a real session.
+(The soak doc already states the matching limitation: it does not prove websocket Shiny
+session concurrency — `docs/operational-soak-gate.md` §10/§12.)
+
+Latency math agrees with index-serving saturation, not DB serialization:
+
+- 22 users / 300 s = 408 requests → 1.36 req/s sustained → ~735 ms of single-thread CPU
+  per GET. With 22 in flight on one thread, expected closed-loop latency ≈ 22 × 0.735 ≈
+  16.2 s, matching the observed p50 ≈ 17.0 s and p95 ≈ 18.4 s.
+- The 22→24 behaviour is a classic single-server saturation **cliff**: at 22 the offered
+  load ≈ the service rate (high but stable latency, 0 timeouts in 300 s); at 24 the offered
+  load exceeds the service rate, the queue grows unboundedly, and the 20 s client timeout
+  trips (24/300 s → 334 timeouts). The non-monotonic 25/30 s PASS vs 24/300 s FAIL is the
+  expected "short run doesn't saturate / long run does" signature of a cliff, not real
+  headroom at 25.
+
+Implication for the fix plan (important):
+
+- **DB connection pooling (Phase 3.5) will not move this specific soak number**, because
+  the GET-only lane never touches the DB path. Pooling remains the right, high-leverage fix
+  for **real chat throughput** (websocket sessions running `finalize_stream_message()`), and
+  that work/justification is unchanged — but it should not be expected to raise the
+  24-user **soak** envelope.
+- The lever that *would* move the soak HTTP-lane envelope is reducing **per-request index
+  serialization cost** on the single R thread (e.g., serving a memoized pre-rendered index
+  HTML so each GET is a byte-copy instead of a full `htmltools` re-serialization, or
+  trimming what is inlined per render), and/or **multi-process serving** behind a load
+  balancer (infra). Any index-HTML caching change is Shiny-internals- and SSO-sensitive and
+  must be VM-measured; it was **not** attempted blind from this cloud session.
+
+Why no code change this session: a blind, unmeasured change to the UI-serving or DB path
+would violate the workstream's own honesty rules and the task constraints ("carefully
+tested change", "do not implement [pooling] blind from cloud", "do not claim success
+unless measured"). This cloud session cannot run the soak (no running app at
+`MERGEN_SOAK_APP_URL`; heavy runtime packages unavailable), so it produced **no soak
+artifact and makes no capacity claim**.
+
+VM measurement recipe to confirm the attribution cheaply (no code change required):
+
+1. With the app running, time an **isolated** single GET of the index:
+   `curl -s -o /dev/null -w "%{time_total}\n" "http://127.0.0.1:8009/"` a few times.
+   If a single, uncontended GET already costs on the order of ~0.7 s, index serialization
+   is confirmed as the soak-lane bottleneck (DB is not involved in this path).
+2. Cross-check against a real session: open the app in a browser, send one message with
+   `MERGEN_PERF_LOG=1`, and read the `[PERF] db.connection_open/close` + `[CHAT PERF]`
+   lines. That quantifies the *chat/DB* path separately (the Phase 3.5 target), keeping the
+   two bottlenecks from being conflated.
 
 ### 2026-06-19 — Phase 1: DB-path profiling + ratchet repair
 
@@ -117,6 +192,18 @@ Capacity conclusion: unknown. This session intentionally added measurement hooks
 - Real-canary ERR-234 remains an upstream gateway/admin policy blocker and should stay separate from app-capacity testing.
 
 ## Next recommended step
+
+First, separate the two bottlenecks (they are not the same path — see the
+"soak HTTP-lane bottleneck attribution" session note):
+
+- **To move the 24-user soak number** (GET-only index-serving lane): on the VM, time an
+  isolated single `GET /` (`curl -w "%{time_total}"`). If it is ~0.7 s uncontended, the
+  lever is per-request index serialization (memoize a pre-rendered index HTML, or trim what
+  is inlined per render) and/or multi-process serving — *not* DB pooling. Re-run the soak
+  boundary at 24/26 users only after such a change, and do not weaken any threshold.
+- **To improve real chat throughput** (websocket sessions, the DB write path): proceed with
+  the DB-pooling profiling below. This is valuable on its own merits but is not expected to
+  raise the GET-only soak envelope.
 
 On the production VM (running app), run an attach-mode fake-lane boundary probe with `MERGEN_PERF_LOG=1` at 20, 23, and 24 users:
 
