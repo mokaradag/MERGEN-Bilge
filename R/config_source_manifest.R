@@ -33,6 +33,7 @@ source_manifest_sections <- list(
     "R/utils_text_encoding.R",
     "R/helpers_mailto_encoding.R",
     "R/config_logging.R",
+    "R/helpers_performance_instrumentation.R",
     "R/utils_rate_limiter.R",
     "R/helpers_worker_monitor.R"
   ),

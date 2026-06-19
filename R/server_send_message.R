@@ -78,6 +78,8 @@ sendMessageInit <- function(
 
     # Performans izleme için istek başlangıç zamanını kaydet
     request_start_time <- Sys.time()
+    request_perf_start <- mergen_perf_now()
+    mergen_perf_log("send_message.start", start = request_perf_start)
     log_info(sprintf("[CHAT PERF] send_message giriş yaptı - %.3f sn", 0))
 
     # Hızlı istekleri engelle
@@ -134,6 +136,11 @@ sendMessageInit <- function(
       uploaded_count,
       as.numeric(difftime(Sys.time(), request_start_time, units = "secs"))
     ))
+    mergen_perf_log(
+      "send_message.routed",
+      start = request_perf_start,
+      fields = list(tool_family = tool_family, uploaded_count = uploaded_count)
+    )
 
     pending_chat_title <- NULL
     defer_chat_creation <- is.null(values$current_chat_id) &&
@@ -144,15 +151,19 @@ sendMessageInit <- function(
         settings_data = settings_data
       )
 
-    chat_prepare <- mergen_prepare_send_message_chat(
-      session = session,
-      values = values,
-      user_message_text = user_message_text,
-      tool_family = tool_family,
-      effective_user_id = effective_user_id,
-      request_start_time = request_start_time,
-      defer_chat_creation = defer_chat_creation,
-      generate_title_from_prompt = chat_generate_title_from_prompt
+    chat_prepare <- mergen_perf_time(
+      "send_message.prepare_chat",
+      mergen_prepare_send_message_chat(
+        session = session,
+        values = values,
+        user_message_text = user_message_text,
+        tool_family = tool_family,
+        effective_user_id = effective_user_id,
+        request_start_time = request_start_time,
+        defer_chat_creation = defer_chat_creation,
+        generate_title_from_prompt = chat_generate_title_from_prompt
+      ),
+      fields = list(tool_family = tool_family, deferred = defer_chat_creation)
     )
 
     if (!isTRUE(chat_prepare$ok)) {
@@ -292,11 +303,15 @@ sendMessageInit <- function(
       }
     }
 
-    prompt_plan <- mergen_prepare_send_message_prompting(
-      tool_family = tool_family,
-      uploaded_count = uploaded_count,
-      settings_data = settings_data,
-      messages_to_process = messages_to_process
+    prompt_plan <- mergen_perf_time(
+      "send_message.prompt_plan",
+      mergen_prepare_send_message_prompting(
+        tool_family = tool_family,
+        uploaded_count = uploaded_count,
+        settings_data = settings_data,
+        messages_to_process = messages_to_process
+      ),
+      fields = list(tool_family = tool_family, uploaded_count = uploaded_count)
     )
 
     messages_to_process <- prompt_plan$messages_to_process
@@ -352,18 +367,22 @@ sendMessageInit <- function(
       return(invisible(NULL))
 
     } else {
-      context_plan <- mergen_build_uploaded_files_context_messages(
-        tool_family = tool_family,
-        uploaded_count = uploaded_count,
-        uploaded_names = uploaded_names,
-        recent_messages = recent_messages,
-        system_msg = system_msg,
-        session = session,
-        messages_to_process = messages_to_process,
-        # Vision (görsel anlama) yalnızca bayrak + model yeteneği açıkken devreye
-        # girer; aksi halde metin yolu birebir korunur.
-        model_selected = model_selected,
-        api_config = api_config
+      context_plan <- mergen_perf_time(
+        "send_message.file_context",
+        mergen_build_uploaded_files_context_messages(
+          tool_family = tool_family,
+          uploaded_count = uploaded_count,
+          uploaded_names = uploaded_names,
+          recent_messages = recent_messages,
+          system_msg = system_msg,
+          session = session,
+          messages_to_process = messages_to_process,
+          # Vision (görsel anlama) yalnızca bayrak + model yeteneği açıkken devreye
+          # girer; aksi halde metin yolu birebir korunur.
+          model_selected = model_selected,
+          api_config = api_config
+        ),
+        fields = list(tool_family = tool_family, uploaded_count = uploaded_count)
       )
 
       messages_to_process <- context_plan$messages_to_process
@@ -418,15 +437,19 @@ sendMessageInit <- function(
     current_settings$api_key_override <- api_key_val
     current_settings$api_key_source <- api_key_plan$source %||% "unknown"
 
-    mcp_registry_info <- mergen_prepare_mcp_session_files(
-      session = session,
-      file_manager_data = file_manager_data,
-      uploaded_names = uploaded_names,
-      effective_user_id = effective_user_id,
-      current_settings = current_settings,
-      cache_mcp_file_locally_fn = cache_mcp_file_locally_fn,
-      update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot_fn,
-      tool_family = tool_family
+    mcp_registry_info <- mergen_perf_time(
+      "send_message.mcp_prepare",
+      mergen_prepare_mcp_session_files(
+        session = session,
+        file_manager_data = file_manager_data,
+        uploaded_names = uploaded_names,
+        effective_user_id = effective_user_id,
+        current_settings = current_settings,
+        cache_mcp_file_locally_fn = cache_mcp_file_locally_fn,
+        update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot_fn,
+        tool_family = tool_family
+      ),
+      fields = list(tool_family = tool_family, uploaded_count = uploaded_count)
     )
 
     mcp_snapshot <- mcp_registry_info$mcp_snapshot
@@ -475,6 +498,12 @@ sendMessageInit <- function(
 	if (isTRUE(force_non_streaming_sql)) {
 	  log_debug("[MONITORING] SQL analizi için düşünmeli model tespit edildi; streaming kapatılıp non-streaming kullanılacak")
 	}
+
+    mergen_perf_log(
+      "send_message.llm_ready",
+      start = request_perf_start,
+      fields = list(tool_family = tool_family, stream_profile = stream_profile$label, model = model_selected)
+    )
 
     log_info(sprintf(
       "[CHAT PERF] LLM isteği hazırlanıyor - yol=%s, profil=%s, gecen=%.3f sn",
