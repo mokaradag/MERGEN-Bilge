@@ -449,57 +449,144 @@ kanıtları `MERGEN_SOAK_PROFILE=smoke`, `MERGEN_SOAK_LLM_MODE=fake`, fake LLM
 endpoint'i `/v1/chat/completions`, kullanıcı tabanı hedefi `1000`, kapasite
 ramp'i kapalı ve etkin başarı eşiği `0.98` ile alınmıştır.
 
-### Fake-lane kapasite sınırı
+### Fake-lane kapasite sınırı ve index-cache sonrası durum
 
-19 Haziran 2026 itibarıyla fake-LLM smoke operasyonel soak kapısında mütevazı
-bir kapasite/performance iyileşmesi gözlenmiştir: **22 aktif eşzamanlı kullanıcı
-/ 300 saniye PASS** artık en güçlü sürdürülebilir fake-lane kanıtıdır; **23 aktif
-eşzamanlı kullanıcı / 60 saniye PASS** ise yalnızca kısa süreli sınır kanıtıdır.
-**24 aktif eşzamanlı kullanıcı ve üzeri**, `effective_success_rate` 0.98 eşiğinin
-altına düştüğü için bu smoke/fake seridin belgelenmiş güvenilir işletim zarfının
-dışındadır. **25 aktif eşzamanlı kullanıcı / 30 saniye PASS** yalnızca kısa spike
-gözlemi olarak kaydedilir; sürdürülebilir kapasite diye belgelenmemelidir.
+19 Haziran 2026 günü index/root-page caching optimizasyonundan **önce** fake-LLM
+smoke operasyonel soak kapısında en güçlü sürdürülebilir kanıt **22 aktif
+eşzamanlı kullanıcı / 300 saniye PASS** idi. Bu tarihsel baseline korunur:
+24 aktif eşzamanlı kullanıcı ve üzeri, pre-cache koşullarda `effective_success_rate`
+0.98 eşiğinin altına düştüğü için bu smoke/fake şeridin belgelenmiş güvenilir
+işletim zarfının dışındaydı. 25 aktif eşzamanlı kullanıcı / 30 saniye PASS ise
+yalnızca kısa spike gözlemi olarak kaydedilir; sürdürülebilir kapasite diye
+belgelenmemelidir.
+
+Index-cache optimizasyonundan **sonra** VM konsolunda bildirilen en güçlü gözlem,
+smoke/fake modda **1000 aktif eşzamanlı kullanıcı / 420 saniye PASS** koşusudur
+(`artifacts/soak/20260619-205535/soak_evidence.json`, p95 yaklaşık 8377.8 ms,
+0 hata, 0 timeout). Bu repo çalışma kopyasında `artifacts/soak/...` dizini
+bulunmadığı için aşağıdaki yeni 20:44-21:04 koşuları **VM console observed**
+olarak işaretlenmiştir; artifact JSON dosyaları VM'den eklendiğinde değerler JSON
+ile yeniden doğrulanmalıdır.
+
+#### Tarihsel pre-index-cache fake-lane baseline
 
 | Aktif eşzamanlı kullanıcı | Süre | Sonuç | Not |
 |---:|---:|---|---|
 | 10 | 30 sn | PASS | 2026-06-18 short smoke sanity; `MERGEN_SOAK_DURATION_SECONDS` override doğrulandı. |
 | 15 | 60 sn | PASS | 2026-06-18 kısa VM sanity için temiz kanıt. |
 | 20 | 300 sn | PASS | 2026-06-18 önceki stabil kanıt: 418 istek, 418 başarı, 0 hata, 0 timeout, `effective_success_rate=1.000`. |
-| 22 | 300 sn | PASS | **2026-06-19 en güçlü sürdürülebilir fake-lane kanıtı:** `artifacts/soak/20260619-153052/soak_evidence.json`; 408 istek, 408 başarı, 0 hata, 0 timeout, `effective_success_rate=1.000`, `raw_success_rate=1.000`, p50/p95/p99 = 16983.3/18386.2/18791.0 ms, throughput 81.4 istek/dk, `secret_leak=0`, `no_server_crash=TRUE`. |
+| 22 | 300 sn | PASS | **Tarihsel pre-index-cache sürdürülebilir fake-lane kanıtı:** `artifacts/soak/20260619-153052/soak_evidence.json`; 408 istek, 408 başarı, 0 hata, 0 timeout, `effective_success_rate=1.000`, `raw_success_rate=1.000`, p50/p95/p99 = 16983.3/18386.2/18791.0 ms, throughput 81.4 istek/dk, `secret_leak=0`, `no_server_crash=TRUE`. |
 | 23 | 60 sn | PASS | 2026-06-19 kısa sınır kanıtı: `artifacts/soak/20260619-152901/soak_evidence.json`; 100 istek, 100 başarı, 0 hata, 0 timeout, `effective_success_rate=1.000`, p50/p95/p99 = 16784.2/18948.5/19362.5 ms, throughput 100 istek/dk. |
-| 24 | 60 sn | FAIL | 2026-06-19 guardrail: `artifacts/soak/20260619-152715/soak_evidence.json`; 98 istek, 88 başarı, 10 timeout, `effective_success_rate=0.898` < 0.98. |
-| 24 | 300 sn | FAIL | 2026-06-19 guardrail: `artifacts/soak/20260619-153656/soak_evidence.json`; 383 istek, 49 başarı, 334 timeout, `effective_success_rate=0.1279` < 0.98. |
+| 24 | 60 sn | FAIL | 2026-06-19 pre-cache guardrail: `artifacts/soak/20260619-152715/soak_evidence.json`; 98 istek, 88 başarı, 10 timeout, `effective_success_rate=0.898` < 0.98. |
+| 24 | 300 sn | FAIL | 2026-06-19 pre-cache guardrail: `artifacts/soak/20260619-153656/soak_evidence.json`; 383 istek, 49 başarı, 334 timeout, `effective_success_rate=0.1279` < 0.98. |
 | 25 | 30 sn | PASS | 2026-06-19 kısa spike gözlemi: `artifacts/soak/20260619-145315/soak_evidence.json`; 65 istek, 65 başarı, 0 hata, 0 timeout, throughput yaklaşık 129.4 istek/dk. **Sürdürülebilir kapasite kanıtı değildir.** |
-| 26 | 30 sn | FAIL | 2026-06-19 guardrail: `artifacts/soak/20260619-152033/soak_evidence.json`; 561 istek, 12 başarı, 549 hata, `effective_success_rate=0.0214` < 0.98. |
+| 26 | 30 sn | FAIL | 2026-06-19 pre-cache guardrail: `artifacts/soak/20260619-152033/soak_evidence.json`; 561 istek, 12 başarı, 549 hata, `effective_success_rate=0.0214` < 0.98. |
 | 30 | 60 sn | FAIL | 2026-06-18 timeout saturasyonu. |
 | 100 | 30 sn | FAIL | 2026-06-18 timeout saturasyonu; kapasite iddiası değildir. |
 
-22/300 sn ve 23/60 sn PASS koşularında doğruluk/güvenlik kontrolleri temizdir:
+22/300 sn ve 23/60 sn PASS koşularında doğruluk/güvenlik kontrolleri temizdi:
 anahtar yönlendirme 5/5, upload validation 7/7, encoding round-trip pass rate 1,
 cross-session key isolation `TRUE`, secret leak 0, server crash yok,
 `mojibake_hits=0`, redaction verified `TRUE`. `temp_growth_mb` yaklaşık 0.31 MB
-ile PASS'tir. `memory_growth_mb` ve `browser_console_errors` bu koşularda
+ile PASS'ti. `memory_growth_mb` ve `browser_console_errors` bu koşularda
 `UNMEASURED` olduğundan ölçülmüş PASS olarak sunulmamalıdır.
 
-Önerilen işletim yorumu:
+### 2026-06-19 Windows VM Post-Index-Cache Soak Results
 
-- Günlük hızlı sanity: **10 aktif kullanıcı / 30 saniye**.
-- Daha güçlü VM sanity: **15 aktif kullanıcı / 60 saniye**.
-- Mevcut güvenli test edilmiş fake-lane kapasite: **22 aktif eşzamanlı kullanıcı / 300 saniye PASS**.
-- Kısa edge gözlemi: **23 aktif eşzamanlı kullanıcı / 60 saniye PASS**; sustained kapasite diye sunulmaz.
-- Başlayan failure bölgesi: **24 aktif eşzamanlı kullanıcı ve üzeri FAIL** (`effective_success_rate` 0.98 eşiğinin altına düşer).
+#### Root-page GET `/` cold-build / warm-cache timing
+
+Root timing reproduction command on the production Windows VM:
+
+```powershell
+curl.exe -w "%{time_total}`n" -o NUL -s http://127.0.0.1:8009/
+```
+
+| Metric | Before | After | Interpretation |
+|---|---:|---:|---|
+| GET `/` isolated median | ~0.64 s | ~0.007 s warm cache | ~80x-90x faster warm root-page response. |
+| Cold index render | not separately logged | 740 ms `cache=miss_build` | First render/build still expensive, then cached. |
+| Warm root-page requests | ~0.62-0.67 s | ~0.006-0.008 s | Index cache removes repeated serialization cost. |
+
+Post-cache VM console timings for repeated isolated `GET /` were:
+`0.014524`, `0.006657`, `0.007306`, `0.008227`, `0.008083`, `0.007448`,
+`0.006910`, `0.006994`, `0.007290`, `0.006726`, `0.007211`, `0.008023`,
+`0.007856`, `0.006822`, `0.006620`, `0.007287`, `0.006228`. The first request
+was about 14.5 ms; warm repeated requests were mostly 6-8 ms with a median near
+7 ms. The observed log line `[PERF] event=index_render elapsed_ms=740
+cache=miss_build bytes=311206` shows the cold-build cost remains about 740 ms,
+while subsequent root-page requests appear to be served from cache very quickly.
+
+#### Post-index-cache soak table
+
+Because this repository checkout does not contain `artifacts/soak/`, the following
+rows are documented from VM console output and must be treated as **VM console
+observed** until the listed `soak_evidence.json` files are copied into the repo and
+verified.
+
+| Artifact path | Profile / mode / LLM | Concurrent users / duration | Result | Requests / success / errors / timeouts | p50 / p95 / p99 ms | Throughput |
+|---|---|---:|---|---:|---:|---:|
+| `artifacts/soak/20260619-204455/soak_evidence.json` (VM console observed; JSON not present in this checkout) | smoke / serial / fake | 1000 / 30 s | PASS | 4393 / 4393 / 0 / 0 | 7069.6 / 9427.6 / 9683.7 | 8532.4/min |
+| `artifacts/soak/20260619-204704/soak_evidence.json` (VM console observed; JSON not present in this checkout) | smoke / serial / fake | 250 / 420 s | PASS | 56157 / 56157 / 0 / 0 | 1763.0 / 1983.8 / 2134.6 | 8016.8/min |
+| `artifacts/soak/20260619-205535/soak_evidence.json` (VM console observed; JSON not present in this checkout) | smoke / serial / fake | 1000 / 420 s | PASS | 55652 / 55652 / 0 / 0 | 7156.4 / 8377.8 / 8859.8 | 7931.4/min |
+| `artifacts/soak/20260619-210427/soak_evidence.json` (VM console observed; JSON not present in this checkout) | stress / serial / proxy | final summary | PASS | 16077 / 16077 / 0 / 0 | 277.8 / 734.5 / 803.7 | 8029.2/min |
+
+Guardrails reported PASS for these post-cache VM console observations:
+`effective_success_rate=1`, `raw_success_rate=1`, `mojibake_hits=0`,
+`encoding_roundtrip_pass_rate=1`, `key_routing_correct=5/5`,
+`cross_session_key_isolation=TRUE`, `upload_validation_correct=7/7`,
+`secret_leak=0`, `no_server_crash=TRUE`, and `temp_growth_mb=0.31`. Keep
+`memory_growth_mb` and `browser_console_errors` explicitly **UNMEASURED**; they are
+not clean PASS evidence.
+
+The proxy/stress ramp in `artifacts/soak/20260619-210427/soak_evidence.json` was
+also VM console observed as: 10 users / 30 s -> 3970 requests, 3970 success,
+p95=81.9 ms, throughput=7940/min; 25 users / 30 s -> 4007 requests, 4007 success,
+p95=196.9 ms, throughput=8014/min; 50 users / 30 s -> 4047 requests, 4047 success,
+p95=389.5 ms, throughput=8094/min; 100 users / 30 s -> 4053 requests, 4053 success,
+p95=793.5 ms, throughput=8106/min.
+
+Operational soak reproduction uses the existing documented command pattern:
+
+```bash
+Rscript tests/scripts/run_operational_soak_gate.R
+```
+
+Set the documented `MERGEN_SOAK_PROFILE`, `MERGEN_SOAK_LLM_MODE`, duration,
+concurrency, attach URL, and ramp environment variables as needed; do not treat
+fake/proxy lanes as real LLM generation evidence.
+
+#### What this proves / does not prove
+
+These post-index-cache observations **prove** or strongly support, subject to JSON
+artifact verification where noted:
+
+- Warm `GET /` root-page serving improved dramatically.
+- The previous root-page/index serialization bottleneck was real.
+- The operational fake-lane soak envelope is now much larger than the earlier
+  22-user sustained baseline.
+- VM evidence now includes PASS observations at 250 concurrent users for 420 s and
+  1000 concurrent users for 420 s in smoke/fake mode, subject to artifact JSON
+  verification.
+- Proxy/stress ramp showed low p95 at 10/25/50/100 users and a final p95 around
+  734.5 ms.
+
+These observations **do not prove**:
+
+- Real upstream LLM/model generation is faster.
+- Browser console errors are clean, because `browser_console_errors` remains
+  `UNMEASURED`.
+- Memory growth is proven clean, because `memory_growth_mb` remains `UNMEASURED`.
+- Production capacity for arbitrary real-user workloads is 1000 concurrent human
+  chat sessions.
+- DB pooling is unnecessary forever; only that current evidence does not show DB
+  open/close as the dominant bottleneck.
+
+Keep the distinction between the soak/index-serving path and the real chat/LLM path:
+pre-cache `GET /` was about 0.64 s and explained the 22-user p50/p95 cliff; after
+index caching, warm `GET /` is about 7 ms and high-concurrency fake-lane soak passes.
+Real chat still needs separate browser/session/LLM evidence.
 
 ### Proxy-lane ve stress bulguları
-
-Proxy lane ve stress/capacity-curve denemeleri anahtar yönlendirme ve izolasyon
-kontrollerinin çalıştığını doğruladı. Proxy/stress kapasite eğrisinde 10 kullanıcı
-makul görünürken 25+ kullanıcı timeout saturasyonuna girdi; 50 ve 100 kullanıcı
-badly saturated olarak gözlendi. Bu sonuçlar normal smoke başarısızlığı değil,
-bilinçli stress/failure probe olarak yorumlanmalıdır.
-
-Pozitif kontroller: `key_routing_correct=PASS`, `cross_session_key_isolation=PASS`,
-`upload_validation_correct=PASS`, `secret_leak=0`, uygulanabilir koşularda
-`no_server_crash=TRUE`.
 
 ### Real-canary gateway blocker
 
@@ -540,9 +627,10 @@ Bu koşumlar **kanıtlar**:
 
 - Operasyonel soak gate Windows VM'de çalışır.
 - Attach mode, çalışan uygulama köküne HTTP üzerinden ulaşır.
-- Fake LLM lane, 22 aktif eşzamanlı kullanıcıyı 5 dakika boyunca sıfır hata ve
-sıfır timeout ile sürdürebilir; 23 aktif kullanıcı yalnızca 60 saniyelik kısa edge
-kanıtıdır.
+- Pre-index-cache fake LLM lane, 22 aktif eşzamanlı kullanıcıyı 5 dakika boyunca sıfır hata ve
+sıfır timeout ile sürdürebiliyordu; index-cache sonrası VM console observed fake-lane
+kanıtı 250 ve 1000 aktif kullanıcıyı 420 saniye boyunca PASS olarak raporlar, artifact
+JSON doğrulaması beklenir.
 - Key routing, cross-session key isolation, upload validation, secret-redaction
 kontrolleri ve encoding helper kontrolleri geçti.
 
