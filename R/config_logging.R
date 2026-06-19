@@ -44,15 +44,64 @@ if (!dir.exists(mergen_log_dir)) {
 library(logger)
 log_threshold(resolve_mergen_log_threshold())
 
-# Hem konsola hem dosyaya log yaz
-log_file_path <- file.path(
-  mergen_log_dir,
-  sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d"))
-)
+# --- GÜNLÜK LOG DOSYASI ÇÖZÜMLEME (TARİH-DUYARLI) ---
+# Tarih her log satırında yeniden çözülür. Bu, Haziran regresyonunun iki olası
+# kök nedenini birden kapatır:
+#   1) Her yeniden başlatma o günün mergen_YYYYMMDD.log dosyasını oluşturur.
+#   2) Uzun süre açık kalan üretim süreci gece yarısını geçince otomatik olarak
+#      yeni güne ait dosyaya yazmaya başlar; başlangıç tarihindeki eski dosyada
+#      takılı kalmaz (son log 12.06 saat 23:51'de kalmıştı).
+# Testler tarihi mergen.log.date_provider option'ı ile enjekte edebilir.
+current_mergen_log_date <- function() {
+  date_provider <- getOption("mergen.log.date_provider", NULL)
+  current_date <- if (is.function(date_provider)) date_provider() else Sys.Date()
+  if (inherits(current_date, "Date")) {
+    return(current_date[1])
+  }
+  as.Date(current_date[1])
+}
+
+current_mergen_log_file_path <- function() {
+  file.path(
+    mergen_log_dir,
+    sprintf("mergen_%s.log", format(current_mergen_log_date(), "%Y%m%d"))
+  )
+}
+
+# Geriye dönük uyumluluk: bazı testler/çağıranlar log_file_path değişkenini okur.
+log_file_path <- current_mergen_log_file_path()
+
+# Hem konsola hem dosyaya log yaz.
+# Bu appender, logger::appender_file ile AYNI yazım anlamını korur
+# (cat(lines, sep = "\n", append = TRUE)); böylece dosya içeriği, kodlaması ve
+# satır ayrımı eskisiyle bayt-bayt aynı kalır. Eklenen tek fark üç üretim
+# güvenilirliği iyileştirmesidir:
+#   1) Hedef dosya her satırda güncel tarihe göre yeniden çözülür (günlük devir).
+#   2) Log dizini her yazımdan önce garanti edilir (UNC/ağ paylaşımı dayanıklılığı).
+#   3) Yazma hatası SESSİZCE yutulmaz; konsola bildirilir; böylece bir paylaşım
+#      hatası günlerce fark edilmeden log üretimini durduramaz.
+# Not: cat() bir useBytes argümanı KABUL ETMEZ (o writeLines'a aittir); bu yüzden
+# burada kullanılmaz. Konsol native-dönüşümü ayrı appender'da yapılır.
+mergen_daily_file_appender <- function(lines) {
+  if (!dir.exists(mergen_log_dir)) {
+    dir.create(mergen_log_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+
+  target_file <- current_mergen_log_file_path()
+  tryCatch(
+    cat(lines, sep = "\n", file = target_file, append = TRUE),
+    error = function(e) {
+      message(sprintf(
+        "[MERGEN LOGGING ERROR] Gunluk log dosyasina yazilamadi (%s): %s",
+        target_file, conditionMessage(e)
+      ))
+    }
+  )
+}
 
 # Çoklu appender yapılandırması
 # Dosya logu düz metin olmalı
-log_appender(appender_file(log_file_path), index = 1)
+log_appender(mergen_daily_file_appender, index = 1)
 log_layout(layout_glue, index = 1)
 
 # Konsol renkleri üretimde varsayılan kapalıdır.
@@ -138,6 +187,9 @@ log_debug <- function(msg, ...) {
 }
 
 log_info("Application starting up...")
+# Çözülen log dosyası yolunu açıkça yaz: hem konsolda hem dosyada görünür, böylece
+# logların hangi dizine yazıldığı (UNC/yerel) hiçbir zaman belirsiz kalmaz.
+log_info("Gunluk log dosyasi (mergen_YYYYMMDD.log): {log_file_path}")
 
 # --- GLOBAL HATA YAKALAYICI ---
 # Süreç başına bir kez tanımlanır; argümansız çağrıları da tolere eder
@@ -181,9 +233,11 @@ shiny_error_handler <- function(e = NULL) {
 options(shiny.error = shiny_error_handler)
 
 # --- DEBUG DUMPER (logs/ai_debug_YYYYMMDD.log) ---
+# Geriye dönük uyumluluk için değişken tanımlı kalır; gerçek yazım hedefi her
+# çağrıda güncel tarihe göre yeniden çözülür (mergen log'u ile aynı günlük devir).
 dbg_log_path <- file.path(
   mergen_log_dir,
-  sprintf("ai_debug_%s.log", format(Sys.Date(), "%Y%m%d"))
+  sprintf("ai_debug_%s.log", format(current_mergen_log_date(), "%Y%m%d"))
 )
 
 dbg_dump <- function(label, payload) {
@@ -201,7 +255,11 @@ dbg_dump <- function(label, payload) {
       sprintf("[%s] %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), label),
       payload_json,
       "\n---\n",
-      file = dbg_log_path, append = TRUE
+      file = file.path(
+        mergen_log_dir,
+        sprintf("ai_debug_%s.log", format(current_mergen_log_date(), "%Y%m%d"))
+      ),
+      append = TRUE
     )
   }, silent = TRUE)
 }
