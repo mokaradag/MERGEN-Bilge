@@ -149,6 +149,10 @@ mergen_prepare_mcp_session_files <- function(
   update_mcp_registry_snapshot_fn,
   tool_family
 ) {
+  # Opsiyonel performans ölçümü (yalnızca MERGEN_PERF_LOG açıkken aktiftir).
+  .perf_start <- if (exists("mergen_perf_now", mode = "function", inherits = TRUE)) mergen_perf_now() else NULL
+  if (!is.null(.perf_start)) on.exit(mergen_perf_log("send_message.mcp_prepare", .perf_start), add = TRUE)
+
   if (!(identical(tool_family, "mcp_excel") && length(uploaded_names) > 0)) {
     # MCP dışı yollarda current_session_files temizlenmez.
     # Aynı store görsel anlama (vision) tarafından da kullanılır; burada

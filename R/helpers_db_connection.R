@@ -20,6 +20,21 @@ if (!exists("resolve_db_client_encoding", mode = "function", inherits = TRUE) ||
   )
 }
 
+# ------------------------------------------------------------------------------
+# Hafif, opsiyonel performans olcum kancasi (yalnizca MERGEN_PERF_LOG=1 /
+# options(mergen.perf_log=TRUE) iken aktiftir). Performans yardimcisi
+# yuklenmemisse (izole testler / cloud-quick bootstrap) sessizce devre disi
+# kalir. Havuzlama olmadan her cagri yeni bir ODBC baglantisi acip kapattigi
+# icin bu kanca, ana Shiny dongusunde olusan baglanti kurma/kapatma suresinin
+# olculmesini saglar. Olcum kapaliyken ek maliyet ihmal edilebilir.
+# ------------------------------------------------------------------------------
+.db_perf_log <- function(event, start = NULL, fields = list()) {
+  if (exists("mergen_perf_log", mode = "function", inherits = TRUE)) {
+    try(mergen_perf_log(event, start = start, fields = fields), silent = TRUE)
+  }
+  invisible(NULL)
+}
+
 .DEFAULT_DSN <- Sys.getenv("DB_DSN", "TestConnection")
 
 get_pool_info <- function() {
@@ -85,6 +100,7 @@ get_connection <- function(target = "primary") {
     )
 
     if (!is.null(pool_obj) && inherits(pool_obj, "Pool")) {
+      .db_perf_log("db.connection_open", fields = list(target = target, pooled = TRUE))
       return(list(conn = pool_obj, pooled = TRUE, pool = pool_obj))
     }
   }
@@ -106,12 +122,15 @@ get_connection <- function(target = "primary") {
     )
   }
 
+  conn_start <- proc.time()[["elapsed"]]
   conn <- DBI::dbConnect(
     odbc::odbc(),
     dsn = dsn_name,
     encoding = .DEFAULT_DB_CLIENT_ENCODING,
     name_encoding = .DEFAULT_DB_NAME_ENCODING
   )
+  .db_perf_log("db.connection_open", start = conn_start,
+               fields = list(target = target, pooled = FALSE))
 
   list(conn = conn, pooled = FALSE, pool = NULL)
 }
@@ -124,7 +143,9 @@ release_connection <- function(conn_info) {
   }
 
   tryCatch({
+    close_start <- proc.time()[["elapsed"]]
     DBI::dbDisconnect(conn_info$conn)
+    .db_perf_log("db.connection_close", start = close_start, fields = list(pooled = FALSE))
   }, error = function(e) {
     invisible(NULL)
   })
