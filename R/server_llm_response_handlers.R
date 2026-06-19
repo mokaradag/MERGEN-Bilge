@@ -261,17 +261,12 @@ llmResponseHandlersInit <- function(
             }
           }
  
-          # Takip soruları oluştur (helpers_followup_questions.R)
-          followup_questions <- build_followup_suggestions(
-            last_user_text,
-            result$content,
-            settings_data,
-            session,
-            api_config,
-            followup_tools,
-            fallback_followup_tool
-          )
- 
+          # Takip (followup) önerileri AI yanıtının render'ından SONRA, bloklamayan
+          # bir later() döngüsünde üretilir (aşağıya bakınız). build_followup_suggestions()
+          # AI üreticisinde senkron bir LLM çağrısı (call_local_llm) yapabilir; bu
+          # çağrı eskiden add_message_fn'den ÖNCE çalıştığı için akıcı-olmayan/TTS/MCP
+          # yanıtlarında TÜM cevabın görünmesini geciktiriyordu.
+
           # Worker tarafında toplanan akıl yürütme (reasoning) metnini çıkar;
           # MB_Messages.ReasoningContent sütununa düşen veri bu alandır.
           reasoning_for_db <- tryCatch({
@@ -300,7 +295,7 @@ llmResponseHandlersInit <- function(
             ai_msg <- add_message_fn(
               result$content,
               "ai",
-              followups = followup_questions,
+              followups = NULL,
               reasoning_content = reasoning_for_render
             )
           }, error = function(e) {
@@ -349,6 +344,34 @@ llmResponseHandlersInit <- function(
           }, error = function(e) {
             print(paste("Logging error:", e$message))
           })
+
+          # Takip önerilerini yanıt render'ından SONRA, bloklamayan bir later()
+          # döngüsünde üret ve push et. Böylece AI cevabı (ve TTS) hemen görünür;
+          # senkron takip LLM çağrısı artık kritik yolun DIŞINDADIR. Sözleşme:
+          # tarayıcı followup_container'ı talep üzerine oluşturur
+          # (updateFollowupSuggestions), bu yüzden mesaj önerilerden önce eklenebilir.
+          if (!is.null(ai_msg) && !is.null(ai_msg$id)) {
+            followup_target_id <- ai_msg$id
+            followup_ai_text <- result$content
+            later::later(function() {
+              followup_perf_start <- mergen_perf_now()
+              followup_questions <- tryCatch(
+                build_followup_suggestions(
+                  last_user_text, followup_ai_text, settings_data, session,
+                  api_config, followup_tools, fallback_followup_tool
+                ),
+                error = function(e) NULL
+              )
+              mergen_perf_log("nonstream.followups", start = followup_perf_start,
+                              fields = list(count = length(followup_questions %||% character(0))))
+              if (!is.null(followup_questions) && length(followup_questions) > 0) {
+                try(
+                  push_followup_update(session, followup_target_id, followup_questions, pending = FALSE),
+                  silent = TRUE
+                )
+              }
+            }, delay = 0)
+          }
 
           # NOT: reset_chat_state_fn() burada kaldırıldı, finally bloğunda çağrılacak
 
