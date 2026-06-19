@@ -435,3 +435,16 @@ ui <- dashboardPage(
     )
   )
 )
+
+# --- KÖK SAYFA (GET /) HTML ÖNBELLEKLEME (PERFORMANS) ---
+# Yukarıdaki `ui` tamamen STATİK bir Shiny etiket nesnesidir (önyüklemede bir
+# kez kurulur, her istek/kullanıcı için aynıdır, bookmark kullanılmaz). Shiny
+# yine de her GET / isteğinde tüm etiket ağacını HTML'e yeniden serileştirir
+# (üretim VM'inde boşta ~0.64 sn/GET /). Aşağıdaki sarmalayıcı, kök sayfayı ilk
+# istekte bir kez render edip httpResponse'u önbelleğe alır; sonraki istekler
+# serileştirme olmadan sunulur. Render başarısız olursa statik UI'ye güvenli
+# biçimde geri döner (mevcut davranışla bayt-bayt aynı) ve MERGEN_CACHE_INDEX_HTML
+# bayrağıyla kapatılabilir. Ayrıntılar: R/helpers_index_page_cache.R.
+if (exists("mergen_build_index_ui", mode = "function")) {
+  ui <- mergen_build_index_ui(ui)
+}
