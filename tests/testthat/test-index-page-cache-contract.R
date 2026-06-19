@@ -42,6 +42,20 @@ test_that("önbellek kapalı iken statik UI nesnesi DEĞİŞMEDEN korunur", {
   expect_identical(result, static_ui)
 })
 
+test_that("dinamik UI fonksiyonu önbellek sarmalayıcısına alınmadan korunur", {
+  env <- .index_cache_env()
+  dynamic_ui <- function(req) list(marker = "DINAMIK_UI", req = req)
+
+  result <- env$mergen_build_index_ui(
+    dynamic_ui,
+    enabled = TRUE,
+    render_page_fn = function(...) stop("dinamik UI renderPage ile render edilmemeli")
+  )
+
+  expect_identical(result, dynamic_ui)
+  expect_identical(result(list(PATH_INFO = "/"))$marker, "DINAMIK_UI")
+})
+
 test_that("önbellek açık iken ui bir function(req) olur ve ilk render önbeklenir", {
   skip_if_not_installed("shiny")
   env <- .index_cache_env()

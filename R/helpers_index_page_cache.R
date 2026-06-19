@@ -57,6 +57,14 @@ mergen_resolve_render_page_fn <- function() {
 mergen_build_index_ui <- function(static_ui,
                                   enabled = mergen_index_html_cache_enabled(),
                                   render_page_fn = NULL) {
+  if (is.function(static_ui)) {
+    # Shiny, dinamik `function(req)` UI sözleşmesini zaten doğrudan destekler.
+    # Bu yardımcı yalnızca statik etiket ağacını önbelleğe almak içindir; bir
+    # UI fonksiyonunu renderPage()'e statik etiket gibi vermek yeni Shiny/htmltools
+    # sürümlerinde "closure -> character" serileştirme hatasına düşebilir.
+    return(static_ui)
+  }
+
   if (!isTRUE(enabled)) {
     return(static_ui)
   }
