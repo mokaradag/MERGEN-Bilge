@@ -16,20 +16,33 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 Aşağıdaki bölüm, güncel değişiklik notlarını kronolojik/tematik bakım izi kaybolmadan izler.
 
-### 2026-06-19 operasyonel soak fake-lane kapasite notu
+### 2026-06-19 Windows VM post-index-cache operasyonel soak notu
 
-Fake-LLM `smoke` operasyonel soak kapısında küçük bir iyileşme belgelendi.
-`MERGEN_SOAK_PROFILE=smoke`, `MERGEN_SOAK_LLM_MODE=fake`, hedef
-`http://127.0.0.1:8009/`, endpoint `/v1/chat/completions`, kullanıcı tabanı
-hedefi `1000`, kapasite ramp'i kapalı ve `effective_success_rate >= 0.98` eşiği
-ile alınan son kanıtlarda 22 aktif eşzamanlı kullanıcı / 300 saniye PASS
-(`artifacts/soak/20260619-153052/soak_evidence.json`) ve 23 aktif eşzamanlı
-kullanıcı / 60 saniye PASS (`artifacts/soak/20260619-152901/soak_evidence.json`)
-görüldü. 24 aktif kullanıcı / 60 saniye ve 24 aktif kullanıcı / 300 saniye
-koşuları eşik altında kaldığı için FAIL'dir; 25 aktif kullanıcı / 30 saniye PASS
-yalnızca kısa spike gözlemidir ve sürdürülebilir kapasite olarak sunulmaz.
-`memory_growth_mb` ve `browser_console_errors` bu koşularda `UNMEASURED` kaldığı
-için ölçülmüş PASS olarak yorumlanmaz.
+Root-page/index caching optimizasyonu sonrası Windows VM konsolunda izole
+`GET /` timing'i pre-cache yaklaşık 0.64 saniyeden warm cache yaklaşık 0.006-0.008
+saniyeye düştü; cold build hâlâ `[PERF] event=index_render elapsed_ms=740
+cache=miss_build bytes=311206` olarak gözlendi. Reproduction komutu:
+``curl.exe -w "%{time_total}`n" -o NUL -s http://127.0.0.1:8009/``.
+
+Tarihsel pre-index-cache fake-lane kanıtı 22 aktif eşzamanlı kullanıcı / 300 saniye
+PASS idi (`artifacts/soak/20260619-153052/soak_evidence.json`). Index-cache sonrası
+VM console observed en güçlü fake-lane gözlem artık 1000 aktif eşzamanlı kullanıcı /
+420 saniye PASS'tir (`artifacts/soak/20260619-205535/soak_evidence.json`, p95=8377.8
+ms, throughput=7931.4/dk, 0 hata, 0 timeout). Ayrıca 250 aktif kullanıcı / 420 saniye
+PASS (`artifacts/soak/20260619-204704/soak_evidence.json`, p95=1983.8 ms,
+throughput=8016.8/dk), 1000 kullanıcı / 30 saniye PASS
+(`artifacts/soak/20260619-204455/soak_evidence.json`, p95=9427.6 ms,
+throughput=8532.4/dk) ve stress/proxy final PASS
+(`artifacts/soak/20260619-210427/soak_evidence.json`, p95=734.5 ms,
+throughput=8029.2/dk) gözlendi.
+
+Bu checkout içinde `artifacts/soak/...` JSON dosyaları bulunmadığı için yeni değerler
+şimdilik **VM console observed** olarak belgelenir ve artifact JSON ile yeniden
+doğrulanmalıdır. `memory_growth_mb` ve `browser_console_errors` bu koşularda
+`UNMEASURED` kaldığı için ölçülmüş PASS olarak yorumlanmaz. Bu kanıt GET-only
+index-serving/fake-proxy soak yolunu güçlendirir; gerçek LLM/model üretiminin
+hızlandığını, browser UX'in temiz olduğunu veya 1000 eşzamanlı gerçek insan chat
+oturumunun desteklendiğini kanıtlamaz.
 
 
 ### Operasyonel soak / yük kapısı eklendi (fake/proxy/real-canary seritleri)

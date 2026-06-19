@@ -8,13 +8,13 @@ Known evidence at the start of this workstream:
 
 | Lane / probe | Result | Interpretation |
 |---|---:|---|
-| Fake lane steady run | 22 active concurrent users / 300 seconds PASS (2026-06-19) | Current safe tested fake-lane capacity. |
-| Fake lane boundary | 23 users / 60 seconds PASS; 25 users / 30 seconds PASS only as a short spike | Capacity headroom exists but is thin; do not promote the 25-user spike to sustained capacity. |
-| Fake lane failure edge | 24 users / 60 seconds and 24 users / 300 seconds FAIL below `effective_success_rate >= 0.98` | Primary near-term bottleneck to profile. |
+| Historical fake lane steady run | 22 active concurrent users / 300 seconds PASS (pre-index-cache, 2026-06-19) | Historical baseline; kept for regression context. |
+| Post-index-cache fake lane steady run | 1000 active concurrent users / 420 seconds PASS (VM console observed, `artifacts/soak/20260619-205535/soak_evidence.json`) | Strongest observed smoke/fake VM evidence, subject to artifact JSON verification; not real human chat/LLM capacity. |
+| Post-index-cache fake lane corroboration | 250 users / 420 seconds PASS and 1000 users / 30 seconds PASS (VM console observed) | Shows much larger fake-lane envelope after index caching; do not promote the short 30-second run above sustained 420-second evidence. |
 | Proxy lane | Key routing/isolation confirmed; heavier proxy stress saturates | Proxy proves isolation, not app capacity at high stress. |
 | Real canary | Reaches real LLM gateway; blocked by HTTP 500 / ERR-234 rate-limit policy | Upstream gateway/admin configuration blocker, not MERGEN app-capacity proof. |
 
-As of 2026-06-19, the comparable fake-lane smoke artifact demonstrates a modest improvement to 22 active concurrent users / 300 seconds PASS. Do not claim 24+ users as supported; 25 users passed only as a 30-second spike, while 24-user runs failed the effective-success threshold.
+As of the pre-index-cache 2026-06-19 baseline, the comparable fake-lane smoke artifact demonstrated 22 active concurrent users / 300 seconds PASS. After the root-page/index-cache optimization, VM console observations report 250 active users / 420 seconds PASS and 1000 active users / 420 seconds PASS in smoke/fake mode with 0 errors/timeouts; however, the referenced `artifacts/soak/20260619-204704/soak_evidence.json` and `artifacts/soak/20260619-205535/soak_evidence.json` files are not present in this checkout, so these values remain VM-console-observed until JSON artifacts are verified. These runs improve the GET-only fake-lane envelope; they do not prove browser/websocket human-chat capacity or faster real LLM generation.
 
 ## Main runtime paths to inspect
 
@@ -37,7 +37,7 @@ As of 2026-06-19, the comparable fake-lane smoke artifact demonstrates a modest 
 4. File context/MCP registry preparation may repeatedly scan or copy session file metadata.
 5. Streaming/promise callback cleanup may add pressure when many requests time out simultaneously.
 6. A single Shiny process may be the long-term architecture limit; do not change deployment before measuring app-path bottlenecks.
-7. **[CONFIRMED for the soak number — static evidence 2026-06-19]** The fake/smoke soak lane is **GET-only** against the app root (`soak_client.R:86,108-110` `httpget=TRUE`; load target `cfg$app_url` per `run_operational_soak_gate.R:235`). It serves the static `dashboardPage` index (`ui.R:7`) by re-serializing the tag tree per request on one httpuv thread, and never opens a websocket session — so it does **not** exercise hypotheses 1–5 (chat/LLM/DB). The 22→24 cliff is single-threaded **index-serving** saturation. Therefore the soak-lane lever is per-request index serialization cost / multi-process serving, *not* DB pooling (which targets real chat sessions). See the session note for the full map and latency math.
+7. **[CONFIRMED for the pre-cache soak number; mitigated by index cache — static + VM-console evidence 2026-06-19]** The fake/smoke soak lane is **GET-only** against the app root (`soak_client.R:86,108-110` `httpget=TRUE`; load target `cfg$app_url` per `run_operational_soak_gate.R:235`). It serves the static `dashboardPage` index (`ui.R:7`) by re-serializing the tag tree per request on one httpuv thread, and never opens a websocket session — so it does **not** exercise hypotheses 1–5 (chat/LLM/DB). The historical 22→24 cliff was single-threaded **index-serving** saturation. After index caching, repeated isolated VM `GET /` timings improved from ~0.64 s to ~0.007 s warm cache, and VM console soak observations report 250/420 s and 1000/420 s PASS in smoke/fake mode. Therefore the soak-lane lever was per-request index serialization cost; DB pooling remains a separate real-chat/session concern.
 
 ## Planned phases
 
@@ -60,9 +60,42 @@ As of 2026-06-19, the comparable fake-lane smoke artifact demonstrates a modest 
 | 2026-06-19 | Added opt-in `[PERF] db.connection_open/db.connection_close` timing in `R/helpers_db_connection.R`; new `test-db-connection-perf-instrumentation.R`; mirrored perf helper in test bootstrap. | `testthat::test_file("tests/testthat/test-db-connection-perf-instrumentation.R")` | PASS (5 assertions) | Instrumentation only; quantifies per-call ODBC connect/disconnect overhead on the next VM run. No capacity claim. |
 | 2026-06-19 | Restored global maintainability ratchet: reverted `R/server_send_message.R` instrumentation bloat (722→693, broke the 694 cap in commit c10683e) and relocated the 4 send-message segment timers into their prep helpers. | `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`; `test-send-message-maintainability-ratchet.R`; `test-send-message-prompting-contract.R`; `test-send-message-request-lifecycle-contract.R` | PASS (ratchet max file = 694 ≤ 694; 0 fail/warn/skip) | No threshold weakened; profiling value preserved (timers moved, not deleted). |
 | 2026-06-19 | Whole-repo parse + cloud validation gate. | `tests/scripts/parse_sanity_check.R` (839 files); `bash tools/ai_validate.sh cloud-quick` | PASS (parse OK; cloud-quick failed_steps=0, skipped_steps=1) | cloud-quick proves parse + focused contract scope only; NOT app-boot/runtime/browser/VM/DB/SQL-Server/soak. |
-| 2026-06-19 | Soak HTTP-lane bottleneck attribution (analysis only; no code change). | Static request-path map (`run_operational_soak_gate.R:235`, `soak_client.R:86,108-110`, `ui.R:7`, `app.R:145-152`) + latency math vs `artifacts/soak/20260619-153052` | N/A (analysis) | Soak number is single-threaded index-serving bound, not DB-bound; DB pooling won't move it. No capacity claim; no soak artifact produced in cloud. |
+| 2026-06-19 | Soak HTTP-lane bottleneck attribution (analysis only; no code change). | Static request-path map (`run_operational_soak_gate.R:235`, `soak_client.R:86,108-110`, `ui.R:7`, `app.R:145-152`) + latency math vs `artifacts/soak/20260619-153052` | N/A (analysis) | Pre-cache soak number was single-threaded index-serving bound, not DB-bound; no capacity claim from cloud. |
+| 2026-06-19 | Root-page/index caching VM evidence (documentation update; no runtime code changed in this docs task). | Windows curl timing command documented below; VM console observed `artifacts/soak/20260619-204455`, `20260619-204704`, `20260619-205535`, `20260619-210427` (JSON not present in this checkout). | Warm `GET /` ~0.006-0.008 s after first request; cold `[PERF] event=index_render elapsed_ms=740 cache=miss_build`; smoke/fake 250 users / 420 s PASS p95=1983.8 ms; smoke/fake 1000 users / 420 s PASS p95=8377.8 ms; stress/proxy final p95=734.5 ms. | Stronger fake-lane/index-serving evidence only; does NOT prove real LLM generation is faster, browser console clean, memory growth clean, or 1000 real human chat sessions. |
 
 ## Session notes
+
+### 2026-06-19 — Post-index-cache Windows VM observations (docs-only update)
+
+Observed root-page timing changed from the pre-cache isolated `GET /` baseline of about
+0.623-0.669 s (median about 0.64 s) to repeated warm-cache timings mostly around
+0.006-0.008 s, with a first observed request of 0.014524 s. The VM log also showed
+`[PERF] event=index_render elapsed_ms=740 cache=miss_build bytes=311206`, so the
+cold index build remains roughly 740 ms while subsequent root-page requests are served
+from cache. Reproduction command on the Windows VM:
+
+```powershell
+curl.exe -w "%{time_total}`n" -o NUL -s http://127.0.0.1:8009/
+```
+
+VM console observed post-cache soak values:
+
+| Artifact path | Lane | Users / duration | Result | p95 | Throughput | Notes |
+|---|---|---:|---|---:|---:|---|
+| `artifacts/soak/20260619-204455/soak_evidence.json` | smoke/fake | 1000 / 30 s | PASS | 9427.6 ms | 8532.4/min | VM console observed; JSON not present in this checkout. |
+| `artifacts/soak/20260619-204704/soak_evidence.json` | smoke/fake | 250 / 420 s | PASS | 1983.8 ms | 8016.8/min | VM console observed; JSON not present in this checkout. |
+| `artifacts/soak/20260619-205535/soak_evidence.json` | smoke/fake | 1000 / 420 s | PASS | 8377.8 ms | 7931.4/min | Strongest sustained fake-lane observation; JSON not present in this checkout. |
+| `artifacts/soak/20260619-210427/soak_evidence.json` | stress/proxy | final summary | PASS | 734.5 ms | 8029.2/min | VM console observed; JSON not present in this checkout. |
+
+Guardrails were VM-console-observed as PASS for success rates, mojibake, encoding
+roundtrip, key routing 5/5, cross-session key isolation, upload validation 7/7,
+secret leak 0, server crash, and temp growth 0.31 MB. `memory_growth_mb` and
+`browser_console_errors` remained UNMEASURED. Real-chat PERF evidence remains separate:
+DB open was observed around 60-230 ms, DB close usually 0-20 ms, while non-thinking
+model response time remained dominated by upstream model/SSE latency around 10-16 s.
+This optimization materially improves GET `/` and the operational fake/proxy soak path;
+it does not prove real LLM/model generation became faster or that DB pooling is
+unnecessary forever.
 
 ### 2026-06-19 — Phase 1 (cont.): soak HTTP-lane bottleneck attribution (analysis only, no code change, no capacity claim)
 
