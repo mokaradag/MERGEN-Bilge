@@ -49,3 +49,30 @@ test_that("resolve_mergen_log_threshold bilinmeyen değerde varsayılana (INFO) 
   withr::with_envvar(c(MERGEN_LOG_THRESHOLD = "anlamsiz_deger"),
     expect_identical(.log_env$resolve_mergen_log_threshold(), logger::INFO))
 })
+
+test_that("config_logging açılışta bugünün günlük log dosyasını oluşturur", {
+  # Haziran regresyon koruması: config_logging.R source edildiginde (uygulama
+  # acilisi) bugune ait mergen_YYYYMMDD.log dosyasi olusmali ve baslangic
+  # mesajini icermeli. Konsol logu ayri appender oldugu icin bu, "konsola yaziliyor
+  # ama dosya olusmuyor" durumunu dogrudan yakalar.
+  skip_if_not_installed("logger")
+
+  tmp <- withr::local_tempdir()
+  env <- new.env(parent = globalenv())
+
+  withr::with_envvar(c(MERGEN_LOG_DIR = tmp), {
+    expect_no_error(suppressMessages(source(
+      file.path(resolve_repo_root_for_tests(), "R", "config_logging.R"),
+      encoding = "UTF-8",
+      local = env
+    )))
+  })
+
+  log_file <- file.path(tmp, sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d")))
+  expect_true(file.exists(log_file))
+  expect_match(
+    paste(readLines(log_file, warn = FALSE), collapse = "\n"),
+    "Application starting up",
+    fixed = TRUE
+  )
+})
