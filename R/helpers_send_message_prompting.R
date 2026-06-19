@@ -50,6 +50,10 @@ mergen_prepare_send_message_prompting <- function(tool_family,
                                                   uploaded_count,
                                                   settings_data,
                                                   messages_to_process) {
+  # Opsiyonel performans ölçümü (yalnızca MERGEN_PERF_LOG açıkken aktiftir).
+  .perf_start <- if (exists("mergen_perf_now", mode = "function", inherits = TRUE)) mergen_perf_now() else NULL
+  if (!is.null(.perf_start)) on.exit(mergen_perf_log("send_message.prompt_plan", .perf_start), add = TRUE)
+
   selected_char_id <- normalize_character_id(settings_data$selected_character)
   chars_data <- get_characters_data()
 
@@ -154,6 +158,10 @@ mergen_build_uploaded_files_context_messages <- function(tool_family,
                                                          messages_to_process,
                                                          model_selected = NULL,
                                                          api_config = NULL) {
+  # Opsiyonel performans ölçümü (yalnızca MERGEN_PERF_LOG açıkken aktiftir).
+  .perf_start <- if (exists("mergen_perf_now", mode = "function", inherits = TRUE)) mergen_perf_now() else NULL
+  if (!is.null(.perf_start)) on.exit(mergen_perf_log("send_message.file_context", .perf_start), add = TRUE)
+
   if (identical(tool_family, "mcp_excel") && uploaded_count > 0) {
     file_list_text <- paste0(
       "\n\nDOSYA BİLGİSİ:\n",

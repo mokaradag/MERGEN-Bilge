@@ -74,6 +74,10 @@ mergen_prepare_send_message_chat <- function(session,
                                              request_start_time,
                                              defer_chat_creation,
                                              generate_title_from_prompt) {
+  # Opsiyonel performans ölçümü (yalnızca MERGEN_PERF_LOG açıkken aktiftir).
+  .perf_start <- if (exists("mergen_perf_now", mode = "function", inherits = TRUE)) mergen_perf_now() else NULL
+  if (!is.null(.perf_start)) on.exit(mergen_perf_log("send_message.prepare_chat", .perf_start), add = TRUE)
+
   if (!is.null(values$current_chat_id)) {
     return(list(ok = TRUE, pending_chat_title = NULL))
   }
