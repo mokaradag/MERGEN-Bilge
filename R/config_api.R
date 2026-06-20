@@ -226,7 +226,7 @@ api_config <- list(
 		  enable_thinking = TRUE
 		)
 	  )
-    )
+    ),
     "technical name 2" = list(
       thinking = FALSE,
       omit_temperature = FALSE,
