@@ -14,6 +14,26 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+
+### 2026-06-20 Windows VM limit-push soak ve evidence gate notu
+
+Windows VM üzerinde sınırı zorlamak için canlı uygulamaya attach edilen
+`proxy_llm` / `proxy` koşumu **1000 aktif eşzamanlı kullanıcı / 5400 saniye
+(90 dakika)** olarak çalıştırıldı ve **FAIL** ile tamamlandı
+(`artifacts/soak/20260620-111106/soak_evidence.json`, VM console observed):
+227285 istek, 132405 başarı, 0 hata, 94880 timeout, `effective_success_rate=0.5826`
+(< 0.98), p95=16965.9 ms ve throughput=2524.9/dk. Bu, 1000 eşzamanlı uzun
+proxy-lane işletim zarfının mevcut eşiklerle aşıldığını gösteren negatif/guardrail
+kanıttır; kapasite/readiness PASS olarak yorumlanmamalıdır.
+
+Güvenlik ve doğruluk kontrolleri yük altında temiz kaldı: anahtar yönlendirme 5/5,
+cross-session key isolation TRUE, upload validation 7/7, encoding round-trip 1,
+secret leak 0, mojibake 0 ve server crash yok. `memory_growth_mb` ve
+`browser_console_errors` ölçülmedi. Aynı VM oturumunda evidence gate
+`artifacts/vm-evidence/20260620-104919/evidence.json` ile `Toplam: 13 passed,
+0 failed, 0 skipped` olarak geçti; bu yapı/boot/encoding/UX kanıtıdır ve uzun
+1000-eşzamanlı soak FAIL sonucunu geçersiz kılmaz.
+
 Aşağıdaki bölüm, güncel değişiklik notlarını kronolojik/tematik bakım izi kaybolmadan izler.
 
 ### 2026-06-19 Windows VM post-index-cache operasyonel soak notu

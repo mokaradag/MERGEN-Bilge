@@ -280,6 +280,17 @@ ve `browser_console_errors` UNMEASURED kaldı. Bu sonuç GET-only fake/proxy soa
 warm `GET /` index-serving iyileşmesini gösterir; 1.000 gerçek aktif insan chat
 oturumu, browser UX temizliği veya gerçek upstream LLM üretim hızlanması kanıtı değildir.
 
+2026-06-20 limit-push notu: Windows VM üzerinde `proxy_llm` / `proxy` seridinde
+**1000 aktif eşzamanlı kullanıcı / 5400 saniye (90 dakika)** attach koşumu
+çalıştırıldı ve **FAIL** ile bitti (`artifacts/soak/20260620-111106/soak_evidence.json`,
+VM console observed): 227285 istek, 132405 başarı, 0 hata, 94880 timeout,
+`effective_success_rate=0.5826` < 0.98, p95=16965.9 ms, throughput=2524.9/dk.
+Anahtar yönlendirme 5/5, key isolation TRUE, upload validation 7/7, encoding
+round-trip 1, secret leak 0, mojibake 0 ve server crash yoktu; ancak sonuç
+kapasite/readiness PASS değildir. Aynı oturumda VM evidence gate
+`artifacts/vm-evidence/20260620-104919/evidence.json` ile `Toplam: 13 passed, 0 failed, 0 skipped`
+olarak geçti; bu, uzun 1000-eşzamanlı proxy soak FAIL sonucunu geçersiz kılmaz.
+
 ## 8. Dağıtım Öncesi Kapılar
 
 1. Değişiklik türünü sınıflandırın: docs-only, UI, runtime, DB, SSO, file lifecycle, streaming, Bilge Yolaç veya deployment.

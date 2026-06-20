@@ -642,3 +642,40 @@ Bu koşumlar **kanıtlamaz**:
 - Gerçek LLM provider throughput veya real-canary throughput.
 - VM dışı production network latency.
 - At-rest SQL Server encoding davranışı.
+---
+
+## 13. 2026-06-20 Windows VM Limit-Push Soak and Evidence Gate Notes
+
+Bu bölüm, 20 Haziran 2026 tarihinde Windows VM üzerinde sınırı bilinçli olarak
+zorlamak için yapılan uzun proxy-lane koşumunu kaydeder. Koşum canlı uygulamaya
+attach edilerek `MERGEN_SOAK_APP_URL=http://127.0.0.1:8009/` ile çalıştırıldı;
+profil `proxy_llm`, serit `proxy`, eşzamanlılık `1000`, süre `5400` saniye
+(90 dakika) ve kapasite eğrisi kapalıydı. Artifact yolu konsolda
+`artifacts/soak/20260620-111106/soak_evidence.json` olarak raporlandı. Bu
+artifact bu checkout içinde bulunmadığı için değerler **VM console observed**
+olarak belgelenir ve JSON artifact eklendiğinde yeniden doğrulanmalıdır.
+
+Sonuç **FAIL** idi: 227285 istekten 132405'i başarılı oldu
+(`raw_success_rate=0.5826`, `effective_success_rate=0.5826`), hata sayısı 0,
+timeout sayısı 94880, p50/p95/p99 yaklaşık 950 / 16965.9 / 18773.7 ms ve
+throughput yaklaşık 2524.9 istek/dk olarak gözlendi. Başarısızlık nedeni
+`effective_success_rate` eşiğinin 0.98 altında kalmasıydı. Güvenlik/doğruluk
+kontrolleri temiz kaldı: anahtar yönlendirme 5/5, cross-session key isolation
+`TRUE`, upload validation 7/7, encoding round-trip pass rate 1, secret leak 0,
+server crash yok, `mojibake_hits=0`, redaction verified `TRUE`. `memory_growth_mb`
+ve `browser_console_errors` bu koşuda `UNMEASURED` kaldığından ölçülmüş PASS
+olarak sunulmamalıdır; `temp_growth_mb` yaklaşık 0.31 MB ile PASS görünmüştür.
+
+Bu koşumun yorumu: 1000 aktif eşzamanlı kullanıcı / 90 dakika proxy-lane
+attach koşumu **kapasite/readiness kanıtı değildir**; bilinçli limit-push
+olarak, uzun süreli 1000 eşzamanlı proxy GET/LLM-yolu baskısında zaman aşımı
+saturasyonunun başladığını ve mevcut eşiklerle işletim zarfının dışında kalındığını
+gösterir. Buna rağmen sır sızıntısı, mojibake, anahtar izolasyonu, upload
+validasyonu ve redaksiyon kontrollerinin yük altında temiz kalması yararlı bir
+negatif/guardrail kanıtıdır.
+
+Aynı VM oturumunda evidence gate de çalıştırıldı ve konsolda `Toplam: 13 passed,
+0 failed, 0 skipped` olarak tamamlandı; artifact
+`artifacts/vm-evidence/20260620-104919/evidence.json` idi. Bu VM evidence gate
+PASS sonucu soak FAIL sonucunu geçersiz kılmaz: evidence gate yapı/boot/encoding/UX
+kanıtıdır, 1000 eşzamanlı uzun proxy-lane kapasite kanıtı değildir.
