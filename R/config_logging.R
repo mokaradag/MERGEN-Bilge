@@ -95,7 +95,31 @@ log_threshold(resolve_mergen_log_threshold())
 # çerçevede çözülürler.
 if (!exists("mergen_daily_file_appender", mode = "function",
             envir = environment(), inherits = FALSE)) {
+  # Bu dosyanın bulunduğu dizini working-directory BAĞIMSIZ tespit et: source()
+  # çağrı yığınında bir frame'e 'ofile' (kaynak dosya yolu) bırakır. Böylece
+  # kardeş config_logging_daily_file.R, getwd()/MERGEN_REPO_ROOT'a güvenmeden
+  # bulunur. İzole test/debug akışlarında config_logging.R repo dışı bir çalışma
+  # dizininden source() edilebildiği için bu en güvenilir adaydır.
+  .mergen_log_self_dir <- NULL
+  for (.mergen_log_fi in rev(seq_len(sys.nframe()))) {
+    .mergen_log_frame <- sys.frame(.mergen_log_fi)
+    if (!exists("ofile", envir = .mergen_log_frame, inherits = FALSE)) {
+      next
+    }
+    .mergen_log_ofile <- get("ofile", envir = .mergen_log_frame, inherits = FALSE)
+    if (is.character(.mergen_log_ofile) &&
+        length(.mergen_log_ofile) == 1L && nzchar(.mergen_log_ofile)) {
+      .mergen_log_self_dir <- dirname(
+        normalizePath(.mergen_log_ofile, winslash = "/", mustWork = FALSE)
+      )
+      break
+    }
+  }
+
   .mergen_log_daily_candidates <- c(
+    if (!is.null(.mergen_log_self_dir)) {
+      file.path(.mergen_log_self_dir, "config_logging_daily_file.R")
+    },
     file.path(getwd(), "R", "config_logging_daily_file.R"),
     file.path(getwd(), "config_logging_daily_file.R"),
     file.path(getwd(), "..", "..", "R", "config_logging_daily_file.R"),
@@ -109,7 +133,9 @@ if (!exists("mergen_daily_file_appender", mode = "function",
     }
   }
   rm(list = intersect(
-    c(".mergen_log_daily_candidates", ".mergen_log_daily_path"),
+    c(".mergen_log_daily_candidates", ".mergen_log_daily_path",
+      ".mergen_log_self_dir", ".mergen_log_fi", ".mergen_log_frame",
+      ".mergen_log_ofile"),
     ls(all.names = TRUE)
   ))
 }

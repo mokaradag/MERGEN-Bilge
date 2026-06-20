@@ -3843,6 +3843,20 @@ Testing expectations:
 - Relevant regression tests include `tests/testthat/test-send-message-model-runtime-contract.R`, `tests/testthat/test-llm-worker-second-pass-contract.R`, `tests/testthat/test-api-model-config-refactor-contract.R`, `tests/testthat/test-send-message-request-lifecycle-contract.R`, and `tests/testthat/test-maintainability-ratchet.R`.
 - Maintainability ratchet should be satisfied by refactoring into focused helpers, not by increasing thresholds.
 
+#### SQL/Proje analizi (sql_analysis) live reasoning streaming contract
+
+Proje ve Kaynak Analizi (`tool_family == "sql_analysis"`) with a thinking model now streams the live "Düşünce Akışı" through the generic true-SSE path, with a worker-side non-streaming safety net — analogous to (but separate from) the MCP Excel second-pass path. It is NOT forced to non-streaming anymore when streaming is on.
+
+Current contract:
+
+- The streaming decision is a pure helper, `mergen_sql_analysis_stream_plan()` in `R/helpers_send_message_core.R`. It is the single source of truth for `force_non_streaming_sql` and the opt-in `allow_non_streaming_fallback`. Keep it pure (no Shiny/session/network) and offline-testable. `R/server_send_message.R` must consume it rather than re-deriving the decision inline.
+- A thinking SQL analysis request uses true SSE (live reasoning) ONLY when streaming is on AND TTS is off AND MCP is off. With TTS on, streaming off, or MCP on it stays on the existing safe non-streaming path (the TTS path uses `simulate_streaming` and does not stream reasoning like true SSE). Do not route it to the TTS-streaming branch for live reasoning.
+- The non-streaming safety net lives INSIDE the SSE worker (`call_local_llm_sse_worker` in `R/helpers_llm_sse.R`), gated strictly by `current_settings$allow_non_streaming_fallback`. After the stream completes, if the final content is empty or "looks like reasoning" (via the shared `llm_worker_stream_content_looks_like_reasoning()`), the worker does ONE `stream=FALSE` retry and replaces ONLY the final answer body. It must stay wrapped in `tryCatch`: any failure degrades to the streamed content (current behavior); it must never crash the worker. The live reasoning already streamed to the panel, so the reasoning trace is left unchanged.
+- This fallback runs in the future worker (no main event-loop blocking). `R/server_handler_true_streaming.R` must keep `llm_worker_stream_content_looks_like_reasoning` in the `tracked_future_promise(..., globals = list(...))` export so the worker can resolve it.
+- Do not make `allow_non_streaming_fallback` default-on for other flows; it is opt-in for sql_analysis only, so no other streaming path changes behavior.
+- Protected by `tests/testthat/test-send-message-core.R` (`mergen_sql_analysis_stream_plan` cases) and `tests/testthat/test-llm-worker-second-pass-contract.R` (the shared reasoning-detection helper). Keep `R/helpers_llm_sse.R` within its ratchet budget (< 762 lines / < 20 functions) and `R/server_send_message.R` within its budget (<= 620 lines / <= 11 functions).
+- VM-only live check (not provable in cloud): with Proje ve Kaynak Analizi + a thinking model + Akış modu on, confirm the Düşünce Akışı panel streams live during synthesis and the final answer is a clean body (not raw reasoning).
+
 ### 9C) Logging wrappers must preserve caller-frame glue evaluation
 
 - `R/config_logging.R` içindeki güvenli log sarmalayıcıları hassas karakter verilerini redakte edebilir; ancak `logger` glue çözümlemesini bozmamalıdır.

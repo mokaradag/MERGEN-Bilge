@@ -545,6 +545,51 @@ call_local_llm_sse_worker <- function(chat_history,
       final_content <- enc2utf8(normalize_llm_scalar_content(accumulated_reasoning))
     }
 
+    # --- OPT-IN NON-STREAMING GÜVENLİK AĞI (SQL/Proje analizi gibi düşünmeli
+    # araç akışları) ---
+    # Akıl yürütme zaten canlı panele aktı. Düşünmeli model bazen temiz bir
+    # yanıt gövdesi üretmeyip yalnızca akıl yürütme benzeri metni içerik olarak
+    # döndürebilir. Yalnızca allow_non_streaming_fallback açıkken ve içerik
+    # boş/akıl-yürütme-benzeriyse, işçi içinde (ana olay döngüsünü BLOKLAMADAN)
+    # stream=FALSE ile tek seferlik yeniden deneme yapılır ve YALNIZCA nihai
+    # yanıt gövdesi düzeltilir. Her hata güvenle yutulur; en kötü durumda
+    # akıtılan içerik korunur (mevcut davranış). Reasoning trace değiştirilmez.
+    if (isTRUE(current_settings$allow_non_streaming_fallback)) {
+      looks_like_reasoning <- exists(
+        "llm_worker_stream_content_looks_like_reasoning",
+        mode = "function", inherits = TRUE
+      ) && isTRUE(llm_worker_stream_content_looks_like_reasoning(
+        final_content, accumulated_reasoning
+      ))
+
+      if (!nzchar(trimws(final_content %||% "")) || isTRUE(looks_like_reasoning)) {
+        fb_content <- tryCatch({
+          ns_body <- body
+          ns_body$stream <- FALSE
+          ns_resp <- httr::POST(
+            api_url,
+            do.call(httr::add_headers, as.list(headers)),
+            body = jsonlite::toJSON(ns_body, auto_unbox = TRUE),
+            encode = "raw",
+            httr::timeout(300)
+          )
+          if (identical(httr::status_code(ns_resp), 200L) ||
+              identical(as.integer(httr::status_code(ns_resp)), 200L)) {
+            ns_parsed <- httr::content(ns_resp, "parsed")
+            ns_sep <- extract_llm_content_and_sources(ns_parsed, model_id = selected_model)
+            enc2utf8(normalize_llm_scalar_content(ns_sep$content %||% ""))
+          } else {
+            ""
+          }
+        }, error = function(e) "")
+
+        if (nzchar(trimws(fb_content %||% ""))) {
+          log_info("[ANALYSIS STREAM] Akis bos/akil-yurutme-benzeri icerik dondurdu; non-streaming guvenlik agi kullanildi.")
+          final_content <- fb_content
+        }
+      }
+    }
+
 	list(
 	  success = TRUE,
 	  aborted = FALSE,

@@ -156,3 +156,62 @@ test_that("mergen_determine_tool_family görsel aracı aktifken image tool_famil
 
   expect_identical(result$tool_family, "image")
 })
+
+# Düşünmeli SQL/Proje analizi akış planı (mergen_sql_analysis_stream_plan).
+# Düşünmeli SQL analizi artık akış AÇIKKEN canlı SSE Düşünce Akışı ile çalışır
+# ve non-streaming güvenlik ağı açılır; TTS/akış-kapalı/MCP durumlarında eski
+# güvenli non-streaming korunur. Bu, force_non_streaming_sql kararını yönetir.
+test_that("mergen_sql_analysis_stream_plan düşünmeli SQL analizini canlı SSE'ye yönlendirir", {
+  # Akış açık, TTS/MCP kapalı, düşünmeli model -> gerçek SSE + güvenlik ağı.
+  p <- mergen_sql_analysis_stream_plan(
+    tool_family = "sql_analysis", thinking_model = TRUE,
+    enable_streaming = TRUE, enable_mcp_tools = FALSE, enable_tts_audio = FALSE
+  )
+  expect_true(p$is_sql_thinking)
+  expect_true(p$allow_non_streaming_fallback)
+  expect_false(p$force_non_streaming)
+})
+
+test_that("mergen_sql_analysis_stream_plan TTS/akış-kapalı/MCP durumunda non-streaming kalır", {
+  # TTS açık -> non-streaming (TTS yolu reasoning'i gerçek SSE gibi akıtmaz).
+  tts <- mergen_sql_analysis_stream_plan(
+    "sql_analysis", TRUE, enable_streaming = TRUE,
+    enable_mcp_tools = FALSE, enable_tts_audio = TRUE
+  )
+  expect_true(tts$force_non_streaming)
+  expect_false(tts$allow_non_streaming_fallback)
+
+  # Akış kapalı -> non-streaming.
+  off <- mergen_sql_analysis_stream_plan(
+    "sql_analysis", TRUE, enable_streaming = FALSE,
+    enable_mcp_tools = FALSE, enable_tts_audio = FALSE
+  )
+  expect_true(off$force_non_streaming)
+
+  # MCP açık -> bu düşünmeli SQL akışı için non-streaming.
+  mcp <- mergen_sql_analysis_stream_plan(
+    "sql_analysis", TRUE, enable_streaming = TRUE,
+    enable_mcp_tools = TRUE, enable_tts_audio = FALSE
+  )
+  expect_true(mcp$force_non_streaming)
+  expect_false(mcp$allow_non_streaming_fallback)
+})
+
+test_that("mergen_sql_analysis_stream_plan SQL olmayan/düşünmeyen akışları değiştirmez", {
+  # Düşünmeyen SQL analizi: zorla non-streaming YOK, güvenlik ağı YOK.
+  nonthink <- mergen_sql_analysis_stream_plan(
+    "sql_analysis", FALSE, enable_streaming = TRUE,
+    enable_mcp_tools = FALSE, enable_tts_audio = FALSE
+  )
+  expect_false(nonthink$is_sql_thinking)
+  expect_false(nonthink$force_non_streaming)
+  expect_false(nonthink$allow_non_streaming_fallback)
+
+  # Normal sohbet (none): hiçbir şey zorlanmaz.
+  none <- mergen_sql_analysis_stream_plan(
+    "none", TRUE, enable_streaming = TRUE,
+    enable_mcp_tools = FALSE, enable_tts_audio = FALSE
+  )
+  expect_false(none$force_non_streaming)
+  expect_false(none$allow_non_streaming_fallback)
+})

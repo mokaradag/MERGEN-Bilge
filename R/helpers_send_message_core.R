@@ -69,6 +69,33 @@ mergen_build_stream_profile <- function(tool_family, uploaded_count, settings_da
   stream_profile
 }
 
+# Proje/Kaynak (SQL) analizinde düşünmeli model akış planı.
+# Düşünmeli SQL/Proje analizi artık canlı "Düşünce Akışı" için gerçek SSE ile
+# akıtılır (Excel Analizi gibi). Güvenlik ağı olarak işçi tarafında non-streaming
+# geri dönüş açılır: SSE yalnızca akıl yürütme benzeri/boş içerik döndürürse işçi
+# stream=FALSE ile tek seferlik yeniden dener ve yalnızca nihai yanıt gövdesini
+# düzeltir. TTS açıkken veya streaming kapalıyken eski güvenli non-streaming korunur
+# (TTS yolu simulate_streaming kullanır; reasoning'i gerçek SSE gibi akıtmaz).
+# Saf karar yardımcısıdır: Shiny/oturum/ağ erişimi yoktur, izole test edilebilir.
+mergen_sql_analysis_stream_plan <- function(tool_family,
+                                            thinking_model,
+                                            enable_streaming,
+                                            enable_mcp_tools,
+                                            enable_tts_audio) {
+  is_sql_thinking <- identical(tool_family, "sql_analysis") && isTRUE(thinking_model)
+
+  can_true_stream <- is_sql_thinking &&
+    isTRUE(enable_streaming) &&
+    !isTRUE(enable_mcp_tools) &&
+    !isTRUE(enable_tts_audio)
+
+  list(
+    is_sql_thinking = is_sql_thinking,
+    allow_non_streaming_fallback = can_true_stream,
+    force_non_streaming = is_sql_thinking && !can_true_stream
+  )
+}
+
 mergen_remove_typing_wrapper_if_safe <- function(active_request_id = NULL,
                                                  req_id = NULL,
                                                  remove_ui_fn = removeUI) {
