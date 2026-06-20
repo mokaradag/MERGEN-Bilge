@@ -8,6 +8,23 @@ REM ============================================================
 
 set "APP_DIR=%~dp0"
 
+REM ============================================================
+REM Disable console QuickEdit Mode (prevents accidental freezes)
+REM ------------------------------------------------------------
+REM When QuickEdit is on (Windows default), clicking inside this
+REM console enters selection mode and SUSPENDS the single-threaded
+REM Shiny app on its next stdout write -> every connected user's
+REM screen freezes until the selection is cleared (pressing Enter
+REM flushes the buffered output and resumes the app). Disabling
+REM QuickEdit on this console stops that intermittent freeze.
+REM Best-effort: failure must not block startup, so the exit code
+REM is intentionally ignored.
+REM ============================================================
+
+if exist "%APP_DIR%tools\disable_console_quickedit.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%APP_DIR%tools\disable_console_quickedit.ps1" 2>nul
+)
+
 echo [INFO] Script file:
 echo %~f0
 echo.
