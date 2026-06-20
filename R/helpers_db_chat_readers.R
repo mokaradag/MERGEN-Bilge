@@ -70,20 +70,7 @@ load_chats_preview_from_db <- function(user_id, limit = 30L) {
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  query <- sprintf("
-      SELECT TOP %d
-             c.ChatID,
-             c.ChatTitle,
-             c.CreateTimestamp,
-             COUNT(m.MessageID) AS MessageCount,
-             MAX(m.MessageTimestamp) AS LastMessageTimestamp
-      FROM MB_Chats c
-      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
-      WHERE c.UserID = ? AND c.IsDeleted = 0
-      GROUP BY c.ChatID, c.ChatTitle, c.CreateTimestamp
-      ORDER BY COALESCE(MAX(m.MessageTimestamp), c.CreateTimestamp) DESC,
-               c.CreateTimestamp DESC
-    ", safe_limit)
+  query <- db_chat_preview_query_sql(safe_limit)
 
   preview_data <- dbGetQuery(
     conn,
@@ -141,17 +128,7 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
   on.exit(release_connection(conn_info))
 
   if (!isTRUE(include_messages)) {
-    query <- "
-      SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,
-             COUNT(m.MessageID) AS MessageCount,
-             MAX(m.MessageTimestamp) AS LastMessageTimestamp
-      FROM MB_Chats c
-      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
-      WHERE c.UserID = ? AND c.IsDeleted = 0
-      GROUP BY c.ChatID, c.ChatTitle, c.CreateTimestamp
-      ORDER BY COALESCE(MAX(m.MessageTimestamp), c.CreateTimestamp) DESC,
-               c.CreateTimestamp DESC
-    "
+    query <- db_chat_list_summary_query_sql()
 
     summary_data <- dbGetQuery(
       conn,
@@ -193,26 +170,9 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
     return(formatted)
   }
 
-  query_with_reasoning <- "
-    SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,
-           m.MessageID, m.MessageContent, m.MessageType, m.MessageTimestamp, m.MessageOrder,
-           m.ReasoningContent,
-           COALESCE(MAX(m.MessageTimestamp) OVER (PARTITION BY c.ChatID), c.CreateTimestamp) AS SortTimestamp
-    FROM MB_Chats c
-    JOIN MB_Messages m ON c.ChatID = m.ChatID
-    WHERE c.UserID = ? AND c.IsDeleted = 0
-    ORDER BY SortTimestamp DESC, c.CreateTimestamp DESC, m.MessageOrder ASC
-  "
+  query_with_reasoning <- db_chat_list_full_query_sql(with_reasoning = TRUE)
 
-  query_legacy <- "
-    SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,
-           m.MessageID, m.MessageContent, m.MessageType, m.MessageTimestamp, m.MessageOrder,
-           COALESCE(MAX(m.MessageTimestamp) OVER (PARTITION BY c.ChatID), c.CreateTimestamp) AS SortTimestamp
-    FROM MB_Chats c
-    JOIN MB_Messages m ON c.ChatID = m.ChatID
-    WHERE c.UserID = ? AND c.IsDeleted = 0
-    ORDER BY SortTimestamp DESC, c.CreateTimestamp DESC, m.MessageOrder ASC
-  "
+  query_legacy <- db_chat_list_full_query_sql(with_reasoning = FALSE)
 
   all_data <- safe_select_messages_with_reasoning(
     conn,
@@ -295,23 +255,9 @@ load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
   }
 
   if (is.null(user_id)) {
-    query_with_reasoning <- "
-      SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
-             m.MessageType, m.MessageTimestamp, m.MessageOrder, m.ReasoningContent
-      FROM MB_Chats c
-      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
-      WHERE c.ChatID = ?
-      ORDER BY m.MessageOrder ASC
-    "
+    query_with_reasoning <- db_chat_messages_query_sql(with_reasoning = TRUE, scoped = FALSE)
 
-    query_legacy <- "
-      SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
-             m.MessageType, m.MessageTimestamp, m.MessageOrder
-      FROM MB_Chats c
-      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
-      WHERE c.ChatID = ?
-      ORDER BY m.MessageOrder ASC
-    "
+    query_legacy <- db_chat_messages_query_sql(with_reasoning = FALSE, scoped = FALSE)
 
     query_params <- normalize_db_params(list(chat_param))
   } else {
@@ -321,23 +267,9 @@ load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
 
     safe_user_id <- suppressWarnings(as.integer(user_id[1]))
 
-    query_with_reasoning <- "
-      SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
-             m.MessageType, m.MessageTimestamp, m.MessageOrder, m.ReasoningContent
-      FROM MB_Chats c
-      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
-      WHERE c.ChatID = ? AND c.UserID = ?
-      ORDER BY m.MessageOrder ASC
-    "
+    query_with_reasoning <- db_chat_messages_query_sql(with_reasoning = TRUE, scoped = TRUE)
 
-    query_legacy <- "
-      SELECT c.ChatTitle, c.CreateTimestamp, m.MessageID, m.MessageContent,
-             m.MessageType, m.MessageTimestamp, m.MessageOrder
-      FROM MB_Chats c
-      LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID
-      WHERE c.ChatID = ? AND c.UserID = ?
-      ORDER BY m.MessageOrder ASC
-    "
+    query_legacy <- db_chat_messages_query_sql(with_reasoning = FALSE, scoped = TRUE)
 
     query_params <- normalize_db_params(list(chat_param, safe_user_id))
   }
@@ -397,25 +329,9 @@ load_chat_messages_batch <- function(chat_ids, user_id = NULL) {
   on.exit(release_connection(conn_info))
 
   if (is.null(user_id)) {
-    query_with_reasoning <- paste0(
-      "SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,",
-      "       m.MessageID, m.MessageContent, m.MessageType,",
-      "       m.MessageTimestamp, m.MessageOrder, m.ReasoningContent",
-      "  FROM MB_Chats c",
-      "  LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID",
-      " WHERE c.ChatID IN (", placeholder, ")",
-      " ORDER BY c.ChatID ASC, m.MessageOrder ASC"
-    )
+    query_with_reasoning <- db_chat_messages_batch_query_sql(placeholder, with_reasoning = TRUE, scoped = FALSE)
 
-    query_legacy <- paste0(
-      "SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,",
-      "       m.MessageID, m.MessageContent, m.MessageType,",
-      "       m.MessageTimestamp, m.MessageOrder",
-      "  FROM MB_Chats c",
-      "  LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID",
-      " WHERE c.ChatID IN (", placeholder, ")",
-      " ORDER BY c.ChatID ASC, m.MessageOrder ASC"
-    )
+    query_legacy <- db_chat_messages_batch_query_sql(placeholder, with_reasoning = FALSE, scoped = FALSE)
   } else {
     if (!.db_chat_valid_user_id(user_id)) {
       stop("Geçersiz user_id ile toplu sohbet yükleme denendi.")
@@ -423,25 +339,9 @@ load_chat_messages_batch <- function(chat_ids, user_id = NULL) {
 
     safe_user_id <- suppressWarnings(as.integer(user_id[1]))
 
-    query_with_reasoning <- paste0(
-      "SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,",
-      "       m.MessageID, m.MessageContent, m.MessageType,",
-      "       m.MessageTimestamp, m.MessageOrder, m.ReasoningContent",
-      "  FROM MB_Chats c",
-      "  LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID",
-      " WHERE c.ChatID IN (", placeholder, ") AND c.UserID = ?",
-      " ORDER BY c.ChatID ASC, m.MessageOrder ASC"
-    )
+    query_with_reasoning <- db_chat_messages_batch_query_sql(placeholder, with_reasoning = TRUE, scoped = TRUE)
 
-    query_legacy <- paste0(
-      "SELECT c.ChatID, c.ChatTitle, c.CreateTimestamp,",
-      "       m.MessageID, m.MessageContent, m.MessageType,",
-      "       m.MessageTimestamp, m.MessageOrder",
-      "  FROM MB_Chats c",
-      "  LEFT JOIN MB_Messages m ON c.ChatID = m.ChatID",
-      " WHERE c.ChatID IN (", placeholder, ") AND c.UserID = ?",
-      " ORDER BY c.ChatID ASC, m.MessageOrder ASC"
-    )
+    query_legacy <- db_chat_messages_batch_query_sql(placeholder, with_reasoning = FALSE, scoped = TRUE)
 
     param_values <- c(param_values, list(safe_user_id))
   }
@@ -548,36 +448,7 @@ load_history_rows_batch <- function(chat_ids, user_id = NULL) {
   on.exit(release_connection(conn_info))
 
   if (is.null(user_id)) {
-    query <- paste0(
-      "WITH filtered AS (",
-      "  SELECT c.ChatID, c.ChatTitle, m.MessageID, m.MessageContent, m.MessageType, ",
-      "         m.MessageTimestamp, m.MessageOrder ",
-      "    FROM MB_Chats c ",
-      "    INNER JOIN MB_Messages m ON c.ChatID = m.ChatID ",
-      "   WHERE c.ChatID IN (", placeholder, ")",
-      "), ",
-      "user_msgs AS (",
-      "  SELECT ChatID, ChatTitle, MessageContent, MessageTimestamp, ",
-      "         ROW_NUMBER() OVER (PARTITION BY ChatID ORDER BY MessageOrder ASC, MessageID ASC) AS rn ",
-      "    FROM filtered ",
-      "   WHERE MessageType = 'user'",
-      "), ",
-      "assistant_msgs AS (",
-      "  SELECT ChatID, MessageContent, ",
-      "         ROW_NUMBER() OVER (PARTITION BY ChatID ORDER BY MessageOrder ASC, MessageID ASC) AS rn ",
-      "    FROM filtered ",
-      "   WHERE MessageType IN ('ai', 'assistant')",
-      ") ",
-      "SELECT u.ChatID, u.ChatTitle, u.MessageTimestamp, ",
-      "       LEFT(u.MessageContent, 100) AS Soru, ",
-      "       LEFT(a.MessageContent, 100) AS Cevap, ",
-      "       u.rn AS PairOrder ",
-      "  FROM user_msgs u ",
-      "  INNER JOIN assistant_msgs a ",
-      "          ON a.ChatID = u.ChatID ",
-      "         AND a.rn = u.rn ",
-      " ORDER BY u.ChatID ASC, u.rn ASC"
-    )
+    query <- db_history_rows_query_sql(placeholder, scoped = FALSE)
   } else {
     if (!.db_chat_valid_user_id(user_id)) {
       stop("Geçersiz user_id ile geçmiş yükleme denendi.")
@@ -585,36 +456,7 @@ load_history_rows_batch <- function(chat_ids, user_id = NULL) {
 
     safe_user_id <- suppressWarnings(as.integer(user_id[1]))
 
-    query <- paste0(
-      "WITH filtered AS (",
-      "  SELECT c.ChatID, c.ChatTitle, m.MessageID, m.MessageContent, m.MessageType, ",
-      "         m.MessageTimestamp, m.MessageOrder ",
-      "    FROM MB_Chats c ",
-      "    INNER JOIN MB_Messages m ON c.ChatID = m.ChatID ",
-      "   WHERE c.ChatID IN (", placeholder, ") AND c.UserID = ?",
-      "), ",
-      "user_msgs AS (",
-      "  SELECT ChatID, ChatTitle, MessageContent, MessageTimestamp, ",
-      "         ROW_NUMBER() OVER (PARTITION BY ChatID ORDER BY MessageOrder ASC, MessageID ASC) AS rn ",
-      "    FROM filtered ",
-      "   WHERE MessageType = 'user'",
-      "), ",
-      "assistant_msgs AS (",
-      "  SELECT ChatID, MessageContent, ",
-      "         ROW_NUMBER() OVER (PARTITION BY ChatID ORDER BY MessageOrder ASC, MessageID ASC) AS rn ",
-      "    FROM filtered ",
-      "   WHERE MessageType IN ('ai', 'assistant')",
-      ") ",
-      "SELECT u.ChatID, u.ChatTitle, u.MessageTimestamp, ",
-      "       LEFT(u.MessageContent, 100) AS Soru, ",
-      "       LEFT(a.MessageContent, 100) AS Cevap, ",
-      "       u.rn AS PairOrder ",
-      "  FROM user_msgs u ",
-      "  INNER JOIN assistant_msgs a ",
-      "          ON a.ChatID = u.ChatID ",
-      "         AND a.rn = u.rn ",
-      " ORDER BY u.ChatID ASC, u.rn ASC"
-    )
+    query <- db_history_rows_query_sql(placeholder, scoped = TRUE)
 
     param_values <- c(param_values, list(safe_user_id))
   }

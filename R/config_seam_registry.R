@@ -80,7 +80,8 @@ mergen_seam_registry <- function() {
         "tests/testthat/test-db-normalization-contract.R",
         "tests/testthat/test-text-encoding-utils.R",
         "tests/testthat/test-db-user-visible-encoding-boundaries.R",
-        "tests/testthat/test-chat-message-formatting-refactor-contract.R"
+        "tests/testthat/test-chat-message-formatting-refactor-contract.R",
+        "tests/testthat/test-db-chat-read-queries-contract.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-db-normalization-contract.R\")",
@@ -158,6 +159,7 @@ mergen_seam_registry <- function() {
       guard_tests = c(
         "tests/testthat/test-send-message-prompting-contract.R",
         "tests/testthat/test-send-message-request-lifecycle-contract.R",
+        "tests/testthat/test-server-handler-streaming-tts-contract.R",
         "tests/testthat/test-llm-stream-io-contract.R",
         "tests/testthat/test-streaming-poll-lifecycle-contract.R",
         "tests/testthat/test-streaming-markdown-safety-contract.R",

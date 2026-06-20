@@ -81,7 +81,7 @@
   # bölündü; en büyük runtime dosyası 777 satırdan iki dosyaya indi. 2 -> 3.
   config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_asset_zone_validators.R", n = 3L),
   architecture_governance = list(first = "R/config_seam_registry.R", last = "R/config_seam_registry.R", n = 1L),
-  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 11L),
+  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 12L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
   language_messaging = list(first = "R/helpers_language.R", last = "R/helpers_messaging.R", n = 2L),
   mcp_tools = list(first = "R/helpers_mcp_context.R", last = "R/helpers_mcp_tools.R", n = 9L),
@@ -116,7 +116,7 @@
   server_init_runtime = list(first = "R/server_session_cache.R", last = "R/server_init_chat_runtime.R", n = 13L),
   server_core_outputs_welcome = list(first = "R/server_core_observer_runtime.R", last = "R/server_welcome_handlers.R", n = 7L),
   server_observers = list(first = "R/server_observers_startup.R", last = "R/server_observers_misc.R", n = 11L),
-  server_handlers_send_message = list(first = "R/server_tts_handlers.R", last = "R/server_send_message.R", n = 8L)
+  server_handlers_send_message = list(first = "R/server_tts_handlers.R", last = "R/server_send_message.R", n = 9L)
 )
 
 test_that("source_manifest_sections beklenen sırada ve adlarda bölümler içerir", {
@@ -244,7 +244,13 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 274L -> 275L bilinçli güncelleme: günlük log dosyası yardımcıları
   # R/config_logging_daily_file.R config_logging.R'den ayrılıp foundation
   # bölümüne (config_logging.R'den ÖNCE) eklendi.
-  expect_equal(length(runtime), 275L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 275L -> 276L bilinçli güncelleme: TTS açık streaming dalı send_message'tan
+  # R/server_handler_streaming_tts.R dosyasına çıkarıldı (gerçek SSE /
+  # non-streaming dallarıyla simetrik handler).
+  # 276L -> 277L bilinçli güncelleme: sohbet okuma SQL sorgu üreticileri
+  # R/helpers_db_chat_read_queries.R dosyasına çıkarıldı (helpers_db_chat_readers.R
+  # orkestrasyonundan ayrı, saf ASCII SQL; encoding sınırına dokunmaz).
+  expect_equal(length(runtime), 277L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

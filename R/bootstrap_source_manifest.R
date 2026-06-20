@@ -381,6 +381,7 @@ source_manifest_required_order <- list(
   c("R/helpers_db_user_encoding.R", "R/helpers_db_validation.R"),
   c("R/helpers_db_validation.R", "R/helpers_chat_message_formatting.R"),
   c("R/helpers_chat_message_formatting.R", "R/helpers_db_chat_readers.R"),
+  c("R/helpers_db_chat_read_queries.R", "R/helpers_db_chat_readers.R"),
   c("R/helpers_db_chat_readers.R", "R/helpers_db_chat_mutations.R"),
   c("R/helpers_db_chat_mutations.R", "R/helpers_database.R"),
   c("R/helpers_database.R", "R/module_chat_history.R"),
@@ -459,6 +460,7 @@ source_manifest_required_order <- list(
   c("R/helpers_llm_worker_payload.R", "R/helpers_llm_worker_tool_results.R"),
   c("R/helpers_llm_worker_tool_results.R", "R/helpers_llm_worker.R"),
   c("R/server_handler_true_streaming.R", "R/server_send_message.R"),
+  c("R/server_handler_streaming_tts.R", "R/server_send_message.R"),
 
   c("R/utils_session_cleanup.R", "R/server_session_cache.R"),
   c("R/utils_session_cleanup.R", "R/server_init_session_state.R"),

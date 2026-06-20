@@ -121,6 +121,7 @@ source_manifest_sections <- list(
     "R/helpers_db_validation.R",
     "R/helpers_markdown_safety.R",
     "R/helpers_chat_message_formatting.R",
+    "R/helpers_db_chat_read_queries.R",
     "R/helpers_db_chat_readers.R",
     "R/helpers_db_chat_mutations.R",
     "R/helpers_db_feedback.R",
@@ -501,6 +502,7 @@ source_manifest_sections <- list(
     "R/server_handler_summarization.R",
     "R/server_handler_image_generation.R",
     "R/server_handler_true_streaming.R",
+    "R/server_handler_streaming_tts.R",
     "R/server_llm_response_handlers.R",
     "R/server_send_message.R"
   )

@@ -1820,8 +1820,9 @@ Responsibilities:
 * `R/helpers_send_message_core.R`: tool-family routing, send-message cleanup/abort helpers, stream profile selection, and MCP session-file preparation.
 * `R/helpers_send_message_prompting.R`: citation instruction construction, character/style/system prompt assembly, SQL system prompt merging, MCP Excel uploaded-file context prompts, and MCP-disabled uploaded-file context prompts.
 * `R/server_send_message.R`: request orchestration, SSO/user guards, chat/message lifecycle, mode dispatch, API/model setup, and streaming/non-streaming handoff.
+* `R/server_handler_streaming_tts.R`: the TTS-enabled streaming dispatch branch (`handle_streaming_tts_mode(ctx)`). `send_message()` routes its three terminal LLM branches symmetrically to ctx-based handlers: true SSE → `handle_true_streaming_mode(ctx)` (`R/server_handler_true_streaming.R`), non-streaming → `generate_non_streaming_stoppable_fn(...)`, and TTS-on streaming → `handle_streaming_tts_mode(ctx)`. Keep this handler loaded after `R/server_handler_true_streaming.R` and before `R/server_send_message.R`.
 
-Do not move prompt/style/file-context assembly back into `R/server_send_message.R`. Keeping this boundary creates maintainability headroom below the 800-line threshold and reduces the risk that future prompt changes accidentally alter request lifecycle or streaming state.
+Do not move prompt/style/file-context assembly back into `R/server_send_message.R`. Do not re-inline the TTS-streaming promise chain back into `R/server_send_message.R`; it is now `handle_streaming_tts_mode(ctx)` in `R/server_handler_streaming_tts.R`. Keeping this boundary creates maintainability headroom below the 800-line threshold and reduces the risk that future prompt changes accidentally alter request lifecycle or streaming state.
 
 Race-condition and behavior contracts:
 
@@ -1834,11 +1835,13 @@ Race-condition and behavior contracts:
 * MCP-disabled uploaded-file prompts must continue to use stored summaries or safe file excerpts and must still end with a Turkish `Kaynakça:` section.
 * The helper extraction must not change user-visible Turkish text, filename display behavior, citation behavior, or source-order contracts.
 * Avoid introducing local variables that shadow globally important helpers such as `is_thinking_model()` in the send-message runtime path.
+* `handle_streaming_tts_mode(ctx)` must keep its stale-request/stop decisions request-scoped through `mergen_send_message_request_state(active_request_id, req_id, stop_generation)`. The success path drives `simulate_streaming_stoppable_fn(...)`, the failure/rejected path drives `abort_send_message(...)`, and the stopped path drives `cleanup_send_message()`. Do not regress this to an inline promise chain without a request-id guard.
 
 Protected by:
 
     tests/testthat/test-send-message-prompting-contract.R
     tests/testthat/test-send-message-request-lifecycle-contract.R
+    tests/testthat/test-server-handler-streaming-tts-contract.R
     tests/testthat/test-send-message-maintainability-ratchet.R
     tests/testthat/test-source-manifest-contract.R
     tests/testthat/test-maintainability-ratchet.R
@@ -2936,6 +2939,7 @@ The database layer is now intentionally split into smaller responsibility-focuse
 safe_source("R/helpers_db_connection.R", encoding = "UTF-8")
 safe_source("R/helpers_db_validation.R", encoding = "UTF-8")
 safe_source("R/helpers_chat_message_formatting.R", encoding = "UTF-8")
+safe_source("R/helpers_db_chat_read_queries.R", encoding = "UTF-8")
 safe_source("R/helpers_db_chat_readers.R", encoding = "UTF-8")
 safe_source("R/helpers_db_chat_mutations.R", encoding = "UTF-8")
 safe_source("R/helpers_database.R", encoding = "UTF-8")
@@ -2946,13 +2950,14 @@ Responsibilities:
 * `R/helpers_db_connection.R`: DB connection, release, health probe, worker-side DB connection, and DB parameter encoding normalization.
 * `R/helpers_db_validation.R`: validation helpers such as `validate_username()`, `validate_chat_title()`, and `validate_message_content()`.
 * `R/helpers_chat_message_formatting.R`: conversion of DB message rows into app message objects, including generated-image HTML, ChartLab saved-chat placeholder regeneration, markdown fallback, timestamps, and `ReasoningContent` propagation.
-* `R/helpers_db_chat_readers.R`: chat list loading, chat message hydration, reasoning-column fallback SELECTs, batch chat hydration, and lightweight history row reads. Chat list reads must preserve latest-activity ordering using message timestamps when available.
+* `R/helpers_db_chat_read_queries.R`: pure chat-read SQL query builders (`db_chat_preview_query_sql`, `db_chat_list_summary_query_sql`, `db_chat_list_full_query_sql`, `db_chat_messages_query_sql`, `db_chat_messages_batch_query_sql`, `db_history_rows_query_sql`). This file is the single owner of chat-read SQL: parameterized (`?`) ASCII SQL only, no DB connection, no encoding/normalization, no reactive state. The `with_reasoning` and `scoped` (user-isolated) variants are de-duplicated through conditional fragments while staying byte-identical to the legacy inline SQL. The user-isolation (`c.UserID = ?`) and soft-delete (`c.IsDeleted = 0`) security filters live here. It must load before `R/helpers_db_chat_readers.R`.
+* `R/helpers_db_chat_readers.R`: chat list loading, chat message hydration, reasoning-column fallback SELECTs, batch chat hydration, and lightweight history row reads. It orchestrates connection acquisition, calls the `db_chat_*_query_sql()` builders, runs the queries, and applies `normalize_db_read_visible_frame()` / formatting. Do not re-inline the SQL strings back into this file; call the builders. Chat list reads must preserve latest-activity ordering using message timestamps when available.
 * `R/helpers_db_chat_mutations.R`: chat/message write-side mutations, including chat creation, message save/update, reasoning-content update, title update, delete/clear chat helpers, worker-safe assistant response persistence, and `sanitize_input()` compatibility.
 * `R/helpers_database.R`: user creation/update, SSO field update, feedback operations, usage logging, and remaining DB orchestration.
 
 MessageOrder race protection in `save_message_to_db()` and `worker_save_assistant_response()` must keep the `UPDLOCK/HOLDLOCK` query contract.
 
-Do not move connection, validation, message-formatting, chat-reader, or chat/message mutation functions back into `R/helpers_database.R`. The split is protected by `test-db-refactor-contract.R`, `test-chat-message-formatting-refactor-contract.R`, `test-source-manifest-contract.R`, and `test-maintainability-ratchet.R`.
+Do not move connection, validation, message-formatting, chat-reader, chat-read SQL builder, or chat/message mutation functions back into `R/helpers_database.R`. The split is protected by `test-db-refactor-contract.R`, `test-db-chat-read-queries-contract.R`, `test-db-user-scope-contract.R`, `test-chat-message-formatting-refactor-contract.R`, `test-source-manifest-contract.R`, and `test-maintainability-ratchet.R`.
 
 When updating `tests/testthat/helper_bootstrap.R`, keep its DB source order aligned with production `global.R`. Tests must load the extracted DB helper files before `helpers_database.R`.
 
@@ -4501,6 +4506,7 @@ Core persistence and DB access:
 - `R/helpers_db_connection.R`
 - `R/helpers_db_validation.R`
 - `R/helpers_chat_message_formatting.R`
+- `R/helpers_db_chat_read_queries.R`
 - `R/helpers_db_chat_readers.R`
 - `R/helpers_database.R`
 - `R/library_queries.R`
@@ -4679,6 +4685,7 @@ Wiring and runtime flow. Welcome recency correctness depends on **both** refresh
 - `R/server_handler_summarization.R`
 - `R/server_handler_image_generation.R`
 - `R/server_handler_true_streaming.R`
+- `R/server_handler_streaming_tts.R`
 - `R/server_send_message.R`
 - `R/server_tts_handlers.R`
 - `R/server_music_handlers.R`

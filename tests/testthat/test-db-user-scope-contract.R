@@ -50,64 +50,72 @@
   length(.byte_fixed_positions(pattern, txt))
 }
 
-test_that("sohbet önizleme sorgusu kullanıcı ve soft-delete filtresini korur", {
-  txt <- .read_repo_file_bytes_for_db_contract("R/helpers_db_chat_readers.R")
+# Sohbet okuma SQL'i R/helpers_db_chat_read_queries.R üreticilerine taşındı.
+# Bu sözleşme kullanıcı izolasyonu + soft-delete güvenlik filtresinin korunduğunu
+# ve okuyucuların kullanıcı-kapsamlı üreticilere yönlendiğini doğrular.
 
-  fn_pos <- regexpr(
-    "load_chats_preview_from_db",
-    txt,
-    fixed = TRUE,
-    useBytes = TRUE
-  )[[1]]
+test_that("listeleme okuyucuları kullanıcı-kapsamlı SQL üreticilerine yönlenir", {
+  reader_txt <- .read_repo_file_bytes_for_db_contract("R/helpers_db_chat_readers.R")
 
   expect_true(
-    fn_pos > 0L,
+    regexpr("load_chats_preview_from_db", reader_txt, fixed = TRUE, useBytes = TRUE)[[1]] > 0L,
     info = "load_chats_preview_from_db fonksiyonu helpers_db_chat_readers.R içinde bulunmalı."
   )
-
-  filter_positions <- .byte_fixed_positions(
-    "c.UserID = ? AND c.IsDeleted = 0",
-    txt
-  )
-
   expect_true(
-    any(filter_positions > fn_pos & filter_positions < fn_pos + 5000L),
-    info = "load_chats_preview_from_db içinde c.UserID = ? AND c.IsDeleted = 0 filtresi korunmalı."
-  )
-})
-
-test_that("sohbet yükleme sorguları kullanıcı ve soft-delete filtresini korur", {
-  txt <- .read_repo_file_bytes_for_db_contract("R/helpers_db_chat_readers.R")
-
-  fn_pos <- regexpr(
-    "load_chats_from_db",
-    txt,
-    fixed = TRUE,
-    useBytes = TRUE
-  )[[1]]
-
-  expect_true(
-    fn_pos > 0L,
+    regexpr("load_chats_from_db", reader_txt, fixed = TRUE, useBytes = TRUE)[[1]] > 0L,
     info = "load_chats_from_db fonksiyonu helpers_db_chat_readers.R içinde bulunmalı."
   )
 
-  filter_positions <- .byte_fixed_positions(
-    "c.UserID = ? AND c.IsDeleted = 0",
-    txt
-  )
-
+  # Okuyucular her-zaman-kapsamlı listeleme üreticilerini çağırmalı.
   expect_true(
-    any(filter_positions > fn_pos & filter_positions < fn_pos + 9000L),
-    info = "load_chats_from_db içinde kullanıcı ve IsDeleted filtresi korunmalı."
+    .byte_fixed_count("db_chat_preview_query_sql(", reader_txt) >= 1L,
+    info = "load_chats_preview_from_db db_chat_preview_query_sql() üreticisini çağırmalı."
   )
-
-  filter_count <- .byte_fixed_count(
-    "c.UserID = ? AND c.IsDeleted = 0",
-    txt
-  )
-
   expect_true(
-    filter_count >= 3L,
-    info = "helpers_db_chat_readers.R içinde chat sorguları için beklenen UserID/IsDeleted filtre sayısı az görünüyor."
+    .byte_fixed_count("db_chat_list_summary_query_sql(", reader_txt) >= 1L,
+    info = "load_chats_from_db (mesajsız) db_chat_list_summary_query_sql() çağırmalı."
+  )
+  expect_true(
+    .byte_fixed_count("db_chat_list_full_query_sql(", reader_txt) >= 1L,
+    info = "load_chats_from_db (mesajlı) db_chat_list_full_query_sql() çağırmalı."
+  )
+})
+
+test_that("her-zaman-kapsamlı listeleme üreticileri kullanıcı ve soft-delete filtresini korur", {
+  query_txt <- .read_repo_file_bytes_for_db_contract("R/helpers_db_chat_read_queries.R")
+
+  # Önizleme/özet/tam listeleme üreticileri DAİMA UserID + IsDeleted filtresini içerir.
+  for (builder in c(
+    "db_chat_preview_query_sql",
+    "db_chat_list_summary_query_sql",
+    "db_chat_list_full_query_sql"
+  )) {
+    fn_pos <- regexpr(builder, query_txt, fixed = TRUE, useBytes = TRUE)[[1]]
+    expect_true(
+      fn_pos > 0L,
+      info = sprintf("%s üreticisi helpers_db_chat_read_queries.R içinde bulunmalı.", builder)
+    )
+
+    filter_positions <- .byte_fixed_positions("c.UserID = ? AND c.IsDeleted = 0", query_txt)
+    expect_true(
+      any(filter_positions > fn_pos & filter_positions < fn_pos + 800L),
+      info = sprintf("%s içinde c.UserID = ? AND c.IsDeleted = 0 filtresi korunmalı.", builder)
+    )
+  }
+
+  # En az üç (önizleme + özet + tam) her-zaman-kapsamlı filtre bulunmalı.
+  expect_true(
+    .byte_fixed_count("c.UserID = ? AND c.IsDeleted = 0", query_txt) >= 3L,
+    info = "Listeleme SQL üreticileri için beklenen UserID/IsDeleted filtre sayısı az görünüyor."
+  )
+})
+
+test_that("kapsamlı mesaj/geçmiş üreticileri scoped dalda AND c.UserID = ? ekler", {
+  query_txt <- .read_repo_file_bytes_for_db_contract("R/helpers_db_chat_read_queries.R")
+
+  # Tek-sohbet / toplu / geçmiş üreticileri scoped olduğunda kullanıcı filtresi ekler.
+  expect_true(
+    .byte_fixed_count("AND c.UserID = ?", query_txt) >= 1L,
+    info = "Scoped mesaj/geçmiş üreticilerinde AND c.UserID = ? koşullu parçası bulunmalı."
   )
 })
