@@ -365,16 +365,19 @@ test_that("helpers_db_chat_mutations.R mesaj sıralama yarış korumasını koru
   )
 })
 
-test_that("helpers_db_chat_readers.R etkinlik zamanına göre sohbet sıralama sözleşmesini korur", {
-  txt <- .read_repo_text_db_refactor_contract("R/helpers_db_chat_readers.R")
-
+test_that("sohbet okuma katmanı etkinlik zamanına göre sıralama sözleşmesini korur", {
+  # Listeleme ORDER BY'ı SQL üretici dosyasına taşındı; etkinlik-zamanı sıralama
+  # sözleşmesi orada korunmalıdır.
+  query_txt <- .read_repo_text_db_refactor_contract("R/helpers_db_chat_read_queries.R")
   expect_true(
-    grepl("COALESCE(MAX(m.MessageTimestamp), c.CreateTimestamp) DESC", txt, fixed = TRUE, useBytes = TRUE),
-    info = "Sohbet listeleme sorguları son etkinlik zamanına göre sıralanmalıdır."
+    grepl("COALESCE(MAX(m.MessageTimestamp), c.CreateTimestamp) DESC", query_txt, fixed = TRUE, useBytes = TRUE),
+    info = "Sohbet listeleme sorgu üreticileri son etkinlik zamanına göre sıralanmalıdır."
   )
 
+  # Toplu hidratasyon sıralaması (R tarafı) hâlâ reader dosyasındadır.
+  reader_txt <- .read_repo_text_db_refactor_contract("R/helpers_db_chat_readers.R")
   expect_true(
-    grepl("last_message_timestamp %||% chat$timestamp", txt, fixed = TRUE, useBytes = TRUE),
+    grepl("last_message_timestamp %||% chat$timestamp", reader_txt, fixed = TRUE, useBytes = TRUE),
     info = "Toplu hidratasyon sıralaması last_message_timestamp değerini kullanmalıdır."
   )
 })

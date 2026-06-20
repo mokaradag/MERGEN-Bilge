@@ -96,18 +96,29 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **Seam:** `veritabani_kodlama`
 - **Birincil R dosyaları:** `R/helpers_db_unicode_escape.R`, `R/helpers_db_encoding.R`,
   `R/helpers_db_connection.R`, `R/helpers_db_user_encoding.R`, `R/helpers_db_validation.R`,
-  `R/helpers_chat_message_formatting.R`, `R/helpers_db_chat_readers.R`,
+  `R/helpers_chat_message_formatting.R`, `R/helpers_db_chat_read_queries.R`
+  (saf sohbet-okuma SQL üreticileri: önizleme/liste/mesaj/toplu/geçmiş; `with_reasoning`
+  + `scoped` dalları, `c.UserID = ?` + `c.IsDeleted = 0` güvenlik filtreleri),
+  `R/helpers_db_chat_readers.R` (bağlantı/normalizasyon orkestrasyonu; üreticileri çağırır),
   `R/helpers_db_chat_mutations.R`, `R/helpers_db_feedback.R`, `R/helpers_database.R`,
   `R/utils_text_encoding.R`.
 - **DB/servis:** `MB_Users`, `MB_Chats`, `MB_Messages`, `MB_Feedback`, `MB_Usage_Log`;
   SQL Server / ODBC (`DB_DSN`, `DB_CLIENT_ENCODING=WINDOWS-1254`).
 - **Testler:** `test-db-normalization-contract.R`, `test-db-refactor-contract.R`,
   `test-db-user-visible-encoding-boundaries.R`, `test-text-encoding-utils.R`,
-  `test-db-chat-readers-behavior.R`, `test-db-user-encoding-normalization-behavior.R`.
+  `test-db-chat-readers-behavior.R`, `test-db-user-encoding-normalization-behavior.R`,
+  `test-db-chat-read-queries-contract.R` (SQL üretici yapısal ayrım + saf üretici
+  davranışı: `with_reasoning`/`scoped` dalları, güvenlik filtresi, placeholder),
+  `test-db-user-scope-contract.R` (kullanıcı izolasyonu + soft-delete güvenlik
+  sözleşmesi, üreticilere yönlendirme).
 - **Smoke/kanıt:** `run_vm_encoding_preflight_real.R` (yazma/okuma/rollback),
   VM evidence `db_encoding_preflight`. **Yalnızca Windows VM + SSMS kanıtı geçerlidir.**
-- **Bilinen risk / sıradaki hedef:** legacy mojibake satırlar (yalnızca yedek +
-  onaylı tek seferlik onarım); yeni yazımlar guard'lıdır.
+- **Bilinen risk / sıradaki hedef:** sohbet-okuma SQL'i saf üretici dosyasına
+  (`helpers_db_chat_read_queries.R`) ayrıldı; `helpers_db_chat_readers.R` 680/13 → 522/13
+  (SQL byte-birebir korundu, golden + golden-fragment testi). SQL stringleri ASCII'dir
+  ve encoding sınırına dokunmaz; `normalize_db_read_visible_frame()` reader'da kaldı.
+  legacy mojibake satırlar (yalnızca yedek + onaylı tek seferlik onarım); yeni
+  yazımlar guard'lıdır.
 
 ## SSO / Auth
 

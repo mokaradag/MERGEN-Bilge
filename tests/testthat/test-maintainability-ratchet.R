@@ -227,6 +227,11 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/helpers_ai_expert_user_data.R", 220L, 13L)
   assert_current_budget("R/helpers_mcp_tools.R", 535L, 20L)
   assert_current_budget("R/module_chartlab.R", 532L, 20L)
+  # Sohbet okuma SQL'i (önizleme/liste/mesaj/toplu/geçmiş) saf üretici dosyasına
+  # ayrıldı: helpers_db_chat_readers.R 680/13 -> 522/13; üreticiler 133/6.
+  # SQL byte-birebir korundu (golden). Bütçeler SQL'in reader'a geri sızmasını kilitler.
+  assert_current_budget("R/helpers_db_chat_readers.R", 560L, 14L)
+  assert_current_budget("R/helpers_db_chat_read_queries.R", 180L, 8L)
 
   # Derin uzay giriş ekranı UI/sunucu olarak bölündü: createStartupScreenUI()
   # ve saf .startup_*() yapıcıları module_startup_screen_ui.R'ye taşındı; üç

@@ -6,6 +6,131 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-20 — Sohbet-okuma SQL sorgu üreticilerinin reader dosyasından ayrılması
+
+### Seçilen iz(ler)
+- **Track 1 — yakın-bütçe R dosyasından bütünleşik (saf) çıkarım** (öncelik #1).
+  `veritabani_kodlama` seam'inde tek paket.
+
+### Özet ve gerekçe
+Keşif raporu (maintainability 100/100; en büyük dosya 690): `R/helpers_db_chat_readers.R`
+**680/13 ile 3. en büyük R dosyasıydı** ve yakın-bütçe bandındaydı. Dosya ~200 satırlık
+**saf ASCII SQL string'i** (önizleme/liste/mesaj/toplu/geçmiş; with_reasoning ve
+kullanıcı-kapsamlı null/scoped varyantlar dahil) ile bağlantı/normalizasyon/formatlama
+orkestrasyonunu karıştırıyordu. SQL string'leri encoding-hassas DEĞİLDİR (encoding
+işleme tamamen `normalize_db_read_visible_frame()` içinde, reader'da kalır), bu yüzden
+SQL'i ayrı bir üretici modülüne taşımak, en korumalı seam'in (Türkçe encoding) hiçbir
+sınırına dokunmadan davranış-koruyan ve byte-birebir doğrulanabilir bir çıkarımdır.
+
+SQL, yeni `R/helpers_db_chat_read_queries.R` dosyasındaki 6 saf üreticiye taşındı.
+`with_reasoning` (ReasoningContent sütunu) ve `scoped` (`AND c.UserID = ?`) varyantları
+koşullu `paste0`/fragment'larla DRY hale getirildi; çıktı eski satır içi SQL ile
+**byte-birebir aynıdır** (extraction öncesi 14 SQL string'i stub'lı bağlantı ile
+yakalanıp golden olarak doğrulandı; tüm string'ler `identical()` TRUE).
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_db_chat_read_queries.R` (yeni, 133/6) — `db_chat_preview_query_sql`,
+  `db_chat_list_summary_query_sql`, `db_chat_list_full_query_sql`,
+  `db_chat_messages_query_sql`, `db_chat_messages_batch_query_sql`,
+  `db_history_rows_query_sql`. Saf, bağlantısız, encoding'siz; kullanıcı izolasyonu
+  (`c.UserID = ?`) + soft-delete (`c.IsDeleted = 0`) güvenlik filtreleri burada.
+- `R/helpers_db_chat_readers.R` — **680/13 → 522/13**; satır içi SQL yerine üreticileri
+  çağırır; bağlantı/normalizasyon/formatlama orkestrasyonu korunur.
+- `R/config_source_manifest.R` — `database` bölümüne üretici dosyası
+  `helpers_chat_message_formatting.R`'den sonra, `helpers_db_chat_readers.R`'den ÖNCE
+  eklendi (11 → 12 dosya; toplam 276 → 277).
+- `R/bootstrap_source_manifest.R` — kritik sıra kuralı:
+  `helpers_db_chat_read_queries.R` → `helpers_db_chat_readers.R`.
+- `R/config_seam_registry.R` — `veritabani_kodlama` guard_tests listesine yeni
+  contract testi eklendi (5 → 6).
+- `tests/testthat/helper_bootstrap.R` — DB kaynak zinciri üretici dosyasını reader'dan
+  önce yükleyecek şekilde güncellendi.
+
+**Test**
+- `tests/testthat/test-db-chat-read-queries-contract.R` (yeni, 52 assertion) — yapısal
+  ayrım (üreticiler yeni dosyada; reader üreticileri çağırır; büyük satır içi SQL
+  gövdeleri reader'da yok; manifest sırası) + saf üretici davranışı (with_reasoning →
+  ReasoningContent, legacy → yok; scoped → AND c.UserID = ?; güvenlik filtresi;
+  placeholder enjeksiyonu; with/legacy YALNIZCA reasoning satırıyla farklılaşır).
+- `tests/testthat/test-db-user-scope-contract.R` — güvenlik filtresi (kullanıcı
+  izolasyonu + soft-delete) artık üretici dosyasında doğrulanır; okuyucuların
+  kullanıcı-kapsamlı üreticilere yönlendiği eklendi.
+- `tests/testthat/test-db-refactor-contract.R` — etkinlik-zamanı ORDER BY sözleşmesi
+  artık üretici dosyasında aranır; reader-tarafı toplu sıralama kontrolü korundu.
+- `tests/testthat/test-source-manifest-sections-contract.R` — `database` n=11→12;
+  toplam 276→277 bilinçli güncellendi.
+- `tests/testthat/test-maintainability-ratchet.R` — dosya bazlı bütçeler:
+  `helpers_db_chat_readers.R` 560/14, `helpers_db_chat_read_queries.R` 180/8.
+
+**Dokümantasyon**
+- `CLAUDE.md` — DB helper modularization contract: üretici dosyası source sırasına +
+  sorumluluklara + korumalı test listesine eklendi; reader sorumluluğu "üreticileri
+  çağırır" olarak güncellendi; Group 3 yükleme listesi.
+- `docs/feature-ownership-map.md` — DB seam'ine üretici dosyası + iki test;
+  "sıradaki hedef" notu güncellendi (680/13 → 522/13).
+- `docs/architecture-map.md` — DB/persistence satırına üretici dosyası notu.
+- `docs/technical-reference.md` — SQL üretici extraction + golden + bütçe notu.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `helpers_db_chat_readers.R` 680/13 (3. en büyük R dosyası, yakın-bütçe);
+  ~200 satır satır içi SQL + bağlantı/normalizasyon orkestrasyonu karışık.
+- Sonra: reader 522/13 (orkestrasyon-odaklı); üreticiler 133/6 (tek-sorumluluk saf SQL).
+  Skor 100/100; 800+ satır / 25+ fonksiyon = 0; en büyük dosya 690 (değişmedi).
+  Reader yakın-bütçe bandından çıktı; iki dosya da dosya-özel bütçeyle kilitli.
+
+### Korunan davranış sözleşmeleri
+- 14 SQL string'inin tamamı byte-birebir korundu (golden `identical()` TRUE).
+- Kullanıcı izolasyonu (`c.UserID = ?`) + soft-delete (`c.IsDeleted = 0`) güvenlik
+  filtreleri ve reasoning-fallback (with_reasoning → legacy) deseni korundu; statik
+  güvenlik sözleşmesi üretici dosyasını hedefleyecek şekilde güncellendi.
+- `normalize_db_read_visible_frame()` / `normalize_text_frame_utf8()` encoding okuma
+  normalizasyonu reader dosyasında kaldı; encoding sınırına dokunulmadı.
+- DB/SSO/source-order/UX runtime sözleşmelerine dokunulmadı (saf SQL relocate + DRY).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Golden SQL karşılaştırması: extraction öncesi/sonrası 14 SQL string'i stub'lı
+  bağlantı ile yakalandı; tümü byte-birebir aynı (`identical()` TRUE).
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; reader 522/13;
+  üretici 133/6; en büyük dosya 690.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`; `veritabani_kodlama`
+  runtime-dosya 13 → 14, guard-test 5 → 6.
+- `Rscript tests/scripts/parse_sanity_check.R` → OK (846 dosya).
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni queries-contract (52),
+  güncellenen db-user-scope (13), db-chat-readers-behavior (21), db-refactor-contract (31),
+  db-normalization-contract (38), db-user-visible-encoding-boundaries (31),
+  text-encoding-utils (14), chat-message-formatting-refactor (26), production-contracts (21),
+  e2e-chat-persistence-regression (43), image-gallery-observers-behavior (8),
+  startup-observers-runtime-smoke (5), source-manifest-sections (154),
+  source-manifest-contract (165), global-source-manifest (12), seam-registry (12),
+  seam-doctor (6), maintainability-ratchet (231).
+- `bash tools/ai_validate.sh quick` → geçti; `failed_steps: 0`, `skipped_steps: 0`,
+  app source smoke PASSED (`artifacts/ai-validation/20260620-035411/summary.json`).
+- `bash tools/ai_validate.sh full --boot-smoke` → app source smoke PASSED; tam strict
+  testthat suite yalnızca ÖNCEDEN VAR OLAN ve ilgisiz iki logging testinde
+  (`test-config-logging-caller-frame.R`, `test-logging-resolvers-behavior.R` — bulut
+  log-dizini yazılabilirlik hatası, değişiklik kümem hiçbir logging dosyasına dokunmuyor)
+  başarısız oldu.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Kayıtlı Söyleşiler ve Söyleşi Geçmişi sayfalarını açın; sohbet önizleme listesi,
+  kayıtlı sohbet yükleme, geçmiş satır çiftleri ve toplu hidratasyonun eskisi gibi
+  çalıştığını ve yalnızca giriş yapan kullanıcının sohbetlerinin göründüğünü doğrulayın.
+- Türkçe karakterli sohbet başlıklarının/mesajlarının doğru göründüğünü doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek SQL Server/gerçek tarayıcı kanıtı alınmadı (bulut oturumu; gerçek DB
+  bağlantısı yok). Değişiklik saf SQL string relocate + DRY'dir ve SQL byte-birebir
+  golden ile korundu; gerçek sorgu çalıştırma yalnızca VM/canlı DB'de kanıtlanır.
+- Tam strict testthat suite bu bulut checkout'unda ÖNCEDEN VAR OLAN ilgisiz logging
+  testleri nedeniyle tamamlanmıyor; bu paket bu testleri ne kırdı ne onardı.
+- Sıradaki paket adayları: `R/config_ui_assets.R` (690, asset-order hassas — dikkatli),
+  `R/server_runtime_context.R` (687, sıkı sözleşme), ya da frontend tarafında yoğun
+  `www/js/ai_expert_manager.js` (802/45/12 event/8 Shiny handler).
+
+---
+
 ## 2026-06-20 — TTS açık streaming dalının send_message'tan ayrı handler'a çıkarılması
 
 ### Seçilen iz(ler)

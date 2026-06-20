@@ -381,6 +381,7 @@ source_manifest_required_order <- list(
   c("R/helpers_db_user_encoding.R", "R/helpers_db_validation.R"),
   c("R/helpers_db_validation.R", "R/helpers_chat_message_formatting.R"),
   c("R/helpers_chat_message_formatting.R", "R/helpers_db_chat_readers.R"),
+  c("R/helpers_db_chat_read_queries.R", "R/helpers_db_chat_readers.R"),
   c("R/helpers_db_chat_readers.R", "R/helpers_db_chat_mutations.R"),
   c("R/helpers_db_chat_mutations.R", "R/helpers_database.R"),
   c("R/helpers_database.R", "R/module_chat_history.R"),
