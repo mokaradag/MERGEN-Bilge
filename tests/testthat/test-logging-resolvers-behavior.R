@@ -153,3 +153,51 @@ test_that("yazilamayan birincil log dizini yerel 'logs' dizinine duser ve dosya 
   )
   expect_true(file.exists(fallback_file))
 })
+
+test_that("config_logging gunluk dosya yardimcilarini calisma dizininden bagimsiz, dogru ortama baglar", {
+  # Regresyon: gunluk dosya yardimcilari (mergen_daily_file_appender,
+  # current_mergen_log_file_path, ...) ayri bir dosyaya (config_logging_daily_file.R)
+  # bolunmustu. Izole test/debug akisinda config_logging.R repo disi bir calisma
+  # dizininden ve MERGEN_REPO_ROOT TANIMSIZ iken source() edilebilir; bu durumda
+  # kardes dosya getwd()/MERGEN_REPO_ROOT adaylariyla BULUNAMAZ ve yardimcilar ya
+  # tanimsiz kalir ya da global (yanlis mergen_log_dir kapanisli) kopyalara duser.
+  # Dogru davranis: yardimcilar source edilen ORTAMA baglanmali (inherits = FALSE)
+  # ve o ortamin mergen_log_dir'ine yazmalidir.
+  skip_if_not_installed("logger")
+
+  config_logging_path <- file.path(
+    resolve_repo_root_for_tests(), "R", "config_logging.R"
+  )
+
+  work_root <- withr::local_tempdir()       # repo disi bir calisma dizini
+  test_log_dir <- file.path(withr::local_tempdir(), "izole-log-dizini")
+  env <- new.env(parent = globalenv())
+
+  withr::with_dir(work_root, {
+    withr::with_envvar(
+      c(
+        MERGEN_LOG_DIR = test_log_dir,
+        MERGEN_LOG_THRESHOLD = "info",
+        MERGEN_REPO_ROOT = NA   # tanimsiz birak: yalnizca ofile-temelli cozumleme kalir
+      ),
+      suppressMessages(source(config_logging_path, encoding = "UTF-8", local = env))
+    )
+  })
+
+  # Yardimcilar tam olarak source edilen ortama baglanmali.
+  expect_true(exists("current_mergen_log_file_path", envir = env, inherits = FALSE))
+  expect_true(exists("mergen_daily_file_appender", envir = env, inherits = FALSE))
+
+  # Cozulen dosya yolu, env'in mergen_log_dir'i altinda olmali (global degil).
+  expect_equal(
+    normalizePath(dirname(env$log_file_path), winslash = "/", mustWork = FALSE),
+    normalizePath(env$mergen_log_dir, winslash = "/", mustWork = FALSE)
+  )
+
+  # Acilis garantisi gunun dosyasini bu izole dizinde olusturmali.
+  expected_file <- file.path(
+    env$mergen_log_dir,
+    sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d"))
+  )
+  expect_true(file.exists(expected_file))
+})
