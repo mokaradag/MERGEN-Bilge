@@ -217,11 +217,16 @@ api_config <- list(
   # Model yetenekleri: thinking davranışı ve akış ayrıştırma kuralları
   local_model_capabilities = list(
     "technical name 1" = list(
-      thinking = FALSE,
-      omit_temperature = FALSE,
-      stream_reasoning = FALSE,
-      allow_reasoning_fallback = FALSE
-    ),
+	  thinking = TRUE,
+	  omit_temperature = TRUE,
+	  stream_reasoning = TRUE,
+	  allow_reasoning_fallback = TRUE,
+	  request_overrides = list(
+		chat_template_kwargs = list(
+		  enable_thinking = TRUE
+		)
+	  )
+    )
     "technical name 2" = list(
       thinking = FALSE,
       omit_temperature = FALSE,
