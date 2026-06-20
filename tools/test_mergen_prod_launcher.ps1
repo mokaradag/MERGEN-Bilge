@@ -99,6 +99,9 @@ Assert-NotContains $runBatText 'pushd\s+"%APP_DIR%\."' "run_mergen_prod.bat does
 Assert-NotContains $runBatText 'shiny::runApp\s*\(' "run_mergen_prod.bat does not bypass run_mergen_prod.R with direct shiny::runApp"
 Assert-NotContains $runBatText 'Compare\s+the\s+\.libPaths\(\)\s+printed\s+above\s+with\s+the\s+\.libPaths\(\)' "run_mergen_prod.bat avoids the old CMD parser-breaking echo line with .libPaths()"
 Assert-NotContains $runBatText 'if\s+errorlevel\s+10\s*\(' "run_mergen_prod.bat avoids the old fragile IF ERRORLEVEL block style"
+Assert-Contains $runBatText 'disable_console_quickedit\.ps1' "run_mergen_prod.bat disables console QuickEdit Mode to prevent accidental freezes"
+Assert-Contains $runBatText 'run_mergen_prod\.R"\s*>>\s*"logs\\run_mergen_prod_console\.log' "run_mergen_prod.bat redirects app stdout/stderr to a log file so the console can never block the app"
+Assert-Contains $runBatText 'start\s+"MERGEN Bilge - Canli Log"\s+"view_latest_mergen_app_log\.bat"' "run_mergen_prod.bat opens the read-only live log viewer in a separate window"
 
 Write-Host ""
 Write-Info "Static checks for view_latest_mergen_app_log.bat"

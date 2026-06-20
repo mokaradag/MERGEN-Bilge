@@ -132,12 +132,41 @@ echo.
 
 REM ============================================================
 REM Start MERGEN Bilge through production R launcher
+REM ------------------------------------------------------------
+REM The app's stdout/stderr are redirected to a LOG FILE so the
+REM interactive console is never in R's write path. This makes it
+REM impossible for any console state (accidental text selection,
+REM Ctrl+S pause, scroll, focus loss) to block the single-threaded
+REM Shiny event loop and freeze every connected user. Writing to a
+REM file also makes stdout block-buffered instead of tied to console
+REM rendering. The app's own rotating file logger
+REM (logs\mergen_YYYYMMDD.log) is unaffected, and the read-only live
+REM viewer opened below tails it for visibility.
 REM ============================================================
 
+if not exist "logs" mkdir "logs"
+
+REM Pre-create today's daily log so the live viewer can attach at once.
+REM cwd is the app folder (earlier pushd), so a relative path is safe and
+REM avoids passing the Turkish app path as a PowerShell argument.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$f = Join-Path 'logs' ('mergen_' + (Get-Date -Format 'yyyyMMdd') + '.log'); if (-not (Test-Path -LiteralPath $f)) { New-Item -ItemType File -Path $f -Force | Out-Null }" 2>nul
+
+REM Open the read-only live log viewer in its own window. It tails
+REM logs\mergen_*.log (written by the app's file appender), so it can
+REM never block the app that is writing the logs.
+if exist "view_latest_mergen_app_log.bat" (
+    start "MERGEN Bilge - Canli Log" "view_latest_mergen_app_log.bat"
+)
+
 echo [INFO] Starting MERGEN Bilge production app through run_mergen_prod.R...
+echo [INFO] App console output goes to the log file below, NOT this window:
+echo %APP_DIR%logs\run_mergen_prod_console.log
+echo [INFO] Live application logs open in the separate window titled:
+echo MERGEN Bilge - Canli Log
+echo [INFO] This window reports the exit code when the app stops.
 echo.
 
-"%RSCRIPT_EXE%" "run_mergen_prod.R"
+"%RSCRIPT_EXE%" "run_mergen_prod.R" >> "logs\run_mergen_prod_console.log" 2>&1
 
 set "EXITCODE=%ERRORLEVEL%"
 
