@@ -72,6 +72,14 @@ test_that("config_ui_asset_zone_validators.R exists and exposes the zone API", {
     encoding = "UTF-8", local = env
   ))
   suppressWarnings(source(
+    file.path(repo_root_for_tests, "R", "config_ui_asset_validators.R"),
+    encoding = "UTF-8", local = env
+  ))
+  suppressWarnings(source(
+    file.path(repo_root_for_tests, "R", "config_ui_asset_tags.R"),
+    encoding = "UTF-8", local = env
+  ))
+  suppressWarnings(source(
     file.path(repo_root_for_tests, "R", "config_ui_asset_zones.R"),
     encoding = "UTF-8", local = env
   ))
@@ -170,6 +178,14 @@ test_that("split preserves the manifest partition: ui_asset_zones_validate finds
   env <- new.env(parent = globalenv())
   suppressWarnings(source(
     file.path(repo_root_for_tests, "R", "config_ui_assets.R"),
+    encoding = "UTF-8", local = env
+  ))
+  suppressWarnings(source(
+    file.path(repo_root_for_tests, "R", "config_ui_asset_validators.R"),
+    encoding = "UTF-8", local = env
+  ))
+  suppressWarnings(source(
+    file.path(repo_root_for_tests, "R", "config_ui_asset_tags.R"),
     encoding = "UTF-8", local = env
   ))
   suppressWarnings(source(

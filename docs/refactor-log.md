@@ -6,6 +6,137 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-20 — UI varlık manifestinin VERİ / DOĞRULAYICI / RENDER olarak bölünmesi
+
+### Seçilen iz(ler)
+- **Track 1 — en büyük / yakın-bütçe R dosyasından bütünleşik (saf) çıkarım**
+  (öncelik #1; dokümante #1 sıradaki hedef). `frontend_varlik` seam'inde tek paket.
+- **Track 6 — eskimiş "sıradaki hedef" notlarının güncellenmesi**: feature-ownership
+  ve handoff'ta `config_ui_assets.R` (690) sıradaki hedef gösteren notlar yenilendi.
+
+### Özet ve gerekçe
+Keşif raporu (maintainability 100/100; seam doctor OK): `R/config_ui_assets.R`
+repo genelindeki **en büyük R dosyasıydı (690/17)** ve küresel
+`MERGEN_TEST_MAX_FILE_LINES` bütçesini (690) kilitliyordu. Dosya tek başına
+varlık manifesti VERİSİNİ (CSS/JS grupları, ertelenmiş grup listesi, render planı,
+JS/CSS sıra kuralları), SAF çözümleyici/doğrulayıcı fonksiyonlarını
+(`ui_asset_all_css/js`, sıra/render planı doğrulaması) ve htmltools etiket render
+katmanını (`ui_asset_tags` vb.) karıştırıyordu.
+
+Repoda zaten kanıtlanmış bir desen vardı: `config_ui_asset_zones.R` (VERİ) +
+`config_ui_asset_zone_validators.R` (DOĞRULAYICI). Aynı desen birebir uygulandı:
+manifest VERİSİ tek sahip olarak `config_ui_assets.R`'de kaldı, çözümleyici/
+doğrulayıcılar `config_ui_asset_validators.R`'ye, etiket render katmanı
+`config_ui_asset_tags.R`'ye taşındı. Tüm fonksiyonlar veriyi ÇAĞRI ANINDA çözdüğü
+için (tembel değerlendirme), runtime davranışı değişmez. Bölme öncesi/sonrası
+TÜM çıktılar altın referansla doğrulandı: **byte-birebir aynı**
+(`ui_asset_all_css/js`, sıra kuralları, render planı, ertelenmiş gruplar ve tam
+`ui_asset_tags()` HTML md5 `11c977dd…` — `identical()` TRUE; HEAD vs çalışma ağacı
+da birebir aynı).
+
+### Değişen dosyalar
+**Kaynak**
+- `R/config_ui_asset_validators.R` (yeni, 253/11) — `ui_asset_render_plan_groups`,
+  `ui_asset_render_plan_deferred`, `ui_asset_validate_js_render_plan`,
+  `ui_asset_all_css`, `ui_asset_all_js`, `ui_asset_deferred_js_paths`,
+  `ui_asset_validate_css_order`, `ui_asset_validate_js_order`,
+  `ui_asset_duplicate_paths`, `ui_asset_public_root`, `ui_asset_validate`.
+- `R/config_ui_asset_tags.R` (yeni, 59/5) — `ui_asset_css_tag`,
+  `ui_asset_script_tag`, `ui_asset_css_tags`, `ui_asset_js_tags`, `ui_asset_tags`.
+- `R/config_ui_assets.R` — **690/17 → 425/1** (SADECE VERİ + `ui_asset_flatten_groups`
+  düzleştirme yardımcısı; sıranın TEK sahibi).
+- `R/config_source_manifest.R` — `config_ui_assets` bölümüne iki yeni dosya
+  `config_ui_assets.R`'den SONRA, `config_ui_asset_zones.R`'den ÖNCE eklendi (3 → 5).
+- `R/config_seam_registry.R` — `frontend_varlik` guard_tests listesine yeni
+  split-contract testi eklendi (8 → 9).
+- `tests/scripts/seam_doctor.R`, `tests/scripts/frontend_maintainability_report.R` —
+  çözümleyici/etiket fonksiyonları (ui_asset_all_css/js) artık ayrı dosyalarda
+  olduğundan üç dosyayı da kaynak alır.
+
+**Test**
+- `tests/testthat/test-ui-asset-config-split-contract.R` (yeni, 100 assertion) —
+  yapısal ayrım (fonksiyonlar yeni dosyalarda; veri dosyasında inline fonksiyon
+  yok; manifest sırası VERİ → DOĞRULAYICI → RENDER) + bölme sonrası
+  `ui_asset_validate()`/`ui_asset_tags()` davranış doğrulaması.
+- Çözümleyici/etiket fonksiyonu çalıştıran testlerin source yardımcıları üç dosyayı
+  da yükleyecek şekilde güncellendi: `test-ui-asset-manifest-contract.R`,
+  `test-config-ui-assets-helpers-behavior.R`, `test-ui-asset-tag-builders-behavior.R`,
+  `test-streaming-markdown-safety-contract.R`, `test-ui-asset-zones-contract.R`,
+  `test-seam-registry-contract.R`, `test-ui-asset-zone-validators-split-contract.R`.
+- `tests/testthat/test-source-manifest-sections-contract.R` — `config_ui_assets`
+  n=3→5; toplam runtime 277→279 bilinçli güncellendi.
+- `tests/testthat/test-maintainability-ratchet.R` — küresel
+  `MERGEN_TEST_MAX_FILE_LINES` 690 → 687 sıkılaştırıldı; üç dosya için bütçe:
+  `config_ui_assets.R` 470/2, `config_ui_asset_validators.R` 300/13,
+  `config_ui_asset_tags.R` 110/8.
+
+**Dokümantasyon**
+- `CLAUDE.md`, `docs/feature-ownership-map.md`, `docs/architecture-map.md`,
+  `docs/technical-reference.md`, `docs/refactor-log.md`,
+  `.ai/next-session-eliminate-weaknesses-prompt.md`.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `config_ui_assets.R` 690/17 (repo genelinde en büyük; küresel bütçede).
+- Sonra: VERİ 425/1, validators 253/11, tags 59/5. Skor 100/100; 800+ satır /
+  25+ fonksiyon = 0. **Küresel en büyük dosya satırı 690 → 687** (yeni en büyük
+  `server_runtime_context.R`, değişmedi). Küresel `MERGEN_TEST_MAX_FILE_LINES`
+  690 → 687.
+
+### Korunan davranış sözleşmeleri
+- Tüm CSS/JS yolları, sıra kuralları (CSS + JS), render planı, ertelenmiş gruplar
+  ve tam `ui_asset_tags()` HTML çıktısı byte-birebir korundu (altın md5 + HEAD
+  karşılaştırması). Yükleme sırasının TEK sahibi `config_ui_assets.R` kaldı.
+- Asset-order / render plan / defer davranışı ve `ui_asset_validate()` doğrulaması
+  bozulmadı; tema kaskad zinciri ve Bilge Yolaç CSS/JS zinciri korundu.
+- DB/SSO/encoding/source-order/UX runtime sözleşmelerine dokunulmadı (saf yapısal
+  ayrım).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Altın çıktı karşılaştırması: bölme öncesi 11 fonksiyon çıktısı + HEAD vs çalışma
+  ağacı; tümü `identical()` TRUE (tam tag md5 `11c977ddce2c3aee5307eadc5fa4995a`).
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; en büyük dosya
+  690 → 687; VERİ 425/1, validators 253/11, tags 59/5.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`; `frontend_varlik`
+  runtime-dosya 3 → 5, guard-test 8 → 9.
+- `Rscript tests/scripts/frontend_complexity_doctor.R` → rapor üretildi.
+- `Rscript tests/scripts/parse_sanity_check.R` → OK (849 dosya).
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni split-contract (100),
+  ui-asset-manifest (224), config-ui-assets-helpers (13), ui-asset-tag-builders (18),
+  source-manifest-sections (154), maintainability-ratchet (240),
+  source-manifest-contract (165), global-source-manifest (12), seam-registry (12),
+  seam-doctor (6), ui-asset-zones (17), ui-asset-zone-validators-split (36),
+  streaming-markdown-safety (53), frontend-maintainability-ratchet (92),
+  frontend-selector (80), e2e-health-dashboard (45), production-contracts (21),
+  e2e-boot-welcome (29 — `logger` kurulu + placeholder env ile).
+- `bash tools/ai_validate.sh quick` → geçti; `failed_steps: 0`, `skipped_steps: 0`,
+  app source smoke PASSED (`artifacts/ai-validation/20260620-152956/summary.json`).
+- `bash tools/ai_validate.sh full --boot-smoke` → **tam geçti**; app source smoke
+  PASSED, **full testthat suite PASSED (138.5s)**, shiny boot smoke PASSED, browser
+  smoke SKIPPED (tarayıcı yok); `failed_steps: 0`, `skipped_steps: 0`
+  (`artifacts/ai-validation/20260620-153104/summary.json`). NOT: bu bulut oturumunda
+  `logger` paketi kurularak ve placeholder env değişkenleri verilerek koşuldu; bu
+  sayede önceki oturumların bildirdiği "logging testi tıkayıcısı" bu koşumda
+  tekrarlanmadı (full suite temiz geçti).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Uygulamayı başlatın; tüm sayfaların (Ana Söyleşi, Bilge Yolaç, Yönetici, Sağlık,
+  Destek) CSS/JS varlıklarının eskisi gibi yüklendiğini ve tema (koyu/açık) ile
+  CodeMirror/Three.js/Bilge Yolaç yükleme sırasının bozulmadığını doğrulayın.
+- Tarayıcı konsolunda eksik/yanlış-sıralı asset veya JS hatası olmadığını doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding/gerçek tarayıcı kanıtı alınmadı (bulut
+  oturumu). Değişiklik saf yapısal ayrımdır ve çıktı byte-birebir golden + HEAD
+  karşılaştırmasıyla korundu; gerçek tarayıcı asset yükleme yalnızca VM/manuel
+  tarayıcıda son kez doğrulanır.
+- Sıradaki paket adayları: `R/server_runtime_context.R` (687, yeni en büyük;
+  SSO auth-ready/refreshable-module helper çıkarımı), ardından 678–681 bandındaki
+  `helpers_claude_code_documents.R`, `server_handler_true_streaming.R`,
+  `module_file_manager.R`; veya frontend tarafında `www/js/deep_space_intro.js`
+  (820) / `www/js/ai_expert_manager.js` (802/45/12 event/8 Shiny handler).
+
+---
+
 ## 2026-06-20 — Sohbet-okuma SQL sorgu üreticilerinin reader dosyasından ayrılması
 
 ### Seçilen iz(ler)

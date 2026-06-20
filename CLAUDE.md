@@ -1897,6 +1897,14 @@ Focused validation:
 
 The frontend CSS/JS loading surface is now owned by `R/config_ui_assets.R`, not by a long inline asset list inside `ui.R`.
 
+The asset manifest is split into DATA / VALIDATORS / RENDER (mirroring the `config_ui_asset_zones.R` DATA + `config_ui_asset_zone_validators.R` validators pattern):
+
+- `R/config_ui_assets.R` is DATA-ONLY: the CSS/JS group lists, `ui_asset_deferred_js_groups`, `ui_asset_js_render_plan`, `ui_asset_js_order_rules`, `ui_asset_css_order_rules`, and the `ui_asset_flatten_groups()` helper. It is the single owner of load order. Do not move resolver/validator/tag functions back into it.
+- `R/config_ui_asset_validators.R` owns the pure resolver/validator API: `ui_asset_all_css()`, `ui_asset_all_js()`, `ui_asset_deferred_js_paths()`, `ui_asset_public_root()`, `ui_asset_render_plan_groups()`, `ui_asset_render_plan_deferred()`, `ui_asset_duplicate_paths()`, `ui_asset_validate_css_order()`, `ui_asset_validate_js_order()`, `ui_asset_validate_js_render_plan()`, and `ui_asset_validate()`.
+- `R/config_ui_asset_tags.R` owns the htmltools render layer: `ui_asset_css_tag()`, `ui_asset_script_tag()`, `ui_asset_css_tags()`, `ui_asset_js_tags()`, and `ui_asset_tags()`.
+- `R/config_source_manifest.R` must load these in order DATA -> VALIDATORS -> RENDER (`R/config_ui_assets.R`, then `R/config_ui_asset_validators.R`, then `R/config_ui_asset_tags.R`), all before `R/config_ui_asset_zones.R`. The validator/tag functions resolve the data at call time (lazy), so the data file loads first.
+- Isolated tests/scripts that EXECUTE these functions (not just read the manifest text) must source all three files. Tests that only grep the manifest text for asset paths/order rules read the DATA file and need no change. The split is frozen by `tests/testthat/test-ui-asset-config-split-contract.R`.
+
 Current contract:
 
 - `ui.R` should render frontend assets through `ui_asset_tags()`.

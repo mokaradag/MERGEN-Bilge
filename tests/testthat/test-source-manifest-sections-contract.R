@@ -79,7 +79,10 @@
   # Bilinçli güncelleme: bölge VERİSİ (config_ui_asset_zones.R) ile bölge
   # DOĞRULAYICI API'si (config_ui_asset_zone_validators.R) ayrı dosyalara
   # bölündü; en büyük runtime dosyası 777 satırdan iki dosyaya indi. 2 -> 3.
-  config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_asset_zone_validators.R", n = 3L),
+  # Bilinçli güncelleme: varlık manifesti VERİ/DOĞRULAYICI/RENDER olarak üç
+  # dosyaya bölündü (config_ui_asset_validators.R + config_ui_asset_tags.R);
+  # config_ui_assets.R 690 satırdan VERİ-odaklı dosyaya indi. 3 -> 5.
+  config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_asset_zone_validators.R", n = 5L),
   architecture_governance = list(first = "R/config_seam_registry.R", last = "R/config_seam_registry.R", n = 1L),
   database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 12L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
@@ -250,7 +253,11 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 276L -> 277L bilinçli güncelleme: sohbet okuma SQL sorgu üreticileri
   # R/helpers_db_chat_read_queries.R dosyasına çıkarıldı (helpers_db_chat_readers.R
   # orkestrasyonundan ayrı, saf ASCII SQL; encoding sınırına dokunmaz).
-  expect_equal(length(runtime), 277L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 277L -> 279L bilinçli güncelleme: varlık manifesti VERİ/DOĞRULAYICI/RENDER
+  # olarak üç dosyaya bölündü; R/config_ui_asset_validators.R (çözümleyici/
+  # doğrulayıcı API'si) ve R/config_ui_asset_tags.R (htmltools etiket render
+  # katmanı) config_ui_assets bölümüne eklendi.
+  expect_equal(length(runtime), 279L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

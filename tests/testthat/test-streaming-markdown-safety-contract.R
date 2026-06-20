@@ -52,11 +52,19 @@
 
 .source_ui_asset_config_streaming_markdown_safety <- function() {
   asset_env <- new.env(parent = globalenv())
-  source(
-    file.path(.find_repo_root_streaming_markdown_safety(), "R/config_ui_assets.R"),
-    encoding = "UTF-8",
-    local = asset_env
-  )
+  # Varlık manifesti VERİ/DOĞRULAYICI/RENDER üç dosyasına bölündü;
+  # ui_asset_all_js() / ui_asset_validate() çözümleyici dosyasındadır.
+  for (asset_file in c(
+    "R/config_ui_assets.R",
+    "R/config_ui_asset_validators.R",
+    "R/config_ui_asset_tags.R"
+  )) {
+    source(
+      file.path(.find_repo_root_streaming_markdown_safety(), asset_file),
+      encoding = "UTF-8",
+      local = asset_env
+    )
+  }
   asset_env
 }
 

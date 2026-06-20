@@ -8,6 +8,72 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/optimistic-carson-q8jihd` (2026-06-20, complexity package)
+
+This session shipped a **behavior-preserving structural split of the largest R file**
+(`R/config_ui_assets.R`, the global ratchet pin). Surgical, additive. Do NOT redo:
+
+- **UI varlık manifesti VERİ / DOĞRULAYICI / RENDER olarak bölündü** (the established
+  `config_ui_asset_zones.R` DATA + `config_ui_asset_zone_validators.R` validators
+  pattern, applied to the asset manifest):
+  - `R/config_ui_assets.R` 690/17 → **425/1** (SADECE VERİ: groups, deferred list,
+    render plan, JS/CSS order rules, `ui_asset_flatten_groups`; single owner of order).
+  - `R/config_ui_asset_validators.R` (YENİ, 253/11): `ui_asset_all_css/js`,
+    `ui_asset_deferred_js_paths`, `ui_asset_public_root`, `ui_asset_render_plan_*`,
+    `ui_asset_duplicate_paths`, `ui_asset_validate_css_order/js_order/js_render_plan`,
+    `ui_asset_validate`.
+  - `R/config_ui_asset_tags.R` (YENİ, 59/5): `ui_asset_css_tag`, `ui_asset_script_tag`,
+    `ui_asset_css_tags`, `ui_asset_js_tags`, `ui_asset_tags`.
+  - Manifest order DATA → VALIDATORS → RENDER (all before `config_ui_asset_zones.R`);
+    functions resolve data at call time (lazy), so data loads first.
+- **BYTE-IDENTICAL proof:** golden capture of all 11 function outputs before the split
+  + HEAD-vs-worktree comparison → `ui_asset_all_css/js`, css/js order rules, render
+  plan, deferred groups, full `ui_asset_tags()` HTML all `identical()` TRUE (tag md5
+  `11c977ddce2c3aee5307eadc5fa4995a`). Runtime UX/asset-order unchanged.
+- **Ratchet TIGHTENED (not loosened):** global `MERGEN_TEST_MAX_FILE_LINES` 690 → **687**
+  (new largest = `server_runtime_context.R` 687). Per-file budgets added:
+  `config_ui_assets.R` 470/2, `config_ui_asset_validators.R` 300/13,
+  `config_ui_asset_tags.R` 110/8.
+- **New test** `tests/testthat/test-ui-asset-config-split-contract.R` (100 assertions):
+  structural split + post-split `ui_asset_validate()`/`ui_asset_tags()` behavior. Wired
+  into `frontend_varlik` seam guard_tests (8 → 9). Source manifest section
+  `config_ui_assets` n=3 → 5; total runtime 277 → 279.
+- **Sourcing sites updated** (functions moved out of `config_ui_assets.R`):
+  `tests/scripts/seam_doctor.R`, `tests/scripts/frontend_maintainability_report.R`,
+  and tests `test-ui-asset-manifest-contract.R`, `test-config-ui-assets-helpers-behavior.R`,
+  `test-ui-asset-tag-builders-behavior.R`, `test-streaming-markdown-safety-contract.R`,
+  `test-ui-asset-zones-contract.R`, `test-seam-registry-contract.R`,
+  `test-ui-asset-zone-validators-split-contract.R` now source all three files.
+- **GOTCHAS:** (1) Cloud R locale is C/POSIX → `seam_doctor.R`/`frontend_complexity_doctor.R`
+  throw "invalid input found on input connection" on Turkish files; run with
+  `export LANG=C.UTF-8 LC_ALL=C.UTF-8`. `maintainability_report.R` is unaffected
+  (reads lines, no parse). (2) The "logging test full-suite blocker" from prior
+  sessions did **not** reproduce here: the real cause is the missing `logger` package
+  + missing `.Renviron`; after `install.packages("logger")` and setting placeholder
+  `LOCAL_LLM_ENDPOINT`/`DB_DSN`/`AI_KEYS_MASTER`, the FULL strict testthat suite
+  passed clean (138.5s). So the blocker is environment-bootstrap, not a test-isolation
+  bug to fix. (3) Tests that only grep the manifest TEXT (theme-light, brand-title,
+  tool-backgrounds, e2e-boot/health `ui_asset_tags()` in `ui.R`) read DATA and needed
+  no change; only function-EXECUTING sites did.
+- **VALIDATION (Linux/cloud, R 4.6.0, logger installed + placeholder env):**
+  `ai_validate quick` FULL PASS (failed=0, skipped=0, app_source_smoke=passed,
+  `artifacts/ai-validation/20260620-152956/summary.json`). `ai_validate full --boot-smoke`
+  FULL PASS: app source smoke passed, **full testthat suite passed (138.5s)**, shiny
+  boot smoke passed, browser smoke SKIPPED (no browser),
+  `artifacts/ai-validation/20260620-153104/summary.json`. parse_sanity 849 files;
+  seam_doctor OK (`frontend_varlik` runtime 3→5, guard 8→9); maintainability 100/100
+  max 687. Cloud run is NOT VM/SSO/DB/SQL-Server Turkish encoding/real-browser/vision
+  proof.
+- **BEST NEXT TARGETS** (from this session's reports): #1 `R/server_runtime_context.R`
+  (687, new largest — extract SSO auth-ready/refreshable-module helpers or repeated
+  require/attach validators; preserve SSO timing/ignoreInit/once contracts). Then
+  678–681 band: `helpers_claude_code_documents.R`, `server_handler_true_streaming.R`,
+  `module_file_manager.R`. Frontend: `www/js/deep_space_intro.js` (820/32) and
+  `www/js/ai_expert_manager.js` (802/45/12 event/8 Shiny handler). Post-deploy smoke
+  artifact family still has no producer (Faz 3 carryover).
+
+---
+
 ## LATEST SESSION RESULTS — `claude/pensive-davinci-8p2jkh` (2026-06-15 D, Faz 2→9.5)
 
 By-name untested taraması tükendiği için bu oturum **dal/şube derinleştirme +
