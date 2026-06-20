@@ -519,9 +519,16 @@ handle_true_streaming_mode <- function(ctx) {
 
           if (!isTRUE(stream_env$first_delta_logged)) {
             stream_env$first_delta_logged <- TRUE
+            ilk_delta_ms <- as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs")) * 1000
             log_info(sprintf(
               "[CHAT PERF] İlk delta gözlendi - %.3f sn",
-              as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs"))
+              ilk_delta_ms / 1000
+            ))
+            # Grep-dostu, sır-redakteli, varsayılan KAPALI perf işareti
+            # (MERGEN_PERF_LOG=1): modelin ilk-token gecikmesini izler.
+            mergen_perf_log("stream.first_delta", fields = list(
+              request_id = stream_env$req_id,
+              elapsed_ms = round(ilk_delta_ms, 1)
             ))
           }
         }
@@ -619,27 +626,50 @@ handle_true_streaming_mode <- function(ctx) {
     base_final_text <- strip_planner_text(base_final_text)
     base_final_text <- append_clickable_sources(base_final_text, result$sources)
 
-    followup_questions <- build_followup_suggestions(
-      ctx$user_message_text,
-      base_final_text,
-      settings_data,
-      session,
-      ctx$api_config,
-      ctx$followup_tools,
-      ctx$fallback_followup_tool
-    )
-
     final_text <- base_final_text
     if (nzchar(ctx$final_text_suffix %||% "")) {
       final_text <- paste0(final_text, ctx$final_text_suffix)
     }
 
+    # Yanıtı HEMEN sonlandır: markdown render, aksiyon butonları ve DB kalıcılığı
+    # takip (followup) önerisi üretimini BEKLEMEZ. build_followup_suggestions()
+    # AI takip üreticisinde senkron bir LLM çağrısı (call_local_llm) yapabilir;
+    # önceki sıralamada bu çağrı, akış görünür biçimde bittikten SONRA yanıt
+    # baloncuğunu saniyelerce "akıyor" durumunda (aksiyon butonları gizli, kod
+    # blokları ham) tutuyordu. Öneriler artık finalize flush'ından SONRA,
+    # bloklamayan bir later() döngüsünde üretilip push edilir. Sözleşme: tarayıcı
+    # followup_container'ı talep üzerine oluşturur (updateFollowupSuggestions),
+    # bu yüzden baloncuk önerilerden önce sonlandırılabilir.
     finalize_stream_message(
       final_text = final_text,
-      followups = followup_questions,
+      followups = NULL,
       request_success = TRUE,
       duration_value = result$duration
     )
+
+    followup_msg_id <- stream_env$msg_id
+    later::later(function() {
+      followup_perf_start <- mergen_perf_now()
+      followup_questions <- tryCatch(
+        build_followup_suggestions(
+          ctx$user_message_text, base_final_text, settings_data, session,
+          ctx$api_config, ctx$followup_tools, ctx$fallback_followup_tool
+        ),
+        error = function(e) NULL
+      )
+
+      # Varsayılan KAPALI perf işareti: artık kritik yolun DIŞINDA olan takip
+      # üretim süresini (saniyeler olabilir) ölçer.
+      mergen_perf_log("stream.followups", start = followup_perf_start,
+                      fields = list(count = length(followup_questions %||% character(0))))
+
+      if (!is.null(followup_questions) && length(followup_questions) > 0) {
+        try(
+          push_followup_update(session, followup_msg_id, followup_questions, pending = FALSE),
+          silent = TRUE
+        )
+      }
+    }, delay = 0)
 
     invisible(NULL)
   })

@@ -62,8 +62,74 @@ As of the pre-index-cache 2026-06-19 baseline, the comparable fake-lane smoke ar
 | 2026-06-19 | Whole-repo parse + cloud validation gate. | `tests/scripts/parse_sanity_check.R` (839 files); `bash tools/ai_validate.sh cloud-quick` | PASS (parse OK; cloud-quick failed_steps=0, skipped_steps=1) | cloud-quick proves parse + focused contract scope only; NOT app-boot/runtime/browser/VM/DB/SQL-Server/soak. |
 | 2026-06-19 | Soak HTTP-lane bottleneck attribution (analysis only; no code change). | Static request-path map (`run_operational_soak_gate.R:235`, `soak_client.R:86,108-110`, `ui.R:7`, `app.R:145-152`) + latency math vs `artifacts/soak/20260619-153052` | N/A (analysis) | Pre-cache soak number was single-threaded index-serving bound, not DB-bound; no capacity claim from cloud. |
 | 2026-06-19 | Root-page/index caching VM evidence (documentation update; no runtime code changed in this docs task). | Windows curl timing command documented below; VM console observed `artifacts/soak/20260619-204455`, `20260619-204704`, `20260619-205535`, `20260619-210427` (JSON not present in this checkout). | Warm `GET /` ~0.006-0.008 s after first request; cold `[PERF] event=index_render elapsed_ms=740 cache=miss_build`; smoke/fake 250 users / 420 s PASS p95=1983.8 ms; smoke/fake 1000 users / 420 s PASS p95=8377.8 ms; stress/proxy final p95=734.5 ms. | Stronger fake-lane/index-serving evidence only; does NOT prove real LLM generation is faster, browser console clean, memory growth clean, or 1000 real human chat sessions. |
+| 2026-06-19 | Phase 3 (perceived responsiveness): defer follow-up suggestion generation off the chat finalize critical path in BOTH `R/server_handler_true_streaming.R` (streaming) and `R/server_llm_response_handlers.R` (non-streaming). Finalize/render the answer immediately with `followups = NULL`, then generate + `push_followup_update()` from a non-blocking `later(delay = 0)`. Added default-OFF `[PERF]` markers `stream.first_delta`, `stream.followups`, `nonstream.followups`. | `testthat::test_file(...)` for true-streaming reset/finalize, e2e streaming request-id, streaming poll lifecycle, sse worker export, follow-up regression, non-streaming stale-request race, e2e quick-actions streaming, e2e premium reasoning, maintainability ratchet, production contracts, source manifest | PASS (0 fail / 0 warn; cloud `C.UTF-8`) | Removes the synchronous follow-up `call_local_llm()` round-trip from the post-answer critical path. Cloud proves contracts/behavior only; the actual seconds saved must be measured on the VM (no real LLM endpoint in cloud). No threshold weakened. |
+| 2026-06-19 | Restored maintainability ratchet after the daily-log-file reliability work pushed `R/config_logging.R` to 27 functions: extracted the daily-file cluster (`current_mergen_log_date`, `current_mergen_log_file_path`, `mergen_daily_file_appender`, `mergen_ensure_daily_log_file`) to new foundation file `R/config_logging_daily_file.R` (loaded before `config_logging.R`). | `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")` (222 PASS) + manifest/seam/zone/section contracts + `parse_sanity_check.R` (842 files) | PASS (score 100/100, max functions 24, 0 files ≥25 functions) | Behavior byte-for-byte unchanged; pure maintainability split. |
 
 ## Session notes
+
+### 2026-06-19 — Phase 3 (perceived responsiveness): follow-up generation moved off the chat critical path
+
+Problem (file:line evidence): after the model finished, follow-up suggestion
+generation ran **before** the answer was finalized/rendered, and
+`build_followup_suggestions()` (`R/helpers_followup_questions.R:210`) calls
+`generate_ai_followups()` → `call_local_llm()` (`R/helpers_followup_questions.R:146`),
+a **synchronous LLM round-trip on the main R thread**.
+
+- Streaming path (`R/server_handler_true_streaming.R`): `build_followup_suggestions()`
+  was called in the poll observer **before** `finalize_stream_message()`. Because
+  `session$sendCustomMessage("finalizeStreamingMessage", ...)` only flushes at the end
+  of the reactive cycle, the streamed answer stayed visually "streaming" (action buttons
+  hidden, code blocks unrendered) for the entire follow-up LLM call after the model had
+  already stopped producing text.
+- Non-streaming path (`R/server_llm_response_handlers.R`): the same call ran **before**
+  `add_message_fn()` rendered/persisted the message, so the **whole** answer was withheld
+  from the UI for the follow-up LLM duration (worse than streaming). This is the TTS-on /
+  MCP / non-streaming-model lane.
+
+Fix (both paths, identical pattern): finalize/render the answer immediately with
+`followups = NULL`, then generate the suggestions and `push_followup_update()` from a
+non-blocking `later(delay = 0)` callback. This is the contract-supported deferred path:
+the browser `updateFollowupSuggestions` handler creates `followup_container_<id>` on
+demand by locating `message_wrapper_<id>` → `.ai-message`
+(`www/js/shiny_message_handlers.js:152-169`), so the bubble can finalize before the
+chips arrive. The deterministic/default follow-up baseline and the
+`build_followup_suggestions()` builder itself are unchanged.
+
+Expected effect: the answer appears "complete" (final markdown, action buttons, copy/
+TTS affordances) the moment the model stops, instead of waiting an extra
+follow-up-LLM round-trip. The model's own generation time (~10–16 s non-thinking,
+~29 s+ thinking) is upstream and **unchanged** — this only removes a post-generation
+stall that was attributed to the app.
+
+Diagnostics added (default OFF; `MERGEN_PERF_LOG=1`, secret-redacted, grep-friendly):
+`[PERF] event=stream.first_delta` (model TTFT), `[PERF] event=stream.followups` and
+`[PERF] event=nonstream.followups` (follow-up generation time, now proven to be off the
+critical path). These sit alongside the existing always-on `[CHAT PERF]` milestones.
+
+Cloud validation (this session, `LC_ALL=C.UTF-8`): all listed contract/behavior tests
+PASS (0 fail / 0 warn). `logger` is not installed in the cloud checkout, so the
+`logger`-dependent logging behavior tests and full app boot were **not** runnable here
+(environment limitation, not a code regression).
+
+VM validation still required (cannot be done from cloud — no real LLM endpoint):
+
+```powershell
+$env:MERGEN_PERF_LOG="1"
+& "C:\MergenLauncher\start_mergen_prod.bat"
+# Root page (should stay warm-cached):
+curl.exe -w "%{time_total}`n" -o NUL -s http://127.0.0.1:8009/
+```
+
+Then send a short non-thinking prompt, a longer non-thinking prompt, and one thinking
+prompt, and in `logs/mergen_YYYYMMDD.log`:
+
+- confirm the answer's action buttons appear immediately when streaming text stops
+  (no multi-second "frozen streaming" gap), and the follow-up chips appear a moment later;
+- read `[PERF] event=stream.followups elapsed_ms=...` / `nonstream.followups` to quantify
+  how many ms/seconds were moved off the critical path;
+- read `[PERF] event=stream.first_delta elapsed_ms=...` for model TTFT;
+- confirm Turkish text, code blocks, charts, saved-chat reload, and TTS still render
+  correctly, and that follow-up chips are clickable.
 
 ### 2026-06-19 — Post-index-cache Windows VM observations (docs-only update)
 
@@ -223,6 +289,8 @@ Capacity conclusion: unknown. This session intentionally added measurement hooks
 - DB connection pooling (Phase 3.5) is the leading fix candidate but is **not implemented**: it is production-VM/SQL-Server/ODBC/SSO/Turkish-encoding sensitive, cannot be validated from a cloud session, and must be transaction-safe (`save_message_to_db`/`worker_save_assistant_response` use `dbBegin`/`dbCommit`). Implement only on a VM-validated session.
 - The global maintainability ratchet sits exactly at its cap (`server_send_message.R` = 694 ≤ 694). Any further line addition to that file will fail the ratchet; new send-message work must extract a helper first. Note the send-message-specific ratchet allows up to 760, so this is purely the global "largest file" cap.
 - Real-canary ERR-234 remains an upstream gateway/admin policy blocker and should stay separate from app-capacity testing.
+- The follow-up deferral moves the synchronous follow-up `call_local_llm()` round-trip into a `later(delay = 0)` callback. It is now **off the answer's critical path** (the answer finalizes first), but it still runs on the main R thread, so it briefly occupies the event loop for that session *after* the answer is shown. This does not increase total main-thread work versus before; it only reorders it so the answer paints first. A future improvement could run follow-up generation in a tracked future worker, but that is not required for the perceived-latency win and was intentionally not attempted blind from cloud.
+- The new `[PERF]` streaming markers (`stream.first_delta`, `stream.followups`, `nonstream.followups`) are default OFF; they are diagnostics only and add no overhead unless `MERGEN_PERF_LOG=1`.
 
 ## Next recommended step
 
