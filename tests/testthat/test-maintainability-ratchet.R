@@ -91,7 +91,7 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 0L)
   max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 0L)
   max_very_large_files <- .as_int_env("MERGEN_TEST_MAX_1500_LINE_FILES", 0L)
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 694L)
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 690L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 24L)
 
   actual_large_files <- sum(score_report$lines >= 800)
@@ -188,7 +188,11 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   }
 
   assert_current_budget("R/module_claude_code.R", 780L, 11L)
-  assert_current_budget("R/server_send_message.R", 760L, 14L)
+  # TTS açık streaming dalı R/server_handler_streaming_tts.R'ye çıkarıldı; gerçek
+  # SSE ve non-streaming dalları gibi simetrik handler oldu. send_message
+  # 694/14 -> 590/9'a indi. Bütçeler geri birleşmeyi ve büyümeyi kilitler.
+  assert_current_budget("R/server_send_message.R", 620L, 11L)
+  assert_current_budget("R/server_handler_streaming_tts.R", 200L, 8L)
   assert_current_budget("R/module_admin_hata_analizi.R", 640L, 7L)
   assert_current_budget("R/helpers_admin_hata_detail_runtime.R", 380L, 12L)
   # Görsel UI/HTML render katmanı (ayarlar paneli, sohbet kontrolleri, görsel kartı

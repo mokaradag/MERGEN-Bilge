@@ -16,7 +16,9 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 
 - **Seam:** `sohbet_llm_akis`
 - **Birincil R dosyaları:** `R/server_send_message.R`, `R/helpers_send_message_*.R`,
-  `R/server_handler_true_streaming.R`, `R/helpers_streaming_abort_lifecycle.R`,
+  `R/server_handler_true_streaming.R`, `R/server_handler_streaming_tts.R`
+  (`handle_streaming_tts_mode`: TTS açık streaming dalı; gerçek SSE/non-streaming
+  ile simetrik handler), `R/helpers_streaming_abort_lifecycle.R`,
   `R/helpers_streaming_poll_lifecycle.R`, `R/helpers_llm_api.R`,
   `R/helpers_llm_sse.R`, `R/helpers_llm_sse_events.R`, `R/helpers_llm_stream_io.R`,
   `R/helpers_llm_worker*.R`, `R/server_llm_response_handlers.R`.
@@ -43,6 +45,9 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-llm-worker-second-pass-{contract,pure-behavior,flow-behavior}.R`
   (`llm_worker_run_mcp_second_pass` SSE + NON-SSE + retry-fallback;
   `llm_worker_call_second_pass_non_streaming` gerçek httr 200/200-dışı),
+  `test-server-handler-streaming-tts-contract.R` (`handle_streaming_tts_mode`
+  yapısal ayrım + promise zinciri davranışı: başarı/başarısız/durdurulmuş/
+  reddedilmiş yollar, deterministik `promises`+`later` ile),
   `test-chat-runtime-*`.
 - **Smoke/kanıt:** `www/smoke/ux-smoke.html` (streaming init/delta/stale/finalize),
   VM evidence `browser_ux_smoke`.
@@ -54,6 +59,11 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   Kalan derin dallar: `chat_simulate_streaming` invalidateLater(25) akış döngüsü,
   `sendMessageInit` mod-dispatch
   sonrası tam akış — hepsi ağır testServer/yoğun stub ister, sıradaki hedef.
+  `send_message` üç terminal LLM dalı (gerçek SSE / non-streaming / TTS streaming)
+  artık simetrik ctx tabanlı handler'lara yönlendirir: TTS açık streaming dalı
+  `R/server_handler_streaming_tts.R`'ye (`handle_streaming_tts_mode`) çıkarıldı;
+  `server_send_message.R` 694/14 → 590/9'a indi ve küresel en büyük dosya satırı
+  694 → 690'a düştü. Promise zinciri davranışı deterministik test ile korunur.
 
 ## Dosya Yaşam Döngüsü
 
@@ -346,8 +356,13 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   yeni `*_outputs` dosyaları; bunlar tek-fonksiyon flat renderer listeleri olduğu
   için düşük öncelik. Sıradaki repo-geneli yakın-bütçe adayı bu seam dışında
   `module_settings_yapilandirma_ui.R` küçültüldü (758 → 411) ve gelişmiş medya/görsel/analiz kartları
-  `module_settings_yapilandirma_advanced_ui.R` (353) dosyasına ayrıldı. Sıradaki repo-geneli adaylar
-  admin output renderer dosyaları ve `server_send_message.R` gibi 650–730 satır bandındaki dosyalardır.
+  `module_settings_yapilandirma_advanced_ui.R` (353) dosyasına ayrıldı.
+  `server_send_message.R` TTS streaming dalı `R/server_handler_streaming_tts.R`'ye
+  çıkarılarak 694/14 → 590/9'a indi. Sıradaki repo-geneli yakın-bütçe adayları
+  artık `R/config_ui_assets.R` (690, asset-order hassas) ve
+  `R/server_runtime_context.R` (687); ardından 678–680 bandındaki
+  `helpers_db_chat_readers.R`, `helpers_claude_code_documents.R`,
+  `server_handler_true_streaming.R`, `module_file_manager.R`.
 
 ## Frontend Varlık ve Yönetişim
 
@@ -375,8 +390,11 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `module_admin_yanit_analizi.R`) ve açılış ekranı (`module_startup_screen.R`)
   sonraki oturumlarda küçültüldü; `module_image_generation.R` (730/22) UI/HTML
   render katmanı `module_image_generation_ui.R`'ye ayrılarak 545/17'ye indi.
-  Sıradaki repo-geneli yakın-bütçe adayı artık `R/server_send_message.R`
-  (728, flat renderer listesi) veya `R/server_send_message.R` (694, davranışsal risk daha yüksek).
+  `R/server_send_message.R` TTS streaming dalı `R/server_handler_streaming_tts.R`'ye
+  çıkarılarak 694/14 → 590/9'a indi; küresel en büyük dosya satırı 694 → 690
+  (config_ui_assets.R) olarak sıkılaştırıldı. Sıradaki repo-geneli yakın-bütçe
+  adayları `R/config_ui_assets.R` (690, asset-order hassas — dikkatli) ve
+  `R/server_runtime_context.R` (687).
   `R/module_settings_yapilandirma_ui.R` 758 → 411'e indi; gelişmiş kartlar
   `R/module_settings_yapilandirma_advanced_ui.R` içinde 353 satırlık saf UI dosyasıdır.
 

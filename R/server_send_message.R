@@ -532,138 +532,34 @@ sendMessageInit <- function(
     } else if (isTRUE(current_settings$enable_streaming) &&
                !isTRUE(current_settings$enable_mcp_tools) &&
                !isTRUE(force_non_streaming_sql)) {
-      # TTS açıkken mevcut davranışı koru
-      start_time <- Sys.time()
-
-      log_debug("[MONITORING] AI isteği başlatılıyor (STREAMING modu)")
-
-      settings_for_llm <- current_settings
-      settings_for_llm$model_selection <- model_selected
-
-      active_request_id(req_id)
-      stop_generation(FALSE)
-      values$is_sending <- TRUE
-
-      safe_settings <- current_settings
-      safe_settings$shiny_session <- NULL
-      dbg_dump("LLM_REQUEST_STREAMING", list(model = model_selected, messages = messages_to_process, settings = safe_settings))
-
-      p <- ai_processor$call_llm_streaming(messages_to_process, current_settings, model_selected)
-
-      p <- promises::then(p, onFulfilled = function(result) {
-        result$req_id <- req_id
-        result
-      })
-
-      p <- promises::then(
-        p,
-        onFulfilled = function(res) {
-          request_state <- mergen_send_message_request_state(active_request_id, res$req_id, stop_generation)
-          if (!identical(request_state, "current")) {
-            try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
-                             model_selected, res$duration, FALSE), silent = TRUE)
-            if (identical(request_state, "stopped")) {
-              cleanup_send_message()
-            }
-            return(invisible(NULL))
-          }
-
-          if (!res$success) {
-            log_warn("[AI MODULE] Streaming isteği başarısız")
-            perf_tracker$track_error()
-            abort_send_message(message = res$error, type = "error")
-            return(invisible(NULL))
-          }
-
-          log_debug("[MONITORING] Streaming isteği tamamlandı")
-          dbg_dump("LLM_RESPONSE_STREAMING", list(
-            success = res$success, duration = res$duration,
-            content_preview = substr(res$content %||% "", 1, 800)
-          ))
-
-          perf_tracker$track_request(res$duration)
-
-          try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
-                           model_selected, res$duration, TRUE), silent = TRUE)
-
-          if (is.list(res$chart_store) && length(res$chart_store) > 0) {
-            if (is.null(session$userData$chart_store) || !is.list(session$userData$chart_store)) {
-              session$userData$chart_store <- list()
-            }
-            session$userData$chart_store <- utils::modifyList(session$userData$chart_store, res$chart_store)
-          }
-
-          # Takip soruları oluştur
-          followup_questions <- build_followup_suggestions(
-            user_message_text, res$content, settings_data, session,
-            api_config, followup_tools, fallback_followup_tool
-          )
-
-          local_char_id <- normalize_character_id(current_settings$selected_character)
-          local_chars_data <- get_characters_data()
-          local_char_def <- if (!is.null(local_chars_data)) Find(function(x) x$id == local_char_id, local_chars_data$styles) else NULL
-          resolved_voice <- if (!is.null(local_char_def) && !is.null(local_char_def$tts_voice)) local_char_def$tts_voice else "tr-male-1"
-
-          tts_engine_param <- NULL
-          tts_voice_param <- NULL
-          if (isTRUE(settings_data$enable_tts_audio)) {
-            tts_engine_param <- tts_processor$synthesize_speech
-            tts_voice_param <- resolved_voice
-          }
-
-          simulate_streaming_stoppable_fn(
-            res$content,
-            followups = followup_questions,
-            tts_engine = tts_engine_param,
-            tts_voice = tts_voice_param,
-            on_start = NULL,
-            on_complete = function(msg) {
-            }
-          )
-          invisible(NULL)
-        },
-        onRejected = function(err) {
-          log_warn("[MONITORING] Streaming isteği BAŞARISIZ")
-          perf_tracker$track_error()
-
-          duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-          try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
-                           model_selected, duration, FALSE), silent = TRUE)
-
-          request_state <- mergen_send_message_request_state(active_request_id, req_id, stop_generation)
-          if (identical(request_state, "current")) {
-            msg <- as.character(conditionMessage(err))
-            msg <- sub("^[A-Z_]+:\\s*", "", msg)
-            if (!nzchar(msg)) msg <- "Beklenmeyen bir hata oluştu."
-            abort_send_message(message = msg, type = "error")
-            return(invisible(NULL))
-          }
-
-          if (identical(request_state, "stopped")) {
-            cleanup_send_message()
-          }
-          invisible(NULL)
-        }
+      # TTS (Yanıtları Seslendir) açık streaming yolu ayrı işleyiciye taşındı;
+      # gerçek SSE (handle_true_streaming_mode) ve non-streaming dalları gibi
+      # simetriktir. Stale-istek/durdurma kararları istek kimliği kapsamlı kalır.
+      streaming_tts_ctx <- list(
+        session = session,
+        values = values,
+        settings_data = settings_data,
+        stop_generation = stop_generation,
+        active_request_id = active_request_id,
+        perf_tracker = perf_tracker,
+        api_config = api_config,
+        ai_processor = ai_processor,
+        tts_processor = tts_processor,
+        followup_tools = followup_tools,
+        fallback_followup_tool = fallback_followup_tool,
+        simulate_streaming_stoppable_fn = simulate_streaming_stoppable_fn,
+        cleanup_send_message = cleanup_send_message,
+        abort_send_message = abort_send_message,
+        current_settings = current_settings,
+        model_selected = model_selected,
+        messages_to_process = messages_to_process,
+        user_message_text = user_message_text,
+        user_prompt_msg = user_prompt_msg,
+        chat_id_val = chat_id_val,
+        current_user_id = effective_user_id,
+        request_id = req_id
       )
-
-      p <- p %...!% (function(e) {
-        log_warn("[STREAM_CHAIN] Hata yakalandı: {conditionMessage(e)}")
-        perf_tracker$track_error()
-
-        request_state <- mergen_send_message_request_state(active_request_id, req_id, stop_generation)
-        if (identical(request_state, "current")) {
-          abort_send_message(message = "Beklenmeyen bir hata oluştu.", type = "error")
-          return(invisible(NULL))
-        }
-
-        if (identical(request_state, "stopped")) {
-          cleanup_send_message()
-        }
-        invisible(NULL)
-      })
-
-      promises::finally(p, onFinally = function() {
-      })
+      handle_streaming_tts_mode(streaming_tts_ctx)
 
     } else {
       # NON-STREAMING modu

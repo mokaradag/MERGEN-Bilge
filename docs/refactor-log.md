@@ -6,6 +6,132 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-20 — TTS açık streaming dalının send_message'tan ayrı handler'a çıkarılması
+
+### Seçilen iz(ler)
+- **Track 1 — en büyük / yakın-bütçe R dosyasından bütünleşik (terminal dal) çıkarımı**
+  (öncelik #1). `sohbet_llm_akis` seam'inde tek paket.
+- **Track 6 — eskimiş "sıradaki hedef" risk notlarının temizlenmesi**:
+  feature-ownership-map'te `server_send_message.R`'yi yanlış/garbled biçimde
+  (728, "flat renderer listesi") sıradaki hedef gösteren iki not güncellendi.
+
+### Özet ve gerekçe
+Keşif raporları (maintainability 100/100; frontend yapısal temiz; seam doctor OK):
+`R/server_send_message.R` repo genelindeki **en büyük R dosyasıydı (694/14)** ve tam
+olarak küresel `MERGEN_TEST_MAX_FILE_LINES` bütçesindeydi (geçen oturum 796 → 694
+sıkılaştırılmıştı), yani küresel sınırı kilitliyor ve dokümante "sıradaki hedef" idi.
+
+`send_message()` içindeki `send_message` kapanışı, LLM çağrısını üç terminal dala
+yönlendiriyordu: gerçek SSE (`handle_true_streaming_mode`), non-streaming
+(`generate_non_streaming_stoppable_fn`) ve TTS açık streaming. İlk ikisi zaten ayrı
+`R/server_handler_*` dosyalarına çıkarılmış ctx tabanlı handler'lardı; yalnızca **TTS
+açık streaming dalı (~135 satır promise zinciri) satır içi** kalmıştı. Bu dal mevcut
+deseni birebir izleyerek yeni `R/server_handler_streaming_tts.R` dosyasındaki
+`handle_streaming_tts_mode(ctx)` işleyicisine taşındı (gövde birebir korundu;
+ctx-destructuring başlığı yerel adları eski isimlere eşler). Üç dal artık simetriktir.
+
+### Değişen dosyalar
+**Kaynak**
+- `R/server_handler_streaming_tts.R` (yeni, 172/6) — `handle_streaming_tts_mode(ctx)`:
+  TTS açık streaming promise zinciri (LLM streaming çağrısı, stale/stopped/current
+  istek kararı, takip soruları, TTS sesi çözümü, `simulate_streaming_stoppable_fn`).
+- `R/server_send_message.R` — **694/14 → 590/9**; satır içi dal artık ~25 satırlık
+  `streaming_tts_ctx <- list(...)` + `handle_streaming_tts_mode(streaming_tts_ctx)`.
+- `R/config_source_manifest.R` — `server_handlers_send_message` bölümüne handler
+  `R/server_handler_true_streaming.R`'den sonra, `R/server_send_message.R`'den önce
+  eklendi (8 → 9 dosya; toplam 275 → 276).
+- `R/bootstrap_source_manifest.R` — kritik sıra kuralı:
+  `R/server_handler_streaming_tts.R` → `R/server_send_message.R`.
+- `R/config_seam_registry.R` — `sohbet_llm_akis` guard_tests listesine yeni
+  split-contract testi eklendi (7 → 8).
+
+**Test**
+- `tests/testthat/test-server-handler-streaming-tts-contract.R` (yeni, 29 assertion) —
+  yapısal ayrım (handler yeni dosyada; send_message ctx ile devreder; satır içi
+  promise zinciri / `ai_processor$call_llm_streaming` / `simulate_streaming_stoppable_fn`
+  send_message'ta kalmadı) + manifest sırası + deterministik promise zinciri davranışı
+  (gerçek `promises`+`later`, stub'lı: başarı → simulate; başarısız → abort; durdurulmuş
+  → cleanup; reddedilmiş → abort, "API_ERROR:" öneki soyulur).
+- `tests/testthat/test-source-manifest-sections-contract.R` —
+  `server_handlers_send_message` n=8→9; toplam runtime 275→276 bilinçli güncellendi.
+- `tests/testthat/test-maintainability-ratchet.R` — küresel `MERGEN_TEST_MAX_FILE_LINES`
+  694 → 690 sıkılaştırıldı; `server_send_message.R` bütçesi 760/14 → 620/11; yeni
+  handler için 200/8 bütçesi eklendi.
+
+**Dokümantasyon**
+- `CLAUDE.md` — send_message contract: handler sorumluluğu + simetrik üç-dal notu +
+  re-inline yasağı + yeni test "Protected by" listesinde; Group 7 yükleme listesi.
+- `docs/feature-ownership-map.md` — Sohbet/Streaming seam'ine handler + test eklendi;
+  iki eskimiş `server_send_message.R` "sıradaki hedef" notu güncellendi (yeni adaylar
+  `config_ui_assets.R` 690, `server_runtime_context.R` 687).
+- `docs/architecture-map.md` — LLM entegrasyonu satırına simetrik üç-dal handler notu.
+- `docs/technical-reference.md` — TTS streaming handler extraction + yeni ratchet tabanı.
+- `docs/refactor-log.md` — bu giriş.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `server_send_message.R` 694/14 (repo genelinde en büyük; küresel bütçede).
+- Sonra: `server_send_message.R` 590/9; yeni handler 172/6. Skor 100/100; 800+ satır /
+  25+ fonksiyon = 0. **Küresel en büyük dosya satırı 694 → 690** (yeni en büyük
+  `config_ui_assets.R`, değişmedi). Küresel `MERGEN_TEST_MAX_FILE_LINES` 694 → 690.
+
+### Korunan davranış sözleşmeleri
+- TTS açık streaming promise zinciri gövdesi birebir taşındı (gövde değişmedi; yalnızca
+  ctx-destructuring başlığı eklendi). Stale-istek/durdurma kararları istek kimliği
+  kapsamlı kalır; başarı/başarısız/durdurulmuş/reddedilmiş yollar deterministik testle
+  kanıtlandı.
+- Gerçek SSE ve non-streaming dalları değişmedi. send_message orkestrasyonu, SSO/kullanıcı
+  korumaları, mod-dispatch, API/model kurulumu aynı.
+- DB/SSO/encoding/source-order/frontend asset order/UX runtime sınırlarına dokunulmadı.
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; en büyük dosya
+  694 → 690; `server_send_message.R` 590/9; yeni handler 172/6.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`; `sohbet_llm_akis`
+  runtime-dosya 42 → 43, guard-test 7 → 8.
+- `Rscript tests/scripts/frontend_complexity_doctor.R` → rapor üretildi; frontend
+  varlığı değişmedi.
+- `Rscript tests/scripts/parse_sanity_check.R` → OK (844 dosya).
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni split+behavior contract
+  (PASS 29), source-manifest-sections (154), source-manifest-contract (165),
+  global-source-manifest (12), maintainability-ratchet (225), seam-registry-contract
+  (12), seam-doctor-contract (6), send-message-prompting (21),
+  send-message-request-lifecycle (42), send-message-maintainability-ratchet (8),
+  true-streaming-reset-ui (6), e2e-quick-actions-streaming-regression (75),
+  streaming-poll-lifecycle (25), production-contracts (21).
+- `bash tools/ai_validate.sh quick` → geçti; `failed_steps: 0`, `skipped_steps: 0`,
+  app source smoke PASSED (`artifacts/ai-validation/20260620-032037/summary.json`).
+- `bash tools/ai_validate.sh full --boot-smoke` → app source smoke PASSED; tam strict
+  testthat suite, yalnızca ÖNCEDEN VAR OLAN ve ilgisiz iki logging testinde
+  (`test-config-logging-caller-frame.R`, `test-logging-resolvers-behavior.R` — bulut
+  log-dizini yazılabilirlik/file connection hataları) başarısız oldu. Bu iki test
+  `git stash` ile değişikliklerim çıkarıldığında temiz tabanda da BİREBİR aynı şekilde
+  başarısız (FAIL 3 / FAIL 1); değişiklik kümem hiçbir logging dosyasına dokunmuyor.
+  Artifact: `artifacts/ai-validation/20260620-032137/summary.json`
+  (`app_source_smoke_status="passed"`, `full_testthat_suite_status="failed"`,
+  `failed_step_labels=["full testthat suite"]`).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Ana Söyleşi'de "Yanıtları Seslendir" (TTS) açıkken streaming bir model ile mesaj
+  gönderin; yanıtın canlı geldiğini, takip sorularının üretildiğini ve sesli oynatmanın
+  başladığını doğrulayın.
+- Streaming sırasında "Durdur" basın; durdurma temizliğinin (gönder/typing/thinking
+  durumunun sıfırlanması) eskisi gibi çalıştığını doğrulayın.
+- TTS kapalıyken gerçek SSE yolunun ve MCP/non-streaming yolunun değişmediğini doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding/gerçek tarayıcı/gerçek TTS uç noktası
+  kanıtı alınmadı (bulut oturumu). Değişiklik davranış-koruyan terminal-dal
+  extraction'ıdır; promise zinciri davranışı deterministik test ile kanıtlandı, ancak
+  canlı TTS sesi/streaming uç-uca akış yalnızca VM/manuel tarayıcıda kanıtlanır.
+- Tam strict testthat suite bu bulut checkout'unda ÖNCEDEN VAR OLAN ilgisiz logging
+  testleri nedeniyle tamamlanmıyor (CLAUDE.md'de belgelenmiş durum); bu paket bu
+  testleri ne kırdı ne onardı.
+- Sıradaki paket adayları: `R/config_ui_assets.R` (690, asset-order hassas — dikkatli),
+  `R/server_runtime_context.R` (687), ya da frontend tarafında yoğun
+  `www/js/ai_expert_manager.js` (802/45/12 handler/8 Shiny handler).
+
+---
+
 ## 2026-06-18 — Geri Bildirim tablo testi Windows/RStudio parse onarımı
 
 ### Seçilen iz(ler)

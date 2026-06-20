@@ -459,6 +459,7 @@ source_manifest_required_order <- list(
   c("R/helpers_llm_worker_payload.R", "R/helpers_llm_worker_tool_results.R"),
   c("R/helpers_llm_worker_tool_results.R", "R/helpers_llm_worker.R"),
   c("R/server_handler_true_streaming.R", "R/server_send_message.R"),
+  c("R/server_handler_streaming_tts.R", "R/server_send_message.R"),
 
   c("R/utils_session_cleanup.R", "R/server_session_cache.R"),
   c("R/utils_session_cleanup.R", "R/server_init_session_state.R"),

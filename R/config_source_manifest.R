@@ -501,6 +501,7 @@ source_manifest_sections <- list(
     "R/server_handler_summarization.R",
     "R/server_handler_image_generation.R",
     "R/server_handler_true_streaming.R",
+    "R/server_handler_streaming_tts.R",
     "R/server_llm_response_handlers.R",
     "R/server_send_message.R"
   )

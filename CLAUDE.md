@@ -1820,8 +1820,9 @@ Responsibilities:
 * `R/helpers_send_message_core.R`: tool-family routing, send-message cleanup/abort helpers, stream profile selection, and MCP session-file preparation.
 * `R/helpers_send_message_prompting.R`: citation instruction construction, character/style/system prompt assembly, SQL system prompt merging, MCP Excel uploaded-file context prompts, and MCP-disabled uploaded-file context prompts.
 * `R/server_send_message.R`: request orchestration, SSO/user guards, chat/message lifecycle, mode dispatch, API/model setup, and streaming/non-streaming handoff.
+* `R/server_handler_streaming_tts.R`: the TTS-enabled streaming dispatch branch (`handle_streaming_tts_mode(ctx)`). `send_message()` routes its three terminal LLM branches symmetrically to ctx-based handlers: true SSE → `handle_true_streaming_mode(ctx)` (`R/server_handler_true_streaming.R`), non-streaming → `generate_non_streaming_stoppable_fn(...)`, and TTS-on streaming → `handle_streaming_tts_mode(ctx)`. Keep this handler loaded after `R/server_handler_true_streaming.R` and before `R/server_send_message.R`.
 
-Do not move prompt/style/file-context assembly back into `R/server_send_message.R`. Keeping this boundary creates maintainability headroom below the 800-line threshold and reduces the risk that future prompt changes accidentally alter request lifecycle or streaming state.
+Do not move prompt/style/file-context assembly back into `R/server_send_message.R`. Do not re-inline the TTS-streaming promise chain back into `R/server_send_message.R`; it is now `handle_streaming_tts_mode(ctx)` in `R/server_handler_streaming_tts.R`. Keeping this boundary creates maintainability headroom below the 800-line threshold and reduces the risk that future prompt changes accidentally alter request lifecycle or streaming state.
 
 Race-condition and behavior contracts:
 
@@ -1834,11 +1835,13 @@ Race-condition and behavior contracts:
 * MCP-disabled uploaded-file prompts must continue to use stored summaries or safe file excerpts and must still end with a Turkish `Kaynakça:` section.
 * The helper extraction must not change user-visible Turkish text, filename display behavior, citation behavior, or source-order contracts.
 * Avoid introducing local variables that shadow globally important helpers such as `is_thinking_model()` in the send-message runtime path.
+* `handle_streaming_tts_mode(ctx)` must keep its stale-request/stop decisions request-scoped through `mergen_send_message_request_state(active_request_id, req_id, stop_generation)`. The success path drives `simulate_streaming_stoppable_fn(...)`, the failure/rejected path drives `abort_send_message(...)`, and the stopped path drives `cleanup_send_message()`. Do not regress this to an inline promise chain without a request-id guard.
 
 Protected by:
 
     tests/testthat/test-send-message-prompting-contract.R
     tests/testthat/test-send-message-request-lifecycle-contract.R
+    tests/testthat/test-server-handler-streaming-tts-contract.R
     tests/testthat/test-send-message-maintainability-ratchet.R
     tests/testthat/test-source-manifest-contract.R
     tests/testthat/test-maintainability-ratchet.R
@@ -4679,6 +4682,7 @@ Wiring and runtime flow. Welcome recency correctness depends on **both** refresh
 - `R/server_handler_summarization.R`
 - `R/server_handler_image_generation.R`
 - `R/server_handler_true_streaming.R`
+- `R/server_handler_streaming_tts.R`
 - `R/server_send_message.R`
 - `R/server_tts_handlers.R`
 - `R/server_music_handlers.R`
