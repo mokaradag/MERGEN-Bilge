@@ -451,6 +451,9 @@ handle_true_streaming_mode <- function(ctx) {
       append_stream_reasoning_line = append_stream_reasoning_line,
       log_info = log_info,
       log_warn = log_warn,
+      # SQL/Proje analizi non-streaming güvenlik ağı: işçi, akış yalnızca
+      # akıl yürütme benzeri/boş içerik döndürdüğünde bu yardımcıyla tespit yapar.
+      llm_worker_stream_content_looks_like_reasoning = llm_worker_stream_content_looks_like_reasoning,
       api_config = api_config
     )
   )

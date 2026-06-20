@@ -455,14 +455,27 @@ sendMessageInit <- function(
 
     current_settings$model_selection <- model_selected
 
-	# Düşünmeli modellerde SQL analizi akışını streaming yerine non-streaming çalıştır.
-	# Model yetenekleri R/config_api.R içindeki local_model_capabilities tarafından
-	# bildirilir; burada regex tabanlı tahmin yapılmaz.
+	# Düşünmeli SQL/Proje analizi akış planı. Model yetenekleri R/config_api.R
+	# içindeki local_model_capabilities tarafından bildirilir; regex tahmini yok.
+	# Düşünmeli SQL/Proje analizi artık canlı Düşünce Akışı için gerçek SSE ile
+	# akıtılır; işçi tarafı non-streaming geri dönüşü güvenlik ağı olarak açılır.
+	# TTS açıkken veya streaming kapalıyken eski güvenli non-streaming korunur.
 	thinking_model_detected <- tryCatch(
 	  isTRUE(is_thinking_model(model_selected)),
 	  error = function(e) FALSE
 	)
-	force_non_streaming_sql <- identical(tool_family, "sql_analysis") && thinking_model_detected
+	sql_stream_plan <- mergen_sql_analysis_stream_plan(
+	  tool_family = tool_family,
+	  thinking_model = thinking_model_detected,
+	  enable_streaming = isTRUE(current_settings$enable_streaming),
+	  enable_mcp_tools = isTRUE(current_settings$enable_mcp_tools),
+	  enable_tts_audio = isTRUE(settings_data$enable_tts_audio)
+	)
+	force_non_streaming_sql <- isTRUE(sql_stream_plan$force_non_streaming)
+	if (isTRUE(sql_stream_plan$allow_non_streaming_fallback)) {
+	  # İşçi yalnızca akıl yürütme/boş içerik döndürürse non-streaming'e düşer.
+	  current_settings$allow_non_streaming_fallback <- TRUE
+	}
 
     stream_profile <- mergen_build_stream_profile(
       tool_family = tool_family,
@@ -472,6 +485,9 @@ sendMessageInit <- function(
     )
 
     log_debug("Mesaj gönderiliyor, model: {model_selected}")
+	if (isTRUE(sql_stream_plan$allow_non_streaming_fallback)) {
+	  log_debug("[MONITORING] Düşünmeli SQL/Proje analizi: canlı SSE Düşünce Akışı + non-streaming güvenlik ağı")
+	}
 	if (isTRUE(force_non_streaming_sql)) {
 	  log_debug("[MONITORING] SQL analizi için düşünmeli model tespit edildi; streaming kapatılıp non-streaming kullanılacak")
 	}
