@@ -6,6 +6,248 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-20 — ServerRuntimeContext SSO auth-ready / yenilenebilir modül wiring katmanının ayrılması
+
+### Seçilen iz(ler)
+- **Track 1 — en büyük / yakın-bütçe R dosyasından bütünleşik (kohezif) katman
+  çıkarımı** (öncelik #1; dokümante #2 sıradaki hedef, aynı oturumda config_ui_assets
+  paketinden sonra). `shiny_calisma_zamani` seam'inde tek paket.
+- **Track 6 — eskimiş "sıradaki hedef" notlarının güncellenmesi**: feature-ownership'te
+  `server_runtime_context.R` (687) sıradaki hedef gösteren üç not yenilendi.
+
+### Özet ve gerekçe
+Önceki paket (`config_ui_assets.R` bölünmesi) sonrası `R/server_runtime_context.R`
+repo genelindeki **en büyük R dosyası oldu (687/17)** ve küresel
+`MERGEN_TEST_MAX_FILE_LINES` bütçesini (687) kilitliyordu. Dosya; context init/attach/
+require yardımcılarını, modül kayıt yardımcılarını VE SSO sonrası (post-auth) +
+yenilenebilir modül wiring katmanını karıştırıyordu. Talimatların açıkça önerdiği
+kohezif çıkarım, "auth-ready/refreshable-module helpers" idi.
+
+Üç fonksiyon — `serverRuntimeOnSsoAuthReady()`,
+`serverRuntimeRefreshModuleOnSsoAuthReady()`, `serverRuntimeAttachRefreshableModule()` —
+yeni `R/server_runtime_auth_ready.R` dosyasına BİREBİR taşındı. Bunlar context'in
+modül kayıt yardımcılarını (`serverRuntimeAttachModule/GetModule/ExposeSessionData`)
+ve düşük seviyeli sözleşme yardımcılarını ÇAĞRI ANINDA kullanır, bu yüzden manifestte
+context'ten SONRA, function_slot'tan ÖNCE yüklenir. SSO zamanlama davranışı
+(ignoreInit/once/fail-fast, immediate-ready yolu, yerel-mod no-op) korundu.
+
+### Değişen dosyalar
+**Kaynak**
+- `R/server_runtime_auth_ready.R` (yeni, 242/4) — üç wiring fonksiyonu + izole
+  test/debug için WD-bağımsız yedek yükleme (context yoksa onu yükler; bu, repo'nun
+  context.R'deki blessed bootstrap deseninin aynısıdır).
+- `R/server_runtime_context.R` — **687/17 → 503/13** (context init/attach/require +
+  modül kayıt yardımcıları; header üç fonksiyonun yeni konumunu işaret eder).
+- `R/config_source_manifest.R` — `server_init_runtime` bölümüne yeni dosya
+  context'ten SONRA, function_slot'tan ÖNCE eklendi (13 → 14).
+- `R/bootstrap_source_manifest.R` — kritik sıra kuralları:
+  `server_runtime_context.R → server_runtime_auth_ready.R → server_runtime_function_slot.R`.
+- `R/config_seam_registry.R` — `shiny_calisma_zamani` guard_tests listesine yeni
+  split-contract testi eklendi (6 → 7).
+
+**Test**
+- `tests/testthat/test-server-runtime-auth-ready-split-contract.R` (yeni, 33 assertion)
+  — yapısal ayrım (fonksiyonlar yeni dosyada; context'te inline yok; manifest sırası)
+  + odaklı davranış (yerel-mod no-op, SSO ready-now immediate callback, attach+expose,
+  SSO modunda eksik-modül reddi).
+- Üç fonksiyonu çalıştıran testler yeni dosyayı da kaynak alacak şekilde güncellendi:
+  `test-server-runtime-context.R`, `test-e2e-sso-identity-readiness-regression.R`,
+  `test-server-module-wiring-chat-engine.R`, `test-server-module-wiring-runtime-bindings.R`,
+  `test-server-core-interaction-runtime.R`; `test-production-contracts.R` parse listesine eklendi.
+- `tests/testthat/test-source-manifest-sections-contract.R` — `server_init_runtime`
+  n=13→14; toplam runtime 279→280.
+- `tests/testthat/test-maintainability-ratchet.R` — küresel
+  `MERGEN_TEST_MAX_FILE_LINES` 687 → 681; bütçeler `server_runtime_context.R` 540/15,
+  `server_runtime_auth_ready.R` 290/6.
+
+**Dokümantasyon**
+- `CLAUDE.md`, `docs/feature-ownership-map.md`, `docs/technical-reference.md`,
+  `docs/refactor-log.md`, `.ai/next-session-eliminate-weaknesses-prompt.md`.
+  (`docs/architecture-map.md` değişmedi: yeni dosya mevcut `server_init_runtime`
+  bölümü / `shiny_calisma_zamani` seam tanımı içinde kalıyor.)
+
+### Önce / sonra karmaşıklık notları
+- Önce: `server_runtime_context.R` 687/17 (repo genelinde en büyük; küresel bütçede).
+- Sonra: context 503/13, auth_ready 242/4. Skor 100/100; 800+ satır / 25+ fonksiyon = 0.
+  **Küresel en büyük dosya satırı 687 → 681** (yeni en büyük
+  `server_handler_true_streaming.R`). Küresel `MERGEN_TEST_MAX_FILE_LINES` 687 → 681.
+
+### Korunan davranış sözleşmeleri
+- (context + auth_ready) birlikte yüklendiğinde fonksiyon kümesi ve HER fonksiyonun
+  gövdesi HEAD context.R ile BİREBİR aynı (24 fonksiyon, 0 gövde farkı — `deparse`
+  karşılaştırması). SSO immediate-ready / observer-fired yolları aynı
+  `.server_runtime_invoke_auth_ready_callback()` üzerinden geçer; yerel-mod no-op
+  korundu; ignoreInit/once/fail-fast aynı.
+- DB/SSO/encoding/source-order/UX runtime sözleşmelerine dokunulmadı (saf yapısal
+  relocate).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Altın eşdeğerlik: HEAD context vs (yeni context + auth_ready) → fonksiyon kümesi
+  identical, 0 gövde farkı. Boot sonrası iki dosyanın fonksiyonları da global'de mevcut.
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; en büyük dosya
+  687 → 681; context 503/13, auth_ready 242/4.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`; `shiny_calisma_zamani`
+  runtime-dosya 33 → 34, guard-test 6 → 7.
+- `Rscript tests/scripts/parse_sanity_check.R` → OK (851 dosya).
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni split-contract (33),
+  server-runtime-context (57), server-runtime-context-accessors (6),
+  server-core-interaction-runtime (25), server-module-wiring-chat-engine (14),
+  server-module-wiring-contract (5), server-module-wiring-runtime-bindings (31),
+  e2e-sso-identity-readiness (22), source-manifest-sections (154),
+  source-manifest-contract (165), global-source-manifest (12), seam-registry (12),
+  maintainability-ratchet (243), production-contracts (21).
+- `bash tools/ai_validate.sh full --boot-smoke` → **tam geçti**; app source smoke
+  PASSED, **full testthat suite PASSED (181.2s)**, shiny boot smoke PASSED, browser
+  smoke SKIPPED (tarayıcı yok); `failed_steps: 0`, `skipped_steps: 0`
+  (`artifacts/ai-validation/20260620-170730/summary.json`). NOT: bu bulut oturumunda
+  `logger` paketi kurularak ve placeholder env değişkenleri verilerek koşuldu.
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Windows VM'de SSO açıkken giriş yapın; Dosya Yönetimi kalıcı dosyalarının ve Görsel
+  Galerisi'nin SSO kimlik hazır olduktan SONRA (kullanıcı id'si 0 değilken) bir kez
+  yenilendiğini doğrulayın. Yerel (SSO kapalı) modda davranışın değişmediğini doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek DB/SQL Server/gerçek tarayıcı kanıtı alınmadı (bulut oturumu).
+  Değişiklik saf yapısal relocate'tir; fonksiyon gövdeleri byte-birebir korundu, ancak
+  gerçek SSO post-auth yenileme zamanlaması yalnızca Windows VM'de son kez kanıtlanır.
+- Sıradaki paket adayları: `R/server_handler_true_streaming.R` (681),
+  `R/helpers_claude_code_documents.R` (679), `R/module_file_manager.R` (677); frontend
+  `www/js/deep_space_intro.js` (820) / `www/js/ai_expert_manager.js` (802).
+
+---
+
+## 2026-06-20 — UI varlık manifestinin VERİ / DOĞRULAYICI / RENDER olarak bölünmesi
+
+### Seçilen iz(ler)
+- **Track 1 — en büyük / yakın-bütçe R dosyasından bütünleşik (saf) çıkarım**
+  (öncelik #1; dokümante #1 sıradaki hedef). `frontend_varlik` seam'inde tek paket.
+- **Track 6 — eskimiş "sıradaki hedef" notlarının güncellenmesi**: feature-ownership
+  ve handoff'ta `config_ui_assets.R` (690) sıradaki hedef gösteren notlar yenilendi.
+
+### Özet ve gerekçe
+Keşif raporu (maintainability 100/100; seam doctor OK): `R/config_ui_assets.R`
+repo genelindeki **en büyük R dosyasıydı (690/17)** ve küresel
+`MERGEN_TEST_MAX_FILE_LINES` bütçesini (690) kilitliyordu. Dosya tek başına
+varlık manifesti VERİSİNİ (CSS/JS grupları, ertelenmiş grup listesi, render planı,
+JS/CSS sıra kuralları), SAF çözümleyici/doğrulayıcı fonksiyonlarını
+(`ui_asset_all_css/js`, sıra/render planı doğrulaması) ve htmltools etiket render
+katmanını (`ui_asset_tags` vb.) karıştırıyordu.
+
+Repoda zaten kanıtlanmış bir desen vardı: `config_ui_asset_zones.R` (VERİ) +
+`config_ui_asset_zone_validators.R` (DOĞRULAYICI). Aynı desen birebir uygulandı:
+manifest VERİSİ tek sahip olarak `config_ui_assets.R`'de kaldı, çözümleyici/
+doğrulayıcılar `config_ui_asset_validators.R`'ye, etiket render katmanı
+`config_ui_asset_tags.R`'ye taşındı. Tüm fonksiyonlar veriyi ÇAĞRI ANINDA çözdüğü
+için (tembel değerlendirme), runtime davranışı değişmez. Bölme öncesi/sonrası
+TÜM çıktılar altın referansla doğrulandı: **byte-birebir aynı**
+(`ui_asset_all_css/js`, sıra kuralları, render planı, ertelenmiş gruplar ve tam
+`ui_asset_tags()` HTML md5 `11c977dd…` — `identical()` TRUE; HEAD vs çalışma ağacı
+da birebir aynı).
+
+### Değişen dosyalar
+**Kaynak**
+- `R/config_ui_asset_validators.R` (yeni, 253/11) — `ui_asset_render_plan_groups`,
+  `ui_asset_render_plan_deferred`, `ui_asset_validate_js_render_plan`,
+  `ui_asset_all_css`, `ui_asset_all_js`, `ui_asset_deferred_js_paths`,
+  `ui_asset_validate_css_order`, `ui_asset_validate_js_order`,
+  `ui_asset_duplicate_paths`, `ui_asset_public_root`, `ui_asset_validate`.
+- `R/config_ui_asset_tags.R` (yeni, 59/5) — `ui_asset_css_tag`,
+  `ui_asset_script_tag`, `ui_asset_css_tags`, `ui_asset_js_tags`, `ui_asset_tags`.
+- `R/config_ui_assets.R` — **690/17 → 425/1** (SADECE VERİ + `ui_asset_flatten_groups`
+  düzleştirme yardımcısı; sıranın TEK sahibi).
+- `R/config_source_manifest.R` — `config_ui_assets` bölümüne iki yeni dosya
+  `config_ui_assets.R`'den SONRA, `config_ui_asset_zones.R`'den ÖNCE eklendi (3 → 5).
+- `R/config_seam_registry.R` — `frontend_varlik` guard_tests listesine yeni
+  split-contract testi eklendi (8 → 9).
+- `tests/scripts/seam_doctor.R`, `tests/scripts/frontend_maintainability_report.R` —
+  çözümleyici/etiket fonksiyonları (ui_asset_all_css/js) artık ayrı dosyalarda
+  olduğundan üç dosyayı da kaynak alır.
+
+**Test**
+- `tests/testthat/test-ui-asset-config-split-contract.R` (yeni, 100 assertion) —
+  yapısal ayrım (fonksiyonlar yeni dosyalarda; veri dosyasında inline fonksiyon
+  yok; manifest sırası VERİ → DOĞRULAYICI → RENDER) + bölme sonrası
+  `ui_asset_validate()`/`ui_asset_tags()` davranış doğrulaması.
+- Çözümleyici/etiket fonksiyonu çalıştıran testlerin source yardımcıları üç dosyayı
+  da yükleyecek şekilde güncellendi: `test-ui-asset-manifest-contract.R`,
+  `test-config-ui-assets-helpers-behavior.R`, `test-ui-asset-tag-builders-behavior.R`,
+  `test-streaming-markdown-safety-contract.R`, `test-ui-asset-zones-contract.R`,
+  `test-seam-registry-contract.R`, `test-ui-asset-zone-validators-split-contract.R`.
+- `tests/testthat/test-source-manifest-sections-contract.R` — `config_ui_assets`
+  n=3→5; toplam runtime 277→279 bilinçli güncellendi.
+- `tests/testthat/test-maintainability-ratchet.R` — küresel
+  `MERGEN_TEST_MAX_FILE_LINES` 690 → 687 sıkılaştırıldı; üç dosya için bütçe:
+  `config_ui_assets.R` 470/2, `config_ui_asset_validators.R` 300/13,
+  `config_ui_asset_tags.R` 110/8.
+
+**Dokümantasyon**
+- `CLAUDE.md`, `docs/feature-ownership-map.md`, `docs/architecture-map.md`,
+  `docs/technical-reference.md`, `docs/refactor-log.md`,
+  `.ai/next-session-eliminate-weaknesses-prompt.md`.
+
+### Önce / sonra karmaşıklık notları
+- Önce: `config_ui_assets.R` 690/17 (repo genelinde en büyük; küresel bütçede).
+- Sonra: VERİ 425/1, validators 253/11, tags 59/5. Skor 100/100; 800+ satır /
+  25+ fonksiyon = 0. **Küresel en büyük dosya satırı 690 → 687** (yeni en büyük
+  `server_runtime_context.R`, değişmedi). Küresel `MERGEN_TEST_MAX_FILE_LINES`
+  690 → 687.
+
+### Korunan davranış sözleşmeleri
+- Tüm CSS/JS yolları, sıra kuralları (CSS + JS), render planı, ertelenmiş gruplar
+  ve tam `ui_asset_tags()` HTML çıktısı byte-birebir korundu (altın md5 + HEAD
+  karşılaştırması). Yükleme sırasının TEK sahibi `config_ui_assets.R` kaldı.
+- Asset-order / render plan / defer davranışı ve `ui_asset_validate()` doğrulaması
+  bozulmadı; tema kaskad zinciri ve Bilge Yolaç CSS/JS zinciri korundu.
+- DB/SSO/encoding/source-order/UX runtime sözleşmelerine dokunulmadı (saf yapısal
+  ayrım).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda)
+- Altın çıktı karşılaştırması: bölme öncesi 11 fonksiyon çıktısı + HEAD vs çalışma
+  ağacı; tümü `identical()` TRUE (tam tag md5 `11c977ddce2c3aee5307eadc5fa4995a`).
+- `Rscript tests/scripts/maintainability_report.R` → skor 100/100; en büyük dosya
+  690 → 687; VERİ 425/1, validators 253/11, tags 59/5.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`; `frontend_varlik`
+  runtime-dosya 3 → 5, guard-test 8 → 9.
+- `Rscript tests/scripts/frontend_complexity_doctor.R` → rapor üretildi.
+- `Rscript tests/scripts/parse_sanity_check.R` → OK (849 dosya).
+- Odak testler tek tek geçti (0 FAIL / 0 WARN / 0 SKIP): yeni split-contract (100),
+  ui-asset-manifest (224), config-ui-assets-helpers (13), ui-asset-tag-builders (18),
+  source-manifest-sections (154), maintainability-ratchet (240),
+  source-manifest-contract (165), global-source-manifest (12), seam-registry (12),
+  seam-doctor (6), ui-asset-zones (17), ui-asset-zone-validators-split (36),
+  streaming-markdown-safety (53), frontend-maintainability-ratchet (92),
+  frontend-selector (80), e2e-health-dashboard (45), production-contracts (21),
+  e2e-boot-welcome (29 — `logger` kurulu + placeholder env ile).
+- `bash tools/ai_validate.sh quick` → geçti; `failed_steps: 0`, `skipped_steps: 0`,
+  app source smoke PASSED (`artifacts/ai-validation/20260620-152956/summary.json`).
+- `bash tools/ai_validate.sh full --boot-smoke` → **tam geçti**; app source smoke
+  PASSED, **full testthat suite PASSED (138.5s)**, shiny boot smoke PASSED, browser
+  smoke SKIPPED (tarayıcı yok); `failed_steps: 0`, `skipped_steps: 0`
+  (`artifacts/ai-validation/20260620-153104/summary.json`). NOT: bu bulut oturumunda
+  `logger` paketi kurularak ve placeholder env değişkenleri verilerek koşuldu; bu
+  sayede önceki oturumların bildirdiği "logging testi tıkayıcısı" bu koşumda
+  tekrarlanmadı (full suite temiz geçti).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Uygulamayı başlatın; tüm sayfaların (Ana Söyleşi, Bilge Yolaç, Yönetici, Sağlık,
+  Destek) CSS/JS varlıklarının eskisi gibi yüklendiğini ve tema (koyu/açık) ile
+  CodeMirror/Three.js/Bilge Yolaç yükleme sırasının bozulmadığını doğrulayın.
+- Tarayıcı konsolunda eksik/yanlış-sıralı asset veya JS hatası olmadığını doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek DB/SQL Server Türkçe encoding/gerçek tarayıcı kanıtı alınmadı (bulut
+  oturumu). Değişiklik saf yapısal ayrımdır ve çıktı byte-birebir golden + HEAD
+  karşılaştırmasıyla korundu; gerçek tarayıcı asset yükleme yalnızca VM/manuel
+  tarayıcıda son kez doğrulanır.
+- Sıradaki paket adayları: `R/server_runtime_context.R` (687, yeni en büyük;
+  SSO auth-ready/refreshable-module helper çıkarımı), ardından 678–681 bandındaki
+  `helpers_claude_code_documents.R`, `server_handler_true_streaming.R`,
+  `module_file_manager.R`; veya frontend tarafında `www/js/deep_space_intro.js`
+  (820) / `www/js/ai_expert_manager.js` (802/45/12 event/8 Shiny handler).
+
+---
+
 ## 2026-06-20 — Sohbet-okuma SQL sorgu üreticilerinin reader dosyasından ayrılması
 
 ### Seçilen iz(ler)

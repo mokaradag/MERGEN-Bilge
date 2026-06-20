@@ -12,10 +12,18 @@ if (requireNamespace("shiny", quietly = TRUE)) suppressMessages(library(shiny))
 
 .source_ui_assets <- function() {
   env <- new.env(parent = globalenv())
-  source(
-    file.path(resolve_repo_root_for_tests(), "R", "config_ui_assets.R"),
-    encoding = "UTF-8", local = env
-  )
+  # VERİ + DOĞRULAYICI + RENDER üç dosyası birlikte yüklenir (etiket inşası
+  # çözümleyiciyi, çözümleyici de veriyi çağrı anında çözer).
+  for (asset_file in c(
+    "R/config_ui_assets.R",
+    "R/config_ui_asset_validators.R",
+    "R/config_ui_asset_tags.R"
+  )) {
+    source(
+      file.path(resolve_repo_root_for_tests(), asset_file),
+      encoding = "UTF-8", local = env
+    )
+  }
   env
 }
 

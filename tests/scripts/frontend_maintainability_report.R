@@ -88,11 +88,19 @@ extract_css_selectors <- function(text) {
 
 source_manifest <- function() {
   asset_env <- new.env(parent = globalenv())
-  source(
-    file.path(repo_root, "R/config_ui_assets.R"),
-    encoding = "UTF-8",
-    local = asset_env
-  )
+  # Varlık VERİSİ + çözümleyici/doğrulayıcı API'si birlikte yüklenir; manifest
+  # yollarını çözmek için ui_asset_all_css() / ui_asset_all_js() gerekir.
+  for (asset_file in c(
+    "R/config_ui_assets.R",
+    "R/config_ui_asset_validators.R",
+    "R/config_ui_asset_tags.R"
+  )) {
+    source(
+      file.path(repo_root, asset_file),
+      encoding = "UTF-8",
+      local = asset_env
+    )
+  }
   asset_env
 }
 

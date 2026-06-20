@@ -12,11 +12,20 @@ if (requireNamespace("shiny", quietly = TRUE)) {
 }
 
 .uia_env <- new.env(parent = globalenv())
-source(
-  file.path(resolve_repo_root_for_tests(), "R", "config_ui_assets.R"),
-  encoding = "UTF-8",
-  local = .uia_env
-)
+# Varlık manifesti VERİ / DOĞRULAYICI / RENDER olarak üç dosyaya bölündü;
+# etiket ve sıra-doğrulayıcı fonksiyonları ayrı dosyalarda olduğundan üçü de
+# aynı ortama yüklenir.
+for (.uia_file in c(
+  "R/config_ui_assets.R",
+  "R/config_ui_asset_validators.R",
+  "R/config_ui_asset_tags.R"
+)) {
+  source(
+    file.path(resolve_repo_root_for_tests(), .uia_file),
+    encoding = "UTF-8",
+    local = .uia_env
+  )
+}
 
 .uia_html <- function(ui) paste(as.character(ui), collapse = "")
 

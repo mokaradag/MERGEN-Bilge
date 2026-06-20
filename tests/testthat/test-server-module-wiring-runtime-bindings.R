@@ -13,6 +13,12 @@ source(
 )
 
 source(
+  file.path(repo_root, "R", "server_runtime_auth_ready.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
+source(
   file.path(repo_root, "R", "server_module_wiring.R"),
   encoding = "UTF-8",
   local = globalenv()

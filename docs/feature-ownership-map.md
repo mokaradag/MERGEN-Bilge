@@ -369,45 +369,59 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `module_settings_yapilandirma_ui.R` küçültüldü (758 → 411) ve gelişmiş medya/görsel/analiz kartları
   `module_settings_yapilandirma_advanced_ui.R` (353) dosyasına ayrıldı.
   `server_send_message.R` TTS streaming dalı `R/server_handler_streaming_tts.R`'ye
-  çıkarılarak 694/14 → 590/9'a indi. Sıradaki repo-geneli yakın-bütçe adayları
-  artık `R/config_ui_assets.R` (690, asset-order hassas) ve
-  `R/server_runtime_context.R` (687); ardından 678–680 bandındaki
-  `helpers_db_chat_readers.R`, `helpers_claude_code_documents.R`,
-  `server_handler_true_streaming.R`, `module_file_manager.R`.
+  çıkarılarak 694/14 → 590/9'a indi. `R/config_ui_assets.R` (690) VERİ/DOĞRULAYICI/
+  RENDER olarak üç dosyaya bölündü ve VERİ-odaklı 425/1'e indi. `R/server_runtime_context.R`
+  (687) SSO auth-ready / yenilenebilir modül wiring katmanı
+  `R/server_runtime_auth_ready.R`'ye ayrılarak 503/13'e indi; küresel en büyük dosya
+  satırı 690 → 687 → 681 oldu. Sıradaki repo-geneli yakın-bütçe adayları artık
+  681–679 bandındaki `R/server_handler_true_streaming.R` (681),
+  `R/helpers_claude_code_documents.R` (679), `R/module_admin_yanit_analizi_outputs.R`
+  (678, tek-fonksiyon flat renderer — düşük öncelik) ve `R/module_file_manager.R` (677).
 
 ## Frontend Varlık ve Yönetişim
 
 - **Seam:** `frontend_varlik`
-- **Birincil R dosyaları:** `R/config_ui_assets.R` (CSS/JS varlık manifesti +
-  yükleme sırası kuralları + render planı — sıranın TEK sahibi),
-  `R/config_ui_asset_zones.R` (SAF VERİ: 23 frontend bölgesi + manifest dışı
-  sahiplik haritası), `R/config_ui_asset_zone_validators.R` (bölge çözümleme +
-  bölümleme/partition doğrulama API'si: `ui_asset_zone_ids/get/css_paths/js_paths`,
-  `ui_asset_zone_owner_seams`, `ui_asset_zones_for_seam`, `ui_asset_zones_validate`,
+- **Birincil R dosyaları:** `R/config_ui_assets.R` (SAF VERİ: CSS/JS varlık
+  manifesti + ertelenmiş grup listesi + render planı + JS/CSS sıra kuralları +
+  `ui_asset_flatten_groups` — yükleme sırasının TEK sahibi),
+  `R/config_ui_asset_validators.R` (SAF çözümleyici/doğrulayıcı API'si:
+  `ui_asset_all_css/js`, `ui_asset_deferred_js_paths`, `ui_asset_validate*`,
+  `ui_asset_render_plan_*`, `ui_asset_public_root` — veriyi çağrı anında çözer),
+  `R/config_ui_asset_tags.R` (htmltools etiket render katmanı: `ui_asset_tags`,
+  `ui_asset_css_tags`, `ui_asset_js_tags`, `ui_asset_css_tag`,
+  `ui_asset_script_tag`), `R/config_ui_asset_zones.R` (SAF VERİ: 23 frontend
+  bölgesi + manifest dışı sahiplik haritası), `R/config_ui_asset_zone_validators.R`
+  (bölge çözümleme + bölümleme/partition doğrulama API'si:
+  `ui_asset_zone_ids/get/css_paths/js_paths`, `ui_asset_zone_owner_seams`,
+  `ui_asset_zones_for_seam`, `ui_asset_zones_validate`,
   `ui_asset_frontend_ownership_gaps` — boot'ta çağrılmaz, yalnızca seam doctor +
   sözleşme testleri kullanır).
 - **JS/CSS:** `www/css/*`, `www/js/*` (her varlık tam olarak bir bölgeye atanır;
   manifest dışı/smoke varlıklar gerekçeli sahiplenilir).
-- **Testler:** `test-ui-asset-manifest-contract.R`, `test-ui-asset-zones-contract.R`,
-  `test-ui-asset-zone-validators-split-contract.R` (VERİ/DOĞRULAYICI ayrımı +
-  bölümleme korunumu), `test-frontend-maintainability-ratchet.R`,
-  `test-frontend-selector-contract.R`.
+- **Testler:** `test-ui-asset-manifest-contract.R`,
+  `test-ui-asset-config-split-contract.R` (varlık manifesti VERİ/DOĞRULAYICI/RENDER
+  ayrımı + bölme sonrası sıra/etiket doğrulaması),
+  `test-config-ui-assets-helpers-behavior.R`, `test-ui-asset-tag-builders-behavior.R`,
+  `test-ui-asset-zones-contract.R`, `test-ui-asset-zone-validators-split-contract.R`
+  (VERİ/DOĞRULAYICI ayrımı + bölümleme korunumu),
+  `test-frontend-maintainability-ratchet.R`, `test-frontend-selector-contract.R`.
 - **Smoke/kanıt:** seam doctor (`tests/scripts/seam_doctor.R`), frontend complexity
   doctor, `www/smoke/ux-smoke.html`.
-- **Bilinen risk / sıradaki hedef:** bölge VERİSİ ile bölge DOĞRULAYICI API'si
-  ayrı dosyalara bölündü; `config_ui_asset_zones.R` 777/10 → 502/0 (SADECE veri,
-  0 fonksiyonda kilitli), doğrulayıcı API `config_ui_asset_zone_validators.R`'de
-  (312/10). At-budget admin modülleri (`module_admin_geri_bildirim.R`,
-  `module_admin_yanit_analizi.R`) ve açılış ekranı (`module_startup_screen.R`)
-  sonraki oturumlarda küçültüldü; `module_image_generation.R` (730/22) UI/HTML
-  render katmanı `module_image_generation_ui.R`'ye ayrılarak 545/17'ye indi.
-  `R/server_send_message.R` TTS streaming dalı `R/server_handler_streaming_tts.R`'ye
-  çıkarılarak 694/14 → 590/9'a indi; küresel en büyük dosya satırı 694 → 690
-  (config_ui_assets.R) olarak sıkılaştırıldı. Sıradaki repo-geneli yakın-bütçe
-  adayları `R/config_ui_assets.R` (690, asset-order hassas — dikkatli) ve
-  `R/server_runtime_context.R` (687).
-  `R/module_settings_yapilandirma_ui.R` 758 → 411'e indi; gelişmiş kartlar
-  `R/module_settings_yapilandirma_advanced_ui.R` içinde 353 satırlık saf UI dosyasıdır.
+- **Bilinen risk / sıradaki hedef:** varlık manifesti VERİ/DOĞRULAYICI/RENDER
+  olarak üç dosyaya bölündü (`config_ui_asset_zones.R` deseni):
+  `config_ui_assets.R` 690/17 → 425/1 (SADECE VERİ; sıranın TEK sahibi),
+  çözümleyici/doğrulayıcılar `config_ui_asset_validators.R`'de (253/11), htmltools
+  etiket render katmanı `config_ui_asset_tags.R`'de (59/5). Çıktı byte-birebir
+  korundu (golden + HEAD karşılaştırması, tag md5 `11c977dd…`). Ardından
+  `R/server_runtime_context.R` (687) SSO auth-ready / yenilenebilir modül wiring
+  katmanı `R/server_runtime_auth_ready.R`'ye ayrılarak 503/13'e indi; küresel en
+  büyük dosya satırı 690 → 687 → 681 olarak sıkılaştırıldı. Bölge VERİSİ/DOĞRULAYICI
+  ayrımı da korunur: `config_ui_asset_zones.R` 502/0 (SADECE veri), doğrulayıcı API
+  `config_ui_asset_zone_validators.R`'de (312/10). Sıradaki repo-geneli yakın-bütçe
+  adayları `R/server_handler_true_streaming.R` (681), `R/helpers_claude_code_documents.R`
+  (679) ve `R/module_file_manager.R` (677); frontend tarafında en yoğun adaylar
+  `www/js/deep_space_intro.js` (820/32) ve `www/js/ai_expert_manager.js`
+  (802/45/12 event/8 Shiny handler).
 
 ---
 

@@ -91,7 +91,7 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 0L)
   max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 0L)
   max_very_large_files <- .as_int_env("MERGEN_TEST_MAX_1500_LINE_FILES", 0L)
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 690L)
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 681L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 24L)
 
   actual_large_files <- sum(score_report$lines >= 800)
@@ -259,6 +259,16 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/config_ui_asset_zones.R", 550L, 2L)
   assert_current_budget("R/config_ui_asset_zone_validators.R", 360L, 12L)
   assert_current_budget("R/config_seam_registry.R", 580L, 8L)
+
+  # Varlık manifesti VERİ/DOĞRULAYICI/RENDER olarak üç dosyaya bölündü
+  # (config_ui_asset_zones.R deseni): config_ui_assets.R 690 satırdan VERİ-odaklı
+  # dosyaya indi; çözümleyici/doğrulayıcı API'si config_ui_asset_validators.R'ye,
+  # htmltools etiket render katmanı config_ui_asset_tags.R'ye taşındı. VERİ dosyası
+  # düşük fonksiyon sayısında kilitlenir (fonksiyon mantığı geri sızmasını engeller);
+  # bütçeler geri birleşmeyi ve büyümeyi yakalar.
+  assert_current_budget("R/config_ui_assets.R", 470L, 2L)
+  assert_current_budget("R/config_ui_asset_validators.R", 300L, 13L)
+  assert_current_budget("R/config_ui_asset_tags.R", 110L, 8L)
 })
 
 test_that("module_claude_code.R setup extraction kazanımı geri alınmaz", {
@@ -366,7 +376,11 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
   assert_file_budget("R/helpers_db_chat_mutations.R", 420L, 24L)
   assert_file_budget("R/helpers_database.R", 320L, 12L)
   assert_file_budget("R/helpers_server_runtime_contracts.R", 160L, 7L)
-  assert_file_budget("R/server_runtime_context.R", 690L, 18L)
+  # SSO auth-ready / yenilenebilir modül wiring katmanı
+  # R/server_runtime_auth_ready.R'ye ayrıldıktan sonra context dosyası
+  # 687/17 -> 503/13'e indi. Bütçeler geri birleşmeyi ve büyümeyi kilitler.
+  assert_file_budget("R/server_runtime_context.R", 540L, 15L)
+  assert_file_budget("R/server_runtime_auth_ready.R", 290L, 6L)
   assert_file_budget("R/server_core_observer_runtime.R", 320L, 6L)
   assert_file_budget("R/server_core_interaction_runtime.R", 360L, 8L)
   assert_file_budget("R/helpers_chartlab.R", 577L, 24L)

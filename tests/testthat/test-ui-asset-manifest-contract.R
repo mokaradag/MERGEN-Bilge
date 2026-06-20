@@ -30,11 +30,20 @@
 
 .source_ui_asset_config_for_tests <- function() {
   asset_env <- new.env(parent = globalenv())
-  source(
-    file.path(resolve_repo_root_for_tests(), "R/config_ui_assets.R"),
-    encoding = "UTF-8",
-    local = asset_env
-  )
+  # Varlık manifesti VERİ / DOĞRULAYICI / RENDER olarak üç dosyaya bölündü;
+  # çözümleyici (ui_asset_all_css/js, ui_asset_validate) ve etiket
+  # (ui_asset_tags) fonksiyonları ayrı dosyalarda olduğundan üçü de yüklenir.
+  for (asset_file in c(
+    "R/config_ui_assets.R",
+    "R/config_ui_asset_validators.R",
+    "R/config_ui_asset_tags.R"
+  )) {
+    source(
+      file.path(resolve_repo_root_for_tests(), asset_file),
+      encoding = "UTF-8",
+      local = asset_env
+    )
+  }
   asset_env
 }
 

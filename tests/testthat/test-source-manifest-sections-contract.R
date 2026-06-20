@@ -79,7 +79,10 @@
   # Bilinçli güncelleme: bölge VERİSİ (config_ui_asset_zones.R) ile bölge
   # DOĞRULAYICI API'si (config_ui_asset_zone_validators.R) ayrı dosyalara
   # bölündü; en büyük runtime dosyası 777 satırdan iki dosyaya indi. 2 -> 3.
-  config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_asset_zone_validators.R", n = 3L),
+  # Bilinçli güncelleme: varlık manifesti VERİ/DOĞRULAYICI/RENDER olarak üç
+  # dosyaya bölündü (config_ui_asset_validators.R + config_ui_asset_tags.R);
+  # config_ui_assets.R 690 satırdan VERİ-odaklı dosyaya indi. 3 -> 5.
+  config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_asset_zone_validators.R", n = 5L),
   architecture_governance = list(first = "R/config_seam_registry.R", last = "R/config_seam_registry.R", n = 1L),
   database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 12L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
@@ -113,7 +116,10 @@
   # her modül bölüme bir *_outputs dosyası ekledi. 19 -> 21.
   module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 22L),
   module_health_chartlab = list(first = "R/module_health_worker_metrics.R", last = "R/module_chartlab.R", n = 10L),
-  server_init_runtime = list(first = "R/server_session_cache.R", last = "R/server_init_chat_runtime.R", n = 13L),
+  # Bilinçli güncelleme: SSO auth-ready / yenilenebilir modül wiring katmanı
+  # R/server_runtime_auth_ready.R dosyasına ayrıldı (server_runtime_context.R'den
+  # sonra). 13 -> 14.
+  server_init_runtime = list(first = "R/server_session_cache.R", last = "R/server_init_chat_runtime.R", n = 14L),
   server_core_outputs_welcome = list(first = "R/server_core_observer_runtime.R", last = "R/server_welcome_handlers.R", n = 7L),
   server_observers = list(first = "R/server_observers_startup.R", last = "R/server_observers_misc.R", n = 11L),
   server_handlers_send_message = list(first = "R/server_tts_handlers.R", last = "R/server_send_message.R", n = 9L)
@@ -250,7 +256,14 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 276L -> 277L bilinçli güncelleme: sohbet okuma SQL sorgu üreticileri
   # R/helpers_db_chat_read_queries.R dosyasına çıkarıldı (helpers_db_chat_readers.R
   # orkestrasyonundan ayrı, saf ASCII SQL; encoding sınırına dokunmaz).
-  expect_equal(length(runtime), 277L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 277L -> 279L bilinçli güncelleme: varlık manifesti VERİ/DOĞRULAYICI/RENDER
+  # olarak üç dosyaya bölündü; R/config_ui_asset_validators.R (çözümleyici/
+  # doğrulayıcı API'si) ve R/config_ui_asset_tags.R (htmltools etiket render
+  # katmanı) config_ui_assets bölümüne eklendi.
+  # 279L -> 280L bilinçli güncelleme: SSO auth-ready / yenilenebilir modül wiring
+  # katmanı R/server_runtime_auth_ready.R server_init_runtime bölümüne eklendi
+  # (server_runtime_context.R'den sonra, server_runtime_function_slot.R'den önce).
+  expect_equal(length(runtime), 280L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

@@ -1431,7 +1431,7 @@ When adding, moving, or splitting a runtime file:
 - add the file to the correct named section (and correct position within it) of `source_manifest_sections` in `R/config_source_manifest.R`; do not add a new top-level path vector outside the sections list,
 - keep seam ownership intact: every manifest section must remain owned by exactly one seam in `R/config_seam_registry.R`, and a brand-new section must be assigned to a seam in the same change (see the seam registry and frontend ownership zone contract),
 - for file-store lifecycle splits, preserve the order `R/config_file_store.R`, `R/config_file_store_index_lock.R`, `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, then `R/config_file_store_registry.R`,
-- for server runtime/module-wiring splits, preserve the order `R/helpers_server_runtime_contracts.R`, `R/helpers_server_runtime_named_contracts.R`, `R/server_runtime_context.R`, `R/server_runtime_function_slot.R`, `R/server_module_wiring.R`, `R/server_chat_engine_dependencies.R`, `R/server_chat_engine_runtime.R`, then the session/chat runtime init files,
+- for server runtime/module-wiring splits, preserve the order `R/helpers_server_runtime_contracts.R`, `R/helpers_server_runtime_named_contracts.R`, `R/server_runtime_context.R`, `R/server_runtime_auth_ready.R`, `R/server_runtime_function_slot.R`, `R/server_module_wiring.R`, `R/server_chat_engine_dependencies.R`, `R/server_chat_engine_runtime.R`, then the session/chat runtime init files,
 - keep dependency order explicit and reviewable,
 - Keep `R/helpers_streaming_abort_lifecycle.R` and `R/helpers_streaming_poll_lifecycle.R` loaded before `R/server_handler_true_streaming.R`; the true streaming handler depends on the abort cleanup plan helper and on the pure poll-loop decision helpers (line classification, reasoning recovery, poll interval, persist delay).
 - when splitting Claude Code security helpers, preserve the order `R/helpers_claude_code_security_policy.R` before `R/helpers_claude_code_prompt_security_policy.R`, and keep both before the Claude Code runtime, process, streaming, lifecycle, and module files that call the policy helpers.
@@ -1742,7 +1742,7 @@ The server runtime/module wiring boundary was split to reduce maintainability ri
 Current contract:
 
 - `server.R` must remain a thin orchestration layer. It may build named dependency bundles and pass `runtime_ctx`, but it must not regain module implementation logic.
-- `R/server_runtime_context.R` owns runtime context attachment and accessors for identity, state, cache, file runtime, chat runtime, registered modules, SSO auth-ready refresh hooks, and session-data exposure.
+- `R/server_runtime_context.R` owns runtime context attachment and accessors for identity, state, cache, file runtime, chat runtime, registered modules, and session-data exposure. The SSO auth-ready refresh hooks and refreshable-module wiring (`serverRuntimeOnSsoAuthReady`, `serverRuntimeRefreshModuleOnSsoAuthReady`, `serverRuntimeAttachRefreshableModule`) live in `R/server_runtime_auth_ready.R`, loaded immediately after it.
 - `R/helpers_server_runtime_contracts.R` contains the small core runtime contract helpers.
 - `R/helpers_server_runtime_named_contracts.R` contains named-function and environment validation helpers so the core contract file stays under the maintainability ratchet.
 - `R/server_module_wiring.R` owns medium-level service, settings, media, file prelude, file manager, image gallery, and chat persistence binding.
@@ -1896,6 +1896,14 @@ Focused validation:
 ### UI asset manifest contract
 
 The frontend CSS/JS loading surface is now owned by `R/config_ui_assets.R`, not by a long inline asset list inside `ui.R`.
+
+The asset manifest is split into DATA / VALIDATORS / RENDER (mirroring the `config_ui_asset_zones.R` DATA + `config_ui_asset_zone_validators.R` validators pattern):
+
+- `R/config_ui_assets.R` is DATA-ONLY: the CSS/JS group lists, `ui_asset_deferred_js_groups`, `ui_asset_js_render_plan`, `ui_asset_js_order_rules`, `ui_asset_css_order_rules`, and the `ui_asset_flatten_groups()` helper. It is the single owner of load order. Do not move resolver/validator/tag functions back into it.
+- `R/config_ui_asset_validators.R` owns the pure resolver/validator API: `ui_asset_all_css()`, `ui_asset_all_js()`, `ui_asset_deferred_js_paths()`, `ui_asset_public_root()`, `ui_asset_render_plan_groups()`, `ui_asset_render_plan_deferred()`, `ui_asset_duplicate_paths()`, `ui_asset_validate_css_order()`, `ui_asset_validate_js_order()`, `ui_asset_validate_js_render_plan()`, and `ui_asset_validate()`.
+- `R/config_ui_asset_tags.R` owns the htmltools render layer: `ui_asset_css_tag()`, `ui_asset_script_tag()`, `ui_asset_css_tags()`, `ui_asset_js_tags()`, and `ui_asset_tags()`.
+- `R/config_source_manifest.R` must load these in order DATA -> VALIDATORS -> RENDER (`R/config_ui_assets.R`, then `R/config_ui_asset_validators.R`, then `R/config_ui_asset_tags.R`), all before `R/config_ui_asset_zones.R`. The validator/tag functions resolve the data at call time (lazy), so the data file loads first.
+- Isolated tests/scripts that EXECUTE these functions (not just read the manifest text) must source all three files. Tests that only grep the manifest text for asset paths/order rules read the DATA file and need no change. The split is frozen by `tests/testthat/test-ui-asset-config-split-contract.R`.
 
 Current contract:
 
@@ -2493,6 +2501,7 @@ safe_source("R/helpers_user_session_identity.R", encoding = "UTF-8")
 safe_source("R/server_init_user_session.R",  encoding = "UTF-8")
 safe_source("R/helpers_server_runtime_contracts.R", encoding = "UTF-8")
 safe_source("R/server_runtime_context.R",    encoding = "UTF-8")
+safe_source("R/server_runtime_auth_ready.R", encoding = "UTF-8")
 safe_source("R/server_runtime_function_slot.R", encoding = "UTF-8")
 safe_source("R/server_module_wiring.R",      encoding = "UTF-8")
 safe_source("R/server_init_session_state.R", encoding = "UTF-8")
@@ -2502,14 +2511,16 @@ safe_source("R/server_init_chat_runtime.R",  encoding = "UTF-8")
 Server runtime contract helper split:
 
 - R/helpers_server_runtime_contracts.R owns the low-level runtime validation and error helpers used by the server runtime context layer.
-- R/server_runtime_context.R owns runtime context orchestration, context attach/require helpers, refreshable module registration, and SSO auth-ready refresh behavior.
+- R/server_runtime_context.R owns runtime context orchestration, context attach/require helpers (including serverRuntimeRequireIdentity/State/Cache), and the module registry helpers serverRuntimeAttachModule/serverRuntimeGetModule/serverRuntimeExposeSessionData.
+- R/server_runtime_auth_ready.R owns the SSO post-auth + refreshable-module wiring layer: serverRuntimeOnSsoAuthReady(), serverRuntimeRefreshModuleOnSsoAuthReady(), and serverRuntimeAttachRefreshableModule(). It uses the module registry + contract helpers at call time and must load AFTER R/server_runtime_context.R (manifest order context -> auth_ready -> function_slot). Do not move these three functions back into R/server_runtime_context.R; isolated tests that execute them must source R/server_runtime_auth_ready.R after R/server_runtime_context.R.
 - Do not move is_server_runtime_context(), .server_runtime_stop(), .server_runtime_require_context(), .server_runtime_require_values(), .server_runtime_require_functions(), or .server_runtime_invoke_auth_ready_callback() back into R/server_runtime_context.R.
 - serverRuntimeOnSsoAuthReady() must keep the already-auth-ready path and the observer-fired path on the same .server_runtime_invoke_auth_ready_callback() helper. This prevents immediate SSO refresh behavior and delayed observer refresh behavior from drifting apart.
-- This boundary creates maintainability headroom under the 25-function file threshold without changing public runtime APIs.
+- This boundary creates maintainability headroom under the 25-function file threshold without changing public runtime APIs. The split lowered R/server_runtime_context.R from 687/17 to 503/13 (auth_ready 242/4); behavior is byte-identical (function set + bodies unchanged).
 
 Protected by:
 
 - tests/testthat/test-server-runtime-context.R
+- tests/testthat/test-server-runtime-auth-ready-split-contract.R
 - tests/testthat/test-source-manifest-contract.R
 - tests/testthat/test-maintainability-ratchet.R
 - tests/testthat/test-e2e-sso-identity-readiness-regression.R
@@ -4779,7 +4790,8 @@ The following files exist specifically to reduce orchestration coupling in `serv
 
 - `R/server_init_forward_refs.R` - delayed binding wrappers for welcome and send-message flows
 - `R/server_init_user_session.R` - local/SSO identity setup, user config, live current-user provider, and compatibility session writes
-- `R/server_runtime_context.R` - early boot contract object for cache, identity, forward refs, state, and chat runtime
+- `R/server_runtime_context.R` - early boot contract object for cache, identity, forward refs, state, chat runtime, and the module registry
+- `R/server_runtime_auth_ready.R` - SSO post-auth / refreshable-module wiring layer (loaded right after the context)
 - `R/server_init_session_state.R` - session-local reactive state and startup feedback loading
 - `R/server_init_chat_runtime.R` - chat runtime helper closures such as reset/add-message/streaming wrappers
 
