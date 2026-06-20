@@ -8,7 +8,44 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
-## LATEST SESSION RESULTS — `claude/optimistic-carson-q8jihd` (2026-06-20, complexity package)
+## LATEST SESSION RESULTS — `claude/optimistic-carson-q8jihd` (2026-06-20, TWO complexity packages)
+
+This session shipped **two behavior-preserving structural splits of the two largest R
+files** (each was the global ratchet pin in turn). Both surgical, additive, byte-identical.
+Do NOT redo either.
+
+### Package 2 — `R/server_runtime_context.R` SSO auth-ready/refreshable-module split (committed after Package 1)
+
+- **SSO post-auth + yenilenebilir modül wiring katmanı ayrıldı** (the documented #2
+  target): `serverRuntimeOnSsoAuthReady`, `serverRuntimeRefreshModuleOnSsoAuthReady`,
+  `serverRuntimeAttachRefreshableModule` moved verbatim from `R/server_runtime_context.R`
+  to **`R/server_runtime_auth_ready.R`** (YENİ, 242/4). Context dropped **687/17 → 503/13**
+  (keeps init/attach/require + the module registry helpers AttachModule/GetModule/
+  ExposeSessionData).
+- Manifest order: `server_runtime_context.R → server_runtime_auth_ready.R →
+  server_runtime_function_slot.R` (functions resolve deps at call time; new file loads
+  after context). New file has a WD-independent fallback (sources context if its module
+  registry is missing) — the same blessed pattern context.R itself uses.
+- **BYTE-IDENTICAL proof:** (context + auth_ready) vs HEAD context → function set
+  identical, **0 body mismatches** (`deparse` of all 24 functions). SSO timing
+  (ignoreInit/once/fail-fast, immediate-ready path, local-mode no-op) preserved.
+- **Ratchet TIGHTENED:** global `MERGEN_TEST_MAX_FILE_LINES` 687 → **681** (new largest
+  = `server_handler_true_streaming.R` 681). Budgets: context 540/15, auth_ready 290/6.
+- **New test** `tests/testthat/test-server-runtime-auth-ready-split-contract.R` (33).
+  Wired into `shiny_calisma_zamani` seam guard (6→7); section `server_init_runtime`
+  13→14; total runtime 279→280. Tests that EXECUTE the 3 functions now source the new
+  file: `test-server-runtime-context.R`, `test-e2e-sso-identity-readiness-regression.R`,
+  `test-server-module-wiring-{chat-engine,runtime-bindings}.R`,
+  `test-server-core-interaction-runtime.R`; production-contracts parse list updated.
+- **VALIDATION:** `ai_validate full --boot-smoke` FULL PASS (app source smoke passed,
+  **full testthat suite passed 181.2s**, shiny boot passed, browser skipped),
+  `artifacts/ai-validation/20260620-170730/summary.json`. seam_doctor OK; maintainability
+  100/100 max 681; parse_sanity 851. NOT VM/SSO/DB/real-browser proof.
+- **NEXT TARGETS now:** `R/server_handler_true_streaming.R` (681),
+  `R/helpers_claude_code_documents.R` (679), `R/module_file_manager.R` (677); frontend
+  `www/js/deep_space_intro.js` (820/32), `www/js/ai_expert_manager.js` (802/45).
+
+### Package 1 — `R/config_ui_assets.R` DATA/VALIDATORS/RENDER split
 
 This session shipped a **behavior-preserving structural split of the largest R file**
 (`R/config_ui_assets.R`, the global ratchet pin). Surgical, additive. Do NOT redo:

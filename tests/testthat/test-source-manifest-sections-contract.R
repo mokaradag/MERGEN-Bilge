@@ -116,7 +116,10 @@
   # her modül bölüme bir *_outputs dosyası ekledi. 19 -> 21.
   module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 22L),
   module_health_chartlab = list(first = "R/module_health_worker_metrics.R", last = "R/module_chartlab.R", n = 10L),
-  server_init_runtime = list(first = "R/server_session_cache.R", last = "R/server_init_chat_runtime.R", n = 13L),
+  # Bilinçli güncelleme: SSO auth-ready / yenilenebilir modül wiring katmanı
+  # R/server_runtime_auth_ready.R dosyasına ayrıldı (server_runtime_context.R'den
+  # sonra). 13 -> 14.
+  server_init_runtime = list(first = "R/server_session_cache.R", last = "R/server_init_chat_runtime.R", n = 14L),
   server_core_outputs_welcome = list(first = "R/server_core_observer_runtime.R", last = "R/server_welcome_handlers.R", n = 7L),
   server_observers = list(first = "R/server_observers_startup.R", last = "R/server_observers_misc.R", n = 11L),
   server_handlers_send_message = list(first = "R/server_tts_handlers.R", last = "R/server_send_message.R", n = 9L)
@@ -257,7 +260,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # olarak üç dosyaya bölündü; R/config_ui_asset_validators.R (çözümleyici/
   # doğrulayıcı API'si) ve R/config_ui_asset_tags.R (htmltools etiket render
   # katmanı) config_ui_assets bölümüne eklendi.
-  expect_equal(length(runtime), 279L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 279L -> 280L bilinçli güncelleme: SSO auth-ready / yenilenebilir modül wiring
+  # katmanı R/server_runtime_auth_ready.R server_init_runtime bölümüne eklendi
+  # (server_runtime_context.R'den sonra, server_runtime_function_slot.R'den önce).
+  expect_equal(length(runtime), 280L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

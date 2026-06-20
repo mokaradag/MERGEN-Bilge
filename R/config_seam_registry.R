@@ -328,6 +328,7 @@ mergen_seam_registry <- function() {
       extra_runtime_files = c("server.R", "ui.R"),
       guard_tests = c(
         "tests/testthat/test-server-runtime-context.R",
+        "tests/testthat/test-server-runtime-auth-ready-split-contract.R",
         "tests/testthat/test-server-core-interaction-runtime.R",
         "tests/testthat/test-server-core-observer-runtime-contract.R",
         "tests/testthat/test-server-module-wiring-contract.R",

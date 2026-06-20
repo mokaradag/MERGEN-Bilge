@@ -370,11 +370,13 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `module_settings_yapilandirma_advanced_ui.R` (353) dosyasına ayrıldı.
   `server_send_message.R` TTS streaming dalı `R/server_handler_streaming_tts.R`'ye
   çıkarılarak 694/14 → 590/9'a indi. `R/config_ui_assets.R` (690) VERİ/DOĞRULAYICI/
-  RENDER olarak üç dosyaya bölündü ve VERİ-odaklı 425/1'e indi; küresel en büyük
-  dosya satırı 690 → 687 oldu. Sıradaki repo-geneli yakın-bütçe adayı artık
-  `R/server_runtime_context.R` (687, yeni en büyük); ardından 678–681 bandındaki
-  `helpers_claude_code_documents.R`, `server_handler_true_streaming.R`,
-  `module_file_manager.R`.
+  RENDER olarak üç dosyaya bölündü ve VERİ-odaklı 425/1'e indi. `R/server_runtime_context.R`
+  (687) SSO auth-ready / yenilenebilir modül wiring katmanı
+  `R/server_runtime_auth_ready.R`'ye ayrılarak 503/13'e indi; küresel en büyük dosya
+  satırı 690 → 687 → 681 oldu. Sıradaki repo-geneli yakın-bütçe adayları artık
+  681–679 bandındaki `R/server_handler_true_streaming.R` (681),
+  `R/helpers_claude_code_documents.R` (679), `R/module_admin_yanit_analizi_outputs.R`
+  (678, tek-fonksiyon flat renderer — düşük öncelik) ve `R/module_file_manager.R` (677).
 
 ## Frontend Varlık ve Yönetişim
 
@@ -410,13 +412,16 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `config_ui_assets.R` 690/17 → 425/1 (SADECE VERİ; sıranın TEK sahibi),
   çözümleyici/doğrulayıcılar `config_ui_asset_validators.R`'de (253/11), htmltools
   etiket render katmanı `config_ui_asset_tags.R`'de (59/5). Çıktı byte-birebir
-  korundu (golden + HEAD karşılaştırması, tag md5 `11c977dd…`). Küresel en büyük
-  dosya satırı 690 → 687 (`server_runtime_context.R`) olarak sıkılaştırıldı. Bölge
-  VERİSİ/DOĞRULAYICI ayrımı da korunur: `config_ui_asset_zones.R` 502/0 (SADECE
-  veri), doğrulayıcı API `config_ui_asset_zone_validators.R`'de (312/10). Sıradaki
-  repo-geneli yakın-bütçe adayı `R/server_runtime_context.R` (687, yeni en büyük;
-  SSO timing'e dikkat); frontend tarafında en yoğun adaylar `www/js/deep_space_intro.js`
-  (820/32) ve `www/js/ai_expert_manager.js` (802/45/12 event/8 Shiny handler).
+  korundu (golden + HEAD karşılaştırması, tag md5 `11c977dd…`). Ardından
+  `R/server_runtime_context.R` (687) SSO auth-ready / yenilenebilir modül wiring
+  katmanı `R/server_runtime_auth_ready.R`'ye ayrılarak 503/13'e indi; küresel en
+  büyük dosya satırı 690 → 687 → 681 olarak sıkılaştırıldı. Bölge VERİSİ/DOĞRULAYICI
+  ayrımı da korunur: `config_ui_asset_zones.R` 502/0 (SADECE veri), doğrulayıcı API
+  `config_ui_asset_zone_validators.R`'de (312/10). Sıradaki repo-geneli yakın-bütçe
+  adayları `R/server_handler_true_streaming.R` (681), `R/helpers_claude_code_documents.R`
+  (679) ve `R/module_file_manager.R` (677); frontend tarafında en yoğun adaylar
+  `www/js/deep_space_intro.js` (820/32) ve `www/js/ai_expert_manager.js`
+  (802/45/12 event/8 Shiny handler).
 
 ---
 

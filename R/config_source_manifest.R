@@ -461,6 +461,7 @@ source_manifest_sections <- list(
     "R/helpers_server_runtime_contracts.R",
     "R/helpers_server_runtime_named_contracts.R",
     "R/server_runtime_context.R",
+    "R/server_runtime_auth_ready.R",
     "R/server_runtime_function_slot.R",
     "R/server_module_wiring.R",
     "R/server_chat_engine_dependencies.R",
