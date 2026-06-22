@@ -377,7 +377,8 @@ source_manifest_required_order <- list(
   c("R/helpers_api_model_config.R", "R/helpers_llm_sse.R"),
   c("R/helpers_api_model_config.R", "R/helpers_llm_worker.R"),
 
-  c("R/helpers_db_connection.R", "R/helpers_db_user_encoding.R"),
+  c("R/helpers_db_connection.R", "R/helpers_db_pool.R"),
+  c("R/helpers_db_pool.R", "R/helpers_db_user_encoding.R"),
   c("R/helpers_db_user_encoding.R", "R/helpers_db_validation.R"),
   c("R/helpers_db_validation.R", "R/helpers_chat_message_formatting.R"),
   c("R/helpers_chat_message_formatting.R", "R/helpers_db_chat_readers.R"),

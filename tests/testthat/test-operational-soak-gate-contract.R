@@ -47,7 +47,7 @@ soak_script_path <- function(rel) file.path(soak_repo_root_for_test, "tests", "s
 soak_source_modules <- function(env = parent.frame()) {
   mods <- c("soak_secret_redaction.R", "soak_config.R", "soak_metrics.R",
             "soak_scenarios.R", "mock_llm_server.R", "proxy_llm_server.R",
-            "soak_client.R", "soak_artifacts.R")
+            "soak_client.R", "soak_interactive_lane.R", "soak_artifacts.R")
   for (m in mods) {
     suppressWarnings(suppressMessages(sys.source(soak_script_path(m), envir = env)))
   }
@@ -55,8 +55,8 @@ soak_source_modules <- function(env = parent.frame()) {
 
 soak_operational_scripts <- function() {
   c("run_operational_soak_gate.R", "soak_config.R", "soak_secret_redaction.R",
-    "soak_metrics.R", "soak_scenarios.R", "soak_client.R", "soak_artifacts.R",
-    "mock_llm_server.R", "proxy_llm_server.R")
+    "soak_metrics.R", "soak_scenarios.R", "soak_client.R", "soak_interactive_lane.R",
+    "soak_artifacts.R", "mock_llm_server.R", "proxy_llm_server.R")
 }
 
 # Byte-safe okuyucu (Windows VM uyumlu); CLAUDE.md repo-tarama kurali.
@@ -395,6 +395,79 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
   testthat::expect_true(file.exists(file.path(tmp, "config.json")))
   testthat::expect_true(file.exists(file.path(tmp, "key_routing_summary.json")))
   unlink(tmp, recursive = TRUE)
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("config etkilesimli serit alanlarini sunar ve public config sir icermez", {
+  env <- new.env(); soak_source_modules(env)
+  withr::with_envvar(list(MERGEN_SOAK_PROFILE = "smoke", MERGEN_SOAK_INTERACTIVE_LANE = NA,
+                          MERGEN_SOAK_INTERACTIVE_USERS = "7"), {
+    cfg <- env$soak_resolve_config()
+    testthat::expect_true(isTRUE(cfg$interactive_lane))
+    testthat::expect_equal(cfg$interactive_users, 7L)
+    testthat::expect_true(cfg$interactive_iterations >= 1L)
+    pub <- env$soak_config_public(cfg)
+    testthat::expect_true("interactive_lane" %in% names(pub))
+    testthat::expect_true("interactive_users" %in% names(pub))
+  })
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("etkilesimli serit: gercek DB havuzu/islem/encoding/izolasyon (offline)", {
+  testthat::skip_if_not_installed("pool")
+  testthat::skip_if_not_installed("RSQLite")
+  testthat::skip_if_not_installed("DBI")
+
+  env <- new.env(); soak_source_modules(env)
+  cfg <- list(interactive_users = 5L, interactive_iterations = 1L, interactive_lane = TRUE,
+              thresholds = list(success_rate_min = 0.98, p95_latency_ms_max = 0L,
+                                memory_growth_mb_max = -1, temp_growth_mb_max = -1,
+                                fail_on_browser_console_errors = FALSE, fail_on_mojibake = TRUE,
+                                fail_on_secret_leak = TRUE, fail_on_interactive_db_leak = TRUE),
+              llm_lane = "fake")
+
+  res <- tryCatch(env$soak_interactive_lane(cfg, sessions = 5L),
+                  error = function(e) list(available = FALSE, reason = conditionMessage(e)))
+  testthat::skip_if_not(isTRUE(res$available),
+                        sprintf("Etkilesimli serit yardimcilari yuklenemedi: %s", res$reason %||% ""))
+
+  # Gercek DB havuzu: checkout == return (sizinti yok).
+  testthat::expect_equal(res$db_pool$outstanding_checkouts, 0L)
+  testthat::expect_true(res$db_pool$no_leak)
+  testthat::expect_true(res$db_pool$tx_commit >= 1L)
+  testthat::expect_true(res$db_pool$tx_rollback >= 1L)
+
+  # Oturum eylemleri basarili; izolasyon/rollback/upload/mojibake guvenli.
+  testthat::expect_equal(res$summary$success_rate, 1)
+  testthat::expect_true(res$isolation_pass)
+  testthat::expect_true(res$rollback_pass)
+  testthat::expect_true(res$upload_pass)
+  testthat::expect_equal(res$mojibake_hits, 0L)
+  testthat::expect_true(res$actions >= res$sessions * 6L)
+
+  # Esik degerlendirme: interactive kontrolleri olculur ve gecer.
+  s <- env$soak_metrics_summary(env$soak_metrics_new())  # bos HTTP ozeti
+  inproc <- list(available = FALSE)
+  mg <- list(rss_measured = FALSE, process_rss_growth_mb = NA)
+  checks <- env$soak_evaluate_thresholds(cfg, s, inproc, list(total_leaks = 0L), mg, NA,
+                                         TRUE, 0L, res)
+  names_checks <- vapply(checks, function(c) c$name, character(1))
+  testthat::expect_true("interactive_db_no_leak" %in% names_checks)
+  testthat::expect_true("interactive_cross_session_isolation" %in% names_checks)
+  leak_chk <- Filter(function(c) c$name == "interactive_db_no_leak", checks)[[1]]
+  testthat::expect_true(isTRUE(leak_chk$measured) && isTRUE(leak_chk$pass))
+
+  # Evidence interactive blogu icerir; metrics_df ham dosya yolu sizdirmaz.
+  outcome <- env$soak_threshold_outcome(checks)
+  proofs <- env$soak_proof_statements(cfg, s, inproc, list(reachable = FALSE), res)
+  ev <- env$soak_build_evidence(cfg, s, inproc, NULL, list(), list(total_leaks = 0L),
+                                list(), mg, list(), list(reachable = FALSE), NULL, checks, outcome,
+                                proofs, 1.0, character(0), character(0), TRUE, 0L, res)
+  testthat::expect_true("interactive_lane" %in% names(ev))
+  testthat::expect_true(isTRUE(ev$interactive_lane$available))
+  testthat::expect_true(ev$interactive_lane$db_pool$no_leak)
+  ev_txt <- jsonlite::toJSON(ev, auto_unbox = TRUE, null = "null")
+  testthat::expect_false(grepl(".sqlite", ev_txt, fixed = TRUE))
 })
 
 # ------------------------------------------------------------------------------

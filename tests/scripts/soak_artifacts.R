@@ -26,7 +26,8 @@ soak_git_field <- function(args) {
 # ------------------------------------------------------------------------------
 soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
                                      memory_growth, temp_growth_mb,
-                                     server_alive_at_end, injected_faults = 0L) {
+                                     server_alive_at_end, injected_faults = 0L,
+                                     interactive = NULL) {
   th <- cfg$thresholds
   checks <- list()
 
@@ -127,11 +128,11 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
     add("secret_leak", TRUE, leaks, "raporlandi (esik yok)", TRUE, "Sir sizinti fail kapatildi.")
   }
 
-  # 8) Uygulama crash yok (sunucu sonda canli). real-canary seritte yerel sunucu
-  # yoktur; bu kontrol UYGULANMAZ (olculemeyen, sessizce gecmez).
-  if (identical(cfg$llm_lane, "real-canary")) {
-    add("no_server_crash", FALSE, "n/a (real-canary; yerel sunucu yok)", TRUE, NA,
-        "real-canary seritte yerel fake/proxy sunucu baslatilmaz.")
+  # 8) Uygulama crash yok (sunucu sonda canli). real-canary seritte veya HTTP
+  # seridi kapaliyken yerel sunucu yoktur; bu kontrol UYGULANMAZ (olculemeyen).
+  if (identical(cfg$llm_lane, "real-canary") || !isTRUE(cfg$http_lane)) {
+    add("no_server_crash", FALSE, "n/a (yerel HTTP sunucu yok)", TRUE, NA,
+        "real-canary veya HTTP seridi kapali iken yerel fake/proxy sunucu baslatilmaz.")
   } else {
     add("no_server_crash", TRUE, isTRUE(server_alive_at_end), TRUE,
         isTRUE(server_alive_at_end), "Sahte/proxy LLM sunucusu sonda hala canli.")
@@ -172,6 +173,54 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
       if (isTRUE(th$fail_on_browser_console_errors)) 0L else "raporlandi (esik yok)",
       NA, "Bu gate tarayici konsolunu olcmez (UX smoke ayri kapidir).")
 
+  # 12-15) Etkilesimli (interactive) serit: gercek DB havuzu/islem/encoding/
+  # izolasyon kanitlari. Yalnizca serit calistiysa olculur (sessizce gecmez).
+  if (!is.null(interactive) && isTRUE(interactive$available)) {
+    isum <- interactive$summary
+    if (!is.null(isum) && isum$requests > 0L && is.finite(isum$success_rate)) {
+      add("interactive_success_rate", TRUE, round(isum$success_rate, 4),
+          th$success_rate_min, isum$success_rate >= th$success_rate_min,
+          "Etkilesimli oturum eylem basari orani (DB/islem/encoding/upload).")
+    } else {
+      add("interactive_success_rate", FALSE, NA, th$success_rate_min, NA,
+          "Etkilesimli serit eylem olcmedi (olculemeyen).")
+    }
+
+    leak_free <- isTRUE(interactive$db_pool$no_leak)
+    if (isTRUE(th$fail_on_interactive_db_leak)) {
+      add("interactive_db_no_leak", TRUE, interactive$db_pool$outstanding_checkouts,
+          0L, leak_free, "Havuz checkout==return; baglanti sizintisi yok.")
+    } else {
+      add("interactive_db_no_leak", TRUE, interactive$db_pool$outstanding_checkouts,
+          "raporlandi (esik yok)", TRUE, "DB sizinti fail kapatildi.")
+    }
+
+    if (isTRUE(th$fail_on_interactive_db_leak)) {
+      add("interactive_cross_session_isolation", TRUE, isTRUE(interactive$isolation_pass),
+          TRUE, isTRUE(interactive$isolation_pass),
+          "Bir oturum baska kullanicinin sohbet/mesajini gormez + anahtar izolasyonu.")
+    } else {
+      add("interactive_cross_session_isolation", TRUE, isTRUE(interactive$isolation_pass),
+          "raporlandi (esik yok)", TRUE, "Izolasyon raporlandi; fail kapatildi.")
+    }
+
+    add("interactive_tx_rollback_clean", TRUE, isTRUE(interactive$rollback_pass),
+        TRUE, isTRUE(interactive$rollback_pass),
+        "Niyetli islem hatasi rollback ile satir birakmadi.")
+
+    if (isTRUE(th$fail_on_mojibake)) {
+      add("interactive_mojibake_hits", TRUE, interactive$mojibake_hits, 0L,
+          identical(as.integer(interactive$mojibake_hits), 0L),
+          "Etkilesimli yazma/okuma Turkce round-trip mojibake.")
+    } else {
+      add("interactive_mojibake_hits", TRUE, interactive$mojibake_hits,
+          "raporlandi (esik yok)", TRUE, "Interactive mojibake raporlandi; fail kapatildi.")
+    }
+  } else if (isTRUE(cfg$interactive_lane)) {
+    add("interactive_success_rate", FALSE, NA, th$success_rate_min, NA,
+        "Etkilesimli serit istendi ama calismadi (olculemeyen; sessizce gecmez).")
+  }
+
   checks
 }
 
@@ -192,7 +241,7 @@ soak_threshold_outcome <- function(checks) {
 # ------------------------------------------------------------------------------
 # does_prove / does_not_prove durustluk metinleri (serit + calisan adimlara gore).
 # ------------------------------------------------------------------------------
-soak_proof_statements <- function(cfg, summary, inprocess, attach) {
+soak_proof_statements <- function(cfg, summary, inprocess, attach, interactive = NULL) {
   proves <- character(0)
   not <- character(0)
 
@@ -218,6 +267,22 @@ soak_proof_statements <- function(cfg, summary, inprocess, attach) {
   if (isTRUE(attach$reachable)) {
     proves <- c(proves, "Calisan uygulama koku HTTP-duzeyinde erisilebildi.")
   }
+  if (!is.null(interactive) && isTRUE(interactive$available)) {
+    proves <- c(proves,
+      sprintf(paste(
+        "Etkilesimli serit %d in-process oturum x %d eylem boyunca GERCEK DB",
+        "havuzu uzerinde sohbet olusturma/mesaj yazma/streaming-delta/stop-iptal/",
+        "dosya-dogrulama/gecmis-okuma yurutuldu (basari orani %.3f)."),
+        interactive$sessions, interactive$actions, interactive$summary$success_rate %||% NA),
+      sprintf(paste(
+        "Havuz checkout/return dengeli (checkout=%d return=%d, sizinti=%d);",
+        "islem commit=%d rollback=%d ve niyetli rollback satir birakmadi."),
+        interactive$db_pool$checkout, interactive$db_pool$returned,
+        interactive$db_pool$outstanding_checkouts,
+        interactive$db_pool$tx_commit, interactive$db_pool$tx_rollback),
+      "Etkilesimli oturumlar arasi izolasyon: bir kullanici baska kullanicinin sohbet/mesajini gormedi.",
+      "Etkilesimli yazma/okuma Turkce metni mojibake'siz korudu (DB-havuz param/okuma siniri).")
+  }
 
   # does_not_prove (her zaman acik sinirlar).
   not <- c(not,
@@ -227,6 +292,11 @@ soak_proof_statements <- function(cfg, summary, inprocess, attach) {
     "Windows VM disindaki gercek aglardaki uretim gecikmesini KANITLAMAZ.",
     "Tam-yigin tarayici/websocket Shiny oturum eszamanliligini KANITLAMAZ (in-process alistirmalar helper-duzeyidir).",
     "Gercek SQL Server'a Turkce yaziminin at-rest dogrulugunu KANITLAMAZ (ayri VM kodlama preflight kapisidir).")
+  if (!is.null(interactive) && isTRUE(interactive$available)) {
+    not <- c(not,
+      "Etkilesimli serit tek-surecte ARDISIK oturumlardir; gercek eszamanli websocket/tarayici yuku DEGILDIR.",
+      "Etkilesimli serit lane-yerel SQLite kullanir; uretim T-SQL/SQL Server davranisini ve at-rest encoding'i KANITLAMAZ.")
+  }
   if (identical(lane, "fake")) {
     not <- c(not, "Sahte endpoint ile gercek model davranisini/yanit kalitesini KANITLAMAZ.")
   }
@@ -248,7 +318,8 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
                                 memory_growth, temp_summary, attach,
                                 failure_probe, threshold_checks, threshold_outcome,
                                 proofs, duration_actual, warnings_vec, skipped_vec,
-                                server_alive_at_end, injected_faults = 0L) {
+                                server_alive_at_end, injected_faults = 0L,
+                                interactive = NULL) {
   observed_faults <- summary$errors + summary$timeouts
   unexpected_faults <- max(0L, observed_faults - as.integer(injected_faults %||% 0L))
   effective_success_rate <- if (summary$requests > 0L) {
@@ -311,6 +382,36 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
     proxy_lane = proxy_summary %||% "proxy serit kullanilmadi",
     failure_injection = failure_probe %||% "hata-enjeksiyon probe calismadi",
     attach_mode = attach,
+    interactive_lane = if (!is.null(interactive) && isTRUE(interactive$available)) {
+      list(
+        available = TRUE,
+        sessions = interactive$sessions,
+        actions = interactive$actions,
+        metrics = list(
+          requests = interactive$summary$requests,
+          success = interactive$summary$success,
+          errors = interactive$summary$errors,
+          timeouts = interactive$summary$timeouts,
+          success_rate = interactive$summary$success_rate,
+          p50_latency_ms = interactive$summary$p50_latency_ms,
+          p95_latency_ms = interactive$summary$p95_latency_ms,
+          p99_latency_ms = interactive$summary$p99_latency_ms,
+          throughput_ops_per_min = interactive$summary$throughput_ops_per_min,
+          scenario_counts = interactive$summary$scenario_counts
+        ),
+        db_pool = interactive$db_pool,
+        cross_session_isolation_pass = isTRUE(interactive$isolation_pass),
+        tx_rollback_clean = isTRUE(interactive$rollback_pass),
+        upload_validation_pass = isTRUE(interactive$upload_pass),
+        mojibake_hits = interactive$mojibake_hits,
+        note = interactive$note
+      )
+    } else if (isTRUE(cfg$interactive_lane)) {
+      list(available = FALSE,
+           reason = interactive$reason %||% "etkilesimli serit calismadi (olculemeyen)")
+    } else {
+      "etkilesimli serit kapali"
+    },
     capacity_curve = capacity_rows %||% list(),
     secret_redaction_confirmed = identical(as.integer(redaction$total_leaks %||% 0L), 0L),
     raw_key_leak_count = as.integer(redaction$total_leaks %||% 0L),
@@ -449,6 +550,28 @@ soak_write_summary_md <- function(artifact_dir, cfg, evidence) {
             evidence$secret_redaction_confirmed, evidence$raw_key_leak_count),
     sprintf("- DB-encoding round-trip (helper): %s | mojibake: %s",
             as.character(evidence$db_roundtrip_encoding_pass), as.character(evidence$mojibake_hits)),
+    "",
+    "## Etkilesimli Serit (interactive)",
+    if (is.list(evidence$interactive_lane) && isTRUE(evidence$interactive_lane$available)) {
+      il <- evidence$interactive_lane
+      c(
+        sprintf("- Oturum: %d | Eylem: %d | Basari orani: %s",
+                il$sessions, il$actions, as.character(il$metrics$success_rate)),
+        sprintf("- Gecikme p50/p95/p99 (ms): %s / %s / %s",
+                as.character(il$metrics$p50_latency_ms), as.character(il$metrics$p95_latency_ms),
+                as.character(il$metrics$p99_latency_ms)),
+        sprintf("- DB havuz: checkout=%d return=%d sizinti=%d | tx commit=%d rollback=%d",
+                il$db_pool$checkout, il$db_pool$returned, il$db_pool$outstanding_checkouts,
+                il$db_pool$tx_commit, il$db_pool$tx_rollback),
+        sprintf("- Izolasyon: %s | rollback temiz: %s | upload: %s | mojibake: %s",
+                as.character(il$cross_session_isolation_pass),
+                as.character(il$tx_rollback_clean),
+                as.character(il$upload_validation_pass),
+                as.character(il$mojibake_hits))
+      )
+    } else {
+      "- Calismadi/kapali (kanit DEGIL)."
+    },
     "",
     "## KANITLAR (does_prove)",
     paste0("- ", evidence$does_prove),

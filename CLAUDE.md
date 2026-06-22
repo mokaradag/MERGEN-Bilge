@@ -488,6 +488,7 @@ Protected by: `tests/testthat/test-vm-evidence-gate-contract.R`.
 - `cloud-quick` remains a wrapper over quick and intentionally skips app source smoke; report it only within cloud-quick scope.
 - `ai_answer_check.R` rejects broad overclaims (for example “All validation gates passed” or “Validation doctor passed”) when proof fields do not support those claims.
 - For docs-only updates to `README.md` and `CLAUDE.md`, do not run R validation; inspect only the documentation diff. Run validation only when code, tests, commands, validation scripts, or runtime behavior changes.
+- Operational soak lane honesty: distinguish the lanes precisely and never conflate them. The **fake** lane is the high-concurrency HTTP lane (no real key); the **proxy** lane proves key routing/isolation; the **real-canary** lane is tiny and is NOT a throughput claim; the **interactive** lane (`tests/scripts/soak_interactive_lane.R`, `interactive_lane` block + `interactive_metrics.csv`) exercises real DB-pool/transaction/encoding/streaming-decision/upload/key-isolation against **real SQLite** in-process and is NOT real browser/websocket concurrency or SQL Server T-SQL at-rest proof. The HTTP lane against the app root is GET-only (index serving), not chat/websocket. `MERGEN_SOAK_HTTP_LANE=false` runs only in-process + interactive (no running app); in that mode `effective_success_rate` and `no_server_crash` are `UNMEASURED` and are not evidence. Transaction-safe DB pooling is implemented and offline-tested, but enabling `MERGEN_DB_POOL_ENABLED=TRUE` against SQL Server still requires Windows VM validation (`run_vm_encoding_preflight_real.R` + SSMS + attach soak boundary) before it is claimed production-validated.
 
 Cloud fallback validation:
 
@@ -2971,6 +2972,25 @@ MessageOrder race protection in `save_message_to_db()` and `worker_save_assistan
 Do not move connection, validation, message-formatting, chat-reader, chat-read SQL builder, or chat/message mutation functions back into `R/helpers_database.R`. The split is protected by `test-db-refactor-contract.R`, `test-db-chat-read-queries-contract.R`, `test-db-user-scope-contract.R`, `test-chat-message-formatting-refactor-contract.R`, `test-source-manifest-contract.R`, and `test-maintainability-ratchet.R`.
 
 When updating `tests/testthat/helper_bootstrap.R`, keep its DB source order aligned with production `global.R`. Tests must load the extracted DB helper files before `helpers_database.R`.
+
+### Transaction-safe DB connection pool contract
+
+The transaction-safe, opt-in DB connection pool layer lives in `R/helpers_db_pool.R`, loaded in the `database` manifest section immediately AFTER `R/helpers_db_connection.R` and before `R/helpers_db_user_encoding.R` (mirror this in `tests/testthat/helper_bootstrap.R` and `R/bootstrap_source_manifest.R` order rules). Full guide: [`docs/database-pooling.md`](docs/database-pooling.md).
+
+Non-negotiable rules:
+
+- Pooling is OPT-IN and default OFF. `is_db_pool_enabled()` reads `MERGEN_DB_POOL_ENABLED` (env) then `getOption("mergen.db.pool_enabled")`, default `FALSE`. Do not flip the default to on; cloud/test/boot-smoke behavior must stay on the direct-connection path. `R/config_file_store.R` keeps `pool <- NULL` as the backward-compatible global default.
+- `R/helpers_db_pool.R` must NOT top-level `library(pool)`/`library(odbc)`; use `requireNamespace()` guards inside functions (same cloud-quick bootstrap rule as `R/helpers_db_connection.R`).
+- Transaction safety is the whole point. `save_message_to_db()` runs a multi-statement transaction (`dbBegin`/`dbGetQuery`/`dbCommit`, `MessageOrder` `UPDLOCK/HOLDLOCK`). It must acquire a connection through `db_acquire_tx_connection()` (real `pool::poolCheckout()` when pooling is active, never the `Pool` object as a connection) and release through `db_release_tx_connection()`. Keep the rollback `on.exit(..., after = FALSE)` so rollback runs BEFORE the connection is returned — a pooled connection must never be returned with an open transaction. Do not regress this to passing the pool object into `dbBegin()`.
+- Read paths stay pooled through the UNCHANGED `get_connection()`: `init_db_pool_once()` registers the pool into `.GlobalEnv$pool`, which `get_connection()` already consults for `target == "primary"`. Do not change `get_connection()`'s `.GlobalEnv$pool` check (it is also a `test-db-connection-perf-instrumentation.R` contract).
+- Public API names are stable: `is_db_pool_enabled`, `db_pool_config`, `init_db_pool_once`, `close_db_pool_once`, `db_pool_get`, `db_pool_is_active`, `with_db_connection`, `with_db_transaction`, `db_acquire_tx_connection`, `db_release_tx_connection`, `db_pool_status_snapshot`, `db_pool_reset_stats`. `init_db_pool_once()` must remain safe (graceful `tryCatch`, never break boot) and idempotent (once semantics per target). It accepts an optional `factory` for tests (SQLite pool injection) and `force` for explicit init.
+- Encoding contract is preserved in the pool: the default ODBC pool passes `encoding = .DEFAULT_DB_CLIENT_ENCODING` and `name_encoding = .DEFAULT_DB_NAME_ENCODING`. Pooling does not change the `DB_CLIENT_ENCODING=WINDOWS-1254` Turkish write contract; it must be VM/SSMS re-validated before enabling in production.
+- `worker_save_assistant_response()` runs in a separate future worker (no pool there) and must keep using direct `worker_db_connect()`. Do not route worker writes through the pool.
+- `db_pool_status_snapshot()` is secret-safe: it reports enabled/config/free-taken/checkout-return-leak/tx counters only, never raw DSN/secret/dbname. Keep it that way.
+- Lifecycle: `app.R` `onStart` calls `init_db_pool_once("primary")` (guarded `exists()`), and registers `close_db_pool_once()` via `shiny::onStop()` (shinyApp has no `onStop` parameter). Keep both guarded so boot-smoke (which only constructs the app object) is unaffected.
+- Keep `R/helpers_db_pool.R` within the maintainability ratchet (avoid unnecessary anonymous `tryCatch` handlers; prefer `get0()` over `tryCatch(get(...), error=...)`). Do not loosen the global function-count ceiling for this file.
+
+Protected by `tests/testthat/test-db-pool-behavior.R` (offline, real RSQLite: enable/disable, once semantics, borrow/return no-leak, commit/rollback isolation, Turkish round-trip, real-checkout-not-pool-object, secret-safe snapshot) and exercised under load by `tests/scripts/soak_interactive_lane.R`. Do not weaken these to make an unrelated change pass.
 
 ### ChartLab rendering and saved-chat hydration contract
 

@@ -98,6 +98,10 @@ MERGEN Bilge'nin on-prem Windows VM doğrulamasında önemli bir readiness/relea
 
 Bu kanıt kapısı `artifacts/vm-evidence/<timestamp>/evidence.json` altında secret-safe makine-okunur sonuç üretir. Güncel durum; tam izole testthat suite'inin, VM preflight'ın, DB encoding preflight'ın ve gerçek browser UX smoke kanıtının aynı VM koşumunda geçtiğini gösterir. Browser proof external-app modunda `http://127.0.0.1:28081` üzerinden, `MERGEN_BROWSER_UX_BASE_URL=http://127.0.0.1:28081` ve `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ile alınmıştır. Uzun süreli saha yükü, manuel kırılgan-akış QA'sı veya eski legacy DB satırlarının temizliği gibi kapsamları otomatik olarak kanıtlamaz; ayrıntılı komutlar ve zorunlu browser UX smoke iki-pencere akışı için [`RUNBOOK.md`](RUNBOOK.md) izlenmelidir.
 
+### DB bağlantı havuzu ve etkileşimli soak seridi (2026-06-22)
+
+İşlem-güvenli, **opt-in** bir DB bağlantı havuzu eklendi (`R/helpers_db_pool.R`; `MERGEN_DB_POOL_ENABLED`, varsayılan KAPALI). Okuma yolları otomatik havuzlanır; çok-ifadeli işlemler (`save_message_to_db`) gerçek `poolCheckout()` ile işlem-güvenli yürütülür ve bağlantı iade edilmeden önce rollback edilir. Operasyonel soak kapısına, GET-only HTTP seridinin açmadığı sohbet/DB/streaming/stop yollarını **gerçek DB havuzu** üzerinde alıştıran bir **etkileşimli (interactive) serit** eklendi; kanıt artifact'ı havuz checkout/return/sızıntı ve oturumlar-arası izolasyon sayaçlarını içerir. Bunlar bulutta/offline (gerçek SQLite) doğrulanmıştır; **SQL Server'a karşı üretim doğrulaması, gerçek websocket eşzamanlılığı ve gerçek LLM throughput'u Windows VM'de ayrıca doğrulanmalıdır**. Ayrıntı: [`docs/database-pooling.md`](docs/database-pooling.md) ve [`docs/operational-soak-gate.md`](docs/operational-soak-gate.md).
+
 ## Depo haritası
 
 | Yol | Amaç |
@@ -123,7 +127,8 @@ Bu kanıt kapısı `artifacts/vm-evidence/<timestamp>/evidence.json` altında se
 | [`docs/architecture-map.md`](docs/architecture-map.md) | Kod veya dokümantasyon değişikliğinden önce mimari yön bulma. |
 | [`docs/database-schema.md`](docs/database-schema.md) | Güncel uygulama kaynaklarına göre DB tablo yapısı ve tablo akışları. |
 | [`RUNBOOK.md`](RUNBOOK.md) | Windows VM/on-prem operasyon, dağıtım, doğrulama ve sorun giderme. |
-| [`docs/operational-soak-gate.md`](docs/operational-soak-gate.md) | Operasyonel soak/yük kapısı: fake/proxy/real-canary seritleri, profiller, anahtar yönlendirme kanıtı ve 1.000 kullanıcı rollout planı. |
+| [`docs/operational-soak-gate.md`](docs/operational-soak-gate.md) | Operasyonel soak/yük kapısı: fake/proxy/real-canary/interactive seritleri, profiller, anahtar yönlendirme kanıtı ve 1.000 kullanıcı rollout planı. |
+| [`docs/database-pooling.md`](docs/database-pooling.md) | İşlem-güvenli, opt-in DB bağlantı havuzu: `MERGEN_DB_POOL_*` ayarları, `with_db_transaction` sözleşmesi ve VM/SQL Server doğrulama adımları. |
 | [`docs/dependency-locking.md`](docs/dependency-locking.md) | `renv`, `renv.lock`, VM kilit üretimi ve bağımlılık politikası. |
 | [`RENV_LOCK_STATUS.md`](RENV_LOCK_STATUS.md) | `renv.lock` dosyasının on-prem/GitHub görünürlüğü. |
 | [`docs/release-notes.md`](docs/release-notes.md) | Uzun güncelleme/değişiklik notları. |

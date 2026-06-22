@@ -191,6 +191,22 @@ soak_resolve_config <- function() {
 
   in_process <- soak_env_flag("MERGEN_SOAK_IN_PROCESS_EXERCISES", TRUE)
 
+  # Etkilesimli (interactive) serit: in-process sohbet-benzeri oturumlar; gercek
+  # DB havuzu/islem/encoding/streaming-karar/dosya/anahtar yollarini calistirir.
+  # Tek-surecte ardisik oldugu icin oturum sayisi makul bir varsayilanla sinirlidir;
+  # env ile override edilebilir.
+  interactive_lane <- soak_env_flag("MERGEN_SOAK_INTERACTIVE_LANE", TRUE)
+  interactive_users_default <- min(max(users, 8L), 50L)
+  interactive_users <- soak_env_int("MERGEN_SOAK_INTERACTIVE_USERS", interactive_users_default)
+  if (interactive_users < 1L) interactive_users <- 1L
+  interactive_iterations <- soak_env_int("MERGEN_SOAK_INTERACTIVE_ITERATIONS", 1L)
+  if (interactive_iterations < 1L) interactive_iterations <- 1L
+
+  # HTTP yuk seridi: calisan bir uygulama (MERGEN_SOAK_APP_URL) gerektirir.
+  # Varsayilan ACIK (mevcut davranis). KAPALI yapildiginda gate yalnizca
+  # in-process + etkilesimli seritleri calistirir (bulut/uygulamasiz kanit).
+  http_lane <- soak_env_flag("MERGEN_SOAK_HTTP_LANE", TRUE)
+
   # Per-istek client timeout (saniye). Fake timeout enjeksiyonunu test edebilmek
   # icin kisa tutulur.
   client_timeout_sec <- soak_env_int("MERGEN_SOAK_CLIENT_TIMEOUT_SECONDS", 20L)
@@ -234,6 +250,10 @@ soak_resolve_config <- function() {
     ),
     app_url = app_url,
     in_process_exercises = in_process,
+    http_lane = http_lane,
+    interactive_lane = interactive_lane,
+    interactive_users = interactive_users,
+    interactive_iterations = interactive_iterations,
     capacity_curve_enabled = capacity_enabled,
     capacity_curve_users = soak_default_capacity_curve(),
     capacity_step_seconds = soak_env_int("MERGEN_SOAK_CAPACITY_STEP_SECONDS", 30L),
@@ -257,7 +277,10 @@ soak_resolve_thresholds <- function(profile) {
     temp_growth_mb_max = soak_env_num("MERGEN_SOAK_TEMP_GROWTH_MB_MAX", -1),
     fail_on_browser_console_errors = soak_env_flag("MERGEN_SOAK_FAIL_ON_BROWSER_CONSOLE_ERRORS", FALSE),
     fail_on_mojibake = soak_env_flag("MERGEN_SOAK_FAIL_ON_MOJIBAKE", TRUE),
-    fail_on_secret_leak = soak_env_flag("MERGEN_SOAK_FAIL_ON_SECRET_LEAK", TRUE)
+    fail_on_secret_leak = soak_env_flag("MERGEN_SOAK_FAIL_ON_SECRET_LEAK", TRUE),
+    # Etkilesimli seritte DB havuz baglanti sizintisi (checkout != return) ve
+    # oturumlar-arasi kontaminasyon varsayilan olarak FAIL'dir.
+    fail_on_interactive_db_leak = soak_env_flag("MERGEN_SOAK_FAIL_ON_INTERACTIVE_DB_LEAK", TRUE)
   )
 }
 
@@ -287,6 +310,10 @@ soak_config_public <- function(cfg) {
     real_canary = cfg$real_canary,
     app_url_configured = nzchar(cfg$app_url),
     in_process_exercises = cfg$in_process_exercises,
+    http_lane = cfg$http_lane,
+    interactive_lane = cfg$interactive_lane,
+    interactive_users = cfg$interactive_users,
+    interactive_iterations = cfg$interactive_iterations,
     capacity_curve_enabled = cfg$capacity_curve_enabled,
     capacity_curve_users = cfg$capacity_curve_users,
     thresholds = cfg$thresholds

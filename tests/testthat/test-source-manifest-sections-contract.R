@@ -84,7 +84,9 @@
   # config_ui_assets.R 690 satırdan VERİ-odaklı dosyaya indi. 3 -> 5.
   config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_asset_zone_validators.R", n = 5L),
   architecture_governance = list(first = "R/config_seam_registry.R", last = "R/config_seam_registry.R", n = 1L),
-  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 12L),
+  # database n = 12L -> 13L bilinçli güncelleme: işlem-güvenli DB bağlantı havuzu
+  # (R/helpers_db_pool.R) helpers_db_connection.R'den SONRA bölüme eklendi.
+  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 13L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
   language_messaging = list(first = "R/helpers_language.R", last = "R/helpers_messaging.R", n = 2L),
   mcp_tools = list(first = "R/helpers_mcp_context.R", last = "R/helpers_mcp_tools.R", n = 9L),
@@ -263,7 +265,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 279L -> 280L bilinçli güncelleme: SSO auth-ready / yenilenebilir modül wiring
   # katmanı R/server_runtime_auth_ready.R server_init_runtime bölümüne eklendi
   # (server_runtime_context.R'den sonra, server_runtime_function_slot.R'den önce).
-  expect_equal(length(runtime), 280L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 280L -> 281L bilinçli güncelleme: işlem-güvenli DB bağlantı havuzu katmanı
+  # R/helpers_db_pool.R database bölümüne (helpers_db_connection.R'den sonra) eklendi.
+  expect_equal(length(runtime), 281L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

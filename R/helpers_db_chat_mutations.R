@@ -112,9 +112,12 @@ save_message_to_db <- function(chat_id, msg) {
   msg$content <- normalize_db_visible_value(msg$content)
   msg$type <- normalize_db_technical_value(msg$type)
 
-  conn_info <- get_connection()
+  # İşlem-güvenli bağlantı: havuz aktifse gerçek bağlantı ödünç alınır (havuz
+  # nesnesi DEĞİL); havuz katmanı yoksa (izole test) doğrudan bağlantıya düşülür.
+  use_pool_tx <- exists("db_acquire_tx_connection", mode = "function", inherits = TRUE)
+  conn_info <- if (use_pool_tx) db_acquire_tx_connection("primary") else get_connection()
   conn <- conn_info$conn
-  on.exit(release_connection(conn_info))
+  on.exit(if (use_pool_tx) db_release_tx_connection(conn_info) else release_connection(conn_info))
 
   # Düşünen modeller için biriken akıl yürütme metni, ReasoningContent
   # sütununda saklanır. Sütun yoksa (eski şema) sessizce yalnızca eski
@@ -137,11 +140,13 @@ save_message_to_db <- function(chat_id, msg) {
 
   DBI::dbBegin(conn)
   committed <- FALSE
+  # after = FALSE: rollback, bağlantı iadesinden (yukarıdaki on.exit) ÖNCE
+  # çalışır; havuzlu bağlantı açık işlemle iade edilmez.
   on.exit({
     if (!committed) {
       try(DBI::dbRollback(conn), silent = TRUE)
     }
-  }, add = TRUE)
+  }, add = TRUE, after = FALSE)
 
   next_order <- dbGetQuery(conn, next_order_query, params = list(chat_id))$next_order[1]
   next_order <- as.integer(next_order %||% 1L)

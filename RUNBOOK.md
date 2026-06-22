@@ -51,6 +51,7 @@ Bu belge uygulama davranışını değiştirmez; yalnızca güvenli çalıştır
 `.Renviron.example` güvenli şablondur. Gerçek `.Renviron` için şu gruplar kontrol edilir:
 
 - DB bağlantıları: `DB_CLIENT_ENCODING`, `DB_NAME_ENCODING`, DSN/server alanları.
+- DB bağlantı havuzu (opsiyonel, üretim/VM): `MERGEN_DB_POOL_ENABLED` (varsayılan `FALSE` = doğrudan bağlantı; `TRUE` = işlem-güvenli havuz), `MERGEN_DB_POOL_MIN_SIZE` (varsayılan 1), `MERGEN_DB_POOL_MAX_SIZE` (varsayılan 8), `MERGEN_DB_POOL_IDLE_TIMEOUT` (sn, varsayılan 600), `MERGEN_DB_POOL_VALIDATION_INTERVAL` (sn, varsayılan 60). Havuz açıkken bile `DB_CLIENT_ENCODING=WINDOWS-1254` / `DB_NAME_ENCODING=WINDOWS-1254` Türkçe sözleşmesi korunur (havuz bu encoding'i ODBC bağlantısına geçirir). Bkz. [`docs/database-pooling.md`](docs/database-pooling.md).
 - SSO: `SSO_ENABLED`, Keycloak URL/realm/client, issuer/expiry/signature doğrulama ve JWKS ayarları.
 - API key güvenliği: `AI_KEYS_MASTER`, kurum varsayılan anahtar politikası ve feature-specific anahtarlar.
 - LLM/model endpointleri: ana/alternatif endpoint, model adları ve araç modeli değişkenleri.
@@ -252,6 +253,32 @@ $env:MERGEN_SOAK_CAPACITY_CURVE = "FALSE"
 $env:MERGEN_SOAK_PROXY_FORWARD_REAL = "FALSE"
 Rscript tests/scripts/run_operational_soak_gate.R
 ```
+
+Etkileşimli (interactive) serit + uygulamasız bulut kanıtı: GET-only HTTP seridinin
+açmadığı sohbet/DB/streaming/stop yollarını **gerçek DB havuzu** üzerinde alıştırır
+(`tests/scripts/soak_interactive_lane.R`). Çalışan bir uygulama URL'si gerekmeden
+(HTTP seridi kapalı) yalnızca in-process + etkileşimli kanıt üretmek için:
+
+```powershell
+$env:MERGEN_SOAK_HTTP_LANE = "false"
+$env:MERGEN_SOAK_INTERACTIVE_USERS = "20"
+Rscript tests/scripts/run_operational_soak_gate.R
+```
+
+`soak_evidence.json` içindeki `interactive_lane` bloğunu okuyun: `db_pool.checkout` ==
+`db_pool.returned` ve `db_pool.outstanding_checkouts == 0` (bağlantı sızıntısı yok),
+`tx_commit`/`tx_rollback` doğru, `cross_session_isolation_pass=TRUE`,
+`tx_rollback_clean=TRUE`, `mojibake_hits=0`. Bu serit tek-süreçte ardışık oturumlardır
+ve **lane-yerel SQLite** kullanır; gerçek websocket eşzamanlılığını veya SQL Server
+T-SQL at-rest davranışını kanıtlamaz (`effective_success_rate`/`no_server_crash`
+HTTP seridi kapalıyken `UNMEASURED` kalır).
+
+DB bağlantı havuzunun (`MERGEN_DB_POOL_ENABLED=TRUE`) üretim doğrulaması: VM'de havuzu
+açtıktan sonra `run_vm_encoding_preflight_real.R` ile Türkçe at-rest yazımını yeniden
+doğrulayın (`MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE`), SSMS'te en yeni
+`MB_Messages`/`MB_Chats` satırlarının temiz olduğunu teyit edin ve attach soak sınır
+koşumunu yeniden ölçerek gerçek-sohbet kapasite farkını gözlemleyin. Havuzu yalnızca
+bu doğrulamalar geçtikten sonra üretim `.Renviron`'da kalıcı açın.
 
 Real-canary diagnostik koşumu kapasite testi değildir; gateway erişimi ve upstream
 policy ayrımı içindir. Diagnostik ayrıntı `artifacts/soak/<timestamp>/real_canary_diagnostics.jsonl`

@@ -124,6 +124,10 @@ source(file.path(repo_root_for_tests, "R", "helpers_worker_monitor.R"), encoding
 source(file.path(repo_root_for_tests, "R", "helpers_db_unicode_escape.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_db_encoding.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_db_connection.R"), encoding = "UTF-8", local = .test_global)
+# İşlem-güvenli DB havuzu katmanı (bağlantı yardımcılarından sonra; üretim
+# manifest sırasıyla aynı). İzole DB testleri with_db_transaction/with_db_connection
+# ve db_acquire_tx_connection yardımcılarını burada bulur.
+source(file.path(repo_root_for_tests, "R", "helpers_db_pool.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_db_validation.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_chat_message_formatting.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_db_chat_read_queries.R"), encoding = "UTF-8", local = .test_global)
