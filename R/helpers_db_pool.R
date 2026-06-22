@@ -278,21 +278,27 @@ db_acquire_tx_connection <- function(target = "primary") {
   pool_obj <- db_pool_get(target)
 
   if (!is.null(pool_obj) && requireNamespace("pool", quietly = TRUE)) {
+    # Havuz AKTİF: gerçek bir bağlantı ödünç al. Checkout HATA verirse
+    # get_connection()'a düşmek GÜVENSİZDİR; primary hedefte get_connection()
+    # `.GlobalEnv$pool`'u (Pool nesnesini) geri döndürür ve işlem (dbBegin/
+    # dbCommit) bir DBI bağlantısı yerine havuz nesnesi üzerinde çalışırdı.
+    # Bu yüzden checkout hatası YÜZEYE ÇIKARILIR (sessizce havuz-nesnesi-
+    # üzerinde-işlem yoluna DÜŞÜLMEZ). Yazma yolu (save_message_safely) bu
+    # hatayı zaten yakalayıp loglar.
     conn <- tryCatch(
       pool::poolCheckout(pool_obj),
       error = function(e) {
         .db_pool_record_event("checkout_failed", list(target = target, error_class = class(e)[1]))
-        NULL
+        stop(e)
       }
     )
-    if (!is.null(conn)) {
-      .db_pool_record_event("checkout", list(target = target))
-      return(list(conn = conn, pooled = TRUE, checked_out = TRUE,
-                  pool = pool_obj, target = target))
-    }
-    # Checkout başarısızsa doğrudan bağlantıya düş (dayanıklılık).
+    .db_pool_record_event("checkout", list(target = target))
+    return(list(conn = conn, pooled = TRUE, checked_out = TRUE,
+                pool = pool_obj, target = target))
   }
 
+  # Havuz yok: mevcut doğrudan bağlantı yolu (get_connection havuz aktif
+  # olmadığı için doğrudan ODBC bağlantısı döndürür).
   ci <- get_connection(target)
   st <- .mergen_db_pool_state
   st$stats$direct_fallback <- (st$stats$direct_fallback %||% 0L) + 1L

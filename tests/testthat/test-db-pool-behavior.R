@@ -231,6 +231,24 @@ test_that("işlem yolu havuz NESNESİNİ değil gerçek bir bağlantı ödünç 
   })
 })
 
+test_that("havuz aktifken checkout hatası havuz nesnesi döndürmez (yüzeye çıkar)", {
+  # Regresyon: checkout hata verirse get_connection()'a düşmek primary hedefte
+  # .GlobalEnv$pool'u (Pool nesnesini) geri döndürürdü; işlem havuz nesnesi
+  # üzerinde çalışırdı. Doğru davranış: hatayı yüzeye çıkar, asla Pool döndürme.
+  .with_test_db_pool(function(dbfile) {
+    testthat::local_mocked_bindings(
+      poolCheckout = function(pool) stop("simüle checkout hatası"),
+      .package = "pool"
+    )
+    expect_error(db_acquire_tx_connection("primary"), "checkout")
+
+    # Sayaç: checkout_failed artmalı; outstanding sızıntı OLUŞMAMALI.
+    snap <- db_pool_status_snapshot()
+    expect_true(snap$counters$checkout_failed >= 1L)
+    expect_equal(snap$counters$outstanding_checkouts, 0L)
+  })
+})
+
 test_that("close_db_pool_once havuzu kapatır ve durum pasifleşir", {
   dbfile <- tempfile(fileext = ".sqlite")
   pool_existed <- exists("pool", envir = globalenv(), inherits = FALSE)

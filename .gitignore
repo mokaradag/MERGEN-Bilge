@@ -67,3 +67,7 @@ artifacts/soak/
 # alt klasörleri). Yalnızca dizini koru; üretilen dosyaları izleme.
 bilge_yolac_downloads/*
 !bilge_yolac_downloads/.gitkeep
+
+# testthat failing-test debris (local diagnostic runs)
+tests/testthat/_problems/
+tests/testthat/testthat-problems.rds

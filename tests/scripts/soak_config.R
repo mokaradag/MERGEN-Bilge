@@ -280,7 +280,12 @@ soak_resolve_thresholds <- function(profile) {
     fail_on_secret_leak = soak_env_flag("MERGEN_SOAK_FAIL_ON_SECRET_LEAK", TRUE),
     # Etkilesimli seritte DB havuz baglanti sizintisi (checkout != return) ve
     # oturumlar-arasi kontaminasyon varsayilan olarak FAIL'dir.
-    fail_on_interactive_db_leak = soak_env_flag("MERGEN_SOAK_FAIL_ON_INTERACTIVE_DB_LEAK", TRUE)
+    fail_on_interactive_db_leak = soak_env_flag("MERGEN_SOAK_FAIL_ON_INTERACTIVE_DB_LEAK", TRUE),
+    # Etkilesimli serit ISTENDI ama calismadiysa (paket/bootstrap eksik) bu PR'nin
+    # ekledigi DB-havuz/islem/izolasyon kapsami kaybedilir; varsayilan olarak FAIL.
+    # Havuz paketleri olmayan minimal ortamlar bunu FALSE yapabilir veya
+    # MERGEN_SOAK_INTERACTIVE_LANE=false ile seridi hic istemeyebilir.
+    fail_on_interactive_unavailable = soak_env_flag("MERGEN_SOAK_FAIL_ON_INTERACTIVE_UNAVAILABLE", TRUE)
   )
 }
 

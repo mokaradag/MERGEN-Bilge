@@ -199,6 +199,11 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
       add("interactive_cross_session_isolation", TRUE, isTRUE(interactive$isolation_pass),
           TRUE, isTRUE(interactive$isolation_pass),
           "Bir oturum baska kullanicinin sohbet/mesajini gormez + anahtar izolasyonu.")
+      # Gercek scoping kaniti: ayni okuyucu KOMSU kullanici satirini disladi mi?
+      add("interactive_isolation_excludes_other", TRUE,
+          isTRUE(interactive$isolation_excludes_other), TRUE,
+          isTRUE(interactive$isolation_excludes_other),
+          "Eklenen komsu kullanici satiri ayni app-facing okuyucu ile DISLANDI.")
     } else {
       add("interactive_cross_session_isolation", TRUE, isTRUE(interactive$isolation_pass),
           "raporlandi (esik yok)", TRUE, "Izolasyon raporlandi; fail kapatildi.")
@@ -217,8 +222,16 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
           "raporlandi (esik yok)", TRUE, "Interactive mojibake raporlandi; fail kapatildi.")
     }
   } else if (isTRUE(cfg$interactive_lane)) {
-    add("interactive_success_rate", FALSE, NA, th$success_rate_min, NA,
-        "Etkilesimli serit istendi ama calismadi (olculemeyen; sessizce gecmez).")
+    # Etkilesimli serit ISTENDI ama calismadi. Bu, bu PR'nin ekledigi
+    # DB-havuz/islem/izolasyon kapsamini kaybeder; varsayilan olarak ENFORCED
+    # FAIL'dir (sessiz UNMEASURED PASS degil). Opt-out: fail_on_interactive_unavailable.
+    if (isTRUE(th$fail_on_interactive_unavailable)) {
+      add("interactive_lane_available", TRUE, FALSE, TRUE, FALSE,
+          "Etkilesimli serit istendi ama calismadi (paket/bootstrap eksik); istenen kapsam kaybedildi.")
+    } else {
+      add("interactive_lane_available", FALSE, NA, TRUE, NA,
+          "Etkilesimli serit istendi ama calismadi (olculemeyen; fail kapatildi).")
+    }
   }
 
   checks
@@ -401,6 +414,7 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
         ),
         db_pool = interactive$db_pool,
         cross_session_isolation_pass = isTRUE(interactive$isolation_pass),
+        isolation_excludes_other_user = isTRUE(interactive$isolation_excludes_other),
         tx_rollback_clean = isTRUE(interactive$rollback_pass),
         upload_validation_pass = isTRUE(interactive$upload_pass),
         mojibake_hits = interactive$mojibake_hits,

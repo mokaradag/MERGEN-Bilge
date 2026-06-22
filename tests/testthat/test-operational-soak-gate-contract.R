@@ -352,6 +352,10 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
   env <- new.env(); soak_source_modules(env)
 
   cfg <- withr::with_envvar(list(MERGEN_SOAK_PROFILE = "smoke"), env$soak_resolve_config())
+  # Bu test genel evidence semasini dogrular; etkilesimli serit sonucu saglamaz.
+  # Bu yuzden seridi istemiyoruz (aksi halde "istenen ama calismayan" enforce
+  # kurali bilincli olarak FAIL uretirdi; o davranis ayri testte dogrulanir).
+  cfg$interactive_lane <- FALSE
   m <- env$soak_metrics_new()
   for (i in 1:50) env$soak_metrics_record(m, "fake", "chat_short", 100 + i, "ok", 200L, 40, "n/a")
   s <- env$soak_metrics_summary(m)
@@ -423,7 +427,8 @@ testthat::test_that("etkilesimli serit: gercek DB havuzu/islem/encoding/izolasyo
               thresholds = list(success_rate_min = 0.98, p95_latency_ms_max = 0L,
                                 memory_growth_mb_max = -1, temp_growth_mb_max = -1,
                                 fail_on_browser_console_errors = FALSE, fail_on_mojibake = TRUE,
-                                fail_on_secret_leak = TRUE, fail_on_interactive_db_leak = TRUE),
+                                fail_on_secret_leak = TRUE, fail_on_interactive_db_leak = TRUE,
+                                fail_on_interactive_unavailable = TRUE),
               llm_lane = "fake")
 
   res <- tryCatch(env$soak_interactive_lane(cfg, sessions = 5L),
@@ -440,6 +445,9 @@ testthat::test_that("etkilesimli serit: gercek DB havuzu/islem/encoding/izolasyo
   # Oturum eylemleri basarili; izolasyon/rollback/upload/mojibake guvenli.
   testthat::expect_equal(res$summary$success_rate, 1)
   testthat::expect_true(res$isolation_pass)
+  # Gercek scoping kaniti: ayni okuyucu KOMSU kullanici satirini disladi.
+  testthat::expect_true(res$isolation_excludes_other)
+  testthat::expect_equal(res$isolation_exclusion_failures, 0L)
   testthat::expect_true(res$rollback_pass)
   testthat::expect_true(res$upload_pass)
   testthat::expect_equal(res$mojibake_hits, 0L)
@@ -454,8 +462,11 @@ testthat::test_that("etkilesimli serit: gercek DB havuzu/islem/encoding/izolasyo
   names_checks <- vapply(checks, function(c) c$name, character(1))
   testthat::expect_true("interactive_db_no_leak" %in% names_checks)
   testthat::expect_true("interactive_cross_session_isolation" %in% names_checks)
+  testthat::expect_true("interactive_isolation_excludes_other" %in% names_checks)
   leak_chk <- Filter(function(c) c$name == "interactive_db_no_leak", checks)[[1]]
   testthat::expect_true(isTRUE(leak_chk$measured) && isTRUE(leak_chk$pass))
+  excl_chk <- Filter(function(c) c$name == "interactive_isolation_excludes_other", checks)[[1]]
+  testthat::expect_true(isTRUE(excl_chk$measured) && isTRUE(excl_chk$pass))
 
   # Evidence interactive blogu icerir; metrics_df ham dosya yolu sizdirmaz.
   outcome <- env$soak_threshold_outcome(checks)
@@ -466,8 +477,42 @@ testthat::test_that("etkilesimli serit: gercek DB havuzu/islem/encoding/izolasyo
   testthat::expect_true("interactive_lane" %in% names(ev))
   testthat::expect_true(isTRUE(ev$interactive_lane$available))
   testthat::expect_true(ev$interactive_lane$db_pool$no_leak)
+  testthat::expect_true(isTRUE(ev$interactive_lane$isolation_excludes_other_user))
   ev_txt <- jsonlite::toJSON(ev, auto_unbox = TRUE, null = "null")
   testthat::expect_false(grepl(".sqlite", ev_txt, fixed = TRUE))
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("istenen ama calismayan etkilesimli serit ENFORCED FAIL'dir (sessiz PASS degil)", {
+  env <- new.env(); soak_source_modules(env)
+  s <- env$soak_metrics_summary(env$soak_metrics_new())
+  inproc <- list(available = FALSE)
+  mg <- list(rss_measured = FALSE, process_rss_growth_mb = NA)
+  base_th <- list(success_rate_min = 0.98, p95_latency_ms_max = 0L,
+                  memory_growth_mb_max = -1, temp_growth_mb_max = -1,
+                  fail_on_browser_console_errors = FALSE, fail_on_mojibake = TRUE,
+                  fail_on_secret_leak = TRUE, fail_on_interactive_db_leak = TRUE)
+  unavailable <- list(available = FALSE, reason = "paket eksik")
+
+  # Varsayilan (enforce TRUE): istenen ama calismayan serit -> olculen FAIL.
+  cfg_enforce <- list(interactive_lane = TRUE, llm_lane = "fake", http_lane = TRUE,
+                      thresholds = c(base_th, list(fail_on_interactive_unavailable = TRUE)))
+  checks <- env$soak_evaluate_thresholds(cfg_enforce, s, inproc, list(total_leaks = 0L),
+                                         mg, NA, TRUE, 0L, unavailable)
+  chk <- Filter(function(c) c$name == "interactive_lane_available", checks)
+  testthat::expect_equal(length(chk), 1L)
+  testthat::expect_true(isTRUE(chk[[1]]$measured))
+  testthat::expect_false(isTRUE(chk[[1]]$pass))
+  outcome <- env$soak_threshold_outcome(checks)
+  testthat::expect_false(outcome$pass)  # gate FAIL olmali
+
+  # Opt-out (enforce FALSE): UNMEASURED, gate'i kirmaz.
+  cfg_off <- list(interactive_lane = TRUE, llm_lane = "fake", http_lane = TRUE,
+                  thresholds = c(base_th, list(fail_on_interactive_unavailable = FALSE)))
+  checks2 <- env$soak_evaluate_thresholds(cfg_off, s, inproc, list(total_leaks = 0L),
+                                          mg, NA, TRUE, 0L, unavailable)
+  chk2 <- Filter(function(c) c$name == "interactive_lane_available", checks2)[[1]]
+  testthat::expect_false(isTRUE(chk2$measured))
 })
 
 # ------------------------------------------------------------------------------

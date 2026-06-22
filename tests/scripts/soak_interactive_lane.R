@@ -245,28 +245,56 @@ soak_interactive_run_session <- function(cfg, metrics, session_idx, do_stop) {
     upload_pass
   })
 
-  # 8) Kayitli/gecmis oku (kullanici-kapsamli) + Turkce round-trip + izolasyon.
-  read_pass <- FALSE; mojibake_hit <- FALSE
+  # 8) Kayitli/gecmis oku + cross-session izolasyon. Once AYRI bir KOMSU
+  # kullanici icin sentinel sohbet+mesaj yazilir; sonra ayni app-facing okuyucu
+  # (WHERE user_id = ?) ile bu kullanicinin satirlari okunur ve komsu satirinin
+  # DISLANDIGI dogrulanir. Filtre testin kendisinde sabit degildir; okuyucunun
+  # kapsama (scoping) davranisi gercekten sinanir, boylece filtre kaybi
+  # (regresyon) yakalanir. Turkce round-trip de burada dogrulanir.
+  read_pass <- FALSE; mojibake_hit <- FALSE; isolation_excludes_other <- FALSE
   .soak_interactive_timed(metrics, "history_read", function() {
-    rows <- with_db_connection(function(conn) {
-      DBI::dbGetQuery(conn, "SELECT content FROM mb_messages WHERE user_id = ? ORDER BY msg_order",
-                      params = list(user_id))
+    neighbor_user_id <- 900000L + session_idx
+    neighbor_title <- sprintf("KOMSU-%d-GIZLI", session_idx)
+    neighbor_msg <- sprintf("komsu-%d-gizli-mesaj", session_idx)
+    now_ts <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    with_db_transaction(function(conn) {
+      DBI::dbExecute(conn, "INSERT INTO mb_chats (user_id, title, created_at) VALUES (?, ?, ?)",
+                     params = list(neighbor_user_id, neighbor_title, now_ts))
+      DBI::dbExecute(conn, "INSERT INTO mb_messages (chat_id, user_id, content, msg_type, msg_order, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                     params = list(-1L, neighbor_user_id, neighbor_msg, "assistant", 1L, now_ts))
     })
-    # Bu oturum yalniz KENDI mesajlarini gormeli (cross-session izolasyon).
+
+    # Ayni app-facing okuyucu ile bu kullanicinin sohbet/mesajlarini oku.
     chat_rows <- with_db_connection(function(conn) {
-      DBI::dbGetQuery(conn, "SELECT title FROM mb_chats WHERE user_id = ?",
+      DBI::dbGetQuery(conn, "SELECT user_id, title FROM mb_chats WHERE user_id = ? ORDER BY chat_id",
                       params = list(user_id))
     })
+    msg_rows <- with_db_connection(function(conn) {
+      DBI::dbGetQuery(conn, "SELECT user_id, content FROM mb_messages WHERE user_id = ? ORDER BY msg_order",
+                      params = list(user_id))
+    })
+
     restored <- if (nrow(chat_rows) > 0L) normalize_db_read_visible_value(chat_rows$title[1]) else ""
     read_pass <<- nrow(chat_rows) == 1L &&
       identical(enc2utf8(restored), enc2utf8(chat_title))
+
+    # Cross-session izolasyon: okuyucu YALNIZ bu kullaniciyi dondurmeli; komsu
+    # kullanicinin user_id'si veya sentinel icerigi GORUNMEMELI.
+    other_in_chats <- any(as.integer(chat_rows$user_id) != user_id) ||
+      any(chat_rows$title == neighbor_title)
+    other_in_msgs <- (nrow(msg_rows) > 0L) &&
+      (any(as.integer(msg_rows$user_id) != user_id) ||
+         any(msg_rows$content == neighbor_msg))
+    isolation_excludes_other <<- !isTRUE(other_in_chats) && !isTRUE(other_in_msgs)
+
     mojibake_hit <<- db_visible_text_has_mojibake(restored) ||
-      (nrow(rows) > 0L && db_visible_text_has_mojibake(rows$content[1]))
+      (nrow(msg_rows) > 0L && db_visible_text_has_mojibake(msg_rows$content[1]))
     read_pass
   })
 
   list(
-    isolation_pass = isTRUE(iso_pass) && isTRUE(read_pass),
+    isolation_pass = isTRUE(iso_pass) && isTRUE(read_pass) && isTRUE(isolation_excludes_other),
+    isolation_excludes_other = isTRUE(isolation_excludes_other),
     rollback_pass = isTRUE(rollback_pass),
     upload_pass = isTRUE(upload_pass),
     mojibake_hit = isTRUE(mojibake_hit),
@@ -320,7 +348,8 @@ soak_interactive_lane <- function(cfg, sessions = NULL, stop_fraction = 0.25) {
   }
 
   loop_start <- Sys.time()
-  iso_fail <- 0L; rollback_fail <- 0L; upload_fail <- 0L; mojibake_hits <- 0L
+  iso_fail <- 0L; exclusion_fail <- 0L; rollback_fail <- 0L
+  upload_fail <- 0L; mojibake_hits <- 0L
   total_sessions <- 0L
 
   for (it in seq_len(iterations)) {
@@ -329,6 +358,7 @@ soak_interactive_lane <- function(cfg, sessions = NULL, stop_fraction = 0.25) {
       do_stop <- (total_sessions %% max(1L, round(1 / stop_fraction))) == 0L
       res <- soak_interactive_run_session(cfg, metrics, total_sessions, do_stop)
       if (!isTRUE(res$isolation_pass)) iso_fail <- iso_fail + 1L
+      if (!isTRUE(res$isolation_excludes_other)) exclusion_fail <- exclusion_fail + 1L
       if (!isTRUE(res$rollback_pass)) rollback_fail <- rollback_fail + 1L
       if (!isTRUE(res$upload_pass)) upload_fail <- upload_fail + 1L
       if (isTRUE(res$mojibake_hit)) mojibake_hits <- mojibake_hits + 1L
@@ -356,6 +386,8 @@ soak_interactive_lane <- function(cfg, sessions = NULL, stop_fraction = 0.25) {
     ),
     isolation_pass = (iso_fail == 0L),
     isolation_failures = iso_fail,
+    isolation_excludes_other = (exclusion_fail == 0L),
+    isolation_exclusion_failures = exclusion_fail,
     rollback_pass = (rollback_fail == 0L),
     rollback_failures = rollback_fail,
     upload_pass = (upload_fail == 0L),
