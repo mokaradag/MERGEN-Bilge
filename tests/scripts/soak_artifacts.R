@@ -186,6 +186,8 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
           "Etkilesimli serit eylem olcmedi (olculemeyen).")
     }
 
+    # DB baglanti sizintisi (checkout != return) "gurultulu sayac" olabilir; bu
+    # YALNIZ kendisi fail_on_interactive_db_leak ile opt-out edilebilir.
     leak_free <- isTRUE(interactive$db_pool$no_leak)
     if (isTRUE(th$fail_on_interactive_db_leak)) {
       add("interactive_db_no_leak", TRUE, interactive$db_pool$outstanding_checkouts,
@@ -195,19 +197,31 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
           "raporlandi (esik yok)", TRUE, "DB sizinti fail kapatildi.")
     }
 
-    if (isTRUE(th$fail_on_interactive_db_leak)) {
-      add("interactive_cross_session_isolation", TRUE, isTRUE(interactive$isolation_pass),
-          TRUE, isTRUE(interactive$isolation_pass),
-          "Bir oturum baska kullanicinin sohbet/mesajini gormez + anahtar izolasyonu.")
-      # Gercek scoping kaniti: ayni okuyucu KOMSU kullanici satirini disladi mi?
-      add("interactive_isolation_excludes_other", TRUE,
-          isTRUE(interactive$isolation_excludes_other), TRUE,
-          isTRUE(interactive$isolation_excludes_other),
-          "Eklenen komsu kullanici satiri ayni app-facing okuyucu ile DISLANDI.")
-    } else {
-      add("interactive_cross_session_isolation", TRUE, isTRUE(interactive$isolation_pass),
-          "raporlandi (esik yok)", TRUE, "Izolasyon raporlandi; fail kapatildi.")
-    }
+    # Cross-session izolasyon bir GUVENLIK ozelligidir; DB-leak opt-out'undan
+    # BAGIMSIZ ve HER ZAMAN enforced'dir (gurultulu sayac opt-out'u izolasyonu
+    # susturmaz). isolation_pass artik anahtar-sahip uyusmazligi + sohbet/mesaj
+    # kapsamasini da icerir.
+    add("interactive_cross_session_isolation", TRUE, isTRUE(interactive$isolation_pass),
+        TRUE, isTRUE(interactive$isolation_pass),
+        "Bir oturum baska kullanicinin sohbet/mesajini gormez + anahtar-sahip izolasyonu.")
+    # Gercek scoping kaniti: ayni okuyucu KOMSU kullanici satirini disladi mi?
+    add("interactive_isolation_excludes_other", TRUE,
+        isTRUE(interactive$isolation_excludes_other), TRUE,
+        isTRUE(interactive$isolation_excludes_other),
+        "Eklenen komsu kullanici satiri ayni app-facing okuyucu ile DISLANDI.")
+    # Anahtar-sahip uyusmazligi: yabanci sahipli anahtar KISISEL olarak kabul
+    # edilmemeli (sahiplik temizleme yolu). Her zaman enforced.
+    add("interactive_key_owner_mismatch_rejected", TRUE,
+        isTRUE(interactive$key_owner_mismatch_rejected), TRUE,
+        isTRUE(interactive$key_owner_mismatch_rejected),
+        "Yabanci sahipli anahtar sunan oturum KISISEL olarak cozulmedi.")
+
+    # Upload dogrulama da bu seridin kapsamidir; HER ZAMAN enforced (rollback
+    # gibi). Aksi halde validate_uploaded_file regresyonu PASS gecebilirdi.
+    add("interactive_upload_validation", TRUE, isTRUE(interactive$upload_pass),
+        TRUE, isTRUE(interactive$upload_pass),
+        sprintf("Etkilesimli upload dogrulama (basarisiz=%s).",
+                as.character(interactive$upload_failures %||% NA)))
 
     add("interactive_tx_rollback_clean", TRUE, isTRUE(interactive$rollback_pass),
         TRUE, isTRUE(interactive$rollback_pass),
@@ -415,6 +429,7 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
         db_pool = interactive$db_pool,
         cross_session_isolation_pass = isTRUE(interactive$isolation_pass),
         isolation_excludes_other_user = isTRUE(interactive$isolation_excludes_other),
+        key_owner_mismatch_rejected = isTRUE(interactive$key_owner_mismatch_rejected),
         tx_rollback_clean = isTRUE(interactive$rollback_pass),
         upload_validation_pass = isTRUE(interactive$upload_pass),
         mojibake_hits = interactive$mojibake_hits,

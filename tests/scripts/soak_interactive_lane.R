@@ -144,10 +144,12 @@ soak_interactive_run_session <- function(cfg, metrics, session_idx, do_stop) {
   personal_key <- sprintf("sk-isess-%s", username)
   user_id <- 200000L + session_idx
 
-  # 1) Oturum ac + anahtar izolasyonu (kisisel anahtar bu kullaniciya ait).
-  iso_pass <- FALSE
+  # 1) Oturum ac + anahtar izolasyonu. POZITIF: kendi anahtari -> "personal".
+  # NEGATIF (owner-mismatch): BASKA kullanicinin sahip oldugu anahtari sunan
+  # ayni oturum KISISEL olarak cozulmemelidir (sahiplik temizleme yolu). Ikisi
+  # birden gecmeden anahtar izolasyonu kaniti sayilmaz.
+  iso_pass <- FALSE; key_mismatch_rejected <- FALSE
   .soak_interactive_timed(metrics, "session_open", function() {
-    sess <- .soak_interactive_session_obj(username, personal_key)
     old_req <- Sys.getenv("MERGEN_REQUIRE_PERSONAL_API_KEY", unset = NA_character_)
     old_def <- Sys.getenv("MERGEN_ALLOW_DEFAULT_API_KEY", unset = NA_character_)
     Sys.setenv(MERGEN_REQUIRE_PERSONAL_API_KEY = "FALSE", MERGEN_ALLOW_DEFAULT_API_KEY = "FALSE")
@@ -155,8 +157,20 @@ soak_interactive_run_session <- function(cfg, metrics, session_idx, do_stop) {
       if (is.na(old_req)) Sys.unsetenv("MERGEN_REQUIRE_PERSONAL_API_KEY") else Sys.setenv(MERGEN_REQUIRE_PERSONAL_API_KEY = old_req)
       if (is.na(old_def)) Sys.unsetenv("MERGEN_ALLOW_DEFAULT_API_KEY") else Sys.setenv(MERGEN_ALLOW_DEFAULT_API_KEY = old_def)
     }, add = TRUE)
-    plan <- mb_api_key_get_effective_key(sess)
-    iso_pass <<- identical(plan$source %||% "", "personal")
+
+    # Pozitif: kendi anahtarini sunan oturum -> personal.
+    own_sess <- .soak_interactive_session_obj(username, personal_key)
+    own_plan <- mb_api_key_get_effective_key(own_sess)
+    own_personal <- identical(own_plan$source %||% "", "personal")
+
+    # Negatif: bu kullanici, BASKA bir kullaniciya ait anahtar/owner sunar ->
+    # resolver bunu personal kabul ETMEMELI (default kapali oldugu icin missing).
+    foreign_sess <- .soak_interactive_session_obj(username, sprintf("sk-foreign-%04d", session_idx))
+    foreign_sess$userData$ai_api_key_owner <- sprintf("foreign_user%04d", session_idx)
+    foreign_plan <- mb_api_key_get_effective_key(foreign_sess)
+    key_mismatch_rejected <<- !identical(foreign_plan$source %||% "", "personal")
+
+    iso_pass <<- isTRUE(own_personal) && isTRUE(key_mismatch_rejected)
     TRUE
   })
 
@@ -295,6 +309,7 @@ soak_interactive_run_session <- function(cfg, metrics, session_idx, do_stop) {
   list(
     isolation_pass = isTRUE(iso_pass) && isTRUE(read_pass) && isTRUE(isolation_excludes_other),
     isolation_excludes_other = isTRUE(isolation_excludes_other),
+    key_owner_mismatch_rejected = isTRUE(key_mismatch_rejected),
     rollback_pass = isTRUE(rollback_pass),
     upload_pass = isTRUE(upload_pass),
     mojibake_hit = isTRUE(mojibake_hit),
@@ -348,8 +363,8 @@ soak_interactive_lane <- function(cfg, sessions = NULL, stop_fraction = 0.25) {
   }
 
   loop_start <- Sys.time()
-  iso_fail <- 0L; exclusion_fail <- 0L; rollback_fail <- 0L
-  upload_fail <- 0L; mojibake_hits <- 0L
+  iso_fail <- 0L; exclusion_fail <- 0L; key_mismatch_fail <- 0L
+  rollback_fail <- 0L; upload_fail <- 0L; mojibake_hits <- 0L
   total_sessions <- 0L
 
   for (it in seq_len(iterations)) {
@@ -359,6 +374,7 @@ soak_interactive_lane <- function(cfg, sessions = NULL, stop_fraction = 0.25) {
       res <- soak_interactive_run_session(cfg, metrics, total_sessions, do_stop)
       if (!isTRUE(res$isolation_pass)) iso_fail <- iso_fail + 1L
       if (!isTRUE(res$isolation_excludes_other)) exclusion_fail <- exclusion_fail + 1L
+      if (!isTRUE(res$key_owner_mismatch_rejected)) key_mismatch_fail <- key_mismatch_fail + 1L
       if (!isTRUE(res$rollback_pass)) rollback_fail <- rollback_fail + 1L
       if (!isTRUE(res$upload_pass)) upload_fail <- upload_fail + 1L
       if (isTRUE(res$mojibake_hit)) mojibake_hits <- mojibake_hits + 1L
@@ -388,6 +404,8 @@ soak_interactive_lane <- function(cfg, sessions = NULL, stop_fraction = 0.25) {
     isolation_failures = iso_fail,
     isolation_excludes_other = (exclusion_fail == 0L),
     isolation_exclusion_failures = exclusion_fail,
+    key_owner_mismatch_rejected = (key_mismatch_fail == 0L),
+    key_owner_mismatch_failures = key_mismatch_fail,
     rollback_pass = (rollback_fail == 0L),
     rollback_failures = rollback_fail,
     upload_pass = (upload_fail == 0L),
