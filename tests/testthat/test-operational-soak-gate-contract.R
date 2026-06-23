@@ -47,7 +47,7 @@ soak_script_path <- function(rel) file.path(soak_repo_root_for_test, "tests", "s
 soak_source_modules <- function(env = parent.frame()) {
   mods <- c("soak_secret_redaction.R", "soak_config.R", "soak_metrics.R",
             "soak_scenarios.R", "mock_llm_server.R", "proxy_llm_server.R",
-            "soak_client.R", "soak_artifacts.R")
+            "soak_client.R", "soak_interactive_lane.R", "soak_artifacts.R")
   for (m in mods) {
     suppressWarnings(suppressMessages(sys.source(soak_script_path(m), envir = env)))
   }
@@ -55,8 +55,8 @@ soak_source_modules <- function(env = parent.frame()) {
 
 soak_operational_scripts <- function() {
   c("run_operational_soak_gate.R", "soak_config.R", "soak_secret_redaction.R",
-    "soak_metrics.R", "soak_scenarios.R", "soak_client.R", "soak_artifacts.R",
-    "mock_llm_server.R", "proxy_llm_server.R")
+    "soak_metrics.R", "soak_scenarios.R", "soak_client.R", "soak_interactive_lane.R",
+    "soak_artifacts.R", "mock_llm_server.R", "proxy_llm_server.R")
 }
 
 # Byte-safe okuyucu (Windows VM uyumlu); CLAUDE.md repo-tarama kurali.
@@ -352,6 +352,10 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
   env <- new.env(); soak_source_modules(env)
 
   cfg <- withr::with_envvar(list(MERGEN_SOAK_PROFILE = "smoke"), env$soak_resolve_config())
+  # Bu test genel evidence semasini dogrular; etkilesimli serit sonucu saglamaz.
+  # Bu yuzden seridi istemiyoruz (aksi halde "istenen ama calismayan" enforce
+  # kurali bilincli olarak FAIL uretirdi; o davranis ayri testte dogrulanir).
+  cfg$interactive_lane <- FALSE
   m <- env$soak_metrics_new()
   for (i in 1:50) env$soak_metrics_record(m, "fake", "chat_short", 100 + i, "ok", 200L, 40, "n/a")
   s <- env$soak_metrics_summary(m)
@@ -395,6 +399,177 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
   testthat::expect_true(file.exists(file.path(tmp, "config.json")))
   testthat::expect_true(file.exists(file.path(tmp, "key_routing_summary.json")))
   unlink(tmp, recursive = TRUE)
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("config etkilesimli serit alanlarini sunar ve public config sir icermez", {
+  env <- new.env(); soak_source_modules(env)
+  withr::with_envvar(list(MERGEN_SOAK_PROFILE = "smoke", MERGEN_SOAK_INTERACTIVE_LANE = NA,
+                          MERGEN_SOAK_INTERACTIVE_USERS = "7"), {
+    cfg <- env$soak_resolve_config()
+    testthat::expect_true(isTRUE(cfg$interactive_lane))
+    testthat::expect_equal(cfg$interactive_users, 7L)
+    testthat::expect_true(cfg$interactive_iterations >= 1L)
+    pub <- env$soak_config_public(cfg)
+    testthat::expect_true("interactive_lane" %in% names(pub))
+    testthat::expect_true("interactive_users" %in% names(pub))
+  })
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("etkilesimli serit: gercek DB havuzu/islem/encoding/izolasyon (offline)", {
+  testthat::skip_if_not_installed("pool")
+  testthat::skip_if_not_installed("RSQLite")
+  testthat::skip_if_not_installed("DBI")
+
+  env <- new.env(); soak_source_modules(env)
+  cfg <- list(interactive_users = 5L, interactive_iterations = 1L, interactive_lane = TRUE,
+              thresholds = list(success_rate_min = 0.98, p95_latency_ms_max = 0L,
+                                memory_growth_mb_max = -1, temp_growth_mb_max = -1,
+                                fail_on_browser_console_errors = FALSE, fail_on_mojibake = TRUE,
+                                fail_on_secret_leak = TRUE, fail_on_interactive_db_leak = TRUE,
+                                fail_on_interactive_unavailable = TRUE),
+              llm_lane = "fake")
+
+  res <- tryCatch(env$soak_interactive_lane(cfg, sessions = 5L),
+                  error = function(e) list(available = FALSE, reason = conditionMessage(e)))
+  testthat::skip_if_not(isTRUE(res$available),
+                        sprintf("Etkilesimli serit yardimcilari yuklenemedi: %s", res$reason %||% ""))
+
+  # Gercek DB havuzu: checkout == return (sizinti yok).
+  testthat::expect_equal(res$db_pool$outstanding_checkouts, 0L)
+  testthat::expect_true(res$db_pool$no_leak)
+  testthat::expect_true(res$db_pool$tx_commit >= 1L)
+  testthat::expect_true(res$db_pool$tx_rollback >= 1L)
+
+  # Oturum eylemleri basarili; izolasyon/rollback/upload/mojibake guvenli.
+  testthat::expect_equal(res$summary$success_rate, 1)
+  testthat::expect_true(res$isolation_pass)
+  # Gercek scoping kaniti: ayni okuyucu KOMSU kullanici satirini disladi.
+  testthat::expect_true(res$isolation_excludes_other)
+  testthat::expect_equal(res$isolation_exclusion_failures, 0L)
+  # Anahtar-sahip uyusmazligi: yabanci sahipli anahtar reddedildi.
+  testthat::expect_true(res$key_owner_mismatch_rejected)
+  testthat::expect_equal(res$key_owner_mismatch_failures, 0L)
+  testthat::expect_true(res$rollback_pass)
+  testthat::expect_true(res$upload_pass)
+  testthat::expect_equal(res$mojibake_hits, 0L)
+  testthat::expect_true(res$actions >= res$sessions * 6L)
+
+  # Esik degerlendirme: interactive kontrolleri olculur ve gecer.
+  s <- env$soak_metrics_summary(env$soak_metrics_new())  # bos HTTP ozeti
+  inproc <- list(available = FALSE)
+  mg <- list(rss_measured = FALSE, process_rss_growth_mb = NA)
+  checks <- env$soak_evaluate_thresholds(cfg, s, inproc, list(total_leaks = 0L), mg, NA,
+                                         TRUE, 0L, res)
+  names_checks <- vapply(checks, function(c) c$name, character(1))
+  for (nm in c("interactive_db_no_leak", "interactive_cross_session_isolation",
+               "interactive_isolation_excludes_other", "interactive_key_owner_mismatch_rejected",
+               "interactive_upload_validation")) {
+    testthat::expect_true(nm %in% names_checks, info = nm)
+  }
+  for (nm in c("interactive_db_no_leak", "interactive_isolation_excludes_other",
+               "interactive_key_owner_mismatch_rejected", "interactive_upload_validation")) {
+    chk <- Filter(function(c) c$name == nm, checks)[[1]]
+    testthat::expect_true(isTRUE(chk$measured) && isTRUE(chk$pass), info = nm)
+  }
+
+  # Evidence interactive blogu icerir; metrics_df ham dosya yolu sizdirmaz.
+  outcome <- env$soak_threshold_outcome(checks)
+  proofs <- env$soak_proof_statements(cfg, s, inproc, list(reachable = FALSE), res)
+  ev <- env$soak_build_evidence(cfg, s, inproc, NULL, list(), list(total_leaks = 0L),
+                                list(), mg, list(), list(reachable = FALSE), NULL, checks, outcome,
+                                proofs, 1.0, character(0), character(0), TRUE, 0L, res)
+  testthat::expect_true("interactive_lane" %in% names(ev))
+  testthat::expect_true(isTRUE(ev$interactive_lane$available))
+  testthat::expect_true(ev$interactive_lane$db_pool$no_leak)
+  testthat::expect_true(isTRUE(ev$interactive_lane$isolation_excludes_other_user))
+  ev_txt <- jsonlite::toJSON(ev, auto_unbox = TRUE, null = "null")
+  testthat::expect_false(grepl(".sqlite", ev_txt, fixed = TRUE))
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("istenen ama calismayan etkilesimli serit ENFORCED FAIL'dir (sessiz PASS degil)", {
+  env <- new.env(); soak_source_modules(env)
+  s <- env$soak_metrics_summary(env$soak_metrics_new())
+  inproc <- list(available = FALSE)
+  mg <- list(rss_measured = FALSE, process_rss_growth_mb = NA)
+  base_th <- list(success_rate_min = 0.98, p95_latency_ms_max = 0L,
+                  memory_growth_mb_max = -1, temp_growth_mb_max = -1,
+                  fail_on_browser_console_errors = FALSE, fail_on_mojibake = TRUE,
+                  fail_on_secret_leak = TRUE, fail_on_interactive_db_leak = TRUE)
+  unavailable <- list(available = FALSE, reason = "paket eksik")
+
+  # Varsayilan (enforce TRUE): istenen ama calismayan serit -> olculen FAIL.
+  cfg_enforce <- list(interactive_lane = TRUE, llm_lane = "fake", http_lane = TRUE,
+                      thresholds = c(base_th, list(fail_on_interactive_unavailable = TRUE)))
+  checks <- env$soak_evaluate_thresholds(cfg_enforce, s, inproc, list(total_leaks = 0L),
+                                         mg, NA, TRUE, 0L, unavailable)
+  chk <- Filter(function(c) c$name == "interactive_lane_available", checks)
+  testthat::expect_equal(length(chk), 1L)
+  testthat::expect_true(isTRUE(chk[[1]]$measured))
+  testthat::expect_false(isTRUE(chk[[1]]$pass))
+  outcome <- env$soak_threshold_outcome(checks)
+  testthat::expect_false(outcome$pass)  # gate FAIL olmali
+
+  # Opt-out (enforce FALSE): UNMEASURED, gate'i kirmaz.
+  cfg_off <- list(interactive_lane = TRUE, llm_lane = "fake", http_lane = TRUE,
+                  thresholds = c(base_th, list(fail_on_interactive_unavailable = FALSE)))
+  checks2 <- env$soak_evaluate_thresholds(cfg_off, s, inproc, list(total_leaks = 0L),
+                                          mg, NA, TRUE, 0L, unavailable)
+  chk2 <- Filter(function(c) c$name == "interactive_lane_available", checks2)[[1]]
+  testthat::expect_false(isTRUE(chk2$measured))
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("izolasyon ve upload, DB-leak opt-out'undan BAGIMSIZ enforced kalir", {
+  env <- new.env(); soak_source_modules(env)
+  s <- env$soak_metrics_summary(env$soak_metrics_new())
+  inproc <- list(available = FALSE)
+  mg <- list(rss_measured = FALSE, process_rss_growth_mb = NA)
+  th <- list(success_rate_min = 0.98, p95_latency_ms_max = 0L,
+             memory_growth_mb_max = -1, temp_growth_mb_max = -1,
+             fail_on_browser_console_errors = FALSE, fail_on_mojibake = TRUE,
+             fail_on_secret_leak = TRUE,
+             fail_on_interactive_db_leak = FALSE,        # operator yalniz leak sayacindan opt-out
+             fail_on_interactive_unavailable = TRUE)
+  cfg <- list(interactive_lane = TRUE, llm_lane = "fake", http_lane = TRUE, thresholds = th)
+
+  base_i <- list(available = TRUE,
+                 summary = list(requests = 10L, success = 10L, errors = 0L, timeouts = 0L,
+                                success_rate = 1, p50_latency_ms = 1, p95_latency_ms = 1,
+                                p99_latency_ms = 1, throughput_ops_per_min = 1, scenario_counts = list()),
+                 db_pool = list(checkout = 10L, returned = 9L, outstanding_checkouts = 1L,
+                                tx_begin = 10L, tx_commit = 8L, tx_rollback = 2L, no_leak = FALSE),
+                 isolation_pass = TRUE, isolation_excludes_other = TRUE,
+                 key_owner_mismatch_rejected = TRUE, upload_pass = TRUE, upload_failures = 0L,
+                 rollback_pass = TRUE, mojibake_hits = 0L)
+
+  # Izolasyon REGRESYONU + leak opt-out: izolasyon yine de measured FAIL olmali.
+  bad_iso <- base_i; bad_iso$isolation_pass <- FALSE
+  checks <- env$soak_evaluate_thresholds(cfg, s, inproc, list(total_leaks = 0L), mg, NA, TRUE, 0L, bad_iso)
+  iso_chk <- Filter(function(c) c$name == "interactive_cross_session_isolation", checks)[[1]]
+  testthat::expect_true(isTRUE(iso_chk$measured))
+  testthat::expect_false(isTRUE(iso_chk$pass))
+  leak_chk <- Filter(function(c) c$name == "interactive_db_no_leak", checks)[[1]]
+  testthat::expect_true(isTRUE(leak_chk$pass))   # leak opt-out edildi (raporlandi-only)
+  testthat::expect_false(env$soak_threshold_outcome(checks)$pass)  # gate FAIL (izolasyon)
+
+  # Upload REGRESYONU: her zaman enforced (leak opt-out etkilemez).
+  bad_upload <- base_i; bad_upload$upload_pass <- FALSE; bad_upload$upload_failures <- 3L
+  checks2 <- env$soak_evaluate_thresholds(cfg, s, inproc, list(total_leaks = 0L), mg, NA, TRUE, 0L, bad_upload)
+  up_chk <- Filter(function(c) c$name == "interactive_upload_validation", checks2)[[1]]
+  testthat::expect_true(isTRUE(up_chk$measured))
+  testthat::expect_false(isTRUE(up_chk$pass))
+  testthat::expect_false(env$soak_threshold_outcome(checks2)$pass)
+
+  # Anahtar-sahip uyusmazligi REGRESYONU: enforced.
+  bad_key <- base_i; bad_key$key_owner_mismatch_rejected <- FALSE
+  checks3 <- env$soak_evaluate_thresholds(cfg, s, inproc, list(total_leaks = 0L), mg, NA, TRUE, 0L, bad_key)
+  key_chk <- Filter(function(c) c$name == "interactive_key_owner_mismatch_rejected", checks3)[[1]]
+  testthat::expect_true(isTRUE(key_chk$measured))
+  testthat::expect_false(isTRUE(key_chk$pass))
+  testthat::expect_false(env$soak_threshold_outcome(checks3)$pass)
 })
 
 # ------------------------------------------------------------------------------

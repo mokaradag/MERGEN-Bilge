@@ -15,6 +15,59 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### 2026-06-22 İşlem-güvenli DB bağlantı havuzu + etkileşimli soak seridi
+
+Bu sürüm iki operasyonel dayanıklılık zaafiyetini kapatır: (1) DB bağlantı
+yönetiminin havuzsuz/placeholder olması ve (2) operasyonel soak kanıtının
+GET-only HTTP seridine dayanması.
+
+**İşlem-güvenli DB bağlantı havuzu (opt-in).** Yeni `R/helpers_db_pool.R`
+katmanı `pool` paketi üzerine kurulur ve şu genel API'yi sunar:
+`is_db_pool_enabled`, `db_pool_config`, `init_db_pool_once`, `close_db_pool_once`,
+`with_db_connection` (salt-okunur), `with_db_transaction` (işlem-güvenli),
+`db_acquire_tx_connection`/`db_release_tx_connection` ve secret-safe
+`db_pool_status_snapshot`. Havuz **varsayılan KAPALI**'dır
+(`MERGEN_DB_POOL_ENABLED`, varsayılan `FALSE`), bu yüzden bulut/test/boot
+davranışı değişmez. Açıkken `app.R` `onStart`'ta bir kez başlatılır, `onStop`'ta
+kapatılır. Okuma yolları değiştirilmemiş `get_connection()` üzerinden otomatik
+havuzlanır; işlem sitesi `save_message_to_db()` gerçek `poolCheckout()` ile
+işlem-güvenli checkout kullanır ve **bağlantıyı iade etmeden önce rollback**
+çalıştırır (havuza açık işlemle dönüş engellenir). Encoding sözleşmesi korunur:
+havuz `DB_CLIENT_ENCODING`/`DB_NAME_ENCODING` değerlerini ODBC bağlantısına
+geçirir. `worker_save_assistant_response()` ayrı süreçte çalıştığı için doğrudan
+`worker_db_connect()` kullanmaya devam eder. Ayrıntı:
+[`database-pooling.md`](database-pooling.md).
+
+**Etkileşimli (interactive) soak seridi.** Yeni `tests/scripts/soak_interactive_lane.R`,
+GET-only HTTP seridinin açmadığı sohbet/DB/streaming/stop yollarını **gerçek DB
+havuzu** üzerinde (RSQLite arka ucu) alıştırır: oturum açma + anahtar izolasyonu,
+sohbet/mesaj yazma (`with_db_transaction`), gerçek streaming-delta sınıflandırma,
+stop/iptal kararı + niyetli işlem ROLLBACK, dosya yükleme doğrulaması ve
+kullanıcı-kapsamlı geçmiş okuma. `soak_evidence.json` artık bir `interactive_lane`
+bloğu (oturum/eylem sayısı, DB havuz checkout/return/sızıntı/tx sayaçları,
+izolasyon/rollback/upload/mojibake) ve `interactive_metrics.csv` üretir. HTTP
+seridi `MERGEN_SOAK_HTTP_LANE=false` ile kapatılarak uygulamasız bulut kanıtı
+alınabilir.
+
+**Doğrulanan (bulut/offline).** `tests/testthat/test-db-pool-behavior.R` (54 PASS,
+gerçek SQLite: enable/disable, once semantiği, ödünç/iade sızıntısızlığı,
+commit/rollback yalıtımı, Türkçe round-trip, gerçek-checkout, secret-safe
+snapshot). `test-maintainability-ratchet.R` 100/100 korundu. App boot smoke PASS.
+`test-operational-soak-gate-contract.R` 157 PASS. Uygulamasız soak koşumu
+(`MERGEN_SOAK_HTTP_LANE=false`, 15 oturum/120 eylem) **PASS**: checkout=return=121,
+sızıntı=0, tx commit=45/rollback=15, izolasyon PASS, mojibake 0;
+`effective_success_rate`/`no_server_crash` HTTP seridi kapalı olduğu için
+`UNMEASURED`.
+
+**Henüz kanıtlanmayan (Windows VM gerekli).** Havuzun SQL Server'a karşı üretim
+doğrulaması: `MERGEN_DB_POOL_ENABLED=TRUE` ile VM'de
+`run_vm_encoding_preflight_real.R` Türkçe at-rest yazımı, SSMS satır teyidi ve
+attach soak sınır koşumuyla gerçek-sohbet kapasite farkı. Etkileşimli serit
+tek-süreçte ardışık oturumlardır ve lane-yerel SQLite kullanır; gerçek
+tarayıcı/websocket eşzamanlılığını veya SQL Server T-SQL davranışını kanıtlamaz.
+Gerçek LLM üretim throughput'u ayrı bir konudur (real-canary upstream gateway
+`ERR-234` ile bloke kalmaya devam eder).
+
 ### 2026-06-20 Windows VM limit-push soak ve evidence gate notu
 
 Windows VM üzerinde sınırı zorlamak için canlı uygulamaya attach edilen

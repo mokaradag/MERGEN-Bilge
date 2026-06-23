@@ -151,6 +151,21 @@ create_mergen_app <- function() {
     server = server,
     onStart = function() {
       validate_boot_state()
+      # İşlem-güvenli DB bağlantı havuzunu süreç ömrü boyunca BİR KEZ başlat.
+      # Havuzlama varsayılan KAPALI; MERGEN_DB_POOL_ENABLED=TRUE değilse no-op'tur
+      # (bulut/test/boot-smoke davranışı değişmez). Başlatma başarısızlığı boot'u
+      # kırmaz (init_db_pool_once kendi içinde güvenli tryCatch kullanır).
+      if (exists("init_db_pool_once", mode = "function", inherits = TRUE)) {
+        try(init_db_pool_once("primary"), silent = TRUE)
+      }
+      # Uygulama durduğunda havuzu temiz biçimde kapat. shinyApp()'in onStop
+      # parametresi yoktur; uygulama-seviyesi durdurma kancası onStart içinde
+      # shiny::onStop() ile kaydedilir.
+      if (exists("close_db_pool_once", mode = "function", inherits = TRUE)) {
+        shiny::onStop(function() {
+          try(close_db_pool_once(), silent = TRUE)
+        })
+      }
     }
   )
 }

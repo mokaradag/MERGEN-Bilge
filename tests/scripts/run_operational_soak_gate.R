@@ -76,6 +76,7 @@ soak_src("soak_scenarios.R")
 soak_src("mock_llm_server.R")
 soak_src("proxy_llm_server.R")
 soak_src("soak_client.R")
+soak_src("soak_interactive_lane.R")
 soak_src("soak_artifacts.R")
 
 cfg <- soak_resolve_config()
@@ -176,6 +177,7 @@ server_summary <- NULL
 main_error <- NULL
 attach_result <- list(configured = FALSE, reachable = FALSE)
 inprocess <- list(available = FALSE, reason = "calismadi")
+interactive_result <- NULL
 
 mem_before <- soak_sample_memory()
 temp_dirs <- unique(c(tempdir(), Sys.getenv("MERGEN_UPLOADS_DIR", ""),
@@ -198,11 +200,38 @@ main_result <- tryCatch({
     skipped_vec <- c(skipped_vec, "in_process_exercises (kapali)")
   }
 
+  # --- Etkilesimli (interactive) serit: gercek DB havuzu/islem/encoding/akis ---
+  if (isTRUE(cfg$interactive_lane)) {
+    cat(sprintf("[soak] etkilesimli serit: %d in-process oturum...\n", cfg$interactive_users))
+    interactive_result <- tryCatch(
+      soak_interactive_lane(cfg),
+      error = function(e) list(available = FALSE,
+                               reason = soak_redact_text(conditionMessage(e)))
+    )
+    if (!isTRUE(interactive_result$available)) {
+      warnings_vec <- c(warnings_vec,
+        sprintf("Etkilesimli serit calismadi: %s", interactive_result$reason %||% "bilinmeyen"))
+      skipped_vec <- c(skipped_vec, "interactive_lane")
+    } else {
+      cat(sprintf("  -> %d oturum / %d eylem | basari=%s | sizinti=%d | izolasyon=%s\n",
+                  interactive_result$sessions, interactive_result$actions,
+                  as.character(interactive_result$summary$success_rate),
+                  interactive_result$db_pool$outstanding_checkouts,
+                  as.character(interactive_result$isolation_pass)))
+    }
+  } else {
+    skipped_vec <- c(skipped_vec, "interactive_lane (kapali)")
+  }
+
   # --- Attach modu (calisan uygulama) ---
   attach_result <- soak_attach_probe(cfg$app_url)
 
   # --- LLM serit + yuk ---
-  if (identical(cfg$llm_lane, "real-canary")) {
+  if (!isTRUE(cfg$http_lane)) {
+    cat("[soak] HTTP yuk seridi KAPALI (MERGEN_SOAK_HTTP_LANE=false); ",
+        "yalniz in-process + etkilesimli seritler calisti.\n", sep = "")
+    skipped_vec <- c(skipped_vec, "http_load_lane (kapali)")
+  } else if (identical(cfg$llm_lane, "real-canary")) {
     real_url <- cfg$proxy$real_endpoint
     real_key <- Sys.getenv("MERGEN_SOAK_REAL_API_KEY", unset = "")
     if (!nzchar(real_url) || !nzchar(real_key)) {
@@ -339,18 +368,29 @@ summary <- soak_metrics_summary(metrics)
 
 redaction0 <- list(total_leaks = 0L, files = list(), checked = 0L)
 
+# Etkilesimli serit eylem metriklerini ayri CSV olarak yaz (redaksiyon pass'i
+# soak_write_artifacts icinde tum .csv dosyalarini kapsar).
+if (!is.null(interactive_result) && isTRUE(interactive_result$available) &&
+    is.data.frame(interactive_result$metrics_df)) {
+  dir.create(artifact_dir, recursive = TRUE, showWarnings = FALSE)
+  utils::write.csv(interactive_result$metrics_df,
+                   file.path(artifact_dir, "interactive_metrics.csv"),
+                   row.names = FALSE, fileEncoding = "UTF-8")
+}
+
 threshold_checks <- soak_evaluate_thresholds(
   cfg, summary, inprocess, redaction0, memory_growth, temp_growth_mb,
-  server_alive_at_end, injected_faults
+  server_alive_at_end, injected_faults, interactive_result
 )
 threshold_outcome <- soak_threshold_outcome(threshold_checks)
-proofs <- soak_proof_statements(cfg, summary, inprocess, attach_result)
+proofs <- soak_proof_statements(cfg, summary, inprocess, attach_result, interactive_result)
 
 evidence <- soak_build_evidence(
   cfg, summary, inprocess, proxy_summary, capacity_rows, redaction0,
   list(before = mem_before, after = mem_after), memory_growth, temp_summary,
   attach_result, failure_probe, threshold_checks, threshold_outcome, proofs,
-  duration_actual, warnings_vec, skipped_vec, server_alive_at_end, injected_faults
+  duration_actual, warnings_vec, skipped_vec, server_alive_at_end, injected_faults,
+  interactive_result
 )
 
 redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
@@ -359,14 +399,15 @@ redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
 # Redaksiyon sonucunu esik + evidence'a yansit ve FINALIZE et.
 threshold_checks <- soak_evaluate_thresholds(
   cfg, summary, inprocess, redaction, memory_growth, temp_growth_mb,
-  server_alive_at_end, injected_faults
+  server_alive_at_end, injected_faults, interactive_result
 )
 threshold_outcome <- soak_threshold_outcome(threshold_checks)
 evidence <- soak_build_evidence(
   cfg, summary, inprocess, proxy_summary, capacity_rows, redaction,
   list(before = mem_before, after = mem_after), memory_growth, temp_summary,
   attach_result, failure_probe, threshold_checks, threshold_outcome, proofs,
-  duration_actual, warnings_vec, skipped_vec, server_alive_at_end, injected_faults
+  duration_actual, warnings_vec, skipped_vec, server_alive_at_end, injected_faults,
+  interactive_result
 )
 redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
                                   proxy_summary, capacity_rows, NULL)

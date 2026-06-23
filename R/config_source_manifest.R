@@ -117,13 +117,15 @@ source_manifest_sections <- list(
     "R/config_seam_registry.R"
   ),
 
-  # database: DB sınırları: Unicode escape, encoding guard, bağlantı, kullanıcı
-  # encoding, doğrulama, markdown güvenliği, mesaj formatlama, sohbet
-  # okuyucu/mutasyon, geri bildirim ve üst seviye DB orkestrasyonu.
+  # database: DB sınırları: Unicode escape, encoding guard, bağlantı, işlem-güvenli
+  # bağlantı havuzu (helpers_db_pool.R; bağlantıdan SONRA), kullanıcı encoding,
+  # doğrulama, markdown güvenliği, mesaj formatlama, sohbet okuyucu/mutasyon,
+  # geri bildirim ve üst seviye DB orkestrasyonu.
   database = c(
     "R/helpers_db_unicode_escape.R",
     "R/helpers_db_encoding.R",
     "R/helpers_db_connection.R",
+    "R/helpers_db_pool.R",
     "R/helpers_db_user_encoding.R",
     "R/helpers_db_validation.R",
     "R/helpers_markdown_safety.R",

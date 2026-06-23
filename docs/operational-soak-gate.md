@@ -14,8 +14,9 @@ altında dayanıklı mı?" sorusunu yanıtlar.
 
 - Ana giriş: `tests/scripts/run_operational_soak_gate.R`
 - Yardımcı modüller: `tests/scripts/soak_config.R`, `soak_metrics.R`,
-  `soak_scenarios.R`, `soak_client.R`, `soak_artifacts.R`,
-  `soak_secret_redaction.R`, `mock_llm_server.R`, `proxy_llm_server.R`
+  `soak_scenarios.R`, `soak_client.R`, `soak_interactive_lane.R`,
+  `soak_artifacts.R`, `soak_secret_redaction.R`, `mock_llm_server.R`,
+  `proxy_llm_server.R`
 - Sözleşme testi: `tests/testthat/test-operational-soak-gate-contract.R`
 
 ---
@@ -73,6 +74,38 @@ Bu nedenle ana çok-kullanıcılı soak testi **tek gerçek anahtara bağlı olm
 - Amaç: MERGEN'in üretim VM koşullarında gerçek LLM endpoint'iyle hâlâ
   konuşabildiğini doğrulamak.
 - **50/100 kullanıcı throughput'unu tahmin etmek için KULLANILMAZ.**
+
+### Lane D — Interactive (in-process etkileşimli oturum)
+
+GET-only HTTP seridi (Lane A'nın uygulama-kök yükü) yalnızca tek-thread'li
+`httpuv` index sayfası servisini ölçer; **sohbet/DB/streaming/stop yollarını
+açmaz**. Etkileşimli serit bu boşluğu kapatır.
+
+- `tests/scripts/soak_interactive_lane.R`; ana yük seridinden ayrı çalışır ve
+  varsayılan AÇIK'tır (`MERGEN_SOAK_INTERACTIVE_LANE=true`).
+- **Gerçek** uygulama yardımcılarını ve **işlem-güvenli DB havuzunu**
+  (`R/helpers_db_pool.R`) **gerçek bir DBI arka ucuna** (RSQLite, geçici dosya)
+  karşı çalıştırır; havuzu `init_db_pool_once(force = TRUE)` ile zorlar.
+- Her "oturum" sohbet-benzeri bir eylem dizisi yürütür: oturum açma + anahtar
+  izolasyonu, sohbet oluşturma (`with_db_transaction` INSERT), kullanıcı mesajı
+  kaydetme, gerçek streaming-delta sınıflandırma
+  (`mergen_stream_classify_poll_lines`), asistan mesajı kaydetme, stop/iptal
+  kararı (`mergen_stream_abort_cleanup_plan`) + niyetli işlem ROLLBACK
+  doğrulaması, küçük dosya yükleme doğrulaması (`validate_uploaded_file`),
+  kullanıcı-kapsamlı kayıtlı/geçmiş okuma ve oturum kapatma.
+- Ölçülenler: eylem başarı oranı, p50/p95/p99 gecikme, throughput, **DB havuz
+  sayaçları** (checkout/return/sızıntı, tx begin/commit/rollback), oturumlar
+  arası izolasyon, Türkçe round-trip mojibake ve sır sızıntısı.
+- **Sınır:** tek-süreçte **ardışık** oturumlardır (gerçek tarayıcı/websocket
+  eşzamanlılığı DEĞİL) ve **lane-yerel SQLite** kullanır (üretim T-SQL/SQL Server
+  DEĞİL). Bu sınırlar `soak_evidence.json` içinde `does_not_prove` altında açıkça
+  yazılır.
+
+> HTTP seridi `MERGEN_SOAK_HTTP_LANE=false` ile kapatılabilir; bu durumda kapı
+> yalnızca in-process + etkileşimli seritleri çalıştırır ve **çalışan bir uygulama
+> URL'sine ihtiyaç duymaz** (bulut/uygulamasız etkileşimli kanıt için). HTTP
+> seridi atlandığında `effective_success_rate` ve `no_server_crash` `UNMEASURED`
+> olur (kanıt değildir).
 
 ---
 
@@ -261,6 +294,10 @@ Rscript tests/scripts/run_operational_soak_gate.R
 | `MERGEN_SOAK_CLIENT_TIMEOUT_SECONDS` | istek başına client timeout |
 | `MERGEN_SOAK_APP_URL` | attach modu: çalışan uygulama kökü |
 | `MERGEN_SOAK_IN_PROCESS_EXERCISES` | in-process app-yolu alıştırmaları (varsayılan TRUE) |
+| `MERGEN_SOAK_HTTP_LANE` | HTTP yük seridi (varsayılan TRUE; FALSE = yalnız in-process + interactive, uygulama URL'si gerekmez) |
+| `MERGEN_SOAK_INTERACTIVE_LANE` | etkileşimli in-process oturum seridi (varsayılan TRUE) |
+| `MERGEN_SOAK_INTERACTIVE_USERS` | etkileşimli oturum sayısı (varsayılan `min(max(users,8),50)`) |
+| `MERGEN_SOAK_INTERACTIVE_ITERATIONS` | oturum kümesinin tekrar sayısı (varsayılan 1) |
 
 ### Kapasite eğrisi
 
@@ -310,6 +347,7 @@ Rscript tests/scripts/run_operational_soak_gate.R
 | `MERGEN_SOAK_FAIL_ON_MOJIBAKE` | mojibake bulunursa fail (varsayılan TRUE) |
 | `MERGEN_SOAK_FAIL_ON_SECRET_LEAK` | sır sızıntısı bulunursa fail (varsayılan TRUE) |
 | `MERGEN_SOAK_FAIL_ON_BROWSER_CONSOLE_ERRORS` | tarayıcı konsol hatası fail bayrağı (bu kapı ölçmez) |
+| `MERGEN_SOAK_FAIL_ON_INTERACTIVE_DB_LEAK` | etkileşimli seritte DB bağlantı sızıntısı/izolasyon ihlali fail (varsayılan TRUE) |
 
 ---
 
@@ -319,12 +357,13 @@ Rscript tests/scripts/run_operational_soak_gate.R
 
 | Dosya | İçerik |
 |-------|--------|
-| `soak_evidence.json` | Makinece okunabilir kanıt (şema + does_prove/does_not_prove) |
+| `soak_evidence.json` | Makinece okunabilir kanıt (şema + does_prove/does_not_prove + `interactive_lane` bloğu: oturum/eylem sayısı, DB havuz sayaçları, izolasyon/rollback/upload/mojibake) |
 | `summary.md` | İnsan-okunur özet |
 | `metrics.csv` | İstek başına metrikler (zaman, serit, senaryo, gecikme, durum, kaynak) |
 | `failures.jsonl` | Başarısız istekler (redakteli) |
 | `config.json` | Secret-safe yapılandırma (ham endpoint/key YOK) |
 | `key_routing_summary.json` | Anahtar yönlendirme + izolasyon özeti |
+| `interactive_metrics.csv` | Etkileşimli serit eylem başına metrikleri (varsa) |
 | `capacity_curve.csv` | Kapasite eğrisi (varsa) |
 | `logs/fake_llm.log` / `logs/proxy_llm.log` | Sunucu logları (redakteli) |
 | `logs/proxy_requests.jsonl` | Proxy istek kayıtları (takma adlı, ham anahtar YOK) |
@@ -366,6 +405,11 @@ bulunursa kapı (varsayılan) FAIL olur.
   doğrulandı; oturumlar arası anahtar izolasyonu çalıştı.
 - Yükleme doğrulayıcısı traversal/uzantı/kontrol-byte dosya adlarını reddetti.
 - Proxy serit çok sayıda ayrı sahte kişisel anahtarı 1:1 izledi (izolasyon).
+- **Etkileşimli serit:** in-process sohbet-benzeri oturumlar **gerçek DB havuzu**
+  üzerinde sohbet/mesaj yazma, streaming-delta işleme, stop/iptal ve geçmiş okuma
+  yaptı; havuz checkout/return dengeli (**bağlantı sızıntısı yok**), işlem
+  commit/rollback doğru (niyetli rollback satır bırakmadı), oturumlar arası
+  izolasyon korundu ve Türkçe metin mojibake'siz round-trip edildi.
 
 **Kanıtlamaz (does_not_prove):**
 
@@ -374,9 +418,12 @@ bulunursa kapı (varsayılan) FAIL olur.
   kanıtlamaz.
 - Windows VM dışındaki gerçek ağlardaki üretim gecikmesini kanıtlamaz.
 - Tam-yığın tarayıcı/websocket Shiny oturum eşzamanlılığını kanıtlamaz
-  (in-process alıştırmalar **helper-düzeyidir**).
+  (in-process alıştırmalar **helper-düzeyidir**; etkileşimli serit de tek-süreçte
+  **ardışık** oturumlardır, gerçek websocket eşzamanlılığı değildir).
 - Gerçek SQL Server'a Türkçe yazımının at-rest doğruluğunu kanıtlamaz (ayrı VM
-  kodlama preflight kapısıdır: `run_vm_encoding_preflight_real.R`).
+  kodlama preflight kapısıdır: `run_vm_encoding_preflight_real.R`). Etkileşimli
+  serit **lane-yerel SQLite** kullanır; üretim T-SQL/SQL Server davranışını
+  kanıtlamaz.
 
 ---
 
@@ -679,3 +726,36 @@ Aynı VM oturumunda evidence gate de çalıştırıldı ve konsolda `Toplam: 13 
 `artifacts/vm-evidence/20260620-104919/evidence.json` idi. Bu VM evidence gate
 PASS sonucu soak FAIL sonucunu geçersiz kılmaz: evidence gate yapı/boot/encoding/UX
 kanıtıdır, 1000 eşzamanlı uzun proxy-lane kapasite kanıtı değildir.
+
+---
+
+## 14. 2026-06-22 Interactive lane + transaction-safe DB pool (cloud evidence)
+
+Bu bölüm, GET-only soak boşluğunu kapatmak için eklenen **etkileşimli (interactive)
+serit** ve **işlem-güvenli DB bağlantı havuzu** (`R/helpers_db_pool.R`) için bulut
+oturumunda alınan kanıtı kaydeder.
+
+**Çalıştırma (bulut/uygulamasız; HTTP seridi kapalı):**
+
+```bash
+LC_ALL=C.UTF-8 MERGEN_SOAK_HTTP_LANE=false MERGEN_SOAK_INTERACTIVE_USERS=15 \
+  Rscript tests/scripts/run_operational_soak_gate.R
+```
+
+Gözlenen sonuç (genel **PASS**): etkileşimli serit 15 in-process oturum / 120 eylem,
+`success_rate=1`, p95≈4 ms, throughput≈19.655/dk. DB havuzu: checkout=121,
+return=121, **outstanding=0 (bağlantı sızıntısı yok)**, tx commit=45, rollback=15.
+Eşik kontrolleri: `interactive_success_rate=PASS`, `interactive_db_no_leak=PASS`,
+`interactive_cross_session_isolation=PASS`, `interactive_tx_rollback_clean=PASS`,
+`interactive_mojibake_hits=PASS (0)`. `effective_success_rate` ve `no_server_crash`
+HTTP seridi kapalı olduğu için `UNMEASURED` (kanıt değildir). `soak_evidence.json`
+ham DSN/dosya yolu/anahtar sızdırmadı (redaksiyon self-check temiz).
+
+**Kanıtlar:** işlem-güvenli havuz katmanının checkout/return/commit/rollback ve
+no-leak davranışı, oturumlar arası izolasyon ve Türkçe round-trip gerçek bir DBI
+arka ucuna karşı yük altında doğrulandı.
+
+**Kanıtlamaz:** gerçek tarayıcı/websocket eşzamanlılığı, gerçek SQL Server T-SQL
+at-rest davranışı ve gerçek LLM throughput'u. Bunlar Windows VM gate'lerinde
+(`run_vm_preflight_real.R`, `run_vm_encoding_preflight_real.R`, browser UX smoke)
+ve canlı uygulamaya attach soak koşumunda ayrıca doğrulanmalıdır.

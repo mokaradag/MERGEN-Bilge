@@ -245,7 +245,10 @@ if (isTRUE(as.logical(Sys.getenv("MERGEN_DISABLE_FUTURES", "false")))) {
   start_gc_scheduler_once()
 }
 
-# Veritabanı bağlantı havuzu (server.R'de başlatılır)
+# Veritabanı bağlantı havuzu için geriye dönük genel değişken. Varsayılan NULL
+# (havuzlama KAPALI -> get_connection() doğrudan ODBC bağlantısı açar). İşlem-güvenli
+# havuz katmanı R/helpers_db_pool.R içindedir ve MERGEN_DB_POOL_ENABLED=TRUE iken
+# app.R onStart aşamasında init_db_pool_once() ile bu değişkene yazılır.
 pool <- NULL
 
 # ==============================================================================
