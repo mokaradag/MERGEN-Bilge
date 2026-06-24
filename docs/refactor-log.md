@@ -387,6 +387,25 @@ dürüstlük alanları zorunlu kılındı.
   0 fail/warn/skip (18/17/11); `ai_validate quick` TAM
   (`artifacts/ai-validation/20260624-155351/summary.json`).
 
+#### Codex review 4. tur (1 × P1 — kritik kapı doğruluğu)
+- **Sağlık kontrolleri SATIR bazında değerlendirilmeli (P1):**
+  `health_collect_checks()` `do.call(rbind, ...)` ile bir DATA FRAME döndürür
+  (satır başına bir kontrol). `mergen_post_deploy_smoke_evaluate()` ise
+  `for (chk in checks)` ile gezerken bir veri çerçevesinde SÜTUNLARI dolaşıyordu;
+  atomik sütunlar `is.list(chk)` dalını atladığı için tüm id'ler boş, tüm durumlar
+  "unknown" kalıyordu. Sonuç: gerçek bir `db.primary`/`app.boot` "critical" sonucu
+  `critical_failures`'a hiç eklenmiyor, `should_fail` false kalıyor ve kapı kritik
+  kontrole rağmen GEÇİYORDU. Çözüm: değerlendirici, boş kontrolü ve döngüden ÖNCE
+  veri çerçevesini satır-kayıtlarına çevirir
+  (`lapply(seq_len(nrow), function(i) as.list(checks[i, , drop = FALSE]))`);
+  `is.data.frame` `is.list`'TEN önce kontrol edilir (veri çerçevesi de bir listedir).
+  Liste-kayıt yolu (mevcut testler) değişmez.
+- **Test:** `test-post-deploy-smoke-contract.R` data-frame satır-değerlendirme
+  testi (kritik `db.primary` satırı `should_fail`/`fail`/`critical_failures`
+  tetikler; tümü-ok → pass; 0 satır → no_checks). Doğrulama: 3 odak test
+  0 fail/warn/skip (19/17/11); `ai_validate quick` TAM
+  (`artifacts/ai-validation/20260624-161202/summary.json`).
+
 ---
 
 ## 2026-06-20 — ServerRuntimeContext SSO auth-ready / yenilenebilir modül wiring katmanının ayrılması

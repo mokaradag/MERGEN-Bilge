@@ -178,6 +178,21 @@ Do NOT redo:
   PASS (`artifacts/ai-validation/20260624-155351/summary.json`). GOTCHA: the post-deploy
   redaction is now "redact free-form string VALUES, then restore the enum/identity scalars"
   — if you add a new reader-interpreted enum field, add it to the restore set too.
+- **Codex review follow-up — round 4 (1× P1, gate correctness):** `health_collect_checks()`
+  returns a DATA FRAME (`do.call(rbind, ...)`, one row per check), but
+  `mergen_post_deploy_smoke_evaluate()` used `for (chk in checks)` which iterates a
+  data frame's COLUMNS, not rows. Atomic columns skipped the `is.list(chk)` branch →
+  every id blank, every status "unknown" → a real `db.primary`/`app.boot` critical was
+  never added to `critical_failures`, `should_fail` stayed FALSE, and the gate PASSED
+  despite a critical check. FIX: before the empty-check and loop, convert a data frame to
+  row records (`lapply(seq_len(nrow(checks)), function(i) as.list(checks[i, , drop = FALSE]))`);
+  `is.data.frame` is checked BEFORE `is.list` (a data frame is also a list). The
+  list-of-records path (existing tests) is unchanged. Test: data-frame row evaluation
+  (critical `db.primary` row triggers fail/critical_failures; all-ok → pass; 0 rows →
+  no_checks). Focused 19/17/11 0-fail; `ai_validate quick` PASS
+  (`artifacts/ai-validation/20260624-161202/summary.json`). GOTCHA: any future evaluator
+  input-shape change must keep the data-frame→rows normalization first; never iterate a
+  health-checks data frame directly with `for (x in df)`.
 - **VALIDATION (Linux/cloud, R 4.6.0, logger + placeholder env):**
   `ai_validate quick` FULL PASS (failed=0, skipped=0, app_source_smoke=passed,
   `artifacts/ai-validation/20260624-102241/summary.json`). `ai_validate full

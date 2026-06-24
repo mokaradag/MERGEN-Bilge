@@ -72,6 +72,24 @@ mergen_post_deploy_smoke_evaluate <- function(checks,
     error = function(e) ""
   )
 
+  # health_collect_checks() bir DATA FRAME döndürür (do.call(rbind, ...)); satır
+  # başına bir kontrol kaydı tutar. `for (chk in checks)` bir veri çerçevesinde
+  # SÜTUNLARI gezer, satırları değil; bu yüzden çerçeveyi ÖNCE satır-kayıtlarına
+  # çeviriyoruz. Aksi halde her sütun atomik vektör olur, aşağıdaki is.list(chk)
+  # dalı atlanır, tüm id'ler boş ve tüm durumlar "unknown" kalır; gerçek bir
+  # kritik bozulma (ör. db.primary/app.boot "critical") critical_failures'a hiç
+  # eklenmez ve should_fail false kalarak kapı kritik kontrole rağmen geçer.
+  # (is.data.frame, is.list'TEN ÖNCE kontrol edilmeli: veri çerçevesi de bir
+  # listedir.)
+  if (is.data.frame(checks)) {
+    n_rows <- nrow(checks)
+    checks <- if (n_rows >= 1L) {
+      lapply(seq_len(n_rows), function(i) as.list(checks[i, , drop = FALSE]))
+    } else {
+      list()
+    }
+  }
+
   # Boş/eksik kontrol seti şüphelidir: sağlığı doğrulayamadık -> fail.
   if (is.null(checks) || length(checks) == 0L) {
     return(list(

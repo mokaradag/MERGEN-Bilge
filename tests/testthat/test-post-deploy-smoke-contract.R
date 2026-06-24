@@ -82,6 +82,41 @@ test_that("herhangi bir critical durum bloklar", {
   expect_true("some.check" %in% res$failing)
 })
 
+test_that("data frame kontrol seti satir bazinda degerlendirilir (sutun degil)", {
+  # health_collect_checks() do.call(rbind, ...) ile bir DATA FRAME döndürür:
+  # satır başına bir kontrol. Değerlendirici satırları gezmeli; aksi halde
+  # sütun iterasyonu tüm id'leri boş / tüm durumları "unknown" yapar ve gerçek
+  # bir kritik bozulma kapıyı bloklayamaz.
+  df <- do.call(rbind, list(
+    data.frame(id = "app.boot",   status = "ok",       stringsAsFactors = FALSE),
+    data.frame(id = "db.primary", status = "critical", stringsAsFactors = FALSE),
+    data.frame(id = "llm.endpoint", status = "ok",     stringsAsFactors = FALSE)
+  ))
+  res <- mergen_post_deploy_smoke_evaluate(df)
+  expect_true(res$should_fail)
+  expect_identical(res$overall, "fail")
+  expect_true("db.primary" %in% res$failing)
+  expect_true("db.primary" %in% res$critical_failures)
+  expect_identical(res$total, 3L)
+  expect_identical(as.integer(res$counts[["ok"]]), 2L)
+  expect_identical(as.integer(res$counts[["critical"]]), 1L)
+
+  # Tümü ok olan data frame → pass, bloklamaz.
+  df_ok <- do.call(rbind, list(
+    data.frame(id = "app.boot",   status = "ok", stringsAsFactors = FALSE),
+    data.frame(id = "db.primary", status = "ok", stringsAsFactors = FALSE)
+  ))
+  res_ok <- mergen_post_deploy_smoke_evaluate(df_ok)
+  expect_identical(res_ok$overall, "pass")
+  expect_false(res_ok$should_fail)
+
+  # 0 satırlı data frame → no_checks ile bloklar (sütun sayısı > 0 olsa bile).
+  df_empty <- data.frame(id = character(0), status = character(0), stringsAsFactors = FALSE)
+  res_empty <- mergen_post_deploy_smoke_evaluate(df_empty)
+  expect_true(res_empty$should_fail)
+  expect_identical(res_empty$reason, "no_checks")
+})
+
 test_that("kritik kimlikli kontrolun warning olmasi bloklar", {
   checks <- list(
     list(id = "db.primary", status = "warning"),
