@@ -224,6 +224,32 @@ dürüstlük alanları zorunlu kılındı.
   `R/helpers_claude_code_documents.R` (679), `R/module_file_manager.R` (677); frontend
   `www/js/deep_space_intro.js` (820) / `www/js/ai_expert_manager.js` (802/45).
 
+### Codex review düzeltmeleri (aynı oturum, 3 × P2)
+- **Serileştirilmiş JSON redaksiyonu artifact'ı bozabilir (P2):** `.smoke_redact()`
+  serileştirilmiş JSON üzerinde `gsub(fixed)` çalıştırdığı için kısa/ortak alt-dize
+  veya JSON noktalama içeren bir secret env değeri JSON syntax'ını ezip dosyayı
+  GEÇERSİZ kılabilirdi (okuyucu NULL döner → panel koşumu "yok" sanar). Yeni saf
+  yardımcı `mergen_post_deploy_smoke_redact_json_safe()` redaksiyonu yalnızca
+  GEÇERLİ JSON üretiyorsa uygular; aksi halde zaten secret-safe olan orijinali
+  korur. `run_post_deploy_smoke.R` artık bu güvenli yazıcıyı kullanır.
+- **`should_fail` UI'de kritik gösterilmiyordu (P2):** gate hiç kontrol toplayamazsa
+  değerlendirici `overall="unknown"` ama `should_fail=TRUE` döner (`reason="no_checks"`).
+  Önceki UI yalnızca `overall`'a bakıp nötr "Bilinmiyor" gösteriyor, bloklamayı
+  gizliyordu. `R/module_health_release.R` artık `should_fail=TRUE` olduğunda hem
+  metrik kutusunu hem kart pill'ini "Başarısız" + `health-status-critical` gösterir.
+- **`does_prove` çalışan-servis kanıtını abartıyordu (P2):** kapı `MERGEN_RUN_APP=false`
+  ile çalışır (Shiny servisi başlatılmaz, app URL probe edilmez). `does_prove` artık
+  yalnızca in-process / güvenli-boot sağlık kontrollerini iddia eder; `does_not_prove`
+  "dağıtılan Shiny servisinin ayakta olduğunu KANITLAMAZ (app URL probe edilmez)"
+  uyarısını ekler.
+- **Eklenen testler:** `test-post-deploy-smoke-contract.R` (redact-safe yardımcı:
+  geçerli redaksiyon uygulanır / bozan redaksiyon orijinale düşer / NULL redaktör;
+  + does_prove/does_not_prove dar iddia) ve `test-health-release-ui-behavior.R`
+  (no_checks should_fail → kritik "Başarısız"). Doğrulama: 3 odak test dosyası
+  0 fail/0 warn/0 skip (16/17/11); `ai_validate quick` TAM (failed=0, skipped=0,
+  app_source_smoke=passed; `artifacts/ai-validation/20260624-120029/summary.json`).
+  Maintainability etkilenmez (değişiklikler tests/scripts + bir health UI modülü).
+
 ---
 
 ## 2026-06-20 — ServerRuntimeContext SSO auth-ready / yenilenebilir modül wiring katmanının ayrılması

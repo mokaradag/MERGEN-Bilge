@@ -156,6 +156,26 @@ testthat::test_that("health_release_ui kanıt bulunamadığında başarı gibi g
   testthat::expect_true(grepl("—", html, fixed = TRUE))
 })
 
+testthat::test_that("health_release_ui post-deploy should_fail durumunu kritik gosterir (no_checks gizlenmez)", {
+  env <- .healthReleaseEnv()
+  ov <- .fullReleaseOverview()
+  # Gate hiç kontrol toplayamadı: değerlendirici overall="unknown" ama
+  # should_fail=TRUE döner (reason="no_checks"). Bu bloklayan kapı nötr
+  # "Bilinmiyor" değil, kritik "Başarısız" gösterilmeli.
+  ov$post_deploy_smoke <- list(
+    found = TRUE, status = "unknown", should_fail = TRUE,
+    available_runs = c("20260624-100000"), selected_run = "20260624-100000",
+    generated_at_utc = "2026-06-24T10:00:00Z", evaluated_at = "",
+    total = 0L, pass_count = 0L, warn_count = 0L, critical_count = 0L,
+    critical_failures = character(0)
+  )
+  html <- paste(as.character(env$health_release_ui(ov)), collapse = "\n")
+
+  # Bloklayan kapı "Başarısız" + kritik renkle gösterilmeli (kart pill + metrik kutusu).
+  testthat::expect_true(grepl("Başarısız", html, fixed = TRUE))
+  testthat::expect_true(grepl("health-status-critical", html, fixed = TRUE))
+})
+
 testthat::test_that(".health_release_pill kanıt durumunu doğru renk ve Türkçe etikete eşler", {
   env <- .healthReleaseEnv()
 

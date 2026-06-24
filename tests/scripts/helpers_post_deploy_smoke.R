@@ -250,13 +250,16 @@ mergen_post_deploy_smoke_artifact_record <- function(result,
       "durum sayaçları ve genel sonuç metadata'sı tutulur."
     ),
     does_prove = paste(
-      "Çalışan uygulamanın boot/DB/depolama/servis sağlık kontrollerinin",
-      "dağıtım anındaki anlık (snapshot) durumunu kanıtlar."
+      "Uygulama ortamı güvenli boot modunda (MERGEN_RUN_APP=false; Shiny servisi",
+      "BAŞLATILMADAN, app.R source edilerek) yüklendikten sonra toplanan in-process",
+      "sağlık kontrollerinin (boot, DB, depolama, yapılandırma, servis erişilebilirlik",
+      "probe'ları) dağıtım anındaki anlık (snapshot) sonucunu kanıtlar."
     ),
     does_not_prove = paste(
-      "Yük/eşzamanlılık dayanıklılığını, uzun süreli stabiliteyi, gerçek",
-      "tarayıcı UX'ini veya VM/SSO/SQL Server Türkçe kodlama kanıtını KANITLAMAZ;",
-      "tek bir anlık sağlık fotoğrafıdır."
+      "Dağıtılan Shiny servisinin gerçekten ayakta olduğunu/istek karşıladığını",
+      "KANITLAMAZ (app URL probe EDİLMEZ); ayrıca yük/eşzamanlılık dayanıklılığını,",
+      "uzun süreli stabiliteyi, gerçek tarayıcı UX'ini veya VM/SSO/SQL Server Türkçe",
+      "kodlama kanıtını kapsamaz; tek bir in-process anlık sağlık fotoğrafıdır."
     ),
     proof_boundary_notes = paste(
       "Bu artifact yalnızca 'pass' olduğunda anlık sağlık kanıtıdır;",
@@ -264,4 +267,39 @@ mergen_post_deploy_smoke_artifact_record <- function(result,
       "SKIP edilen kontroller kanıt DEĞİLDİR."
     )
   )
+}
+
+# Serileştirilmiş JSON kaydını verilen redaktör fonksiyonuyla redakte eder; ANCAK
+# redaksiyon GEÇERLİ JSON üretmezse redakte EDİLMEMİŞ orijinali döndürür.
+#
+# Gerekçe: kayıt zaten secret-safe kurulur (yalnızca kontrol kimlikleri, durum
+# sayaçları ve genel metadata; ham log/ortam/secret yok). Redaktör savunma
+# derinliğidir; ancak kısa veya ortak alt-dize secret değerleri (örn. `1`, `:`,
+# JSON noktalama içeren bir parola) serileştirilmiş JSON'un anahtar/sayı/syntax
+# parçalarını ezip dosyayı GEÇERSİZ kılabilir. Bu durumda okuyucu
+# (release_evidence_read_json) NULL döner ve sağlık paneli koşumu "yok" sanır.
+# Bu yüzden redaksiyon yalnızca geçerli JSON üretirse uygulanır; aksi halde
+# zaten secret-safe olan orijinal JSON korunur (artifact her zaman okunabilir).
+#
+# Argümanlar:
+#   json_txt  : serileştirilmiş JSON (tek elemanlı karakter).
+#   redact_fn : tek karakter girip tek karakter döndüren redaktör; NULL ise
+#               redaksiyon uygulanmaz ve orijinal döner.
+mergen_post_deploy_smoke_redact_json_safe <- function(json_txt, redact_fn = NULL) {
+  json_txt <- as.character(json_txt)
+  if (length(json_txt) != 1L || is.na(json_txt) || !nzchar(json_txt)) {
+    return(json_txt)
+  }
+  if (is.null(redact_fn) || !is.function(redact_fn)) {
+    return(json_txt)
+  }
+
+  redacted <- tryCatch(as.character(redact_fn(json_txt)), error = function(e) json_txt)
+  if (length(redacted) != 1L || is.na(redacted) || !nzchar(redacted)) {
+    return(json_txt)
+  }
+
+  # Redaksiyon JSON yapısını bozduysa orijinale (yine secret-safe) düş.
+  gecerli <- tryCatch(isTRUE(jsonlite::validate(redacted)), error = function(e) FALSE)
+  if (gecerli) redacted else json_txt
 }

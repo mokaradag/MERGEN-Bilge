@@ -95,6 +95,16 @@ Do NOT redo:
 - **Ratchet NOT loosened.** maintainability 100/100, max file 681, max fn 24
   (unchanged). No manifest/source-order/zone change (scripts + 2 runtime helpers +
   tests + docs only).
+- **Codex review follow-up (3× P2, all fixed same session):** (1) redacting the
+  *serialized* JSON could corrupt it (short/punctuation secret substrings) → added
+  pure `mergen_post_deploy_smoke_redact_json_safe()` (redact-if-valid-else-original
+  via `jsonlite::validate`); gate uses it. (2) UI ignored `should_fail`, so the
+  no-checks case (`overall="unknown"` + `should_fail=TRUE`) showed neutral
+  "Bilinmiyor" → now forced to critical "Başarısız" (tile + card pill). (3)
+  `does_prove` overstated "çalışan uygulama" though the gate runs `MERGEN_RUN_APP=false`
+  (no Shiny service, no URL probe) → narrowed to in-process checks; `does_not_prove`
+  adds the "deployed service up / app URL not probed" caveat. Tests added; focused
+  3-file run 16/17/11 0-fail; `ai_validate quick` PASS.
 - **VALIDATION (Linux/cloud, R 4.6.0, logger + placeholder env):**
   `ai_validate quick` FULL PASS (failed=0, skipped=0, app_source_smoke=passed,
   `artifacts/ai-validation/20260624-102241/summary.json`). `ai_validate full

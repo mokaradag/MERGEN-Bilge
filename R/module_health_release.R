@@ -133,7 +133,14 @@
 
   tagList(
     div(class = "health-summary-list",
-        div(strong("Genel sonuç:"), .health_release_pill(pds$status)),
+        # Bloklayan kapı (should_fail) kritik gösterilir; overall="unknown" +
+        # should_fail=TRUE (no_checks) durumunun nötr görünmesini önler.
+        div(strong("Genel sonuç:"),
+            if (isTRUE(pds$should_fail)) {
+              .health_release_pill("fail", label = "Başarısız")
+            } else {
+              .health_release_pill(pds$status)
+            }),
         div(strong("Üretim (UTC):"), span(health_safe_value(pds$generated_at_utc))),
         div(strong("Değerlendirme:"), span(health_safe_value(pds$evaluated_at))),
         div(strong("Kontrol sayısı:"), span(health_safe_value(as.integer(pds$total %||% 0L)))),
@@ -175,6 +182,12 @@ health_release_ui <- function(overview, ns = NULL) {
 
   # Dağıtım sonrası genel sonucu kısa Türkçe etikete ve rozet rengine eşle.
   pds_durum <- tolower(as.character((if (pds_bulundu) pds$status else "not_found") %||% "unknown")[1])
+  # Bloklayan kapı her zaman KRİTİK gösterilir: gate hiç kontrol toplayamazsa
+  # değerlendirici overall="unknown" ama should_fail=TRUE döner (reason="no_checks").
+  # Bunu nötr "Bilinmiyor" göstermek, dağıtımın aslında DURDURULDUĞUNU gizler.
+  if (pds_bulundu && isTRUE(pds$should_fail)) {
+    pds_durum <- "fail"
+  }
   pds_etiket <- switch(pds_durum,
     pass = "Geçti", degraded = "Kısmi", fail = "Başarısız",
     not_found = "—", "Bilinmiyor")

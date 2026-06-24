@@ -211,6 +211,53 @@ test_that("artifact kaydi generated_at_utc bos verilince UTC zaman damgasi ureti
   expect_true(grepl("Z$", rec$generated_at_utc))
 })
 
+test_that("kanit kaydi calisan-servis kanitini abartmaz (in-process snapshot)", {
+  rec <- mergen_post_deploy_smoke_artifact_record(
+    mergen_post_deploy_smoke_evaluate(list(list(id = "app.boot", status = "ok"))),
+    generated_at_utc = "2026-06-24T10:00:00Z"
+  )
+  # does_prove yalnızca in-process / güvenli-boot dilini taşımalı (Shiny servisi
+  # başlatılmadığı için "çalışan uygulama" abartısı kaldırıldı).
+  expect_true(grepl("in-process", rec$does_prove, fixed = TRUE))
+  expect_true(grepl("MERGEN_RUN_APP=false", rec$does_prove, fixed = TRUE))
+  # does_not_prove servis ayakta/app URL probe edilmediğini açıkça söylemeli.
+  expect_true(grepl("app URL", rec$does_not_prove, fixed = TRUE))
+})
+
+# --- Artifact redaksiyon güvenliği (geçerli JSON garantisi) ------------------
+
+test_that("redact-json-safe gecerli redaksiyonu uygular, JSON'u bozani orijinale dusurur", {
+  rec <- mergen_post_deploy_smoke_artifact_record(
+    mergen_post_deploy_smoke_evaluate(list(
+      list(id = "db.primary", status = "critical"),
+      list(id = "app.boot", status = "ok")
+    )),
+    generated_at_utc = "2026-06-24T10:00:00Z"
+  )
+  json_txt <- as.character(jsonlite::toJSON(rec, auto_unbox = TRUE, pretty = TRUE, null = "null"))
+  expect_true(isTRUE(jsonlite::validate(json_txt)))
+
+  # 1) Geçerli kalan redaksiyon uygulanır (db.primary -> <hidden>); sonuç hâlâ geçerli JSON.
+  applied <- mergen_post_deploy_smoke_redact_json_safe(
+    json_txt,
+    redact_fn = function(x) gsub("db.primary", "<hidden>", x, fixed = TRUE)
+  )
+  expect_true(isTRUE(jsonlite::validate(applied)))
+  expect_true(grepl("<hidden>", applied, fixed = TRUE))
+  expect_false(grepl("db.primary", applied, fixed = TRUE))
+
+  # 2) JSON yapısını bozan redaksiyon (kısa/ortak alt-dize secret simülasyonu) →
+  #    redakte EDİLMEMİŞ (yine geçerli, secret-safe) orijinale düşülür.
+  broken_fn <- function(x) gsub('"', "X", x, fixed = TRUE)
+  safe <- mergen_post_deploy_smoke_redact_json_safe(json_txt, redact_fn = broken_fn)
+  expect_identical(safe, json_txt)
+  expect_true(isTRUE(jsonlite::validate(safe)))
+
+  # 3) NULL/geçersiz redaktör → orijinal döner (artifact her zaman okunabilir).
+  expect_identical(mergen_post_deploy_smoke_redact_json_safe(json_txt, NULL), json_txt)
+  expect_identical(mergen_post_deploy_smoke_redact_json_safe(json_txt, "x"), json_txt)
+})
+
 # --- Kapı betiği sözleşmesi --------------------------------------------------
 
 test_that("run_post_deploy_smoke.R kapi sozlesmesini icerir", {
@@ -233,6 +280,9 @@ test_that("run_post_deploy_smoke.R kapi sozlesmesini icerir", {
   expect_true(grepl("post-deploy-smoke", txt, fixed = TRUE))
   expect_true(grepl("toJSON", txt, fixed = TRUE))
   expect_true(grepl("artifacts", txt, fixed = TRUE))
+  # Redaksiyon serileştirilmiş JSON'u bozsa bile artifact geçerli kalmalı:
+  # kapı, redaksiyon-sonrası-doğrulama yapan güvenli yazıcıyı kullanmalı.
+  expect_true(grepl("mergen_post_deploy_smoke_redact_json_safe", txt, fixed = TRUE))
 })
 
 test_that("smoke betikleri base R ile parse edilebilir", {
