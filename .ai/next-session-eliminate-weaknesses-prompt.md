@@ -8,6 +8,56 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/tender-keller-vasw96` (2026-06-24, package 2: Bilge Yolaç doküman summary split)
+
+Same branch/session as the post-deploy package below; after the user said "continue"
+this session shipped a **second** behavior-preserving structural split. Do NOT redo:
+
+- **Split `R/helpers_claude_code_documents.R` 679/17 → 407/10** by moving the document
+  SUMMARY orchestration (`resolve_claude_code_document_detail_level`,
+  `write_claude_code_document_summary_file`, `build_claude_code_document_summary_messages`,
+  `summarize_claude_code_documents_with_local_llm`) verbatim into NEW
+  `R/helpers_claude_code_document_summary.R` (281/7). Document CONTEXT prep
+  (manifest/inline-payload/prompt/prepare-context) + the shared
+  `write_claude_code_utf8_bom_text_file()` BOM writer STAY in documents.R.
+- **Why this and NOT the global pin:** the global `MERGEN_TEST_MAX_FILE_LINES` pin is
+  `R/server_handler_true_streaming.R` (681) — but that file is ONE big reactive
+  function (inner closures over stream_env/values/session + an inline worker-globals
+  list that CLAUDE.md forbids relocating). Splitting it changes closure semantics on
+  the live-SSE path and is only VM-provable → high risk / low cloud value. Prior
+  sessions deliberately left it alone; this split instead reduced the 2nd-largest file
+  with the proven verbatim-move pattern. **Global pin stays 681 (unchanged).**
+- **Byte-preserving extraction:** done with an R script copying exact line ranges
+  (lines 531–533 mix tabs/spaces; retyping would drift). BOM writer kept in documents.R
+  because `R/helpers_claude_code_run_lifecycle.R` also uses it (via `exists()` guard).
+  `summarize_...` runs in run_lifecycle's `tracked_future_promise` worker via AUTOMATIC
+  globals detection — moving it between sourced files does NOT change worker resolution
+  (globals resolve in globalenv at runtime, file-independent).
+- **Wiring:** manifest `claude_code_helpers` documents → **summary** → run_lifecycle;
+  bootstrap order rules documents→summary, summary→run_lifecycle; section count n=26→27,
+  total runtime 281→282.
+- **Tests:** NEW `test-claude-code-document-summary-refactor-contract.R` (5 tests: split
+  + behavior + manifest order + documents.R no longer owns the 4 fns + BOM writer stays
+  + tightened budget summary<320/≤9, documents<430/≤12). Updated 3 behavior tests to
+  source the summary file (detail-level, document-builders, document-orchestration).
+- **Ratchet NOT loosened.** maintainability 100/100, max file 681, max fn 24 (unchanged).
+  documents.R left the near-pin band; new file locked by the split-contract budget.
+- **VALIDATION (Linux/cloud, R 4.6.0):** `ai_validate full --boot-smoke` FULL PASS:
+  app source smoke passed, **full testthat suite passed (159.0s)**, shiny boot passed,
+  browser smoke SKIPPED; failed=0, skipped=0
+  (`artifacts/ai-validation/20260624-112452/summary.json`). parse_sanity 856; seam_doctor
+  OK (`bilge_yolac` runtime 33→34, no orphan); maintainability 100/100 max 681. NOT
+  VM/SSO/CLI/real-browser proof — the document-summary worker flow is VM-only-provable.
+- **BEST NEXT TARGETS:** `R/server_handler_true_streaming.R` (681, global pin — only on
+  the VM with a maintainer, sensitive SSE closures), `R/module_file_manager.R` (677,
+  has a 725/14 budget), `R/helpers_claude_code_process.R` (665/20, function-count
+  pressure). Frontend `www/js/ai_expert_manager.js` (802/45, within budget →
+  split-then-tighten). GOTCHA: the maintainability fn metric counts inline
+  `= function(` (e.g. `error = function(e)`) — `summarize`'s tryCatch added inline fns,
+  so summary file is 7 not 4; budget accordingly.
+
+---
+
 ## LATEST SESSION RESULTS — `claude/tender-keller-vasw96` (2026-06-24, post-deploy smoke artifact flow)
 
 This session **completed the post-deploy smoke evidence flow** (the documented Faz-3

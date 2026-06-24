@@ -3129,19 +3129,21 @@ tests/testthat/test-maintainability-ratchet.R
 
 ### Bilge Yolaç document extractor modularization contract
 
-The Bilge Yolaç document-processing layer now has a focused extractor split. Preserve this source order in `R/config_source_manifest.R`:
+The Bilge Yolaç document-processing layer now has a focused extractor + summary split. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_claude_code_document_extractors.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_documents.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code_document_summary.R", encoding = "UTF-8")
 ```
 
 Responsibilities:
 
 * `R/helpers_claude_code_document_extractors.R`: binary-document extension policy, cache-name sanitization, text truncation, binary document discovery, temporary document-support directory creation, PDF/Excel/DOCX text extraction, supported-document dispatch, and office reader template path resolution.
-* `R/helpers_claude_code_documents.R`: document manifest generation, inline payload construction, document prompt construction, document context preparation, summary detail-level detection, summary messages, and summary file output.
+* `R/helpers_claude_code_documents.R`: document manifest generation, inline payload construction, document prompt construction, document context preparation, and the shared `write_claude_code_utf8_bom_text_file()` UTF-8 BOM writer (kept here because `R/helpers_claude_code_run_lifecycle.R` also uses it through an `exists()` guard).
+* `R/helpers_claude_code_document_summary.R`: document SUMMARY orchestration — `resolve_claude_code_document_detail_level()`, `write_claude_code_document_summary_file()`, `build_claude_code_document_summary_messages()`, and `summarize_claude_code_documents_with_local_llm()` (the latter calls `call_local_llm()` synchronously and runs inside `run_lifecycle`'s `tracked_future_promise` worker via automatic globals detection — moving it between sourced files does not change worker resolution).
 
-Do not move extractor helpers back into `R/helpers_claude_code_documents.R`. Keep the fallback source guard in `helpers_claude_code_documents.R` so the file can still be sourced directly in isolated tests/debug sessions. The split is protected by `test-claude-code-document-extractors-refactor-contract.R` and `test-claude-code-document-extractors-maintainability-contract.R`.
+Do not move extractor helpers back into `R/helpers_claude_code_documents.R`, and do not move the summary-orchestration helpers back into `R/helpers_claude_code_documents.R`. Keep `write_claude_code_utf8_bom_text_file()` in `helpers_claude_code_documents.R` (shared util); `helpers_claude_code_document_summary.R` loads AFTER documents.R (and before `helpers_claude_code_run_lifecycle.R`), so its `write_claude_code_document_summary_file()` resolves the BOM writer at call time. Keep the fallback source guard in `helpers_claude_code_documents.R` so the file can still be sourced directly in isolated tests/debug sessions. The split is protected by `test-claude-code-document-extractors-refactor-contract.R`, `test-claude-code-document-extractors-maintainability-contract.R`, and `test-claude-code-document-summary-refactor-contract.R`. Isolated tests that execute the summary helpers (`test-claude-code-detail-level-behavior.R`, `test-claude-code-document-builders-behavior.R`, `test-claude-code-document-orchestration-behavior.R`) must source `R/helpers_claude_code_document_summary.R` in addition to `R/helpers_claude_code_documents.R`.
 
 For maintainability refactors, prefer extracting one clear responsibility at a time and preserving public function names. After each extraction, update `global.R`, `tests/testthat/helper_bootstrap.R`, and add a small contract test that prevents the old monolithic responsibility from silently returning.
 
@@ -4617,6 +4619,7 @@ Shared utilities used across modules:
 - `R/helpers_claude_code_plugins.R`
 - `R/helpers_claude_code_document_extractors.R`
 - `R/helpers_claude_code_documents.R`
+- `R/helpers_claude_code_document_summary.R`
 
 ### Group 5 - LLM Integration Layer
 Model calls, tool formatting, SSE, worker execution:
@@ -5243,6 +5246,7 @@ Core files:
 - `R/helpers_claude_code_plugins.R`
 - `R/helpers_claude_code_document_extractors.R`
 - `R/helpers_claude_code_documents.R`
+- `R/helpers_claude_code_document_summary.R`
 - `R/module_claude_code_ui.R`
 - `R/module_claude_code_akis.R`
 - `R/module_claude_code_plugins.R`

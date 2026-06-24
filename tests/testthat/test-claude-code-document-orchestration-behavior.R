@@ -26,6 +26,9 @@
   env$extract_supported_document_text_for_claude <- function(path) "ÖRNEK METİN"
   env$get_office_document_reader_template_path <- function() "/sahte/reader_template.R"
   source(file.path(kok, "R", "helpers_claude_code_documents.R"), encoding = "UTF-8", local = env)
+  # Özetleme orkestrasyonu (summarize/write_summary_file/build_summary_messages)
+  # document_summary.R'ye ayrıldı; aynı izole ortama yüklenir.
+  source(file.path(kok, "R", "helpers_claude_code_document_summary.R"), encoding = "UTF-8", local = env)
   env$cat <- function(...) invisible(NULL)
   env$CLAUDE_CODE_LOG_PREFIX <- "[CC]"
   env$log_error <- function(...) invisible(NULL)

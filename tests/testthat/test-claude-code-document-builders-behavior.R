@@ -13,6 +13,11 @@ suppressWarnings(source(
   file.path(repo_root_ccd, "R/helpers_claude_code_documents.R"),
   encoding = "UTF-8", local = .ccd_env
 ))
+# Özet mesaj/orkestrasyon yardımcıları document_summary.R'ye ayrıldı.
+suppressWarnings(source(
+  file.path(repo_root_ccd, "R/helpers_claude_code_document_summary.R"),
+  encoding = "UTF-8", local = .ccd_env
+))
 
 # Bir dosyayı bayt-güvenli okuyup ASCII çapalarla aramak için yardımcı
 # (Windows/VM yerel ayarlarında geçersiz UTF-8 uyarısı üretmemek için).

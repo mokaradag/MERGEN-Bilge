@@ -286,16 +286,20 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   Gerçek artifact yalnızca uygulama ayaktayken (VM) üretilir; latency/log özetleri
   yine yalnızca VM'de gerçek `logs/mergen_*.log` ile canlı doğrulanır. Sıradaki
   repo-geneli yakın-bütçe adayları bu seam dışında `R/server_handler_true_streaming.R`
-  (681, küresel pin), `R/helpers_claude_code_documents.R` (679) ve
-  `R/module_file_manager.R` (677); frontend `www/js/deep_space_intro.js` (820) /
-  `www/js/ai_expert_manager.js` (802/45).
+  (681, küresel pin — canlı SSE closure'ları nedeniyle yalnızca VM'de kanıtlanabilir,
+  riskli) ve `R/module_file_manager.R` (677); frontend `www/js/deep_space_intro.js`
+  (820) / `www/js/ai_expert_manager.js` (802/45). (`helpers_claude_code_documents.R`
+  679 → 407'ye indirildi.)
 
 ## Bilge Yolaç / Claude Code
 
 - **Seam:** `bilge_yolac`
 - **Birincil R dosyaları:** `R/config_claude_code*.R`, `R/helpers_claude_code_*.R`
-  (~30 dosya: güvenlik politikası, yol politikası, runtime workdir, süreç,
-  streaming, doküman çıkarma, indirme, çalıştırma yaşam döngüsü).
+  (~31 dosya: güvenlik politikası, yol politikası, runtime workdir, süreç,
+  streaming, doküman çıkarma `R/helpers_claude_code_document_extractors.R`,
+  doküman BAĞLAM hazırlığı `R/helpers_claude_code_documents.R` (+ paylaşılan UTF-8
+  BOM yazıcı), doküman ÖZETLEME orkestrasyonu `R/helpers_claude_code_document_summary.R`,
+  indirme, çalıştırma yaşam döngüsü).
 - **UI/server modülleri:** `R/module_claude_code_ui.R`, `R/module_claude_code.R`,
   `R/module_claude_code_akis.R`, `R/module_claude_code_stream_poll.R`,
   `R/module_claude_code_plugins.R`, `www/js/claude_code*.js`, `www/css/claude_code*.css`.
@@ -313,6 +317,9 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-claude-code-document-orchestration-behavior.R`
   (`prepare_claude_code_document_context` + `write_claude_code_document_summary_file` +
   `summarize_claude_code_documents_with_local_llm`; çıkarıcı/LLM stub'lı),
+  `test-claude-code-document-summary-refactor-contract.R` (özetleme orkestrasyonu
+  `R/helpers_claude_code_document_summary.R`'ye ayrım sözleşmesi + manifest sırası +
+  BOM yazıcının documents.R'de kalması + sıkı bütçe),
   `test-claude-code-stream-poll-binding-behavior.R`
   (`cc_bind_claude_code_stream_polling` testServer: stop gözlemcisi request-id
   kapsamlı finalize + klavye gözlemcisi + poll durduruldu/zaman-aşımı erken dalları),
@@ -326,12 +333,18 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-claude-code-downloads-html-behavior.R`
   (`format_claude_code_generated_downloads_html`: kart HTML + öznitelik escape XSS sınırı).
 - **Smoke/kanıt:** Windows VM manuel akış (UNC/SSO/`.cmd`); cloud'da kanıtlanmaz.
-- **Bilinen risk / sıradaki hedef:** `parse_stream_event`, bağlantı durumu,
+- **Bilinen risk / sıradaki hedef:** doküman ÖZETLEME orkestrasyonu (detay seviyesi,
+  özet mesajları, `summarize_..._with_local_llm`, özet dosya yazımı)
+  `R/helpers_claude_code_documents.R`'den `R/helpers_claude_code_document_summary.R`'ye
+  ayrıldı; documents.R **679/17 → 407/10**, yeni özet dosyası 281/7. Paylaşılan UTF-8
+  BOM yazıcı documents.R'de kaldı (run_lifecycle de `exists()` guard'ıyla kullanır);
+  `summarize_...` run_lifecycle worker'ında otomatik globals çözümüyle çalıştığı için
+  ayrı dosyaya taşınması worker'ı etkilemedi. `parse_stream_event`, bağlantı durumu,
   `run_claude_code_streaming`, doküman özet orkestratörleri, `cc_bind_claude_code_stream_polling`
   (stop/poll erken dalları) ve üretilen-dosya indirme yolu çözümleme/staging/HTML
   kartı güvenlik sınırı kapsandı; her iki indirme HTML üreticisi de öznitelik
-  bağlamında `htmlEscape(attribute=TRUE)` ile sertleştirildi (öznitelik enjeksiyonu
-  savunması). Gerçek CLI/UNC/SSO ve canlı akış tamamlanma dalı yalnızca VM'de kanıtlanır.
+  bağlamında `htmlEscape(attribute=TRUE)` ile sertleştirildi. Gerçek CLI/UNC/SSO ve
+  canlı akış tamamlanma dalı yalnızca VM'de kanıtlanır.
 
 ## Destek / Geri Bildirim
 
@@ -389,10 +402,12 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   RENDER olarak üç dosyaya bölündü ve VERİ-odaklı 425/1'e indi. `R/server_runtime_context.R`
   (687) SSO auth-ready / yenilenebilir modül wiring katmanı
   `R/server_runtime_auth_ready.R`'ye ayrılarak 503/13'e indi; küresel en büyük dosya
-  satırı 690 → 687 → 681 oldu. Sıradaki repo-geneli yakın-bütçe adayları artık
-  681–679 bandındaki `R/server_handler_true_streaming.R` (681),
-  `R/helpers_claude_code_documents.R` (679), `R/module_admin_yanit_analizi_outputs.R`
-  (678, tek-fonksiyon flat renderer — düşük öncelik) ve `R/module_file_manager.R` (677).
+  satırı 690 → 687 → 681 oldu. `R/helpers_claude_code_documents.R` (679) doküman
+  özetleme orkestrasyonu `R/helpers_claude_code_document_summary.R`'ye ayrılarak
+  407'ye indi. Sıradaki repo-geneli yakın-bütçe adayları artık
+  `R/server_handler_true_streaming.R` (681, küresel pin — canlı SSE closure'ları,
+  riskli/VM-only), `R/module_admin_yanit_analizi_outputs.R` (678, tek-fonksiyon flat
+  renderer — düşük öncelik) ve `R/module_file_manager.R` (677).
 
 ## Frontend Varlık ve Yönetişim
 

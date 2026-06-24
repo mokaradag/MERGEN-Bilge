@@ -295,6 +295,7 @@ source_manifest_sections <- list(
     "R/helpers_claude_code_plugins.R",
     "R/helpers_claude_code_document_extractors.R",
     "R/helpers_claude_code_documents.R",
+    "R/helpers_claude_code_document_summary.R",
     "R/helpers_claude_code_run_lifecycle.R"
   ),
 

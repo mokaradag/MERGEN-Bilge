@@ -103,7 +103,10 @@
   # Bilinçli güncelleme: R/helpers_ai_expert_handlers_support.R (AI Uzman handler
   # saf karar yardımcıları) bölüm sonuna eklendi; 3 -> 4 dosya.
   ai_expert_helpers = list(first = "R/helpers_ai_expert_user_data.R", last = "R/helpers_ai_expert_handlers_support.R", n = 4L),
-  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_run_lifecycle.R", n = 26L),
+  # 26 -> 27: doküman özetleme orkestrasyonu helpers_claude_code_documents.R'den
+  # R/helpers_claude_code_document_summary.R'ye ayrıldı (documents'tan sonra,
+  # run_lifecycle'dan önce).
+  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_run_lifecycle.R", n = 27L),
   llm_pipeline = list(first = "R/helpers_llm_tool_formatters.R", last = "R/helpers_llm_worker.R", n = 11L),
   module_chat = list(first = "R/module_chat_history_background.R", last = "R/module_feedback.R", n = 9L),
   module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 7L),
@@ -267,7 +270,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # (server_runtime_context.R'den sonra, server_runtime_function_slot.R'den önce).
   # 280L -> 281L bilinçli güncelleme: işlem-güvenli DB bağlantı havuzu katmanı
   # R/helpers_db_pool.R database bölümüne (helpers_db_connection.R'den sonra) eklendi.
-  expect_equal(length(runtime), 281L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 281L -> 282L bilinçli güncelleme: Bilge Yolaç doküman özetleme orkestrasyonu
+  # R/helpers_claude_code_document_summary.R claude_code_helpers bölümüne
+  # (helpers_claude_code_documents.R'den sonra, run_lifecycle'dan önce) eklendi.
+  expect_equal(length(runtime), 282L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

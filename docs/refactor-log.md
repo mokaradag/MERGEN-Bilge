@@ -6,6 +6,109 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-24 — Bilge Yolaç doküman ÖZETLEME orkestrasyonunun ayrı dosyaya çıkarılması
+
+### Seçilen iz(ler)
+- **Track 1 — yakın-bütçe R dosyasından bütünleşik (saf, verbatim) çıkarım**
+  (öncelik #1). 2. en büyük R dosyası (`R/helpers_claude_code_documents.R`, 679/17,
+  küresel 681 pin bandında). `bilge_yolac` seam'inde tek paket. (Aynı oturumda
+  post-deploy smoke paketinden SONRA, kullanıcı "continue" yönlendirmesiyle.)
+
+### Özet ve gerekçe
+Keşif (maintainability 100/100, en büyük dosya 681 = `server_handler_true_streaming.R`;
+seam doctor OK): `R/helpers_claude_code_documents.R` **679/17 ile 2. en büyük R
+dosyasıydı** ve küresel pin bandındaydı. Dosya iki bütünleşik sorumluluğu
+karıştırıyordu: (1) doküman BAĞLAM hazırlığı (manifest/inline-payload/prompt/
+prepare-context) ve (2) doküman ÖZETLEME orkestrasyonu (detay seviyesi, özet
+mesajları, yerel LLM ile özetleme, `dosya_aciklamalari.txt` yazımı).
+
+Küresel pin'i (`server_handler_true_streaming.R` 681) düşürmek o dosyanın
+bölünmesini gerektirir; ancak o dosya TEK büyük reaktif fonksiyondur (stream_env/
+values/session üzerine kapanan iç closure'lar + worker globals listesi) ve canlı
+SSE yolunda closure semantiğini değiştirir — yalnızca VM'de kanıtlanabilir, yüksek
+riskli. Bu yüzden bu oturumda DÜŞÜK RİSKLİ, kanıtlanmış verbatim-taşıma deseni
+seçildi: 4 üst-düzey özet fonksiyonu yeni `R/helpers_claude_code_document_summary.R`
+dosyasına BAYT-BİREBİR taşındı (extraction byte-preserving bir R betiğiyle yapıldı,
+531-533. satırlardaki tab/space karışımı korundu). Paylaşılan UTF-8 BOM yazıcı
+`write_claude_code_utf8_bom_text_file()` documents.R'de KALDI (run_lifecycle de
+`exists()` guard'ıyla kullanır). `summarize_..._with_local_llm` run_lifecycle
+worker'ında OTOMATİK globals çözümüyle çalışır; sourced dosya değişmesi worker'ı
+etkilemez (globaller çalışma zamanında globalenv'de çözülür).
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_claude_code_document_summary.R` (yeni, 281/7) — `resolve_..._detail_level`,
+  `write_..._summary_file`, `build_..._summary_messages`, `summarize_..._with_local_llm`.
+- `R/helpers_claude_code_documents.R` — **679/17 → 407/10** (bağlam hazırlığı + paylaşılan
+  BOM yazıcı kaldı).
+- `R/config_source_manifest.R` — `claude_code_helpers` bölümüne summary dosyası
+  documents'tan SONRA, run_lifecycle'dan ÖNCE eklendi.
+- `R/bootstrap_source_manifest.R` — kritik sıra kuralları: documents → summary,
+  summary → run_lifecycle.
+
+**Test**
+- `tests/testthat/test-claude-code-document-summary-refactor-contract.R` (yeni, 5 test) —
+  yapısal ayrım + davranış (detay seviyesi, mesaj rolleri) + manifest sırası +
+  documents.R'nin özet fonksiyonlarını tanımlamaması + BOM yazıcının documents.R'de
+  kalması + sıkı bütçe (summary < 320/≤9, documents < 430/≤12).
+- Üç davranış testi summary dosyasını da source eder: `test-claude-code-detail-level-behavior.R`,
+  `test-claude-code-document-builders-behavior.R`, `test-claude-code-document-orchestration-behavior.R`.
+- `tests/testthat/test-source-manifest-sections-contract.R` — `claude_code_helpers`
+  n=26→27, toplam runtime 281→282.
+
+**Dokümantasyon**
+- `CLAUDE.md` (doküman modülerleştirme sözleşmesi + iki Group yükleme listesi),
+  `docs/feature-ownership-map.md` (bilge_yolac + eskimiş 679 notları), `docs/refactor-log.md`,
+  `.ai/next-session-eliminate-weaknesses-prompt.md`.
+
+### Önce / sonra karmaşıklık notları
+- Önce: documents.R 679/17 (2. en büyük, pin bandında).
+- Sonra: documents.R 407/10, summary 281/7. Skor 100/100; 800+ satır / 25+ fonksiyon = 0;
+  **küresel en büyük dosya 681 DEĞİŞMEDİ** (`server_handler_true_streaming.R` pin'i; bu
+  paket o dosyaya dokunmadı). documents.R pin bandından çıktı; yeni split-contract
+  bütçesiyle kilitlendi. Ratchet GEVŞETİLMEDİ.
+
+### Korunan davranış sözleşmeleri
+- 4 fonksiyon byte-birebir taşındı (R betiğiyle aralık kopyalama; tab/space korundu).
+- Paylaşılan BOM yazıcı documents.R'de kaldı; summary dosyası ondan SONRA yüklenir,
+  `write_..._summary_file` BOM yazıcıyı çağrı anında çözer.
+- `summarize_...` worker yolu (run_lifecycle `tracked_future_promise` otomatik globals)
+  değişmedi. Extractor split sözleşmesi (documents.R extractor fonksiyonlarını
+  tanımlamaz + extractor fallback referansı) korundu.
+- Encoding/DB/SSO/UX runtime sınırlarına dokunulmadı (saf yapısal relocate + manifest).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda, Linux/cloud, R 4.6.0)
+- `Rscript tests/scripts/parse_sanity_check.R` → OK (856 dosya).
+- Odak testler (test_dir filtre, 0 fail/0 warn/0 skip): yeni split-contract (5),
+  detail-level-behavior (4), document-builders-behavior (9), document-orchestration-behavior (15),
+  extractors-refactor-contract (4), extractors-maintainability-contract (2),
+  document-download-link-encoding (3), source-manifest-contract (11),
+  source-manifest-sections-contract (4), global-source-manifest-contract (6).
+- `Rscript tests/scripts/maintainability_report.R` → 100/100, en büyük dosya 681
+  (değişmedi), documents.R 407.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`; `bilge_yolac`
+  runtime-dosya 33 → 34 (yeni dosya claude_code_helpers'ta, bilge_yolac sahipli; orphan yok).
+- `bash tools/ai_validate.sh full --boot-smoke` → **TAM**: app source smoke passed,
+  **full testthat suite passed (159.0s)**, shiny boot passed, browser smoke SKIPPED
+  (tarayıcı yok); failed=0, skipped=0 (`artifacts/ai-validation/20260624-112452/summary.json`).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Bilge Yolaç'ta bir doküman (PDF/DOCX/XLSX) özetleme akışını çalıştırın; özet metnin
+  üretildiğini, `dosya_aciklamalari.txt`'nin UTF-8 BOM ile yazıldığını ve indirme
+  kartının göründüğünü doğrulayın (worker yolu otomatik globals).
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek CLI/gerçek tarayıcı kanıtı alınmadı (bulut oturumu). Değişiklik saf
+  yapısal verbatim-relocate'tir; doküman özet worker akışı yalnızca Windows VM'de canlı
+  kanıtlanır.
+- Küresel pin (`server_handler_true_streaming.R` 681) DEĞİŞMEDİ; bu dosya canlı SSE
+  closure'ları içerdiği için bilinçli olarak bu oturumda bölünmedi (VM-only kanıt + yüksek risk).
+- Sıradaki paket adayları: `R/module_file_manager.R` (677, 725/14 dosya bütçesi),
+  `R/helpers_claude_code_process.R` (665/20, fonksiyon-sayısı baskısı); frontend
+  `www/js/ai_expert_manager.js` (802/45, bütçe içinde — böl-sonra-sıkılaştır).
+
+---
+
 ## 2026-06-24 — Dağıtım sonrası duman testi kanıt artifact akışının tamamlanması
 
 ### Seçilen iz(ler)
