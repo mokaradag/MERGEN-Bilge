@@ -6,6 +6,123 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-24 — Dağıtım sonrası duman testi kanıt artifact akışının tamamlanması
+
+### Seçilen iz(ler)
+- **Track 3 — post-deploy smoke artifact ailesi**: dokümante açık taşıma kalemi
+  ("üretici henüz yok"). Üretici/okuyucu/UI entegrasyonu eksikti; bu paket onu
+  uçtan uca tamamladı. `destek_yonetici_saglik` seam'inde tek, bütünleşik paket.
+- **Track 6 — eskimiş "sıradaki hedef" notlarının güncellenmesi**: feature-ownership
+  ve handoff'ta "post-deploy smoke artifact ailesi (üretici henüz yok)" notu
+  yenilendi.
+
+### Özet ve gerekçe
+Keşif (maintainability 100/100, en büyük dosya 681; seam doctor OK; frontend
+bütçe içinde): `tests/scripts/run_post_deploy_smoke.R` ve saf değerlendirici
+`tests/scripts/helpers_post_deploy_smoke.R` zaten vardı, ancak kapı YALNIZCA
+konsola yazıp `stop()` ediyordu — **makinece okunabilir artifact üretmiyordu** ve
+`R/helpers_release_evidence.R` içinde VM evidence + ai-validation okuyucuları
+varken **post-deploy smoke okuyucusu yoktu**. Bu, talimatların #3 hedefindeki
+"artifact producer/reader integration is incomplete" boşluğuydu.
+
+Paket, repoda zaten kanıtlanmış VM/ai evidence desenini (üretici → secret-safe
+`artifacts/<aile>/<ts>/<dosya>.json` → saf okuyucu → Sistem Durumu UI) birebir
+post-deploy smoke'a uyguladı. Değerlendirici sonucundan kayıt kurma mantığı SAF,
+izole test edilebilir bir yardımcıya (`mergen_post_deploy_smoke_artifact_record`)
+çıkarıldı; kapı yalnızca dosyaya yazar (git'i en iyi çaba toplar, `stop`'tan ÖNCE
+yazar → `fail`/`degraded` koşumlar da iz bırakır). `does_prove`/`does_not_prove`
+dürüstlük alanları zorunlu kılındı.
+
+### Değişen dosyalar
+**Kaynak/script**
+- `tests/scripts/helpers_post_deploy_smoke.R` — yeni SAF üretici
+  `mergen_post_deploy_smoke_artifact_record()` (kendi içinde küçük yerel
+  yardımcılarla; standalone source edilebilir, `%||%` kullanmaz).
+- `tests/scripts/run_post_deploy_smoke.R` — `stop`'tan önce secret-safe artifact
+  yazar: `artifacts/post-deploy-smoke/<timestamp>/post-deploy-smoke.json`
+  (jsonlite + redaktör + `tryCatch` → artifact hatası kapıyı çökertmez).
+- `R/helpers_release_evidence.R` — yeni okuyucu
+  `release_evidence_post_deploy_smoke_summary()` (beyaz-listeli alanlar, not_found
+  dürüstlüğü) + `release_evidence_overview()`'a `post_deploy_smoke` eklendi.
+  Fonksiyon sayısı 21 → 22 (savunmacı `tryCatch(error=function)` closure'ları
+  bilinçle kullanılmadı; ayrıştırılmış JSON listesinde `$` erişimi hata vermez —
+  küresel 24-fonksiyon tavanından uzak kalındı).
+- `R/module_health_release.R` — yeni `.health_release_post_deploy_card()` + Sistem
+  Durumu > Doğrulama Kanıtı sekmesine "Dağıtım Sonrası Duman Testi" kartı + metrik
+  kutusu (5 → 6 fonksiyon). Bulunamayan kanıt "Bulunamadı" gösterir; artifact yolu
+  UI'ye taşınmaz (secret-safe).
+
+**Test**
+- `tests/testthat/test-post-deploy-smoke-contract.R` — `*_artifact_record()` davranış
+  testleri (pass/fail/UTC default; counts isimli int listesi; does_prove/
+  does_not_prove zorunlu) + kapı betiği artifact üretim token sözleşmesi.
+- `tests/testthat/test-release-evidence-behavior.R` — `.makePostDeploySmokeFixture()`
+  + okuyucu davranışı (en-yeni seçim, eski-koşu kritik bozulma, not_found) +
+  overview'da `post_deploy_smoke` anahtarı.
+- `tests/testthat/test-health-release-ui-behavior.R` — fixture'a `post_deploy_smoke`
+  eklendi; kart render + secret-safe (artifact yolu render edilmez) + not_found.
+
+**Dokümantasyon**
+- `RUNBOOK.md` (§10), `docs/feature-ownership-map.md` (destek_yonetici_saglik —
+  "üretici yok" notu kaldırıldı), `docs/architecture-map.md` (artifact ailesi satırı),
+  `docs/technical-reference.md` (yeni alt bölüm), `AGENTS.md` (operasyonel not),
+  `docs/refactor-log.md` (bu giriş), `.ai/next-session-eliminate-weaknesses-prompt.md`.
+
+### Önce / sonra
+- Önce: post-deploy smoke kapısı artifact üretmiyordu; okuyucu/UI yoktu (açık boşluk).
+- Sonra: uçtan uca akış (üretici → secret-safe JSON → saf okuyucu → Sistem Durumu
+  UI), `does_prove`/`does_not_prove` dürüstlük alanlarıyla. Maintainability 100/100
+  korundu (en büyük dosya 681, en yüksek fonksiyon 24; helpers_release_evidence 22,
+  module_health_release 6 — tavan altında). Ratchet GEVŞETİLMEDİ.
+
+### Korunan davranış sözleşmeleri
+- `mergen_post_deploy_smoke_evaluate()` davranışı DEĞİŞMEDİ (saf değerlendirici).
+- Kapı `stop`-on-critical sözleşmesi korundu; artifact yazımı `stop`'tan önce ve
+  `tryCatch` ile sarmalı (kanıt yazılamazsa bile dürüst başarısızlık gizlenmez).
+- Secret-safe sınır: yalnızca kontrol kimlikleri + sayaçlar; ham log/ortam/secret
+  yok; yazımdan önce redaktör. UI artifact yolunu render etmez. not_found dürüstlüğü.
+- Encoding/DB/SSO/source-order/UX runtime sınırlarına dokunulmadı (additive evidence
+  altyapısı + bir health UI kartı).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda, Linux/cloud, R 4.6.0)
+- Uçtan uca mantık probu: evaluate → record → toJSON → write → okuyucu geri-oku;
+  pass/degraded/fail/not_found yolları doğru.
+- Odak testler (test_dir filtre, 0 fail/0 warn/0 skip): post-deploy-smoke-contract,
+  release-evidence-behavior (17), health-release-ui-behavior, maintainability-ratchet
+  (22), e2e-health-dashboard-regression (5).
+- `Rscript tests/scripts/maintainability_report.R` → 100/100, max 681, max fn 24.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK` (yapısal drift yok).
+- `Rscript tests/scripts/parse_sanity_check.R` → OK (854 dosya).
+- `bash tools/ai_validate.sh quick` → TAM (failed=0, skipped=0, app_source_smoke=passed;
+  `artifacts/ai-validation/20260624-102241/summary.json`).
+- `bash tools/ai_validate.sh full --boot-smoke` → **TAM**: app source smoke passed,
+  **full testthat suite passed (181.6s)**, shiny boot passed, browser smoke SKIPPED
+  (tarayıcı yok); failed=0, skipped=0
+  (`artifacts/ai-validation/20260624-102401/summary.json`). NOT: `logger` kurulu +
+  placeholder env ile; önceki oturumların "logging testi tıkayıcısı" bu koşumda
+  tekrarlanmadı (ortam-bootstrap kaynaklıydı, test-izolasyon hatası değil).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- VM'de uygulama ayaktayken `Rscript tests/scripts/run_post_deploy_smoke.R` çalıştırın;
+  `artifacts/post-deploy-smoke/<ts>/post-deploy-smoke.json` üretildiğini ve içinde
+  ham secret/ortam değeri OLMADIĞINI doğrulayın.
+- Sistem Durumu > Doğrulama Kanıtı sekmesinde "Dağıtım Sonrası Duman Testi" kartının
+  ve metrik kutusunun en son koşumu gösterdiğini; kanıt yokken "Bulunamadı" dediğini
+  doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek DB/SQL Server/gerçek tarayıcı kanıtı alınmadı (bulut oturumu). Gerçek
+  `post-deploy-smoke.json` yalnızca uygulama ayaktayken (VM) üretilir; kapı betiğinin
+  app-boot gerektiren artifact yazımı bulutta canlı koşulmadı (saf üretici + okuyucu
+  uçtan uca probu ve token sözleşmesiyle kanıtlandı).
+- Bu artifact anlık sağlık fotoğrafıdır; yük/eşzamanlılık/uzun-süre/VM/SSO/SQL Server
+  Türkçe kodlama kanıtı DEĞİLDİR.
+- Sıradaki paket adayları: `R/server_handler_true_streaming.R` (681, küresel pin),
+  `R/helpers_claude_code_documents.R` (679), `R/module_file_manager.R` (677); frontend
+  `www/js/deep_space_intro.js` (820) / `www/js/ai_expert_manager.js` (802/45).
+
+---
+
 ## 2026-06-20 — ServerRuntimeContext SSO auth-ready / yenilenebilir modül wiring katmanının ayrılması
 
 ### Seçilen iz(ler)

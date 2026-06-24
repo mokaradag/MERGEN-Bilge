@@ -146,3 +146,122 @@ mergen_post_deploy_smoke_evaluate <- function(checks,
     evaluated_at = evaluated_at
   )
 }
+
+# Değerlendirici sonucundan (mergen_post_deploy_smoke_evaluate çıktısı) makinece
+# okunabilir, SECRET-SAFE bir kanıt kaydı üretir. SAF fonksiyondur: Shiny/DB/HTTP/
+# dosya/sistem çağrısı yapmaz, böylece izole test edilebilir. Yazma işini (artifact
+# dosyası) çağıran kapı betiği üstlenir; bu fonksiyon yalnızca kaydın içeriğini
+# kurar. Dürüstlük alanları (does_prove/does_not_prove) ve kanıt sınırı notu zorunlu.
+#
+# Argümanlar:
+#   result           : mergen_post_deploy_smoke_evaluate() çıktısı (liste).
+#   critical_ids     : kapıda kullanılan kritik kontrol kimlikleri (kayda işlenir).
+#   fail_on_unknown  : kritik unknown'ın bloklayıp bloklamadığı (kayda işlenir).
+#   generated_at_utc : NULL ise UTC ISO zaman damgası üretilir (test için enjekte
+#                      edilebilir → deterministik).
+#   git_info         : list(branch=, sha=, dirty=); NULL ise boş. Git çağrısı SAF
+#                      fonksiyonun dışındadır; çağıran toplar (en iyi çaba).
+#   r_version        : NULL ise R.version'dan türetilir.
+#
+# Döner: gate/zaman/durum/sayaç + does_prove/does_not_prove + proof_boundary_notes
+#        içeren isimli liste. Yalnızca kontrol kimlikleri ve sayaçlar tutulur;
+#        ham log/ortam/secret değeri ASLA taşınmaz.
+mergen_post_deploy_smoke_artifact_record <- function(result,
+                                                     critical_ids = c("app.boot", "db.primary", "storage.disk_free"),
+                                                     fail_on_unknown = FALSE,
+                                                     generated_at_utc = NULL,
+                                                     git_info = NULL,
+                                                     r_version = NULL) {
+
+  if (!is.list(result)) {
+    result <- list()
+  }
+
+  # Standalone source edilebilirlik için (%||% kullanılmaz): küçük yerel yardımcılar.
+  .first_or <- function(x, default) {
+    if (is.null(x) || length(x) < 1L) return(default)
+    v <- x[[1]]
+    if (is.null(v) || (length(v) == 1L && is.na(v))) return(default)
+    v
+  }
+
+  .as_char_vec <- function(x) {
+    if (is.null(x) || !length(x)) return(character(0))
+    out <- as.character(unlist(x, use.names = FALSE))
+    out <- out[!is.na(out) & nzchar(out)]
+    unique(out)
+  }
+
+  # counts (table veya isimli vektör) → deterministik, isimli tam-sayı listesi.
+  ham_counts <- result$counts
+  counts_list <- list()
+  if (!is.null(ham_counts) && length(ham_counts) > 0L) {
+    nm <- names(ham_counts)
+    for (i in seq_along(ham_counts)) {
+      ad <- if (is.null(nm)) as.character(i) else nm[i]
+      if (is.null(ad) || is.na(ad) || !nzchar(ad)) next
+      deger <- suppressWarnings(as.integer(ham_counts[[i]]))
+      counts_list[[ad]] <- if (length(deger) == 1L && !is.na(deger)) deger else 0L
+    }
+  }
+
+  generated_at_utc <- as.character(.first_or(generated_at_utc, ""))
+  if (!nzchar(generated_at_utc)) {
+    generated_at_utc <- tryCatch(
+      format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+      error = function(e) ""
+    )
+  }
+
+  if (is.null(git_info) || !is.list(git_info)) {
+    git_info <- list(branch = "", sha = "", dirty = FALSE)
+  }
+
+  r_version <- as.character(.first_or(r_version, ""))
+  if (!nzchar(r_version)) {
+    r_version <- tryCatch(
+      paste(R.version$major, R.version$minor, sep = "."),
+      error = function(e) ""
+    )
+  }
+
+  list(
+    gate = "run_post_deploy_smoke",
+    generated_at_utc = generated_at_utc,
+    validation_execution_status = "ran_by_post_deploy_smoke",
+    overall = as.character(.first_or(result$overall, "unknown")),
+    should_fail = isTRUE(result$should_fail),
+    reason = as.character(.first_or(result$reason, "")),
+    total = as.integer(.first_or(result$total, 0L)),
+    counts = counts_list,
+    failing = .as_char_vec(result$failing),
+    critical_failures = .as_char_vec(result$critical_failures),
+    critical_ids = .as_char_vec(critical_ids),
+    fail_on_unknown = isTRUE(fail_on_unknown),
+    evaluated_at = as.character(.first_or(result$evaluated_at, "")),
+    git = list(
+      branch = as.character(.first_or(git_info$branch, "")),
+      sha = as.character(.first_or(git_info$sha, "")),
+      dirty = isTRUE(git_info$dirty)
+    ),
+    r_version = r_version,
+    secret_policy = paste(
+      "Ham ortam/secret değeri yazılmaz; yalnızca sağlık kontrol kimlikleri,",
+      "durum sayaçları ve genel sonuç metadata'sı tutulur."
+    ),
+    does_prove = paste(
+      "Çalışan uygulamanın boot/DB/depolama/servis sağlık kontrollerinin",
+      "dağıtım anındaki anlık (snapshot) durumunu kanıtlar."
+    ),
+    does_not_prove = paste(
+      "Yük/eşzamanlılık dayanıklılığını, uzun süreli stabiliteyi, gerçek",
+      "tarayıcı UX'ini veya VM/SSO/SQL Server Türkçe kodlama kanıtını KANITLAMAZ;",
+      "tek bir anlık sağlık fotoğrafıdır."
+    ),
+    proof_boundary_notes = paste(
+      "Bu artifact yalnızca 'pass' olduğunda anlık sağlık kanıtıdır;",
+      "'degraded'/'fail' operatör incelemesi gerektirir ve yapılandırılmamış/",
+      "SKIP edilen kontroller kanıt DEĞİLDİR."
+    )
+  )
+}

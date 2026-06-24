@@ -250,8 +250,14 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **Seam:** `destek_yonetici_saglik`
 - **Birincil R dosyaları:** `R/helpers_health_checks.R`, `R/helpers_health_runtime_checks.R`,
   `R/helpers_health_formatters.R`, `R/helpers_health_table.R`,
-  `R/helpers_release_evidence.R` (release kanıt artifact okuyucu),
+  `R/helpers_release_evidence.R` (release kanıt artifact okuyucu; VM evidence,
+  ai-validation, **post-deploy smoke** ve günlük log sağlık özetleri),
   `R/helpers_admin_analytics.R`, `R/helpers_admin_*` aileleri.
+- **Dağıtım sonrası kanıt (script):** `tests/scripts/run_post_deploy_smoke.R`
+  (kapı; `artifacts/post-deploy-smoke/<ts>/post-deploy-smoke.json` yazar) +
+  `tests/scripts/helpers_post_deploy_smoke.R` (saf değerlendirici
+  `mergen_post_deploy_smoke_evaluate` + saf kanıt-kaydı üretici
+  `mergen_post_deploy_smoke_artifact_record`).
 - **UI/server modülleri:** `R/module_health*.R` (Sistem Durumu sekmeleri:
   `R/module_health_overview.R`...`R/module_health_diagnostics.R` +
   `R/module_health_release.R` "Doğrulama Kanıtı" sekmesi), `R/module_admin_*.R`,
@@ -260,19 +266,29 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   (mock'lanır, gerçek internet uç noktası çağrılmaz); release kanıt sekmesi
   yalnızca `artifacts/` ve günlük log dosyalarını okur (DB/ağ çağrısı yok).
 - **Testler:** `test-health-check*.R`, `test-health-checks-probes-behavior.R`,
-  `test-admin-*-outputs-behavior.R`, `test-release-evidence-behavior.R`,
+  `test-admin-*-outputs-behavior.R`, `test-release-evidence-behavior.R`
+  (VM/ai/**post-deploy smoke** okuyucuları + overview), `test-post-deploy-smoke-contract.R`
+  (saf değerlendirici + saf kanıt-kaydı üretici + kapı betiği artifact sözleşmesi),
   `test-release-evidence-error-contexts-behavior.R` (secret-safe hata kategorisi),
   `test-release-evidence-ai-latency-behavior.R` (secret-safe AI çağrı istek-süresi
-  özeti), `test-health-release-ui-behavior.R` (UI builder + healthServer yönlendirme).
+  özeti), `test-health-release-ui-behavior.R` (UI builder + healthServer yönlendirme +
+  post-deploy kartı).
 - **Smoke/kanıt:** VM evidence gate (`run_vm_evidence_gate.R`), seam doctor,
-  frontend complexity doctor; `artifacts/vm-evidence/<ts>/evidence.json`.
-- **Bilinen risk / sıradaki hedef:** release kanıt okuyucusu Sistem Durumu
-  "Doğrulama Kanıtı" sekmesine bağlandı; hata-kategorisi (bağlam) özeti
-  (`release_evidence_summarize_error_contexts`) ve AI çağrı istek-süresi (latency)
-  özeti (`release_evidence_summarize_ai_call_latency`; `log_ai_call` "duration=<sn>s"
-  satırından yalnızca sayısal özet) eklendi — her ikisi secret-safe. Sıradaki:
-  post-deploy smoke artifact ailesi (üretici henüz yok). Latency/log özetleri
-  yalnızca VM'de gerçek `logs/mergen_*.log` ile canlı doğrulanır.
+  frontend complexity doctor; `artifacts/vm-evidence/<ts>/evidence.json`,
+  `artifacts/post-deploy-smoke/<ts>/post-deploy-smoke.json`.
+- **Bilinen risk / sıradaki hedef:** post-deploy smoke artifact ailesi TAMAMLANDI:
+  kapı artık `stop`'tan önce secret-safe `post-deploy-smoke.json` yazar
+  (saf `mergen_post_deploy_smoke_artifact_record`; `does_prove`/`does_not_prove`
+  dürüstlük alanları), okuyucu `release_evidence_post_deploy_smoke_summary()`
+  overview'a bağlandı ve Sistem Durumu > Doğrulama Kanıtı sekmesinde "Dağıtım
+  Sonrası Duman Testi" kartı + metrik kutusu olarak görünür. Bu anlık sağlık
+  fotoğrafıdır; yük/eşzamanlılık/uzun-süre/VM/SSO/SQL Server kanıtı DEĞİLDİR.
+  Gerçek artifact yalnızca uygulama ayaktayken (VM) üretilir; latency/log özetleri
+  yine yalnızca VM'de gerçek `logs/mergen_*.log` ile canlı doğrulanır. Sıradaki
+  repo-geneli yakın-bütçe adayları bu seam dışında `R/server_handler_true_streaming.R`
+  (681, küresel pin), `R/helpers_claude_code_documents.R` (679) ve
+  `R/module_file_manager.R` (677); frontend `www/js/deep_space_intro.js` (820) /
+  `www/js/ai_expert_manager.js` (802/45).
 
 ## Bilge Yolaç / Claude Code
 

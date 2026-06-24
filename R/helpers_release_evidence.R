@@ -281,6 +281,70 @@ release_evidence_ai_validation_summary <- function(repo_root = NULL) {
   )
 }
 
+# Dağıtım sonrası duman testinin (run_post_deploy_smoke.R) en son
+# post-deploy-smoke.json özetini beyaz-listeli alanlarla döndürür. Yalnızca genel
+# sonuç, durum sayaçları ve kritik kontrol kimlikleri taşınır; ham log/ortam değeri
+# veya kontrol detayı dışarı çıkmaz. Bulunamazsa dürüstçe not_found döner.
+release_evidence_post_deploy_smoke_summary <- function(repo_root = NULL, run_id = NULL) {
+  repo_root <- release_evidence_resolve_repo_root(repo_root)
+
+  base_dir <- file.path(release_evidence_artifact_root(repo_root), "post-deploy-smoke")
+
+  mevcut_kosular <- release_evidence_list_runs(base_dir, "post-deploy-smoke.json")
+  yol <- release_evidence_artifact_for_run(base_dir, run_id, "post-deploy-smoke.json")
+
+  bulunamadi <- list(
+    found = FALSE,
+    status = "not_found",
+    should_fail = FALSE,
+    artifact_path = "",
+    available_runs = mevcut_kosular,
+    selected_run = "",
+    generated_at_utc = "",
+    evaluated_at = "",
+    total = 0L,
+    pass_count = 0L,
+    warn_count = 0L,
+    critical_count = 0L,
+    critical_failures = character(0)
+  )
+
+  veri <- release_evidence_read_json(yol)
+  if (is.null(veri)) {
+    return(bulunamadi)
+  }
+
+  secili_kosu <- basename(dirname(yol))
+  sayilar <- veri$counts
+
+  # critical_failures artifact'ta char vektörüdür (sağlık kontrol kimlikleri;
+  # geliştirici-tanımlı, secret değil). veri ayrıştırılmış bir listedir; eksik
+  # alanda $ erişimi NULL döner (hata vermez), bu yüzden tryCatch gerekmez.
+  ham_cf <- veri$critical_failures
+  kritik_basarisizliklar <- if (is.null(ham_cf) || !length(ham_cf)) {
+    character(0)
+  } else {
+    cf <- as.character(unlist(ham_cf, use.names = FALSE))
+    cf[!is.na(cf) & nzchar(cf)]
+  }
+
+  list(
+    found = TRUE,
+    status = .release_evidence_scalar(veri, "overall", default = "unknown"),
+    should_fail = isTRUE(veri$should_fail),
+    artifact_path = yol,
+    available_runs = mevcut_kosular,
+    selected_run = secili_kosu,
+    generated_at_utc = .release_evidence_scalar(veri, "generated_at_utc"),
+    evaluated_at = .release_evidence_scalar(veri, "evaluated_at"),
+    total = as.integer(.release_evidence_scalar(veri, "total", default = "0")),
+    pass_count = as.integer(.release_evidence_scalar(sayilar, "ok", default = "0")),
+    warn_count = as.integer(.release_evidence_scalar(sayilar, "warning", default = "0")),
+    critical_count = as.integer(.release_evidence_scalar(sayilar, "critical", default = "0")),
+    critical_failures = kritik_basarisizliklar
+  )
+}
+
 # ERROR satırlarındaki geliştirici-tanımlı bağlam (context) etiketlerini sayar.
 # Kaynak kalıp: "Error in <bağlam>: <mesaj>" (log_error_with_context çıktısı;
 # hem bağlam hem mesaj zaten redakte edilmiş yazılır). YALNIZCA <bağlam> alınır
@@ -461,6 +525,7 @@ release_evidence_overview <- function(repo_root = NULL, log_dir = NULL, run_id =
     generated_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
     vm_evidence = release_evidence_vm_summary(repo_root, run_id = run_id),
     ai_validation = release_evidence_ai_validation_summary(repo_root),
+    post_deploy_smoke = release_evidence_post_deploy_smoke_summary(repo_root),
     log_health = release_evidence_log_health(log_dir),
     proof_note = paste(
       "SKIP edilen adımlar kanıt değildir; cloud profili VM/SSO/DB/SQL Server",

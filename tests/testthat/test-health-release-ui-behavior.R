@@ -50,6 +50,21 @@ suppressMessages(library(shiny))
       shiny_boot_smoke_status = "passed",
       browser_smoke_status = "not_requested"
     ),
+    post_deploy_smoke = list(
+      found = TRUE,
+      status = "degraded",
+      should_fail = FALSE,
+      artifact_path = "/x/artifacts/post-deploy-smoke/z/post-deploy-smoke.json",
+      available_runs = c("20260624-100000"),
+      selected_run = "20260624-100000",
+      generated_at_utc = "2026-06-24T10:00:00Z",
+      evaluated_at = "2026-06-24T13:00:00+0300",
+      total = 4L,
+      pass_count = 3L,
+      warn_count = 1L,
+      critical_count = 0L,
+      critical_failures = character(0)
+    ),
     log_health = list(
       found = TRUE,
       log_path = "/var/log/mergen_20260613.log",
@@ -98,6 +113,13 @@ testthat::test_that("health_release_ui tam kanıt özetini gerçek alanlarla ren
   # Log sağlığı sayaçları
   testthat::expect_true(grepl("2026-06-13 08:55:10", html, fixed = TRUE))
 
+  # Dağıtım sonrası duman testi kartı: başlık, sayaçlar ve metrik kutusu
+  testthat::expect_true(grepl("Dağıtım Sonrası Duman Testi", html, fixed = TRUE))
+  testthat::expect_true(grepl("Dağıtım Sonrası", html, fixed = TRUE))
+  testthat::expect_true(grepl("3 ok / 1 uyarı / 0 kritik", html, fixed = TRUE))
+  # Genel sonuç "degraded" → "Kısmi" Türkçe etiketine eşlenir
+  testthat::expect_true(grepl("Kısmi", html, fixed = TRUE))
+
   # Kanıt sınırı notu
   testthat::expect_true(grepl("kanıt değildir", html, fixed = TRUE))
 })
@@ -110,6 +132,7 @@ testthat::test_that("health_release_ui secret-safe sınır: artifact yolu ve log
   testthat::expect_false(grepl("cok/gizli/yol", html, fixed = TRUE))
   testthat::expect_false(grepl("artifacts/vm-evidence/x/evidence.json", html, fixed = TRUE))
   testthat::expect_false(grepl("artifacts/ai-validation/y/summary.json", html, fixed = TRUE))
+  testthat::expect_false(grepl("artifacts/post-deploy-smoke/z/post-deploy-smoke.json", html, fixed = TRUE))
   testthat::expect_false(grepl("/var/log/mergen_20260613.log", html, fixed = TRUE))
 })
 
@@ -119,6 +142,7 @@ testthat::test_that("health_release_ui kanıt bulunamadığında başarı gibi g
     generated_at = "2026-06-13 09:00:00",
     vm_evidence = list(found = FALSE, status = "not_found"),
     ai_validation = list(found = FALSE),
+    post_deploy_smoke = list(found = FALSE, status = "not_found"),
     log_health = list(found = FALSE),
     proof_note = "SKIP edilen adımlar kanıt değildir."
   )
@@ -126,6 +150,8 @@ testthat::test_that("health_release_ui kanıt bulunamadığında başarı gibi g
 
   testthat::expect_true(grepl("VM Kanıtı Yok", html, fixed = TRUE))
   testthat::expect_true(grepl("bulunamadı", html, fixed = TRUE))
+  # Dağıtım sonrası kanıt yoksa kart açıkça "bulunamadı" der, başarı göstermez
+  testthat::expect_true(grepl("Dağıtım sonrası duman testi artifact", html, fixed = TRUE))
   # Metrik kutularında VM sayısı yerine "—" gösterilir, sahte 0 başarı değil
   testthat::expect_true(grepl("—", html, fixed = TRUE))
 })

@@ -112,6 +112,49 @@
   )
 }
 
+# Dağıtım sonrası duman testi (run_post_deploy_smoke.R) özetini operatör kartına
+# çevirir. Yalnızca genel sonuç, sayaçlar ve kritik kontrol kimlikleri gösterilir;
+# ham log/ortam içeriği taşınmaz. Bulunamadığında başarı gibi gösterilmez (kanıt
+# sınırı dürüstlüğü); artifact yalnızca uygulama ayaktayken üretildiği için
+# cloud/izole bağlamda "Bulunamadı" beklenir.
+.health_release_post_deploy_card <- function(pds) {
+  if (is.null(pds) || !isTRUE(pds$found)) {
+    return(div(
+      class = "health-empty",
+      paste(
+        "Dağıtım sonrası duman testi artifact'ı bulunamadı.",
+        "Bu kapı yalnızca uygulama ayaktayken (run_post_deploy_smoke.R) üretilir."
+      )
+    ))
+  }
+
+  kritik <- as.character(pds$critical_failures %||% character(0))
+  kritik <- kritik[!is.na(kritik) & nzchar(kritik)]
+
+  tagList(
+    div(class = "health-summary-list",
+        div(strong("Genel sonuç:"), .health_release_pill(pds$status)),
+        div(strong("Üretim (UTC):"), span(health_safe_value(pds$generated_at_utc))),
+        div(strong("Değerlendirme:"), span(health_safe_value(pds$evaluated_at))),
+        div(strong("Kontrol sayısı:"), span(health_safe_value(as.integer(pds$total %||% 0L)))),
+        div(strong("Sayaçlar:"),
+            span(sprintf("%d ok / %d uyarı / %d kritik",
+                         as.integer(pds$pass_count %||% 0L),
+                         as.integer(pds$warn_count %||% 0L),
+                         as.integer(pds$critical_count %||% 0L))))),
+    if (length(kritik)) {
+      div(
+        class = "health-summary-list health-release-pds-critical",
+        `data-health-tooltip` = "Dağıtımı bloklayan kritik kontroller (yalnızca kimlik; içerik taşınmaz).",
+        div(strong("Kritik bozulmalar:"),
+            span(health_escape(paste(kritik, collapse = ", "))))
+      )
+    } else {
+      NULL
+    }
+  )
+}
+
 health_release_ui <- function(overview, ns = NULL) {
   if (is.null(overview) || !is.list(overview)) {
     return(div(
@@ -122,11 +165,22 @@ health_release_ui <- function(overview, ns = NULL) {
 
   vm <- overview$vm_evidence %||% list()
   ai <- overview$ai_validation %||% list()
+  pds <- overview$post_deploy_smoke %||% list()
   log_saglik <- overview$log_health %||% list()
 
   vm_bulundu <- isTRUE(vm$found)
   ai_bulundu <- isTRUE(ai$found)
+  pds_bulundu <- isTRUE(pds$found)
   log_bulundu <- isTRUE(log_saglik$found)
+
+  # Dağıtım sonrası genel sonucu kısa Türkçe etikete ve rozet rengine eşle.
+  pds_durum <- tolower(as.character((if (pds_bulundu) pds$status else "not_found") %||% "unknown")[1])
+  pds_etiket <- switch(pds_durum,
+    pass = "Geçti", degraded = "Kısmi", fail = "Başarısız",
+    not_found = "—", "Bilinmiyor")
+  pds_tile_status <- switch(pds_durum,
+    pass = "ok", degraded = "warning", fail = "critical",
+    not_found = "unknown", "unknown")
 
   hata_sayisi <- as.integer(log_saglik$error_count %||% 0L)
   uyari_sayisi <- as.integer(log_saglik$warn_count %||% 0L)
@@ -189,7 +243,9 @@ health_release_ui <- function(overview, ns = NULL) {
                          "Bugünkü logda ERROR satırı sayısı"),
       health_metric_tile("Log Uyarıları", if (log_bulundu) uyari_sayisi else "—", "exclamation-triangle",
                          if (log_bulundu && uyari_sayisi > 0L) "warning" else "ok",
-                         "Bugünkü logda WARN satırı sayısı")
+                         "Bugünkü logda WARN satırı sayısı"),
+      health_metric_tile("Dağıtım Sonrası", pds_etiket, "heartbeat",
+                         pds_tile_status, "Dağıtım sonrası duman testi genel sonucu")
     ),
     fluidRow(
       column(
@@ -236,6 +292,17 @@ health_release_ui <- function(overview, ns = NULL) {
             div(class = "health-empty", "ai-validation summary.json bulunamadı.")
           },
           tooltip = "tools/ai_validate.sh tarafından üretilen en son summary.json kanıt alanları."
+        )
+      )
+    ),
+    fluidRow(
+      column(
+        12,
+        health_section_card(
+          "Dağıtım Sonrası Duman Testi",
+          "heartbeat",
+          .health_release_post_deploy_card(pds),
+          tooltip = "run_post_deploy_smoke.R tarafından üretilen en son post-deploy-smoke.json özeti (snapshot)."
         )
       )
     ),

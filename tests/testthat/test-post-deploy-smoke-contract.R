@@ -149,6 +149,68 @@ test_that("ozel normalize_fn onurlandirilir", {
   expect_identical(res$overall, "pass")
 })
 
+# --- Artifact kaydı (mergen_post_deploy_smoke_artifact_record) ---------------
+
+test_that("artifact kaydi gecen sonuctan secret-safe durustluk alanlari uretir", {
+  res <- mergen_post_deploy_smoke_evaluate(list(
+    list(id = "app.boot", status = "ok"),
+    list(id = "db.primary", status = "ok"),
+    list(id = "storage.disk_free", status = "ok")
+  ))
+
+  rec <- mergen_post_deploy_smoke_artifact_record(
+    res,
+    generated_at_utc = "2026-06-24T10:00:00Z",
+    git_info = list(branch = "test-branch", sha = "abc1234", dirty = FALSE),
+    r_version = "4.6.0"
+  )
+
+  expect_identical(rec$gate, "run_post_deploy_smoke")
+  expect_identical(rec$validation_execution_status, "ran_by_post_deploy_smoke")
+  expect_identical(rec$overall, "pass")
+  expect_false(rec$should_fail)
+  expect_identical(rec$generated_at_utc, "2026-06-24T10:00:00Z")
+  expect_identical(rec$r_version, "4.6.0")
+  expect_identical(rec$git$branch, "test-branch")
+  expect_identical(rec$git$sha, "abc1234")
+  expect_false(rec$git$dirty)
+
+  # Dürüstlük alanları zorunludur (does_prove / does_not_prove / sınır notu).
+  expect_true(is.character(rec$does_prove) && nzchar(rec$does_prove))
+  expect_true(is.character(rec$does_not_prove) && nzchar(rec$does_not_prove))
+  expect_true(is.character(rec$proof_boundary_notes) && nzchar(rec$proof_boundary_notes))
+  expect_true(is.character(rec$secret_policy) && nzchar(rec$secret_policy))
+
+  # counts isimli tam-sayı listesi olmalı (table değil); ok=3.
+  expect_true(is.list(rec$counts))
+  expect_identical(as.integer(rec$counts$ok), 3L)
+})
+
+test_that("artifact kaydi kritik basarisizligi ve sayaclari tasir", {
+  res <- mergen_post_deploy_smoke_evaluate(list(
+    list(id = "db.primary", status = "critical"),
+    list(id = "app.boot", status = "ok")
+  ))
+
+  rec <- mergen_post_deploy_smoke_artifact_record(res, fail_on_unknown = TRUE)
+
+  expect_identical(rec$overall, "fail")
+  expect_true(rec$should_fail)
+  expect_true("db.primary" %in% rec$critical_failures)
+  expect_true("db.primary" %in% rec$failing)
+  expect_true(rec$fail_on_unknown)
+  # Kritik kimlikler kayda işlenir (varsayılan kümeden).
+  expect_true("db.primary" %in% rec$critical_ids)
+})
+
+test_that("artifact kaydi generated_at_utc bos verilince UTC zaman damgasi uretir", {
+  res <- mergen_post_deploy_smoke_evaluate(list(list(id = "x", status = "ok")))
+  rec <- mergen_post_deploy_smoke_artifact_record(res)
+  expect_true(is.character(rec$generated_at_utc) && nzchar(rec$generated_at_utc))
+  # ISO benzeri UTC formatı (…Z ile biter).
+  expect_true(grepl("Z$", rec$generated_at_utc))
+})
+
 # --- Kapı betiği sözleşmesi --------------------------------------------------
 
 test_that("run_post_deploy_smoke.R kapi sozlesmesini icerir", {
@@ -165,6 +227,12 @@ test_that("run_post_deploy_smoke.R kapi sozlesmesini icerir", {
   expect_true(grepl("source(\"app.R\"", txt, fixed = TRUE))
   expect_true(grepl("stop(", txt, fixed = TRUE))
   expect_true(grepl("redact", txt, fixed = TRUE))
+
+  # Makinece okunabilir secret-safe artifact üretimi sözleşmesi.
+  expect_true(grepl("mergen_post_deploy_smoke_artifact_record", txt, fixed = TRUE))
+  expect_true(grepl("post-deploy-smoke", txt, fixed = TRUE))
+  expect_true(grepl("toJSON", txt, fixed = TRUE))
+  expect_true(grepl("artifacts", txt, fixed = TRUE))
 })
 
 test_that("smoke betikleri base R ile parse edilebilir", {

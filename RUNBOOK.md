@@ -359,11 +359,36 @@ olarak geçti; bu, uzun 1000-eşzamanlı proxy soak FAIL sonucunu geçersiz kıl
 - Sistem Durumu / Health paneli anlamlı sinyal veriyor mu?
 - Bilge Yolaç kullanılacaksa çalışma dizini, CLI path ve güvenlik politikası beklenen şekilde mi?
 
-Script tabanlı post-deploy smoke için:
+Script tabanlı post-deploy smoke için (uygulama VM'de ayaktayken, repo kökünden):
 
 ```sh
 Rscript tests/scripts/run_post_deploy_smoke.R
 ```
+
+Kapı, sağlık kontrollerini toplar, genel durumu (`pass`/`degraded`/`fail`)
+hesaplar ve kritik bir kontrol bozuksa sıfırdan farklı çıkışla (stop) başarısız
+olur. Her koşumda — başarılı veya başarısız — `stop`'tan **önce** secret-safe,
+makinece okunabilir bir kanıt artifact'ı yazar:
+
+```
+artifacts/post-deploy-smoke/<timestamp>/post-deploy-smoke.json
+```
+
+- Artifact yalnızca sağlık kontrol kimlikleri, durum sayaçları ve genel sonuç
+  metadata'sı tutar; ham log/ortam/secret değeri yazılmaz (yazımdan önce
+  redaktörden geçer). `does_prove`/`does_not_prove` dürüstlük alanları zorunludur.
+- **Kanıtladığı:** çalışan uygulamanın boot/DB/depolama/servis sağlık
+  kontrollerinin dağıtım anındaki **anlık (snapshot)** durumu.
+- **Kanıtlamadığı:** yük/eşzamanlılık dayanıklılığı, uzun süreli stabilite,
+  gerçek tarayıcı UX veya VM/SSO/SQL Server Türkçe kodlama kanıtı (bunlar ayrı
+  kapılardır: soak gate, browser smoke, `run_vm_encoding_preflight_real.R`).
+- Kritik kontrol kimlikleri `MERGEN_SMOKE_CRITICAL_IDS` ile, kritik `unknown`
+  bloklaması `MERGEN_SMOKE_FAIL_ON_UNKNOWN=TRUE` ile ayarlanır.
+
+Operatör görünürlüğü: en son `post-deploy-smoke.json` özeti **Sistem Durumu >
+Doğrulama Kanıtı** sekmesinde "Dağıtım Sonrası Duman Testi" kartında ve bir
+metrik kutusunda gösterilir (saf okuyucu: `release_evidence_post_deploy_smoke_summary()`;
+DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösterilir).
 
 ## 11. Sağlık Paneli, Loglar ve İzleme
 

@@ -148,6 +148,55 @@ if (length(result$critical_failures) > 0L) {
   cat(sprintf("- Kritik bozulmalar  : %s\n", .smoke_redact(paste(result$critical_failures, collapse = ", "))))
 }
 
+# --- Makinece okunabilir kanıt artifact'ı (secret-safe) ----------------------
+# Kapı, başarısız olsa bile önce kanıt artifact'ını yazar (stop'tan ÖNCE), böylece
+# "fail"/"degraded" koşumlar da operatör ve release kanıt okuyucusu için iz bırakır.
+# Artifact: artifacts/post-deploy-smoke/<timestamp>/post-deploy-smoke.json
+# Yazım dürüst başarısızlığı engellemez: artifact yazılamazsa WARN basılır ve kapı
+# yine de result$should_fail'a göre stop eder (kanıt yokluğu başarıyı gizlemez).
+
+.smoke_git_field <- function(args) {
+  out <- tryCatch(
+    suppressWarnings(system2("git", args, stdout = TRUE, stderr = TRUE)),
+    error = function(e) character(0)
+  )
+  if (length(out) == 0L) "" else trimws(out[1])
+}
+
+artifact_path <- tryCatch({
+  if (!requireNamespace("jsonlite", quietly = TRUE)) {
+    stop("jsonlite paketi yok", call. = FALSE)
+  }
+
+  record <- mergen_post_deploy_smoke_artifact_record(
+    result,
+    critical_ids = critical_ids,
+    fail_on_unknown = fail_on_unknown,
+    git_info = list(
+      branch = .smoke_git_field(c("rev-parse", "--abbrev-ref", "HEAD")),
+      sha = .smoke_git_field(c("rev-parse", "--short", "HEAD")),
+      dirty = nzchar(.smoke_git_field(c("status", "--porcelain")))
+    )
+  )
+
+  artifact_ts <- format(Sys.time(), "%Y%m%d-%H%M%S")
+  artifact_dir <- file.path("artifacts", "post-deploy-smoke", artifact_ts)
+  dir.create(artifact_dir, recursive = TRUE, showWarnings = FALSE)
+
+  out_path <- file.path(artifact_dir, "post-deploy-smoke.json")
+  json_txt <- jsonlite::toJSON(record, auto_unbox = TRUE, pretty = TRUE, null = "null")
+  # Savunma derinliği: kayıt zaten secret-safe kurulur, yine de redaktörden geçir.
+  writeLines(.smoke_redact(as.character(json_txt)), out_path, useBytes = TRUE)
+  out_path
+}, error = function(e) {
+  cat(sprintf("WARN: Kanıt artifact'ı yazılamadı: %s\n", .smoke_redact(conditionMessage(e))))
+  ""
+})
+
+if (nzchar(artifact_path)) {
+  cat(sprintf("- Kanıt artifact'ı   : %s\n", artifact_path))
+}
+
 if (isTRUE(result$should_fail)) {
   stop(sprintf(
     "Dağıtım sonrası duman testi REDDEDİLDİ (durum=%s, neden=%s). Sağlık panelini ve logları inceleyin.",

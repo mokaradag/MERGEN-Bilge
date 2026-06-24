@@ -8,6 +8,79 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/tender-keller-vasw96` (2026-06-24, post-deploy smoke artifact flow)
+
+This session **completed the post-deploy smoke evidence flow** (the documented Faz-3
+carryover "üretici henüz yok"). Additive + one health UI card; behavior-preserving.
+Do NOT redo:
+
+- **Gap closed:** `tests/scripts/run_post_deploy_smoke.R` + the pure evaluator
+  `tests/scripts/helpers_post_deploy_smoke.R` already existed, but the gate only
+  `cat()`-printed and `stop()`-ed — it wrote **no machine-readable artifact**, and
+  `R/helpers_release_evidence.R` had readers for vm-evidence + ai-validation but
+  **none for post-deploy smoke**. Now uçtan uca: producer → secret-safe JSON →
+  pure reader → Sistem Durumu UI.
+- **Producer:** new pure `mergen_post_deploy_smoke_artifact_record()` in
+  `helpers_post_deploy_smoke.R` (self-contained, no `%||%` — the contract test
+  sources it standalone). `run_post_deploy_smoke.R` writes
+  `artifacts/post-deploy-smoke/<timestamp>/post-deploy-smoke.json` **before** `stop()`
+  (so fail/degraded runs also leave evidence), wrapped in `tryCatch` + redactor.
+  Mandatory `does_prove`/`does_not_prove` honesty fields; only check-ids + status
+  counts + overall metadata (no raw log/env/secret).
+- **Reader:** new `release_evidence_post_deploy_smoke_summary()` in
+  `R/helpers_release_evidence.R` (whitelisted fields, not_found honesty) wired into
+  `release_evidence_overview()` as `post_deploy_smoke`. helpers_release_evidence
+  21 → 22 fns (deliberately AVOIDED `tryCatch(error=function)` closures because the
+  report metric counts `= function(` — a parsed-JSON `$` access never errors, so
+  direct access keeps the file off the global 24-fn ceiling; it briefly hit 24
+  before I removed the two closures).
+- **UI:** new `.health_release_post_deploy_card()` + a "Dağıtım Sonrası Duman Testi"
+  card + a metric tile in `R/module_health_release.R` (5 → 6 fns). not_found shows
+  "Bulunamadı", never success; artifact path NOT rendered (secret-safe).
+- **Tests:** extended `test-post-deploy-smoke-contract.R` (record-helper behavior +
+  artifact-writer token contract), `test-release-evidence-behavior.R` (fixture +
+  reader + overview key), `test-health-release-ui-behavior.R` (card render +
+  secret-safe + not_found). No NEW test file → no seam-registry/section-count churn
+  (the seam guard_tests is a curated subset; these test files were already not in it).
+- **Ratchet NOT loosened.** maintainability 100/100, max file 681, max fn 24
+  (unchanged). No manifest/source-order/zone change (scripts + 2 runtime helpers +
+  tests + docs only).
+- **VALIDATION (Linux/cloud, R 4.6.0, logger + placeholder env):**
+  `ai_validate quick` FULL PASS (failed=0, skipped=0, app_source_smoke=passed,
+  `artifacts/ai-validation/20260624-102241/summary.json`). `ai_validate full
+  --boot-smoke` FULL PASS: app source smoke passed, **full testthat suite passed
+  (181.6s)**, shiny boot passed, browser smoke SKIPPED (no browser); failed=0,
+  skipped=0 (`artifacts/ai-validation/20260624-102401/summary.json`). seam_doctor OK;
+  parse_sanity 854; maintainability 100/100 max 681. The prior "logging test
+  full-suite blocker" did NOT reproduce (it is environment-bootstrap: needs `logger`
+  + placeholder `LOCAL_LLM_ENDPOINT`/`DB_DSN`/`AI_KEYS_MASTER`, not a test-isolation
+  bug). NOT VM/SSO/DB/SQL-Server Turkish encoding/real-browser proof.
+- **NOT proven (by design):** the gate's live artifact write needs app boot on the
+  VM; cloud verified the pure producer + reader end-to-end (evaluate→record→toJSON→
+  write→read-back) + the script token contract, not a live VM run. The artifact is a
+  deployment-moment **snapshot** of health — NOT load/concurrency/long-stability/
+  real-browser/VM-SSO-SQLServer proof.
+- **GOTCHAS:** (1) `helpers_post_deploy_smoke.R` is sourced STANDALONE by its contract
+  test → do not use `%||%` there (use explicit null checks like the existing
+  evaluator). (2) The maintainability report counts `(<-|=)\s*function\s*\(`, so
+  inline `error = function(e)` handlers DO count toward the per-file fn budget —
+  watch the 24 ceiling on near-budget files. (3) Run discovery scripts with
+  `LANG=C.UTF-8 LC_ALL=C.UTF-8` (Turkish files; C/POSIX locale throws "invalid
+  input"). (4) Focused tests that use `resolve_repo_root_for_tests()` need helpers →
+  run via `testthat::test_dir("tests/testthat", filter=...)`, not bare `test_file`.
+
+- **BEST NEXT TARGETS** (from this session's reports): #1 `R/server_handler_true_streaming.R`
+  (681, the global ratchet pin — extract a cohesive helper layer; SSE/streaming is
+  sensitive, preserve request-id/stop-file/reasoning-recovery contracts). Then
+  `R/helpers_claude_code_documents.R` (679), `R/module_file_manager.R` (677, has a
+  725/14 file budget). Frontend: `www/js/ai_expert_manager.js` (802/45/12 event/8
+  Shiny handler — top function/handler density but WITHIN the 850-line/60-fn/20-shiny
+  budgets, so it's a "split then tighten budget" exercise, not a budget breach) and
+  `www/js/deep_space_intro.js` (820, scene orchestrator with companion shader/solar
+  files already split). No post-deploy carryover remains.
+
+---
+
 ## LATEST SESSION RESULTS — `claude/optimistic-carson-q8jihd` (2026-06-20, TWO complexity packages)
 
 This session shipped **two behavior-preserving structural splits of the two largest R

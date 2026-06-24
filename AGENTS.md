@@ -36,3 +36,9 @@
 - It uses a three-lane design: **fake** LLM (main high-concurrency lane, zero real keys), **proxy** (personal-key routing/isolation proof), and **real-canary** (single real key, very low concurrency only).
 - Do not make the main multi-user soak depend on one real LLM API key, and do not claim real 1,000-concurrent-user readiness from fake/proxy/canary runs. See `docs/operational-soak-gate.md` for profiles, env vars, artifacts, and the `does_prove`/`does_not_prove` honesty contract.
 - Default profile is `smoke`. Run `Rscript tests/scripts/run_operational_soak_gate.R`; artifacts land in `artifacts/soak/<timestamp>/`.
+
+## Post-deploy smoke evidence
+
+- `Rscript tests/scripts/run_post_deploy_smoke.R` (run on the VM with the app up) collects health checks, computes an overall status (`pass`/`degraded`/`fail`) via the pure `mergen_post_deploy_smoke_evaluate()`, and `stop()`s on a critical break.
+- It writes a secret-safe, machine-readable artifact **before** `stop()`: `artifacts/post-deploy-smoke/<timestamp>/post-deploy-smoke.json`. Built by the pure `mergen_post_deploy_smoke_artifact_record()`; it carries only health-check ids, status counts, and overall metadata plus mandatory `does_prove`/`does_not_prove` honesty fields. Never write raw log/env/secret values; keep it redacted.
+- The pure reader `release_evidence_post_deploy_smoke_summary()` surfaces the latest artifact in **Sistem Durumu > Doğrulama Kanıtı**. A missing artifact is reported honestly as not_found, never as success. This is a deployment-moment **snapshot** of health only — NOT load/concurrency, long-running stability, real browser UX, or VM/SSO/SQL Server Turkish encoding proof.
