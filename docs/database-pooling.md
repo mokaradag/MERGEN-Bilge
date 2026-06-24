@@ -111,8 +111,17 @@ at-rest Türkçe encoding'i kanıtlamaz.
 
 ## 6. Windows VM / SQL Server doğrulaması (yapılması gereken)
 
-Havuz bulutta/offline test edilmiştir; üretim VM'de SQL Server'a karşı henüz
-doğrulanmamıştır. VM'de açmadan önce:
+Havuz bulutta/offline test edilmiştir ve 24 Haziran 2026'da Windows VM'de uzun
+proxy-lane limit-push sırasında aşağıdaki üretim `.Renviron` ayarlarıyla denenmiştir:
+`MERGEN_DB_POOL_ENABLED=TRUE`, `MERGEN_DB_POOL_MIN_SIZE=1`,
+`MERGEN_DB_POOL_MAX_SIZE=8`, `MERGEN_DB_POOL_IDLE_TIMEOUT=600`,
+`MERGEN_DB_POOL_VALIDATION_INTERVAL=60`. Bu koşumda başarı oranı önceki uzun
+proxy-lane baseline'a göre 0.5826'dan 0.6414'e yükselmiş, timeout sayısı 94880'den
+73552'ye inmiştir; ancak genel sonuç hâlâ FAIL (`effective_success_rate=0.6414` <
+0.98) olduğu için bu ayar üretim kapasite/readiness PASS kanıtı değildir. Ayrıntı
+`docs/operational-soak-gate.md` bölüm 15'te tutulur.
+
+VM'de açmadan veya kalıcı tutmadan önce:
 
 1. `.Renviron`'da `MERGEN_DB_POOL_ENABLED=TRUE` ayarlayın ve tam R sürecini
    yeniden başlatın (tarayıcı yenileme yeterli değildir).
@@ -123,7 +132,10 @@ doğrulanmamıştır. VM'de açmadan önce:
    yeni-yazım probe'unun rollback ettiğini doğrulayın.
 4. SSMS'te en yeni `MB_Messages`/`MB_Chats` satırlarının Türkçe açısından temiz
    olduğunu (mojibake yok) teyit edin.
-5. Canlı uygulamaya attach soak sınır koşumunu (24/26/28 kullanıcı) havuz
-   açık/kapalı olarak yeniden ölçüp gerçek-sohbet kapasite farkını gözlemleyin.
+5. Canlı uygulamaya attach soak sınır koşumunu havuz açık/kapalı olarak yeniden
+   ölçüp gerçek-sohbet kapasite farkını gözlemleyin. 1000 kullanıcı / 90 dakika
+   proxy-lane koşumunda 2026-06-24 sonucu hâlâ FAIL olduğu için bu koşumu yalnızca
+   limit-push/guardrail kanıtı olarak yorumlayın.
 
-Bu adımlar geçene kadar havuzu üretimde kalıcı açmayın.
+Bu adımlar geçene ve release hedeflerinize uygun soak/evidence gate sonuçları PASS
+olmadan havuzu üretimde kalıcı açmayın.

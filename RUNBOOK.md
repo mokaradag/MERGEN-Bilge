@@ -318,6 +318,21 @@ kapasite/readiness PASS değildir. Aynı oturumda VM evidence gate
 `artifacts/vm-evidence/20260620-104919/evidence.json` ile `Toplam: 13 passed, 0 failed, 0 skipped`
 olarak geçti; bu, uzun 1000-eşzamanlı proxy soak FAIL sonucunu geçersiz kılmaz.
 
+2026-06-24 pooled limit-push güncellemesi: aynı 1000 aktif eşzamanlı kullanıcı /
+5400 saniye proxy-lane attach koşumu, Windows VM uygulama `.Renviron` içinde
+`MERGEN_DB_POOL_ENABLED=TRUE`, min=1, max=8, idle timeout=600 sn ve validation
+interval=60 sn iken tekrarlandı. Konsol artifact'ı
+`artifacts/soak/20260624-095505/soak_evidence.json` olarak raporlandı (VM console
+observed; JSON bu checkout içinde yok). Sonuç yine **FAIL**: 205136 istek, 131584
+başarı, 0 hata, 73552 timeout, `effective_success_rate=0.6414` < 0.98,
+p50/p95/p99=9549.6/17902.6/18843.5 ms, throughput=2276.7/dk. 20 Haziran koşumuna
+göre başarı oranı 0.5826'dan 0.6414'e yükseldi ve timeout sayısı 94880'den
+73552'ye indi; ancak p95 arttı ve 0.98 eşiği hâlâ geçilmediği için bu yalnızca
+sınırlı iyileşme/negatif limit-push kanıtıdır, kapasite/readiness PASS değildir.
+Anahtar yönlendirme, izolasyon, upload validation, encoding round-trip, secret leak,
+mojibake ve server-crash guardrail'leri temiz kaldı; `memory_growth_mb` ve
+`browser_console_errors` yine `UNMEASURED` idi.
+
 ## 8. Dağıtım Öncesi Kapılar
 
 1. Değişiklik türünü sınıflandırın: docs-only, UI, runtime, DB, SSO, file lifecycle, streaming, Bilge Yolaç veya deployment.

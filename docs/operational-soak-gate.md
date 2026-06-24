@@ -759,3 +759,57 @@ arka ucuna karşı yük altında doğrulandı.
 at-rest davranışı ve gerçek LLM throughput'u. Bunlar Windows VM gate'lerinde
 (`run_vm_preflight_real.R`, `run_vm_encoding_preflight_real.R`, browser UX smoke)
 ve canlı uygulamaya attach soak koşumunda ayrıca doğrulanmalıdır.
+
+---
+
+## 15. 2026-06-24 Windows VM pooled DB proxy-lane limit-push update
+
+Bu bölüm, 24 Haziran 2026 tarihinde Windows VM üzerinde DB bağlantı havuzu açıkken
+alınan yeni uzun proxy-lane limit-push sonucunu kaydeder. Koşum canlı uygulamaya
+attach edilerek `MERGEN_SOAK_APP_URL=http://127.0.0.1:8009/` ile çalıştırıldı;
+profil `proxy_llm`, serit `proxy`, eşzamanlılık `1000`, süre `5400` saniye
+(90 dakika) ve kapasite eğrisi kapalıydı. Konsol çıktısında artifact dizini
+`artifacts/soak/20260624-095505` ve kanıt dosyası
+`artifacts/soak/20260624-095505/soak_evidence.json` olarak raporlandı. Bu artifact
+bu checkout içinde bulunmadığı için değerler **VM console observed** olarak
+belgelenir ve JSON artifact eklendiğinde yeniden doğrulanmalıdır.
+
+Bu koşum sırasında Windows VM uygulama `.Renviron` havuz ayarları şu şekildeydi:
+
+```text
+MERGEN_DB_POOL_ENABLED=TRUE
+MERGEN_DB_POOL_MIN_SIZE=1
+MERGEN_DB_POOL_MAX_SIZE=8
+MERGEN_DB_POOL_IDLE_TIMEOUT=600
+MERGEN_DB_POOL_VALIDATION_INTERVAL=60
+```
+
+Sonuç hâlâ **FAIL** idi: 205136 istekten 131584'ü başarılı oldu
+(`raw_success_rate=0.6414`, `effective_success_rate=0.6414`), hata sayısı 0,
+timeout sayısı 73552, p50/p95/p99 yaklaşık 9549.6 / 17902.6 / 18843.5 ms ve
+throughput yaklaşık 2276.7 istek/dk olarak gözlendi. Başarısızlık nedeni yine
+`effective_success_rate` eşiğinin 0.98 altında kalmasıydı. Güvenlik/doğruluk
+kontrolleri temiz kaldı: anahtar yönlendirme 5/5, cross-session key isolation
+`TRUE`, upload validation 7/7, encoding round-trip pass rate 1, secret leak 0,
+server crash yok, `mojibake_hits=0`, redaction verified `TRUE`, etkileşimli
+başarı oranı 1, etkileşimli DB sızıntısı 0 ve etkileşimli izolasyon kontrolleri
+PASS. `memory_growth_mb` ve `browser_console_errors` bu koşuda `UNMEASURED`
+kaldığından ölçülmüş PASS olarak sunulmamalıdır; `temp_growth_mb` yaklaşık
+0.31 MB ile PASS görünmüştür.
+
+20 Haziran 2026 havuz öncesi uzun proxy-lane limit-push koşumuyla
+karşılaştırıldığında (`artifacts/soak/20260620-111106/soak_evidence.json`, VM
+console observed), başarı oranı **0.5826 → 0.6414** seviyesine çıktı ve timeout
+sayısı **94880 → 73552** seviyesine indi. Bu yararlı ama sınırlı bir iyileşmedir;
+p95 gecikme **16965.9 ms → 17902.6 ms** seviyesine çıktığı ve 0.98 etkin başarı
+eşiği hâlâ geçilemediği için sonuç kapasite/readiness PASS değildir. Havuz ayarı
+1000 aktif eşzamanlı kullanıcı / 90 dakika proxy-lane baskısında tek başına
+işletim zarfını geçerli hale getirmemiştir.
+
+Bu koşumun yorumu: DB havuzu açık üretim VM konfigürasyonu altında uzun 1000
+eşzamanlı proxy-lane baskısında bazı timeout/başarı oranı iyileşmesi gözlenmiştir,
+ama sonuç hâlâ limit-push negatif kanıtıdır. Güvenlik, anahtar izolasyonu, upload,
+redaksiyon ve mojibake guardrail'lerinin yük altında temiz kalması olumlu
+koruma kanıtı olarak kaydedilir; 1000 gerçek aktif insan chat oturumu, browser
+websocket eşzamanlılığı, gerçek upstream LLM throughput'u veya release readiness
+kanıtı olarak sunulmamalıdır.
