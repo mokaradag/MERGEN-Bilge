@@ -55,6 +55,96 @@
   file.path(yeni, "evidence.json")
 }
 
+# Sahte post-deploy-smoke artifact ağacı kurar (eski + yeni); en yeniyi döndürür.
+.makePostDeploySmokeFixture <- function(repo_root) {
+  taban <- file.path(repo_root, "artifacts", "post-deploy-smoke")
+
+  eski <- file.path(taban, "20260101-080000")
+  yeni <- file.path(taban, "20260624-100000")
+  dir.create(eski, recursive = TRUE, showWarnings = FALSE)
+  dir.create(yeni, recursive = TRUE, showWarnings = FALSE)
+
+  eski_icerik <- list(
+    gate = "run_post_deploy_smoke",
+    generated_at_utc = "2026-01-01T08:00:00Z",
+    overall = "fail",
+    should_fail = TRUE,
+    total = 3L,
+    counts = list(ok = 2L, critical = 1L),
+    critical_failures = list("db.primary")
+  )
+  yeni_icerik <- list(
+    gate = "run_post_deploy_smoke",
+    generated_at_utc = "2026-06-24T10:00:00Z",
+    validation_execution_status = "ran_by_post_deploy_smoke",
+    overall = "degraded",
+    should_fail = FALSE,
+    reason = "ok",
+    total = 4L,
+    counts = list(ok = 3L, warning = 1L),
+    failing = list(),
+    critical_failures = list(),
+    evaluated_at = "2026-06-24T13:00:00+0300",
+    does_prove = "anlık sağlık",
+    does_not_prove = "yük/eşzamanlılık değil"
+  )
+
+  writeLines(jsonlite::toJSON(eski_icerik, auto_unbox = TRUE),
+             file.path(eski, "post-deploy-smoke.json"), useBytes = TRUE)
+  writeLines(jsonlite::toJSON(yeni_icerik, auto_unbox = TRUE),
+             file.path(yeni, "post-deploy-smoke.json"), useBytes = TRUE)
+
+  file.path(yeni, "post-deploy-smoke.json")
+}
+
+testthat::test_that("release_evidence_post_deploy_smoke_summary en yeni artifact'i beyaz-listeli alanlarla okur", {
+  env <- .releaseEvidenceEnv()
+  kok <- withr::local_tempdir()
+  .makePostDeploySmokeFixture(kok)
+
+  ozet <- env$release_evidence_post_deploy_smoke_summary(repo_root = kok)
+
+  testthat::expect_true(ozet$found)
+  testthat::expect_identical(ozet$status, "degraded")
+  testthat::expect_false(ozet$should_fail)
+  testthat::expect_identical(ozet$total, 4L)
+  testthat::expect_identical(ozet$pass_count, 3L)
+  testthat::expect_identical(ozet$warn_count, 1L)
+  testthat::expect_identical(ozet$critical_count, 0L)
+  testthat::expect_identical(ozet$selected_run, "20260624-100000")
+  testthat::expect_identical(ozet$generated_at_utc, "2026-06-24T10:00:00Z")
+  testthat::expect_identical(ozet$critical_failures, character(0))
+
+  # En yeniden eskiye iki koşu listelenir (operatör koşu görünürlüğü).
+  testthat::expect_identical(ozet$available_runs,
+                             c("20260624-100000", "20260101-080000"))
+})
+
+testthat::test_that("release_evidence_post_deploy_smoke_summary eski koşunun kritik bozulmasını da çözer", {
+  env <- .releaseEvidenceEnv()
+  kok <- withr::local_tempdir()
+  .makePostDeploySmokeFixture(kok)
+
+  ozet <- env$release_evidence_post_deploy_smoke_summary(
+    repo_root = kok, run_id = "20260101-080000"
+  )
+
+  testthat::expect_true(ozet$found)
+  testthat::expect_identical(ozet$status, "fail")
+  testthat::expect_true(ozet$should_fail)
+  testthat::expect_identical(ozet$critical_count, 1L)
+  testthat::expect_true("db.primary" %in% ozet$critical_failures)
+})
+
+testthat::test_that("release_evidence_post_deploy_smoke_summary artifact yoksa dürüstçe not_found döner", {
+  env <- .releaseEvidenceEnv()
+  bos <- env$release_evidence_post_deploy_smoke_summary(repo_root = withr::local_tempdir())
+  testthat::expect_false(bos$found)
+  testthat::expect_identical(bos$status, "not_found")
+  testthat::expect_identical(bos$available_runs, character(0))
+  testthat::expect_identical(bos$critical_failures, character(0))
+})
+
 testthat::test_that("release_evidence_latest_artifact en yeni timestamp dizinindeki dosyayı seçer", {
   env <- .releaseEvidenceEnv()
   kok <- withr::local_tempdir()
@@ -399,9 +489,11 @@ testthat::test_that("release_evidence_overview alt özetleri ve kanıt sınırı
   genel <- env$release_evidence_overview(repo_root = kok, log_dir = log_dir)
 
   testthat::expect_true(all(c("generated_at", "vm_evidence", "ai_validation",
-                              "log_health", "proof_note") %in% names(genel)))
+                              "post_deploy_smoke", "log_health", "proof_note") %in% names(genel)))
   testthat::expect_true(genel$vm_evidence$found)
   testthat::expect_false(genel$ai_validation$found)
+  testthat::expect_false(genel$post_deploy_smoke$found)
+  testthat::expect_identical(genel$post_deploy_smoke$status, "not_found")
   testthat::expect_false(genel$log_health$found)
 
   # Kanıt sınırı dürüstlüğü: SKIP'in kanıt olmadığı notu her özette taşınır

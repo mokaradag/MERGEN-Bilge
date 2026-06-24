@@ -219,7 +219,9 @@ test_that("true SSE worker model request_overrides fonksiyonunu kullanır", {
 })
 
 test_that("future worker globals apply_model_request_overrides fonksiyonunu taşır", {
-  txt <- .read_repo_file_bytes_for_reasoning_contract("R/server_handler_true_streaming.R")
+  # Worker-export globals listesi R/helpers_llm_true_streaming_worker.R'ye taşındı;
+  # sözleşme yeni sahip dosyada doğrulanır (handler onu delege eder).
+  txt <- .read_repo_file_bytes_for_reasoning_contract("R/helpers_llm_true_streaming_worker.R")
 
   expect_true(
     grepl(
@@ -228,7 +230,7 @@ test_that("future worker globals apply_model_request_overrides fonksiyonunu taş
       perl = TRUE,
       useBytes = TRUE
     ),
-    info = "R/server_handler_true_streaming.R globals listesinde apply_model_request_overrides taşınmalı."
+    info = "R/helpers_llm_true_streaming_worker.R globals listesinde apply_model_request_overrides taşınmalı."
   )
 })
 

@@ -8,6 +8,227 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/tender-keller-vasw96` (2026-06-24, true-SSE worker-globals split)
+
+Shipped a **behavior-preserving extraction of the global ratchet pin**
+`R/server_handler_true_streaming.R` (681 → 655). Surgical, additive. Do NOT redo:
+
+- **What/why:** this file is one tightly-coupled streaming state machine over a shared
+  mutable `stream_env`; the inner closures can't be hoisted without threading a huge
+  context (high risk on the sensitive SSE path). The ONE clean, behavior-preserving
+  extraction is the ~35-line `tracked_future_promise(..., globals = list(...))`
+  worker-export list — flat, declarative, mostly global symbols, AND a CLAUDE.md-protected
+  contract (reasoning delta / stop-file / model request-override helpers must stay
+  visible worker-side).
+- **Extraction:** new pure factory `mergen_true_streaming_worker_globals()` in
+  **`R/helpers_llm_true_streaming_worker.R`** (62/1). 31 names moved BYTE-IDENTICAL
+  (4 request-scoped args + 25 helpers + `%||%` + `api_config`); handler now calls
+  `globals = mergen_true_streaming_worker_globals(chat_history_for_sse, settings_for_sse,
+  stream_file_for_sse, stop_file_for_sse)`. GOLDEN proof: stubbed-env factory output ==
+  original 31 names in the same order; arg passthrough TRUE.
+- **Wiring:** manifest `server_handlers_send_message` 9→10 (helper BEFORE handler);
+  bootstrap order rule `helpers_llm_true_streaming_worker.R → server_handler_true_streaming.R`;
+  seam `sohbet_llm_akis` guard_tests 8→9; section contract total 282→283.
+- **Tests:** new `test-true-streaming-worker-globals-contract.R` (structural split + 31-name
+  worker-export contract + arg passthrough). REPOINTED two existing tests that grepped the
+  handler for the moved names → now assert the new owner: `test-sse-worker-export-contract.R`
+  (+handler-delegation check) and `test-llm-reasoning-request-overrides.R:221`. GOTCHA:
+  both of those grep the *file text* for `apply_model_request_overrides = ...` etc., so any
+  globals-list move MUST repoint them or they fail.
+- **Ratchet TIGHTENED:** global `MERGEN_TEST_MAX_FILE_LINES` 681 → **678** (new pin
+  `module_admin_yanit_analizi_outputs.R` 678). Budgets: handler 660/18, helper 80/1.
+- **VALIDATION (Linux/cloud, R 4.6.0, logger + placeholder env):** `ai_validate full
+  --boot-smoke` FULL PASS — app source smoke passed, **full testthat suite passed
+  (159.4s)**, shiny boot passed, browser SKIPPED; failed=0, skipped=0
+  (`artifacts/ai-validation/20260624-121349/summary.json`). parse_sanity 858; seam_doctor
+  OK; maintainability 100/100 max 678. NOT VM/SSO/DB/real-browser/live-SSE proof.
+- **GOTCHA:** the factory references ~25 global functions + `api_config` BY NAME; they
+  resolve at CALL time (runtime), so the factory must only be called where those globals
+  exist (the handler's runtime). Tests stub all of them in an isolated env before sourcing.
+- **BEST NEXT TARGETS:** `R/module_file_manager.R` (677); frontend
+  `www/js/deep_space_intro.js` (820), `www/js/ai_expert_manager.js` (802/45 — within budget,
+  split-then-tighten). `module_admin_yanit_analizi_outputs.R` (678) is a flat single-function
+  renderer list → low priority.
+
+---
+
+## LATEST SESSION RESULTS — `claude/tender-keller-vasw96` (2026-06-24, package 2: Bilge Yolaç doküman summary split)
+
+Same branch/session as the post-deploy package below; after the user said "continue"
+this session shipped a **second** behavior-preserving structural split. Do NOT redo:
+
+- **Split `R/helpers_claude_code_documents.R` 679/17 → 407/10** by moving the document
+  SUMMARY orchestration (`resolve_claude_code_document_detail_level`,
+  `write_claude_code_document_summary_file`, `build_claude_code_document_summary_messages`,
+  `summarize_claude_code_documents_with_local_llm`) verbatim into NEW
+  `R/helpers_claude_code_document_summary.R` (281/7). Document CONTEXT prep
+  (manifest/inline-payload/prompt/prepare-context) + the shared
+  `write_claude_code_utf8_bom_text_file()` BOM writer STAY in documents.R.
+- **Why this and NOT the global pin:** the global `MERGEN_TEST_MAX_FILE_LINES` pin is
+  `R/server_handler_true_streaming.R` (681) — but that file is ONE big reactive
+  function (inner closures over stream_env/values/session + an inline worker-globals
+  list that CLAUDE.md forbids relocating). Splitting it changes closure semantics on
+  the live-SSE path and is only VM-provable → high risk / low cloud value. Prior
+  sessions deliberately left it alone; this split instead reduced the 2nd-largest file
+  with the proven verbatim-move pattern. **Global pin stays 681 (unchanged).**
+- **Byte-preserving extraction:** done with an R script copying exact line ranges
+  (lines 531–533 mix tabs/spaces; retyping would drift). BOM writer kept in documents.R
+  because `R/helpers_claude_code_run_lifecycle.R` also uses it (via `exists()` guard).
+  `summarize_...` runs in run_lifecycle's `tracked_future_promise` worker via AUTOMATIC
+  globals detection — moving it between sourced files does NOT change worker resolution
+  (globals resolve in globalenv at runtime, file-independent).
+- **Wiring:** manifest `claude_code_helpers` documents → **summary** → run_lifecycle;
+  bootstrap order rules documents→summary, summary→run_lifecycle; section count n=26→27,
+  total runtime 281→282.
+- **Tests:** NEW `test-claude-code-document-summary-refactor-contract.R` (5 tests: split
+  + behavior + manifest order + documents.R no longer owns the 4 fns + BOM writer stays
+  + tightened budget summary<320/≤9, documents<430/≤12). Updated 3 behavior tests to
+  source the summary file (detail-level, document-builders, document-orchestration).
+- **Ratchet NOT loosened.** maintainability 100/100, max file 681, max fn 24 (unchanged).
+  documents.R left the near-pin band; new file locked by the split-contract budget.
+- **VALIDATION (Linux/cloud, R 4.6.0):** `ai_validate full --boot-smoke` FULL PASS:
+  app source smoke passed, **full testthat suite passed (159.0s)**, shiny boot passed,
+  browser smoke SKIPPED; failed=0, skipped=0
+  (`artifacts/ai-validation/20260624-112452/summary.json`). parse_sanity 856; seam_doctor
+  OK (`bilge_yolac` runtime 33→34, no orphan); maintainability 100/100 max 681. NOT
+  VM/SSO/CLI/real-browser proof — the document-summary worker flow is VM-only-provable.
+- **BEST NEXT TARGETS:** `R/server_handler_true_streaming.R` (681, global pin — only on
+  the VM with a maintainer, sensitive SSE closures), `R/module_file_manager.R` (677,
+  has a 725/14 budget), `R/helpers_claude_code_process.R` (665/20, function-count
+  pressure). Frontend `www/js/ai_expert_manager.js` (802/45, within budget →
+  split-then-tighten). GOTCHA: the maintainability fn metric counts inline
+  `= function(` (e.g. `error = function(e)`) — `summarize`'s tryCatch added inline fns,
+  so summary file is 7 not 4; budget accordingly.
+
+---
+
+## LATEST SESSION RESULTS — `claude/tender-keller-vasw96` (2026-06-24, post-deploy smoke artifact flow)
+
+This session **completed the post-deploy smoke evidence flow** (the documented Faz-3
+carryover "üretici henüz yok"). Additive + one health UI card; behavior-preserving.
+Do NOT redo:
+
+- **Gap closed:** `tests/scripts/run_post_deploy_smoke.R` + the pure evaluator
+  `tests/scripts/helpers_post_deploy_smoke.R` already existed, but the gate only
+  `cat()`-printed and `stop()`-ed — it wrote **no machine-readable artifact**, and
+  `R/helpers_release_evidence.R` had readers for vm-evidence + ai-validation but
+  **none for post-deploy smoke**. Now uçtan uca: producer → secret-safe JSON →
+  pure reader → Sistem Durumu UI.
+- **Producer:** new pure `mergen_post_deploy_smoke_artifact_record()` in
+  `helpers_post_deploy_smoke.R` (self-contained, no `%||%` — the contract test
+  sources it standalone). `run_post_deploy_smoke.R` writes
+  `artifacts/post-deploy-smoke/<timestamp>/post-deploy-smoke.json` **before** `stop()`
+  (so fail/degraded runs also leave evidence), wrapped in `tryCatch` + redactor.
+  Mandatory `does_prove`/`does_not_prove` honesty fields; only check-ids + status
+  counts + overall metadata (no raw log/env/secret).
+- **Reader:** new `release_evidence_post_deploy_smoke_summary()` in
+  `R/helpers_release_evidence.R` (whitelisted fields, not_found honesty) wired into
+  `release_evidence_overview()` as `post_deploy_smoke`. helpers_release_evidence
+  21 → 22 fns (deliberately AVOIDED `tryCatch(error=function)` closures because the
+  report metric counts `= function(` — a parsed-JSON `$` access never errors, so
+  direct access keeps the file off the global 24-fn ceiling; it briefly hit 24
+  before I removed the two closures).
+- **UI:** new `.health_release_post_deploy_card()` + a "Dağıtım Sonrası Duman Testi"
+  card + a metric tile in `R/module_health_release.R` (5 → 6 fns). not_found shows
+  "Bulunamadı", never success; artifact path NOT rendered (secret-safe).
+- **Tests:** extended `test-post-deploy-smoke-contract.R` (record-helper behavior +
+  artifact-writer token contract), `test-release-evidence-behavior.R` (fixture +
+  reader + overview key), `test-health-release-ui-behavior.R` (card render +
+  secret-safe + not_found). No NEW test file → no seam-registry/section-count churn
+  (the seam guard_tests is a curated subset; these test files were already not in it).
+- **Ratchet NOT loosened.** maintainability 100/100, max file 681, max fn 24
+  (unchanged). No manifest/source-order/zone change (scripts + 2 runtime helpers +
+  tests + docs only).
+- **Codex review follow-up — round 1 (3× P2):** (1) redacting the *serialized* JSON
+  could corrupt it → first added `mergen_post_deploy_smoke_redact_json_safe`
+  (redact-if-valid-else-original) — SUPERSEDED in round 2, see below. (2) UI ignored
+  `should_fail`, so the no-checks case (`overall="unknown"` + `should_fail=TRUE`) showed
+  neutral "Bilinmiyor" → now forced to critical "Başarısız" (tile + card pill). (3)
+  `does_prove` overstated "çalışan uygulama" though the gate runs `MERGEN_RUN_APP=false`
+  (no Shiny service, no URL probe) → narrowed to in-process checks; `does_not_prove`
+  adds the "deployed service up / app URL not probed" caveat.
+- **Codex review follow-up — round 2 (2× P2, hardens round 1):** (1) JSON-validate
+  guard checked *syntax* only — a secret value like `ok` could rewrite the `counts.ok`
+  KEY yet still validate → reader reports zero passing checks. REPLACED the json-text
+  helper with `mergen_post_deploy_smoke_redact_record()`: redaction runs on structural
+  STRING VALUES only, BEFORE serialization; list keys + numbers + counts are never
+  touched, so the schema can't break and toJSON always yields valid JSON. (2)
+  `.health_release_pill()` didn't recognize `degraded` → the card rendered raw/unknown
+  while the tile showed Kısmi/warning; extended the pill to map `degraded`/`warning`
+  → warning/"Kısmi"/"Uyarı". Tests: contract redaction test rewritten to assert
+  key/count preservation under an `ok`-targeting redactor; UI test asserts the degraded
+  card pill is `health-status-warning` (not raw "degraded"). Focused 3-file run 16/17/11
+  0-fail; `ai_validate quick` PASS (`artifacts/ai-validation/20260624-153221/summary.json`).
+  GOTCHA: any future change to the worker-export-style redaction must redact VALUES not
+  the serialized blob — never let redaction touch JSON keys/counts.
+- **Codex review follow-up — round 3 (2× P2, hardens round 2):** (1) round 2 still
+  redacted ALL string values; `overall` is a status ENUM, so a secret value equal to
+  `pass`/`degraded` could rewrite `record$overall` → valid JSON, `should_fail` false →
+  panel shows neutral for a passing/degraded gate. FIX: `mergen_post_deploy_smoke_redact_record()`
+  now RESTORES `overall`/`reason`/`gate`/`validation_execution_status` from the original
+  AFTER the value-walk (these are constants/enums/git-metadata, never secrets). (2) the
+  gate `stop()`-ed on missing-env / `app.R` source failure / absent `health_collect_checks`
+  BEFORE the artifact block → those failure modes left no artifact (panel `not_found`,
+  masking the failure). FIX: helpers now source BEFORE `app.R`; `.smoke_redact`/
+  `.smoke_write_artifact`/`.smoke_fail_and_stop` + `critical_ids`/`fail_on_unknown` are
+  defined early; new pure `mergen_post_deploy_smoke_failure_result(reason)` lets all 3
+  early exits write an `overall="fail"` artifact before stopping (and `source("app.R")`
+  is wrapped in tryCatch). Tests: enum-restore + failure-result + a gate grep for
+  `mergen_post_deploy_smoke_failure_result`. Focused 18/17/11 0-fail; `ai_validate quick`
+  PASS (`artifacts/ai-validation/20260624-155351/summary.json`). GOTCHA: the post-deploy
+  redaction is now "redact free-form string VALUES, then restore the enum/identity scalars"
+  — if you add a new reader-interpreted enum field, add it to the restore set too.
+- **Codex review follow-up — round 4 (1× P1, gate correctness):** `health_collect_checks()`
+  returns a DATA FRAME (`do.call(rbind, ...)`, one row per check), but
+  `mergen_post_deploy_smoke_evaluate()` used `for (chk in checks)` which iterates a
+  data frame's COLUMNS, not rows. Atomic columns skipped the `is.list(chk)` branch →
+  every id blank, every status "unknown" → a real `db.primary`/`app.boot` critical was
+  never added to `critical_failures`, `should_fail` stayed FALSE, and the gate PASSED
+  despite a critical check. FIX: before the empty-check and loop, convert a data frame to
+  row records (`lapply(seq_len(nrow(checks)), function(i) as.list(checks[i, , drop = FALSE]))`);
+  `is.data.frame` is checked BEFORE `is.list` (a data frame is also a list). The
+  list-of-records path (existing tests) is unchanged. Test: data-frame row evaluation
+  (critical `db.primary` row triggers fail/critical_failures; all-ok → pass; 0 rows →
+  no_checks). Focused 19/17/11 0-fail; `ai_validate quick` PASS
+  (`artifacts/ai-validation/20260624-161202/summary.json`). GOTCHA: any future evaluator
+  input-shape change must keep the data-frame→rows normalization first; never iterate a
+  health-checks data frame directly with `for (x in df)`.
+- **VALIDATION (Linux/cloud, R 4.6.0, logger + placeholder env):**
+  `ai_validate quick` FULL PASS (failed=0, skipped=0, app_source_smoke=passed,
+  `artifacts/ai-validation/20260624-102241/summary.json`). `ai_validate full
+  --boot-smoke` FULL PASS: app source smoke passed, **full testthat suite passed
+  (181.6s)**, shiny boot passed, browser smoke SKIPPED (no browser); failed=0,
+  skipped=0 (`artifacts/ai-validation/20260624-102401/summary.json`). seam_doctor OK;
+  parse_sanity 854; maintainability 100/100 max 681. The prior "logging test
+  full-suite blocker" did NOT reproduce (it is environment-bootstrap: needs `logger`
+  + placeholder `LOCAL_LLM_ENDPOINT`/`DB_DSN`/`AI_KEYS_MASTER`, not a test-isolation
+  bug). NOT VM/SSO/DB/SQL-Server Turkish encoding/real-browser proof.
+- **NOT proven (by design):** the gate's live artifact write needs app boot on the
+  VM; cloud verified the pure producer + reader end-to-end (evaluate→record→toJSON→
+  write→read-back) + the script token contract, not a live VM run. The artifact is a
+  deployment-moment **snapshot** of health — NOT load/concurrency/long-stability/
+  real-browser/VM-SSO-SQLServer proof.
+- **GOTCHAS:** (1) `helpers_post_deploy_smoke.R` is sourced STANDALONE by its contract
+  test → do not use `%||%` there (use explicit null checks like the existing
+  evaluator). (2) The maintainability report counts `(<-|=)\s*function\s*\(`, so
+  inline `error = function(e)` handlers DO count toward the per-file fn budget —
+  watch the 24 ceiling on near-budget files. (3) Run discovery scripts with
+  `LANG=C.UTF-8 LC_ALL=C.UTF-8` (Turkish files; C/POSIX locale throws "invalid
+  input"). (4) Focused tests that use `resolve_repo_root_for_tests()` need helpers →
+  run via `testthat::test_dir("tests/testthat", filter=...)`, not bare `test_file`.
+
+- **BEST NEXT TARGETS** (from this session's reports): #1 `R/server_handler_true_streaming.R`
+  (681, the global ratchet pin — extract a cohesive helper layer; SSE/streaming is
+  sensitive, preserve request-id/stop-file/reasoning-recovery contracts). Then
+  `R/helpers_claude_code_documents.R` (679), `R/module_file_manager.R` (677, has a
+  725/14 file budget). Frontend: `www/js/ai_expert_manager.js` (802/45/12 event/8
+  Shiny handler — top function/handler density but WITHIN the 850-line/60-fn/20-shiny
+  budgets, so it's a "split then tighten budget" exercise, not a budget breach) and
+  `www/js/deep_space_intro.js` (820, scene orchestrator with companion shader/solar
+  files already split). No post-deploy carryover remains.
+
+---
+
 ## LATEST SESSION RESULTS — `claude/optimistic-carson-q8jihd` (2026-06-20, TWO complexity packages)
 
 This session shipped **two behavior-preserving structural splits of the two largest R

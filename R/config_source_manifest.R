@@ -295,6 +295,7 @@ source_manifest_sections <- list(
     "R/helpers_claude_code_plugins.R",
     "R/helpers_claude_code_document_extractors.R",
     "R/helpers_claude_code_documents.R",
+    "R/helpers_claude_code_document_summary.R",
     "R/helpers_claude_code_run_lifecycle.R"
   ),
 
@@ -511,6 +512,7 @@ source_manifest_sections <- list(
     "R/server_ai_expert_handlers.R",
     "R/server_handler_summarization.R",
     "R/server_handler_image_generation.R",
+    "R/helpers_llm_true_streaming_worker.R",
     "R/server_handler_true_streaming.R",
     "R/server_handler_streaming_tts.R",
     "R/server_llm_response_handlers.R",

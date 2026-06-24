@@ -3129,19 +3129,21 @@ tests/testthat/test-maintainability-ratchet.R
 
 ### Bilge Yolaç document extractor modularization contract
 
-The Bilge Yolaç document-processing layer now has a focused extractor split. Preserve this source order in `R/config_source_manifest.R`:
+The Bilge Yolaç document-processing layer now has a focused extractor + summary split. Preserve this source order in `R/config_source_manifest.R`:
 
 ```r
 safe_source("R/helpers_claude_code_document_extractors.R", encoding = "UTF-8")
 safe_source("R/helpers_claude_code_documents.R", encoding = "UTF-8")
+safe_source("R/helpers_claude_code_document_summary.R", encoding = "UTF-8")
 ```
 
 Responsibilities:
 
 * `R/helpers_claude_code_document_extractors.R`: binary-document extension policy, cache-name sanitization, text truncation, binary document discovery, temporary document-support directory creation, PDF/Excel/DOCX text extraction, supported-document dispatch, and office reader template path resolution.
-* `R/helpers_claude_code_documents.R`: document manifest generation, inline payload construction, document prompt construction, document context preparation, summary detail-level detection, summary messages, and summary file output.
+* `R/helpers_claude_code_documents.R`: document manifest generation, inline payload construction, document prompt construction, document context preparation, and the shared `write_claude_code_utf8_bom_text_file()` UTF-8 BOM writer (kept here because `R/helpers_claude_code_run_lifecycle.R` also uses it through an `exists()` guard).
+* `R/helpers_claude_code_document_summary.R`: document SUMMARY orchestration — `resolve_claude_code_document_detail_level()`, `write_claude_code_document_summary_file()`, `build_claude_code_document_summary_messages()`, and `summarize_claude_code_documents_with_local_llm()` (the latter calls `call_local_llm()` synchronously and runs inside `run_lifecycle`'s `tracked_future_promise` worker via automatic globals detection — moving it between sourced files does not change worker resolution).
 
-Do not move extractor helpers back into `R/helpers_claude_code_documents.R`. Keep the fallback source guard in `helpers_claude_code_documents.R` so the file can still be sourced directly in isolated tests/debug sessions. The split is protected by `test-claude-code-document-extractors-refactor-contract.R` and `test-claude-code-document-extractors-maintainability-contract.R`.
+Do not move extractor helpers back into `R/helpers_claude_code_documents.R`, and do not move the summary-orchestration helpers back into `R/helpers_claude_code_documents.R`. Keep `write_claude_code_utf8_bom_text_file()` in `helpers_claude_code_documents.R` (shared util); `helpers_claude_code_document_summary.R` loads AFTER documents.R (and before `helpers_claude_code_run_lifecycle.R`), so its `write_claude_code_document_summary_file()` resolves the BOM writer at call time. Keep the fallback source guard in `helpers_claude_code_documents.R` so the file can still be sourced directly in isolated tests/debug sessions. The split is protected by `test-claude-code-document-extractors-refactor-contract.R`, `test-claude-code-document-extractors-maintainability-contract.R`, and `test-claude-code-document-summary-refactor-contract.R`. Isolated tests that execute the summary helpers (`test-claude-code-detail-level-behavior.R`, `test-claude-code-document-builders-behavior.R`, `test-claude-code-document-orchestration-behavior.R`) must source `R/helpers_claude_code_document_summary.R` in addition to `R/helpers_claude_code_documents.R`.
 
 For maintainability refactors, prefer extracting one clear responsibility at a time and preserving public function names. After each extraction, update `global.R`, `tests/testthat/helper_bootstrap.R`, and add a small contract test that prevents the old monolithic responsibility from silently returning.
 
@@ -3722,7 +3724,7 @@ In particular, the following errors are usually not a source-order issue, but a 
 - `call_llm_worker function not found`
 - `generate_image function not found`
 
-For true SSE streaming, keep the worker prewarm/export contract aligned with the `tracked_future_promise(..., globals = list(...))` contract in `R/server_handler_true_streaming.R`. Reasoning deltas, stop-file checks, and model-specific request overrides require helpers such as `append_stream_reasoning_line`, `streaming_should_stop`, `apply_model_request_overrides`, and `merge_named_list_deep` to remain visible on the worker side.
+For true SSE streaming, keep the worker prewarm/export contract aligned with the worker-export globals list. That list is built by the pure factory `mergen_true_streaming_worker_globals()` in `R/helpers_llm_true_streaming_worker.R`, which `R/server_handler_true_streaming.R` delegates to via `tracked_future_promise(..., globals = mergen_true_streaming_worker_globals(...))`. Reasoning deltas, stop-file checks, and model-specific request overrides require helpers such as `append_stream_reasoning_line`, `streaming_should_stop`, `apply_model_request_overrides`, and `merge_named_list_deep` to remain visible on the worker side.
 
 These errors can be more visible especially under these conditions:
 - `SSO_ENABLED=TRUE`
@@ -3883,7 +3885,7 @@ Current contract:
 - The streaming decision is a pure helper, `mergen_sql_analysis_stream_plan()` in `R/helpers_send_message_core.R`. It is the single source of truth for `force_non_streaming_sql` and the opt-in `allow_non_streaming_fallback`. Keep it pure (no Shiny/session/network) and offline-testable. `R/server_send_message.R` must consume it rather than re-deriving the decision inline.
 - A thinking SQL analysis request uses true SSE (live reasoning) ONLY when streaming is on AND TTS is off AND MCP is off. With TTS on, streaming off, or MCP on it stays on the existing safe non-streaming path (the TTS path uses `simulate_streaming` and does not stream reasoning like true SSE). Do not route it to the TTS-streaming branch for live reasoning.
 - The non-streaming safety net lives INSIDE the SSE worker (`call_local_llm_sse_worker` in `R/helpers_llm_sse.R`), gated strictly by `current_settings$allow_non_streaming_fallback`. After the stream completes, if the final content is empty or "looks like reasoning" (via the shared `llm_worker_stream_content_looks_like_reasoning()`), the worker does ONE `stream=FALSE` retry and replaces ONLY the final answer body. It must stay wrapped in `tryCatch`: any failure degrades to the streamed content (current behavior); it must never crash the worker. The live reasoning already streamed to the panel, so the reasoning trace is left unchanged.
-- This fallback runs in the future worker (no main event-loop blocking). `R/server_handler_true_streaming.R` must keep `llm_worker_stream_content_looks_like_reasoning` in the `tracked_future_promise(..., globals = list(...))` export so the worker can resolve it.
+- This fallback runs in the future worker (no main event-loop blocking). The worker-export globals must keep `llm_worker_stream_content_looks_like_reasoning` so the worker can resolve it; that list is built by `mergen_true_streaming_worker_globals()` (`R/helpers_llm_true_streaming_worker.R`), which `R/server_handler_true_streaming.R` delegates to via `tracked_future_promise(..., globals = ...)`.
 - Do not make `allow_non_streaming_fallback` default-on for other flows; it is opt-in for sql_analysis only, so no other streaming path changes behavior.
 - Protected by `tests/testthat/test-send-message-core.R` (`mergen_sql_analysis_stream_plan` cases) and `tests/testthat/test-llm-worker-second-pass-contract.R` (the shared reasoning-detection helper). Keep `R/helpers_llm_sse.R` within its ratchet budget (< 762 lines / < 20 functions) and `R/server_send_message.R` within its budget (<= 620 lines / <= 11 functions).
 - VM-only live check (not provable in cloud): with Proje ve Kaynak Analizi + a thinking model + Akış modu on, confirm the Düşünce Akışı panel streams live during synthesis and the final answer is a clean body (not raw reasoning).
@@ -4268,7 +4270,7 @@ request_overrides = list(
 `apply_model_request_overrides(body, selected_model)` must be applied after constructing the true SSE streaming body and before sending the HTTP request.
 The same helper must also be applied on non-streaming LLM paths; otherwise streaming and non-streaming behavior diverges.
 `R/helpers_llm_api.R::call_local_llm()` is explicitly part of this contract and must keep calling `apply_model_request_overrides(body, selected_model)` after building the non-streaming body and after temperature handling; removing this call can make tool/fallback/non-streaming routes diverge from true SSE streaming behavior for Düşünüyorum/reasoning models.
-For helper visibility on the true streaming future worker side, keep `apply_model_request_overrides = apply_model_request_overrides` in `tracked_future_promise(..., globals = list(...))` within `R/server_handler_true_streaming.R`.
+For helper visibility on the true streaming future worker side, keep `apply_model_request_overrides = apply_model_request_overrides` in the worker-export globals list. That list is built by the pure factory `mergen_true_streaming_worker_globals()` in `R/helpers_llm_true_streaming_worker.R`; `R/server_handler_true_streaming.R` delegates to it via `tracked_future_promise(..., globals = mergen_true_streaming_worker_globals(...))`. Keep the helper loaded before the handler (manifest section `server_handlers_send_message`), keep the list content byte-identical when editing, and do not re-inline it into the handler. Protected by `tests/testthat/test-true-streaming-worker-globals-contract.R` and `tests/testthat/test-sse-worker-export-contract.R`.
 Kimi-style models may send reasoning as `delta$reasoning`; Gemma-style models may fall back to normal `delta$content` streaming with empty `ReasoningContent` when the override is missing.
 
 ### LLM content/reasoning fallback contract
@@ -4617,6 +4619,7 @@ Shared utilities used across modules:
 - `R/helpers_claude_code_plugins.R`
 - `R/helpers_claude_code_document_extractors.R`
 - `R/helpers_claude_code_documents.R`
+- `R/helpers_claude_code_document_summary.R`
 
 ### Group 5 - LLM Integration Layer
 Model calls, tool formatting, SSE, worker execution:
@@ -5243,6 +5246,7 @@ Core files:
 - `R/helpers_claude_code_plugins.R`
 - `R/helpers_claude_code_document_extractors.R`
 - `R/helpers_claude_code_documents.R`
+- `R/helpers_claude_code_document_summary.R`
 - `R/module_claude_code_ui.R`
 - `R/module_claude_code_akis.R`
 - `R/module_claude_code_plugins.R`

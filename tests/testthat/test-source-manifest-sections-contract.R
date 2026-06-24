@@ -103,7 +103,10 @@
   # Bilinçli güncelleme: R/helpers_ai_expert_handlers_support.R (AI Uzman handler
   # saf karar yardımcıları) bölüm sonuna eklendi; 3 -> 4 dosya.
   ai_expert_helpers = list(first = "R/helpers_ai_expert_user_data.R", last = "R/helpers_ai_expert_handlers_support.R", n = 4L),
-  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_run_lifecycle.R", n = 26L),
+  # 26 -> 27: doküman özetleme orkestrasyonu helpers_claude_code_documents.R'den
+  # R/helpers_claude_code_document_summary.R'ye ayrıldı (documents'tan sonra,
+  # run_lifecycle'dan önce).
+  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_run_lifecycle.R", n = 27L),
   llm_pipeline = list(first = "R/helpers_llm_tool_formatters.R", last = "R/helpers_llm_worker.R", n = 11L),
   module_chat = list(first = "R/module_chat_history_background.R", last = "R/module_feedback.R", n = 9L),
   module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 7L),
@@ -124,7 +127,7 @@
   server_init_runtime = list(first = "R/server_session_cache.R", last = "R/server_init_chat_runtime.R", n = 14L),
   server_core_outputs_welcome = list(first = "R/server_core_observer_runtime.R", last = "R/server_welcome_handlers.R", n = 7L),
   server_observers = list(first = "R/server_observers_startup.R", last = "R/server_observers_misc.R", n = 11L),
-  server_handlers_send_message = list(first = "R/server_tts_handlers.R", last = "R/server_send_message.R", n = 9L)
+  server_handlers_send_message = list(first = "R/server_tts_handlers.R", last = "R/server_send_message.R", n = 10L)
 )
 
 test_that("source_manifest_sections beklenen sırada ve adlarda bölümler içerir", {
@@ -267,7 +270,13 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # (server_runtime_context.R'den sonra, server_runtime_function_slot.R'den önce).
   # 280L -> 281L bilinçli güncelleme: işlem-güvenli DB bağlantı havuzu katmanı
   # R/helpers_db_pool.R database bölümüne (helpers_db_connection.R'den sonra) eklendi.
-  expect_equal(length(runtime), 281L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 281L -> 282L bilinçli güncelleme: Bilge Yolaç doküman özetleme orkestrasyonu
+  # R/helpers_claude_code_document_summary.R claude_code_helpers bölümüne
+  # (helpers_claude_code_documents.R'den sonra, run_lifecycle'dan önce) eklendi.
+  # 282L -> 283L bilinçli güncelleme: gerçek SSE worker-export globals fabrikası
+  # R/helpers_llm_true_streaming_worker.R server_handlers_send_message bölümüne
+  # (server_handler_true_streaming.R'den ÖNCE) eklendi.
+  expect_equal(length(runtime), 283L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

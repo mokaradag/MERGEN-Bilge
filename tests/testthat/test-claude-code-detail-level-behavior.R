@@ -15,8 +15,15 @@
   }
   if (!exists("resolve_claude_code_document_detail_level",
               envir = globalenv(), mode = "function", inherits = TRUE)) {
+    kok <- resolve_repo_root_for_tests()
+    # Doküman BAĞLAM hazırlığı documents.R'de; özetleme orkestrasyonu
+    # (resolve_detail_level dahil) document_summary.R'ye ayrıldı.
     source(
-      file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_documents.R"),
+      file.path(kok, "R", "helpers_claude_code_documents.R"),
+      encoding = "UTF-8", local = globalenv()
+    )
+    source(
+      file.path(kok, "R", "helpers_claude_code_document_summary.R"),
       encoding = "UTF-8", local = globalenv()
     )
   }

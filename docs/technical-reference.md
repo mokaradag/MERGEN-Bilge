@@ -321,6 +321,30 @@ Uygulamadaki ana sayfalar aşağıdaki gibidir:
 `full_testthat` adımı `tests/scripts/run_full_testthat_isolated.R` kullanır. Test dosyaları alfabetik `tests/testthat/test-*.R` listesi üzerinden tek tek temiz `Rscript --vanilla` çocuk süreçlerinde çalışır; bu RStudio console testthat koşumundan yavaştır ama sıcak oturumun gizleyebileceği eksik per-test kaynaklama/bağımlılık sorunlarını yakalar. Aralık koşumu `MERGEN_TESTTHAT_START_INDEX` ve `MERGEN_TESTTHAT_END_INDEX` ile yapılır; indexler bu alfabetik listeye göredir. Çocuk süreçler browser UX evidence-gating ortam değişkenlerinin ilgisiz testthat koşumlarına sızmasına karşı korunur.
 - Frontend runtime JS/CSS refactor'ı gerekiyorsa ayrı bir değişiklikte, küçük ve test destekli yapılmalıdır.
 
+### Dağıtım sonrası duman testi kanıt artifact'ı
+
+`tests/scripts/run_post_deploy_smoke.R`, uygulama VM'de ayaktayken sağlık
+kontrollerini toplar, saf değerlendirici `mergen_post_deploy_smoke_evaluate()`
+ile genel durumu (`pass`/`degraded`/`fail`) hesaplar ve kritik bozulmada `stop`
+eder. Kapı artık `stop`'tan **önce** secret-safe, makinece okunabilir bir kanıt
+artifact'ı yazar: `artifacts/post-deploy-smoke/<timestamp>/post-deploy-smoke.json`.
+Kayıt içeriği saf `mergen_post_deploy_smoke_artifact_record()` ile kurulur;
+yalnızca sağlık kontrol kimlikleri, durum sayaçları ve genel sonuç metadata'sı +
+zorunlu `does_prove`/`does_not_prove` dürüstlük alanları taşınır (ham log/ortam/
+secret değeri yok; yazımdan önce redaktörden de geçer). Başarısız koşumlar da
+artifact bıraktığı için `fail`/`degraded` durumlar operatör/release kanıt
+okuyucusu için iz oluşturur.
+
+Saf okuyucu `release_evidence_post_deploy_smoke_summary()` en son artifact'ı
+beyaz-listeli alanlarla `release_evidence_overview()`'a katar ve Sistem Durumu >
+**Doğrulama Kanıtı** sekmesinde "Dağıtım Sonrası Duman Testi" kartı + bir metrik
+kutusu olarak gösterilir; bulunamayan kanıt dürüstçe "Bulunamadı" görünür, asla
+başarı gibi sunulmaz. Bu artifact yalnızca uygulama ayaktayken (VM) üretilir ve
+**anlık sağlık fotoğrafıdır**; yük/eşzamanlılık dayanıklılığı, uzun süreli
+stabilite, gerçek tarayıcı UX veya VM/SSO/SQL Server Türkçe kodlama kanıtı
+DEĞİLDİR (bunlar ayrı kapılardır). Sözleşme `tests/testthat/test-post-deploy-smoke-contract.R`
+ve `tests/testthat/test-release-evidence-behavior.R` ile korunur.
+
 ### Ön Uç Konsol ve Erişilebilirlik Notları
 - **Chrome Issues / dateRangeInput etiketi:** Söyleşi Geçmişi tarih aralığı kontrolü artık Shiny’nin varsayılan `dateRangeInput` label yapısını doğrudan kullanmaz. `R/module_chat_history.R` içinde `history_accessible_date_range_input()` ile Shiny’nin geçersiz `label[for=inputId]` üretimi (wrapper `div` id’sine işaret eden durum) temizlenir ve erişilebilir `aria-labelledby` hedefi sağlanır. Bu, Chrome’daki “Incorrect use of `<label for=FORM_ELEMENT>`” uyarısını önlemek içindir.
 - **Boş `img src` kullanımı:** `R/module_ai_expert.R` (`aiExpertSubtitleUI()`), `R/module_tts_visualizer.R` (`ttsVisualizerUI()`), `R/module_character_video.R` (`characterVideoUI()`) içindeki placeholder görsellerde `src = ""` kullanılmamalıdır. Bunun yerine saydam 1x1 GIF data URI kullanılır: `data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==`. Boş `src` bazı tarayıcılarda mevcut sayfa URL’ine istek atıp konsolda boş `<other>` resource hatası gibi görünebilir.

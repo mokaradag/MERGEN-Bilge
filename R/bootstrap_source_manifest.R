@@ -448,7 +448,8 @@ source_manifest_required_order <- list(
   c("R/helpers_claude_code_downloads.R", "R/helpers_claude_code_workdir_scan.R"),
   c("R/helpers_claude_code_workdir_scan.R", "R/helpers_claude_code_workdir_snapshot.R"),
   c("R/helpers_claude_code_workdir_snapshot.R", "R/helpers_claude_code_documents.R"),
-  c("R/helpers_claude_code_documents.R", "R/helpers_claude_code_run_lifecycle.R"),
+  c("R/helpers_claude_code_documents.R", "R/helpers_claude_code_document_summary.R"),
+  c("R/helpers_claude_code_document_summary.R", "R/helpers_claude_code_run_lifecycle.R"),
   c("R/helpers_claude_code_run_lifecycle.R", "R/module_claude_code_akis.R"),
   c("R/helpers_claude_code_run_lifecycle.R", "R/module_claude_code.R"),
   c("R/helpers_claude_code_server_setup.R", "R/module_claude_code.R"),
@@ -460,6 +461,7 @@ source_manifest_required_order <- list(
   c("R/helpers_llm_sse.R", "R/helpers_llm_worker_payload.R"),
   c("R/helpers_llm_worker_payload.R", "R/helpers_llm_worker_tool_results.R"),
   c("R/helpers_llm_worker_tool_results.R", "R/helpers_llm_worker.R"),
+  c("R/helpers_llm_true_streaming_worker.R", "R/server_handler_true_streaming.R"),
   c("R/server_handler_true_streaming.R", "R/server_send_message.R"),
   c("R/server_handler_streaming_tts.R", "R/server_send_message.R"),
 

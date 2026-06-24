@@ -6,6 +6,408 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-24 — Gerçek SSE worker-export globals listesinin saf fabrikaya çıkarılması
+
+### Seçilen iz(ler)
+- **Track 1 — en büyük / yakın-bütçe R dosyasından bütünleşik çıkarım** (öncelik #1).
+  `R/server_handler_true_streaming.R` (681/18) repo genelindeki en büyük R dosyası ve
+  küresel `MERGEN_TEST_MAX_FILE_LINES` pini idi. `sohbet_llm_akis` seam'inde tek paket.
+
+### Özet ve gerekçe
+Bu dosya, paylaşılan değişebilir `stream_env` üzerinde sıkıca bağlı iç closure'lardan
+oluşan tek bir streaming durum makinesidir; closure'ları üst düzeye çıkarmak büyük bir
+bağlam aktarımı gerektirir (yüksek churn, hassas yolda yüksek risk). Davranış-koruyan
+TEK temiz çıkarım, `tracked_future_promise(..., globals = list(...))` içindeki ~35
+satırlık **worker-export globals listesidir** — düz, bildirimsel, çoğunluğu global
+sembol. Bu liste aynı zamanda CLAUDE.md-korumalı bir sözleşmedir (reasoning delta /
+stop-file / model request override yardımcıları işçi tarafında görünür kalmalı).
+
+Liste, yeni saf fabrika `mergen_true_streaming_worker_globals()`'a BİREBİR taşındı
+(31 isim: 4 isteğe-özel arg + 25 yardımcı + `%||%` + `api_config`). İsteğe-özel 4
+nesne argümandır; geri kalanı çağrı anında global ortamda çözülür. Golden kontrol:
+stub'lı ortamda fabrika çıktısı orijinal liste isimleriyle aynı sırada birebir (31/31).
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_llm_true_streaming_worker.R` (yeni, 62/1) — `mergen_true_streaming_worker_globals()`.
+- `R/server_handler_true_streaming.R` — **681/18 → 655/18**; satır içi `globals = list(...)`
+  yerine `globals = mergen_true_streaming_worker_globals(...)`.
+- `R/config_source_manifest.R` — `server_handlers_send_message` bölümüne yeni dosya
+  `server_handler_true_streaming.R`'den ÖNCE (9 → 10).
+- `R/bootstrap_source_manifest.R` — kritik sıra kuralı:
+  `helpers_llm_true_streaming_worker.R → server_handler_true_streaming.R`.
+- `R/config_seam_registry.R` — `sohbet_llm_akis` guard_tests'e yeni split-contract testi (8 → 9).
+
+**Test**
+- `tests/testthat/test-true-streaming-worker-globals-contract.R` (yeni) — yapısal ayrım
+  (fabrika yeni dosyada; handler delege eder; satır içi liste yok; manifest sırası) +
+  davranış (31 isim, arg geçişi, CLAUDE.md-korumalı worker-export adları, `%||%`/`api_config`).
+- `tests/testthat/test-sse-worker-export-contract.R` — globals sözleşmesi artık yeni
+  sahip dosyada doğrulanır + handler delegasyon kontrolü.
+- `tests/testthat/test-llm-reasoning-request-overrides.R` — `apply_model_request_overrides`
+  globals kontrolü yeni sahip dosyaya yönlendirildi.
+- `tests/testthat/test-source-manifest-sections-contract.R` — `server_handlers_send_message`
+  n=9→10; toplam runtime 282→283.
+- `tests/testthat/test-maintainability-ratchet.R` — küresel `MERGEN_TEST_MAX_FILE_LINES`
+  681 → 678; bütçeler `server_handler_true_streaming.R` 660/18, helper 80/1.
+
+**Dokümantasyon**
+- `CLAUDE.md` (worker-export globals sözleşmesi 3 referans güncellendi),
+  `docs/feature-ownership-map.md`, `docs/refactor-log.md`,
+  `.ai/next-session-eliminate-weaknesses-prompt.md`.
+
+### Önce / sonra
+- Önce: `server_handler_true_streaming.R` 681/18 (küresel pin). Sonra: handler 655/18,
+  helper 62/1. Skor 100/100; 800+ satır / 25+ fonksiyon = 0. Küresel en büyük dosya
+  satırı **681 → 678** (yeni pin `module_admin_yanit_analizi_outputs.R`). Ratchet
+  GEVŞETİLMEDİ; sıkılaştırıldı.
+
+### Korunan davranış sözleşmeleri
+- Globals listesi içeriği byte-birebir (31 isim, aynı sıra, golden doğrulama). Worker
+  task_fn, promise zinciri, poll observer, finalize/abort, request-id, stop-file,
+  reasoning recovery yolları DEĞİŞMEDİ. SSE/streaming davranışı aynı.
+- DB/SSO/encoding/source-order/UX runtime sınırlarına dokunulmadı (saf yapısal relocate).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda, Linux/cloud, R 4.6.0)
+- Golden: stub'lı ortamda fabrika çıktısı = orijinal 31 isim (aynı sıra), arg geçişi TRUE.
+- `Rscript tests/scripts/maintainability_report.R` → 100/100; handler 655/18; helper 62/1;
+  en büyük dosya 681 → 678.
+- `Rscript tests/scripts/parse_sanity_check.R` → OK (858 dosya).
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`.
+- Odak testler 0 fail/0 warn/0 skip: yeni split-contract (3), sse-worker-export (2),
+  source-manifest-sections (4), source-manifest-contract (17), global-source-manifest (6),
+  maintainability-ratchet (22), seam-registry (6), seam-doctor (2),
+  true-streaming-reset-ui (2), streaming-poll-lifecycle (5),
+  llm-reasoning-request-overrides (6), production-contracts (10).
+- `bash tools/ai_validate.sh full --boot-smoke` → **TAM**: app source smoke passed,
+  **full testthat suite passed (159.4s)**, shiny boot passed, browser smoke SKIPPED;
+  failed=0, skipped=0 (`artifacts/ai-validation/20260624-121349/summary.json`).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Düşünen bir modelle Akış modunda mesaj gönderin; canlı SSE akışının, reasoning
+  panelinin, durdurma temizliğinin ve DB kalıcılığının eskisi gibi çalıştığını doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek DB/SQL Server/gerçek tarayıcı/canlı LLM SSE kanıtı alınmadı (bulut
+  oturumu). Saf yapısal relocate; globals byte-birebir korundu, ancak canlı SSE uçtan
+  uca akış yalnızca VM/manuel tarayıcıda son kez kanıtlanır.
+- Sıradaki adaylar: `R/module_file_manager.R` (677); frontend
+  `www/js/deep_space_intro.js` (820) / `www/js/ai_expert_manager.js` (802/45).
+
+---
+
+## 2026-06-24 — Bilge Yolaç doküman ÖZETLEME orkestrasyonunun ayrı dosyaya çıkarılması
+
+### Seçilen iz(ler)
+- **Track 1 — yakın-bütçe R dosyasından bütünleşik (saf, verbatim) çıkarım**
+  (öncelik #1). 2. en büyük R dosyası (`R/helpers_claude_code_documents.R`, 679/17,
+  küresel 681 pin bandında). `bilge_yolac` seam'inde tek paket. (Aynı oturumda
+  post-deploy smoke paketinden SONRA, kullanıcı "continue" yönlendirmesiyle.)
+
+### Özet ve gerekçe
+Keşif (maintainability 100/100, en büyük dosya 681 = `server_handler_true_streaming.R`;
+seam doctor OK): `R/helpers_claude_code_documents.R` **679/17 ile 2. en büyük R
+dosyasıydı** ve küresel pin bandındaydı. Dosya iki bütünleşik sorumluluğu
+karıştırıyordu: (1) doküman BAĞLAM hazırlığı (manifest/inline-payload/prompt/
+prepare-context) ve (2) doküman ÖZETLEME orkestrasyonu (detay seviyesi, özet
+mesajları, yerel LLM ile özetleme, `dosya_aciklamalari.txt` yazımı).
+
+Küresel pin'i (`server_handler_true_streaming.R` 681) düşürmek o dosyanın
+bölünmesini gerektirir; ancak o dosya TEK büyük reaktif fonksiyondur (stream_env/
+values/session üzerine kapanan iç closure'lar + worker globals listesi) ve canlı
+SSE yolunda closure semantiğini değiştirir — yalnızca VM'de kanıtlanabilir, yüksek
+riskli. Bu yüzden bu oturumda DÜŞÜK RİSKLİ, kanıtlanmış verbatim-taşıma deseni
+seçildi: 4 üst-düzey özet fonksiyonu yeni `R/helpers_claude_code_document_summary.R`
+dosyasına BAYT-BİREBİR taşındı (extraction byte-preserving bir R betiğiyle yapıldı,
+531-533. satırlardaki tab/space karışımı korundu). Paylaşılan UTF-8 BOM yazıcı
+`write_claude_code_utf8_bom_text_file()` documents.R'de KALDI (run_lifecycle de
+`exists()` guard'ıyla kullanır). `summarize_..._with_local_llm` run_lifecycle
+worker'ında OTOMATİK globals çözümüyle çalışır; sourced dosya değişmesi worker'ı
+etkilemez (globaller çalışma zamanında globalenv'de çözülür).
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_claude_code_document_summary.R` (yeni, 281/7) — `resolve_..._detail_level`,
+  `write_..._summary_file`, `build_..._summary_messages`, `summarize_..._with_local_llm`.
+- `R/helpers_claude_code_documents.R` — **679/17 → 407/10** (bağlam hazırlığı + paylaşılan
+  BOM yazıcı kaldı).
+- `R/config_source_manifest.R` — `claude_code_helpers` bölümüne summary dosyası
+  documents'tan SONRA, run_lifecycle'dan ÖNCE eklendi.
+- `R/bootstrap_source_manifest.R` — kritik sıra kuralları: documents → summary,
+  summary → run_lifecycle.
+
+**Test**
+- `tests/testthat/test-claude-code-document-summary-refactor-contract.R` (yeni, 5 test) —
+  yapısal ayrım + davranış (detay seviyesi, mesaj rolleri) + manifest sırası +
+  documents.R'nin özet fonksiyonlarını tanımlamaması + BOM yazıcının documents.R'de
+  kalması + sıkı bütçe (summary < 320/≤9, documents < 430/≤12).
+- Üç davranış testi summary dosyasını da source eder: `test-claude-code-detail-level-behavior.R`,
+  `test-claude-code-document-builders-behavior.R`, `test-claude-code-document-orchestration-behavior.R`.
+- `tests/testthat/test-source-manifest-sections-contract.R` — `claude_code_helpers`
+  n=26→27, toplam runtime 281→282.
+
+**Dokümantasyon**
+- `CLAUDE.md` (doküman modülerleştirme sözleşmesi + iki Group yükleme listesi),
+  `docs/feature-ownership-map.md` (bilge_yolac + eskimiş 679 notları), `docs/refactor-log.md`,
+  `.ai/next-session-eliminate-weaknesses-prompt.md`.
+
+### Önce / sonra karmaşıklık notları
+- Önce: documents.R 679/17 (2. en büyük, pin bandında).
+- Sonra: documents.R 407/10, summary 281/7. Skor 100/100; 800+ satır / 25+ fonksiyon = 0;
+  **küresel en büyük dosya 681 DEĞİŞMEDİ** (`server_handler_true_streaming.R` pin'i; bu
+  paket o dosyaya dokunmadı). documents.R pin bandından çıktı; yeni split-contract
+  bütçesiyle kilitlendi. Ratchet GEVŞETİLMEDİ.
+
+### Korunan davranış sözleşmeleri
+- 4 fonksiyon byte-birebir taşındı (R betiğiyle aralık kopyalama; tab/space korundu).
+- Paylaşılan BOM yazıcı documents.R'de kaldı; summary dosyası ondan SONRA yüklenir,
+  `write_..._summary_file` BOM yazıcıyı çağrı anında çözer.
+- `summarize_...` worker yolu (run_lifecycle `tracked_future_promise` otomatik globals)
+  değişmedi. Extractor split sözleşmesi (documents.R extractor fonksiyonlarını
+  tanımlamaz + extractor fallback referansı) korundu.
+- Encoding/DB/SSO/UX runtime sınırlarına dokunulmadı (saf yapısal relocate + manifest).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda, Linux/cloud, R 4.6.0)
+- `Rscript tests/scripts/parse_sanity_check.R` → OK (856 dosya).
+- Odak testler (test_dir filtre, 0 fail/0 warn/0 skip): yeni split-contract (5),
+  detail-level-behavior (4), document-builders-behavior (9), document-orchestration-behavior (15),
+  extractors-refactor-contract (4), extractors-maintainability-contract (2),
+  document-download-link-encoding (3), source-manifest-contract (11),
+  source-manifest-sections-contract (4), global-source-manifest-contract (6).
+- `Rscript tests/scripts/maintainability_report.R` → 100/100, en büyük dosya 681
+  (değişmedi), documents.R 407.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`; `bilge_yolac`
+  runtime-dosya 33 → 34 (yeni dosya claude_code_helpers'ta, bilge_yolac sahipli; orphan yok).
+- `bash tools/ai_validate.sh full --boot-smoke` → **TAM**: app source smoke passed,
+  **full testthat suite passed (159.0s)**, shiny boot passed, browser smoke SKIPPED
+  (tarayıcı yok); failed=0, skipped=0 (`artifacts/ai-validation/20260624-112452/summary.json`).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Bilge Yolaç'ta bir doküman (PDF/DOCX/XLSX) özetleme akışını çalıştırın; özet metnin
+  üretildiğini, `dosya_aciklamalari.txt`'nin UTF-8 BOM ile yazıldığını ve indirme
+  kartının göründüğünü doğrulayın (worker yolu otomatik globals).
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek CLI/gerçek tarayıcı kanıtı alınmadı (bulut oturumu). Değişiklik saf
+  yapısal verbatim-relocate'tir; doküman özet worker akışı yalnızca Windows VM'de canlı
+  kanıtlanır.
+- Küresel pin (`server_handler_true_streaming.R` 681) DEĞİŞMEDİ; bu dosya canlı SSE
+  closure'ları içerdiği için bilinçli olarak bu oturumda bölünmedi (VM-only kanıt + yüksek risk).
+- Sıradaki paket adayları: `R/module_file_manager.R` (677, 725/14 dosya bütçesi),
+  `R/helpers_claude_code_process.R` (665/20, fonksiyon-sayısı baskısı); frontend
+  `www/js/ai_expert_manager.js` (802/45, bütçe içinde — böl-sonra-sıkılaştır).
+
+---
+
+## 2026-06-24 — Dağıtım sonrası duman testi kanıt artifact akışının tamamlanması
+
+### Seçilen iz(ler)
+- **Track 3 — post-deploy smoke artifact ailesi**: dokümante açık taşıma kalemi
+  ("üretici henüz yok"). Üretici/okuyucu/UI entegrasyonu eksikti; bu paket onu
+  uçtan uca tamamladı. `destek_yonetici_saglik` seam'inde tek, bütünleşik paket.
+- **Track 6 — eskimiş "sıradaki hedef" notlarının güncellenmesi**: feature-ownership
+  ve handoff'ta "post-deploy smoke artifact ailesi (üretici henüz yok)" notu
+  yenilendi.
+
+### Özet ve gerekçe
+Keşif (maintainability 100/100, en büyük dosya 681; seam doctor OK; frontend
+bütçe içinde): `tests/scripts/run_post_deploy_smoke.R` ve saf değerlendirici
+`tests/scripts/helpers_post_deploy_smoke.R` zaten vardı, ancak kapı YALNIZCA
+konsola yazıp `stop()` ediyordu — **makinece okunabilir artifact üretmiyordu** ve
+`R/helpers_release_evidence.R` içinde VM evidence + ai-validation okuyucuları
+varken **post-deploy smoke okuyucusu yoktu**. Bu, talimatların #3 hedefindeki
+"artifact producer/reader integration is incomplete" boşluğuydu.
+
+Paket, repoda zaten kanıtlanmış VM/ai evidence desenini (üretici → secret-safe
+`artifacts/<aile>/<ts>/<dosya>.json` → saf okuyucu → Sistem Durumu UI) birebir
+post-deploy smoke'a uyguladı. Değerlendirici sonucundan kayıt kurma mantığı SAF,
+izole test edilebilir bir yardımcıya (`mergen_post_deploy_smoke_artifact_record`)
+çıkarıldı; kapı yalnızca dosyaya yazar (git'i en iyi çaba toplar, `stop`'tan ÖNCE
+yazar → `fail`/`degraded` koşumlar da iz bırakır). `does_prove`/`does_not_prove`
+dürüstlük alanları zorunlu kılındı.
+
+### Değişen dosyalar
+**Kaynak/script**
+- `tests/scripts/helpers_post_deploy_smoke.R` — yeni SAF üretici
+  `mergen_post_deploy_smoke_artifact_record()` (kendi içinde küçük yerel
+  yardımcılarla; standalone source edilebilir, `%||%` kullanmaz).
+- `tests/scripts/run_post_deploy_smoke.R` — `stop`'tan önce secret-safe artifact
+  yazar: `artifacts/post-deploy-smoke/<timestamp>/post-deploy-smoke.json`
+  (jsonlite + redaktör + `tryCatch` → artifact hatası kapıyı çökertmez).
+- `R/helpers_release_evidence.R` — yeni okuyucu
+  `release_evidence_post_deploy_smoke_summary()` (beyaz-listeli alanlar, not_found
+  dürüstlüğü) + `release_evidence_overview()`'a `post_deploy_smoke` eklendi.
+  Fonksiyon sayısı 21 → 22 (savunmacı `tryCatch(error=function)` closure'ları
+  bilinçle kullanılmadı; ayrıştırılmış JSON listesinde `$` erişimi hata vermez —
+  küresel 24-fonksiyon tavanından uzak kalındı).
+- `R/module_health_release.R` — yeni `.health_release_post_deploy_card()` + Sistem
+  Durumu > Doğrulama Kanıtı sekmesine "Dağıtım Sonrası Duman Testi" kartı + metrik
+  kutusu (5 → 6 fonksiyon). Bulunamayan kanıt "Bulunamadı" gösterir; artifact yolu
+  UI'ye taşınmaz (secret-safe).
+
+**Test**
+- `tests/testthat/test-post-deploy-smoke-contract.R` — `*_artifact_record()` davranış
+  testleri (pass/fail/UTC default; counts isimli int listesi; does_prove/
+  does_not_prove zorunlu) + kapı betiği artifact üretim token sözleşmesi.
+- `tests/testthat/test-release-evidence-behavior.R` — `.makePostDeploySmokeFixture()`
+  + okuyucu davranışı (en-yeni seçim, eski-koşu kritik bozulma, not_found) +
+  overview'da `post_deploy_smoke` anahtarı.
+- `tests/testthat/test-health-release-ui-behavior.R` — fixture'a `post_deploy_smoke`
+  eklendi; kart render + secret-safe (artifact yolu render edilmez) + not_found.
+
+**Dokümantasyon**
+- `RUNBOOK.md` (§10), `docs/feature-ownership-map.md` (destek_yonetici_saglik —
+  "üretici yok" notu kaldırıldı), `docs/architecture-map.md` (artifact ailesi satırı),
+  `docs/technical-reference.md` (yeni alt bölüm), `AGENTS.md` (operasyonel not),
+  `docs/refactor-log.md` (bu giriş), `.ai/next-session-eliminate-weaknesses-prompt.md`.
+
+### Önce / sonra
+- Önce: post-deploy smoke kapısı artifact üretmiyordu; okuyucu/UI yoktu (açık boşluk).
+- Sonra: uçtan uca akış (üretici → secret-safe JSON → saf okuyucu → Sistem Durumu
+  UI), `does_prove`/`does_not_prove` dürüstlük alanlarıyla. Maintainability 100/100
+  korundu (en büyük dosya 681, en yüksek fonksiyon 24; helpers_release_evidence 22,
+  module_health_release 6 — tavan altında). Ratchet GEVŞETİLMEDİ.
+
+### Korunan davranış sözleşmeleri
+- `mergen_post_deploy_smoke_evaluate()` davranışı DEĞİŞMEDİ (saf değerlendirici).
+- Kapı `stop`-on-critical sözleşmesi korundu; artifact yazımı `stop`'tan önce ve
+  `tryCatch` ile sarmalı (kanıt yazılamazsa bile dürüst başarısızlık gizlenmez).
+- Secret-safe sınır: yalnızca kontrol kimlikleri + sayaçlar; ham log/ortam/secret
+  yok; yazımdan önce redaktör. UI artifact yolunu render etmez. not_found dürüstlüğü.
+- Encoding/DB/SSO/source-order/UX runtime sınırlarına dokunulmadı (additive evidence
+  altyapısı + bir health UI kartı).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda, Linux/cloud, R 4.6.0)
+- Uçtan uca mantık probu: evaluate → record → toJSON → write → okuyucu geri-oku;
+  pass/degraded/fail/not_found yolları doğru.
+- Odak testler (test_dir filtre, 0 fail/0 warn/0 skip): post-deploy-smoke-contract,
+  release-evidence-behavior (17), health-release-ui-behavior, maintainability-ratchet
+  (22), e2e-health-dashboard-regression (5).
+- `Rscript tests/scripts/maintainability_report.R` → 100/100, max 681, max fn 24.
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK` (yapısal drift yok).
+- `Rscript tests/scripts/parse_sanity_check.R` → OK (854 dosya).
+- `bash tools/ai_validate.sh quick` → TAM (failed=0, skipped=0, app_source_smoke=passed;
+  `artifacts/ai-validation/20260624-102241/summary.json`).
+- `bash tools/ai_validate.sh full --boot-smoke` → **TAM**: app source smoke passed,
+  **full testthat suite passed (181.6s)**, shiny boot passed, browser smoke SKIPPED
+  (tarayıcı yok); failed=0, skipped=0
+  (`artifacts/ai-validation/20260624-102401/summary.json`). NOT: `logger` kurulu +
+  placeholder env ile; önceki oturumların "logging testi tıkayıcısı" bu koşumda
+  tekrarlanmadı (ortam-bootstrap kaynaklıydı, test-izolasyon hatası değil).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- VM'de uygulama ayaktayken `Rscript tests/scripts/run_post_deploy_smoke.R` çalıştırın;
+  `artifacts/post-deploy-smoke/<ts>/post-deploy-smoke.json` üretildiğini ve içinde
+  ham secret/ortam değeri OLMADIĞINI doğrulayın.
+- Sistem Durumu > Doğrulama Kanıtı sekmesinde "Dağıtım Sonrası Duman Testi" kartının
+  ve metrik kutusunun en son koşumu gösterdiğini; kanıt yokken "Bulunamadı" dediğini
+  doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek DB/SQL Server/gerçek tarayıcı kanıtı alınmadı (bulut oturumu). Gerçek
+  `post-deploy-smoke.json` yalnızca uygulama ayaktayken (VM) üretilir; kapı betiğinin
+  app-boot gerektiren artifact yazımı bulutta canlı koşulmadı (saf üretici + okuyucu
+  uçtan uca probu ve token sözleşmesiyle kanıtlandı).
+- Bu artifact anlık sağlık fotoğrafıdır; yük/eşzamanlılık/uzun-süre/VM/SSO/SQL Server
+  Türkçe kodlama kanıtı DEĞİLDİR.
+- Sıradaki paket adayları: `R/server_handler_true_streaming.R` (681, küresel pin),
+  `R/helpers_claude_code_documents.R` (679), `R/module_file_manager.R` (677); frontend
+  `www/js/deep_space_intro.js` (820) / `www/js/ai_expert_manager.js` (802/45).
+
+### Codex review düzeltmeleri (aynı oturum, 3 × P2)
+- **Serileştirilmiş JSON redaksiyonu artifact'ı bozabilir (P2):** `.smoke_redact()`
+  serileştirilmiş JSON üzerinde `gsub(fixed)` çalıştırdığı için kısa/ortak alt-dize
+  veya JSON noktalama içeren bir secret env değeri JSON syntax'ını ezip dosyayı
+  GEÇERSİZ kılabilirdi (okuyucu NULL döner → panel koşumu "yok" sanar). Yeni saf
+  yardımcı `mergen_post_deploy_smoke_redact_json_safe()` redaksiyonu yalnızca
+  GEÇERLİ JSON üretiyorsa uygular; aksi halde zaten secret-safe olan orijinali
+  korur. `run_post_deploy_smoke.R` artık bu güvenli yazıcıyı kullanır.
+- **`should_fail` UI'de kritik gösterilmiyordu (P2):** gate hiç kontrol toplayamazsa
+  değerlendirici `overall="unknown"` ama `should_fail=TRUE` döner (`reason="no_checks"`).
+  Önceki UI yalnızca `overall`'a bakıp nötr "Bilinmiyor" gösteriyor, bloklamayı
+  gizliyordu. `R/module_health_release.R` artık `should_fail=TRUE` olduğunda hem
+  metrik kutusunu hem kart pill'ini "Başarısız" + `health-status-critical` gösterir.
+- **`does_prove` çalışan-servis kanıtını abartıyordu (P2):** kapı `MERGEN_RUN_APP=false`
+  ile çalışır (Shiny servisi başlatılmaz, app URL probe edilmez). `does_prove` artık
+  yalnızca in-process / güvenli-boot sağlık kontrollerini iddia eder; `does_not_prove`
+  "dağıtılan Shiny servisinin ayakta olduğunu KANITLAMAZ (app URL probe edilmez)"
+  uyarısını ekler.
+- **Eklenen testler:** `test-post-deploy-smoke-contract.R` (redact-safe yardımcı:
+  geçerli redaksiyon uygulanır / bozan redaksiyon orijinale düşer / NULL redaktör;
+  + does_prove/does_not_prove dar iddia) ve `test-health-release-ui-behavior.R`
+  (no_checks should_fail → kritik "Başarısız"). Doğrulama: 3 odak test dosyası
+  0 fail/0 warn/0 skip (16/17/11); `ai_validate quick` TAM (failed=0, skipped=0,
+  app_source_smoke=passed; `artifacts/ai-validation/20260624-120029/summary.json`).
+  Maintainability etkilenmez (değişiklikler tests/scripts + bir health UI modülü).
+
+#### Codex review 2. tur (2 × P2 — 1. turu sertleştirir)
+- **Redaksiyon şemayı bozabilir, yalnızca JSON söz dizimi yetmez (P2):** 1. turdaki
+  `mergen_post_deploy_smoke_redact_json_safe()` yalnızca redaksiyon-SONRASI JSON'un
+  geçerli olduğunu denetliyordu. Ancak `ok` gibi bir secret değeri serileştirilmiş
+  JSON'da `counts.ok` ANAHTARINI `<hidden>` ile ezse JSON yine geçerli kalır ve
+  okuyucu YANLIŞ "sıfır geçen kontrol" raporlar. Çözüm: json-metin yaklaşımı
+  KALDIRILDI; yerine `mergen_post_deploy_smoke_redact_record()` geldi — redaksiyon
+  SERİLEŞTİRMEDEN ÖNCE yalnızca yapısal string DEĞERLERE uygulanır; liste anahtarları,
+  sayılar ve sayaçlar (counts) hiç dokunulmaz. Böylece şema asla bozulmaz ve toJSON
+  her zaman geçerli JSON üretir. `run_post_deploy_smoke.R` artık kaydı serileştirmeden
+  önce bu redaktörden geçirir.
+- **`degraded` kart pill'inde tanınmıyordu (P2):** `.health_release_pill()` `degraded`
+  durumunu tanımayıp kartta nötr/ham "degraded" gösteriyordu (metrik kutusu ise doğru
+  "Kısmi"/uyarı gösteriyordu → tutarsız). Pill `degraded`/`warning` → `warning` rengi +
+  "Kısmi"/"Uyarı" etiketine genişletildi; kart ve metrik kutusu artık tutarlı.
+- **Test güncellemeleri:** `test-post-deploy-smoke-contract.R` redaksiyon testi
+  şema-koruyan kayıt redaksiyonuna çevrildi (counts anahtarı/sayısı korunur; `ok`
+  secret token simülasyonu); `test-health-release-ui-behavior.R` degraded kart pill'inin
+  `health-status-warning` gösterdiğini ve ham "degraded" göstermediğini doğrular.
+  Doğrulama: 3 odak test 0 fail/warn/skip (16/17/11); `ai_validate quick` TAM
+  (`artifacts/ai-validation/20260624-153221/summary.json`).
+
+#### Codex review 3. tur (2 × P2 — 2. turu sertleştirir)
+- **Durum enum'ları redaksiyonda korunmalı (P2):** 2. tur yalnızca string DEĞERLERİ
+  redakte ediyordu (anahtarlar/sayaçlar korunuyordu). Ancak `overall` bir durum
+  ENUM'udur; secret değeri `pass`/`degraded` gibi kısa bir enum'a denk gelseydi
+  `.smoke_redact` `record$overall`'ı serileştirmeden önce ezer, JSON geçerli kalır,
+  `should_fail` false olur ve panel GEÇEN/degraded kapıyı nötr/unknown gösterirdi.
+  Çözüm: `mergen_post_deploy_smoke_redact_record()` artık walk SONRASI
+  `overall`/`reason`/`gate`/`validation_execution_status` enum/kimlik alanlarını
+  orijinalden geri yükler (bu alanlar tasarımca asla secret içermez).
+- **Erken çıkışlarda başarısızlık artifact'ı yazılmalı (P2):** kapı; zorunlu env
+  eksik / `app.R` source başarısız / `health_collect_checks()` yok durumlarında
+  artifact bloğuna ULAŞMADAN stop ediyordu → o başarısızlık modlarında
+  `post-deploy-smoke.json` yazılmıyor, panel koşumu `not_found` (hiç koşmamış gibi)
+  sanıyordu. Çözüm: helper'lar ÖNCE (app.R'den önce) yüklenir; `.smoke_redact`,
+  `.smoke_write_artifact`, `.smoke_fail_and_stop` ve `critical_ids`/`fail_on_unknown`
+  erken tanımlanır; yeni saf `mergen_post_deploy_smoke_failure_result(reason)` ile
+  3 erken çıkış (missing_required_env / app_boot_failed / health_collect_checks_missing)
+  stop'tan ÖNCE bir `overall="fail"` artifact'ı yazar. `app.R` source'u tryCatch'e alındı.
+- **Test güncellemeleri:** `test-post-deploy-smoke-contract.R` enum-koruma testi
+  (degraded/fail enum'ları redaksiyon sonrası korunur) + failure-result testi
+  (fail kaydı + boş/NA neden fallback) + kapı sözleşmesine
+  `mergen_post_deploy_smoke_failure_result` grep'i eklendi. Doğrulama: 3 odak test
+  0 fail/warn/skip (18/17/11); `ai_validate quick` TAM
+  (`artifacts/ai-validation/20260624-155351/summary.json`).
+
+#### Codex review 4. tur (1 × P1 — kritik kapı doğruluğu)
+- **Sağlık kontrolleri SATIR bazında değerlendirilmeli (P1):**
+  `health_collect_checks()` `do.call(rbind, ...)` ile bir DATA FRAME döndürür
+  (satır başına bir kontrol). `mergen_post_deploy_smoke_evaluate()` ise
+  `for (chk in checks)` ile gezerken bir veri çerçevesinde SÜTUNLARI dolaşıyordu;
+  atomik sütunlar `is.list(chk)` dalını atladığı için tüm id'ler boş, tüm durumlar
+  "unknown" kalıyordu. Sonuç: gerçek bir `db.primary`/`app.boot` "critical" sonucu
+  `critical_failures`'a hiç eklenmiyor, `should_fail` false kalıyor ve kapı kritik
+  kontrole rağmen GEÇİYORDU. Çözüm: değerlendirici, boş kontrolü ve döngüden ÖNCE
+  veri çerçevesini satır-kayıtlarına çevirir
+  (`lapply(seq_len(nrow), function(i) as.list(checks[i, , drop = FALSE]))`);
+  `is.data.frame` `is.list`'TEN önce kontrol edilir (veri çerçevesi de bir listedir).
+  Liste-kayıt yolu (mevcut testler) değişmez.
+- **Test:** `test-post-deploy-smoke-contract.R` data-frame satır-değerlendirme
+  testi (kritik `db.primary` satırı `should_fail`/`fail`/`critical_failures`
+  tetikler; tümü-ok → pass; 0 satır → no_checks). Doğrulama: 3 odak test
+  0 fail/warn/skip (19/17/11); `ai_validate quick` TAM
+  (`artifacts/ai-validation/20260624-161202/summary.json`).
+
+---
+
 ## 2026-06-20 — ServerRuntimeContext SSO auth-ready / yenilenebilir modül wiring katmanının ayrılması
 
 ### Seçilen iz(ler)

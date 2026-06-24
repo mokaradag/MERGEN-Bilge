@@ -19,7 +19,10 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `R/server_handler_true_streaming.R`, `R/server_handler_streaming_tts.R`
   (`handle_streaming_tts_mode`: TTS açık streaming dalı; gerçek SSE/non-streaming
   ile simetrik handler), `R/helpers_streaming_abort_lifecycle.R`,
-  `R/helpers_streaming_poll_lifecycle.R`, `R/helpers_llm_api.R`,
+  `R/helpers_streaming_poll_lifecycle.R`,
+  `R/helpers_llm_true_streaming_worker.R` (`mergen_true_streaming_worker_globals`:
+  gerçek SSE işçisine aktarılan worker-export globals listesini kuran saf fabrika;
+  handler delege eder), `R/helpers_llm_api.R`,
   `R/helpers_llm_sse.R`, `R/helpers_llm_sse_events.R`, `R/helpers_llm_stream_io.R`,
   `R/helpers_llm_worker*.R`, `R/server_llm_response_handlers.R`.
 - **UI/server modülleri:** `R/server_outputs_chat.R`, `R/module_chat_actions.R`,
@@ -64,6 +67,17 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `R/server_handler_streaming_tts.R`'ye (`handle_streaming_tts_mode`) çıkarıldı;
   `server_send_message.R` 694/14 → 590/9'a indi ve küresel en büyük dosya satırı
   694 → 690'a düştü. Promise zinciri davranışı deterministik test ile korunur.
+  Ardından gerçek SSE worker-export globals listesi (reasoning delta / stop-file /
+  model request override yardımcıları) saf fabrikaya
+  (`mergen_true_streaming_worker_globals`, `R/helpers_llm_true_streaming_worker.R`)
+  çıkarıldı; `server_handler_true_streaming.R` onu delege eder ve 681 → 655 satıra
+  indi. Liste içeriği byte-birebir korundu (31 isim golden) ve worker-export
+  sözleşmesi `test-true-streaming-worker-globals-contract.R` +
+  `test-sse-worker-export-contract.R` ile kilitlenir. Küresel en büyük dosya satırı
+  681 → 678 (`module_admin_yanit_analizi_outputs.R`) sıkılaştırıldı. Sıradaki
+  repo-geneli yakın-bütçe adayları: `R/module_admin_yanit_analizi_outputs.R` (678,
+  tek-fonksiyon flat renderer — düşük öncelik), `R/module_file_manager.R` (677);
+  frontend `www/js/deep_space_intro.js` (820) / `www/js/ai_expert_manager.js` (802/45).
 
 ## Dosya Yaşam Döngüsü
 
@@ -250,8 +264,14 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **Seam:** `destek_yonetici_saglik`
 - **Birincil R dosyaları:** `R/helpers_health_checks.R`, `R/helpers_health_runtime_checks.R`,
   `R/helpers_health_formatters.R`, `R/helpers_health_table.R`,
-  `R/helpers_release_evidence.R` (release kanıt artifact okuyucu),
+  `R/helpers_release_evidence.R` (release kanıt artifact okuyucu; VM evidence,
+  ai-validation, **post-deploy smoke** ve günlük log sağlık özetleri),
   `R/helpers_admin_analytics.R`, `R/helpers_admin_*` aileleri.
+- **Dağıtım sonrası kanıt (script):** `tests/scripts/run_post_deploy_smoke.R`
+  (kapı; `artifacts/post-deploy-smoke/<ts>/post-deploy-smoke.json` yazar) +
+  `tests/scripts/helpers_post_deploy_smoke.R` (saf değerlendirici
+  `mergen_post_deploy_smoke_evaluate` + saf kanıt-kaydı üretici
+  `mergen_post_deploy_smoke_artifact_record`).
 - **UI/server modülleri:** `R/module_health*.R` (Sistem Durumu sekmeleri:
   `R/module_health_overview.R`...`R/module_health_diagnostics.R` +
   `R/module_health_release.R` "Doğrulama Kanıtı" sekmesi), `R/module_admin_*.R`,
@@ -260,26 +280,40 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   (mock'lanır, gerçek internet uç noktası çağrılmaz); release kanıt sekmesi
   yalnızca `artifacts/` ve günlük log dosyalarını okur (DB/ağ çağrısı yok).
 - **Testler:** `test-health-check*.R`, `test-health-checks-probes-behavior.R`,
-  `test-admin-*-outputs-behavior.R`, `test-release-evidence-behavior.R`,
+  `test-admin-*-outputs-behavior.R`, `test-release-evidence-behavior.R`
+  (VM/ai/**post-deploy smoke** okuyucuları + overview), `test-post-deploy-smoke-contract.R`
+  (saf değerlendirici + saf kanıt-kaydı üretici + kapı betiği artifact sözleşmesi),
   `test-release-evidence-error-contexts-behavior.R` (secret-safe hata kategorisi),
   `test-release-evidence-ai-latency-behavior.R` (secret-safe AI çağrı istek-süresi
-  özeti), `test-health-release-ui-behavior.R` (UI builder + healthServer yönlendirme).
+  özeti), `test-health-release-ui-behavior.R` (UI builder + healthServer yönlendirme +
+  post-deploy kartı).
 - **Smoke/kanıt:** VM evidence gate (`run_vm_evidence_gate.R`), seam doctor,
-  frontend complexity doctor; `artifacts/vm-evidence/<ts>/evidence.json`.
-- **Bilinen risk / sıradaki hedef:** release kanıt okuyucusu Sistem Durumu
-  "Doğrulama Kanıtı" sekmesine bağlandı; hata-kategorisi (bağlam) özeti
-  (`release_evidence_summarize_error_contexts`) ve AI çağrı istek-süresi (latency)
-  özeti (`release_evidence_summarize_ai_call_latency`; `log_ai_call` "duration=<sn>s"
-  satırından yalnızca sayısal özet) eklendi — her ikisi secret-safe. Sıradaki:
-  post-deploy smoke artifact ailesi (üretici henüz yok). Latency/log özetleri
-  yalnızca VM'de gerçek `logs/mergen_*.log` ile canlı doğrulanır.
+  frontend complexity doctor; `artifacts/vm-evidence/<ts>/evidence.json`,
+  `artifacts/post-deploy-smoke/<ts>/post-deploy-smoke.json`.
+- **Bilinen risk / sıradaki hedef:** post-deploy smoke artifact ailesi TAMAMLANDI:
+  kapı artık `stop`'tan önce secret-safe `post-deploy-smoke.json` yazar
+  (saf `mergen_post_deploy_smoke_artifact_record`; `does_prove`/`does_not_prove`
+  dürüstlük alanları), okuyucu `release_evidence_post_deploy_smoke_summary()`
+  overview'a bağlandı ve Sistem Durumu > Doğrulama Kanıtı sekmesinde "Dağıtım
+  Sonrası Duman Testi" kartı + metrik kutusu olarak görünür. Bu anlık sağlık
+  fotoğrafıdır; yük/eşzamanlılık/uzun-süre/VM/SSO/SQL Server kanıtı DEĞİLDİR.
+  Gerçek artifact yalnızca uygulama ayaktayken (VM) üretilir; latency/log özetleri
+  yine yalnızca VM'de gerçek `logs/mergen_*.log` ile canlı doğrulanır. Sıradaki
+  repo-geneli yakın-bütçe adayları bu seam dışında `R/server_handler_true_streaming.R`
+  (681, küresel pin — canlı SSE closure'ları nedeniyle yalnızca VM'de kanıtlanabilir,
+  riskli) ve `R/module_file_manager.R` (677); frontend `www/js/deep_space_intro.js`
+  (820) / `www/js/ai_expert_manager.js` (802/45). (`helpers_claude_code_documents.R`
+  679 → 407'ye indirildi.)
 
 ## Bilge Yolaç / Claude Code
 
 - **Seam:** `bilge_yolac`
 - **Birincil R dosyaları:** `R/config_claude_code*.R`, `R/helpers_claude_code_*.R`
-  (~30 dosya: güvenlik politikası, yol politikası, runtime workdir, süreç,
-  streaming, doküman çıkarma, indirme, çalıştırma yaşam döngüsü).
+  (~31 dosya: güvenlik politikası, yol politikası, runtime workdir, süreç,
+  streaming, doküman çıkarma `R/helpers_claude_code_document_extractors.R`,
+  doküman BAĞLAM hazırlığı `R/helpers_claude_code_documents.R` (+ paylaşılan UTF-8
+  BOM yazıcı), doküman ÖZETLEME orkestrasyonu `R/helpers_claude_code_document_summary.R`,
+  indirme, çalıştırma yaşam döngüsü).
 - **UI/server modülleri:** `R/module_claude_code_ui.R`, `R/module_claude_code.R`,
   `R/module_claude_code_akis.R`, `R/module_claude_code_stream_poll.R`,
   `R/module_claude_code_plugins.R`, `www/js/claude_code*.js`, `www/css/claude_code*.css`.
@@ -297,6 +331,9 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-claude-code-document-orchestration-behavior.R`
   (`prepare_claude_code_document_context` + `write_claude_code_document_summary_file` +
   `summarize_claude_code_documents_with_local_llm`; çıkarıcı/LLM stub'lı),
+  `test-claude-code-document-summary-refactor-contract.R` (özetleme orkestrasyonu
+  `R/helpers_claude_code_document_summary.R`'ye ayrım sözleşmesi + manifest sırası +
+  BOM yazıcının documents.R'de kalması + sıkı bütçe),
   `test-claude-code-stream-poll-binding-behavior.R`
   (`cc_bind_claude_code_stream_polling` testServer: stop gözlemcisi request-id
   kapsamlı finalize + klavye gözlemcisi + poll durduruldu/zaman-aşımı erken dalları),
@@ -310,12 +347,18 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-claude-code-downloads-html-behavior.R`
   (`format_claude_code_generated_downloads_html`: kart HTML + öznitelik escape XSS sınırı).
 - **Smoke/kanıt:** Windows VM manuel akış (UNC/SSO/`.cmd`); cloud'da kanıtlanmaz.
-- **Bilinen risk / sıradaki hedef:** `parse_stream_event`, bağlantı durumu,
+- **Bilinen risk / sıradaki hedef:** doküman ÖZETLEME orkestrasyonu (detay seviyesi,
+  özet mesajları, `summarize_..._with_local_llm`, özet dosya yazımı)
+  `R/helpers_claude_code_documents.R`'den `R/helpers_claude_code_document_summary.R`'ye
+  ayrıldı; documents.R **679/17 → 407/10**, yeni özet dosyası 281/7. Paylaşılan UTF-8
+  BOM yazıcı documents.R'de kaldı (run_lifecycle de `exists()` guard'ıyla kullanır);
+  `summarize_...` run_lifecycle worker'ında otomatik globals çözümüyle çalıştığı için
+  ayrı dosyaya taşınması worker'ı etkilemedi. `parse_stream_event`, bağlantı durumu,
   `run_claude_code_streaming`, doküman özet orkestratörleri, `cc_bind_claude_code_stream_polling`
   (stop/poll erken dalları) ve üretilen-dosya indirme yolu çözümleme/staging/HTML
   kartı güvenlik sınırı kapsandı; her iki indirme HTML üreticisi de öznitelik
-  bağlamında `htmlEscape(attribute=TRUE)` ile sertleştirildi (öznitelik enjeksiyonu
-  savunması). Gerçek CLI/UNC/SSO ve canlı akış tamamlanma dalı yalnızca VM'de kanıtlanır.
+  bağlamında `htmlEscape(attribute=TRUE)` ile sertleştirildi. Gerçek CLI/UNC/SSO ve
+  canlı akış tamamlanma dalı yalnızca VM'de kanıtlanır.
 
 ## Destek / Geri Bildirim
 
@@ -373,10 +416,12 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   RENDER olarak üç dosyaya bölündü ve VERİ-odaklı 425/1'e indi. `R/server_runtime_context.R`
   (687) SSO auth-ready / yenilenebilir modül wiring katmanı
   `R/server_runtime_auth_ready.R`'ye ayrılarak 503/13'e indi; küresel en büyük dosya
-  satırı 690 → 687 → 681 oldu. Sıradaki repo-geneli yakın-bütçe adayları artık
-  681–679 bandındaki `R/server_handler_true_streaming.R` (681),
-  `R/helpers_claude_code_documents.R` (679), `R/module_admin_yanit_analizi_outputs.R`
-  (678, tek-fonksiyon flat renderer — düşük öncelik) ve `R/module_file_manager.R` (677).
+  satırı 690 → 687 → 681 oldu. `R/helpers_claude_code_documents.R` (679) doküman
+  özetleme orkestrasyonu `R/helpers_claude_code_document_summary.R`'ye ayrılarak
+  407'ye indi. Sıradaki repo-geneli yakın-bütçe adayları artık
+  `R/server_handler_true_streaming.R` (681, küresel pin — canlı SSE closure'ları,
+  riskli/VM-only), `R/module_admin_yanit_analizi_outputs.R` (678, tek-fonksiyon flat
+  renderer — düşük öncelik) ve `R/module_file_manager.R` (677).
 
 ## Frontend Varlık ve Yönetişim
 
