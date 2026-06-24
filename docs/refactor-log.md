@@ -362,6 +362,31 @@ dürüstlük alanları zorunlu kılındı.
   Doğrulama: 3 odak test 0 fail/warn/skip (16/17/11); `ai_validate quick` TAM
   (`artifacts/ai-validation/20260624-153221/summary.json`).
 
+#### Codex review 3. tur (2 × P2 — 2. turu sertleştirir)
+- **Durum enum'ları redaksiyonda korunmalı (P2):** 2. tur yalnızca string DEĞERLERİ
+  redakte ediyordu (anahtarlar/sayaçlar korunuyordu). Ancak `overall` bir durum
+  ENUM'udur; secret değeri `pass`/`degraded` gibi kısa bir enum'a denk gelseydi
+  `.smoke_redact` `record$overall`'ı serileştirmeden önce ezer, JSON geçerli kalır,
+  `should_fail` false olur ve panel GEÇEN/degraded kapıyı nötr/unknown gösterirdi.
+  Çözüm: `mergen_post_deploy_smoke_redact_record()` artık walk SONRASI
+  `overall`/`reason`/`gate`/`validation_execution_status` enum/kimlik alanlarını
+  orijinalden geri yükler (bu alanlar tasarımca asla secret içermez).
+- **Erken çıkışlarda başarısızlık artifact'ı yazılmalı (P2):** kapı; zorunlu env
+  eksik / `app.R` source başarısız / `health_collect_checks()` yok durumlarında
+  artifact bloğuna ULAŞMADAN stop ediyordu → o başarısızlık modlarında
+  `post-deploy-smoke.json` yazılmıyor, panel koşumu `not_found` (hiç koşmamış gibi)
+  sanıyordu. Çözüm: helper'lar ÖNCE (app.R'den önce) yüklenir; `.smoke_redact`,
+  `.smoke_write_artifact`, `.smoke_fail_and_stop` ve `critical_ids`/`fail_on_unknown`
+  erken tanımlanır; yeni saf `mergen_post_deploy_smoke_failure_result(reason)` ile
+  3 erken çıkış (missing_required_env / app_boot_failed / health_collect_checks_missing)
+  stop'tan ÖNCE bir `overall="fail"` artifact'ı yazar. `app.R` source'u tryCatch'e alındı.
+- **Test güncellemeleri:** `test-post-deploy-smoke-contract.R` enum-koruma testi
+  (degraded/fail enum'ları redaksiyon sonrası korunur) + failure-result testi
+  (fail kaydı + boş/NA neden fallback) + kapı sözleşmesine
+  `mergen_post_deploy_smoke_failure_result` grep'i eklendi. Doğrulama: 3 odak test
+  0 fail/warn/skip (18/17/11); `ai_validate quick` TAM
+  (`artifacts/ai-validation/20260624-155351/summary.json`).
+
 ---
 
 ## 2026-06-20 — ServerRuntimeContext SSO auth-ready / yenilenebilir modül wiring katmanının ayrılması

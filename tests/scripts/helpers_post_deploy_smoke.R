@@ -305,5 +305,52 @@ mergen_post_deploy_smoke_redact_record <- function(record, redact_fn = NULL) {
     }
   }
 
-  walk(record)
+  redacted <- walk(record)
+
+  # Şema-anlamlı enum/kimlik alanlarını redaksiyon SONRASI orijinalden geri yükle.
+  # Bu alanlar tasarımca asla secret içermez (sabit/enum/git-metadata); ancak bir
+  # secret DEĞERİ "pass"/"degraded" gibi kısa bir enum'a denk gelseydi yukarıdaki
+  # walk `overall`/`reason`'ı ezip okuyucunun/sağlık panelinin GEÇEN veya DEGRADED
+  # bir kapıyı nötr/unknown göstermesine yol açardı. Anahtar/sayaçlar zaten
+  # korunur; bu adım durum enum'larını ve sabit kimlik alanlarını da korur.
+  if (is.list(redacted)) {
+    for (key in c("overall", "reason", "gate", "validation_execution_status")) {
+      if (key %in% names(record)) {
+        redacted[[key]] <- record[[key]]
+      }
+    }
+  }
+
+  redacted
+}
+
+# Erken-çıkış (boot/env) başarısızlıkları için minimum "fail" değerlendirici
+# sonucu üretir. Kapı betiği; zorunlu env eksik olduğunda, app.R source
+# edilemediğinde veya health_collect_checks bulunamadığında bunu kullanarak
+# stop'tan ÖNCE bir BAŞARISIZLIK artifact'ı yazar. Böylece sağlık paneli koşumu
+# "not_found" (hiç koşmamış gibi) değil, başarısız kapı olarak görür ve operatör
+# dağıtımın gerçekten durdurulduğunu kaçırmaz.
+mergen_post_deploy_smoke_failure_result <- function(reason) {
+  if (is.null(reason) || length(reason) < 1L || is.na(reason[1])) {
+    reason <- "unknown_failure"
+  } else {
+    reason <- as.character(reason)[1]
+  }
+  if (!nzchar(reason)) {
+    reason <- "unknown_failure"
+  }
+
+  list(
+    overall = "fail",
+    should_fail = TRUE,
+    reason = reason,
+    total = 0L,
+    counts = integer(0),
+    failing = character(0),
+    critical_failures = character(0),
+    evaluated_at = tryCatch(
+      format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
+      error = function(e) ""
+    )
+  )
 }

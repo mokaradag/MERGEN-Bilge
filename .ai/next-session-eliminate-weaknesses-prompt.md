@@ -161,6 +161,23 @@ Do NOT redo:
   0-fail; `ai_validate quick` PASS (`artifacts/ai-validation/20260624-153221/summary.json`).
   GOTCHA: any future change to the worker-export-style redaction must redact VALUES not
   the serialized blob — never let redaction touch JSON keys/counts.
+- **Codex review follow-up — round 3 (2× P2, hardens round 2):** (1) round 2 still
+  redacted ALL string values; `overall` is a status ENUM, so a secret value equal to
+  `pass`/`degraded` could rewrite `record$overall` → valid JSON, `should_fail` false →
+  panel shows neutral for a passing/degraded gate. FIX: `mergen_post_deploy_smoke_redact_record()`
+  now RESTORES `overall`/`reason`/`gate`/`validation_execution_status` from the original
+  AFTER the value-walk (these are constants/enums/git-metadata, never secrets). (2) the
+  gate `stop()`-ed on missing-env / `app.R` source failure / absent `health_collect_checks`
+  BEFORE the artifact block → those failure modes left no artifact (panel `not_found`,
+  masking the failure). FIX: helpers now source BEFORE `app.R`; `.smoke_redact`/
+  `.smoke_write_artifact`/`.smoke_fail_and_stop` + `critical_ids`/`fail_on_unknown` are
+  defined early; new pure `mergen_post_deploy_smoke_failure_result(reason)` lets all 3
+  early exits write an `overall="fail"` artifact before stopping (and `source("app.R")`
+  is wrapped in tryCatch). Tests: enum-restore + failure-result + a gate grep for
+  `mergen_post_deploy_smoke_failure_result`. Focused 18/17/11 0-fail; `ai_validate quick`
+  PASS (`artifacts/ai-validation/20260624-155351/summary.json`). GOTCHA: the post-deploy
+  redaction is now "redact free-form string VALUES, then restore the enum/identity scalars"
+  — if you add a new reader-interpreted enum field, add it to the restore set too.
 - **VALIDATION (Linux/cloud, R 4.6.0, logger + placeholder env):**
   `ai_validate quick` FULL PASS (failed=0, skipped=0, app_source_smoke=passed,
   `artifacts/ai-validation/20260624-102241/summary.json`). `ai_validate full

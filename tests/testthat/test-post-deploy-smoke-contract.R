@@ -266,6 +266,56 @@ test_that("redact-record yalnizca string degerleri redakte eder; anahtar/sayacla
   expect_identical(mergen_post_deploy_smoke_redact_record(rec, "x"), rec)
 })
 
+test_that("redact-record durum enum/kimlik alanlarini redaksiyondan korur", {
+  # degraded (geçen-ama-uyarılı) kapı: secret değeri "degraded"e denk gelse bile
+  # overall ezilmemeli — aksi halde panel geçen/degraded kapıyı nötr/unknown gösterir.
+  rec_deg <- mergen_post_deploy_smoke_artifact_record(
+    mergen_post_deploy_smoke_evaluate(list(
+      list(id = "llm.endpoint", status = "warning"),
+      list(id = "app.boot", status = "ok")
+    )),
+    generated_at_utc = "2026-06-24T10:00:00Z"
+  )
+  expect_identical(rec_deg$overall, "degraded")
+  red_deg <- mergen_post_deploy_smoke_redact_record(
+    rec_deg, redact_fn = function(x) gsub("degraded", "<hidden>", x, fixed = TRUE)
+  )
+  expect_identical(red_deg$overall, "degraded")
+
+  # fail kapı: overall/reason/gate/validation_execution_status redaksiyon SONRASI
+  # orijinalden geri yüklenir (kısa enum/kimlik token'ı secret'e denk gelse bile).
+  rec_fail <- mergen_post_deploy_smoke_artifact_record(
+    mergen_post_deploy_smoke_evaluate(list(list(id = "db.primary", status = "critical"))),
+    generated_at_utc = "2026-06-24T10:00:00Z"
+  )
+  red_fail <- mergen_post_deploy_smoke_redact_record(
+    rec_fail,
+    redact_fn = function(x) gsub("fail|run_post_deploy_smoke|ran_by_post_deploy_smoke", "<hidden>", x)
+  )
+  expect_identical(red_fail$overall, rec_fail$overall)
+  expect_identical(red_fail$reason, rec_fail$reason)
+  expect_identical(red_fail$gate, "run_post_deploy_smoke")
+  expect_identical(red_fail$validation_execution_status, "ran_by_post_deploy_smoke")
+})
+
+test_that("failure-result erken-cikis icin fail kaydi uretir", {
+  fr <- mergen_post_deploy_smoke_failure_result("app_boot_failed")
+  expect_identical(fr$overall, "fail")
+  expect_true(fr$should_fail)
+  expect_identical(fr$reason, "app_boot_failed")
+  expect_identical(fr$total, 0L)
+  expect_identical(fr$failing, character(0))
+
+  # Bu sonuç geçerli bir kanıt kaydına dönüşür (overall=fail, should_fail=TRUE).
+  rec <- mergen_post_deploy_smoke_artifact_record(fr, generated_at_utc = "2026-06-24T10:00:00Z")
+  expect_identical(rec$overall, "fail")
+  expect_true(rec$should_fail)
+
+  # Boş/NA neden güvenli fallback'e düşer.
+  expect_identical(mergen_post_deploy_smoke_failure_result("")$reason, "unknown_failure")
+  expect_identical(mergen_post_deploy_smoke_failure_result(NULL)$reason, "unknown_failure")
+})
+
 # --- Kapı betiği sözleşmesi --------------------------------------------------
 
 test_that("run_post_deploy_smoke.R kapi sozlesmesini icerir", {
@@ -291,6 +341,9 @@ test_that("run_post_deploy_smoke.R kapi sozlesmesini icerir", {
   # Redaksiyon JSON şemasını/sayaç anahtarlarını bozmamalı: kapı, yalnızca
   # string DEĞERLERİ redakte eden şema-koruyan kayıt redaktörünü kullanmalı.
   expect_true(grepl("mergen_post_deploy_smoke_redact_record", txt, fixed = TRUE))
+  # Erken boot/env başarısızlıklarında bile stop'tan ÖNCE bir başarısızlık
+  # artifact'ı yazılmalı (sağlık paneli koşumu "not_found" sanmasın).
+  expect_true(grepl("mergen_post_deploy_smoke_failure_result", txt, fixed = TRUE))
 })
 
 test_that("smoke betikleri base R ile parse edilebilir", {
