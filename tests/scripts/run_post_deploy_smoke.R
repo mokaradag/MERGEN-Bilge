@@ -184,13 +184,13 @@ artifact_path <- tryCatch({
   dir.create(artifact_dir, recursive = TRUE, showWarnings = FALSE)
 
   out_path <- file.path(artifact_dir, "post-deploy-smoke.json")
-  json_txt <- as.character(jsonlite::toJSON(record, auto_unbox = TRUE, pretty = TRUE, null = "null"))
-  # Kayıt zaten secret-safe kurulur. Redaktör savunma derinliğidir; ancak
-  # serileştirilmiş JSON üzerinde redaksiyon kısa/ortak alt-dize secret
-  # değerlerinde JSON'u GEÇERSİZ kılabilir (okuyucu NULL döner, panel koşumu
-  # "yok" sanır). Bu yüzden redaksiyon yalnızca geçerli JSON üretirse uygulanır.
-  final_txt <- mergen_post_deploy_smoke_redact_json_safe(json_txt, redact_fn = .smoke_redact)
-  writeLines(final_txt, out_path, useBytes = TRUE)
+  # Kayıt zaten secret-safe kurulur. Savunma derinliği: redaksiyon SERİLEŞTİRMEDEN
+  # ÖNCE yalnızca yapısal string DEĞERLERE uygulanır (anahtarlar/sayılar/sayaçlar
+  # korunur). Böylece "ok" gibi bir secret değeri counts.ok anahtarını ezemez,
+  # şema bozulmaz ve toJSON her zaman GEÇERLİ JSON üretir.
+  safe_record <- mergen_post_deploy_smoke_redact_record(record, redact_fn = .smoke_redact)
+  json_txt <- as.character(jsonlite::toJSON(safe_record, auto_unbox = TRUE, pretty = TRUE, null = "null"))
+  writeLines(json_txt, out_path, useBytes = TRUE)
   out_path
 }, error = function(e) {
   cat(sprintf("WARN: Kanıt artifact'ı yazılamadı: %s\n", .smoke_redact(conditionMessage(e))))

@@ -139,16 +139,28 @@ Do NOT redo:
 - **Ratchet NOT loosened.** maintainability 100/100, max file 681, max fn 24
   (unchanged). No manifest/source-order/zone change (scripts + 2 runtime helpers +
   tests + docs only).
-- **Codex review follow-up (3× P2, all fixed same session):** (1) redacting the
-  *serialized* JSON could corrupt it (short/punctuation secret substrings) → added
-  pure `mergen_post_deploy_smoke_redact_json_safe()` (redact-if-valid-else-original
-  via `jsonlite::validate`); gate uses it. (2) UI ignored `should_fail`, so the
-  no-checks case (`overall="unknown"` + `should_fail=TRUE`) showed neutral
-  "Bilinmiyor" → now forced to critical "Başarısız" (tile + card pill). (3)
+- **Codex review follow-up — round 1 (3× P2):** (1) redacting the *serialized* JSON
+  could corrupt it → first added `mergen_post_deploy_smoke_redact_json_safe`
+  (redact-if-valid-else-original) — SUPERSEDED in round 2, see below. (2) UI ignored
+  `should_fail`, so the no-checks case (`overall="unknown"` + `should_fail=TRUE`) showed
+  neutral "Bilinmiyor" → now forced to critical "Başarısız" (tile + card pill). (3)
   `does_prove` overstated "çalışan uygulama" though the gate runs `MERGEN_RUN_APP=false`
   (no Shiny service, no URL probe) → narrowed to in-process checks; `does_not_prove`
-  adds the "deployed service up / app URL not probed" caveat. Tests added; focused
-  3-file run 16/17/11 0-fail; `ai_validate quick` PASS.
+  adds the "deployed service up / app URL not probed" caveat.
+- **Codex review follow-up — round 2 (2× P2, hardens round 1):** (1) JSON-validate
+  guard checked *syntax* only — a secret value like `ok` could rewrite the `counts.ok`
+  KEY yet still validate → reader reports zero passing checks. REPLACED the json-text
+  helper with `mergen_post_deploy_smoke_redact_record()`: redaction runs on structural
+  STRING VALUES only, BEFORE serialization; list keys + numbers + counts are never
+  touched, so the schema can't break and toJSON always yields valid JSON. (2)
+  `.health_release_pill()` didn't recognize `degraded` → the card rendered raw/unknown
+  while the tile showed Kısmi/warning; extended the pill to map `degraded`/`warning`
+  → warning/"Kısmi"/"Uyarı". Tests: contract redaction test rewritten to assert
+  key/count preservation under an `ok`-targeting redactor; UI test asserts the degraded
+  card pill is `health-status-warning` (not raw "degraded"). Focused 3-file run 16/17/11
+  0-fail; `ai_validate quick` PASS (`artifacts/ai-validation/20260624-153221/summary.json`).
+  GOTCHA: any future change to the worker-export-style redaction must redact VALUES not
+  the serialized blob — never let redaction touch JSON keys/counts.
 - **VALIDATION (Linux/cloud, R 4.6.0, logger + placeholder env):**
   `ai_validate quick` FULL PASS (failed=0, skipped=0, app_source_smoke=passed,
   `artifacts/ai-validation/20260624-102241/summary.json`). `ai_validate full

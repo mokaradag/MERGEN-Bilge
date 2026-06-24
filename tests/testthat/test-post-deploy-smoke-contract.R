@@ -224,9 +224,9 @@ test_that("kanit kaydi calisan-servis kanitini abartmaz (in-process snapshot)", 
   expect_true(grepl("app URL", rec$does_not_prove, fixed = TRUE))
 })
 
-# --- Artifact redaksiyon güvenliği (geçerli JSON garantisi) ------------------
+# --- Artifact redaksiyon güvenliği (şema-koruyan, yalnızca string değerler) ---
 
-test_that("redact-json-safe gecerli redaksiyonu uygular, JSON'u bozani orijinale dusurur", {
+test_that("redact-record yalnizca string degerleri redakte eder; anahtar/sayaclari korur", {
   rec <- mergen_post_deploy_smoke_artifact_record(
     mergen_post_deploy_smoke_evaluate(list(
       list(id = "db.primary", status = "critical"),
@@ -234,28 +234,36 @@ test_that("redact-json-safe gecerli redaksiyonu uygular, JSON'u bozani orijinale
     )),
     generated_at_utc = "2026-06-24T10:00:00Z"
   )
-  json_txt <- as.character(jsonlite::toJSON(rec, auto_unbox = TRUE, pretty = TRUE, null = "null"))
-  expect_true(isTRUE(jsonlite::validate(json_txt)))
 
-  # 1) Geçerli kalan redaksiyon uygulanır (db.primary -> <hidden>); sonuç hâlâ geçerli JSON.
-  applied <- mergen_post_deploy_smoke_redact_json_safe(
-    json_txt,
-    redact_fn = function(x) gsub("db.primary", "<hidden>", x, fixed = TRUE)
+  # 1) Bir kontrol kimliğindeki alt-dize redakte edilse bile counts anahtarları
+  #    ve sayıları AYNEN korunur (okuyucu yanlış sıfır sayım raporlamaz).
+  redacted <- mergen_post_deploy_smoke_redact_record(
+    rec, redact_fn = function(x) gsub("primary", "<hidden>", x, fixed = TRUE)
   )
-  expect_true(isTRUE(jsonlite::validate(applied)))
-  expect_true(grepl("<hidden>", applied, fixed = TRUE))
-  expect_false(grepl("db.primary", applied, fixed = TRUE))
+  expect_identical(redacted$counts, rec$counts)
+  expect_identical(redacted$total, rec$total)
+  expect_identical(redacted$overall, rec$overall)
+  expect_identical(redacted$should_fail, rec$should_fail)
+  # string DEĞER (critical_failures içindeki db.primary) redakte edilmiş olmalı
+  expect_true(any(grepl("<hidden>", unlist(redacted$critical_failures), fixed = TRUE)))
 
-  # 2) JSON yapısını bozan redaksiyon (kısa/ortak alt-dize secret simülasyonu) →
-  #    redakte EDİLMEMİŞ (yine geçerli, secret-safe) orijinale düşülür.
-  broken_fn <- function(x) gsub('"', "X", x, fixed = TRUE)
-  safe <- mergen_post_deploy_smoke_redact_json_safe(json_txt, redact_fn = broken_fn)
-  expect_identical(safe, json_txt)
-  expect_true(isTRUE(jsonlite::validate(safe)))
+  # 2) Şema token'ı simülasyonu: secret değeri "ok" olsa bile counts ANAHTARI
+  #    "ok" bozulmaz (anahtarlar redaktöre verilmez, yalnızca değerler verilir).
+  #    Önceki "serileştirilmiş JSON'u kör redakte et" yaklaşımı counts.ok anahtarını
+  #    <hidden> ile ezip okuyucunun yanlış sıfır sayım raporlamasına yol açabilirdi.
+  redacted2 <- mergen_post_deploy_smoke_redact_record(
+    rec, redact_fn = function(x) gsub("ok", "<hidden>", x, fixed = TRUE)
+  )
+  expect_true("ok" %in% names(redacted2$counts))
+  expect_identical(redacted2$counts, rec$counts)
 
-  # 3) NULL/geçersiz redaktör → orijinal döner (artifact her zaman okunabilir).
-  expect_identical(mergen_post_deploy_smoke_redact_json_safe(json_txt, NULL), json_txt)
-  expect_identical(mergen_post_deploy_smoke_redact_json_safe(json_txt, "x"), json_txt)
+  # 3) Redakte edilmiş kayıt her zaman GEÇERLİ JSON üretir (şema bozulmaz).
+  j <- as.character(jsonlite::toJSON(redacted2, auto_unbox = TRUE, pretty = TRUE, null = "null"))
+  expect_true(isTRUE(jsonlite::validate(j)))
+
+  # 4) NULL/geçersiz redaktör → kayıt değişmeden döner.
+  expect_identical(mergen_post_deploy_smoke_redact_record(rec, NULL), rec)
+  expect_identical(mergen_post_deploy_smoke_redact_record(rec, "x"), rec)
 })
 
 # --- Kapı betiği sözleşmesi --------------------------------------------------
@@ -280,9 +288,9 @@ test_that("run_post_deploy_smoke.R kapi sozlesmesini icerir", {
   expect_true(grepl("post-deploy-smoke", txt, fixed = TRUE))
   expect_true(grepl("toJSON", txt, fixed = TRUE))
   expect_true(grepl("artifacts", txt, fixed = TRUE))
-  # Redaksiyon serileştirilmiş JSON'u bozsa bile artifact geçerli kalmalı:
-  # kapı, redaksiyon-sonrası-doğrulama yapan güvenli yazıcıyı kullanmalı.
-  expect_true(grepl("mergen_post_deploy_smoke_redact_json_safe", txt, fixed = TRUE))
+  # Redaksiyon JSON şemasını/sayaç anahtarlarını bozmamalı: kapı, yalnızca
+  # string DEĞERLERİ redakte eden şema-koruyan kayıt redaktörünü kullanmalı.
+  expect_true(grepl("mergen_post_deploy_smoke_redact_record", txt, fixed = TRUE))
 })
 
 test_that("smoke betikleri base R ile parse edilebilir", {

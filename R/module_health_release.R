@@ -20,6 +20,7 @@
   mapped <- switch(s,
     passed = "ok", pass = "ok", ok = "ok", success = "ok",
     failed = "critical", fail = "critical", error = "critical",
+    degraded = "warning", warning = "warning", warn = "warning",
     skipped = "not_configured", skip = "not_configured",
     not_found = "unknown", unknown = "unknown",
     "unknown"
@@ -28,6 +29,7 @@
   pretty <- label %||% switch(s,
     passed = "Geçti", pass = "Geçti", ok = "Geçti", success = "Geçti",
     failed = "Başarısız", fail = "Başarısız", error = "Başarısız",
+    degraded = "Kısmi", warning = "Uyarı", warn = "Uyarı",
     skipped = "Atlandı", skip = "Atlandı",
     not_found = "Bulunamadı", unknown = "Bilinmiyor",
     health_safe_value(evidence_status)

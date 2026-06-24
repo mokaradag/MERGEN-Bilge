@@ -269,37 +269,41 @@ mergen_post_deploy_smoke_artifact_record <- function(result,
   )
 }
 
-# Serileştirilmiş JSON kaydını verilen redaktör fonksiyonuyla redakte eder; ANCAK
-# redaksiyon GEÇERLİ JSON üretmezse redakte EDİLMEMİŞ orijinali döndürür.
+# Kaydın yalnızca KARAKTER (string) DEĞERLERİNİ verilen redaktörden geçirir;
+# liste ANAHTARLARI (örn. counts.ok), sayılar ve mantıksal değerler DOKUNULMAZ.
 #
 # Gerekçe: kayıt zaten secret-safe kurulur (yalnızca kontrol kimlikleri, durum
 # sayaçları ve genel metadata; ham log/ortam/secret yok). Redaktör savunma
-# derinliğidir; ancak kısa veya ortak alt-dize secret değerleri (örn. `1`, `:`,
-# JSON noktalama içeren bir parola) serileştirilmiş JSON'un anahtar/sayı/syntax
-# parçalarını ezip dosyayı GEÇERSİZ kılabilir. Bu durumda okuyucu
-# (release_evidence_read_json) NULL döner ve sağlık paneli koşumu "yok" sanır.
-# Bu yüzden redaksiyon yalnızca geçerli JSON üretirse uygulanır; aksi halde
-# zaten secret-safe olan orijinal JSON korunur (artifact her zaman okunabilir).
+# derinliğidir. Önceki yaklaşım serileştirilmiş JSON metnini kör redakte ediyordu;
+# bu, "ok" gibi bir secret değerinin `counts.ok` ANAHTARINI `<hidden>` ile ezip
+# JSON yine de geçerli kalırken okuyucunun (release_evidence_post_deploy_smoke_summary)
+# YANLIŞ "sıfır geçen kontrol" raporlamasına yol açabilirdi (yalnızca JSON
+# söz dizimi doğrulamak yetmez). Bunun yerine redaksiyon SERİLEŞTİRMEDEN ÖNCE
+# yalnızca yapısal string DEĞERLERE uygulanır; anahtarlar ve sayaçlar korunduğu
+# için şema asla bozulmaz ve toJSON her zaman geçerli JSON üretir.
 #
 # Argümanlar:
-#   json_txt  : serileştirilmiş JSON (tek elemanlı karakter).
-#   redact_fn : tek karakter girip tek karakter döndüren redaktör; NULL ise
-#               redaksiyon uygulanmaz ve orijinal döner.
-mergen_post_deploy_smoke_redact_json_safe <- function(json_txt, redact_fn = NULL) {
-  json_txt <- as.character(json_txt)
-  if (length(json_txt) != 1L || is.na(json_txt) || !nzchar(json_txt)) {
-    return(json_txt)
-  }
+#   record    : artifact kaydı (isimli / iç içe liste).
+#   redact_fn : karakter vektörü alıp aynı uzunlukta karakter döndüren redaktör;
+#               NULL ise kayıt değişmeden döner.
+mergen_post_deploy_smoke_redact_record <- function(record, redact_fn = NULL) {
   if (is.null(redact_fn) || !is.function(redact_fn)) {
-    return(json_txt)
+    return(record)
   }
 
-  redacted <- tryCatch(as.character(redact_fn(json_txt)), error = function(e) json_txt)
-  if (length(redacted) != 1L || is.na(redacted) || !nzchar(redacted)) {
-    return(json_txt)
+  walk <- function(x) {
+    if (is.character(x)) {
+      out <- tryCatch(as.character(redact_fn(x)), error = function(e) x)
+      # Redaktör beklenmedik uzunluk/şekil döndürürse orijinali koru.
+      if (length(out) == length(x)) out else x
+    } else if (is.list(x)) {
+      # lapply liste anahtarlarını (isimleri) korur; yalnızca DEĞERLER ziyaret edilir.
+      lapply(x, walk)
+    } else {
+      # Sayılar, mantıksal değerler, NULL vb. dokunulmaz.
+      x
+    }
   }
 
-  # Redaksiyon JSON yapısını bozduysa orijinale (yine secret-safe) düş.
-  gecerli <- tryCatch(isTRUE(jsonlite::validate(redacted)), error = function(e) FALSE)
-  if (gecerli) redacted else json_txt
+  walk(record)
 }

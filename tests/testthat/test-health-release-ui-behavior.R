@@ -117,8 +117,11 @@ testthat::test_that("health_release_ui tam kanıt özetini gerçek alanlarla ren
   testthat::expect_true(grepl("Dağıtım Sonrası Duman Testi", html, fixed = TRUE))
   testthat::expect_true(grepl("Dağıtım Sonrası", html, fixed = TRUE))
   testthat::expect_true(grepl("3 ok / 1 uyarı / 0 kritik", html, fixed = TRUE))
-  # Genel sonuç "degraded" → "Kısmi" Türkçe etiketine eşlenir
+  # Genel sonuç "degraded" → kart pill'inde de "Kısmi" + uyarı rengi olmalı
+  # (nötr/ham "degraded" değil); hem metrik kutusu hem kart pill warning gösterir.
   testthat::expect_true(grepl("Kısmi", html, fixed = TRUE))
+  testthat::expect_true(grepl("health-status-warning", html, fixed = TRUE))
+  testthat::expect_false(grepl(">degraded<", html, fixed = TRUE))
 
   # Kanıt sınırı notu
   testthat::expect_true(grepl("kanıt değildir", html, fixed = TRUE))

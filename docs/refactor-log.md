@@ -340,6 +340,28 @@ dürüstlük alanları zorunlu kılındı.
   app_source_smoke=passed; `artifacts/ai-validation/20260624-120029/summary.json`).
   Maintainability etkilenmez (değişiklikler tests/scripts + bir health UI modülü).
 
+#### Codex review 2. tur (2 × P2 — 1. turu sertleştirir)
+- **Redaksiyon şemayı bozabilir, yalnızca JSON söz dizimi yetmez (P2):** 1. turdaki
+  `mergen_post_deploy_smoke_redact_json_safe()` yalnızca redaksiyon-SONRASI JSON'un
+  geçerli olduğunu denetliyordu. Ancak `ok` gibi bir secret değeri serileştirilmiş
+  JSON'da `counts.ok` ANAHTARINI `<hidden>` ile ezse JSON yine geçerli kalır ve
+  okuyucu YANLIŞ "sıfır geçen kontrol" raporlar. Çözüm: json-metin yaklaşımı
+  KALDIRILDI; yerine `mergen_post_deploy_smoke_redact_record()` geldi — redaksiyon
+  SERİLEŞTİRMEDEN ÖNCE yalnızca yapısal string DEĞERLERE uygulanır; liste anahtarları,
+  sayılar ve sayaçlar (counts) hiç dokunulmaz. Böylece şema asla bozulmaz ve toJSON
+  her zaman geçerli JSON üretir. `run_post_deploy_smoke.R` artık kaydı serileştirmeden
+  önce bu redaktörden geçirir.
+- **`degraded` kart pill'inde tanınmıyordu (P2):** `.health_release_pill()` `degraded`
+  durumunu tanımayıp kartta nötr/ham "degraded" gösteriyordu (metrik kutusu ise doğru
+  "Kısmi"/uyarı gösteriyordu → tutarsız). Pill `degraded`/`warning` → `warning` rengi +
+  "Kısmi"/"Uyarı" etiketine genişletildi; kart ve metrik kutusu artık tutarlı.
+- **Test güncellemeleri:** `test-post-deploy-smoke-contract.R` redaksiyon testi
+  şema-koruyan kayıt redaksiyonuna çevrildi (counts anahtarı/sayısı korunur; `ok`
+  secret token simülasyonu); `test-health-release-ui-behavior.R` degraded kart pill'inin
+  `health-status-warning` gösterdiğini ve ham "degraded" göstermediğini doğrular.
+  Doğrulama: 3 odak test 0 fail/warn/skip (16/17/11); `ai_validate quick` TAM
+  (`artifacts/ai-validation/20260624-153221/summary.json`).
+
 ---
 
 ## 2026-06-20 — ServerRuntimeContext SSO auth-ready / yenilenebilir modül wiring katmanının ayrılması
