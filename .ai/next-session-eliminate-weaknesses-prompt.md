@@ -8,6 +8,50 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — `claude/tender-keller-vasw96` (2026-06-24, true-SSE worker-globals split)
+
+Shipped a **behavior-preserving extraction of the global ratchet pin**
+`R/server_handler_true_streaming.R` (681 → 655). Surgical, additive. Do NOT redo:
+
+- **What/why:** this file is one tightly-coupled streaming state machine over a shared
+  mutable `stream_env`; the inner closures can't be hoisted without threading a huge
+  context (high risk on the sensitive SSE path). The ONE clean, behavior-preserving
+  extraction is the ~35-line `tracked_future_promise(..., globals = list(...))`
+  worker-export list — flat, declarative, mostly global symbols, AND a CLAUDE.md-protected
+  contract (reasoning delta / stop-file / model request-override helpers must stay
+  visible worker-side).
+- **Extraction:** new pure factory `mergen_true_streaming_worker_globals()` in
+  **`R/helpers_llm_true_streaming_worker.R`** (62/1). 31 names moved BYTE-IDENTICAL
+  (4 request-scoped args + 25 helpers + `%||%` + `api_config`); handler now calls
+  `globals = mergen_true_streaming_worker_globals(chat_history_for_sse, settings_for_sse,
+  stream_file_for_sse, stop_file_for_sse)`. GOLDEN proof: stubbed-env factory output ==
+  original 31 names in the same order; arg passthrough TRUE.
+- **Wiring:** manifest `server_handlers_send_message` 9→10 (helper BEFORE handler);
+  bootstrap order rule `helpers_llm_true_streaming_worker.R → server_handler_true_streaming.R`;
+  seam `sohbet_llm_akis` guard_tests 8→9; section contract total 282→283.
+- **Tests:** new `test-true-streaming-worker-globals-contract.R` (structural split + 31-name
+  worker-export contract + arg passthrough). REPOINTED two existing tests that grepped the
+  handler for the moved names → now assert the new owner: `test-sse-worker-export-contract.R`
+  (+handler-delegation check) and `test-llm-reasoning-request-overrides.R:221`. GOTCHA:
+  both of those grep the *file text* for `apply_model_request_overrides = ...` etc., so any
+  globals-list move MUST repoint them or they fail.
+- **Ratchet TIGHTENED:** global `MERGEN_TEST_MAX_FILE_LINES` 681 → **678** (new pin
+  `module_admin_yanit_analizi_outputs.R` 678). Budgets: handler 660/18, helper 80/1.
+- **VALIDATION (Linux/cloud, R 4.6.0, logger + placeholder env):** `ai_validate full
+  --boot-smoke` FULL PASS — app source smoke passed, **full testthat suite passed
+  (159.4s)**, shiny boot passed, browser SKIPPED; failed=0, skipped=0
+  (`artifacts/ai-validation/20260624-121349/summary.json`). parse_sanity 858; seam_doctor
+  OK; maintainability 100/100 max 678. NOT VM/SSO/DB/real-browser/live-SSE proof.
+- **GOTCHA:** the factory references ~25 global functions + `api_config` BY NAME; they
+  resolve at CALL time (runtime), so the factory must only be called where those globals
+  exist (the handler's runtime). Tests stub all of them in an isolated env before sourcing.
+- **BEST NEXT TARGETS:** `R/module_file_manager.R` (677); frontend
+  `www/js/deep_space_intro.js` (820), `www/js/ai_expert_manager.js` (802/45 — within budget,
+  split-then-tighten). `module_admin_yanit_analizi_outputs.R` (678) is a flat single-function
+  renderer list → low priority.
+
+---
+
 ## LATEST SESSION RESULTS — `claude/tender-keller-vasw96` (2026-06-24, package 2: Bilge Yolaç doküman summary split)
 
 Same branch/session as the post-deploy package below; after the user said "continue"

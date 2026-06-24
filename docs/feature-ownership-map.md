@@ -19,7 +19,10 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `R/server_handler_true_streaming.R`, `R/server_handler_streaming_tts.R`
   (`handle_streaming_tts_mode`: TTS açık streaming dalı; gerçek SSE/non-streaming
   ile simetrik handler), `R/helpers_streaming_abort_lifecycle.R`,
-  `R/helpers_streaming_poll_lifecycle.R`, `R/helpers_llm_api.R`,
+  `R/helpers_streaming_poll_lifecycle.R`,
+  `R/helpers_llm_true_streaming_worker.R` (`mergen_true_streaming_worker_globals`:
+  gerçek SSE işçisine aktarılan worker-export globals listesini kuran saf fabrika;
+  handler delege eder), `R/helpers_llm_api.R`,
   `R/helpers_llm_sse.R`, `R/helpers_llm_sse_events.R`, `R/helpers_llm_stream_io.R`,
   `R/helpers_llm_worker*.R`, `R/server_llm_response_handlers.R`.
 - **UI/server modülleri:** `R/server_outputs_chat.R`, `R/module_chat_actions.R`,
@@ -64,6 +67,17 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `R/server_handler_streaming_tts.R`'ye (`handle_streaming_tts_mode`) çıkarıldı;
   `server_send_message.R` 694/14 → 590/9'a indi ve küresel en büyük dosya satırı
   694 → 690'a düştü. Promise zinciri davranışı deterministik test ile korunur.
+  Ardından gerçek SSE worker-export globals listesi (reasoning delta / stop-file /
+  model request override yardımcıları) saf fabrikaya
+  (`mergen_true_streaming_worker_globals`, `R/helpers_llm_true_streaming_worker.R`)
+  çıkarıldı; `server_handler_true_streaming.R` onu delege eder ve 681 → 655 satıra
+  indi. Liste içeriği byte-birebir korundu (31 isim golden) ve worker-export
+  sözleşmesi `test-true-streaming-worker-globals-contract.R` +
+  `test-sse-worker-export-contract.R` ile kilitlenir. Küresel en büyük dosya satırı
+  681 → 678 (`module_admin_yanit_analizi_outputs.R`) sıkılaştırıldı. Sıradaki
+  repo-geneli yakın-bütçe adayları: `R/module_admin_yanit_analizi_outputs.R` (678,
+  tek-fonksiyon flat renderer — düşük öncelik), `R/module_file_manager.R` (677);
+  frontend `www/js/deep_space_intro.js` (820) / `www/js/ai_expert_manager.js` (802/45).
 
 ## Dosya Yaşam Döngüsü
 

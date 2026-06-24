@@ -70,7 +70,9 @@ test_that("runtime manifest SSE worker yardımcılarını true streaming handler
 })
 
 test_that("true streaming tracked_future globals aynı kritik SSE helper sözleşmesini taşır", {
-  streaming_text <- .read_repo_text_for_sse_contract("R/server_handler_true_streaming.R")
+  # Worker-export globals listesi R/helpers_llm_true_streaming_worker.R'ye taşındı;
+  # sözleşme artık yeni sahip dosyada doğrulanır (handler onu delege eder).
+  globals_text <- .read_repo_text_for_sse_contract("R/helpers_llm_true_streaming_worker.R")
 
   expected_globals <- c(
     "call_local_llm_sse_worker = call_local_llm_sse_worker",
@@ -82,8 +84,15 @@ test_that("true streaming tracked_future globals aynı kritik SSE helper sözle�
   )
 
   .expect_text_contains_all(
-    streaming_text,
+    globals_text,
     expected_globals,
-    "server_handler_true_streaming.R tracked_future globals sözleşmesi bozuldu."
+    "helpers_llm_true_streaming_worker.R worker-export globals sözleşmesi bozuldu."
+  )
+
+  # Handler artık satır içi liste yerine fabrikayı çağırmalı (delege).
+  streaming_text <- .read_repo_text_for_sse_contract("R/server_handler_true_streaming.R")
+  expect_true(
+    grepl("globals = mergen_true_streaming_worker_globals(", streaming_text, fixed = TRUE),
+    info = "server_handler_true_streaming.R worker globals fabrikasını delege etmeli."
   )
 })

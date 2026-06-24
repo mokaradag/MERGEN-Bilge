@@ -91,7 +91,7 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 0L)
   max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 0L)
   max_very_large_files <- .as_int_env("MERGEN_TEST_MAX_1500_LINE_FILES", 0L)
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 681L)
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 678L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 24L)
 
   actual_large_files <- sum(score_report$lines >= 800)
@@ -246,6 +246,14 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # ve yeni en-büyük-dosya pinini yakalar.
   assert_current_budget("R/module_settings_yapilandirma_ui.R", 430L, 8L)
   assert_current_budget("R/module_settings_yapilandirma_advanced_ui.R", 370L, 6L)
+
+  # Gerçek SSE worker-export globals listesi (reasoning delta / stop-file /
+  # model request override yardımcıları) saf fabrikaya (helpers_llm_true_streaming_
+  # worker.R) çıkarıldı; handler onu delege eder. server_handler_true_streaming.R
+  # 681 -> 655 satıra indi (küresel pin 681 -> 678). Bütçeler liste içeriğinin
+  # handler'a geri sızmasını ve fabrikanın şişmesini yakalar.
+  assert_current_budget("R/server_handler_true_streaming.R", 660L, 18L)
+  assert_current_budget("R/helpers_llm_true_streaming_worker.R", 80L, 1L)
 
   # Yönetişim katmanı (seam kayıt defteri + frontend bölge haritası) saf veri
   # dosyalarıdır; bütçeler bölge/seam başına birkaç yeni varlık satırına izin

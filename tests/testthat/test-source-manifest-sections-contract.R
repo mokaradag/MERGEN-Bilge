@@ -127,7 +127,7 @@
   server_init_runtime = list(first = "R/server_session_cache.R", last = "R/server_init_chat_runtime.R", n = 14L),
   server_core_outputs_welcome = list(first = "R/server_core_observer_runtime.R", last = "R/server_welcome_handlers.R", n = 7L),
   server_observers = list(first = "R/server_observers_startup.R", last = "R/server_observers_misc.R", n = 11L),
-  server_handlers_send_message = list(first = "R/server_tts_handlers.R", last = "R/server_send_message.R", n = 9L)
+  server_handlers_send_message = list(first = "R/server_tts_handlers.R", last = "R/server_send_message.R", n = 10L)
 )
 
 test_that("source_manifest_sections beklenen sırada ve adlarda bölümler içerir", {
@@ -273,7 +273,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 281L -> 282L bilinçli güncelleme: Bilge Yolaç doküman özetleme orkestrasyonu
   # R/helpers_claude_code_document_summary.R claude_code_helpers bölümüne
   # (helpers_claude_code_documents.R'den sonra, run_lifecycle'dan önce) eklendi.
-  expect_equal(length(runtime), 282L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 282L -> 283L bilinçli güncelleme: gerçek SSE worker-export globals fabrikası
+  # R/helpers_llm_true_streaming_worker.R server_handlers_send_message bölümüne
+  # (server_handler_true_streaming.R'den ÖNCE) eklendi.
+  expect_equal(length(runtime), 283L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

@@ -161,6 +161,7 @@ mergen_seam_registry <- function() {
         "tests/testthat/test-send-message-prompting-contract.R",
         "tests/testthat/test-send-message-request-lifecycle-contract.R",
         "tests/testthat/test-server-handler-streaming-tts-contract.R",
+        "tests/testthat/test-true-streaming-worker-globals-contract.R",
         "tests/testthat/test-llm-stream-io-contract.R",
         "tests/testthat/test-streaming-poll-lifecycle-contract.R",
         "tests/testthat/test-streaming-markdown-safety-contract.R",

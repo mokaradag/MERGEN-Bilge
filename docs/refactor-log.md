@@ -6,6 +6,96 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-24 — Gerçek SSE worker-export globals listesinin saf fabrikaya çıkarılması
+
+### Seçilen iz(ler)
+- **Track 1 — en büyük / yakın-bütçe R dosyasından bütünleşik çıkarım** (öncelik #1).
+  `R/server_handler_true_streaming.R` (681/18) repo genelindeki en büyük R dosyası ve
+  küresel `MERGEN_TEST_MAX_FILE_LINES` pini idi. `sohbet_llm_akis` seam'inde tek paket.
+
+### Özet ve gerekçe
+Bu dosya, paylaşılan değişebilir `stream_env` üzerinde sıkıca bağlı iç closure'lardan
+oluşan tek bir streaming durum makinesidir; closure'ları üst düzeye çıkarmak büyük bir
+bağlam aktarımı gerektirir (yüksek churn, hassas yolda yüksek risk). Davranış-koruyan
+TEK temiz çıkarım, `tracked_future_promise(..., globals = list(...))` içindeki ~35
+satırlık **worker-export globals listesidir** — düz, bildirimsel, çoğunluğu global
+sembol. Bu liste aynı zamanda CLAUDE.md-korumalı bir sözleşmedir (reasoning delta /
+stop-file / model request override yardımcıları işçi tarafında görünür kalmalı).
+
+Liste, yeni saf fabrika `mergen_true_streaming_worker_globals()`'a BİREBİR taşındı
+(31 isim: 4 isteğe-özel arg + 25 yardımcı + `%||%` + `api_config`). İsteğe-özel 4
+nesne argümandır; geri kalanı çağrı anında global ortamda çözülür. Golden kontrol:
+stub'lı ortamda fabrika çıktısı orijinal liste isimleriyle aynı sırada birebir (31/31).
+
+### Değişen dosyalar
+**Kaynak**
+- `R/helpers_llm_true_streaming_worker.R` (yeni, 62/1) — `mergen_true_streaming_worker_globals()`.
+- `R/server_handler_true_streaming.R` — **681/18 → 655/18**; satır içi `globals = list(...)`
+  yerine `globals = mergen_true_streaming_worker_globals(...)`.
+- `R/config_source_manifest.R` — `server_handlers_send_message` bölümüne yeni dosya
+  `server_handler_true_streaming.R`'den ÖNCE (9 → 10).
+- `R/bootstrap_source_manifest.R` — kritik sıra kuralı:
+  `helpers_llm_true_streaming_worker.R → server_handler_true_streaming.R`.
+- `R/config_seam_registry.R` — `sohbet_llm_akis` guard_tests'e yeni split-contract testi (8 → 9).
+
+**Test**
+- `tests/testthat/test-true-streaming-worker-globals-contract.R` (yeni) — yapısal ayrım
+  (fabrika yeni dosyada; handler delege eder; satır içi liste yok; manifest sırası) +
+  davranış (31 isim, arg geçişi, CLAUDE.md-korumalı worker-export adları, `%||%`/`api_config`).
+- `tests/testthat/test-sse-worker-export-contract.R` — globals sözleşmesi artık yeni
+  sahip dosyada doğrulanır + handler delegasyon kontrolü.
+- `tests/testthat/test-llm-reasoning-request-overrides.R` — `apply_model_request_overrides`
+  globals kontrolü yeni sahip dosyaya yönlendirildi.
+- `tests/testthat/test-source-manifest-sections-contract.R` — `server_handlers_send_message`
+  n=9→10; toplam runtime 282→283.
+- `tests/testthat/test-maintainability-ratchet.R` — küresel `MERGEN_TEST_MAX_FILE_LINES`
+  681 → 678; bütçeler `server_handler_true_streaming.R` 660/18, helper 80/1.
+
+**Dokümantasyon**
+- `CLAUDE.md` (worker-export globals sözleşmesi 3 referans güncellendi),
+  `docs/feature-ownership-map.md`, `docs/refactor-log.md`,
+  `.ai/next-session-eliminate-weaknesses-prompt.md`.
+
+### Önce / sonra
+- Önce: `server_handler_true_streaming.R` 681/18 (küresel pin). Sonra: handler 655/18,
+  helper 62/1. Skor 100/100; 800+ satır / 25+ fonksiyon = 0. Küresel en büyük dosya
+  satırı **681 → 678** (yeni pin `module_admin_yanit_analizi_outputs.R`). Ratchet
+  GEVŞETİLMEDİ; sıkılaştırıldı.
+
+### Korunan davranış sözleşmeleri
+- Globals listesi içeriği byte-birebir (31 isim, aynı sıra, golden doğrulama). Worker
+  task_fn, promise zinciri, poll observer, finalize/abort, request-id, stop-file,
+  reasoning recovery yolları DEĞİŞMEDİ. SSE/streaming davranışı aynı.
+- DB/SSO/encoding/source-order/UX runtime sınırlarına dokunulmadı (saf yapısal relocate).
+
+### Gerçekten çalıştırılan doğrulamalar (bu oturumda, Linux/cloud, R 4.6.0)
+- Golden: stub'lı ortamda fabrika çıktısı = orijinal 31 isim (aynı sıra), arg geçişi TRUE.
+- `Rscript tests/scripts/maintainability_report.R` → 100/100; handler 655/18; helper 62/1;
+  en büyük dosya 681 → 678.
+- `Rscript tests/scripts/parse_sanity_check.R` → OK (858 dosya).
+- `Rscript tests/scripts/seam_doctor.R` → `SEAM_DOCTOR_RESULT: OK`.
+- Odak testler 0 fail/0 warn/0 skip: yeni split-contract (3), sse-worker-export (2),
+  source-manifest-sections (4), source-manifest-contract (17), global-source-manifest (6),
+  maintainability-ratchet (22), seam-registry (6), seam-doctor (2),
+  true-streaming-reset-ui (2), streaming-poll-lifecycle (5),
+  llm-reasoning-request-overrides (6), production-contracts (10).
+- `bash tools/ai_validate.sh full --boot-smoke` → **TAM**: app source smoke passed,
+  **full testthat suite passed (159.4s)**, shiny boot passed, browser smoke SKIPPED;
+  failed=0, skipped=0 (`artifacts/ai-validation/20260624-121349/summary.json`).
+
+### Manuel QA (kullanıcı/VM tarafı)
+- Düşünen bir modelle Akış modunda mesaj gönderin; canlı SSE akışının, reasoning
+  panelinin, durdurma temizliğinin ve DB kalıcılığının eskisi gibi çalıştığını doğrulayın.
+
+### Bilinen riskler / atlanan doğrulamalar
+- VM/SSO/gerçek DB/SQL Server/gerçek tarayıcı/canlı LLM SSE kanıtı alınmadı (bulut
+  oturumu). Saf yapısal relocate; globals byte-birebir korundu, ancak canlı SSE uçtan
+  uca akış yalnızca VM/manuel tarayıcıda son kez kanıtlanır.
+- Sıradaki adaylar: `R/module_file_manager.R` (677); frontend
+  `www/js/deep_space_intro.js` (820) / `www/js/ai_expert_manager.js` (802/45).
+
+---
+
 ## 2026-06-24 — Bilge Yolaç doküman ÖZETLEME orkestrasyonunun ayrı dosyaya çıkarılması
 
 ### Seçilen iz(ler)

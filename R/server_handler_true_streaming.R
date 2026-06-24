@@ -421,40 +421,14 @@ handle_true_streaming_mode <- function(ctx) {
     meta = list(
       model = ctx$model_selected
     ),
-    globals = list(
+    # Worker-export sözleşmesi (reasoning delta / stop-file / model request
+    # override yardımcıları işçi tarafında görünür kalmalı) tek yerde toplanır.
+    # Liste içeriği birebir korunur; yalnızca isteğe-özel 4 nesne argümandır.
+    globals = mergen_true_streaming_worker_globals(
       chat_history_for_sse = chat_history_for_sse,
       settings_for_sse = settings_for_sse,
       stream_file_for_sse = stream_file_for_sse,
-      stop_file_for_sse = stop_file_for_sse,
-      call_local_llm_sse_worker = call_local_llm_sse_worker,
-      get_local_model_capabilities = get_local_model_capabilities,
-      should_omit_temperature = should_omit_temperature,
-      should_allow_reasoning_fallback = should_allow_reasoning_fallback,
-      apply_model_request_overrides = apply_model_request_overrides,
-      normalize_llm_text_node = normalize_llm_text_node,
-      extract_first_nonempty_llm_text = extract_first_nonempty_llm_text,
-      extract_llm_text_bundle = extract_llm_text_bundle,
-      extract_llm_delta_bundle = extract_llm_delta_bundle,
-      `%||%` = `%||%`,
-      resolve_local_llm_endpoint = resolve_local_llm_endpoint,
-      resolve_local_llm_credentials = resolve_local_llm_credentials,
-      extract_llm_content_and_sources = extract_llm_content_and_sources,
-      normalize_llm_scalar_content = normalize_llm_scalar_content,
-      strip_planner_text = strip_planner_text,
-      decode_utf8_raw_chunk = decode_utf8_raw_chunk,
-      create_utf8_stream_decoder = create_utf8_stream_decoder,
-      find_last_utf8_boundary = find_last_utf8_boundary,
-      parse_llm_sse_event = parse_llm_sse_event,
-      extract_llm_delta_text = extract_llm_delta_text,
-      extract_llm_event_sources = extract_llm_event_sources,
-      append_stream_delta_line = append_stream_delta_line,
-      append_stream_reasoning_line = append_stream_reasoning_line,
-      log_info = log_info,
-      log_warn = log_warn,
-      # SQL/Proje analizi non-streaming güvenlik ağı: işçi, akış yalnızca
-      # akıl yürütme benzeri/boş içerik döndürdüğünde bu yardımcıyla tespit yapar.
-      llm_worker_stream_content_looks_like_reasoning = llm_worker_stream_content_looks_like_reasoning,
-      api_config = api_config
+      stop_file_for_sse = stop_file_for_sse
     )
   )
 
