@@ -333,6 +333,24 @@ Anahtar yönlendirme, izolasyon, upload validation, encoding round-trip, secret 
 mojibake ve server-crash guardrail'leri temiz kaldı; `memory_growth_mb` ve
 `browser_console_errors` yine `UNMEASURED` idi.
 
+2026-06-24 soak readiness sertleştirmesi: başarısız 1000/90dk koşumlarının
+**nedenini** ölçmek için soak kapısına sistem telemetrisi (CPU/bellek/TCP),
+**kademeli kapasite merdiveni** (50->100->250->500->1000; ilk başarısız adımda
+durur, son STABİL adımı raporlar), hata atfı (timeout attribution) ve gerçek-LLM
+aşama sınıflandırması eklendi. Hiçbir eşik düşürülmedi; eklenen
+`capacity_ladder_all_steps_pass` daha katı bir kontroldür. Ayrıca iki ayrı VM/local
+betik eklendi: `tests/scripts/run_browser_concurrency_lane.R` (gerçek
+tarayıcı/websocket eşzamanlılık + `browser_console_errors` ÖLÇÜMÜ) ve
+`tests/scripts/run_vm_sqlserver_pool_preflight_real.R` (havuzlu SQL Server
+işlem/at-rest doğrulaması). Yeni artifact'lar: `system_telemetry.csv`/`.json`,
+`capacity_ladder.csv`/`_summary.json`, `timeout_attribution.json`,
+`real_canary_classification.json`, `real_llm_throughput.json`. Staged VM komut
+dizisi, telemetri yorumu ve CPU/çekirdek ölçeklendirme rehberi:
+[`docs/operational-soak-gate.md`](docs/operational-soak-gate.md) bölüm 16. Önerilen
+sıralama: 50/30dk PASS -> 100/90dk -> 250/90dk -> 500/90dk -> 1000/90dk; bir adım
+PASS olmadan sonrakine geçmeyin. ERR-234 gibi gateway policy hataları
+`gateway_policy_failed` olarak sınıflandırılır ve MERGEN app yük hatası değildir.
+
 ## 8. Dağıtım Öncesi Kapılar
 
 1. Değişiklik türünü sınıflandırın: docs-only, UI, runtime, DB, SSO, file lifecycle, streaming, Bilge Yolaç veya deployment.

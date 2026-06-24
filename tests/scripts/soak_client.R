@@ -85,6 +85,14 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
   client_timeout_ms <- as.numeric(cfg$client_timeout_sec %||% 20) * 1000
   app_http_mode <- !grepl("/v1/chat/completions/?$", url)
 
+  # Hata atfi (timeout attribution) icin endpoint turu: app koku mu yoksa
+  # dogrudan fake/proxy LLM endpoint'i mi vuruluyor?
+  endpoint_kind <- if (isTRUE(app_http_mode)) {
+    "app"
+  } else {
+    switch(lane, fake = "fake_llm", proxy = "proxy_llm", "real_llm")
+  }
+
   # curl havuzu: host_con eszamanlilik kadar yuksek olmali (varsayilan 6 ise
   # serilesir). multiplex kapali tutulur (her istek ayri baglanti).
   con_cap <- max(as.integer(concurrent) + 10L, 100L)
@@ -133,14 +141,17 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
           parsed <- tryCatch(curl::parse_headers_list(res$headers), error = function(e) list())
           ks <- parsed[["x-soak-key-source"]] %||% "n/a"
         }
+        tclass <- soak_classify_failure(status, code, "", endpoint_kind)
         soak_metrics_record(metrics, lane, scen_id, lat, status, code,
-                            length(res$content %||% raw()), ks)
+                            length(res$content %||% raw()), ks, tclass, endpoint_kind)
       },
       fail = function(msg) {
         inflight$n <- inflight$n - 1L
         lat <- as.numeric(difftime(Sys.time(), start, units = "secs")) * 1000
         status <- if (grepl("tim(e|ed) ?out|timeout", msg, ignore.case = TRUE)) "timeout" else "error"
-        soak_metrics_record(metrics, lane, scen_id, lat, status, NA_integer_, 0, "n/a")
+        tclass <- soak_classify_failure(status, NA_integer_, msg, endpoint_kind)
+        soak_metrics_record(metrics, lane, scen_id, lat, status, NA_integer_, 0, "n/a",
+                            tclass, endpoint_kind)
       },
       pool = pool
     )
@@ -171,9 +182,59 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
 }
 
 # ------------------------------------------------------------------------------
+# Gercek LLM yanit asamasi siniflandirmasi (SAF). Gateway/policy/auth/model/
+# rate-limit/uretim/streaming asamalarini ayirt eder. ERR-234 gibi gateway
+# policy hatalarini "gateway_policy_failed" olarak isaretler -- bu bir MERGEN
+# app yuk hatasi DEGILDIR. Ham anahtar/sir kullanmaz; yalniz kod + govde deseni.
+# ------------------------------------------------------------------------------
+soak_classify_real_llm_response <- function(http_code, body_text = "", curl_error = "",
+                                            stream = FALSE) {
+  ce <- tolower(as.character(curl_error %||% ""))
+  if (nzchar(ce)) {
+    if (grepl("tim(e|ed) ?out|timeout", ce)) return("real_llm_timeout")
+    if (grepl("connect|resolve|refused|reset|unreachable", ce)) return("app_unreachable")
+    return("transport_error")
+  }
+  code <- suppressWarnings(as.integer(http_code))
+  body <- tolower(as.character(body_text %||% ""))
+  gateway_policy <- grepl("err-234", body) ||
+    grepl("rate limit policy failed", body) ||
+    grepl("endpoint rate limit", body)
+
+  if (is.na(code)) return("unknown")
+  if (code >= 200L && code < 300L) {
+    return(if (isTRUE(stream)) "streaming_completed" else "generation_completed")
+  }
+  if (code %in% c(401L, 403L)) return("auth_rejected")
+  if (identical(code, 404L)) return("model_or_route_not_found")
+  if (identical(code, 429L)) return("rate_limited")
+  if (code >= 500L) return(if (isTRUE(gateway_policy)) "gateway_policy_failed" else "gateway_5xx")
+  if (isTRUE(gateway_policy)) return("gateway_policy_failed")
+  "gateway_error"
+}
+
+# Asama -> metrik timeout_class esleme (real_llm endpoint icin).
+.soak_real_stage_to_class <- function(stage) {
+  switch(stage,
+         generation_completed = "n/a",
+         streaming_completed = "n/a",
+         real_llm_timeout = "real_llm_timeout",
+         rate_limited = "rate_limited",
+         auth_rejected = "real_llm_gateway_error",
+         model_or_route_not_found = "real_llm_gateway_error",
+         gateway_policy_failed = "real_llm_gateway_error",
+         gateway_5xx = "real_llm_gateway_error",
+         gateway_error = "real_llm_gateway_error",
+         app_unreachable = "connection_error",
+         transport_error = "unknown_error",
+         "unknown_error")
+}
+
+# ------------------------------------------------------------------------------
 # Real-canary serit: COK DUSUK oranli, pace'li yuk. Her aralikta `users` istek
 # gercek endpoint'e gonderilir, sonra interval_sec beklenir. Throughput tahmini
 # icin DEGILDIR; yalnizca gercek endpoint erisilebilirligini dogrular.
+# Geriye asama (stage) siniflandirma ozeti doner (gateway/auth/policy ayrimi).
 # ------------------------------------------------------------------------------
 soak_real_canary_load <- function(url, real_key, cfg, metrics, duration_sec) {
   client_timeout_ms <- as.numeric(cfg$client_timeout_sec %||% 20) * 1000
@@ -181,6 +242,13 @@ soak_real_canary_load <- function(url, real_key, cfg, metrics, duration_sec) {
   interval <- max(5L, as.integer(cfg$real_canary$interval_sec %||% 60L))
   soak_metrics_add_load_seconds(metrics, duration_sec)
   t_end <- Sys.time() + duration_sec
+
+  stages <- list()              # asama -> sayac (gateway/auth/policy/completion ayrimi)
+  total_calls <- 0L
+  bump_stage <- function(stage) {
+    stages[[stage]] <<- (stages[[stage]] %||% 0L) + 1L
+    total_calls <<- total_calls + 1L
+  }
 
   diag_path <- file.path(cfg$artifact_dir, "real_canary_diagnostics.jsonl")
   if (file.exists(diag_path)) unlink(diag_path)
@@ -255,15 +323,21 @@ soak_real_canary_load <- function(url, real_key, cfg, metrics, duration_sec) {
 
       if (!is.null(res$.fail)) {
         status <- if (grepl("tim(e|ed) ?out|timeout", res$.fail, ignore.case = TRUE)) "timeout" else "error"
-        soak_metrics_record(metrics, "real-canary", scen$id, lat, status, NA_integer_, 0, "personal")
+        stage <- soak_classify_real_llm_response(NA_integer_, "", res$.fail, stream_flag)
+        bump_stage(stage)
+        soak_metrics_record(metrics, "real-canary", scen$id, lat, status, NA_integer_, 0,
+                            "personal", .soak_real_stage_to_class(stage), "real_llm")
         write_real_diag(scen$id, model, stream_flag, status, NA_integer_, lat,
                         response_text = "", curl_error = res$.fail)
       } else {
         code <- as.integer(res$status_code)
         status <- if (code >= 200L && code < 300L) "ok" else "error"
         response_text <- tryCatch(rawToChar(res$content %||% raw()), error = function(e) "")
+        stage <- soak_classify_real_llm_response(code, response_text, "", stream_flag)
+        bump_stage(stage)
         soak_metrics_record(metrics, "real-canary", scen$id, lat, status, code,
-                            length(res$content %||% raw()), "personal")
+                            length(res$content %||% raw()), "personal",
+                            .soak_real_stage_to_class(stage), "real_llm")
         if (!identical(status, "ok")) {
           write_real_diag(scen$id, model, stream_flag, status, code, lat,
                           response_text = response_text, curl_error = "")
@@ -275,7 +349,132 @@ soak_real_canary_load <- function(url, real_key, cfg, metrics, duration_sec) {
     waited <- 0
     while (waited < interval && Sys.time() < t_end) { Sys.sleep(1); waited <- waited + 1 }
   }
-  invisible(metrics)
+
+  completed <- (stages[["generation_completed"]] %||% 0L) + (stages[["streaming_completed"]] %||% 0L)
+  list(
+    total_calls = total_calls,
+    stages = stages,
+    app_reachable = total_calls > 0L,
+    gateway_reachable = total_calls > (stages[["app_unreachable"]] %||% 0L) +
+      (stages[["transport_error"]] %||% 0L),
+    generation_completed = completed > 0L,
+    gateway_policy_failed = (stages[["gateway_policy_failed"]] %||% 0L) > 0L,
+    note = paste(
+      "Real-canary asama siniflandirmasi (gateway/auth/policy/uretim ayrimi).",
+      "Bu bir kapasite/throughput kaniti DEGILDIR; gateway policy hatasi (orn ERR-234)",
+      "MERGEN app yuk hatasi olarak yorumlanmamalidir."
+    )
+  )
+}
+
+# ------------------------------------------------------------------------------
+# Opsiyonel KUCUK gercek-LLM throughput probe (kapali-dongu, kullanici-tavanli).
+# AMAC: tek gercek anahtarla cok kucuk bir eszamanlilikta gercek uretim
+# throughput'unu GOZLEMLEMEK. Bu, app kapasitesi DEGILDIR ve 50/100 kullaniciyi
+# TAHMIN ETMEZ. Tavana (varsayilan 5) tabidir; ayri metrics nesnesi kullanir.
+# ------------------------------------------------------------------------------
+soak_real_llm_throughput_probe <- function(url, real_key, cfg, duration_sec) {
+  probe <- cfg$real_llm_throughput %||% list(users = 2L, duration_sec = 300, max_users = 5L)
+  users <- max(1L, as.integer(probe$users %||% 2L))
+  cap <- max(1L, as.integer(probe$max_users %||% 5L))
+  if (users > cap) users <- cap
+  client_timeout_ms <- as.numeric(cfg$client_timeout_sec %||% 60) * 1000
+
+  m <- soak_metrics_new()
+  stages <- list(); total_calls <- 0L
+  bump_stage <- function(stage) {
+    stages[[stage]] <<- (stages[[stage]] %||% 0L) + 1L
+    total_calls <<- total_calls + 1L
+  }
+
+  auth_header <- cfg$real_canary$auth_header %||% "Authorization"
+  auth_scheme <- cfg$real_canary$auth_scheme %||% "Bearer"
+  model <- cfg$real_canary$model %||% "soak-canary-model"
+  stream_flag <- isTRUE(cfg$real_canary$stream)
+
+  con_cap <- max(users + 4L, 16L)
+  pool <- curl::new_pool(total_con = con_cap, host_con = con_cap, multiplex = FALSE)
+  inflight <- new.env(parent = emptyenv()); inflight$n <- 0L
+
+  add_one <- function() {
+    scen <- soak_pick_scenario()
+    body_obj <- list(
+      model = model,
+      messages = list(
+        list(role = "system", content = "Sen yardimci bir throughput-probe asistanisin."),
+        list(role = "user", content = scen$prompt %||% "merhaba")
+      ),
+      stream = stream_flag,
+      max_tokens = as.integer(cfg$real_canary$max_tokens %||% 64L)
+    )
+    if (!isTRUE(cfg$real_canary$omit_temperature)) {
+      body_obj$temperature <- as.numeric(cfg$real_canary$temperature %||% 0.4)
+    }
+    body <- as.character(jsonlite::toJSON(body_obj, auto_unbox = TRUE, null = "null"))
+
+    h <- curl::new_handle(url = url)
+    hdrs <- list("Content-Type" = "application/json")
+    if (nzchar(real_key) && nzchar(auth_header)) {
+      hdrs[[auth_header]] <- if (identical(tolower(auth_scheme), "none")) real_key else paste(auth_scheme, real_key)
+    }
+    do.call(curl::handle_setheaders, c(list(h), hdrs))
+    soak_configure_post_handle(h, body, client_timeout_ms)
+    start <- Sys.time()
+    inflight$n <- inflight$n + 1L
+
+    curl::multi_add(h,
+      done = function(res) {
+        inflight$n <- inflight$n - 1L
+        lat <- as.numeric(difftime(Sys.time(), start, units = "secs")) * 1000
+        code <- as.integer(res$status_code %||% NA_integer_)
+        status <- if (!is.na(code) && code >= 200L && code < 300L) "ok" else "error"
+        body_text <- tryCatch(rawToChar(res$content %||% raw()), error = function(e) "")
+        stage <- soak_classify_real_llm_response(code, body_text, "", stream_flag)
+        bump_stage(stage)
+        soak_metrics_record(m, "real-throughput", scen$id, lat, status, code,
+                            length(res$content %||% raw()), "personal",
+                            .soak_real_stage_to_class(stage), "real_llm")
+      },
+      fail = function(msg) {
+        inflight$n <- inflight$n - 1L
+        lat <- as.numeric(difftime(Sys.time(), start, units = "secs")) * 1000
+        status <- if (grepl("tim(e|ed) ?out|timeout", msg, ignore.case = TRUE)) "timeout" else "error"
+        stage <- soak_classify_real_llm_response(NA_integer_, "", msg, stream_flag)
+        bump_stage(stage)
+        soak_metrics_record(m, "real-throughput", scen$id, lat, status, NA_integer_, 0,
+                            "personal", .soak_real_stage_to_class(stage), "real_llm")
+      },
+      pool = pool)
+  }
+
+  loop_start <- Sys.time(); t_end <- loop_start + duration_sec
+  while (inflight$n < users) add_one()
+  repeat {
+    curl::multi_run(timeout = 0.25, poll = TRUE, pool = pool)
+    if (Sys.time() >= t_end) break
+    while (inflight$n < users) add_one()
+  }
+  soak_metrics_add_load_seconds(m, as.numeric(difftime(Sys.time(), loop_start, units = "secs")))
+  drain_deadline <- Sys.time() + max(5, client_timeout_ms / 1000 + 5)
+  while (inflight$n > 0L && Sys.time() < drain_deadline) {
+    tryCatch(curl::multi_run(timeout = 0.25, poll = TRUE, pool = pool), error = function(e) NULL)
+  }
+
+  summ <- soak_metrics_summary(m)
+  list(
+    users = users, max_users = cap, duration_seconds = duration_sec,
+    metrics = list(requests = summ$requests, success = summ$success, errors = summ$errors,
+                   timeouts = summ$timeouts, success_rate = summ$success_rate,
+                   p50_latency_ms = summ$p50_latency_ms, p95_latency_ms = summ$p95_latency_ms,
+                   p99_latency_ms = summ$p99_latency_ms,
+                   throughput_ops_per_min = summ$throughput_ops_per_min),
+    stages = stages, total_calls = total_calls,
+    note = paste(
+      "KUCUK gercek-LLM throughput probe (kullanici tavani uygulandi).",
+      "App kapasitesi DEGILDIR; 50/100 kullanici throughput'unu TAHMIN ETMEZ;",
+      "fake/proxy serit sonuclariyla KARISTIRILMAMALIDIR."
+    )
+  )
 }
 
 # ------------------------------------------------------------------------------
@@ -285,6 +484,7 @@ soak_real_canary_load <- function(url, real_key, cfg, metrics, duration_sec) {
 soak_failure_probe <- function(url, cfg, metrics, lane = "fake") {
   cases <- soak_failure_probe_cases()
   client_timeout_ms <- as.numeric(cfg$client_timeout_sec %||% 20) * 1000
+  endpoint_kind <- switch(lane, fake = "fake_llm", proxy = "proxy_llm", "fake_llm")
   results <- list()
   body <- soak_build_chat_body(list(prompt = "hata enjeksiyon testi", stream = FALSE))
 
@@ -303,11 +503,14 @@ soak_failure_probe <- function(url, cfg, metrics, lane = "fake") {
     if (!is.null(res$.fail)) {
       status <- if (grepl("tim(e|ed) ?out|timeout", res$.fail, ignore.case = TRUE)) "timeout" else "error"
       code <- NA_integer_
+      tclass <- soak_classify_failure(status, NA_integer_, res$.fail, endpoint_kind)
     } else {
       code <- as.integer(res$status_code)
       status <- if (code >= 200L && code < 300L) "ok" else "error"
+      tclass <- soak_classify_failure(status, code, "", endpoint_kind)
     }
-    soak_metrics_record(metrics, paste0(lane, "-probe"), cc, lat, status, code, 0, "n/a")
+    soak_metrics_record(metrics, paste0(lane, "-probe"), cc, lat, status, code, 0, "n/a",
+                        tclass, endpoint_kind)
     results[[cc]] <- list(case = cc, status = status, http_code = code,
                           latency_ms = round(lat, 1))
   }

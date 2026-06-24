@@ -73,6 +73,7 @@ soak_src("soak_secret_redaction.R")
 soak_src("soak_config.R")
 soak_src("soak_metrics.R")
 soak_src("soak_scenarios.R")
+soak_src("soak_system_telemetry.R")
 soak_src("mock_llm_server.R")
 soak_src("proxy_llm_server.R")
 soak_src("soak_client.R")
@@ -178,6 +179,12 @@ main_error <- NULL
 attach_result <- list(configured = FALSE, reachable = FALSE)
 inprocess <- list(available = FALSE, reason = "calismadi")
 interactive_result <- NULL
+telemetry_handle <- NULL
+telemetry_summary <- NULL
+capacity_ladder_result <- NULL
+real_canary_classification <- NULL
+real_llm_throughput_result <- NULL
+timeout_attribution <- NULL
 
 mem_before <- soak_sample_memory()
 temp_dirs <- unique(c(tempdir(), Sys.getenv("MERGEN_UPLOADS_DIR", ""),
@@ -187,6 +194,30 @@ temp_before <- soak_sample_tempdirs(temp_dirs)
 run_started <- Sys.time()
 
 main_result <- tryCatch({
+
+  # --- Sistem telemetrisi (opsiyonel; arka surec; yuk seridini bloklamaz) ---
+  if (isTRUE(cfg$telemetry_enabled)) {
+    tel_max <- if (isTRUE(cfg$capacity_ladder_enabled)) {
+      length(cfg$capacity_ladder_users) * cfg$capacity_ladder_step_seconds + 600
+    } else {
+      cfg$duration_sec + 600
+    }
+    telemetry_handle <- tryCatch(
+      soak_telemetry_start(artifact_dir, soak_telemetry_config(),
+                           max_seconds = tel_max, loadgen_pid = Sys.getpid()),
+      error = function(e) list(started = FALSE, reason = soak_redact_text(conditionMessage(e)))
+    )
+    if (!isTRUE(telemetry_handle$started)) {
+      warnings_vec <- c(warnings_vec,
+        sprintf("Telemetri baslamadi: %s", telemetry_handle$reason %||% "bilinmeyen"))
+      skipped_vec <- c(skipped_vec, "system_telemetry")
+    } else {
+      cat(sprintf("[soak] sistem telemetrisi acik (interval=%ds, port=%d).\n",
+                  telemetry_handle$interval_sec, telemetry_handle$port))
+    }
+  } else {
+    skipped_vec <- c(skipped_vec, "system_telemetry (kapali)")
+  }
 
   # --- In-process uygulama-yolu alistirmalari ---
   if (isTRUE(cfg$in_process_exercises)) {
@@ -241,7 +272,30 @@ main_result <- tryCatch({
     } else {
       cat(sprintf("[soak] real-canary: %d kullanici, %ds aralik, %.0fs sure...\n",
                   cfg$real_canary$users, cfg$real_canary$interval_sec, cfg$duration_sec))
-      soak_real_canary_load(real_url, real_key, cfg, metrics, cfg$duration_sec)
+      real_canary_classification <- soak_real_canary_load(real_url, real_key, cfg, metrics, cfg$duration_sec)
+      if (is.list(real_canary_classification)) {
+        cat(sprintf("  -> real-canary asama: gateway_policy_failed=%s, uretim_tamamlandi=%s, toplam=%s\n",
+                    as.character(real_canary_classification$gateway_policy_failed),
+                    as.character(real_canary_classification$generation_completed),
+                    as.character(real_canary_classification$total_calls)))
+      }
+
+      # Opsiyonel KUCUK gercek-LLM throughput probe (kullanici tavanli; app
+      # kapasitesi DEGIL; fake/proxy ile KARISTIRILMAZ).
+      if (isTRUE(cfg$real_llm_throughput_enabled)) {
+        cat(sprintf("[soak] KUCUK gercek-LLM throughput probe: %d kullanici (tavan=%d), %ds...\n",
+                    cfg$real_llm_throughput$users, cfg$real_llm_throughput$max_users,
+                    cfg$real_llm_throughput$duration_sec))
+        real_llm_throughput_result <- tryCatch(
+          soak_real_llm_throughput_probe(real_url, real_key, cfg,
+                                         cfg$real_llm_throughput$duration_sec),
+          error = function(e) {
+            warnings_vec <- c(warnings_vec,
+              sprintf("real-LLM throughput probe: %s", soak_redact_text(conditionMessage(e))))
+            NULL
+          }
+        )
+      }
     }
   } else {
     cat(sprintf("[soak] %s LLM sunucusu baslatiliyor...\n", cfg$llm_lane))
@@ -265,7 +319,60 @@ main_result <- tryCatch({
     cat(sprintf("[soak] uygulama yuk hedefi: %s\n", load_url))
     user_keys <- soak_make_user_keys(cfg$concurrent_users, cfg$llm_lane)
 
-    if (isTRUE(cfg$capacity_curve_enabled)) {
+    if (isTRUE(cfg$capacity_ladder_enabled)) {
+      # Kademeli kapasite merdiveni: 50 -> 100 -> 250 -> ... -> 1000. Her adim
+      # icin metrik dilimi + telemetri penceresi toplanir; ilk basarisiz adimda
+      # (stop_on_first_failed_step) durulur. Son STABIL adim durustce raporlanir.
+      cat(sprintf("[soak] kademeli kapasite merdiveni: %s | adim=%ds | stabil_esik=%.2f\n",
+                  paste(cfg$capacity_ladder_users, collapse = ","),
+                  cfg$capacity_ladder_step_seconds, cfg$stable_success_rate_min))
+      step_rows <- list()
+      for (uc in cfg$capacity_ladder_users) {
+        from_idx <- soak_metrics_count(metrics) + 1L
+        uk <- soak_make_user_keys(uc, cfg$llm_lane)
+        step_start <- as.numeric(Sys.time())
+        cat(sprintf("  - %d kullanici / %ds ...\n", uc, cfg$capacity_ladder_step_seconds))
+        soak_http_load(load_url, cfg, metrics, cfg$capacity_ladder_step_seconds,
+                       uc, uk, cfg$llm_lane)
+        step_end <- as.numeric(Sys.time())
+        s <- soak_metrics_slice_summary(metrics, from_idx,
+                                        wall_seconds = cfg$capacity_ladder_step_seconds)
+        tel_win <- if (!is.null(telemetry_handle) && isTRUE(telemetry_handle$started)) {
+          tryCatch(soak_telemetry_window_summary(telemetry_handle$csv_path, step_start, step_end),
+                   error = function(e) list(telemetry_available = FALSE))
+        } else {
+          list(telemetry_available = FALSE)
+        }
+        step_pass <- is.finite(s$effective_success_rate) &&
+          s$effective_success_rate >= cfg$stable_success_rate_min
+        # NOT: attach modunda calisan uygulamanin DB havuz sayaclari soak surucu
+        # surecinden GORUNMEZ; bu yuzden adim db_pool = NULL (yaniltici sayac yok).
+        step_rows[[length(step_rows) + 1L]] <- list(
+          users = uc, duration_seconds = cfg$capacity_ladder_step_seconds,
+          requests = s$requests, success = s$success, errors = s$errors, timeouts = s$timeouts,
+          raw_success_rate = s$success_rate, effective_success_rate = s$effective_success_rate,
+          p50_latency_ms = s$p50_latency_ms, p95_latency_ms = s$p95_latency_ms,
+          p99_latency_ms = s$p99_latency_ms, throughput_ops_per_min = s$throughput_ops_per_min,
+          db_pool = NULL, telemetry = tel_win, pass = step_pass
+        )
+        cat(sprintf("    -> istek=%d eff=%s p95=%sms tput=%s/dk cpu_max=%s%% pass=%s\n",
+                    s$requests, as.character(s$effective_success_rate),
+                    as.character(s$p95_latency_ms), as.character(s$throughput_ops_per_min),
+                    as.character(tel_win$max_total_cpu_percent %||% NA), as.character(step_pass)))
+        if (!isTRUE(step_pass) && isTRUE(cfg$stop_on_first_failed_step)) {
+          cat("    -> ilk basarisiz adim; merdiven durduruluyor (stop_on_first_failed_step=TRUE).\n")
+          break
+        }
+      }
+      capacity_ladder_result <- soak_capacity_ladder_summarize(
+        step_rows, cfg$capacity_ladder_users, cfg$stable_success_rate_min,
+        cfg$stop_on_first_failed_step
+      )
+      cat(sprintf("[soak] merdiven sonucu: stabil=%s ilk_basarisiz=%s onerilen_sonraki=%s\n",
+                  as.character(capacity_ladder_result$stable_capacity_users),
+                  as.character(capacity_ladder_result$first_failed_capacity_users),
+                  as.character(capacity_ladder_result$recommended_next_target)))
+    } else if (isTRUE(cfg$capacity_curve_enabled)) {
       cat("[soak] kapasite egrisi taramasi...\n")
       for (uc in cfg$capacity_curve_users) {
         from_idx <- soak_metrics_count(metrics) + 1L
@@ -349,6 +456,24 @@ if (!is.null(server_handle) && !is.null(server_handle$proc)) {
   invisible(tryCatch(server_handle$proc$kill(), error = function(e) NULL))
 }
 
+# Telemetri arka surecini durdur + ozetle (CSV zaten artifact_dir'e yazildi).
+if (!is.null(telemetry_handle) && isTRUE(telemetry_handle$started)) {
+  invisible(tryCatch(soak_telemetry_stop(telemetry_handle), error = function(e) NULL))
+  telemetry_summary <- tryCatch(
+    soak_telemetry_summarize(telemetry_handle$csv_path),
+    error = function(e) NULL
+  )
+  if (!is.null(telemetry_summary) && !isTRUE(telemetry_summary$telemetry_available)) {
+    skipped_vec <- c(skipped_vec, "system_telemetry (olculemedi)")
+  }
+}
+
+# Hata atfi (timeout attribution): tum kayitli metriklerden uretilir.
+timeout_attribution <- tryCatch(
+  soak_timeout_attribution(soak_metrics_as_df(metrics)),
+  error = function(e) NULL
+)
+
 mem_after <- soak_sample_memory()
 temp_after <- soak_sample_tempdirs(temp_dirs)
 memory_growth <- soak_memory_growth(mem_before, mem_after)
@@ -380,17 +505,19 @@ if (!is.null(interactive_result) && isTRUE(interactive_result$available) &&
 
 threshold_checks <- soak_evaluate_thresholds(
   cfg, summary, inprocess, redaction0, memory_growth, temp_growth_mb,
-  server_alive_at_end, injected_faults, interactive_result
+  server_alive_at_end, injected_faults, interactive_result, capacity_ladder_result
 )
 threshold_outcome <- soak_threshold_outcome(threshold_checks)
-proofs <- soak_proof_statements(cfg, summary, inprocess, attach_result, interactive_result)
+proofs <- soak_proof_statements(cfg, summary, inprocess, attach_result, interactive_result,
+                                telemetry_summary, capacity_ladder_result)
 
 evidence <- soak_build_evidence(
   cfg, summary, inprocess, proxy_summary, capacity_rows, redaction0,
   list(before = mem_before, after = mem_after), memory_growth, temp_summary,
   attach_result, failure_probe, threshold_checks, threshold_outcome, proofs,
   duration_actual, warnings_vec, skipped_vec, server_alive_at_end, injected_faults,
-  interactive_result
+  interactive_result, telemetry_summary, capacity_ladder_result, timeout_attribution,
+  real_canary_classification, real_llm_throughput_result
 )
 
 redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
@@ -399,7 +526,7 @@ redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
 # Redaksiyon sonucunu esik + evidence'a yansit ve FINALIZE et.
 threshold_checks <- soak_evaluate_thresholds(
   cfg, summary, inprocess, redaction, memory_growth, temp_growth_mb,
-  server_alive_at_end, injected_faults, interactive_result
+  server_alive_at_end, injected_faults, interactive_result, capacity_ladder_result
 )
 threshold_outcome <- soak_threshold_outcome(threshold_checks)
 evidence <- soak_build_evidence(
@@ -407,7 +534,8 @@ evidence <- soak_build_evidence(
   list(before = mem_before, after = mem_after), memory_growth, temp_summary,
   attach_result, failure_probe, threshold_checks, threshold_outcome, proofs,
   duration_actual, warnings_vec, skipped_vec, server_alive_at_end, injected_faults,
-  interactive_result
+  interactive_result, telemetry_summary, capacity_ladder_result, timeout_attribution,
+  real_canary_classification, real_llm_throughput_result
 )
 redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
                                   proxy_summary, capacity_rows, NULL)
@@ -422,6 +550,28 @@ cat(sprintf("Istek: %d | Basari: %d (%.3f) | Hata: %d | Timeout: %d\n",
 cat(sprintf("Gecikme p50/p95/p99 (ms): %s / %s / %s | Throughput: %s/dk\n",
             as.character(summary$p50_latency_ms), as.character(summary$p95_latency_ms),
             as.character(summary$p99_latency_ms), as.character(summary$throughput_ops_per_min)))
+if (!is.null(telemetry_summary)) {
+  if (isTRUE(telemetry_summary$telemetry_available)) {
+    cat(sprintf("Telemetri: ornek=%d | max CPU=%s%% | max bellek=%s MB | max app-port TCP=%s\n",
+                telemetry_summary$samples, as.character(telemetry_summary$max_total_cpu_percent),
+                as.character(telemetry_summary$max_mem_used_mb),
+                as.character(telemetry_summary$max_tcp_connections_to_app)))
+  } else {
+    cat("Telemetri: UNMEASURED (sistem sayaclari okunamadi; darbogaz atfi kanit degil)\n")
+  }
+}
+if (!is.null(capacity_ladder_result) && isTRUE(capacity_ladder_result$ran)) {
+  cat(sprintf("Kademeli merdiven: stabil=%s kullanici | ilk_basarisiz=%s | onerilen=%s | ipuclari=%s\n",
+              as.character(capacity_ladder_result$stable_capacity_users),
+              as.character(capacity_ladder_result$first_failed_capacity_users),
+              as.character(capacity_ladder_result$recommended_next_target),
+              paste(capacity_ladder_result$bottleneck_hints, collapse = ",")))
+}
+if (is.list(timeout_attribution) && (timeout_attribution$total_failures %||% 0L) > 0L) {
+  bk <- timeout_attribution$timeout_breakdown
+  cat(sprintf("Hata atfi: toplam=%d | %s\n", timeout_attribution$total_failures,
+              paste(paste0(names(bk), "=", unlist(bk)), collapse = " ")))
+}
 if (isTRUE(inprocess$available)) {
   kr <- inprocess$key_routing
   cat(sprintf("Anahtar yonlendirme: %d/%d dogru | izolasyon=%s | mojibake_hits=%d\n",

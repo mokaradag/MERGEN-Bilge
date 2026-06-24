@@ -13,6 +13,7 @@ içindedir ve `pool` paketi üzerine kurulur.
 - Yaşam döngüsü: `app.R` (`onStart` → `init_db_pool_once`, `onStop` → `close_db_pool_once`)
 - Testler: `tests/testthat/test-db-pool-behavior.R`,
   `tests/scripts/soak_interactive_lane.R`
+- VM SQL Server havuz at-rest preflight: `tests/scripts/run_vm_sqlserver_pool_preflight_real.R`
 
 ---
 
@@ -139,3 +140,30 @@ VM'de açmadan veya kalıcı tutmadan önce:
 
 Bu adımlar geçene ve release hedeflerinize uygun soak/evidence gate sonuçları PASS
 olmadan havuzu üretimde kalıcı açmayın.
+
+---
+
+## 7. Havuzlu at-rest preflight (2026-06-24 sertleştirme)
+
+Adım 5'teki "havuz açık/kapalı attach soak" karşılaştırmasından önce, havuzun
+gerçek SQL Server'a karşı **işlem-güvenli + Türkçe at-rest** davrandığını ayrı,
+tekrarlanabilir bir preflight ile doğrulayın:
+
+```powershell
+$env:MERGEN_DB_POOL_ENABLED = "TRUE"
+$env:MERGEN_SQLSERVER_POOL_PREFLIGHT_REAL = "TRUE"
+$env:MERGEN_SQLSERVER_POOL_WRITE_TEST = "TRUE"
+Rscript tests/scripts/run_vm_sqlserver_pool_preflight_real.R
+```
+
+Bu betik: havuz init + checkout/return dengesi (sızıntı yok),
+`with_db_transaction` commit, rollback'in satır bırakmaması ve Türkçe metnin
+**at-rest** (etiketli geçici tabloya yazılıp okunarak) mojibake'siz round-trip'ini
+doğrular; sonra etiketli tabloyu DROP eder. Bulut/offline'da güvenle atlar.
+Artifact: `artifacts/sqlserver-pool-preflight/<timestamp>/evidence.json`. Ayrıntı:
+[`operational-soak-gate.md`](operational-soak-gate.md) bölüm 16.5.
+
+`turkish_at_rest_roundtrip_passed=TRUE`, `tx_rollback_clean=TRUE` ve
+`pool_outstanding_checkouts=0` olmadan havuzlu SQL Server üretim hazırlığını
+**PASS olarak sunmayın**. Offline RSQLite testleri T-SQL at-rest davranışını
+kanıtlamaz.

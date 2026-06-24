@@ -111,6 +111,20 @@ soak_default_capacity_curve <- function() {
   c(10L, 25L, 50L, 100L)
 }
 
+# Kademeli kapasite merdiveni (capacity ladder) adimlari. Ayni MERGEN_SOAK_CAPACITY_USERS
+# env'ini okur (operator hangi mod aktifse onu ayarlar); ayarli degilse 1000'e kadar
+# kademeli varsayilan kullanir (50 -> 100 -> ... -> 1000). Boylece dogrudan 1000'e
+# atlamak yerine son STABIL adim durustce belirlenebilir.
+soak_default_capacity_ladder <- function() {
+  raw <- soak_env_str("MERGEN_SOAK_CAPACITY_USERS", "")
+  if (nzchar(raw)) {
+    parts <- suppressWarnings(as.integer(trimws(strsplit(raw, ",", fixed = TRUE)[[1]])))
+    parts <- parts[!is.na(parts) & parts > 0L]
+    if (length(parts) > 0L) return(parts)
+  }
+  c(50L, 100L, 150L, 250L, 500L, 750L, 1000L)
+}
+
 # Tum yapilandirmayi cozumler ve tek bir liste doner.
 soak_resolve_config <- function() {
   profile <- tolower(soak_env_str("MERGEN_SOAK_PROFILE", "smoke"))
@@ -216,6 +230,29 @@ soak_resolve_config <- function() {
     isTRUE(defaults$capacity)
   )
 
+  # Kademeli kapasite merdiveni (staged capacity ladder): dogrudan 1000'e atlamadan
+  # 50 -> 100 -> 250 -> 500 -> 1000 gibi adimlarla son STABIL kapasiteyi olcer.
+  capacity_ladder_enabled <- soak_env_flag("MERGEN_SOAK_CAPACITY_LADDER", FALSE)
+  capacity_ladder_users <- soak_default_capacity_ladder()
+  capacity_ladder_step_seconds <- soak_env_int("MERGEN_SOAK_CAPACITY_STEP_SECONDS", 600L)
+  stop_on_first_failed_step <- soak_env_flag("MERGEN_SOAK_STOP_ON_FIRST_FAILED_STEP", TRUE)
+  stable_success_rate_min <- soak_env_num("MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN", 0.98)
+
+  # Sistem telemetrisi (opsiyonel; CPU/bellek/TCP ornekleme). Varsayilan ACIK,
+  # ama OS sayaclari okunamazsa soak'u KIRMAZ (UNMEASURED olarak raporlanir).
+  telemetry_enabled <- soak_env_flag("MERGEN_SOAK_TELEMETRY_ENABLED", TRUE)
+  telemetry_interval_sec <- max(1L, soak_env_int("MERGEN_SOAK_TELEMETRY_INTERVAL_SECONDS", 5L))
+
+  # Opsiyonel KUCUK gercek-LLM throughput probe (kullanici tavanli; app kapasitesi
+  # DEGIL). Yalniz acikca etkinlestirildiginde calisir.
+  real_llm_throughput_enabled <- soak_env_flag("MERGEN_REAL_LLM_THROUGHPUT_PROBE", FALSE)
+  real_llm_throughput_users <- soak_env_int("MERGEN_REAL_LLM_THROUGHPUT_USERS", 2L)
+  real_llm_throughput_max_users <- soak_env_int("MERGEN_REAL_LLM_THROUGHPUT_MAX_USERS", 5L)
+  real_llm_throughput_duration <- soak_env_int("MERGEN_REAL_LLM_THROUGHPUT_DURATION_SECONDS", 300L)
+  if (real_llm_throughput_users > real_llm_throughput_max_users) {
+    real_llm_throughput_users <- real_llm_throughput_max_users
+  }
+
   gate_timestamp <- format(Sys.time(), "%Y%m%d-%H%M%S", tz = "UTC")
   artifact_dir <- file.path("artifacts", "soak", gate_timestamp)
 
@@ -257,6 +294,19 @@ soak_resolve_config <- function() {
     capacity_curve_enabled = capacity_enabled,
     capacity_curve_users = soak_default_capacity_curve(),
     capacity_step_seconds = soak_env_int("MERGEN_SOAK_CAPACITY_STEP_SECONDS", 30L),
+    capacity_ladder_enabled = capacity_ladder_enabled,
+    capacity_ladder_users = capacity_ladder_users,
+    capacity_ladder_step_seconds = capacity_ladder_step_seconds,
+    stop_on_first_failed_step = stop_on_first_failed_step,
+    stable_success_rate_min = stable_success_rate_min,
+    telemetry_enabled = telemetry_enabled,
+    telemetry_interval_sec = telemetry_interval_sec,
+    real_llm_throughput_enabled = real_llm_throughput_enabled,
+    real_llm_throughput = list(
+      users = real_llm_throughput_users,
+      max_users = real_llm_throughput_max_users,
+      duration_sec = real_llm_throughput_duration
+    ),
     thresholds = thresholds,
     artifact_dir = artifact_dir,
     gate_timestamp = gate_timestamp,
@@ -321,6 +371,15 @@ soak_config_public <- function(cfg) {
     interactive_iterations = cfg$interactive_iterations,
     capacity_curve_enabled = cfg$capacity_curve_enabled,
     capacity_curve_users = cfg$capacity_curve_users,
+    capacity_ladder_enabled = cfg$capacity_ladder_enabled,
+    capacity_ladder_users = cfg$capacity_ladder_users,
+    capacity_ladder_step_seconds = cfg$capacity_ladder_step_seconds,
+    stop_on_first_failed_step = cfg$stop_on_first_failed_step,
+    stable_success_rate_min = cfg$stable_success_rate_min,
+    telemetry_enabled = cfg$telemetry_enabled,
+    telemetry_interval_sec = cfg$telemetry_interval_sec,
+    real_llm_throughput_enabled = cfg$real_llm_throughput_enabled,
+    real_llm_throughput = cfg$real_llm_throughput,
     thresholds = cfg$thresholds
   )
 }

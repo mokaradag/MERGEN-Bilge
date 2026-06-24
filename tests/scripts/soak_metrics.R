@@ -23,6 +23,8 @@ soak_metrics_new <- function() {
   env$http_code <- integer(env$cap)
   env$bytes <- numeric(env$cap)
   env$key_source <- character(env$cap)    # personal | default | missing | proxy-personal | n/a
+  env$timeout_class <- character(env$cap)  # hata atfi (timeout attribution) sinifi
+  env$endpoint_kind <- character(env$cap)  # app | fake_llm | proxy_llm | real_llm | interactive | n/a
   env$started_at <- Sys.time()
   env$load_seconds <- 0                    # yuk-penceresi suresi (throughput paydasi)
   env
@@ -46,6 +48,8 @@ soak_metrics_add_load_seconds <- function(m, secs) {
   m$http_code <- c(m$http_code, integer(m$cap))
   m$bytes <- c(m$bytes, numeric(m$cap))
   m$key_source <- c(m$key_source, character(m$cap))
+  m$timeout_class <- c(m$timeout_class, character(m$cap))
+  m$endpoint_kind <- c(m$endpoint_kind, character(m$cap))
   m$cap <- new_cap
   invisible(NULL)
 }
@@ -54,7 +58,8 @@ soak_metrics_add_load_seconds <- function(m, secs) {
 # (curl multi done/fail callback'leri ana surecte calisir) cagrilmalidir.
 soak_metrics_record <- function(m, lane, scenario, latency_ms, status,
                                 http_code = NA_integer_, bytes = 0,
-                                key_source = "n/a") {
+                                key_source = "n/a", timeout_class = "n/a",
+                                endpoint_kind = "n/a") {
   .soak_metrics_grow(m)
   i <- m$n + 1L
   m$ts[i] <- as.numeric(Sys.time())
@@ -65,8 +70,69 @@ soak_metrics_record <- function(m, lane, scenario, latency_ms, status,
   m$http_code[i] <- as.integer(http_code %||% NA_integer_)
   m$bytes[i] <- as.numeric(bytes %||% 0)
   m$key_source[i] <- as.character(key_source %||% "n/a")
+  m$timeout_class[i] <- as.character(timeout_class %||% "n/a")
+  m$endpoint_kind[i] <- as.character(endpoint_kind %||% "n/a")
   m$n <- i
   invisible(NULL)
+}
+
+# ------------------------------------------------------------------------------
+# Hata atfi (timeout attribution): saf siniflandirma. Geriye kararli bir sinif
+# etiketi doner; ham hata mesaji ASLA saklanmaz (yalniz desen kontrolu).
+#   status        : "ok" | "error" | "timeout"
+#   http_code     : HTTP kodu (varsa) ya da NA
+#   curl_msg      : transport hata mesaji (yalniz desen kontrolu icin)
+#   endpoint_kind : app | fake_llm | proxy_llm | real_llm | interactive | n/a
+# ------------------------------------------------------------------------------
+soak_classify_failure <- function(status, http_code = NA_integer_, curl_msg = "",
+                                  endpoint_kind = "app") {
+  status <- as.character(status %||% "")
+  ek <- as.character(endpoint_kind %||% "app")
+  if (identical(status, "ok")) return("n/a")
+
+  msg <- tolower(as.character(curl_msg %||% ""))
+  is_connect_phase <- grepl("connect", msg) || grepl("could ?n.t connect", msg) ||
+    grepl("couldn't connect", msg) || grepl("connection refused", msg)
+
+  if (identical(status, "timeout")) {
+    if (isTRUE(is_connect_phase)) return("connection_timeout")
+    return(switch(ek,
+                  fake_llm = "fake_llm_timeout",
+                  proxy_llm = "proxy_llm_timeout",
+                  real_llm = "real_llm_timeout",
+                  app = "response_timeout",
+                  "client_timeout"))
+  }
+
+  # status == "error"
+  code <- suppressWarnings(as.integer(http_code))
+  if (!is.na(code) && is.finite(code)) {
+    if (identical(as.integer(code), 429L)) return("rate_limited")
+    if (code >= 400L) {
+      return(switch(ek,
+                    fake_llm = "fake_llm_http_error",
+                    proxy_llm = "proxy_llm_http_error",
+                    real_llm = "real_llm_gateway_error",
+                    "app_http_error"))
+    }
+    return("http_error")
+  }
+
+  # Kod yok (transport hatasi).
+  if (isTRUE(is_connect_phase)) return("connection_error")
+  if (grepl("tim(e|ed) ?out|timeout", msg)) return("unknown_timeout")
+  "unknown_error"
+}
+
+# Bir hata sinifinin yeniden-denenebilir (retryable) olup olmadigi (kaba kural).
+soak_failure_retryable <- function(timeout_class, http_code = NA_integer_) {
+  tc <- as.character(timeout_class %||% "")
+  if (grepl("timeout", tc, fixed = TRUE)) return(TRUE)
+  if (identical(tc, "rate_limited")) return(TRUE)
+  if (identical(tc, "connection_error")) return(TRUE)
+  code <- suppressWarnings(as.integer(http_code))
+  if (!is.na(code) && is.finite(code) && code >= 500L) return(TRUE)
+  FALSE
 }
 
 # Kayitlari data.frame'e cevirir (metrics.csv icin).
@@ -77,10 +143,13 @@ soak_metrics_as_df <- function(m) {
       ts_epoch = numeric(0), lane = character(0), scenario = character(0),
       latency_ms = numeric(0), status = character(0), http_code = integer(0),
       bytes = numeric(0), key_source = character(0),
+      timeout_class = character(0), endpoint_kind = character(0),
       stringsAsFactors = FALSE
     ))
   }
   idx <- seq_len(n)
+  tc <- if (length(m$timeout_class) >= n) m$timeout_class[idx] else rep("n/a", n)
+  ek <- if (length(m$endpoint_kind) >= n) m$endpoint_kind[idx] else rep("n/a", n)
   data.frame(
     ts_epoch = m$ts[idx],
     lane = m$lane[idx],
@@ -90,6 +159,8 @@ soak_metrics_as_df <- function(m) {
     http_code = m$http_code[idx],
     bytes = m$bytes[idx],
     key_source = m$key_source[idx],
+    timeout_class = tc,
+    endpoint_kind = ek,
     stringsAsFactors = FALSE
   )
 }
@@ -118,24 +189,38 @@ soak_metrics_count <- function(m) m$n
 # suresi); aksi halde tamamlanma zaman damgasi araligi kullanilir.
 soak_metrics_slice_summary <- function(m, from_idx, to_idx = m$n, wall_seconds = NULL) {
   if (m$n == 0L || from_idx > to_idx) {
-    return(list(requests = 0L, success_rate = NA_real_, p95_latency_ms = NA_real_,
-                throughput_ops_per_min = 0))
+    return(list(requests = 0L, success = 0L, errors = 0L, timeouts = 0L,
+                success_rate = NA_real_, effective_success_rate = NA_real_,
+                p50_latency_ms = NA_real_, p95_latency_ms = NA_real_,
+                p99_latency_ms = NA_real_, throughput_ops_per_min = 0))
   }
   idx <- seq.int(from_idx, to_idx)
   status <- m$status[idx]
   latency <- m$latency_ms[idx]
   ok_latency <- latency[status == "ok"]
   n <- length(idx)
+  success <- sum(status == "ok")
+  errors <- sum(status == "error")
+  timeouts <- sum(status == "timeout")
   ts <- m$ts[idx]
   wall <- if (!is.null(wall_seconds) && is.finite(wall_seconds) && wall_seconds > 0) {
     wall_seconds
   } else {
     max(1e-6, max(ts) - min(ts))
   }
+  # Kapasite merdiveni adimlarinda hata-enjeksiyonu KOSULMAZ (ayri probe), bu
+  # yuzden dilim icin effective == raw success rate.
+  rate <- round(success / n, 4)
   list(
     requests = as.integer(n),
-    success_rate = round(sum(status == "ok") / n, 4),
+    success = as.integer(success),
+    errors = as.integer(errors),
+    timeouts = as.integer(timeouts),
+    success_rate = rate,
+    effective_success_rate = rate,
+    p50_latency_ms = round(soak_percentile(ok_latency, 0.50), 1),
     p95_latency_ms = round(soak_percentile(ok_latency, 0.95), 1),
+    p99_latency_ms = round(soak_percentile(ok_latency, 0.99), 1),
     throughput_ops_per_min = round(n / wall * 60, 1)
   )
 }
@@ -207,6 +292,59 @@ soak_metrics_summary <- function(m) {
     key_sources = to_named_list(key_tab),
     scenario_counts = to_named_list(scen_tab),
     wall_seconds = round(wall_seconds, 1)
+  )
+}
+
+# ------------------------------------------------------------------------------
+# Hata atfi toplu ozeti (timeout attribution). soak_metrics_as_df() ciktisindan
+# timeout_class dagilimini, en yaygin hata siniflarini ve en yavas senaryolari
+# uretir. Ham hata mesaji ICERMEZ (yalniz sinif etiketleri + sayilar).
+# ------------------------------------------------------------------------------
+soak_timeout_attribution <- function(df, top_n = 5L) {
+  empty <- list(
+    total_failures = 0L,
+    timeout_breakdown = list(),
+    top_failure_classes = list(),
+    top_slow_scenarios = list()
+  )
+  if (is.null(df) || nrow(df) == 0L) return(empty)
+  if (!("status" %in% names(df))) return(empty)
+
+  bad <- df[df$status != "ok", , drop = FALSE]
+  tc_col <- if ("timeout_class" %in% names(bad)) bad$timeout_class else rep("unknown_error", nrow(bad))
+  tc_col[is.na(tc_col) | tc_col == "" | tc_col == "n/a"] <- "unknown_error"
+
+  breakdown <- list()
+  top_classes <- list()
+  if (nrow(bad) > 0L) {
+    tab <- sort(table(tc_col), decreasing = TRUE)
+    breakdown <- as.list(stats::setNames(as.integer(tab), names(tab)))
+    top <- head(tab, top_n)
+    top_classes <- lapply(seq_along(top), function(i) {
+      list(class = names(top)[i], count = as.integer(top[i]))
+    })
+  }
+
+  # En yavas senaryolar: ok isteklerin p95 gecikmesine gore (darbogaz ipucu).
+  slow <- list()
+  ok <- df[df$status == "ok" & is.finite(df$latency_ms), , drop = FALSE]
+  if (nrow(ok) > 0L && "scenario" %in% names(ok)) {
+    scs <- unique(ok$scenario)
+    rows <- lapply(scs, function(s) {
+      lat <- ok$latency_ms[ok$scenario == s]
+      list(scenario = s, count = length(lat),
+           p95_latency_ms = round(soak_percentile(lat, 0.95), 1))
+    })
+    p95s <- vapply(rows, function(r) r$p95_latency_ms %||% NA_real_, numeric(1))
+    ord <- order(p95s, decreasing = TRUE)
+    slow <- rows[head(ord, top_n)]
+  }
+
+  list(
+    total_failures = as.integer(nrow(bad)),
+    timeout_breakdown = breakdown,
+    top_failure_classes = top_classes,
+    top_slow_scenarios = slow
   )
 }
 

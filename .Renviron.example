@@ -185,6 +185,42 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   MERGEN_SOAK_APP_URL=http://127.0.0.1:8009/  # Windows VM production launcher attach portu
 #   MERGEN_SOAK_USER_BASE_TARGET=1000
 #
+# Kademeli kapasite merdiveni (staged ladder): dogrudan 1000'e atlamadan
+# 50->100->250->500->1000 adimlarla son STABIL kapasiteyi olcer. Ilk basarisiz
+# adimda durur ve son stabil adimi durustce raporlar.
+#   MERGEN_SOAK_CAPACITY_LADDER=FALSE             # TRUE -> kademeli merdiven modu
+#   MERGEN_SOAK_CAPACITY_USERS=50,100,150,250,500,750,1000  # merdiven adimlari (bossa varsayilan)
+#   MERGEN_SOAK_CAPACITY_STEP_SECONDS=600         # adim basina sure (merdiven varsayilani 600)
+#   MERGEN_SOAK_STOP_ON_FIRST_FAILED_STEP=TRUE    # ilk basarisiz adimda dur
+#   MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN=0.98      # bir adimin "stabil" sayilmasi icin esik
+#
+# Sistem telemetrisi (CPU/bellek/TCP ornekleme; darbogaz atfi icin). Varsayilan
+# ACIK; OS sayaclari okunamazsa soak'u KIRMAZ (UNMEASURED raporlanir).
+#   MERGEN_SOAK_TELEMETRY_ENABLED=TRUE
+#   MERGEN_SOAK_TELEMETRY_INTERVAL_SECONDS=5
+#
+# Opsiyonel KUCUK gercek-LLM throughput probe (uygulama kapasitesi DEGIL;
+# fake/proxy ile karistirilmaz). Yalniz real-canary seridinde anlamlidir.
+#   MERGEN_REAL_LLM_THROUGHPUT_PROBE=FALSE
+#   MERGEN_REAL_LLM_THROUGHPUT_USERS=2
+#   MERGEN_REAL_LLM_THROUGHPUT_MAX_USERS=5        # sert tavan (asilmaz)
+#   MERGEN_REAL_LLM_THROUGHPUT_DURATION_SECONDS=300
+#
+# Gercek tarayici/websocket eszamanlilik lane (VM/local; ayri betik:
+# tests/scripts/run_browser_concurrency_lane.R). browser_console_errors yalniz
+# bu lane CALISTIGINDA olculur.
+#   MERGEN_BROWSER_CONCURRENCY_ENABLED=FALSE
+#   MERGEN_BROWSER_CONCURRENCY_USERS=10
+#   MERGEN_BROWSER_CONCURRENCY_MAX_USERS=50       # uygulama VM'inde 1000 tarayici CALISTIRMAYIN
+#   MERGEN_BROWSER_CONCURRENCY_DURATION_SECONDS=300
+#   MERGEN_BROWSER_CONCURRENCY_BASE_URL=http://127.0.0.1:8009/
+#   MERGEN_BROWSER_CONCURRENCY_HEADLESS=TRUE
+#
+# Gercek SQL Server havuzlu DB at-rest preflight (VM-only; ayri betik:
+# tests/scripts/run_vm_sqlserver_pool_preflight_real.R).
+#   MERGEN_SQLSERVER_POOL_PREFLIGHT_REAL=FALSE    # TRUE + MERGEN_DB_POOL_ENABLED=TRUE ile calisir
+#   MERGEN_SQLSERVER_POOL_WRITE_TEST=FALSE        # TRUE -> etiketli tablo ile commit/rollback/at-rest
+#
 # Fake endpoint davranışı (Lane A):
 #   MERGEN_SOAK_FAKE_LATENCY_MS_MIN=80
 #   MERGEN_SOAK_FAKE_LATENCY_MS_MAX=600

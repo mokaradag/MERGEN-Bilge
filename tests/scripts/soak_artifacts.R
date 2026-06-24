@@ -21,13 +21,124 @@ soak_git_field <- function(args) {
 }
 
 # ------------------------------------------------------------------------------
+# Kademeli kapasite merdiveni (capacity ladder) darbogaz ipuclari. KORUMACI:
+# yalniz mevcut kanit destekledigi olcude ipucu uretir; kanit yetersizse
+# "unknown_timeout_saturation" der. step_rows: her adim list(users, p95, ...,
+# effective_success_rate, pass, telemetry=list(max_total_cpu_percent, ...)).
+# ------------------------------------------------------------------------------
+soak_capacity_bottleneck_hints <- function(step_rows, stable_min = 0.98) {
+  hints <- character(0)
+  if (is.null(step_rows) || length(step_rows) == 0L) {
+    return("no_ladder_steps_executed")
+  }
+
+  eff <- vapply(step_rows, function(r) as.numeric(r$effective_success_rate %||% NA_real_), numeric(1))
+  failed_idx <- which(is.finite(eff) & eff < stable_min)
+  if (length(failed_idx) == 0L) {
+    return("no_failure_observed_within_ladder")
+  }
+
+  fi <- failed_idx[1]
+  failed <- step_rows[[fi]]
+  prev <- if (fi > 1L) step_rows[[fi - 1L]] else NULL
+
+  tel <- failed$telemetry %||% list()
+  tel_available <- isTRUE(tel$telemetry_available)
+  cpu <- as.numeric(tel$max_total_cpu_percent %||% NA_real_)
+  sql_cpu <- as.numeric(tel$max_sqlserver_cpu_percent %||% NA_real_)
+  r_cpu <- as.numeric(tel$max_r_process_cpu_percent %||% NA_real_)
+
+  failed_p95 <- as.numeric(failed$p95_latency_ms %||% NA_real_)
+  prev_p95 <- if (!is.null(prev)) as.numeric(prev$p95_latency_ms %||% NA_real_) else NA_real_
+  p95_jumped <- is.finite(failed_p95) && is.finite(prev_p95) && prev_p95 > 0 &&
+    (failed_p95 / prev_p95 >= 1.8)
+
+  cpu_saturated <- is.finite(cpu) && cpu >= 85
+  cpu_low <- is.finite(cpu) && cpu < 70
+
+  if (cpu_saturated) {
+    hints <- c(hints, "possible_cpu_saturation")
+  }
+  if (is.finite(sql_cpu) && sql_cpu >= 80) {
+    hints <- c(hints, "possible_sql_server_contention")
+  }
+  if (is.finite(r_cpu) && r_cpu >= 90 && (!is.finite(cpu) || cpu < 85)) {
+    hints <- c(hints, "possible_load_generator_limit")
+  }
+  if (p95_jumped && cpu_low) {
+    hints <- c(hints, "possible_app_or_event_loop_queueing")
+  }
+
+  # DB havuz darbogazi: yalniz adimda gercek havuz sayaclari varsa (taken==max).
+  dbp <- failed$db_pool
+  if (is.list(dbp) && is.finite(as.numeric(dbp$taken %||% NA_real_)) &&
+      is.finite(as.numeric(dbp$max_size %||% NA_real_)) &&
+      as.numeric(dbp$taken) >= as.numeric(dbp$max_size)) {
+    hints <- c(hints, "possible_db_pool_contention")
+  }
+
+  if (length(hints) == 0L) {
+    hints <- if (!tel_available) {
+      "unknown_timeout_saturation"
+    } else {
+      "timeout_saturation_without_clear_resource_signal"
+    }
+  }
+  unique(hints)
+}
+
+# step_rows'tan stabil/ilk-basarisiz/onerilen-hedef + ipuclarini ozetler.
+soak_capacity_ladder_summarize <- function(step_rows, ladder_users, stable_min = 0.98,
+                                           stop_on_first = TRUE) {
+  if (is.null(step_rows) || length(step_rows) == 0L) {
+    return(list(
+      ran = FALSE, steps = list(), stable_capacity_users = 0L,
+      first_failed_capacity_users = NA_integer_,
+      recommended_next_target = NA_integer_,
+      all_steps_pass = NA, bottleneck_hints = "no_ladder_steps_executed",
+      stable_success_rate_min = stable_min
+    ))
+  }
+
+  users_vec <- vapply(step_rows, function(r) as.integer(r$users %||% NA_integer_), integer(1))
+  pass_vec <- vapply(step_rows, function(r) isTRUE(r$pass), logical(1))
+
+  stable_users <- 0L
+  for (i in seq_along(step_rows)) {
+    if (isTRUE(pass_vec[i])) stable_users <- users_vec[i] else break
+  }
+  first_failed <- if (any(!pass_vec)) users_vec[which(!pass_vec)[1]] else NA_integer_
+
+  # Onerilen sonraki hedef: stabil adimdan SONRAKI merdiven adimi (varsa); aksi
+  # halde ilk basarisiz adim arastirilmali.
+  ladder_users <- as.integer(ladder_users)
+  recommended <- NA_integer_
+  if (stable_users > 0L) {
+    nxt <- ladder_users[ladder_users > stable_users]
+    recommended <- if (length(nxt) > 0L) nxt[1] else stable_users  # zaten en uste ulasildi
+  }
+
+  list(
+    ran = TRUE,
+    steps = step_rows,
+    stable_capacity_users = as.integer(stable_users),
+    first_failed_capacity_users = first_failed,
+    recommended_next_target = recommended,
+    all_steps_pass = all(pass_vec),
+    stop_on_first_failed_step = isTRUE(stop_on_first),
+    stable_success_rate_min = stable_min,
+    bottleneck_hints = soak_capacity_bottleneck_hints(step_rows, stable_min)
+  )
+}
+
+# ------------------------------------------------------------------------------
 # Esik degerlendirme. Her kontrol: name, measured, value, threshold, pass, note.
 # Olculemeyen esikler SESSIZCE GECMEZ; measured=FALSE, pass=NA olarak isaretlenir.
 # ------------------------------------------------------------------------------
 soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
                                      memory_growth, temp_growth_mb,
                                      server_alive_at_end, injected_faults = 0L,
-                                     interactive = NULL) {
+                                     interactive = NULL, capacity_ladder = NULL) {
   th <- cfg$thresholds
   checks <- list()
 
@@ -248,6 +359,26 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
     }
   }
 
+  # 16) Kademeli kapasite merdiveni: HER calistirilan adim stabil esigi gecmeli.
+  # Bu, mevcut hicbir esigi DUSURMEZ; aksine STRICTER bir kademeli kontrol ekler:
+  # sonraki bir adim basarisizsa kapi FAIL olur ("son stabil adim" yine de
+  # capacity_ladder altinda durustce raporlanir). Yalniz merdiven CALISTIYSA olculur.
+  if (!is.null(capacity_ladder) && isTRUE(capacity_ladder$ran) &&
+      length(capacity_ladder$steps) > 0L) {
+    stable_min <- as.numeric(capacity_ladder$stable_success_rate_min %||% th$success_rate_min)
+    add("capacity_ladder_all_steps_pass", TRUE,
+        sprintf("stabil=%s ilk_basarisiz=%s",
+                as.character(capacity_ladder$stable_capacity_users %||% NA),
+                as.character(capacity_ladder$first_failed_capacity_users %||% NA)),
+        sprintf("tum adimlar effective>=%.2f", stable_min),
+        isTRUE(capacity_ladder$all_steps_pass),
+        "Calistirilan her kademeli adimin effective basari orani stabil esigi gecmeli.")
+  } else if (isTRUE(cfg$capacity_ladder_enabled)) {
+    add("capacity_ladder_all_steps_pass", FALSE, NA,
+        "tum adimlar stabil esigi gecmeli", NA,
+        "Kademeli merdiven istendi ama calismadi (HTTP serit/uygulama URL gerekli; olculemeyen).")
+  }
+
   checks
 }
 
@@ -268,7 +399,8 @@ soak_threshold_outcome <- function(checks) {
 # ------------------------------------------------------------------------------
 # does_prove / does_not_prove durustluk metinleri (serit + calisan adimlara gore).
 # ------------------------------------------------------------------------------
-soak_proof_statements <- function(cfg, summary, inprocess, attach, interactive = NULL) {
+soak_proof_statements <- function(cfg, summary, inprocess, attach, interactive = NULL,
+                                  telemetry = NULL, capacity_ladder = NULL) {
   proves <- character(0)
   not <- character(0)
 
@@ -294,6 +426,21 @@ soak_proof_statements <- function(cfg, summary, inprocess, attach, interactive =
   if (isTRUE(attach$reachable)) {
     proves <- c(proves, "Calisan uygulama koku HTTP-duzeyinde erisilebildi.")
   }
+  if (!is.null(telemetry) && isTRUE(telemetry$telemetry_available)) {
+    proves <- c(proves, sprintf(paste(
+      "Yuk suresince sistem telemetrisi ornendi (%d ornek): maksimum toplam CPU %s%%,",
+      "maksimum app-portu TCP baglanti %s. Bu, darbogaz atfini gercek olcumle destekler."),
+      telemetry$samples %||% 0L,
+      as.character(telemetry$max_total_cpu_percent %||% NA),
+      as.character(telemetry$max_tcp_connections_to_app %||% NA)))
+  }
+  if (!is.null(capacity_ladder) && isTRUE(capacity_ladder$ran)) {
+    proves <- c(proves, sprintf(paste(
+      "Kademeli kapasite merdiveni calisti; gozlenen son STABIL aktif-eszamanli adim:",
+      "%s kullanici (ilk basarisiz adim: %s)."),
+      as.character(capacity_ladder$stable_capacity_users %||% 0L),
+      as.character(capacity_ladder$first_failed_capacity_users %||% NA)))
+  }
   if (!is.null(interactive) && isTRUE(interactive$available)) {
     proves <- c(proves,
       sprintf(paste(
@@ -317,8 +464,16 @@ soak_proof_statements <- function(cfg, summary, inprocess, attach, interactive =
             cfg$user_base_target, cfg$user_base_target),
     "Gercek LLM saglayicisinin bu eszamanlilik icin uretim throughput'unu KANITLAMAZ.",
     "Windows VM disindaki gercek aglardaki uretim gecikmesini KANITLAMAZ.",
-    "Tam-yigin tarayici/websocket Shiny oturum eszamanliligini KANITLAMAZ (in-process alistirmalar helper-duzeyidir).",
-    "Gercek SQL Server'a Turkce yaziminin at-rest dogrulugunu KANITLAMAZ (ayri VM kodlama preflight kapisidir).")
+    "Tam-yigin tarayici/websocket Shiny oturum eszamanliligini KANITLAMAZ (in-process alistirmalar helper-duzeyidir; gercek tarayici lane ayridir: run_browser_concurrency_lane.R).",
+    "Gercek SQL Server'a Turkce yaziminin at-rest dogrulugunu KANITLAMAZ (ayri VM kodlama/havuz preflight kapisidir: run_vm_encoding_preflight_real.R, run_vm_sqlserver_pool_preflight_real.R).")
+
+  # Telemetri olculemedi ise darbogaz atfi UNMEASURED'dir (sessiz PASS degil).
+  if (is.null(telemetry) || !isTRUE(telemetry$telemetry_available)) {
+    not <- c(not, "Sistem kaynak telemetrisi (CPU/bellek/TCP) bu kosumda OLCULEMEDI; darbogaz nedeni kesin atfedilemez (UNMEASURED).")
+  }
+  if (is.null(capacity_ladder) || !isTRUE(capacity_ladder$ran)) {
+    not <- c(not, "Kademeli kapasite merdiveni bu kosumda calismadi; 50->100->250->500->1000 staged stabil kapasite bu artifacttan turetilemez.")
+  }
   if (!is.null(interactive) && isTRUE(interactive$available)) {
     not <- c(not,
       "Etkilesimli serit tek-surecte ARDISIK oturumlardir; gercek eszamanli websocket/tarayici yuku DEGILDIR.",
@@ -346,7 +501,10 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
                                 failure_probe, threshold_checks, threshold_outcome,
                                 proofs, duration_actual, warnings_vec, skipped_vec,
                                 server_alive_at_end, injected_faults = 0L,
-                                interactive = NULL) {
+                                interactive = NULL, telemetry = NULL,
+                                capacity_ladder = NULL, timeout_attribution = NULL,
+                                real_canary_classification = NULL,
+                                real_llm_throughput = NULL) {
   observed_faults <- summary$errors + summary$timeouts
   unexpected_faults <- max(0L, observed_faults - as.integer(injected_faults %||% 0L))
   effective_success_rate <- if (summary$requests > 0L) {
@@ -442,6 +600,43 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
       "etkilesimli serit kapali"
     },
     capacity_curve = capacity_rows %||% list(),
+    capacity_ladder = if (!is.null(capacity_ladder) && isTRUE(capacity_ladder$ran)) {
+      list(
+        ran = TRUE,
+        stable_success_rate_min = capacity_ladder$stable_success_rate_min,
+        stop_on_first_failed_step = isTRUE(capacity_ladder$stop_on_first_failed_step),
+        stable_capacity_users = capacity_ladder$stable_capacity_users,
+        first_failed_capacity_users = capacity_ladder$first_failed_capacity_users,
+        recommended_next_target = capacity_ladder$recommended_next_target,
+        all_steps_pass = isTRUE(capacity_ladder$all_steps_pass),
+        bottleneck_hints = capacity_ladder$bottleneck_hints,
+        steps = capacity_ladder$steps,
+        note = paste(
+          "Kademeli kapasite merdiveni: son STABIL adim durustce raporlanir.",
+          "Basarisiz sonraki adimlar PASS olarak sunulmaz; aggregate effective_success_rate",
+          "ve capacity_ladder_all_steps_pass kontrolleri ayrica zorlanir."
+        )
+      )
+    } else if (isTRUE(cfg$capacity_ladder_enabled)) {
+      list(ran = FALSE, reason = "kademeli merdiven istendi ama calismadi (HTTP serit/uygulama URL gerekli)")
+    } else {
+      "kademeli merdiven kapali"
+    },
+    system_telemetry = if (!is.null(telemetry)) telemetry else {
+      if (isTRUE(cfg$telemetry_enabled)) {
+        list(telemetry_available = FALSE,
+             telemetry_warnings = "telemetri istendi ama ozet uretilmedi (UNMEASURED)")
+      } else "telemetri kapali"
+    },
+    timeout_attribution = timeout_attribution %||% list(),
+    real_canary_classification = real_canary_classification %||% "real-canary serit kullanilmadi",
+    real_llm_throughput = if (!is.null(real_llm_throughput)) {
+      real_llm_throughput
+    } else if (isTRUE(cfg$real_llm_throughput_enabled)) {
+      "throughput probe istendi ama calismadi"
+    } else {
+      "real-LLM throughput probe kapali (fake/proxy serit gercek LLM throughput'u DEGILDIR)"
+    },
     secret_redaction_confirmed = identical(as.integer(redaction$total_leaks %||% 0L), 0L),
     raw_key_leak_count = as.integer(redaction$total_leaks %||% 0L),
     raw_prompt_leak_count = 0L,  # promptlar artifact'a TAM yazilmaz; yalniz case-id.
@@ -492,11 +687,20 @@ soak_write_artifacts <- function(artifact_dir, cfg, metrics, evidence,
   con <- file(fail_path, open = "wt", encoding = "UTF-8")
   if (nrow(df) > 0L) {
     bad <- df[df$status != "ok", , drop = FALSE]
+    has_tc <- "timeout_class" %in% names(bad)
+    has_ek <- "endpoint_kind" %in% names(bad)
     for (i in seq_len(nrow(bad))) {
-      rec <- list(ts_epoch = bad$ts_epoch[i], lane = bad$lane[i],
-                  scenario = bad$scenario[i], status = bad$status[i],
-                  http_code = if (is.na(bad$http_code[i])) NULL else bad$http_code[i],
-                  latency_ms = bad$latency_ms[i])
+      tc <- if (has_tc) bad$timeout_class[i] else NA_character_
+      code_i <- bad$http_code[i]
+      rec <- list(
+        ts_epoch = bad$ts_epoch[i], lane = bad$lane[i],
+        scenario = bad$scenario[i], status = bad$status[i],
+        http_status = if (is.na(code_i)) NULL else as.integer(code_i),
+        latency_ms = bad$latency_ms[i],
+        timeout_class = if (is.na(tc) || tc == "") "unknown_error" else tc,
+        endpoint_kind = if (has_ek) bad$endpoint_kind[i] else "n/a",
+        retryable = soak_failure_retryable(tc, code_i)
+      )
       writeLines(as.character(jsonlite::toJSON(rec, auto_unbox = TRUE, null = "null")), con)
     }
   }
@@ -525,6 +729,62 @@ soak_write_artifacts <- function(artifact_dir, cfg, metrics, evidence,
     }))
     utils::write.csv(cap_df, file.path(artifact_dir, "capacity_curve.csv"),
                      row.names = FALSE, fileEncoding = "UTF-8")
+  }
+
+  # capacity_ladder.csv + capacity_ladder_summary.json (kademeli merdiven calistiysa)
+  cl <- evidence$capacity_ladder
+  if (is.list(cl) && isTRUE(cl$ran) && length(cl$steps) > 0L) {
+    lad_df <- do.call(rbind, lapply(cl$steps, function(s) {
+      tel <- s$telemetry %||% list()
+      data.frame(
+        users = s$users %||% NA_integer_,
+        duration_seconds = s$duration_seconds %||% NA_real_,
+        requests = s$requests %||% NA_integer_,
+        success = s$success %||% NA_integer_,
+        errors = s$errors %||% NA_integer_,
+        timeouts = s$timeouts %||% NA_integer_,
+        raw_success_rate = s$raw_success_rate %||% NA_real_,
+        effective_success_rate = s$effective_success_rate %||% NA_real_,
+        p50_latency_ms = s$p50_latency_ms %||% NA_real_,
+        p95_latency_ms = s$p95_latency_ms %||% NA_real_,
+        p99_latency_ms = s$p99_latency_ms %||% NA_real_,
+        throughput_ops_per_min = s$throughput_ops_per_min %||% NA_real_,
+        max_total_cpu_percent = tel$max_total_cpu_percent %||% NA_real_,
+        max_tcp_connections_to_app = tel$max_tcp_connections_to_app %||% NA_integer_,
+        pass = isTRUE(s$pass),
+        stringsAsFactors = FALSE
+      )
+    }))
+    utils::write.csv(lad_df, file.path(artifact_dir, "capacity_ladder.csv"),
+                     row.names = FALSE, fileEncoding = "UTF-8")
+    jsonlite::write_json(cl, file.path(artifact_dir, "capacity_ladder_summary.json"),
+                         auto_unbox = TRUE, pretty = TRUE, null = "null")
+  }
+
+  # system_telemetry_summary.json (telemetri ozeti; CSV arka surec tarafindan yazildi)
+  if (is.list(evidence$system_telemetry)) {
+    jsonlite::write_json(evidence$system_telemetry,
+                         file.path(artifact_dir, "system_telemetry_summary.json"),
+                         auto_unbox = TRUE, pretty = TRUE, null = "null")
+  }
+
+  # timeout_attribution.json (hata atfi)
+  if (is.list(evidence$timeout_attribution) && length(evidence$timeout_attribution) > 0L) {
+    jsonlite::write_json(evidence$timeout_attribution,
+                         file.path(artifact_dir, "timeout_attribution.json"),
+                         auto_unbox = TRUE, pretty = TRUE, null = "null")
+  }
+
+  # real_canary_classification.json / real_llm_throughput.json (varsa)
+  if (is.list(evidence$real_canary_classification)) {
+    jsonlite::write_json(evidence$real_canary_classification,
+                         file.path(artifact_dir, "real_canary_classification.json"),
+                         auto_unbox = TRUE, pretty = TRUE, null = "null")
+  }
+  if (is.list(evidence$real_llm_throughput)) {
+    jsonlite::write_json(evidence$real_llm_throughput,
+                         file.path(artifact_dir, "real_llm_throughput.json"),
+                         auto_unbox = TRUE, pretty = TRUE, null = "null")
   }
 
   # soak_evidence.json
@@ -600,6 +860,46 @@ soak_write_summary_md <- function(artifact_dir, cfg, evidence) {
       )
     } else {
       "- Calismadi/kapali (kanit DEGIL)."
+    },
+    "",
+    "## Sistem Telemetrisi",
+    if (is.list(evidence$system_telemetry) && isTRUE(evidence$system_telemetry$telemetry_available)) {
+      st <- evidence$system_telemetry
+      c(
+        sprintf("- Ornek: %s | max CPU: %s%% | max bellek kullanim: %s MB",
+                as.character(st$samples), as.character(st$max_total_cpu_percent),
+                as.character(st$max_mem_used_mb)),
+        sprintf("- max R surec bellek: %s MB | max SQL Server bellek: %s MB | max app-port TCP: %s",
+                as.character(st$max_r_process_memory_mb), as.character(st$max_sqlserver_memory_mb),
+                as.character(st$max_tcp_connections_to_app))
+      )
+    } else {
+      "- UNMEASURED (telemetri kapali/olculemedi; darbogaz atfi kanit DEGIL)."
+    },
+    "",
+    "## Kademeli Kapasite Merdiveni",
+    if (is.list(evidence$capacity_ladder) && isTRUE(evidence$capacity_ladder$ran)) {
+      cl <- evidence$capacity_ladder
+      c(
+        sprintf("- Son STABIL aktif-eszamanli kullanici: **%s** | ilk basarisiz: %s",
+                as.character(cl$stable_capacity_users), as.character(cl$first_failed_capacity_users)),
+        sprintf("- Onerilen sonraki hedef: %s | tum adimlar gecti: %s",
+                as.character(cl$recommended_next_target), as.character(cl$all_steps_pass)),
+        sprintf("- Darbogaz ipuclari: %s", paste(cl$bottleneck_hints, collapse = ", "))
+      )
+    } else {
+      "- Calismadi/kapali (kanit DEGIL)."
+    },
+    "",
+    "## Hata Atfi (timeout attribution)",
+    if (is.list(evidence$timeout_attribution) &&
+        length(evidence$timeout_attribution$timeout_breakdown %||% list()) > 0L) {
+      ta <- evidence$timeout_attribution
+      bk <- ta$timeout_breakdown
+      c(sprintf("- Toplam basarisiz: %s", as.character(ta$total_failures)),
+        paste0("- ", names(bk), ": ", unlist(bk)))
+    } else {
+      "- Basarisiz istek yok veya atif uretilmedi."
     },
     "",
     "## KANITLAR (does_prove)",

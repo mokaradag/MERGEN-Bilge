@@ -15,6 +15,50 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### 2026-06-24 Operasyonel soak readiness sertleştirmesi (telemetri, kademeli merdiven, hata atfı, ayrı lane'ler)
+
+1000 kullanıcı / 90 dakika proxy-lane koşumları DB havuzuyla bir miktar iyileşse de
+(`effective_success_rate` 0.5826 -> 0.6414, timeout 94880 -> 73552) hâlâ 0.98 eşiğini
+geçemiyordu ve **neden** başarısız oldukları ölçümle teşhis edilemiyordu. Bu sürüm,
+hiçbir eşiği düşürmeden ve UNMEASURED kontrolleri PASS saymadan, soak kapısına gerçek
+ölçüm ve kademeli yol ekler:
+
+- **Sistem telemetrisi** (`tests/scripts/soak_system_telemetry.R`): ayrı arka süreç
+  CPU/bellek/TCP örnekler (Windows PowerShell, Unix `/proc`/`ps`/`ss`); yük seridini
+  bloklamaz, OS sayaçları okunamazsa soak'u kırmaz (UNMEASURED). Artifact:
+  `system_telemetry.csv`/`_summary.json`; evidence: `max_total_cpu_percent`,
+  `max_*_memory_mb`, `max_tcp_connections_to_app`.
+- **Kademeli kapasite merdiveni** (`MERGEN_SOAK_CAPACITY_LADDER`): 50->100->250->500->
+  1000 adımları; ilk başarısız adımda durur; son STABİL adımı (`stable_capacity_users`),
+  ilk başarısızı, önerilen sonraki hedefi ve korumacı darboğaz ipuçlarını raporlar.
+  Artifact: `capacity_ladder.csv`/`_summary.json`. Eklenen
+  `capacity_ladder_all_steps_pass` daha **katı** bir kontroldür (eşik düşürmez).
+- **Hata atfı (timeout attribution)**: başarısızlıklar
+  connection/response/app_http_error/fake_llm/proxy_llm/real_llm/rate_limited
+  sınıflarına ayrılır; `failures.jsonl` artık `timeout_class`/`endpoint_kind`/
+  `retryable` taşır; evidence: `timeout_attribution` (breakdown + en yaygın sınıflar
+  + en yavaş senaryolar).
+- **Gerçek tarayıcı/websocket lane** (`tests/scripts/run_browser_concurrency_lane.R`):
+  N eşzamanlı gerçek headless tarayıcı oturumu; `browser_console_errors` artık bu lane
+  çalıştığında ÖLÇÜLÜR (yoksa UNMEASURED). Kullanıcı tavanı 50; ağır bağımlılık eklenmez.
+- **Havuzlu SQL Server at-rest preflight**
+  (`tests/scripts/run_vm_sqlserver_pool_preflight_real.R`): havuz init/checkout-return/
+  commit/rollback + Türkçe at-rest round-trip; bulut/offline'da güvenle atlar; yıkıcı
+  değildir (etiketli tablo oluşturur ve DROP eder).
+- **Gerçek LLM throughput ayrı tutulur**: real-canary aşama sınıflandırması
+  (ERR-234 -> `gateway_policy_failed`, app yük hatası DEĞİL) + opsiyonel,
+  kullanıcı-tavanlı küçük throughput probe. Fake/proxy serit asla gerçek LLM
+  throughput'u olarak sunulmaz.
+
+Tüm yeni artifact'lar redaksiyondan geçer (ham DSN/anahtar/secret yazılmaz). Staged VM
+komut dizisi, telemetri yorumu ve CPU/çekirdek ölçeklendirme rehberi
+[`docs/operational-soak-gate.md`](operational-soak-gate.md) bölüm 16'dadır. Sözleşme
+testleri: `tests/testthat/test-operational-soak-gate-contract.R` (genişletildi) ve
+`tests/testthat/test-soak-readiness-scripts-contract.R` (yeni). Bu, app dayanıklılığı
++ ölçüm kanıtıdır; 1000 gerçek sürekli insan oturumu, gerçek SQL Server üretim havuzu
+at-rest hazırlığı (VM preflight gerekir) veya gerçek LLM throughput kapasitesi
+değildir.
+
 ### 2026-06-22 İşlem-güvenli DB bağlantı havuzu + etkileşimli soak seridi
 
 Bu sürüm iki operasyonel dayanıklılık zaafiyetini kapatır: (1) DB bağlantı
