@@ -46,8 +46,9 @@ soak_script_path <- function(rel) file.path(soak_repo_root_for_test, "tests", "s
 
 soak_source_modules <- function(env = parent.frame()) {
   mods <- c("soak_secret_redaction.R", "soak_config.R", "soak_metrics.R",
-            "soak_scenarios.R", "mock_llm_server.R", "proxy_llm_server.R",
-            "soak_client.R", "soak_interactive_lane.R", "soak_artifacts.R")
+            "soak_scenarios.R", "soak_system_telemetry.R", "mock_llm_server.R",
+            "proxy_llm_server.R", "soak_client.R", "soak_interactive_lane.R",
+            "soak_artifacts.R")
   for (m in mods) {
     suppressWarnings(suppressMessages(sys.source(soak_script_path(m), envir = env)))
   }
@@ -55,8 +56,9 @@ soak_source_modules <- function(env = parent.frame()) {
 
 soak_operational_scripts <- function() {
   c("run_operational_soak_gate.R", "soak_config.R", "soak_secret_redaction.R",
-    "soak_metrics.R", "soak_scenarios.R", "soak_client.R", "soak_interactive_lane.R",
-    "soak_artifacts.R", "mock_llm_server.R", "proxy_llm_server.R")
+    "soak_metrics.R", "soak_scenarios.R", "soak_system_telemetry.R", "soak_client.R",
+    "soak_interactive_lane.R", "soak_artifacts.R", "mock_llm_server.R",
+    "proxy_llm_server.R")
 }
 
 # Byte-safe okuyucu (Windows VM uyumlu); CLAUDE.md repo-tarama kurali.
@@ -570,6 +572,316 @@ testthat::test_that("izolasyon ve upload, DB-leak opt-out'undan BAGIMSIZ enforce
   testthat::expect_true(isTRUE(key_chk$measured))
   testthat::expect_false(isTRUE(key_chk$pass))
   testthat::expect_false(env$soak_threshold_outcome(checks3)$pass)
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("telemetri: config + port cozumleme + olculemeyen guvenli ozet", {
+  env <- new.env(); soak_source_modules(env)
+
+  withr::with_envvar(list(MERGEN_SOAK_TELEMETRY_ENABLED = NA,
+                          MERGEN_SOAK_TELEMETRY_INTERVAL_SECONDS = NA,
+                          MERGEN_SOAK_APP_URL = NA), {
+    tc <- env$soak_telemetry_config()
+    testthat::expect_true(isTRUE(tc$enabled))            # varsayilan ACIK
+    testthat::expect_true(tc$interval_sec >= 1L)
+    testthat::expect_equal(tc$app_port, 8009L)           # varsayilan uretim portu
+  })
+
+  # Port URL'den cozulur.
+  testthat::expect_equal(env$soak_telemetry_port_from_url("http://127.0.0.1:28081/"), 28081L)
+  testthat::expect_equal(env$soak_telemetry_port_from_url(""), 8009L)
+
+  # Olculemeyen ozet: CSV yok -> available FALSE + uyari (sessiz PASS DEGIL).
+  s <- env$soak_telemetry_summarize(file.path(tempdir(), "no_such_telemetry.csv"))
+  testthat::expect_false(isTRUE(s$telemetry_available))
+  testthat::expect_equal(s$samples, 0L)
+  testthat::expect_true(length(s$telemetry_warnings) >= 1L)
+
+  # Tum sutunlar mevcut (CSV semasi sabit).
+  cols <- env$soak_telemetry_columns()
+  for (c in c("ts_epoch", "total_cpu_percent", "mem_used_mb", "r_proc_mem_mb",
+              "sqlserver_mem_mb", "tcp_connections_to_app")) {
+    testthat::expect_true(c %in% cols, info = c)
+  }
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("telemetri arka surec: gercek ornek + ozet uretir (offline)", {
+  testthat::skip_if_not_installed("callr")
+  env <- new.env(); soak_source_modules(env)
+  ad <- file.path(tempdir(), paste0("tel_", as.integer(stats::runif(1, 1, 1e6))))
+  dir.create(ad, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(ad, recursive = TRUE), add = TRUE)
+
+  h <- env$soak_telemetry_start(ad, list(enabled = TRUE, interval_sec = 1L, app_port = 8009L),
+                                max_seconds = 20, loadgen_pid = Sys.getpid())
+  testthat::skip_if_not(isTRUE(h$started), "telemetri arka surec baslamadi")
+  Sys.sleep(3)
+  env$soak_telemetry_stop(h)
+  testthat::expect_true(file.exists(h$csv_path))
+  s <- env$soak_telemetry_summarize(h$csv_path)
+  testthat::expect_true(s$samples >= 1L)
+  # Linux'ta CPU/bellek okunabilir -> telemetry_available TRUE; degilse en azindan
+  # kontrat olarak NA + uyari (sessiz PASS degil).
+  testthat::expect_true(is.logical(s$telemetry_available))
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("hata atfi: siniflandirma + retryable + toplu kirilim", {
+  env <- new.env(); soak_source_modules(env)
+
+  testthat::expect_equal(env$soak_classify_failure("ok", 200L, "", "app"), "n/a")
+  testthat::expect_equal(env$soak_classify_failure("timeout", NA, "Failed to connect", "app"),
+                         "connection_timeout")
+  testthat::expect_equal(env$soak_classify_failure("timeout", NA, "Timeout was reached", "app"),
+                         "response_timeout")
+  testthat::expect_equal(env$soak_classify_failure("timeout", NA, "Operation timed out", "fake_llm"),
+                         "fake_llm_timeout")
+  testthat::expect_equal(env$soak_classify_failure("timeout", NA, "x", "proxy_llm"),
+                         "proxy_llm_timeout")
+  testthat::expect_equal(env$soak_classify_failure("error", 429L, "", "app"), "rate_limited")
+  testthat::expect_equal(env$soak_classify_failure("error", 500L, "", "app"), "app_http_error")
+  testthat::expect_equal(env$soak_classify_failure("error", 500L, "", "real_llm"),
+                         "real_llm_gateway_error")
+  testthat::expect_equal(env$soak_classify_failure("error", NA, "Connection refused", "app"),
+                         "connection_error")
+
+  testthat::expect_true(env$soak_failure_retryable("response_timeout", NA))
+  testthat::expect_true(env$soak_failure_retryable("app_http_error", 503L))
+  testthat::expect_false(env$soak_failure_retryable("app_http_error", 404L))
+
+  # Toplu kirilim: timeout_class dagilimini + en yaygin sinifi uretir.
+  m <- env$soak_metrics_new()
+  for (i in 1:30) env$soak_metrics_record(m, "fake", "chat_short", 120, "ok", 200L, 10, "n/a", "n/a", "app")
+  for (i in 1:8) env$soak_metrics_record(m, "fake", "chat_long", 20000, "timeout", NA, 0, "n/a", "response_timeout", "app")
+  for (i in 1:2) env$soak_metrics_record(m, "fake", "chat_code", 200, "error", 500L, 0, "n/a", "app_http_error", "app")
+  df <- env$soak_metrics_as_df(m)
+  testthat::expect_true("timeout_class" %in% names(df))
+  testthat::expect_true("endpoint_kind" %in% names(df))
+  attr <- env$soak_timeout_attribution(df)
+  testthat::expect_equal(attr$total_failures, 10L)
+  testthat::expect_equal(attr$timeout_breakdown$response_timeout, 8L)
+  testthat::expect_equal(attr$timeout_breakdown$app_http_error, 2L)
+  testthat::expect_equal(attr$top_failure_classes[[1]]$class, "response_timeout")
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("kademeli merdiven: ozet (stabil/ilk-basarisiz/onerilen) + ipuclari", {
+  env <- new.env(); soak_source_modules(env)
+
+  # 50 ve 100 gecti, 250 basarisiz (eff < 0.98). stop_on_first ile 250'de durur.
+  steps <- list(
+    list(users = 50L, effective_success_rate = 1.0, p95_latency_ms = 200, pass = TRUE,
+         telemetry = list(telemetry_available = TRUE, max_total_cpu_percent = 40)),
+    list(users = 100L, effective_success_rate = 0.999, p95_latency_ms = 400, pass = TRUE,
+         telemetry = list(telemetry_available = TRUE, max_total_cpu_percent = 55)),
+    list(users = 250L, effective_success_rate = 0.62, p95_latency_ms = 17000, pass = FALSE,
+         telemetry = list(telemetry_available = TRUE, max_total_cpu_percent = 60))
+  )
+  lad <- env$soak_capacity_ladder_summarize(steps, c(50L, 100L, 250L, 500L, 1000L),
+                                            stable_min = 0.98, stop_on_first = TRUE)
+  testthat::expect_true(lad$ran)
+  testthat::expect_equal(lad$stable_capacity_users, 100L)
+  testthat::expect_equal(lad$first_failed_capacity_users, 250L)
+  testthat::expect_equal(lad$recommended_next_target, 250L)  # stabil(100) sonrasi ladder adimi
+  testthat::expect_false(lad$all_steps_pass)
+  # p95 keskin sicradi (400 -> 17000) + CPU dusuk (60<70) -> event-loop kuyruklanma ipucu.
+  testthat::expect_true("possible_app_or_event_loop_queueing" %in% lad$bottleneck_hints)
+
+  # CPU saturasyonu senaryosu.
+  steps_cpu <- list(
+    list(users = 50L, effective_success_rate = 1.0, p95_latency_ms = 200, pass = TRUE,
+         telemetry = list(telemetry_available = TRUE, max_total_cpu_percent = 60)),
+    list(users = 100L, effective_success_rate = 0.5, p95_latency_ms = 9000, pass = FALSE,
+         telemetry = list(telemetry_available = TRUE, max_total_cpu_percent = 96))
+  )
+  lad2 <- env$soak_capacity_ladder_summarize(steps_cpu, c(50L, 100L), 0.98, TRUE)
+  testthat::expect_equal(lad2$stable_capacity_users, 50L)
+  testthat::expect_true("possible_cpu_saturation" %in% lad2$bottleneck_hints)
+
+  # Telemetri yok + basarisiz -> "unknown_timeout_saturation" (durust UNMEASURED).
+  steps_unk <- list(
+    list(users = 50L, effective_success_rate = 1.0, p95_latency_ms = 200, pass = TRUE,
+         telemetry = list(telemetry_available = FALSE)),
+    list(users = 100L, effective_success_rate = 0.4, p95_latency_ms = 18000, pass = FALSE,
+         telemetry = list(telemetry_available = FALSE))
+  )
+  lad3 <- env$soak_capacity_ladder_summarize(steps_unk, c(50L, 100L), 0.98, TRUE)
+  testthat::expect_true("unknown_timeout_saturation" %in% lad3$bottleneck_hints)
+
+  # Hicbiri basarisiz degil -> stabil = en ust adim, ipucu "no_failure...".
+  steps_ok <- list(
+    list(users = 50L, effective_success_rate = 1, p95_latency_ms = 100, pass = TRUE,
+         telemetry = list(telemetry_available = TRUE, max_total_cpu_percent = 30))
+  )
+  lad4 <- env$soak_capacity_ladder_summarize(steps_ok, c(50L), 0.98, TRUE)
+  testthat::expect_true(lad4$all_steps_pass)
+  testthat::expect_equal(lad4$bottleneck_hints, "no_failure_observed_within_ladder")
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("kademeli merdiven esigi: basarisiz adim ENFORCED FAIL; istenmeyen UNMEASURED", {
+  env <- new.env(); soak_source_modules(env)
+  s <- env$soak_metrics_summary(env$soak_metrics_new())
+  inproc <- list(available = FALSE)
+  mg <- list(rss_measured = FALSE, process_rss_growth_mb = NA)
+  base_th <- list(success_rate_min = 0.98, p95_latency_ms_max = 0L,
+                  memory_growth_mb_max = -1, temp_growth_mb_max = -1,
+                  fail_on_browser_console_errors = FALSE, fail_on_mojibake = TRUE,
+                  fail_on_secret_leak = TRUE)
+
+  # Merdiven calisti, bir adim FAIL -> capacity_ladder_all_steps_pass measured FAIL.
+  cfg <- list(capacity_ladder_enabled = TRUE, llm_lane = "fake", http_lane = TRUE,
+              interactive_lane = FALSE, thresholds = base_th)
+  lad <- list(ran = TRUE, stable_capacity_users = 100L, first_failed_capacity_users = 250L,
+              all_steps_pass = FALSE, stable_success_rate_min = 0.98,
+              steps = list(list(users = 50L), list(users = 250L)))
+  checks <- env$soak_evaluate_thresholds(cfg, s, inproc, list(total_leaks = 0L), mg, NA, TRUE, 0L,
+                                         NULL, lad)
+  chk <- Filter(function(c) c$name == "capacity_ladder_all_steps_pass", checks)[[1]]
+  testthat::expect_true(isTRUE(chk$measured))
+  testthat::expect_false(isTRUE(chk$pass))
+  testthat::expect_false(env$soak_threshold_outcome(checks)$pass)
+
+  # Tum adimlar gecti -> PASS.
+  lad_ok <- lad; lad_ok$all_steps_pass <- TRUE; lad_ok$first_failed_capacity_users <- NA
+  checks_ok <- env$soak_evaluate_thresholds(cfg, s, inproc, list(total_leaks = 0L), mg, NA, TRUE, 0L,
+                                            NULL, lad_ok)
+  chk_ok <- Filter(function(c) c$name == "capacity_ladder_all_steps_pass", checks_ok)[[1]]
+  testthat::expect_true(isTRUE(chk_ok$pass))
+
+  # Istendi ama calismadi -> UNMEASURED (sessiz PASS degil, ama gate'i de kirmaz).
+  checks_unrun <- env$soak_evaluate_thresholds(cfg, s, inproc, list(total_leaks = 0L), mg, NA, TRUE,
+                                               0L, NULL, NULL)
+  chk_unrun <- Filter(function(c) c$name == "capacity_ladder_all_steps_pass", checks_unrun)[[1]]
+  testthat::expect_false(isTRUE(chk_unrun$measured))
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("real-LLM yanit siniflandirmasi: gateway/auth/policy/uretim ayrimi", {
+  env <- new.env(); soak_source_modules(env)
+
+  testthat::expect_equal(env$soak_classify_real_llm_response(200L, "{}", "", FALSE),
+                         "generation_completed")
+  testthat::expect_equal(env$soak_classify_real_llm_response(200L, "{}", "", TRUE),
+                         "streaming_completed")
+  testthat::expect_equal(env$soak_classify_real_llm_response(401L, "", "", FALSE), "auth_rejected")
+  testthat::expect_equal(env$soak_classify_real_llm_response(404L, "", "", FALSE),
+                         "model_or_route_not_found")
+  testthat::expect_equal(env$soak_classify_real_llm_response(429L, "", "", FALSE), "rate_limited")
+  # ERR-234 / rate limit policy failed -> gateway_policy_failed (app yuk hatasi DEGIL).
+  testthat::expect_equal(
+    env$soak_classify_real_llm_response(
+      500L, '{"faultCode":"ERR-234","faultString":"Endpoint Rate Limit policy failed"}', "", FALSE),
+    "gateway_policy_failed")
+  testthat::expect_equal(env$soak_classify_real_llm_response(NA, "", "Timeout was reached", FALSE),
+                         "real_llm_timeout")
+  testthat::expect_equal(env$soak_classify_real_llm_response(NA, "", "Could not connect", FALSE),
+                         "app_unreachable")
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("config: telemetri + merdiven + real-llm throughput alanlari ve secret-safe", {
+  env <- new.env(); soak_source_modules(env)
+
+  withr::with_envvar(list(MERGEN_SOAK_PROFILE = "smoke", MERGEN_SOAK_CAPACITY_LADDER = "true",
+                          MERGEN_SOAK_CAPACITY_USERS = "50,100,250",
+                          MERGEN_SOAK_CAPACITY_STEP_SECONDS = NA,
+                          MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN = NA,
+                          MERGEN_REAL_LLM_THROUGHPUT_PROBE = "true",
+                          MERGEN_REAL_LLM_THROUGHPUT_USERS = "9"), {
+    cfg <- env$soak_resolve_config()
+    testthat::expect_true(isTRUE(cfg$capacity_ladder_enabled))
+    testthat::expect_equal(cfg$capacity_ladder_users, c(50L, 100L, 250L))
+    testthat::expect_equal(cfg$capacity_ladder_step_seconds, 600L)   # ladder varsayilani
+    testthat::expect_equal(cfg$stable_success_rate_min, 0.98)
+    testthat::expect_true(isTRUE(cfg$telemetry_enabled))
+    testthat::expect_true(isTRUE(cfg$real_llm_throughput_enabled))
+    # Kullanici tavani (varsayilan 5) uygulanir.
+    testthat::expect_true(cfg$real_llm_throughput$users <= 5L)
+
+    pub <- env$soak_config_public(cfg)
+    for (k in c("capacity_ladder_enabled", "capacity_ladder_users", "telemetry_enabled",
+                "real_llm_throughput_enabled", "stable_success_rate_min")) {
+      testthat::expect_true(k %in% names(pub), info = k)
+    }
+  })
+
+  # Merdiven varsayilan KAPALI; ladder default kullanicilari 1000'e kadar.
+  withr::with_envvar(list(MERGEN_SOAK_CAPACITY_LADDER = NA, MERGEN_SOAK_CAPACITY_USERS = NA), {
+    cfg2 <- env$soak_resolve_config()
+    testthat::expect_false(isTRUE(cfg2$capacity_ladder_enabled))
+    testthat::expect_true(1000L %in% cfg2$capacity_ladder_users)
+  })
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("yeni artifact alanlari evidence'a girer ve redaksiyondan gecer", {
+  env <- new.env(); soak_source_modules(env)
+  cfg <- withr::with_envvar(list(MERGEN_SOAK_PROFILE = "smoke"), env$soak_resolve_config())
+  cfg$interactive_lane <- FALSE
+
+  m <- env$soak_metrics_new()
+  for (i in 1:20) env$soak_metrics_record(m, "fake", "chat_short", 100 + i, "ok", 200L, 40, "n/a", "n/a", "app")
+  for (i in 1:3) env$soak_metrics_record(m, "fake", "chat_long", 20000, "timeout", NA, 0, "n/a", "response_timeout", "app")
+  s <- env$soak_metrics_summary(m)
+  inproc <- list(available = FALSE)
+  mg <- list(rss_measured = FALSE, process_rss_growth_mb = NA)
+
+  # Planlanmis sahte sir: telemetri uyarisi + ipucu icine konur (redaksiyon kapsamali).
+  secret <- paste0("sk-", "leak-fake-value-zzzzzz99")
+  telemetry <- list(telemetry_available = TRUE, samples = 5L, max_total_cpu_percent = 80,
+                    max_tcp_connections_to_app = 120L, max_mem_used_mb = 2048,
+                    max_r_process_memory_mb = 512, max_sqlserver_memory_mb = 1024,
+                    telemetry_warnings = c(paste0("uyari token=", secret)))
+  ladder <- list(ran = TRUE, stable_capacity_users = 100L, first_failed_capacity_users = 250L,
+                 recommended_next_target = 250L, all_steps_pass = FALSE,
+                 stable_success_rate_min = 0.98,
+                 bottleneck_hints = c("possible_cpu_saturation"),
+                 steps = list(list(users = 50L, duration_seconds = 600, requests = 100L,
+                                   success = 100L, errors = 0L, timeouts = 0L,
+                                   raw_success_rate = 1, effective_success_rate = 1,
+                                   p50_latency_ms = 100, p95_latency_ms = 200, p99_latency_ms = 250,
+                                   throughput_ops_per_min = 600, db_pool = NULL,
+                                   telemetry = list(telemetry_available = TRUE,
+                                                    max_total_cpu_percent = 40,
+                                                    max_tcp_connections_to_app = 50L),
+                                   pass = TRUE)))
+  ta <- env$soak_timeout_attribution(env$soak_metrics_as_df(m))
+
+  checks <- env$soak_evaluate_thresholds(cfg, s, inproc, list(total_leaks = 0L), mg, 0, TRUE, 3L,
+                                         NULL, ladder)
+  outcome <- env$soak_threshold_outcome(checks)
+  proofs <- env$soak_proof_statements(cfg, s, inproc, list(reachable = FALSE), NULL,
+                                      telemetry, ladder)
+  ev <- env$soak_build_evidence(cfg, s, inproc, NULL, list(), list(total_leaks = 0L),
+                                list(), mg, list(), list(reachable = FALSE), NULL, checks, outcome,
+                                proofs, 1.0, character(0), character(0), TRUE, 3L,
+                                NULL, telemetry, ladder, ta)
+
+  testthat::expect_true("system_telemetry" %in% names(ev))
+  testthat::expect_true("capacity_ladder" %in% names(ev))
+  testthat::expect_true("timeout_attribution" %in% names(ev))
+  testthat::expect_true(isTRUE(ev$system_telemetry$telemetry_available))
+  testthat::expect_equal(ev$capacity_ladder$stable_capacity_users, 100L)
+  testthat::expect_equal(ev$timeout_attribution$total_failures, 3L)
+
+  # Artifact yazimi: yeni dosyalar uretilir + redaksiyon planlanmis siri yakalar.
+  tmp <- file.path(tempdir(), paste0("soak_art2_", as.integer(stats::runif(1, 1, 1e6))))
+  red <- env$soak_write_artifacts(tmp, cfg, m, ev, NULL, list(), NULL)
+  testthat::expect_equal(red$total_leaks, 0L)   # planlanmis sir redakte edildi
+  testthat::expect_true(file.exists(file.path(tmp, "capacity_ladder.csv")))
+  testthat::expect_true(file.exists(file.path(tmp, "capacity_ladder_summary.json")))
+  testthat::expect_true(file.exists(file.path(tmp, "system_telemetry_summary.json")))
+  testthat::expect_true(file.exists(file.path(tmp, "timeout_attribution.json")))
+  # Sahte sir hicbir artifact'ta ham gorunmemeli.
+  for (af in list.files(tmp, full.names = TRUE, recursive = TRUE)) {
+    if (grepl("\\.(json|jsonl|csv|md)$", af)) {
+      body <- paste(readLines(af, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+      testthat::expect_false(grepl("leak-fake-value-zzzzzz99", body, fixed = TRUE), info = basename(af))
+    }
+  }
+  unlink(tmp, recursive = TRUE)
 })
 
 # ------------------------------------------------------------------------------

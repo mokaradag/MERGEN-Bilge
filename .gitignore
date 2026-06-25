@@ -58,6 +58,8 @@ artifacts/frontend-complexity-doctor/
 artifacts/validation-doctor/
 artifacts/vm-evidence/
 artifacts/soak/
+artifacts/sqlserver-pool-preflight/
+artifacts/browser-concurrency/
 .ai/proposed_answer.md
 .ai/*.tmp.md
 .ai/*.log

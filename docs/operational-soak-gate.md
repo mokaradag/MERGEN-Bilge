@@ -813,3 +813,257 @@ redaksiyon ve mojibake guardrail'lerinin yük altında temiz kalması olumlu
 koruma kanıtı olarak kaydedilir; 1000 gerçek aktif insan chat oturumu, browser
 websocket eşzamanlılığı, gerçek upstream LLM throughput'u veya release readiness
 kanıtı olarak sunulmamalıdır.
+
+---
+
+## 16. Soak Readiness Hardening (2026-06-24): telemetri, kademeli merdiven, hata atfı, ayrı lane'ler
+
+Bu bölüm, 1000 kullanıcı / 90 dakika koşumlarının **neden** başarısız olduğunu
+ölçümle teşhis edebilmek ve 50 → 100 → 250 → 500 → 1000 aktif kullanıcıya
+**kademeli** bir yol sunmak için eklenen sertleştirmeyi açıklar. Hiçbir eşik
+düşürülmemiştir; UNMEASURED kontroller hâlâ sessizce PASS sayılmaz.
+
+### 16.1 Sistem telemetrisi (CPU / bellek / TCP)
+
+Soak sırasında ayrı bir arka süreç (`tests/scripts/soak_system_telemetry.R`,
+`callr` ile) sistemi periyodik örnekler. Yük seridini **bloklamaz** ve OS
+sayaçları okunamazsa soak'u **kırmaz** (UNMEASURED raporlanır).
+
+- Açık/kapalı: `MERGEN_SOAK_TELEMETRY_ENABLED` (varsayılan TRUE),
+  aralık: `MERGEN_SOAK_TELEMETRY_INTERVAL_SECONDS` (varsayılan 5 sn).
+- Windows: PowerShell (`Get-CimInstance`, `Get-Process`, `Get-NetTCPConnection`/
+  `netstat`). Unix/cloud: `/proc` + `ps` + `ss`/`netstat`.
+- Toplanan (hepsi gizlilik-güvenli sayısal): toplam CPU%, R/SQL Server/yük-üretici
+  süreç CPU%/bellek, toplam/kullanılan/boş bellek, app portuna (8009) TCP bağlantı
+  sayısı.
+- Artifact: `system_telemetry.csv` (örnek başına satır) + `system_telemetry_summary.json`.
+- `soak_evidence.json` içinde `system_telemetry` bloğu: `telemetry_available`,
+  `max_total_cpu_percent`, `max_r_process_memory_mb`, `max_sqlserver_memory_mb`,
+  `max_tcp_connections_to_app`, `telemetry_warnings`.
+
+> CPU% delta hesabı için en az iki örnek gerekir; çok kısa koşumlarda tek örnek
+> alınır ve CPU% `NA` (UNMEASURED) kalır. Bu dürüsttür, hata değildir.
+
+### 16.2 Kademeli kapasite merdiveni (staged capacity ladder)
+
+Doğrudan 1000'e atlamak yerine adım adım ölçer ve **son stabil adımı** dürüstçe
+belirler.
+
+| Değişken | Varsayılan | Açıklama |
+|----------|------------|----------|
+| `MERGEN_SOAK_CAPACITY_LADDER` | FALSE | TRUE -> kademeli merdiven modu |
+| `MERGEN_SOAK_CAPACITY_USERS` | `50,100,150,250,500,750,1000` | adım kullanıcı sayıları |
+| `MERGEN_SOAK_CAPACITY_STEP_SECONDS` | 600 | adım başına süre |
+| `MERGEN_SOAK_STOP_ON_FIRST_FAILED_STEP` | TRUE | ilk başarısız adımda dur |
+| `MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN` | 0.98 | adımın "stabil" sayılma eşiği |
+
+- Her adım için: kullanıcı sayısı, süre, istek/başarı/hata/timeout,
+  `raw_success_rate`, `effective_success_rate`, p50/p95/p99, throughput, o adımın
+  telemetri penceresi özeti ve PASS/FAIL kaydedilir.
+- Artifact: `capacity_ladder.csv` + `capacity_ladder_summary.json`.
+- `soak_evidence.json` içinde `capacity_ladder` bloğu: `stable_capacity_users`,
+  `first_failed_capacity_users`, `recommended_next_target`, `bottleneck_hints`,
+  `all_steps_pass`, adım dizisi.
+- Eşik: `capacity_ladder_all_steps_pass` **ek ve daha katı** bir kontroldür
+  (hiçbir eşik düşürmez). Çalıştırılan bir adım stabil eşiğin altına düşerse kapı
+  FAIL olur; son stabil adım yine de dürüstçe raporlanır. Merdiven istendi ama
+  çalışmadıysa kontrol UNMEASURED'dır (sessiz PASS değil).
+
+> **Önemli sınır:** attach modunda çalışan uygulamanın DB havuz sayaçları soak
+> sürücü sürecinden **görünmez**; bu yüzden merdiven adımlarında `db_pool = null`
+> (yanıltıcı sayaç yazılmaz). Havuzun at-rest davranışı ayrı VM preflight ile
+> doğrulanır (16.5).
+
+Darboğaz ipuçları (`bottleneck_hints`) korumacıdır:
+
+- `possible_cpu_saturation`: başarısızlık sırasında telemetri CPU ≥ %85.
+- `possible_app_or_event_loop_queueing`: p95 keskin yükseldi (≥1.8x) ama CPU < %70.
+- `possible_sql_server_contention`: SQL Server süreç CPU ≥ %80.
+- `possible_load_generator_limit`: R süreç CPU ≥ %90 ama toplam CPU < %85.
+- `possible_db_pool_contention`: yalnız adımda gerçek havuz sayacı varsa (taken=max).
+- `unknown_timeout_saturation`: telemetri yoksa (kanıt yetersiz; dürüst UNMEASURED).
+
+### 16.3 Hata atfı (timeout attribution)
+
+Başarısızlıklar artık sınıflandırılır; `failures.jsonl` her başarısız istek için
+`timeout_class`, `endpoint_kind`, `http_status` ve `retryable` taşır.
+`soak_evidence.json` içinde `timeout_attribution`: `timeout_breakdown` (sınıf ->
+sayı), `top_failure_classes`, `top_slow_scenarios`.
+
+Sınıflar: `connection_timeout` (bağlantı kurulamadı), `response_timeout` (app yanıt
+veremedi), `fake_llm_timeout`/`proxy_llm_timeout`/`real_llm_timeout` (LLM endpoint
+yavaş), `rate_limited` (429), `app_http_error` (app 4xx/5xx),
+`real_llm_gateway_error`, `connection_error`, `unknown_timeout`/`unknown_error`.
+
+> Yorumlama: `connection_timeout` baskınsa accept-kuyruğu/soket doygunluğu;
+> `response_timeout` baskınsa tek Shiny event-loop işleme darboğazı; LLM endpoint
+> timeout'ları ise upstream yavaşlığıdır (app değil).
+
+### 16.4 Gerçek tarayıcı/websocket eşzamanlılık lane'i (ayrı betik)
+
+`tests/scripts/run_browser_concurrency_lane.R` N gerçek headless tarayıcı
+oturumunu **aynı anda** açar; her oturum uygulamayla websocket/Shiny oturumu
+kurar, UX smoke akışını koşar ve konsol hatalarını DOM'a döker. Böylece
+`browser_console_errors` bu lane **çalıştığında ÖLÇÜLÜR** (yoksa UNMEASURED).
+
+| Değişken | Varsayılan |
+|----------|------------|
+| `MERGEN_BROWSER_CONCURRENCY_ENABLED` | FALSE |
+| `MERGEN_BROWSER_CONCURRENCY_USERS` | 10 |
+| `MERGEN_BROWSER_CONCURRENCY_MAX_USERS` | 50 (sert tavan; uygulama VM'inde 1000 tarayıcı çalıştırmayın) |
+| `MERGEN_BROWSER_CONCURRENCY_DURATION_SECONDS` | 300 |
+| `MERGEN_BROWSER_CONCURRENCY_BASE_URL` | http://127.0.0.1:8009/ |
+| `MERGEN_BROWSER_CONCURRENCY_HEADLESS` | TRUE |
+
+- Artifact: `browser_concurrency_summary.json`, `browser_console_errors.jsonl`,
+  `browser_session_metrics.csv`.
+- **Kanıtlar:** N eşzamanlı gerçek tarayıcı oturumu uygulamayla websocket kurdu,
+  başlattı ve UX smoke'u PASS bildirdi; bloklayıcı konsol hatası görülmedi.
+- **Kanıtlamaz:** sürekli (sustained) gerçek insan iş yükü; 1000 eşzamanlı insan
+  oturumu; gerçek LLM throughput'u. Bunlar **kısa-ömürlü** oturumlardır.
+- 10/25/50 oturum yararlıdır; CDN/Playwright/Selenium/chromote **eklenmez**
+  (yalnız yerel kurulu tarayıcı + processx).
+
+### 16.5 Gerçek SQL Server havuzlu at-rest preflight (VM-only)
+
+`tests/scripts/run_vm_sqlserver_pool_preflight_real.R` havuzun (`R/helpers_db_pool.R`)
+gerçek SQL Server'a karşı doğru davrandığını doğrular: havuz init, checkout/return
+dengesi (sızıntı yok), `with_db_transaction` commit, rollback'in satır bırakmaması
+ve Türkçe metnin parametre + (yazma testinde) **at-rest** round-trip'i.
+
+- Guard: `MERGEN_DB_POOL_ENABLED=TRUE` + `MERGEN_SQLSERVER_POOL_PREFLIGHT_REAL=TRUE`;
+  yazma probe'ları yalnız `MERGEN_SQLSERVER_POOL_WRITE_TEST=TRUE` iken.
+- Yıkıcı değildir: yazma testi tek, **benzersiz etiketli** bir tablo oluşturur,
+  commit/rollback/at-rest probe'larını yapar ve tabloyu **DROP** eder.
+- Bulut/offline (pool/odbc/DB_DSN yok) **güvenle atlar** (`skipped_reason`).
+- Artifact: `artifacts/sqlserver-pool-preflight/<timestamp>/evidence.json` + `summary.md`.
+  Alanlar: `sqlserver_pool_preflight_passed`, `turkish_at_rest_roundtrip_passed`,
+  `tx_rollback_clean`, `pool_outstanding_checkouts`, `mojibake_hits`,
+  `skipped_reason`. Ham DSN/secret yazılmaz; `DB_CLIENT_ENCODING`/`DB_NAME_ENCODING`
+  değerleri (sır değil) gösterilir.
+
+> Havuzlu SQL Server üretim hazırlığı iddiası için bu preflight PASS olmalıdır.
+> Offline RSQLite testleri (`test-db-pool-behavior.R`, interactive lane) T-SQL
+> at-rest davranışını kanıtlamaz.
+
+### 16.6 Gerçek LLM throughput ayrı tutulur
+
+Real-canary yanıtları artık aşamalara sınıflandırılır
+(`app_reachable`/`gateway_reachable`/`auth_rejected`/`model_or_route_not_found`/
+`rate_limited`/`gateway_policy_failed`/`generation_completed`/`streaming_completed`).
+ERR-234 / "Rate Limit policy failed" **gateway_policy_failed** olarak işaretlenir;
+bu bir MERGEN app yük hatası **değildir**. `soak_evidence.json` ->
+`real_canary_classification`.
+
+Opsiyonel, **kullanıcı tavanlı** (varsayılan 5) küçük gerçek-LLM throughput probe
+(`MERGEN_REAL_LLM_THROUGHPUT_PROBE=TRUE`) ayrı bir metrik nesnesiyle ölçülür
+(`real_llm_throughput`). Bu app kapasitesi **değildir**, 50/100 kullanıcıyı
+**tahmin etmez** ve fake/proxy serit sonuçlarıyla **karıştırılmaz**.
+
+### 16.7 Önerilen kademeli VM komut dizisi (PowerShell, attach portu 8009)
+
+Sırasıyla; bir adım PASS olmadan sonrakine geçmeyin. Her koşumdan sonra
+`soak_evidence.json` içindeki `effective_success_rate`, `capacity_ladder`,
+`timeout_attribution` ve `system_telemetry` alanlarını okuyun.
+
+**1) 50 aktif proxy kullanıcı / 30 dk (ilk gerçekçi hedef):**
+
+```powershell
+Remove-Item Env:MERGEN_SOAK_PROFILE,Env:MERGEN_SOAK_LLM_MODE,Env:MERGEN_SOAK_CONCURRENT_USERS,Env:MERGEN_SOAK_DURATION_MINUTES,Env:MERGEN_SOAK_CAPACITY_CURVE,Env:MERGEN_SOAK_CAPACITY_LADDER -ErrorAction SilentlyContinue
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
+$env:MERGEN_SOAK_PROFILE = "proxy_llm"
+$env:MERGEN_SOAK_LLM_MODE = "proxy"
+$env:MERGEN_SOAK_CONCURRENT_USERS = "50"
+$env:MERGEN_SOAK_DURATION_MINUTES = "30"
+$env:MERGEN_SOAK_CAPACITY_CURVE = "FALSE"
+$env:MERGEN_SOAK_TELEMETRY_ENABLED = "TRUE"
+Rscript tests/scripts/run_operational_soak_gate.R
+```
+
+**2-5) Kademeli merdiven (100 → 250 → 500 → 1000, her adım 90 dk):**
+
+Tek koşumda merdiven modu kademeleri sırayla dener ve ilk başarısız adımda durur;
+son stabil adımı raporlar:
+
+```powershell
+Remove-Item Env:MERGEN_SOAK_PROFILE,Env:MERGEN_SOAK_LLM_MODE,Env:MERGEN_SOAK_CONCURRENT_USERS,Env:MERGEN_SOAK_DURATION_MINUTES,Env:MERGEN_SOAK_CAPACITY_CURVE,Env:MERGEN_SOAK_CAPACITY_LADDER -ErrorAction SilentlyContinue
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
+$env:MERGEN_SOAK_PROFILE = "proxy_llm"
+$env:MERGEN_SOAK_LLM_MODE = "proxy"
+$env:MERGEN_SOAK_CAPACITY_LADDER = "TRUE"
+$env:MERGEN_SOAK_CAPACITY_USERS = "100,250,500,1000"
+$env:MERGEN_SOAK_CAPACITY_STEP_SECONDS = "5400"   # 90 dk/adim
+$env:MERGEN_SOAK_STOP_ON_FIRST_FAILED_STEP = "TRUE"
+$env:MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN = "0.98"
+$env:MERGEN_SOAK_TELEMETRY_ENABLED = "TRUE"
+Rscript tests/scripts/run_operational_soak_gate.R
+```
+
+> Çok uzun tek koşumdan kaçınmak isterseniz her kademeyi ayrı ayrı da
+> çalıştırabilirsiniz: `MERGEN_SOAK_CAPACITY_LADDER=TRUE` +
+> `MERGEN_SOAK_CAPACITY_USERS=100` (tek adım), sonra `=250`, vb.
+
+**DB havuzunu açmak (kademeli koşumlardan önce, VM `.Renviron`):**
+
+```powershell
+$env:MERGEN_DB_POOL_ENABLED = "TRUE"
+$env:MERGEN_DB_POOL_MIN_SIZE = "1"
+$env:MERGEN_DB_POOL_MAX_SIZE = "8"
+# Tam R sürecini yeniden başlatın (tarayıcı yenileme yetmez).
+```
+
+**SQL Server havuz at-rest preflight (havuzu kalıcı açmadan önce):**
+
+```powershell
+$env:MERGEN_DB_POOL_ENABLED = "TRUE"
+$env:MERGEN_SQLSERVER_POOL_PREFLIGHT_REAL = "TRUE"
+$env:MERGEN_SQLSERVER_POOL_WRITE_TEST = "TRUE"
+Rscript tests/scripts/run_vm_sqlserver_pool_preflight_real.R
+```
+
+**Gerçek tarayıcı/websocket eşzamanlılık lane'i (uygulama 8009'da çalışırken):**
+
+```powershell
+$env:MERGEN_BROWSER_CONCURRENCY_ENABLED = "true"
+$env:MERGEN_BROWSER_CONCURRENCY_USERS = "10"
+$env:MERGEN_BROWSER_CONCURRENCY_BASE_URL = "http://127.0.0.1:8009/"
+Rscript tests/scripts/run_browser_concurrency_lane.R
+```
+
+**Gerçek LLM canary + (opsiyonel) küçük throughput probe:**
+
+```powershell
+$env:MERGEN_SOAK_PROFILE = "real_llm"
+$env:MERGEN_SOAK_LLM_MODE = "real-canary"
+$env:MERGEN_REAL_LLM_THROUGHPUT_PROBE = "true"
+$env:MERGEN_REAL_LLM_THROUGHPUT_USERS = "2"
+# Gerçek endpoint/anahtar yalnız operatör kabuğunda; artifact/PR/docs'a yazılmaz.
+Rscript tests/scripts/run_operational_soak_gate.R
+```
+
+### 16.8 CPU / çekirdek ölçeklendirme yorumu
+
+**Daha fazla çekirdek MUHTEMELEN yardımcı olur** (telemetri ile kanıtlanırsa):
+
+- Toplam CPU başarısızlık sırasında doygun (`possible_cpu_saturation`, CPU ≥ %85).
+- Yük üretici CPU-bound (`possible_load_generator_limit`) — yük üreticiyi ayrı
+  makineye taşıyın.
+- SQL Server CPU-bound (`possible_sql_server_contention`).
+- Birden fazla süreç/worker çekirdekleri gerçekten kullanabiliyor.
+
+**Daha fazla çekirdek MUHTEMELEN yardımcı OLMAZ:**
+
+- Tek Shiny event-loop darboğazı (`possible_app_or_event_loop_queueing`: p95
+  patlarken CPU düşük) — bu, dikey çekirdek değil mimari/asenkron iyileştirme ister.
+- DB bloklama/bekleme (havuz/lock).
+- Client timeout çok kısa (gerçek darboğaz değil; `MERGEN_SOAK_CLIENT_TIMEOUT_SECONDS`).
+- Gateway/rate-limit hatası (`gateway_policy_failed`).
+- Yük üretici doygunluğu (sonucu app kapasitesi sanmayın).
+
+### 16.9 Bu sertleştirmeden sonra hâlâ VM-only / UNMEASURED kalan
+
+- Gerçek tarayıcı konsol hataları yalnız browser concurrency lane çalıştığında ölçülür.
+- Gerçek SQL Server havuzlu at-rest davranışı yalnız VM preflight ile kanıtlanır.
+- Gerçek LLM throughput yalnız küçük, tavanlı probe ile gözlemlenir (kapasite değil).
+- Bellek büyümesi/telemetri ancak OS sayaçları okunabildiğinde ölçülür.
+- 1000 gerçek sürekli insan oturumu hiçbir lane tarafından kanıtlanmaz.
