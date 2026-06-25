@@ -60,12 +60,21 @@ srs_run_script <- function(rel, env = character(0), timeout = 120) {
   if (!nzchar(rscript) || !file.exists(rscript)) {
     return(list(status = NA_integer_, stdout = "", stderr = "rscript-not-found"))
   }
+  # Cocuk surece LC_ALL=C.UTF-8 ZORLAMA: Windows R "C.UTF-8" locale'ini DESTEKLEMEZ.
+  # Uretim VM'inde (Turkce/Windows locale) bu deger cocuk R baslangicini bozup
+  # betigin SKIP yoluna ulasmadan sifir-disi cikis vermesine yol acabilir (calisan
+  # uygulama LC_ALL zorlamaz; Turkish_Turkey.UTF-8 kullanir). Bu yuzden Windows'ta
+  # ebeveynin (zaten calisan) locale'ini MIRAS al; yalniz Unix'te determinizm icin zorla.
+  child_env <- c("current", env)
+  if (.Platform$OS.type != "windows") {
+    child_env <- c(child_env, LC_ALL = "C.UTF-8")
+  }
   res <- tryCatch(
     processx::run(
       command = rscript,
       args = srs_script(rel),
       wd = srs_repo_root,
-      env = c("current", env, LC_ALL = "C.UTF-8"),
+      env = child_env,
       error_on_status = FALSE,
       timeout = timeout
     ),
@@ -73,6 +82,17 @@ srs_run_script <- function(rel, env = character(0), timeout = 120) {
   )
   list(status = as.integer(res$status %||% NA_integer_),
        stdout = res$stdout %||% "", stderr = res$stderr %||% "")
+}
+
+# Bir cocuk-surec sonucunu testthat info'suna gomulebilir tek satira indirger.
+# Boylece exit 0 / SKIP beklentisi VM'de basarisiz olursa, gercek cocuk hatasi
+# (stderr) test ciktisinda gorunur ve teshis tahmine kalmaz.
+srs_diag <- function(r) {
+  one_line <- function(x, n) substr(gsub("[[:space:]]+", " ", as.character(x %||% "")), 1L, n)
+  sprintf("status=%s | stdout=%s | stderr=%s",
+          as.character(r$status %||% NA),
+          one_line(r$stdout, 300L),
+          one_line(r$stderr, 600L))
 }
 
 # ------------------------------------------------------------------------------
@@ -126,16 +146,16 @@ testthat::test_that("SQL Server havuz preflight: guard yokken GUVENLE atlar (exi
   r <- srs_run_script("run_vm_sqlserver_pool_preflight_real.R",
                       env = c(MERGEN_SQLSERVER_POOL_PREFLIGHT_REAL = "FALSE"))
   testthat::skip_if(is.na(r$status), "Rscript cocuk sureci calistirilamadi.")
-  testthat::expect_equal(r$status, 0L)
-  testthat::expect_true(grepl("SKIP", r$stdout))
+  testthat::expect_equal(r$status, 0L, info = srs_diag(r))
+  testthat::expect_true(grepl("SKIP", r$stdout), info = srs_diag(r))
 
   # Guard acik ama DB_DSN yok: yine GUVENLE atlar (exit 0 + SKIP).
   r2 <- srs_run_script("run_vm_sqlserver_pool_preflight_real.R",
                        env = c(MERGEN_SQLSERVER_POOL_PREFLIGHT_REAL = "TRUE",
                                MERGEN_DB_POOL_ENABLED = "TRUE",
                                DB_DSN = ""))
-  testthat::expect_equal(r2$status, 0L)
-  testthat::expect_true(grepl("SKIP", r2$stdout))
+  testthat::expect_equal(r2$status, 0L, info = srs_diag(r2))
+  testthat::expect_true(grepl("SKIP", r2$stdout), info = srs_diag(r2))
 })
 
 # ------------------------------------------------------------------------------
@@ -147,14 +167,14 @@ testthat::test_that("Browser eszamanlilik lane: etkin degilken/uygulamasiz GUVEN
   r <- srs_run_script("run_browser_concurrency_lane.R",
                       env = c(MERGEN_BROWSER_CONCURRENCY_ENABLED = "false"))
   testthat::skip_if(is.na(r$status), "Rscript cocuk sureci calistirilamadi.")
-  testthat::expect_equal(r$status, 0L)
-  testthat::expect_true(grepl("SKIP", r$stdout))
+  testthat::expect_equal(r$status, 0L, info = srs_diag(r))
+  testthat::expect_true(grepl("SKIP", r$stdout), info = srs_diag(r))
 
   # Etkin ama erisilemez uygulama + sahte tarayici binary: exit 0 + SKIP.
   r2 <- srs_run_script("run_browser_concurrency_lane.R",
                        env = c(MERGEN_BROWSER_CONCURRENCY_ENABLED = "true",
                                MERGEN_BROWSER_BIN = "/bin/true",
                                MERGEN_BROWSER_CONCURRENCY_BASE_URL = "http://127.0.0.1:59997/"))
-  testthat::expect_equal(r2$status, 0L)
-  testthat::expect_true(grepl("SKIP", r2$stdout))
+  testthat::expect_equal(r2$status, 0L, info = srs_diag(r2))
+  testthat::expect_true(grepl("SKIP", r2$stdout), info = srs_diag(r2))
 })

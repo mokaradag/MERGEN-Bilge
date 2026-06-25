@@ -351,6 +351,45 @@ test_that("failure-result erken-cikis icin fail kaydi uretir", {
   expect_identical(mergen_post_deploy_smoke_failure_result(NULL)$reason, "unknown_failure")
 })
 
+# --- git alan değeri temizleme (mergen_post_deploy_smoke_clean_git_value) ----
+
+test_that("git hata ciktisi/sifir-disi cikis dal/sha yerine bos string verir", {
+  # Üretim VM'i git deposu değilse system2 sıfır-dışı status + "fatal:" metni döner.
+  fatal_out <- "fatal: not a git repository (or any of the parent directories): .git"
+  expect_identical(
+    mergen_post_deploy_smoke_clean_git_value(fatal_out, status = 128L),
+    ""
+  )
+  # Status verilmese bile "fatal:" öneki dal/sha olamaz → boş.
+  expect_identical(mergen_post_deploy_smoke_clean_git_value(fatal_out, status = NULL), "")
+  # Diğer git hata önekleri de korunur.
+  expect_identical(mergen_post_deploy_smoke_clean_git_value("error: bir sey", NULL), "")
+  expect_identical(mergen_post_deploy_smoke_clean_git_value("usage: git ...", NULL), "")
+})
+
+test_that("basarili git ciktisi gercek dal/sha degerini korur", {
+  # Başarı: status sıfır (veya NULL/attr yok) → gerçek değer aynen döner.
+  expect_identical(
+    mergen_post_deploy_smoke_clean_git_value("claude/admiring-ride-qajux6", status = 0L),
+    "claude/admiring-ride-qajux6"
+  )
+  expect_identical(
+    mergen_post_deploy_smoke_clean_git_value("abc1234", status = NULL),
+    "abc1234"
+  )
+  # Birden çok satırda yalnızca ilk satır kullanılır; baştaki/sondaki boşluk kırpılır.
+  expect_identical(
+    mergen_post_deploy_smoke_clean_git_value(c("  main  ", "ek"), status = 0L),
+    "main"
+  )
+})
+
+test_that("bos/NULL git ciktisi guvenle bos string verir", {
+  expect_identical(mergen_post_deploy_smoke_clean_git_value(character(0), NULL), "")
+  expect_identical(mergen_post_deploy_smoke_clean_git_value(NULL, NULL), "")
+  expect_identical(mergen_post_deploy_smoke_clean_git_value("", 0L), "")
+})
+
 # --- Kapı betiği sözleşmesi --------------------------------------------------
 
 test_that("run_post_deploy_smoke.R kapi sozlesmesini icerir", {
