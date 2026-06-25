@@ -427,6 +427,9 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
 
 - Health panel, dosya deposu, log dizini, runtime ve sistem sinyallerini değerlendirmek için kullanılır.
 - Log dizini `.Renviron` içindeki `MERGEN_LOG_DIR` veya uygulama varsayımlarıyla belirlenir.
+  Canlı izleyici/başlatıcı uygulama klasörünün yerel `logs\` dizinini varsaydığından,
+  `MERGEN_LOG_DIR`'in oraya çözülmesi önerilir (ayrıntı ve "günlük log boş"
+  sorun giderme: bölüm "4. İzleme ve Olay Müdahalesi").
 - Son uygulama logunu görüntülemek için `view_latest_mergen_app_log.bat` kullanılabilir.
 - Loglarda secret, token, API key, auth header veya parola bulunmamalıdır.
 - **Sistem Durumu > Doğrulama Kanıtı sekmesi:** Operatör, uygulamayı kapatmadan en
@@ -810,6 +813,35 @@ Uygulama ayağa kalktıktan sonra **gerçekten hizmet verip vermediğini** doğr
 - **Canlı log:** `view_latest_mergen_app_log.bat` en yeni `logs/mergen_YYYYMMDD.log`
   dosyasını salt-okunur izler (uygulamayı durdurmaz).
 - **Başlangıç tanılaması:** `logs/run_mergen_prod_console.log`.
+- **Sorun giderme — günlük `mergen_YYYYMMDD.log` boş, her şey
+  `run_mergen_prod_console.log`'a yazılıyor:** Bu bir KODLAMA/yazma hatası DEĞİL,
+  bir DİZİN UYUMSUZLUĞUDUR. Uygulama günlük logu `.Renviron` içindeki
+  `MERGEN_LOG_DIR`'e yazar (Sistem Durumu > "Günlük Log Sağlığı" kartı, incelenen
+  gerçek dosya yolunu ve satır sayısını gösterir — log gerçekten oraya yazılıyorsa
+  satır sayısı > 0 olur). Ancak `run_mergen_prod.bat` bugünün `mergen_*.log`
+  dosyasını UYGULAMA KLASÖRÜNÜN yerel `logs\` dizininde ön-oluşturur ve
+  `view_latest_mergen_app_log.bat` AYNI yerel `logs\` dizinini izler. Eğer
+  `MERGEN_LOG_DIR` farklı/merkezî bir paylaşıma işaret ediyorsa, yerel dosya boş
+  görünür. **Çözüm (önerilen, sıfır başlatıcı riski):** `.Renviron` içinde
+  `MERGEN_LOG_DIR`'i uygulama klasörünün KENDİ `logs` dizinine ayarlayın (ör.
+  `MERGEN_LOG_DIR="//.../MERGEN Bilge/logs"`) veya satırı tamamen kaldırın
+  (kaldırılırsa uygulama varsayılan olarak çalışma dizini\logs = uygulama
+  klasörü\logs kullanır). Değişiklikten sonra TÜM R sürecini yeniden başlatın
+  (tarayıcı yenilemesi yetmez). Bunu doğrulamak için
+  `Rscript -e "readRenviron('.Renviron'); cat(normalizePath(Sys.getenv('MERGEN_LOG_DIR','logs'), mustWork=FALSE))"`
+  çıktısının `view_latest_mergen_app_log.bat`'in izlediği `logs` dizinine
+  çözüldüğünü kontrol edin.
+- **`run_mergen_prod_console.log` sürekli büyüyor:** Bu dosya, tek-iş-parçacıklı
+  Shiny olay döngüsünün konsol durumundan (metin seçimi/Ctrl+S) donmasını
+  önlemek için stdout/stderr'in yönlendirildiği BİLİNÇLİ bir yakalama (catch-all)
+  dosyasıdır; konsol appender'ı logger çıktısını da buraya kopyalar. `run_mergen_prod.bat`
+  her koşumda `>>` ile EKLEDİĞİ için süreçler arasında büyür. Günlük log
+  yukarıdaki düzeltmeyle düzgün çalıştığında bu dosya ikincil kalır. Büyümeyi
+  sınırlamak için seçenekler: (a) dosyayı periyodik olarak elle temizleyin;
+  (b) her başlatmada sıfırlamak isterseniz `run_mergen_prod.bat` içindeki
+  `>> "logs\run_mergen_prod_console.log"` ifadesini `> "logs\run_mergen_prod_console.log"`
+  yapın (geçmişi koşum başına sıfırlar). Bu BAT düzenlemesi isteğe bağlıdır ve
+  bu sürümde başlatıcıda yapılmamıştır.
 - **Yapılandırılmış hata kaydı:** runtime hataları artık tek satır halinde
   `[RUNTIME_ERROR]` etiketiyle (bağlam + redakte edilmiş mesaj + hata sınıfı + zaman damgası)
   loglanır. Olay incelemesinde önce bu satırları arayın.

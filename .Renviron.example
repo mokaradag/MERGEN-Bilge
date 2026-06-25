@@ -106,6 +106,22 @@ MERGEN_FILES_ROOT="//mainserver/MERGEN Bilge/data"
 MERGEN_UPLOADS_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
 MERGEN_INDEX_PATH="//mainserver/MERGEN Bilge/data/index.json"
 MERGEN_MCP_BASE_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
+
+# Günlük log dizini. Uygulama, günlük dosyasını (mergen_YYYYMMDD.log) BU dizine
+# yazar. ÖNEMLİ: Üretim başlatıcısı (run_mergen_prod.bat) bugünün mergen_*.log
+# dosyasını UYGULAMA KLASÖRÜNÜN yerel "logs\" dizininde ön-oluşturur ve canlı
+# izleyici (view_latest_mergen_app_log.bat) AYNI yerel "logs\" dizinini izler.
+# Bu yüzden canlı izleyicinin/operatörün baktığı yerde günlük logun dolması için
+# MERGEN_LOG_DIR'in uygulama klasörünün KENDİ "logs" dizinine çözülmesi GEREKİR.
+# Önerilen (yerel, sıfır risk): bu satırı uygulama klasörünün "logs" dizinine
+# ayarlayın ya da satırı kaldırın (kaldırılırsa uygulama varsayılan olarak
+# çalışma dizini\logs = uygulama klasörü\logs kullanır).
+#   Örnek: MERGEN_LOG_DIR="//mainserver/MERGEN Bilge/logs"  (uygulama klasörünüzün logs dizini)
+# Eğer MERGEN_LOG_DIR'i farklı/merkezî bir paylaşıma yönlendirirseniz, uygulama
+# loglarını oraya yazmaya devam eder; ancak BAT'in ön-oluşturduğu yerel dosya ve
+# canlı izleyici BOŞ görünür. Bu durumda günlük logu yapılandırdığınız
+# MERGEN_LOG_DIR yolunda arayın (Sistem Durumu > "Günlük Log Sağlığı" kartı
+# incelenen dosya yolunu gösterir).
 MERGEN_LOG_DIR="//mainserver/MERGEN Bilge/logs"
 
 SERVICE_DESK_API_KEY_URL=https://<your-servicedesk>/api-key
