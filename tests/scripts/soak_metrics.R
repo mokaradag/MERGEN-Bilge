@@ -187,9 +187,11 @@ soak_metrics_count <- function(m) m$n
 # Belirli bir kayit araligi (from..to) icin ozet (kapasite egrisi adimlari).
 # wall_seconds verilirse throughput paydasi olarak kullanilir (yuk-penceresi
 # suresi); aksi halde tamamlanma zaman damgasi araligi kullanilir.
-soak_metrics_slice_summary <- function(m, from_idx, to_idx = m$n, wall_seconds = NULL) {
+soak_metrics_slice_summary <- function(m, from_idx, to_idx = m$n, wall_seconds = NULL,
+                                       injected_faults = 0L) {
   if (m$n == 0L || from_idx > to_idx) {
     return(list(requests = 0L, success = 0L, errors = 0L, timeouts = 0L,
+                injected_faults = 0L,
                 success_rate = NA_real_, effective_success_rate = NA_real_,
                 p50_latency_ms = NA_real_, p95_latency_ms = NA_real_,
                 p99_latency_ms = NA_real_, throughput_ops_per_min = 0))
@@ -208,16 +210,28 @@ soak_metrics_slice_summary <- function(m, from_idx, to_idx = m$n, wall_seconds =
   } else {
     max(1e-6, max(ts) - min(ts))
   }
-  # Kapasite merdiveni adimlarinda hata-enjeksiyonu KOSULMAZ (ayri probe), bu
-  # yuzden dilim icin effective == raw success rate.
+  # Etkin oran (effective_success_rate): fake/proxy mock'unun KASITLI enjekte
+  # ettigi faultlar (http500/http429/timeout) yuk fazinda SUREKLI kosar; bu
+  # yuzden dilim icin effective == raw VARSAYIMI YANLISTI. Kasitli enjekte
+  # faultlari dilim basari oranindan dus; yalnizca BEKLENMEYEN (gercek) faultlar
+  # adim basarisini etkilemeli. Aksi halde varsayilan ~%3 sahte LLM faulti,
+  # saglikli bir merdiveni stable_success_rate_min (varsayilan 0.98) altinda ilk
+  # adimda FAIL ettirir. injected_faults bu dilimin sunucu case_counts
+  # deltasindan gelir (yoksa 0 -> effective == raw, daha katidir). Bu mantik
+  # genel soak_evidence etkin-oran hesabiyla AYNIDIR (gozlenen - enjekte).
   rate <- round(success / n, 4)
+  observed_faults <- errors + timeouts
+  inj <- max(0L, as.integer(injected_faults %||% 0L))
+  unexpected_faults <- max(0L, observed_faults - inj)
+  effective <- round((n - unexpected_faults) / n, 4)
   list(
     requests = as.integer(n),
     success = as.integer(success),
     errors = as.integer(errors),
     timeouts = as.integer(timeouts),
+    injected_faults = inj,
     success_rate = rate,
-    effective_success_rate = rate,
+    effective_success_rate = effective,
     p50_latency_ms = round(soak_percentile(ok_latency, 0.50), 1),
     p95_latency_ms = round(soak_percentile(ok_latency, 0.95), 1),
     p99_latency_ms = round(soak_percentile(ok_latency, 0.99), 1),

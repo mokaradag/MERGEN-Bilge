@@ -73,7 +73,11 @@ cfg <- list(
   enabled = bc_flag("MERGEN_BROWSER_CONCURRENCY_ENABLED", FALSE),
   users = max(1L, bc_int("MERGEN_BROWSER_CONCURRENCY_USERS", 10L)),
   max_users = max(1L, bc_int("MERGEN_BROWSER_CONCURRENCY_MAX_USERS", 50L)),
-  duration_sec = max(30L, bc_int("MERGEN_BROWSER_CONCURRENCY_DURATION_SECONDS", 300L)),
+  # NOT: Bu lane Chrome `--virtual-time-budget` ile KISA-OMURLU bir sanal-zaman
+  # gecisi calistirir; gercek duvar-saati suresince surekli oturum DEGILDIR. Bu
+  # yuzden bir `duration_seconds` ayari okumaz/raporlamaz (yanilticiydi: 300s
+  # raporlanip aslinda tek bir ~120s sanal-zaman gecisi kosuluyordu). Gercekte
+  # kosumu yoneten tek deger virtual_time_ms'tir ve kanitta o raporlanir.
   base_url = sub("/+$", "", bc_str("MERGEN_BROWSER_CONCURRENCY_BASE_URL", "http://127.0.0.1:8009/")),
   headless = bc_flag("MERGEN_BROWSER_CONCURRENCY_HEADLESS", TRUE),
   target = bc_str("MERGEN_BROWSER_CONCURRENCY_TARGET", "/smoke/ux-smoke.html"),
@@ -97,7 +101,10 @@ bc_summary <- list(
   configured_users = cfg$users,
   max_users = cfg$max_users,
   user_cap_applied = cap_applied,
-  duration_seconds = cfg$duration_sec,
+  # Kosumu gercekten yoneten deger (sanal-zaman butcesi); duvar-saati araligi
+  # asagida per_timeout hesaplandiginda wait_deadline_seconds olarak eklenir.
+  virtual_time_ms = cfg$virtual_time_ms,
+  wait_deadline_seconds = NA_integer_,
   base_url = cfg$base_url,
   target = cfg$target,
   headless = cfg$headless,
@@ -113,6 +120,7 @@ bc_summary <- list(
   does_prove = character(0),
   does_not_prove = c(
     "Surekli (sustained) gercek insan chat is yukunu KANITLAMAZ; bunlar KISA-OMURLU oturumlardir.",
+    "Belirli bir duvar-saati SURESINCE yuk KANITLAMAZ; her oturum virtual_time_ms sanal-zaman butcesiyle sinirlidir.",
     "1000 gercek eszamanli insan oturumunu KANITLAMAZ (kullanici tavani uygulanir).",
     "Gercek LLM saglayici throughput'unu KANITLAMAZ."
   )
@@ -124,9 +132,12 @@ bc_finish <- function(skipped_reason = NA_character_) {
   dir.create(bc_artifact_dir, recursive = TRUE, showWarnings = FALSE)
   jsonlite::write_json(bc_summary, file.path(bc_artifact_dir, "browser_concurrency_summary.json"),
                        auto_unbox = TRUE, pretty = TRUE, null = "null")
-  # Redaksiyon: tum metin artifact'larini yerinde redakte et.
+  # Redaksiyon: tum metin artifact'larini yerinde redakte et. session-*-dom.html
+  # DOM dokumleri (--dump-dom) gercek VM/SSO uygulamasina karsi calistiginda
+  # render edilmis kullanici verisi, ic URL veya sayfada gorunen token icerebilir;
+  # bu yuzden HTML de ayni secret-safe redaksiyon gecisinden gecmelidir.
   for (af in list.files(bc_artifact_dir, full.names = TRUE)) {
-    if (grepl("\\.(json|jsonl|csv|log)$", af)) {
+    if (grepl("\\.(json|jsonl|csv|log|html)$", af)) {
       raw <- tryCatch(readLines(af, warn = FALSE, encoding = "UTF-8"), error = function(e) character(0))
       if (length(raw) > 0L) writeLines(bc_redact(paste(raw, collapse = "\n")), af, useBytes = TRUE)
     }
@@ -207,6 +218,10 @@ if (!isTRUE(cfg$enabled)) {
 
     headless_arg <- if (isTRUE(cfg$headless)) "--headless=new" else "--headless"
     per_timeout <- max(60L, as.integer(cfg$virtual_time_ms / 1000) + 45L)
+    # Kanitta gercek duvar-saati bekleme tavanini raporla (sanal-zaman gecisinin
+    # tamamlanmasi icin verilen ust sinir); operatorler kosumun ne kadar
+    # bekledigini bu degerden gorur.
+    bc_summary$wait_deadline_seconds <- per_timeout
 
     # N oturumu AYNI ANDA baslat (gercek eszamanli websocket).
     procs <- vector("list", cfg$users)

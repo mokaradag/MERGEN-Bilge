@@ -82,7 +82,7 @@ Bu katman bunu şöyle çözer:
 | `MERGEN_DB_POOL_MIN_SIZE` | `1` | Minimum havuz boyutu. |
 | `MERGEN_DB_POOL_MAX_SIZE` | `8` | Maksimum havuz boyutu. |
 | `MERGEN_DB_POOL_IDLE_TIMEOUT` | `600` | Boşta bağlantı zaman aşımı (sn). |
-| `MERGEN_DB_POOL_VALIDATION_INTERVAL` | `60` | Bağlantı doğrulama aralığı (sn). |
+| `MERGEN_DB_POOL_VALIDATION_INTERVAL` | `60` | **Geriye dönük uyumluluk / raporlama içindir; ARTIK havuzun arka plan doğrulama döngüsünü sürmez** (bkz. 4.1). `db_pool_config()` ve durum snapshot'ı için okunur. |
 
 Varsayılanlar bilinçli olarak korumacıdır (tek Shiny süreci + SQL Server için
 makul). Encoding sözleşmesi havuzda da korunur: `init_db_pool_once()` üretim
@@ -90,6 +90,36 @@ ODBC havuzunu `encoding = .DEFAULT_DB_CLIENT_ENCODING`,
 `name_encoding = .DEFAULT_DB_NAME_ENCODING` ile kurar; yani
 `DB_CLIENT_ENCODING=WINDOWS-1254` / `DB_NAME_ENCODING=WINDOWS-1254` Türkçe
 ayarları havuzlu bağlantılara da uygulanır.
+
+### 4.1. Arka plan doğrulama KAPALI (üretim çökme koruması — KRİTİK)
+
+`pool` paketinde `release()`, iade edilen **her** bağlantı için
+`validationInterval > 0` iken `later` üzerinde **tekrarlayan** bir arka plan
+doğrulama görevi (`scheduleTaskRecurring`) zamanlar. Bu görev periyodik olarak
+`checkObjectValid()` çağırır; bağlantı boştayken kopmuşsa (08S01 "İletişim
+bağlantısı hatası") yeni bir bağlantı kurmayı dener. Yeni `dbConnect()` geçici
+bir oturum-açma zaman aşımıyla (08001 "Login timeout expired") başarısız olursa,
+hata bu `later` geri çağrısının **DIŞINA yakalanmadan sızar ve tüm `runApp()`
+sürecini sonlandırır** (uygulama tamamen çöker). Bu hata uygulama kodundaki
+`tryCatch` ile yakalanamaz; çünkü havuzun **kendi** arka plan görevinde, hiçbir
+observer/handler bağlamı dışında oluşur. (Gözlenen üretim çökmesi: SQL Server'a
+geçici erişim kaybında havuz "Failed to activate and/or validate existing
+object." → "Trying again with a new object." → 08001 ile `run_mergen_app`'i
+sonlandırdı.)
+
+Bu yüzden `R/helpers_db_pool.R::.db_pool_build_default()` üretim ODBC havuzunu
+**`validationInterval = 0`** ile kurar. Bu, arka plan tekrarlayan doğrulama
+görevini **tamamen** devre dışı bırakır. Doğrulama yalnızca **checkout (ödünç
+alma) anında** `validateQuery = "SELECT 1"` ile yapılır; kopuk bağlantı checkout
+sırasında senkron olarak tespit edilip değiştirilir, yeni bağlantı kurulamazsa
+hata **senkron** olarak çağıranın `tryCatch`'ine düşer (`save_message_to_db`
+gibi yazma yolları zaten yakalar) ve uygulamayı çökertmez. Maliyet: her ödünç
+almada bir `SELECT 1`; bu, bağlan/kapan döngüsünden kaçınmanın yanında ihmal
+edilebilir ve çökme yerine tercih edilir.
+
+`MERGEN_DB_POOL_VALIDATION_INTERVAL` değerini `.db_pool_build_default()` içinde
+`pool::dbPool(...)`'a geri bağlamayın; bu, çökme regresyonunu geri getirir.
+Sözleşme `tests/testthat/test-db-pool-behavior.R` ile kilitlenmiştir.
 
 ---
 

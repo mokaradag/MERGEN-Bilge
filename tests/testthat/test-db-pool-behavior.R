@@ -126,6 +126,27 @@ test_that("db_pool_config env override + korumacı varsayılanlar", {
   })
 })
 
+test_that(".db_pool_build_default arka plan doğrulama görevini KAPATIR (validationInterval = 0)", {
+  # Üretim çökme regresyon koruması: pool::release(), iade edilen her bağlantı
+  # için validationInterval > 0 iken `later` üzerinde tekrarlayan bir arka plan
+  # doğrulama görevi zamanlar. O görevdeki yakalanmamış dbConnect hatası (geçici
+  # 08001 oturum-açma zaman aşımı) tüm runApp() sürecini çökertir ve uygulama
+  # kodundaki tryCatch ile yakalanamaz. Bu yüzden üretim ODBC havuzu MUTLAKA
+  # validationInterval = 0 ile kurulmalı (doğrulama yalnızca checkout anında,
+  # senkron ve çağıran tarafından yakalanabilir). Bunu cfg$validation_interval_sec'e
+  # geri bağlamak çökme regresyonunu geri getirir.
+  skip_if(!exists(".db_pool_build_default", inherits = TRUE))
+  fn_no_ws <- gsub("[[:space:]]+", "", paste(deparse(body(.db_pool_build_default)), collapse = "\n"))
+
+  # Arka plan döngüsünü kapatan tek güvenli değer 0 olmalı.
+  expect_true(grepl("validationInterval=0", fn_no_ws, fixed = TRUE))
+  # Eski (çökme yaratan) bağlama geri gelmemeli.
+  expect_false(grepl("validationInterval=cfg$validation_interval_sec", fn_no_ws, fixed = TRUE))
+  # Checkout anında doğrulama (SELECT 1) korunmalı; aksi halde kopuk bağlantılar
+  # checkout'ta tespit edilip değiştirilemez.
+  expect_true(grepl("validateQuery", fn_no_ws, fixed = TRUE))
+})
+
 test_that("init_db_pool_once havuz kapalıyken sessizce atlar (NULL)", {
   withr::with_envvar(list(MERGEN_DB_POOL_ENABLED = "false"), {
     res <- init_db_pool_once("primary")
