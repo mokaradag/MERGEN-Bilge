@@ -36,6 +36,43 @@
   if (status %in% known) status else "unknown"
 }
 
+# Bir `git` çağrısının (system2) çıktısından GÜVENLİ bir alan değeri üretir.
+# Üretim VM'i bir git deposu OLMAYABİLİR (on-prem çalışma kopyası); bu durumda
+# `git rev-parse ...` sıfır-dışı çıkış kodu üretir ve stderr'e
+# "fatal: not a git repository (or any of the parent directories): .git" yazar.
+# Eski davranış, bu hata metnini dal/sha gibi kanıt artifact'ına (git.branch /
+# git.sha) yazıyordu. Bu yardımcı bunu engeller: çıkış kodu sıfır değilse, çıktı
+# boşsa ya da değer bir git hata önekiyle (fatal:/error:/warning:/usage:)
+# başlıyorsa "" döner. SAF fonksiyondur (system2 çağırmaz); çağıran çıktıyı ve
+# status'u verir, böylece izole test edilebilir.
+mergen_post_deploy_smoke_clean_git_value <- function(output, status = NULL) {
+  if (!is.null(status) && length(status) >= 1L && !is.na(status[1])) {
+    st <- suppressWarnings(as.integer(status[1]))
+    if (!is.na(st) && st != 0L) {
+      return("")
+    }
+  }
+
+  if (is.null(output) || length(output) == 0L) {
+    return("")
+  }
+
+  value <- trimws(as.character(output[1]))
+  if (length(value) != 1L || is.na(value) || !nzchar(value)) {
+    return("")
+  }
+
+  low <- tolower(value)
+  git_error_prefixes <- c("fatal:", "error:", "warning:", "usage:")
+  for (prefix in git_error_prefixes) {
+    if (startsWith(low, prefix)) {
+      return("")
+    }
+  }
+
+  value
+}
+
 # Toplanan sağlık kontrol sonuçlarından dağıtım sonrası genel durumu hesaplar.
 #
 # Argümanlar:

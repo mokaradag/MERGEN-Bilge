@@ -76,9 +76,12 @@ source("tests/scripts/helpers_post_deploy_smoke.R", encoding = "UTF-8")
 .smoke_git_field <- function(args) {
   out <- tryCatch(
     suppressWarnings(system2("git", args, stdout = TRUE, stderr = TRUE)),
-    error = function(e) character(0)
+    error = function(e) NULL
   )
-  if (length(out) == 0L) "" else trimws(out[1])
+  # git başarısızsa (ör. üretim VM'i bir git deposu değilse) çıkış kodu sıfır
+  # değildir ve "fatal: not a git repository ..." metni döner; bunu dal/sha gibi
+  # artifact'a yazmamak için şema-koruyan, izole test edilebilir yardımcıdan geçir.
+  mergen_post_deploy_smoke_clean_git_value(out, attr(out, "status"))
 }
 
 # Kritik kontrol kimlikleri ve fail_on_unknown yalnızca env'e bağlıdır; hem erken

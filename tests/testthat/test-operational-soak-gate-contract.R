@@ -613,10 +613,22 @@ testthat::test_that("telemetri arka surec: gercek ornek + ozet uretir (offline)"
   dir.create(ad, recursive = TRUE, showWarnings = FALSE)
   on.exit(unlink(ad, recursive = TRUE), add = TRUE)
 
+  # max_seconds, arka telemetri surecinin asagidaki poll deadline'i dolmadan
+  # KENDILIGINDEN durmamasi icin yeterince buyuk olmalidir.
   h <- env$soak_telemetry_start(ad, list(enabled = TRUE, interval_sec = 1L, app_port = 8009L),
-                                max_seconds = 20, loadgen_pid = Sys.getpid())
+                                max_seconds = 90, loadgen_pid = Sys.getpid())
   testthat::skip_if_not(isTRUE(h$started), "telemetri arka surec baslamadi")
-  Sys.sleep(3)
+  # Sabit kisa bekleme yerine EN AZ BIR VERI satiri yazilana kadar bekle. Windows
+  # VM'de ilk ornek birden cok PowerShell alt-sureci (Get-CimInstance / Get-Process /
+  # Get-NetTCPConnection) calistirdigi icin tek bir ornek 3 saniyeden uzun surebilir;
+  # sabit Sys.sleep(3) CSV'de yalnizca basligin kalmasina (samples=0) yol acardi.
+  # Poll, Linux'ta ~1 sn icinde cikar, yavas VM'de sabirla bekler.
+  poll_deadline <- Sys.time() + 60
+  repeat {
+    s_poll <- env$soak_telemetry_summarize(h$csv_path)
+    if (isTRUE(s_poll$samples >= 1L) || Sys.time() >= poll_deadline) break
+    Sys.sleep(0.5)
+  }
   env$soak_telemetry_stop(h)
   testthat::expect_true(file.exists(h$csv_path))
   s <- env$soak_telemetry_summarize(h$csv_path)
