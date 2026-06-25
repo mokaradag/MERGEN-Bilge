@@ -222,6 +222,30 @@ init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE)
     stop(sprintf("Havuz icin '%s' DSN tanimi yok.", dsn_var), call. = FALSE)
   }
 
+  # KRİTİK (üretim çökme koruması): pool::release(), iade edilen HER bağlantı
+  # için validationInterval > 0 olduğunda `later` üzerinde TEKRARLAYAN bir arka
+  # plan doğrulama görevi (scheduleTaskRecurring) zamanlar. Bu görev periyodik
+  # olarak checkObjectValid() çağırır; bağlantı boştayken kopmuşsa (08S01)
+  # yenisini kurmayı dener. Yeni dbConnect() geçici bir oturum-açma zaman
+  # aşımıyla (08001 / "Login timeout expired") başarısız olursa, hata bu `later`
+  # geri çağrısının DIŞINA YAKALANMADAN sızar ve tüm runApp() sürecini
+  # sonlandırır (uygulama tamamen çöker). Bu hata uygulama kodundaki tryCatch
+  # ile yakalanamaz; çünkü havuzun KENDİ arka plan görevinde, herhangi bir
+  # observer/handler bağlamı dışında oluşur.
+  #
+  # Çözüm: validationInterval = 0. Bu, arka plan tekrarlayan doğrulama görevini
+  # TAMAMEN devre dışı bırakır. Doğrulama yalnızca checkout (ödünç alma) anında
+  # validateQuery = "SELECT 1" ile yapılır (validationInterval = 0 iken pool her
+  # ödünç almada doğrular). Kopuk bir bağlantı checkout sırasında senkron olarak
+  # tespit edilip değiştirilir; yeni bağlantı kurulamazsa hata SENKRON olarak
+  # çağıranın tryCatch'ine düşer (save_message_to_db gibi yazma yolları bunu
+  # zaten yakalar) ve uygulamayı çökertmez.
+  #
+  # MERGEN_DB_POOL_VALIDATION_INTERVAL ortam değişkeni geriye dönük uyumluluk
+  # için db_pool_config() tarafından okunmaya devam eder (durum/snapshot raporu),
+  # ancak ARTIK havuzun arka plan döngüsünü SÜRMEZ; üretim Shiny + later
+  # bağlamında güvenli olan tek değer 0'dır. Bunu cfg$validation_interval_sec'e
+  # geri bağlamayın (çökme regresyonu yaratır).
   pool::dbPool(
     drv = odbc::odbc(),
     dsn = dsn_name,
@@ -230,7 +254,7 @@ init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE)
     minSize = cfg$min_size,
     maxSize = cfg$max_size,
     idleTimeout = cfg$idle_timeout_sec,
-    validationInterval = cfg$validation_interval_sec,
+    validationInterval = 0,
     validateQuery = "SELECT 1"
   )
 }

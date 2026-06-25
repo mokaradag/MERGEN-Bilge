@@ -32,6 +32,12 @@ MERGEN_DB_POOL_ENABLED=FALSE
 MERGEN_DB_POOL_MIN_SIZE=1
 MERGEN_DB_POOL_MAX_SIZE=8
 MERGEN_DB_POOL_IDLE_TIMEOUT=600
+# NOT: Havuz, bağlantıları yalnızca CHECKOUT anında (SELECT 1) doğrular. pool'un
+# `later` üzerindeki TEKRARLAYAN arka plan doğrulaması bilerek KAPALIDIR
+# (validationInterval=0): geçici SQL Server kopmasında o görevdeki yakalanmamış
+# dbConnect hatasi tum uygulamayi cokertiyordu. Bu deger artik yalnizca
+# geriye donuk uyumluluk/raporlama icindir; havuz davranisini DEGISTIRMEZ
+# (bkz. docs/database-pooling.md 4.1).
 MERGEN_DB_POOL_VALIDATION_INTERVAL=60
 
 # ------------------------------------------------------------------------------
