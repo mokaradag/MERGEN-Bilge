@@ -327,16 +327,36 @@ main_result <- tryCatch({
                   paste(cfg$capacity_ladder_users, collapse = ","),
                   cfg$capacity_ladder_step_seconds, cfg$stable_success_rate_min))
       step_rows <- list()
+      # Adim basina KASITLI enjekte fault sayisi: sunucu (fake/proxy mock)
+      # case_counts kumulatif sayacinin adim oncesi/sonrasi DELTASI. Bu, dilim
+      # etkin oranindan dusulur; boylece varsayilan ~%3 sahte LLM faulti merdiveni
+      # haksiz yere FAIL ettirmez. Sunucu yoksa/erisilemezse NA -> 0 (effective ==
+      # raw, daha kati). Genel soak_evidence ile ayni case_counts kaynagini kullanir.
+      ladder_injected_now <- function() {
+        if (is.null(server_handle) || is.null(server_handle$summary_url)) return(NA_integer_)
+        ss <- tryCatch(curl::curl_fetch_memory(server_handle$summary_url), error = function(e) NULL)
+        if (is.null(ss) || !identical(as.integer(ss$status_code), 200L)) return(NA_integer_)
+        sm <- tryCatch(jsonlite::fromJSON(rawToChar(ss$content), simplifyVector = TRUE),
+                       error = function(e) NULL)
+        if (is.null(sm)) return(NA_integer_)
+        as.integer(soak_injected_fault_count(sm$case_counts))
+      }
       for (uc in cfg$capacity_ladder_users) {
         from_idx <- soak_metrics_count(metrics) + 1L
+        inj_before <- ladder_injected_now()
         uk <- soak_make_user_keys(uc, cfg$llm_lane)
         step_start <- as.numeric(Sys.time())
         cat(sprintf("  - %d kullanici / %ds ...\n", uc, cfg$capacity_ladder_step_seconds))
         soak_http_load(load_url, cfg, metrics, cfg$capacity_ladder_step_seconds,
                        uc, uk, cfg$llm_lane)
         step_end <- as.numeric(Sys.time())
+        inj_after <- ladder_injected_now()
+        step_injected <- if (is.finite(inj_before) && is.finite(inj_after)) {
+          max(0L, as.integer(inj_after - inj_before))
+        } else 0L
         s <- soak_metrics_slice_summary(metrics, from_idx,
-                                        wall_seconds = cfg$capacity_ladder_step_seconds)
+                                        wall_seconds = cfg$capacity_ladder_step_seconds,
+                                        injected_faults = step_injected)
         tel_win <- if (!is.null(telemetry_handle) && isTRUE(telemetry_handle$started)) {
           tryCatch(soak_telemetry_window_summary(telemetry_handle$csv_path, step_start, step_end),
                    error = function(e) list(telemetry_available = FALSE))
@@ -350,6 +370,7 @@ main_result <- tryCatch({
         step_rows[[length(step_rows) + 1L]] <- list(
           users = uc, duration_seconds = cfg$capacity_ladder_step_seconds,
           requests = s$requests, success = s$success, errors = s$errors, timeouts = s$timeouts,
+          injected_faults = s$injected_faults %||% 0L,
           raw_success_rate = s$success_rate, effective_success_rate = s$effective_success_rate,
           p50_latency_ms = s$p50_latency_ms, p95_latency_ms = s$p95_latency_ms,
           p99_latency_ms = s$p99_latency_ms, throughput_ops_per_min = s$throughput_ops_per_min,

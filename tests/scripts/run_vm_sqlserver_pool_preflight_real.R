@@ -292,7 +292,13 @@ if (!sqlpf_bool("MERGEN_SQLSERVER_POOL_PREFLIGHT_REAL", FALSE)) {
 
       # 3) Yazma testi (opsiyonel): benzersiz etiketli tablo + commit/rollback/at-rest.
       if (isTRUE(write_test)) {
-        tbl <- sprintf("MB_SoakPoolPreflight_%s_%d", sqlpf_ts,
+        # SQL Server duzenli (regular) tanimlayicilari tire (-) iceremez; sqlpf_ts
+        # "%Y%m%d-%H%M%S" oldugu icin tablo adinda kullanmadan once tireyi (ve
+        # ASCII alfanumerik olmayan her seyi) temizle. Aksi halde CREATE TABLE
+        # DDL adimi, commit/rollback/Turkce at-rest dogrulamasina ulasamadan
+        # sozdizimi hatasiyla basarisiz olur.
+        tbl_ts <- gsub("[^0-9A-Za-z]", "", sqlpf_ts)
+        tbl <- sprintf("MB_SoakPoolPreflight_%s_%d", tbl_ts,
                        as.integer(stats::runif(1, 1, 1e6)))
         created <- probe_ok(with_db_transaction(function(conn) {
           DBI::dbExecute(conn, sprintf(
