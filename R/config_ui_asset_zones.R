@@ -253,6 +253,7 @@ ui_asset_ownership_zones <- list(
       "js/character_manager.js",
       "js/deep_space_intro_earth_shader.js",
       "js/deep_space_intro_solar.js",
+      "js/deep_space_intro_lifecycle.js",
       "js/deep_space_intro.js",
       "js/mode_selection.js",
       "js/explore_cinematic.js",
