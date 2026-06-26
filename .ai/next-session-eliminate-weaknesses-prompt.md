@@ -1,3 +1,23 @@
+# NEXT SESSION HANDOFF — 2026-06-26
+
+## JUST COMPLETED — do NOT redo
+- File Manager toplu yükleme runtime ayrımı tamamlandı: `R/module_file_manager.R` içindeki `execute_bulk_upload` dosya başı doğrulama/kalıcılaştırma/indeks yazma döngüsü `R/helpers_file_manager_upload_runtime.R::fm_process_bulk_upload_batch()` sınırına taşındı.
+- Önce/sonra: `R/module_file_manager.R` 642/10 → 550/9; yeni helper 118/1. Maintainability 100/100; 800+ R dosyası yok; global max 678.
+- Korunan davranış: duplicate uyarısı, SSO/auth-ready gate, `validate_uploaded_file()` + `fm_normal_allowed_extensions()`, `copy_to_mcp_base()`, persisted size, `ensure_persisted_upload_index()`, `process_uploaded_file(..., generate_message = FALSE)`, Türkçe dosya adı ve başarı mesajı akışı.
+- Yeni/updated tests: `test-file-manager-state-runtime-contract.R`, source manifest contract/sections, maintainability ratchet. Budgetler: `module_file_manager.R` 560/10; upload helper 140/3.
+- Validation: parse sanity PASS (865 files); focused File Manager state/runtime contract PASS; File Manager module policy wiring PASS; source-manifest contract PASS; source-manifest-sections contract PASS; maintainability_report PASS (100/100; module_file_manager 550/9); maintainability-ratchet PASS; frontend_complexity_doctor PASS (R-only, unchanged frontend risks); seam_doctor PASS/OK; `bash tools/ai_validate.sh quick` PASS (failed_steps=0, skipped_steps=0, artifact `artifacts/ai-validation/20260626-125434/summary.json`). `bash tools/ai_validate.sh full --boot-smoke` was attempted and FAILED before boot-smoke in full testthat suite due to existing Shiny destroyed-reactive isolation failures in `test-chat-actions-behavior.R` and `test-image-gallery-observers-behavior.R`; artifact `artifacts/ai-validation/20260626-125941/summary.json`. Not VM/DB/SSO/real-browser/SQL Server proof.
+
+## CURRENT BEST NEXT TARGETS
+1. Frontend Deep Space: `www/js/deep_space_intro.js` remains the largest app JS file (~820/32 in discovery before this R-only package). Split scene/shader/solar/UI/lifecycle only if preserving local Three.js/offline asset order.
+2. Frontend AI Expert: `www/js/ai_expert_manager.js` remains dense (~802/45). Prefer handler-density extraction (idle scheduling, Shiny bindings, subtitle/audio coordination).
+3. R-side fallback: `R/helpers_claude_code_process.R` only if fresh maintainability reports show it as a real top risk. Do not chase `module_admin_yanit_analizi_outputs.R`; it is a documented low-priority flat renderer.
+
+## GOTCHAS DISCOVERED
+- File Manager upload validation still intentionally resolves `validate_uploaded_file` from `globalenv()` because that matches the existing runtime guard. Tests that exercise the helper must bind/stub it in `globalenv()` and restore it.
+- New R source file means `source_manifest_sections` total count and file-manager helper section count must stay aligned.
+- Do not redo File Manager delete-runtime split, state-runtime split, upload-runtime split, display-name normalization, refresh guard, or attach-client split.
+
+
 # PROMPT — Eliminate ALL remaining weaknesses in MERGEN Bilge (fresh branch)
 
 You are continuing hardening work on the **MERGEN Bilge** R/Shiny app. Your mission this session is to systematically and thoroughly eliminate as many remaining weaknesses as possible — correctness, concurrency, stale-request races, test coverage, test isolation, production robustness, and UX consistency — while preserving every UX and contract guarantee.

@@ -33,10 +33,12 @@
 test_that("file manager UI ve server upload limit kararını helper üzerinden alıyor", {
   ui_txt <- .read_repo_text_file_manager_module("R/module_file_manager_ui.R")
   server_txt <- .read_repo_text_file_manager_module("R/module_file_manager.R")
+  upload_runtime_txt <- .read_repo_text_file_manager_module("R/helpers_file_manager_upload_runtime.R")
 
   expect_true(grepl("fm_upload_limit_mb\\(\\)", ui_txt, perl = TRUE))
   expect_true(grepl("fm_upload_limit_bytes\\(upload_limit_mb\\)", ui_txt, perl = TRUE))
-  expect_true(grepl("max_mb <- fm_upload_limit_mb\\(\\)", server_txt, perl = TRUE))
+  expect_true(grepl("fm_process_bulk_upload_batch\\(", server_txt, perl = TRUE))
+  expect_true(grepl("max_mb <- fm_upload_limit_mb\\(\\)", upload_runtime_txt, perl = TRUE))
 })
 
 test_that("file manager modülü attach ve uzantı policy kararlarını runtime helper üzerinden alıyor", {
