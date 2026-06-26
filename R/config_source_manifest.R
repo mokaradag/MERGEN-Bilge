@@ -182,8 +182,8 @@ source_manifest_sections <- list(
   ),
 
   # file_manager_helpers: Dosya Yönetimi yardımcı zinciri: politika, bağlam
-  # politikası, tablo, refresh guard, oturum registry, runtime, depolama, state
-  # runtime ve attach/tablo runtime istemci yardımcıları.
+  # politikası, tablo, refresh guard, oturum registry, runtime, depolama, silme,
+  # state runtime ve attach/tablo runtime istemci yardımcıları.
   file_manager_helpers = c(
     "R/helpers_file_manager_policy.R",
     "R/helpers_file_manager_context_policy.R",
@@ -192,6 +192,7 @@ source_manifest_sections <- list(
     "R/helpers_file_manager_session_registry.R",
     "R/helpers_file_manager_runtime.R",
     "R/helpers_file_manager_storage.R",
+    "R/helpers_file_manager_delete_runtime.R",
     "R/helpers_file_manager_state_runtime.R",
     "R/helpers_file_manager_attach_client.R",
     "R/helpers_file_manager_table_runtime.R"

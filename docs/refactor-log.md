@@ -6,6 +6,42 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-25 — File Manager kalıcı silme runtime ayrımı
+
+### Seçilen paket / neden
+File Manager paketi seçildi. Discovery çıktısında `R/module_file_manager.R` 677 satırla R tarafındaki en büyük gerçek refactor adayıydı; `module_admin_yanit_analizi_outputs.R` ise belgelenmiş düşük-öncelikli flat renderer olarak bırakıldı.
+
+### Değişen dosyalar
+- `R/helpers_file_manager_delete_runtime.R`: fiziksel dosya silme, resolve fallback, kullanıcı klasörü fallback ve indeks temizliği için yeni helper.
+- `R/module_file_manager.R`: `confirm_delete_file` observer'ı fiziksel lifecycle temizliğini helper'a delege eder; Shiny state/UI yan etkileri modülde kalır.
+- `R/config_source_manifest.R`, `R/bootstrap_source_manifest.R`, `tests/testthat/helper_bootstrap.R`, `tests/testthat/test-source-manifest-contract.R`: yeni helper storage sonrası / state runtime öncesi source edilir.
+- `tests/testthat/test-file-manager-delete-runtime-behavior.R`: doğrudan silme + Türkçe dosya adı + indeks temizliği ve resolve/fallback sırası davranış testleri.
+- `tests/testthat/test-maintainability-ratchet.R`: File Manager bütçesi sıkılaştırıldı; yeni delete helper küçük kalacak şekilde kilitlendi.
+
+### Önce / sonra karmaşıklık
+- Önce: `R/module_file_manager.R` 677 satır / 11 fonksiyon.
+- Sonra: `R/module_file_manager.R` 642 satır / 10 fonksiyon; yeni helper 57 satır / 4 fonksiyon.
+- Maintainability skoru 100/100 kaldı; 800+ R dosyası yok; küresel en büyük dosya 678 satır olarak değişmedi.
+
+### Davranış korundu
+Silme sırası korunur: doğrudan bilinen yollar, `resolve_uploaded_file()`, kullanıcı klasöründe basename fallback ve son olarak `mergen_remove_from_index()`. Modülün seçim temizliği, temp dosya temizliği, tablo satırı kaldırma, toast ve mesaj tetikleme davranışı değişmedi. Traversal/safe-path/upload doğrulama sözleşmeleri gevşetilmedi.
+
+### Testler / doğrulama
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-file-manager-delete-runtime-behavior.R", reporter="summary")'` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-source-manifest-contract.R", reporter="summary")'` → PASS.
+- `Rscript tests/scripts/parse_sanity_check.R` → PASS (864 dosya).
+- `Rscript tests/scripts/maintainability_report.R` → PASS (100/100; `module_file_manager.R` 642/10).
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-maintainability-ratchet.R", reporter="summary")'` → PASS.
+- `Rscript tests/scripts/seam_doctor.R` → PASS / OK.
+- `Rscript tests/scripts/frontend_complexity_doctor.R` → PASS (frontend değişikliği yok; mevcut JS/CSS risk listesi değişmedi).
+- `bash tools/ai_validate.sh quick` → PASS; failed_steps=0, skipped_steps=0; artifact `artifacts/ai-validation/20260625-201131/summary.json`.
+
+### Atlanan doğrulamalar
+VM, DB, SSO, gerçek tarayıcı ve SQL Server Türkçe encoding doğrulaması yapılmadı; bu paket Linux/cloud'da statik + testthat + source-manifest + seam kanıtıyla sınırlıdır.
+
+### Kalan riskler / sonraki adaylar
+En iyi sıradaki paketler frontend tarafında `www/js/deep_space_intro.js` veya `www/js/ai_expert_manager.js` yoğunluğunu azaltmaktır. R tarafında `helpers_claude_code_process.R` ancak discovery raporu onu gerçek top risk olarak gösterirse ele alınmalı; `module_admin_yanit_analizi_outputs.R` flat renderer olduğu için düşük öncelik kalır.
+
 ## 2026-06-24 — Gerçek SSE worker-export globals listesinin saf fabrikaya çıkarılması
 
 ### Seçilen iz(ler)
