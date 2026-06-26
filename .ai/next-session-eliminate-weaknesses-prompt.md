@@ -1,4 +1,14 @@
-# NEXT SESSION HANDOFF — 2026-06-26
+# PROMPT — Eliminate ALL remaining weaknesses in MERGEN Bilge (fresh branch)
+
+You are continuing hardening work on the **MERGEN Bilge** R/Shiny app. Your mission this session is to systematically and thoroughly eliminate as many remaining weaknesses as possible — correctness, concurrency, stale-request races, test coverage, test isolation, production robustness, and UX consistency — while preserving every UX and contract guarantee.
+
+Read `CLAUDE.md` FIRST and in full. It is the binding operational guide and overrides default behavior: surgical changes only, additive-only tests, Turkish comments with proper Turkish characters (ç ğ ı İ ö ş ü — never Latinize), no CDN/heavy/browser dependencies, respect source-manifest order, encoding boundaries, and the maintainability ratchet.
+
+Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test technique catalog and the up-to-date "already covered, do NOT redo" list.
+
+---
+
+## LATEST SESSION RESULTS — Codex (2026-06-26)
 
 ## JUST COMPLETED — do NOT redo
 - File Manager toplu yükleme runtime ayrımı tamamlandı: `R/module_file_manager.R` içindeki `execute_bulk_upload` dosya başı doğrulama/kalıcılaştırma/indeks yazma döngüsü `R/helpers_file_manager_upload_runtime.R::fm_process_bulk_upload_batch()` sınırına taşındı.
@@ -17,16 +27,6 @@
 - New R source file means `source_manifest_sections` total count and file-manager helper section count must stay aligned.
 - Do not redo File Manager delete-runtime split, state-runtime split, upload-runtime split, display-name normalization, refresh guard, or attach-client split.
 
-
-# PROMPT — Eliminate ALL remaining weaknesses in MERGEN Bilge (fresh branch)
-
-You are continuing hardening work on the **MERGEN Bilge** R/Shiny app. Your mission this session is to systematically and thoroughly eliminate as many remaining weaknesses as possible — correctness, concurrency, stale-request races, test coverage, test isolation, production robustness, and UX consistency — while preserving every UX and contract guarantee.
-
-Read `CLAUDE.md` FIRST and in full. It is the binding operational guide and overrides default behavior: surgical changes only, additive-only tests, Turkish comments with proper Turkish characters (ç ğ ı İ ö ş ü — never Latinize), no CDN/heavy/browser dependencies, respect source-manifest order, encoding boundaries, and the maintainability ratchet.
-
-Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test technique catalog and the up-to-date "already covered, do NOT redo" list.
-
----
 
 ## LATEST SESSION RESULTS — Codex (2026-06-25, File Manager delete-runtime split)
 
