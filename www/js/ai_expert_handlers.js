@@ -1,0 +1,75 @@
+// www/js/ai_expert_handlers.js
+// Dosya Yolu: www/js/ai_expert_handlers.js
+// Açıklama: AI Uzman için Shiny özel mesaj işleyicileri ve durdurma butonu
+//           bağlayıcıları. Çalışma zamanı durum makinesi ai_expert_manager.js
+//           içinde kalır; bu dosya yalnızca yükleme sırası korunan bağlama
+//           katmanıdır.
+
+(function(window, document, $) {
+  'use strict';
+
+  function getManager() {
+    return window.AIExpertManager;
+  }
+
+  function setVisualizerVisible(data) {
+    var container = document.querySelector('.tts-visualizer-container');
+    if (!container) return;
+
+    if (data && data.visible) {
+      container.classList.remove('shiny-visual-hidden');
+    } else {
+      container.classList.add('shiny-visual-hidden');
+    }
+  }
+
+  // --- SHINY MESAJ İŞLEYİCİLERİ ---
+  $(document).ready(function() {
+
+    // Altyazı + ses senkronize başlatma (TTS hazır olduktan sonra çağrılır)
+    Shiny.addCustomMessageHandler('aiExpertStartWithAudio', function(data) {
+      getManager().startWithAudio(data);
+    });
+
+    // Sadece altyazı başlatma mesajı (TTS yoksa)
+    Shiny.addCustomMessageHandler('aiExpertStartSubtitle', function(data) {
+      getManager().startSubtitle(data);
+    });
+
+    // Sonraki AI Uzman ses parçasını kuyruğa ekle
+    Shiny.addCustomMessageHandler('aiExpertQueueAudioChunk', function(data) {
+      getManager().queueAudioChunk(data);
+    });
+
+    // Ses oynatma mesajı (eski uyumluluk)
+    Shiny.addCustomMessageHandler('aiExpertPlayAudio', function(data) {
+      getManager().playAudio(data);
+    });
+
+    // Ses olmadan geri dönüş mesajı
+    Shiny.addCustomMessageHandler('aiExpertNoAudioFallback', function(data) {
+      getManager().noAudioFallback(data);
+    });
+
+    // Durdurma mesajı
+    Shiny.addCustomMessageHandler('aiExpertStopSubtitle', function(data) {
+      getManager().stopSubtitle(data);
+    });
+
+    // TTS görselleştiricisi görünürlüğü
+    Shiny.addCustomMessageHandler('aiExpertVisualizerVisibility', setVisualizerVisible);
+
+    // Sayfa değişikliği mesajı (R tarafından gönderilir)
+    Shiny.addCustomMessageHandler('aiExpertSetPage', function(data) {
+      getManager().setPage(data.page);
+    });
+
+    // Durdurma butonu doğrudan tıklama işleyicisi (Shiny binding'e ek olarak)
+    $(document).on('click', '.ai-expert-stop-btn', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('[AI_EXPERT] Durdurma butonu tıklandı (JS)');
+      getManager().stopSubtitle({});
+    });
+  });
+})(window, document, jQuery);

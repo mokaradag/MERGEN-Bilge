@@ -240,9 +240,10 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `R/module_tts.R`, `R/module_tts_visualizer.R`, `R/module_stt.R`,
   `R/module_character_video.R`, `R/server_tts_handlers.R`,
   `R/server_music_handlers.R`.
-- **JS/CSS:** `www/js/ai_expert_manager.js`, `www/js/tts_manager.js`,
-  `www/js/tts_visualizer.js`, `www/js/stt_client.js`, `www/js/music_manager.js`,
-  ilgili CSS varlıkları.
+- **JS/CSS:** `www/js/ai_expert_manager.js` (altyazı/ses durum makinesi),
+  `www/js/ai_expert_handlers.js` (Shiny özel mesaj handler'ları + stop-button binding),
+  `www/js/tts_manager.js`, `www/js/tts_visualizer.js`, `www/js/stt_client.js`,
+  `www/js/music_manager.js`, ilgili CSS varlıkları.
 - **DB/servis:** `MB_Users` (AI Uzman bağlamı: ad/birim/son giriş), `MB_Messages`
   (son mesajlar); TTS/STT uç noktaları (`LOCAL_TTS_ENDPOINT`,
   `LOCAL_STT_ENDPOINT`), `AI_EXPERT_MODEL`; referans bilgi tabanı `ai_rehber.md`.
@@ -256,18 +257,20 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-ai-expert-prompt-builders-behavior.R`,
   `test-ai-expert-page-guidance-stale-behavior.R`, `test-ai-expert-call-llm-behavior.R`,
   `test-ai-expert-pronunciation-behavior.R`, `test-ai-expert-chunking-behavior.R`,
+  `test-ai-expert-frontend-split-contract.R` (manager/handler ayrımı + manifest/zone sırası),
   `test-e2e-media-audio-state-regression.R`, `test-audio-lifecycle-owner-smoke.R`,
   `test-saved-chat-reload-no-tts-contract.R`.
 - **Smoke/kanıt:** ux-smoke ses/TTS/STT duck-restore yaşam döngüsü; kayıtlı sohbet
   reload'da eski TTS otomatik oynatma yok.
-- **Bilinen risk / sıradaki hedef:** AI Uzman sunucu işleyicilerinin saf karar
-  mantığı (sayfa adı, sıklık→ms, boşta bağlam) `helpers_ai_expert_handlers_support.R`'ye
-  ayrıldı; `server_ai_expert_handlers.R` 24-fonksiyon küresel tavanının bir
-  altından iki altına indi (726/23 → 652/22). `helpers_ai_expert.R` daha önce
-  680/24 → 507/13 indirilmişti. Sıradaki yakın-bütçe adayı `R/module_ai_expert.R`
-  (617/22); ancak içeriği büyük ölçüde reaktif/promise tabanlı TTS orkestrasyonudur
-  (saf çıkarım sınırlı, ayrı oturum kararı gerektirir). AI Uzman LLM future
-  blokları VM-only async yoldur; cloud'da yeniden yapılandırılmamalıdır.
+- **Bilinen risk / sıradaki hedef:** AI Uzman frontend handler yoğunluğu azaltıldı:
+  `www/js/ai_expert_manager.js` 802/45/12/8 → 744/35/2/0 (satır/fonksiyon/event/Shiny handler)
+  ve handler kayıtları küçük `www/js/ai_expert_handlers.js` bağlama dosyasına taşındı.
+  R tarafında sunucu işleyicilerinin saf karar mantığı zaten `helpers_ai_expert_handlers_support.R`'dedir.
+  Sıradaki AI Uzman adayı `R/module_ai_expert.R` (617/22) olabilir; ancak içeriği büyük ölçüde
+  reaktif/promise tabanlı TTS orkestrasyonudur (saf çıkarım sınırlı). Genel frontend için
+  daha yüksek değerli sonraki hedefler `www/js/deep_space_intro.js`, `www/js/shiny_message_handlers.js`
+  veya `www/js/claude_code.js` yoğunluklarıdır. AI Uzman LLM future blokları VM-only async yoldur;
+  cloud'da yeniden yapılandırılmamalıdır.
 
 ## Admin / Sistem Sağlığı
 

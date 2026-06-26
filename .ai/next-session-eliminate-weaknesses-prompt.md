@@ -8,6 +8,25 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — Codex (2026-06-26, AI Expert frontend handler split)
+
+## JUST COMPLETED — do NOT redo
+- AI Uzman frontend handler-density split tamamlandı: `www/js/ai_expert_manager.js` artık yalnız altyazı/ses durum makinesi ve public manager API'sini taşır; Shiny özel mesaj işleyicileri ve `.ai-expert-stop-btn` click binding'i yeni `www/js/ai_expert_handlers.js` dosyasına ayrıldı.
+- Manifest ve zone sahipliği güncellendi: `ai_expert_handlers.js`, deferred `admin_and_enterprise` grubunda `ai_expert_manager.js` dosyasının hemen ardından yüklenir ve `ses_yasam_dongusu` frontend bölgesine aittir.
+- Önce/sonra frontend ölçümü: `www/js/ai_expert_manager.js` 802 satır / 45 fonksiyon / 12 event / 8 Shiny handler → 744 satır / 35 fonksiyon / 2 event / 0 Shiny handler; yeni `www/js/ai_expert_handlers.js` 75 satır / 12 fonksiyon / 10 event / 8 Shiny handler. Davranış korunumu yükleme sırası + handler isimleri + manager delegasyonu sözleşmesiyle kilitlendi.
+- Yeni test: `tests/testthat/test-ai-expert-frontend-split-contract.R`; ayrıca `test-ui-asset-manifest-contract.R` beklenen manifest sırası `ai_expert_manager.js` → `ai_expert_handlers.js` olarak güncellendi.
+- Validation: focused AI Expert split contract PASS; `frontend_complexity_doctor` PASS/artifact `artifacts/frontend-complexity-doctor/frontend-complexity-doctor-20260626-155643.json`; `bash tools/ai_validate.sh quick` PASS, failed_steps=0, skipped_steps=0, summary `artifacts/ai-validation/20260626-155649/summary.json`. VM/DB/SSO/SQL Server/real-browser/live endpoint/soak kanıtı üretilmedi.
+
+## CURRENT BEST NEXT TARGETS
+1. Frontend Deep Space: `www/js/deep_space_intro.js` artık en büyük app-owned JS (~820/32). Split scene/shader/solar/UI/lifecycle only if local Three.js/offline order and manifest contracts remain exact.
+2. Frontend handler density: `www/js/shiny_message_handlers.js` (17 Shiny handlers) or `www/js/claude_code.js` (10 Shiny handlers) are now higher handler-concentration targets than AI Expert manager.
+3. CSS density: `theme_light_core.css` / `theme_light_pages.css` remain largest app-owned CSS; split only by preserving cascade order and tightening tests.
+
+## GOTCHAS DISCOVERED
+- Frontend zone key for media/audio ownership is `ses_yasam_dongusu`, not `medya_ses`. Tests should assert against the actual zone key.
+- `ai_expert_handlers.js` intentionally uses `getManager()` at call time so the manager can be loaded first and all handlers delegate to `window.AIExpertManager`; do not duplicate state-machine logic back into handlers.
+- `Shiny.addCustomMessageHandler(...)` counts as both event and Shiny handler in the frontend report; moving handlers into a small binding file is an accepted density reduction, not a behavior change.
+
 ## LATEST SESSION RESULTS — Codex (2026-06-26)
 
 ## JUST COMPLETED — do NOT redo

@@ -270,6 +270,7 @@ ui_asset_js_groups <- list(
     ),
     admin_and_enterprise = c(
       "js/ai_expert_manager.js",
+      "js/ai_expert_handlers.js",
       "js/destek_form.js",
       "js/destek_yardim_chatbot.js",
       "js/health_dashboard.js",
