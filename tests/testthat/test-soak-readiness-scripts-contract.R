@@ -89,10 +89,29 @@ srs_run_script <- function(rel, env = character(0), timeout = 120) {
   if (.Platform$OS.type != "windows") {
     child_env <- c(child_env, LC_ALL = "C.UTF-8")
   }
+  # Windows VM/RStudio/processx combinations can inherit maintainer-level
+  # MERGEN_* variables even when named child env overrides are supplied.  The
+  # contract assertions below must remain deterministic on the production VM, so
+  # also apply the requested overrides inside the child R session before sourcing
+  # the script under test.  This keeps the child process source-safe (the target
+  # scripts do not call quit()) while avoiding accidental real browser/DB lanes.
+  wrapper <- tempfile("srs-run-", fileext = ".R")
+  env_norm <- normalize_env(env)
+  on.exit(try(unlink(wrapper, force = TRUE), silent = TRUE), add = TRUE)
+  writeLines(c(
+    "env_values <- list(",
+    if (length(env_norm) > 0L) {
+      paste(sprintf("  %s = %s", encodeString(names(env_norm), quote = "`"),
+                    encodeString(unname(env_norm), quote = "\"")), collapse = ",\n")
+    } else "",
+    ")",
+    "if (length(env_values) > 0L) do.call(Sys.setenv, env_values)",
+    sprintf("source(%s, encoding = 'UTF-8')", encodeString(srs_script(rel), quote = "\""))
+  ), wrapper, useBytes = TRUE)
   res <- tryCatch(
     processx::run(
       command = rscript,
-      args = srs_script(rel),
+      args = wrapper,
       wd = srs_repo_root,
       env = child_env,
       error_on_status = FALSE,
