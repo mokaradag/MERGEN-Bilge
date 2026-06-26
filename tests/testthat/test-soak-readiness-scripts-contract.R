@@ -60,10 +60,10 @@ srs_run_script <- function(rel, env = character(0), timeout = 120) {
   if (!nzchar(rscript) || !file.exists(rscript)) {
     return(list(status = NA_integer_, stdout = "", stderr = "rscript-not-found"))
   }
-  # processx named env entries are the most portable override form.  Some VM
-  # invocations pass contract env as "NAME=value" strings while inheriting a
-  # maintainer shell that may already have MERGEN_* guards enabled; normalize
-  # those strings so the child process deterministically sees the test override.
+  # processx icin isimli env girdileri en tasinabilir override bicimidir. Bazi
+  # VM cagrilari sozlesme env degerlerini "NAME=value" metinleri olarak
+  # gecirirken, ebeveyn kabukta MERGEN_* guard'lari zaten acik olabilir; bu
+  # metinleri normalize et ki cocuk surec test override'ini deterministik gorsun.
   normalize_env <- function(x) {
     if (length(x) == 0L) return(character(0))
     out_names <- names(x)
@@ -89,10 +89,30 @@ srs_run_script <- function(rel, env = character(0), timeout = 120) {
   if (.Platform$OS.type != "windows") {
     child_env <- c(child_env, LC_ALL = "C.UTF-8")
   }
+  # Windows VM/RStudio/processx kombinasyonlari, isimli cocuk env override'lari
+  # verilse bile maintainer seviyesindeki MERGEN_* degiskenlerini miras alabilir.
+  # Asagidaki sozlesme beklentileri uretim VM'inde deterministik kalmali; bu
+  # nedenle istenen override'lari test edilen betigi source etmeden once cocuk R
+  # oturumunun icinde de uygula. Bu, cocuk sureci source-safe tutar (hedef
+  # betikler quit() cagirmaz) ve yanlislikla gercek tarayici/DB lane'lerini
+  # calistirmayi onler.
+  wrapper <- tempfile("srs-run-", fileext = ".R")
+  env_norm <- normalize_env(env)
+  on.exit(try(unlink(wrapper, force = TRUE), silent = TRUE), add = TRUE)
+  writeLines(c(
+    "env_values <- list(",
+    if (length(env_norm) > 0L) {
+      paste(sprintf("  %s = %s", encodeString(names(env_norm), quote = "`"),
+                    encodeString(unname(env_norm), quote = "\"")), collapse = ",\n")
+    } else "",
+    ")",
+    "if (length(env_values) > 0L) do.call(Sys.setenv, env_values)",
+    sprintf("source(%s, encoding = 'UTF-8')", encodeString(srs_script(rel), quote = "\""))
+  ), wrapper, useBytes = TRUE)
   res <- tryCatch(
     processx::run(
       command = rscript,
-      args = srs_script(rel),
+      args = wrapper,
       wd = srs_repo_root,
       env = child_env,
       error_on_status = FALSE,
