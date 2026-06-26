@@ -173,6 +173,7 @@ testthat::test_that("betikler quit() kullanmaz (source-safe) ve guard env adlari
   testthat::expect_true(grepl("MERGEN_SQLSERVER_POOL_PREFLIGHT_REAL", sql_txt, fixed = TRUE))
   testthat::expect_true(grepl("MERGEN_DB_POOL_ENABLED", sql_txt, fixed = TRUE))
   testthat::expect_true(grepl("MERGEN_SQLSERVER_POOL_WRITE_TEST", sql_txt, fixed = TRUE))
+  testthat::expect_true(grepl("MERGEN_SQLSERVER_POOL_PREFLIGHT_SKIP_RENVIRON", sql_txt, fixed = TRUE))
   testthat::expect_true(grepl("MERGEN_BROWSER_CONCURRENCY_ENABLED", bc_txt, fixed = TRUE))
   testthat::expect_true(grepl("MERGEN_BROWSER_CONCURRENCY_MAX_USERS", bc_txt, fixed = TRUE))
 })
@@ -190,9 +191,14 @@ testthat::test_that("SQL Server havuz preflight: guard yokken GUVENLE atlar (exi
   testthat::expect_true(grepl("SKIP", r$stdout), info = srs_diag(r))
 
   # Guard acik ama DB_DSN yok: yine GUVENLE atlar (exit 0 + SKIP).
+  # NOT: Uretim Windows VM'inde repo .Renviron GERCEK DB_DSN icerir; betik onu
+  # YENIDEN yuklerse buradaki bos DB_DSN override'i ezilir ve guard yerine gercek
+  # preflight kosup FAIL olur. MERGEN_SQLSERVER_POOL_PREFLIGHT_SKIP_RENVIRON ile bu
+  # yeniden-yukleme kapatilir; boylece DB_DSN guard yolu deterministik kalir.
   r2 <- srs_run_script("run_vm_sqlserver_pool_preflight_real.R",
                        env = c(MERGEN_SQLSERVER_POOL_PREFLIGHT_REAL = "TRUE",
                                MERGEN_DB_POOL_ENABLED = "TRUE",
+                               MERGEN_SQLSERVER_POOL_PREFLIGHT_SKIP_RENVIRON = "TRUE",
                                DB_DSN = ""))
   testthat::expect_equal(r2$status, 0L, info = srs_diag(r2))
   testthat::expect_true(grepl("SKIP", r2$stdout), info = srs_diag(r2))
