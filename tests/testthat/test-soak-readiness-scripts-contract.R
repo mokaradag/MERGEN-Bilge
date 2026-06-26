@@ -106,23 +106,30 @@ srs_run_script <- function(rel, env = character(0), timeout = 120) {
   # oturumunun icinde de uygula. Bu, cocuk sureci source-safe tutar (hedef
   # betikler quit() cagirmaz) ve yanlislikla gercek tarayici/DB lane'lerini
   # calistirmayi onler.
-  wrapper <- tempfile("srs-run-", fileext = ".R")
   env_norm <- normalize_env(env)
-  on.exit(try(unlink(wrapper, force = TRUE), silent = TRUE), add = TRUE)
-  writeLines(c(
-    "env_values <- list(",
-    if (length(env_norm) > 0L) {
-      paste(sprintf("  %s = %s", encodeString(names(env_norm), quote = "`"),
-                    encodeString(unname(env_norm), quote = "\"")), collapse = ",\n")
-    } else "",
-    ")",
-    "if (length(env_values) > 0L) do.call(Sys.setenv, env_values)",
-    sprintf("source(%s, encoding = 'UTF-8')", encodeString(srs_script(rel), quote = "\""))
-  ), wrapper, useBytes = TRUE)
+  target_script <- srs_script(rel)
+  if (!file.exists(target_script)) {
+    return(list(status = 127L, stdout = "",
+                stderr = paste("script-not-found:", target_script %||% "<empty>")))
+  }
+  target_script <- normalizePath(target_script, winslash = "/", mustWork = TRUE)
+
+  env_expr <- if (length(env_norm) > 0L) {
+    paste(sprintf("%s = %s", encodeString(names(env_norm), quote = "`"),
+                  encodeString(unname(env_norm), quote = "\"")), collapse = ", ")
+  } else ""
+  child_expr <- paste0(
+    "env_values <- list(", env_expr, "); ",
+    "if (length(env_values) > 0L) do.call(Sys.setenv, env_values); ",
+    "args <- commandArgs(trailingOnly = TRUE); ",
+    "target <- args[[length(args)]]; ",
+    "source(normalizePath(target, winslash = '/', mustWork = TRUE), encoding = 'UTF-8')"
+  )
+
   res <- tryCatch(
     processx::run(
       command = rscript,
-      args = wrapper,
+      args = c("-e", child_expr, "--args", target_script),
       wd = srs_repo_root,
       env = child_env,
       error_on_status = FALSE,
