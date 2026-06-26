@@ -21,6 +21,8 @@ window.DeepSpaceIntro = (function() {
   var _resizeHandler = null;
   var _resizeRafId = null;
   var _containerEl = null;
+  var _lifecycleTimers = window.DeepSpaceIntroLifecycle.createTimers();
+
 
   // Performans durumu: renderer piksel oranı yalnızca cihaz DPI üst sınırına
   // göre sabitlenir; çalışma sırasında kalite düşürülmez.
@@ -200,11 +202,11 @@ window.DeepSpaceIntro = (function() {
     loadingEl.style.opacity = '0';
 
     if (_loadingTimerId) {
-      clearTimeout(_loadingTimerId);
+      _lifecycleTimers.clearTrackedTimeout(_loadingTimerId);
       _loadingTimerId = null;
     }
 
-    _loadingTimerId = setTimeout(function() {
+    _loadingTimerId = _lifecycleTimers.trackTimeout(function() {
       loadingEl.style.display = 'none';
       _loadingTimerId = null;
     }, 1000);
@@ -288,7 +290,7 @@ window.DeepSpaceIntro = (function() {
     }
 
     // Zaman aşımı: 15 saniye sonra yükleme göstergesini yine de gizle
-    setTimeout(function() {
+    _lifecycleTimers.trackTimeout(function() {
       hideLoadingIndicator();
     }, 15000);
 
@@ -361,7 +363,7 @@ window.DeepSpaceIntro = (function() {
       hideLoadingIndicator();
       warmUpRendererOnce();
 
-      requestAnimationFrame(function() {
+      _lifecycleTimers.trackRaf(function() {
         animate();
         console.log('[DeepSpaceIntro] Sahne başarıyla oluşturuldu:', reason || 'ready');
       });
@@ -673,12 +675,12 @@ window.DeepSpaceIntro = (function() {
     // Pencere boyut değişikliği
     _resizeHandler = function() {
       if (_resizeRafId) {
-        cancelAnimationFrame(_resizeRafId);
+        _lifecycleTimers.cancelTrackedRaf(_resizeRafId);
       }
 
       // Yeniden boyutlandırmayı tarayıcının çizim ritmine bağla.
       // Böylece ardışık resize olayları tek WebGL güncellemesine indirgenir.
-      _resizeRafId = requestAnimationFrame(function() {
+      _resizeRafId = _lifecycleTimers.trackRaf(function() {
         _resizeRafId = null;
         resizeRendererToContainer(true);
       });
@@ -688,7 +690,7 @@ window.DeepSpaceIntro = (function() {
     // Animasyon burada doğrudan başlatılmaz.
     // THREE.DefaultLoadingManager.onLoad dokular hazır olduğunda startAnimationOnce()
     // çağırır. Emniyet için kısa bir geri dönüş kapısı bırakılır.
-    window.setTimeout(function() {
+    _lifecycleTimers.trackTimeout(function() {
       startAnimationOnce('fallback_timeout');
     }, 3500);
   }
@@ -702,17 +704,17 @@ window.DeepSpaceIntro = (function() {
     document.body.classList.remove('deep-space-active');
 	
     if (_loadingTimerId) {
-      clearTimeout(_loadingTimerId);
+      _lifecycleTimers.clearTrackedTimeout(_loadingTimerId);
       _loadingTimerId = null;
     }
 
     if (_resizeRafId) {
-      cancelAnimationFrame(_resizeRafId);
+      _lifecycleTimers.cancelTrackedRaf(_resizeRafId);
       _resizeRafId = null;
     }
 
     if (_animFrameId) {
-      cancelAnimationFrame(_animFrameId);
+      window.cancelAnimationFrame(_animFrameId);
       _animFrameId = null;
     }
 
@@ -768,6 +770,8 @@ window.DeepSpaceIntro = (function() {
     _atmoMat = null;
     _sunLight = null;
     _containerEl = null;
+    _lifecycleTimers.cancelAll();
+    _lifecycleTimers = window.DeepSpaceIntroLifecycle.createTimers();
     // Yıldız haritası küresini de temizle (animate kapanışında _starSphere erişilemez,
     // ama scene.traverse zaten tüm nesneleri temizler)
   }
@@ -783,38 +787,5 @@ window.DeepSpaceIntro = (function() {
   };
 })();
 
-// Otomatik başlatma: Shiny bağlantısını beklemeden uzay animasyonunu hemen başlat.
-// localStorage'dan atlama tercihi kontrol edilir; atlama seçilmişse başlatma yapılmaz.
-(function() {
-  'use strict';
-  function autoInitDeepSpace() {
-    try {
-      var raw = localStorage.getItem('mergen_settings');
-      if (raw) {
-        var s = JSON.parse(raw);
-        if (s.skip_intro === true) return; // Kullanıcı animasyonu atlamayı seçmiş
-      }
-    } catch(e) {}
-
-    var container = document.getElementById('deep-space-canvas');
-    if (container && window.DeepSpaceIntro && !window.DeepSpaceIntro.isActive()) {
-      window.DeepSpaceIntro.init('deep-space-canvas', {
-        texturePath: 'lib/threejs/textures/'
-      });
-    }
-  }
-
-  function scheduleAutoInitDeepSpace() {
-    // WebGL kurulumunu setTimeout/requestIdleCallback içine almak Chrome
-    // DevTools'ta yalnızca callback adını "Violation" olarak görünür yapıyor.
-    // Bu dosya DOM hazır olduktan sonra yüklendiği için doğrudan başlatılır.
-    autoInitDeepSpace();
-  }
-
-  // DOM hazır olur olmaz başlat
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', scheduleAutoInitDeepSpace, { once: true });
-  } else {
-    scheduleAutoInitDeepSpace();
-  }
-})();
+// Otomatik başlatma yaşam döngüsü ayrı dosyada tutulur.
+window.DeepSpaceIntroLifecycle.bindAutoInit();

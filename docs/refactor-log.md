@@ -6,6 +6,46 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-26 — Deep Space frontend yaşam döngüsü sınırı
+
+### Seçilen paket / neden
+Frontend yaşam döngüsü paketi seçildi. Taze `frontend_complexity_doctor` çıktısı `www/js/deep_space_intro.js` dosyasını en büyük app-owned JS dosyası olarak gösterdi (820 satır / 32 fonksiyon) ve handoff Deep Space scene lifecycle, render-loop, resize ve startup cleanup sınırını yüksek değerli hedef olarak işaretliyordu.
+
+### Değişen dosyalar
+- `www/js/deep_space_intro_lifecycle.js`: timeout/rAF takip-iptal yardımcıları, skip-intro okuması ve tekil DOMContentLoaded auto-init bağlayıcısı eklendi.
+- `www/js/deep_space_intro.js`: loading timeout, fallback startup, resize rAF ve auto-init sorumluluklarını lifecycle helper'a delege eder; sahne/Three.js/shader davranışı korunur.
+- `R/config_ui_assets.R`, `R/config_ui_asset_zones.R`, `tests/testthat/test-ui-asset-manifest-contract.R`: yeni helper `deep_space_intro_solar.js` ile `deep_space_intro.js` arasına manifestlenip `karsilama_intro` bölgesine sahipletildi.
+- `tests/testthat/test-deep-space-frontend-lifecycle-contract.R`: helper API'si, tekil DOMContentLoaded davranışı, cleanup delegasyonu ve manifest/zone sırası için statik sözleşme eklendi.
+
+### Önce / sonra karmaşıklık ve risk
+- Önce: `www/js/deep_space_intro.js` 820 satır / 32 fonksiyon; scene setup, loading timers, fallback startup, resize rAF ve auto-init aynı dosyadaydı.
+- Sonra: `www/js/deep_space_intro.js` 791 satır; zamanlayıcı/rAF/auto-init sınırı ayrı `www/js/deep_space_intro_lifecycle.js` dosyasına taşındı.
+- Ana risk azaltımı: destroy sonrası gecikmiş loading/fallback/resize callback sahipliği tek `cancelAll()` sınırıyla kapatılır; yeni testler bu delegasyonun geri alınmasını yakalar.
+
+### Davranış korundu
+Deep Space public API (`init`, `destroy`, `isActive`), `mergen_settings.skip_intro` davranışı, local Three.js/offline asset kullanımı, `deep-space-active` gövde sınıfı, shader/solar kurulum sırası ve texture path varsayılanı korunur. Manifest sırası artık `earth_shader` → `solar` → `lifecycle` → `deep_space_intro` olarak açıkça test edilir.
+
+### Testler / doğrulama
+- `node --check www/js/deep_space_intro_lifecycle.js` → PASS.
+- `node --check www/js/deep_space_intro.js` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-deep-space-frontend-lifecycle-contract.R", reporter="summary")'` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R", reporter="summary")'` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-ui-asset-zones-contract.R", reporter="summary")'` → PASS.
+- `LANG=C.UTF-8 LC_ALL=C.UTF-8 Rscript tests/scripts/frontend_complexity_doctor.R` → PASS; `www/js/deep_space_intro.js` 820 → 791, artifact `artifacts/frontend-complexity-doctor/frontend-complexity-doctor-20260626-184650.json`.
+- `LANG=C.UTF-8 LC_ALL=C.UTF-8 Rscript tests/scripts/maintainability_report.R` → PASS; R maintainability 100/100 kaldı.
+- `LANG=C.UTF-8 LC_ALL=C.UTF-8 Rscript tests/scripts/seam_doctor.R` → PASS / OK; artifact `artifacts/seam-doctor/seam-doctor-20260626-184658.json`.
+- `Rscript tests/scripts/parse_sanity_check.R` → PASS (867 dosya).
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-frontend-maintainability-ratchet.R", reporter="summary")'` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-maintainability-ratchet.R", reporter="summary")'` → PASS.
+- `bash tools/ai_validate.sh quick` → PASS; failed_steps=0, skipped_steps=0; artifact `artifacts/ai-validation/20260626-184912/summary.json`.
+- `bash tools/ai_validate.sh full --boot-smoke` → FAIL; full testthat suite adımında daha önce handoff'ta da belirtilen Shiny destroyed-reactive izolasyon hataları (`test-chat-actions-behavior.R`, `test-image-gallery-observers-behavior.R`) nedeniyle durdu; boot-smoke aşamasına ulaşılamadı. Artifact `artifacts/ai-validation/20260626-185055/summary.json`.
+
+### Atlanan doğrulamalar
+Full validation boot-smoke aşamasına ulaşamadığı için VM, gerçek tarayıcı, DB, SSO, SQL Server Türkçe encoding, live endpoint ve production app boot kanıtı üretilmedi; görsel sahne eşdeğerliği statik sözleşme ve JS syntax düzeyinde doğrulandı.
+
+### Kalan riskler / sonraki adaylar
+Deep Space shader/solar math değiştirilmedi; gerçek WebGL görsel kontrol VM/browser smoke ile ayrıca kanıtlanabilir. Sonraki anlamlı frontend hedefleri `www/js/shiny_message_handlers.js` handler yoğunluğu, `www/js/claude_code.js` Shiny handler yoğunluğu veya `www/js/tool_backgrounds.js` fonksiyon yoğunluğudur.
+
 ## 2026-06-26 — File Manager toplu yükleme runtime ayrımı
 
 ### Seçilen paket / neden
