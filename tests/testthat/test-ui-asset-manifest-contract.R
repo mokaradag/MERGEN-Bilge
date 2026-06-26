@@ -171,6 +171,10 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
     .ui_asset_contract_position(js_paths, "js/audio_lifecycle_guard.js"),
     .ui_asset_contract_position(js_paths, "js/ai_expert_manager.js")
   )
+  expect_lt(
+    .ui_asset_contract_position(js_paths, "js/ai_expert_manager.js"),
+    .ui_asset_contract_position(js_paths, "js/ai_expert_handlers.js")
+  )
 
   expect_false(any(grepl("^codemirror/", deferred_paths)))
   expect_false("js/sso_auth.js" %in% deferred_paths)
@@ -375,6 +379,7 @@ test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", 
     "js/tools_model_lock.js",
     "js/citation_handler.js",
     "js/ai_expert_manager.js",
+    "js/ai_expert_handlers.js",
     "js/destek_form.js",
     "js/destek_yardim_chatbot.js",
     "js/health_dashboard.js",

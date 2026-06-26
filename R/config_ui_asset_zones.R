@@ -293,6 +293,7 @@ ui_asset_ownership_zones <- list(
       "js/stt_client.js",
       "js/tts_manager.js",
       "js/ai_expert_manager.js",
+      "js/ai_expert_handlers.js",
       "js/space_intro_music.js"
     ),
     guard_tests = c(

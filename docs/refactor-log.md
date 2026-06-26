@@ -2706,3 +2706,34 @@ Bu paket CSS dosya sınırı/manifest sahipliği refactor'ıdır; VM, DB, SSO ve
 
 ### Kalan riskler / sonraki adaylar
 Frontend raporunda en büyük CSS adayları artık açık tema alan dosyaları (`theme_light_core.css` 1148, `theme_light_pages.css` 1136) ve `claude_code.css` (1041). En iyi sonraki paket, tema alanlarından birini semantik alt parçalara ayırmak veya `deep_space_intro.js` / `ai_expert_manager.js` JS büyüklüğünü azaltmaktır.
+
+## 2026-06-26 — AI Uzman frontend handler-density split
+
+### Seçilen paket / neden
+Fresh `frontend_complexity_doctor` raporu `www/js/ai_expert_manager.js` dosyasını en büyük ve handler-yoğun app-owned JS adaylarından biri olarak gösterdi (802 satır, 45 fonksiyon, 12 event handler, 8 Shiny handler). Deep Space daha büyük olsa da AI Uzman tarafında Shiny binding katmanı, durum makinesinden güvenli biçimde ayrılabilen net bir seam sundu.
+
+### Değişen dosyalar
+- `www/js/ai_expert_manager.js`: altyazı/ses durum makinesi ve `window.AIExpertManager` export'u kaldı; Shiny handler kayıtları çıkarıldı.
+- `www/js/ai_expert_handlers.js`: AI Uzman Shiny özel mesaj handler'ları, visualizer visibility helper'ı ve stop-button click binding'i eklendi.
+- `R/config_ui_assets.R`, `R/config_ui_asset_zones.R`: yeni JS varlığı manager'dan hemen sonra ve `ses_yasam_dongusu` sahipliğiyle kaydedildi.
+- `tests/testthat/test-ui-asset-manifest-contract.R`, `tests/testthat/test-ai-expert-frontend-split-contract.R`: yükleme sırası, sahiplik ve handler delegasyonu sözleşmeleri eklendi/güncellendi.
+- `.ai/next-session-eliminate-weaknesses-prompt.md`, `docs/feature-ownership-map.md`, `docs/architecture-map.md`, `docs/technical-reference.md`: handoff ve frontend varlık davranışı notları güncellendi.
+
+### Önce / sonra etki
+- `www/js/ai_expert_manager.js`: 802/45/12/8 → 744/35/2/0 (satır/fonksiyon/event/Shiny handler).
+- Yeni `www/js/ai_expert_handlers.js`: 75/12/10/8; handler yoğunluğu küçük bağlama dosyasında toplanır, durum makinesi dosyası artık Shiny handler kaydı içermez.
+- Asset order kırılmadı: manifestte `js/ai_expert_manager.js` hemen ardından `js/ai_expert_handlers.js` gelir.
+
+### Davranış korundu
+Mevcut handler adları (`aiExpertStartWithAudio`, `aiExpertStartSubtitle`, `aiExpertQueueAudioChunk`, `aiExpertPlayAudio`, `aiExpertNoAudioFallback`, `aiExpertStopSubtitle`, `aiExpertVisualizerVisibility`, `aiExpertSetPage`) aynı kaldı ve manager metodlarına delege edilir. TTS/STT/music ducking, altyazı token/time-out davranışı, Türkçe log/metinler ve offline asset varsayımları değiştirilmedi.
+
+### Testler / doğrulama
+- `LANG=C.UTF-8 LC_ALL=C.UTF-8 Rscript -e 'testthat::test_file("tests/testthat/test-ai-expert-frontend-split-contract.R")'` → PASS.
+- `LANG=C.UTF-8 LC_ALL=C.UTF-8 Rscript tests/scripts/frontend_complexity_doctor.R` → PASS; artifact `artifacts/frontend-complexity-doctor/frontend-complexity-doctor-20260626-155643.json`.
+- `bash tools/ai_validate.sh quick` → PASS; failed_steps=0, skipped_steps=0; summary `artifacts/ai-validation/20260626-155649/summary.json`.
+
+### Atlanan / kalan kanıtlar
+VM, gerçek tarayıcı, DB, SSO, SQL Server, live endpoint ve soak doğrulaması çalıştırılmadı. Görsel davranış korunumu statik asset sırası ve handler-delegation sözleşmeleriyle doğrulandı.
+
+### Kalan riskler / sonraki adaylar
+`www/js/deep_space_intro.js` en büyük app JS olarak kaldı; sonraki yüksek değerli paket Deep Space modülerleştirmesi veya `shiny_message_handlers.js` / `claude_code.js` handler-density azaltımıdır.
