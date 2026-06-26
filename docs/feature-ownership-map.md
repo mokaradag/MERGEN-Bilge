@@ -77,7 +77,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   681 → 678 (`module_admin_yanit_analizi_outputs.R`) sıkılaştırıldı. Sıradaki
   repo-geneli yakın-bütçe adayları: `R/module_admin_yanit_analizi_outputs.R` (678,
   tek-fonksiyon flat renderer — düşük öncelik), `R/module_file_manager.R` (550/9; delete + toplu-upload runtime split sonrası);
-  frontend `www/js/deep_space_intro.js` (791; lifecycle split sonrası), `www/js/shiny_message_handlers.js` (modern welcome split sonrası 401/16 Shiny handler) ve handler yoğun `www/js/claude_code.js`.
+  frontend `www/js/deep_space_intro.js` (791; lifecycle split sonrası), `www/js/shiny_message_handlers.js` (modern welcome split + otoritatif CLAUDE sahiplik sözleşmesi sonrası 401/16 Shiny handler) ve handler yoğun `www/js/claude_code.js`.
 
 ## Dosya Yaşam Döngüsü
 
@@ -476,7 +476,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `config_ui_asset_zone_validators.R`'de (312/10). Sıradaki repo-geneli yakın-bütçe
   adayları artık daha çok frontend yoğunluk dosyalarıdır; R tarafında `R/helpers_claude_code_process.R`
   (665/20) yalnızca taze raporda gerçek riskse seçilmeli. Frontend tarafında modern welcome split sonrası en yoğun adaylar
-  `www/js/shiny_message_handlers.js` (Shiny handler yoğunluğu), `www/js/claude_code.js`
+  `www/js/shiny_message_handlers.js` (Shiny handler yoğunluğu; `initModernWelcome` modern handler sahibi olarak korunur), `www/js/claude_code.js`
   (Shiny handler yoğunluğu) ve `www/js/tool_backgrounds.js` (fonksiyon yoğunluğu).
 
 ---

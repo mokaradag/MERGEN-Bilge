@@ -6,6 +6,36 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+
+## 2026-06-26 — Modern welcome otoritatif sahiplik sözleşmesi düzeltmesi
+
+### Seçilen paket / neden
+Codex review notu, önceki modern welcome split'inden sonra `CLAUDE.md` otoritatif sözleşmesinin güncel sahiplikle tam hizalanmadığını işaret etti: `initModernWelcome` artık `www/js/modern_welcome_handler.js` içinde yaşarken gelecekteki maintainer/agent yönlendirmesi bu sınırı açıkça korumuyordu. Bu paket, runtime davranışını değiştirmeden review ile kanıtlanan sahiplik drift riskini kapattı.
+
+### Değişen dosyalar
+- `CLAUDE.md`: modern welcome frontend ownership bölümü eklendi; `www/js/modern_welcome_handler.js` dosyasının `initModernWelcome` ve görünür welcome startup lifecycle sahibi olduğu, `www/js/shiny_message_handlers.js` dosyasının genel mesaj köprüsü olarak kalacağı açıkça yazıldı.
+- `tests/testthat/test-modern-welcome-handler-split-contract.R`: mevcut split/manifest sözleşmesine, otoritatif maintainer contract'ın aynı sahipliği belgelediğini doğrulayan deterministik metin koruması eklendi.
+- `docs/feature-ownership-map.md`: modern welcome sahiplik riskinin kapatıldığı ve sonraki hedeflerin güncel raporlara göre seçilmesi gerektiği belirtildi.
+- `.ai/next-session-eliminate-weaknesses-prompt.md`: handoff kompakt biçimde yenilendi.
+
+### Önce / sonra etki
+- Önce: Kod ve asset contract `initModernWelcome` sahipliğini `modern_welcome_handler.js` altında koruyordu; ancak otoritatif maintainer rehberinde bu yeni sahiplik açıkça sabitlenmediği için gelecek oturumlar generic Shiny köprüsüne geri taşıma riski taşıyordu.
+- Sonra: Otoritatif rehber, manifest/zone/test contract ile aynı sahipliği söylüyor; test, bu belge-sözleşme drift'ini yakalayacak. Runtime JS/R davranışı, asset sırası, DB/SSO/encoding sınırları değişmedi.
+
+### Korunan davranış
+`initModernWelcome` mesaj adı, modern welcome retry/timer/video/neural/greeting lifecycle sahipliği, `shiny_message_handlers.js` içindeki genel toast/scroll/quick-action/fade davranışları, frontend asset order ve zone ownership korunur.
+
+### Çalıştırılan doğrulamalar
+- `git status` / `git diff --stat` başlangıç keşfi.
+- `LANG=C.UTF-8 LC_ALL=C.UTF-8 Rscript tests/scripts/maintainability_report.R` başlangıç keşfi.
+- `LANG=C.UTF-8 LC_ALL=C.UTF-8 Rscript tests/scripts/frontend_complexity_doctor.R` başlangıç keşfi.
+- `LANG=C.UTF-8 LC_ALL=C.UTF-8 Rscript tests/scripts/seam_doctor.R` başlangıç keşfi.
+- Odaklı testler ve normal quick validation bu girişten sonra final doğrulama bölümünde kaydedildi.
+
+### Kalan riskler / atlanan kanıtlar
+Bu paket docs + deterministic contract test düzeyindedir; VM, gerçek browser, SQL Server, SSO ve canlı endpoint davranışı kanıtlamaz.
+
+---
 ## 2026-06-26 — Modern welcome Shiny handler/lifecycle ayrımı
 
 ### Seçilen paket / neden

@@ -5742,6 +5742,23 @@ Sensitive interactions exist between:
 
 A small CSS change can break the top alignment or shift multiple panels.
 
+### 2A) Modern welcome frontend ownership
+
+`www/js/modern_welcome_handler.js` is the authoritative owner of the
+`initModernWelcome` Shiny message handler and the visible modern-welcome startup
+lifecycle: DOM/dependency readiness retrying, retry-timer cleanup, welcome video
+resume/init, neural animation init, greeting init, and saved-character accent
+fallback. Keep this stateful boot/lifecycle boundary out of the generic Shiny
+message bridge.
+
+`www/js/shiny_message_handlers.js` remains the generic Shiny message bridge for
+toast/scroll/CodeMirror/font/follow-up/search/storage/removeExcel, generic
+neural-animation messages, welcome fade/quick-action behavior, and other
+non-modern-welcome-specific handlers. Do not move `initModernWelcome` back there
+unless the asset manifest order, frontend zone ownership, and split-contract
+tests are intentionally redesigned together.
+
+
 ### 3) Audio concurrency
 Sensitive interactions between:
 
