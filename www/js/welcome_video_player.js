@@ -8,7 +8,11 @@ window.WelcomeVideoPlayer = (function() {
     "videos/cinematic/video3.mp4",
     "videos/cinematic/video4.mp4",
     "videos/cinematic/video5.mp4",
-    "videos/cinematic/video6.mp4"
+    "videos/cinematic/video6.mp4",
+    "videos/cinematic/video7.mp4",
+    "videos/cinematic/video8.mp4",
+    "videos/cinematic/video9.mp4",
+    "videos/cinematic/video10.mp4"
   ];
 
   let container = null;
