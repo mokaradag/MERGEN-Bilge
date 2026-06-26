@@ -66,17 +66,18 @@ srs_run_script <- function(rel, env = character(0), timeout = 120) {
   # those strings so the child process deterministically sees the test override.
   normalize_env <- function(x) {
     if (length(x) == 0L) return(character(0))
-    out <- x
-    unnamed <- !nzchar(names(out) %||% rep("", length(out)))
+    out_names <- names(x)
+    out <- as.character(x)
+    if (is.null(out_names)) out_names <- rep("", length(out))
+    unnamed <- !nzchar(out_names)
     for (i in which(unnamed)) {
       m <- regexpr("=", out[[i]], fixed = TRUE)
       if (m[[1]] > 1L) {
-        nm <- substr(out[[i]], 1L, m[[1]] - 1L)
-        val <- substr(out[[i]], m[[1]] + 1L, nchar(out[[i]]))
-        names(out)[[i]] <- nm
-        out[[i]] <- val
+        out_names[[i]] <- substr(out[[i]], 1L, m[[1]] - 1L)
+        out[[i]] <- substr(out[[i]], m[[1]] + 1L, nchar(out[[i]]))
       }
     }
+    names(out) <- out_names
     out
   }
   # Cocuk surece LC_ALL=C.UTF-8 ZORLAMA: Windows R "C.UTF-8" locale'ini DESTEKLEMEZ.
