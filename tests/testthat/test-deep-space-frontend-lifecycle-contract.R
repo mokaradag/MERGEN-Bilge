@@ -4,7 +4,32 @@
 #           statik sözleşmeyle korunduğunu doğrular.
 
 .read_deep_space_frontend_file <- function(path) {
-  readLines(file.path(resolve_repo_root_for_tests(), path), encoding = "UTF-8", warn = FALSE)
+  full_path <- file.path(resolve_repo_root_for_tests(), path)
+
+  if (!file.exists(full_path)) {
+    stop(sprintf("Expected frontend file not found: %s", full_path), call. = FALSE)
+  }
+
+  size <- suppressWarnings(file.info(full_path)$size[1])
+  if (is.na(size) || size <= 0) {
+    return(character())
+  }
+
+  con <- file(full_path, open = "rb")
+  on.exit(close(con), add = TRUE)
+
+  raw_data <- readBin(con, what = "raw", n = size)
+
+  txt <- suppressWarnings(
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+  )
+
+  if (is.na(txt)) {
+    txt <- ""
+  }
+
+  txt <- enc2utf8(gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE))
+  strsplit(txt, "\n", fixed = TRUE)[[1]]
 }
 
 test_that("Deep Space lifecycle helper owns timer, rAF and auto-init boundaries", {
