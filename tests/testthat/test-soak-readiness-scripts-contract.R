@@ -60,12 +60,31 @@ srs_run_script <- function(rel, env = character(0), timeout = 120) {
   if (!nzchar(rscript) || !file.exists(rscript)) {
     return(list(status = NA_integer_, stdout = "", stderr = "rscript-not-found"))
   }
+  # processx named env entries are the most portable override form.  Some VM
+  # invocations pass contract env as "NAME=value" strings while inheriting a
+  # maintainer shell that may already have MERGEN_* guards enabled; normalize
+  # those strings so the child process deterministically sees the test override.
+  normalize_env <- function(x) {
+    if (length(x) == 0L) return(character(0))
+    out <- x
+    unnamed <- !nzchar(names(out) %||% rep("", length(out)))
+    for (i in which(unnamed)) {
+      m <- regexpr("=", out[[i]], fixed = TRUE)
+      if (m[[1]] > 1L) {
+        nm <- substr(out[[i]], 1L, m[[1]] - 1L)
+        val <- substr(out[[i]], m[[1]] + 1L, nchar(out[[i]]))
+        names(out)[[i]] <- nm
+        out[[i]] <- val
+      }
+    }
+    out
+  }
   # Cocuk surece LC_ALL=C.UTF-8 ZORLAMA: Windows R "C.UTF-8" locale'ini DESTEKLEMEZ.
   # Uretim VM'inde (Turkce/Windows locale) bu deger cocuk R baslangicini bozup
   # betigin SKIP yoluna ulasmadan sifir-disi cikis vermesine yol acabilir (calisan
   # uygulama LC_ALL zorlamaz; Turkish_Turkey.UTF-8 kullanir). Bu yuzden Windows'ta
   # ebeveynin (zaten calisan) locale'ini MIRAS al; yalniz Unix'te determinizm icin zorla.
-  child_env <- c("current", env)
+  child_env <- c("current", normalize_env(env))
   if (.Platform$OS.type != "windows") {
     child_env <- c(child_env, LC_ALL = "C.UTF-8")
   }
