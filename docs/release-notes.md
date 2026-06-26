@@ -15,13 +15,19 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
-### 2026-06-24 Operasyonel soak readiness sertleştirmesi (telemetri, kademeli merdiven, hata atfı, ayrı lane'ler)
+### 2026-06-25 Operasyonel soak staged milestone güncellemesi
 
-1000 kullanıcı / 90 dakika proxy-lane koşumları DB havuzuyla bir miktar iyileşse de
-(`effective_success_rate` 0.5826 -> 0.6414, timeout 94880 -> 73552) hâlâ 0.98 eşiğini
-geçemiyordu ve **neden** başarısız oldukları ölçümle teşhis edilemiyordu. Bu sürüm,
-hiçbir eşiği düşürmeden ve UNMEASURED kontrolleri PASS saymadan, soak kapısına gerçek
-ölçüm ve kademeli yol ekler:
+Windows VM'de hedefe tek seferde 1000 kullanıcıyla gitmek yerine kademeli milestone
+yaklaşımı benimsendi. Son console observed bulgular: 50 aktif proxy kullanıcı /
+1800 sn PASS (`artifacts/soak/20260625-111352`), 10 gerçek tarayıcı oturumu browser
+concurrency lane PASS (`artifacts/browser-concurrency/20260625-115948`) ve kapasite
+merdiveninde 100 ile 250 aktif proxy kullanıcı / 90 dk adımları PASS
+(`artifacts/soak/20260625-121812`). Son stabil staged kapasite şimdilik 250 aktif
+proxy kullanıcı / 90 dk; sıradaki hedef 500 adımıdır. Bu, 1.000 gerçek aktif insan
+chat oturumu veya gerçek upstream LLM throughput'u kanıtı değildir.
+
+2026-06-24 sertleştirmesi hiçbir eşiği düşürmeden ve UNMEASURED kontrolleri PASS
+saymadan soak kapısına gerçek ölçüm ve kademeli yol ekledi:
 
 - **Sistem telemetrisi** (`tests/scripts/soak_system_telemetry.R`): ayrı arka süreç
   CPU/bellek/TCP örnekler (Windows PowerShell, Unix `/proc`/`ps`/`ss`); yük seridini
@@ -111,25 +117,6 @@ tek-süreçte ardışık oturumlardır ve lane-yerel SQLite kullanır; gerçek
 tarayıcı/websocket eşzamanlılığını veya SQL Server T-SQL davranışını kanıtlamaz.
 Gerçek LLM üretim throughput'u ayrı bir konudur (real-canary upstream gateway
 `ERR-234` ile bloke kalmaya devam eder).
-
-### 2026-06-20 Windows VM limit-push soak ve evidence gate notu
-
-Windows VM üzerinde sınırı zorlamak için canlı uygulamaya attach edilen
-`proxy_llm` / `proxy` koşumu **1000 aktif eşzamanlı kullanıcı / 5400 saniye
-(90 dakika)** olarak çalıştırıldı ve **FAIL** ile tamamlandı
-(`artifacts/soak/20260620-111106/soak_evidence.json`, VM console observed):
-227285 istek, 132405 başarı, 0 hata, 94880 timeout, `effective_success_rate=0.5826`
-(< 0.98), p95=16965.9 ms ve throughput=2524.9/dk. Bu, 1000 eşzamanlı uzun
-proxy-lane işletim zarfının mevcut eşiklerle aşıldığını gösteren negatif/guardrail
-kanıttır; kapasite/readiness PASS olarak yorumlanmamalıdır.
-
-Güvenlik ve doğruluk kontrolleri yük altında temiz kaldı: anahtar yönlendirme 5/5,
-cross-session key isolation TRUE, upload validation 7/7, encoding round-trip 1,
-secret leak 0, mojibake 0 ve server crash yok. `memory_growth_mb` ve
-`browser_console_errors` ölçülmedi. Aynı VM oturumunda evidence gate
-`artifacts/vm-evidence/20260620-104919/evidence.json` ile `Toplam: 13 passed,
-0 failed, 0 skipped` olarak geçti; bu yapı/boot/encoding/UX kanıtıdır ve uzun
-1000-eşzamanlı soak FAIL sonucunu geçersiz kılmaz.
 
 Aşağıdaki bölüm, güncel değişiklik notlarını kronolojik/tematik bakım izi kaybolmadan izler.
 

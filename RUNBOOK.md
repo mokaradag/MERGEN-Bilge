@@ -294,62 +294,40 @@ kullanıcı" bir kullanıcı tabanıdır; ilk ciddi aktif-eşzamanlılık hedefi
 Fake/proxy/canary koşumlarından gerçek 1.000 eşzamanlı kullanıcı hazırlığı iddia
 edilmez.
 
-2026-06-19 Windows VM soak özeti: tarihsel pre-index-cache fake-lane stabil kanıt
-**22 aktif eşzamanlı kullanıcı / 300 saniye PASS** idi (408/408 başarı, 0 hata,
-0 timeout, `effective_success_rate=1.000`). Root-page/index caching sonrası VM
-console observed en güçlü fake-lane kanıt **1000 aktif eşzamanlı kullanıcı / 420
-saniye PASS** (`artifacts/soak/20260619-205535/soak_evidence.json`, p95=8377.8 ms,
-throughput=7931.4/dk, 0 hata, 0 timeout) ve ayrıca **250 aktif kullanıcı / 420
-saniye PASS** (`artifacts/soak/20260619-204704/soak_evidence.json`, p95=1983.8 ms)
-olarak güncellendi. Bu checkout içinde yeni `artifacts/soak/...` JSON dosyaları
-bulunmadığı için değerler artifact JSON ile yeniden doğrulanmalıdır. `memory_growth_mb`
-ve `browser_console_errors` UNMEASURED kaldı. Bu sonuç GET-only fake/proxy soak ve
-warm `GET /` index-serving iyileşmesini gösterir; 1.000 gerçek aktif insan chat
-oturumu, browser UX temizliği veya gerçek upstream LLM üretim hızlanması kanıtı değildir.
+2026-06-25 Windows VM kademeli soak özeti: önceki 1000-kullanıcı sınır-zorlama
+notları artık release/readiness anlatısında kullanılmaz. Hedefe adım adım gidilir:
+kanıtlanan son stabil kapasiteyi kaydedin, bir sonraki kademeye ancak mevcut kademe
+PASS olduğunda geçin ve hiçbir fake/proxy/canary sonucunu 1.000 gerçek aktif insan
+chat oturumu kanıtı olarak sunmayın.
 
-2026-06-20 limit-push notu: Windows VM üzerinde `proxy_llm` / `proxy` seridinde
-**1000 aktif eşzamanlı kullanıcı / 5400 saniye (90 dakika)** attach koşumu
-çalıştırıldı ve **FAIL** ile bitti (`artifacts/soak/20260620-111106/soak_evidence.json`,
-VM console observed): 227285 istek, 132405 başarı, 0 hata, 94880 timeout,
-`effective_success_rate=0.5826` < 0.98, p95=16965.9 ms, throughput=2524.9/dk.
-Anahtar yönlendirme 5/5, key isolation TRUE, upload validation 7/7, encoding
-round-trip 1, secret leak 0, mojibake 0 ve server crash yoktu; ancak sonuç
-kapasite/readiness PASS değildir. Aynı oturumda VM evidence gate
-`artifacts/vm-evidence/20260620-104919/evidence.json` ile `Toplam: 13 passed, 0 failed, 0 skipped`
-olarak geçti; bu, uzun 1000-eşzamanlı proxy soak FAIL sonucunu geçersiz kılmaz.
+Son VM console observed bulguları:
 
-2026-06-24 pooled limit-push güncellemesi: aynı 1000 aktif eşzamanlı kullanıcı /
-5400 saniye proxy-lane attach koşumu, Windows VM uygulama `.Renviron` içinde
-`MERGEN_DB_POOL_ENABLED=TRUE`, min=1, max=8, idle timeout=600 sn ve validation
-interval=60 sn iken tekrarlandı. Konsol artifact'ı
-`artifacts/soak/20260624-095505/soak_evidence.json` olarak raporlandı (VM console
-observed; JSON bu checkout içinde yok). Sonuç yine **FAIL**: 205136 istek, 131584
-başarı, 0 hata, 73552 timeout, `effective_success_rate=0.6414` < 0.98,
-p50/p95/p99=9549.6/17902.6/18843.5 ms, throughput=2276.7/dk. 20 Haziran koşumuna
-göre başarı oranı 0.5826'dan 0.6414'e yükseldi ve timeout sayısı 94880'den
-73552'ye indi; ancak p95 arttı ve 0.98 eşiği hâlâ geçilmediği için bu yalnızca
-sınırlı iyileşme/negatif limit-push kanıtıdır, kapasite/readiness PASS değildir.
-Anahtar yönlendirme, izolasyon, upload validation, encoding round-trip, secret leak,
-mojibake ve server-crash guardrail'leri temiz kaldı; `memory_growth_mb` ve
-`browser_console_errors` yine `UNMEASURED` idi.
+- **50 aktif proxy kullanıcı / 1800 saniye PASS** — artifact dizini
+  `artifacts/soak/20260625-111352`; özet: 115535/115535 başarı, 0 hata,
+  0 timeout, `effective_success_rate=1.000`, p50/p95/p99 ≈ 423 / 1113.5 /
+  1236.7 ms, throughput ≈ 3850.4/dk, CPU max ≈ %33, bellek max ≈ 19707.9 MiB.
+  Anahtar yönlendirme, izolasyon, upload validation, encoding round-trip,
+  secret-leak, temp-growth, interactive ve no-server-crash kontrolleri PASS;
+  `memory_growth_mb` UNMEASURED kaldı.
+- **10 gerçek tarayıcı oturumu browser concurrency lane PASS** — artifact dizini
+  `artifacts/browser-concurrency/20260625-115948`; Microsoft Edge ile 10 oturumun
+  tamamı PASS, websocket TRUE ve konsol hata sayısı 0. Bu lane gerçek tarayıcı /
+  websocket / konsol-hata ölçümü sağlar, ancak 1000 tarayıcı veya uzun süreli insan
+  iş yükü kanıtı değildir.
+- **Kademeli kapasite merdiveni (proxy, 90 dk/adım) 100 ve 250 kullanıcıda PASS** —
+  artifact dizini `artifacts/soak/20260625-121812`; kademe listesi
+  `100,250,500,1000`, stabil eşik `0.98`. Gözlenen adımlar: 100 kullanıcıda
+  `effective_success_rate=1`, p95≈5151.2 ms, throughput≈2099.6/dk, CPU max≈%42;
+  250 kullanıcıda `effective_success_rate=0.9807`, p95≈24234.6 ms,
+  throughput≈928.9/dk, CPU max≈%27. Son stabil kapasite şimdilik **250 aktif
+  proxy kullanıcı / 90 dakika** olarak kaydedilir. Bir sonraki hedef 500 kullanıcı
+  kademesidir; 500 PASS olmadan 1000 hedefi readiness iddiası yapılmaz.
 
-2026-06-24 soak readiness sertleştirmesi: başarısız 1000/90dk koşumlarının
-**nedenini** ölçmek için soak kapısına sistem telemetrisi (CPU/bellek/TCP),
-**kademeli kapasite merdiveni** (50->100->250->500->1000; ilk başarısız adımda
-durur, son STABİL adımı raporlar), hata atfı (timeout attribution) ve gerçek-LLM
-aşama sınıflandırması eklendi. Hiçbir eşik düşürülmedi; eklenen
-`capacity_ladder_all_steps_pass` daha katı bir kontroldür. Ayrıca iki ayrı VM/local
-betik eklendi: `tests/scripts/run_browser_concurrency_lane.R` (gerçek
-tarayıcı/websocket eşzamanlılık + `browser_console_errors` ÖLÇÜMÜ) ve
-`tests/scripts/run_vm_sqlserver_pool_preflight_real.R` (havuzlu SQL Server
-işlem/at-rest doğrulaması). Yeni artifact'lar: `system_telemetry.csv`/`.json`,
-`capacity_ladder.csv`/`_summary.json`, `timeout_attribution.json`,
-`real_canary_classification.json`, `real_llm_throughput.json`. Staged VM komut
-dizisi, telemetri yorumu ve CPU/çekirdek ölçeklendirme rehberi:
-[`docs/operational-soak-gate.md`](docs/operational-soak-gate.md) bölüm 16. Önerilen
-sıralama: 50/30dk PASS -> 100/90dk -> 250/90dk -> 500/90dk -> 1000/90dk; bir adım
-PASS olmadan sonrakine geçmeyin. ERR-234 gibi gateway policy hataları
-`gateway_policy_failed` olarak sınıflandırılır ve MERGEN app yük hatası değildir.
+Bu sonuçlar staged milestone kanıtıdır: proxy/index-serving dayanıklılığı,
+telemetri, key-isolation ve seçili browser/websocket lane kontrollerini güçlendirir.
+Yine de 1.000 gerçek aktif insan chat oturumu, gerçek upstream LLM throughput'u,
+1000 gerçek browser/websocket oturumu veya üretim ağı uçtan uca kapasitesi olarak
+sunulamaz.
 
 ## 8. Dağıtım Öncesi Kapılar
 

@@ -142,15 +142,12 @@ at-rest Türkçe encoding'i kanıtlamaz.
 
 ## 6. Windows VM / SQL Server doğrulaması (yapılması gereken)
 
-Havuz bulutta/offline test edilmiştir ve 24 Haziran 2026'da Windows VM'de uzun
-proxy-lane limit-push sırasında aşağıdaki üretim `.Renviron` ayarlarıyla denenmiştir:
-`MERGEN_DB_POOL_ENABLED=TRUE`, `MERGEN_DB_POOL_MIN_SIZE=1`,
-`MERGEN_DB_POOL_MAX_SIZE=8`, `MERGEN_DB_POOL_IDLE_TIMEOUT=600`,
-`MERGEN_DB_POOL_VALIDATION_INTERVAL=60`. Bu koşumda başarı oranı önceki uzun
-proxy-lane baseline'a göre 0.5826'dan 0.6414'e yükselmiş, timeout sayısı 94880'den
-73552'ye inmiştir; ancak genel sonuç hâlâ FAIL (`effective_success_rate=0.6414` <
-0.98) olduğu için bu ayar üretim kapasite/readiness PASS kanıtı değildir. Ayrıntı
-`docs/operational-soak-gate.md` bölüm 15'te tutulur.
+Havuz bulutta/offline test edilmiştir ve Windows VM'de staged soak yaklaşımıyla
+izlenir. 25 Haziran 2026 console observed bulgularında 50 aktif proxy kullanıcı /
+1800 sn PASS, 10 gerçek tarayıcı oturumu browser concurrency lane PASS ve kapasite
+merdiveninde 100 ile 250 aktif proxy kullanıcı / 90 dk adımları PASS kaydedildi.
+Son stabil staged kapasite şimdilik 250 aktif proxy kullanıcı / 90 dk; sıradaki
+hedef 500 adımıdır. Ayrıntı `docs/operational-soak-gate.md` bölüm 13'te tutulur.
 
 VM'de açmadan veya kalıcı tutmadan önce:
 
@@ -163,10 +160,10 @@ VM'de açmadan veya kalıcı tutmadan önce:
    yeni-yazım probe'unun rollback ettiğini doğrulayın.
 4. SSMS'te en yeni `MB_Messages`/`MB_Chats` satırlarının Türkçe açısından temiz
    olduğunu (mojibake yok) teyit edin.
-5. Canlı uygulamaya attach soak sınır koşumunu havuz açık/kapalı olarak yeniden
-   ölçüp gerçek-sohbet kapasite farkını gözlemleyin. 1000 kullanıcı / 90 dakika
-   proxy-lane koşumunda 2026-06-24 sonucu hâlâ FAIL olduğu için bu koşumu yalnızca
-   limit-push/guardrail kanıtı olarak yorumlayın.
+5. Canlı uygulamaya attach soak koşumlarını kademeli yürütün: son stabil adımı
+   kaydedin, sıradaki hedefe yalnızca mevcut kademe PASS olduktan sonra geçin ve
+   1000 kullanıcı hedefini ara kademeler tamamlanmadan readiness iddiası olarak
+   sunmayın.
 
 Bu adımlar geçene ve release hedeflerinize uygun soak/evidence gate sonuçları PASS
 olmadan havuzu üretimde kalıcı açmayın.
