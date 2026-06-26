@@ -313,6 +313,7 @@ test_that("client boot wiring keeps quick action, prompt send and restore paths 
   ui_text <- e2e_boot_read_text("ui.R")
   ui_asset_text <- e2e_boot_read_text("R/config_ui_assets.R")
   shiny_handlers <- e2e_boot_read_text(file.path("www", "js", "shiny_message_handlers.js"))
+  modern_welcome_handler <- e2e_boot_read_text(file.path("www", "js", "modern_welcome_handler.js"))
   input_handlers <- e2e_boot_read_text(file.path("www", "js", "input_handlers.js"))
 
   e2e_boot_expect_all_text(
@@ -331,6 +332,7 @@ test_that("client boot wiring keeps quick action, prompt send and restore paths 
     ui_asset_text,
     c(
       "\"js/shiny_message_handlers.js\"",
+      "\"js/modern_welcome_handler.js\"",
       "\"js/streaming_manager.js\"",
       "\"js/premium_reasoning.js\"",
       "\"js/file_handlers.js\"",
@@ -398,7 +400,7 @@ test_that("client boot wiring keeps quick action, prompt send and restore paths 
 
 test_that("returning to attached welcome screen reboots modern welcome animations", {
   welcome_handlers <- e2e_boot_read_text("R/server_welcome_handlers.R")
-  shiny_handlers <- e2e_boot_read_text(file.path("www", "js", "shiny_message_handlers.js"))
+  modern_welcome_handler <- e2e_boot_read_text(file.path("www", "js", "modern_welcome_handler.js"))
   character_manager <- e2e_boot_read_text(file.path("www", "js", "character_manager.js"))
 
   attached_branch_start <- regexpr(
@@ -428,6 +430,22 @@ test_that("returning to attached welcome screen reboots modern welcome animation
       "return(invisible(NULL))"
     ),
     "Attached welcome dönüş yolu animasyon yeniden başlatma sözleşmesi eksik:"
+  )
+
+
+
+  e2e_boot_expect_all_text(
+    modern_welcome_handler,
+    c(
+      "Shiny.addCustomMessageHandler('initModernWelcome'",
+      "clearModernWelcomeBootTimer();",
+      "bootModernWelcome(message || {}, 0)",
+      "WelcomeVideoPlayer.init(videoContainer)",
+      "MERGEN_SAVED_CHARACTER_ACCENT",
+      "WelcomeNeuralNetwork.init(neuralCanvas, accentColor)",
+      "WelcomeGreeting.init(greetingText)"
+    ),
+    "modern_welcome_handler.js initModernWelcome lifecycle sözleşmesi eksik:"
   )
 
   init_pos <- regexpr(
@@ -461,7 +479,7 @@ test_that("returning to attached welcome screen reboots modern welcome animation
   )
 
   e2e_boot_expect_all_text(
-    shiny_handlers,
+    modern_welcome_handler,
     c(
       "window.MERGEN_ACTIVE_CHARACTER_ACCENT",
       "window.WelcomeNeuralNetwork.init(neuralCanvas, accentColor)"

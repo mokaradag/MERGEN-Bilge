@@ -129,7 +129,7 @@ Disiplin kuralları:
 | Türkçe karakter bütünlüğü ve mojibake | Windows VM, SQL Server/DB encoding, mailto, JSON/log ve UI sınırlarında veri bozulmasını önler. | [`../CLAUDE.md`](../CLAUDE.md), `R/utils_text_encoding.R`, `R/helpers_db_encoding.R` |
 | DB write/read normalizasyonu | Legacy veri kirli olabilir; guard'lar zayıflatılmamalıdır. | [`../CLAUDE.md`](../CLAUDE.md), DB helper dosyaları |
 | Source/load order | Erken yardımcılar geç yüklenirse runtime veya test davranışı bozulur. | `R/config_source_manifest.R`, `tests/testthat/helper_bootstrap.R` |
-| Frontend asset order | Encoding, streaming, toast, smoke seam ve tema davranışı sıra bağımlıdır. | `R/config_ui_assets.R`, ilgili asset manifest testleri |
+| Frontend asset order | Encoding, streaming, toast, modern welcome lifecycle, smoke seam ve tema davranışı sıra bağımlıdır. | `R/config_ui_assets.R`, ilgili asset manifest testleri |
 | Windows/on-prem yol davranışı | UNC yollar, Türkçe karakterli path'ler, launcher ve SSO profili Windows VM üzerinde doğrulanır. | [`../RUNBOOK.md`](../RUNBOOK.md), `run_mergen_prod.bat`, `run_mergen_prod.R` |
 | Dosya depolama ve upload lifecycle | Kullanıcı izolasyonu, güvenli yol çözümleme, önizleme ve cleanup davranışları hassastır. | Dosya helper/modül dosyaları, [`../CLAUDE.md`](../CLAUDE.md) |
 | API key ve secret safety | Anahtarlar loglanmaz, dokümantasyona yazılmaz, kullanıcıya sızdırılmaz. | `.Renviron.example`, API key helper'ları, [`../CLAUDE.md`](../CLAUDE.md) |

@@ -6,6 +6,50 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-26 — Modern welcome Shiny handler/lifecycle ayrımı
+
+### Seçilen paket / neden
+Frontend handler-density paketi seçildi. Taze `frontend_complexity_doctor` çıktısı `www/js/shiny_message_handlers.js` dosyasını en yüksek Shiny handler yoğunluğuna sahip app-owned JS dosyası olarak gösterdi (önce 535 satır / 45 fonksiyon / 18 event handler / 17 Shiny handler) ve handoff bu dosyayı en iyi anlamlı hedef olarak işaretliyordu. Kod incelemesinde `initModernWelcome` retry/timer/video/neural/greeting lifecycle kümesinin genel Shiny mesaj köprüsü içinde ayrı ve stateful bir sınır oluşturduğu görüldü.
+
+### Değişen dosyalar
+- `www/js/modern_welcome_handler.js`: `initModernWelcome` Shiny mesaj handler'ı, boot retry timer temizliği, DOM/dependency readiness kontrolü, welcome video resume denemesi, neural/greeting init ve karakter accent fallback davranışını taşıyan yeni odaklı dosya.
+- `www/js/shiny_message_handlers.js`: genel mesaj köprüsünde toast/scroll/CodeMirror/font/follow-up/neural/search/storage/removeExcel/quick-action handler'ları kaldı; modern welcome lifecycle kümesi çıkarıldı.
+- `R/config_ui_assets.R`: yeni dosya `shiny_message_handlers.js` sonrasında ve `ui_init.js` / welcome video-neural varlıklarından önce yüklenecek şekilde manifestlendi; sıralama kuralı eklendi.
+- `R/config_ui_asset_zones.R`: yeni JS varlığı `shiny_mesaj_koprusu` bölgesinde sahiplenildi.
+- `tests/testthat/test-modern-welcome-handler-split-contract.R`: yeni manifest/zone/order ve davranışsal metin sözleşmesi eklendi.
+- `tests/testthat/test-frontend-selector-contract.R`, `tests/testthat/test-e2e-boot-welcome-regression.R`: modern welcome lifecycle sözleşmeleri yeni dosyaya taşındığı için güncellendi.
+
+### Önce / sonra karmaşıklık ve risk
+- Önce: `www/js/shiny_message_handlers.js` 535 satır / 45 fonksiyon / 18 event handler / 17 Shiny handler; modern welcome lifecycle timer'ı merkezi mesaj köprüsünün içinde yaşıyordu.
+- Sonra: `www/js/shiny_message_handlers.js` 401 satır / 38 fonksiyon / 17 event handler / 16 Shiny handler; `www/js/modern_welcome_handler.js` odaklı lifecycle asset'i olarak manifest/zone kapsamına alındı.
+- Ana risk azaltımı: `initModernWelcome` retry/timer/DOM readiness/video-neural-greeting orchestration tek sahipli bir dosyaya ayrıldı; genel mesaj köprüsünün handler yoğunluğu azaldı ve yeni contract test bu sınırın geri kaymasını yakalar.
+
+### Davranış korundu
+`initModernWelcome` mesaj adı, `MAX_ATTEMPTS = 80` / `RETRY_DELAY_MS = 50` bekleme akışı, görünür DOM ve dependency readiness kontrolleri, aynı video konteynerini zorla destroy etmeme sözleşmesi, autoplay resume denemesi, `MERGEN_SAVED_CHARACTER_ACCENT` önceliği, `MERGEN_ACTIVE_CHARACTER_ACCENT` geriye dönük fallback'i ve `WelcomeNeuralNetwork` / `WelcomeGreeting` init çağrıları korunur. `showNeuralAnimation`, hızlı eylem debounce, localStorage restore, takip soruları ve sağlık/yönetici timestamp handler'ları merkezi köprüde kaldı.
+
+### Testler / doğrulama
+- `node --check www/js/shiny_message_handlers.js` → PASS.
+- `node --check www/js/modern_welcome_handler.js` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-modern-welcome-handler-split-contract.R", reporter = "summary")'` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R", reporter = "summary")'` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-ui-asset-zones-contract.R", reporter = "summary")'` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-frontend-selector-contract.R", reporter = "summary")'` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-e2e-boot-welcome-regression.R", reporter = "summary")'` → PASS.
+- `LANG=C.UTF-8 LC_ALL=C.UTF-8 Rscript tests/scripts/frontend_complexity_doctor.R` → PASS; artifact `artifacts/frontend-complexity-doctor/frontend-complexity-doctor-20260626-201016.json`.
+- `LANG=C.UTF-8 LC_ALL=C.UTF-8 Rscript tests/scripts/maintainability_report.R` → PASS; R maintainability 100/100 kaldı.
+- `LANG=C.UTF-8 LC_ALL=C.UTF-8 Rscript tests/scripts/seam_doctor.R` → PASS / OK; artifact `artifacts/seam-doctor/seam-doctor-20260626-201021.json`.
+- `Rscript tests/scripts/parse_sanity_check.R` → PASS (868 dosya).
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-maintainability-ratchet.R", reporter = "summary")'` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-frontend-maintainability-ratchet.R", reporter = "summary")'` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-ux-regression-guardrails.R", reporter = "summary")'` → PASS after updating the moved modern welcome expectation.
+- `bash tools/ai_validate.sh quick` → PASS; failed_steps=0, skipped_steps=0; artifact `artifacts/ai-validation/20260626-201659/summary.json`.
+
+### Atlanan / başarısız doğrulamalar
+`bash tools/ai_validate.sh full --boot-smoke` çalıştırıldı ancak full testthat suite adımında daha önce handoff'ta da görülen Shiny destroyed-reactive izolasyon hataları (`test-chat-actions-behavior.R`, `test-image-gallery-observers-behavior.R`) nedeniyle durdu; boot-smoke aşamasına ulaşılamadı. İlk full denemede ayrıca bu split sonrası güncellenmemiş `test-ux-regression-guardrails.R` statik beklentisi yakalandı ve düzeltildi; ikinci full denemede yalnız destroyed-reactive hataları kaldı. Artifact `artifacts/ai-validation/20260626-201800/summary.json`. VM, gerçek browser, DB, SSO, SQL Server Türkçe encoding, live endpoint ve production app boot kanıtı üretilmedi; kapsam frontend statik asset/order/contract ve JS syntax düzeyindedir.
+
+### Kalan riskler / sonraki adaylar
+Gerçek tarayıcıda video/neural görsel eşdeğerlik ayrıca browser smoke ile kanıtlanmalıdır. Sonraki anlamlı frontend hedefleri `www/js/claude_code.js` Shiny handler yoğunluğu, `www/js/tool_backgrounds.js` fonksiyon yoğunluğu veya `www/js/file_handlers.js` event handler yoğunluğudur.
+
 ## 2026-06-26 — Deep Space frontend yaşam döngüsü sınırı
 
 ### Seçilen paket / neden

@@ -79,6 +79,7 @@ testthat::test_that("welcome UX bileşenleri ve top-gap sözleşmesi korunur", {
   neural_js <- .ux_guard_read_text("www/js/welcome_neural_modern.js")
   greeting_js <- .ux_guard_read_text("www/js/welcome_greeting_personal.js")
   handlers_js <- .ux_guard_read_text("www/js/shiny_message_handlers.js")
+  modern_welcome_handler_js <- .ux_guard_read_text("www/js/modern_welcome_handler.js")
 
   .ux_guard_expect_all(
     welcome_css,
@@ -114,7 +115,7 @@ testthat::test_that("welcome UX bileşenleri ve top-gap sözleşmesi korunur", {
   )
 
   .ux_guard_expect_all(
-    handlers_js,
+    modern_welcome_handler_js,
     c(
       "initModernWelcome",
       "bootModernWelcome",
@@ -160,6 +161,7 @@ testthat::test_that("welcome UX bileşenleri ve top-gap sözleşmesi korunur", {
 testthat::test_that("quick action model, tool, intro ve duplicate-event sözleşmesi korunur", {
   quick_r <- .ux_guard_read_text("R/module_quick_actions.R")
   handlers_js <- .ux_guard_read_text("www/js/shiny_message_handlers.js")
+  modern_welcome_handler_js <- .ux_guard_read_text("www/js/modern_welcome_handler.js")
 
   .ux_guard_expect_all(
     handlers_js,
