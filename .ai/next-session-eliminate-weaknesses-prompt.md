@@ -3,12 +3,11 @@
 ## Current next-session handoff
 
 ### Recently completed — do not redo unless fresh evidence shows regression
-- Modern welcome frontend handler/lifecycle split:
-  - `www/js/modern_welcome_handler.js` now owns `initModernWelcome`, retry timer cleanup, DOM/dependency readiness, welcome video resume, neural init, greeting init, and saved-character accent fallback.
-  - `www/js/shiny_message_handlers.js` remains the generic Shiny message bridge for toast/scroll/CodeMirror/font/follow-up/neural animation/search/storage/removeExcel/quick-action handlers.
-  - Manifest order keeps `modern_welcome_handler.js` after `shiny_message_handlers.js` and before `ui_init.js`, `neural_welcome.js`, and `welcome_video_player.js`.
-  - Guard: `tests/testthat/test-modern-welcome-handler-split-contract.R` plus updated selector/boot welcome contracts.
-- Do not redo File Manager delete/state/upload runtime splits, AI Expert manager/handler split, config UI asset DATA/VALIDATORS/RENDER split, server runtime auth-ready split, post-deploy smoke artifact flow, Claude document-summary split, true-SSE worker-globals split, DB chat-read query split, startup screen UI/server split, image generation UI split, support/admin renderer splits, Deep Space lifecycle split, or the modern welcome handler split unless fresh evidence shows regression.
+- Modern welcome ownership contract alignment:
+  - `CLAUDE.md` now explicitly says `www/js/modern_welcome_handler.js` owns `initModernWelcome` and visible modern-welcome startup lifecycle.
+  - `www/js/shiny_message_handlers.js` remains the generic Shiny message bridge; do not move `initModernWelcome` back there without redesigning manifest order, zone ownership, and split-contract tests together.
+  - `tests/testthat/test-modern-welcome-handler-split-contract.R` now guards this authoritative maintainer-contract alignment.
+- Do not redo File Manager delete/state/upload runtime splits, AI Expert manager/handler split, config UI asset DATA/VALIDATORS/RENDER split, server runtime auth-ready split, post-deploy smoke artifact flow, Claude document-summary split, true-SSE worker-globals split, DB chat-read query split, startup screen UI/server split, image generation UI split, support/admin renderer splits, Deep Space lifecycle split, or the modern welcome handler/ownership split unless fresh evidence shows regression.
 
 ### Current best meaningful targets
 - Claude Code frontend handler-density package: inspect `www/js/claude_code.js` for a coherent Shiny handler grouping or lifecycle cleanup boundary; preserve streaming/asset order.
