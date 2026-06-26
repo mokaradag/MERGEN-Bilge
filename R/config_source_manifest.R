@@ -192,6 +192,7 @@ source_manifest_sections <- list(
     "R/helpers_file_manager_session_registry.R",
     "R/helpers_file_manager_runtime.R",
     "R/helpers_file_manager_storage.R",
+    "R/helpers_file_manager_upload_runtime.R",
     "R/helpers_file_manager_delete_runtime.R",
     "R/helpers_file_manager_state_runtime.R",
     "R/helpers_file_manager_attach_client.R",

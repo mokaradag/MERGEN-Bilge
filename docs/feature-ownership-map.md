@@ -76,7 +76,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-sse-worker-export-contract.R` ile kilitlenir. Küresel en büyük dosya satırı
   681 → 678 (`module_admin_yanit_analizi_outputs.R`) sıkılaştırıldı. Sıradaki
   repo-geneli yakın-bütçe adayları: `R/module_admin_yanit_analizi_outputs.R` (678,
-  tek-fonksiyon flat renderer — düşük öncelik), `R/module_file_manager.R` (642/10; delete-runtime split sonrası);
+  tek-fonksiyon flat renderer — düşük öncelik), `R/module_file_manager.R` (550/9; delete + toplu-upload runtime split sonrası);
   frontend `www/js/deep_space_intro.js` (820) / `www/js/ai_expert_manager.js` (802/45).
 
 ## Dosya Yaşam Döngüsü
@@ -88,7 +88,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `R/helpers_files.R`, `R/helpers_mcp_file_resolver.R`.
 - **UI/server modülleri:** `R/module_file_manager_ui.R`, `R/module_file_manager.R`,
   `R/module_file_preview.R`, `R/helpers_file_manager_*.R` (özellikle
-  `R/helpers_file_manager_delete_runtime.R`: kalıcı dosya silme + indeks temizliği),
+  `R/helpers_file_manager_delete_runtime.R`: kalıcı dosya silme + indeks temizliği; `R/helpers_file_manager_upload_runtime.R`: toplu upload doğrulama/kalıcılaştırma/indeks yazma),
   `R/server_observers_files.R`.
 - **JS/CSS:** `www/js/input_handlers.js` (drag/drop), `www/css/file_manager*.css`.
 - **DB/servis:** JSON indeks (`MERGEN_INDEX_PATH`); disk depoları
@@ -102,14 +102,18 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   temizliği + bildirim yaşam döngüsü),
   `test-adversarial-hostile-input-behavior.R` (traversal/bidi/safe_join),
   `test-file-manager-delete-runtime-behavior.R` (doğrudan kalıcı yol silme,
-  Türkçe display-name ile indeks temizliği, resolve/fallback sırası).
+  Türkçe display-name ile indeks temizliği, resolve/fallback sırası),
+  `test-file-manager-state-runtime-contract.R` (toplu upload helper ayrımı,
+  duplicate/validasyon/kalıcı kopya ve Türkçe dosya adı davranışı).
 - **Smoke/kanıt:** `run_fragile_flow_manual_preflight.R`, ux-smoke File Manager
   Türkçe display-name kontrolü.
 - **Bilinen risk / sıradaki hedef:** bidi-override reddi + `summarize_file_with_llm`
   + `handle_file_upload_batch` (uzantı-reddi dalı dahil) davranışsal kapsama
   eklendi; `module_file_manager.R` kalıcı silme fiziksel lifecycle dalı
-  `helpers_file_manager_delete_runtime.R` içine çıkarıldı ve 642/10 bütçeye indi.
-  Kalan açık alan kalmadı (yeni yükleme/silme davranışı eklenince genişletilir).
+  `helpers_file_manager_delete_runtime.R` içine, toplu upload dosya başı
+  doğrulama/kalıcılaştırma dalı `helpers_file_manager_upload_runtime.R` içine
+  çıkarıldı ve `module_file_manager.R` 550/9 bütçeye indi. Kalan açık alan
+  kalmadı (yeni yükleme/silme davranışı eklenince genişletilir).
 
 ## DB / Persistence ve Türkçe Kodlama
 
@@ -307,7 +311,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   yine yalnızca VM'de gerçek `logs/mergen_*.log` ile canlı doğrulanır. Sıradaki
   repo-geneli yakın-bütçe adayları bu seam dışında `R/server_handler_true_streaming.R`
   (681, küresel pin — canlı SSE closure'ları nedeniyle yalnızca VM'de kanıtlanabilir,
-  riskli) ve `R/module_file_manager.R` (642/10; delete-runtime split sonrası); frontend `www/js/deep_space_intro.js`
+  riskli) ve `R/module_file_manager.R` (550/9; delete + toplu-upload runtime split sonrası); frontend `www/js/deep_space_intro.js`
   (820) / `www/js/ai_expert_manager.js` (802/45). (`helpers_claude_code_documents.R`
   679 → 407'ye indirildi.)
 
@@ -425,9 +429,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   satırı 690 → 687 → 681 oldu. `R/helpers_claude_code_documents.R` (679) doküman
   özetleme orkestrasyonu `R/helpers_claude_code_document_summary.R`'ye ayrılarak
   407'ye indi. Sıradaki repo-geneli yakın-bütçe adayları artık
-  `R/server_handler_true_streaming.R` (681, küresel pin — canlı SSE closure'ları,
-  riskli/VM-only), `R/module_admin_yanit_analizi_outputs.R` (678, tek-fonksiyon flat
-  renderer — düşük öncelik) ve `R/module_file_manager.R` (642/10; delete-runtime split sonrası).
+  `R/helpers_claude_code_process.R` (665/20; yalnızca discovery gerçek risk gösterirse) ve frontend yoğunluk adaylarıdır; `R/module_admin_yanit_analizi_outputs.R` tek-fonksiyon flat renderer olarak düşük öncelik kalır.
 
 ## Frontend Varlık ve Yönetişim
 
@@ -469,8 +471,8 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   büyük dosya satırı 690 → 687 → 681 olarak sıkılaştırıldı. Bölge VERİSİ/DOĞRULAYICI
   ayrımı da korunur: `config_ui_asset_zones.R` 502/0 (SADECE veri), doğrulayıcı API
   `config_ui_asset_zone_validators.R`'de (312/10). Sıradaki repo-geneli yakın-bütçe
-  adayları `R/server_handler_true_streaming.R` (681), `R/helpers_claude_code_documents.R`
-  (679) ve `R/module_file_manager.R` (642/10; delete-runtime split sonrası); frontend tarafında en yoğun adaylar
+  adayları artık daha çok frontend yoğunluk dosyalarıdır; R tarafında `R/helpers_claude_code_process.R`
+  (665/20) yalnızca taze raporda gerçek riskse seçilmeli. Frontend tarafında en yoğun adaylar
   `www/js/deep_space_intro.js` (820/32) ve `www/js/ai_expert_manager.js`
   (802/45/12 event/8 Shiny handler).
 

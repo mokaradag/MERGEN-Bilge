@@ -6,6 +6,46 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 
 ---
 
+## 2026-06-26 — File Manager toplu yükleme runtime ayrımı
+
+### Seçilen paket / neden
+File Manager paketi seçildi. Güncel discovery çıktısında `R/module_file_manager.R` 642/10 ile hâlâ en büyük R dosyaları arasındaki gerçek lifecycle orkestrasyon adayıydı; `module_admin_yanit_analizi_outputs.R` belgelenmiş flat renderer olduğu için tekrar hedeflenmedi. Toplu upload dalı dosya doğrulama, kalıcı kopyalama, indeks yazma ve Shiny mesajlarını tek observer içinde taşıyordu.
+
+### Değişen dosyalar
+- `R/helpers_file_manager_upload_runtime.R`: toplu yükleme doğrulama, SSO-ready gate, kalıcı kopya, indeks yazma ve `process_uploaded_file()` delegasyonunu tek runtime helper'a taşıdı.
+- `R/module_file_manager.R`: `execute_bulk_upload` observer'ı UI reset/mesaj orkestrasyonunda kaldı; dosya başı lifecycle işlemini helper'a delege eder.
+- `R/config_source_manifest.R`, `tests/testthat/test-source-manifest-contract.R`, `tests/testthat/test-source-manifest-sections-contract.R`: yeni helper storage sonrası / delete-runtime öncesi açık kaynak sırasına eklendi.
+- `tests/testthat/test-file-manager-state-runtime-contract.R`: helper extraction contract ve Türkçe dosya adlı toplu yükleme davranış testi eklendi.
+- `tests/testthat/test-maintainability-ratchet.R`: `module_file_manager.R` bütçesi 560/10'a, yeni upload helper bütçesi 140/3'e sıkılaştırıldı.
+
+### Önce / sonra karmaşıklık
+- Önce: `R/module_file_manager.R` 642 satır / 10 fonksiyon.
+- Sonra: `R/module_file_manager.R` 550 satır / 9 fonksiyon; yeni `R/helpers_file_manager_upload_runtime.R` 118 satır / 1 fonksiyon.
+- Maintainability skoru 100/100 kaldı; 800+ R dosyası yok; küresel en büyük dosya 678 satır olarak değişmedi.
+
+### Davranış korundu
+Toplu upload sırası korunur: duplicate ayrımı, SSO/auth-ready fail-closed gate, merkezi `validate_uploaded_file()` + `fm_normal_allowed_extensions()` kontrolü, `copy_to_mcp_base()`, persisted-size güncellemesi, kalıcı indeks yazma, `process_uploaded_file(..., generate_message = FALSE)`, başarı mesajı ve `files_added_to_context()` bildirimi. Traversal/safe-path/upload doğrulama ve Türkçe görünen dosya adı sözleşmeleri gevşetilmedi.
+
+### Testler / doğrulama
+- `Rscript tests/scripts/parse_sanity_check.R` → PASS (865 dosya).
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-file-manager-state-runtime-contract.R", reporter="summary")'` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-source-manifest-contract.R", reporter="summary")'` → PASS.
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-source-manifest-sections-contract.R", reporter="summary")'` → PASS.
+- `Rscript tests/scripts/maintainability_report.R` → PASS (100/100; `module_file_manager.R` 550/9).
+- `Rscript -e 'library(testthat); testthat::test_file("tests/testthat/test-maintainability-ratchet.R", reporter="summary")'` → PASS.
+
+### Ek doğrulama sonuçları
+- `Rscript tests/scripts/frontend_complexity_doctor.R` → PASS; R-only değişiklik olduğu için mevcut frontend risk listesi değişmedi; artifact `artifacts/frontend-complexity-doctor/frontend-complexity-doctor-20260626-125422.json`.
+- `Rscript tests/scripts/seam_doctor.R` → PASS / OK; `dosya_yasam_dongusu` runtime dosyası 24 olarak güncellendi; artifact `artifacts/seam-doctor/seam-doctor-20260626-125427.json`.
+- `bash tools/ai_validate.sh quick` → PASS; failed_steps=0, skipped_steps=0; artifact `artifacts/ai-validation/20260626-125434/summary.json`.
+- `bash tools/ai_validate.sh full --boot-smoke` → FAIL; `full testthat suite` adımında Shiny destroyed-reactive test izolasyonu hataları (`test-chat-actions-behavior.R`, `test-image-gallery-observers-behavior.R`) nedeniyle durdu; File Manager policy-wiring contract hatası düzeltildikten sonra tekrarlandı ve kalan hatalar bu paketle ilişkili olmayan full-suite izolasyon hatalarıdır. Artifact `artifacts/ai-validation/20260626-125941/summary.json`; boot-smoke adımına ulaşılamadı.
+
+### Atlanan doğrulamalar
+Full validation boot-smoke aşamasına ulaşamadığı için VM, DB, SSO, gerçek tarayıcı, SQL Server Türkçe encoding ve gerçek app boot kanıtı üretilmedi; bu paket Linux/cloud statik + testthat + quick-validation kanıtıyla sınırlıdır.
+
+### Kalan riskler / sonraki adaylar
+File Manager'da en yüksek churn'lü lifecycle dalları artık küçük helper'lara ayrıldı; yeniden aynı splitleri yapmayın. Güncel en iyi sonraki hedefler frontend yoğunluk paketleri: `www/js/deep_space_intro.js` ve `www/js/ai_expert_manager.js`. R tarafında `helpers_claude_code_process.R` ancak discovery onu açık top risk yaparsa ele alınmalı.
+
 ## 2026-06-25 — File Manager kalıcı silme runtime ayrımı
 
 ### Seçilen paket / neden
