@@ -507,13 +507,11 @@ işletim zarfının dışındaydı. 25 aktif eşzamanlı kullanıcı / 30 saniye
 yalnızca kısa spike gözlemi olarak kaydedilir; sürdürülebilir kapasite diye
 belgelenmemelidir.
 
-Index-cache optimizasyonundan **sonra** VM konsolunda bildirilen en güçlü gözlem,
-smoke/fake modda **1000 aktif eşzamanlı kullanıcı / 420 saniye PASS** koşusudur
-(`artifacts/soak/20260619-205535/soak_evidence.json`, p95 yaklaşık 8377.8 ms,
-0 hata, 0 timeout). Bu repo çalışma kopyasında `artifacts/soak/...` dizini
-bulunmadığı için aşağıdaki yeni 20:44-21:04 koşuları **VM console observed**
-olarak işaretlenmiştir; artifact JSON dosyaları VM'den eklendiğinde değerler JSON
-ile yeniden doğrulanmalıdır.
+Index-cache optimizasyonundan sonra daha yüksek kısa fake/proxy gözlemleri alınmış
+olsa da release/readiness anlatısında artık tek seferde 1000'e atlama yerine
+2026-06-25 kademeli merdiven kanıtı esas alınır. Aşağıdaki tablo tarihsel
+pre-index-cache baseline olarak korunur; güncel staged milestone için bölüm 13'e
+bakın.
 
 #### Tarihsel pre-index-cache fake-lane baseline
 
@@ -675,57 +673,47 @@ Bu koşumlar **kanıtlar**:
 - Operasyonel soak gate Windows VM'de çalışır.
 - Attach mode, çalışan uygulama köküne HTTP üzerinden ulaşır.
 - Pre-index-cache fake LLM lane, 22 aktif eşzamanlı kullanıcıyı 5 dakika boyunca sıfır hata ve
-sıfır timeout ile sürdürebiliyordu; index-cache sonrası VM console observed fake-lane
-kanıtı 250 ve 1000 aktif kullanıcıyı 420 saniye boyunca PASS olarak raporlar, artifact
-JSON doğrulaması beklenir.
-- Key routing, cross-session key isolation, upload validation, secret-redaction
-kontrolleri ve encoding helper kontrolleri geçti.
+sıfır timeout ile sürdürebiliyordu.
+- 2026-06-25 staged VM gözlemlerinde 50 aktif proxy kullanıcı / 1800 sn PASS,
+100 ve 250 aktif proxy kullanıcı / 90 dk kademeleri PASS, 10 gerçek tarayıcı
+oturumu browser concurrency lane PASS olarak kaydedildi.
+- Key routing, cross-session key isolation, upload validation, secret-redaction,
+telemetri ve encoding helper kontrolleri ilgili lane kapsamlarında geçti.
 
 Bu koşumlar **kanıtlamaz**:
 
 - 1.000 gerçek aktif eşzamanlı kullanıcı.
-- 50/100 kullanıcı production throughput.
+- Üretim ağı üzerinde gerçek insan iş yükü throughput garantisi.
 - Browser/websocket Shiny session concurrency.
 - Gerçek LLM provider throughput veya real-canary throughput.
 - VM dışı production network latency.
 - At-rest SQL Server encoding davranışı.
 ---
 
-## 13. 2026-06-20 Windows VM Limit-Push Soak and Evidence Gate Notes
+## 13. 2026-06-25 Windows VM staged soak findings
 
-Bu bölüm, 20 Haziran 2026 tarihinde Windows VM üzerinde sınırı bilinçli olarak
-zorlamak için yapılan uzun proxy-lane koşumunu kaydeder. Koşum canlı uygulamaya
-attach edilerek `MERGEN_SOAK_APP_URL=http://127.0.0.1:8009/` ile çalıştırıldı;
-profil `proxy_llm`, serit `proxy`, eşzamanlılık `1000`, süre `5400` saniye
-(90 dakika) ve kapasite eğrisi kapalıydı. Artifact yolu konsolda
-`artifacts/soak/20260620-111106/soak_evidence.json` olarak raporlandı. Bu
-artifact bu checkout içinde bulunmadığı için değerler **VM console observed**
-olarak belgelenir ve JSON artifact eklendiğinde yeniden doğrulanmalıdır.
+Önceki 1000-kullanıcı sınır-zorlama notları release/readiness anlatısından
+çıkarılmıştır. Kapasite hedefi artık kademeli yürütülür: son stabil kademeyi
+kanıtla, bir sonraki kademeye geç, 1000 hedefini ancak ara kademeler PASS olduktan
+sonra milestone olarak ele al. Hiçbir proxy/fake/canary koşumu 1.000 gerçek aktif
+insan chat oturumu veya gerçek upstream LLM throughput'u olarak sunulmaz.
 
-Sonuç **FAIL** idi: 227285 istekten 132405'i başarılı oldu
-(`raw_success_rate=0.5826`, `effective_success_rate=0.5826`), hata sayısı 0,
-timeout sayısı 94880, p50/p95/p99 yaklaşık 950 / 16965.9 / 18773.7 ms ve
-throughput yaklaşık 2524.9 istek/dk olarak gözlendi. Başarısızlık nedeni
-`effective_success_rate` eşiğinin 0.98 altında kalmasıydı. Güvenlik/doğruluk
-kontrolleri temiz kaldı: anahtar yönlendirme 5/5, cross-session key isolation
-`TRUE`, upload validation 7/7, encoding round-trip pass rate 1, secret leak 0,
-server crash yok, `mojibake_hits=0`, redaction verified `TRUE`. `memory_growth_mb`
-ve `browser_console_errors` bu koşuda `UNMEASURED` kaldığından ölçülmüş PASS
-olarak sunulmamalıdır; `temp_growth_mb` yaklaşık 0.31 MB ile PASS görünmüştür.
+Son VM console observed bulguları:
 
-Bu koşumun yorumu: 1000 aktif eşzamanlı kullanıcı / 90 dakika proxy-lane
-attach koşumu **kapasite/readiness kanıtı değildir**; bilinçli limit-push
-olarak, uzun süreli 1000 eşzamanlı proxy GET/LLM-yolu baskısında zaman aşımı
-saturasyonunun başladığını ve mevcut eşiklerle işletim zarfının dışında kalındığını
-gösterir. Buna rağmen sır sızıntısı, mojibake, anahtar izolasyonu, upload
-validasyonu ve redaksiyon kontrollerinin yük altında temiz kalması yararlı bir
-negatif/guardrail kanıtıdır.
+| Lane / koşum | Artifact | Sonuç | Özet |
+| --- | --- | --- | --- |
+| Proxy soak, 50 kullanıcı, 1800 sn | `artifacts/soak/20260625-111352` | PASS | 115535/115535 başarı, 0 hata, 0 timeout, `effective_success_rate=1.000`, p95≈1113.5 ms, throughput≈3850.4/dk, CPU max≈%33. |
+| Browser concurrency, 10 oturum | `artifacts/browser-concurrency/20260625-115948` | PASS | Microsoft Edge ile 10/10 oturum PASS, websocket TRUE, konsol hata sayısı 0. |
+| Capacity ladder, 100→250→500→1000, 5400 sn/adım | `artifacts/soak/20260625-121812` | 100 ve 250 PASS | 100 kullanıcı: `effective_success_rate=1`, p95≈5151.2 ms, throughput≈2099.6/dk, CPU max≈%42. 250 kullanıcı: `effective_success_rate=0.9807`, p95≈24234.6 ms, throughput≈928.9/dk, CPU max≈%27. |
 
-Aynı VM oturumunda evidence gate de çalıştırıldı ve konsolda `Toplam: 13 passed,
-0 failed, 0 skipped` olarak tamamlandı; artifact
-`artifacts/vm-evidence/20260620-104919/evidence.json` idi. Bu VM evidence gate
-PASS sonucu soak FAIL sonucunu geçersiz kılmaz: evidence gate yapı/boot/encoding/UX
-kanıtıdır, 1000 eşzamanlı uzun proxy-lane kapasite kanıtı değildir.
+Geçerli staged milestone yorumu:
+
+- Son stabil kapasite: **250 aktif proxy kullanıcı / 90 dakika**.
+- Sonraki hedef: **500 aktif proxy kullanıcı / 90 dakika**; PASS olmadan 1000
+  readiness iddiası yapılmaz.
+- Browser lane şu an **10 gerçek tarayıcı oturumu** için websocket ve konsol-hata
+  kanıtı sağlar; 1000 gerçek tarayıcı oturumu kanıtı değildir.
+- `memory_growth_mb` gibi UNMEASURED alanlar ölçülmüş PASS gibi raporlanmaz.
 
 ---
 
@@ -762,65 +750,11 @@ ve canlı uygulamaya attach soak koşumunda ayrıca doğrulanmalıdır.
 
 ---
 
-## 15. 2026-06-24 Windows VM pooled DB proxy-lane limit-push update
-
-Bu bölüm, 24 Haziran 2026 tarihinde Windows VM üzerinde DB bağlantı havuzu açıkken
-alınan yeni uzun proxy-lane limit-push sonucunu kaydeder. Koşum canlı uygulamaya
-attach edilerek `MERGEN_SOAK_APP_URL=http://127.0.0.1:8009/` ile çalıştırıldı;
-profil `proxy_llm`, serit `proxy`, eşzamanlılık `1000`, süre `5400` saniye
-(90 dakika) ve kapasite eğrisi kapalıydı. Konsol çıktısında artifact dizini
-`artifacts/soak/20260624-095505` ve kanıt dosyası
-`artifacts/soak/20260624-095505/soak_evidence.json` olarak raporlandı. Bu artifact
-bu checkout içinde bulunmadığı için değerler **VM console observed** olarak
-belgelenir ve JSON artifact eklendiğinde yeniden doğrulanmalıdır.
-
-Bu koşum sırasında Windows VM uygulama `.Renviron` havuz ayarları şu şekildeydi:
-
-```text
-MERGEN_DB_POOL_ENABLED=TRUE
-MERGEN_DB_POOL_MIN_SIZE=1
-MERGEN_DB_POOL_MAX_SIZE=8
-MERGEN_DB_POOL_IDLE_TIMEOUT=600
-MERGEN_DB_POOL_VALIDATION_INTERVAL=60
-```
-
-Sonuç hâlâ **FAIL** idi: 205136 istekten 131584'ü başarılı oldu
-(`raw_success_rate=0.6414`, `effective_success_rate=0.6414`), hata sayısı 0,
-timeout sayısı 73552, p50/p95/p99 yaklaşık 9549.6 / 17902.6 / 18843.5 ms ve
-throughput yaklaşık 2276.7 istek/dk olarak gözlendi. Başarısızlık nedeni yine
-`effective_success_rate` eşiğinin 0.98 altında kalmasıydı. Güvenlik/doğruluk
-kontrolleri temiz kaldı: anahtar yönlendirme 5/5, cross-session key isolation
-`TRUE`, upload validation 7/7, encoding round-trip pass rate 1, secret leak 0,
-server crash yok, `mojibake_hits=0`, redaction verified `TRUE`, etkileşimli
-başarı oranı 1, etkileşimli DB sızıntısı 0 ve etkileşimli izolasyon kontrolleri
-PASS. `memory_growth_mb` ve `browser_console_errors` bu koşuda `UNMEASURED`
-kaldığından ölçülmüş PASS olarak sunulmamalıdır; `temp_growth_mb` yaklaşık
-0.31 MB ile PASS görünmüştür.
-
-20 Haziran 2026 havuz öncesi uzun proxy-lane limit-push koşumuyla
-karşılaştırıldığında (`artifacts/soak/20260620-111106/soak_evidence.json`, VM
-console observed), başarı oranı **0.5826 → 0.6414** seviyesine çıktı ve timeout
-sayısı **94880 → 73552** seviyesine indi. Bu yararlı ama sınırlı bir iyileşmedir;
-p95 gecikme **16965.9 ms → 17902.6 ms** seviyesine çıktığı ve 0.98 etkin başarı
-eşiği hâlâ geçilemediği için sonuç kapasite/readiness PASS değildir. Havuz ayarı
-1000 aktif eşzamanlı kullanıcı / 90 dakika proxy-lane baskısında tek başına
-işletim zarfını geçerli hale getirmemiştir.
-
-Bu koşumun yorumu: DB havuzu açık üretim VM konfigürasyonu altında uzun 1000
-eşzamanlı proxy-lane baskısında bazı timeout/başarı oranı iyileşmesi gözlenmiştir,
-ama sonuç hâlâ limit-push negatif kanıtıdır. Güvenlik, anahtar izolasyonu, upload,
-redaksiyon ve mojibake guardrail'lerinin yük altında temiz kalması olumlu
-koruma kanıtı olarak kaydedilir; 1000 gerçek aktif insan chat oturumu, browser
-websocket eşzamanlılığı, gerçek upstream LLM throughput'u veya release readiness
-kanıtı olarak sunulmamalıdır.
-
----
-
 ## 16. Soak Readiness Hardening (2026-06-24): telemetri, kademeli merdiven, hata atfı, ayrı lane'ler
 
-Bu bölüm, 1000 kullanıcı / 90 dakika koşumlarının **neden** başarısız olduğunu
-ölçümle teşhis edebilmek ve 50 → 100 → 250 → 500 → 1000 aktif kullanıcıya
-**kademeli** bir yol sunmak için eklenen sertleştirmeyi açıklar. Hiçbir eşik
+Bu bölüm, 50 → 100 → 250 → 500 → 1000 aktif kullanıcı hedefine **kademeli**
+ilerlemek, her adımda son stabil kapasiteyi ölçmek ve olası darboğazları telemetriyle
+teşhis etmek için eklenen sertleştirmeyi açıklar. Hiçbir eşik
 düşürülmemiştir; UNMEASURED kontroller hâlâ sessizce PASS sayılmaz.
 
 ### 16.1 Sistem telemetrisi (CPU / bellek / TCP)
