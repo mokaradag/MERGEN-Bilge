@@ -8,6 +8,20 @@ Also read `.ai/next-session-test-coverage-prompt.md` for the behavioral-test tec
 
 ---
 
+## LATEST SESSION RESULTS — Codex (2026-06-25, File Manager delete-runtime split)
+
+Shipped a **behavior-preserving File Manager package**. Do NOT redo this slice:
+
+- **What/why:** `R/module_file_manager.R` was the top R maintainability candidate after the documented low-priority flat admin renderer. The risky physical-delete / index-cleanup branch was still inline in the Shiny observer.
+- **Extraction:** new `R/helpers_file_manager_delete_runtime.R` owns `fm_delete_persisted_file_artifacts()`: direct persisted/datapath/path deletion, `resolve_uploaded_file()` fallback, user-folder basename fallback, and `mergen_remove_from_index()` cleanup. The module now stays focused on Shiny state/UI side effects and delegates physical lifecycle cleanup.
+- **Wiring:** `R/config_source_manifest.R`, `R/bootstrap_source_manifest.R`, and `tests/testthat/helper_bootstrap.R` now load `helpers_file_manager_delete_runtime.R` after storage and before state runtime. Source-manifest contract updated.
+- **Tests:** new `test-file-manager-delete-runtime-behavior.R` covers Turkish display-name direct deletion, index cleanup, and resolve-before-fallback ordering with deterministic temp files and injected dependencies.
+- **Ratchet tightened:** `R/module_file_manager.R` 677/11 → 642/10; near-limit budget tightened to 650/11. New delete helper budget locked at 90/4. Maintainability remains 100/100, global max still 678 (`module_admin_yanit_analizi_outputs.R`).
+- **VALIDATION (Linux/cloud):** focused delete test PASS; source-manifest contract PASS; parse sanity PASS (864 files); maintainability_report PASS (100/100, module_file_manager 642/10); maintainability-ratchet PASS; seam_doctor OK; frontend_complexity_doctor rerun unchanged/no structural frontend issue. `bash tools/ai_validate.sh quick` PASS; failed_steps=0, skipped_steps=0; artifact `artifacts/ai-validation/20260625-201131/summary.json`. NOT VM/DB/SSO/real-browser proof.
+- **BEST NEXT TARGETS:** Frontend Deep Space (`www/js/deep_space_intro.js` 820/32) or Frontend AI Expert (`www/js/ai_expert_manager.js` 802/45). R-side next options: `helpers_claude_code_process.R` (665/20) only if reports make it top risk; `module_admin_yanit_analizi_outputs.R` remains low-priority flat renderer.
+
+---
+
 ## LATEST SESSION RESULTS — `claude/tender-keller-vasw96` (2026-06-24, true-SSE worker-globals split)
 
 Shipped a **behavior-preserving extraction of the global ratchet pin**
@@ -45,7 +59,7 @@ Shipped a **behavior-preserving extraction of the global ratchet pin**
 - **GOTCHA:** the factory references ~25 global functions + `api_config` BY NAME; they
   resolve at CALL time (runtime), so the factory must only be called where those globals
   exist (the handler's runtime). Tests stub all of them in an isolated env before sourcing.
-- **BEST NEXT TARGETS:** `R/module_file_manager.R` (677); frontend
+- **BEST NEXT TARGETS:** frontend
   `www/js/deep_space_intro.js` (820), `www/js/ai_expert_manager.js` (802/45 — within budget,
   split-then-tighten). `module_admin_yanit_analizi_outputs.R` (678) is a flat single-function
   renderer list → low priority.
@@ -93,8 +107,7 @@ this session shipped a **second** behavior-preserving structural split. Do NOT r
   OK (`bilge_yolac` runtime 33→34, no orphan); maintainability 100/100 max 681. NOT
   VM/SSO/CLI/real-browser proof — the document-summary worker flow is VM-only-provable.
 - **BEST NEXT TARGETS:** `R/server_handler_true_streaming.R` (681, global pin — only on
-  the VM with a maintainer, sensitive SSE closures), `R/module_file_manager.R` (677,
-  has a 725/14 budget), `R/helpers_claude_code_process.R` (665/20, function-count
+  the VM with a maintainer, sensitive SSE closures), `R/helpers_claude_code_process.R` (665/20, function-count
   pressure). Frontend `www/js/ai_expert_manager.js` (802/45, within budget →
   split-then-tighten). GOTCHA: the maintainability fn metric counts inline
   `= function(` (e.g. `error = function(e)`) — `summarize`'s tryCatch added inline fns,
@@ -220,7 +233,7 @@ Do NOT redo:
 - **BEST NEXT TARGETS** (from this session's reports): #1 `R/server_handler_true_streaming.R`
   (681, the global ratchet pin — extract a cohesive helper layer; SSE/streaming is
   sensitive, preserve request-id/stop-file/reasoning-recovery contracts). Then
-  `R/helpers_claude_code_documents.R` (679), `R/module_file_manager.R` (677, has a
+  `R/helpers_claude_code_documents.R` (679), `R/module_file_manager.R` (642/10 after delete-runtime split; has a
   725/14 file budget). Frontend: `www/js/ai_expert_manager.js` (802/45/12 event/8
   Shiny handler — top function/handler density but WITHIN the 850-line/60-fn/20-shiny
   budgets, so it's a "split then tighten budget" exercise, not a budget breach) and
@@ -263,7 +276,7 @@ Do NOT redo either.
   `artifacts/ai-validation/20260620-170730/summary.json`. seam_doctor OK; maintainability
   100/100 max 681; parse_sanity 851. NOT VM/SSO/DB/real-browser proof.
 - **NEXT TARGETS now:** `R/server_handler_true_streaming.R` (681),
-  `R/helpers_claude_code_documents.R` (679), `R/module_file_manager.R` (677); frontend
+  `R/helpers_claude_code_documents.R` (679), frontend
   `www/js/deep_space_intro.js` (820/32), `www/js/ai_expert_manager.js` (802/45).
 
 ### Package 1 — `R/config_ui_assets.R` DATA/VALIDATORS/RENDER split

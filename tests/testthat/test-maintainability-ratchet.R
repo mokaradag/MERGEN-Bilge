@@ -218,7 +218,7 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # 726/23 -> 652/22'ye indi. Bütçe geri tırmanışı kilitler.
   assert_current_budget("R/server_ai_expert_handlers.R", 660L, 22L)
   assert_current_budget("R/helpers_ai_expert_handlers_support.R", 180L, 8L)
-  assert_current_budget("R/module_file_manager.R", 725L, 14L)
+  assert_current_budget("R/module_file_manager.R", 650L, 11L)
   assert_current_budget("R/module_ai_expert.R", 686L, 22L)
   # AI Uzman yardımcı dosyası, worker-safe DB okuyucuları
   # helpers_ai_expert_user_data.R'ye ayrıldıktan sonra 24-fonksiyon küresel
@@ -422,6 +422,12 @@ test_that("module_file_manager.R state runtime extraction sonrası 800 satır al
     drop = FALSE
   ]
 
+  delete_helper_row <- report[
+    grepl("(^|/)R/helpers_file_manager_delete_runtime\\.R$", report$file, perl = TRUE),
+    ,
+    drop = FALSE
+  ]
+
   expect_equal(
     nrow(fm_row),
     1L,
@@ -434,9 +440,17 @@ test_that("module_file_manager.R state runtime extraction sonrası 800 satır al
     info = "R/helpers_file_manager_state_runtime.R maintainability raporunda tek satır olarak görünmelidir."
   )
 
-  max_fm_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_LINES", 799L)
+  expect_equal(
+    nrow(delete_helper_row),
+    1L,
+    info = "R/helpers_file_manager_delete_runtime.R maintainability raporunda tek satır olarak görünmelidir."
+  )
+
+  max_fm_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_LINES", 650L)
   max_helper_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_STATE_RUNTIME_LINES", 450L)
   max_helper_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_STATE_RUNTIME_FUNCTIONS", 10L)
+  max_delete_helper_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_DELETE_RUNTIME_LINES", 90L)
+  max_delete_helper_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_DELETE_RUNTIME_FUNCTIONS", 4L)
 
   expect_true(
     fm_row$lines[1] <= max_fm_lines,
@@ -462,6 +476,24 @@ test_that("module_file_manager.R state runtime extraction sonrası 800 satır al
       "helpers_file_manager_state_runtime.R fonksiyon sayısı kontrollü kalmalıdır: %d > %d.",
       helper_row$functions[1],
       max_helper_functions
+    )
+  )
+
+  expect_true(
+    delete_helper_row$lines[1] <= max_delete_helper_lines,
+    info = sprintf(
+      "helpers_file_manager_delete_runtime.R küçük silme helper dosyası olarak kalmalıdır: %d > %d.",
+      delete_helper_row$lines[1],
+      max_delete_helper_lines
+    )
+  )
+
+  expect_true(
+    delete_helper_row$functions[1] <= max_delete_helper_functions,
+    info = sprintf(
+      "helpers_file_manager_delete_runtime.R fonksiyon sayısı kontrollü kalmalıdır: %d > %d.",
+      delete_helper_row$functions[1],
+      max_delete_helper_functions
     )
   )
 })

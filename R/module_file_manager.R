@@ -511,49 +511,14 @@ moduleServer(id, function(input, output, session) {
       removeModal()
       req(info)
     
-	  # 1) Fiziksel dosyayı sil (birden fazla yol adayını dene)
+	  # 1) Fiziksel dosyayı ve kalıcı indeks kaydını helper üzerinden temizle.
       uid <- isolate(module_user_id_chr())
-      deleted_physical <- FALSE
-
-      # Önce doğrudan bilinen yolları dene (en güvenilir)
-      direct_candidates <- c(info$persisted_path, info$datapath, info$path)
-      for (cand in direct_candidates) {
-        if (!is.null(cand) && nzchar(cand) && path_exists_relaxed(cand)) {
-          try(unlink(cand, force = TRUE), silent = TRUE)
-          deleted_physical <- TRUE
-          fm_debug("delete_physical", sprintf("silindi: %s", cand))
-          break
-        }
-      }
-
-      # Doğrudan yol bulunamazsa resolve ile dene
-      if (!deleted_physical) {
-		persisted <- tryCatch(
-		  resolve_uploaded_file(
-			info$name,
-			user_id = uid
-		  ),
-		  error = function(e) NULL
-		)
-
-		if (!is.null(persisted) && path_exists_relaxed(persisted)) {
-		  try(unlink(persisted, force = TRUE), silent = TRUE)
-		  deleted_physical <- TRUE
-		  fm_debug("delete_physical", sprintf("resolve ile silindi: %s", persisted))
-		}
-      }
-
-      # Son çare: kullanıcı klasöründe basename ile ara
-      if (!deleted_physical && !is.null(uid)) {
-        fallback_path <- file.path(get_user_upload_dir(), basename(info$name))
-        if (path_exists_relaxed(fallback_path)) {
-          try(unlink(fallback_path, force = TRUE), silent = TRUE)
-          fm_debug("delete_physical", sprintf("fallback ile silindi: %s", fallback_path))
-        }
-      }
-
-      # İndeksten kaldır
-      if (!is.null(uid)) try(mergen_remove_from_index(uid, info$name), silent = TRUE)
+      fm_delete_persisted_file_artifacts(
+        info = info,
+        uid = uid,
+        get_user_upload_dir = get_user_upload_dir,
+        fm_debug = fm_debug
+      )
     
       # 2) Also drop any local temp we might have created (we no longer create one, but keep for safety)
       if (!is.null(session$userData$temp_files[[file_id]])) {
