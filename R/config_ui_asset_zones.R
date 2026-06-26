@@ -166,7 +166,7 @@ ui_asset_ownership_zones <- list(
     css_groups = character(0),
     js_groups = character(0),
     css = character(0),
-    js = c("js/shiny_message_handlers.js"),
+    js = c("js/shiny_message_handlers.js", "js/modern_welcome_handler.js"),
     guard_tests = c(
       "tests/testthat/test-ui-asset-manifest-contract.R",
       "tests/testthat/test-frontend-selector-contract.R"

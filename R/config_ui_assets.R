@@ -209,6 +209,7 @@ ui_asset_js_groups <- list(
     "js/encoding_utils.js",
     "js/theme_manager.js",
 	"js/shiny_message_handlers.js",
+    "js/modern_welcome_handler.js",
 	"js/ui_init.js",
     "js/input_handlers.js",
     "js/interaction_handlers.js",
@@ -357,7 +358,9 @@ ui_asset_js_order_rules <- list(
 
   c("js/shiny_message_handlers.js", "js/health_dashboard.js"),
   c("js/shiny_message_handlers.js", "js/neural_welcome.js"),
-  c("js/shiny_message_handlers.js", "js/welcome_video_player.js"),
+  c("js/shiny_message_handlers.js", "js/modern_welcome_handler.js"),
+  c("js/modern_welcome_handler.js", "js/neural_welcome.js"),
+  c("js/modern_welcome_handler.js", "js/welcome_video_player.js"),
   c("js/welcome_video_player.js", "js/welcome_neural_modern.js"),
   c("js/welcome_neural_modern.js", "js/welcome_greeting.js"),
   c("js/welcome_greeting.js", "js/welcome_greeting_personal.js"),

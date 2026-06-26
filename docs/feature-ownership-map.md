@@ -77,7 +77,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   681 → 678 (`module_admin_yanit_analizi_outputs.R`) sıkılaştırıldı. Sıradaki
   repo-geneli yakın-bütçe adayları: `R/module_admin_yanit_analizi_outputs.R` (678,
   tek-fonksiyon flat renderer — düşük öncelik), `R/module_file_manager.R` (550/9; delete + toplu-upload runtime split sonrası);
-  frontend `www/js/deep_space_intro.js` (791; lifecycle split sonrası) ve handler yoğun `www/js/shiny_message_handlers.js` / `www/js/claude_code.js`.
+  frontend `www/js/deep_space_intro.js` (791; lifecycle split sonrası), `www/js/shiny_message_handlers.js` (modern welcome split sonrası 401/16 Shiny handler) ve handler yoğun `www/js/claude_code.js`.
 
 ## Dosya Yaşam Döngüsü
 
@@ -315,7 +315,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   repo-geneli yakın-bütçe adayları bu seam dışında `R/server_handler_true_streaming.R`
   (681, küresel pin — canlı SSE closure'ları nedeniyle yalnızca VM'de kanıtlanabilir,
   riskli) ve `R/module_file_manager.R` (550/9; delete + toplu-upload runtime split sonrası); frontend `www/js/deep_space_intro.js`
-  (791; lifecycle split sonrası) / `www/js/shiny_message_handlers.js` handler yoğunluğu. (`helpers_claude_code_documents.R`
+  (791; lifecycle split sonrası) / `www/js/claude_code.js` handler yoğunluğu. (`helpers_claude_code_documents.R`
   679 → 407'ye indirildi.)
 
 ## Bilge Yolaç / Claude Code
@@ -475,7 +475,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   ayrımı da korunur: `config_ui_asset_zones.R` 502/0 (SADECE veri), doğrulayıcı API
   `config_ui_asset_zone_validators.R`'de (312/10). Sıradaki repo-geneli yakın-bütçe
   adayları artık daha çok frontend yoğunluk dosyalarıdır; R tarafında `R/helpers_claude_code_process.R`
-  (665/20) yalnızca taze raporda gerçek riskse seçilmeli. Frontend tarafında en yoğun adaylar
+  (665/20) yalnızca taze raporda gerçek riskse seçilmeli. Frontend tarafında modern welcome split sonrası en yoğun adaylar
   `www/js/shiny_message_handlers.js` (Shiny handler yoğunluğu), `www/js/claude_code.js`
   (Shiny handler yoğunluğu) ve `www/js/tool_backgrounds.js` (fonksiyon yoğunluğu).
 
