@@ -26,6 +26,16 @@ local({
 })
 
 srs_repo_root <- local({
+  # Full-suite runs can execute after other tests temporarily change the working
+  # directory, while focused `test_file()` runs usually start from the repo root
+  # or tests/testthat. Prefer the bootstrap's already-resolved repo root when it
+  # is available, then fall back to an upward search from the current wd.
+  if (exists("repo_root_for_tests", mode = "character", inherits = TRUE) &&
+      file.exists(file.path(repo_root_for_tests, "tests", "scripts",
+                            "run_vm_sqlserver_pool_preflight_real.R"))) {
+    return(normalizePath(repo_root_for_tests, winslash = "/", mustWork = TRUE))
+  }
+
   hit <- NULL
   for (cand in c(".", "..", "../..", "../../..")) {
     if (file.exists(file.path(cand, "tests", "scripts", "run_vm_sqlserver_pool_preflight_real.R"))) {
