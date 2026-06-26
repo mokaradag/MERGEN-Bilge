@@ -58,7 +58,13 @@ setwd(sqlpf_repo_root_dir)
 on.exit(setwd(sqlpf_old_wd), add = TRUE)
 
 # .Renviron (varsa) yukle; mevcut shell degerleri oncelikli.
+# Sozlesme testi/CI determinizmi icin acik kacis: MERGEN_SQLSERVER_POOL_PREFLIGHT_SKIP_RENVIRON
+# acikken repo .Renviron'i YENIDEN OKUNMAZ. Aksi halde uretim Windows VM'indeki
+# gercek .Renviron'in DB_DSN'i, cagiranin acikca verdigi BOS DB_DSN override'ini
+# ezer; boylece guard yerine gercek preflight kosar (FAIL). Bu bayrak yalniz guvenli
+# SKIP yolunu deterministik dogrulamak icindir; URETIM preflight'i KULLANMAZ.
 sqlpf_load_renviron <- function(path = ".Renviron") {
+  if (sqlpf_bool("MERGEN_SQLSERVER_POOL_PREFLIGHT_SKIP_RENVIRON", FALSE)) return(FALSE)
   if (!file.exists(path)) return(FALSE)
   before <- Sys.getenv(names(Sys.getenv()), unset = NA_character_)
   keep <- names(before)[!is.na(before) & nzchar(before)]
