@@ -466,24 +466,45 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
     })
 
     # Bağlantı testi
-    observeEvent(input$cc_test_connection, {
-      cli_yolu <- resolve_claude_cli_path(claude_code_config$cli_path)
+	observeEvent(input$cc_test_connection, {
+	  cli_yolu <- resolve_claude_cli_path(claude_code_config$cli_path)
 
-      shinyjs::disable("cc_test_connection")
-      output$cc_test_result_ui <- renderUI({
-        tags$span(style = "font-size: 12px; color: #64B5F6;",
-                  icon("spinner", class = "fa-spin"), "Test ediliyor...")
-      })
+	  shinyjs::disable("cc_test_connection")
+	  output$cc_test_result_ui <- renderUI({
+		tags$span(style = "font-size: 12px; color: #64B5F6;",
+				  icon("spinner", class = "fa-spin"), "Test ediliyor...")
+	  })
 
-      # Worker tarafına bağımlılık aktarımı ve sağlık metrikleri için
-      # doğrudan future_promise yerine tracked_future_promise kullanılır.
-      tracked_future_promise(
-        task_fn = function() {
-          test_claude_code_connection(
-            cli_path = cli_yolu,
-            workdir = tempdir()
-          )
-        },
+	  api_key_plan <- cc_resolve_runtime_api_key(app_session)
+	  if (!isTRUE(api_key_plan$ok)) {
+		settings$claude_code_connection_ok <- FALSE
+
+		output$cc_test_result_ui <- renderUI({
+		  tags$div(
+			style = "font-size: 12px; color: #E57373; margin-top: 8px;",
+			icon("exclamation-triangle"),
+			tags$span("Claude Code API anahtarı bulunamadı."),
+			tags$br(),
+			tags$small(style = "opacity: 0.8;", api_key_plan$message)
+		  )
+		})
+
+		shinyjs::enable("cc_test_connection")
+		return()
+	  }
+
+	  api_key <- api_key_plan$key
+
+	  # Worker tarafına bağımlılık aktarımı ve sağlık metrikleri için
+	  # doğrudan future_promise yerine tracked_future_promise kullanılır.
+	  tracked_future_promise(
+		task_fn = function() {
+		  test_claude_code_connection(
+			cli_path = cli_yolu,
+			workdir = tempdir(),
+			api_key = api_key
+		  )
+		},
         task_type = "claude_code_connection_test",
         session_token = session$token
       ) %...>% (function(sonuc) {

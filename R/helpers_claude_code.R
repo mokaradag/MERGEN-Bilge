@@ -25,7 +25,7 @@ run_claude_code <- function(prompt,
                             model = NULL,
                             timeout_sec = 300L,
                             session_id = NULL,
-                            cli_path = NULL) {
+                            cli_path = NULL, api_key = NULL) {
 
   baslangic <- Sys.time()
 
@@ -84,11 +84,12 @@ run_claude_code <- function(prompt,
     session_id = session_id
   )
 
-  komut <- build_processx_command(cli_path, args, workdir = workdir)
+	komut <- build_processx_command(cli_path, args, workdir = workdir)
+	komut$env <- cc_apply_runtime_api_key_env(komut$env, api_key)
 
-  tryCatch({
-    log_info(paste(CLAUDE_CODE_LOG_PREFIX, "CLI çalıştırılıyor:",
-                   cli_path, paste(args[1:min(3, length(args))], collapse = " "), "..."))
+	tryCatch({
+	  log_info(paste(CLAUDE_CODE_LOG_PREFIX, "CLI çalıştırılıyor:",
+					 cli_path, paste(args[1:min(3, length(args))], collapse = " "), "..."))
 
 	proc <- processx::process$new(
 	  command = komut$command,
@@ -262,9 +263,9 @@ check_claude_code_status <- function(cli_path = NULL, workdir = NULL) {
 #' @param model Test edilecek model (opsiyonel)
 #' @param workdir Çalışma dizini
 #' @return Liste: success, message, details
-test_claude_code_connection <- function(cli_path = NULL,
-                                        model = NULL,
-                                        workdir = get_safe_processx_launch_workdir()) {
+test_claude_code_connection <- function(cli_path = NULL, model = NULL,
+                                        workdir = get_safe_processx_launch_workdir(),
+                                        api_key = NULL) {
   # Öncelikle CLI kontrolü yap
   durum <- check_claude_code_status(cli_path, workdir = workdir)
   if (!durum$installed) {
@@ -279,9 +280,9 @@ test_claude_code_connection <- function(cli_path = NULL,
   test_sonuc <- run_claude_code(
     prompt = "Sadece 'OK' yaz, başka bir şey yazma.",
     workdir = workdir,
-    model = model,
+   model = model,
     timeout_sec = 60L,
-    cli_path = durum$path
+    cli_path = durum$path, api_key = api_key
   )
 
   if (test_sonuc$success) {
