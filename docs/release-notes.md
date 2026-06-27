@@ -15,6 +15,39 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### 2026-06-27 En yeni proxy attach soak retest: 400 kısa stabil, 425 ilk başarısız
+
+Kullanıcının paylaştığı yeni Windows VM ekran görüntülerine göre en son proxy attach
+soak retest artifact dizini `artifacts/soak/20260627-093805` ve kanıt dosyası
+`artifacts/soak/20260627-093805/soak_evidence.json` olarak görünüyor (`created_at`
+`2026-06-27T10:29:30Z`). Koşum `proxy_llm` / proxy lane, `http://127.0.0.1:8009/`
+attach, 50 aktif simüle kullanıcı, 1000 kullanıcı tabanı hedefi, `burst` yük deseni
+ve açık kapasite merdiveni ile yapılmış. Genel sonuç **FAIL**: ana seride `136185`
+istek, `132043` başarı, `4142` timeout, `0` hata; raw/effective başarı oranı
+`0.9696` ile `0.98` eşiğinin altında kaldı. Gecikmeler p50≈`1969.7` ms,
+p95≈`11611.8` ms, p99≈`13087.5` ms; throughput≈`2710.6` op/dk. Timeout atfı
+`connection_timeout=3723`, `response_timeout=419` olarak baskın connection-timeout
+yönünde kaldı.
+
+Kapasite merdiveni önceki 300→450 aralığını daralttı: 100, 300, 350 ve 400 kullanıcı
+adımları 600 sn/adımda PASS; 425 kullanıcı adımı `12243` istekten `8201` başarı ve
+`4142` timeout ile FAIL (`effective_success_rate≈0.6644`). Sonuç olarak en yeni kısa
+merdiven stabil adımı **400 aktif proxy kullanıcı / 10 dakika**, ilk başarısız adım
+**425 aktif proxy kullanıcı**; önerilen daraltma adımları `410,415,420`. Ancak en
+uzun süreli stabil proxy attach kanıtı hâlâ önceki **300 aktif proxy kullanıcı /
+90 dakika** koşumudur. 400/10dk sonucu 425 readiness, 1000 gerçek insan readiness,
+gerçek LLM throughput, gerçek browser/websocket concurrency veya SQL Server at-rest
+encoding kanıtı değildir.
+
+Olumlu kontroller korundu: etkileşimli lane `50` oturum / `400` eylemde PASS, DB
+havuzu checkout=return=`451`, outstanding=`0`, tx commit=`200`, rollback=`50`; key
+routing `5/5`, cross-session isolation, upload validation `7/7`, secret leak `0`,
+mojibake hits `0`, DB-encoding helper ve Türkçe+emoji round-trip PASS. `memory_growth_mb`
+ve `browser_console_errors` ölçülmediği için PASS sayılmaz. Ayrıntılar
+[`operational-soak-gate.md`](operational-soak-gate.md#13b-2026-06-27-windows-vm-proxy-attach-retest-400-stable-425-first-failure)
+bölümüne işlendi.
+
+
 ### 2026-06-27 Soak bağlantı-timeout teşhis sertleştirmesi (450 bulgusuna yanıt)
 
 13A'daki 450-kullanıcı `connection_timeout` doygunluğunu (CPU düşük, app-port TCP
