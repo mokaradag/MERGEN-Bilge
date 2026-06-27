@@ -32,6 +32,9 @@ MERGEN_DB_POOL_ENABLED=TRUE
 MERGEN_DB_POOL_MIN_SIZE=1
 MERGEN_DB_POOL_MAX_SIZE=8
 MERGEN_DB_POOL_IDLE_TIMEOUT=600
+MERGEN_DB_POOL_FAIL_FAST=FALSE
+MERGEN_DB_POOL_WRITE_TEST=FALSE
+
 # NOT: Havuz, bağlantıları yalnızca CHECKOUT anında (SELECT 1) doğrular. pool'un
 # `later` üzerindeki TEKRARLAYAN arka plan doğrulaması bilerek KAPALIDIR
 # (validationInterval=0): geçici SQL Server kopmasında o görevdeki yakalanmamış
