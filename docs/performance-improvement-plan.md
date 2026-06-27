@@ -1,6 +1,6 @@
 # MERGEN performance improvement plan
 
-Last updated: 2026-06-22
+Last updated: 2026-06-27
 
 ## Current baseline
 
@@ -56,6 +56,7 @@ As of the pre-index-cache 2026-06-19 baseline, the comparable fake-lane smoke ar
 
 | Date | Change | Command / artifact | Result | Capacity conclusion |
 |---|---|---|---|---|
+| 2026-06-27 | Latest proxy attach retest narrowed the 300→450 gap. | VM screenshot-transcribed `artifacts/soak/20260627-093805/soak_evidence.json`. | Overall FAIL: 136185 requests, 132043 successes, 4142 timeouts, effective_success_rate=0.9696 < 0.98; ladder PASS at 100/300/350/400 users for 600 s each, FAIL at 425 (8201/12243, effective≈0.6644). | Latest short staged PASS is 400 active proxy users / 10 min; longest stable proxy attach evidence remains 300 active proxy users / 90 min. Probe 410/415/420 and separate loadgen loop lag/burst effects before capacity claims. |
 | 2026-06-22 | Implemented transaction-safe DB pool layer (`R/helpers_db_pool.R`), migrated `save_message_to_db()` to transaction-safe checkout (rollback-before-return), wired pool init/close into `app.R` `onStart`/`onStop`, and added the interactive soak lane. | `testthat::test_file("tests/testthat/test-db-pool-behavior.R")` (54 PASS); `test-maintainability-ratchet.R` (100/100); `test-operational-soak-gate-contract.R` (157 PASS); `MERGEN_SOAK_HTTP_LANE=false Rscript tests/scripts/run_operational_soak_gate.R` (PASS; interactive: 15 sessions/120 actions, checkout=return=121, leak=0, tx commit=45 rollback=15, mojibake=0, isolation PASS). | PASS (offline) | Proves pool checkout/return/commit/rollback/no-leak + interactive session DB writes against **real SQLite**. Does NOT prove SQL Server T-SQL at-rest behavior, real LLM throughput, or websocket concurrency — those remain VM gates. No capacity number claimed. |
 | 2026-06-18 | Added opt-in performance instrumentation helper and send-message/LLM timing probes. | `Rscript -e 'testthat::test_file("tests/testthat/test-performance-instrumentation.R")'` | PASS | Instrumentation only; no capacity improvement claimed. |
 | 2026-06-19 | Added opt-in `[PERF] db.connection_open/db.connection_close` timing in `R/helpers_db_connection.R`; new `test-db-connection-perf-instrumentation.R`; mirrored perf helper in test bootstrap. | `testthat::test_file("tests/testthat/test-db-connection-perf-instrumentation.R")` | PASS (5 assertions) | Instrumentation only; quantifies per-call ODBC connect/disconnect overhead on the next VM run. No capacity claim. |
