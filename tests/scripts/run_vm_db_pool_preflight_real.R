@@ -49,11 +49,21 @@ for (.loc in c("C.UTF-8", "en_US.UTF-8", "tr_TR.UTF-8")) {
                error = function(e) FALSE, warning = function(w) FALSE)) break
 }
 
+# Truthy cozumleme RUNTIME havuz parser'i (R/helpers_db_pool.R::.db_pool_truthy)
+# ile BIREBIR hizali olmalidir; aksi halde VM'de calisma-zamani ile preflight
+# ayni env degerini farkli yorumlar. Turkce takma adlar (acik/aktif/kapali/pasif)
+# dahildir. Taninmayan/bos deger NA dondurur (cagiran option/varsayilana duser).
+dbpf_truthy <- function(x) {
+  v <- tolower(trimws(as.character(x %||% "")[1]))
+  if (!nzchar(v)) return(NA)
+  if (v %in% c("true", "t", "1", "yes", "y", "on", "evet", "acik", "aktif")) return(TRUE)
+  if (v %in% c("false", "f", "0", "no", "n", "off", "hayir", "kapali", "pasif")) return(FALSE)
+  NA
+}
+
 dbpf_bool <- function(name, default = FALSE) {
-  raw <- tolower(trimws(Sys.getenv(name, unset = "")))
-  if (!nzchar(raw)) return(isTRUE(default))
-  if (raw %in% c("true", "t", "1", "yes", "y", "on", "evet")) return(TRUE)
-  if (raw %in% c("false", "f", "0", "no", "n", "off", "hayir")) return(FALSE)
+  flag <- dbpf_truthy(Sys.getenv(name, unset = ""))
+  if (!is.na(flag)) return(isTRUE(flag))
   isTRUE(default)
 }
 
@@ -64,13 +74,22 @@ dbpf_int <- function(name, default) {
   if (is.na(v) || v < 1L) as.integer(default) else v
 }
 
+# Havuz acik mi? RUNTIME is_db_pool_enabled() ile ayni sira: env truthy taninirsa
+# kullan, yoksa mergen.db.pool_enabled secenegi, yoksa FALSE. Boylece VM'de
+# acik/aktif gibi takma adlar ya da R option ile acilan havuz preflight'ta da
+# acik gorulur.
+dbpf_pool_enabled <- function() {
+  flag <- dbpf_truthy(Sys.getenv("MERGEN_DB_POOL_ENABLED", unset = ""))
+  if (!is.na(flag)) return(isTRUE(flag))
+  isTRUE(getOption("mergen.db.pool_enabled", FALSE))
+}
+
 # Fail-fast niyeti GUARD asamasinda (helper'lar yuklenmeden once) cozulebilmeli.
-# R/helpers_db_pool.R::db_pool_config() ile ayni kaynaklari okur: once
-# MERGEN_DB_POOL_FAIL_FAST ortam degiskeni, yoksa mergen.db.pool_fail_fast secenegi.
+# R/helpers_db_pool.R::db_pool_config() ile ayni sira: env truthy taninirsa kullan,
+# yoksa mergen.db.pool_fail_fast secenegi, yoksa FALSE.
 dbpf_fail_fast_requested <- function() {
-  if (nzchar(trimws(Sys.getenv("MERGEN_DB_POOL_FAIL_FAST", unset = "")))) {
-    return(dbpf_bool("MERGEN_DB_POOL_FAIL_FAST", FALSE))
-  }
+  flag <- dbpf_truthy(Sys.getenv("MERGEN_DB_POOL_FAIL_FAST", unset = ""))
+  if (!is.na(flag)) return(isTRUE(flag))
   isTRUE(getOption("mergen.db.pool_fail_fast", FALSE))
 }
 
@@ -247,8 +266,8 @@ cat("== DB Havuz Preflight (Mekanik + Gozlemlenebilirlik + Fail-fast) ==\n")
 # ------------------------------------------------------------------------------
 # GUARD'lar.
 # ------------------------------------------------------------------------------
-if (!dbpf_bool("MERGEN_DB_POOL_ENABLED", FALSE)) {
-  reason <- "MERGEN_DB_POOL_ENABLED!=TRUE; havuz kapali oldugu icin havuzlu preflight atlandi (guvenli)."
+if (!dbpf_pool_enabled()) {
+  reason <- "MERGEN_DB_POOL_ENABLED!=TRUE (ve mergen.db.pool_enabled secenegi de acik degil); havuz kapali oldugu icin havuzlu preflight atlandi (guvenli)."
   cat(sprintf("SKIP: %s\n", reason))
   dbpf_finish(FALSE, skipped_reason = reason)
 } else if (!requireNamespace("pool", quietly = TRUE) ||
@@ -276,6 +295,17 @@ if (!dbpf_bool("MERGEN_DB_POOL_ENABLED", FALSE)) {
   cat(sprintf("SKIP: %s\n", reason))
   dbpf_finish(FALSE, skipped_reason = reason)
 } else if (!nzchar(Sys.getenv("DB_DSN", ""))) {
+  # Eksik paket durumu gibi: FAIL-FAST acikken DB_DSN yoksa havuz baslatilamaz ve
+  # uygulama fail-fast altinda boot edemez; SKIP(exit 0) otomasyonu yaniltir.
+  if (dbpf_fail_fast_requested()) {
+    reason <- paste0("FAIL-FAST acik ama DB_DSN ayarli degil; gercek SQL Server'a ",
+                     "baglanilamaz, havuz baslatilamaz, uygulama fail-fast altinda boot edemez.")
+    cat(sprintf("FAIL: %s\n", reason))
+    dbpf_result$fail_fast_mode <- TRUE
+    dbpf_result$warnings <- c(dbpf_result$warnings, dbpf_redact(reason))
+    dbpf_finish(FALSE)
+    stop(reason, call. = FALSE)
+  }
   reason <- "DB_DSN ayarli degil; gercek SQL Server'a baglanilamaz; preflight atlandi."
   cat(sprintf("SKIP: %s\n", reason))
   dbpf_finish(FALSE, skipped_reason = reason)
