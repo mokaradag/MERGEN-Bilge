@@ -21,7 +21,9 @@ source("../../R/helpers_request_backpressure.R")
 .read_repo_file <- function(rel) {
   cand <- c(file.path("..", "..", rel), file.path(getwd(), rel))
   for (p in cand) if (file.exists(p)) {
-    return(rawToChar(readBin(p, what = "raw", n = file.info(p)$size)))
+    con <- file(p, open = "r", encoding = "UTF-8")
+    on.exit(close(con), add = TRUE)
+    return(paste(readLines(con, warn = FALSE), collapse = "\n"))
   }
   stop(rel, " bulunamadi")
 }
@@ -57,9 +59,14 @@ test_that("slot tum sonlandirma/iptal yollarinda serbest birakilir", {
 })
 
 test_that("reddedilen istek dostca 'sunucu yogun' mesajiyla doner", {
-  txt <- .send_message_src()
+  txt <- enc2utf8(.send_message_src())
+  busy_msg <- "Sunucu \u015fu anda yo\u011fun"
+
   expect_true(grepl("!isTRUE(bp_admission$acquired)", txt, fixed = TRUE))
-  expect_true(grepl("Sunucu şu anda yoğun", txt))  # "Sunucu şu anda yoğun"
+  expect_true(
+    grepl(busy_msg, txt, fixed = TRUE),
+    info = "R/server_send_message.R rejected backpressure path should include the friendly server-busy toast."
+  )
 })
 
 test_that("VARSAYILAN KAPALI: acquire token=NULL -> wiring no-op", {
