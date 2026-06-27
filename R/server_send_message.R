@@ -357,8 +357,6 @@ sendMessageInit <- function(
         settings_data = settings_data,
         user_message_text = user_message_text,
         current_user_id = effective_user_id,
-        # Yarış koruması: bayat görsel sonucunun yeni isteğin durumunu
-        # ezmemesi için aktif istek kimliği ve durdurma kontrolü taşınır.
         stop_generation = stop_generation,
         active_request_id = active_request_id,
         add_message_fn = add_message_fn, reset_chat_state_fn = reset_chat_state_fn
@@ -375,8 +373,6 @@ sendMessageInit <- function(
         system_msg = system_msg,
         session = session,
         messages_to_process = messages_to_process,
-        # Vision (görsel anlama) yalnızca bayrak + model yeteneği açıkken devreye
-        # girer; aksi halde metin yolu birebir korunur.
         model_selected = model_selected,
         api_config = api_config
       )
@@ -488,7 +484,6 @@ sendMessageInit <- function(
 	)
 	force_non_streaming_sql <- isTRUE(sql_stream_plan$force_non_streaming)
 	if (isTRUE(sql_stream_plan$allow_non_streaming_fallback)) {
-	  # İşçi yalnızca akıl yürütme/boş içerik döndürürse non-streaming'e düşer.
 	  current_settings$allow_non_streaming_fallback <- TRUE
 	}
 
