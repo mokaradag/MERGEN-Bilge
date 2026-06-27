@@ -93,6 +93,7 @@ soak_extract_curl_times_ms <- function(times) {
   out <- list(connect_ms = NA_real_, ttfb_ms = NA_real_, total_ms = NA_real_)
   if (is.null(times) || length(times) == 0L) return(out)
   g <- function(nm) {
+    if (is.null(names(times)) || !(nm %in% names(times))) return(NA_real_)
     v <- suppressWarnings(as.numeric(times[[nm]]))
     if (length(v) == 0L || !is.finite(v)) NA_real_ else v
   }

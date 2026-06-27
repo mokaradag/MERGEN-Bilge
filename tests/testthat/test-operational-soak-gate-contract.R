@@ -970,6 +970,9 @@ testthat::test_that("load driver: rampa hedefi + think gecikmesi + curl times (S
   testthat::expect_equal(tm$connect_ms, 2)
   testthat::expect_equal(tm$ttfb_ms, 6)
   testthat::expect_equal(tm$total_ms, 12)
+  tm_plain <- env$soak_extract_curl_times_ms(c(connect = 0.002,
+                                               starttransfer = 0.010, total = 0.012))
+  testthat::expect_equal(tm_plain$ttfb_ms, 8)
   tm0 <- env$soak_extract_curl_times_ms(NULL)
   testthat::expect_true(is.na(tm0$connect_ms) && is.na(tm0$ttfb_ms))
 })
