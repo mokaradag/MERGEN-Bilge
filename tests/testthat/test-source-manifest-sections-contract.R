@@ -69,7 +69,12 @@
   # 9 -> 10 bilinçli güncelleme: günlük log dosyası yardımcıları
   # (R/config_logging_daily_file.R) config_logging.R fonksiyon-yoğunluk bölmesiyle
   # ayrı dosyaya alındı; config_logging.R'den ÖNCE yüklenir.
-  foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_monitor.R", n = 10L),
+  # 10 -> 13 bilinçli güncelleme: süreç-içi çalışma-zamanı metrikleri
+  # (R/helpers_runtime_metrics.R), backpressure kabul-denetimi
+  # (R/helpers_request_backpressure.R) ve sağlık/hazırlık + kök sayfa
+  # yönlendiricisi (R/helpers_app_http_routes.R) yatay-ölçekleme/performans için
+  # eklendi; metrikler index önbelleğinden ÖNCE, router index önbelleğinden SONRA.
+  foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_monitor.R", n = 13L),
   post_future_utils = list(first = "R/utils_path_helpers.R", last = "R/utils_excel_reader.R", n = 9L),
   # config_app_core n = 7L -> 8L bilinçli güncelleme: indeks kilidi
   # (R/config_file_store_index_lock.R) fonksiyon-yoğunluk bölmesiyle ayrı dosyaya alındı.
@@ -279,7 +284,11 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 283L -> 284L bilinçli güncelleme: Dosya Yönetimi attach/client
   # yardımcıları R/helpers_file_manager_attach_client.R dosyasına çıkarıldı
   # ve file_manager_helpers bölümünde tablo runtime öncesine eklendi.
-  expect_equal(length(runtime), 285L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 285L -> 288L bilinçli güncelleme: yatay-ölçekleme/performans için foundation
+  # bölümüne süreç-içi çalışma-zamanı metrikleri (R/helpers_runtime_metrics.R),
+  # backpressure kabul-denetimi (R/helpers_request_backpressure.R) ve sağlık/
+  # hazırlık + kök sayfa yönlendiricisi (R/helpers_app_http_routes.R) eklendi.
+  expect_equal(length(runtime), 288L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

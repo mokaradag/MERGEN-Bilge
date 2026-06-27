@@ -15,6 +15,50 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### 2026-06-27 Çalışma-zamanı performans/yatay-ölçekleme katmanı (425 bağlantı-timeout bulgusuna yanıt)
+
+Önceki commit (bff7fad) yalnızca soak teşhis/gözlemlenebilirlik ekledi; bu
+değişiklik **gerçek çalışma-zamanı uygulama davranışını** iyileştirir. Soak
+kanıtı baskın hatanın **`connection_timeout`** (CPU düşük ~%21-29, app-port TCP
+~425) olduğunu gösterdi; kök sayfa GET `/` zaten önbellekli ve attach seridi
+yalnız GET olduğundan darboğaz **uygulama UI/oturum işi değil, TEK SÜRECİN httpuv
+TCP kabul/backlog doygunluğudur**. Bunun dürüst çözümü yatay ölçeklemedir.
+
+**Hiçbir soak eşiği düşürülmedi, kapasite-merdiveni/timeout-atfı/UNMEASURED
+dürüstlüğü ve anahtar-izolasyon/upload/redaksiyon/DB-işlem/encoding kontrolleri
+korundu.** Soak gate pass/fail mantığı DEĞİŞMEDİ.
+
+- **Sağlık/hazırlık uç noktaları** (`R/helpers_app_http_routes.R`): `GET /healthz`
+  (canlılık; küçük statik JSON, DB/oturum işi yok) ve `GET /readyz` (sır-güvenli
+  hazırlık + gözlemlenebilirlik anlık görüntüsü). Yük-dengeleyici birden çok
+  worker'ı bunlarla güvenle havuza alıp çıkarır. `uiPattern` yalnız `/`,
+  `/healthz`, `/readyz` eşler; diğer yollar etkilenmez (gerçek sunucuda doğrulandı:
+  `/foozzz` -> 404). `MERGEN_HEALTH_ENDPOINT=false` ile kapatılınca `ui` bayt-bayt
+  korunur.
+- **Çok-worker başlatıcı** (`tools/run_mergen_workers.R`): OPT-IN yatay ölçekleme.
+  `MERGEN_WORKERS=N` ile her biri farklı `MERGEN_PORT`'ta N worker sürecini bir
+  kurumsal ters-vekil/yük-dengeleyici (nginx/IIS ARR/HAProxy) arkasında başlatır;
+  yalnızca mevcut `processx` kullanılır (CDN/ağır bağımlılık yok). **VARSAYILAN
+  tek-süreç davranışı değişmez** (`MERGEN_WORKERS` ayarsızken 1 worker).
+- **Backpressure (kabul-denetimi)** (`R/helpers_request_backpressure.R`): süreç-
+  geneli, TTL-ile-kendi-iyileşen eşzamanlı pahalı-işlem üst-sınırı.
+  **Varsayılan KAPALI** (`MERGEN_MAX_CONCURRENT_LLM=0` -> no-op; davranış bayt-bayt
+  korunur). Açıkken sınır aşımı uzun gizli timeout yerine hızlı/dostça "sunucu
+  yoğun" yanıtı verir; stop/iptal bozulmaz. `send_message` girişine güvenli
+  bağlandı (tüm sonlandırma/iptal yollarında bırakılır + TTL güvenlik ağı).
+- **Süreç-içi çalışma-zamanı metrikleri** (`R/helpers_runtime_metrics.R`): sır-
+  güvenli sayaçlar (kök sayfa önbellek hit/miss, sağlık isabeti, backpressure
+  admit/reject). Attach seridinin göremediği uygulama-içi davranışı `/readyz`
+  üzerinden süreç dışına sır-güvenli açar.
+- Kök sayfa önbelleği (`R/helpers_index_page_cache.R`) artık hit/miss sayar (sıcak
+  isabette yeniden serileştirme YOK; sözleşmeyle korunur).
+
+**VM koşumu rerun edilene kadar KANITLANMAZ:** 425 aktif proxy kullanıcının
+`effective_success_rate >= 0.98`'e ulaşması; çok-worker topolojisinin gerçek
+kabul-kapasitesi kazanımı; backpressure açıkken üretim UX'i. Bunlar Windows VM'de
+kademeli merdiven (100,300,350,400,425) yeniden koşularak doğrulanmalıdır.
+
+
 ### 2026-06-27 Soak bağlantı-timeout teşhis sertleştirmesi (450 bulgusuna yanıt)
 
 13A'daki 450-kullanıcı `connection_timeout` doygunluğunu (CPU düşük, app-port TCP
