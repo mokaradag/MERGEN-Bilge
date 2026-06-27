@@ -897,6 +897,256 @@ testthat::test_that("yeni artifact alanlari evidence'a girer ve redaksiyondan ge
 })
 
 # ------------------------------------------------------------------------------
+testthat::test_that("load driver: arrival anahtarlari + pattern etiketi + public config secret-safe", {
+  env <- new.env(); soak_source_modules(env)
+
+  # Pattern etiketi (SAF).
+  testthat::expect_equal(env$soak_load_pattern_label(0, 0, 0), "burst")
+  testthat::expect_equal(env$soak_load_pattern_label(30, 0, 0), "ramped")
+  testthat::expect_equal(env$soak_load_pattern_label(0, 100, 200), "paced")
+  testthat::expect_equal(env$soak_load_pattern_label(30, 100, 200), "ramped_paced")
+
+  # Varsayilan: burst, ramp yok, think yok, reuse acik (gecmis davranis korunur).
+  withr::with_envvar(list(MERGEN_SOAK_PROFILE = "smoke",
+                          MERGEN_SOAK_RAMP_UP_SECONDS = NA, MERGEN_SOAK_MAX_NEW_PER_TICK = NA,
+                          MERGEN_SOAK_THINK_TIME_MS_MIN = NA, MERGEN_SOAK_THINK_TIME_MS_MAX = NA,
+                          MERGEN_SOAK_CONNECTION_REUSE = NA), {
+    cfg <- env$soak_resolve_config()
+    testthat::expect_equal(cfg$load_driver$pattern, "burst")
+    testthat::expect_equal(cfg$load_driver$ramp_up_seconds, 0)
+    testthat::expect_equal(cfg$load_driver$max_new_requests_per_tick, 0L)
+    testthat::expect_true(isTRUE(cfg$load_driver$connection_reuse))
+  })
+
+  # Env override'lari okunur ve public config'e girer.
+  withr::with_envvar(list(MERGEN_SOAK_PROFILE = "proxy_llm",
+                          MERGEN_SOAK_RAMP_UP_SECONDS = "120",
+                          MERGEN_SOAK_MAX_NEW_PER_TICK = "25",
+                          MERGEN_SOAK_THINK_TIME_MS_MIN = "200",
+                          MERGEN_SOAK_THINK_TIME_MS_MAX = "800",
+                          MERGEN_SOAK_CONNECTION_REUSE = "false"), {
+    cfg <- env$soak_resolve_config()
+    testthat::expect_equal(cfg$load_driver$pattern, "ramped_paced")
+    testthat::expect_equal(cfg$load_driver$ramp_up_seconds, 120)
+    testthat::expect_equal(cfg$load_driver$max_new_requests_per_tick, 25L)
+    testthat::expect_equal(cfg$load_driver$think_time_ms_min, 200L)
+    testthat::expect_equal(cfg$load_driver$think_time_ms_max, 800L)
+    testthat::expect_false(isTRUE(cfg$load_driver$connection_reuse))
+
+    pub <- env$soak_config_public(cfg)
+    testthat::expect_true("load_driver" %in% names(pub))
+    testthat::expect_equal(pub$load_driver$pattern, "ramped_paced")
+    # Public config sir icermemeli (planlanmis sahte sir env'i).
+    k <- paste0("sk-", "corp-fake-driver-aaaa11")
+    withr::with_envvar(list(MERGEN_DEFAULT_API_KEY = k), {
+      pub2 <- env$soak_config_public(env$soak_resolve_config())
+      testthat::expect_false(grepl(k, jsonlite::toJSON(pub2, auto_unbox = TRUE), fixed = TRUE))
+    })
+  })
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("load driver: rampa hedefi + think gecikmesi + curl times (SAF)", {
+  env <- new.env(); soak_source_modules(env)
+
+  # Rampa: ramp<=0 -> her zaman concurrent (burst). ramp>0 -> 1..concurrent.
+  testthat::expect_equal(env$soak_target_concurrency_now(100L, 0, 0), 100L)
+  testthat::expect_equal(env$soak_target_concurrency_now(100L, 0, 9999), 100L)
+  testthat::expect_equal(env$soak_target_concurrency_now(100L, 100, 0), 1L)     # baslangic en az 1
+  testthat::expect_equal(env$soak_target_concurrency_now(100L, 100, 50), 50L)   # yari yol
+  testthat::expect_equal(env$soak_target_concurrency_now(100L, 100, 100), 100L) # tamam
+  testthat::expect_equal(env$soak_target_concurrency_now(100L, 100, 250), 100L) # tavan
+
+  # Think gecikmesi: 0 -> 0; sabit; aralik icinde.
+  testthat::expect_equal(env$soak_think_delay_sec(0, 0), 0)
+  testthat::expect_equal(env$soak_think_delay_sec(500, 500), 0.5)
+  d <- env$soak_think_delay_sec(200, 800)
+  testthat::expect_true(d >= 0.2 && d <= 0.8)
+
+  # curl times -> ms (connect/ttfb ayri); eksik -> NA.
+  tm <- env$soak_extract_curl_times_ms(c(redirect = 0, namelookup = 0.001,
+                                         connect = 0.002, pretransfer = 0.0025,
+                                         starttransfer = 0.010, total = 0.012))
+  testthat::expect_equal(tm$connect_ms, 2)
+  testthat::expect_equal(tm$ttfb_ms, 10)
+  testthat::expect_equal(tm$total_ms, 12)
+  tm0 <- env$soak_extract_curl_times_ms(NULL)
+  testthat::expect_true(is.na(tm0$connect_ms) && is.na(tm0$ttfb_ms))
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("metrics: connect/ttfb sutunlari kaydedilir ve yuzdelikleri uretilir", {
+  env <- new.env(); soak_source_modules(env)
+  m <- env$soak_metrics_new()
+  for (i in 1:50) {
+    env$soak_metrics_record(m, "fake", "app_http_chat_short", 100 + i, "ok", 200L, 40,
+                            "n/a", "n/a", "app", connect_ms = 2 + (i %% 5), ttfb_ms = 50 + i)
+  }
+  df <- env$soak_metrics_as_df(m)
+  testthat::expect_true(all(c("connect_ms", "ttfb_ms") %in% names(df)))
+  testthat::expect_true(all(is.finite(df$connect_ms)))
+
+  s <- env$soak_metrics_summary(m)
+  testthat::expect_true(is.finite(s$connect_ms_p95))
+  testthat::expect_true(is.finite(s$ttfb_ms_p95))
+  testthat::expect_true(s$ttfb_ms_p95 >= s$connect_ms_p95)
+
+  sl <- env$soak_metrics_slice_summary(m, 1L, 50L, wall_seconds = 5)
+  testthat::expect_true("connect_ms_p95" %in% names(sl))
+  testthat::expect_true("dominant_timeout_class" %in% names(sl))
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("timeout attribution: dominant_timeout_class baskin sinifi verir", {
+  env <- new.env(); soak_source_modules(env)
+  m <- env$soak_metrics_new()
+  for (i in 1:30) env$soak_metrics_record(m, "fake", "app_http_chat_short", 120, "ok", 200L, 10, "n/a", "n/a", "app")
+  for (i in 1:40) env$soak_metrics_record(m, "fake", "app_http_chat_short", 20000, "timeout", NA, 0, "n/a", "connection_timeout", "app")
+  for (i in 1:5)  env$soak_metrics_record(m, "fake", "app_http_chat_code", 20000, "timeout", NA, 0, "n/a", "response_timeout", "app")
+  attr <- env$soak_timeout_attribution(env$soak_metrics_as_df(m))
+  testthat::expect_equal(attr$total_failures, 45L)
+  testthat::expect_equal(attr$dominant_timeout_class, "connection_timeout")
+  # Bos df -> NA dominant.
+  testthat::expect_true(is.na(env$soak_timeout_attribution(env$soak_metrics_as_df(env$soak_metrics_new()))$dominant_timeout_class))
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("loadgen doygunluk ipucu (SAF)", {
+  env <- new.env(); soak_source_modules(env)
+  testthat::expect_equal(env$soak_loadgen_saturation_hint(NULL, 100L), "loadgen_unmeasured")
+  # Hedefin belirgin altinda -> istemci/loop limiti.
+  testthat::expect_equal(env$soak_loadgen_saturation_hint(list(max_inflight = 40L, max_loop_lag_ms = 5), 100L),
+                         "loadgen_below_target_concurrency")
+  # Hedef tutuldu + dusuk lag -> sustained.
+  testthat::expect_equal(env$soak_loadgen_saturation_hint(list(max_inflight = 100L, max_loop_lag_ms = 5), 100L),
+                         "loadgen_sustained_target")
+  # Hedef tutuldu ama yuksek lag.
+  testthat::expect_equal(env$soak_loadgen_saturation_hint(list(max_inflight = 100L, max_loop_lag_ms = 2500), 100L),
+                         "loadgen_loop_lag_high")
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("telemetri: TCP durum dokumu + kolonlari + app_tcp_max_by_state", {
+  env <- new.env(); soak_source_modules(env)
+
+  # Yeni TCP-durum kolonlari semada mevcut.
+  cols <- env$soak_telemetry_columns()
+  for (c in c("tcp_established", "tcp_syn_sent", "tcp_syn_recv", "tcp_time_wait",
+              "tcp_close_wait", "tcp_listen", "tcp_connections_to_app")) {
+    testthat::expect_true(c %in% cols, info = c)
+  }
+
+  # Durum dokumu: Windows + ss + netstat yazimlarini normalize eder.
+  tally <- env$soak_tcp_state_tally(c("Established", "ESTAB", "ESTABLISHED",
+                                      "SynReceived", "SYN-RECV",
+                                      "TimeWait", "TIME_WAIT", "TIME-WAIT",
+                                      "Listen", "LISTENING", "CloseWait", "SynSent"))
+  testthat::expect_equal(tally$tcp_established, 3L)
+  testthat::expect_equal(tally$tcp_syn_recv, 2L)
+  testthat::expect_equal(tally$tcp_time_wait, 3L)
+  testthat::expect_equal(tally$tcp_listen, 2L)
+  testthat::expect_equal(tally$tcp_close_wait, 1L)
+  testthat::expect_equal(tally$tcp_syn_sent, 1L)
+  testthat::expect_equal(tally$tcp_connections_to_app, 12L)
+  # Bos -> sifirlar.
+  testthat::expect_equal(env$soak_tcp_state_tally(character(0))$tcp_connections_to_app, 0L)
+
+  # Olculemeyen ozet de app_tcp_max_by_state alanini tasir (NA dolu).
+  s <- env$soak_telemetry_summarize(file.path(tempdir(), "no_such_tel_tcp.csv"))
+  testthat::expect_true("app_tcp_max_by_state" %in% names(s))
+  testthat::expect_true("tcp_syn_recv" %in% names(s$app_tcp_max_by_state))
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("kademeli merdiven: recommended_probe_steps + connection-saturation ipucu", {
+  env <- new.env(); soak_source_modules(env)
+
+  # Onerilen ara kademeler: 300 gecti, 450 basarisiz -> aralik icinde, 300/450 haric.
+  steps <- env$soak_capacity_recommended_probe_steps(300L, 450L)
+  testthat::expect_true(length(steps) >= 2L)
+  testthat::expect_true(all(steps > 300L & steps < 450L))
+  testthat::expect_equal(steps, sort(steps))
+  testthat::expect_false(450L %in% steps)
+  # Stabil yoksa / aralik yoksa bos.
+  testthat::expect_equal(length(env$soak_capacity_recommended_probe_steps(0L, 450L)), 0L)
+  testthat::expect_equal(length(env$soak_capacity_recommended_probe_steps(300L, 300L)), 0L)
+
+  # 2026-06-27 senaryosu: 100/300 PASS, 450 FAIL, baskin connection_timeout,
+  # dusuk CPU, yuksek syn_recv, loadgen hedefi tuttu -> connection/backlog ipucu.
+  ladder_steps <- list(
+    list(users = 100L, effective_success_rate = 1.0, p95_latency_ms = 5018, pass = TRUE,
+         telemetry = list(telemetry_available = TRUE, max_total_cpu_percent = 29)),
+    list(users = 300L, effective_success_rate = 0.9967, p95_latency_ms = 27566, pass = TRUE,
+         telemetry = list(telemetry_available = TRUE, max_total_cpu_percent = 29)),
+    list(users = 450L, effective_success_rate = 0.03, p95_latency_ms = 44029, pass = FALSE,
+         dominant_timeout_class = "connection_timeout",
+         loadgen = list(saturation_hint = "loadgen_sustained_target", max_inflight = 450L),
+         telemetry = list(telemetry_available = TRUE, max_total_cpu_percent = 21,
+                          app_tcp_max_by_state = list(tcp_established = 50L, tcp_syn_recv = 300L,
+                                                      tcp_time_wait = 10L)))
+  )
+  lad <- env$soak_capacity_ladder_summarize(ladder_steps, c(100L, 300L, 450L, 600L, 750L),
+                                            stable_min = 0.98, stop_on_first = TRUE)
+  testthat::expect_equal(lad$stable_capacity_users, 300L)
+  testthat::expect_equal(lad$first_failed_capacity_users, 450L)
+  testthat::expect_true(length(lad$recommended_probe_steps) >= 2L)
+  testthat::expect_true(all(lad$recommended_probe_steps > 300L & lad$recommended_probe_steps < 450L))
+  testthat::expect_equal(lad$dominant_timeout_class, "connection_timeout")
+  testthat::expect_true("possible_connection_accept_or_backlog_saturation" %in% lad$bottleneck_hints)
+  testthat::expect_true("possible_accept_backlog_saturation" %in% lad$bottleneck_hints)
+  testthat::expect_false(isTRUE(lad$all_steps_pass))
+  testthat::expect_true(nzchar(lad$bottleneck_hint))
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("evidence: load_driver + http_loadgen alanlari girer ve redaksiyondan gecer", {
+  env <- new.env(); soak_source_modules(env)
+  cfg <- withr::with_envvar(list(MERGEN_SOAK_PROFILE = "smoke",
+                                 MERGEN_SOAK_RAMP_UP_SECONDS = "60"), env$soak_resolve_config())
+  cfg$interactive_lane <- FALSE
+
+  m <- env$soak_metrics_new()
+  for (i in 1:20) env$soak_metrics_record(m, "fake", "app_http_chat_short", 100 + i, "ok", 200L, 40,
+                                          "n/a", "n/a", "app", connect_ms = 1, ttfb_ms = 30)
+  s <- env$soak_metrics_summary(m)
+  inproc <- list(available = FALSE)
+  mg <- list(rss_measured = FALSE, process_rss_growth_mb = NA)
+
+  # Planlanmis sahte sir: loadgen alanina konur (redaksiyon kapsamali olmali).
+  secret <- paste0("sk-", "loadgen-fake-zzzzz77")
+  http_loadgen <- list(load_pattern = "ramped", target_users = 50L, max_inflight = 48L,
+                       launched = 1000L, completed = 1000L, loop_iters = 500L,
+                       max_loop_lag_ms = 12.3, saturation_hint = "loadgen_sustained_target",
+                       note = paste0("debug token=", secret))
+
+  checks <- env$soak_evaluate_thresholds(cfg, s, inproc, list(total_leaks = 0L), mg, 0, TRUE, 0L)
+  outcome <- env$soak_threshold_outcome(checks)
+  proofs <- env$soak_proof_statements(cfg, s, inproc, list(reachable = FALSE))
+  ev <- env$soak_build_evidence(cfg, s, inproc, NULL, list(), list(total_leaks = 0L),
+                                list(), mg, list(), list(reachable = FALSE), NULL, checks, outcome,
+                                proofs, 1.0, character(0), character(0), TRUE, 0L,
+                                NULL, NULL, NULL, NULL, NULL, NULL,
+                                cfg$load_driver, http_loadgen)
+
+  testthat::expect_true("load_driver" %in% names(ev))
+  testthat::expect_true("http_loadgen" %in% names(ev))
+  testthat::expect_equal(ev$load_driver$pattern, "ramped")
+  testthat::expect_equal(ev$http_loadgen$max_inflight, 48L)
+  testthat::expect_equal(ev$metrics$connect_ms_p95, s$connect_ms_p95)
+
+  tmp <- file.path(tempdir(), paste0("soak_art3_", as.integer(stats::runif(1, 1, 1e6))))
+  red <- env$soak_write_artifacts(tmp, cfg, m, ev, NULL, list(), NULL)
+  testthat::expect_equal(red$total_leaks, 0L)
+  for (af in list.files(tmp, full.names = TRUE, recursive = TRUE)) {
+    if (grepl("\\.(json|jsonl|csv|md)$", af)) {
+      body <- paste(readLines(af, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+      testthat::expect_false(grepl("loadgen-fake-zzzzz77", body, fixed = TRUE), info = basename(af))
+    }
+  }
+  unlink(tmp, recursive = TRUE)
+})
+
+# ------------------------------------------------------------------------------
 # Opsiyonel canli sunucu smoke (varsayilan KAPALI; deterministik kalmak icin).
 # Kapaliyken test_that() kaydedilmez; boylece hizli lokal/VM kosular skip uretmez.
 if (tolower(Sys.getenv("MERGEN_SOAK_TEST_LIVE", "")) %in% c("true", "1", "yes")) {

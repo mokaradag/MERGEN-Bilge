@@ -1124,3 +1124,130 @@ Rscript tests/scripts/run_operational_soak_gate.R
 - Gerçek LLM throughput yalnız küçük, tavanlı probe ile gözlemlenir (kapasite değil).
 - Bellek büyümesi/telemetri ancak OS sayaçları okunabildiğinde ölçülür.
 - 1000 gerçek sürekli insan oturumu hiçbir lane tarafından kanıtlanmaz.
+
+---
+
+## 17. Bağlantı-timeout teşhis sertleştirmesi (2026-06-27 450-kullanıcı bulgusuna yanıt)
+
+Bu bölüm, 13A'daki **450 kullanıcı / connection_timeout doygunluğu** bulgusunu
+(CPU düşük ~%21-29, R süreç CPU ~%9.8, app-port TCP ~425) bir sonraki VM koşumunda
+**kesin teşhis edebilmek** için eklenen yük-sürücüsü realizm anahtarlarını,
+telemetri genişletmesini ve merdiven teşhis alanlarını açıklar. **Hiçbir eşik
+düşürülmemiştir; UNMEASURED kontroller hâlâ sessizce PASS sayılmaz.** Bu değişiklik
+yalnız teşhis/gözlemlenebilirlik içindir; mevcut pass/fail anlamı korunur.
+
+### 17.1 Kök neden hipotezi
+
+450 kullanıcı adımında baskın hata sınıfı `connection_timeout` (47763) idi;
+`response_timeout` yalnız 450 idi. CPU doygun değildi ve kök sayfa GET `/`
+yanıtı zaten önbelleklidir (`R/helpers_index_page_cache.R`; her istek önceden
+render edilmiş `httpResponse`'tan sunulur) ve attach seridi yalnız GET'tir
+(websocket Shiny oturumu kurulmaz). Bu yüzden darboğaz **uygulama UI render veya
+oturum başlatma** değildir; en olası adaylar: TCP kabul/backlog doygunluğu, tek
+süreç/event-loop kabul kuyruğu, Windows TCP ephemeral-port/TIME_WAIT davranışı,
+ya da yük-sürücüsünün her adım başında 450 bağlantıyı **aynı anda (burst)** açması.
+
+### 17.2 Yük sürücüsü realizm anahtarları (varsayılan = mevcut davranış)
+
+`tests/scripts/soak_client.R` kapalı-döngü sürücüsü artık config ile şekillenir.
+**Tüm varsayılanlar mevcut "burst" davranışını birebir korur** (ramp yok, tavan
+yok, think yok, bağlantı yeniden-kullanım açık); böylece geçmiş pass/fail anlamı
+sessizce değişmez. Anahtarlar `config.json` ve `soak_evidence.json` içine
+`load_driver` olarak yazılır ve `load_pattern` (burst/ramped/paced/ramped_paced)
+açıkça raporlanır:
+
+| Env | Varsayılan | Etki |
+| --- | --- | --- |
+| `MERGEN_SOAK_RAMP_UP_SECONDS` | `0` | Aktif eşzamanlılığı 1→N'e bu süre boyunca büyütür (0 = ani burst). |
+| `MERGEN_SOAK_MAX_NEW_PER_TICK` | `0` | Her poll turunda açılan yeni istek tavanı (0 = sınırsız). |
+| `MERGEN_SOAK_THINK_TIME_MS_MIN` / `_MAX` | `0` | Tamamlanan istek ile aynı kullanıcının sonraki isteği arasında jitter'lı bekleme. |
+| `MERGEN_SOAK_CONNECTION_REUSE` | `TRUE` | FALSE her isteği taze bağlantıya zorlar (`forbid_reuse`/`fresh_connect`); bağlantı-kurulum maliyetini izole eder. |
+
+Yorumlama: bir sonraki VM koşumunda **rampa eklenince** 450 adımındaki
+`connection_timeout` doygunluğu kaybolursa darboğaz "ani bağlantı fırtınası"dır
+(kabul/backlog); rampa ile **devam ederse** darboğaz kararlı-durum doygunluğudur
+(event-loop/TCP). `connection_reuse=FALSE` ile connect süresi belirgin artarsa
+darboğaz bağlantı-kurulum tarafındadır.
+
+### 17.3 Telemetri genişletmesi (TCP durum dağılımı + curl zamanlama + yük-üretici)
+
+- **App-port TCP durum dağılımı**: `soak_system_telemetry.R` artık yalnız toplam
+  bağlantı sayısını değil, durum bazında `established / syn_sent / syn_recv /
+  time_wait / close_wait / listen` maksimumlarını da örnekler
+  (`app_tcp_max_by_state`). Windows'ta `Get-NetTCPConnection -LocalPort` State
+  ile, Unix'te `ss -tan` / `netstat` durum kolonuyla. **`syn_recv` yüksekliği
+  kabul-kuyruğu (accept backlog) doygunluğunun**, **`time_wait` yüksekliği
+  ephemeral-port/TIME_WAIT baskısının** doğrudan göstergesidir.
+- **curl zamanlama**: yük sürücüsü tamamlanan her istekten `connect` ve
+  `starttransfer` (ttfb) sürelerini toplar (`metrics$connect_ms_p95`,
+  `metrics$ttfb_ms_p95`). **connect yüksek + ttfb düşük → bağlantı/backlog
+  darboğazı; ttfb yüksek → app/event-loop işleme darboğazı.** (Yalnız tamamlanan
+  istekler; bağlantı-timeout'unda curl zamanlama gelmez.)
+- **Yük-üretici (load generator) telemetrisi**: `launched`, `completed`,
+  `max_inflight`, `loop_iters`, `max_loop_lag_ms`, `scheduled_per_sec` ve
+  `saturation_hint` (`loadgen_sustained_target` / `loadgen_below_target_concurrency`
+  / `loadgen_loop_lag_high`). Bu, darboğazın **istemci/loop tarafı mı yoksa sunucu
+  tarafı mı** olduğunu ayırt eder (CLAUDE.md: yük-üretici doygunluğu app kapasitesi
+  sanılmamalı).
+
+`ss`/`netstat`/`Get-NetTCPConnection` okunamazsa bu alanlar **UNMEASURED** (NA)
+kalır; sessizce PASS sayılmaz.
+
+### 17.4 Kademeli merdiven teşhis alanları
+
+`capacity_ladder` kanıtı artık şunları da içerir:
+
+- `recommended_probe_steps`: stabil=300 / ilk_başarısız=450 ise **350/400/425** gibi
+  daraltma kademeleri önerir (doğrudan 450'yi tekrar denemek yerine).
+- `dominant_timeout_class`: ilk başarısız adımın baskın hata sınıfı.
+- `loadgen_saturation_hint`, `app_tcp_max_by_state`: ilk başarısız adımın yük-üretici
+  ve TCP-durum özeti.
+- `bottleneck_hint` (tekil) ve genişletilmiş `bottleneck_hints`: baskın sınıf
+  `connection_timeout` + düşük CPU ise `possible_connection_accept_or_backlog_saturation`;
+  yüksek `syn_recv` ise `possible_accept_backlog_saturation`; yüksek `time_wait` ise
+  `possible_time_wait_port_pressure`; yük-üretici hedefin altındaysa
+  `possible_load_generator_limit`.
+
+### 17.5 Hâlâ geçerli son kanıtlanmış kilometre taşı
+
+**300 aktif proxy kullanıcı / 90 dakika**, yeni bir VM koşumu aksini kanıtlayana
+kadar bu koşumun son stabil kademesidir. Bu sertleştirme bir kod teşhis katmanıdır;
+tek başına 450 readiness, 1000 gerçek insan, gerçek LLM throughput, gerçek
+tarayıcı/websocket eşzamanlılığı veya SQL Server at-rest encoding KANITLAMAZ.
+
+### 17.6 Önerilen bir sonraki VM koşumu (PowerShell, attach portu 8009)
+
+Önce 300→450 aralığını daraltan kademeli merdiveni telemetri açıkken koş:
+
+```powershell
+Remove-Item Env:MERGEN_SOAK_PROFILE,Env:MERGEN_SOAK_LLM_MODE,Env:MERGEN_SOAK_CONCURRENT_USERS,Env:MERGEN_SOAK_DURATION_SECONDS,Env:MERGEN_SOAK_DURATION_MINUTES,Env:MERGEN_SOAK_CAPACITY_CURVE,Env:MERGEN_SOAK_CAPACITY_LADDER,Env:MERGEN_SOAK_CAPACITY_USERS,Env:MERGEN_SOAK_CAPACITY_STEP_SECONDS,Env:MERGEN_SOAK_STOP_ON_FIRST_FAILED_STEP,Env:MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN -ErrorAction SilentlyContinue
+
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
+$env:MERGEN_SOAK_PROFILE = "proxy_llm"
+$env:MERGEN_SOAK_LLM_MODE = "proxy"
+$env:MERGEN_SOAK_PROXY_FORWARD_REAL = "FALSE"
+$env:MERGEN_SOAK_CAPACITY_LADDER = "TRUE"
+$env:MERGEN_SOAK_CAPACITY_USERS = "100,300,350,400,425,450"
+$env:MERGEN_SOAK_CAPACITY_STEP_SECONDS = "5400"
+$env:MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN = "0.98"
+$env:MERGEN_SOAK_STOP_ON_FIRST_FAILED_STEP = "TRUE"
+$env:MERGEN_SOAK_TELEMETRY_ENABLED = "TRUE"
+
+Rscript --vanilla tests/scripts/run_operational_soak_gate.R
+```
+
+Ardından darboğazı "burst mü kararlı-durum mu" diye ayırmak için aynı merdiveni
+**rampa + bağlantı çeşitliliği** ile tekrarla (eşikler aynı; yalnız arrival deseni
+değişir). Örnek ek anahtarlar:
+
+```powershell
+$env:MERGEN_SOAK_RAMP_UP_SECONDS = "120"     # her adımda 1->N'e 120 sn rampa
+$env:MERGEN_SOAK_MAX_NEW_PER_TICK = "25"      # bağlantı fırtınasını yumuşat
+# Opsiyonel: bağlantı-kurulum maliyetini izole etmek için
+# $env:MERGEN_SOAK_CONNECTION_REUSE = "FALSE"
+```
+
+Kanıtı oku: `soak_evidence.json` içinde `capacity_ladder.bottleneck_hint`,
+`capacity_ladder.dominant_timeout_class`, `system_telemetry.app_tcp_max_by_state`
+ve `metrics.connect_ms_p95` / `metrics.ttfb_ms_p95`. `connect_ms_p95` büyük +
+`ttfb_ms_p95` küçük ise darboğaz bağlantı/backlog; tersi ise app işleme.

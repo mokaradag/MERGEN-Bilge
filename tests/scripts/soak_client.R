@@ -70,13 +70,63 @@ soak_app_request_url <- function(base_url, user_label, scenario_id, now = Sys.ti
 }
 
 # ------------------------------------------------------------------------------
+# Rampa hedefi (SAF): elapsed saniyeye gore aktif-eszamanliligi 1 -> concurrent
+# araliginda dogrusal buyutur. ramp_up_seconds <= 0 ise her zaman concurrent
+# doner (ani burst; mevcut varsayilan davranis).
+# ------------------------------------------------------------------------------
+soak_target_concurrency_now <- function(concurrent, ramp_up_seconds, elapsed_seconds) {
+  concurrent <- max(1L, as.integer(concurrent))
+  ramp <- suppressWarnings(as.numeric(ramp_up_seconds))
+  if (!is.finite(ramp) || ramp <= 0) return(concurrent)
+  el <- suppressWarnings(as.numeric(elapsed_seconds))
+  if (!is.finite(el) || el < 0) el <- 0
+  frac <- min(1, el / ramp)
+  t <- as.integer(ceiling(concurrent * frac))
+  max(1L, min(concurrent, t))
+}
+
+# curl 'times' (saniye) -> ms; connect ve starttransfer (ttfb) ayri tutulur.
+# Olculemezse NA. Yalniz tamamlanan (done) istekler icin gelir.
+soak_extract_curl_times_ms <- function(times) {
+  out <- list(connect_ms = NA_real_, ttfb_ms = NA_real_, total_ms = NA_real_)
+  if (is.null(times) || length(times) == 0L) return(out)
+  g <- function(nm) {
+    v <- suppressWarnings(as.numeric(times[[nm]]))
+    if (length(v) == 0L || !is.finite(v)) NA_real_ else v
+  }
+  connect <- g("connect")
+  starttransfer <- g("starttransfer")
+  total <- g("total")
+  if (is.finite(connect)) out$connect_ms <- round(connect * 1000, 2)
+  if (is.finite(starttransfer)) out$ttfb_ms <- round(starttransfer * 1000, 2)
+  if (is.finite(total)) out$total_ms <- round(total * 1000, 2)
+  out
+}
+
+# Think-time gecikmesi (saniye). min==max ise sabit; degilse jitter'li uniform.
+soak_think_delay_sec <- function(min_ms, max_ms) {
+  min_ms <- max(0, suppressWarnings(as.numeric(min_ms)))
+  max_ms <- suppressWarnings(as.numeric(max_ms))
+  if (!is.finite(max_ms) || max_ms < min_ms) max_ms <- min_ms
+  if (!is.finite(max_ms) || max_ms <= 0) return(0)
+  if (max_ms == min_ms) return(min_ms / 1000)
+  stats::runif(1, min_ms, max_ms) / 1000
+}
+
+# ------------------------------------------------------------------------------
 # Kapali-dongu eszamanli HTTP yuk surucusu (curl multi).
 #   url           : POST hedefi (.../v1/chat/completions)
 #   metrics       : soak_metrics_new() ortami
 #   duration_sec  : sure
-#   concurrent    : ayni anda en fazla ucusta istek (aktif eszamanlilik)
+#   concurrent    : ayni anda en fazla ucusta istek (aktif eszamanlilik tavani)
 #   user_keys     : kullanici basina bearer anahtarlari
 #   lane          : fake | proxy | real-canary
+#
+# Yuk deseni (cfg$load_driver) ile sekillenir; TUM varsayilanlar mevcut "burst"
+# davranisini korur: ramp yok, tavan yok, think yok, baglanti yeniden-kullanim
+# acik. Geriye yuk-uretici telemetrisi (launched/completed/max_inflight/loop lag
+# vb.) doner; boylece darbogaz istemci/loop tarafinda mi yoksa sunucu tarafinda
+# mi diye ayirt edilebilir.
 # ------------------------------------------------------------------------------
 soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
                            user_keys, lane, catalog = soak_scenario_catalog()) {
@@ -93,14 +143,39 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
     switch(lane, fake = "fake_llm", proxy = "proxy_llm", "real_llm")
   }
 
+  # Yuk surucusu realizm anahtarlari (cfg yoksa veya minimal ise mevcut davranis).
+  ld <- cfg$load_driver %||% list()
+  ramp_up_seconds <- suppressWarnings(as.numeric(ld$ramp_up_seconds %||% 0))
+  if (!is.finite(ramp_up_seconds) || ramp_up_seconds < 0) ramp_up_seconds <- 0
+  max_new_per_tick <- suppressWarnings(as.integer(ld$max_new_requests_per_tick %||% 0L))
+  if (is.na(max_new_per_tick) || max_new_per_tick < 0L) max_new_per_tick <- 0L
+  think_min_ms <- suppressWarnings(as.numeric(ld$think_time_ms_min %||% 0))
+  think_max_ms <- suppressWarnings(as.numeric(ld$think_time_ms_max %||% think_min_ms))
+  if (!is.finite(think_min_ms) || think_min_ms < 0) think_min_ms <- 0
+  if (!is.finite(think_max_ms) || think_max_ms < think_min_ms) think_max_ms <- think_min_ms
+  think_enabled <- think_max_ms > 0
+  connection_reuse <- isTRUE(ld$connection_reuse %||% TRUE)
+
   # curl havuzu: host_con eszamanlilik kadar yuksek olmali (varsayilan 6 ise
   # serilesir). multiplex kapali tutulur (her istek ayri baglanti).
   con_cap <- max(as.integer(concurrent) + 10L, 100L)
   pool <- curl::new_pool(total_con = con_cap, host_con = con_cap, multiplex = FALSE)
 
-  inflight <- new.env(parent = emptyenv())
-  inflight$n <- 0L
+  st <- new.env(parent = emptyenv())
+  st$n <- 0L                  # ucustaki (inflight) istek sayisi
+  st$launched <- 0L           # baslatilan toplam istek
+  st$completed <- 0L          # tamamlanan (done+fail) toplam istek
+  st$max_inflight <- 0L       # gozlenen en yuksek eszamanlilik
+  st$think_until <- numeric(0)  # think modunda: "kullanici" yeniden hazir zamanlari
   user_idx <- 0L
+
+  n_thinking <- function() if (think_enabled) length(st$think_until) else 0L
+  mature_thinking <- function(now_num) {
+    if (!think_enabled || length(st$think_until) == 0L) return(invisible(NULL))
+    due <- st$think_until <= now_num
+    if (any(due)) st$think_until <- st$think_until[!due]
+    invisible(NULL)
+  }
 
   add_one <- function() {
     user_idx <<- (user_idx %% n_users) + 1L
@@ -122,17 +197,27 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
       if (!identical(lane, "proxy")) hdrs[["X-Soak-User"]] <- NULL
       soak_configure_post_handle(h, body, client_timeout_ms)
     }
+    if (!connection_reuse) {
+      # Her istegi taze baglantiya zorla (havuz yeniden kullanmaz); operator
+      # baglanti-kurulum maliyetini izole edebilir. Olmayan curl derlemelerinde
+      # sessizce yok sayilir.
+      tryCatch(curl::handle_setopt(h, forbid_reuse = 1L, fresh_connect = 1L),
+               error = function(e) NULL)
+    }
     curl::handle_setopt(h, url = request_url)
-	do.call(curl::handle_setheaders, c(list(h), hdrs))
+    do.call(curl::handle_setheaders, c(list(h), hdrs))
 
-	start <- Sys.time()
+    start <- Sys.time()
     scen_id <- if (isTRUE(app_http_mode)) paste0("app_http_", scen$id) else scen$id
-    inflight$n <- inflight$n + 1L
+    st$n <- st$n + 1L
+    st$launched <- st$launched + 1L
+    if (st$n > st$max_inflight) st$max_inflight <- st$n
 
     curl::multi_add(
       h,
       done = function(res) {
-        inflight$n <- inflight$n - 1L
+        st$n <- st$n - 1L
+        st$completed <- st$completed + 1L
         lat <- as.numeric(difftime(Sys.time(), start, units = "secs")) * 1000
         code <- as.integer(res$status_code %||% NA_integer_)
         status <- if (!is.na(code) && code >= 200L && code < 300L) "ok" else "error"
@@ -141,44 +226,113 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
           parsed <- tryCatch(curl::parse_headers_list(res$headers), error = function(e) list())
           ks <- parsed[["x-soak-key-source"]] %||% "n/a"
         }
+        tm <- soak_extract_curl_times_ms(res$times)
         tclass <- soak_classify_failure(status, code, "", endpoint_kind)
         soak_metrics_record(metrics, lane, scen_id, lat, status, code,
-                            length(res$content %||% raw()), ks, tclass, endpoint_kind)
+                            length(res$content %||% raw()), ks, tclass, endpoint_kind,
+                            connect_ms = tm$connect_ms, ttfb_ms = tm$ttfb_ms)
+        if (isTRUE(think_enabled)) {
+          st$think_until <- c(st$think_until,
+                              as.numeric(Sys.time()) + soak_think_delay_sec(think_min_ms, think_max_ms))
+        }
       },
       fail = function(msg) {
-        inflight$n <- inflight$n - 1L
+        st$n <- st$n - 1L
+        st$completed <- st$completed + 1L
         lat <- as.numeric(difftime(Sys.time(), start, units = "secs")) * 1000
         status <- if (grepl("tim(e|ed) ?out|timeout", msg, ignore.case = TRUE)) "timeout" else "error"
         tclass <- soak_classify_failure(status, NA_integer_, msg, endpoint_kind)
         soak_metrics_record(metrics, lane, scen_id, lat, status, NA_integer_, 0, "n/a",
                             tclass, endpoint_kind)
+        if (isTRUE(think_enabled)) {
+          st$think_until <- c(st$think_until,
+                              as.numeric(Sys.time()) + soak_think_delay_sec(think_min_ms, think_max_ms))
+        }
       },
       pool = pool
     )
   }
 
+  # Bir refill turu: hedef aktif-eszamanliliga (rampa) gore bos slotlari doldurur.
+  # idle = target_now - inflight - thinking. max_new_per_tick varsa tur basina
+  # acilan yeni istek sayisi sinirlanir (baglanti firtinasini yumusatmak icin).
+  refill <- function(now) {
+    elapsed <- as.numeric(now) - as.numeric(loop_start)
+    target <- soak_target_concurrency_now(concurrent, ramp_up_seconds, elapsed)
+    added <- 0L
+    repeat {
+      idle <- target - st$n - n_thinking()
+      if (idle <= 0L) break
+      add_one()
+      added <- added + 1L
+      if (max_new_per_tick > 0L && added >= max_new_per_tick) break
+    }
+    invisible(added)
+  }
+
   loop_start <- Sys.time()
   t_end <- loop_start + duration_sec
-  while (inflight$n < concurrent) add_one()
+  loop_iters <- 0L
+  sum_loop_lag_ms <- 0
+  max_loop_lag_ms <- 0
+  last_run <- as.numeric(Sys.time())
+
+  mature_thinking(as.numeric(Sys.time()))
+  refill(Sys.time())
 
   repeat {
     curl::multi_run(timeout = 0.25, poll = TRUE, pool = pool)
+    loop_iters <- loop_iters + 1L
+    now_num <- as.numeric(Sys.time())
+    lag_ms <- (now_num - last_run) * 1000
+    if (is.finite(lag_ms)) {
+      if (lag_ms > max_loop_lag_ms) max_loop_lag_ms <- lag_ms
+      sum_loop_lag_ms <- sum_loop_lag_ms + lag_ms
+    }
+    last_run <- now_num
     if (Sys.time() >= t_end) break
-    while (inflight$n < concurrent) add_one()
+    mature_thinking(now_num)
+    added <- refill(Sys.time())
+    # Think modunda tum "kullanicilar" beklerken havuz bos kalir; multi_run aninda
+    # doner ve dongu bosa doner (CPU spin). Yuk-uretici VM'de app ile ayni cekirdegi
+    # paylastigi icin bu olcumu carpitir. Yalniz gercekten bos (inflight=0 + yeni
+    # istek eklenmedi) think penceresinde kisa uyu. burst/ramped yolunu etkilemez.
+    if (think_enabled && st$n == 0L && added == 0L) Sys.sleep(0.005)
   }
   # Yuk-penceresi suresi (drain HARIC): throughput paydasi.
-  soak_metrics_add_load_seconds(metrics, as.numeric(difftime(Sys.time(), loop_start, units = "secs")))
+  load_seconds <- as.numeric(difftime(Sys.time(), loop_start, units = "secs"))
+  soak_metrics_add_load_seconds(metrics, load_seconds)
 
   # Kalan ucustaki istekleri bosalt. Bazi Windows/curl derlemelerinde tek
   # multi_run() cagrisi tum callback'leri teslim etmeyebilir; kapali donguyu
   # kisa ve sinirli bir drain penceresiyle surdurerek "0 istek olculdu" gibi
   # yalanci UNMEASURED sonucunu engelleriz.
   drain_deadline <- Sys.time() + max(5, client_timeout_ms / 1000 + 5)
-  while (inflight$n > 0L && Sys.time() < drain_deadline) {
+  while (st$n > 0L && Sys.time() < drain_deadline) {
     tryCatch(curl::multi_run(timeout = 0.25, poll = TRUE, pool = pool),
              error = function(e) NULL)
   }
-  invisible(metrics)
+
+  # Yuk-uretici (load generator) telemetrisi: darbogaz istemci/loop tarafinda mi
+  # yoksa sunucu tarafinda mi sorusuna kanit. Ham sir icermez.
+  list(
+    load_pattern = ld$pattern %||%
+      soak_load_pattern_label(ramp_up_seconds, think_min_ms, think_max_ms),
+    target_users = as.integer(concurrent),
+    ramp_up_seconds = ramp_up_seconds,
+    max_new_requests_per_tick = max_new_per_tick,
+    think_time_ms_min = as.integer(think_min_ms),
+    think_time_ms_max = as.integer(think_max_ms),
+    connection_reuse = connection_reuse,
+    launched = as.integer(st$launched),
+    completed = as.integer(st$completed),
+    max_inflight = as.integer(st$max_inflight),
+    loop_iters = as.integer(loop_iters),
+    max_loop_lag_ms = round(max_loop_lag_ms, 1),
+    mean_loop_lag_ms = if (loop_iters > 0L) round(sum_loop_lag_ms / loop_iters, 2) else NA_real_,
+    scheduled_per_sec = if (load_seconds > 0) round(st$launched / load_seconds, 1) else NA_real_,
+    load_seconds = round(load_seconds, 1)
+  )
 }
 
 # ------------------------------------------------------------------------------

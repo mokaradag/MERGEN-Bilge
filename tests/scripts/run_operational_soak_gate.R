@@ -185,6 +185,7 @@ capacity_ladder_result <- NULL
 real_canary_classification <- NULL
 real_llm_throughput_result <- NULL
 timeout_attribution <- NULL
+http_loadgen <- NULL
 
 mem_before <- soak_sample_memory()
 temp_dirs <- unique(c(tempdir(), Sys.getenv("MERGEN_UPLOADS_DIR", ""),
@@ -347,8 +348,11 @@ main_result <- tryCatch({
         uk <- soak_make_user_keys(uc, cfg$llm_lane)
         step_start <- as.numeric(Sys.time())
         cat(sprintf("  - %d kullanici / %ds ...\n", uc, cfg$capacity_ladder_step_seconds))
-        soak_http_load(load_url, cfg, metrics, cfg$capacity_ladder_step_seconds,
-                       uc, uk, cfg$llm_lane)
+        step_loadgen <- soak_http_load(load_url, cfg, metrics, cfg$capacity_ladder_step_seconds,
+                                       uc, uk, cfg$llm_lane)
+        if (is.list(step_loadgen)) {
+          step_loadgen$saturation_hint <- soak_loadgen_saturation_hint(step_loadgen, uc)
+        }
         step_end <- as.numeric(Sys.time())
         inj_after <- ladder_injected_now()
         step_injected <- if (is.finite(inj_before) && is.finite(inj_after)) {
@@ -374,6 +378,9 @@ main_result <- tryCatch({
           raw_success_rate = s$success_rate, effective_success_rate = s$effective_success_rate,
           p50_latency_ms = s$p50_latency_ms, p95_latency_ms = s$p95_latency_ms,
           p99_latency_ms = s$p99_latency_ms, throughput_ops_per_min = s$throughput_ops_per_min,
+          connect_ms_p95 = s$connect_ms_p95, ttfb_ms_p95 = s$ttfb_ms_p95,
+          dominant_timeout_class = s$dominant_timeout_class,
+          loadgen = step_loadgen,
           db_pool = NULL, telemetry = tel_win, pass = step_pass
         )
         cat(sprintf("    -> istek=%d eff=%s p95=%sms tput=%s/dk cpu_max=%s%% pass=%s\n",
@@ -414,8 +421,12 @@ main_result <- tryCatch({
     } else {
       cat(sprintf("[soak] yuk: %d eszamanli kullanici, %.0fs...\n",
                   cfg$concurrent_users, cfg$duration_sec))
-      soak_http_load(load_url, cfg, metrics, cfg$duration_sec,
-                     cfg$concurrent_users, user_keys, cfg$llm_lane)
+      http_loadgen <- soak_http_load(load_url, cfg, metrics, cfg$duration_sec,
+                                     cfg$concurrent_users, user_keys, cfg$llm_lane)
+      if (is.list(http_loadgen)) {
+        http_loadgen$saturation_hint <-
+          soak_loadgen_saturation_hint(http_loadgen, cfg$concurrent_users)
+      }
     }
 
     # --- Yuk-fazi sunucu ozeti (enjekte-fault hesabi + proxy izolasyon) ---
@@ -538,7 +549,8 @@ evidence <- soak_build_evidence(
   attach_result, failure_probe, threshold_checks, threshold_outcome, proofs,
   duration_actual, warnings_vec, skipped_vec, server_alive_at_end, injected_faults,
   interactive_result, telemetry_summary, capacity_ladder_result, timeout_attribution,
-  real_canary_classification, real_llm_throughput_result
+  real_canary_classification, real_llm_throughput_result,
+  cfg$load_driver, http_loadgen
 )
 
 redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
@@ -556,7 +568,8 @@ evidence <- soak_build_evidence(
   attach_result, failure_probe, threshold_checks, threshold_outcome, proofs,
   duration_actual, warnings_vec, skipped_vec, server_alive_at_end, injected_faults,
   interactive_result, telemetry_summary, capacity_ladder_result, timeout_attribution,
-  real_canary_classification, real_llm_throughput_result
+  real_canary_classification, real_llm_throughput_result,
+  cfg$load_driver, http_loadgen
 )
 redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
                                   proxy_summary, capacity_rows, NULL)

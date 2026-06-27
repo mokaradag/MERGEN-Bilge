@@ -15,6 +15,41 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### 2026-06-27 Soak bağlantı-timeout teşhis sertleştirmesi (450 bulgusuna yanıt)
+
+13A'daki 450-kullanıcı `connection_timeout` doygunluğunu (CPU düşük, app-port TCP
+~425) bir sonraki VM koşumunda kesin teşhis edebilmek için operasyonel soak
+gate'ine teşhis/gözlemlenebilirlik katmanı eklendi. **Hiçbir eşik düşürülmedi;
+UNMEASURED kontroller hâlâ sessizce PASS sayılmaz; güvenlik/anahtar-izolasyon/
+redaksiyon/upload/DB-işlem/encoding kontrolleri korundu.** Yalnız
+`tests/scripts/soak_*.R` ve `tests/testthat/test-operational-soak-gate-contract.R`
+değişti; çalışma zamanı uygulama kodu değişmedi.
+
+- **Yük sürücüsü realizm anahtarları** (varsayılan = mevcut "burst" davranışı):
+  `MERGEN_SOAK_RAMP_UP_SECONDS`, `MERGEN_SOAK_MAX_NEW_PER_TICK`,
+  `MERGEN_SOAK_THINK_TIME_MS_MIN/_MAX`, `MERGEN_SOAK_CONNECTION_REUSE`. Arrival
+  deseni (`burst`/`ramped`/`paced`/`ramped_paced`) ve anahtarlar `config.json` +
+  `soak_evidence.json` içinde `load_driver` olarak raporlanır. Rampa ile 450
+  timeout'u kaybolursa darboğaz "bağlantı fırtınası"dır; sürerse kararlı-durum.
+- **TCP durum telemetrisi**: app-port `established/syn_sent/syn_recv/time_wait/
+  close_wait/listen` maksimumları (`app_tcp_max_by_state`). `syn_recv` = kabul
+  kuyruğu, `time_wait` = ephemeral-port baskısı göstergesi.
+- **curl zamanlama**: `metrics.connect_ms_p95` vs `metrics.ttfb_ms_p95` (bağlantı
+  fazı vs app işleme ayrımı).
+- **Yük-üretici telemetrisi**: `http_loadgen` (max_inflight, loop lag, scheduled/s,
+  `saturation_hint`) — darboğazın istemci/loop mu sunucu mu olduğunu ayırır.
+- **Merdiven teşhisi**: `recommended_probe_steps` (300/450 → 350/400/425),
+  `dominant_timeout_class`, `bottleneck_hint`, genişletilmiş `bottleneck_hints`
+  (`possible_connection_accept_or_backlog_saturation` vb.).
+
+Doğrulama: `tests/testthat/test-operational-soak-gate-contract.R` ve
+`tests/testthat/test-soak-readiness-scripts-contract.R` (0 fail / 0 warn / 0 skip),
+`bash tools/ai_validate.sh quick` (failed_steps=0, skipped_steps=0). Son
+kanıtlanmış kilometre taşı hâlâ **300 aktif proxy kullanıcı / 90 dakika**'dır;
+yeni VM komutları için `docs/operational-soak-gate.md` §17. Ayrıntı:
+`docs/operational-soak-gate.md` §17.
+
+
 ### 2026-06-27 Operasyonel proxy attach soak gate bulguları: 300 stabil, 450 timeout doygunluğu
 
 Kullanıcının paylaştığı Windows VM ekran görüntülerinden en son proxy attach soak

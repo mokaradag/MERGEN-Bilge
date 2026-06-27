@@ -25,6 +25,8 @@ soak_metrics_new <- function() {
   env$key_source <- character(env$cap)    # personal | default | missing | proxy-personal | n/a
   env$timeout_class <- character(env$cap)  # hata atfi (timeout attribution) sinifi
   env$endpoint_kind <- character(env$cap)  # app | fake_llm | proxy_llm | real_llm | interactive | n/a
+  env$connect_ms <- numeric(env$cap)       # curl connect fazi (ms); olculemezse NA
+  env$ttfb_ms <- numeric(env$cap)          # curl ilk-byte/starttransfer (ms); olculemezse NA
   env$started_at <- Sys.time()
   env$load_seconds <- 0                    # yuk-penceresi suresi (throughput paydasi)
   env
@@ -50,6 +52,8 @@ soak_metrics_add_load_seconds <- function(m, secs) {
   m$key_source <- c(m$key_source, character(m$cap))
   m$timeout_class <- c(m$timeout_class, character(m$cap))
   m$endpoint_kind <- c(m$endpoint_kind, character(m$cap))
+  m$connect_ms <- c(m$connect_ms, numeric(m$cap))
+  m$ttfb_ms <- c(m$ttfb_ms, numeric(m$cap))
   m$cap <- new_cap
   invisible(NULL)
 }
@@ -59,7 +63,8 @@ soak_metrics_add_load_seconds <- function(m, secs) {
 soak_metrics_record <- function(m, lane, scenario, latency_ms, status,
                                 http_code = NA_integer_, bytes = 0,
                                 key_source = "n/a", timeout_class = "n/a",
-                                endpoint_kind = "n/a") {
+                                endpoint_kind = "n/a",
+                                connect_ms = NA_real_, ttfb_ms = NA_real_) {
   .soak_metrics_grow(m)
   i <- m$n + 1L
   m$ts[i] <- as.numeric(Sys.time())
@@ -72,6 +77,11 @@ soak_metrics_record <- function(m, lane, scenario, latency_ms, status,
   m$key_source[i] <- as.character(key_source %||% "n/a")
   m$timeout_class[i] <- as.character(timeout_class %||% "n/a")
   m$endpoint_kind[i] <- as.character(endpoint_kind %||% "n/a")
+  # curl zamanlama telemetrisi (yalniz tamamlanan istekler icin gelir; baglanti
+  # timeout'unda fail callback zamanlama saglamaz -> NA). connect vs ttfb ayrimi
+  # baglanti-fazi doygunlugunu (kabul/backlog) app-isleme gecikmesinden ayirir.
+  m$connect_ms[i] <- suppressWarnings(as.numeric(connect_ms %||% NA_real_))
+  m$ttfb_ms[i] <- suppressWarnings(as.numeric(ttfb_ms %||% NA_real_))
   m$n <- i
   invisible(NULL)
 }
@@ -144,12 +154,15 @@ soak_metrics_as_df <- function(m) {
       latency_ms = numeric(0), status = character(0), http_code = integer(0),
       bytes = numeric(0), key_source = character(0),
       timeout_class = character(0), endpoint_kind = character(0),
+      connect_ms = numeric(0), ttfb_ms = numeric(0),
       stringsAsFactors = FALSE
     ))
   }
   idx <- seq_len(n)
   tc <- if (length(m$timeout_class) >= n) m$timeout_class[idx] else rep("n/a", n)
   ek <- if (length(m$endpoint_kind) >= n) m$endpoint_kind[idx] else rep("n/a", n)
+  cm <- if (length(m$connect_ms) >= n) m$connect_ms[idx] else rep(NA_real_, n)
+  tf <- if (length(m$ttfb_ms) >= n) m$ttfb_ms[idx] else rep(NA_real_, n)
   data.frame(
     ts_epoch = m$ts[idx],
     lane = m$lane[idx],
@@ -161,6 +174,8 @@ soak_metrics_as_df <- function(m) {
     key_source = m$key_source[idx],
     timeout_class = tc,
     endpoint_kind = ek,
+    connect_ms = round(cm, 1),
+    ttfb_ms = round(tf, 1),
     stringsAsFactors = FALSE
   )
 }
@@ -194,12 +209,17 @@ soak_metrics_slice_summary <- function(m, from_idx, to_idx = m$n, wall_seconds =
                 injected_faults = 0L,
                 success_rate = NA_real_, effective_success_rate = NA_real_,
                 p50_latency_ms = NA_real_, p95_latency_ms = NA_real_,
-                p99_latency_ms = NA_real_, throughput_ops_per_min = 0))
+                p99_latency_ms = NA_real_, throughput_ops_per_min = 0,
+                connect_ms_p50 = NA_real_, connect_ms_p95 = NA_real_,
+                ttfb_ms_p50 = NA_real_, ttfb_ms_p95 = NA_real_,
+                dominant_timeout_class = NA_character_))
   }
   idx <- seq.int(from_idx, to_idx)
   status <- m$status[idx]
   latency <- m$latency_ms[idx]
   ok_latency <- latency[status == "ok"]
+  connect_ok <- if (length(m$connect_ms) >= to_idx) m$connect_ms[idx][status == "ok"] else numeric(0)
+  ttfb_ok <- if (length(m$ttfb_ms) >= to_idx) m$ttfb_ms[idx][status == "ok"] else numeric(0)
   n <- length(idx)
   success <- sum(status == "ok")
   errors <- sum(status == "error")
@@ -224,6 +244,16 @@ soak_metrics_slice_summary <- function(m, from_idx, to_idx = m$n, wall_seconds =
   inj <- max(0L, as.integer(injected_faults %||% 0L))
   unexpected_faults <- max(0L, observed_faults - inj)
   effective <- round((n - unexpected_faults) / n, 4)
+  # Bu dilimdeki baskin hata sinifi (darbogaz tani ipucu icin). status != ok olan
+  # kayitlarin timeout_class dagiliminda en yaygin sinif. Yoksa NA.
+  dom_tc <- NA_character_
+  bad_idx <- idx[status != "ok"]
+  if (length(bad_idx) > 0L && length(m$timeout_class) >= max(bad_idx)) {
+    tcv <- m$timeout_class[bad_idx]
+    tcv[is.na(tcv) | tcv == "" | tcv == "n/a"] <- "unknown_error"
+    tab <- sort(table(tcv), decreasing = TRUE)
+    if (length(tab) > 0L) dom_tc <- names(tab)[1]
+  }
   list(
     requests = as.integer(n),
     success = as.integer(success),
@@ -235,7 +265,12 @@ soak_metrics_slice_summary <- function(m, from_idx, to_idx = m$n, wall_seconds =
     p50_latency_ms = round(soak_percentile(ok_latency, 0.50), 1),
     p95_latency_ms = round(soak_percentile(ok_latency, 0.95), 1),
     p99_latency_ms = round(soak_percentile(ok_latency, 0.99), 1),
-    throughput_ops_per_min = round(n / wall * 60, 1)
+    throughput_ops_per_min = round(n / wall * 60, 1),
+    connect_ms_p50 = round(soak_percentile(connect_ok, 0.50), 1),
+    connect_ms_p95 = round(soak_percentile(connect_ok, 0.95), 1),
+    ttfb_ms_p50 = round(soak_percentile(ttfb_ok, 0.50), 1),
+    ttfb_ms_p95 = round(soak_percentile(ttfb_ok, 0.95), 1),
+    dominant_timeout_class = dom_tc
   )
 }
 
@@ -267,6 +302,8 @@ soak_metrics_summary <- function(m) {
   status <- m$status[idx]
   latency <- m$latency_ms[idx]
   ok_latency <- latency[status == "ok"]
+  connect_ok <- if (length(m$connect_ms) >= n) m$connect_ms[idx][status == "ok"] else numeric(0)
+  ttfb_ok <- if (length(m$ttfb_ms) >= n) m$ttfb_ms[idx][status == "ok"] else numeric(0)
 
   success <- sum(status == "ok")
   errors <- sum(status == "error")
@@ -301,6 +338,13 @@ soak_metrics_summary <- function(m) {
     max_latency_ms = round(suppressWarnings(max(ok_latency, na.rm = TRUE)), 1),
     mean_latency_ms = round(suppressWarnings(mean(ok_latency, na.rm = TRUE)), 1),
     throughput_ops_per_min = round(n / throughput_wall * 60, 1),
+    # curl zamanlama yuzdelikleri (yalniz basarili istekler; baglanti-fazi vs
+    # app-isleme ayrimi). connect yuksek + ttfb dusuk -> baglanti/backlog
+    # darbogazi; ttfb yuksek -> app/event-loop isleme darbogazi.
+    connect_ms_p50 = round(soak_percentile(connect_ok, 0.50), 1),
+    connect_ms_p95 = round(soak_percentile(connect_ok, 0.95), 1),
+    ttfb_ms_p50 = round(soak_percentile(ttfb_ok, 0.50), 1),
+    ttfb_ms_p95 = round(soak_percentile(ttfb_ok, 0.95), 1),
     http_code_counts = to_named_list(http_tab),
     status_counts = to_named_list(status_tab),
     key_sources = to_named_list(key_tab),
@@ -319,7 +363,8 @@ soak_timeout_attribution <- function(df, top_n = 5L) {
     total_failures = 0L,
     timeout_breakdown = list(),
     top_failure_classes = list(),
-    top_slow_scenarios = list()
+    top_slow_scenarios = list(),
+    dominant_timeout_class = NA_character_
   )
   if (is.null(df) || nrow(df) == 0L) return(empty)
   if (!("status" %in% names(df))) return(empty)
@@ -330,9 +375,11 @@ soak_timeout_attribution <- function(df, top_n = 5L) {
 
   breakdown <- list()
   top_classes <- list()
+  dominant_tc <- NA_character_
   if (nrow(bad) > 0L) {
     tab <- sort(table(tc_col), decreasing = TRUE)
     breakdown <- as.list(stats::setNames(as.integer(tab), names(tab)))
+    dominant_tc <- names(tab)[1]
     top <- head(tab, top_n)
     top_classes <- lapply(seq_along(top), function(i) {
       list(class = names(top)[i], count = as.integer(top[i]))
@@ -358,8 +405,33 @@ soak_timeout_attribution <- function(df, top_n = 5L) {
     total_failures = as.integer(nrow(bad)),
     timeout_breakdown = breakdown,
     top_failure_classes = top_classes,
-    top_slow_scenarios = slow
+    top_slow_scenarios = slow,
+    dominant_timeout_class = dominant_tc
   )
+}
+
+# ------------------------------------------------------------------------------
+# Yuk-uretici (load generator) doygunluk ipucu (SAF, deterministik). Yuk
+# surucusunun istenen aktif-eszamanliligi gercekten surdurup surdurmedigini
+# kaba bir sekilde siniflandirir. Bu bir esik DEGILDIR; yalnizca darbogazin
+# istemci/loop tarafinda mi yoksa sunucu tarafinda mi olabilecegine dair tani
+# ipucudur.
+#   loadgen      : soak_http_load() donus listesi (max_inflight, max_loop_lag_ms)
+#   target_users : adimin hedef aktif-eszamanli kullanici sayisi
+# ------------------------------------------------------------------------------
+soak_loadgen_saturation_hint <- function(loadgen, target_users) {
+  if (is.null(loadgen) || !is.list(loadgen)) return("loadgen_unmeasured")
+  target <- suppressWarnings(as.numeric(target_users))
+  max_inflight <- suppressWarnings(as.numeric(loadgen$max_inflight %||% NA_real_))
+  loop_lag <- suppressWarnings(as.numeric(loadgen$max_loop_lag_ms %||% NA_real_))
+  if (!is.finite(target) || target <= 0 || !is.finite(max_inflight)) {
+    return("loadgen_unmeasured")
+  }
+  # Hedef eszamanliligin belirgin altinda kaldiysa istemci/loop ureticisi
+  # darbogaz olabilir (sunucu degil).
+  if (max_inflight < 0.8 * target) return("loadgen_below_target_concurrency")
+  if (is.finite(loop_lag) && loop_lag >= 1000) return("loadgen_loop_lag_high")
+  "loadgen_sustained_target"
 }
 
 # ------------------------------------------------------------------------------

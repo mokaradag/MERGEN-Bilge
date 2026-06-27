@@ -21,6 +21,32 @@ soak_git_field <- function(args) {
 }
 
 # ------------------------------------------------------------------------------
+# Bir basarisizliktan SONRA daraltma icin onerilen ara kademeler. stable=300,
+# first_failed=450 ise 350/400/425 gibi araliga finer-yakin kademeler onerir.
+# Boylece dogrudan 450'yi tekrar denemek yerine 300->450 araligi daraltilir.
+# SAF, deterministik; kanit/dokuman icin uretilir.
+# ------------------------------------------------------------------------------
+soak_capacity_recommended_probe_steps <- function(stable_users, first_failed_users) {
+  stable <- suppressWarnings(as.integer(stable_users))
+  failed <- suppressWarnings(as.integer(first_failed_users))
+  if (is.na(stable) || is.na(failed) || stable <= 0L || failed <= stable) {
+    return(integer(0))
+  }
+  gap <- failed - stable
+  if (gap <= 1L) return(integer(0))
+  # Hataya yakin daha sik ornekleme (1/3, 2/3, 5/6).
+  raw <- stable + gap * c(1/3, 2/3, 5/6)
+  inc <- if (gap >= 100) 25 else if (gap >= 20) 5 else 1
+  steps <- as.integer(round(raw / inc) * inc)
+  steps <- unique(steps[steps > stable & steps < failed])
+  if (length(steps) == 0L) {
+    steps <- unique(as.integer(round(raw)))
+    steps <- steps[steps > stable & steps < failed]
+  }
+  sort(steps)
+}
+
+# ------------------------------------------------------------------------------
 # Kademeli kapasite merdiveni (capacity ladder) darbogaz ipuclari. KORUMACI:
 # yalniz mevcut kanit destekledigi olcude ipucu uretir; kanit yetersizse
 # "unknown_timeout_saturation" der. step_rows: her adim list(users, p95, ...,
@@ -69,6 +95,32 @@ soak_capacity_bottleneck_hints <- function(step_rows, stable_min = 0.98) {
     hints <- c(hints, "possible_app_or_event_loop_queueing")
   }
 
+  # Hata-sinifi + TCP durum + yuk-uretici tabanli ek ipuclari (varsa). Bunlar
+  # mevcut ipuclarini KALDIRMAZ; yalniz baskin connection_timeout, kabul-kuyrugu
+  # (SYN_RECV), TIME_WAIT baskisi ve yuk-uretici limiti gibi kaynak-disi doygunluk
+  # sinyallerini ayirt eder. 2026-06-27 450-kullanici bulgusunda baskin sinif
+  # connection_timeout + dusuk CPU idi; bu dal o durumu acikca isaretler.
+  dom_tc <- as.character(failed$dominant_timeout_class %||% "")
+  tcp_by_state <- tel$app_tcp_max_by_state %||% list()
+  syn_recv <- suppressWarnings(as.numeric(tcp_by_state$tcp_syn_recv %||% NA_real_))
+  time_wait <- suppressWarnings(as.numeric(tcp_by_state$tcp_time_wait %||% NA_real_))
+  established <- suppressWarnings(as.numeric(tcp_by_state$tcp_established %||% NA_real_))
+  lg_hint <- as.character((failed$loadgen %||% list())$saturation_hint %||% "")
+
+  if (identical(dom_tc, "connection_timeout") && cpu_low) {
+    hints <- c(hints, "possible_connection_accept_or_backlog_saturation")
+  }
+  if (is.finite(syn_recv) && is.finite(established) && syn_recv > 0 &&
+      syn_recv >= max(1, 0.5 * established)) {
+    hints <- c(hints, "possible_accept_backlog_saturation")
+  }
+  if (is.finite(time_wait) && is.finite(established) && time_wait >= 2 * max(1, established)) {
+    hints <- c(hints, "possible_time_wait_port_pressure")
+  }
+  if (identical(lg_hint, "loadgen_below_target_concurrency")) {
+    hints <- c(hints, "possible_load_generator_limit")
+  }
+
   # DB havuz darbogazi: yalniz adimda gercek havuz sayaclari varsa (taken==max).
   dbp <- failed$db_pool
   if (is.list(dbp) && is.finite(as.numeric(dbp$taken %||% NA_real_)) &&
@@ -95,7 +147,12 @@ soak_capacity_ladder_summarize <- function(step_rows, ladder_users, stable_min =
       ran = FALSE, steps = list(), stable_capacity_users = 0L,
       first_failed_capacity_users = NA_integer_,
       recommended_next_target = NA_integer_,
+      recommended_probe_steps = integer(0),
       all_steps_pass = NA, bottleneck_hints = "no_ladder_steps_executed",
+      bottleneck_hint = "no_ladder_steps_executed",
+      dominant_timeout_class = NA_character_,
+      loadgen_saturation_hint = NA_character_,
+      app_tcp_max_by_state = list(),
       stable_success_rate_min = stable_min
     ))
   }
@@ -107,7 +164,9 @@ soak_capacity_ladder_summarize <- function(step_rows, ladder_users, stable_min =
   for (i in seq_along(step_rows)) {
     if (isTRUE(pass_vec[i])) stable_users <- users_vec[i] else break
   }
-  first_failed <- if (any(!pass_vec)) users_vec[which(!pass_vec)[1]] else NA_integer_
+  fi <- if (any(!pass_vec)) which(!pass_vec)[1] else NA_integer_
+  first_failed <- if (!is.na(fi)) users_vec[fi] else NA_integer_
+  failed_step <- if (!is.na(fi)) step_rows[[fi]] else NULL
 
   # Onerilen sonraki hedef: stabil adimdan SONRAKI merdiven adimi (varsa); aksi
   # halde ilk basarisiz adim arastirilmali.
@@ -118,16 +177,29 @@ soak_capacity_ladder_summarize <- function(step_rows, ladder_users, stable_min =
     recommended <- if (length(nxt) > 0L) nxt[1] else stable_users  # zaten en uste ulasildi
   }
 
+  hints <- soak_capacity_bottleneck_hints(step_rows, stable_min)
+
   list(
     ran = TRUE,
     steps = step_rows,
     stable_capacity_users = as.integer(stable_users),
     first_failed_capacity_users = first_failed,
     recommended_next_target = recommended,
+    recommended_probe_steps = soak_capacity_recommended_probe_steps(stable_users, first_failed),
     all_steps_pass = all(pass_vec),
     stop_on_first_failed_step = isTRUE(stop_on_first),
     stable_success_rate_min = stable_min,
-    bottleneck_hints = soak_capacity_bottleneck_hints(step_rows, stable_min)
+    bottleneck_hints = hints,
+    bottleneck_hint = hints[[1]],
+    dominant_timeout_class = if (!is.null(failed_step)) {
+      as.character(failed_step$dominant_timeout_class %||% NA_character_)
+    } else NA_character_,
+    loadgen_saturation_hint = if (!is.null(failed_step)) {
+      as.character((failed_step$loadgen %||% list())$saturation_hint %||% NA_character_)
+    } else NA_character_,
+    app_tcp_max_by_state = if (!is.null(failed_step)) {
+      (failed_step$telemetry %||% list())$app_tcp_max_by_state %||% list()
+    } else list()
   )
 }
 
@@ -504,7 +576,8 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
                                 interactive = NULL, telemetry = NULL,
                                 capacity_ladder = NULL, timeout_attribution = NULL,
                                 real_canary_classification = NULL,
-                                real_llm_throughput = NULL) {
+                                real_llm_throughput = NULL,
+                                load_driver = NULL, http_loadgen = NULL) {
   observed_faults <- summary$errors + summary$timeouts
   unexpected_faults <- max(0L, observed_faults - as.integer(injected_faults %||% 0L))
   effective_success_rate <- if (summary$requests > 0L) {
@@ -541,6 +614,10 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
     user_base_target = cfg$user_base_target,
     assumed_concurrency_model = cfg$assumed_concurrency_model,
     configured_concurrent_users = cfg$concurrent_users,
+    # Yuk surucusu deseni (burst/ramped/paced) + arrival anahtarlari. Bu kosumun
+    # baglanti firtinasi mi yoksa rampali/pace'li mi oldugu kanitla raporlanir.
+    load_driver = load_driver %||% cfg$load_driver %||% "load_driver yapilandirmasi yok",
+    http_loadgen = http_loadgen %||% "http yuk-uretici telemetrisi toplanmadi (HTTP serit kapali/atlandi)",
     scenario_mix = summary$scenario_counts,
     thresholds = cfg$thresholds,
     threshold_checks = threshold_checks,
@@ -558,6 +635,11 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
       p99_latency_ms = summary$p99_latency_ms,
       max_latency_ms = summary$max_latency_ms,
       throughput_ops_per_min = summary$throughput_ops_per_min,
+      # curl zamanlama yuzdelikleri: connect (baglanti fazi) vs ttfb (app isleme).
+      connect_ms_p50 = summary$connect_ms_p50,
+      connect_ms_p95 = summary$connect_ms_p95,
+      ttfb_ms_p50 = summary$ttfb_ms_p50,
+      ttfb_ms_p95 = summary$ttfb_ms_p95,
       http_code_counts = summary$http_code_counts,
       status_counts = summary$status_counts,
       wall_seconds = summary$wall_seconds
@@ -608,8 +690,14 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
         stable_capacity_users = capacity_ladder$stable_capacity_users,
         first_failed_capacity_users = capacity_ladder$first_failed_capacity_users,
         recommended_next_target = capacity_ladder$recommended_next_target,
+        recommended_probe_steps = capacity_ladder$recommended_probe_steps %||% integer(0),
         all_steps_pass = isTRUE(capacity_ladder$all_steps_pass),
         bottleneck_hints = capacity_ladder$bottleneck_hints,
+        bottleneck_hint = capacity_ladder$bottleneck_hint %||%
+          (capacity_ladder$bottleneck_hints %||% NA_character_)[1],
+        dominant_timeout_class = capacity_ladder$dominant_timeout_class %||% NA_character_,
+        loadgen_saturation_hint = capacity_ladder$loadgen_saturation_hint %||% NA_character_,
+        app_tcp_max_by_state = capacity_ladder$app_tcp_max_by_state %||% list(),
         steps = capacity_ladder$steps,
         note = paste(
           "Kademeli kapasite merdiveni: son STABIL adim durustce raporlanir.",
@@ -736,6 +824,8 @@ soak_write_artifacts <- function(artifact_dir, cfg, metrics, evidence,
   if (is.list(cl) && isTRUE(cl$ran) && length(cl$steps) > 0L) {
     lad_df <- do.call(rbind, lapply(cl$steps, function(s) {
       tel <- s$telemetry %||% list()
+      tbs <- tel$app_tcp_max_by_state %||% list()
+      lg <- s$loadgen %||% list()
       data.frame(
         users = s$users %||% NA_integer_,
         duration_seconds = s$duration_seconds %||% NA_real_,
@@ -749,8 +839,16 @@ soak_write_artifacts <- function(artifact_dir, cfg, metrics, evidence,
         p95_latency_ms = s$p95_latency_ms %||% NA_real_,
         p99_latency_ms = s$p99_latency_ms %||% NA_real_,
         throughput_ops_per_min = s$throughput_ops_per_min %||% NA_real_,
+        connect_ms_p95 = s$connect_ms_p95 %||% NA_real_,
+        ttfb_ms_p95 = s$ttfb_ms_p95 %||% NA_real_,
+        dominant_timeout_class = s$dominant_timeout_class %||% NA_character_,
         max_total_cpu_percent = tel$max_total_cpu_percent %||% NA_real_,
         max_tcp_connections_to_app = tel$max_tcp_connections_to_app %||% NA_integer_,
+        max_tcp_established = tbs$tcp_established %||% NA_integer_,
+        max_tcp_syn_recv = tbs$tcp_syn_recv %||% NA_integer_,
+        max_tcp_time_wait = tbs$tcp_time_wait %||% NA_integer_,
+        loadgen_max_inflight = lg$max_inflight %||% NA_integer_,
+        loadgen_saturation_hint = lg$saturation_hint %||% NA_character_,
         pass = isTRUE(s$pass),
         stringsAsFactors = FALSE
       )
@@ -826,6 +924,31 @@ soak_write_summary_md <- function(artifact_dir, cfg, evidence) {
             as.character(m$p50_latency_ms), as.character(m$p95_latency_ms),
             as.character(m$p99_latency_ms)),
     sprintf("- Throughput: %s op/dk", as.character(m$throughput_ops_per_min)),
+    sprintf("- curl connect p50/p95 (ms): %s / %s | ttfb p50/p95 (ms): %s / %s",
+            as.character(m$connect_ms_p50 %||% NA), as.character(m$connect_ms_p95 %||% NA),
+            as.character(m$ttfb_ms_p50 %||% NA), as.character(m$ttfb_ms_p95 %||% NA)),
+    "",
+    "## Yuk Surucusu (Load Driver)",
+    if (is.list(evidence$load_driver)) {
+      ld <- evidence$load_driver
+      c(sprintf("- Desen: **%s** | ramp=%ss | tavan_yeni/tur=%s | think=%s-%s ms | baglanti_reuse=%s",
+                as.character(ld$pattern %||% NA), as.character(ld$ramp_up_seconds %||% 0),
+                as.character(ld$max_new_requests_per_tick %||% 0),
+                as.character(ld$think_time_ms_min %||% 0), as.character(ld$think_time_ms_max %||% 0),
+                as.character(ld$connection_reuse %||% TRUE)))
+    } else {
+      "- Yuk surucusu yapilandirmasi yok."
+    },
+    if (is.list(evidence$http_loadgen)) {
+      lg <- evidence$http_loadgen
+      sprintf(paste("- Yuk-uretici: max_inflight=%s | baslatilan=%s | dongu=%s |",
+                    "max_loop_lag=%s ms | doygunluk=%s"),
+              as.character(lg$max_inflight %||% NA), as.character(lg$launched %||% NA),
+              as.character(lg$loop_iters %||% NA), as.character(lg$max_loop_lag_ms %||% NA),
+              as.character(lg$saturation_hint %||% NA))
+    } else {
+      "- Yuk-uretici telemetrisi yok (HTTP serit kapali/atlandi)."
+    },
     "",
     "## Anahtar Yonlendirme (kaynak sayilari)",
     sprintf("- personal=%d default=%d missing=%d error=%d",
@@ -865,13 +988,19 @@ soak_write_summary_md <- function(artifact_dir, cfg, evidence) {
     "## Sistem Telemetrisi",
     if (is.list(evidence$system_telemetry) && isTRUE(evidence$system_telemetry$telemetry_available)) {
       st <- evidence$system_telemetry
+      tbs <- st$app_tcp_max_by_state %||% list()
       c(
         sprintf("- Ornek: %s | max CPU: %s%% | max bellek kullanim: %s MB",
                 as.character(st$samples), as.character(st$max_total_cpu_percent),
                 as.character(st$max_mem_used_mb)),
         sprintf("- max R surec bellek: %s MB | max SQL Server bellek: %s MB | max app-port TCP: %s",
                 as.character(st$max_r_process_memory_mb), as.character(st$max_sqlserver_memory_mb),
-                as.character(st$max_tcp_connections_to_app))
+                as.character(st$max_tcp_connections_to_app)),
+        sprintf(paste("- app-port TCP durum (max): established=%s syn_recv=%s syn_sent=%s",
+                      "time_wait=%s close_wait=%s listen=%s"),
+                as.character(tbs$tcp_established %||% NA), as.character(tbs$tcp_syn_recv %||% NA),
+                as.character(tbs$tcp_syn_sent %||% NA), as.character(tbs$tcp_time_wait %||% NA),
+                as.character(tbs$tcp_close_wait %||% NA), as.character(tbs$tcp_listen %||% NA))
       )
     } else {
       "- UNMEASURED (telemetri kapali/olculemedi; darbogaz atfi kanit DEGIL)."
@@ -885,6 +1014,14 @@ soak_write_summary_md <- function(artifact_dir, cfg, evidence) {
                 as.character(cl$stable_capacity_users), as.character(cl$first_failed_capacity_users)),
         sprintf("- Onerilen sonraki hedef: %s | tum adimlar gecti: %s",
                 as.character(cl$recommended_next_target), as.character(cl$all_steps_pass)),
+        sprintf("- Onerilen ara kademeler (daraltma): %s",
+                if (length(cl$recommended_probe_steps %||% integer(0)) > 0L) {
+                  paste(cl$recommended_probe_steps, collapse = ", ")
+                } else "yok"),
+        sprintf("- Baskin hata sinifi: %s | yuk-uretici doygunluk: %s",
+                as.character(cl$dominant_timeout_class %||% NA),
+                as.character(cl$loadgen_saturation_hint %||% NA)),
+        sprintf("- Darbogaz ipucu (birincil): %s", as.character(cl$bottleneck_hint %||% NA)),
         sprintf("- Darbogaz ipuclari: %s", paste(cl$bottleneck_hints, collapse = ", "))
       )
     } else {
