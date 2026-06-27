@@ -165,8 +165,20 @@ create_mergen_app <- function() {
       # Havuzlama varsayılan KAPALI; MERGEN_DB_POOL_ENABLED=TRUE değilse no-op'tur
       # (bulut/test/boot-smoke davranışı değişmez). Başlatma başarısızlığı boot'u
       # kırmaz (init_db_pool_once kendi içinde güvenli tryCatch kullanır).
+      #
+      # İSTİSNA — fail-fast: Operatör MERGEN_DB_POOL_FAIL_FAST=TRUE ile açıkça
+      # "havuz kurulamazsa boot dursun" derse, init hatası YUTULMAZ ve boot
+      # düşer (init_db_pool_once o modda stop() eder). Varsayılan (fail-open)
+      # modda davranış birebir eskisidir: try(..., silent = TRUE) ile yutulur ve
+      # uygulama doğrudan bağlantı yoluna düşer.
       if (exists("init_db_pool_once", mode = "function", inherits = TRUE)) {
-        try(init_db_pool_once("primary"), silent = TRUE)
+        pool_fail_fast <- exists("db_pool_config", mode = "function", inherits = TRUE) &&
+          isTRUE(db_pool_config()$fail_fast)
+        if (isTRUE(pool_fail_fast)) {
+          init_db_pool_once("primary")
+        } else {
+          try(init_db_pool_once("primary"), silent = TRUE)
+        }
       }
       # Uygulama durduğunda havuzu temiz biçimde kapat. shinyApp()'in onStop
       # parametresi yoktur; uygulama-seviyesi durdurma kancası onStart içinde

@@ -15,6 +15,46 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### 2026-06-27 İşlem-güvenli DB havuzu üretim sertleştirmesi (streaming yolu değişmedi)
+
+Mevcut opsiyonel, işlem-güvenli DB bağlantı havuzu (`R/helpers_db_pool.R`)
+**üretim-preflight'lanabilir** ve **daha gözlemlenebilir** hâle getirildi. Bu
+çalışma gerçek-zamanlı streaming yolunu (SSE polling döngüsü, tarayıcı streaming
+protokolü, `streamingDelta`/`streamingUpdate`/`premiumReasoningStreamStart`/
+`streamingReasoningDelta`, stop/cancel anlamları) **bilinçli olarak değiştirmez**.
+
+- **Fail-fast bayrağı (opsiyonel, varsayılan KAPALI):** `MERGEN_DB_POOL_FAIL_FAST`
+  (env > R option `mergen.db.pool_fail_fast` > `FALSE`). KAPALI iken havuz
+  başlatılamazsa davranış birebir eskisidir (fail-open: doğrudan-bağlantı yoluna
+  düşülür). AÇIK iken `init_db_pool_once()` ve `app.R` `onStart` havuz
+  kurulamazsa açıkça durur (operatörün seçimi).
+- **İşlem-güvenliği hata düzeltmesi:** havuz aktif değilken `get_connection()`
+  eski/geçersiz bir `Pool` nesnesi döndürebildiği nadir durumda,
+  `db_acquire_tx_connection()` bu Pool'u `dbBegin/dbCommit`'e GEÇİRMEZ; tek bir
+  gerçek `poolCheckout` yoluna yönlendirir (işlem ASLA Pool nesnesi üzerinde
+  çalışmaz). Yazma yolu hatayı zaten yakalar.
+- **/readyz gözlemlenebilirliği:** hazırlık uç noktası `db_pool` bloğu artık
+  `fail_fast` dâhil sır-güvenli sayaçları (checkout/returned/`outstanding_checkouts`/
+  tx/`init_failed`/`direct_fallback`...) yayınlar; ham DSN/secret içermez.
+- **VM preflight (yeni):** `tests/scripts/run_vm_db_pool_preflight_real.R` havuz
+  mekaniği + gözlemlenebilirlik + fail-fast davranışını gerçek SQL Server'a karşı
+  doğrular (çoklu checkout/return döngüsü, commit/rollback, Türkçe round-trip).
+  Varsayılan **yıkıcı değildir**; opsiyonel `MERGEN_DB_POOL_WRITE_TEST=TRUE` ile
+  etiketli tablo + DROP üzerinden Türkçe at-rest kontrolü ekler. Kapsamlı at-rest
+  encoding kapısı yine `run_vm_sqlserver_pool_preflight_real.R`'dir.
+- **Testler:** `tests/testthat/test-db-pool-production-readiness-contract.R` ve
+  `tests/testthat/test-db-pool-failure-modes.R` eklendi (snapshot tamlığı/
+  kararlılığı/sır-güvenliği, fail-fast çözümü, Pool-into-transaction koruması,
+  çift-iade, başarısız-init sonrası kararlılık). Maintainability ratchet 100/100
+  korundu (`helpers_db_pool.R` net **0** fonksiyon eklendi).
+
+**Kanıtlamaz:** kapasite/throughput kazanımı, gerçek tarayıcı/websocket
+eşzamanlılığı, 1000 kullanıcı veya gerçek LLM iş hacmi. `MERGEN_DB_POOL_ENABLED=TRUE`
+üretimde kalıcı açılmadan önce Windows VM doğrulaması (preflight'lar + SSMS Türkçe
+at-rest + attach soak) gerekir. Ayrıntı: [`database-pooling.md`](database-pooling.md)
+bölüm 8, [`operational-soak-gate.md`](operational-soak-gate.md) bölüm 16.5A.
+
+
 ### 2026-06-27 Yatay-ölçekleme commit'i sonrası Cumartesi doğrudan bölünmüş yük doğrulaması
 
 Cumartesi 2026-06-27 doğrudan bölünmüş yük doğrulaması, IT gerçek Keycloak/

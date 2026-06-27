@@ -12,8 +12,15 @@ içindedir ve `pool` paketi üzerine kurulur.
 - İşlem yazımı (migrasyon edilen site): `R/helpers_db_chat_mutations.R::save_message_to_db()`
 - Yaşam döngüsü: `app.R` (`onStart` → `init_db_pool_once`, `onStop` → `close_db_pool_once`)
 - Testler: `tests/testthat/test-db-pool-behavior.R`,
+  `tests/testthat/test-db-pool-production-readiness-contract.R`,
+  `tests/testthat/test-db-pool-failure-modes.R`,
   `tests/scripts/soak_interactive_lane.R`
-- VM SQL Server havuz at-rest preflight: `tests/scripts/run_vm_sqlserver_pool_preflight_real.R`
+- VM havuz mekanik + gözlemlenebilirlik + fail-fast preflight:
+  `tests/scripts/run_vm_db_pool_preflight_real.R`
+- VM SQL Server havuz at-rest (encoding) preflight:
+  `tests/scripts/run_vm_sqlserver_pool_preflight_real.R`
+- Sağlık/hazırlık gözlemlenebilirliği: `R/helpers_app_http_routes.R` (`/readyz` →
+  `db_pool` bloğu)
 
 ---
 
@@ -64,13 +71,13 @@ Bu katman bunu şöyle çözer:
 |-----------|-------|
 | `is_db_pool_enabled()` | `MERGEN_DB_POOL_ENABLED` (env) → `mergen.db.pool_enabled` (option) → `FALSE`. |
 | `db_pool_config()` | Boyut/idle/validation yapılandırması (korumacı varsayılanlar). |
-| `init_db_pool_once(target, factory, force)` | Havuzu BİR KEZ kurar (kapalıysa no-op; `force` ile zorlanır; `factory` testlerde SQLite havuzu enjekte eder). Başarısızlık boot'u kırmaz. |
+| `init_db_pool_once(target, factory, force, fail_fast)` | Havuzu BİR KEZ kurar (kapalıysa no-op; `force` ile zorlanır; `factory` testlerde SQLite havuzu enjekte eder). `fail_fast` (varsayılan `db_pool_config()$fail_fast`) KAPALI iken başarısızlık boot'u kırmaz (`init_failed` kaydeder, NULL döner); AÇIK iken başarısızlıkta `stop()` eder (sır içermeyen genel mesaj). |
 | `close_db_pool_once(target)` | Havuzu/havuzları temiz kapatır; `.GlobalEnv$pool`'u temizler. |
 | `db_pool_get(target)` / `db_pool_is_active(target)` | Aktif havuz nesnesi / aktiflik. |
 | `with_db_connection(fn, target)` | Salt-okunur: ödünç al → `fn(conn)` → her durumda iade. |
 | `with_db_transaction(fn, target)` | İşlem: gerçek checkout → `dbBegin` → `fn(conn)` → `dbCommit`; hatada rollback + yeniden fırlat; her durumda iade. |
 | `db_acquire_tx_connection(target)` / `db_release_tx_connection(ci)` | İşlem-güvenli edinme/iade (havuz yoksa doğrudan bağlantıya düşer). |
-| `db_pool_status_snapshot()` | Secret-safe durum: enabled, config, free/taken, checkout/return/leak, tx sayaçları. Ham DSN/secret İÇERMEZ. |
+| `db_pool_status_snapshot()` | Secret-safe durum: `enabled`, `fail_fast`, `config`, `active_targets`, `pools` (free/taken), `counters` (checkout/return/`outstanding_checkouts`/tx/`init_failed`/`direct_fallback`...). Ham DSN/secret İÇERMEZ; `/readyz` ve soak kanıtı güvenle tüketir. |
 
 ---
 
@@ -79,6 +86,7 @@ Bu katman bunu şöyle çözer:
 | Değişken | Varsayılan | Açıklama |
 |----------|------------|----------|
 | `MERGEN_DB_POOL_ENABLED` | `FALSE` | Havuzu açar. Kapalıyken davranış birebir eski doğrudan-bağlantı yoludur. |
+| `MERGEN_DB_POOL_FAIL_FAST` | `FALSE` | **Fail-open (varsayılan):** havuz başlatılamazsa uygulama/preflight KIRILMAZ; sessizce doğrudan bağlantı yoluna düşülür. **Fail-fast (`TRUE`):** havuz başlatılamazsa `init_db_pool_once()` açıkça `stop()` eder (boot/preflight durur). Operatörün "havuz yoksa düş" yerine "havuz yoksa erken/gürültülü hata ver" davranışını seçmesi içindir. Env > R option (`mergen.db.pool_fail_fast`) > `FALSE` sırasıyla çözülür. |
 | `MERGEN_DB_POOL_MIN_SIZE` | `1` | Minimum havuz boyutu. |
 | `MERGEN_DB_POOL_MAX_SIZE` | `8` | Maksimum havuz boyutu. |
 | `MERGEN_DB_POOL_IDLE_TIMEOUT` | `600` | Boşta bağlantı zaman aşımı (sn). |
@@ -194,3 +202,106 @@ Artifact: `artifacts/sqlserver-pool-preflight/<timestamp>/evidence.json`. Ayrın
 `pool_outstanding_checkouts=0` olmadan havuzlu SQL Server üretim hazırlığını
 **PASS olarak sunmayın**. Offline RSQLite testleri T-SQL at-rest davranışını
 kanıtlamaz.
+
+---
+
+## 8. Operatör runbook'u: havuzu Windows VM'de üretime alma (2026-06-27 sertleştirme)
+
+Bu bölüm, havuzu üretime almak isteyen operatör için tekrarlanabilir, sır-güvenli
+bir akış sunar. Üç katman vardır: (1) **mekanik + gözlemlenebilirlik preflight**
+(hafif, varsayılan **yıkıcı değil**), (2) **at-rest encoding preflight** (Türkçe
+SQL Server doğrulaması), (3) **/readyz gözlemlenebilirliği** (canlı sayaçlar).
+
+### 8.1 Havuzu açma (önerilen başlangıç yapılandırması)
+
+VM `.Renviron`'da (değiştirdikten sonra **tam R sürecini yeniden başlatın**;
+tarayıcı yenileme yetmez):
+
+```ini
+MERGEN_DB_POOL_ENABLED=TRUE
+MERGEN_DB_POOL_MIN_SIZE=1
+MERGEN_DB_POOL_MAX_SIZE=8
+MERGEN_DB_POOL_IDLE_TIMEOUT=600
+MERGEN_DB_POOL_VALIDATION_INTERVAL=0
+```
+
+`MERGEN_DB_POOL_VALIDATION_INTERVAL=0` **kritiktir** (bölüm 4.1: arka plan
+doğrulama döngüsü üretim çökme riski yaratır). `DB_CLIENT_ENCODING=WINDOWS-1254`
+ve `DB_NAME_ENCODING=WINDOWS-1254` ayarlarının korunduğunu da teyit edin.
+
+Opsiyonel: `MERGEN_DB_POOL_FAIL_FAST=TRUE` ile "havuz kurulamazsa boot dursun"
+davranışını seçin. **Varsayılan (`FALSE`)** fail-open'dır: havuz kurulamazsa
+uygulama doğrudan-bağlantı yoluna düşer ve çalışmaya devam eder (mevcut davranış).
+
+### 8.2 Mekanik + gözlemlenebilirlik preflight'i çalıştırma
+
+```powershell
+$env:MERGEN_DB_POOL_ENABLED = "TRUE"
+$env:MERGEN_DB_POOL_MIN_SIZE = "1"
+$env:MERGEN_DB_POOL_MAX_SIZE = "8"
+$env:MERGEN_DB_POOL_IDLE_TIMEOUT = "600"
+
+Rscript --vanilla tests/scripts/run_vm_db_pool_preflight_real.R
+```
+
+Bu betik: havuz init + **çoklu** checkout/return döngüsü (varsayılan 5; sızıntı
+yok), tam snapshot alan kontrolü, `with_db_transaction` commit (no-op `SELECT 1`)
+ve rollback (niyetli hata → bağlantı iade) mekaniğini, ve Türkçe parametre
+round-trip'ini doğrular. **Varsayılan olarak yıkıcı değildir** (DDL gerektirmez).
+Türkçe **at-rest** yazma doğrulaması için `MERGEN_DB_POOL_WRITE_TEST=TRUE` ekleyin
+(tek, benzersiz etiketli tablo + DROP). `MERGEN_DB_POOL_FAIL_FAST=TRUE` iken havuz
+kurulamazsa preflight HARD FAIL eder. Bulut/offline'da (pool/odbc/DB_DSN yok)
+**güvenle atlar** (`skipped_reason`). Artifact:
+`artifacts/db-pool-preflight/<timestamp>/evidence.json` + `summary.md`.
+
+Daha kapsamlı at-rest/encoding kapısı için ek olarak
+`tests/scripts/run_vm_sqlserver_pool_preflight_real.R` (bölüm 7) çalıştırın.
+
+### 8.3 /readyz ile canlı gözlemlenebilirlik
+
+Havuz açık ve uygulama çalışırken, hafif hazırlık uç noktası (`R/helpers_app_http_routes.R`)
+havuz sayaçlarını **sır-güvenli** (DB I/O yok, yalnız bellek-içi sayaç) yayınlar:
+
+```bash
+curl -s http://127.0.0.1:8009/readyz | jq .db_pool
+```
+
+`db_pool` bloğu şunları içerir: `enabled`, `fail_fast`, `config`
+(`min_size`/`max_size`/`idle_timeout_sec`/`validation_interval_sec`),
+`active_targets`, `pools` (`active`/`free`/`taken`) ve `counters`. Sayaç yorumu:
+
+| Sayaç | Anlam | Sağlıklı |
+|-------|-------|----------|
+| `checkout` / `returned` | Ödünç alınan / iade edilen bağlantı | `checkout == returned` (bekleyen iş bitince) |
+| `outstanding_checkouts` | `checkout - returned` (bekleyen/sızan) | `0`; sürekli pozitif artış → sızıntı |
+| `tx_begin` / `tx_commit` / `tx_rollback` | İşlem yaşam döngüsü | `begin == commit + rollback` |
+| `checkout_failed` | Başarısız ödünç alma | `0`; artış → DB erişim sorunu |
+| `init` / `init_failed` | Havuz başlatma | `init>=1`, `init_failed=0` |
+| `direct_fallback` | Havuz yokken doğrudan bağlantı | Havuz aktifken `0` beklenir |
+
+Ham DSN, sunucu, kullanıcı adı, parola, SQL metni veya API anahtarı **asla**
+yayınlanmaz.
+
+### 8.4 Geri alma (rollback)
+
+Havuz davranışından şüphelenirseniz tek adımda eski (doğrudan-bağlantı) yola dönün:
+
+1. `.Renviron`'da `MERGEN_DB_POOL_ENABLED` değerini kaldırın veya `FALSE` yapın.
+2. **Tam R sürecini yeniden başlatın** (tarayıcı yenileme yetmez).
+
+Havuz kapalıyken davranış birebir eski doğrudan-bağlantı yoludur; kod yolu
+`is_db_pool_enabled()` üzerinden dallanır ve hiçbir migrasyon/şema değişikliği
+gerektirmez.
+
+### 8.5 Bu preflight ne kanıtlar / ne kanıtlamaz
+
+**Kanıtlar (PASS olduğunda):** havuz gerçek SQL Server'a karşı başlar;
+checkout==return ve `outstanding_checkouts=0` (sızıntı yok); `with_db_transaction`
+commit/rollback mekaniği doğru ve rollback **iadeden önce** çalışır (havuza açık
+işlemle dönülmez); Türkçe parametre (ve yazma testinde at-rest) round-trip'i
+mojibake'siz; havuz sayaçları `/readyz` üzerinden sır-güvenli gözlemlenebilir.
+
+**Kanıtlamaz:** gerçek LLM iş hacmi; gerçek tarayıcı/websocket eşzamanlılığı;
+1000 kullanıcı kapasitesi; Keycloak yük dengeleme; **kapasite/throughput
+kazanımı** (yalnız havuz mekaniği/gözlemlenebilirliği). Streaming yolu (SSE
+polling, `streamingDelta`, stop/cancel) bu çalışmadan **değişmedi**.

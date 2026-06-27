@@ -1115,6 +1115,34 @@ ve Türkçe metnin parametre + (yazma testinde) **at-rest** round-trip'i.
 > Offline RSQLite testleri (`test-db-pool-behavior.R`, interactive lane) T-SQL
 > at-rest davranışını kanıtlamaz.
 
+### 16.5A Havuz mekanik + gözlemlenebilirlik + fail-fast preflight (VM-only, 2026-06-27)
+
+`tests/scripts/run_vm_db_pool_preflight_real.R`, 16.5'teki at-rest/encoding
+kapısını **tamamlar**: havuzun **mekanik + gözlemlenebilirlik + fail-fast**
+davranışına odaklanır ve **varsayılan olarak yıkıcı değildir** (DDL gerektirmez,
+tekrar tekrar güvenle koşulur).
+
+- Guard: `MERGEN_DB_POOL_ENABLED=TRUE` + `DB_DSN` (yoksa **güvenle SKIP**).
+- Doğrular: havuz init, **çoklu** checkout/return döngüsü (varsayılan 5,
+  `MERGEN_DB_POOL_PREFLIGHT_CYCLES`), tam snapshot alanları
+  (`outstanding_checkouts`, `tx_begin/commit/rollback`, `direct_fallback`,
+  `init_failed`...), `with_db_transaction` commit (no-op `SELECT 1`) + rollback
+  (niyetli hata → bağlantı iade), `checkout==returned`, ve Türkçe parametre
+  round-trip'i (YAZMA YOK).
+- Opsiyonel `MERGEN_DB_POOL_WRITE_TEST=TRUE`: tek, **benzersiz etiketli** tablo
+  ile Türkçe at-rest commit/rollback + **DROP** (hafif at-rest kontrolü; kapsamlı
+  encoding kapısı yine 16.5'tir).
+- `MERGEN_DB_POOL_FAIL_FAST=TRUE` iken havuz kurulamazsa **HARD FAIL** (operatörün
+  istediği davranış); varsayılan fail-open'da preflight FAIL raporlar ama uygulama
+  doğrudan-bağlantı yoluyla çalışmaya devam eder.
+- Artifact: `artifacts/db-pool-preflight/<timestamp>/evidence.json` + `summary.md`.
+  Ham DSN/secret yazılmaz (`db_dsn_present` yalnız boolean). **UNMEASURED (NA)
+  bir alan ASLA PASS sayılmaz.**
+
+> Bu kapı **kapasite/throughput kazanımı kanıtlamaz**; yalnız havuzlu DB yolunun
+> mekaniğini ve gözlemlenebilirliğini doğrular. Canlı sayaçlar ayrıca `/readyz`
+> (`db_pool` bloğu) üzerinden sır-güvenli izlenir.
+
 ### 16.6 Gerçek LLM throughput ayrı tutulur
 
 Real-canary yanıtları artık aşamalara sınıflandırılır
@@ -1181,6 +1209,16 @@ $env:MERGEN_DB_POOL_MAX_SIZE = "8"
 # Tam R sürecini yeniden başlatın (tarayıcı yenileme yetmez).
 ```
 
+**Havuz mekanik + gözlemlenebilirlik preflight'i (önce; hafif, yıkıcı değil):**
+
+```powershell
+$env:MERGEN_DB_POOL_ENABLED = "TRUE"
+$env:MERGEN_DB_POOL_MIN_SIZE = "1"
+$env:MERGEN_DB_POOL_MAX_SIZE = "8"
+$env:MERGEN_DB_POOL_IDLE_TIMEOUT = "600"
+Rscript --vanilla tests/scripts/run_vm_db_pool_preflight_real.R
+```
+
 **SQL Server havuz at-rest preflight (havuzu kalıcı açmadan önce):**
 
 ```powershell
@@ -1232,7 +1270,10 @@ Rscript tests/scripts/run_operational_soak_gate.R
 ### 16.9 Bu sertleştirmeden sonra hâlâ VM-only / UNMEASURED kalan
 
 - Gerçek tarayıcı konsol hataları yalnız browser concurrency lane çalıştığında ölçülür.
-- Gerçek SQL Server havuzlu at-rest davranışı yalnız VM preflight ile kanıtlanır.
+- Gerçek SQL Server havuzlu at-rest davranışı yalnız VM preflight ile kanıtlanır
+  (16.5 encoding kapısı + 16.5A mekanik/gözlemlenebilirlik kapısı).
+- Havuzu açmanın **gerçek-sohbet kapasite/throughput etkisi** yalnız havuz açık/kapalı
+  attach soak karşılaştırmasıyla ölçülür; preflight'lar bunu kanıtlamaz.
 - Gerçek LLM throughput yalnız küçük, tavanlı probe ile gözlemlenir (kapasite değil).
 - Bellek büyümesi/telemetri ancak OS sayaçları okunabildiğinde ölçülür.
 - 1000 gerçek sürekli insan oturumu hiçbir lane tarafından kanıtlanmaz.
