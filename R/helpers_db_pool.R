@@ -71,9 +71,24 @@ is_db_pool_enabled <- function() {
 
 # Havuz boyutlandırma/doğrulama yapılandırması. Varsayılanlar bilinçli olarak
 # korumacıdır (tek Shiny süreci + SQL Server için makul).
+#
+# fail_fast: KAPALI (varsayılan) iken havuz başlatılamazsa uygulama/preflight
+#   KIRILMAZ; sessizce doğrudan bağlantı yoluna düşülür (mevcut davranış).
+#   AÇIK iken (MERGEN_DB_POOL_FAIL_FAST=TRUE) havuz başlatılamazsa
+#   init_db_pool_once() açıkça stop() eder; böylece operatör havuz olmadan
+#   üretime devam etmek yerine erken/gürültülü bir hata ister. Yalnızca env >
+#   R option > FALSE sırasıyla çözülür; ham secret okumaz.
 db_pool_config <- function() {
+  fail_fast_env <- .db_pool_truthy(Sys.getenv("MERGEN_DB_POOL_FAIL_FAST", unset = ""))
+  fail_fast <- if (!is.na(fail_fast_env)) {
+    isTRUE(fail_fast_env)
+  } else {
+    isTRUE(getOption("mergen.db.pool_fail_fast", FALSE))
+  }
+
   list(
     enabled = is_db_pool_enabled(),
+    fail_fast = fail_fast,
     min_size = max(0L, as.integer(.db_pool_env_num("MERGEN_DB_POOL_MIN_SIZE", 1))),
     max_size = max(1L, as.integer(.db_pool_env_num("MERGEN_DB_POOL_MAX_SIZE", 8))),
     idle_timeout_sec = max(1, .db_pool_env_num("MERGEN_DB_POOL_IDLE_TIMEOUT", 600)),
@@ -148,9 +163,14 @@ db_pool_is_active <- function(target = "primary") {
 #             fonksiyon olmalı ve bir `Pool` nesnesi döndürmelidir (testler için
 #             SQLite havuzu enjekte etmeye olanak tanır).
 #   force   : TRUE ise etkinlik bayrağına bakılmaksızın başlatır.
-# Başarısızlıkta uygulama başlatmayı KIRMAZ: olay kaydeder, NULL döner.
+#   fail_fast : Varsayılan db_pool_config()$fail_fast. KAPALI iken başarısızlıkta
+#             uygulama başlatmayı KIRMAZ (olay kaydeder, NULL döner). AÇIK iken
+#             başlatma başarısız olursa açıkça stop() eder (ham secret içermeyen,
+#             genel hata mesajı). Bu, operatörün "havuz yoksa düş" yerine "havuz
+#             yoksa erken hata ver" davranışını seçmesine izin verir.
 # ------------------------------------------------------------------------------
-init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE) {
+init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE,
+                              fail_fast = isTRUE(db_pool_config()$fail_fast)) {
   if (!isTRUE(force) && !is_db_pool_enabled()) {
     .db_pool_record_event("init_skipped", list(target = target, reason = "disabled"))
     return(invisible(NULL))
@@ -163,6 +183,10 @@ init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE)
 
   if (!requireNamespace("pool", quietly = TRUE)) {
     .db_pool_record_event("init_failed", list(target = target, reason = "pool_paketi_yok"))
+    if (isTRUE(fail_fast)) {
+      stop(sprintf("DB havuz fail-fast: '%s' havuzu icin 'pool' paketi yok.", target),
+           call. = FALSE)
+    }
     return(invisible(NULL))
   }
 
@@ -185,6 +209,12 @@ init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE)
   })
 
   if (is.null(pool_obj)) {
+    if (isTRUE(fail_fast)) {
+      # Genel mesaj: ham DSN/secret/koşul mesajı SIZDIRILMAZ (kök neden event
+      # kaydında error_class olarak tutulur).
+      stop(sprintf("DB havuz fail-fast: '%s' havuzu baslatilamadi (init_failed).", target),
+           call. = FALSE)
+    }
     return(invisible(NULL))
   }
 
@@ -300,15 +330,28 @@ close_db_pool_once <- function(target = NULL) {
 # ------------------------------------------------------------------------------
 db_acquire_tx_connection <- function(target = "primary") {
   pool_obj <- db_pool_get(target)
+  ci_direct <- NULL
 
+  # Havuz AKTİF DEĞİL: doğrudan bağlantıyı al. ANCAK get_connection() primary
+  # hedefte `.GlobalEnv$pool`'u (bir Pool nesnesini) geri döndürebilir. Bu,
+  # havuz nesnesinin geçersiz/eski olduğu (db_pool_get geçersiz sayıp NULL
+  # döndürdüğü) ama .GlobalEnv$pool'un hâlâ bir Pool tuttuğu durumlarda olur.
+  # İşlem (dbBegin/dbCommit) bir Pool üzerinde ASLA çalıştırılmamalıdır; her
+  # ifade farklı bir bağlantıya checkout edilir ve işlem ifadeler arasında
+  # tutamaz. Bu durumda Pool'u aşağıdaki ORTAK checkout bloğuna yönlendirip
+  # gerçek bir bağlantı ödünç alırız (Pool'u işlem bağlantısı gibi GEÇİRMEYİZ).
+  if (is.null(pool_obj) || !requireNamespace("pool", quietly = TRUE)) {
+    ci_direct <- get_connection(target)
+    if (inherits(ci_direct$conn, "Pool") && requireNamespace("pool", quietly = TRUE)) {
+      pool_obj <- ci_direct$conn
+    }
+  }
+
+  # ORTAK işlem-güvenli checkout: gerçek bir DBI bağlantısı ödünç alınır (ASLA
+  # Pool nesnesi değil). Checkout HATA verirse YÜZEYE ÇIKARILIR; sessizce
+  # Pool-nesnesi-üzerinde-işlem yoluna DÜŞÜLMEZ. Yazma yolu (save_message_to_db)
+  # bu hatayı zaten yakalayıp loglar.
   if (!is.null(pool_obj) && requireNamespace("pool", quietly = TRUE)) {
-    # Havuz AKTİF: gerçek bir bağlantı ödünç al. Checkout HATA verirse
-    # get_connection()'a düşmek GÜVENSİZDİR; primary hedefte get_connection()
-    # `.GlobalEnv$pool`'u (Pool nesnesini) geri döndürür ve işlem (dbBegin/
-    # dbCommit) bir DBI bağlantısı yerine havuz nesnesi üzerinde çalışırdı.
-    # Bu yüzden checkout hatası YÜZEYE ÇIKARILIR (sessizce havuz-nesnesi-
-    # üzerinde-işlem yoluna DÜŞÜLMEZ). Yazma yolu (save_message_safely) bu
-    # hatayı zaten yakalayıp loglar.
     conn <- tryCatch(
       pool::poolCheckout(pool_obj),
       error = function(e) {
@@ -321,13 +364,11 @@ db_acquire_tx_connection <- function(target = "primary") {
                 pool = pool_obj, target = target))
   }
 
-  # Havuz yok: mevcut doğrudan bağlantı yolu (get_connection havuz aktif
-  # olmadığı için doğrudan ODBC bağlantısı döndürür).
-  ci <- get_connection(target)
+  # GERÇEK doğrudan bağlantı (Pool değil): mevcut doğrudan-bağlantı yolu.
   st <- .mergen_db_pool_state
   st$stats$direct_fallback <- (st$stats$direct_fallback %||% 0L) + 1L
-  ci$checked_out <- FALSE
-  ci
+  ci_direct$checked_out <- FALSE
+  ci_direct
 }
 
 db_release_tx_connection <- function(conn_info) {
@@ -426,6 +467,7 @@ db_pool_status_snapshot <- function() {
 
   list(
     enabled = isTRUE(cfg$enabled),
+    fail_fast = isTRUE(cfg$fail_fast),
     config = list(
       min_size = cfg$min_size,
       max_size = cfg$max_size,
