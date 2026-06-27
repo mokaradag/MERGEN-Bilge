@@ -1179,9 +1179,10 @@ darboğaz bağlantı-kurulum tarafındadır.
   kabul-kuyruğu (accept backlog) doygunluğunun**, **`time_wait` yüksekliği
   ephemeral-port/TIME_WAIT baskısının** doğrudan göstergesidir.
 - **curl zamanlama**: yük sürücüsü tamamlanan her istekten `connect`
-  ve connect-sonrası ilk-byte sürelerini toplar (`metrics$connect_ms_p95`,
-  `metrics$ttfb_ms_p95`). `metrics$ttfb_ms_*`, curl `starttransfer - connect`
-  değeridir; bu nedenle bağlantı/TLS süresiyle çakışmaz. **connect yüksek +
+  ve uygulama/ilk-byte sürelerini toplar (`metrics$connect_ms_p95`,
+  `metrics$ttfb_ms_p95`). `metrics$ttfb_ms_*`, curl `starttransfer` değerinden
+  varsa `appconnect`, yoksa `pretransfer`, o da yoksa `connect` çıkarılarak
+  hesaplanır; bu nedenle TLS el sıkışması app/TTFB diye sınıflandırılmaz. **connect yüksek +
   ttfb düşük → bağlantı/backlog
   darboğazı; ttfb yüksek → app/event-loop işleme darboğazı.** (Yalnız tamamlanan
   istekler; bağlantı-timeout'unda curl zamanlama gelmez.)
@@ -1251,6 +1252,6 @@ $env:MERGEN_SOAK_MAX_NEW_PER_TICK = "25"      # bağlantı fırtınasını yumu�
 
 Kanıtı oku: `soak_evidence.json` içinde `capacity_ladder.bottleneck_hint`,
 `capacity_ladder.dominant_timeout_class`, `system_telemetry.app_tcp_max_by_state`
-ve `metrics.connect_ms_p95` / `metrics.ttfb_ms_p95`. `ttfb_ms_p95` connect-sonrası
+ve `metrics.connect_ms_p95` / `metrics.ttfb_ms_p95`. `ttfb_ms_p95` TLS/pretransfer-sonrası
 ilk-byte bileşenidir. `connect_ms_p95` büyük + `ttfb_ms_p95` küçük ise darboğaz
 bağlantı/backlog; tersi ise app işleme.

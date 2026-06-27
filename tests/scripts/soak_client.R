@@ -85,10 +85,10 @@ soak_target_concurrency_now <- function(concurrent, ramp_up_seconds, elapsed_sec
   max(1L, min(concurrent, t))
 }
 
-# curl 'times' (saniye) -> ms; connect ve post-connect ilk-byte ayri tutulur.
-# curl starttransfer baglanti/TLS surelerini de icerir; app/TTFB bileseni icin
-# connect sonrasini (starttransfer - connect) kaydederiz. Olculemezse NA.
-# Yalniz tamamlanan (done) istekler icin gelir.
+# curl 'times' (saniye) -> ms; TCP connect ve app/TTFB ayri tutulur.
+# curl starttransfer; DNS, TCP connect ve varsa TLS el sikismasini icerir.
+# App/TTFB bileseni icin appconnect (TLS sonrasi) ya da pretransfer varsa onu,
+# yoksa connect'i taban aliriz. Olculemezse NA. Yalniz tamamlanan istekler.
 soak_extract_curl_times_ms <- function(times) {
   out <- list(connect_ms = NA_real_, ttfb_ms = NA_real_, total_ms = NA_real_)
   if (is.null(times) || length(times) == 0L) return(out)
@@ -97,11 +97,14 @@ soak_extract_curl_times_ms <- function(times) {
     if (length(v) == 0L || !is.finite(v)) NA_real_ else v
   }
   connect <- g("connect")
+  appconnect <- g("appconnect")
+  pretransfer <- g("pretransfer")
   starttransfer <- g("starttransfer")
   total <- g("total")
   if (is.finite(connect)) out$connect_ms <- round(connect * 1000, 2)
   if (is.finite(starttransfer)) {
-    app_ttfb <- if (is.finite(connect)) max(0, starttransfer - connect) else starttransfer
+    ttfb_base <- if (is.finite(appconnect)) appconnect else if (is.finite(pretransfer)) pretransfer else connect
+    app_ttfb <- if (is.finite(ttfb_base)) max(0, starttransfer - ttfb_base) else starttransfer
     out$ttfb_ms <- round(app_ttfb * 1000, 2)
   }
   if (is.finite(total)) out$total_ms <- round(total * 1000, 2)
