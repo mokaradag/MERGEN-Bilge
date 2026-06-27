@@ -64,6 +64,16 @@ dbpf_int <- function(name, default) {
   if (is.na(v) || v < 1L) as.integer(default) else v
 }
 
+# Fail-fast niyeti GUARD asamasinda (helper'lar yuklenmeden once) cozulebilmeli.
+# R/helpers_db_pool.R::db_pool_config() ile ayni kaynaklari okur: once
+# MERGEN_DB_POOL_FAIL_FAST ortam degiskeni, yoksa mergen.db.pool_fail_fast secenegi.
+dbpf_fail_fast_requested <- function() {
+  if (nzchar(trimws(Sys.getenv("MERGEN_DB_POOL_FAIL_FAST", unset = "")))) {
+    return(dbpf_bool("MERGEN_DB_POOL_FAIL_FAST", FALSE))
+  }
+  isTRUE(getOption("mergen.db.pool_fail_fast", FALSE))
+}
+
 dbpf_repo_root <- function() {
   for (cand in c(".", "..", "../..")) {
     if (file.exists(file.path(cand, "app.R")) && dir.exists(file.path(cand, "R"))) {
@@ -163,6 +173,7 @@ dbpf_result <- list(
   turkish_param_roundtrip_passed = NA,
   turkish_at_rest_roundtrip_passed = NA,
   tx_rollback_clean = NA,
+  write_probe_table_dropped = NA,
   checkout_count = NA_integer_,
   returned_count = NA_integer_,
   pool_outstanding_checkouts = NA_integer_,
@@ -208,11 +219,12 @@ dbpf_finish <- function(passed, skipped_reason = NA_character_) {
     sprintf("- SELECT 1: %s | Turkce param round-trip: %s",
             as.character(dbpf_result$read_select_ok),
             as.character(dbpf_result$turkish_param_roundtrip_passed)),
-    sprintf("- tx commit: %s | tx rollback iade: %s | Turkce at-rest: %s | rollback temiz: %s",
+    sprintf("- tx commit: %s | tx rollback iade: %s | Turkce at-rest: %s | rollback temiz: %s | probe tablo DROP: %s",
             as.character(dbpf_result$tx_commit_ok),
             as.character(dbpf_result$tx_rollback_returned),
             as.character(dbpf_result$turkish_at_rest_roundtrip_passed),
-            as.character(dbpf_result$tx_rollback_clean)),
+            as.character(dbpf_result$tx_rollback_clean),
+            as.character(dbpf_result$write_probe_table_dropped)),
     sprintf("- checkout: %s | returned: %s | bekleyen (leak): %s | direct_fallback: %s",
             as.character(dbpf_result$checkout_count), as.character(dbpf_result$returned_count),
             as.character(dbpf_result$pool_outstanding_checkouts),
@@ -242,6 +254,24 @@ if (!dbpf_bool("MERGEN_DB_POOL_ENABLED", FALSE)) {
 } else if (!requireNamespace("pool", quietly = TRUE) ||
            !requireNamespace("odbc", quietly = TRUE) ||
            !requireNamespace("DBI", quietly = TRUE)) {
+  # FAIL-FAST acikken eksik paket GUVENLE ATLANAMAZ: uygulama fail-fast altinda
+  # init_db_pool_once() ile boot edemeyecegi icin, exit kodunu kontrol eden
+  # otomasyon SKIP(exit 0)'i hatali sekilde "deploy edilebilir" sayar. Bu yuzden
+  # fail-fast modunda eksik paketler HARD FAIL'dir.
+  missing_pkgs <- c("pool", "odbc", "DBI")[
+    !vapply(c("pool", "odbc", "DBI"),
+            function(p) requireNamespace(p, quietly = TRUE), logical(1))]
+  if (dbpf_fail_fast_requested()) {
+    reason <- sprintf(
+      paste0("FAIL-FAST acik ama gerekli paket(ler) yok: %s; havuz baslatilamaz, ",
+             "uygulama fail-fast altinda boot edemez."),
+      paste(missing_pkgs, collapse = ", "))
+    cat(sprintf("FAIL: %s\n", reason))
+    dbpf_result$fail_fast_mode <- TRUE
+    dbpf_result$warnings <- c(dbpf_result$warnings, dbpf_redact(reason))
+    dbpf_finish(FALSE)
+    stop(reason, call. = FALSE)
+  }
   reason <- "pool/odbc/DBI paketlerinden biri yok; havuzlu preflight atlandi (bulut/offline)."
   cat(sprintf("SKIP: %s\n", reason))
   dbpf_finish(FALSE, skipped_reason = reason)
@@ -374,6 +404,9 @@ if (!dbpf_bool("MERGEN_DB_POOL_ENABLED", FALSE)) {
           TRUE
         }))
         if (isTRUE(created)) {
+          # Beklenmedik bir hata ortayla cikarsa diye SON CARE (best-effort) temizlik.
+          # Asagidaki ACIK DROP+dogrulama (havuz hala acikken) asil sozlesme kapisidir;
+          # bu on.exit yalnizca panik durumunda kalan tabloyu temizlemeye calisir.
           on.exit({
             tryCatch(with_db_transaction(function(conn) {
               DBI::dbExecute(conn, sprintf("DROP TABLE %s", tbl)); TRUE
@@ -410,6 +443,27 @@ if (!dbpf_bool("MERGEN_DB_POOL_ENABLED", FALSE)) {
           }))
           dbpf_result$tx_rollback_clean <-
             identical(as.integer(before_rb %||% -1L), as.integer(after_rb %||% -2L))
+
+          # YIKICI-DEGIL sozlesmesi: olculen probe'lar bittikten sonra, havuz HALA
+          # ACIKKEN tabloyu ACIKCA dusur ve gercekten kalktigini dogrula. PASS karari
+          # bu bayraga baglidir; boylece DROP basarisiz olursa (ya da bir sonraki
+          # temizlik baglantisi kopars) artifact yanlislikla PASS demez.
+          drop_ok <- probe_ok(with_db_transaction(function(conn) {
+            DBI::dbExecute(conn, sprintf("DROP TABLE %s", tbl)); TRUE
+          }))
+          remaining <- probe_ok(with_db_connection(function(conn) {
+            DBI::dbGetQuery(conn, paste0(
+              "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ?"),
+              params = list(tbl))$n[1]
+          }))
+          dbpf_result$write_probe_table_dropped <-
+            isTRUE(drop_ok) && identical(as.integer(remaining %||% NA), 0L)
+          if (!isTRUE(dbpf_result$write_probe_table_dropped)) {
+            dbpf_result$warnings <- c(dbpf_result$warnings,
+              dbpf_redact(sprintf(
+                "Probe tablosu temizlenemedi/dogrulanamadi (tablo: %s); YIKICI-DEGIL sozlesmesi ihlali, PASS verilmez.",
+                tbl)))
+          }
         } else {
           dbpf_result$warnings <- c(dbpf_result$warnings,
             "Etiketli probe tablosu olusturulamadi (DDL izni yok?); at-rest yazma testi atlandi.")
@@ -445,7 +499,8 @@ if (!dbpf_bool("MERGEN_DB_POOL_ENABLED", FALSE)) {
 
     write_pass <- if (isTRUE(write_test)) {
       isTRUE(dbpf_result$turkish_at_rest_roundtrip_passed) &&
-        isTRUE(dbpf_result$tx_rollback_clean)
+        isTRUE(dbpf_result$tx_rollback_clean) &&
+        isTRUE(dbpf_result$write_probe_table_dropped)
     } else {
       TRUE
     }
@@ -459,7 +514,7 @@ if (!dbpf_bool("MERGEN_DB_POOL_ENABLED", FALSE)) {
                 dbpf_cycles),
         "with_db_transaction commit/rollback mekanigi dogru; rollback bagantiyi iade etti (havuza acik islemle donulmedi).",
         if (isTRUE(write_test)) {
-          "Turkce metin AT-REST mojibake'siz korundu; yazma rollback'i satir birakmadi."
+          "Turkce metin AT-REST mojibake'siz korundu; yazma rollback'i satir birakmadi; probe tablosu acikca DROP edilip kalkmadigi dogrulandi (yikici-degil)."
         } else {
           "Yazma testi kapali; at-rest commit/rollback dogrulanmadi (yalniz mekanik + round-trip)."
         }
