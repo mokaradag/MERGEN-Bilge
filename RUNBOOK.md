@@ -266,7 +266,7 @@ $env:MERGEN_SOAK_PROFILE = "proxy_llm"
 $env:MERGEN_SOAK_LLM_MODE = "proxy"
 $env:MERGEN_SOAK_PROXY_FORWARD_REAL = "FALSE"
 $env:MERGEN_SOAK_CAPACITY_LADDER = "TRUE"
-$env:MERGEN_SOAK_CAPACITY_USERS = "100,300,350,400,425,450"
+$env:MERGEN_SOAK_CAPACITY_USERS = "100,300,350,400,410,415,420,425"
 $env:MERGEN_SOAK_CAPACITY_STEP_SECONDS = "5400"
 $env:MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN = "0.98"
 $env:MERGEN_SOAK_STOP_ON_FIRST_FAILED_STEP = "TRUE"
@@ -387,6 +387,22 @@ UNMEASURED. Follow-up should focus on the 450-user connection-timeout saturation
 without clear CPU pressure: app port backlog/accept queue, httpuv/Shiny event loop,
 Windows TCP limits, client connection reuse/timeouts, and intermediate 350/400/425
 ladder steps. Full details are in `docs/operational-soak-gate.md` section 13A.
+
+
+2026-06-27 newer Windows VM proxy attach retest: latest screenshot-transcribed
+artifact path is `artifacts/soak/20260627-093805/soak_evidence.json` (`created_at`
+shown as `2026-06-27T10:29:30Z`). The retest still failed the overall gate because
+main-lane effective success was `0.9696` below the `0.98` threshold and
+`capacity_ladder_all_steps_pass=false`: 136185 requests, 132043 successes, 4142
+timeouts, 0 errors, p50≈1969.7 ms, p95≈11611.8 ms, p99≈13087.5 ms, throughput≈2710.6/min.
+The narrowed ladder passed 100, 300, 350, and 400 users for 600 seconds/step, then
+failed at 425 users (8201/12243 successes, 4142 timeouts, effective≈0.6644). Treat
+**400 active proxy users / 10 minutes** as the latest short staged PASS and **425**
+as the first failed step, while keeping **300 active proxy users / 90 minutes** as
+the longest-duration stable proxy attach milestone. Follow-up should probe 410/415/420,
+compare burst against ramped/paced arrival, and account for `loadgen_loop_lag_high`
+before treating the result as app-side capacity. Full details are in
+`docs/operational-soak-gate.md` section 13B.
 
 ## 8. Dağıtım Öncesi Kapılar
 
