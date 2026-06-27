@@ -1178,9 +1178,11 @@ darboğaz bağlantı-kurulum tarafındadır.
   ile, Unix'te `ss -tan` / `netstat` durum kolonuyla. **`syn_recv` yüksekliği
   kabul-kuyruğu (accept backlog) doygunluğunun**, **`time_wait` yüksekliği
   ephemeral-port/TIME_WAIT baskısının** doğrudan göstergesidir.
-- **curl zamanlama**: yük sürücüsü tamamlanan her istekten `connect` ve
-  `starttransfer` (ttfb) sürelerini toplar (`metrics$connect_ms_p95`,
-  `metrics$ttfb_ms_p95`). **connect yüksek + ttfb düşük → bağlantı/backlog
+- **curl zamanlama**: yük sürücüsü tamamlanan her istekten `connect`
+  ve connect-sonrası ilk-byte sürelerini toplar (`metrics$connect_ms_p95`,
+  `metrics$ttfb_ms_p95`). `metrics$ttfb_ms_*`, curl `starttransfer - connect`
+  değeridir; bu nedenle bağlantı/TLS süresiyle çakışmaz. **connect yüksek +
+  ttfb düşük → bağlantı/backlog
   darboğazı; ttfb yüksek → app/event-loop işleme darboğazı.** (Yalnız tamamlanan
   istekler; bağlantı-timeout'unda curl zamanlama gelmez.)
 - **Yük-üretici (load generator) telemetrisi**: `launched`, `completed`,
@@ -1220,7 +1222,7 @@ tarayıcı/websocket eşzamanlılığı veya SQL Server at-rest encoding KANITLA
 Önce 300→450 aralığını daraltan kademeli merdiveni telemetri açıkken koş:
 
 ```powershell
-Remove-Item Env:MERGEN_SOAK_PROFILE,Env:MERGEN_SOAK_LLM_MODE,Env:MERGEN_SOAK_CONCURRENT_USERS,Env:MERGEN_SOAK_DURATION_SECONDS,Env:MERGEN_SOAK_DURATION_MINUTES,Env:MERGEN_SOAK_CAPACITY_CURVE,Env:MERGEN_SOAK_CAPACITY_LADDER,Env:MERGEN_SOAK_CAPACITY_USERS,Env:MERGEN_SOAK_CAPACITY_STEP_SECONDS,Env:MERGEN_SOAK_STOP_ON_FIRST_FAILED_STEP,Env:MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN -ErrorAction SilentlyContinue
+Remove-Item Env:MERGEN_SOAK_PROFILE,Env:MERGEN_SOAK_LLM_MODE,Env:MERGEN_SOAK_CONCURRENT_USERS,Env:MERGEN_SOAK_DURATION_SECONDS,Env:MERGEN_SOAK_DURATION_MINUTES,Env:MERGEN_SOAK_CAPACITY_CURVE,Env:MERGEN_SOAK_CAPACITY_LADDER,Env:MERGEN_SOAK_CAPACITY_USERS,Env:MERGEN_SOAK_CAPACITY_STEP_SECONDS,Env:MERGEN_SOAK_STOP_ON_FIRST_FAILED_STEP,Env:MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN,Env:MERGEN_SOAK_HTTP_LANE,Env:MERGEN_SOAK_INTERACTIVE_LANE,Env:MERGEN_SOAK_INTERACTIVE_USERS,Env:MERGEN_SOAK_INTERACTIVE_ITERATIONS,Env:MERGEN_SOAK_RAMP_UP_SECONDS,Env:MERGEN_SOAK_MAX_NEW_PER_TICK,Env:MERGEN_SOAK_THINK_TIME_MS_MIN,Env:MERGEN_SOAK_THINK_TIME_MS_MAX,Env:MERGEN_SOAK_CONNECTION_REUSE,Env:MERGEN_SOAK_TELEMETRY_ENABLED,Env:MERGEN_SOAK_TELEMETRY_INTERVAL_SECONDS -ErrorAction SilentlyContinue
 
 $env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
 $env:MERGEN_SOAK_PROFILE = "proxy_llm"
@@ -1249,5 +1251,6 @@ $env:MERGEN_SOAK_MAX_NEW_PER_TICK = "25"      # bağlantı fırtınasını yumu�
 
 Kanıtı oku: `soak_evidence.json` içinde `capacity_ladder.bottleneck_hint`,
 `capacity_ladder.dominant_timeout_class`, `system_telemetry.app_tcp_max_by_state`
-ve `metrics.connect_ms_p95` / `metrics.ttfb_ms_p95`. `connect_ms_p95` büyük +
-`ttfb_ms_p95` küçük ise darboğaz bağlantı/backlog; tersi ise app işleme.
+ve `metrics.connect_ms_p95` / `metrics.ttfb_ms_p95`. `ttfb_ms_p95` connect-sonrası
+ilk-byte bileşenidir. `connect_ms_p95` büyük + `ttfb_ms_p95` küçük ise darboğaz
+bağlantı/backlog; tersi ise app işleme.

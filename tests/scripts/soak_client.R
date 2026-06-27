@@ -85,8 +85,10 @@ soak_target_concurrency_now <- function(concurrent, ramp_up_seconds, elapsed_sec
   max(1L, min(concurrent, t))
 }
 
-# curl 'times' (saniye) -> ms; connect ve starttransfer (ttfb) ayri tutulur.
-# Olculemezse NA. Yalniz tamamlanan (done) istekler icin gelir.
+# curl 'times' (saniye) -> ms; connect ve post-connect ilk-byte ayri tutulur.
+# curl starttransfer baglanti/TLS surelerini de icerir; app/TTFB bileseni icin
+# connect sonrasini (starttransfer - connect) kaydederiz. Olculemezse NA.
+# Yalniz tamamlanan (done) istekler icin gelir.
 soak_extract_curl_times_ms <- function(times) {
   out <- list(connect_ms = NA_real_, ttfb_ms = NA_real_, total_ms = NA_real_)
   if (is.null(times) || length(times) == 0L) return(out)
@@ -98,7 +100,10 @@ soak_extract_curl_times_ms <- function(times) {
   starttransfer <- g("starttransfer")
   total <- g("total")
   if (is.finite(connect)) out$connect_ms <- round(connect * 1000, 2)
-  if (is.finite(starttransfer)) out$ttfb_ms <- round(starttransfer * 1000, 2)
+  if (is.finite(starttransfer)) {
+    app_ttfb <- if (is.finite(connect)) max(0, starttransfer - connect) else starttransfer
+    out$ttfb_ms <- round(app_ttfb * 1000, 2)
+  }
   if (is.finite(total)) out$total_ms <- round(total * 1000, 2)
   out
 }
@@ -166,21 +171,49 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
   st$launched <- 0L           # baslatilan toplam istek
   st$completed <- 0L          # tamamlanan (done+fail) toplam istek
   st$max_inflight <- 0L       # gozlenen en yuksek eszamanlilik
-  st$think_until <- numeric(0)  # think modunda: "kullanici" yeniden hazir zamanlari
+  st$think_until <- numeric(0)  # think modunda: kullanici bazli hazir zamanlari
+  st$think_user <- integer(0)    # think_until ile hizali kullanici indeksleri
+  st$ready_users <- integer(0)   # think suresi dolmus ve yeniden baslatilacak kullanicilar
+  st$user_busy <- rep(FALSE, n_users)  # ucusta/sogumada/hazir kuyrugunda olanlar
   user_idx <- 0L
 
   n_thinking <- function() if (think_enabled) length(st$think_until) else 0L
   mature_thinking <- function(now_num) {
     if (!think_enabled || length(st$think_until) == 0L) return(invisible(NULL))
     due <- st$think_until <= now_num
-    if (any(due)) st$think_until <- st$think_until[!due]
+    if (any(due)) {
+      st$ready_users <- c(st$ready_users, st$think_user[due])
+      st$think_until <- st$think_until[!due]
+      st$think_user <- st$think_user[!due]
+    }
     invisible(NULL)
   }
+  schedule_think <- function(idx) {
+    st$think_user <- c(st$think_user, as.integer(idx))
+    st$think_until <- c(st$think_until,
+                        as.numeric(Sys.time()) + soak_think_delay_sec(think_min_ms, think_max_ms))
+  }
+  next_available_user <- function() {
+    if (!think_enabled) {
+      user_idx <<- (user_idx %% n_users) + 1L
+      return(user_idx)
+    }
+    for (unused in seq_len(n_users)) {
+      user_idx <<- (user_idx %% n_users) + 1L
+      if (!isTRUE(st$user_busy[[user_idx]])) return(user_idx)
+    }
+    NA_integer_
+  }
 
-  add_one <- function() {
-    user_idx <<- (user_idx %% n_users) + 1L
-    key <- user_keys[[user_idx]]
-    user_label <- sprintf("user%03d", user_idx)
+  add_one <- function(request_user_idx = NA_integer_) {
+    current_user_idx <- suppressWarnings(as.integer(request_user_idx %||% NA_integer_))
+    if (is.na(current_user_idx) || current_user_idx < 1L || current_user_idx > n_users) {
+      current_user_idx <- next_available_user()
+    }
+    if (is.na(current_user_idx)) return(FALSE)
+    st$user_busy[[current_user_idx]] <- TRUE
+    key <- user_keys[[current_user_idx]]
+    user_label <- sprintf("user%03d", current_user_idx)
     scen <- soak_pick_scenario(catalog)
     body <- soak_build_chat_body(scen, model)
 
@@ -232,8 +265,9 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
                             length(res$content %||% raw()), ks, tclass, endpoint_kind,
                             connect_ms = tm$connect_ms, ttfb_ms = tm$ttfb_ms)
         if (isTRUE(think_enabled)) {
-          st$think_until <- c(st$think_until,
-                              as.numeric(Sys.time()) + soak_think_delay_sec(think_min_ms, think_max_ms))
+          schedule_think(current_user_idx)
+        } else {
+          st$user_busy[[current_user_idx]] <- FALSE
         }
       },
       fail = function(msg) {
@@ -245,12 +279,14 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
         soak_metrics_record(metrics, lane, scen_id, lat, status, NA_integer_, 0, "n/a",
                             tclass, endpoint_kind)
         if (isTRUE(think_enabled)) {
-          st$think_until <- c(st$think_until,
-                              as.numeric(Sys.time()) + soak_think_delay_sec(think_min_ms, think_max_ms))
+          schedule_think(current_user_idx)
+        } else {
+          st$user_busy[[current_user_idx]] <- FALSE
         }
       },
       pool = pool
     )
+    TRUE
   }
 
   # Bir refill turu: hedef aktif-eszamanliliga (rampa) gore bos slotlari doldurur.
@@ -263,7 +299,14 @@ soak_http_load <- function(url, cfg, metrics, duration_sec, concurrent,
     repeat {
       idle <- target - st$n - n_thinking()
       if (idle <= 0L) break
-      add_one()
+      if (think_enabled && length(st$ready_users) > 0L) {
+        due_user <- st$ready_users[[1L]]
+        st$ready_users <- st$ready_users[-1L]
+        launched <- add_one(due_user)
+      } else {
+        launched <- add_one()
+      }
+      if (!isTRUE(launched)) break
       added <- added + 1L
       if (max_new_per_tick > 0L && added >= max_new_per_tick) break
     }
