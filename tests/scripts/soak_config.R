@@ -55,6 +55,23 @@ soak_env_num <- function(name, default) {
   if (is.na(val)) as.numeric(default) else val
 }
 
+# Yuk surucusu arrival deseni etiketini turetir (SAF, deterministik). Bu, kanit
+# ve config.json icinde kosumun "ani burst" mi, "rampali" mi yoksa "think'li
+# pace'li" mi oldugunu acikca raporlar. Hicbir esigi etkilemez; yalniz tanidir.
+#   burst        : ramp yok + think yok (mevcut varsayilan davranis).
+#   ramped       : ramp_up_seconds > 0, think yok.
+#   paced        : think_time > 0, ramp yok.
+#   ramped_paced : hem ramp hem think aktif.
+soak_load_pattern_label <- function(ramp_up_seconds, think_ms_min, think_ms_max) {
+  ramp_on <- is.finite(ramp_up_seconds) && ramp_up_seconds > 0
+  think_on <- (is.finite(think_ms_min) && think_ms_min > 0) ||
+    (is.finite(think_ms_max) && think_ms_max > 0)
+  if (ramp_on && think_on) return("ramped_paced")
+  if (ramp_on) return("ramped")
+  if (think_on) return("paced")
+  "burst"
+}
+
 # Profil -> taban yogunluk + serit varsayilanlari. Bu sadece TABAN; env
 # override'lari her zaman kazanir.
 soak_profile_defaults <- function(profile) {
@@ -225,6 +242,33 @@ soak_resolve_config <- function() {
   # icin kisa tutulur.
   client_timeout_sec <- soak_env_int("MERGEN_SOAK_CLIENT_TIMEOUT_SECONDS", 20L)
 
+  # --- Yuk surucusu (load driver) realizm anahtarlari ---------------------------
+  # Bu anahtarlarin TUMU VARSAYILANI MEVCUT DAVRANISI KORUR (burst, ramp yok,
+  # think yok, baglanti yeniden-kullanim acik). Boylece bu degisiklik gecmis kapi
+  # pass/fail anlamini SESSIZCE DEGISTIRMEZ. Operator, bir sonraki VM kosumunda
+  # baglanti-timeout doygunlugunun "ani baglanti firtinasi" mi yoksa "kararli-durum
+  # doygunlugu" mu oldugunu ayirt etmek icin rampa/think ekleyebilir.
+  #   ramp_up_seconds : aktif eszamanliligi 1 -> concurrent'a bu sure boyunca
+  #                     dogrusal buyutur (0 = ani burst, mevcut davranis).
+  #   max_new_per_tick: her multi_run dongusunde acilan YENI istek sayisi tavani
+  #                     (0 = sinirsiz, mevcut davranis).
+  #   think_time_ms   : tamamlanan bir istek ile ayni "kullanicinin" sonraki
+  #                     istegi arasindaki jitter'li bekleme (0 = think yok).
+  #   connection_reuse: TRUE ise libcurl havuzu baglantilari yeniden kullanir
+  #                     (mevcut davranis); FALSE her istegi yeni baglantiya zorlar.
+  ramp_up_seconds <- soak_env_num("MERGEN_SOAK_RAMP_UP_SECONDS", 0)
+  if (!is.finite(ramp_up_seconds) || ramp_up_seconds < 0) ramp_up_seconds <- 0
+  max_new_per_tick <- soak_env_int("MERGEN_SOAK_MAX_NEW_PER_TICK", 0L)
+  if (is.na(max_new_per_tick) || max_new_per_tick < 0L) max_new_per_tick <- 0L
+  think_time_ms_min <- soak_env_int("MERGEN_SOAK_THINK_TIME_MS_MIN", 0L)
+  if (is.na(think_time_ms_min) || think_time_ms_min < 0L) think_time_ms_min <- 0L
+  think_time_ms_max <- soak_env_int("MERGEN_SOAK_THINK_TIME_MS_MAX", think_time_ms_min)
+  if (is.na(think_time_ms_max) || think_time_ms_max < think_time_ms_min) {
+    think_time_ms_max <- think_time_ms_min
+  }
+  connection_reuse <- soak_env_flag("MERGEN_SOAK_CONNECTION_REUSE", TRUE)
+  load_pattern <- soak_load_pattern_label(ramp_up_seconds, think_time_ms_min, think_time_ms_max)
+
   capacity_enabled <- soak_env_flag(
     "MERGEN_SOAK_CAPACITY_CURVE",
     isTRUE(defaults$capacity)
@@ -272,6 +316,14 @@ soak_resolve_config <- function() {
       "Bu AKTIF eszamanlilik modelidir, kullanici tabani DEGIL."
     ),
     client_timeout_sec = client_timeout_sec,
+    load_driver = list(
+      pattern = load_pattern,
+      ramp_up_seconds = ramp_up_seconds,
+      max_new_requests_per_tick = max_new_per_tick,
+      think_time_ms_min = think_time_ms_min,
+      think_time_ms_max = think_time_ms_max,
+      connection_reuse = connection_reuse
+    ),
     fake = fake,
     proxy = proxy,
     real_canary = list(
@@ -355,6 +407,7 @@ soak_config_public <- function(cfg) {
     duration_seconds = cfg$duration_sec,
     assumed_concurrency_model = cfg$assumed_concurrency_model,
     client_timeout_seconds = cfg$client_timeout_sec,
+    load_driver = cfg$load_driver,
     fake_behavior = cfg$fake,
     proxy_behavior = list(
       forward_real = cfg$proxy$forward_real,

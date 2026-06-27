@@ -86,6 +86,49 @@ soak_telemetry_ncores <- function() {
   if (length(v) == 0L || is.na(v[1])) NA_real_ else v[1]
 }
 
+# Ham TCP durum etiketini normalize eder (Windows/ss/netstat farkli yazar):
+# "Established"/"ESTAB"/"ESTABLISHED" -> "established", "SynSent"/"SYN-SENT" ->
+# "syn_sent", "SynReceived"/"SYN-RECV" -> "syn_recv" vb. Taninmayan -> "other".
+.soak_tel_normalize_tcp_state <- function(raw) {
+  s <- gsub("[^a-z]", "", tolower(as.character(raw %||% "")))
+  if (!nzchar(s)) return("other")
+  # "estab" (ss kisa formu) ve "established" (Windows/netstat) ayni kova.
+  if (startsWith(s, "estab")) return("established")
+  if (identical(s, "synsent")) return("syn_sent")
+  if (startsWith(s, "synrec")) return("syn_recv")
+  if (identical(s, "timewait")) return("time_wait")
+  if (identical(s, "closewait")) return("close_wait")
+  if (startsWith(s, "listen")) return("listen")
+  "other"
+}
+
+# Bir ham TCP-durum vektorunu normalize edilmis sayimlara dokumuller (SAF;
+# OS gerektirmez, testlerde dogrudan dogrulanabilir). tcp_connections_to_app
+# tum durumlarin toplamidir (other dahil). Bu, app-port backlog/established/
+# time-wait dagilimini app darbogazindan ayirmak icin kullanilir.
+soak_tcp_state_tally <- function(states) {
+  out <- list(tcp_established = 0L, tcp_syn_sent = 0L, tcp_syn_recv = 0L,
+              tcp_time_wait = 0L, tcp_close_wait = 0L, tcp_listen = 0L,
+              tcp_connections_to_app = 0L)
+  if (length(states) == 0L) return(out)
+  total <- 0L
+  for (raw in states) {
+    raw <- trimws(as.character(raw %||% ""))
+    if (!nzchar(raw)) next
+    total <- total + 1L
+    key <- paste0("tcp_", .soak_tel_normalize_tcp_state(raw))
+    if (key %in% names(out)) out[[key]] <- out[[key]] + 1L
+  }
+  out$tcp_connections_to_app <- total
+  out
+}
+
+# CSV/ozet icin TCP durum sutunlarinin sabit adlari.
+soak_tcp_state_columns <- function() {
+  c("tcp_connections_to_app", "tcp_established", "tcp_syn_sent", "tcp_syn_recv",
+    "tcp_time_wait", "tcp_close_wait", "tcp_listen")
+}
+
 # ------------------------------------------------------------------------------
 # Bos/baslangic ornegi sablonu (tum sutunlar mevcut, NA dolu).
 # ------------------------------------------------------------------------------
@@ -106,6 +149,12 @@ soak_telemetry_ncores <- function() {
     sqlserver_mem_mb = NA_real_,
     loadgen_mem_mb = NA_real_,
     tcp_connections_to_app = NA_integer_,
+    tcp_established = NA_integer_,
+    tcp_syn_sent = NA_integer_,
+    tcp_syn_recv = NA_integer_,
+    tcp_time_wait = NA_integer_,
+    tcp_close_wait = NA_integer_,
+    tcp_listen = NA_integer_,
     sample_ms = NA_real_
   )
 }
@@ -181,20 +230,31 @@ soak_telemetry_columns <- function() names(.soak_tel_blank_row())
     if (is.finite(lg_bytes)) row$loadgen_mem_mb <- round(lg_bytes / (1024 * 1024), 1)
   }
 
-  # Uygulama portuna TCP baglanti sayisi.
-  tcp_txt <- .soak_tel_run_ps(sprintf(
-    "(Get-NetTCPConnection -LocalPort %d -ErrorAction SilentlyContinue | Measure-Object).Count",
+  # Uygulama portuna TCP baglanti durum dagilimi (State bazli). Get-NetTCPConnection
+  # -LocalPort yerel-port (sunucu tarafi) baglantilarini verir: Listen, Established,
+  # TimeWait, CloseWait ve kabul-kuyrugu gostergesi SynReceived. Toplam, eski
+  # Measure-Object sayimiyla AYNI -LocalPort filtresinden gelir (gecmis kiyas korunur).
+  states_txt <- .soak_tel_run_ps(sprintf(
+    "Get-NetTCPConnection -LocalPort %d -ErrorAction SilentlyContinue | ForEach-Object { $_.State }",
     as.integer(port)
   ))
-  tcp_n <- .soak_tel_num(tcp_txt)
-  if (!is.finite(tcp_n)) {
-    # netstat geri donus (Get-NetTCPConnection yoksa).
+  states <- if (nzchar(states_txt)) {
+    trimws(strsplit(states_txt, "[\r\n]+")[[1]])
+  } else {
+    character(0)
+  }
+  states <- states[nzchar(states)]
+  if (length(states) > 0L) {
+    tally <- soak_tcp_state_tally(states)
+    for (k in soak_tcp_state_columns()) row[[k]] <- as.integer(tally[[k]])
+  } else {
+    # netstat geri donus (Get-NetTCPConnection yoksa): yalniz toplam, durum yok.
     ns <- .soak_tel_run_ps(sprintf(
       "(netstat -ano | Select-String ':%d ' | Measure-Object).Count", as.integer(port)
     ))
     tcp_n <- .soak_tel_num(ns)
+    if (is.finite(tcp_n)) row$tcp_connections_to_app <- as.integer(tcp_n)
   }
-  if (is.finite(tcp_n)) row$tcp_connections_to_app <- as.integer(tcp_n)
 
   row
 }
@@ -305,19 +365,24 @@ soak_telemetry_columns <- function() names(.soak_tel_blank_row())
     }
   }
 
-  # TCP baglanti sayisi (ss veya netstat).
-  tcp_n <- NA_real_
-  ss_cmd <- sprintf("ss -tan 2>/dev/null | grep -c ':%d '", as.integer(port))
+  # TCP baglanti durum dagilimi (ss veya netstat). Yerel-adres kolonu app portuyla
+  # bitenleri sayar (sunucu tarafi; Windows -LocalPort ile ayni anlam). ss'de durum
+  # 1. kolon, yerel adres 4. kolon; netstat'ta durum 6. kolon, yerel adres 4. kolon.
+  states <- character(0)
+  ss_cmd <- sprintf("ss -tan 2>/dev/null | awk 'NR>1 && $4 ~ /:%d$/ {print $1}'", as.integer(port))
   ss_out <- tryCatch(suppressWarnings(system(ss_cmd, intern = TRUE, ignore.stderr = TRUE)),
                      error = function(e) character(0))
-  if (length(ss_out) >= 1L) tcp_n <- .soak_tel_num(ss_out[1])
-  if (!is.finite(tcp_n)) {
-    ns_cmd <- sprintf("netstat -tan 2>/dev/null | grep -c ':%d '", as.integer(port))
+  if (length(ss_out) >= 1L) states <- ss_out[nzchar(trimws(ss_out))]
+  if (length(states) == 0L) {
+    ns_cmd <- sprintf("netstat -tan 2>/dev/null | awk '$4 ~ /:%d$/ {print $6}'", as.integer(port))
     ns_out <- tryCatch(suppressWarnings(system(ns_cmd, intern = TRUE, ignore.stderr = TRUE)),
                        error = function(e) character(0))
-    if (length(ns_out) >= 1L) tcp_n <- .soak_tel_num(ns_out[1])
+    if (length(ns_out) >= 1L) states <- ns_out[nzchar(trimws(ns_out))]
   }
-  if (is.finite(tcp_n)) row$tcp_connections_to_app <- as.integer(tcp_n)
+  if (length(states) > 0L) {
+    tally <- soak_tcp_state_tally(states)
+    for (k in soak_tcp_state_columns()) row[[k]] <- as.integer(tally[[k]])
+  }
 
   row
 }
@@ -517,6 +582,19 @@ soak_telemetry_read_csv <- function(csv_path) {
   round(max(x), 1)
 }
 
+# Bir telemetri data.frame'inden TCP durum kolonlarinin maksimumlarini cikarir.
+# app_tcp_max_by_state olarak raporlanir: established/syn_sent/syn_recv/time_wait/
+# close_wait/listen + toplam. CPU dusukken connection_timeout baskinsa bu dagilim
+# darbogazin kabul/backlog/TIME_WAIT mi yoksa app mi oldugunu gosterir.
+.soak_tel_tcp_state_maxes <- function(df) {
+  out <- list()
+  for (c in soak_tcp_state_columns()) {
+    v <- if (!is.null(df) && c %in% names(df)) .soak_tel_safe_max(df[[c]]) else NA_real_
+    out[[c]] <- if (is.finite(v)) as.integer(v) else NA_integer_
+  }
+  out
+}
+
 soak_telemetry_summarize <- function(csv_path, os_hint = soak_telemetry_os()) {
   df <- soak_telemetry_read_csv(csv_path)
   if (is.null(df)) {
@@ -532,6 +610,7 @@ soak_telemetry_summarize <- function(csv_path, os_hint = soak_telemetry_os()) {
       max_sqlserver_cpu_percent = NA_real_,
       max_loadgen_memory_mb = NA_real_,
       max_tcp_connections_to_app = NA_integer_,
+      app_tcp_max_by_state = .soak_tel_tcp_state_maxes(NULL),
       telemetry_warnings = c("Telemetri CSV bulunamadi/bos; sistem sayaclari OLCULEMEDI (UNMEASURED).")
     ))
   }
@@ -568,6 +647,7 @@ soak_telemetry_summarize <- function(csv_path, os_hint = soak_telemetry_os()) {
       v <- .soak_tel_safe_max(get("tcp_connections_to_app"))
       if (is.finite(v)) as.integer(v) else NA_integer_
     },
+    app_tcp_max_by_state = .soak_tel_tcp_state_maxes(df),
     telemetry_warnings = if (length(warnings_vec) == 0L) character(0) else warnings_vec
   )
 }
@@ -601,6 +681,7 @@ soak_telemetry_window_summary <- function(csv_path, t_start, t_end) {
     max_r_process_cpu_percent = .soak_tel_safe_max(getc("r_proc_cpu_percent")),
     max_tcp_connections_to_app = {
       if (is.finite(tcp_max)) as.integer(tcp_max) else NA_integer_
-    }
+    },
+    app_tcp_max_by_state = .soak_tel_tcp_state_maxes(sub)
   )
 }

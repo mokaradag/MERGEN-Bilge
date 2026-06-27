@@ -254,6 +254,41 @@ $env:MERGEN_SOAK_PROXY_FORWARD_REAL = "FALSE"
 Rscript tests/scripts/run_operational_soak_gate.R
 ```
 
+Bağlantı-timeout teşhisi (2026-06-27 450 bulgusu sonrası): 300→450 aralığını
+daraltan kademeli merdiveni telemetri açıkken koşun. Tüm yük-sürücüsü realizm
+anahtarları varsayılan olarak mevcut "burst" davranışını korur; aşağıdaki rampa/
+tavan anahtarları opsiyoneldir ve hiçbir eşiği değiştirmez (yalnız arrival deseni).
+Ayrıntı ve okuma rehberi: [`docs/operational-soak-gate.md`](docs/operational-soak-gate.md) §17.
+
+```powershell
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
+$env:MERGEN_SOAK_PROFILE = "proxy_llm"
+$env:MERGEN_SOAK_LLM_MODE = "proxy"
+$env:MERGEN_SOAK_PROXY_FORWARD_REAL = "FALSE"
+$env:MERGEN_SOAK_CAPACITY_LADDER = "TRUE"
+$env:MERGEN_SOAK_CAPACITY_USERS = "100,300,350,400,425,450"
+$env:MERGEN_SOAK_CAPACITY_STEP_SECONDS = "5400"
+$env:MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN = "0.98"
+$env:MERGEN_SOAK_STOP_ON_FIRST_FAILED_STEP = "TRUE"
+$env:MERGEN_SOAK_TELEMETRY_ENABLED = "TRUE"
+# Opsiyonel: darboğazı "burst mü kararlı-durum mu" diye ayırmak için ikinci koşum:
+# $env:MERGEN_SOAK_RAMP_UP_SECONDS = "120"   # her adımda 1->N'e 120 sn rampa
+# $env:MERGEN_SOAK_MAX_NEW_PER_TICK = "25"    # bağlantı fırtınasını yumuşat
+# $env:MERGEN_SOAK_CONNECTION_REUSE = "FALSE" # bağlantı-kurulum maliyetini izole et
+Rscript --vanilla tests/scripts/run_operational_soak_gate.R
+```
+
+`soak_evidence.json` içinde şu teşhis alanlarını okuyun:
+`capacity_ladder.recommended_probe_steps`, `capacity_ladder.dominant_timeout_class`,
+`capacity_ladder.bottleneck_hint`, `system_telemetry.app_tcp_max_by_state`
+(özellikle `tcp_syn_recv` = kabul kuyruğu, `tcp_time_wait` = ephemeral-port baskısı)
+ve `metrics.connect_ms_p95` vs `metrics.ttfb_ms_p95`. **connect yüksek + ttfb düşük
+→ bağlantı/backlog darboğazı; ttfb yüksek → app/event-loop işleme.** Yük-üretici
+darboğaza katkı yapıyorsa `http_loadgen.saturation_hint` =
+`loadgen_below_target_concurrency` görünür (bunu app kapasitesi sanmayın). Son
+kanıtlanmış kilometre taşı yeni koşum aksini kanıtlayana kadar **300 aktif proxy
+kullanıcı / 90 dakika**'dır.
+
 Etkileşimli (interactive) serit + uygulamasız bulut kanıtı: GET-only HTTP seridinin
 açmadığı sohbet/DB/streaming/stop yollarını **gerçek DB havuzu** üzerinde alıştırır
 (`tests/scripts/soak_interactive_lane.R`). Çalışan bir uygulama URL'si gerekmeden
