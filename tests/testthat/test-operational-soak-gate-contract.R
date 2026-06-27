@@ -963,13 +963,16 @@ testthat::test_that("load driver: rampa hedefi + think gecikmesi + curl times (S
   d <- env$soak_think_delay_sec(200, 800)
   testthat::expect_true(d >= 0.2 && d <= 0.8)
 
-  # curl times -> ms (connect/ttfb ayri); eksik -> NA.
+  # curl times -> ms (connect/app-ttfb ayri); eksik -> NA.
   tm <- env$soak_extract_curl_times_ms(c(redirect = 0, namelookup = 0.001,
-                                         connect = 0.002, pretransfer = 0.0025,
+                                         connect = 0.002, appconnect = 0.004, pretransfer = 0.0045,
                                          starttransfer = 0.010, total = 0.012))
   testthat::expect_equal(tm$connect_ms, 2)
-  testthat::expect_equal(tm$ttfb_ms, 10)
+  testthat::expect_equal(tm$ttfb_ms, 6)
   testthat::expect_equal(tm$total_ms, 12)
+  tm_plain <- env$soak_extract_curl_times_ms(c(connect = 0.002,
+                                               starttransfer = 0.010, total = 0.012))
+  testthat::expect_equal(tm_plain$ttfb_ms, 8)
   tm0 <- env$soak_extract_curl_times_ms(NULL)
   testthat::expect_true(is.na(tm0$connect_ms) && is.na(tm0$ttfb_ms))
 })
@@ -989,7 +992,7 @@ testthat::test_that("metrics: connect/ttfb sutunlari kaydedilir ve yuzdelikleri 
   s <- env$soak_metrics_summary(m)
   testthat::expect_true(is.finite(s$connect_ms_p95))
   testthat::expect_true(is.finite(s$ttfb_ms_p95))
-  testthat::expect_true(s$ttfb_ms_p95 >= s$connect_ms_p95)
+  testthat::expect_true(s$ttfb_ms_p95 > 0)
 
   sl <- env$soak_metrics_slice_summary(m, 1L, 50L, wall_seconds = 5)
   testthat::expect_true("connect_ms_p95" %in% names(sl))
