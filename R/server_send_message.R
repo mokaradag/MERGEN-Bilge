@@ -43,6 +43,7 @@ sendMessageInit <- function(
 	}
 
 	cleanup_send_message <- function(remove_typing_wrapper = TRUE) {
+	  mergen_send_message_release_values_token(values)  # backpressure slotu (varsayılan no-op)
 	  mergen_cleanup_send_message(
 		values = values,
 		reset_chat_state_fn = reset_chat_state_fn,
@@ -51,6 +52,7 @@ sendMessageInit <- function(
 	}
 
 	abort_send_message <- function(message = NULL, type = "warning", remove_typing_wrapper = TRUE) {
+	  mergen_send_message_release_values_token(values)  # backpressure slotu (varsayılan no-op)
 	  mergen_abort_send_message(
 		session = session,
 		values = values,
@@ -95,6 +97,15 @@ sendMessageInit <- function(
       }
     }
     values$last_request_time <- Sys.time()
+    # Süreç-geneli kabul-denetimi (backpressure; varsayılan KAPALI = no-op).
+    mergen_send_message_release_values_token(values)
+    bp_admission <- mergen_send_message_acquire_slot()
+    if (!isTRUE(bp_admission$acquired)) {
+      showToast(session, "Sunucu şu anda yoğun. Lütfen birkaç saniye sonra tekrar deneyin.", "warning")
+      return(invisible(NULL))
+    }
+    bp_handoff <- FALSE
+    on.exit(if (!isTRUE(bp_handoff)) mergen_send_message_release_slot(bp_admission$token), add = TRUE)
 
     prompt_snapshot <- mergen_build_send_message_prompt_snapshot(
       prompt_text = prompt_text,
@@ -212,6 +223,10 @@ sendMessageInit <- function(
     shinyjs::runjs("$('#send_stop_btn').attr('title', 'Durdur').attr('aria-label', 'Üretimi durdur');")
 
     values$is_sending <- TRUE
+    # Slotu asenkron yaşam döngüsüne devret (artık cleanup/abort + TTL bırakır).
+    values$backpressure_token <- bp_admission$token
+    values$backpressure_request_id <- req_id
+    bp_handoff <- TRUE
     stop_generation(FALSE)
 
     recent_history_limit <- if ((identical(tool_family, "none") || identical(tool_family, "coding")) &&

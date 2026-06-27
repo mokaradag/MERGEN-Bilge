@@ -80,8 +80,22 @@ mergen_build_index_ui <- function(static_ui,
 
   cached_response <- NULL
 
+  # Süreç-içi gözlemlenebilirlik sayacı (guard'lı; metrik modülü yoksa no-op,
+  # böylece bu yardımcı izole testlerde tek başına source edilebilir kalır).
+  .count_index <- function(name) {
+    if (exists("mergen_runtime_metric_inc", mode = "function", inherits = TRUE)) {
+      try(mergen_runtime_metric_inc(name), silent = TRUE)
+    }
+  }
+
   function(req) {
-    if (is.null(cached_response)) {
+    if (!is.null(cached_response)) {
+      # Sıcak önbellek isabeti: yeniden serileştirme YOK.
+      .count_index("index_cache_hit")
+      return(cached_response)
+    }
+
+    {
       start <- if (exists("mergen_perf_now", mode = "function", inherits = TRUE)) {
         mergen_perf_now()
       } else {
@@ -105,6 +119,7 @@ mergen_build_index_ui <- function(static_ui,
       if (is.null(rendered)) {
         # Bu istekte Shiny statik UI'yi her zamanki gibi render etsin; önbellek
         # NULL kalır, bir sonraki istekte yeniden denenir.
+        .count_index("index_cache_miss_fallback")
         return(static_ui)
       }
 
@@ -113,10 +128,12 @@ mergen_build_index_ui <- function(static_ui,
         error = function(e) NULL
       )
       if (is.null(response)) {
+        .count_index("index_cache_miss_fallback")
         return(static_ui)
       }
 
       cached_response <<- response
+      .count_index("index_cache_miss_build")
 
       if (!is.null(start) &&
           exists("mergen_perf_log", mode = "function", inherits = TRUE)) {

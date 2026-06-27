@@ -119,6 +119,56 @@ mergen_remove_typing_wrapper_if_safe <- function(active_request_id = NULL,
   invisible(TRUE)
 }
 
+# --- Süreç-geneli kabul-denetimi (backpressure) slotu yardımcıları ---
+# Pahalı LLM/sohbet işlemlerini süreç-genelinde üst-sınıra bağlamak için kullanılır
+# (R/helpers_request_backpressure.R). Varsayılan KAPALI (limit 0) iken hepsi
+# no-op'tur ve mevcut davranış bayt-bayt korunur. Helper yoksa da güvenli no-op.
+
+# Bir slot edinmeyi dener. Limit 0/helper-yok -> acquired=TRUE, token=NULL.
+mergen_send_message_acquire_slot <- function(kind = "llm") {
+  if (exists("mergen_backpressure_try_acquire", mode = "function", inherits = TRUE)) {
+    return(mergen_backpressure_try_acquire(kind))
+  }
+  list(acquired = TRUE, token = NULL)
+}
+
+# Verilen token'ı serbest bırakır (idempotent; NULL/helper-yok -> no-op).
+mergen_send_message_release_slot <- function(token) {
+  if (!is.null(token) && exists("mergen_backpressure_release", mode = "function", inherits = TRUE)) {
+    try(mergen_backpressure_release(token), silent = TRUE)
+  }
+  invisible(NULL)
+}
+
+# values$backpressure_token'ı serbest bırakıp temizler (sonlandırma/iptal yolları
+# ve yeni istek girişindeki bayat-slot temizliği için tek çağrı noktası).
+mergen_send_message_release_values_token <- function(values, req_id = NULL) {
+  tok <- tryCatch(shiny::isolate(values$backpressure_token), error = function(e) NULL)
+
+  if (!is.null(req_id)) {
+    expected_id <- tryCatch(as.character(req_id)[1], error = function(e) NA_character_)
+    token_request_id <- tryCatch(
+      shiny::isolate(values$backpressure_request_id),
+      error = function(e) NULL
+    )
+    token_request_id <- tryCatch(
+      as.character(token_request_id)[1],
+      error = function(e) NA_character_
+    )
+
+    if (is.na(expected_id) ||
+        is.na(token_request_id) ||
+        !identical(token_request_id, expected_id)) {
+      return(invisible(FALSE))
+    }
+  }
+
+  mergen_send_message_release_slot(tok)
+  values$backpressure_token <- NULL
+  values$backpressure_request_id <- NULL
+  invisible(TRUE)
+}
+
 mergen_cleanup_send_message <- function(values,
                                         reset_chat_state_fn,
                                         remove_typing_wrapper = TRUE,

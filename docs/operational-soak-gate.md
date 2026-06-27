@@ -1368,3 +1368,91 @@ Kanıtı oku: `soak_evidence.json` içinde `capacity_ladder.bottleneck_hint`,
 ve `metrics.connect_ms_p95` / `metrics.ttfb_ms_p95`. `ttfb_ms_p95` TLS/pretransfer-sonrası
 ilk-byte bileşenidir. `connect_ms_p95` büyük + `ttfb_ms_p95` küçük ise darboğaz
 bağlantı/backlog; tersi ise app işleme.
+
+---
+
+## 18. 2026-06-27 Çalışma-zamanı performans/yatay-ölçekleme katmanı (425 bulgusuna yanıt)
+
+§17 yalnız teşhis/gözlemlenebilirlik ekledi. Bu bölüm, 13A/§17 bulgusuna
+(`connection_timeout` baskın, CPU düşük, app-port TCP ~425, kök sayfa zaten
+önbellekli, attach seridi yalnız GET) yanıt olarak eklenen **gerçek çalışma-zamanı
+uygulama değişikliklerini** ve önerilen VM rerun'ını açıklar. **Hiçbir soak eşiği
+düşürülmedi; soak gate pass/fail mantığı, kapasite-merdiveni, timeout-atfı ve
+UNMEASURED dürüstlüğü DEĞİŞMEDİ.** Güvenlik/anahtar-izolasyon/redaksiyon/upload/
+DB-işlem/encoding kontrolleri korundu.
+
+### 18.1 Kök neden ve dürüst çözüm
+
+Darboğaz uygulama UI render veya oturum başlatma değildir (kök sayfa
+`R/helpers_index_page_cache.R` ile önbellekli; attach seridi websocket Shiny
+oturumu kurmaz). Baskın `connection_timeout` + düşük CPU, **tek httpuv sürecinin
+TCP kabul/backlog doygunluğuna** işaret eder. Bunun dürüst çözümü **yatay
+ölçeklemedir** (birden çok worker süreci, her biri kendi kabul döngüsüyle, bir
+yük-dengeleyici arkasında). Tek süreçte 1000 kullanıcı kanıtlanmaya çalışılmaz.
+
+### 18.2 Eklenen çalışma-zamanı değişiklikleri
+
+- **Sağlık/hazırlık uç noktaları** — `GET /healthz` (canlılık), `GET /readyz`
+  (sır-güvenli hazırlık + uygulama-içi metrik anlık görüntüsü). DB/oturum işi
+  yapmaz. `R/helpers_app_http_routes.R`; `uiPattern` yalnız `/`, `/healthz`,
+  `/readyz` eşler. `MERGEN_HEALTH_ENDPOINT=false` ile kapatılabilir.
+- **Çok-worker başlatıcı** — `tools/run_mergen_workers.R`. `MERGEN_WORKERS=N` ile
+  N worker (`MERGEN_PORT` = base..base+N-1). Yalnız `processx`. Varsayılan 1
+  (mevcut tek-süreç davranışı).
+- **Backpressure** — `R/helpers_request_backpressure.R`, süreç-geneli eşzamanlı
+  pahalı-işlem üst-sınırı, TTL-ile-kendi-iyileşen. **Varsayılan KAPALI**
+  (`MERGEN_MAX_CONCURRENT_LLM=0` -> no-op). Açıkken aşım, uzun gizli timeout
+  yerine hızlı/dostça "sunucu yoğun" verir.
+- **Süreç-içi metrikler** — `R/helpers_runtime_metrics.R`, sır-güvenli sayaçlar;
+  `/readyz` ile süreç dışına açılır (attach seridi bunları doğrudan göremez).
+
+### 18.3 Uygulama-içi iyileşmeyi gözlemleme (attach modu)
+
+Attach modlu yük sürücüsü uygulamanın iç sayaçlarını göremez. Worker'ın
+`/readyz` çıktısını periyodik okuyarak kök sayfa önbellek isabeti, backpressure
+admit/reject ve DB havuz sayaçları gözlemlenebilir (sır içermez):
+
+```powershell
+curl.exe -s http://127.0.0.1:8009/readyz
+```
+
+### 18.4 Yatay ölçekleme dağıtımı (Windows VM)
+
+```powershell
+# N worker'i farkli portlarda baslat (kurumsal ters-vekil arkasinda):
+$env:MERGEN_WORKERS = "4"          # 8009,8010,8011,8012
+$env:MERGEN_BASE_PORT = "8009"
+$env:MERGEN_HOST = "0.0.0.0"
+Rscript tools/run_mergen_workers.R
+```
+
+Yük-dengeleyici, her worker'i `GET /healthz` ile canlilik, `GET /readyz` ile
+hazirlik kontrolune tabi tutmalidir. Tek-surec dagitimi (run_mergen_prod.bat)
+degismeden kalir.
+
+### 18.5 Önerilen VM rerun (300→425 daraltma, telemetri açık)
+
+Mevcut son stabil kademe **300 aktif proxy kullanıcı / 90 dakika**. Bu katman tek
+başına 425 readiness, 1000 gerçek insan, gerçek LLM throughput veya gerçek
+tarayıcı/websocket eşzamanlılığı KANITLAMAZ. Aşağıdaki kademeli merdiveni
+(100,300,350,400,425) Windows VM'de canlı uygulamaya attach ederek tekrar koşun:
+
+```powershell
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
+$env:MERGEN_SOAK_PROFILE = "proxy_llm"
+$env:MERGEN_SOAK_LLM_MODE = "proxy"
+$env:MERGEN_SOAK_PROXY_FORWARD_REAL = "FALSE"
+$env:MERGEN_SOAK_CAPACITY_LADDER = "TRUE"
+$env:MERGEN_SOAK_CAPACITY_USERS = "100,300,350,400,425"
+$env:MERGEN_SOAK_CAPACITY_STEP_SECONDS = "600"
+$env:MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN = "0.98"
+$env:MERGEN_SOAK_STOP_ON_FIRST_FAILED_STEP = "TRUE"
+$env:MERGEN_SOAK_TELEMETRY_ENABLED = "TRUE"
+Rscript --vanilla tests/scripts/run_operational_soak_gate.R
+```
+
+Çok-worker dağıtımda (önerilen): aynı merdiveni yük-dengeleyici kök URL'sine
+attach ederek koşun ve `effective_success_rate` ile `capacity_ladder`'ın 425'te
+PASS olup olmadığını okuyun. Başarı kriteri ya 425'te `>= 0.98`, ya da
+`connection_timeout`'un belirgin azalması + kalan darboğazın app-dışı (tek-süreç
+httpuv / yük-üretici loop doygunluğu) olduğunun telemetriyle kanıtlanmasıdır.

@@ -448,3 +448,13 @@ ui <- dashboardPage(
 if (exists("mergen_build_index_ui", mode = "function")) {
   ui <- mergen_build_index_ui(ui)
 }
+
+# --- SAĞLIK / HAZIRLIK UÇ NOKTALARI (YATAY ÖLÇEKLEME İÇİN) ---
+# Yukarıdaki (gerekirse önbellekli) kök sayfa UI'si, GET /healthz ve GET /readyz
+# uç noktalarını da sunan hafif bir yönlendiriciyle sarılır. Bu uç noktalar
+# DB/oturum işi yapmaz ve yük-dengeleyicinin birden çok MERGEN worker'ını güvenle
+# havuza alıp çıkarmasını sağlar. Sağlık uç noktaları MERGEN_HEALTH_ENDPOINT ile
+# kapatılırsa `ui` DEĞİŞMEDEN kalır. Ayrıntılar: R/helpers_app_http_routes.R.
+if (exists("mergen_build_app_ui", mode = "function")) {
+  ui <- mergen_build_app_ui(ui)
+}

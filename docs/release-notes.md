@@ -15,37 +15,48 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
-### 2026-06-27 En yeni proxy attach soak retest: 400 kısa stabil, 425 ilk başarısız
+### 2026-06-27 Çalışma-zamanı performans/yatay-ölçekleme katmanı (425 bağlantı-timeout bulgusuna yanıt)
 
-Kullanıcının paylaştığı yeni Windows VM ekran görüntülerine göre en son proxy attach
-soak retest artifact dizini `artifacts/soak/20260627-093805` ve kanıt dosyası
-`artifacts/soak/20260627-093805/soak_evidence.json` olarak görünüyor (`created_at`
-`2026-06-27T10:29:30Z`). Koşum `proxy_llm` / proxy lane, `http://127.0.0.1:8009/`
-attach, 50 aktif simüle kullanıcı, 1000 kullanıcı tabanı hedefi, `burst` yük deseni
-ve açık kapasite merdiveni ile yapılmış. Genel sonuç **FAIL**: ana seride `136185`
-istek, `132043` başarı, `4142` timeout, `0` hata; raw/effective başarı oranı
-`0.9696` ile `0.98` eşiğinin altında kaldı. Gecikmeler p50≈`1969.7` ms,
-p95≈`11611.8` ms, p99≈`13087.5` ms; throughput≈`2710.6` op/dk. Timeout atfı
-`connection_timeout=3723`, `response_timeout=419` olarak baskın connection-timeout
-yönünde kaldı.
+Önceki commit (bff7fad) yalnızca soak teşhis/gözlemlenebilirlik ekledi; bu
+değişiklik **gerçek çalışma-zamanı uygulama davranışını** iyileştirir. Soak
+kanıtı baskın hatanın **`connection_timeout`** (CPU düşük ~%21-29, app-port TCP
+~425) olduğunu gösterdi; kök sayfa GET `/` zaten önbellekli ve attach seridi
+yalnız GET olduğundan darboğaz **uygulama UI/oturum işi değil, TEK SÜRECİN httpuv
+TCP kabul/backlog doygunluğudur**. Bunun dürüst çözümü yatay ölçeklemedir.
 
-Kapasite merdiveni önceki 300→450 aralığını daralttı: 100, 300, 350 ve 400 kullanıcı
-adımları 600 sn/adımda PASS; 425 kullanıcı adımı `12243` istekten `8201` başarı ve
-`4142` timeout ile FAIL (`effective_success_rate≈0.6644`). Sonuç olarak en yeni kısa
-merdiven stabil adımı **400 aktif proxy kullanıcı / 10 dakika**, ilk başarısız adım
-**425 aktif proxy kullanıcı**; önerilen daraltma adımları `410,415,420`. Ancak en
-uzun süreli stabil proxy attach kanıtı hâlâ önceki **300 aktif proxy kullanıcı /
-90 dakika** koşumudur. 400/10dk sonucu 425 readiness, 1000 gerçek insan readiness,
-gerçek LLM throughput, gerçek browser/websocket concurrency veya SQL Server at-rest
-encoding kanıtı değildir.
+**Hiçbir soak eşiği düşürülmedi, kapasite-merdiveni/timeout-atfı/UNMEASURED
+dürüstlüğü ve anahtar-izolasyon/upload/redaksiyon/DB-işlem/encoding kontrolleri
+korundu.** Soak gate pass/fail mantığı DEĞİŞMEDİ.
 
-Olumlu kontroller korundu: etkileşimli lane `50` oturum / `400` eylemde PASS, DB
-havuzu checkout=return=`451`, outstanding=`0`, tx commit=`200`, rollback=`50`; key
-routing `5/5`, cross-session isolation, upload validation `7/7`, secret leak `0`,
-mojibake hits `0`, DB-encoding helper ve Türkçe+emoji round-trip PASS. `memory_growth_mb`
-ve `browser_console_errors` ölçülmediği için PASS sayılmaz. Ayrıntılar
-[`operational-soak-gate.md`](operational-soak-gate.md#13b-2026-06-27-windows-vm-proxy-attach-retest-400-stable-425-first-failure)
-bölümüne işlendi.
+- **Sağlık/hazırlık uç noktaları** (`R/helpers_app_http_routes.R`): `GET /healthz`
+  (canlılık; küçük statik JSON, DB/oturum işi yok) ve `GET /readyz` (sır-güvenli
+  hazırlık + gözlemlenebilirlik anlık görüntüsü). Yük-dengeleyici birden çok
+  worker'ı bunlarla güvenle havuza alıp çıkarır. `uiPattern` yalnız `/`,
+  `/healthz`, `/readyz` eşler; diğer yollar etkilenmez (gerçek sunucuda doğrulandı:
+  `/foozzz` -> 404). `MERGEN_HEALTH_ENDPOINT=false` ile kapatılınca `ui` bayt-bayt
+  korunur.
+- **Çok-worker başlatıcı** (`tools/run_mergen_workers.R`): OPT-IN yatay ölçekleme.
+  `MERGEN_WORKERS=N` ile her biri farklı `MERGEN_PORT`'ta N worker sürecini bir
+  kurumsal ters-vekil/yük-dengeleyici (nginx/IIS ARR/HAProxy) arkasında başlatır;
+  yalnızca mevcut `processx` kullanılır (CDN/ağır bağımlılık yok). **VARSAYILAN
+  tek-süreç davranışı değişmez** (`MERGEN_WORKERS` ayarsızken 1 worker).
+- **Backpressure (kabul-denetimi)** (`R/helpers_request_backpressure.R`): süreç-
+  geneli, TTL-ile-kendi-iyileşen eşzamanlı pahalı-işlem üst-sınırı.
+  **Varsayılan KAPALI** (`MERGEN_MAX_CONCURRENT_LLM=0` -> no-op; davranış bayt-bayt
+  korunur). Açıkken sınır aşımı uzun gizli timeout yerine hızlı/dostça "sunucu
+  yoğun" yanıtı verir; stop/iptal bozulmaz. `send_message` girişine güvenli
+  bağlandı (tüm sonlandırma/iptal yollarında bırakılır + TTL güvenlik ağı).
+- **Süreç-içi çalışma-zamanı metrikleri** (`R/helpers_runtime_metrics.R`): sır-
+  güvenli sayaçlar (kök sayfa önbellek hit/miss, sağlık isabeti, backpressure
+  admit/reject). Attach seridinin göremediği uygulama-içi davranışı `/readyz`
+  üzerinden süreç dışına sır-güvenli açar.
+- Kök sayfa önbelleği (`R/helpers_index_page_cache.R`) artık hit/miss sayar (sıcak
+  isabette yeniden serileştirme YOK; sözleşmeyle korunur).
+
+**VM koşumu rerun edilene kadar KANITLANMAZ:** 425 aktif proxy kullanıcının
+`effective_success_rate >= 0.98`'e ulaşması; çok-worker topolojisinin gerçek
+kabul-kapasitesi kazanımı; backpressure açıkken üretim UX'i. Bunlar Windows VM'de
+kademeli merdiven (100,300,350,400,425) yeniden koşularak doğrulanmalıdır.
 
 
 ### 2026-06-27 Soak bağlantı-timeout teşhis sertleştirmesi (450 bulgusuna yanıt)

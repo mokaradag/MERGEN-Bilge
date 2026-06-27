@@ -169,3 +169,64 @@ test_that("mergen_resolve_render_page_fn Shiny renderPage'i çözer", {
   fn <- env$mergen_resolve_render_page_fn()
   expect_true(is.function(fn))
 })
+
+# Metrik modülü de yüklü olduğunda hit/miss sayaçlarının arttığını ve sıcak
+# isabette YENİDEN render OLMADIĞINI doğrular (her istekte pahalı yeniden-üretim
+# yok). Metrik modülü yokken sayaç çağrıları guard'lı no-op'tur (yukarıdaki
+# testler bunu kanıtlar: sayaç olmadan da davranış aynı).
+.index_cache_env_with_metrics <- function() {
+  env <- new.env(parent = globalenv())
+  source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_runtime_metrics.R"),
+    encoding = "UTF-8", local = env
+  )
+  source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_index_page_cache.R"),
+    encoding = "UTF-8", local = env
+  )
+  env
+}
+
+test_that("hit/miss sayaclari artar ve sicak isabette YENIDEN render YOK", {
+  skip_if_not_installed("shiny")
+  env <- .index_cache_env_with_metrics()
+  env$mergen_runtime_metrics_reset()
+
+  render_count <- 0L
+  fake_render <- function(ui, showcase = 0, testMode = FALSE) {
+    render_count <<- render_count + 1L
+    "<html>MERGEN</html>"
+  }
+
+  handler <- env$mergen_build_index_ui(
+    list(marker = "STATIK_UI"),
+    enabled = TRUE,
+    render_page_fn = fake_render
+  )
+
+  # İlk istek: miss_build + 1 render.
+  handler(list(PATH_INFO = "/"))
+  expect_identical(render_count, 1L)
+  expect_equal(env$mergen_runtime_metric_get("index_cache_miss_build"), 1)
+  expect_equal(env$mergen_runtime_metric_get("index_cache_hit"), 0)
+
+  # Sonraki 5 istek: sicak isabet; YENIDEN render YOK; hit sayaci artar.
+  for (i in seq_len(5L)) handler(list(PATH_INFO = "/"))
+  expect_identical(render_count, 1L)
+  expect_equal(env$mergen_runtime_metric_get("index_cache_hit"), 5)
+  expect_equal(env$mergen_runtime_metric_get("index_cache_miss_build"), 1)
+})
+
+test_that("render basarisizliginda miss_fallback sayilir ve onbellek kirletilmez", {
+  skip_if_not_installed("shiny")
+  env <- .index_cache_env_with_metrics()
+  env$mergen_runtime_metrics_reset()
+
+  fail_render <- function(ui, showcase = 0, testMode = FALSE) stop("render hata")
+  handler <- env$mergen_build_index_ui(
+    list(marker = "STATIK_UI"), enabled = TRUE, render_page_fn = fail_render
+  )
+  suppressWarnings(suppressMessages(handler(list(PATH_INFO = "/"))))
+  expect_gte(env$mergen_runtime_metric_get("index_cache_miss_fallback"), 1)
+  expect_equal(env$mergen_runtime_metric_get("index_cache_hit"), 0)
+})

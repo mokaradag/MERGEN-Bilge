@@ -23,6 +23,10 @@
     capture$abort <- list(...)
     invisible(NULL)
   }
+  env$mergen_send_message_release_values_token <- function(...) {
+    capture$release <- list(...)
+    invisible(TRUE)
+  }
   env
 }
 
@@ -59,6 +63,8 @@ testthat::test_that("cleanup kapanışı req_id'yi yakalar ve mergen_cleanup_sen
   testthat::expect_identical(arglar$active_request_id, "ARID")
   # En kritik sözleşme: oluşturulma anındaki req_id yakalanıp iletilir
   testthat::expect_identical(arglar$req_id, "REQ-7")
+  testthat::expect_identical(capture$release$values, "V")
+  testthat::expect_identical(capture$release$req_id, "REQ-7")
 })
 
 testthat::test_that("cleanup remove_typing_wrapper = FALSE bayrağını iletir", {
@@ -92,6 +98,8 @@ testthat::test_that("abort kapanışı toast mesaj/tip + req_id'yi mergen_abort_
   testthat::expect_true(arglar$remove_typing_wrapper)
   testthat::expect_identical(arglar$active_request_id, "ARID")
   testthat::expect_identical(arglar$req_id, "REQ-9")
+  testthat::expect_identical(capture$release$values, "V")
+  testthat::expect_identical(capture$release$req_id, "REQ-9")
 })
 
 testthat::test_that("farklı req_id'li iki callback seti birbirinin kimliğini taşımaz (request-scoped)", {

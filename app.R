@@ -149,6 +149,16 @@ create_mergen_app <- function() {
   shiny::shinyApp(
     ui = ui,
     server = server,
+    # Kök sayfa yönlendiricisi (R/helpers_app_http_routes.R) `/healthz` ve
+    # `/readyz` yollarını da sunabilsin diye uiPattern genişletilir. Yardımcı
+    # yoksa veya sağlık uç noktası kapalıysa varsayılan "/" davranışı korunur
+    # (mevcut davranışla bayt-bayt aynı; yalnız "/", "/healthz", "/readyz" eşleşir,
+    # statik kaynak yolları etkilenmez).
+    uiPattern = if (exists("mergen_app_route_pattern", mode = "function")) {
+      mergen_app_route_pattern()
+    } else {
+      "/"
+    },
     onStart = function() {
       validate_boot_state()
       # İşlem-güvenli DB bağlantı havuzunu süreç ömrü boyunca BİR KEZ başlat.

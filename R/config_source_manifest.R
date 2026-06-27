@@ -35,7 +35,10 @@ source_manifest_sections <- list(
     "R/config_logging_daily_file.R",
     "R/config_logging.R",
     "R/helpers_performance_instrumentation.R",
+    "R/helpers_runtime_metrics.R",
+    "R/helpers_request_backpressure.R",
     "R/helpers_index_page_cache.R",
+    "R/helpers_app_http_routes.R",
     "R/utils_rate_limiter.R",
     "R/helpers_worker_monitor.R"
   ),
