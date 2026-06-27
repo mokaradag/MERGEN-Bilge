@@ -13,6 +13,7 @@ mergen_build_send_message_request_callbacks <- function(session,
 
   list(
     cleanup = function(remove_typing_wrapper = TRUE) {
+      mergen_send_message_release_values_token(values = values, req_id = request_id)
       mergen_cleanup_send_message(
         values = values,
         reset_chat_state_fn = reset_chat_state_fn,
@@ -25,6 +26,7 @@ mergen_build_send_message_request_callbacks <- function(session,
     abort = function(message = NULL,
                      type = "warning",
                      remove_typing_wrapper = TRUE) {
+      mergen_send_message_release_values_token(values = values, req_id = request_id)
       mergen_abort_send_message(
         session = session,
         values = values,

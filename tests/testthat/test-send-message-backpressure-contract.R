@@ -42,8 +42,9 @@ test_that("send_message backpressure wiring tokenlari mevcut", {
   expect_true(grepl("bp_admission <- mergen_send_message_acquire_slot()", txt, fixed = TRUE))
   expect_true(grepl("on.exit(", txt, fixed = TRUE))
   expect_true(grepl("bp_handoff", txt, fixed = TRUE))
-  # Token reaktif state'e devredilir.
+  # Token ve request kimliği reaktif state'e devredilir.
   expect_true(grepl("values$backpressure_token <- bp_admission$token", txt, fixed = TRUE))
+  expect_true(grepl("values$backpressure_request_id <- req_id", txt, fixed = TRUE))
 })
 
 test_that("slot tum sonlandirma/iptal yollarinda serbest birakilir", {

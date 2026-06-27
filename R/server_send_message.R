@@ -225,6 +225,7 @@ sendMessageInit <- function(
     values$is_sending <- TRUE
     # Slotu asenkron yaşam döngüsüne devret (artık cleanup/abort + TTL bırakır).
     values$backpressure_token <- bp_admission$token
+    values$backpressure_request_id <- req_id
     bp_handoff <- TRUE
     stop_generation(FALSE)
 

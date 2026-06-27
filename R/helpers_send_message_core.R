@@ -142,11 +142,31 @@ mergen_send_message_release_slot <- function(token) {
 
 # values$backpressure_token'ı serbest bırakıp temizler (sonlandırma/iptal yolları
 # ve yeni istek girişindeki bayat-slot temizliği için tek çağrı noktası).
-mergen_send_message_release_values_token <- function(values) {
+mergen_send_message_release_values_token <- function(values, req_id = NULL) {
   tok <- tryCatch(shiny::isolate(values$backpressure_token), error = function(e) NULL)
+
+  if (!is.null(req_id)) {
+    expected_id <- tryCatch(as.character(req_id)[1], error = function(e) NA_character_)
+    token_request_id <- tryCatch(
+      shiny::isolate(values$backpressure_request_id),
+      error = function(e) NULL
+    )
+    token_request_id <- tryCatch(
+      as.character(token_request_id)[1],
+      error = function(e) NA_character_
+    )
+
+    if (is.na(expected_id) ||
+        is.na(token_request_id) ||
+        !identical(token_request_id, expected_id)) {
+      return(invisible(FALSE))
+    }
+  }
+
   mergen_send_message_release_slot(tok)
   values$backpressure_token <- NULL
-  invisible(NULL)
+  values$backpressure_request_id <- NULL
+  invisible(TRUE)
 }
 
 mergen_cleanup_send_message <- function(values,
