@@ -840,6 +840,118 @@ errors ve memory growth bu koşumda ölçülmediği için PASS gibi sunulmamalı
 
 ---
 
+## 13B. 2026-06-27 Windows VM proxy attach retest: 400 stable, 425 first failure
+
+Bu bölüm, kullanıcının paylaştığı en yeni Windows VM ekran görüntülerinden
+aktarılmıştır. Artifact dizini `artifacts/soak/20260627-093805` ve kanıt dosyası
+`artifacts/soak/20260627-093805/soak_evidence.json` olarak görünür; bu checkout
+içinde artifact dosyası bulunmadığından değerler **VM console observed /
+screenshot-transcribed** kabul edilmelidir. JSON `created_at` değeri
+`2026-06-27T10:29:30Z` olarak görünür.
+
+### Koşum yapılandırması
+
+- Çalıştırma yolu: `Rscript --vanilla tests/scripts/run_operational_soak_gate.R`.
+- Uygulama attach URL: `http://127.0.0.1:8009/`.
+- Profil / lane: `proxy_llm`; `mock=FALSE`, `proxy=TRUE`, `real-canary=FALSE`; proxy
+  sahte kişisel-anahtar/proxy serit modunda çalıştı.
+- Eşzamanlı aktif kullanıcı: `50`; kullanıcı tabanı hedefi: `1000`.
+- Süre: hedef `1800` saniye, gerçek yaklaşık `3065` saniye.
+- Yük deseni: `burst`; `ramp=0s`; `connection_reuse=TRUE`; HTTP yük üretici
+  telemetrisi kapalı/atlanmış görünüyor.
+- Kapasite merdiveni: açık; ekran görüntülerinde koşulan adımlar `100,300,350,400,425`
+  olarak görünür; stabil eşik `0.98`; ilk başarısız adımda durdurma açık.
+- Sistem telemetrisi: açık; `97` örnek raporlandı.
+- Kapı genel sonucu: **FAIL**. Başarısızlık nedenleri:
+  `effective_success_rate` ve `capacity_ladder_all_steps_pass`.
+
+### Ana HTTP/proxy seridi metrikleri
+
+- Toplam istek: `136185`; başarılı: `132043`; hata: `0`; timeout: `4142`.
+- Ham/efektif başarı oranı: `0.9696`; eşik `0.98` altında kaldığı için FAIL.
+- Gecikme: p50≈`1969.7` ms; p95≈`11611.8` ms; p99≈`13087.5` ms; maksimum
+  gecikme ekran görüntüsünde ≈`32532.8` ms.
+- Throughput: yaklaşık `2710.6` başarılı operasyon/dakika.
+- HTTP kodları: `200=132043`; durum sayımları `ok=132043`, `timeout=4142`.
+- curl zamanlama: connect p50/p95 `0/0` ms; TTFB p50/p95≈`835.6/8539.6` ms.
+  Bu koşumda bağlantı kurma fazı değil, ilk-byte/app-side bekleme fazı daha görünürdür;
+  yine de terminal darboğaz ipucu app-port kabul/backlog doygunluğunu işaret ettiğinden
+  TCP state/accept-loop ölçümleriyle birlikte yorumlanmalıdır.
+- Timeout attribution: toplam `4142`; `connection_timeout=3723`;
+  `response_timeout=419`. Baskın timeout sınıfı hâlâ `connection_timeout`.
+- Sistem telemetrisi: CPU üst sınırı yaklaşık `%41`; maksimum toplam bellek kullanımı
+  yaklaşık `17458.5` MiB; maksimum R süreç bellek yaklaşık `3355.1` MiB; maksimum
+  app-port TCP bağlantısı `425`. App-port TCP durum maksimumları:
+  `established=424`, `syn_recv=0`, `syn_sent=0`, `time_wait=0`, `close_wait=0`,
+  `listen=1`.
+- Bellek/temp: `memory_growth_mb` ölçülmedi (`UNMEASURED`, value NA);
+  `temp_growth_mb=0.34` PASS.
+
+### Etkileşimli serit ve güvenlik/encoding kontrolleri
+
+- Etkileşimli lane: `50` oturum, `400` eylem; `400/400` başarı; success_rate=`1`;
+  p50≈`6.2` ms; p95≈`10.9` ms; p99≈`13.1` ms; throughput≈`8497.7` op/dk.
+- DB havuzu: checkout=`451`, return=`451`, outstanding=`0`; tx begin=`250`,
+  commit=`200`, rollback=`50`; sızıntı yok.
+- Anahtar yönlendirme: `5/5` doğru; kaynak sayıları `personal=2`, `default=1`,
+  `missing=2`, `error=0`; oturumlar arası anahtar izolasyonu TRUE.
+- İzolasyon/güvenlik: cross-session isolation, başka kullanıcının sohbet/mesajını
+  görmeme, yabancı sahipli anahtar reddi, secret leak `0`, raw key/prompt leak `0` PASS.
+- Upload validation: `7/7` PASS; traversal/uzantı/kontrol-byte adları reddedildi;
+  etkileşimli upload validation PASS.
+- Encoding/mojibake: DB-encoding helper round-trip, Türkçe+emoji escape/restore ve
+  etkileşimli Türkçe yazma/okuma mojibake'siz PASS; `mojibake_hits=0`.
+- Browser console errors: ölçülmedi (`UNMEASURED`) çünkü bu koşum browser lane değildir.
+- Server alive at end: TRUE; server crash yok.
+
+### Kapasite merdiveni bulgusu
+
+Bu retest, önceki 300→450 aralığını daraltmıştır. Sonuç `all_steps_pass=false`;
+`stable_capacity_users=400`; `first_failed_capacity_users=425`;
+`recommended_next_target=425`; önerilen ara kademeler `410,415,420`;
+`bottleneck_hint` ve birincil ipucu `possible_connection_accept_or_backlog_saturation`;
+`loadgen_saturation_hint=loadgen_loop_lag_high`; baskın timeout sınıfı
+`connection_timeout`.
+
+| Kademe | Süre | İstek | Başarı | Timeout | Effective başarı | p50 | p95 | p99 | Throughput | CPU max | TCP max | Sonuç |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 100 kullanıcı | 600 sn | 6747 | 6747 | 0 | 1.0000 | ≈715.9 ms | ≈910.3 ms | ≈2486.1 ms | ≈6714.7/dk | ≈%41 | ≈102 | PASS |
+| 300 kullanıcı | 600 sn | 18958 | 18958 | 0 | 1.0000 | ≈7247.2 ms | ≈9113.7 ms | ≈9358.6 ms | ≈1895.8/dk | ≈%15 | ≈297 | PASS |
+| 350 kullanıcı | 600 sn | 18936 | 18936 | 0 | 1.0000 | ≈8508.2 ms | ≈10681.2 ms | ≈11006.1 ms | ≈1893.6/dk | ≈%21 | ≈344 | PASS |
+| 400 kullanıcı | 600 sn | 18801 | 18801 | 0 | 1.0000 | ≈9848.6 ms | ≈12366.7 ms | ≈12737.5 ms | ≈1880.1/dk | ≈%30 | ≈402 | PASS |
+| 425 kullanıcı | 600 sn | 12243 | 8201 | 4142 | ≈0.6644 | ≈10783.2 ms | ≈19467.8 ms | ≈27949.3 ms | ≈1234.3/dk | ≈%16 | ≈425 | FAIL |
+
+Yorum: bu retest son stabil staged kapasiteyi **400 aktif proxy kullanıcı / 10 dakika**
+olarak günceller ve ilk başarısız adımı **425 aktif proxy kullanıcı** olarak daraltır.
+Ancak genel koşum yine FAIL olduğu için 425 readiness değildir; ayrıca 400 adımı yalnız
+10 dakika sürdüğünden önceki **300 aktif proxy kullanıcı / 90 dakika** kanıtından farklı
+bir dayanıklılık düzeyidir. Üretim kararı verirken iki ifade ayrı tutulmalıdır:
+
+- En uzun süreli stabil proxy attach kanıtı: **300 aktif proxy kullanıcı / 90 dakika**.
+- En yeni daraltılmış kısa merdiven stabil adımı: **400 aktif proxy kullanıcı / 10 dakika**;
+  ilk başarısız adım **425**.
+
+Bu koşum şunları kanıtlamaz: 1000 gerçek eşzamanlı aktif insan, gerçek LLM sağlayıcı
+throughput'u, gerçek browser/websocket concurrency, SQL Server at-rest encoding veya
+üretim ağ gecikmesi. `browser_console_errors` ve `memory_growth_mb` ölçülmediği için
+PASS gibi sunulmamalıdır.
+
+Önerilen takip işleri:
+
+1. `410,415,420,425` ara kademelerini aynı port/attach koşullarında koşarak 400→425
+   kırılma eşiğini daraltmak.
+2. `MERGEN_SOAK_RAMP_UP_SECONDS` ve `MERGEN_SOAK_MAX_NEW_PER_TICK` ile aynı merdiveni
+   tekrarlayıp burst bağlantı fırtınası ile kararlı-durum kapasitesini ayırmak.
+3. `loadgen_loop_lag_high` görüldüğü için yük üreticiyi ayrı makine/süreç, daha düşük
+   batch veya paced arrival ile karşılaştırmak; yük üretici doygunluğunu app kapasitesi
+   sanmamak.
+4. App-port accept/backlog/httpuv/Shiny event-loop ve Windows TCP limitlerini,
+   `established≈424`, `syn_recv=0`, `time_wait=0` gözlemleriyle birlikte incelemek.
+5. Browser concurrency lane ve SQL Server at-rest preflight'ı ayrı koşarak bu proxy
+   attach bulgusunun kapsamadığı kanıtları tamamlamak.
+
+---
+
 ## 14. 2026-06-22 Interactive lane + transaction-safe DB pool (cloud evidence)
 
 Bu bölüm, GET-only soak boşluğunu kapatmak için eklenen **etkileşimli (interactive)
@@ -1213,9 +1325,10 @@ kalır; sessizce PASS sayılmaz.
 
 ### 17.5 Hâlâ geçerli son kanıtlanmış kilometre taşı
 
-**300 aktif proxy kullanıcı / 90 dakika**, yeni bir VM koşumu aksini kanıtlayana
-kadar bu koşumun son stabil kademesidir. Bu sertleştirme bir kod teşhis katmanıdır;
-tek başına 450 readiness, 1000 gerçek insan, gerçek LLM throughput, gerçek
+**300 aktif proxy kullanıcı / 90 dakika** hâlâ en uzun süreli stabil proxy attach kanıtıdır.
+En yeni kısa merdiven retestinde **400 aktif proxy kullanıcı / 10 dakika** PASS,
+**425 aktif proxy kullanıcı** ilk başarısız adım olarak gözlenmiştir. Bu sertleştirme bir kod teşhis katmanıdır;
+tek başına 425/450 readiness, 1000 gerçek insan, gerçek LLM throughput, gerçek
 tarayıcı/websocket eşzamanlılığı veya SQL Server at-rest encoding KANITLAMAZ.
 
 ### 17.6 Önerilen bir sonraki VM koşumu (PowerShell, attach portu 8009)
@@ -1230,7 +1343,7 @@ $env:MERGEN_SOAK_PROFILE = "proxy_llm"
 $env:MERGEN_SOAK_LLM_MODE = "proxy"
 $env:MERGEN_SOAK_PROXY_FORWARD_REAL = "FALSE"
 $env:MERGEN_SOAK_CAPACITY_LADDER = "TRUE"
-$env:MERGEN_SOAK_CAPACITY_USERS = "100,300,350,400,425,450"
+$env:MERGEN_SOAK_CAPACITY_USERS = "100,300,350,400,410,415,420,425"
 $env:MERGEN_SOAK_CAPACITY_STEP_SECONDS = "5400"
 $env:MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN = "0.98"
 $env:MERGEN_SOAK_STOP_ON_FIRST_FAILED_STEP = "TRUE"
