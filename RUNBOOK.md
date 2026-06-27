@@ -329,6 +329,30 @@ Yine de 1.000 gerçek aktif insan chat oturumu, gerçek upstream LLM throughput'
 1000 gerçek browser/websocket oturumu veya üretim ağı uçtan uca kapasitesi olarak
 sunulamaz.
 
+
+2026-06-26/27 Windows VM proxy attach soak failure finding: latest screenshot-transcribed
+artifact path is `artifacts/soak/20260626-212908/soak_evidence.json` (`created_at`
+shown as `2026-06-27T02:01:24Z`). The run attached to `http://127.0.0.1:8009/`
+with `proxy_llm`, 50 active concurrent users, target duration 18000 seconds, and a
+capacity ladder of `100,300,450,600,750` at 5400 seconds/step. Overall gate result
+was **FAIL** because `effective_success_rate=0.8517` (threshold 0.98) and
+`capacity_ladder_all_steps_pass=false`. Main lane totals: 325001 requests, 276788
+successes, 48213 timeouts, 0 errors, p50≈2506 ms, p95≈16566.6 ms, p99≈29921.8 ms,
+throughput≈1202.9/min. Timeout attribution was dominated by connection timeouts
+(`connection_timeout=47763`, `response_timeout=450`). The ladder passed 100 users
+(191973/191973) and 300 users (83335/83613, timeout 278, effective≈0.9967), then
+failed at 450 users (450/49415, timeout≈47935, effective≈0.03 / raw≈0.008,
+p95≈44028.8 ms). Treat **300 active proxy users / 90 minutes** as the latest stable
+proxy attach milestone from this run; do not claim 450 readiness or 1000 real-human
+readiness. Positive controls in the same evidence: interactive lane 50 sessions /
+400 actions PASS, DB pool checkout=return=451 with outstanding=0, tx commit=200 and
+rollback=50, key routing 5/5, upload validation 7/7, secret leak 0, mojibake hits 0,
+server alive at end. `memory_growth_mb` and `browser_console_errors` were
+UNMEASURED. Follow-up should focus on the 450-user connection-timeout saturation
+without clear CPU pressure: app port backlog/accept queue, httpuv/Shiny event loop,
+Windows TCP limits, client connection reuse/timeouts, and intermediate 350/400/425
+ladder steps. Full details are in `docs/operational-soak-gate.md` section 13A.
+
 ## 8. Dağıtım Öncesi Kapılar
 
 1. Değişiklik türünü sınıflandırın: docs-only, UI, runtime, DB, SSO, file lifecycle, streaming, Bilge Yolaç veya deployment.
