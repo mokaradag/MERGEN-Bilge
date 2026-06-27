@@ -15,6 +15,41 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### 2026-06-27 Operasyonel proxy attach soak gate bulguları: 300 stabil, 450 timeout doygunluğu
+
+Kullanıcının paylaştığı Windows VM ekran görüntülerinden en son proxy attach soak
+bulguları dokümante edildi. Artifact yolu ekran görüntülerinde
+`artifacts/soak/20260626-212908/soak_evidence.json`; JSON `created_at` değeri
+`2026-06-27T02:01:24Z`. Koşum `proxy_llm` / `MERGEN_SOAK_LLM_MODE=proxy`,
+`http://127.0.0.1:8009/` attach, 50 aktif kullanıcı, 1000 kullanıcı tabanı hedefi,
+18000 sn hedef süre ve açık kapasite merdiveni (`100,300,450,600,750`, 5400 sn/adım,
+stabil eşik 0.98) ile yapılmış görünüyor. Genel sonuç **FAIL**: ana seri
+`325001` istekte `276788` başarı ve `48213` timeout ile `effective_success_rate=0.8517`
+üretti; başarısız eşikler `effective_success_rate` ve `capacity_ladder_all_steps_pass`.
+Timeout attribution baskın olarak `connection_timeout=47763`, ayrıca
+`response_timeout=450` gösterdi.
+
+Kapasite merdiveni sonucu: 100 kullanıcı PASS (`191973/191973`, p95≈5018 ms),
+300 kullanıcı PASS (`83335/83613`, timeout 278, effective≈0.9967, p95≈27566 ms),
+450 kullanıcı FAIL (`450/49415`, timeout≈47935, effective≈0.03 / raw≈0.008,
+p95≈44029 ms). Son stabil staged kapasite bu koşum için **300 aktif proxy kullanıcı /
+90 dakika**; önerilen sonraki hedef 450 olarak kaldı, fakat 450 readiness değildir.
+Darboğaz ipucu `timeout_saturation_without_clear_resource_signal`; CPU üst sınırı
+yaklaşık %29, app port TCP bağlantısı yaklaşık 425 olduğundan takip işi connection
+timeout/backlog/event-loop/TCP kabul kuyruğu tarafına odaklanmalıdır.
+
+Olumlu kontroller de kaydedildi: etkileşimli lane `50` oturum / `400` eylemde
+`400/400` PASS, DB havuzu checkout=return=`451`, outstanding=0, tx commit=200 ve
+rollback=50; key routing `5/5`, cross-session isolation, upload validation `7/7`,
+secret leak `0`, mojibake hits `0`, DB-encoding helper round-trip ve Türkçe+emoji
+escape/restore round-trip PASS. `memory_growth_mb` ve `browser_console_errors` bu
+koşumda UNMEASURED olduğu için PASS sayılmaz. Bu sonuçlar 1000 gerçek aktif insan,
+gerçek LLM throughput'u, gerçek browser/websocket concurrency veya SQL Server at-rest
+encoding kanıtı değildir. Ayrıntılar
+[`operational-soak-gate.md`](operational-soak-gate.md#13a-2026-06-2627-windows-vm-proxy-attach-soak-failure-findings)
+bölümüne işlendi.
+
+
 ### 2026-06-25 Operasyonel soak staged milestone güncellemesi
 
 Windows VM'de hedefe tek seferde 1000 kullanıcıyla gitmek yerine kademeli milestone

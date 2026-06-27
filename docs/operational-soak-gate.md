@@ -717,6 +717,129 @@ Geçerli staged milestone yorumu:
 
 ---
 
+## 13A. 2026-06-26/27 Windows VM proxy attach soak failure findings
+
+Bu bölüm, kullanıcının paylaştığı en son Windows VM ekran görüntülerinden
+aktarılmıştır. Artifact yolu ekran görüntülerinde `artifacts/soak/20260626-212908`
+ve kanıt dosyası `artifacts/soak/20260626-212908/soak_evidence.json` olarak
+görünür; bu checkout içinde artifact dosyası bulunmadığından değerler **VM console
+observed / screenshot-transcribed** kabul edilmelidir. Ekran görüntülerindeki JSON
+`created_at` alanı `2026-06-27T02:01:24Z` değerini gösterir.
+
+### Koşum yapılandırması
+
+- Çalıştırma yolu: `Rscript --vanilla tests/scripts/run_operational_soak_gate.R`.
+- Uygulama attach URL: `http://127.0.0.1:8009/`.
+- Profil / lane: `proxy_llm`; `MERGEN_SOAK_LLM_MODE=proxy`; `proxied_llm=true`;
+  `real_llm=false`; real-canary kapalı.
+- Proxy forwarding: kapalı (`forward_real_enabled=false`, `max_real_rpm=3`,
+  proxy lane requests=0); sahte/proxy LLM sunucusu koşum sonunda canlı kaldı.
+- Süre: hedef `18000` saniye, gerçek yaklaşık `16275` saniye.
+- Eşzamanlı aktif kullanıcı: `50`; kullanıcı tabanı hedefi: `1000`.
+- Kapasite merdiveni: açık; `MERGEN_SOAK_CAPACITY_USERS=100,300,450,600,750`;
+  kademe süresi `5400` saniye; stabil eşik `0.98`; ilk başarısız adımda durdurma
+  açık.
+- Sistem telemetrisi: açık; ekran görüntüsünde yaklaşık `531` örnek raporlandı.
+- Kapı genel sonucu: **FAIL**. Başarısızlık nedenleri:
+  `effective_success_rate` ve `capacity_ladder_all_steps_pass`.
+
+### Ana HTTP/proxy seridi metrikleri
+
+- Toplam istek: `325001`; başarılı: `276788`; hata: `0`; timeout: `48213`.
+- Ham ve efektif başarı oranı: `0.8517`; enjekte fault yok (`injected_fault_count=0`).
+- Gecikme: p50≈`2506.1` ms; p95≈`16566.6` ms; p99≈`29921.8` ms; maksimum
+  gecikme yaklaşık `49288.6` ms.
+- Throughput: yaklaşık `1202.9` başarılı operasyon/dakika.
+- HTTP kodları: `200=276788`; durum sayımları `ok=276788`, `timeout=48213`.
+- Timeout attribution: toplam `48213`; `connection_timeout=47763`;
+  `response_timeout=450`. En yavaş senaryolar yaklaşık:
+  `app_http_chat_short` count≈`68847`, p95≈`16639.4` ms;
+  `app_http_chat_table` count≈`27599`, p95≈`16593` ms;
+  `app_http_chat_turkish` count≈`5507`, p95≈`16589.5` ms;
+  `app_http_chat_code` count≈`41562`, p95≈`16583.2` ms;
+  `app_http_chat_markdown` count≈`32909`, p95≈`16530.3` ms.
+- Sistem telemetrisi: CPU üst sınırı yaklaşık `%29`; R süreç CPU üst sınırı yaklaşık
+  `%9.8`; maksimum toplam bellek kullanımı yaklaşık `17102.1` MiB; maksimum app
+  port TCP bağlantısı yaklaşık `425`. SQL Server CPU/bellek alanları `0` olarak
+  göründü; yorumlarken SQL Server süreç eşleşmesinin ölçülüp ölçülmediği ayrıca
+  kontrol edilmelidir.
+- Bellek/temp: `memory_growth_mb` ölçülmedi (`UNMEASURED`, value NA);
+  `temp_growth_mb=0.34` PASS.
+
+### Etkileşimli serit ve güvenlik/encoding kontrolleri
+
+- Etkileşimli lane: kullanılabilir; `50` oturum, `400` eylem; `400/400` başarı;
+  success_rate=`1`; p50≈`6.2` ms; p95≈`11.2` ms; p99≈`17.5` ms;
+  throughput≈`8462.9` op/dk. Senaryo sayımları: her biri `50` adet
+  `interactive_assistant_msg_save`, `interactive_chat_create`,
+  `interactive_file_upload`, `interactive_history_read`, `interactive_session_open`,
+  `interactive_stop_cancel`, `interactive_stream_process`,
+  `interactive_tx_rollback_probe`, `interactive_user_msg_save`.
+- DB havuzu: checkout=`451`, return=`451`, outstanding=`0`; tx begin=`250`,
+  commit=`200`, rollback=`50`; sızıntı yok.
+- İzolasyon: `cross_session_key_isolation=true`; `isolation_excludes_other_user=true`;
+  `key_owner_mismatch_rejected=true`.
+- Anahtar kaynakları / routing: `personal=2`, `default=1`, `missing=2`, `error=0`;
+  routing satırları `5/5` doğru.
+- Upload validation: `7/7` PASS; etkileşimli upload validation PASS.
+- Secret leak: `0`; raw key/prompt leak sayıları `0`; redaksiyon doğrulandı.
+- Encoding/mojibake: `mojibake_hits=0`; DB-encoding helper round-trip PASS;
+  Türkçe + emoji escape/restore helper round-trip PASS; etkileşimli mojibake hits `0`.
+- Browser console errors: ölçülmedi (`UNMEASURED`) çünkü bu koşum browser lane değildir.
+- Server alive at end: TRUE; server crash yok.
+
+### Kapasite merdiveni bulgusu
+
+Kapasite merdiveni `100,300,450,600,750` adımları için planlandı; ilk başarısız
+adımda durdurma açık olduğu için 450 kullanıcı adımından sonra durdu. Sonuç
+`all_steps_pass=false`; `stable_capacity_users=300`; `first_failed_capacity_users=450`;
+`recommended_next_target=450`; darboğaz ipucu
+`timeout_saturation_without_clear_resource_signal`.
+
+| Kademe | Süre | İstek | Başarı | Timeout | Raw/effective başarı | p50 | p95 | p99 | Throughput | CPU max | TCP max | Sonuç |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 100 kullanıcı | 5400 sn | 191973 | 191973 | 0 | 1.0000 | ≈1714.4 ms | ≈5018.2 ms | ≈5340.1 ms | ≈2133/dk | ≈%29 | ≈302 | PASS |
+| 300 kullanıcı | 5400 sn | 83613 | 83335 | 278 | ≈0.9967 | ≈13431.7 ms | ≈27566.5 ms | ≈31732 ms | ≈929/dk | ≈%29 | ≈302 | PASS |
+| 450 kullanıcı | 5400 sn | 49415 | 450 | 47935 | ≈0.03 effective / ≈0.008 raw | ≈24643 ms | ≈44028.8 ms | belirtilmedi | ≈549.1/dk | ≈%21 | ≈425 | FAIL |
+
+Yorum: 300 aktif proxy kullanıcı / 90 dakika bu koşumun son stabil kademesidir.
+450 kullanıcı adımı net timeout doygunluğuna girmiştir; CPU üst sınırı düşük/orta
+göründüğü için darboğaz yalnız CPU tüketimiyle açıklanmamaktadır. Connection timeout
+sınıfının baskın olması, app port bağlantı kabul/backlog, tek süreç/event-loop
+yığılması, Windows TCP ephemeral port/backlog/keepalive davranışı, httpuv kabul kuyruğu
+veya istemci tarafı connection pool/timeout ayarları gibi kaynak-dışı görünen
+doygunluk ihtimallerinin incelenmesini gerektirir.
+
+### Kanıt sınırları ve takip işleri
+
+Bu koşum; 50 eşzamanlı simüle kullanıcı ile uzun proxy seridinde key routing,
+izolasyon, redaksiyon, upload validation, etkileşimli DB havuzu ve encoding
+kontrollerinin çalıştığını; kapasite merdiveninde 300 aktif proxy kullanıcı / 90
+dakika seviyesinin stabil kaldığını gösterir. **Fail** sonucu saklanmalıdır: genel
+soak kapısı geçmedi ve 450 kullanıcı adımı readiness değildir.
+
+Bu koşum şunları kanıtlamaz: 1000 gerçek eşzamanlı aktif insan, gerçek üretim LLM
+throughput'u, gerçek tarayıcı/websocket eşzamanlılığı, gerçek SQL Server T-SQL
+at-rest encoding davranışı veya üretim ağı uçtan uca kapasitesi. Browser console
+errors ve memory growth bu koşumda ölçülmediği için PASS gibi sunulmamalıdır.
+
+Önerilen iyileştirme odakları:
+
+1. 450 kullanıcı adımındaki `connection_timeout` baskınlığını app-port backlog,
+   httpuv/Shiny accept loop, Windows TCP sınırları ve istemci timeout/pool davranışı
+   açısından incelemek.
+2. 300→450 aralığını daraltmak için 350/400/425 gibi ara kademelerle aynı 90 dk
+   proxy attach merdivenini tekrar koşmak.
+3. CPU düşükken timeout artışını açıklamak için telemetriye app port accept backlog,
+   established/syn-sent/time-wait dağılımı, request queue depth ve per-scenario
+   connection reuse sinyali eklemek.
+4. Ayrı browser concurrency lane'i yeniden koşarak browser console errors ve gerçek
+   websocket oturum davranışını bu bulgudan bağımsız ölçmek.
+5. SQL Server preflight/at-rest encoding kapısını ayrı çalıştırmak; bu proxy koşumu
+   SQL Server üretim havuzu kanıtı değildir.
+
+---
+
 ## 14. 2026-06-22 Interactive lane + transaction-safe DB pool (cloud evidence)
 
 Bu bölüm, GET-only soak boşluğunu kapatmak için eklenen **etkileşimli (interactive)
