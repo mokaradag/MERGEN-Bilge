@@ -388,7 +388,7 @@ bulunursa kapı (varsayılan) FAIL olur.
   ölçülmez (UX smoke ayrı kapıdır).
 - Genel sonuç PASS ise, yalnızca **PASS** olarak raporlanan kontroller kanıttır.
   Atlanan/ölçülemeyen kontroller kanıt değildir.
-- Hata durumunda bile artifact üretilir; gerçek başarısızlıkta `stop()` ile sıfır-dışı
+- Hata durumunda bile kanıt üretilir; gerçek başarısızlıkta `stop()` ile sıfır-dışı
   çıkış kodu döner.
 
 ---
@@ -462,7 +462,7 @@ Rscript tests/scripts/run_operational_soak_gate.R
   sonra (VM'de) `bash tools/vm_evidence_gate.sh`, ardından operasyonel soak.
 - Soak kapısı VM'de veya yük üretebilen herhangi bir ortamda çalıştırılabilir;
   cloud/CI'de fake/proxy seritleri tamamen offline çalışır.
-- Soak artifact'ı yalnızca PASS olarak raporladığı kontroller için yürütme
+- Soak kanıt dizini yalnızca PASS olarak raporladığı kontroller için yürütme
   kanıtıdır.
 
 ---
@@ -603,14 +603,14 @@ fake/proxy lanes as real LLM generation evidence.
 #### What this proves / does not prove
 
 These post-index-cache observations **prove** or strongly support, subject to JSON
-artifact verification where noted:
+kanıt verification where noted:
 
 - Warm `GET /` root-page serving improved dramatically.
 - The previous root-page/index serialization bottleneck was real.
 - The operational fake-lane soak envelope is now much larger than the earlier
   22-user sustained baseline.
 - VM evidence now includes PASS observations at 250 concurrent users for 420 s and
-  1000 concurrent users for 420 s in smoke/fake mode, subject to artifact JSON
+  1000 concurrent users for 420 s in smoke/fake mode, subject to kanıt JSON
   verification.
 - Proxy/stress ramp showed low p95 at 10/25/50/100 users and a final p95 around
   734.5 ms.
@@ -722,7 +722,7 @@ Geçerli staged milestone yorumu:
 Bu bölüm, kullanıcının paylaştığı en son Windows VM ekran görüntülerinden
 aktarılmıştır. Artifact yolu ekran görüntülerinde `artifacts/soak/20260626-212908`
 ve kanıt dosyası `artifacts/soak/20260626-212908/soak_evidence.json` olarak
-görünür; bu checkout içinde artifact dosyası bulunmadığından değerler **VM console
+görünür; bu checkout içinde kanıt dosyası bulunmadığından değerler **VM console
 observed / screenshot-transcribed** kabul edilmelidir. Ekran görüntülerindeki JSON
 `created_at` alanı `2026-06-27T02:01:24Z` değerini gösterir.
 
@@ -845,7 +845,7 @@ errors ve memory growth bu koşumda ölçülmediği için PASS gibi sunulmamalı
 Bu bölüm, kullanıcının paylaştığı en yeni Windows VM ekran görüntülerinden
 aktarılmıştır. Artifact dizini `artifacts/soak/20260627-093805` ve kanıt dosyası
 `artifacts/soak/20260627-093805/soak_evidence.json` olarak görünür; bu checkout
-içinde artifact dosyası bulunmadığından değerler **VM console observed /
+içinde kanıt dosyası bulunmadığından değerler **VM console observed /
 screenshot-transcribed** kabul edilmelidir. JSON `created_at` değeri
 `2026-06-27T10:29:30Z` olarak görünür.
 
@@ -1456,3 +1456,76 @@ attach ederek koşun ve `effective_success_rate` ile `capacity_ladder`'ın 425't
 PASS olup olmadığını okuyun. Başarı kriteri ya 425'te `>= 0.98`, ya da
 `connection_timeout`'un belirgin azalması + kalan darboğazın app-dışı (tek-süreç
 httpuv / yük-üretici loop doygunluğu) olduğunun telemetriyle kanıtlanmasıdır.
+
+
+### 18.6 Cumartesi doğrudan iki-worker bölünmüş yük kanıtı (2026-06-27)
+
+**Cumartesi 2026-06-27 doğrudan bölünmüş yük sonucu:** 8008 ve 8009 üzerinde
+çalışan iki yerel MERGEN worker'ı, elle bölünmüş 750 toplam aktif proxy
+kullanıcılık arka uç yükünü 30 dakika (375+375) boyunca sürdürdü; iki koşum da
+PASS verdi ve hata/timeout sayısı sıfırdı. Bu sonuç yatay-ölçekleme/backlog
+hipotezini maddi olarak destekler; ancak henüz tek URL'li Keycloak/ters-vekil
+yük-dengeleme kanıtı değildir. Sonraki resmi kanıt, gerçek bir yük-dengelemeli URL
+yapılandırıp merdiveni bu URL üzerinden tekrarlamaktır.
+
+Bağlam ve kapsam:
+
+- Cumartesi günü IT, gerçek Keycloak/ters-vekil ön-kapı URL'sini
+  (`https://mergen.com.tr/bilge`) yük-dengelemeli rota olarak yapılandırmak için
+  uygun değildi.
+- Operatörler bunun yerine iki arka uç worker'ı yerel olarak başlattı ve doğrudan
+  hedefledi: worker A `http://127.0.0.1:8008/`, worker B
+  `http://127.0.0.1:8009/`.
+- Bu nedenle bu sonuç **doğrudan bölünmüş yük arka uç kanıtıdır**; gerçek tek
+  URL'li yük-dengeleme kanıtı değildir.
+- Önceki tek-worker proxy attach testleri 400-425 aktif kullanıcı sınırında
+  `connection_timeout`/backlog belirtileriyle başarısız olurken iki worker'ın 750
+  toplam doğrudan bölünmüş aktif proxy kullanıcıyı 30 dakika boyunca sıfır
+  hata/timeout ile sürdürmesi yatay-ölçekleme hipotezini destekler.
+
+Windows VM ekran görüntülerinden gözlenen kilometre taşları:
+
+| Birleşik hedef | Bölüşüm | Süre | Sonuç | Kanıt notları |
+|---:|---:|---:|---|---|
+| 425 aktif proxy kullanıcı | 8008 üzerinde 212 + 8009 üzerinde 213 | 600 sn | PASS/PASS | 8008 `artifacts/soak/20260627-141848`: 66718/66718 başarı, 0 hata, 0 timeout, p50/p95/p99 ~= 1549.2/1884.5/4781.9 ms, iş hacmi ~= 6656.2 ops/dk, max CPU ~= %41, max app-port TCP ~= 214. 8009 `artifacts/soak/20260627-141858`: 66690/66690 başarı, 0 hata, 0 timeout, p50/p95/p99 ~= 1554.1/1899.8/4766.8 ms, iş hacmi ~= 6651.1 ops/dk, max CPU ~= %43, max app-port TCP ~= 215. |
+| 600 aktif proxy kullanıcı | 8008 üzerinde 300 + 8009 üzerinde 300 | 600 sn | PASS/PASS | 8008 `artifacts/soak/20260627-143534`: 66610/66610 başarı, 0 hata, 0 timeout, p50/p95/p99 ~= 2219.3/2724.3/6399 ms, iş hacmi ~= 6627.7 ops/dk, max CPU ~= %43, max app-port TCP ~= 302. 8009 `artifacts/soak/20260627-143541`: 66697/66697 başarı, 0 hata, 0 timeout, p50/p95/p99 ~= 2189.5/2705.9/6673.1 ms, iş hacmi ~= 6629.8 ops/dk, max CPU ~= %50, max app-port TCP ~= 302. |
+| **750 aktif proxy kullanıcı** | **8008 üzerinde 375 + 8009 üzerinde 375** | **1800 sn** | **PASS/PASS** | **En güçlü Cumartesi arka uç bölünmüş yük kanıtı.** 8008 `artifacts/soak/20260627-144755`: 103848/103848 başarı, 0 hata, 0 timeout, p50/p95/p99 ~= 3061.3/11044.5/11624.6 ms, iş hacmi ~= 3457.1 ops/dk, max CPU ~= %53, max app-port TCP ~= 377, anahtar yönlendirme 5/5 doğru, sır sızıntısı 0, sunucu çökmedi TRUE, mojibake hits 0. 8009 `artifacts/soak/20260627-144759`: 103804/103804 başarı, 0 hata, 0 timeout, p50/p95/p99 ~= 3113.6/11025.1/11595.8 ms, iş hacmi ~= 3451.3 ops/dk, connect p50/p95 0/0 ms, ttfb p50/p95 ~= 1985.1/6433.7 ms, max CPU ~= %54, max app-port TCP 377, app TCP max established=376/syn_recv=0/syn_sent=0/time_wait=0/close_wait=0/listen=1. |
+
+375-kullanıcı/30-dakika eş koşumundaki 8009 kanıt dizini için ek ayrıntılar:
+`load_driver.pattern=burst`, `target_users=375`, `max_inflight=375`,
+`completed=103804`, `max_loop_lag_ms~=6656.7` ve
+`saturation_hint=loadgen_loop_lag_high`. Bu loop-lag ipucu, 375-per-worker
+seviyesinde yük üreticinin de baskıya katkı yapabileceği anlamına gelir; doğrudan
+bölünmüş arka uç kanıtının ötesine taşan iddialarda bulunmayın. Aynı kanıt DB
+havuzu için checkout=451, returned=451, outstanding/leak=0, tx commit=200,
+rollback=50; etkileşimli serit için 50 oturum, 400 eylem, success_rate=1.000, DB
+leak=0, rollback clean TRUE, upload TRUE, mojibake=0 raporladı.
+
+Kanıt dürüstlüğü / kanıtlamaz:
+
+- Üretim Keycloak/ters-vekil rotasının iki worker arasında zaten yük-dengelemeli
+  olduğunu **kanıtlamaz**.
+- Bu ölçekte gerçek tarayıcı/websocket eşzamanlılığını veya gerçek insan Shiny
+  oturumlarını **kanıtlamaz**.
+- Gerçek LLM sağlayıcı iş hacmini **kanıtlamaz**.
+- 1000 gerçek eşzamanlı aktif kullanıcıyı **kanıtlamaz**.
+- 90 dakikalık üretim-benzeri readiness/sertifikasyon kapısının yerine **geçmez**.
+- Mevcut VM/DB kapılarının ötesinde SQL Server at-rest Türkçe encoding kanıtı
+  **eklemez**.
+
+Pazartesi IT / platform sahipleri takip işi:
+
+- Mevcut `https://mergen.com.tr/bilge` ön-kapı/Keycloak/ters-vekil rotasını veya
+  `/bilge-lb-test` gibi geçici bir rotayı `8008` ve `8009` arasında dağıtacak
+  şekilde yapılandırın; onay sonrası ek worker portları da havuza alınabilir.
+- Gerekli proxy davranışı: `GET /healthz` sağlık kontrolü, `GET /readyz`
+  hazırlık kontrolü, websocket upgrade desteği, uzun okuma/gönderme timeout'ları,
+  gerçek Shiny kullanıcıları için yapışkan oturum/oturum yakınlığı ve
+  en-az-bağlantı veya round-robin dengeleme.
+
+Önerilen sonraki resmi kanıt:
+
+1. Keycloak/proxy rotasına karşı gerçek tek URL'li yük-dengelemeli soak koşumu yapın.
+2. İlk hedefler olarak 425, 600 ve 750 aktif proxy kullanıcıyla başlayın.
+3. Önce 10 dakikalık merdiven, ardından en güçlü geçen hedefte 30 dakikalık
+   doğrulama ve ancak daha sonra 90 dakikalık sertifikasyon kapısı koşun.

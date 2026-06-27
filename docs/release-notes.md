@@ -15,6 +15,20 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### 2026-06-27 Yatay-ölçekleme commit'i sonrası Cumartesi doğrudan bölünmüş yük doğrulaması
+
+Cumartesi 2026-06-27 doğrudan bölünmüş yük doğrulaması, IT gerçek Keycloak/
+ters-vekil ön-kapı rotasını yük-dengelemeli URL olarak yapılandıramadığı için iki
+yerel MERGEN arka uç worker'ı (`http://127.0.0.1:8008/` ve
+`http://127.0.0.1:8009/`) üzerinden yapıldı. İki-worker doğrudan bölünmüş testler
+**750 toplam aktif proxy kullanıcı / 30 dakika** seviyesine kadar (375+375) geçti;
+iki koşum da PASS verdi ve hata/timeout sayısı sıfırdı. Bu, yatay-ölçekleme/
+backlog hipotezini destekleyen arka uç bölünmüş yük kanıtıdır; üretim
+`https://mergen.com.tr/bilge` URL'sinin zaten yük-dengelemeli olduğunu kanıtlamaz
+ve 1000 gerçek kullanıcı, gerçek tarayıcı/websocket eşzamanlılığı veya gerçek LLM
+sağlayıcı iş hacmi kanıtı değildir.
+
+
 ### 2026-06-27 Çalışma-zamanı performans/yatay-ölçekleme katmanı (425 bağlantı-timeout bulgusuna yanıt)
 
 Önceki commit (bff7fad) yalnızca soak teşhis/gözlemlenebilirlik ekledi; bu
@@ -255,7 +269,7 @@ throughput=8532.4/dk) ve stress/proxy final PASS
 throughput=8029.2/dk) gözlendi.
 
 Bu checkout içinde `artifacts/soak/...` JSON dosyaları bulunmadığı için yeni değerler
-şimdilik **VM console observed** olarak belgelenir ve artifact JSON ile yeniden
+şimdilik **VM console observed** olarak belgelenir ve kanıt JSON ile yeniden
 doğrulanmalıdır. `memory_growth_mb` ve `browser_console_errors` bu koşularda
 `UNMEASURED` kaldığı için ölçülmüş PASS olarak yorumlanmaz. Bu kanıt GET-only
 index-serving/fake-proxy soak yolunu güçlendirir; gerçek LLM/model üretiminin
@@ -289,7 +303,7 @@ yardımcılarını çağırarak Türkçe/emoji DB-encoding round-trip'i, yüklem
 doğrulayıcı kabul/ret kararlarını, anahtar kaynak sınıflandırmasını ve oturumlar
 arası anahtar izolasyonunu doğrular. Yeni paket eklenmedi.
 
-Dürüstlük sözleşmesi VM kanıt kapısıyla aynıdır: her zaman artifact üretilir
+Dürüstlük sözleşmesi VM kanıt kapısıyla aynıdır: her zaman kanıt üretilir
 (`artifacts/soak/<timestamp>/`), eşik **etkin başarı oranına** uygulanır (kasıtlı
 enjekte edilen faultlar hariç → beklenmeyen başarısızlıkları ölçer), ölçülemeyen
 eşikler sessizce geçmez (`UNMEASURED`/`skipped_checks`), ve artifact'lar ham
@@ -301,9 +315,9 @@ geçer. Statik + offline sözleşme koruması:
 
 MERGEN Bilge'nin on-prem Windows VM doğrulamasında major readiness milestone kaydedildi ve **15 Haziran 2026** tarihinde yeniden doğrulandı. `tests/scripts/run_vm_evidence_gate.R` tam koşumu başarılı tamamlandı: `Toplam: 13 passed, 0 failed, 0 skipped`. Güncel statü özellikle şu adımları içerir: `full_testthat PASSED`, `browser_ux_smoke PASSED`, `vm_preflight_real PASSED`, `db_encoding_preflight PASSED`.
 
-Başarılı koşumda tam izole testthat suite'i, VM preflight, transactional DB encoding preflight ve mandatory browser UX smoke kanıtı aynı gate altında geçti. Browser proof external-app modunda alındı: app ayrı pencerede `http://127.0.0.1:28081` üzerinde çalışırken gate `MERGEN_BROWSER_UX_BASE_URL=http://127.0.0.1:28081` ve `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ile koşturuldu; browser smoke `UX_SMOKE_DONE:PASS` üretti. Son artifact: `artifacts/vm-evidence/20260615-130127/evidence.json`; genel artifact konumu `artifacts/vm-evidence/<timestamp>/evidence.json`.
+Başarılı koşumda tam izole testthat suite'i, VM preflight, transactional DB encoding preflight ve mandatory browser UX smoke kanıtı aynı gate altında geçti. Browser proof external-app modunda alındı: app ayrı pencerede `http://127.0.0.1:28081` üzerinde çalışırken gate `MERGEN_BROWSER_UX_BASE_URL=http://127.0.0.1:28081` ve `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ile koşturuldu; browser smoke `UX_SMOKE_DONE:PASS` üretti. Son artifact: `artifacts/vm-evidence/20260615-130127/evidence.json`; genel kanıt konumu `artifacts/vm-evidence/<timestamp>/evidence.json`.
 
-Bu milestone, release/readiness açısından güçlü bir VM kanıtıdır; ancak yalnızca artifact içinde `passed` görünen adımlar için kanıt sayılır. Uzun süreli gerçek kullanıcı yükü, manuel kırılgan-akış QA'sı ve legacy DB satırlarının temizliği ayrıca değerlendirilmelidir. Operasyonel komutlar ve troubleshooting için [`../RUNBOOK.md`](../RUNBOOK.md) içindeki evidence gate bölümü izlenir.
+Bu milestone, release/readiness açısından güçlü bir VM kanıtıdır; ancak yalnızca kanıt içinde `passed` görünen adımlar için kanıt sayılır. Uzun süreli gerçek kullanıcı yükü, manuel kırılgan-akış QA'sı ve legacy DB satırlarının temizliği ayrıca değerlendirilmelidir. Operasyonel komutlar ve troubleshooting için [`../RUNBOOK.md`](../RUNBOOK.md) içindeki evidence gate bölümü izlenir.
 
 
 ### Karmaşıklık azaltma: plotly bağımlılığı çalışma zamanından tamamen kaldırıldı
@@ -318,7 +332,7 @@ Koruma: `tests/testthat/test-downloads-outputs-behavior.R`, `widgetDependencyOut
 
 ChartLab grafikleri (`R/helpers_chartlab.R`) ve etkileşimli ChartLab modülü (`R/module_chartlab.R`) her zaman highcharter ile render edilir; eski `highcharter → plotly+ggplot2 → hata` fallback zinciri ulaşılamayan ölü koddu. Bu deployment'ta highcharter daima kuruludur (`ui.R` gizli bağımlılık yükleyicisi zaten `highcharter::highchartOutput` kullanır ve on-prem `renv.lock` highcharter'ı sabitler), dolayısıyla plotly+ggplot2 dalları gerçekte hiç çalışmıyordu.
 
-Bu render fallback'i kaldırıldı: container seçimi artık highcharter varsa `highchartOutput`, yoksa `shiny::uiOutput`; `wire_chart_output()` / `render_one()` highcharter varsa `renderHighchart`, yoksa zarif bir `renderUI` hata mesajı üretir (çökme yok). Kullanılmayan `have_plotly_gg` / `have_highcharter` bayrakları `R/config_file_store.R`'den temizlendi. Toplam ~208 satır ölü/ulaşılamayan kod kaldırıldı (`helpers_chartlab.R` 449→345, `module_chartlab.R` 531→432, `config_file_store.R` −5); maintainability skoru 100/100 ve en büyük dosya metriği değişmedi.
+Bu render geri dönüşü kaldırıldı: container seçimi artık highcharter varsa `highchartOutput`, yoksa `shiny::uiOutput`; `wire_chart_output()` / `render_one()` highcharter varsa `renderHighchart`, yoksa zarif bir `renderUI` hata mesajı üretir (çökme yok). Kullanılmayan `have_plotly_gg` / `have_highcharter` bayrakları `R/config_file_store.R`'den temizlendi. Toplam ~208 satır ölü/ulaşılamayan kod kaldırıldı (`helpers_chartlab.R` 449→345, `module_chartlab.R` 531→432, `config_file_store.R` −5); maintainability skoru 100/100 ve en büyük dosya metriği değişmedi.
 
 Davranış korunur: canlı highcharter render dalı bu değişiklikle hiç değişmedi (kaynak düzeyinde highcharter render satırları HEAD ile birebir aynı). `R/server_outputs_downloads.R` + `ui.R` içindeki plotly bağımlılık-önyükleyicisine (`deps_pl`/`plotly_html`) dokunulmadı; bu ayrı bir önyükleme mekanizmasıdır ve `test-downloads-outputs-behavior.R` ile korunur. Plotly'yi tamamen kaldırmak (önyükleyici + highcharter'ı zorunlu pakete almak) ayrı bir takip işidir.
 
@@ -474,7 +488,7 @@ Kaynak manifesti parse doğrulaması, Windows CRLF ve eski Mac CR satır sonlar�
 
 `32dd9afd0d993e3590b51db296999c9ca78dd1af` güncellemesi, görünür kullanıcı akışını değiştirmeden odaklı davranışsal regresyon kapsamını genişletti. Kapsam; AI Uzman metin parçalama davranışı, API anahtarı kimlik ve varsayılan kurum anahtarı çözümleme sınırı, Bilge Yolaç plugin bileşen tespiti, prompt yol güvenliği ve araç kullanımı HTML kaçışlama sınırı, derin düşünme model çözümleme, araç türü tespiti, dosya indeksi ipuçlu arama, Sistem Durumu saf biçimlendiricileri, LLM/SSE kaynak ayrıştırma ve kaynakça üretimi, araç sonucu kısa yanıt biçimlendirme, log redaksiyonu iç yardımcıları, kullanıcı ve global hız sınırlama, metin/kod ayrıştırma, özetleme kullanıcı promptu üretimi ve sürüm geçmişi ayrıştırma alanlarını korur. Bu odak testler, ürün davranışını sabit tutarken ilerideki refaktörlerin güvenli yapılmasına yardımcı olur.
 
-`517f80406badfd8f393f9e0648793c3481520ea7` / PR #425 güncellemesi, 31.05.2026 Pazar günü eklenen 19 committen gelen 25 odak davranışsal regresyon test dosyasını yalnızca ekleme olarak ekledi; görünür ürün davranışını doğrudan değiştirmez. Kapsam kompakt olarak API anahtarı sahipliği, etkin anahtar önceliği, uç nokta/kimlik fallback'i ve araç modu model çözümlemesini; Bilge Yolaç model/konfigürasyon, doküman ayrıntı düzeyi, indirmeler, çalışma deposu taraması, akış ayrıştırıcıları, güvenlik ilkesi, yol kanonikleştirme ve oturum runtime deposunu; UTF-8, mojibake, mailto kodlama, DB görünür/teknik normalizasyon, metin/log/ağaç işaretleme, atomik yazımlar ve ortak metin yardımcılarını; yükleme doğrulayıcı iç guard'ları, MCP Excel özet/adayları, MCP UNC yol normalizasyonu ve Proje/Kaynak Analizi çekirdek yardımcılarını; AI Uzman telaffuz düzeltme, persona kimliği göçü, LLM streaming delta/reasoning çıkarımı, streaming olmayan metin paketi çıkarımı, hızlı aksiyon tanıtım mesajları ve sürüm geçmişi etiket kaynağını korur.
+`517f80406badfd8f393f9e0648793c3481520ea7` / PR #425 güncellemesi, 31.05.2026 Pazar günü eklenen 19 committen gelen 25 odak davranışsal regresyon test dosyasını yalnızca ekleme olarak ekledi; görünür ürün davranışını doğrudan değiştirmez. Kapsam kompakt olarak API anahtarı sahipliği, etkin anahtar önceliği, uç nokta/kimlik geri dönüşü ve araç modu model çözümlemesini; Bilge Yolaç model/konfigürasyon, doküman ayrıntı düzeyi, indirmeler, çalışma deposu taraması, akış ayrıştırıcıları, güvenlik ilkesi, yol kanonikleştirme ve oturum runtime deposunu; UTF-8, mojibake, mailto kodlama, DB görünür/teknik normalizasyon, metin/log/ağaç işaretleme, atomik yazımlar ve ortak metin yardımcılarını; yükleme doğrulayıcı iç guard'ları, MCP Excel özet/adayları, MCP UNC yol normalizasyonu ve Proje/Kaynak Analizi çekirdek yardımcılarını; AI Uzman telaffuz düzeltme, persona kimliği göçü, LLM streaming delta/reasoning çıkarımı, streaming olmayan metin paketi çıkarımı, hızlı aksiyon tanıtım mesajları ve sürüm geçmişi etiket kaynağını korur.
 
 `tests/scripts/ci_install_packages.R` için Linux paket tipi sözleşmesi ayrıca statik olarak korunur: varsayılan `pkgType` değeri Linux ortamında `source` kalmalı, `MERGEN_AI_R_PKG_TYPE` yalnızca açıkça verildiğinde (`source`/`binary`) override edilmelidir. Bu sözleşme `tests/testthat/test-ai-package-bootstrap-contract.R` ile izlenir ve `tools/setup_ai_r_environment.sh` içindeki RSPM denetimi kırılgan token eşleştirmeleriyle değil, kararlı URL parçaları (`__linux__/noble/latest`, `__linux__/jammy/latest`) üzerinden doğrulanır.
 
@@ -522,7 +536,7 @@ Codex/AI bulut ortamındaki `cloud-quick` sonucu yararlıdır; ancak tek başın
 
 ### Codex ve VM kanıtı birlikte nasıl yorumlanır
 
-Codex/cloud ortamında `cloud-quick` sonucunun başarılı olması yararlı fakat sınırlı bir kanıttır. Bu sonuç yalnızca bulut-uyumlu parse ve odak sözleşme kapsamı için geçerlidir; app source smoke, Shiny HTTP boot, gerçek tarayıcı UX smoke, VM/SSO/DB, SQL Server Türkçe kodlama veya manuel kırılgan akış kanıtı yerine geçmez. Codex ortamında `quick` veya `full --boot-smoke` ağır paket bootstrap/derleme yoluna girip tamamlanamazsa, bu tek başına VM doğrulamasını geçersiz kılmaz; yalnızca Codex tarafında ilgili artifact üretilmediği anlamına gelir.
+Codex/cloud ortamında `cloud-quick` sonucunun başarılı olması yararlı fakat sınırlı bir kanıttır. Bu sonuç yalnızca bulut-uyumlu parse ve odak sözleşme kapsamı için geçerlidir; app source smoke, Shiny HTTP boot, gerçek tarayıcı UX smoke, VM/SSO/DB, SQL Server Türkçe kodlama veya manuel kırılgan akış kanıtı yerine geçmez. Codex ortamında `quick` veya `full --boot-smoke` ağır paket bootstrap/derleme yoluna girip tamamlanamazsa, bu tek başına VM doğrulamasını geçersiz kılmaz; yalnızca Codex tarafında ilgili kanıt üretilmediği anlamına gelir.
 
 Runtime, SSO, DB ve Türkçe SQL Server kodlama sınırları için yetkili kanıt VM üzerinde alınan sonuçlardır. VM tarafında `bash tools/ai_validate.sh quick`, `bash tools/ai_validate.sh full --boot-smoke`, `tests/scripts/run_vm_preflight_real.R` ve `MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE` ile `tests/scripts/run_vm_encoding_preflight_real.R` başarıyla geçtiyse, Codex `cloud-quick` sonucu yalnızca ek/supplementary kanıt olarak yorumlanmalıdır. `validation_doctor` çıktısı ise her durumda rehberdir; yürütüm kanıtı olarak raporlanmamalıdır.
 

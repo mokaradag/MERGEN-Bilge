@@ -61,7 +61,7 @@ Bu belge uygulama davranışını değiştirmez; yalnızca güvenli çalıştır
 - Dosya deposu: `MCP_FILES_BASE`, `MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MERGEN_MCP_BASE_DIR`, `MERGEN_LOG_DIR`.
 - Bilge Yolaç: Claude Code CLI/Node path, çalışma dizini, izin modu ve tool listesi.
 
-> Gerçek secret değerlerini dokümantasyona, PR açıklamasına, log kesitine veya validation artifact içine koymayın.
+> Gerçek secret değerlerini dokümantasyona, PR açıklamasına, log kesitine veya validation kanıt içine koymayın.
 
 ## 5. Bağımlılık Restore ve `renv` İş Akışı
 
@@ -169,7 +169,7 @@ bash tools/seam_doctor.sh
 Rscript tests/scripts/seam_doctor.R
 ```
 
-- Çıktı `SEAM_DOCTOR_RESULT: OK` ile bitmeli ve `artifacts/seam-doctor/` altına JSON artifact yazılmalıdır.
+- Çıktı `SEAM_DOCTOR_RESULT: OK` ile bitmeli ve `artifacts/seam-doctor/` altına JSON kanıt yazılmalıdır.
 - Yapısal sahiplik bozulmuşsa (sahipsiz manifest bölümü, sahipsiz `R/` dosyası, sahipsiz `www/css|js` varlığı, bilinmeyen seam/bölge referansı) komut sıfır-dışı çıkışla biter; bu durumda dağıtım öncesi `R/config_seam_registry.R` / `R/config_ui_asset_zones.R` güncellenmelidir.
 - Bu araç ağır doğrulama ÇALIŞTIRMAZ: app boot, tarayıcı smoke, VM/SSO/DB veya Türkçe encoding preflight kanıtı yerine geçmez.
 
@@ -186,7 +186,7 @@ MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke
 
 ### 7.6 VM evidence gate (güncel release kanıtı)
 
-15 Haziran 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son artifact `artifacts/vm-evidence/20260615-130127/evidence.json` altında beklenir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır.
+15 Haziran 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son kanıt `artifacts/vm-evidence/20260615-130127/evidence.json` altında beklenir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır.
 
 PowerShell external-app akışı için uygulama ayrı pencerede `http://127.0.0.1:28081` üzerinde açıkken gate şu ortamla koşturulur:
 
@@ -289,6 +289,49 @@ darboğaza katkı yapıyorsa `http_loadgen.saturation_hint` =
 kanıtlanmış kilometre taşı yeni koşum aksini kanıtlayana kadar **300 aktif proxy
 kullanıcı / 90 dakika**'dır.
 
+
+Hafta sonu/operatör tanısal geri dönüşü: yük-dengelemeli URL yoksa operatörler
+iki yerel arka uç worker başlatıp `8008` ve `8009` hedeflerine geçici bir
+**doğrudan bölünmüş yük** deneyi koşabilir. Bu yalnız tanısal/deneyseldir. Tek
+URL'li yük-dengeleme kanıtı veya üretim Keycloak rotası kanıtı olarak
+raporlanmamalıdır; yalnız doğrudan arka uç bölünmüş yük kanıtı olarak
+adlandırılmalıdır. Ayrıntılı kanıt metni ve sınırlar
+[`docs/operational-soak-gate.md`](docs/operational-soak-gate.md) §18.6 içindedir.
+
+Komut taslağı:
+
+```powershell
+# Terminal 1: yerel worker'lari baslat.
+$env:MERGEN_WORKERS = "2"
+$env:MERGEN_BASE_PORT = "8008"
+$env:MERGEN_HOST = "127.0.0.1"
+Rscript tools/run_mergen_workers.R
+
+# Terminal 2: worker A soak kosumu.
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8008/"
+$env:MERGEN_SOAK_PROFILE = "proxy_llm"
+$env:MERGEN_SOAK_LLM_MODE = "proxy"
+$env:MERGEN_SOAK_PROXY_FORWARD_REAL = "FALSE"
+$env:MERGEN_SOAK_CONCURRENT_USERS = "375"
+$env:MERGEN_SOAK_DURATION_SECONDS = "1800"
+$env:MERGEN_SOAK_TELEMETRY_ENABLED = "TRUE"
+Rscript --vanilla tests/scripts/run_operational_soak_gate.R
+
+# Terminal 3: Terminal 2 ile ayni anda baslatilan worker B soak kosumu.
+$env:MERGEN_SOAK_APP_URL = "http://127.0.0.1:8009/"
+$env:MERGEN_SOAK_PROFILE = "proxy_llm"
+$env:MERGEN_SOAK_LLM_MODE = "proxy"
+$env:MERGEN_SOAK_PROXY_FORWARD_REAL = "FALSE"
+$env:MERGEN_SOAK_CONCURRENT_USERS = "375"
+$env:MERGEN_SOAK_DURATION_SECONDS = "1800"
+$env:MERGEN_SOAK_TELEMETRY_ENABLED = "TRUE"
+Rscript --vanilla tests/scripts/run_operational_soak_gate.R
+```
+
+Doğrudan bölünmüş yük geçerse bile sonraki resmi kanıt hâlâ gerçek yük-dengelemeli
+Keycloak/ters-vekil URL'sini yapılandırmak ve merdiveni o tek URL üzerinden
+tekrarlamaktır.
+
 Etkileşimli (interactive) serit + uygulamasız bulut kanıtı: GET-only HTTP seridinin
 açmadığı sohbet/DB/streaming/stop yollarını **gerçek DB havuzu** üzerinde alıştırır
 (`tests/scripts/soak_interactive_lane.R`). Çalışan bir uygulama URL'si gerekmeden
@@ -337,20 +380,20 @@ chat oturumu kanıtı olarak sunmayın.
 
 Son VM console observed bulguları:
 
-- **50 aktif proxy kullanıcı / 1800 saniye PASS** — artifact dizini
+- **50 aktif proxy kullanıcı / 1800 saniye PASS** — kanıt dizini
   `artifacts/soak/20260625-111352`; özet: 115535/115535 başarı, 0 hata,
   0 timeout, `effective_success_rate=1.000`, p50/p95/p99 ≈ 423 / 1113.5 /
   1236.7 ms, throughput ≈ 3850.4/dk, CPU max ≈ %33, bellek max ≈ 19707.9 MiB.
   Anahtar yönlendirme, izolasyon, upload validation, encoding round-trip,
   secret-leak, temp-growth, interactive ve no-server-crash kontrolleri PASS;
   `memory_growth_mb` UNMEASURED kaldı.
-- **10 gerçek tarayıcı oturumu browser concurrency lane PASS** — artifact dizini
+- **10 gerçek tarayıcı oturumu browser concurrency lane PASS** — kanıt dizini
   `artifacts/browser-concurrency/20260625-115948`; Microsoft Edge ile 10 oturumun
   tamamı PASS, websocket TRUE ve konsol hata sayısı 0. Bu lane gerçek tarayıcı /
   websocket / konsol-hata ölçümü sağlar, ancak 1000 tarayıcı veya uzun süreli insan
   iş yükü kanıtı değildir.
 - **Kademeli kapasite merdiveni (proxy, 90 dk/adım) 100 ve 250 kullanıcıda PASS** —
-  artifact dizini `artifacts/soak/20260625-121812`; kademe listesi
+  kanıt dizini `artifacts/soak/20260625-121812`; kademe listesi
   `100,250,500,1000`, stabil eşik `0.98`. Gözlenen adımlar: 100 kullanıcıda
   `effective_success_rate=1`, p95≈5151.2 ms, throughput≈2099.6/dk, CPU max≈%42;
   250 kullanıcıda `effective_success_rate=0.9807`, p95≈24234.6 ms,
@@ -366,7 +409,7 @@ sunulamaz.
 
 
 2026-06-26/27 Windows VM proxy attach soak failure finding: latest screenshot-transcribed
-artifact path is `artifacts/soak/20260626-212908/soak_evidence.json` (`created_at`
+kanıt path is `artifacts/soak/20260626-212908/soak_evidence.json` (`created_at`
 shown as `2026-06-27T02:01:24Z`). The run attached to `http://127.0.0.1:8009/`
 with `proxy_llm`, 50 active concurrent users, target duration 18000 seconds, and a
 capacity ladder of `100,300,450,600,750` at 5400 seconds/step. Overall gate result
@@ -390,7 +433,7 @@ ladder steps. Full details are in `docs/operational-soak-gate.md` section 13A.
 
 
 2026-06-27 newer Windows VM proxy attach retest: latest screenshot-transcribed
-artifact path is `artifacts/soak/20260627-093805/soak_evidence.json` (`created_at`
+kanıt path is `artifacts/soak/20260627-093805/soak_evidence.json` (`created_at`
 shown as `2026-06-27T10:29:30Z`). The retest still failed the overall gate because
 main-lane effective success was `0.9696` below the `0.98` threshold and
 `capacity_ladder_all_steps_pass=false`: 136185 requests, 132043 successes, 4142
@@ -454,7 +497,7 @@ Rscript tests/scripts/run_post_deploy_smoke.R
 Kapı, sağlık kontrollerini toplar, genel durumu (`pass`/`degraded`/`fail`)
 hesaplar ve kritik bir kontrol bozuksa sıfırdan farklı çıkışla (stop) başarısız
 olur. Her koşumda — başarılı veya başarısız — `stop`'tan **önce** secret-safe,
-makinece okunabilir bir kanıt artifact'ı yazar:
+makinece okunabilir bir kanıt kanıt dizini yazar:
 
 ```
 artifacts/post-deploy-smoke/<timestamp>/post-deploy-smoke.json
@@ -498,7 +541,7 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   yeni `vm-evidence/<ts>` koşusu gösterilir; birden fazla koşu varsa zaman damgalı
   bir koşu seçici (dropdown) ile eski koşulara da bakılabilir. Yalnızca
   `passed` görünen adımlar ilgili kapsam için kanıttır; "Atlandı" (SKIP) kanıt
-  değildir, "Bulunamadı" başarı sayılmaz. Sekme ham artifact yolu veya log
+  değildir, "Bulunamadı" başarı sayılmaz. Sekme ham kanıt yolu veya log
   içeriği göstermez (savunma derinliği); günlük log byte-safe okunur, böylece
   Windows VM'deki ANSI/`WINDOWS-1254` log baytları sekmeyi boşa düşürmez. Cloud
   profili koşumları VM/SSO/DB/SQL Server Türkçe kodlama kanıtı üretmez; bu sekme
@@ -542,7 +585,7 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
 
 ## 15. Güvenli Sorun Giderme İlkeleri
 
-- Önce gözlemle: log, health panel, validation artifact ve exact command output topla.
+- Önce gözlemle: log, health panel, validation kanıt ve exact command output topla.
 - Reprodüksiyon adımlarını küçük tut.
 - Secrets içeren çıktı paylaşma; gerekirse redaction uygula.
 - DB veya dosya deposu üzerinde destructive işlem yapmadan önce yedek ve rollback planı hazırla.
@@ -655,7 +698,7 @@ kaydedin (streaming start/stop, yükleme kalıcılığı, kayıtlı söyleşi TT
 ### 1A. Tek tekrarlanabilir kanıt kapısı: `run_vm_evidence_gate.R`
 
 Yukarıdaki kapıları tek bir tekrarlanabilir koşumda toplayan ve secret-güvenli,
-makinece okunabilir kanıt artifact'ı üreten kapı `tests/scripts/run_vm_evidence_gate.R`
+makinece okunabilir kanıt kanıt dizini üreten kapı `tests/scripts/run_vm_evidence_gate.R`
 betiğidir. Wrapper olarak `bash tools/vm_evidence_gate.sh` kullanılabilir; Windows VM
 operasyonu için normal tam koşum repo kökünden doğrudan Rscript ile çalıştırılır.
 
@@ -695,7 +738,7 @@ Bu komut tüm yapılandırılmış evidence adımlarını çalıştırır. Brows
 değilse ve ortam tarayıcı kanıtı üretemiyorsa yapılandırmaya bağlı olarak gerekçeli SKIP
 olabilir. Mandatory browser proof için aşağıdaki external-app workflow kullanılmalıdır.
 
-Kanıt artifact'ı her koşumda `artifacts/vm-evidence/<timestamp>/evidence.json` ve aynı
+Kanıt kanıt dizini her koşumda `artifacts/vm-evidence/<timestamp>/evidence.json` ve aynı
 dizin altında adım logları olarak yazılır. Adımlar temiz çocuk R oturumlarında koşulur;
 ham secret, DSN, endpoint, token veya key değerleri artifact/log içine yazılmamalıdır.
 Kapsam: `env_config`, `parse_sanity`, `app_boot_smoke`, `full_testthat`,
