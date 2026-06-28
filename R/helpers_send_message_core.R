@@ -96,6 +96,57 @@ mergen_sql_analysis_stream_plan <- function(tool_family,
   )
 }
 
+# Saf yardımcı: "düz hızlı sohbet" yolu kararı. Yalnızca araç=none, dosya yok,
+# streaming açık, MCP/TTS kapalı ve SQL non-streaming zorlaması yoksa TRUE döner.
+# Bu yol; ağır tanılama dökümü, MCP/dosya hazırlığı ve gereksiz worker yükü gibi
+# ilk-token öncesi işleri atlamak için kullanılır. Kodlama Desteği bilinçli olarak
+# AYRI bir hızlı profille (coding_fast) yönetilir; bu yardımcı yalnızca "none"
+# içindir (görsel/özetleme/SQL/MCP/coding kapsam dışıdır).
+mergen_is_plain_fast_chat <- function(tool_family,
+                                      uploaded_count,
+                                      current_settings = list(),
+                                      settings_data = list(),
+                                      force_non_streaming_sql = FALSE) {
+  identical(tool_family, "none") &&
+    isTRUE((uploaded_count %||% 0L) == 0L) &&
+    isTRUE(current_settings$enable_streaming) &&
+    !isTRUE(current_settings$enable_mcp_tools) &&
+    !isTRUE(settings_data$enable_tts_audio) &&
+    !isTRUE(force_non_streaming_sql)
+}
+
+# Worker'a (tracked_future_promise) serileştirilecek ayar listesini küçültür.
+# Amaç: ilk-token gecikmesini azaltmak için worker'a gönderilen yükü minimize
+# etmek. Shiny oturumu HER ZAMAN çıkarılır (serileştirilemez ve gereksizdir).
+# Düz hızlı sohbette ek olarak ağır/gereksiz alanlar (dosya kayıtları, MCP
+# snapshot, dosya yolları, kullanıcı config blob'u) atılır.
+# call_local_llm_sse_worker'ın ihtiyaç duyduğu alanlar (model_selection,
+# temperature, max_output_tokens, api_key/override, request zaman damgaları,
+# allow_* bayrakları) KORUNUR.
+mergen_sanitize_llm_settings_for_worker <- function(current_settings,
+                                                    plain_fast = FALSE) {
+  settings <- if (is.list(current_settings)) current_settings else list()
+
+  # Oturum nesnesi worker tarafına asla gönderilmez.
+  settings$shiny_session <- NULL
+
+  if (isTRUE(plain_fast)) {
+    heavy_fields <- c(
+      "current_session_files",
+      "mcp_registry_snapshot",
+      "mcp_snapshot",
+      "file_paths",
+      "uploaded_files",
+      "user_config"
+    )
+    for (field in heavy_fields) {
+      settings[[field]] <- NULL
+    }
+  }
+
+  settings
+}
+
 mergen_remove_typing_wrapper_if_safe <- function(active_request_id = NULL,
                                                  req_id = NULL,
                                                  remove_ui_fn = removeUI) {

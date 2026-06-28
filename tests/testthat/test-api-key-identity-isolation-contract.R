@@ -145,7 +145,13 @@ test_that("LLM çağrı yolları sahiplik doğrulayan etkin API anahtarı helper
     encoding = "UTF-8"
   )
 
-  expect_true(any(grepl("mb_api_key_get_effective_key\\(", send_message_lines)))
+  # send_message hızlı yol için sahiplik doğrulayan ÖNBELLEKLİ etkin anahtar
+  # yardımcısını kullanır; bu yardımcı kendi içinde mb_api_key_get_effective_key'e
+  # delege eder (önbellek ıskası/sahip değişiminde tam çözümleme + clear_on_mismatch).
+  expect_true(any(grepl(
+    "mb_api_key_get_cached_for_send\\(|mb_api_key_get_effective_key\\(",
+    send_message_lines
+  )))
   expect_true(any(grepl("mb_api_key_get_effective_key_value\\(", summarization_lines)))
   expect_true(any(grepl("mb_api_key_get_effective_key_value\\(", ai_processing_lines)))
 
