@@ -275,6 +275,50 @@ mb_api_key_get_effective_key_value <- function(session,
 # (mb_api_key_get_effective_key) düşülür ve önbellek güncellenir. Önbellek
 # anahtar kaydetme/temizleme yollarında (mb_api_key_set_session_key /
 # mb_api_key_clear_session_key) geçersiz kılınır.
+# Yalnızca gönderim önbelleğini (ai_api_key_send_cache) temizler; oturum
+# anahtarını (ai_api_key) KORUR. 401/403 gibi yetkilendirme hatalarından sonra
+# bir sonraki gönderimin tam sahiplik yeniden-çözümünü (clear_on_mismatch dahil)
+# garanti etmek için kullanılır.
+mb_api_key_invalidate_send_cache <- function(session) {
+  user_data <- .mb_api_key_user_data(session)
+  if (is.null(user_data)) {
+    return(invisible(FALSE))
+  }
+
+  if (exists("ai_api_key_send_cache", envir = user_data, inherits = FALSE)) {
+    rm("ai_api_key_send_cache", envir = user_data)
+    return(invisible(TRUE))
+  }
+
+  invisible(FALSE)
+}
+
+# Hata metni yetkilendirme hatasına benziyor mu? (401/403/AUTH_MISSING_KEY/...).
+# Zaman aşımı, ağ, iptal gibi yetkilendirme dışı hatalarda FALSE döner.
+mb_api_key_error_is_auth <- function(error_text) {
+  txt <- tryCatch(as.character(error_text %||% "")[1], error = function(e) "")
+  if (is.na(txt) || !nzchar(txt)) {
+    return(FALSE)
+  }
+
+  grepl(
+    "AUTH_MISSING_KEY|API_HTTP_ERROR_401|API_HTTP_ERROR_403|(^|[^0-9])(401|403)([^0-9]|$)|unauthorized|forbidden",
+    txt,
+    ignore.case = TRUE,
+    perl = TRUE
+  )
+}
+
+# Hata metni yetkilendirme hatasıysa gönderim anahtarı önbelleğini geçersiz kılar.
+# Yetkilendirme dışı hatalarda hiçbir şey yapmaz (no-op).
+mb_api_key_invalidate_send_cache_on_auth_error <- function(session, error_text) {
+  if (isTRUE(mb_api_key_error_is_auth(error_text))) {
+    return(mb_api_key_invalidate_send_cache(session))
+  }
+
+  invisible(FALSE)
+}
+
 mb_api_key_get_cached_for_send <- function(session,
                                            require_auth = TRUE,
                                            allow_default = NULL,

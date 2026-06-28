@@ -122,6 +122,90 @@ testthat::test_that("anahtar temizleme (clear_session_key) gönderim önbelleği
   testthat::expect_false(exists("ai_api_key", envir = sess$userData, inherits = FALSE))
 })
 
+# ------------------------------------------------------------------------------
+# 401/403/AUTH hata yolunda gönderim önbelleği geçersiz kılma
+# ------------------------------------------------------------------------------
+testthat::test_that("mb_api_key_error_is_auth yetkilendirme hatalarını tanır, diğerlerini değil", {
+  .apikeycache_source_once()
+
+  testthat::expect_true(mb_api_key_error_is_auth("API_HTTP_ERROR_401"))
+  testthat::expect_true(mb_api_key_error_is_auth("API_HTTP_ERROR_403"))
+  testthat::expect_true(mb_api_key_error_is_auth("AUTH_MISSING_KEY: anahtar yok"))
+  testthat::expect_true(mb_api_key_error_is_auth("HTTP 401 Unauthorized"))
+  testthat::expect_true(mb_api_key_error_is_auth("403 Forbidden"))
+
+  # Yetkilendirme dışı hatalar.
+  testthat::expect_false(mb_api_key_error_is_auth("STREAM_ABORTED_BY_USER"))
+  testthat::expect_false(mb_api_key_error_is_auth("Zaman aşımı / timeout"))
+  testthat::expect_false(mb_api_key_error_is_auth("API_HTTP_ERROR_500"))
+  testthat::expect_false(mb_api_key_error_is_auth(""))
+  testthat::expect_false(mb_api_key_error_is_auth(NULL))
+})
+
+testthat::test_that("mb_api_key_invalidate_send_cache yalnızca gönderim önbelleğini siler, oturum anahtarını korur", {
+  .apikeycache_source_once()
+  sess <- .apikeycache_fake_session(username = "ownerA", key = "key-fake-1")
+
+  mb_api_key_get_cached_for_send(sess, require_auth = TRUE)
+  testthat::expect_true(exists("ai_api_key_send_cache", envir = sess$userData, inherits = FALSE))
+
+  invalidated <- mb_api_key_invalidate_send_cache(sess)
+
+  testthat::expect_true(isTRUE(invalidated))
+  testthat::expect_false(exists("ai_api_key_send_cache", envir = sess$userData, inherits = FALSE))
+  # Oturum anahtarı KORUNUR.
+  testthat::expect_identical(get("ai_api_key", envir = sess$userData, inherits = FALSE), "key-fake-1")
+})
+
+testthat::test_that("auth hatasında önbellek geçersiz kılınır; sonraki çağrı tekrar ıska olur", {
+  .apikeycache_source_once()
+  sess <- .apikeycache_fake_session(username = "ownerA", key = "key-fake-1")
+
+  mb_api_key_get_cached_for_send(sess, require_auth = TRUE)  # önbellek dolu
+
+  # Auth hatası -> önbellek geçersiz.
+  res_auth <- mb_api_key_invalidate_send_cache_on_auth_error(sess, "API_HTTP_ERROR_401")
+  testthat::expect_true(isTRUE(res_auth))
+  testthat::expect_false(exists("ai_api_key_send_cache", envir = sess$userData, inherits = FALSE))
+
+  # Sonraki çağrı tekrar tam çözümlemeye düşer (ıska).
+  next_call <- mb_api_key_get_cached_for_send(sess, require_auth = TRUE)
+  testthat::expect_false(isTRUE(next_call$cached))
+})
+
+testthat::test_that("yetkilendirme dışı hatada önbellek korunur (no-op)", {
+  .apikeycache_source_once()
+  sess <- .apikeycache_fake_session(username = "ownerA", key = "key-fake-1")
+
+  mb_api_key_get_cached_for_send(sess, require_auth = TRUE)
+
+  res_nonauth <- mb_api_key_invalidate_send_cache_on_auth_error(sess, "STREAM_ABORTED_BY_USER")
+  testthat::expect_false(isTRUE(res_nonauth))
+  # Önbellek hâlâ duruyor -> sonraki çağrı isabet.
+  testthat::expect_true(exists("ai_api_key_send_cache", envir = sess$userData, inherits = FALSE))
+  hit <- mb_api_key_get_cached_for_send(sess, require_auth = TRUE)
+  testthat::expect_true(isTRUE(hit$cached))
+})
+
+# Statik sözleşme: ana yanıt yolları auth hatasında gönderim önbelleğini
+# geçersiz kılan yardımcıyı çağırmalı.
+testthat::test_that("LLM hata yolları auth-cache geçersiz kılma yardımcısını çağırır", {
+  for (rel in c(
+    "R/server_handler_true_streaming.R",
+    "R/server_handler_streaming_tts.R",
+    "R/server_llm_response_handlers.R"
+  )) {
+    lines <- readLines(
+      file.path(resolve_repo_root_for_tests(), rel),
+      warn = FALSE, encoding = "UTF-8"
+    )
+    testthat::expect_true(
+      any(grepl("mb_api_key_invalidate_send_cache_on_auth_error\\(", lines)),
+      info = sprintf("%s auth hatasında gönderim önbelleğini geçersiz kılmalı", rel)
+    )
+  }
+})
+
 testthat::test_that("anahtar değeri loglanmaz (yardımcı sessizdir)", {
   .apikeycache_source_once()
   sess <- .apikeycache_fake_session(username = "ownerA", key = "key-fake-secret-123")

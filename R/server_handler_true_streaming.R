@@ -38,11 +38,8 @@ handle_true_streaming_mode <- function(ctx) {
     settings_data$user_config <- session$userData$user_config
   }
 
-  log_info(sprintf(
-    "[CHAT PERF] True streaming başladı - profil=%s, yoklama=%dms",
-    stream_profile$label %||% "standard",
-    poll_interval_ms
-  ))
+  log_info(sprintf("[CHAT PERF] True streaming başladı - profil=%s, yoklama=%dms",
+    stream_profile$label %||% "standard", poll_interval_ms))
 
   stream_env <- new.env(parent = emptyenv())
   stream_env$req_id <- req_id
@@ -357,14 +354,16 @@ handle_true_streaming_mode <- function(ctx) {
       return(invisible(NULL))
     }
 
+    # 401/403/AUTH hatasında gönderim anahtarı önbelleği geçersiz kılınır.
+    mb_api_key_invalidate_send_cache_on_auth_error(session, result$error %||% "")
+
     abort_plan <- mergen_stream_abort_cleanup_plan(
       accumulated_text = stream_env$accumulated_text,
       result = result,
       normalize_fn = normalize_llm_scalar_content
     )
 
-    sure_degeri <- abort_plan$duration %||%
-      as.numeric(difftime(Sys.time(), baslangic_zamani, units = "secs"))
+    sure_degeri <- abort_plan$duration %||% as.numeric(difftime(Sys.time(), baslangic_zamani, units = "secs"))
 
     if (identical(abort_plan$action, "finalize_partial")) {
       finalize_stream_message(

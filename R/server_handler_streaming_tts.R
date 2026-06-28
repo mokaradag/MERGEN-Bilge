@@ -47,9 +47,9 @@ handle_streaming_tts_mode <- function(ctx) {
   stop_generation(FALSE)
   values$is_sending <- TRUE
 
-  safe_settings <- current_settings
-  safe_settings$shiny_session <- NULL
-  dbg_dump("LLM_REQUEST_STREAMING", list(model = model_selected, messages = messages_to_process, settings = safe_settings))
+  # Kritik yol dostu: varsayılan yalnızca hafif sayım/boyut özeti; tam istem/ayar
+  # dökümü yalnızca açık tanılama bayrağıyla (MERGEN_LLM_REQUEST_DEBUG/MERGEN_DEBUG).
+  mergen_log_llm_request_debug("LLM_REQUEST_STREAMING", model_selected, messages_to_process, current_settings)
 
   p <- ai_processor$call_llm_streaming(messages_to_process, current_settings, model_selected)
 
@@ -74,6 +74,8 @@ handle_streaming_tts_mode <- function(ctx) {
       if (!res$success) {
         log_warn("[AI MODULE] Streaming isteği başarısız")
         perf_tracker$track_error()
+        # 401/403/AUTH hatasında gönderim anahtarı önbelleği geçersiz kılınır.
+        mb_api_key_invalidate_send_cache_on_auth_error(session, res$error %||% "")
         abort_send_message(message = res$error, type = "error")
         return(invisible(NULL))
       }

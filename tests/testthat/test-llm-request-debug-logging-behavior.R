@@ -117,6 +117,34 @@ testthat::test_that("mergen_log_chat_perf_summary tek satır özet üretir ve NA
   testthat::expect_true(grepl("total_ms=1800", line, fixed = TRUE))
 })
 
+# LLM istek yolları ağır dbg_dump yerine kritik-yol-dostu hafif loglayıcıyı
+# kullanmalı. Bu statik sözleşme, regresyonla tam dökümün geri gelmesini engeller.
+testthat::test_that("LLM istek yolları mergen_log_llm_request_debug kullanır (ham dbg_dump LLM_REQUEST yok)", {
+  paths <- c(
+    "R/server_send_message.R",
+    "R/server_handler_streaming_tts.R",
+    "R/server_llm_response_handlers.R"
+  )
+
+  for (rel in paths) {
+    lines <- readLines(
+      file.path(resolve_repo_root_for_tests(), rel),
+      warn = FALSE, encoding = "UTF-8"
+    )
+
+    testthat::expect_true(
+      any(grepl("mergen_log_llm_request_debug\\(", lines)),
+      info = sprintf("%s hafif istek loglayıcısını kullanmalı", rel)
+    )
+
+    # Ham LLM_REQUEST_* dökümü artık olmamalı.
+    testthat::expect_false(
+      any(grepl("dbg_dump\\(\\s*\"LLM_REQUEST", lines)),
+      info = sprintf("%s ham dbg_dump(\"LLM_REQUEST...\") içermemeli", rel)
+    )
+  }
+})
+
 testthat::test_that("mergen_llm_request_debug_enabled bayrak çözümlemesi doğru", {
   .llmdbg_source_once()
   old_env <- Sys.getenv("MERGEN_LLM_REQUEST_DEBUG", unset = NA_character_)

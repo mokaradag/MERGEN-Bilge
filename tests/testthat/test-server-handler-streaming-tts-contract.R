@@ -79,6 +79,8 @@ test_that("manifest handler'ı send_message'tan önce yükler (bağımlılık-ö
   env$log_debug <- function(...) invisible(NULL)
   env$log_warn <- function(...) invisible(NULL)
   env$dbg_dump <- function(...) invisible(NULL)
+  env$mergen_log_llm_request_debug <- function(...) invisible(NULL)
+  env$mb_api_key_invalidate_send_cache_on_auth_error <- function(...) invisible(FALSE)
   env$log_ai_usage <- function(...) invisible(NULL)
   env$build_followup_suggestions <- function(...) list("Takip sorusu 1")
   env$normalize_character_id <- function(x) "emre"

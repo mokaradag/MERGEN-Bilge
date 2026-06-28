@@ -141,14 +141,9 @@ llmResponseHandlersInit <- function(
       })
     }
  
-    # Debug için ayarları kaydet (session hariç)
-    safe_settings <- current_settings
-    safe_settings$shiny_session <- NULL
-    dbg_dump("LLM_REQUEST_NONSTREAM", list(
-      model = model_selected,
-      messages = chat_history,
-      settings = safe_settings
-    ))
+    # Kritik yol dostu: varsayılan yalnızca hafif sayım/boyut özeti; tam istem/ayar
+    # dökümü yalnızca açık tanılama bayrağıyla (MERGEN_LLM_REQUEST_DEBUG/MERGEN_DEBUG).
+    mergen_log_llm_request_debug("LLM_REQUEST_NONSTREAM", model_selected, chat_history, current_settings)
  
     # AI işlemcisini çağır
     p <- ai_processor$call_llm_non_streaming(chat_history, current_settings, model_selected)
@@ -378,7 +373,10 @@ llmResponseHandlersInit <- function(
         } else {
           # Hata durumunu takip et
           perf_tracker$track_error()
- 
+
+          # 401/403/AUTH hatasında gönderim anahtarı önbelleği geçersiz kılınır.
+          mb_api_key_invalidate_send_cache_on_auth_error(session, result$error %||% "")
+
           # Yazma animasyonunu kaldır
           shiny::removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
           values$typing <- FALSE
