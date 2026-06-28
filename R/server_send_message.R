@@ -384,7 +384,7 @@ sendMessageInit <- function(
     api_key_plan <- NULL
     {
       api_key_plan <- tryCatch(
-        mb_api_key_get_effective_key(
+        mb_api_key_get_cached_for_send(
           session = session,
           require_auth = TRUE,
           allow_default = NULL,
@@ -429,19 +429,23 @@ sendMessageInit <- function(
     current_settings$api_key_override <- api_key_val
     current_settings$api_key_source <- api_key_plan$source %||% "unknown"
 
-    mcp_registry_info <- mergen_prepare_mcp_session_files(
-      session = session,
-      file_manager_data = file_manager_data,
-      uploaded_names = uploaded_names,
-      effective_user_id = effective_user_id,
-      current_settings = current_settings,
-      cache_mcp_file_locally_fn = cache_mcp_file_locally_fn,
-      update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot_fn,
-      tool_family = tool_family
+    # Düz hızlı sohbette ilk-token öncesi MCP/dosya hazırlığı atlanır; oturum
+    # snapshot'ı yine de güvenle boşaltılır (önceki MCP isteğinden artık kalmasın).
+    plain_fast_chat <- mergen_is_plain_fast_chat(
+      tool_family, uploaded_count, current_settings, settings_data
     )
-
-    mcp_snapshot <- mcp_registry_info$mcp_snapshot
-    current_settings$mcp_registry_snapshot <- mcp_snapshot
+    if (isTRUE(plain_fast_chat)) {
+      current_settings$mcp_registry_snapshot <- update_mcp_registry_snapshot_fn(list())
+    } else {
+      current_settings$mcp_registry_snapshot <- mergen_prepare_mcp_session_files(
+        session = session, file_manager_data = file_manager_data,
+        uploaded_names = uploaded_names, effective_user_id = effective_user_id,
+        current_settings = current_settings,
+        cache_mcp_file_locally_fn = cache_mcp_file_locally_fn,
+        update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot_fn,
+        tool_family = tool_family
+      )$mcp_snapshot
+    }
 
     # Dosya yollarını Excel modunda ilet
     current_settings$file_paths <- list()
@@ -517,13 +521,11 @@ sendMessageInit <- function(
       # GERÇEK SSE modu
       log_debug("[MONITORING] AI isteği başlatılıyor (GERÇEK SSE modu)")
 
-      safe_settings <- current_settings
-      safe_settings$shiny_session <- NULL
-      dbg_dump("LLM_REQUEST_TRUE_STREAMING", list(
-        model = model_selected,
-        messages = messages_to_process,
-        settings = safe_settings
-      ))
+      # Kritik yol dostu: varsayılan olarak yalnızca hafif sayım/boyut özeti
+      # yazılır. Tam istem/ayar dökümü yalnızca açık tanılama bayrağıyla üretilir.
+      mergen_log_llm_request_debug(
+        "LLM_REQUEST_TRUE_STREAMING", model_selected, messages_to_process, current_settings
+      )
 
       true_stream_ctx <- list(
         session = session,

@@ -38,11 +38,8 @@ handle_true_streaming_mode <- function(ctx) {
     settings_data$user_config <- session$userData$user_config
   }
 
-  log_info(sprintf(
-    "[CHAT PERF] True streaming başladı - profil=%s, yoklama=%dms",
-    stream_profile$label %||% "standard",
-    poll_interval_ms
-  ))
+  log_info(sprintf("[CHAT PERF] True streaming başladı - profil=%s, yoklama=%dms",
+    stream_profile$label %||% "standard", poll_interval_ms))
 
   stream_env <- new.env(parent = emptyenv())
   stream_env$req_id <- req_id
@@ -150,10 +147,8 @@ handle_true_streaming_mode <- function(ctx) {
 
     if (!isTRUE(stream_env$first_ui_logged)) {
       stream_env$first_ui_logged <- TRUE
-      log_info(sprintf(
-        "[CHAT PERF] İlk UI kabuğu gönderildi - %.3f sn",
-        as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs"))
-      ))
+      stream_env$first_ui_ms <- as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs")) * 1000
+      log_info(sprintf("[CHAT PERF] İlk UI kabuğu gönderildi - %.3f sn", stream_env$first_ui_ms / 1000))
     }
 
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
@@ -343,6 +338,12 @@ handle_true_streaming_mode <- function(ctx) {
       sure_degeri
     ))
 
+    # Tek satırlık birleşik özet: ilk akıl yürütme/yanıt/UI ve toplam süre.
+    mergen_log_chat_perf_summary(
+      stream_env$req_id, ctx$model_selected, stream_profile$label %||% "standard",
+      stream_env$first_reasoning_ms, stream_env$first_answer_ms, stream_env$first_ui_ms,
+      as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs")) * 1000)
+
     cleanup_streaming_state()
     ctx$reset_chat_state_fn()
     invisible(NULL)
@@ -353,14 +354,16 @@ handle_true_streaming_mode <- function(ctx) {
       return(invisible(NULL))
     }
 
+    # 401/403/AUTH hatasında gönderim anahtarı önbelleği geçersiz kılınır.
+    mb_api_key_invalidate_send_cache_on_auth_error(session, result$error %||% "")
+
     abort_plan <- mergen_stream_abort_cleanup_plan(
       accumulated_text = stream_env$accumulated_text,
       result = result,
       normalize_fn = normalize_llm_scalar_content
     )
 
-    sure_degeri <- abort_plan$duration %||%
-      as.numeric(difftime(Sys.time(), baslangic_zamani, units = "secs"))
+    sure_degeri <- abort_plan$duration %||% as.numeric(difftime(Sys.time(), baslangic_zamani, units = "secs"))
 
     if (identical(abort_plan$action, "finalize_partial")) {
       finalize_stream_message(
@@ -394,9 +397,10 @@ handle_true_streaming_mode <- function(ctx) {
   stream_file_for_sse <- stream_env$stream_file
   stop_file_for_sse <- stream_env$stop_file
 
-  settings_for_sse <- ctx$current_settings
+  # Worker yükü küçültülür (oturum çıkarılır; düz hızlı sohbette ağır alanlar atılır).
+  settings_for_sse <- mergen_sanitize_llm_settings_for_worker(
+    ctx$current_settings, plain_fast = identical(stream_profile$label %||% "", "plain_fast"))
   settings_for_sse$model_selection <- ctx$model_selected
-  settings_for_sse$shiny_session <- NULL
   settings_for_sse$request_start_unix <- as.numeric(istek_baslangici)
 
   future_submit_time <- Sys.time()
@@ -497,10 +501,8 @@ handle_true_streaming_mode <- function(ctx) {
           if (!isTRUE(stream_env$first_delta_logged)) {
             stream_env$first_delta_logged <- TRUE
             ilk_delta_ms <- as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs")) * 1000
-            log_info(sprintf(
-              "[CHAT PERF] İlk delta gözlendi - %.3f sn",
-              ilk_delta_ms / 1000
-            ))
+            stream_env$first_answer_ms <- ilk_delta_ms
+            log_info(sprintf("[CHAT PERF] İlk delta gözlendi - %.3f sn", ilk_delta_ms / 1000))
             # Grep-dostu, sır-redakteli, varsayılan KAPALI perf işareti
             # (MERGEN_PERF_LOG=1): modelin ilk-token gecikmesini izler.
             mergen_perf_log("stream.first_delta", fields = list(
@@ -512,6 +514,7 @@ handle_true_streaming_mode <- function(ctx) {
 
         # Düşünce akışı parçalarını ayrı kanalla istemciye ilet.
         if (batches$reasoning_count > 0) {
+          stream_env$first_reasoning_ms <- stream_env$first_reasoning_ms %||% (as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs")) * 1000)
           stream_env$accumulated_reasoning <- paste0(stream_env$accumulated_reasoning, batches$reasoning_text)
 
           session$sendCustomMessage("streamingReasoningDelta", list(

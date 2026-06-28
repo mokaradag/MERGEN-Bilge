@@ -95,7 +95,7 @@ mb_api_key_clear_session_key <- function(session) {
     return(invisible(NULL))
   }
 
-  keys <- c("ai_api_key", "ai_api_key_owner")
+  keys <- c("ai_api_key", "ai_api_key_owner", "ai_api_key_send_cache")
   existing_keys <- keys[vapply(
     keys,
     exists,
@@ -135,6 +135,11 @@ mb_api_key_set_session_key <- function(session, key_plain, owner = NULL) {
 
   user_data$ai_api_key <- key_plain
   user_data$ai_api_key_owner <- owner$username
+
+  # Gönderim önbelleği geçersiz kılınır; sonraki istek anahtarı yeniden çözer.
+  if (exists("ai_api_key_send_cache", envir = user_data, inherits = FALSE)) {
+    rm("ai_api_key_send_cache", envir = user_data)
+  }
 
   invisible(owner)
 }
@@ -256,4 +261,115 @@ mb_api_key_get_effective_key_value <- function(session,
   )
 
   as.character(plan$key %||% "")[1]
+}
+
+# Her gönderimde ucuz, oturum-belleği önbellekli etkin anahtar çözümü.
+# Etkin anahtar zaten oturum belleğinden okunur (disk/ağ/DB yok); bu yardımcı
+# ilk-token öncesi sahiplik/kaynak çözümleme tekrarını da atlayarak küçük bir
+# memo tutar. Önbellek YALNIZCA sunucu tarafı oturum belleğinde durur; tarayıcıya
+# asla gönderilmez ve anahtar değeri loglanmaz.
+#
+# Önbellek isabeti yalnızca şu durumda kullanılır: kimliği doğrulanmış mevcut
+# sahip, önbellekteki sahip ile birebir aynıdır ve önbellekteki anahtar doludur.
+# Sahip değişimi, oturum/auth hazır değilse veya anahtar boşsa tam çözümlemeye
+# (mb_api_key_get_effective_key) düşülür ve önbellek güncellenir. Önbellek
+# anahtar kaydetme/temizleme yollarında (mb_api_key_set_session_key /
+# mb_api_key_clear_session_key) geçersiz kılınır.
+# Yalnızca gönderim önbelleğini (ai_api_key_send_cache) temizler; oturum
+# anahtarını (ai_api_key) KORUR. 401/403 gibi yetkilendirme hatalarından sonra
+# bir sonraki gönderimin tam sahiplik yeniden-çözümünü (clear_on_mismatch dahil)
+# garanti etmek için kullanılır.
+mb_api_key_invalidate_send_cache <- function(session) {
+  user_data <- .mb_api_key_user_data(session)
+  if (is.null(user_data)) {
+    return(invisible(FALSE))
+  }
+
+  if (exists("ai_api_key_send_cache", envir = user_data, inherits = FALSE)) {
+    rm("ai_api_key_send_cache", envir = user_data)
+    return(invisible(TRUE))
+  }
+
+  invisible(FALSE)
+}
+
+# Hata metni yetkilendirme hatasına benziyor mu? (401/403/AUTH_MISSING_KEY/...).
+# Zaman aşımı, ağ, iptal gibi yetkilendirme dışı hatalarda FALSE döner.
+mb_api_key_error_is_auth <- function(error_text) {
+  txt <- tryCatch(as.character(error_text %||% "")[1], error = function(e) "")
+  if (is.na(txt) || !nzchar(txt)) {
+    return(FALSE)
+  }
+
+  grepl(
+    "AUTH_MISSING_KEY|API_HTTP_ERROR_401|API_HTTP_ERROR_403|(^|[^0-9])(401|403)([^0-9]|$)|unauthorized|forbidden",
+    txt,
+    ignore.case = TRUE,
+    perl = TRUE
+  )
+}
+
+# Hata metni yetkilendirme hatasıysa gönderim anahtarı önbelleğini geçersiz kılar.
+# Yetkilendirme dışı hatalarda hiçbir şey yapmaz (no-op).
+mb_api_key_invalidate_send_cache_on_auth_error <- function(session, error_text) {
+  if (isTRUE(mb_api_key_error_is_auth(error_text))) {
+    return(mb_api_key_invalidate_send_cache(session))
+  }
+
+  invisible(FALSE)
+}
+
+mb_api_key_get_cached_for_send <- function(session,
+                                           require_auth = TRUE,
+                                           allow_default = NULL,
+                                           clear_on_mismatch = TRUE) {
+  user_data <- .mb_api_key_user_data(session)
+
+  owner <- mb_api_key_resolve_owner(session, require_auth = require_auth)
+  owner_username <- if (is.null(owner)) "" else as.character(owner$username %||% "")[1]
+
+  cache <- if (!is.null(user_data)) {
+    .mb_api_key_get_user_data_value(session, "ai_api_key_send_cache", NULL)
+  } else {
+    NULL
+  }
+
+  # Önbellek isabeti: sahip eşleşiyor ve anahtar dolu.
+  if (is.list(cache) &&
+      nzchar(owner_username) &&
+      identical(as.character(cache$owner %||% "")[1], owner_username) &&
+      nzchar(as.character(cache$key %||% "")[1])) {
+    return(list(
+      key = as.character(cache$key)[1],
+      source = as.character(cache$source %||% "unknown")[1],
+      owner = owner,
+      cached = TRUE
+    ))
+  }
+
+  # Önbellek yok/geçersiz: tam (yine de oturum-belleği) çözümleme ve sakla.
+  plan <- mb_api_key_get_effective_key(
+    session = session,
+    require_auth = require_auth,
+    allow_default = allow_default,
+    clear_on_mismatch = clear_on_mismatch
+  )
+
+  key_val <- as.character(plan$key %||% "")[1]
+  source_val <- as.character(plan$source %||% "unknown")[1]
+
+  if (!is.null(user_data) && nzchar(owner_username) && nzchar(key_val)) {
+    user_data$ai_api_key_send_cache <- list(
+      owner = owner_username,
+      key = key_val,
+      source = source_val
+    )
+  }
+
+  list(
+    key = key_val,
+    source = source_val,
+    owner = plan$owner %||% owner,
+    cached = FALSE
+  )
 }
