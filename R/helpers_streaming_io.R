@@ -116,7 +116,10 @@ mergen_stream_read_new_lines <- function(path, state = NULL) {
   processed <- suppressWarnings(as.integer(state$processed_line_count %||% 0L))
   if (length(processed) == 0L || is.na(processed) || processed < 0L) processed <- 0L
 
-  unchanged_state <- list(offset = offset, partial = partial, last_size = offset,
+  last_size <- suppressWarnings(as.numeric(state$last_size %||% 0))
+  if (!is.finite(last_size) || last_size < 0) last_size <- 0
+
+  unchanged_state <- list(offset = offset, partial = partial, last_size = last_size,
                           processed_line_count = processed)
   empty_result <- list(lines = character(0), state = unchanged_state,
                        used_fallback = FALSE, read_bytes = 0)
@@ -126,10 +129,15 @@ mergen_stream_read_new_lines <- function(path, state = NULL) {
   if (is.na(p) || !nzchar(p)) return(empty_result)
   if (!isTRUE(file.exists(p))) return(empty_result)
 
-  # Kesme/rotasyon savunması: dosya daha önce okuduğumuzdan kısaldıysa güvenli
-  # tam-okuma. file.size() YALNIZCA bu küçülme tespitinde kullanılır.
+  # Kesme/rotasyon savunması: dosyanın GÖZLEMLENEN stat boyutu daha önce
+  # gördüğümüz stat boyutunun altına inerse güvenli tam-okuma yapılır.
+  # Windows VM'de file.size()/stat bayat-düşük kalabilir; offset gerçek EOF'a
+  # kadar okunduğu için offset stat boyutunun önüne geçebilir. Bu durum tek
+  # başına kesilme sayılmaz, yoksa bir sonraki yoklama fallback ile offset'i
+  # bayat file.size() değerine geri alıp satırları tekrar yayımlayabilir.
   size <- suppressWarnings(file.size(p))
-  if (!is.na(size) && size < offset) {
+  observed_size <- if (!is.na(size) && is.finite(size) && size >= 0) as.numeric(size) else last_size
+  if (!is.na(size) && is.finite(size) && size < offset && size < last_size) {
     .mergen_stream_metric_inc("stream_poll_file_read_fallback")
     return(.mergen_stream_read_full_fallback(p, state))
   }
@@ -165,7 +173,7 @@ mergen_stream_read_new_lines <- function(path, state = NULL) {
     # Gerçek EOF offset'te: yeni veri yok (bayat boyuta takılmadan kesin sonuç).
     return(list(
       lines = character(0),
-      state = list(offset = offset, partial = partial, last_size = offset,
+      state = list(offset = offset, partial = partial, last_size = max(last_size, observed_size),
                    processed_line_count = processed),
       used_fallback = FALSE, read_bytes = 0
     ))
@@ -183,7 +191,8 @@ mergen_stream_read_new_lines <- function(path, state = NULL) {
     # Henüz tam satır yok; her şeyi tamponla.
     return(list(
       lines = character(0),
-      state = list(offset = new_offset, partial = combined, last_size = new_offset,
+      state = list(offset = new_offset, partial = combined,
+                   last_size = max(last_size, observed_size),
                    processed_line_count = processed),
       used_fallback = FALSE, read_bytes = length(new_bytes)
     ))
@@ -203,7 +212,8 @@ mergen_stream_read_new_lines <- function(path, state = NULL) {
 
   list(
     lines = lines,
-    state = list(offset = new_offset, partial = remainder, last_size = new_offset,
+    state = list(offset = new_offset, partial = remainder,
+                 last_size = max(last_size, observed_size),
                  processed_line_count = processed + length(lines)),
     used_fallback = FALSE,
     read_bytes = length(new_bytes)
