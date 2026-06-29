@@ -1,6 +1,6 @@
 # MERGEN performance improvement plan
 
-Last updated: 2026-06-27
+Last updated: 2026-06-29
 
 ## Current baseline
 
@@ -57,6 +57,7 @@ As of the pre-index-cache 2026-06-19 baseline, the comparable fake-lane smoke ar
 
 | Date | Change | Command / artifact | Result | Capacity conclusion |
 |---|---|---|---|---|
+| 2026-06-29 | **Streaming event-loop hardening** (this workstream) + a fresh proxy/interactive capacity ladder to 450 users. Code: incremental stream-file reading (no full reread per poll), opt-in adaptive poll backoff, broader delta-transport opt-in, follow-up generation throttle/kill-switch, saved-chats refresh debounce, per-operation backpressure kinds, defensive stream/reasoning size caps, secret-safe stream/follow-up/refresh counters. | `tests/scripts/run_operational_soak_gate.R` with `MERGEN_SOAK_PROFILE=proxy_llm`, `MERGEN_SOAK_PROXY_FORWARD_REAL=FALSE`, `MERGEN_SOAK_CAPACITY_LADDER=TRUE`, `MERGEN_SOAK_CAPACITY_USERS=100,300,350,400,425,450`, `MERGEN_SOAK_CAPACITY_STEP_SECONDS=300`, `MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN=0.98` (VM console observed; artifact `artifacts/soak/20260629-082244/soak_evidence.json` not present in this checkout). Offline: focused behavior/contract tests for the new helpers + manifest/seam/ratchet contracts. | **PASS** — ladder all steps pass, `stabil=450`, `ilk_basarisiz=NA`, `onerilen_sonraki=450`; overall `effective_success_rate=0.9984`, errors=0, timeouts=164/104042 (all `connection_timeout`); p50/p95/p99=2407/12504.8/13880 ms; per-step p95 854→2966→10996→12545→13384→14254 ms; throughput 7566→5728→1874/min beyond 300u while `cpu_max` 21–31%; interactive lane no-leak/isolation/rollback PASS; key routing 5/5, isolation TRUE, mojibake 0, secret_leak 0, redaction verified. | Strong **proxy + GET-only HTTP index + in-process interactive (real SQLite)** evidence to **450 active users on a single worker (port 8009)**. Does **NOT** prove real LLM throughput (`PROXY_FORWARD_REAL=FALSE`), real browser/websocket human-chat concurrency, or SQL Server at-rest correctness. The throughput collapse + p95 climb past ~300 users at **low CPU** confirms single-event-loop/index-serving serialization as the remaining lever: a load-balanced URL over **only 8009 + 8008** plus enabling the new event-loop knobs (`MERGEN_STREAM_POLL_IDLE_BACKOFF`, `MERGEN_STREAM_DELTA_DEFAULT`, the `MERGEN_MAX_CONCURRENT_*` limits). No new capacity number is claimed beyond this lane. |
 | 2026-06-27 | DB pool **production hardening** (no streaming-path change): added `MERGEN_DB_POOL_FAIL_FAST` (env/option, default OFF) to `init_db_pool_once()` + `app.R` `onStart` (default path byte-identical); fixed a latent transaction-safety bug where `db_acquire_tx_connection()` could pass a stale/invalid `Pool` from `get_connection()` into `dbBegin/dbCommit` (now routes to a single real `poolCheckout`, never a Pool object); surfaced `fail_fast` in `db_pool_status_snapshot()` (already on `/readyz`); added VM mechanics/observability preflight `tests/scripts/run_vm_db_pool_preflight_real.R`. | `testthat::test_dir(filter="db-pool")` (behavior + new `test-db-pool-production-readiness-contract.R` + `test-db-pool-failure-modes.R`, 0 fail / 0 warn); `test-maintainability-ratchet.R` (100/100, `helpers_db_pool.R` 23 functions, 0 net added); `test-app-http-routes-contract.R`; `test-production-contracts.R`. | PASS (offline) | Hardens fail/fallback behavior + observability; **no capacity number claimed**. SQL Server at-rest/throughput remain VM gates (`run_vm_db_pool_preflight_real.R` + `run_vm_sqlserver_pool_preflight_real.R` + attach soak). Streaming/SSE path unchanged. |
 | 2026-06-27/28 | Long split proxy soak diagnostic evidence (operator screenshots; raw `artifacts/soak/20260627-180246` and `20260627-180302` JSON not present in this checkout). | Direct split runs against 8008 and 8009 with `proxy_llm`, `MERGEN_SOAK_CONCURRENT_USERS=350` per lane, `MERGEN_SOAK_DURATION_SECONDS=86400`, wall≈86497/86505s. Operator described “375+375 / 18h”; artifacts/screens show 350 per lane and ~86.5k wall seconds, so artifact values are source of truth unless raw evidence supersedes them. | **FAIL/FAIL capacity gate**: 8008 627226 requests / 256467 successes / 370759 timeouts / effective≈0.4089; 8009 627007 requests / 248673 successes / 378334 timeouts / effective≈0.3965; threshold 0.98, errors=0, dominant connection timeout, p95≈26s, p99≈27.2s, throughput≈435 op/min/lane, `loadgen_loop_lag_high`. Positive privacy/routing/isolation/DB-pool/encoding-helper/interactive checks passed in screenshots. | Failed capacity proof and useful negative diagnostic soak. Does not prove 1000 active users, 750 split readiness for this long duration, real LLM throughput, real browser/websocket concurrency, production SQL Server at-rest Turkish correctness, or a staged 50→100→250→500→1000 ladder because the capacity ladder was closed/not executed. |
 | 2026-06-27 | Saturday direct two-worker split-load evidence after the horizontal-scaling commit. | VM screenshot-observed direct runs against two local workers: 8008 and 8009; artifacts `artifacts/soak/20260627-141848`, `20260627-141858`, `20260627-143534`, `20260627-143541`, `20260627-144755`, `20260627-144759`. | PASS/PASS at 425 total (212+213) for 10 min; PASS/PASS at 600 total (300+300) for 10 min; strongest observed PASS/PASS at 750 total active proxy users (375+375) for 30 min with zero errors/timeouts. 375-per-worker artifact reports `saturation_hint=loadgen_loop_lag_high`, so the load generator itself may be contributing pressure. | Supports horizontal-scaling/backlog hypothesis versus prior single-worker 400-425 connection-timeout/backlog boundary. Direct split-load only: still pending real Keycloak/reverse-proxy load-balanced URL proof, 90-minute production-like certification, real browser/websocket concurrency lane, real LLM throughput, and SQL Server at-rest validation where applicable. |
@@ -72,6 +73,69 @@ As of the pre-index-cache 2026-06-19 baseline, the comparable fake-lane smoke ar
 | 2026-06-19 | Restored maintainability ratchet after the daily-log-file reliability work pushed `R/config_logging.R` to 27 functions: extracted the daily-file cluster (`current_mergen_log_date`, `current_mergen_log_file_path`, `mergen_daily_file_appender`, `mergen_ensure_daily_log_file`) to new foundation file `R/config_logging_daily_file.R` (loaded before `config_logging.R`). | `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")` (222 PASS) + manifest/seam/zone/section contracts + `parse_sanity_check.R` (842 files) | PASS (score 100/100, max functions 24, 0 files ≥25 functions) | Behavior byte-for-byte unchanged; pure maintainability split. |
 
 ## Session notes
+
+### 2026-06-29 — Phase 3 (cont.): streaming event-loop hardening + 450-user proxy/interactive ladder
+
+Motivation (file:line evidence): the long split-proxy soak (2026-06-27/28) failed its
+capacity gate dominated by **connection timeouts** and `loadgen_loop_lag_high`, i.e.
+the single Shiny/httpuv event loop saturates under many concurrent sessions. The fresh
+2026-06-29 ladder (proxy lane, GET-only HTTP, in-process interactive) PASSES to 450
+users but shows the same signature: throughput collapses 7566→1874/min past 300 users
+and p95 climbs to ~14 s while **CPU stays at 21–31 %** — serialization on one event
+loop, not CPU exhaustion.
+
+Changes (all additive; default behavior byte-for-byte preserved unless an env flag is
+set). New pure/runtime helpers `R/helpers_streaming_io.R` and
+`R/helpers_stream_load_control.R` (both in the `chat_send_message_runtime` manifest
+section), wired into `R/server_handler_true_streaming.R` and `R/server_send_message.R`:
+
+1. **Incremental stream-file reading.** The true-streaming poll observer no longer
+   `readLines()`-es the whole `stream_env$stream_file` every poll. `mergen_stream_read_new_lines(path, state)`
+   tracks a byte offset + partial-line raw buffer and returns only newly appended
+   complete lines (dedup via `processed_line_count`; UTF-8/NUL/invalid-byte tolerant;
+   truncation/read-error → safe full-read fallback). This removes the
+   grows-with-the-answer per-poll cost on the event loop.
+2. **Adaptive poll backoff** (`MERGEN_STREAM_POLL_IDLE_BACKOFF`, default OFF). When
+   enabled, idle polls back off `min→max` by a factor and reset to `min` on any new
+   delta. Reduces event-loop wakeups for many concurrent idle streams. Default OFF =
+   fixed interval (current behavior).
+3. **Broader delta transport** (`MERGEN_STREAM_DELTA_DEFAULT`, default OFF;
+   `MERGEN_STREAM_FULL_UPDATE_LEGACY` to force legacy). Avoids resending the full
+   accumulated answer per delta for long answers. Default preserves current per-profile
+   behavior.
+4. **Follow-up throttle / kill-switch** (`MERGEN_FOLLOWUPS_ENABLED`,
+   `MERGEN_MAX_CONCURRENT_FOLLOWUPS`, `MERGEN_DISABLE_FOLLOWUPS_UNDER_BACKPRESSURE`,
+   `MERGEN_FOLLOWUP_DELAY_SECONDS`). The post-answer follow-up LLM round-trip (already
+   off the critical path) is now admission-controlled via a `followups` backpressure
+   kind and can be skipped under load or disabled globally — without blocking
+   finalization. Default = enabled + unlimited + delay 0 (current behavior).
+5. **Saved-chats refresh debounce** (`MERGEN_SAVED_CHATS_REFRESH_DEBOUNCE_MS`, default
+   0 = immediate). Coalesces repeated `saved_chats_data$refresh()` per session into one
+   timer. Default 0 preserves current immediate refresh.
+6. **Per-operation backpressure kinds.** `send_message` now resolves the admission
+   `kind` from the tool family (`sql_analysis`/`mcp_excel`/`summarization` get their own
+   `MERGEN_MAX_CONCURRENT_*` pools; everything else shares `llm`) and acquires the slot
+   **after** the tool family is known. Limits default 0 (OFF) → no-op, so heavy ops
+   cannot starve plain chat once limits are set, and a rejection in one kind does not
+   reject another.
+7. **Defensive stream/reasoning size caps** (`MERGEN_MAX_STREAM_CHARS`=120000,
+   `MERGEN_MAX_REASONING_CHARS`=80000). Finalized answer/reasoning are truncated at a
+   UTF-8 character boundary (Turkish/emoji safe) with a polite Turkish note and a
+   counter; `<=0` disables. Normal responses are far below the cap and unchanged.
+8. **Secret-safe counters.** New numeric-only runtime counters surface on `/readyz`
+   via the existing snapshot: `stream_poll_file_read_calls/fallback/bytes`,
+   `stream_poll_idle_backoff_count`, `stream_poll_delta_reset_count`,
+   `stream_text_truncated`, `stream_reasoning_truncated`, `followups_*`,
+   `saved_chats_refresh_*`, plus the existing `backpressure_reject_*`.
+
+Honesty / scope: these are event-loop/streaming **hardening** changes. They do not, by
+themselves, raise the GET-only index-serving soak envelope (that lever remains
+per-request index serialization + horizontal serving), and they claim **no** new
+capacity number. The 450-user ladder above is proxy + GET-only + interactive evidence
+only. The app remains constrained to app ports **8009 and 8008** until IT opens more
+ports; the recommended next validation is a load-balanced URL over **only 8009 + 8008**
+with the knobs in the table below enabled, plus the still-pending real-LLM / browser /
+SQL-Server gates.
 
 ### 2026-06-19 — Phase 3 (perceived responsiveness): follow-up generation moved off the chat critical path
 
@@ -317,3 +381,51 @@ On the production VM (running app), run an attach-mode fake-lane boundary probe 
 1. Sum the new `[PERF] event=db.connection_open` / `db.connection_close` lines per request to quantify how much main-event-loop time is spent purely on ODBC connect/disconnect (vs query and LLM time). Cross-check against the send-message segment timers (`send_message.prepare_chat/prompt_plan/file_context/mcp_prepare`) and the existing `[CHAT PERF]` milestones.
 2. If connection overhead is confirmed as a large share at 23–24 users, prototype **transaction-safe** connection pooling (Phase 3.5): create a `pool::dbPool` at server startup, route `get_connection()` to it, and convert the transaction sites (`save_message_to_db`, `worker_save_assistant_response`) to `poolCheckout`/`poolWithTransaction`. Validate on the VM with the DB encoding preflight (`run_vm_encoding_preflight_real.R`, `MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE`) + SSMS Turkish-encoding spot checks, then re-run the soak boundary probe at 24/26/28 users to measure the capacity delta. Do not weaken any soak threshold.
 3. Re-introduce the dropped send-message cumulative milestones only if room is made by a real helper extraction (the file is at the 694 cap).
+
+### Streaming event-loop hardening knobs (2026-06-29)
+
+These are **documented, not hardcoded** validation settings. Defaults preserve current
+behavior; set them to opt into the new event-loop levers. The app remains constrained to
+app ports **8009 and 8008** until IT opens more ports — do not assume or recommend any
+other port. The next capacity validation should be a load-balanced URL over **only
+8009 + 8008**; it does not prove 1000 real users, real LLM throughput, real
+browser/websocket concurrency, or SQL Server at-rest correctness.
+
+```
+MERGEN_APP_PORTS=8009,8008
+MERGEN_FUTURE_WORKERS=2
+MERGEN_DB_POOL_ENABLED=TRUE
+MERGEN_DB_POOL_FAIL_FAST=TRUE
+MERGEN_DB_POOL_MIN_SIZE=1
+MERGEN_DB_POOL_MAX_SIZE=8
+MERGEN_MAX_CONCURRENT_LLM=50
+MERGEN_MAX_CONCURRENT_SQL_ANALYSIS=10
+MERGEN_MAX_CONCURRENT_MCP_EXCEL=8
+MERGEN_MAX_CONCURRENT_SUMMARIZATION=10
+MERGEN_MAX_CONCURRENT_FOLLOWUPS=5
+MERGEN_BACKPRESSURE_TTL_SECONDS=300
+MERGEN_STREAM_POLL_IDLE_BACKOFF=true
+MERGEN_STREAM_POLL_MIN_MS=25
+MERGEN_STREAM_POLL_MAX_MS=250
+MERGEN_STREAM_POLL_BACKOFF_FACTOR=1.5
+MERGEN_STREAM_DELTA_DEFAULT=true
+MERGEN_FOLLOWUP_DELAY_SECONDS=1
+MERGEN_DISABLE_FOLLOWUPS_UNDER_BACKPRESSURE=true
+MERGEN_SAVED_CHATS_REFRESH_DEBOUNCE_MS=1000
+MERGEN_MAX_STREAM_CHARS=120000
+MERGEN_MAX_REASONING_CHARS=80000
+```
+
+| Knob | Default | Effect when set |
+|---|---|---|
+| `MERGEN_STREAM_POLL_IDLE_BACKOFF` | `false` (fixed interval) | Idle stream polls back off `MIN→MAX` by `FACTOR`, reset to `MIN` on new delta — fewer event-loop wakeups under many concurrent idle streams. Trade-off: finalization of an idle, just-resolved stream can lag up to `MAX_MS`. |
+| `MERGEN_STREAM_DELTA_DEFAULT` | `false` (per-profile) | Prefer incremental `streamingDelta` for all true-streaming, not just fast profiles. `MERGEN_STREAM_FULL_UPDATE_LEGACY=true` forces the old full-accumulated update. Finalize always sends the full final HTML once. |
+| `MERGEN_FOLLOWUPS_ENABLED` | `true` | Global kill-switch for post-answer follow-up generation. |
+| `MERGEN_MAX_CONCURRENT_FOLLOWUPS` | `0` (off) | Caps concurrent follow-up LLM round-trips (`followups` backpressure kind). With `MERGEN_DISABLE_FOLLOWUPS_UNDER_BACKPRESSURE=true`, follow-ups are skipped (not queued) past the cap. |
+| `MERGEN_FOLLOWUP_DELAY_SECONDS` | `0` | Extra defer before follow-up generation fires. |
+| `MERGEN_SAVED_CHATS_REFRESH_DEBOUNCE_MS` | `0` (immediate) | Coalesces per-session saved-chats refreshes into one timer. |
+| `MERGEN_MAX_CONCURRENT_{LLM,SQL_ANALYSIS,MCP_EXCEL,SUMMARIZATION}` | `0` (off) | Per-operation admission limits resolved from tool family; rejection returns a friendly "server busy" toast without breaking stop/cancel. |
+| `MERGEN_MAX_STREAM_CHARS` / `MERGEN_MAX_REASONING_CHARS` | `120000` / `80000` | Defensive UTF-8-safe truncation of finalized answer/reasoning; `<=0` disables. |
+
+Rollback: unset the new env flags to return to previous behavior. None of these change
+runtime behavior at their defaults.

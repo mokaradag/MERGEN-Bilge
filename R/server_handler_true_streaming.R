@@ -17,8 +17,11 @@ handle_true_streaming_mode <- function(ctx) {
   baslangic_zamani <- Sys.time()
   istek_baslangici <- ctx$request_start_time %||% baslangic_zamani
   stream_profile <- ctx$stream_profile %||% list()
-  use_delta_transport <- isTRUE(stream_profile$use_delta_transport)
+  # Delta taşımacılığı tercihi + uyarlanır yoklama yapılandırması (ortam bayrakları;
+  # geri çekilme varsayılan KAPALI = sabit aralık, mevcut davranış).
+  use_delta_transport <- mergen_stream_use_delta_transport(stream_profile)
   poll_interval_ms <- mergen_stream_poll_interval_ms(stream_profile)
+  poll_backoff <- mergen_stream_poll_backoff_config()
 
   req_id <- ctx$request_id %||% mergen_new_send_message_request_id()
 
@@ -47,7 +50,8 @@ handle_true_streaming_mode <- function(ctx) {
   stream_env$timestamp <- format_timestamp()
   stream_env$stream_file <- tempfile(pattern = paste0("llm_sse_", req_id, "_"), fileext = ".jsonl")
   stream_env$stop_file <- tempfile(pattern = paste0("llm_sse_stop_", req_id, "_"), fileext = ".flag")
-  stream_env$processed_line_count <- 0L
+  stream_env$file_read_state <- mergen_stream_read_state_new()
+  stream_env$current_poll_interval_ms <- poll_interval_ms
   stream_env$accumulated_text <- ""
   stream_env$accumulated_reasoning <- ""
   stream_env$reasoning_stream_started <- FALSE
@@ -240,6 +244,13 @@ handle_true_streaming_mode <- function(ctx) {
 
     final_text <- enc2utf8(normalize_llm_scalar_content(final_text))
 
+    # Savunmacı üst sınır (aşırı uzun yanıt UTF-8 sınırında kırpılır; <=0 = sınırsız).
+    final_text <- mergen_stream_apply_text_cap(
+      final_text, mergen_stream_text_char_limit("text"),
+      note = "\n\n*(Yanıt çok uzun olduğu için yapılandırılmış üst sınırda kısaltıldı.)*",
+      metric_name = "stream_text_truncated"
+    )$text
+
     chart_info <- build_chartlab_message(final_text, stream_env$msg_id, session)
     if (isTRUE(chart_info$found)) {
       final_html <- chart_info$html
@@ -254,7 +265,10 @@ handle_true_streaming_mode <- function(ctx) {
     # tutulur. Canlı panel istemci tarafında görünür kalır; DB'de ise ayrı
     # bir sütunda (MB_Messages.ReasoningContent) saklanır ve geçmişten
     # yüklenen mesajlarda <details> arşivi olarak geri üretilir.
-    reasoning_trace <- stream_env$accumulated_reasoning %||% ""
+    reasoning_trace <- mergen_stream_apply_text_cap(
+      stream_env$accumulated_reasoning %||% "", mergen_stream_text_char_limit("reasoning"),
+      metric_name = "stream_reasoning_truncated"
+    )$text
     reasoning_trace_value <- if (nzchar(reasoning_trace)) reasoning_trace else NULL
 
     values$messages[[idx]]$content <- final_text
@@ -323,7 +337,7 @@ handle_true_streaming_mode <- function(ctx) {
         }
       }
       chat_store_message_in_saved_chats(values, values$messages[[idx]])
-      try(ctx$saved_chats_data$refresh(), silent = TRUE)
+      mergen_schedule_saved_chats_refresh(session, ctx$saved_chats_data)
     }, error = function(e) {
       showToast(session, paste("Mesaj kaydedilemedi:", e$message), "error")
     })
@@ -459,104 +473,98 @@ handle_true_streaming_mode <- function(ctx) {
 
   stream_env$poll_observer <- observe({
     req(!isTRUE(stream_env$finalized))
-    invalidateLater(poll_interval_ms, session)
+    invalidateLater(stream_env$current_poll_interval_ms %||% poll_interval_ms, session)
 
     if (isTRUE(stop_generation()) && !file.exists(stream_env$stop_file)) {
       file.create(stream_env$stop_file)
     }
 
-    if (file.exists(stream_env$stream_file)) {
-      # Akış dosyası tek baytlı base64 JSON satırları içerir. Yine de Windows VM
-      # ortamında readLines bazen geçersiz UTF-8 baytları gördüğünde hata atabilir;
-      # bu yüzden tryCatch içine alıyoruz ve gerekirse byte modunda fallback yapıyoruz.
-      satirlar <- tryCatch(
-        suppressWarnings(readLines(stream_env$stream_file, warn = FALSE, encoding = "UTF-8")),
-        error = function(e) {
-          tryCatch(
-            suppressWarnings(readLines(stream_env$stream_file, warn = FALSE)),
-            error = function(e2) character(0)
-          )
-        }
+    # Artımlı okuma: tüm dosyayı yeniden okumak yerine yalnızca eklenen satırlar
+    # (yarım satır tamponlanır; UTF-8/kesme uçları yardımcıda güvenle ele alınır).
+    read_result <- mergen_stream_read_new_lines(stream_env$stream_file, stream_env$file_read_state)
+    stream_env$file_read_state <- read_result$state
+    had_new_lines <- length(read_result$lines) > 0L
+
+    if (had_new_lines) {
+      yeni_satirlar <- read_result$lines
+
+      # Yeni JSONL satırları saf sınıflandırma yardımcısıyla delta /
+      # akıl yürütme / debug gruplarına ayrılır; bozuk satırlar yardımcı
+      # içinde sessizce atlanır.
+      batches <- mergen_stream_classify_poll_lines(
+        yeni_satirlar,
+        decode_fn = decode_stream_delta_payload
       )
 
-      if (length(satirlar) > stream_env$processed_line_count) {
-        yeni_satirlar <- satirlar[seq.int(stream_env$processed_line_count + 1L, length(satirlar))]
-        stream_env$processed_line_count <- length(satirlar)
+      for (debug_text in batches$debug_lines) {
+        log_info(debug_text)
+      }
 
-        # Yeni JSONL satırları saf sınıflandırma yardımcısıyla delta /
-        # akıl yürütme / debug gruplarına ayrılır; bozuk satırlar yardımcı
-        # içinde sessizce atlanır.
-        batches <- mergen_stream_classify_poll_lines(
-          yeni_satirlar,
-          decode_fn = decode_stream_delta_payload
-        )
+      if (batches$delta_count > 0) {
+        stream_env$accumulated_text <- paste0(stream_env$accumulated_text, batches$delta_text)
 
-        for (debug_text in batches$debug_lines) {
-          log_info(debug_text)
+        if (!isTRUE(stream_env$first_delta_logged)) {
+          stream_env$first_delta_logged <- TRUE
+          ilk_delta_ms <- as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs")) * 1000
+          stream_env$first_answer_ms <- ilk_delta_ms
+          log_info(sprintf("[CHAT PERF] İlk delta gözlendi - %.3f sn", ilk_delta_ms / 1000))
+          # Grep-dostu, sır-redakteli, varsayılan KAPALI perf işareti
+          # (MERGEN_PERF_LOG=1): modelin ilk-token gecikmesini izler.
+          mergen_perf_log("stream.first_delta", fields = list(
+            request_id = stream_env$req_id,
+            elapsed_ms = round(ilk_delta_ms, 1)
+          ))
+        }
+      }
+
+      # Düşünce akışı parçalarını ayrı kanalla istemciye ilet.
+      if (batches$reasoning_count > 0) {
+        stream_env$first_reasoning_ms <- stream_env$first_reasoning_ms %||% (as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs")) * 1000)
+        stream_env$accumulated_reasoning <- paste0(stream_env$accumulated_reasoning, batches$reasoning_text)
+
+        session$sendCustomMessage("streamingReasoningDelta", list(
+          id = stream_env$msg_id,
+          delta = batches$reasoning_text,
+          started = !isTRUE(stream_env$reasoning_stream_started),
+          requestId = stream_env$req_id
+        ))
+        stream_env$reasoning_stream_started <- TRUE
+      }
+
+      if (batches$delta_count > 0) {
+        if (!isTRUE(stream_env$ui_started)) {
+          ensure_stream_ui_started()
         }
 
-        if (batches$delta_count > 0) {
-          stream_env$accumulated_text <- paste0(stream_env$accumulated_text, batches$delta_text)
-
-          if (!isTRUE(stream_env$first_delta_logged)) {
-            stream_env$first_delta_logged <- TRUE
-            ilk_delta_ms <- as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs")) * 1000
-            stream_env$first_answer_ms <- ilk_delta_ms
-            log_info(sprintf("[CHAT PERF] İlk delta gözlendi - %.3f sn", ilk_delta_ms / 1000))
-            # Grep-dostu, sır-redakteli, varsayılan KAPALI perf işareti
-            # (MERGEN_PERF_LOG=1): modelin ilk-token gecikmesini izler.
-            mergen_perf_log("stream.first_delta", fields = list(
-              request_id = stream_env$req_id,
-              elapsed_ms = round(ilk_delta_ms, 1)
-            ))
-          }
+        idx <- find_message_index()
+        if (length(idx) > 0) {
+          values$messages[[idx]]$content <- stream_env$accumulated_text
         }
 
-        # Düşünce akışı parçalarını ayrı kanalla istemciye ilet.
-        if (batches$reasoning_count > 0) {
-          stream_env$first_reasoning_ms <- stream_env$first_reasoning_ms %||% (as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs")) * 1000)
-          stream_env$accumulated_reasoning <- paste0(stream_env$accumulated_reasoning, batches$reasoning_text)
-
-          session$sendCustomMessage("streamingReasoningDelta", list(
+        if (isTRUE(use_delta_transport)) {
+          session$sendCustomMessage("streamingDelta", list(
             id = stream_env$msg_id,
-            delta = batches$reasoning_text,
-            started = !isTRUE(stream_env$reasoning_stream_started),
+            delta = batches$delta_text,
             requestId = stream_env$req_id
           ))
-          stream_env$reasoning_stream_started <- TRUE
+        } else {
+          session$sendCustomMessage("streamingUpdate", list(
+            id = stream_env$msg_id,
+            text = stream_env$accumulated_text,
+            isPartial = TRUE,
+            requestId = stream_env$req_id
+          ))
         }
 
-        if (batches$delta_count > 0) {
-          if (!isTRUE(stream_env$ui_started)) {
-            ensure_stream_ui_started()
-          }
-
-          idx <- find_message_index()
-          if (length(idx) > 0) {
-            values$messages[[idx]]$content <- stream_env$accumulated_text
-          }
-
-          if (isTRUE(use_delta_transport)) {
-            session$sendCustomMessage("streamingDelta", list(
-              id = stream_env$msg_id,
-              delta = batches$delta_text,
-              requestId = stream_env$req_id
-            ))
-          } else {
-            session$sendCustomMessage("streamingUpdate", list(
-              id = stream_env$msg_id,
-              text = stream_env$accumulated_text,
-              isPartial = TRUE,
-              requestId = stream_env$req_id
-            ))
-          }
-
-          if (is.null(stream_env$user_prompt_db_id) || nzchar(ctx$pending_chat_title %||% "")) {
-            schedule_chat_persist()
-          }
+        if (is.null(stream_env$user_prompt_db_id) || nzchar(ctx$pending_chat_title %||% "")) {
+          schedule_chat_persist()
         }
       }
     }
+
+    stream_env$current_poll_interval_ms <- mergen_stream_next_poll_interval_ms(
+      stream_env$current_poll_interval_ms, had_new_lines, poll_backoff
+    )
 
     if (!isTRUE(stream_env$resolved)) {
       return(invisible(NULL))
@@ -628,28 +636,38 @@ handle_true_streaming_mode <- function(ctx) {
     )
 
     followup_msg_id <- stream_env$msg_id
-    later::later(function() {
-      followup_perf_start <- mergen_perf_now()
-      followup_questions <- tryCatch(
-        build_followup_suggestions(
-          ctx$user_message_text, base_final_text, settings_data, session,
-          ctx$api_config, ctx$followup_tools, ctx$fallback_followup_tool
-        ),
-        error = function(e) NULL
-      )
+    fu_plan <- mergen_followup_dispatch_plan()
+    if (isTRUE(fu_plan$enabled)) {
+      later::later(function() {
+        fu_admit <- mergen_followup_try_admit(fu_plan)
+        if (!isTRUE(fu_admit$run)) return(invisible(NULL))
+        on.exit(mergen_send_message_release_slot(fu_admit$token), add = TRUE)
 
-      # Varsayılan KAPALI perf işareti: artık kritik yolun DIŞINDA olan takip
-      # üretim süresini (saniyeler olabilir) ölçer.
-      mergen_perf_log("stream.followups", start = followup_perf_start,
-                      fields = list(count = length(followup_questions %||% character(0))))
-
-      if (!is.null(followup_questions) && length(followup_questions) > 0) {
-        try(
-          push_followup_update(session, followup_msg_id, followup_questions, pending = FALSE),
-          silent = TRUE
+        followup_perf_start <- mergen_perf_now()
+        followup_questions <- tryCatch(
+          build_followup_suggestions(
+            ctx$user_message_text, base_final_text, settings_data, session,
+            ctx$api_config, ctx$followup_tools, ctx$fallback_followup_tool
+          ),
+          error = function(e) {
+            mergen_runtime_metric_inc("followups_failed")
+            NULL
+          }
         )
-      }
-    }, delay = 0)
+
+        # Varsayılan KAPALI perf işareti: artık kritik yolun DIŞINDA olan takip
+        # üretim süresini (saniyeler olabilir) ölçer.
+        mergen_perf_log("stream.followups", start = followup_perf_start,
+                        fields = list(count = length(followup_questions %||% character(0))))
+
+        if (!is.null(followup_questions) && length(followup_questions) > 0) {
+          try(
+            push_followup_update(session, followup_msg_id, followup_questions, pending = FALSE),
+            silent = TRUE
+          )
+        }
+      }, delay = fu_plan$delay_seconds)
+    }
 
     invisible(NULL)
   })
