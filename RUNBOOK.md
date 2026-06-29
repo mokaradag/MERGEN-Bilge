@@ -447,6 +447,34 @@ compare burst against ramped/paced arrival, and account for `loadgen_loop_lag_hi
 before treating the result as app-side capacity. Full details are in
 `docs/operational-soak-gate.md` section 13B.
 
+
+#### 2026-06-27/28 long split proxy soak evidence: FAIL capacity gate
+
+The latest operator screenshots for `artifacts/soak/20260627-180246/` (8008) and
+`artifacts/soak/20260627-180302/` (8009) are **negative capacity evidence**. The raw
+JSON artifacts are not present in this checkout, so treat these as screenshot
+transcriptions until raw evidence is available. The operator described the run as
+375+375 / 18h, while artifacts record 350 concurrent users per lane and ~86.5k wall
+seconds. Treat artifact values as source of truth unless later raw evidence
+supersedes them.
+
+| Port | Profile | Configured users | Wall seconds | Requests | Successes | Timeouts | Effective success rate | Threshold | Result | Dominant failure |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|
+| 8008 | `proxy_llm` | 350 | ≈86496.9 | 627226 | 256467 | 370759 | ≈0.4089 | 0.98 | **FAIL** | `connection_timeout` dominant (`370441`) |
+| 8009 | `proxy_llm` | 350 | ≈86505 | 627007 | 248673 | 378334 | ≈0.3965 | 0.98 | **FAIL** | `connection_timeout` dominant |
+
+Interpretation: privacy, routing, isolation, DB-pool hygiene, encoding helper
+round-trip, and interactive action checks passed under the captured proxy soak. The
+gate failed because success rate collapsed under connection timeout pressure, with
+loadgen loop lag high (`mean_loop_lag_ms≈21998`, `max_loop_lag_ms≈61429`,
+`saturation_limit=loadgen_loop_lag_high`). This artifact should be treated as a
+failed capacity proof but a useful negative/diagnostic soak record. It does not
+prove 1000 real active users, production real-LLM throughput, real browser/websocket
+Shiny concurrency, SQL Server Turkish at-rest correctness, Windows VM behavior
+outside the observed loadgen path, a staged 50→100→250→500→1000 capacity ladder,
+real SQL Server behavior for helper/local checks, or browser console cleanliness
+when `browser_console_errors` was unmeasured/NA.
+
 ## 8. Dağıtım Öncesi Kapılar
 
 1. Değişiklik türünü sınıflandırın: docs-only, UI, runtime, DB, SSO, file lifecycle, streaming, Bilge Yolaç veya deployment.

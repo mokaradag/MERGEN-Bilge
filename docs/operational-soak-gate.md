@@ -1554,6 +1554,73 @@ Kanıt dürüstlüğü / kanıtlamaz:
 - Mevcut VM/DB kapılarının ötesinde SQL Server at-rest Türkçe encoding kanıtı
   **eklemez**.
 
+
+### 18.7 2026-06-27/28 uzun split proxy soak: kapasite kapısı FAIL, doğruluk/gizlilik kontrolleri PASS
+
+**Kaynak durumu:** Bu kayıt operatör ekran görüntülerinden yazılmıştır; bu checkout
+içinde `artifacts/soak/20260627-180246/soak_evidence.json` ve
+`artifacts/soak/20260627-180302/soak_evidence.json` bulunamadı. Ham JSON artifact
+sonradan eklenirse, aşağıdaki ekran-transkripsiyon değerleri raw artifact ile
+yeniden doğrulanmalıdır. Operatör koşumu “375+375 / 18h” olarak tarif etti;
+yakalanan artifact/ekran değerleri ise lane başına `MERGEN_SOAK_CONCURRENT_USERS=350`
+ve hedef süre `MERGEN_SOAK_DURATION_SECONDS=86400` gösteriyor, gerçek duvar süresi
+yaklaşık 86.5k saniye. Raw evidence daha sonra aksini kanıtlamadıkça artifact
+değerleri kaynak gerçek kabul edilir.
+
+Koşum profili: gate `run_operational_soak_gate`, profile `proxy_llm`, niyet
+sahte kişisel-anahtar/proxy-şerit modu, `MERGEN_SOAK_LLM_MODE=proxy`, real LLM
+forwarding `FALSE`, load pattern `burst`, connection reuse `TRUE`, ramp-up `0`
+saniye, think time `0` ms, hedef kullanıcı tabanı `1000`, yakalanan lane başına
+aktif kullanıcı `350`. Kapasite merdiveni bu artifact'ta çalışmadı/kapalıydı; bu
+nedenle 50→100→250→500→1000 staged stable kapasite kanıtı türetilemez.
+
+| Artifact / tarih | Port / lane | Profil | Configured users | Wall seconds | Requests | Successes | Timeouts | Effective success rate | Threshold | Result | Dominant failure reason |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|
+| `artifacts/soak/20260627-180246/` (ekran; raw JSON bu checkout'ta yok) | `http://127.0.0.1:8008/` | `proxy_llm` / proxy | 350 | ≈86496.9 | 627226 | 256467 | 370759 | ≈0.4089 | 0.98 | **FAIL** | `effective_success_rate` düşük; baskın `connection_timeout` (`370441`) + `response_timeout` (`318`) |
+| `artifacts/soak/20260627-180302/` (ekran; raw JSON bu checkout'ta yok) | `http://127.0.0.1:8009/` | `proxy_llm` / proxy | 350 | ≈86505 | 627007 | 248673 | 378334 | ≈0.3965 | 0.98 | **FAIL** | `effective_success_rate` düşük; `connection_timeout` baskın (`connection_timeout` yaklaşık `378136`, `response_timeout` yaklaşık `398`) |
+
+Kısa yorum: Privacy, routing, isolation, DB-pool hygiene, encoding helper
+round-trip, and interactive action checks passed under the captured proxy soak.
+The gate failed because success rate collapsed under connection timeout pressure,
+with loadgen loop lag high. This artifact should be treated as a failed capacity
+proof but a useful negative/diagnostic soak record. Bu **kapasite/throughput kapısı
+başarısızlığıdır**; ekranlarda uygulama doğruluğu, gizlilik veya anahtar izolasyonu
+başarısızlığı görünmemektedir. Her iki lane'de `errors=0`; p95 gecikme yaklaşık
+26.0 s, p99 yaklaşık 27.2 s, throughput yaklaşık 435 op/dk/lane olarak gözlendi.
+
+Yük üretici / doygunluk sinyali: ekranlar `mean_loop_lag_ms≈21998`,
+`max_loop_lag_ms≈61429` ve `saturation_hint=loadgen_loop_lag_high` gösteriyor. Bu
+kanıt, baskın darboğaz sinyalinin yük sürücüsü / üretilen bağlantı basıncı / proxy
+lane doygunluğu tarafında olduğunu düşündürür; üretim kapasitesi olarak
+ilerletilmemelidir.
+
+Geçen pozitif kontroller (ekran-transkripsiyon): sunucu koşum sonunda canlıydı;
+`raw_key_leak_count=0`, `raw_prompt_leak_count=0`; personal/default/missing key
+routing sınıflaması geçti; cross-session isolation geçti; key-owner mismatch
+reddedildi; upload validation geçti; Turkish + emoji DB encoding helper
+round-trip geçti; `mojibake_hits=0`; redaction validated `TRUE`; interactive lane
+50 oturum / 400 eylem / success ratio 1.0 ve p50/p95/p99 yaklaşık 5.9/10.4/16 ms;
+DB pool checkout=451, return=451, outstanding/sızıntı=0, tx_commit=200,
+tx_rollback=50 ve leaked rollback row yok. Sistem telemetrisi örneklendi: max
+toplam CPU yaklaşık %56, max bellek yaklaşık 18866 MB, max R process memory
+yaklaşık 3929 MB, max app-port TCP yaklaşık 352, established yaklaşık 351; server
+crash görünmedi.
+
+**Kanıtlamaz / Does not prove:**
+
+- 1000 gerçek aktif kullanıcıyı kanıtlamaz.
+- Production real-LLM throughput'u kanıtlamaz; bu `proxy_llm` / fake proxy-strip
+  modudur ve real forwarding kapalıdır.
+- Gerçek tarayıcı/websocket Shiny concurrency kanıtı değildir.
+- Production SQL Server'da Turkish at-rest correctness kanıtı değildir.
+- Gözlenen loadgen davranışı dışında Windows VM kapasitesini kanıtlamaz.
+- Capacity ladder kapalı/çalışmadığı için 50→100→250→500→1000 staged stable
+  capacity ladder kanıtı değildir.
+- Bazı DB veya interactive kontroller local/in-process/helper-level simülasyon
+  kullandıysa real SQL Server davranışını kanıtlamaz.
+- `browser_console_errors` unmeasured/NA olduğu yerde tarayıcı konsolu temizliğini
+  kanıtlamaz.
+
 Pazartesi IT / platform sahipleri takip işi:
 
 - Mevcut `https://mergen.com.tr/bilge` ön-kapı/Keycloak/ters-vekil rotasını veya

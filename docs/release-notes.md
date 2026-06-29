@@ -55,6 +55,35 @@ at-rest + attach soak) gerekir. Ayrıntı: [`database-pooling.md`](database-pool
 bölüm 8, [`operational-soak-gate.md`](operational-soak-gate.md) bölüm 16.5A.
 
 
+### 2026-06-27/28 uzun split proxy soak ekran kanıtı: kapasite kapısı FAIL
+
+Operatörün son ekran kanıtları iki split `proxy_llm` soak lane'i gösterir:
+`http://127.0.0.1:8008/` için `artifacts/soak/20260627-180246/` ve
+`http://127.0.0.1:8009/` için `artifacts/soak/20260627-180302/`. Bu raw JSON
+artifact'ları bu checkout'ta bulunamadığı için değerler ekran transkripsiyonudur.
+Operatör koşumu “375+375 / 18h” olarak tarif etti; artifact ekranları ise lane
+başına 350 kullanıcı, hedef 86400 saniye ve yaklaşık 86497/86505 saniye gerçek
+duvar süresi gösteriyor. Raw artifact daha sonra aksini kanıtlamadıkça artifact
+değerleri kaynak gerçek kabul edilir.
+
+| Lane | Profil | Kullanıcı | Duvar süresi | İstek | Başarı | Timeout | Effective success | Eşik | Sonuç | Baskın neden |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|
+| 8008 | `proxy_llm` | 350 | ≈86496.9s | 627226 | 256467 | 370759 | ≈0.4089 | 0.98 | **FAIL** | `connection_timeout` baskın; `response_timeout=318` |
+| 8009 | `proxy_llm` | 350 | ≈86505s | 627007 | 248673 | 378334 | ≈0.3965 | 0.98 | **FAIL** | `connection_timeout` baskın; `response_timeout≈398` |
+
+Bu, uygulama doğruluğu/gizlilik/izolasyon arızası olarak değil, connection timeout
+basıncı altında çöken bir kapasite/throughput kapısı başarısızlığı olarak
+okunmalıdır. Ekranlarda server alive, errors=0, raw key/prompt leak=0, key routing,
+cross-session isolation, key-owner mismatch reject, upload validation, Turkish+emoji
+encoding helper round-trip, mojibake=0, redaction, interactive 50 session/400 action
+(success ratio 1.0) ve DB pool checkout/return hygiene kontrolleri PASS görünüyor.
+Buna karşın `loadgen_loop_lag_high` (`mean_loop_lag_ms≈21998`,
+`max_loop_lag_ms≈61429`) baskın load-driver/generated-connection-pressure/proxy-lane
+doygunluk sinyalidir. Bu artifact başarısız bir kapasite kanıtı fakat yararlı bir
+negatif/diagnostic soak kaydıdır; 1000 gerçek aktif kullanıcı, real-LLM üretim
+throughput'u, gerçek browser/websocket Shiny concurrency, SQL Server at-rest Türkçe
+doğruluğu veya kapalı olan 50→100→250→500→1000 capacity ladder'ı kanıtlamaz.
+
 ### 2026-06-27 Yatay-ölçekleme commit'i sonrası Cumartesi doğrudan bölünmüş yük doğrulaması
 
 Cumartesi 2026-06-27 doğrudan bölünmüş yük doğrulaması, IT gerçek Keycloak/
