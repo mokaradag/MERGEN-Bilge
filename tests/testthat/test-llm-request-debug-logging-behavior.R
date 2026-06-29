@@ -133,13 +133,13 @@ testthat::test_that("LLM istek yolları mergen_log_llm_request_debug kullanır (
     )
 
     testthat::expect_true(
-      any(grepl("mergen_log_llm_request_debug\\(", lines)),
+      any(grepl("mergen_log_llm_request_debug\\(", lines, useBytes = TRUE)),
       info = sprintf("%s hafif istek loglayıcısını kullanmalı", rel)
     )
 
     # Ham LLM_REQUEST_* dökümü artık olmamalı.
     testthat::expect_false(
-      any(grepl("dbg_dump\\(\\s*\"LLM_REQUEST", lines)),
+      any(grepl("dbg_dump\\(\\s*\"LLM_REQUEST", lines, useBytes = TRUE)),
       info = sprintf("%s ham dbg_dump(\"LLM_REQUEST...\") içermemeli", rel)
     )
   }
