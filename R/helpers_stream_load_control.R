@@ -87,6 +87,61 @@ mergen_followup_try_admit <- function(plan = NULL) {
   list(run = TRUE, token = NULL, reason = "best_effort")
 }
 
+# Yanıt sonlandıktan SONRA, kritik yolun DIŞINDA takip (follow-up) önerilerini
+# bloklamayan bir later() döngüsünde üretip istemciye iletir. Üretim, kabul
+# denetimi (backpressure) ile yük altında atlanabilir; üretici hata verirse sayaç
+# artar ve sessizce geçilir. later_fn/build_fn enjekte edilebilir (test/izolasyon).
+# Dönüş: planlama yapıldıysa TRUE, devre dışı ise FALSE.
+mergen_stream_dispatch_followups <- function(session,
+                                             msg_id,
+                                             user_message_text,
+                                             final_text,
+                                             settings_data,
+                                             api_config,
+                                             followup_tools,
+                                             fallback_followup_tool,
+                                             plan = NULL,
+                                             later_fn = NULL,
+                                             build_fn = NULL) {
+  if (is.null(plan)) plan <- mergen_followup_dispatch_plan()
+  if (!isTRUE(plan$enabled)) return(invisible(FALSE))
+
+  if (is.null(later_fn)) later_fn <- later::later
+  if (is.null(build_fn)) build_fn <- build_followup_suggestions
+
+  later_fn(function() {
+    fu_admit <- mergen_followup_try_admit(plan)
+    if (!isTRUE(fu_admit$run)) return(invisible(NULL))
+    on.exit(mergen_send_message_release_slot(fu_admit$token), add = TRUE)
+
+    followup_perf_start <- mergen_perf_now()
+    followup_questions <- tryCatch(
+      build_fn(
+        user_message_text, final_text, settings_data, session,
+        api_config, followup_tools, fallback_followup_tool
+      ),
+      error = function(e) {
+        mergen_runtime_metric_inc("followups_failed")
+        NULL
+      }
+    )
+
+    # Varsayılan KAPALI perf işareti: artık kritik yolun DIŞINDA olan takip
+    # üretim süresini (saniyeler olabilir) ölçer.
+    mergen_perf_log("stream.followups", start = followup_perf_start,
+                    fields = list(count = length(followup_questions %||% character(0))))
+
+    if (!is.null(followup_questions) && length(followup_questions) > 0) {
+      try(
+        push_followup_update(session, msg_id, followup_questions, pending = FALSE),
+        silent = TRUE
+      )
+    }
+  }, delay = plan$delay_seconds)
+
+  invisible(TRUE)
+}
+
 # ------------------------------------------------------------------------------
 # Kaydedilen sohbet yenilemesini debounce etme
 # ------------------------------------------------------------------------------
