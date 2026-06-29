@@ -1637,3 +1637,75 @@ Pazartesi IT / platform sahipleri takip işi:
 2. İlk hedefler olarak 425, 600 ve 750 aktif proxy kullanıcıyla başlayın.
 3. Önce 10 dakikalık merdiven, ardından en güçlü geçen hedefte 30 dakikalık
    doğrulama ve ancak daha sonra 90 dakikalık sertifikasyon kapısı koşun.
+
+## 19. 2026-06-29 — Akış olay-döngüsü sertleştirmesi + 450-kullanıcı merdiveni PASS
+
+**Kaynak durumu:** Operatör konsolundan gözlemlendi; bu checkout'ta
+`artifacts/soak/20260629-082244/soak_evidence.json` bulunmuyor. Ham JSON sonradan
+eklenirse aşağıdaki değerler raw artifact ile yeniden doğrulanmalıdır.
+
+Koşum: `run_operational_soak_gate.R`, profil `proxy_llm`, `MERGEN_SOAK_LLM_MODE=proxy`,
+`MERGEN_SOAK_PROXY_FORWARD_REAL=FALSE` (gerçek LLM yönlendirme KAPALI), kapasite
+merdiveni `100,300,350,400,425,450`, adım `300s`, `MERGEN_SOAK_STABLE_SUCCESS_RATE_MIN=0.98`,
+yük hedefi `http://127.0.0.1:8009/` (tek worker, GET-only index), in-process
+interactive şerit + proxy LLM şeridi aynı süreçte.
+
+| Adım (kullanıcı) | İstek | eff | p95 (ms) | tput (/dk) | cpu_max | Sonuç |
+|---:|---:|---:|---:|---:|---:|---|
+| 100 | 37832 | 1.0 | 854.1 | 7566.4 | %28 | PASS |
+| 300 | 28642 | 1.0 | 2966.1 | 5728.4 | %21 | PASS |
+| 350 | 9372 | 1.0 | 10996.4 | 1874.4 | %29 | PASS |
+| 400 | 9377 | 1.0 | 12545.3 | 1875.4 | %31 | PASS |
+| 425 | 9436 | 0.9826 | 13384.2 | 1887.2 | %11 | PASS |
+| 450 | 9383 | 1.0 | 14254.2 | 1876.6 | %16 | PASS |
+
+Genel: `stabil=450`, `ilk_basarisiz=NA`, `onerilen_sonraki=450`; toplam istek 104042,
+başarı 103878 (0.9984), errors=0, timeout=164 (tümü `connection_timeout`),
+p50/p95/p99=2407/12504.8/13880 ms. Anahtar yönlendirme 5/5, izolasyon TRUE,
+`mojibake_hits=0`, `secret_leak=0`, redaksiyon doğrulandı; interactive lane
+DB-no-leak/isolation/rollback PASS. **Genel sonuç: PASS.**
+
+Dürüst yorum: Merdiven 450'ye kadar geçse de, ~300 kullanıcıdan sonra **throughput
+çöküyor (7566→1874/dk) ve p95 ~14 s'ye tırmanıyor; CPU ise %21–31'de kalıyor.** Düşük
+CPU + throughput çöküşü, **tek httpuv/Shiny olay-döngüsünde index-sunumu
+serileştirmesi** imzasıdır (CPU darboğazı değil). Kalan kaldıraç, yalnızca **8009 +
+8008** üzerinden yük-dengelemeli bir URL ve bu PR'ın olay-döngüsü anahtarlarıdır.
+
+**Kanıtlamaz / Does not prove:** 1000 gerçek aktif kullanıcı; production real-LLM
+throughput (`PROXY_FORWARD_REAL=FALSE`); gerçek tarayıcı/websocket Shiny concurrency;
+production SQL Server Turkish at-rest correctness. Bu kanıt yalnızca proxy + GET-only
+HTTP + in-process interactive şeritlerine aittir ve tek worker (8009) ile alınmıştır.
+
+### 19.1 Akış olay-döngüsü sertleştirme anahtarları (varsayılan = mevcut davranış)
+
+Bu PR, `R/server_handler_true_streaming.R` yoklama döngüsünü hafifletir: artımlı akış
+dosyası okuma (her yoklamada tüm dosya yeniden okunmaz), opsiyonel uyarlanır yoklama
+geri çekilmesi, daha geniş delta taşımacılığı, takip (follow-up) üretimini yük altında
+kısma/atlama, kaydedilen-sohbet yenilemesi debounce'u, araç-ailesine göre backpressure
+türleri ve savunmacı akış/akıl yürütme metin üst sınırları. Tüm anahtarlar **varsayılan
+KAPALI/no-op**'tur; yalnızca açıkça ayarlanınca devreye girer:
+
+```
+MERGEN_STREAM_POLL_IDLE_BACKOFF=true
+MERGEN_STREAM_POLL_MIN_MS=25
+MERGEN_STREAM_POLL_MAX_MS=250
+MERGEN_STREAM_POLL_BACKOFF_FACTOR=1.5
+MERGEN_STREAM_DELTA_DEFAULT=true
+MERGEN_MAX_CONCURRENT_LLM=50
+MERGEN_MAX_CONCURRENT_SQL_ANALYSIS=10
+MERGEN_MAX_CONCURRENT_MCP_EXCEL=8
+MERGEN_MAX_CONCURRENT_SUMMARIZATION=10
+MERGEN_MAX_CONCURRENT_FOLLOWUPS=5
+MERGEN_DISABLE_FOLLOWUPS_UNDER_BACKPRESSURE=true
+MERGEN_FOLLOWUP_DELAY_SECONDS=1
+MERGEN_SAVED_CHATS_REFRESH_DEBOUNCE_MS=1000
+MERGEN_MAX_STREAM_CHARS=120000
+MERGEN_MAX_REASONING_CHARS=80000
+```
+
+Yeni sayaçlar `/readyz` anlık görüntüsünde (yalnızca sayısal, sır-güvenli) görünür:
+`stream_poll_file_read_calls/fallback/bytes`, `stream_poll_idle_backoff_count`,
+`stream_poll_delta_reset_count`, `stream_text_truncated`, `stream_reasoning_truncated`,
+`followups_*`, `saved_chats_refresh_*`. Geri alma: yeni ortam değişkenlerini kaldırmak
+önceki davranışa döndürür. Bu, port sayısını değiştirmez — uygulama yalnızca **8009 ve
+8008** ile sınırlıdır.

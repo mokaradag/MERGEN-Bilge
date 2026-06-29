@@ -97,15 +97,8 @@ sendMessageInit <- function(
       }
     }
     values$last_request_time <- Sys.time()
-    # Süreç-geneli kabul-denetimi (backpressure; varsayılan KAPALI = no-op).
+    # Önceki istekten kalmış olabilecek bayat backpressure slotunu temizle.
     mergen_send_message_release_values_token(values)
-    bp_admission <- mergen_send_message_acquire_slot()
-    if (!isTRUE(bp_admission$acquired)) {
-      showToast(session, "Sunucu şu anda yoğun. Lütfen birkaç saniye sonra tekrar deneyin.", "warning")
-      return(invisible(NULL))
-    }
-    bp_handoff <- FALSE
-    on.exit(if (!isTRUE(bp_handoff)) mergen_send_message_release_slot(bp_admission$token), add = TRUE)
 
     prompt_snapshot <- mergen_build_send_message_prompt_snapshot(
       prompt_text = prompt_text,
@@ -138,6 +131,18 @@ sendMessageInit <- function(
     current_settings <- routing_info$current_settings
     cfg_excel_on <- routing_info$cfg_excel_on
     cfg_sql_analysis_on <- routing_info$cfg_sql_analysis_on
+
+    # Süreç-geneli kabul-denetimi (backpressure; varsayılan KAPALI = no-op).
+    # Tür araç ailesinden çözülür: ağır işlemler (sql_analysis/mcp_excel/
+    # summarization) kendi limit havuzlarını, diğerleri genel "llm" havuzunu kullanır.
+    bp_kind <- mergen_send_message_backpressure_kind(tool_family)
+    bp_admission <- mergen_send_message_acquire_slot(bp_kind)
+    if (!isTRUE(bp_admission$acquired)) {
+      showToast(session, "Sunucu şu anda yoğun. Lütfen birkaç saniye sonra tekrar deneyin.", "warning")
+      return(invisible(NULL))
+    }
+    bp_handoff <- FALSE
+    on.exit(if (!isTRUE(bp_handoff)) mergen_send_message_release_slot(bp_admission$token), add = TRUE)
 
     log_info(sprintf(
       "[CHAT PERF] Yol seçildi - araç=%s, dosya=%d, gecen=%.3f sn",

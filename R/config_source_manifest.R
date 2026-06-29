@@ -211,6 +211,8 @@ source_manifest_sections <- list(
     "R/helpers_send_message_model_runtime.R",
     "R/helpers_streaming_abort_lifecycle.R",
     "R/helpers_streaming_poll_lifecycle.R",
+    "R/helpers_streaming_io.R",
+    "R/helpers_stream_load_control.R",
     "R/helpers_send_message_core.R",
     "R/helpers_vision_context.R",
     "R/helpers_send_message_prompting.R",
