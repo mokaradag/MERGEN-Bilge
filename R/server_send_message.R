@@ -132,11 +132,8 @@ sendMessageInit <- function(
     cfg_excel_on <- routing_info$cfg_excel_on
     cfg_sql_analysis_on <- routing_info$cfg_sql_analysis_on
 
-    # Süreç-geneli kabul-denetimi (backpressure; varsayılan KAPALI = no-op).
-    # Tür araç ailesinden çözülür: ağır işlemler (sql_analysis/mcp_excel/
-    # summarization) kendi limit havuzlarını, diğerleri genel "llm" havuzunu kullanır.
-    bp_kind <- mergen_send_message_backpressure_kind(tool_family)
-    bp_admission <- mergen_send_message_acquire_slot(bp_kind)
+    # Süreç-geneli kabul-denetimi (backpressure; varsayılan KAPALI). Tür araç ailesinden çözülür.
+    bp_admission <- mergen_send_message_acquire_slot(mergen_send_message_backpressure_kind(tool_family))
     if (!isTRUE(bp_admission$acquired)) {
       showToast(session, "Sunucu şu anda yoğun. Lütfen birkaç saniye sonra tekrar deneyin.", "warning")
       return(invisible(NULL))

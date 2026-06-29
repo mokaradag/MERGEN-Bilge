@@ -101,6 +101,81 @@ test_that("disable bayragi kapaliyken slot yoksa en-iyi-caba calisir", {
 })
 
 # ------------------------------------------------------------------------------
+# Takip dağıtımı (handler'dan ayıklanan bloklamayan later() planlayıcısı)
+# ------------------------------------------------------------------------------
+
+test_that("dispatch_followups devre disi planda planlama yapmaz, FALSE doner", {
+  called <- FALSE
+  fake_later <- function(f, delay) { called <<- TRUE; invisible(NULL) }
+
+  out <- mergen_stream_dispatch_followups(
+    session = .fake_session(), msg_id = "m1", user_message_text = "soru",
+    final_text = "yanit", settings_data = list(), api_config = list(),
+    followup_tools = NULL, fallback_followup_tool = NULL,
+    plan = list(enabled = FALSE, delay_seconds = 0),
+    later_fn = fake_later, build_fn = function(...) stop("uretici cagrilmamali")
+  )
+
+  expect_false(out)
+  expect_false(called)
+})
+
+test_that("dispatch_followups etkin planda planlar; geri cagri ureticiyi calistirir", {
+  captured <- NULL
+  captured_delay <- NULL
+  fake_later <- function(f, delay) { captured <<- f; captured_delay <<- delay; invisible(NULL) }
+
+  out <- mergen_stream_dispatch_followups(
+    session = .fake_session(), msg_id = "m2", user_message_text = "q",
+    final_text = "ans", settings_data = list(), api_config = list(),
+    followup_tools = NULL, fallback_followup_tool = NULL,
+    plan = list(enabled = TRUE, delay_seconds = 0),
+    later_fn = fake_later, build_fn = function(...) c("S1", "S2")
+  )
+
+  expect_true(out)
+  expect_true(is.function(captured))
+  expect_identical(captured_delay, 0)
+
+  # Çağrı içindeki çalışma-zamanı yardımcıları test için geçici stub'lanır; sentinel
+  # ile var olanlar korunup geri yüklenir (tam suite sızıntısını önler).
+  collaborators <- c("push_followup_update", "mergen_perf_now", "mergen_perf_log",
+                     "mergen_send_message_release_slot")
+  sentinel <- new.env()
+  saved <- list()
+  for (nm in collaborators) {
+    saved[[nm]] <- if (exists(nm, envir = globalenv(), inherits = FALSE)) {
+      get(nm, envir = globalenv())
+    } else {
+      sentinel
+    }
+  }
+  withr::defer({
+    for (nm in collaborators) {
+      if (identical(saved[[nm]], sentinel)) {
+        if (exists(nm, envir = globalenv(), inherits = FALSE)) rm(list = nm, envir = globalenv())
+      } else {
+        assign(nm, saved[[nm]], envir = globalenv())
+      }
+    }
+  })
+
+  pushed <- NULL
+  assign("push_followup_update", function(session, msg_id, suggestions, pending = FALSE) {
+    pushed <<- list(msg_id = msg_id, suggestions = suggestions); invisible(NULL)
+  }, envir = globalenv())
+  assign("mergen_perf_now", function() 0, envir = globalenv())
+  assign("mergen_perf_log", function(...) invisible(NULL), envir = globalenv())
+  assign("mergen_send_message_release_slot", function(token) invisible(NULL), envir = globalenv())
+
+  mergen_backpressure_reset()
+  captured()  # planlanan geri çağrıyı çalıştır
+
+  expect_identical(pushed$msg_id, "m2")
+  expect_identical(pushed$suggestions, c("S1", "S2"))
+})
+
+# ------------------------------------------------------------------------------
 # Kaydedilen sohbet yenileme debounce
 # ------------------------------------------------------------------------------
 

@@ -296,3 +296,63 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #
 # Not: .Renviron değerleri aktif PowerShell $env:MERGEN_SOAK_* değerleri tarafından
 # override edilebilir. Kontrollü deneylerde env temizliği sonrası değerleri açıkça set edin.
+
+# ==============================================================================
+# AKIŞ (STREAMING) OLAY-DÖNGÜSÜ SERTLEŞTİRME ANAHTARLARI
+# ==============================================================================
+# Bu anahtarların TAMAMI opsiyoneldir ve VARSAYILANLARI MEVCUT DAVRANIŞI korur
+# (no-op). Hepsi Sys.getenv() ile okunur; bu yüzden tanımlanacakları doğru yer
+# .Renviron'dur (uygulama yeniden başlatıldığında okunur — tarayıcı yenilemesi
+# yetmez). Aşağıdaki satırlar yorumlu (#) bırakılmıştır: yalnızca üretimde davranış
+# ayarlamak istediğinizde ilgili satırı açın ve değeri girin.
+# Ayrıntılı açıklama: docs/performance-improvement-plan.md ve docs/operational-soak-gate.md.
+#
+# --- Yoklama (poll) aralığı ve uyarlanır geri çekilme (idle backoff) ---
+#   Varsayılan: KAPALI = sabit yoklama aralığı (mevcut davranış). Açıkken, boş
+#   yoklamalarda aralık MIN'den MAX'a doğru FACTOR ile büyür; yeni veri gelince
+#   MIN'e döner. Çok sayıda eşzamanlı boştaki akışta olay-döngüsü uyanmalarını azaltır.
+# MERGEN_STREAM_POLL_IDLE_BACKOFF=false
+# MERGEN_STREAM_POLL_MIN_MS=25
+# MERGEN_STREAM_POLL_MAX_MS=250
+# MERGEN_STREAM_POLL_BACKOFF_FACTOR=1.5
+# MERGEN_STREAM_POLL_RESET_ON_DELTA=true
+#
+# --- Delta taşımacılığı (artımlı güncelleme) ---
+#   Varsayılan: profil bazlı (yalnızca hızlı profiller delta kullanır). DELTA_DEFAULT
+#   açıkken tüm gerçek-akış istekleri artımlı streamingDelta kullanır. FULL_UPDATE_LEGACY
+#   açıkken eski tam-birikmiş güncelleme zorlanır (her ikisi açıksa legacy kazanır).
+# MERGEN_STREAM_DELTA_DEFAULT=true
+# MERGEN_STREAM_FULL_UPDATE_LEGACY=false
+#
+# --- Takip (follow-up) önerisi üretimi yük denetimi ---
+#   FOLLOWUPS_ENABLED: küresel açma/kapama. FOLLOWUP_DELAY_SECONDS: üretimi ek geciktir.
+#   DISABLE_FOLLOWUPS_UNDER_BACKPRESSURE: limit dolunca üretimi atla (kuyruğa alma).
+# MERGEN_FOLLOWUPS_ENABLED=true
+# MERGEN_FOLLOWUP_DELAY_SECONDS=0
+# MERGEN_DISABLE_FOLLOWUPS_UNDER_BACKPRESSURE=true
+#
+# --- Kaydedilen sohbet (saved chats) yenileme debounce'u ---
+#   Varsayılan 0 = anında yenile (mevcut davranış). >0 iken pencere içindeki çoklu
+#   yenileme tek zamanlayıcıda birleştirilir (oturum-yerel).
+# MERGEN_SAVED_CHATS_REFRESH_DEBOUNCE_MS=0
+#
+# --- İşlem-bazlı kabul denetimi (backpressure) ---
+#   Varsayılan 0 = KAPALI (no-op). >0 iken ilgili araç ailesinde eşzamanlı LLM
+#   isteği üst sınırı uygulanır; aşımda kullanıcıya "sunucu yoğun" toast'ı döner
+#   (durdur/iptal akışı bozulmaz). TTL eski/sızdırılmış slotları geri toplar.
+# MERGEN_MAX_CONCURRENT_LLM=0
+# MERGEN_MAX_CONCURRENT_SQL_ANALYSIS=0
+# MERGEN_MAX_CONCURRENT_MCP_EXCEL=0
+# MERGEN_MAX_CONCURRENT_SUMMARIZATION=0
+# MERGEN_MAX_CONCURRENT_FOLLOWUPS=0
+# MERGEN_BACKPRESSURE_TTL_SECONDS=180
+#
+# --- Savunmacı metin üst sınırları ---
+#   Sonlandırılan yanıt/akıl yürütme UTF-8 sınırında güvenle kırpılır; <=0 = sınırsız.
+#   Yüksek varsayılanlar normal yanıtları etkilemez.
+# MERGEN_MAX_STREAM_CHARS=120000
+# MERGEN_MAX_REASONING_CHARS=80000
+#
+# --- Tanılama (varsayılan KAPALI) ---
+#   Grep-dostu, sır-redakteli ilk-token/akış perf işaretleri için: MERGEN_PERF_LOG=1.
+# MERGEN_PERF_LOG=0

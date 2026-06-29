@@ -43,9 +43,10 @@ test_that("backpressure slot yardimcilari core helper'da tanimli", {
 test_that("send_message backpressure wiring tokenlari mevcut", {
   txt <- .send_message_src()
   # Tur, arac ailesinden cozulur ve slot ona gore edinilir; devir oncesi on.exit
-  # ile sizinti korunur.
-  expect_true(grepl("bp_kind <- mergen_send_message_backpressure_kind(tool_family)", txt, fixed = TRUE))
-  expect_true(grepl("bp_admission <- mergen_send_message_acquire_slot(bp_kind)", txt, fixed = TRUE))
+  # ile sizinti korunur. (Tur tek kullanimlik oldugu icin acquire cagrisina inline
+  # gecirilebilir; sozlesme niyeti korunur: tool_family'den cozum + bp_admission'a edinim.)
+  expect_true(grepl("mergen_send_message_backpressure_kind(tool_family)", txt, fixed = TRUE))
+  expect_true(grepl("bp_admission <- mergen_send_message_acquire_slot(", txt, fixed = TRUE))
   expect_true(grepl("on.exit(", txt, fixed = TRUE))
   expect_true(grepl("bp_handoff", txt, fixed = TRUE))
   # Token ve request kimliği reaktif state'e devredilir.

@@ -58,6 +58,28 @@ test_that("ardisik okumalarda cift satir uretilmez", {
   expect_identical(all_lines, c("A", "B", "C"))
 })
 
+test_that("bayat dusuk stat boyutu offset'i geri alip satirlari tekrarlamaz", {
+  tmp <- tempfile(fileext = ".jsonl")
+  on.exit(unlink(tmp), add = TRUE)
+
+  .write_bytes(tmp, "A\nB\n")
+
+  original_file_size <- get("file.size", envir = globalenv(), inherits = TRUE)
+  assign("file.size", function(...) 2, envir = globalenv())
+  on.exit(assign("file.size", original_file_size, envir = globalenv()), add = TRUE)
+
+  r1 <- mergen_stream_read_new_lines(tmp, mergen_stream_read_state_new())
+  expect_identical(r1$lines, c("A", "B"))
+  expect_identical(r1$state$offset, 4)
+  expect_identical(r1$state$last_size, 2)
+
+  r2 <- mergen_stream_read_new_lines(tmp, r1$state)
+  expect_false(r2$used_fallback)
+  expect_identical(r2$lines, character(0))
+  expect_identical(r2$state$offset, 4)
+  expect_identical(r2$state$last_size, 2)
+})
+
 test_that("newline gormeyen yari satir sonraki okumada tamamlanir", {
   tmp <- tempfile(fileext = ".jsonl")
   on.exit(unlink(tmp), add = TRUE)

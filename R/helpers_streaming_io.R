@@ -116,7 +116,10 @@ mergen_stream_read_new_lines <- function(path, state = NULL) {
   processed <- suppressWarnings(as.integer(state$processed_line_count %||% 0L))
   if (length(processed) == 0L || is.na(processed) || processed < 0L) processed <- 0L
 
-  unchanged_state <- list(offset = offset, partial = partial, last_size = offset,
+  last_size <- suppressWarnings(as.numeric(state$last_size %||% 0))
+  if (!is.finite(last_size) || last_size < 0) last_size <- 0
+
+  unchanged_state <- list(offset = offset, partial = partial, last_size = last_size,
                           processed_line_count = processed)
   empty_result <- list(lines = character(0), state = unchanged_state,
                        used_fallback = FALSE, read_bytes = 0)
@@ -124,30 +127,41 @@ mergen_stream_read_new_lines <- function(path, state = NULL) {
   if (is.null(path) || length(path) == 0L) return(empty_result)
   p <- as.character(path)[1]
   if (is.na(p) || !nzchar(p)) return(empty_result)
+  if (!isTRUE(file.exists(p))) return(empty_result)
 
-  size <- file.size(p)
-  if (is.na(size)) return(empty_result)
-
-  # Kesme/rotasyon: dosya daha önce okuduğumuzdan kısaldıysa güvenli tam-okuma.
-  if (size < offset) {
+  # Kesme/rotasyon savunması: dosyanın GÖZLEMLENEN stat boyutu daha önce
+  # gördüğümüz stat boyutunun altına inerse güvenli tam-okuma yapılır.
+  # Windows VM'de file.size()/stat bayat-düşük kalabilir; offset gerçek EOF'a
+  # kadar okunduğu için offset stat boyutunun önüne geçebilir. Bu durum tek
+  # başına kesilme sayılmaz, yoksa bir sonraki yoklama fallback ile offset'i
+  # bayat file.size() değerine geri alıp satırları tekrar yayımlayabilir.
+  size <- suppressWarnings(file.size(p))
+  observed_size <- if (!is.na(size) && is.finite(size) && size >= 0) as.numeric(size) else last_size
+  if (!is.na(size) && is.finite(size) && size < offset && size < last_size) {
     .mergen_stream_metric_inc("stream_poll_file_read_fallback")
     return(.mergen_stream_read_full_fallback(p, state))
   }
 
-  if (size == offset) {
-    return(list(
-      lines = character(0),
-      state = list(offset = offset, partial = partial, last_size = size,
-                   processed_line_count = processed),
-      used_fallback = FALSE, read_bytes = 0
-    ))
-  }
-
+  # ÖNEMLİ (Windows VM): file.size() / stat, BAŞKA bir süreç (SSE worker)
+  # tarafından eşzamanlı yazılan dosya için BAYAT olabilir; flush edilmiş baytlar
+  # ayrı bir okuyucu tutamacıyla okunabildiği halde boyut metaverisi geç
+  # güncellenir. Bu yüzden okunacak bayt miktarını file.size() ile SINIRLAMAYIZ;
+  # bağlantıyı offset'ten GERÇEK EOF'a kadar okuruz. Aksi halde canlı reasoning
+  # ilk-token'ı görünmez (panel boş kalır) ve boyut metaverisi geç güncellendiğinde
+  # birikmiş satırlar tek yoklamada "büyük blok" olarak düşer.
   new_bytes <- tryCatch({
     con <- file(p, open = "rb")
-    on.exit(close(con), add = TRUE)
-    if (offset > 0) seek(con, where = offset, origin = "start")
-    readBin(con, what = "raw", n = as.integer(size - offset))
+    on.exit(try(close(con), silent = TRUE), add = TRUE)
+    if (offset > 0) {
+      suppressWarnings(seek(con, where = offset, origin = "start"))
+    }
+    collected <- raw(0)
+    repeat {
+      chunk <- readBin(con, what = "raw", n = 262144L)
+      if (length(chunk) == 0L) break
+      collected <- if (length(collected) > 0L) c(collected, chunk) else chunk
+    }
+    collected
   }, error = function(e) NULL)
 
   if (is.null(new_bytes)) {
@@ -155,9 +169,21 @@ mergen_stream_read_new_lines <- function(path, state = NULL) {
     return(.mergen_stream_read_full_fallback(p, state))
   }
 
+  if (length(new_bytes) == 0L) {
+    # Gerçek EOF offset'te: yeni veri yok (bayat boyuta takılmadan kesin sonuç).
+    return(list(
+      lines = character(0),
+      state = list(offset = offset, partial = partial, last_size = max(last_size, observed_size),
+                   processed_line_count = processed),
+      used_fallback = FALSE, read_bytes = 0
+    ))
+  }
+
   .mergen_stream_metric_inc("stream_poll_file_read_calls")
   .mergen_stream_metric_inc("stream_poll_file_read_bytes", length(new_bytes))
 
+  # Yeni offset gerçekten okunan bayt miktarına göre ilerletilir (file.size'a değil).
+  new_offset <- offset + length(new_bytes)
   combined <- c(partial, new_bytes)
   nl_pos <- which(combined == as.raw(0x0A))
 
@@ -165,7 +191,8 @@ mergen_stream_read_new_lines <- function(path, state = NULL) {
     # Henüz tam satır yok; her şeyi tamponla.
     return(list(
       lines = character(0),
-      state = list(offset = size, partial = combined, last_size = size,
+      state = list(offset = new_offset, partial = combined,
+                   last_size = max(last_size, observed_size),
                    processed_line_count = processed),
       used_fallback = FALSE, read_bytes = length(new_bytes)
     ))
@@ -185,7 +212,8 @@ mergen_stream_read_new_lines <- function(path, state = NULL) {
 
   list(
     lines = lines,
-    state = list(offset = size, partial = remainder, last_size = size,
+    state = list(offset = new_offset, partial = remainder,
+                 last_size = max(last_size, observed_size),
                  processed_line_count = processed + length(lines)),
     used_fallback = FALSE,
     read_bytes = length(new_bytes)

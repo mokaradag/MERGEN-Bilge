@@ -635,39 +635,18 @@ handle_true_streaming_mode <- function(ctx) {
       duration_value = result$duration
     )
 
-    followup_msg_id <- stream_env$msg_id
-    fu_plan <- mergen_followup_dispatch_plan()
-    if (isTRUE(fu_plan$enabled)) {
-      later::later(function() {
-        fu_admit <- mergen_followup_try_admit(fu_plan)
-        if (!isTRUE(fu_admit$run)) return(invisible(NULL))
-        on.exit(mergen_send_message_release_slot(fu_admit$token), add = TRUE)
-
-        followup_perf_start <- mergen_perf_now()
-        followup_questions <- tryCatch(
-          build_followup_suggestions(
-            ctx$user_message_text, base_final_text, settings_data, session,
-            ctx$api_config, ctx$followup_tools, ctx$fallback_followup_tool
-          ),
-          error = function(e) {
-            mergen_runtime_metric_inc("followups_failed")
-            NULL
-          }
-        )
-
-        # Varsayılan KAPALI perf işareti: artık kritik yolun DIŞINDA olan takip
-        # üretim süresini (saniyeler olabilir) ölçer.
-        mergen_perf_log("stream.followups", start = followup_perf_start,
-                        fields = list(count = length(followup_questions %||% character(0))))
-
-        if (!is.null(followup_questions) && length(followup_questions) > 0) {
-          try(
-            push_followup_update(session, followup_msg_id, followup_questions, pending = FALSE),
-            silent = TRUE
-          )
-        }
-      }, delay = fu_plan$delay_seconds)
-    }
+    # Takip (follow-up) önerileri: kritik yolun DIŞINDA, bloklamayan bir later()
+    # döngüsünde üretilip push edilir (yük denetimi yardımcısına delege edilir).
+    mergen_stream_dispatch_followups(
+      session = session,
+      msg_id = stream_env$msg_id,
+      user_message_text = ctx$user_message_text,
+      final_text = base_final_text,
+      settings_data = settings_data,
+      api_config = ctx$api_config,
+      followup_tools = ctx$followup_tools,
+      fallback_followup_tool = ctx$fallback_followup_tool
+    )
 
     invisible(NULL)
   })
