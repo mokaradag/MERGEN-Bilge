@@ -205,7 +205,21 @@ health_render_value <- function(value, id = "") {
     return(health_status_pill(normalized))
   }
 
-  display_value <- if (health_is_storage_path_id(id)) {
+  is_storage_path <- health_is_storage_path_id(id)
+
+  # Depolama yolları ortam değişkeninden gelir. Windows/.Renviron sınırında dize
+  # geçerli UTF-8 baytları taşısa bile yanlış kodlama (latin1/unknown) ile
+  # işaretlenebildiği için tarayıcıya serileştirilirken Türkçe karakterler
+  # mojibake'e dönüşür (örn. "ş" -> "ÅŸ"). Metni yalnızca burada, kopyalanabilirlik
+  # kontrolünden ve görüntülemeden ÖNCE UTF-8 olarak normalize edip onarırız.
+  # Ana onarım yolu R/utils_text_encoding.R içindedir; yardımcı yoksa (izole test)
+  # değer olduğu gibi kalır. normalize_text_utf8 kendi içinde tryCatch ile korunur.
+  if (is_storage_path && nzchar(value) &&
+      exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    value <- normalize_text_utf8(value, repair_mojibake = TRUE)
+  }
+
+  display_value <- if (is_storage_path) {
     health_as_windows_explorer_path(value)
   } else {
     value
