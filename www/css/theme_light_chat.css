@@ -354,6 +354,12 @@ html[data-theme="light"] .rp-body {
 }
 
 html[data-theme="light"] .rp-stream {
+  /* .rp-stream bir <pre> öğesidir; theme_light_core.css'teki genel
+   * `html[data-theme="light"] pre { background:#0f1e3d !important }` kuralı onu
+   * koyu boyuyordu. Şeffaflaştırılır ki beyaz .rp-body üzerinde koyu metin
+   * okunaklı kalsın. */
+  background: transparent !important;
+  border: none !important;
   color: var(--color-text-soft, #1f2a44) !important;
 }
 
@@ -411,6 +417,11 @@ html[data-theme="light"] .reasoning-archive-body {
 }
 
 html[data-theme="light"] .reasoning-archive-text {
+  /* .reasoning-archive-text de bir <pre>; genel açık-tema `pre` koyu zemin
+   * kuralını ezip beyaz .reasoning-archive-body üzerinde okunaklı kalması için
+   * şeffaflaştırılır (yalnız renk vermek koyu-üstüne-koyu bırakıyordu). */
+  background: transparent !important;
+  border: none !important;
   color: var(--color-text-soft, #1f2a44) !important;
 }
 
