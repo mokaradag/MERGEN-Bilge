@@ -113,21 +113,27 @@ admin_doc_build_content_ui <- function(ns, group_id, selected_doc_id, render) {
 
   div(
     class = "mb-doc-wrapper",
-    admin_doc_card_list_ui(ns, docs, selected_doc_id),
+    # Belge kartları + İçindekiler araç çubuğu, kaydırma sırasında üstte sabit
+    # kalsın diye tek bir yapışkan (sticky) başlık kabında gruplanır; belge
+    # gövdesi bu sabit alanın altında kayar (admin sekme şeridi mantığı).
     div(
-      class = "mb-doc-toolbar",
-      tags$button(
-        type = "button",
-        class = "btn-modern mb-doc-toc-toggle",
-        `aria-label` = "İçindekiler panelini aç/kapat",
-        icon("list-ul"),
-        tags$span("İçindekiler")
-      ),
-      tags$span(
-        class = "mb-doc-source",
-        icon("file-lines"),
-        tags$span("Kaynak dosya: "),
-        tags$code(render$source %||% "")
+      class = "mb-doc-sticky-head",
+      admin_doc_card_list_ui(ns, docs, selected_doc_id),
+      div(
+        class = "mb-doc-toolbar",
+        tags$button(
+          type = "button",
+          class = "btn-modern mb-doc-toc-toggle",
+          `aria-label` = "İçindekiler panelini aç/kapat",
+          icon("list-ul"),
+          tags$span("İçindekiler")
+        ),
+        tags$span(
+          class = "mb-doc-source",
+          icon("file-lines"),
+          tags$span("Kaynak dosya: "),
+          tags$code(render$source %||% "")
+        )
       )
     ),
     div(

@@ -141,7 +141,7 @@ chatOutputsInit <- function(output, settings_data) {
         
         div(
           class = "dropdown-menu-header",
-          style = "padding: 8px 12px; border-bottom: 1px solid #4d4d4f; margin-bottom: 4px;",
+          style = "padding: 8px 12px; margin-bottom: 4px;",
           icon("layer-group"),
           tags$span(
             style = "font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;",

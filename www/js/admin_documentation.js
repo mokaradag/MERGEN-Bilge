@@ -77,4 +77,46 @@
     },
     false
   );
+
+  // Yapiskan baslik (.mb-doc-sticky-head) yuksekligini --mb-doc-head-offset
+  // degiskenine yazar; Icindekiler (TOC) yapiskan ofseti bu degerden turetilir.
+  // Sabit "sihirli sayi" yerine gercek yukseklik kullanilir; kart sarmasi /
+  // tema / sekme degisikliklerinde guncel kalir.
+  var headResizeObs = null;
+  function syncDocHeadOffset() {
+    var head = document.querySelector(".mb-doc-sticky-head");
+    if (!head) {
+      return;
+    }
+    var wrapper = head.closest(".mb-doc-wrapper");
+    if (!wrapper) {
+      return;
+    }
+    wrapper.style.setProperty("--mb-doc-head-offset", head.offsetHeight + "px");
+    if (window.ResizeObserver) {
+      if (headResizeObs) {
+        headResizeObs.disconnect();
+      }
+      headResizeObs = new ResizeObserver(function () {
+        wrapper.style.setProperty(
+          "--mb-doc-head-offset",
+          head.offsetHeight + "px"
+        );
+      });
+      headResizeObs.observe(head);
+    }
+  }
+
+  window.addEventListener("resize", syncDocHeadOffset, { passive: true });
+
+  // Dokumantasyon icerigi yeniden render edildikce (uiOutput) yeniden olcer.
+  // Yalnizca admin icerik ciktisi guncellemelerinde calisir (ucuz erken cikis).
+  document.addEventListener("shiny:value", function (ev) {
+    if (!ev || !ev.name || ev.name.indexOf("tab_content_area") === -1) {
+      return;
+    }
+    setTimeout(syncDocHeadOffset, 0);
+  });
+
+  setTimeout(syncDocHeadOffset, 0);
 })();
