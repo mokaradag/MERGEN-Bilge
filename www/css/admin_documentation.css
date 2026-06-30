@@ -13,8 +13,26 @@
 .mb-doc-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
   width: 100%;
+}
+
+/* Sabit (yapışkan) üst alan: belge kartları + İçindekiler araç çubuğu.
+ * Admin kaydırma kabının (.admin-scrollable-content) üstüne yapışır; belge
+ * gövdesi bu alanın altında kayar. Opak arka plan + üst sıralı z-index, kayan
+ * içeriğin altından geçmesini sağlar. Yükseklik admin_documentation.js
+ * tarafından --mb-doc-head-offset değişkenine yazılır (İçindekiler ofseti). */
+.mb-doc-sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 2px 0 14px;
+  margin-bottom: 16px;
+  background: var(--background-dark, #0f0f0f);
+  border-bottom: 1px solid var(--color-border, #333);
 }
 
 /* Belge seçici kartlar (yatay, sarmalı) */
@@ -69,10 +87,40 @@
   gap: 10px;
 }
 
+/* İçindekiler aç/kapat düğmesi — tema-duyarlı, açıkça tanımlı yüzey/kontrast.
+ * .btn-modern yalnızca yerleşim verir (arka plan/renk tanımsız); burada her iki
+ * temada da okunaklı arka plan, sınır, metin/ikon, hover, açık ve odak durumu
+ * tanımlanır. .btn-modern "border: none !important" verdiği için sınırda
+ * !important gerekir. */
 .mb-doc-toc-toggle {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  background: var(--color-surface-2, #1f1f1f) !important;
+  border: 1px solid var(--color-border, #333) !important;
+  color: var(--color-text-soft, #e6e6e6) !important;
+}
+
+.mb-doc-toc-toggle i {
+  color: var(--mb-brand-support-teal, #14b8c4) !important;
+}
+
+.mb-doc-toc-toggle:hover {
+  background: var(--color-surface-3, #242424) !important;
+  border-color: var(--mb-brand-support-teal, #077780) !important;
+  color: var(--color-text, #fff) !important;
+}
+
+/* Açık durum: İçindekiler görünürken (sarmalayıcı katlanmamışken) vurgulu */
+.mb-doc-wrapper:not(.mb-doc-toc-collapsed) .mb-doc-toc-toggle {
+  background: rgba(7, 119, 128, 0.16) !important;
+  border-color: var(--mb-brand-support-teal, #077780) !important;
+  color: var(--color-text, #fff) !important;
+}
+
+.mb-doc-toc-toggle:focus-visible {
+  outline: 2px solid var(--color-focus) !important;
+  outline-offset: 2px !important;
 }
 
 .mb-doc-source {
@@ -112,8 +160,11 @@
    -------------------------------------------------------------------------- */
 .mb-doc-toc {
   position: sticky;
-  top: 8px;
-  max-height: calc(100vh - 180px);
+  /* Yapışkan başlığın altına otururuz: ofset, başlık yüksekliğinden türetilir
+   * (admin_documentation.js --mb-doc-head-offset yazar). JS gelene kadar makul
+   * bir geri-dönüş değeri kullanılır; sabit "sihirli sayı" değildir. */
+  top: calc(var(--mb-doc-head-offset, 140px) + 12px);
+  max-height: calc(100vh - 220px);
   overflow-y: auto;
   border: 1px solid var(--border-color, #333);
   border-radius: 12px;
@@ -193,7 +244,11 @@
   line-height: 1.3;
   font-weight: 700;
   margin: 1.4em 0 0.6em;
-  scroll-margin-top: 16px;
+  /* İçindekiler tıklanınca başlık, yapışkan başlığın (.mb-doc-sticky-head)
+   * altında dursun diye kaydırma payı başlık yüksekliği kadar bırakılır
+   * (admin_documentation.js'in yazdığı --mb-doc-head-offset). Aksi halde
+   * sticky başlık seçilen bölüm başlığını örtüyordu. */
+  scroll-margin-top: calc(var(--mb-doc-head-offset, 140px) + 16px);
 }
 
 .mb-doc-body h1 {
@@ -370,10 +425,25 @@ html[data-theme="light"] .mb-doc-toc-title {
   .mb-doc-layout {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* Dar ekranda kartlar yığılıp başlık uzayabildiği için yapışkanlığı bırakırız;
+   * her şey normal akışta kayar. */
+  .mb-doc-sticky-head {
+    position: static;
+    margin-bottom: 16px;
+  }
   .mb-doc-toc {
     position: relative;
     max-height: 280px;
     top: 0;
+  }
+  /* Başlık artık sabit değil; kaydırma payı normale döner. */
+  .mb-doc-body h1,
+  .mb-doc-body h2,
+  .mb-doc-body h3,
+  .mb-doc-body h4,
+  .mb-doc-body h5,
+  .mb-doc-body h6 {
+    scroll-margin-top: 16px;
   }
 }
 

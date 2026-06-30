@@ -89,3 +89,54 @@
   background: #1e1e1e !important;
   font-family: var(--font-mono) !important;
 }
+/* ==========================================================================
+ * Açık tema (html[data-theme="light"]) belirteç TAMAMLAYICILARI.
+ *
+ * CodeMirror her zaman theme: 'material-darker' (koyu) ile başlar. Açık temada
+ * zemin/oluk/imleç/seçim ve YAYGIN belirteç renkleri zaten www/css/
+ * theme_light_core.css içinde GitHub Light paletiyle tanımlıdır (tek-tanım
+ * sahibi orası). Ancak şu belirteçler orada tanımsız kalıp bu dosyadaki koyu
+ * (Atom One Dark) gri tonlarında (#abb2bf vb.) kalıyor ve açık zeminde
+ * okunaksız oluyordu. Burada SADECE eksik belirteçler aynı palette ile
+ * tamamlanır (theme_light_core.css'teki seçiciler TEKRAR tanımlanmaz).
+ *
+ * NOT (!important): material-darker.min.css bu dosyadan SONRA yüklendiği için
+ * !important gerekir (dosya sözleşmesiyle uyumlu).
+ * ========================================================================== */
+html[data-theme="light"] .CodeMirror .cm-type { color: #953800 !important; }
+html[data-theme="light"] .CodeMirror .cm-attribute { color: #0550ae !important; }
+html[data-theme="light"] .CodeMirror .cm-variable-3,
+html[data-theme="light"] .CodeMirror .cm-qualifier,
+html[data-theme="light"] .CodeMirror .cm-meta,
+html[data-theme="light"] .CodeMirror .cm-bracket,
+html[data-theme="light"] .CodeMirror .cm-punctuation { color: #1f2328 !important; }
+
+html[data-theme="light"] .CodeMirror-activeline-background {
+  background: rgba(0, 48, 135, 0.05) !important;
+}
+html[data-theme="light"] .CodeMirror-focused .CodeMirror-selected {
+  background: rgba(0, 48, 135, 0.18) !important;
+}
+html[data-theme="light"] .CodeMirror-matchingbracket {
+  color: #0550ae !important;
+  font-weight: 700 !important;
+  border-bottom: 1px solid #0550ae !important;
+}
+html[data-theme="light"] .CodeMirror-nonmatchingbracket {
+  color: #cf222e !important;
+}
+
+/* KÖK NEDEN (CodeMirror-line koyu zemin): CodeMirror her satırı bir
+ * <pre class="CodeMirror-line"> öğesi olarak çizer. theme_light_core.css'teki
+ * genel `html[data-theme="light"] pre { background:#0f1e3d !important }` kuralı
+ * (ham markdown kod blokları için bilinçli koyu) bu satır <pre>'lerini de
+ * yakalayıp her satıra koyu zemin + düşük kontrast metin veriyordu. Editör
+ * içindeki pre/satırları şeffaflaştırıp rengi devralmaya döndürürüz; böylece
+ * .CodeMirror'ın açık zemini ve belirteç renkleri görünür kalır. */
+html[data-theme="light"] .CodeMirror pre,
+html[data-theme="light"] .CodeMirror-line,
+html[data-theme="light"] .CodeMirror-line-like {
+  background: transparent !important;
+  color: inherit !important;
+  border: none !important;
+}

@@ -187,6 +187,22 @@ html[data-theme="light"] .health-release-run-picker .selectize-input {
 .health-table th { background: linear-gradient(145deg, #1a2744 0%, #1e2d4a 100%); color: #e2e8f0; font-weight: 700; font-size: 12px; padding: 12px 14px; text-align: left; position: sticky; top: 0; z-index: 5; box-shadow: 0 1px 0 rgba(148, 163, 184, 0.2); }
 .health-table td { color: #cbd5e1; font-size: 12px; padding: 12px 14px; border-bottom: 1px solid rgba(148, 163, 184, 0.11); vertical-align: top; }
 .health-table tbody tr:hover td { background: rgba(255, 107, 53, 0.045); }
+
+/* "Doğrulama Kanıtı" adım tablosu (.health-release-steps), .health-table-wrap
+ * kaydırma sarmalayıcısı OLMADAN doğrudan kart içinde render edilir. Bu yüzden
+ * .health-table'ın yapışkan (sticky) başlığı sayfa kaydırma kabına yapışıp
+ * ekranda asılı kalıyor ve min-width: 980px başlık arka planını gereğinden geniş
+ * gösteriyordu. Bu küçük özet tablosu için yapışkanlığı ve zorunlu geniş asgari
+ * genişliği kapatıyoruz; büyük diagnostik tablosu (.health-table-wrap içinde)
+ * yapışkan başlığını korur. */
+.health-release-steps { min-width: 0; }
+.health-release-steps th {
+  position: static;
+  top: auto;
+  z-index: auto;
+  box-shadow: none;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
 .health-check-id { color: #64748b; font-family: Consolas, 'Courier New', monospace; font-size: 11px; margin-top: 3px; }
 
 .health-worker-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr); gap: 16px; align-items: stretch; }

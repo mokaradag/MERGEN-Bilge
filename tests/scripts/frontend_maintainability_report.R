@@ -324,7 +324,11 @@ frontend_orphan_vendor_patterns <- c(
   "^hljs", "^language-", "^MathJax", "^katex",
   "^selected$", "^focus$", "^error$", "^success$", "^warning$", "^info$",
   "^ui-", "^clearfix$", "^lead$", "^small$", "^mark$",
-  "^blockquote", "^dd$", "^dt$", "^figure", "^img-", "^thumbnail$"
+  "^blockquote", "^dd$", "^dt$", "^figure", "^img-", "^thumbnail$",
+  # shinyWidgets tarafından üretilen satıcı (vendor) sınıf aileleri:
+  #   bttn*  -> shinyWidgets actionBttn/dropdown düğme stilleri
+  #   sw-*   -> shinyWidgets dropdown sarmalayıcı/panel (sw-dropdown-in vb.)
+  "^bttn(-|$)", "^sw-"
 )
 
 # İncelenmiş dinamik üretim önekleri (health- / index-health- BİLİNÇLİ dışarıda:
