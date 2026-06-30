@@ -35,10 +35,17 @@
   env$log_debug <- function(...) invisible(NULL)
   env$log_warn <- function(...) invisible(NULL)
 
-  # Backpressure slot serbest bırakma çağrılarını kaydet (gerçek davranışı
-  # taklit ederek token'ı temizler).
+  # Backpressure slot serbest bırakma çağrılarını kaydet. Gerçek helper'ın req_id
+  # korumasını sadık biçimde taklit eder: yalnızca token bu isteğe aitse (req_id
+  # eşleşirse) gerçekten serbest bırakır ve kaydeder; aksi halde no-op'tur.
   env$.release_calls <- list()
   env$mergen_send_message_release_values_token <- function(values, req_id = NULL) {
+    if (!is.null(req_id)) {
+      owner <- as.character(values$backpressure_request_id)[1]
+      if (!identical(owner, as.character(req_id)[1])) {
+        return(invisible(FALSE))  # koruma: slot yeni isteğe ait, dokunma
+      }
+    }
     env$.release_calls[[length(env$.release_calls) + 1L]] <- list(req_id = req_id)
     values$backpressure_token <- NULL
     values$backpressure_request_id <- NULL
@@ -162,28 +169,52 @@ test_that("başarılı Langflow yanıtında slot serbest bırakılır ve cevap A
   expect_equal(fix$rec$reset_calls, 1L)
 })
 
-test_that("bayat istek (kullanıcı durdurdu) başarı callback'inde slotu serbest bırakmaz", {
+test_that("durdurma/iptal yolunda bayat callback slotu serbest bırakır (sızıntı önlenir)", {
   testthat::local_mocked_bindings(runjs = function(...) invisible(NULL), .package = "shinyjs")
 
   env <- .source_langflow_handler_for_test(
     canned_result = list(success = TRUE, text = "Langflow cevabı", error = NULL, status = 200L)
   )
   fix <- .make_langflow_ctx()
-  # Handler en başta req_id'yi active_request_id()'den yakalar; callback çalışırken
-  # daha yeni bir istek başladığı için active_request_id farklı kimlik döndürür.
-  # İlk çağrı (yakalama) "req-1", sonraki çağrı (bayatlık kontrolü) "req-2-newer".
+  # Kullanıcı "Durdur"a bastı: stop_generation TRUE; yeni istek BAŞLAMADI, dolayısıyla
+  # slot (backpressure_request_id) hâlâ bu isteğe ("req-1") aittir.
+  fix$ctx$stop_generation <- function() TRUE
+
+  out <- env$handle_langflow_chat_mode(fix$ctx)
+
+  expect_true(out)
+  # Bayat (durduruldu) callback: req_id korumalı serbest bırakma slotu açar.
+  expect_equal(length(env$.release_calls), 1L)
+  expect_equal(env$.release_calls[[1]]$req_id, "req-1")
+  expect_null(fix$values$backpressure_token)
+  # Bayat dalda UI mutasyonu yapılmaz (mesaj eklenmez, durum sıfırlanmaz).
+  expect_equal(length(fix$rec$messages), 0L)
+  expect_equal(fix$rec$reset_calls, 0L)
+})
+
+test_that("yeni istek slotu devraldıysa bayat callback o slotu serbest bırakmaz (no-op)", {
+  testthat::local_mocked_bindings(runjs = function(...) invisible(NULL), .package = "shinyjs")
+
+  env <- .source_langflow_handler_for_test(
+    canned_result = list(success = TRUE, text = "Langflow cevabı", error = NULL, status = 200L)
+  )
+  fix <- .make_langflow_ctx()
+  # Daha yeni bir istek başladı: slot artık "req-2"ye ait ve active_request_id
+  # callback çalışırken "req-2" döndürür. Handler en başta "req-1" yakalar.
+  fix$values$backpressure_request_id <- "req-2"
+  fix$values$backpressure_token <- "tok-2"
   arid_counter <- 0L
   fix$ctx$active_request_id <- function() {
     arid_counter <<- arid_counter + 1L
-    if (arid_counter <= 1L) "req-1" else "req-2-newer"
+    if (arid_counter <= 1L) "req-1" else "req-2"
   }
 
   out <- env$handle_langflow_chat_mode(fix$ctx)
 
   expect_true(out)
-  # Bayat callback erken döner: slot serbest bırakılmaz (yeni istek sahibidir),
-  # mesaj eklenmez, durum sıfırlanmaz.
+  # Koruma devrede: yeni isteğin ("req-2") slotuna dokunulmaz.
   expect_equal(length(env$.release_calls), 0L)
+  expect_equal(fix$values$backpressure_token, "tok-2")
   expect_equal(length(fix$rec$messages), 0L)
   expect_equal(fix$rec$reset_calls, 0L)
 })

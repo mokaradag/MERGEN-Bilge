@@ -114,7 +114,11 @@ handle_langflow_chat_mode <- function(ctx) {
     meta = list(tool_family = tool_family)
   ) %...>% (function(result) {
     # Bayat sonuç: kullanıcı durdurup yeni istek başlattıysa UI mutasyonu yapma.
+    # Durdurma/iptal yolunda (Durdur) henüz yeni istek başlamamış olabilir; bu
+    # durumda slot hâlâ bu isteğe aittir ve req_id korumalı serbest bırakma onu
+    # açar. Yeni bir istek slotun sahibiyse koruma no-op yapar.
     if (isTRUE(is_stale_langflow_request())) {
+      release_langflow_backpressure_slot()
       return(invisible(NULL))
     }
 
@@ -139,8 +143,11 @@ handle_langflow_chat_mode <- function(ctx) {
 
     ctx$reset_chat_state_fn()
   }) %...!% (function(err) {
-    # Bayat hata sonucu da yeni isteğin durumunu etkilememeli.
+    # Bayat hata sonucu da yeni isteğin durumunu etkilememeli. Durdurma/iptal
+    # yolunda slot hâlâ bu isteğe ait olabilir; req_id korumalı serbest bırakma
+    # onu açar, yeni istek sahibiyse no-op olur.
     if (isTRUE(is_stale_langflow_request())) {
+      release_langflow_backpressure_slot()
       return(invisible(NULL))
     }
 
