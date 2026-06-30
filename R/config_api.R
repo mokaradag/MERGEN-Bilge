@@ -45,6 +45,29 @@ excel_deep_high_model  <- Sys.getenv("EXCEL_DEEP_HIGH_MODEL",  "technical name 4
 coding_deep_low_model  <- Sys.getenv("CODING_DEEP_LOW_MODEL",  "technical name 3")
 coding_deep_high_model <- Sys.getenv("CODING_DEEP_HIGH_MODEL", "technical name 4")
 
+# --- LANGFLOW AKIŞ ENTEGRASYONU ---
+# "Süreç Yönetimi Sistemi" ve "Uygulama Uzmanı" araçları normal yerel LLM uç
+# noktası yerine kurumsal Langflow akışlarını (Chat Input / Chat Output) çağırır.
+# GÜVENLİK NOTU: Taban URL için örtük geriye dönük fallback YOKTUR.
+# LOCAL_LLM_ENDPOINT_ALT bir OpenAI uyumlu /v1/chat/completions ucudur ve Langflow
+# tabanı değildir; ikincil uç nokta davranışını bozmamak için Langflow tabanı
+# olarak yeniden yorumlanmaz. Yalnızca API anahtarı, Langflow taban URL'i açıkça
+# ayarlandığında ve LANGFLOW_API_KEY boşken eski LOCAL_LLM_ENDPOINT_ALT_API_KEY
+# değerine güvenli biçimde düşer.
+langflow_base_url <- Sys.getenv("LANGFLOW_BASE_URL", "")
+langflow_api_key  <- Sys.getenv("LANGFLOW_API_KEY", "")
+if (!nzchar(langflow_api_key) && nzchar(langflow_base_url)) {
+  langflow_api_key <- secondary_llm_api_key
+}
+langflow_timeout_seconds <- suppressWarnings(as.numeric(
+  Sys.getenv("LANGFLOW_TIMEOUT_SECONDS", "300")
+))
+if (is.na(langflow_timeout_seconds) || langflow_timeout_seconds <= 0) {
+  langflow_timeout_seconds <- 300
+}
+langflow_process_flow_id    <- Sys.getenv("LANGFLOW_PROCESS_FLOW_ID", "")
+langflow_app_expert_flow_id <- Sys.getenv("LANGFLOW_APP_EXPERT_FLOW_ID", "")
+
 # --- ANA API YAPILANDIRMASI ---
 api_config <- list(
   # Geriye dönük uyumluluk: eski tek-endpoint alanını koru
@@ -122,6 +145,19 @@ api_config <- list(
     mcp_excel = list(low = excel_deep_low_model,  high = excel_deep_high_model),
     coding    = list(low = coding_deep_low_model, high = coding_deep_high_model)
   ),
+  # Kurumsal Langflow akış entegrasyonu. base_url ve akış kimlikleri ortam
+  # değişkenlerinden okunur; tanımsızsa ilgili araç normal LLM yoluna düşmez,
+  # bunun yerine net bir yapılandırma-eksik mesajı gösterir (bkz.
+  # R/server_handler_langflow.R). API anahtarı asla loglanmaz/istemciye gönderilmez.
+  langflow = list(
+    base_url = langflow_base_url,
+    api_key = langflow_api_key,
+    timeout_seconds = langflow_timeout_seconds,
+    flow_ids = list(
+      process    = langflow_process_flow_id,
+      app_expert = langflow_app_expert_flow_id
+    )
+  ),
   # Teknik kimlikler -> temel klasörler (sadece teknik kimlikleri kullan)
   local_model_paths = list(
     "technical name 1" = "\\\\main folder\\secondary folder\\repository\\top folder",
@@ -139,7 +175,9 @@ api_config <- list(
       icon_name = "briefcase",
       themeColor = "#3b82f6",
       model_id = "technical name 1",
-      real_tool = FALSE
+      runtime = "langflow",
+      langflow_flow_id = langflow_process_flow_id,
+      real_tool = TRUE
     ),
     app_expert = list(
       family = "app_expert",
@@ -151,8 +189,10 @@ api_config <- list(
       icon_name = "window-maximize",
       themeColor = "#8b5cf6",
       model_id = "technical name 6",
-      real_tool = FALSE
-    ),	
+      runtime = "langflow",
+      langflow_flow_id = langflow_app_expert_flow_id,
+      real_tool = TRUE
+    ),
     sql_analysis = list(
       family = "sql_analysis",
       setting_flag = "enable_rdata_tools",

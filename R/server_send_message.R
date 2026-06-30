@@ -213,7 +213,7 @@ sendMessageInit <- function(
       tool_family = tool_family,
       settings_data = settings_data,
       resolved_model_id = model_selected,
-      reasoning_will_stream_override = if (isTRUE(mcp_reasoning_stream_on)) TRUE else NULL
+      reasoning_will_stream_override = if (isTRUE(mcp_reasoning_stream_on)) TRUE else if (is_langflow_tool_family(tool_family, api_config)) FALSE else NULL
     )
     mergen_show_send_message_thinking_wrapper(session, thinking_panel_plan, request_id = req_id)
 
@@ -364,6 +364,20 @@ sendMessageInit <- function(
         add_message_fn = add_message_fn, reset_chat_state_fn = reset_chat_state_fn
       )
       handle_image_generation_mode(image_ctx)
+      return(invisible(NULL))
+
+    # LANGFLOW MODU (Süreç Yönetimi Sistemi / Uygulama Uzmanı)
+    # Kurumsal Langflow akışına yönlendirilir; normal yerel LLM uç noktası,
+    # MCP araçları ve LLM API anahtarı doğrulaması bu yol için atlanır.
+    } else if (is_langflow_tool_family(tool_family, api_config)) {
+      handle_langflow_chat_mode(list(
+        session = session, values = values, settings_data = settings_data,
+        tool_family = tool_family, user_message_text = user_message_text,
+        current_user_id = effective_user_id, chat_id_val = isolate(values$current_chat_id),
+        stop_generation = stop_generation, active_request_id = active_request_id,
+        add_message_fn = add_message_fn, reset_chat_state_fn = reset_chat_state_fn,
+        api_config = api_config
+      ))
       return(invisible(NULL))
 
     } else {

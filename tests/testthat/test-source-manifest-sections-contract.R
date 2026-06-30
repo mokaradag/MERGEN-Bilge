@@ -98,7 +98,9 @@
   chartlab_helpers = list(first = "R/helpers_chartlab_spec.R", last = "R/helpers_chartlab.R", n = 2L),
   files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_files.R", n = 5L),
   file_manager_helpers = list(first = "R/helpers_file_manager_policy.R", last = "R/helpers_file_manager_table_runtime.R", n = 12L),
-  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 11L),
+  # Bilinçli güncelleme: R/helpers_langflow_runtime.R (kurumsal Langflow akış
+  # çağrısı saf yardımcıları) send_message core'dan sonra bölüme eklendi; 11 -> 12.
+  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 12L),
   summarization_followup = list(first = "R/helpers_summarization_modes.R", last = "R/helpers_followup_questions.R", n = 3L),
   analysis_helpers = list(first = "R/helpers_deep_analysis.R", last = "R/helpers_pk_analysis_query_selection.R", n = 5L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
@@ -132,7 +134,9 @@
   server_init_runtime = list(first = "R/server_session_cache.R", last = "R/server_init_chat_runtime.R", n = 14L),
   server_core_outputs_welcome = list(first = "R/server_core_observer_runtime.R", last = "R/server_welcome_handlers.R", n = 7L),
   server_observers = list(first = "R/server_observers_startup.R", last = "R/server_observers_misc.R", n = 11L),
-  server_handlers_send_message = list(first = "R/server_tts_handlers.R", last = "R/server_send_message.R", n = 10L)
+  # Bilinçli güncelleme: R/server_handler_langflow.R (Süreç/Uygulama Uzmanı
+  # Langflow işleyicisi) görsel üretim handler'ından sonra bölüme eklendi; 10 -> 11.
+  server_handlers_send_message = list(first = "R/server_tts_handlers.R", last = "R/server_send_message.R", n = 11L)
 )
 
 test_that("source_manifest_sections beklenen sırada ve adlarda bölümler içerir", {
@@ -292,7 +296,11 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # chat_send_message_runtime bölümüne artımlı akış G/Ç + uyarlanır yoklama
   # (R/helpers_streaming_io.R) ve takip/saved-chats yük denetimi
   # (R/helpers_stream_load_control.R) yardımcıları eklendi.
-  expect_equal(length(runtime), 290L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 290L -> 292L bilinçli güncelleme: kurumsal Langflow entegrasyonu için
+  # saf yardımcılar (R/helpers_langflow_runtime.R, chat_send_message_runtime)
+  # ve Süreç/Uygulama Uzmanı işleyicisi (R/server_handler_langflow.R,
+  # server_handlers_send_message) eklendi.
+  expect_equal(length(runtime), 292L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

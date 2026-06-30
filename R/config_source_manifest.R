@@ -214,6 +214,7 @@ source_manifest_sections <- list(
     "R/helpers_streaming_io.R",
     "R/helpers_stream_load_control.R",
     "R/helpers_send_message_core.R",
+    "R/helpers_langflow_runtime.R",
     "R/helpers_vision_context.R",
     "R/helpers_send_message_prompting.R",
     "R/helpers_quick_action_intro_messages.R"
@@ -519,6 +520,7 @@ source_manifest_sections <- list(
     "R/server_ai_expert_handlers.R",
     "R/server_handler_summarization.R",
     "R/server_handler_image_generation.R",
+    "R/server_handler_langflow.R",
     "R/helpers_llm_true_streaming_worker.R",
     "R/server_handler_true_streaming.R",
     "R/server_handler_streaming_tts.R",
