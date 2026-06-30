@@ -10,6 +10,15 @@
 /* --------------------------------------------------------------------------
    Genel yerleşim
    -------------------------------------------------------------------------- */
+.admin-scrollable-content:has(.mb-doc-wrapper) {
+  /* Dokümantasyon sayfasında kayan belge gövdesi, üst admin sekmeleri ile
+   * yapışkan belge kartları arasındaki saydam padding boşluğundan görünmesin.
+   * Üst boşluğu sticky başlığın opak yüzeyine taşıyarak kartların "havada"
+   * duruyormuş gibi görünmesini engelleriz. */
+  padding-top: 0;
+  background: var(--background-dark, #0f0f0f);
+}
+
 .mb-doc-wrapper {
   display: flex;
   flex-direction: column;
@@ -29,8 +38,8 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 2px 0 14px;
-  margin-bottom: 16px;
+  padding: 20px 0 14px;
+  margin: 0 0 16px;
   background: var(--background-dark, #0f0f0f);
   border-bottom: 1px solid var(--color-border, #333);
 }
