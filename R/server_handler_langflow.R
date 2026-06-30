@@ -26,9 +26,35 @@ handle_langflow_chat_mode <- function(ctx) {
 
   log_debug("[LANGFLOW] Araç={tool_family} için Langflow akışı çağrılıyor")
 
+  # Yarış koruması: bu isteğin kimliğini en başta yakala. Kullanıcı durdurup yeni
+  # bir istek başlatırsa bayat sonuç yeni isteğin yazma alanını/sohbetini ezmemeli.
+  active_request_id_local <- ctx$active_request_id
+  stop_generation_local <- ctx$stop_generation
+  req_id_local <- tryCatch(
+    if (is.function(active_request_id_local)) active_request_id_local() else NULL,
+    error = function(e) NULL
+  )
+
+  # Backpressure slotu yaşam döngüsü: send_message slotu values$backpressure_token
+  # içine devretti. Bu asenkron yol normal cleanup callback'ini çağırmadığından,
+  # slot bu istek bitince (başarı/hata/iptal) açıkça serbest bırakılır. req_id
+  # koruması yeni bir isteğin slotunu yanlışlıkla serbest bırakmayı engeller.
+  # Backpressure kapalıyken (varsayılan) token NULL'dur ve bu çağrı no-op'tur.
+  release_langflow_backpressure_slot <- function() {
+    mergen_send_message_release_values_token(ctx$values, req_id = req_id_local)
+  }
+
+  is_stale_langflow_request <- function() {
+    if (!is.function(active_request_id_local) || is.null(req_id_local)) {
+      return(FALSE)
+    }
+    !mergen_is_current_request(active_request_id_local, req_id_local, stop_generation_local)
+  }
+
   # Yapılandırma eksikse net, kullanıcı dostu hata ver ve normal LLM yoluna geçme.
   if (!nzchar(base_url) || !nzchar(flow_id)) {
     log_warn("[LANGFLOW] Yapılandırma eksik (araç={tool_family}); taban URL veya akış kimliği tanımlı değil")
+    release_langflow_backpressure_slot()
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE
     ctx$add_message_fn(
@@ -72,22 +98,6 @@ handle_langflow_chat_mode <- function(ctx) {
   session_id_local <- session_id
   timeout_local <- timeout_seconds
 
-  # Yarış koruması: bu isteğin kimliğini yakala. Kullanıcı durdurup yeni bir
-  # istek başlatırsa bayat sonuç yeni isteğin yazma alanını/sohbetini ezmemeli.
-  active_request_id_local <- ctx$active_request_id
-  stop_generation_local <- ctx$stop_generation
-  req_id_local <- tryCatch(
-    if (is.function(active_request_id_local)) active_request_id_local() else NULL,
-    error = function(e) NULL
-  )
-
-  is_stale_langflow_request <- function() {
-    if (!is.function(active_request_id_local) || is.null(req_id_local)) {
-      return(FALSE)
-    }
-    !mergen_is_current_request(active_request_id_local, req_id_local, stop_generation_local)
-  }
-
   tracked_future_promise(
     task_fn = function() {
       call_langflow_chat(
@@ -108,6 +118,7 @@ handle_langflow_chat_mode <- function(ctx) {
       return(invisible(NULL))
     }
 
+    release_langflow_backpressure_slot()
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE
 
@@ -115,6 +126,13 @@ handle_langflow_chat_mode <- function(ctx) {
       ctx$add_message_fn(result$text, "ai")
     } else {
       err_msg <- result$error %||% "Langflow yanıtı alınamadı."
+      # Hata önizlemesi worker tarafında üretildiğinden, ana süreçte (sır
+      # redaksiyon yardımcısı garanti yüklüyken) yeniden redakte edilir; böylece
+      # bir üst-akış/proxy hatası API anahtarını prose içinde yansıtsa bile
+      # sohbete/toast'a sızmaz. Redaksiyon idempotenttir.
+      if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
+        err_msg <- redact_sensitive_text(err_msg)
+      }
       ctx$add_message_fn(paste0("\U000026A0\U0000FE0F ", err_msg), "ai")
       showToast(ctx$session, err_msg, "error")
     }
@@ -126,6 +144,7 @@ handle_langflow_chat_mode <- function(ctx) {
       return(invisible(NULL))
     }
 
+    release_langflow_backpressure_slot()
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE
     ctx$add_message_fn(paste0("\U0000274C Langflow hatası: ", err$message), "ai")

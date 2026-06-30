@@ -19,6 +19,10 @@
     "MERGEN_DEFAULT_API_KEY",
     "LOCAL_LLM_API_KEY",
     "LOCAL_LLM_ENDPOINT_ALT_API_KEY",
+    # Kurumsal Langflow akış API anahtarı. Langflow HTTP hata gövdeleri
+    # sohbet/toast'a önizlenebildiğinden, anahtarın prose içinde çıplak geçmesi
+    # durumunda da maskelenmesi için açıkça eklenir.
+    "LANGFLOW_API_KEY",
     "LOCAL_TTS_API_KEY",
     "LOCAL_STT_API_KEY",
     "SERVICE_DESK_API_KEY_URL",
