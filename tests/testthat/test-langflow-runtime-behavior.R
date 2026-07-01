@@ -84,15 +84,15 @@ source(file.path(repo_root_langflow, "R", "helpers_langflow_runtime.R"),
 test_that("build_langflow_run_url sondaki '/' karakterini çift slash üretmeden temizler", {
   expect_equal(
     build_langflow_run_url("https://langflow.example.com", "flow-1"),
-    "https://langflow.example.com/api/v1/run/flow-1"
+    "https://langflow.example.com/flow-1"
   )
   expect_equal(
     build_langflow_run_url("https://langflow.example.com///", "flow-1"),
-    "https://langflow.example.com/api/v1/run/flow-1"
+    "https://langflow.example.com/flow-1"
   )
   expect_equal(
     build_langflow_run_url("  https://langflow.example.com/  ", "  flow-1  "),
-    "https://langflow.example.com/api/v1/run/flow-1"
+    "https://langflow.example.com/flow-1"
   )
 })
 

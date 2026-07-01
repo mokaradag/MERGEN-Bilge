@@ -23,7 +23,7 @@ normalize_langflow_base_url <- function(base_url) {
 }
 
 # Akış çalıştırma uç noktasını üretir:
-#   {base_url}/api/v1/run/{flow_id}
+#   {base_url}/{flow_id}
 # Taban URL veya akış kimliği eksikse boş string döner (çağıran taraf bunu
 # yapılandırma eksikliği olarak ele alır).
 build_langflow_run_url <- function(base_url, flow_id) {
@@ -34,7 +34,7 @@ build_langflow_run_url <- function(base_url, flow_id) {
     return("")
   }
 
-  paste0(base, "/api/v1/run/", fid)
+  paste0(base, "/", fid)
 }
 
 # api_config içindeki Langflow yapılandırma bloğunu döndürür (yoksa boş liste).
