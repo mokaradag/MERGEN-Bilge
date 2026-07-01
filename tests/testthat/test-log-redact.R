@@ -56,6 +56,20 @@ test_that("redact_sensitive_text bilinen env anahtar değerini maskeler", {
   expect_false(grepl("supersekretkey_abcdef1234", sonuc, fixed = TRUE))
 })
 
+test_that("redact_sensitive_text Langflow API anahtarı değerini prose içinde maskeler", {
+  eski <- Sys.getenv("LANGFLOW_API_KEY", unset = "")
+  fake_key <- "fake_langflow_key_abcdef1234"
+  Sys.setenv(LANGFLOW_API_KEY = fake_key)
+  on.exit(Sys.setenv(LANGFLOW_API_KEY = eski))
+
+  # Üst-akış/proxy hatası anahtarı key-value yerine düz metin (prose) olarak
+  # yansıtsa bile maskelenmelidir.
+  m <- paste("Langflow proxy hatası: gelen istek", fake_key, "ile reddedildi")
+  sonuc <- redact_sensitive_text(m)
+  expect_true(grepl("<LANGFLOW_API_KEY:redacted>", sonuc, fixed = TRUE))
+  expect_false(grepl(fake_key, sonuc, fixed = TRUE))
+})
+
 test_that("redact_sensitive_text DB ve SSO env sırlarını literal değer olarak maskeler", {
   old_db <- Sys.getenv("DB_PASSWORD", unset = "")
   old_sso <- Sys.getenv("SSO_CLIENT_SECRET", unset = "")

@@ -96,6 +96,33 @@ LOCAL_LLM_ENDPOINT=https://your-actual-api-endpoint.com/v1/chat/completions
 LOCAL_LLM_ENDPOINT_ALT=https://your-secondary-endpoint.com/v1/chat/completions
 LOCAL_LLM_ENDPOINT_ALT_API_KEY=secondary-endpoint-api-key
 
+# ------------------------------------------------------------------------------
+# KURUMSAL LANGFLOW AKIŞ ENTEGRASYONU
+# ------------------------------------------------------------------------------
+# "Süreç Yönetimi Sistemi" ve "Uygulama Uzmanı" araçları, normal yerel LLM uç
+# noktası yerine kurumsal Langflow akışlarını (Chat Input / Chat Output) çağırır.
+# Mergen, akışı şu uç noktaya POST eder:
+#   {LANGFLOW_BASE_URL}/api/v1/run/{flow_id}
+# Gövde: {"input_value": "...", "output_type": "chat", "input_type": "chat",
+#         "session_id": "mergen_<kullanici>_<sohbet>"}
+# Başlık: Content-Type: application/json, x-api-key: {LANGFLOW_API_KEY}
+#
+# Bu değişkenler TANIMSIZ bırakılırsa ilgili araç Langflow'a yönlendirilmez ve
+# eski davranışı (normal LLM) korur (geriye dönük uyumluluk).
+#
+# Taban URL (sonundaki '/' otomatik temizlenir). LOCAL_LLM_ENDPOINT_ALT bir
+# /v1/chat/completions ucudur, Langflow tabanı DEĞİLDİR; bu yüzden örtük olarak
+# Langflow tabanı olarak kullanılmaz.
+LANGFLOW_BASE_URL=https://your-langflow-server.example.com
+# Langflow API anahtarı (x-api-key). Boş bırakılır ve LANGFLOW_BASE_URL ayarlı
+# ise güvenli biçimde LOCAL_LLM_ENDPOINT_ALT_API_KEY değerine düşülür.
+LANGFLOW_API_KEY=your-langflow-api-key
+# Akış kimlikleri (Langflow akışının URL'indeki / API'sindeki flow id değeri).
+LANGFLOW_PROCESS_FLOW_ID=process-flow-id-here
+LANGFLOW_APP_EXPERT_FLOW_ID=app-expert-flow-id-here
+# Langflow yanıt zaman aşımı (saniye). Tanımsız/geçersizse 300 sn kullanılır.
+LANGFLOW_TIMEOUT_SECONDS=300
+
 # Varsayılan kurum API anahtarı. GitHub'a yazılmaz, loglanmaz, kullanıcıya gösterilmez.
 MERGEN_ALLOW_DEFAULT_API_KEY=TRUE
 MERGEN_REQUIRE_PERSONAL_API_KEY=FALSE

@@ -166,7 +166,8 @@ mergen_seam_registry <- function() {
         "tests/testthat/test-streaming-poll-lifecycle-contract.R",
         "tests/testthat/test-streaming-markdown-safety-contract.R",
         "tests/testthat/test-true-streaming-reset-ui-contract.R",
-        "tests/testthat/test-e2e-quick-actions-streaming-regression.R"
+        "tests/testthat/test-e2e-quick-actions-streaming-regression.R",
+        "tests/testthat/test-langflow-runtime-behavior.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-send-message-request-lifecycle-contract.R\")",
