@@ -100,6 +100,16 @@ chatUIObserversInit <- function(input, session, values, start_new_chat,
       error = function(e) invisible(NULL)
     )
 
+    # Süreç Yönetimi (Langflow) sohbet içi akış seçici, yalnızca JS `hidden`
+    # sınıfıyla gizlenir ve #chat_input_wrapper içinde #chat_content_container'ın
+    # kardeşi olduğundan yeni söyleşi DOM temizliğinden etkilenmez. Aktif süreç
+    # modundan sonra normal sohbete geçildiğinde açılır menü görünür kalmasın
+    # diye seçiciyi burada da açıkça gizle.
+    tryCatch(
+      session$sendCustomMessage("toggleProcessMode", list(active = FALSE)),
+      error = function(e) invisible(NULL)
+    )
+
     shinyjs::delay(300, {
       render_welcome_screen(values$saved_chats, replace_existing = TRUE)
     })

@@ -112,8 +112,9 @@ LOCAL_LLM_ENDPOINT=https://your-actual-api-endpoint.com/v1/chat/completions
 # yoktur; örtük geriye dönük fallback YOKTUR. Bu değişkenler tanımsız bırakılırsa
 # ilgili araç net bir "yapılandırma eksik" mesajı gösterir (normal LLM'ye düşmez).
 #
-# Taban URL (sonundaki '/' otomatik temizlenir).
-LANGFLOW_BASE_URL=https://your-langflow-server.example.com
+# Taban URL Langflow akış çalıştırma yolunu (/api/v1/run) içermelidir; Mergen
+# sonuna yalnızca "/{flow_id}" ekler. Sondaki '/' otomatik temizlenir.
+LANGFLOW_BASE_URL=https://your-langflow-server.example.com/api/v1/run
 # Langflow API anahtarı (x-api-key).
 LANGFLOW_API_KEY=your-langflow-api-key
 

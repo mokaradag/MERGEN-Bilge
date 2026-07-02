@@ -21,6 +21,10 @@
 soak_sensitive_env_names <- function() {
   c(
     "LOCAL_LLM_ENDPOINT", "LOCAL_LLM_API_KEY",
+    # Kaldirilan ikinci LLM ucu calisma zamaninda kullanilmasa da, surumden
+    # yukseltilmis VM'lerin .Renviron dosyasinda hala bulunabilir; denylist'te
+    # tutmak sifir maliyetli savunma saglar (unset degerler filtrelenir).
+    "LOCAL_LLM_ENDPOINT_ALT", "LOCAL_LLM_ENDPOINT_ALT_API_KEY",
     "LANGFLOW_API_KEY", "LANGFLOW_BASE_URL",
     "DB_DSN", "DB_DSN_2", "DB_DSN_3", "DB_PASSWORD",
     "AI_KEYS_MASTER", "MERGEN_DEFAULT_API_KEY",
