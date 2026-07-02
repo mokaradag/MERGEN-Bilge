@@ -188,6 +188,26 @@ quickActionsInit <- function(input, session, values, settings_data,
 
     if (isTRUE(tool_is_langflow)) {
       template_model <- NULL
+
+      # Langflow araçları yerel model taşımaz; ancak Görsel Uzmanı'ndan geçişte
+      # settings_data$model_selection hâlâ görsel modeli (dall-e-3 / IMAGE_GEN_MODEL)
+      # olabilir. Langflow aracı sonradan (ör. Yeni Söyleşi ile) temizlendiğinde
+      # normal yerel-LLM gönderimi bu geçersiz görsel modelini sohbet uç noktasına
+      # göndermesin diye, görsel modeli seçiliyse geçerli varsayılan sohbet modeline
+      # sessizce geri dönülür (araç kilitli olduğundan kullanıcıya bildirilmez).
+      image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
+      current_model <- as.character(isolate(settings_data$model_selection) %||% "")[1]
+      if (identical(current_model, image_model)) {
+        fallback_chat_model <- api_config$local_models[1]
+        if (length(fallback_chat_model) &&
+            !is.na(fallback_chat_model) &&
+            nzchar(fallback_chat_model)) {
+          isolate({ settings_data$model_selection <- fallback_chat_model })
+          updateSelectInput(session, "settings_yapilandirma_module-model_selection",
+                            selected = fallback_chat_model)
+          session$sendCustomMessage("saveSettings", list(model_selection = fallback_chat_model))
+        }
+      }
     } else {
       resolved_model <- tool_cfg$model_id %||% template_model %||%
         settings_data$model_selection %||% as.character(api_config$local_models[1])

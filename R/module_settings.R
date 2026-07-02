@@ -199,13 +199,30 @@ settingsInit <- function(session, parent_session = NULL) {
       }
     }
 
-    # Süreç Yönetimi kalıcı olarak aktif geldiyse, sohbet içi akış seçici yalnızca
-    # JS `hidden` sınıfıyla gizlendiğinden sayfa yenilemesinden sonra görünür hale
-    # getirilir. Aksi halde araç aktif kalır (gönderimler süreç akışına yönlenir)
-    # ama seçici gizli olduğundan kullanıcı varsayılan ilk akış dışında bir akış
-    # seçemez.
-    if (isTRUE(settings$enable_process_tools)) {
-      session$sendCustomMessage("toggleProcessMode", list(active = TRUE))
+    # Kalıcı olarak aktif gelen araç panelsiz bir Langflow aracıysa (Süreç
+    # Yönetimi / Uygulama Uzmanı), model kilidi DOM tespitiyle değil sunucudan
+    # bildirilir (tools_model_lock.js serverLockLabel). Sayfa yenilemesinden sonra
+    # bu kilit yeniden gönderilmezse model seçici düzenlenebilir kalır ama
+    # gönderimler Langflow'a yönlenip yerel model yok sayılır. Süreç Yönetimi
+    # ayrıca sohbet içi akış seçicisini de görünür kılar (yalnızca JS `hidden`
+    # sınıfıyla gizlendiğinden yenilemeden sonra tekrar gösterilmelidir).
+    langflow_flags <- if (exists("mergen_langflow_setting_flags", mode = "function")) {
+      mergen_langflow_setting_flags()
+    } else {
+      c("enable_process_tools", "enable_app_expert_tools")
+    }
+    active_langflow_flag <- Filter(function(f) isTRUE(settings[[f]]), langflow_flags)
+    if (length(active_langflow_flag) > 0) {
+      lf_flag <- active_langflow_flag[[1]]
+      lf_label <- "Bu araç"
+      if (exists("get_tool_mode_config", mode = "function")) {
+        lf_cfg <- get_tool_mode_config(lf_flag, by = "setting_flag")
+        lf_label <- lf_cfg$title %||% "Bu araç"
+      }
+      session$sendCustomMessage("setToolModelLock", list(active = TRUE, label = lf_label))
+      if (identical(lf_flag, "enable_process_tools")) {
+        session$sendCustomMessage("toggleProcessMode", list(active = TRUE))
+      }
     }
 
     # Görsel ayarları
