@@ -179,11 +179,42 @@ quickActionsInit <- function(input, session, values, settings_data,
     cat("[QUICK_TEMPLATE]", action_id, "isteği tespit edildi\n")
 
     tool_cfg <- get_tool_mode_config(action_id, by = "quick_action_id")
-    resolved_model <- tool_cfg$model_id %||% template_model %||%
-      settings_data$model_selection %||% as.character(api_config$local_models[1])
 
-    if (!is.null(resolved_model) && nzchar(resolved_model)) {
-      template_model <- resolved_model
+    # Langflow araçları (Süreç Yönetimi / Uygulama Uzmanı) yerel model kullanmaz;
+    # model Langflow akışının içine gömülüdür. Bu araçlarda model çözümleme ve
+    # model değişimi yapılmaz, aksi halde yanıltıcı bir "Model değiştirildi"
+    # bildirimi ve gereksiz model geçişi olur.
+    tool_is_langflow <- identical(as.character(tool_cfg$runtime %||% "")[1], "langflow")
+
+    if (isTRUE(tool_is_langflow)) {
+      template_model <- NULL
+
+      # Langflow araçları yerel model taşımaz; ancak Görsel Uzmanı'ndan geçişte
+      # settings_data$model_selection hâlâ görsel modeli (dall-e-3 / IMAGE_GEN_MODEL)
+      # olabilir. Langflow aracı sonradan (ör. Yeni Söyleşi ile) temizlendiğinde
+      # normal yerel-LLM gönderimi bu geçersiz görsel modelini sohbet uç noktasına
+      # göndermesin diye, görsel modeli seçiliyse geçerli varsayılan sohbet modeline
+      # sessizce geri dönülür (araç kilitli olduğundan kullanıcıya bildirilmez).
+      image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
+      current_model <- as.character(isolate(settings_data$model_selection) %||% "")[1]
+      if (identical(current_model, image_model)) {
+        fallback_chat_model <- api_config$local_models[1]
+        if (length(fallback_chat_model) &&
+            !is.na(fallback_chat_model) &&
+            nzchar(fallback_chat_model)) {
+          isolate({ settings_data$model_selection <- fallback_chat_model })
+          updateSelectInput(session, "settings_yapilandirma_module-model_selection",
+                            selected = fallback_chat_model)
+          session$sendCustomMessage("saveSettings", list(model_selection = fallback_chat_model))
+        }
+      }
+    } else {
+      resolved_model <- tool_cfg$model_id %||% template_model %||%
+        settings_data$model_selection %||% as.character(api_config$local_models[1])
+
+      if (!is.null(resolved_model) && nzchar(resolved_model)) {
+        template_model <- resolved_model
+      }
     }
     
     # 1. Tüm sohbet içi araç panelleri ön bilgisi: kapatma çağrıları her dalda
@@ -194,6 +225,7 @@ quickActionsInit <- function(input, session, values, settings_data,
       session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
       session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
       session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
+      session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
     }
 
     if (tool_name == "enable_image_tools") {
@@ -233,6 +265,12 @@ quickActionsInit <- function(input, session, values, settings_data,
         deep_thinking = isTRUE(isolate(settings_data$coding_deep_thinking)),
         level = isolate(settings_data$coding_deep_level) %||% "low"
       ))
+    } else if (tool_name == "enable_process_tools") {
+      # Süreç Yönetimi: sohbet içi süreç akışı seçici açılır menüsü gösterilir.
+      # (Langflow aracı olduğundan model değişimi yapılmaz.)
+      change_model_if_provided(template_model)
+      close_all_tool_panels()
+      session$sendCustomMessage("toggleProcessMode", list(active = TRUE))
     } else {
       change_model_if_provided(template_model)
       close_all_tool_panels()
@@ -409,6 +447,12 @@ quickActionsInit <- function(input, session, values, settings_data,
       session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
       session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
       session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
+      session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
+      # Bu özetleme yolu handle_tool_action()'ı atlar; panelsiz Süreç/Uygulama
+      # Uzmanı sunucu model kilidi (serverLockLabel) yalnızca panel gizlemekle
+      # temizlenmez. Süreç modundan sonra özetlemeye geçildiğinde bayat kilit
+      # kalmasın diye sunucu kilidi açıkça serbest bırakılır.
+      session$sendCustomMessage("setToolModelLock", list(active = FALSE))
 
       # Sunucu otoriter arka plan aile sinyali (handle_tool_action ile aynı sözleşme)
       tryCatch(
@@ -551,6 +595,10 @@ quickActionsInit <- function(input, session, values, settings_data,
     session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
     session$sendCustomMessage("toggleImageMode", list(active = FALSE))
     session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
+    session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
+    # Bu alternatif özetleme yolu da handle_tool_action()'ı atlar; panelsiz
+    # Langflow sunucu model kilidini açıkça serbest bırak (bkz. ana özetleme yolu).
+    session$sendCustomMessage("setToolModelLock", list(active = FALSE))
 
     showToast(session,
       "Dosya Özetleme modu aktif edildi. Şimdi Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.",

@@ -16,10 +16,10 @@ if (file.exists(".Renviron")) {
 # Word önizleme modu: "html" (istemci tarafı mammoth.js) veya "pdf" (sunucu tarafı LibreOffice)
 options(mergen.word_preview_mode = "html")
 
-# --- LLM UÇ NOKTALARI ---
+# --- LLM UÇ NOKTASI ---
+# Tek birincil yerel LLM uç noktası kullanılır. Eskiden ayrı bir uca giden
+# akışlar artık kurumsal Langflow ile karşılanır.
 primary_llm_endpoint   <- Sys.getenv("LOCAL_LLM_ENDPOINT", "")
-secondary_llm_endpoint <- Sys.getenv("LOCAL_LLM_ENDPOINT_ALT", primary_llm_endpoint)
-secondary_llm_api_key  <- Sys.getenv("LOCAL_LLM_ENDPOINT_ALT_API_KEY", "")
 
 mergen_default_api_key_enabled <- isTRUE(as.logical(
   Sys.getenv("MERGEN_ALLOW_DEFAULT_API_KEY", "FALSE")
@@ -48,42 +48,33 @@ coding_deep_high_model <- Sys.getenv("CODING_DEEP_HIGH_MODEL", "technical name 4
 # --- LANGFLOW AKIŞ ENTEGRASYONU ---
 # "Süreç Yönetimi Sistemi" ve "Uygulama Uzmanı" araçları normal yerel LLM uç
 # noktası yerine kurumsal Langflow akışlarını (Chat Input / Chat Output) çağırır.
-# GÜVENLİK NOTU: Taban URL için örtük geriye dönük fallback YOKTUR.
-# LOCAL_LLM_ENDPOINT_ALT bir OpenAI uyumlu /v1/chat/completions ucudur ve Langflow
-# tabanı değildir; ikincil uç nokta davranışını bozmamak için Langflow tabanı
-# olarak yeniden yorumlanmaz. Yalnızca API anahtarı, Langflow taban URL'i açıkça
-# ayarlandığında ve LANGFLOW_API_KEY boşken eski LOCAL_LLM_ENDPOINT_ALT_API_KEY
-# değerine güvenli biçimde düşer.
+# GÜVENLİK NOTU: Langflow'un kendi LANGFLOW_API_KEY'i vardır; yerel LLM
+# anahtarlarıyla ilişkisi yoktur ve örtük fallback YOKTUR. Süreç Yönetimi birden
+# fazla adlandırılmış akışı destekler; ham env değerleri saklanır ve
+# helpers_langflow_runtime.R tarafından çözülür (process_flows).
 langflow_base_url <- Sys.getenv("LANGFLOW_BASE_URL", "")
 langflow_api_key  <- Sys.getenv("LANGFLOW_API_KEY", "")
-if (!nzchar(langflow_api_key) && nzchar(langflow_base_url)) {
-  langflow_api_key <- secondary_llm_api_key
-}
 langflow_timeout_seconds <- suppressWarnings(as.numeric(
   Sys.getenv("LANGFLOW_TIMEOUT_SECONDS", "300")
 ))
 if (is.na(langflow_timeout_seconds) || langflow_timeout_seconds <= 0) {
   langflow_timeout_seconds <- 300
 }
-langflow_process_flow_id    <- Sys.getenv("LANGFLOW_PROCESS_FLOW_ID", "")
 langflow_app_expert_flow_id <- Sys.getenv("LANGFLOW_APP_EXPERT_FLOW_ID", "")
 
 # --- ANA API YAPILANDIRMASI ---
 api_config <- list(
-  # Geriye dönük uyumluluk: eski tek-endpoint alanını koru
+  # Tek birincil yerel LLM uç noktası (eski tek-endpoint alanıyla aynı değer)
   local_llm_endpoint = primary_llm_endpoint,
-  # Çoklu uç nokta desteği (aşağıdaki model haritasında anahtarla referansla)
+  # Uç nokta haritası tek "primary" anahtarına indirgenmiştir.
   local_llm_endpoints = list(
-    primary   = primary_llm_endpoint,
-    secondary = secondary_llm_endpoint
+    primary   = primary_llm_endpoint
   ),
   local_llm_endpoint_keys = list(
-    primary   = mergen_default_api_key,
-    secondary = secondary_llm_api_key
+    primary   = mergen_default_api_key
   ),
   local_llm_endpoint_user_managed = c(
-    primary   = TRUE,
-    secondary = FALSE
+    primary   = TRUE
   ),
   local_llm_default_endpoint_key = "primary",
   # Açılır menü etiketleri -> teknik model kimlikleri
@@ -102,7 +93,7 @@ api_config <- list(
     "technical name 2" = "Hızlı yanıt, günlük kullanım",
     "technical name 3" = "Gelişmiş akıl yürütme",
     "technical name 4" = "Yüksek hassasiyet, detaylı analiz",
-    "technical name 5" = "İkincil endpoint modeli",
+    "technical name 5" = "Gelişmiş görevler için optimize",
     "technical name 6" = "Özel görevler için optimize",
 	"technical name 7" = "Özel görevler için optimize"
   ),
@@ -136,8 +127,8 @@ api_config <- list(
     "technical name 3" = "primary",
     "technical name 4" = "primary",
 	"technical name 5" = "primary",
-    "technical name 6" = "secondary",
-    "technical name 7" = "secondary"
+    "technical name 6" = "primary",
+    "technical name 7" = "primary"
   ),
   # Excel/Kod araçlarındaki Derin Düşünme düğmesi için (family, level) -> model_id eşlemesi.
   # Bu modeller dropdown'larda görünmez; sadece runtime'da seçilir.
@@ -153,8 +144,12 @@ api_config <- list(
     base_url = langflow_base_url,
     api_key = langflow_api_key,
     timeout_seconds = langflow_timeout_seconds,
+    # Süreç Yönetimi çoklu akış ham env değerleri; parse ve seçim çözümlemesi
+    # helpers_langflow_runtime.R içindedir (mergen_langflow_process_flows).
+    process_flow_ids_raw   = Sys.getenv("LANGFLOW_PROCESS_FLOW_IDS", ""),
+    process_flow_names_raw = Sys.getenv("LANGFLOW_PROCESS_FLOW_NAMES", ""),
+    process_flow_legacy_id = Sys.getenv("LANGFLOW_PROCESS_FLOW_ID", ""),
     flow_ids = list(
-      process    = langflow_process_flow_id,
       app_expert = langflow_app_expert_flow_id
     )
   ),
@@ -174,9 +169,9 @@ api_config <- list(
       description = "Şirket içi süreç, izleç, rehber ve şablon dokümanları hakkında detaylı bilgi edinin.",
       icon_name = "briefcase",
       themeColor = "#3b82f6",
-      model_id = "technical name 1",
+      # Langflow aracı: yerel model kavramı yok (akış kendi modelini taşır).
+      # Süreç akışı seçimi çoklu process_flows üzerinden çözülür (model_id yok).
       runtime = "langflow",
-      langflow_flow_id = langflow_process_flow_id,
       real_tool = TRUE
     ),
     app_expert = list(
@@ -188,7 +183,7 @@ api_config <- list(
       description = "Şirket genelinde kullanılan uygulamalar hakkında bilgi edinin. SAP, Primavera P6, Jira gibi uygulamalar hakkında detaylı bilgi edinin.",
       icon_name = "window-maximize",
       themeColor = "#8b5cf6",
-      model_id = "technical name 6",
+      # Langflow aracı: yerel model kavramı yok (akış kendi modelini taşır).
       runtime = "langflow",
       langflow_flow_id = langflow_app_expert_flow_id,
       real_tool = TRUE

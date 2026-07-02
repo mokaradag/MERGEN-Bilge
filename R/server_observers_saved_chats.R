@@ -235,6 +235,61 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       cat(sprintf("[SAVED_CHATS] Araç tespit edildi ve etkinleştirildi: %s\n", detected_tool))
     }
 
+    # Süreç Yönetimi / Uygulama Uzmanı (panelsiz Langflow araçları) model kilidi
+    # ve akış seçici, araç bayraklarından bağımsız UI/kilit sinyalleridir ve önceki
+    # sohbetten devralınabilir. İçerik tabanlı tespit YALNIZCA Görsel çıktıyı ve
+    # Süreç atıf işaretçilerini (source-link|kaynakca-entry) tanır; Uygulama Uzmanı
+    # güvenilir tespit edilemez, bu yüzden detected_tool == NULL "belirsiz" demektir
+    # ve mevcut araç durumu KORUNUR.
+    #
+    # Kurallar (bayrakları burada ASLA temizlemeyiz; yalnızca UI'yı mevcut/tespit
+    # edilen duruma göre tutarlı kılarız):
+    #  - Süreç POZİTİF tespit edildiyse: akış seçiciyi göster + sunucu kilidi.
+    #  - Süreç DIŞI bir araç POZİTİF tespit edildiyse (yukarıdaki blok tüm bayrakları
+    #    temizleyip o aracı etkinleştirdi): panelsiz Langflow UI'sını temizle.
+    #  - Belirsizse (hiç tespit yok) ama panelsiz bir Langflow aracı hâlâ aktifse:
+    #    bayrağı KORU ve UI'yı ona göre tutarlı kıl. Böylece tespit edilemeyen bir
+    #    Uygulama Uzmanı/Süreç sohbeti sessizce yerel LLM'e düşmez (UI ile
+    #    yönlendirme uyumsuzluğu da oluşmaz).
+    #  - Belirsiz ve aktif panelsiz Langflow aracı yoksa: UI'yı temizle.
+    langflow_flags <- if (exists("mergen_langflow_setting_flags", mode = "function")) {
+      mergen_langflow_setting_flags()
+    } else {
+      c("enable_process_tools", "enable_app_expert_tools")
+    }
+    lf_active_flags <- Filter(function(f) isTRUE(isolate(settings_data[[f]])), langflow_flags)
+
+    ui_lf_flag <- if (identical(detected_tool, "enable_process_tools")) {
+      "enable_process_tools"
+    } else if (!is.null(detected_tool)) {
+      NULL
+    } else if (length(lf_active_flags) > 0) {
+      lf_active_flags[[1]]
+    } else {
+      NULL
+    }
+
+    if (is.null(ui_lf_flag)) {
+      session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
+      session$sendCustomMessage("setToolModelLock", list(active = FALSE))
+    } else {
+      lf_label <- "Bu araç"
+      if (exists("get_tool_mode_config", mode = "function")) {
+        lf_cfg <- get_tool_mode_config(ui_lf_flag, by = "setting_flag")
+        lf_label <- lf_cfg$title %||% "Bu araç"
+      }
+      session$sendCustomMessage("setToolModelLock", list(active = TRUE, label = lf_label))
+      # Akış seçici yalnızca Süreç Yönetimi için görünür; Uygulama Uzmanı akış
+      # seçici kullanmaz. GLOBAL process_flow_selection kasıtlı olarak seçiciye
+      # ZORLANMAZ: kayıtlı sohbetin kendi akışı akış başına kalıcı saklanmadığından
+      # global son-kullanılan tercihi farklı bir sohbete uygulamak yanlış akışa
+      # taşırdı (session_id akış kimliğini içerir). DOM seçici yükleme sırasında
+      # zaten kalıcı seçime hizalanmıştır.
+      session$sendCustomMessage("toggleProcessMode", list(
+        active = identical(ui_lf_flag, "enable_process_tools")
+      ))
+    }
+
     # Persona verisini al (eski kimlikler normalleştirilerek çözülür)
     character_data <- get_character_record(isolate(settings_data$selected_character))
 

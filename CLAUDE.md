@@ -4421,16 +4421,24 @@ If one is missing, startup stops with an explicit error.
 - `DB_NAME_ENCODING`
 
 #### LLM
-- `LOCAL_LLM_ENDPOINT`
+- `LOCAL_LLM_ENDPOINT` (single primary local LLM endpoint; the old secondary-endpoint concept `LOCAL_LLM_ENDPOINT_ALT` / `LOCAL_LLM_ENDPOINT_ALT_API_KEY` has been removed)
 - `LOCAL_LLM_API_KEY`
-- `LOCAL_LLM_ENDPOINT_ALT`
-- `LOCAL_LLM_ENDPOINT_ALT_API_KEY`
 - `FILTER_MODEL`
 - `AI_EXPERT_MODEL`
 - `DESTEK_CHATBOT_MODEL`
 - `MERGEN_ALLOW_DEFAULT_API_KEY`
 - `MERGEN_REQUIRE_PERSONAL_API_KEY`
 - `MERGEN_DEFAULT_API_KEY`
+
+#### Kurumsal Langflow (Süreç Yönetimi / Uygulama Uzmanı)
+The `process` and `app_expert` tools run enterprise Langflow flows (Chat Input / Chat Output) instead of the local LLM endpoint. The model is embedded in the Langflow flow, so these tools have NO `model_id` in `tool_mode_config`, the chat-header local model badge is hidden when a `runtime == "langflow"` tool is active, and they show the standard (simulated) thinking panel — never the image-generation spinner. `LANGFLOW_API_KEY` is Langflow-specific and unrelated to the local LLM keys; there is NO implicit fallback (a removed regression let it fall back to the old ALT key). Parsing/resolution lives in `R/helpers_langflow_runtime.R`; process-flow selection is stored raw in `api_config$langflow` and resolved lazily. Süreç Yönetimi supports MULTIPLE named flows selected from a chat-input dropdown (`process_chat_controls` / `chat_process_flow`; `www/js/process_tools.js` + `www/css/process_tools.css`).
+- `LANGFLOW_BASE_URL`
+- `LANGFLOW_API_KEY`
+- `LANGFLOW_PROCESS_FLOW_IDS` — `;`/`,`-separated process flow IDs (order matches names)
+- `LANGFLOW_PROCESS_FLOW_NAMES` — `;`/`,`-separated display names (fallback `Akış 1`, `Akış 2`, ...)
+- `LANGFLOW_PROCESS_FLOW_ID` — legacy single-flow var, supported only as temporary backward-compat (migrated into a one-item process-flow list)
+- `LANGFLOW_APP_EXPERT_FLOW_ID` — single Uygulama Uzmanı flow
+- `LANGFLOW_TIMEOUT_SECONDS`
 
 #### Vision (görsel anlama)
 - `MERGEN_VISION_MODELS` — `;`/`,`-separated list of model IDs that support image input (Image Input). Optional; the Kodlama Uzmanı deep-thinking models (`CODING_DEEP_*`) are auto-marked vision-capable regardless. Model IDs may contain spaces, so the list is split on `;`/`,` only.

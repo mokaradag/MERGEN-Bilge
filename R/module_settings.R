@@ -38,6 +38,10 @@ settingsInit <- function(session, parent_session = NULL) {
     enable_process_tools    = FALSE,
     enable_app_expert_tools = FALSE,
     enable_image_tools      = FALSE,
+    # Süreç Yönetimi'nde son seçilen akış anahtarı (flow_1/flow_2/...). Sohbet
+    # içi akış seçici değiştikçe kaydedilir; yenilemeden sonra seçim geri
+    # yüklenir, böylece gönderimler varsayılan ilk akışa sessizce düşmez.
+    process_flow_selection  = "",
     image_size              = "1024x1024",
     image_quality_hd        = FALSE,
     summary_detail_level    = "standard",
@@ -185,6 +189,21 @@ settingsInit <- function(session, parent_session = NULL) {
     if (!is.null(loaded$enable_image_tools)) {
       settings$enable_image_tools <- isTRUE(loaded$enable_image_tools)
     }
+    if (!is.null(loaded$process_flow_selection)) {
+      pf_restored <- as.character(loaded$process_flow_selection)[1]
+      if (!is.na(pf_restored) && nzchar(pf_restored)) {
+        settings$process_flow_selection <- pf_restored
+        # Süreç modu şu an KAPALI olsa bile gizli DOM akış seçicisini kalıcı
+        # seçime hizala. Aksi halde seçici varsayılan (flow_1) konumunda kalır;
+        # kullanıcı sonradan Süreç modunu (ayarlar/hızlı işlem) etkinleştirince
+        # toggleProcessMode(active=TRUE) işleyicisi bu senkronsuz varsayılanı
+        # yayınlar ve chat_process_flow gözlemcisi onu hemen kalıcılaştırarak
+        # kayıtlı akış seçimini ezerdi. Önceden hizalanınca her etkinleştirme
+        # yayını doğru akışı bildirir. Bildirilen değer kalıcı seçimle aynı
+        # olduğundan gözlemci no-op yapar (döngü/ezme olmaz).
+        session$sendCustomMessage("syncProcessFlowToChat", list(flow_key = pf_restored))
+      }
+    }
 
     # Aynı anda birden fazla aracın aktif olmasını engelle
     ANALYSIS_TOOLS <- c(
@@ -196,6 +215,35 @@ settingsInit <- function(session, parent_session = NULL) {
     if (length(active_tools) > 1) {
       for (tool in active_tools[-1]) {
         settings[[tool]] <- FALSE
+      }
+    }
+
+    # Kalıcı olarak aktif gelen araç panelsiz bir Langflow aracıysa (Süreç
+    # Yönetimi / Uygulama Uzmanı), model kilidi DOM tespitiyle değil sunucudan
+    # bildirilir (tools_model_lock.js serverLockLabel). Sayfa yenilemesinden sonra
+    # bu kilit yeniden gönderilmezse model seçici düzenlenebilir kalır ama
+    # gönderimler Langflow'a yönlenip yerel model yok sayılır. Süreç Yönetimi
+    # ayrıca sohbet içi akış seçicisini de görünür kılar (yalnızca JS `hidden`
+    # sınıfıyla gizlendiğinden yenilemeden sonra tekrar gösterilmelidir).
+    langflow_flags <- if (exists("mergen_langflow_setting_flags", mode = "function")) {
+      mergen_langflow_setting_flags()
+    } else {
+      c("enable_process_tools", "enable_app_expert_tools")
+    }
+    active_langflow_flag <- Filter(function(f) isTRUE(settings[[f]]), langflow_flags)
+    if (length(active_langflow_flag) > 0) {
+      lf_flag <- active_langflow_flag[[1]]
+      lf_label <- "Bu araç"
+      if (exists("get_tool_mode_config", mode = "function")) {
+        lf_cfg <- get_tool_mode_config(lf_flag, by = "setting_flag")
+        lf_label <- lf_cfg$title %||% "Bu araç"
+      }
+      session$sendCustomMessage("setToolModelLock", list(active = TRUE, label = lf_label))
+      if (identical(lf_flag, "enable_process_tools")) {
+        # Akış seçici görünür kılınır. DOM seçicisi yukarıda kalıcı seçime zaten
+        # hizalandığından, toggle işleyicisinin yeniden yayınladığı değer doğru
+        # akıştır; burada ayrıca senkronlamaya gerek yoktur.
+        session$sendCustomMessage("toggleProcessMode", list(active = TRUE))
       }
     }
 
@@ -246,6 +294,23 @@ settingsInit <- function(session, parent_session = NULL) {
     # Giriş animasyonu ayarı
     if (!is.null(loaded$skip_intro)) {
       settings$show_intro_animation <- !isTRUE(loaded$skip_intro)
+    }
+  }, ignoreInit = TRUE)
+
+  # ---- Süreç Yönetimi akış seçimi kalıcılığı ----
+  # Kullanıcı sohbet içi süreç akışı seçicisini (input$chat_process_flow)
+  # değiştirdiğinde seçim reaktif ayara yazılır ve kısmi saveSettings ile
+  # localStorage'a birleştirilerek anında kaydedilir. Böylece sayfa
+  # yenilemesinden sonra önceki akış seçimi geri yüklenir; aksi halde Süreç
+  # Yönetimi gönderimleri varsayılan ilk akışa sessizce düşerdi.
+  observeEvent(session$input$chat_process_flow, {
+    flow_key <- session$input$chat_process_flow
+    if (is.null(flow_key)) return(invisible(NULL))
+    flow_key <- as.character(flow_key)[1]
+    if (is.na(flow_key) || !nzchar(flow_key)) return(invisible(NULL))
+    if (!identical(isolate(settings$process_flow_selection), flow_key)) {
+      settings$process_flow_selection <- flow_key
+      session$sendCustomMessage("saveSettings", list(process_flow_selection = flow_key))
     }
   }, ignoreInit = TRUE)
 
@@ -448,6 +513,7 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$enable_process_tools     <- FALSE
     settings$enable_app_expert_tools  <- FALSE
     settings$enable_image_tools       <- FALSE
+    settings$process_flow_selection   <- ""
     settings$enable_followups         <- TRUE
     settings$font_size                <- "medium"
     settings$enable_background_music  <- FALSE
@@ -509,6 +575,7 @@ settingsInit <- function(session, parent_session = NULL) {
     session$sendCustomMessage("toggleImageMode", list(active = FALSE))
     session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
     session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
+    session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
     session$sendCustomMessage("syncExcelDeepThinkingToChat", list(deep_thinking = FALSE, level = "low"))
     session$sendCustomMessage("syncCodingDeepThinkingToChat", list(deep_thinking = FALSE, level = "low"))
     # Tüm araçlar pasif olduğundan model seçim kilidini serbest bırak.

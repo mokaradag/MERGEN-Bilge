@@ -39,9 +39,13 @@ source(file.path(repo_root_langflow, "R", "helpers_api_model_tool_runtime.R"),
 source(file.path(repo_root_langflow, "R", "helpers_langflow_runtime.R"),
        encoding = "UTF-8", local = globalenv())
 
-# Langflow yapılandırılmış örnek config.
+# Langflow yapılandırılmış örnek config (çoklu süreç akışı; Langflow araçlarında
+# yerel model_id YOKTUR).
 .langflow_test_config <- function(base_url = "https://langflow.example.com",
-                                  process_flow = "flow-process-123",
+                                  process_flows = list(
+                                    list(key = "flow_1", id = "flow-process-123", name = "Süreç Akışı 1"),
+                                    list(key = "flow_2", id = "flow-process-456", name = "Süreç Akışı 2")
+                                  ),
                                   app_expert_flow = "flow-app-456") {
   list(
     local_models = c("Model" = "technical name 1"),
@@ -49,8 +53,8 @@ source(file.path(repo_root_langflow, "R", "helpers_langflow_runtime.R"),
       base_url = base_url,
       api_key = "fake-langflow-key",
       timeout_seconds = 300,
+      process_flows = process_flows,
       flow_ids = list(
-        process = process_flow,
         app_expert = app_expert_flow
       )
     ),
@@ -59,17 +63,14 @@ source(file.path(repo_root_langflow, "R", "helpers_langflow_runtime.R"),
         family = "process",
         setting_flag = "enable_process_tools",
         quick_action_id = "project-process",
-        runtime = "langflow",
-        langflow_flow_id = process_flow,
-        model_id = "technical name 1"
+        runtime = "langflow"
       ),
       app_expert = list(
         family = "app_expert",
         setting_flag = "enable_app_expert_tools",
         quick_action_id = "app-expert",
         runtime = "langflow",
-        langflow_flow_id = app_expert_flow,
-        model_id = "technical name 6"
+        langflow_flow_id = app_expert_flow
       ),
       coding = list(
         family = "coding",
@@ -122,31 +123,156 @@ test_that("is_langflow_tool_family yalnızca runtime=langflow ve akış kimliği
   expect_false(is_langflow_tool_family(NULL, config))
 })
 
-test_that("is_langflow_tool_family taban URL veya akış kimliği eksikse FALSE döner (geriye dönük uyumluluk)", {
-  # Taban URL yok -> Langflow yapılandırılmamış -> normal LLM yoluna düşülmeli
+test_that("is_langflow_tool_family taban URL veya akış kimliği eksikse (require_config=TRUE) FALSE döner", {
+  # Taban URL yok -> yapılandırma eksik -> require_config TRUE ile FALSE
   no_base <- .langflow_test_config(base_url = "")
   expect_false(is_langflow_tool_family("process", no_base))
 
-  # process akış kimliği boş
-  no_flow <- .langflow_test_config(process_flow = "")
-  no_flow$tool_mode_config$process$langflow_flow_id <- ""
-  no_flow$langflow$flow_ids$process <- ""
+  # Hiç süreç akışı yapılandırılmamış -> process çözülemez
+  no_flow <- .langflow_test_config(process_flows = list())
   expect_false(is_langflow_tool_family("process", no_flow))
   # app_expert hâlâ yapılandırılmış olmalı
   expect_true(is_langflow_tool_family("app_expert", no_flow))
 })
 
-test_that("mergen_langflow_flow_id_for_family araç moduna özel kimliği, ardından merkezi haritayı kullanır", {
-  config <- .langflow_test_config(process_flow = "pf-1", app_expert_flow = "af-2")
-  expect_equal(mergen_langflow_flow_id_for_family("process", config), "pf-1")
+test_that("is_langflow_tool_family require_config=FALSE ile yalnızca runtime'a bakar (yönlendirme için)", {
+  # Yapılandırma eksik olsa bile runtime==langflow ise TRUE -> istek Langflow
+  # işleyicisine gider ve orada net hata verilir (normal LLM'ye düşülmez).
+  no_base <- .langflow_test_config(base_url = "")
+  expect_true(is_langflow_tool_family("process", no_base, require_config = FALSE))
+  expect_true(is_langflow_tool_family("app_expert", no_base, require_config = FALSE))
+
+  no_flow <- .langflow_test_config(process_flows = list())
+  expect_true(is_langflow_tool_family("process", no_flow, require_config = FALSE))
+
+  # Langflow olmayan araç yine FALSE
+  expect_false(is_langflow_tool_family("coding", .langflow_test_config(), require_config = FALSE))
+})
+
+test_that("mergen_langflow_flow_id_for_family process için seçili/varsayılan akışı, app_expert için tekil kimliği çözer", {
+  config <- .langflow_test_config(app_expert_flow = "af-2")
+
+  # process: seçim yoksa varsayılan ilk akış
+  expect_equal(mergen_langflow_flow_id_for_family("process", config), "flow-process-123")
+  # process: key ile seçim
+  expect_equal(mergen_langflow_flow_id_for_family("process", config, selected_flow = "flow_2"), "flow-process-456")
+  # process: id ile seçim
+  expect_equal(mergen_langflow_flow_id_for_family("process", config, selected_flow = "flow-process-456"), "flow-process-456")
+  # process: bilinmeyen seçim -> varsayılan ilk akış
+  expect_equal(mergen_langflow_flow_id_for_family("process", config, selected_flow = "yok"), "flow-process-123")
+
+  # app_expert tekil akış kimliği
   expect_equal(mergen_langflow_flow_id_for_family("app_expert", config), "af-2")
 
   # Araç moduna özel kimlik yoksa merkezi flow_ids haritasına düşülür
-  config$tool_mode_config$process$langflow_flow_id <- NULL
-  config$langflow$flow_ids$process <- "central-pf"
-  expect_equal(mergen_langflow_flow_id_for_family("process", config), "central-pf")
+  config$tool_mode_config$app_expert$langflow_flow_id <- NULL
+  config$langflow$flow_ids$app_expert <- "central-af"
+  expect_equal(mergen_langflow_flow_id_for_family("app_expert", config), "central-af")
 
   expect_equal(mergen_langflow_flow_id_for_family("none", config), "")
+})
+
+test_that("mergen_parse_langflow_process_flows liste formatını, geriye dönük tekil kimliği ve ad yedeklemesini işler", {
+  # Liste formatı (";" ayraçlı), boşluk temizlenir, boşlar atlanır
+  flows <- mergen_parse_langflow_process_flows(
+    ids_raw = " id-1 ; id-2 ;; id-3 ",
+    names_raw = "Akış A; Akış B"
+  )
+  expect_length(flows, 3L)
+  expect_equal(flows[[1]]$id, "id-1")
+  expect_equal(flows[[1]]$name, "Akış A")
+  expect_equal(flows[[1]]$key, "flow_1")
+  expect_equal(flows[[2]]$name, "Akış B")
+  # Ad eksikse güvenli yedek ad
+  expect_equal(flows[[3]]$name, "Akış 3")
+  expect_equal(flows[[3]]$key, "flow_3")
+
+  # "," ayracı da desteklenir
+  comma_flows <- mergen_parse_langflow_process_flows(ids_raw = "a,b", names_raw = "Bir,İki")
+  expect_length(comma_flows, 2L)
+  expect_equal(comma_flows[[2]]$id, "b")
+  expect_equal(comma_flows[[2]]$name, "İki")
+
+  # Liste yoksa eski tekil kimliğe düşer (geçici uyumluluk)
+  legacy <- mergen_parse_langflow_process_flows(ids_raw = "", legacy_id = "legacy-flow")
+  expect_length(legacy, 1L)
+  expect_equal(legacy[[1]]$id, "legacy-flow")
+  expect_equal(legacy[[1]]$name, "Akış 1")
+
+  # Hiç kimlik yoksa boş liste
+  expect_length(mergen_parse_langflow_process_flows(), 0L)
+})
+
+test_that("mergen_parse_langflow_process_flows boş ad konumlarını korur ve slot bazında yedek ada düşer", {
+  # Operatör ilk adı boş bırakıp yedeği kullanmak isterse, boş konum atlanmamalı;
+  # aksi halde "Flow 2" yanlışlıkla flow_1'e kayardı.
+  flows <- mergen_parse_langflow_process_flows(
+    ids_raw = "id1;id2",
+    names_raw = ";Flow 2"
+  )
+  expect_length(flows, 2L)
+  expect_equal(flows[[1]]$id, "id1")
+  expect_equal(flows[[1]]$name, "Akış 1")   # boş konum -> yedek ad (KAYMAZ)
+  expect_equal(flows[[2]]$id, "id2")
+  expect_equal(flows[[2]]$name, "Flow 2")
+
+  # Ortadaki boş ad konumu da korunur
+  mid <- mergen_parse_langflow_process_flows(
+    ids_raw = "a;b;c",
+    names_raw = "Bir;;Üç"
+  )
+  expect_equal(mid[[1]]$name, "Bir")
+  expect_equal(mid[[2]]$name, "Akış 2")     # ortadaki boş -> yedek
+  expect_equal(mid[[3]]$name, "Üç")
+})
+
+test_that("mergen_langflow_process_flows ham env alanlarından da çözümlenir", {
+  cfg_raw <- list(
+    langflow = list(
+      base_url = "https://x",
+      process_flow_ids_raw = "raw-1;raw-2",
+      process_flow_names_raw = "Ham 1;Ham 2"
+    )
+  )
+  flows <- mergen_langflow_process_flows(cfg_raw)
+  expect_length(flows, 2L)
+  expect_equal(flows[[1]]$id, "raw-1")
+  expect_equal(flows[[2]]$name, "Ham 2")
+
+  # Önceden ayrıştırılmış process_flows varsa doğrudan döner
+  parsed <- mergen_langflow_process_flows(.langflow_test_config())
+  expect_length(parsed, 2L)
+  expect_equal(parsed[[1]]$id, "flow-process-123")
+})
+
+test_that("mergen_langflow_process_flow_id seçim/varsayılan/boş durumlarını çözer", {
+  config <- .langflow_test_config()
+  expect_equal(mergen_langflow_process_flow_id(config), "flow-process-123")
+  expect_equal(mergen_langflow_process_flow_id(config, "flow_2"), "flow-process-456")
+  expect_equal(mergen_langflow_process_flow_id(config, "flow-process-456"), "flow-process-456")
+  expect_equal(mergen_langflow_process_flow_id(config, "bulunamaz"), "flow-process-123")
+
+  # Akış yoksa "" döner (yapılandırma eksik)
+  empty <- .langflow_test_config(process_flows = list())
+  expect_equal(mergen_langflow_process_flow_id(empty), "")
+})
+
+test_that("mergen_langflow_process_flow_label görünen adı çözer (loglama için)", {
+  config <- .langflow_test_config()
+  expect_equal(mergen_langflow_process_flow_label(config), "Süreç Akışı 1")
+  expect_equal(mergen_langflow_process_flow_label(config, "flow_2"), "Süreç Akışı 2")
+  expect_equal(mergen_langflow_process_flow_label(config, "yok"), "Süreç Akışı 1")
+  expect_equal(mergen_langflow_process_flow_label(.langflow_test_config(process_flows = list())), "")
+})
+
+test_that("mergen_langflow_setting_flags yalnızca runtime=langflow araçlarının bayraklarını döndürür", {
+  config <- .langflow_test_config()
+  flags <- mergen_langflow_setting_flags(config)
+  expect_true("enable_process_tools" %in% flags)
+  expect_true("enable_app_expert_tools" %in% flags)
+  expect_false("enable_coding_tools" %in% flags)
+
+  expect_identical(mergen_langflow_setting_flags(list()), character(0))
 })
 
 test_that("mergen_build_langflow_session_id aynı sohbet için kararlı kimlik üretir", {
@@ -163,6 +289,30 @@ test_that("mergen_build_langflow_session_id aynı sohbet için kararlı kimlik �
 
   # Eksik değerler güvenli yer tutuculara düşer
   expect_identical(mergen_build_langflow_session_id(NULL, NULL), "mergen_0_new")
+
+  # flow_id verilmediğinde eski üç parçalı biçim korunur (geriye dönük uyumluluk)
+  expect_identical(mergen_build_langflow_session_id(42, 1001, flow_id = NULL), "mergen_42_1001")
+  expect_identical(mergen_build_langflow_session_id(42, 1001, flow_id = ""), "mergen_42_1001")
+})
+
+test_that("mergen_build_langflow_session_id oturumu seçilen akışa göre daraltır", {
+  # Aynı kullanıcı + aynı sohbet + AYNI akış -> kararlı kimlik
+  expect_identical(
+    mergen_build_langflow_session_id(42, 1001, flow_id = "flow-abc"),
+    mergen_build_langflow_session_id(42, 1001, flow_id = "flow-abc")
+  )
+
+  # Aynı sohbet, FARKLI akış -> farklı kimlik (bellek izolasyonu)
+  expect_false(identical(
+    mergen_build_langflow_session_id(42, 1001, flow_id = "flow-abc"),
+    mergen_build_langflow_session_id(42, 1001, flow_id = "flow-xyz")
+  ))
+
+  # Akış kimliği kimliğe eklenir
+  expect_identical(
+    mergen_build_langflow_session_id(42, 1001, flow_id = "flow-abc"),
+    "mergen_42_1001_flow-abc"
+  )
 })
 
 test_that("extract_langflow_chat_text gerçekçi Chat Output yanıt şekillerinden metni çıkarır", {

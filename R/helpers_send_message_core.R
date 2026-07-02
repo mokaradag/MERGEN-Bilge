@@ -50,6 +50,31 @@ mergen_determine_tool_family <- function(settings_data, uploaded_count, skip_mcp
   )
 }
 
+# Langflow (Süreç Yönetimi / Uygulama Uzmanı) çağrısı için handle_langflow_chat_mode
+# bağlamını (ctx) hazırlar. Süreç Yönetimi için seçili akışı sohbet açılır
+# menüsünden (input$chat_process_flow), yoksa kalıcı ayardan çözer; ikisi de yoksa
+# handler varsayılan ilk akışa düşer.
+mergen_build_langflow_ctx <- function(session, input, values, settings_data, tool_family,
+                                      user_message_text, effective_user_id,
+                                      stop_generation, active_request_id,
+                                      add_message_fn, reset_chat_state_fn, api_config) {
+  selected_process_flow <- shiny::isolate(input$chat_process_flow)
+  if (is.null(selected_process_flow) || !nzchar(as.character(selected_process_flow)[1])) {
+    selected_process_flow <- settings_data$process_flow_selection %||% NULL
+  }
+
+  list(
+    session = session, values = values, settings_data = settings_data,
+    tool_family = tool_family, user_message_text = user_message_text,
+    current_user_id = effective_user_id,
+    chat_id_val = shiny::isolate(values$current_chat_id),
+    stop_generation = stop_generation, active_request_id = active_request_id,
+    add_message_fn = add_message_fn, reset_chat_state_fn = reset_chat_state_fn,
+    selected_process_flow = selected_process_flow,
+    api_config = api_config
+  )
+}
+
 mergen_build_stream_profile <- function(tool_family, uploaded_count, settings_data, force_non_streaming_sql = FALSE) {
   stream_profile <- list(
     label = "standard",

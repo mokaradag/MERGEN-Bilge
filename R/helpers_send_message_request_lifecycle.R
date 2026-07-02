@@ -146,7 +146,22 @@ mergen_clear_welcome_for_send_message <- function(session, values) {
 mergen_build_thinking_panel_plan <- function(tool_family,
                                              settings_data,
                                              resolved_model_id = NULL,
-                                             reasoning_will_stream_override = NULL) {
+                                             reasoning_will_stream_override = NULL,
+                                             force_simulated_panel = FALSE) {
+  # Langflow gibi yerel modeli olmayan araçlar: model etiketi göstermeden,
+  # her zaman simüle edilmiş (fazlı) düşünme paneli gösterilir. Akış non-streaming
+  # olduğundan gerçek reasoning akmaz; panel yanıt gelene kadar canlı kalır.
+  if (isTRUE(force_simulated_panel)) {
+    return(list(
+      panel_model_id = "",
+      thinking_model_active = FALSE,
+      reasoning_will_stream = FALSE,
+      classic_indicator_requested = isTRUE(settings_data$enable_typing_indicator),
+      panel_simulated = TRUE,
+      show_thinking_wrapper = TRUE
+    ))
+  }
+
   panel_model_id <- tryCatch({
     supplied_model <- as.character(resolved_model_id %||% "")[1]
 

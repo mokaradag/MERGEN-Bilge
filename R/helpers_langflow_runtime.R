@@ -44,13 +44,127 @@ mergen_langflow_config <- function(config = api_config) {
   if (is.null(cfg) || !is.list(cfg)) list() else cfg
 }
 
-# Belirli bir araç ailesi için akış kimliğini çözer. Önce araç moduna özel
-# `langflow_flow_id` alanına, ardından merkezi `langflow$flow_ids[[family]]`
-# haritasına bakar.
-mergen_langflow_flow_id_for_family <- function(tool_family, config = api_config) {
+# Ham metni (";" veya "," ayraçlı) temiz, boş olmayan parça vektörüne çevirir.
+# Ayraç YALNIZCA ";"/"," olduğundan boşluk içeren adlar korunur.
+.langflow_split_list <- function(raw) {
+  val <- .langflow_chr1(raw)
+  if (!nzchar(val)) {
+    return(character(0))
+  }
+  parts <- trimws(unlist(strsplit(val, "[;,]")))
+  parts[nzchar(parts)]
+}
+
+# Ham metni (";"/"," ayraçlı) parça vektörüne çevirir; boş KONUMLAR KORUNUR
+# (yalnızca kırpma yapılır, boşlar atılmaz). Kimlik listesiyle pozisyonel
+# hizalanması gereken ad listesi için kullanılır: boş bir konum "o slotta değer
+# yok, yedek ada düş" demektir. Böylece `id1;id2` + `;Flow 2` girdisinde flow_1
+# yanlışlıkla "Flow 2" etiketlenmez.
+.langflow_split_list_positional <- function(raw) {
+  val <- .langflow_chr1(raw)
+  if (!nzchar(val)) {
+    return(character(0))
+  }
+  trimws(unlist(strsplit(val, "[;,]")))
+}
+
+# Süreç Yönetimi çoklu Langflow akışlarını ham env değerlerinden ayrıştırır.
+# ids_raw   : LANGFLOW_PROCESS_FLOW_IDS (";"/"," ayraçlı akış kimlikleri)
+# names_raw : LANGFLOW_PROCESS_FLOW_NAMES (";"/"," ayraçlı görünen adlar)
+# legacy_id : eski tekil LANGFLOW_PROCESS_FLOW_ID (geçici geriye dönük uyumluluk)
+# Dönüş: list( list(key, id, name), ... ). Kimlik yoksa boş liste.
+mergen_parse_langflow_process_flows <- function(ids_raw = "",
+                                                names_raw = "",
+                                                legacy_id = "") {
+  ids <- .langflow_split_list(ids_raw)
+  # Adlar kimliklerle pozisyonel hizalanmalıdır: boş bir ad konumu atılmamalı,
+  # yoksa sonraki adlar sola kayar ve yanlış akış etiketlenir. Boş konumlar
+  # korunur ve slot bazında yedek ada ("Akış i") düşülür.
+  names_vec <- .langflow_split_list_positional(names_raw)
+
+  # Liste formatı boşsa eski tekil kimliğe düş (geçici uyumluluk).
+  if (length(ids) == 0) {
+    legacy <- .langflow_chr1(legacy_id)
+    if (nzchar(legacy)) {
+      ids <- legacy
+    }
+  }
+
+  if (length(ids) == 0) {
+    return(list())
+  }
+
+  flows <- vector("list", length(ids))
+  for (i in seq_along(ids)) {
+    display_name <- if (i <= length(names_vec) && nzchar(names_vec[i])) {
+      names_vec[i]
+    } else {
+      paste0("Akış ", i)
+    }
+    flows[[i]] <- list(
+      key = paste0("flow_", i),
+      id = ids[i],
+      name = display_name
+    )
+  }
+  flows
+}
+
+# api_config$langflow altındaki süreç akışlarını döndürür. Önce önceden
+# ayrıştırılmış `process_flows` alanını, yoksa ham env alanlarını kullanır.
+mergen_langflow_process_flows <- function(config = api_config) {
+  cfg <- mergen_langflow_config(config)
+
+  parsed <- cfg$process_flows
+  if (is.list(parsed) && length(parsed) > 0) {
+    return(parsed)
+  }
+
+  mergen_parse_langflow_process_flows(
+    ids_raw   = cfg$process_flow_ids_raw,
+    names_raw = cfg$process_flow_names_raw,
+    legacy_id = cfg$process_flow_legacy_id
+  )
+}
+
+# Seçilen süreç akışının (key veya id) gerçek Langflow akış kimliğini çözer.
+# Seçim boş/eşleşmezse ilk yapılandırılmış akışa düşer. Hiç akış yoksa "".
+mergen_langflow_process_flow_id <- function(config = api_config, selected_flow = NULL) {
+  flows <- mergen_langflow_process_flows(config)
+
+  if (length(flows) == 0) {
+    # Son çare: eski merkezi flow_ids$process haritası.
+    ids <- mergen_langflow_config(config)$flow_ids %||% list()
+    return(trimws(.langflow_chr1(ids$process)))
+  }
+
+  sel <- .langflow_chr1(selected_flow)
+  if (nzchar(sel)) {
+    for (fl in flows) {
+      if (identical(.langflow_chr1(fl$key), sel) ||
+          identical(.langflow_chr1(fl$id), sel)) {
+        return(trimws(.langflow_chr1(fl$id)))
+      }
+    }
+  }
+
+  trimws(.langflow_chr1(flows[[1]]$id))
+}
+
+# Belirli bir araç ailesi için akış kimliğini çözer.
+# - "process" ailesi çoklu akış destekler: seçilen akış (key/id) veya varsayılan
+#   ilk akış çözülür (selected_flow argümanı ile).
+# - Diğer aileler önce araç moduna özel `langflow_flow_id` alanına, ardından
+#   merkezi `langflow$flow_ids[[family]]` haritasına bakar.
+mergen_langflow_flow_id_for_family <- function(tool_family, config = api_config, selected_flow = NULL) {
   tf <- .langflow_chr1(tool_family)
   if (!nzchar(tf)) {
     return("")
+  }
+
+  # Süreç Yönetimi: çoklu akış çözümlemesi.
+  if (identical(tf, "process")) {
+    return(mergen_langflow_process_flow_id(config, selected_flow))
   }
 
   tool_cfg <- get_tool_mode_config(tf, by = "family", config = config)
@@ -63,12 +177,15 @@ mergen_langflow_flow_id_for_family <- function(tool_family, config = api_config)
   trimws(.langflow_chr1(ids[[tf]]))
 }
 
-# Bir araç ailesinin Langflow ile mi çalışacağını belirler. TRUE dönmesi için:
-#   1) araç modu yapılandırmasında runtime == "langflow",
-#   2) Langflow taban URL'i ayarlı,
-#   3) bu aile için bir akış kimliği çözülebiliyor.
-# Aksi halde FALSE döner ve çağıran taraf normal LLM yoluna devam eder.
-is_langflow_tool_family <- function(tool_family, config = api_config) {
+# Bir araç ailesinin Langflow ile mi çalışacağını belirler.
+# require_config = TRUE (varsayılan): TRUE dönmesi için (1) araç modu
+#   yapılandırmasında runtime == "langflow", (2) Langflow taban URL'i ayarlı,
+#   (3) bu aile için bir akış kimliği çözülebiliyor olmalı.
+# require_config = FALSE: yalnızca runtime == "langflow" yeterlidir. Yönlendirme
+#   kararı için kullanılır: yapılandırma eksik olsa bile araç Langflow işleyicisine
+#   gider ve orada net bir "yapılandırma eksik" hatası gösterilir (normal LLM'ye
+#   sessizce DÜŞMEZ).
+is_langflow_tool_family <- function(tool_family, config = api_config, require_config = TRUE) {
   tf <- .langflow_chr1(tool_family)
   if (!nzchar(tf)) {
     return(FALSE)
@@ -83,19 +200,74 @@ is_langflow_tool_family <- function(tool_family, config = api_config) {
     return(FALSE)
   }
 
+  if (!isTRUE(require_config)) {
+    return(TRUE)
+  }
+
   base_url <- normalize_langflow_base_url(mergen_langflow_config(config)$base_url)
   flow_id <- mergen_langflow_flow_id_for_family(tf, config)
 
   nzchar(base_url) && nzchar(flow_id)
 }
 
+# Seçilen (veya varsayılan) süreç akışının görünen adını döndürür. Yalnızca
+# loglama/metadata amaçlıdır; API anahtarı veya taban URL içermez.
+mergen_langflow_process_flow_label <- function(config = api_config, selected_flow = NULL) {
+  flows <- mergen_langflow_process_flows(config)
+  if (length(flows) == 0) {
+    return("")
+  }
+
+  sel <- .langflow_chr1(selected_flow)
+  if (nzchar(sel)) {
+    for (fl in flows) {
+      if (identical(.langflow_chr1(fl$key), sel) ||
+          identical(.langflow_chr1(fl$id), sel)) {
+        return(.langflow_chr1(fl$name))
+      }
+    }
+  }
+
+  .langflow_chr1(flows[[1]]$name)
+}
+
+# runtime == "langflow" olan araçların setting_flag adlarını döndürür. Sohbet
+# başlığındaki yerel model rozetini, aktif araç Langflow ise gizlemek için
+# kullanılır (model, akışın içine gömülüdür; yerel model kavramı yoktur).
+mergen_langflow_setting_flags <- function(config = api_config) {
+  cfgs <- if (is.list(config)) config$tool_mode_config else NULL
+  if (is.null(cfgs) || !is.list(cfgs)) {
+    return(character(0))
+  }
+
+  flags <- character(0)
+  for (cfg in cfgs) {
+    if (identical(.langflow_chr1(cfg$runtime), "langflow")) {
+      flag <- .langflow_chr1(cfg$setting_flag)
+      if (nzchar(flag)) {
+        flags <- c(flags, flag)
+      }
+    }
+  }
+  unique(flags)
+}
+
 # Aynı Mergen sohbeti için kararlı bir Langflow session_id üretir. Böylece aynı
 # sohbette art arda gelen mesajlar aynı Langflow oturumunu (konuşma geçmişini)
-# sürdürür. user_id/chat_id eksikse güvenli yer tutuculara düşer.
-mergen_build_langflow_session_id <- function(user_id, chat_id) {
+# sürdürür. flow_id verildiğinde oturum ayrıca akışa göre daraltılır: aynı Mergen
+# sohbetinde bir süreç akışından diğerine geçilince ikinci akış, session_id ile
+# anahtarlanan Langflow sohbet belleğinde birinci akışın konuşma bağlamını
+# paylaşmaz (akış başına süreklilik korunur). flow_id boş/NULL ise eski
+# üç parçalı biçim korunur. user_id/chat_id eksikse güvenli yer tutuculara düşer.
+mergen_build_langflow_session_id <- function(user_id, chat_id, flow_id = NULL) {
   uid <- .langflow_chr1(user_id, default = "0")
   cid <- .langflow_chr1(chat_id, default = "new")
-  paste("mergen", uid, cid, sep = "_")
+  fid <- .langflow_chr1(flow_id)
+  parts <- c("mergen", uid, cid)
+  if (nzchar(fid)) {
+    parts <- c(parts, fid)
+  }
+  paste(parts, collapse = "_")
 }
 
 # Bir değeri tek satırlık güvenli metne indirger (liste/skalar/karakter).

@@ -351,6 +351,35 @@ ui <- dashboardPage(
                       )
                     )
                   ),
+                  # Süreç Yönetimi: kullanılacak Langflow süreç akışı seçici
+                  # (yalnızca Süreç Yönetimi aktifken görünür). Seçenekler ortam
+                  # değişkenlerinden yapılandırılan çoklu akışlardan üretilir.
+                  div(
+                    id = "process_chat_controls",
+                    class = "process-chat-controls hidden",
+                    div(
+                      class = "process-control-item",
+                      do.call(
+                        tags$select,
+                        c(
+                          list(
+                            id = "chat_process_flow",
+                            class = "process-flow-select",
+                            title = "Süreç Akışı: Kullanılacak süreç akışını seçin",
+                            `aria-label` = "Süreç akışı seçimi"
+                          ),
+                          lapply(
+                            if (exists("mergen_langflow_process_flows", mode = "function")) {
+                              mergen_langflow_process_flows()
+                            } else {
+                              list()
+                            },
+                            function(fl) tags$option(value = fl$key, fl$name)
+                          )
+                        )
+                      )
+                    )
+                  ),
                   div(class = "model-selector-wrapper",
                       uiOutput("chat_model_selector_ui", style = "display:inline-block;")
                   ),

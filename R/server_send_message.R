@@ -208,12 +208,14 @@ sendMessageInit <- function(
     coding_deep_level <- runtime_model$coding_deep_level
     mcp_reasoning_stream_on <- runtime_model$mcp_reasoning_stream_on
 
+    # Langflow araçları için standart (simüle) düşünme paneli kullanılır (spinner değil).
     values$typing <- TRUE
     thinking_panel_plan <- mergen_build_thinking_panel_plan(
       tool_family = tool_family,
       settings_data = settings_data,
       resolved_model_id = model_selected,
-      reasoning_will_stream_override = if (isTRUE(mcp_reasoning_stream_on)) TRUE else if (is_langflow_tool_family(tool_family, api_config)) FALSE else NULL
+      reasoning_will_stream_override = if (isTRUE(mcp_reasoning_stream_on)) TRUE else NULL,
+      force_simulated_panel = is_langflow_tool_family(tool_family, api_config, require_config = FALSE)
     )
     mergen_show_send_message_thinking_wrapper(session, thinking_panel_plan, request_id = req_id)
 
@@ -366,17 +368,15 @@ sendMessageInit <- function(
       handle_image_generation_mode(image_ctx)
       return(invisible(NULL))
 
-    # LANGFLOW MODU (Süreç Yönetimi Sistemi / Uygulama Uzmanı)
-    # Kurumsal Langflow akışına yönlendirilir; normal yerel LLM uç noktası,
-    # MCP araçları ve LLM API anahtarı doğrulaması bu yol için atlanır.
-    } else if (is_langflow_tool_family(tool_family, api_config)) {
-      handle_langflow_chat_mode(list(
-        session = session, values = values, settings_data = settings_data,
+    # LANGFLOW MODU: runtime==langflow ise her koşulda buraya girer; yapılandırma
+    # eksikse handler net hata verir (normal LLM'ye SESSİZCE düşülmez).
+    } else if (is_langflow_tool_family(tool_family, api_config, require_config = FALSE)) {
+      handle_langflow_chat_mode(mergen_build_langflow_ctx(
+        session = session, input = input, values = values, settings_data = settings_data,
         tool_family = tool_family, user_message_text = user_message_text,
-        current_user_id = effective_user_id, chat_id_val = isolate(values$current_chat_id),
-        stop_generation = stop_generation, active_request_id = active_request_id,
-        add_message_fn = add_message_fn, reset_chat_state_fn = reset_chat_state_fn,
-        api_config = api_config
+        effective_user_id = effective_user_id, stop_generation = stop_generation,
+        active_request_id = active_request_id, add_message_fn = add_message_fn,
+        reset_chat_state_fn = reset_chat_state_fn, api_config = api_config
       ))
       return(invisible(NULL))
 

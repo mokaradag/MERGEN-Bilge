@@ -180,3 +180,20 @@ test_that("ön yüz seçici sözleşmeleri güncel UI ile hizalı kalır", {
   expect_true(.frontend_selector_has_text(claude_ui_r, 'ns("run_command")'))
   expect_true(.frontend_selector_has_text(claude_ui_r, 'ns("stop_command")'))
 })
+
+test_that("Süreç Yönetimi akış seçici sözleşmesi (ui.R + process_tools.js) hizalıdır", {
+  ui_text <- .read_repo_text_frontend_selector_contract("ui.R")
+  process_js <- .read_repo_text_frontend_selector_contract("www/js/process_tools.js")
+
+  # UI: sohbet giriş alanında süreç akışı seçici konteyner + select mevcut
+  expect_true(.frontend_selector_has_text(ui_text, 'id = "process_chat_controls"'))
+  expect_true(.frontend_selector_has_text(ui_text, 'id = "chat_process_flow"'))
+  expect_true(.frontend_selector_has_text(ui_text, "process-flow-select"))
+  expect_true(.frontend_selector_has_text(ui_text, "mergen_langflow_process_flows"))
+
+  # JS: toggleProcessMode handler'ı ve seçim -> Shiny input senkronizasyonu
+  expect_true(.frontend_selector_has_text(process_js, "toggleProcessMode"))
+  expect_true(.frontend_selector_has_text(process_js, "process_chat_controls"))
+  expect_true(.frontend_selector_has_text(process_js, "chat_process_flow"))
+  expect_true(.frontend_selector_has_text(process_js, "Shiny.setInputValue('chat_process_flow'"))
+})

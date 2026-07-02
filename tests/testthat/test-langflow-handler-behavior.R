@@ -88,14 +88,15 @@
       base_url = base_url,
       api_key = "fake-key",
       timeout_seconds = 300,
-      flow_ids = list(process = flow_id)
+      process_flows = list(
+        list(key = "flow_1", id = flow_id, name = "Süreç Akışı 1")
+      ),
+      flow_ids = list()
     ),
     tool_mode_config = list(
       process = list(
         family = "process",
-        runtime = "langflow",
-        langflow_flow_id = flow_id,
-        model_id = "technical name 1"
+        runtime = "langflow"
       )
     )
   )
@@ -217,4 +218,19 @@ test_that("yeni istek slotu devraldıysa bayat callback o slotu serbest bırakma
   expect_equal(fix$values$backpressure_token, "tok-2")
   expect_equal(length(fix$rec$messages), 0L)
   expect_equal(fix$rec$reset_calls, 0L)
+})
+
+test_that("Langflow işleyicisi görsel oluşturma spinner sınıflarını EKLEMEZ (standart düşünme paneli kullanılır)", {
+  repo_root <- resolve_repo_root_for_tests()
+  handler_path <- file.path(repo_root, "R", "server_handler_langflow.R")
+
+  # Byte-güvenli okuma (Windows VM'de dosyada geçersiz UTF-8 baytları olabilir).
+  raw_bytes <- readBin(handler_path, what = "raw", n = file.info(handler_path)$size)
+  txt <- iconv(rawToChar(raw_bytes), from = "UTF-8", to = "UTF-8", sub = "byte")
+
+  # Süreç Yönetimi / Uygulama Uzmanı araçları görsel oluşturma spinner'ı yerine
+  # standart (simüle) düşünme panelini kullanır.
+  expect_false(grepl("image-generating", txt, fixed = TRUE))
+  expect_false(grepl("image-generating-spinner", txt, fixed = TRUE))
+  expect_false(grepl("image-generating-text", txt, fixed = TRUE))
 })

@@ -157,6 +157,13 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     settings_data$model_selection <- image_model
     session$sendCustomMessage("toggleImageMode", list(active = TRUE))
     session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))
+    session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
+    # Süreç / Uygulama Uzmanı gibi panelsiz Langflow araçlarının model kilidi
+    # DOM tespitiyle değil sunucudan (setToolModelLock -> serverLockLabel) gelir.
+    # Panel gizlemek bu kilidi temizlemez; galeri Görsel moduna geçtiğinde eski
+    # Langflow kilidi kalırsa (özellikle Görsel aracı sonradan kapatılınca) model
+    # seçici hatalı biçimde kilitli kalır. Bu yüzden sunucu kilidi açıkça temizlenir.
+    session$sendCustomMessage("setToolModelLock", list(active = FALSE))
     session$sendCustomMessage("saveSettings", list(
       enable_image_tools = TRUE,
       enable_rdata_tools = FALSE,

@@ -101,6 +101,42 @@ testthat::test_that("current_model_display seçili model kimliğini görünür a
   testthat::expect_true(grepl("Model: Model B", out, fixed = TRUE))
 })
 
+testthat::test_that("current_model_display Langflow aracı aktifken model rozetini gizler", {
+  # Langflow araçları (Süreç Yönetimi / Uygulama Uzmanı) yerel model taşımaz;
+  # model rozeti yanıltıcı olduğundan hiç gösterilmez (runtime=="langflow" tespiti).
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  env$api_config <- list(
+    local_models = c("Model A" = "m-a"),
+    local_model_descriptions = list("m-a" = "A modeli"),
+    tool_mode_config = list(
+      process = list(family = "process", setting_flag = "enable_process_tools", runtime = "langflow"),
+      app_expert = list(family = "app_expert", setting_flag = "enable_app_expert_tools", runtime = "langflow"),
+      coding = list(family = "coding", setting_flag = "enable_coding_tools", model_id = "m-a")
+    )
+  )
+  env$resolve_deep_thinking_model <- function(family, level) paste0("DERIN-", toupper(family))
+
+  kok <- resolve_repo_root_for_tests()
+  source(file.path(kok, "R", "helpers_langflow_runtime.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "server_outputs_chat.R"), encoding = "UTF-8", local = env)
+
+  # Süreç Yönetimi aktif -> rozet gizli (NULL render -> boş)
+  out_process <- .render_chat_output(env,
+    list(enable_process_tools = TRUE, model_selection = "m-a"), "current_model_display")
+  testthat::expect_identical(out_process, "")
+
+  # Uygulama Uzmanı aktif -> rozet gizli
+  out_app <- .render_chat_output(env,
+    list(enable_app_expert_tools = TRUE, model_selection = "m-a"), "current_model_display")
+  testthat::expect_identical(out_app, "")
+
+  # Langflow olmayan araç (coding) veya hiçbiri -> rozet gösterilir
+  out_coding <- .render_chat_output(env,
+    list(enable_coding_tools = TRUE, model_selection = "m-a"), "current_model_display")
+  testthat::expect_true(grepl("Model: Model A", out_coding, fixed = TRUE))
+})
+
 testthat::test_that("current_model_display Excel Derin Düşünme aktifse runtime ipucunu ekler", {
   env <- .source_chat_outputs_for_test()
   out <- .render_chat_output(env, list(

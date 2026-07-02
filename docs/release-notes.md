@@ -15,6 +15,19 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### 2026-07-02 Langflow temizliği, çoklu süreç akışı ve ikinci LLM uç noktasının kaldırılması
+
+Kurumsal Langflow entegrasyonu (Süreç Yönetimi / Uygulama Uzmanı) sadeleştirildi ve genişletildi:
+
+- **Düşünme animasyonu düzeltmesi:** Süreç Yönetimi ve Uygulama Uzmanı istekleri artık uygulamanın diğer düşünen-model akışlarıyla aynı standart (simüle fazlı) "Düşünce Akışı" panelini gösterir; eski görsel-oluşturma spinner'ı kaldırıldı. Langflow non-streaming olduğundan panel, yanıt gelene kadar canlı kalır ve nihai yanıtla değiştirilir. Bayat-istek/Durdur/temizlik/backpressure davranışı korunur.
+- **Stale `model_id` temizliği:** `tool_mode_config` içindeki `process` ve `app_expert` girişlerinden `model_id` kaldırıldı (model Langflow akışına gömülüdür). Hızlı eylemler ve Yapılandırma sayfası bu araçlar için yerel model değişimi tetiklemez; `build_main_actions_data_from_config()` Langflow araçlarına varsayılan model enjekte etmez.
+- **Model rozeti gizleme:** Sohbet başlığındaki yerel model rozeti, aktif araç `runtime == "langflow"` olduğunda gizlenir (araç adına sabit kodlanmadan). Diğer tüm araçlarda rozet davranışı değişmez.
+- **İkinci LLM uç noktası kaldırıldı:** `secondary_llm_endpoint`, `secondary_llm_api_key`, `LOCAL_LLM_ENDPOINT_ALT` ve `LOCAL_LLM_ENDPOINT_ALT_API_KEY` kavramları ve `LANGFLOW_API_KEY` için eski ALT-anahtar fallback'i tamamen kaldırıldı. Yalnızca tek birincil `LOCAL_LLM_ENDPOINT` kullanılır. `LANGFLOW_API_KEY` ayrıdır ve korunur.
+- **Çoklu süreç akışı seçimi:** Süreç Yönetimi artık birden fazla adlandırılmış Langflow akışını destekler. Kullanıcı, sohbet giriş alanındaki (model seçicinin yanındaki) açılır menüden akış seçer (yalnızca Süreç Yönetimi aktifken görünür). Yapılandırma: `LANGFLOW_PROCESS_FLOW_IDS` ve `LANGFLOW_PROCESS_FLOW_NAMES` (";"/"," ayraçlı). Yeni frontend varlıkları: `www/js/process_tools.js`, `www/css/process_tools.css`.
+
+Doğrulama: ilgili odaklı testler (Langflow runtime/handler davranışı, quick-actions, chat-outputs, API model config sözleşmesi, UI asset manifest/zone, frontend/maintainability ratchet) cloud `C.UTF-8` altında geçti. Gerçek Langflow uç noktası ve tarayıcı UX doğrulaması VM'de yapılmalıdır.
+
+
 ### 2026-06-27 İşlem-güvenli DB havuzu üretim sertleştirmesi (streaming yolu değişmedi)
 
 Mevcut opsiyonel, işlem-güvenli DB bağlantı havuzu (`R/helpers_db_pool.R`)

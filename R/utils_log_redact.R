@@ -18,6 +18,10 @@
     # env-değer redaksiyonuna açıkça eklenir.
     "MERGEN_DEFAULT_API_KEY",
     "LOCAL_LLM_API_KEY",
+    # Kaldırılan ikinci LLM uç anahtarı çalışma zamanında kullanılmasa da,
+    # sürümden yükseltilmiş VM'lerin .Renviron dosyasında hâlâ bulunabilir.
+    # Langflow/LLM hataları gösterilmeden/loglanmadan önce redact_sensitive_text()
+    # bu adı görürse çıplak değeri maskeler (key-value desenine uymasa bile).
     "LOCAL_LLM_ENDPOINT_ALT_API_KEY",
     # Kurumsal Langflow akış API anahtarı. Langflow HTTP hata gövdeleri
     # sohbet/toast'a önizlenebildiğinden, anahtarın prose içinde çıplak geçmesi

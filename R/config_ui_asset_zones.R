@@ -333,12 +333,14 @@ ui_asset_ownership_zones <- list(
     js_groups = character(0),
     css = c(
       "css/summarization_tools.css",
+      "css/process_tools.css",
       "css/analysis_tools.css",
       "css/tools_model_lock.css",
       "css/mcp_indicator.css"
     ),
     js = c(
       "js/summarization_tools.js",
+      "js/process_tools.js",
       "js/analysis_tools.js",
       "js/excel_coding_deep_thinking.js",
       "js/tools_model_lock.js",
