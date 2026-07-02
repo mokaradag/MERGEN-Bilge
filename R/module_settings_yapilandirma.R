@@ -342,6 +342,27 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
               updateSelectInput(session, "model_selection", selected = resolved_tool_model)
               session$sendCustomMessage("saveSettings", list(model_selection = resolved_tool_model))
             }
+          } else {
+            # Langflow araçları yerel model taşımaz; bu yüzden yukarıdaki model
+            # çözümlemesi atlanır. Ancak Görsel Uzmanı'ndan geçişte model_selection
+            # hâlâ görsel modeli (dall-e-3 / IMAGE_GEN_MODEL) olabilir. Langflow
+            # aracı sonradan kapatıldığında (veya yeni söyleşi araçları temizlediğinde)
+            # normal yerel-LLM gönderimi bu geçersiz görsel modelini kullanıp sohbet
+            # uç noktasını hatalı model ile çağırmasın diye, görsel modeli seçiliyse
+            # geçerli bir varsayılan sohbet modeline geri dönülür.
+            image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
+            current_model <- as.character(isolate(settings$model_selection) %||% "")[1]
+            if (identical(current_model, image_model)) {
+              fallback_chat_model <- api_config$local_models[1]
+              if (length(fallback_chat_model) &&
+                  !is.na(fallback_chat_model) &&
+                  nzchar(fallback_chat_model)) {
+                settings$model_selection <- fallback_chat_model
+                temp_model_selection(fallback_chat_model)
+                updateSelectInput(session, "model_selection", selected = fallback_chat_model)
+                session$sendCustomMessage("saveSettings", list(model_selection = fallback_chat_model))
+              }
+            }
           }
 
           # Süreç / Uygulama Uzmanı gibi sohbet paneli OLMAYAN Langflow araçları

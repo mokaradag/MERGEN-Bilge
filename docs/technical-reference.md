@@ -1976,7 +1976,9 @@ DESTEK_CHATBOT_MODEL=your-support-chatbot-model
 # Kurumsal Langflow akış entegrasyonu (Süreç Yönetimi / Uygulama Uzmanı).
 # LANGFLOW_API_KEY Langflow'a özgüdür; yerel LLM anahtarlarıyla ilişkisi yoktur.
 # Süreç Yönetimi çoklu akış destekler (";"/"," ayraçlı kimlik/ad listeleri).
-LANGFLOW_BASE_URL=https://your-langflow-server.example.com
+# Taban URL akış çalıştırma yolunu (/api/v1/run) içermelidir; Mergen sonuna
+# yalnızca "/{flow_id}" ekler.
+LANGFLOW_BASE_URL=https://your-langflow-server.example.com/api/v1/run
 LANGFLOW_API_KEY=your-langflow-api-key
 LANGFLOW_PROCESS_FLOW_IDS=process-flow-id-1;process-flow-id-2
 LANGFLOW_PROCESS_FLOW_NAMES=Süreç Akışı 1;Süreç Akışı 2

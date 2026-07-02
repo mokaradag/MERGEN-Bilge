@@ -199,6 +199,15 @@ settingsInit <- function(session, parent_session = NULL) {
       }
     }
 
+    # Süreç Yönetimi kalıcı olarak aktif geldiyse, sohbet içi akış seçici yalnızca
+    # JS `hidden` sınıfıyla gizlendiğinden sayfa yenilemesinden sonra görünür hale
+    # getirilir. Aksi halde araç aktif kalır (gönderimler süreç akışına yönlenir)
+    # ama seçici gizli olduğundan kullanıcı varsayılan ilk akış dışında bir akış
+    # seçemez.
+    if (isTRUE(settings$enable_process_tools)) {
+      session$sendCustomMessage("toggleProcessMode", list(active = TRUE))
+    }
+
     # Görsel ayarları
     if (!is.null(loaded$image_size) && loaded$image_size %in% c("1024x1024", "1792x1024", "1024x1792")) {
       settings$image_size <- loaded$image_size
