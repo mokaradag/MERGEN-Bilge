@@ -26,11 +26,12 @@ document.addEventListener('DOMContentLoaded', function() {
   var flowSelect = document.getElementById('chat_process_flow');
 
   if (flowSelect) {
-    // Sayfa açıldığında mevcut seçimi Shiny'e bildir (varsayılan ilk akış).
-    if (window.Shiny) {
-      Shiny.setInputValue('chat_process_flow', flowSelect.value, {priority: 'event'});
-    }
-
+    // Sayfa açılışında seçim Shiny'e YAYINLANMAZ. Aksi halde DOM varsayılanı
+    // (flow_1), sunucu kalıcı seçimi (process_flow_selection) geri yükleyip
+    // senkronlamadan önce yayınlanır; settingsInit gözlemcisi bunu kalıcılaştırıp
+    // kullanıcının kayıtlı akış seçimini ezerdi. Seçim yalnızca gerçek kullanıcı
+    // değişikliğinde (change) ya da sunucu Süreç modunu etkinleştirdiğinde
+    // (toggleProcessMode / syncProcessFlowToChat) bildirilir.
     flowSelect.addEventListener('change', function() {
       if (window.Shiny) {
         Shiny.setInputValue('chat_process_flow', this.value, {priority: 'event'});

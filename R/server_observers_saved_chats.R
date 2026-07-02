@@ -250,13 +250,41 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
         pf_label <- pf_cfg$title %||% "Süreç Yönetimi"
       }
       session$sendCustomMessage("setToolModelLock", list(active = TRUE, label = pf_label))
-      pf_sel <- isolate(settings_data$process_flow_selection)
-      if (is.character(pf_sel) && length(pf_sel) == 1L && nzchar(pf_sel)) {
-        session$sendCustomMessage("syncProcessFlowToChat", list(flow_key = pf_sel))
-      }
+      # NOT: Burada GLOBAL process_flow_selection kasıtlı olarak seçiciye
+      # ZORLANMAZ. Kayıtlı sohbetin kendi (orijinal) akışı halihazırda akış başına
+      # kalıcı saklanmadığından, buraya global son-kullanılan tercihi uygulamak
+      # farklı bir sohbeti yanlış akışa taşırdı (session_id akış kimliğini
+      # içerdiğinden o sohbetin Langflow belleği de kayardı). Akış başına kalıcılık
+      # ayrı bir iş kalemidir; global tercihi bu yola bulaştırmıyoruz.
     } else {
       session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
       session$sendCustomMessage("setToolModelLock", list(active = FALSE))
+
+      # Tespit süreç sohbetiyle eşleşmezken (ör. hiç araç tespit edilmedi) mevcut/
+      # kalıcı oturumdan gelen panelsiz Langflow bayrağı (Süreç/Uygulama Uzmanı)
+      # hâlâ TRUE olabilir. UI normal sohbet gibi görünüp seçici gizli ve model
+      # kilidi açıkken, sunucu mergen_determine_tool_family() hâlâ "process"
+      # döndürürse kullanıcı farkında olmadan gönderimi Langflow'a yollayabilir.
+      # Bu yüzden bayat Langflow bayrakları burada da temizlenir (reaktif +
+      # checkbox + kalıcı), böylece UI ile yönlendirme tutarlı kalır.
+      langflow_flags <- if (exists("mergen_langflow_setting_flags", mode = "function")) {
+        mergen_langflow_setting_flags()
+      } else {
+        c("enable_process_tools", "enable_app_expert_tools")
+      }
+      cleared_langflow <- FALSE
+      for (lf in langflow_flags) {
+        if (isTRUE(isolate(settings_data[[lf]]))) {
+          isolate({ settings_data[[lf]] <- FALSE })
+          updateCheckboxInput(session, paste0("settings_yapilandirma_module-", lf), value = FALSE)
+          cleared_langflow <- TRUE
+        }
+      }
+      if (isTRUE(cleared_langflow)) {
+        session$sendCustomMessage("saveSettings", stats::setNames(
+          as.list(rep(FALSE, length(langflow_flags))), langflow_flags
+        ))
+      }
     }
 
     # Persona verisini al (eski kimlikler normalleştirilerek çözülür)

@@ -203,6 +203,29 @@ test_that("mergen_parse_langflow_process_flows liste formatını, geriye dönük
   expect_length(mergen_parse_langflow_process_flows(), 0L)
 })
 
+test_that("mergen_parse_langflow_process_flows boş ad konumlarını korur ve slot bazında yedek ada düşer", {
+  # Operatör ilk adı boş bırakıp yedeği kullanmak isterse, boş konum atlanmamalı;
+  # aksi halde "Flow 2" yanlışlıkla flow_1'e kayardı.
+  flows <- mergen_parse_langflow_process_flows(
+    ids_raw = "id1;id2",
+    names_raw = ";Flow 2"
+  )
+  expect_length(flows, 2L)
+  expect_equal(flows[[1]]$id, "id1")
+  expect_equal(flows[[1]]$name, "Akış 1")   # boş konum -> yedek ad (KAYMAZ)
+  expect_equal(flows[[2]]$id, "id2")
+  expect_equal(flows[[2]]$name, "Flow 2")
+
+  # Ortadaki boş ad konumu da korunur
+  mid <- mergen_parse_langflow_process_flows(
+    ids_raw = "a;b;c",
+    names_raw = "Bir;;Üç"
+  )
+  expect_equal(mid[[1]]$name, "Bir")
+  expect_equal(mid[[2]]$name, "Akış 2")     # ortadaki boş -> yedek
+  expect_equal(mid[[3]]$name, "Üç")
+})
+
 test_that("mergen_langflow_process_flows ham env alanlarından da çözümlenir", {
   cfg_raw <- list(
     langflow = list(

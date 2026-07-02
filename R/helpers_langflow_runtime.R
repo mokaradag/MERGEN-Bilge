@@ -55,6 +55,19 @@ mergen_langflow_config <- function(config = api_config) {
   parts[nzchar(parts)]
 }
 
+# Ham metni (";"/"," ayraçlı) parça vektörüne çevirir; boş KONUMLAR KORUNUR
+# (yalnızca kırpma yapılır, boşlar atılmaz). Kimlik listesiyle pozisyonel
+# hizalanması gereken ad listesi için kullanılır: boş bir konum "o slotta değer
+# yok, yedek ada düş" demektir. Böylece `id1;id2` + `;Flow 2` girdisinde flow_1
+# yanlışlıkla "Flow 2" etiketlenmez.
+.langflow_split_list_positional <- function(raw) {
+  val <- .langflow_chr1(raw)
+  if (!nzchar(val)) {
+    return(character(0))
+  }
+  trimws(unlist(strsplit(val, "[;,]")))
+}
+
 # Süreç Yönetimi çoklu Langflow akışlarını ham env değerlerinden ayrıştırır.
 # ids_raw   : LANGFLOW_PROCESS_FLOW_IDS (";"/"," ayraçlı akış kimlikleri)
 # names_raw : LANGFLOW_PROCESS_FLOW_NAMES (";"/"," ayraçlı görünen adlar)
@@ -64,7 +77,10 @@ mergen_parse_langflow_process_flows <- function(ids_raw = "",
                                                 names_raw = "",
                                                 legacy_id = "") {
   ids <- .langflow_split_list(ids_raw)
-  names_vec <- .langflow_split_list(names_raw)
+  # Adlar kimliklerle pozisyonel hizalanmalıdır: boş bir ad konumu atılmamalı,
+  # yoksa sonraki adlar sola kayar ve yanlış akış etiketlenir. Boş konumlar
+  # korunur ve slot bazında yedek ada ("Akış i") düşülür.
+  names_vec <- .langflow_split_list_positional(names_raw)
 
   # Liste formatı boşsa eski tekil kimliğe düş (geçici uyumluluk).
   if (length(ids) == 0) {

@@ -448,6 +448,11 @@ quickActionsInit <- function(input, session, values, settings_data,
       session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
       session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
       session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
+      # Bu özetleme yolu handle_tool_action()'ı atlar; panelsiz Süreç/Uygulama
+      # Uzmanı sunucu model kilidi (serverLockLabel) yalnızca panel gizlemekle
+      # temizlenmez. Süreç modundan sonra özetlemeye geçildiğinde bayat kilit
+      # kalmasın diye sunucu kilidi açıkça serbest bırakılır.
+      session$sendCustomMessage("setToolModelLock", list(active = FALSE))
 
       # Sunucu otoriter arka plan aile sinyali (handle_tool_action ile aynı sözleşme)
       tryCatch(
@@ -591,6 +596,9 @@ quickActionsInit <- function(input, session, values, settings_data,
     session$sendCustomMessage("toggleImageMode", list(active = FALSE))
     session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
     session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
+    # Bu alternatif özetleme yolu da handle_tool_action()'ı atlar; panelsiz
+    # Langflow sunucu model kilidini açıkça serbest bırak (bkz. ana özetleme yolu).
+    session$sendCustomMessage("setToolModelLock", list(active = FALSE))
 
     showToast(session,
       "Dosya Özetleme modu aktif edildi. Şimdi Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.",
