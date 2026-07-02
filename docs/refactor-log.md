@@ -7,6 +7,44 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 ---
 
 
+## 2026-07-02 — Langflow temizliği, çoklu süreç akışı ve ikinci LLM uç noktasının kaldırılması
+
+### Seçilen paket / neden
+Süreç Yönetimi ve Uygulama Uzmanı araçları kurumsal Langflow'a taşındıktan sonra biriken teknik borç temizlendi: (1) bu araçlarda görsel-oluşturma spinner'ı yerine standart düşünme paneli kullanımı, (2) stale `model_id` tanımları, (3) yerel model rozetinin yanıltıcı gösterimi, (4) artık kullanılmayan ikinci LLM uç noktası kavramı. Ayrıca Süreç Yönetimi için çoklu adlandırılmış Langflow akışı seçimi eklendi.
+
+### Değişen dosyalar
+- `R/config_api.R`: ikinci LLM uç noktası (`secondary_llm_endpoint`/`secondary_llm_api_key`, `LOCAL_LLM_ENDPOINT_ALT*`) ve `LANGFLOW_API_KEY` ALT-fallback'i kaldırıldı; `local_llm_endpoints`/`_keys`/`_user_managed` ve endpoint haritası tek `primary`'ye indirgendi; `process`/`app_expert` `model_id`'leri kaldırıldı; Langflow ham çoklu-akış env alanları (`process_flow_ids_raw`/`_names_raw`/`_legacy_id`) eklendi.
+- `R/helpers_langflow_runtime.R`: `mergen_parse_langflow_process_flows`, `mergen_langflow_process_flows`, `mergen_langflow_process_flow_id`, `mergen_langflow_process_flow_label`, `mergen_langflow_setting_flags` eklendi; `mergen_langflow_flow_id_for_family` `process` ailesi için `selected_flow` çözümlemesi yapar.
+- `R/helpers_send_message_request_lifecycle.R`: `mergen_build_thinking_panel_plan` `force_simulated_panel` argümanı (Langflow için model etiketsiz simüle panel).
+- `R/helpers_send_message_core.R`: `mergen_build_langflow_ctx` (seçili akış çözümlemesi + ctx; server_send_message.R bütçesi korunur).
+- `R/server_send_message.R`: Langflow dalı `force_simulated_panel` + `mergen_build_langflow_ctx` kullanır.
+- `R/server_handler_langflow.R`: görsel-oluşturma spinner ekleme bloğu kaldırıldı (standart düşünme paneli korunur); seçili süreç akışı çözülür ve loglama için akış adı eklenir.
+- `R/server_outputs_chat.R`: `current_model_display` Langflow aracı aktifken gizlenir (`mergen_langflow_setting_flags` ile).
+- `R/helpers_api_model_tool_runtime.R`: `build_main_actions_data_from_config` Langflow araçlarına model enjekte etmez.
+- `R/module_quick_actions.R`, `R/module_settings_yapilandirma.R`, `R/module_settings.R`, `R/server_observers_image_gallery.R`: `toggleProcessMode` gösterme/gizleme; Langflow araçlarında model değişimi atlanır.
+- `ui.R`: `process_chat_controls` / `chat_process_flow` süreç akışı seçici (model seçicinin yanında).
+- Yeni frontend varlıkları: `www/js/process_tools.js`, `www/css/process_tools.css`; `R/config_ui_assets.R` ve `R/config_ui_asset_zones.R` kaydı.
+- `R/utils_log_redact.R`, `tests/scripts/soak_secret_redaction.R`: stale ALT anahtar adları çıkarıldı; `LANGFLOW_API_KEY`/`LANGFLOW_BASE_URL` korundu/eklendi.
+- Testler: `test-langflow-runtime-behavior.R`, `test-langflow-handler-behavior.R`, `test-chat-outputs-behavior.R`, `test-api-model-config-refactor-contract.R`, `test-ui-asset-manifest-contract.R` güncellendi/genişletildi.
+- Dokümanlar: `.Renviron.example`, `docs/technical-reference.md`, `docs/release-notes.md`, `docs/refactor-log.md`.
+
+### Korunan davranış
+Langflow olmayan tüm araçlar (normal sohbet, Excel, kodlama, özetleme, SQL analizi, görsel oluşturma) için model seçimi, model rozeti, thinking/streaming davranışı ve TTS/STT değişmedi. Langflow bayat-istek/Durdur/temizlik/backpressure ve "yapılandırma eksik → normal LLM'ye düşme" davranışı korunur.
+
+### Çalıştırılan doğrulamalar (cloud `C.UTF-8`)
+- `testthat::test_file(...)`: langflow-runtime (87), langflow-handler (33), chat-outputs (20), api-model-config-refactor (46), quick-actions-server (37), ui-asset-manifest (229), ui-asset-zones (17), frontend-selector (81), frontend-maintainability-ratchet, maintainability-ratchet (258), log-redact, secret-leak, send-message-* , source-manifest, production-contracts, quick-action-routing, ux-regression-guardrails, e2e-quick-actions-streaming — hepsi 0 fail.
+- `source("app.R")` boot smoke: çoklu akış parse/çözümleme, tek `primary` uç nokta, `process`/`app_expert` `model_id` NULL doğrulandı.
+
+### Manuel QA (VM/tarayıcı — cloud'da kanıtlanamaz)
+- Süreç Yönetimi/Uygulama Uzmanı prompt gönder → görsel spinner yerine düşünme paneli; yanıt gelince nihai cevap.
+- Süreç Yönetimi açılır menüsünden farklı akış seç → seçilen akışın çağrıldığını doğrula.
+- Langflow araçlarında model rozetinin gizlendiğini, diğer araçlarda göründüğünü doğrula.
+- Açık/koyu temada süreç akışı açılır menüsünü doğrula.
+
+### Bilinen riskler / atlanan doğrulamalar
+Gerçek Langflow uç noktası, tarayıcı UX ve VM/SSO davranışı cloud'da doğrulanamaz; VM'de manuel doğrulama gerekir.
+
+
 ## 2026-06-26 — Modern welcome otoritatif sahiplik sözleşmesi düzeltmesi
 
 ### Seçilen paket / neden

@@ -323,28 +323,35 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
             }
           }
 
-          # Aktif araca bağlı modeli merkezi kayıttan çöz ve uygula
-          resolved_tool_model <- resolve_tool_model_for_flag(
-            tool_name,
-            fallback_model = isolate(settings$model_selection)
-          )
+          # Araç yapılandırmasını bir kez çöz; Langflow araçları yerel model
+          # taşımaz (model akışın içine gömülüdür).
+          tool_cfg <- get_tool_mode_config(tool_name, by = "setting_flag")
+          tool_is_langflow <- identical(as.character(tool_cfg$runtime %||% "")[1], "langflow")
 
-          if (!is.null(resolved_tool_model) && nzchar(resolved_tool_model)) {
-            settings$model_selection <- resolved_tool_model
-            temp_model_selection(resolved_tool_model)
-            updateSelectInput(session, "model_selection", selected = resolved_tool_model)
-            session$sendCustomMessage("saveSettings", list(model_selection = resolved_tool_model))
+          # Aktif araca bağlı modeli merkezi kayıttan çöz ve uygula (Langflow
+          # araçlarında yerel model değişimi yapılmaz).
+          if (!isTRUE(tool_is_langflow)) {
+            resolved_tool_model <- resolve_tool_model_for_flag(
+              tool_name,
+              fallback_model = isolate(settings$model_selection)
+            )
+
+            if (!is.null(resolved_tool_model) && nzchar(resolved_tool_model)) {
+              settings$model_selection <- resolved_tool_model
+              temp_model_selection(resolved_tool_model)
+              updateSelectInput(session, "model_selection", selected = resolved_tool_model)
+              session$sendCustomMessage("saveSettings", list(model_selection = resolved_tool_model))
+            }
           }
 
-          # Süreç / Uygulama Uzmanı gibi sohbet paneli OLMAYAN araçlar için model
-          # seçim kilidi sunucudan bildirilir; panelli araçlar (Görsel, Özetleme,
-          # Analiz, Excel, Kod) DOM tespitiyle kilitlendiği için burada serbest
-          # bırakılır (tools_model_lock.js).
-          if (tool_name %in% c("enable_process_tools", "enable_app_expert_tools")) {
-            lock_cfg <- get_tool_mode_config(tool_name, by = "setting_flag")
+          # Süreç / Uygulama Uzmanı gibi sohbet paneli OLMAYAN Langflow araçları
+          # için model seçim kilidi sunucudan bildirilir; panelli araçlar (Görsel,
+          # Özetleme, Analiz, Excel, Kod) DOM tespitiyle kilitlenir
+          # (tools_model_lock.js). Süreç akışı seçici bir kilit gerektirmez.
+          if (isTRUE(tool_is_langflow)) {
             session$sendCustomMessage("setToolModelLock", list(
               active = TRUE,
-              label = lock_cfg$title %||% "Bu araç"
+              label = tool_cfg$title %||% "Bu araç"
             ))
           } else {
             session$sendCustomMessage("setToolModelLock", list(active = FALSE))
@@ -398,6 +405,13 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
             ))
           }
 
+          # Süreç Yönetimi aktifleştirildiğinde süreç akışı seçici gösterilir;
+          # diğer tüm araçlar aktifken gizlenir.
+          session$sendCustomMessage(
+            "toggleProcessMode",
+            list(active = identical(tool_name, "enable_process_tools"))
+          )
+
           # Diğer araçlar aktifken kontrolleri gizle
           if (!tool_name %in% c("enable_rdata_tools", "enable_image_tools", "enable_summarization_tools", "enable_mcp_tools", "enable_coding_tools")) {
             session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
@@ -430,6 +444,10 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
 
           if (tool_name == "enable_coding_tools") {
             session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
+          }
+
+          if (tool_name == "enable_process_tools") {
+            session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
           }
 
           # Süreç/Uygulama Uzmanı pasifleştirildiğinde model seçim kilidini serbest bırak.

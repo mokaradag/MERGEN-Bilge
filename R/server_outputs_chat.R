@@ -10,6 +10,22 @@
 chatOutputsInit <- function(output, settings_data) {
   
   output$current_model_display <- renderUI({
+    # Langflow araçları (Süreç Yönetimi / Uygulama Uzmanı) yerel model kullanmaz;
+    # model, Langflow akışının içine gömülüdür. Bu araçlar aktifken yerel model
+    # rozeti yanıltıcı olacağından hiç gösterilmez. Tespit runtime=="langflow"
+    # üzerinden yapılır (araç adına sabit kodlanmaz).
+    if (exists("mergen_langflow_setting_flags", mode = "function", inherits = TRUE)) {
+      langflow_flags <- mergen_langflow_setting_flags(api_config)
+      langflow_active <- any(vapply(
+        langflow_flags,
+        function(f) isTRUE(settings_data[[f]]),
+        logical(1)
+      ))
+      if (isTRUE(langflow_active)) {
+        return(NULL)
+      }
+    }
+
     # Görsel modu aktifse dall-e-3 göster
     if (isTRUE(settings_data$enable_image_tools)) {
       display_name <- "dall-e-3"

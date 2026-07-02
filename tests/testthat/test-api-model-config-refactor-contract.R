@@ -48,8 +48,6 @@
     MERGEN_RUN_APP = "false",
     MERGEN_DISABLE_FUTURES = "true",
     LOCAL_LLM_ENDPOINT = Sys.getenv("LOCAL_LLM_ENDPOINT", "http://primary.test/v1/chat/completions"),
-    LOCAL_LLM_ENDPOINT_ALT = Sys.getenv("LOCAL_LLM_ENDPOINT_ALT", "http://secondary.test/v1/chat/completions"),
-    LOCAL_LLM_ENDPOINT_ALT_API_KEY = Sys.getenv("LOCAL_LLM_ENDPOINT_ALT_API_KEY", "secondary-key"),
     DB_DSN = Sys.getenv("DB_DSN", "test-dsn"),
     AI_KEYS_MASTER = Sys.getenv("AI_KEYS_MASTER", "test-master-key-0123456789")
   )
@@ -215,44 +213,121 @@ test_that("thinking model capability config bildirimi ve request override davran
   expect_true(isTRUE(should_stream_reasoning("custom-thinking", config = fake_config)))
 })
 
+# NOT: Bu test, endpoint/credential çözümleyicilerinin GENEL çoklu-uç-nokta
+# yeteneğini doğrular (config birden fazla uç nokta bildirirse). Üretim
+# api_config artık yalnızca "primary" uç noktasını taşır; bu sözleşme ayrı bir
+# testte ("üretim api_config yalnızca birincil uç noktayı taşır") doğrulanır.
 test_that("model bazlı endpoint ve credential çözümleme davranışı korunur", {
   fake_config <- list(
     local_llm_endpoint = "http://legacy.test/v1/chat/completions",
     local_llm_endpoints = list(
       primary = "http://primary.test/v1/chat/completions",
-      secondary = "http://secondary.test/v1/chat/completions"
+      gateway = "http://gateway.test/v1/chat/completions"
     ),
     local_llm_endpoint_keys = list(
       primary = "",
-      secondary = "secondary-default-key"
+      gateway = "gateway-default-key"
     ),
     local_llm_endpoint_user_managed = c(
       primary = TRUE,
-      secondary = FALSE
+      gateway = FALSE
     ),
     local_llm_default_endpoint_key = "primary",
-    local_models = c("Birincil" = "model-primary", "İkincil" = "model-secondary"),
+    local_models = c("Birincil" = "model-primary", "Ağ Geçidi" = "model-gateway"),
     local_model_endpoint_map = c(
       "model-primary" = "primary",
-      "model-secondary" = "secondary"
+      "model-gateway" = "gateway"
     )
   )
 
   expect_identical(
-    resolve_local_llm_endpoint("model-secondary", config = fake_config),
-    "http://secondary.test/v1/chat/completions"
+    resolve_local_llm_endpoint("model-gateway", config = fake_config),
+    "http://gateway.test/v1/chat/completions"
   )
 
-  creds <- resolve_local_llm_credentials("model-secondary", config = fake_config)
-  expect_identical(creds$endpoint_key, "secondary")
-  expect_identical(creds$default_api_key, "secondary-default-key")
+  creds <- resolve_local_llm_credentials("model-gateway", config = fake_config)
+  expect_identical(creds$endpoint_key, "gateway")
+  expect_identical(creds$default_api_key, "gateway-default-key")
   expect_false(isTRUE(creds$allow_user_key))
 
-  target <- determine_api_key_validation_target("model-secondary", config = fake_config)
+  target <- determine_api_key_validation_target("model-gateway", config = fake_config)
   expect_identical(target$model_id, "model-primary")
   expect_identical(target$endpoint_key, "primary")
   expect_true(isTRUE(target$allow_user_key))
   expect_true(isTRUE(target$fallback_used))
+})
+
+test_that("üretim api_config yalnızca birincil uç noktayı taşır (ikincil uç nokta kaldırıldı)", {
+  # Ayrı/ikincil bir yerel LLM uç noktası kavramı kaldırıldı; yalnızca "primary"
+  # kalmalı ve tüm modeller birincil uca eşlenmeli.
+  expect_identical(names(api_config$local_llm_endpoints), "primary")
+  expect_null(api_config$local_llm_endpoints$secondary)
+  expect_identical(names(api_config$local_llm_endpoint_keys), "primary")
+  expect_identical(names(api_config$local_llm_endpoint_user_managed), "primary")
+
+  endpoint_targets <- unname(api_config$local_model_endpoint_map)
+  expect_true(all(endpoint_targets == "primary"))
+})
+
+.read_bytes_api_contract <- function(rel_path) {
+  path <- file.path(resolve_repo_root_for_tests(), rel_path)
+  raw <- readBin(path, what = "raw", n = file.info(path)$size)
+  iconv(rawToChar(raw), from = "UTF-8", to = "UTF-8", sub = "byte")
+}
+
+test_that("config_api.R ikincil LLM uç noktası ve Langflow ALT-anahtar fallback'i içermez", {
+  txt <- .read_bytes_api_contract(file.path("R", "config_api.R"))
+  # Kaldırılan ikincil uç nokta değişkenleri ve ALT env adları
+  expect_false(grepl("secondary_llm_api_key", txt, fixed = TRUE))
+  expect_false(grepl("secondary_llm_endpoint", txt, fixed = TRUE))
+  expect_false(grepl("LOCAL_LLM_ENDPOINT_ALT", txt, fixed = TRUE))
+  # Eski fallback: langflow_api_key <- secondary_llm_api_key
+  expect_false(grepl("langflow_api_key <- secondary", txt, fixed = TRUE))
+  # Langflow'un kendi anahtarı korunur
+  expect_true(grepl("LANGFLOW_API_KEY", txt, fixed = TRUE))
+})
+
+test_that(".Renviron.example ikincil uç nokta değişkenlerini içermez, çoklu süreç akışını içerir", {
+  txt <- .read_bytes_api_contract(".Renviron.example")
+  expect_false(grepl("LOCAL_LLM_ENDPOINT_ALT", txt, fixed = TRUE))
+  expect_true(grepl("LANGFLOW_API_KEY", txt, fixed = TRUE))
+  expect_true(grepl("LANGFLOW_PROCESS_FLOW_IDS", txt, fixed = TRUE))
+  expect_true(grepl("LANGFLOW_PROCESS_FLOW_NAMES", txt, fixed = TRUE))
+})
+
+test_that("Langflow araçları (process/app_expert) yerel model_id taşımaz", {
+  expect_null(api_config$tool_mode_config$process$model_id)
+  expect_null(api_config$tool_mode_config$app_expert$model_id)
+  expect_identical(api_config$tool_mode_config$process$runtime, "langflow")
+  expect_identical(api_config$tool_mode_config$app_expert$runtime, "langflow")
+})
+
+test_that("build_main_actions_data_from_config Langflow araçlarına yerel model enjekte etmez", {
+  fake_config <- list(
+    local_models = c("Varsayılan" = "fallback-model"),
+    tool_mode_config = list(
+      process = list(
+        family = "process",
+        quick_action_id = "project-process",
+        title = "Süreç Yönetimi Sistemi",
+        runtime = "langflow"
+      ),
+      coding = list(
+        family = "coding",
+        quick_action_id = "coding-support",
+        title = "Kodlama Desteği",
+        model_id = "coding-model"
+      )
+    )
+  )
+
+  actions <- build_main_actions_data_from_config(fake_config)
+  by_id <- stats::setNames(actions, vapply(actions, `[[`, character(1), "id"))
+
+  # Langflow aracı: model_value boş (hızlı eylem model değişimi tetiklememeli)
+  expect_identical(by_id[["project-process"]]$model_value, "")
+  # Normal yerel araç: model_value korunur
+  expect_identical(by_id[["coding-support"]]$model_value, "coding-model")
 })
 
 test_that("tool mode model çözümleme ve ana aksiyon verisi korunur", {

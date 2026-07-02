@@ -179,11 +179,22 @@ quickActionsInit <- function(input, session, values, settings_data,
     cat("[QUICK_TEMPLATE]", action_id, "isteği tespit edildi\n")
 
     tool_cfg <- get_tool_mode_config(action_id, by = "quick_action_id")
-    resolved_model <- tool_cfg$model_id %||% template_model %||%
-      settings_data$model_selection %||% as.character(api_config$local_models[1])
 
-    if (!is.null(resolved_model) && nzchar(resolved_model)) {
-      template_model <- resolved_model
+    # Langflow araçları (Süreç Yönetimi / Uygulama Uzmanı) yerel model kullanmaz;
+    # model Langflow akışının içine gömülüdür. Bu araçlarda model çözümleme ve
+    # model değişimi yapılmaz, aksi halde yanıltıcı bir "Model değiştirildi"
+    # bildirimi ve gereksiz model geçişi olur.
+    tool_is_langflow <- identical(as.character(tool_cfg$runtime %||% "")[1], "langflow")
+
+    if (isTRUE(tool_is_langflow)) {
+      template_model <- NULL
+    } else {
+      resolved_model <- tool_cfg$model_id %||% template_model %||%
+        settings_data$model_selection %||% as.character(api_config$local_models[1])
+
+      if (!is.null(resolved_model) && nzchar(resolved_model)) {
+        template_model <- resolved_model
+      }
     }
     
     # 1. Tüm sohbet içi araç panelleri ön bilgisi: kapatma çağrıları her dalda
@@ -194,6 +205,7 @@ quickActionsInit <- function(input, session, values, settings_data,
       session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
       session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
       session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
+      session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
     }
 
     if (tool_name == "enable_image_tools") {
@@ -233,6 +245,12 @@ quickActionsInit <- function(input, session, values, settings_data,
         deep_thinking = isTRUE(isolate(settings_data$coding_deep_thinking)),
         level = isolate(settings_data$coding_deep_level) %||% "low"
       ))
+    } else if (tool_name == "enable_process_tools") {
+      # Süreç Yönetimi: sohbet içi süreç akışı seçici açılır menüsü gösterilir.
+      # (Langflow aracı olduğundan model değişimi yapılmaz.)
+      change_model_if_provided(template_model)
+      close_all_tool_panels()
+      session$sendCustomMessage("toggleProcessMode", list(active = TRUE))
     } else {
       change_model_if_provided(template_model)
       close_all_tool_panels()
@@ -409,6 +427,7 @@ quickActionsInit <- function(input, session, values, settings_data,
       session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
       session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
       session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
+      session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
 
       # Sunucu otoriter arka plan aile sinyali (handle_tool_action ile aynı sözleşme)
       tryCatch(
@@ -551,6 +570,7 @@ quickActionsInit <- function(input, session, values, settings_data,
     session$sendCustomMessage("toggleSummaryMode", list(active = TRUE))
     session$sendCustomMessage("toggleImageMode", list(active = FALSE))
     session$sendCustomMessage("toggleAnalysisMode", list(active = FALSE))
+    session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
 
     showToast(session,
       "Dosya Özetleme modu aktif edildi. Şimdi Dosya Yönetimi sayfasından dosya yükleyin ve 'Model Bağlamı' seçin.",

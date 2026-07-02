@@ -509,6 +509,7 @@ settingsInit <- function(session, parent_session = NULL) {
     session$sendCustomMessage("toggleImageMode", list(active = FALSE))
     session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
     session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
+    session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
     session$sendCustomMessage("syncExcelDeepThinkingToChat", list(deep_thinking = FALSE, level = "low"))
     session$sendCustomMessage("syncCodingDeepThinkingToChat", list(deep_thinking = FALSE, level = "low"))
     # Tüm araçlar pasif olduğundan model seçim kilidini serbest bırak.

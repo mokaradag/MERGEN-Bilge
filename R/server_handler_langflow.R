@@ -17,14 +17,25 @@ handle_langflow_chat_mode <- function(ctx) {
 
   lf_cfg <- mergen_langflow_config(config)
   base_url <- normalize_langflow_base_url(lf_cfg$base_url)
-  flow_id <- mergen_langflow_flow_id_for_family(tool_family, config)
+  # Süreç Yönetimi çoklu akış: seçilen akış (key/id) çözülür; diğer aileler tekil.
+  selected_process_flow <- ctx$selected_process_flow
+  flow_id <- mergen_langflow_flow_id_for_family(tool_family, config, selected_flow = selected_process_flow)
+  # Yalnızca loglama/metadata için akış adı (API anahtarı/URL asla loglanmaz).
+  flow_label <- tryCatch(
+    if (identical(tool_family, "process")) {
+      mergen_langflow_process_flow_label(config, selected_process_flow)
+    } else {
+      ""
+    },
+    error = function(e) ""
+  )
   api_key <- tryCatch(as.character(lf_cfg$api_key %||% "")[1], error = function(e) "")
   timeout_seconds <- suppressWarnings(as.numeric(lf_cfg$timeout_seconds %||% 300))
   if (length(timeout_seconds) == 0 || is.na(timeout_seconds) || timeout_seconds <= 0) {
     timeout_seconds <- 300
   }
 
-  log_debug("[LANGFLOW] Araç={tool_family} için Langflow akışı çağrılıyor")
+  log_debug("[LANGFLOW] Araç={tool_family} akış={flow_label} için Langflow akışı çağrılıyor")
 
   # Yarış koruması: bu isteğin kimliğini en başta yakala. Kullanıcı durdurup yeni
   # bir istek başlatırsa bayat sonuç yeni isteğin yazma alanını/sohbetini ezmemeli.
@@ -53,14 +64,15 @@ handle_langflow_chat_mode <- function(ctx) {
 
   # Yapılandırma eksikse net, kullanıcı dostu hata ver ve normal LLM yoluna geçme.
   if (!nzchar(base_url) || !nzchar(flow_id)) {
-    log_warn("[LANGFLOW] Yapılandırma eksik (araç={tool_family}); taban URL veya akış kimliği tanımlı değil")
+    log_warn("[LANGFLOW] Yapılandırma eksik (araç={tool_family}); taban URL veya akış kimliği çözülemedi")
     release_langflow_backpressure_slot()
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE
     ctx$add_message_fn(
       paste0(
-        "\U000026A0\U0000FE0F Bu araç için kurumsal Langflow yapılandırması eksik. ",
-        "Lütfen sistem yöneticisiyle iletişime geçin (LANGFLOW_BASE_URL ve akış kimliği)."
+        "\U000026A0\U0000FE0F Bu araç için kurumsal Langflow yapılandırması eksik ",
+        "veya seçili süreç akışı bulunamadı. Lütfen sistem yöneticisiyle iletişime ",
+        "geçin (LANGFLOW_BASE_URL ve süreç akışı kimlikleri)."
       ),
       "ai"
     )
@@ -70,24 +82,10 @@ handle_langflow_chat_mode <- function(ctx) {
 
   session_id <- mergen_build_langflow_session_id(ctx$current_user_id, ctx$chat_id_val)
 
-  # Yükleme göstergesini güncelle (düşünme sarmalayıcısını kaldırıp basit spinner göster).
-  removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
-  insertUI(
-    selector = "#chat_content_container",
-    where = "beforeEnd",
-    ui = div(
-      id = "typing-animation-wrapper",
-      class = "message-bubble",
-      style = "display: flex; justify-content: center; padding: 20px;",
-      div(
-        class = "image-generating",
-        div(class = "image-generating-spinner"),
-        div(class = "image-generating-text", "Yanıt hazırlanıyor...")
-      )
-    ),
-    immediate = TRUE
-  )
-  shinyjs::runjs("window.smartScrollToBottom();")
+  # Standart düşünme paneli (simüle fazlı) send_message tarafından zaten
+  # gösterildi ve Langflow non-streaming yanıtı gelene kadar canlı kalır.
+  # Görsel oluşturma spinner'ı KULLANILMAZ; böylece bu araçlar diğer düşünen
+  # model akışlarıyla aynı deneyimi verir.
 
   # Asenkron çağrı için yalnızca skalar yereller yakalanır (ağır api_config
   # nesnesi worker tarafına taşınmaz).

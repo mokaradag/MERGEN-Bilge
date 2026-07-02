@@ -126,6 +126,16 @@ build_main_actions_data_from_config <- function(config = api_config) {
       return(NULL)
     }
 
+    # Langflow araçları yerel model taşımaz (model akışın içine gömülüdür).
+    # Bu tür hızlı eylemlerde model_value boş bırakılır ki hızlı eylem tıklaması
+    # yanıltıcı bir model değişimini tetiklemesin.
+    is_langflow_tool <- identical(as.character(cfg$runtime %||% "")[1], "langflow")
+    model_value <- if (is_langflow_tool) {
+      ""
+    } else {
+      cfg$model_id %||% as.character(config$local_models[1]) %||% ""
+    }
+
     list(
       id = cfg$quick_action_id,
       title = cfg$title %||% cfg$quick_action_id,
@@ -133,7 +143,7 @@ build_main_actions_data_from_config <- function(config = api_config) {
       description = cfg$description %||% "",
       icon_name = cfg$icon_name %||% "bolt",
       themeColor = cfg$themeColor %||% "#6366f1",
-      model_value = cfg$model_id %||% as.character(config$local_models[1]) %||% ""
+      model_value = model_value
     )
   })
 

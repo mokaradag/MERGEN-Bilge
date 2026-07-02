@@ -1013,6 +1013,33 @@ Bu kartlar yalnızca görsel kısayol değildir; model seçimi, başlangıç mes
 
 ---
 
+## Kurumsal Langflow Entegrasyonu (Süreç Yönetimi / Uygulama Uzmanı)
+
+"Süreç Yönetimi" ve "Uygulama Uzmanı" araçları normal yerel LLM uç noktası yerine kurumsal Langflow akışlarını (Chat Input / Chat Output) çağırır. Kullanılan model Langflow akışının içine gömülüdür; bu araçların **yerel bir modeli yoktur**. Bu nedenle:
+
+- Sohbet başlığındaki **yerel model rozeti bu araçlar aktifken gizlenir** (yanıltıcı olmaması için; tespit `runtime == "langflow"` üzerinden yapılır, araç adına sabit kodlanmaz).
+- Bu araçların `tool_mode_config` girişlerinde `model_id` **tanımlı değildir**; hızlı eylemleri model değişimi tetiklemez.
+
+Langflow'un kendi `LANGFLOW_API_KEY` değeri vardır ve yerel LLM anahtarlarıyla ilişkisi yoktur. Örtük geriye dönük fallback yoktur; yapılandırma eksikse araç net bir "yapılandırma eksik" mesajı gösterir ve normal LLM'ye düşmez.
+
+**İkinci yerel LLM uç noktası kaldırıldı.** Eski `LOCAL_LLM_ENDPOINT_ALT` / `LOCAL_LLM_ENDPOINT_ALT_API_KEY` kavramı artık desteklenmez; eskiden ayrı uca giden akışlar Langflow ile karşılanır. Yalnızca tek birincil `LOCAL_LLM_ENDPOINT` kullanılır.
+
+### Çoklu süreç akışı seçimi
+
+Süreç Yönetimi birden fazla adlandırılmış Langflow akışını destekler. Kullanıcı, sohbet giriş alanındaki (sağ tarafta, model seçicinin yanında) açılır menüden hangi akışı kullanacağını seçer. Menü yalnızca Süreç Yönetimi aktifken görünür ve başka bir araca geçildiğinde / yeni söyleşi başlatıldığında gizlenir.
+
+Ortam değişkeni biçimi (kimlikler ve görünen adlar `;` veya `,` ile ayrılır; sıralar birebir eşleşmelidir):
+
+```ini
+LANGFLOW_PROCESS_FLOW_IDS=process-flow-id-1;process-flow-id-2
+LANGFLOW_PROCESS_FLOW_NAMES=Süreç Akışı 1;Süreç Akışı 2
+LANGFLOW_APP_EXPERT_FLOW_ID=app-expert-flow-id-here
+```
+
+Ad eksikse `Akış 1`, `Akış 2` gibi güvenli yedek adlar kullanılır. Yalnızca eski tekil `LANGFLOW_PROCESS_FLOW_ID` tanımlıysa, geçici geriye dönük uyumluluk için tek akışlı listeye çevrilir. Seçili akış (`chat_process_flow` girdisi) sunucuda `mergen_langflow_flow_id_for_family("process", selected_flow = ...)` ile ilgili Langflow akış kimliğine çözülür. Süreç Yönetimi / Uygulama Uzmanı için düşünme sırasında standart (simüle fazlı) "Düşünce Akışı" paneli gösterilir; görsel oluşturma spinner'ı kullanılmaz.
+
+---
+
 ## Deneyim Modları
 
 MERGEN Bilge üç temel deneyim modu sunar:
@@ -1941,12 +1968,20 @@ LOCAL_LLM_ENDPOINT=https://your-llm-endpoint.example.com/v1/chat/completions
 DB_DSN=YourMainOdbcDsn
 AI_KEYS_MASTER=your-long-random-secret
 
-# İsteğe bağlı - ikincil LLM endpoint
-LOCAL_LLM_ENDPOINT_ALT=https://your-secondary-llm-endpoint.example.com/v1/chat/completions
-LOCAL_LLM_ENDPOINT_ALT_API_KEY=your-secondary-endpoint-key
+# Model varsayılanları
 FILTER_MODEL=your-default-model
 AI_EXPERT_MODEL=your-ai-expert-model
 DESTEK_CHATBOT_MODEL=your-support-chatbot-model
+
+# Kurumsal Langflow akış entegrasyonu (Süreç Yönetimi / Uygulama Uzmanı).
+# LANGFLOW_API_KEY Langflow'a özgüdür; yerel LLM anahtarlarıyla ilişkisi yoktur.
+# Süreç Yönetimi çoklu akış destekler (";"/"," ayraçlı kimlik/ad listeleri).
+LANGFLOW_BASE_URL=https://your-langflow-server.example.com
+LANGFLOW_API_KEY=your-langflow-api-key
+LANGFLOW_PROCESS_FLOW_IDS=process-flow-id-1;process-flow-id-2
+LANGFLOW_PROCESS_FLOW_NAMES=Süreç Akışı 1;Süreç Akışı 2
+LANGFLOW_APP_EXPERT_FLOW_ID=app-expert-flow-id-here
+LANGFLOW_TIMEOUT_SECONDS=300
 
 # İsteğe bağlı - sunucu yönetimli kurum API anahtarı
 MERGEN_ALLOW_DEFAULT_API_KEY=TRUE
