@@ -193,6 +193,15 @@ settingsInit <- function(session, parent_session = NULL) {
       pf_restored <- as.character(loaded$process_flow_selection)[1]
       if (!is.na(pf_restored) && nzchar(pf_restored)) {
         settings$process_flow_selection <- pf_restored
+        # Süreç modu şu an KAPALI olsa bile gizli DOM akış seçicisini kalıcı
+        # seçime hizala. Aksi halde seçici varsayılan (flow_1) konumunda kalır;
+        # kullanıcı sonradan Süreç modunu (ayarlar/hızlı işlem) etkinleştirince
+        # toggleProcessMode(active=TRUE) işleyicisi bu senkronsuz varsayılanı
+        # yayınlar ve chat_process_flow gözlemcisi onu hemen kalıcılaştırarak
+        # kayıtlı akış seçimini ezerdi. Önceden hizalanınca her etkinleştirme
+        # yayını doğru akışı bildirir. Bildirilen değer kalıcı seçimle aynı
+        # olduğundan gözlemci no-op yapar (döngü/ezme olmaz).
+        session$sendCustomMessage("syncProcessFlowToChat", list(flow_key = pf_restored))
       }
     }
 
@@ -231,12 +240,10 @@ settingsInit <- function(session, parent_session = NULL) {
       }
       session$sendCustomMessage("setToolModelLock", list(active = TRUE, label = lf_label))
       if (identical(lf_flag, "enable_process_tools")) {
+        # Akış seçici görünür kılınır. DOM seçicisi yukarıda kalıcı seçime zaten
+        # hizalandığından, toggle işleyicisinin yeniden yayınladığı değer doğru
+        # akıştır; burada ayrıca senkronlamaya gerek yoktur.
         session$sendCustomMessage("toggleProcessMode", list(active = TRUE))
-        # Kalıcı akış seçimini sohbet içi seçiciye geri yükle (yoksa ilk akış).
-        pf_sel <- isolate(settings$process_flow_selection)
-        if (is.character(pf_sel) && length(pf_sel) == 1L && nzchar(pf_sel)) {
-          session$sendCustomMessage("syncProcessFlowToChat", list(flow_key = pf_sel))
-        }
       }
     }
 

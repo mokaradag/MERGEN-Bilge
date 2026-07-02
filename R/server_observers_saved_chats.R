@@ -235,56 +235,59 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       cat(sprintf("[SAVED_CHATS] Araç tespit edildi ve etkinleştirildi: %s\n", detected_tool))
     }
 
-    # Süreç Yönetimi (Langflow) akış seçici + sunucu model kilidi, araç
-    # bayraklarından bağımsız UI/kilit sinyalleridir ve önceki sohbetten
-    # devralınabilir. Yüklenen sohbet Süreç Yönetimi sohbetiyse seçici gösterilir
-    # ve panelsiz araç olduğundan model kilidi sunucudan bildirilir; değilse
-    # önceki sohbetten kalan seçici/kilit temizlenir. Aksi halde bir süreç
-    # sohbetinden başka sohbete geçince seçici bayat biçimde görünür kalır ve
-    # gönderimler yine de Langflow'a yönlenirken model seçici hatalı kilitli olur.
-    if (identical(detected_tool, "enable_process_tools")) {
-      session$sendCustomMessage("toggleProcessMode", list(active = TRUE))
-      pf_label <- "Süreç Yönetimi"
-      if (exists("get_tool_mode_config", mode = "function")) {
-        pf_cfg <- get_tool_mode_config("enable_process_tools", by = "setting_flag")
-        pf_label <- pf_cfg$title %||% "Süreç Yönetimi"
-      }
-      session$sendCustomMessage("setToolModelLock", list(active = TRUE, label = pf_label))
-      # NOT: Burada GLOBAL process_flow_selection kasıtlı olarak seçiciye
-      # ZORLANMAZ. Kayıtlı sohbetin kendi (orijinal) akışı halihazırda akış başına
-      # kalıcı saklanmadığından, buraya global son-kullanılan tercihi uygulamak
-      # farklı bir sohbeti yanlış akışa taşırdı (session_id akış kimliğini
-      # içerdiğinden o sohbetin Langflow belleği de kayardı). Akış başına kalıcılık
-      # ayrı bir iş kalemidir; global tercihi bu yola bulaştırmıyoruz.
+    # Süreç Yönetimi / Uygulama Uzmanı (panelsiz Langflow araçları) model kilidi
+    # ve akış seçici, araç bayraklarından bağımsız UI/kilit sinyalleridir ve önceki
+    # sohbetten devralınabilir. İçerik tabanlı tespit YALNIZCA Görsel çıktıyı ve
+    # Süreç atıf işaretçilerini (source-link|kaynakca-entry) tanır; Uygulama Uzmanı
+    # güvenilir tespit edilemez, bu yüzden detected_tool == NULL "belirsiz" demektir
+    # ve mevcut araç durumu KORUNUR.
+    #
+    # Kurallar (bayrakları burada ASLA temizlemeyiz; yalnızca UI'yı mevcut/tespit
+    # edilen duruma göre tutarlı kılarız):
+    #  - Süreç POZİTİF tespit edildiyse: akış seçiciyi göster + sunucu kilidi.
+    #  - Süreç DIŞI bir araç POZİTİF tespit edildiyse (yukarıdaki blok tüm bayrakları
+    #    temizleyip o aracı etkinleştirdi): panelsiz Langflow UI'sını temizle.
+    #  - Belirsizse (hiç tespit yok) ama panelsiz bir Langflow aracı hâlâ aktifse:
+    #    bayrağı KORU ve UI'yı ona göre tutarlı kıl. Böylece tespit edilemeyen bir
+    #    Uygulama Uzmanı/Süreç sohbeti sessizce yerel LLM'e düşmez (UI ile
+    #    yönlendirme uyumsuzluğu da oluşmaz).
+    #  - Belirsiz ve aktif panelsiz Langflow aracı yoksa: UI'yı temizle.
+    langflow_flags <- if (exists("mergen_langflow_setting_flags", mode = "function")) {
+      mergen_langflow_setting_flags()
     } else {
+      c("enable_process_tools", "enable_app_expert_tools")
+    }
+    lf_active_flags <- Filter(function(f) isTRUE(isolate(settings_data[[f]])), langflow_flags)
+
+    ui_lf_flag <- if (identical(detected_tool, "enable_process_tools")) {
+      "enable_process_tools"
+    } else if (!is.null(detected_tool)) {
+      NULL
+    } else if (length(lf_active_flags) > 0) {
+      lf_active_flags[[1]]
+    } else {
+      NULL
+    }
+
+    if (is.null(ui_lf_flag)) {
       session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
       session$sendCustomMessage("setToolModelLock", list(active = FALSE))
-
-      # Tespit süreç sohbetiyle eşleşmezken (ör. hiç araç tespit edilmedi) mevcut/
-      # kalıcı oturumdan gelen panelsiz Langflow bayrağı (Süreç/Uygulama Uzmanı)
-      # hâlâ TRUE olabilir. UI normal sohbet gibi görünüp seçici gizli ve model
-      # kilidi açıkken, sunucu mergen_determine_tool_family() hâlâ "process"
-      # döndürürse kullanıcı farkında olmadan gönderimi Langflow'a yollayabilir.
-      # Bu yüzden bayat Langflow bayrakları burada da temizlenir (reaktif +
-      # checkbox + kalıcı), böylece UI ile yönlendirme tutarlı kalır.
-      langflow_flags <- if (exists("mergen_langflow_setting_flags", mode = "function")) {
-        mergen_langflow_setting_flags()
-      } else {
-        c("enable_process_tools", "enable_app_expert_tools")
+    } else {
+      lf_label <- "Bu araç"
+      if (exists("get_tool_mode_config", mode = "function")) {
+        lf_cfg <- get_tool_mode_config(ui_lf_flag, by = "setting_flag")
+        lf_label <- lf_cfg$title %||% "Bu araç"
       }
-      cleared_langflow <- FALSE
-      for (lf in langflow_flags) {
-        if (isTRUE(isolate(settings_data[[lf]]))) {
-          isolate({ settings_data[[lf]] <- FALSE })
-          updateCheckboxInput(session, paste0("settings_yapilandirma_module-", lf), value = FALSE)
-          cleared_langflow <- TRUE
-        }
-      }
-      if (isTRUE(cleared_langflow)) {
-        session$sendCustomMessage("saveSettings", stats::setNames(
-          as.list(rep(FALSE, length(langflow_flags))), langflow_flags
-        ))
-      }
+      session$sendCustomMessage("setToolModelLock", list(active = TRUE, label = lf_label))
+      # Akış seçici yalnızca Süreç Yönetimi için görünür; Uygulama Uzmanı akış
+      # seçici kullanmaz. GLOBAL process_flow_selection kasıtlı olarak seçiciye
+      # ZORLANMAZ: kayıtlı sohbetin kendi akışı akış başına kalıcı saklanmadığından
+      # global son-kullanılan tercihi farklı bir sohbete uygulamak yanlış akışa
+      # taşırdı (session_id akış kimliğini içerir). DOM seçici yükleme sırasında
+      # zaten kalıcı seçime hizalanmıştır.
+      session$sendCustomMessage("toggleProcessMode", list(
+        active = identical(ui_lf_flag, "enable_process_tools")
+      ))
     }
 
     # Persona verisini al (eski kimlikler normalleştirilerek çözülür)
