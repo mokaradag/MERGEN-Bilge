@@ -235,6 +235,30 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       cat(sprintf("[SAVED_CHATS] Araç tespit edildi ve etkinleştirildi: %s\n", detected_tool))
     }
 
+    # Süreç Yönetimi (Langflow) akış seçici + sunucu model kilidi, araç
+    # bayraklarından bağımsız UI/kilit sinyalleridir ve önceki sohbetten
+    # devralınabilir. Yüklenen sohbet Süreç Yönetimi sohbetiyse seçici gösterilir
+    # ve panelsiz araç olduğundan model kilidi sunucudan bildirilir; değilse
+    # önceki sohbetten kalan seçici/kilit temizlenir. Aksi halde bir süreç
+    # sohbetinden başka sohbete geçince seçici bayat biçimde görünür kalır ve
+    # gönderimler yine de Langflow'a yönlenirken model seçici hatalı kilitli olur.
+    if (identical(detected_tool, "enable_process_tools")) {
+      session$sendCustomMessage("toggleProcessMode", list(active = TRUE))
+      pf_label <- "Süreç Yönetimi"
+      if (exists("get_tool_mode_config", mode = "function")) {
+        pf_cfg <- get_tool_mode_config("enable_process_tools", by = "setting_flag")
+        pf_label <- pf_cfg$title %||% "Süreç Yönetimi"
+      }
+      session$sendCustomMessage("setToolModelLock", list(active = TRUE, label = pf_label))
+      pf_sel <- isolate(settings_data$process_flow_selection)
+      if (is.character(pf_sel) && length(pf_sel) == 1L && nzchar(pf_sel)) {
+        session$sendCustomMessage("syncProcessFlowToChat", list(flow_key = pf_sel))
+      }
+    } else {
+      session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
+      session$sendCustomMessage("setToolModelLock", list(active = FALSE))
+    }
+
     # Persona verisini al (eski kimlikler normalleştirilerek çözülür)
     character_data <- get_character_record(isolate(settings_data$selected_character))
 

@@ -38,6 +38,10 @@ settingsInit <- function(session, parent_session = NULL) {
     enable_process_tools    = FALSE,
     enable_app_expert_tools = FALSE,
     enable_image_tools      = FALSE,
+    # Süreç Yönetimi'nde son seçilen akış anahtarı (flow_1/flow_2/...). Sohbet
+    # içi akış seçici değiştikçe kaydedilir; yenilemeden sonra seçim geri
+    # yüklenir, böylece gönderimler varsayılan ilk akışa sessizce düşmez.
+    process_flow_selection  = "",
     image_size              = "1024x1024",
     image_quality_hd        = FALSE,
     summary_detail_level    = "standard",
@@ -185,6 +189,12 @@ settingsInit <- function(session, parent_session = NULL) {
     if (!is.null(loaded$enable_image_tools)) {
       settings$enable_image_tools <- isTRUE(loaded$enable_image_tools)
     }
+    if (!is.null(loaded$process_flow_selection)) {
+      pf_restored <- as.character(loaded$process_flow_selection)[1]
+      if (!is.na(pf_restored) && nzchar(pf_restored)) {
+        settings$process_flow_selection <- pf_restored
+      }
+    }
 
     # Aynı anda birden fazla aracın aktif olmasını engelle
     ANALYSIS_TOOLS <- c(
@@ -222,6 +232,11 @@ settingsInit <- function(session, parent_session = NULL) {
       session$sendCustomMessage("setToolModelLock", list(active = TRUE, label = lf_label))
       if (identical(lf_flag, "enable_process_tools")) {
         session$sendCustomMessage("toggleProcessMode", list(active = TRUE))
+        # Kalıcı akış seçimini sohbet içi seçiciye geri yükle (yoksa ilk akış).
+        pf_sel <- isolate(settings$process_flow_selection)
+        if (is.character(pf_sel) && length(pf_sel) == 1L && nzchar(pf_sel)) {
+          session$sendCustomMessage("syncProcessFlowToChat", list(flow_key = pf_sel))
+        }
       }
     }
 
@@ -272,6 +287,23 @@ settingsInit <- function(session, parent_session = NULL) {
     # Giriş animasyonu ayarı
     if (!is.null(loaded$skip_intro)) {
       settings$show_intro_animation <- !isTRUE(loaded$skip_intro)
+    }
+  }, ignoreInit = TRUE)
+
+  # ---- Süreç Yönetimi akış seçimi kalıcılığı ----
+  # Kullanıcı sohbet içi süreç akışı seçicisini (input$chat_process_flow)
+  # değiştirdiğinde seçim reaktif ayara yazılır ve kısmi saveSettings ile
+  # localStorage'a birleştirilerek anında kaydedilir. Böylece sayfa
+  # yenilemesinden sonra önceki akış seçimi geri yüklenir; aksi halde Süreç
+  # Yönetimi gönderimleri varsayılan ilk akışa sessizce düşerdi.
+  observeEvent(session$input$chat_process_flow, {
+    flow_key <- session$input$chat_process_flow
+    if (is.null(flow_key)) return(invisible(NULL))
+    flow_key <- as.character(flow_key)[1]
+    if (is.na(flow_key) || !nzchar(flow_key)) return(invisible(NULL))
+    if (!identical(isolate(settings$process_flow_selection), flow_key)) {
+      settings$process_flow_selection <- flow_key
+      session$sendCustomMessage("saveSettings", list(process_flow_selection = flow_key))
     }
   }, ignoreInit = TRUE)
 
@@ -474,6 +506,7 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$enable_process_tools     <- FALSE
     settings$enable_app_expert_tools  <- FALSE
     settings$enable_image_tools       <- FALSE
+    settings$process_flow_selection   <- ""
     settings$enable_followups         <- TRUE
     settings$font_size                <- "medium"
     settings$enable_background_music  <- FALSE

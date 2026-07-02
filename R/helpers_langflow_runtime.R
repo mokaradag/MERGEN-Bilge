@@ -238,11 +238,20 @@ mergen_langflow_setting_flags <- function(config = api_config) {
 
 # Aynı Mergen sohbeti için kararlı bir Langflow session_id üretir. Böylece aynı
 # sohbette art arda gelen mesajlar aynı Langflow oturumunu (konuşma geçmişini)
-# sürdürür. user_id/chat_id eksikse güvenli yer tutuculara düşer.
-mergen_build_langflow_session_id <- function(user_id, chat_id) {
+# sürdürür. flow_id verildiğinde oturum ayrıca akışa göre daraltılır: aynı Mergen
+# sohbetinde bir süreç akışından diğerine geçilince ikinci akış, session_id ile
+# anahtarlanan Langflow sohbet belleğinde birinci akışın konuşma bağlamını
+# paylaşmaz (akış başına süreklilik korunur). flow_id boş/NULL ise eski
+# üç parçalı biçim korunur. user_id/chat_id eksikse güvenli yer tutuculara düşer.
+mergen_build_langflow_session_id <- function(user_id, chat_id, flow_id = NULL) {
   uid <- .langflow_chr1(user_id, default = "0")
   cid <- .langflow_chr1(chat_id, default = "new")
-  paste("mergen", uid, cid, sep = "_")
+  fid <- .langflow_chr1(flow_id)
+  parts <- c("mergen", uid, cid)
+  if (nzchar(fid)) {
+    parts <- c(parts, fid)
+  }
+  paste(parts, collapse = "_")
 }
 
 # Bir değeri tek satırlık güvenli metne indirger (liste/skalar/karakter).

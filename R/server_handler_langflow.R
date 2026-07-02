@@ -80,7 +80,11 @@ handle_langflow_chat_mode <- function(ctx) {
     return(TRUE)
   }
 
-  session_id <- mergen_build_langflow_session_id(ctx$current_user_id, ctx$chat_id_val)
+  # Oturum kimliği çözülen akış kimliğiyle daraltılır; böylece aynı Mergen
+  # sohbetinde farklı süreç akışları arasında geçildiğinde Langflow'un session_id
+  # ile anahtarlanan sohbet belleği akışlar arasında karışmaz (akış başına
+  # süreklilik korunur).
+  session_id <- mergen_build_langflow_session_id(ctx$current_user_id, ctx$chat_id_val, flow_id = flow_id)
 
   # Standart düşünme paneli (simüle fazlı) send_message tarafından zaten
   # gösterildi ve Langflow non-streaming yanıtı gelene kadar canlı kalır.

@@ -266,6 +266,30 @@ test_that("mergen_build_langflow_session_id aynı sohbet için kararlı kimlik �
 
   # Eksik değerler güvenli yer tutuculara düşer
   expect_identical(mergen_build_langflow_session_id(NULL, NULL), "mergen_0_new")
+
+  # flow_id verilmediğinde eski üç parçalı biçim korunur (geriye dönük uyumluluk)
+  expect_identical(mergen_build_langflow_session_id(42, 1001, flow_id = NULL), "mergen_42_1001")
+  expect_identical(mergen_build_langflow_session_id(42, 1001, flow_id = ""), "mergen_42_1001")
+})
+
+test_that("mergen_build_langflow_session_id oturumu seçilen akışa göre daraltır", {
+  # Aynı kullanıcı + aynı sohbet + AYNI akış -> kararlı kimlik
+  expect_identical(
+    mergen_build_langflow_session_id(42, 1001, flow_id = "flow-abc"),
+    mergen_build_langflow_session_id(42, 1001, flow_id = "flow-abc")
+  )
+
+  # Aynı sohbet, FARKLI akış -> farklı kimlik (bellek izolasyonu)
+  expect_false(identical(
+    mergen_build_langflow_session_id(42, 1001, flow_id = "flow-abc"),
+    mergen_build_langflow_session_id(42, 1001, flow_id = "flow-xyz")
+  ))
+
+  # Akış kimliği kimliğe eklenir
+  expect_identical(
+    mergen_build_langflow_session_id(42, 1001, flow_id = "flow-abc"),
+    "mergen_42_1001_flow-abc"
+  )
 })
 
 test_that("extract_langflow_chat_text gerçekçi Chat Output yanıt şekillerinden metni çıkarır", {
