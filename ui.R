@@ -37,7 +37,10 @@ ui <- dashboardPage(
         menuSubItem("Kayıtlı Söyleşiler", tabName = "saved_chats", icon = icon("bookmark")),
         menuSubItem("Görsel Galerisi", tabName = "image_gallery", icon = icon("images"))
       ),
-      menuItem("Bilge Yolaç", tabName = "claude_code", icon = icon("terminal")),
+      menuItem("Bilge Yolaç", icon = icon("terminal"), startExpanded = FALSE,
+        menuSubItem("Çalışma Alanı", tabName = "claude_code", icon = icon("terminal")),
+        menuSubItem("Oturumlar", tabName = "claude_code_sessions", icon = icon("clock-rotate-left"))
+      ),
       menuItem("Dosya Yönetimi", tabName = "files", icon = icon("folder")),
       menuItem("Ayarlar", icon = icon("cog"), startExpanded = FALSE,
         menuSubItem("Kişiselleştirme", tabName = "settings_kisisel", icon = icon("palette")),
@@ -416,8 +419,11 @@ ui <- dashboardPage(
       # Görsel Galerisi Sekmesi
       tabItem(tabName = "image_gallery", imageGalleryUI("image_gallery_module")),
       
-      # Claude Code Sekmesi
+      # Claude Code Sekmesi (Bilge Yolaç > Çalışma Alanı)
       tabItem(tabName = "claude_code", claudeCodeUI("claude_code_module")),
+
+      # Bilge Yolaç Oturumları Sekmesi (kalıcı ajan oturum geçmişi)
+      tabItem(tabName = "claude_code_sessions", claudeCodeSessionsUI("claude_code_sessions_module")),
 
       # Dosya Yönetimi Sekmesi
       tabItem(tabName = "files", fileManagerUI("file_manager_module")),

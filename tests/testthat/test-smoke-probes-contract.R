@@ -136,11 +136,16 @@ testthat::test_that("navigation and file-manager probes stay aligned with real U
     ui_text,
     c(
       'menuItem("Ana Söyleşi", tabName = "chat"',
-      'menuItem("Bilge Yolaç", tabName = "claude_code"',
+      # Bilinçli güncelleme: Bilge Yolaç artık genişleyebilir bir gruptur;
+      # Çalışma Alanı (claude_code) ve Oturumlar (claude_code_sessions)
+      # alt sekmeleri menuSubItem ile tanımlanır.
+      'menuSubItem("Çalışma Alanı", tabName = "claude_code"',
+      'menuSubItem("Oturumlar", tabName = "claude_code_sessions"',
       "tabItems(",
       "tabItem(",
       'tabName = "chat"',
       'tabItem(tabName = "claude_code", claudeCodeUI("claude_code_module"))',
+      'tabItem(tabName = "claude_code_sessions", claudeCodeSessionsUI("claude_code_sessions_module"))',
       'tabItem(tabName = "files", fileManagerUI("file_manager_module"))'
     ),
     "Navigation smoke gerçek UI tab anchor'larıyla hizalı değil:"

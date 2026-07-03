@@ -299,6 +299,12 @@ cc_bind_server_setup <- function(input,
       rv$active_runtime_workdir <- NULL
       rv$active_runtime_source <- NULL
 
+      # Kalıcı oturum bağını kopar (geçmiş silinmez); bir sonraki çalıştırma
+      # yeni bir kalıcı oturum kaydı açar.
+      if (exists("cc_persist_detach_session", mode = "function", inherits = TRUE)) {
+        cc_persist_detach_session(rv)
+      }
+
       log_info(paste(
         CLAUDE_CODE_LOG_PREFIX,
         "Model değişti, oturum sıfırlandı. Yeni model:",
@@ -420,6 +426,15 @@ cc_bind_server_setup <- function(input,
   })
 
   observeEvent(input$workdir, {
+    # Kayıtlı oturum hidrasyonu workdir'i geri yüklerken bu observer'ın
+    # yeni yüklenen oturumun resume bağlarını sıfırlamaması gerekir; bayrak
+    # yalnızca o tek güncelleme için reset'i bastırır.
+    if (isTRUE(rv$suppress_workdir_reset_once)) {
+      rv$suppress_workdir_reset_once <- FALSE
+      observe_dir_contents()
+      return()
+    }
+
     rv$cli_session_id <- NULL
     rv$conversation_context <- list()
     # Yeni proje dizini seçildiğinde önceki aynalanmış runtime klasörünün
@@ -427,6 +442,12 @@ cc_bind_server_setup <- function(input,
     # oturumu farklı runtime klasöründe oluşur ve takip çağrıları başarısız olur.
     rv$active_runtime_workdir <- NULL
     rv$active_runtime_source <- NULL
+
+    # Kalıcı oturum bağını kopar; eski oturum Oturumlar sayfasında kalır.
+    if (exists("cc_persist_detach_session", mode = "function", inherits = TRUE)) {
+      cc_persist_detach_session(rv)
+    }
+
     observe_dir_contents()
   }, ignoreInit = TRUE)
 
@@ -439,6 +460,13 @@ cc_bind_server_setup <- function(input,
     # çalıştırmada Claude CLI taze bir oturum kuracaktır.
     rv$active_runtime_workdir <- NULL
     rv$active_runtime_source <- NULL
+
+    # ÇIKTIYI TEMİZLE KALICI GEÇMİŞİ SİLMEZ: yalnızca aktif oturum bağı
+    # koparılır; kayıtlar Bilge Yolaç > Oturumlar sayfasında erişilebilir
+    # kalır ve bir sonraki çalıştırma yeni bir kalıcı oturum açar.
+    if (exists("cc_persist_detach_session", mode = "function", inherits = TRUE)) {
+      cc_persist_detach_session(rv)
+    }
 
     session$sendCustomMessage(
       type = "cc-clear-output",

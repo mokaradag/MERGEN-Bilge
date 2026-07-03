@@ -138,6 +138,17 @@ Disiplin kuralları:
 | Doğrulama kanıtı | `cloud-quick` ile tam VM doğrulaması aynı şey değildir. | [`../CLAUDE.md`](../CLAUDE.md), [`../RUNBOOK.md`](../RUNBOOK.md), `tools/ai_validate.sh` |
 | Maintainability ratchet ve browser smoke | Frontend karmaşıklığı ve UX regresyonları kontrollü tutulur. `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` veya açık `MERGEN_BROWSER_BIN` browser smoke'u bloklayıcı yapar; `MERGEN_BROWSER_UX_BASE_URL` external-app modunda zaten çalışan app'i test eder. Başarılı kanıt `UX_SMOKE_DONE:PASS` işaretidir. | `tests/scripts/frontend_complexity_doctor.R`, `tests/scripts/ai_browser_ux_smoke.R` |
 | Seam/bölge sahiplik yönetişimi | Üretim-kritik sınırların sahipliği, guard testleri ve manifest disiplini tek haritadan doğrulanır. | `R/config_seam_registry.R`, `R/config_ui_asset_zones.R`, `tests/scripts/seam_doctor.R` |
+| Bilge Yolaç kalıcı oturum katmanı | Ajan oturumları `MB_Chats`/`MB_Messages`'tan ayrı `MB_ClaudeCode_*` tablolarında saklanır; persist hatası canlı yanıtı asla bozmamalı, tablolar yoksa bellek-içi mod korunmalıdır. | [`database-schema.md`](database-schema.md), `docs/sql/2026-07-bilge-yolac-sessions.sql`, `R/helpers_db_claude_code_sessions.R`, `R/helpers_claude_code_session_persistence.R` |
+
+### Bilge Yolaç oturum saklama mimarisi
+
+Bilge Yolaç, Claude Code Web benzeri kalıcı bir ajan oturum deneyimi sunar. Katman sahipliği:
+
+- **DB katmanı**: `R/helpers_db_claude_code_session_queries.R` (saf başlık/kısaltma/SQL üreticileri) + `R/helpers_db_claude_code_sessions.R` (parametreli SQL orkestrasyonu, kullanıcı-izole liste/yükleme/yumuşak silme, tablo-yok güvenli düşüş). Tablolar: `MB_ClaudeCode_Sessions` + `MB_ClaudeCode_Runs` (bkz. [`database-schema.md`](database-schema.md)).
+- **Runtime persist köprüsü**: `R/helpers_claude_code_session_persistence.R` — çalıştırma öncesi oturum kaydı açma (`cc_persist_session_begin`), akış sonu başarılı/başarısız/durdurulan çalıştırma kalıcılaştırma (`cc_persist_run_result`), bağ koparma (`cc_persist_detach_session`; Çıktıyı Temizle/model/workdir değişimi geçmişi SİLMEZ) ve test edilebilir hidrasyon planı (`cc_session_hydration_plan`; resume güvenlik kontrolü dahil).
+- **Workbench oturum API'si**: `R/helpers_claude_code_workbench_session_api.R` — `claudeCodeServer()`'ın Oturumlar sayfasına açtığı `load_persisted_session` (geçmiş her zaman görünür; CLI `--resume` yalnızca runtime dizini erişilebilirse kurulur) ve `start_new_session` fonksiyonlarını üretir.
+- **Oturumlar sayfası**: `R/module_claude_code_sessions_ui.R` (UI + saf kart/rozet/zaman üreticileri) + `R/module_claude_code_sessions.R` (liste/filtre/detay/arşiv sunucusu). Navigasyon: `Bilge Yolaç > Çalışma Alanı` (`claude_code`) ve `Bilge Yolaç > Oturumlar` (`claude_code_sessions`).
+- **Frontend**: `www/js/claude_code_sessions.js` (`cc-hydrate-session` işleyicisi; mesaj görünümünü `window.MergenClaudeCode.addMessage` köprüsüyle tek kaynaktan yeniden oynatır) + `www/css/claude_code_sessions.css` (tamamı tema token'lı; koyu/açık tema otomatik).
 
 ## Ana Dizinler
 

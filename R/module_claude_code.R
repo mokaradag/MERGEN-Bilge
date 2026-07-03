@@ -10,7 +10,7 @@
 # ==============================================================================
 
 claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
-                              user_first_name = NULL) {
+                              user_first_name = NULL, parent_session = NULL) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -39,7 +39,16 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # Takip eden sorularda Claude CLI --resume oturumunun bozulmaması için
       # aynalanmış runtime klasörünü ve onun kaynak workdir eşleşmesini sakla.
       active_runtime_workdir = NULL,
-      active_runtime_source = NULL
+      active_runtime_source = NULL,
+      # Kalıcı oturum (MB_ClaudeCode_Sessions) bağları: kayıt kimliği, başlık,
+      # hidrasyonla yüklenme durumu ve tablo erişilebilirlik önbelleği.
+      claude_session_record_id = NULL,
+      claude_session_loaded = FALSE,
+      claude_session_title = NULL,
+      claude_session_persistence_available = NULL,
+      # Oturum hidrasyonu workdir'i geri yüklerken input$workdir observer'ının
+      # oturum bağlarını sıfırlamasını bir defalığına bastırır.
+      suppress_workdir_reset_once = FALSE
     )
 	
     dir_refresh_guard <- cc_create_dir_refresh_guard()
@@ -343,6 +352,22 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # Kullanıcı adını al
       ad <- kullanici_adi()
 
+      # Kalıcı oturum kaydını garanti et. Tablolar yoksa veya DB hatası
+      # olursa sessizce bellek-içi moda düşer; çalıştırma asla engellenmez.
+      if (exists("cc_persist_session_begin", mode = "function", inherits = TRUE)) {
+        cc_persist_session_begin(
+          rv = rv,
+          user_id = effective_user_id,
+          prompt = kullanici_prompt,
+          workdir = workdir_policy$path %||% kaynak_calisma_dizini,
+          source_workdir = kaynak_calisma_dizini,
+          runtime_workdir = calisma_dizini,
+          model = model,
+          runtime_model = efektif_model,
+          character_id = karakter_id
+        )
+      }
+
       # Karşılama ekranını gizle, mesaj alanı aktif
       rv$has_messages <- TRUE
 
@@ -578,6 +603,29 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 	  observe_dir_contents = observe_dir_contents
 	)
 
-    invisible(NULL)
+    # --- Çalışma alanı başlığındaki kompakt "Oturumlar" bağlantısı ---
+    observeEvent(input$open_sessions_page, {
+      if (!is.null(parent_session)) {
+        shinydashboard::updateTabItems(parent_session, "tabs", "claude_code_sessions")
+      }
+    })
+
+    # --- Oturumlar sayfasına açılan oturum API'si ---
+    # Kayıtlı oturumu çalışma alanına yükleme (hidrasyon) ve yeni oturum
+    # başlatma; ayrıntılar R/helpers_claude_code_workbench_session_api.R.
+    workbench_session_api <- cc_create_workbench_session_api(
+      session = session,
+      input = input,
+      ns = ns,
+      rv = rv,
+      ensure_ready_user_id = ensure_ready_user_id,
+      get_active_character = get_active_character,
+      kullanici_adi = kullanici_adi
+    )
+
+    list(
+      load_persisted_session = workbench_session_api$load_persisted_session,
+      start_new_session = workbench_session_api$start_new_session
+    )
   })
 }

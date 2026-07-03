@@ -1797,6 +1797,19 @@ Bilge Yolaç, proje içinde ayrı bir ürün katmanı gibi düşünülebilir. Kl
 - güvenlik denetimi
 - serbest komut
 
+### Kalıcı Oturumlar (Bilge Yolaç > Oturumlar)
+
+Bilge Yolaç, Claude Code Web benzeri kalıcı bir ajan oturum deneyimi sunar. Navigasyonda "Bilge Yolaç" artık genişleyebilir bir gruptur: **Çalışma Alanı** (`claude_code`; mevcut ajan tezgahı) ve **Oturumlar** (`claude_code_sessions`; kalıcı oturum yönetim sayfası). Çalışma alanı başlığındaki kompakt "Oturumlar" düğmesi de aynı sayfaya götürür.
+
+Operasyonel davranış:
+
+- **Saklama:** Her çalışma alanı sohbeti, ilk komutla birlikte `MB_ClaudeCode_Sessions` tablosunda bir oturum kaydı açar; her komut/yanıt/araç çalıştırması (başarılı, başarısız, durdurulan ve zaman aşımına uğrayan dahil) `MB_ClaudeCode_Runs` tablosuna eklenir. Bu aile `MB_Chats`/`MB_Messages`'tan kasıtlı olarak ayrıdır (bkz. [`database-schema.md`](database-schema.md)).
+- **Aşamalı devreye alma:** Tablolar kurulmamışsa (`docs/sql/2026-07-bilge-yolac-sessions.sql` henüz uygulanmadıysa) uygulama uyarı loglar ve Bilge Yolaç bellek-içi modda tam çalışmaya devam eder; Oturumlar sayfası açık bir kurulum yönergesi gösterir. Persist hatası hiçbir durumda canlı ajan yanıtını bozmaz.
+- **Oturumlar sayfası:** Özet metrikler (toplam oturum, devam edilebilir, hatalı oturum, dosyalı çalıştırma, son etkinlik), arama + durum/model/sıralama filtreleri, zengin oturum kartları (başlık, proje dizini, son komut önizlemesi, model rozeti, resume durumu, çalıştırma/dosya sayaçları) ve çalıştırma zaman çizelgeli detay modali içerir. Liste sayfalıdır ("Daha Fazla Yükle") ve tüm sorgular kullanıcı-izoledir.
+- **Devam Et (resume):** Kayıtlı oturum çalışma alanına yüklendiğinde geçmiş mesajlar `cc-hydrate-session` ile yeniden oynatılır (mevcut mesaj render yolu tek kaynaktan kullanılır). Claude CLI `--resume` kimliği YALNIZCA oturumun runtime çalışma dizini hâlâ erişilebilirse geri kurulur; dizin silinmişse kullanıcı uyarılır, geçmiş salt görünür kalır ve takip soruları taze bir CLI oturumu başlatır ("No conversation found with session ID" hatası bu kontrolle önlenir).
+- **Çıktıyı Temizle / model / dizin değişimi:** Kalıcı geçmişi SİLMEZ; yalnızca aktif oturum bağını koparır. Bir sonraki komut yeni bir oturum kaydı açar; eski oturum Oturumlar sayfasında kalır. Arşivleme (yumuşak silme, `IsDeleted=1`) yalnızca Oturumlar sayfasındaki onaylı kullanıcı eylemiyle yapılır ve "Arşivlenmiş" filtresiyle erişilebilir kalır.
+- **Güvenlik/gizlilik:** Ham stream-json ~400.000 karakterde açık işaretle kesilir; araç kullanımı ve üretilen dosyalar için yalnızca kısaltılmış metadata saklanır; API anahtarı/token/ortam değişkeni/ikili içerik asla kalıcılaştırılmaz.
+
 ---
 
 ## Bilge Yolaç Eklenti Sistemi

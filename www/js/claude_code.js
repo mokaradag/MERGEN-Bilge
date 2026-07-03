@@ -254,6 +254,12 @@
     }
   }
 
+  // Oturum hidrasyonu (claude_code_sessions.js) mevcut mesaj render yolunu
+  // yeniden kullanabilsin diye dar bir ad-alanlı köprü aç. Üretimde başka
+  // tüketicisi yoktur; mesaj görünümü tek kaynaktan (addMessage) üretilir.
+  window.MergenClaudeCode = window.MergenClaudeCode || {};
+  window.MergenClaudeCode.addMessage = addMessage;
+
   // -------------------------------------------------------------------------
   // PROMPT DEĞER OKUMA YARDIMCISI
   // Shiny'nin raw textarea'dan değer okuması için prompt değerini gönderir

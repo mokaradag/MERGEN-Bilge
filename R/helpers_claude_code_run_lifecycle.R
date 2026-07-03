@@ -503,6 +503,27 @@ cc_handle_document_summary_run <- function(session,
         ))
       )
 
+      # Doküman özetleme çalıştırmasını da kalıcı oturum geçmişine yaz.
+      # Persist hatası canlı yanıtı etkilemez (helper güvenli değerlendirir).
+      if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
+        cc_persist_run_result(
+          rv = rv,
+          env = list(
+            prompt = kullanici_prompt,
+            tum_satirlar = character(0),
+            calisma_dizini = calisma_dizini,
+            kaynak_calisma_dizini = kaynak_calisma_dizini
+          ),
+          status = if (isTRUE(sonuc$success)) "completed" else "failed",
+          final_output = if (isTRUE(sonuc$success)) {
+            sonuc$output %||% ""
+          } else {
+            sonuc$error %||% "Bilinmeyen hata"
+          },
+          duration = sure
+        )
+      }
+
       cc_observe_dir_if_active(
         rv = rv,
         request_id = run_request_id,
@@ -535,6 +556,21 @@ cc_handle_document_summary_run <- function(session,
         tool_uses = list(),
         session_id = NULL
       )
+
+      # Beklenmeyen hatayla biten doküman çalıştırması da geçmişe yazılır.
+      if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
+        cc_persist_run_result(
+          rv = rv,
+          env = list(
+            prompt = kullanici_prompt,
+            tum_satirlar = character(0),
+            calisma_dizini = calisma_dizini,
+            kaynak_calisma_dizini = kaynak_calisma_dizini
+          ),
+          status = "failed",
+          final_output = hata_metni
+        )
+      }
 
       session$sendCustomMessage(
         type = "cc-add-message",

@@ -504,6 +504,39 @@ when `browser_console_errors` was unmeasured/NA.
 6. Logları ve sağlık panelini izleyin.
 7. Post-deploy smoke testlerini tamamlayın.
 
+### 9A. Bilge Yolaç oturum tabloları (bir kerelik kurulum)
+
+Bilge Yolaç kalıcı oturumları (`Bilge Yolaç > Oturumlar` sayfası) için iki yeni
+tablo gerekir: `MB_ClaudeCode_Sessions` ve `MB_ClaudeCode_Runs`. Kurulum
+UYGULAMA TARAFINDAN OTOMATİK YAPILMAZ; DBA/operatör SSMS üzerinden bir kez
+uygular.
+
+Kontrol listesi:
+
+1. DB yedeği alın (standart değişiklik prosedürü).
+2. `docs/sql/2026-07-bilge-yolac-sessions.sql` betiğini SSMS'te uygulayın.
+   Betik idempotenttir: tablolar/indeksler zaten varsa hiçbir şey yapmaz;
+   yıkıcı ifade (DROP/TRUNCATE/DELETE) içermez.
+3. Betiğin sonundaki doğrulama SELECT'i her iki tabloyu da listelemelidir.
+4. Uygulamayı yeniden başlatmaya gerek yoktur; tablo erişilebilirliği ilk
+   kullanım anında algılanır (FALSE sonucu 60 sn önbelleklenir).
+5. Doğrulama: Bilge Yolaç'ta kısa bir komut çalıştırın; ardından
+   `Bilge Yolaç > Oturumlar` sayfasında oturumun listelendiğini,
+   SSMS'te `MB_ClaudeCode_Sessions` / `MB_ClaudeCode_Runs` satırlarının
+   oluştuğunu ve Türkçe karakterli başlık/prompt değerlerinin mojibake
+   olmadığını kontrol edin.
+6. "Devam Et" akışını doğrulayın: oturumu Oturumlar sayfasından çalışma
+   alanına yükleyin, geçmişin geri oynatıldığını ve takip sorusunun
+   çalıştığını görün. "Çıktıyı Temizle"nin kalıcı kaydı SİLMEDİĞİNİ
+   (oturumun listede kalmaya devam ettiğini) teyit edin.
+
+Tablolar kurulmadan da Bilge Yolaç tam çalışır (bellek-içi mod); loglarda
+`MB_ClaudeCode_Sessions/MB_ClaudeCode_Runs tabloları erişilebilir değil`
+uyarısı görülür ve Oturumlar sayfası kurulum yönergesi gösterir. İlgili
+odaklı testler: `test-claude-code-sessions-db-behavior.R`,
+`test-claude-code-session-persistence-behavior.R`,
+`test-claude-code-sessions-module-contract.R`.
+
 ## 10. Dağıtım Sonrası Smoke Testleri
 
 - Ana sayfa açılıyor mu?

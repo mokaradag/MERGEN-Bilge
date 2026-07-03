@@ -1,0 +1,624 @@
+/* =============================================================================
+   Dosya Yolu: www/css/claude_code_sessions.css
+   Açıklama: Bilge Yolaç Oturumları sayfası stilleri. Tüm yüzeyler tema
+   token'ları üzerinden tanımlanır (theme_tokens.css); koyu ve açık tema
+   otomatik desteklenir, sabit koyu-tema rengi kullanılmaz.
+   ========================================================================== */
+
+.claude-code-sessions-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 50px);
+  overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.ccs-page-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 18px 22px 40px;
+}
+
+/* --- Başlık eylemleri ------------------------------------------------------ */
+
+.ccs-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ccs-header-actions .btn-modern {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ccs-workbench-btn,
+.ccs-refresh-btn {
+  background: var(--color-surface-2);
+  color: var(--color-text-soft);
+  border: 1px solid var(--color-border);
+}
+
+.ccs-workbench-btn:hover,
+.ccs-workbench-btn:focus-visible,
+.ccs-refresh-btn:hover,
+.ccs-refresh-btn:focus-visible {
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  border-color: var(--color-primary);
+}
+
+/* Çalışma alanı başlığındaki kompakt Oturumlar bağlantısı */
+.cc-sessions-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  margin-right: 10px;
+  border-radius: 18px;
+  font-size: 13px;
+  background: var(--color-surface-2);
+  color: var(--color-text-soft);
+  border: 1px solid var(--color-border);
+  transition: background-color 0.18s ease, border-color 0.18s ease,
+              color 0.18s ease;
+}
+
+.cc-sessions-link-btn:hover,
+.cc-sessions-link-btn:focus-visible {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+  color: var(--color-text);
+  outline: none;
+}
+
+/* --- Hero ------------------------------------------------------------------ */
+
+.ccs-hero {
+  margin-bottom: 16px;
+}
+
+.ccs-hero-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+.ccs-hero-subtitle .fa,
+.ccs-hero-subtitle .fas {
+  color: var(--color-primary);
+}
+
+/* --- Özet metrik kartları --------------------------------------------------- */
+
+.ccs-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.ccs-metric-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
+  box-shadow: var(--shadow-card);
+  min-width: 0;
+}
+
+.ccs-metric-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  font-size: 16px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.ccs-metric-success .ccs-metric-icon { color: var(--color-success); background: var(--color-surface-3); background: color-mix(in srgb, var(--color-success) 14%, transparent); }
+.ccs-metric-danger .ccs-metric-icon { color: var(--color-danger); background: var(--color-surface-3); background: color-mix(in srgb, var(--color-danger) 14%, transparent); }
+.ccs-metric-info .ccs-metric-icon { color: var(--color-info); background: var(--color-surface-3); background: color-mix(in srgb, var(--color-info) 14%, transparent); }
+.ccs-metric-muted .ccs-metric-icon { color: var(--color-muted); background: var(--color-surface-3); }
+
+.ccs-metric-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ccs-metric-label {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+/* --- Filtre çubuğu ----------------------------------------------------------- */
+
+.ccs-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(150px, 1fr));
+  gap: 12px;
+  align-items: end;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
+}
+
+.ccs-filter-item {
+  min-width: 0;
+}
+
+.ccs-filter-item .form-group {
+  margin-bottom: 0;
+}
+
+.ccs-filter-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ccs-filter-bar input.form-control,
+.ccs-filter-bar select.form-control {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.ccs-filter-bar input.form-control:focus,
+.ccs-filter-bar select.form-control:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-soft);
+  outline: none;
+}
+
+/* --- Oturum kartları ---------------------------------------------------------- */
+
+.ccs-sessions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+}
+
+.ccs-session-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  min-width: 0;
+  transition: transform 0.16s ease, box-shadow 0.16s ease,
+              border-color 0.16s ease;
+}
+
+.ccs-session-card:hover,
+.ccs-session-card:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.ccs-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ccs-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  min-width: 0;
+}
+
+.ccs-card-project {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--color-muted);
+  min-width: 0;
+}
+
+.ccs-card-project-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* Uzun yolun kuyruğu (asıl klasör adı) görünür kalsın */
+  text-align: left;
+}
+
+.ccs-card-preview {
+  font-size: 13px;
+  color: var(--color-text-soft);
+  background: var(--color-surface-2);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 8px;
+  padding: 8px 12px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+.ccs-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ccs-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: var(--color-surface-2);
+  color: var(--color-muted);
+  border: 1px solid var(--color-border-soft);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ccs-model-chip {
+  color: var(--color-info);
+  border-color: var(--color-border);
+  border-color: color-mix(in srgb, var(--color-info) 30%, transparent);
+}
+
+.ccs-resume-chip.ccs-resume-ok {
+  color: var(--color-success);
+  border-color: var(--color-border);
+  border-color: color-mix(in srgb, var(--color-success) 30%, transparent);
+}
+
+/* --- Durum rozetleri ---------------------------------------------------------- */
+
+.ccs-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ccs-badge-success {
+  color: var(--color-success);
+  background: var(--color-surface-3);
+  background: color-mix(in srgb, var(--color-success) 13%, transparent);
+}
+
+.ccs-badge-danger {
+  color: var(--color-danger);
+  background: var(--color-surface-3);
+  background: color-mix(in srgb, var(--color-danger) 13%, transparent);
+}
+
+.ccs-badge-warning {
+  color: var(--color-warning);
+  background: var(--color-surface-3);
+  background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+}
+
+.ccs-badge-info {
+  color: var(--color-info);
+  background: var(--color-surface-3);
+  background: color-mix(in srgb, var(--color-info) 13%, transparent);
+}
+
+.ccs-badge-archived,
+.ccs-badge-muted {
+  color: var(--color-muted);
+  background: var(--color-surface-3);
+}
+
+/* --- Kart eylem düğmeleri ------------------------------------------------------ */
+
+.ccs-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.ccs-card-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--color-surface-2);
+  color: var(--color-text-soft);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease,
+              color 0.16s ease;
+}
+
+.ccs-card-btn:hover,
+.ccs-card-btn:focus-visible {
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  outline: none;
+}
+
+.ccs-resume-btn:hover,
+.ccs-resume-btn:focus-visible {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.ccs-archive-btn:hover,
+.ccs-archive-btn:focus-visible {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.ccs-open-btn:hover,
+.ccs-open-btn:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* --- Boş / yükleniyor durumları -------------------------------------------------- */
+
+.ccs-empty-state,
+.ccs-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 24px;
+  text-align: center;
+  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  color: var(--color-muted);
+}
+
+.ccs-loading-state {
+  flex-direction: row;
+  border-style: solid;
+}
+
+.ccs-empty-icon {
+  font-size: 34px;
+  color: var(--color-primary);
+  opacity: 0.75;
+}
+
+.ccs-empty-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.ccs-empty-text {
+  margin: 0;
+  max-width: 560px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-muted);
+}
+
+/* --- Daha fazla yükle ------------------------------------------------------------ */
+
+.ccs-load-more-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+}
+
+.ccs-load-more-btn {
+  background: var(--color-surface-2);
+  color: var(--color-text-soft);
+  border: 1px solid var(--color-border);
+}
+
+.ccs-load-more-btn:hover,
+.ccs-load-more-btn:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-text);
+}
+
+/* --- Detay modali ---------------------------------------------------------------- */
+
+.ccs-detail-modal-content {
+  color: var(--color-text);
+}
+
+.ccs-detail-resume-note {
+  margin-bottom: 14px;
+}
+
+.ccs-detail-resume-note .ccs-status-badge {
+  white-space: normal;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.ccs-detail-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px 18px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border-soft);
+}
+
+.ccs-detail-meta-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ccs-detail-meta-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+}
+
+.ccs-detail-meta-value {
+  font-size: 13px;
+  color: var(--color-text-soft);
+  word-break: break-all;
+}
+
+.ccs-detail-timeline-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.ccs-run-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ccs-run-item {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border-soft);
+  border-left: 3px solid var(--color-primary);
+}
+
+.ccs-run-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.ccs-run-order {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.ccs-run-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+}
+
+.ccs-run-pre {
+  margin: 0 0 8px;
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: var(--color-surface-3);
+  border: 1px solid var(--color-border-soft);
+  color: var(--color-text-soft);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* --- Duyarlı düzen ------------------------------------------------------------------ */
+
+@media (max-width: 1100px) {
+  .ccs-filter-bar {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .ccs-page-body {
+    padding: 14px 12px 32px;
+  }
+
+  .ccs-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .ccs-sessions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ccs-header-actions .btn-text,
+  .ccs-header-actions span {
+    display: none;
+  }
+}
+
+/* --- Hareket azaltma tercihi ---------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .ccs-session-card,
+  .ccs-card-btn,
+  .cc-sessions-link-btn {
+    transition: none;
+  }
+
+  .ccs-session-card:hover,
+  .ccs-session-card:focus-visible {
+    transform: none;
+  }
+}

@@ -45,6 +45,13 @@ claudeCodeUI <- function(id) {
         ),
         div(
           class = "chat-header-right",
+          actionButton(
+            ns("open_sessions_page"),
+            label = tagList(icon("clock-rotate-left"), span("Oturumlar")),
+            class = "cc-sessions-link-btn",
+            title = "Bilge Yolaç Oturumları sayfasını aç",
+            `aria-label` = "Bilge Yolaç Oturumları sayfasını aç"
+          ),
           uiOutput(ns("connection_status_badge"))
         )
       ),

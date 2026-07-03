@@ -15,6 +15,17 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### (Yayınlanmadı) Bilge Yolaç kalıcı oturumları: Oturumlar sayfası ve Claude Code Web tarzı saklama
+
+Bilge Yolaç, kalıcı, devam edilebilir ve incelenebilir ajan oturumlarına kavuştu. Navigasyonda "Bilge Yolaç" genişleyebilir bir gruba dönüştü: **Çalışma Alanı** (mevcut ajan tezgahı, davranışı değişmedi) ve yeni **Oturumlar** sayfası.
+
+- **Saklama katmanı:** Yeni `MB_ClaudeCode_Sessions` + `MB_ClaudeCode_Runs` tabloları (MB_Chats/MB_Messages'tan kasıtlı olarak ayrı; kurulum betiği `docs/sql/2026-07-bilge-yolac-sessions.sql`, açılışta otomatik çalıştırılmaz). Her komut/yanıt/araç çalıştırması — başarılı, başarısız, durdurulan, zaman aşımına uğrayan — kullanıcı-izole olarak saklanır. Tablolar kurulmadıysa Bilge Yolaç uyarı loglayıp bellek-içi modda tam çalışmaya devam eder; persist hatası canlı yanıtı asla bozmaz.
+- **Oturumlar sayfası:** Özet metrikler, arama + durum/model/sıralama filtreleri, zengin oturum kartları (başlık, proje dizini, son komut önizlemesi, model rozeti, devam edilebilirlik, çalıştırma/dosya sayaçları, göreli zaman) ve çalıştırma zaman çizelgeli detay modali. Liste sayfalıdır; tamamı tema token'lı olduğundan koyu ve açık temada eksiksiz çalışır; azaltılmış-hareket tercihi desteklenir.
+- **Devam Et:** Kayıtlı oturum tek tıkla çalışma alanına yüklenir; geçmiş mesajlar (araç kullanımı bölümleri ve hâlâ mevcut üretilen-dosya kartları dahil) mevcut mesaj görünümüyle yeniden oynatılır. Claude CLI `--resume` yalnızca oturumun çalışma dizini hâlâ erişilebilirse kurulur; aksi halde geçmiş salt görünür kalır ve takip soruları taze CLI oturumu başlatır ("No conversation found with session ID" bu kontrolle önlenir).
+- **Güvenli temizleme:** "Çıktıyı Temizle", model veya proje dizini değişimi kalıcı geçmişi SİLMEZ; yalnızca aktif oturum bağını koparır. Arşivleme yumuşak silmedir ve yalnızca Oturumlar sayfasındaki onaylı eylemle yapılır.
+
+Yeni/değişen ana dosyalar: `R/helpers_db_claude_code_session_queries.R`, `R/helpers_db_claude_code_sessions.R`, `R/helpers_claude_code_session_persistence.R`, `R/helpers_claude_code_workbench_session_api.R`, `R/module_claude_code_sessions_ui.R`, `R/module_claude_code_sessions.R`, `www/js/claude_code_sessions.js`, `www/css/claude_code_sessions.css`, `docs/sql/2026-07-bilge-yolac-sessions.sql`.
+
 ### 2026-07-03 Başlangıç deneyimi yeniden tasarımı: Hızlı Başlangıç / Zengin Deneyim şeritleri
 
 Uygulama açılışı iki şeritli modele taşındı. Temel ilke: **Hızlı Başlangıç açılış yükünü kaldırır, işlevselliği kaldırmaz; Zengin Deneyim mevcut sinematik gösteriyi korur ve ilerleme ekranını daha şeffaf hâle getirir.**

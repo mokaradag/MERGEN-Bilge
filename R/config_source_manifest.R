@@ -137,6 +137,11 @@ source_manifest_sections <- list(
     "R/helpers_db_chat_readers.R",
     "R/helpers_db_chat_mutations.R",
     "R/helpers_db_feedback.R",
+    # Bilge Yolaç kalıcı oturum katmanı: SAF sorgu/başlık/kısaltma yardımcıları
+    # önce, DB orkestrasyon yardımcıları sonra yüklenir. MB_Chats/MB_Messages
+    # ailesinden ayrı MB_ClaudeCode_* tablolarını yönetir.
+    "R/helpers_db_claude_code_session_queries.R",
+    "R/helpers_db_claude_code_sessions.R",
     "R/helpers_database.R"
   ),
 
@@ -304,6 +309,12 @@ source_manifest_sections <- list(
     "R/helpers_claude_code_document_extractors.R",
     "R/helpers_claude_code_documents.R",
     "R/helpers_claude_code_document_summary.R",
+    # Kalıcı oturum runtime köprüsü: DB katmanı (database bölümü) ile çalışma
+    # alanı modülü arasında; run_lifecycle bu köprüdeki persist çağrılarını
+    # guard'lı exists() ile kullanır. Workbench oturum API fabrikası
+    # (hidrasyon + yeni oturum) module_claude_code.R tarafından çağrılır.
+    "R/helpers_claude_code_session_persistence.R",
+    "R/helpers_claude_code_workbench_session_api.R",
     "R/helpers_claude_code_run_lifecycle.R"
   ),
 
@@ -398,12 +409,14 @@ source_manifest_sections <- list(
   ),
 
   # module_claude_code: Bilge Yolaç modülleri: eklentiler, UI, akış, stream
-  # poll ve ana server modülü.
+  # poll, Oturumlar sayfası (UI + server) ve ana server modülü.
   module_claude_code = c(
     "R/module_claude_code_plugins.R",
     "R/module_claude_code_ui.R",
     "R/module_claude_code_akis.R",
     "R/module_claude_code_stream_poll.R",
+    "R/module_claude_code_sessions_ui.R",
+    "R/module_claude_code_sessions.R",
     "R/module_claude_code.R"
   ),
 

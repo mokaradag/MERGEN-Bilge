@@ -65,6 +65,10 @@
     nav(real_info)
   }, {
     session$flushReact()
+    # Yeni Shiny sürümleri testServer çıkışında modül oturumunu yok eder;
+    # kilit değerine blok DIŞINDAN erişim "session has been destroyed"
+    # hatası üretir. Bu yüzden anlık görüntü blok İÇİNDE alınır.
+    rec$lock_snapshot <- shiny::isolate(lock())
   })
 }
 
@@ -109,7 +113,7 @@ testthat::test_that("navigate_to_chat önbellekte/DB'de yoksa 'artık mevcut de�
   testthat::expect_true(any(grepl("artık mevcut değil veya silinmiş",
                                   .toast_msgs(fix$rec), fixed = TRUE)))
   # Yükleme kilidi tekrar serbest bırakılmalı.
-  testthat::expect_false(shiny::isolate(fix$rec$lock()))
+  testthat::expect_false(fix$rec$lock_snapshot)
 })
 
 testthat::test_that("navigate_to_chat geçerli ama bulunamayan kimlikte DB'den yüklemeyi dener", {

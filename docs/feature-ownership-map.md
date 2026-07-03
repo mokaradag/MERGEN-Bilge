@@ -330,8 +330,20 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **UI/server modülleri:** `R/module_claude_code_ui.R`, `R/module_claude_code.R`,
   `R/module_claude_code_akis.R`, `R/module_claude_code_stream_poll.R`,
   `R/module_claude_code_plugins.R`, `www/js/claude_code*.js`, `www/css/claude_code*.css`.
+- **Kalıcı oturumlar (Oturumlar sayfası):** DB katmanı
+  `R/helpers_db_claude_code_session_queries.R` + `R/helpers_db_claude_code_sessions.R`
+  (`MB_ClaudeCode_Sessions` / `MB_ClaudeCode_Runs`; kullanıcı-izole, yumuşak silme,
+  tablo-yok güvenli düşüş); runtime persist köprüsü
+  `R/helpers_claude_code_session_persistence.R` (begin/run-result/detach + hidrasyon
+  planı); workbench oturum API'si `R/helpers_claude_code_workbench_session_api.R`
+  (yükleme/yeni oturum); sayfa modülleri `R/module_claude_code_sessions_ui.R` +
+  `R/module_claude_code_sessions.R` (sekme `claude_code_sessions`); frontend
+  `www/js/claude_code_sessions.js` (`cc-hydrate-session`) +
+  `www/css/claude_code_sessions.css` (tema token'lı). Kurulum betiği:
+  `docs/sql/2026-07-bilge-yolac-sessions.sql`.
 - **DB/servis:** Claude Code CLI (`CLAUDE_CODE_CLI_PATH`); `bilge_yolac_downloads/`,
-  `bilge_yolac_plugins/`.
+  `bilge_yolac_plugins/`; kalıcı oturumlar için `MB_ClaudeCode_Sessions` /
+  `MB_ClaudeCode_Runs` (MB_Chats/MB_Messages'tan kasıtlı olarak ayrı).
 - **Testler:** `test-claude-code-security-policy-*`, `test-claude-code-prompt-path-policy-behavior.R`,
   `test-claude-code-run-lifecycle-contract.R`, `test-claude-code-stream-html-safety-contract.R`,
   `test-claude-code-workdir-*`, `test-cc-path-policy-collapse-behavior.R`,
@@ -358,7 +370,13 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `stage_claude_code_downloads`: üretilen dosya yalnızca izin verilen kökler
   içindeyse indirilebilir kart olur — kök-dışı traversal düşürülür),
   `test-claude-code-downloads-html-behavior.R`
-  (`format_claude_code_generated_downloads_html`: kart HTML + öznitelik escape XSS sınırı).
+  (`format_claude_code_generated_downloads_html`: kart HTML + öznitelik escape XSS sınırı),
+  `test-claude-code-sessions-db-behavior.R` (kalıcı oturum DB katmanı; gerçek SQLite ile
+  kullanıcı izolasyonu, Türkçe gidiş-dönüş, RunOrder, yumuşak silme, tablo-yok düşüşü),
+  `test-claude-code-session-persistence-behavior.R` (persist köprüsü + hidrasyon planı;
+  persist hatası canlı yanıtı kırmaz),
+  `test-claude-code-sessions-module-contract.R` (navigasyon/UI/manifest/JS-hidrasyon/
+  tema-token CSS sözleşmeleri).
 - **Smoke/kanıt:** Windows VM manuel akış (UNC/SSO/`.cmd`); cloud'da kanıtlanmaz.
 - **Bilinen risk / sıradaki hedef:** doküman ÖZETLEME orkestrasyonu (detay seviyesi,
   özet mesajları, `summarize_..._with_local_llm`, özet dosya yazımı)
