@@ -246,6 +246,13 @@
   window.MergenTheme = {
     DEFAULT: DEFAULT_THEME,
     get: function () {
+      // Sinematik koyu kilit yalnızca GÖRSEL data-theme özniteliğini zorlar;
+      // raporlanan tema kullanıcının gerçek tercihidir (pendingTheme). Aksi
+      // halde shiny:connected sırasında sunucuya 'dark' bildirilir ve sonraki
+      // "Ayarları Kaydet" açık tema tercihini sessizce kaybederdi.
+      if (cinematicDarkHold && isValidTheme(pendingTheme)) {
+        return pendingTheme;
+      }
       var html = document.documentElement;
       var attr = html ? html.getAttribute('data-theme') : null;
       return isValidTheme(attr) ? attr : DEFAULT_THEME;

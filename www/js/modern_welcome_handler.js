@@ -4,6 +4,8 @@
 $(document).ready(function() {
 
   var modernWelcomeBootTimer = null;
+  var laneDeferredBootPending = false;
+  var laneDeferredBootMessage = null;
 
 	function clearModernWelcomeBootTimer() {
 	  if (modernWelcomeBootTimer) {
@@ -14,6 +16,26 @@ $(document).ready(function() {
 
 	function bootModernWelcome(message, attempt) {
 	  attempt = attempt || 0;
+
+	  // Başlangıç şeridi henüz seçilmediyse (ilk açılış seçicisi açık) ağır
+	  // karşılama medyası BAŞLATILMAZ: çözülmemiş şerit zengin gibi ele alınıp
+	  // video/neural seçicinin arkasında yüklenirse, kullanıcı Hızlı Başlangıç
+	  // seçtiğinde ilk hızlı açılış medyayı gerçekten atlamamış olurdu. Boot,
+	  // şerit çözüldüğünde EN SON mesajla bir kez yeniden denenir.
+	  var laneApi = window.MergenStartupLane;
+	  if (laneApi &&
+		  typeof laneApi.needsSelection === 'function' && laneApi.needsSelection() &&
+		  typeof laneApi.whenResolved === 'function') {
+		laneDeferredBootMessage = message;
+		if (!laneDeferredBootPending) {
+		  laneDeferredBootPending = true;
+		  laneApi.whenResolved(function() {
+			laneDeferredBootPending = false;
+			bootModernWelcome(laneDeferredBootMessage, 0);
+		  });
+		}
+		return;
+	  }
 
 	  const MAX_ATTEMPTS = 80;
 	  const RETRY_DELAY_MS = 50;

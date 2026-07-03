@@ -43,6 +43,16 @@ startupScreenObserversInit <- function(input, session, settings_data, boot_ready
 	  # Giriş ekranı atlandı - işaretle
 	  session$userData$deep_space_dismissed <- TRUE
 
+	  # Atlama Hızlı Başlangıç şeridinden mi geldi? Şerit kaynaklı atlama,
+	  # kalıcı "Bir daha gösterme" (skip_intro) tercihine DÖNÜŞTÜRÜLMEZ; aksi
+	  # halde kullanıcı sonradan Zengin Deneyim'e dönünce sinematik giriş
+	  # kalıcı olarak kapalı kalırdı.
+	  lane_now <- tryCatch({
+		lp <- shiny::isolate(input$startup_lane_resolved)
+		if (is.list(lp)) lp$lane else lp
+	  }, error = function(e) NULL)
+	  fast_lane_active <- identical(as.character(lane_now %||% "")[1], "fast_lane")
+
 	  # Giriş ekranını tamamen atla - DOM'dan kaldır ve uygulamayı göster
 	  shinyjs::runjs("
 		(function() {
@@ -52,8 +62,13 @@ startupScreenObserversInit <- function(input, session, settings_data, boot_ready
 		  document.body.classList.add('app-ready');
 		})();
 	  ")
-	  # Ayarlar sayfasındaki onay kutusunu da senkronize et
-	  updateCheckboxInput(session, "settings_yapilandirma_module-show_intro_animation", value = FALSE)
+	  # Ayarlar sayfasındaki onay kutusunu yalnızca ESKİ skip_intro tercihi
+	  # için senkronize et. Bu onay kutusunun gözlemcisi skip_intro değerini
+	  # localStorage'a anında kalıcılaştırdığından, şerit kaynaklı atlamada
+	  # çağrılması hızlı şerit kullanımını kalıcı intro-kapatmaya çevirirdi.
+	  if (!fast_lane_active) {
+	    updateCheckboxInput(session, "settings_yapilandirma_module-show_intro_animation", value = FALSE)
+	  }
 
 	  # Giriş atlandığında varsayılan personanın rengini uygula
 	  char_id <- normalize_character_id(settings_data$selected_character)
@@ -79,12 +94,6 @@ startupScreenObserversInit <- function(input, session, settings_data, boot_ready
       # MusicManager ana teması önceki mod tercihine göre başlatılır.
       # Hızlı Başlangıç şeridinde açılışta müzik HİÇ başlatılmaz (katı
       # varsayılan); kullanıcı müziği uygulama içinden açabilir.
-      lane_now <- tryCatch({
-        lp <- shiny::isolate(input$startup_lane_resolved)
-        if (is.list(lp)) lp$lane else lp
-      }, error = function(e) NULL)
-      fast_lane_active <- identical(as.character(lane_now %||% "")[1], "fast_lane")
-
       if (!fast_lane_active) {
         shinyjs::delay(450, {
           session$sendCustomMessage("toggleMusic", list(

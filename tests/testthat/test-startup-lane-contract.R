@@ -137,6 +137,14 @@ testthat::test_that("app_loading_lane.js şerit çözümleme sözleşmesini uygu
   # Ayarlardan canlı şerit uygulama köprüsü
   testthat::expect_true(.startup_lane_has(txt, "applyStartupLane"))
 
+  # Çözüm kaynağı protokolü: dağıtım varsayılanı kullanıcı tercihi olarak
+  # sunucuya "stored/selector" gibi bildirilmez (Codex P2: env varsayılanının
+  # kalıcılaşması). Seçici seçimi "selector", kayıtlı tercih "stored",
+  # ortam varsayılanı "env_default" kaynağıyla gönderilir.
+  testthat::expect_true(.startup_lane_has(txt, 'source: "selector"'))
+  testthat::expect_true(.startup_lane_has(txt, 'source: "stored"'))
+  testthat::expect_true(.startup_lane_has(txt, 'source: "env_default"'))
+
   # Seçici/çözümleyici video-Three.js ön yüklemesi başlatmaz
   testthat::expect_false(.startup_lane_has(txt, "createElement(\"video\")"))
   testthat::expect_false(.startup_lane_has(txt, "THREE."))
@@ -205,6 +213,17 @@ testthat::test_that("başlangıç şeridi sunucu gözlemcisi çözümü işler v
   testthat::expect_true(.startup_lane_has(lane_txt, '"character_media_ready"'))
   testthat::expect_true(.startup_lane_has(lane_txt, "deferred = TRUE"))
 
+  # Yalnızca gerçek kullanıcı tercihleri (stored/selector) ayar durumuna
+  # yazılır; env_default kalıcılaştırılmaz (Codex P2). Sunucu köprüsü de
+  # kaynağı (getSource) taşımalıdır; aksi halde kaynaksız yeniden gönderim
+  # env varsayılanını kullanıcı tercihi gibi gösterirdi.
+  testthat::expect_true(.startup_lane_has(lane_txt, 'c("stored", "selector")'))
+  testthat::expect_true(.startup_lane_has(lane_txt, "user_choice"))
+  testthat::expect_true(.startup_lane_has(lane_txt, "getSource"))
+  lane_js <- .read_repo_text_startup_lane("www/js/app_loading_lane.js")
+  testthat::expect_true(.startup_lane_has(lane_js, "getSource"))
+  testthat::expect_true(.startup_lane_has(lane_js, "resolvedSource"))
+
   # Şerit çözülmeden intro kararı gönderilmez; hızlı şerit intro'yu atlar
   testthat::expect_true(.startup_lane_has(lane_txt, "window.MergenStartupLane"))
   testthat::expect_true(.startup_lane_has(lane_txt, "lane === 'fast_lane' ? true"))
@@ -215,6 +234,13 @@ testthat::test_that("başlangıç şeridi sunucu gözlemcisi çözümü işler v
   testthat::expect_true(.startup_lane_has(screen_txt, "startupLaneObserversInit(input, session, settings_data"))
   testthat::expect_true(.startup_lane_has(screen_txt, "fast_lane_active"))
   testthat::expect_true(.startup_lane_has(screen_txt, "if (!fast_lane_active)"))
+
+  # Şerit kaynaklı atlama, kalıcı "Bir daha gösterme" (skip_intro/
+  # show_intro_animation) tercihine dönüştürülmez (Codex P2): eski onay
+  # kutusu senkronizasyonu yalnızca hızlı şerit AKTİF DEĞİLKEN yapılır.
+  guard_pos <- regexpr("if (!fast_lane_active) {", screen_txt, fixed = TRUE)
+  chk_pos <- regexpr('updateCheckboxInput(session, "settings_yapilandirma_module-show_intro_animation", value = FALSE)', screen_txt, fixed = TRUE)
+  testthat::expect_true(guard_pos > 0 && chk_pos > 0 && guard_pos < chk_pos)
 })
 
 testthat::test_that("hızlı şeritte karşılama hazır-olma kontrolü video beklemez", {
@@ -230,6 +256,12 @@ testthat::test_that("hızlı şeritte modern karşılama video/neural başlatmaz
   txt <- .read_repo_text_startup_lane("www/js/modern_welcome_handler.js")
   testthat::expect_true(.startup_lane_has(txt, "mergen-fast-lane"))
   testthat::expect_true(.startup_lane_has(txt, "fastLaneWelcome"))
+
+  # Şerit seçici açıkken (çözülmemiş şerit) ağır karşılama medyası
+  # başlatılmaz; boot şerit çözüldüğünde yeniden denenir (Codex P2).
+  testthat::expect_true(.startup_lane_has(txt, "needsSelection"))
+  testthat::expect_true(.startup_lane_has(txt, "whenResolved"))
+  testthat::expect_true(.startup_lane_has(txt, "laneDeferredBootPending"))
   # Hızlı dalda selamlama yine başlatılır (karşılama + hızlı eylemler kalır)
   testthat::expect_true(.startup_lane_has(txt, "window.WelcomeGreeting.init(greetingText)"))
 
@@ -281,6 +313,10 @@ testthat::test_that("theme_manager.js sinematik koyu-tema kilidini uygular", {
   testthat::expect_true(.startup_lane_has(txt, "app-ready"))
   # Kilit bırakılınca kullanıcı teması geri uygulanır (pendingTheme)
   testthat::expect_true(.startup_lane_has(txt, "pendingTheme"))
+  # get() kilit sırasında GÖRSEL 'dark' yerine kullanıcı temasını raporlar;
+  # aksi halde mergen_theme_initial 'dark' bildirir ve sonraki kaydetme
+  # açık tema tercihini kaybederdi (Codex P2).
+  testthat::expect_true(.startup_lane_has(txt, "if (cinematicDarkHold && isValidTheme(pendingTheme))"))
 })
 
 testthat::test_that("sinematik başlangıç yüzeylerinde açık tema override'ı kalmaz", {

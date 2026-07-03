@@ -32,6 +32,7 @@
   var LANES = ["fast_lane", "rich_lane"];
 
   var resolvedLane = null;      // "fast_lane" | "rich_lane" | null (seçim bekliyor)
+  var resolvedSource = null;    // "stored" | "selector" | "env_default"
   var callbacks = [];
   var selectorOpen = false;
   var shinyNotifyTimer = null;
@@ -93,7 +94,11 @@
     }
   }
 
-  function notifyShiny(lane) {
+  // source: "stored" (kayıtlı kullanıcı tercihi), "selector" (ilk açılış
+  // seçimi) veya "env_default" (dağıtım varsayılanı). Sunucu yalnızca gerçek
+  // kullanıcı seçimlerini ayar durumuna yazar; dağıtım varsayılanı kullanıcı
+  // tercihi olarak KALICILAŞTIRILMAZ (operatör varsayılanı değişebilmeli).
+  function notifyShiny(lane, source) {
     if (shinyNotifyTimer) {
       window.clearTimeout(shinyNotifyTimer);
       shinyNotifyTimer = null;
@@ -102,6 +107,7 @@
       try {
         window.Shiny.setInputValue("startup_lane_resolved", {
           lane: lane,
+          source: source || "stored",
           ts: Date.now()
         }, { priority: "event" });
         return;
@@ -109,7 +115,7 @@
     }
     // Shiny henüz hazır değilse kısa aralıklarla yeniden dene.
     shinyNotifyTimer = window.setTimeout(function () {
-      notifyShiny(lane);
+      notifyShiny(lane, source);
     }, 120);
   }
 
@@ -129,12 +135,13 @@
     if (!lane) return;
 
     resolvedLane = lane;
+    resolvedSource = opts.source || resolvedSource || "stored";
     if (opts.persist === true) {
       persistLane(lane);
     }
     applyLaneClasses(lane);
     if (opts.notifyShiny !== false) {
-      notifyShiny(lane);
+      notifyShiny(lane, opts.source);
     }
     fireCallbacks(lane);
   }
@@ -165,7 +172,7 @@
       var lane = normalizeLane(card.getAttribute("data-lane"));
       if (!lane) return;
       // Kullanıcı seçimi kalıcıdır: bir sonraki açılışta tekrar sorulmaz.
-      commitLane(lane, { persist: true });
+      commitLane(lane, { persist: true, source: "selector" });
       hideSelector();
     }
 
@@ -182,8 +189,8 @@
     var el = selectorEl();
     if (!el) {
       // Seçici işaretlemesi yoksa güvenli varsayılan: zengin deneyim
-      // (mevcut davranış), kalıcılaştırmadan.
-      commitLane("rich_lane", { persist: false });
+      // (mevcut davranış), kalıcılaştırmadan ve kullanıcı tercihi saymadan.
+      commitLane("rich_lane", { persist: false, source: "env_default" });
       return;
     }
 
@@ -219,6 +226,12 @@
   window.MergenStartupLane = {
     get: function () {
       return resolvedLane;
+    },
+    // Çözüm kaynağı: sunucu köprüsü startup_lane_resolved'u yeniden
+    // gönderdiğinde de kaynak korunur; dağıtım varsayılanı kullanıcı
+    // tercihi gibi kalıcılaşamaz.
+    getSource: function () {
+      return resolvedSource;
     },
     isFast: function () {
       return resolvedLane === "fast_lane";
@@ -263,7 +276,7 @@
   function resolveOnBoot() {
     var stored = readStoredLane();
     if (stored) {
-      commitLane(stored, { persist: false });
+      commitLane(stored, { persist: false, source: "stored" });
       return;
     }
 
@@ -271,7 +284,7 @@
     if (envLane) {
       // Dağıtım varsayılanı kullanıcı tercihi olarak KALICI YAZILMAZ;
       // operatör varsayılanı değiştirirse yeni değer etkili olur.
-      commitLane(envLane, { persist: false });
+      commitLane(envLane, { persist: false, source: "env_default" });
       return;
     }
 

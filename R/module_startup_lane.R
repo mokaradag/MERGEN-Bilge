@@ -43,8 +43,16 @@ startupLaneObserversInit <- function(input, session, settings_data, boot_ready =
         if (window.MergenStartupLane &&
             typeof window.MergenStartupLane.whenResolved === 'function') {
           window.MergenStartupLane.whenResolved(function(lane) {
+            var src = 'stored';
+            try {
+              if (typeof window.MergenStartupLane.getSource === 'function' &&
+                  window.MergenStartupLane.getSource()) {
+                src = window.MergenStartupLane.getSource();
+              }
+            } catch(e) {}
             Shiny.setInputValue('startup_lane_resolved', {
               lane: lane,
+              source: src,
               ts: Date.now()
             }, {priority: 'event'});
             sendSkip(lane === 'fast_lane' ? true : readLegacySkip());
@@ -64,11 +72,19 @@ startupLaneObserversInit <- function(input, session, settings_data, boot_ready =
     lane <- mergen_normalize_startup_lane(lane_raw, default = "rich_lane")
     if (identical(lane, "ask_once")) lane <- "rich_lane"
 
+    # Çözüm kaynağı: "stored" / "selector" gerçek kullanıcı tercihidir;
+    # "env_default" dağıtım varsayılanıdır ve KULLANICI TERCİHİ OLARAK
+    # AYAR DURUMUNA YAZILMAZ. Aksi halde save_all_settings() ilgisiz bir
+    # kaydetmede dağıtım varsayılanını localStorage'a kalıcılaştırır ve
+    # operatörün sonraki varsayılan değişikliklerini geçersiz kılardı.
+    lane_source <- if (is.list(payload)) as.character(payload$source %||% "stored")[1] else "stored"
+    user_choice <- lane_source %in% c("stored", "selector")
+
     session$userData$startup_lane <- lane
-    if (!is.null(settings_data)) {
+    if (user_choice && !is.null(settings_data)) {
       settings_data$startup_lane <- lane
     }
-    cat(sprintf("[STARTUP] Başlangıç şeridi çözüldü: %s\n", lane))
+    cat(sprintf("[STARTUP] Başlangıç şeridi çözüldü: %s (kaynak: %s)\n", lane, lane_source))
 
     if (identical(lane, "fast_lane") &&
         !is.null(boot_ready) && is.function(boot_ready$mark)) {
