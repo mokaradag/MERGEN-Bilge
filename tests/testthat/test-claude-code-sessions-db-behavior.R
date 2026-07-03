@@ -421,9 +421,12 @@ test_that("kalıcı silme staged indirme dosyalarını run metadata silinmeden k
     options(mergen.claude_code_download_root = indirme_koku)
 
     sahipli_dosya <- file.path(indirme_koku, "user_1", "session_a", "rapor.txt")
+    diger_kullanici_dosya <- file.path(indirme_koku, "user_2", "session_b", "baska.txt")
     dis_dosya <- tempfile("silinmemeli_")
     dir.create(dirname(sahipli_dosya), recursive = TRUE)
+    dir.create(dirname(diger_kullanici_dosya), recursive = TRUE)
     writeLines("indirilebilir içerik", sahipli_dosya, useBytes = TRUE)
+    writeLines("başka kullanıcı içerik", diger_kullanici_dosya, useBytes = TRUE)
     writeLines("kök dışı içerik", dis_dosya, useBytes = TRUE)
 
     sid <- cc_db_create_session(user_id = 1L, title = "indirme silme testi", conn = conn)
@@ -432,18 +435,69 @@ test_that("kalıcı silme staged indirme dosyalarını run metadata silinmeden k
       prompt = "p",
       status = "completed",
       generated_downloads = list(
+        1,
         list(display_name = "rapor.txt", download_path = sahipli_dosya),
+        list(display_name = "başka.txt", download_path = diger_kullanici_dosya),
         list(display_name = "kök dışı.txt", download_path = dis_dosya)
       ),
       conn = conn
     )
 
     expect_true(file.exists(sahipli_dosya))
+    expect_true(file.exists(diger_kullanici_dosya))
     expect_true(file.exists(dis_dosya))
 
     expect_true(cc_db_hard_delete_session(user_id = 1L, session_record_id = sid, conn = conn))
     expect_false(file.exists(sahipli_dosya))
+    expect_true(file.exists(diger_kullanici_dosya))
     expect_true(file.exists(dis_dosya))
+  })
+})
+
+test_that("kalıcı silme DB commit başarısızsa staged indirme dosyasını silmez", {
+  .ccs_with_test_db(function(conn) {
+    indirme_koku <- tempfile("bilge_yolac_downloads_")
+    dir.create(indirme_koku, recursive = TRUE)
+    eski_kok <- getOption("mergen.claude_code_download_root", NULL)
+    on.exit({
+      if (is.null(eski_kok)) {
+        options(mergen.claude_code_download_root = NULL)
+      } else {
+        options(mergen.claude_code_download_root = eski_kok)
+      }
+      unlink(indirme_koku, recursive = TRUE, force = TRUE)
+    }, add = TRUE)
+    options(mergen.claude_code_download_root = indirme_koku)
+
+    sahipli_dosya <- file.path(indirme_koku, "user_1", "session_a", "rapor.txt")
+    dir.create(dirname(sahipli_dosya), recursive = TRUE)
+    writeLines("indirilebilir içerik", sahipli_dosya, useBytes = TRUE)
+
+    sid <- cc_db_create_session(user_id = 1L, title = "rollback testi", conn = conn)
+    cc_db_save_run(
+      sid,
+      prompt = "p",
+      status = "completed",
+      generated_downloads = list(list(display_name = "rapor.txt", download_path = sahipli_dosya)),
+      conn = conn
+    )
+    DBI::dbExecute(conn, "
+      CREATE TRIGGER fail_session_delete
+      BEFORE DELETE ON MB_ClaudeCode_Sessions
+      BEGIN
+        SELECT RAISE(FAIL, 'forced delete failure');
+      END")
+
+    expect_false(cc_db_hard_delete_session(user_id = 1L, session_record_id = sid, conn = conn))
+    expect_true(file.exists(sahipli_dosya))
+    expect_identical(
+      as.integer(DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM MB_ClaudeCode_Runs")$n[1]),
+      1L
+    )
+    expect_identical(
+      as.integer(DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM MB_ClaudeCode_Sessions")$n[1]),
+      1L
+    )
   })
 })
 

@@ -76,7 +76,12 @@ cc_db_restore_session <- function(user_id, session_record_id, conn = NULL) {
     if (is.null(indirmeler) || !length(indirmeler)) next
 
     for (dosya in indirmeler) {
-      yol <- as.character(dosya$download_path %||% "")[1]
+      if (!is.list(dosya)) next
+
+      yol <- tryCatch(
+        as.character(dosya[["download_path"]] %||% "")[1],
+        error = function(e) ""
+      )
       if (nzchar(yol)) {
         yollar <- c(yollar, yol)
       }
@@ -87,7 +92,7 @@ cc_db_restore_session <- function(user_id, session_record_id, conn = NULL) {
 }
 
 #' Staged Bilge Yolaç indirme yolunun global indirme kökü altında olduğunu doğrular.
-.cc_db_download_path_inside_root <- function(path_value, download_root = NULL) {
+.cc_db_download_path_inside_root <- function(path_value, user_id = NULL, download_root = NULL) {
   yol <- as.character(path_value %||% "")[1]
   if (!nzchar(yol)) return(FALSE)
 
@@ -109,17 +114,39 @@ cc_db_restore_session <- function(user_id, session_record_id, conn = NULL) {
   yol_norm <- sub("/+$", "", yol_norm, perl = TRUE)
   kok_norm <- sub("/+$", "", kok_norm, perl = TRUE)
 
-  identical(yol_norm, kok_norm) || startsWith(paste0(yol_norm, "/"), paste0(kok_norm, "/"))
+  if (!identical(yol_norm, kok_norm) &&
+      !startsWith(paste0(yol_norm, "/"), paste0(kok_norm, "/"))) {
+    return(FALSE)
+  }
+
+  kullanici_id <- suppressWarnings(as.integer(user_id %||% 0L)[1])
+  if (is.na(kullanici_id) || kullanici_id <= 0L) {
+    return(FALSE)
+  }
+
+  kullanici_etiketi <- if (exists("sanitize_claude_code_download_segment",
+                                  mode = "function", inherits = TRUE)) {
+    sanitize_claude_code_download_segment(
+      paste0("user_", as.character(kullanici_id)),
+      fallback = "user_0"
+    )
+  } else {
+    gsub("[^A-Za-z0-9._-]+", "_", paste0("user_", as.character(kullanici_id)), perl = TRUE)
+  }
+  kullanici_koku <- paste0(kok_norm, "/", kullanici_etiketi)
+
+  identical(yol_norm, kullanici_koku) ||
+    startsWith(paste0(yol_norm, "/"), paste0(kullanici_koku, "/"))
 }
 
 #' Kalıcı silinen oturumun staged indirme dosyalarını metadata silinmeden kaldırır.
-.cc_db_unlink_generated_downloads <- function(download_paths) {
+.cc_db_unlink_generated_downloads <- function(download_paths, user_id) {
   yollar <- unique(Filter(nzchar, as.character(download_paths %||% character(0))))
   if (!length(yollar)) return(invisible(0L))
 
   silinen <- 0L
   for (yol in yollar) {
-    if (!.cc_db_download_path_inside_root(yol)) next
+    if (!.cc_db_download_path_inside_root(yol, user_id = user_id)) next
     if (!isTRUE(file.exists(yol)) || isTRUE(dir.exists(yol))) next
 
     basarili <- tryCatch(
@@ -162,6 +189,7 @@ cc_db_hard_delete_session <- function(user_id, session_record_id, conn = NULL) {
   tx_conn <- handle$conn
   tx_begun <- FALSE
   tx_committed <- FALSE
+  indirme_yollari <- character(0)
 
   # after = FALSE: rollback bağlantı iadesinden ÖNCE çalışır (havuz sözleşmesi).
   on.exit(.cc_db_sessions_release(handle), add = TRUE)
@@ -201,7 +229,6 @@ cc_db_hard_delete_session <- function(user_id, session_record_id, conn = NULL) {
       indirme_yollari <- .cc_db_collect_generated_download_paths(
         indirme_satirlari$GeneratedDownloadsJson
       )
-      .cc_db_unlink_generated_downloads(indirme_yollari)
 
       # Alt kayıtlar önce (FK cascade olmayabilir). session_record_id ile
       # kapsanır; sahiplik yukarıda aynı işlemde doğrulandı.
@@ -226,6 +253,10 @@ cc_db_hard_delete_session <- function(user_id, session_record_id, conn = NULL) {
   },
   fallback = FALSE,
   uyari = "Bilge Yolaç oturumu kalıcı silinemedi:")
+
+  if (isTRUE(sonuc)) {
+    .cc_db_unlink_generated_downloads(indirme_yollari, user_id = user_id)
+  }
 
   invisible(isTRUE(sonuc))
 }
