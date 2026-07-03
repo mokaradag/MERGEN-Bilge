@@ -211,8 +211,9 @@ test_that("run_result başarılı/başarısız durumları DB katmanına doğru g
       expect_identical(save_args$status, "failed")
       expect_identical(save_args$exit_code, 1L)
       expect_true(grepl("özet çıkar", save_args$prompt, fixed = TRUE))
-      expect_identical(save_args$raw_stream_jsonl, "{\"a\":1}\n{\"b\":2}")
+      expect_null(save_args$raw_stream_jsonl)
       expect_identical(save_args$tool_uses[[1]]$name, "Bash")
+      expect_identical(save_args$tool_uses[[1]]$result, "out")
       expect_identical(save_args$generated_downloads[[1]]$display_name, "rapor.docx")
 
       expect_identical(update_args$cli_session_id, "cli-xyz")
@@ -270,6 +271,17 @@ test_that("araç/indirme küçültme yalnızca güvenli metadata bırakır ve ke
   expect_identical(slim[[1]]$input$file_path, "a.txt")
   expect_true(grepl("[[MERGEN-TRUNCATED]]", slim[[1]]$input$content, fixed = TRUE))
   expect_true(grepl("[[MERGEN-TRUNCATED]]", slim[[1]]$result, fixed = TRUE))
+
+  gizli_slim <- cc_persist_slim_tool_uses(list(list(
+    name = "Bash",
+    input = list(command = "env", note = "API_KEY=sk-testSECRET123456789"),
+    result = "TOKEN=ghp_secretSECRET123456789\nnormal çıktı"
+  )))
+  expect_false(grepl("sk-testSECRET", gizli_slim[[1]]$input$note, fixed = TRUE))
+  expect_false(grepl("ghp_secretSECRET", gizli_slim[[1]]$result, fixed = TRUE))
+  expect_true(grepl("[[MERGEN-REDACTED]]", gizli_slim[[1]]$input$note, fixed = TRUE))
+  expect_true(grepl("[[MERGEN-REDACTED]]", gizli_slim[[1]]$result, fixed = TRUE))
+
   # Skaler olmayan girdiler kalıcılaştırılmaz.
   expect_null(slim[[1]]$input$karmasik)
 
@@ -366,6 +378,17 @@ test_that("hidrasyon planı resume güvenliğini ve mesaj oynatmayı üretir", {
   expect_true(grepl("class='dl'", plan$messages[[2]]$content, fixed = TRUE))
   expect_identical(plan$messages[[2]]$toolContent, "<div class='tools'>1 araç</div>")
   expect_identical(arac_html_args[[1]]$name, "Write")
+
+  xss_kayit <- .ccsp_fake_record()
+  xss_kayit$runs$FinalOutput[1] <- "<img src=x onerror=alert(1)> **kalın**"
+  xss_plan <- cc_session_hydration_plan(
+    xss_kayit,
+    format_output_fn = function(x) paste0("<div class='fmt'>", x, "</div>"),
+    dir_exists_fn = function(p) TRUE,
+    file_exists_fn = function(p) FALSE
+  )
+  expect_false(grepl("<img", xss_plan$messages[[2]]$content, fixed = TRUE))
+  expect_true(grepl("&lt;img", xss_plan$messages[[2]]$content, fixed = TRUE))
 
   # Başarısız çalıştırma hata balonu olarak oynatılır.
   expect_identical(plan$messages[[4]]$type, "error")

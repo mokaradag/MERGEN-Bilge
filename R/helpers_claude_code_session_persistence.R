@@ -44,6 +44,32 @@
   if (length(deger) != 1L || is.na(deger)) "" else deger
 }
 
+
+# Kalıcılaştırılan araç metinlerinde yaygın gizli değer desenlerini maskeleyerek
+# transient tool çıktılarındaki anahtar/token/parola değerlerinin DB'ye çıplak
+# yazılmasını engeller. Bu, en iyi çaba redaksiyonudur; raw stream ayrıca hiç
+# saklanmaz.
+.cc_persist_redact_secrets <- function(x) {
+  metin <- .cc_persist_chr(x)
+  if (!nzchar(metin)) {
+    return(metin)
+  }
+
+  desenler <- c(
+    "(?i)(api[_-]?key|token|secret|password|passwd|pwd|authorization|bearer)(\\s*[:=]\\s*)([^\\s,;]+)",
+    "(?i)(sk-[A-Za-z0-9_-]{12,})",
+    "(?i)(gh[pousr]_[A-Za-z0-9_]{12,})",
+    "(?i)(xox[baprs]-[A-Za-z0-9-]{12,})"
+  )
+
+  metin <- gsub(desenler[1], "\\1\\2[[MERGEN-REDACTED]]", metin, perl = TRUE)
+  for (desen in desenler[-1]) {
+    metin <- gsub(desen, "[[MERGEN-REDACTED]]", metin, perl = TRUE)
+  }
+
+  metin
+}
+
 # Uzun metinleri kalıcılaştırma öncesi açık işaretle kısaltır.
 .cc_persist_kisalt <- function(x, sinir) {
   metin <- .cc_persist_chr(x)
@@ -151,7 +177,7 @@ cc_persist_detach_session <- function(rv) {
     for (ad in names(girdi)) {
       deger <- girdi[[ad]]
       if (is.character(deger) || is.numeric(deger) || is.logical(deger)) {
-        girdi_slim[[ad]] <- .cc_persist_kisalt(deger, max_input_chars)
+        girdi_slim[[ad]] <- .cc_persist_kisalt(.cc_persist_redact_secrets(deger), max_input_chars)
       }
     }
   }
@@ -160,7 +186,7 @@ cc_persist_detach_session <- function(rv) {
     name = .cc_persist_chr(arac$name),
     id = .cc_persist_chr(arac$id),
     input = girdi_slim,
-    result = .cc_persist_kisalt(arac$result %||% "", max_result_chars)
+    result = .cc_persist_kisalt(.cc_persist_redact_secrets(arac$result %||% ""), max_result_chars)
   )
 }
 
@@ -222,8 +248,10 @@ cc_persist_run_result <- function(rv,
   }
 
   sonuc <- .cc_persist_try({
-    ham_satirlar <- .cc_persist_try(env$tum_satirlar, fallback = character(0))
-
+    # env$tum_satirlar ham stream-json payload'ıdır ve tool-result içeriğinde
+    # env/.Renviron/komut çıktısı gibi gizli değerler bulunabilir. MB_ClaudeCode
+    # tablo sözleşmesi gereği bu transient ham akış DB'ye yazılmaz; yalnızca
+    # redakte edilmiş/kısaltılmış tool metadata'sı saklanır.
     run_id <- cc_db_save_run(
       session_record_id = kayit_id,
       prompt = .cc_persist_try(env$prompt, fallback = ""),
@@ -233,11 +261,7 @@ cc_persist_run_result <- function(rv,
       duration_seconds = duration,
       tool_uses = cc_persist_slim_tool_uses(tool_uses),
       generated_downloads = cc_persist_slim_downloads(downloads),
-      raw_stream_jsonl = if (length(ham_satirlar)) {
-        paste(ham_satirlar, collapse = "\n")
-      } else {
-        NULL
-      }
+      raw_stream_jsonl = NULL
     )
 
     kaynak_dizin <- .cc_persist_try(env$kaynak_calisma_dizini)
@@ -259,6 +283,39 @@ cc_persist_run_result <- function(rv,
   uyari = "Bilge Yolaç çalıştırması kalıcılaştırılamadı:")
 
   invisible(isTRUE(sonuc))
+}
+
+
+.cc_hydrate_safe_output_html <- function(run_output, format_output_fn = NULL) {
+  ham <- .cc_persist_chr(run_output)
+  if (!nzchar(ham)) {
+    return("")
+  }
+
+  if (exists("render_safe_markdown_html", mode = "function", inherits = TRUE)) {
+    return(.cc_persist_try(
+      render_safe_markdown_html(ham),
+      fallback = htmltools::htmlEscape(ham)
+    ))
+  }
+
+  # İzole test/debug yüklemelerinde güvenli renderer henüz kaynaklanmamışsa,
+  # formatlayıcıya ham HTML değil kaçışlanmış markdown verilir. Böylece
+  # cc-hydrate-session -> addMessage(innerHTML) yolu depolanmış markup'ı
+  # çalıştırılabilir HTML olarak yeniden canlandırmaz.
+  guvenli_markdown <- if (exists("mergen_escape_raw_html_for_markdown", mode = "function", inherits = TRUE)) {
+    mergen_escape_raw_html_for_markdown(ham)
+  } else {
+    gsub(">", "&gt;", gsub("<", "&lt;", ham, fixed = TRUE), fixed = TRUE)
+  }
+  if (is.function(format_output_fn)) {
+    return(.cc_persist_try(
+      format_output_fn(guvenli_markdown),
+      fallback = htmltools::htmlEscape(ham)
+    ))
+  }
+
+  htmltools::htmlEscape(ham)
 }
 
 #' Kayıtlı bir oturumdan çalışma alanı hidrasyon planı üretir (test edilebilir).
@@ -404,14 +461,10 @@ cc_session_hydration_plan <- function(record,
         )
       }
 
-      icerik <- if (is.function(format_output_fn)) {
-        .cc_persist_try(
-          format_output_fn(run_output),
-          fallback = htmltools::htmlEscape(run_output)
-        )
-      } else {
-        htmltools::htmlEscape(run_output)
-      }
+      icerik <- .cc_hydrate_safe_output_html(
+        run_output,
+        format_output_fn = format_output_fn
+      )
 
       mesajlar[[length(mesajlar) + 1L]] <- list(
         type = "assistant",
