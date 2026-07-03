@@ -19,6 +19,7 @@
 
 testthat::skip_if_not_installed("DBI")
 testthat::skip_if_not_installed("RSQLite")
+testthat::skip_if_not_installed("jsonlite")
 
 local({
   repo_root <- resolve_repo_root_for_tests()
@@ -401,6 +402,48 @@ test_that("kalıcı silme kullanıcı-izole ve geri alınamaz; alt kayıtları d
     # Var olmayan / geçersiz kimlik güvenli FALSE döner.
     expect_false(cc_db_hard_delete_session(user_id = 1L, session_record_id = 9999L, conn = conn))
     expect_false(cc_db_hard_delete_session(user_id = 0L, session_record_id = 1L, conn = conn))
+  })
+})
+
+test_that("kalıcı silme staged indirme dosyalarını run metadata silinmeden kaldırır", {
+  .ccs_with_test_db(function(conn) {
+    indirme_koku <- tempfile("bilge_yolac_downloads_")
+    dir.create(indirme_koku, recursive = TRUE)
+    eski_kok <- getOption("mergen.claude_code_download_root", NULL)
+    on.exit({
+      if (is.null(eski_kok)) {
+        options(mergen.claude_code_download_root = NULL)
+      } else {
+        options(mergen.claude_code_download_root = eski_kok)
+      }
+      unlink(indirme_koku, recursive = TRUE, force = TRUE)
+    }, add = TRUE)
+    options(mergen.claude_code_download_root = indirme_koku)
+
+    sahipli_dosya <- file.path(indirme_koku, "user_1", "session_a", "rapor.txt")
+    dis_dosya <- tempfile("silinmemeli_")
+    dir.create(dirname(sahipli_dosya), recursive = TRUE)
+    writeLines("indirilebilir içerik", sahipli_dosya, useBytes = TRUE)
+    writeLines("kök dışı içerik", dis_dosya, useBytes = TRUE)
+
+    sid <- cc_db_create_session(user_id = 1L, title = "indirme silme testi", conn = conn)
+    cc_db_save_run(
+      sid,
+      prompt = "p",
+      status = "completed",
+      generated_downloads = list(
+        list(display_name = "rapor.txt", download_path = sahipli_dosya),
+        list(display_name = "kök dışı.txt", download_path = dis_dosya)
+      ),
+      conn = conn
+    )
+
+    expect_true(file.exists(sahipli_dosya))
+    expect_true(file.exists(dis_dosya))
+
+    expect_true(cc_db_hard_delete_session(user_id = 1L, session_record_id = sid, conn = conn))
+    expect_false(file.exists(sahipli_dosya))
+    expect_true(file.exists(dis_dosya))
   })
 })
 
