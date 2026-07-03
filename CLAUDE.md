@@ -955,6 +955,26 @@ Startup loading overlay contract:
 - The Bilge Yolaç CLI auto connection test (`check_claude_code_status()` → `claude.cmd --version` via `processx` + `proc$wait`) is a synchronous subprocess and MUST stay off the boot-critical path. `R/helpers_claude_code_server_setup.R` defers it with `shinyjs::delay(...)` so it cannot block the boot event loop / freeze the progress bar; the connection badge stays in its "checking" state until then. Do not move this check back to an eager session-init `observe()`.
 - Keep `window.MergenAppLoading` as the small external control surface for startup loading state (`finish`, `setStage`, `reportMediaProgress`).
 
+### Startup lane contract (Hızlı Başlangıç / Zengin Deneyim)
+
+Startup runs on a two-lane model. Core principle: **fast lane removes startup weight, not functionality; rich lane preserves the current cinematic show and makes its progress screen more truthful.**
+
+- Lane resolution priority is: stored user preference (`mergen_settings.startup_lane`) > `MERGEN_STARTUP_LANE` env default > `ask_once` (first-boot selector). Canonical values are `fast_lane`, `rich_lane`, `ask_once`. The pure R resolver lives in `R/helpers_startup_lane.R`; the server-side lane observers live in `R/module_startup_lane.R` (called by `startupScreenObserversInit`); the client resolver plus first-boot selector live in `www/js/app_loading_lane.js`, inlined by `R/module_app_loading.R` BEFORE `www/js/app_loading.js`. Keep this inline order; the progress stage plan depends on the lane API existing first.
+- The first-boot lane selector is dark, two-card only (Hızlı Başlangıç / Zengin Deneyim), and must stay free of video, Three.js, and persona media. The user's choice is persisted immediately and the selector must not reappear once a preference exists. The intro decision (`startup_skip_intro`) is deferred until the lane is resolved so the deep-space scene never initializes under the selector.
+- Fast lane contract: the loading overlay closes on the chat-shell readiness set `connect` + `auth_ready` + `welcome_client_ready` (`mergen_fast_lane_required_boot_keys()` must stay identical to `FAST_LANE_REQUIRED` in `app_loading.js`). Fast lane never starts the deep-space intro, intro/background music at boot, cinematic/persona media warm-up, or the welcome video/neural animation (static premium dark gradients via `html.mergen-fast-lane` rules instead); `character_media_ready` is marked deferred (client `fast_lane_deferred` signal plus idempotent server mark). The welcome screen, quick action cards, chat input, send/stop, and model selector must all render in fast lane — a missing quick-action row in fast lane is a regression. Deferred pages (Kayıtlı Söyleşiler, Söyleşi Geçmişi, Görsel Galerisi, Dosya Yönetimi) must keep working fully when opened; do not delete or permanently disable features behind the fast lane.
+- Rich lane contract: the existing cinematic flow is preserved unchanged (deep-space intro, intro music, Keşfet, skip-intro checkbox, Odak/Dinamik/Bütünleşik cards, Bütünleşik character step, sequential full-buffer media warm-up, server `ready=true` completion). The progress screen shows real sub-progress counts for the media band ("· 4 / 12" via `reportMediaProgress(fraction, done, total)`) and an active-stage "· sürüyor" ticker after ~6s without progress; do not replace either with a synthetic trickle, and do not let 100% happen before required rich-lane readiness.
+- Cinematic dark hold: rich-lane startup surfaces (deep-space, startup Yenilikler badge/modal, Keşfet, mode selection, character step) are ALWAYS dark even when the app theme is light. `www/js/theme_manager.js` owns `holdCinematicDark()`/`releaseCinematicDark()` driven by the `body.deep-space-active`/`app-ready` lifecycle; the user's theme is restored when the flow dismisses. Do not reintroduce `html[data-theme="light"]` overrides for `.cinematic-modal-*`, startup `.surum-modal-*`, or `.deep-space-version-badge`; the Destek > Yenilikler PAGE light rules (`.destek-surum-tab`) stay (CLAUDE.md 1E).
+- Settings: the Yapılandırma "Başlangıç Deneyimi" card (`startup_experience_lane`, in `R/module_settings_yapilandirma_advanced_ui.R`) persists the lane via `saveSettings` and applies the html class live via the `applyStartupLane` message; Kişiselleştirme hides the Deneyim Modu cards under `html.mergen-fast-lane` with an explanatory note; reset returns the lane to `ask_once`.
+- All lane-aware code paths must degrade to legacy behavior when `window.MergenStartupLane` is absent (defensive backwards compatibility). `www/js/app_loading_lane.js` is an inlined overlay asset: keep it in `allowlisted_unmanifested_frontend_files` and `ui_asset_unmanifested_ownership`, never in `R/config_ui_assets.R`.
+
+Protected by:
+
+- `tests/testthat/test-startup-lane-resolver-behavior.R`
+- `tests/testthat/test-startup-lane-contract.R`
+- `tests/testthat/test-startup-screen-module-behavior.R`
+- `tests/testthat/test-source-manifest-sections-contract.R`
+- `tests/testthat/test-settings-yapilandirma-ui-id-surface-behavior.R`
+
 ### Startup media readiness and real-progress contract
 
 - Startup loading progress must be driven by real boot readiness checkpoints and media buffering progress, not by synthetic/time-based trickle.

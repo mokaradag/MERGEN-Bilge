@@ -93,11 +93,86 @@ app_loading_mark_svg <- function() {
   )
 }
 
+#' İlk açılış başlangıç şeridi seçicisi işaretlemesi
+#' @description Kayıtlı şerit tercihi yoksa gösterilen tam ekran, koyu temalı
+#'   iki kartlı seçici. Video, Three.js veya persona medyası GEREKTİRMEZ;
+#'   yalnızca hafif CSS mikro-animasyonları kullanır. Görünürlüğü
+#'   www/js/app_loading_lane.js yönetir (varsayılan gizli).
+#' @return tags$div
+app_loading_lane_selector_ui <- function() {
+  lane_card <- function(lane, title, desc, svg_path) {
+    tags$div(
+      class = "mlane-card",
+      `data-lane` = lane,
+      role = "button",
+      tabindex = "0",
+      `aria-label` = paste0(title, ": ", desc),
+      tags$div(class = "mlane-card-glow", `aria-hidden` = "true"),
+      tags$div(
+        class = "mlane-card-icon",
+        `aria-hidden` = "true",
+        HTML(paste0(
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ',
+          'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" ',
+          'aria-hidden="true" focusable="false">', svg_path, '</svg>'
+        ))
+      ),
+      tags$h3(class = "mlane-card-title", title),
+      tags$p(class = "mlane-card-desc", desc)
+    )
+  }
+
+  tags$div(
+    id = "mergen-lane-select",
+    class = "mlane-overlay",
+    hidden = "hidden",
+    role = "dialog",
+    `aria-modal` = "true",
+    `aria-labelledby` = "mlane-title",
+    tags$div(
+      class = "mlane-panel",
+      tags$h2(id = "mlane-title", class = "mlane-title", "Başlangıç Deneyiminizi Seçin"),
+      tags$p(
+        class = "mlane-subtitle",
+        "Tercihiniz kaydedilir; Ayarlar > Yapılandırma bölümünden dilediğinizde değiştirebilirsiniz."
+      ),
+      tags$div(
+        class = "mlane-cards",
+        lane_card(
+          "fast_lane",
+          "Hızlı Başlangıç",
+          "Doğrudan Ana Söyleşi'ye geç. Zengin medya ve diğer sayfalar gerektiğinde yüklenir.",
+          '<path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2Z"/>'
+        ),
+        lane_card(
+          "rich_lane",
+          "Zengin Deneyim",
+          "MERGEN Bilge'nin sinematik açılışını, Keşfet akışını ve gelişmiş deneyim modlarını kullan.",
+          paste0(
+            '<circle cx="12" cy="12" r="8.2"/>',
+            '<path d="M12 3.8v2.2M12 18v2.2M3.8 12H6M18 12h2.2"/>',
+            '<path d="m14.6 9.4-1.7 3.5-3.5 1.7 1.7-3.5 3.5-1.7Z"/>'
+          )
+        )
+      )
+    )
+  )
+}
+
 #' Uygulama Yükleme Ekranı UI
 #' @description Açılış yükleme katmanını üretir ve ayrı www varlıklarını
 #'   satır içine gömer. ui.R içinde mümkün olan en erken noktada çağrılmalıdır.
 #' @return Shiny tagList
 appLoadingUI <- function() {
+  # MERGEN_STARTUP_LANE dağıtım varsayılanı istemciye gömülür; şerit
+  # çözümleme önceliği istemcide: kayıtlı tercih > ortam varsayılanı >
+  # ask_once (ilk açılış seçicisi).
+  lane_env_default <- if (exists("mergen_startup_lane_env_default", mode = "function")) {
+    mergen_startup_lane_env_default()
+  } else {
+    "ask_once"
+  }
+
   tagList(
     tags$div(
       id = "app-loading-overlay",
@@ -140,8 +215,17 @@ appLoadingUI <- function() {
           tags$span("Başlatılıyor", class = "alo-status-text")
         )
       ),
-      # Satır içi stil ve betikler (ayrı www dosyalarından okunur)
+      # İlk açılış başlangıç şeridi seçicisi (kayıtlı tercih yoksa görünür)
+      app_loading_lane_selector_ui(),
+      # Satır içi stil ve betikler (ayrı www dosyalarından okunur).
+      # Şerit çözümleyici (app_loading_lane.js) ilerleme denetleyicisinden
+      # (app_loading.js) ÖNCE gömülür; ilerleme aşama planı şeride bağlıdır.
       tags$style(HTML(app_loading_asset("css/app_loading.css"))),
+      tags$script(HTML(sprintf(
+        "window.__mergenStartupLaneEnvDefault = %s;",
+        jsonlite::toJSON(lane_env_default, auto_unbox = TRUE)
+      ))),
+      tags$script(HTML(app_loading_asset("js/app_loading_lane.js"))),
       tags$script(HTML(app_loading_asset("js/app_loading_snippets.js"))),
       tags$script(HTML(app_loading_asset("js/app_loading_content.js"))),
       tags$script(HTML(app_loading_asset("js/app_loading_codestream.js"))),

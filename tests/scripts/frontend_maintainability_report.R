@@ -158,6 +158,7 @@ allowlisted_unmanifested_frontend_files <- c(
   # boyamada satır içine gömülür; bilinçli olarak UI manifestine eklenmez.
   "www/css/app_loading.css",
   "www/js/app_loading.js",
+  "www/js/app_loading_lane.js",
   "www/js/app_loading_codestream.js",
   "www/js/app_loading_snippets.js",
   "www/js/app_loading_content.js",

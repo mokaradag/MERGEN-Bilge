@@ -12,25 +12,14 @@
 #' @param settings_data Ayarlar modülünden dönen reaktif ayarlar
 startupScreenObserversInit <- function(input, session, settings_data, boot_ready = NULL) {
 
-  # Giriş ekranını başlat (Shiny bağlantısı kurulduğunda)
-  session$onFlushed(function() {
-    # localStorage'dan atlama tercihini kontrol et
-    shinyjs::runjs("
-      (function() {
-        try {
-          var raw = localStorage.getItem('mergen_settings');
-          if (raw) {
-            var s = JSON.parse(raw);
-            if (s.skip_intro === true) {
-              Shiny.setInputValue('startup_skip_intro', true, {priority: 'event'});
-              return;
-            }
-          }
-        } catch(e) {}
-        Shiny.setInputValue('startup_skip_intro', false, {priority: 'event'});
-      })();
-    ")
-  }, once = TRUE)
+  # Giriş ekranını başlat (Shiny bağlantısı kurulduğunda).
+  # Başlangıç şeridi (startup lane) çözümü istemcidedir
+  # (www/js/app_loading_lane.js): kayıtlı tercih > MERGEN_STARTUP_LANE >
+  # ilk açılış seçicisi. Şerit köprüsü ve şerit gözlemcisi
+  # R/module_startup_lane.R içindedir: şerit çözülene dek intro kararı
+  # bekletilir, Hızlı Başlangıç intro'yu her zaman atlar, zengin şeritte
+  # eski skip_intro tercihi aynen uygulanır.
+  startupLaneObserversInit(input, session, settings_data, boot_ready = boot_ready)
 
   ensure_welcome_screen_ready <- function() {
     if (isTRUE(session$userData$welcome_screen_attached)) {
@@ -88,12 +77,22 @@ startupScreenObserversInit <- function(input, session, settings_data, boot_ready
       # Giriş atlandığında, kayıtlı moda göre uygulama arka plan müziğini
       # ayarla. Derin uzay intro müziği bu akışta hiç çalmaz; yalnızca
       # MusicManager ana teması önceki mod tercihine göre başlatılır.
-      shinyjs::delay(450, {
-        session$sendCustomMessage("toggleMusic", list(
-          enabled = isTRUE(settings_data$enable_background_music),
-          character = char_id
-        ))
-      })
+      # Hızlı Başlangıç şeridinde açılışta müzik HİÇ başlatılmaz (katı
+      # varsayılan); kullanıcı müziği uygulama içinden açabilir.
+      lane_now <- tryCatch({
+        lp <- shiny::isolate(input$startup_lane_resolved)
+        if (is.list(lp)) lp$lane else lp
+      }, error = function(e) NULL)
+      fast_lane_active <- identical(as.character(lane_now %||% "")[1], "fast_lane")
+
+      if (!fast_lane_active) {
+        shinyjs::delay(450, {
+          session$sendCustomMessage("toggleMusic", list(
+            enabled = isTRUE(settings_data$enable_background_music),
+            character = char_id
+          ))
+        })
+      }
 
       # Karşılama ekranı zaten arkada kurulmuşsa tekrar yükleme yapma
       ensure_welcome_screen_ready()

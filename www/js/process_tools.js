@@ -68,6 +68,20 @@ if (window.Shiny) {
       Shiny.setInputValue('chat_process_flow', data.flow_key, {priority: 'event'});
     }
   });
+
+  // "Ayarları Sıfırla" akışı: gizli DOM akış seçicisini varsayılan (ilk)
+  // seçeneğe döndürür ve bayat input$chat_process_flow değerini BOŞ değerle
+  // ezer. Boş değer sunucudaki kalıcılaştırma gözlemcisi tarafından bilinçli
+  // olarak yok sayılır; böylece sıfırlama localStorage'a yeni bir akış yazmaz.
+  // Bu olmadan eski akış DOM'da kalır ve Süreç modu yeniden etkinleştirilince
+  // toggleProcessMode yayını sıfırlamayı sessizce geri alırdı.
+  Shiny.addCustomMessageHandler('resetProcessFlowSelect', function(data) {
+    var flowSelect = document.getElementById('chat_process_flow');
+    if (flowSelect && flowSelect.options && flowSelect.options.length > 0) {
+      flowSelect.selectedIndex = 0;
+    }
+    Shiny.setInputValue('chat_process_flow', '', {priority: 'event'});
+  });
 }
 
 console.log('[PROCESS_TOOLS] Süreç Yönetimi akış seçici yüklendi');

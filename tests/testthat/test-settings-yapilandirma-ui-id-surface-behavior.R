@@ -59,6 +59,8 @@ source(
   "enable_timestamps", "enable_typing_indicator", "enable_animations",
   "enable_widescreen", "enable_streaming", "enable_tool_backgrounds",
   "font_size", "show_intro_animation", "show_api_key_onboarding",
+  # Bilinçli güncelleme: Başlangıç Deneyimi (startup lane) kartı eklendi.
+  "startup_lane_card", "startup_experience_lane",
   "enable_tts_audio", "enable_background_music", "music_volume",
   "ai_expert_settings_card", "enable_ai_expert", "ai_expert_talk_length",
   "ai_expert_talk_frequency", "ai_expert_talk_style",
@@ -98,6 +100,7 @@ test_that("Yapılandırma UI tüm kart başlıklarını ve özel yapıları koru
   card_titles <- c(
     "Model Ayarları", "API Anahtarı Yönetimi", "Analiz Araçları",
     "Claude Code Yapılandırma", "Arayüz Ayarları", "Kısayollar",
+    "Başlangıç Deneyimi",
     "Ses Ayarları", "AI Uzman Konuşması", "Görsel Oluşturma Ayarları",
     "Özetleme Ayarları", "Proje ve Kaynak Analizi Ayarları"
   )

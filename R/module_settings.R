@@ -63,6 +63,8 @@ settingsInit <- function(session, parent_session = NULL) {
     music_volume            = 0.3,
     experience_mode         = "odak",
     show_intro_animation    = TRUE,
+    # Başlangıç şeridi: fast_lane/rich_lane/ask_once (ask_once = seçici sor)
+    startup_lane            = "ask_once",
     claude_code_timeout     = claude_code_config$timeout_seconds,
     claude_code_connection_ok = NULL
   )
@@ -98,6 +100,14 @@ settingsInit <- function(session, parent_session = NULL) {
       settings$experience_mode <- loaded$experience_mode
       kisisel$temp_experience_mode(loaded$experience_mode)
       session$sendCustomMessage("updateSettingsMode", list(mode = loaded$experience_mode))
+    }
+
+    # Başlangıç şeridi tercihi: yalnızca kesin şeritler geri yüklenir (çözüm
+    # istemcide, app_loading_lane.js); Yapılandırma radyosu senkronlanır.
+    lane_loaded <- as.character(loaded$startup_lane %||% "")[1]
+    if (!is.na(lane_loaded) && lane_loaded %in% c("fast_lane", "rich_lane")) {
+      settings$startup_lane <- lane_loaded
+      updateRadioButtons(session, "settings_yapilandirma_module-startup_experience_lane", selected = lane_loaded)
     }
 
     # --- Yapılandırma ayarlarını yükle ---
@@ -524,6 +534,8 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$music_volume             <- 0.3
     settings$experience_mode          <- "odak"
     settings$show_intro_animation     <- TRUE
+    # Şerit ask_once'a döner; sonraki açılışta seçici yeniden sorulur.
+    settings$startup_lane             <- "ask_once"
     settings$image_size               <- "1024x1024"
     settings$image_quality_hd         <- FALSE
     settings$summary_detail_level     <- "standard"
@@ -576,6 +588,11 @@ settingsInit <- function(session, parent_session = NULL) {
     session$sendCustomMessage("toggleExcelMode", list(active = FALSE))
     session$sendCustomMessage("toggleCodingMode", list(active = FALSE))
     session$sendCustomMessage("toggleProcessMode", list(active = FALSE))
+    # Gizli DOM akış seçicisini de varsayılana döndür ve bayat
+    # input$chat_process_flow değerini boş değerle ez. Aksi halde sıfırlama
+    # yalnızca sunucu/localStorage değerini temizler; bir sonraki
+    # toggleProcessMode(active=TRUE) yayını eski akışı yeniden kalıcılaştırırdı.
+    session$sendCustomMessage("resetProcessFlowSelect", list())
     session$sendCustomMessage("syncExcelDeepThinkingToChat", list(deep_thinking = FALSE, level = "low"))
     session$sendCustomMessage("syncCodingDeepThinkingToChat", list(deep_thinking = FALSE, level = "low"))
     # Tüm araçlar pasif olduğundan model seçim kilidini serbest bırak.
@@ -596,6 +613,9 @@ settingsInit <- function(session, parent_session = NULL) {
     updateSelectInput(session, paste0(ycfg_ns, "analysis_detail_level"), selected = "standart")
     updateNumericInput(session, paste0(ycfg_ns, "claude_code_timeout"), value = claude_code_config$timeout_seconds)
     updateSliderInput(session, paste0(ycfg_ns, "music_volume"), value = 0.3)
+    # Şerit radyosu seçimsiz; fast-lane sınıfı canlı kaldırılır (kalıcı yazım yok).
+    updateRadioButtons(session, paste0(ycfg_ns, "startup_experience_lane"), selected = character(0))
+    session$sendCustomMessage("applyStartupLane", list(lane = "rich_lane"))
 
     reset_true_checkboxes <- c(
       "enable_timestamps",

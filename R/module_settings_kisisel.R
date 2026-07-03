@@ -40,11 +40,25 @@ settingsKisiselUI <- function(id) {
           column(
             width = 12,
             # Deneyim Modu Seçim Kartı
+            # Not: Hızlı Başlangıç şeridinde mod kartları gizlenir ve yerine
+            # bilgilendirme notu gösterilir (html.mergen-fast-lane CSS kuralı,
+            # www/css/settings_page.css). Zengin Deneyim'de kartlar normaldir.
             div(
               class = "settings-card settings-mode-card",
               h3("Deneyim Modu", class = "settings-title"),
               p("Çalışma tarzınıza uygun modu seçin. Mod değişiklikleri ilgili ayarları otomatik günceller.",
                 class = "setting-description", style = "margin-bottom: 10px;"),
+              div(
+                class = "fast-lane-mode-note",
+                tags$i(class = "fas fa-bolt", `aria-hidden` = "true"),
+                tags$span(
+                  paste(
+                    "Hızlı Başlangıç etkin: Deneyim Modu kartları Zengin Deneyim'de",
+                    "kullanılabilir. Başlangıç deneyimini Yapılandırma sayfasındaki",
+                    "\"Başlangıç Deneyimi\" kartından değiştirebilirsiniz."
+                  )
+                )
+              ),
               div(
                 class = "settings-mode-container",
                 # Odak Modu

@@ -51,6 +51,27 @@ $(document).ready(function() {
 		return;
 	  }
 
+	  // Hızlı Başlangıç şeridi: sinematik arka plan videosu ve neural animasyon
+	  // varsayılan olarak başlatılmaz (statik premium koyu zemin CSS ile gelir).
+	  // Karşılama metni/selamlama normal şekilde çalışır. Özellik silinmez;
+	  // Zengin Deneyim'de tam davranış korunur.
+	  var fastLaneWelcome = document.documentElement.classList.contains('mergen-fast-lane');
+	  if (fastLaneWelcome) {
+		if (window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+		  try { window.WelcomeVideoPlayer.destroy(); } catch (e) {}
+		}
+		if (window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+		  try { window.WelcomeNeuralNetwork.destroy(); } catch (e) {}
+		}
+		if (window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+		  try { window.WelcomeGreeting.destroy(); } catch (e) {}
+		}
+		if (greetingText) {
+		  window.WelcomeGreeting.init(greetingText);
+		}
+		return;
+	  }
+
 	  // Video oynatıcı, aynı konteyner yeniden gönderildiğinde (kullanıcı
 	  // başka sekmeden Ana Söyleşi'ye dönerken) yeniden başlatılmamalıdır.
 	  // WelcomeVideoPlayer.init() aynı konteyner ile çağrıldığında otomatik

@@ -74,46 +74,10 @@ html[data-theme="light"] .character-extra-section h4 {
   color: var(--mb-brand-primary, #003087) !important;
 }
 
-html[data-theme="light"] .cinematic-modal-container {
-  background: rgba(10, 16, 38, 0.95) !important;
-  color: rgba(255, 255, 255, 0.92) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.55) !important;
-}
-
-html[data-theme="light"] .cinematic-modal-container * {
-  color: inherit;
-}
-
-html[data-theme="light"] .cinematic-modal-container h1,
-html[data-theme="light"] .cinematic-modal-container h2,
-html[data-theme="light"] .cinematic-modal-container h3 {
-  color: #00f2ff !important;
-  text-shadow: 0 0 18px rgba(0, 242, 255, 0.35) !important;
-}
-
-html[data-theme="light"] .cinematic-modal-container p,
-html[data-theme="light"] .cinematic-modal-container li {
-  color: rgba(255, 255, 255, 0.88) !important;
-  opacity: 1 !important;
-}
-
-html[data-theme="light"] .cinematic-modal-close {
-  color: rgba(255, 255, 255, 0.78) !important;
-  background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
-}
-
-html[data-theme="light"] .cinematic-modal-close:hover {
-  color: #00f2ff !important;
-  background: rgba(255, 255, 255, 0.10) !important;
-  border-color: rgba(0, 242, 255, 0.45) !important;
-}
-
-html[data-theme="light"] .cinematic-modal-container .btn {
-  color: #ffffff !important;
-  border-color: rgba(255, 255, 255, 0.30) !important;
-}
+/* Sinematik başlangıç modalı (.cinematic-modal-*) açık tema override'ları
+ * kaldırıldı: Zengin Deneyim başlangıç akışı theme_manager.js sinematik
+ * koyu-tema kilidi ile HER ZAMAN koyu görünümde çalışır; bu yüzeylere
+ * html[data-theme="light"] kuralı uygulanamaz (başlangıç şeridi sözleşmesi). */
 
 html[data-theme="light"] #settings_kisisel {
   background: transparent !important;

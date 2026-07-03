@@ -248,7 +248,10 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # çıkarıldı; ana kompozitör ve temel kartlar ayrı kaldı. Bütçeler geri birleşmeyi
   # ve yeni en-büyük-dosya pinini yakalar.
   assert_current_budget("R/module_settings_yapilandirma_ui.R", 430L, 8L)
-  assert_current_budget("R/module_settings_yapilandirma_advanced_ui.R", 370L, 6L)
+  # Bilinçli güncelleme: Başlangıç Deneyimi (startup lane) kartı
+  # (.syap_startup_lane_card) gelişmiş kart dosyasına eklendi (yeni ürün
+  # yüzeyi; ana kompozitör 430 bütçesinde kaldı). 370/6 -> 430/7.
+  assert_current_budget("R/module_settings_yapilandirma_advanced_ui.R", 430L, 7L)
 
   # Gerçek SSE worker-export globals listesi (reasoning delta / stop-file /
   # model request override yardımcıları) saf fabrikaya (helpers_llm_true_streaming_

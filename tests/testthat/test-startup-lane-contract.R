@@ -1,0 +1,392 @@
+# ==============================================================================
+# Dosya Yolu: tests/testthat/test-startup-lane-contract.R
+# Açıklama: Başlangıç deneyimi şeridi (Hızlı Başlangıç / Zengin Deneyim)
+#           statik sözleşme testleri. İki şerit modelinin parçalarını korur:
+#
+#           1) İlk açılış şerit seçicisi: koyu, iki kartlı, medyasız
+#           2) Hızlı şerit: sohbet-kabuğu hazır-olma sözleşmesi; intro/medya/
+#              müzik atlanır; hiçbir özellik silinmez
+#           3) Zengin şerit: mevcut sinematik akış korunur; ilerleme ekranı
+#              alt-ilerleme/etkin-aşama metni kazanır
+#           4) Sinematik başlangıç yüzeyleri HER ZAMAN koyu (tema kilidi)
+#           5) Ayarlar entegrasyonu: Yapılandırma kartı + Kişiselleştirme notu
+#
+#           Testler statiktir: tarayıcı/DB/LLM/ağ GEREKMEZ. Dosyalar Windows
+#           VM güvenli bayt-okuma deseniyle taranır.
+# ==============================================================================
+
+.startup_lane_repo_root <- function() {
+  resolve_repo_root_for_tests()
+}
+
+.read_repo_text_startup_lane <- function(rel_path) {
+  full_path <- file.path(.startup_lane_repo_root(), rel_path)
+  size <- suppressWarnings(file.info(full_path)$size[1])
+  if (is.na(size) || size <= 0) return("")
+  con <- file(full_path, open = "rb")
+  on.exit(close(con), add = TRUE)
+  raw_data <- readBin(con, what = "raw", n = size)
+  txt <- suppressWarnings(
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+  )
+  if (is.na(txt)) txt <- ""
+  enc2utf8(gsub("\r\n?|\r", "\n", txt, perl = TRUE))
+}
+
+.startup_lane_has <- function(txt, pattern) {
+  grepl(pattern, txt, fixed = TRUE, useBytes = TRUE)
+}
+
+# ------------------------------------------------------------------------------
+# 1) İlk açılış şerit seçicisi
+# ------------------------------------------------------------------------------
+
+testthat::test_that("appLoadingUI ilk açılış şerit seçicisini iki kartla üretir", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("jsonlite")
+  suppressMessages(library(shiny))
+
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  source(
+    file.path(.startup_lane_repo_root(), "R", "module_app_loading.R"),
+    encoding = "UTF-8",
+    local = env
+  )
+
+  ui <- withr::with_dir(.startup_lane_repo_root(), env$appLoadingUI())
+  html <- paste(as.character(ui), collapse = "\n")
+
+  # Seçici kökü: varsayılan gizli, erişilebilir diyalog
+  testthat::expect_true(grepl('id="mergen-lane-select"', html, fixed = TRUE))
+  testthat::expect_true(grepl('hidden="hidden"', html, fixed = TRUE))
+  testthat::expect_true(grepl('role="dialog"', html, fixed = TRUE))
+
+  # Tam olarak iki birincil kart: Hızlı Başlangıç + Zengin Deneyim
+  kart_sayisi <- length(gregexpr('class="mlane-card"', html, fixed = TRUE)[[1]])
+  testthat::expect_identical(kart_sayisi, 2L)
+  testthat::expect_true(grepl('data-lane="fast_lane"', html, fixed = TRUE))
+  testthat::expect_true(grepl('data-lane="rich_lane"', html, fixed = TRUE))
+  testthat::expect_true(grepl("Hızlı Başlangıç", html, fixed = TRUE))
+  testthat::expect_true(grepl("Zengin Deneyim", html, fixed = TRUE))
+
+  # Kart açıklamaları (ürün metni)
+  testthat::expect_true(grepl("Doğrudan Ana Söyleşi'ye geç", html, fixed = TRUE))
+  testthat::expect_true(grepl("sinematik açılışını", html, fixed = TRUE))
+
+  # Klavye erişimi: kartlar buton rolü ve tabindex taşır
+  testthat::expect_true(grepl('role="button"', html, fixed = TRUE))
+  testthat::expect_true(grepl('tabindex="0"', html, fixed = TRUE))
+
+  # Ortam varsayılanı istemciye gömülür
+  testthat::expect_true(grepl("__mergenStartupLaneEnvDefault", html, fixed = TRUE))
+})
+
+testthat::test_that("şerit seçicisi ağır medya bağımlılığı içermez", {
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  source(
+    file.path(.startup_lane_repo_root(), "R", "module_app_loading.R"),
+    encoding = "UTF-8",
+    local = env
+  )
+
+  selector_html <- paste(as.character(env$app_loading_lane_selector_ui()), collapse = "\n")
+
+  # Seçici işaretlemesi video/Three.js/persona medyası REFERANSI içermez;
+  # ikonlar satır içi hafif SVG'dir.
+  testthat::expect_false(grepl("<video", selector_html, fixed = TRUE))
+  testthat::expect_false(grepl("three", tolower(selector_html), fixed = TRUE))
+  testthat::expect_false(grepl(".mp4", selector_html, fixed = TRUE))
+  testthat::expect_false(grepl("characters/", selector_html, fixed = TRUE))
+  testthat::expect_true(grepl("<svg", selector_html, fixed = TRUE))
+
+  # Şerit çözümleyici betik, ilerleme denetleyicisinden ÖNCE gömülür.
+  module_txt <- .read_repo_text_startup_lane("R/module_app_loading.R")
+  lane_pos <- regexpr('js/app_loading_lane.js', module_txt, fixed = TRUE)
+  main_pos <- regexpr('app_loading_asset("js/app_loading.js")', module_txt, fixed = TRUE)
+  testthat::expect_true(lane_pos > 0 && main_pos > 0 && lane_pos < main_pos)
+})
+
+testthat::test_that("app_loading_lane.js şerit çözümleme sözleşmesini uygular", {
+  txt <- .read_repo_text_startup_lane("www/js/app_loading_lane.js")
+  testthat::expect_true(nzchar(txt))
+
+  # Kalıcılık: mergen_settings.startup_lane anahtarı
+  testthat::expect_true(.startup_lane_has(txt, "mergen_settings"))
+  testthat::expect_true(.startup_lane_has(txt, "settings.startup_lane"))
+
+  # Öncelik: kayıtlı tercih > ortam varsayılanı > seçici
+  testthat::expect_true(.startup_lane_has(txt, "readStoredLane"))
+  testthat::expect_true(.startup_lane_has(txt, "__mergenStartupLaneEnvDefault"))
+  testthat::expect_true(.startup_lane_has(txt, "showSelector"))
+
+  # Seçim kalıcıdır ve Shiny'e bildirilir
+  testthat::expect_true(.startup_lane_has(txt, "persist: true"))
+  testthat::expect_true(.startup_lane_has(txt, "startup_lane_resolved"))
+
+  # Hızlı şeritte intro atlama sınıfları erken uygulanır
+  testthat::expect_true(.startup_lane_has(txt, "mergen-fast-lane"))
+  testthat::expect_true(.startup_lane_has(txt, "mergen-skip-intro"))
+
+  # Dış API yüzeyi
+  testthat::expect_true(.startup_lane_has(txt, "window.MergenStartupLane"))
+  testthat::expect_true(.startup_lane_has(txt, "whenResolved"))
+  testthat::expect_true(.startup_lane_has(txt, "isSelectorOpen"))
+
+  # Ayarlardan canlı şerit uygulama köprüsü
+  testthat::expect_true(.startup_lane_has(txt, "applyStartupLane"))
+
+  # Seçici/çözümleyici video-Three.js ön yüklemesi başlatmaz
+  testthat::expect_false(.startup_lane_has(txt, "createElement(\"video\")"))
+  testthat::expect_false(.startup_lane_has(txt, "THREE."))
+})
+
+# ------------------------------------------------------------------------------
+# 2) Hızlı şerit boot sözleşmesi
+# ------------------------------------------------------------------------------
+
+testthat::test_that("app_loading.js hızlı ve zengin şerit ilerleme sözleşmelerini ayırır", {
+  txt <- .read_repo_text_startup_lane("www/js/app_loading.js")
+
+  # Hızlı şerit kapanış anahtarları R yardımcının kümesiyle aynı olmalı
+  # (mergen_fast_lane_required_boot_keys ile hizalı üç anahtar).
+  testthat::expect_true(.startup_lane_has(txt, "FAST_LANE_REQUIRED"))
+  testthat::expect_true(.startup_lane_has(
+    txt, '["connect", "auth_ready", "welcome_client_ready"]'
+  ))
+
+  # Hızlı şerit yüzde planı ve kapanış kontrolü
+  testthat::expect_true(.startup_lane_has(txt, "FAST_LANE_PCT"))
+  testthat::expect_true(.startup_lane_has(txt, "maybeFinishFastLane"))
+  testthat::expect_true(.startup_lane_has(txt, "isFastLane"))
+
+  # Hızlı şeritte medya bandı ilerleme sözleşmesine dahil değildir
+  testthat::expect_true(.startup_lane_has(txt, "if (isFastLane()) return;"))
+
+  # Zengin şerit alt-ilerleme sayaçları (ör. "4 / 12") ve etkin-aşama metni
+  testthat::expect_true(.startup_lane_has(txt, "reportMediaProgress(fraction, done, total)"))
+  testthat::expect_true(.startup_lane_has(txt, '" / "'))
+  testthat::expect_true(.startup_lane_has(txt, "sürüyor"))
+
+  # Seçici açıkken gözcü kapanışı ertelenir
+  testthat::expect_true(.startup_lane_has(txt, "laneSelectorOpen"))
+})
+
+testthat::test_that("app_loading_media.js hızlı şeritte ön yüklemeyi erteler, zengin şeridi korur", {
+  txt <- .read_repo_text_startup_lane("www/js/app_loading_media.js")
+
+  # Şerit çözümüne göre başlatma
+  testthat::expect_true(.startup_lane_has(txt, "startForLane"))
+  testthat::expect_true(.startup_lane_has(txt, "whenResolved"))
+  testthat::expect_true(.startup_lane_has(txt, "fast_lane_deferred"))
+
+  # Zengin şerit davranışı korunur: seri tam-tampon + tek yetkili handler
+  testthat::expect_true(.startup_lane_has(txt, "canplaythrough"))
+  testthat::expect_true(.startup_lane_has(txt, "loadExploreAllCharVideos"))
+  handler_kayit_sayisi <- length(gregexpr(
+    'addCustomMessageHandler("loadExploreAllCharVideos"', txt, fixed = TRUE
+  )[[1]])
+  testthat::expect_identical(handler_kayit_sayisi, 1L)
+
+  # Alt-ilerleme sayaçları ilerleme çubuğuna iletilir
+  testthat::expect_true(.startup_lane_has(txt, "reportMediaProgress(frac, bufferedCount, totalKnown)"))
+})
+
+testthat::test_that("başlangıç şeridi sunucu gözlemcisi çözümü işler ve hızlı şeritte medyayı erteler", {
+  lane_txt <- .read_repo_text_startup_lane("R/module_startup_lane.R")
+
+  # Şerit gözlemcisi ve oturum durumu
+  testthat::expect_true(.startup_lane_has(lane_txt, "input$startup_lane_resolved"))
+  testthat::expect_true(.startup_lane_has(lane_txt, "session$userData$startup_lane"))
+  testthat::expect_true(.startup_lane_has(lane_txt, "mergen_normalize_startup_lane"))
+
+  # Hızlı şeritte character_media_ready 'ertelendi' olarak işaretlenir
+  testthat::expect_true(.startup_lane_has(lane_txt, '"character_media_ready"'))
+  testthat::expect_true(.startup_lane_has(lane_txt, "deferred = TRUE"))
+
+  # Şerit çözülmeden intro kararı gönderilmez; hızlı şerit intro'yu atlar
+  testthat::expect_true(.startup_lane_has(lane_txt, "window.MergenStartupLane"))
+  testthat::expect_true(.startup_lane_has(lane_txt, "lane === 'fast_lane' ? true"))
+
+  # Başlangıç ekranı modülü şerit gözlemcilerini delege eder ve hızlı
+  # şeritte açılış müziğini başlatmaz (katı varsayılan).
+  screen_txt <- .read_repo_text_startup_lane("R/module_startup_screen.R")
+  testthat::expect_true(.startup_lane_has(screen_txt, "startupLaneObserversInit(input, session, settings_data"))
+  testthat::expect_true(.startup_lane_has(screen_txt, "fast_lane_active"))
+  testthat::expect_true(.startup_lane_has(screen_txt, "if (!fast_lane_active)"))
+})
+
+testthat::test_that("hızlı şeritte karşılama hazır-olma kontrolü video beklemez", {
+  txt <- .read_repo_text_startup_lane("R/server_welcome_handlers.R")
+  testthat::expect_true(.startup_lane_has(txt, "mergen-fast-lane"))
+  testthat::expect_true(.startup_lane_has(txt, "(fastLane || bgPlaying)"))
+  # Zengin şeritte video-oynuyor koşulu korunur
+  testthat::expect_true(.startup_lane_has(txt, "bgPlaying"))
+  testthat::expect_true(.startup_lane_has(txt, "welcome_client_ready"))
+})
+
+testthat::test_that("hızlı şeritte modern karşılama video/neural başlatmaz ama selamlamayı korur", {
+  txt <- .read_repo_text_startup_lane("www/js/modern_welcome_handler.js")
+  testthat::expect_true(.startup_lane_has(txt, "mergen-fast-lane"))
+  testthat::expect_true(.startup_lane_has(txt, "fastLaneWelcome"))
+  # Hızlı dalda selamlama yine başlatılır (karşılama + hızlı eylemler kalır)
+  testthat::expect_true(.startup_lane_has(txt, "window.WelcomeGreeting.init(greetingText)"))
+
+  # CSS: statik premium koyu zemin + gizlenen video/neural
+  css <- .read_repo_text_startup_lane("www/css/welcome_modern.css")
+  testthat::expect_true(.startup_lane_has(css, "html.mergen-fast-lane .modern-welcome-video-container video"))
+  testthat::expect_true(.startup_lane_has(css, "html.mergen-fast-lane .modern-welcome-neural-canvas"))
+
+  # Derin uzay sahnesi hızlı şeritte hiç görünmez
+  loading_css <- .read_repo_text_startup_lane("www/css/app_loading.css")
+  testthat::expect_true(.startup_lane_has(loading_css, "html.mergen-fast-lane #deep-space-container"))
+})
+
+# ------------------------------------------------------------------------------
+# 3) Zengin şerit korunumu (non-regression çapaları)
+# ------------------------------------------------------------------------------
+
+testthat::test_that("zengin şerit sinematik akışı eksiksiz kalır", {
+  ui_txt <- .read_repo_text_startup_lane("R/module_startup_screen_ui.R")
+
+  # Keşfet butonu, skip-intro onay kutusu, sürüm rozeti/modali
+  testthat::expect_true(.startup_lane_has(ui_txt, '"explore-btn"'))
+  testthat::expect_true(.startup_lane_has(ui_txt, "KEŞFET"))
+  testthat::expect_true(.startup_lane_has(ui_txt, "skip-intro-checkbox"))
+  testthat::expect_true(.startup_lane_has(ui_txt, "Bir daha gösterme"))
+  testthat::expect_true(.startup_lane_has(ui_txt, "surum-modal-overlay"))
+
+  # Üç deneyim modu kartı (Odak / Dinamik / Bütünleşik) ve karakter adımı
+  testthat::expect_true(.startup_lane_has(ui_txt, '"Odak"'))
+  testthat::expect_true(.startup_lane_has(ui_txt, '"Dinamik"'))
+  testthat::expect_true(.startup_lane_has(ui_txt, '"Bütünleşik"'))
+  testthat::expect_true(.startup_lane_has(ui_txt, "cinematic-character-step"))
+
+  # Giriş müziği veri etiketi korunur
+  testthat::expect_true(.startup_lane_has(ui_txt, "intro-music-data"))
+})
+
+# ------------------------------------------------------------------------------
+# 4) Sinematik başlangıç koyu-tema kilidi
+# ------------------------------------------------------------------------------
+
+testthat::test_that("theme_manager.js sinematik koyu-tema kilidini uygular", {
+  txt <- .read_repo_text_startup_lane("www/js/theme_manager.js")
+  testthat::expect_true(.startup_lane_has(txt, "holdCinematicDark"))
+  testthat::expect_true(.startup_lane_has(txt, "releaseCinematicDark"))
+  testthat::expect_true(.startup_lane_has(txt, "isCinematicDarkHeld"))
+  # Yaşam döngüsü sinyalleri body sınıflarından izlenir
+  testthat::expect_true(.startup_lane_has(txt, "deep-space-active"))
+  testthat::expect_true(.startup_lane_has(txt, "app-ready"))
+  # Kilit bırakılınca kullanıcı teması geri uygulanır (pendingTheme)
+  testthat::expect_true(.startup_lane_has(txt, "pendingTheme"))
+})
+
+testthat::test_that("sinematik başlangıç yüzeylerinde açık tema override'ı kalmaz", {
+  # Başlangıç mod seçim modalı: theme_light_* zincirinde light kuralı olmamalı
+  theme_files <- c(
+    "www/css/theme_light_core.css",
+    "www/css/theme_light_welcome.css",
+    "www/css/theme_light_chat.css",
+    "www/css/theme_light_modals.css",
+    "www/css/theme_light_bilge_yolac.css",
+    "www/css/theme_light_personalization.css",
+    "www/css/theme_light_pages.css"
+  )
+  for (f in theme_files) {
+    txt <- .read_repo_text_startup_lane(f)
+    testthat::expect_false(
+      .startup_lane_has(txt, 'html[data-theme="light"] .cinematic-modal'),
+      info = paste0(f, " sinematik başlangıç modalına light override uygulayamaz.")
+    )
+    testthat::expect_false(
+      .startup_lane_has(txt, 'html[data-theme="light"] .surum-modal-container'),
+      info = paste0(f, " başlangıç Yenilikler modalına light override uygulayamaz.")
+    )
+  }
+
+  # Bileşen CSS'i: başlangıç rozeti/modalının açık tema kabuğu kaldırıldı
+  surum_txt <- .read_repo_text_startup_lane("www/css/surum_bilgilendirme.css")
+  testthat::expect_false(
+    .startup_lane_has(surum_txt, 'html[data-theme="light"] .surum-modal-container')
+  )
+  testthat::expect_false(
+    .startup_lane_has(surum_txt, 'html[data-theme="light"] .deep-space-version-badge {')
+  )
+  testthat::expect_false(
+    .startup_lane_has(surum_txt, 'html[data-theme="light"] #surum-modal-content')
+  )
+  # Destek > Yenilikler SAYFASI rozetleri açık temada okunur kalmaya devam eder
+  # (CLAUDE.md 1E sözleşmesi): .destek-surum-tab light kuralları korunur.
+  testthat::expect_true(
+    .startup_lane_has(surum_txt, 'html[data-theme="light"] .destek-surum-tab')
+  )
+})
+
+# ------------------------------------------------------------------------------
+# 5) Ayarlar entegrasyonu
+# ------------------------------------------------------------------------------
+
+testthat::test_that("Yapılandırma Başlangıç Deneyimi kartını ve gözlemcisini içerir", {
+  # Kompozitör kartı çağırır; kartın kendisi gelişmiş kart dosyasındadır.
+  ui_txt <- .read_repo_text_startup_lane("R/module_settings_yapilandirma_ui.R")
+  testthat::expect_true(.startup_lane_has(ui_txt, ".syap_startup_lane_card(ns)"))
+
+  adv_txt <- .read_repo_text_startup_lane("R/module_settings_yapilandirma_advanced_ui.R")
+  testthat::expect_true(.startup_lane_has(adv_txt, ".syap_startup_lane_card"))
+  testthat::expect_true(.startup_lane_has(adv_txt, '"Başlangıç Deneyimi"'))
+  testthat::expect_true(.startup_lane_has(adv_txt, "startup_experience_lane"))
+  testthat::expect_true(.startup_lane_has(adv_txt, '"fast_lane"'))
+  testthat::expect_true(.startup_lane_has(adv_txt, '"rich_lane"'))
+
+  srv_txt <- .read_repo_text_startup_lane("R/module_settings_yapilandirma.R")
+  testthat::expect_true(.startup_lane_has(srv_txt, "input$startup_experience_lane"))
+  testthat::expect_true(.startup_lane_has(srv_txt, 'saveSettings", list(startup_lane = lane)'))
+  testthat::expect_true(.startup_lane_has(srv_txt, '"applyStartupLane"'))
+})
+
+testthat::test_that("ayarlar koordinatörü şerit varsayılanını, yüklemeyi ve sıfırlamayı yönetir", {
+  txt <- .read_repo_text_startup_lane("R/module_settings.R")
+  # Varsayılan ask_once (ilk açılışta seçici)
+  testthat::expect_true(.startup_lane_has(txt, 'startup_lane            = "ask_once"'))
+  # localStorage'tan geri yükleme yalnızca kesin şeritleri kabul eder
+  testthat::expect_true(.startup_lane_has(txt, 'loaded$startup_lane'))
+  testthat::expect_true(.startup_lane_has(txt, 'c("fast_lane", "rich_lane")'))
+  # Sıfırlama: ask_once + radyo temizliği + canlı sınıf geri alma
+  testthat::expect_true(.startup_lane_has(txt, 'settings$startup_lane             <- "ask_once"'))
+  testthat::expect_true(.startup_lane_has(txt, '"startup_experience_lane"), selected = character(0)'))
+  testthat::expect_true(.startup_lane_has(txt, 'applyStartupLane", list(lane = "rich_lane")'))
+})
+
+testthat::test_that("Kişiselleştirme hızlı şeritte Deneyim Modu kartlarını gizler, zengin şeritte gösterir", {
+  kisisel_txt <- .read_repo_text_startup_lane("R/module_settings_kisisel.R")
+  testthat::expect_true(.startup_lane_has(kisisel_txt, "fast-lane-mode-note"))
+  testthat::expect_true(.startup_lane_has(kisisel_txt, "Hızlı Başlangıç etkin"))
+  # Kartların kendisi silinmez (Zengin Deneyim'de görünür)
+  testthat::expect_true(.startup_lane_has(kisisel_txt, "settings-mode-container"))
+
+  css_txt <- .read_repo_text_startup_lane("www/css/settings_page.css")
+  testthat::expect_true(.startup_lane_has(css_txt, "html.mergen-fast-lane .settings-mode-container"))
+  testthat::expect_true(.startup_lane_has(css_txt, "html.mergen-fast-lane .fast-lane-mode-note"))
+})
+
+# ------------------------------------------------------------------------------
+# 6) Manifest / varlık sahipliği
+# ------------------------------------------------------------------------------
+
+testthat::test_that("şerit yardımcıları manifest ve varlık sahipliğinde kayıtlıdır", {
+  manifest_txt <- .read_repo_text_startup_lane("R/config_source_manifest.R")
+  testthat::expect_true(.startup_lane_has(manifest_txt, '"R/helpers_startup_lane.R"'))
+  testthat::expect_true(.startup_lane_has(manifest_txt, '"R/module_startup_lane.R"'))
+  # Yardımcı, appLoadingUI'den önce yüklenmelidir
+  helper_pos <- regexpr('"R/helpers_startup_lane.R"', manifest_txt, fixed = TRUE)
+  loading_pos <- regexpr('"R/module_app_loading.R"', manifest_txt, fixed = TRUE)
+  testthat::expect_true(helper_pos > 0 && loading_pos > 0 && helper_pos < loading_pos)
+
+  zones_txt <- .read_repo_text_startup_lane("R/config_ui_asset_zones.R")
+  testthat::expect_true(.startup_lane_has(zones_txt, '"js/app_loading_lane.js"'))
+
+  report_txt <- .read_repo_text_startup_lane("tests/scripts/frontend_maintainability_report.R")
+  testthat::expect_true(.startup_lane_has(report_txt, '"www/js/app_loading_lane.js"'))
+})

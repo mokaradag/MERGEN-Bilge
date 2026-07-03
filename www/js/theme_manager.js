@@ -88,6 +88,21 @@
     }
   }
 
+  // ============================================================
+  // Sinematik açılış koyu-tema kilidi
+  // ============================================================
+  // Zengin Deneyim başlangıç akışı (derin uzay girişi, Yenilikler rozeti/
+  // modalı, Keşfet, mod seçimi ve Bütünleşik karakter adımı) HER ZAMAN koyu
+  // sinematik görünümde kalmalıdır — kullanıcının uygulama teması açık olsa
+  // bile. Kilit aktifken <html data-theme> görsel olarak "dark" tutulur;
+  // kullanıcının gerçek tercihi (pendingTheme) korunur ve sinematik akış
+  // kapandığında (body.app-ready / deep-space-active kaldırılınca) geri
+  // uygulanır. Böylece hiçbir html[data-theme="light"] kuralı sinematik
+  // açılış yüzeylerine sızamaz; uygulama açılış sonrası açık temada
+  // çalışmaya devam eder.
+  var cinematicDarkHold = false;
+  var pendingTheme = null;
+
   function applyThemeAttribute(theme) {
     if (!isValidTheme(theme)) {
       theme = DEFAULT_THEME;
@@ -98,10 +113,66 @@
       return DEFAULT_THEME;
     }
 
+    if (cinematicDarkHold) {
+      // Kilit aktif: tercih hatırlanır, görünür tema koyu kalır.
+      pendingTheme = theme;
+      html.setAttribute('data-theme', 'dark');
+      html.classList.remove('theme-dark', 'theme-light');
+      html.classList.add('theme-dark');
+      return theme;
+    }
+
     html.setAttribute('data-theme', theme);
     html.classList.remove('theme-dark', 'theme-light');
     html.classList.add('theme-' + theme);
     return theme;
+  }
+
+  function holdCinematicDark() {
+    if (cinematicDarkHold) return;
+    cinematicDarkHold = true;
+    var html = document.documentElement;
+    if (!html) return;
+    var current = html.getAttribute('data-theme');
+    pendingTheme = isValidTheme(current) ? current : DEFAULT_THEME;
+    html.setAttribute('data-theme', 'dark');
+    html.classList.remove('theme-dark', 'theme-light');
+    html.classList.add('theme-dark');
+  }
+
+  function releaseCinematicDark() {
+    if (!cinematicDarkHold) return;
+    cinematicDarkHold = false;
+    var restore = isValidTheme(pendingTheme) ? pendingTheme : DEFAULT_THEME;
+    pendingTheme = null;
+    // Kullanıcı temasına animasyonsuz dön; tercih zaten kalıcı olduğundan
+    // yeniden persist edilmez, sunucu bilgilendirilmez (görsel geri dönüş).
+    applyThemeAttribute(restore);
+    dispatchThemeChange(restore);
+  }
+
+  // Sinematik akış sinyalleri body sınıflarından izlenir:
+  //   deep-space-active eklendi  -> koyu kilit
+  //   app-ready eklendi veya deep-space-active kalktı -> kilidi bırak
+  function watchCinematicLifecycle() {
+    var body = document.body;
+    if (!body || typeof MutationObserver !== 'function') return;
+    if (window.__mergenCinematicThemeWatch) return;
+    window.__mergenCinematicThemeWatch = true;
+
+    function evaluate() {
+      var active = body.classList.contains('deep-space-active') &&
+        !body.classList.contains('app-ready');
+      if (active) {
+        holdCinematicDark();
+      } else {
+        releaseCinematicDark();
+      }
+    }
+
+    var observer = new MutationObserver(evaluate);
+    observer.observe(body, { attributes: true, attributeFilter: ['class'] });
+    evaluate();
   }
 
   function dispatchThemeChange(theme) {
@@ -190,6 +261,12 @@
     },
     isDark: function () {
       return window.MergenTheme.get() === 'dark';
+    },
+    // Sinematik açılış koyu-tema kilidi (Zengin Deneyim başlangıç akışı).
+    holdCinematicDark: holdCinematicDark,
+    releaseCinematicDark: releaseCinematicDark,
+    isCinematicDarkHeld: function () {
+      return cinematicDarkHold;
     }
   };
 
@@ -363,10 +440,12 @@
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () {
       bindDelegatedToggle();
+      watchCinematicLifecycle();
       syncThemeToggleVisuals(window.MergenTheme.get());
     });
   } else {
     bindDelegatedToggle();
+    watchCinematicLifecycle();
     syncThemeToggleVisuals(window.MergenTheme.get());
   }
 

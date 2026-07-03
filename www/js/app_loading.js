@@ -49,11 +49,45 @@
     return fallback;
   }
 
+  // Hızlı Başlangıç (fast_lane) yüzde planı: ilerleme yalnızca sohbet
+  // kabuğunun hazır olmasını temsil eder. Kayıtlı sohbetler, dosya indeksi
+  // ve medya tamponlama bu sözleşmenin parçası değildir (arka planda sürer).
+  var FAST_LANE_PCT = {
+    boot: 8,
+    connect: 26,
+    auth_ready: 60,
+    saved_chats_preview_ready: 68,
+    file_index_ready: 74,
+    welcome_client_ready: 92,
+    ready: 99
+  };
+
+  // Hızlı şeritte açılış katmanının kapanması için gereken kontrol
+  // noktaları. R/helpers_startup_lane.R içindeki
+  // mergen_fast_lane_required_boot_keys() ile aynı olmalıdır.
+  var FAST_LANE_REQUIRED = ["connect", "auth_ready", "welcome_client_ready"];
+
   var stageIndex = -1;
   var finished = false;
   var fadeStarted = false;
   var ssoActive = false;
   var skipIntro = false;
+  var seenKeys = {};
+  var lastStageLabel = "Başlatılıyor";
+
+  function laneApi() {
+    return window.MergenStartupLane || null;
+  }
+
+  function isFastLane() {
+    var api = laneApi();
+    return !!(api && typeof api.isFast === "function" && api.isFast());
+  }
+
+  function laneSelectorOpen() {
+    var api = laneApi();
+    return !!(api && typeof api.isSelectorOpen === "function" && api.isSelectorOpen());
+  }
 
   // İlerleme durumu: displayPct her zaman targetPct'e doğru ilerler ve
   // asla azalmaz. targetPct yalnızca aşamalarla veya finish() ile artar.
@@ -155,10 +189,16 @@
   // Gerçek medya tamponlama ilerlemesini (0..1) çubuğa yansıt. app_loading_media.js
   // her video HTTP önbelleğine tam ısıtıldıkça bu fonksiyonu çağırır. Hedef
   // yalnızca ileri alındığı için (setTarget monoton) çubuk asla geri gitmez.
-  function reportMediaProgress(fraction) {
+  // done/total sayaçları verildiğinde uzun medya aşaması "4 / 12" biçiminde
+  // gerçek alt-ilerleme metniyle gösterilir (Zengin Deneyim şeffaflığı).
+  function reportMediaProgress(fraction, done, total) {
     if (typeof fraction !== "number" || isNaN(fraction)) return;
     if (fraction < 0) fraction = 0;
     if (fraction > 1) fraction = 1;
+
+    // Hızlı şeritte medya tamponlaması ilerleme sözleşmesinin parçası
+    // değildir; çubuk sohbet hazırlık aşamalarıyla sürülür.
+    if (isFastLane()) return;
 
     var bandStart = stagePct("file_index_ready", 32);
     var bandEnd = stagePct("character_media_ready", 96);
@@ -167,11 +207,32 @@
     // Medya tamponlama sürerken durum etiketini bu adıma sabitle. Bu noktada
     // erken aşama etiketleri (auth/dosya) zaten geçmiş olduğundan titreme olmaz.
     if (statusText && !finished && fraction > 0 && fraction < 1) {
-      statusText.textContent = "Asistan medyası hazırlanıyor";
+      var label = "Sinematik ve persona medyası hazırlanıyor";
+      if (typeof done === "number" && typeof total === "number" &&
+          isFinite(done) && isFinite(total) && total > 0) {
+        label += " · " + Math.min(done, total) + " / " + total;
+      }
+      lastStageLabel = label;
+      statusText.textContent = label;
     }
   }
 
+  // Hızlı şeritte tüm zorunlu kontrol noktaları görüldüyse katmanı kapat.
+  // Sunucu ready bayrağı (zengin sözleşme) beklenmez; medya/galeri/dosya
+  // indeksi arka planda sürebilir.
+  function maybeFinishFastLane() {
+    if (finished || !isFastLane()) return;
+    for (var i = 0; i < FAST_LANE_REQUIRED.length; i++) {
+      if (seenKeys[FAST_LANE_REQUIRED[i]] !== true) return;
+    }
+    finish();
+  }
+
   function setStage(key) {
+    if (key) {
+      seenKeys[key] = true;
+    }
+
     var idx = -1;
     for (var i = 0; i < STAGES.length; i++) {
       if (STAGES[i].key === key) {
@@ -180,16 +241,28 @@
       }
     }
     // Bilinmeyen veya geriye dönük aşamalar yok sayılır (monoton ilerleme).
-    if (idx < 0 || idx <= stageIndex || finished) return;
+    if (idx < 0 || idx <= stageIndex || finished) {
+      maybeFinishFastLane();
+      return;
+    }
     stageIndex = idx;
-    setTarget(STAGES[idx].pct);
+    // Hızlı şeritte yüzde planı sohbet hazırlığını temsil eder; zengin
+    // şeritte mevcut medya-bantlı plan korunur. setTarget monoton olduğu
+    // için şerit geç çözülse bile çubuk asla geri gitmez.
+    var pct = STAGES[idx].pct;
+    if (isFastLane() && typeof FAST_LANE_PCT[key] === "number") {
+      pct = FAST_LANE_PCT[key];
+    }
+    setTarget(pct);
     if (statusText) {
       statusText.classList.add("alo-status-fade");
       window.setTimeout(function () {
+        lastStageLabel = STAGES[idx].label;
         statusText.textContent = STAGES[idx].label;
         statusText.classList.remove("alo-status-fade");
       }, 200);
     }
+    maybeFinishFastLane();
   }
 
   // Server tarafı boot kontrol noktası mesajlarını dinle. İlerleme tamamen
@@ -218,6 +291,17 @@
     });
   }
 
+  // Şerit çözüldüğünde (özellikle seçici üzerinden geç seçimde) hızlı şerit
+  // kapanış kontrolü yeniden değerlendirilir; seçim de gerçek ilerlemedir.
+  function installLaneResolutionHook() {
+    var api = laneApi();
+    if (!api || typeof api.whenResolved !== "function") return;
+    api.whenResolved(function () {
+      markProgress();
+      maybeFinishFastLane();
+    });
+  }
+
   function cleanup() {
     if (rafId !== null) {
       window.cancelAnimationFrame(rafId);
@@ -241,9 +325,9 @@
     if (statusText) {
       statusText.textContent = "Hazır";
     }
-    // Giriş atlandıysa derin uzay intro müziği karşılama ekranına devretmeden
-    // burada yumuşakça durdurulur (uygulama arka plan müziğine geçiş).
-    if (skipIntro) {
+    // Giriş atlandıysa (veya Hızlı Başlangıç şeridi aktifse) derin uzay intro
+    // müziği karşılama ekranına devretmeden burada yumuşakça durdurulur.
+    if (skipIntro || isFastLane()) {
       try {
         if (window.SpaceIntroMusic) {
           window.SpaceIntroMusic.fadeOutAndStop();
@@ -377,6 +461,7 @@
 
     setStage("boot");
     installBootReadinessHandler();
+    installLaneResolutionHook();
 
     if (window.MergenLoadingCodestream) {
       var stream = overlay.querySelector(".alo-codestream");
@@ -387,6 +472,24 @@
 
     detectSso();
   }
+
+  // Uzun süren gerçek aşamalarda ekran "donmuş" görünmesin: 6 sn boyunca
+  // yeni kontrol noktası gelmezse mevcut aşama etiketine hareketli üç nokta
+  // eklenir. Bu sahte ilerleme DEĞİLDİR; yüzde değişmez, yalnızca aktif
+  // çalışma görünür kılınır.
+  var waitingDots = 0;
+  var waitingTimer = window.setInterval(function () {
+    if (finished) {
+      window.clearInterval(waitingTimer);
+      return;
+    }
+    if (!statusText || laneSelectorOpen()) return;
+    if ((Date.now() - lastProgressTs) <= 6000) return;
+
+    waitingDots = (waitingDots + 1) % 4;
+    var dots = new Array(waitingDots + 1).join(".");
+    statusText.textContent = lastStageLabel + " · sürüyor" + dots;
+  }, 900);
 
   // Dış denetim yüzeyi (küçük tutulur). reportMediaProgress, app_loading_media.js
   // tarafından gerçek video tamponlama ilerlemesini çubuğa yansıtmak için çağrılır.
@@ -423,6 +526,13 @@
   var watchdogTimer = window.setInterval(function () {
     if (finished) {
       window.clearInterval(watchdogTimer);
+      return;
+    }
+    // İlk açılış şerit seçicisi açıkken kullanıcı karar veriyordur; gözcü
+    // sayaçları tazelenir ki seçici altında katman kendiliğinden kapanmasın.
+    if (laneSelectorOpen()) {
+      lastProgressTs = Date.now();
+      watchdogStart = Date.now();
       return;
     }
     var now = Date.now();
