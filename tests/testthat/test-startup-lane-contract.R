@@ -172,6 +172,13 @@ testthat::test_that("app_loading.js hızlı ve zengin şerit ilerleme sözleşme
   # Hızlı şeritte medya bandı ilerleme sözleşmesine dahil değildir
   testthat::expect_true(.startup_lane_has(txt, "if (isFastLane()) return;"))
 
+  # Hızlı şeritte plan dışı kontrol noktaları (örn. ertelenen
+  # character_media_ready) yüzde/etiket ilerletemez; çubuk zengin medya
+  # bandına sıçrayamaz ve sohbet kabuğu aşamaları gölgelenemez (Codex P2).
+  testthat::expect_true(.startup_lane_has(
+    txt, 'if (isFastLane() && typeof FAST_LANE_PCT[key] !== "number")'
+  ))
+
   # Zengin şerit alt-ilerleme sayaçları (ör. "4 / 12") ve etkin-aşama metni
   testthat::expect_true(.startup_lane_has(txt, "reportMediaProgress(fraction, done, total)"))
   testthat::expect_true(.startup_lane_has(txt, '" / "'))
@@ -250,6 +257,13 @@ testthat::test_that("hızlı şeritte karşılama hazır-olma kontrolü video be
   # Zengin şeritte video-oynuyor koşulu korunur
   testthat::expect_true(.startup_lane_has(txt, "bgPlaying"))
   testthat::expect_true(.startup_lane_has(txt, "welcome_client_ready"))
+
+  # Şerit seçici açıkken 12 sn backstop welcome_client_ready'yi erken
+  # gönderemez: sayaç seçici kapanana dek bekletilir (Codex P2).
+  testthat::expect_true(.startup_lane_has(txt, "needsSelection"))
+  guard_pos <- regexpr("needsSelection", txt, fixed = TRUE)
+  attempts_pos <- regexpr("attempts += 1;", txt, fixed = TRUE)
+  testthat::expect_true(guard_pos > 0 && attempts_pos > 0 && guard_pos < attempts_pos)
 })
 
 testthat::test_that("hızlı şeritte modern karşılama video/neural başlatmaz ama selamlamayı korur", {

@@ -149,6 +149,16 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 			  (function() {
 				var attempts = 0;
 				var timer = setInterval(function() {
+				  // Serit secici acikken karsilama boot'u bilinçli olarak
+				  // ertelenmistir; sayaç ilerletilmez ve 12 sn backstop
+				  // welcome_client_ready'yi ERKEN gonderemez. Kontrol, serit
+				  // cozuldukten sonra kaldigi yerden devam eder.
+				  if (window.MergenStartupLane &&
+				      typeof window.MergenStartupLane.needsSelection === 'function' &&
+				      window.MergenStartupLane.needsSelection()) {
+				    return;
+				  }
+
 				  attempts += 1;
 
 				  // Hizli Baslangic seridinde arka plan videosu bilinçli olarak

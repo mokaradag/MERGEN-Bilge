@@ -233,6 +233,18 @@
       seenKeys[key] = true;
     }
 
+    // Hızlı şeritte yalnızca hızlı plan (FAST_LANE_PCT) aşamaları yüzde/etiket
+    // ilerletir. Ertelenen medya kontrol noktası (character_media_ready,
+    // sunucu 'deferred' işareti) gibi plan dışı anahtarlar kaydedilir ama
+    // çubuğu zengin medya bandına (~%96) sıçratamaz ve stageIndex'i sohbet
+    // kabuğu aşamalarının önüne geçiremez; hızlı ilerleme sohbet hazırlığını
+    // temsil etmeye devam eder.
+    if (isFastLane() && typeof FAST_LANE_PCT[key] !== "number") {
+      markProgress();
+      maybeFinishFastLane();
+      return;
+    }
+
     var idx = -1;
     for (var i = 0; i < STAGES.length; i++) {
       if (STAGES[i].key === key) {
