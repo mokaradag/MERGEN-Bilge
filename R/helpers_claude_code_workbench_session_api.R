@@ -66,6 +66,7 @@ cc_create_workbench_session_api <- function(session,
     runtime_model <- as.character(kayit$session$RuntimeModel %||% "")[1]
     if (!is.na(runtime_model) && nzchar(runtime_model)) {
       rv$current_runtime_model <- runtime_model
+      rv$current_model <- runtime_model
       session$sendCustomMessage(
         type = "cc-set-model-selection",
         message = list(
@@ -110,7 +111,7 @@ cc_create_workbench_session_api <- function(session,
   }
 
   # --- Aktif kayıt arşivlenirken çalışma alanı bağını güvenli kopar ---
-  detach_archived_session <- function(record_id) {
+  detach_archived_session <- function(record_id, detach = TRUE) {
     aktif_id <- suppressWarnings(as.integer(rv$claude_session_record_id %||% NA_integer_)[1])
     arsiv_id <- suppressWarnings(as.integer(record_id %||% NA_integer_)[1])
 
@@ -124,6 +125,10 @@ cc_create_workbench_session_api <- function(session,
         type = "warning", duration = 5
       )
       return(invisible(FALSE))
+    }
+
+    if (!isTRUE(detach)) {
+      return(invisible(TRUE))
     }
 
     if (exists("cc_persist_detach_session", mode = "function", inherits = TRUE)) {
