@@ -435,15 +435,6 @@ cc_session_hydration_plan <- function(record,
 
       baglam[[length(baglam) + 1L]] <- list(role = "user", content = run_prompt)
 
-      if (identical(run_status, "failed")) {
-        mesajlar[[length(mesajlar) + 1L]] <- list(
-          type = "error",
-          content = htmltools::htmlEscape(run_output),
-          timestamp = zaman_etiketi
-        )
-        next
-      }
-
       arac_html <- ""
       if ("ToolUsesJson" %in% names(runs)) {
         arac_html <- .cc_hydrate_tool_uses_html(
@@ -459,6 +450,16 @@ cc_session_hydration_plan <- function(record,
           downloads_html_fn = downloads_html_fn,
           file_exists_fn = file_exists_fn
         )
+      }
+
+      if (identical(run_status, "failed")) {
+        mesajlar[[length(mesajlar) + 1L]] <- list(
+          type = "error",
+          content = paste0(htmltools::htmlEscape(run_output), indirme_html),
+          toolContent = arac_html,
+          timestamp = zaman_etiketi
+        )
+        next
       }
 
       icerik <- .cc_hydrate_safe_output_html(

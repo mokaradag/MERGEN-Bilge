@@ -353,6 +353,11 @@ claudeCodeSessionsServer <- function(id,
         return()
       }
 
+      if (!is.null(workbench) && is.function(workbench$detach_archived_session) &&
+          !isTRUE(workbench$detach_archived_session(kayit_id))) {
+        return()
+      }
+
       basarili <- cc_db_soft_delete_session(user_check$user_id, kayit_id)
 
       if (isTRUE(basarili)) {

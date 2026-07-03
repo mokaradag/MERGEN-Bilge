@@ -66,6 +66,13 @@ cc_create_workbench_session_api <- function(session,
     runtime_model <- as.character(kayit$session$RuntimeModel %||% "")[1]
     if (!is.na(runtime_model) && nzchar(runtime_model)) {
       rv$current_runtime_model <- runtime_model
+      session$sendCustomMessage(
+        type = "cc-set-model-selection",
+        message = list(
+          inputId = ns("model"),
+          value = runtime_model
+        )
+      )
     }
 
     # Proje dizinini geri yükle; workdir observer'ının oturum bağlarını
@@ -102,6 +109,33 @@ cc_create_workbench_session_api <- function(session,
     invisible(TRUE)
   }
 
+  # --- Aktif kayıt arşivlenirken çalışma alanı bağını güvenli kopar ---
+  detach_archived_session <- function(record_id) {
+    aktif_id <- suppressWarnings(as.integer(rv$claude_session_record_id %||% NA_integer_)[1])
+    arsiv_id <- suppressWarnings(as.integer(record_id %||% NA_integer_)[1])
+
+    if (is.na(aktif_id) || is.na(arsiv_id) || !identical(aktif_id, arsiv_id)) {
+      return(invisible(TRUE))
+    }
+
+    if (isTRUE(rv$is_running)) {
+      showNotification(
+        "Aktif çalışan oturum arşivlenmeden önce durdurulmalıdır.",
+        type = "warning", duration = 5
+      )
+      return(invisible(FALSE))
+    }
+
+    if (exists("cc_persist_detach_session", mode = "function", inherits = TRUE)) {
+      cc_persist_detach_session(rv)
+    }
+    rv$cli_session_id <- NULL
+    rv$conversation_context <- list()
+    rv$active_runtime_workdir <- NULL
+    rv$active_runtime_source <- NULL
+    invisible(TRUE)
+  }
+
   # --- Yeni oturum: görünümü temizler; KALICI GEÇMİŞİ SİLMEZ ---
   start_new_session <- function() {
     if (isTRUE(rv$is_running)) {
@@ -134,6 +168,7 @@ cc_create_workbench_session_api <- function(session,
 
   list(
     load_persisted_session = load_persisted_session,
-    start_new_session = start_new_session
+    start_new_session = start_new_session,
+    detach_archived_session = detach_archived_session
   )
 }

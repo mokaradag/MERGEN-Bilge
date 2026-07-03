@@ -28,6 +28,31 @@
     target.appendChild(div);
   }
 
+  Shiny.addCustomMessageHandler('cc-set-model-selection', function(data) {
+    var value = String((data && data.value) || '');
+    var inputId = String((data && data.inputId) || '');
+    if (!inputId || !value) return;
+
+    var selected = null;
+    document.querySelectorAll('.cc-model-tier-btn').forEach(function(btn) {
+      if (btn.getAttribute('data-value') === value) {
+        selected = btn;
+      }
+    });
+
+    if (selected) {
+      var group = selected.closest('.cc-model-tier-group') || document;
+      group.querySelectorAll('.cc-model-tier-btn').forEach(function(btn) {
+        btn.classList.remove('active');
+      });
+      selected.classList.add('active');
+    }
+
+    if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+      window.Shiny.setInputValue(inputId, value, { priority: 'event' });
+    }
+  });
+
   Shiny.addCustomMessageHandler('cc-hydrate-session', function(data) {
     var target = document.getElementById(data.target);
     if (!target) return;

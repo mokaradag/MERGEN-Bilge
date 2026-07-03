@@ -552,6 +552,20 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
         temiz_hata <- gsub("[{}]", "", hata_metni)
         log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Akış başlatma hatası:", temiz_hata))
 
+        if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
+          cc_persist_run_result(
+            rv = rv,
+            env = stream_env,
+            status = "failed",
+            final_output = paste0("Akış başlatma hatası: ", hata_metni),
+            exit_code = NA_integer_,
+            duration = as.numeric(difftime(Sys.time(), stream_env$baslangic, units = "secs")),
+            tool_uses = list(),
+            downloads = list(),
+            cli_session_id = oturum_id
+          )
+        }
+
         session$sendCustomMessage(
           type = "cc-add-message",
           message = list(
@@ -625,7 +639,8 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
 
     list(
       load_persisted_session = workbench_session_api$load_persisted_session,
-      start_new_session = workbench_session_api$start_new_session
+      start_new_session = workbench_session_api$start_new_session,
+      detach_archived_session = workbench_session_api$detach_archived_session
     )
   })
 }
