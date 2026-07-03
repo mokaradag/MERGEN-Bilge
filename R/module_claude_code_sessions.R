@@ -353,9 +353,17 @@ claudeCodeSessionsServer <- function(id,
         return()
       }
 
+      if (!is.null(workbench) && is.function(workbench$detach_archived_session) &&
+          !isTRUE(workbench$detach_archived_session(kayit_id, detach = FALSE))) {
+        return()
+      }
+
       basarili <- cc_db_soft_delete_session(user_check$user_id, kayit_id)
 
       if (isTRUE(basarili)) {
+        if (!is.null(workbench) && is.function(workbench$detach_archived_session)) {
+          workbench$detach_archived_session(kayit_id, detach = TRUE)
+        }
         showNotification("Oturum arşivlendi.", type = "message", duration = 4)
         refresh_sessions("archive")
       } else {
