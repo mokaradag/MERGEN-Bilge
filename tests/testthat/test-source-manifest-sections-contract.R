@@ -91,7 +91,10 @@
   architecture_governance = list(first = "R/config_seam_registry.R", last = "R/config_seam_registry.R", n = 1L),
   # database n = 12L -> 13L bilinçli güncelleme: işlem-güvenli DB bağlantı havuzu
   # (R/helpers_db_pool.R) helpers_db_connection.R'den SONRA bölüme eklendi.
-  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 13L),
+  # 13L -> 15L bilinçli güncelleme: Bilge Yolaç kalıcı oturum katmanı
+  # (R/helpers_db_claude_code_session_queries.R + R/helpers_db_claude_code_sessions.R)
+  # helpers_db_feedback.R'den sonra, helpers_database.R'den önce eklendi.
+  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 15L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
   language_messaging = list(first = "R/helpers_language.R", last = "R/helpers_messaging.R", n = 2L),
   mcp_tools = list(first = "R/helpers_mcp_context.R", last = "R/helpers_mcp_tools.R", n = 9L),
@@ -113,7 +116,11 @@
   # 26 -> 27: doküman özetleme orkestrasyonu helpers_claude_code_documents.R'den
   # R/helpers_claude_code_document_summary.R'ye ayrıldı (documents'tan sonra,
   # run_lifecycle'dan önce).
-  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_run_lifecycle.R", n = 27L),
+  # 27 -> 29: kalıcı oturum runtime köprüsü
+  # (R/helpers_claude_code_session_persistence.R) ve workbench oturum API
+  # fabrikası (R/helpers_claude_code_workbench_session_api.R) run_lifecycle'dan
+  # önce eklendi.
+  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_run_lifecycle.R", n = 29L),
   llm_pipeline = list(first = "R/helpers_llm_tool_formatters.R", last = "R/helpers_llm_worker.R", n = 11L),
   module_chat = list(first = "R/module_chat_history_background.R", last = "R/module_feedback.R", n = 9L),
   module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 7L),
@@ -124,7 +131,10 @@
   # gömer) ve şerit sunucu gözlemcileri (R/module_startup_lane.R;
   # startupScreenObserversInit delege eder) bölüme eklendi. 12 -> 14.
   module_identity_startup = list(first = "R/module_sso.R", last = "R/module_quick_actions.R", n = 14L),
-  module_claude_code = list(first = "R/module_claude_code_plugins.R", last = "R/module_claude_code.R", n = 5L),
+  # 5 -> 7 bilinçli güncelleme: Bilge Yolaç Oturumları sayfası
+  # (R/module_claude_code_sessions_ui.R + R/module_claude_code_sessions.R)
+  # stream_poll'dan sonra, ana server modülünden önce eklendi.
+  module_claude_code = list(first = "R/module_claude_code_plugins.R", last = "R/module_claude_code.R", n = 7L),
   module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/module_proje_kaynak_analizi.R", n = 1L),
   module_support = list(first = "R/module_destek_yardim.R", last = "R/module_destek.R", n = 6L),
   # Bilinçli güncelleme: at-budget admin modüllerinin inline highcharter/DT
@@ -308,7 +318,12 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # Zengin Deneyim) için saf çözümleme yardımcıları (R/helpers_startup_lane.R)
   # ve şerit sunucu gözlemcileri (R/module_startup_lane.R) eklendi
   # (module_identity_startup bölümü).
-  expect_equal(length(runtime), 294L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 294L -> 300L bilinçli güncelleme: Bilge Yolaç kalıcı oturum katmanı eklendi:
+  # DB saf sorgu + orkestrasyon yardımcıları (database bölümü, +2), runtime
+  # persist köprüsü + workbench oturum API fabrikası (claude_code_helpers
+  # bölümü, +2) ve Oturumlar sayfası UI/server modülleri (module_claude_code
+  # bölümü, +2).
+  expect_equal(length(runtime), 300L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

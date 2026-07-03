@@ -72,6 +72,10 @@
     do.call(session$setInputs, stats::setNames(list(prime_value), input_id))
     do.call(session$setInputs, stats::setNames(list(real_value), input_id))
     force(output$probe)
+    # Yeni Shiny sürümleri testServer çıkışında modül oturumunu yok eder;
+    # reaktif değerlere blok DIŞINDAN erişim "session has been destroyed"
+    # hatası üretir. Bu yüzden anlık görüntü blok İÇİNDE alınır.
+    rec$values_snapshot <- shiny::isolate(shiny::reactiveValuesToList(values))
   })
 }
 
@@ -93,7 +97,7 @@ testthat::test_that("like_message db_id'li yeni beğenide geri bildirim modalın
   testthat::expect_identical(as.integer(son$db_id), 10L)
   testthat::expect_identical(son$kind, "like")
   # liked_messages "10" içermeli.
-  testthat::expect_true("10" %in% shiny::isolate(fix$rec$values$liked_messages))
+  testthat::expect_true("10" %in% fix$rec$values_snapshot$liked_messages)
 })
 
 testthat::test_that("like_message db_id yoksa 'yanıt tamamlandıktan sonra' uyarısı verir", {
@@ -118,7 +122,7 @@ testthat::test_that("dislike_message db_id'li yeni beğenmemede modalı 'dislike
   testthat::expect_true(length(fix$rec$modal_opens) >= 1L)
   son <- fix$rec$modal_opens[[length(fix$rec$modal_opens)]]
   testthat::expect_identical(son$kind, "dislike")
-  testthat::expect_true("22" %in% shiny::isolate(fix$rec$values$disliked_messages))
+  testthat::expect_true("22" %in% fix$rec$values_snapshot$disliked_messages)
 })
 
 # ------------------------------------------------------------------------------
@@ -136,7 +140,7 @@ testthat::test_that("regenerate_message önceki kullanıcı sorusunu yeniden gö
   testthat::expect_true(length(fix$rec$sent) >= 1L)
   testthat::expect_identical(fix$rec$sent[[length(fix$rec$sent)]], "Türkiye'nin başkenti?")
   # AI mesajı listeden çıkarılmış olmalı (yalnızca kullanıcı mesajı kalır).
-  kalan <- shiny::isolate(fix$rec$values$messages)
+  kalan <- fix$rec$values_snapshot$messages
   testthat::expect_length(kalan, 1L)
   testthat::expect_identical(kalan[[1]]$id, "u1")
 })

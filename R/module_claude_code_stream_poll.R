@@ -43,6 +43,20 @@ cc_bind_claude_code_stream_polling <- function(input,
         "sn"
       ))
 
+      # Zaman aşımına uğrayan çalıştırma da kalıcı geçmişe yazılır.
+      if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
+        cc_persist_run_result(
+          rv = rv,
+          env = env,
+          status = "failed",
+          final_output = paste0(
+            "İşlem zaman aşımına uğradı (", env$zaman_asimi, " saniye)."
+          ),
+          duration = round(gecen_sure, 1),
+          cli_session_id = env$oturum_id
+        )
+      }
+
       session$sendCustomMessage(
         type = "cc-add-message",
         message = list(
@@ -358,6 +372,22 @@ cc_bind_claude_code_stream_polling <- function(input,
           generated_downloads = olusan_dosyalar
         )
 
+        # Başarılı çalıştırmayı kalıcılaştır (persist hatası canlı yanıtı
+        # asla etkilemez; helper içeride güvenli değerlendirme yapar).
+        if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
+          cc_persist_run_result(
+            rv = rv,
+            env = env,
+            status = "completed",
+            final_output = ayristirma$text_output %||% "",
+            exit_code = cikis_kodu,
+            duration = sure,
+            tool_uses = ayristirma$tool_uses,
+            downloads = olusan_dosyalar,
+            cli_session_id = oturum_id
+          )
+        }
+
         finalize_streaming(
           "Tamamlandı",
           "check-circle",
@@ -422,6 +452,22 @@ cc_bind_claude_code_stream_polling <- function(input,
           session_id = env$oturum_id %||% ayristirma$session_id,
           generated_downloads = olusan_dosyalar
         )
+
+        # Başarısız çalıştırma da kalıcılaştırılır; hata mesajı FinalOutput
+        # alanında saklanır (hidrasyonda hata balonu olarak geri oynatılır).
+        if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
+          cc_persist_run_result(
+            rv = rv,
+            env = env,
+            status = "failed",
+            final_output = hata_mesaji %||% "",
+            exit_code = cikis_kodu,
+            duration = sure,
+            tool_uses = ayristirma$tool_uses,
+            downloads = olusan_dosyalar,
+            cli_session_id = env$oturum_id %||% ayristirma$session_id
+          )
+        }
 
         finalize_streaming(
           "Hata",
@@ -501,6 +547,18 @@ cc_bind_claude_code_stream_polling <- function(input,
         type = "cc-stream-end",
         message = list(target = ns("output_area"))
       )
+
+      # Kullanıcının durdurduğu çalıştırma da kalıcı geçmişe yazılır.
+      if (!is.null(env) &&
+          exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
+        cc_persist_run_result(
+          rv = rv,
+          env = env,
+          status = "stopped",
+          final_output = "Çalıştırma kullanıcı tarafından durduruldu.",
+          cli_session_id = env$oturum_id
+        )
+      }
 
       finalize_streaming(
         "Durduruldu",

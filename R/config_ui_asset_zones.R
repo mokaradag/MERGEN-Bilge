@@ -429,16 +429,19 @@ ui_asset_ownership_zones <- list(
       "css/claude_code.css",
       "css/claude_code_generated_files.css",
       "css/claude_code_streaming.css",
-      "css/claude_code_plugins.css"
+      "css/claude_code_plugins.css",
+      "css/claude_code_sessions.css"
     ),
     js = c(
       "js/claude_code_pixel_chars.js",
       "js/claude_code.js",
       "js/claude_code_streaming.js",
-      "js/claude_code_plugins.js"
+      "js/claude_code_plugins.js",
+      "js/claude_code_sessions.js"
     ),
     guard_tests = c(
-      "tests/testthat/test-claude-code-stream-html-safety-contract.R"
+      "tests/testthat/test-claude-code-stream-html-safety-contract.R",
+      "tests/testthat/test-claude-code-sessions-module-contract.R"
     )
   ),
 

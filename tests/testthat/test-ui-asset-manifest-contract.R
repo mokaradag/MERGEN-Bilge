@@ -337,6 +337,8 @@ test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", 
     "css/claude_code_generated_files.css",
     "css/claude_code_streaming.css",
     "css/claude_code_plugins.css",
+    # Bilinçli güncelleme: Bilge Yolaç Oturumları sayfası stilleri eklendi.
+    "css/claude_code_sessions.css",
     "css/bilge_yolac_welcome.css"
   )
 
@@ -394,7 +396,10 @@ test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", 
     "js/claude_code_pixel_chars.js",
     "js/claude_code.js",
     "js/claude_code_streaming.js",
-    "js/claude_code_plugins.js"
+    "js/claude_code_plugins.js",
+    # Bilinçli güncelleme: oturum hidrasyonu köprüsü (cc-hydrate-session)
+    # claude_code.js'ten SONRA yüklenir (window.MergenClaudeCode bağımlılığı).
+    "js/claude_code_sessions.js"
   )
 
   expect_identical(asset_env$ui_asset_css_groups$page, expected_page_css)

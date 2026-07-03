@@ -17,6 +17,7 @@ Bu belge, MERGEN Bilge uygulamasının güncel R kaynaklarında kullanılan veri
 | `R/helpers_admin_geri_bildirim_queries.R`, `R/helpers_admin_hata_analizi.R`, `R/helpers_admin_yanit_analizi.R` | Yönetici panelleri için join, trend ve analiz sorguları. |
 | `R/helpers_sso.R` | `DC01_user_base` yetkilendirme okuması. |
 | `tests/scripts/run_vm_encoding_preflight_real.R` | VM/SQL Server Türkçe kodlama preflight için kritik tablo/kolon beklentileri. |
+| `R/helpers_db_claude_code_session_queries.R`, `R/helpers_db_claude_code_sessions.R` | Bilge Yolaç kalıcı oturumları: `MB_ClaudeCode_Sessions` / `MB_ClaudeCode_Runs` oluşturma/listeleme/yükleme/yumuşak silme davranışı. |
 
 ## Tablo Akış Diyagramı
 
@@ -31,6 +32,8 @@ erDiagram
     MB_Messages ||--o{ MB_Usage_Log : prompt_message
     MB_Users ||--o{ MB_Destek_Geri_Bildirim : submits
     MB_Users ||--o{ MB_Destek_Hata_Bildir : reports
+    MB_Users ||--o{ MB_ClaudeCode_Sessions : owns_agent_sessions
+    MB_ClaudeCode_Sessions ||--o{ MB_ClaudeCode_Runs : contains_runs
     DC01_user_base ||..o{ MB_Users : enriches_authorizes
     DC01_userr ||..o{ MB_Users : email_lookup
 ```
@@ -107,6 +110,59 @@ LLM/API çağrılarının performans ve başarı izini tutar. Yanıt analizi ve 
 | `ModelUsed` | `NVARCHAR(100)` veya daha geniş | Kullanılan model kimliği; teknik değer olarak normalize edilir. |
 | `ResponseDuration` | `DECIMAL`, `FLOAT` veya benzeri | Yanıt süresi. |
 | `ResponseSuccess` | `BIT` veya `TINYINT` | Başarı bayrağı. |
+
+## Bilge Yolaç (Claude Code) Kalıcı Oturum Tabloları
+
+Bilge Yolaç bir ajan/çalışma alanı ortamıdır; oturum yapısı (Claude CLI resume kimliği, kaynak/runtime workdir, model/çalışan model, araç çağrıları, üretilen dosya metadata'sı, çalıştırma durumu) normal sohbet şemasına sığmadığı için bu aile **kasıtlı olarak `MB_Chats` / `MB_Messages`'tan AYRIDIR**. Kullanıcı ilişkisi `UserID` üzerinden `MB_Users` iledir.
+
+Kurulum betiği: [`sql/2026-07-bilge-yolac-sessions.sql`](sql/2026-07-bilge-yolac-sessions.sql). Betik idempotenttir, uygulama açılışında OTOMATİK ÇALIŞTIRILMAZ ve yıkıcı ifade içermez (bkz. `RUNBOOK.md` "Bilge Yolaç oturum tabloları" kontrol listesi). Tablolar henüz kurulmamışsa runtime yardımcıları (`R/helpers_db_claude_code_sessions.R`) uyarı loglayıp güvenli boş/NULL sonuç döner; Bilge Yolaç bellek-içi modda çalışmaya devam eder.
+
+### `MB_ClaudeCode_Sessions`
+
+Dayanıklı oturum başlığını tutar: bir çalışma alanı sohbeti = bir oturum kaydı.
+
+| Kolon | Yaklaşık tip | Kullanım / not |
+|---|---|---|
+| `ClaudeSessionRecordID` | `BIGINT IDENTITY` | Oturum kaydı anahtarı; insert sonrası `OUTPUT INSERTED` ile alınır. |
+| `UserID` | `BIGINT` | Sahip kullanıcı; tüm liste/yükleme/arşivleme sorguları kullanıcı-izoledir. |
+| `ClaudeCliSessionID` | `NVARCHAR(200)` | Claude CLI `--resume` oturum kimliği; teknik değer, mojibake onarımı uygulanmaz. |
+| `SessionTitle` | `NVARCHAR(500)` | İlk prompttan üretilen kullanıcıya görünen başlık; `normalize_db_visible_value()` ile yazılır. |
+| `Workdir` / `SourceWorkdir` / `RuntimeWorkdir` | `NVARCHAR(MAX)` | Seçilen/kaynak/aynalanmış runtime dizinleri; teknik yol değerleri. Resume güvenliği runtime dizin varlığına bağlıdır. |
+| `ModelUsed` / `RuntimeModel` | `NVARCHAR(100)` | Seçilen ve gerçekte çalıştırılan model kimlikleri; teknik değer. |
+| `CharacterID` | `NVARCHAR(50)` | Persona kimliği (`emre`, `selin`, ...). |
+| `Status` | `NVARCHAR(50)` | Teknik durum: `active` / `completed` / `failed` / `stopped`. |
+| `CreatedAt` / `LastRunAt` | `DATETIME2(0)` | Oluşturma ve son çalıştırma zamanı; liste "son etkinlik" sıralaması `COALESCE(LastRunAt, CreatedAt)` kullanır. |
+| `IsDeleted` | `BIT` | Yumuşak silme/arşiv bayrağı; fiziksel silme yapılmaz. |
+| `SessionMetaJson` | `NVARCHAR(MAX)` | Küçük teknik metadata JSON'u (ör. `created_from`); gizli değer yazılmaz. |
+
+Önerilen indeks: `IX_MB_ClaudeCode_Sessions_User_Recent (UserID, IsDeleted, LastRunAt DESC, CreatedAt DESC)`.
+
+### `MB_ClaudeCode_Runs`
+
+Her prompt/sonuç/araç çalıştırma birimini ekleme-odaklı saklar.
+
+| Kolon | Yaklaşık tip | Kullanım / not |
+|---|---|---|
+| `ClaudeRunID` | `BIGINT IDENTITY` | Çalıştırma anahtarı. |
+| `ClaudeSessionRecordID` | `BIGINT` (FK) | Bağlı oturum; `MB_ClaudeCode_Sessions` FK. |
+| `RunOrder` | `INT` | Oturum içi sıra; üretim T-SQL yolunda `UPDLOCK/HOLDLOCK` ile üretilir. |
+| `Prompt` | `NVARCHAR(MAX)` | Kullanıcı komutu; görünen değer normalizasyonundan geçer. |
+| `FinalOutput` | `NVARCHAR(MAX)` | Asistan yanıtı; başarısız çalıştırmada hata mesajı burada saklanır. |
+| `Status` | `NVARCHAR(50)` | `completed` / `failed` / `stopped`. |
+| `ExitCode` / `DurationSeconds` | `INT` / `DECIMAL(10,2)` | CLI çıkış kodu ve süre. |
+| `ToolUsesJson` | `NVARCHAR(MAX)` | Küçültülmüş araç kullanımı metadata JSON'u (ad + kısaltılmış girdi/sonuç). |
+| `GeneratedDownloadsJson` | `NVARCHAR(MAX)` | Üretilen dosya METADATA'sı (ad, boyut, indirme yolu); ikili içerik ASLA saklanmaz. |
+| `RawStreamJsonl` | `NVARCHAR(MAX)` | Ham stream-json satırları; uygulama tarafında ~400.000 karakterde `[[MERGEN-RAW-STREAM-TRUNCATED]]` işaretiyle kesilir (`mergen.claude_code.raw_stream_max_chars`). |
+| `CreatedAt` | `DATETIME2(0)` | Kayıt zamanı. |
+
+Önerilen indeks: `IX_MB_ClaudeCode_Runs_Session_Order (ClaudeSessionRecordID, RunOrder ASC)`.
+
+Bakım notları:
+
+- Türkçe metin bütünlüğü merkezi DB encoding yardımcılarıyla korunur: görünen alanlar (`SessionTitle`, `Prompt`, `FinalOutput`) `normalize_db_visible_value()`, teknik alanlar `normalize_db_technical_value()` ile yazılır; tüm parametreler `normalize_db_params()` üzerinden bağlanır. `DB_CLIENT_ENCODING=WINDOWS-1254` üretim sözleşmesi değişmez.
+- Okuma sınırında yalnızca görünen kolonlar `normalize_db_read_visible_value()` ile geri açılır; `Workdir`, model kimlikleri ve `Status` gibi teknik kolonlara mojibake onarımı uygulanmaz.
+- Bu tablolara API anahtarı, token, ortam değişkeni veya ikili dosya içeriği yazılmaz.
+- "Çıktıyı Temizle", model değişimi ve workdir değişimi kalıcı geçmişi SİLMEZ; yalnızca aktif oturum bağını koparır. Arşivleme yalnızca Oturumlar sayfasındaki açık kullanıcı eylemiyle `IsDeleted = 1` olarak yapılır.
 
 ## Destek ve Yönetici Panelleri Tabloları
 

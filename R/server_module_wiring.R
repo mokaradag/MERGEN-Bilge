@@ -81,6 +81,7 @@ serverBindSettingsAndRefs <- function(input,
                                       settings_init_fn = settingsInit,
                                       forward_refs_init_fn = serverInitForwardRefs,
                                       claude_code_server_fn = claudeCodeServer,
+                                      claude_code_sessions_server_fn = claudeCodeSessionsServer,
                                       visual_settings_sync_init_fn = visualSettingsSyncInit,
                                       chat_outputs_init_fn = chatOutputsInit,
                                       reactive_val_fn = shiny::reactiveVal) {
@@ -92,6 +93,7 @@ serverBindSettingsAndRefs <- function(input,
     settings_init_fn = settings_init_fn,
     forward_refs_init_fn = forward_refs_init_fn,
     claude_code_server_fn = claude_code_server_fn,
+    claude_code_sessions_server_fn = claude_code_sessions_server_fn,
     visual_settings_sync_init_fn = visual_settings_sync_init_fn,
     chat_outputs_init_fn = chat_outputs_init_fn,
     reactive_val_fn = reactive_val_fn
@@ -107,14 +109,34 @@ serverBindSettingsAndRefs <- function(input,
     forward_refs_init_fn(session)
   )
 
-  claude_code_server_fn(
+  claude_code_workbench <- claude_code_server_fn(
     "claude_code_module",
     current_user_id = current_user_id_provider,
     settings_data = settings_data,
     user_first_name = function() {
       user_first_name_fn(default = "")
-    }
+    },
+    parent_session = session
   )
+
+  # Bilge Yolaç Oturumları sayfası: kalıcı oturum listesi/detayı ve
+  # "Devam Et" akışında çalışma alanı modülüne hidrasyon delegasyonu.
+  claude_code_sessions <- claude_code_sessions_server_fn(
+    "claude_code_sessions_module",
+    current_user_id = current_user_id_provider,
+    workbench = claude_code_workbench,
+    parent_session = session
+  )
+
+  # Oturumlar sekmesi açıldığında listeyi tazele (modül kendi stale-refresh
+  # guard'ını uygular; kimlik hazır değilse açıklayıcı durum gösterir).
+  shiny::observeEvent(input$tabs, {
+    if (identical(input$tabs, "claude_code_sessions") &&
+        is.list(claude_code_sessions) &&
+        is.function(claude_code_sessions$refresh)) {
+      claude_code_sessions$refresh("tab")
+    }
+  }, ignoreInit = TRUE)
 
   visual_settings_sync_init_fn(input, settings_data)
 

@@ -455,6 +455,17 @@ source_manifest_required_order <- list(
   c("R/helpers_claude_code_run_lifecycle.R", "R/module_claude_code.R"),
   c("R/helpers_claude_code_server_setup.R", "R/module_claude_code.R"),
 
+  # Kalıcı oturum katmanı: saf sorgu yardımcıları -> DB orkestrasyonu ->
+  # runtime persist köprüsü -> Oturumlar sayfası UI -> Oturumlar server ->
+  # ana çalışma alanı modülü.
+  c("R/helpers_db_claude_code_session_queries.R", "R/helpers_db_claude_code_sessions.R"),
+  c("R/helpers_db_claude_code_sessions.R", "R/helpers_claude_code_session_persistence.R"),
+  c("R/helpers_claude_code_session_persistence.R", "R/helpers_claude_code_workbench_session_api.R"),
+  c("R/helpers_claude_code_workbench_session_api.R", "R/module_claude_code.R"),
+  c("R/helpers_claude_code_session_persistence.R", "R/module_claude_code_stream_poll.R"),
+  c("R/module_claude_code_sessions_ui.R", "R/module_claude_code_sessions.R"),
+  c("R/module_claude_code_sessions.R", "R/module_claude_code.R"),
+
   c("R/helpers_llm_response_postprocess.R", "R/helpers_llm_api.R"),
   c("R/helpers_llm_api.R", "R/helpers_llm_stream_io.R"),
   c("R/helpers_llm_stream_io.R", "R/helpers_llm_sse_events.R"),

@@ -143,6 +143,7 @@ ui_asset_css_groups <- list(
       "css/claude_code_generated_files.css",
       "css/claude_code_streaming.css",
       "css/claude_code_plugins.css",
+      "css/claude_code_sessions.css",
       "css/bilge_yolac_welcome.css"
     )
   )),
@@ -286,7 +287,8 @@ ui_asset_js_groups <- list(
       "js/claude_code_pixel_chars.js",
       "js/claude_code.js",
       "js/claude_code_streaming.js",
-      "js/claude_code_plugins.js"
+      "js/claude_code_plugins.js",
+      "js/claude_code_sessions.js"
     )
   )),
   bilge_yolac = c(
@@ -387,6 +389,9 @@ ui_asset_js_order_rules <- list(
   c("js/claude_code_pixel_chars.js", "js/claude_code.js"),
   c("js/claude_code.js", "js/claude_code_streaming.js"),
   c("js/claude_code_streaming.js", "js/claude_code_plugins.js"),
+  # Oturum hidrasyonu claude_code.js'in window.MergenClaudeCode köprüsüne bağlıdır.
+  c("js/claude_code.js", "js/claude_code_sessions.js"),
+  c("js/claude_code_plugins.js", "js/claude_code_sessions.js"),
 
   c("js/bilge_yolac_motor.js", "js/bilge_yolac_fizik.js"),
   c("js/bilge_yolac_fizik.js", "js/bilge_yolac_varliklar.js"),
@@ -428,5 +433,6 @@ ui_asset_css_order_rules <- list(
 
   c("css/claude_code.css", "css/claude_code_generated_files.css"),
   c("css/claude_code_generated_files.css", "css/claude_code_streaming.css"),
-  c("css/claude_code_streaming.css", "css/claude_code_plugins.css")
+  c("css/claude_code_streaming.css", "css/claude_code_plugins.css"),
+  c("css/claude_code_plugins.css", "css/claude_code_sessions.css")
 )
