@@ -1009,7 +1009,8 @@
    Bilge Yolaç üst başlık AJAN rozeti - light tema ADMIN rozetiyle uyumlu
    ============================================================================= */
 
-html[data-theme="light"] .claude-code-container .chat-header .cc-badge {
+html[data-theme="light"] .claude-code-container .chat-header .cc-badge,
+html[data-theme="light"] .claude-code-sessions-container .chat-header .cc-badge {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;

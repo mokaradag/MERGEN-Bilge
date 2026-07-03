@@ -142,6 +142,7 @@ source_manifest_sections <- list(
     # ailesinden ayrı MB_ClaudeCode_* tablolarını yönetir.
     "R/helpers_db_claude_code_session_queries.R",
     "R/helpers_db_claude_code_sessions.R",
+    "R/helpers_db_claude_code_session_lifecycle.R",
     "R/helpers_database.R"
   ),
 
@@ -447,6 +448,7 @@ source_manifest_sections <- list(
     "R/module_admin_sohbet_kalitesi.R",
     "R/module_admin_zaman_analizi.R",
     "R/module_admin_gelismis_analizler.R",
+    "R/module_admin_bilge_yolac.R",
     "R/module_admin_analytics.R",
     "R/helpers_admin_geri_bildirim.R",
     "R/helpers_admin_geri_bildirim_queries.R",

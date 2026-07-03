@@ -94,7 +94,10 @@
   # 13L -> 15L bilinçli güncelleme: Bilge Yolaç kalıcı oturum katmanı
   # (R/helpers_db_claude_code_session_queries.R + R/helpers_db_claude_code_sessions.R)
   # helpers_db_feedback.R'den sonra, helpers_database.R'den önce eklendi.
-  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 15L),
+  # 15L -> 16L bilinçli güncelleme: Bilge Yolaç arşiv geri yükleme + KALICI silme
+  # yaşam döngüsü (R/helpers_db_claude_code_session_lifecycle.R) orkestrasyon
+  # dosyasından SONRA, helpers_database.R'den önce eklendi (ratchet bütçesi).
+  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 16L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
   language_messaging = list(first = "R/helpers_language.R", last = "R/helpers_messaging.R", n = 2L),
   mcp_tools = list(first = "R/helpers_mcp_context.R", last = "R/helpers_mcp_tools.R", n = 9L),
@@ -140,7 +143,11 @@
   # Bilinçli güncelleme: at-budget admin modüllerinin inline highcharter/DT
   # renderer'ları *_outputs() dosyalarına çıkarıldı (geri_bildirim + yanit);
   # her modül bölüme bir *_outputs dosyası ekledi. 19 -> 21.
-  module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 22L),
+  # 22L -> 23L bilinçli güncelleme: Bilge Yolaç yönetici sekmesi ayrı modül
+  # dosyasına (R/module_admin_bilge_yolac.R) çıkarıldı; diğer admin sekme
+  # modülleriyle aynı desen. module_admin_gelismis_analizler.R'den sonra,
+  # koordinatör module_admin_analytics.R'den önce eklendi.
+  module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 23L),
   module_health_chartlab = list(first = "R/module_health_worker_metrics.R", last = "R/module_chartlab.R", n = 10L),
   # Bilinçli güncelleme: SSO auth-ready / yenilenebilir modül wiring katmanı
   # R/server_runtime_auth_ready.R dosyasına ayrıldı (server_runtime_context.R'den
@@ -323,7 +330,11 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # persist köprüsü + workbench oturum API fabrikası (claude_code_helpers
   # bölümü, +2) ve Oturumlar sayfası UI/server modülleri (module_claude_code
   # bölümü, +2).
-  expect_equal(length(runtime), 300L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 300L -> 302L bilinçli güncelleme: Oturumlar sayfasına arşiv geri yükleme +
+  # KALICI silme yaşam döngüsü (R/helpers_db_claude_code_session_lifecycle.R,
+  # database bölümü +1) ve yönetici paneli Bilge Yolaç istatistik sekmesi
+  # (R/module_admin_bilge_yolac.R, module_admin bölümü +1) eklendi.
+  expect_equal(length(runtime), 302L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

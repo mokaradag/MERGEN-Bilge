@@ -42,6 +42,13 @@ local({
     source(file.path(repo_root, "R", "helpers_db_claude_code_sessions.R"),
            encoding = "UTF-8", local = globalenv())
   }
+
+  # Arşiv geri yükleme + KALICI silme yaşam döngüsü ayrı dosyada; orkestrasyon
+  # dosyasından sonra yüklenir (paylaşılan iç yardımcılara bağımlı).
+  if (!exists("cc_db_hard_delete_session", mode = "function", inherits = TRUE)) {
+    source(file.path(repo_root, "R", "helpers_db_claude_code_session_lifecycle.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
 })
 
 # SQLite lehçesinde test şeması kurar (üretim T-SQL DDL'i DEĞİL; bkz.
@@ -343,6 +350,60 @@ test_that("yumuşak silme kullanıcı-izole çalışır ve fiziksel silmez", {
   })
 })
 
+test_that("arşivden çıkarma (geri yükleme) kullanıcı-izole çalışır", {
+  .ccs_with_test_db(function(conn) {
+    sid <- cc_db_create_session(user_id = 1L, title = "geri yükleme testi", conn = conn)
+    expect_true(cc_db_soft_delete_session(user_id = 1L, session_record_id = sid, conn = conn))
+    expect_identical(nrow(cc_db_list_sessions(user_id = 1L, conn = conn)), 0L)
+
+    # KULLANICI İZOLASYONU: B kullanıcısı A'nın oturumunu geri yükleyemez.
+    expect_false(cc_db_restore_session(user_id = 2L, session_record_id = sid, conn = conn))
+    expect_identical(nrow(cc_db_list_sessions(user_id = 1L, conn = conn)), 0L)
+
+    # A kendi oturumunu geri yükler; normal listede yeniden görünür.
+    expect_true(cc_db_restore_session(user_id = 1L, session_record_id = sid, conn = conn))
+    liste <- cc_db_list_sessions(user_id = 1L, conn = conn)
+    expect_identical(nrow(liste), 1L)
+    expect_identical(as.integer(liste$IsDeleted[1]), 0L)
+  })
+})
+
+test_that("kalıcı silme kullanıcı-izole ve geri alınamaz; alt kayıtları da siler", {
+  .ccs_with_test_db(function(conn) {
+    sid <- cc_db_create_session(user_id = 1L, title = "kalıcı silme testi", conn = conn)
+    cc_db_save_run(sid, prompt = "p1", status = "completed", conn = conn)
+    cc_db_save_run(sid, prompt = "p2", status = "failed", conn = conn)
+
+    # KULLANICI İZOLASYONU: B kullanıcısı A'nın oturumunu silemez; satırlar durur.
+    expect_false(cc_db_hard_delete_session(user_id = 2L, session_record_id = sid, conn = conn))
+    expect_identical(nrow(cc_db_list_sessions(user_id = 1L, conn = conn)), 1L)
+    expect_identical(
+      as.integer(DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM MB_ClaudeCode_Runs")$n[1]),
+      2L
+    )
+
+    # A oturumu KALICI siler: oturum VE tüm çalıştırmalar fiziksel olarak gider.
+    expect_true(cc_db_hard_delete_session(user_id = 1L, session_record_id = sid, conn = conn))
+    expect_identical(nrow(cc_db_list_sessions(user_id = 1L, conn = conn)), 0L)
+    expect_identical(
+      nrow(cc_db_list_sessions(user_id = 1L, include_deleted = TRUE, conn = conn)),
+      0L
+    )
+    expect_identical(
+      as.integer(DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM MB_ClaudeCode_Sessions")$n[1]),
+      0L
+    )
+    expect_identical(
+      as.integer(DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM MB_ClaudeCode_Runs")$n[1]),
+      0L
+    )
+
+    # Var olmayan / geçersiz kimlik güvenli FALSE döner.
+    expect_false(cc_db_hard_delete_session(user_id = 1L, session_record_id = 9999L, conn = conn))
+    expect_false(cc_db_hard_delete_session(user_id = 0L, session_record_id = 1L, conn = conn))
+  })
+})
+
 test_that("tablolar yokken tüm fonksiyonlar güvenli boş/NULL/FALSE döner", {
   .ccs_with_test_db(function(conn) {
     expect_false(cc_db_claude_tables_available(conn = conn, force_refresh = TRUE))
@@ -354,6 +415,8 @@ test_that("tablolar yokken tüm fonksiyonlar güvenli boş/NULL/FALSE döner", {
       expect_identical(nrow(cc_db_list_sessions(user_id = 1L, conn = conn)), 0L)
       expect_null(cc_db_load_session(user_id = 1L, session_record_id = 1L, conn = conn))
       expect_false(cc_db_soft_delete_session(user_id = 1L, session_record_id = 1L, conn = conn))
+      expect_false(cc_db_restore_session(user_id = 1L, session_record_id = 1L, conn = conn))
+      expect_false(cc_db_hard_delete_session(user_id = 1L, session_record_id = 1L, conn = conn))
     })
   }, create_schema = FALSE)
 })

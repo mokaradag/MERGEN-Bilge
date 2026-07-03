@@ -90,6 +90,11 @@ claudeCodeSessionsUI <- function(id) {
               `for` = ns("filter_status"),
               "Durum"
             ),
+            # selectize = FALSE (yerel <select>): boş-değerli "Tümü" seçeneği
+            # selectize'da başka bir seçim yapıldıktan sonra placeholder gibi
+            # davranıp erişilemez hale gelebiliyordu. Yerel select ile "Tümü"
+            # her zaman seçilebilir kalır ve kullanıcı filtresiz duruma
+            # yeniden dönebilir (yenileme/tekrar giriş gerekmez).
             selectInput(
               ns("filter_status"),
               label = NULL,
@@ -101,7 +106,8 @@ claudeCodeSessionsUI <- function(id) {
                 "Durduruldu" = "stopped",
                 "Arşivlenmiş" = "archived"
               ),
-              selected = ""
+              selected = "",
+              selectize = FALSE
             )
           ),
           div(
@@ -111,10 +117,13 @@ claudeCodeSessionsUI <- function(id) {
               `for` = ns("filter_model"),
               "Model"
             ),
+            # Model listesi sunucu tarafında kararlı biçimde (birikimli) doldurulur;
+            # yerel select "Tümü" seçeneğinin her zaman erişilebilir kalmasını sağlar.
             selectInput(
               ns("filter_model"),
               label = NULL,
-              choices = c("Tümü" = "")
+              choices = c("Tümü" = ""),
+              selectize = FALSE
             )
           ),
           div(
@@ -350,6 +359,27 @@ ccs_session_card <- function(row, ns) {
           onclick = set_input("session_archive"),
           icon("box-archive"), span("Arşivle")
         )
+      },
+      # Arşivlenmiş kartlar: arşivden çıkar (geri yükle) ve kalıcı sil eylemleri.
+      if (silinmis) {
+        tags$button(
+          type = "button",
+          class = "ccs-card-btn ccs-restore-btn",
+          title = "Oturumu arşivden çıkar (normal listeye geri döndür)",
+          `aria-label` = "Oturumu arşivden çıkar",
+          onclick = set_input("session_restore"),
+          icon("box-open"), span("Geri Yükle")
+        )
+      },
+      if (silinmis) {
+        tags$button(
+          type = "button",
+          class = "ccs-card-btn ccs-delete-btn",
+          title = "Oturumu kalıcı olarak sil (geri alınamaz)",
+          `aria-label` = "Oturumu kalıcı olarak sil",
+          onclick = set_input("session_delete"),
+          icon("trash"), span("Kalıcı Sil")
+        )
       }
     )
   )
@@ -417,14 +447,15 @@ ccs_run_timeline_item <- function(run_row) {
     )
   }
 
-  dosya_sayisi <- 0L
   dosya_json <- as.character(run_row$GeneratedDownloadsJson %||% "")[1]
+  uretilen_dosyalar <- list()
   if (!is.na(dosya_json) && nzchar(dosya_json) && !identical(dosya_json, "[]")) {
-    dosya_sayisi <- tryCatch(
-      length(jsonlite::fromJSON(dosya_json, simplifyVector = FALSE)),
-      error = function(e) 0L
+    uretilen_dosyalar <- tryCatch(
+      jsonlite::fromJSON(dosya_json, simplifyVector = FALSE),
+      error = function(e) list()
     )
   }
+  dosya_sayisi <- length(uretilen_dosyalar)
 
   sure <- suppressWarnings(as.numeric(run_row$DurationSeconds))
 
@@ -464,7 +495,56 @@ ccs_run_timeline_item <- function(run_row) {
         tags$span(class = "ccs-run-label", "Yanıt"),
         tags$pre(class = "ccs-run-pre", cikti_metin)
       )
+    },
+    # Üretilen belgeler: kayıtlı oturum geri getirildiğinde oluşturulan
+    # dosyalar ve bağlantıları görünür kalır. Ad kaçışlanır (XSS sınırı);
+    # url uygulama tarafından üretilen kaynak yoludur (bilge_yolac_downloads).
+    ccs_run_generated_files_ui(uretilen_dosyalar)
+  )
+}
+
+# Bir çalıştırmanın ürettiği dosyaları indirilebilir bağlantı listesine çevirir
+# (saf fonksiyon). Metin alanları htmlEscape'ten geçer; url zaten güvenli
+# uygulama kaynak yoludur.
+ccs_run_generated_files_ui <- function(files) {
+  if (is.null(files) || !length(files)) {
+    return(NULL)
+  }
+
+  ogeler <- lapply(files, function(dosya) {
+    if (!is.list(dosya)) return(NULL)
+
+    ad <- as.character(dosya$display_name %||% dosya$download_name %||% "")[1]
+    if (is.na(ad) || !nzchar(ad)) ad <- "belge"
+    boyut <- as.character(dosya$size_label %||% "")[1]
+    url <- as.character(dosya$url %||% "")[1]
+
+    etiket <- tagList(
+      icon("file-arrow-down"),
+      tags$span(class = "ccs-run-file-name", HTML(htmltools::htmlEscape(ad))),
+      if (!is.na(boyut) && nzchar(boyut)) {
+        tags$span(class = "ccs-run-file-size", HTML(htmltools::htmlEscape(boyut)))
+      }
+    )
+
+    if (!is.na(url) && nzchar(url)) {
+      tags$a(
+        class = "ccs-run-file ccs-run-file-link",
+        href = url,
+        target = "_blank",
+        rel = "noopener",
+        download = NA,
+        etiket
+      )
+    } else {
+      tags$span(class = "ccs-run-file", etiket)
     }
+  })
+
+  div(
+    class = "ccs-run-files",
+    tags$span(class = "ccs-run-label", "Üretilen Belgeler"),
+    div(class = "ccs-run-files-list", ogeler)
   )
 }
 

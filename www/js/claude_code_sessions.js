@@ -33,23 +33,38 @@
     var inputId = String((data && data.inputId) || '');
     if (!inputId || !value) return;
 
+    var buttons = document.querySelectorAll('.cc-model-tier-btn');
     var selected = null;
-    document.querySelectorAll('.cc-model-tier-btn').forEach(function(btn) {
+    buttons.forEach(function(btn) {
       if (btn.getAttribute('data-value') === value) {
         selected = btn;
       }
     });
 
+    // Geri yüklenen model artık mevcut model listesinde yoksa (yapılandırma
+    // kayması) bayat değeri Shiny'e ZORLAMA (Codex P2). Aksi halde bir
+    // sonraki çalıştırma, seçicinin artık sunmadığı kullanılamaz bir modeli
+    // çalıştırabilir. Bu durumda hâlihazırda etkin/ilk butonun değerine düş.
+    var pushValue = value;
     if (selected) {
       var group = selected.closest('.cc-model-tier-group') || document;
       group.querySelectorAll('.cc-model-tier-btn').forEach(function(btn) {
         btn.classList.remove('active');
       });
       selected.classList.add('active');
+    } else {
+      var fallback = document.querySelector('.cc-model-tier-btn.active') ||
+                     (buttons.length ? buttons[0] : null);
+      if (!fallback) {
+        // Hiç model butonu yok: bayat değeri gönderme, UI'yi olduğu gibi bırak.
+        return;
+      }
+      pushValue = fallback.getAttribute('data-value') || '';
+      if (!pushValue) return;
     }
 
     if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
-      window.Shiny.setInputValue(inputId, value, { priority: 'event' });
+      window.Shiny.setInputValue(inputId, pushValue, { priority: 'event' });
     }
   });
 

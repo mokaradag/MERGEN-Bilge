@@ -332,7 +332,8 @@ health_collect_checks <- function(perf_tracker = NULL, include_slow = TRUE) {
     health_check_runtime_info(perf_tracker),
     health_check_package_sanity(),
     health_check_windows_info(),
-    health_check_bilge_yolac()
+    health_check_bilge_yolac(),
+    health_check_bilge_yolac_sessions()
   )
   out <- do.call(rbind, checks)
   rownames(out) <- NULL

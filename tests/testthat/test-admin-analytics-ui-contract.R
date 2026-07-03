@@ -22,6 +22,9 @@
   env$showToast <- function(...) invisible(NULL)
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_admin_analytics.R"),
          encoding = "UTF-8", local = env)
+  # Bilge Yolaç sekmesi ayrı modül dosyasında (diğer admin sekmeleriyle aynı desen).
+  source(file.path(resolve_repo_root_for_tests(), "R", "module_admin_bilge_yolac.R"),
+         encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "module_admin_analytics.R"),
          encoding = "UTF-8", local = env)
   env
@@ -52,4 +55,50 @@ testthat::test_that("adminAnalyticsUI sekme 'value' kimliklerini korur", {
     testthat::expect_true(grepl(deger, html, fixed = TRUE),
                           info = paste("eksik sekme value:", deger))
   }
+})
+
+testthat::test_that("adminAnalyticsUI Bilge Yolaç sekmesini (başlık + value) içerir", {
+  env <- .source_admin_analytics_ui_for_test()
+  html <- paste(as.character(env$adminAnalyticsUI("adm")), collapse = "\n")
+  testthat::expect_true(grepl("Bilge Yolaç", html, fixed = TRUE))
+  testthat::expect_true(grepl("bilge_yolac", html, fixed = TRUE))
+})
+
+testthat::test_that("admin_bilge_yolac_queries enjekte edilen safe_query ile beklenen anahtarları üretir", {
+  env <- .source_admin_analytics_ui_for_test()
+
+  cagrilan <- character(0)
+  fake_safe_query <- function(query) {
+    cagrilan <<- c(cagrilan, query)
+    data.frame()
+  }
+
+  sonuc <- env$admin_bilge_yolac_queries(fake_safe_query)
+  testthat::expect_true(is.list(sonuc))
+  testthat::expect_setequal(
+    names(sonuc),
+    c("session_totals", "run_totals", "daily_trend", "status_dist",
+      "top_users", "recent_sessions")
+  )
+  # Tüm sorgular Bilge Yolaç kalıcı oturum tablolarını hedefler.
+  testthat::expect_true(any(grepl("MB_ClaudeCode_Sessions", cagrilan, fixed = TRUE)))
+  testthat::expect_true(any(grepl("MB_ClaudeCode_Runs", cagrilan, fixed = TRUE)))
+})
+
+testthat::test_that("admin_bilge_yolac_ui boş veriyle güvenli metrik kartları üretir", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("highcharter")
+  testthat::skip_if_not_installed("DT")
+
+  env <- .source_admin_analytics_ui_for_test()
+  bos <- env$admin_bilge_yolac_queries(function(query) data.frame())
+
+  html <- paste(as.character(env$admin_bilge_yolac_ui(
+    bos, shiny::NS("adm"),
+    env$admin_create_metric_card, env$admin_create_info_button, env$admin_format_number
+  )), collapse = "\n")
+
+  testthat::expect_true(grepl("Toplam Oturum", html, fixed = TRUE))
+  testthat::expect_true(grepl("adm-by_daily_trend_chart", html, fixed = TRUE))
+  testthat::expect_true(grepl("adm-by_top_users_table", html, fixed = TRUE))
 })

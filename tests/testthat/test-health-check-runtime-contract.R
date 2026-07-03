@@ -26,7 +26,8 @@ test_that("runtime sağlık kontrol yardımcıları ayrı dosyadan public adlarl
     "health_check_windows_info",
     "health_check_sso_mode",
     "health_check_git_version",
-    "health_check_bilge_yolac"
+    "health_check_bilge_yolac",
+    "health_check_bilge_yolac_sessions"
   )
 
   expect_true(
@@ -70,5 +71,17 @@ test_that("SSO modu kontrolü lokal ve SSO durumlarını güvenli raporlar", {
 test_that("Bilge Yolaç kontrolü yapılandırılmamışsa hata fırlatmaz", {
   withr::local_envvar(c(CLAUDE_CODE_CLI_PATH = "", BILGE_YOLAC_CLI_PATH = "", CLAUDE_CODE_DEFAULT_WORKDIR = "", BILGE_YOLAC_DEFAULT_WORKDIR = ""))
   res <- health_check_bilge_yolac()
+  expect_true(res$status[1] %in% c("not_configured", "ok", "warning", "unknown"))
+})
+
+test_that("Bilge Yolaç oturum kaydı kontrolü DB olmadan güvenli döner", {
+  # DB_DSN tanımlı değilken kontrol atlanır; hata fırlatmaz ve zorunlu
+  # alanları taşıyan tek satırlık sonuç döner.
+  withr::local_envvar(c(DB_DSN = ""))
+  res <- health_check_bilge_yolac_sessions()
+  required <- c("id", "label", "status", "severity", "value", "detail",
+                "duration_ms", "checked_at", "remediation")
+  expect_true(all(required %in% names(res)))
+  expect_identical(res$id[1], "runtime.bilge_yolac_sessions")
   expect_true(res$status[1] %in% c("not_configured", "ok", "warning", "unknown"))
 })

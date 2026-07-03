@@ -6,6 +6,12 @@
    ========================================================================== */
 
 .claude-code-sessions-container {
+  /* AJAN rozeti çalışma alanı (.claude-code-container) ile aynı görünsün diye
+     aynı tema aksan değişkenleri burada da tanımlanır. Aksi halde .cc-badge
+     taban degradesi var(--cc-theme-accent) çözülemediği için Oturumlar
+     sayfasında rozet çalışma alanından farklı görünürdü. */
+  --cc-theme-accent: #7C4DFF;
+  --cc-theme-hover: #8E66FF;
   display: flex;
   flex-direction: column;
   height: calc(100vh - 50px);
@@ -407,6 +413,20 @@
   color: var(--color-primary);
 }
 
+/* Arşivlenmiş kart eylemleri: geri yükle (nötr/başarı) ve kalıcı sil (tehlike) */
+.ccs-restore-btn:hover,
+.ccs-restore-btn:focus-visible {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.ccs-delete-btn:hover,
+.ccs-delete-btn:focus-visible {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+}
+
 /* --- Boş / yükleniyor durumları -------------------------------------------------- */
 
 .ccs-empty-state,
@@ -474,6 +494,10 @@
 
 .ccs-detail-modal-content {
   color: var(--color-text);
+  /* Modal içeriği rahatça sığsın diye ölçülü bir taban yükseklik; kısa
+     oturumlarda gereksiz dikey kaydırma azalır, uzun oturumlarda zaman
+     çizelgesi kendi içinde akmaya devam eder. */
+  min-height: 46vh;
 }
 
 .ccs-detail-resume-note {
@@ -579,6 +603,52 @@
   word-break: break-word;
   max-height: 220px;
   overflow-y: auto;
+}
+
+/* --- Üretilen belgeler (detay modalı) ------------------------------------------- */
+
+.ccs-run-files {
+  margin-top: 4px;
+}
+
+.ccs-run-files-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ccs-run-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--color-surface-3);
+  border: 1px solid var(--color-border-soft);
+  color: var(--color-text-soft);
+  text-decoration: none;
+  max-width: 100%;
+}
+
+.ccs-run-file-link:hover,
+.ccs-run-file-link:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  outline: none;
+}
+
+.ccs-run-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+.ccs-run-file-size {
+  font-weight: 500;
+  color: var(--color-muted);
 }
 
 /* --- Duyarlı düzen ------------------------------------------------------------------ */

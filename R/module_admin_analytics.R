@@ -72,6 +72,13 @@ adminAnalyticsUI <- function(id) {
           tagList(icon("chart-area"), " Gelişmiş Analizler")
         ),
         value = "advanced_analytics"
+      ),
+      tabPanel(
+        title = tags$span(
+          title = "Bilge Yolaç ajan oturumları ve çalıştırma istatistikleri",
+          tagList(icon("robot"), " Bilge Yolaç")
+        ),
+        value = "bilge_yolac"
       )
     )
   )
@@ -399,6 +406,16 @@ adminAnalyticsServer <- function(id, pool = NULL) {
     })
 
     # ==================================================================
+    # BİLGE YOLAÇ VERİSİ (ajan oturum istatistikleri)
+    # MB_ClaudeCode_Sessions / MB_ClaudeCode_Runs tabloları yoksa admin_safe_query
+    # boş data.frame döner; sekme güvenli biçimde sıfır/boş durum gösterir.
+    # ==================================================================
+    bilge_yolac_data <- reactive({
+      refresh$trigger()
+      admin_bilge_yolac_queries(safe_query)
+    })
+
+    # ==================================================================
     # SEKME İÇERİĞİ YÖNLENDİRİCİ
     # ==================================================================
     output$tab_content_area <- renderUI({
@@ -416,6 +433,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
         "chat_quality"       = admin_chat_quality_ui(analytics_data(), ns, create_metric_card, create_info_button, format_number),
         "time_analysis"      = admin_time_analysis_ui(analytics_data(), ns, create_metric_card, create_info_button, format_number),
         "advanced_analytics" = admin_advanced_analytics_ui(analytics_data(), ns, create_metric_card, create_info_button, format_number),
+        "bilge_yolac"        = admin_bilge_yolac_ui(bilge_yolac_data(), ns, create_metric_card, create_info_button, format_number),
         admin_overview_ui(analytics_data(), ns, create_metric_card, create_info_button, format_number)
       )
     })
@@ -430,6 +448,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
     admin_chat_quality_outputs(output, analytics_data, turkish_dt_language)
     admin_time_analysis_outputs(output, analytics_data, turkish_dt_language, turkish_months)
     admin_advanced_analytics_outputs(output, analytics_data, format_turkish_date)
+    admin_bilge_yolac_outputs(output, bilge_yolac_data, turkish_dt_language)
 
   })
 }

@@ -25,7 +25,9 @@ claudeCodeSessionsServer <- function(id,
       tables_available = NULL,  # NULL: henüz bakılmadı, TRUE/FALSE: sonuç
       auth_pending = FALSE,     # Kimlik hazır değilken açıklayıcı durum
       limit = 24L,              # Sayfalama: kart sayısı sınırı
-      pending_archive_id = NULL # Onay bekleyen arşivleme kaydı
+      pending_archive_id = NULL,# Onay bekleyen arşivleme kaydı
+      pending_delete_id = NULL, # Onay bekleyen kalıcı silme kaydı
+      known_models = character(0) # Model filtresi için birikimli kararlı liste
     )
 
     refresh_guard <- cc_create_dir_refresh_guard()
@@ -88,8 +90,11 @@ claudeCodeSessionsServer <- function(id,
 
       rv$sessions <- liste
 
-      # Model filtresi seçeneklerini mevcut sonuçlarla zenginleştir
-      # (seçim korunur; stale sonuç guard'ı yukarıda uygulandı).
+      # Model filtresi seçenekleri BİRİKİMLİ tutulur: liste bir modele göre
+      # filtrelendiğinde sonuç kümesi daralsa bile daha önce görülen modeller
+      # açılır listede kalır ve "Tümü" her zaman erişilebilir olur. Böylece
+      # kullanıcı filtresiz duruma veya başka bir modele dönmek için sayfayı
+      # yenilemek/tekrar giriş yapmak zorunda kalmaz.
       if (is.data.frame(liste) && nrow(liste) > 0L) {
         modeller <- unique(stats::na.omit(c(
           as.character(liste$RuntimeModel),
@@ -97,12 +102,15 @@ claudeCodeSessionsServer <- function(id,
         )))
         modeller <- modeller[nzchar(modeller)]
 
-        if (length(modeller)) {
+        birlesik <- sort(unique(c(rv$known_models, modeller)))
+
+        if (!identical(birlesik, rv$known_models)) {
+          rv$known_models <- birlesik
           secili <- isolate(input$filter_model %||% "")
           updateSelectInput(
             session,
             "filter_model",
-            choices = c("Tümü" = "", sort(modeller)),
+            choices = c("Tümü" = "", birlesik),
             selected = secili
           )
         }
@@ -369,6 +377,86 @@ claudeCodeSessionsServer <- function(id,
       } else {
         showNotification(
           "Oturum arşivlenemedi. Lütfen tekrar deneyin.",
+          type = "error", duration = 5
+        )
+      }
+    })
+
+    # --- Arşivden çıkarma (geri yükleme; onay gerektirmez) ---------------------
+    observeEvent(input$session_restore, {
+      kayit_id <- suppressWarnings(as.integer(input$session_restore))
+      if (is.na(kayit_id)) return()
+
+      user_check <- resolve_user()
+      if (!isTRUE(user_check$ok)) {
+        showNotification(user_check$message, type = "warning", duration = 5)
+        return()
+      }
+
+      basarili <- cc_db_restore_session(user_check$user_id, kayit_id)
+
+      if (isTRUE(basarili)) {
+        showNotification("Oturum arşivden çıkarıldı.", type = "message", duration = 4)
+        refresh_sessions("restore")
+      } else {
+        showNotification(
+          "Oturum geri yüklenemedi. Lütfen tekrar deneyin.",
+          type = "error", duration = 5
+        )
+      }
+    })
+
+    # --- Kalıcı silme (geri alınamaz; ikinci onay adımı ister) ----------------
+    observeEvent(input$session_delete, {
+      rv$pending_delete_id <- suppressWarnings(as.integer(input$session_delete))
+
+      showModal(modalDialog(
+        title = tagList(icon("triangle-exclamation"), "Oturumu Kalıcı Sil"),
+        p(paste(
+          "Bu oturum ve tüm çalıştırma geçmişi KALICI olarak silinecek.",
+          "Bu işlem geri alınamaz."
+        )),
+        size = "s",
+        easyClose = TRUE,
+        footer = tagList(
+          actionButton(
+            ns("delete_confirm"),
+            label = tagList(icon("trash"), span("Kalıcı Sil")),
+            class = "btn-modern btn-danger"
+          ),
+          modalButton("Vazgeç")
+        )
+      ))
+    })
+
+    observeEvent(input$delete_confirm, {
+      removeModal()
+
+      kayit_id <- rv$pending_delete_id
+      rv$pending_delete_id <- NULL
+      if (is.null(kayit_id) || is.na(kayit_id)) return()
+
+      user_check <- resolve_user()
+      if (!isTRUE(user_check$ok)) {
+        showNotification(user_check$message, type = "warning", duration = 5)
+        return()
+      }
+
+      # Silinecek oturum çalışma alanında aktifse önce güvenli biçimde bağı
+      # kopar; aktif çalıştırma sürüyorsa detach FALSE döner ve silme durur.
+      if (!is.null(workbench) && is.function(workbench$detach_archived_session) &&
+          !isTRUE(workbench$detach_archived_session(kayit_id, detach = TRUE))) {
+        return()
+      }
+
+      basarili <- cc_db_hard_delete_session(user_check$user_id, kayit_id)
+
+      if (isTRUE(basarili)) {
+        showNotification("Oturum kalıcı olarak silindi.", type = "message", duration = 4)
+        refresh_sessions("delete")
+      } else {
+        showNotification(
+          "Oturum silinemedi. Lütfen tekrar deneyin.",
           type = "error", duration = 5
         )
       }
