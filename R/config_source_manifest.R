@@ -374,14 +374,19 @@ source_manifest_sections <- list(
   ),
 
   # module_identity_startup: Kimlik/başlangıç modülleri: SSO, oturum zaman
-  # aşımı, performans, kullanıcı kimliği, boot hazırlığı, başlangıç ekranı,
-  # yükleme overlay, araç arka planı, kenar çubuğu kullanıcı paneli (saf
-  # görünüm yardımcıları + modül) ve hızlı eylemler.
+  # aşımı, performans, kullanıcı kimliği, başlangıç şeridi yardımcıları,
+  # boot hazırlığı, başlangıç ekranı, yükleme overlay, araç arka planı,
+  # kenar çubuğu kullanıcı paneli (saf görünüm yardımcıları + modül) ve
+  # hızlı eylemler. R/helpers_startup_lane.R saf şerit çözümleme
+  # yardımcılarıdır ve appLoadingUI() ortam varsayılanını gömdüğü için
+  # R/module_app_loading.R'den ÖNCE yüklenmelidir.
   module_identity_startup = c(
     "R/module_sso.R",
     "R/module_session_timeout.R",
     "R/module_performance.R",
     "R/module_user_identity.R",
+    "R/helpers_startup_lane.R",
+    "R/module_startup_lane.R",
     "R/module_boot_readiness.R",
     "R/module_startup_screen_ui.R",
     "R/module_startup_screen.R",

@@ -4,6 +4,8 @@
 $(document).ready(function() {
 
   var modernWelcomeBootTimer = null;
+  var laneDeferredBootPending = false;
+  var laneDeferredBootMessage = null;
 
 	function clearModernWelcomeBootTimer() {
 	  if (modernWelcomeBootTimer) {
@@ -14,6 +16,26 @@ $(document).ready(function() {
 
 	function bootModernWelcome(message, attempt) {
 	  attempt = attempt || 0;
+
+	  // Başlangıç şeridi henüz seçilmediyse (ilk açılış seçicisi açık) ağır
+	  // karşılama medyası BAŞLATILMAZ: çözülmemiş şerit zengin gibi ele alınıp
+	  // video/neural seçicinin arkasında yüklenirse, kullanıcı Hızlı Başlangıç
+	  // seçtiğinde ilk hızlı açılış medyayı gerçekten atlamamış olurdu. Boot,
+	  // şerit çözüldüğünde EN SON mesajla bir kez yeniden denenir.
+	  var laneApi = window.MergenStartupLane;
+	  if (laneApi &&
+		  typeof laneApi.needsSelection === 'function' && laneApi.needsSelection() &&
+		  typeof laneApi.whenResolved === 'function') {
+		laneDeferredBootMessage = message;
+		if (!laneDeferredBootPending) {
+		  laneDeferredBootPending = true;
+		  laneApi.whenResolved(function() {
+			laneDeferredBootPending = false;
+			bootModernWelcome(laneDeferredBootMessage, 0);
+		  });
+		}
+		return;
+	  }
 
 	  const MAX_ATTEMPTS = 80;
 	  const RETRY_DELAY_MS = 50;
@@ -48,6 +70,27 @@ $(document).ready(function() {
 
 	  if (!domReady || !depsReady) {
 		console.warn('[WELCOME] Modern welcome bileşenleri zamanında hazır olmadı.');
+		return;
+	  }
+
+	  // Hızlı Başlangıç şeridi: sinematik arka plan videosu ve neural animasyon
+	  // varsayılan olarak başlatılmaz (statik premium koyu zemin CSS ile gelir).
+	  // Karşılama metni/selamlama normal şekilde çalışır. Özellik silinmez;
+	  // Zengin Deneyim'de tam davranış korunur.
+	  var fastLaneWelcome = document.documentElement.classList.contains('mergen-fast-lane');
+	  if (fastLaneWelcome) {
+		if (window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+		  try { window.WelcomeVideoPlayer.destroy(); } catch (e) {}
+		}
+		if (window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+		  try { window.WelcomeNeuralNetwork.destroy(); } catch (e) {}
+		}
+		if (window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+		  try { window.WelcomeGreeting.destroy(); } catch (e) {}
+		}
+		if (greetingText) {
+		  window.WelcomeGreeting.init(greetingText);
+		}
 		return;
 	  }
 

@@ -12,25 +12,14 @@
 #' @param settings_data Ayarlar modülünden dönen reaktif ayarlar
 startupScreenObserversInit <- function(input, session, settings_data, boot_ready = NULL) {
 
-  # Giriş ekranını başlat (Shiny bağlantısı kurulduğunda)
-  session$onFlushed(function() {
-    # localStorage'dan atlama tercihini kontrol et
-    shinyjs::runjs("
-      (function() {
-        try {
-          var raw = localStorage.getItem('mergen_settings');
-          if (raw) {
-            var s = JSON.parse(raw);
-            if (s.skip_intro === true) {
-              Shiny.setInputValue('startup_skip_intro', true, {priority: 'event'});
-              return;
-            }
-          }
-        } catch(e) {}
-        Shiny.setInputValue('startup_skip_intro', false, {priority: 'event'});
-      })();
-    ")
-  }, once = TRUE)
+  # Giriş ekranını başlat (Shiny bağlantısı kurulduğunda).
+  # Başlangıç şeridi (startup lane) çözümü istemcidedir
+  # (www/js/app_loading_lane.js): kayıtlı tercih > MERGEN_STARTUP_LANE >
+  # ilk açılış seçicisi. Şerit köprüsü ve şerit gözlemcisi
+  # R/module_startup_lane.R içindedir: şerit çözülene dek intro kararı
+  # bekletilir, Hızlı Başlangıç intro'yu her zaman atlar, zengin şeritte
+  # eski skip_intro tercihi aynen uygulanır.
+  startupLaneObserversInit(input, session, settings_data, boot_ready = boot_ready)
 
   ensure_welcome_screen_ready <- function() {
     if (isTRUE(session$userData$welcome_screen_attached)) {
@@ -54,6 +43,16 @@ startupScreenObserversInit <- function(input, session, settings_data, boot_ready
 	  # Giriş ekranı atlandı - işaretle
 	  session$userData$deep_space_dismissed <- TRUE
 
+	  # Atlama Hızlı Başlangıç şeridinden mi geldi? Şerit kaynaklı atlama,
+	  # kalıcı "Bir daha gösterme" (skip_intro) tercihine DÖNÜŞTÜRÜLMEZ; aksi
+	  # halde kullanıcı sonradan Zengin Deneyim'e dönünce sinematik giriş
+	  # kalıcı olarak kapalı kalırdı.
+	  lane_now <- tryCatch({
+		lp <- shiny::isolate(input$startup_lane_resolved)
+		if (is.list(lp)) lp$lane else lp
+	  }, error = function(e) NULL)
+	  fast_lane_active <- identical(as.character(lane_now %||% "")[1], "fast_lane")
+
 	  # Giriş ekranını tamamen atla - DOM'dan kaldır ve uygulamayı göster
 	  shinyjs::runjs("
 		(function() {
@@ -63,8 +62,13 @@ startupScreenObserversInit <- function(input, session, settings_data, boot_ready
 		  document.body.classList.add('app-ready');
 		})();
 	  ")
-	  # Ayarlar sayfasındaki onay kutusunu da senkronize et
-	  updateCheckboxInput(session, "settings_yapilandirma_module-show_intro_animation", value = FALSE)
+	  # Ayarlar sayfasındaki onay kutusunu yalnızca ESKİ skip_intro tercihi
+	  # için senkronize et. Bu onay kutusunun gözlemcisi skip_intro değerini
+	  # localStorage'a anında kalıcılaştırdığından, şerit kaynaklı atlamada
+	  # çağrılması hızlı şerit kullanımını kalıcı intro-kapatmaya çevirirdi.
+	  if (!fast_lane_active) {
+	    updateCheckboxInput(session, "settings_yapilandirma_module-show_intro_animation", value = FALSE)
+	  }
 
 	  # Giriş atlandığında varsayılan personanın rengini uygula
 	  char_id <- normalize_character_id(settings_data$selected_character)
@@ -88,12 +92,16 @@ startupScreenObserversInit <- function(input, session, settings_data, boot_ready
       # Giriş atlandığında, kayıtlı moda göre uygulama arka plan müziğini
       # ayarla. Derin uzay intro müziği bu akışta hiç çalmaz; yalnızca
       # MusicManager ana teması önceki mod tercihine göre başlatılır.
-      shinyjs::delay(450, {
-        session$sendCustomMessage("toggleMusic", list(
-          enabled = isTRUE(settings_data$enable_background_music),
-          character = char_id
-        ))
-      })
+      # Hızlı Başlangıç şeridinde açılışta müzik HİÇ başlatılmaz (katı
+      # varsayılan); kullanıcı müziği uygulama içinden açabilir.
+      if (!fast_lane_active) {
+        shinyjs::delay(450, {
+          session$sendCustomMessage("toggleMusic", list(
+            enabled = isTRUE(settings_data$enable_background_music),
+            character = char_id
+          ))
+        })
+      }
 
       # Karşılama ekranı zaten arkada kurulmuşsa tekrar yükleme yapma
       ensure_welcome_screen_ready()

@@ -469,6 +469,10 @@ ui_asset_unmanifested_ownership <- list(
     owner_seam = "kimlik_sso",
     reason = "R/module_app_loading.R başlangıç overlay'inde inline gömer."
   ),
+  "js/app_loading_lane.js" = list(
+    owner_seam = "kimlik_sso",
+    reason = "R/module_app_loading.R başlangıç overlay'inde inline gömer (başlangıç şeridi çözümleyici + ilk açılış seçicisi)."
+  ),
   "js/app_loading_codestream.js" = list(
     owner_seam = "kimlik_sso",
     reason = "R/module_app_loading.R başlangıç overlay'inde inline gömer."

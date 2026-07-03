@@ -632,71 +632,14 @@
 }
 
 /* ============================================================= */
-/* AÇIK TEMA - Sürüm rozet ve modal kontrast düzeltmeleri        */
+/* AÇIK TEMA - Yalnızca Destek > Yenilikler sayfası düzeltmeleri */
 /* ============================================================= */
-html[data-theme="light"] .deep-space-version-badge {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(247, 249, 253, 0.88)) !important;
-  border: 1px solid rgba(0, 48, 135, 0.18) !important;
-  box-shadow:
-    0 2px 16px rgba(15, 28, 51, 0.10),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
-}
-
-html[data-theme="light"] .deep-space-version-badge:hover {
-  background: #ffffff !important;
-  border-color: var(--mb-brand-primary, #003087) !important;
-  box-shadow:
-    0 8px 26px rgba(0, 48, 135, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7) !important;
-}
-
-html[data-theme="light"] .version-badge-icon {
-  color: var(--mb-brand-primary, #003087) !important;
-}
-
-html[data-theme="light"] .deep-space-version-badge:hover .version-badge-icon {
-  color: var(--mb-brand-accent, #FF5620) !important;
-}
-
-html[data-theme="light"] .version-badge-text {
-  color: var(--mb-brand-primary, #003087) !important;
-  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.5) !important;
-}
-
-html[data-theme="light"] .deep-space-version-badge:hover .version-badge-text {
-  color: var(--mb-brand-primary-alt, #002D7A) !important;
-}
-
-/* Sürüm modal overlay + içerik (giriş ekranından açılan) */
-html[data-theme="light"] .surum-modal-overlay {
-  background: rgba(15, 28, 51, 0.55) !important;
-}
-
-html[data-theme="light"] .surum-modal-container {
-  background: #ffffff !important;
-  border: 1px solid var(--color-border, #d8dde7) !important;
-  box-shadow: 0 22px 52px rgba(15, 28, 51, 0.22) !important;
-  color: var(--color-text, #0f1c33);
-}
-
-html[data-theme="light"] .surum-modal-title {
-  color: var(--mb-brand-primary, #003087) !important;
-}
-
-html[data-theme="light"] .surum-modal-close {
-  color: var(--color-muted, #5b6577) !important;
-  background: transparent !important;
-}
-
-html[data-theme="light"] .surum-modal-close:hover {
-  color: var(--mb-brand-primary, #003087) !important;
-  background: rgba(0, 48, 135, 0.06) !important;
-}
-
-html[data-theme="light"] .surum-modal-tabs-bar,
-html[data-theme="light"] .surum-modal-tabs {
-  border-bottom: 1px solid var(--color-border, #d8dde7) !important;
-}
+/* Başlangıç ekranı sinematik yüzeylerinin (.deep-space-version-badge,
+ * .version-badge-*, .surum-modal-*) açık tema override'ları kaldırıldı:
+ * Zengin Deneyim başlangıç akışı theme_manager.js sinematik koyu-tema
+ * kilidi ile HER ZAMAN koyu görünümde kalır. Aşağıdaki kurallar Destek >
+ * Yenilikler sayfasında da kullanılan seçiciler (.destek-surum-tab,
+ * .surum-card-badge) için korunur. */
 
 /* Sürüm seçim rozetleri (v1.1 / v1.0 / v0.9).
  * Gerçek buton sınıfı .destek-surum-tab olduğu için light tema burada
@@ -740,17 +683,3 @@ html[data-theme="light"] .surum-card-badge {
   box-shadow: 0 2px 6px rgba(0, 48, 135, 0.22) !important;
 }
 
-html[data-theme="light"] #surum-modal-content {
-  color: var(--color-text-soft, #1f2a44) !important;
-}
-
-html[data-theme="light"] #surum-modal-content * {
-  color: inherit;
-}
-
-html[data-theme="light"] #surum-modal-content h1,
-html[data-theme="light"] #surum-modal-content h2,
-html[data-theme="light"] #surum-modal-content h3,
-html[data-theme="light"] #surum-modal-content h4 {
-  color: var(--mb-brand-primary, #003087) !important;
-}

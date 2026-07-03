@@ -351,3 +351,65 @@
     )
   )
 }
+
+#' Başlangıç Deneyimi kartı (Hızlı Başlangıç / Zengin Deneyim)
+#' @description Başlangıç şeridi seçimi. Hızlı Başlangıç sinematik girişi,
+#'   açılış müziğini ve zengin medya ön yüklemesini atlar; Zengin Deneyim
+#'   mevcut sinematik açılışı korur. Tercih localStorage'a
+#'   (mergen_settings.startup_lane) kaydedilir ve bir sonraki açılışta
+#'   uygulanır. Saf UI; sunucu gözlemcisi R/module_settings_yapilandirma.R
+#'   içindedir.
+.syap_startup_lane_card <- function(ns) {
+  div(
+    class = "settings-card startup-lane-card",
+    id = ns("startup_lane_card"),
+    h3("Başlangıç Deneyimi", class = "settings-title"),
+    p(
+      "Uygulama açılışının nasıl davranacağını seçin. Tercihiniz bu tarayıcıda saklanır ve bir sonraki açılışta tam olarak uygulanır.",
+      class = "setting-description"
+    ),
+    fluidRow(
+      column(
+        width = 6,
+        div(
+          class = "setting-item startup-lane-choices",
+          radioButtons(
+            inputId = ns("startup_experience_lane"),
+            label = NULL,
+            choiceNames = list(
+              tagList(
+                tags$strong("Hızlı Başlangıç"),
+                tags$span(
+                  class = "setting-description startup-lane-choice-desc",
+                  "Doğrudan Ana Söyleşi'ye geç. Zengin medya ve diğer sayfalar gerektiğinde yüklenir."
+                )
+              ),
+              tagList(
+                tags$strong("Zengin Deneyim"),
+                tags$span(
+                  class = "setting-description startup-lane-choice-desc",
+                  "MERGEN Bilge'nin sinematik açılışını, Keşfet akışını ve gelişmiş deneyim modlarını kullan."
+                )
+              )
+            ),
+            choiceValues = list("fast_lane", "rich_lane"),
+            selected = character(0)
+          )
+        )
+      ),
+      column(
+        width = 6,
+        h4("Ayrıntılar", class = "setting-subtitle"),
+        p(
+          paste(
+            "Hızlı Başlangıç'ta derin uzay girişi, açılış müziği ve sinematik/persona",
+            "medya ön yüklemesi atlanır; Deneyim Modu kartları Zengin Deneyim'e",
+            "taşınır. Hiçbir özellik silinmez: Kayıtlı Söyleşiler, Söyleşi Geçmişi,",
+            "Görsel Galerisi ve Dosya Yönetimi açıldıklarında tam çalışır."
+          ),
+          class = "setting-description"
+        )
+      )
+    )
+  )
+}

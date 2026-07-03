@@ -7,6 +7,55 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 ---
 
 
+## 2026-07-03 — Başlangıç şeritleri: Hızlı Başlangıç / Zengin Deneyim
+
+### Seçilen paket / neden
+Açılış deneyimi iki şeritli modele taşındı: kullanıcılar ya doğrudan Ana Söyleşi'ye inen minimal bir açılış (Hızlı Başlangıç) ya da mevcut sinematik gösteriyi koruyan akış (Zengin Deneyim) seçer. İlke: Hızlı Başlangıç açılış yükünü kaldırır, işlevselliği kaldırmaz; Zengin Deneyim korunur ve ilerleme ekranı daha dürüst/şeffaf olur. Ek olarak sinematik başlangıç yüzeyleri açık temadan tamamen ayrıştırıldı (koyu-tema kilidi) ve ekli Codex P2 bulgusu (süreç akışı seçici sıfırlaması) düzeltildi.
+
+### Değişen dosyalar
+- Yeni: `R/helpers_startup_lane.R` (saf şerit çözümleme: normalize/env-default/resolve/is_fast + şerit hazır-olma anahtar kümeleri), `R/module_startup_lane.R` (şerit sunucu gözlemcileri: intro kararı köprüsü + `startup_lane_resolved` işleme + hızlı şeritte `character_media_ready` erteleme işareti), `www/js/app_loading_lane.js` (istemci çözümleyici + ilk açılış iki-kart seçicisi; overlay'e satır içi gömülür).
+- `R/module_app_loading.R`: seçici işaretlemesi (`app_loading_lane_selector_ui()`), `MERGEN_STARTUP_LANE` ortam varsayılanının istemciye gömülmesi, lane betiğinin `app_loading.js`'ten önce satır içi eklenmesi.
+- `www/js/app_loading.js`: şeride duyarlı ilerleme (FAST_LANE_PCT / FAST_LANE_REQUIRED, `maybeFinishFastLane`), zengin şerit alt-ilerleme sayacı ("· 4 / 12") ve 6 sn+ etkin-aşama metni ("· sürüyor"), seçici açıkken gözcü bekletme.
+- `www/js/app_loading_media.js`: şerit çözümüne göre başlatma (`startForLane`); hızlı şeritte ön yükleme ertelenir ve `character_media_preload_ready` `fast_lane_deferred` ile hemen bildirilir; zengin şeritte seri tam-tampon davranışı birebir korunur; ilerleme sayaçları iletilir.
+- `R/module_startup_screen.R`: şerit gözlemcileri `startupLaneObserversInit()`'e delege edildi; hızlı şeritte açılışta müzik başlatılmaz.
+- `R/server_welcome_handlers.R`: `welcome_client_ready` sondası hızlı şeritte video-oynuyor koşulunu beklemez.
+- `www/js/modern_welcome_handler.js` + `www/css/welcome_modern.css`: hızlı şeritte video/neural başlatılmaz; statik premium koyu degrade zemin; selamlama korunur.
+- `www/js/theme_manager.js`: sinematik koyu-tema kilidi (`holdCinematicDark`/`releaseCinematicDark`; `body.deep-space-active`/`app-ready` yaşam döngüsü izlenir).
+- `www/css/theme_light_personalization.css`, `www/css/theme_light_pages.css`, `www/css/surum_bilgilendirme.css`: sinematik başlangıç yüzeylerinin açık-tema override'ları kaldırıldı (Destek > Yenilikler sayfası `.destek-surum-tab` açık tema kuralları korunur).
+- `www/css/explore_cinematic.css`: mod kartlarında premium koyu cam yüzey + ölçülü spotlight.
+- Ayarlar: `R/module_settings_yapilandirma_advanced_ui.R` (`.syap_startup_lane_card`), `R/module_settings_yapilandirma_ui.R` (kompozitör çağrısı), `R/module_settings_yapilandirma.R` (şerit gözlemcisi: saveSettings + applyStartupLane + toast), `R/module_settings.R` (varsayılan `ask_once`, yükleme/sıfırlama), `R/module_settings_kisisel.R` (+`www/css/settings_page.css`): hızlı şeritte Deneyim Modu kartları gizlenir, not gösterilir.
+- Codex P2 düzeltmesi: `www/js/process_tools.js` (`resetProcessFlowSelect`), `R/module_settings.R` (sıfırlamada gönderim).
+- Kayıt/sözleşme: `R/config_source_manifest.R` (module_identity_startup 12→14), `R/config_ui_asset_zones.R` + `tests/scripts/frontend_maintainability_report.R` (`js/app_loading_lane.js` sahipliği/allowlist).
+
+### Önce/sonra
+- `R/module_startup_screen.R` 359 → 357 satır (şerit gözlemcileri ayrı dosyada); `R/module_settings_yapilandirma_ui.R` 412 satır (yeni kart gelişmiş dosyada, bütçe 430 korunur); `R/module_settings_yapilandirma_advanced_ui.R` 353 → 415 (bütçe 370/6 → 430/7, yeni ürün yüzeyi gerekçesiyle bilinçli güncelleme); `R/module_settings.R` 676 satır (küresel 678 pini altında).
+
+### Korunan davranış sözleşmeleri
+- Zengin şerit: derin uzay girişi, giriş müziği, Keşfet, skip-intro, Odak/Dinamik/Bütünleşik, Bütünleşik karakter adımı, seri tam-tampon medya ön yükleme, tek `loadExploreAllCharVideos` handler'ı, gerçek-ilerleme (sahte trickle yok), stall gözcüsü + 180 sn mutlak sınır.
+- Hızlı şerit: karşılama ekranı + hızlı eylem kartları + sohbet girişi + gönder/durdur + model seçici eksiksiz; ertelenen sayfalar açıldıklarında tam çalışır; işlev silinmez.
+- Şerit API'si yokken tüm dosyalar eski davranışa düşer (savunmacı geriye dönük uyum).
+
+### Eklenen/güncellenen testler
+- Yeni: `tests/testthat/test-startup-lane-resolver-behavior.R` (çözümleyici davranışı), `tests/testthat/test-startup-lane-contract.R` (seçici/hızlı-şerit/zengin-korunum/koyu-kilit/ayarlar/manifest sözleşmeleri).
+- Güncellenen: `test-source-manifest-sections-contract.R` (bölüm çapaları 12→14, toplam 292→294), `test-settings-yapilandirma-ui-id-surface-behavior.R` (+`startup_lane_card`, `startup_experience_lane`, "Başlangıç Deneyimi"), `test-maintainability-ratchet.R` (gelişmiş kart dosyası 430/7), `test-startup-screen-module-behavior.R` (gerçek sahip dosyaları source eder), `test-frontend-selector-contract.R` (süreç akışı sıfırlama sözleşmesi).
+
+### Gerçekten çalıştırılan doğrulamalar
+- `bash tools/ai_validate.sh quick`: environment/parse/app-source-smoke/focused-contract-tests, 0 failed / 0 skipped (`artifacts/ai-validation/20260703-003714/summary.json`).
+- Odaklı testler: startup-lane (yeni 2 dosya), app-loading (behavior+brand), settings (kisisel/reset/yapilandirma kartlar+id-surface+refactor), startup-screen (UI refactor + module behavior), boot-readiness, startup-observers smoke, e2e-boot-welcome, manifest (sections/global/source), seam-registry, ui-asset-zones, ui-asset-manifest, theme-light-modular, frontend-maintainability-ratchet, maintainability-ratchet, production-contracts, runtime-network-boundary, secret-leak, browser-smoke-harness, ux-smoke-browser, langflow (handler/runtime), frontend-selector — tümü geçti.
+- `bash tools/ai_validate.sh full --boot-smoke` çalıştırıldı (sonucu bu girişin altındaki doğrulama notunda ve PR raporunda).
+
+### Manuel QA (VM/tarayıcı)
+- İlk açılışta (tercih yokken) şerit seçicisinin gelmesi; seçim sonrası bir daha sorulmaması.
+- Hızlı Başlangıç: doğrudan Ana Söyleşi, hızlı eylemler/giriş/gönder-durdur/model seçici; müzik/intro/video yok; Kayıtlı Söyleşiler/Geçmiş/Galeri/Dosya Yönetimi açıldığında tam çalışma.
+- Zengin Deneyim: derin uzay + müzik + Keşfet + mod/karakter akışı; ilerleme alt-sayaç ve "sürüyor" metni; %100 sonrası temiz geçiş.
+- Açık temalı kullanıcıda sinematik akışın koyu kalması ve kapanışta açık temaya dönüş.
+- "Ayarları Sıfırla" sonrası Süreç modunun eski akışı yeniden kalıcılaştırmaması.
+
+### Bilinen riskler / atlanan doğrulamalar
+- Gerçek tarayıcı UX (UX_SMOKE_DONE:PASS), VM/SSO, Keycloak yönlendirme zamanlaması ve gerçek medya tamponlama davranışı cloud'da doğrulanamaz; VM'de doğrulanmalıdır.
+- Hızlı şeritte sunucu tarafı arka plan hazırlıkları (kayıtlı sohbet önizleme, dosya indeksi, galeri taraması) bilinçli olarak korunur (asenkron; kapanışı bloklamaz). Şeride göre sunucu tarafı tam erteleme (dosya indeksi/galeri taramasının sekme açılışına taşınması) ayrı, sözleşme-yoğun bir izleme işi olarak önerilir.
+- Boşta ısınma (idle warm-up) bu pakette uygulanmadı; hızlı şeridin mevcut arka plan hazırlıkları zaten hafif meta düzeyindedir.
+
 ## 2026-07-02 — Langflow temizliği, çoklu süreç akışı ve ikinci LLM uç noktasının kaldırılması
 
 ### Seçilen paket / neden

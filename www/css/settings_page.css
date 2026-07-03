@@ -234,3 +234,49 @@
   border: 1px solid var(--border-color) !important;
   color: var(--text-secondary) !important;
 }
+
+
+/* --------------------------------------------------------------------------
+   Başlangıç şeridi (startup lane) ayar yüzeyleri
+   Hızlı Başlangıç etkinken (html.mergen-fast-lane) Kişiselleştirme'deki
+   Deneyim Modu kartları gizlenir ve bilgilendirme notu gösterilir; Zengin
+   Deneyim'de kartlar normal davranır. Yapılandırma'daki Başlangıç Deneyimi
+   kartının radyo seçenek açıklamaları da burada biçimlendirilir.
+   -------------------------------------------------------------------------- */
+
+.fast-lane-mode-note {
+  display: none;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 6px 0 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 178, 122, 0.28);
+  background: rgba(255, 122, 60, 0.08);
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.fast-lane-mode-note .fas {
+  margin-top: 2px;
+  color: #ff7a3c;
+}
+
+html.mergen-fast-lane .settings-mode-container {
+  display: none !important;
+}
+
+html.mergen-fast-lane .fast-lane-mode-note {
+  display: flex;
+}
+
+.startup-lane-card .startup-lane-choices .radio {
+  margin-bottom: 12px;
+}
+
+.startup-lane-card .startup-lane-choice-desc {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+}

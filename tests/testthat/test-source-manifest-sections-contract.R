@@ -119,7 +119,11 @@
   module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 7L),
   module_settings_api_key = list(first = "R/module_settings_kisisel.R", last = "R/module_api_key.R", n = 7L),
   module_ai_audio = list(first = "R/module_ai_processing.R", last = "R/module_character_video.R", n = 6L),
-  module_identity_startup = list(first = "R/module_sso.R", last = "R/module_quick_actions.R", n = 12L),
+  # Bilinçli güncelleme: başlangıç şeridi (startup lane) için saf çözümleme
+  # yardımcıları (R/helpers_startup_lane.R; appLoadingUI ortam varsayılanını
+  # gömer) ve şerit sunucu gözlemcileri (R/module_startup_lane.R;
+  # startupScreenObserversInit delege eder) bölüme eklendi. 12 -> 14.
+  module_identity_startup = list(first = "R/module_sso.R", last = "R/module_quick_actions.R", n = 14L),
   module_claude_code = list(first = "R/module_claude_code_plugins.R", last = "R/module_claude_code.R", n = 5L),
   module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/module_proje_kaynak_analizi.R", n = 1L),
   module_support = list(first = "R/module_destek_yardim.R", last = "R/module_destek.R", n = 6L),
@@ -300,7 +304,11 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # saf yardımcılar (R/helpers_langflow_runtime.R, chat_send_message_runtime)
   # ve Süreç/Uygulama Uzmanı işleyicisi (R/server_handler_langflow.R,
   # server_handlers_send_message) eklendi.
-  expect_equal(length(runtime), 292L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 292L -> 294L bilinçli güncelleme: başlangıç şeridi (Hızlı Başlangıç /
+  # Zengin Deneyim) için saf çözümleme yardımcıları (R/helpers_startup_lane.R)
+  # ve şerit sunucu gözlemcileri (R/module_startup_lane.R) eklendi
+  # (module_identity_startup bölümü).
+  expect_equal(length(runtime), 294L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

@@ -196,4 +196,14 @@ test_that("Süreç Yönetimi akış seçici sözleşmesi (ui.R + process_tools.j
   expect_true(.frontend_selector_has_text(process_js, "process_chat_controls"))
   expect_true(.frontend_selector_has_text(process_js, "chat_process_flow"))
   expect_true(.frontend_selector_has_text(process_js, "Shiny.setInputValue('chat_process_flow'"))
+
+  # Sıfırlama sözleşmesi: "Ayarları Sıfırla" gizli DOM akış seçicisini
+  # varsayılana döndürmeli ve bayat input$chat_process_flow değerini boş
+  # değerle ezmelidir; aksi halde bir sonraki toggleProcessMode(active=TRUE)
+  # yayını eski akışı yeniden kalıcılaştırır (Codex P2 regresyonu).
+  settings_r <- .read_repo_text_frontend_selector_contract("R/module_settings.R")
+  expect_true(.frontend_selector_has_text(process_js, "resetProcessFlowSelect"))
+  expect_true(.frontend_selector_has_text(process_js, "flowSelect.selectedIndex = 0"))
+  expect_true(.frontend_selector_has_text(process_js, "Shiny.setInputValue('chat_process_flow', ''"))
+  expect_true(.frontend_selector_has_text(settings_r, 'sendCustomMessage("resetProcessFlowSelect"'))
 })

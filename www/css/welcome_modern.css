@@ -825,3 +825,29 @@
     stroke-dashoffset: -100;
   }
 }
+
+
+/* --------------------------------------------------------------------------
+   Hızlı Başlangıç (fast_lane) statik karşılama zemini
+   Sinematik arka plan videoları ve neural animasyon başlatılmaz; yerine
+   hafif, premium koyu bir degrade zemin gösterilir. Sürekli ağır animasyon
+   döngüsü yoktur. Zengin Deneyim'de bu kurallar hiç uygulanmaz.
+   -------------------------------------------------------------------------- */
+
+html.mergen-fast-lane .modern-welcome-video-container video,
+html.mergen-fast-lane .modern-welcome-neural-canvas {
+  display: none !important;
+}
+
+html.mergen-fast-lane .modern-welcome-video-container {
+  background:
+    radial-gradient(circle at 32% 30%, rgba(0, 45, 122, 0.4), transparent 58%),
+    radial-gradient(circle at 78% 82%, rgba(9, 120, 128, 0.2), transparent 60%),
+    linear-gradient(165deg, #05070f 0%, #0a1126 55%, #060910 100%);
+}
+
+html.mergen-fast-lane .modern-welcome-neural-canvas-wrapper {
+  background:
+    radial-gradient(circle at 62% 34%, rgba(70, 110, 190, 0.16), transparent 55%),
+    linear-gradient(200deg, #060a16 0%, #0a1124 60%, #05080f 100%);
+}

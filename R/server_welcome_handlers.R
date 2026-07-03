@@ -149,7 +149,21 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 			  (function() {
 				var attempts = 0;
 				var timer = setInterval(function() {
+				  // Serit secici acikken karsilama boot'u bilinçli olarak
+				  // ertelenmistir; sayaç ilerletilmez ve 12 sn backstop
+				  // welcome_client_ready'yi ERKEN gonderemez. Kontrol, serit
+				  // cozuldukten sonra kaldigi yerden devam eder.
+				  if (window.MergenStartupLane &&
+				      typeof window.MergenStartupLane.needsSelection === 'function' &&
+				      window.MergenStartupLane.needsSelection()) {
+				    return;
+				  }
+
 				  attempts += 1;
+
+				  // Hizli Baslangic seridinde arka plan videosu bilinçli olarak
+				  // oynatilmaz; hazir-olma kontrolu video kosulunu beklemez.
+				  var fastLane = document.documentElement.classList.contains('mergen-fast-lane');
 
 				  var videos = Array.prototype.slice.call(
 					document.querySelectorAll('.modern-welcome-video')
@@ -162,10 +176,11 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 				  var greetingReady = !!document.getElementById('dynamic-greeting-text');
 				  var recentReady = !!document.querySelector('.modern-welcome-footer-section');
 
-				  if ((bgPlaying && greetingReady && recentReady) || attempts >= 120) {
+				  if (((fastLane || bgPlaying) && greetingReady && recentReady) || attempts >= 120) {
 					clearInterval(timer);
 					Shiny.setInputValue('welcome_client_ready', {
 					  bg_playing: bgPlaying,
+					  fast_lane: fastLane,
 					  greeting_ready: greetingReady,
 					  recent_ready: recentReady,
 					  timestamp: Date.now()

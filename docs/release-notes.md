@@ -15,6 +15,23 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### 2026-07-03 Başlangıç deneyimi yeniden tasarımı: Hızlı Başlangıç / Zengin Deneyim şeritleri
+
+Uygulama açılışı iki şeritli modele taşındı. Temel ilke: **Hızlı Başlangıç açılış yükünü kaldırır, işlevselliği kaldırmaz; Zengin Deneyim mevcut sinematik gösteriyi korur ve ilerleme ekranını daha şeffaf hâle getirir.**
+
+- **Hızlı Başlangıç (fast_lane):** URL girilir → kullanıcı doğrudan Ana Söyleşi'ye iner ve hemen yazabilir. Derin uzay girişi, açılış müziği, sinematik arka plan videoları ve persona medya ön yüklemesi açılışta hiç başlatılmaz; karşılama ekranı, hızlı eylem kartları, sohbet girişi, gönder/durdur ve model seçici tam çalışır. Karşılama zeminleri statik premium koyu degradeye döner (sürekli ağır animasyon yok). Açılış katmanı yalnızca sohbet-kabuğu hazırlığını bekler (`connect` + `auth_ready` + `welcome_client_ready`); kayıtlı sohbet önizlemesi, dosya indeksi ve galeri arka planda sürmeye devam eder ve ilgili sayfalar açıldıklarında tam çalışır. Hiçbir özellik silinmez.
+- **Zengin Deneyim (rich_lane):** Mevcut derin uzay girişi, giriş müziği, Keşfet akışı, "Bir daha gösterme", üç Deneyim Modu (Odak/Dinamik/Bütünleşik) ve Bütünleşik karakter seçim adımı birebir korunur. İlerleme ekranı iyileştirildi: uzun medya aşaması gerçek alt-ilerleme sayacı gösterir ("Sinematik ve persona medyası hazırlanıyor · 4 / 12") ve 6 saniyeden uzun süren gerçek aşamalarda etkin-aşama metni ("… · sürüyor") ile ekranın donmuş görünmesi engellenir. Sahte ilerleme yoktur; %100 yalnızca gerçek hazır-olma ile gelir.
+- **İlk açılış şerit seçicisi:** Kayıtlı tercih yoksa tam ekran, koyu, iki kartlı seçici gösterilir (video/Three.js/persona medyası olmadan; yalnızca hafif CSS mikro-animasyon). Seçim anında `mergen_settings.startup_lane` olarak kalıcılaştırılır ve bir daha sorulmaz. Dağıtım varsayılanı `MERGEN_STARTUP_LANE` ortam değişkeniyle verilebilir (`ask_once` varsayılan, `fast_lane`, `rich_lane`); geçersiz değerler güvenle `ask_once`'a düşer.
+- **Ayarlar:** Yapılandırma sayfasına "Başlangıç Deneyimi" kartı eklendi (Hızlı Başlangıç / Zengin Deneyim; değişiklik anında kalıcılaşır, tam etki sonraki açılışta). Kişiselleştirme'deki Deneyim Modu kartları Hızlı Başlangıç etkinken gizlenir ve açıklayıcı bir notla Zengin Deneyim'e yönlendirilir; Zengin Deneyim'de kartlar normal davranır. "Varsayılana Dön" şeridi `ask_once`'a döndürür (seçici yeniden sorulur).
+- **Koyu sinematik başlangıç kabuğu:** Zengin Deneyim başlangıç akışı (derin uzay, Yenilikler rozeti/modalı, Keşfet, mod seçimi, Bütünleşik karakter adımı) artık kullanıcının uygulama teması açık olsa bile HER ZAMAN koyu sinematik görünümde çalışır. `theme_manager.js` sinematik koyu-tema kilidi `body.deep-space-active` yaşam döngüsünü izler; akış kapanınca kullanıcının teması geri uygulanır (uygulama açılış sonrası açık temada çalışmaya devam eder). Sinematik yüzeylerin açık-tema override'ları kaldırıldı; Destek > Yenilikler SAYFASININ açık tema okunabilirliği (`.destek-surum-tab`) korunur.
+- **Mod kartı cilası:** Başlangıç mod kartları premium koyu cam yüzeye (degrade + üst iç ışık) taşındı ve spotlight parıltısı ölçülü hâle getirildi.
+- **Süreç akışı sıfırlama düzeltmesi (Codex P2):** "Ayarları Sıfırla" artık gizli `#chat_process_flow` DOM seçicisini varsayılana döndürür ve bayat `input$chat_process_flow` değerini boş değerle ezer; böylece Süreç modu yeniden etkinleştirildiğinde eski akış sessizce yeniden kalıcılaşmaz.
+
+Yeni/değişen ana dosyalar: `R/helpers_startup_lane.R` (saf şerit çözümleyici), `R/module_startup_lane.R` (şerit sunucu gözlemcileri), `www/js/app_loading_lane.js` (istemci çözümleyici + ilk açılış seçicisi; açılış katmanına satır içi gömülür), `www/js/app_loading.js` / `www/js/app_loading_media.js` (şeride duyarlı ilerleme/medya), `www/js/theme_manager.js` (sinematik koyu kilit), `www/js/modern_welcome_handler.js` (+ `welcome_modern.css`) hızlı şerit statik karşılama, Yapılandırma/Kişiselleştirme ayar yüzeyleri.
+
+Doğrulama: `bash tools/ai_validate.sh quick` (0 failed / 0 skipped) ve odaklı sözleşme/davranış testleri (`test-startup-lane-resolver-behavior.R`, `test-startup-lane-contract.R` + güncellenen manifest/ratchet/id-surface sözleşmeleri) cloud `C.utf8` altında geçti. Gerçek tarayıcı UX, VM/SSO ve `UX_SMOKE_DONE:PASS` doğrulaması VM'de yapılmalıdır; ölçülmüş performans sayısı iddia edilmemektedir ("doğrudan Ana Söyleşi'ye iniş", "algılanan açılış yükünde azalma").
+
+
 ### 2026-07-02 Langflow temizliği, çoklu süreç akışı ve ikinci LLM uç noktasının kaldırılması
 
 Kurumsal Langflow entegrasyonu (Süreç Yönetimi / Uygulama Uzmanı) sadeleştirildi ve genişletildi:

@@ -43,6 +43,30 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
       reset_trigger(isolate(reset_trigger()) + 1)
     }, ignoreInit = TRUE)
 
+    # ---- Başlangıç Deneyimi (startup lane) seçimi ----
+    # Seçim anında kalıcılaştırılır (saveSettings ile localStorage'a) ve
+    # istemci şerit durumu canlı güncellenir (applyStartupLane html sınıfını
+    # değiştirir; Deneyim Modu kartlarının görünürlüğü bu sınıfa bağlıdır).
+    # Sinematik giriş/medya davranışı bir sonraki açılışta tam uygulanır.
+    observeEvent(input$startup_experience_lane, {
+      lane <- as.character(input$startup_experience_lane)[1]
+      if (is.na(lane) || !lane %in% c("fast_lane", "rich_lane")) {
+        return(invisible(NULL))
+      }
+      if (identical(isolate(settings$startup_lane), lane)) {
+        return(invisible(NULL))
+      }
+
+      settings$startup_lane <- lane
+      session$sendCustomMessage("saveSettings", list(startup_lane = lane))
+      session$sendCustomMessage("applyStartupLane", list(lane = lane))
+      showToast(
+        session,
+        "Başlangıç deneyimi güncellendi. Açılış davranışı bir sonraki girişte tam olarak uygulanır.",
+        "info"
+      )
+    }, ignoreInit = TRUE)
+
     # Model açıklaması artık JS tarafından yönetiliyor (settings_model_info.js)
     # Eski renderUI kaldırıldı; bilgi paneli istemci tarafında güncellenir.
 

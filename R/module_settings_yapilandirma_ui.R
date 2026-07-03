@@ -29,6 +29,7 @@ settingsYapilandirmaUIImpl <- function(id) {
             .syap_tools_card(ns),
             .syap_claude_code_card(ns),
             .syap_interface_shortcuts_row(ns),
+            .syap_startup_lane_card(ns),
             .syap_audio_card(ns),
             .syap_ai_expert_card(ns),
             .syap_image_card(ns),

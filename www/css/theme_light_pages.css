@@ -105,7 +105,10 @@ html[data-theme="light"] .health-dashboard table tbody tr:hover {
   background: rgba(0, 48, 135, 0.04) !important;
 }
 
-html[data-theme="light"] .surum-modal-container,
+/* .surum-modal-container (başlangıç ekranı Yenilikler modalı) bu gruptan
+ * çıkarıldı: sinematik başlangıç yüzeyleri koyu-tema kilidiyle her zaman
+ * koyu kalır. .destek-surum-container (Destek > Yenilikler sayfası) açık
+ * temada okunur kalmaya devam eder. */
 html[data-theme="light"] .destek-surum-container {
   background: #ffffff !important;
   color: var(--color-text, #0f1c33) !important;

@@ -15,6 +15,19 @@ if (requireNamespace("shiny", quietly = TRUE)) {
 .startup_env <- new.env(parent = globalenv())
 # UI tanımı (createStartupScreenUI + saf .startup_*) ayrı dosyada; sunucu
 # gözlemcileri ve apply_experience_mode module_startup_screen.R içindedir.
+# Başlangıç şeridi köprüsü (startupLaneObserversInit) ve saf şerit
+# çözümleyicileri gerçek sahip dosyalarından yüklenir; startupScreenObserversInit
+# şerit köprüsünü çağırdığı için izole çalıştırmada da bulunmalıdır.
+source(
+  file.path(resolve_repo_root_for_tests(), "R", "helpers_startup_lane.R"),
+  encoding = "UTF-8",
+  local = .startup_env
+)
+source(
+  file.path(resolve_repo_root_for_tests(), "R", "module_startup_lane.R"),
+  encoding = "UTF-8",
+  local = .startup_env
+)
 source(
   file.path(resolve_repo_root_for_tests(), "R", "module_startup_screen_ui.R"),
   encoding = "UTF-8",

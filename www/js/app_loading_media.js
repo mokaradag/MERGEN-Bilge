@@ -76,6 +76,8 @@
   // İlerleme çubuğuna gerçek medya ilerlemesini bildir (0..1). Karakter listesi
   // henüz gelmeden yalnızca arka plan videoları sayıldığında bandın tamamını
   // doldurup yanıltıcı erken %100 oluşturmamak için fraksiyon sınırlandırılır.
+  // done/total sayaçları da iletilir; açılış ekranı uzun medya aşamasını
+  // "4 / 12" biçiminde gerçek alt-ilerleme metniyle gösterir.
   function reportProgress() {
     var denom = totalKnown > 0 ? totalKnown : 1;
     var frac = bufferedCount / denom;
@@ -87,7 +89,7 @@
     try {
       if (window.MergenAppLoading &&
           typeof window.MergenAppLoading.reportMediaProgress === "function") {
-        window.MergenAppLoading.reportMediaProgress(frac);
+        window.MergenAppLoading.reportMediaProgress(frac, bufferedCount, totalKnown);
       }
     } catch (e) {}
   }
@@ -298,25 +300,46 @@
     Shiny.addCustomMessageHandler("loadExploreAllCharVideos", handleCharacterVideos);
   }
 
-  // Bilinen karşılama arka plan videolarını sunucu yanıtını beklemeden hemen
-  // ısıtmaya başla. (Karakter intro URL'leri yalnızca sunucudan gelebildiği için
-  // onlar loadExploreAllCharVideos yanıtında kuyruğa eklenir.)
-  enqueue(WELCOME_BG_URLS);
+  // Şerit çözümüne göre başlat: Hızlı Başlangıç'ta ön yükleme tamamen
+  // ertelenir ve character_media_ready anında (fast_lane_deferred) bildirilir;
+  // zengin şeritte mevcut sıralı tam-tampon davranışı birebir çalışır.
+  function startForLane(lane) {
+    if (lane === "fast_lane") {
+      charDataReceived = true;
+      signalReady("fast_lane_deferred");
+      return;
+    }
+
+    // Bilinen karşılama arka plan videolarını sunucu yanıtını beklemeden hemen
+    // ısıtmaya başla. (Karakter intro URL'leri yalnızca sunucudan gelebildiği
+    // için onlar loadExploreAllCharVideos yanıtında kuyruğa eklenir.)
+    enqueue(WELCOME_BG_URLS);
+
+    // Talep, ilk Shiny flush turundan SONRA gönderilmelidir. Server tarafındaki
+    // observeEvent(input$explore_request_all_char_videos, ignoreInit = TRUE)
+    // ilk turda input'u NULL görmeli; aksi halde değer ilk flush'ta gelir,
+    // ignoreInit atlar ve observer hiç tetiklenmez. shiny:sessioninitialized
+    // ilk flush tamamlandıktan sonra tetiklendiği için güvenlidir.
+    document.addEventListener("shiny:sessioninitialized", function () {
+      requestCharacterVideos();
+    });
+
+    // Betik geç yüklenip oturum zaten kurulduysa kısa gecikmeyle talep et
+    // (yine ilk flush sonrası olması için).
+    if (window.Shiny && Shiny.shinyapp && Shiny.shinyapp.$socket) {
+      window.setTimeout(requestCharacterVideos, 400);
+    }
+  }
 
   installHandler();
 
-  // Talep, ilk Shiny flush turundan SONRA gönderilmelidir. Server tarafındaki
-  // observeEvent(input$explore_request_all_char_videos, ignoreInit = TRUE)
-  // ilk turda input'u NULL görmeli; aksi halde değer ilk flush'ta gelir,
-  // ignoreInit atlar ve observer hiç tetiklenmez. shiny:sessioninitialized
-  // ilk flush tamamlandıktan sonra tetiklendiği için güvenlidir.
-  document.addEventListener("shiny:sessioninitialized", function () {
-    requestCharacterVideos();
-  });
-
-  // Betik geç yüklenip oturum zaten kurulduysa kısa gecikmeyle talep et
-  // (yine ilk flush sonrası olması için).
-  if (window.Shiny && Shiny.shinyapp && Shiny.shinyapp.$socket) {
-    window.setTimeout(requestCharacterVideos, 400);
+  if (window.MergenStartupLane &&
+      typeof window.MergenStartupLane.whenResolved === "function") {
+    // Şerit henüz seçilmediyse (ilk açılış seçicisi) ön yükleme bekletilir;
+    // seçim de gerçek açılış kararıdır. Seçimden sonra ilgili yol başlar.
+    window.MergenStartupLane.whenResolved(startForLane);
+  } else {
+    // Şerit API'si yoksa (savunmacı geriye dönük uyum) zengin davranış sürer.
+    startForLane("rich_lane");
   }
 })();
