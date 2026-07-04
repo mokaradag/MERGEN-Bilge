@@ -49,6 +49,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     }
 
     load_chat_in_progress(TRUE)
+    yukleme_baslangici <- Sys.time()
 
     # Kullanıcıya anında geri bildirim ver: DB hidrasyonu veya uzun mesaj render'ı
     # bitmeden sohbet sekmesine geçip hafif bir yükleniyor durumunu göster.
@@ -256,7 +257,13 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     } else {
       shinyjs::runjs("setTimeout(function() { scrollToBottom(false); }, 80);")
     }
+    # Başarı toast'ı içerik ekleme mesajından SONRA gönderilir (dürüst sıralama).
     showToast(session, paste("Söyleşi yüklendi:", chat_title), "info")
+    cat(sprintf(
+      "[CHAT PERF] Galeriden söyleşi yüklendi - chat_id=%s, mesaj=%d, %.0f ms\n",
+      chat_id, length(values$messages),
+      as.numeric(difftime(Sys.time(), yukleme_baslangici, units = "secs")) * 1000
+    ))
     shinyjs::delay(120, { load_chat_in_progress(FALSE) })
   })
 

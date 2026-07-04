@@ -147,3 +147,62 @@ init_future_cluster <- function(force = FALSE) {
 monitor_workers <- function() {
   get_worker_monitor_info()
 }
+
+# İşçileri (persistent PSOCK cluster) bir kez ÖN-ISITIR: ilk gerçek LLM/SSE
+# isteği, ağır paketlerin (jsonlite/curl/httr/DBI) işçi tarafında ilk kez
+# yüklenme maliyetini ödemesin diye her işçiye küçük bir görev gönderilir.
+# İlk istem gönderiminde ölçülen "ilk token" gecikmesinin işçi soğuk başlangıcı
+# bileşenini kaldırır. Kaynak yükleme sırasında güvenlidir:
+#   - MERGEN_DISABLE_FUTURES=true iken no-op (test/bootstrap güvenliği),
+#   - bir kez çalışır (start_gc_scheduler_once desenindeki tek-sefer bayrağı),
+#   - dağıtımı bloklamaz; sonuç beklenmez ve hatalar sessizce yutulur.
+prewarm_future_workers_once <- function() {
+  if (isTRUE(getOption("mergen.workers_prewarmed", FALSE))) {
+    return(invisible(FALSE))
+  }
+
+  if (isTRUE(as.logical(Sys.getenv("MERGEN_DISABLE_FUTURES", "false")))) {
+    return(invisible(FALSE))
+  }
+
+  # tracked_future_promise foundation grubunda bu dosyadan SONRA yüklenir;
+  # çağrı zamanı (global.R future kurulumundan sonra) mevcuttur. Yine de
+  # izole test/kaynak bağlamları için savunmacı kontrol yapılır.
+  if (!exists("tracked_future_promise", mode = "function", inherits = TRUE)) {
+    return(invisible(FALSE))
+  }
+
+  options(mergen.workers_prewarmed = TRUE)
+
+  worker_count <- tryCatch(resolve_mergen_worker_count(), error = function(e) 1L)
+  prewarm_started <- Sys.time()
+
+  for (i in seq_len(worker_count)) {
+    tryCatch({
+      prewarm_promise <- tracked_future_promise(
+        task_fn = function() {
+          # İşçi tarafında sık kullanılan paketleri belleğe al; dönüş değeri önemsiz.
+          suppressWarnings({
+            requireNamespace("jsonlite", quietly = TRUE)
+            requireNamespace("curl", quietly = TRUE)
+            requireNamespace("httr", quietly = TRUE)
+            requireNamespace("DBI", quietly = TRUE)
+          })
+          TRUE
+        },
+        task_type = "worker_prewarm",
+        session_token = NULL
+      )
+      # Reddedilen prewarm promise'i sessizce yutulur (uyarı gürültüsü olmasın).
+      promises::catch(prewarm_promise, function(e) NULL)
+    }, error = function(e) invisible(NULL))
+  }
+
+  cat(sprintf(
+    "[STARTUP PERF] worker_prewarm dispatch=%d worker, %.0f ms\n",
+    worker_count,
+    as.numeric(difftime(Sys.time(), prewarm_started, units = "secs")) * 1000
+  ))
+
+  invisible(TRUE)
+}

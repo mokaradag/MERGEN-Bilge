@@ -83,8 +83,15 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     if (load_chat_in_progress()) {
       return()
     }
-    
+
     load_chat_in_progress(TRUE)
+
+    # ANINDA görsel geri bildirim: özel mesajlar reaktif flush beklemeden
+    # websocket'e yazıldığı için bu toast, aşağıdaki DB hidrasyonu ve UI
+    # kurulumu sürerken kullanıcıya hemen görünür. Başarı toast'ı ise içerik
+    # mesajlarından SONRA gönderilir (dürüst toast sıralaması).
+    yukleme_baslangici <- Sys.time()
+    showToast(session, "Söyleşi yükleniyor...", "info")
 
     # Kaydedilmiş bir sohbet açılırken araç bağlamlı arka plan animasyonu
     # temizlenir. Animasyonlar yalnızca hızlı eylem tanıtım mesajı görünürken
@@ -359,7 +366,15 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     shinyjs::delay(120, {
       shinyjs::runjs("if (typeof window.scrollToBottom === 'function') window.scrollToBottom(false);")
     })
+    # Başarı toast'ı içerik ekleme mesajlarından SONRA gönderilir; istemci
+    # websocket mesajlarını sırayla işlediği için toast, mesaj balonları DOM'a
+    # eklendikten sonra görünür (içerikten önce "yüklendi" denmez).
     showToast(session, paste("Söyleşi yüklendi:", chat_to_load$title), "info")
+    cat(sprintf(
+      "[CHAT PERF] Kayıtlı söyleşi yüklendi - chat_id=%s, mesaj=%d, %.0f ms\n",
+      chat_id, length(values$messages),
+      as.numeric(difftime(Sys.time(), yukleme_baslangici, units = "secs")) * 1000
+    ))
     
     # Kilidi kısa bir gecikmeyle serbest bırak
     shinyjs::delay(500, {

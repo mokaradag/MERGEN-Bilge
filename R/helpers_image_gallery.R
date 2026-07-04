@@ -135,6 +135,11 @@ load_image_chat_titles_for_user <- function(user_id) {
 }
 
 #' Kullanıcının tüm görsel mesajlarından açıklamaları toplu yükle
+#' @description TEK veritabanı gidiş-dönüşü ile çalışır: her görsel mesajı için
+#'   hemen sonrasındaki AI yanıtı, korelasyonlu alt sorgu (SonrakiYanit) ile
+#'   aynı sorguda getirilir. Önceki sürüm her görsel için ayrı bir "sonraki
+#'   mesaj" sorgusu (N+1) çalıştırıyor ve galeri taramasını görsel sayısıyla
+#'   orantılı yavaşlatıyordu.
 #' @param user_id Kullanıcı ID
 #' @return İsimli liste: dosya_adı -> açıklama
 load_image_descriptions_for_user <- function(user_id) {
@@ -145,10 +150,17 @@ load_image_descriptions_for_user <- function(user_id) {
     conn <- conn_info$conn
     on.exit(release_connection(conn_info))
 
-    # Görsel mesajını ve hemen sonrasındaki AI yanıtını birlikte al
-    # LIKE kalıbında köşeli parantezi escape et (SQL Server uyumluluğu)
+    # Görsel mesajı + hemen sonrasındaki AI yanıtı tek sorguda.
+    # LIKE kalıbında köşeli parantezi escape et (SQL Server uyumluluğu).
     query <- "
-      SELECT m.MessageContent, m.ChatID, m.MessageOrder
+      SELECT m.MessageContent, m.ChatID, m.MessageOrder,
+             (SELECT TOP 1 m2.MessageContent
+                FROM MB_Messages m2
+               WHERE m2.ChatID = m.ChatID
+                 AND m2.MessageOrder > m.MessageOrder
+                 AND m2.MessageType IN ('ai', 'assistant')
+                 AND m2.MessageContent NOT LIKE '\\[GÖRSEL:%' ESCAPE '\\'
+               ORDER BY m2.MessageOrder ASC) AS SonrakiYanit
       FROM MB_Messages m
       INNER JOIN MB_Chats c ON m.ChatID = c.ChatID
       WHERE c.UserID = ? AND c.IsDeleted = 0
@@ -168,8 +180,6 @@ load_image_descriptions_for_user <- function(user_id) {
     if (nrow(rows) > 0) {
       for (i in seq_len(nrow(rows))) {
         content <- rows$MessageContent[i]
-        chat_id <- rows$ChatID[i]
-        msg_order <- rows$MessageOrder[i]
 
         # Dosya adını çıkar
         m <- regmatches(content, regexec("^\\[GÖRSEL:([^\\]]+)\\]\\s*(.*)", content, perl = TRUE))[[1]]
@@ -177,32 +187,12 @@ load_image_descriptions_for_user <- function(user_id) {
           fname <- basename(m[2])
           inline_desc <- trimws(m[3])
 
-          # Görselden sonraki AI yanıt mesajını ara (aynı söyleşide bir sonraki mesaj)
-          next_msg_query <- "
-            SELECT TOP 1 MessageContent
-            FROM MB_Messages
-            WHERE ChatID = ? AND MessageOrder > ? AND MessageType IN ('ai', 'assistant')
-              AND MessageContent NOT LIKE '\\[GÖRSEL:%' ESCAPE '\\'
-            ORDER BY MessageOrder ASC
-          "
+          sonraki_yanit <- if ("SonrakiYanit" %in% names(rows)) rows$SonrakiYanit[i] else NA_character_
+          sonraki_yanit <- if (is.null(sonraki_yanit) || is.na(sonraki_yanit)) "" else trimws(as.character(sonraki_yanit))
 
-          next_row <- tryCatch({
-            result <- DBI::dbGetQuery(
-              conn,
-              next_msg_query,
-              params = normalize_db_params(list(chat_id, msg_order))
-            )
-
-            if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
-              result <- normalize_text_frame_utf8(result, repair_mojibake = TRUE)
-            }
-
-            result
-          }, error = function(e) data.frame())
-
-          # Öncelik: sonraki AI yanıtı > inline açıklama
-          if (nrow(next_row) > 0 && nzchar(trimws(next_row$MessageContent[1]))) {
-            result_map[[fname]] <- trimws(next_row$MessageContent[1])
+          # Öncelik: sonraki AI yanıtı > inline açıklama (davranış değişmedi)
+          if (nzchar(sonraki_yanit)) {
+            result_map[[fname]] <- sonraki_yanit
           } else if (nzchar(inline_desc)) {
             result_map[[fname]] <- inline_desc
           }

@@ -236,6 +236,9 @@ fm_create_refresh_from_user_folder <- function(
 
     request_id <- refresh_guard$next_id()
 
+    # Tarama süresi ölçümü (envanter artık açılışın kritik yolunda değil).
+    scan_started_at <- Sys.time()
+
     fm_debug("refresh_start", sprintf("trigger=%s request_id=%s", trigger, request_id))
 
     ensure_session_registry()
@@ -338,6 +341,37 @@ fm_create_refresh_from_user_folder <- function(
           if (is.na(s)) 0 else as.numeric(s)
         })
 
+        # Desteklenmeyen uzantılı ama diskte gerçekten var olan dosyalar (örn.
+        # ajan üretimi .doc) SESSİZCE GİZLENMEZ ve her girişte yanıltıcı
+        # "kaydedilemedi" toast'ı üretilmez: tabloya sınırlı işlemli (indir/sil)
+        # bir satır eklenir; içerik ayrıştırılmaz, model bağlamına eklenemez.
+        dosya_uzantisi <- tolower(tools::file_ext(display_name))
+        izinli_uzantilar <- if (exists("fm_normal_allowed_extensions", mode = "function", inherits = TRUE)) {
+          fm_normal_allowed_extensions()
+        } else {
+          character(0)
+        }
+
+        if (length(izinli_uzantilar) > 0 && !(dosya_uzantisi %in% izinli_uzantilar)) {
+          fid <- paste0("file_", floor(as.numeric(Sys.time()) * 1000000), "_", sample(100000:999999, 1))
+          module_values$file_contents[[fid]] <- list(
+            name = display_name, datapath = p, size = f_size,
+            type = "", id = fid, persisted_path = p, unsupported = TRUE
+          )
+          module_values$files <- rbind(
+            module_values$files,
+            fm_build_unsupported_file_table_row(
+              file_name = display_name, file_size = f_size,
+              file_id = fid, ns = ns, datapath = p
+            )
+          )
+          fm_debug("refresh_file", sprintf(
+            "%s desteklenmeyen türde (.%s); sınırlı islemli satır eklendi",
+            display_name, dosya_uzantisi
+          ))
+          next
+        }
+
         finfo <- list(
           name = display_name,
           datapath = p,
@@ -372,7 +406,12 @@ fm_create_refresh_from_user_folder <- function(
         }
       }
 
-      fm_debug("refresh_done", sprintf("table rows=%d", nrow(module_values$files)))
+      fm_debug("refresh_done", sprintf(
+        "table rows=%d elapsed_ms=%.0f trigger=%s",
+        nrow(module_values$files),
+        as.numeric(difftime(Sys.time(), scan_started_at, units = "secs")) * 1000,
+        trigger
+      ))
     }, error = function(e) {
       if (!refresh_guard$is_latest(request_id)) {
         fm_debug("refresh_error_stale", sprintf(

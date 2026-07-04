@@ -158,6 +158,10 @@ tryCatch({
     future::plan(future::sequential)
   } else {
     init_future_cluster()
+    # İşçileri arka planda bir kez ön-ısıt: ağır paketlerin işçi tarafındaki
+    # ilk yükleme maliyeti ilk gerçek LLM/SSE isteğine (ilk token gecikmesi)
+    # binmesin. Bloklamaz; tek-sefer bayrağıyla korunur, hatada sessizce geçilir.
+    try(prewarm_future_workers_once(), silent = TRUE)
   }
 }, error = function(e) {
   log_error("Future cluster başlatılamadı: {conditionMessage(e)}")

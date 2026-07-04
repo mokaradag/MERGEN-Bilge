@@ -392,8 +392,24 @@ testthat::test_that("Yapılandırma Başlangıç Deneyimi kartını ve gözlemci
 
   srv_txt <- .read_repo_text_startup_lane("R/module_settings_yapilandirma.R")
   testthat::expect_true(.startup_lane_has(srv_txt, "input$startup_experience_lane"))
-  testthat::expect_true(.startup_lane_has(srv_txt, 'saveSettings", list(startup_lane = lane)'))
-  testthat::expect_true(.startup_lane_has(srv_txt, '"applyStartupLane"'))
+  # BEKLEYEN-DURUM SÖZLEŞMESİ: radyo seçimi yalnızca temp_startup_lane'i
+  # günceller; kalıcılaştırma/uygulama "Ayarları Kaydet" akışına aittir.
+  # Anında saveSettings/applyStartupLane gönderimi geri GELMEMELİDİR.
+  testthat::expect_true(.startup_lane_has(srv_txt, "temp_startup_lane"))
+  testthat::expect_false(.startup_lane_has(srv_txt, 'saveSettings", list(startup_lane = lane)'))
+  testthat::expect_false(.startup_lane_has(srv_txt, '"applyStartupLane"'))
+
+  # Kaydetme uygulaması: yardımcı module_startup_lane.R içindedir ve koordinatör
+  # save_all_settings akışından bekleyen değerle çağrılır.
+  lane_srv_txt <- .read_repo_text_startup_lane("R/module_startup_lane.R")
+  testthat::expect_true(.startup_lane_has(lane_srv_txt, "mergen_apply_saved_startup_lane"))
+  testthat::expect_true(.startup_lane_has(lane_srv_txt, '"applyStartupLane"'))
+
+  coord_txt <- .read_repo_text_startup_lane("R/module_settings.R")
+  testthat::expect_true(.startup_lane_has(
+    coord_txt,
+    "mergen_apply_saved_startup_lane(session, settings, yapilandirma$temp_startup_lane())"
+  ))
 })
 
 testthat::test_that("ayarlar koordinatörü şerit varsayılanını, yüklemeyi ve sıfırlamayı yönetir", {

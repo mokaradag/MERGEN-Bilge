@@ -217,19 +217,23 @@ moduleServer(id, function(input, output, session) {
       files_in_context = list()
     )
 
+    # Kalıcı dosya envanteri TEMBEL yüklenir: açılışta dosya sistemi/indeks taranmaz
+    # (soğuk açılış kritik yolu bloklanmaz). Tarama, Dosya Yönetimi ilk açıldığında
+    # (page_opened) veya manuel/araç tetiklerinde yapılır.
+    persisted_scan_pending <- reactiveVal(TRUE)
+
     observeEvent(TRUE, {
-      # SSO açıkken doğrulama tamamlanmadan erken tarama yapma
+      # Yerel modda boot kontrol noktası dürüst "deferred" ayrıntısıyla işaretlenir;
+      # SSO modunda aynı işaretleme refresh_persisted_files("auth_ready") ile yapılır.
       if (isTRUE(SSO_ENABLED) && !is_auth_ready()) return()
-      refresh_from_user_folder("initial")
-      # Yerel modda dosya indeks boot kontrol noktası burada işaretlenir.
-      # SSO modunda bu observer yukarıda erken döner; işaretleme auth
-      # sonrası refresh_persisted_files("auth_ready") akışıyla yapılır.
-      if (!is.null(boot_ready) && is.function(boot_ready$mark)) {
-        boot_ready$mark("file_index_ready", label = "Dosyalar hazır")
-      }
+      if (!is.null(boot_ready) && is.function(boot_ready$mark)) boot_ready$mark("file_index_ready", label = "Dosyalar gerektiğinde yüklenecek", detail = list(deferred = TRUE))
     }, once = TRUE, ignoreNULL = TRUE)
 
-    # Not: SSO sonrası tetikleme server.R tarafından tek sefer yönetilir
+    observeEvent(input$page_opened, {
+      if (!isTRUE(persisted_scan_pending()) || (isTRUE(SSO_ENABLED) && !is_auth_ready())) return()
+      refresh_from_user_folder("page_open")
+      persisted_scan_pending(FALSE)
+    }, ignoreInit = TRUE)
 
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()
 
@@ -453,6 +457,7 @@ moduleServer(id, function(input, output, session) {
     # Mevcut refresh_from_user_folder mekanizmasını kullanır (yeni yardımcı eklemez).
     observeEvent(input$refresh_files, {
       refresh_from_user_folder("manual")
+      persisted_scan_pending(FALSE)
       showToast(session, "Dosya listesi yenilendi.", "info")
     }, ignoreInit = TRUE)
 
@@ -533,9 +538,14 @@ moduleServer(id, function(input, output, session) {
 	  set_attachment_checked   = set_attachment_checked,
 	  sync_file_to_context     = sync_file_to_context,
 		refresh_persisted_files  = function(trigger = "manual") {
+		  # Açılış tetikleri (initial/auth_ready/startup) tarama YAPMAZ: envanter
+		  # ertelenir, kontrol noktası "deferred" işaretlenir. Diğerleri gerçek taramadır.
+		  if (trigger %in% c("initial", "auth_ready", "startup")) {
+		    if (!is.null(boot_ready) && is.function(boot_ready$mark)) boot_ready$mark("file_index_ready", label = "Dosyalar gerektiğinde yüklenecek", detail = list(deferred = TRUE))
+		    return(invisible(TRUE))
+		  }
 		  refresh_from_user_folder(trigger)
-		  should_mark_boot <- trigger %in% c("initial", "auth_ready", "startup") && !is.null(boot_ready) && is.function(boot_ready$mark)
-		  if (should_mark_boot) boot_ready$mark("file_index_ready", label = "Dosyalar hazır", detail = list(count = length(module_values$file_contents)))
+		  persisted_scan_pending(FALSE)
 		  invisible(TRUE)
 		},
 	  reset_attachment_state   = function() {

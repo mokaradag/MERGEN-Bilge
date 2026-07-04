@@ -496,14 +496,11 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
   # Karşılama ekranında "aşağı kaydır" butonunu gizle
   shinyjs::runjs("$('#scroll_to_bottom_container').removeClass('show');")
 
-  insertUI(
-    selector = "#chat_content_container", where = "beforeEnd",
-    ui = createWelcomeScreen(values$saved_chats)
-  )
-
-  session$onFlushed(function() {
-    session$sendCustomMessage("showNeuralAnimation", list())
-  }, once = TRUE)
+  # NOT: Eski sürüm karşılama ekranını burada #chat_content_container içine de
+  # ekliyordu; hemen ardından start_new_chat() aynı ekranı
+  # #welcome_fullscreen_container içinde TAM olarak yeniden render ettiği için
+  # bu ilk ekleme boşa giden büyük bir HTML yüküydü (çift render + gecikme).
+  # Karşılama render sorumluluğu tek yerde: render_welcome_screen().
   showToast(session, "Yeni söyleşi başlatıldı.", "success")
 }
 

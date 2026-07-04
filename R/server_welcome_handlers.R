@@ -213,30 +213,46 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
       }
     ")
  
+    yeni_soylesi_baslangici <- Sys.time()
+
     # Chat durumunu sıfırla (helpers_chat_runtime.R'dan)
     chat_start_new_chat(session, values, saved_chats_data, session_files,
                         filePreview, current_user_id, file_manager_data)
- 
+
     # Welcome ekranını aktif et
     values$show_welcome <- TRUE
     values$messages <- list()
 
-    # Welcome ekranına dönmeden hemen önce kayıtlı sohbet listesini
-    # veritabanından yeniden al. Böylece son tamamlanan sohbet
-    # "Son Konuşmalar" bölümünde eksiksiz görünür.
+    # Welcome ekranına dönmeden hemen önce kayıtlı sohbet listesinin YALNIZCA
+    # hafif özetini (son 6 kayıt) veritabanından al ve bellek içi listeyle
+    # birleştir. Eski davranış tüm sohbet listesini (load_chats_from_db)
+    # senkron çekiyor ve "Yeni Söyleşi" tıklamasını görünür biçimde
+    # geciktiriyordu. Özet sorgusu, son tamamlanan sohbetin "Son Konuşmalar"
+    # bölümünde eksiksiz ve doğru sırayla görünmesi için yeterlidir
+    # (karşılama ekranı en yeni etkinliğe göre sıralar ve ilk 3'ü gösterir).
     effective_user_id <- resolve_current_user_id()
 
     if (!is.na(effective_user_id) && effective_user_id > 0) {
-      latest_saved_chats <- tryCatch(
-        load_chats_from_db(effective_user_id, include_messages = FALSE),
+      onizleme <- tryCatch(
+        load_chats_preview_from_db(effective_user_id, limit = 6L),
         error = function(e) {
-          log_warn("[WELCOME] Kayıtlı sohbetler yenilenemedi: {e$message}")
-          values$saved_chats %||% list()
+          log_warn("[WELCOME] Kayıtlı sohbet önizlemesi yenilenemedi: {e$message}")
+          list()
         }
       )
 
-      if (is.list(latest_saved_chats)) {
-        values$saved_chats <- latest_saved_chats
+      if (is.list(onizleme) && length(onizleme) > 0) {
+        birlesik <- values$saved_chats %||% list()
+        for (cid in names(onizleme)) {
+          yeni_kayit <- onizleme[[cid]]
+          onceki_kayit <- birlesik[[cid]]
+          # Bellekte tam mesajlar varsa korunur; özet alanlar tazelenir.
+          if (!is.null(onceki_kayit) && !is.null(onceki_kayit$messages)) {
+            yeni_kayit$messages <- onceki_kayit$messages
+          }
+          birlesik[[cid]] <- yeni_kayit
+        }
+        values$saved_chats <- birlesik
       }
     }
 
@@ -251,7 +267,11 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 
     # Kayıtlı Söyleşiler modülünün kendi görünümünü de taze tut
     try(saved_chats_data$refresh(), silent = TRUE)
- 
+
+    cat(sprintf(
+      "[CHAT PERF] Yeni Söyleşi hazırlandı - %.0f ms\n",
+      as.numeric(difftime(Sys.time(), yeni_soylesi_baslangici, units = "secs")) * 1000
+    ))
     # Müzik bağlam geçişi kaldırıldı - yeni mimaride müzik kesintisiz çalar
   }
  

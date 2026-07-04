@@ -102,12 +102,11 @@ settingsInit <- function(session, parent_session = NULL) {
       session$sendCustomMessage("updateSettingsMode", list(mode = loaded$experience_mode))
     }
 
-    # Başlangıç şeridi tercihi: yalnızca kesin şeritler geri yüklenir (çözüm
-    # istemcide, app_loading_lane.js); Yapılandırma radyosu senkronlanır.
+    # Başlangıç şeridi: yalnızca kesin şeritler geri yüklenir; radyo/pending
+    # senkronu yapilandirma modülündeki settings$startup_lane gözlemcisindedir.
     lane_loaded <- as.character(loaded$startup_lane %||% "")[1]
     if (!is.na(lane_loaded) && lane_loaded %in% c("fast_lane", "rich_lane")) {
       settings$startup_lane <- lane_loaded
-      updateRadioButtons(session, "settings_yapilandirma_module-startup_experience_lane", selected = lane_loaded)
     }
 
     # --- Yapılandırma ayarlarını yükle ---
@@ -398,6 +397,7 @@ settingsInit <- function(session, parent_session = NULL) {
     settings$summary_focus_mode <- yapilandirma$temp_summary_focus_mode()
     settings$analysis_deep_thinking <- yapilandirma$temp_analysis_deep_thinking()
     settings$analysis_detail_level <- yapilandirma$temp_analysis_detail_level()
+    mergen_apply_saved_startup_lane(session, settings, yapilandirma$temp_startup_lane())
 
     # Müzik durumunu checkbox'tan oku ve uygula (sadece kaydet anında)
     # Mod değişikliği olduysa müzik zaten apply_experience_mode tarafından ayarlandı,
@@ -614,6 +614,7 @@ settingsInit <- function(session, parent_session = NULL) {
     updateNumericInput(session, paste0(ycfg_ns, "claude_code_timeout"), value = claude_code_config$timeout_seconds)
     updateSliderInput(session, paste0(ycfg_ns, "music_volume"), value = 0.3)
     # Şerit radyosu seçimsiz; fast-lane sınıfı canlı kaldırılır (kalıcı yazım yok).
+    yapilandirma$temp_startup_lane(NULL)
     updateRadioButtons(session, paste0(ycfg_ns, "startup_experience_lane"), selected = character(0))
     session$sendCustomMessage("applyStartupLane", list(lane = "rich_lane"))
 

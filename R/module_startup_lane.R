@@ -98,3 +98,31 @@ startupLaneObserversInit <- function(input, session, settings_data, boot_ready =
 
   invisible(NULL)
 }
+
+#' Kaydedilen Başlangıç Deneyimi şeridini uygula
+#' @description "Ayarları Kaydet" akışından (save_all_settings) çağrılır:
+#'   Yapılandırma sayfasındaki radyo seçimi bekleyen (pending) durumda tutulur
+#'   ve YALNIZCA bu noktada gerçek yapılandırmaya işlenir. Geçersiz/boş bekleyen
+#'   değer veya değişmeyen şerit no-op'tur. localStorage kalıcılaştırması
+#'   save_all_settings() içindeki toplu saveSettings mesajıyla yapılır
+#'   (settings$startup_lane, reactiveValuesToList çıktısına zaten dahildir);
+#'   burada ek olarak canlı istemci şerit durumu (html sınıfı) güncellenir.
+#' @param session Shiny session nesnesi
+#' @param settings Merkezi ayarlar reactiveValues nesnesi
+#' @param pending_lane Bekleyen şerit değeri (temp_startup_lane())
+#' @return TRUE şerit değişti/uygulandı; FALSE no-op
+mergen_apply_saved_startup_lane <- function(session, settings, pending_lane) {
+  lane <- mergen_normalize_startup_lane(pending_lane, default = "ask_once")
+  if (!lane %in% c("fast_lane", "rich_lane")) {
+    return(invisible(FALSE))
+  }
+
+  if (identical(shiny::isolate(settings$startup_lane), lane)) {
+    return(invisible(FALSE))
+  }
+
+  settings$startup_lane <- lane
+  session$sendCustomMessage("applyStartupLane", list(lane = lane))
+  cat(sprintf("[SETTINGS] Başlangıç deneyimi kaydedildi: %s (açılışta tam uygulanır)\n", lane))
+  invisible(TRUE)
+}
