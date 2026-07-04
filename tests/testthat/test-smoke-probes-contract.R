@@ -60,7 +60,9 @@ testthat::test_that("UX smoke probe script is loaded and called by browser harne
       "stream finalize follow-up pending state temizlenir",
       "tek background music source aktif kalır",
       "Audio lifecycle smoke API var",
-      "await testNavigationAndFileManagerSmoke(app);"
+      "await testNavigationAndFileManagerSmoke(app);",
+      "testBilgeYolacSessionsSurface",
+      "await testBilgeYolacSessionsSurface(app);"
     ),
     "ux-smoke.html probe entegrasyonu eksik:"
   )
@@ -77,6 +79,8 @@ testthat::test_that("UX smoke probes cover navigation, video lifecycle and file 
       "renderSyntheticFileManagerListing",
       "runFileManagerDisplayNameSmoke",
       "runNavigationAndFileManagerSmoke",
+      "runBilgeYolacSessionsSurfaceSmoke",
+      "renderSyntheticSessionsSurface",
       "snapshotToolState",
       "readToolSettingKeys",
       "clickDashboardTab(doc, \"claude_code\")",

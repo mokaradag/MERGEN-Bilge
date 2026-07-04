@@ -495,9 +495,21 @@
 .ccs-detail-modal-content {
   color: var(--color-text);
   /* Modal içeriği rahatça sığsın diye ölçülü bir taban yükseklik; kısa
-     oturumlarda gereksiz dikey kaydırma azalır, uzun oturumlarda zaman
-     çizelgesi kendi içinde akmaya devam eder. */
+     oturumlarda gereksiz dikey kaydırma azalır. Uzun oturum geçmişleri
+     görünüm-yüksekliğine bağlı bir üst sınırla İÇERİK ALANI İÇİNDE akar
+     (tek kaydırma çubuğu).
+
+     Çift kaydırma çubuğu önlemi: global .modal-body { max-height: 60vh }
+     border-box olduğundan bu 60vh bütçesine kendi dikey dolgusu da (Bootstrap 3
+     varsayılan 15px + 15px = 30px) dahildir. Bu yüzden içerik üst sınırı sabit
+     56vh yerine calc(60vh - 48px) kullanır: 48px tampon, modal-body dolgusunu
+     (30px) her görünüm yüksekliğinde karşılar; içerik + dolgu her zaman 60vh
+     altında kaldığından modal-body ASLA ikinci bir kaydırma çubuğu üretmez
+     (küçük ekranlarda da). Böylece detay modalı ne cimri ne taşkın görünür. */
   min-height: 46vh;
+  max-height: calc(60vh - 48px);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .ccs-detail-resume-note {
