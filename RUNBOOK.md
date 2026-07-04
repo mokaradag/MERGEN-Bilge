@@ -1143,3 +1143,137 @@ ile yeniden üretin. Tam rehber ve kontrol listesi: **`docs/dependency-locking.m
 
 CI/AI önyükleme: `tests/scripts/ci_install_packages.R`, `renv.lock` varsa
 `renv::restore()` tercih eder; yoksa mevcut RSPM/CRAN akışına geri düşer.
+
+## Üretim-güvenli MB_* SQL Server indeks yayılımı (Temmuz 2026)
+
+Bu prosedürü yalnızca `docs/sql/2026-07-safe-mb-performance-indexes.sql` dosyasında belgelenen nihai güvenli Dalga 1-4 MB_* performans indeks seti için kullanın. Önceki tek seferde/toptan indeksleme betiği geçersiz kılınmıştır ve güvensiz kabul edilmelidir; önerilmemelidir. Bu betik aynı anda çok sayıda indeks uygulamış ve `MB_Users(KullaniciAdi)` üzerinde yeni oluşturulan bir benzersiz login-path indeks adayını içermiştir. Bu girişimden sonra kullanıcılar oturum açamamıştır; yeni oluşturulan indekslerin geri alınmasıyla oturum açma sorunu düzelmiştir. En doğru ifade şudur: Sorun muhtemelen güvensiz tek seferde/toptan dağıtım, şema kilitleme veya aşırı agresif benzersiz login-path indeks girişiminden kaynaklanmıştır; kök neden kesin olarak kanıtlanmamıştır.
+
+### Prosedür
+
+1. Herhangi bir DDL işleminden önce SQL Server yedeği alın ve yedeğin doğrulanmış olduğundan emin olun.
+2. İşlemi yoğun olmayan saatlerde, manuel DBA/operatör çalıştırması olarak planlayın; uygulama başlangıcından çalıştırmayın.
+3. `docs/sql/2026-07-safe-mb-performance-indexes.sql` dosyasını dalga dalga uygulayın.
+4. Her dalgadan sonra gerektiğinde `start_mergen_prod.bat` ile başlatın veya yeniden başlatın ve kullanıcıların oturum açabildiğini doğrulayın.
+5. Her dalgadan sonra etkilenen yolu smoke test edin: Dalga 1 sonrasında sohbet listesi/geçmişi, Dalga 2 sonrasında geri bildirim yükleme/kaydetme/silme, Dalga 3 sonrasında oturum açma/profil arama, Dalga 4 sonrasında destek/yönetici sayfaları.
+6. Dalga 4 sonrasında metadata envanter sorgularını, temsili `SET STATISTICS IO/TIME` kontrollerini, yönetici sayfası ilk tıklama smoke testini ve sürüm için uygun normal operasyonel soak kapısını çalıştırın. Yalnızca bu indekslere dayanarak soak kapasitesi kazanımı iddia etmeyin; bu indeksler DB-ağırlıklı yolları ve yönetici ilk tıklama gecikmesini iyileştirir, ancak yalnızca GET içeren soak testlerinde anlamlı bir değişiklik görülmeyebilir.
+7. Bir dalga üretimde semptomlara neden olursa kanıtları toplayın ve yalnızca güvenli performans indekslerini düşürmek için `docs/sql/2026-07-safe-mb-performance-indexes-rollback.sql` dosyasını kullanın. Birincil anahtarları veya `MB_Users(KullaniciAdi)` UQ nesnesi gibi önceden mevcut benzersiz kısıtları düşürmeyin.
+
+### Mevcut güvenli indeks seti
+
+Üretimde gözlemlenmiş, etkin durumdaki mevcut güvenli set aşağıdaki gibidir:
+
+* `MB_Chats.IX_MB_Chats_User_Active_Recent` — benzersiz değil, `(UserID, IsDeleted, CreateTimestamp DESC, ChatID DESC) INCLUDE (ChatTitle)`.
+* `MB_Messages.IX_MB_Messages_Chat_Order` — benzersiz değil, `(ChatID, MessageOrder ASC, MessageID ASC) INCLUDE (MessageType, MessageTimestamp)`.
+* `MB_Messages.IX_MB_Messages_Chat_Timestamp` — benzersiz değil, `(ChatID, MessageTimestamp DESC)`.
+* `MB_Feedback.IX_MB_Feedback_User_Message` — benzersiz değil, `(UserID, MessageID) INCLUDE (FeedbackType)`; bilinçli olarak benzersiz yapılmamıştır.
+* `MB_Users.IX_MB_Users_KullaniciAdi_Lookup` — benzersiz değil, `(KullaniciAdi) INCLUDE (UserID, KaynakAdi, LastLoginDate)`; `UQ__MB_Users__5BAE6A75C24F52F9` benzeri ad taşıyan, önceden mevcut benzersiz `KullaniciAdi` kısıtı/indeksiyle birlikte var olur.
+* `MB_Destek_Geri_Bildirim.IX_MB_Destek_Geri_Bildirim_User_Recent` — benzersiz değil, `(UserID, OlusturmaTarihi DESC)`.
+* `MB_Destek_Hata_Bildir.IX_MB_Destek_Hata_Bildir_User_Recent` — benzersiz değil, `(UserID, OlusturmaTarihi DESC)`.
+* `MB_Destek_Hata_Bildir.IX_MB_Destek_Hata_Bildir_Status_Recent` — benzersiz değil, `(Durum, OlusturmaTarihi DESC) INCLUDE (Oncelik, UserID)`.
+* `MB_ClaudeCode_Sessions.IX_MB_ClaudeCode_Sessions_User_Recent` — benzersiz değil, `(UserID, IsDeleted, LastRunAt DESC, CreatedAt DESC)`.
+* `MB_ClaudeCode_Runs.IX_MB_ClaudeCode_Runs_Session_Order` — benzersiz değil, `(ClaudeSessionRecordID, RunOrder ASC)`.
+
+Şu eski adayları Query Store kanıtı, gerçek yürütme planları ve DBA onayı olmadan eklemeyin: `IX_MB_Usage_Log_User_Model`, `IX_MB_Usage_Log_Chat_Message`, `IX_MB_Destek_Geri_Bildirim_Recent`, `IX_MB_Destek_Hata_Bildir_Recent`, `IX_MB_Destek_Hata_Bildir_Status_Priority` veya `IX_MB_Users_KullaniciAdi` adında yeni oluşturulmuş herhangi bir `UNIQUE` indeks.
+
+### Daha düşük yetkili doğrulama sorguları
+
+Operatörlerin `sys.dm_db_index_usage_stats` için gerekli izni olmayabilir: `VIEW SERVER STATE` veya SQL Server 2022 ve sonrası için `VIEW SERVER PERFORMANCE STATE`. Önce metadata ve IO/time kontrollerini kullanın; DMV kullanımını yalnızca isteğe bağlı, DBA’ya ait ek doğrulama olarak değerlendirin.
+
+İndeks envanteri:
+
+```sql
+SELECT
+    t.name AS table_name,
+    i.name AS index_name,
+    i.type_desc,
+    i.is_unique,
+    i.is_primary_key,
+    i.is_disabled
+FROM sys.indexes i
+JOIN sys.tables t
+    ON i.object_id = t.object_id
+WHERE t.name LIKE 'MB_%'
+  AND i.name IS NOT NULL
+ORDER BY
+    t.name,
+    i.name;
+```
+
+İndeks kolonları:
+
+```sql
+SELECT
+    t.name AS table_name,
+    i.name AS index_name,
+    CASE
+        WHEN ic.is_included_column = 1 THEN 'INCLUDE'
+        ELSE 'KEY'
+    END AS column_role,
+    ic.key_ordinal,
+    ic.index_column_id,
+    c.name AS column_name,
+    ic.is_descending_key
+FROM sys.indexes i
+JOIN sys.tables t
+    ON i.object_id = t.object_id
+JOIN sys.index_columns ic
+    ON i.object_id = ic.object_id
+   AND i.index_id = ic.index_id
+JOIN sys.columns c
+    ON ic.object_id = c.object_id
+   AND ic.column_id = c.column_id
+WHERE t.name LIKE 'MB_%'
+  AND i.name IS NOT NULL
+ORDER BY
+    t.name,
+    i.name,
+    ic.is_included_column,
+    ic.key_ordinal,
+    ic.index_column_id;
+```
+
+Temsili yönetici IO/time kontrolleri:
+
+```sql
+SET STATISTICS IO ON;
+SET STATISTICS TIME ON;
+
+SELECT TOP 100
+    gb.GeriBildirimID,
+    gb.UserID,
+    gb.Memnuniyet,
+    gb.NPS_Puan,
+    gb.Etiketler,
+    gb.EnCokSevilen,
+    gb.Gelistirme,
+    gb.IletisimIzni,
+    gb.OlusturmaTarihi
+FROM dbo.MB_Destek_Geri_Bildirim gb
+ORDER BY gb.OlusturmaTarihi DESC;
+
+SET STATISTICS IO OFF;
+SET STATISTICS TIME OFF;
+```
+
+```sql
+SET STATISTICS IO ON;
+SET STATISTICS TIME ON;
+
+SELECT TOP 100
+    hb.HataBildirimID,
+    hb.UserID,
+    hb.Konular,
+    hb.Kategoriler,
+    hb.Oncelik,
+    hb.Aciklama,
+    hb.EkDosyaYollari,
+    hb.Durum,
+    hb.OlusturmaTarihi
+FROM dbo.MB_Destek_Hata_Bildir hb
+ORDER BY hb.OlusturmaTarihi DESC;
+
+SET STATISTICS IO OFF;
+SET STATISTICS TIME OFF;
+```
+
+Yayılım sonrası gözlemlenen kontroller, kullanıcıların oturum açabildiğini, metadata’nın güvenli indekslerin etkin olduğunu doğruladığını ve temsili yönetici sorgularının mevcut veritabanında düşük maliyetli olduğunu göstermiştir: `MB_Destek_Hata_Bildir` 20 satır döndürmüş; scan count 1, 3 logical read, 0 physical/read-ahead read, 0 ms CPU ve 0 ms elapsed değerleri görülmüştür. `MB_Destek_Geri_Bildirim` 16 satır döndürmüş ve aynı read/time profiline sahip olmuştur. Bu tablolar şu anda küçük olduğu için bu sonuçlar mevcut temsili yönetici sorgularının düşük maliyetli olduğunu ve UI iyileşmesinin gözlemlendiğini doğrular; ancak indeks seek kullanımını kanıtlamaz.

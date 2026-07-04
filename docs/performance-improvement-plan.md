@@ -429,3 +429,24 @@ MERGEN_MAX_REASONING_CHARS=80000
 
 Rollback: unset the new env flags to return to previous behavior. None of these change
 runtime behavior at their defaults.
+
+## 2026-07 — Production-safe MB_* SQL Server indexing rollout
+
+A production-safe MB_* indexing rollout was completed in four waves after an initial unsafe all-at-once attempt caused login failure. The original script is superseded and must not be recommended. It applied many indexes together and included a newly-created `UNIQUE` login-path candidate on `MB_Users(KullaniciAdi)`; after that attempt, users could not log in and logs did not show a clear error. All newly-created indexes were rolled back and login recovered. The outage is documented as likely caused by unsafe all-at-once deployment / schema-locking / overly aggressive unique login-path index attempt; root cause not conclusively proven.
+
+The final stable set uses wave-by-wave manual application, no destructive statements, and no new unique indexes. `IX_MB_Feedback_User_Message` and `IX_MB_Users_KullaniciAdi_Lookup` are intentionally non-unique. Production metadata also shows a pre-existing unique `MB_Users(KullaniciAdi)` constraint/index named like `UQ__MB_Users__5BAE6A75C24F52F9`; the safe explicit performance index exists alongside it and does not replace or alter it.
+
+Observed validation after Wave 1-4:
+
+- The app starts with `start_mergen_prod.bat`.
+- Users can log in.
+- Admin pages' first click and first content load are visibly faster.
+- Metadata checks confirmed the new indexes exist and are enabled.
+- Representative `SET STATISTICS IO ON; SET STATISTICS TIME ON;` admin list checks were cheap in the current database and matched the observed UI improvement. Because the support/admin tables are currently small, these results do **not** prove index seek usage or future large-table behavior.
+
+| Representative query | Observed rows | Scan count | Logical reads | Physical reads | Read-ahead reads | CPU | Elapsed |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `SELECT TOP 100 ... FROM dbo.MB_Destek_Hata_Bildir hb ORDER BY hb.OlusturmaTarihi DESC` | 20 | 1 | 3 | 0 | 0 | 0 ms | 0 ms |
+| `SELECT TOP 100 ... FROM dbo.MB_Destek_Geri_Bildirim gb ORDER BY gb.OlusturmaTarihi DESC` | 16 | 1 | 3 | 0 | 0 | 0 ms | 0 ms |
+
+Capacity wording: these indexes help DB-heavy paths, chat/message hydration, login/profile lookup, support feedback lookup, and admin first-click latency. They should not be presented as proof of higher real-user, browser, websocket, or real-LLM capacity. GET-only soak lanes may not change much because the historical GET-only path primarily exercises root/index serving rather than the SQL Server query paths.

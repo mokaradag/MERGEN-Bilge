@@ -14,6 +14,13 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### 2026-07 Üretim Güvenli MB_* SQL Server İndeks Yayılımı
+
+Üretim güvenli Wave 1-4 MB_* SQL Server indeks yayılımı, daha önce yapılan ve oturum açma hatasına neden olan toplu indeksleme girişiminin yerine geçecek şekilde artık dokümante edilmiştir. Kesintinin kök nedeni kesin olarak kanıtlanmamıştır; ancak güvenli olmayan tek seferde/toplu dağıtım, şema kilitlenmesi ve/veya oturum açma yoluna yönelik aşırı agresif benzersiz indeks denemesinden kaynaklanmış olabileceği kayda geçirilmiştir. Nihai güvenli indeks seti üretim ortamında kararlı durumdadır; kullanıcılar oturum açabilmekte ve yönetici sayfalarında ilk tıklama/içerik yükleme süreleri gözle görülür biçimde hızlanmıştır.
+
+Yeni dokümantasyon; mevcut etkin indeks envanterini, özellikle benzersiz olmayan şekilde tasarlanan `IX_MB_Feedback_User_Message` ve `IX_MB_Users_KullaniciAdi_Lookup` indekslerini ve açıkça tanımlanan `MB_Users` performans indeksinin, önceden var olan benzersiz `KullaniciAdi` kısıtı/indeksi ile birlikte çalıştığı gerçeğini kayıt altına almaktadır. Güvenli script dosyası `docs/sql/2026-07-safe-mb-performance-indexes.sql` yolundadır. Yalnızca bu güvenli performans indeksleri için kullanılacak acil geri alma scripti ise `docs/sql/2026-07-safe-mb-performance-indexes-rollback.sql` dosyasıdır. `IX_MB_Usage_Log_User_Model`, `IX_MB_Usage_Log_Chat_Message`, yalnızca geniş kapsamlı son kayıt/recent sorgularını destekleyen indeksler ve yeni herhangi bir benzersiz `IX_MB_Users_KullaniciAdi` indeksi gibi önceki adaylar; Query Store/çalışma planı kanıtı ve DBA onayı olmadan bilinçli olarak kapsam dışında bırakılmıştır.
+
+Doğrulama notu: Temsilî yönetici liste sorguları için gözlemlenen `STATISTICS IO/TIME` sonuçları, mevcut küçük tablolarda oldukça düşük çıkmış ve kullanıcı arayüzündeki iyileşmeyle uyumlu görünmüştür. Ancak bu sonuçlar, indeks seek kullanımını veya gelecekte büyük tablolar altında kapasite dayanımını kanıtlamaz. Bu yayılım, veritabanı ağırlıklı/yönetici ekranı gecikme yollarını iyileştirmeyi amaçlamaktadır; bir soak-kapasite iddiası değildir ve yalnızca GET isteklerine dayalı soak sonuçlarında anlamlı bir değişim yaratmayabilir.
 
 ### (Yayınlanmadı) Bilge Yolaç kalıcı oturumları: Oturumlar sayfası ve Claude Code Web tarzı saklama
 
