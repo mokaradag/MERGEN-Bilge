@@ -424,6 +424,17 @@
     return true;
   }
 
+  // Gerçek kullanıcı seçimini taklit eder: yalnızca select.value atamak Shiny'nin
+  // input binding'ini tetiklemez; bu yüzden bubble eden input+change olayları
+  // gönderilir. Böylece sunucudaki debounce'lı filtre observer'ı
+  // (R/module_claude_code_sessions.R) gerçekten çalışır ve "Tümü" kalıcılığı
+  // yalnızca istemci tarafında değil, gerçek etkileşim yolunda doğrulanır.
+  function ccsSetSelectValue(win, select, value) {
+    select.value = value;
+    select.dispatchEvent(new win.Event("input", { bubbles: true }));
+    select.dispatchEvent(new win.Event("change", { bubbles: true }));
+  }
+
   function ccsBuildSessionCardMarkup(kind) {
     var acButonu =
       '<button type="button" class="ccs-card-btn ccs-open-btn">' +
@@ -548,7 +559,32 @@
     var doc = app.doc;
     var assert = helpers.assert;
     var pass = helpers.pass;
+    var wait = helpers.wait;
     var waitFor = helpers.waitFor;
+
+    // --- Gerçek rota/sekme aktivasyon yolu -----------------------------------
+    // Gizli ön-render DOM'u okumak yerine Oturumlar sekmesine tıklanır ve aktif
+    // olması beklenir. Bu, kenar çubuğu rota/sekme aktivasyonunu VE sekme
+    // aktivasyonunda tetiklenen sunucu tarafı yenilemesini
+    // (server_module_wiring.R: input$tabs == 'claude_code_sessions' ->
+    // claude_code_sessions$refresh('tab')) de kapsar.
+    assert(
+      clickDashboardTab(doc, "claude_code_sessions"),
+      "Bilge Yolaç Oturumlar sekme linki tıklanabilir"
+    );
+
+    await waitFor(function() {
+      var panel = doc.querySelector(".claude-code-sessions-container");
+      var tab = doc.querySelector("#shiny-tab-claude_code_sessions");
+      return isVisible(panel) || (tab && tab.classList.contains("active"));
+    }, "Oturumlar sekmesi aktif/görünür", 10000);
+
+    var tabPane = doc.querySelector("#shiny-tab-claude_code_sessions");
+    assert(
+      isVisible(doc.querySelector(".claude-code-sessions-container")) ||
+        (tabPane && tabPane.classList.contains("active")),
+      "Oturumlar sekmesi aktivasyon sonrası görünür"
+    );
 
     // --- Gerçek filtre <select> öğeleri (yerel select => "Tümü" kalıcı) -------
     await waitFor(function() {
@@ -598,10 +634,12 @@
       "Oturumlar Durum filtresi Türkçe etiketleri içerir"
     );
 
-    // "Tümü" kalıcılığı: boş-olmayan bir durum seçildikten sonra "Tümü" hâlâ
-    // erişilebilir VE yeniden seçilebilir olmalı (yerel select bunu garanti eder;
-    // selectize placeholder davranışı sesli olarak "Tümü"yü kaybediyordu).
-    statusSelect.value = "completed";
+    // "Tümü" kalıcılığı: boş-olmayan bir durum GERÇEK bir change olayıyla
+    // seçildikten (sunucu debounce'lı filtre observer'ı çalıştıktan) sonra "Tümü"
+    // hâlâ erişilebilir VE yeniden seçilebilir olmalı (yerel select bunu garanti
+    // eder; selectize placeholder davranışı sessizce "Tümü"yü kaybediyordu).
+    ccsSetSelectValue(win, statusSelect, "completed");
+    await wait(600); // debounce (400ms) + olası sunucu round-trip payı
     assert(
       statusSelect.value === "completed",
       "Oturumlar Durum filtresi boş-olmayan seçimi kabul eder"
@@ -610,7 +648,8 @@
       ccsSelectHasValue(statusSelect, ""),
       "Oturumlar Durum filtresinde seçim sonrası 'Tümü' seçeneği kaybolmaz"
     );
-    statusSelect.value = "";
+    ccsSetSelectValue(win, statusSelect, "");
+    await wait(600);
     assert(
       statusSelect.value === "",
       "Oturumlar Durum filtresinde seçim sonrası 'Tümü' yeniden seçilebilir"
@@ -622,16 +661,18 @@
       "Oturumlar Model filtresi 'Tümü' seçeneğini içerir"
     );
 
-    // Model seçenekleri sunucu tarafında birikimli doldurulur; DB olmadan bunu
-    // deterministik doğrulamak için geçici (smoke-only) bir model seçeneği enjekte
-    // edilir, seçilir ve sonra kaldırılır.
+    // Model seçenekleri sunucu tarafında birikimli doldurulur; DB olmadan bir
+    // model seçimini deterministik simüle etmek için geçici (smoke-only) bir
+    // model seçeneği enjekte edilir, GERÇEK change olayıyla seçilir (Shiny input
+    // binding + sunucu filtre observer'ı devreye girer), sonra kaldırılır.
     var injected = doc.createElement("option");
     injected.value = "ux-smoke-model";
     injected.textContent = "UX Smoke Model";
     injected.setAttribute("data-ux-smoke-model", "1");
     modelSelect.appendChild(injected);
 
-    modelSelect.value = "ux-smoke-model";
+    ccsSetSelectValue(win, modelSelect, "ux-smoke-model");
+    await wait(600);
     assert(
       modelSelect.value === "ux-smoke-model",
       "Oturumlar Model filtresi boş-olmayan model seçimini kabul eder"
@@ -640,7 +681,8 @@
       ccsSelectHasValue(modelSelect, ""),
       "Oturumlar Model filtresinde model seçimi sonrası 'Tümü' seçeneği kaybolmaz"
     );
-    modelSelect.value = "";
+    ccsSetSelectValue(win, modelSelect, "");
+    await wait(600);
     assert(
       modelSelect.value === "",
       "Oturumlar Model filtresinde model seçimi sonrası 'Tümü' yeniden seçilebilir"
@@ -734,6 +776,15 @@
     );
 
     removeSyntheticSessionsSurface(doc);
+
+    // Temiz son durum: Ana Söyleşi'ye geri dön (best-effort; başarısızlık
+    // bloklayıcı değil, çünkü bu probe smoke dizisinin son gerçek adımıdır).
+    clickDashboardTab(doc, "chat");
+    await waitFor(function() {
+      var tab = doc.querySelector("#shiny-tab-chat");
+      return !!doc.querySelector(".modern-welcome-root") ||
+        (tab && tab.classList.contains("active"));
+    }, "Ana Söyleşi dönüşü", 8000, { failOnTimeout: false });
 
     pass("Bilge Yolaç Oturumlar smoke probe tamamlandı");
   }

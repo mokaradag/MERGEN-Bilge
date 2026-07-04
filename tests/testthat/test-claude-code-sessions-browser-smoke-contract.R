@@ -110,12 +110,22 @@ test_that("ux-smoke-probes.js Oturumlar filtre değişmezlerini gerçek tarayıc
       "filter_status",
       "filter_model",
 
+      # Gerçek rota/sekme aktivasyon yolu: gizli DOM okumak yerine sekmeye tıkla.
+      'clickDashboardTab(doc, "claude_code_sessions")',
+      "Bilge Yolaç Oturumlar sekme linki tıklanabilir",
+      "Oturumlar sekmesi aktivasyon sonrası görünür",
+
       # Yerel select tespiti (selectize placeholder regresyonunun panzehri).
       "ccsIsNativeSelect",
       "selectized",
       ".selectize-control",
       "Oturumlar Durum filtresi yerel <select> öğesidir (selectize değil)",
       "Oturumlar Model filtresi yerel <select> öğesidir (selectize değil)",
+
+      # Gerçek change olayı gönderilir (yalnızca .value atamak Shiny'yi tetiklemez):
+      # sunucu debounce'lı filtre observer'ı gerçek etkileşim yolunda çalışır.
+      "ccsSetSelectValue",
+      'new win.Event("change", { bubbles: true })',
 
       # Durum filtresi tüm seçenekleri ve Türkçe etiketleri.
       "Oturumlar Durum filtresi tüm durum seçeneklerini içerir",
@@ -180,7 +190,9 @@ test_that("Oturumlar detay modalı CSS'i içerik alanı kaydırma/max-height sö
     c(
       ".ccs-detail-modal-content",
       "min-height: 46vh;",
-      "max-height: 56vh;",
+      # Üst sınır global .modal-body (60vh) dolgusunu (border-box) hesaba katar:
+      # calc(60vh - 48px) çift kaydırma çubuğunu küçük ekranlarda da önler.
+      "max-height: calc(60vh - 48px);",
       "overflow-y: auto;"
     ),
     "Oturumlar detay modalı CSS kaydırma sözleşmesi eksik:"
