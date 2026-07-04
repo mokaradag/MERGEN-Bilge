@@ -495,9 +495,15 @@
 .ccs-detail-modal-content {
   color: var(--color-text);
   /* Modal içeriği rahatça sığsın diye ölçülü bir taban yükseklik; kısa
-     oturumlarda gereksiz dikey kaydırma azalır, uzun oturumlarda zaman
-     çizelgesi kendi içinde akmaya devam eder. */
+     oturumlarda gereksiz dikey kaydırma azalır. Uzun oturum geçmişleri
+     görünüm-yüksekliğine bağlı bir üst sınırla İÇERİK ALANI İÇİNDE akar
+     (tek kaydırma çubuğu): üst sınır (56vh) global .modal-body sınırından
+     (60vh) küçük olduğundan iç içe/çift kaydırma oluşmaz. Böylece detay
+     modalı ne cimri ne de taşkın görünür, eylem düğmeleri erişilebilir kalır. */
   min-height: 46vh;
+  max-height: 56vh;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .ccs-detail-resume-note {

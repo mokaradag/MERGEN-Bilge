@@ -975,6 +975,19 @@
     });
   }
 
+  async function testBilgeYolacSessionsSurface(app) {
+    assert(!!window.MergenUxSmokeProbes, "UX smoke probe API var");
+
+    await window.MergenUxSmokeProbes.runBilgeYolacSessionsSurfaceSmoke(app, {
+      assert: assert,
+      pass: pass,
+      fail: fail,
+      log: log,
+      wait: wait,
+      waitFor: waitFor
+    });
+  }
+
   function testConsoleNoise() {
     var badPatterns = [
       /Cannot read (properties|property)/i,
@@ -1040,6 +1053,7 @@
       await testStreamingLifecycle(app);
       await testMediaAndSavedChat(app);
       await testNavigationAndFileManagerSmoke(app);
+      await testBilgeYolacSessionsSurface(app);
 
       testConsoleNoise();
     } catch (e) {
