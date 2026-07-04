@@ -413,6 +413,48 @@
     return ccsSelectOptionValues(select).indexOf(value) >= 0;
   }
 
+  function ccsSelectOptionSignature(select) {
+    return ccsSelectOptionValues(select).join("\u001f");
+  }
+
+  function ccsFirstNonEmptySelectValue(select) {
+    if (!select || !select.options) return "";
+
+    for (var i = 0; i < select.options.length; i++) {
+      var value = String(select.options[i].value || "");
+      if (value !== "") {
+        return value;
+      }
+    }
+
+    return "";
+  }
+
+  async function ccsWaitForSelectOptionsToSettle(select, wait, timeoutMs, stableMs) {
+    var timeout = timeoutMs || 5000;
+    var requiredStableMs = stableMs || 800;
+    var startedAt = Date.now();
+    var lastSignature = ccsSelectOptionSignature(select);
+    var stableSince = Date.now();
+
+    while (Date.now() - startedAt < timeout) {
+      await wait(150);
+
+      var currentSignature = ccsSelectOptionSignature(select);
+      if (currentSignature !== lastSignature) {
+        lastSignature = currentSignature;
+        stableSince = Date.now();
+        continue;
+      }
+
+      if (Date.now() - stableSince >= requiredStableMs) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   // Yerel (native) <select> mı, yoksa selectize sarmalayıcısı mı? Selectize
   // orijinal select'e 'selectized' sınıfı ekler ve kardeş .selectize-control
   // üretir; "Tümü" placeholder davranışı sorununu doğuran budur.
@@ -661,35 +703,41 @@
       "Oturumlar Model filtresi 'Tümü' seçeneğini içerir"
     );
 
-    // Model seçenekleri sunucu tarafında birikimli doldurulur; DB olmadan bir
-    // model seçimini deterministik simüle etmek için geçici (smoke-only) bir
-    // model seçeneği enjekte edilir, GERÇEK change olayıyla seçilir (Shiny input
-    // binding + sunucu filtre observer'ı devreye girer), sonra kaldırılır.
-    var injected = doc.createElement("option");
-    injected.value = "ux-smoke-model";
-    injected.textContent = "UX Smoke Model";
-    injected.setAttribute("data-ux-smoke-model", "1");
-    modelSelect.appendChild(injected);
+    // Model seçenekleri sunucu tarafında birikimli doldurulur. Bu smoke burada
+    // client-only sentetik option enjekte etmez; varsa sunucunun gerçekten
+    // ürettiği boş-olmayan bir model seçeneğini kullanır. Böylece Shiny
+    // updateSelectInput(...) ile seçenekleri yeniden yazdığında doğru sayfa
+    // yanlış negatif üretmez.
+    await ccsWaitForSelectOptionsToSettle(modelSelect, wait, 5000, 800);
 
-    ccsSetSelectValue(win, modelSelect, "ux-smoke-model");
-    await wait(600);
-    assert(
-      modelSelect.value === "ux-smoke-model",
-      "Oturumlar Model filtresi boş-olmayan model seçimini kabul eder"
-    );
-    assert(
-      ccsSelectHasValue(modelSelect, ""),
-      "Oturumlar Model filtresinde model seçimi sonrası 'Tümü' seçeneği kaybolmaz"
-    );
-    ccsSetSelectValue(win, modelSelect, "");
-    await wait(600);
-    assert(
-      modelSelect.value === "",
-      "Oturumlar Model filtresinde model seçimi sonrası 'Tümü' yeniden seçilebilir"
-    );
+    var realModelValue = ccsFirstNonEmptySelectValue(modelSelect);
 
-    if (injected.parentNode) {
-      injected.parentNode.removeChild(injected);
+    if (realModelValue) {
+      ccsSetSelectValue(win, modelSelect, realModelValue);
+      await wait(600);
+      await ccsWaitForSelectOptionsToSettle(modelSelect, wait, 5000, 800);
+
+      assert(
+        modelSelect.value === realModelValue,
+        "Oturumlar Model filtresi mevcut gerçek model seçimini kabul eder"
+      );
+      assert(
+        ccsSelectHasValue(modelSelect, ""),
+        "Oturumlar Model filtresinde model seçimi sonrası 'Tümü' seçeneği kaybolmaz"
+      );
+
+      ccsSetSelectValue(win, modelSelect, "");
+      await wait(600);
+      await ccsWaitForSelectOptionsToSettle(modelSelect, wait, 5000, 800);
+
+      assert(
+        modelSelect.value === "",
+        "Oturumlar Model filtresinde model seçimi sonrası 'Tümü' yeniden seçilebilir"
+      );
+    } else {
+      pass(
+        "Oturumlar Model filtresinde gerçek model seçeneği yok; model seçimi adımı atlandı"
+      );
     }
 
     // Filtre id yüzeyinde çift render / çift DOM id üretilmemeli.

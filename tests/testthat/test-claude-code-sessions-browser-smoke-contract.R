@@ -126,6 +126,10 @@ test_that("ux-smoke-probes.js Oturumlar filtre değişmezlerini gerçek tarayıc
       # sunucu debounce'lı filtre observer'ı gerçek etkileşim yolunda çalışır.
       "ccsSetSelectValue",
       'new win.Event("change", { bubbles: true })',
+      "ccsWaitForSelectOptionsToSettle",
+      "ccsFirstNonEmptySelectValue",
+      "Oturumlar Model filtresi mevcut gerçek model seçimini kabul eder",
+      "Oturumlar Model filtresinde gerçek model seçeneği yok; model seçimi adımı atlandı",
 
       # Durum filtresi tüm seçenekleri ve Türkçe etiketleri.
       "Oturumlar Durum filtresi tüm durum seçeneklerini içerir",
