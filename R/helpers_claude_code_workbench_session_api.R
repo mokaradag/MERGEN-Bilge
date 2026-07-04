@@ -138,6 +138,26 @@ cc_create_workbench_session_api <- function(session,
     rv$conversation_context <- list()
     rv$active_runtime_workdir <- NULL
     rv$active_runtime_source <- NULL
+
+    # Aktif kayıt arşivlendiğinde çalışma alanında GÖRÜNEN transkript de
+    # temizlenmelidir. Aksi halde DB/CLI bağı koparılır ama arşivlenen
+    # sohbet ekranda kalır; kullanıcı yeni bir prompt gönderdiğinde
+    # cc_persist_session_begin() yeni bir oturum açar ama görünümdeki eski
+    # mesajlar yeni çalıştırmayı "arşivlenmiş bir sohbetin devamı" gibi
+    # gösterir (Codex P2). "Yeni Oturum" ile aynı görünüm sıfırlaması yapılır.
+    rv$output_history <- list()
+    rv$has_messages <- FALSE
+
+    session$sendCustomMessage(
+      type = "cc-clear-output",
+      message = list(
+        target = ns("output_area"),
+        welcomeId = ns("welcome_screen"),
+        statusId = ns("status_text"),
+        durationId = ns("duration_text")
+      )
+    )
+
     invisible(TRUE)
   }
 

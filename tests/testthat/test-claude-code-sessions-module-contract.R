@@ -124,11 +124,21 @@ test_that("oturum kartı üreticisi XSS kaçışlaması ve eylem girişleri içe
   expect_true(grepl("ccs-badge-success", kart, fixed = TRUE))
   expect_true(grepl("Devam edilebilir", kart, fixed = TRUE))
 
-  # Arşivlenmiş kart: devam/arşivle eylemleri gizlenir.
+  # Normal (arşivlenmemiş) kartta geri yükle / kalıcı sil eylemleri bulunmaz.
+  expect_false(grepl("session_restore", kart, fixed = TRUE))
+  expect_false(grepl("session_delete", kart, fixed = TRUE))
+
+  # Arşivlenmiş kart: devam/arşivle eylemleri gizlenir; geri yükle + kalıcı sil
+  # eylemleri görünür olur.
   satir$IsDeleted <- 1L
   arsiv_kart <- as.character(ui_env$ccs_session_card(satir, ns = shiny::NS("test_ccs")))
   expect_true(grepl("Arşivlendi", arsiv_kart, fixed = TRUE))
   expect_false(grepl("session_resume", arsiv_kart, fixed = TRUE))
+  expect_false(grepl("session_archive", arsiv_kart, fixed = TRUE))
+  expect_true(grepl("test_ccs-session_restore", arsiv_kart, fixed = TRUE))
+  expect_true(grepl("test_ccs-session_delete", arsiv_kart, fixed = TRUE))
+  expect_true(grepl("Geri Yükle", arsiv_kart, fixed = TRUE))
+  expect_true(grepl("Kalıcı Sil", arsiv_kart, fixed = TRUE))
 })
 
 test_that("durum rozeti ve göreli zaman yardımcıları doğru eşleşir", {
@@ -312,6 +322,15 @@ test_that("çalışma alanı runtime'ı kalıcı oturum köprüsünü doğru kul
   expect_true(grepl("cc_session_hydration_plan(", api, fixed = TRUE))
   expect_true(grepl("suppress_workdir_reset_once", api, fixed = TRUE))
 
+  # Sohbet başlıkları (gönderen adı / karakter adı) geri yüklenir: hidrasyon
+  # mesajı bu alanları taşır ve claude_code.js addMessage köprüsü başlıkları
+  # (cc-message-header) tek kaynaktan üretir.
+  expect_true(grepl("senderName = kullanici_adi()", api, fixed = TRUE))
+  expect_true(grepl("characterName = karakter$display_name", api, fixed = TRUE))
+  claude_js <- .ccs_read_file_text(.ccs_repo_file("www", "js", "claude_code.js"))
+  expect_true(grepl("cc-message-header", claude_js, fixed = TRUE))
+  expect_true(grepl("cc-message-sender", claude_js, fixed = TRUE))
+
   # Akış tamamlanınca başarılı VE başarısız çalıştırmalar kalıcılaştırılır.
   expect_true(grepl('status = "completed"', poll, fixed = TRUE))
   expect_true(grepl('status = "failed"', poll, fixed = TRUE))
@@ -422,14 +441,46 @@ test_that("Oturumlar sunucu modülü stub DB ile liste/metrik render eder", {
 
 test_that("DB oturum katmanı parametreli SQL ve merkez encoding yolunu kullanır", {
   db_metin <- .ccs_read_file_text(.ccs_repo_file("R", "helpers_db_claude_code_sessions.R"))
+  # Arşiv geri yükleme + KALICI silme yaşam döngüsü ayrı dosyadadır (ratchet).
+  lifecycle_metin <- .ccs_read_file_text(
+    .ccs_repo_file("R", "helpers_db_claude_code_session_lifecycle.R")
+  )
 
   expect_true(grepl("normalize_db_params", db_metin, fixed = TRUE))
   expect_true(grepl("normalize_db_visible_value", db_metin, fixed = TRUE))
   expect_true(grepl("normalize_db_technical_value", db_metin, fixed = TRUE))
 
-  # Yumuşak silme: fiziksel DELETE ifadesi bulunmaz.
-  expect_false(grepl("DELETE FROM", db_metin, fixed = TRUE))
+  # Arşivleme (yumuşak silme) IsDeleted bayrağını kullanır (orkestrasyon
+  # dosyası); arşivden çıkarma (geri yükleme) simetriktir (yaşam döngüsü
+  # dosyası, IsDeleted = 0).
   expect_true(grepl("SET IsDeleted = 1", db_metin, fixed = TRUE))
+  expect_true(grepl("SET IsDeleted = 0", lifecycle_metin, fixed = TRUE))
+  expect_true(grepl("cc_db_restore_session", lifecycle_metin, fixed = TRUE))
+  expect_true(grepl("normalize_db_params", lifecycle_metin, fixed = TRUE))
+
+  # Kalıcı silme DESTEKLENİR ancak yalnızca kullanıcı-izole (sahiplik
+  # doğrulaması + UserID ile sınırlı DELETE) yapılır. Oturum silme ifadesi
+  # her zaman UserID = ? filtresi taşır; kapsamsız/toplu silme bulunmaz.
+  expect_true(grepl("cc_db_hard_delete_session", lifecycle_metin, fixed = TRUE))
+  expect_true(grepl(
+    "DELETE FROM MB_ClaudeCode_Sessions",
+    lifecycle_metin, fixed = TRUE
+  ))
+  expect_false(grepl(
+    "DELETE FROM MB_ClaudeCode_Sessions WHERE UserID",
+    lifecycle_metin, fixed = TRUE
+  ))
+  # Oturum silmenin kullanıcı-izole olduğunu doğrula (UserID kısıtı mevcut).
+  expect_true(grepl(
+    "WHERE ClaudeSessionRecordID = ? AND UserID = ?",
+    lifecycle_metin, fixed = TRUE
+  ))
+
+  # KALICI silme, oturumun ürettiği indirilebilir dosyaları da (yalnızca
+  # indirme kökü altında, kök-içi kontrol ile) kaldırır (Codex P2 veri
+  # saklama sızıntısı düzeltmesi).
+  expect_true(grepl(".cc_lifecycle_remove_download_files", lifecycle_metin, fixed = TRUE))
+  expect_true(grepl("cc_policy_path_inside_roots", lifecycle_metin, fixed = TRUE))
 
   # Kurulum betiği repoda mevcut ve yıkıcı ifade içermiyor.
   sql_yolu <- .ccs_repo_file("docs", "sql", "2026-07-bilge-yolac-sessions.sql")
@@ -440,4 +491,110 @@ test_that("DB oturum katmanı parametreli SQL ve merkez encoding yolunu kullanı
   expect_false(grepl("DELETE FROM", sql_metin, fixed = TRUE))
   expect_true(grepl("MB_CLAUDECODE_SESSIONS", sql_metin, fixed = TRUE))
   expect_true(grepl("MB_CLAUDECODE_RUNS", sql_metin, fixed = TRUE))
+})
+
+test_that("Oturumlar filtreleri 'Tümü' seçeneğini kalıcı kılar (yerel select + birikimli model)", {
+  ui_metin <- .ccs_read_file_text(.ccs_repo_file("R", "module_claude_code_sessions_ui.R"))
+  server_metin <- .ccs_read_file_text(.ccs_repo_file("R", "module_claude_code_sessions.R"))
+
+  # Durum ve Model filtreleri yerel <select> kullanır (selectize = FALSE): boş
+  # değerli "Tümü" seçeneği başka bir seçim yapıldıktan sonra da erişilebilir
+  # kalır (selectize placeholder davranışı devre dışı).
+  expect_gte(
+    lengths(regmatches(ui_metin, gregexpr("selectize = FALSE", ui_metin, fixed = TRUE))),
+    2L
+  )
+
+  # Model açılır listesi birikimli (kararlı) tutulur; "Tümü" her yenilemede
+  # yeniden eklenir ve önceki modeller korunur.
+  expect_true(grepl("known_models", server_metin, fixed = TRUE))
+  expect_true(grepl('"Tümü" = ""', server_metin, fixed = TRUE))
+})
+
+test_that("Oturumlar sunucu modülü arşivden çıkarma ve kalıcı silme akışlarını bağlar", {
+  server_metin <- .ccs_read_file_text(.ccs_repo_file("R", "module_claude_code_sessions.R"))
+
+  # Arşivden çıkarma (geri yükleme) onay gerektirmez.
+  expect_true(grepl("input$session_restore", server_metin, fixed = TRUE))
+  expect_true(grepl("cc_db_restore_session", server_metin, fixed = TRUE))
+
+  # Kalıcı silme ikinci onay adımı ister (delete_confirm) ve DB kalıcı silme
+  # fonksiyonunu çağırır.
+  expect_true(grepl("input$session_delete", server_metin, fixed = TRUE))
+  expect_true(grepl("input$delete_confirm", server_metin, fixed = TRUE))
+  expect_true(grepl("cc_db_hard_delete_session", server_metin, fixed = TRUE))
+})
+
+test_that("navigasyon Bilge Yolaç ana menüsü ile Çalışma Alanı için farklı ikonlar kullanır", {
+  ui_metin <- .ccs_read_file_text(.ccs_repo_file("ui.R"))
+
+  # Bilge Yolaç ana menüsü artık terminal değil ayırt edici bir ikon kullanır.
+  expect_true(grepl('menuItem("Bilge Yolaç", icon = icon("robot")', ui_metin, fixed = TRUE))
+  expect_true(grepl(
+    'menuSubItem("Çalışma Alanı", tabName = "claude_code", icon = icon("terminal"))',
+    ui_metin, fixed = TRUE
+  ))
+})
+
+test_that("model seçim JS işleyicisi mevcut olmayan model için bayat değer göndermez", {
+  sessions_js <- .ccs_read_file_text(.ccs_repo_file("www", "js", "claude_code_sessions.js"))
+
+  # Eşleşen buton yoksa etkin/ilk butona düşülür; hiçbir buton yoksa Shiny'e
+  # bayat değer gönderilmez (Codex P2 yapılandırma kayması koruması).
+  expect_true(grepl(".cc-model-tier-btn.active", sessions_js, fixed = TRUE))
+  expect_true(grepl("pushValue", sessions_js, fixed = TRUE))
+})
+
+test_that("Oturumlar AJAN rozeti Çalışma Alanı ile aynı görsel dili kullanır", {
+  ui_metin <- .ccs_read_file_text(.ccs_repo_file("R", "module_claude_code_sessions_ui.R"))
+  sessions_css <- .ccs_read_file_text(.ccs_repo_file("www", "css", "claude_code_sessions.css"))
+  workbench_css <- .ccs_read_file_text(.ccs_repo_file("www", "css", "claude_code.css"))
+
+  # Her iki sayfa da aynı 'cc-badge' AJAN rozetini kullanır.
+  expect_true(grepl('class = "cc-badge", "AJAN"', ui_metin, fixed = TRUE))
+  # Koyu tema: aynı aksan değişkenleri Oturumlar container'ında da tanımlıdır.
+  expect_true(grepl("--cc-theme-accent", sessions_css, fixed = TRUE))
+  # Açık tema kırmızı hap override'ı Oturumlar container'ını da kapsar.
+  expect_true(grepl(
+    ".claude-code-sessions-container .chat-header .cc-badge",
+    workbench_css, fixed = TRUE
+  ))
+})
+
+test_that("detach yardımcısı aktif oturum arşivlenirken görünen transkripti temizler", {
+  api_metin <- .ccs_read_file_text(
+    .ccs_repo_file("R", "helpers_claude_code_workbench_session_api.R")
+  )
+
+  # Aktif kayıt arşivlendiğinde çalışma alanı görünümü de sıfırlanır
+  # (Codex P2: arşivlenen sohbet ekranda kalmaz).
+  expect_true(grepl("cc-clear-output", api_metin, fixed = TRUE))
+  expect_true(grepl("rv$has_messages <- FALSE", api_metin, fixed = TRUE))
+})
+
+test_that("üretilen belge listesi kayıtlı oturumlarda görünür (indirme bağlantıları)", {
+  testthat::skip_if_not_installed("shiny")
+
+  ui_env <- new.env(parent = globalenv())
+  suppressMessages(library(shiny))
+  source(
+    .ccs_repo_file("R", "module_claude_code_sessions_ui.R"),
+    encoding = "UTF-8",
+    local = ui_env
+  )
+
+  dosyalar <- list(
+    list(display_name = "rapor.docx", size_label = "12 KB",
+         url = "bilge_yolac_downloads/u7/s3/rapor.docx"),
+    list(display_name = "ozet.txt", url = "")
+  )
+  html <- as.character(ui_env$ccs_run_generated_files_ui(dosyalar))
+
+  expect_true(grepl("Üretilen Belgeler", html, fixed = TRUE))
+  expect_true(grepl("rapor.docx", html, fixed = TRUE))
+  expect_true(grepl("bilge_yolac_downloads/u7/s3/rapor.docx", html, fixed = TRUE))
+  # Url'siz belge düz metin olarak listelenir (bağlantı üretmez).
+  expect_true(grepl("ozet.txt", html, fixed = TRUE))
+  # Boş liste NULL döner.
+  expect_null(ui_env$ccs_run_generated_files_ui(list()))
 })

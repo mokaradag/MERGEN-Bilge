@@ -119,3 +119,89 @@ health_check_bilge_yolac <- function() {
                   health_ms(start), remediation = if (status == "warning") "CLI yolu ve çalışma dizini izinlerini kontrol edin." else "")
   })
 }
+
+# Bilge Yolaç kalıcı oturum kaydı sağlık kontrolü: MB_ClaudeCode_Sessions /
+# MB_ClaudeCode_Runs tabloları erişilebilir mi ve kaç oturum/çalıştırma
+# saklanıyor? Tablolar yoksa (aşamalı devreye alma) "not_configured" döner ve
+# hata fırlatmaz; sistem bellek-içi modda çalışmaya devam eder.
+health_check_bilge_yolac_sessions <- function() {
+  health_safe_check("runtime.bilge_yolac_sessions", "Bilge Yolaç Oturum Kaydı", {
+    start <- Sys.time()
+
+    if (!exists("get_connection", mode = "function") ||
+        !exists("release_connection", mode = "function")) {
+      return(health_result(
+        "runtime.bilge_yolac_sessions", "Bilge Yolaç Oturum Kaydı", "unknown",
+        "Bağlantı yardımcısı yok",
+        "get_connection/release_connection bulunamadı.",
+        health_ms(start),
+        remediation = "helpers_database.R yükleme sırasını kontrol edin."
+      ))
+    }
+
+    if (!nzchar(Sys.getenv("DB_DSN", ""))) {
+      return(health_result(
+        "runtime.bilge_yolac_sessions", "Bilge Yolaç Oturum Kaydı", "unknown",
+        "Kontrol atlandı", "Ana veritabanı bağlantısı hazır değil.",
+        health_ms(start),
+        remediation = "Önce DB_DSN bağlantısını doğrulayın."
+      ))
+    }
+
+    conn_info <- NULL
+    tryCatch({
+      conn_info <- get_connection("primary")
+
+      tablolar_var <- isTRUE(DBI::dbExistsTable(conn_info$conn, "MB_ClaudeCode_Sessions")) &&
+        isTRUE(DBI::dbExistsTable(conn_info$conn, "MB_ClaudeCode_Runs"))
+
+      if (!tablolar_var) {
+        return(health_result(
+          "runtime.bilge_yolac_sessions", "Bilge Yolaç Oturum Kaydı",
+          "not_configured", "Tablolar yok",
+          paste("MB_ClaudeCode_Sessions / MB_ClaudeCode_Runs bulunamadı;",
+                "Bilge Yolaç bellek-içi modda çalışır."),
+          health_ms(start),
+          remediation = "Kurulum: docs/sql/2026-07-bilge-yolac-sessions.sql (bkz. RUNBOOK.md)."
+        ))
+      }
+
+      ozet <- DBI::dbGetQuery(
+        conn_info$conn,
+        "SELECT
+           COUNT(*) AS toplam,
+           SUM(CASE WHEN IsDeleted = 0 THEN 1 ELSE 0 END) AS aktif,
+           SUM(CASE WHEN IsDeleted = 1 THEN 1 ELSE 0 END) AS arsiv,
+           SUM(CASE WHEN ClaudeCliSessionID IS NOT NULL AND ClaudeCliSessionID <> ''
+                    THEN 1 ELSE 0 END) AS devam
+         FROM MB_ClaudeCode_Sessions"
+      )
+      run_sayisi <- DBI::dbGetQuery(
+        conn_info$conn,
+        "SELECT COUNT(*) AS n FROM MB_ClaudeCode_Runs"
+      )$n[1]
+
+      toplam <- as.integer(ozet$toplam[1] %||% 0L)
+      aktif  <- as.integer(ozet$aktif[1] %||% 0L)
+      arsiv  <- as.integer(ozet$arsiv[1] %||% 0L)
+      devam  <- as.integer(ozet$devam[1] %||% 0L)
+      run_sayisi <- as.integer(run_sayisi %||% 0L)
+
+      health_result(
+        "runtime.bilge_yolac_sessions", "Bilge Yolaç Oturum Kaydı", "ok",
+        paste(toplam, "oturum"),
+        paste0("Aktif: ", aktif, " | Arşiv: ", arsiv,
+               " | Devam edilebilir: ", devam, " | Çalıştırma: ", run_sayisi),
+        health_ms(start), remediation = ""
+      )
+    }, error = function(e) {
+      health_result(
+        "runtime.bilge_yolac_sessions", "Bilge Yolaç Oturum Kaydı", "unknown",
+        "Kontrol başarısız", conditionMessage(e), health_ms(start),
+        remediation = "MB_ClaudeCode_Sessions erişimini ve kullanıcı yetkisini kontrol edin."
+      )
+    }, finally = {
+      try(release_connection(conn_info), silent = TRUE)
+    })
+  })
+}

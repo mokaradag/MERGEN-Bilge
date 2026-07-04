@@ -37,7 +37,7 @@ ui <- dashboardPage(
         menuSubItem("Kayıtlı Söyleşiler", tabName = "saved_chats", icon = icon("bookmark")),
         menuSubItem("Görsel Galerisi", tabName = "image_gallery", icon = icon("images"))
       ),
-      menuItem("Bilge Yolaç", icon = icon("terminal"), startExpanded = FALSE,
+      menuItem("Bilge Yolaç", icon = icon("robot"), startExpanded = FALSE,
         menuSubItem("Çalışma Alanı", tabName = "claude_code", icon = icon("terminal")),
         menuSubItem("Oturumlar", tabName = "claude_code_sessions", icon = icon("clock-rotate-left"))
       ),

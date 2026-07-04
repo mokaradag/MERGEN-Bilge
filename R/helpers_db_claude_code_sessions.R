@@ -640,3 +640,8 @@ cc_db_soft_delete_session <- function(user_id, session_record_id, conn = NULL) {
 
   invisible(isTRUE(sonuc))
 }
+
+# NOT: Arşivden geri yükleme (cc_db_restore_session) ve KALICI silme
+# (cc_db_hard_delete_session) bu dosyanın maintainability ratchet bütçesi
+# altında kalması için R/helpers_db_claude_code_session_lifecycle.R dosyasına
+# ayrılmıştır; o dosya bu dosyadan SONRA yüklenir.

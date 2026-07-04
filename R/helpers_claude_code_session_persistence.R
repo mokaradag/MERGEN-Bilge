@@ -292,25 +292,33 @@ cc_persist_run_result <- function(rv,
     return("")
   }
 
-  if (exists("render_safe_markdown_html", mode = "function", inherits = TRUE)) {
-    return(.cc_persist_try(
-      render_safe_markdown_html(ham),
-      fallback = htmltools::htmlEscape(ham)
-    ))
-  }
-
-  # İzole test/debug yüklemelerinde güvenli renderer henüz kaynaklanmamışsa,
-  # formatlayıcıya ham HTML değil kaçışlanmış markdown verilir. Böylece
-  # cc-hydrate-session -> addMessage(innerHTML) yolu depolanmış markup'ı
-  # çalıştırılabilir HTML olarak yeniden canlandırmaz.
+  # Ham HTML HER DURUMDA önce güvenli markdown'a kaçışlanır. cc-hydrate-session
+  # -> addMessage(innerHTML) yolu depolanmış markup'ı çalıştırılabilir HTML
+  # olarak yeniden canlandırmamalıdır (XSS sınırı, CLAUDE.md 1C). Kaçışlama
+  # yalnızca < ve > karakterlerini dönüştürür; meşru markdown (başlık, kalın,
+  # kod bloğu) korunur.
   guvenli_markdown <- if (exists("mergen_escape_raw_html_for_markdown", mode = "function", inherits = TRUE)) {
     mergen_escape_raw_html_for_markdown(ham)
   } else {
     gsub(">", "&gt;", gsub("<", "&lt;", ham, fixed = TRUE), fixed = TRUE)
   }
+
+  # Biçimleyici verilmişse (üretimde format_claude_code_output) kaçışlanmış
+  # markdown ile uygulanır. Böylece hidrasyon, canlı yanıt yolundaki aynı
+  # markdown görünümünü üretir; ancak ham HTML zaten etkisizleştirilmiştir.
+  # Bu, izole test/debug yüklemelerinde ve tam süitte (render_safe_markdown_html
+  # yüklüyken) tutarlı davranır.
   if (is.function(format_output_fn)) {
     return(.cc_persist_try(
       format_output_fn(guvenli_markdown),
+      fallback = htmltools::htmlEscape(ham)
+    ))
+  }
+
+  # Biçimleyici verilmemişse güvenli markdown renderer'a düş.
+  if (exists("render_safe_markdown_html", mode = "function", inherits = TRUE)) {
+    return(.cc_persist_try(
+      render_safe_markdown_html(ham),
       fallback = htmltools::htmlEscape(ham)
     ))
   }
