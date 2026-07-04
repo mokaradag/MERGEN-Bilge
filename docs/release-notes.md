@@ -755,3 +755,11 @@ Son kabul notu: bu güncelleme sonrasında gerçek tarayıcı smoke koşumu `UX_
 - README'deki eski PR tarzı doğrulama günlükleri, kullanıcıyı ilk girişte yormamak için buraya taşındı.
 - Yalnızca gerçekten çalıştırılan komutların sonucu “geçti” olarak ifade edilir.
 - Codex/Claude cloud kanıtı ile Windows VM/on-prem kanıtı aynı şey değildir; özellikle DB, SSO, encoding, UNC path, paket kilidi ve tarayıcı smoke alanlarında sınırlar açıkça belirtilmelidir.
+
+### 2026-07 Production-safe MB_* SQL Server indexing rollout
+
+A safe Wave 1-4 MB_* SQL Server indexing rollout is now documented after a superseded all-at-once indexing attempt caused login failure. The outage root cause is not proven; it is recorded as likely caused by unsafe all-at-once deployment / schema-locking / overly aggressive unique login-path index attempt. The final safe set is stable in production, users can log in, and admin pages' first click/content load are visibly faster.
+
+The new documentation records the current enabled index inventory, the intentionally non-unique `IX_MB_Feedback_User_Message` and `IX_MB_Users_KullaniciAdi_Lookup`, and the fact that the explicit `MB_Users` performance index coexists with the pre-existing unique `KullaniciAdi` constraint/index. The safe script is `docs/sql/2026-07-safe-mb-performance-indexes.sql`; emergency rollback for only those safe performance indexes is `docs/sql/2026-07-safe-mb-performance-indexes-rollback.sql`. Earlier candidates such as `IX_MB_Usage_Log_User_Model`, `IX_MB_Usage_Log_Chat_Message`, broad recent-only support indexes, and any new unique `IX_MB_Users_KullaniciAdi` remain intentionally excluded without Query Store/plan evidence and DBA approval.
+
+Validation caveat: observed `STATISTICS IO/TIME` results for representative admin list queries were very low in the current small tables and match the UI improvement, but they do not prove index seek usage or future large-table capacity. This rollout improves DB-heavy/admin latency paths; it is not a soak-capacity claim, and GET-only soak results may not materially move.

@@ -240,3 +240,24 @@ Yönetici geri bildirim analizi ekranında kullanıcı e-posta adresi zenginleş
 - `MB_Chats.IsDeleted` soft-delete davranışıdır; geçmiş veri fiziksel olarak silinmiş varsayılmamalıdır.
 - DB repair veya DDL değişikliği destructive işlem sayılabilir; önce yedek, rollback planı ve VM/on-prem doğrulama kanıtı gerekir.
 - Bu dosya gerçek secret, DSN, sunucu adı veya private endpoint içermez ve içermemelidir.
+
+## Production-safe MB_* performance index inventory (July 2026)
+
+This section records the production-observed safe index set after the successful Wave 1-4 rollout. The earlier all-at-once indexing attempt is superseded and must not be treated as recommended guidance. That attempt included many simultaneous indexes and a newly-created unique login-path index candidate; the login outage was likely caused by unsafe all-at-once deployment / schema-locking / overly aggressive unique login-path index attempt; root cause not conclusively proven.
+
+| Table | Index | Type / uniqueness / state | Key columns | INCLUDE columns | Purpose |
+|---|---|---|---|---|---|
+| `MB_Chats` | `IX_MB_Chats_User_Active_Recent` | NONCLUSTERED, non-unique, enabled | `UserID` ASC, `IsDeleted` ASC, `CreateTimestamp` DESC, `ChatID` DESC | `ChatTitle` | Current user's active/non-deleted chat list and recent ordering. |
+| `MB_Messages` | `IX_MB_Messages_Chat_Order` | NONCLUSTERED, non-unique, enabled | `ChatID` ASC, `MessageOrder` ASC, `MessageID` ASC | `MessageType`, `MessageTimestamp` | Message hydration, per-chat ordering, chat history loading, `MAX(MessageOrder)+1` support. |
+| `MB_Messages` | `IX_MB_Messages_Chat_Timestamp` | NONCLUSTERED, non-unique, enabled | `ChatID` ASC, `MessageTimestamp` DESC | — | Last-message/recent-activity calculations. |
+| `MB_Feedback` | `IX_MB_Feedback_User_Message` | NONCLUSTERED, non-unique, enabled | `UserID` ASC, `MessageID` ASC | `FeedbackType` | Feedback load/save/delete lookup path; intentionally **not unique** in the safe rollout. |
+| `MB_Users` | `IX_MB_Users_KullaniciAdi_Lookup` | NONCLUSTERED, non-unique, enabled | `KullaniciAdi` ASC | `UserID`, `KaynakAdi`, `LastLoginDate` | Login/user-profile lookup. This explicit performance index is intentionally **non-unique** and exists alongside the pre-existing unique nonclustered constraint/index named like `UQ__MB_Users__5BAE6A75C24F52F9` on `KullaniciAdi`; do not remove or alter that UQ object. |
+| `MB_Destek_Geri_Bildirim` | `IX_MB_Destek_Geri_Bildirim_User_Recent` | NONCLUSTERED, non-unique, enabled | `UserID` ASC, `OlusturmaTarihi` DESC | — | Support feedback user history and admin/user recent access. |
+| `MB_Destek_Hata_Bildir` | `IX_MB_Destek_Hata_Bildir_User_Recent` | NONCLUSTERED, non-unique, enabled | `UserID` ASC, `OlusturmaTarihi` DESC | — | User-specific bug report history. |
+| `MB_Destek_Hata_Bildir` | `IX_MB_Destek_Hata_Bildir_Status_Recent` | NONCLUSTERED, non-unique, enabled | `Durum` ASC, `OlusturmaTarihi` DESC | `Oncelik`, `UserID` | Admin bug-report status/recent dashboard access. |
+| `MB_ClaudeCode_Sessions` | `IX_MB_ClaudeCode_Sessions_User_Recent` | NONCLUSTERED, non-unique, enabled | `UserID` ASC, `IsDeleted` ASC, `LastRunAt` DESC, `CreatedAt` DESC | — | Bilge Yolaç session list/recent activity. |
+| `MB_ClaudeCode_Runs` | `IX_MB_ClaudeCode_Runs_Session_Order` | NONCLUSTERED, non-unique, enabled | `ClaudeSessionRecordID` ASC, `RunOrder` ASC | — | Bilge Yolaç run timeline loading. |
+
+The safe Wave 1-4 script for the first eight indexes is [`sql/2026-07-safe-mb-performance-indexes.sql`](sql/2026-07-safe-mb-performance-indexes.sql). The two Bilge Yolaç indexes remain in the idempotent Bilge Yolaç setup script [`sql/2026-07-bilge-yolac-sessions.sql`](sql/2026-07-bilge-yolac-sessions.sql).
+
+Earlier candidates intentionally not added in the safe Wave 1-4 rollout: `IX_MB_Usage_Log_User_Model`, `IX_MB_Usage_Log_Chat_Message`, `IX_MB_Destek_Geri_Bildirim_Recent`, `IX_MB_Destek_Hata_Bildir_Recent`, `IX_MB_Destek_Hata_Bildir_Status_Priority`, and any newly-created `UNIQUE` index named `IX_MB_Users_KullaniciAdi`. Do not add them without Query Store evidence, actual execution plans, and DBA approval.

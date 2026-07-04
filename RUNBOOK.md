@@ -1143,3 +1143,137 @@ ile yeniden üretin. Tam rehber ve kontrol listesi: **`docs/dependency-locking.m
 
 CI/AI önyükleme: `tests/scripts/ci_install_packages.R`, `renv.lock` varsa
 `renv::restore()` tercih eder; yoksa mevcut RSPM/CRAN akışına geri düşer.
+
+## Production-safe MB_* SQL Server indexing rollout (July 2026)
+
+Use this procedure only for the final safe Wave 1-4 MB_* performance index set documented in `docs/sql/2026-07-safe-mb-performance-indexes.sql`. The earlier all-at-once indexing script is superseded/unsafe and must not be recommended: it applied many indexes at once and included a newly-created unique login-path index candidate on `MB_Users(KullaniciAdi)`. After that attempt, users could not log in; rollback of newly-created indexes recovered login. The most accurate wording is: likely caused by unsafe all-at-once deployment / schema-locking / overly aggressive unique login-path index attempt; root cause not conclusively proven.
+
+### Procedure
+
+1. Take and verify a SQL Server backup before any DDL.
+2. Schedule off-peak manual DBA/operator execution; do not run from app startup.
+3. Apply `docs/sql/2026-07-safe-mb-performance-indexes.sql` wave by wave.
+4. After each wave, start or restart with `start_mergen_prod.bat` as needed and confirm users can log in.
+5. Smoke the affected path after each wave: chat list/history after Wave 1, feedback load/save/delete after Wave 2, login/profile lookup after Wave 3, and support/admin pages after Wave 4.
+6. After Wave 4, run metadata inventory queries, representative `SET STATISTICS IO/TIME` checks, admin page first-click smoke, and the normal operational soak gate appropriate for the release. Do not claim soak capacity gains from these indexes alone; they help DB-heavy paths and admin first-click latency, while GET-only soak may not change materially.
+7. If a wave causes production symptoms, capture evidence and use `docs/sql/2026-07-safe-mb-performance-indexes-rollback.sql` to drop only the safe performance indexes. Do not drop primary keys or pre-existing unique constraints such as the `MB_Users(KullaniciAdi)` UQ object.
+
+### Current safe index set
+
+The current production-observed enabled safe set is:
+
+- `MB_Chats.IX_MB_Chats_User_Active_Recent` — non-unique, `(UserID, IsDeleted, CreateTimestamp DESC, ChatID DESC) INCLUDE (ChatTitle)`.
+- `MB_Messages.IX_MB_Messages_Chat_Order` — non-unique, `(ChatID, MessageOrder ASC, MessageID ASC) INCLUDE (MessageType, MessageTimestamp)`.
+- `MB_Messages.IX_MB_Messages_Chat_Timestamp` — non-unique, `(ChatID, MessageTimestamp DESC)`.
+- `MB_Feedback.IX_MB_Feedback_User_Message` — non-unique, `(UserID, MessageID) INCLUDE (FeedbackType)`; intentionally not unique.
+- `MB_Users.IX_MB_Users_KullaniciAdi_Lookup` — non-unique, `(KullaniciAdi) INCLUDE (UserID, KaynakAdi, LastLoginDate)`; exists alongside the pre-existing unique `KullaniciAdi` constraint/index named like `UQ__MB_Users__5BAE6A75C24F52F9`.
+- `MB_Destek_Geri_Bildirim.IX_MB_Destek_Geri_Bildirim_User_Recent` — non-unique, `(UserID, OlusturmaTarihi DESC)`.
+- `MB_Destek_Hata_Bildir.IX_MB_Destek_Hata_Bildir_User_Recent` — non-unique, `(UserID, OlusturmaTarihi DESC)`.
+- `MB_Destek_Hata_Bildir.IX_MB_Destek_Hata_Bildir_Status_Recent` — non-unique, `(Durum, OlusturmaTarihi DESC) INCLUDE (Oncelik, UserID)`.
+- `MB_ClaudeCode_Sessions.IX_MB_ClaudeCode_Sessions_User_Recent` — non-unique, `(UserID, IsDeleted, LastRunAt DESC, CreatedAt DESC)`.
+- `MB_ClaudeCode_Runs.IX_MB_ClaudeCode_Runs_Session_Order` — non-unique, `(ClaudeSessionRecordID, RunOrder ASC)`.
+
+Do not add these earlier candidates without Query Store evidence, actual execution plans, and DBA approval: `IX_MB_Usage_Log_User_Model`, `IX_MB_Usage_Log_Chat_Message`, `IX_MB_Destek_Geri_Bildirim_Recent`, `IX_MB_Destek_Hata_Bildir_Recent`, `IX_MB_Destek_Hata_Bildir_Status_Priority`, or any newly-created `UNIQUE` index named `IX_MB_Users_KullaniciAdi`.
+
+### Lower-permission validation queries
+
+Operators may not have permission for `sys.dm_db_index_usage_stats` (`VIEW SERVER STATE`, or SQL Server 2022+ `VIEW SERVER PERFORMANCE STATE`). Use metadata and IO/time checks first; treat DMV usage as optional DBA-only corroboration.
+
+Index inventory:
+
+```sql
+SELECT
+    t.name AS table_name,
+    i.name AS index_name,
+    i.type_desc,
+    i.is_unique,
+    i.is_primary_key,
+    i.is_disabled
+FROM sys.indexes i
+JOIN sys.tables t
+    ON i.object_id = t.object_id
+WHERE t.name LIKE 'MB_%'
+  AND i.name IS NOT NULL
+ORDER BY
+    t.name,
+    i.name;
+```
+
+Index columns:
+
+```sql
+SELECT
+    t.name AS table_name,
+    i.name AS index_name,
+    CASE
+        WHEN ic.is_included_column = 1 THEN 'INCLUDE'
+        ELSE 'KEY'
+    END AS column_role,
+    ic.key_ordinal,
+    ic.index_column_id,
+    c.name AS column_name,
+    ic.is_descending_key
+FROM sys.indexes i
+JOIN sys.tables t
+    ON i.object_id = t.object_id
+JOIN sys.index_columns ic
+    ON i.object_id = ic.object_id
+   AND i.index_id = ic.index_id
+JOIN sys.columns c
+    ON ic.object_id = c.object_id
+   AND ic.column_id = c.column_id
+WHERE t.name LIKE 'MB_%'
+  AND i.name IS NOT NULL
+ORDER BY
+    t.name,
+    i.name,
+    ic.is_included_column,
+    ic.key_ordinal,
+    ic.index_column_id;
+```
+
+Representative admin IO/time checks:
+
+```sql
+SET STATISTICS IO ON;
+SET STATISTICS TIME ON;
+
+SELECT TOP 100
+    gb.GeriBildirimID,
+    gb.UserID,
+    gb.Memnuniyet,
+    gb.NPS_Puan,
+    gb.Etiketler,
+    gb.EnCokSevilen,
+    gb.Gelistirme,
+    gb.IletisimIzni,
+    gb.OlusturmaTarihi
+FROM dbo.MB_Destek_Geri_Bildirim gb
+ORDER BY gb.OlusturmaTarihi DESC;
+
+SET STATISTICS IO OFF;
+SET STATISTICS TIME OFF;
+```
+
+```sql
+SET STATISTICS IO ON;
+SET STATISTICS TIME ON;
+
+SELECT TOP 100
+    hb.HataBildirimID,
+    hb.UserID,
+    hb.Konular,
+    hb.Kategoriler,
+    hb.Oncelik,
+    hb.Aciklama,
+    hb.EkDosyaYollari,
+    hb.Durum,
+    hb.OlusturmaTarihi
+FROM dbo.MB_Destek_Hata_Bildir hb
+ORDER BY hb.OlusturmaTarihi DESC;
+
+SET STATISTICS IO OFF;
+SET STATISTICS TIME OFF;
+```
+
+Observed post-rollout checks showed users can log in, metadata confirms the safe indexes are enabled, and the representative admin queries were cheap in the current database: `MB_Destek_Hata_Bildir` returned 20 rows with scan count 1, 3 logical reads, 0 physical/read-ahead reads, 0 ms CPU and 0 ms elapsed; `MB_Destek_Geri_Bildirim` returned 16 rows with the same read/time profile. Because these tables are currently small, this confirms current cheap representative admin queries and observed UI improvement; it does not prove index seek usage.
