@@ -49,6 +49,17 @@ local({
     source(file.path(repo_root, "R", "helpers_db_claude_code_session_lifecycle.R"),
            encoding = "UTF-8", local = globalenv())
   }
+
+  # KALICI silme üretilen dosyaları indirme kökü altında kaldırır; kök-içi
+  # kontrol ve kök çözümleyici yardımcıları bu testler için yüklenir.
+  if (!exists("cc_policy_path_inside_roots", mode = "function", inherits = TRUE)) {
+    source(file.path(repo_root, "R", "helpers_claude_code_path_policy.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+  if (!exists("get_claude_code_download_root", mode = "function", inherits = TRUE)) {
+    source(file.path(repo_root, "R", "helpers_claude_code_downloads.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
 })
 
 # SQLite lehçesinde test şeması kurar (üretim T-SQL DDL'i DEĞİL; bkz.
@@ -402,6 +413,50 @@ test_that("kalıcı silme kullanıcı-izole ve geri alınamaz; alt kayıtları d
     expect_false(cc_db_hard_delete_session(user_id = 1L, session_record_id = 9999L, conn = conn))
     expect_false(cc_db_hard_delete_session(user_id = 0L, session_record_id = 1L, conn = conn))
   })
+})
+
+test_that("kalıcı silme üretilen dosyaları indirme kökü altında kaldırır (kök dışını korur)", {
+  # İndirme kökünü geçici bir dizine sabitle; bitince eski değeri geri yükle.
+  kok_dizin <- file.path(tempdir(), paste0("byd_", as.integer(runif(1, 1e6, 9e6))))
+  dir.create(kok_dizin, recursive = TRUE, showWarnings = FALSE)
+  eski_opt <- options(mergen.claude_code_download_root = kok_dizin)
+  on.exit({
+    options(eski_opt)
+    suppressWarnings(unlink(kok_dizin, recursive = TRUE))
+  }, add = TRUE)
+
+  # Kök İÇİNDE bir üretilen dosya (silinmeli) ve kök DIŞINDA bir dosya
+  # (kullanıcı izolasyonu/güvenlik: asla silinmemeli).
+  ic_dosya <- file.path(kok_dizin, "rapor.docx")
+  writeLines("ic", ic_dosya)
+  dis_dosya <- tempfile(fileext = ".txt")
+  writeLines("dis", dis_dosya)
+
+  .ccs_with_test_db(function(conn) {
+    sid <- cc_db_create_session(user_id = 1L, title = "silme + dosya", conn = conn)
+    cc_db_save_run(
+      sid, prompt = "belge üret", status = "completed",
+      generated_downloads = list(
+        list(display_name = "rapor.docx", download_path = ic_dosya),
+        list(display_name = "harici.txt", download_path = dis_dosya)
+      ),
+      conn = conn
+    )
+
+    expect_true(file.exists(ic_dosya))
+    expect_true(file.exists(dis_dosya))
+
+    expect_true(cc_db_hard_delete_session(user_id = 1L, session_record_id = sid, conn = conn))
+
+    # Kök içi üretilen dosya kaldırıldı; kök dışı dosya korundu.
+    expect_false(file.exists(ic_dosya))
+    expect_true(file.exists(dis_dosya))
+
+    # DB satırları da fiziksel olarak gitti.
+    expect_identical(nrow(cc_db_list_sessions(user_id = 1L, include_deleted = TRUE, conn = conn)), 0L)
+  })
+
+  suppressWarnings(unlink(dis_dosya))
 })
 
 test_that("tablolar yokken tüm fonksiyonlar güvenli boş/NULL/FALSE döner", {

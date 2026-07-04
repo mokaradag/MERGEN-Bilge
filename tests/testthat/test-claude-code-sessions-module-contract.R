@@ -476,6 +476,12 @@ test_that("DB oturum katmanı parametreli SQL ve merkez encoding yolunu kullanı
     lifecycle_metin, fixed = TRUE
   ))
 
+  # KALICI silme, oturumun ürettiği indirilebilir dosyaları da (yalnızca
+  # indirme kökü altında, kök-içi kontrol ile) kaldırır (Codex P2 veri
+  # saklama sızıntısı düzeltmesi).
+  expect_true(grepl(".cc_lifecycle_remove_download_files", lifecycle_metin, fixed = TRUE))
+  expect_true(grepl("cc_policy_path_inside_roots", lifecycle_metin, fixed = TRUE))
+
   # Kurulum betiği repoda mevcut ve yıkıcı ifade içermiyor.
   sql_yolu <- .ccs_repo_file("docs", "sql", "2026-07-bilge-yolac-sessions.sql")
   expect_true(file.exists(sql_yolu))
