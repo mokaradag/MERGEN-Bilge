@@ -361,6 +361,50 @@ test_that("yumuşak silme kullanıcı-izole çalışır ve fiziksel silmez", {
   })
 })
 
+test_that("include_deleted TRUE aktif ve arşivlenmiş oturumları birlikte listeler", {
+  .ccs_with_test_db(function(conn) {
+    aktif <- cc_db_create_session(
+      user_id = 1L,
+      title = "aktif oturum",
+      model = "model-a",
+      conn = conn
+    )
+    arsiv <- cc_db_create_session(
+      user_id = 1L,
+      title = "arşiv oturumu",
+      model = "model-b",
+      conn = conn
+    )
+
+    expect_true(cc_db_soft_delete_session(
+      user_id = 1L,
+      session_record_id = arsiv,
+      conn = conn
+    ))
+
+    varsayilan <- cc_db_list_sessions(user_id = 1L, conn = conn)
+    expect_identical(nrow(varsayilan), 1L)
+    expect_identical(as.integer(varsayilan$ClaudeSessionRecordID[1]), aktif)
+    expect_identical(as.integer(varsayilan$IsDeleted[1]), 0L)
+
+    tumu <- cc_db_list_sessions(
+      user_id = 1L,
+      include_deleted = TRUE,
+      conn = conn
+    )
+
+    expect_identical(nrow(tumu), 2L)
+    expect_setequal(
+      as.integer(tumu$ClaudeSessionRecordID),
+      c(aktif, arsiv)
+    )
+    expect_setequal(
+      as.integer(tumu$IsDeleted),
+      c(0L, 1L)
+    )
+  })
+})
+
 test_that("arşivden çıkarma (geri yükleme) kullanıcı-izole çalışır", {
   .ccs_with_test_db(function(conn) {
     sid <- cc_db_create_session(user_id = 1L, title = "geri yükleme testi", conn = conn)

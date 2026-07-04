@@ -66,18 +66,21 @@ claudeCodeSessionsServer <- function(id,
         return(invisible(FALSE))
       }
 
-      durum <- as.character(input$filter_status %||% "")[1]
-      arsiv_gorunumu <- identical(durum, "archived")
+	  durum <- as.character(input$filter_status %||% "")[1]
+	  tum_gorunumu <- !nzchar(durum)
+	  arsiv_gorunumu <- identical(durum, "archived")
 
-      liste <- cc_db_list_sessions(
-        user_id = user_check$user_id,
-        limit = rv$limit,
-        include_deleted = arsiv_gorunumu,
-        query = input$filter_query,
-        status = if (arsiv_gorunumu) NULL else durum,
-        model = input$filter_model,
-        sort = input$filter_sort %||% "last_activity"
-      )
+	  liste <- cc_db_list_sessions(
+	    user_id = user_check$user_id,
+	    limit = rv$limit,
+	    # "Tümü" gerçekten tüm durumları kapsamalı: aktif + arşivlenmiş.
+	    # "Arşivlenmiş" de arşiv satırlarını okuyabilmek için include_deleted ister.
+	    include_deleted = tum_gorunumu || arsiv_gorunumu,
+	    query = input$filter_query,
+	    status = if (tum_gorunumu || arsiv_gorunumu) NULL else durum,
+	    model = input$filter_model,
+	    sort = input$filter_sort %||% "last_activity"
+	  )
 
       if (arsiv_gorunumu && is.data.frame(liste) && nrow(liste) > 0L &&
           "IsDeleted" %in% names(liste)) {
