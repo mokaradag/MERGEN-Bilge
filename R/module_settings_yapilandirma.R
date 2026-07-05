@@ -44,28 +44,35 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
     }, ignoreInit = TRUE)
 
     # ---- Başlangıç Deneyimi (startup lane) seçimi ----
-    # Seçim anında kalıcılaştırılır (saveSettings ile localStorage'a) ve
-    # istemci şerit durumu canlı güncellenir (applyStartupLane html sınıfını
-    # değiştirir; Deneyim Modu kartlarının görünürlüğü bu sınıfa bağlıdır).
-    # Sinematik giriş/medya davranışı bir sonraki açılışta tam uygulanır.
+    # Radyo seçimi YALNIZCA bekleyen (pending) form durumunu günceller; diğer
+    # Yapılandırma ayarları gibi ancak "Ayarları Kaydet" ile uygulanır ve
+    # kalıcılaştırılır (save_all_settings -> mergen_apply_saved_startup_lane).
+    # Kaydetmeden sayfadan ayrılan/yenileyen kullanıcıda eski kayıtlı tercih
+    # geçerli kalır; localStorage değişmez, applyStartupLane gönderilmez.
+    temp_startup_lane <- reactiveVal(NULL)
+
     observeEvent(input$startup_experience_lane, {
       lane <- as.character(input$startup_experience_lane)[1]
       if (is.na(lane) || !lane %in% c("fast_lane", "rich_lane")) {
         return(invisible(NULL))
       }
-      if (identical(isolate(settings$startup_lane), lane)) {
+      temp_startup_lane(lane)
+    }, ignoreInit = TRUE)
+
+    # Kayıtlı şerit değiştiğinde (açılış çözümü, localStorage geri yükleme veya
+    # kaydetme sonrası) radyo ve bekleyen değer kayıtlı duruma hizalanır.
+    # Kullanıcının HENÜZ kaydedilmemiş radyo seçimi settings'i değiştirmediği
+    # için bu gözlemciyi tetiklemez; bekleyen durum korunur.
+    observeEvent(settings$startup_lane, {
+      lane <- as.character(settings$startup_lane %||% "")[1]
+      if (is.na(lane) || !lane %in% c("fast_lane", "rich_lane")) {
         return(invisible(NULL))
       }
-
-      settings$startup_lane <- lane
-      session$sendCustomMessage("saveSettings", list(startup_lane = lane))
-      session$sendCustomMessage("applyStartupLane", list(lane = lane))
-      showToast(
-        session,
-        "Başlangıç deneyimi güncellendi. Açılış davranışı bir sonraki girişte tam olarak uygulanır.",
-        "info"
-      )
-    }, ignoreInit = TRUE)
+      if (!identical(temp_startup_lane(), lane)) {
+        temp_startup_lane(lane)
+        updateRadioButtons(session, "startup_experience_lane", selected = lane)
+      }
+    })
 
     # Model açıklaması artık JS tarafından yönetiliyor (settings_model_info.js)
     # Eski renderUI kaldırıldı; bilgi paneli istemci tarafında güncellenir.
@@ -625,7 +632,8 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
       temp_summary_detail_level = temp_summary_detail_level,
       temp_summary_focus_mode = temp_summary_focus_mode,
       temp_analysis_deep_thinking = temp_analysis_deep_thinking,
-      temp_analysis_detail_level = temp_analysis_detail_level
+      temp_analysis_detail_level = temp_analysis_detail_level,
+      temp_startup_lane = temp_startup_lane
     ))
   })
 }

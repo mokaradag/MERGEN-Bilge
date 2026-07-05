@@ -280,3 +280,87 @@ html.mergen-fast-lane .fast-lane-mode-note {
   margin-top: 2px;
   font-weight: 400;
 }
+
+/* Başlangıç Deneyimi radyo düğmeleri: onay kutusu temasıyla tutarlı özel
+   görünüm. Bootstrap 3'ün mutlak konumlu (absolute) radyo yerleşimi bazı
+   kart düzenlerinde işareti görünmez bırakabiliyordu; radyo statik akışa
+   alınır, appearance:none ile çizilir ve SEÇİLİ durum belirgin bir iç
+   nokta + vurgulu kenarlıkla gösterilir. Klavye erişilebilirliği için
+   :focus-visible halkası korunur. */
+.startup-lane-choices .radio label {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 12px;
+  padding-left: 0 !important;
+  cursor: pointer;
+}
+
+.startup-lane-choices .radio input[type="radio"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  position: static !important;
+  margin: 2px 0 0 0 !important;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border: 2px solid var(--border-color);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.startup-lane-choices .radio input[type="radio"]:hover {
+  border-color: var(--primary-color);
+}
+
+.startup-lane-choices .radio input[type="radio"]:checked {
+  border-color: var(--primary-color);
+  background: radial-gradient(
+    circle,
+    var(--primary-color) 0%,
+    var(--primary-color) 45%,
+    transparent 52%,
+    transparent 100%
+  );
+}
+
+.startup-lane-choices .radio input[type="radio"]:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+/* Seçili seçeneğin metni de görünür biçimde vurgulanır. */
+.startup-lane-choices .radio input[type="radio"]:checked + span,
+.startup-lane-choices .radio input[type="radio"]:checked + span strong {
+  color: var(--primary-color);
+}
+
+/* Açık tema: marka mavisi kenarlık/dolgu ve yeterli kontrast.
+   (Bileşen CSS dosyaları kendi seçicileri için scoped light kuralı taşıyabilir.) */
+html[data-theme="light"] .startup-lane-choices .radio input[type="radio"] {
+  border-color: var(--color-border, #b9c2d0);
+  background: #ffffff;
+}
+
+html[data-theme="light"] .startup-lane-choices .radio input[type="radio"]:hover {
+  border-color: var(--mb-brand-primary, #003087);
+}
+
+html[data-theme="light"] .startup-lane-choices .radio input[type="radio"]:checked {
+  border-color: var(--mb-brand-primary, #003087);
+  background: radial-gradient(
+    circle,
+    var(--mb-brand-primary, #003087) 0%,
+    var(--mb-brand-primary, #003087) 45%,
+    #ffffff 52%,
+    #ffffff 100%
+  );
+}
+
+html[data-theme="light"] .startup-lane-choices .radio input[type="radio"]:checked + span,
+html[data-theme="light"] .startup-lane-choices .radio input[type="radio"]:checked + span strong {
+  color: var(--mb-brand-primary, #003087);
+}

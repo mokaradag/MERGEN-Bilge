@@ -14,6 +14,32 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-07-04 Soğuk açılış ve etkileşim performans stabilizasyonu + şerit ayarı/dosya politikası düzeltmeleri
+
+**Geçerli kanıt tabanı:** Bu çalışmadan hemen önce Windows VM'de tam kanıt kapısı (`bash tools/vm_evidence_gate.sh`, profil `vm/vm`, `MERGEN_BROWSER_UX_BASE_URL` üzerinden zorunlu tarayıcı smoke ile) **13 passed / 0 failed / 0 skipped** sonuçlandı; artifact: `artifacts/vm-evidence/20260704-085658/evidence.json` (`full_testthat` 3647.7 sn, `browser_ux_smoke` 233.8 sn PASS, `vm_preflight_real` ve `db_encoding_preflight` PASS). Bu sonuç korunacak temel çizgidir; bu bölümdeki değişikliklerden sonra VM'de kapı yeniden koşulmalıdır.
+
+**Soğuk açılış kritik yolu (kök neden):** Açılışta üç ağır iş, tek R olay döngüsünü senkron bloklayarak `welcome_client_ready` işlenmesini geciktiriyordu; bu yüzden Hızlı Başlangıç bile "Dosyalar hazırlanıyor" aşamasında takılı görünüyordu (5 küçük dosyada bile):
+
+1. Dosya Yönetimi kalıcı klasör taraması (`refresh_from_user_folder("initial"/"auth_ready")`): dosya başına 5-6 dosya sistemi stat çağrısı (UNC paylaşımlarında pahalı) + indeks okuma.
+2. Görsel Galerisi: oturum başlangıcında görsel tarama + görsel başına ek "sonraki AI yanıtı" DB sorgusu (N+1) + `gallery_content` çıktısının `suspendWhenHidden = FALSE` ile GİZLİYKEN render edilmesi (her görselin base64 gövdesi açılış websocket yüküne biniyordu).
+3. "Yeni Söyleşi": karşılamayı üç kez yıkıp kuran render zinciri + tam sohbet listesini senkron çeken DB sorgusu.
+
+**Düzeltmeler:**
+
+- **Tembel dosya envanteri (iki şeritte de):** Açılış tetikleri (`initial`/`auth_ready`/`startup`) artık tarama yapmaz; `file_index_ready` kontrol noktası dürüst `deferred = TRUE` ayrıntısıyla işaretlenir ve açılış etiketi "Dosyalar gerektiğinde yüklenecek" olarak değiştirildi (sahte ilerleme yok; iş gerçekten ertelenir). Gerçek tarama, Dosya Yönetimi ilk açıldığında (`page_opened`) veya manuel/araç tetiklerinde çalışır ve süresi loglanır.
+- **Tembel Görsel Galerisi:** Galeri, sayfa ilk açılana kadar tarama/DB sorgusu yapmaz (`gallery_activated`); gizliyken tam kart render'ı kaldırıldı; açıklama yükleme N+1 sorgudan tek korelasyonlu sorguya indirildi (`SonrakiYanit`).
+- **"Yeni Söyleşi" anındalığı:** Üçlü karşılama render'ı teke indirildi (300 ms gecikmeli üçüncü render ve `chat_start_new_chat` içindeki boşa giden ilk ekleme kaldırıldı); tam liste sorgusu yerine hafif son-6 önizleme sorgusu bellek içi listeyle birleştirilir (karşılama "Son Konuşmalar" ilk 3 doğruluğu korunur).
+- **Dürüst toast sıralaması:** Kayıtlı söyleşi açılışında anında "Söyleşi yükleniyor..." geri bildirimi eklendi; "Söyleşi yüklendi" toast'ı içerik mesajlarından SONRA gönderilir (galeriden dönüşte mevcut yükleniyor durumu korunur, süre loglanır).
+- **İşçi ön-ısıtma:** `prewarm_future_workers_once()` açılışta her kalıcı işçiye küçük bir paket-yükleme görevi gönderir; ilk istemin "ilk token" gecikmesindeki işçi soğuk başlangıç bileşeni kaldırılır (`MERGEN_DISABLE_FUTURES=true` iken no-op).
+- **Açılış faz ölçümü:** `bootReadinessInit()` her kontrol noktası için `[STARTUP PERF] checkpoint=<ad> elapsed_ms=<süre>` satırı yazar; soğuk açılışın nerede harcandığı loglardan okunur. Dosya taraması, galeri taraması, kayıtlı söyleşi/galeri açılışı ve Yeni Söyleşi için ölçüm satırları eklendi.
+- **Başlangıç Deneyimi ayarı artık kaydetmeyle uygulanır:** Yapılandırma'daki Hızlı Başlangıç/Zengin Deneyim radyosu yalnızca bekleyen form durumunu günceller; kalıcılaştırma ve canlı uygulama yalnızca "Ayarları Kaydet" ile (`mergen_apply_saved_startup_lane()`) olur. Kaydetmeden yenileme eski kayıtlı tercihi korur.
+- **Radyo görünürlük/tema düzeltmesi:** Şerit radyoları onay kutusu temasıyla tutarlı özel görünüme kavuştu (koyu/açık tema, seçili iç nokta, `:focus-visible` halkası, seçili metin vurgusu).
+- **Desteklenmeyen dosya politikası:** Kullanıcı klasöründeki desteklenmeyen uzantılı dosyalar (örn. ajan üretimi `.doc`) artık Dosya Yönetimi'nde "Desteklenmeyen dosya türü" durumu ve yalnızca indir/sil işlemleriyle GÖRÜNÜR; her girişte yanıltıcı "kaydedilemedi" toast'ı üretilmez ve içerik asla ayrıştırılmaz. Office eklentisi beceri dosyasına zorunlu uzantı politikası eklendi: Word çıktısı her zaman `.docx` (asla `.doc`), Excel `.xlsx`, PowerPoint `.pptx`. Desteklenen yükleme türlerinin tek kaynağı `fm_normal_allowed_extensions()` olmaya devam eder.
+
+**Testler:** Yeni davranış testleri `test-file-manager-unsupported-file-behavior.R`, `test-startup-lane-pending-save-behavior.R`, `test-image-gallery-lazy-activation-behavior.R`; güncellenen sözleşmeler `test-startup-lane-contract.R` (bekleyen-durum sözleşmesi) ve `test-image-gallery-descriptions-db-behavior.R` (tek-sorgu sözleşmesi). İlgili mevcut dosya yöneticisi/galeri/karşılama/manifest/ratchet sözleşmeleri cloud'da 0 fail / 0 warn geçti; repo geneli parse sanity (909 dosya) geçti.
+
+**Bilinen kısıtlar:** Uygulama hâlâ tek örnek/tek port (8009) üzerinde çalışır; yük dengeleyici/çoklu port IT onayı beklemektedir. Düşünen modellerde ilk "Düşünce Akışı" parçasının gecikmesi model TTFT + ağ geçidi/proxy tamponlamasını da içerir; uygulama tarafındaki yoklama 15-50 ms aralıkla artımlı akıtır ve `[CHAT PERF] SSE işçide ilk ham HTTP parçası alındı` / `stream.first_delta` logları gecikmenin uygulama içi mi yukarı akış mı olduğunu ayırt eder. Yukarı akış tamponlaması uygulamadan giderilemez; loglarla belgelenir.
+
 ### 2026-07 Üretim Güvenli MB_* SQL Server İndeks Yayılımı
 
 Üretim güvenli Wave 1-4 MB_* SQL Server indeks yayılımı, daha önce yapılan ve oturum açma hatasına neden olan toplu indeksleme girişiminin yerine geçecek şekilde artık dokümante edilmiştir. Kesintinin kök nedeni kesin olarak kanıtlanmamıştır; ancak güvenli olmayan tek seferde/toplu dağıtım, şema kilitlenmesi ve/veya oturum açma yoluna yönelik aşırı agresif benzersiz indeks denemesinden kaynaklanmış olabileceği kayda geçirilmiştir. Nihai güvenli indeks seti üretim ortamında kararlı durumdadır; kullanıcılar oturum açabilmekte ve yönetici sayfalarında ilk tıklama/içerik yükleme süreleri gözle görülür biçimde hızlanmıştır.

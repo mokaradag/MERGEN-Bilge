@@ -1,6 +1,6 @@
 # MERGEN performance improvement plan
 
-Last updated: 2026-06-29
+Last updated: 2026-07-04
 
 ## Current baseline
 
@@ -73,6 +73,74 @@ As of the pre-index-cache 2026-06-19 baseline, the comparable fake-lane smoke ar
 | 2026-06-19 | Restored maintainability ratchet after the daily-log-file reliability work pushed `R/config_logging.R` to 27 functions: extracted the daily-file cluster (`current_mergen_log_date`, `current_mergen_log_file_path`, `mergen_daily_file_appender`, `mergen_ensure_daily_log_file`) to new foundation file `R/config_logging_daily_file.R` (loaded before `config_logging.R`). | `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")` (222 PASS) + manifest/seam/zone/section contracts + `parse_sanity_check.R` (842 files) | PASS (score 100/100, max functions 24, 0 files ≥25 functions) | Behavior byte-for-byte unchanged; pure maintainability split. |
 
 ## Session notes
+
+### 2026-07-04 — Cold-start critical path + interaction hotspots (single instance, single port)
+
+Baseline evidence for this session: the full VM evidence gate passed immediately before
+this work (`artifacts/vm-evidence/20260704-085658/evidence.json`, **13 passed / 0 failed /
+0 skipped**, `full_testthat` 3647.7 s, `browser_ux_smoke` 233.8 s PASS with
+`MERGEN_BROWSER_UX_BASE_URL` attach mode, `vm_preflight_real` + `db_encoding_preflight`
+PASS). That gate must be re-run on the VM after this session's changes.
+
+Root causes found (file:line evidence, all synchronous work on the single Shiny event
+loop during session boot, which also explains why fast lane stalled at the old
+"Dosyalar hazırlanıyor" stage — the overlay was waiting for `welcome_client_ready`,
+whose round-trip was queued behind these observers):
+
+1. **Persisted file scan at boot** — `R/module_file_manager.R` `observeEvent(TRUE)` /
+   `refresh_persisted_files("auth_ready")` ran `refresh_from_user_folder()` synchronously:
+   index load + 5-6 filesystem stats per file (`path_exists_relaxed`, `file.exists`,
+   `fs::file_exists`, `fs::file_info`, then `process_uploaded_file`'s own checks) —
+   expensive on UNC shares even for 5 small files.
+2. **Image gallery eager scan + hidden render** — `R/module_image_gallery.R` scanned
+   `user_images` and ran `load_image_descriptions_for_user()` (an **N+1** DB query:
+   one "next AI message" query per image) at session start, and
+   `outputOptions(gallery_content, suspendWhenHidden = FALSE)` forced the FULL gallery
+   grid (base64 of every image on the page) to render into the boot websocket payload
+   before the gallery was ever opened.
+3. **"Yeni Söyleşi" triple render + full-list DB query** — welcome was built up to 3×
+   (insert in `chat_start_new_chat`, full re-render in `start_new_chat`, third delayed
+   re-render in `chatUIObserversInit` after 300 ms) with a synchronous
+   `load_chats_from_db(include_messages = FALSE)` (ALL chats) in the middle.
+4. **First-token latency** included persistent-worker package cold load
+   (jsonlite/curl/httr/DBI load on first future per worker).
+
+Fixes (all preserve UX/features; lazy, not removed):
+
+- Lazy persisted file inventory (both lanes): startup triggers only mark
+  `file_index_ready` with `detail=list(deferred=TRUE)`; the real scan runs on first
+  Dosya Yönetimi open (`file_manager_module-page_opened` from the navigation observer)
+  or manual/tool triggers. Overlay stage label renamed to the truthful
+  "Dosyalar gerektiğinde yüklenecek".
+- Lazy gallery activation (`gallery_activated`), `suspendWhenHidden` back to default
+  TRUE for `gallery_content`, and the descriptions N+1 collapsed into ONE correlated
+  query (`SonrakiYanit` subselect; behavior contract preserved: next-AI-answer wins
+  over inline description).
+- Yeni Söyleşi: single authoritative welcome render; the full-list query replaced by
+  `load_chats_preview_from_db(limit = 6)` merged into the in-memory list (welcome
+  recent-top-3 recency invariant preserved; messages kept when already hydrated).
+- Truthful toasts: immediate "Söyleşi yükleniyor..." on saved-chat click; success toast
+  is sent AFTER the content insert messages (client processes in order). Gallery
+  navigate already had a loading state; timing logs added to both.
+- `prewarm_future_workers_once()` (`R/utils_rate_limiter.R`, called once from
+  `global.R` after `init_future_cluster()`): dispatches one tiny package-load task per
+  persistent worker so the first real prompt does not pay worker package cold start.
+  No-op under `MERGEN_DISABLE_FUTURES=true`.
+- Instrumentation: `[STARTUP PERF] checkpoint=<key> elapsed_ms=<t> deferred=<flag>` per
+  boot checkpoint (`R/module_boot_readiness.R`), scan duration in the file-manager
+  refresh log, gallery scan duration, saved-chat/gallery load duration, Yeni Söyleşi
+  duration. Existing `[CHAT PERF]` markers (`future_promise gönderiliyor`, worker's
+  first raw HTTP chunk, `İlk delta`, first UI shell) remain the way to split
+  app-side vs upstream (gateway/proxy buffering) first-token/thinking-burst latency:
+  if the worker's first raw chunk is late while dispatch was fast, the delay is
+  upstream and cannot be fixed app-side (documented limitation).
+
+Honesty/scope: no capacity number is claimed; these are event-loop/critical-path and
+perceived-latency fixes for the current single-instance single-port (8009) deployment.
+Cloud validation covered focused behavior/contract tests (0 fail / 0 warn) and
+whole-repo parse sanity (909 files); actual cold-start seconds and first-token deltas
+must be measured on the VM via the new `[STARTUP PERF]` / `[CHAT PERF]` lines, and the
+VM evidence gate must be re-run.
 
 ### 2026-06-29 — Phase 3 (cont.): streaming event-loop hardening + 450-user proxy/interactive ladder
 

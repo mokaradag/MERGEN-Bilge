@@ -29,12 +29,18 @@
   // file_index_ready (32) ile character_media_ready (96) arasındaki geniş bant
   // gerçek medya tamponlama ilerlemesiyle (reportMediaProgress) sürülür. Böylece
   // çubuk gerçek işi yansıtır; sahte/yapay animasyon yoktur.
+  // NOT (file_index_ready anlamı): dosya envanteri artık soğuk açılışta
+  // TARANMAZ. Sunucu bu kontrol noktasını "ertelendi" (deferred) ayrıntısıyla
+  // işaretler; gerçek klasör/indeks taraması kullanıcı Dosya Yönetimi'ni ilk
+  // açtığında yapılır. Bu nedenle eski hazırlanma etiketi, gerçekte yapılmayan
+  // bir işi ima etmemek için "Dosyalar gerektiğinde yüklenecek" olarak
+  // değiştirildi (dürüst ilerleme sözleşmesi).
   var STAGES = [
     { key: "boot", label: "Başlatılıyor", pct: 5 },
     { key: "connect", label: "Bağlantı kuruluyor", pct: 12 },
     { key: "auth_ready", label: "Kimlik doğrulandı", pct: 20 },
     { key: "saved_chats_preview_ready", label: "Son konuşmalar hazırlanıyor", pct: 26 },
-    { key: "file_index_ready", label: "Dosyalar hazırlanıyor", pct: 32 },
+    { key: "file_index_ready", label: "Dosyalar gerektiğinde yüklenecek", pct: 32 },
     { key: "welcome_client_ready", label: "Görsel bileşenler başlatılıyor", pct: 44 },
     { key: "character_media_ready", label: "Asistan medyası hazırlanıyor", pct: 96 },
     { key: "ready", label: "Hazır", pct: 99 }

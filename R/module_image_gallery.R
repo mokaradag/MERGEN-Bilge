@@ -73,6 +73,11 @@ imageGalleryServer <- function(id, current_user_id) {
     effective_user_id <- reactiveVal(coerce_user_id(resolve_current_user_id()))
     cached_images <- reactiveVal(empty_images_df())
 
+    # TEMBEL galeri: görsel tarama + açıklama DB sorguları soğuk açılışta
+    # ÇALIŞMAZ. Galeri, kullanıcı sayfayı ilk açtığında (navigasyon gözlemcisi
+    # refresh_gallery girdisini gönderir) etkinleşir; o ana kadar tarama atlanır.
+    gallery_activated <- reactiveVal(FALSE)
+
     delete_image_trigger <- reactiveVal(NULL)
     clear_all_trigger <- reactiveVal(0)
     navigate_to_chat_trigger <- reactiveVal(NULL)
@@ -88,6 +93,13 @@ imageGalleryServer <- function(id, current_user_id) {
     }
 
     refresh_gallery_cache <- function(force = FALSE) {
+      # Galeri hiç açılmadıysa tarama yapma: açılıştaki auth-sonrası refresh
+      # tetikleri (SSO refreshable-module kancası dahil) burada güvenle atlanır.
+      # İlk gerçek sayfa açılışı gallery_activated'ı TRUE yapar ve tarar.
+      if (!isTRUE(gallery_activated())) {
+        return(invisible(NULL))
+      }
+
       uid <- coerce_user_id(resolve_current_user_id())
       effective_user_id(uid)
 
@@ -96,7 +108,13 @@ imageGalleryServer <- function(id, current_user_id) {
         return(invisible(NULL))
       }
 
+      tarama_baslangici <- Sys.time()
       scanned <- scan_user_images(uid)
+      cat(sprintf(
+        "[IMAGE_GALLERY] tarama tamamlandı: %d görsel, %.0f ms\n",
+        nrow(scanned),
+        as.numeric(difftime(Sys.time(), tarama_baslangici, units = "secs")) * 1000
+      ))
 
       # Tarama sonucu mevcut önbellekle aynıysa reaktif güncelleme yapma.
       # Galeri zaten önbellekten anında görünür; sekme geçişlerinde gereksiz
@@ -343,7 +361,11 @@ imageGalleryServer <- function(id, current_user_id) {
       )
     })
 
-    outputOptions(output, "gallery_content", suspendWhenHidden = FALSE)
+    # NOT: gallery_content bilinçli olarak suspendWhenHidden varsayılanında
+    # (TRUE) bırakılır. Aksi halde tüm galeri kartları (her görselin base64
+    # gövdesi dahil) galeri sayfası hiç açılmadan soğuk açılışta render edilip
+    # websocket üzerinden gönderiliyordu; bu, açılıştaki en büyük gizli
+    # maliyetlerden biriydi. Sekme ilk açıldığında Shiny render'ı otomatik başlatır.
 
     observeEvent(input$delete_image_request, {
       req(input$delete_image_request)
@@ -416,6 +438,9 @@ imageGalleryServer <- function(id, current_user_id) {
         length(input$refresh_gallery) == 1L &&
         is.finite(input$refresh_gallery) &&
         input$refresh_gallery > 1000000000
+
+      # Sayfa açılışı veya manuel yenileme: tembel galeri artık etkin.
+      gallery_activated(TRUE)
 
       if (isTRUE(from_navigation)) {
         refresh_trigger(refresh_trigger() + 1)

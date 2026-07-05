@@ -14,6 +14,12 @@ navigationObserversInit <- function(input, session, values, render_welcome_scree
   observeEvent(input$tabs, {
     
     if (input$tabs == "files") {
+      # Tembel dosya envanteri: kalıcı klasör taraması açılışta değil, kullanıcı
+      # Dosya Yönetimi sayfasını ilk açtığında yapılır (galeri/geçmiş ile aynı desen).
+      shinyjs::runjs(sprintf(
+        "Shiny.setInputValue('file_manager_module-page_opened', %s, {priority: 'event'});",
+        as.numeric(Sys.time())
+      ))
       shinyjs::delay(100, {
         shinyjs::runjs("
           document.querySelectorAll('.CodeMirror').forEach(function(cm) {

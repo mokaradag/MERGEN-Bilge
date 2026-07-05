@@ -23,6 +23,13 @@ bootReadinessInit <- function(session, required = NULL) {
 
   done <- character()
 
+  # Soğuk açılış faz zamanlaması: her kontrol noktası, oturum başlangıcından
+  # itibaren geçen süreyle loglanır. Böylece açılış süresinin hangi fazda
+  # harcandığı (kimlik, son konuşmalar, dosya envanteri, medya, karşılama
+  # istemcisi) log dosyasından doğrudan okunabilir. Tek satır/kontrol noktası
+  # olduğu için üretimde gürültü oluşturmaz.
+  boot_started_at <- Sys.time()
+
   mark <- function(key, label = key, pct = NULL, detail = NULL) {
     if (is.null(key) || length(key) != 1L || !nzchar(as.character(key))) {
       return(invisible(FALSE))
@@ -31,6 +38,13 @@ bootReadinessInit <- function(session, required = NULL) {
 
     if (!key %in% done) {
       done <<- c(done, key)
+
+      elapsed_ms <- as.numeric(difftime(Sys.time(), boot_started_at, units = "secs")) * 1000
+      deferred_flag <- isTRUE(is.list(detail) && isTRUE(detail$deferred))
+      cat(sprintf(
+        "[STARTUP PERF] checkpoint=%s elapsed_ms=%.0f deferred=%s\n",
+        key, elapsed_ms, if (deferred_flag) "TRUE" else "FALSE"
+      ))
     }
 
     payload <- list(

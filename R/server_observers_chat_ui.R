@@ -110,9 +110,10 @@ chatUIObserversInit <- function(input, session, values, start_new_chat,
       error = function(e) invisible(NULL)
     )
 
-    shinyjs::delay(300, {
-      render_welcome_screen(values$saved_chats, replace_existing = TRUE)
-    })
+    # NOT: Buradaki eski shinyjs::delay(300, render_welcome_screen(...)) çağrısı
+    # kaldırıldı. start_new_chat() karşılamayı zaten replace_existing = TRUE ile
+    # tam render eder; 300 ms sonra aynı ekranı ÜÇÜNCÜ kez yıkıp yeniden kurmak
+    # görünür bir gecikme/titreme yaratıyordu ve hiçbir ek durum taşımıyordu.
   }, ignoreInit = TRUE)
   
   observeEvent(input$followup_question_clicked, {
