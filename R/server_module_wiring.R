@@ -82,6 +82,7 @@ serverBindSettingsAndRefs <- function(input,
                                       forward_refs_init_fn = serverInitForwardRefs,
                                       claude_code_server_fn = claudeCodeServer,
                                       claude_code_sessions_server_fn = claudeCodeSessionsServer,
+                                      ortak_calismalar_server_fn = ortakCalismalarServer,
                                       visual_settings_sync_init_fn = visualSettingsSyncInit,
                                       chat_outputs_init_fn = chatOutputsInit,
                                       reactive_val_fn = shiny::reactiveVal) {
@@ -94,6 +95,7 @@ serverBindSettingsAndRefs <- function(input,
     forward_refs_init_fn = forward_refs_init_fn,
     claude_code_server_fn = claude_code_server_fn,
     claude_code_sessions_server_fn = claude_code_sessions_server_fn,
+    ortak_calismalar_server_fn = ortak_calismalar_server_fn,
     visual_settings_sync_init_fn = visual_settings_sync_init_fn,
     chat_outputs_init_fn = chat_outputs_init_fn,
     reactive_val_fn = reactive_val_fn
@@ -135,6 +137,22 @@ serverBindSettingsAndRefs <- function(input,
         is.list(claude_code_sessions) &&
         is.function(claude_code_sessions$refresh)) {
       claude_code_sessions$refresh("tab")
+    }
+  }, ignoreInit = TRUE)
+
+  # Ortak Oturumlar: hub/sohbet/bilge_yolac yüzeyleri tek modülden beslenir;
+  # canlı kullanıcı kimliği SAĞLAYICISI geçirilir (başlangıç anlık görüntüsü değil).
+  ortak_calismalar <- ortak_calismalar_server_fn(
+    "ortak_calismalar_module",
+    current_user_id = current_user_id_provider,
+    parent_session = session
+  )
+
+  shiny::observeEvent(input$tabs, {
+    if (input$tabs %in% c("ortak_calismalar", "ortak_sohbetler", "ortak_bilge_yolac") &&
+        is.list(ortak_calismalar) &&
+        is.function(ortak_calismalar$refresh)) {
+      ortak_calismalar$refresh("tab")
     }
   }, ignoreInit = TRUE)
 

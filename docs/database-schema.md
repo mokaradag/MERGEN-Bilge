@@ -164,6 +164,45 @@ Bakım notları:
 - Bu tablolara API anahtarı, token, ortam değişkeni veya ikili dosya içeriği yazılmaz.
 - "Çıktıyı Temizle", model değişimi ve workdir değişimi kalıcı geçmişi SİLMEZ; yalnızca aktif oturum bağını koparır. Arşivleme yalnızca Oturumlar sayfasındaki açık kullanıcı eylemiyle `IsDeleted = 1` olarak yapılır.
 
+## Ortak Oturumlar (İşbirlikçi Çalışma Odaları) Tabloları
+
+Kurulum betiği: `docs/sql/2026-07-ortak-oturumlar.sql` (manuel DBA/operatör;
+uygulama açılışında OTOMATİK ÇALIŞTIRILMAZ). Geri alma:
+`docs/sql/2026-07-ortak-oturumlar-rollback.sql`. Tasarım/operasyon ayrıntısı:
+[`ortak-oturumlar.md`](ortak-oturumlar.md). Ortak veri kişisel
+`MB_Chats`/`MB_Messages`/`MB_ClaudeCode_*` ailesinden kasıtlı olarak AYRIDIR.
+İş kuralı değerleri Türkçe `N'...'` sabitleridir ve CHECK kısıtlarıyla korunur.
+
+| Tablo | Amaç | Kritik kolonlar |
+|---|---|---|
+| `MB_OrtakOturumlar` | Ortak oturum başlığı | `KaynakTuru (NormalSohbet/BilgeYolaç)`, `Baslik`, `OturumDurumu (Aktif/Arşivlendi/Kapandı)`, `PaylasimBaslangicTipi`, `SonEtkinlikZamani` |
+| `MB_OrtakOturum_Katilimcilar` | Katılımcı + rol + kişisel görünüm | `Rol (Sahip/OturumYöneticisi/Katılımcı/İzleyici)`, `KatilimDurumu (DavetEdildi/Katıldı/Reddetti/Çıkarıldı/Ayrıldı)`, `KullaniciGorunumDurumu (Görünüyor/KullanıcıArşivledi/Ayrıldı)`, `UQ (OrtakOturumID, KullaniciID)` |
+| `MB_OrtakOturum_Davetler` | Davet kayıtları | `DavetYontemi (Mergenİçi/Eposta/MergenİçiVeEposta)`, `DavetDurumu (Bekliyor/Katıldı/Reddetti/SüresiDoldu/İptalEdildi)`, `SonGonderimZamani` |
+| `MB_Kullanici_CanliDurum` | Kalp atışı / canlı durum | `OturumAnahtari`, `SonKalpAtisiZamani`, `Durum (Çevrimİçi/Boşta/ÇevrimDışı)`, `UQ (KullaniciID, OturumAnahtari)` |
+| `MB_Bildirimler` | Uygulama içi davet/çağrı bildirimleri | `BildirimTuru (OrtakOturumDavet/OrtakOturumÇağrı/BelgeKaydetmeİsteği)`, `Durum (Bekliyor/KabulEdildi/Reddedildi/SüresiDoldu)`, `OkunduMu` |
+| `MB_OrtakOturum_Mesajlar` | Oda içi yazışma + YZ soru/yanıt | `MesajTuru (OdaMesajı/YapayZekaSorusu/YapayZekaYanıtı/SistemMesajı/BelgeBildirimi)`, `Hedef (Katılımcılar/YapayZeka)`, `MesajSirasi (UQ oturum içinde)`, `LLMGonderildiMi` |
+| `MB_OrtakOturum_YapayZekaKuyrugu` | YZ istek kuyruğu (şema hazır; MVP kilit kullanır) | `Durum (Bekliyor/Çalışıyor/Tamamlandı/İptalEdildi/Hata)`, `SiraNo` |
+| `MB_OrtakOturum_AktifUretimler` | Oda başına TEK aktif üretim kilidi | PK `OrtakOturumID`, `IstekID`, `KilitDurumu (Çalışıyor/İptalEdildi/Tamamlandı/Hata)` |
+| `MB_OrtakBilgeYolac_Oturumlar` | Ortak BY oturumu (1:1 ortak oturuma) | `OrtakOturumID UNIQUE`, `OrtakCalismaDizini`, `OturumDurumu` |
+| `MB_OrtakBilgeYolac_Calistirmalar` | Ortak BY çalıştırmaları | `CalistirmaSirasi (UQ oturum içinde)`, `Durum (Çalışıyor/Tamamlandı/Başarısız/Durduruldu)`, `UretilenDosyalarJson` |
+| `MB_OrtakOturum_Dosyalar` | Ortak oda belgeleri (metadata; içerik diskte) | `DosyaYolu (ortak belge kökü içinde)`, `DosyaDurumu (Üretildi/Silindi/ErişimKapatıldı)`, `DosyaSahipligi (OrtakOturumDosyası/KullanıcıKopyası)` |
+| `MB_OrtakOturum_DosyaKopyalari` | Kullanıcı başına "Kendi Dosyalarıma Kaydet" durumu | `KopyalamaDurumu (Bekliyor/Kopyalandı/Reddetti/Hata)`, `UQ (OrtakDosyaID, KullaniciID)` |
+| `MB_OrtakOturum_Olaylar` | Denetim izi | `OlayTuru (KullanıcıKatıldı/.../SahiplikDevredildi/OturumKapatıldı)`, `PayloadJson` |
+
+Bakım notları:
+
+- Yazma yolları `R/helpers_ortak_oturum_db*.R` içindedir: görünen metinler
+  `normalize_db_visible_value()`, Türkçe enum değerleri
+  `normalize_db_technical_value()` ile bağlanır; okuma sınırında görünen
+  kolonlar `normalize_db_read_visible_value()` ile geri açılır.
+- `MesajSirasi` üretimde `ISNULL(MAX(...)) + 1` `UPDLOCK/HOLDLOCK` ile yarışsız
+  artar (MB_Messages `MessageOrder` deseniyle aynı).
+- Tablolar kurulmadan uygulama çalışır: DB katmanı tablo yokken güvenli
+  boş/NULL döner (60 sn negatif önbellek) ve Ortak Oturum sayfaları kurulum
+  yönergesi gösterir.
+- Bu tablolara gizli değer veya ikili dosya içeriği yazılmaz; ortak belgeler
+  için yalnızca metadata saklanır (fiziksel içerik `MERGEN_FILES_ROOT/ortak_oturumlar/`).
+
 ## Destek ve Yönetici Panelleri Tabloları
 
 ### `MB_Destek_Geri_Bildirim`

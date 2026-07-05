@@ -318,6 +318,33 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   (791; lifecycle split sonrası) / `www/js/claude_code.js` handler yoğunluğu. (`helpers_claude_code_documents.R`
   679 → 407'ye indirildi.)
 
+## Ortak Oturumlar (İşbirlikçi Çalışma Odaları)
+
+- **Ne yapar:** Ekip tabanlı paylaşılan yapay zekâ odaları: "Odaya Yaz" (LLM'e
+  gitmez) / "Yapay Zekâya Sor" (yanıt tüm katılımcılara), davet + canlı durum,
+  roller (`Sahip/OturumYöneticisi/Katılımcı/İzleyici`), ortak belgeler ve
+  "Kendi Dosyalarıma Kaydet". Tasarım: [`ortak-oturumlar.md`](ortak-oturumlar.md).
+- **Dosyalar:** `R/helpers_ortak_oturum_permissions.R` (saf yetki/yönlendirme),
+  `R/helpers_ortak_oturum_email.R` (içeriksiz davet taslağı),
+  `R/helpers_ortak_oturum_db.R` + `_db_katilim.R` + `_db_davet.R` +
+  `_db_mesajlar.R` (DB katmanı), `R/helpers_ortak_oturum_files.R` (ortak belge
+  + kişisel kopya), `R/helpers_ortak_oturum_bakim.R` (temizlik/istatistik/tutanak),
+  `R/module_ortak_oturum_room_ui.R` / `_invites.R` / `_room.R`,
+  `R/module_ortak_calismalar.R`; `www/css/ortak_oturumlar.css`,
+  `www/js/ortak_oturumlar.js`.
+- **DB:** `MB_OrtakOturumlar` ailesi + `MB_Kullanici_CanliDurum` +
+  `MB_Bildirimler` (13 tablo; `docs/sql/2026-07-ortak-oturumlar.sql`, manuel
+  DBA kurulumu, RUNBOOK §9B). Kişisel `MB_Chats`/`MB_Messages`/`MB_ClaudeCode_*`
+  ailesinden ayrıdır.
+- **Testler:** `test-ortak-oturum-permissions-behavior.R`,
+  `test-ortak-oturum-db-behavior.R`, `test-ortak-oturum-sql-contract.R`,
+  `test-ortak-oturum-ui-contract.R`.
+- **Seam/bölge:** manifest bölümü `ortak_oturumlar` → `sohbet_llm_akis` seam;
+  frontend varlıkları `gecmis_kayit_arama` bölgesi.
+- **Sıradaki sertleştirme:** canlı ortak Bilge Yolaç CLI köprüsü, YZ istek
+  kuyruğu, geçmiş kopyalama otomasyonu, ortak yanıt streaming'i, yönetici
+  panosu (bkz. `ortak-oturumlar.md` §12).
+
 ## Bilge Yolaç / Claude Code
 
 - **Seam:** `bilge_yolac`

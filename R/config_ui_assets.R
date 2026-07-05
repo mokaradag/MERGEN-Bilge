@@ -135,7 +135,8 @@ ui_asset_css_groups <- list(
       "css/admin_yanit_analizi.css",
       "css/admin_documentation.css",
       "css/explore_character_step.css",
-      "css/surum_bilgilendirme.css"
+      "css/surum_bilgilendirme.css",
+      "css/ortak_oturumlar.css"
     ),
     enterprise_and_bilge_yolac = c(
       "css/sso_auth.css",
@@ -288,7 +289,8 @@ ui_asset_js_groups <- list(
       "js/claude_code.js",
       "js/claude_code_streaming.js",
       "js/claude_code_plugins.js",
-      "js/claude_code_sessions.js"
+      "js/claude_code_sessions.js",
+      "js/ortak_oturumlar.js"
     )
   )),
   bilge_yolac = c(

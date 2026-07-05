@@ -154,6 +154,9 @@ mergen_seam_registry <- function() {
         "summarization_followup",
         "llm_pipeline",
         "module_chat",
+        # Ortak Oturumlar: paylaşılan yapay zekâ sohbet odaları; tek LLM
+        # tetikleyici yol YapayZekaSorusu olduğu için bu seam sahiplenir.
+        "ortak_oturumlar",
         "server_handlers_send_message"
       ),
       extra_runtime_files = character(0),
@@ -167,7 +170,9 @@ mergen_seam_registry <- function() {
         "tests/testthat/test-streaming-markdown-safety-contract.R",
         "tests/testthat/test-true-streaming-reset-ui-contract.R",
         "tests/testthat/test-e2e-quick-actions-streaming-regression.R",
-        "tests/testthat/test-langflow-runtime-behavior.R"
+        "tests/testthat/test-langflow-runtime-behavior.R",
+        "tests/testthat/test-ortak-oturum-permissions-behavior.R",
+        "tests/testthat/test-ortak-oturum-db-behavior.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-send-message-request-lifecycle-contract.R\")",

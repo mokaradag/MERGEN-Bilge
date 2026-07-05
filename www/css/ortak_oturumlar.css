@@ -1,0 +1,628 @@
+/* ==========================================================================
+ * Dosya: www/css/ortak_oturumlar.css
+ * Açıklama: Ortak Oturumlar (işbirlikçi çalışma odaları) yüzeyleri.
+ *   - Koyu tema varsayılandır; tüm renkler tema token'larından gelir.
+ *   - Açık tema iyileştirmeleri html[data-theme="light"] kapsamındadır.
+ *   - Oda mesajı ile yapay zekâ soru/yanıtı görsel olarak AYRIŞIR (renk +
+ *     rozet metni; yalnızca renge dayanılmaz).
+ *   - 900px altında yan panel dikey akışa iner (responsive).
+ * ========================================================================== */
+
+/* --- Sayfa kabuğu ve liste ------------------------------------------------ */
+
+.ortak-calismalar-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 18px 24px;
+  color: var(--color-text);
+}
+
+.oo-page-header .oo-header-aksiyonlar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.oo-hub-filtreler {
+  padding: 4px 2px;
+}
+
+.oo-hub-filtreler .radio-inline {
+  color: var(--color-text-soft);
+  margin-right: 14px;
+}
+
+.oo-oturum-listesi {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.oo-oturum-karti {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-card);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.oo-oturum-karti:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover, var(--shadow-card));
+}
+
+.oo-kart-baslik {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.05em;
+  font-weight: 600;
+}
+
+.oo-kart-ikon {
+  color: var(--color-primary);
+}
+
+.oo-kart-baslik-metin {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oo-kart-rozetler {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.oo-kart-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.86em;
+  color: var(--color-muted);
+}
+
+.oo-kart-aksiyonlar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.oo-davet-karti {
+  border-left: 3px solid var(--color-info);
+}
+
+/* --- Rozetler --------------------------------------------------------------- */
+
+.oo-rozet {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.74em;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  background: var(--color-surface-2, var(--color-bg-elevated));
+  border: 1px solid var(--color-border-soft);
+  color: var(--color-text-soft);
+  white-space: nowrap;
+}
+
+.oo-rozet-ortak {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+  color: var(--color-primary-strong, var(--color-primary));
+}
+
+.oo-rozet-kaynak {
+  color: var(--color-info);
+  border-color: var(--color-info);
+}
+
+.oo-rozet-durum {
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.oo-rozet-rol {
+  color: var(--mb-brand-support-teal, #077780);
+  border-color: var(--mb-brand-support-teal, #077780);
+}
+
+.oo-rozet-bekliyor,
+.oo-rozet-davet-durum {
+  color: var(--color-warning);
+  border-color: var(--color-warning);
+}
+
+.oo-rozet-yz-soru {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.oo-rozet-yz-yanit {
+  color: var(--color-accent, var(--color-primary));
+  border-color: var(--color-accent, var(--color-primary));
+}
+
+.oo-rozet-oda {
+  color: var(--color-muted);
+}
+
+.oo-rozet-kopyalandi {
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+/* --- Oda yerleşimi ----------------------------------------------------------- */
+
+.oo-oda-yerlesim {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: 16px;
+}
+
+.oo-oda-baslik {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--color-divider, var(--color-border-soft));
+  padding-bottom: 10px;
+}
+
+.oo-oda-baslik-sol {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.oo-oda-baslik-metin {
+  margin: 0;
+  font-size: 1.15em;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.oo-oda-baslik-aksiyonlar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.oo-oda-govde {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.oo-oda-ana-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.oo-oda-yan-panel {
+  flex: 0 0 280px;
+  border-left: 1px solid var(--color-divider, var(--color-border-soft));
+  padding-left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.oo-bolum-baslik {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95em;
+  font-weight: 700;
+  color: var(--color-text-soft);
+  margin: 4px 0;
+}
+
+/* --- Mesaj akışı --------------------------------------------------------------- */
+
+.oo-mesaj-akisi {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 6px 4px;
+}
+
+.oo-mesaj {
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: var(--color-bg-elevated, var(--color-surface));
+  border: 1px solid var(--color-border-soft);
+  max-width: 92%;
+}
+
+.oo-mesaj-benim {
+  align-self: flex-end;
+}
+
+.oo-mesaj-oda {
+  border-left: 3px solid var(--color-muted);
+}
+
+.oo-mesaj-yz-soru {
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.oo-mesaj-yz-yanit {
+  border-left: 3px solid var(--color-accent, var(--color-primary));
+  max-width: 100%;
+}
+
+.oo-mesaj-sistem,
+.oo-mesaj-belge {
+  border-left: 3px solid var(--color-warning);
+  font-style: italic;
+}
+
+.oo-mesaj-ust {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.oo-mesaj-gonderen {
+  font-weight: 700;
+  font-size: 0.88em;
+  color: var(--color-text);
+}
+
+.oo-mesaj-zaman {
+  margin-left: auto;
+  font-size: 0.76em;
+  color: var(--color-muted);
+}
+
+.oo-mesaj-metin {
+  font-size: 0.94em;
+  line-height: 1.5;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.oo-uretim-durumu {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px dashed var(--color-primary);
+  color: var(--color-primary);
+  font-size: 0.9em;
+}
+
+/* --- Mesaj yazma alanı ------------------------------------------------------------ */
+
+.oo-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--color-divider, var(--color-border-soft));
+  padding-top: 12px;
+}
+
+.oo-composer-girdi {
+  width: 100%;
+  resize: vertical;
+  border-radius: 10px;
+  background: var(--color-bg, transparent);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.oo-composer-girdi:focus-visible {
+  outline: 2px solid var(--color-focus, var(--color-primary));
+  outline-offset: 1px;
+}
+
+.oo-composer-aksiyonlar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.oo-composer-yz-notu {
+  margin: 0;
+  font-size: 0.8em;
+  color: var(--color-muted);
+}
+
+.oo-composer-uyari {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-warning);
+  color: var(--color-warning);
+  font-size: 0.86em;
+}
+
+/* --- Katılımcılar ------------------------------------------------------------------ */
+
+.oo-katilimci-listesi {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  max-height: 52vh;
+}
+
+.oo-katilimci-satir {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.oo-katilimci {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--color-bg-elevated, transparent);
+}
+
+.oo-katilimci-bekliyor {
+  opacity: 0.75;
+}
+
+.oo-katilimci-ad {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9em;
+}
+
+.oo-canli-nokta {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+}
+
+.oo-canli-cevrimici {
+  background: var(--color-success);
+  box-shadow: 0 0 6px var(--color-success);
+}
+
+.oo-canli-bosta {
+  background: var(--color-warning);
+}
+
+.oo-canli-cevrimdisi {
+  background: var(--color-muted);
+  opacity: 0.6;
+}
+
+/* --- Ortak belgeler ------------------------------------------------------------------ */
+
+.oo-belgeler-bolumu {
+  border-top: 1px solid var(--color-divider, var(--color-border-soft));
+  padding-top: 8px;
+}
+
+.oo-belge-karti {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: var(--color-bg-elevated, var(--color-surface));
+  border: 1px solid var(--color-border-soft);
+}
+
+.oo-belge-ust {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.oo-belge-ikon {
+  color: var(--color-info);
+}
+
+.oo-belge-ad {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oo-belge-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.8em;
+  color: var(--color-muted);
+}
+
+.oo-belge-aksiyonlar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --- Davet paneli ---------------------------------------------------------------------- */
+
+.oo-davet-paneli {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.oo-davet-listesi {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.oo-davet-satiri {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--color-bg-elevated, var(--color-surface));
+  border: 1px solid var(--color-border-soft);
+}
+
+.oo-davet-kimlik {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.oo-davet-ad {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oo-davet-detay {
+  font-size: 0.78em;
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oo-davet-aksiyonlar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.oo-eposta-notu {
+  font-size: 0.86em;
+  color: var(--color-warning);
+}
+
+.oo-eposta-taslagi {
+  white-space: pre-wrap;
+  font-size: 0.86em;
+  background: var(--color-bg-elevated, var(--color-surface));
+  color: var(--color-text);
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  padding: 12px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+/* --- Bildirim modalı ve boş durumlar ------------------------------------------------------ */
+
+.oo-bildirim-modal .oo-bildirim-baslik {
+  font-weight: 700;
+  font-size: 1.02em;
+}
+
+.oo-bildirim-modal .oo-bildirim-detay {
+  color: var(--color-text-soft);
+}
+
+.oo-bos-durum {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 16px;
+  border-radius: 12px;
+  border: 1px dashed var(--color-border-soft);
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.oo-bos-liste,
+.oo-tablo-yok {
+  grid-column: 1 / -1;
+}
+
+.oo-bos-belge {
+  padding: 14px;
+}
+
+/* --- Responsive: dar ekranda yan panel dikey akışa iner ----------------------------------- */
+
+@media (max-width: 900px) {
+  .oo-oda-govde {
+    flex-direction: column;
+  }
+
+  .oo-oda-yan-panel {
+    flex: 1 1 auto;
+    border-left: none;
+    border-top: 1px solid var(--color-divider, var(--color-border-soft));
+    padding-left: 0;
+    padding-top: 10px;
+  }
+
+  .oo-mesaj-akisi {
+    max-height: 38vh;
+  }
+
+  .oo-oturum-listesi {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Açık tema iyileştirmeleri -------------------------------------------------------------- */
+
+html[data-theme="light"] .oo-oturum-karti,
+html[data-theme="light"] .oo-oda-yerlesim {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+html[data-theme="light"] .oo-mesaj {
+  background: var(--color-bg, #ffffff);
+}
+
+html[data-theme="light"] .oo-mesaj-yz-soru {
+  background: var(--color-primary-soft);
+}
+
+html[data-theme="light"] .oo-rozet {
+  background: var(--color-bg, #ffffff);
+}
+
+html[data-theme="light"] .oo-eposta-taslagi {
+  background: var(--color-bg, #ffffff);
+}

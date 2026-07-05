@@ -14,6 +14,41 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-07-05 Ortak Oturumlar (işbirlikçi çalışma odaları) — ilk sürüm
+
+MERGEN Bilge'ye ekip tabanlı "Ortak Oturumlar" özelliği eklendi: paylaşılan
+yapay zekâ çalışma odaları, oda içi katılımcı yazışması ("Odaya Yaz"; LLM'e
+gitmez), odaya tek yanıt üreten "Yapay Zekâya Sor" akışı (oda başına DB
+kilitli tek aktif üretim), Türkçe rol/durum modeli (`Sahip`,
+`OturumYöneticisi`, `Katılımcı`, `İzleyici`; `DavetEdildi/Katıldı/...`),
+Mergen içi davet bildirimi + içerik sızdırmayan e-posta TASLAĞI (otomatik
+gönderim yok), kalp atışı tabanlı canlı durum (`Çevrimİçi/Boşta/ÇevrimDışı`),
+ortak belge deposu ("Kendi Dosyalarıma Kaydet" ile açık kişisel kopya),
+kullanıcı bazlı arşiv ile oda arşivi ayrımı, sahiplik devri, denetim izi
+(`MB_OrtakOturum_Olaylar`), bakım temizliği ve UTF-8 BOM'lu tutanak indirme.
+
+- **DB:** 13 yeni tablo; kurulum `docs/sql/2026-07-ortak-oturumlar.sql`
+  (manuel DBA; açılışta OTOMATİK ÇALIŞTIRILMAZ), geri alma
+  `docs/sql/2026-07-ortak-oturumlar-rollback.sql`. Kişisel
+  `MB_Chats`/`MB_Messages`/`MB_ClaudeCode_*` aileleri DEĞİŞMEDİ; tablolar
+  kurulmadan uygulama tam çalışır (aşamalı devreye alma).
+- **Kod:** yeni `ortak_oturumlar` manifest bölümü (12 dosya;
+  `sohbet_llm_akis` seam'i), `www/css/ortak_oturumlar.css` +
+  `www/js/ortak_oturumlar.js` (manifest + `gecmis_kayit_arama` bölgesi),
+  üç yeni sekme (`Ortak Çalışmalarım`, `Ortak Söyleşiler`,
+  `Ortak Bilge Yolaç Oturumları`).
+- **Testler:** `test-ortak-oturum-permissions-behavior.R`,
+  `test-ortak-oturum-db-behavior.R` (gerçek SQLite),
+  `test-ortak-oturum-sql-contract.R`, `test-ortak-oturum-ui-contract.R`;
+  ilgili dondurulmuş sözleşmeler bilinçli güncellendi (bölüm sayısı 302→314,
+  varlık manifest listeleri).
+- **Kanıt sınırı:** Bulut doğrulaması SQLite/statik sözleşme kanıtıdır;
+  SQL Server Türkçe at-rest doğrulaması, SSO'lu çok kullanıcılı oda denemesi
+  ve canlı LLM yanıtı Windows VM kapılarında koşulmalıdır (RUNBOOK §9B).
+  Bilinen sınırlamalar (canlı ortak Bilge Yolaç CLI köprüsü, YZ kuyruğu,
+  geçmiş kopyalama otomasyonu, ortak streaming, yönetici panosu) için
+  [`ortak-oturumlar.md`](ortak-oturumlar.md) §12.
+
 ### (Yayınlanmadı) 2026-07-04 Soğuk açılış ve etkileşim performans stabilizasyonu + şerit ayarı/dosya politikası düzeltmeleri
 
 **Geçerli kanıt tabanı:** Bu çalışmadan hemen önce Windows VM'de tam kanıt kapısı (`bash tools/vm_evidence_gate.sh`, profil `vm/vm`, `MERGEN_BROWSER_UX_BASE_URL` üzerinden zorunlu tarayıcı smoke ile) **13 passed / 0 failed / 0 skipped** sonuçlandı; artifact: `artifacts/vm-evidence/20260704-085658/evidence.json` (`full_testthat` 3647.7 sn, `browser_ux_smoke` 233.8 sn PASS, `vm_preflight_real` ve `db_encoding_preflight` PASS). Bu sonuç korunacak temel çizgidir; bu bölümdeki değişikliklerden sonra VM'de kapı yeniden koşulmalıdır.

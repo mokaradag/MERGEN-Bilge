@@ -353,13 +353,26 @@ ui_asset_ownership_zones <- list(
   ),
 
   gecmis_kayit_arama = list(
-    title = "Söyleşi geçmişi, kayıtlı söyleşiler ve arama",
+    title = "Söyleşi geçmişi, kayıtlı söyleşiler, arama ve ortak oturumlar",
     owner_seam = "sohbet_llm_akis",
     css_groups = character(0),
     js_groups = character(0),
-    css = c("css/history_saved_chats.css", "css/chat_search_modal.css"),
-    js = c("js/history_date_range.js", "js/chat_search_modal.js"),
-    guard_tests = c("tests/testthat/test-chat-history-datatable-safety-contract.R")
+    # Ortak Oturumlar yüzeyi (işbirlikçi çalışma odaları) bu bölgeye aittir:
+    # paylaşılan sohbet/oda geçmişi de bir söyleşi-geçmişi yüzeyidir.
+    css = c(
+      "css/history_saved_chats.css",
+      "css/chat_search_modal.css",
+      "css/ortak_oturumlar.css"
+    ),
+    js = c(
+      "js/history_date_range.js",
+      "js/chat_search_modal.js",
+      "js/ortak_oturumlar.js"
+    ),
+    guard_tests = c(
+      "tests/testthat/test-chat-history-datatable-safety-contract.R",
+      "tests/testthat/test-ortak-oturum-ui-contract.R"
+    )
   ),
 
   ayarlar_api_anahtar = list(
