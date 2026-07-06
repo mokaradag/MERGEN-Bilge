@@ -352,14 +352,15 @@ ortak_dosya_kisisel_kopyala <- function(ortak_dosya_id, kullanici_id, conn = NUL
 
   # Kişisel klasöre kopyala ve Dosya Yönetimi indeksine kaydet.
   sonuc <- .oo_db_try({
-    kayit <- NULL
-    if (exists("global_register_file", mode = "function", inherits = TRUE)) {
-      kayit <- global_register_file(
-        src_path = kaynak,
-        filename = as.character(dosya$DosyaAdi[1]),
-        user_id = kullanici_id
-      )
+    if (!exists("global_register_file", mode = "function", inherits = TRUE)) {
+      stop("Dosya Yönetimi kayıt fonksiyonu bulunamadı.", call. = FALSE)
     }
+
+    kayit <- global_register_file(
+      src_path = kaynak,
+      filename = as.character(dosya$DosyaAdi[1]),
+      user_id = kullanici_id
+    )
 
     hedef_yol <- if (is.list(kayit)) {
       as.character(kayit$stored_path %||% kayit$path %||% NA_character_)[1]
@@ -367,6 +368,10 @@ ortak_dosya_kisisel_kopyala <- function(ortak_dosya_id, kullanici_id, conn = NUL
       kayit[1]
     } else {
       NA_character_
+    }
+
+    if (is.na(hedef_yol) || !nzchar(hedef_yol) || !file.exists(hedef_yol)) {
+      stop("Kişisel dosya kaydı geçerli bir hedef dosya üretmedi.", call. = FALSE)
     }
 
     .oo_dosya_kopya_durum_yaz(
