@@ -117,6 +117,28 @@ ortak_db_reset_availability_cache <- function() {
   df
 }
 
+# Oda yeni yazma/LLM/davet işlemlerine açık mı? Arşivlendi/Kapandı fail-closed.
+.oo_db_oturum_aktif_mi <- function(conn, oturum_id) {
+  oturum_id <- .oo_db_pos_int(oturum_id)
+  if (is.na(oturum_id)) {
+    return(FALSE)
+  }
+
+  sonuc <- .oo_db_try(
+    DBI::dbGetQuery(
+      conn,
+      "SELECT OturumDurumu FROM MB_OrtakOturumlar WHERE OrtakOturumID = ?",
+      params = normalize_db_params(list(oturum_id))
+    ),
+    fallback = NULL,
+    uyari = "Ortak oturum durumu doğrulanamadı:"
+  )
+
+  is.data.frame(sonuc) &&
+    nrow(sonuc) == 1L &&
+    identical(as.character(sonuc$OturumDurumu[1]), "Aktif")
+}
+
 # INSERT sonrası üretilen kimliği lehçeye göre okur (üretim: OUTPUT INSERTED).
 .oo_db_insert_returning_id <- function(conn, insert_sql_tsql, insert_sql_plain,
                                        id_column, params) {
