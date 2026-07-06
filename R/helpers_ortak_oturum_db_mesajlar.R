@@ -210,10 +210,20 @@ ortak_db_uretim_kilidi_al <- function(oturum_id,
 
   .oo_db_try({
     DBI::dbWithTransaction(handle$conn, {
+      aktif_sql <- if (.oo_db_is_sqlite(handle$conn)) {
+        "SELECT KilitDurumu FROM MB_OrtakOturum_AktifUretimler WHERE OrtakOturumID = ?"
+      } else {
+        paste(
+          "SELECT KilitDurumu",
+          "FROM MB_OrtakOturum_AktifUretimler WITH (UPDLOCK, HOLDLOCK)",
+          "WHERE OrtakOturumID = ?"
+        )
+      }
+
       aktif <- DBI::dbGetQuery(
         handle$conn,
-        "SELECT KilitDurumu FROM MB_OrtakOturum_AktifUretimler WHERE OrtakOturumID = ?",
-        params = list(oturum_id)
+        aktif_sql,
+        params = normalize_db_params(list(oturum_id))
       )
 
       if (nrow(aktif) > 0L && identical(aktif$KilitDurumu[1], "Çalışıyor")) {
@@ -221,7 +231,7 @@ ortak_db_uretim_kilidi_al <- function(oturum_id,
         FALSE
       } else {
         if (nrow(aktif) > 0L) {
-          # Tamamlanmış/iptal edilmiş eski kilit satırı yeniden kullanılır.
+          # Tamamlanmış/iptal edilmiş eski kilit satırı işlem kilidi altında yeniden kullanılır.
           DBI::dbExecute(
             handle$conn,
             paste(
