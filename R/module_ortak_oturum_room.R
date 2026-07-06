@@ -288,7 +288,17 @@ ortakOturumRoomServer <- function(id,
         return(invisible(NULL))
       }
 
-      if (ortak_db_aktif_uretim_var_mi(oturum_id)) {
+      istek_id <- paste0(
+        "oo_", oturum_id, "_",
+        format(Sys.time(), "%Y%m%d%H%M%S"), "_",
+        sample.int(999999L, 1L)
+      )
+
+      if (!ortak_db_uretim_kilidi_al(
+        oturum_id = oturum_id,
+        baslatan_kullanici_id = current_user_id(),
+        istek_id = istek_id
+      )) {
         oo_bildir("Yanıt üretimi sürüyor; lütfen mevcut yanıt tamamlanınca tekrar deneyin.", tur = "warning")
         return(invisible(NULL))
       }
@@ -302,26 +312,29 @@ ortakOturumRoomServer <- function(id,
       )
 
       if (is.null(soru_id)) {
+        ortak_db_uretim_kilidi_birak(oturum_id, istek_id, sonuc_durumu = "İptalEdildi")
         oo_bildir("Soru gönderilemedi: bu odada yapay zekâya sorma yetkiniz yok.", tur = "error")
         return(invisible(NULL))
       }
 
+      ortak_db_uretim_kilidi_mesaj_bagla(
+        oturum_id = oturum_id,
+        istek_id = istek_id,
+        mesaj_id = soru_id
+      )
+
       updateTextAreaInput(session, "oda_mesaj_metni", value = "")
       oo_yenile()
 
-      yz_yaniti_uret(oturum_id, soru_id, current_user_id())
+      yz_yaniti_uret(oturum_id, soru_id, current_user_id(), istek_id)
     })
 
     # Yapay zekâ yanıtı: oda başına TEK üretim; kilit DB'de tutulur. LLM çağrısı
     # worker'da koşar; kalıcılık ve kilit bırakma ana süreçte yapılır.
-    yz_yaniti_uret <- function(oturum_id, soru_id, soran_kullanici_id) {
-      istek_id <- paste0(
-        "oo_", oturum_id, "_", soru_id, "_",
-        format(Sys.time(), "%H%M%S"), "_", sample.int(99999L, 1L)
-      )
-
-      if (!ortak_db_uretim_kilidi_al(oturum_id, soran_kullanici_id, istek_id, mesaj_id = soru_id)) {
-        oo_bildir("Yanıt üretimi sürüyor; sorunuz odada kayıtlı kaldı.", tur = "warning")
+    yz_yaniti_uret <- function(oturum_id, soru_id, soran_kullanici_id, istek_id) {
+      istek_id <- as.character(istek_id %||% "")[1]
+      if (!nzchar(istek_id)) {
+        oo_bildir("Yanıt üretimi başlatılamadı: geçersiz istek kimliği.", tur = "error")
         return(invisible(NULL))
       }
 
