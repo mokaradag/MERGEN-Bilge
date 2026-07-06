@@ -115,15 +115,18 @@ ortak_db_katilimci_ekle <- function(oturum_id,
     guncellenen <- DBI::dbExecute(
       handle$conn,
       paste(
-        "UPDATE MB_OrtakOturum_Katilimcilar SET Rol = ?, KatilimDurumu = ?,",
-        "DavetEdenKullaniciID = ?, DavetZamani = ?",
+        "UPDATE MB_OrtakOturum_Katilimcilar",
+        "SET Rol = ?, KatilimDurumu = ?, KullaniciGorunumDurumu = ?,",
+        "DavetEdenKullaniciID = ?, DavetZamani = ?, KatilmaZamani = ?",
         "WHERE OrtakOturumID = ? AND KullaniciID = ?"
       ),
       params = normalize_db_params(list(
         normalize_db_technical_value(rol),
         normalize_db_technical_value(katilim_durumu),
+        normalize_db_technical_value(ortak_gorunum_durumlari()[1]),
         .oo_db_pos_int(davet_eden_kullanici_id),
         simdi,
+        katilma_zamani,
         oturum_id,
         kullanici_id
       ))
@@ -179,11 +182,23 @@ ortak_db_katilim_durumu_guncelle <- function(oturum_id,
   on.exit(.oo_db_release(handle), add = TRUE)
 
   simdi <- .oo_db_now()
+  gorunum_durumu <- if (identical(yeni_durum, "Katıldı")) {
+    "Görünüyor"
+  } else if (yeni_durum %in% c("Ayrıldı", "Çıkarıldı", "Reddetti")) {
+    "Ayrıldı"
+  } else {
+    NA_character_
+  }
+
   set_katilma <- if (identical(yeni_durum, "Katıldı")) ", KatilmaZamani = ?" else ""
+  set_gorunum <- if (!is.na(gorunum_durumu)) ", KullaniciGorunumDurumu = ?" else ""
 
   params <- list(normalize_db_technical_value(yeni_durum))
   if (nzchar(set_katilma)) {
     params[[length(params) + 1L]] <- simdi
+  }
+  if (nzchar(set_gorunum)) {
+    params[[length(params) + 1L]] <- normalize_db_technical_value(gorunum_durumu)
   }
   params[[length(params) + 1L]] <- oturum_id
   params[[length(params) + 1L]] <- kullanici_id
@@ -194,6 +209,7 @@ ortak_db_katilim_durumu_guncelle <- function(oturum_id,
       paste0(
         "UPDATE MB_OrtakOturum_Katilimcilar SET KatilimDurumu = ?",
         set_katilma,
+        set_gorunum,
         " WHERE OrtakOturumID = ? AND KullaniciID = ?"
       ),
       params = normalize_db_params(params)
