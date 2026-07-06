@@ -27,8 +27,11 @@ ortak_db_davet_olustur <- function(oturum_id,
   davet_eden <- .oo_db_pos_int(davet_eden_kullanici_id)
   davet_edilen <- .oo_db_pos_int(davet_edilen_kullanici_id)
 
+  # Sahip rolü davetle verilemez; sahiplik yalnızca açık sahiplik devriyle yapılır.
+  davetle_verilebilir_roller <- setdiff(ortak_oturum_rolleri(), "Sahip")
+
   if (is.na(oturum_id) || is.na(davet_eden) || is.na(davet_edilen) ||
-      !(rol %in% ortak_oturum_rolleri()) ||
+      !(rol %in% davetle_verilebilir_roller) ||
       !(davet_yontemi %in% ortak_davet_yontemleri())) {
     return(NULL)
   }
