@@ -42,19 +42,40 @@ ortak_oturum_dosya_koku <- function(oturum_id) {
 }
 
 # Yol, ortak belge kökünün İÇİNDE mi? Traversal/dış yol reddedilir.
+.oo_dosya_karsilastirma_yolu <- function(yol) {
+  yol <- as.character(yol %||% "")[1]
+  if (!nzchar(yol)) {
+    return("")
+  }
+
+  # Windows'ta hedef dosya henüz yokken normalizePath(mustWork = FALSE)
+  # ebeveyn dizinle farklı kısa/uzun yol biçimi üretebilir. Bu nedenle
+  # var olan ebeveyni normalize edip dosya adını onun altına ekliyoruz.
+  if (!file.exists(yol) && dir.exists(dirname(yol))) {
+    ebeveyn <- tryCatch(
+      normalizePath(dirname(yol), winslash = "/", mustWork = TRUE),
+      error = function(e) ""
+    )
+    if (nzchar(ebeveyn)) {
+      return(enc2utf8(file.path(ebeveyn, basename(yol))))
+    }
+  }
+
+  out <- tryCatch(
+    normalizePath(yol, winslash = "/", mustWork = FALSE),
+    error = function(e) ""
+  )
+
+  enc2utf8(out)
+}
+
 .oo_dosya_kok_icinde_mi <- function(yol, kok) {
   if (is.null(yol) || is.null(kok) || !nzchar(yol) || !nzchar(kok)) {
     return(FALSE)
   }
 
-  yol_norm <- tryCatch(
-    normalizePath(yol, winslash = "/", mustWork = FALSE),
-    error = function(e) ""
-  )
-  kok_norm <- tryCatch(
-    normalizePath(kok, winslash = "/", mustWork = FALSE),
-    error = function(e) ""
-  )
+  yol_norm <- .oo_dosya_karsilastirma_yolu(yol)
+  kok_norm <- .oo_dosya_karsilastirma_yolu(kok)
 
   if (!nzchar(yol_norm) || !nzchar(kok_norm)) {
     return(FALSE)
@@ -105,6 +126,11 @@ ortak_db_dosya_kaydet <- function(oturum_id,
   if (is.na(oturum_id) || !nzchar(kaynak_yol) || !file.exists(kaynak_yol)) {
     return(NULL)
   }
+
+  kaynak_yol <- tryCatch(
+    normalizePath(kaynak_yol, winslash = "/", mustWork = TRUE),
+    error = function(e) kaynak_yol
+  )
 
   kok <- ortak_oturum_dosya_koku(oturum_id)
   if (is.null(kok)) {
