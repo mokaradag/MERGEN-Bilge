@@ -625,3 +625,96 @@ test_that("ortak Bilge Yolaç oturum/çalıştırma kaydı sıra ve Türkçe met
   kayit <- ortak_db_by_oturum_getir(oturum_id, conn = conn)
   expect_false(is.na(kayit$SonCalistirmaZamani[1]))
 })
+
+test_that("davetle Sahip rolü verilemez; sahiplik yalnızca devir akışındadır", {
+  conn <- .oo_test_conn()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  oturum_id <- ortak_db_oturum_olustur(
+    "NormalSohbet",
+    "Sahip daveti koruması",
+    1L,
+    conn = conn
+  )
+
+  expect_true(is.integer(oturum_id) && oturum_id > 0L)
+
+  # Sahip bile davet yoluyla yeni Sahip atayamaz.
+  expect_null(ortak_db_davet_olustur(
+    oturum_id = oturum_id,
+    davet_eden_kullanici_id = 1L,
+    davet_edilen_kullanici_id = 2L,
+    rol = "Sahip",
+    conn = conn
+  ))
+
+  expect_null(ortak_db_katilimci_getir(oturum_id, 2L, conn = conn))
+
+  # Normal yönetici daveti hâlâ çalışır.
+  davet_id <- ortak_db_davet_olustur(
+    oturum_id = oturum_id,
+    davet_eden_kullanici_id = 1L,
+    davet_edilen_kullanici_id = 2L,
+    rol = "OturumYöneticisi",
+    conn = conn
+  )
+
+  expect_true(is.integer(davet_id) && davet_id > 0L)
+  expect_true(isTRUE(ortak_db_davet_yanitla(davet_id, 2L, kabul = TRUE, conn = conn)))
+
+  baris <- ortak_db_katilimci_getir(oturum_id, 2L, conn = conn)
+  expect_identical(as.character(baris$Rol[1]), "OturumYöneticisi")
+
+  # OturumYöneticisi de davet yoluyla Sahip üretemez.
+  expect_null(ortak_db_davet_olustur(
+    oturum_id = oturum_id,
+    davet_eden_kullanici_id = 2L,
+    davet_edilen_kullanici_id = 3L,
+    rol = "Sahip",
+    conn = conn
+  ))
+})
+
+test_that("aktif olmayan ortak oturum yeni kullanıcı yazısı, YZ kilidi ve davet almaz", {
+  conn <- .oo_test_conn()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  oturum_id <- ortak_db_oturum_olustur(
+    "NormalSohbet",
+    "Arşiv sonrası yazma koruması",
+    1L,
+    conn = conn
+  )
+
+  expect_true(is.integer(oturum_id) && oturum_id > 0L)
+
+  expect_true(isTRUE(ortak_db_oturum_durum_guncelle(
+    oturum_id = oturum_id,
+    kullanici_id = 1L,
+    yeni_durum = "Arşivlendi",
+    conn = conn
+  )))
+
+  expect_null(ortak_db_mesaj_ekle(
+    oturum_id = oturum_id,
+    gonderen_kullanici_id = 1L,
+    mesaj_turu = "OdaMesajı",
+    mesaj_metni = "Arşiv sonrası yazılmamalı",
+    conn = conn
+  ))
+
+  expect_false(ortak_db_uretim_kilidi_al(
+    oturum_id = oturum_id,
+    baslatan_kullanici_id = 1L,
+    istek_id = "arsiv-sonrasi-yz",
+    conn = conn
+  ))
+
+  expect_null(ortak_db_davet_olustur(
+    oturum_id = oturum_id,
+    davet_eden_kullanici_id = 1L,
+    davet_edilen_kullanici_id = 2L,
+    rol = "Katılımcı",
+    conn = conn
+  ))
+})
