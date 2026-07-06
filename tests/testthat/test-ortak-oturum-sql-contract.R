@@ -151,3 +151,53 @@ test_that("SQL betikleri uygulama açılışına bağlanmamıştır (manuel DBA 
   db_katmani <- .oo_sql_oku(file.path(repo_root, "R", "helpers_ortak_oturum_db.R"))
   expect_false(grepl("CREATE TABLE", db_katmani, fixed = TRUE, useBytes = TRUE))
 })
+
+test_that("SQL betiği MB_Users(UserID) FK kolonlarını üretim INT tipiyle eşleştirir", {
+  repo_root <- resolve_repo_root_for_tests()
+  sql <- .oo_sql_oku(file.path(repo_root, "docs", "sql", "2026-07-ortak-oturumlar.sql"))
+
+  # Fail-fast ön koşul: üretimde MB_Users.UserID INT beklenir.
+  expect_true(grepl("ty.name = N'int'", sql, fixed = TRUE, useBytes = TRUE))
+
+  # MB_Users(UserID) ile FK kuran kolonlar INT olmalıdır.
+  int_fk_kolonlari <- c(
+    "OlusturanKullaniciID INT NOT NULL",
+    "KullaniciID INT NOT NULL",
+    "DavetEdenKullaniciID INT NULL",
+    "DavetEdilenKullaniciID INT NULL",
+    "AliciKullaniciID INT NOT NULL",
+    "GonderenKullaniciID INT NULL",
+    "GonderenKullaniciID INT NULL",
+    "BaslatanKullaniciID INT NOT NULL",
+    "KomutuVerenKullaniciID INT NOT NULL",
+    "UretenKullaniciID INT NULL",
+    "TetikleyenKullaniciID INT NULL"
+  )
+
+  for (kolon in unique(int_fk_kolonlari)) {
+    expect_true(
+      grepl(kolon, sql, fixed = TRUE, useBytes = TRUE),
+      info = sprintf("MB_Users FK kolonu INT değil veya eksik: %s", kolon)
+    )
+  }
+
+  # Eski hatalı BIGINT tanımlar geri gelmemelidir.
+  hatali_bigintler <- c(
+    "OlusturanKullaniciID BIGINT",
+    "DavetEdenKullaniciID BIGINT",
+    "DavetEdilenKullaniciID BIGINT",
+    "AliciKullaniciID BIGINT",
+    "GonderenKullaniciID BIGINT",
+    "BaslatanKullaniciID BIGINT",
+    "KomutuVerenKullaniciID BIGINT",
+    "UretenKullaniciID BIGINT",
+    "TetikleyenKullaniciID BIGINT"
+  )
+
+  for (kolon in hatali_bigintler) {
+    expect_false(
+      grepl(kolon, sql, fixed = TRUE, useBytes = TRUE),
+      info = sprintf("Hatalı BIGINT kullanıcı FK tanımı geri gelmiş: %s", kolon)
+    )
+  }
+})
