@@ -562,6 +562,7 @@ ortakOturumRoomServer <- function(id,
       hedef_satir <- ortak_db_katilimci_getir(oturum_id, hedef_id)
 
       if (is.null(katilim) || is.null(hedef_satir) ||
+          !ortak_icerik_erisimi_var_mi(katilim$KatilimDurumu[1]) ||
           !ortak_katilimci_yonetilebilir_mi(katilim$Rol[1], hedef_satir$Rol[1])) {
         oo_bildir("Katılımcı çıkarılamadı: yetkiniz yok.", tur = "error")
       } else {
