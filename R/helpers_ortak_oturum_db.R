@@ -160,13 +160,31 @@ ortak_db_tablolar_hazir_mi <- function(conn = NULL, force_refresh = FALSE) {
   if (!is.null(handle)) {
     on.exit(.oo_db_release(handle), add = TRUE)
 
-    ok <- .oo_db_try(
-      isTRUE(DBI::dbExistsTable(handle$conn, "MB_OrtakOturumlar")) &&
-        isTRUE(DBI::dbExistsTable(handle$conn, "MB_OrtakOturum_Mesajlar")) &&
-        isTRUE(DBI::dbExistsTable(handle$conn, "MB_OrtakOturum_Katilimcilar")),
-      fallback = FALSE,
-      uyari = "Ortak Oturum tabloları kontrol edilemedi:"
-    )
+    ok <- .oo_db_try({
+      gerekli_tablolar <- c(
+        "MB_OrtakOturumlar",
+        "MB_OrtakOturum_Katilimcilar",
+        "MB_OrtakOturum_Davetler",
+        "MB_Kullanici_CanliDurum",
+        "MB_Bildirimler",
+        "MB_OrtakOturum_Mesajlar",
+        "MB_OrtakOturum_YapayZekaKuyrugu",
+        "MB_OrtakOturum_AktifUretimler",
+        "MB_OrtakBilgeYolac_Oturumlar",
+        "MB_OrtakBilgeYolac_Calistirmalar",
+        "MB_OrtakOturum_Dosyalar",
+        "MB_OrtakOturum_DosyaKopyalari",
+        "MB_OrtakOturum_Olaylar"
+      )
+
+      all(vapply(
+        gerekli_tablolar,
+        function(tablo) isTRUE(DBI::dbExistsTable(handle$conn, tablo)),
+        logical(1)
+      ))
+    },
+    fallback = FALSE,
+    uyari = "Ortak Oturum tabloları kontrol edilemedi:")
   }
 
   .oo_db_state$available <- isTRUE(ok)
