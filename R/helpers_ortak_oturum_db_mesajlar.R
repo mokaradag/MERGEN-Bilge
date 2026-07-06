@@ -276,6 +276,49 @@ ortak_db_uretim_kilidi_al <- function(oturum_id,
   uyari = "Ortak oturum üretim kilidi alınamadı:")
 }
 
+#' Alınmış aktif üretim kilidini, sonradan oluşturulan soru mesajına bağlar.
+#' Kilit yalnızca aynı IstekID hâlâ Çalışıyor ise güncellenir.
+ortak_db_uretim_kilidi_mesaj_bagla <- function(oturum_id,
+                                               istek_id,
+                                               mesaj_id,
+                                               conn = NULL) {
+  oturum_id <- .oo_db_pos_int(oturum_id)
+  mesaj_id <- .oo_db_pos_int(mesaj_id)
+  istek_id <- as.character(istek_id %||% "")[1]
+
+  if (is.na(oturum_id) || is.na(mesaj_id) || !nzchar(istek_id)) {
+    return(invisible(FALSE))
+  }
+
+  handle <- .oo_db_try(.oo_db_acquire(conn), fallback = NULL)
+  if (is.null(handle)) {
+    return(invisible(FALSE))
+  }
+  on.exit(.oo_db_release(handle), add = TRUE)
+
+  sonuc <- .oo_db_try({
+    DBI::dbExecute(
+      handle$conn,
+      paste(
+        "UPDATE MB_OrtakOturum_AktifUretimler",
+        "SET OrtakMesajID = ?, GuncellemeZamani = ?",
+        "WHERE OrtakOturumID = ? AND IstekID = ? AND KilitDurumu = ?"
+      ),
+      params = normalize_db_params(list(
+        mesaj_id,
+        .oo_db_now(),
+        oturum_id,
+        normalize_db_technical_value(istek_id),
+        normalize_db_technical_value("Çalışıyor")
+      ))
+    ) > 0L
+  },
+  fallback = FALSE,
+  uyari = "Ortak oturum üretim kilidi soru mesajına bağlanamadı:")
+
+  invisible(isTRUE(sonuc))
+}
+
 #' Üretim kilidini bırakır. Yalnızca kilidi alan istek (IstekID) bırakabilir;
 #' eski/yarış halindeki bir istek yeni kilidi ezemez.
 ortak_db_uretim_kilidi_birak <- function(oturum_id,
