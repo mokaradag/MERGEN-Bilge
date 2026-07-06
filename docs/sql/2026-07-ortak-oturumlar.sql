@@ -14,6 +14,9 @@
 --     mevcut veriyi DEĞİŞTİRMEZ ve SİLMEZ (yıkıcı ifade içermez).
 --   * Mevcut PK/constraint'lere DOKUNMAZ; MB_Chats / MB_Messages /
 --     MB_Users / MB_ClaudeCode_* tablolarında hiçbir değişiklik yapmaz.
+--   * Mevcut üretim şemasıyla uyum için MB_Users(UserID) ile ilişki kuran
+--     bütün kullanıcı FK kolonları INT olarak tanımlanmıştır. SQL Server FK
+--     kolonunda INT -> BIGINT tür eşleşmesine izin vermez.
 --   * İş kuralı değerleri (rol, durum, mesaj türü, hedef, dosya durumu vb.)
 --     TÜRKÇE NVARCHAR sabitleridir ve N'...' önekiyle yazılır. İngilizce
 --     durum değeri (owner/pending/completed vb.) SAKLANMAZ.
@@ -33,6 +36,28 @@ SET XACT_ABORT ON;
 SET LOCK_TIMEOUT 15000;
 GO
 
+-- 0) Ön koşul: mevcut kullanıcı anahtarı tipi ---------------------------------
+-- Üretim DB'de MB_Users.UserID INT olduğu için tüm kullanıcı FK kolonları INT
+-- olmalıdır. SQL Server FK kolonunda INT -> BIGINT eşleşmesine izin vermez.
+IF OBJECT_ID(N'dbo.MB_Users', N'U') IS NULL
+BEGIN
+    THROW 51000, 'Ön koşul başarısız: dbo.MB_Users tablosu bulunamadı. Ortak Oturumlar kurulumu durduruldu.', 1;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.columns c
+    JOIN sys.types ty ON ty.user_type_id = c.user_type_id
+    WHERE c.object_id = OBJECT_ID(N'dbo.MB_Users')
+      AND c.name = N'UserID'
+      AND ty.name = N'int'
+)
+BEGIN
+    THROW 51001, 'Ön koşul başarısız: dbo.MB_Users.UserID tipi INT değil. Kullanıcı FK kolonları mevcut UserID tipiyle birebir eşleşmelidir.', 1;
+END;
+GO
+
 -- 1) Ortak oturum başlık tablosu ----------------------------------------------
 IF OBJECT_ID(N'dbo.MB_OrtakOturumlar', N'U') IS NULL
 BEGIN
@@ -41,7 +66,7 @@ BEGIN
         KaynakTuru NVARCHAR(50) NOT NULL,
         KaynakID BIGINT NULL,
         Baslik NVARCHAR(500) NULL,
-        OlusturanKullaniciID BIGINT NOT NULL,
+        OlusturanKullaniciID INT NOT NULL,
         OturumDurumu NVARCHAR(50) NOT NULL CONSTRAINT DF_MB_OrtakOturumlar_OturumDurumu DEFAULT N'Aktif',
         PaylasimBaslangicTipi NVARCHAR(100) NULL,
         SonEtkinlikZamani DATETIME2(0) NULL,
@@ -72,11 +97,11 @@ BEGIN
     CREATE TABLE dbo.MB_OrtakOturum_Katilimcilar (
         KatilimciID BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         OrtakOturumID BIGINT NOT NULL,
-        KullaniciID BIGINT NOT NULL,
+        KullaniciID INT NOT NULL,
         Rol NVARCHAR(50) NOT NULL,
         KatilimDurumu NVARCHAR(50) NOT NULL CONSTRAINT DF_MB_OrtakKatilim_KatilimDurumu DEFAULT N'DavetEdildi',
         KullaniciGorunumDurumu NVARCHAR(50) NOT NULL CONSTRAINT DF_MB_OrtakKatilim_Gorunum DEFAULT N'Görünüyor',
-        DavetEdenKullaniciID BIGINT NULL,
+        DavetEdenKullaniciID INT NULL,
         DavetZamani DATETIME2(0) NULL,
         KatilmaZamani DATETIME2(0) NULL,
         SonGorulmeZamani DATETIME2(0) NULL,
@@ -109,9 +134,9 @@ BEGIN
     CREATE TABLE dbo.MB_OrtakOturum_Davetler (
         DavetID BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         OrtakOturumID BIGINT NOT NULL,
-        DavetEdilenKullaniciID BIGINT NULL,
+        DavetEdilenKullaniciID INT NULL,
         DavetEdilenEposta NVARCHAR(320) NULL,
-        DavetEdenKullaniciID BIGINT NOT NULL,
+        DavetEdenKullaniciID INT NOT NULL,
         Rol NVARCHAR(50) NOT NULL,
         DavetYontemi NVARCHAR(50) NOT NULL,
         DavetDurumu NVARCHAR(50) NOT NULL CONSTRAINT DF_MB_OrtakDavet_Durum DEFAULT N'Bekliyor',
@@ -148,7 +173,7 @@ IF OBJECT_ID(N'dbo.MB_Kullanici_CanliDurum', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.MB_Kullanici_CanliDurum (
         CanliDurumID BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-        KullaniciID BIGINT NOT NULL,
+        KullaniciID INT NOT NULL,
         OturumAnahtari NVARCHAR(128) NOT NULL,
         Sayfa NVARCHAR(200) NULL,
         SonKalpAtisiZamani DATETIME2(0) NOT NULL,
@@ -179,8 +204,8 @@ IF OBJECT_ID(N'dbo.MB_Bildirimler', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.MB_Bildirimler (
         BildirimID BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-        AliciKullaniciID BIGINT NOT NULL,
-        GonderenKullaniciID BIGINT NULL,
+        AliciKullaniciID INT NOT NULL,
+        GonderenKullaniciID INT NULL,
         BildirimTuru NVARCHAR(80) NOT NULL,
         Baslik NVARCHAR(300) NOT NULL,
         Mesaj NVARCHAR(MAX) NULL,
@@ -215,7 +240,7 @@ BEGIN
     CREATE TABLE dbo.MB_OrtakOturum_Mesajlar (
         OrtakMesajID BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         OrtakOturumID BIGINT NOT NULL,
-        GonderenKullaniciID BIGINT NULL,
+        GonderenKullaniciID INT NULL,
         MesajTuru NVARCHAR(80) NOT NULL,
         Hedef NVARCHAR(80) NOT NULL,
         MesajMetni NVARCHAR(MAX) NULL,
@@ -280,7 +305,7 @@ IF OBJECT_ID(N'dbo.MB_OrtakOturum_AktifUretimler', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.MB_OrtakOturum_AktifUretimler (
         OrtakOturumID BIGINT NOT NULL PRIMARY KEY,
-        BaslatanKullaniciID BIGINT NOT NULL,
+        BaslatanKullaniciID INT NOT NULL,
         OrtakMesajID BIGINT NULL,
         IstekID NVARCHAR(128) NOT NULL,
         KilitDurumu NVARCHAR(50) NOT NULL,
@@ -321,7 +346,7 @@ BEGIN
     CREATE TABLE dbo.MB_OrtakBilgeYolac_Calistirmalar (
         OrtakCalistirmaID BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         OrtakBilgeYolacOturumID BIGINT NOT NULL,
-        KomutuVerenKullaniciID BIGINT NOT NULL,
+        KomutuVerenKullaniciID INT NOT NULL,
         Komut NVARCHAR(MAX) NOT NULL,
         NihaiYanit NVARCHAR(MAX) NULL,
         Durum NVARCHAR(50) NOT NULL,
@@ -358,7 +383,7 @@ BEGIN
         OrtakDosyaID BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         OrtakOturumID BIGINT NOT NULL,
         OrtakCalistirmaID BIGINT NULL,
-        UretenKullaniciID BIGINT NULL,
+        UretenKullaniciID INT NULL,
         DosyaAdi NVARCHAR(500) NOT NULL,
         DosyaYolu NVARCHAR(MAX) NOT NULL,
         DosyaTuru NVARCHAR(100) NULL,
@@ -394,7 +419,7 @@ BEGIN
     CREATE TABLE dbo.MB_OrtakOturum_DosyaKopyalari (
         DosyaKopyaID BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         OrtakDosyaID BIGINT NOT NULL,
-        KullaniciID BIGINT NOT NULL,
+        KullaniciID INT NOT NULL,
         KullaniciDosyaYolu NVARCHAR(MAX) NULL,
         KopyalamaDurumu NVARCHAR(50) NOT NULL CONSTRAINT DF_MB_OrtakDosyaKopya_Durum DEFAULT N'Bekliyor',
         KopyalamaZamani DATETIME2(0) NULL,
@@ -414,7 +439,7 @@ BEGIN
         OlayID BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         OrtakOturumID BIGINT NOT NULL,
         OlayTuru NVARCHAR(100) NOT NULL,
-        TetikleyenKullaniciID BIGINT NULL,
+        TetikleyenKullaniciID INT NULL,
         PayloadJson NVARCHAR(MAX) NULL,
         OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakOlay_Olusturma DEFAULT SYSUTCDATETIME(),
         CONSTRAINT CK_MB_OrtakOlay_Tur CHECK (OlayTuru IN (
