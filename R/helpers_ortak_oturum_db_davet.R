@@ -50,44 +50,50 @@ ortak_db_davet_olustur <- function(oturum_id,
       return(NULL)
     }
 
-    davet_id <- .oo_db_insert_returning_id(
-      conn = handle$conn,
-      insert_sql_tsql = paste(
-        "INSERT INTO MB_OrtakOturum_Davetler",
-        "(OrtakOturumID, DavetEdilenKullaniciID, DavetEdilenEposta,",
-        " DavetEdenKullaniciID, Rol, DavetYontemi, DavetDurumu, OlusturmaZamani)",
-        "OUTPUT INSERTED.DavetID AS id",
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-      ),
-      insert_sql_plain = paste(
-        "INSERT INTO MB_OrtakOturum_Davetler",
-        "(OrtakOturumID, DavetEdilenKullaniciID, DavetEdilenEposta,",
-        " DavetEdenKullaniciID, Rol, DavetYontemi, DavetDurumu, OlusturmaZamani)",
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-      ),
-      id_column = "DavetID",
-      params = normalize_db_params(list(
-        oturum_id,
-        davet_edilen,
-        normalize_db_technical_value(as.character(davet_edilen_eposta %||% NA_character_)[1]),
-        davet_eden,
-        normalize_db_technical_value(rol),
-        normalize_db_technical_value(davet_yontemi),
-        normalize_db_technical_value(ortak_davet_durumlari()[1]),
-        simdi
-      ))
-    )
+    DBI::dbWithTransaction(handle$conn, {
+      davet_id <- .oo_db_insert_returning_id(
+        conn = handle$conn,
+        insert_sql_tsql = paste(
+          "INSERT INTO MB_OrtakOturum_Davetler",
+          "(OrtakOturumID, DavetEdilenKullaniciID, DavetEdilenEposta,",
+          " DavetEdenKullaniciID, Rol, DavetYontemi, DavetDurumu, OlusturmaZamani)",
+          "OUTPUT INSERTED.DavetID AS id",
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        ),
+        insert_sql_plain = paste(
+          "INSERT INTO MB_OrtakOturum_Davetler",
+          "(OrtakOturumID, DavetEdilenKullaniciID, DavetEdilenEposta,",
+          " DavetEdenKullaniciID, Rol, DavetYontemi, DavetDurumu, OlusturmaZamani)",
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        ),
+        id_column = "DavetID",
+        params = normalize_db_params(list(
+          oturum_id,
+          davet_edilen,
+          normalize_db_technical_value(as.character(davet_edilen_eposta %||% NA_character_)[1]),
+          davet_eden,
+          normalize_db_technical_value(rol),
+          normalize_db_technical_value(davet_yontemi),
+          normalize_db_technical_value(ortak_davet_durumlari()[1]),
+          simdi
+        ))
+      )
 
-    ortak_db_katilimci_ekle(
-      oturum_id = oturum_id,
-      kullanici_id = davet_edilen,
-      rol = rol,
-      davet_eden_kullanici_id = davet_eden,
-      katilim_durumu = "DavetEdildi",
-      conn = handle$conn
-    )
+      katilim_ok <- ortak_db_katilimci_ekle(
+        oturum_id = oturum_id,
+        kullanici_id = davet_edilen,
+        rol = rol,
+        davet_eden_kullanici_id = davet_eden,
+        katilim_durumu = "DavetEdildi",
+        conn = handle$conn
+      )
 
-    davet_id
+      if (!isTRUE(katilim_ok)) {
+        stop("Davet katılımcı satırı oluşturulamadı.", call. = FALSE)
+      }
+
+      davet_id
+    })
   },
   fallback = NULL,
   uyari = "Ortak oturum daveti oluşturulamadı:")
@@ -155,44 +161,52 @@ ortak_db_davet_yanitla <- function(davet_id, kullanici_id, kabul, conn = NULL) {
   simdi <- .oo_db_now()
 
   sonuc <- .oo_db_try({
-    davet <- DBI::dbGetQuery(
-      handle$conn,
-      paste(
-        "SELECT DavetID, OrtakOturumID, DavetEdilenKullaniciID, DavetDurumu",
-        "FROM MB_OrtakOturum_Davetler WHERE DavetID = ?"
-      ),
-      params = list(davet_id)
-    )
-
-    # Yalnızca davetin sahibi ve yalnızca Bekliyor durumundaki davet yanıtlanır.
-    if (nrow(davet) == 0L ||
-        !identical(as.integer(davet$DavetEdilenKullaniciID[1]), kullanici_id) ||
-        !identical(davet$DavetDurumu[1], "Bekliyor")) {
-      FALSE
-    } else {
-      kabul_zamani <- if (isTRUE(kabul)) simdi else NA_character_
-
-      DBI::dbExecute(
+    DBI::dbWithTransaction(handle$conn, {
+      davet <- DBI::dbGetQuery(
         handle$conn,
         paste(
-          "UPDATE MB_OrtakOturum_Davetler SET DavetDurumu = ?,",
-          "SonCevapZamani = ?, KabulZamani = ? WHERE DavetID = ?"
+          "SELECT DavetID, OrtakOturumID, DavetEdilenKullaniciID, DavetDurumu",
+          "FROM MB_OrtakOturum_Davetler WHERE DavetID = ?"
         ),
-        params = normalize_db_params(list(
-          normalize_db_technical_value(yeni_davet_durumu),
-          simdi,
-          kabul_zamani,
-          davet_id
-        ))
+        params = list(davet_id)
       )
 
-      ortak_db_katilim_durumu_guncelle(
-        oturum_id = as.integer(davet$OrtakOturumID[1]),
-        kullanici_id = kullanici_id,
-        yeni_durum = yeni_davet_durumu,
-        conn = handle$conn
-      )
-    }
+      # Yalnızca davetin sahibi ve yalnızca Bekliyor durumundaki davet yanıtlanır.
+      if (nrow(davet) == 0L ||
+          !identical(as.integer(davet$DavetEdilenKullaniciID[1]), kullanici_id) ||
+          !identical(davet$DavetDurumu[1], "Bekliyor")) {
+        FALSE
+      } else {
+        kabul_zamani <- if (isTRUE(kabul)) simdi else NA_character_
+
+        davet_ok <- DBI::dbExecute(
+          handle$conn,
+          paste(
+            "UPDATE MB_OrtakOturum_Davetler SET DavetDurumu = ?,",
+            "SonCevapZamani = ?, KabulZamani = ? WHERE DavetID = ?"
+          ),
+          params = normalize_db_params(list(
+            normalize_db_technical_value(yeni_davet_durumu),
+            simdi,
+            kabul_zamani,
+            davet_id
+          ))
+        ) > 0L
+
+        katilim_ok <- ortak_db_katilim_durumu_guncelle(
+          oturum_id = as.integer(davet$OrtakOturumID[1]),
+          kullanici_id = kullanici_id,
+          yeni_durum = yeni_davet_durumu,
+          conn = handle$conn
+        )
+
+        if (!isTRUE(davet_ok) || !isTRUE(katilim_ok)) {
+          stop("Davet yanıtı tutarlı güncellenemedi.", call. = FALSE)
+        }
+
+        TRUE
+      }
+    })
   },
   fallback = FALSE,
   uyari = "Ortak oturum daveti yanıtlanamadı:")
