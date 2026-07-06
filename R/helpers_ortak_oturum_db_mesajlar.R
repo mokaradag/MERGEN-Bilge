@@ -39,7 +39,6 @@
 }
 
 #' Ortak oturuma mesaj ekler (oda mesajı / YZ sorusu / YZ yanıtı / sistem).
-#'
 #' Hedef, saf yönlendirme planından türetilir; çağıranın hedef seçmesine izin
 #' verilmez. Kullanıcı kaynaklı türlerde rol yetkisi zorunludur.
 #'
@@ -192,7 +191,6 @@ ortak_db_mesajlari_getir <- function(oturum_id,
 }
 
 #' Oda başına TEK aktif üretim kilidini almaya çalışır.
-#'
 #' @return TRUE kilit alındıysa; FALSE başka bir üretim sürüyorsa/hatada.
 ortak_db_uretim_kilidi_al <- function(oturum_id,
                                       baslatan_kullanici_id,
@@ -444,7 +442,6 @@ ortak_db_olay_ekle <- function(oturum_id,
 }
 
 #' Mesaj veri çerçevesinden LLM sohbet geçmişi üretir (SAF yardımcı).
-#'
 #' Yalnızca YapayZekaSorusu / YapayZekaYanıtı satırları bağlama girer;
 #' OdaMesajı satırları LLM bağlamına dahil EDİLMEZ. Dönen rol adları
 #' ("user"/"assistant") OpenAI protokol tanımlayıcılarıdır; DB'de saklanan iş
