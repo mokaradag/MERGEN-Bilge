@@ -42,6 +42,11 @@ ortak_db_davet_olustur <- function(oturum_id,
   }
   on.exit(.oo_db_release(handle), add = TRUE)
 
+  if (!.oo_db_oturum_aktif_mi(handle$conn, oturum_id)) {
+    .oo_db_log_warn("Aktif olmayan ortak oturuma davet oluşturma reddedildi:", oturum_id)
+    return(NULL)
+  }
+
   simdi <- .oo_db_now()
 
   .oo_db_try({
