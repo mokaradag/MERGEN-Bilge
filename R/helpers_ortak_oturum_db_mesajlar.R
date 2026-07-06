@@ -71,6 +71,11 @@ ortak_db_mesaj_ekle <- function(oturum_id,
   gonderen <- .oo_db_pos_int(gonderen_kullanici_id)
   kullanici_kaynakli <- mesaj_turu %in% c("OdaMesajı", "YapayZekaSorusu")
 
+  if (isTRUE(kullanici_kaynakli) && !.oo_db_oturum_aktif_mi(handle$conn, oturum_id)) {
+    .oo_db_log_warn("Aktif olmayan ortak oturuma kullanıcı mesajı reddedildi. Oturum:", oturum_id)
+    return(NULL)
+  }
+
   .oo_db_try({
     if (kullanici_kaynakli) {
       # Fail-closed yazma yetkisi: katılımcı + içerik erişimi + rol yetkisi.
@@ -207,6 +212,19 @@ ortak_db_uretim_kilidi_al <- function(oturum_id,
     return(FALSE)
   }
   on.exit(.oo_db_release(handle), add = TRUE)
+
+  if (!.oo_db_oturum_aktif_mi(handle$conn, oturum_id)) {
+    .oo_db_log_warn("Aktif olmayan ortak oturumda üretim kilidi reddedildi. Oturum:", oturum_id)
+    return(FALSE)
+  }
+
+  katilimci <- ortak_db_katilimci_getir(oturum_id, baslatan, conn = handle$conn)
+  if (is.null(katilimci) ||
+      !ortak_icerik_erisimi_var_mi(katilimci$KatilimDurumu[1]) ||
+      !ortak_yetki_var_mi(katilimci$Rol[1], "yapay_zeka_sor")) {
+    .oo_db_log_warn("Ortak oturum üretim kilidi yetki nedeniyle reddedildi. Oturum:", oturum_id)
+    return(FALSE)
+  }
 
   .oo_db_try({
     DBI::dbWithTransaction(handle$conn, {
