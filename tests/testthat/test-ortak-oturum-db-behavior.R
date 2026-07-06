@@ -124,6 +124,17 @@ local({
       UNIQUE (OrtakOturumID, MesajSirasi)
     )")
   DBI::dbExecute(conn, "
+    CREATE TABLE MB_OrtakOturum_YapayZekaKuyrugu (
+      KuyrukID INTEGER PRIMARY KEY AUTOINCREMENT,
+      OrtakOturumID INTEGER NOT NULL,
+      OrtakMesajID INTEGER NOT NULL,
+      SiraNo INTEGER NOT NULL,
+      Durum TEXT NOT NULL,
+      OlusturmaZamani TEXT,
+      BaslamaZamani TEXT,
+      BitisZamani TEXT
+    )")
+  DBI::dbExecute(conn, "
     CREATE TABLE MB_OrtakOturum_AktifUretimler (
       OrtakOturumID INTEGER PRIMARY KEY,
       BaslatanKullaniciID INTEGER NOT NULL, OrtakMesajID INTEGER,
@@ -344,6 +355,12 @@ test_that("üretim kilidi oda başına tektir ve yalnızca sahibi bırakır", {
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   oturum_id <- ortak_db_oturum_olustur("NormalSohbet", "Kilit Testi", 1L, conn = conn)
+  ortak_db_katilimci_ekle(
+    oturum_id, 2L, "Katılımcı",
+    davet_eden_kullanici_id = 1L,
+    katilim_durumu = "Katıldı",
+    conn = conn
+  )
 
   expect_false(ortak_db_aktif_uretim_var_mi(oturum_id, conn = conn))
   expect_true(ortak_db_uretim_kilidi_al(oturum_id, 1L, "istek_a", conn = conn))
