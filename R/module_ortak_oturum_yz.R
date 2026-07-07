@@ -201,8 +201,35 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
       ))
     }
 
-    # LLM bağlamı: yalnızca YZ soru/yanıt geçmişi (oda mesajları girmez).
-    gecmis <- ortak_yz_sohbet_gecmisi(ortak_db_mesajlari_getir(oturum_id, soran_id))
+	# LLM bağlamı: yalnızca bu soruya kadar olan YZ soru/yanıt geçmişi.
+	# Kuyrukta arkadan gelen YapayZekaSorusu satırları henüz yanıtlanmadığı için
+	# bu üretimin bağlamına girmemeli.
+	mesaj_df <- ortak_db_mesajlari_getir(oturum_id, soran_id)
+
+	if (is.data.frame(mesaj_df) &&
+		nrow(mesaj_df) > 0L &&
+		all(c("OrtakMesajID", "MesajSirasi") %in% names(mesaj_df))) {
+	  aktif_soru <- mesaj_df[
+		as.character(mesaj_df$OrtakMesajID) == as.character(soru_id),
+		,
+		drop = FALSE
+	  ]
+
+	  if (nrow(aktif_soru) > 0L) {
+		soru_sirasi <- suppressWarnings(as.numeric(aktif_soru$MesajSirasi[1]))
+		mesaj_siralari <- suppressWarnings(as.numeric(mesaj_df$MesajSirasi))
+
+		if (!is.na(soru_sirasi)) {
+		  mesaj_df <- mesaj_df[
+			!is.na(mesaj_siralari) & mesaj_siralari <= soru_sirasi,
+			,
+			drop = FALSE
+		  ]
+		}
+	  }
+	}
+
+	gecmis <- ortak_yz_sohbet_gecmisi(mesaj_df)
 
     ayarlar <- list(
       model_selection = etkin_model(),
