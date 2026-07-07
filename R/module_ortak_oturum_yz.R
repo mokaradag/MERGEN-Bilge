@@ -417,21 +417,31 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 
   # --- Üretim durumu paneli: süren üretim + kısmi yanıt + kuyruk ----------------
 
-  output$uretim_durumu_alani <- renderUI({
-    ctx$yenile_sayaci()
-    oturum_id <- ctx$aktif_oturum()
-    if (is.null(oturum_id)) {
-      return(NULL)
-    }
+	output$uretim_durumu_alani <- renderUI({
+	  ctx$yenile_sayaci()
+	  oturum_id <- ctx$aktif_oturum()
+	  if (is.null(oturum_id)) {
+		return(NULL)
+	  }
 
-    detay <- ortak_db_aktif_uretim_detay(oturum_id)
-    calisiyor <- !is.null(detay) && identical(as.character(detay$KilitDurumu[1]), "Çalışıyor")
-    bekleyenler <- ortak_db_kuyruk_bekleyenler(oturum_id)
-    bekleyen_var <- is.data.frame(bekleyenler) && nrow(bekleyenler) > 0L
+	  # P2 privacy guard: active production details and queue contents are room
+	  # content. A user who was removed while the room is still open must not keep
+	  # seeing partial answers, asker names, or queued question snippets.
+	  katilim <- ctx$benim_katilimim()
+	  if (is.null(katilim) ||
+		  !ortak_icerik_erisimi_var_mi(katilim$KatilimDurumu[1]) ||
+		  !ortak_yetki_var_mi(katilim$Rol[1], "oku")) {
+		return(NULL)
+	  }
 
-    if (!calisiyor && !bekleyen_var) {
-      return(NULL)
-    }
+	  detay <- ortak_db_aktif_uretim_detay(oturum_id)
+	  calisiyor <- !is.null(detay) && identical(as.character(detay$KilitDurumu[1]), "Çalışıyor")
+	  bekleyenler <- ortak_db_kuyruk_bekleyenler(oturum_id)
+	  bekleyen_var <- is.data.frame(bekleyenler) && nrow(bekleyenler) > 0L
+
+	  if (!calisiyor && !bekleyen_var) {
+		return(NULL)
+	  }
 
     kismi_alani <- NULL
     durum_metni <- NULL
