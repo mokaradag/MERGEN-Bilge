@@ -90,11 +90,14 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
       motor$uret(oturum_id, soru_id, uid, istek_id, metin)
     } else {
       kuyruk_id <- ortak_db_kuyruk_ekle(oturum_id, soru_id)
-      if (is.null(kuyruk_id)) {
-        ctx$bildir("Yanıt üretimi sürüyor; sorunuz sıraya alınamadı, lütfen tekrar deneyin.", tur = "warning")
-      } else {
-        ctx$bildir("Yanıt üretimi sürüyor; sorunuz sıraya alındı ve otomatik yanıtlanacak.")
-      }
+		if (is.null(kuyruk_id)) {
+		  ctx$bildir(
+			"Yanıt üretimi sürüyor; sorunuz kalıcı kuyruğa alınamadı ve yapay zekâ bağlamından çıkarıldı. Lütfen yeniden gönderin.",
+			tur = "warning"
+		  )
+		} else {
+		  ctx$bildir("Yanıt üretimi sürüyor; sorunuz sıraya alındı ve otomatik yanıtlanacak.")
+		}
       ctx$yenile()
     }
 
