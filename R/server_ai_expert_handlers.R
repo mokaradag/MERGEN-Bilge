@@ -366,8 +366,14 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     page <- input$tabs
     ai_expert$set_page(page)
 
-    # Yasaklı sayfalarda konuşma
-    muted <- c("settings_kisisel", "admin_analytics", "health")
+    # Yasaklı sayfalarda konuşma. Ortak Çalışmalar sayfaları da (ortak_calismalar
+    # / ortak_sohbetler / ortak_bilge_yolac) SESSİZDİR: ortak yüzeylerde asla
+    # otomatik AI Uzman konuşması/altyazısı tetiklenmez ve bu sayfalara geçişte
+    # aktif konuşma nazikçe durdurulur.
+    muted <- c(
+      "settings_kisisel", "admin_analytics", "health",
+      "ortak_calismalar", "ortak_sohbetler", "ortak_bilge_yolac"
+    )
     if (page %in% muted) {
       # Yasaklı sayfaya geçişte aktif AI Uzman konuşması varsa onu nazikçe durdur.
       # Özellikle Kişiselleştirme sayfasında kullanıcı karakter seçimi yaptığında

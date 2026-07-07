@@ -68,17 +68,23 @@ ortakCalismalarUI <- function(id, sayfa = "hub") {
 
       if (identical(sayfa, "hub")) {
         tagList(
+          # Filtre butonları ve liste yalnızca oda KAPALIYKEN görünür; oda
+          # açıkken CSS (.oo-oda-acik) bunları gizler, böylece aktif oda
+          # dikeyde tüm alanı kullanır (bkz. hub_oda_acik observer).
           div(
-            class = "oo-hub-filtreler",
-            radioButtons(
-              ns("hub_filtre"),
-              label = NULL,
-              choices = c("Tümü", "Davetlerim", "Arşivlenmiş Ortak Oturumlar"),
-              selected = "Tümü",
-              inline = TRUE
-            )
+            class = "oo-hub-liste-alani",
+            div(
+              class = "oo-hub-filtreler",
+              radioButtons(
+                ns("hub_filtre"),
+                label = NULL,
+                choices = c("Tümü", "Davetlerim", "Arşivlenmiş Ortak Oturumlar"),
+                selected = "Tümü",
+                inline = TRUE
+              )
+            ),
+            div(class = "oo-oturum-listesi", uiOutput(ns("liste_hub")))
           ),
-          div(class = "oo-oturum-listesi", uiOutput(ns("liste_hub"))),
           uiOutput(ns("oda_alani"))
         )
       } else if (identical(sayfa, "sohbet")) {
@@ -455,6 +461,17 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       ortakOturumRoomUI(ns("oda"))
     })
 
+    # Oda açık/kapalı durumunu hub kabuğuna CSS sınıfı olarak yansıt: oda
+    # açıkken üstteki filtre butonları ve liste gizlenir (dikey alan aktif
+    # odaya kalır), oda kapanınca geri gelir.
+    observeEvent(aktif_oturum(), {
+      acik <- !is.null(aktif_oturum())
+      shinyjs::runjs(sprintf(
+        "(function(){var k=document.querySelector('.ortak-calismalar-container[data-oo-sayfa=\"hub\"]');if(k){k.classList.toggle('oo-oda-acik', %s);}})();",
+        if (acik) "true" else "false"
+      ))
+    }, ignoreNULL = FALSE)
+
     # --- Kart eylemleri ---------------------------------------------------------
 
     observeEvent(input$oturum_ac, {
@@ -487,8 +504,39 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       oturum_id <- suppressWarnings(as.integer(input$oturum_geri_yukle$id))
       req(!is.na(oturum_id))
 
-      ortak_db_kullanici_gorunum_guncelle(oturum_id, gecerli_kullanici(), "Görünüyor")
-      oo_hub_bildir("Ortak oturum listenize geri yüklendi.")
+      uid <- gecerli_kullanici()
+
+      # Her zaman kullanıcı görünümünü geri getir.
+      ortak_db_kullanici_gorunum_guncelle(oturum_id, uid, "Görünüyor")
+
+      # Oda düzeyi arşiv (Arşivlendi/Kapandı) ise: yetkili kullanıcı (Sahip)
+      # odayı herkes için yeniden Aktif yapar. Yetkisi yoksa yalnızca kendi
+      # görünümü geri gelir ve durum açıkça bildirilir.
+      bilgi <- ortak_db_oturum_getir(oturum_id)
+      oda_arsivli <- !is.null(bilgi) &&
+        as.character(bilgi$OturumDurumu[1]) %in% c("Arşivlendi", "Kapandı")
+
+      if (oda_arsivli) {
+        katilim <- ortak_db_katilimci_getir(oturum_id, uid)
+        yetkili <- !is.null(katilim) && ortak_yetki_var_mi(katilim$Rol[1], "oturum_kapat")
+
+        if (yetkili) {
+          if (isTRUE(ortak_db_oturum_durum_guncelle(oturum_id, uid, "Aktif"))) {
+            ortak_db_olay_ekle(oturum_id, "OturumGeriYüklendi", uid)
+            oo_hub_bildir("Ortak oturum herkes için geri yüklendi (yeniden aktif).")
+          } else {
+            oo_hub_bildir("Ortak oturum geri yüklenemedi.", tur = "error")
+          }
+        } else {
+          oo_hub_bildir(
+            "Bu oda tüm katılımcılar için arşivlendi; yalnızca Sahip yeniden aktifleştirebilir. Kendi listenizden gizlemeyi kaldırdınız.",
+            tur = "warning"
+          )
+        }
+      } else {
+        oo_hub_bildir("Ortak oturum listenize geri yüklendi.")
+      }
+
       yenile("geri_yukle")
     })
 
@@ -612,9 +660,96 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
 
       ortak_db_olay_ekle(oturum_id, "KullanıcıKatıldı", uid)
       removeModal()
+
+      paylasim <- as.character(input$yeni_paylasim_tipi %||% "")[1]
+
+      # Geçmiş kopyalama açık onaylı bir adımdır: "GeçmişKopyasıAktarıldı"
+      # seçildiyse hemen odaya girmeden ÖNCE kişisel söyleşi seçtiren onay
+      # modalı açılır (kaynak kişisel kayıt DEĞİŞMEZ).
+      if (identical(kaynak, "NormalSohbet") &&
+          identical(paylasim, "GeçmişKopyasıAktarıldı")) {
+        gecmis_kopya_hedef_oturum(oturum_id)
+        oo_hub_bildir("Ortak oturum oluşturuldu. Kopyalanacak kişisel söyleşiyi seçin.")
+        gecmis_kopya_modali_ac(oturum_id)
+        yenile("olusturuldu")
+        return(invisible(NULL))
+      }
+
       oo_hub_bildir("Ortak oturum oluşturuldu.")
       aktif_oturum(oturum_id)
       yenile("olusturuldu")
+    })
+
+    # --- Kişisel geçmiş kopyalama (açık onaylı) --------------------------------
+
+    gecmis_kopya_hedef_oturum <- reactiveVal(NULL)
+
+    gecmis_kopya_modali_ac <- function(oturum_id) {
+      uid <- gecerli_kullanici()
+      sohbetler <- tryCatch(
+        load_chats_preview_from_db(uid, limit = 30L),
+        error = function(e) list()
+      )
+
+      secenekler <- list()
+      if (length(sohbetler) > 0L) {
+        for (s in sohbetler) {
+          cid <- suppressWarnings(as.integer(s$id %||% s$chat_id %||% NA_integer_))
+          baslik <- as.character(s$title %||% s$name %||% "Söyleşi")[1]
+          if (!is.na(cid)) {
+            secenekler[[baslik]] <- cid
+          }
+        }
+      }
+
+      showModal(modalDialog(
+        title = "Kişisel Söyleşi Geçmişini Kopyala",
+        if (length(secenekler) == 0L) {
+          p("Kopyalanabilir kişisel söyleşiniz bulunamadı. Odaya boş başlayabilirsiniz.")
+        } else {
+          tagList(
+            p(class = "oo-kopya-notu",
+              "Seçtiğiniz kişisel söyleşinin bir KOPYASI ortak oturuma aktarılır. Kaynak kişisel kaydınız değişmez."),
+            selectInput(
+              ns("gecmis_kopya_chat"),
+              label = "Kopyalanacak söyleşi",
+              choices = secenekler,
+              selectize = FALSE
+            )
+          )
+        },
+        footer = tagList(
+          if (length(secenekler) > 0L) {
+            actionButton(ns("gecmis_kopya_onayla"), tagList(icon("copy"), span("Kopyala ve Odaya Gir")),
+                         class = "btn-primary")
+          } else {
+            NULL
+          },
+          actionButton(ns("gecmis_kopya_atla"), "Boş Başla")
+        )
+      ))
+    }
+
+    observeEvent(input$gecmis_kopya_onayla, {
+      oturum_id <- gecmis_kopya_hedef_oturum()
+      chat_id <- suppressWarnings(as.integer(input$gecmis_kopya_chat))
+      req(!is.null(oturum_id), !is.na(chat_id))
+
+      sonuc <- ortak_db_gecmis_kopyala(oturum_id, gecerli_kullanici(), chat_id)
+      oo_hub_bildir(sonuc$mesaj, tur = if (isTRUE(sonuc$basarili)) "message" else "warning")
+
+      removeModal()
+      aktif_oturum(oturum_id)
+      yenile("gecmis_kopyalandi")
+    })
+
+    observeEvent(input$gecmis_kopya_atla, {
+      oturum_id <- gecmis_kopya_hedef_oturum()
+      removeModal()
+      if (!is.null(oturum_id)) {
+        aktif_oturum(oturum_id)
+      }
+      yenile("gecmis_atlandi")
     })
 
     list(

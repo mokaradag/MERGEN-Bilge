@@ -26,6 +26,7 @@ ortakOturumRoomServer <- function(id,
 
     yenile_sayaci <- reactiveVal(0L)
     yonetilen_kullanici <- reactiveVal(NULL)
+    secili_model <- reactiveVal("")
 
     oo_bildir <- function(mesaj, tur = "message") {
       shiny::showNotification(mesaj, type = tur, duration = 6)
@@ -41,6 +42,15 @@ ortakOturumRoomServer <- function(id,
       invalidateLater(4000, session)
       oo_yenile()
     })
+
+    # Oda değiştiğinde model seçimini oturum kaydından çöz (varsa).
+    observeEvent(aktif_oturum(), {
+      oturum_id <- aktif_oturum()
+      secili_model("")
+      if (is.null(oturum_id)) {
+        return(invisible(NULL))
+      }
+    }, ignoreNULL = FALSE)
 
     oturum_bilgisi <- reactive({
       yenile_sayaci()
@@ -104,6 +114,24 @@ ortakOturumRoomServer <- function(id,
         return("ÇevrimDışı")
       }
       as.character(satir$CanliDurum[1])
+    }
+
+    # Kullanıcı şu an BU odaya mı bakıyor? (yeşil "bu odada" göstergesi için)
+    kullanici_bu_odada_mi <- function(kullanici_id) {
+      durumlar <- canli_durumlar()
+      oturum_id <- aktif_oturum()
+      if (is.null(oturum_id) || !is.data.frame(durumlar) || nrow(durumlar) == 0L ||
+          !"SonGorulenOrtakOturumID" %in% names(durumlar)) {
+        return(FALSE)
+      }
+      satir <- durumlar[durumlar$KullaniciID == kullanici_id, , drop = FALSE]
+      if (nrow(satir) == 0L) {
+        return(FALSE)
+      }
+      identical(
+        suppressWarnings(as.integer(satir$SonGorulenOrtakOturumID[1])),
+        suppressWarnings(as.integer(oturum_id))
+      ) && identical(as.character(satir$CanliDurum[1]), "Çevrimİçi")
     }
 
     # --- Oda başlığı --------------------------------------------------------
@@ -189,11 +217,55 @@ ortakOturumRoomServer <- function(id,
 
         div(
           class = "oo-katilimci-satir",
-          oo_katilimci_html(satir, canli_durum = durum),
+          oo_katilimci_html(
+            satir,
+            canli_durum = durum,
+            ayni_odada = kullanici_bu_odada_mi(as.integer(satir$KullaniciID[1]))
+          ),
           yonet_dugmesi
         )
       }))
     })
+
+    # Odanın etkin AI modelini seçen kompakt açılır menü (Yapılandırma'ya
+    # gitmeden değiştirilir; ana uygulamayla aynı model listesini kullanır).
+    output$oda_model_secim_alani <- renderUI({
+      katilim <- benim_katilimim()
+      if (is.null(katilim) || !ortak_yetki_var_mi(katilim$Rol[1], "yapay_zeka_sor")) {
+        return(NULL)
+      }
+
+      modeller <- if (exists("api_config", inherits = TRUE)) {
+        as.character(api_config$local_models %||% character(0))
+      } else {
+        character(0)
+      }
+      modeller <- modeller[nzchar(modeller)]
+
+      if (length(modeller) == 0L) {
+        return(tags$span(class = "oo-composer-model-yok", "Varsayılan model"))
+      }
+
+      secili <- as.character(secili_model() %||% "")[1]
+      if (!nzchar(secili)) {
+        secili <- modeller[1]
+      }
+
+      selectInput(
+        ns("oda_model_secimi"),
+        label = NULL,
+        choices = modeller,
+        selected = secili,
+        width = "220px"
+      )
+    })
+
+    observeEvent(input$oda_model_secimi, {
+      deger <- as.character(input$oda_model_secimi %||% "")[1]
+      if (nzchar(deger)) {
+        secili_model(deger)
+      }
+    }, ignoreInit = TRUE)
 
     output$belgeler_alani <- renderUI({
       df <- belgeler()
@@ -210,21 +282,8 @@ ortakOturumRoomServer <- function(id,
       }))
     })
 
-    output$uretim_durumu_alani <- renderUI({
-      yenile_sayaci()
-      oturum_id <- aktif_oturum()
-      if (is.null(oturum_id) || !ortak_db_aktif_uretim_var_mi(oturum_id)) {
-        return(NULL)
-      }
-
-      div(
-        class = "oo-uretim-durumu",
-        role = "status",
-        `aria-live` = "polite",
-        icon("spinner", class = "fa-spin"),
-        span("Yanıt üretimi sürüyor; tamamlanınca tüm katılımcılar görecek.")
-      )
-    })
+    # NOT: uretim_durumu_alani çıktısı (süren üretim + kısmi yanıt + kuyruk)
+    # yapay zekâ üretim motoruna (ortakOturumYzBind) taşınmıştır.
 
     output$composer_uyari_alani <- renderUI({
       katilim <- benim_katilimim()
@@ -279,6 +338,28 @@ ortakOturumRoomServer <- function(id,
       oo_yenile()
     })
 
+    # Yapay zekâ üretim motoru (soru gönderme + kuyruk + artımlı yayın +
+    # BilgeYolaç köprüsü) ayrı bağlayıcıdadır; motor nesnesi paylaşılan
+    # eylem yüzeyidir. yapay_zekaya_sor eylemi soruyu motora devreder.
+    motor <- new.env(parent = emptyenv())
+
+    oda_ctx <- list(
+      aktif_oturum = aktif_oturum,
+      current_user_id = current_user_id,
+      oturum_bilgisi = oturum_bilgisi,
+      benim_katilimim = benim_katilimim,
+      katilimcilar = katilimcilar,
+      kullanici_canli_durumu = kullanici_canli_durumu,
+      yenile_sayaci = yenile_sayaci,
+      secili_model = secili_model,
+      parent_session = parent_session,
+      bildir = oo_bildir,
+      yenile = oo_yenile
+    )
+
+    ortakOturumYzBind(input, output, session, ctx = oda_ctx, motor = motor)
+    ortakOturumBilgeYolacBind(input, output, session, ctx = oda_ctx, motor = motor)
+
     observeEvent(input$yapay_zekaya_sor, {
       oturum_id <- aktif_oturum()
       req(oturum_id)
@@ -288,156 +369,13 @@ ortakOturumRoomServer <- function(id,
         return(invisible(NULL))
       }
 
-      istek_id <- paste0(
-        "oo_", oturum_id, "_",
-        format(Sys.time(), "%Y%m%d%H%M%S"), "_",
-        sample.int(999999L, 1L)
-      )
-
-      if (!ortak_db_uretim_kilidi_al(
-        oturum_id = oturum_id,
-        baslatan_kullanici_id = current_user_id(),
-        istek_id = istek_id
-      )) {
-        oo_bildir("Yanıt üretimi sürüyor; lütfen mevcut yanıt tamamlanınca tekrar deneyin.", tur = "warning")
-        return(invisible(NULL))
-      }
-
-      soru_id <- ortak_db_mesaj_ekle(
-        oturum_id = oturum_id,
-        gonderen_kullanici_id = current_user_id(),
-        mesaj_turu = "YapayZekaSorusu",
-        mesaj_metni = metin,
-        llm_gonderildi = TRUE
-      )
-
-      if (is.null(soru_id)) {
-        ortak_db_uretim_kilidi_birak(oturum_id, istek_id, sonuc_durumu = "İptalEdildi")
-        oo_bildir("Soru gönderilemedi: bu odada yapay zekâya sorma yetkiniz yok.", tur = "error")
-        return(invisible(NULL))
-      }
-
-      ortak_db_uretim_kilidi_mesaj_bagla(
-        oturum_id = oturum_id,
-        istek_id = istek_id,
-        mesaj_id = soru_id
-      )
-
       updateTextAreaInput(session, "oda_mesaj_metni", value = "")
-      oo_yenile()
-
-      yz_yaniti_uret(oturum_id, soru_id, current_user_id(), istek_id)
+      motor$soru_gonder(oturum_id, current_user_id(), metin)
     })
-
-    # Yapay zekâ yanıtı: oda başına TEK üretim; kilit DB'de tutulur. LLM çağrısı
-    # worker'da koşar; kalıcılık ve kilit bırakma ana süreçte yapılır.
-    yz_yaniti_uret <- function(oturum_id, soru_id, soran_kullanici_id, istek_id) {
-      istek_id <- as.character(istek_id %||% "")[1]
-      if (!nzchar(istek_id)) {
-        oo_bildir("Yanıt üretimi başlatılamadı: geçersiz istek kimliği.", tur = "error")
-        return(invisible(NULL))
-      }
-
-      ortak_db_olay_ekle(oturum_id, "YanıtBaşladı", soran_kullanici_id)
-
-      tamamla <- function(yanit_metni, hata_metni = NULL) {
-        if (!is.null(hata_metni)) {
-          ortak_db_mesaj_ekle(
-            oturum_id = oturum_id,
-            gonderen_kullanici_id = NULL,
-            mesaj_turu = "SistemMesajı",
-            mesaj_metni = hata_metni
-          )
-          ortak_db_uretim_kilidi_birak(oturum_id, istek_id, sonuc_durumu = "Hata")
-        } else {
-          ortak_db_mesaj_ekle(
-            oturum_id = oturum_id,
-            gonderen_kullanici_id = NULL,
-            mesaj_turu = "YapayZekaYanıtı",
-            mesaj_metni = yanit_metni,
-            bagli_mesaj_id = soru_id
-          )
-          ortak_db_uretim_kilidi_birak(oturum_id, istek_id, sonuc_durumu = "Tamamlandı")
-          ortak_db_olay_ekle(oturum_id, "YanıtTamamlandı", soran_kullanici_id)
-        }
-        oo_yenile()
-        invisible(NULL)
-      }
-
-      if (!exists("call_local_llm", mode = "function", inherits = TRUE)) {
-        return(tamamla(NULL, hata_metni = "Yapay zekâ hizmeti bu ortamda yapılandırılmamış."))
-      }
-
-      # LLM bağlamı: yalnızca YZ soru/yanıt geçmişi (oda mesajları girmez).
-      gecmis <- ortak_yz_sohbet_gecmisi(ortak_db_mesajlari_getir(oturum_id, soran_kullanici_id))
-
-      model_id <- Sys.getenv("ORTAK_OTURUM_MODEL", unset = "")
-      if (!nzchar(model_id) && exists("api_config", inherits = TRUE)) {
-        model_id <- as.character(api_config$local_models[1] %||% "")
-      }
-
-      anahtar <- ""
-      if (exists("mb_api_key_get_feature_key_value", mode = "function", inherits = TRUE)) {
-        anahtar <- mb_api_key_get_feature_key_value(session = parent_session %||% session)
-      }
-
-      ayarlar <- list(
-        model_selection = model_id,
-        temperature = 0.4,
-        enable_mcp_tools = FALSE,
-        api_key_override = anahtar
-      )
-
-      if (exists("tracked_future_promise", mode = "function", inherits = TRUE)) {
-        prom <- tracked_future_promise(
-          task_fn = function() {
-            call_local_llm(gecmis, ayarlar)
-          },
-          task_type = "ortak_oturum_llm",
-          session_token = session$token
-        )
-
-        promises::then(
-          prom,
-          onFulfilled = function(yanit) {
-            icerik <- as.character(yanit$content %||% "")[1]
-            if (nzchar(icerik)) {
-              tamamla(icerik)
-            } else {
-              tamamla(NULL, hata_metni = "Yapay zekâ boş yanıt döndürdü; lütfen tekrar deneyin.")
-            }
-          },
-          onRejected = function(e) {
-            tamamla(NULL, hata_metni = "Yapay zekâ yanıtı üretilemedi; lütfen tekrar deneyin.")
-          }
-        )
-      } else {
-        # Yedek yol (worker altyapısı olmayan izole bağlamlar): eşzamanlı çağrı.
-        yanit <- tryCatch(call_local_llm(gecmis, ayarlar), error = function(e) NULL)
-        icerik <- as.character(yanit$content %||% "")[1]
-        if (nzchar(icerik)) {
-          tamamla(icerik)
-        } else {
-          tamamla(NULL, hata_metni = "Yapay zekâ yanıtı üretilemedi; lütfen tekrar deneyin.")
-        }
-      }
-
-      invisible(NULL)
-    }
 
     # --- Katılımcı çağırma paneli (ayrı bağlayıcı dosyada) ---------------------
 
-    ortakOturumInvitesBind(input, output, session, ctx = list(
-      aktif_oturum = aktif_oturum,
-      current_user_id = current_user_id,
-      oturum_bilgisi = oturum_bilgisi,
-      benim_katilimim = benim_katilimim,
-      katilimcilar = katilimcilar,
-      kullanici_canli_durumu = kullanici_canli_durumu,
-      yenile_sayaci = yenile_sayaci,
-      bildir = oo_bildir,
-      yenile = oo_yenile
-    ))
+    ortakOturumInvitesBind(input, output, session, ctx = oda_ctx)
 
     # --- Oda yönetim eylemleri: tutanak indirme + herkes için arşivleme ----------
 
@@ -507,21 +445,45 @@ ortakOturumRoomServer <- function(id,
       sahibim <- !is.null(katilim) &&
         identical(katilim$Rol[1], ortak_oturum_rolleri()[1])
 
+      katilim_listesi <- katilimcilar()
+      hedef_ad <- if (is.data.frame(katilim_listesi) && nrow(katilim_listesi) > 0L) {
+        eslesen <- katilim_listesi[katilim_listesi$KullaniciID == hedef_id, , drop = FALSE]
+        if (nrow(eslesen) > 0L) as.character(eslesen$KaynakAdi[1] %||% "") else ""
+      } else {
+        ""
+      }
+
       showModal(modalDialog(
         title = "Katılımcıyı Yönet",
-        selectInput(
-          ns("yeni_rol"),
-          label = "Rol",
-          choices = c("OturumYöneticisi", "Katılımcı", "İzleyici")
-        ),
-        footer = tagList(
-          actionButton(ns("rol_kaydet"), "Rol Değiştir", class = "btn-primary"),
-          if (sahibim) {
-            actionButton(ns("sahiplik_devret"), "Sahipliği Devret", class = "btn-warning")
+        size = "m",
+        div(
+          class = "oo-katilimci-yonet-modal",
+          if (nzchar(hedef_ad)) {
+            p(class = "oo-yonet-hedef",
+              tagList(icon("user"), tags$strong(HTML(htmltools::htmlEscape(hedef_ad)))))
           } else {
             NULL
           },
-          actionButton(ns("katilimci_cikar"), "Çıkar", class = "btn-danger"),
+          selectInput(
+            ns("yeni_rol"),
+            label = "Rol",
+            choices = ortak_rol_secenekleri(),
+            selectize = FALSE
+          ),
+          p(class = "oo-yonet-notu",
+            "Rol değişikliği veya çıkarma işlemi anında uygulanır.")
+        ),
+        footer = tagList(
+          actionButton(ns("rol_kaydet"), tagList(icon("save"), span("Rol Değiştir")),
+                       class = "oo-oda-btn oo-oda-btn-birincil"),
+          if (sahibim) {
+            actionButton(ns("sahiplik_devret"), tagList(icon("crown"), span("Sahipliği Devret")),
+                         class = "oo-oda-btn oo-oda-btn-uyari")
+          } else {
+            NULL
+          },
+          actionButton(ns("katilimci_cikar"), tagList(icon("user-minus"), span("Çıkar")),
+                       class = "oo-oda-btn oo-oda-btn-tehlike"),
           modalButton("Vazgeç")
         )
       ))
@@ -534,7 +496,7 @@ ortakOturumRoomServer <- function(id,
 
       if (isTRUE(ortak_db_sahiplik_devret(oturum_id, current_user_id(), hedef_id))) {
         ortak_db_olay_ekle(oturum_id, "SahiplikDevredildi", current_user_id())
-        oo_bildir("Sahiplik devredildi; yeni rolünüz: OturumYöneticisi.")
+        oo_bildir("Sahiplik devredildi; yeni rolünüz: Oturum Yöneticisi.")
       } else {
         oo_bildir("Sahiplik devredilemedi: hedef katılımcı içerik erişimli olmalıdır.", tur = "error")
       }

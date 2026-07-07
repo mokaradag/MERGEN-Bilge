@@ -60,6 +60,20 @@ ortak_dosya_kopya_durumlari <- function() {
   c("Bekliyor", "Kopyalandı", "Reddetti", "Hata")
 }
 
+ortak_kuyruk_durumlari <- function() {
+  c("Bekliyor", "Çalışıyor", "Tamamlandı", "İptalEdildi", "Hata")
+}
+
+# Odada görünen (aktif) katılım durumları: Çıkarıldı/Ayrıldı/Reddetti satırları
+# katılımcı listesinde GÖSTERİLMEZ (kaldırma işleminin görünür etkisi).
+ortak_aktif_katilim_durumlari <- function() {
+  c("Katıldı", "DavetEdildi")
+}
+
+# NOT: Sunum-karar yardımcıları (ortak_rol_gorunen_ad, ortak_rol_secenekleri,
+# ortak_sunum_rozeti) R/helpers_ortak_oturum_sunum.R içindedir; bu dosya yetki
+# matrisi + iş kuralı sabitlerine odaklı kalır (maintainability ratchet).
+
 # Ortak oturum oluşturulurken kullanıcıya sunulan paylaşım başlangıç tipleri.
 # Varsayılan her zaman en güvenli seçenektir: mevcut kişisel geçmiş gizli kalır.
 ortak_paylasim_baslangic_tipleri <- function(kaynak_turu = "NormalSohbet") {
@@ -207,6 +221,19 @@ ortak_sunum_durumu <- function(son_kalp_atisi,
     return(durumlar[2])
   }
   durumlar[3]
+}
+
+# --- Ortak Bilge Yolaç yetki kararları --------------------------------------------------
+
+# Ortak çalışma alanında Bilge Yolaç çalıştırma: yapay_zeka_sor ile aynı satır.
+ortak_by_calistirabilir_mi <- function(rol) {
+  ortak_yetki_var_mi(rol, "yapay_zeka_sor")
+}
+
+# Ortak çalışma alanını DEĞİŞTİRME (klasör kopyalama/yükleme): yalnızca
+# Sahip ve Oturum Yöneticisi (katilimci_yonet yetkisiyle aynı küme).
+ortak_by_calisma_alani_yazabilir_mi <- function(rol) {
+  ortak_yetki_var_mi(rol, "katilimci_yonet")
 }
 
 # --- Liste görünürlük kuralları ------------------------------------------------------

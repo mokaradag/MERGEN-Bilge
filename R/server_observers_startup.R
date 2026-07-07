@@ -137,45 +137,81 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  )
 	}
 
-	session$userData$initial_saved_chats_promise <- promises::then(
-	  tracked_future_promise(
-		task_fn = function() {
-		  load_chats_from_db(effective_user_id, include_messages = FALSE)
-		},
-		task_type = "startup_saved_chats",
-		session_token = session$token
-	  ),
-		onFulfilled = function(chats) {
-		  startup_state$initial_saved_chats_status <- "done"
+	# Tam söyleşi listesi (mesajsız) arka plan yükleyicisi. Hızlı Başlangıç'ta
+	# bu iş AÇILIŞTA çalıştırılmaz: Ana Söyleşi'ye ön izleme (6 söyleşi) ile
+	# inilir; tam liste kullanıcı Kayıtlı Söyleşiler / Söyleşi Geçmişi'ni ilk
+	# açtığında TEMBEL yüklenir. Zengin şeritte mevcut davranış korunur.
+	run_full_saved_chats_load <- function() {
+	  session$userData$saved_chats_full_pending <- FALSE
 
-		  chats <- chats %||% list()
+	  session$userData$initial_saved_chats_promise <- promises::then(
+		tracked_future_promise(
+		  task_fn = function() {
+			load_chats_from_db(effective_user_id, include_messages = FALSE)
+		  },
+		  task_type = "startup_saved_chats",
+		  session_token = session$token
+		),
+		  onFulfilled = function(chats) {
+			startup_state$initial_saved_chats_status <- "done"
 
-		  # Promise geri çağrısı reaktif bağlam dışında çalışır; values
-		  # okumaları ve render_welcome_screen gibi reaktif değer
-		  # bağımlılıkları olan akışlar isolate ile sarmalanmalıdır. Aksi
-		  # halde "Can't access reactive value 'authenticated'" gibi
-		  # bağlam dışı reaktif okuma hataları üretebilir.
-		  shiny::isolate({
-			values$saved_chats <- chats
+			chats <- chats %||% list()
 
-			mark_boot(
-			  "saved_chats_full_loaded",
-			  "Tüm söyleşiler arka planda hazır",
-			  detail = list(count = length(chats))
-			)
+			# Promise geri çağrısı reaktif bağlam dışında çalışır; values
+			# okumaları ve render_welcome_screen gibi reaktif değer
+			# bağımlılıkları olan akışlar isolate ile sarmalanmalıdır. Aksi
+			# halde "Can't access reactive value 'authenticated'" gibi
+			# bağlam dışı reaktif okuma hataları üretebilir.
+			shiny::isolate({
+			  values$saved_chats <- chats
 
-			# Tam liste geldiğinde karşılama ekranını güncelle.
-			refresh_welcome_if_needed(chats)
-		  })
+			  mark_boot(
+				"saved_chats_full_loaded",
+				"Tüm söyleşiler arka planda hazır",
+				detail = list(count = length(chats))
+			  )
 
+			  # Tam liste geldiğinde karşılama ekranını güncelle.
+			  refresh_welcome_if_needed(chats)
+			})
+
+			NULL
+		  },
+		onRejected = function(err) {
+		  startup_state$initial_saved_chats_status <- "idle"
+		  warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))
 		  NULL
-		},
-	  onRejected = function(err) {
-		startup_state$initial_saved_chats_status <- "idle"
-		warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))
-		NULL
+		}
+	  )
+	}
+
+	fast_lane <- mergen_startup_lane_is_fast(session$userData$startup_lane)
+
+	if (isTRUE(fast_lane)) {
+	  # Hızlı şerit: tam yükleme ertelenir (kritik açılış yolunun dışında).
+	  startup_state$initial_saved_chats_status <- "deferred"
+	  session$userData$saved_chats_full_pending <- TRUE
+	  mark_boot(
+		"saved_chats_full_loaded",
+		"Söyleşi listesi gerektiğinde yüklenecek",
+		detail = list(deferred = TRUE, lane = "fast_lane")
+	  )
+	  cat("[STARTUP] Hızlı şerit: tam söyleşi listesi ertelendi (tembel yükleme).\n")
+	} else {
+	  run_full_saved_chats_load()
+	}
+
+	# Tembel tetikleyici: Hızlı şeritte kullanıcı Kayıtlı Söyleşiler / Söyleşi
+	# Geçmişi'ni ilk açtığında tam liste bir kez arka planda yüklenir.
+	observeEvent(input$tabs, {
+	  if (input$tabs %in% c("saved_chats", "history") &&
+		  isTRUE(session$userData$saved_chats_full_pending) &&
+		  identical(startup_state$initial_saved_chats_status, "deferred")) {
+		startup_state$initial_saved_chats_status <- "loading"
+		cat(sprintf("[STARTUP] Tembel tam söyleşi yükleme tetiklendi (sekme: %s).\n", input$tabs))
+		run_full_saved_chats_load()
 	  }
-	)
+	}, ignoreInit = TRUE)
   }
 
 	if (isTRUE(session$userData$sso_active)) {

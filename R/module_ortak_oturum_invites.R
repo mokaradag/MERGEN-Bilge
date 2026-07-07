@@ -91,8 +91,9 @@ ortakOturumInvitesBind <- function(input, output, session, ctx) {
         selectInput(
           ns("davet_rol"),
           label = "Atanacak Rol",
-          choices = c("Katılımcı", "OturumYöneticisi", "İzleyici"),
-          selected = "Katılımcı"
+          choices = ortak_rol_secenekleri(),
+          selected = "Katılımcı",
+          selectize = FALSE
         ),
         div(class = "oo-davet-listesi", uiOutput(ns("davet_kullanici_listesi")))
       ),
@@ -102,6 +103,10 @@ ortakOturumInvitesBind <- function(input, output, session, ctx) {
 
   output$davet_kullanici_listesi <- renderUI({
     ctx$yenile_sayaci()
+    # Modal açıkken canlı liste kendi kendine tazelensin (davet paneli ana oda
+    # 4 sn yoklamasına ek olarak; başka sekmedeki kullanıcılar hızlı görünür).
+    invalidateLater(6000, session)
+
     oturum_id <- ctx$aktif_oturum()
     req(oturum_id)
 
@@ -112,6 +117,8 @@ ortakOturumInvitesBind <- function(input, output, session, ctx) {
       return(div(class = "oo-bos-durum", p("Eşleşen kullanıcı bulunamadı.")))
     }
 
+    # Aktif satırlarla (Katıldı/DavetEdildi) mevcut davet/katılım durumu; çıkarılan
+    # kullanıcılar yeniden davet edilebilsin diye sadece_aktif = TRUE kullanılır.
     mevcutlar <- ortak_db_katilimci_listesi(oturum_id)
     benim_id <- as.integer(ctx$current_user_id())
 
@@ -133,7 +140,15 @@ ortakOturumInvitesBind <- function(input, output, session, ctx) {
         }
       }
 
-      if (identical(filtre, "Çevrim İçi Kullanıcılar") && !identical(durum, "Çevrimİçi")) {
+      # Zaten katılmış kullanıcı davet listesinde tekrar gösterilmez.
+      if (identical(mevcut_durum, "Katıldı")) {
+        return(NULL)
+      }
+
+      # "Çevrim İçi Kullanıcılar": uygulamada aktif olan (Çevrimİçi + Boşta)
+      # kullanıcılar; çevrim dışı olanlar bu görünümde gizlenir.
+      if (identical(filtre, "Çevrim İçi Kullanıcılar") &&
+          !(durum %in% c("Çevrimİçi", "Boşta"))) {
         return(NULL)
       }
       if (identical(filtre, "Davet Edilenler") && !identical(mevcut_durum, "DavetEdildi")) {
@@ -151,7 +166,13 @@ ortakOturumInvitesBind <- function(input, output, session, ctx) {
 
     satirlar <- Filter(Negate(is.null), satirlar)
     if (length(satirlar) == 0L) {
-      return(div(class = "oo-bos-durum", p("Bu görünümde gösterilecek kullanıcı yok.")))
+      bos_mesaj <- switch(
+        filtre,
+        "Çevrim İçi Kullanıcılar" = "Şu an çevrim içi başka kullanıcı yok. “Tüm Kullanıcılar” sekmesinden davet edebilirsiniz.",
+        "Davet Edilenler" = "Henüz bekleyen davet yok.",
+        "Gösterilecek kullanıcı yok."
+      )
+      return(div(class = "oo-bos-durum", icon("user-group"), p(bos_mesaj)))
     }
 
     tagList(satirlar)

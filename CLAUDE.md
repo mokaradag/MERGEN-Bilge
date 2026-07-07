@@ -2465,12 +2465,33 @@ Non-negotiable boundaries:
 - Invitation email is a DRAFT-ONLY mailto flow (`R/helpers_ortak_oturum_email.R`):
   no automatic sending, and the draft must stay content-free
   (`ortak_davet_eposta_guvenli_mi`). In-app calls go through `MB_Bildirimler`.
-- Keep the manifest section order intact: `ortak_oturumlar` (12 files, pure
-  helpers → DB layer → UI/invites/room/hub modules) loads after
-  `module_claude_code`, owned by the `sohbet_llm_akis` seam; frontend assets
-  `css/ortak_oturumlar.css` + `js/ortak_oturumlar.js` belong to the
+- Keep the manifest section order intact: `ortak_oturumlar` (17 files, pure
+  helpers → DB layer → UI/invites/AI-engine/Bilge-Yolaç-workbench/room/hub
+  modules) loads after `module_claude_code`, owned by the `sohbet_llm_akis`
+  seam; frontend assets `css/ortak_oturumlar.css` +
+  `css/ortak_oturumlar_bilge_yolac.css` + `js/ortak_oturumlar.js` belong to the
   `gecmis_kayit_arama` zone. The JS bridge uses delegated `data-oo-hedef-input`
-  clicks — never interpolate ids into CSS selectors.
+  clicks — never interpolate ids into CSS selectors. Pure presentation-decision
+  helpers (role label / online-status badge) live in
+  `R/helpers_ortak_oturum_sunum.R` (kept OUT of the authorization file to hold
+  the function ratchet); the Bilge Yolaç DB layer is split into
+  `R/helpers_ortak_oturum_db_bilge_yolac.R`; the AI queue / partial-broadcast /
+  history-copy DB layer is `R/helpers_ortak_oturum_db_kuyruk.R`; the AI
+  generation engine (question routing + persistent queue + incremental
+  broadcast + BY bridge) is `R/module_ortak_oturum_yz.R`; the shared BY
+  workbench (project dir / model tiers / scenarios / dir listing / plugins /
+  real `run_claude_code` bridge) is `R/module_ortak_oturum_bilge_yolac.R`.
+- No voice on Ortak pages: the AI generation engine never triggers TTS
+  ("Yanıtları Seslendir") and the AI Expert ("AI Uzman Konuşması") mutes on
+  `ortak_calismalar` / `ortak_sohbetler` / `ortak_bilge_yolac` (added to the
+  muted-pages set in `R/server_ai_expert_handlers.R`).
+- App-wide heartbeat: `www/js/ortak_oturumlar.js` sends the presence heartbeat
+  on EVERY page (not only Ortak pages) so all logged-in users are discoverable
+  as online; the module heartbeat observer still throttles server-side to 20s.
+- Removed participants disappear immediately:
+  `ortak_db_katilimci_listesi(sadece_aktif = TRUE)` filters
+  Çıkarıldı/Ayrıldı/Reddetti. Room-level archive "Geri Yükle" actually restores
+  (Sahip → `OturumDurumu = Aktif` for everyone).
 - DB writes follow the central encoding contract: visible text through
   `normalize_db_visible_value()`, Turkish enums through
   `normalize_db_technical_value()`, all binding through `normalize_db_params()`,
@@ -2481,6 +2502,7 @@ Protected by:
 
 - `tests/testthat/test-ortak-oturum-permissions-behavior.R`
 - `tests/testthat/test-ortak-oturum-db-behavior.R`
+- `tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R`
 - `tests/testthat/test-ortak-oturum-sql-contract.R`
 - `tests/testthat/test-ortak-oturum-ui-contract.R`
 
@@ -2488,14 +2510,21 @@ Focused validation:
 
 - `testthat::test_file("tests/testthat/test-ortak-oturum-permissions-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-db-behavior.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-sql-contract.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-ui-contract.R")`
 
-Known follow-ups (documented in `docs/ortak-oturumlar.md` §12): live shared
-Bilge Yolaç CLI bridge, real AI queue (schema ready), history-copy automation,
-shared token streaming, admin dashboard tab, real SMTP sending. VM-only proof:
-SQL Server Turkish at-rest checks and multi-user SSO room flow run on the
-Windows VM gates, not in cloud sessions.
+Completed follow-ups (this change set; see `docs/ortak-oturumlar.md` §12):
+live shared Bilge Yolaç CLI bridge (real `run_claude_code` in the shared
+workspace, feature-gated when the CLI is absent — no faked success), real AI
+queue (`MB_OrtakOturum_YapayZekaKuyrugu`), consent-based history copy
+(`ortak_db_gecmis_kopyala`), and incremental partial-answer broadcast
+(`MB_OrtakOturum_AktifUretimler.KismiYanit`, idempotent setup step 8b, graceful
+degradation on old schema). Remaining follow-ups: admin dashboard tab, real
+SMTP sending, direct token-token WebSocket push (currently 2s DB-poll
+broadcast). VM-only proof: SQL Server Turkish at-rest checks, the `KismiYanit`
+ALTER, the real CLI bridge, and multi-user SSO room flow run on the Windows VM
+gates, not in cloud sessions.
 
 ### Bilge Yolaç run lifecycle request-id contract
 

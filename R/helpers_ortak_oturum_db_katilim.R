@@ -51,7 +51,11 @@ ortak_db_katilimci_getir <- function(oturum_id, kullanici_id, conn = NULL) {
 #' Oturumun katılımcı listesi (kullanıcı görünen adlarıyla).
 #' Yalnızca içerik erişimi olan (Katıldı) istekli kullanıcılara sunulmalıdır;
 #' bu yetki denetimi çağıran modüldedir.
-ortak_db_katilimci_listesi <- function(oturum_id, conn = NULL) {
+#'
+#' @param sadece_aktif TRUE iken yalnızca aktif satırlar (Katıldı/DavetEdildi)
+#'   döner; Çıkarıldı/Ayrıldı/Reddetti satırları listede GÖRÜNMEZ. Böylece
+#'   "Çıkar" eylemi katılımcı listesinden anında düşer.
+ortak_db_katilimci_listesi <- function(oturum_id, conn = NULL, sadece_aktif = TRUE) {
   bos <- data.frame()
 
   oturum_id <- .oo_db_pos_int(oturum_id)
@@ -82,6 +86,11 @@ ortak_db_katilimci_listesi <- function(oturum_id, conn = NULL) {
     fallback = bos,
     uyari = "Ortak oturum katılımcı listesi okunamadı:"
   )
+
+  if (isTRUE(sadece_aktif) && is.data.frame(sonuc) && nrow(sonuc) > 0L &&
+      "KatilimDurumu" %in% names(sonuc)) {
+    sonuc <- sonuc[sonuc$KatilimDurumu %in% ortak_aktif_katilim_durumlari(), , drop = FALSE]
+  }
 
   .oo_db_restore_visible(sonuc, c("KaynakAdi"))
 }

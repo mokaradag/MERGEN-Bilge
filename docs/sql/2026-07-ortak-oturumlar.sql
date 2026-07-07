@@ -319,6 +319,18 @@ BEGIN
 END;
 GO
 
+-- 8b) Kısmi yanıt yayını (artımlı üretim ön izlemesi) --------------------------------
+-- KismiYanit kolonu, süren üretimin token-token ön izlemesini tutar; tüm
+-- katılımcılar yoklamayla görür. Idempotent: kolon yoksa eklenir. Uygulama
+-- katmanı kolon yoksa güvenli düşer (tryCatch); bu ALTER opsiyonel iyileştirmedir.
+IF OBJECT_ID(N'dbo.MB_OrtakOturum_AktifUretimler', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.MB_OrtakOturum_AktifUretimler', N'KismiYanit') IS NULL
+BEGIN
+    ALTER TABLE dbo.MB_OrtakOturum_AktifUretimler
+        ADD KismiYanit NVARCHAR(MAX) NULL;
+END;
+GO
+
 -- 9) Ortak Bilge Yolaç oturumları ----------------------------------------------------
 IF OBJECT_ID(N'dbo.MB_OrtakBilgeYolac_Oturumlar', N'U') IS NULL
 BEGIN

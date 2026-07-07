@@ -28,19 +28,26 @@ test_that("oda yazma ve yapay zekâ sorma eylemleri ayrı ve açıklamalıdır",
     ui_kaynak, fixed = TRUE, useBytes = TRUE
   ))
 
-  # Sunucu tarafında yalnızca YapayZekaSorusu LLM yoluna girer.
+  # Sunucu tarafında yapay zekâ sorusu ayrı üretim motoruna (motor$soru_gonder)
+  # devredilir; LLM üretim mantığı R/module_ortak_oturum_yz.R içindedir.
   oda_sunucu <- .oo_ui_oku(file.path(repo_root, "R", "module_ortak_oturum_room.R"))
-  expect_true(grepl("YapayZekaSorusu", oda_sunucu, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("yz_yaniti_uret", oda_sunucu, fixed = TRUE, useBytes = TRUE))
+  yz_motor <- .oo_ui_oku(file.path(repo_root, "R", "module_ortak_oturum_yz.R"))
+
+  expect_true(grepl("motor$soru_gonder", oda_sunucu, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("YapayZekaSorusu", yz_motor, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("ortak_db_uretim_kilidi_al", yz_motor, fixed = TRUE, useBytes = TRUE))
+  # Kilit doluyken soru kaybolmaz, kalıcı kuyruğa eklenir.
+  expect_true(grepl("ortak_db_kuyruk_ekle", yz_motor, fixed = TRUE, useBytes = TRUE))
 
   # OdaMesajı gözlemcisi LLM üretimini ÇAĞIRMAZ: odaya_yaz bloğu içinde
-  # yz_yaniti_uret geçmez (statik sınır kontrolü).
+  # yapay zekâ üretim motoru (motor$soru_gonder / YapayZekaSorusu) geçmez.
   odaya_yaz_blok <- regmatches(
     oda_sunucu,
     regexpr("observeEvent\\(input\\$odaya_yaz[\\s\\S]*?\\n    \\}\\)", oda_sunucu, perl = TRUE)
   )
   expect_length(odaya_yaz_blok, 1L)
-  expect_false(grepl("yz_yaniti_uret", odaya_yaz_blok, fixed = TRUE, useBytes = TRUE))
+  expect_false(grepl("motor$soru_gonder", odaya_yaz_blok, fixed = TRUE, useBytes = TRUE))
+  expect_false(grepl("YapayZekaSorusu", odaya_yaz_blok, fixed = TRUE, useBytes = TRUE))
 })
 
 test_that("davet paneli ve belge eylemleri sözleşmeli metinleri taşır", {
@@ -176,15 +183,20 @@ test_that("varlıklar manifest + bölge sahipliğinde; navigasyon sekmeleri bağ
 test_that("kaynak manifesti ortak_oturumlar bölümünü bağımlılık sırasıyla taşır", {
   beklenen_sira <- c(
     "R/helpers_ortak_oturum_permissions.R",
+    "R/helpers_ortak_oturum_sunum.R",
     "R/helpers_ortak_oturum_email.R",
     "R/helpers_ortak_oturum_db.R",
     "R/helpers_ortak_oturum_db_katilim.R",
     "R/helpers_ortak_oturum_db_davet.R",
     "R/helpers_ortak_oturum_db_mesajlar.R",
+    "R/helpers_ortak_oturum_db_bilge_yolac.R",
+    "R/helpers_ortak_oturum_db_kuyruk.R",
     "R/helpers_ortak_oturum_files.R",
     "R/helpers_ortak_oturum_bakim.R",
     "R/module_ortak_oturum_room_ui.R",
     "R/module_ortak_oturum_invites.R",
+    "R/module_ortak_oturum_yz.R",
+    "R/module_ortak_oturum_bilge_yolac.R",
     "R/module_ortak_oturum_room.R",
     "R/module_ortak_calismalar.R"
   )

@@ -302,28 +302,66 @@ Testler çevrimdışı ve deterministiktir: gerçek SQL Server, LLM, tarayıcı,
 veya ağ gerekmez. Gerçek SQL Server Türkçe yazma davranışı, VM'deki mevcut
 encoding preflight kapılarıyla doğrulanmalıdır (RUNBOOK).
 
-## 12. Bilinen Sınırlamalar ve Takip İşleri
+## 12. Tamamlanan Takip İşleri ve Kalan Sınırlamalar
 
-1. **Canlı ortak Bilge Yolaç çalıştırması:** Ortak BY oturumları için DB katmanı
-   (`ortak_db_by_*`), ortak belge deposu ve oda yüzeyi hazırdır; ancak Claude
-   Code CLI'ının doğrudan ortak oda içinden çalıştırılması bu sürümde
-   BAĞLANMAMIŞTIR. Kısa vadede akış: kişisel çalışma alanında koşan çalıştırma
-   sonuçları `ortak_db_by_calistirma_kaydet` + `ortak_db_dosya_kaydet` API'siyle
-   ortak odaya yazılabilir. CLI köprüsü ayrı bir değişiklik setidir.
-2. **Yapay zekâ kuyruğu:** Eşzamanlı soru MVP'de kuyruklanmaz; kilit + açık
-   "Yanıt üretimi sürüyor" mesajı uygulanır. `MB_OrtakOturum_YapayZekaKuyrugu`
-   şeması gerçek kuyruk için hazırdır.
-3. **Geçmiş kopyalama otomasyonu:** "Mevcut geçmişin kopyasını aktar" seçenekleri
-   kayıt düzeyinde saklanır; kişisel `MB_Messages`/`MB_ClaudeCode_Runs`
-   satırlarının ortak odaya kopyalanması ayrı, açık onaylı bir akış olarak
-   planlanmıştır.
-4. **Yanıt akışı (streaming):** Ortak odada yanıt, tamamlandığında yoklamayla
-   dağıtılır; token-token ortak yayın (broadcast streaming) takip işidir.
-5. **Yönetici panosu:** `ortak_db_istatistikler()` hazır; Yönetici Paneli'ne
+### 12.1 Tamamlanan takip işleri (bu değişiklik seti)
+
+1. **Canlı ortak Bilge Yolaç çalıştırması — BAĞLANDI.** Ortak BY odaları artık
+   tek kullanıcılı Bilge Yolaç deneyiminin ortak sürümüdür: Proje Dizini
+   (oda başına PAYLAŞILAN çalışma alanı, `ortak_oturumlar/oturum_<id>/calisma_alani/`),
+   model katmanları (Hızlı/Dengeli/Güçlü), Hazır Senaryolar, Dizin İçeriği,
+   Eklentiler (salt-okunur). "Yapay Zekâya Sor" bir BY odasında
+   `run_claude_code()`'u PAYLAŞILAN çalışma alanında koşturur
+   (`R/module_ortak_oturum_bilge_yolac.R` → `motor$by_calistir`); çalıştırma
+   `ortak_db_by_calistirma_kaydet`'e, üretilen dosyalar
+   `ortak_db_dosya_kaydet` ile ortak belge deposuna yazılır ve odaya belge
+   bildirimi düşer. CLI bu ortamda yoksa sahte başarı ÜRETİLMEZ: durum "CLI
+   Bağlı Değil" gösterilir ve soru genel LLM yoluna güvenli düşer. Mini oyun
+   bilinçli olarak ortak moda taşınmaz.
+2. **Yapay zekâ kuyruğu — UYGULANDI.** Kilit doluyken gelen sorular kaybolmaz;
+   `MB_OrtakOturum_YapayZekaKuyrugu`'na eklenir (`ortak_db_kuyruk_ekle`).
+   Üretim biten oturum kuyruğun başındaki soruyu sıralı devralır
+   (`ortak_db_kuyruk_sonraki_al`; ilk giren ilk çıkar). Üretim durumu paneli
+   süren üretimi + bekleyen kuyruğu (soran + soru önizlemesi) gösterir. Bayat
+   kilit (varsayılan 15 dk) devralınır; oda süresiz kilitlenmez.
+3. **Geçmiş kopyalama otomasyonu — UYGULANDI.** "Mevcut geçmişin kopyasını
+   aktar" seçilince odaya girmeden önce AÇIK ONAY modalı kişisel söyleşi
+   seçtirir; seçilen `MB_Chats`/`MB_Messages` satırları ortak odaya kopyalanır
+   (`ortak_db_gecmis_kopyala`; soru→YapayZekaSorusu, yanıt→YapayZekaYanıtı,
+   zaman damgaları korunur). KAYNAK kişisel kayıt hiçbir zaman
+   değiştirilmez/silinmez; yalnızca okunur.
+4. **Yanıt akışı (artımlı yayın) — UYGULANDI.** Süren yanıt token-token akış
+   dosyasına yazılır ve ~2 sn'de bir `MB_OrtakOturum_AktifUretimler.KismiYanit`
+   kolonuna yansıtılır; tüm katılımcılar yoklamayla canlı ön izlemeyi görür.
+   `KismiYanit` kolonu kurulu değilse (eski şema) sessizce düşer ve nihai yanıt
+   normal yoldan dağıtılır (aşamalı devreye alma). Kurulum betiği 8b adımı bu
+   kolonu idempotent ekler.
+
+### 12.2 Çevrim içi keşif / davet (bu değişiklik seti)
+
+- Kalp atışı artık UYGULAMA GENELİNDEDİR (`www/js/ortak_oturumlar.js`):
+  kullanıcı hangi sayfada olursa olsun 30 sn'de bir gönderilir; böylece başka
+  sayfalardaki oturum açmış kullanıcılar davet panelinde "çevrim içi" görünür.
+- Davet paneli çevrim içi/boşta kullanıcıları listeler; "Mergen İçinden Çağır"
+  gerçek uygulama içi davet + `MB_Bildirimler` çağrısı üretir (yalnızca e-posta
+  taslağı değildir). Çıkarılan kullanıcı katılımcı listesinden anında düşer
+  (`ortak_db_katilimci_listesi(sadece_aktif = TRUE)`).
+- Oda düzeyi arşiv "Geri Yükle" artık gerçekten çalışır: Sahip odayı herkes
+  için yeniden Aktif yapar (`ortak_db_oturum_durum_guncelle(..., "Aktif")`);
+  yetkisiz kullanıcı yalnızca kendi görünümünü geri getirir.
+
+### 12.3 Kalan sınırlamalar
+
+1. **Yönetici panosu:** `ortak_db_istatistikler()` hazır; Yönetici Paneli'ne
    pano sekmesi bağlanması takip işidir (module_admin_bilge_yolac deseni).
-6. **Gerçek e-posta gönderimi:** SMTP altyapısı olmadığı için yalnızca güvenli
+2. **Gerçek e-posta gönderimi:** SMTP altyapısı olmadığı için yalnızca güvenli
    taslak (mailto) yolu vardır; kurumsal SMTP eklenirse gönderim durumu
    `MB_OrtakOturum_Davetler` üzerinde izlenmelidir.
-7. **Canlı VM doğrulaması:** SQL Server üzerinde Türkçe değerlerin at-rest
-   doğrulaması (SSMS) ve SSO'lu çok kullanıcılı gerçek oda denemesi Windows VM
-   kapısında yapılmalıdır; bulut testleri SQLite ile davranış kanıtıdır.
+3. **Token-token gerçek WebSocket yayını:** Ortak odada canlı ön izleme DB
+   üzerinden 2 sn'lik yoklamayla dağıtılır (artımlı yayın); istemciye
+   doğrudan token-token WebSocket push takip işidir. Bağlantı koparsa
+   katılımcılar nihai durumu yoklama/DB üzerinden kurtarır.
+4. **Canlı VM doğrulaması:** SQL Server üzerinde Türkçe değerlerin at-rest
+   doğrulaması (SSMS), `KismiYanit` ALTER'ının uygulanması, SSO'lu çok
+   kullanıcılı gerçek oda denemesi ve gerçek Claude Code CLI köprüsü Windows VM
+   kapısında yapılmalıdır; bulut testleri SQLite/parse ile davranış kanıtıdır.

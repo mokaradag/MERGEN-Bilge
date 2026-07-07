@@ -29,35 +29,39 @@ ortakOturumRoomUI <- function(id) {
         actionButton(
           ns("oda_katilimci_cagir"),
           label = tagList(icon("user-plus"), span("Katılımcı Çağır")),
-          class = "btn-modern oo-btn-cagir",
+          class = "oo-oda-btn oo-oda-btn-birincil oo-btn-cagir",
           `aria-label` = "Ortak oturuma katılımcı çağır"
         ),
         downloadButton(
           ns("oda_disa_aktar"),
           label = "Tutanağı İndir",
-          class = "btn-modern oo-btn-disa-aktar",
+          class = "oo-oda-btn oo-oda-btn-notr oo-btn-disa-aktar",
           `aria-label` = "Ortak oturum tutanağını UTF-8 metin olarak indir"
         ),
         uiOutput(ns("oda_yonetim_aksiyonlari"), inline = TRUE),
         actionButton(
           ns("oda_ayril"),
           label = tagList(icon("right-from-bracket"), span("Ayrıl")),
-          class = "btn-modern oo-btn-ayril",
+          class = "oo-oda-btn oo-oda-btn-uyari oo-btn-ayril",
           `aria-label` = "Ortak oturumdan ayrıl"
         ),
         actionButton(
           ns("oda_kapat"),
-          label = tagList(icon("xmark"), span("Listeye Dön")),
-          class = "btn-modern oo-btn-kapat",
+          label = tagList(icon("arrow-left"), span("Listeye Dön")),
+          class = "oo-oda-btn oo-oda-btn-notr oo-btn-kapat",
           `aria-label` = "Odayı kapat ve listeye dön"
         )
       )
     ),
 
+    # Ortak Bilge Yolaç odaları için çalışma alanı paneli (yalnızca BY türünde
+    # görünür; NormalSohbet odalarında renderUI NULL döner).
+    uiOutput(ns("by_alani")),
+
     div(
       class = "oo-oda-govde",
 
-      # Ana panel: yapay zekâ akışı + ortak belgeler + mesaj yazma alanı.
+      # Ana panel: yapay zekâ akışı + üretim durumu + mesaj yazma alanı.
       div(
         class = "oo-oda-ana-panel",
         div(
@@ -69,20 +73,27 @@ ortakOturumRoomUI <- function(id) {
           uiOutput(ns("mesajlar_alani"))
         ),
         uiOutput(ns("uretim_durumu_alani")),
-        div(
-          class = "oo-belgeler-bolumu",
-          h4(class = "oo-bolum-baslik", tagList(icon("folder-open"), span("Ortak Belgeler"))),
-          uiOutput(ns("belgeler_alani"))
-        ),
 
         # Mesaj yazma alanı: oda mesajı ile yapay zekâ sorusu AYRI eylemlerdir.
         div(
           class = "oo-composer",
           uiOutput(ns("composer_uyari_alani")),
+          div(
+            class = "oo-composer-ust",
+            div(
+              class = "oo-composer-model",
+              tags$label(
+                `for` = ns("oda_model_secimi"),
+                class = "oo-composer-model-etiket",
+                tagList(icon("microchip"), span("Model"))
+              ),
+              uiOutput(ns("oda_model_secim_alani"), inline = TRUE)
+            )
+          ),
           tags$textarea(
             id = ns("oda_mesaj_metni"),
             class = "oo-composer-girdi form-control",
-            rows = "3",
+            rows = "2",
             placeholder = "Mesajınızı yazın...",
             `aria-label` = "Ortak oturum mesajı"
           ),
@@ -91,14 +102,14 @@ ortakOturumRoomUI <- function(id) {
             actionButton(
               ns("odaya_yaz"),
               label = tagList(icon("comments"), span("Odaya Yaz")),
-              class = "btn-modern oo-btn-odaya-yaz",
+              class = "oo-oda-btn oo-oda-btn-notr oo-btn-odaya-yaz",
               title = "Mesajı yalnızca katılımcılara gönder; yapay zekâya GİTMEZ",
               `aria-label` = "Mesajı odaya yaz; yapay zekâya gönderilmez"
             ),
             actionButton(
               ns("yapay_zekaya_sor"),
               label = tagList(icon("robot"), span("Yapay Zekâya Sor")),
-              class = "btn-modern btn-primary oo-btn-yz-sor",
+              class = "oo-oda-btn oo-oda-btn-birincil oo-btn-yz-sor",
               title = "Bu mesaj yapay zekâya gönderilecek ve yanıt tüm katılımcılar tarafından görülecek.",
               `aria-label` = "Soruyu yapay zekâya gönder; yanıtı tüm katılımcılar görür"
             )
@@ -110,11 +121,31 @@ ortakOturumRoomUI <- function(id) {
         )
       ),
 
-      # Yan panel: katılımcılar + oda içi bilgiler.
+      # Yan panel: katılımcılar + ortak belgeler (daraltılabilir).
       div(
         class = "oo-oda-yan-panel",
-        h4(class = "oo-bolum-baslik", tagList(icon("users"), span("Katılımcılar"))),
-        div(class = "oo-katilimci-listesi", uiOutput(ns("katilimcilar_alani")))
+        `data-oo-yan-panel` = "1",
+        tags$button(
+          type = "button",
+          class = "oo-yan-panel-toggle",
+          `data-oo-toggle-yan` = "1",
+          `aria-label` = "Yan paneli daralt/genişlet",
+          title = "Katılımcılar ve Ortak Belgeler panelini daralt/genişlet",
+          icon("chevron-right", class = "oo-yan-panel-toggle-ikon")
+        ),
+        div(
+          class = "oo-yan-panel-icerik",
+          div(
+            class = "oo-yan-bolum oo-yan-katilimcilar",
+            h4(class = "oo-bolum-baslik", tagList(icon("users"), span("Katılımcılar"))),
+            div(class = "oo-katilimci-listesi", uiOutput(ns("katilimcilar_alani")))
+          ),
+          div(
+            class = "oo-yan-bolum oo-yan-belgeler",
+            h4(class = "oo-bolum-baslik", tagList(icon("folder-open"), span("Ortak Belgeler"))),
+            div(class = "oo-belgeler-listesi", uiOutput(ns("belgeler_alani")))
+          )
+        )
       )
     )
   )
@@ -150,6 +181,8 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL) {
     "Yapay Zekâ"
   } else if (identical(tur, "SistemMesajı")) {
     "Sistem"
+  } else if (identical(tur, "BelgeBildirimi")) {
+    "Ortak Belge"
   } else if (nzchar(gonderen)) {
     gonderen
   } else {
@@ -158,10 +191,30 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL) {
 
   rozet <- switch(
     tur,
-    "YapayZekaSorusu" = tags$span(class = "oo-rozet oo-rozet-yz-soru", "Yapay Zekâ Sorusu"),
-    "YapayZekaYanıtı" = tags$span(class = "oo-rozet oo-rozet-yz-yanit", "Yapay Zekâ Yanıtı"),
-    "OdaMesajı" = tags$span(class = "oo-rozet oo-rozet-oda", "Oda Mesajı"),
+    "YapayZekaSorusu" = tags$span(class = "oo-rozet oo-rozet-yz-soru",
+                                  tagList(icon("robot"), span("Yapay Zekâya Soru"))),
+    "YapayZekaYanıtı" = tags$span(class = "oo-rozet oo-rozet-yz-yanit",
+                                  tagList(icon("wand-magic-sparkles"), span("Yapay Zeka Yanıtı"))),
+    "OdaMesajı" = tags$span(class = "oo-rozet oo-rozet-oda",
+                            tagList(icon("comments"), span("Oda"))),
+    "SistemMesajı" = tags$span(class = "oo-rozet oo-rozet-sistem",
+                               tagList(icon("circle-info"), span("Sistem"))),
+    "BelgeBildirimi" = tags$span(class = "oo-rozet oo-rozet-belge",
+                                 tagList(icon("file-lines"), span("Belge"))),
     NULL
+  )
+
+  # Gönderen adının baş harfi: küçük avatar rozeti (Ana Söyleşi deseni).
+  bas_harf <- {
+    temiz <- trimws(gonderen_etiket)
+    if (nzchar(temiz)) toupper(substr(temiz, 1L, 1L)) else "?"
+  }
+  avatar_sinifi <- switch(
+    tur,
+    "YapayZekaYanıtı" = "oo-mesaj-avatar-yz",
+    "SistemMesajı" = "oo-mesaj-avatar-sistem",
+    "BelgeBildirimi" = "oo-mesaj-avatar-belge",
+    "oo-mesaj-avatar-kullanici"
   )
 
   # Yapay zekâ yanıtı: güvenli markdown; diğerleri düz metin (escape).
@@ -175,39 +228,48 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL) {
   div(
     class = paste("oo-mesaj", tur_sinifi, if (benim) "oo-mesaj-benim" else NULL),
     div(
-      class = "oo-mesaj-ust",
-      tags$span(class = "oo-mesaj-gonderen", HTML(htmltools::htmlEscape(gonderen_etiket))),
-      rozet,
-      tags$span(class = "oo-mesaj-zaman", HTML(htmltools::htmlEscape(zaman)))
+      class = paste("oo-mesaj-avatar", avatar_sinifi),
+      `aria-hidden` = "true",
+      if (identical(tur, "YapayZekaYanıtı")) icon("robot") else span(bas_harf)
     ),
-    div(class = "oo-mesaj-metin", metin_html)
+    div(
+      class = "oo-mesaj-govde",
+      div(
+        class = "oo-mesaj-ust",
+        tags$span(class = "oo-mesaj-gonderen", HTML(htmltools::htmlEscape(gonderen_etiket))),
+        rozet,
+        tags$span(class = "oo-mesaj-zaman", HTML(htmltools::htmlEscape(zaman)))
+      ),
+      div(class = "oo-mesaj-metin", metin_html)
+    )
   )
 }
 
-# Katılımcı satırı: canlı durum noktası + ad + rol rozeti.
-oo_katilimci_html <- function(satir, canli_durum = "ÇevrimDışı") {
+# Katılımcı satırı: canlı durum noktası + ad + rol rozeti. Durum göstergesi
+# saf ortak_sunum_rozeti() ile üretilir: yalnızca renge dayanmaz, title/
+# aria-label metni taşır. ayni_odada = TRUE iken yeşil "bu odada" göstergesi.
+oo_katilimci_html <- function(satir, canli_durum = "ÇevrimDışı", ayni_odada = FALSE) {
   ad <- as.character(satir$KaynakAdi %||% satir$KullaniciAdi %||% "Kullanıcı")[1]
   rol <- as.character(satir$Rol %||% "")[1]
   katilim <- as.character(satir$KatilimDurumu %||% "")[1]
 
-  durum_sinifi <- switch(
-    as.character(canli_durum)[1],
-    "Çevrimİçi" = "oo-canli-cevrimici",
-    "Boşta" = "oo-canli-bosta",
-    "oo-canli-cevrimdisi"
-  )
-
   bekliyor <- identical(katilim, "DavetEdildi")
+  rozet <- ortak_sunum_rozeti(canli_durum, ayni_odada = ayni_odada, davet_bekliyor = bekliyor)
+  rol_etiket <- ortak_rol_gorunen_ad(rol)
 
   div(
     class = paste("oo-katilimci", if (bekliyor) "oo-katilimci-bekliyor" else NULL),
     tags$span(
-      class = paste("oo-canli-nokta", durum_sinifi),
-      title = as.character(canli_durum)[1],
-      `aria-label` = as.character(canli_durum)[1]
+      class = paste("oo-canli-nokta", rozet$sinif),
+      title = rozet$etiket,
+      `aria-label` = rozet$etiket
     ),
     tags$span(class = "oo-katilimci-ad", HTML(htmltools::htmlEscape(ad))),
-    tags$span(class = "oo-rozet oo-rozet-rol", HTML(htmltools::htmlEscape(rol))),
+    if (nzchar(rol_etiket)) {
+      tags$span(class = "oo-rozet oo-rozet-rol", HTML(htmltools::htmlEscape(rol_etiket)))
+    } else {
+      NULL
+    },
     if (bekliyor) tags$span(class = "oo-rozet oo-rozet-bekliyor", "Davet Bekliyor") else NULL
   )
 }
@@ -279,27 +341,63 @@ oo_davet_kullanici_html <- function(satir,
   departman <- as.character(satir$Departman %||% "")[1]
   kullanici_id <- suppressWarnings(as.integer(satir$UserID %||% NA_integer_)[1])
 
-  cevrimici <- identical(as.character(canli_durum)[1], "Çevrimİçi")
+  durum <- as.character(canli_durum %||% "")[1]
+  cevrimici_ya_da_bosta <- durum %in% c("Çevrimİçi", "Boşta")
 
-  durum_sinifi <- switch(
-    as.character(canli_durum)[1],
-    "Çevrimİçi" = "oo-canli-cevrimici",
-    "Boşta" = "oo-canli-bosta",
-    "oo-canli-cevrimdisi"
-  )
+  davetli <- identical(mevcut_durum, "DavetEdildi")
+  katildi <- identical(mevcut_durum, "Katıldı")
+  rozet_bilgi <- ortak_sunum_rozeti(canli_durum, davet_bekliyor = davetli)
 
-  mevcut_rozet <- if (nzchar(mevcut_durum)) {
-    tags$span(class = "oo-rozet oo-rozet-davet-durum", HTML(htmltools::htmlEscape(mevcut_durum)))
+  mevcut_rozet <- if (katildi) {
+    tags$span(class = "oo-rozet oo-rozet-kopyalandi",
+              tagList(icon("check"), span("Katıldı")))
+  } else if (davetli) {
+    tags$span(class = "oo-rozet oo-rozet-bekliyor",
+              tagList(icon("hourglass-half"), span("Davet edildi")))
   } else {
     NULL
+  }
+
+  # Zaten katılmış kullanıcıya davet eylemi sunulmaz.
+  aksiyonlar <- if (katildi) {
+    NULL
+  } else {
+    tagList(
+      # Çevrim içi/boşta kullanıcı için birincil eylem: Mergen içi çağrı.
+      if (cevrimici_ya_da_bosta) {
+        tags$button(
+          type = "button",
+          class = "oo-oda-btn oo-oda-btn-birincil oo-btn-mergen-cagir",
+          `data-oo-kullanici-id` = as.character(kullanici_id),
+          `data-oo-hedef-input` = cagir_input_id,
+          `aria-label` = paste("Mergen içinden çağır:", ad),
+          tagList(icon("bell"), span(if (davetli) "Tekrar Çağır" else "Mergen İçinden Çağır"))
+        )
+      } else {
+        NULL
+      },
+      if (nzchar(eposta)) {
+        tags$button(
+          type = "button",
+          class = "oo-oda-btn oo-oda-btn-notr oo-btn-eposta-taslak",
+          `data-oo-kullanici-id` = as.character(kullanici_id),
+          `data-oo-hedef-input` = eposta_input_id,
+          `aria-label` = paste("E-posta taslağı hazırla:", ad),
+          tagList(icon("envelope"), span("E-posta Taslağı Hazırla"))
+        )
+      } else {
+        NULL
+      }
+    )
   }
 
   div(
     class = "oo-davet-satiri",
     `data-oo-kullanici-id` = as.character(kullanici_id),
     tags$span(
-      class = paste("oo-canli-nokta", durum_sinifi),
-      title = as.character(canli_durum)[1]
+      class = paste("oo-canli-nokta", rozet_bilgi$sinif),
+      title = rozet_bilgi$etiket,
+      `aria-label` = rozet_bilgi$etiket
     ),
     div(
       class = "oo-davet-kimlik",
@@ -313,32 +411,6 @@ oo_davet_kullanici_html <- function(satir,
       )
     ),
     mevcut_rozet,
-    div(
-      class = "oo-davet-aksiyonlar",
-      if (cevrimici) {
-        tags$button(
-          type = "button",
-          class = "btn-modern btn-primary oo-btn-mergen-cagir",
-          `data-oo-kullanici-id` = as.character(kullanici_id),
-          `data-oo-hedef-input` = cagir_input_id,
-          `aria-label` = paste("Mergen içinden çağır:", ad),
-          tagList(icon("bell"), span("Mergen İçinden Çağır"))
-        )
-      } else {
-        NULL
-      },
-      if (nzchar(eposta)) {
-        tags$button(
-          type = "button",
-          class = "btn-modern oo-btn-eposta-taslak",
-          `data-oo-kullanici-id` = as.character(kullanici_id),
-          `data-oo-hedef-input` = eposta_input_id,
-          `aria-label` = paste("E-posta taslağı hazırla:", ad),
-          tagList(icon("envelope"), span("E-posta Taslağı Hazırla"))
-        )
-      } else {
-        NULL
-      }
-    )
+    div(class = "oo-davet-aksiyonlar", aksiyonlar)
   )
 }

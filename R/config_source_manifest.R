@@ -428,15 +428,20 @@ source_manifest_sections <- list(
   # MB_ClaudeCode_* tablolarına yazmaz (docs/ortak-oturumlar.md).
   ortak_oturumlar = c(
     "R/helpers_ortak_oturum_permissions.R",
+    "R/helpers_ortak_oturum_sunum.R",
     "R/helpers_ortak_oturum_email.R",
     "R/helpers_ortak_oturum_db.R",
     "R/helpers_ortak_oturum_db_katilim.R",
     "R/helpers_ortak_oturum_db_davet.R",
     "R/helpers_ortak_oturum_db_mesajlar.R",
+    "R/helpers_ortak_oturum_db_bilge_yolac.R",
+    "R/helpers_ortak_oturum_db_kuyruk.R",
     "R/helpers_ortak_oturum_files.R",
     "R/helpers_ortak_oturum_bakim.R",
     "R/module_ortak_oturum_room_ui.R",
     "R/module_ortak_oturum_invites.R",
+    "R/module_ortak_oturum_yz.R",
+    "R/module_ortak_oturum_bilge_yolac.R",
     "R/module_ortak_oturum_room.R",
     "R/module_ortak_calismalar.R"
   ),

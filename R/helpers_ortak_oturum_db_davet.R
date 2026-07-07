@@ -428,7 +428,9 @@ ortak_db_kalp_atisi <- function(kullanici_id,
 }
 
 #' Kullanıcı başına en güncel kalp atışını okur ve Türkçe canlı durumu
-#' saf ortak_sunum_durumu() ile sınıflandırır.
+#' saf ortak_sunum_durumu() ile sınıflandırır. En güncel satırın
+#' SonGorulenOrtakOturumID değeri de döner; böylece "bu odada çevrim içi"
+#' göstergesi (yeşil nokta) üretilebilir.
 ortak_db_canli_durumlar <- function(simdi = Sys.time(), conn = NULL) {
   bos <- data.frame()
 
@@ -442,9 +444,8 @@ ortak_db_canli_durumlar <- function(simdi = Sys.time(), conn = NULL) {
     DBI::dbGetQuery(
       handle$conn,
       paste(
-        "SELECT c.KullaniciID, MAX(c.SonKalpAtisiZamani) AS SonKalpAtisiZamani",
-        "FROM MB_Kullanici_CanliDurum c",
-        "GROUP BY c.KullaniciID"
+        "SELECT c.KullaniciID, c.SonKalpAtisiZamani, c.SonGorulenOrtakOturumID",
+        "FROM MB_Kullanici_CanliDurum c"
       )
     ),
     fallback = bos,
@@ -454,6 +455,14 @@ ortak_db_canli_durumlar <- function(simdi = Sys.time(), conn = NULL) {
   if (!is.data.frame(sonuc) || nrow(sonuc) == 0L) {
     return(bos)
   }
+
+  # Kullanıcı başına EN GÜNCEL kalp atışı satırı (lehçe bağımsız: R tarafında).
+  zamanlar <- suppressWarnings(as.POSIXct(
+    as.character(sonuc$SonKalpAtisiZamani), tz = "UTC"
+  ))
+  sirali <- order(sonuc$KullaniciID, zamanlar, decreasing = TRUE)
+  sonuc <- sonuc[sirali, , drop = FALSE]
+  sonuc <- sonuc[!duplicated(sonuc$KullaniciID), , drop = FALSE]
 
   sonuc$CanliDurum <- vapply(
     as.character(sonuc$SonKalpAtisiZamani),

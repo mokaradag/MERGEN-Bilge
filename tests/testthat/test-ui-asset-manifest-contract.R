@@ -333,7 +333,10 @@ test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", 
     "css/explore_character_step.css",
     "css/surum_bilgilendirme.css",
     # Bilinçli güncelleme: Ortak Oturumlar (işbirlikçi çalışma odaları) stilleri.
+    # Bilge Yolaç çalışma alanı paneli stilleri ayrı dosyada (frontend ratchet
+    # tek dosya satır bütçesi): ortak_oturumlar.css hemen ardından yüklenir.
     "css/ortak_oturumlar.css",
+    "css/ortak_oturumlar_bilge_yolac.css",
     "css/sso_auth.css",
     "css/claude_code.css",
     "css/claude_code_generated_files.css",

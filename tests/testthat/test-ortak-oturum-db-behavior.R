@@ -54,6 +54,7 @@ local({
     "helpers_ortak_oturum_db_katilim.R",
     "helpers_ortak_oturum_db_davet.R",
     "helpers_ortak_oturum_db_mesajlar.R",
+    "helpers_ortak_oturum_db_bilge_yolac.R",
     "helpers_ortak_oturum_files.R",
     "helpers_ortak_oturum_bakim.R"
   )) {

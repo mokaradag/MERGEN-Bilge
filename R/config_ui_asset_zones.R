@@ -362,7 +362,8 @@ ui_asset_ownership_zones <- list(
     css = c(
       "css/history_saved_chats.css",
       "css/chat_search_modal.css",
-      "css/ortak_oturumlar.css"
+      "css/ortak_oturumlar.css",
+      "css/ortak_oturumlar_bilge_yolac.css"
     ),
     js = c(
       "js/history_date_range.js",
