@@ -39,6 +39,13 @@ ortakOturumInvitesBind <- function(input, output, session, ctx) {
     TRUE
   }
 
+  davet_yetkili_mi <- function() {
+    katilim <- ctx$benim_katilimim()
+    !is.null(katilim) &&
+      ortak_icerik_erisimi_var_mi(katilim$KatilimDurumu[1]) &&
+      ortak_yetki_var_mi(katilim$Rol[1], "davet_et")
+  }
+
   davet_kaydet_zaman <- function() {
     davet_zamanlari(c(isolate(davet_zamanlari()), Sys.time()))
   }
@@ -64,8 +71,7 @@ ortakOturumInvitesBind <- function(input, output, session, ctx) {
   }
 
   observeEvent(input$oda_katilimci_cagir, {
-    katilim <- ctx$benim_katilimim()
-    if (is.null(katilim) || !ortak_yetki_var_mi(katilim$Rol[1], "davet_et")) {
+    if (!davet_yetkili_mi()) {
       ctx$bildir("Katılımcı çağırma yetkiniz yok.", tur = "error")
       return(invisible(NULL))
     }
@@ -186,6 +192,11 @@ ortakOturumInvitesBind <- function(input, output, session, ctx) {
     hedef_id <- suppressWarnings(as.integer(input$davet_cagir$id))
     req(!is.na(hedef_id))
 
+    if (!davet_yetkili_mi()) {
+      ctx$bildir("Katılımcı çağırma yetkiniz yok.", tur = "error")
+      return(invisible(NULL))
+    }
+
     if (!davet_gonderebilir_mi()) {
       return(invisible(NULL))
     }
@@ -236,6 +247,11 @@ ortakOturumInvitesBind <- function(input, output, session, ctx) {
 
     hedef_id <- suppressWarnings(as.integer(input$davet_eposta$id))
     req(!is.na(hedef_id))
+
+    if (!davet_yetkili_mi()) {
+      ctx$bildir("Katılımcı çağırma yetkiniz yok.", tur = "error")
+      return(invisible(NULL))
+    }
 
     if (!davet_gonderebilir_mi()) {
       return(invisible(NULL))
