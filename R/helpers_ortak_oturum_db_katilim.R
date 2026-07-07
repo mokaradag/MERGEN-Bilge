@@ -231,7 +231,7 @@ ortak_db_katilim_durumu_guncelle <- function(oturum_id,
 }
 
 #' Katılımcı rolünü günceller. Sahip rolü değiştirilemez (fail-closed) ve
-#' işlemi yapanın rol_degistir/katilimci_yonet yetkisi işlem içinde doğrulanır.
+#' işlemi yapanın rol_degistir yetkisi işlem içinde doğrulanır.
 ortak_db_katilimci_rol_guncelle <- function(oturum_id,
                                             yoneten_kullanici_id,
                                             hedef_kullanici_id,
@@ -259,6 +259,7 @@ ortak_db_katilimci_rol_guncelle <- function(oturum_id,
 
     if (is.null(yoneten_satir) || is.null(hedef_satir) ||
         !ortak_icerik_erisimi_var_mi(yoneten_satir$KatilimDurumu[1]) ||
+        !ortak_yetki_var_mi(yoneten_satir$Rol[1], "rol_degistir") ||
         !ortak_katilimci_yonetilebilir_mi(yoneten_satir$Rol[1], hedef_satir$Rol[1])) {
       FALSE
     } else {
