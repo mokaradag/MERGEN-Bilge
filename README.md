@@ -27,6 +27,7 @@ MERGEN Bilge, kurum içi/on-prem ortamlarda çalışmaya uygun bir yapay zekâ d
 - Destek Merkezi, Geri Bildirim & Hata, Yenilikler ve Hakkında sayfaları.
 - Yönetici/Sistem Durumu ekranları ve sağlık/operasyon sinyalleri.
 - Bilge Yolaç: Claude Code ile web üzerinden çalışan kodlama ajanı alanı ve eklenti sistemi.
+- Ortak Oturumlar: ekip tabanlı paylaşılan yapay zekâ çalışma odaları; oda içi yazışma ("Odaya Yaz") ile yapay zekâ sorusu ("Yapay Zekâya Sor") ayrımı, davet/canlı durum, ortak belgeler ve "Kendi Dosyalarıma Kaydet" akışı. Ayrıntı: [`docs/ortak-oturumlar.md`](docs/ortak-oturumlar.md); DB kurulumu RUNBOOK §9B.
 - SSO/Keycloak hazır kimlik doğrulama sınırı ve yerel geliştirme modu.
 
 ## Modern persona sistemi

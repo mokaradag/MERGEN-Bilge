@@ -1,0 +1,280 @@
+/* ==========================================================================
+ * Dosya: www/css/ortak_oturumlar_bilge_yolac.css
+ * Açıklama: Ortak Bilge Yolaç çalışma alanı paneli yüzeyleri (.oo-by-*).
+ *   Ana Ortak Oturumlar stilinden (www/css/ortak_oturumlar.css) AYRILDI
+ *   (frontend maintainability ratchet: tek dosya satır bütçesi). Koyu tema
+ *   varsayılan; renkler tema token'larından gelir. Ortak Oturumlar CSS'inden
+ *   SONRA yüklenir.
+ * ========================================================================== */
+
+/* --- Ortak Bilge Yolaç çalışma alanı paneli --------------------------------- */
+
+.oo-by-panel {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  flex: 0 0 auto;
+}
+
+.oo-by-baslik {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-divider, var(--color-border-soft));
+}
+
+.oo-by-baslik-ikon {
+  color: var(--color-primary);
+}
+
+.oo-by-baslik-metin {
+  font-weight: 700;
+  font-size: 0.98em;
+}
+
+.oo-by-toggle {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2, var(--color-bg-elevated));
+  color: var(--color-text-soft);
+  cursor: pointer;
+}
+
+.oo-by-panel.oo-by-panel-kapali .oo-by-toggle-ikon {
+  transform: rotate(-90deg);
+}
+
+.oo-by-panel.oo-by-panel-kapali .oo-by-govde {
+  display: none;
+}
+
+.oo-by-govde {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.oo-by-ust-satir,
+.oo-by-orta-satir,
+.oo-by-alt-satir {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.oo-by-ust-satir > div,
+.oo-by-orta-satir > div,
+.oo-by-alt-satir > div {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.oo-by-alan-etiket {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82em;
+  font-weight: 700;
+  color: var(--color-text-soft);
+  margin-bottom: 6px;
+}
+
+.oo-by-dizin-yolu {
+  display: block;
+  font-size: 0.8em;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--color-bg-elevated, var(--color-surface));
+  border: 1px solid var(--color-border-soft);
+  color: var(--color-text-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oo-by-model-secim {
+  display: flex;
+  flex-direction: column;
+}
+
+.oo-by-model-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 4px 2px 0;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.82em;
+  font-weight: 600;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2, var(--color-bg-elevated));
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.oo-by-model-btn:hover {
+  border-color: var(--color-primary);
+}
+
+.oo-by-model-aktif {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #ffffff;
+}
+
+.oo-by-model-yok {
+  font-size: 0.82em;
+  color: var(--color-muted);
+}
+
+.oo-by-senaryo-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.oo-by-senaryo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 9px;
+  font-size: 0.82em;
+  font-weight: 600;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2, var(--color-bg-elevated));
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.oo-by-senaryo-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.oo-by-dizin-baslik {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.oo-by-mini-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 7px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2, var(--color-bg-elevated));
+  color: var(--color-text-soft);
+  cursor: pointer;
+}
+
+.oo-by-dizin-listesi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.oo-by-dizin-satiri {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82em;
+  padding: 2px 4px;
+}
+
+.oo-by-dizin-ikon {
+  color: var(--color-info);
+  flex: 0 0 auto;
+}
+
+.oo-by-dizin-ad {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+
+.oo-by-dizin-boyut {
+  color: var(--color-muted);
+  flex: 0 0 auto;
+}
+
+.oo-by-dosya-eylemleri {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px dashed var(--color-border-soft);
+}
+
+.oo-by-yerel-yukleme .form-group {
+  margin-bottom: 0;
+}
+
+.oo-by-eklenti-satiri,
+.oo-by-gecmis-satiri {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82em;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.oo-by-eklenti-ikon {
+  color: var(--color-primary);
+}
+
+.oo-by-eklenti-ad,
+.oo-by-gecmis-komut {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oo-by-eklenti-bilesen,
+.oo-by-gecmis-meta {
+  color: var(--color-muted);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.oo-by-eklenti-yok {
+  font-size: 0.82em;
+  color: var(--color-muted);
+  padding: 6px 0;
+}
+
+.oo-by-durum-tamam {
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.oo-by-durum-calisiyor {
+  color: var(--color-info);
+  border-color: var(--color-info);
+}
+
+.oo-by-durum-hata {
+  color: var(--color-danger, #e05555);
+  border-color: var(--color-danger, #e05555);
+}
+
+/* --- Açık tema --------------------------------------------------------------- */
+
+html[data-theme="light"] .oo-by-panel {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}

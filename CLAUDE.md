@@ -2426,6 +2426,106 @@ The Bilge Yolaç "Oturumlar" page persists agent sessions in `MB_ClaudeCode_Sess
 - Admin visibility: the Yönetici Paneli > Genel Analiz "Bilge Yolaç" tab lives in `R/module_admin_bilge_yolac.R` (same pattern as the other `admin_*` tab modules), loaded in the `module_admin` manifest section before `R/module_admin_analytics.R`; queries go through the error-safe `admin_safe_query` and degrade to zero/empty when the tables are absent. Sistem Durumu adds `health_check_bilge_yolac_sessions()` (registered in `health_collect_checks()`), which returns `not_configured` when the tables are missing and never throws.
 - Protected by: `tests/testthat/test-claude-code-sessions-db-behavior.R`, `tests/testthat/test-claude-code-sessions-module-contract.R`, `tests/testthat/test-claude-code-session-persistence-behavior.R`, `tests/testthat/test-admin-analytics-ui-contract.R`, `tests/testthat/test-health-check-runtime-contract.R`, `tests/testthat/test-source-manifest-sections-contract.R`, `tests/testthat/test-maintainability-ratchet.R`.
 
+### Ortak Oturumlar (Collaborative Sessions) contract
+
+Ortak Oturumlar turns MERGEN Bilge into a team AI workroom: shared sessions in
+`MB_OrtakOturumlar` family tables (13 tables; setup `docs/sql/2026-07-ortak-oturumlar.sql`,
+rollback `docs/sql/2026-07-ortak-oturumlar-rollback.sql`, both MANUAL DBA-only —
+never run DDL at app startup). Full design/ops guide: `docs/ortak-oturumlar.md`.
+
+Non-negotiable boundaries:
+
+- Collaborative data NEVER mixes into personal history: `MB_Chats`/`MB_Messages`
+  and `MB_ClaudeCode_Sessions`/`MB_ClaudeCode_Runs` stay personal. The three
+  shared surfaces (`Ortak Çalışmalarım`, `Ortak Söyleşiler`, `Ortak Bilge Yolaç
+  Oturumları`) read only the `MB_Ortak*` family.
+- Stored business values are TURKISH (`Sahip`, `Katıldı`, `OdaMesajı`,
+  `YapayZekaSorusu`, `Çevrimİçi`, `Üretildi`, `KullanıcıArşivledi`, ...). Do not
+  introduce English stored states (owner/pending/completed/user/assistant).
+- Message routing is single-sourced in `ortak_mesaj_yonlendirme_plani()`
+  (`R/helpers_ortak_oturum_permissions.R`): `OdaMesajı` NEVER triggers the LLM;
+  `YapayZekaSorusu` is the ONLY LLM-triggering path, one call per room (not per
+  participant), guarded by the per-room DB generation lock
+  (`MB_OrtakOturum_AktifUretimler`, `ortak_db_uretim_kilidi_al/birak`).
+- Authorization is fail-closed and server-side: participant row → content
+  access (`ortak_icerik_erisimi_var_mi`; only `Katıldı`) → role permission
+  (`ortak_rol_yetkileri`; unknown role gets nothing). Invitation grants
+  metadata visibility only until accepted. UI hiding is never the security
+  boundary.
+- User-level archive (`KullanıcıArşivledi`) affects only that user's list;
+  room-level `Arşivlendi`/`Kapandı` is Sahip-only. Ownership rules: every room
+  keeps at least one `Sahip`; Sahip cannot leave without transferring ownership
+  (`ortak_db_sahiplik_devret`) or archiving for everyone.
+- Shared documents are room-owned first (physical files under
+  `MERGEN_FILES_ROOT/ortak_oturumlar/oturum_<id>/`, metadata in
+  `MB_OrtakOturum_Dosyalar`); copying into a personal folder happens only via
+  the explicit "Kendi Dosyalarıma Kaydet" action through
+  `ortak_dosya_kisisel_kopyala()` (path-inside-root verified, registered via
+  `global_register_file`). Never auto-copy into participants' folders.
+- Invitation email is a DRAFT-ONLY mailto flow (`R/helpers_ortak_oturum_email.R`):
+  no automatic sending, and the draft must stay content-free
+  (`ortak_davet_eposta_guvenli_mi`). In-app calls go through `MB_Bildirimler`.
+- Keep the manifest section order intact: `ortak_oturumlar` (17 files, pure
+  helpers → DB layer → UI/invites/AI-engine/Bilge-Yolaç-workbench/room/hub
+  modules) loads after `module_claude_code`, owned by the `sohbet_llm_akis`
+  seam; frontend assets `css/ortak_oturumlar.css` +
+  `css/ortak_oturumlar_bilge_yolac.css` + `js/ortak_oturumlar.js` belong to the
+  `gecmis_kayit_arama` zone. The JS bridge uses delegated `data-oo-hedef-input`
+  clicks — never interpolate ids into CSS selectors. Pure presentation-decision
+  helpers (role label / online-status badge) live in
+  `R/helpers_ortak_oturum_sunum.R` (kept OUT of the authorization file to hold
+  the function ratchet); the Bilge Yolaç DB layer is split into
+  `R/helpers_ortak_oturum_db_bilge_yolac.R`; the AI queue / partial-broadcast /
+  history-copy DB layer is `R/helpers_ortak_oturum_db_kuyruk.R`; the AI
+  generation engine (question routing + persistent queue + incremental
+  broadcast + BY bridge) is `R/module_ortak_oturum_yz.R`; the shared BY
+  workbench (project dir / model tiers / scenarios / dir listing / plugins /
+  real `run_claude_code` bridge) is `R/module_ortak_oturum_bilge_yolac.R`.
+- No voice on Ortak pages: the AI generation engine never triggers TTS
+  ("Yanıtları Seslendir") and the AI Expert ("AI Uzman Konuşması") mutes on
+  `ortak_calismalar` / `ortak_sohbetler` / `ortak_bilge_yolac` (added to the
+  muted-pages set in `R/server_ai_expert_handlers.R`).
+- App-wide heartbeat: `www/js/ortak_oturumlar.js` sends the presence heartbeat
+  on EVERY page (not only Ortak pages) so all logged-in users are discoverable
+  as online; the module heartbeat observer still throttles server-side to 20s.
+- Removed participants disappear immediately:
+  `ortak_db_katilimci_listesi(sadece_aktif = TRUE)` filters
+  Çıkarıldı/Ayrıldı/Reddetti. Room-level archive "Geri Yükle" actually restores
+  (Sahip → `OturumDurumu = Aktif` for everyone).
+- DB writes follow the central encoding contract: visible text through
+  `normalize_db_visible_value()`, Turkish enums through
+  `normalize_db_technical_value()`, all binding through `normalize_db_params()`,
+  read-side restore through `normalize_db_read_visible_value()`. The layer must
+  keep degrading safely (empty/NULL/FALSE) when the tables are not installed.
+
+Protected by:
+
+- `tests/testthat/test-ortak-oturum-permissions-behavior.R`
+- `tests/testthat/test-ortak-oturum-db-behavior.R`
+- `tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R`
+- `tests/testthat/test-ortak-oturum-sql-contract.R`
+- `tests/testthat/test-ortak-oturum-ui-contract.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-ortak-oturum-permissions-behavior.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-db-behavior.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-sql-contract.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-ui-contract.R")`
+
+Completed follow-ups (this change set; see `docs/ortak-oturumlar.md` §12):
+live shared Bilge Yolaç CLI bridge (real `run_claude_code` in the shared
+workspace, feature-gated when the CLI is absent — no faked success), real AI
+queue (`MB_OrtakOturum_YapayZekaKuyrugu`), consent-based history copy
+(`ortak_db_gecmis_kopyala`), and incremental partial-answer broadcast
+(`MB_OrtakOturum_AktifUretimler.KismiYanit`, idempotent setup step 8b, graceful
+degradation on old schema). Remaining follow-ups: admin dashboard tab, real
+SMTP sending, direct token-token WebSocket push (currently 2s DB-poll
+broadcast). VM-only proof: SQL Server Turkish at-rest checks, the `KismiYanit`
+ALTER, the real CLI bridge, and multi-user SSO room flow run on the Windows VM
+gates, not in cloud sessions.
+
 ### Bilge Yolaç run lifecycle request-id contract
 
 Bilge Yolaç normal streaming finalization must remain request-scoped. `R/module_claude_code.R` creates a `run_request_id`, stores it in `rv$active_request_id`, and carries it through `stream_env$request_id`. Any normal streaming completion path that calls `finalize_streaming()` for `Tamamlandı` or `Hata` must pass `request_id = env$request_id`.

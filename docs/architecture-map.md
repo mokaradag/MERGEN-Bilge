@@ -61,6 +61,7 @@ R/Shiny uygulama kabuğu: app.R -> global.R -> ui.R + server.R
 | `files_preview_pipeline` / `file_manager_helpers` | Dosya yaşam döngüsü, önizleme, Dosya Yönetimi yardımcıları | `R/helpers_file*`, `R/module_file_manager*.R`; upload runtime helper storage sonrası/delete runtime öncesi, delete runtime helper ise state runtime öncesi source edilir. |
 | `chat_send_message_runtime` / `llm_pipeline` | Sohbet/gönderme akışı ve LLM/SSE/worker hattı | `R/helpers_send_message_*`, `R/helpers_streaming_*`, `R/helpers_llm_*` |
 | `claude_code_helpers` / `module_claude_code` | Bilge Yolaç yardımcıları ve modülleri | `R/helpers_claude_code_*`, `R/module_claude_code*.R` |
+| `ortak_oturumlar` | Ortak Oturumlar (işbirlikçi çalışma odaları): saf yetki/e-posta yardımcıları, `MB_OrtakOturumlar` DB katmanı ve oda/davet/hub modülleri | `R/helpers_ortak_oturum_*`, `R/module_ortak_*` |
 | `module_*` aileleri | Sohbet, dosya/medya, ayarlar, AI/ses, kimlik/başlangıç, destek, admin, sağlık UI modülleri | `R/module_*.R` |
 | `server_init_runtime` / `server_core_outputs_welcome` / `server_observers` / `server_handlers_send_message` | Server init/runtime context, observer katmanı ve handler/gönderme hattı | `R/server_*.R` |
 
@@ -103,7 +104,7 @@ Seam listesi (id -> sahiplenilen manifest bölümleri):
 | `veritabani_kodlama` | `database`, `sql_library` | DB normalization/refactor, text-encoding |
 | `kimlik_sso` | `sso_identity_helpers`, `module_identity_startup` | JWT imza, fail-closed yetkilendirme, SSO readiness |
 | `api_anahtar_model` | `config_api_model_keys`, `module_settings_api_key` | config-api split, anahtar kripto, anahtar modalı |
-| `sohbet_llm_akis` | `language_messaging`, `chat_send_message_runtime`, `summarization_followup`, `llm_pipeline`, `module_chat`, `server_handlers_send_message` | istek yaşam döngüsü, stream I/O, markdown güvenliği |
+| `sohbet_llm_akis` | `language_messaging`, `chat_send_message_runtime`, `summarization_followup`, `llm_pipeline`, `module_chat`, `ortak_oturumlar`, `server_handlers_send_message` | istek yaşam döngüsü, stream I/O, markdown güvenliği, ortak oturum LLM yolu |
 | `mcp_analiz` | `mcp_tools`, `chartlab_helpers`, `analysis_helpers`, `module_analysis` | MCP excel/bootstrap, PK analiz RLS |
 | `dosya_yasam_dongusu` | `files_preview_pipeline`, `file_manager_helpers`, `module_files_media` | dosya lifecycle, çözümleme güvenliği, upload doğrulama |
 | `medya_ses` | `ai_expert_helpers`, `module_ai_audio` | ses yaşam döngüsü, TTS autoplay koruması |

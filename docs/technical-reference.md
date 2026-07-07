@@ -483,7 +483,34 @@ Log güvenliği ve üretim preflight kapsamı güçlendirilmiştir. Başarısız
 
 VM encoding preflight, eski/historik mojibake kalıntılarını varsayılan olarak uyarı kabul eder; yeni yazım yolu ise `MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE` transactional write/read/rollback probu ile kesin olarak doğrulanır. Eski kayıtların varlığı yeni yazım regresyonuyla karıştırılmamalıdır.
 
-### Bilge Yolaç
+### Ortak Oturumlar (İşbirlikçi Çalışma Odaları)
+
+Ekip tabanlı paylaşılan yapay zekâ odaları. Üç sekme tek modülden beslenir
+(`ortak_calismalar_module`): **Ortak Çalışmalarım** (hub + oda),
+**Ortak Söyleşiler** ve **Ortak Bilge Yolaç Oturumları**.
+
+Temel davranış:
+
+- **"Odaya Yaz"** katılımcılar arası mesajdır; LLM'e GİTMEZ. **"Yapay Zekâya
+  Sor"** tek LLM yoludur; yanıt odaya yazılır ve tüm katılımcılar görür (oda
+  başına tek aktif üretim; DB kilidi).
+- Roller Türkçedir: `Sahip` / `OturumYöneticisi` / `Katılımcı` / `İzleyici`;
+  yetki matrisi `ortak_rol_yetkileri()` saf yardımcısındadır (fail-closed).
+- Davet: çevrim içi kullanıcıya Mergen içi bildirim; çevrim dışına içerik
+  sızdırmayan e-posta TASLAĞI (otomatik gönderim yok). İçerik erişimi ancak
+  davet kabulüyle açılır.
+- Ortak belgeler önce oda belgesidir; "Kendi Dosyalarıma Kaydet" ile açık
+  kişisel kopya alınır ve Dosya Yönetimi'nde görünür.
+- Kişisel geçmiş ile ortak geçmiş AYRIDIR: ortak veri yalnızca
+  `MB_OrtakOturumlar` ailesine yazılır (13 tablo; kurulum RUNBOOK §9B).
+
+Dosyalar: `R/helpers_ortak_oturum_*` (saf yetki/e-posta + DB katmanı +
+belge/bakım), `R/module_ortak_oturum_room_ui.R` / `_invites.R` / `_room.R`,
+`R/module_ortak_calismalar.R`, `www/css/ortak_oturumlar.css`,
+`www/js/ortak_oturumlar.js`. Ayrıntılı tasarım/operasyon:
+[`ortak-oturumlar.md`](ortak-oturumlar.md).
+
+## Bilge Yolaç
 Claude Code tabanlı, web arayüzüne entegre edilmiş kod odaklı ajan sayfasıdır. Klasör seçimi, senaryo şablonları, model katmanları ve canlı akışlı araç kullanım görünümü içerir.
 
 Bilge Yolaç canlı akışı, Türkçe karakter ve emoji bütünlüğünü korumak için hem sunucu tarafındaki `R/utils_text_encoding.R` normalizasyon sınırından hem de istemci tarafındaki `www/js/encoding_utils.js` savunmacı fallback katmanından geçer. Bu yapı, Windows VM/SSO ortamlarında görülebilen çift kodlama ve mojibake risklerini kullanıcı deneyimini azaltmadan merkezi biçimde yönetir.

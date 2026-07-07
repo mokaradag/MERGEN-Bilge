@@ -537,6 +537,40 @@ odaklı testler: `test-claude-code-sessions-db-behavior.R`,
 `test-claude-code-session-persistence-behavior.R`,
 `test-claude-code-sessions-module-contract.R`.
 
+### 9B. Ortak Oturumlar tabloları (bir kerelik kurulum)
+
+Ortak Oturumlar (işbirlikçi çalışma odaları: `Ortak Çalışmalarım`,
+`Ortak Söyleşiler`, `Ortak Bilge Yolaç Oturumları`) için 13 yeni tablo gerekir
+(`MB_OrtakOturumlar` ailesi + `MB_Kullanici_CanliDurum` + `MB_Bildirimler`).
+Kurulum UYGULAMA TARAFINDAN OTOMATİK YAPILMAZ; DBA/operatör SSMS üzerinden bir
+kez uygular. Ayrıntılı tasarım: [`docs/ortak-oturumlar.md`](docs/ortak-oturumlar.md).
+
+Kontrol listesi:
+
+1. DB yedeği alın (standart değişiklik prosedürü).
+2. `docs/sql/2026-07-ortak-oturumlar.sql` betiğini SSMS'te uygulayın.
+   Betik idempotenttir: tablolar/indeksler zaten varsa hiçbir şey yapmaz;
+   yıkıcı ifade (DROP/TRUNCATE/DELETE) içermez ve mevcut
+   `MB_Chats`/`MB_Messages`/`MB_Users`/`MB_ClaudeCode_*` tablolarına dokunmaz.
+3. Betiğin sonundaki doğrulama SELECT'i 13 tabloyu da listelemelidir.
+4. Uygulamayı yeniden başlatmaya gerek yoktur; tablo erişilebilirliği ilk
+   kullanım anında algılanır (FALSE sonucu 60 sn önbelleklenir).
+5. Doğrulama: `Ortak Çalışmalarım`da yeni bir ortak oturum oluşturun; ikinci
+   bir kullanıcıyı "Katılımcı Çağır" ile davet edin; "Odaya Yaz" mesajının LLM
+   tetiklemediğini, "Yapay Zekâya Sor" yanıtının HER İKİ kullanıcıda da
+   göründüğünü kontrol edin. SSMS'te `MB_OrtakOturum_Mesajlar` satırlarında
+   Türkçe iş kuralı değerlerinin (`OdaMesajı`, `YapayZekaSorusu`, `Katıldı`)
+   mojibake olmadığını doğrulayın.
+6. Geri alma gerekirse: `docs/sql/2026-07-ortak-oturumlar-rollback.sql`
+   yalnızca yeni ortak tabloları FK sırasının tersine düşürür; disk üzerindeki
+   `ortak_oturumlar/` belge klasörünü SİLMEZ (ayrı, bilinçli temizlik adımı).
+
+Tablolar kurulmadan da uygulama tam çalışır: Ortak Oturum sayfaları
+"tablolar hazır değil" yönergesi gösterir ve kişisel akışlar etkilenmez.
+İlgili odaklı testler: `test-ortak-oturum-db-behavior.R`,
+`test-ortak-oturum-sql-contract.R`, `test-ortak-oturum-ui-contract.R`,
+`test-ortak-oturum-permissions-behavior.R`.
+
 ## 10. Dağıtım Sonrası Smoke Testleri
 
 - Ana sayfa açılıyor mu?

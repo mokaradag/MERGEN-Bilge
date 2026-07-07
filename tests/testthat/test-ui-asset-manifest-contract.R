@@ -332,6 +332,11 @@ test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", 
     "css/admin_documentation.css",
     "css/explore_character_step.css",
     "css/surum_bilgilendirme.css",
+    # Bilinçli güncelleme: Ortak Oturumlar (işbirlikçi çalışma odaları) stilleri.
+    # Bilge Yolaç çalışma alanı paneli stilleri ayrı dosyada (frontend ratchet
+    # tek dosya satır bütçesi): ortak_oturumlar.css hemen ardından yüklenir.
+    "css/ortak_oturumlar.css",
+    "css/ortak_oturumlar_bilge_yolac.css",
     "css/sso_auth.css",
     "css/claude_code.css",
     "css/claude_code_generated_files.css",
@@ -399,7 +404,10 @@ test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", 
     "js/claude_code_plugins.js",
     # Bilinçli güncelleme: oturum hidrasyonu köprüsü (cc-hydrate-session)
     # claude_code.js'ten SONRA yüklenir (window.MergenClaudeCode bağımlılığı).
-    "js/claude_code_sessions.js"
+    "js/claude_code_sessions.js",
+    # Bilinçli güncelleme: Ortak Oturumlar istemci köprüsü (delege tıklama +
+    # kalp atışı); bağımsızdır, ertelenmiş grubun sonunda yüklenir.
+    "js/ortak_oturumlar.js"
   )
 
   expect_identical(asset_env$ui_asset_css_groups$page, expected_page_css)

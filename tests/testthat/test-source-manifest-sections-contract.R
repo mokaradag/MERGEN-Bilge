@@ -51,6 +51,7 @@
   "module_ai_audio",
   "module_identity_startup",
   "module_claude_code",
+  "ortak_oturumlar",
   "module_analysis",
   "module_support",
   "module_admin",
@@ -138,6 +139,10 @@
   # (R/module_claude_code_sessions_ui.R + R/module_claude_code_sessions.R)
   # stream_poll'dan sonra, ana server modülünden önce eklendi.
   module_claude_code = list(first = "R/module_claude_code_plugins.R", last = "R/module_claude_code.R", n = 7L),
+  # Bilinçli güncelleme: Ortak Oturumlar (işbirlikçi çalışma odaları) bölümü
+  # eklendi: saf yetki/e-posta yardımcıları + MB_OrtakOturumlar DB katmanı +
+  # oda/davet/hub modülleri (12 dosya, module_claude_code'dan sonra).
+  ortak_oturumlar = list(first = "R/helpers_ortak_oturum_permissions.R", last = "R/module_ortak_calismalar.R", n = 17L),
   module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/module_proje_kaynak_analizi.R", n = 1L),
   module_support = list(first = "R/module_destek_yardim.R", last = "R/module_destek.R", n = 6L),
   # Bilinçli güncelleme: at-budget admin modüllerinin inline highcharter/DT
@@ -334,7 +339,17 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # KALICI silme yaşam döngüsü (R/helpers_db_claude_code_session_lifecycle.R,
   # database bölümü +1) ve yönetici paneli Bilge Yolaç istatistik sekmesi
   # (R/module_admin_bilge_yolac.R, module_admin bölümü +1) eklendi.
-  expect_equal(length(runtime), 302L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 302L -> 314L bilinçli güncelleme: Ortak Oturumlar bölümü (ortak_oturumlar)
+  # 12 dosyayla eklendi: saf yetki/e-posta yardımcıları, MB_OrtakOturumlar DB
+  # katmanı (çekirdek/katılım/davet/mesaj/belge/bakım) ve oda/davet/hub modülleri.
+  # 314L -> 319L bilinçli güncelleme: Ortak Oturumlar tamamlama seti +5 dosya:
+  # saf sunum-karar yardımcıları (R/helpers_ortak_oturum_sunum.R; rol etiketi /
+  # canlı durum rozeti), yapay zekâ kuyruğu/kısmi yayın/geçmiş kopyalama DB
+  # katmanı (R/helpers_ortak_oturum_db_kuyruk.R), Ortak Bilge Yolaç DB katmanı
+  # (R/helpers_ortak_oturum_db_bilge_yolac.R; mesaj/kilit katmanından ayrıldı),
+  # yapay zekâ üretim motoru (R/module_ortak_oturum_yz.R) ve Ortak Bilge Yolaç
+  # çalışma alanı köprüsü (R/module_ortak_oturum_bilge_yolac.R).
+  expect_equal(length(runtime), 319L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

@@ -91,7 +91,17 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   max_large_files <- .as_int_env("MERGEN_TEST_MAX_800_LINE_FILES", 0L)
   max_function_heavy_files <- .as_int_env("MERGEN_TEST_MAX_25_FUNCTION_FILES", 0L)
   max_very_large_files <- .as_int_env("MERGEN_TEST_MAX_1500_LINE_FILES", 0L)
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 678L)
+  # 678L -> 761L bilinçli güncelleme (Ortak Oturumlar tamamlama seti): iki
+  # bütünleşik özellik modülü ölçülen tabanı yükseltti — R/module_ortak_calismalar.R
+  # (761; hub: liste + bildirim + yeni oturum + geçmiş kopyalama onayı + oda geri
+  # yükleme) ve R/module_ortak_oturum_bilge_yolac.R (705; ortak çalışma alanı
+  # köprüsü). 800+ satır dosya sayısı 0, 25+ fonksiyon dosya sayısı 0 ve en
+  # yüksek fonksiyon sayısı 24 KORUNUR; yalnızca en büyük dosya satır tavanı
+  # yükseldi. DB katmanı bilinçli olarak bölündü (db_mesajlar 768 -> 518;
+  # ayrılan Bilge Yolaç DB katmanı R/helpers_ortak_oturum_db_bilge_yolac.R) ve
+  # sunum-karar yardımcıları R/helpers_ortak_oturum_sunum.R'ye taşındı
+  # (permissions 27 -> 24) — böylece fonksiyon tavanı gevşetilmedi.
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 761L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 24L)
 
   actual_large_files <- sum(score_report$lines >= 800)

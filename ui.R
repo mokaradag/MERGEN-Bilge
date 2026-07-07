@@ -35,12 +35,17 @@ ui <- dashboardPage(
       menuItem("Söyleşi Yönetimi", icon = icon("folder-open"), startExpanded = FALSE,
         menuSubItem("Söyleşi Geçmişi", tabName = "history", icon = icon("history")),
         menuSubItem("Kayıtlı Söyleşiler", tabName = "saved_chats", icon = icon("bookmark")),
+        menuSubItem("Ortak Söyleşiler", tabName = "ortak_sohbetler", icon = icon("users")),
         menuSubItem("Görsel Galerisi", tabName = "image_gallery", icon = icon("images"))
       ),
       menuItem("Bilge Yolaç", icon = icon("robot"), startExpanded = FALSE,
         menuSubItem("Çalışma Alanı", tabName = "claude_code", icon = icon("terminal")),
-        menuSubItem("Oturumlar", tabName = "claude_code_sessions", icon = icon("clock-rotate-left"))
+        menuSubItem("Oturumlar", tabName = "claude_code_sessions", icon = icon("clock-rotate-left")),
+        menuSubItem("Ortak Bilge Yolaç Oturumları", tabName = "ortak_bilge_yolac", icon = icon("users"))
       ),
+      # Ortak Çalışmalarım: ekip tabanlı ortak oturumların merkez sayfası.
+      # Kişisel geçmişten (Söyleşi Geçmişim / Bilge Yolaç Oturumlarım) ayrıdır.
+      menuItem("Ortak Çalışmalarım", tabName = "ortak_calismalar", icon = icon("users")),
       menuItem("Dosya Yönetimi", tabName = "files", icon = icon("folder")),
       menuItem("Ayarlar", icon = icon("cog"), startExpanded = FALSE,
         menuSubItem("Kişiselleştirme", tabName = "settings_kisisel", icon = icon("palette")),
@@ -424,6 +429,12 @@ ui <- dashboardPage(
 
       # Bilge Yolaç Oturumları Sekmesi (kalıcı ajan oturum geçmişi)
       tabItem(tabName = "claude_code_sessions", claudeCodeSessionsUI("claude_code_sessions_module")),
+
+      # Ortak Oturumlar Sekmeleri: tek modül kimliği, üç yüzey (destek deseni).
+      # Oda yalnızca hub yüzeyine gömülür; diğer yüzeyler filtreli listelerdir.
+      tabItem(tabName = "ortak_calismalar", ortakCalismalarUI("ortak_calismalar_module", sayfa = "hub")),
+      tabItem(tabName = "ortak_sohbetler", ortakCalismalarUI("ortak_calismalar_module", sayfa = "sohbet")),
+      tabItem(tabName = "ortak_bilge_yolac", ortakCalismalarUI("ortak_calismalar_module", sayfa = "bilge_yolac")),
 
       # Dosya Yönetimi Sekmesi
       tabItem(tabName = "files", fileManagerUI("file_manager_module")),

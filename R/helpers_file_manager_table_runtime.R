@@ -56,6 +56,23 @@ fm_register_file_manager_table_runtime <- function(session,
 
               var ns = '%s';
               var $tbl = $(tbl);
+
+              // Ek işaretleme kutuları Shiny INPUT'u DEĞİLDİR: değişiklik
+              // delege 'change.attach' + attach_toggled ile, durum güncelleme
+              // setAttachState (getElementById) ile yapılır. Ancak Shiny'nin
+              // varsayılan checkbox binding'i input[type=checkbox] öğelerini
+              // yakalar; DataTables sayfalama/çizim yeniden bağlamada aynı id'yi
+              // iki kez görüp 'Duplicate input IDs' uyarısı üretir. Bu kutuları
+              // Shiny input kaydından çıkararak uyarı kökten giderilir (delege
+              // olay ve getElementById bundan etkilenmez).
+              try {
+                $tbl.find('input.attach-checkbox').each(function(){
+                  if (this.hasAttribute('data-shiny-input-binding') && Shiny.unbindAll) {
+                    try { Shiny.unbindAll(this); } catch(e) {}
+                  }
+                });
+              } catch(e) {}
+
               $tbl.find('input.attach-checkbox').off('change.attach').on('change.attach', function(){
                 var fid = this.getAttribute('data-file-id');
                 var fname = this.getAttribute('data-filename');
