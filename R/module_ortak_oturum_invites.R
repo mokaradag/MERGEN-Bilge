@@ -116,6 +116,17 @@ ortakOturumInvitesBind <- function(input, output, session, ctx) {
     oturum_id <- ctx$aktif_oturum()
     req(oturum_id)
 
+    # P2 güvenlik sınırı: kullanıcı dizini, yalnızca gerçekten davet yetkisi olan
+    # içerik erişimli katılımcılara render edilir. Modal açma kontrolüne güvenmek
+    # yeterli değildir; output render yolu da fail-closed olmalıdır.
+    if (!davet_yetkili_mi()) {
+      return(div(
+        class = "oo-bos-durum",
+        icon("lock"),
+        p("Katılımcı çağırma yetkiniz yok.")
+      ))
+    }
+
     filtre <- as.character(input$davet_filtre %||% "Çevrim İçi Kullanıcılar")[1]
     kullanicilar <- ortak_db_kullanici_arama(input$davet_arama %||% "")
 
