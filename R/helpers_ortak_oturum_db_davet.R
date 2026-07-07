@@ -173,16 +173,21 @@ ortak_db_davet_yanitla <- function(davet_id, kullanici_id, kabul, conn = NULL) {
       davet <- DBI::dbGetQuery(
         handle$conn,
         paste(
-          "SELECT DavetID, OrtakOturumID, DavetEdilenKullaniciID, DavetDurumu",
-          "FROM MB_OrtakOturum_Davetler WHERE DavetID = ?"
+          "SELECT d.DavetID, d.OrtakOturumID, d.DavetEdilenKullaniciID,",
+          "d.DavetDurumu, o.OturumDurumu",
+          "FROM MB_OrtakOturum_Davetler d",
+          "JOIN MB_OrtakOturumlar o ON o.OrtakOturumID = d.OrtakOturumID",
+          "WHERE d.DavetID = ?"
         ),
         params = list(davet_id)
       )
 
-      # Yalnızca davetin sahibi ve yalnızca Bekliyor durumundaki davet yanıtlanır.
+      # Yalnızca davetin sahibi, yalnızca Bekliyor davet ve yalnızca Aktif oda
+      # yanıtlanır; arşivlenmiş/kapanmış oda daveti içerik erişimi doğurmaz.
       if (nrow(davet) == 0L ||
           !identical(as.integer(davet$DavetEdilenKullaniciID[1]), kullanici_id) ||
-          !identical(davet$DavetDurumu[1], "Bekliyor")) {
+          !identical(davet$DavetDurumu[1], "Bekliyor") ||
+          !identical(as.character(davet$OturumDurumu[1]), "Aktif")) {
         FALSE
       } else {
         kabul_zamani <- if (isTRUE(kabul)) simdi else NA_character_
