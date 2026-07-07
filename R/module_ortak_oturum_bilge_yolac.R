@@ -465,6 +465,9 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
         next
       }
       hedef <- .oo_dosya_hedef_adi(ws, kaynak_adlar[i])
+      if (!.oo_dosya_kok_icinde_mi(hedef, ws)) {
+        next
+      }
       if (isTRUE(tryCatch(file.copy(yol, hedef, overwrite = FALSE), error = function(e) FALSE))) {
         kopyalanan <- kopyalanan + 1L
       }
