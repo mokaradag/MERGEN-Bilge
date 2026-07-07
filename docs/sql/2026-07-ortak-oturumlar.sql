@@ -467,6 +467,8 @@ BEGIN
             N'RolDeğişti',
             N'SahiplikDevredildi',
             N'OturumArşivlendi',
+            N'OturumGeriYüklendi',
+            N'GeçmişKopyalandı',
             N'OturumKapatıldı'
         )),
         CONSTRAINT FK_MB_OrtakOlay_Oturum FOREIGN KEY (OrtakOturumID) REFERENCES dbo.MB_OrtakOturumlar(OrtakOturumID),
