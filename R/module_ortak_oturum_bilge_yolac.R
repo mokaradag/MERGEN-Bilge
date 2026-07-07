@@ -421,6 +421,14 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     deger <- as.character(input$by_model_sec$id %||% "")[1]
     req(nzchar(deger))
 
+    katilim <- ctx$benim_katilimim()
+    if (is.null(katilim) ||
+        !ortak_icerik_erisimi_var_mi(katilim$KatilimDurumu[1]) ||
+        !ortak_by_calistirabilir_mi(katilim$Rol[1])) {
+      ctx$bildir("Bilge Yolaç modelini değiştirme yetkiniz yok.", tur = "error")
+      return(invisible(NULL))
+    }
+
     by_model(deger)
 
     oturum_id <- ctx$aktif_oturum()
