@@ -31,7 +31,7 @@ ortak_db_kuyruk_ekle <- function(oturum_id, mesaj_id, conn = NULL) {
   }
   on.exit(.oo_db_release(handle), add = TRUE)
 
-  .oo_db_try({
+  sonuc <- .oo_db_try({
     DBI::dbWithTransaction(handle$conn, {
       sira_sql <- if (.oo_db_is_sqlite(handle$conn)) {
         "SELECT COALESCE(MAX(SiraNo), 0) + 1 AS sonraki FROM MB_OrtakOturum_YapayZekaKuyrugu WHERE OrtakOturumID = ?"
@@ -71,6 +71,33 @@ ortak_db_kuyruk_ekle <- function(oturum_id, mesaj_id, conn = NULL) {
   },
   fallback = NULL,
   uyari = "Ortak yapay zekâ kuyruğuna eklenemedi:")
+
+  if (is.null(sonuc)) {
+    .oo_db_try({
+      DBI::dbExecute(
+        handle$conn,
+        paste(
+          "UPDATE MB_OrtakOturum_Mesajlar",
+          "SET MesajTuru = ?, Hedef = ?, MesajMetni = ?, LLMGonderildiMi = 0",
+          "WHERE OrtakOturumID = ? AND OrtakMesajID = ? AND MesajTuru = ?"
+        ),
+        params = normalize_db_params(list(
+          normalize_db_technical_value("SistemMesajı"),
+          normalize_db_technical_value("Katılımcılar"),
+          normalize_db_visible_value(
+            "Yapay zekâ sorusu sıraya alınamadığı için iptal edildi. Lütfen yeniden gönderin."
+          ),
+          oturum_id,
+          mesaj_id,
+          normalize_db_technical_value("YapayZekaSorusu")
+        ))
+      )
+    },
+    fallback = FALSE,
+    uyari = "Sıraya alınamayan yapay zekâ sorusu sistem mesajına çevrilemedi:")
+  }
+
+  sonuc
 }
 
 #' Bekleyen kuyruk kayıtları (soru metni + soran adıyla; sıra artan).
