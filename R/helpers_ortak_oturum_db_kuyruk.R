@@ -439,6 +439,7 @@ ortak_db_gecmis_kopyala <- function(oturum_id,
         gonderen_kullanici_id = kullanici_id,
         mesaj_turu = "YapayZekaSorusu",
         mesaj_metni = icerik,
+        llm_gonderildi = TRUE,
         olusturma_zamani = zaman,
         conn = handle$conn
       )
