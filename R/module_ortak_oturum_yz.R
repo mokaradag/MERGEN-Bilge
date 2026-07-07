@@ -124,16 +124,36 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 
   # --- Tamamlama + kuyruk zinciri ---------------------------------------------
 
-  motor$tamamla <- function(oturum_id, soru_id, istek_id,
-                            yanit_metni = NULL, hata_metni = NULL,
-                            kuyruk_id = NULL, soran_id = NULL) {
-    if (!is.null(hata_metni)) {
-      ortak_db_mesaj_ekle(
-        oturum_id = oturum_id,
-        gonderen_kullanici_id = NULL,
-        mesaj_turu = "SistemMesajı",
-        mesaj_metni = hata_metni
-      )
+	motor$tamamla <- function(oturum_id, soru_id, istek_id,
+							  yanit_metni = NULL, hata_metni = NULL,
+							  kuyruk_id = NULL, soran_id = NULL) {
+	  aktif_detay <- ortak_db_aktif_uretim_detay(oturum_id)
+	  aktif_istek <- if (!is.null(aktif_detay)) {
+		as.character(aktif_detay$IstekID[1] %||% "")
+	  } else {
+		""
+	  }
+	  aktif_durum <- if (!is.null(aktif_detay)) {
+		as.character(aktif_detay$KilitDurumu[1] %||% "")
+	  } else {
+		""
+	  }
+
+	  if (!identical(aktif_istek, as.character(istek_id %||% "")[1]) ||
+		  !identical(aktif_durum, "Çalışıyor")) {
+		uretim$aktif <- FALSE
+		uretim$stream_file <- NULL
+		uretim$son_yayin <- ""
+		return(invisible(NULL))
+	  }
+
+	  if (!is.null(hata_metni)) {
+		ortak_db_mesaj_ekle(
+		  oturum_id = oturum_id,
+		  gonderen_kullanici_id = NULL,
+		  mesaj_turu = "SistemMesajı",
+		  mesaj_metni = hata_metni
+		)
       ortak_db_uretim_kilidi_birak(oturum_id, istek_id, sonuc_durumu = "Hata")
       if (!is.null(kuyruk_id)) {
         ortak_db_kuyruk_tamamla(kuyruk_id, "Hata")
