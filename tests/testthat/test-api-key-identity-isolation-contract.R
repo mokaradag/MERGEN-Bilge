@@ -5,6 +5,14 @@
 #             düşülmediğini doğrular.
 # ==============================================================================
 
+
+.read_static_utf8_lines <- function(path) {
+  if (!exists("read_text_lines_utf8", mode = "function", inherits = TRUE)) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "utils_text_encoding.R"), encoding = "UTF-8")
+  }
+  read_text_lines_utf8(path)
+}
+
 source(
   file.path(repo_root_for_tests, "R", "helpers_api_key_identity.R"),
   encoding = "UTF-8",
@@ -89,17 +97,9 @@ test_that("farklı kullanıcıya ait oturum anahtarı temizlenir ve kullanılmaz
 })
 
 test_that("API anahtarı modülleri Sys.info kullanıcısına fallback yapmaz", {
-  module_api_key_lines <- readLines(
-    file.path(repo_root_for_tests, "R", "module_api_key.R"),
-    warn = FALSE,
-    encoding = "UTF-8"
-  )
+  module_api_key_lines <- .read_static_utf8_lines(file.path(repo_root_for_tests, "R", "module_api_key.R"))
 
-  settings_lines <- readLines(
-    file.path(repo_root_for_tests, "R", "module_settings_yapilandirma.R"),
-    warn = FALSE,
-    encoding = "UTF-8"
-  )
+  settings_lines <- .read_static_utf8_lines(file.path(repo_root_for_tests, "R", "module_settings_yapilandirma.R"))
 
   forbidden_pattern <- "Sys\\.info\\(\\)\\[\\[\"user\"\\]\\]"
 
@@ -108,11 +108,7 @@ test_that("API anahtarı modülleri Sys.info kullanıcısına fallback yapmaz", 
 })
 
 test_that("API anahtarı helper manifestte modüllerden önce yüklenir", {
-  manifest_lines <- readLines(
-    file.path(repo_root_for_tests, "R", "config_source_manifest.R"),
-    warn = FALSE,
-    encoding = "UTF-8"
-  )
+  manifest_lines <- .read_static_utf8_lines(file.path(repo_root_for_tests, "R", "config_source_manifest.R"))
 
   helper_pos <- grep("\"R/helpers_api_key_identity\\.R\"", manifest_lines)
   api_module_pos <- grep("\"R/module_api_key\\.R\"", manifest_lines)
@@ -127,23 +123,11 @@ test_that("API anahtarı helper manifestte modüllerden önce yüklenir", {
 })
 
 test_that("LLM çağrı yolları sahiplik doğrulayan etkin API anahtarı helper'ını kullanır", {
-  send_message_lines <- readLines(
-    file.path(repo_root_for_tests, "R", "server_send_message.R"),
-    warn = FALSE,
-    encoding = "UTF-8"
-  )
+  send_message_lines <- .read_static_utf8_lines(file.path(repo_root_for_tests, "R", "server_send_message.R"))
 
-  summarization_lines <- readLines(
-    file.path(repo_root_for_tests, "R", "server_handler_summarization.R"),
-    warn = FALSE,
-    encoding = "UTF-8"
-  )
+  summarization_lines <- .read_static_utf8_lines(file.path(repo_root_for_tests, "R", "server_handler_summarization.R"))
 
-  ai_processing_lines <- readLines(
-    file.path(repo_root_for_tests, "R", "module_ai_processing.R"),
-    warn = FALSE,
-    encoding = "UTF-8"
-  )
+  ai_processing_lines <- .read_static_utf8_lines(file.path(repo_root_for_tests, "R", "module_ai_processing.R"))
 
   # send_message hızlı yol için sahiplik doğrulayan ÖNBELLEKLİ etkin anahtar
   # yardımcısını kullanır; bu yardımcı kendi içinde mb_api_key_get_effective_key'e

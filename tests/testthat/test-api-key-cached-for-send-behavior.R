@@ -6,6 +6,14 @@
 #           Shiny/DB/ağ GEREKMEZ. Sahte oturum (environment userData) kullanılır.
 # ==============================================================================
 
+
+.read_static_utf8_lines <- function(path) {
+  if (!exists("read_text_lines_utf8", mode = "function", inherits = TRUE)) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "utils_text_encoding.R"), encoding = "UTF-8")
+  }
+  read_text_lines_utf8(path)
+}
+
 .apikeycache_source_once <- function() {
   if (exists("mb_api_key_get_cached_for_send", envir = globalenv(),
              mode = "function", inherits = TRUE)) {
@@ -195,10 +203,7 @@ testthat::test_that("LLM hata yolları auth-cache geçersiz kılma yardımcısı
     "R/server_handler_streaming_tts.R",
     "R/server_llm_response_handlers.R"
   )) {
-    lines <- readLines(
-      file.path(resolve_repo_root_for_tests(), rel),
-      warn = FALSE, encoding = "UTF-8"
-    )
+    lines <- .read_static_utf8_lines(file.path(resolve_repo_root_for_tests(), rel))
     testthat::expect_true(
       any(grepl("mb_api_key_invalidate_send_cache_on_auth_error\\(", lines)),
       info = sprintf("%s auth hatasında gönderim önbelleğini geçersiz kılmalı", rel)

@@ -2,8 +2,16 @@
 # Açıklama: AI Uzman frontend yöneticisi ile Shiny mesaj bağlayıcılarının
 #           ayrı dosyalarda kaldığını ve yükleme sırasının korunmasını doğrular.
 
+
+.read_static_utf8_lines <- function(path) {
+  if (!exists("read_text_lines_utf8", mode = "function", inherits = TRUE)) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "utils_text_encoding.R"), encoding = "UTF-8")
+  }
+  read_text_lines_utf8(path)
+}
+
 .read_ai_expert_frontend_file <- function(path) {
-  readLines(file.path(resolve_repo_root_for_tests(), path), encoding = "UTF-8", warn = FALSE)
+  .read_static_utf8_lines(file.path(resolve_repo_root_for_tests(), path))
 }
 
 test_that("AI Expert manager runtime state machine owns no Shiny handler registrations", {

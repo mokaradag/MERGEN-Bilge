@@ -16,6 +16,13 @@ source(
   local = globalenv()
 )
 
+.read_static_utf8_lines <- function(path) {
+  if (!exists("read_text_lines_utf8", mode = "function", inherits = TRUE)) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "utils_text_encoding.R"), encoding = "UTF-8")
+  }
+  read_text_lines_utf8(path)
+}
+
 .make_feature_api_key_session <- function(auth_initialized = TRUE,
                                           system_username = "user_a",
                                           ai_api_key = NULL,
@@ -176,17 +183,9 @@ test_that("kurum anahtarı yoksa eski fallback anahtar kullanılabilir", {
 })
 
 test_that("TTS ve AI Uzman doğrudan oturum anahtarı okumaz", {
-  tts_lines <- readLines(
-    file.path(repo_root_for_tests, "R", "module_tts.R"),
-    warn = FALSE,
-    encoding = "UTF-8"
-  )
+  tts_lines <- .read_static_utf8_lines(file.path(repo_root_for_tests, "R", "module_tts.R"))
 
-  ai_expert_lines <- readLines(
-    file.path(repo_root_for_tests, "R", "server_ai_expert_handlers.R"),
-    warn = FALSE,
-    encoding = "UTF-8"
-  )
+  ai_expert_lines <- .read_static_utf8_lines(file.path(repo_root_for_tests, "R", "server_ai_expert_handlers.R"))
 
   expect_true(any(grepl("mb_api_key_get_feature_key_value\\(", tts_lines)))
   expect_true(any(grepl("mb_api_key_get_feature_key_value\\(", ai_expert_lines)))
@@ -196,11 +195,7 @@ test_that("TTS ve AI Uzman doğrudan oturum anahtarı okumaz", {
 })
 
 test_that("özellik anahtarı helper'ı manifestte TTS ve AI Uzman modüllerinden önce yüklenir", {
-  manifest_lines <- readLines(
-    file.path(repo_root_for_tests, "R", "config_source_manifest.R"),
-    warn = FALSE,
-    encoding = "UTF-8"
-  )
+  manifest_lines <- .read_static_utf8_lines(file.path(repo_root_for_tests, "R", "config_source_manifest.R"))
 
   helper_pos <- grep("\"R/helpers_feature_api_key\\.R\"", manifest_lines)
   ai_expert_pos <- grep("\"R/server_ai_expert_handlers\\.R\"", manifest_lines)

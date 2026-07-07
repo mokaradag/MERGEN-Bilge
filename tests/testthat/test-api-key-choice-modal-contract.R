@@ -29,12 +29,15 @@
   stop("Repo kökü bulunamadı.", call. = FALSE)
 }
 
+.read_static_utf8_lines <- function(path) {
+  if (!exists("read_text_lines_utf8", mode = "function", inherits = TRUE)) {
+    source(file.path(.akc_repo_root(), "R", "utils_text_encoding.R"), encoding = "UTF-8")
+  }
+  read_text_lines_utf8(path)
+}
+
 .akc_read <- function(rel_path) {
-  readLines(
-    file.path(.akc_repo_root(), rel_path),
-    warn = FALSE,
-    encoding = "UTF-8"
-  )
+  .read_static_utf8_lines(file.path(.akc_repo_root(), rel_path))
 }
 
 .akc_text <- function(rel_path) {
