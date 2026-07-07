@@ -198,8 +198,28 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
     )
 
     if (!isTRUE(kilit_ok)) {
-      # Başka bir oturum kilidi kaptı: kayıt tekrar Bekliyor'a döner (kaybolmaz).
-      ortak_db_kuyruk_beklet(sonraki$kuyruk_id)
+      # Yetki/katılım değişmişse bu kayıt artık çalıştırılamaz; başta bekletmek
+      # kuyruğu kalıcı olarak tıkayacağı için Hata ile kapatılır.
+      katilimci <- ortak_db_katilimci_getir(oturum_id, sonraki$soran_id)
+      yetki_devam_ediyor <- !is.null(katilimci) &&
+        ortak_icerik_erisimi_var_mi(katilimci$KatilimDurumu[1]) &&
+        ortak_yetki_var_mi(katilimci$Rol[1], "yapay_zeka_sor")
+
+      if (!isTRUE(yetki_devam_ediyor)) {
+        ortak_db_kuyruk_tamamla(sonraki$kuyruk_id, "Hata")
+        ortak_db_mesaj_ekle(
+          oturum_id = oturum_id,
+          gonderen_kullanici_id = NULL,
+          mesaj_turu = "SistemMesajı",
+          mesaj_metni = "Sıradaki yapay zekâ sorusu yanıtlanmadı: soruyu soran kullanıcının oda erişimi veya yapay zekâya sorma yetkisi artık geçerli değil.",
+          bagli_mesaj_id = sonraki$mesaj_id
+        )
+        motor$kuyruk_isle(oturum_id)
+      } else {
+        # Başka bir oturum kilidi kaptı: kayıt tekrar Bekliyor'a döner (kaybolmaz).
+        ortak_db_kuyruk_beklet(sonraki$kuyruk_id)
+      }
+
       return(invisible(NULL))
     }
 
