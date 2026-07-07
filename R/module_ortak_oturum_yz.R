@@ -329,12 +329,12 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
       return(invisible(NULL))
     }
 
-    kismi <- if (exists("mergen_stream_classify_poll_lines", mode = "function", inherits = TRUE)) {
-      sinif <- mergen_stream_classify_poll_lines(satirlar)
-      paste0(sinif$delta_batch %||% character(0), collapse = "")
-    } else {
-      ""
-    }
+	kismi <- if (exists("mergen_stream_classify_poll_lines", mode = "function", inherits = TRUE)) {
+	  sinif <- mergen_stream_classify_poll_lines(satirlar)
+	  as.character(sinif$delta_text %||% "")[1]
+	} else {
+	  ""
+	}
 
     if (nzchar(kismi) && !identical(kismi, isolate(uretim$son_yayin))) {
       uretim$son_yayin <- kismi
