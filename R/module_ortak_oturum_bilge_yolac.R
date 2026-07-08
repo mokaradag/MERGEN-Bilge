@@ -527,7 +527,7 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
   # @return TRUE: çalıştırma başlatıldı (motor beklemeye geçer);
   #         FALSE: köprü kullanılamıyor (motor normal LLM'e düşer).
   motor$by_calistir <- function(oturum_id, soru_id, soran_id, istek_id,
-                                komut = NULL, kuyruk_id = NULL) {
+                                komut = NULL, kuyruk_id = NULL, persona_id = NULL) {
     if (!exists("run_claude_code", mode = "function", inherits = TRUE) ||
         !exists("tracked_future_promise", mode = "function", inherits = TRUE)) {
       return(FALSE)
@@ -554,6 +554,18 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     komut_metni <- as.character(komut %||% "")[1]
     if (!nzchar(komut_metni)) {
       return(FALSE)
+    }
+
+    calistirma_prompt <- komut_metni
+    persona_kimligi <- ortak_oturum_persona_kimligi(persona_id, oturum_id)
+    persona_sistem <- ortak_oturum_persona_sistem_prompt(persona_kimligi, oturum_id)
+    if (nzchar(persona_sistem)) {
+      calistirma_prompt <- paste(
+        persona_sistem,
+        "Bilge Yolaç/Claude Code yanıtını ve çalışma özetini bu persona talimatıyla uyumlu üret.",
+        komut_metni,
+        sep = "\n\n"
+      )
     }
 
     kayit <- by_kaydi_garantile(oturum_id, ws)
@@ -592,7 +604,7 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     prom <- tracked_future_promise(
       task_fn = function() {
         run_claude_code(
-          prompt = komut_metni,
+          prompt = calistirma_prompt,
           workdir = ws,
           model = model_secimi,
           timeout_sec = zaman_asimi,
@@ -612,7 +624,8 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
           oturum_id = oturum_id, soru_id = soru_id, soran_id = soran_id,
           istek_id = istek_id, komut = komut_metni, sonuc = sonuc, ws = ws,
           by_id = by_id, onceki_dosyalar = onceki_dosyalar,
-          baslangic = baslangic, kuyruk_id = kuyruk_id
+          baslangic = baslangic, kuyruk_id = kuyruk_id,
+          persona_id = persona_kimligi
         )
       },
       onRejected = function(e) {
@@ -626,7 +639,8 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
         motor$tamamla(
           oturum_id, soru_id, istek_id,
           hata_metni = "Bilge Yolaç çalıştırması başarısız oldu; lütfen tekrar deneyin.",
-          kuyruk_id = kuyruk_id, soran_id = soran_id
+          kuyruk_id = kuyruk_id, soran_id = soran_id,
+          persona_id = persona_kimligi
         )
       }
     )
@@ -636,7 +650,8 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
 
   # Çalıştırma sonucu: çalıştırma kaydı + üretilen ortak belgeler + yanıt mesajı.
   by_tamamla <- function(oturum_id, soru_id, soran_id, istek_id, komut, sonuc,
-                         ws, by_id, onceki_dosyalar, baslangic, kuyruk_id) {
+                         ws, by_id, onceki_dosyalar, baslangic, kuyruk_id,
+                         persona_id = NULL) {
     sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
     basarili <- isTRUE(sonuc$success)
 
@@ -694,7 +709,8 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
       motor$tamamla(
         oturum_id, soru_id, istek_id,
         yanit_metni = cikti,
-        kuyruk_id = kuyruk_id, soran_id = soran_id
+        kuyruk_id = kuyruk_id, soran_id = soran_id,
+        persona_id = persona_id
       )
     } else {
       hata <- as.character(sonuc$error %||% "")[1]
@@ -704,7 +720,8 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
       motor$tamamla(
         oturum_id, soru_id, istek_id,
         hata_metni = paste("Bilge Yolaç çalıştırması başarısız:", hata),
-        kuyruk_id = kuyruk_id, soran_id = soran_id
+        kuyruk_id = kuyruk_id, soran_id = soran_id,
+        persona_id = persona_id
       )
     }
 

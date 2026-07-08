@@ -75,21 +75,11 @@ ortakOturumRoomUI <- function(id) {
         uiOutput(ns("uretim_durumu_alani")),
 
         # Mesaj yazma alanı: oda mesajı ile yapay zekâ sorusu AYRI eylemlerdir.
+        # Model ve persona seçimleri girdi kutusunun ALTINDA, aksiyon butonlarıyla
+        # AYNI satırdadır (dikey alan tasarrufu; ana söyleşi "Model Değiştir" dili).
         div(
           class = "oo-composer",
           uiOutput(ns("composer_uyari_alani")),
-          div(
-            class = "oo-composer-ust",
-            div(
-              class = "oo-composer-model",
-              tags$label(
-                `for` = ns("oda_model_secimi"),
-                class = "oo-composer-model-etiket",
-                tagList(icon("microchip"), span("Model"))
-              ),
-              uiOutput(ns("oda_model_secim_alani"), inline = TRUE)
-            )
-          ),
           tags$textarea(
             id = ns("oda_mesaj_metni"),
             class = "oo-composer-girdi form-control",
@@ -99,19 +89,27 @@ ortakOturumRoomUI <- function(id) {
           ),
           div(
             class = "oo-composer-aksiyonlar",
-            actionButton(
-              ns("odaya_yaz"),
-              label = tagList(icon("comments"), span("Odaya Yaz")),
-              class = "oo-oda-btn oo-oda-btn-notr oo-btn-odaya-yaz",
-              title = "Mesajı yalnızca katılımcılara gönder; yapay zekâya GİTMEZ",
-              `aria-label` = "Mesajı odaya yaz; yapay zekâya gönderilmez"
+            div(
+              class = "oo-composer-secimler",
+              uiOutput(ns("oda_model_secim_alani"), inline = TRUE),
+              uiOutput(ns("oda_persona_secim_alani"), inline = TRUE)
             ),
-            actionButton(
-              ns("yapay_zekaya_sor"),
-              label = tagList(icon("robot"), span("Yapay Zekâya Sor")),
-              class = "oo-oda-btn oo-oda-btn-birincil oo-btn-yz-sor",
-              title = "Bu mesaj yapay zekâya gönderilecek ve yanıt tüm katılımcılar tarafından görülecek.",
-              `aria-label` = "Soruyu yapay zekâya gönder; yanıtı tüm katılımcılar görür"
+            div(
+              class = "oo-composer-butonlar",
+              actionButton(
+                ns("odaya_yaz"),
+                label = tagList(icon("comments"), span("Odaya Yaz")),
+                class = "oo-oda-btn oo-oda-btn-notr oo-btn-odaya-yaz",
+                title = "Mesajı yalnızca katılımcılara gönder; yapay zekâya GİTMEZ",
+                `aria-label` = "Mesajı odaya yaz; yapay zekâya gönderilmez"
+              ),
+              actionButton(
+                ns("yapay_zekaya_sor"),
+                label = tagList(icon("robot"), span("Yapay Zekâya Sor")),
+                class = "oo-oda-btn oo-oda-btn-birincil oo-btn-yz-sor",
+                title = "Bu mesaj yapay zekâya gönderilecek ve yanıt tüm katılımcılar tarafından görülecek.",
+                `aria-label` = "Soruyu yapay zekâya gönder; yanıtı tüm katılımcılar görür"
+              )
             )
           ),
           p(
@@ -140,6 +138,17 @@ ortakOturumRoomUI <- function(id) {
             h4(class = "oo-bolum-baslik", tagList(icon("users"), span("Katılımcılar"))),
             div(class = "oo-katilimci-listesi", uiOutput(ns("katilimcilar_alani")))
           ),
+          # Sürüklenebilir dikey ayraç: Katılımcılar / Ortak Belgeler yüksekliğini
+          # kullanıcı ayarlar (oturum boyunca korunur; sadece görsel — JS köprüsü).
+          tags$div(
+            class = "oo-yan-resizer",
+            `data-oo-resizer` = "1",
+            role = "separator",
+            `aria-orientation` = "horizontal",
+            `aria-label` = "Katılımcılar ve Ortak Belgeler panel yüksekliğini ayarla",
+            tabindex = "0",
+            tags$span(class = "oo-yan-resizer-tutamac", `aria-hidden` = "true")
+          ),
           div(
             class = "oo-yan-bolum oo-yan-belgeler",
             h4(class = "oo-bolum-baslik", tagList(icon("folder-open"), span("Ortak Belgeler"))),
@@ -156,11 +165,39 @@ ortakOturumRoomUI <- function(id) {
 # Tek mesaj balonu. Mesaj türüne göre stil sınıfı seçilir; yapay zekâ yanıtı
 # güvenli markdown render'ından geçer (render_safe_markdown_html), diğer tüm
 # metinler düz metin olarak escape edilir.
-oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL) {
+oo_mesaj_persona_id <- function(satir) {
+  meta <- as.character(satir$MetaJson %||% "")[1]
+  if (!nzchar(meta) || is.na(meta) || !requireNamespace("jsonlite", quietly = TRUE)) {
+    return("")
+  }
+  parsed <- tryCatch(jsonlite::fromJSON(meta, simplifyVector = TRUE), error = function(e) NULL)
+  if (!is.list(parsed)) {
+    return("")
+  }
+
+  persona_id <- as.character(parsed$persona_id %||% "")[1]
+  if (is.na(persona_id)) "" else trimws(persona_id)
+}
+
+oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL, persona = NULL) {
   tur <- as.character(satir$MesajTuru %||% "OdaMesajı")[1]
   metin <- as.character(satir$MesajMetni %||% "")[1]
   gonderen <- as.character(satir$GonderenAdi %||% "")[1]
   zaman <- as.character(satir$OlusturmaZamani %||% "")[1]
+
+  # Yapay zekâ yanıtı yalnızca kendi metadata'sındaki persona_id ile etiketlenir.
+  # Metadata yoksa room-level/current persona kullanılmaz; eski ya da içe aktarılan
+  # yanıtlar güvenli biçimde genel "Yapay Zekâ" etiketiyle kalır.
+  mesaj_persona_id <- oo_mesaj_persona_id(satir)
+  if (identical(tur, "YapayZekaYanıtı")) {
+    persona <- if (nzchar(mesaj_persona_id)) {
+      ortak_oturum_persona_gorunumu(mesaj_persona_id)
+    } else {
+      NULL
+    }
+  }
+  yz_persona_ad <- if (is.list(persona)) as.character(persona$ad %||% "")[1] else ""
+  yz_persona_accent <- if (is.list(persona)) as.character(persona$accent %||% "")[1] else ""
 
   tur_sinifi <- switch(
     tur,
@@ -178,7 +215,7 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL) {
     )
 
   gonderen_etiket <- if (identical(tur, "YapayZekaYanıtı")) {
-    "Yapay Zekâ"
+    if (nzchar(yz_persona_ad)) yz_persona_ad else "Yapay Zekâ"
   } else if (identical(tur, "SistemMesajı")) {
     "Sistem"
   } else if (identical(tur, "BelgeBildirimi")) {
@@ -194,7 +231,7 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL) {
     "YapayZekaSorusu" = tags$span(class = "oo-rozet oo-rozet-yz-soru",
                                   tagList(icon("robot"), span("Yapay Zekâya Soru"))),
     "YapayZekaYanıtı" = tags$span(class = "oo-rozet oo-rozet-yz-yanit",
-                                  tagList(icon("wand-magic-sparkles"), span("Yapay Zeka Yanıtı"))),
+                                  tagList(icon("wand-magic-sparkles"), span("Yapay Zekâ Yanıtı"))),
     "OdaMesajı" = tags$span(class = "oo-rozet oo-rozet-oda",
                             tagList(icon("comments"), span("Oda"))),
     "SistemMesajı" = tags$span(class = "oo-rozet oo-rozet-sistem",
@@ -217,6 +254,13 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL) {
     "oo-mesaj-avatar-kullanici"
   )
 
+  # Yapay zekâ avatarı persona aksan rengiyle boyanır (görsel varlık gerekmez).
+  avatar_stili <- if (identical(tur, "YapayZekaYanıtı") && nzchar(yz_persona_accent)) {
+    sprintf("background:%s;", yz_persona_accent)
+  } else {
+    NULL
+  }
+
   # Yapay zekâ yanıtı: güvenli markdown; diğerleri düz metin (escape).
   metin_html <- if (identical(tur, "YapayZekaYanıtı") &&
                     exists("render_safe_markdown_html", mode = "function", inherits = TRUE)) {
@@ -229,8 +273,9 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL) {
     class = paste("oo-mesaj", tur_sinifi, if (benim) "oo-mesaj-benim" else NULL),
     div(
       class = paste("oo-mesaj-avatar", avatar_sinifi),
+      style = avatar_stili,
       `aria-hidden` = "true",
-      if (identical(tur, "YapayZekaYanıtı")) icon("robot") else span(bas_harf)
+      span(bas_harf)
     ),
     div(
       class = "oo-mesaj-govde",

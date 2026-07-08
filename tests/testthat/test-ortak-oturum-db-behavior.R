@@ -50,6 +50,7 @@ local({
   }
 
   for (dosya in c(
+    "helpers_ortak_oturum_sunum.R",
     "helpers_ortak_oturum_db.R",
     "helpers_ortak_oturum_db_katilim.R",
     "helpers_ortak_oturum_db_davet.R",

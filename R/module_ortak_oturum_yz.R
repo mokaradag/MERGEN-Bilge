@@ -112,16 +112,18 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 
     bilgi <- ortak_db_oturum_getir(oturum_id)
     by_odasi <- !is.null(bilgi) && identical(as.character(bilgi$KaynakTuru[1]), "BilgeYolaç")
+    persona_secim <- if (!is.null(bilgi)) as.character(bilgi$SecilenPersona[1] %||% "") else ""
+    persona_kimligi <- ortak_oturum_persona_kimligi(persona_secim, oturum_id)
 
     if (by_odasi && is.function(motor$by_calistir)) {
-      basladi <- motor$by_calistir(oturum_id, soru_id, soran_id, istek_id, metin, kuyruk_id)
+      basladi <- motor$by_calistir(oturum_id, soru_id, soran_id, istek_id, metin, kuyruk_id, persona_kimligi)
       if (isTRUE(basladi)) {
         return(invisible(NULL))
       }
       # CLI köprüsü kullanılamıyor: normal LLM yoluna güvenli düşüş.
     }
 
-    motor$llm_uret(oturum_id, soru_id, soran_id, istek_id, kuyruk_id)
+    motor$llm_uret(oturum_id, soru_id, soran_id, istek_id, kuyruk_id, persona_kimligi)
     invisible(NULL)
   }
 
@@ -129,7 +131,8 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 
 	motor$tamamla <- function(oturum_id, soru_id, istek_id,
 							  yanit_metni = NULL, hata_metni = NULL,
-							  kuyruk_id = NULL, soran_id = NULL) {
+							  kuyruk_id = NULL, soran_id = NULL,
+                              persona_id = NULL) {
 	  aktif_detay <- ortak_db_aktif_uretim_detay(oturum_id)
 	  aktif_istek <- if (!is.null(aktif_detay)) {
 		as.character(aktif_detay$IstekID[1] %||% "")
@@ -167,7 +170,8 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
         gonderen_kullanici_id = NULL,
         mesaj_turu = "YapayZekaYanıtı",
         mesaj_metni = yanit_metni,
-        bagli_mesaj_id = soru_id
+        bagli_mesaj_id = soru_id,
+        persona_id = persona_id
       )
       ortak_db_uretim_kilidi_birak(oturum_id, istek_id, sonuc_durumu = "Tamamlandı")
       if (!is.null(kuyruk_id)) {
@@ -235,7 +239,7 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 
   # --- Normal LLM üretimi (SSE artımlı yayın + non-streaming düşüş) ------------
 
-  motor$llm_uret <- function(oturum_id, soru_id, soran_id, istek_id, kuyruk_id = NULL) {
+  motor$llm_uret <- function(oturum_id, soru_id, soran_id, istek_id, kuyruk_id = NULL, persona_kimligi = NULL) {
     if (!exists("call_local_llm", mode = "function", inherits = TRUE)) {
       return(motor$tamamla(
         oturum_id, soru_id, istek_id,
@@ -274,6 +278,15 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 
 	gecmis <- ortak_yz_sohbet_gecmisi(mesaj_df)
 
+	# Persona sistem mesajı: yanıt seçili persona tarzında üretilsin. Oda
+	# kaydından okunur; persona metadata'sı yoksa deterministik varsayılana düşer
+	# ve boş talimatta davranış değişmeden normal LLM yoluna devam edilir.
+	persona_kimligi <- ortak_oturum_persona_kimligi(persona_kimligi, oturum_id)
+	persona_sistem <- ortak_oturum_persona_sistem_prompt(persona_kimligi, oturum_id)
+	if (nzchar(persona_sistem)) {
+	  gecmis <- c(list(list(role = "system", content = persona_sistem)), gecmis)
+	}
+
     ayarlar <- list(
       model_selection = etkin_model(),
       temperature = 0.4,
@@ -289,7 +302,8 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
       motor$tamamla(
         oturum_id, soru_id, istek_id,
         yanit_metni = yanit_metni, hata_metni = hata_metni,
-        kuyruk_id = kuyruk_id, soran_id = soran_id
+        kuyruk_id = kuyruk_id, soran_id = soran_id,
+        persona_id = persona_kimligi
       )
     }
 

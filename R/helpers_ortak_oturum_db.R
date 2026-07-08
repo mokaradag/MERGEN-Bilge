@@ -45,7 +45,29 @@
 ortak_db_reset_availability_cache <- function() {
   .oo_db_state$available <- NULL
   .oo_db_state$checked_at <- NULL
+  .oo_db_state$persona_col <- NULL
   invisible(NULL)
+}
+
+# SecilenPersona kolonu kurulu mu? (aşamalı devreye alma).
+# Yalnızca pozitif sonuç önbelleklenir: canlı rollout sırasında ilk prob kolon
+# eklenmeden önce veya geçici dbListFields() hatasıyla FALSE dönerse süreç yeniden
+# başlatılmadan yeni şema görülebilmelidir.
+.oo_db_secilen_persona_var_mi <- function(conn) {
+  cached <- .oo_db_state$persona_col
+  if (isTRUE(cached)) {
+    return(TRUE)
+  }
+
+  ok <- .oo_db_try({
+    kolonlar <- DBI::dbListFields(conn, "MB_OrtakOturumlar")
+    "SecilenPersona" %in% kolonlar
+  }, fallback = FALSE)
+
+  if (isTRUE(ok)) {
+    .oo_db_state$persona_col <- TRUE
+  }
+  isTRUE(ok)
 }
 
 # Bağlantı edinme: conn enjekte edilmişse sahiplik çağırandadır (release no-op).
@@ -318,14 +340,18 @@ ortak_db_oturum_getir <- function(oturum_id, conn = NULL) {
   }
   on.exit(.oo_db_release(handle), add = TRUE)
 
+  # SecilenPersona kolonu yalnızca kuruluysa okunur (eski şemada NA döner).
+  persona_var <- .oo_db_secilen_persona_var_mi(handle$conn)
+  persona_kolon <- if (persona_var) ", SecilenPersona" else ""
+
   sonuc <- .oo_db_try(
     DBI::dbGetQuery(
       handle$conn,
-      paste(
+      paste0(
         "SELECT OrtakOturumID, KaynakTuru, KaynakID, Baslik,",
-        "OlusturanKullaniciID, OturumDurumu, PaylasimBaslangicTipi,",
-        "SonEtkinlikZamani, OlusturmaZamani",
-        "FROM MB_OrtakOturumlar WHERE OrtakOturumID = ?"
+        " OlusturanKullaniciID, OturumDurumu, PaylasimBaslangicTipi,",
+        " SonEtkinlikZamani, OlusturmaZamani", persona_kolon,
+        " FROM MB_OrtakOturumlar WHERE OrtakOturumID = ?"
       ),
       params = list(oturum_id)
     ),
@@ -336,8 +362,77 @@ ortak_db_oturum_getir <- function(oturum_id, conn = NULL) {
   if (is.null(sonuc) || nrow(sonuc) == 0L) {
     return(NULL)
   }
+  if (!("SecilenPersona" %in% names(sonuc))) {
+    sonuc$SecilenPersona <- NA_character_
+  }
 
   .oo_db_restore_visible(sonuc, c("Baslik"))
+}
+
+#' Ortak oturumun etkin yapay zekâ personasını günceller (herkes için geçerli).
+#' Yetki işlem içinde doğrulanır: yalnızca katilimci_yonet yetkisi olan rol
+#' (Sahip / Oturum Yöneticisi) personayı değiştirebilir. Kolon kurulu değilse
+#' (eski şema) sessizce FALSE döner; UI açıklayıcı mesaj gösterir.
+ortak_db_persona_guncelle <- function(oturum_id,
+                                      kullanici_id,
+                                      persona,
+                                      conn = NULL) {
+  oturum_id <- .oo_db_pos_int(oturum_id)
+  kullanici_id <- .oo_db_pos_int(kullanici_id)
+  persona <- tolower(trimws(as.character(persona %||% "")[1]))
+
+  if (is.na(oturum_id) || is.na(kullanici_id) ||
+      !(persona %in% c("emre", "selin", "deniz", "can", "ipek"))) {
+    return(invisible(FALSE))
+  }
+
+  handle <- .oo_db_try(.oo_db_acquire(conn), fallback = NULL)
+  if (is.null(handle)) {
+    return(invisible(FALSE))
+  }
+  on.exit(.oo_db_release(handle), add = TRUE)
+
+  if (!.oo_db_secilen_persona_var_mi(handle$conn)) {
+    return(invisible(FALSE))
+  }
+
+  sonuc <- .oo_db_try({
+    katilimci <- ortak_db_katilimci_getir(oturum_id, kullanici_id, conn = handle$conn)
+    if (is.null(katilimci) ||
+        !ortak_icerik_erisimi_var_mi(katilimci$KatilimDurumu[1]) ||
+        !ortak_yetki_var_mi(katilimci$Rol[1], "katilimci_yonet")) {
+      FALSE
+    } else {
+      DBI::dbExecute(
+        handle$conn,
+        paste(
+          "UPDATE MB_OrtakOturumlar",
+          "SET SecilenPersona = ?, GuncellemeZamani = ?",
+          "WHERE OrtakOturumID = ? AND EXISTS (",
+          "  SELECT 1 FROM MB_OrtakOturum_Katilimcilar k",
+          "  WHERE k.OrtakOturumID = MB_OrtakOturumlar.OrtakOturumID",
+          "    AND k.KullaniciID = ?",
+          "    AND k.KatilimDurumu IN (?, ?)",
+          "    AND k.Rol IN (?, ?)",
+          ")"
+        ),
+        params = normalize_db_params(list(
+          normalize_db_technical_value(persona),
+          .oo_db_now(),
+          oturum_id,
+          kullanici_id,
+          normalize_db_technical_value("Katıldı"),
+          normalize_db_technical_value("Aktif"),
+          normalize_db_technical_value("Sahip"),
+          normalize_db_technical_value("OturumYöneticisi")
+        ))
+      ) > 0L
+    }
+  },
+  fallback = FALSE,
+  uyari = "Ortak oturum personası güncellenemedi:")
+
+  invisible(isTRUE(sonuc))
 }
 
 # Oturumun son etkinlik zamanını günceller (mesaj/çalıştırma sonrası).
