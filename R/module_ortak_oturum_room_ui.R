@@ -174,7 +174,9 @@ oo_mesaj_persona_id <- function(satir) {
   if (!is.list(parsed)) {
     return("")
   }
-  as.character(parsed$persona_id %||% "")[1]
+
+  persona_id <- as.character(parsed$persona_id %||% "")[1]
+  if (is.na(persona_id)) "" else trimws(persona_id)
 }
 
 oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL, persona = NULL) {
@@ -183,12 +185,16 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL, persona = NULL) {
   gonderen <- as.character(satir$GonderenAdi %||% "")[1]
   zaman <- as.character(satir$OlusturmaZamani %||% "")[1]
 
-  # Yapay zekâ yanıtı persona kimliğiyle etiketlenir (genel "Yapay Zekâ" yerine
-  # seçili persona adı + aksan rengiyle avatar). persona verilmezse güvenli
-  # varsayılana düşer, böylece tek argümanlı çağrılar (test) da çalışır.
+  # Yapay zekâ yanıtı yalnızca kendi metadata'sındaki persona_id ile etiketlenir.
+  # Metadata yoksa room-level/current persona kullanılmaz; eski ya da içe aktarılan
+  # yanıtlar güvenli biçimde genel "Yapay Zekâ" etiketiyle kalır.
   mesaj_persona_id <- oo_mesaj_persona_id(satir)
-  if (identical(tur, "YapayZekaYanıtı") && nzchar(mesaj_persona_id)) {
-    persona <- ortak_oturum_persona_gorunumu(mesaj_persona_id)
+  if (identical(tur, "YapayZekaYanıtı")) {
+    persona <- if (nzchar(mesaj_persona_id)) {
+      ortak_oturum_persona_gorunumu(mesaj_persona_id)
+    } else {
+      NULL
+    }
   }
   yz_persona_ad <- if (is.list(persona)) as.character(persona$ad %||% "")[1] else ""
   yz_persona_accent <- if (is.list(persona)) as.character(persona$accent %||% "")[1] else ""
