@@ -165,6 +165,18 @@ ortakOturumRoomUI <- function(id) {
 # Tek mesaj balonu. Mesaj türüne göre stil sınıfı seçilir; yapay zekâ yanıtı
 # güvenli markdown render'ından geçer (render_safe_markdown_html), diğer tüm
 # metinler düz metin olarak escape edilir.
+oo_mesaj_persona_id <- function(satir) {
+  meta <- as.character(satir$MetaJson %||% "")[1]
+  if (!nzchar(meta) || is.na(meta) || !requireNamespace("jsonlite", quietly = TRUE)) {
+    return("")
+  }
+  parsed <- tryCatch(jsonlite::fromJSON(meta, simplifyVector = TRUE), error = function(e) NULL)
+  if (!is.list(parsed)) {
+    return("")
+  }
+  as.character(parsed$persona_id %||% "")[1]
+}
+
 oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL, persona = NULL) {
   tur <- as.character(satir$MesajTuru %||% "OdaMesajı")[1]
   metin <- as.character(satir$MesajMetni %||% "")[1]
@@ -174,6 +186,10 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL, persona = NULL) {
   # Yapay zekâ yanıtı persona kimliğiyle etiketlenir (genel "Yapay Zekâ" yerine
   # seçili persona adı + aksan rengiyle avatar). persona verilmezse güvenli
   # varsayılana düşer, böylece tek argümanlı çağrılar (test) da çalışır.
+  mesaj_persona_id <- oo_mesaj_persona_id(satir)
+  if (identical(tur, "YapayZekaYanıtı") && nzchar(mesaj_persona_id)) {
+    persona <- ortak_oturum_persona_gorunumu(mesaj_persona_id)
+  }
   yz_persona_ad <- if (is.list(persona)) as.character(persona$ad %||% "")[1] else ""
   yz_persona_accent <- if (is.list(persona)) as.character(persona$accent %||% "")[1] else ""
 

@@ -50,6 +50,7 @@ ortak_db_mesaj_ekle <- function(oturum_id,
                                 bagli_mesaj_id = NULL,
                                 llm_gonderildi = FALSE,
                                 olusturma_zamani = NULL,
+                                persona_id = NULL,
                                 conn = NULL) {
   oturum_id <- .oo_db_pos_int(oturum_id)
   if (is.na(oturum_id)) {
@@ -104,20 +105,30 @@ ortak_db_mesaj_ekle <- function(oturum_id,
     DBI::dbWithTransaction(handle$conn, {
       sira <- .oo_db_sonraki_mesaj_sirasi(handle$conn, oturum_id)
 
+      meta_json <- NULL
+      persona_kimligi <- tolower(trimws(as.character(persona_id %||% "")[1]))
+      if (identical(mesaj_turu, "YapayZekaYanıtı") &&
+          persona_kimligi %in% c("emre", "selin", "deniz", "can", "ipek")) {
+        meta_json <- jsonlite::toJSON(
+          list(persona_id = persona_kimligi),
+          auto_unbox = TRUE, null = "null"
+        )
+      }
+
       mesaj_id <- .oo_db_insert_returning_id(
         conn = handle$conn,
         insert_sql_tsql = paste(
           "INSERT INTO MB_OrtakOturum_Mesajlar",
           "(OrtakOturumID, GonderenKullaniciID, MesajTuru, Hedef, MesajMetni,",
-          " BagliMesajID, MesajSirasi, LLMGonderildiMi, OlusturmaZamani)",
+          " BagliMesajID, MesajSirasi, LLMGonderildiMi, OlusturmaZamani, MetaJson)",
           "OUTPUT INSERTED.OrtakMesajID AS id",
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         ),
         insert_sql_plain = paste(
           "INSERT INTO MB_OrtakOturum_Mesajlar",
           "(OrtakOturumID, GonderenKullaniciID, MesajTuru, Hedef, MesajMetni,",
-          " BagliMesajID, MesajSirasi, LLMGonderildiMi, OlusturmaZamani)",
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          " BagliMesajID, MesajSirasi, LLMGonderildiMi, OlusturmaZamani, MetaJson)",
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         ),
         id_column = "OrtakMesajID",
         params = normalize_db_params(list(
@@ -129,7 +140,8 @@ ortak_db_mesaj_ekle <- function(oturum_id,
           .oo_db_pos_int(bagli_mesaj_id),
           sira,
           as.integer(isTRUE(llm_gonderildi)),
-          kayit_zamani
+          kayit_zamani,
+          normalize_db_technical_value(as.character(meta_json %||% NA_character_)[1])
         ))
       )
 
@@ -175,7 +187,7 @@ ortak_db_mesajlari_getir <- function(oturum_id,
         paste(
           "SELECT m.OrtakMesajID, m.GonderenKullaniciID, m.MesajTuru, m.Hedef,",
           "m.MesajMetni, m.BagliMesajID, m.MesajSirasi, m.LLMGonderildiMi,",
-          "m.OlusturmaZamani, u.KaynakAdi AS GonderenAdi",
+          "m.OlusturmaZamani, m.MetaJson, u.KaynakAdi AS GonderenAdi",
           "FROM MB_OrtakOturum_Mesajlar m",
           "LEFT JOIN MB_Users u ON u.UserID = m.GonderenKullaniciID",
           "WHERE m.OrtakOturumID = ?",

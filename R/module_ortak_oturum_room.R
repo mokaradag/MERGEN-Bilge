@@ -311,9 +311,12 @@ ortakOturumRoomServer <- function(id,
     # Oturum Yöneticisi) personayı değiştirebilir. Rol değişince yeniden çizilir.
     output$oda_persona_secim_alani <- renderUI({
       rol <- oda_rol()
-      secili <- as.character(secili_persona() %||% "")[1]
-      if (!nzchar(secili)) {
-        secili <- ortak_oturum_persona_kimligi(NULL, aktif_oturum())
+      oturum_id <- aktif_oturum()
+      bilgi <- oturum_bilgisi()
+      persona_secim <- if (!is.null(bilgi)) as.character(bilgi$SecilenPersona[1] %||% "") else ""
+      secili <- ortak_oturum_persona_kimligi(persona_secim, oturum_id)
+      if (!identical(isolate(secili_persona()), secili)) {
+        secili_persona(secili)
       }
 
       # Yetkisi olmayan katılımcı için salt-okunur persona rozeti gösterilir.
@@ -349,7 +352,11 @@ ortakOturumRoomServer <- function(id,
       oturum_id <- aktif_oturum()
       req(oturum_id)
 
-      if (identical(deger, as.character(isolate(secili_persona()) %||% "")[1])) {
+      bilgi <- oturum_bilgisi()
+      mevcut <- if (!is.null(bilgi)) as.character(bilgi$SecilenPersona[1] %||% "") else ""
+      mevcut <- ortak_oturum_persona_kimligi(mevcut, oturum_id)
+      if (identical(deger, mevcut)) {
+        secili_persona(deger)
         return(invisible(NULL))
       }
 

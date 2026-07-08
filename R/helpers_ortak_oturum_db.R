@@ -49,12 +49,14 @@ ortak_db_reset_availability_cache <- function() {
   invisible(NULL)
 }
 
-# SecilenPersona kolonu kurulu mu? (aşamalı devreye alma; kalıcı önbellek).
-# Eski şemada FALSE kalır; persona okuma/yazma yolları buna göre güvenli düşer.
+# SecilenPersona kolonu kurulu mu? (aşamalı devreye alma).
+# Yalnızca pozitif sonuç önbelleklenir: canlı rollout sırasında ilk prob kolon
+# eklenmeden önce veya geçici dbListFields() hatasıyla FALSE dönerse süreç yeniden
+# başlatılmadan yeni şema görülebilmelidir.
 .oo_db_secilen_persona_var_mi <- function(conn) {
   cached <- .oo_db_state$persona_col
-  if (!is.null(cached)) {
-    return(isTRUE(cached))
+  if (isTRUE(cached)) {
+    return(TRUE)
   }
 
   ok <- .oo_db_try({
@@ -62,7 +64,9 @@ ortak_db_reset_availability_cache <- function() {
     "SecilenPersona" %in% kolonlar
   }, fallback = FALSE)
 
-  .oo_db_state$persona_col <- isTRUE(ok)
+  if (isTRUE(ok)) {
+    .oo_db_state$persona_col <- TRUE
+  }
   isTRUE(ok)
 }
 
@@ -401,11 +405,26 @@ ortak_db_persona_guncelle <- function(oturum_id,
     } else {
       DBI::dbExecute(
         handle$conn,
-        "UPDATE MB_OrtakOturumlar SET SecilenPersona = ?, GuncellemeZamani = ? WHERE OrtakOturumID = ?",
+        paste(
+          "UPDATE MB_OrtakOturumlar",
+          "SET SecilenPersona = ?, GuncellemeZamani = ?",
+          "WHERE OrtakOturumID = ? AND EXISTS (",
+          "  SELECT 1 FROM MB_OrtakOturum_Katilimcilar k",
+          "  WHERE k.OrtakOturumID = MB_OrtakOturumlar.OrtakOturumID",
+          "    AND k.KullaniciID = ?",
+          "    AND k.KatilimDurumu IN (?, ?)",
+          "    AND k.Rol IN (?, ?)",
+          ")"
+        ),
         params = normalize_db_params(list(
           normalize_db_technical_value(persona),
           .oo_db_now(),
-          oturum_id
+          oturum_id,
+          kullanici_id,
+          normalize_db_technical_value("Katıldı"),
+          normalize_db_technical_value("Aktif"),
+          normalize_db_technical_value("Sahip"),
+          normalize_db_technical_value("Oturum Yöneticisi")
         ))
       ) > 0L
     }
