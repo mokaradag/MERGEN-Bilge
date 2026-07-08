@@ -137,6 +137,7 @@ ui_asset_css_groups <- list(
       "css/explore_character_step.css",
       "css/surum_bilgilendirme.css",
       "css/ortak_oturumlar.css",
+      "css/ortak_oturumlar_room.css",
       "css/ortak_oturumlar_bilge_yolac.css"
     ),
     enterprise_and_bilge_yolac = c(

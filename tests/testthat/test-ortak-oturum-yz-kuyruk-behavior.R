@@ -102,7 +102,7 @@ test_that("kuyruk/aktif katılım durumları ve Bilge Yolaç yetki kararları do
 # -----------------------------------------------------------------------------
 
 .oo_yz_schema <- function(conn) {
-  DBI::dbExecute(conn, "CREATE TABLE MB_Users (UserID INTEGER PRIMARY KEY AUTOINCREMENT, KullaniciAdi TEXT, KaynakAdi TEXT, Email TEXT, Departman TEXT)")
+  DBI::dbExecute(conn, "CREATE TABLE MB_Users (UserID INTEGER PRIMARY KEY AUTOINCREMENT, KullaniciAdi TEXT, KaynakAdi TEXT, Email TEXT, Departman TEXT, Sicil TEXT)")
   DBI::dbExecute(conn, "CREATE TABLE MB_OrtakOturumlar (OrtakOturumID INTEGER PRIMARY KEY AUTOINCREMENT, KaynakTuru TEXT NOT NULL, KaynakID INTEGER, Baslik TEXT, OlusturanKullaniciID INTEGER NOT NULL, OturumDurumu TEXT NOT NULL, PaylasimBaslangicTipi TEXT, SonEtkinlikZamani TEXT, OlusturmaZamani TEXT, GuncellemeZamani TEXT, MetaJson TEXT)")
   DBI::dbExecute(conn, "CREATE TABLE MB_OrtakOturum_Katilimcilar (KatilimciID INTEGER PRIMARY KEY AUTOINCREMENT, OrtakOturumID INTEGER NOT NULL, KullaniciID INTEGER NOT NULL, Rol TEXT NOT NULL, KatilimDurumu TEXT NOT NULL, KullaniciGorunumDurumu TEXT NOT NULL, DavetEdenKullaniciID INTEGER, DavetZamani TEXT, KatilmaZamani TEXT, SonGorulmeZamani TEXT, OlusturmaZamani TEXT, UNIQUE (OrtakOturumID, KullaniciID))")
   DBI::dbExecute(conn, "CREATE TABLE MB_Kullanici_CanliDurum (CanliDurumID INTEGER PRIMARY KEY AUTOINCREMENT, KullaniciID INTEGER NOT NULL, OturumAnahtari TEXT NOT NULL, Sayfa TEXT, SonKalpAtisiZamani TEXT NOT NULL, Durum TEXT NOT NULL, SonGorulenOrtakOturumID INTEGER, OlusturmaZamani TEXT, UNIQUE (KullaniciID, OturumAnahtari))")
@@ -271,4 +271,68 @@ test_that("canlı durumlar en güncel satırı ve görülen oda kimliğini dönd
   expect_equal(nrow(durumlar), 1L)
   expect_identical(as.character(durumlar$CanliDurum[1]), "Çevrimİçi")
   expect_equal(as.integer(durumlar$SonGorulenOrtakOturumID[1]), 42L)
+})
+
+# -----------------------------------------------------------------------------
+# Yeni bağlam (bağlam sıfırlama) — item 10
+# -----------------------------------------------------------------------------
+
+test_that("bağlam sıfırlama işareti sonrası yalnızca sonraki soru/yanıt bağlama girer", {
+  df <- data.frame(
+    MesajTuru = c(
+      "YapayZekaSorusu", "YapayZekaYanıtı",
+      "SistemMesajı",
+      "YapayZekaSorusu", "YapayZekaYanıtı"
+    ),
+    MesajMetni = c(
+      "Eski soru", "Eski yanıt",
+      ortak_baglam_sifirlama_notu(),
+      "Yeni soru", "Yeni yanıt"
+    ),
+    stringsAsFactors = FALSE
+  )
+
+  gecmis <- ortak_yz_sohbet_gecmisi(df)
+  icerikler <- vapply(gecmis, function(m) as.character(m$content), character(1))
+
+  # Sıfırlama işaretinden ÖNCEKİ soru/yanıt bağlama girmez.
+  expect_false("Eski soru" %in% icerikler)
+  expect_false("Eski yanıt" %in% icerikler)
+  # İşaretten SONRAKİ soru/yanıt bağlamdadır.
+  expect_true("Yeni soru" %in% icerikler)
+  expect_true("Yeni yanıt" %in% icerikler)
+})
+
+test_that("işaret yoksa tüm soru/yanıt geçmişi korunur (davranış değişmez)", {
+  df <- data.frame(
+    MesajTuru = c("YapayZekaSorusu", "YapayZekaYanıtı"),
+    MesajMetni = c("Soru bir", "Yanıt bir"),
+    stringsAsFactors = FALSE
+  )
+  gecmis <- ortak_yz_sohbet_gecmisi(df)
+  icerikler <- vapply(gecmis, function(m) as.character(m$content), character(1))
+  expect_true(all(c("Soru bir", "Yanıt bir") %in% icerikler))
+})
+
+test_that("yalnızca EN SON sıfırlama işareti dikkate alınır", {
+  df <- data.frame(
+    MesajTuru = c(
+      "SistemMesajı", "YapayZekaSorusu",
+      "SistemMesajı", "YapayZekaSorusu"
+    ),
+    MesajMetni = c(
+      ortak_baglam_sifirlama_notu(), "Ara soru",
+      ortak_baglam_sifirlama_notu(), "Son soru"
+    ),
+    stringsAsFactors = FALSE
+  )
+  gecmis <- ortak_yz_sohbet_gecmisi(df)
+  icerikler <- vapply(gecmis, function(m) as.character(m$content), character(1))
+  expect_false("Ara soru" %in% icerikler)
+  expect_true("Son soru" %in% icerikler)
+})
+
+test_that("bağlam sıfırlama notu kararlı ve boş olmayan bir metindir", {
+  not <- ortak_baglam_sifirlama_notu()
+  expect_true(is.character(not) && length(not) == 1L && nzchar(not))
 })

@@ -63,6 +63,21 @@ test_that("canlı durum sınıflandırması POSIXct ve kesirli-saniye biçimleri
   expect_identical(ortak_sunum_durumu("gecersiz", simdi = simdi), .ood_cevrimdisi)
 })
 
+test_that("canlı durum saat dilimli POSIXct instant'ını korur (metne çevirmeden)", {
+  simdi <- as.POSIXct("2026-07-05 12:00:00", tz = "UTC")
+
+  # ODBC bazı sürücülerde DATETIME2'yi YEREL saat dilimli POSIXct döndürür.
+  # Aynı MUTLAK an (30 sn önce) farklı tzone attribute'larıyla verilse de
+  # çevrim içi sınıflandırması DEĞİŞMEZ; sınıflandırma an'a dayanır, duvar
+  # saatine değil. (Metne çevir -> UTC yeniden ayrıştır yolu bu durumda çevrim
+  # içi kullanıcıyı sessizce çevrim dışı gösterebiliyordu.)
+  taze_utc <- as.POSIXct("2026-07-05 11:59:30", tz = "UTC")
+  taze_ist <- as.POSIXct(as.numeric(taze_utc), origin = "1970-01-01", tz = "Europe/Istanbul")
+  expect_identical(as.numeric(taze_utc), as.numeric(taze_ist))
+  expect_identical(ortak_sunum_durumu(taze_utc, simdi = simdi), .ood_cevrimici)
+  expect_identical(ortak_sunum_durumu(taze_ist, simdi = simdi), .ood_cevrimici)
+})
+
 test_that("aday süzme: çevrim içi kullanıcılar listelenir, çevrim dışı/kendisi elenir", {
   kullanicilar <- data.frame(
     UserID = c(1L, 2L, 3L, 4L),

@@ -1,0 +1,223 @@
+/* ==========================================================================
+ * Dosya: www/css/ortak_oturumlar_room.css
+ * Açıklama: Ortak Oturum ODASI yüzeyleri (ortak_oturumlar.css'ten ayrılmış
+ *   odak dosyası; ana dosya bakım bütçesinin altında kalsın diye):
+ *     - Model / Persona seçici ("Model Değiştir" bileşeni)
+ *     - Sohbet baloncuğu avatar görselleri
+ *     - Baloncuk aralığı ve okunabilirlik iyileştirmeleri
+ *     - İkon-only düğme (yeni bağlam)
+ *   Koyu tema varsayılan; açık tema html[data-theme="light"] kapsamındadır.
+ *   Tüm renkler tema token'larından gelir.
+ * ========================================================================== */
+
+/* --- Model / Persona seçici ("Model Değiştir" dili) -------------------------
+ * Ana söyleşi model seçicisiyle (model_selector.css) aynı bileşen
+ * (shinyWidgets::dropdown). O dosya id ile kapsanmış olduğundan burada sınıfla
+ * (.oo-secici) yeniden kurulur. */
+.oo-secici {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px 2px 4px;
+  border-radius: 9px;
+  background: var(--color-surface-2, var(--color-bg-elevated));
+  border: 1px solid var(--color-border);
+  max-width: 100%;
+}
+.oo-secici .sw-dropdown {
+  display: inline-flex;
+  margin: 0;
+}
+.oo-secici .btn {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 8px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: var(--text-muted, var(--color-text-soft)) !important;
+  transition: background-color 0.18s ease, color 0.18s ease !important;
+}
+.oo-secici .btn i {
+  color: var(--text-muted, var(--color-text-soft)) !important;
+  font-size: 13px !important;
+  line-height: 1 !important;
+}
+.oo-secici .btn:hover,
+.oo-secici .btn:focus,
+.oo-secici .btn.active {
+  background-color: var(--color-surface-3, var(--color-surface)) !important;
+  color: var(--color-text) !important;
+}
+.oo-secici .btn:hover i,
+.oo-secici .btn:focus i,
+.oo-secici .btn.active i {
+  color: var(--color-text) !important;
+}
+.oo-secici .btn:focus-visible {
+  outline: 2px solid var(--color-focus, var(--oo-accent, var(--color-info))) !important;
+  outline-offset: 2px !important;
+}
+.oo-secici .btn::after {
+  display: none !important;
+}
+.oo-secici-etiket {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.84em;
+  font-weight: 600;
+  color: var(--color-text);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Açılır panel (model/persona kataloğu). */
+.oo-secici [id^="sw-content-"] {
+  background-color: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: var(--shadow-elevated, 0 12px 30px rgba(0, 0, 0, 0.28)) !important;
+  border-radius: 10px !important;
+  padding: 6px !important;
+}
+.oo-secici [id^="sw-content-"] .sw-dropdown-in {
+  background: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.oo-secici .dropdown-menu-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--color-border) !important;
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.oo-secici .dropdown-menu-header i,
+.oo-secici .dropdown-menu-header span {
+  color: var(--oo-accent, var(--color-info)) !important;
+}
+.oo-secici .dropdown-menu-custom-list {
+  list-style: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+}
+.oo-secici .dropdown-item.model-option {
+  color: var(--color-text-soft) !important;
+  background-color: transparent !important;
+  padding: 9px 12px !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+  display: block;
+  font-size: 14px !important;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+.oo-secici .dropdown-item.model-option:hover,
+.oo-secici .dropdown-item.model-option:focus {
+  background-color: var(--color-surface-3, var(--color-surface-2)) !important;
+  color: var(--color-text) !important;
+  outline: none !important;
+}
+.oo-secici .dropdown-item.model-option.active {
+  background-color: var(--oo-accent-soft, var(--color-primary-soft)) !important;
+  color: var(--color-text) !important;
+  font-weight: 600 !important;
+}
+.oo-persona-oge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.oo-persona-metin {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.oo-persona-alt {
+  font-size: 0.78em;
+  color: var(--color-muted);
+}
+.oo-persona-nokta {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+.oo-persona-nokta-kucuk {
+  width: 9px;
+  height: 9px;
+}
+
+/* --- Sohbet baloncuğu avatar görseli (ana söyleşi deseni) ------------------- */
+.oo-mesaj-avatar {
+  overflow: hidden;
+}
+.oo-mesaj-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+.oo-mesaj-avatar-yedek {
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+/* --- İkon-only düğme (yeni bağlam) ----------------------------------------- */
+.oo-btn-ikon {
+  width: 40px;
+  padding-left: 0;
+  padding-right: 0;
+  justify-content: center;
+}
+
+/* --- Baloncuk aralığı ve okunabilirlik iyileştirmesi ------------------------ */
+.oo-mesaj-akisi {
+  gap: 20px;
+  padding: 10px 6px 6px;
+}
+.oo-mesaj + .oo-mesaj {
+  margin-top: 2px;
+}
+.oo-mesaj-govde {
+  padding: 12px 16px;
+  line-height: 1.55;
+}
+.oo-mesaj-metin {
+  font-size: 0.95em;
+}
+
+/* --- Oda gövdesi görünür yüksekliği tam kullansın --------------------------- */
+.ortak-calismalar-container.oo-oda-acik .oo-oda-alani.shiny-html-output {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Açık tema: seçici yüzeyi beyaz kart ----------------------------------- */
+html[data-theme="light"] .oo-secici {
+  background: #ffffff;
+  border-color: var(--color-border);
+}
+html[data-theme="light"] .oo-secici [id^="sw-content-"] {
+  background-color: #ffffff !important;
+}

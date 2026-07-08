@@ -69,7 +69,7 @@ local({
   DBI::dbExecute(conn, "
     CREATE TABLE MB_Users (
       UserID INTEGER PRIMARY KEY AUTOINCREMENT,
-      KullaniciAdi TEXT, KaynakAdi TEXT, Email TEXT, Departman TEXT
+      KullaniciAdi TEXT, KaynakAdi TEXT, Email TEXT, Departman TEXT, Sicil TEXT
     )")
   DBI::dbExecute(conn, "
     CREATE TABLE MB_OrtakOturumlar (

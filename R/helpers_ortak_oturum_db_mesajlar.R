@@ -187,7 +187,8 @@ ortak_db_mesajlari_getir <- function(oturum_id,
         paste(
           "SELECT m.OrtakMesajID, m.GonderenKullaniciID, m.MesajTuru, m.Hedef,",
           "m.MesajMetni, m.BagliMesajID, m.MesajSirasi, m.LLMGonderildiMi,",
-          "m.OlusturmaZamani, m.MetaJson, u.KaynakAdi AS GonderenAdi",
+          "m.OlusturmaZamani, m.MetaJson, u.KaynakAdi AS GonderenAdi,",
+          "u.Sicil AS GonderenSicil",
           "FROM MB_OrtakOturum_Mesajlar m",
           "LEFT JOIN MB_Users u ON u.UserID = m.GonderenKullaniciID",
           "WHERE m.OrtakOturumID = ?",
@@ -535,7 +536,24 @@ ortak_yz_sohbet_gecmisi <- function(mesajlar_df, ek_baglam_metni = NULL) {
     return(gecmis)
   }
 
-  for (i in seq_len(nrow(mesajlar_df))) {
+  # Bağlam sıfırlama: en SON "bağlam sıfırlandı" sistem işaretinden önceki tüm
+  # yapay zekâ soru/yanıt satırları bağlama alınmaz. Böylece kullanıcı odadan
+  # ayrılmadan yeni bir bağlam başlatabilir; görünür transkript korunur.
+  baslangic <- 1L
+  if (exists("ortak_baglam_sifirlama_notu", mode = "function", inherits = TRUE)) {
+    sifirlama_notu <- ortak_baglam_sifirlama_notu()
+    turler <- as.character(mesajlar_df$MesajTuru)
+    metinler <- as.character(mesajlar_df$MesajMetni %||% "")
+    isaret <- which(turler == "SistemMesajı" & metinler == sifirlama_notu)
+    if (length(isaret) > 0L) {
+      baslangic <- max(isaret) + 1L
+    }
+  }
+
+  for (i in seq(baslangic, nrow(mesajlar_df))) {
+    if (i > nrow(mesajlar_df) || i < 1L) {
+      next
+    }
     tur <- as.character(mesajlar_df$MesajTuru[i])
     metin <- as.character(mesajlar_df$MesajMetni[i] %||% "")
 

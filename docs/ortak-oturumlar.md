@@ -446,6 +446,42 @@ encoding preflight kapılarıyla doğrulanmalıdır (RUNBOOK).
   yoklamada yeniden çizilmez; yeni mesajlarda otomatik dip kaydırma eklendi
   (§2 "Arayüz / UX sözleşmesi").
 
+### 12.2c Oda içi UX ve performans (bu değişiklik seti)
+
+- **Biriken konsol uyarısı — GİDERİLDİ.** Oda 4 sn'lik yoklaması artık DB verisini
+  `reactiveVal` yuvalarına yazar (`fetch_now()`); `reactiveVal` `identical()`
+  değeri atandığında invalide etmediği için değişmeyen veri yeniden render
+  edilmez ve `Shiny.bindAll` yeniden tetiklenmez (birikip artan "Duplicate input
+  IDs" uyarısının kök nedeni buydu). yz üretim durumu paneli sayaç yerine
+  `ctx$aktif_uretim()` / `ctx$bekleyenler()` okur. `canli_rv` ham kalp atışı zaman
+  damgasını taşımaz; yalnızca durum/oda-görünürlüğü değişince değişir.
+- **İyimser gönderim — UYGULANDI.** "Yapay Zekâya Sor" tıklanınca kullanıcı
+  balonu ve "… sordu · yanıt üretiliyor…" durumu ANINDA görünür; kilit alma,
+  bağlam kurma ve worker gönderimi `session$onFlushed` ile sonraki flush'a
+  ertelenir (ölü bekleme süresi giderildi). `iyimser_uretim` bayrağı gerçek
+  üretim başlayınca veya 15 sn sonra temizlenir.
+- **Model/Persona seçici — UYGULANDI.** Ana Söyleşi "Model Değiştir" bileşeni
+  (`shinyWidgets::dropdown`) yeniden kullanılır; saf HTML üreticileri
+  `oo_model_secici_html()` / `oo_persona_secici_html()`
+  (`R/module_ortak_oturum_room_ui.R`), stiller `css/ortak_oturumlar_room.css`.
+  Persona menüsü 5 personayı aksan noktası + ad ile listeler.
+- **Avatarlar — UYGULANDI.** Kullanıcı fotoğrafı
+  `mb_sidebar_user_avatar_url(GonderenSicil)` (mesaj sorgusu `u.Sicil` seçer),
+  yapay zekâ persona görseli `get_character_asset_paths(persona_id)$avatar`;
+  görsel yüklenemezse `onerror` ile baş harf yedeğe geçilir.
+- **Yeni bağlam düğmesi — UYGULANDI.** "Odaya Yaz" yanındaki ikon düğme
+  (`oda_baglam_temizle`) `ortak_baglam_sifirlama_notu()` metniyle bir
+  `SistemMesajı` işareti ekler; `ortak_yz_sohbet_gecmisi()` yalnızca en son
+  işaretten sonraki soru/yanıtları LLM bağlamına alır. Transkript korunur, tüm
+  katılımcılar sistem notunu görür.
+- **Canlı durum tzone dayanıklılığı — GÜÇLENDİRİLDİ.** `ortak_db_canli_durumlar()`
+  ham kolon değerini (POSIXct instant) satır satır `ortak_sunum_durumu()`'ya
+  geçirir; `as.character()` ile metne çevirip UTC yeniden ayrıştırma yolu (sürücü
+  tzone kaymasıyla çevrim içi kullanıcıyı çevrim dışı gösterebiliyordu) kaldırıldı.
+- **CSS bölünmesi — UYGULANDI.** Oda odaklı stiller `css/ortak_oturumlar_room.css`
+  dosyasına ayrıldı (frontend tek dosya satır bütçesi korunur); manifest + bölge
+  kaydı `R/config_ui_assets.R` ve `R/config_ui_asset_zones.R` içindedir.
+
 ### 12.3 Kalan sınırlamalar
 
 1. **Yönetici panosu:** `ortak_db_istatistikler()` hazır; Yönetici Paneli'ne

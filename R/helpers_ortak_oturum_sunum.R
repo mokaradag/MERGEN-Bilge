@@ -31,6 +31,19 @@ ortak_rol_gorunen_ad <- function(rol) {
   if (is.na(rol)) "" else rol
 }
 
+# Bağlam sıfırlama işareti: odadan ayrılmadan yeni bir yapay zekâ bağlamı
+# başlatmak için eklenen SistemMesajı'nın SABİT metnidir. SistemMesajı yalnızca
+# sistem tarafından yazılabildiği için (kullanıcı OdaMesajı/YapayZekaSorusu
+# yazar) bu metin güvenilir bir işaret olur ve kullanıcı tarafından taklit
+# edilemez. Metin tüm katılımcılara görünen bir sistem notu olarak da işlev
+# görür; ortak_yz_sohbet_gecmisi bu işaretten SONRAKİ mesajları bağlama alır.
+ortak_baglam_sifirlama_notu <- function() {
+  paste(
+    "Yeni yapay zekâ bağlamı başlatıldı: bundan sonraki sorular önceki",
+    "yazışmaları bağlam olarak kullanmayacak."
+  )
+}
+
 # Davet/rol atama seçenekleri: Sahip atanamaz; görünen etiket + teknik değer.
 ortak_rol_secenekleri <- function() {
   roller <- setdiff(ortak_oturum_rolleri(), ortak_oturum_rolleri()[1])

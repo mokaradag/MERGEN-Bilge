@@ -824,37 +824,8 @@
   margin-left: auto;
 }
 
-/* Kompakt model/persona seçici: "Model Değiştir" diliyle uyumlu ikon + dropdown. */
-.oo-composer-secim {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 8px 2px 10px;
-  border-radius: 9px;
-  background: var(--color-surface-2, var(--color-bg-elevated));
-  border: 1px solid var(--color-border);
-}
-.oo-composer-secim-ikon {
-  color: var(--color-text-soft);
-  font-size: 0.82em;
-  flex: 0 0 auto;
-}
-.oo-composer-secim .form-group,
-.oo-composer-secim .shiny-input-container {
-  margin-bottom: 0 !important;
-  width: auto !important;
-}
-.oo-composer-secim .form-control,
-.oo-composer-secim select {
-  height: 30px;
-  padding: 2px 8px;
-  border-radius: 7px;
-  font-size: 0.85em;
-  background: transparent;
-  border: none;
-  color: var(--color-text);
-  box-shadow: none;
-}
+/* Model/persona seçici stilleri www/css/ortak_oturumlar_room.css içindedir
+ * ("Model Değiştir" bileşeni); salt-okunur persona rozeti burada kalır. */
 .oo-composer-persona-rozet {
   display: inline-flex;
   align-items: center;
@@ -1313,10 +1284,12 @@
   color: var(--color-text);
   margin-bottom: 8px;
 }
+/* Geniş modalda yatay alanı kullan (sağda büyük boşluk kalmasın); uzun etiket
+ * yeterli genişlik bulunca tek satırda kalır. */
 .oo-yeni-oturum-modal .shiny-options-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
 }
 .oo-yeni-oturum-modal .radio {
   margin: 0;
@@ -1324,16 +1297,16 @@
 .oo-yeni-oturum-modal .radio label {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
   padding: 12px 14px;
+  padding-left: 14px;
   border-radius: 10px;
   border: 1px solid var(--color-border);
   background: var(--color-surface-2, var(--color-bg-elevated));
   color: var(--color-text);
   font-weight: 500;
   cursor: pointer;
-  white-space: normal;
   line-height: 1.35;
   transition: border-color 0.16s ease, background 0.16s ease;
 }
@@ -1341,12 +1314,39 @@
   border-color: var(--oo-accent, var(--color-info));
   background: var(--oo-accent-soft, rgba(59, 130, 246, 0.1));
 }
+/* "Başlangıç Deneyimi" (startup-lane) diliyle aynı özel radyo noktası. */
 .oo-yeni-oturum-modal .radio input[type="radio"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  position: static;
   margin: 0;
-  accent-color: var(--oo-accent, var(--color-info));
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border: 2px solid var(--color-border);
+  border-radius: 50%;
+  background: transparent;
   flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+.oo-yeni-oturum-modal .radio input[type="radio"]:hover {
+  border-color: var(--oo-accent, var(--color-info));
+}
+.oo-yeni-oturum-modal .radio input[type="radio"]:checked {
+  border-color: var(--oo-accent, var(--color-info));
+  background: radial-gradient(
+    circle,
+    var(--oo-accent, var(--color-info)) 0%,
+    var(--oo-accent, var(--color-info)) 45%,
+    transparent 52%,
+    transparent 100%
+  );
+}
+.oo-yeni-oturum-modal .radio input[type="radio"]:focus-visible {
+  outline: 2px solid var(--oo-accent, var(--color-info));
+  outline-offset: 2px;
 }
 .oo-yeni-oturum-modal .radio:has(input[type="radio"]:checked) label {
   border-color: var(--oo-accent, var(--color-info));
@@ -1449,7 +1449,6 @@ html[data-theme="light"] .oo-rozet-ortak {
 }
 
 /* Kompakt seçici yüzeyleri açık temada beyaz kart. */
-html[data-theme="light"] .oo-composer-secim,
 html[data-theme="light"] .oo-composer-persona-rozet,
 html[data-theme="light"] .oo-hub-filtreler .shiny-options-group {
   background: #ffffff;
