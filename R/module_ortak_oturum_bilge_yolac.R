@@ -556,10 +556,11 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
       return(FALSE)
     }
 
+    calistirma_prompt <- komut_metni
     persona_kimligi <- ortak_oturum_persona_kimligi(persona_id, oturum_id)
     persona_sistem <- ortak_oturum_persona_sistem_prompt(persona_kimligi, oturum_id)
     if (nzchar(persona_sistem)) {
-      komut_metni <- paste(
+      calistirma_prompt <- paste(
         persona_sistem,
         "Bilge Yolaç/Claude Code yanıtını ve çalışma özetini bu persona talimatıyla uyumlu üret.",
         komut_metni,
@@ -603,7 +604,7 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     prom <- tracked_future_promise(
       task_fn = function() {
         run_claude_code(
-          prompt = komut_metni,
+          prompt = calistirma_prompt,
           workdir = ws,
           model = model_secimi,
           timeout_sec = zaman_asimi,

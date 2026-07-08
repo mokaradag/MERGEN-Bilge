@@ -424,7 +424,7 @@ ortak_db_persona_guncelle <- function(oturum_id,
           normalize_db_technical_value("Katıldı"),
           normalize_db_technical_value("Aktif"),
           normalize_db_technical_value("Sahip"),
-          normalize_db_technical_value("Oturum Yöneticisi")
+          normalize_db_technical_value("OturumYöneticisi")
         ))
       ) > 0L
     }
