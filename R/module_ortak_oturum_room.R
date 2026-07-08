@@ -25,6 +25,7 @@ ortakOturumRoomServer <- function(id,
     ns <- session$ns
 
     yenile_sayaci <- reactiveVal(0L)
+    by_yenile_sayaci <- reactiveVal(0L)
     yonetilen_kullanici <- reactiveVal(NULL)
     secili_model <- reactiveVal("")
     secili_persona <- reactiveVal("")
@@ -106,6 +107,7 @@ ortakOturumRoomServer <- function(id,
       req(aktif_oturum())
       invalidateLater(4000, session)
       fetch_now()
+      by_yenile_sayaci(isolate(by_yenile_sayaci()) + 1L)
     })
 
     # Manuel tazeleme tetikleyicisi (anında yeniden çekme).
@@ -455,9 +457,12 @@ ortakOturumRoomServer <- function(id,
       oturum_id <- aktif_oturum()
       req(oturum_id)
 
-      katilim <- benim_katilimim()
-      if (is.null(katilim) || !ortak_yetki_var_mi(katilim$Rol[1], "yapay_zeka_sor")) {
+      katilim <- ortak_db_katilimci_getir(oturum_id, current_user_id())
+      if (is.null(katilim) ||
+          !ortak_icerik_erisimi_var_mi(katilim$KatilimDurumu[1]) ||
+          !ortak_yetki_var_mi(katilim$Rol[1], "yapay_zeka_sor")) {
         oo_bildir("Yeni bağlam başlatma yetkiniz yok.", tur = "error")
+        fetch_now()
         return(invisible(NULL))
       }
 
@@ -491,6 +496,7 @@ ortakOturumRoomServer <- function(id,
       katilimcilar = katilimcilar,
       kullanici_canli_durumu = kullanici_canli_durumu,
       yenile_sayaci = yenile_sayaci,
+      by_yenile_sayaci = by_yenile_sayaci,
       secili_model = secili_model,
       etkin_persona = etkin_persona,
       aktif_uretim = reactive(uretim_rv()),

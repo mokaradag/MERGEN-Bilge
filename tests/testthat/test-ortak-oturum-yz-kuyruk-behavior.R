@@ -303,6 +303,33 @@ test_that("bağlam sıfırlama işareti sonrası yalnızca sonraki soru/yanıt b
   expect_true("Yeni yanıt" %in% icerikler)
 })
 
+test_that("sıfırlama sonrası tamamlanan eski yanıt yeni bağlama alınmaz", {
+  df <- data.frame(
+    OrtakMesajID = c(10L, 11L, 12L, 13L),
+    MesajTuru = c(
+      "YapayZekaSorusu",
+      "SistemMesajı",
+      "YapayZekaYanıtı",
+      "YapayZekaSorusu"
+    ),
+    MesajMetni = c(
+      "Eski soru",
+      ortak_baglam_sifirlama_notu(),
+      "Geç biten eski yanıt",
+      "Yeni soru"
+    ),
+    BagliMesajID = c(NA_integer_, NA_integer_, 10L, NA_integer_),
+    stringsAsFactors = FALSE
+  )
+
+  gecmis <- ortak_yz_sohbet_gecmisi(df)
+  icerikler <- vapply(gecmis, function(m) as.character(m$content), character(1))
+
+  expect_false("Eski soru" %in% icerikler)
+  expect_false("Geç biten eski yanıt" %in% icerikler)
+  expect_true("Yeni soru" %in% icerikler)
+})
+
 test_that("işaret yoksa tüm soru/yanıt geçmişi korunur (davranış değişmez)", {
   df <- data.frame(
     MesajTuru = c("YapayZekaSorusu", "YapayZekaYanıtı"),

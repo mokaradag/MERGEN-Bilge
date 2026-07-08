@@ -72,8 +72,16 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     !is.null(bilgi) && identical(as.character(bilgi$KaynakTuru[1]), "BilgeYolaç")
   })
 
+  by_tetik <- function() {
+    if (is.function(ctx$by_yenile_sayaci)) {
+      ctx$by_yenile_sayaci()
+    } else {
+      ctx$yenile_sayaci()
+    }
+  }
+
   by_kaydi <- reactive({
-    ctx$yenile_sayaci()
+    by_tetik()
     oturum_id <- ctx$aktif_oturum()
     if (is.null(oturum_id) || !by_odasi_mi()) {
       return(NULL)
@@ -278,7 +286,7 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
   # --- Dizin içeriği -------------------------------------------------------------
 
   output$by_dizin_icerigi <- renderUI({
-    ctx$yenile_sayaci()
+    by_tetik()
     dizin_yenile()
 
     oturum_id <- ctx$aktif_oturum()
@@ -362,7 +370,7 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
   # --- Çalıştırma geçmişi -----------------------------------------------------------
 
   output$by_calistirma_gecmisi <- renderUI({
-    ctx$yenile_sayaci()
+    by_tetik()
     req(by_odasi_mi())
 
     kayit <- by_kaydi()
