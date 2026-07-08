@@ -53,6 +53,35 @@ Kullanıcının zihinsel modeli nettir:
 modülü deseni). Oda UI'si yalnızca hub yüzeyine gömülür; diğer sekmelerden "Aç"
 hub sekmesine yönlendirir.
 
+### Arayüz / UX sözleşmesi
+
+Ortak yüzeyler ana uygulamayla aynı sakin, profesyonel dili paylaşır (tema
+token'ları; koyu + açık tema):
+
+- **Başlık**: standart uygulama başlık deseni (`chat-header settings-header-fixed`),
+  ikonsuz; `ORTAK` rozeti Yönetici (`ADMIN`) / Bilge Yolaç (`AJAN`) rozetleriyle
+  aynı dolgulu pill dilinde. Başlık, kabuğun yatay dolgusunun dışına taşarak
+  diğer sayfalarla aynı hizada durur (sağ/sol boşluk yoktur).
+- **Filtreler** (Tümü / Davetlerim / Arşivlenmiş) radio yerine **sekme çubuğu**
+  görünümündedir; davet paneli filtresi de aynı dili kullanır.
+- **Butonlar** sakin, kompakt uygulama dilinde (aşırı turuncu değil): birincil
+  eylemler dingin indigo (`--oo-accent`), "Yenile" Söyleşi Geçmişi ile aynı teal.
+- **Oturum kartları** ince üst aksan şeridi + hover yükselmesiyle profesyoneldir.
+- **Composer**: model ve persona açılır menüleri girdi kutusunun ALTINDA,
+  "Odaya Yaz" / "Yapay Zekâya Sor" ile aynı satırdadır (dikey alan tasarrufu;
+  ana söyleşi "Model Değiştir" dili). Oda dikeyde alt boşluk bırakmadan yayılır.
+- **Yan panel**: Katılımcılar paneli varsayılan olarak daha yüksektir; Katılımcılar
+  ile Ortak Belgeler arasında **sürüklenebilir ayraç** vardır (yükseklik oturum
+  boyunca `sessionStorage`'da korunur; klavye ok tuşlarıyla da ayarlanabilir).
+- **Mesaj balonları** ana söyleşiyle uyumlu: aralarında yeterli dikey boşluk,
+  sakin renk paleti, persona kimlikli yapay zekâ balonu.
+- **Akıcılık**: bir katılımcının soru göndermesi tüm ekranı dondurmaz. LLM
+  çağrısı worker'da async koşar; 4 sn'lik yoklama sırasında Shiny "recalculating"
+  soluklaşması ortak oda yüzeylerinde kapatılır (genel griye-dönme/donma hissi
+  giderilir). Model/persona açılır menüleri yalnızca ROL değişince yeniden çizilir
+  (yoklamada seçim/odak bozulmaz). Yeni mesajlar geldiğinde kullanıcı diptedeyse
+  akış otomatik en alta kayar.
+
 ## 3. Oda İçi Mesajlaşma / Yapay Zekâ Ayrımı
 
 Oda mesaj alanında iki AYRI eylem vardır ve UI bu ayrımı kaçırılamaz yapar:
@@ -84,6 +113,29 @@ bağlama **girmez** (`ortak_yz_sohbet_gecmisi()`).
 - Model `ORTAK_OTURUM_MODEL` ortam değişkeniyle, yoksa `api_config$local_models[1]`
   ile seçilir. API anahtarı merkezi özellik-anahtar yardımcısından gelir
   (`mb_api_key_get_feature_key_value`, CLAUDE.md 1F sözleşmesi).
+
+### Yapay zekâ personası
+
+Her ortak oturumun etkin bir **personası** vardır (mevcut beş MERGEN Bilge
+personası: `emre`, `selin`, `deniz`, `can`, `ipek` — `R/config_characters.R`
+tek kaynak). Yapay zekâ yanıtları jenerik "Yapay Zekâ" etiketi yerine seçili
+personanın adı ve aksan renkli avatarıyla gösterilir; yanıt persona sistem
+talimatıyla üretilir (`ortak_oturum_persona_sistem_prompt()`).
+
+- Persona `MB_OrtakOturumlar.SecilenPersona` kolonunda saklanır (aşamalı devreye
+  alma: idempotent `ALTER`; kolon kurulu değilse tüm yol güvenli düşer).
+- Oluşturmada persona yazılmaz; okuma NULL/NA ise `ortak_oturum_persona_kimligi()`
+  oturum kimliğinden **deterministik ve kararlı** bir varsayılan türetir (persona
+  metadata'sı olmayan eski oturumlar da güvenli ve çeşitli görünür).
+- Personayı yalnızca `katilimci_yonet` yetkisi olan rol (**Sahip / Oturum
+  Yöneticisi**) değiştirebilir (`ortak_db_persona_guncelle()`, işlem içinde
+  yetki doğrulanır). Değişiklik oda kaydında saklanır ve yoklamayla tüm
+  katılımcıların mesaj avatarlarına/adlarına yansır.
+- Persona açılır menüsü composer aksiyon satırında model açılır menüsünün
+  yanındadır; yetkisi olmayan katılımcıya salt-okunur persona rozeti gösterilir.
+- Saf yardımcılar `R/helpers_ortak_oturum_sunum.R` içindedir:
+  `ortak_oturum_persona_kimligi()`, `ortak_oturum_persona_gorunumu()`,
+  `ortak_persona_secenekleri()`, `ortak_oturum_persona_sistem_prompt()`.
 
 ## 4. Roller ve Yetkiler
 
@@ -125,6 +177,13 @@ her yazma/okuma DB katmanında yeniden doğrulanır.
 davet/katılım durumu + atanacak rol. Sekmeler: **Çevrim İçi Kullanıcılar / Tüm
 Kullanıcılar / Davet Edilenler**; ad/kullanıcı adı/e-posta/departman araması vardır.
 
+Aday süzme kararı saf ve test edilebilirdir: `ortak_davet_aday_kullanicilar()`
+(`R/helpers_ortak_oturum_sunum.R`) kullanıcı dizinine canlı durum + mevcut
+katılım durumu ekler ve seçili sekmeye göre süzer (kendisi ve zaten `Katıldı`
+olan kullanıcılar her sekmede elenir). Panel açılırken canlı durum anlık
+görüntüsü TAZE okunur (`ortak_db_canli_durumlar()`), 4 sn oda yoklaması
+beklenmez; böylece çevrim içi kullanıcılar ilk render'da doğru listelenir.
+
 - **Çevrim içi kullanıcı** → birincil eylem **"Mergen İçinden Çağır"**: davet
   kaydı + uygulama içi bildirim (`MB_Bildirimler`, `OrtakOturumÇağrı`). Alıcının
   ekranında modal belirir: *"{Ad} sizi ortak oturuma çağırıyor."* — **Katıl /
@@ -160,6 +219,12 @@ temiz bir servis dikişidir (ileride gerçek gönderim eklenirse durum kaydı zo
   upsert edilir.
 - Sınıflandırma saf yardımcıdadır (`ortak_sunum_durumu`): son kalp atışı
   ≤120 sn → `Çevrimİçi`; ≤300 sn → `Boşta`; aksi → `ÇevrimDışı`.
+- Zaman damgası biçimine dayanıklıdır: POSIXct, ISO `T` ayraçlı veya kesirli
+  saniyeli (`DATETIME2(7)`) metin — hangi biçim gelirse gelsin güvenli UTC an'a
+  çözülür. Böylece bir sürücü/biçim farkı çevrim içi kullanıcıyı sessizce
+  `ÇevrimDışı` göstermez (davet panelinde çevrim içi listenin boş kalmasının
+  önceki kök nedeni; regresyon:
+  `tests/testthat/test-ortak-oturum-davet-online-behavior.R`).
 - Durum göstergesi yalnızca renge dayanmaz: nokta + `title`/`aria-label` metni.
 - SSO placeholder kimlik (0) ile canlı durum yazılmaz.
 
@@ -255,8 +320,13 @@ Operasyon kuralları ([`../RUNBOOK.md`](../RUNBOOK.md) §9B):
 1. Betikler UYGULAMA AÇILIŞINDA OTOMATİK ÇALIŞTIRILMAZ; yalnızca DBA/operatör
    SSMS'te, DOĞRULANMIŞ DB yedeği aldıktan sonra uygular.
 2. Ana betik idempotenttir; mevcut tabloları/PK'ları DEĞİŞTİRMEZ, veri silmez.
+   Aşamalı devreye alma kolonları idempotent `ALTER` ile eklenir:
+   `MB_OrtakOturum_AktifUretimler.KismiYanit` (kısmi yanıt yayını) ve
+   `MB_OrtakOturumlar.SecilenPersona` (oda personası). Kolon kurulu değilse
+   uygulama sessizce güvenli düşer.
 3. İş kuralı değerleri Türkçe `N'...'` sabitleridir (CHECK kısıtlarıyla).
-4. Rollback yalnızca yeni ortak tabloları FK sırasının tersine düşürür;
+4. Rollback yalnızca yeni ortak tabloları FK sırasının tersine düşürür
+   (`SecilenPersona`/`KismiYanit` kolonları tabloyla birlikte düşer);
    `MB_Chats`, `MB_Messages`, `MB_Users`, `MB_ClaudeCode_*` tablolarına dokunmaz.
    Disk üzerindeki `ortak_oturumlar/` klasörünü SİLMEZ (ayrı, bilinçli adım).
 5. Tablolar kurulmadan uygulama çalışmaya devam eder: DB katmanı tablo yokken
@@ -297,6 +367,11 @@ Kolon özetleri için [`database-schema.md`](database-schema.md).
 | `tests/testthat/test-ortak-oturum-db-behavior.R` | Gerçek SQLite ile: tablo-yok güvenli düşüş, oturum oluşturma + Türkçe gidiş-dönüş, İzleyici/yabancı yazamaz-okuyamaz, davet kabul/red akışı, oda başına tek üretim kilidi, kullanıcı-arşivi kişiselliği, Sahip'e özel oda arşivi, sahiplik devri, ortak belge + kişisel kopya + idempotentlik, kaynak türü liste ayrımı, kalp atışı upsert, bakım temizliği, istatistik/tutanak. |
 | `tests/testthat/test-ortak-oturum-sql-contract.R` | SQL betiği: tablolar, idempotent guard'lar, Türkçe `N'...'` değerleri, ana betikte yıkıcı ifade yok, rollback yalnızca yeni tabloları düşürür, betik açılışa bağlı değil. |
 | `tests/testthat/test-ortak-oturum-ui-contract.R` | "Odaya Yaz"/"Yapay Zekâya Sor" ayrımı, davet paneli eylem metinleri, XSS escape davranışı, JS seçici güvenliği + kalp atışı sözleşmesi, tema token/açık tema/responsive CSS, manifest+bölge üyeliği, navigasyon sekmeleri, kaynak manifesti bölüm sırası. |
+| `tests/testthat/test-ortak-oturum-davet-online-behavior.R` | "Katılımcı Çağır" çevrim içi listeleme regresyonu: canlı durum sınıflandırmasının POSIXct/kesirli-saniye/ISO biçimlerine dayanıklılığı ve saf `ortak_davet_aday_kullanicilar()` süzme kararı (çevrim içi listelenir, çevrim dışı/kendisi/katılmış elenir, Davet Edilenler ve Tüm Kullanıcılar filtreleri). |
+
+Persona kalıcılığı `test-ortak-oturum-db-behavior.R` içinde de kapsanır:
+oluşturmada deterministik varsayılan, Sahip günceller, geçersiz persona ve
+yetkisiz katılımcı reddedilir.
 
 Testler çevrimdışı ve deterministiktir: gerçek SQL Server, LLM, tarayıcı, SSO
 veya ağ gerekmez. Gerçek SQL Server Türkçe yazma davranışı, VM'deki mevcut
@@ -349,6 +424,27 @@ encoding preflight kapılarıyla doğrulanmalıdır (RUNBOOK).
 - Oda düzeyi arşiv "Geri Yükle" artık gerçekten çalışır: Sahip odayı herkes
   için yeniden Aktif yapar (`ortak_db_oturum_durum_guncelle(..., "Aktif")`);
   yetkisiz kullanıcı yalnızca kendi görünümünü geri getirir.
+- **Çevrim içi listeleme dayanıklılığı — DÜZELTİLDİ.** Canlı durum
+  sınıflandırması artık POSIXct / ISO `T` / kesirli-saniye zaman biçimlerine
+  dayanıklıdır; aday süzme saf, test edilebilir `ortak_davet_aday_kullanicilar()`
+  yardımcısına taşındı ve panel açılırken canlı durum TAZE okunur. Böylece
+  çevrim içi kullanıcılar varken "Çevrim İçi Kullanıcılar" listesinin boş kalması
+  regresyonu kapatıldı.
+
+### 12.2b Persona ve UX iyileştirmeleri (bu değişiklik seti)
+
+- **Yapay zekâ personası — UYGULANDI.** Her oda beş MERGEN Bilge personasından
+  birini kullanır (§3 "Yapay zekâ personası"); yanıtlar persona adı/avatarıyla
+  ve persona sistem talimatıyla üretilir. Sahip/Oturum Yöneticisi composer'daki
+  persona menüsünden değiştirir; `MB_OrtakOturumlar.SecilenPersona` kolonunda
+  saklanır (aşamalı devreye alma, deterministik varsayılan).
+- **UX cilası — UYGULANDI.** Sürüklenebilir yan panel ayracı (daha yüksek
+  Katılımcılar paneli), sekme filtre çubuğu, kompakt composer model/persona
+  satırı, sakin buton/rozet dili (aşırı turuncu giderildi), profesyonel oturum
+  kartları, standart başlık hizası ve Yeni Ortak Oturum modalı radyoları. Yoklama
+  sırasındaki genel griye-dönme/donma hissi giderildi; model/persona menüleri
+  yoklamada yeniden çizilmez; yeni mesajlarda otomatik dip kaydırma eklendi
+  (§2 "Arayüz / UX sözleşmesi").
 
 ### 12.3 Kalan sınırlamalar
 
@@ -362,6 +458,8 @@ encoding preflight kapılarıyla doğrulanmalıdır (RUNBOOK).
    doğrudan token-token WebSocket push takip işidir. Bağlantı koparsa
    katılımcılar nihai durumu yoklama/DB üzerinden kurtarır.
 4. **Canlı VM doğrulaması:** SQL Server üzerinde Türkçe değerlerin at-rest
-   doğrulaması (SSMS), `KismiYanit` ALTER'ının uygulanması, SSO'lu çok
-   kullanıcılı gerçek oda denemesi ve gerçek Claude Code CLI köprüsü Windows VM
-   kapısında yapılmalıdır; bulut testleri SQLite/parse ile davranış kanıtıdır.
+   doğrulaması (SSMS), `KismiYanit` ve `SecilenPersona` ALTER'larının
+   uygulanması, çok kullanıcılı gerçek oda denemesinde persona/çevrim içi
+   davet/donma-giderme akışları, SSO'lu çok kullanıcılı gerçek oda denemesi ve
+   gerçek Claude Code CLI köprüsü Windows VM kapısında yapılmalıdır; bulut
+   testleri SQLite/parse ile davranış kanıtıdır.

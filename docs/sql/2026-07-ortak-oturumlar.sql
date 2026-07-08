@@ -91,6 +91,18 @@ BEGIN
 END;
 GO
 
+-- 1b) SecilenPersona kolonu (aşamalı devreye alma): odanın etkin yapay zekâ
+-- personasını tutar (emre/selin/deniz/can/ipek). Kurulu olmayan şemada
+-- uygulama sessizce güvenli düşer ve oturum kimliğinden deterministik varsayılan
+-- persona kullanır (bkz. ortak_oturum_persona_kimligi). Idempotent ALTER.
+IF OBJECT_ID(N'dbo.MB_OrtakOturumlar', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.MB_OrtakOturumlar', N'SecilenPersona') IS NULL
+BEGIN
+    ALTER TABLE dbo.MB_OrtakOturumlar
+        ADD SecilenPersona NVARCHAR(50) NULL;
+END;
+GO
+
 -- 2) Katılımcılar ---------------------------------------------------------------
 IF OBJECT_ID(N'dbo.MB_OrtakOturum_Katilimcilar', N'U') IS NULL
 BEGIN

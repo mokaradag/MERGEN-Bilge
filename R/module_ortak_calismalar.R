@@ -26,23 +26,18 @@ ortakCalismalarUI <- function(id, sayfa = "hub") {
     "Ortak Çalışmalarım"
   )
 
-  baslik_ikon <- switch(
-    sayfa,
-    "sohbet" = "comments",
-    "bilge_yolac" = "robot",
-    "users"
-  )
-
   tagList(
     div(
       class = "ortak-calismalar-container",
       `data-oo-sayfa` = sayfa,
 
+      # Sayfa başlığı standart uygulama başlık desenini izler (ikon YOK; diğer
+      # sayfalarla aynı hizalama). ORTAK rozeti Yönetici/AJAN pill diliyle stillenir.
       div(
         class = "chat-header settings-header-fixed oo-page-header",
         div(
           class = "chat-header-left",
-          h4(tagList(icon(baslik_ikon), span(baslik)), class = "page-title"),
+          h4(baslik, class = "page-title"),
           tags$span(class = "oo-rozet oo-rozet-ortak", "ORTAK")
         ),
         div(
@@ -85,7 +80,7 @@ ortakCalismalarUI <- function(id, sayfa = "hub") {
             ),
             div(class = "oo-oturum-listesi", uiOutput(ns("liste_hub")))
           ),
-          uiOutput(ns("oda_alani"))
+          uiOutput(ns("oda_alani"), class = "oo-oda-alani")
         )
       } else if (identical(sayfa, "sohbet")) {
         div(class = "oo-oturum-listesi", uiOutput(ns("liste_sohbet")))
@@ -588,16 +583,20 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
     observeEvent(input$yeni_ortak_oturum, {
       showModal(modalDialog(
         title = "Yeni Ortak Oturum",
-        radioButtons(
-          ns("yeni_kaynak_turu"),
-          label = "Oturum Türü",
-          choices = c("Ortak Söyleşi" = "NormalSohbet", "Ortak Bilge Yolaç" = "BilgeYolaç"),
-          selected = "NormalSohbet"
+        size = "l",
+        div(
+          class = "oo-yeni-oturum-modal",
+          radioButtons(
+            ns("yeni_kaynak_turu"),
+            label = "Oturum Türü",
+            choices = c("Ortak Söyleşi" = "NormalSohbet", "Ortak Bilge Yolaç" = "BilgeYolaç"),
+            selected = "NormalSohbet"
+          ),
+          textInput(ns("yeni_baslik"), label = "Başlık", placeholder = "Ortak çalışma başlığı..."),
+          uiOutput(ns("yeni_paylasim_alani"))
         ),
-        textInput(ns("yeni_baslik"), label = "Başlık", placeholder = "Ortak çalışma başlığı..."),
-        uiOutput(ns("yeni_paylasim_alani")),
         footer = tagList(
-          actionButton(ns("yeni_olustur"), "Oluştur", class = "btn-primary"),
+          actionButton(ns("yeni_olustur"), tagList(icon("plus"), span("Oluştur")), class = "oo-oda-btn oo-oda-btn-birincil"),
           modalButton("Vazgeç")
         )
       ))

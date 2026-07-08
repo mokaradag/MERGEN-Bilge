@@ -27,6 +27,10 @@ ortakOturumRoomServer <- function(id,
     yenile_sayaci <- reactiveVal(0L)
     yonetilen_kullanici <- reactiveVal(NULL)
     secili_model <- reactiveVal("")
+    secili_persona <- reactiveVal("")
+    # Kompakt rol sinyali: model/persona açılır menüleri yalnızca ROL değişince
+    # yeniden çizilsin diye (4 sn yoklamada değil); menü seçimi/odaklanması bozulmaz.
+    oda_rol <- reactiveVal("")
 
     oo_bildir <- function(mesaj, tur = "message") {
       shiny::showNotification(mesaj, type = tur, duration = 6)
@@ -43,14 +47,42 @@ ortakOturumRoomServer <- function(id,
       oo_yenile()
     })
 
-    # Oda değiştiğinde model seçimini oturum kaydından çöz (varsa).
+    # Oda değiştiğinde model ve persona seçimini oturum kaydından çöz (varsa).
     observeEvent(aktif_oturum(), {
       oturum_id <- aktif_oturum()
       secili_model("")
+      secili_persona("")
       if (is.null(oturum_id)) {
         return(invisible(NULL))
       }
+      # Persona odanın kaydından okunur; yoksa oturum kimliğinden deterministik
+      # varsayılana düşer (persona metadata'sı olmayan eski oturumlar için).
+      bilgi <- ortak_db_oturum_getir(oturum_id)
+      persona_secim <- if (!is.null(bilgi)) as.character(bilgi$SecilenPersona[1] %||% "") else ""
+      secili_persona(ortak_oturum_persona_kimligi(persona_secim, oturum_id))
     }, ignoreNULL = FALSE)
+
+    # Rol sinyalini yalnızca gerçekten değiştiğinde güncelle (menü stabilitesi).
+    observe({
+      katilim <- benim_katilimim()
+      yeni <- if (is.null(katilim)) "" else as.character(katilim$Rol[1] %||% "")
+      if (!identical(isolate(oda_rol()), yeni)) {
+        oda_rol(yeni)
+      }
+    })
+
+    # Odanın etkin personası (yoklamayla tazelenir): mesaj avatarları/adları tüm
+    # katılımcılarda güncel kalsın diye oturum kaydından çözülür.
+    etkin_persona <- reactive({
+      yenile_sayaci()
+      oturum_id <- aktif_oturum()
+      if (is.null(oturum_id)) {
+        return(ortak_oturum_persona_gorunumu(NULL))
+      }
+      bilgi <- oturum_bilgisi()
+      persona_secim <- if (!is.null(bilgi)) as.character(bilgi$SecilenPersona[1] %||% "") else ""
+      ortak_oturum_persona_gorunumu(persona_secim, oturum_id)
+    })
 
     oturum_bilgisi <- reactive({
       yenile_sayaci()
@@ -180,8 +212,9 @@ ortakOturumRoomServer <- function(id,
       }
 
       benim_id <- current_user_id()
+      persona <- etkin_persona()
       tagList(lapply(seq_len(nrow(df)), function(i) {
-        oo_mesaj_html(df[i, , drop = FALSE], aktif_kullanici_id = benim_id)
+        oo_mesaj_html(df[i, , drop = FALSE], aktif_kullanici_id = benim_id, persona = persona)
       }))
     })
 
@@ -229,9 +262,12 @@ ortakOturumRoomServer <- function(id,
 
     # Odanın etkin AI modelini seçen kompakt açılır menü (Yapılandırma'ya
     # gitmeden değiştirilir; ana uygulamayla aynı model listesini kullanır).
+    # Yalnızca ODA veya ROL değişince yeniden çizilir; 4 sn yoklamada değil
+    # (seçim/odak bozulmaz).
     output$oda_model_secim_alani <- renderUI({
-      katilim <- benim_katilimim()
-      if (is.null(katilim) || !ortak_yetki_var_mi(katilim$Rol[1], "yapay_zeka_sor")) {
+      aktif_oturum()
+      rol <- oda_rol()
+      if (!ortak_yetki_var_mi(rol, "yapay_zeka_sor")) {
         return(NULL)
       }
 
@@ -246,17 +282,21 @@ ortakOturumRoomServer <- function(id,
         return(tags$span(class = "oo-composer-model-yok", "Varsayılan model"))
       }
 
-      secili <- as.character(secili_model() %||% "")[1]
+      secili <- as.character(isolate(secili_model()) %||% "")[1]
       if (!nzchar(secili)) {
         secili <- modeller[1]
       }
 
-      selectInput(
-        ns("oda_model_secimi"),
-        label = NULL,
-        choices = modeller,
-        selected = secili,
-        width = "220px"
+      div(
+        class = "oo-composer-secim oo-composer-secim-model",
+        tags$span(class = "oo-composer-secim-ikon", icon("microchip"), `aria-hidden` = "true"),
+        selectInput(
+          ns("oda_model_secimi"),
+          label = NULL,
+          choices = modeller,
+          selected = secili,
+          width = "180px"
+        )
       )
     })
 
@@ -264,6 +304,62 @@ ortakOturumRoomServer <- function(id,
       deger <- as.character(input$oda_model_secimi %||% "")[1]
       if (nzchar(deger)) {
         secili_model(deger)
+      }
+    }, ignoreInit = TRUE)
+
+    # Persona açılır menüsü: yalnızca katilimci_yonet yetkisi olan rol (Sahip /
+    # Oturum Yöneticisi) personayı değiştirebilir. Rol değişince yeniden çizilir.
+    output$oda_persona_secim_alani <- renderUI({
+      rol <- oda_rol()
+      secili <- as.character(secili_persona() %||% "")[1]
+      if (!nzchar(secili)) {
+        secili <- ortak_oturum_persona_kimligi(NULL, aktif_oturum())
+      }
+
+      # Yetkisi olmayan katılımcı için salt-okunur persona rozeti gösterilir.
+      if (!ortak_yetki_var_mi(rol, "katilimci_yonet")) {
+        gorunum <- ortak_oturum_persona_gorunumu(secili)
+        return(tags$span(
+          class = "oo-composer-persona-rozet",
+          title = "Odanın yapay zekâ personası",
+          tags$span(
+            class = "oo-composer-persona-nokta",
+            style = sprintf("background:%s;", gorunum$accent),
+            `aria-hidden` = "true"
+          ),
+          span(as.character(gorunum$ad))
+        ))
+      }
+
+      div(
+        class = "oo-composer-secim oo-composer-secim-persona",
+        tags$span(class = "oo-composer-secim-ikon", icon("user-astronaut"), `aria-hidden` = "true"),
+        selectInput(
+          ns("oda_persona_secimi"),
+          label = NULL,
+          choices = ortak_persona_secenekleri(),
+          selected = secili,
+          width = "200px"
+        )
+      )
+    })
+
+    observeEvent(input$oda_persona_secimi, {
+      deger <- ortak_oturum_persona_kimligi(input$oda_persona_secimi, aktif_oturum())
+      oturum_id <- aktif_oturum()
+      req(oturum_id)
+
+      if (identical(deger, as.character(isolate(secili_persona()) %||% "")[1])) {
+        return(invisible(NULL))
+      }
+
+      if (isTRUE(ortak_db_persona_guncelle(oturum_id, current_user_id(), deger))) {
+        secili_persona(deger)
+        gorunum <- ortak_oturum_persona_gorunumu(deger)
+        oo_bildir(sprintf("Yapay zekâ personası değiştirildi: %s", gorunum$ad))
+        oo_yenile()
+      } else {
+        oo_bildir("Persona değiştirilemedi: yetkiniz yok veya bu özellik henüz kurulmadı.", tur = "warning")
       }
     }, ignoreInit = TRUE)
 
@@ -352,6 +448,7 @@ ortakOturumRoomServer <- function(id,
       kullanici_canli_durumu = kullanici_canli_durumu,
       yenile_sayaci = yenile_sayaci,
       secili_model = secili_model,
+      etkin_persona = etkin_persona,
       parent_session = parent_session,
       bildir = oo_bildir,
       yenile = oo_yenile
@@ -415,7 +512,7 @@ ortakOturumRoomServer <- function(id,
       actionButton(
         ns("oda_arsivle_herkes"),
         label = tagList(icon("box-archive"), span("Herkes İçin Arşivle")),
-        class = "btn-modern oo-btn-arsivle-herkes",
+        class = "oo-oda-btn oo-oda-btn-notr oo-btn-arsivle-herkes",
         `aria-label` = "Ortak oturumu tüm katılımcılar için arşivle"
       )
     })

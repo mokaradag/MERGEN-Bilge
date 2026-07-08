@@ -76,7 +76,8 @@ local({
       KaynakTuru TEXT NOT NULL, KaynakID INTEGER, Baslik TEXT,
       OlusturanKullaniciID INTEGER NOT NULL, OturumDurumu TEXT NOT NULL,
       PaylasimBaslangicTipi TEXT, SonEtkinlikZamani TEXT,
-      OlusturmaZamani TEXT, GuncellemeZamani TEXT, MetaJson TEXT
+      OlusturmaZamani TEXT, GuncellemeZamani TEXT, MetaJson TEXT,
+      SecilenPersona TEXT
     )")
   DBI::dbExecute(conn, "
     CREATE TABLE MB_OrtakOturum_Katilimcilar (
@@ -550,6 +551,39 @@ test_that("canlı durum: kalp atışı upsert eder ve sınıflandırma Türkçe 
 
   # Geçersiz kimlik yazmaz (SSO placeholder 0 koruması).
   expect_false(ortak_db_kalp_atisi(0L, "oturum_b", conn = conn))
+})
+
+test_that("persona: varsayılan deterministik, Sahip günceller, yetkisiz katılımcı güncelleyemez", {
+  ortak_db_reset_availability_cache()
+  conn <- .oo_test_conn()
+  on.exit({
+    DBI::dbDisconnect(conn)
+    ortak_db_reset_availability_cache()
+  }, add = TRUE)
+
+  oturum_id <- ortak_db_oturum_olustur("NormalSohbet", "Persona Testi", 1L, conn = conn)
+
+  # Oluşturmada persona yazılmaz; okuma NA döner, çözümleme deterministik varsayılan verir.
+  bilgi <- ortak_db_oturum_getir(oturum_id, conn = conn)
+  expect_true("SecilenPersona" %in% names(bilgi))
+  expect_true(is.na(bilgi$SecilenPersona[1]))
+  varsayilan <- ortak_oturum_persona_kimligi(bilgi$SecilenPersona[1], oturum_id)
+  expect_true(varsayilan %in% c("emre", "selin", "deniz", "can", "ipek"))
+
+  # Sahip (kullanıcı 1) personayı değiştirir; kalıcı olur.
+  expect_true(ortak_db_persona_guncelle(oturum_id, 1L, "deniz", conn = conn))
+  bilgi2 <- ortak_db_oturum_getir(oturum_id, conn = conn)
+  expect_identical(as.character(bilgi2$SecilenPersona[1]), "deniz")
+
+  # Geçersiz persona reddedilir.
+  expect_false(ortak_db_persona_guncelle(oturum_id, 1L, "gandalf", conn = conn))
+
+  # İzleyici rolündeki katılımcı personayı değiştiremez (katilimci_yonet yok).
+  davet_id <- ortak_db_davet_olustur(oturum_id, 1L, 2L, rol = "İzleyici", conn = conn)
+  ortak_db_davet_yanitla(davet_id, 2L, kabul = TRUE, conn = conn)
+  expect_false(ortak_db_persona_guncelle(oturum_id, 2L, "emre", conn = conn))
+  bilgi3 <- ortak_db_oturum_getir(oturum_id, conn = conn)
+  expect_identical(as.character(bilgi3$SecilenPersona[1]), "deniz")
 })
 
 test_that("bakım temizliği: eski davet/bildirim/kalp atışı ve kayıp dosya işaretlenir", {

@@ -118,6 +118,121 @@
     }
   }
 
+  // --- Yan panel yeniden boyutlandırma: Katılımcılar / Ortak Belgeler ---------
+  // Sürüklenebilir ayraç Katılımcılar panelinin yüksekliğini (--oo-katilimci-h)
+  // ayarlar; seçim sessionStorage'da tutulur (oturum boyunca korunur). Yalnızca
+  // görsel; Shiny input üretmez.
+  var OO_KATILIMCI_KEY = 'oo_katilimci_h';
+
+  function ooKatilimciYukseklikGeriYukle() {
+    var deger;
+    try {
+      deger = window.sessionStorage.getItem(OO_KATILIMCI_KEY);
+    } catch (e) {
+      deger = null;
+    }
+    if (!deger) {
+      return;
+    }
+    var icerikler = document.querySelectorAll('.oo-yan-panel-icerik');
+    for (var i = 0; i < icerikler.length; i++) {
+      if (!icerikler[i].style.getPropertyValue('--oo-katilimci-h')) {
+        icerikler[i].style.setProperty('--oo-katilimci-h', deger);
+      }
+    }
+  }
+
+  function ooResizerUygula(icerik, katil, yeniYukseklik) {
+    var alan = icerik.getBoundingClientRect();
+    var maxH = Math.max(160, alan.height * 0.82);
+    var h = Math.max(120, Math.min(maxH, yeniYukseklik));
+    icerik.style.setProperty('--oo-katilimci-h', h + 'px');
+    try {
+      window.sessionStorage.setItem(OO_KATILIMCI_KEY, h + 'px');
+    } catch (e) { /* yoksay */ }
+  }
+
+  document.addEventListener('pointerdown', function (ev) {
+    var resizer = ev.target && ev.target.closest
+      ? ev.target.closest('[data-oo-resizer]')
+      : null;
+    if (!resizer) {
+      return;
+    }
+    var icerik = resizer.closest('.oo-yan-panel-icerik');
+    var katil = icerik && icerik.querySelector('.oo-yan-katilimcilar');
+    if (!icerik || !katil) {
+      return;
+    }
+
+    ev.preventDefault();
+    resizer.classList.add('oo-yan-resizer-aktif');
+    var basY = ev.clientY;
+    var basH = katil.getBoundingClientRect().height;
+
+    function onMove(e) {
+      ooResizerUygula(icerik, katil, basH + (e.clientY - basY));
+    }
+    function onUp() {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      resizer.classList.remove('oo-yan-resizer-aktif');
+    }
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  });
+
+  // Klavye erişilebilirliği: ayraç odaktayken yukarı/aşağı ok yüksekliği ayarlar.
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') {
+      return;
+    }
+    var resizer = ev.target && ev.target.closest
+      ? ev.target.closest('[data-oo-resizer]')
+      : null;
+    if (!resizer) {
+      return;
+    }
+    var icerik = resizer.closest('.oo-yan-panel-icerik');
+    var katil = icerik && icerik.querySelector('.oo-yan-katilimcilar');
+    if (!icerik || !katil) {
+      return;
+    }
+    ev.preventDefault();
+    var adim = ev.key === 'ArrowUp' ? -24 : 24;
+    ooResizerUygula(icerik, katil, katil.getBoundingClientRect().height + adim);
+  });
+
+  // --- Mesaj akışı otomatik kaydırma -----------------------------------------
+  // Oda 4 sn'de bir yeniden render edilir; kullanıcı akışın DİBİNE yakınsa yeni
+  // mesajlar geldiğinde otomatik en alta kaydırılır. Kullanıcı geçmişi okumak
+  // için yukarı kaydırdıysa konumu korunur (yakın-dip bayrağı scroll'da tutulur).
+  document.addEventListener('scroll', function (ev) {
+    var el = ev.target;
+    if (!el || !el.id || el.id.indexOf('mesaj_akisi') === -1) {
+      return;
+    }
+    el._ooYakinDip = (el.scrollHeight - el.scrollTop - el.clientHeight) < 160;
+  }, true);
+
+  document.addEventListener('shiny:value', function (ev) {
+    var ad = ev && ev.name ? String(ev.name) : '';
+    if (ad.indexOf('mesajlar_alani') === -1 && ad.indexOf('oda_alani') === -1) {
+      return;
+    }
+    window.setTimeout(function () {
+      ooKatilimciYukseklikGeriYukle();
+      var akisi = document.querySelector('[id$="-mesaj_akisi"]');
+      if (!akisi) {
+        return;
+      }
+      // İlk render veya kullanıcı zaten dipteyse en alta kaydır.
+      if (akisi._ooYakinDip !== false) {
+        akisi.scrollTop = akisi.scrollHeight;
+      }
+    }, 30);
+  });
+
   if (typeof document.addEventListener === 'function') {
     document.addEventListener('shiny:connected', ooKalpAtisiBaslat);
     document.addEventListener('shiny:disconnected', ooKalpAtisiDurdur);

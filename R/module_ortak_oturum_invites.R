@@ -76,6 +76,10 @@ ortakOturumInvitesBind <- function(input, output, session, ctx) {
       return(invisible(NULL))
     }
 
+    # Modal açılır açılmaz canlı durum anlık görüntüsünü tazele: çevrim içi
+    # kullanıcılar ilk render'da (4 sn oda yoklamasını beklemeden) görünsün.
+    ctx$yenile()
+
     showModal(modalDialog(
       title = "Katılımcı Çağır",
       size = "l",
@@ -134,54 +138,33 @@ ortakOturumInvitesBind <- function(input, output, session, ctx) {
       return(div(class = "oo-bos-durum", p("Eşleşen kullanıcı bulunamadı.")))
     }
 
+    # Canlı durum TAZE okunur (odanın önbelleğine değil DB'ye doğrudan): davet
+    # panelinde çevrim içi kullanıcıların anlık ve doğru görünmesini garanti eder.
     # Aktif satırlarla (Katıldı/DavetEdildi) mevcut davet/katılım durumu; çıkarılan
     # kullanıcılar yeniden davet edilebilsin diye sadece_aktif = TRUE kullanılır.
+    canli_durumlar <- ortak_db_canli_durumlar()
     mevcutlar <- ortak_db_katilimci_listesi(oturum_id)
     benim_id <- as.integer(ctx$current_user_id())
 
-    satirlar <- lapply(seq_len(nrow(kullanicilar)), function(i) {
-      satir <- kullanicilar[i, , drop = FALSE]
-      kullanici_id <- as.integer(satir$UserID[1])
+    adaylar <- ortak_davet_aday_kullanicilar(
+      kullanicilar = kullanicilar,
+      canli_durum_df = canli_durumlar,
+      mevcut_katilimcilar = mevcutlar,
+      benim_id = benim_id,
+      filtre = filtre
+    )
 
-      if (identical(kullanici_id, benim_id)) {
-        return(NULL)
-      }
-
-      durum <- ctx$kullanici_canli_durumu(kullanici_id)
-
-      mevcut_durum <- ""
-      if (is.data.frame(mevcutlar) && nrow(mevcutlar) > 0L) {
-        eslesen <- mevcutlar[mevcutlar$KullaniciID == kullanici_id, , drop = FALSE]
-        if (nrow(eslesen) > 0L) {
-          mevcut_durum <- as.character(eslesen$KatilimDurumu[1])
-        }
-      }
-
-      # Zaten katılmış kullanıcı davet listesinde tekrar gösterilmez.
-      if (identical(mevcut_durum, "Katıldı")) {
-        return(NULL)
-      }
-
-      # "Çevrim İçi Kullanıcılar": uygulamada aktif olan (Çevrimİçi + Boşta)
-      # kullanıcılar; çevrim dışı olanlar bu görünümde gizlenir.
-      if (identical(filtre, "Çevrim İçi Kullanıcılar") &&
-          !(durum %in% c("Çevrimİçi", "Boşta"))) {
-        return(NULL)
-      }
-      if (identical(filtre, "Davet Edilenler") && !identical(mevcut_durum, "DavetEdildi")) {
-        return(NULL)
-      }
-
+    satirlar <- lapply(seq_len(nrow(adaylar)), function(i) {
+      satir <- adaylar[i, , drop = FALSE]
       oo_davet_kullanici_html(
         satir,
-        canli_durum = durum,
+        canli_durum = as.character(satir$OoCanliDurum[1]),
         cagir_input_id = ns("davet_cagir"),
         eposta_input_id = ns("davet_eposta"),
-        mevcut_durum = mevcut_durum
+        mevcut_durum = as.character(satir$OoMevcutDurum[1])
       )
     })
 
-    satirlar <- Filter(Negate(is.null), satirlar)
     if (length(satirlar) == 0L) {
       bos_mesaj <- switch(
         filtre,

@@ -106,7 +106,13 @@ test_that("frontend JS/CSS büyüklük ve yoğunluk bütçeleri sessizce aşılm
 
   # Geniş tüm-dosya tabanı korunur; vendor/minified dosyalar da görünür kalır.
   max_js_lines_all <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_JS_LINES", 1250L)
-  max_css_lines_all <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_CSS_LINES", 1150L)
+  # 1150L -> 1490L bilinçli güncelleme: Ortak Çalışmalarım UX iyileştirme seti
+  # www/css/ortak_oturumlar.css'yi büyüttü (sürüklenebilir yan panel ayracı, sekme
+  # filtre çubuğu, kompakt model/persona composer satırı, sakin buton/rozet dili,
+  # profesyonel oturum kartları, Yeni Ortak Oturum modalı radyoları, yoklama-donma
+  # giderme). 1500+ satır dosya sayısı 0 KORUNUR (dosya 1485 satır); yalnızca en
+  # büyük CSS dosyası tavanı yükseldi (sessiz büyüme değil bilinçli genişleme).
+  max_css_lines_all <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_CSS_LINES", 1490L)
   max_very_large_files_all <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_1500_LINE_FILES", 0L)
 
   all_js_report <- subset(score_report, type == "js")
@@ -150,7 +156,8 @@ test_that("frontend JS/CSS büyüklük ve yoğunluk bütçeleri sessizce aşılm
   app_css_report <- subset(app_report, type == "css")
 
   max_app_js_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_LINES", 850L)
-  max_app_css_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_CSS_LINES", 1150L)
+  # 1150L -> 1490L: aynı bilinçli Ortak Çalışmalarım genişlemesi (yukarıya bakınız).
+  max_app_css_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_CSS_LINES", 1490L)
   max_app_js_functions <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_FUNCTIONS", 60L)
   max_app_js_event_handlers <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_EVENT_HANDLERS", 32L)
   max_app_js_shiny_handlers <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_SHINY_HANDLERS", 20L)

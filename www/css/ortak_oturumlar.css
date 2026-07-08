@@ -14,11 +14,25 @@
 /* --- Sayfa kabuğu ve liste ------------------------------------------------ */
 
 .ortak-calismalar-container {
+  /* Ortak özelliğe özgü sakin aksan: birincil eylemler için turuncu marka yerine
+   * dingin mavi/indigo (aşırı turuncu kullanımı azaltılır — tema token'ı). */
+  --oo-accent: var(--color-info, #3b82f6);
+  --oo-accent-strong: var(--color-info-strong, #2563eb);
+  --oo-accent-soft: var(--color-info-soft, rgba(59, 130, 246, 0.14));
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 0 18px 18px;
+  gap: 0;
+  padding: 0 18px 16px;
   color: var(--color-text);
+  min-height: calc(100vh - 50px);
+}
+
+/* Başlık diğer sayfalarla aynı hizada olsun diye kabuk yatay dolgusunun DIŞINA
+ * taşar (sağ/sol boşluk giderilir); iç dolgu chat-header'ın kendisinden gelir. */
+.oo-page-header {
+  margin-left: -18px;
+  margin-right: -18px;
+  margin-bottom: 16px;
 }
 
 .oo-page-header .oo-header-aksiyonlar {
@@ -27,19 +41,30 @@
   gap: 8px;
 }
 
-.oo-hub-filtreler {
-  padding: 4px 2px;
-}
-
-.oo-hub-filtreler .radio-inline {
-  color: var(--color-text-soft);
-  margin-right: 14px;
+.oo-hub-liste-alani {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .oo-oturum-listesi {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+/* Oda açık: kabuk viewport'u doldurur, oda alt boşluk bırakmadan yayılır. */
+.ortak-calismalar-container.oo-oda-acik {
+  height: calc(100vh - 50px);
+  min-height: 0;
+  padding-bottom: 14px;
+}
+
+.ortak-calismalar-container.oo-oda-acik .oo-oda-alani {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Oda açıkken üst filtre butonları ve liste gizlenir; aktif oda dikeyde tüm
@@ -49,32 +74,48 @@
 }
 
 .oo-oturum-karti {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
-  border-radius: 14px;
+  gap: 12px;
+  padding: 18px 18px 16px;
+  border-radius: 16px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-card);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+  overflow: hidden;
+}
+
+/* İnce üst aksan şeridi (sakin, tek renk; kart profesyonel görünür). */
+.oo-oturum-karti::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--oo-accent, var(--color-info));
+  opacity: 0.85;
 }
 
 .oo-oturum-karti:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-card-hover, var(--shadow-card));
+  transform: translateY(-3px);
+  border-color: var(--oo-accent, var(--color-info));
+  box-shadow: var(--shadow-card-hover, 0 12px 30px rgba(0, 0, 0, 0.28));
 }
 
 .oo-kart-baslik {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 1.05em;
-  font-weight: 600;
+  font-size: 1.08em;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
 .oo-kart-ikon {
-  color: var(--color-primary);
+  color: var(--oo-accent, var(--color-info));
 }
 
 .oo-kart-baslik-metin {
@@ -125,15 +166,15 @@
 
 .oo-btn-oturum-ac,
 .oo-btn-davet-kabul {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
+  background: var(--oo-accent, var(--color-info));
+  border-color: var(--oo-accent, var(--color-info));
   color: #ffffff;
 }
 
 .oo-btn-oturum-ac:hover,
 .oo-btn-davet-kabul:hover {
-  background: var(--color-primary-strong, var(--color-primary));
-  filter: brightness(1.06);
+  background: var(--oo-accent-strong, var(--color-info-strong, var(--color-info)));
+  filter: brightness(1.04);
 }
 
 .oo-btn-oturum-arsiv,
@@ -166,10 +207,16 @@
   white-space: nowrap;
 }
 
+/* ORTAK rozeti: Yönetici (ADMIN) / Bilge Yolaç (AJAN) rozetleriyle aynı dolgulu
+ * pill dili; her iki temada güçlü kontrast (sakin indigo, turuncu değil). */
 .oo-rozet-ortak {
-  background: var(--color-primary-soft);
-  border-color: var(--color-primary);
-  color: var(--color-primary-strong, var(--color-primary));
+  background: linear-gradient(135deg, #5c7cfa 0%, #3b5bdb 100%);
+  border: none;
+  color: #ffffff;
+  padding: 3px 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  box-shadow: 0 1px 4px rgba(59, 91, 219, 0.35);
 }
 
 .oo-rozet-kaynak {
@@ -267,11 +314,16 @@
   filter: none;
 }
 
-/* Birincil: dolgulu, güçlü kontrast (beyaz metin her iki temada). */
+/* Birincil: dolgulu, sakin indigo (turuncu değil), güçlü kontrast her iki temada. */
 .oo-oda-btn-birincil {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
+  background: var(--oo-accent, var(--color-info));
+  border-color: var(--oo-accent, var(--color-info));
   color: #ffffff;
+}
+
+.oo-oda-btn-birincil:hover {
+  background: var(--oo-accent-strong, var(--color-info-strong, var(--color-info)));
+  filter: none;
 }
 
 /* Nötr: yüzey dolgulu, çerçeveli (koyu temada beyaz-üstü sert görünmez). */
@@ -282,8 +334,8 @@
 }
 
 .oo-oda-btn-notr:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  border-color: var(--oo-accent, var(--color-info));
+  color: var(--oo-accent, var(--color-info));
 }
 
 /* İkincil: hafif vurgulu çerçeve. */
@@ -333,9 +385,10 @@
   padding: 14px 16px;
 }
 
-/* Oda hub yüzeyinde açıkken görünür yüksekliğe sabitlenir; iç akış kaydırılır. */
+/* Oda hub yüzeyinde açıkken flex ebeveyni doldurur (alt boşluk bırakmaz);
+ * iç akış kaydırılır, composer her zaman görünür kalır. */
 .ortak-calismalar-container.oo-oda-acik .oo-oda-yerlesim {
-  height: calc(100vh - 150px);
+  flex: 1 1 auto;
   min-height: 420px;
 }
 
@@ -449,14 +502,54 @@
   min-height: 0;
 }
 
+/* Katılımcılar paneli varsayılan olarak belirgin şekilde daha yüksek: normal
+ * katılımcı sayısında gereksiz dikey kaydırma olmaz. Kullanıcı ayarladıysa
+ * (--oo-katilimci-h) o yükseklik uygulanır; min/max sınırlarıyla düzen bozulmaz. */
 .oo-yan-katilimcilar {
-  flex: 1 1 45%;
+  flex: 0 0 auto;
+  height: var(--oo-katilimci-h, 58%);
+  min-height: 120px;
+  max-height: 82%;
 }
 
 .oo-yan-belgeler {
-  flex: 1 1 55%;
+  flex: 1 1 auto;
+  min-height: 96px;
+  padding-top: 6px;
+}
+
+/* Sürüklenebilir ayraç: ince, tıklanabilir tutamaçlı; erişilebilir odak. */
+.oo-yan-resizer {
+  flex: 0 0 auto;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
   border-top: 1px solid var(--color-divider, var(--color-border-soft));
-  padding-top: 8px;
+  margin: 2px 0;
+  touch-action: none;
+}
+
+.oo-yan-resizer-tutamac {
+  width: 42px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-border);
+  transition: background 0.15s ease, width 0.15s ease;
+}
+
+.oo-yan-resizer:hover .oo-yan-resizer-tutamac,
+.oo-yan-resizer:focus-visible .oo-yan-resizer-tutamac,
+.oo-yan-resizer.oo-yan-resizer-aktif .oo-yan-resizer-tutamac {
+  background: var(--oo-accent, var(--color-info));
+  width: 56px;
+}
+
+.oo-yan-resizer:focus-visible {
+  outline: 2px solid var(--oo-accent, var(--color-info));
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .oo-bolum-baslik {
@@ -475,18 +568,19 @@
 .oo-mesaj-akisi {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 18px;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 6px 4px;
+  padding: 8px 6px 4px;
+  scroll-behavior: smooth;
 }
 
 .oo-mesaj {
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  max-width: 92%;
+  max-width: 88%;
 }
 
 .oo-mesaj-benim {
@@ -509,11 +603,13 @@
 }
 
 .oo-mesaj-avatar-kullanici {
-  background: linear-gradient(135deg, var(--color-primary), var(--color-info));
+  background: linear-gradient(135deg, var(--oo-accent, var(--color-info)), var(--color-primary));
 }
 
+/* YZ avatarı normalde persona aksan rengiyle inline boyanır; bu yalnızca
+ * persona çözülemezse devreye giren güvenli varsayılandır (sakin indigo). */
 .oo-mesaj-avatar-yz {
-  background: linear-gradient(135deg, var(--color-accent, var(--color-primary)), var(--color-primary));
+  background: linear-gradient(135deg, #5c7cfa, #3b5bdb);
 }
 
 .oo-mesaj-avatar-sistem {
@@ -528,8 +624,8 @@
 .oo-mesaj-govde {
   flex: 1 1 auto;
   min-width: 0;
-  border-radius: 12px;
-  padding: 9px 14px;
+  border-radius: 14px;
+  padding: 10px 15px;
   background: var(--color-bg-elevated, var(--color-surface));
   border: 1px solid var(--color-border-soft);
 }
@@ -538,17 +634,26 @@
   border-left: 3px solid var(--color-muted);
 }
 
+/* Kullanıcının kendi yapay zekâ sorusu: sakin aksan tonu (turuncu değil);
+ * kendi mesajı sağa hizalı ve hafif aksan dolgusuyla ayrışır. */
 .oo-mesaj-yz-soru .oo-mesaj-govde {
-  border-left: 3px solid var(--color-primary);
-  background: var(--color-primary-soft);
+  border-left: 3px solid var(--oo-accent, var(--color-info));
+  background: var(--color-bg-elevated, var(--color-surface));
+}
+
+.oo-mesaj-benim .oo-mesaj-govde {
+  background: var(--oo-accent-soft, rgba(59, 130, 246, 0.14));
+  border-color: var(--oo-accent, var(--color-info));
 }
 
 .oo-mesaj-yz-yanit {
-  max-width: 100%;
+  max-width: 94%;
 }
 
+/* Yapay zekâ yanıtı: kart benzeri belirgin ama sakin yüzey (persona kimliğiyle). */
 .oo-mesaj-yz-yanit .oo-mesaj-govde {
-  border-left: 3px solid var(--color-accent, var(--color-primary));
+  border-left: 3px solid var(--color-success);
+  background: var(--color-surface);
 }
 
 .oo-mesaj-sistem .oo-mesaj-govde,
@@ -678,37 +783,6 @@
   flex: 0 0 auto;
 }
 
-.oo-composer-ust {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.oo-composer-model {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.oo-composer-model-etiket {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.82em;
-  color: var(--color-text-soft);
-  margin: 0;
-}
-
-.oo-composer-model .form-group {
-  margin-bottom: 0;
-}
-
-.oo-composer-model-yok {
-  font-size: 0.82em;
-  color: var(--color-muted);
-}
-
 .oo-composer-girdi {
   width: 100%;
   resize: vertical;
@@ -720,14 +794,87 @@
 }
 
 .oo-composer-girdi:focus-visible {
-  outline: 2px solid var(--color-focus, var(--color-primary));
+  outline: 2px solid var(--color-focus, var(--oo-accent, var(--color-info)));
   outline-offset: 1px;
 }
 
+/* Aksiyon satırı: model + persona seçimleri SOLDA, Odaya Yaz / Yapay Zekâya Sor
+ * butonları SAĞDA; girdi kutusunun ALTINDA tek satır (dikey alan tasarrufu). */
 .oo-composer-aksiyonlar {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.oo-composer-secimler {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.oo-composer-butonlar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+/* Kompakt model/persona seçici: "Model Değiştir" diliyle uyumlu ikon + dropdown. */
+.oo-composer-secim {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 10px;
+  border-radius: 9px;
+  background: var(--color-surface-2, var(--color-bg-elevated));
+  border: 1px solid var(--color-border);
+}
+.oo-composer-secim-ikon {
+  color: var(--color-text-soft);
+  font-size: 0.82em;
+  flex: 0 0 auto;
+}
+.oo-composer-secim .form-group,
+.oo-composer-secim .shiny-input-container {
+  margin-bottom: 0 !important;
+  width: auto !important;
+}
+.oo-composer-secim .form-control,
+.oo-composer-secim select {
+  height: 30px;
+  padding: 2px 8px;
+  border-radius: 7px;
+  font-size: 0.85em;
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  box-shadow: none;
+}
+.oo-composer-persona-rozet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9px;
+  font-size: 0.82em;
+  color: var(--color-text-soft);
+  background: var(--color-surface-2, var(--color-bg-elevated));
+  border: 1px solid var(--color-border-soft);
+}
+.oo-composer-persona-nokta {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.oo-composer-model-yok {
+  font-size: 0.82em;
+  color: var(--color-muted);
 }
 
 .oo-composer-yz-notu {
@@ -917,7 +1064,44 @@
 .oo-davet-paneli {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+}
+
+/* Davet paneli filtresi de sekme çubuğu diliyle (Çevrim İçi / Tüm / Davet). */
+.oo-davet-paneli .shiny-options-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 12px;
+  background: var(--color-surface-2, var(--color-bg-elevated));
+  border: 1px solid var(--color-border);
+}
+.oo-davet-paneli .radio-inline {
+  margin: 0 !important;
+  padding: 7px 14px;
+  border-radius: 8px;
+  color: var(--color-text-soft);
+  font-weight: 500;
+  font-size: 0.88em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.oo-davet-paneli .radio-inline > input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.oo-davet-paneli .radio-inline:hover {
+  background: var(--oo-accent-soft, rgba(59, 130, 246, 0.12));
+  color: var(--color-text);
+}
+.oo-davet-paneli .radio-inline:has(> input[type="radio"]:checked) {
+  background: var(--oo-accent, var(--color-info));
+  color: #ffffff;
 }
 
 .oo-davet-listesi {
@@ -1040,6 +1224,150 @@
   padding: 14px;
 }
 
+/* --- Hub başlık butonları: sakin, kompakt uygulama dili (turuncu değil) ------ */
+
+/* "Yeni Ortak Oturum": dolgulu sakin aksan (btn-primary turuncu gradyanı ezilir). */
+.oo-page-header .oo-btn-yeni.btn-primary {
+  background: var(--oo-accent, var(--color-info)) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--oo-accent, var(--color-info)) !important;
+}
+
+.oo-page-header .oo-btn-yeni.btn-primary:hover {
+  background: var(--oo-accent-strong, var(--color-info-strong, var(--color-info))) !important;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+  transform: translateY(-1px);
+}
+
+/* "Yenile": Söyleşi Geçmişi / Kayıtlı Söyleşiler ile aynı teal kimlik. */
+.oo-page-header .oo-btn-yenile.btn-modern {
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.25), rgba(13, 148, 136, 0.15)) !important;
+  color: #2dd4bf !important;
+  border: 1px solid rgba(20, 184, 166, 0.35) !important;
+}
+
+.oo-page-header .oo-btn-yenile.btn-modern:hover {
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.35), rgba(13, 148, 136, 0.25)) !important;
+  border-color: rgba(20, 184, 166, 0.55) !important;
+  box-shadow: 0 4px 12px rgba(20, 184, 166, 0.3) !important;
+  transform: translateY(-1px);
+}
+
+/* --- Hub filtre sekme çubuğu (radio yerine şık sekme; item 9) --------------- */
+
+.oo-hub-filtreler {
+  padding: 2px 0 4px;
+}
+.oo-hub-filtreler .shiny-options-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 12px;
+  background: var(--color-surface, var(--color-bg-elevated));
+  border: 1px solid var(--color-border);
+}
+.oo-hub-filtreler .radio-inline {
+  margin: 0 !important;
+  padding: 8px 16px;
+  border-radius: 8px;
+  color: var(--color-text-soft);
+  font-weight: 500;
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+  white-space: nowrap;
+}
+.oo-hub-filtreler .radio-inline > input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.oo-hub-filtreler .radio-inline:hover {
+  background: var(--oo-accent-soft, rgba(59, 130, 246, 0.12));
+  color: var(--color-text);
+}
+/* Seçili sekme: dolgulu sakin aksan (admin sekme dilinin sakin varyantı). */
+.oo-hub-filtreler .radio-inline:has(> input[type="radio"]:checked) {
+  background: var(--oo-accent, var(--color-info));
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.28);
+}
+.oo-hub-filtreler .radio-inline:has(> input[type="radio"]:focus-visible) {
+  outline: 2px solid var(--oo-accent, var(--color-info));
+  outline-offset: 2px;
+}
+
+/* --- Yeni Ortak Oturum modalı: Başlangıç Deneyimi kartıyla uyumlu radyolar --- */
+
+.oo-yeni-oturum-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 2px 8px;
+}
+.oo-yeni-oturum-modal .control-label {
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 8px;
+}
+.oo-yeni-oturum-modal .shiny-options-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.oo-yeni-oturum-modal .radio {
+  margin: 0;
+}
+.oo-yeni-oturum-modal .radio label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2, var(--color-bg-elevated));
+  color: var(--color-text);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: normal;
+  line-height: 1.35;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+.oo-yeni-oturum-modal .radio label:hover {
+  border-color: var(--oo-accent, var(--color-info));
+  background: var(--oo-accent-soft, rgba(59, 130, 246, 0.1));
+}
+.oo-yeni-oturum-modal .radio input[type="radio"] {
+  margin: 0;
+  accent-color: var(--oo-accent, var(--color-info));
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+.oo-yeni-oturum-modal .radio:has(input[type="radio"]:checked) label {
+  border-color: var(--oo-accent, var(--color-info));
+  background: var(--oo-accent-soft, rgba(59, 130, 246, 0.14));
+  box-shadow: inset 0 0 0 1px var(--oo-accent, var(--color-info));
+}
+.oo-yeni-oturum-modal .form-control {
+  border-radius: 10px;
+}
+
+/* --- Yoklama sırasında ekran donma/griye dönme hissini gider (item 2) ------- */
+/* Oda 4 sn'de bir DB'den tazelenirken Shiny çıktıları "recalculating" ile
+ * soluklaşır; ortak oda yüzeylerinde bu soluklaşma kapatılır. Böylece bir
+ * katılımcının soru göndermesi tüm katılımcılarda genel donma hissi yaratmaz.
+ * Gerçek üretim geri bildirimi ayrı "Yanıt üretiliyor" paneliyle verilir. */
+.oo-oda-yerlesim .shiny-html-output.recalculating,
+.oo-oda-yerlesim .shiny-text-output.recalculating,
+.oo-oda-yerlesim .recalculating {
+  opacity: 1 !important;
+}
+
 /* --- Responsive: dar ekranda yan panel dikey akışa iner ----------------------------------- */
 
 @media (max-width: 900px) {
@@ -1095,12 +1423,41 @@ html[data-theme="light"] .oo-mesaj-govde {
   background: var(--color-bg, #ffffff);
 }
 
+/* Açık tema mesaj balonları: sakin aksan (turuncu soft yerine). */
 html[data-theme="light"] .oo-mesaj-yz-soru .oo-mesaj-govde {
-  background: var(--color-primary-soft);
+  background: var(--color-bg, #ffffff);
+}
+
+html[data-theme="light"] .oo-mesaj-benim .oo-mesaj-govde {
+  background: var(--oo-accent-soft, rgba(59, 130, 246, 0.1));
+  border-color: var(--oo-accent, var(--color-info));
+}
+
+html[data-theme="light"] .oo-mesaj-yz-yanit .oo-mesaj-govde {
+  background: var(--color-surface, #ffffff);
 }
 
 html[data-theme="light"] .oo-rozet {
   background: var(--color-bg, #ffffff);
+}
+
+/* ORTAK rozeti açık temada da dolgulu gradyanını korur (genel .oo-rozet bg'sini
+ * ezerek); Yönetici/AJAN rozetleriyle aynı kalite ve kontrast. */
+html[data-theme="light"] .oo-rozet-ortak {
+  background: linear-gradient(135deg, #5c7cfa 0%, #3b5bdb 100%);
+  color: #ffffff;
+}
+
+/* Kompakt seçici yüzeyleri açık temada beyaz kart. */
+html[data-theme="light"] .oo-composer-secim,
+html[data-theme="light"] .oo-composer-persona-rozet,
+html[data-theme="light"] .oo-hub-filtreler .shiny-options-group {
+  background: #ffffff;
+  border-color: var(--color-border);
+}
+
+html[data-theme="light"] .oo-yeni-oturum-modal .radio label {
+  background: #ffffff;
 }
 
 html[data-theme="light"] .oo-eposta-taslagi {
@@ -1116,9 +1473,9 @@ html[data-theme="light"] .oo-oda-btn-notr {
 }
 
 html[data-theme="light"] .oo-oda-btn-notr:hover {
-  background: var(--color-primary-soft);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  background: var(--oo-accent-soft, rgba(59, 130, 246, 0.1));
+  border-color: var(--oo-accent, var(--color-info));
+  color: var(--oo-accent-strong, var(--color-info-strong, var(--color-info)));
 }
 
 html[data-theme="light"] .oo-btn-oturum-arsiv,

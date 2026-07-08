@@ -198,13 +198,34 @@ ortak_mesaj_yonlendirme_plani <- function(mesaj_turu) {
 #   <= cevrimici_saniye  -> Çevrimİçi
 #   <= bosta_saniye      -> Boşta
 #   aksi halde           -> ÇevrimDışı (NA/geçersiz zaman dahil)
+#
+# Zaman damgası POSIXct ya da metin gelebilir; ODBC/SQL Server sürücüleri
+# DATETIME2 değerini POSIXct, ISO 'T' ayraçlı veya kesirli saniyeli metin
+# olarak döndürebilir. Hangi biçim gelirse gelsin güvenli UTC an'a çözülür;
+# aksi halde bir biçim farkı çevrim içi kullanıcıyı sessizce ÇevrimDışı
+# göstermez (davet panelinde çevrim içi listenin boş kalmasının kök nedeni).
 ortak_sunum_durumu <- function(son_kalp_atisi,
                                simdi = Sys.time(),
                                cevrimici_saniye = 120,
                                bosta_saniye = 300) {
   durumlar <- ortak_canli_durumlar()
 
-  zaman <- tryCatch(as.POSIXct(son_kalp_atisi, tz = "UTC"), error = function(e) NA)
+  if (inherits(son_kalp_atisi, "POSIXct")) {
+    zaman <- son_kalp_atisi[1]
+  } else {
+    ham <- as.character(son_kalp_atisi %||% "")[1]
+    if (is.na(ham)) {
+      ham <- ""
+    }
+    ham <- trimws(sub("T", " ", ham, fixed = TRUE))
+    ham <- sub("\\.[0-9]+", "", ham)
+    zaman <- if (nzchar(ham)) {
+      tryCatch(as.POSIXct(ham, tz = "UTC"), error = function(e) NA)
+    } else {
+      NA
+    }
+  }
+
   if (length(zaman) != 1L || is.na(zaman)) {
     return(durumlar[3])
   }

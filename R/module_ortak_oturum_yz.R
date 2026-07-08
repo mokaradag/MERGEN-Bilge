@@ -274,6 +274,20 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 
 	gecmis <- ortak_yz_sohbet_gecmisi(mesaj_df)
 
+	# Persona sistem mesajı: yanıt seçili persona tarzında üretilsin. Oda
+	# kaydından okunur; persona metadata'sı yoksa deterministik varsayılana düşer
+	# ve boş talimatta davranış değişmeden normal LLM yoluna devam edilir.
+	bilgi_persona <- ortak_db_oturum_getir(oturum_id)
+	persona_secim <- if (!is.null(bilgi_persona)) {
+	  as.character(bilgi_persona$SecilenPersona[1] %||% "")
+	} else {
+	  ""
+	}
+	persona_sistem <- ortak_oturum_persona_sistem_prompt(persona_secim, oturum_id)
+	if (nzchar(persona_sistem)) {
+	  gecmis <- c(list(list(role = "system", content = persona_sistem)), gecmis)
+	}
+
     ayarlar <- list(
       model_selection = etkin_model(),
       temperature = 0.4,

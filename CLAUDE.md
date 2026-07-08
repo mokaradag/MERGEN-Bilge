@@ -2492,6 +2492,36 @@ Non-negotiable boundaries:
   `ortak_db_katilimci_listesi(sadece_aktif = TRUE)` filters
   Çıkarıldı/Ayrıldı/Reddetti. Room-level archive "Geri Yükle" actually restores
   (Sahip → `OturumDurumu = Aktif` for everyone).
+- Each room has an AI PERSONA (the five `R/config_characters.R` personas — single
+  source; no duplicated persona data). AI answers show the persona name +
+  accent-coloured initial avatar (not the generic "Yapay Zekâ" label) and are
+  generated with the persona system prompt. Persona is stored in
+  `MB_OrtakOturumlar.SecilenPersona` (staged rollout: idempotent `ALTER`; when the
+  column is absent every path degrades safely and `ortak_oturum_persona_kimligi()`
+  derives a DETERMINISTIC, stable default from the session id so old sessions load
+  varied and safe). Only `katilimci_yonet` roles (Sahip / Oturum Yöneticisi)
+  change it (`ortak_db_persona_guncelle()`, in-transaction authz). The pure
+  persona helpers live in `R/helpers_ortak_oturum_sunum.R`
+  (`ortak_oturum_persona_kimligi/_gorunumu/_sistem_prompt`, `ortak_persona_secenekleri`);
+  keep `oo_mesaj_html(..., persona = NULL)` backward-compatible (single-arg calls).
+- Online-user discovery in the "Katılımcı Çağır" panel is a protected regression
+  boundary. Live-status classification (`ortak_sunum_durumu`) must stay robust to
+  POSIXct / ISO `T` / fractional-second timestamp forms (a driver/format
+  difference must NOT silently drop online users to `ÇevrimDışı`). Candidate
+  filtering is the pure, testable `ortak_davet_aday_kullanicilar()`
+  (`R/helpers_ortak_oturum_sunum.R`); the invite render reads live status FRESH
+  (`ortak_db_canli_durumlar()`) and refreshes on modal open. Do not re-inline the
+  filter decision into the renderUI.
+- UX contract (calm, app-consistent; do not regress): flush standard page header
+  with a filled ORTAK pill (ADMIN/AJAN badge language), tab-bar filters, clean
+  buttons (calm `--oo-accent` indigo instead of aggressive orange; teal "Yenile"),
+  composer with model + persona selectors on the action row below the input,
+  draggable Katılımcılar/Ortak Belgeler divider (session-persisted via
+  `www/js/ortak_oturumlar.js`), and no global grey-out/freeze during the 4s poll
+  (Shiny `.recalculating` dimming is suppressed on room surfaces; model/persona
+  dropdowns re-render only on ROLE change, not on the poll; auto-scroll on new
+  messages). The AI call stays async (`tracked_future_promise`); do not make the
+  submit path block the main reactive thread.
 - DB writes follow the central encoding contract: visible text through
   `normalize_db_visible_value()`, Turkish enums through
   `normalize_db_technical_value()`, all binding through `normalize_db_params()`,
@@ -2501,6 +2531,7 @@ Non-negotiable boundaries:
 Protected by:
 
 - `tests/testthat/test-ortak-oturum-permissions-behavior.R`
+- `tests/testthat/test-ortak-oturum-davet-online-behavior.R`
 - `tests/testthat/test-ortak-oturum-db-behavior.R`
 - `tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R`
 - `tests/testthat/test-ortak-oturum-sql-contract.R`
@@ -2509,22 +2540,28 @@ Protected by:
 Focused validation:
 
 - `testthat::test_file("tests/testthat/test-ortak-oturum-permissions-behavior.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-davet-online-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-db-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-sql-contract.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-ui-contract.R")`
 
-Completed follow-ups (this change set; see `docs/ortak-oturumlar.md` §12):
+Completed follow-ups (see `docs/ortak-oturumlar.md` §12):
 live shared Bilge Yolaç CLI bridge (real `run_claude_code` in the shared
 workspace, feature-gated when the CLI is absent — no faked success), real AI
 queue (`MB_OrtakOturum_YapayZekaKuyrugu`), consent-based history copy
-(`ortak_db_gecmis_kopyala`), and incremental partial-answer broadcast
+(`ortak_db_gecmis_kopyala`), incremental partial-answer broadcast
 (`MB_OrtakOturum_AktifUretimler.KismiYanit`, idempotent setup step 8b, graceful
-degradation on old schema). Remaining follow-ups: admin dashboard tab, real
-SMTP sending, direct token-token WebSocket push (currently 2s DB-poll
-broadcast). VM-only proof: SQL Server Turkish at-rest checks, the `KismiYanit`
-ALTER, the real CLI bridge, and multi-user SSO room flow run on the Windows VM
-gates, not in cloud sessions.
+degradation on old schema), per-room AI personas
+(`MB_OrtakOturumlar.SecilenPersona`, staged rollout + deterministic default),
+the online-user-listing fix (robust live-status parsing + pure
+`ortak_davet_aday_kullanicilar()` filter), and the UX overhaul (resizable side
+panel, tab-bar filters, calm buttons/badges, composer model+persona row,
+anti-freeze poll de-dim + auto-scroll). Remaining follow-ups: admin dashboard
+tab, real SMTP sending, direct token-token WebSocket push (currently 2s DB-poll
+broadcast). VM-only proof: SQL Server Turkish at-rest checks, the `KismiYanit` /
+`SecilenPersona` ALTERs, the real CLI bridge, live vision endpoint, and
+multi-user SSO room flow run on the Windows VM gates, not in cloud sessions.
 
 ### Bilge Yolaç run lifecycle request-id contract
 
