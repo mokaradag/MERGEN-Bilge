@@ -95,42 +95,65 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
       return(invisible(FALSE))
     }
 
-    # İyimser UI: soru balonu + "üretiliyor" durumu ANINDA görünsün. Kilit alma,
-    # bağlam kurma ve worker gönderimi (senkron DB gidiş-dönüşleri) arayüz
-    # boyandıktan SONRA çalışsın diye onFlushed'a ertelenir; böylece "Yapay Zekâya
-    # Sor" tıklandığında görülen ölü bekleme süresi ortadan kalkar.
+    # İyimser UI: soru balonu + "üretiliyor" durumu ANINDA görünsün.
     iyimser_uretim(list(ad = soran_adi(uid), ts = Sys.time()))
     ctx$yenile()
 
+    # Kilit/kuyruk REZERVASYONU ilk flush'tan ÖNCE SENKRON yapılır. İki katılımcı
+    # aynı odada neredeyse aynı anda "Yapay Zekâya Sor" derse, iki YapayZekaSorusu
+    # satırı da eklenmiş ama henüz kilitlenip kuyruklanmamış olabilir. Rezervasyon
+    # onFlushed'a ertelenirse geç eklenen callback kilidi önce kapabilir ve aktif
+    # yanıt (ortak_yz_sohbet_gecmisi üzerinden) başka katılımcının bekleyen
+    # sorusuna karşı üretilebilir. Bu nedenle yalnızca pahalı bağlam kurma + worker
+    # gönderimi (motor$uret) sonraki flush'a ertelenir; kilit/kuyruk kararı burada
+    # anında verilir.
+    istek_id <- yeni_istek_id(oturum_id)
+    iyimser_uretim(NULL)
+
+    kilit_alindi <- tryCatch(
+      ortak_db_uretim_kilidi_al(
+        oturum_id = oturum_id,
+        baslatan_kullanici_id = uid,
+        istek_id = istek_id,
+        mesaj_id = soru_id
+      ),
+      error = function(e) NA
+    )
+
+    if (isTRUE(is.na(kilit_alindi))) {
+      ctx$bildir("Yapay zekâ yanıtı başlatılamadı; lütfen tekrar deneyin.", tur = "error")
+      ctx$yenile()
+      return(invisible(FALSE))
+    }
+
+    if (!isTRUE(kilit_alindi)) {
+      kuyruk_id <- ortak_db_kuyruk_ekle(oturum_id, soru_id)
+      if (is.null(kuyruk_id)) {
+        ctx$bildir(
+          "Yanıt üretimi sürüyor; sorunuz kalıcı kuyruğa alınamadı ve yapay zekâ bağlamından çıkarıldı. Lütfen yeniden gönderin.",
+          tur = "warning"
+        )
+      } else {
+        ctx$bildir("Yanıt üretimi sürüyor; sorunuz sıraya alındı ve otomatik yanıtlanacak.")
+      }
+      ctx$yenile()
+      return(invisible(TRUE))
+    }
+
+    # Kilit alındı: arayüzü tazele, yalnızca ağır üretim işini (bağlam + worker)
+    # sonraki flush'a ertele. Ertelenmiş iş başarısız olursa kilit bırakılır ki
+    # oda kalıcı olarak "üretiliyor" durumunda takılı kalmasın.
+    ctx$yenile()
+
     calisma <- function() {
-      tryCatch({
-        istek_id <- yeni_istek_id(oturum_id)
-        iyimser_uretim(NULL)
-        if (ortak_db_uretim_kilidi_al(
-          oturum_id = oturum_id,
-          baslatan_kullanici_id = uid,
-          istek_id = istek_id,
-          mesaj_id = soru_id
-        )) {
-          ctx$yenile()
-          motor$uret(oturum_id, soru_id, uid, istek_id, metin)
-        } else {
-          kuyruk_id <- ortak_db_kuyruk_ekle(oturum_id, soru_id)
-          if (is.null(kuyruk_id)) {
-            ctx$bildir(
-              "Yanıt üretimi sürüyor; sorunuz kalıcı kuyruğa alınamadı ve yapay zekâ bağlamından çıkarıldı. Lütfen yeniden gönderin.",
-              tur = "warning"
-            )
-          } else {
-            ctx$bildir("Yanıt üretimi sürüyor; sorunuz sıraya alındı ve otomatik yanıtlanacak.")
-          }
+      tryCatch(
+        motor$uret(oturum_id, soru_id, uid, istek_id, metin),
+        error = function(e) {
+          ortak_db_uretim_kilidi_birak(oturum_id, istek_id, sonuc_durumu = "Hata")
+          ctx$bildir("Yapay zekâ yanıtı başlatılamadı; lütfen tekrar deneyin.", tur = "error")
           ctx$yenile()
         }
-      }, error = function(e) {
-        iyimser_uretim(NULL)
-        ctx$bildir("Yapay zekâ yanıtı başlatılamadı; lütfen tekrar deneyin.", tur = "error")
-        ctx$yenile()
-      })
+      )
     }
 
     # Etkileşimli oturumda arayüzü önce boyayıp ağır işi sonraki flush'a ertele;

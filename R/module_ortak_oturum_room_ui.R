@@ -524,9 +524,14 @@ oo_model_secici_html <- function(modeller, adlar, aciklamalar, secili,
       class = paste0("dropdown-item model-option", if (aktif) " active" else ""),
       href = "#",
       title = aciklama,
+      # Model id ve girdi adı, inline onclick JS'ine ham gömülmez; tek tırnak veya
+      # ters bölü içeren katalog değerleri handler'ı bozabilir veya script
+      # enjekte edebilir. Ana söyleşi "Model Değiştir" yolundaki gibi JS string
+      # literaline (jsonlite::toJSON, çift tırnaklı) kodlanır.
       onclick = sprintf(
-        "Shiny.setInputValue('%s', '%s', {priority:'event'}); return false;",
-        secim_input_id, m_id
+        "Shiny.setInputValue(%s, %s, {priority:'event'}); return false;",
+        jsonlite::toJSON(as.character(secim_input_id), auto_unbox = TRUE),
+        jsonlite::toJSON(as.character(m_id), auto_unbox = TRUE)
       ),
       div(
         class = "model-item-content",
@@ -597,9 +602,13 @@ oo_persona_secici_html <- function(secili, yetkili, dropdown_id, secim_input_id)
       class = paste0("dropdown-item model-option oo-persona-option", if (aktif) " active" else ""),
       href = "#",
       title = if (nzchar(alt)) alt else as.character(g$ad),
+      # Persona id'leri sabit ASCII olsa da, girdi adı ve değer inline onclick
+      # JS'ine model seçicideki gibi JS string literaline kodlanır (tutarlılık +
+      # savunma amaçlı).
       onclick = sprintf(
-        "Shiny.setInputValue('%s', '%s', {priority:'event'}); return false;",
-        secim_input_id, pid
+        "Shiny.setInputValue(%s, %s, {priority:'event'}); return false;",
+        jsonlite::toJSON(as.character(secim_input_id), auto_unbox = TRUE),
+        jsonlite::toJSON(as.character(pid), auto_unbox = TRUE)
       ),
       div(
         class = "model-item-content",
