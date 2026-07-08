@@ -81,7 +81,7 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
   }
 
   by_kaydi <- reactive({
-    by_tetik()
+    ctx$yenile_sayaci()
     oturum_id <- ctx$aktif_oturum()
     if (is.null(oturum_id) || !by_odasi_mi()) {
       return(NULL)

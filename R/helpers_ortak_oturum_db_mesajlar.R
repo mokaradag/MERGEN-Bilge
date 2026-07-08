@@ -556,15 +556,15 @@ ortak_yz_sohbet_gecmisi <- function(mesajlar_df, ek_baglam_metni = NULL) {
     }
   }
 
-  pre_marker_question_ids <- integer(0)
+  pre_marker_question_ids <- character(0)
   if (baslangic > 1L &&
       all(c("OrtakMesajID", "MesajTuru") %in% names(mesajlar_df))) {
-    pre_marker_question_ids <- suppressWarnings(as.integer(
+    pre_marker_question_ids <- as.character(
       mesajlar_df$OrtakMesajID[seq_len(baslangic - 1L)][
         as.character(mesajlar_df$MesajTuru[seq_len(baslangic - 1L)]) == "YapayZekaSorusu"
       ]
-    ))
-    pre_marker_question_ids <- pre_marker_question_ids[!is.na(pre_marker_question_ids)]
+    )
+    pre_marker_question_ids <- pre_marker_question_ids[!is.na(pre_marker_question_ids) & nzchar(pre_marker_question_ids)]
   }
 
   for (i in seq(baslangic, nrow(mesajlar_df))) {
@@ -582,11 +582,11 @@ ortak_yz_sohbet_gecmisi <- function(mesajlar_df, ek_baglam_metni = NULL) {
       gecmis[[length(gecmis) + 1L]] <- list(role = "user", content = metin)
     } else if (identical(tur, "YapayZekaYanıtı")) {
       bagli_id <- if ("BagliMesajID" %in% names(mesajlar_df)) {
-        suppressWarnings(as.integer(mesajlar_df$BagliMesajID[i]))
+        as.character(mesajlar_df$BagliMesajID[i])
       } else {
-        NA_integer_
+        NA_character_
       }
-      if (!is.na(bagli_id) && bagli_id %in% pre_marker_question_ids) {
+      if (!is.na(bagli_id) && nzchar(bagli_id) && bagli_id %in% pre_marker_question_ids) {
         next
       }
       gecmis[[length(gecmis) + 1L]] <- list(role = "assistant", content = metin)

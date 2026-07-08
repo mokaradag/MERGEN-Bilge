@@ -304,11 +304,13 @@ test_that("mesaj yönlendirme ve yetki: OdaMesajı LLM'siz kalır, İzleyici ve 
 
 
 test_that("mesaj okuma Sicil kolonu olmayan MB_Users şemasında boş sicil döndürür", {
+  conn_var <- .oo_test_conn()
+  on.exit(DBI::dbDisconnect(conn_var), add = TRUE)
+  expect_true(.oo_db_table_column_var_mi(conn_var, "MB_Users", "Sicil"))
+
   conn <- .oo_test_conn()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
-
   DBI::dbExecute(conn, "ALTER TABLE MB_Users DROP COLUMN Sicil")
-  ortak_db_reset_availability_cache()
 
   oturum_id <- ortak_db_oturum_olustur("NormalSohbet", "Sicil Opsiyonel", 1L, conn = conn)
   mesaj_id <- ortak_db_mesaj_ekle(oturum_id, 1L, "OdaMesajı", "Merhaba", conn = conn)

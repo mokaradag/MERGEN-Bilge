@@ -82,7 +82,13 @@ ortak_db_reset_availability_cache <- function() {
     return(FALSE)
   }
 
-  key <- paste(table_name, column_name, sep = ":")
+  bilgi <- .oo_db_try(DBI::dbGetInfo(conn), fallback = list())
+  kapsam <- paste(
+    class(conn)[1] %||% "unknown",
+    as.character(bilgi$dbname %||% bilgi$database %||% bilgi$server %||% "unknown"),
+    sep = ":"
+  )
+  key <- paste(kapsam, table_name, column_name, sep = ":")
   cached <- .oo_db_state$table_columns[[key]]
   if (isTRUE(cached)) {
     return(TRUE)

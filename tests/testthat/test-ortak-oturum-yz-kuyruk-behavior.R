@@ -305,7 +305,7 @@ test_that("bağlam sıfırlama işareti sonrası yalnızca sonraki soru/yanıt b
 
 test_that("sıfırlama sonrası tamamlanan eski yanıt yeni bağlama alınmaz", {
   df <- data.frame(
-    OrtakMesajID = c(10L, 11L, 12L, 13L),
+    OrtakMesajID = c("2147483648", "2147483649", "2147483650", "2147483651"),
     MesajTuru = c(
       "YapayZekaSorusu",
       "SistemMesajı",
@@ -318,7 +318,7 @@ test_that("sıfırlama sonrası tamamlanan eski yanıt yeni bağlama alınmaz", 
       "Geç biten eski yanıt",
       "Yeni soru"
     ),
-    BagliMesajID = c(NA_integer_, NA_integer_, 10L, NA_integer_),
+    BagliMesajID = c(NA_character_, NA_character_, "2147483648", NA_character_),
     stringsAsFactors = FALSE
   )
 
