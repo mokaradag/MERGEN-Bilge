@@ -302,6 +302,26 @@ test_that("mesaj yönlendirme ve yetki: OdaMesajı LLM'siz kalır, İzleyici ve 
   expect_identical(gecmis[[2]]$role, "assistant")
 })
 
+
+test_that("mesaj okuma Sicil kolonu olmayan MB_Users şemasında boş sicil döndürür", {
+  conn_var <- .oo_test_conn()
+  on.exit(DBI::dbDisconnect(conn_var), add = TRUE)
+  expect_true(.oo_db_table_column_var_mi(conn_var, "MB_Users", "Sicil"))
+
+  conn <- .oo_test_conn()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  DBI::dbExecute(conn, "ALTER TABLE MB_Users DROP COLUMN Sicil")
+
+  oturum_id <- ortak_db_oturum_olustur("NormalSohbet", "Sicil Opsiyonel", 1L, conn = conn)
+  mesaj_id <- ortak_db_mesaj_ekle(oturum_id, 1L, "OdaMesajı", "Merhaba", conn = conn)
+  expect_true(is.integer(mesaj_id) && mesaj_id > 0L)
+
+  okunan <- ortak_db_mesajlari_getir(oturum_id, 1L, conn = conn)
+  expect_equal(nrow(okunan), 1L)
+  expect_true("GonderenSicil" %in% names(okunan))
+  expect_true(is.na(okunan$GonderenSicil[1]))
+})
+
 test_that("davet akışı: kabul öncesi içerik kapalı, kabul sonrası açık, red kalıcı", {
   conn <- .oo_test_conn()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)

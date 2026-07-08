@@ -182,13 +182,19 @@ ortak_db_mesajlari_getir <- function(oturum_id,
         !ortak_yetki_var_mi(katilimci$Rol[1], "oku")) {
       bos
     } else {
+      gonderen_sicil_sql <- if (.oo_db_table_column_var_mi(handle$conn, "MB_Users", "Sicil")) {
+        "u.Sicil AS GonderenSicil"
+      } else {
+        "NULL AS GonderenSicil"
+      }
+
       df <- DBI::dbGetQuery(
         handle$conn,
         paste(
           "SELECT m.OrtakMesajID, m.GonderenKullaniciID, m.MesajTuru, m.Hedef,",
           "m.MesajMetni, m.BagliMesajID, m.MesajSirasi, m.LLMGonderildiMi,",
           "m.OlusturmaZamani, m.MetaJson, u.KaynakAdi AS GonderenAdi,",
-          "u.Sicil AS GonderenSicil",
+          gonderen_sicil_sql,
           "FROM MB_OrtakOturum_Mesajlar m",
           "LEFT JOIN MB_Users u ON u.UserID = m.GonderenKullaniciID",
           "WHERE m.OrtakOturumID = ?",
@@ -550,6 +556,17 @@ ortak_yz_sohbet_gecmisi <- function(mesajlar_df, ek_baglam_metni = NULL) {
     }
   }
 
+  pre_marker_question_ids <- character(0)
+  if (baslangic > 1L &&
+      all(c("OrtakMesajID", "MesajTuru") %in% names(mesajlar_df))) {
+    pre_marker_question_ids <- as.character(
+      mesajlar_df$OrtakMesajID[seq_len(baslangic - 1L)][
+        as.character(mesajlar_df$MesajTuru[seq_len(baslangic - 1L)]) == "YapayZekaSorusu"
+      ]
+    )
+    pre_marker_question_ids <- pre_marker_question_ids[!is.na(pre_marker_question_ids) & nzchar(pre_marker_question_ids)]
+  }
+
   for (i in seq(baslangic, nrow(mesajlar_df))) {
     if (i > nrow(mesajlar_df) || i < 1L) {
       next
@@ -564,6 +581,14 @@ ortak_yz_sohbet_gecmisi <- function(mesajlar_df, ek_baglam_metni = NULL) {
     if (identical(tur, "YapayZekaSorusu")) {
       gecmis[[length(gecmis) + 1L]] <- list(role = "user", content = metin)
     } else if (identical(tur, "YapayZekaYanıtı")) {
+      bagli_id <- if ("BagliMesajID" %in% names(mesajlar_df)) {
+        as.character(mesajlar_df$BagliMesajID[i])
+      } else {
+        NA_character_
+      }
+      if (!is.na(bagli_id) && nzchar(bagli_id) && bagli_id %in% pre_marker_question_ids) {
+        next
+      }
       gecmis[[length(gecmis) + 1L]] <- list(role = "assistant", content = metin)
     }
   }
