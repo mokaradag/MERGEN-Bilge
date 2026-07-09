@@ -265,6 +265,14 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
         ortak_db_bakim_temizlik()
       }
     })
+	
+	session$onSessionEnded(function() {
+	  if (!ortak_db_tablolar_hazir_mi()) {
+		return(invisible(NULL))
+	  }
+
+	  ortak_db_kalp_atisi_sil(session$token)
+	})
 
     # --- Bildirim yoklaması: Mergen içi davet/çağrı modalı --------------------
 

@@ -436,6 +436,35 @@ ortak_db_kalp_atisi <- function(kullanici_id,
   invisible(isTRUE(sonuc))
 }
 
+#' Canlı durum satırını oturum kapanınca temizler.
+ortak_db_kalp_atisi_sil <- function(oturum_anahtari, conn = NULL) {
+  oturum_anahtari <- as.character(oturum_anahtari %||% "")[1]
+
+  if (!nzchar(oturum_anahtari)) {
+    return(invisible(FALSE))
+  }
+
+  handle <- .oo_db_try(.oo_db_acquire(conn), fallback = NULL)
+  if (is.null(handle)) {
+    return(invisible(FALSE))
+  }
+  on.exit(.oo_db_release(handle), add = TRUE)
+
+  sonuc <- .oo_db_try({
+    DBI::dbExecute(
+      handle$conn,
+      "DELETE FROM MB_Kullanici_CanliDurum WHERE OturumAnahtari = ?",
+      params = normalize_db_params(list(
+        normalize_db_technical_value(oturum_anahtari)
+      ))
+    ) >= 0L
+  },
+  fallback = FALSE,
+  uyari = "Canlı durum oturum satırı silinemedi:")
+
+  invisible(isTRUE(sonuc))
+}
+
 #' Kullanıcı başına en güncel kalp atışını okur ve Türkçe canlı durumu
 #' üretir. En güncel satırın SonGorulenOrtakOturumID değeri de döner; böylece
 #' "bu odada çevrim içi" göstergesi (yeşil nokta) üretilebilir.
