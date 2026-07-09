@@ -30,12 +30,14 @@ ortakOturumRoomUI <- function(id) {
           ns("oda_katilimci_cagir"),
           label = tagList(icon("user-plus"), span("Katılımcı Çağır")),
           class = "oo-oda-btn oo-oda-btn-birincil oo-btn-cagir",
+          title = "Ortak oturuma yeni katılımcı çağır",
           `aria-label` = "Ortak oturuma katılımcı çağır"
         ),
         downloadButton(
           ns("oda_disa_aktar"),
           label = "Tutanağı İndir",
           class = "oo-oda-btn oo-oda-btn-notr oo-btn-disa-aktar",
+          title = "Oturum tutanağını UTF-8 metin dosyası olarak indir",
           `aria-label` = "Ortak oturum tutanağını UTF-8 metin olarak indir"
         ),
         uiOutput(ns("oda_yonetim_aksiyonlari"), inline = TRUE),
@@ -43,12 +45,14 @@ ortakOturumRoomUI <- function(id) {
           ns("oda_ayril"),
           label = tagList(icon("right-from-bracket"), span("Ayrıl")),
           class = "oo-oda-btn oo-oda-btn-uyari oo-btn-ayril",
+          title = "Ortak oturumdan ayrıl",
           `aria-label` = "Ortak oturumdan ayrıl"
         ),
         actionButton(
           ns("oda_kapat"),
           label = tagList(icon("arrow-left"), span("Listeye Dön")),
           class = "oo-oda-btn oo-oda-btn-notr oo-btn-kapat",
+          title = "Odayı kapat ve ortak oturum listesine dön",
           `aria-label` = "Odayı kapat ve listeye dön"
         )
       )
@@ -96,6 +100,13 @@ ortakOturumRoomUI <- function(id) {
             ),
             div(
               class = "oo-composer-butonlar",
+              actionButton(
+                ns("oda_baglam_temizle"),
+                label = icon("wand-magic-sparkles"),
+                class = "oo-oda-btn oo-oda-btn-notr oo-btn-baglam-temizle oo-btn-ikon",
+                title = "Yeni bağlam başlat: bundan sonraki sorular önceki yazışmaları bağlam olarak kullanmaz (transkript korunur)",
+                `aria-label` = "Yeni yapay zekâ bağlamı başlat"
+              ),
               actionButton(
                 ns("odaya_yaz"),
                 label = tagList(icon("comments"), span("Odaya Yaz")),
@@ -261,6 +272,39 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL, persona = NULL) {
     NULL
   }
 
+  # Avatar görseli (ana söyleşi deseni): yapay zekâ yanıtı için persona görseli,
+  # kullanıcı mesajı için Sicil'e dayalı profil fotoğrafı. Görsel yüklenemezse
+  # onerror ile baş harf yedeğe geçilir (kırık görsel riski yok).
+  avatar_url <- ""
+  if (identical(tur, "YapayZekaYanıtı") && nzchar(mesaj_persona_id) &&
+      exists("get_character_asset_paths", mode = "function", inherits = TRUE)) {
+    varliklar <- tryCatch(get_character_asset_paths(mesaj_persona_id), error = function(e) NULL)
+    avatar_url <- as.character((varliklar$avatar %||% "")[1])
+  } else if (identical(avatar_sinifi, "oo-mesaj-avatar-kullanici") &&
+             exists("mb_sidebar_user_avatar_url", mode = "function", inherits = TRUE)) {
+    sicil <- as.character(satir$GonderenSicil %||% "")[1]
+    if (!is.na(sicil) && nzchar(sicil)) {
+      avatar_url <- tryCatch(mb_sidebar_user_avatar_url(sicil), error = function(e) "")
+    }
+  }
+  if (is.na(avatar_url)) {
+    avatar_url <- ""
+  }
+
+  avatar_icerik <- if (nzchar(avatar_url)) {
+    tagList(
+      tags$img(
+        src = avatar_url,
+        class = "oo-mesaj-avatar-img",
+        alt = "",
+        onerror = "this.style.display='none'; var p=this.parentElement; if(p){var f=p.querySelector('.oo-mesaj-avatar-yedek'); if(f){f.style.display='flex';}}"
+      ),
+      tags$span(class = "oo-mesaj-avatar-yedek", style = "display:none;", bas_harf)
+    )
+  } else {
+    span(bas_harf)
+  }
+
   # Yapay zekâ yanıtı: güvenli markdown; diğerleri düz metin (escape).
   metin_html <- if (identical(tur, "YapayZekaYanıtı") &&
                     exists("render_safe_markdown_html", mode = "function", inherits = TRUE)) {
@@ -275,7 +319,7 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL, persona = NULL) {
       class = paste("oo-mesaj-avatar", avatar_sinifi),
       style = avatar_stili,
       `aria-hidden` = "true",
-      span(bas_harf)
+      avatar_icerik
     ),
     div(
       class = "oo-mesaj-govde",
@@ -457,5 +501,153 @@ oo_davet_kullanici_html <- function(satir,
     ),
     mevcut_rozet,
     div(class = "oo-davet-aksiyonlar", aksiyonlar)
+  )
+}
+
+# Model seçici (SAF): ana söyleşi "Model Değiştir" bileşeniyle (shinyWidgets
+# dropdown) aynı dil. Model çözümü (api_config) çağıran sunucuda yapılır; burası
+# yalnızca çözülmüş listeyi HTML'e dönüştürür. Seçim onclick ile secim_input_id'ye
+# yazılır (namespaceli). Tüm görünen metin escape edilir.
+oo_model_secici_html <- function(modeller, adlar, aciklamalar, secili,
+                                 dropdown_id, secim_input_id) {
+  if (length(modeller) == 0L) {
+    return(tags$span(class = "oo-composer-model-yok", "Varsayılan model"))
+  }
+  aciklamalar <- if (is.list(aciklamalar)) aciklamalar else list()
+
+  ogeler <- lapply(seq_along(modeller), function(i) {
+    m_id <- modeller[i]
+    m_ad <- if (!is.null(adlar)) adlar[i] else m_id
+    aktif <- identical(as.character(m_id), as.character(secili))
+    aciklama <- as.character(aciklamalar[[m_id]] %||% m_ad)[1]
+    tags$li(tags$a(
+      class = paste0("dropdown-item model-option", if (aktif) " active" else ""),
+      href = "#",
+      title = aciklama,
+      # Model id ve girdi adı, inline onclick JS'ine ham gömülmez; tek tırnak veya
+      # ters bölü içeren katalog değerleri handler'ı bozabilir veya script
+      # enjekte edebilir. Ana söyleşi "Model Değiştir" yolundaki gibi JS string
+      # literaline (jsonlite::toJSON, çift tırnaklı) kodlanır.
+      onclick = sprintf(
+        "Shiny.setInputValue(%s, %s, {priority:'event'}); return false;",
+        jsonlite::toJSON(as.character(secim_input_id), auto_unbox = TRUE),
+        jsonlite::toJSON(as.character(m_id), auto_unbox = TRUE)
+      ),
+      div(
+        class = "model-item-content",
+        span(class = "model-name", HTML(htmltools::htmlEscape(m_ad))),
+        if (aktif) icon("check", class = "selected-icon") else NULL
+      )
+    ))
+  })
+
+  secili_ad <- if (!is.null(adlar)) {
+    idx <- match(secili, modeller)
+    if (!is.na(idx)) adlar[idx] else secili
+  } else {
+    secili
+  }
+
+  div(
+    class = "oo-secici oo-secici-model",
+    title = "Yanıt üretiminde kullanılacak modeli değiştir",
+    shinyWidgets::dropdown(
+      inputId = dropdown_id,
+      style = "minimal",
+      icon = icon("microchip"),
+      status = "default",
+      up = TRUE,
+      width = "260px",
+      div(class = "dropdown-menu-header", icon("layer-group"), tags$span("Model Kataloğu")),
+      tags$ul(class = "dropdown-menu-custom-list", ogeler)
+    ),
+    tags$span(
+      class = "oo-secici-etiket",
+      `aria-label` = "Seçili model",
+      HTML(htmltools::htmlEscape(secili_ad))
+    )
+  )
+}
+
+# Persona seçici (SAF): "Model Değiştir" diliyle aynı açılır liste; 5 persona
+# aksan noktası + ad ile listelenir. Yetkisi olmayan katılımcı için salt-okunur
+# rozet döner. Seçim onclick ile secim_input_id'ye yazılır.
+oo_persona_secici_html <- function(secili, yetkili, dropdown_id, secim_input_id) {
+  gorunum <- ortak_oturum_persona_gorunumu(secili)
+
+  if (!isTRUE(yetkili)) {
+    return(tags$span(
+      class = "oo-composer-persona-rozet",
+      title = "Odanın yapay zekâ personası",
+      tags$span(
+        class = "oo-composer-persona-nokta",
+        style = sprintf("background:%s;", gorunum$accent),
+        `aria-hidden` = "true"
+      ),
+      span(as.character(gorunum$ad))
+    ))
+  }
+
+  personalar <- c("emre", "selin", "deniz", "can", "ipek")
+  ogeler <- lapply(personalar, function(pid) {
+    g <- ortak_oturum_persona_gorunumu(pid)
+    aktif <- identical(as.character(pid), as.character(secili))
+    alt <- if (exists("get_character_record", mode = "function", inherits = TRUE)) {
+      rec <- tryCatch(get_character_record(pid), error = function(e) NULL)
+      as.character((rec$subtitle %||% "")[1])
+    } else {
+      ""
+    }
+    tags$li(tags$a(
+      class = paste0("dropdown-item model-option oo-persona-option", if (aktif) " active" else ""),
+      href = "#",
+      title = if (nzchar(alt)) alt else as.character(g$ad),
+      # Persona id'leri sabit ASCII olsa da, girdi adı ve değer inline onclick
+      # JS'ine model seçicideki gibi JS string literaline kodlanır (tutarlılık +
+      # savunma amaçlı).
+      onclick = sprintf(
+        "Shiny.setInputValue(%s, %s, {priority:'event'}); return false;",
+        jsonlite::toJSON(as.character(secim_input_id), auto_unbox = TRUE),
+        jsonlite::toJSON(as.character(pid), auto_unbox = TRUE)
+      ),
+      div(
+        class = "model-item-content",
+        div(
+          class = "oo-persona-oge",
+          tags$span(class = "oo-persona-nokta", style = sprintf("background:%s;", g$accent), `aria-hidden` = "true"),
+          div(
+            class = "oo-persona-metin",
+            span(class = "model-name", HTML(htmltools::htmlEscape(as.character(g$ad)))),
+            if (nzchar(alt)) tags$small(class = "oo-persona-alt", HTML(htmltools::htmlEscape(alt))) else NULL
+          )
+        ),
+        if (aktif) icon("check", class = "selected-icon") else NULL
+      )
+    ))
+  })
+
+  div(
+    class = "oo-secici oo-secici-persona",
+    title = "Odanın yapay zekâ personasını değiştir",
+    shinyWidgets::dropdown(
+      inputId = dropdown_id,
+      style = "minimal",
+      icon = icon("masks-theater"),
+      status = "default",
+      up = TRUE,
+      width = "280px",
+      div(class = "dropdown-menu-header", icon("user-astronaut"), tags$span("Yapay Zekâ Personası")),
+      tags$ul(class = "dropdown-menu-custom-list", ogeler)
+    ),
+    tags$span(
+      class = "oo-secici-etiket",
+      `aria-label` = "Seçili persona",
+      tags$span(
+        class = "oo-persona-nokta oo-persona-nokta-kucuk",
+        style = sprintf("background:%s;", gorunum$accent),
+        `aria-hidden` = "true"
+      ),
+      HTML(htmltools::htmlEscape(as.character(gorunum$ad)))
+    )
   )
 }

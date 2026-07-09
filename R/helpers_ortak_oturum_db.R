@@ -46,6 +46,7 @@ ortak_db_reset_availability_cache <- function() {
   .oo_db_state$available <- NULL
   .oo_db_state$checked_at <- NULL
   .oo_db_state$persona_col <- NULL
+  .oo_db_state$table_columns <- NULL
   invisible(NULL)
 }
 
@@ -66,6 +67,43 @@ ortak_db_reset_availability_cache <- function() {
 
   if (isTRUE(ok)) {
     .oo_db_state$persona_col <- TRUE
+  }
+  isTRUE(ok)
+}
+
+
+# Tablo kolon varlığı probu (aşamalı devreye alma / opsiyonel SSO kolonları).
+# Yalnızca pozitif sonuçları önbellekler; negatif/geçici hata sonuçları canlı
+# rollout sırasında süreç yeniden başlatılmadan tekrar denenebilmelidir.
+.oo_db_table_column_var_mi <- function(conn, table_name, column_name) {
+  table_name <- as.character(table_name %||% "")[1]
+  column_name <- as.character(column_name %||% "")[1]
+  if (!nzchar(table_name) || !nzchar(column_name)) {
+    return(FALSE)
+  }
+
+  bilgi <- .oo_db_try(DBI::dbGetInfo(conn), fallback = list())
+  kapsam <- paste(
+    class(conn)[1] %||% "unknown",
+    as.character(bilgi$dbname %||% bilgi$database %||% bilgi$server %||% "unknown"),
+    sep = ":"
+  )
+  key <- paste(kapsam, table_name, column_name, sep = ":")
+  cached <- .oo_db_state$table_columns[[key]]
+  if (isTRUE(cached)) {
+    return(TRUE)
+  }
+
+  ok <- .oo_db_try({
+    kolonlar <- DBI::dbListFields(conn, table_name)
+    column_name %in% kolonlar
+  }, fallback = FALSE)
+
+  if (isTRUE(ok)) {
+    if (is.null(.oo_db_state$table_columns)) {
+      .oo_db_state$table_columns <- list()
+    }
+    .oo_db_state$table_columns[[key]] <- TRUE
   }
   isTRUE(ok)
 }

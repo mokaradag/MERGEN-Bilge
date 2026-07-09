@@ -25,6 +25,7 @@ ortakOturumRoomServer <- function(id,
     ns <- session$ns
 
     yenile_sayaci <- reactiveVal(0L)
+    by_yenile_sayaci <- reactiveVal(0L)
     yonetilen_kullanici <- reactiveVal(NULL)
     secili_model <- reactiveVal("")
     secili_persona <- reactiveVal("")
@@ -32,20 +33,87 @@ ortakOturumRoomServer <- function(id,
     # yeniden çizilsin diye (4 sn yoklamada değil); menü seçimi/odaklanması bozulmaz.
     oda_rol <- reactiveVal("")
 
+    # Değişime duyarlı veri deposu: 4 sn yoklama DB'den çeker ama bu reactiveVal'lar
+    # yalnızca içerik GERÇEKTEN değiştiğinde (identical değilse) invalide olur.
+    # Böylece hiçbir değişiklik yokken gereksiz yeniden render + Shiny.bindAll
+    # tetiklenmez; oda açık kaldıkça biriken "Duplicate input IDs" uyarısı önlenir.
+    oturum_rv <- reactiveVal(NULL)
+    katilim_rv <- reactiveVal(NULL)
+    mesajlar_rv <- reactiveVal(data.frame())
+    katilimcilar_rv <- reactiveVal(data.frame())
+    belgeler_rv <- reactiveVal(data.frame())
+    canli_rv <- reactiveVal(data.frame())
+    uretim_rv <- reactiveVal(NULL)
+    kuyruk_rv <- reactiveVal(data.frame())
+    fetch_tetik <- reactiveVal(0L)
+
     oo_bildir <- function(mesaj, tur = "message") {
       shiny::showNotification(mesaj, type = tur, duration = 6)
     }
 
+    # Tek DB çekme noktası: tüm oda verisini reactiveVal'lara yazar. reactiveVal
+    # identical değeri atandığında invalide etmediği için yeniden render değişime
+    # duyarlı olur. Hem periyodik yoklama hem manuel tazeleme buradan geçer.
+    fetch_now <- function() {
+      oturum_id <- isolate(aktif_oturum())
+      if (is.null(oturum_id)) {
+        oturum_rv(NULL); katilim_rv(NULL)
+        mesajlar_rv(data.frame()); katilimcilar_rv(data.frame())
+        belgeler_rv(data.frame()); canli_rv(data.frame())
+        uretim_rv(NULL); kuyruk_rv(data.frame())
+        return(invisible(NULL))
+      }
+      uid <- isolate(current_user_id())
+
+      oturum_rv(ortak_db_oturum_getir(oturum_id))
+      katilim <- ortak_db_katilimci_getir(oturum_id, uid)
+      katilim_rv(katilim)
+      mesajlar_rv(ortak_db_mesajlari_getir(oturum_id, uid))
+      belgeler_rv(ortak_db_dosyalar(oturum_id, uid))
+      uretim_rv(ortak_db_aktif_uretim_detay(oturum_id))
+      kuyruk_rv(ortak_db_kuyruk_bekleyenler(oturum_id))
+
+      # Canlı durum: yalnızca sınıflandırma + oda görünürlüğü tutulur; ham kalp
+      # atışı zaman damgası dışlanır ki her kalp atışı yazımında (20-30 sn) frame
+      # değişmesin ve katılımcı listesi gereksiz yere yeniden çizilmesin.
+      canli <- ortak_db_canli_durumlar()
+      if (is.data.frame(canli) && nrow(canli) > 0L) {
+        tutulacak <- intersect(
+          c("KullaniciID", "CanliDurum", "SonGorulenOrtakOturumID"),
+          names(canli)
+        )
+        canli <- canli[, tutulacak, drop = FALSE]
+      }
+      canli_rv(canli)
+
+      if (!is.null(katilim) && ortak_icerik_erisimi_var_mi(katilim$KatilimDurumu[1])) {
+        katilimcilar_rv(ortak_db_katilimci_listesi(oturum_id))
+      } else {
+        katilimcilar_rv(data.frame())
+      }
+      invisible(NULL)
+    }
+
+    # Manuel tazeleme: eylem sonrası (mesaj gönderme, davet, arşiv vb.) anında
+    # yeniden çekme + eski davranış için yenile_sayaci bumped (invites paneli
+    # ctx$yenile_sayaci'ye bağlı).
     oo_yenile <- function() {
+      fetch_tetik(isolate(fetch_tetik()) + 1L)
       yenile_sayaci(isolate(yenile_sayaci()) + 1L)
     }
 
-    # Oda açıkken 4 sn'de bir DB'den tazele (tüm katılımcılar aynı akışı görür).
+    # Periyodik yoklama: yalnızca oda açıkken; tek zamanlayıcı zinciri.
     observe({
       req(aktif_oturum())
       invalidateLater(4000, session)
-      oo_yenile()
+      fetch_now()
+      by_yenile_sayaci(isolate(by_yenile_sayaci()) + 1L)
     })
+
+    # Manuel tazeleme tetikleyicisi (anında yeniden çekme).
+    observeEvent(fetch_tetik(), {
+      fetch_now()
+    }, ignoreInit = TRUE)
 
     # Oda değiştiğinde model ve persona seçimini oturum kaydından çöz (varsa).
     observeEvent(aktif_oturum(), {
@@ -53,11 +121,13 @@ ortakOturumRoomServer <- function(id,
       secili_model("")
       secili_persona("")
       if (is.null(oturum_id)) {
+        fetch_now()
         return(invisible(NULL))
       }
+      fetch_now()
       # Persona odanın kaydından okunur; yoksa oturum kimliğinden deterministik
       # varsayılana düşer (persona metadata'sı olmayan eski oturumlar için).
-      bilgi <- ortak_db_oturum_getir(oturum_id)
+      bilgi <- isolate(oturum_rv())
       persona_secim <- if (!is.null(bilgi)) as.character(bilgi$SecilenPersona[1] %||% "") else ""
       secili_persona(ortak_oturum_persona_kimligi(persona_secim, oturum_id))
     }, ignoreNULL = FALSE)
@@ -71,70 +141,24 @@ ortakOturumRoomServer <- function(id,
       }
     })
 
-    # Odanın etkin personası (yoklamayla tazelenir): mesaj avatarları/adları tüm
-    # katılımcılarda güncel kalsın diye oturum kaydından çözülür.
+    # Odanın etkin personası: mesaj avatarları/adları tüm katılımcılarda güncel
+    # kalsın diye oturum kaydından çözülür (değişime duyarlı veri deposundan).
     etkin_persona <- reactive({
-      yenile_sayaci()
       oturum_id <- aktif_oturum()
       if (is.null(oturum_id)) {
         return(ortak_oturum_persona_gorunumu(NULL))
       }
-      bilgi <- oturum_bilgisi()
+      bilgi <- oturum_rv()
       persona_secim <- if (!is.null(bilgi)) as.character(bilgi$SecilenPersona[1] %||% "") else ""
       ortak_oturum_persona_gorunumu(persona_secim, oturum_id)
     })
 
-    oturum_bilgisi <- reactive({
-      yenile_sayaci()
-      oturum_id <- aktif_oturum()
-      if (is.null(oturum_id)) {
-        return(NULL)
-      }
-      ortak_db_oturum_getir(oturum_id)
-    })
-
-    benim_katilimim <- reactive({
-      yenile_sayaci()
-      oturum_id <- aktif_oturum()
-      if (is.null(oturum_id)) {
-        return(NULL)
-      }
-      ortak_db_katilimci_getir(oturum_id, current_user_id())
-    })
-
-    mesajlar <- reactive({
-      yenile_sayaci()
-      oturum_id <- aktif_oturum()
-      if (is.null(oturum_id)) {
-        return(data.frame())
-      }
-      ortak_db_mesajlari_getir(oturum_id, current_user_id())
-    })
-
-    katilimcilar <- reactive({
-      yenile_sayaci()
-      oturum_id <- aktif_oturum()
-      katilim <- benim_katilimim()
-      if (is.null(oturum_id) || is.null(katilim) ||
-          !ortak_icerik_erisimi_var_mi(katilim$KatilimDurumu[1])) {
-        return(data.frame())
-      }
-      ortak_db_katilimci_listesi(oturum_id)
-    })
-
-    belgeler <- reactive({
-      yenile_sayaci()
-      oturum_id <- aktif_oturum()
-      if (is.null(oturum_id)) {
-        return(data.frame())
-      }
-      ortak_db_dosyalar(oturum_id, current_user_id())
-    })
-
-    canli_durumlar <- reactive({
-      yenile_sayaci()
-      ortak_db_canli_durumlar()
-    })
+    oturum_bilgisi <- reactive(oturum_rv())
+    benim_katilimim <- reactive(katilim_rv())
+    mesajlar <- reactive(mesajlar_rv())
+    katilimcilar <- reactive(katilimcilar_rv())
+    belgeler <- reactive(belgeler_rv())
+    canli_durumlar <- reactive(canli_rv())
 
     kullanici_canli_durumu <- function(kullanici_id) {
       durumlar <- canli_durumlar()
@@ -276,27 +300,31 @@ ortakOturumRoomServer <- function(id,
       } else {
         character(0)
       }
-      modeller <- modeller[nzchar(modeller)]
-
-      if (length(modeller) == 0L) {
-        return(tags$span(class = "oo-composer-model-yok", "Varsayılan model"))
+      adlar <- if (exists("api_config", inherits = TRUE)) names(api_config$local_models) else NULL
+      aciklamalar <- if (exists("api_config", inherits = TRUE)) {
+        api_config$local_model_descriptions %||% list()
+      } else {
+        list()
       }
 
-      secili <- as.character(isolate(secili_model()) %||% "")[1]
-      if (!nzchar(secili)) {
+      gecerli <- nzchar(modeller)
+      modeller <- modeller[gecerli]
+      if (!is.null(adlar) && length(adlar) == length(gecerli)) {
+        adlar <- adlar[gecerli]
+      } else {
+        adlar <- NULL
+      }
+
+      secili <- as.character(secili_model() %||% "")[1]
+      if (!nzchar(secili) && length(modeller) > 0L) {
         secili <- modeller[1]
       }
 
-      div(
-        class = "oo-composer-secim oo-composer-secim-model",
-        tags$span(class = "oo-composer-secim-ikon", icon("microchip"), `aria-hidden` = "true"),
-        selectInput(
-          ns("oda_model_secimi"),
-          label = NULL,
-          choices = modeller,
-          selected = secili,
-          width = "180px"
-        )
+      # "Model Değiştir" dili (ana söyleşi bileşeni); HTML üretimi saf builder'da.
+      oo_model_secici_html(
+        modeller, adlar, aciklamalar, secili,
+        dropdown_id = ns("oda_model_dropdown"),
+        secim_input_id = ns("oda_model_secimi")
       )
     })
 
@@ -319,31 +347,11 @@ ortakOturumRoomServer <- function(id,
         secili_persona(secili)
       }
 
-      # Yetkisi olmayan katılımcı için salt-okunur persona rozeti gösterilir.
-      if (!ortak_yetki_var_mi(rol, "katilimci_yonet")) {
-        gorunum <- ortak_oturum_persona_gorunumu(secili)
-        return(tags$span(
-          class = "oo-composer-persona-rozet",
-          title = "Odanın yapay zekâ personası",
-          tags$span(
-            class = "oo-composer-persona-nokta",
-            style = sprintf("background:%s;", gorunum$accent),
-            `aria-hidden` = "true"
-          ),
-          span(as.character(gorunum$ad))
-        ))
-      }
-
-      div(
-        class = "oo-composer-secim oo-composer-secim-persona",
-        tags$span(class = "oo-composer-secim-ikon", icon("user-astronaut"), `aria-hidden` = "true"),
-        selectInput(
-          ns("oda_persona_secimi"),
-          label = NULL,
-          choices = ortak_persona_secenekleri(),
-          selected = secili,
-          width = "200px"
-        )
+      oo_persona_secici_html(
+        secili,
+        yetkili = ortak_yetki_var_mi(rol, "katilimci_yonet"),
+        dropdown_id = ns("oda_persona_dropdown"),
+        secim_input_id = ns("oda_persona_secimi")
       )
     })
 
@@ -441,6 +449,40 @@ ortakOturumRoomServer <- function(id,
       oo_yenile()
     })
 
+    # Yeni bağlam başlat: odadan ayrılmadan yapay zekâ bağlamını sıfırlar.
+    # Görünür transkript KORUNUR; yalnızca eklenen sistem işaretinden sonraki
+    # sorular bağlama girer (ortak_yz_sohbet_gecmisi). İşaret bir SistemMesajı
+    # olduğu için tüm katılımcılar tutarlı biçimde görür.
+    observeEvent(input$oda_baglam_temizle, {
+      oturum_id <- aktif_oturum()
+      req(oturum_id)
+
+      katilim <- ortak_db_katilimci_getir(oturum_id, current_user_id())
+      if (is.null(katilim) ||
+          !ortak_icerik_erisimi_var_mi(katilim$KatilimDurumu[1]) ||
+          !ortak_yetki_var_mi(katilim$Rol[1], "yapay_zeka_sor")) {
+        oo_bildir("Yeni bağlam başlatma yetkiniz yok.", tur = "error")
+        fetch_now()
+        return(invisible(NULL))
+      }
+
+      mesaj_id <- ortak_db_mesaj_ekle(
+        oturum_id = oturum_id,
+        gonderen_kullanici_id = NULL,
+        mesaj_turu = "SistemMesajı",
+        mesaj_metni = ortak_baglam_sifirlama_notu()
+      )
+
+      if (is.null(mesaj_id)) {
+        oo_bildir("Yeni bağlam başlatılamadı.", tur = "error")
+        return(invisible(NULL))
+      }
+
+      ortak_db_olay_ekle(oturum_id, "BağlamSıfırlandı", current_user_id())
+      oo_bildir("Yeni yapay zekâ bağlamı başlatıldı; önceki yazışmalar bağlamdan çıkarıldı.")
+      oo_yenile()
+    })
+
     # Yapay zekâ üretim motoru (soru gönderme + kuyruk + artımlı yayın +
     # BilgeYolaç köprüsü) ayrı bağlayıcıdadır; motor nesnesi paylaşılan
     # eylem yüzeyidir. yapay_zekaya_sor eylemi soruyu motora devreder.
@@ -454,8 +496,11 @@ ortakOturumRoomServer <- function(id,
       katilimcilar = katilimcilar,
       kullanici_canli_durumu = kullanici_canli_durumu,
       yenile_sayaci = yenile_sayaci,
+      by_yenile_sayaci = by_yenile_sayaci,
       secili_model = secili_model,
       etkin_persona = etkin_persona,
+      aktif_uretim = reactive(uretim_rv()),
+      bekleyenler = reactive(kuyruk_rv()),
       parent_session = parent_session,
       bildir = oo_bildir,
       yenile = oo_yenile

@@ -469,11 +469,17 @@ ortak_db_canli_durumlar <- function(simdi = Sys.time(), conn = NULL) {
   sonuc <- sonuc[sirali, , drop = FALSE]
   sonuc <- sonuc[!duplicated(sonuc$KullaniciID), , drop = FALSE]
 
+  # Sınıflandırma HAM değere göre yapılır: ODBC/SQL Server DATETIME2 çoğu
+  # sürücüde POSIXct döner. as.character(...) ile metne çevirmek, R oturumunun
+  # yerel saat diliminde bir DUVAR-SAATİ üretir; bu metnin UTC olarak yeniden
+  # ayrıştırılması saat dilimi kaymasıyla çevrim içi kullanıcıyı sessizce
+  # ÇevrimDışı gösterebilir (davet panelinin boş kalmasının kök nedeni). POSIXct
+  # değeri doğrudan geçildiğinde mutlak an korunur; ortak_sunum_durumu POSIXct
+  # girdisini zaten güvenli işler.
   sonuc$CanliDurum <- vapply(
-    as.character(sonuc$SonKalpAtisiZamani),
-    ortak_sunum_durumu,
+    seq_len(nrow(sonuc)),
+    function(i) ortak_sunum_durumu(sonuc$SonKalpAtisiZamani[i], simdi = simdi),
     character(1),
-    simdi = simdi,
     USE.NAMES = FALSE
   )
 

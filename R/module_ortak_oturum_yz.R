@@ -32,6 +32,23 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
     son_yayin = ""
   )
 
+  # İyimser üretim durumu: "Yapay Zekâya Sor" tıklanır tıklanmaz, kilit alma ve
+  # bağlam kurma tamamlanmadan ÖNCE, üretim durumu metni anında görünsün diye
+  # tutulan yerel bayrak (ana söyleşi hızıyla eşleşir).
+  iyimser_uretim <- reactiveVal(NULL)
+
+  # Soran kullanıcının görünen adı (katılımcı listesinden; yoksa boş).
+  soran_adi <- function(uid) {
+    liste <- ctx$katilimcilar()
+    if (is.data.frame(liste) && nrow(liste) > 0L && "KullaniciID" %in% names(liste)) {
+      eslesen <- liste[liste$KullaniciID == suppressWarnings(as.integer(uid)), , drop = FALSE]
+      if (nrow(eslesen) > 0L) {
+        return(as.character(eslesen$KaynakAdi[1] %||% "")[1])
+      }
+    }
+    ""
+  }
+
   yeni_istek_id <- function(oturum_id) {
     paste0(
       "oo_", oturum_id, "_",
@@ -78,27 +95,73 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
       return(invisible(FALSE))
     }
 
-    istek_id <- yeni_istek_id(oturum_id)
+    # İyimser UI: soru balonu + "üretiliyor" durumu ANINDA görünsün.
+    iyimser_uretim(list(ad = soran_adi(uid), ts = Sys.time()))
+    ctx$yenile()
 
-    if (ortak_db_uretim_kilidi_al(
-      oturum_id = oturum_id,
-      baslatan_kullanici_id = uid,
-      istek_id = istek_id,
-      mesaj_id = soru_id
-    )) {
+    # Kilit/kuyruk REZERVASYONU ilk flush'tan ÖNCE SENKRON yapılır. İki katılımcı
+    # aynı odada neredeyse aynı anda "Yapay Zekâya Sor" derse, iki YapayZekaSorusu
+    # satırı da eklenmiş ama henüz kilitlenip kuyruklanmamış olabilir. Rezervasyon
+    # onFlushed'a ertelenirse geç eklenen callback kilidi önce kapabilir ve aktif
+    # yanıt (ortak_yz_sohbet_gecmisi üzerinden) başka katılımcının bekleyen
+    # sorusuna karşı üretilebilir. Bu nedenle yalnızca pahalı bağlam kurma + worker
+    # gönderimi (motor$uret) sonraki flush'a ertelenir; kilit/kuyruk kararı burada
+    # anında verilir.
+    istek_id <- yeni_istek_id(oturum_id)
+    iyimser_uretim(NULL)
+
+    kilit_alindi <- tryCatch(
+      ortak_db_uretim_kilidi_al(
+        oturum_id = oturum_id,
+        baslatan_kullanici_id = uid,
+        istek_id = istek_id,
+        mesaj_id = soru_id
+      ),
+      error = function(e) NA
+    )
+
+    if (isTRUE(is.na(kilit_alindi))) {
+      ctx$bildir("Yapay zekâ yanıtı başlatılamadı; lütfen tekrar deneyin.", tur = "error")
       ctx$yenile()
-      motor$uret(oturum_id, soru_id, uid, istek_id, metin)
-    } else {
+      return(invisible(FALSE))
+    }
+
+    if (!isTRUE(kilit_alindi)) {
       kuyruk_id <- ortak_db_kuyruk_ekle(oturum_id, soru_id)
-		if (is.null(kuyruk_id)) {
-		  ctx$bildir(
-			"Yanıt üretimi sürüyor; sorunuz kalıcı kuyruğa alınamadı ve yapay zekâ bağlamından çıkarıldı. Lütfen yeniden gönderin.",
-			tur = "warning"
-		  )
-		} else {
-		  ctx$bildir("Yanıt üretimi sürüyor; sorunuz sıraya alındı ve otomatik yanıtlanacak.")
-		}
+      if (is.null(kuyruk_id)) {
+        ctx$bildir(
+          "Yanıt üretimi sürüyor; sorunuz kalıcı kuyruğa alınamadı ve yapay zekâ bağlamından çıkarıldı. Lütfen yeniden gönderin.",
+          tur = "warning"
+        )
+      } else {
+        ctx$bildir("Yanıt üretimi sürüyor; sorunuz sıraya alındı ve otomatik yanıtlanacak.")
+      }
       ctx$yenile()
+      return(invisible(TRUE))
+    }
+
+    # Kilit alındı: arayüzü tazele, yalnızca ağır üretim işini (bağlam + worker)
+    # sonraki flush'a ertele. Ertelenmiş iş başarısız olursa kilit bırakılır ki
+    # oda kalıcı olarak "üretiliyor" durumunda takılı kalmasın.
+    ctx$yenile()
+
+    calisma <- function() {
+      tryCatch(
+        motor$uret(oturum_id, soru_id, uid, istek_id, metin),
+        error = function(e) {
+          ortak_db_uretim_kilidi_birak(oturum_id, istek_id, sonuc_durumu = "Hata")
+          ctx$bildir("Yapay zekâ yanıtı başlatılamadı; lütfen tekrar deneyin.", tur = "error")
+          ctx$yenile()
+        }
+      )
+    }
+
+    # Etkileşimli oturumda arayüzü önce boyayıp ağır işi sonraki flush'a ertele;
+    # test/etkileşimsiz bağlamda onFlushed yoksa doğrudan çalıştır.
+    if (!is.null(session) && is.function(session$onFlushed)) {
+      session$onFlushed(calisma, once = TRUE)
+    } else {
+      calisma()
     }
 
     invisible(TRUE)
@@ -183,6 +246,7 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
     uretim$aktif <- FALSE
     uretim$stream_file <- NULL
     uretim$son_yayin <- ""
+    iyimser_uretim(NULL)
     ctx$yenile()
 
     motor$kuyruk_isle(oturum_id)
@@ -435,7 +499,6 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
   # --- Üretim durumu paneli: süren üretim + kısmi yanıt + kuyruk ----------------
 
 	output$uretim_durumu_alani <- renderUI({
-	  ctx$yenile_sayaci()
 	  oturum_id <- ctx$aktif_oturum()
 	  if (is.null(oturum_id)) {
 		return(NULL)
@@ -451,17 +514,33 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 		return(NULL)
 	  }
 
-	  detay <- ortak_db_aktif_uretim_detay(oturum_id)
+	  # Değişime duyarlı veri deposundan okunur (yalnızca gerçek değişimde render).
+	  detay <- ctx$aktif_uretim()
 	  calisiyor <- !is.null(detay) && identical(as.character(detay$KilitDurumu[1]), "Çalışıyor")
-	  bekleyenler <- ortak_db_kuyruk_bekleyenler(oturum_id)
+	  bekleyenler <- ctx$bekleyenler()
 	  bekleyen_var <- is.data.frame(bekleyenler) && nrow(bekleyenler) > 0L
 
-	  if (!calisiyor && !bekleyen_var) {
+	  # İyimser durum: kilit henüz alınmadan gösterilen "üretiliyor" metni. Gerçek
+	  # üretim başlayınca (calisiyor) veya 15 sn geçince yok sayılır.
+	  iyimser <- iyimser_uretim()
+	  iyimser_aktif <- !calisiyor && is.list(iyimser) &&
+		as.numeric(difftime(Sys.time(), iyimser$ts, units = "secs")) < 15
+
+	  if (!calisiyor && !bekleyen_var && !iyimser_aktif) {
 		return(NULL)
 	  }
 
     kismi_alani <- NULL
     durum_metni <- NULL
+
+    if (!calisiyor && iyimser_aktif) {
+      baslatan <- as.character(iyimser$ad %||% "")
+      durum_metni <- if (nzchar(baslatan) && !is.na(baslatan)) {
+        sprintf("%s sordu · yanıt üretiliyor, tamamlanınca tüm katılımcılar görecek.", baslatan)
+      } else {
+        "Yanıt üretiliyor; tamamlanınca tüm katılımcılar görecek."
+      }
+    }
 
     if (calisiyor) {
       baslatan <- as.character(detay$BaslatanAdi[1] %||% "")
@@ -510,7 +589,7 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
       class = "oo-uretim-durumu",
       role = "status",
       `aria-live` = "polite",
-      if (calisiyor) {
+      if (calisiyor || iyimser_aktif) {
         div(
           class = "oo-uretim-ust",
           icon("spinner", class = "fa-spin"),

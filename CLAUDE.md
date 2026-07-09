@@ -2468,10 +2468,12 @@ Non-negotiable boundaries:
 - Keep the manifest section order intact: `ortak_oturumlar` (17 files, pure
   helpers → DB layer → UI/invites/AI-engine/Bilge-Yolaç-workbench/room/hub
   modules) loads after `module_claude_code`, owned by the `sohbet_llm_akis`
-  seam; frontend assets `css/ortak_oturumlar.css` +
-  `css/ortak_oturumlar_bilge_yolac.css` + `js/ortak_oturumlar.js` belong to the
-  `gecmis_kayit_arama` zone. The JS bridge uses delegated `data-oo-hedef-input`
-  clicks — never interpolate ids into CSS selectors. Pure presentation-decision
+  seam; frontend assets `css/ortak_oturumlar.css` + `css/ortak_oturumlar_room.css`
+  (room-focused: model/persona selector, chat-bubble avatars, spacing — split
+  out to hold the per-file CSS ratchet) + `css/ortak_oturumlar_bilge_yolac.css` +
+  `js/ortak_oturumlar.js` belong to the `gecmis_kayit_arama` zone. The JS bridge
+  uses delegated `data-oo-hedef-input` clicks — never interpolate ids into CSS
+  selectors. Pure presentation-decision
   helpers (role label / online-status badge) live in
   `R/helpers_ortak_oturum_sunum.R` (kept OUT of the authorization file to hold
   the function ratchet); the Bilge Yolaç DB layer is split into
@@ -2511,7 +2513,45 @@ Non-negotiable boundaries:
   filtering is the pure, testable `ortak_davet_aday_kullanicilar()`
   (`R/helpers_ortak_oturum_sunum.R`); the invite render reads live status FRESH
   (`ortak_db_canli_durumlar()`) and refreshes on modal open. Do not re-inline the
-  filter decision into the renderUI.
+  filter decision into the renderUI. `ortak_db_canli_durumlar()` classifies each
+  heartbeat by passing the RAW column value (POSIXct instant) into
+  `ortak_sunum_durumu()` per row; do not revert to `as.character()`-then-reparse,
+  which loses the driver tzone instant and can silently mark online users offline.
+- Change-aware polling (item: accumulating console warnings): the room's 4s poll
+  writes DB data into reactiveVal slots (`mesajlar_rv`/`katilimcilar_rv`/
+  `belgeler_rv`/`oturum_rv`/`katilim_rv`/`canli_rv`/`uretim_rv`/`kuyruk_rv`) through
+  one `fetch_now()`; reactiveVal skips invalidation on `identical()` values, so
+  unchanged data does NOT re-render and does NOT re-trigger `Shiny.bindAll` (the
+  source of the ever-growing "Duplicate input IDs" warning). Do NOT restore a
+  blind `yenile_sayaci` bump every 4s that re-renders all outputs unconditionally;
+  the yz status panel reads `ctx$aktif_uretim()`/`ctx$bekleyenler()` (not a poll
+  counter). `canli_rv` intentionally drops the raw heartbeat timestamp so it only
+  changes on real status/room-view flips.
+- Optimistic AI submit (item: 10s dead period): `motor$soru_gonder()` inserts the
+  question, sets `iyimser_uretim(list(ad, ts))` + `ctx$yenile()` so the user bubble
+  and "… sordu · yanıt üretiliyor…" status paint IMMEDIATELY, then defers the heavy
+  lock/context/worker work to `session$onFlushed(..., once = TRUE)`. Do not move the
+  synchronous DB round-trips back before the first flush. The status panel shows the
+  optimistic line only until the real `Çalışıyor` lock detail arrives or 15s pass.
+- Fresh context without leaving the room (item: clear-context button): the
+  `oda_baglam_temizle` icon button (next to "Odaya Yaz") inserts a `SistemMesajı`
+  marker with the fixed `ortak_baglam_sifirlama_notu()` text. SistemMesajı is
+  system-only (users write OdaMesajı/YapayZekaSorusu) so the marker is unforgeable.
+  `ortak_yz_sohbet_gecmisi()` only feeds the LLM the soru/yanıt rows AFTER the LAST
+  such marker; the visible transcript is preserved and all participants see the
+  note. Keep `ortak_baglam_sifirlama_notu()` in `R/helpers_ortak_oturum_sunum.R`.
+- Model/persona selectors reuse the Ana Söyleşi "Model Değiştir" component
+  (`shinyWidgets::dropdown`, `microchip`/`masks-theater` icons). The pure HTML
+  builders `oo_model_secici_html()` / `oo_persona_secici_html()` live in
+  `R/module_ortak_oturum_room_ui.R` (selection via `Shiny.setInputValue` onclick);
+  styling is `.oo-secici*` in `css/ortak_oturumlar_room.css`. Do not re-inline the
+  builders into the server module (maintainability ratchet).
+- Chat-bubble avatars reuse Ana Söyleşi resolution: user photos via
+  `mb_sidebar_user_avatar_url(GonderenSicil)` (the message query selects
+  `u.Sicil AS GonderenSicil`), AI persona images via
+  `get_character_asset_paths(persona_id)$avatar`, both with an `onerror` fallback to
+  the initial (`.oo-mesaj-avatar-yedek`). All guarded by `exists(...)`, so the pure
+  UI builder still renders without those helpers (tests).
 - UX contract (calm, app-consistent; do not regress): flush standard page header
   with a filled ORTAK pill (ADMIN/AJAN badge language), tab-bar filters, clean
   buttons (calm `--oo-accent` indigo instead of aggressive orange; teal "Yenile"),
@@ -2557,7 +2597,16 @@ degradation on old schema), per-room AI personas
 the online-user-listing fix (robust live-status parsing + pure
 `ortak_davet_aday_kullanicilar()` filter), and the UX overhaul (resizable side
 panel, tab-bar filters, calm buttons/badges, composer model+persona row,
-anti-freeze poll de-dim + auto-scroll). Remaining follow-ups: admin dashboard
+anti-freeze poll de-dim + auto-scroll). Latest room-UX pass: change-aware
+reactiveVal polling (kills the accumulating "Duplicate input IDs" warning),
+optimistic AI submit via `session$onFlushed` (immediate user bubble + status),
+Model Değiştir-style model/persona dropdowns (`oo_model_secici_html` /
+`oo_persona_secici_html`), chat-bubble avatars (user photo + persona image with
+initial fallback), the `oda_baglam_temizle` fresh-context button
+(`ortak_baglam_sifirlama_notu` marker + `ortak_yz_sohbet_gecmisi` slicing),
+POSIXct-safe presence classification, tooltips on every room button, the
+Başlangıç-Deneyimi-style modal radios, and the `css/ortak_oturumlar_room.css`
+CSS split. Remaining follow-ups: admin dashboard
 tab, real SMTP sending, direct token-token WebSocket push (currently 2s DB-poll
 broadcast). VM-only proof: SQL Server Turkish at-rest checks, the `KismiYanit` /
 `SecilenPersona` ALTERs, the real CLI bridge, live vision endpoint, and
