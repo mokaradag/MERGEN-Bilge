@@ -236,5 +236,12 @@
   if (typeof document.addEventListener === 'function') {
     document.addEventListener('shiny:connected', ooKalpAtisiBaslat);
     document.addEventListener('shiny:disconnected', ooKalpAtisiDurdur);
+
+    // Ertelenmiş yüklemede shiny:connected kaçmış olabilir.
+    window.setTimeout(function () {
+      if (typeof Shiny !== 'undefined') {
+        ooKalpAtisiBaslat();
+      }
+    }, 0);
   }
 })();
