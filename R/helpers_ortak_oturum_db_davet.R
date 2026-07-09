@@ -383,20 +383,26 @@ ortak_db_kalp_atisi <- function(kullanici_id,
   }
   on.exit(.oo_db_release(handle), add = TRUE)
 
-  simdi <- .oo_db_now()
   durum <- ortak_canli_durumlar()[1]
+
+  # SonKalpAtisiZamani/OlusturmaZamani, tazelik okumasıyla (ortak_db_canli_durumlar)
+  # AYNI saat kaynağından — VERİTABANININ KENDİ saatinden — yazılır. Böylece
+  # yazma (R Sys.time) ile okuma (DB SYSUTCDATETIME) arasındaki saat kayması
+  # tümden ortadan kalkar; DB saati R'den ILERI olsa bile taze bir kalp atışı asla
+  # eşiği aşıp yanlışça Boşta/ÇevrimDışı görünmez. Zaman param olarak değil, SQL
+  # ifadesi olarak gömülür (lehçe farkı yalnızca ifadede).
+  zaman_sql <- if (.oo_db_is_sqlite(handle$conn)) "datetime('now')" else "SYSUTCDATETIME()"
 
   sonuc <- .oo_db_try({
     guncellenen <- DBI::dbExecute(
       handle$conn,
-      paste(
-        "UPDATE MB_Kullanici_CanliDurum SET Sayfa = ?, SonKalpAtisiZamani = ?,",
-        "Durum = ?, SonGorulenOrtakOturumID = ?",
+      paste0(
+        "UPDATE MB_Kullanici_CanliDurum SET Sayfa = ?, SonKalpAtisiZamani = ", zaman_sql, ", ",
+        "Durum = ?, SonGorulenOrtakOturumID = ? ",
         "WHERE KullaniciID = ? AND OturumAnahtari = ?"
       ),
       params = normalize_db_params(list(
         normalize_db_technical_value(as.character(sayfa %||% NA_character_)[1]),
-        simdi,
         normalize_db_technical_value(durum),
         .oo_db_pos_int(gorulen_ortak_oturum_id),
         kullanici_id,
@@ -407,20 +413,18 @@ ortak_db_kalp_atisi <- function(kullanici_id,
     if (guncellenen == 0L) {
       DBI::dbExecute(
         handle$conn,
-        paste(
-          "INSERT INTO MB_Kullanici_CanliDurum",
-          "(KullaniciID, OturumAnahtari, Sayfa, SonKalpAtisiZamani, Durum,",
-          " SonGorulenOrtakOturumID, OlusturmaZamani)",
-          "VALUES (?, ?, ?, ?, ?, ?, ?)"
+        paste0(
+          "INSERT INTO MB_Kullanici_CanliDurum ",
+          "(KullaniciID, OturumAnahtari, Sayfa, SonKalpAtisiZamani, Durum, ",
+          " SonGorulenOrtakOturumID, OlusturmaZamani) ",
+          "VALUES (?, ?, ?, ", zaman_sql, ", ?, ?, ", zaman_sql, ")"
         ),
         params = normalize_db_params(list(
           kullanici_id,
           normalize_db_technical_value(oturum_anahtari),
           normalize_db_technical_value(as.character(sayfa %||% NA_character_)[1]),
-          simdi,
           normalize_db_technical_value(durum),
-          .oo_db_pos_int(gorulen_ortak_oturum_id),
-          simdi
+          .oo_db_pos_int(gorulen_ortak_oturum_id)
         ))
       )
     }
@@ -433,9 +437,20 @@ ortak_db_kalp_atisi <- function(kullanici_id,
 }
 
 #' Kullanıcı başına en güncel kalp atışını okur ve Türkçe canlı durumu
-#' saf ortak_sunum_durumu() ile sınıflandırır. En güncel satırın
-#' SonGorulenOrtakOturumID değeri de döner; böylece "bu odada çevrim içi"
-#' göstergesi (yeşil nokta) üretilebilir.
+#' üretir. En güncel satırın SonGorulenOrtakOturumID değeri de döner; böylece
+#' "bu odada çevrim içi" göstergesi (yeşil nokta) üretilebilir.
+#'
+#' TAZELİK (yaş) VERİTABANININ KENDİ SAATİYLE hesaplanır (DATEDIFF/julianday).
+#' Neden: eskiden yaş, R'nin Sys.time() değeri ile ODBC'nin DATETIME2'yi
+#' POSIXct'e çevirirken uyguladığı saat dilimi yorumu karşılaştırılarak
+#' bulunuyordu. Windows/ODBC sürücüsü DATETIME2'yi beklenmedik bir saat
+#' diliminde döndürdüğünde (ya da R ile DB saat dilimi/yorumu ayrıştığında)
+#' TAZE bir kalp atışı geçmişte görünüp çevrim içi kullanıcı sessizce
+#' ÇevrimDışı sınıflanabiliyordu (davet panelinin "Çevrim İçi Kullanıcılar"
+#' sekmesinin boş kalmasının kök nedeni). Yaşı tamamen sunucu tarafında,
+#' saklanan değer ile DB'nin UTC "şimdi"si arasından hesaplamak istemci
+#' tarafı saat dilimi/an dönüşümünü denklemden ÇIKARIR. R yalnızca yaşı
+#' eşiklerle sınıflandırır (ortak_sunum_durumu, tek eşik kaynağı).
 ortak_db_canli_durumlar <- function(simdi = Sys.time(), conn = NULL) {
   bos <- data.frame()
 
@@ -445,23 +460,82 @@ ortak_db_canli_durumlar <- function(simdi = Sys.time(), conn = NULL) {
   }
   on.exit(.oo_db_release(handle), add = TRUE)
 
-  sonuc <- .oo_db_try(
+  # Yaş (saniye) lehçeye göre DB'nin kendi saatiyle hesaplanır.
+  yas_ifadesi <- if (.oo_db_is_sqlite(handle$conn)) {
+    "CAST((julianday('now') - julianday(c.SonKalpAtisiZamani)) * 86400 AS INTEGER)"
+  } else {
+    "DATEDIFF(SECOND, c.SonKalpAtisiZamani, SYSUTCDATETIME())"
+  }
+
+  # Birincil yol: sunucu-saatli yaş sütunuyla oku. Beklenmedik bir lehçe/hata
+  # olursa eski (R-tarafı zaman damgası) yola GÜVENLİ düşülür ki canlı durum
+  # tümden kaybolmasın.
+  sonuc <- tryCatch(
     DBI::dbGetQuery(
       handle$conn,
-      paste(
-        "SELECT c.KullaniciID, c.SonKalpAtisiZamani, c.SonGorulenOrtakOturumID",
+      paste0(
+        "SELECT c.KullaniciID, c.SonGorulenOrtakOturumID, ",
+        yas_ifadesi, " AS YasSaniye ",
         "FROM MB_Kullanici_CanliDurum c"
       )
     ),
-    fallback = bos,
-    uyari = "Canlı durumlar okunamadı:"
+    error = function(e) {
+      .oo_db_log_warn("Canlı durum DB-saat yaşı hesaplanamadı; eski yola düşülüyor:", conditionMessage(e))
+      .oo_db_try(
+        DBI::dbGetQuery(
+          handle$conn,
+          paste(
+            "SELECT c.KullaniciID, c.SonKalpAtisiZamani, c.SonGorulenOrtakOturumID",
+            "FROM MB_Kullanici_CanliDurum c"
+          )
+        ),
+        fallback = bos,
+        uyari = "Canlı durumlar okunamadı:"
+      )
+    }
   )
 
   if (!is.data.frame(sonuc) || nrow(sonuc) == 0L) {
     return(bos)
   }
 
-  # Kullanıcı başına EN GÜNCEL kalp atışı satırı (lehçe bağımsız: R tarafında).
+  if ("YasSaniye" %in% names(sonuc)) {
+    # Dedup: kullanıcı başına EN GÜNCEL satır = EN KÜÇÜK yaş. NA (ayrıştırılamaz)
+    # en eski (Inf) sayılır. NEGATİF yaş (R yazımı ile DB "şimdi"si arasında
+    # küçük saat kayması: kalp atışı "gelecekte") en güncel demektir; Inf'e
+    # çevrilmez, olduğu gibi bırakılır ki en öne sıralanıp taze satır kazansın.
+    yas <- suppressWarnings(as.numeric(sonuc$YasSaniye))
+    yas[is.na(yas)] <- Inf
+    sirali <- order(sonuc$KullaniciID, yas, decreasing = FALSE)
+    sonuc <- sonuc[sirali, , drop = FALSE]
+    sonuc <- sonuc[!duplicated(sonuc$KullaniciID), , drop = FALSE]
+
+    # Sınıflandırma YALNIZCA yaşa dayanır (mutlak saat/saat dilimi yok);
+    # ortak_sunum_durumu eşikleri tek kaynak: yaş kadar geçmiş bir an sentezlenir.
+    # NA yaş -> ÇevrimDışı; NEGATİF yaş (saat kayması) TAZE demektir -> 0.
+    ref <- Sys.time()
+    sonuc$CanliDurum <- vapply(
+      seq_len(nrow(sonuc)),
+      function(i) {
+        y <- suppressWarnings(as.numeric(sonuc$YasSaniye[i]))
+        if (length(y) != 1L || is.na(y)) {
+          y <- Inf
+        } else if (y < 0) {
+          y <- 0
+        }
+        ortak_sunum_durumu(ref - y, simdi = ref)
+      },
+      character(1),
+      USE.NAMES = FALSE
+    )
+
+    sonuc$YasSaniye <- NULL
+    return(sonuc)
+  }
+
+  # Güvenli düşüş yolu: eski R-tarafı zaman damgası sınıflandırması. POSIXct
+  # değeri doğrudan geçilir (metne çevrilmez); ortak_sunum_durumu POSIXct/metni
+  # güvenle işler.
   zamanlar <- suppressWarnings(as.POSIXct(
     as.character(sonuc$SonKalpAtisiZamani), tz = "UTC"
   ))
@@ -469,13 +543,6 @@ ortak_db_canli_durumlar <- function(simdi = Sys.time(), conn = NULL) {
   sonuc <- sonuc[sirali, , drop = FALSE]
   sonuc <- sonuc[!duplicated(sonuc$KullaniciID), , drop = FALSE]
 
-  # Sınıflandırma HAM değere göre yapılır: ODBC/SQL Server DATETIME2 çoğu
-  # sürücüde POSIXct döner. as.character(...) ile metne çevirmek, R oturumunun
-  # yerel saat diliminde bir DUVAR-SAATİ üretir; bu metnin UTC olarak yeniden
-  # ayrıştırılması saat dilimi kaymasıyla çevrim içi kullanıcıyı sessizce
-  # ÇevrimDışı gösterebilir (davet panelinin boş kalmasının kök nedeni). POSIXct
-  # değeri doğrudan geçildiğinde mutlak an korunur; ortak_sunum_durumu POSIXct
-  # girdisini zaten güvenli işler.
   sonuc$CanliDurum <- vapply(
     seq_len(nrow(sonuc)),
     function(i) ortak_sunum_durumu(sonuc$SonKalpAtisiZamani[i], simdi = simdi),

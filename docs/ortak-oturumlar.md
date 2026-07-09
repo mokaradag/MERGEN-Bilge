@@ -113,6 +113,18 @@ bağlama **girmez** (`ortak_yz_sohbet_gecmisi()`).
 - Model `ORTAK_OTURUM_MODEL` ortam değişkeniyle, yoksa `api_config$local_models[1]`
   ile seçilir. API anahtarı merkezi özellik-anahtar yardımcısından gelir
   (`mb_api_key_get_feature_key_value`, CLAUDE.md 1F sözleşmesi).
+- **Reaktif bağlam güvenliği (kritik):** ağır üretim işi `session$onFlushed`'a
+  ve kuyruk zinciri `promises::then` callback'ine ertelendiği için REAKTİF ALAN
+  içinde ama reaktif BAĞLAM (consumer) DIŞINDA koşar. Orada bir `reactiveVal`'ı
+  doğrudan okumak *"Operation not allowed without an active reactive context"*
+  hatası fırlatır. `etkin_model()` bu yüzden `secili_model`'i
+  `shiny::isolate(...)` ile okur. Ertelenmiş/asenkron yoldan erişilen her
+  reaktif okuma `isolate()` ile sarılmalı ya da erteleme öncesi gözlemcide
+  yakalanmalıdır; aksi halde HER soru *"Yapay zekâ yanıtı başlatılamadı; lütfen
+  tekrar deneyin."* hatasıyla düşer. (`shiny::testServer` gövdeyi aktif reaktif
+  bağlamda çalıştırdığı için bu hatayı maskeler; regresyon testi çıplak
+  `MockShinySession` + `withReactiveDomain` kullanır:
+  `tests/testthat/test-ortak-oturum-yz-reactive-context-behavior.R`.)
 
 ### Yapay zekâ personası
 
@@ -217,14 +229,32 @@ temiz bir servis dikişidir (ileride gerçek gönderim eklenirse durum kaydı zo
   sunucu tarafı 20 sn kısma uygular (SQL Server yük koruması) ve
   `MB_Kullanici_CanliDurum` içinde kullanıcı+oturum anahtarı başına tek satır
   upsert edilir.
-- Sınıflandırma saf yardımcıdadır (`ortak_sunum_durumu`): son kalp atışı
-  ≤120 sn → `Çevrimİçi`; ≤300 sn → `Boşta`; aksi → `ÇevrimDışı`.
-- Zaman damgası biçimine dayanıklıdır: POSIXct, ISO `T` ayraçlı veya kesirli
-  saniyeli (`DATETIME2(7)`) metin — hangi biçim gelirse gelsin güvenli UTC an'a
-  çözülür. Böylece bir sürücü/biçim farkı çevrim içi kullanıcıyı sessizce
-  `ÇevrimDışı` göstermez (davet panelinde çevrim içi listenin boş kalmasının
-  önceki kök nedeni; regresyon:
-  `tests/testthat/test-ortak-oturum-davet-online-behavior.R`).
+- Tazelik (yaş) **veritabanının KENDİ saatiyle** hesaplanır — R'nin `Sys.time()`
+  değeri ile ODBC'nin `DATETIME2`'yi POSIXct'e çevirirken uyguladığı saat dilimi
+  yorumu KARŞILAŞTIRILMAZ. `ortak_db_canli_durumlar()` sunucu-tarafı bir yaş
+  sütunu seçer — SQL Server'da `DATEDIFF(SECOND, c.SonKalpAtisiZamani,
+  SYSUTCDATETIME())`, SQLite'ta `CAST((julianday('now') -
+  julianday(c.SonKalpAtisiZamani)) * 86400 AS INTEGER)` — ve R yalnızca bu yaşı
+  Türkçe duruma eşler (`ortak_sunum_durumu`, tek eşik kaynağı: `ref - yas`):
+  ≤120 sn → `Çevrimİçi`; ≤300 sn → `Boşta`; aksi → `ÇevrimDışı`. Böylece istemci
+  tarafı ODBC saat dilimi/an dönüşümü denklemden çıkar; taze bir kalp atışının
+  geçmişe kayıp çevrim içi kullanıcıyı sessizce `ÇevrimDışı` göstermesi (davet
+  panelinde çevrim içi listenin boş kalmasının kök nedeni) önlenir.
+- Kullanıcı başına EN GÜNCEL (en küçük yaş) satır tutulur. NA yaş en eski
+  (`Inf`); NEGATİF yaş (R yazımı ile DB "şimdi"si arasında küçük saat kayması,
+  kalp atışı "gelecekte") TAZE demektir — dedup'ta en öne sıralanır,
+  sınıflandırmada `0`'a sabitlenir (çevrim içi). Yaş sorgusu beklenmedik bir
+  lehçede başarısız olursa eski `SonKalpAtisiZamani` + `ortak_sunum_durumu()`
+  yoluna güvenli düşülür. Yazma yolu (`ortak_db_kalp_atisi`) da AYNI DB saatini
+  kullanır: `SonKalpAtisiZamani`/`OlusturmaZamani` R `.oo_db_now()` parametresiyle
+  değil, DB-saat SQL ifadesiyle (`SYSUTCDATETIME()` / SQLite `datetime('now')`)
+  yazılır. Böylece yazma ve okuma tek saati paylaşır; DB saati R'den ILERI olsa
+  bile taze bir kalp atışı eşiği aşıp yanlışça çevrim dışı görünmez. Başarısızlıkta
+  loglar (`Canlı durum kalp atışı yazılamadı`).
+- `ortak_sunum_durumu` yine de POSIXct / ISO `T` / kesirli-saniyeli metin
+  biçimlerine dayanıklıdır (güvenli düşüş yolu ve başka çağıranlar için).
+  Regresyon: `tests/testthat/test-ortak-oturum-canli-durum-behavior.R` ve
+  `tests/testthat/test-ortak-oturum-davet-online-behavior.R`.
 - Durum göstergesi yalnızca renge dayanmaz: nokta + `title`/`aria-label` metni.
 - SSO placeholder kimlik (0) ile canlı durum yazılmaz.
 
@@ -368,6 +398,8 @@ Kolon özetleri için [`database-schema.md`](database-schema.md).
 | `tests/testthat/test-ortak-oturum-sql-contract.R` | SQL betiği: tablolar, idempotent guard'lar, Türkçe `N'...'` değerleri, ana betikte yıkıcı ifade yok, rollback yalnızca yeni tabloları düşürür, betik açılışa bağlı değil. |
 | `tests/testthat/test-ortak-oturum-ui-contract.R` | "Odaya Yaz"/"Yapay Zekâya Sor" ayrımı, davet paneli eylem metinleri, XSS escape davranışı, JS seçici güvenliği + kalp atışı sözleşmesi, tema token/açık tema/responsive CSS, manifest+bölge üyeliği, navigasyon sekmeleri, kaynak manifesti bölüm sırası. |
 | `tests/testthat/test-ortak-oturum-davet-online-behavior.R` | "Katılımcı Çağır" çevrim içi listeleme regresyonu: canlı durum sınıflandırmasının POSIXct/kesirli-saniye/ISO biçimlerine dayanıklılığı ve saf `ortak_davet_aday_kullanicilar()` süzme kararı (çevrim içi listelenir, çevrim dışı/kendisi/katılmış elenir, Davet Edilenler ve Tüm Kullanıcılar filtreleri). |
+| `tests/testthat/test-ortak-oturum-canli-durum-behavior.R` | `ortak_db_canli_durumlar()` DB-saat tazeliği regresyonu (gerçek SQLite): sunucu-tarafı yaş (`julianday`/`DATEDIFF`) ile taze→Çevrimİçi, 3 dk→Boşta, 10 dk→ÇevrimDışı; kullanıcı başına en güncel (en küçük yaş) satır; negatif yaş (saat kayması) taze sayılır; çıktı sözleşmesi (`YasSaniye` sızdırılmaz); boş tablo güvenli boş çerçeve. |
+| `tests/testthat/test-ortak-oturum-yz-reactive-context-behavior.R` | Yapay zekâ üretiminin reaktif-bağlam güvenliği regresyonu (çıplak `MockShinySession` + `withReactiveDomain`, testServer maskelemesini atlar): reaktif bağlam DIŞINDA reactiveVal okuma hatası belgelenir, `motor$uret` ertelenmiş (onFlushed benzeri) yolda patlamaz, "başlatılamadı" toast'ı çıkmaz ve `YapayZekaYanıtı` kalıcılaşır. |
 
 Persona kalıcılığı `test-ortak-oturum-db-behavior.R` içinde de kapsanır:
 oluşturmada deterministik varsayılan, Sahip günceller, geçersiz persona ve
@@ -474,13 +506,33 @@ encoding preflight kapılarıyla doğrulanmalıdır (RUNBOOK).
   `SistemMesajı` işareti ekler; `ortak_yz_sohbet_gecmisi()` yalnızca en son
   işaretten sonraki soru/yanıtları LLM bağlamına alır. Transkript korunur, tüm
   katılımcılar sistem notunu görür.
-- **Canlı durum tzone dayanıklılığı — GÜÇLENDİRİLDİ.** `ortak_db_canli_durumlar()`
-  ham kolon değerini (POSIXct instant) satır satır `ortak_sunum_durumu()`'ya
-  geçirir; `as.character()` ile metne çevirip UTC yeniden ayrıştırma yolu (sürücü
-  tzone kaymasıyla çevrim içi kullanıcıyı çevrim dışı gösterebiliyordu) kaldırıldı.
 - **CSS bölünmesi — UYGULANDI.** Oda odaklı stiller `css/ortak_oturumlar_room.css`
   dosyasına ayrıldı (frontend tek dosya satır bütçesi korunur); manifest + bölge
   kaydı `R/config_ui_assets.R` ve `R/config_ui_asset_zones.R` içindedir.
+
+### 12.2d İki üretim hatası düzeltmesi (bu değişiklik seti)
+
+- **Yapay zekâ yanıtı başlatılamadı — GİDERİLDİ (reaktif bağlam).** Ertelenmiş
+  `motor$uret` (`session$onFlushed`) ve kuyruk zinciri (`promises::then`
+  callback'i) reaktif ALAN içinde ama reaktif BAĞLAM DIŞINDA koşar; `etkin_model()`
+  orada `secili_model` `reactiveVal`'ını doğrudan okuduğu için HER soru
+  *"Yapay zekâ yanıtı başlatılamadı; lütfen tekrar deneyin."* hatasıyla düşüyordu.
+  Okuma `shiny::isolate(...)` ile sarıldı (§3 "Reaktif bağlam güvenliği").
+  `shiny::testServer` bu hatayı maskelediği için regresyon testi çıplak
+  `MockShinySession` + `withReactiveDomain` kullanır
+  (`tests/testthat/test-ortak-oturum-yz-reactive-context-behavior.R`).
+- **Çevrim içi kullanıcılar listelenmiyor — GİDERİLDİ (DB-saat tazeliği).**
+  Tazelik artık R'nin `Sys.time()`'ı ile ODBC'nin `DATETIME2`'yi POSIXct'e çevirme
+  yorumu karşılaştırılarak değil, veritabanının KENDİ saatiyle (`DATEDIFF` /
+  SQLite `julianday`) hesaplanır; R yalnızca yaşı `ortak_sunum_durumu` eşikleriyle
+  sınıflandırır (§5 "Canlı durum"). Böylece istemci tarafı ODBC saat dilimi/an
+  dönüşümü — davet panelinin "Çevrim İçi Kullanıcılar" sekmesinin boş kalmasının
+  kök nedeni — tamamen devre dışı bırakılır. Yazma yolu da aynı DB saatini
+  kullanır (`ortak_db_kalp_atisi` → `SYSUTCDATETIME()` / SQLite `datetime('now')`),
+  böylece R↔DB saat kayması her iki yönde de (DB ileri/geri) taze kalp atışını
+  etkilemez (PR #590 kod incelemesi geri bildirimi). Negatif yaş güvenlik ağı
+  olarak taze sayılır; yaş sorgusu başarısız olursa eski yola güvenli düşülür.
+  Regresyon: `tests/testthat/test-ortak-oturum-canli-durum-behavior.R`.
 
 ### 12.3 Kalan sınırlamalar
 
