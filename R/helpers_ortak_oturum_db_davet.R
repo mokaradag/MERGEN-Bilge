@@ -383,20 +383,26 @@ ortak_db_kalp_atisi <- function(kullanici_id,
   }
   on.exit(.oo_db_release(handle), add = TRUE)
 
-  simdi <- .oo_db_now()
   durum <- ortak_canli_durumlar()[1]
+
+  # SonKalpAtisiZamani/OlusturmaZamani, tazelik okumasıyla (ortak_db_canli_durumlar)
+  # AYNI saat kaynağından — VERİTABANININ KENDİ saatinden — yazılır. Böylece
+  # yazma (R Sys.time) ile okuma (DB SYSUTCDATETIME) arasındaki saat kayması
+  # tümden ortadan kalkar; DB saati R'den ILERI olsa bile taze bir kalp atışı asla
+  # eşiği aşıp yanlışça Boşta/ÇevrimDışı görünmez. Zaman param olarak değil, SQL
+  # ifadesi olarak gömülür (lehçe farkı yalnızca ifadede).
+  zaman_sql <- if (.oo_db_is_sqlite(handle$conn)) "datetime('now')" else "SYSUTCDATETIME()"
 
   sonuc <- .oo_db_try({
     guncellenen <- DBI::dbExecute(
       handle$conn,
-      paste(
-        "UPDATE MB_Kullanici_CanliDurum SET Sayfa = ?, SonKalpAtisiZamani = ?,",
-        "Durum = ?, SonGorulenOrtakOturumID = ?",
+      paste0(
+        "UPDATE MB_Kullanici_CanliDurum SET Sayfa = ?, SonKalpAtisiZamani = ", zaman_sql, ", ",
+        "Durum = ?, SonGorulenOrtakOturumID = ? ",
         "WHERE KullaniciID = ? AND OturumAnahtari = ?"
       ),
       params = normalize_db_params(list(
         normalize_db_technical_value(as.character(sayfa %||% NA_character_)[1]),
-        simdi,
         normalize_db_technical_value(durum),
         .oo_db_pos_int(gorulen_ortak_oturum_id),
         kullanici_id,
@@ -407,20 +413,18 @@ ortak_db_kalp_atisi <- function(kullanici_id,
     if (guncellenen == 0L) {
       DBI::dbExecute(
         handle$conn,
-        paste(
-          "INSERT INTO MB_Kullanici_CanliDurum",
-          "(KullaniciID, OturumAnahtari, Sayfa, SonKalpAtisiZamani, Durum,",
-          " SonGorulenOrtakOturumID, OlusturmaZamani)",
-          "VALUES (?, ?, ?, ?, ?, ?, ?)"
+        paste0(
+          "INSERT INTO MB_Kullanici_CanliDurum ",
+          "(KullaniciID, OturumAnahtari, Sayfa, SonKalpAtisiZamani, Durum, ",
+          " SonGorulenOrtakOturumID, OlusturmaZamani) ",
+          "VALUES (?, ?, ?, ", zaman_sql, ", ?, ?, ", zaman_sql, ")"
         ),
         params = normalize_db_params(list(
           kullanici_id,
           normalize_db_technical_value(oturum_anahtari),
           normalize_db_technical_value(as.character(sayfa %||% NA_character_)[1]),
-          simdi,
           normalize_db_technical_value(durum),
-          .oo_db_pos_int(gorulen_ortak_oturum_id),
-          simdi
+          .oo_db_pos_int(gorulen_ortak_oturum_id)
         ))
       )
     }

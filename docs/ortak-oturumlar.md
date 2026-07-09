@@ -245,8 +245,12 @@ temiz bir servis dikişidir (ileride gerçek gönderim eklenirse durum kaydı zo
   kalp atışı "gelecekte") TAZE demektir — dedup'ta en öne sıralanır,
   sınıflandırmada `0`'a sabitlenir (çevrim içi). Yaş sorgusu beklenmedik bir
   lehçede başarısız olursa eski `SonKalpAtisiZamani` + `ortak_sunum_durumu()`
-  yoluna güvenli düşülür. Yazma yolu hâlâ `.oo_db_now()` (R UTC) kullanır ve
-  başarısızlıkta loglar (`Canlı durum kalp atışı yazılamadı`).
+  yoluna güvenli düşülür. Yazma yolu (`ortak_db_kalp_atisi`) da AYNI DB saatini
+  kullanır: `SonKalpAtisiZamani`/`OlusturmaZamani` R `.oo_db_now()` parametresiyle
+  değil, DB-saat SQL ifadesiyle (`SYSUTCDATETIME()` / SQLite `datetime('now')`)
+  yazılır. Böylece yazma ve okuma tek saati paylaşır; DB saati R'den ILERI olsa
+  bile taze bir kalp atışı eşiği aşıp yanlışça çevrim dışı görünmez. Başarısızlıkta
+  loglar (`Canlı durum kalp atışı yazılamadı`).
 - `ortak_sunum_durumu` yine de POSIXct / ISO `T` / kesirli-saniyeli metin
   biçimlerine dayanıklıdır (güvenli düşüş yolu ve başka çağıranlar için).
   Regresyon: `tests/testthat/test-ortak-oturum-canli-durum-behavior.R` ve
@@ -523,9 +527,12 @@ encoding preflight kapılarıyla doğrulanmalıdır (RUNBOOK).
   SQLite `julianday`) hesaplanır; R yalnızca yaşı `ortak_sunum_durumu` eşikleriyle
   sınıflandırır (§5 "Canlı durum"). Böylece istemci tarafı ODBC saat dilimi/an
   dönüşümü — davet panelinin "Çevrim İçi Kullanıcılar" sekmesinin boş kalmasının
-  kök nedeni — tamamen devre dışı bırakılır. Negatif yaş (küçük saat kayması) taze
-  sayılır; yaş sorgusu başarısız olursa eski yola güvenli düşülür. Regresyon:
-  `tests/testthat/test-ortak-oturum-canli-durum-behavior.R`.
+  kök nedeni — tamamen devre dışı bırakılır. Yazma yolu da aynı DB saatini
+  kullanır (`ortak_db_kalp_atisi` → `SYSUTCDATETIME()` / SQLite `datetime('now')`),
+  böylece R↔DB saat kayması her iki yönde de (DB ileri/geri) taze kalp atışını
+  etkilemez (PR #590 kod incelemesi geri bildirimi). Negatif yaş güvenlik ağı
+  olarak taze sayılır; yaş sorgusu başarısız olursa eski yola güvenli düşülür.
+  Regresyon: `tests/testthat/test-ortak-oturum-canli-durum-behavior.R`.
 
 ### 12.3 Kalan sınırlamalar
 

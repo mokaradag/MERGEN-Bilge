@@ -2529,9 +2529,14 @@ Non-negotiable boundaries:
   filtering is the pure, testable `ortak_davet_aday_kullanicilar()`
   (`R/helpers_ortak_oturum_sunum.R`); the invite render reads live status FRESH
   (`ortak_db_canli_durumlar()`) and refreshes on modal open. Do not re-inline the
-  filter decision into the renderUI. The heartbeat WRITE still uses `.oo_db_now()`
-  (R UTC) and logs on failure (`Canlı durum kalp atışı yazılamadı`); the DB-clock
-  read is what makes the freshness check driver-timezone-immune.
+  filter decision into the renderUI. The heartbeat WRITE uses the SAME DB clock:
+  `ortak_db_kalp_atisi()` sets `SonKalpAtisiZamani`/`OlusturmaZamani` via a
+  DB-clock SQL expression (`SYSUTCDATETIME()` on SQL Server, `datetime('now')` on
+  SQLite), not an R `.oo_db_now()` param — so write and read share one clock and
+  even a positive R↔DB skew (DB ahead) cannot inflate a fresh heartbeat past the
+  thresholds. Do not revert the write to an R-clock timestamp param; the write is
+  logged on failure (`Canlı durum kalp atışı yazılamadı`), and the DB-clock read
+  is what makes the freshness check driver-timezone-immune.
 - Change-aware polling (item: accumulating console warnings): the room's 4s poll
   writes DB data into reactiveVal slots (`mesajlar_rv`/`katilimcilar_rv`/
   `belgeler_rv`/`oturum_rv`/`katilim_rv`/`canli_rv`/`uretim_rv`/`kuyruk_rv`) through
