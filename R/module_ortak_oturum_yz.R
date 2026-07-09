@@ -58,8 +58,15 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
   }
 
   # Odanın etkin modeli: hızlı model seçimi > ORTAK_OTURUM_MODEL > ilk model.
+  # Model seçimi (secili_model) bir reactiveVal'dir; bu yardımcı hem gözlemci
+  # (reaktif bağlam) hem de ertelenmiş üretim (session$onFlushed) ve kuyruk
+  # tamamlama (promise callback) yollarından çağrılır. onFlushed/promise
+  # callback'leri reaktif ALAN içinde ama reaktif BAĞLAM (consumer) DIŞINDA
+  # koşar; reactiveVal'ı doğrudan okumak orada "reactive context yok" hatasıyla
+  # patlar ve "Yapay zekâ yanıtı başlatılamadı" olarak yüzeye çıkardı. Okuma bu
+  # yüzden isolate ile sarılır (repo sözleşmesi: erteleme öncesi reaktifi yakala).
   etkin_model <- function() {
-    secim <- as.character(ctx$secili_model() %||% "")[1]
+    secim <- as.character(shiny::isolate(ctx$secili_model()) %||% "")[1]
     if (nzchar(secim)) {
       return(secim)
     }

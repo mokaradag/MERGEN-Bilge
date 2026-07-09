@@ -2507,16 +2507,31 @@ Non-negotiable boundaries:
   (`ortak_oturum_persona_kimligi/_gorunumu/_sistem_prompt`, `ortak_persona_secenekleri`);
   keep `oo_mesaj_html(..., persona = NULL)` backward-compatible (single-arg calls).
 - Online-user discovery in the "Katılımcı Çağır" panel is a protected regression
-  boundary. Live-status classification (`ortak_sunum_durumu`) must stay robust to
-  POSIXct / ISO `T` / fractional-second timestamp forms (a driver/format
-  difference must NOT silently drop online users to `ÇevrimDışı`). Candidate
+  boundary (the invite modal's "Çevrim İçi Kullanıcılar" tab was silently empty
+  even with active users). Heartbeat freshness is computed with the DATABASE's OWN
+  CLOCK, not by comparing R's `Sys.time()` against an ODBC-parsed `DATETIME2`
+  POSIXct. `ortak_db_canli_durumlar()` SELECTs a server-side age column —
+  `DATEDIFF(SECOND, c.SonKalpAtisiZamani, SYSUTCDATETIME())` on SQL Server,
+  `CAST((julianday('now') - julianday(c.SonKalpAtisiZamani)) * 86400 AS INTEGER)`
+  on SQLite (`.oo_db_is_sqlite`) — and R only maps that `YasSaniye` to Turkish
+  status via `ortak_sunum_durumu()` (single threshold source: `ref - yas`). This
+  removes the client-side ODBC timezone/instant conversion that could shift a
+  fresh heartbeat into the past and drop online users to `ÇevrimDışı` (the root
+  cause). Dedup keeps the smallest age per user; NA age → oldest (`Inf`); NEGATIVE
+  age (small R↔DB clock skew, heartbeat "in the future") is FRESH → clamped to `0`
+  for classification and kept as most-recent for dedup — do NOT treat negative age
+  as oldest. If the age query fails (unexpected dialect) it degrades safely to the
+  legacy `SonKalpAtisiZamani` + `ortak_sunum_durumu()` path; do not remove that
+  fallback. The output contract stays `KullaniciID` / `CanliDurum` /
+  `SonGorulenOrtakOturumID` (the internal `YasSaniye` is dropped before return).
+  `ortak_sunum_durumu` must still stay robust to POSIXct / ISO `T` /
+  fractional-second forms (used by the fallback path and elsewhere). Candidate
   filtering is the pure, testable `ortak_davet_aday_kullanicilar()`
   (`R/helpers_ortak_oturum_sunum.R`); the invite render reads live status FRESH
   (`ortak_db_canli_durumlar()`) and refreshes on modal open. Do not re-inline the
-  filter decision into the renderUI. `ortak_db_canli_durumlar()` classifies each
-  heartbeat by passing the RAW column value (POSIXct instant) into
-  `ortak_sunum_durumu()` per row; do not revert to `as.character()`-then-reparse,
-  which loses the driver tzone instant and can silently mark online users offline.
+  filter decision into the renderUI. The heartbeat WRITE still uses `.oo_db_now()`
+  (R UTC) and logs on failure (`Canlı durum kalp atışı yazılamadı`); the DB-clock
+  read is what makes the freshness check driver-timezone-immune.
 - Change-aware polling (item: accumulating console warnings): the room's 4s poll
   writes DB data into reactiveVal slots (`mesajlar_rv`/`katilimcilar_rv`/
   `belgeler_rv`/`oturum_rv`/`katilim_rv`/`canli_rv`/`uretim_rv`/`kuyruk_rv`) through
@@ -2533,6 +2548,21 @@ Non-negotiable boundaries:
   lock/context/worker work to `session$onFlushed(..., once = TRUE)`. Do not move the
   synchronous DB round-trips back before the first flush. The status panel shows the
   optimistic line only until the real `Çalışıyor` lock detail arrives or 15s pass.
+- Deferred/async generation REACTIVE-CONTEXT safety (regression: every AI prompt
+  failed with "Yapay zekâ yanıtı başlatılamadı; lütfen tekrar deneyin."): the
+  deferred `motor$uret` runs inside `session$onFlushed` and the queue chain
+  (`motor$kuyruk_isle`) runs inside a `promises::then` callback. Both execute
+  inside the reactive DOMAIN but OUTSIDE a reactive CONTEXT (consumer), where
+  reading a `reactiveVal` throws "Operation not allowed without an active reactive
+  context". `etkin_model()` therefore reads `ctx$secili_model()` through
+  `shiny::isolate(...)` (repo rule: capture reactivity before background work).
+  Any reactive read reachable from `motor$uret`/`motor$llm_uret`/`motor$tamamla`/
+  `motor$kuyruk_isle` MUST be `isolate()`-wrapped or captured synchronously in the
+  observer before deferral; do not read a reactiveVal bare there. NOTE:
+  `shiny::testServer` runs its body in an active reactive context and MASKS this
+  bug — the regression test uses a bare `MockShinySession` +
+  `withReactiveDomain(session, ...)` (no context) to reproduce the real onFlushed
+  condition.
 - Fresh context without leaving the room (item: clear-context button): the
   `oda_baglam_temizle` icon button (next to "Odaya Yaz") inserts a `SistemMesajı`
   marker with the fixed `ortak_baglam_sifirlama_notu()` text. SistemMesajı is
@@ -2572,8 +2602,10 @@ Protected by:
 
 - `tests/testthat/test-ortak-oturum-permissions-behavior.R`
 - `tests/testthat/test-ortak-oturum-davet-online-behavior.R`
+- `tests/testthat/test-ortak-oturum-canli-durum-behavior.R`
 - `tests/testthat/test-ortak-oturum-db-behavior.R`
 - `tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R`
+- `tests/testthat/test-ortak-oturum-yz-reactive-context-behavior.R`
 - `tests/testthat/test-ortak-oturum-sql-contract.R`
 - `tests/testthat/test-ortak-oturum-ui-contract.R`
 
@@ -2581,8 +2613,10 @@ Focused validation:
 
 - `testthat::test_file("tests/testthat/test-ortak-oturum-permissions-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-davet-online-behavior.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-canli-durum-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-db-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-yz-reactive-context-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-sql-contract.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-ui-contract.R")`
 
@@ -2606,7 +2640,18 @@ initial fallback), the `oda_baglam_temizle` fresh-context button
 (`ortak_baglam_sifirlama_notu` marker + `ortak_yz_sohbet_gecmisi` slicing),
 POSIXct-safe presence classification, tooltips on every room button, the
 Başlangıç-Deneyimi-style modal radios, and the `css/ortak_oturumlar_room.css`
-CSS split. Remaining follow-ups: admin dashboard
+CSS split. Latest bug-fix pass (two production defects): (1) every AI prompt
+failed with "Yapay zekâ yanıtı başlatılamadı; lütfen tekrar deneyin." because
+the deferred `motor$uret` (in `session$onFlushed`) read the `secili_model`
+reactiveVal outside a reactive context — `etkin_model()` now reads it through
+`shiny::isolate(...)` (see the deferred/async reactive-context safety bullet);
+(2) the "Çevrim İçi Kullanıcılar" invite tab was silently empty because
+freshness was computed from R `Sys.time()` vs an ODBC-parsed `DATETIME2` POSIXct
+— `ortak_db_canli_durumlar()` now computes age with the DB's own clock
+(`DATEDIFF`/`julianday`) and only maps it to Turkish status in R (see the
+online-user discovery bullet). Both are regression-tested with a bare
+`MockShinySession`/real-SQLite (`test-ortak-oturum-yz-reactive-context-behavior.R`,
+`test-ortak-oturum-canli-durum-behavior.R`). Remaining follow-ups: admin dashboard
 tab, real SMTP sending, direct token-token WebSocket push (currently 2s DB-poll
 broadcast). VM-only proof: SQL Server Turkish at-rest checks, the `KismiYanit` /
 `SecilenPersona` ALTERs, the real CLI bridge, live vision endpoint, and
