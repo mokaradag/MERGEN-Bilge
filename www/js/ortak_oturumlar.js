@@ -71,6 +71,7 @@
       el.getAttribute('data-oo-davet-id') ||
       el.getAttribute('data-oo-dosya-id') ||
       el.getAttribute('data-oo-model-deger') ||
+      el.getAttribute('data-oo-arac-temizle') ||
       el.getAttribute('data-oo-kullanici-id');
 
     if (!hedefInput || kimlik === null || kimlik === undefined) {
@@ -79,6 +80,43 @@
 
     ev.preventDefault();
     ooSetInput(hedefInput, { id: kimlik, nonce: Date.now() });
+  });
+
+  // Delege değişiklik köprüsü: belge bağlam seçim kutuları ve araç-özel ayar
+  // girdileri (Derin Düşünme / Detay Seviyesi / Süreç Akışı). Girdiler
+  // kontrolsüzdür (DOM canlı durumu taşır); sunucu yalnızca değişikliği alır.
+  // Kimlikler CSS seçicisine gömülmez; dataset üzerinden düz okunur.
+  document.addEventListener('change', function (ev) {
+    var el = ev.target;
+    if (!el || !el.getAttribute) {
+      return;
+    }
+
+    // Ortak belge bağlam seçimi: {id, secili}.
+    var secimHedef = el.getAttribute('data-oo-secim-input');
+    if (secimHedef) {
+      ooSetInput(secimHedef, {
+        id: el.getAttribute('data-oo-dosya-id'),
+        secili: !!el.checked,
+        nonce: Date.now()
+      });
+      return;
+    }
+
+    // Araç ayar değişikliği: {alan, deger}. Checkbox için deger=checked,
+    // select için deger=value.
+    if (el.getAttribute('data-oo-arac-ayar')) {
+      var ayarHedef = el.getAttribute('data-oo-hedef-input');
+      if (!ayarHedef) {
+        return;
+      }
+      var deger = (el.type === 'checkbox') ? !!el.checked : el.value;
+      ooSetInput(ayarHedef, {
+        alan: el.getAttribute('data-oo-alan') || '',
+        deger: deger,
+        nonce: Date.now()
+      });
+    }
   });
 
   function ooAktifSayfa() {
@@ -204,16 +242,35 @@
   });
 
   // --- Mesaj akışı otomatik kaydırma -----------------------------------------
-  // Oda 4 sn'de bir yeniden render edilir; kullanıcı akışın DİBİNE yakınsa yeni
-  // mesajlar geldiğinde otomatik en alta kaydırılır. Kullanıcı geçmişi okumak
-  // için yukarı kaydırdıysa konumu korunur (yakın-dip bayrağı scroll'da tutulur).
+  // Oda içerik değişiminde yeniden render edilir; kullanıcı akışın DİBİNE
+  // yakınsa yeni mesajlarda otomatik en alta kaydırılır. Kullanıcı geçmişi
+  // okumak için yukarı kaydırdıysa TAM konumu korunur (yeniden render içerik
+  // yüksekliğini değiştirse bile sıçrama olmaz). Programatik kaydırma her
+  // zaman ANLIK yapılır: CSS smooth animasyonu ile yarışıp "takılan" kaydırma
+  // hissi yaratmaz (scroll-behavior CSS'ten kaldırıldı).
   document.addEventListener('scroll', function (ev) {
     var el = ev.target;
     if (!el || !el.id || el.id.indexOf('mesaj_akisi') === -1) {
       return;
     }
     el._ooYakinDip = (el.scrollHeight - el.scrollTop - el.clientHeight) < 160;
+    el._ooSonKonum = el.scrollTop;
   }, true);
+
+  function ooAkisiKonumla() {
+    var akisi = document.querySelector('[id$="-mesaj_akisi"]');
+    if (!akisi) {
+      return;
+    }
+    if (akisi._ooYakinDip !== false) {
+      // İlk render veya kullanıcı zaten dipte: anlık olarak en alta in.
+      akisi.scrollTop = akisi.scrollHeight;
+      akisi._ooSonKonum = akisi.scrollTop;
+    } else if (typeof akisi._ooSonKonum === 'number') {
+      // Kullanıcı geçmişte: içerik yenilense de okuma konumu korunur.
+      akisi.scrollTop = akisi._ooSonKonum;
+    }
+  }
 
   document.addEventListener('shiny:value', function (ev) {
     var ad = ev && ev.name ? String(ev.name) : '';
@@ -222,14 +279,7 @@
     }
     window.setTimeout(function () {
       ooKatilimciYukseklikGeriYukle();
-      var akisi = document.querySelector('[id$="-mesaj_akisi"]');
-      if (!akisi) {
-        return;
-      }
-      // İlk render veya kullanıcı zaten dipteyse en alta kaydır.
-      if (akisi._ooYakinDip !== false) {
-        akisi.scrollTop = akisi.scrollHeight;
-      }
+      ooAkisiKonumla();
     }, 30);
   });
 

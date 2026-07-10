@@ -55,11 +55,16 @@ test_that("davet paneli ve belge eylemleri sözleşmeli metinleri taşır", {
 
   oda_ui <- .oo_ui_oku(file.path(repo_root, "R", "module_ortak_oturum_room_ui.R"))
   davetler <- .oo_ui_oku(file.path(repo_root, "R", "module_ortak_oturum_invites.R"))
+  belge_paneli <- .oo_ui_oku(file.path(repo_root, "R", "module_ortak_oturum_belge_paneli.R"))
 
   expect_true(grepl(enc2utf8("Katılımcı Çağır"), oda_ui, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl(enc2utf8("Mergen İçinden Çağır"), oda_ui, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl(enc2utf8("E-posta Taslağı Hazırla"), oda_ui, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl(enc2utf8("Kendi Dosyalarıma Kaydet"), oda_ui, fixed = TRUE, useBytes = TRUE))
+  # Belge kartı üreticisi (Kendi Dosyalarıma Kaydet + bağlam seçimi + kaldırma)
+  # belge paneli bağlayıcısına taşındı.
+  expect_true(grepl(enc2utf8("Kendi Dosyalarıma Kaydet"), belge_paneli, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl(enc2utf8("Bağlama dahil et"), belge_paneli, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("Belge Yükle", belge_paneli, fixed = TRUE, useBytes = TRUE))
 
   # Davet paneli sekmeleri ve hız sınırı.
   expect_true(grepl(enc2utf8("Çevrim İçi Kullanıcılar"), davetler, fixed = TRUE, useBytes = TRUE))
@@ -192,8 +197,12 @@ test_that("kaynak manifesti ortak_oturumlar bölümünü bağımlılık sırası
     "R/helpers_ortak_oturum_db_bilge_yolac.R",
     "R/helpers_ortak_oturum_db_kuyruk.R",
     "R/helpers_ortak_oturum_files.R",
+    "R/helpers_ortak_oturum_belgeler.R",
+    "R/helpers_ortak_oturum_arac.R",
     "R/helpers_ortak_oturum_bakim.R",
     "R/module_ortak_oturum_room_ui.R",
+    "R/module_ortak_oturum_belge_paneli.R",
+    "R/module_ortak_oturum_arac.R",
     "R/module_ortak_oturum_invites.R",
     "R/module_ortak_oturum_yz.R",
     "R/module_ortak_oturum_bilge_yolac.R",
@@ -215,4 +224,89 @@ test_that("kaynak manifesti ortak_oturumlar bölümünü bağımlılık sırası
          encoding = "UTF-8", local = seam_env)
   kayit <- seam_env$mergen_seam_registry()
   expect_true("ortak_oturumlar" %in% kayit$sohbet_llm_akis$manifest_sections)
+})
+
+test_that("oda composer çıktıları yetkili rolde boş değildir ve temizle bağlam yanında sıralanır", {
+  testthat::skip_if_not_installed("shiny")
+  suppressPackageStartupMessages(library(shiny))
+
+  repo_root <- resolve_repo_root_for_tests()
+  source(file.path(repo_root, "R", "helpers_ortak_oturum_permissions.R"), encoding = "UTF-8", local = globalenv())
+  source(file.path(repo_root, "R", "helpers_ortak_oturum_sunum.R"), encoding = "UTF-8", local = globalenv())
+  source(file.path(repo_root, "R", "helpers_ortak_oturum_arac.R"), encoding = "UTF-8", local = globalenv())
+  source(file.path(repo_root, "R", "module_ortak_oturum_room_ui.R"), encoding = "UTF-8", local = globalenv())
+  source(file.path(repo_root, "R", "module_ortak_oturum_arac.R"), encoding = "UTF-8", local = globalenv())
+  source(file.path(repo_root, "R", "module_ortak_oturum_belge_paneli.R"), encoding = "UTF-8", local = globalenv())
+
+  api_config <<- list(
+    local_models = c("Yerel Model" = "local-test-model"),
+    local_model_descriptions = list("local-test-model" = "Test modeli")
+  )
+  on.exit(rm(api_config, envir = globalenv()), add = TRUE)
+
+  testServer(function(input, output, session) {
+    ctx <- list(
+      aktif_oturum = reactive(42L),
+      oda_rol = reactive("Sahip"),
+      secili_model = reactiveVal("local-test-model"),
+      current_user_id = function() 7L,
+      aktif_uretim = reactive(NULL),
+      bildir = function(...) NULL,
+      yenile = function(...) NULL
+    )
+    motor <- new.env(parent = emptyenv())
+    ortakOturumAracBind(input, output, session, ctx = ctx, motor = motor)
+    ortakOturumSohbetTemizleBind(input, output, session, ctx = ctx)
+  }, {
+    session$flushReact()
+    model_html <- paste(as.character(output$oda_model_secim_alani), collapse = "")
+    temizle_html <- paste(as.character(output$oda_sohbet_temizle_alani), collapse = "")
+
+    expect_true(nzchar(model_html))
+    expect_true(grepl("oda_model_secimi", model_html, fixed = TRUE))
+    expect_true(nzchar(temizle_html))
+    expect_true(grepl("oda_sohbet_temizle", temizle_html, fixed = TRUE))
+  })
+
+  persona_html <- as.character(oo_persona_secici_html(
+    "selin", yetkili = TRUE,
+    dropdown_id = "oda-oda_persona_dropdown",
+    secim_input_id = "oda-oda_persona_secimi"
+  ))
+  expect_true(nzchar(persona_html))
+  expect_true(grepl("oda-oda_persona_secimi", persona_html, fixed = TRUE))
+
+  ui_html <- as.character(ortakOturumRoomUI("oda"))
+  baglam_pos <- regexpr("oda-oda_baglam_temizle", ui_html, fixed = TRUE)[1]
+  temizle_pos <- regexpr("oda-oda_sohbet_temizle_alani", ui_html, fixed = TRUE)[1]
+  odaya_yaz_pos <- regexpr("oda-odaya_yaz", ui_html, fixed = TRUE)[1]
+  expect_gt(baglam_pos, 0)
+  expect_gt(temizle_pos, baglam_pos)
+  expect_lt(temizle_pos, odaya_yaz_pos)
+})
+
+test_that("mesaj boşluğu gerçek balon kapsayıcısında ve oda yükseklik zinciri flex sözleşmesindedir", {
+  repo_root <- resolve_repo_root_for_tests()
+  oda_sunucu <- .oo_ui_oku(file.path(repo_root, "R", "module_ortak_oturum_room.R"))
+  css <- paste(
+    .oo_ui_oku(file.path(repo_root, "www", "css", "ortak_oturumlar.css")),
+    .oo_ui_oku(file.path(repo_root, "www", "css", "ortak_oturumlar_room.css")),
+    sep = "\n"
+  )
+
+  expect_true(grepl('class = "oo-mesaj-listesi"', oda_sunucu, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl(".oo-mesaj-listesi", css, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl(".oo-mesaj-akisi > .shiny-html-output", css, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("gap: 18px", css, fixed = TRUE, useBytes = TRUE))
+
+  expect_true(grepl(".ortak-calismalar-container.oo-oda-acik", css, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl(".content-wrapper.oo-oda-acik-kok", css, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("> .content > .tab-content > .tab-pane.active", css, fixed = TRUE, useBytes = TRUE))
+
+  hub_sunucu <- .oo_ui_oku(file.path(repo_root, "R", "module_ortak_calismalar.R"))
+  expect_true(grepl("oo-oda-acik-kok", hub_sunucu, fixed = TRUE, useBytes = TRUE))
+  expect_false(grepl(":has(.ortak-calismalar-container.oo-oda-acik)", css, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("flex: 1 1 auto", css, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("min-height: 0", css, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("height: 100%", css, fixed = TRUE, useBytes = TRUE))
 })

@@ -79,11 +79,15 @@ ortakOturumRoomUI <- function(id) {
         uiOutput(ns("uretim_durumu_alani")),
 
         # Mesaj yazma alanı: oda mesajı ile yapay zekâ sorusu AYRI eylemlerdir.
-        # Model ve persona seçimleri girdi kutusunun ALTINDA, aksiyon butonlarıyla
-        # AYNI satırdadır (dikey alan tasarrufu; ana söyleşi "Model Değiştir" dili).
+        # Model / persona / araç seçimleri girdi kutusunun ALTINDA, aksiyon
+        # butonlarıyla AYNI satırdadır (dikey alan tasarrufu; ana söyleşi
+        # "Model Değiştir" dili). Açıklama paragrafı yerine buton title'ları
+        # kullanılır: "Yapay Zekâya Sor" başlığı yanıtın tüm katılımcılar
+        # tarafından görüleceğini açıklamaya devam eder.
         div(
           class = "oo-composer",
           uiOutput(ns("composer_uyari_alani")),
+          uiOutput(ns("oda_arac_rozet_alani")),
           tags$textarea(
             id = ns("oda_mesaj_metni"),
             class = "oo-composer-girdi form-control",
@@ -96,7 +100,8 @@ ortakOturumRoomUI <- function(id) {
             div(
               class = "oo-composer-secimler",
               uiOutput(ns("oda_model_secim_alani"), inline = TRUE),
-              uiOutput(ns("oda_persona_secim_alani"), inline = TRUE)
+              uiOutput(ns("oda_persona_secim_alani"), inline = TRUE),
+              uiOutput(ns("oda_arac_secim_alani"), inline = TRUE)
             ),
             div(
               class = "oo-composer-butonlar",
@@ -107,6 +112,7 @@ ortakOturumRoomUI <- function(id) {
                 title = "Yeni bağlam başlat: bundan sonraki sorular önceki yazışmaları bağlam olarak kullanmaz (transkript korunur)",
                 `aria-label` = "Yeni yapay zekâ bağlamı başlat"
               ),
+              uiOutput(ns("oda_sohbet_temizle_alani"), inline = TRUE),
               actionButton(
                 ns("odaya_yaz"),
                 label = tagList(icon("comments"), span("Odaya Yaz")),
@@ -122,10 +128,6 @@ ortakOturumRoomUI <- function(id) {
                 `aria-label` = "Soruyu yapay zekâya gönder; yanıtı tüm katılımcılar görür"
               )
             )
-          ),
-          p(
-            class = "oo-composer-yz-notu",
-            tags$em("“Yapay Zekâya Sor”: Bu mesaj yapay zekâya gönderilecek ve yanıt tüm katılımcılar tarafından görülecek.")
           )
         )
       ),
@@ -163,6 +165,7 @@ ortakOturumRoomUI <- function(id) {
           div(
             class = "oo-yan-bolum oo-yan-belgeler",
             h4(class = "oo-bolum-baslik", tagList(icon("folder-open"), span("Ortak Belgeler"))),
+            uiOutput(ns("belge_yukleme_alani")),
             div(class = "oo-belgeler-listesi", uiOutput(ns("belgeler_alani")))
           )
         )
@@ -363,59 +366,9 @@ oo_katilimci_html <- function(satir, canli_durum = "ÇevrimDışı", ayni_odada 
   )
 }
 
-# Ortak belge kartı: metadata + "Kendi Dosyalarıma Kaydet" eylemi.
-# buton_id çağıran modülün namespace'lenmiş data-eylem hedefidir.
-oo_dosya_karti_html <- function(satir, kopyala_input_id) {
-  ad <- as.character(satir$DosyaAdi %||% "belge")[1]
-  ureten <- as.character(satir$UretenAdi %||% "")[1]
-  zaman <- as.character(satir$OlusturmaZamani %||% "")[1]
-  kopya_durumu <- as.character(satir$KopyalamaDurumu %||% "")[1]
-  dosya_id <- suppressWarnings(as.integer(satir$OrtakDosyaID %||% NA_integer_)[1])
-
-  boyut <- suppressWarnings(as.numeric(satir$DosyaBoyutu %||% NA_real_)[1])
-  boyut_metni <- if (!is.na(boyut) && boyut > 0) {
-    if (boyut >= 1024 * 1024) {
-      sprintf("%.1f MB", boyut / (1024 * 1024))
-    } else {
-      sprintf("%.0f KB", boyut / 1024)
-    }
-  } else {
-    ""
-  }
-
-  kopyalandi <- identical(kopya_durumu, "Kopyalandı")
-
-  div(
-    class = "oo-belge-karti",
-    `data-oo-dosya-id` = as.character(dosya_id),
-    div(
-      class = "oo-belge-ust",
-      icon("file-lines", class = "oo-belge-ikon"),
-      tags$span(class = "oo-belge-ad", title = ad, HTML(htmltools::htmlEscape(ad)))
-    ),
-    div(
-      class = "oo-belge-meta",
-      if (nzchar(boyut_metni)) tags$span(boyut_metni) else NULL,
-      if (nzchar(ureten)) tags$span(HTML(htmltools::htmlEscape(paste("Üreten:", ureten)))) else NULL,
-      tags$span(HTML(htmltools::htmlEscape(zaman)))
-    ),
-    div(
-      class = "oo-belge-aksiyonlar",
-      if (kopyalandi) {
-        tags$span(class = "oo-rozet oo-rozet-kopyalandi", tagList(icon("check"), span("Dosyalarımda")))
-      } else {
-        tags$button(
-          type = "button",
-          class = "btn-modern oo-btn-belge-kopyala",
-          `data-oo-dosya-id` = as.character(dosya_id),
-          `data-oo-hedef-input` = kopyala_input_id,
-          `aria-label` = paste("Belgeyi kendi dosyalarına kaydet:", ad),
-          tagList(icon("download"), span("Kendi Dosyalarıma Kaydet"))
-        )
-      }
-    )
-  )
-}
+# NOT: Ortak belge kartı üreticisi (oo_dosya_karti_html) belge paneli
+# bağlayıcısına taşındı: R/module_ortak_oturum_belge_paneli.R ("Kendi
+# Dosyalarıma Kaydet" + bağlam seçimi + kaldırma eylemleriyle birlikte).
 
 # Davet paneli kullanıcı satırı: ad/kullanıcı adı/e-posta/departman + canlı
 # durum + eylem butonları (Mergen içi çağrı / e-posta taslağı).
@@ -556,7 +509,7 @@ oo_model_secici_html <- function(modeller, adlar, aciklamalar, secili,
       style = "minimal",
       icon = icon("microchip"),
       status = "default",
-      up = TRUE,
+      up = FALSE,
       width = "260px",
       div(class = "dropdown-menu-header", icon("layer-group"), tags$span("Model Kataloğu")),
       tags$ul(class = "dropdown-menu-custom-list", ogeler)
@@ -634,7 +587,7 @@ oo_persona_secici_html <- function(secili, yetkili, dropdown_id, secim_input_id)
       style = "minimal",
       icon = icon("masks-theater"),
       status = "default",
-      up = TRUE,
+      up = FALSE,
       width = "280px",
       div(class = "dropdown-menu-header", icon("user-astronaut"), tags$span("Yapay Zekâ Personası")),
       tags$ul(class = "dropdown-menu-custom-list", ogeler)

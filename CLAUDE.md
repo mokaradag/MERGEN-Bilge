@@ -2465,15 +2465,18 @@ Non-negotiable boundaries:
 - Invitation email is a DRAFT-ONLY mailto flow (`R/helpers_ortak_oturum_email.R`):
   no automatic sending, and the draft must stay content-free
   (`ortak_davet_eposta_guvenli_mi`). In-app calls go through `MB_Bildirimler`.
-- Keep the manifest section order intact: `ortak_oturumlar` (17 files, pure
+- Keep the manifest section order intact: `ortak_oturumlar` (21 files, pure
   helpers → DB layer → UI/invites/AI-engine/Bilge-Yolaç-workbench/room/hub
   modules) loads after `module_claude_code`, owned by the `sohbet_llm_akis`
   seam; frontend assets `css/ortak_oturumlar.css` + `css/ortak_oturumlar_room.css`
-  (room-focused: model/persona selector, chat-bubble avatars, spacing — split
-  out to hold the per-file CSS ratchet) + `css/ortak_oturumlar_bilge_yolac.css` +
+  (room-focused: model/persona/tool selector, chat-bubble redesign, shared-doc
+  panel, themed scrollbars — split out to hold the per-file CSS ratchet) +
+  `css/ortak_oturumlar_bilge_yolac.css` +
   `js/ortak_oturumlar.js` belong to the `gecmis_kayit_arama` zone. The JS bridge
-  uses delegated `data-oo-hedef-input` clicks — never interpolate ids into CSS
-  selectors. Pure presentation-decision
+  uses delegated `data-oo-hedef-input` clicks plus delegated `change` events
+  (`data-oo-secim-input` doc-context checkboxes, `data-oo-arac-ayar` tool
+  settings) — never interpolate ids into CSS selectors. Pure
+  presentation-decision
   helpers (role label / online-status badge) live in
   `R/helpers_ortak_oturum_sunum.R` (kept OUT of the authorization file to hold
   the function ratchet); the Bilge Yolaç DB layer is split into
@@ -2483,6 +2486,46 @@ Non-negotiable boundaries:
   broadcast + BY bridge) is `R/module_ortak_oturum_yz.R`; the shared BY
   workbench (project dir / model tiers / scenarios / dir listing / plugins /
   real `run_claude_code` bridge) is `R/module_ortak_oturum_bilge_yolac.R`.
+- Shared document INPUTS: Ortak Belgeler is also shared model input, not only
+  generated output. `R/helpers_ortak_oturum_belgeler.R` owns participant
+  uploads (`ortak_db_belge_yukle`: same `validate_uploaded_file` +
+  `fm_normal_allowed_extensions()` + `getOption("mergen.upload_max_mb", 25L)`
+  boundary as single-session uploads), removal (`ortak_db_belge_sil`: soft
+  delete + root-inside physical unlink), shared selection state
+  (`ortak_db_belge_secim_guncelle`) and selected-docs LLM context
+  (`ortak_db_secili_belgeler` → `ortak_belge_baglam_sistem_mesaji`, per-file
+  budget + Kaynakça instruction). Physical uploads live under the MCP base
+  (mergen_uploads) in the deterministic per-session folder
+  `ortak_oturum_<id>` (the shared-room analogue of `user_<id>`); NO DDL
+  change — upload origin and selection ride in
+  `MB_OrtakOturum_Dosyalar.MetaJson`. Every server action re-checks
+  participant + content access + `yapay_zeka_sor` (fail-closed). Only
+  SELECTED documents enter the prompt. Panel binder + doc card builder live
+  in `R/module_ortak_oturum_belge_paneli.R` (do not fold them back into the
+  room module — near-limit budget).
+- Tool selector: `R/helpers_ortak_oturum_arac.R` (pure catalog from
+  `api_config$tool_mode_config` — single source, no duplicated tool defs;
+  question-MetaJson roundtrip; `oo_arac_uretim_plani` model/path resolution
+  incl. `resolve_runtime_model_for_request` deep-thinking models; pk-pipeline
+  bridge `oo_arac_sql_baglami_kur`; Langflow worker `oo_arac_langflow_uret`)
+  + `R/module_ortak_oturum_arac.R` (rich dropdown with in-menu tool settings
+  — Derin Düşünme / Detay Seviyesi / Düşünme Seviyesi / Süreç Akışı —, active
+  tool badge, and the model selector with MODEL LOCK while a tool is active).
+  Tool choice is written into the QUESTION message MetaJson so the persistent
+  queue re-applies the same tool context; Görsel Oluşturma is intentionally
+  unsupported (disabled row) in shared rooms; the single-session doc/tool
+  compatibility check is intentionally NOT applied in Ortak Söyleşi. Settings
+  inputs inside the dropdown are uncontrolled DOM inputs (delegated change
+  events) so toggling a setting never re-renders/closes the open menu.
+- "Sohbeti Temizle" (permanent clear) is DIFFERENT from the context-reset
+  wand: it requires an explicit confirmation modal, needs `katilimci_yonet`
+  (server-side re-check in `ortak_db_sohbet_temizle`), is refused while a
+  generation lock is running, clears queue rows + message rows in one
+  transaction (FK order: queue delete, lock message unlink, message delete)
+  and leaves a visible SistemMesajı. Shared documents are NOT deleted.
+- Room scrolling contract: programmatic scrolls are INSTANT (no CSS
+  `scroll-behavior: smooth` on `.oo-mesaj-akisi`); the JS bridge preserves
+  the reading position across re-renders unless the user is near the bottom.
 - No voice on Ortak pages: the AI generation engine never triggers TTS
   ("Yanıtları Seslendir") and the AI Expert ("AI Uzman Konuşması") mutes on
   `ortak_calismalar` / `ortak_sohbetler` / `ortak_bilge_yolac` (added to the
@@ -2609,6 +2652,8 @@ Protected by:
 - `tests/testthat/test-ortak-oturum-davet-online-behavior.R`
 - `tests/testthat/test-ortak-oturum-canli-durum-behavior.R`
 - `tests/testthat/test-ortak-oturum-db-behavior.R`
+- `tests/testthat/test-ortak-oturum-belgeler-behavior.R`
+- `tests/testthat/test-ortak-oturum-arac-behavior.R`
 - `tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R`
 - `tests/testthat/test-ortak-oturum-yz-reactive-context-behavior.R`
 - `tests/testthat/test-ortak-oturum-sql-contract.R`
@@ -2620,6 +2665,8 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-ortak-oturum-davet-online-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-canli-durum-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-db-behavior.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-belgeler-behavior.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-arac-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-yz-reactive-context-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-sql-contract.R")`

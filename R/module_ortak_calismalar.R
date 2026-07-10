@@ -457,13 +457,12 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       ortakOturumRoomUI(ns("oda"))
     })
 
-    # Oda açık/kapalı durumunu hub kabuğuna CSS sınıfı olarak yansıt: oda
-    # açıkken üstteki filtre butonları ve liste gizlenir (dikey alan aktif
-    # odaya kalır), oda kapanınca geri gelir.
+    # Oda açık/kapalı durumunu hub kabuğuna ve shinydashboard köküne yansıt:
+    # filtre/listeler gizlenir, kök flex zinciri yalnızca oda açıkken devreye girer.
     observeEvent(aktif_oturum(), {
       acik <- !is.null(aktif_oturum())
       shinyjs::runjs(sprintf(
-        "(function(){var k=document.querySelector('.ortak-calismalar-container[data-oo-sayfa=\"hub\"]');if(k){k.classList.toggle('oo-oda-acik', %s);}})();",
+        "(function(){var acik=%s;var k=document.querySelector('.ortak-calismalar-container[data-oo-sayfa=\"hub\"]');if(k){k.classList.toggle('oo-oda-acik', acik);}var c=document.querySelector('.content-wrapper');if(c){c.classList.toggle('oo-oda-acik-kok', acik);}})();",
         if (acik) "true" else "false"
       ))
     }, ignoreNULL = FALSE)

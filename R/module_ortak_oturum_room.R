@@ -237,9 +237,12 @@ ortakOturumRoomServer <- function(id,
 
       benim_id <- current_user_id()
       persona <- etkin_persona()
-      tagList(lapply(seq_len(nrow(df)), function(i) {
-        oo_mesaj_html(df[i, , drop = FALSE], aktif_kullanici_id = benim_id, persona = persona)
-      }))
+      div(
+        class = "oo-mesaj-listesi",
+        lapply(seq_len(nrow(df)), function(i) {
+          oo_mesaj_html(df[i, , drop = FALSE], aktif_kullanici_id = benim_id, persona = persona)
+        })
+      )
     })
 
     output$katilimcilar_alani <- renderUI({
@@ -284,54 +287,61 @@ ortakOturumRoomServer <- function(id,
       }))
     })
 
-    # Odanın etkin AI modelini seçen kompakt açılır menü (Yapılandırma'ya
-    # gitmeden değiştirilir; ana uygulamayla aynı model listesini kullanır).
-    # Yalnızca ODA veya ROL değişince yeniden çizilir; 4 sn yoklamada değil
-    # (seçim/odak bozulmaz).
+    # Oda modeli seçici: standart ortak söyleşi yolunun modelini seçer. Araç
+    # seçiliyken üretim planı aracın kendi modelini kullanabilir; bu seçici oda
+    # varsayılanını korumaya devam eder.
     output$oda_model_secim_alani <- renderUI({
-      aktif_oturum()
       rol <- oda_rol()
       if (!ortak_yetki_var_mi(rol, "yapay_zeka_sor")) {
         return(NULL)
       }
 
       modeller <- if (exists("api_config", inherits = TRUE)) {
-        as.character(api_config$local_models %||% character(0))
+        as.character(api_config$local_models %||% character())
       } else {
-        character(0)
+        character()
       }
-      adlar <- if (exists("api_config", inherits = TRUE)) names(api_config$local_models) else NULL
+      adlar <- if (exists("api_config", inherits = TRUE)) {
+        names(api_config$local_models %||% character())
+      } else {
+        NULL
+      }
+      if (is.null(adlar) || length(adlar) != length(modeller)) {
+        adlar <- modeller
+      }
       aciklamalar <- if (exists("api_config", inherits = TRUE)) {
         api_config$local_model_descriptions %||% list()
       } else {
         list()
       }
 
-      gecerli <- nzchar(modeller)
-      modeller <- modeller[gecerli]
-      if (!is.null(adlar) && length(adlar) == length(gecerli)) {
-        adlar <- adlar[gecerli]
-      } else {
-        adlar <- NULL
-      }
-
-      secili <- as.character(secili_model() %||% "")[1]
+      secili <- as.character(isolate(secili_model()) %||% "")[1]
       if (!nzchar(secili) && length(modeller) > 0L) {
         secili <- modeller[1]
+        secili_model(secili)
       }
 
-      # "Model Değiştir" dili (ana söyleşi bileşeni); HTML üretimi saf builder'da.
       oo_model_secici_html(
-        modeller, adlar, aciklamalar, secili,
+        modeller = modeller,
+        adlar = adlar,
+        aciklamalar = aciklamalar,
+        secili = secili,
         dropdown_id = ns("oda_model_dropdown"),
         secim_input_id = ns("oda_model_secimi")
       )
     })
 
     observeEvent(input$oda_model_secimi, {
-      deger <- as.character(input$oda_model_secimi %||% "")[1]
-      if (nzchar(deger)) {
-        secili_model(deger)
+      secim <- as.character(input$oda_model_secimi %||% "")[1]
+      modeller <- if (exists("api_config", inherits = TRUE)) {
+        as.character(api_config$local_models %||% character())
+      } else {
+        character()
+      }
+      if (nzchar(secim) && (length(modeller) == 0L || secim %in% modeller)) {
+        secili_model(secim)
+      } else {
+        oo_bildir("Seçilen model bu ortamda kullanılamaz.", tur = "warning")
       }
     }, ignoreInit = TRUE)
 
@@ -378,20 +388,8 @@ ortakOturumRoomServer <- function(id,
       }
     }, ignoreInit = TRUE)
 
-    output$belgeler_alani <- renderUI({
-      df <- belgeler()
-
-      if (!is.data.frame(df) || nrow(df) == 0L) {
-        return(div(
-          class = "oo-bos-durum oo-bos-belge",
-          p("Bu odada henüz ortak belge üretilmedi.")
-        ))
-      }
-
-      tagList(lapply(seq_len(nrow(df)), function(i) {
-        oo_dosya_karti_html(df[i, , drop = FALSE], kopyala_input_id = ns("belge_kopyala"))
-      }))
-    })
+    # NOT: belgeler_alani + belge yükleme/seçim/kaldırma/kopyalama eylemleri
+    # belge paneli bağlayıcısına taşındı: R/module_ortak_oturum_belge_paneli.R.
 
     # NOT: uretim_durumu_alani çıktısı (süren üretim + kısmi yanıt + kuyruk)
     # yapay zekâ üretim motoruna (ortakOturumYzBind) taşınmıştır.
@@ -494,6 +492,8 @@ ortakOturumRoomServer <- function(id,
       oturum_bilgisi = oturum_bilgisi,
       benim_katilimim = benim_katilimim,
       katilimcilar = katilimcilar,
+      belgeler = belgeler,
+      oda_rol = oda_rol,
       kullanici_canli_durumu = kullanici_canli_durumu,
       yenile_sayaci = yenile_sayaci,
       by_yenile_sayaci = by_yenile_sayaci,
@@ -506,6 +506,9 @@ ortakOturumRoomServer <- function(id,
       yenile = oo_yenile
     )
 
+    ortakOturumAracBind(input, output, session, ctx = oda_ctx, motor = motor)
+    ortakOturumBelgePaneliBind(input, output, session, ctx = oda_ctx)
+    ortakOturumSohbetTemizleBind(input, output, session, ctx = oda_ctx)
     ortakOturumYzBind(input, output, session, ctx = oda_ctx, motor = motor)
     ortakOturumBilgeYolacBind(input, output, session, ctx = oda_ctx, motor = motor)
 
@@ -699,22 +702,9 @@ ortakOturumRoomServer <- function(id,
       oo_yenile()
     })
 
-    # --- Belge kopyalama ve oda kapatma ------------------------------------------
-
-    observeEvent(input$belge_kopyala, {
-      dosya_id <- suppressWarnings(as.integer(input$belge_kopyala$id))
-      req(!is.na(dosya_id))
-
-      sonuc <- ortak_dosya_kisisel_kopyala(dosya_id, current_user_id())
-
-      if (isTRUE(sonuc$basarili)) {
-        ortak_db_olay_ekle(aktif_oturum(), "BelgeKopyalandı", current_user_id())
-        oo_bildir(sonuc$mesaj)
-      } else {
-        oo_bildir(sonuc$mesaj, tur = "error")
-      }
-      oo_yenile()
-    })
+    # --- Oda kapatma / ayrılma ----------------------------------------------------
+    # NOT: "Kendi Dosyalarıma Kaydet" (belge_kopyala) gözlemcisi belge paneli
+    # bağlayıcısına taşındı: R/module_ortak_oturum_belge_paneli.R.
 
     observeEvent(input$oda_kapat, {
       on_close()

@@ -29,21 +29,53 @@
 
 # Tüm custom message'ları (shinyjs::runjs dahil) serileştirip tek metinde birleştirir.
 .capture_nav <- function(env, prime_tab, real_tab, show_welcome = FALSE) {
-  rec <- new.env(); rec$msgs <- list(); rec$welcome_calls <- 0L
-  shiny::testServer(function(input, output, session) {
-    values <- shiny::reactiveValues(show_welcome = show_welcome, saved_chats = list())
-    env$navigationObserversInit(
-      input = input, session = session, values = values,
-      render_welcome_screen = function(...) { rec$welcome_calls <- rec$welcome_calls + 1L; invisible(NULL) }
+  rec <- new.env()
+  rec$msgs <- list()
+  rec$welcome_calls <- 0L
+
+  record_runjs <- function(code) {
+    rec$msgs[[length(rec$msgs) + 1L]] <- list(
+      type = "shinyjs.runjs",
+      message = code
     )
-  }, {
-    session$sendCustomMessage <- function(type, message) {
-      rec$msgs[[length(rec$msgs) + 1L]] <- list(type = type, message = message)
-      invisible(TRUE)
-    }
-    session$setInputs(tabs = prime_tab)
-    session$setInputs(tabs = real_tab)
-  })
+    invisible(NULL)
+  }
+
+  testthat::with_mocked_bindings(
+    {
+      shiny::testServer(
+        function(input, output, session) {
+          values <- shiny::reactiveValues(
+            show_welcome = show_welcome,
+            saved_chats = list()
+          )
+
+          env$navigationObserversInit(
+            input = input,
+            session = session,
+            values = values,
+            render_welcome_screen = function(...) {
+              rec$welcome_calls <- rec$welcome_calls + 1L
+              invisible(NULL)
+            }
+          )
+        },
+        {
+          session$setInputs(tabs = prime_tab)
+          session$setInputs(tabs = real_tab)
+        }
+      )
+    },
+
+    runjs = record_runjs,
+
+    # Gecikmeli ifadeyi bilerek zorlamaz.
+    # Böylece render_welcome_screen senkron çalışmaz.
+    delay = function(ms, expr) invisible(NULL),
+
+    .package = "shinyjs"
+  )
+
   rec
 }
 
