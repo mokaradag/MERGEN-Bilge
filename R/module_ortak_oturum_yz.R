@@ -407,7 +407,20 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 		error = function(e) NULL
 	  )
 	  if (!is.null(belge_mesaji)) {
-		gecmis <- c(list(belge_mesaji), gecmis)
+		kullanici_indeksleri <- which(vapply(
+		  gecmis, function(m) identical(m$role, "user"), logical(1)
+		))
+		if (length(kullanici_indeksleri) > 0L) {
+		  son_kullanici <- max(kullanici_indeksleri)
+		  gecmis[[son_kullanici]]$content <- paste(
+			as.character(belge_mesaji$content %||% "")[1],
+			"Kullanıcının sorusu:",
+			as.character(gecmis[[son_kullanici]]$content %||% "")[1],
+			sep = "\n\n"
+		  )
+		} else {
+		  gecmis <- c(list(belge_mesaji), gecmis)
+		}
 	  }
 	}
 

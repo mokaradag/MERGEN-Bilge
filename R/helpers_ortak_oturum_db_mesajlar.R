@@ -464,7 +464,7 @@ ortak_db_uretim_kilidi_birak <- function(oturum_id,
 }
 
 #' Odada süren aktif yanıt üretimi var mı?
-ortak_db_aktif_uretim_var_mi <- function(oturum_id, conn = NULL) {
+ortak_db_aktif_uretim_var_mi <- function(oturum_id, conn = NULL, bayat_dakika = 15L) {
   oturum_id <- .oo_db_pos_int(oturum_id)
   if (is.na(oturum_id)) {
     return(FALSE)
@@ -479,10 +479,23 @@ ortak_db_aktif_uretim_var_mi <- function(oturum_id, conn = NULL) {
   .oo_db_try({
     aktif <- DBI::dbGetQuery(
       handle$conn,
-      "SELECT KilitDurumu FROM MB_OrtakOturum_AktifUretimler WHERE OrtakOturumID = ?",
+      "SELECT KilitDurumu, BaslamaZamani FROM MB_OrtakOturum_AktifUretimler WHERE OrtakOturumID = ?",
       params = list(oturum_id)
     )
-    nrow(aktif) > 0L && identical(aktif$KilitDurumu[1], "Çalışıyor")
+    calisiyor <- nrow(aktif) > 0L && identical(aktif$KilitDurumu[1], "Çalışıyor")
+    if (!isTRUE(calisiyor)) {
+      return(FALSE)
+    }
+
+    baslama <- suppressWarnings(as.POSIXct(
+      as.character(aktif$BaslamaZamani[1]), tz = "UTC"
+    ))
+    yas_dakika <- if (length(baslama) == 1L && !is.na(baslama)) {
+      as.numeric(difftime(Sys.time(), baslama, units = "mins"))
+    } else {
+      Inf
+    }
+    !(!is.na(yas_dakika) && yas_dakika >= as.numeric(bayat_dakika))
   },
   fallback = FALSE)
 }

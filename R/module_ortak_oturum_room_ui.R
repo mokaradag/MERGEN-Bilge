@@ -509,7 +509,7 @@ oo_model_secici_html <- function(modeller, adlar, aciklamalar, secili,
       style = "minimal",
       icon = icon("microchip"),
       status = "default",
-      up = TRUE,
+      up = FALSE,
       width = "260px",
       div(class = "dropdown-menu-header", icon("layer-group"), tags$span("Model Kataloğu")),
       tags$ul(class = "dropdown-menu-custom-list", ogeler)
@@ -587,7 +587,7 @@ oo_persona_secici_html <- function(secili, yetkili, dropdown_id, secim_input_id)
       style = "minimal",
       icon = icon("masks-theater"),
       status = "default",
-      up = TRUE,
+      up = FALSE,
       width = "280px",
       div(class = "dropdown-menu-header", icon("user-astronaut"), tags$span("Yapay Zekâ Personası")),
       tags$ul(class = "dropdown-menu-custom-list", ogeler)

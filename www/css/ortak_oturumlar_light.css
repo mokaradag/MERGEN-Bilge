@@ -1,0 +1,30 @@
+/* Dosya: www/css/ortak_oturumlar_light.css
+ * Açıklama: Ortak oturum açık tema son katmanı. Büyük ortak_oturumlar.css
+ * bakım bütçesini aşmadan açık tema yüzeylerini ayrı tutar.
+ */
+html[data-theme="light"] .oo-oturum-karti,
+html[data-theme="light"] .oo-oda-yerlesim {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(148, 163, 184, 0.42);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+}
+html[data-theme="light"] .oo-oda-yan-panel {
+  border-left-color: rgba(148, 163, 184, 0.55);
+}
+html[data-theme="light"] .oo-mesaj-govde,
+html[data-theme="light"] .oo-belge-karti,
+html[data-theme="light"] .oo-katilimci,
+html[data-theme="light"] .oo-composer-girdi {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.5);
+}
+html[data-theme="light"] .oo-composer-persona-rozet,
+html[data-theme="light"] .oo-oda-btn-notr {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.55);
+  color: #334155;
+}
+html[data-theme="light"] .oo-oda-btn-notr:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}

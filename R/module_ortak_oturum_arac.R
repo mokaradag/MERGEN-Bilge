@@ -218,7 +218,7 @@ oo_arac_secici_html <- function(katalog,
       style = "minimal",
       icon = icon("toolbox"),
       status = "default",
-      up = TRUE,
+      up = FALSE,
       width = "320px",
       div(class = "dropdown-menu-header", icon("screwdriver-wrench"), tags$span("Analiz Araçları")),
       tags$ul(class = "dropdown-menu-custom-list oo-arac-listesi", temizle_ogesi, ogeler),
@@ -317,6 +317,10 @@ ortakOturumAracBind <- function(input, output, session, ctx, motor) {
   output$oda_arac_secim_alani <- renderUI({
     ctx$aktif_oturum()
     arac_ailesi()
+    bilgi <- ctx$oturum_bilgisi()
+    if (!is.null(bilgi) && identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")) {
+      return(NULL)
+    }
     rol <- ctx$oda_rol()
     if (!ortak_yetki_var_mi(rol, "yapay_zeka_sor")) {
       return(NULL)

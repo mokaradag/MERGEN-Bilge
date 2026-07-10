@@ -161,6 +161,10 @@ ortakOturumBelgePaneliBind <- function(input, output, session, ctx) {
   # değil); böylece süren bir dosya seçimi/yükleme akışı bozulmaz.
   output$belge_yukleme_alani <- renderUI({
     ctx$aktif_oturum()
+    bilgi <- ctx$oturum_bilgisi()
+    if (!is.null(bilgi) && identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")) {
+      return(NULL)
+    }
     rol <- ctx$oda_rol()
     if (!ortak_yetki_var_mi(rol, "yapay_zeka_sor")) {
       return(NULL)
@@ -174,6 +178,11 @@ ortakOturumBelgePaneliBind <- function(input, output, session, ctx) {
   })
 
   output$belgeler_alani <- renderUI({
+    bilgi <- ctx$oturum_bilgisi()
+    if (!is.null(bilgi) && identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")) {
+      return(NULL)
+    }
+
     df <- ctx$belgeler()
 
     if (!is.data.frame(df) || nrow(df) == 0L) {
