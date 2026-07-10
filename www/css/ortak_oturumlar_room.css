@@ -491,6 +491,30 @@
   line-height: 1.35;
 }
 
+/* BilgeYolaç odası: belge yükleme yerine dürüst bilgilendirme notu (belgeler
+ * çalışma alanı üzerinden paylaşılır; bağlam iması yapılmaz). */
+.oo-belge-by-notu {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.78em;
+  line-height: 1.4;
+  color: var(--color-text-soft);
+  background: var(--color-surface-2, var(--color-bg-elevated));
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.oo-belge-by-notu .fa,
+.oo-belge-by-notu .fas,
+.oo-belge-by-notu svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--color-info);
+}
+
 .oo-belge-secili {
   border-color: var(--oo-accent, var(--color-info));
   box-shadow: inset 0 0 0 1px var(--oo-accent, var(--color-info));

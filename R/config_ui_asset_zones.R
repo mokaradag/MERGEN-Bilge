@@ -363,6 +363,7 @@ ui_asset_ownership_zones <- list(
       "css/history_saved_chats.css",
       "css/chat_search_modal.css",
       "css/ortak_oturumlar.css",
+      "css/ortak_oturumlar_light.css",
       "css/ortak_oturumlar_room.css",
       "css/ortak_oturumlar_bilge_yolac.css"
     ),

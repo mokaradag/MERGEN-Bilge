@@ -17,6 +17,7 @@
   'use strict';
 
   var OO_HEARTBEAT_MS = 30000;
+  var OO_BY_PANEL_KEY = 'oo_by_panel_acik';
   var heartbeatTimer = null;
 
   function ooSetInput(inputId, payload) {
@@ -28,6 +29,65 @@
     } else if (typeof Shiny.onInputChange === 'function') {
       // Eski Shiny istemcileri için geriye dönük uyumlu yol.
       Shiny.onInputChange(inputId, payload);
+    }
+  }
+
+  // Oda-açık kök sınıfı TEK yerden uygulanır: .content-wrapper paylaşılan bir
+  // kabuktur (tüm sekmeler aynı kabı kullanır). Sınıf yalnızca (1) oda açıkken
+  // VE (2) Ortak Çalışmalar hub sekmesi gerçekten görünürken durur; kullanıcı
+  // başka bir sayfaya geçince kaldırılır. Aksi halde 100vh/overflow kilidi
+  // diğer tüm sayfaların yerleşimini bozar (uygulama geneli daralma/kırpılma
+  // regresyonunun kök nedeni).
+  function ooKokSinifiniGuncelle() {
+    var kok = document.querySelector('.content-wrapper');
+    if (!kok) {
+      return;
+    }
+
+    var hub = document.querySelector('.ortak-calismalar-container[data-oo-sayfa="hub"]');
+    var odaAcik = !!(hub && hub.classList.contains('oo-oda-acik'));
+
+    var hubGorunur = false;
+    if (hub) {
+      var pane = hub.closest('.tab-pane');
+      hubGorunur = !pane || pane.classList.contains('active');
+    }
+
+    kok.classList.toggle('oo-oda-acik-kok', odaAcik && hubGorunur);
+  }
+
+  window.MergenOrtakOturum = window.MergenOrtakOturum || {};
+  window.MergenOrtakOturum.kokGuncelle = ooKokSinifiniGuncelle;
+
+  // Sekme geçişleri: shinydashboard sekmeleri Bootstrap jQuery olayı yayar;
+  // hash tabanlı gezinme için hashchange de dinlenir.
+  if (window.jQuery) {
+    window.jQuery(document).on('shown.bs.tab', 'a[data-toggle="tab"]', function () {
+      window.setTimeout(ooKokSinifiniGuncelle, 0);
+    });
+  }
+  window.addEventListener('hashchange', function () {
+    window.setTimeout(ooKokSinifiniGuncelle, 0);
+  });
+
+  // Bilge Yolaç çalışma alanı paneli aç/kapa tercihi oturum boyunca korunur;
+  // yeniden render (yoklama/oda tazeleme) tercihi SIFIRLAMAZ. Varsayılan
+  // kapalıdır (sohbet birincil yüzeydir).
+  function ooByPanelTercihiniUygula() {
+    var panel = document.querySelector('[data-oo-by-panel]');
+    if (!panel) {
+      return;
+    }
+    var tercih = null;
+    try {
+      tercih = window.sessionStorage.getItem(OO_BY_PANEL_KEY);
+    } catch (e) {
+      tercih = null;
+    }
+    if (tercih === '1') {
+      panel.classList.remove('oo-by-panel-kapali');
+    } else if (tercih === '0') {
+      panel.classList.add('oo-by-panel-kapali');
     }
   }
 
@@ -53,6 +113,12 @@
         if (byPanel) {
           ev.preventDefault();
           byPanel.classList.toggle('oo-by-panel-kapali');
+          try {
+            window.sessionStorage.setItem(
+              OO_BY_PANEL_KEY,
+              byPanel.classList.contains('oo-by-panel-kapali') ? '0' : '1'
+            );
+          } catch (e) { /* yoksay */ }
           return;
         }
       }
@@ -274,12 +340,24 @@
 
   document.addEventListener('shiny:value', function (ev) {
     var ad = ev && ev.name ? String(ev.name) : '';
+
+    // BY panel iskeleti yeniden çizildiğinde (oda/erişim değişimi) kullanıcının
+    // aç/kapa tercihi geri uygulanır; yoklama iç kartları çizer, iskelete dokunmaz.
+    if (ad.indexOf('by_alani') !== -1) {
+      window.setTimeout(function () {
+        ooByPanelTercihiniUygula();
+        ooKokSinifiniGuncelle();
+      }, 0);
+      return;
+    }
+
     if (ad.indexOf('mesajlar_alani') === -1 && ad.indexOf('oda_alani') === -1) {
       return;
     }
     window.setTimeout(function () {
       ooKatilimciYukseklikGeriYukle();
       ooAkisiKonumla();
+      ooKokSinifiniGuncelle();
     }, 30);
   });
 

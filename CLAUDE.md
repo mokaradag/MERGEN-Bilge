@@ -2517,6 +2517,45 @@ Non-negotiable boundaries:
   compatibility check is intentionally NOT applied in Ortak Söyleşi. Settings
   inputs inside the dropdown are uncontrolled DOM inputs (delegated change
   events) so toggling a setting never re-renders/closes the open menu.
+- Shared-room error redaction: direct tool/analysis answers persist to the
+  SHARED transcript, so `oo_arac_sql_baglami_kur` and the BY bridge pass
+  error-shaped text through `oo_arac_oda_guvenli_yanit()` — raw SQL/ODBC/DSN/
+  driver diagnostics (`**Veritabanı Hatası:**`, `nanodbc`, `SQLSTATE`, `DSN=`,
+  `Error in `, ...) are reduced to a generic Turkish message (details stay in
+  server logs); ordinary answers pass unchanged. Never post raw
+  `conditionMessage(e)` into room messages.
+- Langflow memory is ROOM-scoped: `oo_arac_langflow_cagrisi_hazirla` keys
+  `session_id` as `mergen_build_langflow_session_id("oda", "oo_<oturum_id>",
+  flow_id)` — participants in one room share continuity; different rooms and
+  different flows stay isolated; personal (`mergen_<uid>_...`) sessions cannot
+  collide. Do not key shared-room Langflow sessions by `soran_id`.
+- BilgeYolaç-room gating: analysis-tool selector, active-tool badge and
+  document-context controls are NOT rendered in `BilgeYolaç` rooms (questions
+  go to the BY bridge where those paths never run). `oo_arac_soru_meta_hazirla()`
+  writes NO tool plan and an explicitly EMPTY document snapshot for BY-room
+  questions so the CLI-less normal-LLM fallback cannot silently include
+  context the UI never advertised. The doc panel still LISTS shared documents
+  in BY rooms (download/copy/delete preserved) behind a truthful note
+  (`oo-belge-by-notu`); `oo_dosya_karti_html(..., baglam_secimi = FALSE)`
+  suppresses the selection checkbox, the "Bağlamda" badge and the selected
+  ring; upload/selection observers re-check room type server-side (fail-closed).
+- Ortak Bilge Yolaç workspace panel: DEFAULT-COLLAPSED skeleton built by
+  `oo_by_panel_iskeleti_html()` in `R/helpers_ortak_oturum_by_calisma_alani.R`
+  (loaded before the BY module). The skeleton re-renders only on room/access
+  signal changes; polling refreshes only inner card outputs, so the user's
+  collapse choice survives reactive updates (preference persisted in
+  `sessionStorage` by `www/js/ortak_oturumlar.js`; the body scrolls internally
+  so the chat stays primary). Proje Dizini is an EDITABLE path input for
+  Sahip/Oturum Yöneticisi validated through `cc_policy_validate_workdir` PLUS
+  the room-isolation gate `ortak_by_ozel_dizin_dogrula()` — custom dirs may
+  never point inside managed file roots (another room's workspace, personal
+  upload buckets); reset returns to the shared per-room folder.
+- App-wide layout guard: the `oo-oda-acik-kok` class on the SHARED
+  `.content-wrapper` is managed by the tab-aware updater
+  `window.MergenOrtakOturum.kokGuncelle()` — removed when the user navigates to
+  another tab, re-applied on return. Do not toggle that class directly without
+  the tab-visibility check; a stale class locks every other page into the
+  100vh/overflow flex chain (the app-wide narrow/clipped-page regression).
 - "Sohbeti Temizle" (permanent clear) is DIFFERENT from the context-reset
   wand: it requires an explicit confirmation modal, needs `katilimci_yonet`
   (server-side re-check in `ortak_db_sohbet_temizle`), is refused while a
@@ -2656,6 +2695,7 @@ Protected by:
 - `tests/testthat/test-ortak-oturum-arac-behavior.R`
 - `tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R`
 - `tests/testthat/test-ortak-oturum-yz-reactive-context-behavior.R`
+- `tests/testthat/test-ortak-oturum-by-panel-behavior.R`
 - `tests/testthat/test-ortak-oturum-sql-contract.R`
 - `tests/testthat/test-ortak-oturum-ui-contract.R`
 
@@ -2669,6 +2709,7 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-ortak-oturum-arac-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-yz-reactive-context-behavior.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-by-panel-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-sql-contract.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-ui-contract.R")`
 

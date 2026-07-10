@@ -1,28 +1,21 @@
 # ==============================================================================
 # Dosya Yolu: R/module_ortak_oturum_bilge_yolac.R
-# Açıklama: Ortak Bilge Yolaç çalışma alanı bağlayıcısı. Oda sunucu modülünden
-#           (R/module_ortak_oturum_room.R) çağrılır; yalnızca KaynakTuru =
-#           BilgeYolaç odalarında görünür. Tek kullanıcılı Bilge Yolaç
-#           deneyiminin ortak oda sürümü:
-#             * Proje Dizini: oda başına PAYLAŞILAN çalışma alanı
-#               (ortak belge kökü altında calisma_alani/).
-#             * Model katmanları: Hızlı / Dengeli / Güçlü (settings.json).
-#             * Hazır Senaryolar: tek kullanıcılı senaryo şablonları.
-#             * Dizin İçeriği: paylaşılan çalışma alanı listesi.
-#             * Eklentiler: bilge_yolac_plugins salt-okunur envanteri.
-#             * Canlı çalıştırma köprüsü: run_claude_code() paylaşılan çalışma
-#               alanında koşar; çalıştırma MB_OrtakBilgeYolac_Calistirmalar'a,
-#               üretilen dosyalar ortak belge deposuna yazılır.
-#           Mini oyun BİLİNÇLİ olarak ortak moda taşınmaz.
+# Açıklama: Ortak Bilge Yolaç çalışma alanı bağlayıcısı; yalnızca KaynakTuru =
+#           BilgeYolaç odalarında görünür (oda sunucu modülünden çağrılır).
+#           Tek kullanıcılı deneyimin oda sürümü: düzenlenebilir Proje Dizini,
+#           model katmanları, Hazır Senaryolar, Dizin İçeriği, Eklentiler ve
+#           run_claude_code() canlı çalıştırma köprüsü. Panel/kart HTML
+#           üreticileri ve dizin güvenlik kapısı
+#           R/helpers_ortak_oturum_by_calisma_alani.R içindedir.
 #
-# Sözleşmeler:
-#   * Çalışma alanı mutasyonu (klasör kopyalama/dosya yükleme) yalnızca
-#     ortak_by_calisma_alani_yazabilir_mi (Sahip/Oturum Yöneticisi) rollerine
-#     açıktır; çalıştırma ortak_by_calistirabilir_mi (yapay_zeka_sor) ister.
-#   * CLI bu ortamda yoksa sahte başarı ÜRETİLMEZ: durum rozeti "CLI bağlı
-#     değil" gösterir ve sorular normal LLM yoluna düşer (motor sözleşmesi).
-#   * Kişisel dosyalar OTOMATİK kopyalanmaz; yalnızca açık kullanıcı eylemiyle
-#     paylaşılan çalışma alanına alınır.
+# Sözleşmeler (ayrıntı: CLAUDE.md + docs/ortak-oturumlar.md):
+#   * Panel iskeleti yalnızca oda/erişim sinyali değişince yeniden çizilir;
+#     yoklama iç kartları tazeler — aç/kapa tercihi (varsayılan KAPALI) korunur.
+#   * Dizin değiştirme / dosya kopyalama yalnızca yazma yetkili rollere açıktır;
+#     özel proje dizini ortak_by_ozel_dizin_dogrula fail-closed kapısından geçer
+#     (yönetilen köklere — başka oda / kişisel kova — işaret edilemez).
+#   * CLI yoksa sahte başarı ÜRETİLMEZ; sorular normal LLM yoluna düşer.
+#   * Kişisel dosyalar OTOMATİK kopyalanmaz. Mini oyun ortak moda taşınmaz.
 # ==============================================================================
 
 # Oda başına paylaşılan Bilge Yolaç çalışma alanı dizini (yoksa oluşturur).
@@ -56,6 +49,15 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
 
   by_model <- reactiveVal("")
   dizin_yenile <- reactiveVal(0L)
+
+  # Kompakt sinyaller: panel iskeleti yalnızca bu değerler GERÇEKTEN
+  # değişince yeniden çizilir (4 sn yoklama panelin aç/kapa DOM durumunu
+  # sıfırlamasın diye gövde ayrı iç çıktılara bölünmüştür).
+  by_odasi_sinyali <- reactiveVal(FALSE)
+  by_erisim_sinyali <- reactiveVal(FALSE)
+  by_yazabilir_sinyali <- reactiveVal(FALSE)
+  by_kayit_dizin_rv <- reactiveVal("")
+  by_kayit_model_rv <- reactiveVal("")
 
   cli_yolu <- function() {
     if (!exists("resolve_claude_cli_path", mode = "function", inherits = TRUE)) {
@@ -115,185 +117,203 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     !is.null(katilim) && ortak_by_calisma_alani_yazabilir_mi(katilim$Rol[1])
   }
 
-  # --- Çalışma alanı paneli -----------------------------------------------------
+  # Etkin çalışma dizini: kayıttaki özel dizin (varsa/erişilebilirse) veya
+  # paylaşılan otomatik oda klasörü. Reaktif olmayan bağlamlardan da çağrılır.
+  etkin_dizin_bilgisi <- function(oturum_id) {
+    kayit_dizini <- shiny::isolate(by_kayit_dizin_rv())
+    ortak_by_etkin_calisma_dizini(kayit_dizini, oturum_id)
+  }
+
+  # Kompakt sinyal güncelleyicileri (identical değişim kapısı).
+  observe({
+    yeni_oda <- isTRUE(by_odasi_mi())
+    katilim <- ctx$benim_katilimim()
+    yeni_erisim <- !is.null(katilim) &&
+      ortak_icerik_erisimi_var_mi(katilim$KatilimDurumu[1])
+    yeni_yazma <- !is.null(katilim) &&
+      ortak_by_calisma_alani_yazabilir_mi(katilim$Rol[1])
+
+    if (!identical(isolate(by_odasi_sinyali()), yeni_oda)) by_odasi_sinyali(yeni_oda)
+    if (!identical(isolate(by_erisim_sinyali()), yeni_erisim)) by_erisim_sinyali(yeni_erisim)
+    if (!identical(isolate(by_yazabilir_sinyali()), yeni_yazma)) by_yazabilir_sinyali(yeni_yazma)
+  })
+
+  observe({
+    kayit <- by_kaydi()
+    dizin <- if (!is.null(kayit)) as.character(kayit$OrtakCalismaDizini[1] %||% "") else ""
+    if (is.na(dizin)) dizin <- ""
+    model <- if (!is.null(kayit)) as.character(kayit$Model[1] %||% "") else ""
+    if (is.na(model)) model <- ""
+
+    if (!identical(isolate(by_kayit_dizin_rv()), dizin)) by_kayit_dizin_rv(dizin)
+    if (!identical(isolate(by_kayit_model_rv()), model)) by_kayit_model_rv(model)
+  })
+
+  # --- Panel iskeleti (statik; varsayılan KAPALI) -------------------------------
+  # İskelet yalnızca oda/erişim sinyalleri değişince yeniden çizilir; yoklama
+  # yalnızca iç kart çıktılarını tazeler (aç/kapa tercihi korunur).
 
   output$by_alani <- renderUI({
-    if (!by_odasi_mi()) {
+    oturum_id <- ctx$aktif_oturum()
+    if (is.null(oturum_id) || !by_odasi_sinyali() || !by_erisim_sinyali()) {
       return(NULL)
     }
 
+    senaryolar <- if (exists("claude_code_scenarios", inherits = TRUE)) {
+      claude_code_scenarios
+    } else {
+      list()
+    }
+
+    oo_by_panel_iskeleti_html(ns, senaryolar = senaryolar)
+  })
+
+  output$by_durum_rozeti <- renderUI({
+    req(by_odasi_sinyali())
+    dizin_yenile()
+
+    cli <- cli_yolu()
+    oo_by_durum_rozeti_html(!is.null(cli) && nzchar(cli))
+  })
+
+  # --- Proje Dizini kartı --------------------------------------------------------
+
+  output$by_proje_dizini_karti <- renderUI({
+    oturum_id <- ctx$aktif_oturum()
+    req(oturum_id, by_odasi_sinyali())
+
+    bilgi <- ortak_by_etkin_calisma_dizini(by_kayit_dizin_rv(), oturum_id)
+    yol <- as.character(bilgi$yol %||% "")[1]
+
+    oo_by_kart_html(
+      "Proje Dizini", "folder-open",
+      oo_by_proje_dizini_govde_html(
+        girdi_id = ns("by_workdir_girdisi"),
+        uygula_id = ns("by_workdir_uygula"),
+        sifirla_id = ns("by_workdir_sifirla"),
+        yol = yol,
+        ozel = isTRUE(bilgi$ozel),
+        yazabilir = by_yazabilir_sinyali()
+      )
+    )
+  })
+
+  observeEvent(input$by_workdir_uygula, {
     oturum_id <- ctx$aktif_oturum()
     req(oturum_id)
 
-    katilim <- ctx$benim_katilimim()
-    if (is.null(katilim) || !ortak_icerik_erisimi_var_mi(katilim$KatilimDurumu[1])) {
-      return(NULL)
+    if (!calisma_alani_yazabilir()) {
+      ctx$bildir("Proje dizinini yalnızca Sahip ve Oturum Yöneticisi değiştirebilir.", tur = "error")
+      return(invisible(NULL))
     }
 
-    ws <- ortak_by_calisma_alani(oturum_id)
-    cli <- cli_yolu()
-    cli_bagli <- !is.null(cli) && nzchar(cli)
+    yol <- trimws(as.character(input$by_workdir_girdisi %||% "")[1])
+    if (!nzchar(yol)) {
+      ctx$bildir("Önce bir proje dizini yolu yazın.", tur = "warning")
+      return(invisible(NULL))
+    }
 
-    kayit <- by_kaydi()
+    # Yazılan yol zaten paylaşılan oda klasörüyse özel dizin kaydı tutulmaz.
+    otomatik <- ortak_by_calisma_alani(oturum_id)
+    if (!is.null(otomatik) && .ortak_by_kok_icinde_mi(yol, otomatik) &&
+        .ortak_by_kok_icinde_mi(otomatik, yol)) {
+      ortak_db_by_oturum_guncelle(oturum_id, calisma_dizini = "")
+      ctx$bildir("Oda paylaşılan klasöründe çalışmaya devam edecek.")
+      ctx$yenile()
+      return(invisible(NULL))
+    }
+
+    dogrulama <- ortak_by_ozel_dizin_dogrula(
+      yol, oturum_id,
+      user_id = ctx$current_user_id()
+    )
+
+    if (!isTRUE(dogrulama$ok)) {
+      ctx$bildir(as.character(dogrulama$error %||% "Proje dizini doğrulanamadı."), tur = "error")
+      return(invisible(NULL))
+    }
+
+    by_kaydi_garantile(oturum_id, NULL)
+    ortak_db_by_oturum_guncelle(oturum_id, calisma_dizini = dogrulama$path)
+    # Dizin değişikliği tüm odayı etkiler; katılımcılara görünür sistem notu düşer.
+    ortak_db_mesaj_ekle(
+      oturum_id = oturum_id,
+      gonderen_kullanici_id = NULL,
+      mesaj_turu = "SistemMesajı",
+      mesaj_metni = sprintf("Bilge Yolaç proje dizini güncellendi: %s", dogrulama$path)
+    )
+    ctx$bildir("Proje dizini güncellendi; sonraki çalıştırmalar bu dizinde koşacak.")
+    dizin_yenile(isolate(dizin_yenile()) + 1L)
+    ctx$yenile()
+  })
+
+  observeEvent(input$by_workdir_sifirla, {
+    oturum_id <- ctx$aktif_oturum()
+    req(oturum_id)
+
+    if (!calisma_alani_yazabilir()) {
+      ctx$bildir("Proje dizinini yalnızca Sahip ve Oturum Yöneticisi değiştirebilir.", tur = "error")
+      return(invisible(NULL))
+    }
+
+    by_kaydi_garantile(oturum_id, NULL)
+    ortak_db_by_oturum_guncelle(oturum_id, calisma_dizini = "")
+    ortak_db_mesaj_ekle(
+      oturum_id = oturum_id,
+      gonderen_kullanici_id = NULL,
+      mesaj_turu = "SistemMesajı",
+      mesaj_metni = "Bilge Yolaç proje dizini paylaşılan oda klasörüne döndürüldü."
+    )
+    ctx$bildir("Proje dizini paylaşılan oda klasörüne döndürüldü.")
+    dizin_yenile(isolate(dizin_yenile()) + 1L)
+    ctx$yenile()
+  })
+
+  # --- Model kartı -----------------------------------------------------------------
+
+  output$by_model_karti <- renderUI({
+    req(by_odasi_sinyali())
+
     secili <- as.character(by_model() %||% "")[1]
-    if (!nzchar(secili) && !is.null(kayit)) {
-      kayit_model <- as.character(kayit$Model[1] %||% "")
-      if (!is.na(kayit_model) && nzchar(kayit_model)) {
-        secili <- kayit_model
-      }
+    if (!nzchar(secili)) {
+      secili <- by_kayit_model_rv()
     }
 
-    katmanlar <- model_katmanlari()
-
-    div(
-      class = "oo-by-panel",
-      div(
-        class = "oo-by-baslik",
-        tags$button(
-          type = "button",
-          class = "oo-by-toggle",
-          `data-oo-toggle-by` = "1",
-          `aria-label` = "Bilge Yolaç çalışma alanı panelini aç/kapat",
-          icon("chevron-down", class = "oo-by-toggle-ikon")
-        ),
-        icon("robot", class = "oo-by-baslik-ikon"),
-        span(class = "oo-by-baslik-metin", "Bilge Yolaç Çalışma Alanı"),
-        if (cli_bagli) {
-          tags$span(class = "oo-rozet oo-rozet-cli-bagli",
-                    tagList(icon("plug"), span("CLI Bağlı")))
-        } else {
-          tags$span(
-            class = "oo-rozet oo-rozet-cli-yok",
-            title = "Claude Code CLI bu ortamda bulunamadı; sorular genel yapay zekâ modeliyle yanıtlanır.",
-            tagList(icon("plug-circle-xmark"), span("CLI Bağlı Değil"))
-          )
-        }
-      ),
-      div(
-        class = "oo-by-govde",
-
-        # Proje dizini + model katmanları
-        div(
-          class = "oo-by-ust-satir",
-          div(
-            class = "oo-by-proje-dizini",
-            span(class = "oo-by-alan-etiket", tagList(icon("folder-tree"), span("Proje Dizini"))),
-            tags$code(class = "oo-by-dizin-yolu", title = ws %||% "",
-                      HTML(htmltools::htmlEscape(ws %||% "Çalışma alanı oluşturulamadı")))
-          ),
-          div(
-            class = "oo-by-model-secim",
-            span(class = "oo-by-alan-etiket", tagList(icon("microchip"), span("Model"))),
-            if (length(katmanlar) == 0L) {
-              tags$span(class = "oo-by-model-yok", "Model katmanı bulunamadı (settings.json)")
-            } else {
-              tagList(lapply(seq_along(katmanlar), function(i) {
-                katman <- katmanlar[[i]]
-                aktif <- identical(as.character(katman$deger %||% ""), secili) ||
-                  (!nzchar(secili) && i == 1L)
-                tags$button(
-                  type = "button",
-                  class = paste("oo-by-model-btn", if (aktif) "oo-by-model-aktif" else NULL),
-                  title = katman$aciklama %||% "",
-                  `data-oo-model-deger` = as.character(katman$deger %||% ""),
-                  `data-oo-hedef-input` = ns("by_model_sec"),
-                  `data-oo-kullanici-id` = as.character(katman$deger %||% ""),
-                  HTML(htmltools::htmlEscape(katman$etiket %||% "Model"))
-                )
-              }))
-            }
-          )
-        ),
-
-        # Senaryolar + dizin içeriği
-        div(
-          class = "oo-by-orta-satir",
-          div(
-            class = "oo-by-senaryolar",
-            span(class = "oo-by-alan-etiket", tagList(icon("wand-magic-sparkles"), span("Hazır Senaryolar"))),
-            div(
-              class = "oo-by-senaryo-grid",
-              lapply(claude_code_scenarios, function(senaryo) {
-                actionButton(
-                  ns(paste0("by_senaryo_", senaryo$id)),
-                  label = tagList(icon(senaryo$ikon), span(senaryo$baslik)),
-                  class = "oo-by-senaryo-btn",
-                  title = senaryo$aciklama
-                )
-              })
-            )
-          ),
-          div(
-            class = "oo-by-dizin",
-            div(
-              class = "oo-by-dizin-baslik",
-              span(class = "oo-by-alan-etiket", tagList(icon("folder-open"), span("Dizin İçeriği"))),
-              actionButton(
-                ns("by_dizin_yenile"),
-                label = NULL,
-                icon = icon("sync"),
-                class = "oo-by-mini-btn",
-                `aria-label` = "Dizin içeriğini yenile"
-              )
-            ),
-            div(class = "oo-by-dizin-listesi", uiOutput(ns("by_dizin_icerigi")))
-          )
-        ),
-
-        # Çalışma alanına dosya alma eylemleri (yalnızca yetkili roller)
-        if (calisma_alani_yazabilir()) {
-          div(
-            class = "oo-by-dosya-eylemleri",
-            actionButton(
-              ns("by_dosyalarimi_kopyala"),
-              label = tagList(icon("copy"), span("Yükleme Klasörümü Çalışma Alanına Kopyala")),
-              class = "oo-oda-btn oo-oda-btn-ikincil oo-by-kopyala-btn",
-              title = "Dosya Yönetimi klasörünüzdeki dosyaları paylaşılan çalışma alanına kopyalar (açık eylem; otomatik kopya yapılmaz)"
-            ),
-            div(
-              class = "oo-by-yerel-yukleme",
-              fileInput(
-                ns("by_yerel_dosyalar"),
-                label = NULL,
-                multiple = TRUE,
-                buttonLabel = tagList(icon("upload"), span("Yerel Klasörünü Çalışma Alanına Kopyala")),
-                placeholder = "Dosya seçilmedi"
-              )
-            )
-          )
-        } else {
-          NULL
-        },
-
-        # Eklentiler + çalıştırma geçmişi
-        div(
-          class = "oo-by-alt-satir",
-          div(
-            class = "oo-by-eklentiler",
-            span(class = "oo-by-alan-etiket", tagList(icon("puzzle-piece"), span("Eklentiler"))),
-            uiOutput(ns("by_eklentiler"))
-          ),
-          div(
-            class = "oo-by-gecmis",
-            span(class = "oo-by-alan-etiket", tagList(icon("clock-rotate-left"), span("Çalıştırma Geçmişi"))),
-            uiOutput(ns("by_calistirma_gecmisi"))
-          )
-        )
+    oo_by_kart_html(
+      "Model", "microchip",
+      oo_by_model_govde_html(
+        katmanlar = model_katmanlari(),
+        secili = secili,
+        hedef_input_id = ns("by_model_sec")
       )
     )
   })
 
   # --- Dizin içeriği -------------------------------------------------------------
 
+  output$by_dizin_yolu_alani <- renderUI({
+    oturum_id <- ctx$aktif_oturum()
+    req(oturum_id, by_odasi_sinyali())
+
+    bilgi <- ortak_by_etkin_calisma_dizini(by_kayit_dizin_rv(), oturum_id)
+    yol <- as.character(bilgi$yol %||% "")[1]
+
+    tags$code(
+      class = "oo-by-dizin-yolu oo-by-dizin-yolu-kompakt",
+      title = yol,
+      HTML(htmltools::htmlEscape(if (nzchar(yol) && !is.na(yol)) yol else "Çalışma alanı hazır değil"))
+    )
+  })
+
   output$by_dizin_icerigi <- renderUI({
     by_tetik()
     dizin_yenile()
 
     oturum_id <- ctx$aktif_oturum()
-    req(oturum_id, by_odasi_mi())
+    req(oturum_id, by_odasi_sinyali())
 
-    ws <- ortak_by_calisma_alani(oturum_id)
-    if (is.null(ws)) {
+    ws <- ortak_by_etkin_calisma_dizini(by_kayit_dizin_rv(), oturum_id)$yol
+    if (is.null(ws) || !nzchar(as.character(ws)[1])) {
       return(div(class = "oo-bos-durum oo-bos-belge", p("Çalışma alanı hazır değil.")))
     }
 
@@ -310,32 +330,46 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
       ))
     }
 
-    tagList(lapply(listeleme$items, function(oge) {
-      klasor <- identical(as.character(oge$tip %||% ""), "klasor")
-      ad <- as.character(oge$gorunen_ad %||% oge$ad %||% "")[1]
-      boyut <- as.character(oge$boyut %||% "")[1]
-
-      div(
-        class = "oo-by-dizin-satiri",
-        icon(if (klasor) "folder" else "file-lines", class = "oo-by-dizin-ikon"),
-        tags$span(class = "oo-by-dizin-ad", title = ad, HTML(htmltools::htmlEscape(ad))),
-        if (nzchar(boyut) && !is.na(boyut)) {
-          tags$span(class = "oo-by-dizin-boyut", HTML(htmltools::htmlEscape(boyut)))
-        } else {
-          NULL
-        }
-      )
-    }))
+    oo_by_dizin_satirlari_html(listeleme$items)
   })
 
   observeEvent(input$by_dizin_yenile, {
     dizin_yenile(isolate(dizin_yenile()) + 1L)
   })
 
+  # --- Dosya alma eylemleri (yalnızca yetkili roller) -------------------------------
+
+  output$by_dosya_eylem_karti <- renderUI({
+    req(by_odasi_sinyali(), by_yazabilir_sinyali())
+
+    oo_by_kart_html(
+      "Dosya Aktarımı", "file-import",
+      div(
+        class = "oo-by-dosya-eylemleri",
+        actionButton(
+          ns("by_dosyalarimi_kopyala"),
+          label = tagList(icon("copy"), span("Yükleme Klasörümü Çalışma Alanına Kopyala")),
+          class = "oo-oda-btn oo-oda-btn-ikincil oo-by-kopyala-btn",
+          title = "Dosya Yönetimi klasörünüzdeki dosyaları odanın çalışma alanına kopyalar (açık eylem; otomatik kopya yapılmaz)"
+        ),
+        div(
+          class = "oo-by-yerel-yukleme",
+          fileInput(
+            ns("by_yerel_dosyalar"),
+            label = NULL,
+            multiple = TRUE,
+            buttonLabel = tagList(icon("upload"), span("Yerel Klasörünü Çalışma Alanına Kopyala")),
+            placeholder = "Dosya seçilmedi"
+          )
+        )
+      )
+    )
+  })
+
   # --- Eklentiler (salt-okunur envanter) -------------------------------------------
 
   output$by_eklentiler <- renderUI({
-    req(by_odasi_mi())
+    req(by_odasi_sinyali())
 
     tarama <- if (exists("scan_local_plugins", mode = "function", inherits = TRUE)) {
       tryCatch(scan_local_plugins(), error = function(e) list(success = FALSE, plugins = list()))
@@ -343,84 +377,30 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
       list(success = FALSE, plugins = list())
     }
 
-    if (!isTRUE(tarama$success) || length(tarama$plugins) == 0L) {
-      return(div(class = "oo-by-eklenti-yok", "Kurulu eklenti bulunamadı."))
+    pluginler <- if (isTRUE(tarama$success)) tarama$plugins else list()
+    bilesenler <- if (exists("claude_code_plugin_bilesenler", inherits = TRUE)) {
+      claude_code_plugin_bilesenler
+    } else {
+      list()
     }
 
-    tagList(lapply(tarama$plugins, function(p) {
-      div(
-        class = "oo-by-eklenti-satiri",
-        title = as.character(p$description %||% ""),
-        icon("puzzle-piece", class = "oo-by-eklenti-ikon"),
-        tags$span(class = "oo-by-eklenti-ad", HTML(htmltools::htmlEscape(as.character(p$name %||% "")))),
-        tags$span(
-          class = "oo-by-eklenti-bilesen",
-          HTML(htmltools::htmlEscape(paste(
-            vapply(as.character(p$components %||% character(0)), function(b) {
-              tanim <- claude_code_plugin_bilesenler[[b]]
-              if (is.list(tanim)) tanim$etiket %||% b else b
-            }, character(1)),
-            collapse = " · "
-          )))
-        )
-      )
-    }))
+    oo_by_eklenti_listesi_html(pluginler, bilesenler)
   })
 
   # --- Çalıştırma geçmişi -----------------------------------------------------------
 
   output$by_calistirma_gecmisi <- renderUI({
     by_tetik()
-    req(by_odasi_mi())
+    req(by_odasi_sinyali())
 
     kayit <- by_kaydi()
     if (is.null(kayit)) {
       return(div(class = "oo-by-eklenti-yok", "Henüz çalıştırma yok."))
     }
 
-    calistirmalar <- ortak_db_by_calistirmalar(as.integer(kayit$OrtakBilgeYolacOturumID[1]))
-    if (!is.data.frame(calistirmalar) || nrow(calistirmalar) == 0L) {
-      return(div(class = "oo-by-eklenti-yok", "Henüz çalıştırma yok."))
-    }
-
-    # En yeni 5 çalıştırma üstte
-    calistirmalar <- calistirmalar[order(calistirmalar$CalistirmaSirasi, decreasing = TRUE), , drop = FALSE]
-    calistirmalar <- utils::head(calistirmalar, 5L)
-
-    tagList(lapply(seq_len(nrow(calistirmalar)), function(i) {
-      satir <- calistirmalar[i, , drop = FALSE]
-      durum <- as.character(satir$Durum[1] %||% "")
-      komut <- as.character(satir$Komut[1] %||% "")
-      if (nchar(komut) > 70L) {
-        komut <- paste0(substr(komut, 1L, 70L), "…")
-      }
-      veren <- as.character(satir$KomutuVerenAdi[1] %||% "")
-      sure <- suppressWarnings(as.numeric(satir$SureSaniye[1]))
-
-      durum_sinifi <- switch(
-        durum,
-        "Tamamlandı" = "oo-by-durum-tamam",
-        "Çalışıyor" = "oo-by-durum-calisiyor",
-        "oo-by-durum-hata"
-      )
-
-      div(
-        class = "oo-by-gecmis-satiri",
-        tags$span(class = paste("oo-rozet", durum_sinifi), HTML(htmltools::htmlEscape(durum))),
-        tags$span(class = "oo-by-gecmis-komut", title = as.character(satir$Komut[1] %||% ""),
-                  HTML(htmltools::htmlEscape(komut))),
-        tags$span(
-          class = "oo-by-gecmis-meta",
-          HTML(htmltools::htmlEscape(paste(
-            Filter(nzchar, c(
-              veren,
-              if (!is.na(sure)) sprintf("%.0f sn", sure) else ""
-            )),
-            collapse = " · "
-          )))
-        )
-      )
-    }))
+    oo_by_gecmis_listesi_html(
+      ortak_db_by_calistirmalar(as.integer(kayit$OrtakBilgeYolacOturumID[1]))
+    )
   })
 
   # --- Model / senaryo eylemleri -----------------------------------------------------
@@ -441,7 +421,7 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
 
     oturum_id <- ctx$aktif_oturum()
     if (!is.null(oturum_id)) {
-      by_kaydi_garantile(oturum_id, ortak_by_calisma_alani(oturum_id))
+      by_kaydi_garantile(oturum_id, NULL)
       ortak_db_by_oturum_guncelle(oturum_id, model = deger)
     }
 
@@ -449,13 +429,16 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     ctx$yenile()
   })
 
-  lapply(claude_code_scenarios, function(senaryo) {
-    observeEvent(input[[paste0("by_senaryo_", senaryo$id)]], {
-      if (nzchar(senaryo$sablon)) {
-        updateTextAreaInput(session, "oda_mesaj_metni", value = senaryo$sablon)
-      }
-    })
-  })
+  lapply(
+    if (exists("claude_code_scenarios", inherits = TRUE)) claude_code_scenarios else list(),
+    function(senaryo) {
+      observeEvent(input[[paste0("by_senaryo_", senaryo$id)]], {
+        if (nzchar(senaryo$sablon)) {
+          updateTextAreaInput(session, "oda_mesaj_metni", value = senaryo$sablon)
+        }
+      })
+    }
+  )
 
   # --- Çalışma alanına dosya alma -----------------------------------------------------
 
@@ -468,8 +451,8 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
       return(invisible(0L))
     }
 
-    ws <- ortak_by_calisma_alani(oturum_id)
-    if (is.null(ws)) {
+    ws <- etkin_dizin_bilgisi(oturum_id)$yol
+    if (is.null(ws) || !nzchar(as.character(ws)[1])) {
       ctx$bildir("Çalışma alanı oluşturulamadı.", tur = "error")
       return(invisible(0L))
     }
@@ -542,7 +525,29 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     }
 
     cli <- cli_yolu()
-    ws <- ortak_by_calisma_alani(oturum_id)
+
+    # Etkin çalışma dizini kayıttan çözülür; özel dizin çalıştırma anında da
+    # fail-closed doğrulanır (yetki/politika sonradan değişmiş olabilir).
+    kayit <- by_kaydi_garantile(oturum_id, NULL)
+    kayit_dizini <- if (!is.null(kayit)) as.character(kayit$OrtakCalismaDizini[1] %||% "") else ""
+    if (is.na(kayit_dizini)) kayit_dizini <- ""
+
+    dizin_bilgisi <- ortak_by_etkin_calisma_dizini(kayit_dizini, oturum_id)
+    ws <- dizin_bilgisi$yol
+
+    if (isTRUE(dizin_bilgisi$ozel)) {
+      dogrulama <- ortak_by_ozel_dizin_dogrula(ws, oturum_id, user_id = soran_id)
+      if (!isTRUE(dogrulama$ok)) {
+        ws <- ortak_by_calisma_alani(oturum_id)
+        dizin_bilgisi$ozel <- FALSE
+        if (exists("log_warn", mode = "function", inherits = TRUE)) {
+          tryCatch(
+            log_warn("[ORTAK_BY] Özel proje dizini doğrulanamadı; paylaşılan oda klasörüne düşüldü."),
+            error = function(e) NULL
+          )
+        }
+      }
+    }
 
     if (is.null(ws)) {
       return(FALSE)
@@ -576,7 +581,6 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
       )
     }
 
-    kayit <- by_kaydi_garantile(oturum_id, ws)
     if (is.null(kayit)) {
       return(FALSE)
     }
@@ -587,7 +591,7 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
       cli_session <- NULL
     }
 
-    model_secimi <- as.character(by_model() %||% "")[1]
+    model_secimi <- as.character(shiny::isolate(by_model()) %||% "")[1]
     if (!nzchar(model_secimi)) {
       kayit_model <- as.character(kayit$Model[1] %||% "")
       if (!is.na(kayit_model) && nzchar(kayit_model)) {
@@ -607,7 +611,11 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     baslangic <- Sys.time()
     zaman_asimi <- claude_code_config$timeout_seconds %||% 600L
 
-    ortak_db_by_oturum_guncelle(oturum_id, calisma_dizini = ws)
+    # Paylaşılan otomatik klasörde çalışırken kayıt dizini görünürlük için
+    # güncellenir; özel dizin kaydı kullanıcı eylemiyle yönetilir (ezilmez).
+    if (!isTRUE(dizin_bilgisi$ozel)) {
+      ortak_db_by_oturum_guncelle(oturum_id, calisma_dizini = ws)
+    }
 
     prom <- tracked_future_promise(
       task_fn = function() {
@@ -721,9 +729,14 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
         persona_id = persona_id
       )
     } else {
+      # Ham CLI/altyapı tanılaması odaya sızmasın: güvenli yanıt süzgeci
+      # (ayrıntı sunucu günlüğünde; oda genel Türkçe mesaj görür).
       hata <- as.character(sonuc$error %||% "")[1]
       if (nchar(hata) > 240L) {
         hata <- paste0(substr(hata, 1L, 240L), "…")
+      }
+      if (exists("oo_arac_oda_guvenli_yanit", mode = "function", inherits = TRUE)) {
+        hata <- oo_arac_oda_guvenli_yanit(hata)
       }
       motor$tamamla(
         oturum_id, soru_id, istek_id,

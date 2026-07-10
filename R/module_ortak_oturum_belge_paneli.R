@@ -21,11 +21,15 @@
 # Ortak belge kartı (SAF): metadata + bağlam seçim kutusu + kaldırma +
 # "Kendi Dosyalarıma Kaydet". Eski iki-argümanlı çağrılarla geriye dönük
 # uyumludur (secim/sil kimlikleri verilmezse o eylemler çizilmez).
+# baglam_secimi = FALSE: bağlam seçim kutusu VE "Bağlamda" rozeti hiç
+# çizilmez (BilgeYolaç odaları: belgeler yapay zekâ bağlamına girmez; kart
+# bunu ima etmemelidir).
 oo_dosya_karti_html <- function(satir,
                                 kopyala_input_id,
                                 secim_input_id = NULL,
                                 sil_input_id = NULL,
-                                yetkili = FALSE) {
+                                yetkili = FALSE,
+                                baglam_secimi = TRUE) {
   ad <- as.character(satir$DosyaAdi %||% "belge")[1]
   ureten <- as.character(satir$UretenAdi %||% "")[1]
   zaman <- as.character(satir$OlusturmaZamani %||% "")[1]
@@ -53,7 +57,9 @@ oo_dosya_karti_html <- function(satir,
   kopyalandi <- identical(kopya_durumu, "Kopyalandı")
 
   secim_kutusu <- NULL
-  if (!is.null(secim_input_id) && isTRUE(yetkili)) {
+  if (!isTRUE(baglam_secimi)) {
+    secim_kutusu <- NULL
+  } else if (!is.null(secim_input_id) && isTRUE(yetkili)) {
     secim_kutusu <- tags$label(
       class = "oo-belge-secim",
       title = "Seçili belgeler bir sonraki yapay zekâ sorusunun bağlamına dahil edilir",
@@ -88,7 +94,10 @@ oo_dosya_karti_html <- function(satir,
   }
 
   div(
-    class = paste("oo-belge-karti", if (isTRUE(meta$secili)) "oo-belge-secili" else NULL),
+    class = paste(
+      "oo-belge-karti",
+      if (isTRUE(baglam_secimi) && isTRUE(meta$secili)) "oo-belge-secili" else NULL
+    ),
     `data-oo-dosya-id` = as.character(dosya_id),
     div(
       class = "oo-belge-ust",
@@ -157,13 +166,29 @@ oo_belge_yukleme_alani_html <- function(yukle_input_id, izinli_uzantilar, limit_
 ortakOturumBelgePaneliBind <- function(input, output, session, ctx) {
   ns <- session$ns
 
+  # Aktif oda BilgeYolaç türünde mi? (belge bağlam kontrolleri oda türüne
+  # göre kapılanır; BY odalarında belgeler yapay zekâ bağlamına GİRMEZ.)
+  by_odasi_mi <- function() {
+    bilgi <- ctx$oturum_bilgisi()
+    !is.null(bilgi) && identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")
+  }
+
   # Yükleme alanı yalnızca ODA/ROL değişince yeniden çizilir (4 sn yoklamada
-  # değil); böylece süren bir dosya seçimi/yükleme akışı bozulmaz.
+  # değil); böylece süren bir dosya seçimi/yükleme akışı bozulmaz. BilgeYolaç
+  # odasında yükleme/bağlam kontrolü yerine dürüst bilgilendirme notu çizilir:
+  # belge paylaşımı orada çalışma alanı üzerinden yürür.
   output$belge_yukleme_alani <- renderUI({
     ctx$aktif_oturum()
-    bilgi <- ctx$oturum_bilgisi()
-    if (!is.null(bilgi) && identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")) {
-      return(NULL)
+    if (by_odasi_mi()) {
+      return(div(
+        class = "oo-belge-by-notu",
+        icon("circle-info"),
+        span(paste(
+          "Bilge Yolaç odalarında dosyalar paylaşılan çalışma alanı üzerinden",
+          "yönetilir; buradaki belgeler yapay zekâ bağlamına eklenmez.",
+          "Üretilen dosyalar aşağıda listelenir."
+        ))
+      ))
     }
     rol <- ctx$oda_rol()
     if (!ortak_yetki_var_mi(rol, "yapay_zeka_sor")) {
@@ -178,31 +203,35 @@ ortakOturumBelgePaneliBind <- function(input, output, session, ctx) {
   })
 
   output$belgeler_alani <- renderUI({
-    bilgi <- ctx$oturum_bilgisi()
-    if (!is.null(bilgi) && identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")) {
-      return(NULL)
-    }
-
+    by_odasi <- by_odasi_mi()
     df <- ctx$belgeler()
 
     if (!is.data.frame(df) || nrow(df) == 0L) {
       return(div(
         class = "oo-bos-durum oo-bos-belge",
         icon("folder-open"),
-        p("Henüz ortak belge yok. Yüklediğiniz belgeler tüm katılımcılarla paylaşılır ve seçilenler yapay zekâ bağlamına eklenir.")
+        p(if (by_odasi) {
+          "Henüz ortak belge yok. Bilge Yolaç'ın çalışma alanında ürettiği dosyalar burada listelenir."
+        } else {
+          "Henüz ortak belge yok. Yüklediğiniz belgeler tüm katılımcılarla paylaşılır ve seçilenler yapay zekâ bağlamına eklenir."
+        })
       ))
     }
 
     rol <- ctx$oda_rol()
     yetkili <- ortak_yetki_var_mi(rol, "yapay_zeka_sor")
 
+    # BilgeYolaç odası: üretilen ortak belgeler LİSTELENİR (indirme/kopyalama
+    # ve yetkili kaldırma korunur) ama bağlam seçimi sunulmaz — belgelerin
+    # yürütme bağlamına girdiği imasından kaçınılır.
     tagList(lapply(seq_len(nrow(df)), function(i) {
       oo_dosya_karti_html(
         df[i, , drop = FALSE],
         kopyala_input_id = ns("belge_kopyala"),
-        secim_input_id = ns("belge_secim"),
+        secim_input_id = if (by_odasi) NULL else ns("belge_secim"),
         sil_input_id = ns("belge_sil"),
-        yetkili = yetkili
+        yetkili = yetkili,
+        baglam_secimi = !by_odasi
       )
     }))
   })
@@ -213,6 +242,16 @@ ortakOturumBelgePaneliBind <- function(input, output, session, ctx) {
   observeEvent(input$belge_dosya_yukle, {
     dosyalar <- input$belge_dosya_yukle
     req(is.data.frame(dosyalar), nrow(dosyalar) > 0L)
+
+    # Sunucu tarafı oda-türü kapısı: BY odasında belge paneli yüklemesi yoktur
+    # (UI gizlemesi güvenlik değildir; istemci ne gönderirse göndersin reddedilir).
+    if (by_odasi_mi()) {
+      ctx$bildir(
+        "Bilge Yolaç odalarında dosyalar çalışma alanı üzerinden paylaşılır.",
+        tur = "warning"
+      )
+      return(invisible(NULL))
+    }
 
     oturum_id <- ctx$aktif_oturum()
     req(oturum_id)
@@ -251,6 +290,12 @@ ortakOturumBelgePaneliBind <- function(input, output, session, ctx) {
     yuk <- input$belge_secim
     dosya_id <- suppressWarnings(as.integer(yuk$id))
     req(!is.na(dosya_id))
+
+    # BY odasında belge bağlam seçimi sunulmaz; bayat/istemci kaynaklı seçim
+    # istekleri sessizce reddedilir (soru yolu zaten boş anlık görüntü yazar).
+    if (by_odasi_mi()) {
+      return(invisible(NULL))
+    }
 
     tamam <- ortak_db_belge_secim_guncelle(
       ortak_dosya_id = dosya_id,
