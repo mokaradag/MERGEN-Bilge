@@ -101,12 +101,13 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
     } else {
       integer(0)
     }
-    if (length(belge_ids) > 0L) {
-      arac_meta_ekstra <- utils::modifyList(
-        if (is.list(arac_meta_ekstra)) arac_meta_ekstra else list(),
-        list(belgeler = list(secili_ids = as.integer(belge_ids)))
-      )
-    }
+    # Seçili belge kümesi boş olsa bile anlık görüntü yazılır. Aksi halde
+    # kuyrukta bekleyen belge seçimsiz bir soru, üretim başlamadan önce sonradan
+    # seçilen belgeleri yanlışlıkla bağlama alabilir.
+    arac_meta_ekstra <- utils::modifyList(
+      if (is.list(arac_meta_ekstra)) arac_meta_ekstra else list(),
+      list(belgeler = list(secili_ids = as.integer(belge_ids)))
+    )
 
     soru_id <- ortak_db_mesaj_ekle(
       oturum_id = oturum_id,
