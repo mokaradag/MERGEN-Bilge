@@ -1,6 +1,6 @@
 # MERGEN performance improvement plan
 
-Last updated: 2026-07-04
+Last updated: 2026-07-10
 
 ## Current baseline
 
@@ -73,6 +73,45 @@ As of the pre-index-cache 2026-06-19 baseline, the comparable fake-lane smoke ar
 | 2026-06-19 | Restored maintainability ratchet after the daily-log-file reliability work pushed `R/config_logging.R` to 27 functions: extracted the daily-file cluster (`current_mergen_log_date`, `current_mergen_log_file_path`, `mergen_daily_file_appender`, `mergen_ensure_daily_log_file`) to new foundation file `R/config_logging_daily_file.R` (loaded before `config_logging.R`). | `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")` (222 PASS) + manifest/seam/zone/section contracts + `parse_sanity_check.R` (842 files) | PASS (score 100/100, max functions 24, 0 files ≥25 functions) | Behavior byte-for-byte unchanged; pure maintainability split. |
 
 ## Session notes
+
+### 2026-07-09 — Fast-lane startup regression: saved-chat load raced lane resolution
+
+Field report: with Hızlı Başlangıç selected, startup still took ~34 s and the
+`[STARTUP PERF]` summary contained `saved_chats_full_loaded=25396 ms` — a fast-lane
+contract violation.
+
+Root cause (race): `load_initial_saved_chats()` fired on `sso_state$authenticated`
+(SSO) or synchronously at server init (local), while the lane only reached the server
+later via the `startup_lane_resolved` client round-trip. With the first-boot lane
+selector open (or always, in local mode) the server did not know the lane yet, assumed
+rich lane, and started the synchronous preview plus the background FULL saved-chat
+load anyway. `character_media_ready` deferral arrived only when the user finally
+clicked the selector card.
+
+Fix (`R/server_observers_startup.R` + `R/module_startup_lane.R` bridge):
+
+- Saved-chat startup decisions are now gated on lane resolution: no saved-chat DB call
+  starts before the `startup_lane_resolved` payload arrives (decision reads the payload
+  directly; the racy `session$userData$startup_lane` read is gone).
+- Fast lane: the full list is never loaded at startup (lazy, once, on first Kayıtlı
+  Söyleşiler / Söyleşi Geçmişi open); the 6-chat preview no longer blocks the critical
+  path — it runs in a `tracked_future_promise` worker (`startup_saved_chats_preview`).
+- Rich lane keeps the existing behavior (sync preview + background full load).
+- The lazy full load re-resolves the effective user id at run time; invalid ids never
+  load. Clients without the lane API get a `legacy_no_api` rich_lane bridge signal so
+  the gate can never deadlock. Fast-lane closing contract unchanged
+  (`connect + auth_ready + welcome_client_ready`); DB queries stay user-filtered in SQL.
+
+Also fixed the Windows VM full-suite `W` warning flood: running tests in a session that
+had run the app leaves `global.R`'s `options(encoding = "UTF-8")` active; on a CP1254
+native code page every test `readLines(..., encoding = "UTF-8")` then double-decodes and
+each `grepl()` warns once per Turkish line (repo files are valid UTF-8; unrelated to the
+recent commits). `tests/testthat/helper_bootstrap.R` now pins the test run to
+`native.enc`; guarded by `test-testthat-encoding-guard-contract.R`.
+
+Validation (cloud): startup smoke/lane/contract/source-manifest/production/boot-welcome
+suites 0 fail / 0 warn; parse sanity 935 files OK. VM re-check: fast-lane
+`[STARTUP PERF]` must show `saved_chats_full_loaded` only as `deferred=TRUE`.
 
 ### 2026-07-04 — Cold-start critical path + interaction hotspots (single instance, single port)
 

@@ -563,7 +563,7 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
           class = "oo-kismi-yanit",
           `aria-label` = "Üretilmekte olan yanıtın canlı ön izlemesi",
           tags$span(class = "oo-kismi-yanit-metin", HTML(htmltools::htmlEscape(kismi))),
-          tags$span(class = "oo-kismi-imlec", "▌")
+          tags$span(class = "oo-kismi-imlec", HTML("&#9612;"))
         )
       }
     }

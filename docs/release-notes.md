@@ -14,6 +14,28 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-07-09 Hızlı Başlangıç açılış regresyonu + VM test uyarı seli düzeltmesi
+
+- Hızlı Başlangıç seçiliyken açılışın ~34 saniyeye uzamasına yol açan şerit
+  yarışı düzeltildi: kayıtlı sohbet açılış kararı artık şerit çözümüne
+  (`startup_lane_resolved`) kilitli. Hızlı şeritte tam söyleşi listesi açılışta
+  HİÇ yüklenmez (Kayıtlı Söyleşiler / Söyleşi Geçmişi ilk açıldığında bir kez
+  tembel yüklenir), "Son konuşmalar" ön izlemesi kritik açılış yolunu bloklamaz
+  (arka plan worker'ında yüklenir). Zengin Deneyim davranışı değişmedi. Hızlı
+  şerit kapanış sözleşmesi `connect + auth_ready + welcome_client_ready` olarak
+  kaldı; sorgular DB seviyesinde kullanıcıya filtrelidir ve geçersiz/placeholder
+  kimlik yükleme başlatamaz.
+- Windows VM'de tam test koşusundaki `W` uyarı seli köke indirildi: uygulama
+  çalıştırılmış R oturumunda `global.R` `options(encoding = "UTF-8")` bırakır;
+  CP1254 yerel kod sayfasında testlerdeki `readLines(..., encoding = "UTF-8")`
+  okumaları çift kod çözümüne girip `grepl` başına satır sayısı kadar
+  "invalid UTF-8" uyarısı üretiyordu (repo dosyaları geçerli UTF-8; son
+  commit'lerle ilgisi yok). `tests/testthat/helper_bootstrap.R` test koşumunu
+  `native.enc` varsayılanına sabitler.
+- Testler: `test-startup-observers-runtime-smoke.R` (hızlı/zengin/tembel/geçersiz
+  kimlik senaryoları), `test-startup-lane-contract.R` yeni statik kilit,
+  `test-testthat-encoding-guard-contract.R`.
+
 ### (Yayınlanmadı) 2026-07-05 Ortak Oturumlar (işbirlikçi çalışma odaları) — ilk sürüm
 
 MERGEN Bilge'ye ekip tabanlı "Ortak Oturumlar" özelliği eklendi: paylaşılan

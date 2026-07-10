@@ -465,6 +465,17 @@ ortak_db_kalp_atisi_sil <- function(oturum_anahtari, conn = NULL) {
   invisible(isTRUE(sonuc))
 }
 
+#' Oturum kapanışında canlı durum kaydını siler (modülden bir kez bağlanır).
+ortak_canli_durum_oturum_temizligi_bagla <- function(session) {
+  session$onSessionEnded(function() {
+    if (!ortak_db_tablolar_hazir_mi()) {
+      return(invisible(NULL))
+    }
+
+    ortak_db_kalp_atisi_sil(session$token)
+  })
+}
+
 #' Kullanıcı başına en güncel kalp atışını okur ve Türkçe canlı durumu
 #' üretir. En güncel satırın SonGorulenOrtakOturumID değeri de döner; böylece
 #' "bu odada çevrim içi" göstergesi (yeşil nokta) üretilebilir.

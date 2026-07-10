@@ -250,6 +250,33 @@ testthat::test_that("başlangıç şeridi sunucu gözlemcisi çözümü işler v
   testthat::expect_true(guard_pos > 0 && chk_pos > 0 && guard_pos < chk_pos)
 })
 
+testthat::test_that("kayıtlı sohbet açılış yüklemesi şerit çözümüne kilitlidir", {
+  startup_txt <- .read_repo_text_startup_lane("R/server_observers_startup.R")
+
+  # Yarış düzeltmesi: karar şerit payload'ından verilir; erken auth/init
+  # tetiklemesi şerit çözülmeden DB yüklemesi başlatamaz.
+  testthat::expect_true(.startup_lane_has(startup_txt, "shiny::isolate(input$startup_lane_resolved)"))
+  testthat::expect_true(.startup_lane_has(startup_txt, "lane_wait_registered"))
+  # Eski yarışlı okuma geri gelmemeli: session$userData$startup_lane şerit
+  # kararının kaynağı olamaz (istemci round-trip'i auth'tan geç kalabilir).
+  testthat::expect_false(.startup_lane_has(
+    startup_txt, "mergen_startup_lane_is_fast(session$userData$startup_lane)"
+  ))
+
+  # Hızlı şeritte ön izleme worker sarmalayıcısı ile kritik yol dışındadır;
+  # tam liste açılışta değil tembel tetikleyici ile yüklenir.
+  testthat::expect_true(.startup_lane_has(startup_txt, '"startup_saved_chats_preview"'))
+  testthat::expect_true(.startup_lane_has(startup_txt, "saved_chats_full_pending"))
+
+  # Tembel tam yükleme kimliği çalıştırma anında tekrar çözer.
+  testthat::expect_true(.startup_lane_has(startup_txt, "run_user_id <- resolve_current_user_id()"))
+
+  # Şerit API'si olmayan istemcide sunucu köprüsü kapıyı kilitlemez:
+  # legacy rich_lane bildirimi her durumda gönderilir.
+  lane_txt <- .read_repo_text_startup_lane("R/module_startup_lane.R")
+  testthat::expect_true(.startup_lane_has(lane_txt, "legacy_no_api"))
+})
+
 testthat::test_that("hızlı şeritte karşılama hazır-olma kontrolü video beklemez", {
   txt <- .read_repo_text_startup_lane("R/server_welcome_handlers.R")
   testthat::expect_true(.startup_lane_has(txt, "mergen-fast-lane"))
