@@ -79,6 +79,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
   startup_state <- new.env(parent = emptyenv())
   startup_state$initial_saved_chats_status <- "idle"
   startup_state$lane_wait_registered <- FALSE
+  startup_state$full_saved_chats_load_started <- FALSE
   
   load_initial_saved_chats <- function() {
     effective_user_id <- resolve_current_user_id()
@@ -162,6 +163,12 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  session_token = session$token
 		),
 		onFulfilled = function(chats) {
+		  # Tam liste yüklemesi başladıktan sonra geç gelen 6 sohbetlik ön izleme
+		  # daha güncel tam listeyi daraltmamalıdır.
+		  if (isTRUE(startup_state$full_saved_chats_load_started)) {
+			cat("[STARTUP] Tam söyleşi yüklemesi başladı, geç kalan ön izleme atlandı\n")
+			return(NULL)
+		  }
 		  shiny::isolate(apply_preview_chats(chats, deferred = TRUE))
 		  NULL
 		},
@@ -197,6 +204,10 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		cat("[STARTUP] Tam söyleşi yüklemesi: geçerli kullanıcı kimliği yok, ertelendi\n")
 		return(invisible(NULL))
 	  }
+
+	  # Bu bayrak monotondur: worker başlatıldıktan sonra geç kalan ön izleme
+	  # artık values$saved_chats üzerine yazamaz.
+	  startup_state$full_saved_chats_load_started <- TRUE
 
 	  session$userData$initial_saved_chats_promise <- promises::then(
 		tracked_future_promise(
