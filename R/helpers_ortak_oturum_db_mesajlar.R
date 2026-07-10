@@ -51,6 +51,7 @@ ortak_db_mesaj_ekle <- function(oturum_id,
                                 llm_gonderildi = FALSE,
                                 olusturma_zamani = NULL,
                                 persona_id = NULL,
+                                meta_ekstra = NULL,
                                 conn = NULL) {
   oturum_id <- .oo_db_pos_int(oturum_id)
   if (is.na(oturum_id)) {
@@ -105,14 +106,25 @@ ortak_db_mesaj_ekle <- function(oturum_id,
     DBI::dbWithTransaction(handle$conn, {
       sira <- .oo_db_sonraki_mesaj_sirasi(handle$conn, oturum_id)
 
-      meta_json <- NULL
+      # MetaJson: persona etiketi (YZ yanıtı) + çağıranın ek metadata'sı
+      # (örn. soru mesajına iliştirilen araç seçimi). Ek metadata liste olarak
+      # gelir ve persona alanını EZEMEZ.
+      meta_listesi <- list()
       persona_kimligi <- tolower(trimws(as.character(persona_id %||% "")[1]))
       if (identical(mesaj_turu, "YapayZekaYanıtı") &&
           persona_kimligi %in% c("emre", "selin", "deniz", "can", "ipek")) {
-        meta_json <- jsonlite::toJSON(
-          list(persona_id = persona_kimligi),
-          auto_unbox = TRUE, null = "null"
-        )
+        meta_listesi$persona_id <- persona_kimligi
+      }
+      if (is.list(meta_ekstra) && length(meta_ekstra) > 0L) {
+        ekstra <- meta_ekstra[setdiff(names(meta_ekstra), "persona_id")]
+        if (length(ekstra) > 0L) {
+          meta_listesi <- utils::modifyList(meta_listesi, ekstra)
+        }
+      }
+      meta_json <- if (length(meta_listesi) > 0L) {
+        jsonlite::toJSON(meta_listesi, auto_unbox = TRUE, null = "null")
+      } else {
+        NULL
       }
 
       mesaj_id <- .oo_db_insert_returning_id(
@@ -514,6 +526,101 @@ ortak_db_olay_ekle <- function(oturum_id,
   uyari = "Ortak oturum olayı yazılamadı:")
 
   invisible(isTRUE(sonuc))
+}
+
+#' Ortak oturum sohbetini KALICI olarak temizler (tüm mesajlar silinir).
+#'
+#' Bu, bağlam sıfırlamadan (transkripti koruyan SistemMesajı işareti) FARKLI
+#' ve geri alınamaz bir eylemdir. Fail-closed yetki: yalnızca içerik erişimli
+#' (Katıldı) ve katilimci_yonet yetkili roller (Sahip / Oturum Yöneticisi)
+#' temizleyebilir. Süren yanıt üretimi varken temizleme reddedilir.
+#'
+#' FK sırası: kuyruk satırları ve aktif üretim kilidinin mesaj referansı
+#' önce temizlenir; mesajlar tek DELETE ile silinir (BagliMesajID öz-FK'sı
+#' aynı ifadede güvenlidir). Ardından odaya görünür bir SistemMesajı yazılır.
+#'
+#' @return list(basarili, mesaj)
+ortak_db_sohbet_temizle <- function(oturum_id, kullanici_id, conn = NULL) {
+  basarisiz <- function(mesaj) list(basarili = FALSE, mesaj = mesaj)
+
+  oturum_id <- .oo_db_pos_int(oturum_id)
+  kullanici_id <- .oo_db_pos_int(kullanici_id)
+  if (is.na(oturum_id) || is.na(kullanici_id)) {
+    return(basarisiz("Geçersiz oturum veya kullanıcı kimliği."))
+  }
+
+  handle <- .oo_db_try(.oo_db_acquire(conn, tx = TRUE), fallback = NULL)
+  if (is.null(handle)) {
+    return(basarisiz("Veritabanı bağlantısı alınamadı."))
+  }
+  on.exit(.oo_db_release(handle), add = TRUE)
+
+  katilimci <- ortak_db_katilimci_getir(oturum_id, kullanici_id, conn = handle$conn)
+  if (is.null(katilimci) ||
+      !ortak_icerik_erisimi_var_mi(katilimci$KatilimDurumu[1]) ||
+      !ortak_yetki_var_mi(katilimci$Rol[1], "katilimci_yonet")) {
+    .oo_db_log_warn("Ortak sohbet temizleme yetki nedeniyle reddedildi. Oturum:", oturum_id)
+    return(basarisiz("Sohbeti temizleme yetkiniz yok (yalnızca Sahip / Oturum Yöneticisi)."))
+  }
+
+  if (isTRUE(ortak_db_aktif_uretim_var_mi(oturum_id, conn = handle$conn))) {
+    return(basarisiz("Yanıt üretimi sürerken sohbet temizlenemez; lütfen üretim bitince tekrar deneyin."))
+  }
+
+  temizleyen_ad <- .oo_db_try({
+    satir <- DBI::dbGetQuery(
+      handle$conn,
+      "SELECT KaynakAdi FROM MB_Users WHERE UserID = ?",
+      params = list(kullanici_id)
+    )
+    if (nrow(satir) > 0L) as.character(satir$KaynakAdi[1]) else ""
+  }, fallback = "")
+  temizleyen_ad <- normalize_db_read_visible_value(as.character(temizleyen_ad %||% "")[1])
+
+  sonuc <- .oo_db_try({
+    DBI::dbWithTransaction(handle$conn, {
+      # FK referansları: kuyruk satırları + aktif üretim kilidinin mesaj bağı.
+      DBI::dbExecute(
+        handle$conn,
+        "DELETE FROM MB_OrtakOturum_YapayZekaKuyrugu WHERE OrtakOturumID = ?",
+        params = list(oturum_id)
+      )
+      DBI::dbExecute(
+        handle$conn,
+        "UPDATE MB_OrtakOturum_AktifUretimler SET OrtakMesajID = NULL WHERE OrtakOturumID = ?",
+        params = list(oturum_id)
+      )
+      DBI::dbExecute(
+        handle$conn,
+        "DELETE FROM MB_OrtakOturum_Mesajlar WHERE OrtakOturumID = ?",
+        params = list(oturum_id)
+      )
+      .oo_db_oturum_dokun(handle$conn, oturum_id)
+      TRUE
+    })
+  },
+  fallback = FALSE,
+  uyari = "Ortak sohbet temizlenemedi:")
+
+  if (!isTRUE(sonuc)) {
+    return(basarisiz("Sohbet temizlenemedi; lütfen tekrar deneyin."))
+  }
+
+  not_metni <- if (nzchar(temizleyen_ad) && !is.na(temizleyen_ad)) {
+    sprintf("Sohbet %s tarafından kalıcı olarak temizlendi.", temizleyen_ad)
+  } else {
+    "Sohbet kalıcı olarak temizlendi."
+  }
+
+  ortak_db_mesaj_ekle(
+    oturum_id = oturum_id,
+    gonderen_kullanici_id = NULL,
+    mesaj_turu = "SistemMesajı",
+    mesaj_metni = not_metni,
+    conn = handle$conn
+  )
+
+  list(basarili = TRUE, mesaj = "Sohbet kalıcı olarak temizlendi.")
 }
 
 #' Mesaj veri çerçevesinden LLM sohbet geçmişi üretir (SAF yardımcı).

@@ -53,11 +53,12 @@
   gap: 16px;
 }
 
-/* Oda açık: kabuk viewport'u doldurur, oda alt boşluk bırakmadan yayılır. */
+/* Oda açık: kabuk viewport'u doldurur, oda alt boşluk bırakmadan yayılır
+ * (alttaki ölü boşluğu önlemek için alt dolgu minimumdur). */
 .ortak-calismalar-container.oo-oda-acik {
   height: calc(100vh - 50px);
   min-height: 0;
-  padding-bottom: 14px;
+  padding-bottom: 6px;
 }
 
 .ortak-calismalar-container.oo-oda-acik .oo-oda-alani {
@@ -565,6 +566,8 @@
 
 /* --- Mesaj akışı: iç kaydırma (composer her zaman görünür) ------------------ */
 
+/* Programatik kaydırma JS'te ANLIK yapılır (scroll-behavior: smooth ile
+ * yarışan "takılan" kaydırma hissini önlemek için burada smooth YOKTUR). */
 .oo-mesaj-akisi {
   display: flex;
   flex-direction: column;
@@ -573,7 +576,8 @@
   min-height: 0;
   overflow-y: auto;
   padding: 8px 6px 4px;
-  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .oo-mesaj {
@@ -845,12 +849,6 @@
 }
 .oo-composer-model-yok {
   font-size: 0.82em;
-  color: var(--color-muted);
-}
-
-.oo-composer-yz-notu {
-  margin: 0;
-  font-size: 0.8em;
   color: var(--color-muted);
 }
 

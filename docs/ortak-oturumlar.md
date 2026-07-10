@@ -283,6 +283,64 @@ temiz bir servis dikişidir (ileride gerçek gönderim eklenirse durum kaydı zo
   Zaten kopyalanmış belge ikinci kez fiziksel kopyalanmaz.
 - Fiziksel dosyası kaybolan belgeler bakım taramasında `Silindi` işaretlenir.
 
+### 6.1 Paylaşılan belge GİRDİLERİ (katılımcı yüklemeleri)
+
+Ortak Belgeler yalnızca üretilen çıktı değil, aynı zamanda **paylaşılan model
+girdisidir** (`R/helpers_ortak_oturum_belgeler.R` +
+`R/module_ortak_oturum_belge_paneli.R`):
+
+- `yapay_zeka_sor` yetkili katılımcılar (Sahip / Oturum Yöneticisi / Katılımcı)
+  odaya belge **yükler**, **kaldırır** ve **bağlam seçimini** değiştirir;
+  İzleyici yalnızca görür. Her eylem sunucu tarafında fail-closed yetki
+  denetiminden geçer.
+- Yüklemeler tekil oturum yüklemeleriyle **AYNI doğrulama sınırından** geçer:
+  `validate_uploaded_file` (boyut sınırı `getOption("mergen.upload_max_mb", 25L)`,
+  `fm_normal_allowed_extensions()` uzantı beyaz listesi, traversal/UTF-8/bidi
+  dosya adı kuralları).
+- Fiziksel dosyalar mergen_uploads (MCP taban) altında **oturuma özel
+  deterministik klasörde** saklanır: `<mcp_base>/ortak_oturum_<OrtakOturumID>/`
+  (kişisel `user_<id>` klasörlerinin ortak oturum karşılığı). Oturumlar arası
+  fiziksel izolasyon korunur; DDL değişmez — yükleme kaynağı ve seçim durumu
+  `MB_OrtakOturum_Dosyalar.MetaJson` içinde taşınır
+  (`{"kaynak":"KatilimciYuklemesi","secili":true}`).
+- **Yalnızca SEÇİLİ belgeler** sonraki yapay zekâ sorusunun bağlamına girer
+  (`ortak_db_secili_belgeler` → `ortak_belge_baglam_sistem_mesaji`; içerik
+  `readFileContentToString` ile tekil oturumla aynı ayrıştırıcıdan okunur,
+  dosya başına bütçelenir ve Kaynakça talimatı taşır). Seçim paylaşılan
+  durumdur: tüm katılımcılar aynı seçimi görür. Yeni yüklenen belge varsayılan
+  seçilidir; yükleme odaya `BelgeBildirimi` mesajı bırakır.
+- Kaldırma soft delete'tir (`DosyaDurumu='Silindi'`) + yalnızca belge kökleri
+  İÇİNDEKİ fiziksel dosya silinir. Katılımcı yüklemeleri de
+  "Kendi Dosyalarıma Kaydet" ile kişisel klasöre kopyalanabilir (yükleme kökü
+  meşru kaynak köküdür).
+
+### 6.2 Araç seçici ve sohbeti temizleme
+
+- Composer'daki **araç seçici** (`R/helpers_ortak_oturum_arac.R` +
+  `R/module_ortak_oturum_arac.R`) Yapılandırma > Analiz Araçları kataloğunu
+  (`api_config$tool_mode_config`, tek kaynak) listeler; araç-özel ayarlar
+  menü içinde düzenlenir: Proje ve Kaynak Analizi için **Derin Düşünme +
+  Detay Seviyesi**, Excel Analizi / Kodlama Desteği için **Derin Düşünme +
+  Düşünme Seviyesi** (model çözümü `resolve_runtime_model_for_request`),
+  Süreç Yönetimi için **Süreç Akışı** seçimi. Görsel Oluşturma ortak
+  odalarda desteklenmez (metin dışı çıktı) ve devre dışı listelenir.
+- Araç etkinken **model seçimi kilitlenir** (araç kendi modelini kullanır);
+  araç temizlenince oda model seçimi geri gelir. Aktif araç, ayar özeti ve ×
+  temizleme düğmesi taşıyan bir **rozetle** gösterilir. Tekil oturumdaki
+  belge/araç uyumluluk kontrolü ortak odada UYGULANMAZ (bilinçli karar).
+- Araç seçimi **soru mesajının MetaJson'una yazılır**; üretim (doğrudan veya
+  kalıcı kuyruk devralması) araç bağlamını HER ZAMAN soru satırından okur.
+  Yürütme planı (`oo_arac_uretim_plani`): sql_analysis → pk boru hattı
+  (tekil oturumla aynı `pk_analiz_process_request` / `pk_deep_analysis_process`),
+  process/app_expert → Langflow worker (`call_langflow_chat`;
+  belge bağlamı akışa enjekte edilmez), diğerleri → araç modeliyle normal
+  LLM yolu (+ özetleme sistem notu).
+- **"Sohbeti Temizle"** (çöp kutusu) bağlam sıfırlamadan (sihirli değnek)
+  FARKLIDIR: açık onay modalı ister ve odadaki TÜM mesajları KALICI siler
+  (`ortak_db_sohbet_temizle`; yalnızca `katilimci_yonet` yetkisi, üretim
+  sürerken reddedilir, kuyruk temizlenir, odaya sistem notu yazılır; ortak
+  belgeler silinmez).
+
 ## 7. Ortak Oturum Oluşturma ve Paylaşım Başlangıcı
 
 "Yeni Ortak Oturum" akışı tür + başlık + paylaşım başlangıç tipi ister.

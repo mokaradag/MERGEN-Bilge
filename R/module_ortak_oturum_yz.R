@@ -89,12 +89,21 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
   # --- Soru gönderme: kilit + kalıcı kuyruk -----------------------------------
 
   motor$soru_gonder <- function(oturum_id, uid, metin) {
+    # Araç seçimi soru mesajının MetaJson'una yazılır: üretim (doğrudan veya
+    # kalıcı kuyruk devralması) araç bağlamını HER ZAMAN soru satırından okur.
+    arac_meta_ekstra <- if (is.function(motor$arac_meta_listesi)) {
+      motor$arac_meta_listesi()
+    } else {
+      NULL
+    }
+
     soru_id <- ortak_db_mesaj_ekle(
       oturum_id = oturum_id,
       gonderen_kullanici_id = uid,
       mesaj_turu = "YapayZekaSorusu",
       mesaj_metni = metin,
-      llm_gonderildi = TRUE
+      llm_gonderildi = TRUE,
+      meta_ekstra = arac_meta_ekstra
     )
 
     if (is.null(soru_id)) {
@@ -324,6 +333,11 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 	# bu üretimin bağlamına girmemeli.
 	mesaj_df <- ortak_db_mesajlari_getir(oturum_id, soran_id)
 
+	# Soru metni + araç seçimi soru SATIRINDAN okunur (tek doğruluk kaynağı):
+	# kalıcı kuyruk soruyu daha sonra devraldığında da doğru araç uygulanır.
+	soru_metni <- ""
+	arac_meta <- NULL
+
 	if (is.data.frame(mesaj_df) &&
 		nrow(mesaj_df) > 0L &&
 		all(c("OrtakMesajID", "MesajSirasi") %in% names(mesaj_df))) {
@@ -334,6 +348,11 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 	  ]
 
 	  if (nrow(aktif_soru) > 0L) {
+		soru_metni <- as.character(aktif_soru$MesajMetni[1] %||% "")[1]
+		if (exists("oo_arac_meta_parse", mode = "function", inherits = TRUE) &&
+			"MetaJson" %in% names(aktif_soru)) {
+		  arac_meta <- oo_arac_meta_parse(aktif_soru$MetaJson[1])
+		}
 		soru_sirasi <- suppressWarnings(as.numeric(aktif_soru$MesajSirasi[1]))
 		mesaj_siralari <- suppressWarnings(as.numeric(mesaj_df$MesajSirasi))
 
@@ -349,6 +368,32 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 
 	gecmis <- ortak_yz_sohbet_gecmisi(mesaj_df)
 
+	# Araç yürütme planı: soru satırındaki araç seçimini modele/yola çevirir.
+	# Araç modülü yoksa (izole test) araçsız normal plan uygulanır.
+	plan <- if (exists("oo_arac_uretim_plani", mode = "function", inherits = TRUE)) {
+	  oo_arac_uretim_plani(arac_meta)
+	} else {
+	  list(family = "", yol = "normal", model_id = "", belge_baglami = TRUE, sistem_notu = "")
+	}
+
+	# Sistem mesajı katmanları (ters sırada başa eklenir; nihai sıra:
+	# persona -> ortak belgeler -> araç notu -> sohbet geçmişi).
+	if (nzchar(as.character(plan$sistem_notu %||% "")[1])) {
+	  gecmis <- c(list(list(role = "system", content = plan$sistem_notu)), gecmis)
+	}
+
+	# Ortak belge bağlamı: yalnızca SEÇİLİ belgeler; Langflow yolunda eklenmez.
+	if (isTRUE(plan$belge_baglami) &&
+		exists("ortak_belge_baglam_sistem_mesaji", mode = "function", inherits = TRUE)) {
+	  belge_mesaji <- tryCatch(
+		ortak_belge_baglam_sistem_mesaji(oturum_id, soran_id),
+		error = function(e) NULL
+	  )
+	  if (!is.null(belge_mesaji)) {
+		gecmis <- c(list(belge_mesaji), gecmis)
+	  }
+	}
+
 	# Persona sistem mesajı: yanıt seçili persona tarzında üretilsin. Oda
 	# kaydından okunur; persona metadata'sı yoksa deterministik varsayılana düşer
 	# ve boş talimatta davranış değişmeden normal LLM yoluna devam edilir.
@@ -357,13 +402,6 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 	if (nzchar(persona_sistem)) {
 	  gecmis <- c(list(list(role = "system", content = persona_sistem)), gecmis)
 	}
-
-    ayarlar <- list(
-      model_selection = etkin_model(),
-      temperature = 0.4,
-      enable_mcp_tools = FALSE,
-      api_key_override = api_anahtari()
-    )
 
     sse_hazir <- exists("call_local_llm_sse_worker", mode = "function", inherits = TRUE) &&
       exists("mergen_true_streaming_worker_globals", mode = "function", inherits = TRUE) &&
@@ -376,6 +414,74 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
         kuyruk_id = kuyruk_id, soran_id = soran_id,
         persona_id = persona_kimligi
       )
+    }
+
+    # --- Langflow araç yolu (Süreç Yönetimi / Uygulama Uzmanı) ------------------
+    if (identical(plan$yol, "langflow")) {
+      lf <- if (exists("oo_arac_langflow_cagrisi_hazirla", mode = "function", inherits = TRUE)) {
+        oo_arac_langflow_cagrisi_hazirla(plan, soran_id, oturum_id)
+      } else {
+        NULL
+      }
+
+      if (is.null(lf)) {
+        bitir(hata_metni = paste(
+          "\U000026A0\U0000FE0F Bu araç için kurumsal Langflow yapılandırması eksik.",
+          "Lütfen sistem yöneticisiyle iletişime geçin."
+        ))
+      } else {
+        oo_arac_langflow_uret(lf, soru_metni, session$token, bitir)
+      }
+      return(invisible(NULL))
+    }
+
+    # --- Proje ve Kaynak Analizi araç yolu --------------------------------------
+    # Tekil oturumdaki send_message boru hattıyla aynı: bağlam kurulur, sistem
+    # mesajı eklenir, son kullanıcı içeriği analiz bağlamıyla değiştirilir.
+    # RLS kimliği üretimi süren oturumun sahibinden çözülür; yanıt odadaki tüm
+    # katılımcılara görünür (ortak oda iş modeli).
+    sql_max_tokens <- NULL
+    if (identical(plan$yol, "sql") &&
+        exists("oo_arac_sql_baglami_kur", mode = "function", inherits = TRUE)) {
+      sql_baglam <- oo_arac_sql_baglami_kur(
+        soru_metni, gecmis,
+        ctx$parent_session %||% session,
+        arac_meta
+      )
+
+      if (!is.null(sql_baglam$dogrudan_yanit)) {
+        bitir(yanit_metni = sql_baglam$dogrudan_yanit)
+        return(invisible(NULL))
+      }
+
+      if (nzchar(as.character(sql_baglam$sistem %||% "")[1])) {
+        gecmis <- c(list(list(role = "system", content = sql_baglam$sistem)), gecmis)
+      }
+      if (nzchar(as.character(sql_baglam$kullanici %||% "")[1])) {
+        kullanici_indeksleri <- which(vapply(
+          gecmis, function(m) identical(m$role, "user"), logical(1)
+        ))
+        if (length(kullanici_indeksleri) > 0L) {
+          gecmis[[max(kullanici_indeksleri)]]$content <- sql_baglam$kullanici
+        }
+      }
+      sql_max_tokens <- sql_baglam$max_tokens
+    }
+
+    # Model: araç etkinse aracın modeli (Derin Düşünme çözümü dahil), değilse
+    # odanın seçili modeli.
+    ayarlar <- list(
+      model_selection = if (nzchar(as.character(plan$model_id %||% "")[1])) {
+        plan$model_id
+      } else {
+        etkin_model()
+      },
+      temperature = 0.4,
+      enable_mcp_tools = FALSE,
+      api_key_override = api_anahtari()
+    )
+    if (!is.null(sql_max_tokens)) {
+      ayarlar$max_output_tokens <- sql_max_tokens
     }
 
     if (sse_hazir) {

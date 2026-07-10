@@ -2,15 +2,16 @@
  * Dosya: www/css/ortak_oturumlar_room.css
  * Açıklama: Ortak Oturum ODASI yüzeyleri (ortak_oturumlar.css'ten ayrılmış
  *   odak dosyası; ana dosya bakım bütçesinin altında kalsın diye):
- *     - Model / Persona seçici ("Model Değiştir" bileşeni)
- *     - Sohbet baloncuğu avatar görselleri
- *     - Baloncuk aralığı ve okunabilirlik iyileştirmeleri
- *     - İkon-only düğme (yeni bağlam)
+ *     - Model / Persona / Araç seçici ("Model Değiştir" bileşeni)
+ *     - Araç-özel ayarlar, aktif araç rozeti ve model kilidi
+ *     - Ana Söyleşi diliyle yeniden tasarlanan mesaj balonları
+ *     - Ortak Belgeler paneli: yükleme, bağlam seçimi, kaldırma
+ *     - Sohbeti temizle onay modalı ve ince temalı kaydırma çubukları
  *   Koyu tema varsayılan; açık tema html[data-theme="light"] kapsamındadır.
  *   Tüm renkler tema token'larından gelir.
  * ========================================================================== */
 
-/* --- Model / Persona seçici ("Model Değiştir" dili) -------------------------
+/* --- Model / Persona / Araç seçici ("Model Değiştir" dili) -------------------
  * Ana söyleşi model seçicisiyle (model_selector.css) aynı bileşen
  * (shinyWidgets::dropdown). O dosya id ile kapsanmış olduğundan burada sınıfla
  * (.oo-secici) yeniden kurulur. */
@@ -78,7 +79,7 @@
   white-space: nowrap;
 }
 
-/* Açılır panel (model/persona kataloğu). */
+/* Açılır panel (model/persona/araç kataloğu). */
 .oo-secici [id^="sw-content-"] {
   background-color: var(--color-surface) !important;
   border: 1px solid var(--color-border) !important;
@@ -162,9 +163,203 @@
   height: 9px;
 }
 
-/* --- Sohbet baloncuğu avatar görseli (ana söyleşi deseni) ------------------- */
+/* --- Araç seçici: katalog satırları + devre dışı araç ----------------------- */
+.oo-arac-listesi {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.oo-arac-oge {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.oo-arac-ikon {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: var(--color-surface-2, var(--color-bg-elevated));
+  font-size: 12px;
+  margin-top: 1px;
+}
+.oo-arac-metin {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.oo-arac-alt {
+  font-size: 0.76em;
+  color: var(--color-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.oo-secici .dropdown-item.oo-arac-devredisi {
+  opacity: 0.5;
+  cursor: not-allowed !important;
+}
+.oo-secici .dropdown-item.oo-arac-devredisi:hover {
+  background-color: transparent !important;
+  color: var(--color-text-soft) !important;
+}
+
+/* --- Araç-özel ayarlar (açılır menü içinde) --------------------------------- */
+.oo-arac-ayarlar {
+  border-top: 1px solid var(--color-border);
+  margin-top: 6px;
+  padding: 8px 6px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.oo-arac-ayarlar-baslik {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--oo-accent, var(--color-info));
+}
+.oo-arac-ayar-satiri {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-weight: 500;
+  color: var(--color-text-soft);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.oo-arac-ayar-satiri:hover {
+  background: var(--color-surface-2, var(--color-bg-elevated));
+}
+.oo-arac-ayar-etiket {
+  font-size: 0.88em;
+  color: var(--color-text);
+  flex: 0 0 auto;
+}
+.oo-arac-ayar-alt {
+  font-size: 0.76em;
+  color: var(--color-muted);
+  margin-left: auto;
+}
+.oo-arac-ayar-kutu {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--oo-accent, var(--color-info));
+  cursor: pointer;
+  flex: 0 0 auto;
+  margin: 0;
+}
+.oo-arac-ayar-kutu:focus-visible,
+.oo-arac-ayar-secim:focus-visible {
+  outline: 2px solid var(--color-focus, var(--oo-accent, var(--color-info)));
+  outline-offset: 2px;
+}
+.oo-arac-ayar-secim {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  max-width: 170px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2, var(--color-bg-elevated));
+  color: var(--color-text);
+  font-size: 0.86em;
+  cursor: pointer;
+}
+
+/* --- Aktif araç rozeti ------------------------------------------------------ */
+.oo-arac-rozet {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 4px 6px 4px 12px;
+  border-radius: 999px;
+  font-size: 0.82em;
+  font-weight: 600;
+  background: var(--oo-accent-soft, rgba(59, 130, 246, 0.14));
+  border: 1px solid var(--oo-arac-renk, var(--oo-accent, var(--color-info)));
+  color: var(--color-text);
+}
+.oo-arac-rozet-ikon {
+  color: var(--oo-arac-renk, var(--oo-accent, var(--color-info)));
+  display: inline-flex;
+}
+.oo-arac-rozet-ad {
+  white-space: nowrap;
+}
+.oo-arac-rozet-ozet {
+  font-weight: 500;
+  font-size: 0.92em;
+  color: var(--color-text-soft);
+  border-left: 1px solid var(--color-border);
+  padding-left: 8px;
+  white-space: nowrap;
+}
+.oo-arac-rozet-temizle {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--color-text-soft);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.oo-arac-rozet-temizle:hover {
+  background: var(--color-danger, #e05555);
+  color: #ffffff;
+}
+.oo-arac-rozet-temizle:focus-visible {
+  outline: 2px solid var(--color-focus, var(--oo-accent, var(--color-info)));
+  outline-offset: 1px;
+}
+
+/* Model kilidi: araç etkinken model seçimi devre dışı görünümü. */
+.oo-secici-kilitli {
+  opacity: 0.75;
+  cursor: not-allowed;
+  padding-left: 10px;
+}
+.oo-secici-kilit-ikon {
+  color: var(--color-warning);
+  font-size: 12px;
+  display: inline-flex;
+}
+
+/* --- Mesaj akışı: Ana Söyleşi diliyle yeniden tasarım ------------------------
+ * Balonlar arası belirgin nefes payı + başlık bandı (gönderen/rozet/zaman)
+ * içerikten ince çizgiyle ayrılır + yumuşak köşe ve gölge. */
+.oo-mesaj-akisi {
+  gap: 22px;
+  padding: 12px 10px 10px 4px;
+}
+.oo-mesaj {
+  gap: 12px;
+  max-width: 86%;
+}
 .oo-mesaj-avatar {
   overflow: hidden;
+  width: 36px;
+  height: 36px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
 }
 .oo-mesaj-avatar-img {
   width: 100%;
@@ -180,8 +375,202 @@
   justify-content: center;
   font-weight: 700;
 }
+.oo-mesaj-govde {
+  padding: 0;
+  border-radius: 16px;
+  box-shadow: var(--shadow-card, 0 2px 10px rgba(0, 0, 0, 0.16));
+  overflow: hidden;
+}
+.oo-mesaj-ust {
+  margin-bottom: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-border-soft);
+  background: color-mix(in srgb, var(--color-surface-2, var(--color-bg-elevated)) 55%, transparent);
+}
+.oo-mesaj-metin {
+  padding: 12px 16px 14px;
+  font-size: 0.95em;
+  line-height: 1.6;
+}
+.oo-mesaj-metin > :last-child {
+  margin-bottom: 0;
+}
 
-/* --- İkon-only düğme (yeni bağlam) ----------------------------------------- */
+/* Sistem/belge bildirimleri: ortalanmış kompakt not (Ana Söyleşi system-message). */
+.oo-mesaj-sistem,
+.oo-mesaj-belge {
+  align-self: center;
+  max-width: 72%;
+}
+.oo-mesaj-sistem .oo-mesaj-avatar,
+.oo-mesaj-belge .oo-mesaj-avatar {
+  display: none;
+}
+.oo-mesaj-sistem .oo-mesaj-govde,
+.oo-mesaj-belge .oo-mesaj-govde {
+  box-shadow: none;
+  border-style: dashed;
+  border-left-width: 1px;
+}
+.oo-mesaj-sistem .oo-mesaj-ust,
+.oo-mesaj-belge .oo-mesaj-ust {
+  border-bottom: none;
+  padding-bottom: 0;
+  background: transparent;
+}
+.oo-mesaj-sistem .oo-mesaj-metin,
+.oo-mesaj-belge .oo-mesaj-metin {
+  padding-top: 6px;
+  font-size: 0.86em;
+  color: var(--color-text-soft);
+}
+
+/* Yapay zekâ yanıtı geniş kart. */
+.oo-mesaj-yz-yanit {
+  max-width: 94%;
+}
+
+/* --- Kompakt composer ------------------------------------------------------- */
+.oo-composer {
+  gap: 6px;
+  padding-top: 8px;
+}
+.oo-composer-girdi {
+  min-height: 46px;
+}
+/* Boş renderUI yuvaları (uyarı/rozet) flex gap'inde ölü boşluk bırakmasın. */
+.oo-composer > .shiny-html-output:empty {
+  display: none;
+}
+
+/* --- Ortak Belgeler paneli: yükleme + bağlam seçimi + kaldırma --------------- */
+.oo-belge-yukleme {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+  flex: 0 0 auto;
+}
+.oo-belge-yukleme .form-group {
+  margin-bottom: 0;
+}
+.oo-belge-yukleme .input-group {
+  width: 100%;
+}
+.oo-belge-yukleme .btn-file {
+  background: var(--oo-accent, var(--color-info));
+  border: 1px solid var(--oo-accent, var(--color-info));
+  color: #ffffff;
+  border-radius: 8px 0 0 8px;
+  font-size: 0.84em;
+  font-weight: 600;
+}
+.oo-belge-yukleme .form-control {
+  background: var(--color-bg, transparent);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-soft);
+  font-size: 0.82em;
+  border-radius: 0 8px 8px 0;
+}
+.oo-belge-yukleme .progress {
+  height: 6px;
+  margin-top: 4px;
+  margin-bottom: 0;
+  border-radius: 999px;
+  background: var(--color-surface-2, var(--color-bg-elevated));
+}
+.oo-belge-yukleme .progress-bar {
+  background: var(--oo-accent, var(--color-info));
+}
+.oo-belge-yukleme-ipucu {
+  color: var(--color-muted);
+  font-size: 0.74em;
+  line-height: 1.35;
+}
+
+.oo-belge-secili {
+  border-color: var(--oo-accent, var(--color-info));
+  box-shadow: inset 0 0 0 1px var(--oo-accent, var(--color-info));
+}
+.oo-belge-secim {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 500;
+  font-size: 0.8em;
+  color: var(--color-text-soft);
+  cursor: pointer;
+}
+.oo-belge-secim-kutu {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--oo-accent, var(--color-info));
+  cursor: pointer;
+}
+.oo-belge-secim-kutu:focus-visible {
+  outline: 2px solid var(--color-focus, var(--oo-accent, var(--color-info)));
+  outline-offset: 2px;
+}
+.oo-belge-secim-etiket {
+  white-space: nowrap;
+}
+.oo-btn-belge-sil {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.oo-btn-belge-sil:hover {
+  color: var(--color-danger, #e05555);
+  border-color: var(--color-danger, #e05555);
+  background: transparent;
+}
+.oo-btn-belge-sil:focus-visible {
+  outline: 2px solid var(--color-danger, #e05555);
+  outline-offset: 1px;
+}
+.oo-rozet-yukleme {
+  color: var(--oo-accent, var(--color-info));
+  border-color: var(--oo-accent, var(--color-info));
+}
+.oo-rozet-uretilen {
+  color: var(--color-muted);
+}
+.oo-rozet-baglamda {
+  color: var(--oo-accent, var(--color-info));
+  border-color: var(--oo-accent, var(--color-info));
+}
+
+/* --- Sohbeti temizle onay modalı --------------------------------------------- */
+.oo-sohbet-temizle-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0 8px;
+}
+.oo-sohbet-temizle-modal p {
+  margin: 0;
+}
+.oo-sohbet-temizle-notu {
+  font-size: 0.86em;
+  color: var(--color-muted);
+}
+.oo-btn-sohbet-temizle {
+  width: 40px;
+}
+
+/* --- İkon-only düğme (yeni bağlam / sohbet temizle) -------------------------- */
 .oo-btn-ikon {
   width: 40px;
   padding-left: 0;
@@ -189,20 +578,38 @@
   justify-content: center;
 }
 
-/* --- Baloncuk aralığı ve okunabilirlik iyileştirmesi ------------------------ */
-.oo-mesaj-akisi {
-  gap: 20px;
-  padding: 10px 6px 6px;
+/* --- İnce temalı kaydırma çubukları (mesaj akışı + yan paneller) -------------- */
+.oo-mesaj-akisi::-webkit-scrollbar,
+.oo-katilimci-listesi::-webkit-scrollbar,
+.oo-belgeler-listesi::-webkit-scrollbar,
+.oo-arac-listesi::-webkit-scrollbar {
+  width: 8px;
 }
-.oo-mesaj + .oo-mesaj {
-  margin-top: 2px;
+.oo-mesaj-akisi::-webkit-scrollbar-track,
+.oo-katilimci-listesi::-webkit-scrollbar-track,
+.oo-belgeler-listesi::-webkit-scrollbar-track,
+.oo-arac-listesi::-webkit-scrollbar-track {
+  background: transparent;
 }
-.oo-mesaj-govde {
-  padding: 12px 16px;
-  line-height: 1.55;
+.oo-mesaj-akisi::-webkit-scrollbar-thumb,
+.oo-katilimci-listesi::-webkit-scrollbar-thumb,
+.oo-belgeler-listesi::-webkit-scrollbar-thumb,
+.oo-arac-listesi::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
 }
-.oo-mesaj-metin {
-  font-size: 0.95em;
+.oo-mesaj-akisi::-webkit-scrollbar-thumb:hover,
+.oo-katilimci-listesi::-webkit-scrollbar-thumb:hover,
+.oo-belgeler-listesi::-webkit-scrollbar-thumb:hover,
+.oo-arac-listesi::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted);
+}
+.oo-mesaj-akisi,
+.oo-katilimci-listesi,
+.oo-belgeler-listesi,
+.oo-arac-listesi {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
 }
 
 /* --- Oda gövdesi görünür yüksekliği tam kullansın --------------------------- */
@@ -213,11 +620,35 @@
   flex-direction: column;
 }
 
-/* --- Açık tema: seçici yüzeyi beyaz kart ----------------------------------- */
+/* --- Açık tema: seçici/araç/belge yüzeyleri beyaz kart ------------------------ */
 html[data-theme="light"] .oo-secici {
   background: #ffffff;
   border-color: var(--color-border);
 }
 html[data-theme="light"] .oo-secici [id^="sw-content-"] {
   background-color: #ffffff !important;
+}
+html[data-theme="light"] .oo-arac-ikon {
+  background: var(--color-bg, #f4f6fb);
+}
+html[data-theme="light"] .oo-arac-ayar-secim {
+  background: #ffffff;
+}
+html[data-theme="light"] .oo-arac-ayar-satiri:hover {
+  background: var(--oo-accent-soft, rgba(59, 130, 246, 0.08));
+}
+html[data-theme="light"] .oo-arac-rozet {
+  background: var(--oo-accent-soft, rgba(59, 130, 246, 0.1));
+}
+html[data-theme="light"] .oo-mesaj-ust {
+  background: color-mix(in srgb, var(--color-bg, #f4f6fb) 65%, transparent);
+}
+html[data-theme="light"] .oo-mesaj-govde {
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.08);
+}
+html[data-theme="light"] .oo-belge-yukleme .form-control {
+  background: #ffffff;
+}
+html[data-theme="light"] .oo-belge-yukleme .progress {
+  background: var(--color-bg, #eef1f7);
 }

@@ -142,7 +142,7 @@
   # Bilinçli güncelleme: Ortak Oturumlar (işbirlikçi çalışma odaları) bölümü
   # eklendi: saf yetki/e-posta yardımcıları + MB_OrtakOturumlar DB katmanı +
   # oda/davet/hub modülleri (12 dosya, module_claude_code'dan sonra).
-  ortak_oturumlar = list(first = "R/helpers_ortak_oturum_permissions.R", last = "R/module_ortak_calismalar.R", n = 17L),
+  ortak_oturumlar = list(first = "R/helpers_ortak_oturum_permissions.R", last = "R/module_ortak_calismalar.R", n = 21L),
   module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/module_proje_kaynak_analizi.R", n = 1L),
   module_support = list(first = "R/module_destek_yardim.R", last = "R/module_destek.R", n = 6L),
   # Bilinçli güncelleme: at-budget admin modüllerinin inline highcharter/DT
@@ -349,7 +349,13 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # (R/helpers_ortak_oturum_db_bilge_yolac.R; mesaj/kilit katmanından ayrıldı),
   # yapay zekâ üretim motoru (R/module_ortak_oturum_yz.R) ve Ortak Bilge Yolaç
   # çalışma alanı köprüsü (R/module_ortak_oturum_bilge_yolac.R).
-  expect_equal(length(runtime), 319L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 319L -> 323L bilinçli güncelleme: Ortak Söyleşi büyütme seti +4 dosya:
+  # paylaşılan belge girdileri DB/depolama katmanı
+  # (R/helpers_ortak_oturum_belgeler.R), araç seçici saf karar/plan katmanı
+  # (R/helpers_ortak_oturum_arac.R), Ortak Belgeler paneli + sohbeti temizle
+  # bağlayıcısı (R/module_ortak_oturum_belge_paneli.R) ve araç seçici UI/model
+  # kilidi bağlayıcısı (R/module_ortak_oturum_arac.R).
+  expect_equal(length(runtime), 323L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

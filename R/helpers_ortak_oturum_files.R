@@ -226,7 +226,7 @@ ortak_db_dosyalar <- function(oturum_id, kullanici_id, conn = NULL) {
         handle$conn,
         paste(
           "SELECT f.OrtakDosyaID, f.DosyaAdi, f.DosyaYolu, f.DosyaTuru,",
-          "f.DosyaBoyutu, f.DosyaDurumu, f.OlusturmaZamani,",
+          "f.DosyaBoyutu, f.DosyaDurumu, f.OlusturmaZamani, f.MetaJson,",
           "u.KaynakAdi AS UretenAdi, k.KopyalamaDurumu",
           "FROM MB_OrtakOturum_Dosyalar f",
           "LEFT JOIN MB_Users u ON u.UserID = f.UretenKullaniciID",
@@ -346,10 +346,19 @@ ortak_dosya_kisisel_kopyala <- function(ortak_dosya_id, kullanici_id, conn = NUL
     return(basarisiz("Bu belgeyi kopyalama yetkiniz yok.", durum = "Reddetti"))
   }
 
-  # Fiziksel kaynak ortak belge kökünün içinde olmalıdır (traversal koruması).
+  # Fiziksel kaynak ortak belge köklerinin İÇİNDE olmalıdır (traversal
+  # koruması). Üretilen belgeler dosya kökünde, katılımcı yüklemeleri
+  # oturuma özel yükleme kökünde durur; ikisi de meşru kaynaktır.
   kok <- ortak_oturum_dosya_koku(oturum_id)
+  yukleme_koku <- if (exists("ortak_oturum_yukleme_koku", mode = "function", inherits = TRUE)) {
+    ortak_oturum_yukleme_koku(oturum_id)
+  } else {
+    NULL
+  }
   kaynak <- as.character(dosya$DosyaYolu[1])
-  if (is.null(kok) || !.oo_dosya_kok_icinde_mi(kaynak, kok) || !file.exists(kaynak)) {
+  kok_icinde <- (!is.null(kok) && .oo_dosya_kok_icinde_mi(kaynak, kok)) ||
+    (!is.null(yukleme_koku) && .oo_dosya_kok_icinde_mi(kaynak, yukleme_koku))
+  if (!isTRUE(kok_icinde) || !file.exists(kaynak)) {
     return(basarisiz("Ortak belge fiziksel olarak doğrulanamadı."))
   }
 

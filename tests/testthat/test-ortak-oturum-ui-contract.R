@@ -55,11 +55,16 @@ test_that("davet paneli ve belge eylemleri sözleşmeli metinleri taşır", {
 
   oda_ui <- .oo_ui_oku(file.path(repo_root, "R", "module_ortak_oturum_room_ui.R"))
   davetler <- .oo_ui_oku(file.path(repo_root, "R", "module_ortak_oturum_invites.R"))
+  belge_paneli <- .oo_ui_oku(file.path(repo_root, "R", "module_ortak_oturum_belge_paneli.R"))
 
   expect_true(grepl(enc2utf8("Katılımcı Çağır"), oda_ui, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl(enc2utf8("Mergen İçinden Çağır"), oda_ui, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl(enc2utf8("E-posta Taslağı Hazırla"), oda_ui, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl(enc2utf8("Kendi Dosyalarıma Kaydet"), oda_ui, fixed = TRUE, useBytes = TRUE))
+  # Belge kartı üreticisi (Kendi Dosyalarıma Kaydet + bağlam seçimi + kaldırma)
+  # belge paneli bağlayıcısına taşındı.
+  expect_true(grepl(enc2utf8("Kendi Dosyalarıma Kaydet"), belge_paneli, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl(enc2utf8("Bağlama dahil et"), belge_paneli, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("Belge Yükle", belge_paneli, fixed = TRUE, useBytes = TRUE))
 
   # Davet paneli sekmeleri ve hız sınırı.
   expect_true(grepl(enc2utf8("Çevrim İçi Kullanıcılar"), davetler, fixed = TRUE, useBytes = TRUE))
@@ -192,8 +197,12 @@ test_that("kaynak manifesti ortak_oturumlar bölümünü bağımlılık sırası
     "R/helpers_ortak_oturum_db_bilge_yolac.R",
     "R/helpers_ortak_oturum_db_kuyruk.R",
     "R/helpers_ortak_oturum_files.R",
+    "R/helpers_ortak_oturum_belgeler.R",
+    "R/helpers_ortak_oturum_arac.R",
     "R/helpers_ortak_oturum_bakim.R",
     "R/module_ortak_oturum_room_ui.R",
+    "R/module_ortak_oturum_belge_paneli.R",
+    "R/module_ortak_oturum_arac.R",
     "R/module_ortak_oturum_invites.R",
     "R/module_ortak_oturum_yz.R",
     "R/module_ortak_oturum_bilge_yolac.R",
