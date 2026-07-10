@@ -307,6 +307,10 @@ ortak_db_belge_sil <- function(ortak_dosya_id, kullanici_id, conn = NULL) {
   }
 
   oturum_id <- as.integer(dosya$OrtakOturumID[1])
+  if (!.oo_db_oturum_aktif_mi(handle$conn, oturum_id)) {
+    return(basarisiz("Aktif olmayan ortak oturumda belge kaldırılamaz."))
+  }
+
   if (!.oo_belge_yetkili_mi(handle$conn, oturum_id, kullanici_id)) {
     return(basarisiz("Bu belgeyi kaldırma yetkiniz yok."))
   }
@@ -381,6 +385,10 @@ ortak_db_belge_secim_guncelle <- function(ortak_dosya_id,
   }
 
   oturum_id <- as.integer(dosya$OrtakOturumID[1])
+  if (!.oo_db_oturum_aktif_mi(handle$conn, oturum_id)) {
+    return(FALSE)
+  }
+
   if (!.oo_belge_yetkili_mi(handle$conn, oturum_id, kullanici_id)) {
     return(FALSE)
   }
@@ -402,6 +410,55 @@ ortak_db_belge_secim_guncelle <- function(ortak_dosya_id,
   uyari = "Ortak belge seçim güncellemesi başarısız:")
 
   isTRUE(sonuc)
+}
+
+
+#' Oturumun seçili belge kimliklerini döndürür. Soru MetaJson anlık görüntüsü
+#' için kullanılır; kuyruktaki sorular daha sonra çalışsa bile aynı belge
+#' kümesini kullanır.
+ortak_db_secili_belge_idleri <- function(oturum_id, kullanici_id, conn = NULL) {
+  df <- ortak_db_secili_belgeler(oturum_id, kullanici_id, conn = conn)
+  if (!is.data.frame(df) || nrow(df) == 0L || !("OrtakDosyaID" %in% names(df))) {
+    return(integer(0))
+  }
+
+  ids <- suppressWarnings(as.integer(df$OrtakDosyaID))
+  ids[!is.na(ids) & ids > 0L]
+}
+
+#' Belge bağlam anlık görüntüsünü soru MetaJson'undan okur.
+ortak_belge_meta_secili_idleri <- function(meta_json) {
+  ham <- as.character(meta_json %||% "")[1]
+  if (is.na(ham) || !nzchar(ham) || !requireNamespace("jsonlite", quietly = TRUE)) {
+    return(NULL)
+  }
+
+  parsed <- tryCatch(jsonlite::fromJSON(ham, simplifyVector = TRUE), error = function(e) NULL)
+  ids <- if (is.list(parsed) && is.list(parsed$belgeler)) parsed$belgeler$secili_ids else NULL
+  if (is.null(ids)) {
+    return(NULL)
+  }
+
+  ids <- suppressWarnings(as.integer(ids))
+  ids <- ids[!is.na(ids) & ids > 0L]
+  unique(ids)
+}
+
+#' Oturum belgelerini verilen anlık görüntü kimlikleriyle sınırlar.
+ortak_db_belgeler_idlerle <- function(oturum_id, kullanici_id, belge_ids, conn = NULL) {
+  ids <- suppressWarnings(as.integer(belge_ids %||% integer(0)))
+  ids <- unique(ids[!is.na(ids) & ids > 0L])
+  if (length(ids) == 0L) {
+    return(data.frame())
+  }
+
+  df <- ortak_db_dosyalar(oturum_id, kullanici_id, conn = conn)
+  if (!is.data.frame(df) || nrow(df) == 0L || !("OrtakDosyaID" %in% names(df))) {
+    return(data.frame())
+  }
+
+  mevcut <- suppressWarnings(as.integer(df$OrtakDosyaID))
+  df[!is.na(mevcut) & mevcut %in% ids, , drop = FALSE]
 }
 
 #' Oturumun bağlama dahil (seçili) belgelerini döndürür. İçerik erişimi
@@ -491,8 +548,12 @@ ortak_belge_baglam_metni <- function(belgeler_df, toplam_butce = 90000L) {
 
 #' Seçili belgelerden LLM sistem mesajı üretir; seçili belge yoksa NULL.
 #' Üretim motoru bu mesajı persona sistem mesajından SONRA geçmişe ekler.
-ortak_belge_baglam_sistem_mesaji <- function(oturum_id, kullanici_id, conn = NULL) {
-  secili <- ortak_db_secili_belgeler(oturum_id, kullanici_id, conn = conn)
+ortak_belge_baglam_sistem_mesaji <- function(oturum_id, kullanici_id, conn = NULL, belge_ids = NULL) {
+  secili <- if (is.null(belge_ids)) {
+    ortak_db_secili_belgeler(oturum_id, kullanici_id, conn = conn)
+  } else {
+    ortak_db_belgeler_idlerle(oturum_id, kullanici_id, belge_ids, conn = conn)
+  }
   baglam <- ortak_belge_baglam_metni(secili)
   if (is.null(baglam)) {
     return(NULL)

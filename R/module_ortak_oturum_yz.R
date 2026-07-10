@@ -96,6 +96,17 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
     } else {
       NULL
     }
+    belge_ids <- if (exists("ortak_db_secili_belge_idleri", mode = "function", inherits = TRUE)) {
+      ortak_db_secili_belge_idleri(oturum_id, uid)
+    } else {
+      integer(0)
+    }
+    if (length(belge_ids) > 0L) {
+      arac_meta_ekstra <- utils::modifyList(
+        if (is.list(arac_meta_ekstra)) arac_meta_ekstra else list(),
+        list(belgeler = list(secili_ids = as.integer(belge_ids)))
+      )
+    }
 
     soru_id <- ortak_db_mesaj_ekle(
       oturum_id = oturum_id,
@@ -337,6 +348,7 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 	# kalıcı kuyruk soruyu daha sonra devraldığında da doğru araç uygulanır.
 	soru_metni <- ""
 	arac_meta <- NULL
+	belge_ids_snapshot <- NULL
 
 	if (is.data.frame(mesaj_df) &&
 		nrow(mesaj_df) > 0L &&
@@ -349,9 +361,13 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 
 	  if (nrow(aktif_soru) > 0L) {
 		soru_metni <- as.character(aktif_soru$MesajMetni[1] %||% "")[1]
-		if (exists("oo_arac_meta_parse", mode = "function", inherits = TRUE) &&
-			"MetaJson" %in% names(aktif_soru)) {
-		  arac_meta <- oo_arac_meta_parse(aktif_soru$MetaJson[1])
+		if ("MetaJson" %in% names(aktif_soru)) {
+		  if (exists("oo_arac_meta_parse", mode = "function", inherits = TRUE)) {
+		    arac_meta <- oo_arac_meta_parse(aktif_soru$MetaJson[1])
+		  }
+		  if (exists("ortak_belge_meta_secili_idleri", mode = "function", inherits = TRUE)) {
+		    belge_ids_snapshot <- ortak_belge_meta_secili_idleri(aktif_soru$MetaJson[1])
+		  }
 		}
 		soru_sirasi <- suppressWarnings(as.numeric(aktif_soru$MesajSirasi[1]))
 		mesaj_siralari <- suppressWarnings(as.numeric(mesaj_df$MesajSirasi))
@@ -386,7 +402,7 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 	if (isTRUE(plan$belge_baglami) &&
 		exists("ortak_belge_baglam_sistem_mesaji", mode = "function", inherits = TRUE)) {
 	  belge_mesaji <- tryCatch(
-		ortak_belge_baglam_sistem_mesaji(oturum_id, soran_id),
+		ortak_belge_baglam_sistem_mesaji(oturum_id, soran_id, belge_ids = belge_ids_snapshot),
 		error = function(e) NULL
 	  )
 	  if (!is.null(belge_mesaji)) {
