@@ -300,6 +300,8 @@ test_that("mesaj boşluğu gerçek balon kapsayıcısında ve oda yükseklik zin
   expect_true(grepl("gap: 18px", css, fixed = TRUE, useBytes = TRUE))
 
   expect_true(grepl(".ortak-calismalar-container.oo-oda-acik", css, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl(".content-wrapper:has(.ortak-calismalar-container.oo-oda-acik)", css, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("> .content > .tab-content > .tab-pane.active", css, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("flex: 1 1 auto", css, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("min-height: 0", css, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("height: 100%", css, fixed = TRUE, useBytes = TRUE))
