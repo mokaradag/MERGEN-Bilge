@@ -171,9 +171,13 @@ testthat::test_that("hızlı şeritte açılış tam liste yüklemez, ön izleme
   testthat::skip_if_not_installed("shiny")
   testthat::skip_if_not_installed("shinyjs")
   testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
   .startup_observers_source_once()
 
   rec <- new.env()
+  rec$preview_result <- list(
+    "preview-chat" = list(title = "Ön izleme", message_count = 0L)
+  )
   stubs <- .with_startup_db_stubs(rec)
   on.exit(stubs$restore(), add = TRUE)
 
@@ -210,6 +214,13 @@ testthat::test_that("hızlı şeritte açılış tam liste yüklemez, ön izleme
     testthat::expect_identical(rec$preview, 1L)
     testthat::expect_identical(rec$preview_in_future, TRUE)
     testthat::expect_true("startup_saved_chats_preview" %in% rec$future_types)
+
+    # Arada daha yeni bir durum oluşmadığında normal hızlı-şerit ön izlemesi uygulanır.
+    later::run_now(timeoutSecs = 0.1)
+    session$flushReact()
+    testthat::expect_true(
+      "preview-chat" %in% names(session$userData$.values$saved_chats)
+    )
 
     # Tembel yükleme bekleniyor işareti ve dürüst ertelenmiş kontrol noktası.
     testthat::expect_true(isTRUE(session$userData$saved_chats_full_pending))
@@ -257,6 +268,50 @@ testthat::test_that("hızlı şeritte tam liste sekme açılışında bir kez te
 
     # Tekrarlı sekme geçişleri ikinci bir tam yükleme başlatmaz.
     session$setInputs(tabs = "history")
+    testthat::expect_identical(rec$full, 1L)
+  })
+})
+
+
+testthat::test_that("hızlı şeritte önceden seçili hedef sekme tam listeyi bir kez yükler", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  .startup_observers_source_once()
+
+  rec <- new.env()
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input,
+      session = session,
+      values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() 42L,
+      sso_state = NULL,
+      boot_ready = NULL
+    )
+  }, {
+    session$flushReact()
+
+    # Şerit çözülmeden önce ilgisiz veya hedef sekmeler tam yükleme başlatamaz.
+    session$setInputs(tabs = "chat")
+    testthat::expect_identical(rec$full, 0L)
+    session$setInputs(tabs = "history")
+    testthat::expect_identical(rec$full, 0L)
+
+    # Hızlı şerit çözülünce önceden seçili history aynı tembel yol üzerinden
+    # başka bir sekme geçişi gerektirmeden tam listeyi başlatır.
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+    testthat::expect_identical(rec$full, 1L)
+    testthat::expect_identical(rec$full_user_ids, 42L)
+    testthat::expect_true("startup_saved_chats" %in% rec$future_types)
+
+    # Sonraki hedef sekme olayları aynı yüklemeyi yeniden başlatamaz.
+    session$setInputs(tabs = "saved_chats")
     testthat::expect_identical(rec$full, 1L)
   })
 })
@@ -313,6 +368,67 @@ testthat::test_that("hızlı şeritte geç kalan ön izleme tam listeyi daraltma
     later::run_now(timeoutSecs = 0.1)
     session$flushReact()
     testthat::expect_identical(length(session$userData$.values$saved_chats), 3L)
+  })
+})
+
+
+testthat::test_that("hızlı şeritte geç kalan ön izleme yerel sohbet değişikliğini ezmez", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+
+  rec <- new.env()
+  rec$defer_preview_fulfillment <- TRUE
+  rec$preview_result <- list(
+    "stale-preview" = list(title = "Eski ön izleme", message_count = 0L)
+  )
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input,
+      session = session,
+      values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() 42L,
+      sso_state = NULL,
+      boot_ready = NULL
+    )
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+
+    testthat::expect_identical(rec$preview, 1L)
+    testthat::expect_true(is.function(rec$resolve_preview))
+    testthat::expect_identical(rec$full, 0L)
+
+    # Yeni/saklanan bir sohbetin yaptığı gibi reactive state'i worker
+    # başlatıldıktan sonra, callback tamamlanmadan güncelle.
+    newer_saved_chats <- list(
+      "local-new-chat" = list(
+        title = "Yeni Söyleşi",
+        message_count = 1L,
+        messages = list(list(type = "user", content = "Korunmalı"))
+      )
+    )
+    session$userData$.values$saved_chats <- newer_saved_chats
+
+    # Eski ön izleme geç tamamlansa da daha yeni yerel durum aynen kalır.
+    rec$resolve_preview()
+    later::run_now(timeoutSecs = 0.1)
+    session$flushReact()
+    testthat::expect_identical(
+      session$userData$.values$saved_chats,
+      newer_saved_chats
+    )
+    testthat::expect_true("local-new-chat" %in% names(session$userData$.values$saved_chats))
+    testthat::expect_false("stale-preview" %in% names(session$userData$.values$saved_chats))
+    testthat::expect_identical(rec$full, 0L)
   })
 })
 
