@@ -305,7 +305,7 @@ oo_arac_sql_baglami_kur <- function(soru, gecmis, oda_session, arac_meta) {
       pk_analiz_process_request(soru, gecmis, oda_session, stop_check = NULL)
     }
   }, error = function(e) {
-    paste0("\U000026A0\U0000FE0F Analiz modülü hatası: ", conditionMessage(e))
+    "\U000026A0\U0000FE0F Analiz modülü yanıtı hazırlanamadı; lütfen tekrar deneyin."
   })
 
   if (is.character(sonuc)) {
