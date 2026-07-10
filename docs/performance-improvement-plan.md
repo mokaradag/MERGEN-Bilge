@@ -1,6 +1,6 @@
 # MERGEN performance improvement plan
 
-Last updated: 2026-07-04
+Last updated: 2026-07-10
 
 ## Current baseline
 
