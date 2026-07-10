@@ -281,6 +281,64 @@ test_that("araç rozeti aktif aracı, ayar özetini ve temizleme düğmesini ta�
   expect_true(grepl("data-oo-arac-temizle", html, fixed = TRUE))
 })
 
+
+test_that("Proje/Kaynak Analizi session kimliği soruyu soran katılımcıya bağlanır", {
+  current_user_data <- new.env(parent = emptyenv())
+  current_user_data$user_id <- 20L
+  current_user_data$system_username <- "processor_user"
+  current_user_data$sso_active <- TRUE
+  current_user_data$auth_initialized <- TRUE
+  current_session <- list(userData = current_user_data)
+
+  katilimcilar <- data.frame(
+    KullaniciID = c(10L, 20L),
+    KullaniciAdi = c("asker_user", "processor_user"),
+    KaynakAdi = c("Soran", "İşleyen"),
+    stringsAsFactors = FALSE
+  )
+
+  asker_session <- oo_arac_soran_session(
+    oturum_id = 42L,
+    soran_id = 10L,
+    current_session = current_session,
+    katilimcilar = katilimcilar
+  )
+
+  expect_identical(asker_session$userData$user_id, 10L)
+  expect_identical(asker_session$userData$system_username, "asker_user")
+  expect_true(isTRUE(asker_session$userData$sso_active))
+  expect_true(isTRUE(asker_session$userData$auth_initialized))
+
+  same_session <- oo_arac_soran_session(
+    oturum_id = 42L,
+    soran_id = 20L,
+    current_session = current_session,
+    katilimcilar = katilimcilar
+  )
+  expect_identical(same_session, current_session)
+})
+
+test_that("Proje/Kaynak Analizi session kimliği çözülemezse işleyen katılımcıya düşmez", {
+  current_user_data <- new.env(parent = emptyenv())
+  current_user_data$user_id <- 20L
+  current_user_data$system_username <- "processor_user"
+  current_user_data$sso_active <- TRUE
+  current_user_data$auth_initialized <- TRUE
+  current_session <- list(userData = current_user_data)
+
+  asker_session <- oo_arac_soran_session(
+    oturum_id = 42L,
+    soran_id = 10L,
+    current_session = current_session,
+    katilimcilar = data.frame(KullaniciID = 20L, KullaniciAdi = "processor_user")
+  )
+
+  expect_identical(asker_session$userData$user_id, 10L)
+  expect_null(asker_session$userData$system_username)
+  expect_true(isTRUE(asker_session$userData$sso_active))
+  expect_false(isTRUE(asker_session$userData$auth_initialized))
+})
+
 test_that("Proje/Kaynak Analizi köprüsü tekil oturum sözleşmesini taşır", {
   onceki_tekil <- if (exists("pk_analiz_process_request", inherits = TRUE)) {
     get("pk_analiz_process_request", inherits = TRUE)

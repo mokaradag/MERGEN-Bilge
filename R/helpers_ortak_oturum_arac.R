@@ -211,6 +211,73 @@ oo_arac_uretim_plani <- function(arac_meta, config = NULL) {
   plan
 }
 
+
+# Proje/Kaynak Analizi RLS kimliği soru sahibine bağlı çalışmalıdır. Ortak
+# oturum kuyruğunu hangi Shiny session boşaltırsa boşaltsın SQL/RLS analizi
+# soruyu soran katılımcının MB_Users.KullaniciAdi değeriyle çözülür; soru
+# sahibi çözülemezse başka katılımcının session kimliğine düşülmez.
+oo_arac_soran_session <- function(oturum_id, soran_id, current_session = NULL, katilimcilar = NULL) {
+  soran_id_int <- suppressWarnings(as.integer(soran_id %||% NA_integer_)[1])
+
+  current_uid <- suppressWarnings(as.integer(tryCatch(
+    current_session$userData$user_id %||% NA_integer_,
+    error = function(e) NA_integer_
+  )[1]))
+  if (!is.na(soran_id_int) && !is.na(current_uid) && identical(soran_id_int, current_uid)) {
+    return(current_session)
+  }
+
+  katilimci_satiri <- NULL
+  if (is.data.frame(katilimcilar) && nrow(katilimcilar) > 0L &&
+      all(c("KullaniciID", "KullaniciAdi") %in% names(katilimcilar))) {
+    eslesen <- katilimcilar[
+      suppressWarnings(as.integer(katilimcilar$KullaniciID)) == soran_id_int,
+      ,
+      drop = FALSE
+    ]
+    if (nrow(eslesen) > 0L) {
+      katilimci_satiri <- eslesen[1L, , drop = FALSE]
+    }
+  }
+
+  if (is.null(katilimci_satiri) &&
+      exists("ortak_db_katilimci_listesi", mode = "function", inherits = TRUE)) {
+    liste <- tryCatch(ortak_db_katilimci_listesi(oturum_id), error = function(e) NULL)
+    if (is.data.frame(liste) && nrow(liste) > 0L &&
+        all(c("KullaniciID", "KullaniciAdi") %in% names(liste))) {
+      eslesen <- liste[
+        suppressWarnings(as.integer(liste$KullaniciID)) == soran_id_int,
+        ,
+        drop = FALSE
+      ]
+      if (nrow(eslesen) > 0L) {
+        katilimci_satiri <- eslesen[1L, , drop = FALSE]
+      }
+    }
+  }
+
+  username <- if (!is.null(katilimci_satiri)) {
+    as.character(katilimci_satiri$KullaniciAdi[1] %||% "")[1]
+  } else {
+    ""
+  }
+  username <- trimws(username)
+
+  user_data <- new.env(parent = emptyenv())
+  user_data$user_id <- soran_id_int
+  if (nzchar(username)) {
+    user_data$system_username <- username
+    user_data$user_identity <- list(username = username)
+    user_data$sso_active <- TRUE
+    user_data$auth_initialized <- TRUE
+  } else {
+    user_data$sso_active <- TRUE
+    user_data$auth_initialized <- FALSE
+  }
+
+  list(userData = user_data)
+}
+
 # Proje/Kaynak Analizi boru hattı köprüsü. Tekil oturumdaki send_message
 # yolunun aynısını kullanır: pk_deep_analysis_process (Derin Düşünme) veya
 # pk_analiz_process_request. Karakter dönüşleri doğrudan yanıt olarak, liste

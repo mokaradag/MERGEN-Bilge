@@ -455,14 +455,25 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
     # --- Proje ve Kaynak Analizi araç yolu --------------------------------------
     # Tekil oturumdaki send_message boru hattıyla aynı: bağlam kurulur, sistem
     # mesajı eklenir, son kullanıcı içeriği analiz bağlamıyla değiştirilir.
-    # RLS kimliği üretimi süren oturumun sahibinden çözülür; yanıt odadaki tüm
-    # katılımcılara görünür (ortak oda iş modeli).
+    # RLS kimliği soruyu soran katılımcıya bağlanır; kuyruğu boşaltan Shiny
+    # session farklı olsa bile yanıt odadaki tüm katılımcılara görünür (ortak oda iş modeli).
     sql_max_tokens <- NULL
     if (identical(plan$yol, "sql") &&
         exists("oo_arac_sql_baglami_kur", mode = "function", inherits = TRUE)) {
+      sql_session <- if (exists("oo_arac_soran_session", mode = "function", inherits = TRUE)) {
+        oo_arac_soran_session(
+          oturum_id = oturum_id,
+          soran_id = soran_id,
+          current_session = ctx$parent_session %||% session,
+          katilimcilar = tryCatch(ctx$katilimcilar(), error = function(e) NULL)
+        )
+      } else {
+        ctx$parent_session %||% session
+      }
+
       sql_baglam <- oo_arac_sql_baglami_kur(
         soru_metni, gecmis,
-        ctx$parent_session %||% session,
+        sql_session,
         arac_meta
       )
 
