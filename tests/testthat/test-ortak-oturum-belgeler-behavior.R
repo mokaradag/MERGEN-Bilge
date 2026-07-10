@@ -304,6 +304,31 @@ test_that("bağlam seçimi paylaşılır ve yalnızca seçili belgeler bağlam m
   expect_identical(sistem$role, "system")
   expect_true(nzchar(sistem$content))
 
+  # Kuyruk anlık görüntüsü belge kimliklerini MetaJson'dan ayırır: boş liste
+  # NULL değildir ve sonradan seçilen belgeleri bağlama taşımamalıdır.
+  bos_snapshot_json <- as.character(jsonlite::toJSON(
+    list(belgeler = list(secili_ids = integer(0))),
+    auto_unbox = TRUE,
+    null = "null"
+  ))
+  expect_identical(ortak_belge_meta_secili_idleri(bos_snapshot_json), integer(0))
+  expect_null(ortak_belge_baglam_sistem_mesaji(
+    ortam$oturum_id,
+    1L,
+    conn = conn,
+    belge_ids = integer(0)
+  ))
+  expect_true(grepl(
+    "birinci.txt",
+    ortak_belge_baglam_sistem_mesaji(
+      ortam$oturum_id,
+      1L,
+      conn = conn,
+      belge_ids = b1$dosya_id
+    )$content,
+    fixed = TRUE
+  ))
+
   # Hiç seçili belge kalmazsa bağlam mesajı NULL olur.
   expect_true(ortak_db_belge_secim_guncelle(b1$dosya_id, 1L, secili = FALSE, conn = conn))
   expect_null(ortak_belge_baglam_sistem_mesaji(ortam$oturum_id, 1L, conn = conn))

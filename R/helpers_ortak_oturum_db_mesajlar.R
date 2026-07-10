@@ -563,6 +563,10 @@ ortak_db_sohbet_temizle <- function(oturum_id, kullanici_id, conn = NULL) {
     return(basarisiz("Sohbeti temizleme yetkiniz yok (yalnızca Sahip / Oturum Yöneticisi)."))
   }
 
+  if (!.oo_db_oturum_aktif_mi(handle$conn, oturum_id)) {
+    return(basarisiz("Aktif olmayan ortak oturumun sohbeti temizlenemez."))
+  }
+
   if (isTRUE(ortak_db_aktif_uretim_var_mi(oturum_id, conn = handle$conn))) {
     return(basarisiz("Yanıt üretimi sürerken sohbet temizlenemez; lütfen üretim bitince tekrar deneyin."))
   }
