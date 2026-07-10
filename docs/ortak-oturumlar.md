@@ -72,8 +72,8 @@ token'ları; koyu + açık tema):
   ana söyleşi "Model Değiştir" dili). "Yeni bağlam başlat" ve kalıcı
   "Sohbeti Temizle" düğmeleri doğrudan yan yanadır; temizleme yalnızca
   `katilimci_yonet` yetkisinde çizilir. Oda açıkken shinydashboard
-  `content-wrapper > content > tab-content > active tab-pane` zinciri de flex
-  hâline getirilir; oda parent flex/min-height zinciriyle dikeyde alt boşluk
+  `content-wrapper.oo-oda-acik-kok > content > tab-content > active tab-pane`
+  zinciri de flex hâline getirilir; oda parent flex/min-height zinciriyle dikeyde alt boşluk
   bırakmadan yayılır.
 - **Yan panel**: Katılımcılar paneli varsayılan olarak daha yüksektir; Katılımcılar
   ile Ortak Belgeler arasında **sürüklenebilir ayraç** vardır (yükseklik oturum

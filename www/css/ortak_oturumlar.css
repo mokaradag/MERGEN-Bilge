@@ -16,7 +16,7 @@
 
 /* Shinydashboard ebeveynleri normalde flex değildir; oda açıkken yalnızca
  * Ortak Çalışmalar sekmesini flex zincirine alırız ki % yükseklik boşa düşmesin. */
-.content-wrapper:has(.ortak-calismalar-container.oo-oda-acik) {
+.content-wrapper.oo-oda-acik-kok {
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -24,9 +24,9 @@
   overflow: hidden;
 }
 
-.content-wrapper:has(.ortak-calismalar-container.oo-oda-acik) > .content,
-.content-wrapper:has(.ortak-calismalar-container.oo-oda-acik) > .content > .tab-content,
-.content-wrapper:has(.ortak-calismalar-container.oo-oda-acik) > .content > .tab-content > .tab-pane.active {
+.content-wrapper.oo-oda-acik-kok > .content,
+.content-wrapper.oo-oda-acik-kok > .content > .tab-content,
+.content-wrapper.oo-oda-acik-kok > .content > .tab-content > .tab-pane.active {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
