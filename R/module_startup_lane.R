@@ -59,6 +59,13 @@ startupLaneObserversInit <- function(input, session, settings_data, boot_ready =
           });
           return;
         }
+        // Şerit API'si yok: eski davranış. Sunucu şerit kapısı için yine de
+        // rich_lane bildirilir; aksi halde kayıtlı sohbet yüklemesi bekler.
+        Shiny.setInputValue('startup_lane_resolved', {
+          lane: 'rich_lane',
+          source: 'legacy_no_api',
+          ts: Date.now()
+        }, {priority: 'event'});
         sendSkip(readLegacySkip());
       })();
     ")

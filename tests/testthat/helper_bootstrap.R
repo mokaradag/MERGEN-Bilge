@@ -15,6 +15,15 @@ withr::local_envvar(
   .local_envir = .testthat_teardown_env
 )
 
+# Uygulama çalıştırılmış oturumlarda global.R options(encoding = "UTF-8") bırakır;
+# Windows CP1254 yerel kod sayfasında bu, readLines(..., encoding = "UTF-8")
+# okumalarını çift kod çözümüne sokar ve grepl "invalid UTF-8" uyarı seli üretir.
+# Test koşumu taze oturum varsayılanına sabitlenir.
+withr::local_options(
+  list(encoding = "native.enc"),
+  .local_envir = .testthat_teardown_env
+)
+
 # config_file_store.R zorunlu ortam değişkenlerini aradığı için test koşumunda
 # sadece placeholder değerler ayarlanır. Gerçek değer gerektiren testler bu
 # değişkenleri kendi scope'unda tekrar ayarlayabilir.

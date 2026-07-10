@@ -78,6 +78,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
   
   startup_state <- new.env(parent = emptyenv())
   startup_state$initial_saved_chats_status <- "idle"
+  startup_state$lane_wait_registered <- FALSE
   
   load_initial_saved_chats <- function() {
     effective_user_id <- resolve_current_user_id()
@@ -96,7 +97,25 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  ))
 	  return(invisible(NULL))
 	}
+	# Yarış düzeltmesi: şerit çözülmeden yükleme kararı verilmez. Şerit API'si
+	# olmayan istemcide sunucu köprüsü rich_lane (legacy_no_api) gönderir,
+	# bu yüzden giriş her durumda gelir ve eski davranış korunur.
+	lane_payload <- shiny::isolate(input$startup_lane_resolved)
+	if (is.null(lane_payload)) {
+	  if (!isTRUE(startup_state$lane_wait_registered)) {
+		startup_state$lane_wait_registered <- TRUE
+		observeEvent(input$startup_lane_resolved, {
+		  load_initial_saved_chats()
+		}, once = TRUE)
+		cat("[STARTUP] Kayıtlı sohbet yüklemesi başlangıç şeridi çözümünü bekliyor\n")
+	  }
+	  return(invisible(NULL))
+	}
 	startup_state$initial_saved_chats_status <- "loading"
+
+	fast_lane <- mergen_startup_lane_is_fast(
+	  if (is.list(lane_payload)) lane_payload$lane else lane_payload
+	)
 
 	refresh_welcome_if_needed <- function(chats) {
 	  if (!isTRUE(session$userData$deep_space_dismissed)) {
@@ -112,29 +131,55 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  invisible(NULL)
 	}
 
-    # İlk ekranın hızlı gelmesi için önce hafif özet listeyi yükle.
-	preview_chats <- tryCatch(
-	  load_chats_preview_from_db(effective_user_id, limit = 6L),
-	  error = function(e) {
-		warning(sprintf("[SERVER] Preview chat load failed: %s", conditionMessage(e)))
-		list()
+	apply_preview_chats <- function(preview_chats, deferred = FALSE) {
+	  preview_chats <- preview_chats %||% list()
+	  if (length(preview_chats) > 0) {
+		values$saved_chats <- preview_chats
+		mark_boot(
+		  "saved_chats_preview_ready",
+		  "Son konuşmalar hazır",
+		  detail = list(count = length(preview_chats), deferred = deferred)
+		)
+		refresh_welcome_if_needed(preview_chats)
+	  } else {
+		mark_boot(
+		  "saved_chats_preview_ready",
+		  "Son konuşma yok",
+		  detail = list(count = 0L, deferred = deferred)
+		)
 	  }
-	)
+	  invisible(NULL)
+	}
 
-	if (length(preview_chats) > 0) {
-	  values$saved_chats <- preview_chats
-	  mark_boot(
-		"saved_chats_preview_ready",
-		"Son konuşmalar hazır",
-		detail = list(count = length(preview_chats))
+	if (isTRUE(fast_lane)) {
+	  # Hızlı şerit: ön izleme kritik açılış yolunu bloklamaz; arka planda yüklenir.
+	  session$userData$initial_saved_chats_preview_promise <- promises::then(
+		tracked_future_promise(
+		  task_fn = function() {
+			load_chats_preview_from_db(effective_user_id, limit = 6L)
+		  },
+		  task_type = "startup_saved_chats_preview",
+		  session_token = session$token
+		),
+		onFulfilled = function(chats) {
+		  shiny::isolate(apply_preview_chats(chats, deferred = TRUE))
+		  NULL
+		},
+		onRejected = function(err) {
+		  warning(sprintf("[SERVER] Preview chat load failed: %s", conditionMessage(err)))
+		  NULL
+		}
 	  )
-	  refresh_welcome_if_needed(preview_chats)
 	} else {
-	  mark_boot(
-		"saved_chats_preview_ready",
-		"Son konuşma yok",
-		detail = list(count = 0L)
+	  # Zengin şerit: ilk ekranın hızlı gelmesi için hafif özet liste senkron yüklenir.
+	  preview_chats <- tryCatch(
+		load_chats_preview_from_db(effective_user_id, limit = 6L),
+		error = function(e) {
+		  warning(sprintf("[SERVER] Preview chat load failed: %s", conditionMessage(e)))
+		  list()
+		}
 	  )
+	  apply_preview_chats(preview_chats)
 	}
 
 	# Tam söyleşi listesi (mesajsız) arka plan yükleyicisi. Hızlı Başlangıç'ta
@@ -144,10 +189,19 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	run_full_saved_chats_load <- function() {
 	  session$userData$saved_chats_full_pending <- FALSE
 
+	  # Kimlik, çalıştırma anında tekrar çözülür (tembel yol geç tetiklenebilir).
+	  run_user_id <- resolve_current_user_id()
+	  if (is.na(run_user_id) || run_user_id <= 0) {
+		startup_state$initial_saved_chats_status <- "deferred"
+		session$userData$saved_chats_full_pending <- TRUE
+		cat("[STARTUP] Tam söyleşi yüklemesi: geçerli kullanıcı kimliği yok, ertelendi\n")
+		return(invisible(NULL))
+	  }
+
 	  session$userData$initial_saved_chats_promise <- promises::then(
 		tracked_future_promise(
 		  task_fn = function() {
-			load_chats_from_db(effective_user_id, include_messages = FALSE)
+			load_chats_from_db(run_user_id, include_messages = FALSE)
 		  },
 		  task_type = "startup_saved_chats",
 		  session_token = session$token
@@ -178,14 +232,14 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			NULL
 		  },
 		onRejected = function(err) {
-		  startup_state$initial_saved_chats_status <- "idle"
+		  # Başarısızlıkta tembel yol yeniden deneyebilsin.
+		  startup_state$initial_saved_chats_status <- "deferred"
+		  session$userData$saved_chats_full_pending <- TRUE
 		  warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))
 		  NULL
 		}
 	  )
 	}
-
-	fast_lane <- mergen_startup_lane_is_fast(session$userData$startup_lane)
 
 	if (isTRUE(fast_lane)) {
 	  # Hızlı şerit: tam yükleme ertelenir (kritik açılış yolunun dışında).
