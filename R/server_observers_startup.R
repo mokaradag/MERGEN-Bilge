@@ -153,6 +153,11 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	}
 
 	if (isTRUE(fast_lane)) {
+	  # Worker başlatılırken mevcut kayıtlı sohbet durumu alınır. Callback yalnızca
+	  # bu durum değişmediyse ön izlemeyi uygulayabilir; yerel sohbet ekleme/güncelleme
+	  # daha yeni durumu temsil eder ve hiçbir zaman eski ön izlemeyle ezilmez.
+	  preview_saved_chats_snapshot <- shiny::isolate(values$saved_chats)
+
 	  # Hızlı şerit: ön izleme kritik açılış yolunu bloklamaz; arka planda yüklenir.
 	  session$userData$initial_saved_chats_preview_promise <- promises::then(
 		tracked_future_promise(
@@ -169,7 +174,13 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			cat("[STARTUP] Tam söyleşi yüklemesi başladı, geç kalan ön izleme atlandı\n")
 			return(NULL)
 		  }
-		  shiny::isolate(apply_preview_chats(chats, deferred = TRUE))
+		  shiny::isolate({
+			if (!identical(values$saved_chats, preview_saved_chats_snapshot)) {
+			  cat("[STARTUP] Kayıtlı sohbet durumu değişti, eski ön izleme atlandı\n")
+			  return(NULL)
+			}
+			apply_preview_chats(chats, deferred = TRUE)
+		  })
 		  NULL
 		},
 		onRejected = function(err) {
@@ -266,17 +277,32 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  run_full_saved_chats_load()
 	}
 
-	# Tembel tetikleyici: Hızlı şeritte kullanıcı Kayıtlı Söyleşiler / Söyleşi
-	# Geçmişi'ni ilk açtığında tam liste bir kez arka planda yüklenir.
-	observeEvent(input$tabs, {
-	  if (input$tabs %in% c("saved_chats", "history") &&
-		  isTRUE(session$userData$saved_chats_full_pending) &&
-		  identical(startup_state$initial_saved_chats_status, "deferred")) {
-		startup_state$initial_saved_chats_status <- "loading"
-		cat(sprintf("[STARTUP] Tembel tam söyleşi yükleme tetiklendi (sekme: %s).\n", input$tabs))
-		run_full_saved_chats_load()
+	# Tembel tetikleyicinin anlık kontrolü ve observer yolu aynı idempotent
+	# koşulları kullanır; böylece şerit çözülmeden önce seçilmiş sekme kaçırılmaz.
+	trigger_lazy_full_saved_chats_load <- function(tab) {
+	  if (!identical(tab, "saved_chats") && !identical(tab, "history")) {
+		return(invisible(FALSE))
 	  }
+	  if (!isTRUE(session$userData$saved_chats_full_pending) ||
+		  !identical(startup_state$initial_saved_chats_status, "deferred")) {
+		return(invisible(FALSE))
+	  }
+
+	  startup_state$initial_saved_chats_status <- "loading"
+	  cat(sprintf("[STARTUP] Tembel tam söyleşi yükleme tetiklendi (sekme: %s).\n", tab))
+	  run_full_saved_chats_load()
+	  invisible(TRUE)
+	}
+
+	# Hızlı şeritte kullanıcı Kayıtlı Söyleşiler / Söyleşi Geçmişi'ni ilk
+	# açtığında tam liste bir kez arka planda yüklenir.
+	observeEvent(input$tabs, {
+	  trigger_lazy_full_saved_chats_load(input$tabs)
 	}, ignoreInit = TRUE)
+
+	# Sekme şerit çözülmeden önce restore edilmiş olabilir. Deferral kurulduktan
+	# sonra mevcut değeri aynı korumalı yol üzerinden hemen değerlendir.
+	trigger_lazy_full_saved_chats_load(shiny::isolate(input$tabs))
   }
 
 	if (isTRUE(session$userData$sso_active)) {
