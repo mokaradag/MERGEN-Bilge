@@ -364,4 +364,3 @@ oo_arac_langflow_uret <- function(lf, soru_metni, session_token, bitir_fn) {
 
   invisible(NULL)
 }
-
