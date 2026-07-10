@@ -438,8 +438,11 @@
 .oo-composer-girdi {
   min-height: 46px;
 }
-/* Boş renderUI yuvaları (uyarı/rozet) flex gap'inde ölü boşluk bırakmasın. */
-.oo-composer > .shiny-html-output:empty {
+/* Boş renderUI yuvaları (uyarı/rozet/seçici/temizle) flex gap'inde ölü
+ * boşluk bırakmasın. */
+.oo-composer > .shiny-html-output:empty,
+.oo-composer-secimler > .shiny-html-output:empty,
+.oo-composer-butonlar > .shiny-html-output:empty {
   display: none;
 }
 
