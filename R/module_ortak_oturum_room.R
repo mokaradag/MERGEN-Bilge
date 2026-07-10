@@ -237,9 +237,12 @@ ortakOturumRoomServer <- function(id,
 
       benim_id <- current_user_id()
       persona <- etkin_persona()
-      tagList(lapply(seq_len(nrow(df)), function(i) {
-        oo_mesaj_html(df[i, , drop = FALSE], aktif_kullanici_id = benim_id, persona = persona)
-      }))
+      div(
+        class = "oo-mesaj-listesi",
+        lapply(seq_len(nrow(df)), function(i) {
+          oo_mesaj_html(df[i, , drop = FALSE], aktif_kullanici_id = benim_id, persona = persona)
+        })
+      )
     })
 
     output$katilimcilar_alani <- renderUI({

@@ -25,6 +25,7 @@
   padding: 0 18px 16px;
   color: var(--color-text);
   min-height: calc(100vh - 50px);
+  min-width: 0;
 }
 
 /* Başlık diğer sayfalarla aynı hizada olsun diye kabuk yatay dolgusunun DIŞINA
@@ -56,7 +57,7 @@
 /* Oda açık: kabuk viewport'u doldurur, oda alt boşluk bırakmadan yayılır
  * (alttaki ölü boşluğu önlemek için alt dolgu minimumdur). */
 .ortak-calismalar-container.oo-oda-acik {
-  height: calc(100vh - 50px);
+  flex: 1 1 auto;
   min-height: 0;
   padding-bottom: 6px;
 }
@@ -390,7 +391,8 @@
  * iç akış kaydırılır, composer her zaman görünür kalır. */
 .ortak-calismalar-container.oo-oda-acik .oo-oda-yerlesim {
   flex: 1 1 auto;
-  min-height: 420px;
+  min-height: 0;
+  height: 100%;
 }
 
 .oo-oda-baslik {
@@ -571,13 +573,20 @@
 .oo-mesaj-akisi {
   display: flex;
   flex-direction: column;
-  gap: 18px;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   padding: 8px 6px 4px;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+}
+
+.oo-mesaj-akisi > .shiny-html-output,
+.oo-mesaj-listesi {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
 }
 
 .oo-mesaj {

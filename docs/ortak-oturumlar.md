@@ -69,11 +69,16 @@ token'ları; koyu + açık tema):
 - **Oturum kartları** ince üst aksan şeridi + hover yükselmesiyle profesyoneldir.
 - **Composer**: model ve persona açılır menüleri girdi kutusunun ALTINDA,
   "Odaya Yaz" / "Yapay Zekâya Sor" ile aynı satırdadır (dikey alan tasarrufu;
-  ana söyleşi "Model Değiştir" dili). Oda dikeyde alt boşluk bırakmadan yayılır.
+  ana söyleşi "Model Değiştir" dili). "Yeni bağlam başlat" ve kalıcı
+  "Sohbeti Temizle" düğmeleri doğrudan yan yanadır; temizleme yalnızca
+  `katilimci_yonet` yetkisinde çizilir. Oda, parent flex/min-height zinciriyle
+  dikeyde alt boşluk bırakmadan yayılır.
 - **Yan panel**: Katılımcılar paneli varsayılan olarak daha yüksektir; Katılımcılar
   ile Ortak Belgeler arasında **sürüklenebilir ayraç** vardır (yükseklik oturum
   boyunca `sessionStorage`'da korunur; klavye ok tuşlarıyla da ayarlanabilir).
-- **Mesaj balonları** ana söyleşiyle uyumlu: aralarında yeterli dikey boşluk,
+- **Mesaj balonları** ana söyleşiyle uyumlu: aralarındaki dikey boşluk Shiny
+  `uiOutput` sarmalayıcısına değil, gerçek balon kapsayıcısı `.oo-mesaj-listesi`
+  üzerine uygulanır;
   sakin renk paleti, persona kimlikli yapay zekâ balonu.
 - **Akıcılık**: bir katılımcının soru göndermesi tüm ekranı dondurmaz. LLM
   çağrısı worker'da async koşar; 4 sn'lik yoklama sırasında Shiny "recalculating"
@@ -533,7 +538,8 @@ encoding preflight kapılarıyla doğrulanmalıdır (RUNBOOK).
   satırı, sakin buton/rozet dili (aşırı turuncu giderildi), profesyonel oturum
   kartları, standart başlık hizası ve Yeni Ortak Oturum modalı radyoları. Yoklama
   sırasındaki genel griye-dönme/donma hissi giderildi; model/persona menüleri
-  yoklamada yeniden çizilmez; yeni mesajlarda otomatik dip kaydırma eklendi
+  yoklamada yeniden çizilmez; oda açıkken mesaj akışı içten kayar ve composer
+  görünür kalır; yeni mesajlarda otomatik dip kaydırma eklendi
   (§2 "Arayüz / UX sözleşmesi").
 
 ### 12.2c Oda içi UX ve performans (bu değişiklik seti)

@@ -105,7 +105,6 @@ ortakOturumRoomUI <- function(id) {
             ),
             div(
               class = "oo-composer-butonlar",
-              uiOutput(ns("oda_sohbet_temizle_alani"), inline = TRUE),
               actionButton(
                 ns("oda_baglam_temizle"),
                 label = icon("wand-magic-sparkles"),
@@ -113,6 +112,7 @@ ortakOturumRoomUI <- function(id) {
                 title = "Yeni bağlam başlat: bundan sonraki sorular önceki yazışmaları bağlam olarak kullanmaz (transkript korunur)",
                 `aria-label` = "Yeni yapay zekâ bağlamı başlat"
               ),
+              uiOutput(ns("oda_sohbet_temizle_alani"), inline = TRUE),
               actionButton(
                 ns("odaya_yaz"),
                 label = tagList(icon("comments"), span("Odaya Yaz")),
