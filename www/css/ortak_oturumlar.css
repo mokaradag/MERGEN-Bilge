@@ -12,8 +12,6 @@
  * ========================================================================== */
 
 /* --- Sayfa kabuğu ve liste ------------------------------------------------ */
-
-
 /* Shinydashboard ebeveynleri normalde flex değildir; oda açıkken yalnızca
  * Ortak Çalışmalar sekmesini flex zincirine alırız ki % yükseklik boşa düşmesin. */
 .content-wrapper.oo-oda-acik-kok {
@@ -172,7 +170,6 @@
 }
 
 /* --- Kart eylem butonları (liste kartları) --------------------------------- */
-
 .oo-oturum-karti .oo-kart-aksiyonlar button {
   display: inline-flex;
   align-items: center;
@@ -212,7 +209,6 @@
 }
 
 /* --- Rozetler --------------------------------------------------------------- */
-
 .oo-rozet {
   display: inline-flex;
   align-items: center;
@@ -301,7 +297,6 @@
 }
 
 /* --- Oda düğmeleri: tutarlı paylaşılan buton dili (koyu + açık tema) -------- */
-
 .oo-oda-btn {
   display: inline-flex;
   align-items: center;
@@ -396,7 +391,6 @@
 }
 
 /* --- Oda yerleşimi: görünür yükseklikte kalan dikey akış -------------------- */
-
 .oo-oda-yerlesim {
   display: flex;
   flex-direction: column;
@@ -587,7 +581,6 @@
 }
 
 /* --- Mesaj akışı: iç kaydırma (composer her zaman görünür) ------------------ */
-
 /* Programatik kaydırma JS'te ANLIK yapılır (scroll-behavior: smooth ile
  * yarışan "takılan" kaydırma hissini önlemek için burada smooth YOKTUR). */
 .oo-mesaj-akisi {
@@ -727,7 +720,6 @@
 }
 
 /* --- Üretim durumu + kısmi yanıt + kuyruk ----------------------------------- */
-
 .oo-uretim-durumu {
   display: flex;
   flex-direction: column;
@@ -806,7 +798,6 @@
 }
 
 /* --- Mesaj yazma alanı: her zaman görünür (flex-shrink:0) ------------------- */
-
 .oo-composer {
   display: flex;
   flex-direction: column;
@@ -893,7 +884,6 @@
 }
 
 /* --- Katılımcılar ------------------------------------------------------------------ */
-
 .oo-katilimci-listesi {
   display: flex;
   flex-direction: column;
@@ -948,7 +938,6 @@
 }
 
 /* --- Canlı durum göstergeleri: renk + title/aria (yalnızca renge dayanmaz) --- */
-
 .oo-canli-nokta {
   flex: 0 0 auto;
   width: 10px;
@@ -988,7 +977,6 @@
 }
 
 /* --- Ortak belgeler --------------------------------------------------------- */
-
 .oo-belgeler-listesi {
   display: flex;
   flex-direction: column;
@@ -1058,7 +1046,6 @@
 }
 
 /* --- Davet paneli ---------------------------------------------------------------------- */
-
 .oo-davet-paneli {
   display: flex;
   flex-direction: column;
@@ -1167,7 +1154,6 @@
 }
 
 /* --- Katılımcı yönet modalı ------------------------------------------------- */
-
 .oo-katilimci-yonet-modal {
   display: flex;
   flex-direction: column;
@@ -1191,7 +1177,6 @@
 }
 
 /* --- Bildirim modalı ve boş durumlar ------------------------------------------------------ */
-
 .oo-bildirim-modal .oo-bildirim-baslik {
   font-weight: 700;
   font-size: 1.02em;
@@ -1223,7 +1208,6 @@
 }
 
 /* --- Hub başlık butonları: sakin, kompakt uygulama dili (turuncu değil) ------ */
-
 /* "Yeni Ortak Oturum": dolgulu sakin aksan (btn-primary turuncu gradyanı ezilir). */
 .oo-page-header .oo-btn-yeni.btn-primary {
   background: var(--oo-accent, var(--color-info)) !important;
@@ -1299,7 +1283,6 @@
 }
 
 /* --- Yeni Ortak Oturum modalı: Başlangıç Deneyimi kartıyla uyumlu radyolar --- */
-
 .oo-yeni-oturum-modal {
   display: flex;
   flex-direction: column;
@@ -1396,7 +1379,6 @@
 }
 
 /* --- Responsive: dar ekranda yan panel dikey akışa iner ----------------------------------- */
-
 @media (max-width: 900px) {
   .ortak-calismalar-container.oo-oda-acik .oo-oda-yerlesim {
     height: auto;
@@ -1439,7 +1421,6 @@
 }
 
 /* --- Açık tema iyileştirmeleri -------------------------------------------------------------- */
-
 html[data-theme="light"] .oo-oturum-karti,
 html[data-theme="light"] .oo-oda-yerlesim {
   background: var(--color-surface);
