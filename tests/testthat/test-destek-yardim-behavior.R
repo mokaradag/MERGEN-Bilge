@@ -38,37 +38,70 @@
 .run_yardim_chat <- function(env, envvars, message,
                              status = 200L,
                              content_impl = function(r, ...) {
-                               list(choices = list(list(message = list(content = "Yardımcı yanıt"))))
+                               list(
+                                 choices = list(
+                                   list(
+                                     message = list(
+                                       content = "Yardımcı yanıt"
+                                     )
+                                   )
+                                 )
+                               )
                              },
                              prime = "__prime__") {
-  rec <- new.env(); rec$msgs <- list(); rec$model <- NA_character_; rec$posted <- FALSE
-  withr::with_envvar(envvars, {
-    testthat::local_mocked_bindings(
-      POST = function(url, body, ...) {
-        rec$posted <- TRUE
-        rec$model <- body$model
-        structure(list(), class = "response")
-      },
-      status_code = function(r) as.integer(status),
-      content = content_impl,
-      add_headers = function(...) NULL,
-      timeout = function(...) NULL,
-      .package = "httr"
+  rec <- new.env()
+  rec$msgs <- list()
+  rec$model <- NA_character_
+  rec$posted <- FALSE
+
+  record_runjs <- function(code) {
+    rec$msgs[[length(rec$msgs) + 1L]] <- list(
+      type = "shinyjs.runjs",
+      message = code
     )
-    # Üretim kodu hata yolunda cat() ile log basar; çıktı yutularak strict runner
-    # temiz tutulur (cat uyarı değildir ama gürültü yapar).
-    invisible(utils::capture.output(
-      shiny::testServer(env$destekYardimServer, args = list(current_user_id = 1L), {
-        root <- .subset2(session, "parent")
-        root$sendCustomMessage <- function(type, message) {
-          rec$msgs[[length(rec$msgs) + 1L]] <- list(type = type, message = message)
-          invisible(TRUE)
-        }
-        session$setInputs(chatbot_mesaj = prime)
-        session$setInputs(chatbot_mesaj = message)
-      })
-    ))
+    invisible(NULL)
+  }
+
+  withr::with_envvar(envvars, {
+    testthat::with_mocked_bindings(
+      {
+        testthat::with_mocked_bindings(
+          {
+            invisible(utils::capture.output(
+              shiny::testServer(
+                env$destekYardimServer,
+                args = list(current_user_id = 1L),
+                {
+                  session$setInputs(chatbot_mesaj = prime)
+                  session$setInputs(chatbot_mesaj = message)
+                }
+              )
+            ))
+          },
+
+          POST = function(url, body, ...) {
+            rec$posted <- TRUE
+            rec$model <- body$model
+            structure(list(), class = "response")
+          },
+
+          status_code = function(r) {
+            as.integer(status)
+          },
+
+          content = content_impl,
+          add_headers = function(...) NULL,
+          timeout = function(...) NULL,
+
+          .package = "httr"
+        )
+      },
+
+      runjs = record_runjs,
+      .package = "shinyjs"
+    )
   })
+
   rec
 }
 

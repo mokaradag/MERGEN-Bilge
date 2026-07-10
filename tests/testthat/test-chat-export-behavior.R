@@ -31,21 +31,55 @@
 
 # copy_chat_btn'i prime-then-set ile tetikler, yakalanan tüm mesajları düz metne çevirir.
 .capture_copy <- function(env, messages, user_display_name, userData = NULL) {
-  rec <- new.env(); rec$msgs <- list()
-  shiny::testServer(function(input, output, session) {
-    if (!is.null(userData)) {
-      for (nm in names(userData)) session$userData[[nm]] <- userData[[nm]]
-    }
-    values <- shiny::reactiveValues(messages = messages)
-    env$chatExportInit(input, output, session, values, user_display_name)
-  }, {
-    session$sendCustomMessage <- function(type, message) {
-      rec$msgs[[length(rec$msgs) + 1L]] <- list(type = type, message = message)
-      invisible(TRUE)
-    }
-    session$setInputs(copy_chat_btn = 1)
-    session$setInputs(copy_chat_btn = 2)
-  })
+  rec <- new.env()
+  rec$msgs <- list()
+
+  record_runjs <- function(code) {
+    rec$msgs[[length(rec$msgs) + 1L]] <- list(
+      type = "shinyjs.runjs",
+      message = code
+    )
+    invisible(NULL)
+  }
+
+  testthat::with_mocked_bindings(
+    {
+      shiny::testServer(
+        function(input, output, session) {
+          if (!is.null(userData)) {
+            for (nm in names(userData)) {
+              session$userData[[nm]] <- userData[[nm]]
+            }
+          }
+
+          values <- shiny::reactiveValues(messages = messages)
+
+          env$chatExportInit(
+            input,
+            output,
+            session,
+            values,
+            user_display_name
+          )
+        },
+        {
+          session$setInputs(copy_chat_btn = 1)
+          session$setInputs(copy_chat_btn = 2)
+        }
+      )
+    },
+    runjs = record_runjs,
+
+    # Bu test yalnızca üretilen pano JS yükünü doğrular.
+    # Gecikmeli düğme UI işlemleri çalıştırılmaz.
+    html = function(...) invisible(NULL),
+    disable = function(...) invisible(NULL),
+    enable = function(...) invisible(NULL),
+    delay = function(ms, expr) invisible(NULL),
+
+    .package = "shinyjs"
+  )
+
   rec
 }
 
