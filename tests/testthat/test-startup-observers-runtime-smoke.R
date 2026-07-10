@@ -67,12 +67,12 @@
   assign("load_chats_preview_from_db", function(...) {
     rec$preview <- rec$preview + 1L
     rec$preview_in_future <- c(rec$preview_in_future, isTRUE(rec$in_future))
-    list()
+    rec$preview_result %||% list()
   }, envir = globalenv())
   assign("load_chats_from_db", function(user_id, ...) {
     rec$full <- rec$full + 1L
     rec$full_user_ids <- c(rec$full_user_ids, as.integer(user_id))
-    list()
+    rec$full_result %||% list()
   }, envir = globalenv())
   assign("tracked_future_promise", function(task_fn, task_type = NULL, ...) {
     rec$future <- rec$future + 1L
@@ -80,6 +80,12 @@
     rec$in_future <- TRUE
     on.exit(rec$in_future <- FALSE, add = TRUE)
     result <- task_fn()
+    if (identical(task_type, "startup_saved_chats_preview") &&
+        isTRUE(rec$defer_preview_fulfillment)) {
+      return(promises::promise(function(resolve, reject) {
+        rec$resolve_preview <- function() resolve(result)
+      }))
+    }
     promises::promise_resolve(result)
   }, envir = globalenv())
 
@@ -252,6 +258,61 @@ testthat::test_that("hızlı şeritte tam liste sekme açılışında bir kez te
     # Tekrarlı sekme geçişleri ikinci bir tam yükleme başlatmaz.
     session$setInputs(tabs = "history")
     testthat::expect_identical(rec$full, 1L)
+  })
+})
+
+
+testthat::test_that("hızlı şeritte geç kalan ön izleme tam listeyi daraltmaz", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+
+  rec <- new.env()
+  rec$defer_preview_fulfillment <- TRUE
+  rec$preview_result <- list(list(ChatID = 1L))
+  rec$full_result <- list(
+    list(ChatID = 1L),
+    list(ChatID = 2L),
+    list(ChatID = 3L)
+  )
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input,
+      session = session,
+      values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() 42L,
+      sso_state = NULL,
+      boot_ready = NULL
+    )
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+
+    # Worker sonucu hazır olsa da fulfillment bilerek bekletilir.
+    testthat::expect_identical(rec$preview, 1L)
+    testthat::expect_true(is.function(rec$resolve_preview))
+    testthat::expect_identical(length(session$userData$.values$saved_chats), 0L)
+
+    # Tembel tam liste yüklemesi önce başlar ve tamamlanır.
+    session$setInputs(tabs = "saved_chats")
+    later::run_now(timeoutSecs = 0.1)
+    session$flushReact()
+    testthat::expect_identical(rec$full, 1L)
+    testthat::expect_identical(length(session$userData$.values$saved_chats), 3L)
+
+    # Geç kalan ön izleme callback'i tam listeyi 1 öğeye düşürmemelidir.
+    rec$resolve_preview()
+    later::run_now(timeoutSecs = 0.1)
+    session$flushReact()
+    testthat::expect_identical(length(session$userData$.values$saved_chats), 3L)
   })
 })
 
