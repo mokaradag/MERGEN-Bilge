@@ -47,6 +47,20 @@ oo_by_ilerleme_kayitlari <- function(parca, durum = NULL) {
     return(list())
   }
 
+  ilk_dolu_metin <- function(...) {
+    degerler <- list(...)
+    for (deger in degerler) {
+      if (is.null(deger)) {
+        next
+      }
+      metin <- as.character(deger)[1]
+      if (!is.na(metin) && nzchar(metin)) {
+        return(metin)
+      }
+    }
+    ""
+  }
+
   arac_kaydi <- function(arac) {
     baslik <- switch(
       as.character(arac$arac_turu %||% "")[1],
@@ -56,17 +70,15 @@ oo_by_ilerleme_kayitlari <- function(parca, durum = NULL) {
       "search" = "Arama",
       as.character(arac$arac_adi %||% "Araç")[1]
     )
-    detay <- as.character(arac$komut %||% "")[1]
-    if (!nzchar(detay)) {
-      detay <- as.character(arac$dosya_yolu %||% "")[1]
-    }
-    if (!nzchar(detay)) {
-      girdi <- arac$girdi
-      if (is.list(girdi)) {
-        detay <- as.character(
-          girdi$command %||% girdi$file_path %||% girdi$path %||% girdi$pattern %||% ""
-        )[1]
-      }
+    girdi <- arac$girdi
+    if (is.list(girdi)) {
+      detay <- ilk_dolu_metin(
+        arac$komut, arac$dosya_yolu,
+        girdi$command, girdi$cmd, girdi$file_path,
+        girdi$path, girdi$pattern, girdi$query
+      )
+    } else {
+      detay <- ilk_dolu_metin(arac$komut, arac$dosya_yolu)
     }
     list(t = "arac", v = baslik, d = detay)
   }
@@ -85,10 +97,10 @@ oo_by_ilerleme_kayitlari <- function(parca, durum = NULL) {
     if (!nzchar(detay) && nzchar(parcali_json) && requireNamespace("jsonlite", quietly = TRUE)) {
       girdi <- tryCatch(jsonlite::fromJSON(parcali_json, simplifyVector = FALSE), error = function(e) NULL)
       if (is.list(girdi)) {
-        detay <- as.character(
-          girdi$command %||% girdi$cmd %||% girdi$file_path %||%
-            girdi$path %||% girdi$pattern %||% ""
-        )[1]
+        detay <- ilk_dolu_metin(
+          girdi$command, girdi$cmd, girdi$file_path,
+          girdi$path, girdi$pattern, girdi$query
+        )
       }
     }
     list(t = "arac", v = as.character(arac$baslik %||% "Araç")[1], d = detay)
