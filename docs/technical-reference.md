@@ -1664,8 +1664,9 @@ Kural:
 **Neden explicit modu var:** `.GlobalEnv` büyüdükçe otomatik tarama ANA OLAY
 DÖNGÜSÜNÜ senkron bloklar (düzeltme öncesi Windows VM'de açılışta
 ölçülen ~9-14 sn duraklama; 2026-07-11 tekrar ölçümünde sunucu ilk açılış +
-ilk kullanıcı hızlı şerit ertelenmiş hazırlık bandı ~13 sn, sıcak yenileme/oturum
-`welcome_client_ready` ~3.1-3.6 sn);
+ilk kullanıcı hızlı şerit ertelenmiş hazırlık bandı ~13 sn, aynı soğuk kayıtta
+`welcome_client_ready` ~15.6 sn, sıcak yenileme/oturum `welcome_client_ready`
+~3.1-3.6 sn);
 ayrıca tarama yol boyunca highcharter gibi paketlerin isim uzayını yükleyerek
 `quantmod`/`zoo` S3 metot uyarısını kritik açılış yolunda tetikler. Açılış
 kritik yolundaki görevler bu nedenle explicit modu kullanmalıdır. İlk örnek,

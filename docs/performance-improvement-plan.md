@@ -181,10 +181,12 @@ deferred readiness band at about **13.0 s** and then logs `welcome_client_ready`
 | `welcome_client_ready` | 15,588 ms | 3,605 ms | 3,057 ms |
 | `saved_chats_preview_hydrated` | 16,410 ms | 3,771 ms | 3,187 ms |
 
-Interpretation: the product-facing "first start" target should use the ~13 s
-deferred-readiness band requested from the VM observation, while engineering logs
-should still keep the stricter `welcome_client_ready` value visible. Fake/GET-only
-soak evidence is **not** browser startup evidence and is not claimed here.
+Interpretation: the ~13 s value is the deferred-readiness checkpoint band from the
+operator observation, not the overlay-close checkpoint. The stricter
+`welcome_client_ready` value remains the engineering/user-interaction readiness point
+and was **15.6 s** in this first server-start + first-user log; warm runs reached that
+same checkpoint in **3.1-3.6 s**. Fake/GET-only soak evidence is **not** browser
+startup evidence and is not claimed here.
 
 ### 2026-07-09 — Fast-lane startup regression: saved-chat load raced lane resolution
 

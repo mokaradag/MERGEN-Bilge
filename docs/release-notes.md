@@ -17,14 +17,16 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ### (Yayınlanmadı) 2026-07-11 Hızlı Başlangıç VM ölçümü güncellendi
 
-- Son Windows VM konsol kayıtlarına göre Hızlı Başlangıç performans hedefi
+- Son Windows VM konsol kayıtlarına göre Hızlı Başlangıç performansı
   iyileşti: sunucu yeni başlatılıp ilk kullanıcı oturum açtığında hızlı şerit
   ertelenmiş hazırlık bandı yaklaşık **13 sn** seviyesinde görülüyor
   (`character_media_ready`/`saved_chats_preview_ready`/`saved_chats_full_deferred`
-  ~13.0 sn; `welcome_client_ready` logu ~15.6 sn). Sunucu zaten çalışırken
-  yenileme veya yeni oturum açma akışında `welcome_client_ready` artık yaklaşık
-  **3.1-3.6 sn** aralığında. Bu değerler eski ~28 sn soğuk ve ~14 sn sıcak
-  `welcome_client_ready` ölçümlerine göre belirgin iyileşmedir.
+  ~13.0 sn). Bu değer etkileşim hazır noktasıyla karıştırılmamalıdır:
+  aynı soğuk kayıtta `welcome_client_ready` **~15.6 sn** olarak loglandı.
+  Sunucu zaten çalışırken yenileme veya yeni oturum açma akışında
+  `welcome_client_ready` artık yaklaşık **3.1-3.6 sn** aralığında. Bu
+  değerler eski ~28 sn soğuk ve ~14 sn sıcak `welcome_client_ready`
+  ölçümlerine göre belirgin iyileşmedir.
 
 ### (Yayınlanmadı) 2026-07-11 Hızlı Başlangıç açılışı artık kayıtlı sohbet ön izleme worker hazırlığını beklemiyor
 
