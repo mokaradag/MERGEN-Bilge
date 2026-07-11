@@ -229,6 +229,12 @@
   white-space: nowrap;
 }
 
+.oo-by-dizin-yolu-kompakt {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 8px;
+  font-size: 0.74em;
+}
 
 /* --- Model kartı ------------------------------------------------------------------ */
 
