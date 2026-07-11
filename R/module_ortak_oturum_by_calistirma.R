@@ -88,8 +88,8 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
       )))
     }
 
-    cli <- by_ctx$cli_yolu()
-    if (is.null(cli) || !nzchar(cli)) {
+    cli <- as.character(by_ctx$cli_yolu() %||% "")[1]
+    if (is.na(cli) || !nzchar(cli)) {
       # Sessiz LLM düşüşü YOK: açık engelleyici durum + yeniden deneme yolu.
       return(bitir_hata(paste(
         "Claude Code CLI bu ortamda bağlı değil; Bilge Yolaç komutu çalıştırılamadı.",
@@ -163,7 +163,11 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
 
     onceki_dosyalar <- dosya_goruntusu(ws)
     baslangic <- Sys.time()
-    zaman_asimi <- claude_code_config$timeout_seconds %||% 600L
+    zaman_asimi <- if (exists("claude_code_config", inherits = TRUE)) {
+      claude_code_config$timeout_seconds %||% 600L
+    } else {
+      600L
+    }
 
     # Paylaşılan otomatik klasörde çalışırken kayıt dizini görünürlük için
     # güncellenir; özel dizin kaydı kullanıcı eylemiyle yönetilir (ezilmez).
@@ -228,12 +232,28 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
       prom,
       onFulfilled = function(sonuc) {
         yayin_bitir()
-        by_tamamla(
-          oturum_id = oturum_id, soru_id = soru_id, soran_id = soran_id,
-          istek_id = istek_id, komut = komut_metni, sonuc = sonuc, ws = ws,
-          by_id = by_id, onceki_dosyalar = onceki_dosyalar,
-          baslangic = baslangic, kuyruk_id = kuyruk_id,
-          persona_id = persona_kimligi
+        tryCatch(
+          by_tamamla(
+            oturum_id = oturum_id, soru_id = soru_id, soran_id = soran_id,
+            istek_id = istek_id, komut = komut_metni, sonuc = sonuc, ws = ws,
+            by_id = by_id, onceki_dosyalar = onceki_dosyalar,
+            baslangic = baslangic, kuyruk_id = kuyruk_id,
+            persona_id = persona_kimligi
+          ),
+          error = function(e) {
+            if (exists("log_error", mode = "function", inherits = TRUE)) {
+              tryCatch(
+                log_error(paste("[ORTAK_BY] Çalıştırma tamamlama hatası:", conditionMessage(e))),
+                error = function(log_e) NULL
+              )
+            }
+            motor$tamamla(
+              oturum_id, soru_id, istek_id,
+              hata_metni = "Bilge Yolaç çalıştırması tamamlandı ancak sonuç kaydı güvenli biçimde işlenemedi; kilit bırakıldı, lütfen tekrar deneyin.",
+              kuyruk_id = kuyruk_id, soran_id = soran_id,
+              persona_id = persona_kimligi
+            )
+          }
         )
       },
       onRejected = function(e) {
