@@ -81,16 +81,23 @@ Field report (Windows VM, Hızlı Başlangıç, three login attempts, cumulative
 
 | Checkpoint | Cold (attempt 1) | Warm refresh (attempt 2) | Warm refresh (attempt 3) |
 |---|---:|---:|---:|
-| `file_index_ready` (deferred) | 9,960 ms | 2,785 ms | 2,472 ms |
-| `auth_ready` | 9,964 ms | 2,789 ms | 2,476 ms |
-| `character_media_ready` (deferred) | 12,742 ms | 3,145 ms | 2,787 ms |
-| `saved_chats_full_loaded` (deferred=TRUE) | 24,299 ms | 12,235 ms | 11,529 ms |
-| `saved_chats_preview_ready` (deferred=TRUE) | 27,385 ms | 14,325 ms | 13,595 ms |
-| `welcome_client_ready` | 27,908 ms | 14,473 ms | 13,740 ms |
+| `first_flush` | 8,105 ms | 1,730 ms | 1,824 ms |
+| `file_index_ready` (deferred) | 10,147 ms | 2,865 ms | 2,303 ms |
+| `auth_ready` | 10,152 ms | 2,869 ms | 2,307 ms |
+| `character_media_ready` (deferred) | 13,002 ms | 3,204 ms | 2,656 ms |
+| `saved_chats_preview_ready` (deferred=TRUE) | 13,010 ms | 3,214 ms | 2,663 ms |
+| `saved_chats_full_deferred` (deferred=TRUE) | 13,012 ms | 3,217 ms | 2,665 ms |
+| `welcome_client_ready` | 15,588 ms | 3,605 ms | 3,057 ms |
+| `saved_chats_preview_hydrated` | 16,410 ms | 3,771 ms | 3,187 ms |
 
-The ~9-14 s gap between `character_media_ready` and the `saved_chats_full_loaded`
-"deferred" marker, plus a `Registered S3 method overwritten by 'quantmod'` warning
-appearing inside that gap, were the signature.
+Latest 2026-07-11 Windows VM console screenshots show the improvement after the
+preview-worker deferral: the very first server-start + first-user login now reaches the
+fast-lane deferred readiness band at about **13.0 s** (`character_media_ready` through
+`saved_chats_full_deferred`) and logs `welcome_client_ready` at **15.6 s**; refreshes or
+logins while the server is already warm reach `welcome_client_ready` in about
+**3.1-3.6 s**. The old failure signature was a ~9-14 s gap between
+`character_media_ready` and the `saved_chats_full_loaded` "deferred" marker, plus a
+`Registered S3 method overwritten by 'quantmod'` warning appearing inside that gap.
 
 Root cause (proven by reading the wrapper, not by wall-clock alone): the fast-lane
 branch DID call `tracked_future_promise(load_chats_preview_from_db, …)` for the
@@ -166,8 +173,8 @@ Validation (cloud, `LC_ALL=C.UTF-8` — no real LLM/DB/browser/VM here):
 **VM re-check still required** (cannot be measured from cloud — no real SQL Server /
 SSO / browser here): re-run the three Hızlı Başlangıç logins and confirm (a) no
 `worker_dispatch` or preview-scheduling segment above ~1 s on the post-auth path,
-(b) `welcome_client_ready` warm median at/below ~5 s over three clean refreshes,
-(c) cold first login below ~15 s, (d) `saved_chats_preview_ready` shows `deferred=TRUE`
+(b) `welcome_client_ready` warm median around 3 s and at/below ~5 s over three clean refreshes,
+(c) cold first login reaches the fast-lane deferred readiness band around 13 s, (d) `saved_chats_preview_ready` shows `deferred=TRUE`
 and a later `saved_chats_preview_hydrated` appears, (e) no `quantmod`/`zoo` warning
 between `character_media_ready` and welcome readiness. Fake/GET-only soak evidence is
 **not** browser startup evidence and is not claimed here.

@@ -299,7 +299,7 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     yol <- as.character(bilgi$yol %||% "")[1]
 
     tags$code(
-      class = "oo-by-dizin-yolu oo-by-dizin-yolu-kompakt",
+      class = "oo-by-dizin-yolu",
       title = yol,
       HTML(htmltools::htmlEscape(if (nzchar(yol) && !is.na(yol)) yol else "Çalışma alanı hazır değil"))
     )
