@@ -51,50 +51,44 @@ fm_register_file_manager_table_runtime <- function(session,
             "
             function(settings){
               var tbl = this.api().table().container();
-              try{Shiny.unbindAll(tbl);}catch(e){}
-              try{Shiny.bindAll(tbl);}catch(e){}
-
               var ns = '%s';
               var $tbl = $(tbl);
 
-              // Ek işaretleme kutuları Shiny INPUT'u DEĞİLDİR: değişiklik
-              // delege 'change.attach' + attach_toggled ile, durum güncelleme
-              // setAttachState (getElementById) ile yapılır. Ancak Shiny'nin
-              // varsayılan checkbox binding'i input[type=checkbox] öğelerini
-              // yakalar; DataTables sayfalama/çizim yeniden bağlamada aynı id'yi
-              // iki kez görüp 'Duplicate input IDs' uyarısı üretir. Bu kutuları
-              // Shiny input kaydından çıkararak uyarı kökten giderilir (delege
-              // olay ve getElementById bundan etkilenmez).
-              try {
-                $tbl.find('input.attach-checkbox').each(function(){
-                  if (this.hasAttribute('data-shiny-input-binding') && Shiny.unbindAll) {
-                    try { Shiny.unbindAll(this); } catch(e) {}
-                  }
-                });
-              } catch(e) {}
+              // Bu kutular ayrı Shiny inputları değildir. Tek sunucu girdisi
+              // attach_toggled olduğundan yalnızca delege change handler bağlanır.
+              // DataTables yeniden çiziminde önceki handler kaldırılarak aynı
+              // olayın birden fazla kez gönderilmesi engellenir.
+              $tbl.find('input.attach-checkbox')
+                .off('change.attach')
+                .on('change.attach', function(){
+                  var fid = this.getAttribute('data-file-id');
+                  var fname = this.getAttribute('data-filename');
+                  var checked = this.checked ? true : false;
 
-              $tbl.find('input.attach-checkbox').off('change.attach').on('change.attach', function(){
-                var fid = this.getAttribute('data-file-id');
-                var fname = this.getAttribute('data-filename');
-                var checked = this.checked ? true : false;
-                Shiny.setInputValue(ns + 'attach_toggled', { id: fid, filename: fname, checked: checked, nonce: Math.random() }, {priority:'event'});
-              });
+                  Shiny.setInputValue(
+                    ns + 'attach_toggled',
+                    {
+                      id: fid,
+                      filename: fname,
+                      checked: checked,
+                      nonce: Math.random()
+                    },
+                    {priority:'event'}
+                  );
+                });
 
               if ($.fn && $.fn.tooltip) {
-                $tbl.find('input.attach-checkbox').tooltip({container:'body', placement:'top', trigger:'hover'});
+                $tbl.find('input.attach-checkbox').tooltip({
+                  container: 'body',
+                  placement: 'top',
+                  trigger: 'hover'
+                });
               }
             }
             ",
             ns("")
           )
         )
-      ),
-      callback = DT::JS(
-        "
-        var tbl = table.table().container();
-        try{Shiny.unbindAll(tbl);}catch(e){}
-        try{Shiny.bindAll(tbl);}catch(e){}
-        "
       )
     )
   })

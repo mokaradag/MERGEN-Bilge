@@ -27,6 +27,9 @@
 .content-wrapper.oo-oda-acik-kok > .content > .tab-content > .tab-pane.active {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
   display: flex;
   flex-direction: column;
 }
@@ -77,14 +80,27 @@
 .ortak-calismalar-container.oo-oda-acik {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
   padding-bottom: 6px;
 }
 
 .ortak-calismalar-container.oo-oda-acik .oo-oda-alani {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
   display: flex;
   flex-direction: column;
+}
+
+.ortak-calismalar-container.oo-oda-acik .oo-oda-yerlesim {
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
 }
 
 /* Oda açıkken üst filtre butonları ve liste gizlenir; aktif oda dikeyde tüm
