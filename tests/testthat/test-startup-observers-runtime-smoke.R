@@ -89,6 +89,28 @@
     rec$in_future <- TRUE
     on.exit(rec$in_future <- FALSE, add = TRUE)
     result <- task_fn()
+    reject_this_full <- identical(task_type, "startup_saved_chats") &&
+      (isTRUE(rec$reject_full) ||
+         (isTRUE(rec$reject_full_once) && !isTRUE(rec$reject_full_once_used)))
+    if (identical(task_type, "startup_saved_chats") &&
+        isTRUE(rec$reject_full_once) && !isTRUE(rec$reject_full_once_used)) {
+      rec$reject_full_once_used <- TRUE
+    }
+    if (isTRUE(reject_this_full)) {
+      return(promises::promise(function(resolve, reject) {
+        if (isTRUE(rec$defer_full_rejection)) {
+          rec$reject_full_now <- function() reject(simpleError("tam liste sorgusu başarısız (test)"))
+        } else {
+          reject(simpleError("tam liste sorgusu başarısız (test)"))
+        }
+      }))
+    }
+    if (identical(task_type, "startup_saved_chats") &&
+        isTRUE(rec$defer_full_fulfillment)) {
+      return(promises::promise(function(resolve, reject) {
+        rec$resolve_full <- function() resolve(result)
+      }))
+    }
     if (identical(task_type, "startup_saved_chats_preview") &&
         isTRUE(rec$defer_preview_fulfillment)) {
       return(promises::promise(function(resolve, reject) {
@@ -105,7 +127,12 @@
     rec$preview_user_ids <- c(rec$preview_user_ids, as.integer(user_id))
     rec$preview_session_tokens <- c(rec$preview_session_tokens, as.character(session_token %||% ""))
     result <- rec$preview_result %||% list()
-    if (isTRUE(rec$reject_preview)) {
+    reject_this_preview <- isTRUE(rec$reject_preview) ||
+      (isTRUE(rec$reject_preview_once) && !isTRUE(rec$reject_preview_once_used))
+    if (isTRUE(rec$reject_preview_once) && !isTRUE(rec$reject_preview_once_used)) {
+      rec$reject_preview_once_used <- TRUE
+    }
+    if (isTRUE(reject_this_preview)) {
       return(promises::promise(function(resolve, reject) {
         reject(simpleError("ön izleme sorgusu başarısız (test)"))
       }))
@@ -433,6 +460,63 @@ testthat::test_that("hızlı şeritte reddedilen ön izleme sözü açılışı 
   })
 })
 
+testthat::test_that("hızlı şeritte reddedilen ön izleme daha sonra yeniden denenebilir", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+
+  rec <- new.env()
+  rec$reject_preview_once <- TRUE
+  rec$preview_result <- list(
+    "retry-preview" = list(title = "Yeniden Deneme", message_count = 0L)
+  )
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input,
+      session = session,
+      values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() 42L,
+      sso_state = NULL,
+      boot_ready = NULL
+    )
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+
+    warned <- FALSE
+    withCallingHandlers(
+      {
+        session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
+        later::run_now(timeoutSecs = 0.1)
+      },
+      warning = function(w) {
+        if (grepl("Preview chat load failed", conditionMessage(w))) {
+          warned <<- TRUE
+          invokeRestart("muffleWarning")
+        }
+      }
+    )
+    testthat::expect_true(warned)
+    testthat::expect_identical(rec$preview, 1L)
+    testthat::expect_identical(length(session$userData$.values$saved_chats), 0L)
+
+    session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 2))
+    later::run_now(timeoutSecs = 0.1)
+    session$flushReact()
+
+    testthat::expect_identical(rec$preview, 2L)
+    testthat::expect_true("retry-preview" %in% names(session$userData$.values$saved_chats))
+  })
+})
+
 
 testthat::test_that("hızlı şeritte ısıtma kimliği çalıştırma anında yeniden çözer", {
   testthat::skip_if_not_installed("shiny")
@@ -468,6 +552,13 @@ testthat::test_that("hızlı şeritte ısıtma kimliği çalıştırma anında y
     identity_state$user_id <- 0L
     session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
     testthat::expect_identical(rec$preview, 0L)
+
+    # Geçersiz kimlik denemesi idempotent kapıyı tüketmemeli; SSO kimliği
+    # sonradan hazır olduğunda yeni istemci sinyali ön izlemeyi başlatabilmeli.
+    identity_state$user_id <- 84L
+    session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 2))
+    testthat::expect_identical(rec$preview, 1L)
+    testthat::expect_identical(rec$preview_user_ids, 84L)
   })
 })
 
@@ -673,6 +764,159 @@ testthat::test_that("hızlı şeritte geç kalan ön izleme yerel sohbet değiş
     testthat::expect_true("local-new-chat" %in% names(session$userData$.values$saved_chats))
     testthat::expect_false("stale-preview" %in% names(session$userData$.values$saved_chats))
     testthat::expect_identical(rec$full, 0L)
+  })
+})
+
+testthat::test_that("hızlı şeritte geç kalan ön izleme kimlik değişiminden sonra uygulanmaz", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+
+  rec <- new.env()
+  rec$defer_preview_fulfillment <- TRUE
+  rec$preview_result <- list(
+    "wrong-user-preview" = list(title = "Yanlış Kullanıcı", message_count = 0L)
+  )
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+
+  identity_state <- new.env(parent = emptyenv())
+  identity_state$user_id <- 42L
+
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input,
+      session = session,
+      values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() identity_state$user_id,
+      sso_state = NULL,
+      boot_ready = NULL
+    )
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+    session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
+    testthat::expect_identical(rec$preview_user_ids, 42L)
+
+    identity_state$user_id <- 84L
+    rec$resolve_preview()
+    later::run_now(timeoutSecs = 0.1)
+    session$flushReact()
+
+    testthat::expect_identical(length(session$userData$.values$saved_chats), 0L)
+    testthat::expect_false("wrong-user-preview" %in% names(session$userData$.values$saved_chats))
+  })
+})
+
+testthat::test_that("hızlı şeritte geç kalan tam liste kimlik değişiminden sonra uygulanmaz", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+
+  rec <- new.env()
+  rec$defer_full_fulfillment <- TRUE
+  rec$full_result <- list(
+    "wrong-user-full" = list(title = "Yanlış Kullanıcı", message_count = 0L)
+  )
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+
+  identity_state <- new.env(parent = emptyenv())
+  identity_state$user_id <- 42L
+
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input,
+      session = session,
+      values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() identity_state$user_id,
+      sso_state = NULL,
+      boot_ready = NULL
+    )
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+    session$setInputs(tabs = "saved_chats")
+    testthat::expect_identical(rec$full_user_ids, 42L)
+    testthat::expect_true(is.function(rec$resolve_full))
+
+    identity_state$user_id <- 84L
+    rec$resolve_full()
+    later::run_now(timeoutSecs = 0.1)
+    session$flushReact()
+
+    testthat::expect_identical(length(session$userData$.values$saved_chats), 0L)
+    testthat::expect_true(isTRUE(session$userData$saved_chats_full_pending))
+    testthat::expect_false("wrong-user-full" %in% names(session$userData$.values$saved_chats))
+  })
+})
+
+testthat::test_that("hızlı şeritte eski kimliğe ait tam liste hatası güncel kimlik için yeniden denemeyi açık bırakır", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+
+  rec <- new.env()
+  rec$reject_full_once <- TRUE
+  rec$defer_full_rejection <- TRUE
+  rec$full_result <- list(
+    "current-user-full" = list(title = "Güncel Kullanıcı", message_count = 0L)
+  )
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+
+  identity_state <- new.env(parent = emptyenv())
+  identity_state$user_id <- 42L
+
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input,
+      session = session,
+      values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() identity_state$user_id,
+      sso_state = NULL,
+      boot_ready = NULL
+    )
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+    testthat::expect_true(isTRUE(session$userData$saved_chats_full_pending))
+
+    session$setInputs(tabs = "saved_chats")
+    testthat::expect_identical(rec$full_user_ids, 42L)
+    testthat::expect_true(is.function(rec$reject_full_now))
+    testthat::expect_false(isTRUE(session$userData$saved_chats_full_pending))
+
+    identity_state$user_id <- 84L
+    rec$reject_full_now()
+    later::run_now(timeoutSecs = 0.1)
+    session$flushReact()
+
+    testthat::expect_true(isTRUE(session$userData$saved_chats_full_pending))
+    testthat::expect_identical(length(session$userData$.values$saved_chats), 0L)
+
+    session$setInputs(tabs = "history")
+    later::run_now(timeoutSecs = 0.1)
+    session$flushReact()
+
+    testthat::expect_identical(rec$full_user_ids, c(42L, 84L))
+    testthat::expect_false(isTRUE(session$userData$saved_chats_full_pending))
+    testthat::expect_true("current-user-full" %in% names(session$userData$.values$saved_chats))
   })
 })
 

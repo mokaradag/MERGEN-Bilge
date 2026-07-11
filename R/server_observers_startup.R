@@ -161,6 +161,10 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  invisible(NULL)
 	}
 
+	session_closed <- function() {
+	  tryCatch(isTRUE(session$isClosed()), error = function(e) FALSE)
+	}
+
 	if (isTRUE(fast_lane)) {
 	  # Worker başlatılırken mevcut kayıtlı sohbet durumu alınır. Callback yalnızca
 	  # bu durum değişmediyse ön izlemeyi uygulayabilir; yerel sohbet ekleme/güncelleme
@@ -177,13 +181,23 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		detail = list(deferred = TRUE)
 	  )
 
-	  session_closed <- function() {
-		tryCatch(isTRUE(session$isClosed()), error = function(e) FALSE)
-	  }
-
 	  hydrate_preview_chats <- function(chats) {
 		# Kapanan oturumun geç kalan callback'i durum değiştiremez.
 		if (session_closed()) {
+		  return(invisible(NULL))
+		}
+		# Worker gönderildikten sonra kimlik değişmişse (SSO yenileme, oturum
+		# yeniden bağlama veya testte simüle edilen kullanıcı değişimi), eski
+		# kullanıcının ön izlemesi artık bu oturum durumuna uygulanamaz.
+		current_hydration_user_id <- resolve_current_user_id()
+		dispatched_hydration_user_id <- startup_state$preview_hydration_user_id
+		if (!identical(
+		  suppressWarnings(as.integer(current_hydration_user_id[1])),
+		  suppressWarnings(as.integer(dispatched_hydration_user_id[1]))
+		)) {
+		  startup_state$preview_hydration_started <- FALSE
+		  startup_state$preview_hydration_user_id <- NULL
+		  cat("[STARTUP] Ön izleme kimliği değişti, geç kalan sonuç atlandı\n")
 		  return(invisible(NULL))
 		}
 		# Tam liste yüklemesi başladıktan sonra geç gelen 6 sohbetlik ön izleme
@@ -227,7 +241,6 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		if (session_closed()) {
 		  return(invisible(FALSE))
 		}
-		startup_state$preview_hydration_started <- TRUE
 
 		# Kimlik ısıtma anında yeniden çözülür; geçersiz kimlikle sorgu açılmaz.
 		hydration_user_id <- resolve_current_user_id()
@@ -235,6 +248,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  cat("[STARTUP] Ön izleme ısıtması: geçerli kullanıcı kimliği yok, atlandı\n")
 		  return(invisible(FALSE))
 		}
+		startup_state$preview_hydration_started <- TRUE
+		startup_state$preview_hydration_user_id <- hydration_user_id
 
 		dispatch_started <- Sys.time()
 		preview_promise <- tryCatch({
@@ -267,6 +282,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		))
 
 		if (is.null(preview_promise)) {
+		  startup_state$preview_hydration_started <- FALSE
+		  startup_state$preview_hydration_user_id <- NULL
 		  return(invisible(FALSE))
 		}
 
@@ -277,6 +294,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			NULL
 		  },
 		  onRejected = function(err) {
+			startup_state$preview_hydration_started <- FALSE
+			startup_state$preview_hydration_user_id <- NULL
 			warning(sprintf("[SERVER] Preview chat load failed: %s", conditionMessage(err)))
 			NULL
 		  }
@@ -327,6 +346,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  # Bu bayrak monotondur: worker başlatıldıktan sonra geç kalan ön izleme
 	  # artık values$saved_chats üzerine yazamaz.
 	  startup_state$full_saved_chats_load_started <- TRUE
+	  full_load_user_id <- run_user_id
 
 	  session$userData$initial_saved_chats_promise <- promises::then(
 		tracked_future_promise(
@@ -337,6 +357,19 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  session_token = session$token
 		),
 		  onFulfilled = function(chats) {
+			if (session_closed()) {
+			  return(NULL)
+			}
+			current_full_user_id <- resolve_current_user_id()
+			if (!identical(
+			  suppressWarnings(as.integer(current_full_user_id[1])),
+			  suppressWarnings(as.integer(full_load_user_id[1]))
+			)) {
+			  startup_state$initial_saved_chats_status <- "deferred"
+			  session$userData$saved_chats_full_pending <- TRUE
+			  cat("[STARTUP] Tam söyleşi yüklemesi kimliği değişti, geç kalan sonuç atlandı\n")
+			  return(NULL)
+			}
 			startup_state$initial_saved_chats_status <- "done"
 
 			chats <- chats %||% list()
@@ -362,6 +395,19 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			NULL
 		  },
 		onRejected = function(err) {
+		  if (session_closed()) {
+			return(NULL)
+		  }
+		  current_full_user_id <- resolve_current_user_id()
+		  if (!identical(
+			suppressWarnings(as.integer(current_full_user_id[1])),
+			suppressWarnings(as.integer(full_load_user_id[1]))
+		  )) {
+			startup_state$initial_saved_chats_status <- "deferred"
+			session$userData$saved_chats_full_pending <- TRUE
+			cat("[STARTUP] Tam söyleşi yüklemesi hatası eski kimliğe ait, güncel kimlik için yeniden deneme bekletiliyor\n")
+			return(NULL)
+		  }
 		  # Başarısızlıkta tembel yol yeniden deneyebilsin.
 		  startup_state$initial_saved_chats_status <- "deferred"
 		  session$userData$saved_chats_full_pending <- TRUE
