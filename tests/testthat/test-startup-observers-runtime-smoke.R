@@ -89,6 +89,22 @@
     rec$in_future <- TRUE
     on.exit(rec$in_future <- FALSE, add = TRUE)
     result <- task_fn()
+    reject_this_full <- identical(task_type, "startup_saved_chats") &&
+      (isTRUE(rec$reject_full) ||
+         (isTRUE(rec$reject_full_once) && !isTRUE(rec$reject_full_once_used)))
+    if (identical(task_type, "startup_saved_chats") &&
+        isTRUE(rec$reject_full_once) && !isTRUE(rec$reject_full_once_used)) {
+      rec$reject_full_once_used <- TRUE
+    }
+    if (isTRUE(reject_this_full)) {
+      return(promises::promise(function(resolve, reject) {
+        if (isTRUE(rec$defer_full_rejection)) {
+          rec$reject_full_now <- function() reject(simpleError("tam liste sorgusu başarısız (test)"))
+        } else {
+          reject(simpleError("tam liste sorgusu başarısız (test)"))
+        }
+      }))
+    }
     if (identical(task_type, "startup_saved_chats") &&
         isTRUE(rec$defer_full_fulfillment)) {
       return(promises::promise(function(resolve, reject) {
@@ -842,6 +858,54 @@ testthat::test_that("hızlı şeritte geç kalan tam liste kimlik değişiminden
     testthat::expect_identical(length(session$userData$.values$saved_chats), 0L)
     testthat::expect_true(isTRUE(session$userData$saved_chats_full_pending))
     testthat::expect_false("wrong-user-full" %in% names(session$userData$.values$saved_chats))
+  })
+})
+
+testthat::test_that("hızlı şeritte eski kimliğe ait tam liste hatası yeni kimlik durumunu değiştirmez", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+
+  rec <- new.env()
+  rec$reject_full_once <- TRUE
+  rec$defer_full_rejection <- TRUE
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+
+  identity_state <- new.env(parent = emptyenv())
+  identity_state$user_id <- 42L
+
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input,
+      session = session,
+      values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() identity_state$user_id,
+      sso_state = NULL,
+      boot_ready = NULL
+    )
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+    testthat::expect_true(isTRUE(session$userData$saved_chats_full_pending))
+
+    session$setInputs(tabs = "saved_chats")
+    testthat::expect_identical(rec$full_user_ids, 42L)
+    testthat::expect_true(is.function(rec$reject_full_now))
+    testthat::expect_false(isTRUE(session$userData$saved_chats_full_pending))
+
+    identity_state$user_id <- 84L
+    rec$reject_full_now()
+    later::run_now(timeoutSecs = 0.1)
+    session$flushReact()
+
+    testthat::expect_false(isTRUE(session$userData$saved_chats_full_pending))
+    testthat::expect_identical(length(session$userData$.values$saved_chats), 0L)
   })
 })
 

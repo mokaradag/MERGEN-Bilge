@@ -395,6 +395,17 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			NULL
 		  },
 		onRejected = function(err) {
+		  if (session_closed()) {
+			return(NULL)
+		  }
+		  current_full_user_id <- resolve_current_user_id()
+		  if (!identical(
+			suppressWarnings(as.integer(current_full_user_id[1])),
+			suppressWarnings(as.integer(full_load_user_id[1]))
+		  )) {
+			cat("[STARTUP] Tam söyleşi yüklemesi hatası eski kimliğe ait, yeniden deneme durumu değiştirilmedi\n")
+			return(NULL)
+		  }
 		  # Başarısızlıkta tembel yol yeniden deneyebilsin.
 		  startup_state$initial_saved_chats_status <- "deferred"
 		  session$userData$saved_chats_full_pending <- TRUE
