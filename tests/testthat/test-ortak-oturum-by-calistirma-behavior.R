@@ -209,6 +209,14 @@ test_that("BY köprüsü gerçek akış boru hattını kullanır ve ilerlemeyi o
   expect_true(grepl("ortak_db_uretim_kismi_yanit_guncelle", kopru, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("oo_by_kismi_ilerleme_metni", kopru, fixed = TRUE, useBytes = TRUE))
 
+  # Tamamlama kalıcılığı hata verirse üretim kilidi asılı kalmamalı; callback
+  # açık hata mesajıyla motor$tamamla yoluna düşer.
+  expect_true(grepl("Çalıştırma tamamlama hatası", kopru, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("sonuç kaydı güvenli biçimde işlenemedi; kilit bırakıldı", kopru, fixed = TRUE, useBytes = TRUE))
+
+  # CLI yolu NA dönerse nzchar(NA) ile üretim callback'i kırılmamalı.
+  expect_true(grepl("is.na(cli) || !nzchar(cli)", kopru, fixed = TRUE, useBytes = TRUE))
+
   # CLI yokken açık engelleyici mesaj + yeniden deneme yolu (sessiz düşüş yok).
   expect_true(grepl(enc2utf8("Claude Code CLI bu ortamda bağlı değil; Bilge Yolaç komutu çalıştırılamadı."),
                     kopru, fixed = TRUE, useBytes = TRUE))
