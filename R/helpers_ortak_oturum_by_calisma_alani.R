@@ -17,10 +17,11 @@
     return("")
   }
 
-  norm <- tryCatch(
-    normalizePath(yol, winslash = "/", mustWork = FALSE),
-    error = function(e) yol
-  )
+  norm <- if (file.exists(yol)) {
+    normalizePath(yol, winslash = "/", mustWork = TRUE)
+  } else if (identical(dirname(yol), yol)) path.expand(yol) else
+    file.path(.ortak_by_yol_anahtari(dirname(yol)), basename(yol))
+	
   norm <- gsub("\\\\", "/", norm)
   norm <- sub("/+$", "", norm)
   norm <- enc2utf8(norm)
