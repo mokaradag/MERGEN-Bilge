@@ -64,7 +64,8 @@ oo_by_ilerleme_kayitlari <- function(parca, durum = NULL) {
       girdi <- arac$girdi
       if (is.list(girdi)) {
         detay <- as.character(
-          girdi$command %||% girdi$file_path %||% girdi$path %||% girdi$pattern %||% ""
+          girdi$command %||% girdi$cmd %||% girdi$file_path %||%
+            girdi$path %||% girdi$pattern %||% girdi$query %||% ""
         )[1]
       }
     }
@@ -87,7 +88,7 @@ oo_by_ilerleme_kayitlari <- function(parca, durum = NULL) {
       if (is.list(girdi)) {
         detay <- as.character(
           girdi$command %||% girdi$cmd %||% girdi$file_path %||%
-            girdi$path %||% girdi$pattern %||% ""
+            girdi$path %||% girdi$pattern %||% girdi$query %||% ""
         )[1]
       }
     }
