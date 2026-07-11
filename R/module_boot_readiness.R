@@ -30,6 +30,20 @@ bootReadinessInit <- function(session, required = NULL) {
   # olduğu için üretimde gürültü oluşturmaz.
   boot_started_at <- Sys.time()
 
+  # Soğuk açılış faz ayrımı: ilk reaktif flush'a kadar geçen süre, sunucu
+  # kablolama maliyetini dosya/kimlik kontrol noktalarından ayırır. Sahte
+  # session kullanan testlerde onFlushed olmayabilir; sessizce atlanır.
+  tryCatch({
+    if (is.function(session$onFlushed)) {
+      session$onFlushed(function() {
+        cat(sprintf(
+          "[STARTUP PERF] first_flush elapsed_ms=%.0f\n",
+          as.numeric(difftime(Sys.time(), boot_started_at, units = "secs")) * 1000
+        ))
+      }, once = TRUE)
+    }
+  }, error = function(e) NULL)
+
   mark <- function(key, label = key, pct = NULL, detail = NULL) {
     if (is.null(key) || length(key) != 1L || !nzchar(as.character(key))) {
       return(invisible(FALSE))

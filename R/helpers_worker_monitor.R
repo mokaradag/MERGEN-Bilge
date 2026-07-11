@@ -181,31 +181,13 @@ get_worker_monitor_info <- function() {
   )
 }
 
-# Future promise çağrısını izlemeli şekilde sarmala
-tracked_future_promise <- function(task_fn,
-                                   task_type = "generic",
-                                   session_token = NULL,
-                                   meta = list(),
-                                   globals = NULL) {
-  if (!is.function(task_fn)) {
-    stop("tracked_future_promise() için 'task_fn' bir fonksiyon olmalıdır.")
-  }
-
-  task_id <- create_worker_task_id(task_type = task_type)
-
-  register_worker_task(
-    task_id = task_id,
-    task_type = task_type,
-    session_token = session_token,
-    meta = meta
-  )
-
-  promise_globals <- globals %||% list()
-
-  # İşçi fonksiyonunun gövdesindeki serbest değişkenleri ve bağlı paketleri
-  # otomatik olarak tespit et. Böylece call_llm_worker(), generate_image()
-  # gibi global yardımcılar worker tarafına her çağrıda taşınır.
-  detected_future_deps <- tryCatch({
+# İşçi fonksiyonunun gövdesindeki serbest değişkenleri ve bağlı paketleri
+# otomatik olarak tespit et. Böylece call_llm_worker(), generate_image()
+# gibi global yardımcılar worker tarafına her çağrıda taşınır.
+# NOT: Bu tarama .GlobalEnv büyüdükçe pahalıdır; açılış kritik yolundaki
+# görevler bunun yerine dependency_mode="explicit" kullanmalıdır.
+worker_monitor_detect_task_deps <- function(task_fn) {
+  tryCatch({
     gp <- future::getGlobalsAndPackages(
       expr = body(task_fn),
       envir = environment(task_fn),
@@ -222,64 +204,58 @@ tracked_future_promise <- function(task_fn,
       packages = character(0)
     )
   })
+}
 
-  # Bir fonksiyon worker'a global olarak taşınıyorsa, o fonksiyonun
-  # global ortamdan kullandığı yardımcıları da özyinelemeli olarak topla.
-  collect_nested_function_globals <- function(fn_obj, seen = character()) {
-    if (!is.function(fn_obj)) {
-      return(list())
-    }
+# Bir fonksiyon worker'a global olarak taşınıyorsa, o fonksiyonun
+# global ortamdan kullandığı yardımcıları da özyinelemeli olarak topla.
+worker_monitor_collect_nested_globals <- function(fn_obj, seen = character()) {
+  if (!is.function(fn_obj)) {
+    return(list())
+  }
 
-    fn_global_names <- tryCatch(
-      codetools::findGlobals(fn_obj, merge = TRUE),
-      error = function(e) character(0)
-    )
+  fn_global_names <- tryCatch(
+    codetools::findGlobals(fn_obj, merge = TRUE),
+    error = function(e) character(0)
+  )
 
-    if (!length(fn_global_names)) {
-      return(list())
-    }
+  if (!length(fn_global_names)) {
+    return(list())
+  }
 
-    available_names <- intersect(
-      fn_global_names,
-      ls(envir = .GlobalEnv, all.names = TRUE)
-    )
-    available_names <- setdiff(available_names, seen)
+  available_names <- intersect(
+    fn_global_names,
+    ls(envir = .GlobalEnv, all.names = TRUE)
+  )
+  available_names <- setdiff(available_names, seen)
 
-    if (!length(available_names)) {
-      return(list())
-    }
+  if (!length(available_names)) {
+    return(list())
+  }
 
-    collected <- mget(available_names, envir = .GlobalEnv, inherits = TRUE)
-    next_seen <- unique(c(seen, available_names))
+  collected <- mget(available_names, envir = .GlobalEnv, inherits = TRUE)
+  next_seen <- unique(c(seen, available_names))
 
-    nested <- list()
-    for (nm in names(collected)) {
-      obj <- collected[[nm]]
-      if (!is.function(obj)) next
+  nested <- list()
+  for (nm in names(collected)) {
+    obj <- collected[[nm]]
+    if (!is.function(obj)) next
 
-      deeper <- collect_nested_function_globals(obj, seen = next_seen)
-      if (!length(deeper)) next
+    deeper <- worker_monitor_collect_nested_globals(obj, seen = next_seen)
+    if (!length(deeper)) next
 
-      for (deep_nm in names(deeper)) {
-        if (!deep_nm %in% names(collected) && !deep_nm %in% names(nested)) {
-          nested[[deep_nm]] <- deeper[[deep_nm]]
-        }
+    for (deep_nm in names(deeper)) {
+      if (!deep_nm %in% names(collected) && !deep_nm %in% names(nested)) {
+        nested[[deep_nm]] <- deeper[[deep_nm]]
       }
     }
-
-    c(collected, nested)
   }
 
-  # Çağıran taraftan açıkça verilen globals öncelikli kalsın.
-  if (length(detected_future_deps$globals) > 0) {
-    for (nm in names(detected_future_deps$globals)) {
-      if (!nzchar(nm) || nm %in% names(promise_globals)) next
-      promise_globals[[nm]] <- detected_future_deps$globals[[nm]]
-    }
-  }
+  c(collected, nested)
+}
 
-  # Açıkça verilen veya otomatik yakalanan fonksiyonların kullandığı
-  # yardımcıları da worker'a ekle.
+# Açıkça verilen veya otomatik yakalanan fonksiyonların kullandığı
+# yardımcıları da worker'a ekle.
+worker_monitor_expand_function_globals <- function(promise_globals) {
   expanded_globals <- list()
   base_global_names <- names(promise_globals)
 
@@ -287,7 +263,7 @@ tracked_future_promise <- function(task_fn,
     obj <- promise_globals[[nm]]
     if (!is.function(obj)) next
 
-    nested <- collect_nested_function_globals(
+    nested <- worker_monitor_collect_nested_globals(
       obj,
       seen = unique(c(base_global_names, names(expanded_globals)))
     )
@@ -300,24 +276,120 @@ tracked_future_promise <- function(task_fn,
     }
   }
 
-  if (length(expanded_globals) > 0) {
-    promise_globals <- c(promise_globals, expanded_globals)
+  expanded_globals
+}
+
+.worker_monitor_trace_enabled <- function() {
+  isTRUE(tolower(Sys.getenv("MERGEN_STARTUP_PERF_TRACE", "false")) %in%
+           c("true", "1", "yes", "on"))
+}
+
+# Future promise çağrısını izlemeli şekilde sarmala.
+# dependency_mode:
+#   - "auto" (varsayılan): mevcut davranış; görev gövdesinin bağımlılıkları
+#     otomatik taranır ve iç içe fonksiyon yardımcıları .GlobalEnv'den toplanır.
+#   - "explicit": HİÇBİR otomatik tarama yapılmaz; yalnızca çağıranın verdiği
+#     globals + packages worker'a taşınır. Görev fonksiyonunun ortamı, oturum
+#     çerçeve zincirinin worker'a serileştirilmesini önlemek için verilen
+#     globals'ı içeren izole bir ortama yeniden bağlanır. Açılış kritik
+#     yolundaki görevler bu modu kullanmalıdır (bkz. CLAUDE.md 8A).
+tracked_future_promise <- function(task_fn,
+                                   task_type = "generic",
+                                   session_token = NULL,
+                                   meta = list(),
+                                   globals = NULL,
+                                   dependency_mode = c("auto", "explicit"),
+                                   packages = NULL) {
+  if (!is.function(task_fn)) {
+    stop("tracked_future_promise() için 'task_fn' bir fonksiyon olmalıdır.")
+  }
+
+  dependency_mode <- match.arg(dependency_mode)
+
+  task_id <- create_worker_task_id(task_type = task_type)
+
+  register_worker_task(
+    task_id = task_id,
+    task_type = task_type,
+    session_token = session_token,
+    meta = meta
+  )
+
+  promise_globals <- globals %||% list()
+  extra_packages <- unique(as.character(packages %||% character(0)))
+
+  schedule_started <- Sys.time()
+  detect_ms <- 0
+  expand_ms <- 0
+
+  if (identical(dependency_mode, "explicit")) {
+    future_packages <- extra_packages
+
+    # Kapanış zinciri (observer/oturum ortamları) worker'a serileştirilmesin:
+    # görev fonksiyonu yalnızca verilen globals'ı gören izole ortama bağlanır.
+    fn_env <- new.env(parent = globalenv())
+    for (nm in names(promise_globals)) {
+      if (nzchar(nm)) assign(nm, promise_globals[[nm]], envir = fn_env)
+    }
+    environment(task_fn) <- fn_env
+  } else {
+    detect_started <- Sys.time()
+    detected_future_deps <- worker_monitor_detect_task_deps(task_fn)
+    detect_ms <- as.numeric(difftime(Sys.time(), detect_started, units = "secs")) * 1000
+
+    # Çağıran taraftan açıkça verilen globals öncelikli kalsın.
+    if (length(detected_future_deps$globals) > 0) {
+      for (nm in names(detected_future_deps$globals)) {
+        if (!nzchar(nm) || nm %in% names(promise_globals)) next
+        promise_globals[[nm]] <- detected_future_deps$globals[[nm]]
+      }
+    }
+
+    expand_started <- Sys.time()
+    expanded_globals <- worker_monitor_expand_function_globals(promise_globals)
+    expand_ms <- as.numeric(difftime(Sys.time(), expand_started, units = "secs")) * 1000
+
+    if (length(expanded_globals) > 0) {
+      promise_globals <- c(promise_globals, expanded_globals)
+    }
+
+    future_packages <- unique(c(detected_future_deps$packages, extra_packages))
   }
 
   promise_globals$task_fn <- task_fn
 
+  dispatch_started <- Sys.time()
   p <- tryCatch({
     promises::future_promise(
       {
         task_fn()
       },
       globals = promise_globals,
-      packages = unique(detected_future_deps$packages)
+      packages = future_packages
     )
   }, error = function(e) {
     finish_worker_task(task_id)
     stop(e)
   })
+
+  dispatch_ms <- as.numeric(difftime(Sys.time(), dispatch_started, units = "secs")) * 1000
+  total_ms <- as.numeric(difftime(Sys.time(), schedule_started, units = "secs")) * 1000
+
+  # 1 sn üzeri senkron planlama, olay döngüsünü bloklayan gerçek bir üretim
+  # sinyalidir; iz açık olmasa da tek satır loglanır (değer içermez).
+  if (.worker_monitor_trace_enabled() || total_ms > 1000) {
+    cat(sprintf(
+      "[STARTUP PERF] worker_dispatch task_type=%s mode=%s detect_ms=%.0f expand_ms=%.0f dispatch_ms=%.0f total_ms=%.0f globals=%d packages=%d\n",
+      as.character(task_type %||% "generic")[1],
+      dependency_mode,
+      detect_ms,
+      expand_ms,
+      dispatch_ms,
+      total_ms,
+      length(promise_globals),
+      length(future_packages)
+    ))
+  }
 
   promises::then(
     p,

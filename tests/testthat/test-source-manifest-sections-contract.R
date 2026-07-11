@@ -98,7 +98,10 @@
   # 15L -> 16L bilinçli güncelleme: Bilge Yolaç arşiv geri yükleme + KALICI silme
   # yaşam döngüsü (R/helpers_db_claude_code_session_lifecycle.R) orkestrasyon
   # dosyasından SONRA, helpers_database.R'den önce eklendi (ratchet bütçesi).
-  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 16L),
+  # 16L -> 17L bilinçli güncelleme: Hızlı Başlangıç "Son Konuşmalar" ön izleme
+  # worker katmanı (R/helpers_startup_chat_preview.R) helpers_db_chat_readers.R
+  # sonrası, helpers_db_chat_mutations.R öncesi eklendi.
+  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 17L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
   language_messaging = list(first = "R/helpers_language.R", last = "R/helpers_messaging.R", n = 2L),
   mcp_tools = list(first = "R/helpers_mcp_context.R", last = "R/helpers_mcp_tools.R", n = 9L),
@@ -361,7 +364,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 323L -> 324L bilinçli güncelleme: Ortak Bilge Yolaç çalışma alanı SAF
   # yardımcıları (R/helpers_ortak_oturum_by_calisma_alani.R; özel proje dizini
   # izolasyon kapısı + etkin dizin çözümü + panel kart üreticileri) eklendi.
-  expect_equal(length(runtime), 324L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 324L -> 325L bilinçli güncelleme: Hızlı Başlangıç "Son Konuşmalar" ön izleme
+  # worker katmanı (R/helpers_startup_chat_preview.R; dar explicit worker-export
+  # sözleşmesi + ana süreç biçimlendirme) database bölümüne eklendi.
+  expect_equal(length(runtime), 325L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

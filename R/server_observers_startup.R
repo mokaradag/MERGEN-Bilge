@@ -59,12 +59,26 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  }
 	}, ignoreInit = TRUE)
 
+  startup_state <- new.env(parent = emptyenv())
+  startup_state$initial_saved_chats_status <- "idle"
+  startup_state$lane_wait_registered <- FALSE
+  startup_state$full_saved_chats_load_started <- FALSE
+  startup_state$welcome_client_ready_seen <- FALSE
+  startup_state$preview_hydration_started <- FALSE
+  startup_state$run_preview_hydration <- NULL
+
 	observeEvent(input$welcome_client_ready, {
+	  startup_state$welcome_client_ready_seen <- TRUE
 	  mark_boot(
 		"welcome_client_ready",
 		"Ana Söyleşi görsel bileşenleri hazır",
 		detail = input$welcome_client_ready
 	  )
+	  # Hızlı şerit: ön izleme ısıtması İLK ÇİZİMDEN SONRA başlar; böylece
+	  # açılış katmanı ve ilk etkileşim ön izleme hazırlığını hiç beklemez.
+	  if (is.function(startup_state$run_preview_hydration)) {
+		startup_state$run_preview_hydration("welcome_client_ready")
+	  }
 	}, ignoreInit = TRUE)
 
 	# SSO akışında başlangıçta current_user_id=0 gelebilir.
@@ -75,11 +89,6 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  current_user_id = current_user_id
 		)
 	}
-  
-  startup_state <- new.env(parent = emptyenv())
-  startup_state$initial_saved_chats_status <- "idle"
-  startup_state$lane_wait_registered <- FALSE
-  startup_state$full_saved_chats_load_started <- FALSE
   
   load_initial_saved_chats <- function() {
     effective_user_id <- resolve_current_user_id()
@@ -158,36 +167,135 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  # daha yeni durumu temsil eder ve hiçbir zaman eski ön izlemeyle ezilmez.
 	  preview_saved_chats_snapshot <- shiny::isolate(values$saved_chats)
 
-	  # Hızlı şerit: ön izleme kritik açılış yolunu bloklamaz; arka planda yüklenir.
-	  session$userData$initial_saved_chats_preview_promise <- promises::then(
-		tracked_future_promise(
-		  task_fn = function() {
-			load_chats_preview_from_db(effective_user_id, limit = 6L)
-		  },
-		  task_type = "startup_saved_chats_preview",
-		  session_token = session$token
-		),
-		onFulfilled = function(chats) {
-		  # Tam liste yüklemesi başladıktan sonra geç gelen 6 sohbetlik ön izleme
-		  # daha güncel tam listeyi daraltmamalıdır.
-		  if (isTRUE(startup_state$full_saved_chats_load_started)) {
-			cat("[STARTUP] Tam söyleşi yüklemesi başladı, geç kalan ön izleme atlandı\n")
-			return(NULL)
-		  }
-		  shiny::isolate({
-			if (!identical(values$saved_chats, preview_saved_chats_snapshot)) {
-			  cat("[STARTUP] Kayıtlı sohbet durumu değişti, eski ön izleme atlandı\n")
-			  return(NULL)
-			}
-			apply_preview_chats(chats, deferred = TRUE)
-		  })
-		  NULL
-		},
-		onRejected = function(err) {
-		  warning(sprintf("[SERVER] Preview chat load failed: %s", conditionMessage(err)))
-		  NULL
-		}
+	  # Dürüst kontrol noktası: ön izleme Hızlı Başlangıç kapanış sözleşmesinin
+	  # parçası değildir ve HEMEN ertelenmiş olarak işaretlenir. Gerçek ısıtma
+	  # ayrı bir kontrol noktasıyla (saved_chats_preview_hydrated) raporlanır;
+	  # aynı anahtar iki farklı durumu (ertelendi/yüklendi) temsil edemez.
+	  mark_boot(
+		"saved_chats_preview_ready",
+		"Son konuşmalar arka planda yüklenecek",
+		detail = list(deferred = TRUE)
 	  )
+
+	  session_closed <- function() {
+		tryCatch(isTRUE(session$isClosed()), error = function(e) FALSE)
+	  }
+
+	  hydrate_preview_chats <- function(chats) {
+		# Kapanan oturumun geç kalan callback'i durum değiştiremez.
+		if (session_closed()) {
+		  return(invisible(NULL))
+		}
+		# Tam liste yüklemesi başladıktan sonra geç gelen 6 sohbetlik ön izleme
+		# daha güncel tam listeyi daraltmamalıdır.
+		if (isTRUE(startup_state$full_saved_chats_load_started)) {
+		  cat("[STARTUP] Tam söyleşi yüklemesi başladı, geç kalan ön izleme atlandı\n")
+		  return(invisible(NULL))
+		}
+		shiny::isolate({
+		  if (!identical(values$saved_chats, preview_saved_chats_snapshot)) {
+			cat("[STARTUP] Kayıtlı sohbet durumu değişti, eski ön izleme atlandı\n")
+			return(invisible(NULL))
+		  }
+
+		  chats <- chats %||% list()
+		  if (length(chats) > 0) {
+			values$saved_chats <- chats
+			mark_boot(
+			  "saved_chats_preview_hydrated",
+			  "Son konuşmalar hazır",
+			  detail = list(count = length(chats))
+			)
+			refresh_welcome_if_needed(chats)
+		  } else {
+			mark_boot(
+			  "saved_chats_preview_hydrated",
+			  "Son konuşma yok",
+			  detail = list(count = 0L)
+			)
+		  }
+		})
+		invisible(NULL)
+	  }
+
+	  run_preview_hydration <- function(trigger = "bilinmiyor") {
+		# Isıtma idempotenttir: istemci sinyali ve güvenlik zamanlayıcısı
+		# birlikte tetiklese bile tek bir worker gönderimi yapılır.
+		if (isTRUE(startup_state$preview_hydration_started)) {
+		  return(invisible(FALSE))
+		}
+		if (session_closed()) {
+		  return(invisible(FALSE))
+		}
+		startup_state$preview_hydration_started <- TRUE
+
+		# Kimlik ısıtma anında yeniden çözülür; geçersiz kimlikle sorgu açılmaz.
+		hydration_user_id <- resolve_current_user_id()
+		if (is.na(hydration_user_id) || hydration_user_id <= 0) {
+		  cat("[STARTUP] Ön izleme ısıtması: geçerli kullanıcı kimliği yok, atlandı\n")
+		  return(invisible(FALSE))
+		}
+
+		dispatch_started <- Sys.time()
+		preview_promise <- tryCatch({
+		  if (exists("mergen_startup_chat_preview_promise",
+					 mode = "function", inherits = TRUE)) {
+			mergen_startup_chat_preview_promise(
+			  hydration_user_id,
+			  limit = 6L,
+			  session_token = session$token
+			)
+		  } else {
+			# İzole bağlamlar için korumalı geri dönüş: eski otomatik-tarama yolu.
+			tracked_future_promise(
+			  task_fn = function() {
+				load_chats_preview_from_db(hydration_user_id, limit = 6L)
+			  },
+			  task_type = "startup_saved_chats_preview",
+			  session_token = session$token
+			)
+		  }
+		}, error = function(e) {
+		  warning(sprintf("[SERVER] Preview chat dispatch failed: %s", conditionMessage(e)))
+		  NULL
+		})
+
+		cat(sprintf(
+		  "[STARTUP PERF] preview_dispatch trigger=%s elapsed_ms=%.0f\n",
+		  trigger,
+		  as.numeric(difftime(Sys.time(), dispatch_started, units = "secs")) * 1000
+		))
+
+		if (is.null(preview_promise)) {
+		  return(invisible(FALSE))
+		}
+
+		session$userData$initial_saved_chats_preview_promise <- promises::then(
+		  preview_promise,
+		  onFulfilled = function(chats) {
+			hydrate_preview_chats(chats)
+			NULL
+		  },
+		  onRejected = function(err) {
+			warning(sprintf("[SERVER] Preview chat load failed: %s", conditionMessage(err)))
+			NULL
+		  }
+		)
+		invisible(TRUE)
+	  }
+	  startup_state$run_preview_hydration <- run_preview_hydration
+
+	  if (isTRUE(startup_state$welcome_client_ready_seen)) {
+		# İlk çizim sinyali şerit çözümünden önce geldiyse ısıtma hemen başlar.
+		run_preview_hydration("welcome_ready_onceden")
+	  } else {
+		# Güvenli geri dönüş: istemci hazır sinyali hiç gelmezse ön izleme yine
+		# de yüklenir; açılış sözleşmesi bu zamanlayıcıya bağlı değildir.
+		fallback_secs <- getOption("mergen.startup_preview_fallback_secs", 10)
+		later::later(function() {
+		  tryCatch(run_preview_hydration("fallback_timer"), error = function(e) NULL)
+		}, delay = fallback_secs)
+	  }
 	} else {
 	  # Zengin şerit: ilk ekranın hızlı gelmesi için hafif özet liste senkron yüklenir.
 	  preview_chats <- tryCatch(
@@ -265,10 +373,13 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 
 	if (isTRUE(fast_lane)) {
 	  # Hızlı şerit: tam yükleme ertelenir (kritik açılış yolunun dışında).
+	  # Erteleme ve gerçek tamamlanma AYRI anahtarlardır: saved_chats_full_loaded
+	  # yalnızca tam liste gerçekten yüklendiğinde işaretlenir; böylece boot
+	  # performans logunda gerçek tamamlanma görünmez hâle gelmez.
 	  startup_state$initial_saved_chats_status <- "deferred"
 	  session$userData$saved_chats_full_pending <- TRUE
 	  mark_boot(
-		"saved_chats_full_loaded",
+		"saved_chats_full_deferred",
 		"Söyleşi listesi gerektiğinde yüklenecek",
 		detail = list(deferred = TRUE, lane = "fast_lane")
 	  )

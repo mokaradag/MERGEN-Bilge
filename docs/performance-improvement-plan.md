@@ -74,6 +74,104 @@ As of the pre-index-cache 2026-06-19 baseline, the comparable fake-lane smoke ar
 
 ## Session notes
 
+### 2026-07-11 — Fast-lane startup: preview `tracked_future_promise()` synchronous dependency scan blocked the critical path
+
+Field report (Windows VM, Hızlı Başlangıç, three login attempts, cumulative
+`[STARTUP PERF]` checkpoint times from session start):
+
+| Checkpoint | Cold (attempt 1) | Warm refresh (attempt 2) | Warm refresh (attempt 3) |
+|---|---:|---:|---:|
+| `file_index_ready` (deferred) | 9,960 ms | 2,785 ms | 2,472 ms |
+| `auth_ready` | 9,964 ms | 2,789 ms | 2,476 ms |
+| `character_media_ready` (deferred) | 12,742 ms | 3,145 ms | 2,787 ms |
+| `saved_chats_full_loaded` (deferred=TRUE) | 24,299 ms | 12,235 ms | 11,529 ms |
+| `saved_chats_preview_ready` (deferred=TRUE) | 27,385 ms | 14,325 ms | 13,595 ms |
+| `welcome_client_ready` | 27,908 ms | 14,473 ms | 13,740 ms |
+
+The ~9-14 s gap between `character_media_ready` and the `saved_chats_full_loaded`
+"deferred" marker, plus a `Registered S3 method overwritten by 'quantmod'` warning
+appearing inside that gap, were the signature.
+
+Root cause (proven by reading the wrapper, not by wall-clock alone): the fast-lane
+branch DID call `tracked_future_promise(load_chats_preview_from_db, …)` for the
+6-chat preview, but `tracked_future_promise()` performed substantial **synchronous**
+work on the main event loop *before* dispatch — `future::getGlobalsAndPackages()`
+over the task body, then a **recursive** `codetools::findGlobals()` walk of
+`.GlobalEnv` (`worker_monitor_collect_nested_globals()`), `mget()`-ing every
+referenced global function and expanding *their* globals in turn. As the app's
+`.GlobalEnv` grew (chartlab/highcharter helpers, MCP tools, DB layer, Ortak Oturum),
+this scan reached functions whose globals resolution force-loaded the **highcharter**
+namespace, which registers `quantmod`'s `as.zoo.data.frame` S3 method → the stray
+warning, on the fast-lane critical path. The late `saved_chats_full_loaded deferred=TRUE`
+timestamp therefore did **not** mean the full list loaded; it revealed the preview
+future's *scheduling/export* overhead. (`file_index_ready`'s ~10 s cold timestamp is
+separately just cumulative pre-first-flush server wiring — it is already `deferred=TRUE`
+and does no scan; a new `[STARTUP PERF] first_flush elapsed_ms=…` line now isolates that
+phase.)
+
+Architecture chosen (all additive, Rich Lane untouched):
+
+1. **Explicit dependency mode for `tracked_future_promise()`** (`R/helpers_worker_monitor.R`).
+   New `dependency_mode = c("auto","explicit")` + `packages` param. `"auto"` is the
+   unchanged default for every existing LLM/SSE/image/TTS/Ortak-Oturum caller (the
+   scan + nested expansion still run). `"explicit"` skips *all* auto-detection and
+   re-binds the task function's environment to an isolated env containing only the
+   supplied globals (so observer/session closure chains are never serialized to the
+   worker). Auto-scan/expand are now named helpers
+   (`worker_monitor_detect_task_deps`, `worker_monitor_expand_function_globals`) so a
+   test can prove explicit mode never calls them.
+2. **Lean startup preview worker** (`R/helpers_startup_chat_preview.R`, new; in the
+   `database` manifest section). `db_chat_preview_fetch_raw()` runs on the worker with
+   a **narrow contract** (DBI/odbc + the pure `db_chat_preview_query_sql` only; opens
+   its own connection, closes on every path, never runs if the user id is invalid).
+   Turkish visible-text normalization stays in the **main** process
+   (`db_chat_preview_format_frame()`, byte-aligned with `load_chats_preview_from_db`'s
+   list shape) so the central encoding contract is untouched. `mergen_startup_chat_preview_promise()`
+   dispatches via explicit mode with a 7-symbol export set.
+3. **Preview hydration deferred past first render** (`R/server_observers_startup.R`).
+   Fast lane now marks `saved_chats_preview_ready` as `deferred=TRUE` *immediately*
+   and starts the real dispatch only on `input$welcome_client_ready` (idempotent; a
+   `~10 s` `later::later` safety timer covers the case where the client signal never
+   arrives — the fallback never re-enters required readiness). Real hydration reports a
+   **separate** `saved_chats_preview_hydrated` checkpoint (because `bootReadinessInit()`
+   only logs a key's *first* occurrence, reusing one key for both "deferred" and
+   "loaded" would hide the real completion). Full-list deferral renamed to
+   `saved_chats_full_deferred`; `saved_chats_full_loaded` now fires only on genuine
+   completion.
+
+Why safe: fast-lane closing contract unchanged (`connect + auth_ready +
+welcome_client_ready`); DB queries stay user-filtered in SQL; all prior race/isolation
+protections kept (stale/late preview cannot overwrite a local mutation or a started
+full list; closed-session callbacks are ignored; identity is re-resolved at hydration
+time; invalid ids never query; preview dispatch/reject failures degrade to a warning
+and never hold the overlay open). No global cross-user cache introduced. The
+quantmod/zoo warning is removed from the startup path by **eliminating the unnecessary
+dependency scan**, not by suppressing the warning (highcharter still loads lazily when a
+chart is actually rendered).
+
+What is / is not part of fast-lane readiness now: **in** = `connect`, `auth_ready`,
+`welcome_client_ready`. **out (deferred, background)** = saved-chat preview hydration,
+full saved-chat list, file index, image gallery, character/cinematic media.
+
+Validation (cloud, `LC_ALL=C.UTF-8` — no real LLM/DB/browser/VM here):
+`test-startup-observers-runtime-smoke.R` (69), `test-startup-chat-preview-behavior.R`
+(34, new), `test-worker-monitor.R` (15), `test-boot-readiness-behavior.R` (36),
+`test-startup-lane-contract.R` (158), `test-startup-lane-resolver-behavior.R` (42),
+`test-source-manifest-sections-contract.R` (158), `test-source-manifest-contract.R`
+(169), `test-global-source-manifest-contract.R` (12), `test-maintainability-ratchet.R`,
+`test-seam-registry-contract.R`, `test-true-streaming-worker-globals-contract.R`,
+`test-sse-worker-export-contract.R`, `test-db-refactor-contract.R` — all 0 fail /
+0 warn. App boot smoke PASS; parse sanity 945 files OK.
+
+**VM re-check still required** (cannot be measured from cloud — no real SQL Server /
+SSO / browser here): re-run the three Hızlı Başlangıç logins and confirm (a) no
+`worker_dispatch` or preview-scheduling segment above ~1 s on the post-auth path,
+(b) `welcome_client_ready` warm median at/below ~5 s over three clean refreshes,
+(c) cold first login below ~15 s, (d) `saved_chats_preview_ready` shows `deferred=TRUE`
+and a later `saved_chats_preview_hydrated` appears, (e) no `quantmod`/`zoo` warning
+between `character_media_ready` and welcome readiness. Fake/GET-only soak evidence is
+**not** browser startup evidence and is not claimed here.
+
 ### 2026-07-09 — Fast-lane startup regression: saved-chat load raced lane resolution
 
 Field report: with Hızlı Başlangıç selected, startup still took ~34 s and the
