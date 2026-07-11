@@ -163,14 +163,30 @@ Validation (cloud, `LC_ALL=C.UTF-8` — no real LLM/DB/browser/VM here):
 `test-sse-worker-export-contract.R`, `test-db-refactor-contract.R` — all 0 fail /
 0 warn. App boot smoke PASS; parse sanity 945 files OK.
 
-**VM re-check still required** (cannot be measured from cloud — no real SQL Server /
-SSO / browser here): re-run the three Hızlı Başlangıç logins and confirm (a) no
-`worker_dispatch` or preview-scheduling segment above ~1 s on the post-auth path,
-(b) `welcome_client_ready` warm median at/below ~5 s over three clean refreshes,
-(c) cold first login below ~15 s, (d) `saved_chats_preview_ready` shows `deferred=TRUE`
-and a later `saved_chats_preview_hydrated` appears, (e) no `quantmod`/`zoo` warning
-between `character_media_ready` and welcome readiness. Fake/GET-only soak evidence is
-**not** browser startup evidence and is not claimed here.
+**VM re-check result (2026-07-11 operator console screenshots):** the requested
+Hızlı Başlangıç rerun now shows the expected improvement, without replacing the
+pre-fix diagnostic table above. The first server-start + first-user run reaches the
+deferred readiness band at about **13.0 s** and then logs `welcome_client_ready` at
+**15.6 s**; already-running-server refresh/login runs log `welcome_client_ready` at
+**3.1-3.6 s**. The measured checkpoint rows were:
+
+| Checkpoint | First server-start + first user | Warm run 1 | Warm run 2 |
+|---|---:|---:|---:|
+| `first_flush` | 8,105 ms | 1,730 ms | 1,824 ms |
+| `file_index_ready` (deferred) | 10,147 ms | 2,865 ms | 2,303 ms |
+| `auth_ready` | 10,152 ms | 2,869 ms | 2,307 ms |
+| `character_media_ready` (deferred) | 13,002 ms | 3,204 ms | 2,656 ms |
+| `saved_chats_preview_ready` (deferred=TRUE) | 13,010 ms | 3,214 ms | 2,663 ms |
+| `saved_chats_full_deferred` (deferred=TRUE) | 13,012 ms | 3,217 ms | 2,665 ms |
+| `welcome_client_ready` | 15,588 ms | 3,605 ms | 3,057 ms |
+| `saved_chats_preview_hydrated` | 16,410 ms | 3,771 ms | 3,187 ms |
+
+Interpretation: the ~13 s value is the deferred-readiness checkpoint band from the
+operator observation, not the overlay-close checkpoint. The stricter
+`welcome_client_ready` value remains the engineering/user-interaction readiness point
+and was **15.6 s** in this first server-start + first-user log; warm runs reached that
+same checkpoint in **3.1-3.6 s**. Fake/GET-only soak evidence is **not** browser
+startup evidence and is not claimed here.
 
 ### 2026-07-09 — Fast-lane startup regression: saved-chat load raced lane resolution
 
