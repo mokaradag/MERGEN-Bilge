@@ -435,16 +435,15 @@
   gap: 6px;
   padding-top: 8px;
 }
+
 .oo-composer-girdi {
   min-height: 46px;
 }
-/* Boş renderUI yuvaları (uyarı/rozet/seçici/temizle) flex gap'inde ölü
- * boşluk bırakmasın. */
-.oo-composer > .shiny-html-output:empty,
-.oo-composer-secimler > .shiny-html-output:empty,
-.oo-composer-butonlar > .shiny-html-output:empty {
-  display: none;
-}
+
+/*
+ * Shiny renderUI yuvaları başlangıçta boş olabilir. Bu yuvaları display:none
+ * ile gizlemeyin; gizli çıktı ilk sunucu render'ından önce askıya alınabilir.
+ */
 
 /* --- Ortak Belgeler paneli: yükleme + bağlam seçimi + kaldırma --------------- */
 .oo-belge-yukleme {
