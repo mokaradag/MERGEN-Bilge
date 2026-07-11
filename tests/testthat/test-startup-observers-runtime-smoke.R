@@ -861,7 +861,7 @@ testthat::test_that("hızlı şeritte geç kalan tam liste kimlik değişiminden
   })
 })
 
-testthat::test_that("hızlı şeritte eski kimliğe ait tam liste hatası yeni kimlik durumunu değiştirmez", {
+testthat::test_that("hızlı şeritte eski kimliğe ait tam liste hatası güncel kimlik için yeniden denemeyi açık bırakır", {
   testthat::skip_if_not_installed("shiny")
   testthat::skip_if_not_installed("shinyjs")
   testthat::skip_if_not_installed("promises")
@@ -871,6 +871,9 @@ testthat::test_that("hızlı şeritte eski kimliğe ait tam liste hatası yeni k
   rec <- new.env()
   rec$reject_full_once <- TRUE
   rec$defer_full_rejection <- TRUE
+  rec$full_result <- list(
+    "current-user-full" = list(title = "Güncel Kullanıcı", message_count = 0L)
+  )
   stubs <- .with_startup_db_stubs(rec)
   on.exit(stubs$restore(), add = TRUE)
 
@@ -904,8 +907,16 @@ testthat::test_that("hızlı şeritte eski kimliğe ait tam liste hatası yeni k
     later::run_now(timeoutSecs = 0.1)
     session$flushReact()
 
-    testthat::expect_false(isTRUE(session$userData$saved_chats_full_pending))
+    testthat::expect_true(isTRUE(session$userData$saved_chats_full_pending))
     testthat::expect_identical(length(session$userData$.values$saved_chats), 0L)
+
+    session$setInputs(tabs = "history")
+    later::run_now(timeoutSecs = 0.1)
+    session$flushReact()
+
+    testthat::expect_identical(rec$full_user_ids, c(42L, 84L))
+    testthat::expect_false(isTRUE(session$userData$saved_chats_full_pending))
+    testthat::expect_true("current-user-full" %in% names(session$userData$.values$saved_chats))
   })
 })
 

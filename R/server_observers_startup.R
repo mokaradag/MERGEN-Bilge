@@ -403,7 +403,9 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			suppressWarnings(as.integer(current_full_user_id[1])),
 			suppressWarnings(as.integer(full_load_user_id[1]))
 		  )) {
-			cat("[STARTUP] Tam söyleşi yüklemesi hatası eski kimliğe ait, yeniden deneme durumu değiştirilmedi\n")
+			startup_state$initial_saved_chats_status <- "deferred"
+			session$userData$saved_chats_full_pending <- TRUE
+			cat("[STARTUP] Tam söyleşi yüklemesi hatası eski kimliğe ait, güncel kimlik için yeniden deneme bekletiliyor\n")
 			return(NULL)
 		  }
 		  # Başarısızlıkta tembel yol yeniden deneyebilsin.
