@@ -68,13 +68,22 @@ test_that("özel proje dizini kapısı yönetilen kökleri reddeder, oda kökün
     yonetilen_kokler = kokler, oda_koku = oda_42
   )
   expect_true(is.character(engel_baska_oda))
-  expect_true(grepl("işaret edilemez", engel_baska_oda, fixed = TRUE))
+  expect_true(grepl("işaret edemez", engel_baska_oda, fixed = TRUE))
 
   # Kişisel yükleme kovası reddedilir.
   expect_true(is.character(ortak_by_ozel_dizin_engeli(
     file.path(yukleme, "user_7"), 42L,
     yonetilen_kokler = kokler, oda_koku = oda_42
   )))
+
+  # Yönetilen kökün üst dizini de reddedilir: aksi halde proje ağacı başka oda
+  # veya kullanıcı kovalarını kapsayıp Dizin İçeriği/ajan okumasına açabilir.
+  engel_ust_kok <- ortak_by_ozel_dizin_engeli(
+    dirname(kok), 42L,
+    yonetilen_kokler = kokler, oda_koku = oda_42
+  )
+  expect_true(is.character(engel_ust_kok))
+  expect_true(grepl("kapsayamaz", engel_ust_kok, fixed = TRUE))
 
   # Odanın kendi kökü altındaki yol serbesttir.
   expect_null(ortak_by_ozel_dizin_engeli(

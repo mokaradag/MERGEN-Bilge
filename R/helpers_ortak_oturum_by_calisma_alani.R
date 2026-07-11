@@ -111,10 +111,10 @@ ortak_by_ozel_dizin_engeli <- function(yol,
   }
 
   for (kok in yonetilen_kokler) {
-    if (.ortak_by_kok_icinde_mi(yol, kok)) {
+    if (.ortak_by_kok_icinde_mi(yol, kok) || .ortak_by_kok_icinde_mi(kok, yol)) {
       return(paste(
         "Bu dizin MERGEN Bilge'nin yönettiği dosya alanının içinde;",
-        "başka bir odanın veya kullanıcının dosya alanına işaret edilemez.",
+        "başka bir odanın veya kullanıcının dosya alanına işaret edemez ya da bu alanı kapsayamaz.",
         "Paylaşmak istediğiniz dosyaları kopyalama eylemleriyle çalışma alanına alın."
       ))
     }
