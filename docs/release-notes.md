@@ -14,6 +14,47 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-07-11 Hızlı Başlangıç açılışı artık kayıtlı sohbet ön izleme worker hazırlığını beklemiyor
+
+- **Belirti (Windows VM):** Hızlı Başlangıç seçiliyken kimlik doğrulaması ile
+  `welcome_client_ready` arasında ~9-14 sn'lik senkron duraklama vardı; soğuk
+  açılışta `welcome_client_ready` ~28 sn'ye kadar çıkıyordu. Duraklamanın
+  ortasında `Registered S3 method overwritten by 'quantmod'` uyarısı beliriyordu.
+- **Kök neden:** Hızlı şerit ön izlemeyi `tracked_future_promise()` ile
+  başlatsa da, bu sarmalayıcı gönderimden ÖNCE ANA OLAY DÖNGÜSÜNDE senkron
+  bağımlılık taraması yapıyordu (`future::getGlobalsAndPackages()` +
+  `.GlobalEnv` üzerinde özyinelemeli `codetools::findGlobals()`). Uygulama
+  büyüdükçe bu tarama saniyeler sürüyor ve yol boyunca highcharter isim
+  uzayını yükleyip quantmod/zoo S3 uyarısını kritik açılış yolunda
+  tetikliyordu. `saved_chats_full_loaded=…` işaretinin geç zaman damgası tam
+  listenin yüklendiğini DEĞİL, bu ön izleme gönderim yükünü gösteriyordu.
+- **Düzeltme:** Ön izleme artık ilk çizimden (`welcome_client_ready`) SONRA,
+  yeni dar "explicit" worker sözleşmesiyle ısıtılır
+  (`R/helpers_startup_chat_preview.R` + `tracked_future_promise(..., dependency_mode = "explicit")`).
+  Explicit mod otomatik taramayı ve oturum-ortamı serileştirmesini tamamen
+  atlar; yalnızca DBI + iki saf fonksiyon + skaler DSN/encoding değerleri
+  worker'a taşınır. Böylece quantmod/zoo uyarısı açılış yolundan (uyarıyı
+  bastırarak değil, gereksiz bağımlılık yolunu kaldırarak) çıkar.
+- Açılış katmanı ne ön izleme gönderim hazırlığını ne de altı satırlık DB
+  sorgusunu bekler; ilk Ana Söyleşi ekranı bu sorgudan bağımsız etkileşimli
+  hâle gelir. İstemci sinyali hiç gelmezse ~10 sn güvenlik zamanlayıcısı ön
+  izlemeyi yine de yükler.
+- **Dürüst kontrol noktaları:** `saved_chats_preview_ready` HEMEN `deferred=TRUE`
+  ("Son konuşmalar arka planda yüklenecek") işaretlenir; gerçek ısıtma ayrı
+  `saved_chats_preview_hydrated` anahtarıyla raporlanır; tam liste ertelemesi
+  `saved_chats_full_deferred`, gerçek tamamlanma ise `saved_chats_full_loaded`
+  anahtarını kullanır — aynı anahtar iki farklı durumu temsil etmez.
+- Tam liste hâlâ tembeldir (Kayıtlı Söyleşiler / Söyleşi Geçmişi ilk
+  açıldığında bir kez yüklenir) ve tüm yarış/kullanıcı-izolasyon korumaları
+  (geç ön izleme yerel değişikliği/başlamış tam listeyi ezmez, kapanan oturum
+  callback'i durum değiştirmez, kimlik ısıtma anında yeniden çözülür, geçersiz
+  kimlik sorgu açmaz) korunur. Zengin Deneyim davranışı değişmedi.
+- Testler: `test-startup-observers-runtime-smoke.R` (ısıtma zamanlaması,
+  güvenlik zamanlayıcısı, gönderim/red hatası, kimlik yeniden çözme),
+  `test-startup-chat-preview-behavior.R` (yeni; dar export sözleşmesi + okuyucu
+  biçim hizası), `test-worker-monitor.R` (explicit mod otomatik taramayı
+  çağırmaz, auto mod geriye dönük uyumlu, red sonrası defter temizliği).
+
 ### (Yayınlanmadı) 2026-07-09 Hızlı Başlangıç açılış regresyonu + VM test uyarı seli düzeltmesi
 
 - Hızlı Başlangıç seçiliyken açılışın ~34 saniyeye uzamasına yol açan şerit

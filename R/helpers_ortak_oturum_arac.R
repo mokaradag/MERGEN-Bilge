@@ -59,6 +59,30 @@ oo_arac_varsayilan_ayarlar <- function() {
   list(family = "", derin = FALSE, seviye = "low", detay = "standart", surec_akisi = "")
 }
 
+# Soru mesajı için araç planı + seçili belge anlık görüntüsü metadata'sını
+# hazırlar. BilgeYolaç odasında araç planı yazılmaz ve belge kümesi BOŞ
+# sabitlenir (sorular BY köprüsüne gider; CLI'sız normal LLM düşüşü de
+# arayüzün vaat etmediği belge/araç bağlamını sessizce eklememelidir).
+# Boş küme bile açıkça yazılır: kuyrukta bekleyen bir soru, üretim başlamadan
+# önce sonradan yapılan seçimleri yanlışlıkla bağlama almasın.
+oo_arac_soru_meta_hazirla <- function(oturum_id, uid, by_odasi = FALSE, arac_meta_fn = NULL) {
+  arac_meta_ekstra <- NULL
+  if (!isTRUE(by_odasi) && is.function(arac_meta_fn)) {
+    arac_meta_ekstra <- arac_meta_fn()
+  }
+
+  belge_ids <- integer(0)
+  if (!isTRUE(by_odasi) &&
+      exists("ortak_db_secili_belge_idleri", mode = "function", inherits = TRUE)) {
+    belge_ids <- ortak_db_secili_belge_idleri(oturum_id, uid)
+  }
+
+  utils::modifyList(
+    if (is.list(arac_meta_ekstra)) arac_meta_ekstra else list(),
+    list(belgeler = list(secili_ids = as.integer(belge_ids)))
+  )
+}
+
 # Soru mesajı MetaJson'una yazılacak ek metadata listesi (SAF). Araç yoksa NULL.
 oo_arac_meta_listesi <- function(ayarlar) {
   family <- as.character(ayarlar$family %||% "")[1]
@@ -212,6 +236,60 @@ oo_arac_uretim_plani <- function(arac_meta, config = NULL) {
 }
 
 
+# Odaya yazılacak genel araç hatası metni (SAF). Ham tanılama içermez.
+.oo_arac_genel_hata_metni <- function() {
+  paste0(
+    "\U000026A0\U0000FE0F Araç yanıtı hazırlanırken bir sorun oluştu; ",
+    "ayrıntılar sunucu günlüğüne kaydedildi. Lütfen tekrar deneyin."
+  )
+}
+
+# Oda transkriptine yazılacak araç/analiz yanıtını güvenli hale getirir (SAF).
+# Ortak odada yanıt TÜM katılımcılara kalıcı olarak görünür; bu yüzden ham
+# SQL/ODBC/sürücü/DSN tanılaması içeren hata metinleri odaya taşınmaz ve genel
+# Türkçe mesaja indirgenir (ayrıntı zaten sunucu günlüğündedir). Olağan analiz
+# yanıtları değişmeden geçer; redaksiyon yardımcısı varsa anahtar/parola
+# benzeri değerler ek savunma olarak maskelenir.
+oo_arac_oda_guvenli_yanit <- function(metin) {
+  metin <- as.character(metin %||% "")[1]
+  if (is.na(metin) || !nzchar(trimws(metin))) {
+    return(.oo_arac_genel_hata_metni())
+  }
+
+  # Bilinen ham altyapı tanılama kalıpları: DB hata gövdesi, ODBC/SQLSTATE
+  # kodları, sürücü/bağlantı metinleri ve R condition önekleri.
+  riskli_kaliplar <- c(
+    "**Veritabanı Hatası:**",
+    "nanodbc", "SQLSTATE", "ODBC", "odbc.cpp", "SQL Server",
+    "HY000", "42S02", "42000", "IM002", "08001", "28000",
+    "Login timeout", "Login failed", "Error in ", "error in evaluating",
+    "could not connect", "Connection refused", "DSN=", "Driver="
+  )
+  riskli <- any(vapply(
+    riskli_kaliplar,
+    function(kalip) grepl(kalip, metin, fixed = TRUE, useBytes = TRUE),
+    logical(1)
+  ))
+
+  if (riskli) {
+    if (exists("log_warn", mode = "function", inherits = TRUE)) {
+      tryCatch(
+        log_warn(paste(
+          "[ORTAK_ARAC] Ham analiz tanılaması odaya yazılmadı;",
+          "katılımcılara genel hata mesajı gösterildi."
+        )),
+        error = function(e) NULL
+      )
+    }
+    return(.oo_arac_genel_hata_metni())
+  }
+
+  if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
+    metin <- tryCatch(redact_sensitive_text(metin), error = function(e) metin)
+  }
+  metin
+}
+
 # Proje/Kaynak Analizi RLS kimliği soru sahibine bağlı çalışmalıdır. Ortak
 # oturum kuyruğunu hangi Shiny session boşaltırsa boşaltsın SQL/RLS analizi
 # soruyu soran katılımcının MB_Users.KullaniciAdi değeriyle çözülür; soru
@@ -308,12 +386,18 @@ oo_arac_sql_baglami_kur <- function(soru, gecmis, oda_session, arac_meta) {
     "\U000026A0\U0000FE0F Analiz modülü yanıtı hazırlanamadı; lütfen tekrar deneyin."
   })
 
+  # Doğrudan yanıt yolları paylaşılan transkripte kalıcı yazılır: karakter
+  # dönüşleri ve error_message içerikleri ham SQL/ODBC tanılaması taşıyabilir
+  # (ör. tekil oturumun "Veritabanı Hatası" gövdesi). Odaya çıkmadan önce
+  # güvenli yanıt süzgecinden geçirilir.
   if (is.character(sonuc)) {
-    return(list(dogrudan_yanit = as.character(sonuc)[1]))
+    return(list(dogrudan_yanit = oo_arac_oda_guvenli_yanit(as.character(sonuc)[1])))
   }
 
   if (is.list(sonuc) && identical(sonuc$type, "error_message")) {
-    return(list(dogrudan_yanit = as.character(sonuc$content %||% "Analiz tamamlanamadı.")[1]))
+    return(list(dogrudan_yanit = oo_arac_oda_guvenli_yanit(
+      as.character(sonuc$content %||% "Analiz tamamlanamadı.")[1]
+    )))
   }
 
   if (is.list(sonuc) && !is.null(sonuc$prompt_context)) {
@@ -358,8 +442,14 @@ oo_arac_langflow_cagrisi_hazirla <- function(plan, soran_id, oturum_id, config =
     base_url = base_url,
     flow_id = flow_id,
     api_key = as.character(lf_cfg$api_key %||% "")[1],
+    # Langflow sohbet belleği ODA kapsamlıdır: kimlik soran katılımcıya değil
+    # oda + akışa anahtarlanır. Böylece aynı odadaki farklı katılımcıların
+    # devam soruları tek paylaşılan bağlamda sürer; farklı odalar ve farklı
+    # akışlar birbirinden yalıtık kalır. "oda" öneki kişisel oturum
+    # kimlikleriyle (mergen_<uid>_...) çakışmayı önler; soran_id imza uyumu
+    # için korunur ama anahtara girmez.
     session_id = mergen_build_langflow_session_id(
-      soran_id, paste0("oo_", oturum_id), flow_id = flow_id
+      "oda", paste0("oo_", oturum_id), flow_id = flow_id
     ),
     timeout_seconds = timeout_saniye
   )
@@ -417,11 +507,13 @@ oo_arac_langflow_uret <- function(lf, soru_metni, session_token, bitir_fn) {
         bitir_fn(yanit_metni = as.character(yanit$text)[1])
       } else {
         hata <- as.character(yanit$error %||% "Langflow yanıtı alınamadı.")[1]
-        # Üst-akış hatası API anahtarını yansıtsa bile odaya sızmasın.
-        if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
-          hata <- redact_sensitive_text(hata)
+        # Üst-akış hatası API anahtarı/uç nokta tanılaması yansıtsa bile
+        # odaya sızmasın: güvenli yanıt süzgeci + redaksiyon uygulanır.
+        hata <- oo_arac_oda_guvenli_yanit(hata)
+        if (!startsWith(hata, "\U000026A0")) {
+          hata <- paste0("\U000026A0\U0000FE0F ", hata)
         }
-        bitir_fn(hata_metni = paste0("\U000026A0\U0000FE0F ", hata))
+        bitir_fn(hata_metni = hata)
       }
     },
     function(e) {

@@ -43,3 +43,142 @@ test_that("resolve_mergen_worker_count pozitif sayı döndürür", {
   expect_gte(resolve_mergen_worker_count(), 1L)
   Sys.unsetenv("MERGEN_WORKERS")
 })
+# Explicit bağımlılık modu: otomatik tarama/genişletme ÇAĞRILMAZ, yalnızca
+# verilen globals worker'a taşınır ve görev ortamı izole edilir. Açılış kritik
+# yolundaki senkron tarama duraklamasını (Windows VM ~9-14 sn) önleyen sözleşme.
+test_that("tracked_future_promise explicit modda otomatik taramayı atlar ve verilen globals ile çalışır", {
+  skip_if_not_installed("promises")
+  skip_if_not_installed("future")
+  skip_if_not_installed("later")
+
+  wm_env <- environment(tracked_future_promise)
+  old_detect <- get("worker_monitor_detect_task_deps", envir = wm_env)
+  old_expand <- get("worker_monitor_expand_function_globals", envir = wm_env)
+
+  calls <- new.env(parent = emptyenv())
+  calls$detect <- 0L
+  calls$expand <- 0L
+
+  assign("worker_monitor_detect_task_deps", function(task_fn) {
+    calls$detect <- calls$detect + 1L
+    old_detect(task_fn)
+  }, envir = wm_env)
+  assign("worker_monitor_expand_function_globals", function(promise_globals) {
+    calls$expand <- calls$expand + 1L
+    old_expand(promise_globals)
+  }, envir = wm_env)
+  on.exit({
+    assign("worker_monitor_detect_task_deps", old_detect, envir = wm_env)
+    assign("worker_monitor_expand_function_globals", old_expand, envir = wm_env)
+  }, add = TRUE)
+
+  before_count <- get_worker_monitor_info()$active_jobs
+
+  got <- new.env(parent = emptyenv())
+  p <- tracked_future_promise(
+    # startup_probe_value bu test çerçevesinde TANIMLI DEĞİLDİR; yalnızca
+    # explicit globals + ortam yeniden bağlama üzerinden çözülebilir.
+    task_fn = function() startup_probe_value + 1L,
+    task_type = "unit_explicit",
+    dependency_mode = "explicit",
+    globals = list(startup_probe_value = 41L),
+    packages = character(0)
+  )
+
+  expect_identical(calls$detect, 0L)
+  expect_identical(calls$expand, 0L)
+
+  promises::then(
+    p,
+    onFulfilled = function(v) got$value <- v,
+    onRejected = function(e) got$error <- conditionMessage(e)
+  )
+  deadline <- Sys.time() + 5
+  while (is.null(got$value) && is.null(got$error) && Sys.time() < deadline) {
+    later::run_now(timeoutSecs = 0.1)
+  }
+
+  expect_null(got$error)
+  expect_identical(got$value, 42L)
+
+  # Görev defteri fulfillment sonrası temizlenir.
+  expect_equal(get_worker_monitor_info()$active_jobs, before_count)
+})
+
+# Varsayılan (auto) mod geri uyumludur: tarama + iç içe genişletme çalışır
+# ve kapanış değişkenleri worker tarafına taşınmaya devam eder.
+test_that("tracked_future_promise auto modda tarama davranışını korur", {
+  skip_if_not_installed("promises")
+  skip_if_not_installed("future")
+  skip_if_not_installed("later")
+
+  wm_env <- environment(tracked_future_promise)
+  old_detect <- get("worker_monitor_detect_task_deps", envir = wm_env)
+  old_expand <- get("worker_monitor_expand_function_globals", envir = wm_env)
+
+  calls <- new.env(parent = emptyenv())
+  calls$detect <- 0L
+  calls$expand <- 0L
+
+  assign("worker_monitor_detect_task_deps", function(task_fn) {
+    calls$detect <- calls$detect + 1L
+    old_detect(task_fn)
+  }, envir = wm_env)
+  assign("worker_monitor_expand_function_globals", function(promise_globals) {
+    calls$expand <- calls$expand + 1L
+    old_expand(promise_globals)
+  }, envir = wm_env)
+  on.exit({
+    assign("worker_monitor_detect_task_deps", old_detect, envir = wm_env)
+    assign("worker_monitor_expand_function_globals", old_expand, envir = wm_env)
+  }, add = TRUE)
+
+  closure_value <- 5L
+  got <- new.env(parent = emptyenv())
+  p <- tracked_future_promise(
+    task_fn = function() closure_value * 2L,
+    task_type = "unit_auto"
+  )
+
+  expect_identical(calls$detect, 1L)
+  expect_identical(calls$expand, 1L)
+
+  promises::then(
+    p,
+    onFulfilled = function(v) got$value <- v,
+    onRejected = function(e) got$error <- conditionMessage(e)
+  )
+  deadline <- Sys.time() + 5
+  while (is.null(got$value) && is.null(got$error) && Sys.time() < deadline) {
+    later::run_now(timeoutSecs = 0.1)
+  }
+
+  expect_null(got$error)
+  expect_identical(got$value, 10L)
+})
+
+# Explicit modda reddedilen görev de defterden temizlenir (kayıt sızıntısı yok).
+test_that("tracked_future_promise explicit modda reddedilme sonrası görev defterini temizler", {
+  skip_if_not_installed("promises")
+  skip_if_not_installed("future")
+  skip_if_not_installed("later")
+
+  before_count <- get_worker_monitor_info()$active_jobs
+
+  got <- new.env(parent = emptyenv())
+  p <- tracked_future_promise(
+    task_fn = function() stop("kasıtlı test hatası"),
+    task_type = "unit_explicit_err",
+    dependency_mode = "explicit",
+    globals = list()
+  )
+  promises::catch(p, function(e) got$error <- conditionMessage(e))
+
+  deadline <- Sys.time() + 5
+  while (is.null(got$error) && Sys.time() < deadline) {
+    later::run_now(timeoutSecs = 0.1)
+  }
+
+  expect_true(grepl("kasıtlı test hatası", got$error %||% ""))
+  expect_equal(get_worker_monitor_info()$active_jobs, before_count)
+})

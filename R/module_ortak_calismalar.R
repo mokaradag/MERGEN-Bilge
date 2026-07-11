@@ -457,12 +457,13 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       ortakOturumRoomUI(ns("oda"))
     })
 
-    # Oda açık/kapalı durumunu hub kabuğuna ve shinydashboard köküne yansıt:
-    # filtre/listeler gizlenir, kök flex zinciri yalnızca oda açıkken devreye girer.
+    # Oda açık/kapalı durumu hub kabuğuna yansır; kök sınıfı (oo-oda-acik-kok)
+    # paylaşılan .content-wrapper üzerinde SEKMEYE DUYARLI merkez güncelleyici
+    # (MergenOrtakOturum.kokGuncelle; köprü yoksa eski toggle) ile yönetilir.
     observeEvent(aktif_oturum(), {
       acik <- !is.null(aktif_oturum())
       shinyjs::runjs(sprintf(
-        "(function(){var acik=%s;var k=document.querySelector('.ortak-calismalar-container[data-oo-sayfa=\"hub\"]');if(k){k.classList.toggle('oo-oda-acik', acik);}var c=document.querySelector('.content-wrapper');if(c){c.classList.toggle('oo-oda-acik-kok', acik);}})();",
+        "(function(){var acik=%s;var k=document.querySelector('.ortak-calismalar-container[data-oo-sayfa=\"hub\"]');if(k){k.classList.toggle('oo-oda-acik', acik);}if(window.MergenOrtakOturum&&typeof window.MergenOrtakOturum.kokGuncelle==='function'){window.MergenOrtakOturum.kokGuncelle();}else{var c=document.querySelector('.content-wrapper');if(c){c.classList.toggle('oo-oda-acik-kok', acik);}}})();",
         if (acik) "true" else "false"
       ))
     }, ignoreNULL = FALSE)

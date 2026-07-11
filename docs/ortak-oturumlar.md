@@ -342,6 +342,21 @@ girdisidir** (`R/helpers_ortak_oturum_belgeler.R` +
   process/app_expert → Langflow worker (`call_langflow_chat`;
   belge bağlamı akışa enjekte edilmez), diğerleri → araç modeliyle normal
   LLM yolu (+ özetleme sistem notu).
+- **Langflow sohbet belleği ODA kapsamlıdır**: `session_id` soran katılımcıya
+  değil oda + akışa anahtarlanır (`mergen_build_langflow_session_id("oda",
+  "oo_<oturum_id>", flow_id)`), böylece aynı odadaki farklı katılımcıların
+  devam soruları tek paylaşılan bağlamda sürer; farklı odalar ve farklı
+  akışlar birbirinden yalıtıktır.
+- **Odaya yazılan araç hataları redakte edilir** (`oo_arac_oda_guvenli_yanit`):
+  ham SQL/ODBC/DSN/sürücü tanılaması içeren hata metinleri paylaşılan
+  transkripte geçmeden genel Türkçe mesaja indirgenir (ayrıntı sunucu
+  günlüğünde kalır); olağan analiz yanıtları değişmeden geçer.
+- **BilgeYolaç odalarında araç seçici ve belge bağlam kontrolleri SUNULMAZ**
+  (sorular BY köprüsüne gider; araçlar o yolda çalışmaz). Soru metadata'sına
+  araç planı yazılmaz ve belge anlık görüntüsü BOŞ sabitlenir
+  (`oo_arac_soru_meta_hazirla`); belge paneli dürüst bir notla üretilen
+  dosyaları LİSTELEMEYE devam eder (indirme/kopyalama korunur, "Bağlama dahil
+  et" seçimi çizilmez).
 - **"Sohbeti Temizle"** (çöp kutusu) bağlam sıfırlamadan (sihirli değnek)
   FARKLIDIR: açık onay modalı ister ve odadaki TÜM mesajları KALICI siler
   (`ortak_db_sohbet_temizle`; yalnızca `katilimci_yonet` yetkisi, üretim
@@ -479,17 +494,39 @@ encoding preflight kapılarıyla doğrulanmalıdır (RUNBOOK).
 ### 12.1 Tamamlanan takip işleri (bu değişiklik seti)
 
 1. **Canlı ortak Bilge Yolaç çalıştırması — BAĞLANDI.** Ortak BY odaları artık
-   tek kullanıcılı Bilge Yolaç deneyiminin ortak sürümüdür: Proje Dizini
-   (oda başına PAYLAŞILAN çalışma alanı, `ortak_oturumlar/oturum_<id>/calisma_alani/`),
+   tek kullanıcılı Bilge Yolaç deneyiminin ortak sürümüdür: Proje Dizini,
    model katmanları (Hızlı/Dengeli/Güçlü), Hazır Senaryolar, Dizin İçeriği,
    Eklentiler (salt-okunur). "Yapay Zekâya Sor" bir BY odasında
-   `run_claude_code()`'u PAYLAŞILAN çalışma alanında koşturur
+   `run_claude_code()`'u odanın ETKİN çalışma dizininde koşturur
    (`R/module_ortak_oturum_bilge_yolac.R` → `motor$by_calistir`); çalıştırma
    `ortak_db_by_calistirma_kaydet`'e, üretilen dosyalar
    `ortak_db_dosya_kaydet` ile ortak belge deposuna yazılır ve odaya belge
    bildirimi düşer. CLI bu ortamda yoksa sahte başarı ÜRETİLMEZ: durum "CLI
    Bağlı Değil" gösterilir ve soru genel LLM yoluna güvenli düşer. Mini oyun
    bilinçli olarak ortak moda taşınmaz.
+
+   **Çalışma alanı paneli (yeniden tasarım).** Panel, tek kullanıcılı Bilge
+   Yolaç ayar kartlarının oda sürümüdür ve VARSAYILAN KAPALI açılır: sohbet
+   birincil yüzeydir, panel gövdesi kendi içinde kayar ve yoklama/üretim
+   döngüsü yalnızca iç kartları tazelediği için kullanıcının aç/kapa tercihi
+   korunur (tercih `sessionStorage`'da saklanır; iskelet yalnızca oda/erişim
+   değişince yeniden çizilir). **Proje Dizini** yazma yetkili roller
+   (Sahip/Oturum Yöneticisi) için DÜZENLENEBİLİR yol girdisidir: yazılan yol
+   merkezi Bilge Yolaç çalışma dizini politikası (`cc_policy_validate_workdir`)
+   ARTI oda izolasyon kapısından (`ortak_by_ozel_dizin_dogrula`) geçer —
+   uygulamanın yönettiği dosya köklerine (başka odanın çalışma alanı, kişisel
+   yükleme kovaları) işaret edilemez. Varsayılan, oda başına paylaşılan
+   `ortak_oturumlar/oturum_<id>/calisma_alani/` klasörüdür; "sıfırla" eylemi
+   her zaman bu klasöre döndürür. Saf yardımcılar
+   `R/helpers_ortak_oturum_by_calisma_alani.R` içindedir.
+
+   **Uygulama geneli yerleşim koruması.** Oda açıkken paylaşılan
+   `.content-wrapper` üzerine uygulanan `oo-oda-acik-kok` sınıfı SEKMEYE
+   DUYARLI merkez güncelleyiciyle (`window.MergenOrtakOturum.kokGuncelle`)
+   yönetilir: kullanıcı başka bir sayfaya geçince sınıf kaldırılır, hub
+   sekmesine dönünce yeniden uygulanır. Sınıfın diğer sekmelerde asılı
+   kalması, tüm sayfaları 100vh/overflow kilidine sokan uygulama geneli
+   yerleşim (daralma/kırpılma) regresyonunun kök nedeniydi.
 2. **Yapay zekâ kuyruğu — UYGULANDI.** Kilit doluyken gelen sorular kaybolmaz;
    `MB_OrtakOturum_YapayZekaKuyrugu`'na eklenir (`ortak_db_kuyruk_ekle`).
    Üretim biten oturum kuyruğun başındaki soruyu sıralı devralır

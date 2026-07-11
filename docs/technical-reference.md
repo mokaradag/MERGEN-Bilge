@@ -112,6 +112,8 @@ Bakım sınırında yeni mantık ratchet eşiklerini büyütmemek için küçük
 - Sinematik başlangıç ekranı
 - Başlangıç deneyimi iki şeritli modelle çalışır: **Hızlı Başlangıç (fast_lane)** ve **Zengin Deneyim (rich_lane)**. Şerit çözümleme önceliği: kayıtlı kullanıcı tercihi (`mergen_settings.startup_lane`) > `MERGEN_STARTUP_LANE` ortam varsayılanı > `ask_once` (ilk açılışta tam ekran, koyu, iki kartlı şerit seçicisi; video/Three.js/persona medyası olmadan). Saf çözümleme yardımcıları `R/helpers_startup_lane.R`, sunucu gözlemcileri `R/module_startup_lane.R`, istemci çözümleyici + seçici `www/js/app_loading_lane.js` (açılış katmanına satır içi gömülür) içindedir.
 - Hızlı Başlangıç açılış YÜKÜNÜ kaldırır, işlevselliği kaldırmaz: derin uzay girişi, açılış müziği, sinematik/persona medya ön yüklemesi ve neural animasyon açılışta başlatılmaz; karşılama ekranı, hızlı eylem kartları, sohbet girişi, gönder/durdur ve model seçici tam çalışır. Açılış katmanı yalnızca sohbet-kabuğu hazırlığını bekler (`connect` + `auth_ready` + `welcome_client_ready`; bkz. `mergen_fast_lane_required_boot_keys()`); kayıtlı sohbet önizlemesi, dosya indeksi ve galeri hazırlıkları arka planda sürer ve ilgili sayfalar açıldıklarında tam çalışır. `character_media_ready` kontrol noktası hızlı şeritte "ertelendi" olarak işaretlenir (istemci `fast_lane_deferred` sinyali + sunucu tarafı idempotent işaret).
+- Hızlı şeritte "Son Konuşmalar" (6 söyleşi) ön izlemesi kritik çizim yolunun DIŞINDADIR ve İLK ÇİZİMDEN SONRA ısıtılır: `saved_chats_preview_ready` HEMEN `deferred=TRUE` işaretlenir ("Son konuşmalar arka planda yüklenecek") ve gerçek DB gönderimi `input$welcome_client_ready` sinyali üzerine tetiklenir (istemci sinyali hiç gelmezse ~10 sn güvenlik zamanlayıcısı; `options(mergen.startup_preview_fallback_secs)`). Isıtma tamamlanınca AYRI `saved_chats_preview_hydrated` kontrol noktası işaretlenir — aynı anahtar hem "ertelendi" hem "yüklendi" için kullanılmaz. Gönderim `mergen_startup_chat_preview_promise()` üzerinden dar explicit worker-export sözleşmesiyle yapılır; böylece açılış katmanı ne ön izleme gönderim hazırlığını ne de altı satırlık sorguyu bekler. Yarış korumaları korunur: kapanan oturum/geç ön izleme yerel sohbet ekleme-güncellemeyi ya da başlamış tam listeyi ezmez; kimlik ısıtma anında yeniden çözülür; geçersiz kimlikte sorgu açılmaz; ön izleme hatası açılışı bozmaz.
+- Hızlı şeritte tam söyleşi listesinin ertelenmesi `saved_chats_full_deferred` (`deferred=TRUE`) anahtarıyla raporlanır; `saved_chats_full_loaded` YALNIZCA tam liste gerçekten yüklendiğinde işaretlenir (Kayıtlı Söyleşiler / Söyleşi Geçmişi ilk açıldığında bir kez tembel yükleme). Böylece boot performans logunda gerçek tamamlanma görünmez hâle gelmez.
 - Zengin Deneyim mevcut sinematik akışı birebir korur (derin uzay, giriş müziği, Keşfet, skip-intro, Odak/Dinamik/Bütünleşik, Bütünleşik karakter adımı, seri tam-tampon medya ön yükleme) ve ilerleme ekranını iyileştirir: uzun medya aşaması gerçek alt-ilerleme sayacıyla ("Sinematik ve persona medyası hazırlanıyor · 4 / 12"), 6 sn+ süren gerçek aşamalar etkin-aşama metniyle ("· sürüyor") gösterilir. Sahte ilerleme yoktur.
 - Zengin Deneyim başlangıç akışı (derin uzay, Yenilikler rozeti/modalı, Keşfet, mod seçimi, karakter adımı) uygulama teması açık olsa bile HER ZAMAN koyu sinematik kabukta çalışır: `www/js/theme_manager.js` sinematik koyu-tema kilidi `body.deep-space-active` / `app-ready` yaşam döngüsünü izler ve akış kapanınca kullanıcı temasını geri uygular. Sinematik yüzeylerin `html[data-theme="light"]` override'ları kaldırılmıştır; Destek > Yenilikler SAYFASININ açık tema kuralları (`.destek-surum-tab`) korunur.
 - Başlangıç şeridi Yapılandırma > "Başlangıç Deneyimi" kartından değiştirilebilir (anında kalıcılaşır; tam etki sonraki açılışta). Hızlı Başlangıç etkinken Kişiselleştirme'deki Deneyim Modu kartları gizlenir ve bilgilendirme notu gösterilir; "Varsayılana Dön" şeridi `ask_once`'a döndürür.
@@ -1643,6 +1645,39 @@ Kural:
 - Asenkron iş başlatırken varsayılan tercih `tracked_future_promise(...)` olmalıdır.
 - Gerekli bağımlılıklar mümkün olduğunda `task_fn` içinden türetilir.
 - Özel durumlarda `globals = list(...)` ile açık bağımlılık geçmek hâlâ geçerli bir yaklaşımdır.
+
+#### Bağımlılık modu: `dependency_mode = c("auto", "explicit")`
+
+`tracked_future_promise(...)` iki bağımlılık moduyla çalışır:
+
+- **`"auto"` (varsayılan, geriye dönük uyumlu):** Görev gövdesinin serbest
+  değişkenleri `future::getGlobalsAndPackages()` ile taranır ve worker'a
+  taşınan fonksiyonların `.GlobalEnv`'den kullandığı yardımcılar
+  `codetools::findGlobals()` ile ÖZYİNELEMELİ toplanır. Mevcut tüm LLM, SSE,
+  görsel, TTS, Ortak Oturum ve diğer worker çağıranları bu modu kullanır;
+  davranış değişmemiştir.
+- **`"explicit"`:** HİÇBİR otomatik tarama yapılmaz; yalnızca çağıranın verdiği
+  `globals` + `packages` worker'a taşınır ve görev fonksiyonunun ortamı,
+  observer/oturum çerçeve zincirinin worker'a serileştirilmesini önlemek için
+  yalnızca verilen globals'ı gören izole bir ortama yeniden bağlanır.
+
+**Neden explicit modu var:** `.GlobalEnv` büyüdükçe otomatik tarama ANA OLAY
+DÖNGÜSÜNÜ senkron bloklar (Windows VM'de açılışta ölçülen ~9-14 sn duraklama);
+ayrıca tarama yol boyunca highcharter gibi paketlerin isim uzayını yükleyerek
+`quantmod`/`zoo` S3 metot uyarısını kritik açılış yolunda tetikler. Açılış
+kritik yolundaki görevler bu nedenle explicit modu kullanmalıdır. İlk örnek,
+Hızlı Başlangıç "Son Konuşmalar" ön izlemesidir (`R/helpers_startup_chat_preview.R`;
+`mergen_startup_chat_preview_promise()` → 2 fonksiyon + skaler DSN/encoding
+değerlerinden oluşan dar export sözleşmesi). Sözleşme
+`test-startup-chat-preview-behavior.R` ve `test-worker-monitor.R` (explicit
+mod otomatik taramayı çağırmaz + auto mod geriye dönük uyumlu) ile kilitlidir.
+
+`MERGEN_STARTUP_PERF_TRACE=true` iken (ya da tek bir gönderim > 1 sn sürerse)
+gönderim başına `[STARTUP PERF] worker_dispatch ... detect_ms/expand_ms/dispatch_ms`
+tek satırı loglanır (değer içermez). `R/module_boot_readiness.R` ayrıca ilk
+reaktif flush'a kadar geçen süreyi `[STARTUP PERF] first_flush elapsed_ms=...`
+ile raporlar; böylece soğuk açılışta flush öncesi kablolama maliyeti, dosya/
+kimlik kontrol noktalarından ayrılabilir.
 
 ---
 

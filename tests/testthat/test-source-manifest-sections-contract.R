@@ -98,7 +98,10 @@
   # 15L -> 16L bilinçli güncelleme: Bilge Yolaç arşiv geri yükleme + KALICI silme
   # yaşam döngüsü (R/helpers_db_claude_code_session_lifecycle.R) orkestrasyon
   # dosyasından SONRA, helpers_database.R'den önce eklendi (ratchet bütçesi).
-  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 16L),
+  # 16L -> 17L bilinçli güncelleme: Hızlı Başlangıç "Son Konuşmalar" ön izleme
+  # worker katmanı (R/helpers_startup_chat_preview.R) helpers_db_chat_readers.R
+  # sonrası, helpers_db_chat_mutations.R öncesi eklendi.
+  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 17L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
   language_messaging = list(first = "R/helpers_language.R", last = "R/helpers_messaging.R", n = 2L),
   mcp_tools = list(first = "R/helpers_mcp_context.R", last = "R/helpers_mcp_tools.R", n = 9L),
@@ -142,7 +145,10 @@
   # Bilinçli güncelleme: Ortak Oturumlar (işbirlikçi çalışma odaları) bölümü
   # eklendi: saf yetki/e-posta yardımcıları + MB_OrtakOturumlar DB katmanı +
   # oda/davet/hub modülleri (12 dosya, module_claude_code'dan sonra).
-  ortak_oturumlar = list(first = "R/helpers_ortak_oturum_permissions.R", last = "R/module_ortak_calismalar.R", n = 21L),
+  # 21L -> 22L bilinçli güncelleme: Ortak Bilge Yolaç çalışma alanı SAF
+  # yardımcıları (R/helpers_ortak_oturum_by_calisma_alani.R; özel proje dizini
+  # izolasyon kapısı + panel kart üreticileri) modül dosyalarından önce eklendi.
+  ortak_oturumlar = list(first = "R/helpers_ortak_oturum_permissions.R", last = "R/module_ortak_calismalar.R", n = 22L),
   module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/module_proje_kaynak_analizi.R", n = 1L),
   module_support = list(first = "R/module_destek_yardim.R", last = "R/module_destek.R", n = 6L),
   # Bilinçli güncelleme: at-budget admin modüllerinin inline highcharter/DT
@@ -355,7 +361,13 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # (R/helpers_ortak_oturum_arac.R), Ortak Belgeler paneli + sohbeti temizle
   # bağlayıcısı (R/module_ortak_oturum_belge_paneli.R) ve araç seçici UI/model
   # kilidi bağlayıcısı (R/module_ortak_oturum_arac.R).
-  expect_equal(length(runtime), 323L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 323L -> 324L bilinçli güncelleme: Ortak Bilge Yolaç çalışma alanı SAF
+  # yardımcıları (R/helpers_ortak_oturum_by_calisma_alani.R; özel proje dizini
+  # izolasyon kapısı + etkin dizin çözümü + panel kart üreticileri) eklendi.
+  # 324L -> 325L bilinçli güncelleme: Hızlı Başlangıç "Son Konuşmalar" ön izleme
+  # worker katmanı (R/helpers_startup_chat_preview.R; dar explicit worker-export
+  # sözleşmesi + ana süreç biçimlendirme) database bölümüne eklendi.
+  expect_equal(length(runtime), 325L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

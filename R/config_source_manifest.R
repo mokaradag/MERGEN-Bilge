@@ -135,6 +135,9 @@ source_manifest_sections <- list(
     "R/helpers_chat_message_formatting.R",
     "R/helpers_db_chat_read_queries.R",
     "R/helpers_db_chat_readers.R",
+    # Hızlı Başlangıç "Son Konuşmalar" ön izlemesi: dar bağımlılık sözleşmeli
+    # (explicit worker-export) ham sorgu + ana süreç biçimlendirme katmanı.
+    "R/helpers_startup_chat_preview.R",
     "R/helpers_db_chat_mutations.R",
     "R/helpers_db_feedback.R",
     # Bilge Yolaç kalıcı oturum katmanı: SAF sorgu/başlık/kısaltma yardımcıları
@@ -440,6 +443,7 @@ source_manifest_sections <- list(
     "R/helpers_ortak_oturum_belgeler.R",
     "R/helpers_ortak_oturum_arac.R",
     "R/helpers_ortak_oturum_bakim.R",
+    "R/helpers_ortak_oturum_by_calisma_alani.R",
     "R/module_ortak_oturum_room_ui.R",
     "R/module_ortak_oturum_belge_paneli.R",
     "R/module_ortak_oturum_arac.R",

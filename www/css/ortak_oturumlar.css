@@ -1413,10 +1413,4 @@
   .oo-oturum-listesi {
     grid-template-columns: 1fr;
   }
-
-  .oo-by-ust-satir,
-  .oo-by-orta-satir,
-  .oo-by-alt-satir {
-    flex-direction: column;
-  }
 }

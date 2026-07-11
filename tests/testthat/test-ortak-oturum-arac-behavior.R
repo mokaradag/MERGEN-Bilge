@@ -412,6 +412,141 @@ test_that("Proje/Kaynak Analizi köprüsü tekil oturum sözleşmesini taşır",
   expect_identical(hata$dogrudan_yanit, "Yetki hatası.")
 })
 
+test_that("oda güvenli yanıt süzgeci ham SQL/ODBC tanılamasını genelleştirir (P2-A)", {
+  # Ham DB hata gövdesi (tekil oturumun Veritabanı Hatası şekli) odaya sızmaz.
+  ham_db <- paste0(
+    "\U000026A0\U0000FE0F **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.\n`",
+    "nanodbc/nanodbc.cpp:1021: 42S02 [Microsoft][ODBC Driver][SQL Server]",
+    "Invalid object name 'GIZLI_TABLO'. SELECT * FROM GIZLI_TABLO`"
+  )
+  temiz <- oo_arac_oda_guvenli_yanit(ham_db)
+  expect_false(grepl("GIZLI_TABLO", temiz, fixed = TRUE))
+  expect_false(grepl("nanodbc", temiz, fixed = TRUE))
+  expect_true(grepl("sunucu günlüğüne kaydedildi", temiz, fixed = TRUE))
+
+  # SQLSTATE/DSN benzeri altyapı kalıpları tek başına da yakalanır.
+  expect_true(grepl(
+    "sunucu günlüğüne kaydedildi",
+    oo_arac_oda_guvenli_yanit("Bağlantı hatası: SQLSTATE IM002, DSN=uretim_sql"),
+    fixed = TRUE
+  ))
+  expect_true(grepl(
+    "sunucu günlüğüne kaydedildi",
+    oo_arac_oda_guvenli_yanit("Error in dbGetQuery(conn, sql): connection failure"),
+    fixed = TRUE
+  ))
+
+  # Olağan analiz yanıtları ve seçilmiş Türkçe hata metinleri değişmeden geçer.
+  expect_identical(
+    oo_arac_oda_guvenli_yanit("Analiz kütüphanesinde eşleşme bulunamadı."),
+    "Analiz kütüphanesinde eşleşme bulunamadı."
+  )
+  expect_identical(oo_arac_oda_guvenli_yanit("Yetki hatası."), "Yetki hatası.")
+
+  # Boş/NA metin de genel mesaja düşer (oda boş sistem mesajı görmesin).
+  expect_true(grepl("sunucu günlüğüne", oo_arac_oda_guvenli_yanit(""), fixed = TRUE))
+  expect_true(grepl("sunucu günlüğüne", oo_arac_oda_guvenli_yanit(NULL), fixed = TRUE))
+})
+
+test_that("Proje/Kaynak Analizi köprüsü ham tanılamayı odaya taşımaz (P2-A)", {
+  onceki <- if (exists("pk_analiz_process_request", inherits = TRUE)) {
+    get("pk_analiz_process_request", inherits = TRUE)
+  } else {
+    NULL
+  }
+  on.exit({
+    if (is.null(onceki)) {
+      suppressWarnings(rm("pk_analiz_process_request", envir = globalenv()))
+    } else {
+      assign("pk_analiz_process_request", onceki, envir = globalenv())
+    }
+  }, add = TRUE)
+
+  # Karakter dönüşü ham DB hatası taşıyorsa doğrudan yanıt genelleştirilir.
+  assign("pk_analiz_process_request", function(user_prompt, chat_history, session, stop_check = NULL) {
+    paste0(
+      "\U000026A0\U0000FE0F **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.\n",
+      "`42S02 Invalid object name 'MB_GIZLI'`"
+    )
+  }, envir = globalenv())
+
+  sonuc <- oo_arac_sql_baglami_kur(
+    "kaynak analizi", list(), NULL,
+    list(family = "sql_analysis", derin = FALSE, detay = "standart")
+  )
+  expect_false(grepl("MB_GIZLI", sonuc$dogrudan_yanit, fixed = TRUE))
+  expect_true(grepl("sunucu günlüğüne kaydedildi", sonuc$dogrudan_yanit, fixed = TRUE))
+
+  # error_message listesi ham sorgu tanılaması taşıyorsa o da genelleştirilir.
+  assign("pk_analiz_process_request", function(user_prompt, chat_history, session, stop_check = NULL) {
+    list(type = "error_message", content = "Başarısız sorgular:\n- SQLSTATE HY000: sunucu=10.1.2.3")
+  }, envir = globalenv())
+  hata <- oo_arac_sql_baglami_kur(
+    "x", list(), NULL, list(family = "sql_analysis", derin = FALSE, detay = "standart")
+  )
+  expect_false(grepl("10.1.2.3", hata$dogrudan_yanit, fixed = TRUE))
+  expect_true(grepl("sunucu günlüğüne kaydedildi", hata$dogrudan_yanit, fixed = TRUE))
+})
+
+test_that("Langflow oturum kimliği ODA kapsamlıdır; katılımcıya göre bölünmez (P2-B)", {
+  repo_root <- resolve_repo_root_for_tests()
+  if (!exists("mergen_langflow_config", mode = "function", inherits = TRUE)) {
+    source(file.path(repo_root, "R", "helpers_langflow_runtime.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+
+  cfg <- .oo_arac_test_config()
+  plan <- oo_arac_uretim_plani(list(family = "process", surec_akisi = "flow_1"), config = cfg)
+
+  # Aynı odada iki FARKLI katılımcı aynı Langflow belleğini paylaşır.
+  lf_birinci <- oo_arac_langflow_cagrisi_hazirla(plan, soran_id = 7L, oturum_id = 42L, config = cfg)
+  lf_ikinci <- oo_arac_langflow_cagrisi_hazirla(plan, soran_id = 99L, oturum_id = 42L, config = cfg)
+  expect_identical(lf_birinci$session_id, lf_ikinci$session_id)
+
+  # Farklı odalar yalıtıktır.
+  lf_baska_oda <- oo_arac_langflow_cagrisi_hazirla(plan, soran_id = 7L, oturum_id = 43L, config = cfg)
+  expect_false(identical(lf_birinci$session_id, lf_baska_oda$session_id))
+
+  # Farklı akışlar aynı odada bile yalıtıktır (akış başına süreklilik).
+  plan_akis2 <- oo_arac_uretim_plani(list(family = "process", surec_akisi = "flow_2"), config = cfg)
+  lf_akis2 <- oo_arac_langflow_cagrisi_hazirla(plan_akis2, soran_id = 7L, oturum_id = 42L, config = cfg)
+  expect_false(identical(lf_birinci$session_id, lf_akis2$session_id))
+
+  # Oda kimliği anahtardadır; kişisel oturum kimlikleriyle (mergen_<uid>_...)
+  # çakışmayı önlemek için soran kimliği anahtara girmez.
+  expect_true(grepl("oo_42", lf_birinci$session_id, fixed = TRUE))
+  expect_false(grepl("mergen_7_", lf_birinci$session_id, fixed = TRUE))
+})
+
+test_that("soru metadata hazırlığı BilgeYolaç odasında araç/belge bağlamını boş sabitler (P2-C/P2-D)", {
+  onceki <- if (exists("ortak_db_secili_belge_idleri", inherits = TRUE)) {
+    get("ortak_db_secili_belge_idleri", inherits = TRUE)
+  } else {
+    NULL
+  }
+  on.exit({
+    if (is.null(onceki)) {
+      suppressWarnings(rm("ortak_db_secili_belge_idleri", envir = globalenv()))
+    } else {
+      assign("ortak_db_secili_belge_idleri", onceki, envir = globalenv())
+    }
+  }, add = TRUE)
+
+  assign("ortak_db_secili_belge_idleri", function(oturum_id, uid) c(5L, 9L), envir = globalenv())
+  arac_fn <- function() list(arac = list(family = "sql_analysis", derin = TRUE))
+
+  # Normal oda: araç planı + canlı seçili belge kümesi anlık görüntüye girer.
+  normal <- oo_arac_soru_meta_hazirla(42L, 7L, by_odasi = FALSE, arac_meta_fn = arac_fn)
+  expect_identical(normal$arac$family, "sql_analysis")
+  expect_identical(normal$belgeler$secili_ids, c(5L, 9L))
+
+  # BilgeYolaç odası: araç planı yazılmaz, belge kümesi BOŞ sabitlenir (CLI'sız
+  # LLM düşüşü bile arayüzün vaat etmediği bağlamı almaz).
+  by <- oo_arac_soru_meta_hazirla(42L, 7L, by_odasi = TRUE, arac_meta_fn = arac_fn)
+  expect_null(by$arac)
+  expect_identical(by$belgeler$secili_ids, integer(0))
+})
+
 test_that("Langflow çağrı hazırlığı akış seçimi ve eksik yapılandırma kurallarını taşır", {
   repo_root <- resolve_repo_root_for_tests()
   if (!exists("mergen_langflow_config", mode = "function", inherits = TRUE)) {

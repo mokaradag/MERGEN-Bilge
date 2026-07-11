@@ -200,6 +200,7 @@ test_that("kaynak manifesti ortak_oturumlar bölümünü bağımlılık sırası
     "R/helpers_ortak_oturum_belgeler.R",
     "R/helpers_ortak_oturum_arac.R",
     "R/helpers_ortak_oturum_bakim.R",
+    "R/helpers_ortak_oturum_by_calisma_alani.R",
     "R/module_ortak_oturum_room_ui.R",
     "R/module_ortak_oturum_belge_paneli.R",
     "R/module_ortak_oturum_arac.R",

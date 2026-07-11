@@ -89,24 +89,18 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
   # --- Soru gönderme: kilit + kalıcı kuyruk -----------------------------------
 
   motor$soru_gonder <- function(oturum_id, uid, metin) {
-    # Araç seçimi soru mesajının MetaJson'una yazılır: üretim (doğrudan veya
-    # kalıcı kuyruk devralması) araç bağlamını HER ZAMAN soru satırından okur.
-    arac_meta_ekstra <- if (is.function(motor$arac_meta_listesi)) {
-      motor$arac_meta_listesi()
-    } else {
-      NULL
-    }
-    belge_ids <- if (exists("ortak_db_secili_belge_idleri", mode = "function", inherits = TRUE)) {
-      ortak_db_secili_belge_idleri(oturum_id, uid)
-    } else {
-      integer(0)
-    }
-    # Seçili belge kümesi boş olsa bile anlık görüntü yazılır. Aksi halde
-    # kuyrukta bekleyen belge seçimsiz bir soru, üretim başlamadan önce sonradan
-    # seçilen belgeleri yanlışlıkla bağlama alabilir.
-    arac_meta_ekstra <- utils::modifyList(
-      if (is.list(arac_meta_ekstra)) arac_meta_ekstra else list(),
-      list(belgeler = list(secili_ids = as.integer(belge_ids)))
+    # Araç seçimi + seçili belge anlık görüntüsü soru mesajının MetaJson'una
+    # yazılır: üretim (doğrudan veya kalıcı kuyruk devralması) bağlamı HER
+    # ZAMAN soru satırından okur. BilgeYolaç odasında yardımcı, araç planını
+    # atlar ve belge kümesini BOŞ sabitler (UI ile tutarlı dürüst davranış).
+    bilgi <- shiny::isolate(ctx$oturum_bilgisi())
+    by_odasi <- !is.null(bilgi) &&
+      identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")
+
+    arac_meta_ekstra <- oo_arac_soru_meta_hazirla(
+      oturum_id, uid,
+      by_odasi = by_odasi,
+      arac_meta_fn = motor$arac_meta_listesi
     )
 
     soru_id <- ortak_db_mesaj_ekle(

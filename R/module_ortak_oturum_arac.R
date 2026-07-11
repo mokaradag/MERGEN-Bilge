@@ -345,7 +345,13 @@ ortakOturumAracBind <- function(input, output, session, ctx, motor) {
   })
 
   # Aktif araç rozeti: ayar özetini canlı gösterir (ayar değişiminde de tazelenir).
+  # BilgeYolaç odalarında analiz araçları yürütme yoluna girmediği için rozet de
+  # çizilmez (seçiciyle aynı oda-türü kapısı; yanıltıcı araç vaadi olmaz).
   output$oda_arac_rozet_alani <- renderUI({
+    bilgi <- ctx$oturum_bilgisi()
+    if (!is.null(bilgi) && identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")) {
+      return(NULL)
+    }
     rol <- ctx$oda_rol()
     if (!ortak_yetki_var_mi(rol, "yapay_zeka_sor")) {
       return(NULL)
