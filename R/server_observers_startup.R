@@ -195,6 +195,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  suppressWarnings(as.integer(current_hydration_user_id[1])),
 		  suppressWarnings(as.integer(dispatched_hydration_user_id[1]))
 		)) {
+		  startup_state$preview_hydration_started <- FALSE
+		  startup_state$preview_hydration_user_id <- NULL
 		  cat("[STARTUP] Ön izleme kimliği değişti, geç kalan sonuç atlandı\n")
 		  return(invisible(NULL))
 		}
@@ -292,6 +294,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			NULL
 		  },
 		  onRejected = function(err) {
+			startup_state$preview_hydration_started <- FALSE
+			startup_state$preview_hydration_user_id <- NULL
 			warning(sprintf("[SERVER] Preview chat load failed: %s", conditionMessage(err)))
 			NULL
 		  }
