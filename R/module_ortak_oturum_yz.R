@@ -16,8 +16,7 @@
 #   * LLM çağrısı worker'da koşar (tracked_future_promise); DB kalıcılığı ve
 #     kilit bırakma ana süreçteki promise callback'indedir.
 #   * BilgeYolaç odalarında üretim, motor$by_calistir köprüsüne devredilir
-#     (R/module_ortak_oturum_bilge_yolac.R); köprü yoksa/CLI kapalıysa
-#     normal LLM yoluna güvenli düşüş yapılır.
+#     (R/module_ortak_oturum_by_calistirma.R); normal LLM'e SESSİZ DÜŞÜŞ YOKTUR.
 # ==============================================================================
 
 ortakOturumYzBind <- function(input, output, session, ctx, motor) {
@@ -49,13 +48,7 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
     ""
   }
 
-  yeni_istek_id <- function(oturum_id) {
-    paste0(
-      "oo_", oturum_id, "_",
-      format(Sys.time(), "%Y%m%d%H%M%S"), "_",
-      sample.int(999999L, 1L)
-    )
-  }
+  # NOT: İstek kimliği üreticisi (ortak_yz_yeni_istek_id) kuyruk DB katmanındadır.
 
   # Odanın etkin modeli: hızlı model seçimi > ORTAK_OTURUM_MODEL > ilk model.
   # Model seçimi (secili_model) bir reactiveVal'dir; bu yardımcı hem gözlemci
@@ -129,7 +122,7 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
     # sorusuna karşı üretilebilir. Bu nedenle yalnızca pahalı bağlam kurma + worker
     # gönderimi (motor$uret) sonraki flush'a ertelenir; kilit/kuyruk kararı burada
     # anında verilir.
-    istek_id <- yeni_istek_id(oturum_id)
+    istek_id <- ortak_yz_yeni_istek_id(oturum_id)
     iyimser_uretim(NULL)
 
     kilit_alindi <- tryCatch(
@@ -200,12 +193,23 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
     persona_secim <- if (!is.null(bilgi)) as.character(bilgi$SecilenPersona[1] %||% "") else ""
     persona_kimligi <- ortak_oturum_persona_kimligi(persona_secim, oturum_id)
 
-    if (by_odasi && is.function(motor$by_calistir)) {
-      basladi <- motor$by_calistir(oturum_id, soru_id, soran_id, istek_id, metin, kuyruk_id, persona_kimligi)
-      if (isTRUE(basladi)) {
-        return(invisible(NULL))
+    if (by_odasi) {
+      # BilgeYolaç odası bir KODLAMA AJANI odasıdır: normal sohbet LLM'ine
+      # SESSİZ DÜŞÜŞ YOKTUR; köprü yoksa da ajan çalışmış gibi yapılmaz.
+      if (is.function(motor$by_calistir)) {
+        basladi <- motor$by_calistir(oturum_id, soru_id, soran_id, istek_id, metin, kuyruk_id, persona_kimligi)
+        if (isTRUE(basladi)) {
+          return(invisible(NULL))
+        }
       }
-      # CLI köprüsü kullanılamıyor: normal LLM yoluna güvenli düşüş.
+
+      motor$tamamla(
+        oturum_id, soru_id, istek_id,
+        hata_metni = ortak_by_kopru_kullanilamiyor_mesaji(),
+        kuyruk_id = kuyruk_id, soran_id = soran_id,
+        persona_id = persona_kimligi
+      )
+      return(invisible(NULL))
     }
 
     motor$llm_uret(oturum_id, soru_id, soran_id, istek_id, kuyruk_id, persona_kimligi)
@@ -282,7 +286,7 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
       return(invisible(NULL))
     }
 
-    istek_id <- yeni_istek_id(oturum_id)
+    istek_id <- ortak_yz_yeni_istek_id(oturum_id)
     kilit_ok <- ortak_db_uretim_kilidi_al(
       oturum_id = oturum_id,
       baslatan_kullanici_id = sonraki$soran_id,
@@ -680,28 +684,29 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 
     kismi_alani <- NULL
     durum_metni <- NULL
+    durdur_alani <- NULL
+
+    # BilgeYolaç odasında canlı ilerleme, ajan çıktısı yüzeyiyle (terminal
+    # dili) gösterilir ve yetkili katılımcıya Durdur eylemi sunulur.
+    bilgi <- ctx$oturum_bilgisi()
+    by_odasi <- !is.null(bilgi) &&
+      identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")
 
     if (!calisiyor && iyimser_aktif) {
-      baslatan <- as.character(iyimser$ad %||% "")
-      durum_metni <- if (nzchar(baslatan) && !is.na(baslatan)) {
-        sprintf("%s sordu · yanıt üretiliyor, tamamlanınca tüm katılımcılar görecek.", baslatan)
-      } else {
-        "Yanıt üretiliyor; tamamlanınca tüm katılımcılar görecek."
-      }
+      durum_metni <- ortak_sunum_uretim_durum_metni(iyimser$ad, by_odasi = FALSE)
     }
 
     if (calisiyor) {
-      baslatan <- as.character(detay$BaslatanAdi[1] %||% "")
-      durum_metni <- if (nzchar(baslatan) && !is.na(baslatan)) {
-        sprintf("%s sordu · yanıt üretiliyor, tamamlanınca tüm katılımcılar görecek.", baslatan)
-      } else {
-        "Yanıt üretiliyor; tamamlanınca tüm katılımcılar görecek."
+      durum_metni <- ortak_sunum_uretim_durum_metni(detay$BaslatanAdi[1], by_odasi = by_odasi)
+
+      if (by_odasi && is.function(motor$by_durdur_ui)) {
+        durdur_alani <- motor$by_durdur_ui(detay)
       }
 
       kismi <- as.character(detay$KismiYanit[1] %||% "")
       if (!is.na(kismi) && nzchar(kismi)) {
         kismi_alani <- div(
-          class = "oo-kismi-yanit",
+          class = paste("oo-kismi-yanit", if (by_odasi) "oo-kismi-yanit-by" else NULL),
           `aria-label` = "Üretilmekte olan yanıtın canlı ön izlemesi",
           tags$span(class = "oo-kismi-yanit-metin", HTML(htmltools::htmlEscape(kismi))),
           tags$span(class = "oo-kismi-imlec", HTML("&#9612;"))
@@ -741,7 +746,8 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
         div(
           class = "oo-uretim-ust",
           icon("spinner", class = "fa-spin"),
-          span(durum_metni)
+          span(durum_metni),
+          durdur_alani
         )
       } else {
         NULL

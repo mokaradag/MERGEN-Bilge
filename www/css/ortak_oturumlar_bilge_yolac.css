@@ -456,6 +456,69 @@
   border-color: var(--color-danger, #e05555);
 }
 
+.oo-by-durum-durduruldu {
+  color: var(--color-warning, #d99a2b);
+  border-color: var(--color-warning, #d99a2b);
+}
+
+/* --- Kompozer model katmanları (Hızlı / Dengeli / Güçlü) ---------------------------- */
+/* BY odasında genel model açılır menüsünün yerini alan kompakt katman grubu. */
+.oo-by-composer-model {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.oo-by-composer-model-etiket {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8em;
+  font-weight: 650;
+  color: var(--color-text-soft);
+  white-space: nowrap;
+}
+
+.oo-by-composer-model-etiket .fa-robot {
+  color: var(--oo-accent, var(--color-info));
+}
+
+.oo-by-composer-model .oo-by-model-grup {
+  flex-wrap: nowrap;
+}
+
+.oo-by-composer-model .oo-by-model-btn {
+  padding: 5px 10px;
+  font-size: 0.78em;
+}
+
+/* --- Canlı ajan çıktısı yüzeyi (KismiYanit; terminal dili) --------------------------- */
+/* Araç/kabuk satırları ve asistan metni tüm katılımcılara eş anlı yayınlanır. */
+.oo-kismi-yanit-by {
+  font-family: "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace;
+  font-size: 0.82em;
+  line-height: 1.5;
+  background: var(--color-bg, rgba(6, 10, 20, 0.55));
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--oo-accent, var(--color-info));
+  border-radius: 8px;
+  padding: 10px 12px;
+  max-height: 260px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+/* Durdur eylemi üretim durumu şeridinde sağa yaslanır. */
+.oo-by-durdur-btn {
+  margin-left: auto;
+  padding: 4px 12px;
+  font-size: 0.8em;
+}
+
 /* --- Dar ekran ------------------------------------------------------------------------ */
 
 @media (max-width: 900px) {
@@ -494,4 +557,8 @@ html[data-theme="light"] .oo-by-toggle {
 html[data-theme="light"] .oo-by-model-aktif {
   background: var(--color-primary);
   color: #ffffff;
+}
+
+html[data-theme="light"] .oo-kismi-yanit-by {
+  background: #f6f8fc;
 }

@@ -185,6 +185,102 @@
     }
   });
 
+  // --- Ortak Belgeler sürükle-bırak köprüsü -----------------------------------
+  // data-oo-belge-drop yüzeyine bırakılan dosyalar, yüzeyin İÇİNDEKİ gizli
+  // fileInput'a atanır ve change tetiklenir: yükleme, mevcut doğrulanmış
+  // Shiny sunucu yolundan (ortak_db_belge_yukle) değişmeden geçer. Kimlikler
+  // CSS seçicisine gömülmez; girdi yüzey içinden bulunur.
+  function ooBelgeDropGirdisi(zone) {
+    return zone ? zone.querySelector('input[type="file"]') : null;
+  }
+
+  document.addEventListener('dragover', function (ev) {
+    var zone = ev.target && ev.target.closest
+      ? ev.target.closest('[data-oo-belge-drop]')
+      : null;
+    if (!zone) {
+      return;
+    }
+    ev.preventDefault();
+    zone.classList.add('oo-belge-drop-aktif');
+  });
+
+  document.addEventListener('dragleave', function (ev) {
+    var zone = ev.target && ev.target.closest
+      ? ev.target.closest('[data-oo-belge-drop]')
+      : null;
+    if (!zone) {
+      return;
+    }
+    // Yüzeyin gerçekten dışına çıkıldıysa vurgu kaldırılır (iç öğe geçişleri değil).
+    if (!ev.relatedTarget || !zone.contains(ev.relatedTarget)) {
+      zone.classList.remove('oo-belge-drop-aktif');
+    }
+  });
+
+  document.addEventListener('drop', function (ev) {
+    var zone = ev.target && ev.target.closest
+      ? ev.target.closest('[data-oo-belge-drop]')
+      : null;
+    if (!zone) {
+      return;
+    }
+    ev.preventDefault();
+    zone.classList.remove('oo-belge-drop-aktif');
+
+    var files = ev.dataTransfer ? ev.dataTransfer.files : null;
+    var input = ooBelgeDropGirdisi(zone);
+    if (!files || !files.length || !input) {
+      return;
+    }
+
+    try {
+      var dt = new DataTransfer();
+      for (var i = 0; i < files.length; i++) {
+        dt.items.add(files[i]);
+      }
+      input.value = '';
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch (err) {
+      if (window.showToast) {
+        window.showToast('Belge bırakma başarısız oldu; Belge Seç düğmesini kullanın.', 'error');
+      }
+    }
+  });
+
+  // Yüzeye tıklama/klavye: dosya seçiciyi açar ("Belge Seç" etiketi zaten
+  // girdiyi tetikler; çift açılmayı önlemek için o bölge dışlanır).
+  document.addEventListener('click', function (ev) {
+    var zone = ev.target && ev.target.closest
+      ? ev.target.closest('[data-oo-belge-drop]')
+      : null;
+    if (!zone || ev.target.closest('.oo-belge-drop-secim')) {
+      return;
+    }
+    var input = ooBelgeDropGirdisi(zone);
+    if (input) {
+      input.click();
+    }
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter' && ev.key !== ' ') {
+      return;
+    }
+    var zone = ev.target && ev.target.closest
+      ? ev.target.closest('[data-oo-belge-drop]')
+      : null;
+    if (!zone || ev.target !== zone) {
+      return;
+    }
+    ev.preventDefault();
+    var input = ooBelgeDropGirdisi(zone);
+    if (input) {
+      input.click();
+    }
+  });
+
   function ooAktifSayfa() {
     var kap = document.querySelector('.ortak-calismalar-container[data-oo-sayfa]');
     if (kap) {

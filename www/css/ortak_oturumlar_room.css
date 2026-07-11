@@ -87,10 +87,26 @@
   border-radius: 10px !important;
   padding: 6px !important;
 }
+
+/* Yukarı açılan panel (up=TRUE -> sw-dropup-content): butonla arasında küçük
+ * boşluk bırakılır ve panel mesaj akışının üzerinde kalır. Panelin kendisi
+ * kompozerden yukarı taştığı için hiçbir üst kapsayıcı overflow ile kırpmaz
+ * (mesaj akışı kaydırması ayrı bir kutudadır). */
+.oo-secici .sw-dropup-content[id^="sw-content-"] {
+  bottom: calc(100% + 8px);
+  z-index: 60 !important;
+}
+
+/* Panel içi: uzun kataloglar (araç listesi + ayar blokları) yakınlaştırılmış
+ * veya dar görünümlerde görünür alanı aşarsa panel İÇİ kayar; sayfa kaydırılmaz. */
 .oo-secici [id^="sw-content-"] .sw-dropdown-in {
   background: transparent !important;
   margin: 0 !important;
   padding: 0 !important;
+  max-height: min(56vh, 460px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
 }
 .oo-secici .dropdown-menu-header {
   display: flex !important;
@@ -449,7 +465,7 @@
 .oo-belge-yukleme {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   margin-bottom: 8px;
   flex: 0 0 auto;
 }
@@ -457,22 +473,63 @@
   margin-bottom: 0;
 }
 .oo-belge-yukleme .input-group {
-  width: 100%;
+  width: auto;
 }
-.oo-belge-yukleme .btn-file {
+
+/* Kompakt sürükle-bırak yüzeyi: ikon + yönlendirme metni + "Belge Seç". */
+.oo-belge-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 10px;
+  border: 1.5px dashed var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg, transparent);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+}
+.oo-belge-drop:hover,
+.oo-belge-drop:focus-visible {
+  border-color: var(--oo-accent, var(--color-info));
+  outline: none;
+}
+.oo-belge-drop.oo-belge-drop-aktif {
+  border-color: var(--oo-accent, var(--color-info));
+  background: var(--oo-accent-soft, rgba(59, 130, 246, 0.12));
+}
+.oo-belge-drop-ikon {
+  font-size: 1.35em;
+  color: var(--oo-accent, var(--color-info));
+}
+.oo-belge-drop-baslik {
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--color-text-soft);
+}
+.oo-belge-drop-ayrac {
+  font-size: 0.72em;
+  color: var(--color-muted);
+}
+
+/* Dosya seçici: yalnızca "Belge Seç" düğmesi görünür; boş metin kutusu
+ * gizlenir (yüzeyin kendisi zaten durum bildirir). */
+.oo-belge-drop-secim .input-group {
+  display: inline-flex;
+  width: auto;
+}
+.oo-belge-drop-secim .form-control {
+  display: none;
+}
+.oo-belge-drop-secim .btn-file {
   background: var(--oo-accent, var(--color-info));
   border: 1px solid var(--oo-accent, var(--color-info));
   color: #ffffff;
-  border-radius: 8px 0 0 8px;
-  font-size: 0.84em;
-  font-weight: 600;
-}
-.oo-belge-yukleme .form-control {
-  background: var(--color-bg, transparent);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-soft);
+  border-radius: 8px;
   font-size: 0.82em;
-  border-radius: 0 8px 8px 0;
+  font-weight: 600;
+  padding: 6px 14px;
 }
 .oo-belge-yukleme .progress {
   height: 6px;
@@ -488,6 +545,41 @@
   color: var(--color-muted);
   font-size: 0.74em;
   line-height: 1.35;
+}
+
+/* Belge listesi: kartlar renderUI sarmalayıcısının içindedir; boş durum panel
+ * yüksekliğini doldurur ve kaydırma çubuğu üretmez. Kartlar taşarsa yalnızca
+ * liste kutusu (oo-belgeler-listesi) kayar. */
+.oo-belgeler-listesi > .shiny-html-output {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.oo-belgeler-listesi .oo-bos-belge {
+  flex: 1 1 auto;
+  min-height: 0;
+  justify-content: center;
+  margin: 0;
+}
+.oo-bos-belge .oo-bos-belge-ikon {
+  font-size: 1.6em;
+  color: var(--color-muted);
+}
+.oo-bos-belge .oo-bos-belge-baslik {
+  margin: 0;
+  font-size: 0.9em;
+  font-weight: 650;
+  color: var(--color-text-soft);
+}
+.oo-bos-belge .oo-bos-belge-metin {
+  margin: 0;
+  font-size: 0.8em;
+  line-height: 1.45;
+  color: var(--color-muted);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* BilgeYolaç odası: belge yükleme yerine dürüst bilgilendirme notu (belgeler
@@ -672,8 +764,11 @@ html[data-theme="light"] .oo-mesaj-ust {
 html[data-theme="light"] .oo-mesaj-govde {
   box-shadow: 0 1px 6px rgba(15, 23, 42, 0.08);
 }
-html[data-theme="light"] .oo-belge-yukleme .form-control {
+html[data-theme="light"] .oo-belge-drop {
   background: #ffffff;
+}
+html[data-theme="light"] .oo-belge-drop.oo-belge-drop-aktif {
+  background: var(--oo-accent-soft, rgba(59, 130, 246, 0.1));
 }
 html[data-theme="light"] .oo-belge-yukleme .progress {
   background: var(--color-bg, #eef1f7);

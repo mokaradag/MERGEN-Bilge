@@ -90,6 +90,16 @@ ortak_by_ozel_dizin_engeli <- function(yol,
     return("Proje dizini boş olamaz.")
   }
 
+  # Web adresi geçerli bir Claude Code çalışma dizini DEĞİLDİR; sessizce kabul
+  # edilip boş "Dizin İçeriği" göstermek yerine açık doğrulama mesajı verilir.
+  if (grepl("^(https?|ftp)://", yol, ignore.case = TRUE)) {
+    return(paste(
+      "Bir web adresi (http/https) proje dizini olamaz.",
+      "Sunucunun erişebildiği bir klasör yolu girin",
+      "(örn. C:/proje veya //sunucu/paylasim/proje)."
+    ))
+  }
+
   if (is.null(oda_koku) &&
       exists("ortak_oturum_dosya_koku", mode = "function", inherits = TRUE)) {
     oda_koku <- tryCatch(ortak_oturum_dosya_koku(oturum_id), error = function(e) NULL)
@@ -270,7 +280,10 @@ oo_by_durum_rozeti_html <- function(cli_bagli) {
   } else {
     tags$span(
       class = "oo-rozet oo-rozet-cli-yok",
-      title = "Claude Code CLI bu ortamda bulunamadı; sorular genel yapay zekâ modeliyle yanıtlanır.",
+      title = paste(
+        "Claude Code CLI bu ortamda bulunamadı; Bilge Yolaç komutları çalıştırılamaz.",
+        "Komutlar sohbette kalır ve CLI bağlandıktan sonra yeniden gönderilebilir."
+      ),
       tagList(icon("plug-circle-xmark"), span("CLI Bağlı Değil"))
     )
   }
@@ -457,6 +470,7 @@ oo_by_gecmis_listesi_html <- function(calistirmalar) {
       durum,
       "Tamamlandı" = "oo-by-durum-tamam",
       "Çalışıyor" = "oo-by-durum-calisiyor",
+      "Durduruldu" = "oo-by-durum-durduruldu",
       "oo-by-durum-hata"
     )
 

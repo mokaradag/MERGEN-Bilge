@@ -75,6 +75,16 @@
   gap: 16px;
 }
 
+/* Kartlar renderUI çıktısının (uiOutput sarmalayıcısı) İÇİNDE üretilir; ızgara
+ * ve boşluk kuralları gerçek kart ebeveynine (çıktı düğümü) de uygulanır. Aksi
+ * halde sarmalayıcı tek ızgara hücresi olur ve kartlar birbirine yapışır. */
+.oo-oturum-listesi > .shiny-html-output {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+  min-width: 0;
+}
+
 /* Oda açık: kabuk viewport'u doldurur, oda alt boşluk bırakmadan yayılır
  * (alttaki ölü boşluğu önlemek için alt dolgu minimumdur). */
 .ortak-calismalar-container.oo-oda-acik {
@@ -1426,7 +1436,8 @@
     max-height: 46vh;
   }
 
-  .oo-oturum-listesi {
+  .oo-oturum-listesi,
+  .oo-oturum-listesi > .shiny-html-output {
     grid-template-columns: 1fr;
   }
 }

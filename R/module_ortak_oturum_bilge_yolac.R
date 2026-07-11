@@ -3,9 +3,10 @@
 # Açıklama: Ortak Bilge Yolaç çalışma alanı bağlayıcısı; yalnızca KaynakTuru =
 #           BilgeYolaç odalarında görünür (oda sunucu modülünden çağrılır).
 #           Tek kullanıcılı deneyimin oda sürümü: düzenlenebilir Proje Dizini,
-#           model katmanları, Hazır Senaryolar, Dizin İçeriği, Eklentiler ve
-#           run_claude_code() canlı çalıştırma köprüsü. Panel/kart HTML
-#           üreticileri ve dizin güvenlik kapısı
+#           model katmanları, Hazır Senaryolar, Dizin İçeriği ve Eklentiler.
+#           CANLI çalıştırma köprüsü (stream-json ajan yürütmesi, ilerleme
+#           yayını, durdurma) R/module_ortak_oturum_by_calistirma.R içindedir;
+#           panel/kart HTML üreticileri ve dizin güvenlik kapısı
 #           R/helpers_ortak_oturum_by_calisma_alani.R içindedir.
 #
 # Sözleşmeler (ayrıntı: CLAUDE.md + docs/ortak-oturumlar.md):
@@ -14,7 +15,10 @@
 #   * Dizin değiştirme / dosya kopyalama yalnızca yazma yetkili rollere açıktır;
 #     özel proje dizini ortak_by_ozel_dizin_dogrula fail-closed kapısından geçer
 #     (yönetilen köklere — başka oda / kişisel kova — işaret edilemez).
-#   * CLI yoksa sahte başarı ÜRETİLMEZ; sorular normal LLM yoluna düşer.
+#   * CLI yoksa sahte başarı ÜRETİLMEZ ve normal LLM'e SESSİZ DÜŞÜŞ YAPILMAZ:
+#     açık engelleyici mesaj verilir, komut sohbette kalır.
+#   * Model veya proje dizini değişince CLI devam (resume) bağlamı sıfırlanır
+#     ve katılımcılara görünür sistem notu düşer.
 #   * Kişisel dosyalar OTOMATİK kopyalanmaz. Mini oyun ortak moda taşınmaz.
 # ==============================================================================
 
@@ -31,17 +35,6 @@ ortak_by_calisma_alani <- function(oturum_id) {
     return(NULL)
   }
   ws
-}
-
-# Çalışma alanının dosya anlık görüntüsü (üretilen dosya tespiti için).
-.oo_by_dosya_goruntusu <- function(ws) {
-  if (is.null(ws) || !dir.exists(ws)) {
-    return(character(0))
-  }
-  tryCatch(
-    list.files(ws, recursive = TRUE, full.names = TRUE, all.files = FALSE),
-    error = function(e) character(0)
-  )
 }
 
 ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
@@ -234,13 +227,22 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     }
 
     by_kaydi_garantile(oturum_id, NULL)
-    ortak_db_by_oturum_guncelle(oturum_id, calisma_dizini = dogrulama$path)
+    # Etkin dizin değişti: CLI devam (resume) bağlamı güvenli biçimde sıfırlanır;
+    # eski dizine ait konuşma bağlamı yeni dizinde sürdürülemez.
+    ortak_db_by_oturum_guncelle(
+      oturum_id,
+      calisma_dizini = dogrulama$path,
+      cli_session_id = ""
+    )
     # Dizin değişikliği tüm odayı etkiler; katılımcılara görünür sistem notu düşer.
     ortak_db_mesaj_ekle(
       oturum_id = oturum_id,
       gonderen_kullanici_id = NULL,
       mesaj_turu = "SistemMesajı",
-      mesaj_metni = sprintf("Bilge Yolaç proje dizini güncellendi: %s", dogrulama$path)
+      mesaj_metni = sprintf(
+        "Bilge Yolaç proje dizini güncellendi: %s (ajan konuşma bağlamı yeni dizinle yeniden başlar)",
+        dogrulama$path
+      )
     )
     ctx$bildir("Proje dizini güncellendi; sonraki çalıştırmalar bu dizinde koşacak.")
     dizin_yenile(isolate(dizin_yenile()) + 1L)
@@ -257,12 +259,12 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     }
 
     by_kaydi_garantile(oturum_id, NULL)
-    ortak_db_by_oturum_guncelle(oturum_id, calisma_dizini = "")
+    ortak_db_by_oturum_guncelle(oturum_id, calisma_dizini = "", cli_session_id = "")
     ortak_db_mesaj_ekle(
       oturum_id = oturum_id,
       gonderen_kullanici_id = NULL,
       mesaj_turu = "SistemMesajı",
-      mesaj_metni = "Bilge Yolaç proje dizini paylaşılan oda klasörüne döndürüldü."
+      mesaj_metni = "Bilge Yolaç proje dizini paylaşılan oda klasörüne döndürüldü (ajan konuşma bağlamı yeniden başlar)."
     )
     ctx$bildir("Proje dizini paylaşılan oda klasörüne döndürüldü.")
     dizin_yenile(isolate(dizin_yenile()) + 1L)
@@ -323,7 +325,17 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
       list(success = FALSE, items = list())
     }
 
-    if (!isTRUE(listeleme$success) || length(listeleme$items) == 0L) {
+    # Erişilemeyen dizin ile gerçekten boş dizin AYRI mesajlardır: okuma
+    # başarısızlığı "boş" gibi sunulmaz (yanıltıcı durum).
+    if (!isTRUE(listeleme$success)) {
+      return(div(
+        class = "oo-bos-durum oo-bos-belge",
+        icon("triangle-exclamation"),
+        p("Dizin içeriği okunamadı. Yol erişilemiyor olabilir; yolu doğrulayın ya da yenileyin.")
+      ))
+    }
+
+    if (length(listeleme$items) == 0L) {
       return(div(
         class = "oo-bos-durum oo-bos-belge",
         p("Çalışma alanı henüz boş. Dosya kopyalayın ya da Bilge Yolaç'a ürettirin.")
@@ -422,7 +434,25 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     oturum_id <- ctx$aktif_oturum()
     if (!is.null(oturum_id)) {
       by_kaydi_garantile(oturum_id, NULL)
-      ortak_db_by_oturum_guncelle(oturum_id, model = deger)
+      # Model değişimi CLI devam (resume) bağlamını geçersiz kılar: eski modelin
+      # oturumu yeni modelle sürdürülmez; sıfırlama odaya görünür biçimde bildirilir.
+      ortak_db_by_oturum_guncelle(oturum_id, model = deger, cli_session_id = "")
+
+      katman_etiketi <- deger
+      for (katman in model_katmanlari()) {
+        if (identical(as.character(katman$deger %||% "")[1], deger)) {
+          katman_etiketi <- as.character(katman$etiket %||% deger)[1]
+        }
+      }
+      ortak_db_mesaj_ekle(
+        oturum_id = oturum_id,
+        gonderen_kullanici_id = NULL,
+        mesaj_turu = "SistemMesajı",
+        mesaj_metni = sprintf(
+          "Bilge Yolaç modeli değiştirildi: %s (ajan konuşma bağlamı yeni modelle yeniden başlar)",
+          katman_etiketi
+        )
+      )
     }
 
     ctx$bildir("Bilge Yolaç modeli güncellendi; sonraki çalıştırmalarda kullanılacak.")
@@ -513,242 +543,27 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     ctx$bildir(sprintf("%d dosya paylaşılan çalışma alanına kopyalandı.", adet))
   })
 
-  # --- Canlı çalıştırma köprüsü (motor sözleşmesi) -------------------------------------
-
-  # @return TRUE: çalıştırma başlatıldı (motor beklemeye geçer);
-  #         FALSE: köprü kullanılamıyor (motor normal LLM'e düşer).
-  motor$by_calistir <- function(oturum_id, soru_id, soran_id, istek_id,
-                                komut = NULL, kuyruk_id = NULL, persona_id = NULL) {
-    if (!exists("run_claude_code", mode = "function", inherits = TRUE) ||
-        !exists("tracked_future_promise", mode = "function", inherits = TRUE)) {
-      return(FALSE)
-    }
-
-    cli <- cli_yolu()
-
-    # Etkin çalışma dizini kayıttan çözülür; özel dizin çalıştırma anında da
-    # fail-closed doğrulanır (yetki/politika sonradan değişmiş olabilir).
-    kayit <- by_kaydi_garantile(oturum_id, NULL)
-    kayit_dizini <- if (!is.null(kayit)) as.character(kayit$OrtakCalismaDizini[1] %||% "") else ""
-    if (is.na(kayit_dizini)) kayit_dizini <- ""
-
-    dizin_bilgisi <- ortak_by_etkin_calisma_dizini(kayit_dizini, oturum_id)
-    ws <- dizin_bilgisi$yol
-
-    if (isTRUE(dizin_bilgisi$ozel)) {
-      dogrulama <- ortak_by_ozel_dizin_dogrula(ws, oturum_id, user_id = soran_id)
-      if (!isTRUE(dogrulama$ok)) {
-        ws <- ortak_by_calisma_alani(oturum_id)
-        dizin_bilgisi$ozel <- FALSE
-        if (exists("log_warn", mode = "function", inherits = TRUE)) {
-          tryCatch(
-            log_warn("[ORTAK_BY] Özel proje dizini doğrulanamadı; paylaşılan oda klasörüne düşüldü."),
-            error = function(e) NULL
-          )
-        }
-      }
-    }
-
-    if (is.null(ws)) {
-      return(FALSE)
-    }
-
-    if (is.null(cli) || !nzchar(cli)) {
-      # Sahte başarı üretme: durumu odaya açıkça bildir, normal LLM'e düş.
-      ortak_db_mesaj_ekle(
-        oturum_id = oturum_id,
-        gonderen_kullanici_id = NULL,
-        mesaj_turu = "SistemMesajı",
-        mesaj_metni = "Claude Code CLI bu ortamda bağlı değil; soru genel yapay zekâ modeliyle yanıtlanıyor."
-      )
-      return(FALSE)
-    }
-
-    komut_metni <- as.character(komut %||% "")[1]
-    if (!nzchar(komut_metni)) {
-      return(FALSE)
-    }
-
-    calistirma_prompt <- komut_metni
-    persona_kimligi <- ortak_oturum_persona_kimligi(persona_id, oturum_id)
-    persona_sistem <- ortak_oturum_persona_sistem_prompt(persona_kimligi, oturum_id)
-    if (nzchar(persona_sistem)) {
-      calistirma_prompt <- paste(
-        persona_sistem,
-        "Bilge Yolaç/Claude Code yanıtını ve çalışma özetini bu persona talimatıyla uyumlu üret.",
-        komut_metni,
-        sep = "\n\n"
-      )
-    }
-
-    if (is.null(kayit)) {
-      return(FALSE)
-    }
-
-    by_id <- as.integer(kayit$OrtakBilgeYolacOturumID[1])
-    cli_session <- as.character(kayit$ClaudeCliSessionID[1] %||% "")
-    if (is.na(cli_session) || !nzchar(cli_session)) {
-      cli_session <- NULL
-    }
-
-    model_secimi <- as.character(shiny::isolate(by_model()) %||% "")[1]
-    if (!nzchar(model_secimi)) {
-      kayit_model <- as.character(kayit$Model[1] %||% "")
-      if (!is.na(kayit_model) && nzchar(kayit_model)) {
-        model_secimi <- kayit_model
-      } else {
-        model_secimi <- NULL
-      }
-    }
-
-    anahtar <- if (exists("mb_api_key_get_feature_key_value", mode = "function", inherits = TRUE)) {
-      mb_api_key_get_feature_key_value(session = ctx$parent_session %||% session)
-    } else {
-      NULL
-    }
-
-    onceki_dosyalar <- .oo_by_dosya_goruntusu(ws)
-    baslangic <- Sys.time()
-    zaman_asimi <- claude_code_config$timeout_seconds %||% 600L
-
-    # Paylaşılan otomatik klasörde çalışırken kayıt dizini görünürlük için
-    # güncellenir; özel dizin kaydı kullanıcı eylemiyle yönetilir (ezilmez).
-    if (!isTRUE(dizin_bilgisi$ozel)) {
-      ortak_db_by_oturum_guncelle(oturum_id, calisma_dizini = ws)
-    }
-
-    prom <- tracked_future_promise(
-      task_fn = function() {
-        run_claude_code(
-          prompt = calistirma_prompt,
-          workdir = ws,
-          model = model_secimi,
-          timeout_sec = zaman_asimi,
-          session_id = cli_session,
-          cli_path = cli,
-          api_key = anahtar
-        )
-      },
-      task_type = "ortak_by_calistirma",
-      session_token = session$token
-    )
-
-    promises::then(
-      prom,
-      onFulfilled = function(sonuc) {
-        by_tamamla(
-          oturum_id = oturum_id, soru_id = soru_id, soran_id = soran_id,
-          istek_id = istek_id, komut = komut_metni, sonuc = sonuc, ws = ws,
-          by_id = by_id, onceki_dosyalar = onceki_dosyalar,
-          baslangic = baslangic, kuyruk_id = kuyruk_id,
-          persona_id = persona_kimligi
-        )
-      },
-      onRejected = function(e) {
-        ortak_db_by_calistirma_kaydet(
-          ortak_by_oturum_id = by_id,
-          komutu_veren_kullanici_id = soran_id,
-          komut = komut_metni,
-          durum = "Başarısız",
-          sure_saniye = as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
-        )
-        motor$tamamla(
-          oturum_id, soru_id, istek_id,
-          hata_metni = "Bilge Yolaç çalıştırması başarısız oldu; lütfen tekrar deneyin.",
-          kuyruk_id = kuyruk_id, soran_id = soran_id,
-          persona_id = persona_kimligi
-        )
+  # --- Canlı çalıştırma köprüsü ---------------------------------------------------
+  # Gerçek kodlama-ajanı yürütmesi (stream-json + canlı ilerleme + durdurma)
+  # odak dosyadadır: R/module_ortak_oturum_by_calistirma.R. Bu bağlayıcı,
+  # motor$by_calistir / motor$by_durdur_ui / motor$by_model_secici_ui
+  # kancalarını kurar ve bu modülün erişimcilerini kullanır.
+  ortakOturumByCalistirmaBind(
+    input, output, session,
+    ctx = ctx,
+    motor = motor,
+    by_ctx = list(
+      cli_yolu = cli_yolu,
+      by_kaydi_garantile = by_kaydi_garantile,
+      by_model = by_model,
+      by_kayit_model_rv = by_kayit_model_rv,
+      by_kayit_dizin_rv = by_kayit_dizin_rv,
+      model_katmanlari = model_katmanlari,
+      dizin_yenile_bump = function() {
+        dizin_yenile(isolate(dizin_yenile()) + 1L)
       }
     )
-
-    TRUE
-  }
-
-  # Çalıştırma sonucu: çalıştırma kaydı + üretilen ortak belgeler + yanıt mesajı.
-  by_tamamla <- function(oturum_id, soru_id, soran_id, istek_id, komut, sonuc,
-                         ws, by_id, onceki_dosyalar, baslangic, kuyruk_id,
-                         persona_id = NULL) {
-    sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
-    basarili <- isTRUE(sonuc$success)
-
-    yeni_dosyalar <- setdiff(.oo_by_dosya_goruntusu(ws), onceki_dosyalar)
-
-    uretilen_json <- if (length(yeni_dosyalar) > 0L) {
-      tryCatch(
-        as.character(jsonlite::toJSON(basename(yeni_dosyalar), auto_unbox = FALSE)),
-        error = function(e) NULL
-      )
-    } else {
-      NULL
-    }
-
-    calistirma_id <- ortak_db_by_calistirma_kaydet(
-      ortak_by_oturum_id = by_id,
-      komutu_veren_kullanici_id = soran_id,
-      komut = komut,
-      nihai_yanit = if (basarili) as.character(sonuc$output %||% "")[1] else NULL,
-      durum = if (basarili) "Tamamlandı" else "Başarısız",
-      uretilen_dosyalar_json = uretilen_json,
-      sure_saniye = sure
-    )
-
-    # Üretilen dosyalar ortak oda belgesi olur + odaya belge bildirimi düşer.
-    for (dosya in yeni_dosyalar) {
-      dosya_id <- ortak_db_dosya_kaydet(
-        oturum_id = oturum_id,
-        kaynak_yol = dosya,
-        ureten_kullanici_id = soran_id,
-        ortak_calistirma_id = calistirma_id
-      )
-      if (!is.null(dosya_id)) {
-        ortak_db_mesaj_ekle(
-          oturum_id = oturum_id,
-          gonderen_kullanici_id = NULL,
-          mesaj_turu = "BelgeBildirimi",
-          mesaj_metni = sprintf("Yeni ortak belge üretildi: %s", basename(dosya))
-        )
-        ortak_db_olay_ekle(oturum_id, "BelgeÜretildi", soran_id)
-      }
-    }
-
-    # CLI oturum kimliği korunur (devam eden konuşma bağlamı).
-    yeni_cli_session <- as.character(sonuc$session_id %||% "")[1]
-    if (!is.na(yeni_cli_session) && nzchar(yeni_cli_session)) {
-      ortak_db_by_oturum_guncelle(oturum_id, cli_session_id = yeni_cli_session)
-    }
-
-    if (basarili) {
-      cikti <- as.character(sonuc$output %||% "")[1]
-      if (!nzchar(trimws(cikti))) {
-        cikti <- "Bilge Yolaç çalıştırması tamamlandı."
-      }
-      motor$tamamla(
-        oturum_id, soru_id, istek_id,
-        yanit_metni = cikti,
-        kuyruk_id = kuyruk_id, soran_id = soran_id,
-        persona_id = persona_id
-      )
-    } else {
-      # Ham CLI/altyapı tanılaması odaya sızmasın: güvenli yanıt süzgeci
-      # (ayrıntı sunucu günlüğünde; oda genel Türkçe mesaj görür).
-      hata <- as.character(sonuc$error %||% "")[1]
-      if (nchar(hata) > 240L) {
-        hata <- paste0(substr(hata, 1L, 240L), "…")
-      }
-      if (exists("oo_arac_oda_guvenli_yanit", mode = "function", inherits = TRUE)) {
-        hata <- oo_arac_oda_guvenli_yanit(hata)
-      }
-      motor$tamamla(
-        oturum_id, soru_id, istek_id,
-        hata_metni = paste("Bilge Yolaç çalıştırması başarısız:", hata),
-        kuyruk_id = kuyruk_id, soran_id = soran_id,
-        persona_id = persona_id
-      )
-    }
-
-    dizin_yenile(isolate(dizin_yenile()) + 1L)
-    invisible(NULL)
-  }
+  )
 
   invisible(TRUE)
 }

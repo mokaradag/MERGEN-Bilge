@@ -493,17 +493,31 @@ encoding preflight kapılarıyla doğrulanmalıdır (RUNBOOK).
 
 ### 12.1 Tamamlanan takip işleri (bu değişiklik seti)
 
-1. **Canlı ortak Bilge Yolaç çalıştırması — BAĞLANDI.** Ortak BY odaları artık
-   tek kullanıcılı Bilge Yolaç deneyiminin ortak sürümüdür: Proje Dizini,
-   model katmanları (Hızlı/Dengeli/Güçlü), Hazır Senaryolar, Dizin İçeriği,
-   Eklentiler (salt-okunur). "Yapay Zekâya Sor" bir BY odasında
-   `run_claude_code()`'u odanın ETKİN çalışma dizininde koşturur
-   (`R/module_ortak_oturum_bilge_yolac.R` → `motor$by_calistir`); çalıştırma
-   `ortak_db_by_calistirma_kaydet`'e, üretilen dosyalar
+1. **Canlı ortak Bilge Yolaç çalıştırması — GERÇEK AJAN AKIŞI.** Ortak BY
+   odaları tek kullanıcılı Bilge Yolaç deneyiminin ortak sürümüdür: Proje
+   Dizini, model katmanları (Hızlı/Dengeli/Güçlü — kompozerde de genel model
+   menüsünün YERİNE çizilir; persona/araç seçicileri BY odasında çizilmez),
+   Hazır Senaryolar, Dizin İçeriği, Eklentiler (salt-okunur). "Yapay Zekâya
+   Sor" bir BY odasında tek kullanıcılı sayfanın GERÇEK stream-json boru
+   hattını (`run_claude_code_streaming`; aynı CLI argüman güvenlik ilkesi,
+   çalışma dizini politikası, zaman aşımı, resume ve çıktı ayrıştırması)
+   odanın ETKİN çalışma dizininde koşturur
+   (`R/module_ortak_oturum_by_calistirma.R` → `motor$by_calistir`). Araç
+   kullanımı / kabuk komutu / metin deltaları çalıştırma sırasında ilerleme
+   dosyasına yazılır (`oo_by_ilerleme_kayitlari`), başlatan oturum bunları
+   `KismiYanit` üzerinden yayınlar ve TÜM katılımcılar terminal-dilli canlı
+   ajan yüzeyinde (`oo-kismi-yanit-by`) görür; başlatan katılımcı veya
+   katılımcı yöneten roller süren çalıştırmayı **Durdur** ile güvenle
+   sonlandırabilir (oda-kapsamlı durdurma bayrak dosyası; sunucu tarafında
+   fail-closed yetki doğrulaması; kayıt `Durduruldu` durumuyla düşer).
+   Çalıştırma `ortak_db_by_calistirma_kaydet`'e, üretilen dosyalar
    `ortak_db_dosya_kaydet` ile ortak belge deposuna yazılır ve odaya belge
-   bildirimi düşer. CLI bu ortamda yoksa sahte başarı ÜRETİLMEZ: durum "CLI
-   Bağlı Değil" gösterilir ve soru genel LLM yoluna güvenli düşer. Mini oyun
-   bilinçli olarak ortak moda taşınmaz.
+   bildirimi düşer. Model veya proje dizini değişimi CLI devam (resume)
+   bağlamını sıfırlar ve odaya görünür sistem notu düşer. CLI bu ortamda
+   yoksa sahte başarı ÜRETİLMEZ ve soru normal sohbet LLM'ine SESSİZCE
+   DÜŞMEZ: odaya açık "CLI bağlı değil; komut çalıştırılamadı" engelleyici
+   mesajı düşer, kilit bırakılır ve komut sohbette yeniden gönderilebilir
+   biçimde kalır. Mini oyun bilinçli olarak ortak moda taşınmaz.
 
    **Çalışma alanı paneli (yeniden tasarım).** Panel, tek kullanıcılı Bilge
    Yolaç ayar kartlarının oda sürümüdür ve VARSAYILAN KAPALI açılır: sohbet
@@ -636,6 +650,44 @@ encoding preflight kapılarıyla doğrulanmalıdır (RUNBOOK).
   etkilemez (PR #590 kod incelemesi geri bildirimi). Negatif yaş güvenlik ağı
   olarak taze sayılır; yaş sorgusu başarısız olursa eski yola güvenli düşülür.
   Regresyon: `tests/testthat/test-ortak-oturum-canli-durum-behavior.R`.
+
+### 12.2d Ortak Bilge Yolaç ajan yenilemesi + oda UI düzeltmeleri (bu değişiklik seti)
+
+- **Gerçek kodlama-ajanı yürütmesi — UYGULANDI.** BY köprüsü blok
+  `run_claude_code()` çağrısından tek kullanıcılı sayfanın stream-json boru
+  hattına (`run_claude_code_streaming`) geçirildi; ayrıntı §12.1 madde 1.
+  Yeni odak dosyalar: `R/module_ortak_oturum_by_calistirma.R` (çalıştırma
+  köprüsü + KismiYanit ilerleme yayıncısı + Durdur) ve
+  `R/helpers_ortak_oturum_by_akis.R` (yan dosyalar + ilerleme kayıtları/metni;
+  SAF). `run_claude_code_streaming` isteğe bağlı `stop_file` (durdurma bayrak
+  dosyası; yalnızca GERÇEK dosya durdurur) ve `api_key` (çalışma anında alt
+  süreç ortamına enjekte; `cc_apply_runtime_api_key_env`) parametreleri kazandı.
+- **Sessiz LLM düşüşü kaldırıldı.** BY odasında köprü/CLI yoksa soru ARTIK
+  normal sohbet LLM'ine gitmez; `ortak_by_kopru_kullanilamiyor_mesaji()` ile
+  açık engelleyici sistem mesajı düşer ve kilit bırakılır. Kompozerde BY odası
+  için genel model menüsü yerine model katmanları (Hızlı/Dengeli/Güçlü;
+  `motor$by_model_secici_ui`) çizilir; persona ve araç seçicileri BY odasında
+  çizilmez. Model/dizin değişimi `ClaudeCliSessionID`'yi sıfırlar (resume
+  yeniden kapsamlanır) ve odaya sistem notu düşer. Proje dizini doğrulaması
+  http/https web adreslerini açık mesajla reddeder; Dizin İçeriği "okunamadı"
+  ile "henüz boş" durumlarını ayrı mesajlarla gösterir.
+- **Kompozer seçicileri YUKARI açılır.** Model/Persona/Araç menüleri
+  (`shinyWidgets::dropdown ... up = TRUE` → `sw-dropup-content`) kompozerden
+  yukarı açılır; panel içi kaydırma sınırı (`max-height: min(56vh, 460px)`)
+  yakınlaştırılmış/dar görünümlerde menüyü ekran içinde tutar
+  (`css/ortak_oturumlar_room.css`).
+- **Ortak Belgeler yükleme yüzeyi + boş durum — YENİDEN TASARLANDI.** Kompakt
+  sürükle-bırak hedefi ("Belgeleri buraya sürükleyin veya **Belge Seç**",
+  tür/boyut ipucu, erişilebilir etiketler; `oo_belge_yukleme_alani_html`).
+  Bırakılan dosyalar `www/js/ortak_oturumlar.js` delege köprüsüyle gizli
+  fileInput'a atanır ve MEVCUT doğrulanmış sunucu yolundan
+  (`ortak_db_belge_yukle`) geçer. Boş durum panel alanını doldurur, metin
+  kırpılmaz ve belge yokken kaydırma çubuğu üretmez. Ortak Çalışmalarım liste
+  kartları `uiOutput` sarmalayıcısına taşınan ızgara kurallarıyla birbirine
+  değmez (`.oo-oturum-listesi > .shiny-html-output`).
+- Regresyon: `tests/testthat/test-ortak-oturum-by-calistirma-behavior.R`,
+  `tests/testthat/test-ortak-oturum-secici-yon-contract.R`,
+  `tests/testthat/test-ortak-oturum-belge-panel-ui-contract.R`.
 
 ### 12.3 Kalan sınırlamalar
 

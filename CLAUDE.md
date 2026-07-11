@@ -2471,8 +2471,8 @@ Non-negotiable boundaries:
 - Invitation email is a DRAFT-ONLY mailto flow (`R/helpers_ortak_oturum_email.R`):
   no automatic sending, and the draft must stay content-free
   (`ortak_davet_eposta_guvenli_mi`). In-app calls go through `MB_Bildirimler`.
-- Keep the manifest section order intact: `ortak_oturumlar` (21 files, pure
-  helpers → DB layer → UI/invites/AI-engine/Bilge-Yolaç-workbench/room/hub
+- Keep the manifest section order intact: `ortak_oturumlar` (24 files, pure
+  helpers → DB layer → UI/invites/AI-engine/BY-run-bridge/BY-workbench/room/hub
   modules) loads after `module_claude_code`, owned by the `sohbet_llm_akis`
   seam; frontend assets `css/ortak_oturumlar.css` + `css/ortak_oturumlar_room.css`
   (room-focused: model/persona/tool selector, chat-bubble redesign, shared-doc
@@ -2490,8 +2490,21 @@ Non-negotiable boundaries:
   history-copy DB layer is `R/helpers_ortak_oturum_db_kuyruk.R`; the AI
   generation engine (question routing + persistent queue + incremental
   broadcast + BY bridge) is `R/module_ortak_oturum_yz.R`; the shared BY
-  workbench (project dir / model tiers / scenarios / dir listing / plugins /
-  real `run_claude_code` bridge) is `R/module_ortak_oturum_bilge_yolac.R`.
+  workbench (project dir / model tiers / scenarios / dir listing / plugins)
+  is `R/module_ortak_oturum_bilge_yolac.R`, and the LIVE BY run bridge
+  (real single-user stream-json pipeline via `run_claude_code_streaming`
+  with `stop_file` + runtime `api_key` injection, tool/text progress
+  broadcast into `KismiYanit` through the pure helpers in
+  `R/helpers_ortak_oturum_by_akis.R`, server-verified Durdur, and the
+  composer model-tier hook) is `R/module_ortak_oturum_by_calistirma.R`.
+  BilgeYolaç rooms NEVER silently fall back to the normal room LLM: when
+  the CLI/bridge is unavailable the room gets an explicit blocking system
+  message (`ortak_by_kopru_kullanilamiyor_mesaji()`), the lock is released,
+  and the command stays in the transcript for retry. Model or project-dir
+  changes reset `ClaudeCliSessionID` (resume rescope) with a visible system
+  note. In BY rooms the composer renders the Hızlı/Dengeli/Güçlü tier group
+  instead of the generic model dropdown, and the persona/tool selectors are
+  not rendered.
 - Shared document INPUTS: Ortak Belgeler is also shared model input, not only
   generated output. `R/helpers_ortak_oturum_belgeler.R` owns participant
   uploads (`ortak_db_belge_yukle`: same `validate_uploaded_file` +
@@ -2702,6 +2715,9 @@ Protected by:
 - `tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R`
 - `tests/testthat/test-ortak-oturum-yz-reactive-context-behavior.R`
 - `tests/testthat/test-ortak-oturum-by-panel-behavior.R`
+- `tests/testthat/test-ortak-oturum-by-calistirma-behavior.R`
+- `tests/testthat/test-ortak-oturum-secici-yon-contract.R`
+- `tests/testthat/test-ortak-oturum-belge-panel-ui-contract.R`
 - `tests/testthat/test-ortak-oturum-sql-contract.R`
 - `tests/testthat/test-ortak-oturum-ui-contract.R`
 
@@ -2716,12 +2732,18 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-ortak-oturum-yz-kuyruk-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-yz-reactive-context-behavior.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-by-panel-behavior.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-by-calistirma-behavior.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-secici-yon-contract.R")`
+- `testthat::test_file("tests/testthat/test-ortak-oturum-belge-panel-ui-contract.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-sql-contract.R")`
 - `testthat::test_file("tests/testthat/test-ortak-oturum-ui-contract.R")`
 
 Completed follow-ups (see `docs/ortak-oturumlar.md` §12):
-live shared Bilge Yolaç CLI bridge (real `run_claude_code` in the shared
-workspace, feature-gated when the CLI is absent — no faked success), real AI
+live shared Bilge Yolaç CLI bridge (now the real single-user STREAM-JSON
+pipeline via `run_claude_code_streaming` in the shared workspace, with live
+tool/text progress broadcast, server-verified Durdur, and an explicit
+blocking message instead of any LLM fallback when the CLI is absent — no
+faked success), real AI
 queue (`MB_OrtakOturum_YapayZekaKuyrugu`), consent-based history copy
 (`ortak_db_gecmis_kopyala`), incremental partial-answer broadcast
 (`MB_OrtakOturum_AktifUretimler.KismiYanit`, idempotent setup step 8b, graceful

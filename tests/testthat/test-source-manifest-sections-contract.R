@@ -148,7 +148,12 @@
   # 21L -> 22L bilinçli güncelleme: Ortak Bilge Yolaç çalışma alanı SAF
   # yardımcıları (R/helpers_ortak_oturum_by_calisma_alani.R; özel proje dizini
   # izolasyon kapısı + panel kart üreticileri) modül dosyalarından önce eklendi.
-  ortak_oturumlar = list(first = "R/helpers_ortak_oturum_permissions.R", last = "R/module_ortak_calismalar.R", n = 22L),
+  # 22L -> 24L bilinçli güncelleme: Ortak Bilge Yolaç CANLI çalıştırma seti:
+  # akış SAF yardımcıları (R/helpers_ortak_oturum_by_akis.R; yan dosyalar +
+  # ilerleme kayıtları/metni) ve CANLI çalıştırma köprüsü
+  # (R/module_ortak_oturum_by_calistirma.R; stream-json ajan yürütmesi +
+  # KismiYanit ilerleme yayını + durdurma) eklendi.
+  ortak_oturumlar = list(first = "R/helpers_ortak_oturum_permissions.R", last = "R/module_ortak_calismalar.R", n = 24L),
   module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/module_proje_kaynak_analizi.R", n = 1L),
   module_support = list(first = "R/module_destek_yardim.R", last = "R/module_destek.R", n = 6L),
   # Bilinçli güncelleme: at-budget admin modüllerinin inline highcharter/DT
@@ -367,7 +372,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 324L -> 325L bilinçli güncelleme: Hızlı Başlangıç "Son Konuşmalar" ön izleme
   # worker katmanı (R/helpers_startup_chat_preview.R; dar explicit worker-export
   # sözleşmesi + ana süreç biçimlendirme) database bölümüne eklendi.
-  expect_equal(length(runtime), 325L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 325L -> 327L bilinçli güncelleme: Ortak Bilge Yolaç CANLI çalıştırma seti
+  # (R/helpers_ortak_oturum_by_akis.R + R/module_ortak_oturum_by_calistirma.R)
+  # ortak_oturumlar bölümüne eklendi.
+  expect_equal(length(runtime), 327L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

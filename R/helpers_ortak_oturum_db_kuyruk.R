@@ -16,6 +16,16 @@
 
 # --- Yapay zekâ kuyruğu -----------------------------------------------------------
 
+#' Üretim istek kimliği (IstekID) üretir: kilit satırı, kuyruk devralması ve
+#' çalıştırma yan dosyaları bu kimlikle eşleşir (SAF; DB erişimi yok).
+ortak_yz_yeni_istek_id <- function(oturum_id) {
+  paste0(
+    "oo_", oturum_id, "_",
+    format(Sys.time(), "%Y%m%d%H%M%S"), "_",
+    sample.int(999999L, 1L)
+  )
+}
+
 #' Soruyu yanıt kuyruğuna ekler (kilit doluyken). Sıra numarası yarış-korumalı
 #' artar. @return KuyrukID (integer) veya NULL.
 ortak_db_kuyruk_ekle <- function(oturum_id, mesaj_id, conn = NULL) {

@@ -93,6 +93,59 @@ app_loading_mark_svg <- function() {
   )
 }
 
+#' Açılış kabuk kapısı (pre-paint) head etiketleri
+#' @description Tarayıcı, HTML'i parça parça alırken kenar çubuğu/başlık
+#'   işaretlemesi yükleme katmanından ÖNCE geldiği için ilk boyamada kabuk
+#'   kısa süre görünebilir (flash). Bu kapı <head> içinde çalışır: gövde
+#'   boyanmadan önce <html> elemanına "mergen-boot-shell-gate" sınıfını
+#'   uygular ve shinydashboard kabuğunu (başlık, kenar çubuğu, içerik)
+#'   görünmez tutar. Yükleme katmanı, şerit seçicisi ve SSO hata yüzeyi
+#'   açık istisnadır. Kapı yalnızca GÖSTERİLEN ilerleme %100'e ulaştığında
+#'   www/js/app_loading.js tarafından bırakılır; katman hiç kurulamazsa
+#'   DOMContentLoaded yetenek denetimi kabuğu kalıcı gizli bırakmaz.
+#'   visibility kullanılır (display değil): kabuk açığa çıkarken yerleşim
+#'   sıçraması olmaz ve katman/istisna yüzeyleri alt öğe olarak görünür kalır.
+#' @return Shiny tagList (style + script; ui.R head içinde en erken noktada)
+app_loading_shell_gate_head_tags <- function() {
+  tagList(
+    tags$style(HTML(paste(
+      "html.mergen-boot-shell-gate .main-header,",
+      "html.mergen-boot-shell-gate .main-sidebar,",
+      "html.mergen-boot-shell-gate .content-wrapper {",
+      "  visibility: hidden !important;",
+      "}",
+      "html.mergen-boot-shell-gate #app-loading-overlay,",
+      "html.mergen-boot-shell-gate #mergen-lane-select,",
+      "html.mergen-boot-shell-gate .sso-auth-overlay {",
+      "  visibility: visible !important;",
+      "}",
+      sep = "\n"
+    ))),
+    tags$script(HTML(paste(
+      "(function () {",
+      "  var kok = document.documentElement;",
+      "  kok.classList.add(\"mergen-boot-shell-gate\");",
+      "  function birak() {",
+      "    kok.classList.remove(\"mergen-boot-shell-gate\");",
+      "  }",
+      "  window.MergenBootShellGate = {",
+      "    release: birak,",
+      "    isHeld: function () {",
+      "      return kok.classList.contains(\"mergen-boot-shell-gate\");",
+      "    }",
+      "  };",
+      "  document.addEventListener(\"DOMContentLoaded\", function () {",
+      "    var katman = document.getElementById(\"app-loading-overlay\");",
+      "    if (!katman || !window.MergenAppLoading) {",
+      "      birak();",
+      "    }",
+      "  });",
+      "})();",
+      sep = "\n"
+    )))
+  )
+}
+
 #' İlk açılış başlangıç şeridi seçicisi işaretlemesi
 #' @description Kayıtlı şerit tercihi yoksa gösterilen tam ekran, koyu temalı
 #'   iki kartlı seçici. Video, Three.js veya persona medyası GEREKTİRMEZ;

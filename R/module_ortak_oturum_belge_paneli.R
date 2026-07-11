@@ -134,24 +134,48 @@ oo_dosya_karti_html <- function(satir,
   )
 }
 
-# Belge yükleme alanı (SAF): fileInput + kural ipucu. Yalnızca yetkili
-# katılımcıya çizilir; sunucu tarafı doğrulama yine de zorunludur.
+# Belge yükleme alanı (SAF): kompakt sürükle-bırak yüzeyi + "Belge Seç"
+# eylemi + tür/boyut ipucu. Gerçek bırakma davranışı www/js/ortak_oturumlar.js
+# içindeki delege data-oo-belge-drop köprüsüyle çalışır (dosyalar gizli
+# fileInput'a atanır; mevcut doğrulanmış sunucu yolu değişmez). Yalnızca
+# yetkili katılımcıya çizilir; sunucu tarafı doğrulama yine de zorunludur.
 oo_belge_yukleme_alani_html <- function(yukle_input_id, izinli_uzantilar, limit_mb) {
+  ornek_turler <- toupper(utils::head(as.character(izinli_uzantilar), 5L))
+  tur_ipucu <- if (length(izinli_uzantilar) > 5L) {
+    paste0(paste(ornek_turler, collapse = ", "), "…")
+  } else {
+    paste(ornek_turler, collapse = ", ")
+  }
+
   div(
     class = "oo-belge-yukleme",
-    fileInput(
-      yukle_input_id,
-      label = NULL,
-      multiple = TRUE,
-      accept = paste0(".", izinli_uzantilar),
-      buttonLabel = tagList(icon("upload"), span("Belge Yükle")),
-      placeholder = "Ortak belge seçin..."
+    div(
+      class = "oo-belge-drop",
+      `data-oo-belge-drop` = "1",
+      role = "button",
+      tabindex = "0",
+      `aria-label` = "Ortak belge yükle: dosyaları buraya sürükleyin veya belge seçin",
+      icon("cloud-arrow-up", class = "oo-belge-drop-ikon"),
+      tags$span(class = "oo-belge-drop-baslik", "Belgeleri buraya sürükleyin"),
+      tags$span(class = "oo-belge-drop-ayrac", "veya"),
+      div(
+        class = "oo-belge-drop-secim",
+        fileInput(
+          yukle_input_id,
+          label = NULL,
+          multiple = TRUE,
+          accept = paste0(".", izinli_uzantilar),
+          buttonLabel = tagList(icon("folder-open"), span("Belge Seç")),
+          placeholder = ""
+        )
+      )
     ),
     tags$small(
       class = "oo-belge-yukleme-ipucu",
       sprintf(
-        "En fazla %d MB; tekil oturum yüklemeleriyle aynı dosya türleri desteklenir.",
-        as.integer(limit_mb)
+        "En fazla %d MB · %s ve tekil oturum yüklemeleriyle aynı diğer türler",
+        as.integer(limit_mb),
+        tur_ipucu
       )
     )
   )
@@ -207,14 +231,20 @@ ortakOturumBelgePaneliBind <- function(input, output, session, ctx) {
     df <- ctx$belgeler()
 
     if (!is.data.frame(df) || nrow(df) == 0L) {
+      # Boş durum panel yüksekliğini doldurur; metin hiçbir zaman kırpılmaz
+      # (sabit yükseklik/ellipsis yok, kaydırma çubuğu üretmez).
       return(div(
         class = "oo-bos-durum oo-bos-belge",
-        icon("folder-open"),
-        p(if (by_odasi) {
-          "Henüz ortak belge yok. Bilge Yolaç'ın çalışma alanında ürettiği dosyalar burada listelenir."
-        } else {
-          "Henüz ortak belge yok. Yüklediğiniz belgeler tüm katılımcılarla paylaşılır ve seçilenler yapay zekâ bağlamına eklenir."
-        })
+        icon("folder-open", class = "oo-bos-belge-ikon"),
+        p(class = "oo-bos-belge-baslik", "Henüz ortak belge yok"),
+        p(
+          class = "oo-bos-belge-metin",
+          if (by_odasi) {
+            "Bilge Yolaç'ın çalışma alanında ürettiği dosyalar burada listelenir."
+          } else {
+            "Yüklediğiniz belgeler tüm katılımcılarla paylaşılır; seçilenler yapay zekâ bağlamına eklenir."
+          }
+        )
       ))
     }
 

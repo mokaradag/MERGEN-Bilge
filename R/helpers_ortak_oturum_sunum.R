@@ -246,3 +246,28 @@ ortak_persona_secenekleri <- function() {
   }, character(1))
   stats::setNames(gecerli, etiketler)
 }
+
+# Süren üretim durum metni (SAF sunum kararı): BilgeYolaç odasında kodlama
+# ajanı dili, normal odada sohbet dili; başlatan adı varsa başa eklenir.
+ortak_sunum_uretim_durum_metni <- function(baslatan, by_odasi = FALSE) {
+  baslatan <- as.character(baslatan %||% "")[1]
+  adli <- nzchar(baslatan) && !is.na(baslatan)
+
+  if (isTRUE(by_odasi)) {
+    if (adli) {
+      return(sprintf(
+        "%s çalıştırdı · Bilge Yolaç ajanı çalışıyor; canlı ilerleme tüm katılımcılara açık.",
+        baslatan
+      ))
+    }
+    return("Bilge Yolaç ajanı çalışıyor; canlı ilerleme tüm katılımcılara açık.")
+  }
+
+  if (adli) {
+    return(sprintf(
+      "%s sordu · yanıt üretiliyor, tamamlanınca tüm katılımcılar görecek.",
+      baslatan
+    ))
+  }
+  "Yanıt üretiliyor; tamamlanınca tüm katılımcılar görecek."
+}

@@ -83,6 +83,9 @@ ui <- dashboardPage(
 
     # --- Başlık İçeriği (Head Content) ---
   tags$head(
+    # Kabuk kapısı: gövde boyanmadan önce kenar çubuğu/başlık/içerik kabuğunu
+    # gizler; yalnızca yükleme %100 olduğunda app_loading.js tarafından bırakılır.
+    app_loading_shell_gate_head_tags(),
     tags$script(HTML("document.documentElement.lang = 'tr'")),
     # Tema önyüklemesi: tema_manager.js'den önce çalışır, FOUC azaltır.
     # localStorage'da kayıtlı tema varsa hemen <html data-theme="..."> uygulanır;

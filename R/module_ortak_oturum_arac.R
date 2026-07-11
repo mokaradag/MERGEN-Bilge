@@ -218,7 +218,9 @@ oo_arac_secici_html <- function(katalog,
       style = "minimal",
       icon = icon("toolbox"),
       status = "default",
-      up = FALSE,
+      # Araç menüsü ayar bloklarıyla en uzun paneldir; kompozerden YUKARI
+      # açılarak seçeneklerin tamamı görünür kalır.
+      up = TRUE,
       width = "320px",
       div(class = "dropdown-menu-header", icon("screwdriver-wrench"), tags$span("Analiz Araçları")),
       tags$ul(class = "dropdown-menu-custom-list oo-arac-listesi", temizle_ogesi, ogeler),
@@ -414,10 +416,20 @@ ortakOturumAracBind <- function(input, output, session, ctx, motor) {
   # Model seçici: araç YOKKEN etkileşimli "Model Değiştir" bileşeni; araç
   # AKTİFKEN kilitli görünüm (araç kendi modelini kullanır). Yalnızca
   # ODA/ROL/AİLE değişince yeniden çizilir (menü seçimi/odak bozulmaz).
+  # BilgeYolaç odasında genel model menüsü SUNULMAZ: kodlama-ajanı model
+  # deneyimi (Hızlı/Dengeli/Güçlü katmanları) BY köprü kancasından çizilir.
   output$oda_model_secim_alani <- renderUI({
     ctx$aktif_oturum()
     rol <- ctx$oda_rol()
     if (!ortak_yetki_var_mi(rol, "yapay_zeka_sor")) {
+      return(NULL)
+    }
+
+    bilgi <- if (is.function(ctx$oturum_bilgisi)) ctx$oturum_bilgisi() else NULL
+    if (!is.null(bilgi) && identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")) {
+      if (is.function(motor$by_model_secici_ui)) {
+        return(motor$by_model_secici_ui())
+      }
       return(NULL)
     }
 
@@ -479,12 +491,9 @@ ortakOturumAracBind <- function(input, output, session, ctx, motor) {
     )
   })
 
-  observeEvent(input$oda_model_secimi, {
-    deger <- as.character(input$oda_model_secimi %||% "")[1]
-    if (nzchar(deger)) {
-      ctx$secili_model(deger)
-    }
-  }, ignoreInit = TRUE)
+  # NOT: input$oda_model_secimi gözlemcisi oda sunucu modülündedir
+  # (R/module_ortak_oturum_room.R): seçim api_config kataloğuna karşı
+  # doğrulanır. Burada ikinci (doğrulamasız) bir gözlemci tutulmaz.
 
   invisible(TRUE)
 }
