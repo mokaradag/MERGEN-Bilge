@@ -192,6 +192,8 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
     by_uretim$istek_id <- istek_id
     by_uretim$oturum_id <- oturum_id
     by_uretim$son_yayin <- ""
+    ilerleme_durumu <- new.env(parent = emptyenv())
+    ilerleme_durumu$araclar <- list()
 
     prom <- tracked_future_promise(
       task_fn = function() {
@@ -210,7 +212,7 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
             if (!nzchar(ilerleme_dosyasi)) {
               return(invisible(NULL))
             }
-            kayitlar <- oo_by_ilerleme_kayitlari(parca)
+            kayitlar <- oo_by_ilerleme_kayitlari(parca, durum = ilerleme_durumu)
             for (k in kayitlar) {
               satir <- tryCatch(
                 as.character(jsonlite::toJSON(k, auto_unbox = TRUE)),
@@ -258,12 +260,23 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
       },
       onRejected = function(e) {
         yayin_bitir()
-        ortak_db_by_calistirma_kaydet(
-          ortak_by_oturum_id = by_id,
-          komutu_veren_kullanici_id = soran_id,
-          komut = komut_metni,
-          durum = "Başarısız",
-          sure_saniye = as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
+        tryCatch(
+          ortak_db_by_calistirma_kaydet(
+            ortak_by_oturum_id = by_id,
+            komutu_veren_kullanici_id = soran_id,
+            komut = komut_metni,
+            durum = "Başarısız",
+            sure_saniye = as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
+          ),
+          error = function(kayit_hatasi) {
+            if (exists("log_error", mode = "function", inherits = TRUE)) {
+              tryCatch(
+                log_error(paste("[ORTAK_BY] Başarısız çalıştırma kaydı yazılamadı:", conditionMessage(kayit_hatasi))),
+                error = function(log_e) NULL
+              )
+            }
+            NULL
+          }
         )
         motor$tamamla(
           oturum_id, soru_id, istek_id,
