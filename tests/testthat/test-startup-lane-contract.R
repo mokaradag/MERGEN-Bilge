@@ -125,9 +125,13 @@ testthat::test_that("app_loading_lane.js şerit çözümleme sözleşmesini uygu
   testthat::expect_true(.startup_lane_has(txt, "persist: true"))
   testthat::expect_true(.startup_lane_has(txt, "startup_lane_resolved"))
 
-  # Hızlı şeritte intro atlama sınıfları erken uygulanır
+  # Hızlı şeritte intro atlama sınıfları erken uygulanır; zengin şeride
+  # dönüldüğünde skip-intro yalnızca gerçek kullanıcı tercihi varsa korunur.
   testthat::expect_true(.startup_lane_has(txt, "mergen-fast-lane"))
   testthat::expect_true(.startup_lane_has(txt, "mergen-skip-intro"))
+  testthat::expect_true(.startup_lane_has(txt, "settingsSkipIntroEnabled"))
+  testthat::expect_true(.startup_lane_has(txt, "settings.skip_intro === true"))
+  testthat::expect_true(.startup_lane_has(txt, 'html.classList.remove("mergen-skip-intro")'))
 
   # Dış API yüzeyi
   testthat::expect_true(.startup_lane_has(txt, "window.MergenStartupLane"))

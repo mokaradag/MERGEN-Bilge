@@ -693,7 +693,7 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
       identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")
 
     if (!calisiyor && iyimser_aktif) {
-      durum_metni <- ortak_sunum_uretim_durum_metni(iyimser$ad, by_odasi = FALSE)
+      durum_metni <- ortak_sunum_uretim_durum_metni(iyimser$ad, by_odasi = by_odasi)
     }
 
     if (calisiyor) {

@@ -410,3 +410,10 @@ test_that("çalıştırma geçmişi Durduruldu durumunu ayrı rozetle gösterir"
   expect_true(grepl("oo-by-durum-durduruldu", html, fixed = TRUE))
   expect_true(grepl("Durduruldu", html, fixed = TRUE))
 })
+
+
+testthat::test_that("Bilge Yolaç iyimser üretim durumu kodlama ajanı dilini kullanır", {
+  txt <- .oo_by_cal_oku("R/module_ortak_oturum_yz.R")
+  testthat::expect_true(grepl("ortak_sunum_uretim_durum_metni(iyimser$ad, by_odasi = by_odasi)", txt, fixed = TRUE, useBytes = TRUE))
+  testthat::expect_false(grepl("ortak_sunum_uretim_durum_metni(iyimser$ad, by_odasi = FALSE)", txt, fixed = TRUE, useBytes = TRUE))
+})
