@@ -234,6 +234,7 @@ testthat::test_that("başlangıç şeridi sunucu gözlemcisi çözümü işler v
   lane_js <- .read_repo_text_startup_lane("www/js/app_loading_lane.js")
   testthat::expect_true(.startup_lane_has(lane_js, "getSource"))
   testthat::expect_true(.startup_lane_has(lane_js, "resolvedSource"))
+  testthat::expect_true(.startup_lane_has(lane_js, 'resolvedSource = opts.source || "stored"'))
 
   # Şerit çözülmeden intro kararı gönderilmez; hızlı şerit intro'yu atlar
   testthat::expect_true(.startup_lane_has(lane_txt, "window.MergenStartupLane"))
