@@ -114,7 +114,8 @@ oo_by_ilerleme_kayitlari <- function(parca, durum = NULL) {
       durum$araclar[[anahtar]] <- list(
         baslik = kayit$v,
         detay = kayit$d,
-        parcali_json = character(0)
+        parcali_json = character(0),
+        yayinlandi = nzchar(as.character(kayit$d %||% "")[1])
       )
       # stream-json tool_use başlangıcında araç girdisi çoğunlukla boştur;
       # komut/yol bilgisi sonraki input_json_delta parçalarıyla gelir. Boş
@@ -136,7 +137,8 @@ oo_by_ilerleme_kayitlari <- function(parca, durum = NULL) {
       mevcut <- durum$araclar[[anahtar]] %||% list(
         baslik = "Araç",
         detay = "",
-        parcali_json = character(0)
+        parcali_json = character(0),
+        yayinlandi = FALSE
       )
       mevcut$parcali_json <- c(
         mevcut$parcali_json %||% character(0),
@@ -149,11 +151,13 @@ oo_by_ilerleme_kayitlari <- function(parca, durum = NULL) {
 
   if (identical(tip, "content_block_stop")) {
     anahtar <- blok_anahtari(parca)
+    yayinlandi <- !is.null(durum) && !is.null(durum$araclar) &&
+      isTRUE(durum$araclar[[anahtar]]$yayinlandi %||% FALSE)
     kayit <- arac_kaydi_durumdan(anahtar)
     if (!is.null(durum) && !is.null(durum$araclar)) {
       durum$araclar[[anahtar]] <- NULL
     }
-    if (is.null(kayit)) {
+    if (is.null(kayit) || isTRUE(yayinlandi)) {
       return(list())
     }
     return(list(kayit))

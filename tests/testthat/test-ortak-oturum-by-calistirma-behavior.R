@@ -153,6 +153,17 @@ test_that("stream-json araç girdisi deltaları tamamlanmış komut ayrıntısı
   expect_length(bitis, 1L)
   expect_identical(bitis[[1]]$v, "Kabuk Komutu")
   expect_identical(bitis[[1]]$d, "npm test")
+
+  dolu_durum <- new.env(parent = emptyenv())
+  dolu_durum$araclar <- list()
+  hemen <- oo_by_ilerleme_kayitlari(list(
+    tip = "tool_use", arac_adi = "Bash", arac_turu = "bash",
+    komut = "npm test", dosya_yolu = "", girdi = list(), blok_indeks = 3L
+  ), durum = dolu_durum)
+  expect_length(hemen, 1L)
+  expect_length(oo_by_ilerleme_kayitlari(list(
+    tip = "content_block_stop", blok_indeks = 3L
+  ), durum = dolu_durum), 0L)
 })
 
 test_that("canlı ilerleme metni araç satırları + metin kuyruğunu sınırlı üretir", {
