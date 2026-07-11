@@ -42,7 +42,7 @@ ortak_by_calistirma_yan_dosyasi <- function(oturum_id, istek_id, tur = c("durdur
 #   list(t = "metin", v = "...")                      -> asistan metin deltası
 #   list(t = "arac",  v = "Kabuk Komutu", d = "npm…") -> araç kullanımı
 # Görüntülenmeyecek parçalar boş liste döndürür.
-oo_by_ilerleme_kayitlari <- function(parca) {
+oo_by_ilerleme_kayitlari <- function(parca, durum = NULL) {
   if (!is.list(parca)) {
     return(list())
   }
@@ -71,6 +71,29 @@ oo_by_ilerleme_kayitlari <- function(parca) {
     list(t = "arac", v = baslik, d = detay)
   }
 
+  blok_anahtari <- function(x) {
+    as.character(x$blok_indeks %||% x$index %||% 0L)[1]
+  }
+
+  arac_kaydi_durumdan <- function(anahtar) {
+    if (is.null(durum) || is.null(durum$araclar) || is.null(durum$araclar[[anahtar]])) {
+      return(NULL)
+    }
+    arac <- durum$araclar[[anahtar]]
+    parcali_json <- paste(arac$parcali_json %||% character(0), collapse = "")
+    detay <- as.character(arac$detay %||% "")[1]
+    if (!nzchar(detay) && nzchar(parcali_json) && requireNamespace("jsonlite", quietly = TRUE)) {
+      girdi <- tryCatch(jsonlite::fromJSON(parcali_json, simplifyVector = FALSE), error = function(e) NULL)
+      if (is.list(girdi)) {
+        detay <- as.character(
+          girdi$command %||% girdi$cmd %||% girdi$file_path %||%
+            girdi$path %||% girdi$pattern %||% ""
+        )[1]
+      }
+    }
+    list(t = "arac", v = as.character(arac$baslik %||% "Araç")[1], d = detay)
+  }
+
   tip <- as.character(parca$tip %||% "")[1]
 
   if (tip %in% c("text_delta", "text")) {
@@ -82,7 +105,58 @@ oo_by_ilerleme_kayitlari <- function(parca) {
   }
 
   if (identical(tip, "tool_use")) {
-    return(list(arac_kaydi(parca)))
+    kayit <- arac_kaydi(parca)
+    if (!is.null(durum)) {
+      anahtar <- blok_anahtari(parca)
+      if (is.null(durum$araclar)) {
+        durum$araclar <- list()
+      }
+      durum$araclar[[anahtar]] <- list(
+        baslik = kayit$v,
+        detay = kayit$d,
+        parcali_json = character(0)
+      )
+      # stream-json tool_use başlangıcında araç girdisi çoğunlukla boştur;
+      # komut/yol bilgisi sonraki input_json_delta parçalarıyla gelir. Boş
+      # ayrıntılı bir araç satırını hemen yayınlamak yerine content_block_stop
+      # anında tamamlanmış ayrıntıyla yayınla.
+      if (!nzchar(as.character(kayit$d %||% "")[1])) {
+        return(list())
+      }
+    }
+    return(list(kayit))
+  }
+
+  if (identical(tip, "tool_input_delta")) {
+    if (!is.null(durum)) {
+      anahtar <- blok_anahtari(parca)
+      if (is.null(durum$araclar)) {
+        durum$araclar <- list()
+      }
+      mevcut <- durum$araclar[[anahtar]] %||% list(
+        baslik = "Araç",
+        detay = "",
+        parcali_json = character(0)
+      )
+      mevcut$parcali_json <- c(
+        mevcut$parcali_json %||% character(0),
+        as.character(parca$parcali_json %||% "")[1]
+      )
+      durum$araclar[[anahtar]] <- mevcut
+    }
+    return(list())
+  }
+
+  if (identical(tip, "content_block_stop")) {
+    anahtar <- blok_anahtari(parca)
+    kayit <- arac_kaydi_durumdan(anahtar)
+    if (!is.null(durum) && !is.null(durum$araclar)) {
+      durum$araclar[[anahtar]] <- NULL
+    }
+    if (is.null(kayit)) {
+      return(list())
+    }
+    return(list(kayit))
   }
 
   if (identical(tip, "assistant") && is.list(parca$bloklar)) {

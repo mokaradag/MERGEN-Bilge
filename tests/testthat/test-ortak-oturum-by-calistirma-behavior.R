@@ -130,6 +130,31 @@ test_that("akış parçaları ilerleme kayıtlarına çevrilir (metin + araç)",
   expect_length(oo_by_ilerleme_kayitlari(NULL), 0L)
 })
 
+test_that("stream-json araç girdisi deltaları tamamlanmış komut ayrıntısıyla yayınlanır", {
+  durum <- new.env(parent = emptyenv())
+  durum$araclar <- list()
+
+  baslangic <- oo_by_ilerleme_kayitlari(list(
+    tip = "tool_use", arac_adi = "Bash", arac_turu = "bash",
+    komut = "", dosya_yolu = "", girdi = list(), blok_indeks = 2L
+  ), durum = durum)
+  expect_length(baslangic, 0L)
+
+  expect_length(oo_by_ilerleme_kayitlari(list(
+    tip = "tool_input_delta", parcali_json = '{"command":"npm ', blok_indeks = 2L
+  ), durum = durum), 0L)
+  expect_length(oo_by_ilerleme_kayitlari(list(
+    tip = "tool_input_delta", parcali_json = 'test"}', blok_indeks = 2L
+  ), durum = durum), 0L)
+
+  bitis <- oo_by_ilerleme_kayitlari(list(
+    tip = "content_block_stop", blok_indeks = 2L
+  ), durum = durum)
+  expect_length(bitis, 1L)
+  expect_identical(bitis[[1]]$v, "Kabuk Komutu")
+  expect_identical(bitis[[1]]$d, "npm test")
+})
+
 test_that("canlı ilerleme metni araç satırları + metin kuyruğunu sınırlı üretir", {
   kayit_json <- function(x) as.character(jsonlite::toJSON(x, auto_unbox = TRUE))
 
@@ -203,7 +228,8 @@ test_that("BY köprüsü gerçek akış boru hattını kullanır ve ilerlemeyi o
   expect_true(grepl("run_claude_code_streaming(", kopru, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("stop_file = durdurma_dosyasi", kopru, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("on_chunk = function(parca)", kopru, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("oo_by_ilerleme_kayitlari(parca)", kopru, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("oo_by_ilerleme_kayitlari(parca, durum = ilerleme_durumu)", kopru, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("ilerleme_durumu", kopru, fixed = TRUE, useBytes = TRUE))
 
   # Canlı ilerleme KismiYanit üzerinden TÜM katılımcılara yayınlanır.
   expect_true(grepl("ortak_db_uretim_kismi_yanit_guncelle", kopru, fixed = TRUE, useBytes = TRUE))
@@ -213,6 +239,7 @@ test_that("BY köprüsü gerçek akış boru hattını kullanır ve ilerlemeyi o
   # açık hata mesajıyla motor$tamamla yoluna düşer.
   expect_true(grepl("Çalıştırma tamamlama hatası", kopru, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("sonuç kaydı güvenli biçimde işlenemedi; kilit bırakıldı", kopru, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("Başarısız çalıştırma kaydı yazılamadı", kopru, fixed = TRUE, useBytes = TRUE))
 
   # CLI yolu NA dönerse nzchar(NA) ile üretim callback'i kırılmamalı.
   expect_true(grepl("is.na(cli) || !nzchar(cli)", kopru, fixed = TRUE, useBytes = TRUE))
