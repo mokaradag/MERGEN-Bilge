@@ -121,11 +121,29 @@ test_that("akış parçaları ilerleme kayıtlarına çevrilir (metin + araç)",
   ))
   expect_identical(cmd[[1]]$d, "R CMD check")
 
+  bos_command_cmd <- oo_by_ilerleme_kayitlari(list(
+    tip = "tool_use", arac_adi = "Shell", arac_turu = "bash",
+    komut = "", dosya_yolu = "", girdi = list(command = "", cmd = "Rscript app.R")
+  ))
+  expect_identical(bos_command_cmd[[1]]$d, "Rscript app.R")
+
   arama <- oo_by_ilerleme_kayitlari(list(
     tip = "tool_use", arac_adi = "Search", arac_turu = "search",
     komut = "", dosya_yolu = "", girdi = list(query = "ortak oturum")
   ))
   expect_identical(arama[[1]]$d, "ortak oturum")
+
+  bos_pattern_query <- oo_by_ilerleme_kayitlari(list(
+    tip = "tool_use", arac_adi = "Search", arac_turu = "search",
+    komut = "", dosya_yolu = "", girdi = list(pattern = "", query = "Bilge Yolaç")
+  ))
+  expect_identical(bos_pattern_query[[1]]$d, "Bilge Yolaç")
+
+  na_ayrinti <- oo_by_ilerleme_kayitlari(list(
+    tip = "tool_use", arac_adi = "Bash", arac_turu = "bash",
+    komut = NA_character_, dosya_yolu = "", girdi = list(command = NA_character_)
+  ))
+  expect_identical(na_ayrinti[[1]]$d, "")
 
   # Asistan toplu bloğu: içindeki tool_use kayıtları yayınlanır.
   toplu <- oo_by_ilerleme_kayitlari(list(
@@ -182,6 +200,21 @@ test_that("stream-json araç girdisi deltaları tamamlanmış komut ayrıntısı
   ), durum = cmd_durum)
   expect_length(cmd_bitis, 1L)
   expect_identical(cmd_bitis[[1]]$d, "python -m pytest")
+
+  bos_durum <- new.env(parent = emptyenv())
+  bos_durum$araclar <- list()
+  expect_length(oo_by_ilerleme_kayitlari(list(
+    tip = "tool_use", arac_adi = "Search", arac_turu = "search",
+    komut = "", dosya_yolu = "", girdi = list(), blok_indeks = 5L
+  ), durum = bos_durum), 0L)
+  expect_length(oo_by_ilerleme_kayitlari(list(
+    tip = "tool_input_delta", parcali_json = '{"pattern":"","query":"arama terimi"}', blok_indeks = 5L
+  ), durum = bos_durum), 0L)
+  bos_bitis <- oo_by_ilerleme_kayitlari(list(
+    tip = "content_block_stop", blok_indeks = 5L
+  ), durum = bos_durum)
+  expect_length(bos_bitis, 1L)
+  expect_identical(bos_bitis[[1]]$d, "arama terimi")
 
   dolu_durum <- new.env(parent = emptyenv())
   dolu_durum$araclar <- list()
