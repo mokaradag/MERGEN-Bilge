@@ -143,7 +143,14 @@
     if (!lane) return;
 
     resolvedLane = lane;
-    resolvedSource = opts.source || resolvedSource || "stored";
+    // Kaynak da şerit gibi mevcut çözümün parçasıdır. Ayarlar sayfası veya
+    // dış API üzerinden yapılan programatik değişimlerde eski kaynağı
+    // (özellikle env_default) taşımak, sonraki köprülerin kullanıcı seçimini
+    // dağıtım varsayılanı gibi yorumlamasına yol açabilir. Açık source yoksa
+    // kalıcı yazılan değişimleri kullanıcı tercihi (stored), kalıcı olmayan
+    // canlı uygulamaları da mevcut kullanıcı durumunun güncellenmesi olarak
+    // işaretle; eski kaynağı koruma.
+    resolvedSource = opts.source || "stored";
     if (opts.persist === true) {
       persistLane(lane);
     }
