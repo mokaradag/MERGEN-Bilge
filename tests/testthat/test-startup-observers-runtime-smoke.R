@@ -474,6 +474,13 @@ testthat::test_that("hızlı şeritte ısıtma kimliği çalıştırma anında y
     identity_state$user_id <- 0L
     session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
     testthat::expect_identical(rec$preview, 0L)
+
+    # Geçersiz kimlik denemesi idempotent kapıyı tüketmemeli; SSO kimliği
+    # sonradan hazır olduğunda yeni istemci sinyali ön izlemeyi başlatabilmeli.
+    identity_state$user_id <- 84L
+    session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 2))
+    testthat::expect_identical(rec$preview, 1L)
+    testthat::expect_identical(rec$preview_user_ids, 84L)
   })
 })
 

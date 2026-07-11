@@ -239,7 +239,6 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		if (session_closed()) {
 		  return(invisible(FALSE))
 		}
-		startup_state$preview_hydration_started <- TRUE
 
 		# Kimlik ısıtma anında yeniden çözülür; geçersiz kimlikle sorgu açılmaz.
 		hydration_user_id <- resolve_current_user_id()
@@ -247,6 +246,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  cat("[STARTUP] Ön izleme ısıtması: geçerli kullanıcı kimliği yok, atlandı\n")
 		  return(invisible(FALSE))
 		}
+		startup_state$preview_hydration_started <- TRUE
 		startup_state$preview_hydration_user_id <- hydration_user_id
 
 		dispatch_started <- Sys.time()
@@ -280,6 +280,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		))
 
 		if (is.null(preview_promise)) {
+		  startup_state$preview_hydration_started <- FALSE
+		  startup_state$preview_hydration_user_id <- NULL
 		  return(invisible(FALSE))
 		}
 
