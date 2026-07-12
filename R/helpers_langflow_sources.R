@@ -46,7 +46,10 @@
   title <- .langflow_source_field(doc, c("title", "name", "file_name", "filename", "display_name"))
   path <- .langflow_source_field(doc, c("file_path", "filepath", "path", "source", "file"))
   path_like <- function(x) {
-    nzchar(x) && (grepl("[\\/]", x) || nzchar(tools::file_ext(gsub("\\\\", "/", x))))
+    val <- trimws(as.character(x %||% "")[1])
+    if (is.na(val) || !nzchar(val) || grepl("^[A-Za-z][A-Za-z0-9+.-]*://", val)) return(FALSE)
+    ext <- tolower(tools::file_ext(gsub("\\\\", "/", val)))
+    ext %in% c("pdf", "doc", "docx", "docm", "txt", "csv", "xls", "xlsx", "ppt", "pptx") || grepl("[\\/]", val)
   }
   page <- .langflow_source_field(doc, c("page", "page_number", "page_label", "sayfa"))
   type <- .langflow_source_field(doc, c("type", "file_type", "filetype", "tur"))
@@ -127,6 +130,9 @@
 # belge sözlükleri taşır. Kayıtlar (yol|başlık, sayfa) anahtarıyla teklenir ve
 # max_sources ile sınırlanır. Kaynak bulunamazsa boş liste döner.
 extract_langflow_chat_sources <- function(parsed, max_sources = 20L) {
+  max_sources <- suppressWarnings(as.integer(max_sources[1]))
+  if (is.na(max_sources) || max_sources < 1L) return(list())
+
   arrays <- .langflow_source_candidate_arrays(parsed)
   if (!length(arrays)) return(list())
 
@@ -143,8 +149,9 @@ extract_langflow_chat_sources <- function(parsed, max_sources = 20L) {
     invisible(NULL)
   }
 
+  source_keys <- c("title", "name", "file_name", "filename", "display_name", "file_path", "filepath", "path", "source", "file")
   for (arr in arrays) {
-    if (is.list(arr) && !is.null(names(arr)) && !any(vapply(arr, is.list, logical(1)))) {
+    if (is.list(arr) && !is.null(names(arr)) && any(names(arr) %in% source_keys)) {
       arr <- list(arr)
     }
     for (item in arr) {
@@ -183,9 +190,22 @@ mergen_langflow_safe_sources <- function(parsed) {
   if (is.na(val)) "" else val
 }
 
+# İşaretleyici satırının uygulama tarafından üretildiğini doğrulamak için
+# deterministik bütünlük kodu. Bu bir sır/kimlik doğrulama sınırı değildir;
+# görünür sabit imza yerine satır alanlarının bozulmadığını ve rastgele/model
+# üretimi Kaynakça metinlerinin yükseltilmemesini sağlayan dar bir kapıdır.
+.kaynakca_marker_code <- function(title, path, page = "", type = "") {
+  payload <- paste(enc2utf8(c(title, path, page, type, "MERGEN_LANGFLOW_SOURCE_V1")), collapse = "\n")
+  if (requireNamespace("openssl", quietly = TRUE)) {
+    return(substr(paste(openssl::sha256(charToRaw(payload)), collapse = ""), 1L, 16L))
+  }
+  ints <- utf8ToInt(payload)
+  sprintf("%08x", sum((ints %% 251L) * seq_along(ints)) %% 4294967295)
+}
+
 # Kaynak kayıtlarından mesaj sonuna eklenecek düz metin Kaynakça işaretleyici
 # bloğunu üretir. Kayıt yoksa "" döner. Biçim (satır başına bir kaynak):
-#   [KAYNAK 1] Başlık | yol=göreli/yol.pdf | sayfa=3 | tur=pdf
+#   [KAYNAK 1] Başlık | yol=göreli/yol.pdf | kod=<bütünlük-kodu> | sayfa=3 | tur=pdf
 mergen_langflow_kaynakca_marker_block <- function(sources) {
   if (!is.list(sources) || !length(sources)) return("")
 
@@ -199,10 +219,12 @@ mergen_langflow_kaynakca_marker_block <- function(sources) {
     path <- .kaynakca_marker_sanitize(rec$path)
     if (!nzchar(path) && grepl("\\.[A-Za-z0-9]{1,8}$", title)) path <- title
     if (!nzchar(path)) next
-    line <- paste0(line, " | yol=", path, " | imza=mergen")
     page <- .kaynakca_marker_sanitize(rec$page)
-    if (grepl("^[0-9]+$", page)) line <- paste0(line, " | sayfa=", page)
+    if (!grepl("^[0-9]+$", page)) page <- ""
     type <- tolower(gsub("[^a-z0-9]", "", .kaynakca_marker_sanitize(rec$type)))
+    code <- .kaynakca_marker_code(title, path, page, type)
+    line <- paste0(line, " | yol=", path, " | kod=", code)
+    if (nzchar(page)) line <- paste0(line, " | sayfa=", page)
     if (nzchar(type)) line <- paste0(line, " | tur=", type)
 
     lines <- c(lines, line)
@@ -240,19 +262,19 @@ mergen_kaynakca_marker_split <- function(content) {
     rec <- list(title = title, path = "", page = "", type = "")
     if (length(parts) > 1) {
       for (fld in parts[-1]) {
-        fm <- regmatches(fld, regexec("^(yol|sayfa|tur|imza)=(.*)$", fld, perl = TRUE))[[1]]
+        fm <- regmatches(fld, regexec("^(yol|sayfa|tur|kod)=(.*)$", fld, perl = TRUE))[[1]]
         if (length(fm) != 3) return(NULL)
         if (identical(fm[2], "sayfa") && !grepl("^[0-9]+$", trimws(fm[3]))) return(NULL)
-        if (identical(fm[2], "imza")) {
-          if (!identical(trimws(fm[3]), "mergen")) return(NULL)
-          rec$signature <- "mergen"
+        if (identical(fm[2], "kod")) {
+          rec$code <- trimws(fm[3])
         } else {
           rec[[c(yol = "path", sayfa = "page", tur = "type")[[fm[2]]]]] <- trimws(fm[3])
         }
       }
     }
-    if (!identical(rec$signature, "mergen") || !nzchar(rec$path)) return(NULL)
-    rec$signature <- NULL
+    expected_code <- .kaynakca_marker_code(rec$title, rec$path, rec$page, rec$type)
+    if (!nzchar(rec$path) || !identical(rec$code, expected_code)) return(NULL)
+    rec$code <- NULL
     entries[[length(entries) + 1L]] <- rec
   }
 

@@ -121,6 +121,16 @@ test_that("extract_langflow_chat_sources kaynak uydurmaz: üstveri yoksa/ilgisiz
     sources = list(list(source = "OpenAIModelComponent"))
   ))
   expect_length(env$extract_langflow_chat_sources(source_scalar), 0L)
+
+  url_source <- .langflow_sources_response(message_extra = list(
+    sources = list(list(title = "Dış URL", source = "https://example.invalid/doc.pdf"))
+  ))
+  expect_length(env$extract_langflow_chat_sources(url_source), 0L)
+
+  executable_name <- .langflow_sources_response(message_extra = list(
+    sources = list(list(name = "kurulum.exe"))
+  ))
+  expect_length(env$extract_langflow_chat_sources(executable_name), 0L)
 })
 
 test_that("extract_langflow_chat_sources kayıtları (yol, sayfa) anahtarıyla tekler ve üst sınırı uygular", {
@@ -140,6 +150,8 @@ test_that("extract_langflow_chat_sources kayıtları (yol, sayfa) anahtarıyla t
     sources = lapply(seq_len(30), function(i) list(name = paste0("dok", i, ".pdf")))
   ))
   expect_length(env$extract_langflow_chat_sources(many), 20L)
+  expect_length(env$extract_langflow_chat_sources(many, max_sources = NA), 0L)
+  expect_length(env$extract_langflow_chat_sources(many, max_sources = 0), 0L)
 })
 
 test_that("call_langflow_chat başarı sonucunda sources alanını taşır (yapı sözleşmesi)", {
@@ -170,9 +182,9 @@ test_that("mergen_langflow_kaynakca_marker_block düz metin işaretleyici bloğu
   ))
 
   expect_match(blok, "\n\nKaynakça:\n", fixed = TRUE)
-  expect_match(blok, "[KAYNAK 1] Kalite Prosedürü | yol=surecler/kalite/prosedur.pdf | imza=mergen | sayfa=3 | tur=pdf", fixed = TRUE)
+  expect_match(blok, "\\[KAYNAK 1\\] Kalite Prosedürü \\| yol=surecler/kalite/prosedur\\.pdf \\| kod=[0-9a-f]+ \\| sayfa=3 \\| tur=pdf")
   # Başlıktaki '|' ve köşeli parantezler işaretleyici gramerini bozamaz.
-  expect_match(blok, "[KAYNAK 2] Kılavuz taslak | yol=rehber/kilavuz.docx | imza=mergen | tur=docx", fixed = TRUE)
+  expect_match(blok, "\\[KAYNAK 2\\] Kılavuz taslak \\| yol=rehber/kilavuz\\.docx \\| kod=[0-9a-f]+ \\| tur=docx")
 
   expect_identical(env$mergen_langflow_kaynakca_marker_block(list()), "")
   expect_identical(env$mergen_langflow_kaynakca_marker_block(NULL), "")
@@ -184,9 +196,11 @@ test_that("mergen_kaynakca_marker_split yalnızca mesaj sonundaki geçerli bloğ
   env <- .source_langflow_sources_env()
 
   full <- paste0(
-    "Cevap metni.\n\nKaynakça:\n",
-    "[KAYNAK 1] Prosedür | yol=a/b.pdf | imza=mergen | sayfa=3 | tur=pdf\n",
-    "[KAYNAK 2] Kılavuz | yol=c/d.docx | imza=mergen | tur=docx\n"
+    "Cevap metni.",
+    env$mergen_langflow_kaynakca_marker_block(list(
+      list(title = "Prosedür", path = "a/b.pdf", page = "3", type = "pdf"),
+      list(title = "Kılavuz", path = "c/d.docx", page = "", type = "docx")
+    ))
   )
   sp <- env$mergen_kaynakca_marker_split(full)
   expect_false(is.null(sp))
@@ -203,10 +217,16 @@ test_that("mergen_kaynakca_marker_split yalnızca mesaj sonundaki geçerli bloğ
   # Modelin kendi yazdığı düz Kaynakça listesi ([KAYNAK ...] satırı yok) yükseltilmez.
   expect_null(env$mergen_kaynakca_marker_split("Cevap.\n\nKaynakça:\n1) dosya.pdf\n"))
 
-  # Üretim imzası olmayan [KAYNAK] benzeri metin tıklanabilir kaynağa yükseltilmez.
+  # Bütünlük kodu olmayan [KAYNAK] benzeri metin tıklanabilir kaynağa yükseltilmez.
   expect_null(env$mergen_kaynakca_marker_split(
     "Cevap.\n\nKaynakça:\n[KAYNAK 1] Başlık | yol=a.pdf | tur=pdf\n"
   ))
+
+  tampered <- paste0("Cevap.", env$mergen_langflow_kaynakca_marker_block(list(
+    list(title = "Başlık", path = "a.pdf", page = "", type = "pdf")
+  )))
+  tampered <- sub("Başlık", "Başka Başlık", tampered, fixed = TRUE)
+  expect_null(env$mergen_kaynakca_marker_split(tampered))
 
   # Bilinmeyen alan anahtarı: blok tümüyle reddedilir (kısmi yükseltme yok).
   expect_null(env$mergen_kaynakca_marker_split(
@@ -214,14 +234,17 @@ test_that("mergen_kaynakca_marker_split yalnızca mesaj sonundaki geçerli bloğ
   ))
 
   # Rakam olmayan sayfa değeri de bloğu geçersiz kılar.
-  expect_null(env$mergen_kaynakca_marker_split(
-    "Cevap.\n\nKaynakça:\n[KAYNAK 1] Başlık | yol=a.pdf | imza=mergen | sayfa=abc\n"
-  ))
+  bad_page <- paste0("Cevap.", env$mergen_langflow_kaynakca_marker_block(list(
+    list(title = "Başlık", path = "a.pdf", page = "1", type = "")
+  )))
+  bad_page <- sub("sayfa=1", "sayfa=abc", bad_page, fixed = TRUE)
+  expect_null(env$mergen_kaynakca_marker_split(bad_page))
 
   # Blok mesajın SONUNDA değilse ayrılmaz.
-  expect_null(env$mergen_kaynakca_marker_split(
-    "Cevap.\n\nKaynakça:\n[KAYNAK 1] Başlık | yol=a.pdf | imza=mergen | tur=pdf\n\nDevam eden metin."
-  ))
+  trailing <- paste0("Cevap.", env$mergen_langflow_kaynakca_marker_block(list(
+    list(title = "Başlık", path = "a.pdf", page = "", type = "pdf")
+  )), "\nDevam eden metin.")
+  expect_null(env$mergen_kaynakca_marker_split(trailing))
 })
 
 test_that("mergen_kaynakca_marker_html mevcut tıklanabilir kaynak işaretlemesini (source-link) güvenli biçimde üretir", {
@@ -319,7 +342,9 @@ test_that("process_message_content kullanıcı mesajını ve kaynaksız yanıtı
     source(file.path(repo_root, f), encoding = "UTF-8", local = env)
   }
 
-  marker_text <- "Metin.\n\nKaynakça:\n[KAYNAK 1] Deneme | yol=a/b.pdf | imza=mergen | tur=pdf\n"
+  marker_text <- paste0("Metin.", env$mergen_langflow_kaynakca_marker_block(list(
+    list(title = "Deneme", path = "a/b.pdf", page = "", type = "pdf")
+  )))
 
   # Kullanıcı mesajı ASLA tıklanabilir kaynağa yükseltilmez.
   user_out <- env$process_message_content(marker_text, "user")
