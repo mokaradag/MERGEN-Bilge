@@ -38,7 +38,10 @@ app_loading_asset_path <- function(rel_path) {
     candidates <- c(candidates, env_root)
   }
 
-  cwd <- tryCatch(getwd(), error = function(e) "")
+  cwd <- base::try(getwd(), silent = TRUE)
+  if (inherits(cwd, "try-error")) {
+    cwd <- ""
+  }
   if (nzchar(cwd)) {
     current <- normalizePath(cwd, winslash = "/", mustWork = FALSE)
     repeat {

@@ -117,7 +117,10 @@ testthat::test_that("app_loading_asset çalışma dizini alt klasördeyken repo 
   dir.create(file.path(tmp, "www", "js"), recursive = TRUE, showWarnings = FALSE)
   dir.create(file.path(tmp, "alt", "ic"), recursive = TRUE, showWarnings = FALSE)
   hedef <- file.path(tmp, "www", "js", "app_loading_nested_fixture.js")
-  writeLines("window.__mergen_nested_fixture = 'Çağrı';", hedef, useBytes = TRUE)
+  writeBin(
+    charToRaw(enc2utf8("window.__mergen_nested_fixture = 'Çağrı';")),
+    hedef
+  )
 
   okunan <- withr::with_dir(
     file.path(tmp, "alt", "ic"),
@@ -134,7 +137,11 @@ testthat::test_that("app_loading_asset MERGEN_REPO_ROOT adayını çalışma diz
   cwd <- file.path(tmp, "baska_yer")
   dir.create(file.path(repo, "www", "css"), recursive = TRUE, showWarnings = FALSE)
   dir.create(cwd, recursive = TRUE, showWarnings = FALSE)
-  writeLines("/* Şerit varlığı */", file.path(repo, "www", "css", "lane.css"), useBytes = TRUE)
+  hedef <- file.path(repo, "www", "css", "lane.css")
+  writeBin(
+    charToRaw(enc2utf8("/* Şerit varlığı */")),
+    hedef
+  )
 
   okunan <- withr::with_envvar(
     c(MERGEN_REPO_ROOT = repo),
