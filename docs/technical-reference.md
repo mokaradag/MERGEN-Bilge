@@ -1083,14 +1083,16 @@ Ayrıştırma ve seçim sözleşmesi (`mergen_parse_langflow_process_flows`, `R/
 
 Langflow yanıtı belge kaynak üstverisi içeriyorsa (desteklenen şekiller: `results$message$sources`, `results$message$data$sources`, `artifacts$sources`, üst düzey `sources`; `source_documents` anahtarı ve eski `metadata` dizisi biçimi dahil), `extract_langflow_chat_sources()` (`R/helpers_langflow_sources.R`) her kayıttan başlık/yol/sayfa/tür alanlarını çıkarır. Kaynak **uydurulmaz**: ad/yol içermeyen öğeler ve `properties$source` (model bilgisi) yok sayılır; kayıtlar (yol, sayfa) anahtarıyla teklenir.
 
-Kaynaklar mesaj içeriğine düz metin işaretleyici bloğu olarak eklenir (DB'ye de bu biçim yazılır):
+Kaynaklar mesaj içeriğine düz metin işaretleyici bloğu olarak eklenir (DB'ye de bu biçim yazılır). `openssl` mevcutsa `yol=` alanından sonra deterministik bir bütünlük kodu (`kod=<hash>`) yazılır; bu kod, modelin uydurduğu sahte `[KAYNAK n]` metninin tıklanabilir kaynağa yükseltilmesini engeller (ayrıştırıcı kodu yeniden hesaplayıp doğrular):
 
 ```text
 Kaynakça:
-[KAYNAK 1] Doküman Başlığı | yol=surecler/kalite/prosedur.pdf | sayfa=3 | tur=pdf
+[KAYNAK 1] Doküman Başlığı | yol=surecler/kalite/prosedur.pdf | kod=<bütünlük-kodu> | sayfa=3 | tur=pdf
 ```
 
-Render sırasında `process_message_content()` bu bloğu güvenli tıklanabilir `.kaynakca-entry` / `.source-link` HTML'ine yükseltir (tüm değerler kaçışlı; ham HTML asla geçirilmez; kullanıcı mesajları asla yükseltilmez; grameri bozuk blok düz metin kalır). Tıklama, mevcut güvenli mekanizmadan geçer: `source_file_clicked` -> `handle_source_file_click()` -> kullanıcı kovası + model taban klasörleriyle sınırlı çözümleme -> `openAnyPreview()` (PDF/Word önizleme). Tıklama ipucundaki `..`/sürücü/kök parçaları ayıklandığı için işaretleyici izinli kökler dışına gezinme ipucu üretemez. İçerik işaretleyiciyle kalıcılaştığı için kayıtlı sohbet yeniden yüklemesinde de Kaynakça tıklanabilir kalır.
+Render sırasında `process_message_content()` bu bloğu güvenli tıklanabilir `.kaynakca-entry` / `.source-link` HTML'ine yükseltir (tüm değerler kaçışlı; ham HTML asla geçirilmez; kullanıcı mesajları asla yükseltilmez; bütünlük kodu geçersiz/eksik olan blok düz metin kalır). Dosya adındaki köşeli parantezler (`Prosedür [Rev 2].pdf`) korunur; yalnızca `|` alan ayracı ve satır sonları temizlenir. Tıklama, mevcut güvenli mekanizmadan geçer: `source_file_clicked` -> `handle_source_file_click()` -> kullanıcı kovası + model taban klasörleriyle sınırlı çözümleme -> `openAnyPreview()` (PDF/Word önizleme). Tıklama ipucundaki `..`/sürücü/kök parçaları ayıklandığı için işaretleyici izinli kökler dışına gezinme ipucu üretemez. İçerik işaretleyiciyle kalıcılaştığı için kayıtlı sohbet yeniden yüklemesinde de Kaynakça tıklanabilir kalır.
+
+Ortak oturum (Süreç/Uygulama Uzmanı) odalarında da aynı Kaynakça üretilir: `oo_arac_langflow_uret()` yanıt metnine işaretleyici bloğunu ekler, `oo_mesaj_html()` bunu `render_safe_markdown_html()` düzyazısıyla birlikte tıklanabilir HTML'e yükseltir. Ancak ORTAK odada `.source-link` `data-source-scope="model_bases"` taşır: tıklama çözümlemesi KİŞİSEL kullanıcı kovasını ATLAR ve yalnızca kurumsal model taban klasörlerinde arar. Böylece bir katılımcının oluşturduğu atıf, tıklayan başka bir katılımcının kişisel dosyalarına çözümlenemez (çapraz-kullanıcı sızıntısı önlenir). Tekil sohbet varsayılan `personal` kapsamıyla mevcut davranışı korur.
 
 ---
 

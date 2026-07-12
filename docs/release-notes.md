@@ -47,15 +47,35 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   (`source_file_clicked` -> `handle_source_file_click` -> kullanıcı kovası +
   model taban klasörleri; ipuçlarındaki `..`/sürücü parçaları ayıklanır).
   Kullanıcı mesajları asla yükseltilmez; grameri bozuk blok düz metin kalır.
+- **İnceleme düzeltmeleri (P1/P2).** İşaretleyici bloğuna `openssl` bütünlük
+  kodu (`kod=<hash>`) eklendi (modelin uydurduğu sahte `[KAYNAK n]` metni artık
+  tıklanabilir kaynağa yükseltilmez); handler testi bu alanı hesaba katan
+  regex'e geçirildi. `file_name`/`filename` alanları yol adayı sayılır (yalnızca
+  başlık + dosya adı taşıyan yaygın kaynak biçimi artık reddedilmez). İşaretleyici
+  temizleyici köşeli parantezleri korur (`Prosedür [Rev 2].pdf` yol=... değerinde
+  bozulmaz).
+- **Ortak oturum kaynak yayılımı.** Süreç/Uygulama Uzmanı ortak odalarında da
+  Langflow belge kaynakları tıklanabilir Kaynakça olarak gösterilir
+  (`oo_arac_langflow_uret` işaretleyiciyi ekler, `oo_mesaj_html` yükseltir).
+  Güvenlik: ortak odadaki `.source-link` `data-source-scope="model_bases"`
+  taşır; `handle_source_file_click()` bu kapsamda kişisel kullanıcı kovasını
+  ATLAR ve yalnızca kurumsal model taban klasörlerinde çözer — böylece bir
+  katılımcının atfı, tıklayan başka bir katılımcının kişisel dosyalarına
+  çözümlenemez (çapraz-kullanıcı sızıntısı önlenir). Tekil sohbet varsayılan
+  `personal` kapsamıyla değişmez.
 - Regresyon kapsamı: `tests/testthat/test-langflow-runtime-behavior.R`
   (satır içi yorum + tam iki akış + 2. akış seçimi + UTF-8 etiketler + bozuk
   belirteç reddi + açılır menü seçenekleri),
   `tests/testthat/test-langflow-sources-behavior.R` (kaynak çıkarımı, kaynaksız
-  yanıt, işaretleyici grameri, XSS kaçışı, gezinme ipucu temizliği,
-  process_message_content entegrasyonu) ve
+  yanıt, işaretleyici grameri + bütünlük kodu, file_name yol adayı, parantez
+  koruması, XSS kaçışı, gezinme ipucu temizliği, model_bases kapsamı,
+  process_message_content entegrasyonu),
   `tests/testthat/test-langflow-handler-behavior.R` (başarı yanıtında
-  işaretleyici ekleme). Doğrulama notu: `bash tools/ai_validate.sh` bu oturumda
-  cloud-quick profiliyle koşuldu; canlı Langflow ucu, gerçek kaynak dönen akış
+  işaretleyici ekleme) ve yeni
+  `tests/testthat/test-ortak-oturum-langflow-sources-behavior.R` (oda render
+  yükseltmesi + model_bases-only tıklama çözümlemesi). Doğrulama notu:
+  `bash tools/ai_validate.sh` bu oturumda cloud-quick profiliyle koşuldu; canlı
+  Langflow ucu, gerçek kaynak dönen akış, çok kullanıcılı ortak oda tıklama akışı
   ve Windows VM açılır menü görselleri VM-üstü doğrulama gerektirir.
 
 ### (Yayınlanmadı) 2026-07-11 Açılış kabuk kapısı + Ortak Bilge Yolaç canlı ajan yenilemesi

@@ -322,6 +322,25 @@ test_that("mergen_kaynakca_marker_html mevcut tıklanabilir kaynak işaretlemesi
   expect_identical(env$mergen_kaynakca_marker_html(NULL), "")
 })
 
+test_that("mergen_kaynakca_marker_html scope='model_bases' data-source-scope özniteliği ekler; varsayılan eklemez", {
+  testthat::skip_if_not_installed("htmltools")
+  env <- .source_langflow_sources_env()
+
+  entries <- list(list(title = "Kalite Prosedürü", path = "surecler/kalite/prosedur.pdf", page = "3", type = "pdf"))
+
+  # Varsayılan (personal): mevcut tekil-sohbet davranışı, kapsam özniteliği yok.
+  personal <- env$mergen_kaynakca_marker_html(entries)
+  expect_match(personal, "class='source-link'", fixed = TRUE)
+  expect_false(grepl("data-source-scope", personal, fixed = TRUE))
+
+  # model_bases (ortak oda): kapsam özniteliği eklenir; sunucu kişisel kovayı atlar.
+  shared <- env$mergen_kaynakca_marker_html(entries, scope = "model_bases")
+  expect_match(shared, "data-source-scope='model_bases'", fixed = TRUE)
+  expect_match(shared, "class='source-link'", fixed = TRUE)
+  # Tıklama ipucu kapsamdan bağımsız aynı kalır (yalnızca çözümleme kapsamı değişir).
+  expect_match(shared, "data-filename='surecler&amp;&amp;kalite&amp;&amp;prosedur.pdf'", fixed = TRUE)
+})
+
 test_that("mergen_kaynakca_marker_html işaretleyiciden gelen değerleri kaçışlar (XSS sınırı) ve gezinme ipuçlarını temizler", {
   testthat::skip_if_not_installed("htmltools")
   env <- .source_langflow_sources_env()

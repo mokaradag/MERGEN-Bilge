@@ -320,8 +320,24 @@ mergen_kaynakca_marker_split <- function(content) {
 # htmltools::htmlEscape'ten geçer; işaretleyiciden gelen hiçbir metin ham HTML
 # olarak yorumlanmaz. Üretilen işaretleme mevcut mekanizmayla aynıdır:
 # .kaynakca-entry + .source-link (data-filename tıklama ipucu) + belge ikonu.
-mergen_kaynakca_marker_html <- function(entries) {
+#
+# scope: tıklama çözümleme kapsamı.
+#   "personal" (varsayılan): tekil sohbet davranışı — sunucu tarafı çözümleme
+#     önce kullanıcının kendi kovasını, sonra model taban klasörlerini dener.
+#   "model_bases": ORTAK oturum odaları için — .source-link'e
+#     data-source-scope="model_bases" eklenir; sunucu tarafı çözümleme kişisel
+#     kovayı ATLAR ve yalnızca kurumsal model taban klasörlerini tarar. Böylece
+#     bir katılımcının açtığı atıf, tıklayan başka bir katılımcının kişisel
+#     dosyalarına çözümlenemez (çapraz-kullanıcı sızıntısı önlenir).
+mergen_kaynakca_marker_html <- function(entries, scope = "personal") {
   if (!is.list(entries) || !length(entries)) return("")
+
+  scope <- as.character(scope %||% "personal")[1]
+  scope_attr <- if (identical(scope, "model_bases")) {
+    " data-source-scope='model_bases'"
+  } else {
+    ""
+  }
 
   entry_html <- character(0)
   for (i in seq_along(entries)) {
@@ -356,7 +372,8 @@ mergen_kaynakca_marker_html <- function(entries) {
       "<span class='source-link' data-source-id='",
       htmltools::htmlEscape(source_id, attribute = TRUE),
       "' data-filename='", htmltools::htmlEscape(hint, attribute = TRUE),
-      "' style='color:#007bff; cursor:pointer; text-decoration:underline;'>",
+      "'", scope_attr,
+      " style='color:#007bff; cursor:pointer; text-decoration:underline;'>",
       htmltools::htmlEscape(title),
       "</span>", page_html,
       "</span>"

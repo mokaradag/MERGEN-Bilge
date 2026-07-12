@@ -455,6 +455,21 @@ oo_arac_langflow_cagrisi_hazirla <- function(plan, soran_id, oturum_id, config =
   )
 }
 
+# Langflow yanıtının metnini üretir ve (varsa) belge kaynak işaretleyici bloğunu
+# ekler. İşaretleyici oda mesaj render'ında (oo_mesaj_html) tıklanabilir Kaynakça'ya
+# yükseltilir; ortak odada tıklama YALNIZCA kurumsal model taban klasörlerinde
+# çözümlenir (kişisel kullanıcı kovası taranmaz). Marker üretici yüklü değilse
+# (izole test/worker) metin olduğu gibi kalır. Bu birleştirme ANA süreçte
+# (then/senkron dal) çalışır; worker tarafına marker üretimi taşınmaz.
+.oo_langflow_yanit_metni <- function(yanit) {
+  metin <- as.character(yanit$text %||% "")[1]
+  if (exists("mergen_langflow_kaynakca_marker_block", mode = "function", inherits = TRUE)) {
+    blok <- tryCatch(mergen_langflow_kaynakca_marker_block(yanit$sources), error = function(e) "")
+    if (nzchar(blok)) metin <- paste0(metin, blok)
+  }
+  metin
+}
+
 # Langflow üretimini worker'da koşturur ve sonucu bitir_fn'e teslim eder.
 # Üretim motoru (module_ortak_oturum_yz.R) tarafından çağrılır; motorun bakım
 # bütçesini korumak için asenkron zincir burada tutulur. bitir_fn(yanit_metni=,
@@ -477,7 +492,7 @@ oo_arac_langflow_uret <- function(lf, soru_metni, session_token, bitir_fn) {
     )
     if (is.list(yanit) && isTRUE(yanit$success) &&
         nzchar(as.character(yanit$text %||% "")[1])) {
-      bitir_fn(yanit_metni = as.character(yanit$text)[1])
+      bitir_fn(yanit_metni = .oo_langflow_yanit_metni(yanit))
     } else {
       bitir_fn(hata_metni = "Langflow yanıtı üretilemedi; lütfen tekrar deneyin.")
     }
@@ -504,7 +519,7 @@ oo_arac_langflow_uret <- function(lf, soru_metni, session_token, bitir_fn) {
     function(yanit) {
       if (is.list(yanit) && isTRUE(yanit$success) &&
           nzchar(as.character(yanit$text %||% "")[1])) {
-        bitir_fn(yanit_metni = as.character(yanit$text)[1])
+        bitir_fn(yanit_metni = .oo_langflow_yanit_metni(yanit))
       } else {
         hata <- as.character(yanit$error %||% "Langflow yanıtı alınamadı.")[1]
         # Üst-akış hatası API anahtarı/uç nokta tanılaması yansıtsa bile
