@@ -89,6 +89,7 @@
 
   var stageIndex = -1;
   var finished = false;
+  var pendingFinishUntilLaneResolved = false;
   var fadeStarted = false;
   var ssoActive = false;
   var skipIntro = false;
@@ -107,6 +108,11 @@
   function laneSelectorOpen() {
     var api = laneApi();
     return !!(api && typeof api.isSelectorOpen === "function" && api.isSelectorOpen());
+  }
+
+  function laneNeedsSelection() {
+    var api = laneApi();
+    return !!(api && typeof api.needsSelection === "function" && api.needsSelection());
   }
 
   // İlerleme durumu: displayPct her zaman targetPct'e doğru ilerler ve
@@ -324,7 +330,9 @@
 
       if (msg.ready === true) {
         setStage("ready");
-        window.setTimeout(finish, 260);
+        window.setTimeout(function () {
+          finish({ deferForLane: true });
+        }, 260);
       }
     });
   }
@@ -337,6 +345,10 @@
     api.whenResolved(function () {
       markProgress();
       maybeFinishFastLane();
+      if (pendingFinishUntilLaneResolved) {
+        pendingFinishUntilLaneResolved = false;
+        window.setTimeout(finish, 0);
+      }
     });
   }
 
@@ -358,7 +370,13 @@
     }
   }
 
-  function finish() {
+  function finish(opts) {
+    opts = opts || {};
+    if (opts.deferForLane === true && !finished && (laneSelectorOpen() || laneNeedsSelection())) {
+      pendingFinishUntilLaneResolved = true;
+      markProgress();
+      return;
+    }
     if (finished) return;
     finished = true;
     overlay.classList.add("alo-complete");
