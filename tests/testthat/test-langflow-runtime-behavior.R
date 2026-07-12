@@ -29,8 +29,11 @@
 
 repo_root_langflow <- .find_langflow_test_repo_root()
 
-# %||% ve get_tool_mode_config bağımlılıkları izole koşumda yüklenmelidir.
+# %||%, get_tool_mode_config ve UTF-8 ad normalizasyonu (normalize_text_utf8)
+# bağımlılıkları izole koşumda yüklenmelidir.
 source(file.path(repo_root_langflow, "R", "utils_common.R"),
+       encoding = "UTF-8", local = globalenv())
+source(file.path(repo_root_langflow, "R", "utils_text_encoding.R"),
        encoding = "UTF-8", local = globalenv())
 source(file.path(repo_root_langflow, "R", "helpers_api_model_config.R"),
        encoding = "UTF-8", local = globalenv())
@@ -158,8 +161,9 @@ test_that("mergen_langflow_flow_id_for_family process için seçili/varsayılan 
   expect_equal(mergen_langflow_flow_id_for_family("process", config, selected_flow = "flow_2"), "flow-process-456")
   # process: id ile seçim
   expect_equal(mergen_langflow_flow_id_for_family("process", config, selected_flow = "flow-process-456"), "flow-process-456")
-  # process: bilinmeyen seçim -> varsayılan ilk akış
-  expect_equal(mergen_langflow_flow_id_for_family("process", config, selected_flow = "yok"), "flow-process-123")
+  # process: bilinmeyen AÇIK seçim -> "" (sessizce 1. akışa yönlendirilmez;
+  # işleyici net "seçili süreç akışı bulunamadı" hatası gösterir)
+  expect_equal(mergen_langflow_flow_id_for_family("process", config, selected_flow = "yok"), "")
 
   # app_expert tekil akış kimliği
   expect_equal(mergen_langflow_flow_id_for_family("app_expert", config), "af-2")
@@ -226,6 +230,111 @@ test_that("mergen_parse_langflow_process_flows boş ad konumlarını korur ve sl
   expect_equal(mid[[3]]$name, "Üç")
 })
 
+test_that("mergen_parse_langflow_process_flows kimlik değerindeki satır içi '#' yorumunu ayıklar (yorumda ';' olsa bile)", {
+  # readRenviron() satır içi yorumu değerin parçası olarak bırakır. Yorum ';'
+  # içerdiğinde eski ayrıştırıcı yorumu üçüncü bir kimlik sanıp hem 2. akışın
+  # URL'sini kirletiyor hem de sahte "Akış 3" üretiyordu.
+  flows <- mergen_parse_langflow_process_flows(
+    ids_raw = "3727f5a0-3fe2-42e4-976d-1eb671af3198;e0aac97f-1041-4463-a90d-7333fb811b71 #birinci-etiket;ikinci-etiket",
+    names_raw = "REHİS Süreç Yönetimi;ASELSAN Süreç Yönetimi"
+  )
+
+  # TAM olarak yapılandırılmış iki akış; sahte "Akış 3" yok.
+  expect_length(flows, 2L)
+  expect_false(any(vapply(flows, function(fl) identical(fl$name, "Akış 3"), logical(1))))
+
+  # 2. akışın kimliği yorum artıklarından arınmıştır ve URL güvenlidir.
+  expect_equal(flows[[2]]$id, "e0aac97f-1041-4463-a90d-7333fb811b71")
+  expect_equal(
+    build_langflow_run_url("https://langflow.example.com/api/v1/run", flows[[2]]$id),
+    "https://langflow.example.com/api/v1/run/e0aac97f-1041-4463-a90d-7333fb811b71"
+  )
+
+  # 2. akış seçimi (key ve id ile) sıradan bağımsız 2. akışı çağırır.
+  cfg <- list(langflow = list(base_url = "https://x", process_flows = flows))
+  expect_equal(mergen_langflow_process_flow_id(cfg, "flow_2"), "e0aac97f-1041-4463-a90d-7333fb811b71")
+  expect_equal(
+    mergen_langflow_process_flow_id(cfg, "e0aac97f-1041-4463-a90d-7333fb811b71"),
+    "e0aac97f-1041-4463-a90d-7333fb811b71"
+  )
+
+  # Eski tekil kimlik değişkeninde de yorum ayıklanır.
+  legacy <- mergen_parse_langflow_process_flows(ids_raw = "", legacy_id = "legacy-1 #eski not")
+  expect_length(legacy, 1L)
+  expect_equal(legacy[[1]]$id, "legacy-1")
+})
+
+test_that("mergen_parse_langflow_process_flows yorum ayıklandıktan sonra kalan bozuk belirteci net biçimde reddeder", {
+  # Yorum ayıklama sonrası hâlâ boşluk/URL-dışı karakter taşıyan belirteç bozuk
+  # yapılandırmadır. Tek belirteci atmak sonraki akışları kaydırıp seçimi yanlış
+  # akışa yönlendirebileceğinden TÜM liste reddedilir (işleyicide net hata).
+  bozuk <- mergen_parse_langflow_process_flows(
+    ids_raw = "gecerli-akis-1;bozuk akis kimligi",
+    names_raw = "Akış A;Akış B"
+  )
+  expect_length(bozuk, 0L)
+
+  # Reddedilen yapılandırmada seçim çözümlemesi de "" verir (yapılandırma eksik).
+  cfg <- list(langflow = list(
+    base_url = "https://x",
+    process_flow_ids_raw = "gecerli-akis-1;bozuk akis kimligi",
+    process_flow_names_raw = "Akış A;Akış B"
+  ))
+  expect_equal(mergen_langflow_process_flow_id(cfg, "flow_2"), "")
+})
+
+test_that("Türkçe akış adları ortam değeri yerel/1254 işaretli ham UTF-8 baytları taşısa bile mojibake olmadan çözülür", {
+  # Windows VM senaryosu: .Renviron UTF-8 kaydedilir, Sys.getenv() değeri yerel
+  # (latin1/1254) işaretli ham UTF-8 baytları olarak döner. Deterministik
+  # fixture: doğru UTF-8 baytları latin1 olarak İŞARETLENİR (bayt dizisi aynı,
+  # bildirim yanlış) — enc2utf8() bu durumda çift kodlamalı mojibake üretir.
+  dogru_ad <- "REHİS Süreç Yönetimi"  # REHİS Süreç Yönetimi
+  ham_bayt <- rawToChar(charToRaw(enc2utf8(dogru_ad)))
+  Encoding(ham_bayt) <- "latin1"
+
+  flows <- mergen_parse_langflow_process_flows(
+    ids_raw = "id-1;id-2",
+    names_raw = paste0(ham_bayt, ";ASELSAN Akışı")
+  )
+
+  expect_length(flows, 2L)
+  expect_identical(Encoding(flows[[1]]$name), "UTF-8")
+  expect_identical(flows[[1]]$name, dogru_ad)
+  # Çift kodlama artıkları (Ä, Ã¼, Ã§ ...) görünen adda bulunmaz.
+  expect_false(grepl("Ã|Ä", flows[[1]]$name))
+
+  # Değer daha üst katmanda zaten çift kodlanmış geldiyse (geçerli UTF-8 olarak
+  # "REHÄ°S SÃ¼reÃ§ ..."), mojibake onarımı orijinal Türkçe adı geri kazanır.
+  cift_kodlanmis <- enc2utf8(ham_bayt)
+  expect_true(grepl("Ã|Ä", cift_kodlanmis))  # fixture gerçekten mojibake
+  flows_cift <- mergen_parse_langflow_process_flows(ids_raw = "id-1", names_raw = cift_kodlanmis)
+  expect_identical(flows_cift[[1]]$name, dogru_ad)
+})
+
+test_that("süreç akışı açılır menü seçenekleri tam olarak yapılandırılan akışlardan üretilir (UTF-8 etiketlerle)", {
+  testthat::skip_if_not_installed("htmltools")
+
+  # ui.R'deki seçenek üretimiyle aynı eşleme: tags$option(value = key, name).
+  flows <- mergen_parse_langflow_process_flows(
+    ids_raw = "3727f5a0-3fe2-42e4-976d-1eb671af3198;e0aac97f-1041-4463-a90d-7333fb811b71 #not;etiket",
+    names_raw = "REHİS Süreç Yönetimi;ASELSAN Süreç Yönetimi"
+  )
+  options_html <- vapply(
+    flows,
+    function(fl) as.character(htmltools::tags$option(value = fl$key, fl$name)),
+    character(1)
+  )
+
+  expect_length(options_html, 2L)
+  expect_match(options_html[1], "value=\"flow_1\"")
+  expect_match(options_html[1], "REHİS Süreç Yönetimi", fixed = TRUE)
+  expect_match(options_html[2], "value=\"flow_2\"")
+  expect_match(options_html[2], "ASELSAN Süreç Yönetimi", fixed = TRUE)
+  expect_false(any(grepl("Akış 3", options_html, fixed = TRUE)))
+  # Çift kodlama göstergesi yok (Ã/Ä dizileri).
+  expect_false(any(grepl("Ã|Ä", options_html)))
+})
+
 test_that("mergen_langflow_process_flows ham env alanlarından da çözümlenir", {
   cfg_raw <- list(
     langflow = list(
@@ -250,7 +359,8 @@ test_that("mergen_langflow_process_flow_id seçim/varsayılan/boş durumlarını
   expect_equal(mergen_langflow_process_flow_id(config), "flow-process-123")
   expect_equal(mergen_langflow_process_flow_id(config, "flow_2"), "flow-process-456")
   expect_equal(mergen_langflow_process_flow_id(config, "flow-process-456"), "flow-process-456")
-  expect_equal(mergen_langflow_process_flow_id(config, "bulunamaz"), "flow-process-123")
+  # Açık ama eşleşmeyen seçim sessizce 1. akışa yönlenmez; "" döner.
+  expect_equal(mergen_langflow_process_flow_id(config, "bulunamaz"), "")
 
   # Akış yoksa "" döner (yapılandırma eksik)
   empty <- .langflow_test_config(process_flows = list())
@@ -261,7 +371,8 @@ test_that("mergen_langflow_process_flow_label görünen adı çözer (loglama i�
   config <- .langflow_test_config()
   expect_equal(mergen_langflow_process_flow_label(config), "Süreç Akışı 1")
   expect_equal(mergen_langflow_process_flow_label(config, "flow_2"), "Süreç Akışı 2")
-  expect_equal(mergen_langflow_process_flow_label(config, "yok"), "Süreç Akışı 1")
+  # Kimlik çözümlemesiyle tutarlı: eşleşmeyen açık seçim "" döndürür.
+  expect_equal(mergen_langflow_process_flow_label(config, "yok"), "")
   expect_equal(mergen_langflow_process_flow_label(.langflow_test_config(process_flows = list())), "")
 })
 

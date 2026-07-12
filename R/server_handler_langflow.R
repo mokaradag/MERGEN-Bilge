@@ -129,7 +129,22 @@ handle_langflow_chat_mode <- function(ctx) {
     ctx$values$typing <- FALSE
 
     if (isTRUE(result$success)) {
-      ctx$add_message_fn(result$text, "ai")
+      # Belge kaynakları (başlık/yol/sayfa/tür) düz metin Kaynakça işaretleyici
+      # bloğu olarak içeriğe eklenir; render sırasında process_message_content
+      # bloğu güvenli tıklanabilir .source-link HTML'ine yükseltir. İçerik DB'ye
+      # işaretleyiciyle kaydedildiği için kayıtlı sohbet yeniden yüklemesinde de
+      # aynı tıklanabilir Kaynakça üretilir.
+      final_text <- result$text
+      if (exists("mergen_langflow_kaynakca_marker_block", mode = "function", inherits = TRUE)) {
+        kaynak_blok <- tryCatch(
+          mergen_langflow_kaynakca_marker_block(result$sources),
+          error = function(e) ""
+        )
+        if (nzchar(kaynak_blok)) {
+          final_text <- paste0(final_text, kaynak_blok)
+        }
+      }
+      ctx$add_message_fn(final_text, "ai")
     } else {
       err_msg <- result$error %||% "Langflow yanıtı alınamadı."
       # Hata önizlemesi worker tarafında üretildiğinden, ana süreçte (sır

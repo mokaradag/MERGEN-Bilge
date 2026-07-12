@@ -713,7 +713,16 @@ ortak_yz_sohbet_gecmisi <- function(mesajlar_df, ek_baglam_metni = NULL) {
       if (!is.na(bagli_id) && nzchar(bagli_id) && bagli_id %in% pre_marker_question_ids) {
         next
       }
-      gecmis[[length(gecmis) + 1L]] <- list(role = "assistant", content = metin)
+      # Langflow imzalı Kaynakça işaretleyici bloğunu LLM bağlamından SÖK: blok
+      # görünen transkriptte/DB'de kalır (tıklanabilir atıf), ama model
+      # geçmişine taşınmaz; böylece bir sonraki yanıt geçerli `kod` taşıyan
+      # bloğu tekrar üretip sahte tıklanabilir atıf uyduramaz.
+      yanit_metni <- if (exists("mergen_strip_kaynakca_marker", mode = "function", inherits = TRUE)) {
+        mergen_strip_kaynakca_marker(metin)
+      } else {
+        metin
+      }
+      gecmis[[length(gecmis) + 1L]] <- list(role = "assistant", content = yanit_metni)
     }
   }
 

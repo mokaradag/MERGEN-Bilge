@@ -184,6 +184,15 @@ handle_source_file_click <- function(event_payload, settings_data, api_config, s
   raw_hint <- if (is.character(event_payload)) event_payload[1] else (event_payload$filename %||% event_payload$name %||% "")
   log_info("[SRC_CLICK] alındı: raw='{raw_hint}'")
 
+  # Çözümleme kapsamı: ortak oturum odalarındaki kaynaklar scope="model_bases"
+  # taşır; bu durumda KİŞİSEL kullanıcı kovası çözümlemesi ATLANIR ve dosya
+  # yalnızca kurumsal model taban klasörlerinde aranır. Böylece bir katılımcının
+  # oluşturduğu atıf, tıklayan başka bir katılımcının kişisel dosyalarına
+  # çözümlenemez (çapraz-kullanıcı sızıntısı önlenir). Diğer tüm çağrılar
+  # (tekil sohbet) varsayılan "personal" kapsamıyla mevcut davranışı korur.
+  click_scope <- if (is.list(event_payload)) as.character(event_payload$scope %||% "")[1] else ""
+  model_bases_only <- identical(click_scope, "model_bases")
+
   # Not: TAM ipucunu koru; basename'e düşme ancak en sonda yedek olarak kullanılacak
   parts <- strsplit(raw_hint, "&&", fixed = TRUE)[[1]]
   parts <- trimws(parts); parts <- parts[nzchar(parts)]
@@ -221,9 +230,10 @@ handle_source_file_click <- function(event_payload, settings_data, api_config, s
 
   found_path <- NULL
 
-  # (a) Kullanıcı kovası - önce TAM adla dene, sonra basename
+  # (a) Kullanıcı kovası - önce TAM adla dene, sonra basename.
+  # model_bases_only kapsamında (ortak oturum) bu adım tamamen atlanır.
   uid <- session$userData$user_id %||% NULL
-  if (!is.null(uid)) {
+  if (!model_bases_only && !is.null(uid)) {
     log_debug("[SRC_CLICK] (a) kullanıcı kovası aranıyor\U2026 user_id={uid}")
 	cand_user_full <- try(
 	  resolve_uploaded_file(

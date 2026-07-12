@@ -213,7 +213,9 @@ source_manifest_sections <- list(
 
   # chat_send_message_runtime: Sohbet runtime ve send_message hattı: istek
   # yaşam döngüsü, model runtime, streaming abort/poll kararları, core,
-  # görsel bağlam, prompting ve hızlı eylem giriş mesajları.
+  # görsel bağlam, prompting ve hızlı eylem giriş mesajları. Langflow kaynak
+  # çıkarımı/Kaynakça işaretleyici yardımcıları runtime yardımcılarından SONRA
+  # yüklenir (.langflow_pluck bağımlılığı).
   chat_send_message_runtime = c(
     "R/helpers_chat_runtime.R",
     "R/helpers_send_message_request_lifecycle.R",
@@ -224,6 +226,7 @@ source_manifest_sections <- list(
     "R/helpers_stream_load_control.R",
     "R/helpers_send_message_core.R",
     "R/helpers_langflow_runtime.R",
+    "R/helpers_langflow_sources.R",
     "R/helpers_vision_context.R",
     "R/helpers_send_message_prompting.R",
     "R/helpers_quick_action_intro_messages.R"

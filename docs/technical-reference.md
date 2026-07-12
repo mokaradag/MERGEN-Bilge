@@ -1072,6 +1072,28 @@ LANGFLOW_APP_EXPERT_FLOW_ID=app-expert-flow-id-here
 
 Ad eksikse `Akış 1`, `Akış 2` gibi güvenli yedek adlar kullanılır. Yalnızca eski tekil `LANGFLOW_PROCESS_FLOW_ID` tanımlıysa, geçici geriye dönük uyumluluk için tek akışlı listeye çevrilir. Seçili akış (`chat_process_flow` girdisi) sunucuda `mergen_langflow_flow_id_for_family("process", selected_flow = ...)` ile ilgili Langflow akış kimliğine çözülür. Süreç Yönetimi / Uygulama Uzmanı için düşünme sırasında standart (simüle fazlı) "Düşünce Akışı" paneli gösterilir; görsel oluşturma spinner'ı kullanılmaz.
 
+Ayrıştırma ve seçim sözleşmesi (`mergen_parse_langflow_process_flows`, `R/helpers_langflow_runtime.R`):
+
+- **Yorumlar ayrı satıra yazılmalıdır.** `readRenviron()` satır içi yorumu değerin parçası sayar. Savunma olarak kimlik değerindeki ilk `#` ve sonrası ayıklanır (yorum `;` içerse bile akış listesi kirlenmez); yine de `.Renviron` içinde değer satırına yorum eklemeyin.
+- Yorum ayıklandıktan sonra hâlâ bozuk (boşluk veya URL-dışı karakter içeren) bir kimlik belirteci kalırsa **tüm akış listesi reddedilir** ve log'a net uyarı düşer. Tek belirteci atmak sonraki akışları sola kaydırıp kullanıcının seçtiği akışı başka bir akışa yönlendirebileceği için kısmi kabul yapılmaz.
+- Dolu ama hiçbir akışla eşleşmeyen açık bir seçim (`selected_flow`) `""` çözümlenir ve işleyici net "seçili süreç akışı bulunamadı" hatası gösterir; seçim asla sessizce 1. akışa yönlendirilmez. Boş seçim varsayılan ilk akışı kullanır.
+- Görünen akış adları merkezi metin yardımcının `normalize_text_utf8(..., repair_mojibake = TRUE)` yolundan geçer; Windows VM'de `.Renviron` UTF-8 kaydedildiğinde ortaya çıkan çift kodlama ("REHÄ°S SÃ¼reÃ§ ...") açılır menüde onarılmış Türkçe olarak görünür.
+
+### Langflow belge kaynakları (tıklanabilir Kaynakça)
+
+Langflow yanıtı belge kaynak üstverisi içeriyorsa (desteklenen şekiller: `results$message$sources`, `results$message$data$sources`, `artifacts$sources`, üst düzey `sources`; `source_documents` anahtarı ve eski `metadata` dizisi biçimi dahil), `extract_langflow_chat_sources()` (`R/helpers_langflow_sources.R`) her kayıttan başlık/yol/sayfa/tür alanlarını çıkarır. Kaynak **uydurulmaz**: ad/yol içermeyen öğeler ve `properties$source` (model bilgisi) yok sayılır; kayıtlar (yol, sayfa) anahtarıyla teklenir.
+
+Kaynaklar mesaj içeriğine düz metin işaretleyici bloğu olarak eklenir (DB'ye de bu biçim yazılır). `openssl` mevcutsa `yol=` alanından sonra deterministik bir bütünlük kodu (`kod=<hash>`) yazılır; bu kod, modelin uydurduğu sahte `[KAYNAK n]` metninin tıklanabilir kaynağa yükseltilmesini engeller (ayrıştırıcı kodu yeniden hesaplayıp doğrular):
+
+```text
+Kaynakça:
+[KAYNAK 1] Doküman Başlığı | yol=surecler/kalite/prosedur.pdf | kod=<bütünlük-kodu> | sayfa=3 | tur=pdf
+```
+
+Render sırasında `process_message_content()` bu bloğu güvenli tıklanabilir `.kaynakca-entry` / `.source-link` HTML'ine yükseltir (tüm değerler kaçışlı; ham HTML asla geçirilmez; kullanıcı mesajları asla yükseltilmez; bütünlük kodu geçersiz/eksik olan blok düz metin kalır). Dosya adındaki köşeli parantezler (`Prosedür [Rev 2].pdf`) korunur; yalnızca `|` alan ayracı ve satır sonları temizlenir. Tıklama, mevcut güvenli mekanizmadan geçer: `source_file_clicked` -> `handle_source_file_click()` -> kullanıcı kovası + model taban klasörleriyle sınırlı çözümleme -> `openAnyPreview()` (PDF/Word önizleme). Tıklama ipucundaki `..`/sürücü/kök parçaları ayıklandığı için işaretleyici izinli kökler dışına gezinme ipucu üretemez. İçerik işaretleyiciyle kalıcılaştığı için kayıtlı sohbet yeniden yüklemesinde de Kaynakça tıklanabilir kalır.
+
+Ortak oturum (Süreç/Uygulama Uzmanı) odalarında da aynı Kaynakça üretilir: `oo_arac_langflow_uret()` yanıt metnine işaretleyici bloğunu ekler, `oo_mesaj_html()` bunu `render_safe_markdown_html()` düzyazısıyla birlikte tıklanabilir HTML'e yükseltir. Ancak ORTAK odada `.source-link` `data-source-scope="model_bases"` taşır: tıklama çözümlemesi KİŞİSEL kullanıcı kovasını ATLAR ve yalnızca kurumsal model taban klasörlerinde arar. Böylece bir katılımcının oluşturduğu atıf, tıklayan başka bir katılımcının kişisel dosyalarına çözümlenemez (çapraz-kullanıcı sızıntısı önlenir). Tekil sohbet varsayılan `personal` kapsamıyla mevcut davranışı korur.
+
 ---
 
 ## Deneyim Modları
@@ -2061,7 +2083,9 @@ DESTEK_CHATBOT_MODEL=your-support-chatbot-model
 # LANGFLOW_API_KEY Langflow'a özgüdür; yerel LLM anahtarlarıyla ilişkisi yoktur.
 # Süreç Yönetimi çoklu akış destekler (";"/"," ayraçlı kimlik/ad listeleri).
 # Taban URL akış çalıştırma yolunu (/api/v1/run) içermelidir; Mergen sonuna
-# yalnızca "/{flow_id}" ekler.
+# yalnızca "/{flow_id}" ekler. Yorumları AYRI SATIRA yazın: readRenviron()
+# satır içi yorumu değerin parçası sayar (kimlik değerindeki ilk "#" ve sonrası
+# savunma amaçlı ayıklanır).
 LANGFLOW_BASE_URL=https://your-langflow-server.example.com/api/v1/run
 LANGFLOW_API_KEY=your-langflow-api-key
 LANGFLOW_PROCESS_FLOW_IDS=process-flow-id-1;process-flow-id-2

@@ -110,7 +110,10 @@
   file_manager_helpers = list(first = "R/helpers_file_manager_policy.R", last = "R/helpers_file_manager_table_runtime.R", n = 12L),
   # Bilinçli güncelleme: R/helpers_langflow_runtime.R (kurumsal Langflow akış
   # çağrısı saf yardımcıları) send_message core'dan sonra bölüme eklendi; 11 -> 12.
-  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 12L),
+  # 12 -> 13 bilinçli güncelleme: Langflow belge kaynak çıkarımı + tıklanabilir
+  # Kaynakça işaretleyici yardımcıları (R/helpers_langflow_sources.R)
+  # helpers_langflow_runtime.R'den SONRA eklendi (.langflow_pluck bağımlılığı).
+  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 13L),
   summarization_followup = list(first = "R/helpers_summarization_modes.R", last = "R/helpers_followup_questions.R", n = 3L),
   analysis_helpers = list(first = "R/helpers_deep_analysis.R", last = "R/helpers_pk_analysis_query_selection.R", n = 5L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
@@ -375,7 +378,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 325L -> 327L bilinçli güncelleme: Ortak Bilge Yolaç CANLI çalıştırma seti
   # (R/helpers_ortak_oturum_by_akis.R + R/module_ortak_oturum_by_calistirma.R)
   # ortak_oturumlar bölümüne eklendi.
-  expect_equal(length(runtime), 327L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 327L -> 328L bilinçli güncelleme: Langflow belge kaynak çıkarımı +
+  # tıklanabilir Kaynakça işaretleyici yardımcıları
+  # (R/helpers_langflow_sources.R) chat_send_message_runtime bölümüne eklendi.
+  expect_equal(length(runtime), 328L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

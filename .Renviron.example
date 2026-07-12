@@ -122,6 +122,13 @@ LANGFLOW_API_KEY=your-langflow-api-key
 # menüden hangi süreç akışını kullanacağını seçer. Kimlikler ve görünen adlar
 # ";" (veya ",") ile ayrılır; sıralar birebir eşleşmelidir. Ad eksikse "Akış 1",
 # "Akış 2" gibi güvenli yedek adlar kullanılır. Yeni akışlar listeye eklenebilir.
+#
+# ÖNEMLİ: .Renviron içinde yorumlar AYRI SATIRA yazılmalıdır. readRenviron()
+# satır içi yorumu değerin parçası sayar; kimlik listesindeki ilk "#" ve sonrası
+# savunma amaçlı ayıklansa da değer satırına yorum eklemeyin. Ayıklama sonrası
+# hâlâ bozuk (boşluk/URL-dışı karakter içeren) bir kimlik kalırsa TÜM akış
+# listesi net bir yapılandırma hatasıyla reddedilir; seçilen akış asla sessizce
+# 1. akışa yönlendirilmez.
 LANGFLOW_PROCESS_FLOW_IDS=process-flow-id-1;process-flow-id-2
 LANGFLOW_PROCESS_FLOW_NAMES=Süreç Akışı 1;Süreç Akışı 2
 # Uygulama Uzmanı tek akış kullanır.

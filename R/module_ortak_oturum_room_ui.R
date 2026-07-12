@@ -309,9 +309,31 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL, persona = NULL) {
   }
 
   # Yapay zekâ yanıtı: güvenli markdown; diğerleri düz metin (escape).
+  # Süreç/Uygulama Uzmanı (Langflow) yanıtları sonunda belge kaynak işaretleyici
+  # bloğu ("[KAYNAK n] ... | kod=<hash>") taşıyabilir. Blok, bütünlük kodu
+  # doğrulanarak ayrılır, düzyazı güvenli markdown'dan geçer ve kaynaklar
+  # tıklanabilir Kaynakça HTML'ine yükseltilir. ORTAK odada kapsam
+  # "model_bases"tır: tıklama yalnızca kurumsal model taban klasörlerinde
+  # çözümlenir, kişisel kova taranmaz (çapraz-kullanıcı sızıntısı önlenir).
+  # Model tarafından uydurulmuş sahte marker geçerli bütünlük kodu taşımadığından
+  # yükseltilmez; ham metin olarak kalır.
   metin_html <- if (identical(tur, "YapayZekaYanıtı") &&
                     exists("render_safe_markdown_html", mode = "function", inherits = TRUE)) {
-    HTML(render_safe_markdown_html(metin))
+    kaynak_split <- if (exists("mergen_kaynakca_marker_split", mode = "function", inherits = TRUE) &&
+                        exists("mergen_kaynakca_marker_html", mode = "function", inherits = TRUE)) {
+      tryCatch(mergen_kaynakca_marker_split(metin), error = function(e) NULL)
+    } else {
+      NULL
+    }
+    if (!is.null(kaynak_split) && length(kaynak_split$entries) > 0) {
+      kaynak_html <- tryCatch(
+        mergen_kaynakca_marker_html(kaynak_split$entries, scope = "model_bases"),
+        error = function(e) ""
+      )
+      HTML(paste0(render_safe_markdown_html(kaynak_split$prose), kaynak_html))
+    } else {
+      HTML(render_safe_markdown_html(metin))
+    }
   } else {
     tags$span(HTML(htmltools::htmlEscape(metin)))
   }

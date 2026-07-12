@@ -57,3 +57,10 @@
   40%  { background: rgba(99, 179, 237, 0.18); box-shadow: inset 3px 0 0 0 #63b3ed; }
   100% { background: rgba(99, 179, 237, 0.00); box-shadow: inset 3px 0 0 0 transparent; }
 }
+/* ─── Kaynakça Sayfa Eki (.kaynakca-page) ────────────────────────────────── */
+/* Langflow belge kaynaklarında sayfa numarası eki; bağlantıdan görsel olarak */
+/* ayrışması için soluk gösterilir.                                          */
+.kaynakca-page {
+  opacity: 0.65;
+  font-size: 0.9em;
+}

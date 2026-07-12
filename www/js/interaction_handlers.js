@@ -35,13 +35,18 @@ $(document).ready(function() {
 $(document).on('click', '.source-link', function() {
   const filename = $(this).data('filename');
   const sourceId = $(this).data('source-id');
-  
+  // Kapsam: ortak oturum odalarındaki kaynaklar data-source-scope='model_bases'
+  // taşır; sunucu kişisel kovayı atlayıp yalnızca model taban klasörlerinde
+  // çözer (çapraz-kullanıcı sızıntısı önlenir). Öznitelik yoksa boş = kişisel.
+  const scope = this.getAttribute('data-source-scope') || '';
+
   console.log('[SOURCE CLICK] User clicked:', filename);
   console.log('[SOURCE CLICK] Source ID:', sourceId);
-  
+
   Shiny.setInputValue('source_file_clicked', {
     filename: filename,
     sourceId: sourceId,
+    scope: scope,
     nonce: Math.random()
   }, {priority: 'event'});
 });

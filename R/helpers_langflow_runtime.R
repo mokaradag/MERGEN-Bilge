@@ -73,24 +73,54 @@ mergen_langflow_config <- function(config = api_config) {
 # names_raw : LANGFLOW_PROCESS_FLOW_NAMES (";"/"," ayraçlı görünen adlar)
 # legacy_id : eski tekil LANGFLOW_PROCESS_FLOW_ID (geçici geriye dönük uyumluluk)
 # Dönüş: list( list(key, id, name), ... ). Kimlik yoksa boş liste.
+# Kimlik değerinde satır içi "#" yorumu ayıklanır. Ayıklama sonrası hâlâ bozuk
+# (boşluk/URL-dışı karakter içeren) bir belirteç kalırsa TÜM liste reddedilir:
+# tek belirteci atmak sonraki akışları sola kaydırır ve kullanıcının seçtiği
+# akış sessizce başka bir akışa yönlenirdi. Reddetme, işleyicideki net
+# "yapılandırma eksik" hatası olarak yüzeye çıkar.
 mergen_parse_langflow_process_flows <- function(ids_raw = "",
                                                 names_raw = "",
                                                 legacy_id = "") {
-  ids <- .langflow_split_list(ids_raw)
+  # readRenviron() satır içi "#" yorumunu değerin parçası olarak bırakır; "#"
+  # geçerli bir akış kimliği karakteri olmadığından ilk "#" ve sonrası atılır.
+  # Yorum ";" içerse bile ayrıştırmayı kirletemez (önce yorum, sonra bölme).
+  ids <- .langflow_split_list(sub("#.*$", "", .langflow_chr1(ids_raw)))
   # Adlar kimliklerle pozisyonel hizalanmalıdır: boş bir ad konumu atılmamalı,
   # yoksa sonraki adlar sola kayar ve yanlış akış etiketlenir. Boş konumlar
-  # korunur ve slot bazında yedek ada ("Akış i") düşülür.
+  # korunur ve slot bazında yedek ada ("Akış i") düşülür. Türkçe adlar UTF-8'e
+  # normalleştirilir (Windows VM .Renviron mojibake onarımı).
   names_vec <- .langflow_split_list_positional(names_raw)
+  if (length(names_vec) > 0) {
+    names_vec <- if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+      normalize_text_utf8(names_vec, repair_mojibake = TRUE)
+    } else {
+      enc2utf8(names_vec)
+    }
+  }
 
-  # Liste formatı boşsa eski tekil kimliğe düş (geçici uyumluluk).
+  # Liste formatı boşsa eski tekil kimliğe düş (geçici uyumluluk). Satır içi
+  # "#" yorumu burada da ayıklanır.
   if (length(ids) == 0) {
-    legacy <- .langflow_chr1(legacy_id)
+    legacy <- trimws(sub("#.*$", "", .langflow_chr1(legacy_id)))
     if (nzchar(legacy)) {
       ids <- legacy
     }
   }
 
   if (length(ids) == 0) {
+    return(list())
+  }
+
+  gecersiz <- ids[!grepl("^[A-Za-z0-9._~-]+$", ids)]
+  if (length(gecersiz) > 0) {
+    if (exists("log_warn", mode = "function", inherits = TRUE)) {
+      log_warn(paste0(
+        "[LANGFLOW] Geçersiz süreç akış kimliği belirteci: ",
+        paste(sprintf("'%s'", gecersiz), collapse = ", "),
+        " - LANGFLOW_PROCESS_FLOW_IDS düzeltilene kadar süreç akışları devre dışı.",
+        " Yorumlar .Renviron içinde ayrı satıra yazılmalıdır."
+      ))
+    }
     return(list())
   }
 
@@ -128,7 +158,10 @@ mergen_langflow_process_flows <- function(config = api_config) {
 }
 
 # Seçilen süreç akışının (key veya id) gerçek Langflow akış kimliğini çözer.
-# Seçim boş/eşleşmezse ilk yapılandırılmış akışa düşer. Hiç akış yoksa "".
+# Seçim boşsa varsayılan ilk akış kullanılır. Seçim DOLU ama hiçbir akışla
+# eşleşmiyorsa "" döner: kullanıcının açıkça seçtiği akış sessizce 1. akışa
+# yönlendirilmez; işleyici net "seçili süreç akışı bulunamadı" hatası gösterir.
+# Hiç akış yoksa "".
 mergen_langflow_process_flow_id <- function(config = api_config, selected_flow = NULL) {
   flows <- mergen_langflow_process_flows(config)
 
@@ -146,6 +179,7 @@ mergen_langflow_process_flow_id <- function(config = api_config, selected_flow =
         return(trimws(.langflow_chr1(fl$id)))
       }
     }
+    return("")
   }
 
   trimws(.langflow_chr1(flows[[1]]$id))
@@ -211,7 +245,8 @@ is_langflow_tool_family <- function(tool_family, config = api_config, require_co
 }
 
 # Seçilen (veya varsayılan) süreç akışının görünen adını döndürür. Yalnızca
-# loglama/metadata amaçlıdır; API anahtarı veya taban URL içermez.
+# loglama/metadata amaçlıdır; API anahtarı veya taban URL içermez. Dolu ama
+# eşleşmeyen seçim, kimlik çözümlemesiyle tutarlı biçimde "" döndürür.
 mergen_langflow_process_flow_label <- function(config = api_config, selected_flow = NULL) {
   flows <- mergen_langflow_process_flows(config)
   if (length(flows) == 0) {
@@ -226,6 +261,7 @@ mergen_langflow_process_flow_label <- function(config = api_config, selected_flo
         return(.langflow_chr1(fl$name))
       }
     }
+    return("")
   }
 
   .langflow_chr1(flows[[1]]$name)
@@ -511,5 +547,14 @@ call_langflow_chat <- function(input_value,
     ))
   }
 
-  list(success = TRUE, text = answer, error = NULL, status = status)
+  # Belge kaynak üstverisi (başlık/yol/sayfa/tür) yanıtla birlikte taşınır.
+  # Çıkarıcı yüklü değilse (izole test/worker) kaynaklar boş listeye düşer;
+  # kaynak uydurulmaz. Güvenli sarmalayıcı hata durumunda da boş liste verir.
+  sources <- if (exists("mergen_langflow_safe_sources", mode = "function", inherits = TRUE)) {
+    mergen_langflow_safe_sources(parsed)
+  } else {
+    list()
+  }
+
+  list(success = TRUE, text = answer, error = NULL, status = status, sources = sources)
 }

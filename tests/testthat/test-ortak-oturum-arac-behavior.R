@@ -571,6 +571,35 @@ test_that("Langflow çağrı hazırlığı akış seçimi ve eksik yapılandırm
   expect_null(oo_arac_langflow_cagrisi_hazirla(plan_bos, 7L, 42L, config = cfg_bos))
 })
 
+test_that(".oo_langflow_yanit_metni Langflow yanıtına belge kaynak işaretleyici bloğunu ekler", {
+  repo_root <- resolve_repo_root_for_tests()
+  if (!exists("mergen_langflow_kaynakca_marker_block", mode = "function", inherits = TRUE)) {
+    source(file.path(repo_root, "R", "helpers_langflow_runtime.R"),
+           encoding = "UTF-8", local = globalenv())
+    source(file.path(repo_root, "R", "helpers_langflow_sources.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+
+  # Kaynak taşıyan yanıt: düzyazı korunur, sonuna [KAYNAK n] işaretleyici bloğu eklenir.
+  yanit <- list(
+    success = TRUE,
+    text = "Risk yönetimi kurumsal süreçlerde belirsizlik yönetimidir.",
+    sources = list(
+      list(title = "Risk Prosedürü", path = "surecler/risk.pdf", page = "4", type = "pdf")
+    )
+  )
+  metin <- .oo_langflow_yanit_metni(yanit)
+  expect_match(metin, "^Risk yönetimi")
+  expect_match(metin, "Kaynakça:", fixed = TRUE)
+  expect_match(metin, "\\[KAYNAK 1\\] Risk Prosedürü \\| yol=surecler/risk\\.pdf")
+
+  # Kaynak yoksa metin değişmeden döner (işaretleyici eklenmez).
+  expect_identical(
+    .oo_langflow_yanit_metni(list(text = "Sade yanıt", sources = list())),
+    "Sade yanıt"
+  )
+})
+
 test_that("statik kablolama: oda UI/sunucu, üretim motoru ve JS köprüsü yeni yüzeyleri taşır", {
   repo_root <- resolve_repo_root_for_tests()
   oku <- function(yol) {
@@ -606,6 +635,28 @@ test_that("statik kablolama: oda UI/sunucu, üretim motoru ve JS köprüsü yeni
   expect_true(grepl("oo_arac_uretim_plani", yz_motor, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("ortak_belge_baglam_sistem_mesaji", yz_motor, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("oo_arac_langflow_uret", yz_motor, fixed = TRUE, useBytes = TRUE))
+
+  # Langflow kaynak yayılımı: her iki dal da yanıt metnini işaretleyici bloğu
+  # ekleyen yardımcıdan geçirir; oda render'ı model_bases kapsamıyla yükseltir.
+  arac_helper <- oku(file.path(repo_root, "R", "helpers_ortak_oturum_arac.R"))
+  expect_equal(
+    length(gregexpr(".oo_langflow_yanit_metni(yanit)", arac_helper, fixed = TRUE, useBytes = TRUE)[[1]]),
+    2L
+  )
+  expect_true(grepl("mergen_langflow_kaynakca_marker_block", arac_helper, fixed = TRUE, useBytes = TRUE))
+
+  oda_ui2 <- oku(file.path(repo_root, "R", "module_ortak_oturum_room_ui.R"))
+  expect_true(grepl("mergen_kaynakca_marker_split", oda_ui2, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("scope = \"model_bases\"", oda_ui2, fixed = TRUE, useBytes = TRUE))
+
+  # Kaynak tıklama kapsamı: JS köprüleri data-source-scope taşır; sunucu
+  # çözümleyicisi model_bases kapsamında kişisel kovayı atlar.
+  interaction_js <- oku(file.path(repo_root, "www", "js", "interaction_handlers.js"))
+  expect_true(grepl("data-source-scope", interaction_js, fixed = TRUE, useBytes = TRUE))
+  startup_obs <- oku(file.path(repo_root, "R", "server_observers_startup.R"))
+  expect_true(grepl("data-source-scope", startup_obs, fixed = TRUE, useBytes = TRUE))
+  preview_helper <- oku(file.path(repo_root, "R", "helpers_preview.R"))
+  expect_true(grepl("model_bases_only", preview_helper, fixed = TRUE, useBytes = TRUE))
 
   js <- oku(file.path(repo_root, "www", "js", "ortak_oturumlar.js"))
   expect_true(grepl("data-oo-arac-ayar", js, fixed = TRUE, useBytes = TRUE))

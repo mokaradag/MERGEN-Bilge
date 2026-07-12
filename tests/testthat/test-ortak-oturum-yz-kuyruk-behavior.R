@@ -303,6 +303,35 @@ test_that("bağlam sıfırlama işareti sonrası yalnızca sonraki soru/yanıt b
   expect_true("Yeni yanıt" %in% icerikler)
 })
 
+test_that("Langflow imzalı Kaynakça işaretleyicisi LLM bağlamından (assistant içerik) sökülür", {
+  repo_root <- resolve_repo_root_for_tests()
+  if (!exists("mergen_strip_kaynakca_marker", mode = "function", inherits = TRUE)) {
+    source(file.path(repo_root, "R", "helpers_langflow_runtime.R"), encoding = "UTF-8", local = globalenv())
+    source(file.path(repo_root, "R", "helpers_langflow_sources.R"), encoding = "UTF-8", local = globalenv())
+  }
+
+  prose <- "Risk yönetimi kurumsal süreçlerde belirsizlik yönetimidir."
+  blok <- mergen_langflow_kaynakca_marker_block(list(
+    list(title = "Risk Prosedürü", path = "surecler/risk.pdf", page = "4", type = "pdf")
+  ))
+  yanit_tam <- paste0(prose, blok)
+
+  df <- data.frame(
+    MesajTuru = c("YapayZekaSorusu", "YapayZekaYanıtı"),
+    MesajMetni = c("Risk yönetimi nedir?", yanit_tam),
+    stringsAsFactors = FALSE
+  )
+
+  gecmis <- ortak_yz_sohbet_gecmisi(df)
+  # Assistant içeriği yalnızca düzyazıyı taşır; imzalı işaretleyici model
+  # bağlamına sızmaz (bir sonraki yanıt geçerli kod'u tekrar üretemez).
+  assistant <- Filter(function(m) identical(m$role, "assistant"), gecmis)
+  expect_length(assistant, 1L)
+  expect_identical(assistant[[1]]$content, prose)
+  expect_false(grepl("KAYNAK", assistant[[1]]$content, fixed = TRUE))
+  expect_false(grepl("kod=", assistant[[1]]$content, fixed = TRUE))
+})
+
 test_that("sıfırlama sonrası tamamlanan eski yanıt yeni bağlama alınmaz", {
   df <- data.frame(
     OrtakMesajID = c("2147483648", "2147483649", "2147483650", "2147483651"),

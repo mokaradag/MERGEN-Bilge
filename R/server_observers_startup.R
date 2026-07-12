@@ -46,7 +46,11 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
             e.preventDefault();
             e.stopPropagation();
             var fn = t.getAttribute('data-filename') || (t.textContent || '').trim();
-            Shiny.setInputValue('source_file_clicked', { filename: fn, nonce: Math.random() }, { priority: 'event' });
+            // Kapsam: ortak oturum odalarındaki kaynaklar data-source-scope=
+            // 'model_bases' taşır; sunucu kişisel kovayı atlayıp yalnızca model
+            // taban klasörlerinde çözer (çapraz-kullanıcı sızıntısı önlenir).
+            var scope = t.getAttribute('data-source-scope') || '';
+            Shiny.setInputValue('source_file_clicked', { filename: fn, scope: scope, nonce: Math.random() }, { priority: 'event' });
           }
         }, true);
       }
