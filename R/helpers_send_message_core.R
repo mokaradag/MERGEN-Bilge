@@ -193,29 +193,6 @@ mergen_sanitize_llm_settings_for_worker <- function(current_settings,
   settings
 }
 
-mergen_remove_typing_wrapper_if_safe <- function(active_request_id = NULL,
-                                                 req_id = NULL,
-                                                 remove_ui_fn = removeUI) {
-  if (!is.function(remove_ui_fn)) {
-    return(invisible(FALSE))
-  }
-
-  if (!is.null(req_id) &&
-      length(req_id) > 0L &&
-      nzchar(as.character(req_id)[1]) &&
-      is.function(active_request_id)) {
-    request_id <- as.character(req_id)[1]
-    current_id <- tryCatch(active_request_id(), error = function(e) NULL)
-
-    if (!identical(current_id, request_id)) {
-      return(invisible(FALSE))
-    }
-  }
-
-  try(remove_ui_fn(selector = "#typing-animation-wrapper", immediate = TRUE), silent = TRUE)
-  invisible(TRUE)
-}
-
 # --- Süreç-geneli kabul-denetimi (backpressure) slotu yardımcıları ---
 # Pahalı LLM/sohbet işlemlerini süreç-genelinde üst-sınıra bağlamak için kullanılır
 # (R/helpers_request_backpressure.R). Varsayılan KAPALI (limit 0) iken hepsi

@@ -33,6 +33,36 @@ mergen_is_current_request <- function(active_request_id, req_id, stop_generation
   )
 }
 
+mergen_remove_typing_wrapper_if_safe <- function(active_request_id = NULL,
+                                                 req_id = NULL,
+                                                 remove_ui_fn = removeUI) {
+  if (!is.function(remove_ui_fn)) {
+    return(invisible(FALSE))
+  }
+
+  if (!is.null(req_id) &&
+      length(req_id) > 0L &&
+      nzchar(as.character(req_id)[1]) &&
+      is.function(active_request_id)) {
+    request_id <- as.character(req_id)[1]
+    current_id <- tryCatch(active_request_id(), error = function(e) NULL)
+
+    if (!identical(current_id, request_id)) {
+      return(invisible(FALSE))
+    }
+  }
+
+  try(
+    remove_ui_fn(
+      selector = "#typing-animation-wrapper",
+      immediate = TRUE
+    ),
+    silent = TRUE
+  )
+
+  invisible(TRUE)
+}
+
 mergen_should_run_deferred_stream_persist <- function(active_request_id, req_id, stream_env) {
   if (is.null(stream_env) || isTRUE(stream_env$finalized)) {
     return(FALSE)
