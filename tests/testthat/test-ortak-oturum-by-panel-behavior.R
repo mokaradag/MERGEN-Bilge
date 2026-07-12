@@ -286,9 +286,55 @@ test_that("model kartı katman düğmelerini delege JS sözleşmesiyle üretir",
   ))
 })
 
+test_that("dinamik Bilge Yolaç kartları gizliyken askıya alınmaz", {
+  repo_root <- resolve_repo_root_for_tests()
+
+  modul <- .oo_by_test_oku(file.path(
+    repo_root,
+    "R",
+    "module_ortak_oturum_bilge_yolac.R"
+  ))
+
+  dinamik_kartlar <- c(
+    "by_proje_dizini_karti",
+    "by_model_karti",
+    "by_dosya_eylem_karti"
+  )
+
+  for (output_id in dinamik_kartlar) {
+    kalip <- sprintf(
+      paste0(
+        "shiny::outputOptions\\s*\\(\\s*",
+        "output\\s*,\\s*",
+        "\"%s\"\\s*,\\s*",
+        "suspendWhenHidden\\s*=\\s*FALSE\\s*",
+        "\\)"
+      ),
+      output_id
+    )
+
+    expect_true(
+      grepl(
+        kalip,
+        modul,
+        perl = TRUE,
+        useBytes = TRUE
+      ),
+      info = sprintf(
+        "%s çıktısı gizliyken askıya alınmamalıdır.",
+        output_id
+      )
+    )
+  }
+})
+
 test_that("iskelet yoklamadan bağımsızdır; aç/kapa tercihi JS köprüsünde korunur", {
   repo_root <- resolve_repo_root_for_tests()
-  modul <- .oo_by_test_oku(file.path(repo_root, "R", "module_ortak_oturum_bilge_yolac.R"))
+  modul <- .oo_by_test_oku(file.path(
+    repo_root,
+    "R",
+    "module_ortak_oturum_bilge_yolac.R"
+  ))
 
   # İskelet render'ı saf üreticiye delege eder ve kompakt sinyalleri kullanır.
   expect_true(grepl("oo_by_panel_iskeleti_html(ns", modul, fixed = TRUE, useBytes = TRUE))

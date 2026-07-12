@@ -360,9 +360,16 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
         class = "oo-by-dosya-eylemleri",
         actionButton(
           ns("by_dosyalarimi_kopyala"),
-          label = tagList(icon("copy"), span("Yükleme Klasörümü Çalışma Alanına Kopyala")),
+          label = tagList(
+            icon("copy"),
+            span("Yükleme Klasörümü Çalışma Alanına Kopyala")
+          ),
           class = "oo-oda-btn oo-oda-btn-ikincil oo-by-kopyala-btn",
-          title = "Dosya Yönetimi klasörünüzdeki dosyaları odanın çalışma alanına kopyalar (açık eylem; otomatik kopya yapılmaz)"
+          title = paste(
+            "Dosya Yönetimi klasörünüzdeki dosyaları odanın",
+            "çalışma alanına kopyalar",
+            "(açık eylem; otomatik kopya yapılmaz)"
+          )
         ),
         div(
           class = "oo-by-yerel-yukleme",
@@ -370,13 +377,35 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
             ns("by_yerel_dosyalar"),
             label = NULL,
             multiple = TRUE,
-            buttonLabel = tagList(icon("upload"), span("Yerel Klasörünü Çalışma Alanına Kopyala")),
+            buttonLabel = tagList(
+              icon("upload"),
+              span("Yerel Klasörünü Çalışma Alanına Kopyala")
+            ),
             placeholder = "Dosya seçilmedi"
           )
         )
       )
     )
   })
+
+  # Bu kartların uiOutput yuvaları başlangıçta boştur ve CSS tarafından
+  # gizlenir. Shiny gizli çıktıları askıya alırsa kartlar hiç üretilemez.
+  # İlk değerlerini gizliyken de hesaplamalarını sağla.
+  shiny::outputOptions(
+    output,
+    "by_proje_dizini_karti",
+    suspendWhenHidden = FALSE
+  )
+  shiny::outputOptions(
+    output,
+    "by_model_karti",
+    suspendWhenHidden = FALSE
+  )
+  shiny::outputOptions(
+    output,
+    "by_dosya_eylem_karti",
+    suspendWhenHidden = FALSE
+  )
 
   # --- Eklentiler (salt-okunur envanter) -------------------------------------------
 
