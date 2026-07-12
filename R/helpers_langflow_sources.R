@@ -95,10 +95,14 @@
 
 # Ayrıştırılmış Langflow yanıtında bilinen kaynak dizisi konumlarını toplar.
 # Desteklenen şekiller (fromJSON(..., simplifyVector = FALSE) listesi; "sources"
-# yerine "source_documents" anahtarı da kabul edilir):
-#   - outputs[[i]]$outputs[[j]]$results$message$sources
-#   - outputs[[i]]$outputs[[j]]$results$message$data$sources
+# yerine "source_documents" anahtarı da kabul edilir). Kaynak taşıyıcı mesaj
+# düğümleri, metin çıkarıcının (extract_langflow_chat_text) desteklediği mesaj
+# konumlarıyla birebir aynadır; böylece metin bir düğümden çıkarılabildiğinde
+# aynı düğümdeki kaynaklar da yakalanır:
+#   - outputs[[i]]$outputs[[j]]$results$message( $data )$sources
 #   - outputs[[i]]$outputs[[j]]$artifacts$sources
+#   - outputs[[i]]$outputs[[j]]$outputs$message$sources
+#   - outputs[[i]]$outputs[[j]]$messages[[1]]$sources
 #   - üst düzey parsed$sources
 # properties$source (model/bileşen bilgisi) BİLEREK okunmaz; belge kaynağı değildir.
 .langflow_source_candidate_arrays <- function(parsed) {
@@ -127,6 +131,10 @@
         add_candidates_at(list("outputs", i, "outputs", j, "results", "message"))
         add_candidates_at(list("outputs", i, "outputs", j, "results", "message", "data"))
         add_candidates_at(list("outputs", i, "outputs", j, "artifacts"))
+        # Metin çıkarıcının desteklediği ek mesaj düğümleri (kaynaklar buralarda
+        # da gelebilir): outputs$message ve messages[[1]].
+        add_candidates_at(list("outputs", i, "outputs", j, "outputs", "message"))
+        add_candidates_at(list("outputs", i, "outputs", j, "messages", 1))
       }
     }
   }
@@ -191,16 +199,21 @@ mergen_langflow_safe_sources <- function(parsed) {
 }
 
 # İşaretleyici satırlarına girecek değerlerden yalnızca GRAMER bozucu karakterleri
-# ("|" alan ayracı ve satır sonları) temizler; köşeli parantezler KORUNUR çünkü
+# ("|" alan ayracı ve satır sonları) temizler. Köşeli parantezler KORUNUR çünkü
 # "Prosedür [Rev 2].pdf" gibi geçerli dosya adlarında bulunur ve satır tespiti
 # [^\n]* olduğundan (yeni [KAYNAK n] satırı ancak satır başında oluşur) parantez
-# ayrıştırmayı bozmaz; yol diskteki dosyayla eşleşebilsin diye olduğu gibi kalır.
-# Değer verisi olarak korunur, HTML kaçışı render sırasında yapılır. Ardışık
-# boşluklar teke indirilir.
+# ayrıştırmayı bozmaz. GERÇEK dosya adlarındaki ARDIŞIK BOŞLUKLAR da korunur
+# ("Rev  2/prosedur  final.pdf" diskteki dosyayla eşleşebilsin): değer yalnızca
+# ayraç/satır-sonu karakterlerinden bölünür, her parça kırpılır ve tek boşlukla
+# birleştirilir; parça-içi ardışık boşluklar olduğu gibi bırakılır. Değer verisi
+# olarak korunur, HTML kaçışı render sırasında yapılır.
 .kaynakca_marker_sanitize <- function(x) {
-  val <- gsub("[\r\n|]+", " ", as.character(x %||% "")[1], perl = TRUE)
-  val <- trimws(gsub("[ \t]+", " ", val))
-  if (is.na(val)) "" else val
+  val <- as.character(x %||% "")[1]
+  if (is.na(val)) return("")
+  parts <- strsplit(val, "[\r\n|]", perl = TRUE)[[1]]
+  parts <- trimws(parts)
+  parts <- parts[nzchar(parts)]
+  paste(parts, collapse = " ")
 }
 
 # İşaretleyici satırının uygulama tarafından üretildiğini doğrulamak için
@@ -292,6 +305,23 @@ mergen_kaynakca_marker_split <- function(content) {
   }
 
   list(prose = prose, entries = entries)
+}
+
+# Mesaj içeriğinden geçerli (bütünlük kodu doğrulanan) Kaynakça işaretleyici
+# bloğunu SÖKÜP yalnızca düzyazıyı döndürür; blok yoksa/geçersizse içerik olduğu
+# gibi kalır. Amaç: imzalı işaretleyici DB'de/görünen içerikte kalıp render'da
+# tıklanabilir Kaynakça'ya yükseltilirken, aynı işaretleyicinin LLM bağlamına
+# (sohbet geçmişi) taşınmasını engellemek. Aksi halde bir sonraki (Langflow
+# olmayan) model, bağlamda gördüğü geçerli `kod` taşıyan bloğu aynen tekrar
+# üretip gerçek kaynak üstverisi olmadan tıklanabilir atıf uydurabilirdi.
+mergen_strip_kaynakca_marker <- function(content) {
+  txt <- as.character(content %||% "")[1]
+  if (is.na(txt) || !nzchar(txt)) return(content)
+  split <- tryCatch(mergen_kaynakca_marker_split(txt), error = function(e) NULL)
+  if (is.null(split) || length(split$entries) == 0L) {
+    return(content)
+  }
+  split$prose
 }
 
 # Kaynak yolundan tıklama çözümleme ipucunu üretir. Mevcut mekanizmanın

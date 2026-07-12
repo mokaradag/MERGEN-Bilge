@@ -95,6 +95,44 @@ test_that("extract_langflow_chat_sources data$sources, artifacts$sources, source
   expect_identical(env$extract_langflow_chat_sources(single_object_shape)[[1]]$path, "docs/tekil.pdf")
 })
 
+test_that("extract_langflow_chat_sources metin çıkarıcının desteklediği outputs$message ve messages[[1]] düğümlerindeki kaynakları da okur", {
+  env <- .source_langflow_sources_env()
+
+  # Metin extract_langflow_chat_text tarafından outputs$message$message'tan
+  # çıkarılabilen şekil: kaynaklar aynı düğümde de gelebilir.
+  outputs_message_shape <- list(
+    outputs = list(list(
+      outputs = list(list(
+        outputs = list(message = list(
+          message = "Yanıt metni",
+          sources = list(list(title = "Kılavuz", file_path = "rehber/kilavuz.pdf", page = 2))
+        ))
+      ))
+    ))
+  )
+  om <- env$extract_langflow_chat_sources(outputs_message_shape)
+  expect_length(om, 1L)
+  expect_identical(om[[1]]$path, "rehber/kilavuz.pdf")
+  expect_identical(om[[1]]$page, "2")
+
+  # messages[[1]] düğümü: metin messages[[1]]$message'tan çıkarılabiliyorsa
+  # kaynaklar da messages[[1]]$sources'ta gelebilir.
+  messages_shape <- list(
+    outputs = list(list(
+      outputs = list(list(
+        messages = list(list(
+          message = "Yanıt metni",
+          source_documents = list(list(metadata = list(source = "docs/rapor.docx", page_number = 5)))
+        ))
+      ))
+    ))
+  )
+  ms <- env$extract_langflow_chat_sources(messages_shape)
+  expect_length(ms, 1L)
+  expect_identical(ms[[1]]$title, "rapor.docx")
+  expect_identical(ms[[1]]$type, "docx")
+})
+
 test_that("extract_langflow_chat_sources görünen başlık + file_name/filename (yol yokken) dosya adını yol adayı sayar", {
   env <- .source_langflow_sources_env()
 
@@ -217,6 +255,70 @@ test_that("call_langflow_chat başarı sonucunda sources alanını taşır (yap�
   expect_identical(env$mergen_langflow_safe_sources(structure(list(), class = "hatalı")), list())
 })
 
+test_that("ardışık boşluk içeren yol üret->ayır turunda bütünlük koduyla birlikte korunur", {
+  env <- .source_langflow_sources_env()
+
+  full <- paste0(
+    "Cevap.",
+    env$mergen_langflow_kaynakca_marker_block(list(
+      list(title = "Final Rapor", path = "docs/Rev  2/prosedur  final.pdf", page = "1", type = "pdf")
+    ))
+  )
+  sp <- env$mergen_kaynakca_marker_split(full)
+  expect_false(is.null(sp))
+  expect_length(sp$entries, 1L)
+  # Ardışık boşluklar ayrıştırmada da korunur; bütünlük kodu bu yol üzerinden
+  # doğrulandığı için blok geçerli sayılır (aksi halde split NULL dönerdi).
+  expect_identical(sp$entries[[1]]$path, "docs/Rev  2/prosedur  final.pdf")
+})
+
+test_that("mergen_strip_kaynakca_marker imzalı bloğu SÖKER (LLM bağlamı), sahte/kaynaksız içeriği değiştirmez", {
+  env <- .source_langflow_sources_env()
+
+  prose <- "Risk yönetimi kurumsal süreçlerde belirsizlik yönetimidir."
+  blok <- env$mergen_langflow_kaynakca_marker_block(list(
+    list(title = "Risk Prosedürü", path = "surecler/risk.pdf", page = "4", type = "pdf")
+  ))
+  full <- paste0(prose, blok)
+
+  # Geçerli imzalı blok sökülür; yalnızca düzyazı döner (model bağlamına atıf sızmaz).
+  expect_identical(env$mergen_strip_kaynakca_marker(full), prose)
+  expect_false(grepl("KAYNAK", env$mergen_strip_kaynakca_marker(full), fixed = TRUE))
+  expect_false(grepl("kod=", env$mergen_strip_kaynakca_marker(full), fixed = TRUE))
+
+  # İşaretleyici olmayan içerik olduğu gibi kalır.
+  expect_identical(env$mergen_strip_kaynakca_marker("Sade bir yanıt."), "Sade bir yanıt.")
+  # Bütünlük kodu geçersiz (sahte) blok geçerli sayılmadığı için sökülmez;
+  # içerik değişmeden döner (zaten process_message_content da yükseltmez).
+  forged <- "Cevap.\n\nKaynakça:\n[KAYNAK 1] Sahte | yol=gizli/veri.pdf | tur=pdf\n"
+  expect_identical(env$mergen_strip_kaynakca_marker(forged), forged)
+
+  # Boş/NULL güvenli.
+  expect_identical(env$mergen_strip_kaynakca_marker(""), "")
+  expect_null(env$mergen_strip_kaynakca_marker(NULL))
+})
+
+test_that("statik kablolama: tekil sohbet ve ortak oda LLM bağlam kurucuları işaretleyiciyi söker", {
+  repo_root <- resolve_repo_root_for_tests()
+  oku <- function(yol) {
+    baytlar <- readBin(yol, what = "raw", n = file.info(yol)$size)
+    iconv(rawToChar(baytlar), from = "UTF-8", to = "UTF-8", sub = "byte")
+  }
+
+  # Tekil sohbet: context_messages, filtre + strip yapan yardımcıdan kurulur.
+  send_msg <- oku(file.path(repo_root, "R", "server_send_message.R"))
+  expect_true(grepl("mergen_prepare_context_messages", send_msg, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("context_messages", send_msg, fixed = TRUE, useBytes = TRUE))
+  # Yardımcının kendisi strip'i uygular.
+  core <- oku(file.path(repo_root, "R", "helpers_send_message_core.R"))
+  expect_true(grepl("mergen_prepare_context_messages", core, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("mergen_strip_kaynakca_marker", core, fixed = TRUE, useBytes = TRUE))
+
+  # Ortak oda: ortak_yz_sohbet_gecmisi assistant içeriğinde işaretleyici sökülür.
+  ortak_hist <- oku(file.path(repo_root, "R", "helpers_ortak_oturum_db_mesajlar.R"))
+  expect_true(grepl("mergen_strip_kaynakca_marker", ortak_hist, fixed = TRUE, useBytes = TRUE))
+})
+
 test_that("mergen_langflow_kaynakca_marker_block düz metin işaretleyici bloğunu üretir ve gramer bozucu karakterleri temizler", {
   env <- .source_langflow_sources_env()
 
@@ -241,6 +343,13 @@ test_that("mergen_langflow_kaynakca_marker_block düz metin işaretleyici bloğu
   expect_identical(env$mergen_langflow_kaynakca_marker_block(list(
     list(title = "Kaçış", path = "../gizli/rapor.pdf", page = "", type = "pdf")
   )), "")
+
+  # Gerçek dosya adındaki ARDIŞIK BOŞLUKLAR korunur (yalnızca ayraç/satır-sonu
+  # temizlenir); yol=... diskteki "Rev  2/prosedur  final.pdf" ile eşleşebilir.
+  bosluk_blok <- env$mergen_langflow_kaynakca_marker_block(list(
+    list(title = "Final Rapor", path = "docs/Rev  2/prosedur  final.pdf", page = "1", type = "pdf")
+  ))
+  expect_match(bosluk_blok, "yol=docs/Rev  2/prosedur  final\\.pdf \\| kod=[0-9a-f]+")
 })
 
 test_that("mergen_kaynakca_marker_split yalnızca mesaj sonundaki geçerli bloğu ayırır; bozuk blok tümüyle reddedilir", {

@@ -9,6 +9,27 @@ if (!exists("mergen_new_send_message_request_id", mode = "function", inherits = 
   safe_source("R/helpers_send_message_request_lifecycle.R", encoding = "UTF-8")
 }
 
+# LLM bağlamına girecek mesaj listesini hazırlar: (1) include_in_context = FALSE
+# olan mesajları eler, (2) Langflow imzalı Kaynakça işaretleyici bloğunu
+# assistant/AI mesaj içeriğinden SÖKER. İşaretleyici görünen mesajda ve DB'de
+# kalır (tıklanabilir atıf), ama model geçmişine taşınmaz; aksi halde sonraki
+# (Langflow olmayan) bir yanıt bağlamda gördüğü geçerli `kod` taşıyan bloğu aynen
+# tekrar üretip gerçek kaynak üstverisi olmadan tıklanabilir atıf uydurabilirdi
+# (bkz. process_message_content). Strip yardımcısı yüklü değilse (izole test)
+# içerik değişmeden kalır.
+mergen_prepare_context_messages <- function(messages) {
+  filtered <- Filter(function(m) !isFALSE(m$include_in_context %||% TRUE), messages)
+  if (!exists("mergen_strip_kaynakca_marker", mode = "function", inherits = TRUE)) {
+    return(filtered)
+  }
+  lapply(filtered, function(m) {
+    if (is.character(m$content) && length(m$content) == 1L) {
+      m$content <- mergen_strip_kaynakca_marker(m$content)
+    }
+    m
+  })
+}
+
 mergen_determine_tool_family <- function(settings_data, uploaded_count, skip_mcp_once, current_settings) {
   cfg_excel_on <- isTRUE(settings_data$enable_mcp_tools)
   cfg_sql_analysis_on <- isTRUE(settings_data$enable_rdata_tools)

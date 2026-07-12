@@ -236,9 +236,9 @@ sendMessageInit <- function(
     recent_history_limit <- if ((identical(tool_family, "none") || identical(tool_family, "coding")) &&
                                 uploaded_count == 0) 3 else 5
 
-    context_messages <- Filter(function(m) {
-      !isFALSE(m$include_in_context %||% TRUE)
-    }, isolate(values$messages))
+    # include_in_context filtresi + Langflow imzalı Kaynakça işaretleyicisini LLM
+    # bağlamından söker (mesajda/DB'de kalır, model geçmişine taşınmaz).
+    context_messages <- mergen_prepare_context_messages(isolate(values$messages))
 
     recent_messages <- tail(context_messages, recent_history_limit)
     recent_messages <- Filter(function(m) {
