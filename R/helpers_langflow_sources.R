@@ -45,15 +45,26 @@
 
   title <- .langflow_source_field(doc, c("title", "name", "file_name", "filename", "display_name"))
   path <- .langflow_source_field(doc, c("file_path", "filepath", "path", "source", "file"))
+  path_like <- function(x) {
+    nzchar(x) && (grepl("[\\/]", x) || nzchar(tools::file_ext(gsub("\\\\", "/", x))))
+  }
   page <- .langflow_source_field(doc, c("page", "page_number", "page_label", "sayfa"))
   type <- .langflow_source_field(doc, c("type", "file_type", "filetype", "tur"))
 
   # "source" alanı bazen dosya değil model/bileşen adı taşır; yol ayracı veya
-  # bilinen belge uzantısı yoksa ve ayrıca başlık da yoksa kayıt üretme.
+  # bilinen belge uzantısı yoksa kayıt üretme. Başlık tek başına yalnızca dosya
+  # adı gibi görünüyorsa kabul edilir; aksi halde tıklanabilir kaynak uydurmayız.
+  if (nzchar(path) && !path_like(path)) {
+    if (!nzchar(title)) return(NULL)
+    path <- ""
+  }
   if (!nzchar(title) && nzchar(path)) {
     title <- basename(gsub("\\\\", "/", path))
   }
-  if (!nzchar(title)) {
+  if (!nzchar(path) && path_like(title)) {
+    path <- title
+  }
+  if (!nzchar(title) || !path_like(if (nzchar(path)) path else title)) {
     return(NULL)
   }
 
@@ -133,6 +144,9 @@ extract_langflow_chat_sources <- function(parsed, max_sources = 20L) {
   }
 
   for (arr in arrays) {
+    if (is.list(arr) && !is.null(names(arr)) && !any(vapply(arr, is.list, logical(1)))) {
+      arr <- list(arr)
+    }
     for (item in arr) {
       if (length(records) >= max_sources) break
       if (!is.list(item)) next
@@ -183,7 +197,9 @@ mergen_langflow_kaynakca_marker_block <- function(sources) {
 
     line <- paste0("[KAYNAK ", length(lines) + 1L, "] ", title)
     path <- .kaynakca_marker_sanitize(rec$path)
-    if (nzchar(path)) line <- paste0(line, " | yol=", path)
+    if (!nzchar(path) && grepl("\\.[A-Za-z0-9]{1,8}$", title)) path <- title
+    if (!nzchar(path)) next
+    line <- paste0(line, " | yol=", path, " | imza=mergen")
     page <- .kaynakca_marker_sanitize(rec$page)
     if (grepl("^[0-9]+$", page)) line <- paste0(line, " | sayfa=", page)
     type <- tolower(gsub("[^a-z0-9]", "", .kaynakca_marker_sanitize(rec$type)))
@@ -224,12 +240,19 @@ mergen_kaynakca_marker_split <- function(content) {
     rec <- list(title = title, path = "", page = "", type = "")
     if (length(parts) > 1) {
       for (fld in parts[-1]) {
-        fm <- regmatches(fld, regexec("^(yol|sayfa|tur)=(.*)$", fld, perl = TRUE))[[1]]
+        fm <- regmatches(fld, regexec("^(yol|sayfa|tur|imza)=(.*)$", fld, perl = TRUE))[[1]]
         if (length(fm) != 3) return(NULL)
         if (identical(fm[2], "sayfa") && !grepl("^[0-9]+$", trimws(fm[3]))) return(NULL)
-        rec[[c(yol = "path", sayfa = "page", tur = "type")[[fm[2]]]]] <- trimws(fm[3])
+        if (identical(fm[2], "imza")) {
+          if (!identical(trimws(fm[3]), "mergen")) return(NULL)
+          rec$signature <- "mergen"
+        } else {
+          rec[[c(yol = "path", sayfa = "page", tur = "type")[[fm[2]]]]] <- trimws(fm[3])
+        }
       }
     }
+    if (!identical(rec$signature, "mergen") || !nzchar(rec$path)) return(NULL)
+    rec$signature <- NULL
     entries[[length(entries) + 1L]] <- rec
   }
 
