@@ -417,3 +417,13 @@ testthat::test_that("Bilge Yolaç iyimser üretim durumu kodlama ajanı dilini k
   testthat::expect_true(grepl("ortak_sunum_uretim_durum_metni(iyimser$ad, by_odasi = by_odasi)", txt, fixed = TRUE, useBytes = TRUE))
   testthat::expect_false(grepl("ortak_sunum_uretim_durum_metni(iyimser$ad, by_odasi = FALSE)", txt, fixed = TRUE, useBytes = TRUE))
 })
+
+testthat::test_that("üretilen Bilge Yolaç belgeleri yükleme güvenlik sınırından geçmeden odaya açılmaz", {
+  txt <- .oo_by_cal_oku("R/helpers_ortak_oturum_files.R")
+
+  testthat::expect_true(grepl("validate_uploaded_file(", txt, fixed = TRUE, useBytes = TRUE))
+  testthat::expect_true(grepl("ortak_belge_izinli_uzantilar()", txt, fixed = TRUE, useBytes = TRUE))
+  testthat::expect_true(grepl("getOption(\"mergen.upload_max_mb\", 25L)", txt, fixed = TRUE, useBytes = TRUE))
+  testthat::expect_true(grepl("isTRUE(kaynak_bilgi$isdir[1])", txt, fixed = TRUE, useBytes = TRUE))
+  testthat::expect_true(grepl("unlink(hedef)", txt, fixed = TRUE, useBytes = TRUE))
+})
