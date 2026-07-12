@@ -44,7 +44,12 @@
   if (!is.list(doc)) return(NULL)
 
   title <- .langflow_source_field(doc, c("title", "name", "file_name", "filename", "display_name"))
-  path <- .langflow_source_field(doc, c("file_path", "filepath", "path", "source", "file"))
+  # file_name/filename yol adayı olarak da değerlendirilir: bir kaynak yalnızca
+  # görünen başlık + file_name taşıyorsa (file_path/path yoksa) dosya adı yol
+  # olarak kullanılabilmelidir; aksi halde path_like(title) başlığı dosya-benzeri
+  # bulmayıp kaydı reddederdi. Tam yol alanları önceliklidir; belirsiz source/file
+  # en sonda kalır.
+  path <- .langflow_source_field(doc, c("file_path", "filepath", "path", "file_name", "filename", "source", "file"))
   path_like <- function(x) {
     val <- trimws(as.character(x %||% "")[1])
     if (is.na(val) || !nzchar(val) || grepl("^[A-Za-z][A-Za-z0-9+.-]*://", val)) return(FALSE)
@@ -185,11 +190,15 @@ mergen_langflow_safe_sources <- function(parsed) {
   tryCatch(extract_langflow_chat_sources(parsed), error = function(e) list())
 }
 
-# İşaretleyici satırlarına girecek değerlerden ayraç/parantez/yeni satır gibi
-# gramer bozucu karakterleri temizler (değer verisi olarak kalır, kaçış render
-# sırasında yapılır). Ardışık boşluklar teke indirilir.
+# İşaretleyici satırlarına girecek değerlerden yalnızca GRAMER bozucu karakterleri
+# ("|" alan ayracı ve satır sonları) temizler; köşeli parantezler KORUNUR çünkü
+# "Prosedür [Rev 2].pdf" gibi geçerli dosya adlarında bulunur ve satır tespiti
+# [^\n]* olduğundan (yeni [KAYNAK n] satırı ancak satır başında oluşur) parantez
+# ayrıştırmayı bozmaz; yol diskteki dosyayla eşleşebilsin diye olduğu gibi kalır.
+# Değer verisi olarak korunur, HTML kaçışı render sırasında yapılır. Ardışık
+# boşluklar teke indirilir.
 .kaynakca_marker_sanitize <- function(x) {
-  val <- gsub("[\r\n|\\[\\]]+", " ", as.character(x %||% "")[1], perl = TRUE)
+  val <- gsub("[\r\n|]+", " ", as.character(x %||% "")[1], perl = TRUE)
   val <- trimws(gsub("[ \t]+", " ", val))
   if (is.na(val)) "" else val
 }

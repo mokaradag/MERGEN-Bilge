@@ -95,6 +95,35 @@ test_that("extract_langflow_chat_sources data$sources, artifacts$sources, source
   expect_identical(env$extract_langflow_chat_sources(single_object_shape)[[1]]$path, "docs/tekil.pdf")
 })
 
+test_that("extract_langflow_chat_sources görünen başlık + file_name/filename (yol yokken) dosya adını yol adayı sayar", {
+  env <- .source_langflow_sources_env()
+
+  # Yaygın kaynak biçimi: dosya-benzeri olmayan görünen başlık + file_name.
+  # file_name yol adayı olmasaydı path_like(title) başlığı reddederdi.
+  fn_shape <- .langflow_sources_response(message_extra = list(
+    sources = list(list(title = "Kalite Prosedürü", file_name = "prosedur.pdf"))
+  ))
+  fn <- env$extract_langflow_chat_sources(fn_shape)
+  expect_length(fn, 1L)
+  expect_identical(fn[[1]]$title, "Kalite Prosedürü")
+  expect_identical(fn[[1]]$path, "prosedur.pdf")
+  expect_identical(fn[[1]]$type, "pdf")
+
+  # filename varyantı da desteklenir.
+  filename_shape <- .langflow_sources_response(message_extra = list(
+    sources = list(list(display_name = "Kullanım Kılavuzu", filename = "kilavuz.docx"))
+  ))
+  fl <- env$extract_langflow_chat_sources(filename_shape)
+  expect_length(fl, 1L)
+  expect_identical(fl[[1]]$path, "kilavuz.docx")
+
+  # Gerçek yol alanı varsa o önceliklidir; file_name yalnızca yedektir.
+  both_shape <- .langflow_sources_response(message_extra = list(
+    sources = list(list(title = "Rapor", file_path = "docs/rapor.pdf", file_name = "rapor.pdf"))
+  ))
+  expect_identical(env$extract_langflow_chat_sources(both_shape)[[1]]$path, "docs/rapor.pdf")
+})
+
 test_that("extract_langflow_chat_sources kaynak uydurmaz: üstveri yoksa/ilgisizse boş liste döner", {
   env <- .source_langflow_sources_env()
 
@@ -193,13 +222,16 @@ test_that("mergen_langflow_kaynakca_marker_block düz metin işaretleyici bloğu
 
   blok <- env$mergen_langflow_kaynakca_marker_block(list(
     list(title = "Kalite Prosedürü", path = "surecler/kalite/prosedur.pdf", page = "3", type = "pdf"),
-    list(title = "Kılavuz | [taslak]", path = "rehber/kilavuz.docx", page = "", type = "docx")
+    # Başlıkta '|' alan ayracıdır ve temizlenir; köşeli parantezler ise geçerli
+    # dosya adı karakteri olduğundan hem başlıkta hem YOLDA korunur.
+    list(title = "Kılavuz | [Rev 2]", path = "rehber/Kılavuz [Rev 2].docx", page = "", type = "docx")
   ))
 
   expect_match(blok, "\n\nKaynakça:\n", fixed = TRUE)
   expect_match(blok, "\\[KAYNAK 1\\] Kalite Prosedürü \\| yol=surecler/kalite/prosedur\\.pdf \\| kod=[0-9a-f]+ \\| sayfa=3 \\| tur=pdf")
-  # Başlıktaki '|' ve köşeli parantezler işaretleyici gramerini bozamaz.
-  expect_match(blok, "\\[KAYNAK 2\\] Kılavuz taslak \\| yol=rehber/kilavuz\\.docx \\| kod=[0-9a-f]+ \\| tur=docx")
+  # '|' temizlenir; köşeli parantezler korunur ve yol=... değerinde diskteki
+  # dosya adıyla eşleşebilmesi için olduğu gibi kalır.
+  expect_match(blok, "\\[KAYNAK 2\\] Kılavuz \\[Rev 2\\] \\| yol=rehber/Kılavuz \\[Rev 2\\]\\.docx \\| kod=[0-9a-f]+ \\| tur=docx")
 
   expect_identical(env$mergen_langflow_kaynakca_marker_block(list()), "")
   expect_identical(env$mergen_langflow_kaynakca_marker_block(NULL), "")
@@ -310,6 +342,31 @@ test_that("mergen_kaynakca_marker_html işaretleyiciden gelen değerleri kaçı�
   expect_false(grepl("\\.\\.", gsub("&amp;", "&", html)))
   expect_match(html, "data-filename='etc&amp;&amp;passwd'", fixed = TRUE)
   expect_match(html, "data-filename='gizli&amp;&amp;dosya.docx'", fixed = TRUE)
+})
+
+test_that("köşeli parantez içeren dosya adı üret->ayır->tıklama ipucu turunda korunur (disk eşleşmesi)", {
+  testthat::skip_if_not_installed("htmltools")
+  env <- .source_langflow_sources_env()
+
+  # Gerçek dosya adı köşeli parantez içerir: "Prosedür [Rev 2].pdf". Değer
+  # işaretleyiciye yazılır, geri ayrıştırılır ve tıklama ipucuna dönüşürken
+  # parantezler korunmalı; aksi halde handle_source_file_click diskteki dosyayı
+  # bulamaz.
+  full <- paste0(
+    "Cevap.",
+    env$mergen_langflow_kaynakca_marker_block(list(
+      list(title = "Prosedür [Rev 2]", path = "surecler/Prosedür [Rev 2].pdf", page = "5", type = "pdf")
+    ))
+  )
+  sp <- env$mergen_kaynakca_marker_split(full)
+  expect_false(is.null(sp))
+  expect_length(sp$entries, 1L)
+  # Ayrıştırılan yol parantezleri korur (bütünlük kodu da bu yol üzerinden doğrular).
+  expect_identical(sp$entries[[1]]$path, "surecler/Prosedür [Rev 2].pdf")
+
+  html <- env$mergen_kaynakca_marker_html(sp$entries)
+  # Tıklama ipucu (data-filename) dosya adını parantezlerle taşır (HTML kaçışlı).
+  expect_match(html, "data-filename='surecler&amp;&amp;Prosedür [Rev 2].pdf'", fixed = TRUE)
 })
 
 test_that("process_message_content yapay zekâ mesajındaki işaretleyici bloğu tıklanabilir Kaynakça'ya yükseltir", {

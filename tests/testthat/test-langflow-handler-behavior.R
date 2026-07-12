@@ -197,8 +197,11 @@ test_that("başarılı yanıttaki belge kaynakları mesaj içeriğine Kaynakça 
   # düz metin işaretleyici bloğu olarak içeriğe eklenir (DB'ye de bu biçim gider).
   expect_match(icerik, "^Langflow cevabı")
   expect_match(icerik, "Kaynakça:", fixed = TRUE)
-  expect_match(icerik, "[KAYNAK 1] Kalite Prosedürü | yol=surecler/kalite/prosedur.pdf | sayfa=3 | tur=pdf", fixed = TRUE)
-  expect_match(icerik, "[KAYNAK 2] Kullanım Kılavuzu | yol=rehber/kilavuz.docx | tur=docx", fixed = TRUE)
+  # Not: yol= ile sayfa=/tur= arasına openssl varsa bütünlük kodu (| kod=<hash>)
+  # eklenir; sabit metin yerine kod alanını da kapsayan regex kullanılır (kaynak
+  # yardımcı testleriyle aynı desen). kod alanı openssl yoksa boş kalabilir.
+  expect_match(icerik, "\\[KAYNAK 1\\] Kalite Prosedürü \\| yol=surecler/kalite/prosedur\\.pdf( \\| kod=[0-9a-f]+)? \\| sayfa=3 \\| tur=pdf")
+  expect_match(icerik, "\\[KAYNAK 2\\] Kullanım Kılavuzu \\| yol=rehber/kilavuz\\.docx( \\| kod=[0-9a-f]+)? \\| tur=docx")
 
   # Kaynak alanı olmayan başarı sonucu işaretleyicisiz kalır (mevcut test de
   # bunu korur); burada boş kaynak listesi açıkça doğrulanır.
