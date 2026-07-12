@@ -111,10 +111,10 @@ ortak_by_ozel_dizin_engeli <- function(yol,
   }
 
   for (kok in yonetilen_kokler) {
-    if (.ortak_by_kok_icinde_mi(yol, kok)) {
+    if (.ortak_by_kok_icinde_mi(yol, kok) || .ortak_by_kok_icinde_mi(kok, yol)) {
       return(paste(
         "Bu dizin MERGEN Bilge'nin yönettiği dosya alanının içinde;",
-        "başka bir odanın veya kullanıcının dosya alanına işaret edilemez.",
+        "başka bir odanın veya kullanıcının dosya alanına işaret edemez ya da bu alanı kapsayamaz.",
         "Paylaşmak istediğiniz dosyaları kopyalama eylemleriyle çalışma alanına alın."
       ))
     }
@@ -166,7 +166,10 @@ ortak_by_etkin_calisma_dizini <- function(kayit_dizini,
                                           otomatik_fn = NULL) {
   ozel <- trimws(as.character(kayit_dizini %||% "")[1])
   if (!is.na(ozel) && nzchar(ozel) && .ortak_by_dizin_var_mi(ozel)) {
-    return(list(yol = ozel, ozel = TRUE))
+    engel <- ortak_by_ozel_dizin_engeli(ozel, oturum_id)
+    if (is.null(engel)) {
+      return(list(yol = ozel, ozel = TRUE))
+    }
   }
 
   if (is.null(otomatik_fn) &&
