@@ -425,5 +425,7 @@ testthat::test_that("üretilen Bilge Yolaç belgeleri yükleme güvenlik sınır
   testthat::expect_true(grepl("ortak_belge_izinli_uzantilar()", txt, fixed = TRUE, useBytes = TRUE))
   testthat::expect_true(grepl("getOption(\"mergen.upload_max_mb\", 25L)", txt, fixed = TRUE, useBytes = TRUE))
   testthat::expect_true(grepl("isTRUE(kaynak_bilgi$isdir[1])", txt, fixed = TRUE, useBytes = TRUE))
+  testthat::expect_true(grepl("Sys.readlink(kaynak_yol)", txt, fixed = TRUE, useBytes = TRUE))
+  testthat::expect_true(grepl("Sembolik bağlantı ortak belge olarak kaydedilemez", txt, fixed = TRUE, useBytes = TRUE))
   testthat::expect_true(grepl("unlink(hedef)", txt, fixed = TRUE, useBytes = TRUE))
 })
