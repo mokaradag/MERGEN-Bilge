@@ -326,6 +326,8 @@ test_that("BY köprüsü gerçek akış boru hattını kullanır ve ilerlemeyi o
   # görünmelidir; yalnızca yeni yol setdiff'i P1 görünürlük kaybı yaratır.
   expect_true(grepl("snapshot_claude_code_workdir_files(ws, recursive = TRUE)", kopru, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("diff_claude_code_workdir_snapshot(onceki, ws, recursive = TRUE)", kopru, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("dosya_goruntusu_yollari", kopru, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("tryCatch(", kopru, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("dosya_goruntusu_farki(onceki_dosyalar, ws)", kopru, fixed = TRUE, useBytes = TRUE))
 
   # Durdurulan çalıştırma Durduruldu durumuyla kaydedilir ve odaya bildirilir.

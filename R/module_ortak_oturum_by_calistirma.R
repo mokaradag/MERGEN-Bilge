@@ -55,7 +55,13 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
       return(character(0))
     }
     if (exists("snapshot_claude_code_workdir_files", mode = "function", inherits = TRUE)) {
-      return(snapshot_claude_code_workdir_files(ws, recursive = TRUE))
+      goruntu <- tryCatch(
+        snapshot_claude_code_workdir_files(ws, recursive = TRUE),
+        error = function(e) NULL
+      )
+      if (!is.null(goruntu)) {
+        return(goruntu)
+      }
     }
     tryCatch(
       list.files(ws, recursive = TRUE, full.names = TRUE, all.files = FALSE),
@@ -63,12 +69,38 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
     )
   }
 
+  dosya_goruntusu_yollari <- function(goruntu) {
+    if (is.null(goruntu) || !length(goruntu)) {
+      return(character(0))
+    }
+    if (is.character(goruntu)) {
+      return(goruntu)
+    }
+    if (!is.list(goruntu)) {
+      return(character(0))
+    }
+    yollar <- vapply(goruntu, function(kayit) {
+      if (is.list(kayit)) {
+        as.character(kayit$path %||% "")[1]
+      } else {
+        ""
+      }
+    }, character(1))
+    unique(Filter(nzchar, yollar))
+  }
+
   dosya_goruntusu_farki <- function(onceki, ws) {
     if (exists("diff_claude_code_workdir_snapshot", mode = "function", inherits = TRUE) &&
         is.list(onceki)) {
-      return(diff_claude_code_workdir_snapshot(onceki, ws, recursive = TRUE))
+      fark <- tryCatch(
+        diff_claude_code_workdir_snapshot(onceki, ws, recursive = TRUE),
+        error = function(e) NULL
+      )
+      if (!is.null(fark)) {
+        return(as.character(fark))
+      }
     }
-    setdiff(dosya_goruntusu(ws), onceki)
+    setdiff(dosya_goruntusu_yollari(dosya_goruntusu(ws)), dosya_goruntusu_yollari(onceki))
   }
 
   # --- Canlı çalıştırma köprüsü (motor sözleşmesi) -------------------------------
