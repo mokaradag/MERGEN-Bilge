@@ -166,7 +166,10 @@ ortak_by_etkin_calisma_dizini <- function(kayit_dizini,
                                           otomatik_fn = NULL) {
   ozel <- trimws(as.character(kayit_dizini %||% "")[1])
   if (!is.na(ozel) && nzchar(ozel) && .ortak_by_dizin_var_mi(ozel)) {
-    return(list(yol = ozel, ozel = TRUE))
+    engel <- ortak_by_ozel_dizin_engeli(ozel, oturum_id)
+    if (is.null(engel)) {
+      return(list(yol = ozel, ozel = TRUE))
+    }
   }
 
   if (is.null(otomatik_fn) &&
