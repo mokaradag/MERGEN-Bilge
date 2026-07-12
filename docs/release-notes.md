@@ -15,6 +15,49 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### (Yayınlanmadı) 2026-07-12 Süreç Yönetimi Langflow çoklu akış onarımı + tıklanabilir belge kaynakları
+
+- **Satır içi yorum akış listesini artık kirletmiyor.** `readRenviron()`
+  `.Renviron` satır içi yorumunu değerin parçası saydığından,
+  `LANGFLOW_PROCESS_FLOW_IDS` sonundaki `#yorum` (içinde `;` varsa) fazladan
+  sahte akışlar üretiyor ("Akış 3") ve 2. akışın URL'sini bozuyordu
+  ("URL rejected: Malformed input to a URL function"). Ayrıştırıcı artık kimlik
+  değerindeki ilk `#` ve sonrasını ayıklar; ayıklama sonrası hâlâ bozuk
+  (boşluk/URL-dışı karakter içeren) belirteç kalırsa TÜM liste net bir
+  yapılandırma uyarısıyla reddedilir (kısmi kabul akışları kaydırıp yanlış akışa
+  yönlendirebilirdi). Yorumların ayrı satıra yazılması `.Renviron.example` ve
+  teknik referansta belgelendi.
+- **Açık akış seçimi sessizce 1. akışa düşmez.** Dolu ama eşleşmeyen
+  `selected_flow` değeri artık `""` çözümlenir ve işleyici net "seçili süreç
+  akışı bulunamadı" hatası gösterir; boş seçim eskisi gibi varsayılan ilk akışı
+  kullanır.
+- **Açılır menüdeki Türkçe akış adlarında mojibake giderildi.** Görünen adlar
+  (`LANGFLOW_PROCESS_FLOW_NAMES`) merkezi `normalize_text_utf8(...,
+  repair_mojibake = TRUE)` yolundan geçer; Windows VM'de UTF-8 kaydedilmiş
+  `.Renviron` değerlerinin çift kodlanması ("REHÄ°S SÃ¼reÃ§ ...") onarılır.
+- **Langflow belge kaynakları tıklanabilir Kaynakça olarak geri geldi.** Yeni
+  `R/helpers_langflow_sources.R` katmanı, desteklenen Langflow yanıt
+  şekillerinden (results/message/sources, data/sources, artifacts/sources,
+  source_documents, eski metadata dizisi) başlık/yol/sayfa/tür üstverisini
+  çıkarır (kaynak uydurulmaz; model bilgisi `properties$source` yok sayılır).
+  Kaynaklar içeriğe düz metin `[KAYNAK n] ...` işaretleyicisi olarak eklenir;
+  render'da `process_message_content()` bloğu kaçışlı `.source-link` HTML'ine
+  yükseltir (canlı mesajda ve kayıtlı sohbet yeniden yüklemesinde aynı). PDF ve
+  Word kaynakları mevcut güvenli önizleme rotasından açılır
+  (`source_file_clicked` -> `handle_source_file_click` -> kullanıcı kovası +
+  model taban klasörleri; ipuçlarındaki `..`/sürücü parçaları ayıklanır).
+  Kullanıcı mesajları asla yükseltilmez; grameri bozuk blok düz metin kalır.
+- Regresyon kapsamı: `tests/testthat/test-langflow-runtime-behavior.R`
+  (satır içi yorum + tam iki akış + 2. akış seçimi + UTF-8 etiketler + bozuk
+  belirteç reddi + açılır menü seçenekleri),
+  `tests/testthat/test-langflow-sources-behavior.R` (kaynak çıkarımı, kaynaksız
+  yanıt, işaretleyici grameri, XSS kaçışı, gezinme ipucu temizliği,
+  process_message_content entegrasyonu) ve
+  `tests/testthat/test-langflow-handler-behavior.R` (başarı yanıtında
+  işaretleyici ekleme). Doğrulama notu: `bash tools/ai_validate.sh` bu oturumda
+  cloud-quick profiliyle koşuldu; canlı Langflow ucu, gerçek kaynak dönen akış
+  ve Windows VM açılır menü görselleri VM-üstü doğrulama gerektirir.
+
 ### (Yayınlanmadı) 2026-07-11 Açılış kabuk kapısı + Ortak Bilge Yolaç canlı ajan yenilemesi
 
 - **Açılış kabuk kapısı (kenar çubuğu flaşı giderildi).** Soğuk açılışta sol

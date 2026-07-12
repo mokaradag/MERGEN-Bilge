@@ -186,7 +186,29 @@ process_message_content <- function(content, type = "user") {
 
   content <- gsub("\\\\n", "\n", content)
   content <- trimws(content)
-  
+
+  # Yapay zekâ mesajının SONUNDAKİ Kaynakça işaretleyici bloğu ("[KAYNAK n] ...")
+  # güvenli tıklanabilir kaynak HTML'ine yükseltilir. Blok markdown kaçışından
+  # ÖNCE ayrılır; HTML yalnızca kaçışlı kanonik kurucudan üretilir, düzyazı ise
+  # normal güvenli markdown yolundan geçer. Yardımcılar yüklü değilse (izole
+  # test) blok düz metin olarak kalır. Kullanıcı mesajları asla yükseltilmez.
+  if (type %in% c("ai", "assistant") &&
+      exists("mergen_kaynakca_marker_split", mode = "function", inherits = TRUE) &&
+      exists("mergen_kaynakca_marker_html", mode = "function", inherits = TRUE)) {
+    kaynak_split <- tryCatch(mergen_kaynakca_marker_split(content), error = function(e) NULL)
+    if (!is.null(kaynak_split) && length(kaynak_split$entries) > 0) {
+      base_processed <- process_message_content(kaynak_split$prose, type)
+      kaynak_html <- tryCatch(
+        mergen_kaynakca_marker_html(kaynak_split$entries),
+        error = function(e) ""
+      )
+      return(list(
+        html = paste0(base_processed$html, kaynak_html),
+        has_code = base_processed$has_code
+      ))
+    }
+  }
+
   # Kod algılanan kullanıcı mesajları için güvenli işleme
   has_user_code <- FALSE
 	if (identical(type, "user")) {

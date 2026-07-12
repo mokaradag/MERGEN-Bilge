@@ -18,7 +18,8 @@
     "R/utils_common.R",
     "R/helpers_api_model_config.R",
     "R/helpers_api_model_tool_runtime.R",
-    "R/helpers_langflow_runtime.R"
+    "R/helpers_langflow_runtime.R",
+    "R/helpers_langflow_sources.R"
   )) {
     source(file.path(repo_root, f), encoding = "UTF-8", local = env)
   }
@@ -168,6 +169,45 @@ test_that("başarılı Langflow yanıtında slot serbest bırakılır ve cevap A
   expect_equal(fix$rec$messages[[1]]$content, "Langflow cevabı")
   expect_equal(fix$rec$messages[[1]]$type, "ai")
   expect_equal(fix$rec$reset_calls, 1L)
+})
+
+test_that("başarılı yanıttaki belge kaynakları mesaj içeriğine Kaynakça işaretleyicisi olarak eklenir", {
+  testthat::local_mocked_bindings(runjs = function(...) invisible(NULL), .package = "shinyjs")
+
+  env <- .source_langflow_handler_for_test(
+    canned_result = list(
+      success = TRUE,
+      text = "Langflow cevabı",
+      error = NULL,
+      status = 200L,
+      sources = list(
+        list(title = "Kalite Prosedürü", path = "surecler/kalite/prosedur.pdf", page = "3", type = "pdf"),
+        list(title = "Kullanım Kılavuzu", path = "rehber/kilavuz.docx", page = "", type = "docx")
+      )
+    )
+  )
+  fix <- .make_langflow_ctx()
+
+  out <- env$handle_langflow_chat_mode(fix$ctx)
+
+  expect_true(out)
+  expect_equal(length(fix$rec$messages), 1L)
+  icerik <- fix$rec$messages[[1]]$content
+  # Düzyazı korunur; kaynaklar render'da tıklanabilir Kaynakça'ya yükseltilecek
+  # düz metin işaretleyici bloğu olarak içeriğe eklenir (DB'ye de bu biçim gider).
+  expect_match(icerik, "^Langflow cevabı")
+  expect_match(icerik, "Kaynakça:", fixed = TRUE)
+  expect_match(icerik, "[KAYNAK 1] Kalite Prosedürü | yol=surecler/kalite/prosedur.pdf | sayfa=3 | tur=pdf", fixed = TRUE)
+  expect_match(icerik, "[KAYNAK 2] Kullanım Kılavuzu | yol=rehber/kilavuz.docx | tur=docx", fixed = TRUE)
+
+  # Kaynak alanı olmayan başarı sonucu işaretleyicisiz kalır (mevcut test de
+  # bunu korur); burada boş kaynak listesi açıkça doğrulanır.
+  env2 <- .source_langflow_handler_for_test(
+    canned_result = list(success = TRUE, text = "Sade cevap", error = NULL, status = 200L, sources = list())
+  )
+  fix2 <- .make_langflow_ctx()
+  env2$handle_langflow_chat_mode(fix2$ctx)
+  expect_equal(fix2$rec$messages[[1]]$content, "Sade cevap")
 })
 
 test_that("durdurma/iptal yolunda bayat callback slotu serbest bırakır (sızıntı önlenir)", {
