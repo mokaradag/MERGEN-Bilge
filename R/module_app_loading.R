@@ -16,16 +16,62 @@
 #   R dosyası küçük/okunabilir kalır. Bu varlıklar bilinçli olarak normal
 #   UI manifestine (R/config_ui_assets.R) eklenmez.
 
+#' Açılış varlık dosyası yolunu çöz
+#' @description Açılış katmanı ilk boyamada satır içi CSS/JS'e bağımlıdır.
+#'   Shiny uygulaması normalde repo kökünden başlatılır; ancak servis
+#'   sarmalayıcıları ve izole testler çalışma dizinini değiştirebilir. Bu
+#'   nedenle yalnızca getwd()/www varsayımına bağlı kalmadan önce
+#'   MERGEN_REPO_ROOT, sonra çalışma dizini ve üst dizinleri taranır.
+#' @param rel_path www köküne göre göreli yol
+#' @return Tam dosya yolu ya da bulunamazsa boş dize
+app_loading_asset_path <- function(rel_path) {
+  rel_path <- as.character(rel_path %||% "")[1]
+  if (!nzchar(rel_path)) {
+    return("")
+  }
+
+  rel_path <- gsub("^/+|^www/+", "", rel_path)
+
+  candidates <- character(0)
+  env_root <- Sys.getenv("MERGEN_REPO_ROOT", unset = "")
+  if (nzchar(env_root)) {
+    candidates <- c(candidates, env_root)
+  }
+
+  cwd <- tryCatch(getwd(), error = function(e) "")
+  if (nzchar(cwd)) {
+    current <- normalizePath(cwd, winslash = "/", mustWork = FALSE)
+    repeat {
+      candidates <- c(candidates, current)
+      parent <- dirname(current)
+      if (!nzchar(parent) || identical(parent, current)) {
+        break
+      }
+      current <- parent
+    }
+  }
+
+  candidates <- unique(Filter(nzchar, candidates))
+  for (root in candidates) {
+    path <- file.path(root, "www", rel_path)
+    if (file.exists(path)) {
+      return(path)
+    }
+  }
+
+  ""
+}
+
 #' Açılış varlık dosyasını UTF-8 metin olarak oku
 #' @description www altındaki bir CSS/JS dosyasını ham bayt olarak okuyup
 #'   UTF-8 metne dönüştürür; satır içine gömme için kullanılır.
 #' @param rel_path www köküne göre göreli yol (örn. "css/app_loading.css")
 #' @return Karakter dizisi (dosya içeriği) ya da bulunamazsa boş dize
 app_loading_asset <- function(rel_path) {
-  path <- file.path("www", rel_path)
+  path <- app_loading_asset_path(rel_path)
 
-  if (!file.exists(path)) {
-    warning(sprintf("Açılış yükleme varlığı bulunamadı: %s", path), call. = FALSE)
+  if (!nzchar(path) || !file.exists(path)) {
+    warning(sprintf("Açılış yükleme varlığı bulunamadı: www/%s", rel_path), call. = FALSE)
     return("")
   }
 

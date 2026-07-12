@@ -111,6 +111,39 @@ testthat::test_that("app_loading_asset boş dosya için boş dize döndürür", 
   testthat::expect_identical(okunan, "")
 })
 
+testthat::test_that("app_loading_asset çalışma dizini alt klasördeyken repo köküne yürür", {
+  env <- .source_app_loading_for_test()
+  tmp <- withr::local_tempdir()
+  dir.create(file.path(tmp, "www", "js"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(tmp, "alt", "ic"), recursive = TRUE, showWarnings = FALSE)
+  hedef <- file.path(tmp, "www", "js", "app_loading_nested_fixture.js")
+  writeLines("window.__mergen_nested_fixture = 'Çağrı';", hedef, useBytes = TRUE)
+
+  okunan <- withr::with_dir(
+    file.path(tmp, "alt", "ic"),
+    env$app_loading_asset("js/app_loading_nested_fixture.js")
+  )
+
+  testthat::expect_true(grepl("Çağrı", okunan, fixed = TRUE))
+})
+
+testthat::test_that("app_loading_asset MERGEN_REPO_ROOT adayını çalışma dizininden önce kullanabilir", {
+  env <- .source_app_loading_for_test()
+  tmp <- withr::local_tempdir()
+  repo <- file.path(tmp, "repo")
+  cwd <- file.path(tmp, "baska_yer")
+  dir.create(file.path(repo, "www", "css"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(cwd, recursive = TRUE, showWarnings = FALSE)
+  writeLines("/* Şerit varlığı */", file.path(repo, "www", "css", "lane.css"), useBytes = TRUE)
+
+  okunan <- withr::with_envvar(
+    c(MERGEN_REPO_ROOT = repo),
+    withr::with_dir(cwd, env$app_loading_asset("css/lane.css"))
+  )
+
+  testthat::expect_true(grepl("Şerit", okunan, fixed = TRUE))
+})
+
 testthat::test_that("app_loading_asset repo kökündeki gerçek CSS varlığını okur", {
   env <- .source_app_loading_for_test()
   repo_root <- resolve_repo_root_for_tests()
