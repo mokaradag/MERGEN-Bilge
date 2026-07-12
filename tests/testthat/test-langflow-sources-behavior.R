@@ -131,6 +131,11 @@ test_that("extract_langflow_chat_sources kaynak uydurmaz: üstveri yoksa/ilgisiz
     sources = list(list(name = "kurulum.exe"))
   ))
   expect_length(env$extract_langflow_chat_sources(executable_name), 0L)
+
+  slash_component <- .langflow_sources_response(message_extra = list(
+    sources = list(list(source = "components/vector_store"))
+  ))
+  expect_length(env$extract_langflow_chat_sources(slash_component), 0L)
 })
 
 test_that("extract_langflow_chat_sources kayıtları (yol, sayfa) anahtarıyla tekler ve üst sınırı uygular", {

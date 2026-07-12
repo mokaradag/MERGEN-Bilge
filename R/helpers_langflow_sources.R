@@ -49,7 +49,7 @@
     val <- trimws(as.character(x %||% "")[1])
     if (is.na(val) || !nzchar(val) || grepl("^[A-Za-z][A-Za-z0-9+.-]*://", val)) return(FALSE)
     ext <- tolower(tools::file_ext(gsub("\\\\", "/", val)))
-    ext %in% c("pdf", "doc", "docx", "docm", "txt", "csv", "xls", "xlsx", "ppt", "pptx") || grepl("[\\/]", val)
+    ext %in% c("pdf", "doc", "docx", "docm", "txt", "csv", "xls", "xlsx", "ppt", "pptx")
   }
   page <- .langflow_source_field(doc, c("page", "page_number", "page_label", "sayfa"))
   type <- .langflow_source_field(doc, c("type", "file_type", "filetype", "tur"))
