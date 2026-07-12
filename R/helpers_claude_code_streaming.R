@@ -24,6 +24,11 @@
 #' @param stop_file İsteğe bağlı durdurma bayrak dosyası: yoklama döngüsünde bu
 #'   yol GERÇEK bir dosya olarak var olduğunda süreç öldürülür ve sonuç
 #'   stopped=TRUE ile döner (SSE işçisindeki stop-file deseniyle aynı sözleşme).
+#' @param user_id Merkezi çalışma dizini politikasında kullanılacak etkin
+#'   kullanıcı kimliği.
+#' @param approved_workdir_roots Çağıran katman tarafından oda izolasyonu ve
+#'   merkezi dizin politikasından geçirilmiş kesin çalışma kökleri. Bu değer
+#'   yalnızca ikinci doğrulamada önceki onayı korumak için kullanılmalıdır.
 #' @return Liste: success, output, error, duration, tool_uses, session_id,
 #'   stopped (yalnızca kullanıcı durdurmasında TRUE)
 run_claude_code_streaming <- function(prompt,
@@ -34,7 +39,9 @@ run_claude_code_streaming <- function(prompt,
                                        cli_path = NULL,
                                        on_chunk = NULL,
                                        stop_file = NULL,
-                                       api_key = NULL) {
+                                       api_key = NULL,
+                                       user_id = NULL,
+                                       approved_workdir_roots = character(0)) {
   baslangic <- Sys.time()
 
   # Girdi doğrulaması
@@ -57,9 +64,13 @@ run_claude_code_streaming <- function(prompt,
     ))
   }
 
-  # Çalışma dizini kontrolü
+  # Çalışma dizini kontrolü.
+  # Çağıran katman tarafından önceden onaylanmış kesin kökler ikinci
+  # doğrulamada kaybedilmez; üst dizin veya sürücü bütünü otomatik açılmaz.
   workdir_policy <- cc_policy_validate_workdir(
     workdir,
+    user_id = user_id,
+    extra_allowed_roots = approved_workdir_roots,
     allow_system_temp = TRUE
   )
   if (!isTRUE(workdir_policy$ok)) {

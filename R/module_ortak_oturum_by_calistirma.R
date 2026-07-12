@@ -227,6 +227,10 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
 
     prom <- tracked_future_promise(
       task_fn = function() {
+        # ws bu noktaya gelmeden önce ya ortak_by_ozel_dizin_dogrula()
+        # kapısından geçmiştir ya da uygulama tarafından oda çalışma alanı
+        # olarak oluşturulmuştur. Yalnızca bu kesin kökü ikinci doğrulamaya taşı;
+        # üst dizini veya sürücü bütününü izinli duruma getirme.
         run_claude_code_streaming(
           prompt = calistirma_prompt,
           workdir = ws,
@@ -235,6 +239,8 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
           session_id = cli_session,
           cli_path = cli,
           api_key = anahtar,
+          user_id = soran_id,
+          approved_workdir_roots = ws,
           stop_file = durdurma_dosyasi,
           on_chunk = function(parca) {
             # İşçi tarafı: parça, katılımcılara yayınlanacak ilerleme

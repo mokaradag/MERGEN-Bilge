@@ -299,6 +299,22 @@ test_that("BY köprüsü gerçek akış boru hattını kullanır ve ilerlemeyi o
   # Gerçek kodlama-ajanı boru hattı: run_claude_code (blok, akışsız) DEĞİL,
   # stream-json akış çalıştırıcısı kullanılır.
   expect_true(grepl("run_claude_code_streaming(", kopru, fixed = TRUE, useBytes = TRUE))
+
+  # Ortak oturumda önceden doğrulanmış kesin çalışma dizini ve etkin kullanıcı
+  # kimliği, akış çalıştırıcısının ikinci güvenlik doğrulamasına taşınmalıdır.
+  expect_true(grepl(
+    "user_id = soran_id",
+    kopru,
+    fixed = TRUE,
+    useBytes = TRUE
+  ))
+  expect_true(grepl(
+    "approved_workdir_roots = ws",
+    kopru,
+    fixed = TRUE,
+    useBytes = TRUE
+  ))
+
   expect_true(grepl("stop_file = durdurma_dosyasi", kopru, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("on_chunk = function(parca)", kopru, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("oo_by_ilerleme_kayitlari(parca, durum = ilerleme_durumu)", kopru, fixed = TRUE, useBytes = TRUE))

@@ -28,7 +28,11 @@
   env$log_error <- function(...) invisible(NULL)
   env$ensure_utf8 <- function(x) x
   env$resolve_claude_cli_path <- function(p) "/sahte/claude"
-  env$cc_policy_validate_workdir <- function(workdir, allow_system_temp = TRUE) {
+  env$cc_policy_validate_workdir <- function(
+      workdir,
+      user_id = NULL,
+      extra_allowed_roots = character(0),
+      allow_system_temp = TRUE) {
     list(ok = TRUE, path = workdir)
   }
   env$cc_policy_validate_prompt_file_intent <- function(prompt, workdir = NULL) list(ok = TRUE)
@@ -83,12 +87,55 @@ test_that("run_claude_code_streaming CLI bulunamazsa hata döner", {
 
 test_that("run_claude_code_streaming workdir politikası reddederse hata döner", {
   env <- .ccStreamEnv()
-  env$cc_policy_validate_workdir <- function(workdir, allow_system_temp = TRUE) {
+  env$cc_policy_validate_workdir <- function(
+      workdir,
+      user_id = NULL,
+      extra_allowed_roots = character(0),
+      allow_system_temp = TRUE) {
     list(ok = FALSE, error = "Çalışma dizini geçersiz.")
   }
   res <- env$run_claude_code_streaming("merhaba", workdir = "/kotu/yol", cli_path = "/sahte/claude")
   expect_false(res$success)
   expect_identical(res$error, "Çalışma dizini geçersiz.")
+})
+
+test_that("run_claude_code_streaming onaylanmış çalışma kökünü politikaya taşır", {
+  env <- .ccStreamEnv()
+  yakalanan <- new.env(parent = emptyenv())
+
+  env$cc_policy_validate_workdir <- function(
+      workdir,
+      user_id = NULL,
+      extra_allowed_roots = character(0),
+      allow_system_temp = FALSE) {
+    yakalanan$workdir <- workdir
+    yakalanan$user_id <- user_id
+    yakalanan$roots <- extra_allowed_roots
+    yakalanan$allow_system_temp <- allow_system_temp
+
+    list(
+      ok = FALSE,
+      path = workdir,
+      error = "Doğrulama bağlamı yakalandı."
+    )
+  }
+
+  ws <- file.path(tempdir(), "ortak_bilge_yolac_ws")
+
+  sonuc <- env$run_claude_code_streaming(
+    prompt = "Dosyaları özetle",
+    workdir = ws,
+    cli_path = "/sahte/claude",
+    user_id = 42L,
+    approved_workdir_roots = ws
+  )
+
+  expect_false(sonuc$success)
+  expect_identical(sonuc$error, "Doğrulama bağlamı yakalandı.")
+  expect_identical(yakalanan$workdir, ws)
+  expect_identical(yakalanan$user_id, 42L)
+  expect_identical(yakalanan$roots, ws)
+  expect_true(yakalanan$allow_system_temp)
 })
 
 test_that("run_claude_code_streaming prompt yol politikası reddederse hata döner", {
