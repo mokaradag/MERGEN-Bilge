@@ -322,6 +322,14 @@ test_that("BY köprüsü gerçek akış boru hattını kullanır ve ilerlemeyi o
                     kopru, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl(enc2utf8("yeniden gönderebilirsiniz"), kopru, fixed = TRUE, useBytes = TRUE))
 
+  # Var olan dosyalar ajan tarafından güncellendiğinde de ortak belge olarak
+  # görünmelidir; yalnızca yeni yol setdiff'i P1 görünürlük kaybı yaratır.
+  expect_true(grepl("snapshot_claude_code_workdir_files(ws, recursive = TRUE)", kopru, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("diff_claude_code_workdir_snapshot(onceki, ws, recursive = TRUE)", kopru, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("dosya_goruntusu_yollari", kopru, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("tryCatch(", kopru, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("dosya_goruntusu_farki(onceki_dosyalar, ws)", kopru, fixed = TRUE, useBytes = TRUE))
+
   # Durdurulan çalıştırma Durduruldu durumuyla kaydedilir ve odaya bildirilir.
   expect_true(grepl('"Durduruldu"', kopru, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl(enc2utf8("çalıştırması durduruldu"), kopru, fixed = TRUE, useBytes = TRUE))
@@ -425,5 +433,42 @@ testthat::test_that("üretilen Bilge Yolaç belgeleri yükleme güvenlik sınır
   testthat::expect_true(grepl("ortak_belge_izinli_uzantilar()", txt, fixed = TRUE, useBytes = TRUE))
   testthat::expect_true(grepl("getOption(\"mergen.upload_max_mb\", 25L)", txt, fixed = TRUE, useBytes = TRUE))
   testthat::expect_true(grepl("isTRUE(kaynak_bilgi$isdir[1])", txt, fixed = TRUE, useBytes = TRUE))
+  testthat::expect_true(grepl("Sys.readlink(kaynak_yol)", txt, fixed = TRUE, useBytes = TRUE))
+  testthat::expect_true(grepl("Sembolik bağlantı ortak belge olarak kaydedilemez", txt, fixed = TRUE, useBytes = TRUE))
   testthat::expect_true(grepl("unlink(hedef)", txt, fixed = TRUE, useBytes = TRUE))
+})
+
+testthat::test_that("üretilen ortak belgede sembolik bağlantı hedefi kopyalanmadan reddedilir", {
+  if (!identical(.Platform$OS.type, "unix")) {
+    testthat::skip("Sembolik bağlantı davranışı bu testte yalnızca Unix ortamında doğrulanır.")
+  }
+
+  kok <- file.path(tempdir(), sprintf("oo_by_symlink_%d", sample.int(99999L, 1L)))
+  dir.create(kok, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(kok, recursive = TRUE, force = TRUE), add = TRUE)
+
+  hedef_dosya <- file.path(kok, "hassas.txt")
+  writeLines("gizli", hedef_dosya, useBytes = TRUE)
+  baglanti <- file.path(kok, "rapor.txt")
+  ok <- suppressWarnings(file.symlink(hedef_dosya, baglanti))
+  if (!isTRUE(ok) || !nzchar(Sys.readlink(baglanti))) {
+    testthat::skip("Bu dosya sisteminde sembolik bağlantı oluşturulamadı.")
+  }
+
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  env$.oo_db_pos_int <- function(x) suppressWarnings(as.integer(x))[1]
+  env$.oo_db_log_warn <- function(...) invisible(NULL)
+  env$ortak_oturum_dosya_koku <- function(oturum_id) kok
+  env$validate_uploaded_file <- function(...) {
+    stop("Sembolik bağlantı upload doğrulamasından önce reddedilmelidir.")
+  }
+  source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_ortak_oturum_files.R"),
+    encoding = "UTF-8",
+    local = env
+  )
+
+  testthat::expect_null(env$ortak_db_dosya_kaydet(42L, baglanti, dosya_adi = "rapor.txt"))
+  testthat::expect_false(file.exists(file.path(kok, "rapor_(1).txt")))
 })

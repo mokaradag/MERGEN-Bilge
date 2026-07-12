@@ -45,15 +45,62 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
     by_uretim$son_yayin <- ""
   }
 
-  # Çalışma alanının dosya anlık görüntüsü (üretilen dosya tespiti için).
+  # Çalışma alanının dosya anlık görüntüsü (üretilen/değişen dosya tespiti).
+  # Tek kullanıcılı Bilge Yolaç'ın mtime+size tabanlı tarayıcısı yüklüyse onu
+  # kullanırız; ortak oda çalıştırmalarında ajan çoğu kez var olan dosyayı
+  # günceller, yalnızca setdiff(yol) yapmak bu çıktıları katılımcılardan
+  # gizler. İzole test/yükleme bağlamları için eski yol-listesi düşüşü korunur.
   dosya_goruntusu <- function(ws) {
     if (is.null(ws) || !dir.exists(ws)) {
       return(character(0))
+    }
+    if (exists("snapshot_claude_code_workdir_files", mode = "function", inherits = TRUE)) {
+      goruntu <- tryCatch(
+        snapshot_claude_code_workdir_files(ws, recursive = TRUE),
+        error = function(e) NULL
+      )
+      if (!is.null(goruntu)) {
+        return(goruntu)
+      }
     }
     tryCatch(
       list.files(ws, recursive = TRUE, full.names = TRUE, all.files = FALSE),
       error = function(e) character(0)
     )
+  }
+
+  dosya_goruntusu_yollari <- function(goruntu) {
+    if (is.null(goruntu) || !length(goruntu)) {
+      return(character(0))
+    }
+    if (is.character(goruntu)) {
+      return(goruntu)
+    }
+    if (!is.list(goruntu)) {
+      return(character(0))
+    }
+    yollar <- vapply(goruntu, function(kayit) {
+      if (is.list(kayit)) {
+        as.character(kayit$path %||% "")[1]
+      } else {
+        ""
+      }
+    }, character(1))
+    unique(Filter(nzchar, yollar))
+  }
+
+  dosya_goruntusu_farki <- function(onceki, ws) {
+    if (exists("diff_claude_code_workdir_snapshot", mode = "function", inherits = TRUE) &&
+        is.list(onceki)) {
+      fark <- tryCatch(
+        diff_claude_code_workdir_snapshot(onceki, ws, recursive = TRUE),
+        error = function(e) NULL
+      )
+      if (!is.null(fark)) {
+        return(as.character(fark))
+      }
+    }
+    setdiff(dosya_goruntusu_yollari(dosya_goruntusu(ws)), dosya_goruntusu_yollari(onceki))
   }
 
   # --- Canlı çalıştırma köprüsü (motor sözleşmesi) -------------------------------
@@ -298,7 +345,7 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
     basarili <- isTRUE(sonuc$success)
     durduruldu <- isTRUE(sonuc$stopped)
 
-    yeni_dosyalar <- setdiff(dosya_goruntusu(ws), onceki_dosyalar)
+    yeni_dosyalar <- dosya_goruntusu_farki(onceki_dosyalar, ws)
 
     uretilen_json <- if (length(yeni_dosyalar) > 0L) {
       tryCatch(

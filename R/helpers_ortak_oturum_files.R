@@ -138,6 +138,16 @@ ortak_db_dosya_kaydet <- function(oturum_id,
     return(NULL)
   }
 
+  # Üretilen dosya olarak görünen sembolik bağlantıları paylaşma. Bilge Yolaç
+  # özel proje dizininde çalışırken bir bağlantı çalışma alanı içinde görünse de
+  # hedefi kullanıcı/oda kapsamı dışındaki hassas bir dosya olabilir;
+  # file.copy() bağlantı hedefini kopyalayarak bu dosyayı tüm odaya açabilir.
+  baglanti_hedefi <- tryCatch(Sys.readlink(kaynak_yol), error = function(e) "")
+  if (length(baglanti_hedefi) > 0L && nzchar(as.character(baglanti_hedefi[1]))) {
+    .oo_db_log_warn("Sembolik bağlantı ortak belge olarak kaydedilemez; kayıt reddedildi.")
+    return(NULL)
+  }
+
   kaynak_yol <- tryCatch(
     normalizePath(kaynak_yol, winslash = "/", mustWork = TRUE),
     error = function(e) kaynak_yol
