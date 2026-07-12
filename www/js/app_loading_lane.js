@@ -81,8 +81,13 @@
   // Hızlı şeritte derin uzay girişi de atlanır: mergen-skip-intro sınıfı
   // mevcut CSS/JS atlama davranışını, mergen-fast-lane sınıfı ise şeride özel
   // stilleri (statik karşılama zemini, gizlenen Deneyim Modu kartları vb.)
-  // sürer. Zengin şeritte fast-lane sınıfı kaldırılır; skip-intro sınıfına
-  // dokunulmaz (o ayrı bir kullanıcı tercihi olarak kalır).
+  // sürer. Zengin şeritte fast-lane sınıfı kaldırılır; skip-intro yalnızca
+  // ayrı kullanıcı tercihi gerçekten açıksa korunur.
+  function settingsSkipIntroEnabled() {
+    var settings = readSettingsObject();
+    return !!(settings && settings.skip_intro === true);
+  }
+
   function applyLaneClasses(lane) {
     var html = document.documentElement;
     if (!html) return;
@@ -91,6 +96,9 @@
       html.classList.add("mergen-skip-intro");
     } else {
       html.classList.remove("mergen-fast-lane");
+      if (!settingsSkipIntroEnabled()) {
+        html.classList.remove("mergen-skip-intro");
+      }
     }
   }
 
@@ -135,7 +143,14 @@
     if (!lane) return;
 
     resolvedLane = lane;
-    resolvedSource = opts.source || resolvedSource || "stored";
+    // Kaynak da şerit gibi mevcut çözümün parçasıdır. Ayarlar sayfası veya
+    // dış API üzerinden yapılan programatik değişimlerde eski kaynağı
+    // (özellikle env_default) taşımak, sonraki köprülerin kullanıcı seçimini
+    // dağıtım varsayılanı gibi yorumlamasına yol açabilir. Açık source yoksa
+    // kalıcı yazılan değişimleri kullanıcı tercihi (stored), kalıcı olmayan
+    // canlı uygulamaları da mevcut kullanıcı durumunun güncellenmesi olarak
+    // işaretle; eski kaynağı koruma.
+    resolvedSource = opts.source || "stored";
     if (opts.persist === true) {
       persistLane(lane);
     }

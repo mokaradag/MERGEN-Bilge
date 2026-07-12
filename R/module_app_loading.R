@@ -16,16 +16,62 @@
 #   R dosyası küçük/okunabilir kalır. Bu varlıklar bilinçli olarak normal
 #   UI manifestine (R/config_ui_assets.R) eklenmez.
 
+#' Açılış varlık dosyası yolunu çöz
+#' @description Açılış katmanı ilk boyamada satır içi CSS/JS'e bağımlıdır.
+#'   Shiny uygulaması normalde repo kökünden başlatılır; ancak servis
+#'   sarmalayıcıları ve izole testler çalışma dizinini değiştirebilir. Bu
+#'   nedenle yalnızca getwd()/www varsayımına bağlı kalmadan önce
+#'   MERGEN_REPO_ROOT, sonra çalışma dizini ve üst dizinleri taranır.
+#' @param rel_path www köküne göre göreli yol
+#' @return Tam dosya yolu ya da bulunamazsa boş dize
+app_loading_asset_path <- function(rel_path) {
+  rel_path <- as.character(rel_path %||% "")[1]
+  if (!nzchar(rel_path)) {
+    return("")
+  }
+
+  rel_path <- gsub("^/+|^www/+", "", rel_path)
+
+  candidates <- character(0)
+  env_root <- Sys.getenv("MERGEN_REPO_ROOT", unset = "")
+  if (nzchar(env_root)) {
+    candidates <- c(candidates, env_root)
+  }
+
+  cwd <- tryCatch(getwd(), error = function(e) "")
+  if (nzchar(cwd)) {
+    current <- normalizePath(cwd, winslash = "/", mustWork = FALSE)
+    repeat {
+      candidates <- c(candidates, current)
+      parent <- dirname(current)
+      if (!nzchar(parent) || identical(parent, current)) {
+        break
+      }
+      current <- parent
+    }
+  }
+
+  candidates <- unique(Filter(nzchar, candidates))
+  for (root in candidates) {
+    path <- file.path(root, "www", rel_path)
+    if (file.exists(path)) {
+      return(path)
+    }
+  }
+
+  ""
+}
+
 #' Açılış varlık dosyasını UTF-8 metin olarak oku
 #' @description www altındaki bir CSS/JS dosyasını ham bayt olarak okuyup
 #'   UTF-8 metne dönüştürür; satır içine gömme için kullanılır.
 #' @param rel_path www köküne göre göreli yol (örn. "css/app_loading.css")
 #' @return Karakter dizisi (dosya içeriği) ya da bulunamazsa boş dize
 app_loading_asset <- function(rel_path) {
-  path <- file.path("www", rel_path)
+  path <- app_loading_asset_path(rel_path)
 
-  if (!file.exists(path)) {
-    warning(sprintf("Açılış yükleme varlığı bulunamadı: %s", path), call. = FALSE)
+  if (!nzchar(path) || !file.exists(path)) {
+    warning(sprintf("Açılış yükleme varlığı bulunamadı: www/%s", rel_path), call. = FALSE)
     return("")
   }
 
@@ -90,6 +136,59 @@ app_loading_mark_svg <- function() {
     '<polygon class="alo-hept alo-hept-inner" points="',
     app_loading_heptagon_points(52), '"/>',
     '</svg>'
+  )
+}
+
+#' Açılış kabuk kapısı (pre-paint) head etiketleri
+#' @description Tarayıcı, HTML'i parça parça alırken kenar çubuğu/başlık
+#'   işaretlemesi yükleme katmanından ÖNCE geldiği için ilk boyamada kabuk
+#'   kısa süre görünebilir (flash). Bu kapı <head> içinde çalışır: gövde
+#'   boyanmadan önce <html> elemanına "mergen-boot-shell-gate" sınıfını
+#'   uygular ve shinydashboard kabuğunu (başlık, kenar çubuğu, içerik)
+#'   görünmez tutar. Yükleme katmanı, şerit seçicisi ve SSO hata yüzeyi
+#'   açık istisnadır. Kapı yalnızca GÖSTERİLEN ilerleme %100'e ulaştığında
+#'   www/js/app_loading.js tarafından bırakılır; katman hiç kurulamazsa
+#'   DOMContentLoaded yetenek denetimi kabuğu kalıcı gizli bırakmaz.
+#'   visibility kullanılır (display değil): kabuk açığa çıkarken yerleşim
+#'   sıçraması olmaz ve katman/istisna yüzeyleri alt öğe olarak görünür kalır.
+#' @return Shiny tagList (style + script; ui.R head içinde en erken noktada)
+app_loading_shell_gate_head_tags <- function() {
+  tagList(
+    tags$style(HTML(paste(
+      "html.mergen-boot-shell-gate .main-header,",
+      "html.mergen-boot-shell-gate .main-sidebar,",
+      "html.mergen-boot-shell-gate .content-wrapper {",
+      "  visibility: hidden !important;",
+      "}",
+      "html.mergen-boot-shell-gate #app-loading-overlay,",
+      "html.mergen-boot-shell-gate #mergen-lane-select,",
+      "html.mergen-boot-shell-gate .sso-auth-overlay {",
+      "  visibility: visible !important;",
+      "}",
+      sep = "\n"
+    ))),
+    tags$script(HTML(paste(
+      "(function () {",
+      "  var kok = document.documentElement;",
+      "  kok.classList.add(\"mergen-boot-shell-gate\");",
+      "  function birak() {",
+      "    kok.classList.remove(\"mergen-boot-shell-gate\");",
+      "  }",
+      "  window.MergenBootShellGate = {",
+      "    release: birak,",
+      "    isHeld: function () {",
+      "      return kok.classList.contains(\"mergen-boot-shell-gate\");",
+      "    }",
+      "  };",
+      "  document.addEventListener(\"DOMContentLoaded\", function () {",
+      "    var katman = document.getElementById(\"app-loading-overlay\");",
+      "    if (!katman || !window.MergenAppLoading) {",
+      "      birak();",
+      "    }",
+      "  });",
+      "})();",
+      sep = "\n"
+    )))
   )
 }
 

@@ -125,9 +125,13 @@ testthat::test_that("app_loading_lane.js şerit çözümleme sözleşmesini uygu
   testthat::expect_true(.startup_lane_has(txt, "persist: true"))
   testthat::expect_true(.startup_lane_has(txt, "startup_lane_resolved"))
 
-  # Hızlı şeritte intro atlama sınıfları erken uygulanır
+  # Hızlı şeritte intro atlama sınıfları erken uygulanır; zengin şeride
+  # dönüldüğünde skip-intro yalnızca gerçek kullanıcı tercihi varsa korunur.
   testthat::expect_true(.startup_lane_has(txt, "mergen-fast-lane"))
   testthat::expect_true(.startup_lane_has(txt, "mergen-skip-intro"))
+  testthat::expect_true(.startup_lane_has(txt, "settingsSkipIntroEnabled"))
+  testthat::expect_true(.startup_lane_has(txt, "settings.skip_intro === true"))
+  testthat::expect_true(.startup_lane_has(txt, 'html.classList.remove("mergen-skip-intro")'))
 
   # Dış API yüzeyi
   testthat::expect_true(.startup_lane_has(txt, "window.MergenStartupLane"))
@@ -184,8 +188,16 @@ testthat::test_that("app_loading.js hızlı ve zengin şerit ilerleme sözleşme
   testthat::expect_true(.startup_lane_has(txt, '" / "'))
   testthat::expect_true(.startup_lane_has(txt, "sürüyor"))
 
-  # Seçici açıkken gözcü kapanışı ertelenir
+  # Seçici açıkken yalnızca boot-ready kapanışı ertelenir; ready=true
+  # seçimi atlayıp kabuğu açamaz, ancak SSO/disconnect/watchdog emniyet
+  # yolları gerektiğinde katmanı kapatabilir.
   testthat::expect_true(.startup_lane_has(txt, "laneSelectorOpen"))
+  testthat::expect_true(.startup_lane_has(txt, "laneNeedsSelection"))
+  testthat::expect_true(.startup_lane_has(txt, "pendingFinishUntilLaneResolved"))
+  testthat::expect_true(.startup_lane_has(txt, "finish({ deferForLane: true })"))
+  testthat::expect_true(.startup_lane_has(
+    txt, "if (opts.deferForLane === true && !finished && (laneSelectorOpen() || laneNeedsSelection()))"
+  ))
 })
 
 testthat::test_that("app_loading_media.js hızlı şeritte ön yüklemeyi erteler, zengin şeridi korur", {
@@ -230,6 +242,7 @@ testthat::test_that("başlangıç şeridi sunucu gözlemcisi çözümü işler v
   lane_js <- .read_repo_text_startup_lane("www/js/app_loading_lane.js")
   testthat::expect_true(.startup_lane_has(lane_js, "getSource"))
   testthat::expect_true(.startup_lane_has(lane_js, "resolvedSource"))
+  testthat::expect_true(.startup_lane_has(lane_js, 'resolvedSource = opts.source || "stored"'))
 
   # Şerit çözülmeden intro kararı gönderilmez; hızlı şerit intro'yu atlar
   testthat::expect_true(.startup_lane_has(lane_txt, "window.MergenStartupLane"))

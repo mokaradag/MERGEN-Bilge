@@ -68,13 +68,22 @@ test_that("özel proje dizini kapısı yönetilen kökleri reddeder, oda kökün
     yonetilen_kokler = kokler, oda_koku = oda_42
   )
   expect_true(is.character(engel_baska_oda))
-  expect_true(grepl("işaret edilemez", engel_baska_oda, fixed = TRUE))
+  expect_true(grepl("işaret edemez", engel_baska_oda, fixed = TRUE))
 
   # Kişisel yükleme kovası reddedilir.
   expect_true(is.character(ortak_by_ozel_dizin_engeli(
     file.path(yukleme, "user_7"), 42L,
     yonetilen_kokler = kokler, oda_koku = oda_42
   )))
+
+  # Yönetilen kökün üst dizini de reddedilir: aksi halde proje ağacı başka oda
+  # veya kullanıcı kovalarını kapsayıp Dizin İçeriği/ajan okumasına açabilir.
+  engel_ust_kok <- ortak_by_ozel_dizin_engeli(
+    dirname(kok), 42L,
+    yonetilen_kokler = kokler, oda_koku = oda_42
+  )
+  expect_true(is.character(engel_ust_kok))
+  expect_true(grepl("kapsayamaz", engel_ust_kok, fixed = TRUE))
 
   # Odanın kendi kökü altındaki yol serbesttir.
   expect_null(ortak_by_ozel_dizin_engeli(
@@ -154,6 +163,22 @@ test_that("etkin çalışma dizini: geçerli özel dizin öncelikli, yoksa payla
   expect_identical(bilgi$yol, ozel)
   expect_true(isTRUE(bilgi$ozel))
   expect_null(otomatik_cagrildi$oturum)
+
+  # Önceden kaydedilmiş özel dizin yönetilen kökü kapsıyorsa panel de güvenli
+  # otomatik klasöre düşer; yalnızca uygulama/çalıştırma anında reddetmek
+  # dizin içeriği ve kopyalama eylemlerinin sızıntı yüzeyini açık bırakırdı.
+  kok <- file.path(tempdir(), sprintf("oo_by_saved_kok_%d", sample.int(99999L, 1L)))
+  yonetilen <- file.path(kok, "ws")
+  dir.create(yonetilen, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(kok, recursive = TRUE, force = TRUE), add = TRUE)
+
+  eski_opt <- getOption("mergen.files_root", NULL)
+  options(mergen.files_root = yonetilen)
+  on.exit(options(mergen.files_root = eski_opt), add = TRUE)
+
+  bilgi_engelli <- ortak_by_etkin_calisma_dizini(kok, 42L, otomatik_fn = otomatik_fn)
+  expect_identical(bilgi_engelli$yol, "/tmp/paylasilan")
+  expect_false(isTRUE(bilgi_engelli$ozel))
 
   # Boş kayıt: paylaşılan otomatik klasöre düşer.
   bilgi_bos <- ortak_by_etkin_calisma_dizini("", 42L, otomatik_fn = otomatik_fn)

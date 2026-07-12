@@ -111,7 +111,11 @@ ortak_oturum_dosya_koku <- function(oturum_id) {
 }
 
 #' Üretilen dosyayı ortak oda belgesi olarak kaydeder: fiziksel dosyayı ortak
-#' belge köküne kopyalar ve metadata satırı ekler.
+#' belge köküne kopyalar ve metadata satırı ekler. Bilge Yolaç çalıştırmaları
+#' kullanıcı tarafından seçilen proje dizinlerinde de koşabildiği için burada
+#' katılımcı yüklemeleriyle aynı dosya doğrulama sınırı uygulanır; aksi halde
+#' ajan çıktısı adı altında çalıştırılabilir/çok büyük/denetim karakterli dosya
+#' tüm odaya belge olarak açılabilir.
 #'
 #' @return Ortak dosya kimliği (integer) veya NULL.
 ortak_db_dosya_kaydet <- function(oturum_id,
@@ -127,6 +131,23 @@ ortak_db_dosya_kaydet <- function(oturum_id,
     return(NULL)
   }
 
+  kaynak_bilgi <- suppressWarnings(file.info(kaynak_yol))
+  if (!is.data.frame(kaynak_bilgi) ||
+      nrow(kaynak_bilgi) == 0L ||
+      isTRUE(kaynak_bilgi$isdir[1])) {
+    return(NULL)
+  }
+
+  # Üretilen dosya olarak görünen sembolik bağlantıları paylaşma. Bilge Yolaç
+  # özel proje dizininde çalışırken bir bağlantı çalışma alanı içinde görünse de
+  # hedefi kullanıcı/oda kapsamı dışındaki hassas bir dosya olabilir;
+  # file.copy() bağlantı hedefini kopyalayarak bu dosyayı tüm odaya açabilir.
+  baglanti_hedefi <- tryCatch(Sys.readlink(kaynak_yol), error = function(e) "")
+  if (length(baglanti_hedefi) > 0L && nzchar(as.character(baglanti_hedefi[1]))) {
+    .oo_db_log_warn("Sembolik bağlantı ortak belge olarak kaydedilemez; kayıt reddedildi.")
+    return(NULL)
+  }
+
   kaynak_yol <- tryCatch(
     normalizePath(kaynak_yol, winslash = "/", mustWork = TRUE),
     error = function(e) kaynak_yol
@@ -138,6 +159,32 @@ ortak_db_dosya_kaydet <- function(oturum_id,
   }
 
   ad <- as.character(dosya_adi %||% basename(kaynak_yol))[1]
+
+  if (exists("validate_uploaded_file", mode = "function", inherits = TRUE)) {
+    izinli_uzantilar <- if (exists("ortak_belge_izinli_uzantilar", mode = "function", inherits = TRUE)) {
+      ortak_belge_izinli_uzantilar()
+    } else {
+      c(
+        "txt", "pdf", "docx", "xlsx", "xls", "csv", "json",
+        "r", "py", "md", "log", "xml", "html",
+        "jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"
+      )
+    }
+    dogrulama <- validate_uploaded_file(
+      path = kaynak_yol,
+      filename = ad,
+      max_size_mb = getOption("mergen.upload_max_mb", 25L),
+      allowed_ext = izinli_uzantilar
+    )
+    if (!isTRUE(dogrulama$ok)) {
+      .oo_db_log_warn(paste(
+        "Üretilen ortak belge doğrulaması başarısız; kayıt reddedildi:",
+        as.character(dogrulama$error %||% dogrulama$code %||% "bilinmeyen")
+      ))
+      return(NULL)
+    }
+  }
+
   hedef <- .oo_dosya_hedef_adi(kok, ad)
 
   if (!.oo_dosya_kok_icinde_mi(hedef, kok)) {
@@ -156,6 +203,7 @@ ortak_db_dosya_kaydet <- function(oturum_id,
 
   handle <- .oo_db_try(.oo_db_acquire(conn), fallback = NULL)
   if (is.null(handle)) {
+    .oo_db_try(unlink(hedef), fallback = NULL)
     return(NULL)
   }
   on.exit(.oo_db_release(handle), add = TRUE)
@@ -163,7 +211,7 @@ ortak_db_dosya_kaydet <- function(oturum_id,
   boyut <- suppressWarnings(as.numeric(file.info(hedef)$size[1]))
   uzanti <- tolower(tools::file_ext(hedef))
 
-  .oo_db_try({
+  dosya_id <- .oo_db_try({
     .oo_db_insert_returning_id(
       conn = handle$conn,
       insert_sql_tsql = paste(
@@ -196,6 +244,12 @@ ortak_db_dosya_kaydet <- function(oturum_id,
   },
   fallback = NULL,
   uyari = "Ortak belge metadata kaydı başarısız:")
+
+  if (is.null(dosya_id)) {
+    .oo_db_try(unlink(hedef), fallback = NULL)
+  }
+
+  dosya_id
 }
 
 #' Oturumun ortak belgeleri (istek yapan kullanıcının kopya durumuyla).

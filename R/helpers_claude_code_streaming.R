@@ -21,14 +21,20 @@
 #' @param session_id CLI oturum kimliği (--resume için)
 #' @param cli_path Claude Code CLI çalıştırılabilir dosya yolu
 #' @param on_chunk Parça geldiğinde çağrılacak fonksiyon (tip, veri)
-#' @return Liste: success, output, error, duration, tool_uses, session_id
+#' @param stop_file İsteğe bağlı durdurma bayrak dosyası: yoklama döngüsünde bu
+#'   yol GERÇEK bir dosya olarak var olduğunda süreç öldürülür ve sonuç
+#'   stopped=TRUE ile döner (SSE işçisindeki stop-file deseniyle aynı sözleşme).
+#' @return Liste: success, output, error, duration, tool_uses, session_id,
+#'   stopped (yalnızca kullanıcı durdurmasında TRUE)
 run_claude_code_streaming <- function(prompt,
                                        workdir = getwd(),
                                        model = NULL,
                                        timeout_sec = 300L,
                                        session_id = NULL,
                                        cli_path = NULL,
-                                       on_chunk = NULL) {
+                                       on_chunk = NULL,
+                                       stop_file = NULL,
+                                       api_key = NULL) {
   baslangic <- Sys.time()
 
   # Girdi doğrulaması
@@ -86,6 +92,12 @@ run_claude_code_streaming <- function(prompt,
     # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
     komut <- build_processx_command(cli_path, args, workdir = workdir)
 
+    # Etkin API anahtarı çalışma anında alt süreç ortamına enjekte edilir
+    # (run_claude_code ile aynı sözleşme; dosyaya/günlüğe asla yazılmaz).
+    if (exists("cc_apply_runtime_api_key_env", mode = "function", inherits = TRUE)) {
+      komut$env <- cc_apply_runtime_api_key_env(komut$env, api_key)
+    }
+
 	proc <- processx::process$new(
 	  command = komut$command,
 	  args = komut$args,
@@ -104,8 +116,37 @@ run_claude_code_streaming <- function(prompt,
     son_zaman <- Sys.time()
     zaman_asimi_ms <- timeout_sec * 1000
 
+    # Durdurma bayrağı: yalnızca gerçek bir DOSYA durdurma isteğidir (dizin,
+    # boş yol veya NA hiçbir zaman durdurmaz; SSE stop-file sözleşmesi).
+    durdurma_istendi <- function() {
+      if (is.null(stop_file) || length(stop_file) != 1L) {
+        return(FALSE)
+      }
+      yol <- as.character(stop_file)[1]
+      if (is.na(yol) || !nzchar(yol)) {
+        return(FALSE)
+      }
+      isTRUE(tryCatch(
+        file.exists(yol) && !dir.exists(yol),
+        error = function(e) FALSE
+      ))
+    }
+
     # Satır satır oku (yoklama döngüsü)
     while (proc$is_alive()) {
+      # Kullanıcı durdurması: süreç öldürülür, o ana dek biriken çıktı korunur.
+      if (durdurma_istendi()) {
+        tryCatch(proc$kill(), error = function(e) NULL)
+        gecen <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
+        log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Akış kullanıcı tarafından durduruldu"))
+        return(list(
+          success = FALSE, output = tum_cikti,
+          error = "Çalıştırma kullanıcı tarafından durduruldu.",
+          duration = round(gecen, 1), tool_uses = list(), session_id = NULL,
+          stopped = TRUE
+        ))
+      }
+
       # Zaman aşımı kontrolü
       gecen_sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
       if (gecen_sure > timeout_sec) {

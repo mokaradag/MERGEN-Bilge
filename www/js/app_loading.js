@@ -19,8 +19,22 @@
 (function () {
   "use strict";
 
+  // Kabuk kapısı (head'de kurulur): kenar çubuğu/başlık, gösterilen ilerleme
+  // %100 olana dek görünmez tutulur. Bırakma yalnızca buradan yapılır; katman
+  // hiç yoksa kabuk kalıcı gizli kalmasın diye derhal bırakılır.
+  function releaseShellGate() {
+    try {
+      if (window.MergenBootShellGate) {
+        window.MergenBootShellGate.release();
+      }
+    } catch (e) {}
+  }
+
   var overlay = document.getElementById("app-loading-overlay");
-  if (!overlay) return;
+  if (!overlay) {
+    releaseShellGate();
+    return;
+  }
 
   // Aşamalar: her anahtar gerçek bir boot kontrol noktasıdır. Yüzdeler
   // yalnızca artar; ilerleme asla geri gitmez. Sıralama, kontrol
@@ -75,6 +89,7 @@
 
   var stageIndex = -1;
   var finished = false;
+  var pendingFinishUntilLaneResolved = false;
   var fadeStarted = false;
   var ssoActive = false;
   var skipIntro = false;
@@ -93,6 +108,11 @@
   function laneSelectorOpen() {
     var api = laneApi();
     return !!(api && typeof api.isSelectorOpen === "function" && api.isSelectorOpen());
+  }
+
+  function laneNeedsSelection() {
+    var api = laneApi();
+    return !!(api && typeof api.needsSelection === "function" && api.needsSelection());
   }
 
   // İlerleme durumu: displayPct her zaman targetPct'e doğru ilerler ve
@@ -147,24 +167,30 @@
       displayPct = targetPct;
       applyProgress();
       rafId = null;
-      // Ekran ancak yedigen tam %100 dolduktan sonra erimeye başlar.
+      // Ekran ancak yedigen tam %100 dolduktan sonra erimeye başlar. Kabuk
+      // kapısı da tam bu anda bırakılır: gösterilen değer %100'ü okumadan
+      // kenar çubuğu hiçbir karede boyanamaz.
       if (finished && displayPct >= 99.95 && !fadeStarted) {
         fadeStarted = true;
+        releaseShellGate();
+        // Hızlı Başlangıç şeridinde %100 sonrası bekletme kısaltılır (işin
+        // tamamı zaten bitmiştir; kalan süre yalnızca görsel beklemedir).
         window.setTimeout(function () {
           overlay.classList.add("app-loading-hidden");
           window.setTimeout(function () {
             if (overlay) overlay.style.display = "none";
             cleanup();
           }, 760);
-        }, 470);
+        }, isFastLane() ? 180 : 470);
       }
       return;
     }
 
     // finish() sonrası daha hızlı; ayrıca minimum adım asimptotik takılmayı
-    // önler, böylece %100'e kesin olarak ulaşılır.
-    var ease = finished ? 0.16 : 0.075;
-    var minStep = finished ? 0.65 : 0.14;
+    // önler, böylece %100'e kesin olarak ulaşılır. Hızlı şeritte kapanış
+    // animasyonu belirgin biçimde hızlandırılır (gerçek iş bitmiştir).
+    var ease = finished ? (isFastLane() ? 0.32 : 0.16) : 0.075;
+    var minStep = finished ? (isFastLane() ? 2.1 : 0.65) : 0.14;
     var step = diff * ease;
     if (step < minStep) {
       step = minStep;
@@ -304,7 +330,9 @@
 
       if (msg.ready === true) {
         setStage("ready");
-        window.setTimeout(finish, 260);
+        window.setTimeout(function () {
+          finish({ deferForLane: true });
+        }, 260);
       }
     });
   }
@@ -317,10 +345,16 @@
     api.whenResolved(function () {
       markProgress();
       maybeFinishFastLane();
+      if (pendingFinishUntilLaneResolved) {
+        pendingFinishUntilLaneResolved = false;
+        window.setTimeout(finish, 0);
+      }
     });
   }
 
   function cleanup() {
+    // Yedek güvence: erime tamamlandığında kapı her koşulda bırakılmış olur.
+    releaseShellGate();
     if (rafId !== null) {
       window.cancelAnimationFrame(rafId);
       rafId = null;
@@ -336,7 +370,13 @@
     }
   }
 
-  function finish() {
+  function finish(opts) {
+    opts = opts || {};
+    if (opts.deferForLane === true && !finished && (laneSelectorOpen() || laneNeedsSelection())) {
+      pendingFinishUntilLaneResolved = true;
+      markProgress();
+      return;
+    }
     if (finished) return;
     finished = true;
     overlay.classList.add("alo-complete");

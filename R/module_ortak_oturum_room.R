@@ -287,50 +287,9 @@ ortakOturumRoomServer <- function(id,
       }))
     })
 
-    # Oda modeli seçici: standart ortak söyleşi yolunun modelini seçer. Araç
-    # seçiliyken üretim planı aracın kendi modelini kullanabilir; bu seçici oda
-    # varsayılanını korumaya devam eder.
-    output$oda_model_secim_alani <- renderUI({
-      rol <- oda_rol()
-      if (!ortak_yetki_var_mi(rol, "yapay_zeka_sor")) {
-        return(NULL)
-      }
-
-      modeller <- if (exists("api_config", inherits = TRUE)) {
-        as.character(api_config$local_models %||% character())
-      } else {
-        character()
-      }
-      adlar <- if (exists("api_config", inherits = TRUE)) {
-        names(api_config$local_models %||% character())
-      } else {
-        NULL
-      }
-      if (is.null(adlar) || length(adlar) != length(modeller)) {
-        adlar <- modeller
-      }
-      aciklamalar <- if (exists("api_config", inherits = TRUE)) {
-        api_config$local_model_descriptions %||% list()
-      } else {
-        list()
-      }
-
-      secili <- as.character(isolate(secili_model()) %||% "")[1]
-      if (!nzchar(secili) && length(modeller) > 0L) {
-        secili <- modeller[1]
-        secili_model(secili)
-      }
-
-      oo_model_secici_html(
-        modeller = modeller,
-        adlar = adlar,
-        aciklamalar = aciklamalar,
-        secili = secili,
-        dropdown_id = ns("oda_model_dropdown"),
-        secim_input_id = ns("oda_model_secimi")
-      )
-    })
-
+    # NOT: oda_model_secim_alani çıktısının tek sahibi araç bağlayıcısıdır
+    # (R/module_ortak_oturum_arac.R): araç kilidi + BilgeYolaç odasında model
+    # katmanı delegasyonu orada yönetilir. Seçim DOĞRULAMASI burada kalır.
     observeEvent(input$oda_model_secimi, {
       secim <- as.character(input$oda_model_secimi %||% "")[1]
       modeller <- if (exists("api_config", inherits = TRUE)) {
@@ -347,10 +306,16 @@ ortakOturumRoomServer <- function(id,
 
     # Persona açılır menüsü: yalnızca katilimci_yonet yetkisi olan rol (Sahip /
     # Oturum Yöneticisi) personayı değiştirebilir. Rol değişince yeniden çizilir.
+    # BilgeYolaç odasında persona seçici SUNULMAZ: kodlama-ajanı kontrolleri
+    # (model katmanı, proje dizini) genel sohbet seçicilerinin yerini alır.
     output$oda_persona_secim_alani <- renderUI({
       rol <- oda_rol()
       oturum_id <- aktif_oturum()
       bilgi <- oturum_bilgisi()
+      if (!is.null(bilgi) &&
+          identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")) {
+        return(NULL)
+      }
       persona_secim <- if (!is.null(bilgi)) as.character(bilgi$SecilenPersona[1] %||% "") else ""
       secili <- ortak_oturum_persona_kimligi(persona_secim, oturum_id)
       if (!identical(isolate(secili_persona()), secili)) {

@@ -64,7 +64,10 @@ test_that("davet paneli ve belge eylemleri sözleşmeli metinleri taşır", {
   # belge paneli bağlayıcısına taşındı.
   expect_true(grepl(enc2utf8("Kendi Dosyalarıma Kaydet"), belge_paneli, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl(enc2utf8("Bağlama dahil et"), belge_paneli, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("Belge Yükle", belge_paneli, fixed = TRUE, useBytes = TRUE))
+  # Yükleme yüzeyi yeniden tasarlandı: sürükle-bırak hedefi + "Belge Seç"
+  # eylemi (ayrıntılı sözleşme: test-ortak-oturum-belge-panel-ui-contract.R).
+  expect_true(grepl(enc2utf8("Belgeleri buraya sürükleyin"), belge_paneli, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl(enc2utf8("Belge Seç"), belge_paneli, fixed = TRUE, useBytes = TRUE))
 
   # Davet paneli sekmeleri ve hız sınırı.
   expect_true(grepl(enc2utf8("Çevrim İçi Kullanıcılar"), davetler, fixed = TRUE, useBytes = TRUE))
@@ -201,11 +204,13 @@ test_that("kaynak manifesti ortak_oturumlar bölümünü bağımlılık sırası
     "R/helpers_ortak_oturum_arac.R",
     "R/helpers_ortak_oturum_bakim.R",
     "R/helpers_ortak_oturum_by_calisma_alani.R",
+    "R/helpers_ortak_oturum_by_akis.R",
     "R/module_ortak_oturum_room_ui.R",
     "R/module_ortak_oturum_belge_paneli.R",
     "R/module_ortak_oturum_arac.R",
     "R/module_ortak_oturum_invites.R",
     "R/module_ortak_oturum_yz.R",
+    "R/module_ortak_oturum_by_calistirma.R",
     "R/module_ortak_oturum_bilge_yolac.R",
     "R/module_ortak_oturum_room.R",
     "R/module_ortak_calismalar.R"

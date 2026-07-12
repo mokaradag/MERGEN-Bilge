@@ -15,6 +15,39 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### (Yayınlanmadı) 2026-07-11 Açılış kabuk kapısı + Ortak Bilge Yolaç canlı ajan yenilemesi
+
+- **Açılış kabuk kapısı (kenar çubuğu flaşı giderildi).** Soğuk açılışta sol
+  kenar çubuğu/başlık, yükleme yedigeni %100'e ulaşmadan kısa süre
+  görünebiliyordu (parça parça gelen HTML'de kabuk işaretlemesi yükleme
+  katmanından ÖNCE boyanabiliyor). `app_loading_shell_gate_head_tags()`
+  (`R/module_app_loading.R`, `ui.R` head'inde en erken nokta) gövde
+  boyanmadan `<html>` üzerine `mergen-boot-shell-gate` sınıfını uygular ve
+  `.main-header` / `.main-sidebar` / `.content-wrapper` kabuklarını
+  `visibility: hidden` ile gizler (yerleşim korunur; yükleme katmanı, şerit
+  seçicisi ve SSO hata yüzeyi açık istisnadır). Kapı yalnızca GÖSTERİLEN
+  ilerleme %100'e ulaştığında `www/js/app_loading.js` kapanış yolunda
+  bırakılır; katman hiç kurulamazsa DOMContentLoaded yetenek denetimi kabuğu
+  kalıcı gizli bırakmaz. Hızlı Başlangıç'ta %100 sonrası kapanış animasyonu ve
+  bekletme kısaltıldı (~1.2 sn'ye varan salt-görsel bekleme azaltımı).
+  Regresyon: `tests/testthat/test-boot-shell-gate-contract.R`.
+- **Ortak Bilge Yolaç gerçek kodlama-ajanı oldu.** Ortak BY odaları artık tek
+  kullanıcılı Bilge Yolaç'ın stream-json boru hattını
+  (`run_claude_code_streaming` + `stop_file` + çalışma anı `api_key`
+  enjeksiyonu) kullanır; araç/kabuk/metin olayları tüm katılımcılara
+  `KismiYanit` üzerinden canlı yayınlanır, süren çalıştırma yetkili rollerce
+  durdurulabilir ve CLI yokken normal sohbet LLM'ine SESSİZ DÜŞÜŞ kaldırıldı
+  (açık engelleyici mesaj + yeniden gönderilebilir komut). Kompozerde BY odası
+  genel model menüsü yerine Hızlı/Dengeli/Güçlü katmanlarını gösterir;
+  model/proje dizini değişimi CLI devam bağlamını sıfırlar. Ayrıntı:
+  `docs/ortak-oturumlar.md` §12.2d.
+- **Ortak oda UI düzeltmeleri.** Model/Persona/Araç kompozer menüleri artık
+  YUKARI açılır (ekran dışına taşma giderildi); Ortak Belgeler paneli kompakt
+  sürükle-bırak yükleme yüzeyi ("Belgeleri buraya sürükleyin veya Belge Seç")
+  ve kırpılmayan, kaydırma çubuğu üretmeyen boş durum kazandı; Ortak
+  Çalışmalarım liste kartları arasındaki boşluk `uiOutput` sarmalayıcısına
+  taşınan ızgara kurallarıyla geri geldi (kartlar birbirine değmiyor).
+
 ### (Yayınlanmadı) 2026-07-11 Hızlı Başlangıç VM ölçümü güncellendi
 
 - Son Windows VM konsol kayıtlarına göre Hızlı Başlangıç performansı
