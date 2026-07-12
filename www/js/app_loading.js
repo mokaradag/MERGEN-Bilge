@@ -330,7 +330,9 @@
 
       if (msg.ready === true) {
         setStage("ready");
-        window.setTimeout(finish, 260);
+        window.setTimeout(function () {
+          finish({ deferForLane: true });
+        }, 260);
       }
     });
   }
@@ -368,8 +370,9 @@
     }
   }
 
-  function finish() {
-    if (!finished && (laneSelectorOpen() || laneNeedsSelection())) {
+  function finish(opts) {
+    opts = opts || {};
+    if (opts.deferForLane === true && !finished && (laneSelectorOpen() || laneNeedsSelection())) {
       pendingFinishUntilLaneResolved = true;
       markProgress();
       return;
