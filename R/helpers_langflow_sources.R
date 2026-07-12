@@ -48,7 +48,11 @@
   path_like <- function(x) {
     val <- trimws(as.character(x %||% "")[1])
     if (is.na(val) || !nzchar(val) || grepl("^[A-Za-z][A-Za-z0-9+.-]*://", val)) return(FALSE)
-    ext <- tolower(tools::file_ext(gsub("\\\\", "/", val)))
+    normalized <- gsub("\\\\", "/", val)
+    if (grepl("^/", normalized) || grepl("^[A-Za-z]:", normalized)) return(FALSE)
+    parts <- strsplit(normalized, "/", fixed = TRUE)[[1]]
+    if (any(parts %in% c(".", ".."))) return(FALSE)
+    ext <- tolower(tools::file_ext(normalized))
     ext %in% c("pdf", "doc", "docx", "docm", "txt", "csv", "xls", "xlsx", "ppt", "pptx")
   }
   page <- .langflow_source_field(doc, c("page", "page_number", "page_label", "sayfa"))
@@ -191,16 +195,12 @@ mergen_langflow_safe_sources <- function(parsed) {
 }
 
 # İşaretleyici satırının uygulama tarafından üretildiğini doğrulamak için
-# deterministik bütünlük kodu. Bu bir sır/kimlik doğrulama sınırı değildir;
-# görünür sabit imza yerine satır alanlarının bozulmadığını ve rastgele/model
-# üretimi Kaynakça metinlerinin yükseltilmemesini sağlayan dar bir kapıdır.
+# deterministik bütünlük kodu. openssl yoksa zayıf yerel özetle güvenlik
+# izlenimi vermek yerine boş döner; üretici satırı yazmaz, ayrıştırıcı reddeder.
 .kaynakca_marker_code <- function(title, path, page = "", type = "") {
+  if (!requireNamespace("openssl", quietly = TRUE)) return("")
   payload <- paste(enc2utf8(c(title, path, page, type, "MERGEN_LANGFLOW_SOURCE_V1")), collapse = "\n")
-  if (requireNamespace("openssl", quietly = TRUE)) {
-    return(substr(paste(openssl::sha256(charToRaw(payload)), collapse = ""), 1L, 16L))
-  }
-  ints <- utf8ToInt(payload)
-  sprintf("%08x", sum((ints %% 251L) * seq_along(ints)) %% 4294967295)
+  substr(paste(openssl::sha256(charToRaw(payload)), collapse = ""), 1L, 16L)
 }
 
 # Kaynak kayıtlarından mesaj sonuna eklenecek düz metin Kaynakça işaretleyici
@@ -218,11 +218,15 @@ mergen_langflow_kaynakca_marker_block <- function(sources) {
     line <- paste0("[KAYNAK ", length(lines) + 1L, "] ", title)
     path <- .kaynakca_marker_sanitize(rec$path)
     if (!nzchar(path) && grepl("\\.[A-Za-z0-9]{1,8}$", title)) path <- title
-    if (!nzchar(path)) next
+    normalized_path <- gsub("\\\\", "/", path)
+    path_parts <- strsplit(normalized_path, "/", fixed = TRUE)[[1]]
+    if (!nzchar(path) || grepl("^/", normalized_path) ||
+        grepl("^[A-Za-z]:", normalized_path) || any(path_parts %in% c(".", ".."))) next
     page <- .kaynakca_marker_sanitize(rec$page)
     if (!grepl("^[0-9]+$", page)) page <- ""
     type <- tolower(gsub("[^a-z0-9]", "", .kaynakca_marker_sanitize(rec$type)))
     code <- .kaynakca_marker_code(title, path, page, type)
+    if (!nzchar(code)) next
     line <- paste0(line, " | yol=", path, " | kod=", code)
     if (nzchar(page)) line <- paste0(line, " | sayfa=", page)
     if (nzchar(type)) line <- paste0(line, " | tur=", type)

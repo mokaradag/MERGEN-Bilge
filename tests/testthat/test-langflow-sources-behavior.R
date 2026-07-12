@@ -136,6 +136,16 @@ test_that("extract_langflow_chat_sources kaynak uydurmaz: üstveri yoksa/ilgisiz
     sources = list(list(source = "components/vector_store"))
   ))
   expect_length(env$extract_langflow_chat_sources(slash_component), 0L)
+
+  traversal_source <- .langflow_sources_response(message_extra = list(
+    sources = list(list(title = "Kaçış", source = "../gizli/rapor.pdf"))
+  ))
+  expect_length(env$extract_langflow_chat_sources(traversal_source), 0L)
+
+  drive_source <- .langflow_sources_response(message_extra = list(
+    sources = list(list(title = "Sürücü", source = "C:/gizli/rapor.pdf"))
+  ))
+  expect_length(env$extract_langflow_chat_sources(drive_source), 0L)
 })
 
 test_that("extract_langflow_chat_sources kayıtları (yol, sayfa) anahtarıyla tekler ve üst sınırı uygular", {
@@ -195,6 +205,10 @@ test_that("mergen_langflow_kaynakca_marker_block düz metin işaretleyici bloğu
   expect_identical(env$mergen_langflow_kaynakca_marker_block(NULL), "")
   # Başlıksız kayıt satır üretmez (kaynak uydurulmaz).
   expect_identical(env$mergen_langflow_kaynakca_marker_block(list(list(path = "x.pdf"))), "")
+  # Güvenli göreli yol dışındaki kayıtlar marker bloğuna yazılmaz.
+  expect_identical(env$mergen_langflow_kaynakca_marker_block(list(
+    list(title = "Kaçış", path = "../gizli/rapor.pdf", page = "", type = "pdf")
+  )), "")
 })
 
 test_that("mergen_kaynakca_marker_split yalnızca mesaj sonundaki geçerli bloğu ayırır; bozuk blok tümüyle reddedilir", {
