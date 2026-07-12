@@ -181,6 +181,30 @@ ortak_by_etkin_calisma_dizini <- function(kayit_dizini,
   list(yol = yol, ozel = FALSE)
 }
 
+# Çalışma alanı anlık görüntüsünü karşılaştırılabilir yol listesine indirger.
+# Karakter yol listesi ve snapshot kayıt listesi biçimlerini birlikte destekler.
+ortak_by_dosya_goruntusu_yollari <- function(goruntu) {
+  if (is.null(goruntu) || !length(goruntu)) {
+    return(character(0))
+  }
+  if (is.character(goruntu)) {
+    return(goruntu)
+  }
+  if (!is.list(goruntu)) {
+    return(character(0))
+  }
+
+  yollar <- vapply(goruntu, function(kayit) {
+    if (is.list(kayit)) {
+      as.character(kayit$path %||% "")[1]
+    } else {
+      ""
+    }
+  }, character(1))
+
+  unique(Filter(nzchar, yollar))
+}
+
 # ------------------------------------------------------------------------------
 # SAF HTML üreticileri (tek kullanıcılı Bilge Yolaç kart dilinin oda sürümü;
 # tüm kullanıcı metinleri escape edilir)

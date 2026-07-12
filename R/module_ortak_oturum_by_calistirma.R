@@ -69,26 +69,6 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
     )
   }
 
-  dosya_goruntusu_yollari <- function(goruntu) {
-    if (is.null(goruntu) || !length(goruntu)) {
-      return(character(0))
-    }
-    if (is.character(goruntu)) {
-      return(goruntu)
-    }
-    if (!is.list(goruntu)) {
-      return(character(0))
-    }
-    yollar <- vapply(goruntu, function(kayit) {
-      if (is.list(kayit)) {
-        as.character(kayit$path %||% "")[1]
-      } else {
-        ""
-      }
-    }, character(1))
-    unique(Filter(nzchar, yollar))
-  }
-
   dosya_goruntusu_farki <- function(onceki, ws) {
     if (exists("diff_claude_code_workdir_snapshot", mode = "function", inherits = TRUE) &&
         is.list(onceki)) {
@@ -100,7 +80,10 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
         return(as.character(fark))
       }
     }
-    setdiff(dosya_goruntusu_yollari(dosya_goruntusu(ws)), dosya_goruntusu_yollari(onceki))
+    setdiff(
+      ortak_by_dosya_goruntusu_yollari(dosya_goruntusu(ws)),
+      ortak_by_dosya_goruntusu_yollari(onceki)
+    )
   }
 
   # --- Canlı çalıştırma köprüsü (motor sözleşmesi) -------------------------------
