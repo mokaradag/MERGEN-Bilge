@@ -188,8 +188,14 @@ testthat::test_that("app_loading.js hızlı ve zengin şerit ilerleme sözleşme
   testthat::expect_true(.startup_lane_has(txt, '" / "'))
   testthat::expect_true(.startup_lane_has(txt, "sürüyor"))
 
-  # Seçici açıkken gözcü kapanışı ertelenir
+  # Seçici açıkken gözcü ve doğrudan finish kapanışı ertelenir; ready=true
+  # seçimi atlayıp kabuğu açamaz.
   testthat::expect_true(.startup_lane_has(txt, "laneSelectorOpen"))
+  testthat::expect_true(.startup_lane_has(txt, "laneNeedsSelection"))
+  testthat::expect_true(.startup_lane_has(txt, "pendingFinishUntilLaneResolved"))
+  testthat::expect_true(.startup_lane_has(
+    txt, "if (!finished && (laneSelectorOpen() || laneNeedsSelection()))"
+  ))
 })
 
 testthat::test_that("app_loading_media.js hızlı şeritte ön yüklemeyi erteler, zengin şeridi korur", {
