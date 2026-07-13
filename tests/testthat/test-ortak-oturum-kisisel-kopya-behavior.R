@@ -120,7 +120,7 @@ test_that("katılımcı yüklemesi kişisel klasöre GERÇEK kopya üretir (takm
   withr::defer(DBI::dbDisconnect(conn))
 
   kaynak <- tempfile(fileext = ".txt")
-  writeLines("Türkçe içerik: ğüşiöç", kaynak)
+  writeLines(enc2utf8("Türkçe içerik: ğüşiöç"), kaynak, useBytes = TRUE)
 
   y <- ortak_db_belge_yukle(1L, 2L, kaynak, dosya_adi = "rapor_özet.txt", conn = conn)
   expect_true(y$basarili)
