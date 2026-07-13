@@ -450,6 +450,19 @@ test_that("oda güvenli yanıt süzgeci ham SQL/ODBC tanılamasını genelleşti
     fixed = TRUE
   ))
 
+  # MCP araç hatası (call_llm_worker "Araç hatası:" öneki) ve MCP okuyucu
+  # dosya yolu sızıntısı ("(Path: ...)") odaya ham yazılamaz.
+  expect_true(grepl(
+    "sunucu günlüğüne kaydedildi",
+    oo_arac_oda_guvenli_yanit("Araç hatası:\n Dosya bulunamadı (Path: /srv/mergen/user_7/gizli.xlsx)"),
+    fixed = TRUE
+  ))
+  expect_false(grepl(
+    "/srv/mergen",
+    oo_arac_oda_guvenli_yanit("Dosya bulunamadı (Path: /srv/mergen/user_7/gizli.xlsx)"),
+    fixed = TRUE
+  ))
+
   # Olağan analiz yanıtları ve seçilmiş Türkçe hata metinleri değişmeden geçer.
   expect_identical(
     oo_arac_oda_guvenli_yanit("Analiz kütüphanesinde eşleşme bulunamadı."),

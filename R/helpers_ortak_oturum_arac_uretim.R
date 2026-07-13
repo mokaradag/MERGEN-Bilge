@@ -279,6 +279,14 @@ oo_arac_mcp_uret <- function(gecmis, ayarlar, secili_belgeler_df,
     onFulfilled = function(yanit) {
       icerik <- if (is.list(yanit)) as.character(yanit$content %||% "")[1] else as.character(yanit %||% "")[1]
       if (!is.na(icerik) && nzchar(trimws(icerik))) {
+        # call_llm_worker araç hatasını REDDETMEK yerine "Araç hatası: ..."
+        # gibi normal içerik olarak döndürebilir; bazı MCP okuyucuları bu
+        # metinde ham "Path:" / sürücü tanılaması taşır. Ortak transkripte
+        # kalıcı yazılmadan önce paylaşılan oda güvenli-yanıt süzgecinden
+        # geçirilir (SQL/BY yollarıyla aynı redaksiyon sınırı).
+        if (exists("oo_arac_oda_guvenli_yanit", mode = "function", inherits = TRUE)) {
+          icerik <- oo_arac_oda_guvenli_yanit(icerik)
+        }
         bitir_fn(yanit_metni = icerik)
       } else {
         bitir_fn(hata_metni = "Excel analizi boş yanıt döndürdü; lütfen tekrar deneyin.")

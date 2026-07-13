@@ -301,8 +301,11 @@ oo_arac_oda_guvenli_yanit <- function(metin) {
 
   # Bilinen ham altyapı tanılama kalıpları: DB hata gövdesi, ODBC/SQLSTATE
   # kodları, sürücü/bağlantı metinleri ve R condition önekleri.
+  # MCP worker araç hatasını "Araç hatası:\n ..." öneki ile normal içerik
+  # olarak döndürebilir ve MCP okuyucuları "(Path: ...)" ile sunucu dosya
+  # yolu taşıyabilir; ikisi de ham tanılamadır ve odaya sızmamalıdır.
   riskli_kaliplar <- c(
-    "**Veritabanı Hatası:**",
+    "**Veritabanı Hatası:**", "Araç hatası:", "(Path:",
     "nanodbc", "SQLSTATE", "ODBC", "odbc.cpp", "SQL Server",
     "HY000", "42S02", "42000", "IM002", "08001", "28000",
     "Login timeout", "Login failed", "Error in ", "error in evaluating",

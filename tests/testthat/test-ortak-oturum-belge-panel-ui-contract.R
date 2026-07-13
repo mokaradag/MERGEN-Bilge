@@ -108,6 +108,23 @@ test_that("boş durum başlık + tam metin taşır; kırpma sözleşmesi yoktur"
   expect_false(grepl("line-clamp", bos_blok, fixed = TRUE))
 })
 
+test_that("belge ön izleme görseli mergen_serve_image_data_url'i doğru argüman sırasıyla çağırır", {
+  panel_txt <- .oo_belge_ui_oku("R/module_ortak_oturum_belge_paneli.R")
+
+  # İmza: mergen_serve_image_data_url(local_path, session = ...). Yol İLK
+  # argüman olmalı; session'ı local_path'e geçirmek her görsel ön izlemeyi
+  # "hazırlanamadı" yapar (regresyon koruması). Adlandırılmış session çağrısı beklenir.
+  expect_true(grepl("mergen_serve_image_data_url(yol, session = session)",
+                    panel_txt, fixed = TRUE, useBytes = TRUE))
+  expect_false(grepl("mergen_serve_image_data_url(session, yol)",
+                     panel_txt, fixed = TRUE, useBytes = TRUE))
+
+  # Ön izleme gözlemcisi kök-içi doğrulama ve içerik-erişimi yetki kapısı taşır.
+  expect_true(grepl("input$belge_onizle", panel_txt, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("ortak_belge_onizleme_icerigi", panel_txt, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl(".oo_dosya_kok_icinde_mi", panel_txt, fixed = TRUE, useBytes = TRUE))
+})
+
 test_that("Ortak Çalışmalarım kartları uiOutput sarmalayıcısında da ızgara boşluğu alır", {
   css <- .oo_belge_ui_oku("www/css/ortak_oturumlar.css")
 

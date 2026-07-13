@@ -327,8 +327,11 @@ ortakOturumBelgePaneliBind <- function(input, output, session, ctx) {
     onizleme <- ortak_belge_onizleme_icerigi(ad, yol)
 
     govde <- if (identical(onizleme$tur, "gorsel")) {
+      # İmza: mergen_serve_image_data_url(local_path, session = ...). Yol İLK
+      # argümandır; adlandırılmış çağrı sırayı sabitler (aksi halde her görsel
+      # ön izleme "hazırlanamadı" olurdu).
       gorsel_url <- if (exists("mergen_serve_image_data_url", mode = "function", inherits = TRUE)) {
-        tryCatch(mergen_serve_image_data_url(session, yol), error = function(e) "")
+        tryCatch(mergen_serve_image_data_url(yol, session = session), error = function(e) "")
       } else {
         ""
       }

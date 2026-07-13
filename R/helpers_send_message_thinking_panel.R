@@ -1,9 +1,9 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_send_message_thinking_panel.R
-# Aciklama: send_message dusunme paneli plani ve panel kabugu yerlestirme
-#           yardimcilari. Istek yasam dongusu dosyasindan (request_lifecycle)
-#           tutarli bir sorumluluk olarak ayrildi; davranis birebir ayni.
-#           premiumReasoningStart requestId sozlesmesinin sahibi bu dosyadir.
+# Açıklama: send_message düşünme paneli planı ve panel kabuğu yerleştirme
+#           yardımcıları. İstek yaşam döngüsü dosyasından (request_lifecycle)
+#           tutarlı bir sorumluluk olarak ayrıldı; davranış birebir aynı.
+#           premiumReasoningStart requestId sözleşmesinin sahibi bu dosyadır.
 # ==============================================================================
 
 mergen_build_thinking_panel_plan <- function(tool_family,
