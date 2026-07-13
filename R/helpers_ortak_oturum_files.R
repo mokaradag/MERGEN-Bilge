@@ -17,7 +17,42 @@
 #   * DB'ye dosya içeriği yazılmaz; yalnızca metadata saklanır.
 # ==============================================================================
 
+# Dizin oluşturma + gevşek varlık kontrolü (Windows/UNC güvenli). Tekil oturum
+# yolu (mergen_user_upload_dir) fs tabanlı oluşturma + path_exists_relaxed
+# kullanır; base dir.create/dir.exists UNC/VM yollarında yanlış negatif
+# verebildiği için ortak oturum kökleri de aynı kanıtlanmış deseni izler.
+.oo_dizin_olustur_ve_dogrula <- function(yol) {
+  yol <- as.character(yol %||% "")[1]
+  if (is.na(yol) || !nzchar(yol)) {
+    return(FALSE)
+  }
+
+  tryCatch(
+    fs::dir_create(yol, recurse = TRUE),
+    error = function(e) {
+      tryCatch(
+        dir.create(yol, showWarnings = FALSE, recursive = TRUE),
+        error = function(e2) NULL
+      )
+    }
+  )
+
+  if (exists("path_exists_relaxed", mode = "function", inherits = TRUE)) {
+    var_mi <- tryCatch(isTRUE(path_exists_relaxed(yol)), error = function(e) FALSE)
+    if (var_mi) {
+      return(TRUE)
+    }
+  }
+
+  isTRUE(tryCatch(dir.exists(yol), error = function(e) FALSE)) ||
+    isTRUE(tryCatch(fs::dir_exists(yol), error = function(e) FALSE))
+}
+
 # Ortak belge kök dizini (MERGEN dosya kökü altında). Yoksa oluşturur.
+# Yapılandırılmış dosya kökü erişilemezse (ör. ulaşılamayan UNC paylaşımı)
+# kanıtlanmış erişilebilir MCP taban köküne düşülür; böylece üretilen belge
+# kaydı, çalışma alanı ve "Kendi Dosyalarıma Kaydet" akışları kök yüzünden
+# sessizce çökmez. Düşüş bir kez uyarı olarak loglanır.
 ortak_oturum_dosya_koku <- function(oturum_id) {
   oturum_id <- .oo_db_pos_int(oturum_id)
   if (is.na(oturum_id)) {
@@ -28,17 +63,37 @@ ortak_oturum_dosya_koku <- function(oturum_id) {
   if (is.null(files_root) || !nzchar(as.character(files_root)[1])) {
     files_root <- Sys.getenv("MERGEN_FILES_ROOT", unset = "")
   }
-  if (!nzchar(as.character(files_root)[1])) {
+
+  alt_yol <- file.path("ortak_oturumlar", sprintf("oturum_%d", oturum_id))
+
+  if (nzchar(as.character(files_root)[1])) {
+    kok <- file.path(as.character(files_root)[1], alt_yol)
+    if (.oo_dizin_olustur_ve_dogrula(kok)) {
+      return(kok)
+    }
+    .oo_db_log_warn(
+      "Ortak belge kökü dosya kökü altında oluşturulamadı;",
+      "MCP taban köküne düşülüyor (MERGEN_FILES_ROOT erişilebilirliğini doğrulayın)."
+    )
+  }
+
+  yedek_taban <- if (exists("resolve_mcp_base_dir", mode = "function", inherits = TRUE)) {
+    tryCatch(resolve_mcp_base_dir(), error = function(e) "")
+  } else if (exists("MERGEN_UPLOADS_DIR", inherits = TRUE)) {
+    as.character(get("MERGEN_UPLOADS_DIR", inherits = TRUE))[1]
+  } else {
+    ""
+  }
+
+  if (!nzchar(as.character(yedek_taban %||% "")[1])) {
     return(NULL)
   }
 
-  kok <- file.path(as.character(files_root)[1], "ortak_oturumlar", sprintf("oturum_%d", oturum_id))
-  dir.create(kok, showWarnings = FALSE, recursive = TRUE)
-
-  if (!dir.exists(kok)) {
-    return(NULL)
+  kok <- file.path(as.character(yedek_taban)[1], alt_yol)
+  if (.oo_dizin_olustur_ve_dogrula(kok)) {
+    return(kok)
   }
-  kok
+  NULL
 }
 
 # Yol, ortak belge kökünün İÇİNDE mi? Traversal/dış yol reddedilir.
@@ -390,6 +445,9 @@ ortak_dosya_kisisel_kopyala <- function(ortak_dosya_id, kullanici_id, conn = NUL
     return(basarisiz("Ortak belge bulunamadı veya erişime kapatıldı."))
   }
 
+  # Görünen ad okunurken DB-safe kaçış belirteçleri geri açılır.
+  dosya <- .oo_db_restore_visible(dosya, "DosyaAdi")
+
   oturum_id <- as.integer(dosya$OrtakOturumID[1])
 
   # Yetki: içerik erişimli katılımcı + belge_kopyala yetkisi (fail-closed).
@@ -439,52 +497,92 @@ ortak_dosya_kisisel_kopyala <- function(ortak_dosya_id, kullanici_id, conn = NUL
     ))
   }
 
-  # Kişisel klasöre kopyala ve Dosya Yönetimi indeksine kaydet.
-  sonuc <- .oo_db_try({
-    if (!exists("global_register_file", mode = "function", inherits = TRUE)) {
-      stop("Dosya Yönetimi kayıt fonksiyonu bulunamadı.", call. = FALSE)
-    }
-
-    kayit <- global_register_file(
-      src_path = kaynak,
-      filename = as.character(dosya$DosyaAdi[1]),
-      user_id = kullanici_id
-    )
-
-    hedef_yol <- if (is.list(kayit)) {
-      as.character(kayit$stored_path %||% kayit$path %||% NA_character_)[1]
-    } else if (is.character(kayit)) {
-      kayit[1]
+  # Aşama 1: kullanıcının KENDİ yükleme klasörüne GERÇEK fiziksel kopya.
+  # Not: global_register_file, MCP tabanı altındaki kaynakları "zaten depoda"
+  # sayıp kopyasız indeksleyebiliyordu; katılımcı yüklemeleri MCP tabanındaki
+  # ortak klasörde durduğu için kişisel "kopya" ortak dosyayı paylaşıyordu
+  # (ortak belge silinince kişisel kayıt da kırılıyordu). Bu yüzden fiziksel
+  # kopya burada açıkça kullanıcı kovasına yapılır; kayıt fonksiyonu yalnızca
+  # indeksleme için kullanılır.
+  hedef_dizin <- .oo_db_try(
+    if (exists("mergen_user_upload_dir", mode = "function", inherits = TRUE)) {
+      mergen_user_upload_dir(kullanici_id)
     } else {
-      NA_character_
-    }
+      NULL
+    },
+    fallback = NULL,
+    uyari = "Kişisel yükleme klasörü çözümlenemedi:"
+  )
 
-    if (is.na(hedef_yol) || !nzchar(hedef_yol) || !file.exists(hedef_yol)) {
-      stop("Kişisel dosya kaydı geçerli bir hedef dosya üretmedi.", call. = FALSE)
-    }
+  if (is.null(hedef_dizin) || !nzchar(as.character(hedef_dizin %||% "")[1]) ||
+      !.oo_dizin_olustur_ve_dogrula(hedef_dizin)) {
+    .oo_db_try(.oo_dosya_kopya_durum_yaz(
+      handle$conn, ortak_dosya_id, kullanici_id,
+      durum = "Hata", hata_mesaji = "Kişisel dosya klasörü hazırlanamadı."
+    ), fallback = NULL)
+    return(basarisiz("Kişisel dosya klasörünüz hazırlanamadı; sistem yöneticinize başvurun."))
+  }
 
+  gorunen_ad <- as.character(dosya$DosyaAdi[1] %||% basename(kaynak))[1]
+  hedef_yol <- .oo_dosya_hedef_adi(hedef_dizin, gorunen_ad)
+
+  kopyalandi <- .oo_db_try(
+    isTRUE(file.copy(kaynak, hedef_yol, overwrite = FALSE)) && file.exists(hedef_yol),
+    fallback = FALSE,
+    uyari = "Ortak belge kişisel fiziksel kopyası başarısız:"
+  )
+  if (!isTRUE(kopyalandi)) {
+    .oo_db_try(.oo_dosya_kopya_durum_yaz(
+      handle$conn, ortak_dosya_id, kullanici_id,
+      durum = "Hata", hata_mesaji = "Fiziksel kopyalama başarısız."
+    ), fallback = NULL)
+    return(basarisiz("Belge kişisel klasörünüze kopyalanamadı (disk/izin sorunu olabilir)."))
+  }
+
+  # Aşama 2: Dosya Yönetimi indeksine kayıt (görünen ad korunur). Hedef zaten
+  # kullanıcı kovasında olduğundan kayıt fonksiyonu ikinci kopya üretmez.
+  indekslendi <- .oo_db_try({
+    if (exists("global_register_file", mode = "function", inherits = TRUE)) {
+      global_register_file(
+        src_path = hedef_yol,
+        filename = gorunen_ad,
+        user_id = kullanici_id
+      )
+      TRUE
+    } else {
+      FALSE
+    }
+  },
+  fallback = FALSE,
+  uyari = "Ortak belge kişisel indeks kaydı başarısız:")
+
+  if (!isTRUE(indekslendi)) {
+    # Fiziksel kopya başarılı; indeks kaydı düşse bile dosya klasör taramasıyla
+    # görünür kalır. Kullanıcıya başarısızlık olarak bildirilmez, loglanır.
+    .oo_db_log_warn("Kişisel kopya indekslenemedi; dosya yine de kullanıcı klasöründe.")
+  }
+
+  # Aşama 3: kopya durumu (best-effort). Durum satırı yazılamazsa (ör. eski
+  # şemada MB_OrtakOturum_DosyaKopyalari eksikse) kopyalama BAŞARISIZ SAYILMAZ;
+  # yalnızca "Dosyalarımda" rozeti bir sonraki görünümde eksik kalır.
+  durum_yazildi <- .oo_db_try({
     .oo_dosya_kopya_durum_yaz(
       handle$conn, ortak_dosya_id, kullanici_id,
       durum = "Kopyalandı", kullanici_yolu = hedef_yol
     )
-
-    list(
-      basarili = TRUE,
-      durum = "Kopyalandı",
-      mesaj = "Belge kişisel dosyalarınıza kopyalandı.",
-      hedef_yol = hedef_yol
-    )
+    TRUE
   },
-  fallback = NULL,
-  uyari = "Ortak belge kişisel kopyalama başarısız:")
+  fallback = FALSE,
+  uyari = "Ortak belge kopya durumu yazılamadı (kopya başarılı):")
 
-  if (is.null(sonuc)) {
-    .oo_db_try(.oo_dosya_kopya_durum_yaz(
-      handle$conn, ortak_dosya_id, kullanici_id,
-      durum = "Hata", hata_mesaji = "Kopyalama sırasında hata oluştu."
-    ), fallback = NULL)
-    return(basarisiz("Belge kopyalanırken hata oluştu."))
-  }
-
-  sonuc
+  list(
+    basarili = TRUE,
+    durum = "Kopyalandı",
+    mesaj = if (isTRUE(durum_yazildi)) {
+      "Belge kişisel dosyalarınıza kopyalandı."
+    } else {
+      "Belge kişisel dosyalarınıza kopyalandı (kopya durumu kaydedilemedi; kurulum betiğini doğrulayın)."
+    },
+    hedef_yol = hedef_yol
+  )
 }

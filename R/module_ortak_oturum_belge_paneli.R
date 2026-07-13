@@ -29,7 +29,8 @@ oo_dosya_karti_html <- function(satir,
                                 secim_input_id = NULL,
                                 sil_input_id = NULL,
                                 yetkili = FALSE,
-                                baglam_secimi = TRUE) {
+                                baglam_secimi = TRUE,
+                                onizle_input_id = NULL) {
   ad <- as.character(satir$DosyaAdi %||% "belge")[1]
   ureten <- as.character(satir$UretenAdi %||% "")[1]
   zaman <- as.character(satir$OlusturmaZamani %||% "")[1]
@@ -118,6 +119,19 @@ oo_dosya_karti_html <- function(satir,
     div(
       class = "oo-belge-aksiyonlar",
       secim_kutusu,
+      if (!is.null(onizle_input_id)) {
+        tags$button(
+          type = "button",
+          class = "btn-modern oo-btn-belge-onizle",
+          `data-oo-dosya-id` = as.character(dosya_id),
+          `data-oo-hedef-input` = onizle_input_id,
+          `aria-label` = paste("Belgeyi ön izle:", ad),
+          title = "Belge içeriğini indirmeden görüntüle",
+          tagList(icon("eye"), span("Önizle"))
+        )
+      } else {
+        NULL
+      },
       if (kopyalandi) {
         tags$span(class = "oo-rozet oo-rozet-kopyalandi", tagList(icon("check"), span("Dosyalarımda")))
       } else {
@@ -261,9 +275,94 @@ ortakOturumBelgePaneliBind <- function(input, output, session, ctx) {
         secim_input_id = if (by_odasi) NULL else ns("belge_secim"),
         sil_input_id = ns("belge_sil"),
         yetkili = yetkili,
-        baglam_secimi = !by_odasi
+        baglam_secimi = !by_odasi,
+        onizle_input_id = ns("belge_onizle")
       )
     }))
+  })
+
+  # Belge ön izleme: içerik erişimli her katılımcı görüntüleyebilir (indirme
+  # ile aynı güven sınırı). Fiziksel kaynak ortak belge köklerinin İÇİNDE
+  # doğrulanır; görseller oturum-kapsamlı URL ile, metinler kaçışlı <pre> ile
+  # gösterilir (XSS sınırı korunur).
+  observeEvent(input$belge_onizle, {
+    dosya_id <- suppressWarnings(as.integer(input$belge_onizle$id))
+    req(!is.na(dosya_id))
+
+    katilim <- ctx$benim_katilimim()
+    if (is.null(katilim) ||
+        !ortak_icerik_erisimi_var_mi(katilim$KatilimDurumu[1]) ||
+        !ortak_yetki_var_mi(katilim$Rol[1], "oku")) {
+      ctx$bildir("Bu belgeyi görüntüleme yetkiniz yok.", tur = "error")
+      return(invisible(NULL))
+    }
+
+    df <- ctx$belgeler()
+    satir <- NULL
+    if (is.data.frame(df) && nrow(df) > 0L && "OrtakDosyaID" %in% names(df)) {
+      eslesen <- df[suppressWarnings(as.integer(df$OrtakDosyaID)) == dosya_id, , drop = FALSE]
+      if (nrow(eslesen) > 0L) {
+        satir <- eslesen[1L, , drop = FALSE]
+      }
+    }
+    if (is.null(satir)) {
+      ctx$bildir("Belge bulunamadı veya kaldırılmış.", tur = "warning")
+      return(invisible(NULL))
+    }
+
+    ad <- as.character(satir$DosyaAdi[1] %||% "belge")[1]
+    yol <- as.character(satir$DosyaYolu[1] %||% "")[1]
+
+    # Kaynak, ortak belge köklerinin içinde olmalıdır (traversal koruması).
+    oturum_id <- ctx$aktif_oturum()
+    kok <- tryCatch(ortak_oturum_dosya_koku(oturum_id), error = function(e) NULL)
+    yukleme_koku <- tryCatch(ortak_oturum_yukleme_koku(oturum_id), error = function(e) NULL)
+    kok_icinde <- (!is.null(kok) && .oo_dosya_kok_icinde_mi(yol, kok)) ||
+      (!is.null(yukleme_koku) && .oo_dosya_kok_icinde_mi(yol, yukleme_koku))
+    if (!isTRUE(kok_icinde)) {
+      ctx$bildir("Belge fiziksel olarak doğrulanamadı; ön izleme açılamıyor.", tur = "error")
+      return(invisible(NULL))
+    }
+
+    onizleme <- ortak_belge_onizleme_icerigi(ad, yol)
+
+    govde <- if (identical(onizleme$tur, "gorsel")) {
+      gorsel_url <- if (exists("mergen_serve_image_data_url", mode = "function", inherits = TRUE)) {
+        tryCatch(mergen_serve_image_data_url(session, yol), error = function(e) "")
+      } else {
+        ""
+      }
+      if (nzchar(gorsel_url)) {
+        tags$img(src = gorsel_url, class = "oo-belge-onizleme-gorsel", alt = ad)
+      } else {
+        p("Görsel ön izleme hazırlanamadı.")
+      }
+    } else if (identical(onizleme$tur, "metin")) {
+      tagList(
+        tags$pre(
+          class = "oo-belge-onizleme-metin",
+          HTML(htmltools::htmlEscape(onizleme$metin))
+        ),
+        if (isTRUE(onizleme$kirpildi)) {
+          tags$small(
+            class = "oo-belge-onizleme-notu",
+            "Ön izleme kırpıldı; tam içerik için belgeyi kendi dosyalarınıza kaydedin."
+          )
+        } else {
+          NULL
+        }
+      )
+    } else {
+      p(as.character(onizleme$metin %||% "Bu belge türü için ön izleme desteklenmiyor.")[1])
+    }
+
+    showModal(modalDialog(
+      title = tagList(icon("eye"), span(HTML(htmltools::htmlEscape(ad)))),
+      size = "l",
+      easyClose = TRUE,
+      div(class = "oo-belge-onizleme", govde),
+      footer = modalButton("Kapat")
+    ))
   })
 
   # Yükleme: her dosya tekil oturumla aynı sunucu doğrulamasından geçer.

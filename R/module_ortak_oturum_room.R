@@ -103,9 +103,20 @@ ortakOturumRoomServer <- function(id,
     }
 
     # Periyodik yoklama: yalnızca oda açıkken; tek zamanlayıcı zinciri.
+    # UYARLANIR KADANS: aktif yanıt üretimi/kuyruk varken 1,5 sn'ye iner —
+    # kısmi yanıt ve canlı ajan ilerlemesi tüm katılımcılara neredeyse gerçek
+    # zamanlı ulaşır; boşta 4 sn'lik sakin kadansa döner (değişime duyarlı
+    # reactiveVal deposu sayesinde boş turlar yeniden render tetiklemez).
     observe({
       req(aktif_oturum())
-      invalidateLater(4000, session)
+
+      detay <- isolate(uretim_rv())
+      calisiyor <- !is.null(detay) &&
+        identical(as.character(detay$KilitDurumu[1] %||% ""), "Çalışıyor")
+      bekleyen <- isolate(kuyruk_rv())
+      bekleyen_var <- is.data.frame(bekleyen) && nrow(bekleyen) > 0L
+
+      invalidateLater(if (calisiyor || bekleyen_var) 1500 else 4000, session)
       fetch_now()
       by_yenile_sayaci(isolate(by_yenile_sayaci()) + 1L)
     })
@@ -240,7 +251,35 @@ ortakOturumRoomServer <- function(id,
       div(
         class = "oo-mesaj-listesi",
         lapply(seq_len(nrow(df)), function(i) {
-          oo_mesaj_html(df[i, , drop = FALSE], aktif_kullanici_id = benim_id, persona = persona)
+          satir <- df[i, , drop = FALSE]
+
+          # Yapay zekâ yanıtları zengin içerik yolundan geçer: kod blokları
+          # tekil oturumla aynı .code-container yapısını alır, ```chartlab
+          # blokları highcharter çıktısına bağlanır (grafikler her katılımcının
+          # kendi oturumunda render edilir; veri mesaj metnine gömülüdür).
+          icerik_html <- NULL
+          if (identical(as.character(satir$MesajTuru %||% "")[1], "YapayZekaYanıtı") &&
+              exists("oo_mesaj_yz_icerigi", mode = "function", inherits = TRUE)) {
+            zengin <- tryCatch(
+              oo_mesaj_yz_icerigi(
+                as.character(satir$MesajMetni %||% "")[1],
+                mesaj_id = as.character(satir$OrtakMesajID %||% i)[1],
+                ns_fn = ns
+              ),
+              error = function(e) NULL
+            )
+            if (!is.null(zengin)) {
+              icerik_html <- zengin$html
+              oo_yanit_grafikleri_bagla(output, zengin$grafikler)
+            }
+          }
+
+          oo_mesaj_html(
+            satir,
+            aktif_kullanici_id = benim_id,
+            persona = persona,
+            icerik_html = icerik_html
+          )
         })
       )
     })
@@ -306,16 +345,13 @@ ortakOturumRoomServer <- function(id,
 
     # Persona açılır menüsü: yalnızca katilimci_yonet yetkisi olan rol (Sahip /
     # Oturum Yöneticisi) personayı değiştirebilir. Rol değişince yeniden çizilir.
-    # BilgeYolaç odasında persona seçici SUNULMAZ: kodlama-ajanı kontrolleri
-    # (model katmanı, proje dizini) genel sohbet seçicilerinin yerini alır.
+    # BilgeYolaç odalarında da SUNULUR (Ortak Söyleşi ile eşdeğer): ajan yanıtı
+    # ve çalışma özeti seçili persona talimatıyla üretilir; ajan bağlamı
+    # (model katmanı / proje dizini) ayrı kontrollerde kalır.
     output$oda_persona_secim_alani <- renderUI({
       rol <- oda_rol()
       oturum_id <- aktif_oturum()
       bilgi <- oturum_bilgisi()
-      if (!is.null(bilgi) &&
-          identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")) {
-        return(NULL)
-      }
       persona_secim <- if (!is.null(bilgi)) as.character(bilgi$SecilenPersona[1] %||% "") else ""
       secili <- ortak_oturum_persona_kimligi(persona_secim, oturum_id)
       if (!identical(isolate(secili_persona()), secili)) {

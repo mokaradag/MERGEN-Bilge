@@ -773,3 +773,96 @@ html[data-theme="light"] .oo-belge-drop.oo-belge-drop-aktif {
 html[data-theme="light"] .oo-belge-yukleme .progress {
   background: var(--color-bg, #eef1f7);
 }
+/* --- Araç ayar paneli: rozet satırında her zaman erişilebilir ---------------- */
+.oo-composer-arac-satiri {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.oo-arac-ayar-paneli {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.oo-arac-ayar-paneli .oo-arac-ayarlar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.25));
+  border-radius: 10px;
+  background: var(--color-bg-elevated, rgba(15, 23, 42, 0.35));
+}
+.oo-arac-ayar-paneli .oo-arac-ayarlar-baslik {
+  margin: 0;
+  white-space: nowrap;
+}
+.oo-arac-ayar-paneli .oo-arac-ayar-satiri {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+html[data-theme="light"] .oo-arac-ayar-paneli .oo-arac-ayarlar {
+  background: var(--color-bg, #f7f8fc);
+  border-color: var(--color-border, #d8dee9);
+}
+
+/* --- Üretim geçen süre rozeti ------------------------------------------------ */
+.oo-uretim-sure {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+  background: var(--oo-accent-soft, rgba(59, 130, 246, 0.14));
+  color: var(--oo-accent, var(--color-info));
+  white-space: nowrap;
+}
+
+/* --- Yanıt içi grafik kartları ------------------------------------------------ */
+.oo-grafik-karti {
+  margin: 10px 0;
+}
+.oo-grafik-uyari {
+  color: var(--color-warning, #f59e0b);
+  font-size: 0.9em;
+  padding: 8px 10px;
+}
+.oo-mesaj-metin .code-container {
+  max-width: 100%;
+}
+
+/* --- Belge ön izleme ----------------------------------------------------------- */
+.oo-belge-onizleme {
+  max-height: 62vh;
+  overflow: auto;
+}
+.oo-belge-onizleme-metin {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85em;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--color-bg, rgba(15, 23, 42, 0.55));
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.25));
+}
+.oo-belge-onizleme-gorsel {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  display: block;
+  margin: 0 auto;
+}
+.oo-belge-onizleme-notu {
+  display: block;
+  margin-top: 6px;
+  opacity: 0.8;
+}
+html[data-theme="light"] .oo-belge-onizleme-metin {
+  background: var(--color-bg, #f7f8fc);
+  border-color: var(--color-border, #d8dee9);
+}

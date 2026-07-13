@@ -36,6 +36,10 @@ local({
            encoding = "UTF-8", local = globalenv())
   }
 
+  # Üretim yolu yardımcıları (devre dışı gerekçe, özetleme Detay/Odak, MCP
+  # kayıt görüntüsü) araç seçici saf karar katmanından ÖNCE yüklenir.
+  source(file.path(repo_root, "R", "helpers_ortak_oturum_arac_uretim.R"),
+         encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_ortak_oturum_arac.R"),
          encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "module_ortak_oturum_arac.R"),
@@ -236,12 +240,22 @@ test_that("araç seçici HTML: ayar blokları, devre dışı araç, escape ve to
   expect_true(grepl("Proje ve Kaynak Analizi", html, fixed = TRUE))
   expect_true(grepl("Araç Kullanma", html, fixed = TRUE))
 
-  # Aktif araç ayar blokları: Derin Düşünme + Detay Seviyesi (seçili değer işaretli).
-  expect_true(grepl("Derin Düşünme", html, fixed = TRUE))
-  expect_true(grepl("Detay Seviyesi", html, fixed = TRUE))
-  expect_true(grepl('data-oo-alan="derin"', html, fixed = TRUE))
-  expect_true(grepl('data-oo-alan="detay"', html, fixed = TRUE))
-  expect_true(grepl('data-oo-hedef-input="mod-oda_arac_ayari"', html, fixed = TRUE))
+  # Ayar blokları artık menünün İÇİNDE DEĞİLDİR: araç seçildikten sonra her
+  # zaman erişilebilir ayar panelinde (oo_arac_ayar_paneli_html) durur.
+  expect_false(grepl('data-oo-alan="derin"', html, fixed = TRUE))
+
+  panel_html <- as.character(oo_arac_ayar_paneli_html(
+    katalog, ayarlar, ayar_input_id = "mod-oda_arac_ayari"
+  ))
+  expect_true(grepl("oo-arac-ayar-paneli", panel_html, fixed = TRUE))
+  expect_true(grepl("Derin Düşünme", panel_html, fixed = TRUE))
+  expect_true(grepl("Detay Seviyesi", panel_html, fixed = TRUE))
+  expect_true(grepl('data-oo-alan="derin"', panel_html, fixed = TRUE))
+  expect_true(grepl('data-oo-alan="detay"', panel_html, fixed = TRUE))
+  expect_true(grepl('data-oo-hedef-input="mod-oda_arac_ayari"', panel_html, fixed = TRUE))
+
+  # Araç yokken panel çizilmez.
+  expect_null(oo_arac_ayar_paneli_html(katalog, oo_arac_varsayilan_ayarlar(), "mod-x"))
 
   # Görsel aracı devre dışı satır olarak listelenir.
   expect_true(grepl("oo-arac-devredisi", html, fixed = TRUE))
@@ -633,8 +647,13 @@ test_that("statik kablolama: oda UI/sunucu, üretim motoru ve JS köprüsü yeni
   yz_motor <- oku(file.path(repo_root, "R", "module_ortak_oturum_yz.R"))
   expect_true(grepl("meta_ekstra = arac_meta_ekstra", yz_motor, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("oo_arac_uretim_plani", yz_motor, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("ortak_belge_baglam_sistem_mesaji", yz_motor, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("oo_arac_langflow_uret", yz_motor, fixed = TRUE, useBytes = TRUE))
+
+  # Belge/persona bağlam katmanlama üretim yardımcısına taşındı (motor bütçesi);
+  # sistem mesajı sözleşmesi orada korunur.
+  arac_uretim <- oku(file.path(repo_root, "R", "helpers_ortak_oturum_arac_uretim.R"))
+  expect_true(grepl("ortak_belge_baglam_sistem_mesaji", arac_uretim, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("oo_arac_uretim_baglam_katmanla", yz_motor, fixed = TRUE, useBytes = TRUE))
 
   # Langflow kaynak yayılımı: her iki dal da yanıt metnini işaretleyici bloğu
   # ekleyen yardımcıdan geçirir; oda render'ı model_bases kapsamıyla yükseltir.
@@ -668,4 +687,115 @@ test_that("statik kablolama: oda UI/sunucu, üretim motoru ve JS köprüsü yeni
   expect_true(grepl(".oo-belge-secim", css, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl(".oo-secici-kilitli", css, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl('html[data-theme="light"] .oo-arac-rozet', css, fixed = TRUE, useBytes = TRUE))
+})
+
+test_that("özetleme aracı Detay + Odak ayarlarını taşır ve plana yansıtır", {
+  cfg <- .oo_arac_test_config()
+  katalog <- oo_arac_katalogu(cfg)
+  aileler <- vapply(katalog, function(g) g$family, character(1))
+
+  ozet <- katalog[[which(aileler == "summarization")]]
+  expect_true(ozet$ozet_detay_var)
+  expect_true(ozet$odak_var)
+  expect_false(isTRUE(ozet$derin_var))
+
+  # Varsayılanlar: standart detay + genel odak.
+  vars <- oo_arac_varsayilan_ayarlar()
+  expect_identical(vars$detay, "standart")
+  expect_identical(vars$odak, "genel")
+
+  # MetaJson gidiş-dönüşü Detay + Odak değerlerini kayıpsız korur.
+  ayarlar <- list(family = "summarization", derin = FALSE, seviye = "low",
+                  detay = "kisa", odak = "karar", surec_akisi = "")
+  json <- as.character(jsonlite::toJSON(
+    oo_arac_meta_listesi(ayarlar), auto_unbox = TRUE, null = "null"
+  ))
+  geri <- oo_arac_meta_parse(json)
+  expect_identical(geri$detay, "kisa")
+  expect_identical(geri$odak, "karar")
+
+  # Tekil oturum prompt anahtarı eşlemesi.
+  expect_identical(oo_arac_ozet_detay_anahtari("kisa"), "brief")
+  expect_identical(oo_arac_ozet_detay_anahtari("standart"), "standard")
+  expect_identical(oo_arac_ozet_detay_anahtari("detayli"), "detailed")
+  expect_identical(oo_arac_ozet_odak_anahtari("genel"), "general")
+  expect_identical(oo_arac_ozet_odak_anahtari("sayisal"), "numerical")
+  expect_identical(oo_arac_ozet_odak_anahtari("karar"), "decisions")
+  expect_identical(oo_arac_ozet_odak_anahtari("karsilastirma"), "comparison")
+
+  # Plan Detay/Odak taşır; sistem notu odak vurgusunu içerir.
+  plan <- oo_arac_uretim_plani(geri, config = cfg)
+  expect_identical(plan$detay, "kisa")
+  expect_identical(plan$odak, "karar")
+  expect_true(nzchar(plan$sistem_notu))
+
+  notu <- oo_arac_ozetleme_sistem_notu(detay = "kisa", odak = "sayisal", belge_sayisi = 2L)
+  expect_true(grepl("sayısal", notu, ignore.case = TRUE))
+
+  # Rozet özeti Türkçe etiketleri gösterir.
+  ozet_metni <- oo_arac_ayar_ozeti(list(family = "summarization", detay = "detayli", odak = "karsilastirma"))
+  expect_true(grepl("Detay: Detaylı", ozet_metni, fixed = TRUE))
+  expect_true(grepl("Odak: Karşılaştırma", ozet_metni, fixed = TRUE))
+
+  # Ayar paneli Detay + Odak seçimlerini üretir.
+  panel <- as.character(oo_arac_ayar_paneli_html(
+    katalog, ayarlar, ayar_input_id = "mod-ayar"
+  ))
+  expect_true(grepl('data-oo-alan="detay"', panel, fixed = TRUE))
+  expect_true(grepl('data-oo-alan="odak"', panel, fixed = TRUE))
+  expect_true(grepl("Kısa Özet", panel, fixed = TRUE))
+  expect_true(grepl("Karar &amp; Öneri", panel, fixed = TRUE))
+})
+
+test_that("mcp_excel planı MCP araç yolunu açar ve belge-metni bağlamını kapatır", {
+  cfg <- .oo_arac_test_config()
+
+  plan <- oo_arac_uretim_plani(list(family = "mcp_excel", derin = FALSE), config = cfg)
+  expect_true(plan$mcp_araclari)
+  expect_false(plan$belge_baglami)
+
+  # Araçsız/diğer ailelerde MCP kapalı kalır.
+  expect_false(oo_arac_uretim_plani(oo_arac_varsayilan_ayarlar(), config = cfg)$mcp_araclari)
+  expect_false(oo_arac_uretim_plani(list(family = "summarization"), config = cfg)$mcp_araclari)
+})
+
+test_that("MCP kayıt görüntüsü yalnızca var olan Excel belgelerini alır", {
+  d <- withr::local_tempdir()
+  xlsx_yol <- file.path(d, "veri.xlsx"); writeLines("x", xlsx_yol)
+  pdf_yol <- file.path(d, "rapor.pdf"); writeLines("p", pdf_yol)
+
+  df <- data.frame(
+    OrtakDosyaID = c(11L, 12L, 13L),
+    DosyaAdi = c("Satış Verisi.xlsx", "rapor.pdf", "kayip.xls"),
+    DosyaYolu = c(xlsx_yol, pdf_yol, file.path(d, "yok.xls")),
+    stringsAsFactors = FALSE
+  )
+
+  goruntu <- oo_arac_mcp_kayit_goruntusu(df)
+  expect_identical(length(goruntu), 1L)
+  expect_identical(names(goruntu), "oo_belge_11")
+  expect_identical(goruntu[["oo_belge_11"]]$name, "Satış Verisi.xlsx")
+  expect_identical(goruntu[["oo_belge_11"]]$path, xlsx_yol)
+
+  # Boş/geçersiz girişler güvenli boş liste döner.
+  expect_identical(oo_arac_mcp_kayit_goruntusu(NULL), list())
+  expect_identical(oo_arac_mcp_kayit_goruntusu(data.frame()), list())
+})
+
+test_that("Görsel Oluşturma devre dışı gerekçesi açık Türkçe metin taşır", {
+  neden <- oo_arac_devre_disi_nedeni("image")
+  expect_true(grepl("ortak oturumlarda desteklenmez", neden, fixed = TRUE))
+  expect_true(grepl("Ana Söyleşi", neden, fixed = TRUE))
+
+  katalog <- oo_arac_katalogu(.oo_arac_test_config())
+  aileler <- vapply(katalog, function(g) g$family, character(1))
+  gorsel <- katalog[[which(aileler == "image")]]
+  expect_identical(gorsel$devre_disi_nedeni, neden)
+
+  # Seçici HTML devre dışı satır ipucunda gerekçeyi taşır.
+  html <- as.character(oo_arac_secici_html(
+    katalog, oo_arac_varsayilan_ayarlar(),
+    dropdown_id = "dd", secim_input_id = "a", ayar_input_id = "b"
+  ))
+  expect_true(grepl("kişisel galeriye", html, fixed = TRUE))
 })

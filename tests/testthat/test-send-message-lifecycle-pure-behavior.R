@@ -37,6 +37,10 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
 }
 
 source(
+  file.path(repo_root_lifecycle_pure, "R", "helpers_send_message_thinking_panel.R"),
+  encoding = "UTF-8", local = globalenv()
+)
+source(
   file.path(repo_root_lifecycle_pure, "R", "helpers_send_message_request_lifecycle.R"),
   encoding = "UTF-8",
   local = globalenv()

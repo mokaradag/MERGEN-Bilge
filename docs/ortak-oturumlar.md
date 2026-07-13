@@ -689,6 +689,82 @@ encoding preflight kapılarıyla doğrulanmalıdır (RUNBOOK).
   `tests/testthat/test-ortak-oturum-secici-yon-contract.R`,
   `tests/testthat/test-ortak-oturum-belge-panel-ui-contract.R`.
 
+### 12.2.1 Ortak Söyleşi/BY paritesi ve iki hata düzeltmesi (bu değişiklik seti)
+
+Bu tur, ortak odaları tekil oturum deneyimine yaklaştırdı ve iki üretim
+hatasını kökten giderdi. Değişiklikler mümkün olan her yerde kanıtlanmış
+tekil oturum bileşenlerini yeniden kullanır (yeni paralel davranış üretmez).
+
+- **"Kendi Dosyalarıma Kaydet" her zaman "Belge kopyalanırken hata oluştu"
+  veriyordu — DÜZELTİLDİ.** Kök neden: `global_register_file`, MCP tabanı
+  altındaki bir kaynağı "zaten depoda" sayıp KOPYALAMADAN indeksliyor;
+  katılımcı yüklemeleri MCP tabanındaki ortak oda klasöründe durduğu için
+  kişisel "kopya" aslında ortak dosyanın TAKMA ADI oluyordu (ortak belge
+  silininde kişisel kayıt kırılıyordu) ve kopya-durumu satırının yazılamaması
+  gerçek bir kopyadan sonra bile tüm işlemi "hata" gösteriyordu.
+  `ortak_dosya_kisisel_kopyala()` artık (1) `mergen_user_upload_dir(user_id)`
+  altına AÇIK fiziksel kopya yapar (görünen ad korunur), (2) o kopyayı
+  indeksler (ikinci kopya YOK — zaten kullanıcı kovasında), (3) kopya-durumu
+  satırını BEST-EFFORT sayar (tablo/yazım yoksa kopya yine BAŞARILI raporlanır).
+  `ortak_oturum_dosya_koku()`/`ortak_oturum_yukleme_koku()` kökleri Windows/UNC
+  güvenli oluşturur/doğrular ve ulaşılamayan `MERGEN_FILES_ROOT` durumunda MCP
+  tabanına düşer. Gerçek dosya deposu zinciriyle test:
+  `tests/testthat/test-ortak-oturum-kisisel-kopya-behavior.R`.
+- **"Yükleme Klasörümü Çalışma Alanına Kopyala" her zaman "Çalışma alanı
+  oluşturulamadı. 0 dosya…" veriyordu — DÜZELTİLDİ.**
+  `R/helpers_ortak_oturum_ws_kopyalama.R` aşamalı çözüm
+  (`oo_ws_hedef_cozumle` → `ozel`/`paylasilan`/`kok_yapilandirma` ve hangi
+  aşamanın başarısız olduğunu söyleyen Türkçe mesaj), güvenli özyinelemeli
+  kopya (`oo_ws_kopyalama_calistir`; doğru kopyalanan/atlanan/başarısız
+  sayaçları, yarım kopya bırakmaz, kök-içi doğrulaması) ve TEK doğru bildirim
+  (`oo_ws_kopyalama_bildirimi`) sağlar. Başarı/başarısızlıktan bağımsız Dizin
+  İçeriği tazelenir; çift bildirim yoktur. Test:
+  `tests/testthat/test-ortak-oturum-ws-kopyalama-behavior.R`.
+- **Ortak Söyleşi araç paritesi.** (a) **Dosya Özetleme** artık tekil oturumla
+  aynı ayar uzayını taşır: **Detay** (Kısa Özet/Standart/Detaylı) + **Odak**
+  (Genel/Sayısal Veri/Karar & Öneri/Karşılaştırma); `oo_arac_ozetleme_sistem_notu`
+  `build_summarization_system_prompt`'u gerçek belge sayısıyla kullanır.
+  (b) **Excel Analizi** artık tekil oturumun GERÇEK MCP araç yürütmesini koşar
+  (`oo_arac_mcp_uret` → `call_llm_worker` + `mcp_registry_snapshot`): dosya
+  analizi, kolon istatistiği, SQL ve grafik üretimi; grafikler yanıt metnine
+  gömülü ```chartlab blokları olarak döner ve her katılımcının oturumunda
+  `oo_yanit_icerik_html` ile render edilir. (c) **Görsel Oluşturma** ortak
+  odalarda bilinçli olarak DEVRE DIŞI kalır: `oo_arac_devre_disi_nedeni("image")`
+  ile açık Türkçe gerekçe (tüm katılımcılara güvenli görsel dağıtımı henüz
+  sağlanmadı; Ana Söyleşi'yi kullanın) seçici ipucunda gösterilir.
+  Bu üretim yolu yardımcıları araç seçici saf karar katmanından
+  `R/helpers_ortak_oturum_arac_uretim.R` dosyasına ayrıldı (fonksiyon bütçesi).
+- **Araç ayarları erişilebilirliği.** Araç-özel ayarlar artık açılır menünün
+  İÇİNDE saklı DEĞİLDİR: `oo_arac_ayar_paneli_html` bunları aktif araç rozetinin
+  yanında HER ZAMAN erişilebilir bir panelde çizer (araç seçilince ayarlar
+  görünür kalır).
+- **Ortak Belgeler ön izleme.** `ortak_belge_onizleme_icerigi()` +
+  `belge_onizle` gözlemcisi (`R/module_ortak_oturum_belge_paneli.R`) belgeyi
+  indirmeden modalda gösterir (görseller oturum-kapsamlı URL, metin kaçışlı
+  `<pre>`); içerik erişimli her katılımcı ön izleyebilir, kaynak kök-içi
+  doğrulanır.
+- **Kod bloğu render'ı.** Ortak oda yapay zekâ yanıtları artık tekil oturum boru
+  hattından geçer (`R/helpers_ortak_oturum_yanit_icerik.R` → `process_message_content`
+  ile `.code-container`, dil algılama, kopyalama, CodeMirror; çift kaçış YOK).
+  Ekran görüntüsündeki `&lt;iostream&gt;` regresyonu giderildi.
+- **Katılımcı-güvenli otomatik kaydırma.** `www/js/ortak_oturumlar.js` akışı
+  yalnızca yerel kullanıcı zaten dipteyse en alta kaydırır; geçmiş okuyan
+  katılımcı çekilmez. Yerel kullanıcının kendi "Odaya Yaz"/"Yapay Zekâya Sor"
+  tıklaması dibe sabitler (yalnızca tıklayan tarayıcıda).
+- **Ortak Bilge Yolaç canlı deneyimi + persona.** Uyarlanır yoklama (aktif
+  üretimde 1,5 sn), başlatan oturumda DB tur gecikmesiz yerel ön izleme
+  (`motor$canli_onizleme`, istek-id kapsamlı), 1 sn'lik ilerleme yayını,
+  sunucu-tohumlu geçen-süre sayacı (`ortak_sunum_gecen_saniye` + JS ileri
+  sayım) ve BY odalarında da PERSONA seçimi (ajan yanıtı persona talimatıyla
+  üretilir) eklendi. Üretilen dosyalar `ortak_by_uretilen_dosya_filtrele` ile
+  geçici/yarım dosyalardan arındırılıp ortak belge olarak kaydedilir.
+- Regresyon: `tests/testthat/test-ortak-oturum-kisisel-kopya-behavior.R`,
+  `tests/testthat/test-ortak-oturum-ws-kopyalama-behavior.R`,
+  `tests/testthat/test-ortak-oturum-yanit-icerik-behavior.R`,
+  `tests/testthat/test-ortak-oturum-arac-behavior.R`,
+  `tests/testthat/test-ortak-oturum-by-calistirma-behavior.R`,
+  `tests/testthat/test-ortak-oturum-ui-contract.R`.
+
 ### 12.3 Kalan sınırlamalar
 
 1. **Yönetici panosu:** `ortak_db_istatistikler()` hazır; Yönetici Paneli'ne

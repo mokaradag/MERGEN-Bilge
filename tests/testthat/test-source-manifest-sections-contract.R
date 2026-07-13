@@ -113,7 +113,7 @@
   # 12 -> 13 bilinçli güncelleme: Langflow belge kaynak çıkarımı + tıklanabilir
   # Kaynakça işaretleyici yardımcıları (R/helpers_langflow_sources.R)
   # helpers_langflow_runtime.R'den SONRA eklendi (.langflow_pluck bağımlılığı).
-  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 13L),
+  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 14L),
   summarization_followup = list(first = "R/helpers_summarization_modes.R", last = "R/helpers_followup_questions.R", n = 3L),
   analysis_helpers = list(first = "R/helpers_deep_analysis.R", last = "R/helpers_pk_analysis_query_selection.R", n = 5L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
@@ -156,7 +156,7 @@
   # ilerleme kayıtları/metni) ve CANLI çalıştırma köprüsü
   # (R/module_ortak_oturum_by_calistirma.R; stream-json ajan yürütmesi +
   # KismiYanit ilerleme yayını + durdurma) eklendi.
-  ortak_oturumlar = list(first = "R/helpers_ortak_oturum_permissions.R", last = "R/module_ortak_calismalar.R", n = 24L),
+  ortak_oturumlar = list(first = "R/helpers_ortak_oturum_permissions.R", last = "R/module_ortak_calismalar.R", n = 27L),
   module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/module_proje_kaynak_analizi.R", n = 1L),
   module_support = list(first = "R/module_destek_yardim.R", last = "R/module_destek.R", n = 6L),
   # Bilinçli güncelleme: at-budget admin modüllerinin inline highcharter/DT
@@ -381,7 +381,14 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 327L -> 328L bilinçli güncelleme: Langflow belge kaynak çıkarımı +
   # tıklanabilir Kaynakça işaretleyici yardımcıları
   # (R/helpers_langflow_sources.R) chat_send_message_runtime bölümüne eklendi.
-  expect_equal(length(runtime), 328L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 328L -> 331L bilinçli güncelleme: Ortak Oturum onarım/büyütme seti:
+  # çalışma alanı kopyalama aşamalı tanılama yardımcıları
+  # (R/helpers_ortak_oturum_ws_kopyalama.R) ve yapay zekâ yanıtı zengin içerik
+  # katmanı (R/helpers_ortak_oturum_yanit_icerik.R; kod blokları + chartlab)
+  # ortak_oturumlar bölümüne; düşünme paneli plan/kabuk yardımcıları
+  # (R/helpers_send_message_thinking_panel.R; request_lifecycle bölünmesi)
+  # chat_send_message_runtime bölümüne eklendi.
+  expect_equal(length(runtime), 332L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

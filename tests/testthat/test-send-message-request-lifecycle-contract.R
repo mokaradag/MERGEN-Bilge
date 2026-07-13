@@ -6,6 +6,11 @@
 repo_root_send_message_lifecycle <- resolve_repo_root_for_tests()
 source(file.path(repo_root_send_message_lifecycle, "R/utils_common.R"), encoding = "UTF-8", local = globalenv())
 source(
+  file.path(repo_root_send_message_lifecycle, "R/helpers_send_message_thinking_panel.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+source(
   file.path(repo_root_send_message_lifecycle, "R/helpers_send_message_request_lifecycle.R"),
   encoding = "UTF-8",
   local = globalenv()

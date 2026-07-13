@@ -375,9 +375,12 @@ test_that("BilgeYolaç odası normal sohbet LLM'ine sessizce düşmez", {
   expect_true(grepl(enc2utf8("çalıştırma köprüsü bu oturumda kullanılamıyor"), mesaj, fixed = TRUE))
   expect_true(grepl(enc2utf8("yeniden gönderebilirsiniz"), mesaj, fixed = TRUE))
 
-  # Üretim paneli BY odasında Durdur kancasını ve ajan yüzeyi sınıfını taşır.
+  # Üretim paneli BY odasında Durdur kancasını taşır; ajan yüzeyi sınıfı
+  # (oo-kismi-yanit-by) saf UI üreticisine (oo_uretim_kismi_html) taşındı.
   expect_true(grepl("motor$by_durdur_ui", yz, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("oo-kismi-yanit-by", yz, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("oo_uretim_kismi_html", yz, fixed = TRUE, useBytes = TRUE))
+  ui_kaynak <- .oo_by_cal_oku("R/module_ortak_oturum_room_ui.R")
+  expect_true(grepl("oo-kismi-yanit-by", ui_kaynak, fixed = TRUE, useBytes = TRUE))
 })
 
 # ------------------------------------------------------------------------------
@@ -402,17 +405,20 @@ test_that("model/proje dizini değişimi CLI devam bağlamını sıfırlar ve od
   expect_true(grepl(enc2utf8("Çalışma alanı henüz boş"), modul, fixed = TRUE, useBytes = TRUE))
 })
 
-test_that("BY odasında kompozer genel model menüsü yerine katmanları, persona seçiciyi ise hiç çizmez", {
+test_that("BY odasında kompozer genel model menüsü yerine katmanları çizer; persona seçici ARTIK sunulur", {
   arac <- .oo_by_cal_oku("R/module_ortak_oturum_arac.R")
   expect_true(grepl("motor$by_model_secici_ui", arac, fixed = TRUE, useBytes = TRUE))
 
-  # Konum + substr KARAKTER tabanlıdır (useBytes ofsetleri Türkçe ile kayar).
+  # Persona seçimi Ortak Söyleşi ile EŞDEĞER olarak BY odalarında da çizilir:
+  # render bloğunda BilgeYolaç oda-türü kapısı YOKTUR (ajan yanıtı persona
+  # talimatıyla üretilir; kapı yalnızca analiz araçları/model menüsündedir).
   oda <- .oo_by_cal_oku("R/module_ortak_oturum_room.R")
   persona_baslangic <- regexpr("output$oda_persona_secim_alani <- renderUI({", oda, fixed = TRUE)
   expect_true(persona_baslangic > 0)
   persona_blok <- substr(oda, persona_baslangic, persona_baslangic + 700L)
-  expect_true(grepl(enc2utf8('"BilgeYolaç"'), persona_blok, fixed = TRUE))
-  expect_true(grepl("return(NULL)", persona_blok, fixed = TRUE))
+  expect_false(grepl(enc2utf8('identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")'),
+                     persona_blok, fixed = TRUE))
+  expect_true(grepl("oo_persona_secici_html", persona_blok, fixed = TRUE))
 
   # Kompozer katman grubu tek kullanıcılı katman üreticisine delege eder.
   kopru <- .oo_by_cal_oku("R/module_ortak_oturum_by_calistirma.R")

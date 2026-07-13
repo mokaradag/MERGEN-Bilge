@@ -48,8 +48,17 @@ ortak_oturum_yukleme_koku <- function(oturum_id) {
   }
 
   kok <- file.path(as.character(taban)[1], sprintf("ortak_oturum_%d", oturum_id))
-  dir.create(kok, showWarnings = FALSE, recursive = TRUE)
 
+  # Windows/UNC güvenli oluşturma + gevşek varlık kontrolü (dosya kökleriyle
+  # aynı kanıtlanmış desen; base dir.exists UNC'de yanlış negatif verebilir).
+  if (exists(".oo_dizin_olustur_ve_dogrula", mode = "function", inherits = TRUE)) {
+    if (!.oo_dizin_olustur_ve_dogrula(kok)) {
+      return(NULL)
+    }
+    return(kok)
+  }
+
+  dir.create(kok, showWarnings = FALSE, recursive = TRUE)
   if (!dir.exists(kok)) {
     return(NULL)
   }
@@ -494,6 +503,38 @@ ortak_db_secili_belgeler <- function(oturum_id, kullanici_id, conn = NULL) {
     baytlar <- readBin(yol, what = "raw", n = min(file.info(yol)$size, 200000))
     iconv(rawToChar(baytlar), from = "UTF-8", to = "UTF-8", sub = "byte")
   }, error = function(e) "[Belge içeriği okunamadı]")
+}
+
+# Belge ön izleme içeriği (SAF-ish; dosya okur, ağ/DB yok). Görsel türleri
+# "gorsel", metne çevrilebilenler "metin", diğerleri "desteklenmiyor" döner.
+# Metin, modal bütçesine kırpılır; çağıran escape ederek gösterir.
+ortak_belge_onizleme_icerigi <- function(ad, yol, metin_butcesi = 20000L) {
+  yol <- as.character(yol %||% "")[1]
+  ad <- as.character(ad %||% basename(yol))[1]
+  uzanti <- tolower(tools::file_ext(yol))
+
+  if (!nzchar(yol) || !file.exists(yol)) {
+    return(list(tur = "yok", metin = "Belge fiziksel olarak bulunamadı."))
+  }
+
+  gorsel_uzantilar <- c("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg")
+  if (uzanti %in% gorsel_uzantilar) {
+    return(list(tur = "gorsel", metin = ""))
+  }
+
+  icerik <- .oo_belge_dosya_oku(ad, yol)
+  if (!is.character(icerik) || length(icerik) == 0L) {
+    return(list(tur = "desteklenmiyor", metin = "Bu belge türü için ön izleme desteklenmiyor."))
+  }
+
+  icerik <- icerik[1]
+  kirpildi <- FALSE
+  if (nchar(icerik) > metin_butcesi) {
+    icerik <- substr(icerik, 1L, metin_butcesi)
+    kirpildi <- TRUE
+  }
+
+  list(tur = "metin", metin = icerik, kirpildi = kirpildi)
 }
 
 #' Seçili belgelerden LLM bağlam metni üretir. Toplam bütçe dosya sayısına

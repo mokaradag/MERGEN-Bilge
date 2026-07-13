@@ -221,9 +221,18 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
     by_uretim$durdurma_dosyasi <- durdurma_dosyasi
     by_uretim$istek_id <- istek_id
     by_uretim$oturum_id <- oturum_id
-    by_uretim$son_yayin <- ""
     ilerleme_durumu <- new.env(parent = emptyenv())
     ilerleme_durumu$araclar <- list()
+
+    # Anında ilk geri bildirim: CLI/işçi ısınırken panel boş kalmaz. Başlatan
+    # oturum yerel ön izlemeyi anında görür; diğer katılımcılar KismiYanit
+    # yoluyla ilk yoklamada görür.
+    baslangic_notu <- "> Bilge Yolaç ajanı başlatılıyor…"
+    by_uretim$son_yayin <- baslangic_notu
+    if (is.function(motor$canli_onizleme)) {
+      motor$canli_onizleme(list(istek_id = istek_id, metin = baslangic_notu))
+    }
+    ortak_db_uretim_kismi_yanit_guncelle(oturum_id, istek_id, baslangic_notu)
 
     prom <- tracked_future_promise(
       task_fn = function() {
@@ -335,6 +344,11 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
     durduruldu <- isTRUE(sonuc$stopped)
 
     yeni_dosyalar <- dosya_goruntusu_farki(onceki_dosyalar, ws)
+    # Geçici/yarım dosyalar (editör/ofis geçicileri, kilitler, yan dosyalar)
+    # ortak belge olarak kaydedilmez.
+    if (exists("ortak_by_uretilen_dosya_filtrele", mode = "function", inherits = TRUE)) {
+      yeni_dosyalar <- ortak_by_uretilen_dosya_filtrele(yeni_dosyalar)
+    }
 
     uretilen_json <- if (length(yeni_dosyalar) > 0L) {
       tryCatch(
@@ -422,10 +436,11 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
   }
 
   # --- Canlı ilerleme yayıncısı: ilerleme dosyasını KismiYanit'e yansıt ---------
-  # Başlatan oturum okur; tüm katılımcılar odanın 4 sn yoklamasıyla görür.
+  # Başlatan oturum yerel ön izlemeyi ANINDA görür (motor$canli_onizleme);
+  # diğer katılımcılar odanın uyarlanır (aktif üretimde 1,5 sn) yoklamasıyla görür.
   observe({
     req(isTRUE(by_uretim$aktif), by_uretim$ilerleme_dosyasi)
-    invalidateLater(1500, session)
+    invalidateLater(1000, session)
 
     satirlar <- tryCatch(
       readLines(by_uretim$ilerleme_dosyasi, warn = FALSE, encoding = "UTF-8"),
@@ -438,6 +453,9 @@ ortakOturumByCalistirmaBind <- function(input, output, session, ctx, motor, by_c
     kismi <- oo_by_kismi_ilerleme_metni(satirlar)
     if (nzchar(kismi) && !identical(kismi, isolate(by_uretim$son_yayin))) {
       by_uretim$son_yayin <- kismi
+      if (is.function(motor$canli_onizleme)) {
+        motor$canli_onizleme(list(istek_id = isolate(by_uretim$istek_id), metin = kismi))
+      }
       ortak_db_uretim_kismi_yanit_guncelle(
         isolate(by_uretim$oturum_id),
         isolate(by_uretim$istek_id),

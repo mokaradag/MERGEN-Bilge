@@ -2466,12 +2466,78 @@ Non-negotiable boundaries:
   `MERGEN_FILES_ROOT/ortak_oturumlar/oturum_<id>/`, metadata in
   `MB_OrtakOturum_Dosyalar`); copying into a personal folder happens only via
   the explicit "Kendi Dosyalarıma Kaydet" action through
-  `ortak_dosya_kisisel_kopyala()` (path-inside-root verified, registered via
-  `global_register_file`). Never auto-copy into participants' folders.
+  `ortak_dosya_kisisel_kopyala()`. Never auto-copy into participants' folders.
+  COPY REGRESSION FIX (do not regress): `global_register_file` treats a source
+  already under the MCP base as "already stored" and indexes it WITHOUT copying;
+  participant uploads live under the MCP-base shared room folder, so that path
+  produced a personal "copy" that was actually an ALIAS of the shared file
+  (deleting the shared doc broke the personal record), and a failed copy-status
+  write reported the whole action as `Belge kopyalanırken hata oluştu` even
+  after a real copy. `ortak_dosya_kisisel_kopyala()` now (1) makes an EXPLICIT
+  physical copy into `mergen_user_upload_dir(user_id)` (deterministic name via
+  `.oo_dosya_hedef_adi`, display name preserved), (2) indexes that copy via
+  `global_register_file` (no second copy — it is already in the user bucket),
+  and (3) treats the copy-status row (`MB_OrtakOturum_DosyaKopyalari`) as
+  BEST-EFFORT: if the table/write is unavailable the copy is still reported
+  SUCCESSFUL. Both the generated-doc (files-root) and participant-upload
+  (mergen_uploads) roots are legitimate sources. `ortak_oturum_dosya_koku()` and
+  `ortak_oturum_yukleme_koku()` now create+verify roots with a Windows/UNC-safe
+  `.oo_dizin_olustur_ve_dogrula` (fs + `path_exists_relaxed`) and fall back from
+  an unreachable `MERGEN_FILES_ROOT` to the MCP base (logged once). Protected by
+  `tests/testthat/test-ortak-oturum-kisisel-kopya-behavior.R` (REAL file-store
+  chain, no stub).
+- Shared-doc PREVIEW: `ortak_belge_onizleme_icerigi()` (pure; text vs image vs
+  unsupported) + the `belge_onizle` observer in `R/module_ortak_oturum_belge_paneli.R`
+  render a modal (images via session-scoped `mergen_serve_image_data_url`, text
+  escaped in `<pre>`, budget-clipped). Any content-access participant with `oku`
+  can preview; the physical source is verified inside the shared roots first.
 - Invitation email is a DRAFT-ONLY mailto flow (`R/helpers_ortak_oturum_email.R`):
   no automatic sending, and the draft must stay content-free
   (`ortak_davet_eposta_guvenli_mi`). In-app calls go through `MB_Bildirimler`.
-- Keep the manifest section order intact: `ortak_oturumlar` (24 files, pure
+- AI-ANSWER RICH CONTENT: shared-room `YapayZekaYanıtı` bodies render through
+  `R/helpers_ortak_oturum_yanit_icerik.R` (`oo_yanit_icerik_html` /
+  `oo_mesaj_yz_icerigi`), reusing the SINGLE-SESSION pipeline: code fences go
+  through `process_message_content` → `.code-container` (language detection,
+  copy button, CodeMirror — NO double-escape; the old path showed
+  `&lt;iostream&gt;` literally), ```chartlab blocks become per-message
+  namespaced highchart containers bound with `wire_chart_output`
+  (`oo_yanit_grafikleri_bagla`, chart output ids `chart_oo<mesajID>_<n>`), and
+  the trailing Kaynakça marker is preserved with `scope="model_bases"`. Prose
+  always goes through safe markdown; raw HTML stays inert. `oo_mesaj_html(...,
+  icerik_html=)` accepts this pre-built safe HTML for the YZ branch only.
+  `www/js/ortak_oturumlar.js` calls `initializeCodeMirrorInElement` on the room
+  message-stream after render (the Ana Söyleşi chat-root observer does not reach
+  the room). Protected by `tests/testthat/test-ortak-oturum-yanit-icerik-behavior.R`
+  (its marker/`wire_chart_output` `<<-` stubs SAVE-AND-RESTORE the prior global
+  to avoid cross-file test pollution — never blind-`rm` a possibly-real helper).
+- PARTICIPANT-SAFE AUTO-SCROLL: `www/js/ortak_oturumlar.js` scrolls the room
+  stream to bottom on re-render ONLY when the local user is already near the
+  bottom (`_ooYakinDip`); a reader scrolled up keeps their exact position. The
+  local user's own "Odaya Yaz"/"Yapay Zekâ Sor" click force-pins to bottom (own
+  message expectation) — that flag flips only in the clicking browser, never for
+  other participants. The `uretim_durumu_alani` (live partial answer + elapsed
+  timer) growth also respects near-bottom. Instant scrolls only (no CSS smooth).
+- BY-ROOM real-time UX: the room poll is ADAPTIVE (1.5s while a lock is
+  `Çalışıyor` or the queue is non-empty, 4s idle — change-aware reactiveVal
+  slots still skip unchanged re-renders). The initiator session shows a LOCAL
+  preview (`motor$canli_onizleme`, request-id scoped) so partial answer / agent
+  tool+text progress paints without a DB round-trip; other participants see it
+  via `KismiYanit`. The live-run bridge writes an immediate "başlatılıyor" note,
+  publishes progress every 1s, and the panel shows a server-seeded elapsed timer
+  (`ortak_sunum_gecen_saniye`, DB-clock-safe) that the JS bridge counts forward.
+  The BY persona is now SELECTABLE in BilgeYolaç rooms too (the persona dropdown
+  gate was removed; the agent answer/summary is produced with the persona system
+  prompt). Generated docs are filtered by `ortak_by_uretilen_dosya_filtrele`
+  (drops temp/partial/lock/editor-backup files) before shared-doc registration.
+- WORKSPACE COPY: `R/helpers_ortak_oturum_ws_kopyalama.R` (`oo_ws_hedef_cozumle`
+  staged resolution → `ozel`/`paylasilan`/`kok_yapilandirma`; `oo_ws_kopyalama_calistir`
+  safe recursive copy with accurate kopyalanan/atlanan/başarısız counts, no
+  partial leftovers; `oo_ws_kopyalama_bildirimi` one accurate Turkish toast)
+  replaces the old generic "Çalışma alanı oluşturulamadı. 0 dosya…" — the
+  "Yükleme Klasörümü Çalışma Alanına Kopyala" and local-folder actions now report
+  the failed stage, refresh Dizin İçeriği, and never emit a double toast.
+  Protected by `tests/testthat/test-ortak-oturum-ws-kopyalama-behavior.R`.
+- Keep the manifest section order intact: `ortak_oturumlar` (27 files, pure
   helpers → DB layer → UI/invites/AI-engine/BY-run-bridge/BY-workbench/room/hub
   modules) loads after `module_claude_code`, owned by the `sohbet_llm_akis`
   seam; frontend assets `css/ortak_oturumlar.css` + `css/ortak_oturumlar_room.css`
@@ -2527,15 +2593,34 @@ Non-negotiable boundaries:
   question-MetaJson roundtrip; `oo_arac_uretim_plani` model/path resolution
   incl. `resolve_runtime_model_for_request` deep-thinking models; pk-pipeline
   bridge `oo_arac_sql_baglami_kur`; Langflow worker `oo_arac_langflow_uret`)
-  + `R/module_ortak_oturum_arac.R` (rich dropdown with in-menu tool settings
-  — Derin Düşünme / Detay Seviyesi / Düşünme Seviyesi / Süreç Akışı —, active
-  tool badge, and the model selector with MODEL LOCK while a tool is active).
-  Tool choice is written into the QUESTION message MetaJson so the persistent
-  queue re-applies the same tool context; Görsel Oluşturma is intentionally
-  unsupported (disabled row) in shared rooms; the single-session doc/tool
-  compatibility check is intentionally NOT applied in Ortak Söyleşi. Settings
-  inputs inside the dropdown are uncontrolled DOM inputs (delegated change
-  events) so toggling a setting never re-renders/closes the open menu.
+  + the ÜRETİM-YOLU split `R/helpers_ortak_oturum_arac_uretim.R` (loaded BEFORE
+  `helpers_ortak_oturum_arac.R`; owns `oo_arac_devre_disi_nedeni`, the
+  summarization Detay/Odak → single-session prompt-key mapping
+  `oo_arac_ozet_detay_anahtari`/`oo_arac_ozet_odak_anahtari` +
+  `oo_arac_ozetleme_sistem_notu` reusing `build_summarization_system_prompt`,
+  `oo_arac_mcp_kayit_goruntusu` (selected shared Excel docs → `call_llm_worker`
+  `mcp_registry_snapshot`), the async Excel worker `oo_arac_mcp_uret`, the
+  system-message layering `oo_arac_uretim_baglam_katmanla`, and the doc-set +
+  summarization-note prep `oo_arac_uretim_belge_hazirla`) + `R/module_ortak_oturum_arac.R`
+  (rich dropdown for the tool LIST plus an ALWAYS-ACCESSIBLE settings panel
+  beside the active-tool badge — `oo_arac_ayar_paneli_html` renders Derin
+  Düşünme / Detay Seviyesi / Düşünme Seviyesi / Süreç Akışı AND the Dosya
+  Özetleme Detay (Kısa Özet/Standart/Detaylı) + Odak (Genel/Sayısal Veri/Karar
+  & Öneri/Karşılaştırma) selects OUTSIDE the dropdown menu, so selecting a tool
+  never hides its Araç Ayarları; the model selector keeps its MODEL LOCK while a
+  tool is active). Tool choice + the Detay/Odak state are written into the
+  QUESTION message MetaJson so the persistent queue re-applies the same tool
+  context. Excel Analizi runs the SAME `call_llm_worker` MCP path as single
+  sessions (real file analysis + column stats + SQL + ```chartlab charts that
+  render per-participant via `oo_yanit_icerik_html`); `plan$mcp_araclari` opens
+  the MCP path and closes generic doc-text context. Görsel Oluşturma is
+  intentionally unsupported (disabled row) with an explicit Turkish reason
+  (`oo_arac_devre_disi_nedeni("image")`): shared-room image distribution to all
+  participants is not yet safe, so it stays disabled with a clear tooltip (use
+  Ana Söyleşi's Görsel Oluşturma). The single-session doc/tool compatibility
+  check is intentionally NOT applied in Ortak Söyleşi. Settings inputs are
+  uncontrolled DOM inputs (delegated change events; `data-oo-alan` now includes
+  `odak`) so toggling a setting never re-renders/closes anything.
 - Shared-room error redaction: direct tool/analysis answers persist to the
   SHARED transcript, so `oo_arac_sql_baglami_kur` and the BY bridge pass
   error-shaped text through `oo_arac_oda_guvenli_yanit()` — raw SQL/ODBC/DSN/
@@ -2720,6 +2805,9 @@ Protected by:
 - `tests/testthat/test-ortak-oturum-belge-panel-ui-contract.R`
 - `tests/testthat/test-ortak-oturum-sql-contract.R`
 - `tests/testthat/test-ortak-oturum-ui-contract.R`
+- `tests/testthat/test-ortak-oturum-kisisel-kopya-behavior.R`
+- `tests/testthat/test-ortak-oturum-ws-kopyalama-behavior.R`
+- `tests/testthat/test-ortak-oturum-yanit-icerik-behavior.R`
 
 Focused validation:
 
@@ -3585,8 +3673,17 @@ Responsibilities:
 - prompt snapshotting before routing,
 - deferred chat creation decisions and chat preparation,
 - welcome-screen cleanup for message send,
-- thinking-panel planning and wrapper insertion,
 - true-streaming deferred persistence guard through `mergen_should_run_deferred_stream_persist(...)`.
+
+Thinking-panel planning + wrapper insertion (`mergen_build_thinking_panel_plan()`,
+`mergen_show_send_message_thinking_wrapper()`) were split into
+`R/helpers_send_message_thinking_panel.R` (loaded right AFTER
+`helpers_send_message_request_lifecycle.R` in the `chat_send_message_runtime`
+manifest section) to keep the request-lifecycle helper at/under its ratchet
+budget (≤ 260 lines / ≤ 16 function expressions). That file is the OWNER of the
+`premiumReasoningStart` `requestId` contract (the client-request-id regression
+test anchors on it). Isolated tests that execute either helper must source the
+thinking-panel file too.
 
 `R/server_send_message.R` should remain focused on orchestration, routing, mode dispatch, and LLM handoff. Do not move the extracted request lifecycle, prompt snapshot, welcome cleanup, thinking panel, or deferred chat preparation blocks back into `R/server_send_message.R`.
 

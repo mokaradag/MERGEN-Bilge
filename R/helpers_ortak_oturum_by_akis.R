@@ -242,6 +242,26 @@ oo_by_kismi_ilerleme_metni <- function(satirlar,
 }
 
 
+# Üretilen dosya adaylarından geçici/yarım dosyaları eler (SAF). Ajan
+# çalışırken oluşan editör/ofis geçicileri, kilit dosyaları ve oda-kapsamlı
+# çalıştırma yan dosyaları ortak belge olarak KAYDEDİLMEZ.
+ortak_by_uretilen_dosya_filtrele <- function(yollar) {
+  yollar <- as.character(yollar %||% character(0))
+  yollar <- yollar[!is.na(yollar) & nzchar(yollar)]
+  if (length(yollar) == 0L) {
+    return(character(0))
+  }
+
+  adlar <- basename(yollar)
+  gecici <- grepl("^\\.", adlar) |                              # gizli/yan dosyalar (.oo_by_* dahil)
+    grepl("^~\\$", adlar) |                                     # Office geçicileri
+    grepl("\\.(tmp|temp|partial|crdownload|swp|lock)$", adlar,
+          ignore.case = TRUE) |
+    grepl("~$", adlar)                                          # editör yedeği
+
+  yollar[!gecici]
+}
+
 # BilgeYolaç odasında çalıştırma köprüsü kullanılamadığında odaya düşen açık
 # engelleyici mesaj (normal LLM'e sessiz düşüş yasağının kullanıcı yüzü).
 ortak_by_kopru_kullanilamiyor_mesaji <- function() {

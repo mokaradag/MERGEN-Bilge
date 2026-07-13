@@ -36,6 +36,12 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
   # tutulan yerel bayrak (ana söyleşi hızıyla eşleşir).
   iyimser_uretim <- reactiveVal(NULL)
 
+  # Başlatan oturumun CANLI ön izlemesi: DB tur gecikmesi olmadan kısmi yanıtı
+  # anında gösterir. İstek kimliğiyle sıkı kapsamlıdır (bayat çalıştırma
+  # önizlemesi yeni isteğe sızamaz); diğer katılımcılar DB yoklamasıyla görür.
+  canli_onizleme <- reactiveVal(NULL)
+  motor$canli_onizleme <- canli_onizleme
+
   # Soran kullanıcının görünen adı (katılımcı listesinden; yoksa boş).
   soran_adi <- function(uid) {
     liste <- ctx$katilimcilar()
@@ -273,6 +279,7 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
     uretim$stream_file <- NULL
     uretim$son_yayin <- ""
     iyimser_uretim(NULL)
+    canli_onizleme(NULL)
     ctx$yenile()
 
     motor$kuyruk_isle(oturum_id)
@@ -388,48 +395,28 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 	plan <- if (exists("oo_arac_uretim_plani", mode = "function", inherits = TRUE)) {
 	  oo_arac_uretim_plani(arac_meta)
 	} else {
-	  list(family = "", yol = "normal", model_id = "", belge_baglami = TRUE, sistem_notu = "")
+	  list(family = "", yol = "normal", model_id = "", belge_baglami = TRUE,
+	       sistem_notu = "", mcp_araclari = FALSE)
 	}
 
-	# Sistem mesajı katmanları (ters sırada başa eklenir; nihai sıra:
-	# persona -> ortak belgeler -> araç notu -> sohbet geçmişi).
-	if (nzchar(as.character(plan$sistem_notu %||% "")[1])) {
-	  gecmis <- c(list(list(role = "system", content = plan$sistem_notu)), gecmis)
+	# Özetleme/Excel araçları seçili belge kümesine ihtiyaç duyar (soru anındaki
+	# anlık görüntü). Belge çözümü + gerçek belge sayısıyla özetleme notu
+	# yenilemesi uretim yardımcısına delege edilir (motor bakım bütçesi).
+	secili_belgeler_df <- NULL
+	if (exists("oo_arac_uretim_belge_hazirla", mode = "function", inherits = TRUE)) {
+	  hazir <- oo_arac_uretim_belge_hazirla(plan, oturum_id, soran_id, belge_ids_snapshot)
+	  plan <- hazir$plan
+	  secili_belgeler_df <- hazir$belgeler_df
 	}
 
-	# Ortak belge bağlamı: yalnızca SEÇİLİ belgeler; Langflow yolunda eklenmez.
-	if (isTRUE(plan$belge_baglami) &&
-		exists("ortak_belge_baglam_sistem_mesaji", mode = "function", inherits = TRUE)) {
-	  belge_mesaji <- tryCatch(
-		ortak_belge_baglam_sistem_mesaji(oturum_id, soran_id, belge_ids = belge_ids_snapshot),
-		error = function(e) NULL
-	  )
-	  if (!is.null(belge_mesaji)) {
-		kullanici_indeksleri <- which(vapply(
-		  gecmis, function(m) identical(m$role, "user"), logical(1)
-		))
-		if (length(kullanici_indeksleri) > 0L) {
-		  son_kullanici <- max(kullanici_indeksleri)
-		  gecmis[[son_kullanici]]$content <- paste(
-			as.character(belge_mesaji$content %||% "")[1],
-			"Kullanıcının sorusu:",
-			as.character(gecmis[[son_kullanici]]$content %||% "")[1],
-			sep = "\n\n"
-		  )
-		} else {
-		  gecmis <- c(list(belge_mesaji), gecmis)
-		}
-	  }
-	}
-
-	# Persona sistem mesajı: yanıt seçili persona tarzında üretilsin. Oda
-	# kaydından okunur; persona metadata'sı yoksa deterministik varsayılana düşer
-	# ve boş talimatta davranış değişmeden normal LLM yoluna devam edilir.
+	# Sistem mesajı katmanları (persona -> ortak belgeler -> araç notu -> sohbet
+	# geçmişi) saf yardımcıya delege edilir (motor bakım bütçesi).
 	persona_kimligi <- ortak_oturum_persona_kimligi(persona_kimligi, oturum_id)
-	persona_sistem <- ortak_oturum_persona_sistem_prompt(persona_kimligi, oturum_id)
-	if (nzchar(persona_sistem)) {
-	  gecmis <- c(list(list(role = "system", content = persona_sistem)), gecmis)
-	}
+	gecmis <- oo_arac_uretim_baglam_katmanla(
+	  gecmis, plan, oturum_id, soran_id,
+	  belge_ids_snapshot = belge_ids_snapshot,
+	  persona_kimligi = persona_kimligi
+	)
 
     sse_hazir <- exists("call_local_llm_sse_worker", mode = "function", inherits = TRUE) &&
       exists("mergen_true_streaming_worker_globals", mode = "function", inherits = TRUE) &&
@@ -521,6 +508,27 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
     )
     if (!is.null(sql_max_tokens)) {
       ayarlar$max_output_tokens <- sql_max_tokens
+    }
+
+    # --- Excel Analizi (MCP araç) yolu ------------------------------------------
+    # Tekil oturumla aynı gerçek araç yürütmesi: call_llm_worker seçili ortak
+    # Excel belgelerinden kurulan kayıt görüntüsüyle MCP araçlarını (dosya
+    # analizi, kolon istatistiği, SQL, grafik üretimi) çalıştırır. Grafikler
+    # yanıt metnine gömülü ```chartlab blokları olarak döner ve her katılımcının
+    # oturumunda render edilir. Asenkron zincir uretim yardımcısındadır
+    # (motorun bakım bütçesini korumak için; oo_arac_langflow_uret ile aynı desen).
+    if (isTRUE(plan$mcp_araclari)) {
+      if (exists("oo_arac_mcp_uret", mode = "function", inherits = TRUE)) {
+        oo_arac_mcp_uret(
+          gecmis, ayarlar, secili_belgeler_df,
+          soran_id = soran_id,
+          session_token = session$token,
+          bitir_fn = bitir
+        )
+      } else {
+        bitir(hata_metni = "Excel Analizi altyapısı bu ortamda yüklü değil; lütfen tekrar deneyin.")
+      }
+      return(invisible(NULL))
     }
 
     if (sse_hazir) {
@@ -638,6 +646,9 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
 
     if (nzchar(kismi) && !identical(kismi, isolate(uretim$son_yayin))) {
       uretim$son_yayin <- kismi
+      # Başlatan oturum kısmi yanıtı ANINDA görür (DB tur gecikmesi olmadan);
+      # istek kimliği bayat önizleme sızıntısına karşı kapsar.
+      canli_onizleme(list(istek_id = isolate(uretim$istek_id), metin = kismi))
       ortak_db_uretim_kismi_yanit_guncelle(
         isolate(uretim$oturum_id),
         isolate(uretim$istek_id),
@@ -696,6 +707,8 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
       durum_metni <- ortak_sunum_uretim_durum_metni(iyimser$ad, by_odasi = by_odasi)
     }
 
+    sure_alani <- NULL
+
     if (calisiyor) {
       durum_metni <- ortak_sunum_uretim_durum_metni(detay$BaslatanAdi[1], by_odasi = by_odasi)
 
@@ -703,40 +716,25 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
         durdur_alani <- motor$by_durdur_ui(detay)
       }
 
-      kismi <- as.character(detay$KismiYanit[1] %||% "")
-      if (!is.na(kismi) && nzchar(kismi)) {
-        kismi_alani <- div(
-          class = paste("oo-kismi-yanit", if (by_odasi) "oo-kismi-yanit-by" else NULL),
-          `aria-label` = "Üretilmekte olan yanıtın canlı ön izlemesi",
-          tags$span(class = "oo-kismi-yanit-metin", HTML(htmltools::htmlEscape(kismi))),
-          tags$span(class = "oo-kismi-imlec", HTML("&#9612;"))
+      # Geçen süre + canlı önizleme kararları saf sunum yardımcılarındadır.
+      gecen_sn <- ortak_sunum_gecen_saniye(detay$BaslamaZamani[1])
+      if (!is.na(gecen_sn)) {
+        sure_alani <- tags$span(
+          class = "oo-uretim-sure",
+          `data-oo-gecen` = as.character(gecen_sn),
+          `aria-label` = "Geçen süre",
+          sprintf("%d sn", gecen_sn)
         )
       }
+
+      kismi <- ortak_sunum_canli_onizleme_metni(
+        detay$KismiYanit[1], canli_onizleme(), detay$IstekID[1]
+      )
+
+      kismi_alani <- oo_uretim_kismi_html(kismi, by_odasi = by_odasi)
     }
 
-    kuyruk_alani <- NULL
-    if (bekleyen_var) {
-      kuyruk_alani <- div(
-        class = "oo-kuyruk-listesi",
-        tags$span(
-          class = "oo-kuyruk-baslik",
-          sprintf("Sırada %d soru bekliyor:", nrow(bekleyenler))
-        ),
-        tagList(lapply(seq_len(min(nrow(bekleyenler), 5L)), function(i) {
-          soran <- as.character(bekleyenler$SoranAdi[i] %||% "Katılımcı")
-          soru <- as.character(bekleyenler$MesajMetni[i] %||% "")
-          if (nchar(soru) > 90L) {
-            soru <- paste0(substr(soru, 1L, 90L), "…")
-          }
-          div(
-            class = "oo-kuyruk-satiri",
-            tags$span(class = "oo-kuyruk-sira", sprintf("%d.", i)),
-            tags$span(class = "oo-kuyruk-soran", HTML(htmltools::htmlEscape(soran))),
-            tags$span(class = "oo-kuyruk-soru", HTML(htmltools::htmlEscape(soru)))
-          )
-        }))
-      )
-    }
+    kuyruk_alani <- oo_uretim_kuyruk_html(if (bekleyen_var) bekleyenler else NULL)
 
     div(
       class = "oo-uretim-durumu",
@@ -747,6 +745,7 @@ ortakOturumYzBind <- function(input, output, session, ctx, motor) {
           class = "oo-uretim-ust",
           icon("spinner", class = "fa-spin"),
           span(durum_metni),
+          sure_alani,
           durdur_alani
         )
       } else {
