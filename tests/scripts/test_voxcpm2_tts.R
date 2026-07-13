@@ -6,6 +6,8 @@
 #   Mergen Bilge uygulamasını değiştirmeden VoxCPM2 TTS modelini sınar.
 #   Mevcut LOCAL_TTS_* ortam değişkenlerini kullanır ve isteğe bağlı bir WAV
 #   dosyasını base64 veri URL'sine dönüştürerek ref_audio alanında gönderir.
+#   --output verilmezse oluşan ses kalıcı olarak Masaüstü/VoxCPM2_Test
+#   klasörüne kaydedilir.
 #
 # Örnekler:
 #   Rscript tests/scripts/test_voxcpm2_tts.R
@@ -47,6 +49,7 @@ show_help <- function() {
     "  --text <metin>               Seslendirilecek Türkçe metin.\n",
     "  --ref-audio <wav-yolu>       Klonlama için WAV referans sesi.\n",
     "  --output <dosya-yolu>        Yanıtın kaydedileceği dosya.\n",
+    "                                Verilmezse Masaüstü/VoxCPM2_Test kullanılır.\n",
     "  --voice <ad>                 Varsayılan: default.\n",
     "  --model <model>              Varsayılan: VoxCPM2.\n",
     "  --response-format <biçim>    İsteğe bağlı; ör. wav veya mp3.\n",
@@ -57,7 +60,9 @@ show_help <- function() {
     "  LOCAL_TTS_ENDPOINT, LOCAL_TTS_API_KEY, LOCAL_TTS_TIMEOUT,\n",
     "  LOCAL_TTS_VERIFY_SSL, MERGEN_ALLOW_DEFAULT_API_KEY,\n",
     "  MERGEN_REQUIRE_PERSONAL_API_KEY, MERGEN_DEFAULT_API_KEY,\n",
-    "  LOCAL_LLM_API_KEY\n"
+    "  LOCAL_LLM_API_KEY\n\n",
+    "İsteğe bağlı çıktı klasörü override'ı:\n",
+    "  VOXCPM2_TEST_OUTPUT_DIR\n"
   ))
 }
 
@@ -113,6 +118,81 @@ as_bool <- function(value, default = FALSE) {
   if (value %in% c("true", "t", "1", "yes", "y")) return(TRUE)
   if (value %in% c("false", "f", "0", "no", "n")) return(FALSE)
   default
+}
+
+existing_directory <- function(paths) {
+  paths <- unique(paths[nzchar(paths)])
+  matches <- paths[dir.exists(paths)]
+  if (length(matches) == 0L) return("")
+  normalizePath(matches[[1]], winslash = "/", mustWork = TRUE)
+}
+
+resolve_desktop_dir <- function() {
+  override <- scalar_env("VOXCPM2_TEST_OUTPUT_DIR")
+  if (nzchar(override)) {
+    override <- path.expand(override)
+    dir.create(override, recursive = TRUE, showWarnings = FALSE)
+    if (!dir.exists(override)) {
+      stop(
+        sprintf("VOXCPM2_TEST_OUTPUT_DIR oluşturulamadı: %s", override),
+        call. = FALSE
+      )
+    }
+    return(normalizePath(override, winslash = "/", mustWork = TRUE))
+  }
+
+  powershell_desktop <- ""
+  if (identical(.Platform$OS.type, "windows")) {
+    powershell_desktop <- tryCatch({
+      command <- "[Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)"
+      result <- suppressWarnings(system2(
+        "powershell.exe",
+        args = c("-NoProfile", "-NonInteractive", "-Command", shQuote(command)),
+        stdout = TRUE,
+        stderr = FALSE
+      ))
+      result <- trimws(result)
+      result <- result[nzchar(result)]
+      if (length(result) > 0L) result[[1]] else ""
+    }, error = function(e) "")
+  }
+
+  desktop_under <- function(base) {
+    if (!nzchar(base)) return("")
+    file.path(base, "Desktop")
+  }
+
+  candidates <- c(
+    powershell_desktop,
+    desktop_under(scalar_env("OneDriveCommercial")),
+    desktop_under(scalar_env("OneDrive")),
+    desktop_under(scalar_env("USERPROFILE")),
+    desktop_under(scalar_env("HOME")),
+    desktop_under(path.expand("~"))
+  )
+
+  desktop <- existing_directory(candidates)
+  if (nzchar(desktop)) return(desktop)
+
+  fallback_base <- scalar_env("USERPROFILE")
+  if (!nzchar(fallback_base)) fallback_base <- scalar_env("HOME")
+  if (!nzchar(fallback_base)) {
+    stop(
+      "Windows Masaüstü klasörü belirlenemedi. --output ile açık bir dosya yolu verin.",
+      call. = FALSE
+    )
+  }
+
+  desktop <- file.path(fallback_base, "Desktop")
+  dir.create(desktop, recursive = TRUE, showWarnings = FALSE)
+  if (!dir.exists(desktop)) {
+    stop(
+      sprintf("Masaüstü klasörü oluşturulamadı veya erişilemiyor: %s", desktop),
+      call. = FALSE
+    )
+  }
+
+  normalizePath(desktop, winslash = "/", mustWork = TRUE)
 }
 
 build_speech_url <- function(base_url) {
@@ -248,8 +328,14 @@ write_audio_response <- function(response, output_path = NULL) {
   if (is.null(output_path) || !nzchar(output_path)) {
     ext <- mime_extension(detected_mime)
     stamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
-    output_dir <- file.path(tempdir(), "mergen-voxcpm2-test")
+    output_dir <- file.path(resolve_desktop_dir(), "VoxCPM2_Test")
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    if (!dir.exists(output_dir)) {
+      stop(
+        sprintf("Çıktı klasörü oluşturulamadı: %s", output_dir),
+        call. = FALSE
+      )
+    }
     output_path <- file.path(output_dir, sprintf("voxcpm2_test_%s.%s", stamp, ext))
   } else {
     output_path <- path.expand(output_path)
@@ -320,6 +406,12 @@ if (nzchar(response_format)) {
   body$response_format <- response_format
 }
 
+default_output_dir <- if (nzchar(output_path)) {
+  dirname(path.expand(output_path))
+} else {
+  file.path(resolve_desktop_dir(), "VoxCPM2_Test")
+}
+
 cat("== VoxCPM2 bağımsız TTS testi ==\n")
 cat(sprintf("Repo kökü       : %s\n", repo_root))
 cat(sprintf("Uç nokta        : %s\n", speech_url))
@@ -330,6 +422,7 @@ cat(sprintf("API anahtarı    : %s (%d karakter; değer yazdırılmadı)\n", api
 cat(sprintf("SSL doğrulama   : %s\n", if (verify_ssl) "açık" else "kapalı"))
 cat(sprintf("Zaman aşımı     : %s saniye\n", timeout_seconds))
 cat(sprintf("Referans ses    : %s\n", if (nzchar(ref_audio_path)) ref_audio_path else "yok (default ses testi)"))
+cat(sprintf("Çıktı klasörü   : %s\n", default_output_dir))
 if (ref_audio_bytes > 0) {
   cat(sprintf("Referans boyutu : %d bayt\n", ref_audio_bytes))
 }
