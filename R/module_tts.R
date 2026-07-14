@@ -83,6 +83,25 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
       invisible(TRUE)
     }
 
+    resolve_profile_id_for_speech <- function(profile_id = NULL) {
+      explicit_profile <- tolower(trimws(as.character(profile_id %||% "")[1]))
+      if (nzchar(explicit_profile)) return(explicit_profile)
+      if (!isTRUE(mergen_tts_voice_profiles_enabled(tts_config))) return(NULL)
+
+      char_id <- tryCatch({
+        if (!is.null(settings_data) && !is.null(settings_data$selected_character)) {
+          shiny::isolate(settings_data$selected_character)
+        } else {
+          NULL
+        }
+      }, error = function(e) NULL)
+
+      if (!exists("mergen_tts_profile_for_character", mode = "function", inherits = TRUE)) return(NULL)
+      resolved <- tryCatch(mergen_tts_profile_for_character(char_id), error = function(e) NULL)
+      resolved <- tolower(trimws(as.character(resolved %||% "")[1]))
+      if (nzchar(resolved)) resolved else NULL
+    }
+
     #' Asenkron olarak ses sentezle
     #' @param text Seslendirilecek metin
     #' @param voice Kullanılacak jenerik yedek ses (opsiyonel)
@@ -105,9 +124,11 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
         )))
       }
 
+      profile_to_use <- resolve_profile_id_for_speech(profile_id)
+
       # --- KONUŞMA PLANI (profil çözümleme + önbellek; ana süreçte, worker öncesi) ---
       plan <- tryCatch(
-        mergen_tts_prepare_speech_plan(speech_text, config = tts_config, profile_id = profile_id, voice = voice),
+        mergen_tts_prepare_speech_plan(speech_text, config = tts_config, profile_id = profile_to_use, voice = voice),
         error = function(e) NULL
       )
       if (is.null(plan)) {
@@ -128,7 +149,7 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
 
       # --- ÜRETİLEN-SES ÖNBELLEĞİ İSABETİ: ağ turu olmadan birebir aynı ses ---
       if (!is.null(plan$cached_audio_src) && nzchar(plan$cached_audio_src)) {
-        cat(sprintf("[TTS] Önbellek isabeti (profil=%s), ağ isteği atlanıyor.\n", profile_id %||% "-"))
+        cat(sprintf("[TTS] Önbellek isabeti (profil=%s), ağ isteği atlanıyor.\n", profile_to_use %||% "-"))
         return(promises::promise_resolve(list(
           success = TRUE, audio_src = plan$cached_audio_src, voice = voice_to_use,
           duration = 0, error = NULL, cache_hit = TRUE
@@ -150,7 +171,7 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
       # Gövde (ref_audio base64) ASLA loglanmaz.
       cat(sprintf("[TTS] İstek: URL=%s | Model=%s | Ses=%s | Profil=%s | API Key uzunluk=%d | Metin=%d karakter\n",
                   speech_url, model_to_use, voice_to_use,
-                  if (isTRUE(plan$profile_active)) (profile_id %||% "-") else "jenerik",
+                  if (isTRUE(plan$profile_active)) (profile_to_use %||% "-") else "jenerik",
                   nchar(api_key), nchar(speech_text)))
 
       debug_log_file <- normalizePath(file.path("logs", "tts_debug.txt"), mustWork = FALSE)
@@ -276,9 +297,14 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
             } else {
               err_msg <- tryCatch(httr::content(resp, as = "text", encoding = "UTF-8"),
                                   error = function(e) "TTS isteği başarısız oldu.")
-              worker_log(sprintf("API HATASI: %s", substr(err_msg, 1, 100)))
+              safe_err_msg <- if (exists("mergen_tts_redact_error_text", mode = "function", inherits = TRUE)) {
+                mergen_tts_redact_error_text(err_msg)
+              } else {
+                "TTS isteği başarısız oldu."
+              }
+              worker_log(sprintf("API HATASI: %s", substr(safe_err_msg, 1, 100)))
               list(success = FALSE, audio_src = NULL, voice = voice_to_use,
-                   duration = 0, error = paste("TTS hata:", err_msg))
+                   duration = 0, error = paste("TTS hata:", safe_err_msg))
             }
           },
           task_type = "tts",

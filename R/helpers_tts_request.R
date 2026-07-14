@@ -42,6 +42,49 @@ mergen_tts_build_request_body <- function(text, model, voice, response_format,
   body
 }
 
+#' TTS Hata Metnini Gizlilik İçin Redakte Et
+#'
+#' @description TTS proxy/debug uçları non-2xx yanıtlarda istek JSON'unu geri
+#'   döndürebilir. Profil etkinse bu metin biyometrik `ref_audio` veri URL'sini
+#'   içerebilir; loglara veya kullanıcıya döndürmeden önce tek noktadan
+#'   redakte edilir.
+#' @param text Hata gövdesi veya hata mesajı
+#' @param max_chars Döndürülecek azami karakter sayısı
+#' @return Redakte edilmiş, uzunluğu sınırlandırılmış karakter dizisi
+mergen_tts_redact_error_text <- function(text, max_chars = 500L) {
+  value <- as.character(text %||% "")[1]
+  if (!nzchar(value)) return("TTS isteği başarısız oldu.")
+
+  # JSON echo: "ref_audio": "data:audio/wav;base64,..."
+  value <- gsub(
+    '("ref_audio"\\s*:\\s*")[^"]*(")',
+    '\\1[REDACTED_REF_AUDIO]\\2',
+    value,
+    perl = TRUE
+  )
+  # Form-urlencoded / plain text echo: ref_audio=data:audio/...
+  value <- gsub(
+    '(ref_audio\\s*=\\s*)data:audio/[^\\s&,"\']+',
+    '\\1[REDACTED_REF_AUDIO]',
+    value,
+    perl = TRUE
+  )
+  # Any remaining audio data URL fragments.
+  value <- gsub(
+    'data:audio/[^\\s&,"\']+',
+    '[REDACTED_AUDIO_DATA_URL]',
+    value,
+    perl = TRUE
+  )
+
+  max_chars <- suppressWarnings(as.integer(max_chars)[1])
+  if (is.na(max_chars) || max_chars <= 0L) max_chars <- 500L
+  if (nchar(value, type = "chars", allowNA = FALSE, keepNA = FALSE) > max_chars) {
+    value <- paste0(substr(value, 1L, max_chars), "…")
+  }
+  value
+}
+
 #' Konuşma Planı Hazırla (profil çözümleme + önbellek anahtarı/okuma)
 #'
 #' @description Profil etkinse referans-ses profilini bellek önbelleğinden çözer,
