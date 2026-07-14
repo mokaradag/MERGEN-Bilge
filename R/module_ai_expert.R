@@ -198,7 +198,13 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       voice_sel <- if (!is.null(char_info) && !is.null(char_info$tts_voice)) {
         char_info$tts_voice
       } else {
-        "tr-male-1"
+        "default"
+      }
+      # VoxCPM2 referans-ses profili kimliği (tek çözümleme noktası).
+      profile_sel <- if (exists("mergen_tts_profile_for_character", mode = "function", inherits = TRUE)) {
+        mergen_tts_profile_for_character(char_id)
+      } else {
+        NULL
       }
 
       cached <- get_prewarmed_tts(text, char_id, voice_sel)
@@ -215,7 +221,8 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         char_id
       ))
 
-      tts_promise <- tts_processor$synthesize_speech(chunks[[1]], voice = voice_sel)
+      # Ön ısıtma konuşma başlamadan yapılır; iptal edilmez (should_cancel yok).
+      tts_promise <- tts_processor$synthesize_speech(chunks[[1]], voice = voice_sel, profile_id = profile_sel)
 
       prewarming_tts(list(
         text = text,
@@ -296,8 +303,17 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         voice_sel <- if (!is.null(char_info) && !is.null(char_info$tts_voice)) {
           char_info$tts_voice
         } else {
-          "tr-male-1"
+          "default"
         }
+        # VoxCPM2 referans-ses profili kimliği (tek çözümleme noktası).
+        profile_sel <- if (exists("mergen_tts_profile_for_character", mode = "function", inherits = TRUE)) {
+          mergen_tts_profile_for_character(char_id)
+        } else {
+          NULL
+        }
+        # Not: Eskimiş parça oynatımı zaten her devam çağrısındaki is_speaking()
+        # denetimiyle engellenir; eşzamanlılık da synthesize_speech içindeki
+        # sınırlı kuyrukla sınırlanır (ek should_cancel gerekmez).
 
         # İlk sesi daha hızlı başlatmak için metni kısa parçalara böl
         chunks <- split_text_for_ai_expert_tts(text, max_chunk_chars = 220, min_chunk_chars = 70)
@@ -324,7 +340,9 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
                 current_idx, total_chunks, nchar(current_text)
               ))
 
-              tts_processor$synthesize_speech(current_text, voice = voice_sel) %...>%
+              tts_processor$synthesize_speech(
+                current_text, voice = voice_sel, profile_id = profile_sel
+              ) %...>%
                 (function(res) {
                   if (!isTRUE(is_speaking())) return()
 
@@ -412,7 +430,9 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         }
 
         synthesize_first_chunk_now <- function() {
-          tts_processor$synthesize_speech(chunks[[1]], voice = voice_sel) %...>%
+          tts_processor$synthesize_speech(
+            chunks[[1]], voice = voice_sel, profile_id = profile_sel
+          ) %...>%
             (function(first_res) {
               if (!isTRUE(is_speaking())) return()
 
