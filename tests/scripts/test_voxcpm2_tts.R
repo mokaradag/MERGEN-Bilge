@@ -25,25 +25,25 @@ has_flag <- function(name) name %in% args
 
 show_help <- function() {
   cat(paste0(
-    "VoxCPM2 standalone TTS test\n\n",
-    "Usage:\n",
-    "  Rscript tests/scripts/test_voxcpm2_tts.R [options]\n\n",
-    "Options:\n",
-    "  --text <text>              Target text.\n",
-    "  --text-file <path>         Read target text from a UTF-8 file.\n",
-    "  --ref-audio <wav>          Reference WAV for voice cloning.\n",
-    "  --ref-text <text>          Exact transcript of reference audio.\n",
-    "  --control <instruction>    Style instruction prepended in parentheses.\n",
-    "  --slow                     Use a slow, calm, clearly articulated style.\n",
-    "  --speed <0.25-4.0>         OpenAI speech speed value; default 1.0.\n",
-    "  --voice <name>             Voice name; default 'default'.\n",
-    "  --model <name>             Model name; default 'VoxCPM2'.\n",
-    "  --response-format <fmt>    wav, mp3, flac, aac, opus, or pcm.\n",
-    "  --output <path>            Output file. Defaults to Desktop/VoxCPM2_Test.\n",
-    "  --dry-run                  Validate and print a masked request.\n",
-    "  --allow-no-api-key         Allow a request without Authorization.\n",
-    "  --help                     Show this help.\n\n",
-    "Environment variables:\n",
+    "VoxCPM2 bağımsız TTS testi\n\n",
+    "Kullanım:\n",
+    "  Rscript tests/scripts/test_voxcpm2_tts.R [seçenekler]\n\n",
+    "Seçenekler:\n",
+    "  --text <metin>             Seslendirilecek metin.\n",
+    "  --text-file <yol>          Metni UTF-8 kodlu dosyadan okur.\n",
+    "  --ref-audio <wav>          Ses klonlama için referans WAV dosyası.\n",
+    "  --ref-text <metin>         Referans ses kaydının birebir yazılı dökümü.\n",
+    "  --control <yönerge>        Üslup yönergesini metnin başına parantez içinde ekler.\n",
+    "  --slow                     Yavaş, sakin ve açık söyleyiş yönergesi ekler.\n",
+    "  --speed <0.25-4.0>         OpenAI ses hızı değeri; varsayılan 1.0.\n",
+    "  --voice <ad>               Ses adı; varsayılan 'default'.\n",
+    "  --model <ad>               Model adı; varsayılan 'VoxCPM2'.\n",
+    "  --response-format <biçim>  wav, mp3, flac, aac, opus veya pcm.\n",
+    "  --output <yol>             Çıktı dosyası; varsayılan Masaüstü/VoxCPM2_Test.\n",
+    "  --dry-run                  Ağa çıkmadan maskelenmiş isteği doğrular.\n",
+    "  --allow-no-api-key         Yetkilendirme anahtarı olmadan isteğe izin verir.\n",
+    "  --help                     Bu yardım metnini gösterir.\n\n",
+    "Ortam değişkenleri:\n",
     "  LOCAL_TTS_ENDPOINT, LOCAL_TTS_API_KEY, LOCAL_TTS_TIMEOUT,\n",
     "  LOCAL_TTS_VERIFY_SSL, MERGEN_ALLOW_DEFAULT_API_KEY,\n",
     "  MERGEN_REQUIRE_PERSONAL_API_KEY, MERGEN_DEFAULT_API_KEY,\n",
@@ -62,7 +62,10 @@ missing_packages <- required_packages[
 ]
 if (length(missing_packages) > 0L) {
   stop(
-    sprintf("Missing R packages: %s. Run renv::restore() first.", paste(missing_packages, collapse = ", ")),
+    sprintf(
+      "Eksik R paketleri: %s. Önce renv::restore() komutunu çalıştırın.",
+      paste(missing_packages, collapse = ", ")
+    ),
     call. = FALSE
   )
 }
@@ -120,7 +123,7 @@ resolve_api_key <- function() {
   legacy_key <- scalar_env("LOCAL_LLM_API_KEY")
   if (nzchar(legacy_key)) return(list(value = legacy_key, source = "LOCAL_LLM_API_KEY"))
 
-  list(value = "", source = "none")
+  list(value = "", source = "yok")
 }
 
 resolve_desktop_dir <- function() {
@@ -156,7 +159,10 @@ resolve_desktop_dir <- function() {
   candidates <- unique(candidates[nzchar(candidates)])
   existing <- candidates[dir.exists(candidates)]
   if (length(existing) == 0L) {
-    stop("Desktop directory could not be resolved. Use --output with an explicit path.", call. = FALSE)
+    stop(
+      "Masaüstü klasörü belirlenemedi. --output ile açık bir dosya yolu verin.",
+      call. = FALSE
+    )
   }
   normalizePath(existing[[1]], winslash = "/", mustWork = TRUE)
 }
@@ -164,7 +170,7 @@ resolve_desktop_dir <- function() {
 read_utf8_file <- function(path) {
   path <- path.expand(path)
   if (!file.exists(path) || dir.exists(path)) {
-    stop(sprintf("UTF-8 text file not found: %s", path), call. = FALSE)
+    stop(sprintf("UTF-8 metin dosyası bulunamadı: %s", path), call. = FALSE)
   }
   lines <- readLines(path, warn = FALSE, encoding = "UTF-8")
   text <- paste(lines, collapse = " ")
@@ -188,20 +194,20 @@ looks_like_mojibake <- function(text) {
 validate_wav <- function(path) {
   path <- path.expand(path)
   if (!file.exists(path) || dir.exists(path)) {
-    stop(sprintf("Reference WAV not found: %s", path), call. = FALSE)
+    stop(sprintf("Referans WAV dosyası bulunamadı: %s", path), call. = FALSE)
   }
   con <- file(path, open = "rb")
   on.exit(close(con), add = TRUE)
   header <- readBin(con, what = "raw", n = 12L)
   if (length(header) < 12L || rawToChar(header[1:4]) != "RIFF" || rawToChar(header[9:12]) != "WAVE") {
-    stop("ref_audio must be a RIFF/WAVE file.", call. = FALSE)
+    stop("ref_audio, RIFF/WAVE biçiminde bir dosya olmalıdır.", call. = FALSE)
   }
   normalizePath(path, winslash = "/", mustWork = TRUE)
 }
 
 wav_to_data_url <- function(path) {
   size <- file.info(path)$size
-  if (is.na(size) || size <= 0) stop("Reference WAV is empty.", call. = FALSE)
+  if (is.na(size) || size <= 0) stop("Referans WAV dosyası boş.", call. = FALSE)
   con <- file(path, open = "rb")
   on.exit(close(con), add = TRUE)
   raw_audio <- readBin(con, what = "raw", n = size)
@@ -259,14 +265,19 @@ save_audio_response <- function(response, output_path = "") {
       }
     }
     if (is.null(candidate) || !nzchar(candidate)) {
-      stop("Successful JSON response did not contain audio/data/content.", call. = FALSE)
+      stop(
+        "Başarılı JSON yanıtında audio, data veya content ses alanı bulunamadı.",
+        call. = FALSE
+      )
     }
     decoded <- strip_data_url(candidate)
     audio_raw <- base64enc::base64decode(decoded$base64)
     if (nzchar(decoded$mime)) detected_mime <- decoded$mime
   }
 
-  if (length(audio_raw) == 0L) stop("TTS response contained no audio bytes.", call. = FALSE)
+  if (length(audio_raw) == 0L) {
+    stop("TTS yanıtında ses verisi bulunamadı.", call. = FALSE)
+  }
 
   if (!nzchar(output_path)) {
     output_dir <- file.path(resolve_desktop_dir(), "VoxCPM2_Test")
@@ -304,12 +315,12 @@ if (has_flag("--slow") && !nzchar(control)) {
   control <- "slow, calm, natural pace, clear articulation, short pauses between sentences"
 }
 if (nzchar(control)) text <- paste0("(", control, ")", text)
-if (!nzchar(trimws(text))) stop("Target text is empty.", call. = FALSE)
+if (!nzchar(trimws(text))) stop("Seslendirilecek metin boş.", call. = FALSE)
 if (looks_like_mojibake(text)) {
   stop(
     paste0(
-      "Target text appears to contain mojibake (corrupted UTF-8 text). ",
-      "Use --text-file with a UTF-8 file, or run Rscript with --encoding=UTF-8."
+      "Seslendirilecek metinde bozuk UTF-8 karakterleri bulundu. ",
+      "UTF-8 kodlu bir dosyayı --text-file ile kullanın veya Rscript'i --encoding=UTF-8 ile çalıştırın."
     ),
     call. = FALSE
   )
@@ -326,16 +337,21 @@ allow_no_api_key <- has_flag("--allow-no-api-key")
 
 speed <- suppressWarnings(as.numeric(arg_value("--speed", "1.0")))
 if (is.na(speed) || speed < 0.25 || speed > 4.0) {
-  stop("--speed must be a number from 0.25 to 4.0.", call. = FALSE)
+  stop("--speed değeri 0.25 ile 4.0 arasında bir sayı olmalıdır.", call. = FALSE)
 }
 
 endpoint <- build_speech_url(scalar_env("LOCAL_TTS_ENDPOINT"))
-if (!nzchar(endpoint)) stop("LOCAL_TTS_ENDPOINT is not configured.", call. = FALSE)
+if (!nzchar(endpoint)) {
+  stop("LOCAL_TTS_ENDPOINT yapılandırılmamış.", call. = FALSE)
+}
 
 api_key <- resolve_api_key()
 if (!nzchar(api_key$value) && !allow_no_api_key) {
   stop(
-    "No TTS API key was found. Configure LOCAL_TTS_API_KEY or an allowed fallback key.",
+    paste0(
+      "TTS API anahtarı bulunamadı. LOCAL_TTS_API_KEY değerini veya izin verilen ",
+      "yedek API anahtarlarından birini yapılandırın."
+    ),
     call. = FALSE
   )
 }
@@ -359,43 +375,68 @@ if (nzchar(ref_audio_path)) {
   body$ref_audio <- wav_to_data_url(ref_audio_path)
 }
 if (nzchar(ref_text)) {
-  if (!nzchar(ref_audio_path)) stop("--ref-text requires --ref-audio.", call. = FALSE)
-  if (looks_like_mojibake(ref_text)) stop("Reference transcript contains mojibake.", call. = FALSE)
+  if (!nzchar(ref_audio_path)) {
+    stop("--ref-text kullanılabilmesi için --ref-audio da verilmelidir.", call. = FALSE)
+  }
+  if (looks_like_mojibake(ref_text)) {
+    stop("Referans sesin yazılı dökümünde bozuk UTF-8 karakterleri bulundu.", call. = FALSE)
+  }
   body$ref_text <- ref_text
 }
 
-output_dir_display <- if (nzchar(output_path)) dirname(path.expand(output_path)) else file.path(resolve_desktop_dir(), "VoxCPM2_Test")
+output_dir_display <- if (nzchar(output_path)) {
+  dirname(path.expand(output_path))
+} else {
+  file.path(resolve_desktop_dir(), "VoxCPM2_Test")
+}
 
-cat("== VoxCPM2 standalone TTS test ==\n")
-cat(sprintf("Repository       : %s\n", repo_root))
-cat(sprintf("Endpoint         : %s\n", endpoint))
+cat("== VoxCPM2 bağımsız TTS testi ==\n")
+cat(sprintf("Depo kökü        : %s\n", repo_root))
+cat(sprintf("Uç nokta         : %s\n", endpoint))
 cat(sprintf("Model            : %s\n", model))
-cat(sprintf("Voice            : %s\n", voice))
-cat(sprintf("Text characters  : %d\n", nchar(text, type = "chars")))
-cat(sprintf("Speed            : %.2f\n", speed))
-cat(sprintf("API key source   : %s (%d characters; value hidden)\n", api_key$source, nchar(api_key$value)))
-cat(sprintf("SSL verification : %s\n", if (verify_ssl) "on" else "off"))
-cat(sprintf("Timeout          : %s seconds\n", timeout_seconds))
-cat(sprintf("Reference audio  : %s\n", if (nzchar(ref_audio_path)) ref_audio_path else "none"))
-cat(sprintf("Reference text   : %s\n", if (nzchar(ref_text)) "provided" else "none"))
-cat(sprintf("Output directory : %s\n", output_dir_display))
-if (ref_audio_bytes > 0) cat(sprintf("Reference bytes  : %d\n", ref_audio_bytes))
+cat(sprintf("Ses              : %s\n", voice))
+cat(sprintf("Metin uzunluğu   : %d karakter\n", nchar(text, type = "chars")))
+cat(sprintf("Ses hızı         : %.2f\n", speed))
+cat(sprintf(
+  "API anahtarı    : %s (%d karakter; değer gizlendi)\n",
+  api_key$source,
+  nchar(api_key$value)
+))
+cat(sprintf("SSL doğrulaması  : %s\n", if (verify_ssl) "açık" else "kapalı"))
+cat(sprintf("Zaman aşımı      : %s saniye\n", timeout_seconds))
+cat(sprintf(
+  "Referans ses    : %s\n",
+  if (nzchar(ref_audio_path)) ref_audio_path else "yok"
+))
+cat(sprintf(
+  "Referans metin  : %s\n",
+  if (nzchar(ref_text)) "verildi" else "yok"
+))
+cat(sprintf("Çıktı klasörü    : %s\n", output_dir_display))
+if (ref_audio_bytes > 0) cat(sprintf("Referans boyutu  : %d bayt\n", ref_audio_bytes))
 
 if (dry_run) {
   masked <- body
   if (!is.null(masked$ref_audio)) {
-    masked$ref_audio <- sprintf("<data:audio/wav;base64,...> (%d characters)", nchar(body$ref_audio))
+    masked$ref_audio <- sprintf(
+      "<data:audio/wav;base64,...> (%d karakter)",
+      nchar(body$ref_audio)
+    )
   }
-  cat("\nDry run succeeded. Masked request body:\n")
+  cat("\nKuru çalıştırma başarılı. Maskelenmiş istek gövdesi:\n")
   cat(jsonlite::toJSON(masked, auto_unbox = TRUE, pretty = TRUE), "\n")
   quit(status = 0L)
 }
 
 headers <- c(`Content-Type` = "application/json")
 if (nzchar(api_key$value)) headers[["Authorization"]] <- paste("Bearer", api_key$value)
-request_config <- if (verify_ssl) list() else list(httr::config(ssl_verifypeer = 0L, ssl_verifyhost = 0L))
+request_config <- if (verify_ssl) {
+  list()
+} else {
+  list(httr::config(ssl_verifypeer = 0L, ssl_verifyhost = 0L))
+}
 
-cat("\nSending POST request...\n")
+cat("\nPOST isteği gönderiliyor...\n")
 started_at <- Sys.time()
 response <- tryCatch(
   do.call(
@@ -411,28 +452,41 @@ response <- tryCatch(
       request_config
     )
   ),
-  error = function(e) stop(sprintf("TTS request failed: %s", conditionMessage(e)), call. = FALSE)
+  error = function(e) {
+    stop(sprintf("TTS isteği gönderilemedi: %s", conditionMessage(e)), call. = FALSE)
+  }
 )
 
 elapsed <- as.numeric(difftime(Sys.time(), started_at, units = "secs"))
 status <- httr::status_code(response)
 content_type <- httr::headers(response)[["content-type"]] %||% ""
-cat(sprintf("HTTP status      : %d\n", status))
-cat(sprintf("Content-Type     : %s\n", if (nzchar(content_type)) content_type else "not provided"))
-cat(sprintf("Elapsed          : %.2f seconds\n", elapsed))
+cat(sprintf("HTTP durumu      : %d\n", status))
+cat(sprintf(
+  "İçerik türü     : %s\n",
+  if (nzchar(content_type)) content_type else "belirtilmedi"
+))
+cat(sprintf("Geçen süre       : %.2f saniye\n", elapsed))
 
 if (status < 200L || status >= 300L) {
   error_body <- tryCatch(
     httr::content(response, as = "text", encoding = "UTF-8"),
-    error = function(e) "<response body could not be read>"
+    error = function(e) "<yanıt gövdesi okunamadı>"
   )
-  if (nchar(error_body) > 4000L) error_body <- paste0(substr(error_body, 1L, 4000L), "...")
-  stop(sprintf("VoxCPM2 test failed. Server response:\n%s", error_body), call. = FALSE)
+  if (nchar(error_body) > 4000L) {
+    error_body <- paste0(substr(error_body, 1L, 4000L), "...")
+  }
+  stop(
+    sprintf("VoxCPM2 testi başarısız. Sunucu yanıtı:\n%s", error_body),
+    call. = FALSE
+  )
 }
 
 saved <- save_audio_response(response, output_path)
-cat("\nTEST SUCCEEDED\n")
-cat(sprintf("Saved file       : %s\n", saved$path))
-cat(sprintf("Audio bytes      : %d\n", saved$bytes))
-cat(sprintf("Detected type    : %s\n", if (nzchar(saved$mime)) saved$mime else "not provided"))
-cat("Listen to the file and compare pace, Turkish pronunciation, and speaker similarity.\n")
+cat("\nTEST BAŞARILI\n")
+cat(sprintf("Kaydedilen dosya : %s\n", saved$path))
+cat(sprintf("Ses boyutu       : %d bayt\n", saved$bytes))
+cat(sprintf(
+  "Algılanan tür   : %s\n",
+  if (nzchar(saved$mime)) saved$mime else "belirtilmedi"
+))
+cat("Dosyayı dinleyerek hızı, Türkçe söyleyişi ve referans sese benzerliği karşılaştırın.\n")
