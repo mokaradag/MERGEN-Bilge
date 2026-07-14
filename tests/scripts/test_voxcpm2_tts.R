@@ -1,8 +1,8 @@
 #!/usr/bin/env Rscript
 
-# Standalone VoxCPM2 TTS and voice-cloning test for MERGEN Bilge.
-# The file is intentionally ASCII-only; Turkish default text is built with
-# Unicode escapes so Windows Rscript cannot corrupt it while parsing the file.
+# MERGEN Bilge için bağımsız VoxCPM2 TTS ve ses klonlama testi.
+# Varsayılan Türkçe test metni, Windows Rscript kaynak kodunu ayrıştırırken
+# bozulmaması için Unicode kaçış dizileriyle oluşturulur.
 
 options(warn = 1, encoding = "UTF-8")
 
@@ -168,11 +168,21 @@ read_utf8_file <- function(path) {
   }
   lines <- readLines(path, warn = FALSE, encoding = "UTF-8")
   text <- paste(lines, collapse = " ")
-  sub("^\\ufeff", "", text, perl = TRUE)
+
+  # Dosyanın başında UTF-8 BOM varsa düzenli ifade kullanmadan kaldırır.
+  bom <- intToUtf8(0xFEFF)
+  if (startsWith(text, bom)) substring(text, 2L) else text
 }
 
+# Bozuk UTF-8 dönüşümünü gösteren karakterleri düzenli ifade kullanmadan arar.
 looks_like_mojibake <- function(text) {
-  grepl("[\\u00c3\\u00c4\\u00c5\\u00e2]", text, perl = TRUE)
+  marker_codes <- c(0x00C3L, 0x00C4L, 0x00C5L, 0x00E2L)
+  markers <- vapply(marker_codes, intToUtf8, character(1))
+  any(vapply(
+    markers,
+    function(marker) grepl(marker, text, fixed = TRUE),
+    logical(1)
+  ))
 }
 
 validate_wav <- function(path) {
