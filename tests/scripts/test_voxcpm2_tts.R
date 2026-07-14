@@ -56,19 +56,22 @@ if (has_flag("--help") || has_flag("-h")) {
   quit(status = 0L)
 }
 
-required_packages <- c("httr", "jsonlite", "base64enc")
-missing_packages <- required_packages[
-  !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
-]
-if (length(missing_packages) > 0L) {
-  stop(
-    sprintf(
-      "Eksik R paketleri: %s. Önce renv::restore() komutunu çalıştırın.",
-      paste(missing_packages, collapse = ", ")
-    ),
-    call. = FALSE
-  )
+require_packages <- function(packages) {
+  missing_packages <- packages[
+    !vapply(packages, requireNamespace, logical(1), quietly = TRUE)
+  ]
+  if (length(missing_packages) > 0L) {
+    stop(
+      sprintf(
+        "Eksik R paketleri: %s. Önce renv::restore() komutunu çalıştırın.",
+        paste(missing_packages, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
 }
+
+require_packages("jsonlite")
 
 find_repo_root <- function() {
   candidates <- c(".", "..", "../..", "../../..")
@@ -334,6 +337,12 @@ output_path <- arg_value("--output", "")
 response_format <- arg_value("--response-format", "wav")
 dry_run <- has_flag("--dry-run")
 allow_no_api_key <- has_flag("--allow-no-api-key")
+
+if (!dry_run) {
+  require_packages(c("httr", "base64enc"))
+} else if (nzchar(ref_audio_path)) {
+  require_packages("base64enc")
+}
 
 speed <- suppressWarnings(as.numeric(arg_value("--speed", "1.0")))
 if (is.na(speed) || speed < 0.25 || speed > 4.0) {
