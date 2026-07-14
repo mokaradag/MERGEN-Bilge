@@ -104,7 +104,7 @@ test_that("send-message setup reuses one request id for reasoning shell and true
   send_message_r <- .e2e_client_request_read_ascii("R", "server_send_message.R")
   lifecycle_r <- .e2e_client_request_read_ascii(
     "R",
-    "helpers_send_message_request_lifecycle.R"
+    "helpers_send_message_thinking_panel.R"
   )
 
   .e2e_client_request_expect_tokens(
@@ -126,7 +126,7 @@ test_that("send-message setup reuses one request id for reasoning shell and true
       "premiumReasoningStart",
       "requestId = request_id"
     ),
-    "helpers_send_message_request_lifecycle.R reasoning request-id sozlesmesi eksik:"
+    "helpers_send_message_thinking_panel.R reasoning request-id sozlesmesi eksik:"
   )
 })
 

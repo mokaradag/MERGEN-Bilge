@@ -35,6 +35,8 @@ oo_arac_katalogu <- function(config = NULL) {
       return(NULL)
     }
 
+    destekleniyor <- !(family %in% .oo_arac_desteklenmeyenler)
+
     list(
       family = family,
       baslik = as.character(cfg$title %||% family)[1],
@@ -43,11 +45,17 @@ oo_arac_katalogu <- function(config = NULL) {
       renk = as.character(cfg$themeColor %||% "#6366f1")[1],
       runtime = as.character(cfg$runtime %||% "local")[1],
       model_id = as.character(cfg$model_id %||% "")[1],
-      destekleniyor = !(family %in% .oo_arac_desteklenmeyenler),
+      destekleniyor = destekleniyor,
+      devre_disi_nedeni = if (destekleniyor) "" else oo_arac_devre_disi_nedeni(family),
       derin_var = family %in% c("sql_analysis", "mcp_excel", "coding"),
       detay_var = identical(family, "sql_analysis"),
       seviye_var = family %in% c("mcp_excel", "coding"),
-      akis_var = identical(family, "process")
+      akis_var = identical(family, "process"),
+      # Dosya Özetleme ayarları (tekil oturumla aynı seçenek uzayı):
+      # Detay = Kısa Özet / Standart / Detaylı, Odak = Genel / Sayısal Veri /
+      # Karar & Öneri / Karşılaştırma.
+      ozet_detay_var = identical(family, "summarization"),
+      odak_var = identical(family, "summarization")
     )
   })
 
@@ -56,7 +64,10 @@ oo_arac_katalogu <- function(config = NULL) {
 
 # Varsayılan araç durumu: araç yok, ayarlar tekil oturum varsayılanlarıyla.
 oo_arac_varsayilan_ayarlar <- function() {
-  list(family = "", derin = FALSE, seviye = "low", detay = "standart", surec_akisi = "")
+  list(
+    family = "", derin = FALSE, seviye = "low", detay = "standart",
+    odak = "genel", surec_akisi = ""
+  )
 }
 
 # Soru mesajı için araç planı + seçili belge anlık görüntüsü metadata'sını
@@ -95,6 +106,7 @@ oo_arac_meta_listesi <- function(ayarlar) {
     derin = isTRUE(ayarlar$derin),
     seviye = as.character(ayarlar$seviye %||% "low")[1],
     detay = as.character(ayarlar$detay %||% "standart")[1],
+    odak = as.character(ayarlar$odak %||% "genel")[1],
     surec_akisi = as.character(ayarlar$surec_akisi %||% "")[1]
   ))
 }
@@ -120,6 +132,7 @@ oo_arac_meta_parse <- function(meta_json) {
     derin = isTRUE(as.logical(arac$derin %||% FALSE)[1]),
     seviye = as.character(arac$seviye %||% "low")[1],
     detay = as.character(arac$detay %||% "standart")[1],
+    odak = as.character(arac$odak %||% "genel")[1],
     surec_akisi = as.character(arac$surec_akisi %||% "")[1]
   )
 }
@@ -143,6 +156,20 @@ oo_arac_ayar_ozeti <- function(ayarlar) {
     if (isTRUE(ayarlar$derin)) {
       seviye_ad <- if (identical(as.character(ayarlar$seviye %||% "low")[1], "high")) "Yüksek" else "Düşük"
       parcalar <- c(parcalar, paste("Derin Düşünme:", seviye_ad))
+    }
+  } else if (identical(family, "summarization")) {
+    detay_ad <- c(kisa = "Kısa Özet", standart = "Standart", detayli = "Detaylı")[
+      as.character(ayarlar$detay %||% "standart")[1]
+    ]
+    if (!is.na(detay_ad)) {
+      parcalar <- c(parcalar, paste("Detay:", unname(detay_ad)))
+    }
+    odak_ad <- c(
+      genel = "Genel", sayisal = "Sayısal Veri",
+      karar = "Karar & Öneri", karsilastirma = "Karşılaştırma"
+    )[as.character(ayarlar$odak %||% "genel")[1]]
+    if (!is.na(odak_ad) && !identical(unname(odak_ad), "Genel")) {
+      parcalar <- c(parcalar, paste("Odak:", unname(odak_ad)))
     }
   }
 
@@ -170,9 +197,11 @@ oo_arac_uretim_plani <- function(arac_meta, config = NULL) {
     model_id = "",
     belge_baglami = TRUE,
     sistem_notu = "",
+    mcp_araclari = FALSE,
     derin = isTRUE(ayarlar$derin),
     seviye = as.character(ayarlar$seviye %||% "low")[1],
     detay = as.character(ayarlar$detay %||% "standart")[1],
+    odak = as.character(ayarlar$odak %||% "genel")[1],
     surec_akisi = as.character(ayarlar$surec_akisi %||% "")[1]
   )
 
@@ -224,17 +253,31 @@ oo_arac_uretim_plani <- function(arac_meta, config = NULL) {
     as.character(cfg$model_id %||% "")[1]
   }
 
-  if (identical(family, "summarization")) {
-    plan$sistem_notu <- paste(
-      "Kullanıcı özetleme aracını seçti: bağlama dahil edilen ortak belgeleri",
-      "kapsamlı biçimde Türkçe özetle; tüm önemli başlıkları, alt konuları ve",
-      "sayısal verileri koru."
+  if (identical(family, "mcp_excel")) {
+    # Tekil oturumdaki MCP Excel yolu: gerçek araç yürütmesi (dosya analizi,
+    # kolon istatistiği, SQL, grafik üretimi). Üretim motoru seçili Excel
+    # belgeleri varsa call_llm_worker MCP yoluna geçer. Excel içeriği MCP
+    # araçlarının sahasıdır; genel belge-metni bağlamı enjekte edilmez
+    # (tekil oturum davranışıyla aynı: model dosyayı araçla okur, tahmin etmez).
+    plan$mcp_araclari <- TRUE
+    plan$belge_baglami <- FALSE
+  }
+
+  if (identical(family, "summarization") &&
+      exists("oo_arac_ozetleme_sistem_notu", mode = "function", inherits = TRUE)) {
+    # Tekil oturum özetleme sistem prompt'u (Detay + Odak ayarlarıyla).
+    # Belge sayısı üretim anında bilinir; motor dosya sayısını verip yeniden
+    # üretir — buradaki not tek belge varsayımıyla güvenli taban sağlar.
+    # Üretici (oo_arac_ozetleme_sistem_notu) uretim yardımcı dosyasındadır ve
+    # manifestte bu dosyadan ÖNCE yüklenir; izole test bağlamlarında yoksa not
+    # boş kalır (davranış değişmeden normal LLM yoluna devam edilir).
+    plan$sistem_notu <- oo_arac_ozetleme_sistem_notu(
+      detay = plan$detay, odak = plan$odak, belge_sayisi = 1L
     )
   }
 
   plan
 }
-
 
 # Odaya yazılacak genel araç hatası metni (SAF). Ham tanılama içermez.
 .oo_arac_genel_hata_metni <- function() {
@@ -258,8 +301,11 @@ oo_arac_oda_guvenli_yanit <- function(metin) {
 
   # Bilinen ham altyapı tanılama kalıpları: DB hata gövdesi, ODBC/SQLSTATE
   # kodları, sürücü/bağlantı metinleri ve R condition önekleri.
+  # MCP worker araç hatasını "Araç hatası:\n ..." öneki ile normal içerik
+  # olarak döndürebilir ve MCP okuyucuları "(Path: ...)" ile sunucu dosya
+  # yolu taşıyabilir; ikisi de ham tanılamadır ve odaya sızmamalıdır.
   riskli_kaliplar <- c(
-    "**Veritabanı Hatası:**",
+    "**Veritabanı Hatası:**", "Araç hatası:", "(Path:",
     "nanodbc", "SQLSTATE", "ODBC", "odbc.cpp", "SQL Server",
     "HY000", "42S02", "42000", "IM002", "08001", "28000",
     "Login timeout", "Login failed", "Error in ", "error in evaluating",

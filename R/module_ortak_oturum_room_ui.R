@@ -87,7 +87,13 @@ ortakOturumRoomUI <- function(id) {
         div(
           class = "oo-composer",
           uiOutput(ns("composer_uyari_alani")),
-          uiOutput(ns("oda_arac_rozet_alani")),
+          # Rozet + araç ayar paneli aynı satırda: araç seçilince ayarlar
+          # menü içinde saklı kalmaz, her zaman erişilebilir görünür.
+          div(
+            class = "oo-composer-arac-satiri",
+            uiOutput(ns("oda_arac_rozet_alani"), inline = TRUE),
+            uiOutput(ns("oda_arac_ayar_paneli"), inline = TRUE)
+          ),
           tags$textarea(
             id = ns("oda_mesaj_metni"),
             class = "oo-composer-girdi form-control",
@@ -193,7 +199,11 @@ oo_mesaj_persona_id <- function(satir) {
   if (is.na(persona_id)) "" else trimws(persona_id)
 }
 
-oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL, persona = NULL) {
+# icerik_html: çağıranın önceden ürettiği GÜVENLİ zengin içerik (kod blokları
+# + grafikler + Kaynakça; bkz. oo_mesaj_yz_icerigi). Verildiğinde yalnızca
+# YapayZekaYanıtı gövdesinin yerine geçer; NULL ise eski render yolu korunur.
+oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL, persona = NULL,
+                          icerik_html = NULL) {
   tur <- as.character(satir$MesajTuru %||% "OdaMesajı")[1]
   metin <- as.character(satir$MesajMetni %||% "")[1]
   gonderen <- as.character(satir$GonderenAdi %||% "")[1]
@@ -317,7 +327,9 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL, persona = NULL) {
   # çözümlenir, kişisel kova taranmaz (çapraz-kullanıcı sızıntısı önlenir).
   # Model tarafından uydurulmuş sahte marker geçerli bütünlük kodu taşımadığından
   # yükseltilmez; ham metin olarak kalır.
-  metin_html <- if (identical(tur, "YapayZekaYanıtı") &&
+  metin_html <- if (identical(tur, "YapayZekaYanıtı") && !is.null(icerik_html)) {
+    HTML(as.character(icerik_html))
+  } else if (identical(tur, "YapayZekaYanıtı") &&
                     exists("render_safe_markdown_html", mode = "function", inherits = TRUE)) {
     kaynak_split <- if (exists("mergen_kaynakca_marker_split", mode = "function", inherits = TRUE) &&
                         exists("mergen_kaynakca_marker_html", mode = "function", inherits = TRUE)) {
@@ -356,6 +368,51 @@ oo_mesaj_html <- function(satir, aktif_kullanici_id = NULL, persona = NULL) {
       ),
       div(class = "oo-mesaj-metin", metin_html)
     )
+  )
+}
+
+# Kuyruk (bekleyen yapay zekâ soruları) listesi (SAF HTML). En fazla 5 satır;
+# soran adı ve soru metni escape edilir, uzun sorular kırpılır. Bekleyen yoksa
+# NULL döner.
+oo_uretim_kuyruk_html <- function(bekleyenler) {
+  if (!is.data.frame(bekleyenler) || nrow(bekleyenler) == 0L) {
+    return(NULL)
+  }
+
+  div(
+    class = "oo-kuyruk-listesi",
+    tags$span(
+      class = "oo-kuyruk-baslik",
+      sprintf("Sırada %d soru bekliyor:", nrow(bekleyenler))
+    ),
+    tagList(lapply(seq_len(min(nrow(bekleyenler), 5L)), function(i) {
+      soran <- as.character(bekleyenler$SoranAdi[i] %||% "Katılımcı")
+      soru <- as.character(bekleyenler$MesajMetni[i] %||% "")
+      if (nchar(soru) > 90L) {
+        soru <- paste0(substr(soru, 1L, 90L), "…")
+      }
+      div(
+        class = "oo-kuyruk-satiri",
+        tags$span(class = "oo-kuyruk-sira", sprintf("%d.", i)),
+        tags$span(class = "oo-kuyruk-soran", HTML(htmltools::htmlEscape(soran))),
+        tags$span(class = "oo-kuyruk-soru", HTML(htmltools::htmlEscape(soru)))
+      )
+    }))
+  )
+}
+
+# Süren üretim canlı ön izleme balonu (SAF HTML). Metin escape edilir; boşsa
+# NULL döner. by_odasi terminal-dili stil sınıfı ekler.
+oo_uretim_kismi_html <- function(kismi, by_odasi = FALSE) {
+  kismi <- as.character(kismi %||% "")[1]
+  if (is.na(kismi) || !nzchar(kismi)) {
+    return(NULL)
+  }
+  div(
+    class = paste("oo-kismi-yanit", if (isTRUE(by_odasi)) "oo-kismi-yanit-by" else NULL),
+    `aria-label` = "Üretilmekte olan yanıtın canlı ön izlemesi",
+    tags$span(class = "oo-kismi-yanit-metin", HTML(htmltools::htmlEscape(kismi))),
+    tags$span(class = "oo-kismi-imlec", HTML("&#9612;"))
   )
 }
 

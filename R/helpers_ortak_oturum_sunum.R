@@ -271,3 +271,46 @@ ortak_sunum_uretim_durum_metni <- function(baslatan, by_odasi = FALSE) {
   }
   "Yanıt üretiliyor; tamamlanınca tüm katılımcılar görecek."
 }
+
+# Üretim başlama zamanından geçen saniye (SAF; UTC tabanlı). Zaman ayrıştırıla-
+# mazsa NA döner. İstemci köprüsü (ortak_oturumlar.js) bu tabandan ileri sayar;
+# istemci/sunucu saat farkına bağımlılık olmaması için sunucu render anındaki
+# saniyeyi verir. now_text enjekte edilebilir (deterministik test).
+ortak_sunum_gecen_saniye <- function(baslama_zamani, now_text = NULL) {
+  baslama <- suppressWarnings(as.POSIXct(
+    as.character(baslama_zamani %||% NA_character_)[1], tz = "UTC"
+  ))
+  if (is.na(baslama)) {
+    return(NA_integer_)
+  }
+
+  simdi_metni <- as.character(now_text %||% format(Sys.time(), tz = "UTC"))[1]
+  simdi <- suppressWarnings(as.POSIXct(simdi_metni, tz = "UTC"))
+  if (is.na(simdi)) {
+    return(NA_integer_)
+  }
+
+  as.integer(max(0, floor(as.numeric(difftime(simdi, baslama, units = "secs")))))
+}
+
+# Süren üretimin canlı ön izleme metnini seçer (SAF). Başlatan oturumun yerel
+# ön izlemesi (canli_onizleme) istek kimliği EŞLEŞİYORSA DB'deki KismiYanit'in
+# önüne geçer (DB tur gecikmesi olmadan); bayat/başka çalıştırmanın önizlemesi
+# yok sayılır. Hiçbiri yoksa "" döner.
+ortak_sunum_canli_onizleme_metni <- function(kismi_yanit, canli, aktif_istek_id) {
+  kismi <- as.character(kismi_yanit %||% "")[1]
+  if (is.na(kismi)) {
+    kismi <- ""
+  }
+
+  if (is.list(canli) &&
+      identical(
+        as.character(canli$istek_id %||% "")[1],
+        as.character(aktif_istek_id %||% "")[1]
+      ) &&
+      nzchar(as.character(canli$metin %||% "")[1])) {
+    return(as.character(canli$metin)[1])
+  }
+
+  kismi
+}

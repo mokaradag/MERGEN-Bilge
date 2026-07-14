@@ -501,42 +501,52 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
 
   # --- Çalışma alanına dosya alma -----------------------------------------------------
 
+  # Kopyalama tek yerden: aşamalı çalışma alanı çözümü + güvenli toplu kopya +
+  # TEK doğru bildirim. Genel "Çalışma alanı oluşturulamadı" yerine hangi
+  # aşamanın başarısız olduğunu söyleyen Türkçe mesaj verilir; çift bildirim yok.
   ws_kopyala <- function(kaynak_yollar, kaynak_adlar) {
     oturum_id <- ctx$aktif_oturum()
     req(oturum_id)
 
     if (!calisma_alani_yazabilir()) {
       ctx$bildir("Paylaşılan çalışma alanını yalnızca Sahip ve Oturum Yöneticisi değiştirebilir.", tur = "error")
-      return(invisible(0L))
+      return(invisible(NULL))
     }
 
-    ws <- etkin_dizin_bilgisi(oturum_id)$yol
-    if (is.null(ws) || !nzchar(as.character(ws)[1])) {
-      ctx$bildir("Çalışma alanı oluşturulamadı.", tur = "error")
-      return(invisible(0L))
+    hedef <- oo_ws_hedef_cozumle(shiny::isolate(by_kayit_dizin_rv()), oturum_id)
+    if (is.null(hedef$yol)) {
+      if (exists("log_warn", mode = "function", inherits = TRUE)) {
+        tryCatch(
+          log_warn(paste("[ORTAK_BY] Çalışma alanı çözümlenemedi; aşama:", hedef$asama)),
+          error = function(e) NULL
+        )
+      }
+      ctx$bildir(hedef$hata, tur = "error")
+      return(invisible(NULL))
     }
 
-    kopyalanan <- 0L
-    for (i in seq_along(kaynak_yollar)) {
-      yol <- kaynak_yollar[i]
-      if (!file.exists(yol) || dir.exists(yol)) {
-        next
-      }
-      hedef <- .oo_dosya_hedef_adi(ws, kaynak_adlar[i])
-      if (!.oo_dosya_kok_icinde_mi(hedef, ws)) {
-        next
-      }
-      if (isTRUE(tryCatch(file.copy(yol, hedef, overwrite = FALSE), error = function(e) FALSE))) {
-        kopyalanan <- kopyalanan + 1L
-      }
+    sonuc <- oo_ws_kopyalama_calistir(kaynak_yollar, kaynak_adlar, hedef$yol)
+
+    if (length(sonuc$hatalar) > 0L &&
+        exists("log_warn", mode = "function", inherits = TRUE)) {
+      tryCatch(
+        log_warn(paste(
+          "[ORTAK_BY] Çalışma alanı kopyalama hataları:",
+          gsub("[{}]", "", paste(utils::head(sonuc$hatalar, 5L), collapse = " | "))
+        )),
+        error = function(e) NULL
+      )
     }
 
-    if (kopyalanan > 0L) {
+    if (sonuc$kopyalanan > 0L) {
       ortak_db_olay_ekle(oturum_id, "BelgeÜretildi", ctx$current_user_id())
-      dizin_yenile(isolate(dizin_yenile()) + 1L)
     }
+    # Başarı/başarısızlıktan bağımsız Dizin İçeriği tazelenir (gerçek durum görünür).
+    dizin_yenile(isolate(dizin_yenile()) + 1L)
 
-    invisible(kopyalanan)
+    bildirim <- oo_ws_kopyalama_bildirimi(sonuc)
+    ctx$bildir(bildirim$mesaj, tur = bildirim$tur)
+    invisible(sonuc)
   }
 
   observeEvent(input$by_dosyalarimi_kopyala, {
@@ -547,12 +557,22 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
       NULL
     }
 
-    if (is.null(kaynak_dizin) || !dir.exists(kaynak_dizin)) {
-      ctx$bildir("Yükleme klasörünüz bulunamadı.", tur = "warning")
+    dizin_var <- !is.null(kaynak_dizin) && nzchar(as.character(kaynak_dizin %||% "")[1]) &&
+      isTRUE(tryCatch(
+        dir.exists(kaynak_dizin) ||
+          (exists("path_exists_relaxed", mode = "function", inherits = TRUE) &&
+             path_exists_relaxed(kaynak_dizin)),
+        error = function(e) FALSE
+      ))
+    if (!dizin_var) {
+      ctx$bildir("Yükleme klasörünüz bulunamadı; önce Dosya Yönetimi'nden dosya yükleyin.", tur = "warning")
       return(invisible(NULL))
     }
 
-    dosyalar <- list.files(kaynak_dizin, full.names = TRUE)
+    dosyalar <- tryCatch(
+      list.files(kaynak_dizin, full.names = TRUE),
+      error = function(e) character(0)
+    )
     dosyalar <- dosyalar[!dir.exists(dosyalar)]
 
     if (length(dosyalar) == 0L) {
@@ -560,16 +580,14 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
       return(invisible(NULL))
     }
 
-    adet <- ws_kopyala(dosyalar, basename(dosyalar))
-    ctx$bildir(sprintf("%d dosya paylaşılan çalışma alanına kopyalandı.", adet))
+    ws_kopyala(dosyalar, basename(dosyalar))
   })
 
   observeEvent(input$by_yerel_dosyalar, {
     dosyalar <- input$by_yerel_dosyalar
     req(is.data.frame(dosyalar), nrow(dosyalar) > 0L)
 
-    adet <- ws_kopyala(dosyalar$datapath, dosyalar$name)
-    ctx$bildir(sprintf("%d dosya paylaşılan çalışma alanına kopyalandı.", adet))
+    ws_kopyala(dosyalar$datapath, dosyalar$name)
   })
 
   # --- Canlı çalıştırma köprüsü ---------------------------------------------------

@@ -22,7 +22,10 @@
 # köprüsüyle (data-oo-arac-ayar) ayar_input_id'ye {alan, deger} yazar.
 # Girdi kimlikleri CSS seçicisine gömülmez.
 .oo_arac_ayar_bloklari_html <- function(giris, ayarlar, ayar_input_id, akislar = list()) {
-  if (is.null(giris) || !any(c(giris$derin_var, giris$akis_var))) {
+  if (is.null(giris) || !any(c(
+    isTRUE(giris$derin_var), isTRUE(giris$akis_var),
+    isTRUE(giris$ozet_detay_var), isTRUE(giris$odak_var)
+  ))) {
     return(NULL)
   }
 
@@ -87,6 +90,50 @@
     )
   }
 
+  # Dosya Özetleme: Detay (Kısa Özet / Standart / Detaylı) — tekil oturumla
+  # aynı seçenek uzayı (brief/standard/detailed eşlemesi saf yardımcıdadır).
+  if (isTRUE(giris$ozet_detay_var)) {
+    secili_detay <- as.character(ayarlar$detay %||% "standart")[1]
+    bloklar <- tagList(
+      bloklar,
+      tags$label(
+        class = "oo-arac-ayar-satiri",
+        tags$span(class = "oo-arac-ayar-etiket", "Detay"),
+        tags$select(
+          class = "oo-arac-ayar-secim",
+          `data-oo-arac-ayar` = "1",
+          `data-oo-alan` = "detay",
+          `data-oo-hedef-input` = ayar_input_id,
+          tags$option(value = "kisa", selected = if (identical(secili_detay, "kisa")) "selected" else NULL, "Kısa Özet"),
+          tags$option(value = "standart", selected = if (!secili_detay %in% c("kisa", "detayli")) "selected" else NULL, "Standart"),
+          tags$option(value = "detayli", selected = if (identical(secili_detay, "detayli")) "selected" else NULL, "Detaylı")
+        )
+      )
+    )
+  }
+
+  # Dosya Özetleme: Odak (Genel / Sayısal Veri / Karar & Öneri / Karşılaştırma).
+  if (isTRUE(giris$odak_var)) {
+    secili_odak <- as.character(ayarlar$odak %||% "genel")[1]
+    bloklar <- tagList(
+      bloklar,
+      tags$label(
+        class = "oo-arac-ayar-satiri",
+        tags$span(class = "oo-arac-ayar-etiket", "Odak"),
+        tags$select(
+          class = "oo-arac-ayar-secim",
+          `data-oo-arac-ayar` = "1",
+          `data-oo-alan` = "odak",
+          `data-oo-hedef-input` = ayar_input_id,
+          tags$option(value = "genel", selected = if (!secili_odak %in% c("sayisal", "karar", "karsilastirma")) "selected" else NULL, "Genel"),
+          tags$option(value = "sayisal", selected = if (identical(secili_odak, "sayisal")) "selected" else NULL, "Sayısal Veri"),
+          tags$option(value = "karar", selected = if (identical(secili_odak, "karar")) "selected" else NULL, "Karar & Öneri"),
+          tags$option(value = "karsilastirma", selected = if (identical(secili_odak, "karsilastirma")) "selected" else NULL, "Karşılaştırma")
+        )
+      )
+    )
+  }
+
   if (isTRUE(giris$akis_var) && length(akislar) > 0L) {
     secili_akis <- as.character(ayarlar$surec_akisi %||% "")[1]
     bloklar <- tagList(
@@ -117,6 +164,30 @@
     div(class = "oo-arac-ayarlar-baslik", tagList(icon("sliders"), span("Araç Ayarları"))),
     bloklar
   )
+}
+
+# Aktif aracın ayar paneli (SAF): rozet satırının yanında/altında HER ZAMAN
+# erişilebilir kompakt yüzey. Araç seçildikten sonra ayarlar açılır menünün
+# içinde saklı kalmaz; panel yalnızca ayarı olan aktif araç varken çizilir.
+oo_arac_ayar_paneli_html <- function(katalog, ayarlar, ayar_input_id, akislar = list()) {
+  secili_family <- as.character(ayarlar$family %||% "")[1]
+  if (!nzchar(secili_family)) {
+    return(NULL)
+  }
+
+  aktif_giris <- NULL
+  for (giris in katalog) {
+    if (identical(giris$family, secili_family)) {
+      aktif_giris <- giris
+    }
+  }
+
+  bloklar <- .oo_arac_ayar_bloklari_html(aktif_giris, ayarlar, ayar_input_id, akislar = akislar)
+  if (is.null(bloklar)) {
+    return(NULL)
+  }
+
+  div(class = "oo-arac-ayar-paneli", bloklar)
 }
 
 # Araç seçici (SAF): "Model Değiştir" diliyle aynı açılır bileşen. Araç listesi
@@ -172,7 +243,8 @@ oo_arac_secici_html <- function(katalog,
       ),
       href = "#",
       title = if (devre_disi) {
-        paste0(giris$baslik, " ortak oturumlarda desteklenmez")
+        # Açık Türkçe gerekçe (tek kaynak: oo_arac_devre_disi_nedeni).
+        as.character(giris$devre_disi_nedeni %||% paste0(giris$baslik, " ortak oturumlarda desteklenmez"))[1]
       } else {
         giris$aciklama
       },
@@ -218,13 +290,13 @@ oo_arac_secici_html <- function(katalog,
       style = "minimal",
       icon = icon("toolbox"),
       status = "default",
-      # Araç menüsü ayar bloklarıyla en uzun paneldir; kompozerden YUKARI
-      # açılarak seçeneklerin tamamı görünür kalır.
+      # Araç menüsü kompozerden YUKARI açılır; seçeneklerin tamamı görünür
+      # kalır. Araç-özel ayarlar menünün içinde DEĞİLDİR: seçim sonrası her
+      # zaman erişilebilir olan ayar panelinde (oo_arac_ayar_paneli_html) durur.
       up = TRUE,
       width = "320px",
       div(class = "dropdown-menu-header", icon("screwdriver-wrench"), tags$span("Analiz Araçları")),
-      tags$ul(class = "dropdown-menu-custom-list oo-arac-listesi", temizle_ogesi, ogeler),
-      .oo_arac_ayar_bloklari_html(aktif_giris, ayarlar, ayar_input_id, akislar = akislar)
+      tags$ul(class = "dropdown-menu-custom-list oo-arac-listesi", temizle_ogesi, ogeler)
     ),
     tags$span(
       class = "oo-secici-etiket",
@@ -346,6 +418,35 @@ ortakOturumAracBind <- function(input, output, session, ctx, motor) {
     )
   })
 
+  # Aktif aracın ayar paneli: rozet satırında HER ZAMAN erişilebilir. Yalnızca
+  # ODA/ROL/AİLE değişince yeniden çizilir; ayar değişimi (kontrolsüz DOM
+  # girdileri) paneli yeniden çizmez, açık bir <select> etkileşimi bozulmaz.
+  output$oda_arac_ayar_paneli <- renderUI({
+    ctx$aktif_oturum()
+    arac_ailesi()
+    bilgi <- ctx$oturum_bilgisi()
+    if (!is.null(bilgi) && identical(as.character(bilgi$KaynakTuru[1] %||% ""), "BilgeYolaç")) {
+      return(NULL)
+    }
+    rol <- ctx$oda_rol()
+    if (!ortak_yetki_var_mi(rol, "yapay_zeka_sor")) {
+      return(NULL)
+    }
+
+    akislar <- if (exists("mergen_langflow_process_flows", mode = "function", inherits = TRUE)) {
+      tryCatch(mergen_langflow_process_flows(), error = function(e) list())
+    } else {
+      list()
+    }
+
+    oo_arac_ayar_paneli_html(
+      katalog = oo_arac_katalogu(),
+      ayarlar = shiny::isolate(arac_durumu()),
+      ayar_input_id = ns("oda_arac_ayari"),
+      akislar = akislar
+    )
+  })
+
   # Aktif araç rozeti: ayar özetini canlı gösterir (ayar değişiminde de tazelenir).
   # BilgeYolaç odalarında analiz araçları yürütme yoluna girmediği için rozet de
   # çizilmez (seçiciyle aynı oda-türü kapısı; yanıltıcı araç vaadi olmaz).
@@ -396,7 +497,7 @@ ortakOturumAracBind <- function(input, output, session, ctx, motor) {
   observeEvent(input$oda_arac_ayari, {
     yuk <- input$oda_arac_ayari
     alan <- as.character(yuk$alan %||% "")[1]
-    if (!(alan %in% c("derin", "seviye", "detay", "surec_akisi"))) {
+    if (!(alan %in% c("derin", "seviye", "detay", "odak", "surec_akisi"))) {
       return(invisible(NULL))
     }
 

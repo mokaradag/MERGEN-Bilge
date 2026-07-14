@@ -434,6 +434,71 @@
     }
   }
 
+  // Yerel kullanıcı kendi eylemini gönderirken ("Odaya Yaz" / "Yapay Zekâya
+  // Sor") akış dibe sabitlenir: kendi mesajını görmek beklenen davranıştır.
+  // Bu bayrak YALNIZCA tıklayan tarayıcıda değişir; geçmişi okuyan diğer
+  // katılımcılar kendi konumlarında kalır (katılımcı-güvenli kaydırma).
+  document.addEventListener('click', function (ev) {
+    var buton = ev.target && ev.target.closest
+      ? ev.target.closest('.oo-btn-yz-sor, .oo-btn-odaya-yaz')
+      : null;
+    if (!buton) {
+      return;
+    }
+    var akisi = document.querySelector('[id$="-mesaj_akisi"]');
+    if (akisi) {
+      akisi._ooYakinDip = true;
+      akisi.scrollTop = akisi.scrollHeight;
+      akisi._ooSonKonum = akisi.scrollTop;
+    }
+  });
+
+  // Yapay zekâ yanıtlarındaki kod blokları (.code-container) tekil oturumla
+  // aynı CodeMirror zenginleştirmesini alır. Ana söyleşinin chat-kökü
+  // gözlemcisi ortak oda köküne bağlanmaz; init burada, oda render'ından
+  // sonra çağrılır (yalnızca .cm-initialized olmayanlar başlatılır).
+  function ooKodBloklariniBaslat() {
+    var akisi = document.querySelector('[id$="-mesaj_akisi"]');
+    if (!akisi || !akisi.id) {
+      return;
+    }
+    if (typeof window.initializeCodeMirrorInElement === 'function' &&
+        akisi.querySelector('.codemirror-textarea:not(.cm-initialized)')) {
+      try {
+        window.initializeCodeMirrorInElement(akisi.id);
+      } catch (e) { /* CodeMirror yoksa sessiz geç */ }
+    }
+  }
+
+  // Süren üretim için geçen süre sayacı: sunucu render anındaki saniyeyi
+  // (data-oo-gecen) verir; istemci oradan İLERİYE sayar. İstemci/sunucu saat
+  // farkına bağımlılık yoktur; öğe yeniden render edilince taban tazelenir.
+  var ooSureTimer = null;
+
+  function ooSureSayaciniIsle() {
+    var alanlar = document.querySelectorAll('.oo-uretim-sure[data-oo-gecen]');
+    if (!alanlar.length) {
+      if (ooSureTimer !== null) {
+        window.clearInterval(ooSureTimer);
+        ooSureTimer = null;
+      }
+      return;
+    }
+    for (var i = 0; i < alanlar.length; i++) {
+      var el = alanlar[i];
+      if (!el._ooTaban) {
+        el._ooTaban = Date.now();
+        el._ooBaslangicSn = parseInt(el.getAttribute('data-oo-gecen'), 10) || 0;
+      }
+      var gecen = el._ooBaslangicSn + Math.floor((Date.now() - el._ooTaban) / 1000);
+      var dk = Math.floor(gecen / 60);
+      el.textContent = dk > 0 ? (dk + ' dk ' + (gecen % 60) + ' sn') : (gecen + ' sn');
+    }
+    if (ooSureTimer === null) {
+      ooSureTimer = window.setInterval(ooSureSayaciniIsle, 1000);
+    }
+  }
+
   document.addEventListener('shiny:value', function (ev) {
     var ad = ev && ev.name ? String(ev.name) : '';
 
@@ -447,6 +512,16 @@
       return;
     }
 
+    // Üretim durumu paneli (kısmi yanıt/süre) büyürken kullanıcı dipteyse
+    // akış dibe sabit kalır; geçmiş okuyan katılımcı çekilmez.
+    if (ad.indexOf('uretim_durumu_alani') !== -1) {
+      window.setTimeout(function () {
+        ooSureSayaciniIsle();
+        ooAkisiKonumla();
+      }, 30);
+      return;
+    }
+
     if (ad.indexOf('mesajlar_alani') === -1 && ad.indexOf('oda_alani') === -1) {
       return;
     }
@@ -454,6 +529,7 @@
       ooKatilimciYukseklikGeriYukle();
       ooAkisiKonumla();
       ooKokSinifiniGuncelle();
+      ooKodBloklariniBaslat();
     }, 30);
   });
 
