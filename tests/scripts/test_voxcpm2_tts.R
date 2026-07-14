@@ -346,7 +346,7 @@ if (!nzchar(endpoint)) {
 }
 
 api_key <- resolve_api_key()
-if (!nzchar(api_key$value) && !allow_no_api_key) {
+if (!nzchar(api_key$value) && !allow_no_api_key && !dry_run) {
   stop(
     paste0(
       "TTS API anahtarı bulunamadı. LOCAL_TTS_API_KEY değerini veya izin verilen ",
@@ -386,6 +386,8 @@ if (nzchar(ref_text)) {
 
 output_dir_display <- if (nzchar(output_path)) {
   dirname(path.expand(output_path))
+} else if (dry_run) {
+  file.path("<Masaüstü>", "VoxCPM2_Test")
 } else {
   file.path(resolve_desktop_dir(), "VoxCPM2_Test")
 }
