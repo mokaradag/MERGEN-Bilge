@@ -177,6 +177,14 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
 
       queue <- tryCatch(mergen_tts_default_queue(tts_config), error = function(e) NULL)
 
+      redact_tts_error <- function(msg, max_chars = 500L) {
+        if (exists("mergen_tts_redact_error_text", mode = "function", inherits = TRUE)) {
+          mergen_tts_redact_error_text(msg, max_chars = max_chars)
+        } else {
+          "TTS isteği başarısız oldu."
+        }
+      }
+
       # --- ASENKRON ÇALIŞTIRICI (WORKER) FABRİKASI ---
       worker_factory <- function() {
         tracked_future_promise(
@@ -217,12 +225,12 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
                 req_config
               )
             }, error = function(e) {
-              worker_log(sprintf("POST İşleminde Kritik Hata: %s", conditionMessage(e)))
+              worker_log(sprintf("POST İşleminde Kritik Hata: %s", redact_tts_error(conditionMessage(e), max_chars = 200L)))
               return(list(error_obj = e))
             })
 
             if (is.list(resp) && !is.null(resp$error_obj)) {
-              err_msg <- conditionMessage(resp$error_obj)
+              err_msg <- redact_tts_error(conditionMessage(resp$error_obj))
               return(list(success = FALSE, audio_src = NULL, voice = voice_to_use, duration = 0, error = err_msg))
             }
 
@@ -295,11 +303,7 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
             } else {
               err_msg <- tryCatch(httr::content(resp, as = "text", encoding = "UTF-8"),
                                   error = function(e) "TTS isteği başarısız oldu.")
-              safe_err_msg <- if (exists("mergen_tts_redact_error_text", mode = "function", inherits = TRUE)) {
-                mergen_tts_redact_error_text(err_msg)
-              } else {
-                "TTS isteği başarısız oldu."
-              }
+              safe_err_msg <- redact_tts_error(err_msg)
               worker_log(sprintf("API HATASI: %s", substr(safe_err_msg, 1, 100)))
               list(success = FALSE, audio_src = NULL, voice = voice_to_use,
                    duration = 0, error = paste("TTS hata:", safe_err_msg))
@@ -312,13 +316,14 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
       }
 
       on_worker_error <- function(e) {
-        cat(sprintf("[TTS] Worker hatası: %s\n", conditionMessage(e)))
+        safe_err_msg <- redact_tts_error(conditionMessage(e))
+        cat(sprintf("[TTS] Worker hatası: %s\n", safe_err_msg))
         try({
-          cat(sprintf("[%s] [Worker-HATA] %s\n", format(Sys.time(), "%H:%M:%S"), conditionMessage(e)),
+          cat(sprintf("[%s] [Worker-HATA] %s\n", format(Sys.time(), "%H:%M:%S"), safe_err_msg),
               file = normalizePath(file.path("logs", "tts_debug.txt"), mustWork = FALSE), append = TRUE)
         }, silent = TRUE)
         list(success = FALSE, audio_src = NULL, voice = voice_to_use,
-             duration = 0, error = conditionMessage(e))
+             duration = 0, error = safe_err_msg)
       }
 
       # Sınırlı eşzamanlılık kuyruğuyla gönder (iptal-farkındalı); kuyruk yoksa
