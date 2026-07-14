@@ -124,3 +124,28 @@ mergen_tts_profile_for_character <- function(char_id) {
   if (is.na(profile) || !nzchar(profile)) return(norm_id)
   profile
 }
+
+#' TTS Profil Kimliğini Güvenli Normalleştir veya Personadan Çöz
+#'
+#' @description Açık `profile_id` verildiyse onu normalleştirir; verilmediyse
+#'   VoxCPM2 profil modu etkin olduğunda persona kimliğinden profil çözer.
+#'   Çözümleme hataları konuşma akışını kırmamalı, güvenli jenerik yola
+#'   düşmelidir.
+#' @param profile_id Açık profil kimliği (opsiyonel)
+#' @param char_id Persona kimliği (opsiyonel)
+#' @param config TTS yapılandırması
+#' @return Profil kimliği veya NULL
+mergen_tts_resolve_profile_id <- function(profile_id = NULL, char_id = NULL, config = NULL) {
+  explicit_profile <- tolower(trimws(as.character(profile_id %||% "")[1]))
+  if (!is.na(explicit_profile) && nzchar(explicit_profile)) return(explicit_profile)
+
+  profiles_enabled <- tryCatch(
+    isTRUE(mergen_tts_voice_profiles_enabled(config)),
+    error = function(e) FALSE
+  )
+  if (!isTRUE(profiles_enabled)) return(NULL)
+
+  resolved <- tryCatch(mergen_tts_profile_for_character(char_id), error = function(e) NULL)
+  resolved <- tolower(trimws(as.character(resolved %||% "")[1]))
+  if (!is.na(resolved) && nzchar(resolved)) resolved else NULL
+}

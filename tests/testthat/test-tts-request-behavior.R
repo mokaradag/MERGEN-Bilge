@@ -42,16 +42,93 @@ test_that("redact_error_text ref_audio ve data URL sızıntılarını gizler", {
   expect_false(grepl("data:audio/wav;base64", redacted, fixed = TRUE))
   expect_false(grepl(paste(rep("A", 80), collapse = ""), redacted, fixed = TRUE))
   expect_match(redacted, '"input":"Merhaba"', fixed = TRUE)
+
+  encoded <- "ref_audio=data%3Aaudio%2Fwav%3Bbase64%2CAAAAA&input=Merhaba"
+  expect_false(grepl("data%3Aaudio%2Fwav", mergen_tts_redact_error_text(encoded), fixed = TRUE))
+
+  escaped_json <- '{"ref_audio":"data:audio\\/wav;base64,BBBBB","error":"bad"}'
+  expect_false(grepl("data:audio", mergen_tts_redact_error_text(escaped_json), fixed = TRUE))
 })
 
-test_that("streaming TTS entegrasyonu persona profilini synthesize_speech çağrısına taşır", {
-  handler_src <- readLines(file.path(resolve_repo_root_for_tests(), "R", "server_handler_streaming_tts.R"),
-                           warn = FALSE, encoding = "UTF-8")
-  handler_text <- paste(handler_src, collapse = "\n")
+test_that("resolve_profile_id açık profili korur ve eksik profili personadan çözer", {
+  cfg <- list(profiles_enabled = TRUE, model = "VoxCPM2", voice_dir = tempdir())
 
-  expect_match(handler_text, "streaming_profile_sel <-")
-  expect_match(handler_text, "mergen_tts_profile_for_character\\(local_char_id\\)")
-  expect_match(handler_text, "profile_id = streaming_profile_sel")
+  expect_identical(mergen_tts_resolve_profile_id(profile_id = " Selin ", config = cfg), "selin")
+  expect_identical(mergen_tts_resolve_profile_id(char_id = "can", config = cfg), "can")
+  expect_null(mergen_tts_resolve_profile_id(char_id = "can", config = list(profiles_enabled = FALSE)))
+})
+
+test_that("streaming TTS entegrasyonu persona profilini davranışsal olarak taşır", {
+  test_env <- new.env(parent = globalenv())
+  test_env$`%...!%` <- get("%...!%", asNamespace("promises"))
+  source(file.path(resolve_repo_root_for_tests(), "R", "server_handler_streaming_tts.R"),
+         encoding = "UTF-8", local = test_env)
+
+  test_env$log_debug <- function(...) invisible(NULL)
+  test_env$log_warn <- function(...) invisible(NULL)
+  test_env$dbg_dump <- function(...) invisible(NULL)
+  test_env$mergen_log_llm_request_debug <- function(...) invisible(NULL)
+  test_env$log_ai_usage <- function(...) invisible(NULL)
+  test_env$mb_api_key_invalidate_send_cache_on_auth_error <- function(...) invisible(NULL)
+  test_env$mergen_send_message_request_state <- function(...) "current"
+  test_env$build_followup_suggestions <- function(...) character()
+  test_env$normalize_character_id <- function(x) x
+  test_env$get_characters_data <- function() list(styles = list(list(id = "ipek", tts_voice = "tr-female-1")))
+  test_env$tts_config <- list(profiles_enabled = TRUE, model = "VoxCPM2", voice_dir = tempdir())
+  test_env$mergen_tts_resolve_profile_id <- function(profile_id = NULL, char_id = NULL, config = NULL) {
+    paste0("profile-", char_id)
+  }
+
+  active_value <- NULL
+  stop_value <- FALSE
+  captured_profile <- NULL
+  captured_voice <- NULL
+
+  ctx <- list(
+    session = list(userData = new.env(parent = emptyenv())),
+    values = new.env(parent = emptyenv()),
+    settings_data = list(enable_tts_audio = TRUE),
+    stop_generation = function(value) {
+      if (!missing(value)) stop_value <<- value
+      stop_value
+    },
+    active_request_id = function(value) {
+      if (!missing(value)) active_value <<- value
+      active_value
+    },
+    perf_tracker = list(track_request = function(...) invisible(NULL), track_error = function(...) invisible(NULL)),
+    api_config = list(),
+    ai_processor = list(call_llm_streaming = function(...) promises::promise_resolve(list(
+      success = TRUE, content = "Yanıt metni", duration = 0.01, chart_store = list()
+    ))),
+    tts_processor = list(synthesize_speech = function(text, voice = NULL, profile_id = NULL, ...) {
+      captured_voice <<- voice
+      captured_profile <<- profile_id
+      promises::promise_resolve(list(success = TRUE, audio_src = "", duration = 0))
+    }),
+    followup_tools = list(),
+    fallback_followup_tool = NULL,
+    simulate_streaming_stoppable_fn = function(full_response, followups, tts_engine, tts_voice, on_start, on_complete) {
+      tts_engine(full_response, tts_voice)
+      invisible(NULL)
+    },
+    cleanup_send_message = function(...) invisible(NULL),
+    abort_send_message = function(...) invisible(NULL),
+    current_settings = list(selected_character = "ipek"),
+    model_selected = "model",
+    messages_to_process = list(),
+    user_message_text = "Soru",
+    user_prompt_msg = list(db_id = 1),
+    chat_id_val = 1,
+    current_user_id = 1,
+    request_id = "req-1"
+  )
+
+  test_env$handle_streaming_tts_mode(ctx)
+  for (i in seq_len(5)) later::run_now(1)
+
+  expect_identical(captured_voice, "tr-female-1")
+  expect_identical(captured_profile, "profile-ipek")
 })
 
 test_that("prepare_speech_plan profil etkinken referans ses + hız (1.0) + wav üretir", {

@@ -84,10 +84,6 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
     }
 
     resolve_profile_id_for_speech <- function(profile_id = NULL) {
-      explicit_profile <- tolower(trimws(as.character(profile_id %||% "")[1]))
-      if (nzchar(explicit_profile)) return(explicit_profile)
-      if (!isTRUE(mergen_tts_voice_profiles_enabled(tts_config))) return(NULL)
-
       char_id <- tryCatch({
         if (!is.null(settings_data) && !is.null(settings_data$selected_character)) {
           shiny::isolate(settings_data$selected_character)
@@ -96,10 +92,12 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
         }
       }, error = function(e) NULL)
 
-      if (!exists("mergen_tts_profile_for_character", mode = "function", inherits = TRUE)) return(NULL)
-      resolved <- tryCatch(mergen_tts_profile_for_character(char_id), error = function(e) NULL)
-      resolved <- tolower(trimws(as.character(resolved %||% "")[1]))
-      if (nzchar(resolved)) resolved else NULL
+      if (exists("mergen_tts_resolve_profile_id", mode = "function", inherits = TRUE)) {
+        return(mergen_tts_resolve_profile_id(profile_id = profile_id, char_id = char_id, config = tts_config))
+      }
+
+      explicit_profile <- tolower(trimws(as.character(profile_id %||% "")[1]))
+      if (!is.na(explicit_profile) && nzchar(explicit_profile)) explicit_profile else NULL
     }
 
     #' Asenkron olarak ses sentezle

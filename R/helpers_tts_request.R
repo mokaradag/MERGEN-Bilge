@@ -55,23 +55,36 @@ mergen_tts_redact_error_text <- function(text, max_chars = 500L) {
   value <- as.character(text %||% "")[1]
   if (!nzchar(value)) return("TTS isteği başarısız oldu.")
 
-  # JSON echo: "ref_audio": "data:audio/wav;base64,..."
+  # JSON echo: "ref_audio": "data:audio/wav;base64,..." (escaped chars included).
   value <- gsub(
-    '("ref_audio"\\s*:\\s*")[^"]*(")',
+    '(["\']ref_audio["\']\\s*:\\s*["\'])(?:\\\\.|[^"\'\\\\])*(["\'])',
     '\\1[REDACTED_REF_AUDIO]\\2',
+    value,
+    perl = TRUE
+  )
+  # URL-encoded echoes, e.g. ref_audio=data%3Aaudio%2Fwav%3Bbase64%2C...
+  value <- gsub(
+    '(ref_audio\\s*=\\s*)data%3[aA]audio%2[fF][^\\s&,"\']+',
+    '\\1[REDACTED_REF_AUDIO]',
     value,
     perl = TRUE
   )
   # Form-urlencoded / plain text echo: ref_audio=data:audio/...
   value <- gsub(
-    '(ref_audio\\s*=\\s*)data:audio/[^\\s&,"\']+',
+    '(ref_audio\\s*=\\s*)data:audio\\\\?/[^\\s&,"\']+',
     '\\1[REDACTED_REF_AUDIO]',
     value,
     perl = TRUE
   )
   # Any remaining audio data URL fragments.
   value <- gsub(
-    'data:audio/[^\\s&,"\']+',
+    'data:audio\\\\?/[^\\s&,"\']+',
+    '[REDACTED_AUDIO_DATA_URL]',
+    value,
+    perl = TRUE
+  )
+  value <- gsub(
+    'data%3[aA]audio%2[fF][^\\s&,"\']+',
     '[REDACTED_AUDIO_DATA_URL]',
     value,
     perl = TRUE
