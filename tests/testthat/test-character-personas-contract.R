@@ -95,7 +95,7 @@ test_that("her persona uygulamanın beklediği tüm alanlara sahiptir", {
     "avatar", "image", "accent", "accent_hover", "accent_active",
     "selection_card_tr", "lore_tr", "style_tr", "profile_metrics",
     "signature_moves", "system_prompt_en", "parameters", "tts_voice",
-    "video_key", "music_key"
+    "tts_profile", "video_key", "music_key"
   )
 
   chars <- get_characters_data()

@@ -246,6 +246,26 @@ The intended resolution contract is:
 
 This keeps “continue with institutional key” behavior consistent across normal chat, “Yanıtları Seslendir”, and “AI Uzman Konuşması” without changing runtime UX. Never log, print, expose, or include raw key, token, endpoint secret, cookie, password, or auth header values in documentation, validation reports, or diagnostics.
 
+### 1G) VoxCPM2 reference-voice TTS profile contract
+
+The five personas (Emre, Selin, Deniz, Can, İpek) use **application-side** VoxCPM2 reference-voice profiles. The selected persona determines which reference WAV is attached (`ref_audio` + `ref_text`) to the TTS request; the remote server needs no named custom voices. Full guide: [`docs/voxcpm2-ses-profilleri.md`](docs/voxcpm2-ses-profilleri.md). Persona → profile is a single resolver: `mergen_tts_profile_for_character()` (persona ids == profile ids). Do not scatter per-module lookup.
+
+Ownership (keep responsibilities split; do not fold back into `R/module_tts.R`):
+
+- `R/helpers_tts_voice_config.R` — `mergen_build_tts_config()` (all `LOCAL_TTS_*` parsing with safe defaults; empty env value falls back to default), `mergen_tts_voice_profiles_enabled()` (active only when profiles_enabled AND model is VoxCPM2 AND `voice_dir` set), `mergen_tts_profile_for_character()`. Loaded in `config_api_model_keys` BEFORE `config_api.R` (which calls the builder at source time, guarded by `exists()`). Do not inline these into `config_api.R` (its 520/6 budget).
+- New manifest section `tts_ses_profilleri` (owned by the `medya_ses` seam, loaded before `module_ai_audio`): `R/helpers_tts_voice_manifest.R` (real WAV-header validation — mono/16-bit/16 kHz/≤30 s — + manifest load + single-profile resolve to base64), `R/helpers_tts_voice_cache.R` (process-scoped profile memory cache; base64 once per profile version; auto-invalidate on manifest/WAV/transcript mtime+size change), `R/helpers_tts_audio_cache.R` (generated-audio cache; key = model+profile+version+wav_sha+transcript_sha+text+speed+format; atomic write; TTL/size cleanup; hashed filenames, no plaintext text in metadata), `R/helpers_tts_request.R` (request-body + `mergen_tts_prepare_speech_plan()`), `R/helpers_tts_queue.R` (bounded concurrency, default 2, FIFO, cancel-aware), `R/helpers_tts_profile_preload.R` (startup/preload policy).
+- `R/module_tts.R` stays a thin integrator: `ttsProcessingServer(id, settings_data)` resolves the plan, returns cache hits without the queue/network, dispatches misses through `mergen_tts_default_queue()`, and exposes `preload_profile`. `synthesize_speech(text, voice, profile_id, should_cancel)` is the extended signature; callers resolve `profile_id` via the resolver.
+
+Non-negotiable rules:
+
+- Real reference recordings are biometric/personal data: never under `www`, never committed, never in source, never logged (base64 is never logged), never returned to the browser. They live only in the deployment-local `LOCAL_TTS_VOICE_DIR`. `deployment/tts_voices_template/` ships placeholders + `*.example` only; `.gitignore` blocks real `*.wav`/`manifest.json`/`reference_transcript_tr_v1.txt` there.
+- One shared transcript for all five recordings; `ref_text` comes from it. Production speed is `1.0` (no global slow); response format defaults to `wav`.
+- Startup: TTS is never a required boot-readiness key and never joins the 0–100 loading gate. Hızlı Başlangıç does no blocking TTS work (no WAV read, no base64, no endpoint call, no dummy warmup) before the app is usable. Odak/Dinamik load no profile; Bütünleşik loads only the committed selected profile asynchronously. Profile loading is lazy, idempotent, dedup'd, and race-safe across character changes. The first real speech request is the effective model warmup (no dummy sentence); the AI Expert first-real-phrase prewarm is preserved.
+- Generic fallback and rollback must stay possible via env only: if profiles are disabled or the model is not VoxCPM2, the generic (no-ref, mp3) path is used; a bad profile disables only that profile and falls back without crashing.
+- Do not raise ratchet thresholds or materially bloat `R/module_tts.R`, `R/server_tts_handlers.R`, `R/module_ai_expert.R`, or `R/config_api.R`. New comments/logs/errors are Turkish.
+
+Protected by: `tests/testthat/test-tts-voice-config-behavior.R`, `test-tts-voice-manifest-behavior.R`, `test-tts-voice-cache-behavior.R`, `test-tts-audio-cache-behavior.R`, `test-tts-request-behavior.R`, `test-tts-queue-behavior.R`, `test-tts-profile-preload-behavior.R`, `test-tts-persona-profile-contract.R`, `test-tts-voice-template-contract.R`, plus `test-character-personas-contract.R`, `test-source-manifest-sections-contract.R`, `test-seam-registry-contract.R`, `test-maintainability-ratchet.R`. VM-only live proof (not provable in cloud): real VoxCPM2 endpoint + real recordings via `tests/scripts/test_voxcpm2_tts.R` and the two speech flows.
+
 ### API key choice modal boundary
 
 The API key choice onboarding modal is a protected Shiny/browser boundary. Keep its runtime UX stable while preserving browser-console hygiene and secret safety.

@@ -202,7 +202,9 @@ serverBindMediaModules <- function(input,
   )
 
   ai_processor <- ai_processing_server_fn("ai_proc")
-  tts_processor <- tts_processing_server_fn("tts_proc")
+  # settings_data verilerek TTS/AI Uzman açıkken seçili persona ses profili
+  # tembel ön yüklenir (VoxCPM2 profil politikası).
+  tts_processor <- tts_processing_server_fn("tts_proc", settings_data = settings_data)
   tts_visualizer <- tts_visualizer_server_fn("tts_viz", settings_data)
 
   music_handlers_init_fn(input, session, settings_data)

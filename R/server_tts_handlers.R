@@ -145,11 +145,18 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
     if (!nzchar(full_text)) return(invisible(NULL))
 
     # Persona verisini al (eski kimlikler normalleştirilerek çözülür)
-    character_data <- get_character_record(shiny::isolate(settings_data$selected_character))
+    char_id_sel <- shiny::isolate(settings_data$selected_character)
+    character_data <- get_character_record(char_id_sel)
     voice_sel <- if (!is.null(character_data) && !is.null(character_data$tts_voice)) {
       character_data$tts_voice
     } else {
-      "tr-male-1"
+      "default"
+    }
+    # VoxCPM2 referans-ses profili kimliği (tek çözümleme noktası).
+    profile_sel <- if (exists("mergen_tts_profile_for_character", mode = "function", inherits = TRUE)) {
+      mergen_tts_profile_for_character(char_id_sel)
+    } else {
+      NULL
     }
 
     send_chunk <- function(res, idx) {
@@ -181,7 +188,12 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
         idx <- chunk_idx
         current_text <- chunk_text
 
-        tts_processor$synthesize_speech(current_text, voice = voice_sel) %...>%
+        tts_processor$synthesize_speech(
+          current_text,
+          voice = voice_sel,
+          profile_id = profile_sel,
+          should_cancel = function() isTRUE(tryCatch(shiny::isolate(stop_generation()), error = function(e) FALSE))
+        ) %...>%
           (function(res) send_chunk(res, idx)) %...!%
           (function(e) cat(sprintf("[TTS] Parça %d hatası: %s\n", idx, conditionMessage(e))))
       })
