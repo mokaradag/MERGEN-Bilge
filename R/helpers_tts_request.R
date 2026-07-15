@@ -155,6 +155,7 @@ mergen_tts_prepare_speech_plan <- function(text, config = NULL, profile_id = NUL
   }
 
   cached_audio_src <- NULL
+  cached_duration <- NA_real_
   cache_write_path <- ""
   if (isTRUE(profile_active) && isTRUE(config$cache_enabled) && nzchar(config$cache_dir %||% "")) {
     key <- mergen_tts_audio_cache_key(
@@ -168,7 +169,23 @@ mergen_tts_prepare_speech_plan <- function(text, config = NULL, profile_id = NUL
       if (isTRUE(cache_lookup)) {
         cached_raw <- mergen_tts_audio_cache_read(cache_path)
         if (!is.null(cached_raw)) {
-          cached_audio_src <- mergen_tts_raw_to_data_url(cached_raw, response_format)
+          cache_ok <- TRUE
+          # WAV önbelleğini yapısal olarak doğrula: bozuk/kesik/eksik ise önbellek
+          # isabeti SAYMA ve dosyayı güvenle sil (gelecekte yeniden üretilir).
+          # Makullük denetimi burada uygulanmaz (yazım anında zaten uygulandı).
+          if (identical(tolower(response_format), "wav") &&
+              exists("mergen_tts_validate_generated_wav", mode = "function", inherits = TRUE)) {
+            cvres <- mergen_tts_validate_generated_wav(cached_raw, check_plausibility = FALSE)
+            cache_ok <- isTRUE(cvres$ok)
+            if (isTRUE(cache_ok)) {
+              cached_duration <- suppressWarnings(as.numeric(cvres$duration %||% NA_real_))
+            } else {
+              try(unlink(cache_path, force = TRUE), silent = TRUE)
+            }
+          }
+          if (isTRUE(cache_ok)) {
+            cached_audio_src <- mergen_tts_raw_to_data_url(cached_raw, response_format)
+          }
         }
       }
     }
@@ -184,6 +201,7 @@ mergen_tts_prepare_speech_plan <- function(text, config = NULL, profile_id = NUL
     profile_active = profile_active,
     profile_error = profile_error,
     cached_audio_src = cached_audio_src,
+    cached_duration = cached_duration,
     cache_write_path = cache_write_path,
     profile_version = if (!is.null(profile)) profile$version else NA_integer_,
     wav_sha256 = if (!is.null(profile)) profile$wav_sha256 else ""

@@ -15,6 +15,58 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### (Yayınlanmadı) 2026-07-14 AI Uzman parçalı TTS oynatma düzeltmesi (duraklama + yarıda kesilme)
+
+Klonlanmış VoxCPM2 sesiyle AI Uzman konuşması iki üretim hatasını gösteriyordu:
+(1) uzun bir konuşma birden çok parçaya bölününce parçalar arasında uzun sessiz
+duraklama; (2) bir parça altyazısı bitmeden sesin aniden kesilmesi. Kök nedenler
+tespit edilip düzeltildi (yalnızca timeout/eşzamanlılık ayarı değil).
+
+- **Eager (öne alınmış) sınırlı sentez.** Eski akış 2..N parçalarını yalnızca
+  1. parça sentezlenip gönderildikten SONRA sıraya alıyordu; bu yüzden ilk parça
+  biterken sonrakiler daha hazır olmuyordu. Artık tüm parçalar hemen sentez
+  kuyruğuna verilir; eşzamanlılık paylaşılan sınırlı TTS kuyruğuyla
+  (`LOCAL_TTS_MAX_CONCURRENCY`, varsayılan 2) sınırlıdır. Yeni saf orkestratör
+  `R/helpers_ai_expert_speech.R`.
+- **Kesin sıralı oynatma.** Sentez tamamlanma sırası ne olursa olsun oynatma
+  parça indeksi sırasında gönderilir; 1. parça daima açılış-kritik olarak önce
+  gider. Erken hazır olan bir parça, kendinden önceki parçadan önce oynamaz.
+- **Eskime (stale) koruması.** Sunucuda `speech_seq` belirteci + `is_active()`
+  yüklemi, tarayıcıda `speechToken` ile korunan `ended`/`error`/timer/retry geri
+  çağrımları; durdurulmuş veya yeni bir konuşmayla değiştirilmiş diziden geç
+  gelen sonuçlar oynatılmaz. Her parça en fazla bir kez sentezlenir.
+- **Yapısal WAV doğrulama (yarıda kesilme).** Sunucudan gelen WAV; RIFF/WAVE
+  imzası, chunk sınırları, `fmt`/`data` varlığı, bildirilen uzunlukların alınan
+  bayta karşı tutarlılığı, makul kanal/örnekleme/bit ve pozitif süre için önbelleğe
+  yazılmadan ve tarayıcıya gönderilmeden doğrulanır (yeni saf yardımcı
+  `R/helpers_tts_audio_validation.R`; sabit 44 baytlık başlık varsayılmaz, `data`
+  öncesi ek yasal chunk'lar desteklenir). Geçersiz/eksik/kesik ses önbelleğe
+  YAZILMAZ; bozuk önbellek dosyası okuma yolunda reddedilip güvenle silinir.
+  Sunucu sentez gecikmesi değil, gerçek WAV medya süresi kullanılır.
+- **Sınırlı yeniden deneme + altyazı-yalnız geri dönüş.** Yapısal olarak geçersiz
+  parça bir kez yeniden denenir; yine olmazsa o parça için ses yerine yalnız
+  altyazı gösterilir ve dizi durmaz. 1. parça tümüyle başarısızsa tam metin
+  altyazı olarak korunur.
+- **Tarayıcı oynatma yaşam döngüsü (`www/js/ai_expert_manager.js`).** Ses `error`
+  olayı artık başarılı `ended` gibi ele alınmaz (medya hata kodu loglanır, bir
+  kez yeniden denenir, sonra altyazı-yalnız geçilir). Ses erken bitince altyazı
+  KESİLMEZ (kalan metin tam gösterilir), müzik ducking ve görselleştirici serbest
+  bırakılır, handler'lar temizlenir ve `ai_expert_speech_ended` sinyali tek sefer
+  gönderilir. Süre `loadedmetadata` ile ölçülür.
+- **Gizlilik korunur:** `ref_audio`, referans WAV/base64, transcript içeriği ve
+  API anahtarları loglanmaz veya tarayıcıya döndürülmez (PR #616 sınırı).
+- Yeni env değişkeni YOKTUR. Makullük/yeniden-deneme eşikleri merkezi olarak
+  `R/helpers_tts_audio_validation.R` (R) ve `AIExpertManager.config` (JS) içinde
+  belgelenir. Korumalar: `test-tts-audio-validation-behavior.R`,
+  `test-ai-expert-speech-sequence-behavior.R`,
+  `test-ai-expert-playback-lifecycle-contract.R` ve mevcut TTS/AI Uzman/audio
+  yaşam döngüsü/manifest sözleşmeleri.
+- Kanıt: `bash tools/ai_validate.sh quick` 0 başarısız / 0 atlanan adım
+  (`app_source_smoke_status="passed"`). Gerçek VoxCPM2 uç noktası, tarayıcı ses
+  oynatma, VM/SSO ve SQL Server Türkçe at-rest doğrulaması cloud'da yapılamaz;
+  Windows VM kapıları ayrıdır.
+
+
 ### (Yayınlanmadı) 2026-07-14 VoxCPM2 referans-ses profilleri (beş persona)
 
 - **İki jenerik TTS sesi yerine beş uygulama-tarafı VoxCPM2 profili.** Emre,

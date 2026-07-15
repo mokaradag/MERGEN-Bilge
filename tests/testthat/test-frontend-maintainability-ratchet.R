@@ -155,7 +155,14 @@ test_that("frontend JS/CSS büyüklük ve yoğunluk bütçeleri sessizce aşılm
   app_js_report <- subset(app_report, type == "js")
   app_css_report <- subset(app_report, type == "css")
 
-  max_app_js_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_LINES", 850L)
+  # 850L -> 895L bilinçli güncelleme: AI Uzman parçalı TTS oynatma yaşam döngüsü
+  # düzeltmesi (www/js/ai_expert_manager.js). Parçalar arası duraklama ve yarıda
+  # kesilen ses için: ses HATA != BİTTİ ayrımı, sınırlı oynatma yeniden denemesi,
+  # token-korumalı ended/error/timer geri çağrımları, altyazı-yalnız parça geri
+  # dönüşü, altyazının erken kesilmemesi ve handler temizliği eklendi. Fonksiyon
+  # (45) ve event-handler (4) sayıları limitlerin çok altında; yalnızca satır
+  # tavanı yükseldi. Dosya bölünmedi çünkü tek bir tutarlı oynatma durum makinesidir.
+  max_app_js_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_LINES", 895L)
   # 1150L -> 1490L: aynı bilinçli Ortak Çalışmalarım genişlemesi (yukarıya bakınız).
   max_app_css_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_CSS_LINES", 1490L)
   max_app_js_functions <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_FUNCTIONS", 60L)

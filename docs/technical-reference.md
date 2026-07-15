@@ -98,6 +98,64 @@ Bakım sınırında yeni mantık ratchet eşiklerini büyütmemek için küçük
 - AI Uzman konuşması, `settings_kisisel`, `admin_analytics` ve `health` sayfalarına geçişte etkinse nazikçe durdurulur; altyazı gizlenir ve müzik ducking durumu serbest bırakılır.
 - AI Uzman metinlerinde `Bilge Yolaç` adının `Bilge Yola` olarak üretilmesi altyazı ve TTS öncesinde merkezi olarak düzeltilir.
 - Beş persona için uygulama-tarafı VoxCPM2 referans-ses profilleri: seçilen personaya göre bir referans WAV isteğe `ref_audio` + `ref_text` olarak eklenir (üretim hızı `1.0`, yanıt biçimi `wav`). Manifest/WAV doğrulama, profil bellek önbelleği (base64 sürüm başına bir kez), üretilen-ses önbelleği (tekrarlayan ifade birebir/ağsız), sınırlı eşzamanlılık kuyruğu (varsayılan 2) ve başlangıç ön yükleme politikası ayrı `tts_ses_profilleri` yardımcılarındadır; `R/module_tts.R` ince entegratördür. Gerçek kayıtlar biyometrik veridir, depo dışında `LOCAL_TTS_VOICE_DIR` altında tutulur. Eski modele dönüş yalnızca `.Renviron` ile mümkündür. Ayrıntı: [`voxcpm2-ses-profilleri.md`](voxcpm2-ses-profilleri.md).
+
+#### AI Uzman parçalı TTS oynatma yaşam döngüsü
+
+AI Uzman uzun bir konuşmayı kısa parçalara böler. Parçalar arası uzun sessiz
+duraklama ve bir parçanın altyazısı bitmeden sesin aniden kesilmesi hataları
+kökten düzeltildi. Sözleşmeler:
+
+- **Eager sınırlı sentez + kesin sıralı oynatma.** Konuşma dizisi orkestratörü
+  `R/helpers_ai_expert_speech.R` (saf; Shiny/DB/ağ yan etkisi yok, enjekte edilen
+  `synthesize`/`send_message`/`is_active` ile test edilebilir) TÜM parçaları hemen
+  sentez kuyruğuna verir; eşzamanlılık paylaşılan sınırlı TTS kuyruğuyla
+  (`LOCAL_TTS_MAX_CONCURRENCY`) sınırlıdır. 1. parça açılış-kritiktir ve daima önce
+  gönderilir; 2..N parçaları sentez sırası ne olursa olsun KESİN parça indeksi
+  sırasında (`aiExpertQueueAudioChunk`, JS indeks `idx-1`) gönderilir. `R/module_ai_expert.R`
+  ince entegratördür ve orkestratörü çağırır; prompt/bütçe sözleşmesi korunur.
+- **Eskime (stale) koruması.** Sunucuda `speech_seq` reaktif belirteci + seq-bağlı
+  `is_active()` yüklemi; tarayıcıda `speechToken` ile korunan `ended`/`error`/timer/retry
+  geri çağrımları. Durdurma veya yeni konuşma belirteci ilerletir; geç gelen eski
+  sonuçlar sessizce reddedilir. Her parça en fazla bir kez sentezlenir.
+- **Yapısal WAV doğrulama (yarıda kesilme).** Üretilen WAV, `R/helpers_tts_audio_validation.R`
+  (saf, worker-safe; `tts_ses_profilleri`'nde manifest'ten önce yüklenir) ile
+  önbelleğe yazılmadan ve tarayıcıya gönderilmeden doğrulanır: RIFF/WAVE imzası,
+  chunk sınırları, `fmt`/`data` varlığı, bildirilen uzunlukların alınan bayta karşı
+  tutarlılığı (kesik reddi), makul kanal/örnekleme/bit ve pozitif süre. Sabit 44
+  baytlık başlık VARSAYILMAZ; `data` öncesi ek yasal chunk'lar (LIST/fact) desteklenir.
+  Aynı çekirdek ayrıştırıcıyı referans-ses doğrulaması da paylaşır (`mergen_tts_read_wav_metadata`
+  delege eder; kod tekrarı yok). Geçersiz/eksik/kesik ses ÖNBELLEĞE YAZILMAZ; bozuk
+  önbellek dosyası okuma yolunda (`mergen_tts_prepare_speech_plan`) reddedilip güvenle
+  silinir. Süre olarak sunucu sentez gecikmesi değil, gerçek WAV medya süresi (`media_duration`)
+  taşınır. Worker doğrulaması `tracked_future_promise(globals=...)` ile açıkça
+  taşınır ve `helper yoksa` güvenle eski davranışa düşer (JSON base64 sarmalı yanıt da
+  ham bayta çözülüp doğrulanır).
+- **Sınırlı yeniden deneme + altyazı-yalnız geri dönüş.** Geçersiz parça bir kez
+  yeniden denenir (`max_retries`, merkezi); yine olmazsa o parça için ses yerine
+  yalnız altyazı gösterilir (JS `hasAudio=false` yolu) ve dizi durmaz. 1. parça
+  tümüyle başarısızsa tam metin altyazı olarak korunur. Uyarlanabilir alt-parça
+  bölme, istemci indeks şemasını bozmamak için bilinçli olarak ertelendi
+  (`.ai_expert_split_long_piece` kancası hazırdır); sınırlı yeniden deneme + altyazı
+  geri dönüşü sert gereksinimleri karşılar.
+- **Tarayıcı oynatma yaşam döngüsü (`www/js/ai_expert_manager.js`).** Ses `error`
+  olayı başarılı `ended` gibi ele ALINMAZ: medya hata kodu loglanır, `maxPlaybackRetries`
+  (varsayılan 1) ile bir kez yeniden denenir, sonra altyazı-yalnız geçilir. Ses erken
+  bitince altyazı KESİLMEZ (`_completeCurrentSubtitle` kalan metni tam gösterir),
+  müzik ducking ve görselleştirici serbest bırakılır, handler'lar
+  `removeEventListener` ile temizlenir ve `ai_expert_speech_ended` tek sefer gönderilir
+  (`endedEmitted`). Süre `loadedmetadata` ile ölçülür; sunucu sentez süresi oynatma
+  süresi olarak kullanılmaz. Autoplay reddi davranışı (müziği geri getir + altyazı
+  koru) korunur.
+- **Gizlilik (PR #616 sınırı):** `ref_audio`, referans WAV/base64, transcript
+  içeriği ve API anahtarları loglanmaz/tarayıcıya döndürülmez.
+- Yeni env değişkeni YOKTUR. Makullük ve yeniden-deneme eşikleri merkezi ve
+  belgelidir: R tarafında `R/helpers_tts_audio_validation.R` sabitleri
+  (`MERGEN_TTS_WAV_*`, `MERGEN_TTS_PLAUSIBILITY_*`), JS tarafında
+  `AIExpertManager.config` (`maxPlaybackRetries`, `subtitleOnlyMin/MaxMs`).
+  Korumalar: `test-tts-audio-validation-behavior.R`,
+  `test-ai-expert-speech-sequence-behavior.R`,
+  `test-ai-expert-playback-lifecycle-contract.R`.
+
 ### Gelişmiş deneyim katmanları
 - Koyu tema varsayılan deneyim olarak korunur; açık tema `theme_tokens.css` token tabanı ve yedi ALAN dosyası (`theme_light_core.css`, `theme_light_welcome.css`, `theme_light_chat.css`, `theme_light_modals.css`, `theme_light_bilge_yolac.css`, `theme_light_personalization.css`, `theme_light_pages.css`) ile `theme_manager.js` üzerinden kurumsal renk paletiyle desteklenir. Zincirde her seçici yalnızca bir kez tanımlanır (tek-tanım sözleşmesi); eski override/patch katmanları kaskad sonucu korunarak bu alan dosyalarına konsolide edilmiştir. Tema seçimi `mergen_settings.theme` / localStorage ve `<html data-theme="...">` sözleşmesiyle kalıcı uygulanır.
 - Açık temada karşılama ekranı, Ana Söyleşi, Bilge Yolaç, STT, Dosya Yönetimi, Kişiselleştirme, Yenilikler, Yönetici Paneli, Kayıtlı Söyleşiler ve Görsel Galerisi için okunabilirlik, kontrast ve cam yüzey uyarlamaları alan dosyalarında tek noktadan yönetilir; kalıcı koyu yüzey sızıntıları, Yönetici Paneli sekmeleri, Geri Bildirim butonları, Bilge Yolaç araç blokları, mesaj eylem düğmeleri ve Dosya Yönetimi yüzeyleri kurumsal mavi/teal/krem çizgiyle hizalıdır.

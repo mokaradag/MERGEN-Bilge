@@ -26,7 +26,12 @@ const AIExpertManager = {
     nextChunkIndex: 1,        // Sıradaki beklenecek parça indeksi
     queuedChunks: [],         // Hazır gelen ses parçaları kuyruğu
     chunkWaitTimer: null,     // Sonraki parçayı bekleme zamanlayıcısı
-    speechToken: 0            // Eski zamanlayıcıların yeni konuşmayı kapatmasını önler
+    chunkAdvanceTimer: null,  // Altyazı-yalnız parçadan ilerleme zamanlayıcısı
+    speechToken: 0,           // Eski geri çağrımların yeni konuşmayı kapatmasını önler
+    currentChunkIndex: 0,     // Şu an oynayan parçanın indeksi (tanılama)
+    chunkRetryCount: 0,       // Mevcut parça için oynatma yeniden deneme sayacı
+    currentAudioDuration: 0,  // loadedmetadata'dan gelen gerçek medya süresi (sn)
+    endedEmitted: false       // ai_expert_speech_ended sinyali yinelenmesin
   },
 
   // --- Yapılandırma ---
@@ -39,7 +44,10 @@ const AIExpertManager = {
     maxVisibleChars: 2000,
     wordFadeThreshold: 250,   // Eski kelimelerin solmaya başladığı eşik
     chunkPollInterval: 150,   // Sonraki ses parçasını kontrol aralığı (ms)
-    chunkWaitMaxMs: 90000     // Sonraki ses parçası için azami bekleme süresi (ms)
+    chunkWaitMaxMs: 90000,    // Sonraki ses parçası için azami bekleme süresi (ms)
+    maxPlaybackRetries: 1,    // Parça başına sınırlı oynatma yeniden denemesi
+    subtitleOnlyMinMs: 1200,  // Sessiz (altyazı-yalnız) parçanın asgari görünme süresi (ms)
+    subtitleOnlyMaxMs: 12000  // Sessiz parçanın azami görünme süresi (ms)
   },
 
   // --- BAŞLATMA (Altyazı + Ses Birlikte - Senkronize) ---
@@ -62,20 +70,13 @@ const AIExpertManager = {
     this.state.nextChunkIndex = 1;
     this.state.queuedChunks = [];
     this.state.speechToken += 1;
+    this.state.currentChunkIndex = 0;
+    this.state.chunkRetryCount = 0;
+    this.state.currentAudioDuration = 0;
+    this.state.endedEmitted = false;
 
     // Önceki konuşmadan kalmış zamanlayıcıları temizle
-    if (this.state.typeInterval) {
-      clearInterval(this.state.typeInterval);
-      this.state.typeInterval = null;
-    }
-    if (this.state.hideTimeout) {
-      clearTimeout(this.state.hideTimeout);
-      this.state.hideTimeout = null;
-    }
-    if (this.state.chunkWaitTimer) {
-      clearTimeout(this.state.chunkWaitTimer);
-      this.state.chunkWaitTimer = null;
-    }
+    this._clearAllTimers();
 
     var strip = this._getStrip();
     var avatar = this._getAvatar();
@@ -127,8 +128,8 @@ const AIExpertManager = {
     // Yazma animasyonunu başlat
     this._startTyping();
 
-    // Sesi oynat (senkronize - altyazıyla birlikte)
-    this._playAudioInternal(data.audioSrc, data.audioDuration);
+    // Sesi oynat (senkronize - altyazıyla birlikte). 1. parça daima ses içerir.
+    this._playAudioInternal(data.audioSrc, 0, true);
 
     console.log('[AI_EXPERT] Altyazı + ses senkronize başlatıldı:', this.state.currentText.substring(0, 50) + '...');
   },
@@ -147,20 +148,17 @@ const AIExpertManager = {
     this.state.accentColor = data.accentColor || '#7C4DFF';
     this.state.fontSize = data.fontSize || 'medium';
     this.state.speechToken += 1;
+    this.state.sequenceMode = false;
+    this.state.totalChunks = 1;
+    this.state.nextChunkIndex = 1;
+    this.state.queuedChunks = [];
+    this.state.currentChunkIndex = 0;
+    this.state.chunkRetryCount = 0;
+    this.state.currentAudioDuration = 0;
+    this.state.endedEmitted = false;
 
     // Önceki konuşmadan kalmış zamanlayıcıları temizle
-    if (this.state.typeInterval) {
-      clearInterval(this.state.typeInterval);
-      this.state.typeInterval = null;
-    }
-    if (this.state.hideTimeout) {
-      clearTimeout(this.state.hideTimeout);
-      this.state.hideTimeout = null;
-    }
-    if (this.state.chunkWaitTimer) {
-      clearTimeout(this.state.chunkWaitTimer);
-      this.state.chunkWaitTimer = null;
-    }
+    this._clearAllTimers();
 
     var strip = this._getStrip();
     var avatar = this._getAvatar();
@@ -304,14 +302,37 @@ const AIExpertManager = {
     }, this.config.typeSpeed);
   },
 
-  // --- DAHİLİ SES OYNATMA (senkronize başlatma için) ---
-  _playAudioInternal: function(src, duration) {
-    var self = this;
+  // --- DAHİLİ SES OYNATMA (parça bazlı; eskime + hata + yeniden deneme korumalı) ---
+  // src: ses kaynağı, chunkIndex: parça indeksi (tanılama/eskime), hasAudio:
+  // parçanın gerçek sesi var mı. hasAudio=false ise altyazı-yalnız yol izlenir.
+  _playAudioInternal: function(src, chunkIndex, hasAudio) {
+    var token = this.state.speechToken;
 
-    // Mevcut sesi durdur
+    // Önceki parçanın sesini ve handler'larını temizle (stale referans kalmasın).
     this._stopAudio();
+    if (this.state.chunkAdvanceTimer) {
+      clearTimeout(this.state.chunkAdvanceTimer);
+      this.state.chunkAdvanceTimer = null;
+    }
 
-    if (!src) return;
+    this.state.currentChunkIndex = Number(chunkIndex || 0);
+    this.state.chunkRetryCount = 0;
+    this.state.currentAudioDuration = 0;
+
+    // Sessiz (altyazı-yalnız) parça: ses yok -> metni göster, tahmini süreyle ilerle.
+    // Böylece kurtarılamayan bir parçanın METNİ yine de gösterilir ve dizi durmaz.
+    if (!src || hasAudio === false) {
+      console.log('[AI_EXPERT] Parça sesi yok (altyazı-yalnız). idx=' + this.state.currentChunkIndex);
+      this._scheduleSubtitleOnlyAdvance(token);
+      return;
+    }
+
+    this._attachAudio(src, token, this.state.currentChunkIndex, true);
+  },
+
+  // --- SES ELEMANI BAĞLA (eskime + hata != bitti + sınırlı yeniden deneme) ---
+  _attachAudio: function(src, token, chunkIndex, allowRetry) {
+    var self = this;
 
     var audio = new Audio();
     if (window.MergenAudioLifecycle &&
@@ -325,66 +346,119 @@ const AIExpertManager = {
     audio.preload = 'auto';
     this.state.audioElement = audio;
 
-    audio.addEventListener('ended', function() {
-      if (self.state.audioElement !== audio) return;
-      self._onAudioEnded();
-    }, { once: true });
+    // Gerçek medya süresi (senkron için): sunucu sentez gecikmesi DEĞİL,
+    // tarayıcının loadedmetadata ile çözdüğü gerçek süre kullanılır.
+    var onMeta = function() {
+      if (token !== self.state.speechToken || self.state.audioElement !== audio) return;
+      if (isFinite(audio.duration) && audio.duration > 0) {
+        self.state.currentAudioDuration = audio.duration;
+        console.log('[AI_EXPERT] loadedmetadata idx=' + chunkIndex + ' süre=' + audio.duration.toFixed(2));
+      }
+    };
+    var onEnded = function() {
+      // Eskime koruması: eski parça/eski konuşma geri çağrımı yeni konuşmayı bozamaz.
+      if (token !== self.state.speechToken || self.state.audioElement !== audio) return;
+      self._advanceAfterChunk(token, 'ended');
+    };
+    var onError = function() {
+      if (token !== self.state.speechToken || self.state.audioElement !== audio) return;
+      var code = (audio.error && audio.error.code) || 0;
+      // HATA, BİTTİ ile aynı DEĞİLDİR. Önce sınırlı bir kez yeniden dene.
+      console.warn('[AI_EXPERT] Ses oynatma hatası. idx=' + chunkIndex + ' mediaErrorCode=' + code);
+      if (allowRetry && self.state.chunkRetryCount < self.config.maxPlaybackRetries) {
+        self.state.chunkRetryCount++;
+        console.log('[AI_EXPERT] Parça sesi yeniden deneniyor (' +
+          self.state.chunkRetryCount + '/' + self.config.maxPlaybackRetries + '). idx=' + chunkIndex);
+        self._cleanupAudioElement(audio);
+        if (self.state.audioElement === audio) self.state.audioElement = null;
+        self._attachAudio(src, token, chunkIndex, false);
+        return;
+      }
+      // Yeniden deneme tükendi: bu parça için altyazı-yalnız geçişle DEVAM et
+      // (altyazıyı hemen gizleme; dizi durmasın).
+      console.warn('[AI_EXPERT] Parça sesi kurtarılamadı, altyazı-yalnız geçişle devam. idx=' + chunkIndex);
+      self._advanceAfterChunk(token, 'error');
+    };
 
-    audio.addEventListener('error', function() {
-      if (self.state.audioElement !== audio) return;
-      console.warn('[AI_EXPERT] Ses oynatma hatası');
-      self._onAudioEnded();
-    }, { once: true });
+    audio.addEventListener('loadedmetadata', onMeta, { once: true });
+    audio.addEventListener('ended', onEnded, { once: true });
+    audio.addEventListener('error', onError, { once: true });
+    // Handler referanslarını temizlik (removeEventListener) için sakla.
+    audio._aiExpertHandlers = { meta: onMeta, ended: onEnded, error: onError };
 
     var playPromise = audio.play();
     if (playPromise !== undefined) {
-		playPromise.catch(function(err) {
-		  if (self.state.audioElement !== audio) return;
+      playPromise.catch(function(err) {
+        if (token !== self.state.speechToken || self.state.audioElement !== audio) return;
 
-		  console.warn('[AI_EXPERT] Otomatik oynatma engellendi:', err.message);
+        console.warn('[AI_EXPERT] Otomatik oynatma engellendi:', err.message);
 
-		  self._stopAudio();
+        self._stopAudio();
 
-		  if (window.MusicManager) {
-			window.MusicManager.unduck('ai_expert');
-		  }
+        if (window.MusicManager) {
+          window.MusicManager.unduck('ai_expert');
+        }
 
-		  if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
-			window.ttsVisualizerState.setIdle();
-		  }
+        if (window.ttsVisualizerState && window.ttsVisualizerState.setIdle) {
+          window.ttsVisualizerState.setIdle();
+        }
 
-		  // Ses oynatılamazsa altyazı deneyimini koru, müziği kilitli bırakma
-		  self._scheduleHide(self._estimateReadTime(self.state.currentText));
-		});
+        // Ses oynatılamazsa altyazı deneyimini koru, müziği kilitli bırakma
+        self._scheduleHide(self._estimateReadTime(self.state.currentText));
+      });
     }
   },
-  
+
+  // --- SESSİZ (ALTYAZI-YALNIZ) PARÇADAN İLERLE ---
+  _scheduleSubtitleOnlyAdvance: function(token) {
+    var self = this;
+    if (this.state.chunkAdvanceTimer) {
+      clearTimeout(this.state.chunkAdvanceTimer);
+      this.state.chunkAdvanceTimer = null;
+    }
+    var ms = this._estimateChunkReadTime(this.state.currentText || '');
+    this.state.chunkAdvanceTimer = setTimeout(function() {
+      if (token !== self.state.speechToken) return;   // eskime koruması
+      self.state.chunkAdvanceTimer = null;
+      self._advanceAfterChunk(token, 'subtitle_only');
+    }, ms);
+  },
+
   // --- SONRAKİ SES PARÇASINI KUYRUKLA ---
   queueAudioChunk: function(data) {
     if (!this.state.isSpeaking) return;
 
     var chunkIndex = Number(data.index || 0);
     var chunkDuration = Number(data.audioDuration || 0);
+    // hasAudio açıkça verilmediyse audioSrc varlığından türet (geriye dönük uyum).
+    var hasAudio = (data.hasAudio === undefined) ? !!(data.audioSrc) : !!data.hasAudio;
 
     this.state.queuedChunks.push({
       index: chunkIndex,
       text: data.text || '',
       audioSrc: data.audioSrc || '',
-      audioDuration: chunkDuration
+      audioDuration: chunkDuration,
+      hasAudio: hasAudio,
+      token: this.state.speechToken   // eskime koruması: hangi konuşmaya ait
     });
 
     this.state.queuedChunks.sort(function(a, b) {
       return a.index - b.index;
     });
 
-    console.log('[AI_EXPERT] Parça kuyruğa alındı:', chunkIndex, 'Beklenen:', this.state.nextChunkIndex);
+    console.log('[AI_EXPERT] Parça kuyruğa alındı:', chunkIndex,
+      'Beklenen:', this.state.nextChunkIndex, 'ses=' + hasAudio);
 
-    if (!this.state.audioElement) {
+    // Şu an bir parça oynamıyorsa VE altyazı-yalnız bir parça beklemede değilse
+    // sıradaki hazır parçayı oynatmayı dene (yalnızca beklenen indekste oynar).
+    if (!this.state.audioElement && !this.state.chunkAdvanceTimer) {
       this._tryPlayNextQueuedChunk();
     }
   },
 
   // --- SIRADAKİ HAZIR PARÇAYI OYNATMAYI DENE ---
+  // Yalnızca BEKLENEN indeksteki parçayı oynatır; böylece sentez sırası ne
+  // olursa olsun oynatma kesin olarak parça indeksi sırasında ilerler.
   _tryPlayNextQueuedChunk: function() {
     var expectedIndex = Number(this.state.nextChunkIndex);
     var queueIndex = this.state.queuedChunks.findIndex(function(item) {
@@ -394,8 +468,15 @@ const AIExpertManager = {
     if (queueIndex < 0) return false;
 
     var item = this.state.queuedChunks.splice(queueIndex, 1)[0];
-    var textEl = this._getTextElement();
 
+    // Eskime koruması: farklı bir konuşmaya ait kuyruk öğesini oynatma; sırayı
+    // ilerletip sonrakini dene (yeni konuşma zaten kuyruğu sıfırlar; ekstra güvence).
+    if (item.token !== undefined && item.token !== this.state.speechToken) {
+      this.state.nextChunkIndex += 1;
+      return this._tryPlayNextQueuedChunk();
+    }
+
+    var textEl = this._getTextElement();
     if (textEl) {
       textEl.textContent = '';
       textEl.classList.add('ai-expert-typing');
@@ -415,10 +496,10 @@ const AIExpertManager = {
       this.state.chunkWaitTimer = null;
     }
 
-    console.log('[AI_EXPERT] Sıradaki ses parçası oynatılıyor:', item.index);
+    console.log('[AI_EXPERT] Sıradaki ses parçası oynatılıyor:', item.index, 'ses=' + item.hasAudio);
 
     this._startTyping();
-    this._playAudioInternal(item.audioSrc, item.audioDuration);
+    this._playAudioInternal(item.audioSrc, item.index, item.hasAudio);
 
     return true;
   },
@@ -427,6 +508,7 @@ const AIExpertManager = {
   _waitForNextChunk: function() {
     var self = this;
     var startedAt = Date.now();
+    var token = this.state.speechToken;   // eskime koruması
 
     if (this.state.chunkWaitTimer) {
       clearTimeout(this.state.chunkWaitTimer);
@@ -436,7 +518,8 @@ const AIExpertManager = {
     console.log('[AI_EXPERT] Sonraki parça bekleniyor. Beklenen indeks:', this.state.nextChunkIndex);
 
     var poll = function() {
-      if (!self.state.isSpeaking) return;
+      // Durdurulmuş veya yeni bir konuşmayla değiştirilmiş dizinin beklemesi durur.
+      if (!self.state.isSpeaking || token !== self.state.speechToken) return;
 
       if (self._tryPlayNextQueuedChunk()) {
         self.state.chunkWaitTimer = null;
@@ -458,12 +541,27 @@ const AIExpertManager = {
 
   // --- SES OYNATMA (eski uyumluluk için) ---
   playAudio: function(data) {
-    this._playAudioInternal(data.src, data.duration);
+    this._playAudioInternal(data.src, 0, true);
   },
 
-  // --- SES BİTTİKTEN SONRA ---
-  _onAudioEnded: function() {
-    this.state.audioElement = null;
+  // --- PARÇA BİTTİKTEN/BAŞARISIZ OLDUKTAN SONRA SIRADAKİNE GEÇ ---
+  // reason: 'ended' | 'error' | 'subtitle_only'. Tüm çağrılar token korumalıdır.
+  _advanceAfterChunk: function(token, reason) {
+    if (token !== this.state.speechToken) return;   // eskime koruması
+
+    // Bu parçanın sesini/handler'larını temizle (stale referans kalmasın).
+    if (this.state.audioElement) {
+      this._cleanupAudioElement(this.state.audioElement);
+      this.state.audioElement = null;
+    }
+    if (this.state.chunkAdvanceTimer) {
+      clearTimeout(this.state.chunkAdvanceTimer);
+      this.state.chunkAdvanceTimer = null;
+    }
+
+    // Ses (yazma animasyonundan önce) erken bittiyse mevcut parça metnini KESME:
+    // kalan metni hemen tam göster, sonra sıradaki parçaya geç.
+    this._completeCurrentSubtitle();
 
     // Parçalı akış varsa sıradaki parçaya geç
     if (this.state.sequenceMode && this.state.nextChunkIndex < this.state.totalChunks) {
@@ -489,6 +587,32 @@ const AIExpertManager = {
     this._scheduleHide(this.config.fadeOutDelay);
   },
 
+  // --- MEVCUT PARÇA ALTYAZISINI HEMEN TAMAMLA (kesme yerine tam göster) ---
+  _completeCurrentSubtitle: function() {
+    if (this.state.typeInterval) {
+      clearInterval(this.state.typeInterval);
+      this.state.typeInterval = null;
+    }
+    var textEl = this._getTextElement();
+    var text = this.state.currentText || '';
+    if (!textEl || !text) return;
+
+    this.state.displayedChars = text.length;
+    var visible = text;
+    if (visible.length > this.config.maxVisibleChars) {
+      var trimStart = visible.length - this.config.maxVisibleChars;
+      var spaceIdx = visible.indexOf(' ', trimStart);
+      if (spaceIdx > 0 && spaceIdx < trimStart + 30) {
+        visible = '...' + visible.substring(spaceIdx + 1);
+      } else {
+        visible = '...' + visible.substring(trimStart);
+      }
+    }
+    textEl.textContent = visible;
+    try { textEl.scrollTop = textEl.scrollHeight; } catch (e) {}
+    textEl.classList.remove('ai-expert-typing');
+  },
+
   // --- SES OLMADAN GERİ DÖNÜŞ (fallback) ---
   noAudioFallback: function(data) {
     var textLength = data.textLength || this.state.currentText.length || 100;
@@ -496,7 +620,7 @@ const AIExpertManager = {
     this._scheduleHide(estimatedMs);
   },
 
-  // --- OKUMA SÜRESİ TAHMİNİ ---
+  // --- OKUMA SÜRESİ TAHMİNİ (tüm konuşma için; fadeOutDelay dahil) ---
   _estimateReadTime: function(text) {
     if (!text || !text.length) return 8000;
     // Ortalama Türkçe okuma hızı: dakikada ~150 kelime (sesli okuma), kelime başı ~6 karakter
@@ -504,6 +628,51 @@ const AIExpertManager = {
     var minutes = words / 150;
     var ms = Math.max(6000, Math.min(30000, minutes * 60 * 1000));
     return ms + this.config.fadeOutDelay;
+  },
+
+  // --- TEK PARÇA OKUMA SÜRESİ (altyazı-yalnız parçadan ilerleme için; fadeOutDelay YOK) ---
+  _estimateChunkReadTime: function(text) {
+    if (!text || !text.length) return this.config.subtitleOnlyMinMs;
+    var words = text.length / 6;
+    var minutes = words / 150;
+    var ms = minutes * 60 * 1000;
+    return Math.max(this.config.subtitleOnlyMinMs, Math.min(this.config.subtitleOnlyMaxMs, ms));
+  },
+
+  // --- TÜM ZAMANLAYICILARI TEMİZLE ---
+  _clearAllTimers: function() {
+    if (this.state.typeInterval) { clearInterval(this.state.typeInterval); this.state.typeInterval = null; }
+    if (this.state.hideTimeout) { clearTimeout(this.state.hideTimeout); this.state.hideTimeout = null; }
+    if (this.state.chunkWaitTimer) { clearTimeout(this.state.chunkWaitTimer); this.state.chunkWaitTimer = null; }
+    if (this.state.chunkAdvanceTimer) { clearTimeout(this.state.chunkAdvanceTimer); this.state.chunkAdvanceTimer = null; }
+  },
+
+  // --- "KONUŞMA BİTTİ" SİNYALİNİ TEK SEFER GÖNDER (yinelenme koruması) ---
+  _emitSpeechEnded: function(overridePrefix) {
+    if (this.state.endedEmitted) return;
+    this.state.endedEmitted = true;
+    var prefix = this.state.nsPrefix || overridePrefix || '';
+    if (prefix && window.Shiny && Shiny.setInputValue) {
+      Shiny.setInputValue(prefix + 'ai_expert_speech_ended', Date.now(), { priority: 'event' });
+    }
+  },
+
+  // --- TEK BİR SES ELEMANINI TEMİZLE (handler'ları kaldır + serbest bırak) ---
+  _cleanupAudioElement: function(audio) {
+    if (!audio) return;
+    try {
+      var h = audio._aiExpertHandlers;
+      if (h) {
+        if (h.meta) audio.removeEventListener('loadedmetadata', h.meta);
+        if (h.ended) audio.removeEventListener('ended', h.ended);
+        if (h.error) audio.removeEventListener('error', h.error);
+        audio._aiExpertHandlers = null;
+      }
+      audio.pause();
+      audio.currentTime = 0;
+      audio.removeAttribute('src');
+      audio.load();
+    } catch (e) { /* yoksay */ }
   },
 
   // --- GİZLEME ZAMANLAYICISI ---
@@ -565,6 +734,10 @@ const AIExpertManager = {
       clearTimeout(this.state.chunkWaitTimer);
       this.state.chunkWaitTimer = null;
     }
+    if (this.state.chunkAdvanceTimer) {
+      clearTimeout(this.state.chunkAdvanceTimer);
+      this.state.chunkAdvanceTimer = null;
+    }
 
     // Müzik sesini geri getir
     if (window.MusicManager) {
@@ -576,11 +749,8 @@ const AIExpertManager = {
       window.ttsVisualizerState.setIdle();
     }
 
-    // Shiny'ye konuşma bitti sinyali gönder
-    if (this.state.nsPrefix) {
-      var inputId = this.state.nsPrefix + 'ai_expert_speech_ended';
-      Shiny.setInputValue(inputId, Date.now(), { priority: 'event' });
-    }
+    // Shiny'ye konuşma bitti sinyali gönder (tek sefer; yinelenme koruması)
+    this._emitSpeechEnded();
   },
 
   // --- DURDURMA (Kullanıcı butona tıkladığında veya R'dan sinyal geldiğinde) ---
@@ -589,22 +759,14 @@ const AIExpertManager = {
 
     // Durdurma bayrağını ayarla (animasyon döngüsünü kırmak için)
     this.state.stopRequested = true;
+    // Konuşma belirtecini ilerlet: uçuştaki eski ended/error/timer geri çağrımları
+    // (token !== speechToken) bu artışla anında geçersizleşir.
+    this.state.speechToken += 1;
 
-    // Zamanlayıcıları temizle
-    if (this.state.typeInterval) {
-      clearInterval(this.state.typeInterval);
-      this.state.typeInterval = null;
-    }
-    if (this.state.hideTimeout) {
-      clearTimeout(this.state.hideTimeout);
-      this.state.hideTimeout = null;
-    }
-    if (this.state.chunkWaitTimer) {
-      clearTimeout(this.state.chunkWaitTimer);
-      this.state.chunkWaitTimer = null;
-    }
+    // Zamanlayıcıları temizle (parça-ilerleme zamanlayıcısı dahil)
+    this._clearAllTimers();
 
-    // Sesi zorla durdur
+    // Sesi zorla durdur (handler'lar removeEventListener ile kaldırılır)
     this._stopAudio();
 
     // TTS görselleştiricisini durdur
@@ -643,12 +805,8 @@ const AIExpertManager = {
     this.state.nextChunkIndex = 1;
     this.state.queuedChunks = [];
 
-    // Shiny'ye konuşma bitti sinyali gönder
-    if (this.state.nsPrefix || (data && data.nsPrefix)) {
-      var prefix = this.state.nsPrefix || data.nsPrefix || '';
-      var inputId = prefix + 'ai_expert_speech_ended';
-      Shiny.setInputValue(inputId, Date.now(), { priority: 'event' });
-    }
+    // Shiny'ye konuşma bitti sinyali gönder (tek sefer; yinelenme koruması)
+    this._emitSpeechEnded(data && data.nsPrefix);
 
     console.log('[AI_EXPERT] Konuşma durduruldu');
   },
@@ -656,18 +814,7 @@ const AIExpertManager = {
   // --- ZORLA TEMİZLEME (yeni konuşma başlamadan önce) ---
   _forceCleanup: function() {
     this.state.stopRequested = true;
-    if (this.state.typeInterval) {
-      clearInterval(this.state.typeInterval);
-      this.state.typeInterval = null;
-    }
-    if (this.state.hideTimeout) {
-      clearTimeout(this.state.hideTimeout);
-      this.state.hideTimeout = null;
-    }
-    if (this.state.chunkWaitTimer) {
-      clearTimeout(this.state.chunkWaitTimer);
-      this.state.chunkWaitTimer = null;
-    }
+    this._clearAllTimers();
     this._stopAudio();
 
     if (window.MusicManager) {
@@ -685,15 +832,10 @@ const AIExpertManager = {
     this.state.queuedChunks = [];
   },
 
-  // --- SES DURDURMA ---
+  // --- SES DURDURMA (mevcut ses elemanını handler'larıyla birlikte temizler) ---
   _stopAudio: function() {
     if (this.state.audioElement) {
-      try {
-        this.state.audioElement.pause();
-        this.state.audioElement.currentTime = 0;
-        this.state.audioElement.removeAttribute('src');
-        this.state.audioElement.load();
-      } catch(e) { /* yoksay */ }
+      this._cleanupAudioElement(this.state.audioElement);
       this.state.audioElement = null;
     }
   },

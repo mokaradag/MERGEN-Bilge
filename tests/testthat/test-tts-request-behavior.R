@@ -183,11 +183,32 @@ test_that("prepare_speech_plan önbellek isabetinde base64 döndürür ve worker
   expect_true(nzchar(plan1$cache_write_path))
   expect_null(plan1$cached_audio_src)
 
-  # Worker'ın yazdığını taklit et: cache dosyasına sentetik wav bayt yaz
-  writeBin(as.raw(c(1, 2, 3, 4)), plan1$cache_write_path)
+  # Worker'ın yazdığını taklit et: cache dosyasına GEÇERLİ bir WAV yaz.
+  # (Üretilen-ses doğrulaması artık okuma yolunda uygulandığı için önbellek
+  # dosyasının yapısal olarak geçerli olması gerekir.)
+  tts_fixture_write_wav(plan1$cache_write_path, seconds = 1)
 
-  # İkinci plan: aynı metin -> önbellek isabeti
+  # İkinci plan: aynı metin -> önbellek isabeti + doğrulanmış süre
   plan2 <- mergen_tts_prepare_speech_plan("Sabit ifade", config = cfg, profile_id = "emre")
   expect_false(is.null(plan2$cached_audio_src))
   expect_true(startsWith(plan2$cached_audio_src, "data:audio/wav;base64,"))
+  expect_true(is.finite(plan2$cached_duration) && plan2$cached_duration > 0)
+})
+
+test_that("prepare_speech_plan bozuk/kesik WAV önbelleğini isabet saymaz ve siler", {
+  mergen_tts_invalidate_all_profiles()
+  vd <- tts_fixture_build_voice_dir(ids = c("emre"))
+  cache_dir <- tempfile("tts_cache_"); dir.create(cache_dir)
+  cfg <- tts_fixture_config(voice_dir = vd, cache_dir = cache_dir, cache_enabled = TRUE)
+
+  plan1 <- mergen_tts_prepare_speech_plan("Sabit ifade", config = cfg, profile_id = "emre")
+  expect_true(nzchar(plan1$cache_write_path))
+
+  # Bozuk (WAV olmayan) baytlar yaz -> önbellek isabeti olmamalı ve dosya silinmeli.
+  writeBin(as.raw(c(1, 2, 3, 4)), plan1$cache_write_path)
+  expect_true(file.exists(plan1$cache_write_path))
+
+  plan2 <- mergen_tts_prepare_speech_plan("Sabit ifade", config = cfg, profile_id = "emre")
+  expect_null(plan2$cached_audio_src)
+  expect_false(file.exists(plan1$cache_write_path))  # güvenle silindi
 })

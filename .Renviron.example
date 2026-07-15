@@ -187,6 +187,10 @@ LOCAL_TTS_VOICE_DIR=C:/MERGEN_Bilge_Data/tts_voices
 LOCAL_TTS_SPEED=1.0
 LOCAL_TTS_RESPONSE_FORMAT=wav
 LOCAL_TTS_USE_REF_TEXT=TRUE
+# Aynı anda çalışacak en fazla TTS isteği. AI Uzman parçalı konuşmada 2..N
+# parçalar da hemen (eager) bu kuyruğa verilir; bu değer parçalar-arası
+# duraklamayı azaltmak için öne-alınan sentezin eşzamanlılığını da sınırlar.
+# Sınırsız/güvensiz bir değere yükseltmeyin (uzak TTS sunucusunu boğabilir).
 LOCAL_TTS_MAX_CONCURRENCY=2
 
 # --- Üretilen-ses önbelleği (dağıtım-yerel, sınırlı) ---

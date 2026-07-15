@@ -286,6 +286,7 @@ source_manifest_sections <- list(
     "R/helpers_ai_expert_user_data.R",
     "R/helpers_ai_expert.R",
     "R/helpers_ai_expert_chunking.R",
+    "R/helpers_ai_expert_speech.R",
     "R/helpers_ai_expert_handlers_support.R"
   ),
 
@@ -391,6 +392,7 @@ source_manifest_sections <- list(
   # ÖNCE yüklenir. Bağımlılık sırası: manifest -> profil önbelleği -> ses önbelleği
   # -> istek/plan -> kuyruk -> ön yükleme politikası.
   tts_ses_profilleri = c(
+    "R/helpers_tts_audio_validation.R",
     "R/helpers_tts_voice_manifest.R",
     "R/helpers_tts_voice_cache.R",
     "R/helpers_tts_audio_cache.R",

@@ -589,6 +589,14 @@ Tablolar kurulmadan da uygulama tam çalışır: Ortak Oturum sayfaları
 - Destek/Yenilikler sayfaları açılıyor mu?
 - Sistem Durumu / Health paneli anlamlı sinyal veriyor mu?
 - Bilge Yolaç kullanılacaksa çalışma dizini, CLI path ve güvenlik politikası beklenen şekilde mi?
+- VoxCPM2 profili etkinken AI Uzman konuşması: en az üç parçaya bölünen bir
+  metin tetikle. 1. ve 2. parçanın 1. parça bitmeden sentezlenmeye başladığını
+  (parçalar-arası kaçınılabilir duraklama olmadığını), oynatma sırasının doğru
+  kaldığını (sonraki parça önce sentezlense bile), konuşmayı durdurmanın geç
+  gelen parçaları oynatmadığını ve altyazıların erken kesilmediğini doğrula.
+  Kasıtlı kesik WAV reddedilip önbelleğe yazılmamalı; tarayıcı medya hatası bir
+  kez yeniden denenip ardından altyazı-yalnız devam etmeli; başarı/durdurma/hata
+  sonrası müzik ve görselleştirici normale dönmeli.
 
 Script tabanlı post-deploy smoke için (uygulama VM'de ayaktayken, repo kökünden):
 
@@ -683,6 +691,8 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
 | Türkçe karakterli file path sorunu | UNC erişimi, safe path helper'ları, dosya deposu dizinleri. |
 | UNC path / launcher sorunu | Launcher self-test, çalışma dizini, ağ paylaşımı erişimi. |
 | Vision/model capability sorunu | `MERGEN_VISION_MODELS`, `MERGEN_ENABLE_VISION`, seçili modelin Image Input desteği. |
+| AI Uzman parçalar-arası uzun sessizlik | `LOCAL_TTS_MAX_CONCURRENCY` (≥2 önerilir; 2..N parçalar eager sentezlenir), uzak TTS sunucu gecikmesi/kapasitesi, `logs/tts_debug.txt` sentez süreleri, konsolda `[AI_EXPERT]` parça dispatch logları. |
+| AI Uzman parçası altyazı bitmeden kesiliyor / ses kısa | Üretilen WAV yapısal olarak kesik olabilir: konsolda `[TTS] GEÇERSİZ SES reddedildi` veya `[AI_EXPERT] Parça sesi kurtarılamadı` loglarına bak. Sunucunun tam WAV (RIFF/data uzunlukları tutarlı) döndürdüğünü, `LOCAL_TTS_RESPONSE_FORMAT=wav` ve `LOCAL_TTS_TIMEOUT`'un yeterli olduğunu doğrula. Geçersiz ses önbelleğe yazılmaz; tarayıcıda `mediaErrorCode` loglanır, bir kez yeniden denenir, sonra altyazı-yalnız devam edilir. |
 | Cloud validation sınırı | `cloud-quick` çıktısını tam VM/app boot kanıtı gibi sunma. |
 
 ## 15. Güvenli Sorun Giderme İlkeleri

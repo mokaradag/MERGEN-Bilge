@@ -110,7 +110,8 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
       if (!tts_available()) {
         cat("[TTS] Seslendirme kullanılamıyor: uç nokta yapılandırılmamış\n")
         return(promises::promise_resolve(list(
-          success = FALSE, audio_src = NULL, voice = voice, duration = 0, error = "TTS uç noktası yapılandırılmamış."
+          success = FALSE, audio_src = NULL, voice = voice, duration = 0,
+          media_duration = NA_real_, retryable = FALSE, error = "TTS uç noktası yapılandırılmamış."
         )))
       }
 
@@ -118,7 +119,8 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
       if (!nzchar(speech_text)) {
         cat("[TTS] Temizleme sonrası metin boş, seslendirme atlanıyor\n")
         return(promises::promise_resolve(list(
-          success = FALSE, audio_src = NULL, voice = voice, duration = 0, error = "Seslendirilecek metin boş."
+          success = FALSE, audio_src = NULL, voice = voice, duration = 0,
+          media_duration = NA_real_, retryable = FALSE, error = "Seslendirilecek metin boş."
         )))
       }
 
@@ -150,7 +152,8 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
         cat(sprintf("[TTS] Önbellek isabeti (profil=%s), ağ isteği atlanıyor.\n", profile_to_use %||% "-"))
         return(promises::promise_resolve(list(
           success = TRUE, audio_src = plan$cached_audio_src, voice = voice_to_use,
-          duration = 0, error = NULL, cache_hit = TRUE
+          duration = 0, media_duration = plan$cached_duration %||% NA_real_,
+          error = NULL, cache_hit = TRUE
         )))
       }
 
@@ -165,6 +168,21 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
       if (is.na(timeout_val) || timeout_val <= 0) timeout_val <- 90
       verify_ssl_val   <- tts_config$verify_ssl
       should_verify    <- if (is.null(verify_ssl_val)) FALSE else isTRUE(verify_ssl_val)
+      response_format  <- tolower(as.character(plan$response_format %||% "wav")[1])
+
+      # WAV yapısal doğrulama yardımcısını worker'a AÇIKÇA taşı. Böylece üretilen
+      # ses (yalnızca WAV) önbelleğe yazılmadan ve tarayıcıya gönderilmeden önce
+      # yapısal olarak doğrulanır; auto-detection'a ek kesin güvence sağlar.
+      # (worker_monitor iç içe bağımlılıkları -parse/le_uint- otomatik genişletir.)
+      tts_worker_globals <- list()
+      if (exists("mergen_tts_validate_generated_wav", mode = "function", inherits = TRUE)) {
+        tts_worker_globals[["mergen_tts_validate_generated_wav"]] <-
+          get("mergen_tts_validate_generated_wav", mode = "function", inherits = TRUE)
+      }
+      if (exists("mergen_tts_decode_audio_payload", mode = "function", inherits = TRUE)) {
+        tts_worker_globals[["mergen_tts_decode_audio_payload"]] <-
+          get("mergen_tts_decode_audio_payload", mode = "function", inherits = TRUE)
+      }
 
       # Gövde (ref_audio base64) ASLA loglanmaz.
       cat(sprintf("[TTS] İstek: URL=%s | Model=%s | Ses=%s | Profil=%s | API Key uzunluk=%d | Metin=%d karakter\n",
@@ -231,7 +249,8 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
 
             if (is.list(resp) && !is.null(resp$error_obj)) {
               err_msg <- redact_tts_error(conditionMessage(resp$error_obj))
-              return(list(success = FALSE, audio_src = NULL, voice = voice_to_use, duration = 0, error = err_msg))
+              return(list(success = FALSE, audio_src = NULL, voice = voice_to_use, duration = 0,
+                          media_duration = NA_real_, retryable = TRUE, error = err_msg))
             }
 
             status <- httr::status_code(resp)
@@ -244,7 +263,10 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
                 mime_type <- strsplit(content_type, ";", fixed = TRUE)[[1]][1]
               }
 
+              # Ham ses baytlarını ELDE ET (JSON sarmalı base64 veya doğrudan ikili).
+              # Doğrulama VE önbellek daima ham baytlar üzerinden yapılır.
               audio_src <- NULL
+              audio_raw <- NULL
 
               # JSON sarmalayıcı kontrolü (bazı proxy'lerde nadir de olsa görülebilir)
               if (grepl("json", content_type, ignore.case = TRUE)) {
@@ -258,59 +280,90 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
                 }
                 if (!is.null(b64) && nzchar(as.character(b64)[1])) {
                   b64_str <- as.character(b64)[1]
-                  if (startsWith(b64_str, "data:")) {
-                    audio_src <- b64_str
+                  audio_src <- if (startsWith(b64_str, "data:")) {
+                    b64_str
                   } else {
-                    audio_src <- paste0("data:", mime_type, ";base64,", b64_str)
+                    paste0("data:", mime_type, ";base64,", b64_str)
+                  }
+                  if (exists("mergen_tts_decode_audio_payload", mode = "function", inherits = TRUE)) {
+                    audio_raw <- mergen_tts_decode_audio_payload(b64_str)
                   }
                 }
               }
 
               # Standart İkili (Binary) Yanıt (OpenAI/VoxCPM2 için en yaygın durum)
-              if (is.null(audio_src)) {
+              if (is.null(audio_raw)) {
                 audio_raw <- httr::content(resp, as = "raw")
                 worker_log(sprintf("İKİLİ İÇERİK: %d bayt alındı", length(audio_raw)))
-
-                if (length(audio_raw) > 0) {
-                  # Üretilen sesi önbelleğe atomik yaz (ham baytlar burada mevcut).
-                  if (nzchar(cache_write_path)) {
-                    try({
-                      cdir <- dirname(cache_write_path)
-                      if (!dir.exists(cdir)) dir.create(cdir, recursive = TRUE, showWarnings = FALSE)
-                      tmp <- paste0(cache_write_path, ".tmp-", Sys.getpid(), "-", as.integer(stats::runif(1, 1, 1e9)))
-                      con2 <- file(tmp, open = "wb"); writeBin(audio_raw, con2); close(con2)
-                      if (!isTRUE(suppressWarnings(file.rename(tmp, cache_write_path)))) {
-                        file.copy(tmp, cache_write_path, overwrite = TRUE); unlink(tmp, force = TRUE)
-                      }
-                    }, silent = TRUE)
-                  }
-                  audio_b64 <- base64enc::base64encode(audio_raw)
-                  audio_src <- paste0("data:", mime_type, ";base64,", audio_b64)
-                }
               }
 
-              if (!nzchar(audio_src)) {
+              if (is.null(audio_raw) || length(audio_raw) == 0) {
                 worker_log("BAŞARISIZ: Ses içeriği boş.")
                 return(list(success = FALSE, audio_src = NULL, voice = voice_to_use,
-                            duration = 0, error = "Ses yanıtı boş döndü."))
+                            duration = 0, media_duration = NA_real_,
+                            error = "Ses yanıtı boş döndü.", retryable = TRUE))
+              }
+
+              # --- YAPISAL WAV DOĞRULAMA (yalnızca WAV biçimi) ---
+              # Geçersiz/eksik/kesik WAV önbelleğe YAZILMAZ ve tarayıcıya
+              # GÖNDERİLMEZ (yarıda kesilmiş ses belirtisi). Kurtarma (sınırlı
+              # yeniden deneme) çağıran taraftaki AI Uzman konuşma dizisindedir.
+              media_duration <- NA_real_
+              if (identical(response_format, "wav") &&
+                  exists("mergen_tts_validate_generated_wav", mode = "function", inherits = TRUE)) {
+                vres <- mergen_tts_validate_generated_wav(audio_raw, text = speech_text)
+                if (!isTRUE(vres$ok)) {
+                  worker_log(sprintf("GEÇERSİZ SES reddedildi (%d bayt): %s",
+                                     length(audio_raw), vres$error %||% "bilinmeyen"))
+                  return(list(success = FALSE, audio_src = NULL, voice = voice_to_use,
+                              duration = 0, media_duration = NA_real_,
+                              error = vres$error %||% "Üretilen ses geçersiz veya eksik.",
+                              retryable = TRUE))
+                }
+                media_duration <- suppressWarnings(as.numeric(vres$duration %||% NA_real_))
+                worker_log(sprintf("WAV doğrulandı: süre=%.2fs kanal=%s örnekleme=%s",
+                                   if (is.na(media_duration)) 0 else media_duration,
+                                   vres$channels %||% "-", vres$sample_rate %||% "-"))
+              }
+
+              # audio_src henüz yoksa (ikili yol) doğrulanmış ham bayttan üret.
+              if (is.null(audio_src)) {
+                audio_b64 <- base64enc::base64encode(audio_raw)
+                audio_src <- paste0("data:", mime_type, ";base64,", audio_b64)
+              }
+
+              # --- DOĞRULANMIŞ SESİ ÖNBELLEĞE ATOMİK YAZ ---
+              if (nzchar(cache_write_path)) {
+                try({
+                  cdir <- dirname(cache_write_path)
+                  if (!dir.exists(cdir)) dir.create(cdir, recursive = TRUE, showWarnings = FALSE)
+                  tmp <- paste0(cache_write_path, ".tmp-", Sys.getpid(), "-", as.integer(stats::runif(1, 1, 1e9)))
+                  con2 <- file(tmp, open = "wb"); writeBin(audio_raw, con2); close(con2)
+                  if (!isTRUE(suppressWarnings(file.rename(tmp, cache_write_path)))) {
+                    file.copy(tmp, cache_write_path, overwrite = TRUE); unlink(tmp, force = TRUE)
+                  }
+                }, silent = TRUE)
               }
 
               duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-              worker_log(sprintf("BAŞARILI: Ses %.2fs içinde hazırlandı", duration))
+              worker_log(sprintf("BAŞARILI: Ses %.2fs içinde hazırlandı (medya süresi=%.2fs)",
+                                 duration, if (is.na(media_duration)) 0 else media_duration))
 
               list(success = TRUE, audio_src = audio_src, voice = voice_to_use,
-                   duration = duration, error = NULL)
+                   duration = duration, media_duration = media_duration, error = NULL)
             } else {
               err_msg <- tryCatch(httr::content(resp, as = "text", encoding = "UTF-8"),
                                   error = function(e) "TTS isteği başarısız oldu.")
               safe_err_msg <- redact_tts_error(err_msg)
               worker_log(sprintf("API HATASI: %s", substr(safe_err_msg, 1, 100)))
               list(success = FALSE, audio_src = NULL, voice = voice_to_use,
-                   duration = 0, error = paste("TTS hata:", safe_err_msg))
+                   duration = 0, media_duration = NA_real_, retryable = TRUE,
+                   error = paste("TTS hata:", safe_err_msg))
             }
           },
           task_type = "tts",
           session_token = session$token,
+          globals = tts_worker_globals,
           meta = list(voice = voice_to_use, model = model_to_use)
         )
       }
@@ -323,7 +376,7 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
               file = normalizePath(file.path("logs", "tts_debug.txt"), mustWork = FALSE), append = TRUE)
         }, silent = TRUE)
         list(success = FALSE, audio_src = NULL, voice = voice_to_use,
-             duration = 0, error = safe_err_msg)
+             duration = 0, media_duration = NA_real_, retryable = TRUE, error = safe_err_msg)
       }
 
       # Sınırlı eşzamanlılık kuyruğuyla gönder (iptal-farkındalı); kuyruk yoksa

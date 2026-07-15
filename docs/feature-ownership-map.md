@@ -233,6 +233,10 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   (worker-safe DB okuyucuları: `fetch_user_full_name`, `fetch_user_work_context`,
   `fetch_recent_user_prompts`, `fetch_user_last_login`),
   `R/helpers_ai_expert_chunking.R` (TTS metin parçalama),
+  `R/helpers_ai_expert_speech.R` (parçalı TTS konuşma dizisi orkestratörü:
+  `mergen_ai_expert_new_speech_sequence`; eager sınırlı sentez, kesin sıralı
+  oynatma, `is_active` eskime koruması, sınırlı yeniden deneme + altyazı-yalnız
+  geri dönüş; saf, Shiny/DB/ağ yan etkisiz),
   `R/helpers_ai_expert_handlers_support.R` (handler saf karar yardımcıları:
   `ai_expert_page_name_tr`, `ai_expert_first_idle_delay_ms`,
   `ai_expert_idle_interval_ms`, `build_ai_expert_idle_user_context`).
@@ -248,12 +252,19 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   (son mesajlar); TTS/STT uç noktaları (`LOCAL_TTS_ENDPOINT`,
   `LOCAL_STT_ENDPOINT`), `AI_EXPERT_MODEL`; referans bilgi tabanı `ai_rehber.md`.
 - **VoxCPM2 ses profilleri (`tts_ses_profilleri` bölümü):** beş persona için
-  uygulama-tarafı referans-ses klonlama. Dosyalar: `R/helpers_tts_voice_config.R`
+  uygulama-tarafı referans-ses klonlama. Dosyalar: `R/helpers_tts_audio_validation.R`
+  (üretilen-ses + referans-ses WAV yapısal doğrulaması; tek çekirdek bayt
+  ayrıştırıcı — RIFF/WAVE, chunk sınırları, kesik/yarıda-kesilme reddi, süre/metin
+  makullük; manifest'te İLK yüklenir), `R/helpers_tts_voice_config.R`
   (config üreticisi + persona→profil çözümleyici), `R/helpers_tts_voice_manifest.R`
-  (WAV/manifest doğrulama + profil çözme), `R/helpers_tts_voice_cache.R` (profil
+  (WAV/manifest doğrulama + profil çözme; çekirdek ayrıştırıcıya delege eder),
+  `R/helpers_tts_voice_cache.R` (profil
   bellek önbelleği), `R/helpers_tts_audio_cache.R` (üretilen-ses önbelleği),
-  `R/helpers_tts_request.R` (istek/plan), `R/helpers_tts_queue.R` (sınırlı
+  `R/helpers_tts_request.R` (istek/plan; okuma yolunda bozuk WAV önbelleğini reddeder),
+  `R/helpers_tts_queue.R` (sınırlı
   eşzamanlılık), `R/helpers_tts_profile_preload.R` (başlangıç politikası).
+  `R/module_tts.R` worker'da doğrulanmamış/kesik WAV'ı önbelleğe yazmadan reddeder
+  ve gerçek WAV medya süresini taşır.
   Gerçek referans WAV'lar biyometrik veridir; depo dışında `LOCAL_TTS_VOICE_DIR`
   altında tutulur. Ayrıntı: [`voxcpm2-ses-profilleri.md`](voxcpm2-ses-profilleri.md).
 - **Testler:** `test-ai-expert-db-fetch-behavior.R`,
@@ -266,9 +277,15 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-ai-expert-prompt-builders-behavior.R`,
   `test-ai-expert-page-guidance-stale-behavior.R`, `test-ai-expert-call-llm-behavior.R`,
   `test-ai-expert-pronunciation-behavior.R`, `test-ai-expert-chunking-behavior.R`,
+  `test-ai-expert-speech-sequence-behavior.R` (eager sınırlı sentez + kesin sıralı
+  oynatma + eskime koruması + sınırlı yeniden deneme/altyazı-yalnız),
+  `test-ai-expert-playback-lifecycle-contract.R` (tarayıcı: HATA≠BİTTİ, sınırlı
+  yeniden deneme, token eskime, altyazı kesilmemesi, tek-sefer emit, loadedmetadata),
   `test-ai-expert-frontend-split-contract.R` (manager/handler ayrımı + manifest/zone sırası),
   `test-e2e-media-audio-state-regression.R`, `test-audio-lifecycle-owner-smoke.R`,
   `test-saved-chat-reload-no-tts-contract.R`,
+  `test-tts-audio-validation-behavior.R` (üretilen WAV yapısal doğrulama: kesik/
+  eksik reddi, JSON base64, süre/metin makullük, bozuk önbelleğin isabet sayılmaması),
   `test-tts-voice-config-behavior.R`, `test-tts-voice-manifest-behavior.R`,
   `test-tts-voice-cache-behavior.R`, `test-tts-audio-cache-behavior.R`,
   `test-tts-request-behavior.R`, `test-tts-queue-behavior.R`,

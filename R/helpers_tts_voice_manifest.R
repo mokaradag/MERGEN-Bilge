@@ -23,25 +23,17 @@ mergen_tts_known_profile_ids <- function() {
   c("emre", "selin", "deniz", "can", "ipek")
 }
 
-# Küçük-endian işaretsiz tam sayıyı ham baytlardan çözer (double döner; 4 baytlık
-# değerler R integer sınırını aşabildiği için).
-.mergen_tts_le_uint <- function(bytes) {
-  if (length(bytes) == 0L) return(NA_real_)
-  sum(as.numeric(as.integer(bytes)) * 256^(seq_along(bytes) - 1L))
-}
+# WAV bayt ayrıştırma çekirdeği (RIFF/WAVE, chunk yürütme, kesik denetimi) ve
+# küçük-endian/chunk-id yardımcıları R/helpers_tts_audio_validation.R içindedir;
+# manifest bölümünde bu dosyadan ÖNCE yüklenir. Böylece referans-ses doğrulaması
+# ile üretilen-ses doğrulaması TEK bir ayrıştırıcıyı paylaşır (kod tekrarı yok).
 
-# Ham 4 baytı güvenli biçimde ASCII chunk kimliğine çevirir (NUL/geçersiz baytta "").
-.mergen_tts_chunk_id <- function(bytes) {
-  tryCatch({
-    id <- rawToChar(bytes)
-    if (is.na(id)) "" else id
-  }, error = function(e) "")
-}
-
-#' WAV Başlığı Meta Verisini Oku
+#' WAV Başlığı Meta Verisini Oku (referans-ses profili için)
 #'
 #' @description Uzantıya güvenmeden RIFF/WAVE başlığını ve fmt/data chunk'larını
-#'   ayrıştırır. Süre = data baytları / byte_rate.
+#'   ayrıştırır (paylaşılan çekirdek ayrıştırıcıya delege eder). Süre = bildirilen
+#'   data baytları / byte_rate. Referans-ses doğrulamasının beklediği alan/hata
+#'   sözleşmesini birebir korur.
 #' @param path WAV dosya yolu
 #' @return Liste: valid, error, format_code, channels, sample_rate,
 #'   bits_per_sample, byte_rate, block_align, data_bytes, duration_secs, file_size
@@ -63,52 +55,22 @@ mergen_tts_read_wav_metadata <- function(path) {
 
   raw_all <- tryCatch(readBin(path, what = "raw", n = as.integer(min(size, 20 * 1024^2))),
                       error = function(e) raw(0))
-  n <- length(raw_all)
-  if (n < 12L) {
-    res$error <- "WAV başlığı okunamadı."
-    return(res)
-  }
-  if (.mergen_tts_chunk_id(raw_all[1:4]) != "RIFF" ||
-      .mergen_tts_chunk_id(raw_all[9:12]) != "WAVE") {
-    res$error <- "Dosya RIFF/WAVE biçiminde değil."
+
+  parsed <- mergen_tts_parse_wav_bytes(raw_all)
+  if (!isTRUE(parsed$header_ok)) {
+    res$error <- parsed$error %||% "WAV başlığı okunamadı."
     return(res)
   }
 
-  pos <- 13L
-  iter <- 0L
-  while (pos + 7L <= n && iter < 512L) {
-    iter <- iter + 1L
-    chunk_id <- .mergen_tts_chunk_id(raw_all[pos:(pos + 3L)])
-    chunk_size <- .mergen_tts_le_uint(raw_all[(pos + 4L):(pos + 7L)])
-    if (is.na(chunk_size) || chunk_size < 0) break
-    body_start <- pos + 8L
-
-    if (identical(chunk_id, "fmt ") && body_start + 15L <= n) {
-      fmt <- raw_all[body_start:(body_start + 15L)]
-      res$format_code     <- .mergen_tts_le_uint(fmt[1:2])
-      res$channels        <- .mergen_tts_le_uint(fmt[3:4])
-      res$sample_rate     <- .mergen_tts_le_uint(fmt[5:8])
-      res$byte_rate       <- .mergen_tts_le_uint(fmt[9:12])
-      res$block_align     <- .mergen_tts_le_uint(fmt[13:14])
-      res$bits_per_sample <- .mergen_tts_le_uint(fmt[15:16])
-    } else if (identical(chunk_id, "data")) {
-      res$data_bytes <- chunk_size
-    }
-
-    # Chunk'lar word hizalıdır (tek boyutta 1 dolgu baytı).
-    advance <- 8L + chunk_size + (chunk_size %% 2)
-    if (advance <= 0) break
-    pos <- pos + advance
-  }
-
-  if (!is.na(res$byte_rate) && res$byte_rate > 0 && !is.na(res$data_bytes)) {
-    res$duration_secs <- res$data_bytes / res$byte_rate
-  } else if (!is.na(res$sample_rate) && !is.na(res$channels) &&
-             !is.na(res$bits_per_sample) && res$sample_rate > 0 &&
-             res$channels > 0 && res$bits_per_sample > 0 && !is.na(res$data_bytes)) {
-    res$duration_secs <- res$data_bytes / (res$sample_rate * res$channels * res$bits_per_sample / 8)
-  }
-
+  res$format_code     <- parsed$format_code
+  res$channels        <- parsed$channels
+  res$sample_rate     <- parsed$sample_rate
+  res$byte_rate       <- parsed$byte_rate
+  res$block_align     <- parsed$block_align
+  res$bits_per_sample <- parsed$bits_per_sample
+  res$data_bytes      <- parsed$data_declared_bytes
+  # Bildirilen data'dan hesaplanan süre (eski davranışla birebir).
+  res$duration_secs   <- parsed$duration_secs
   res$valid <- !is.na(res$format_code) && !is.na(res$sample_rate)
   res
 }

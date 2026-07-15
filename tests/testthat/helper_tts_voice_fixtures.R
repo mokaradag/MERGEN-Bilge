@@ -16,6 +16,7 @@ tts_fixture_source_helpers <- function() {
   files <- c(
     "R/config_characters.R",
     "R/helpers_tts_voice_config.R",
+    "R/helpers_tts_audio_validation.R",
     "R/helpers_tts_voice_manifest.R",
     "R/helpers_tts_voice_cache.R",
     "R/helpers_tts_audio_cache.R",
@@ -57,6 +58,60 @@ tts_fixture_write_wav <- function(path, seconds = 1,
     writeBin(integer(n_samples * channels), con, size = byte_per, endian = "little")
   }
   invisible(normalizePath(path, winslash = "/", mustWork = TRUE))
+}
+
+# Sentetik WAV'ı BELLEKTE (ham bayt) üretir; üretilen-ses doğrulama testleri için
+# esnek kenar-durum desteği sağlar (uzantıya güvenmeden, RIFF/chunk kesme dahil).
+# Varsayılan: geçerli mono/16-bit/16 kHz PCM. Parametreler:
+#   data_size_override  : data chunk'ında BİLDİRİLEN boyut (gerçek yazılandan farklı olabilir)
+#   riff_size_override  : RIFF başlığında BİLDİRİLEN boyut
+#   extra_chunk_before_data : data'dan önce yasal bir LIST chunk'ı ekle
+#   include_fmt / include_data : fmt / data chunk'ını atla (eksik-chunk testleri)
+#   riff_tag / wave_tag : imzaları bozmak için ("RIFF"/"WAVE" dışına)
+#   format_code         : WAV biçim kodu (PCM=1)
+tts_fixture_wav_raw <- function(seconds = 1, sample_rate = 16000L, channels = 1L,
+                                bits = 16L, format_code = 1L,
+                                data_size_override = NULL, riff_size_override = NULL,
+                                extra_chunk_before_data = FALSE,
+                                include_fmt = TRUE, include_data = TRUE,
+                                riff_tag = "RIFF", wave_tag = "WAVE") {
+  n_samples <- as.integer(round(seconds * sample_rate))
+  bp        <- max(1L, as.integer(bits / 8))
+  byte_rate <- as.integer(sample_rate * channels * bp)
+  block_al  <- as.integer(channels * bp)
+  actual_data <- as.integer(max(0L, n_samples * channels * bp))
+  declared_data <- if (is.null(data_size_override)) actual_data else as.integer(data_size_override)
+
+  extra_total <- if (isTRUE(extra_chunk_before_data)) 16L else 0L
+  fmt_total   <- if (isTRUE(include_fmt)) 24L else 0L
+  data_hdr    <- if (isTRUE(include_data)) 8L else 0L
+  riff_size <- if (is.null(riff_size_override)) {
+    as.integer(4L + fmt_total + extra_total + data_hdr + actual_data)
+  } else {
+    as.integer(riff_size_override)
+  }
+
+  con <- rawConnection(raw(0), "wb")
+  on.exit(close(con), add = TRUE)
+  wc <- function(s) writeChar(s, con, eos = NULL)
+  wi <- function(v, sz) writeBin(as.integer(v), con, size = sz, endian = "little")
+
+  wc(riff_tag)
+  wi(riff_size, 4)
+  wc(wave_tag)
+  if (isTRUE(include_fmt)) {
+    wc("fmt "); wi(16L, 4)
+    wi(format_code, 2); wi(channels, 2); wi(sample_rate, 4)
+    wi(byte_rate, 4); wi(block_al, 2); wi(bits, 2)
+  }
+  if (isTRUE(extra_chunk_before_data)) {
+    wc("LIST"); wi(8L, 4); writeBin(as.raw(rep(0L, 8L)), con)
+  }
+  if (isTRUE(include_data)) {
+    wc("data"); wi(declared_data, 4)
+    if (actual_data > 0L) writeBin(integer(n_samples * channels), con, size = bp, endian = "little")
+  }
+  rawConnectionValue(con)
 }
 
 # Ortak transcript metni (üretimdeki kanonik pasajın kısa test eşleniği).
