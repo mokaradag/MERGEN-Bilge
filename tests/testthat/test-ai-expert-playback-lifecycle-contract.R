@@ -126,9 +126,13 @@ test_that("AI Expert manager: konuşma-bitti tek sefer, loadedmetadata ve sıral
       "_scheduleSubtitleOnlyAdvance: function(token)",
       # İstemci sırası: yalnızca beklenen indeks oynatılır.
       "return item.index === expectedIndex;",
-      # Kuyruk öğesi index + hasAudio + token taşır:
+      # Kuyruk öğesi index + hasAudio + token taşır ve eski server speechSeq'i reddeder:
       "hasAudio: hasAudio",
-      "token: this.state.speechToken"
+      "token: this.state.speechToken",
+      "data.speechSeq !== undefined && this.state.serverSpeechSeq !== null",
+      "Number(data.speechSeq) !== Number(this.state.serverSpeechSeq)",
+      "Eski speechSeq parçası yok sayıldı",
+      "Eski speechSeq fallback yok sayıldı"
     ),
     "AI Expert emit/metadata/sıralama sözleşmesi eksik:"
   )

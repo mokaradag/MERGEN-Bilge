@@ -430,6 +430,11 @@ const AIExpertManager = {
   // --- SONRAKİ SES PARÇASINI KUYRUKLA ---
   queueAudioChunk: function(data) {
     if (!this.state.isSpeaking) return;
+    if (data.speechSeq !== undefined && this.state.serverSpeechSeq !== null &&
+        Number(data.speechSeq) !== Number(this.state.serverSpeechSeq)) {
+      console.warn('[AI_EXPERT] Eski speechSeq parçası yok sayıldı:', data.speechSeq);
+      return;
+    }
 
     var chunkIndex = Number(data.index || 0);
     var chunkDuration = Number(data.audioDuration || 0);
@@ -618,6 +623,11 @@ const AIExpertManager = {
 
   // --- SES OLMADAN GERİ DÖNÜŞ (fallback) ---
   noAudioFallback: function(data) {
+    if (data && data.speechSeq !== undefined && this.state.serverSpeechSeq !== null &&
+        Number(data.speechSeq) !== Number(this.state.serverSpeechSeq)) {
+      console.warn('[AI_EXPERT] Eski speechSeq fallback yok sayıldı:', data.speechSeq);
+      return;
+    }
     var textLength = data.textLength || this.state.currentText.length || 100;
     var estimatedMs = this._estimateReadTime(this.state.currentText || '');
     this._scheduleHide(estimatedMs);
