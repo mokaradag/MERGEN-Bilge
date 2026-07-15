@@ -465,5 +465,8 @@ testthat::test_that("kritik yol izleri içerik taşımadan worker aşamalarını
   lifecycle <- paste(readLines(file.path(root, "R", "helpers_ai_expert_lifecycle.R"),
                                warn = FALSE, encoding = "UTF-8"), collapse = "\n")
   testthat::expect_match(lifecycle, "chunk_index = context$chunk_index", fixed = TRUE)
-  testthat::expect_match(module, "should_cancel = function() !is_active()", fixed = TRUE)
+  testthat::expect_match(module, "should_cancel = function()", fixed = TRUE)
+  testthat::expect_match(module, "!is_active() ||", fixed = TRUE)
+  testthat::expect_match(module, "is.function(should_cancel)", fixed = TRUE)
+  testthat::expect_match(module, "tryCatch(should_cancel(), error = function(e) FALSE)", fixed = TRUE)
 })
