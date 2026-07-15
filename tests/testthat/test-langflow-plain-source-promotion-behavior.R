@@ -53,8 +53,8 @@ test_that("sondaki tam Kaynak satırları doğrulanıp kaynak kaydına yükselti
   env <- .source_langflow_plain_source_handler_for_test()
 
   pdf_name <- paste0(
-    "07 Program Yönetimi&AS-00-15-01 Kurumsal Proje Yönetim Süreci ",
-    "İzleci&&EK-P İşçilik Girişi İş Talimatı.pdf"
+    "Kurumsal Proje Yönetim Süreci İzleci&&",
+    "İşçilik Girişi İş Talimatı.pdf"
   )
   docx_name <- sub("\\.pdf$", ".docx", pdf_name)
 
@@ -126,8 +126,8 @@ test_that("Langflow handler doğrulanmış düz kaynakları kalıcı Kaynakça i
   skip_if_not_installed("openssl")
 
   pdf_name <- paste0(
-    "07 Program Yönetimi&AS-00-15-01 Kurumsal Proje Yönetim Süreci ",
-    "İzleci&&EK-P İşçilik Girişi İş Talimatı.pdf"
+    "Kurumsal Proje Yönetim Süreci İzleci&&",
+    "İşçilik Girişi İş Talimatı.pdf"
   )
   docx_name <- sub("\\.pdf$", ".docx", pdf_name)
 
