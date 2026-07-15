@@ -59,18 +59,33 @@ mergen_tts_create_queue <- function(max_concurrency = 2L) {
     finish <- function() {
       q$active <- max(0L, q$active - 1L)
       q$completed <- q$completed + 1L
-      pump()
+    }
+
+    schedule_pump <- function() {
+      if (requireNamespace("later", quietly = TRUE)) later::later(pump, delay = 0.01) else pump()
     }
 
     promises::then(
       task_promise,
       onFulfilled = function(value) {
         finish()
-        rec$resolve(value)
+        if (isTRUE(rec$resolve_before_pump)) {
+          rec$resolve(value)
+          schedule_pump()
+        } else {
+          pump()
+          rec$resolve(value)
+        }
       },
       onRejected = function(err) {
         finish()
-        rec$reject(err)
+        if (isTRUE(rec$resolve_before_pump)) {
+          rec$reject(err)
+          schedule_pump()
+        } else {
+          pump()
+          rec$reject(err)
+        }
       }
     )
     invisible(NULL)
@@ -87,7 +102,8 @@ mergen_tts_create_queue <- function(max_concurrency = 2L) {
   }
 
   q$submit <- function(factory, should_cancel = NULL,
-                       priority = MERGEN_TTS_QUEUE_PRIORITY_NORMAL) {
+                       priority = MERGEN_TTS_QUEUE_PRIORITY_NORMAL,
+                       resolve_before_pump = FALSE) {
     if (!is.function(factory)) stop("factory bir fonksiyon olmalıdır.", call. = FALSE)
     priority <- suppressWarnings(as.numeric(priority)[1])
     if (is.na(priority) || !is.finite(priority)) priority <- MERGEN_TTS_QUEUE_PRIORITY_NORMAL
@@ -100,6 +116,7 @@ mergen_tts_create_queue <- function(max_concurrency = 2L) {
       factory = factory,
       should_cancel = should_cancel,
       priority = priority,
+      resolve_before_pump = isTRUE(resolve_before_pump),
       resolve = captured$resolve,
       reject = captured$reject
     )
@@ -107,6 +124,30 @@ mergen_tts_create_queue <- function(max_concurrency = 2L) {
     q$pending[[length(q$pending) + 1L]] <- rec
     pump()
     p
+  }
+
+  q$cancel_pending <- function() {
+    if (length(q$pending) == 0L) return(0L)
+    keep <- list()
+    cancelled_count <- 0L
+    for (rec in q$pending) {
+      should_drop <- FALSE
+      if (is.function(rec$should_cancel)) {
+        should_drop <- tryCatch(isTRUE(rec$should_cancel()), error = function(e) FALSE)
+      }
+      if (isTRUE(should_drop)) {
+        cancelled_count <- cancelled_count + 1L
+        q$cancelled <- q$cancelled + 1L
+        rec$resolve(list(
+          success = FALSE, audio_src = NULL, cancelled = TRUE,
+          voice = NULL, duration = 0, error = "İstek durdurulduğu için parça atlandı."
+        ))
+      } else {
+        keep[[length(keep) + 1L]] <- rec
+      }
+    }
+    q$pending <- keep
+    cancelled_count
   }
 
   q$active_count <- function() q$active
