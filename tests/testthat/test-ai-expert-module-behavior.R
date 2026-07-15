@@ -308,6 +308,35 @@ test_that("start_speaking (TTS açık): speech token ilk parça geri çağrısı
   )
 })
 
+
+test_that("ai_expert_speech_ended: eski speechSeq yeni konuşmayı kapatmaz", {
+  skip_if_not_installed("shiny")
+
+  sd <- .aiexp_settings()
+  kayit <- new.env(); kayit$msgs <- list()
+  testthat::local_mocked_bindings(delay = function(ms, expr) invisible(NULL), .package = "shinyjs")
+
+  shiny::testServer(
+    .aiexp_env$aiExpertServer,
+    args = list(id = "ax", settings_data = sd,
+                tts_processor = .tts_processor_off(),
+                tts_visualizer = list(trigger = function(...) NULL, stop = function() NULL)),
+    {
+      root <- .subset2(session, "parent")
+      root$sendCustomMessage <- function(type, message) kayit$msgs[[type]] <- message
+
+      session$returned$start_speaking("Sunucu token doğrulama testi.")
+      expect_true(isTRUE(session$returned$is_speaking()))
+
+      session$setInputs(ai_expert_speech_ended = list(speechSeq = 0L))
+      expect_true(isTRUE(session$returned$is_speaking()))
+
+      session$setInputs(ai_expert_speech_ended = list(speechSeq = 1L))
+      expect_false(isTRUE(session$returned$is_speaking()))
+    }
+  )
+})
+
 # -----------------------------------------------------------------------------
 # prewarm_speaking koruma yolları
 # -----------------------------------------------------------------------------

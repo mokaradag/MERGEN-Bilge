@@ -87,7 +87,7 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
       text = text, totalChunks = total,
       avatarSrc = meta$avatar_src, accentColor = meta$accent_color,
       nsPrefix = meta$ns_prefix, audioSrc = src, audioDuration = dur,
-      fontSize = meta$font_size
+      fontSize = meta$font_size, speechSeq = meta$speech_seq
     ))
   }
   send_queue_chunk <- function(idx, item) {
@@ -95,17 +95,18 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
     send_message("aiExpertQueueAudioChunk", list(
       index = idx - 1L, text = item$text,
       audioSrc = item$audio_src %||% "", audioDuration = item$duration %||% 0,
-      hasAudio = has_audio, nsPrefix = meta$ns_prefix
+      hasAudio = has_audio, nsPrefix = meta$ns_prefix, speechSeq = meta$speech_seq
     ))
   }
   send_subtitle_fallback <- function() {
     send_message("aiExpertStartSubtitle", list(
       text = meta$full_text, avatarSrc = meta$avatar_src,
       accentColor = meta$accent_color, nsPrefix = meta$ns_prefix,
-      fontSize = meta$font_size
+      fontSize = meta$font_size, speechSeq = meta$speech_seq
     ))
     send_message("aiExpertNoAudioFallback", list(
-      textLength = nchar(meta$full_text %||% ""), nsPrefix = meta$ns_prefix
+      textLength = nchar(meta$full_text %||% ""), nsPrefix = meta$ns_prefix,
+      speechSeq = meta$speech_seq
     ))
   }
 

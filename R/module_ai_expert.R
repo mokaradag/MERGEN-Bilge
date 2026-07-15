@@ -376,7 +376,8 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
           is_active = is_active,
           meta = list(
             ns_prefix = ns(""), avatar_src = avatar_src,
-            accent_color = accent_color, font_size = font_size, full_text = text
+            accent_color = accent_color, font_size = font_size, full_text = text,
+            speech_seq = seq_id
           ),
           first_chunk_promise = first_chunk_promise,
           log = seq_log
@@ -392,12 +393,14 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 		  avatarSrc   = avatar_src,
 		  accentColor = accent_color,
 		  nsPrefix    = ns(""),
-		  fontSize    = font_size
+		  fontSize    = font_size,
+		  speechSeq   = seq_id
 		))
 
 		session$sendCustomMessage("aiExpertNoAudioFallback", list(
 		  textLength = nchar(text),
-		  nsPrefix   = ns("")
+		  nsPrefix   = ns(""),
+		  speechSeq  = seq_id
 		))
 	  }
 
@@ -440,7 +443,11 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 
     # --- İstemciden "konuşma bitti" sinyali ---
     observeEvent(input$ai_expert_speech_ended, {
-      if (isTRUE(is_speaking())) {
+      ended_payload <- input$ai_expert_speech_ended
+      ended_seq <- if (is.list(ended_payload)) ended_payload$speechSeq else NULL
+      has_seq <- !is.null(ended_seq) && length(ended_seq) > 0L && !is.na(suppressWarnings(as.integer(ended_seq[[1]])))
+      is_current_end <- !has_seq || identical(isolate(speech_seq()), suppressWarnings(as.integer(ended_seq[[1]])))
+      if (isTRUE(is_speaking()) && isTRUE(is_current_end)) {
         is_speaking(FALSE)
         # Dizi tamamlandı: belirteci ilerlet ki bu konuşmadan geç gelebilecek
         # parça geri çağrımları yeni bir konuşmaya sızmasın.

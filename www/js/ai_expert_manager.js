@@ -28,6 +28,7 @@ const AIExpertManager = {
     chunkWaitTimer: null,     // Sonraki parçayı bekleme zamanlayıcısı
     chunkAdvanceTimer: null,  // Altyazı-yalnız parçadan ilerleme zamanlayıcısı
     speechToken: 0,           // Eski geri çağrımların yeni konuşmayı kapatmasını önler
+    serverSpeechSeq: null,     // Sunucu speech_seq belirteci (Shiny ended doğrulaması)
     currentChunkIndex: 0,     // Şu an oynayan parçanın indeksi (tanılama)
     chunkRetryCount: 0,       // Mevcut parça için oynatma yeniden deneme sayacı
     currentAudioDuration: 0,  // loadedmetadata'dan gelen gerçek medya süresi (sn)
@@ -70,6 +71,7 @@ const AIExpertManager = {
     this.state.nextChunkIndex = 1;
     this.state.queuedChunks = [];
     this.state.speechToken += 1;
+    this.state.serverSpeechSeq = data.speechSeq || null;
     this.state.currentChunkIndex = 0;
     this.state.chunkRetryCount = 0;
     this.state.currentAudioDuration = 0;
@@ -148,6 +150,7 @@ const AIExpertManager = {
     this.state.accentColor = data.accentColor || '#7C4DFF';
     this.state.fontSize = data.fontSize || 'medium';
     this.state.speechToken += 1;
+    this.state.serverSpeechSeq = data.speechSeq || null;
     this.state.sequenceMode = false;
     this.state.totalChunks = 1;
     this.state.nextChunkIndex = 1;
@@ -653,7 +656,10 @@ const AIExpertManager = {
     this.state.endedEmitted = true;
     var prefix = this.state.nsPrefix || overridePrefix || '';
     if (prefix && window.Shiny && Shiny.setInputValue) {
-      Shiny.setInputValue(prefix + 'ai_expert_speech_ended', Date.now(), { priority: 'event' });
+      Shiny.setInputValue(prefix + 'ai_expert_speech_ended', {
+        timestamp: Date.now(),
+        speechSeq: this.state.serverSpeechSeq
+      }, { priority: 'event' });
     }
   },
 
