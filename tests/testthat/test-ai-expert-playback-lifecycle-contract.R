@@ -36,12 +36,16 @@
 
 .aem_pos <- function(needle, hay) regexpr(needle, hay, fixed = TRUE, useBytes = TRUE)[[1]]
 
+.aem_expect_found <- function(position, label, token) {
+  if (position <= 0L) testthat::fail(sprintf("%s: %s", label, token))
+}
+
 .aem_slice <- function(text, from, to) {
   start <- regexpr(from, text, fixed = TRUE)[[1]]
-  expect_gt(start, 0L, info = paste("Başlangıç bulunamadı:", from))
+  .aem_expect_found(start, "Başlangıç bulunamadı", from)
   tail <- substring(text, start + nchar(from))
   finish <- regexpr(to, tail, fixed = TRUE)[[1]]
-  expect_gt(finish, 0L, info = paste("Bitiş bulunamadı:", to))
+  .aem_expect_found(finish, "Bitiş bulunamadı", to)
   substring(tail, 1L, finish - 1L)
 }
 

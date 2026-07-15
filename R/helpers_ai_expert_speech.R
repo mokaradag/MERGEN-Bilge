@@ -39,9 +39,11 @@ if (!exists("%...!%", mode = "function", inherits = TRUE)) `%...!%` <- promises:
 #' AI Uzman Konuşma Dizisi Oluştur (eager, sıralı, eskime-korumalı)
 #'
 #' @param chunks Parça metinleri (list veya character; en az 1)
-#' @param synthesize function(text, startup_priority, chunk_index) -> promise; sonuç
-#'   list(success, audio_src, duration, media_duration, retryable, cancelled)
-#'   çözer. İlk parçada startup_priority=TRUE, diğerlerinde FALSE gönderilir.
+#' @param synthesize function(text, startup_priority, chunk_index, should_cancel) ->
+#'   promise; sonuç list(success, audio_src, duration, media_duration, retryable,
+#'   cancelled) çözer. İlk parçada startup_priority=TRUE, diğerlerinde FALSE
+#'   gönderilir. should_cancel destekleniyorsa helper, ilk-parça altyazı
+#'   geri dönüşünden sonra kuyruğa alınmış sonraki parçaları iptal ettirir.
 #' @param send_message function(type, data); istemciye özel mesaj gönderir
 #'   (ör. session$sendCustomMessage).
 #' @param is_active function() -> logical; dizinin hâlâ güncel VE konuşmanın
@@ -51,6 +53,8 @@ if (!exists("%...!%", mode = "function", inherits = TRUE)) `%...!%` <- promises:
 #' @param first_chunk_promise (opsiyonel) 1. parça için önceden hazır/uçuşta
 #'   promise (ön ısıtma). Başarısız olursa taze sentez ile denenir.
 #' @param log (opsiyonel) function(msg); gizlilik-güvenli tanılama.
+#' @param cancel_pending (opsiyonel) function(); ilk parça tüm-metin altyazı
+#'   geri dönüşüne düşünce kuyrukta bekleyen sonraki parçaları iptal eder.
 #' @param max_retries Parça başına sınırlı yeniden deneme (varsayılan 1).
 #' @return list(start, snapshot): start() diziyi başlatır; snapshot() test için
 #'   iç durumu döndürür.
@@ -58,11 +62,13 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
                                                  is_active, meta = list(),
                                                  first_chunk_promise = NULL,
                                                  log = NULL,
+                                                 cancel_pending = NULL,
                                                  max_retries = 1L) {
   chunks <- as.list(chunks)
   total <- length(chunks)
   max_retries <- max(0L, as.integer(max_retries %||% 1L))
   if (is.null(log) || !is.function(log)) log <- function(msg) invisible(NULL)
+  if (is.null(cancel_pending) || !is.function(cancel_pending)) cancel_pending <- function() 0L
 
   st <- new.env(parent = emptyenv())
   st$total <- total
@@ -72,6 +78,7 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
   st$next_dispatch <- 2L        # 1. parça ayrı (aiExpertStartWithAudio) gönderilir
   st$first_dispatched <- FALSE
   st$fallback_mode <- FALSE     # 1. parça başarısız -> tüm metin altyazı; kalanı atla
+  st$cancel_later <- FALSE      # Kuyrukta bekleyen 2..N parçalarını başlatmadan iptal et
 
   active <- function() isTRUE(suppressWarnings(try(is_active(), silent = TRUE)))
   chunk_ok <- function(res) is.list(res) && isTRUE(res$success) && nzchar(res$audio_src %||% "")
@@ -80,6 +87,11 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
       !identical(res$retryable, FALSE)
   }
   audio_dur <- function(res) suppressWarnings(as.numeric(res$media_duration %||% res$duration %||% 0))
+  later_cancelled <- function() isTRUE(st$cancel_later) || !active()
+  synth_supports_cancel <- function() {
+    fmls <- names(formals(synthesize))
+    "should_cancel" %in% fmls || "..." %in% fmls
+  }
 
   send_start_with_audio <- function(text, src, dur) {
     send_message("aiExpertStartWithAudio", list(
@@ -132,6 +144,9 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
   on_first_fail <- function() {
     if (isTRUE(st$first_dispatched) || isTRUE(st$fallback_mode)) return(invisible(NULL))
     st$fallback_mode <- TRUE
+    st$cancel_later <- TRUE
+    cancelled <- suppressWarnings(try(cancel_pending(), silent = TRUE))
+    if (is.numeric(cancelled) && cancelled > 0L) log(sprintf("stage=tts_queue_cancel_pending count=%d", cancelled))
     send_subtitle_fallback()
     log("stage=audio_dispatch chunk=1 mode=subtitle_only")
     invisible(NULL)
@@ -159,7 +174,12 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
     attempt <- function(left) {
       log(sprintf("stage=tts_queue_submit chunk=%d startup=%s", idx, isTRUE(startup_priority)))
       p <- tryCatch(
-        synthesize(text, startup_priority = startup_priority, chunk_index = idx),
+        if (synth_supports_cancel()) {
+          synthesize(text, startup_priority = startup_priority, chunk_index = idx,
+                     should_cancel = if (idx > 1L) later_cancelled else function() !active())
+        } else {
+          synthesize(text, startup_priority = startup_priority, chunk_index = idx)
+        },
         error = function(e) promises::promise_reject(e)
       )
       p %...>% (function(res) {
@@ -243,7 +263,8 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
       resolved = st$resolved[seq_len(max(total, 1L))],
       next_dispatch = st$next_dispatch,
       first_dispatched = st$first_dispatched,
-      fallback_mode = st$fallback_mode
+      fallback_mode = st$fallback_mode,
+      cancel_later = st$cancel_later
     )
   }
 

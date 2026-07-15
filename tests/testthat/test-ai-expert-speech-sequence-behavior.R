@@ -18,6 +18,8 @@ if (!requireNamespace("promises", quietly = TRUE) || !requireNamespace("later", 
 
 source(file.path(resolve_repo_root_for_tests(), "R", "helpers_ai_expert_speech.R"),
        encoding = "UTF-8", local = TRUE)
+source(file.path(resolve_repo_root_for_tests(), "R", "helpers_tts_queue.R"),
+       encoding = "UTF-8", local = TRUE)
 
 # later kuyruğunu koşul sağlanana ya da sınıra dek boşaltır.
 .seq_drain <- function(pred = function() FALSE, max_iter = 300L) {
@@ -221,6 +223,80 @@ test_that("1. parça başarısız -> tüm-metin altyazı geri dönüşü", {
   snap <- seq$snapshot()
   expect_true(snap$fallback_mode)
 })
+
+
+test_that("1. parça altyazı geri dönüşünden sonra kuyruktaki sonraki parçalar iptal edilir", {
+  q <- mergen_tts_create_queue(max_concurrency = 1L)
+  started <- character(0)
+  sent <- list()
+
+  synth <- function(text, startup_priority = FALSE, chunk_index = NULL, should_cancel = NULL) {
+    q$submit(
+      factory = function() {
+        started[[length(started) + 1L]] <<- text
+        promises::promise_resolve(if (isTRUE(chunk_index == 1L)) .seq_fail(FALSE) else .seq_ok(1))
+      },
+      should_cancel = should_cancel,
+      priority = if (isTRUE(startup_priority)) MERGEN_TTS_QUEUE_PRIORITY_STARTUP else MERGEN_TTS_QUEUE_PRIORITY_NORMAL,
+      resolve_before_pump = TRUE,
+      metadata = list(sequence_id = 42L, chunk_index = chunk_index)
+    )
+  }
+  send <- function(type, data) sent[[length(sent) + 1L]] <<- type
+
+  seq <- mergen_ai_expert_new_speech_sequence(
+    chunks = list("Bir.", "Iki.", "Uc."),
+    synthesize = synth, send_message = send, is_active = function() TRUE,
+    meta = .seq_meta("Bir. Iki. Uc."), max_retries = 0L,
+    cancel_pending = function() q$cancel_pending(function(ctx) {
+      is.list(ctx) && identical(ctx$sequence_id, 42L) &&
+        isTRUE(suppressWarnings(as.integer(ctx$chunk_index) > 1L))
+    })
+  )
+  seq$start()
+  .seq_drain(function() q$pending_count() == 0L && q$active_count() == 0L)
+
+  expect_identical(started, "Bir.")
+  expect_true("aiExpertStartSubtitle" %in% unlist(sent))
+  expect_identical(q$stats()$cancelled, 2L)
+  expect_true(seq$snapshot()$cancel_later)
+})
+
+
+test_that("ilk parça geri dönüşü yalnız aynı konuşma dizisinin bekleyen parçalarını iptal eder", {
+  q <- mergen_tts_create_queue(max_concurrency = 1L)
+  active <- .seq_deferred()
+  q$submit(
+    factory = function() active$promise,
+    should_cancel = function() FALSE,
+    priority = MERGEN_TTS_QUEUE_PRIORITY_NORMAL,
+    metadata = list(sequence_id = 1L, chunk_index = 1L)
+  )
+  q$submit(
+    factory = function() promises::promise_resolve(.seq_ok(1)),
+    should_cancel = function() TRUE,
+    priority = MERGEN_TTS_QUEUE_PRIORITY_NORMAL,
+    metadata = list(sequence_id = 1L, chunk_index = 2L)
+  )
+  q$submit(
+    factory = function() promises::promise_resolve(.seq_ok(1)),
+    should_cancel = function() TRUE,
+    priority = MERGEN_TTS_QUEUE_PRIORITY_NORMAL,
+    metadata = list(sequence_id = 99L, chunk_index = 2L)
+  )
+
+  cancelled <- q$cancel_pending(function(ctx) {
+    is.list(ctx) && identical(ctx$sequence_id, 1L) &&
+      isTRUE(suppressWarnings(as.integer(ctx$chunk_index) > 1L))
+  })
+
+  expect_identical(cancelled, 1L)
+  expect_identical(q$pending_count(), 1L)
+  expect_identical(q$stats()$cancelled, 1L)
+  active$resolve(.seq_ok(1))
+  .seq_drain(function() q$pending_count() == 0L && q$active_count() == 0L)
+})
+
 
 test_that("ön ısıtma (first_chunk_promise) 1. parça için kullanılır, 2. parça yine eager sentezlenir", {
   calls <- character(0)

@@ -357,10 +357,14 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         is_active <- function() isTRUE(is_speaking()) && identical(isolate(speech_seq()), seq_id)
 
         # Enjekte edilen TTS çağrısı (saf konuşma dizisi orkestratörü için).
-        synthesize <- function(chunk_text, startup_priority = FALSE, chunk_index = NULL) {
+        synthesize <- function(chunk_text, startup_priority = FALSE, chunk_index = NULL,
+                                should_cancel = NULL) {
           tts_processor$synthesize_speech(
             chunk_text, voice = voice_sel, profile_id = profile_sel,
-            should_cancel = function() !is_active(),
+            should_cancel = function() {
+              !is_active() || (is.function(should_cancel) &&
+                isTRUE(tryCatch(should_cancel(), error = function(e) FALSE)))
+            },
             priority = if (isTRUE(startup_priority)) {
               MERGEN_TTS_QUEUE_PRIORITY_STARTUP
             } else {
@@ -414,7 +418,13 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
             speech_seq = seq_id
           ),
           first_chunk_promise = first_chunk_promise,
-          log = seq_log
+          log = seq_log,
+          cancel_pending = function() {
+            tts_processor$cancel_pending(function(ctx) {
+              is.list(ctx) && identical(ctx$sequence_id, seq_id) &&
+                isTRUE(suppressWarnings(as.integer(ctx$chunk_index) > 1L))
+            })
+          }
         )
         speech_sequence$start()
       } else {
