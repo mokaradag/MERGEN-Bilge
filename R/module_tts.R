@@ -443,8 +443,9 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
       prepare_tts_text = prepare_tts_text,
       preload_profile = preload_profile,
       cancel_pending = function(predicate = NULL) {
-        if (is.environment(queue) && is.function(queue$cancel_pending)) {
-          queue$cancel_pending(predicate = predicate)
+        shared_queue <- tryCatch(mergen_tts_default_queue(tts_config), error = function(e) NULL)
+        if (is.environment(shared_queue) && is.function(shared_queue$cancel_pending)) {
+          shared_queue$cancel_pending(predicate = predicate)
         } else {
           0L
         }

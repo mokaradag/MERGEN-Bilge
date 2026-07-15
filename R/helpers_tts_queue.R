@@ -137,8 +137,11 @@ mergen_tts_create_queue <- function(max_concurrency = 2L) {
     for (rec in q$pending) {
       matches_scope <- is.null(predicate) || tryCatch(isTRUE(predicate(rec$metadata)), error = function(e) FALSE)
       should_drop <- FALSE
-      if (isTRUE(matches_scope) && is.function(rec$should_cancel)) {
-        should_drop <- tryCatch(isTRUE(rec$should_cancel()), error = function(e) FALSE)
+      if (isTRUE(matches_scope)) {
+        should_drop <- !is.null(predicate)
+        if (!isTRUE(should_drop) && is.function(rec$should_cancel)) {
+          should_drop <- tryCatch(isTRUE(rec$should_cancel()), error = function(e) FALSE)
+        }
       }
       if (isTRUE(should_drop)) {
         cancelled_count <- cancelled_count + 1L

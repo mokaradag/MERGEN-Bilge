@@ -263,6 +263,35 @@ test_that("1. parça altyazı geri dönüşünden sonra kuyruktaki sonraki parç
 })
 
 
+test_that("ilk parça geri dönüşü eşleşen bekleyen parçaları should_cancel beklemeden iptal eder", {
+  q <- mergen_tts_create_queue(max_concurrency = 1L)
+  active <- .seq_deferred()
+  q$submit(
+    factory = function() active$promise,
+    should_cancel = function() FALSE,
+    priority = MERGEN_TTS_QUEUE_PRIORITY_NORMAL,
+    metadata = list(sequence_id = 42L, chunk_index = 1L)
+  )
+  q$submit(
+    factory = function() promises::promise_resolve(.seq_ok(1)),
+    should_cancel = function() FALSE,
+    priority = MERGEN_TTS_QUEUE_PRIORITY_NORMAL,
+    metadata = list(sequence_id = 42L, chunk_index = 2L)
+  )
+
+  cancelled <- q$cancel_pending(function(ctx) {
+    is.list(ctx) && identical(ctx$sequence_id, 42L) &&
+      isTRUE(suppressWarnings(as.integer(ctx$chunk_index) > 1L))
+  })
+
+  expect_identical(cancelled, 1L)
+  expect_identical(q$pending_count(), 0L)
+  expect_identical(q$stats()$cancelled, 1L)
+  active$resolve(.seq_ok(1))
+  .seq_drain(function() q$active_count() == 0L)
+})
+
+
 test_that("ilk parça geri dönüşü yalnız aynı konuşma dizisinin bekleyen parçalarını iptal eder", {
   q <- mergen_tts_create_queue(max_concurrency = 1L)
   active <- .seq_deferred()
