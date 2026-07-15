@@ -18,6 +18,16 @@ source(
   encoding = "UTF-8",
   local = .aiexp_env
 )
+source(
+  file.path(resolve_repo_root_for_tests(), "R", "helpers_ai_expert_chunking.R"),
+  encoding = "UTF-8",
+  local = .aiexp_env
+)
+source(
+  file.path(resolve_repo_root_for_tests(), "R", "helpers_ai_expert_speech.R"),
+  encoding = "UTF-8",
+  local = .aiexp_env
+)
 
 # Varsayılan Bütünleşik mod ayarları (AI Uzman konuşabilir durum).
 .aiexp_settings <- function() {
@@ -248,6 +258,52 @@ test_that("stop_speaking pozitif bekleme süresiyle çağrılınca can_speak bek
       session$returned$stop_speaking(5)  # 5 sn bekleme başlat
       # Bekleme aktif olduğu için konuşamaz.
       expect_false(isTRUE(session$returned$can_speak()))
+    }
+  )
+})
+
+
+
+test_that("start_speaking (TTS açık): speech token ilk parça geri çağrısını aktif tutar", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("promises")
+  skip_if_not_installed("later")
+
+  sd <- .aiexp_settings()
+  sd$enable_tts_audio <- TRUE
+  kayit <- new.env(); kayit$msgs <- list(); kayit$trigger <- 0L
+  tts_on <- list(
+    tts_available = function() TRUE,
+    synthesize_speech = function(...) promises::promise_resolve(list(
+      success = TRUE,
+      audio_src = "data:audio/wav;base64,QUJD",
+      duration = 1,
+      media_duration = 1
+    ))
+  )
+
+  shiny::testServer(
+    .aiexp_env$aiExpertServer,
+    args = list(id = "ax", settings_data = sd,
+                tts_processor = tts_on,
+                tts_visualizer = list(
+                  trigger = function(duration = 0) kayit$trigger <- kayit$trigger + 1L,
+                  stop = function() NULL
+                )),
+    {
+      root <- .subset2(session, "parent")
+      root$sendCustomMessage <- function(type, message) kayit$msgs[[type]] <- message
+
+      session$returned$start_speaking("Sesli konuşma token testi.")
+      for (i in seq_len(40)) {
+        later::run_now(timeoutSecs = 0)
+        if ("aiExpertStartWithAudio" %in% names(kayit$msgs)) break
+        Sys.sleep(0.002)
+      }
+
+      expect_true("aiExpertStartWithAudio" %in% names(kayit$msgs))
+      expect_true(isTRUE(session$returned$is_speaking()))
+      expect_true(kayit$trigger >= 1L)
     }
   )
 })

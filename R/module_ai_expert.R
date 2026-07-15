@@ -283,6 +283,11 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 
 	  is_speaking(TRUE)
 	  last_speak_time(Sys.time())
+	  # Yeni konuşma için belirteci hemen al. TTS geri çağrılarının kullandığı
+	  # is_active() kapanışı bu seq_id'ye bağlanır; bu atama gecikirse çözülmüş
+	  # promise'ler tanımsız seq_id nedeniyle yanlışlıkla eski/inaktif sayılır.
+	  seq_id <- isolate(speech_seq()) + 1L
+	  speech_seq(seq_id)
 
 	  # Persona bilgilerini al (eski kimlikler normalleştirilir)
 	  char_id <- normalize_character_id(isolate(settings_data$selected_character))
