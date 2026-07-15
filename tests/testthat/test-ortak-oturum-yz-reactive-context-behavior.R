@@ -61,6 +61,7 @@ local({
       source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
     }
   }
+  source(file.path(repo_root, "R", "helpers_ortak_oturum_arac_uretim.R"), encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "module_ortak_oturum_yz.R"), encoding = "UTF-8", local = globalenv())
 })
 
