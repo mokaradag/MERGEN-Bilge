@@ -8,6 +8,147 @@
 #           bayat-istek koruması desenini izler.
 # ==============================================================================
 
+# Langflow metninin sonunda "Kaynak: <dosya>" biçiminde dönen düz kaynak
+# satırlarını yalnızca yapılandırılmış model klasörlerinde gerçekten bulunan
+# dosyalara çözümlenebildiklerinde kanonik kaynak kaydına yükseltir. Böylece
+# local_model_paths yalnız tıklama anında değil, link üretimi öncesinde de güvenli
+# doğrulama sınırı olur. Çözümlenemeyen satırlar düz metin olarak korunur.
+mergen_langflow_promote_validated_text_sources <- function(
+  text,
+  local_model_paths,
+  resolver = NULL,
+  path_exists_fn = NULL,
+  max_sources = 20L
+) {
+  txt <- as.character(text %||% "")[1]
+  if (is.na(txt) || !nzchar(txt)) {
+    return(list(text = txt, sources = list()))
+  }
+
+  bases <- if (is.list(local_model_paths)) {
+    unlist(local_model_paths, use.names = FALSE)
+  } else {
+    as.character(local_model_paths %||% character(0))
+  }
+  bases <- as.character(bases)
+  bases <- unique(bases[!is.na(bases) & nzchar(trimws(bases))])
+  if (!length(bases)) {
+    return(list(text = txt, sources = list()))
+  }
+
+  resolver <- resolver %||% get0("search_file_in_folder", mode = "function", inherits = TRUE)
+  if (!is.function(resolver)) {
+    return(list(text = txt, sources = list()))
+  }
+
+  if (!is.function(path_exists_fn)) {
+    path_exists_fn <- get0("path_exists_relaxed", mode = "function", inherits = TRUE)
+  }
+  if (!is.function(path_exists_fn)) {
+    path_exists_fn <- file.exists
+  }
+
+  max_sources <- suppressWarnings(as.integer(max_sources[1]))
+  if (is.na(max_sources) || max_sources < 1L) {
+    return(list(text = txt, sources = list()))
+  }
+
+  lines <- strsplit(txt, "\n", fixed = TRUE)[[1]]
+  if (!length(lines)) {
+    return(list(text = txt, sources = list()))
+  }
+
+  source_pattern <- "^(?:[-*][ \t]*)?(?:Kaynak|Kaynaklar|Source|Sources)[ \t]*:[ \t]*(.+?)[ \t]*$"
+  candidate_by_line <- rep("", length(lines))
+
+  for (i in rev(seq_along(lines))) {
+    line_trimmed <- trimws(lines[[i]])
+    if (!nzchar(line_trimmed)) next
+
+    match <- regmatches(
+      line_trimmed,
+      regexec(source_pattern, line_trimmed, ignore.case = TRUE, perl = TRUE)
+    )[[1]]
+    if (length(match) == 2L) {
+      candidate <- trimws(match[[2]])
+      candidate <- sub("^`([^`]+)`$", "\\1", candidate, perl = TRUE)
+      candidate <- sub("^['\"](.*)['\"]$", "\\1", candidate, perl = TRUE)
+
+      normalized <- gsub("\\\\", "/", candidate)
+      parts <- strsplit(normalized, "/", fixed = TRUE)[[1]]
+      ext <- tolower(tools::file_ext(normalized))
+      allowed_ext <- c(
+        "pdf", "doc", "docx", "docm", "txt", "csv", "xls", "xlsx",
+        "ppt", "pptx", "json", "md", "r", "py", "log"
+      )
+      is_safe_relative <- nzchar(candidate) &&
+        !grepl("^/", normalized) &&
+        !grepl("^[A-Za-z]:", normalized) &&
+        !any(parts %in% c(".", "..")) &&
+        ext %in% allowed_ext
+
+      if (is_safe_relative) {
+        candidate_by_line[[i]] <- candidate
+        next
+      }
+    }
+
+    break
+  }
+
+  source_indices <- which(nzchar(candidate_by_line))
+  if (!length(source_indices)) {
+    return(list(text = txt, sources = list()))
+  }
+
+  promoted <- list()
+  promoted_indices <- integer(0)
+  seen_paths <- character(0)
+
+  for (i in source_indices) {
+    if (length(promoted) >= max_sources) break
+    candidate <- candidate_by_line[[i]]
+    found_path <- NULL
+
+    for (base_dir in bases) {
+      hit <- tryCatch(resolver(base_dir, candidate), error = function(e) NULL)
+      hit <- as.character(hit %||% "")[1]
+      if (!is.na(hit) && nzchar(hit) && isTRUE(path_exists_fn(hit))) {
+        found_path <- hit
+        break
+      }
+    }
+
+    if (is.null(found_path)) next
+
+    found_key <- tolower(gsub("\\\\", "/", found_path))
+    if (found_key %in% seen_paths) {
+      promoted_indices <- c(promoted_indices, i)
+      next
+    }
+    seen_paths <- c(seen_paths, found_key)
+
+    title <- basename(gsub("\\\\", "/", candidate))
+    promoted[[length(promoted) + 1L]] <- list(
+      title = title,
+      path = candidate,
+      page = "",
+      type = tolower(tools::file_ext(title))
+    )
+    promoted_indices <- c(promoted_indices, i)
+  }
+
+  if (!length(promoted)) {
+    return(list(text = txt, sources = list()))
+  }
+
+  kept_lines <- lines[-promoted_indices]
+  prose <- paste(kept_lines, collapse = "\n")
+  prose <- sub("[ \t\r\n]+$", "", prose, perl = TRUE)
+
+  list(text = prose, sources = promoted)
+}
+
 # Langflow sohbet modunu işle.
 # ctx: mesaj gönderme bağlamından gerekli değişkenleri içeren liste.
 # Döndürür: TRUE (işlendi ve send_message erken dönüş yapmalı).
@@ -129,15 +270,33 @@ handle_langflow_chat_mode <- function(ctx) {
     ctx$values$typing <- FALSE
 
     if (isTRUE(result$success)) {
+      # Öncelik Langflow'un yapılandırılmış kaynak üstverisindedir. Akış yalnızca
+      # düz "Kaynak: dosya.ext" satırları döndürdüyse, bu satırlar ancak
+      # local_model_paths altındaki gerçek bir dosyaya çözümlenirse yükseltilir.
+      # Böylece kullanıcıya görünen exact dosya adları tıklanabilir olurken,
+      # uydurma/erişilemeyen adlar düz metin ve fail-closed kalır.
+      final_text <- result$text
+      final_sources <- result$sources %||% list()
+      if (!length(final_sources)) {
+        promoted <- tryCatch(
+          mergen_langflow_promote_validated_text_sources(
+            final_text,
+            config$local_model_paths %||% list()
+          ),
+          error = function(e) list(text = final_text, sources = list())
+        )
+        final_text <- promoted$text
+        final_sources <- promoted$sources
+      }
+
       # Belge kaynakları (başlık/yol/sayfa/tür) düz metin Kaynakça işaretleyici
       # bloğu olarak içeriğe eklenir; render sırasında process_message_content
       # bloğu güvenli tıklanabilir .source-link HTML'ine yükseltir. İçerik DB'ye
       # işaretleyiciyle kaydedildiği için kayıtlı sohbet yeniden yüklemesinde de
       # aynı tıklanabilir Kaynakça üretilir.
-      final_text <- result$text
       if (exists("mergen_langflow_kaynakca_marker_block", mode = "function", inherits = TRUE)) {
         kaynak_blok <- tryCatch(
-          mergen_langflow_kaynakca_marker_block(result$sources),
+          mergen_langflow_kaynakca_marker_block(final_sources),
           error = function(e) ""
         )
         if (nzchar(kaynak_blok)) {
@@ -154,7 +313,7 @@ handle_langflow_chat_mode <- function(ctx) {
       if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
         err_msg <- redact_sensitive_text(err_msg)
       }
-      ctx$add_message_fn(paste0("\U000026A0\U0000FE0F ", err_msg), "ai")
+      ctx$add_message_fn(paste0("\U0000274C Langflow hatası: ", err_msg), "ai")
       showToast(ctx$session, err_msg, "error")
     }
 
