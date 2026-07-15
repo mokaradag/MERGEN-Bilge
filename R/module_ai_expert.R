@@ -171,13 +171,23 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       if (!identical(inflight$text, text)) return(NULL)
       if (!identical(inflight$char_id, char_id)) return(NULL)
       if (!identical(inflight$voice_sel, voice_sel)) return(NULL)
+      if (is.function(inflight$should_cancel) &&
+          isTRUE(tryCatch(inflight$should_cancel(), error = function(e) FALSE))) {
+        prewarming_tts(NULL)
+        return(NULL)
+      }
 
       inflight
     }
 
-    prewarm_speaking <- function(text, selected_char_id = NULL) {
+    prewarm_speaking <- function(text, selected_char_id = NULL, should_cancel = NULL,
+                                 trace_context = NULL) {
       text <- trimws(as.character(text %||% ""))
       if (!nzchar(text)) return(invisible(FALSE))
+      if (is.list(trace_context) &&
+          exists("mergen_ai_expert_trace_context_line", mode = "function", inherits = TRUE)) {
+        cat(mergen_ai_expert_trace_context_line("prewarm_lookup", trace_context), "\n")
+      }
 
       # Telaffuz/yazım düzeltmesi: start_speaking ile aynı metnin önbelleğe
       # alındığından emin olmak için burada da uygulanır. Aksi halde cache
@@ -214,7 +224,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       inflight <- get_inflight_prewarm_tts(text, char_id, voice_sel)
       if (!is.null(inflight)) return(invisible(TRUE))
 
-      chunks <- split_text_for_ai_expert_tts(text, max_chunk_chars = 220, min_chunk_chars = 70)
+      chunks <- split_text_for_ai_expert_tts(text)
       if (length(chunks) == 0) chunks <- list(text)
 
       cat(sprintf(
@@ -222,8 +232,11 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         char_id
       ))
 
-      # Ön ısıtma konuşma başlamadan yapılır; iptal edilmez (should_cancel yok).
-      tts_promise <- tts_processor$synthesize_speech(chunks[[1]], voice = voice_sel, profile_id = profile_sel)
+      tts_promise <- tts_processor$synthesize_speech(
+        chunks[[1]], voice = voice_sel, profile_id = profile_sel,
+        should_cancel = should_cancel, priority = MERGEN_TTS_QUEUE_PRIORITY_STARTUP,
+        trace_context = trace_context
+      )
 
       prewarming_tts(list(
         text = text,
@@ -232,12 +245,17 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         first_chunk_text = chunks[[1]],
         chunks = chunks,
         promise = tts_promise,
+        should_cancel = should_cancel,
         created_at = Sys.time()
       ))
 
       tts_promise %...>%
         (function(res) {
+          current <- isolate(prewarming_tts())
+          if (is.null(current) || !identical(current$promise, tts_promise)) return(invisible(NULL))
           prewarming_tts(NULL)
+          if (is.function(should_cancel) &&
+              isTRUE(tryCatch(should_cancel(), error = function(e) FALSE))) return(invisible(NULL))
 
           if (isTRUE(res$success) && nzchar(res$audio_src)) {
             prewarmed_tts(list(
@@ -259,8 +277,10 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
           }
         }) %...!%
         (function(e) {
+          current <- isolate(prewarming_tts())
+          if (is.null(current) || !identical(current$promise, tts_promise)) return(invisible(NULL))
           prewarming_tts(NULL)
-          cat(sprintf("[AI_EXPERT] Ön ısıtma TTS hatası: %s\n", conditionMessage(e)))
+          cat("[AI_EXPERT] Ön ısıtma TTS hatası.\n")
         })
 
       invisible(TRUE)
@@ -323,7 +343,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         # parçalar 1. parçanın sentezini beklemeden arka planda paralel üretilir
         # (eşzamanlılık paylaşılan sınırlı TTS kuyruğuyla LOCAL_TTS_MAX_CONCURRENCY
         # ile sınırlıdır). Oynatma sırası kesin olarak parça indeksinde korunur.
-        chunks <- split_text_for_ai_expert_tts(text, max_chunk_chars = 220, min_chunk_chars = 70)
+        chunks <- split_text_for_ai_expert_tts(text)
         if (length(chunks) == 0) chunks <- list(text)
 
         cat(sprintf(
@@ -331,27 +351,41 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
           length(chunks), nchar(text)
         ))
 
-        # Görselleştiriciyi hemen tetikle (ses hazır olunca JS ayrıca setTalking yapar).
-        tts_visualizer$trigger(duration = 0)
-
         # Eskime-korumalı aktiflik: dizi hâlâ güncel (speech_seq == seq_id) VE
         # konuşma aktif olmalı. Durdurulmuş veya yeni bir konuşmayla değiştirilmiş
         # (superseded) eski asenkron geri çağrımlar bu yüklemle sessizce reddedilir.
         is_active <- function() isTRUE(is_speaking()) && identical(isolate(speech_seq()), seq_id)
 
         # Enjekte edilen TTS çağrısı (saf konuşma dizisi orkestratörü için).
-        synthesize <- function(chunk_text) {
-          tts_processor$synthesize_speech(chunk_text, voice = voice_sel, profile_id = profile_sel)
+        synthesize <- function(chunk_text, startup_priority = FALSE, chunk_index = NULL) {
+          tts_processor$synthesize_speech(
+            chunk_text, voice = voice_sel, profile_id = profile_sel,
+            should_cancel = function() !is_active(),
+            priority = if (isTRUE(startup_priority)) {
+              MERGEN_TTS_QUEUE_PRIORITY_STARTUP
+            } else {
+              MERGEN_TTS_QUEUE_PRIORITY_NORMAL
+            },
+            trace_context = list(sequence_id = seq_id,
+              page_id = isolate(current_page()), chunk_index = chunk_index)
+          )
         }
 
         # Yapılandırılmış, gizlilik-güvenli tanılama (ref_audio/base64 ASLA loglanmaz).
-        seq_log <- function(msg) cat(sprintf("[AI_EXPERT] %s\n", msg))
+        seq_log <- function(msg) cat(sprintf(
+          "[AI_EXPERT_TRACE] at=%s seq=%d page=%s %s\n",
+          format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3%z"), seq_id,
+          isolate(current_page()), msg
+        ))
 
         # 1. parça için ön ısıtma promise'i (varsa). Başarısız olursa dizi taze
         # sentezle yeniden dener (helper içinde ele alınır).
         first_chunk_promise <- NULL
         prewarmed <- get_prewarmed_tts(text, char_id, voice_sel)
         inflight_prewarm <- get_inflight_prewarm_tts(text, char_id, voice_sel)
+        cat(mergen_ai_expert_trace_line(
+          "prewarm_lookup", sequence_id = seq_id, page_id = isolate(current_page()), chunk_index = 1L
+        ), "\n")
 
         if (!is.null(prewarmed) && nzchar(prewarmed$audio_src %||% "")) {
           cat(sprintf(
@@ -385,9 +419,6 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         speech_sequence$start()
       } else {
 		# TTS yoksa sadece altyazı göster, süre tahminle
-		# Görselleştiriciyi sessiz bile aktive et (animasyon göster)
-		tts_visualizer$trigger(duration = 0)
-
 		session$sendCustomMessage("aiExpertStartSubtitle", list(
 		  text        = text,
 		  avatarSrc   = avatar_src,
@@ -418,7 +449,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       # konuşmadan geç gelen sonuçlar oynatılmaz.
       speech_seq(isolate(speech_seq()) + 1L)
       session$sendCustomMessage("aiExpertStopSubtitle", list(
-        nsPrefix = ns("")
+        nsPrefix = ns(""), speechSeq = isolate(speech_seq())
       ))
 
       # TTS görselleştiricisini durdur

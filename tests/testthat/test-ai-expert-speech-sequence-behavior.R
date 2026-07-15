@@ -56,8 +56,12 @@ source(file.path(resolve_repo_root_for_tests(), "R", "helpers_ai_expert_speech.R
 test_that("2..N parçaları 1. parça çözülmeden önce eager sentezlenir", {
   calls <- character(0)
   defs <- list()
-  synth <- function(text) {
+  priorities <- logical(0)
+  indexes <- integer(0)
+  synth <- function(text, startup_priority = FALSE, chunk_index = NULL) {
     calls[[length(calls) + 1L]] <<- text
+    priorities[[length(priorities) + 1L]] <<- startup_priority
+    indexes[[length(indexes) + 1L]] <<- chunk_index
     d <- .seq_deferred(); defs[[text]] <<- d; d$promise
   }
   sent <- list()
@@ -73,12 +77,14 @@ test_that("2..N parçaları 1. parça çözülmeden önce eager sentezlenir", {
   # start() döner dönmez 3 sentez isteği yapılmış olmalı (henüz hiçbiri çözülmedi).
   expect_identical(length(calls), 3L)
   expect_setequal(calls, c("Bir.", "Iki.", "Uc."))
+  expect_identical(priorities, c(TRUE, FALSE, FALSE))
+  expect_identical(indexes, 1:3)
   expect_identical(length(sent), 0L)   # hiçbir şey gönderilmedi (1. parça çözülmedi)
 })
 
 test_that("oynatma sırası sentez sırası ne olursa olsun kesin parça sırasıdır", {
   defs <- list()
-  synth <- function(text) { d <- .seq_deferred(); defs[[text]] <<- d; d$promise }
+  synth <- function(text, startup_priority = FALSE, chunk_index = NULL) { d <- .seq_deferred(); defs[[text]] <<- d; d$promise }
   sent <- list()
   send <- function(type, data) sent[[length(sent) + 1L]] <<- list(type = type, index = data$index %||% NA)
 
@@ -105,7 +111,7 @@ test_that("oynatma sırası sentez sırası ne olursa olsun kesin parça sıras�
 
 test_that("her parça en fazla bir kez sentez kuyruğuna verilir", {
   calls <- character(0)
-  synth <- function(text) { calls[[length(calls) + 1L]] <<- text; promises::promise_resolve(.seq_ok(1)) }
+  synth <- function(text, startup_priority = FALSE, chunk_index = NULL) { calls[[length(calls) + 1L]] <<- text; promises::promise_resolve(.seq_ok(1)) }
   send <- function(type, data) invisible(NULL)
 
   seq <- mergen_ai_expert_new_speech_sequence(
@@ -122,7 +128,7 @@ test_that("her parça en fazla bir kez sentez kuyruğuna verilir", {
 
 test_that("durdurulmuş dizi geç promise çözümlerini yok sayar", {
   defs <- list()
-  synth <- function(text) { d <- .seq_deferred(); defs[[text]] <<- d; d$promise }
+  synth <- function(text, startup_priority = FALSE, chunk_index = NULL) { d <- .seq_deferred(); defs[[text]] <<- d; d$promise }
   sent <- list()
   send <- function(type, data) sent[[length(sent) + 1L]] <<- type
   stopped <- FALSE
@@ -143,7 +149,7 @@ test_that("yeni dizi önceki diziye (token) ait geri çağrımları yok sayar", 
   # is_active bir dizi belirtecine bağlanır. Yeni bir konuşma başlayınca eski
   # dizinin is_active'i FALSE olur; eski promise'lerin geç çözümleri oynatılmaz.
   defs <- list()
-  synth <- function(text) { d <- .seq_deferred(); defs[[text]] <<- d; d$promise }
+  synth <- function(text, startup_priority = FALSE, chunk_index = NULL) { d <- .seq_deferred(); defs[[text]] <<- d; d$promise }
   old_sent <- list()
   active_token <- 1L
   seq_id <- 1L   # eski dizinin belirteci
@@ -169,7 +175,7 @@ test_that("yeni dizi önceki diziye (token) ait geri çağrımları yok sayar", 
 test_that("sonraki parça başarısız olsa da dizi durmaz (altyazı-yalnız geçiş)", {
   # 2. parça iki denemede de başarısız (retryable), 1 ve 3 başarılı.
   attempts2 <- 0L
-  synth <- function(text) {
+  synth <- function(text, startup_priority = FALSE, chunk_index = NULL) {
     if (identical(text, "Iki.")) { attempts2 <<- attempts2 + 1L; return(promises::promise_resolve(.seq_fail())) }
     promises::promise_resolve(.seq_ok(1))
   }
@@ -195,7 +201,7 @@ test_that("sonraki parça başarısız olsa da dizi durmaz (altyazı-yalnız ge�
 })
 
 test_that("1. parça başarısız -> tüm-metin altyazı geri dönüşü", {
-  synth <- function(text) {
+  synth <- function(text, startup_priority = FALSE, chunk_index = NULL) {
     if (identical(text, "Bir.")) return(promises::promise_resolve(.seq_fail()))
     promises::promise_resolve(.seq_ok(1))
   }
@@ -218,7 +224,7 @@ test_that("1. parça başarısız -> tüm-metin altyazı geri dönüşü", {
 
 test_that("ön ısıtma (first_chunk_promise) 1. parça için kullanılır, 2. parça yine eager sentezlenir", {
   calls <- character(0)
-  synth <- function(text) { calls[[length(calls) + 1L]] <<- text; promises::promise_resolve(.seq_ok(1)) }
+  synth <- function(text, startup_priority = FALSE, chunk_index = NULL) { calls[[length(calls) + 1L]] <<- text; promises::promise_resolve(.seq_ok(1)) }
   sent <- list()
   send <- function(type, data) sent[[length(sent) + 1L]] <<- list(type = type, index = data$index %||% NA)
 

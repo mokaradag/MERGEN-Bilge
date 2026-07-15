@@ -139,6 +139,9 @@ test_that("geçersiz JSON-sarmalı base64 (WAV olmayan) reddedilir", {
 test_that("streaming (data boyutu=0) WAV gerçek baytlarla süre hesaplar", {
   # data boyutu 0 bildirilmiş ama fiziksel örnekler mevcut (akış WAV'ı).
   raw <- tts_fixture_wav_raw(seconds = 1, data_size_override = 0L)
+  # PCM başlangıcını sahte ve dev bir RIFF chunk başlığına benzet. Ayrıştırıcı
+  # data'da durmazsa bu örnek baytlarını başlık sanıp geçerli WAV'ı reddeder.
+  raw[45:52] <- c(charToRaw("JUNK"), as.raw(c(255, 255, 255, 127)))
   res <- mergen_tts_validate_generated_wav(raw)
   expect_true(res$ok)
   expect_true(res$duration > 0)
@@ -156,6 +159,17 @@ test_that("süre/metin makullük kuralı çok kısa sesi (uzun metinde) yakalar 
   # NA süre veya sıfır süre uzun metinde makul değildir.
   expect_false(mergen_tts_audio_duration_plausible(NA_real_, 200))
   expect_false(mergen_tts_audio_duration_plausible(0, 200))
+})
+
+test_that("süre makullüğü yapılandırılmış konuşma hızına göre ölçeklenir", {
+  # 90 karakter / (45 karakter/sn * 2x) = 1 saniye alt sınır.
+  expect_false(mergen_tts_audio_duration_plausible(1.0, 90, speech_speed = 1.0))
+  expect_true(mergen_tts_audio_duration_plausible(1.0, 90, speech_speed = 2.0))
+
+  text <- paste(rep("hızlı", 18L), collapse = " ")
+  raw <- tts_fixture_wav_raw(seconds = 1)
+  expect_false(mergen_tts_validate_generated_wav(raw, text = text, speech_speed = 1.0)$ok)
+  expect_true(mergen_tts_validate_generated_wav(raw, text = text, speech_speed = 4.0)$ok)
 })
 
 test_that("boş/NULL/raw-olmayan girdi güvenle reddedilir", {

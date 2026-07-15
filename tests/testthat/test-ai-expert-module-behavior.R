@@ -24,7 +24,17 @@ source(
   local = .aiexp_env
 )
 source(
+  file.path(resolve_repo_root_for_tests(), "R", "helpers_ai_expert_lifecycle.R"),
+  encoding = "UTF-8",
+  local = .aiexp_env
+)
+source(
   file.path(resolve_repo_root_for_tests(), "R", "helpers_ai_expert_speech.R"),
+  encoding = "UTF-8",
+  local = .aiexp_env
+)
+source(
+  file.path(resolve_repo_root_for_tests(), "R", "helpers_tts_queue.R"),
   encoding = "UTF-8",
   local = .aiexp_env
 )
@@ -170,7 +180,9 @@ test_that("start_speaking (TTS yok): altyazı + sessiz geri dönüş mesajları 
       # Altyazı metni mesaja taşınmalı.
       expect_true(grepl("Merhaba", kayit$msgs$aiExpertStartSubtitle$text, fixed = TRUE))
       # Görselleştirici sessizce de tetiklenmeli.
-      expect_true(kayit$trigger >= 1L)
+      # Görselleştirici sunucu sentez/dispatch anında başlamaz; yalnızca
+      # tarayıcının gerçek audio `playing` olayı setTalking çağırabilir.
+      expect_identical(kayit$trigger, 0L)
     }
   )
 })
@@ -303,7 +315,9 @@ test_that("start_speaking (TTS açık): speech token ilk parça geri çağrısı
 
       expect_true("aiExpertStartWithAudio" %in% names(kayit$msgs))
       expect_true(isTRUE(session$returned$is_speaking()))
-      expect_true(kayit$trigger >= 1L)
+      # Sunucu sentez/dispatch anı gerçek oynatma değildir; browser `playing`
+      # olayı görselleştirici yaşam döngüsünü tek başına yönetir.
+      expect_identical(kayit$trigger, 0L)
     }
   )
 })
@@ -360,6 +374,71 @@ test_that("prewarm_speaking: boş metinde ve TTS kullanılamazken FALSE döner",
       expect_false(isTRUE(session$returned$prewarm_speaking("ön ısıtılacak metin")))
     }
   )
+})
+
+test_that("prewarm_speaking: aynı ilk karşılama parçasını uçuşta yeniden sentezlemez", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("promises")
+  skip_if_not_installed("later")
+
+  sd <- .aiexp_settings(); sd$enable_tts_audio <- TRUE
+  calls <- 0L; priorities <- integer(0); cancel_predicates <- list()
+  tts <- list(
+    tts_available = function() TRUE,
+    synthesize_speech = function(text, voice = NULL, profile_id = NULL,
+                                 should_cancel = NULL, priority = 0L, ...) {
+      calls <<- calls + 1L
+      priorities <<- c(priorities, priority)
+      cancel_predicates[[length(cancel_predicates) + 1L]] <<- should_cancel
+      promises::promise_resolve(list(success = TRUE,
+        audio_src = "data:audio/wav;base64,QUJD", duration = 1, media_duration = 1))
+    }
+  )
+
+  shiny::testServer(.aiexp_env$aiExpertServer,
+    args = list(id = "ax", settings_data = sd, tts_processor = tts,
+      tts_visualizer = list(trigger = function(...) NULL, stop = function() NULL)), {
+      root <- .subset2(session, "parent")
+      root$sendCustomMessage <- function(type, message) invisible(NULL)
+      never_cancel <- function() FALSE
+      expect_true(session$returned$prewarm_speaking("Kısa karşılama metni.",
+        should_cancel = never_cancel))
+      expect_true(session$returned$prewarm_speaking("Kısa karşılama metni.",
+        should_cancel = never_cancel))
+      session$returned$start_speaking("Kısa karşılama metni.")
+      for (i in seq_len(20)) later::run_now(timeoutSecs = 0)
+
+      expect_identical(calls, 1L)
+      expect_identical(priorities, .aiexp_env$MERGEN_TTS_QUEUE_PRIORITY_STARTUP)
+      expect_true(is.function(cancel_predicates[[1L]]))
+      expect_false(cancel_predicates[[1L]]())
+    })
+})
+
+test_that("prewarm_speaking: eski neslin uçuşta promise'ini yeniden kullanmaz", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("promises")
+
+  sd <- .aiexp_settings(); sd$enable_tts_audio <- TRUE
+  calls <- 0L; stale <- FALSE
+  tts <- list(
+    tts_available = function() TRUE,
+    synthesize_speech = function(...) {
+      calls <<- calls + 1L
+      promises::promise(function(resolve, reject) invisible(NULL))
+    }
+  )
+  shiny::testServer(.aiexp_env$aiExpertServer,
+    args = list(id = "ax", settings_data = sd, tts_processor = tts,
+      tts_visualizer = list(trigger = function(...) NULL, stop = function() NULL)), {
+      should_cancel <- function() stale
+      expect_true(session$returned$prewarm_speaking("Nesil korumalı karşılama.",
+        should_cancel = should_cancel))
+      stale <- TRUE
+      expect_true(session$returned$prewarm_speaking("Nesil korumalı karşılama.",
+        should_cancel = function() FALSE))
+      expect_identical(calls, 2L)
+    })
 })
 
 # -----------------------------------------------------------------------------

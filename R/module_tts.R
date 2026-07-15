@@ -105,8 +105,12 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
     #' @param voice Kullanılacak jenerik yedek ses (opsiyonel)
     #' @param profile_id VoxCPM2 persona ses profili kimliği (opsiyonel)
     #' @param should_cancel Kuyruk başlamadan iptali kontrol eden fonksiyon (opsiyonel)
+    #' @param priority Paylaşılan kuyruk önceliği (yüksek değer önce; eşitte FIFO)
+    #' @param trace_context Gizlilik-güvenli seq/generation/page/chunk kimlikleri
     #' @return promise nesnesi: list(success, audio_src, voice, duration, error)
-    synthesize_speech <- function(text, voice = NULL, profile_id = NULL, should_cancel = NULL) {
+    synthesize_speech <- function(text, voice = NULL, profile_id = NULL,
+                                  should_cancel = NULL, priority = 0L,
+                                  trace_context = NULL) {
       if (!tts_available()) {
         cat("[TTS] Seslendirme kullanılamıyor: uç nokta yapılandırılmamış\n")
         return(promises::promise_resolve(list(
@@ -141,6 +145,7 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
             response_format = "mp3"
           ),
           mime_type = "audio/mpeg", voice = voice %||% tts_config$default_voice %||% "default",
+          response_format = "mp3", speed = NULL,
           cached_audio_src = NULL, cache_write_path = "", profile_active = FALSE
         )
       }
@@ -168,7 +173,9 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
       if (is.na(timeout_val) || timeout_val <= 0) timeout_val <- 90
       verify_ssl_val   <- tts_config$verify_ssl
       should_verify    <- if (is.null(verify_ssl_val)) FALSE else isTRUE(verify_ssl_val)
-      response_format  <- tolower(as.character(plan$response_format %||% "wav")[1])
+      response_format  <- tolower(as.character(plan$response_format %||% plan$body$response_format %||% "wav")[1])
+      speed_to_use     <- suppressWarnings(as.numeric(plan$speed %||% 1.0)[1])
+      if (is.na(speed_to_use) || !is.finite(speed_to_use) || speed_to_use <= 0) speed_to_use <- 1.0
 
       # WAV yapısal doğrulama yardımcısını worker'a AÇIKÇA taşı. Böylece üretilen
       # ses (yalnızca WAV) önbelleğe yazılmadan ve tarayıcıya gönderilmeden önce
@@ -195,6 +202,7 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
 
       queue <- tryCatch(mergen_tts_default_queue(tts_config), error = function(e) NULL)
 
+      worker_started_at <- NULL
       redact_tts_error <- function(msg, max_chars = 500L) {
         if (exists("mergen_tts_redact_error_text", mode = "function", inherits = TRUE)) {
           mergen_tts_redact_error_text(msg, max_chars = max_chars)
@@ -205,6 +213,11 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
 
       # --- ASENKRON ÇALIŞTIRICI (WORKER) FABRİKASI ---
       worker_factory <- function() {
+        worker_started_at <<- Sys.time()
+        if (is.list(trace_context) &&
+            exists("mergen_ai_expert_trace_context_line", mode = "function", inherits = TRUE)) {
+          cat(mergen_ai_expert_trace_context_line("tts_worker_start", trace_context), "\n")
+        }
         tracked_future_promise(
           task_fn = function() {
             start_time <- Sys.time()
@@ -311,7 +324,9 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
               media_duration <- NA_real_
               if (identical(response_format, "wav") &&
                   exists("mergen_tts_validate_generated_wav", mode = "function", inherits = TRUE)) {
-                vres <- mergen_tts_validate_generated_wav(audio_raw, text = speech_text)
+                vres <- mergen_tts_validate_generated_wav(
+                  audio_raw, text = speech_text, speech_speed = speed_to_use
+                )
                 if (!isTRUE(vres$ok)) {
                   worker_log(sprintf("GEÇERSİZ SES reddedildi (%d bayt): %s",
                                      length(audio_raw), vres$error %||% "bilinmeyen"))
@@ -369,6 +384,11 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
       }
 
       on_worker_error <- function(e) {
+        if (is.list(trace_context) && !is.null(worker_started_at) &&
+            exists("mergen_ai_expert_trace_context_line", mode = "function", inherits = TRUE)) {
+          cat(mergen_ai_expert_trace_context_line("tts_worker_complete", trace_context,
+            as.numeric(difftime(Sys.time(), worker_started_at, units = "secs")) * 1000), "\n")
+        }
         safe_err_msg <- redact_tts_error(conditionMessage(e))
         cat(sprintf("[TTS] Worker hatası: %s\n", safe_err_msg))
         try({
@@ -381,11 +401,26 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
 
       # Sınırlı eşzamanlılık kuyruğuyla gönder (iptal-farkındalı); kuyruk yoksa
       # doğrudan çalıştır (geriye dönük güvenli davranış).
-      if (is.environment(queue) && is.function(queue$submit)) {
-        queue$submit(worker_factory, should_cancel = should_cancel) %...!% on_worker_error
+      worker_promise <- if (is.environment(queue) && is.function(queue$submit)) {
+        if (is.list(trace_context) &&
+            exists("mergen_ai_expert_trace_context_line", mode = "function", inherits = TRUE)) {
+          cat(mergen_ai_expert_trace_context_line("tts_queue_submit", trace_context), "\n")
+        } else {
+          cat(sprintf("[TTS_TRACE] at=%s event=queue_submit priority=%s chars=%d\n",
+            format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3%z"), as.character(priority), nchar(speech_text)))
+        }
+        queue$submit(worker_factory, should_cancel = should_cancel, priority = priority)
       } else {
-        worker_factory() %...!% on_worker_error
+        worker_factory()
       }
+      worker_promise %...>% (function(result) {
+        if (is.list(trace_context) && !is.null(worker_started_at) &&
+            exists("mergen_ai_expert_trace_context_line", mode = "function", inherits = TRUE)) {
+          cat(mergen_ai_expert_trace_context_line("tts_worker_complete", trace_context,
+            as.numeric(difftime(Sys.time(), worker_started_at, units = "secs")) * 1000), "\n")
+        }
+        result
+      }) %...!% on_worker_error
     }
 
     # TTS/AI Uzman açıksa seçili profili tembel ön yükleme politikasını bağla.

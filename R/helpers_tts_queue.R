@@ -4,8 +4,9 @@
 #             VoxCPM2 referans-ses istekleri sınırsız paralel gönderilmemelidir.
 #             Bu kuyruk süreç kapsamında en fazla N işi aynı anda çalıştırır
 #             (varsayılan 2, LOCAL_TTS_MAX_CONCURRENCY ile ayarlanır), kalanları
-#             FIFO sırayla bekletir ve iptal-farkındalıdır (durdurulmuş bir istekten
-#             sonra eskimiş parçalar başlatılmaz).
+#             açılış-kritik ilk parçaya öncelik verir; eşit öncelikte FIFO kalır ve
+#             iptal-farkındalıdır (durdurulmuş bir istekten sonra eskimiş parçalar
+#             başlatılmaz).
 #
 #             Oynatma sırası istemci tarafında chunkIndex/index ile korunduğundan
 #             kuyruk çıktıyı yeniden sıralamaz; yalnızca eşzamanlılığı sınırlar.
@@ -15,6 +16,9 @@
 if (!exists("%||%", mode = "function", inherits = TRUE)) {
   `%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
 }
+
+MERGEN_TTS_QUEUE_PRIORITY_NORMAL  <- 0L
+MERGEN_TTS_QUEUE_PRIORITY_STARTUP <- 100L
 
 #' Sınırlı Eşzamanlılık Kuyruğu Oluştur
 #'
@@ -74,14 +78,19 @@ mergen_tts_create_queue <- function(max_concurrency = 2L) {
 
   pump <- function() {
     while (q$active < q$max && length(q$pending) > 0L) {
-      rec <- q$pending[[1L]]
-      q$pending <- q$pending[-1L]
+      priorities <- vapply(q$pending, function(x) x$priority, numeric(1))
+      next_idx <- which.max(priorities)
+      rec <- q$pending[[next_idx]]
+      q$pending <- q$pending[-next_idx]
       run_record(rec)
     }
   }
 
-  q$submit <- function(factory, should_cancel = NULL) {
+  q$submit <- function(factory, should_cancel = NULL,
+                       priority = MERGEN_TTS_QUEUE_PRIORITY_NORMAL) {
     if (!is.function(factory)) stop("factory bir fonksiyon olmalıdır.", call. = FALSE)
+    priority <- suppressWarnings(as.numeric(priority)[1])
+    if (is.na(priority) || !is.finite(priority)) priority <- MERGEN_TTS_QUEUE_PRIORITY_NORMAL
     captured <- new.env(parent = emptyenv())
     p <- promises::promise(function(resolve, reject) {
       captured$resolve <- resolve
@@ -90,6 +99,7 @@ mergen_tts_create_queue <- function(max_concurrency = 2L) {
     rec <- list(
       factory = factory,
       should_cancel = should_cancel,
+      priority = priority,
       resolve = captured$resolve,
       reject = captured$reject
     )

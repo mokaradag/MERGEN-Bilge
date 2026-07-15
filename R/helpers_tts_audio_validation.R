@@ -142,6 +142,10 @@ mergen_tts_parse_wav_bytes <- function(raw_all) {
       res$data_offset <- body_start
       # data chunk'ından sonra fiziksel olarak mevcut bayt sayısı.
       res$data_available_bytes <- max(0, n - (body_start - 1L))
+      # Ses örnekleri RIFF alt-chunk başlıkları değildir. Özellikle streaming
+      # WAV'larda data size=0 olduğunda PCM baytlarının içine yürümek rastgele
+      # "chunk" boyutları üretip geçerli sesi kesik gösterebilir; data'da dur.
+      break
     }
 
     # Bildirilen chunk boyutu dosya sonunu aşıyorsa güvenle ilerleyemeyiz.
@@ -227,16 +231,20 @@ mergen_tts_decode_audio_payload <- function(x) {
 #' @param text_chars Metnin karakter uzunluğu
 #' @param min_chars_for_check Bu uzunluğun altında denetim yapılmaz
 #' @param max_chars_per_second Fiziksel üst konuşma hızı sınırı (karakter/sn)
+#' @param speech_speed İstekte kullanılan konuşma hızı çarpanı
 #' @return Mantıksal: makul ise TRUE
 mergen_tts_audio_duration_plausible <- function(duration_secs, text_chars,
                                                 min_chars_for_check = MERGEN_TTS_PLAUSIBILITY_MIN_CHARS,
-                                                max_chars_per_second = MERGEN_TTS_PLAUSIBILITY_MAX_CHARS_PER_S) {
+                                                max_chars_per_second = MERGEN_TTS_PLAUSIBILITY_MAX_CHARS_PER_S,
+                                                speech_speed = 1.0) {
   text_chars <- suppressWarnings(as.numeric(text_chars %||% 0))
   duration_secs <- suppressWarnings(as.numeric(duration_secs %||% NA_real_))
+  speech_speed <- suppressWarnings(as.numeric(speech_speed %||% 1.0))
+  if (is.na(speech_speed) || !is.finite(speech_speed) || speech_speed <= 0) speech_speed <- 1.0
   if (is.na(text_chars) || text_chars < min_chars_for_check) return(TRUE)
   if (is.na(duration_secs) || duration_secs <= 0) return(FALSE)
   if (is.na(max_chars_per_second) || max_chars_per_second <= 0) return(TRUE)
-  min_expected <- text_chars / max_chars_per_second
+  min_expected <- text_chars / (max_chars_per_second * speech_speed)
   duration_secs >= min_expected
 }
 
@@ -256,11 +264,13 @@ mergen_tts_audio_duration_plausible <- function(duration_secs, text_chars,
 #' @param text (opsiyonel) Sentezlenen metin; süre/metin makullük denetimi için
 #' @param min_duration_secs Kabul edilen alt süre sınırı
 #' @param check_plausibility Süre/metin makullük denetimi uygulansın mı
+#' @param speech_speed İstekte kullanılan konuşma hızı çarpanı
 #' @return Liste: ok, error, retryable, duration, channels, sample_rate,
 #'   bits_per_sample, metadata
 mergen_tts_validate_generated_wav <- function(audio, text = NULL,
                                               min_duration_secs = MERGEN_TTS_WAV_MIN_DURATION_SECS,
-                                              check_plausibility = TRUE) {
+                                              check_plausibility = TRUE,
+                                              speech_speed = 1.0) {
   fail <- function(msg, retryable = TRUE, meta = NULL) {
     list(ok = FALSE, error = msg, retryable = retryable, duration = NA_real_,
          channels = NA_real_, sample_rate = NA_real_, bits_per_sample = NA_real_,
@@ -311,7 +321,9 @@ mergen_tts_validate_generated_wav <- function(audio, text = NULL,
 
   if (isTRUE(check_plausibility) && !is.null(text)) {
     text_chars <- nchar(as.character(text %||% "")[1], type = "chars", allowNA = FALSE, keepNA = FALSE)
-    if (!isTRUE(mergen_tts_audio_duration_plausible(duration, text_chars))) {
+    if (!isTRUE(mergen_tts_audio_duration_plausible(
+      duration, text_chars, speech_speed = speech_speed
+    ))) {
       return(fail("Üretilen ses metne göre şüpheli derecede kısa (yarıda kesilmiş olabilir).",
                   retryable = TRUE, meta = meta))
     }

@@ -69,6 +69,16 @@ suppressMessages({
     file.path(
       resolve_repo_root_for_tests(),
       "R",
+      "helpers_ai_expert_lifecycle.R"
+    ),
+    encoding = "UTF-8",
+    local = env
+  )
+
+  source(
+    file.path(
+      resolve_repo_root_for_tests(),
+      "R",
       "server_ai_expert_handlers.R"
     ),
     encoding = "UTF-8",
@@ -130,7 +140,7 @@ suppressMessages({
 .ai_expert_stub <- function(spoke) {
   list(
     is_speaking = function() {
-      FALSE
+      isTRUE(spoke$is_speaking)
     },
 
     can_speak = function() {
@@ -140,10 +150,13 @@ suppressMessages({
     start_speaking = function(text, ...) {
       spoke$n <- spoke$n + 1L
       spoke$last_text <- text
+      spoke$is_speaking <- TRUE
       invisible(NULL)
     },
 
     stop_speaking = function(...) {
+      spoke$stop_n <- if (is.null(spoke$stop_n)) 1L else spoke$stop_n + 1L
+      spoke$is_speaking <- FALSE
       invisible(NULL)
     },
 
@@ -375,3 +388,82 @@ testthat::test_that(
     )
   }
 )
+
+
+# ------------------------------------------------------------------------------
+# Test 3: Aktif A rehberliği gezinmede durur; B rehberliği hemen başlayabilir
+# ------------------------------------------------------------------------------
+
+testthat::test_that(
+  "sayfa geçişi aktif eski rehberliği durdurur ve yenisini engellemez",
+  {
+    ctrl <- new.env(parent = emptyenv()); ctrl$resolve <- NULL
+    spoke <- new.env(parent = emptyenv())
+    spoke$n <- 0L; spoke$stop_n <- 0L; spoke$last_text <- NULL
+    env <- .ai_expert_pg_env(ctrl = ctrl, spoke = spoke)
+    ai_expert <- .ai_expert_stub(spoke)
+
+    testthat::with_mocked_bindings(
+      {
+        shiny::testServer(.ai_expert_wrapper(env = env, ai_expert = ai_expert), {
+          session$setInputs(tabs = "files")
+          session$setInputs(tabs = "history")
+          ctrl$resolve("History rehberliği")
+          .drain_ai_expert_later()
+          testthat::expect_true(spoke$is_speaking)
+
+          session$setInputs(tabs = "files")
+          testthat::expect_identical(spoke$stop_n, 1L)
+          testthat::expect_false(spoke$is_speaking)
+          testthat::expect_true(is.function(ctrl$resolve))
+
+          ctrl$resolve("Dosyalar rehberliği")
+          .drain_ai_expert_later()
+          testthat::expect_identical(spoke$n, 2L)
+          testthat::expect_identical(spoke$last_text, "Dosyalar rehberliği")
+          testthat::expect_true(spoke$is_speaking)
+        })
+      },
+      delay = function(ms, expr) invisible(NULL),
+      runjs = function(...) invisible(NULL),
+      .package = "shinyjs"
+    )
+  }
+)
+
+
+testthat::test_that("nesil belirteci eski LLM/TTS işini geçersizleştirir", {
+  env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_ai_expert_lifecycle.R"),
+         encoding = "UTF-8", local = env)
+  generation <- 1L; page <- "files"
+  cancel_a <- env$mergen_ai_expert_cancel_predicate(
+    1L, "files", function() generation, function() page
+  )
+  testthat::expect_false(cancel_a())
+  generation <- env$mergen_ai_expert_next_generation(generation); page <- "analysis"
+  testthat::expect_true(cancel_a())
+  line <- env$mergen_ai_expert_trace_context_line("tts_worker_complete",
+    list(sequence_id = 7L, page_id = "files<script>", chunk_index = 1L),
+    duration_ms = 125.4, at = as.POSIXct("2026-07-15 09:00:00", tz = "UTC"))
+  testthat::expect_match(line, "seq=7", fixed = TRUE)
+  testthat::expect_match(line, "duration_ms=125", fixed = TRUE)
+  testthat::expect_false(grepl("<script>", line, fixed = TRUE))
+})
+
+
+testthat::test_that("kritik yol izleri içerik taşımadan worker aşamalarını kapsar", {
+  root <- resolve_repo_root_for_tests()
+  tts <- paste(readLines(file.path(root, "R", "module_tts.R"),
+                         warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  module <- paste(readLines(file.path(root, "R", "module_ai_expert.R"),
+                            warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  testthat::expect_match(tts,
+    'mergen_ai_expert_trace_context_line("tts_worker_start"', fixed = TRUE)
+  testthat::expect_match(tts,
+    'mergen_ai_expert_trace_context_line("tts_worker_complete"', fixed = TRUE)
+  lifecycle <- paste(readLines(file.path(root, "R", "helpers_ai_expert_lifecycle.R"),
+                               warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  testthat::expect_match(lifecycle, "chunk_index = context$chunk_index", fixed = TRUE)
+  testthat::expect_match(module, "should_cancel = function() !is_active()", fixed = TRUE)
+})

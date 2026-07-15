@@ -260,6 +260,7 @@ mergen_seam_registry <- function() {
         "tests/testthat/test-tts-request-behavior.R",
         "tests/testthat/test-tts-queue-behavior.R",
         "tests/testthat/test-ai-expert-speech-sequence-behavior.R",
+        "tests/testthat/test-ai-expert-page-guidance-stale-behavior.R",
         "tests/testthat/test-ai-expert-playback-lifecycle-contract.R"
       ),
       focused_validation = c(

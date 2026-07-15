@@ -170,12 +170,14 @@ mergen_tts_prepare_speech_plan <- function(text, config = NULL, profile_id = NUL
         cached_raw <- mergen_tts_audio_cache_read(cache_path)
         if (!is.null(cached_raw)) {
           cache_ok <- TRUE
-          # WAV önbelleğini yapısal olarak doğrula: bozuk/kesik/eksik ise önbellek
-          # isabeti SAYMA ve dosyayı güvenle sil (gelecekte yeniden üretilir).
-          # Makullük denetimi burada uygulanmaz (yazım anında zaten uygulandı).
+          # WAV önbelleğini yapısal ve metne göre doğrula: eski/başka bir yazıcıdan
+          # kalan yapısal olarak geçerli ama semantik olarak kısa kayıt da isabet
+          # sayılmaz; silinir ve aynı hız/metinle yeniden üretilir.
           if (identical(tolower(response_format), "wav") &&
               exists("mergen_tts_validate_generated_wav", mode = "function", inherits = TRUE)) {
-            cvres <- mergen_tts_validate_generated_wav(cached_raw, check_plausibility = FALSE)
+            cvres <- mergen_tts_validate_generated_wav(
+              cached_raw, text = text, speech_speed = speed
+            )
             cache_ok <- isTRUE(cvres$ok)
             if (isTRUE(cache_ok)) {
               cached_duration <- suppressWarnings(as.numeric(cvres$duration %||% NA_real_))

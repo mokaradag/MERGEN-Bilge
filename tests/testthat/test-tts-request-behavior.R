@@ -172,6 +172,20 @@ test_that("prepare_speech_plan profil çözülemezse jenerik yola güvenli düş
   expect_null(plan$body$ref_audio)
 })
 
+test_that("module_tts jenerik MP3 fallback'i WAV doğrulamasına sokmaz", {
+  path <- file.path(resolve_repo_root_for_tests(), "R", "module_tts.R")
+  src <- paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  request_src <- paste(readLines(file.path(resolve_repo_root_for_tests(), "R",
+    "helpers_tts_request.R"), warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(src, 'response_format = "mp3"', fixed = TRUE)
+  expect_match(src,
+    'plan$response_format %||% plan$body$response_format %||% "wav"', fixed = TRUE)
+  expect_match(src, 'if (identical(response_format, "wav") &&', fixed = TRUE)
+  expect_match(src, "audio_raw, text = speech_text, speech_speed = speed_to_use", fixed = TRUE)
+  expect_match(request_src, "cached_raw, text = text, speech_speed = speed", fixed = TRUE)
+})
+
 test_that("prepare_speech_plan önbellek isabetinde base64 döndürür ve worker'ı atlar", {
   mergen_tts_invalidate_all_profiles()
   vd <- tts_fixture_build_voice_dir(ids = c("emre"))
@@ -211,4 +225,20 @@ test_that("prepare_speech_plan bozuk/kesik WAV önbelleğini isabet saymaz ve si
   plan2 <- mergen_tts_prepare_speech_plan("Sabit ifade", config = cfg, profile_id = "emre")
   expect_null(plan2$cached_audio_src)
   expect_false(file.exists(plan1$cache_write_path))  # güvenle silindi
+})
+
+test_that("prepare_speech_plan metne göre şüpheli kısa WAV önbelleğini siler", {
+  mergen_tts_invalidate_all_profiles()
+  vd <- tts_fixture_build_voice_dir(ids = c("emre"))
+  cache_dir <- tempfile("tts_cache_"); dir.create(cache_dir)
+  cfg <- tts_fixture_config(voice_dir = vd, cache_dir = cache_dir, cache_enabled = TRUE)
+  long_text <- paste(rep("Bu uzun metnin tümü seslendirilmelidir.", 8L), collapse = " ")
+
+  plan1 <- mergen_tts_prepare_speech_plan(long_text, config = cfg, profile_id = "emre")
+  tts_fixture_write_wav(plan1$cache_write_path, seconds = 0.5)
+  expect_true(file.exists(plan1$cache_write_path))
+
+  plan2 <- mergen_tts_prepare_speech_plan(long_text, config = cfg, profile_id = "emre")
+  expect_null(plan2$cached_audio_src)
+  expect_false(file.exists(plan1$cache_write_path))
 })

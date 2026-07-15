@@ -123,9 +123,9 @@
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
   support_admin_health_helpers = list(first = "R/helpers_destek_database.R", last = "R/helpers_health_checks.R", n = 7L),
-  # Bilinçli güncelleme: R/helpers_ai_expert_handlers_support.R (AI Uzman handler
-  # saf karar yardımcıları) bölüm sonuna eklendi; 3 -> 4 dosya.
-  ai_expert_helpers = list(first = "R/helpers_ai_expert_user_data.R", last = "R/helpers_ai_expert_handlers_support.R", n = 5L),
+  # Chunking, nesil/iz yaşam döngüsü ve eager konuşma orkestrasyonu saf AI Uzman
+  # yardımcıları olarak handler desteğinden önce yüklenir.
+  ai_expert_helpers = list(first = "R/helpers_ai_expert_user_data.R", last = "R/helpers_ai_expert_handlers_support.R", n = 6L),
   # 26 -> 27: doküman özetleme orkestrasyonu helpers_claude_code_documents.R'den
   # R/helpers_claude_code_document_summary.R'ye ayrıldı (documents'tan sonra,
   # run_lifecycle'dan önce).
@@ -403,8 +403,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # Üretilen-ses WAV doğrulama yardımcısı (R/helpers_tts_audio_validation.R;
   # tts_ses_profilleri'nde manifest'ten önce) ve AI Uzman konuşma dizisi
   # orkestrasyon yardımcısı (R/helpers_ai_expert_speech.R; ai_expert_helpers'da
-  # chunking'den sonra) eklendi.
-  expect_equal(length(runtime), 341L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # chunking'den sonra) eklendi. 341L -> 342L: sayfa rehberliği nesil/iz yaşam
+  # döngüsü yardımcısı (R/helpers_ai_expert_lifecycle.R) eklendi.
+  expect_equal(length(runtime), 342L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

@@ -1,7 +1,5 @@
 # R/server_ai_expert_handlers.R
-# AI Uzman (AI Expert) sunucu tarafı işleyicileri.
-# Karşılama, sayfa rehberliği, boşta konuşma ve kişiselleştirme mantığını
-# yönetir; yarış durumu önleme mekanizmalarını içerir.
+# AI Uzman otomatik konuşma ve sayfa yaşam döngüsü işleyicileri.
 
 #' AI Uzman İşleyicilerini Başlat
 #'
@@ -24,10 +22,11 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   greeting_future_active   <- reactiveVal(FALSE)    # Karşılama üretimi sürüyor mu
   greeting_future_char     <- reactiveVal(NULL)     # Üretimi süren karakter
   greeting_waiting_to_play <- reactiveVal(FALSE)    # Sayfa hazır olduğunda otomatik oynat
+  guidance_generation      <- reactiveVal(0L)       # Gezinme/rehberlik nesli
+  navigation_page          <- reactiveVal("chat")  # Neslin bağlı olduğu sayfa
 
   GREETING_CACHE_TTL_SECS <- 180                    # Karşılama önbelleği ömrü (sn)
 
-  # Kullanıcı adı (DB'den alınacak)
   user_first_name <- session$userData$user_first_name %||% ""
   
   # SSO akışında başlangıçtaki current_user_id değeri 0 olabilir.
@@ -166,21 +165,17 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   play_greeting_text <- function(greeting_text) {
     if (is.null(greeting_text) || !nzchar(greeting_text)) return(invisible(FALSE))
     if (isTRUE(greeting_done())) return(invisible(FALSE))
-
     greeting_waiting_to_play(FALSE)
     greeting_done(TRUE)
-
     cat(sprintf("[AI_EXPERT] Karşılama metni kullanılıyor (%d karakter)\n", nchar(greeting_text)))
     ai_expert$start_speaking(greeting_text, ai_expert$COOLDOWN_GREETING)
     schedule_idle_chat(ai_expert_first_idle_delay_ms(current_talk_frequency()))
-
     invisible(TRUE)
   }
-
   # --- Yardımcı: Karşılama konuşmasını ön hazırla ---
   warm_greeting <- function(selected_char_id = NULL, play_when_ready = FALSE) {
     char_id <- normalize_character_id(selected_char_id %||% isolate(settings_data$selected_character))
-
+    nav_generation <- isolate(guidance_generation())
     cached <- get_cached_greeting(char_id)
     if (!is.null(cached)) {
       if (isTRUE(play_when_ready)) {
@@ -188,36 +183,26 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       }
       return(invisible(TRUE))
     }
-
     if (isTRUE(greeting_future_active())) {
       if (isTRUE(play_when_ready) && identical(isolate(greeting_future_char()), char_id)) {
         greeting_waiting_to_play(TRUE)
       }
       return(invisible(FALSE))
     }
-
     greeting_future_active(TRUE)
     greeting_future_char(char_id)
-
     if (isTRUE(play_when_ready)) {
       greeting_waiting_to_play(TRUE)
     }
-
     cat(sprintf("[AI_EXPERT] Karşılama konuşması ön hazırlanıyor... (karakter: %s)\n", char_id))
-
     user_id <- resolve_ai_expert_user_id()
     talk_length_val <- isolate(settings_data$ai_expert_talk_length) %||% "orta"
     talk_style_val <- isolate(settings_data$ai_expert_talk_style) %||% "profesyonel"
-
-    # ÖNEMLİ:
-    # future içine modül içindeki yardımcı fonksiyonları taşımıyoruz.
-    # Önce gerekli tüm küçük/düz verileri ana thread'de çözümlüyoruz,
-    # sonra worker'a sadece sade karakter/list değerleri gönderiyoruz.
+    # Worker'a modül kapanışları değil, yalnızca önceden çözülen düz değerler gider.
     params <- prepare_llm_params(selected_char_id = char_id)
     u_name <- resolve_user_name(params$user_name)
     last_login <- fetch_user_last_login(user_id)
     user_work_context <- fetch_user_work_context(user_id)
-
     generation_cfg <- get_ai_expert_generation_config(
       scenario = "greeting",
       talk_length = talk_length_val,
@@ -247,6 +232,9 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     max_tokens_val   <- generation_cfg$max_tokens
     temperature_val  <- generation_cfg$temperature
 
+    llm_started_at <- Sys.time()
+    cat(mergen_ai_expert_trace_line("llm_request_start", generation_id = nav_generation, page_id = "chat"), "\n")
+
 	tracked_future_promise(
 	  task_fn = function() {
 		call_ai_expert_llm(
@@ -264,6 +252,10 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 	) %...>% (function(greeting_text) {
       greeting_future_active(FALSE)
       greeting_future_char(NULL)
+      cat(mergen_ai_expert_trace_line("llm_complete", generation_id = nav_generation,
+        page_id = "chat", duration_ms = as.numeric(difftime(Sys.time(), llm_started_at, units = "secs")) * 1000), "\n")
+      greeting_is_current <- mergen_ai_expert_generation_is_current(nav_generation,
+        isolate(guidance_generation()), "chat", isolate(navigation_page()))
 
       if (!is.null(greeting_text) && nzchar(greeting_text)) {
         greeting_cache(list(
@@ -272,12 +264,22 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
           created_at = Sys.time()
         ))
 
-        ai_expert$prewarm_speaking(greeting_text, selected_char_id = char_id)
+        if (isTRUE(greeting_is_current)) {
+          prewarm_cancel <- mergen_ai_expert_cancel_predicate(nav_generation, "chat",
+            guidance_generation, navigation_page, read = shiny::isolate)
+          ai_expert$prewarm_speaking(greeting_text, selected_char_id = char_id,
+            should_cancel = prewarm_cancel, trace_context = list(generation_id = nav_generation,
+              page_id = "chat", chunk_index = 1L))
+        }
 
-        if (isTRUE(greeting_waiting_to_play()) &&
+        if (isTRUE(greeting_is_current) && isTRUE(greeting_waiting_to_play()) &&
             identical(normalize_character_id(isolate(settings_data$selected_character)), char_id) &&
             !isTRUE(greeting_done())) {
           play_greeting_text(greeting_text)
+        } else if (!isTRUE(greeting_is_current)) {
+          greeting_waiting_to_play(FALSE)
+          greeting_cache(NULL)
+          if (identical(isolate(navigation_page()), "chat") && !isTRUE(greeting_done())) trigger_greeting()
         }
       } else if (isTRUE(greeting_waiting_to_play()) && !isTRUE(greeting_done())) {
         greeting_waiting_to_play(FALSE)
@@ -287,18 +289,21 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       greeting_future_active(FALSE)
       greeting_future_char(NULL)
 
-      cat(sprintf("[AI_EXPERT] Karşılama ön hazırlama hatası: %s\n", conditionMessage(e)))
+      cat("[AI_EXPERT] Karşılama ön hazırlama hatası.\n")
 
-      if (isTRUE(greeting_waiting_to_play()) && !isTRUE(greeting_done())) {
+      greeting_is_current <- mergen_ai_expert_generation_is_current(nav_generation,
+        isolate(guidance_generation()), "chat", isolate(navigation_page()))
+      if (isTRUE(greeting_is_current) && isTRUE(greeting_waiting_to_play()) && !isTRUE(greeting_done())) {
         greeting_waiting_to_play(FALSE)
         schedule_idle_chat(ai_expert_first_idle_delay_ms(current_talk_frequency()))
+      } else if (identical(isolate(navigation_page()), "chat") && !isTRUE(greeting_done())) {
+        trigger_greeting()
       }
     })
 
     invisible(TRUE)
   }
 
-  # Başlayalım düğmesine basıldığı anda karşılama konuşmasını ön hazırla
   observeEvent(input$explore_preheat_initial_greeting, {
     req(is.list(input$explore_preheat_initial_greeting))
     req(identical(input$explore_preheat_initial_greeting$mode %||% "", "kesif"))
@@ -333,8 +338,10 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     if (isTRUE(greeting_done())) return()
     if (!isTRUE(settings_data$enable_ai_expert)) return()
     if (!identical(settings_data$experience_mode, "kesif")) return()
+    if (!identical(isolate(navigation_page()), "chat")) return()
 
-    cat("[AI_EXPERT] Karşılama konuşması tetikleniyor...\n")
+    cat(mergen_ai_expert_trace_line("greeting_trigger",
+      generation_id = isolate(guidance_generation()), page_id = "chat"), "\n")
 
     selected_char_id <- normalize_character_id(isolate(settings_data$selected_character))
     cached <- get_cached_greeting(selected_char_id)
@@ -364,31 +371,22 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   # --- Sayfa geçişi rehberliği ---
   observeEvent(input$tabs, {
     page <- input$tabs
+    generation_id <- mergen_ai_expert_next_generation(isolate(guidance_generation()))
+    guidance_generation(generation_id)
+    navigation_page(page)
+    cat(mergen_ai_expert_trace_line("navigation_trigger", generation_id = generation_id, page_id = page), "\n")
+    # Genel kullanıcı TTS'si ayrı audio owner'dır; yalnız otomatik AI Uzman iptal edilir.
+    if (!identical(page, "chat")) greeting_waiting_to_play(FALSE)
+    if (isTRUE(ai_expert$is_speaking())) ai_expert$stop_speaking(0)
     ai_expert$set_page(page)
 
-    # Yasaklı sayfalarda konuşma. Ortak Çalışmalar sayfaları da (ortak_calismalar
-    # / ortak_sohbetler / ortak_bilge_yolac) SESSİZDİR: ortak yüzeylerde asla
-    # otomatik AI Uzman konuşması/altyazısı tetiklenmez ve bu sayfalara geçişte
-    # aktif konuşma nazikçe durdurulur.
+    # Ortak çalışma ve ayar yüzeyleri sessizdir.
     muted <- c(
       "settings_kisisel", "admin_analytics", "health",
       "ortak_calismalar", "ortak_sohbetler", "ortak_bilge_yolac"
     )
-    if (page %in% muted) {
-      # Yasaklı sayfaya geçişte aktif AI Uzman konuşması varsa onu nazikçe durdur.
-      # Özellikle Kişiselleştirme sayfasında kullanıcı karakter seçimi yaptığında
-      # karakter intro videosu hemen oynamaya başlar; bu sırada konuşan AI Uzman
-      # ses akışı ve altyazısı bu deneyimi bozar. Burada stop_speaking çağrısı,
-      # ses elementini durdurur, altyazıyı yumuşak (CSS exiting animasyonu)
-      # olarak gizler ve müzik ducking durumunu serbest bırakır.
-      if (isTRUE(ai_expert$is_speaking())) {
-        cat(sprintf("[AI_EXPERT] Yasaklı sayfaya geçiş (%s), aktif konuşma durduruluyor.\n", page))
-        ai_expert$stop_speaking(0)
-      }
-      return()
-    }
+    if (page %in% muted) return()
 
-    # Özellik kontrolü
     if (!isTRUE(settings_data$enable_ai_expert)) return()
     if (!identical(settings_data$experience_mode, "kesif")) return()
 
@@ -396,21 +394,23 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
     # Ana Söyleşi sayfasına geri dönüldüğünde: boşta konuşma planla
     if (page == "chat") {
-      schedule_idle_chat(15000)
+      if (!isTRUE(greeting_done())) trigger_greeting() else schedule_idle_chat(15000)
       return()
     }
 
     already_visited <- page %in% visited
     visited_pages(unique(c(visited, page)))
 
-    # GECİKMESİZ: Sayfa rehberliği LLM çağrısını hemen başlat
-    # Kullanıcı sayfayı tıkladığında metin hazırlığı anında başlar
-    trigger_page_guidance(page, already_visited)
+    # Kullanıcı sayfayı tıklayınca rehberlik LLM çağrısını hemen başlat.
+    trigger_page_guidance(page, already_visited, generation_id)
 
   }, ignoreInit = TRUE)
 
   # Sayfa rehberliği konuşması
-  trigger_page_guidance <- function(page, is_revisit = FALSE) {
+  trigger_page_guidance <- function(page, is_revisit = FALSE,
+                                    generation_id = isolate(guidance_generation())) {
+    if (!mergen_ai_expert_generation_is_current(generation_id,
+      isolate(guidance_generation()), page, isolate(navigation_page()))) return()
     # Temel kontrol: konuşuyor mu veya mesaj mı gönderiyor (bekleme süresini ATLA)
     if (!can_speak_basic()) return()
 
@@ -418,10 +418,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     current <- isolate(input$tabs)
     if (!identical(current, page)) return()
 
-    # Sayfa adını Türkçe'ye çevir (tek kaynak eşleme:
-    # R/helpers_ai_expert_handlers_support.R::ai_expert_page_name_tr).
-    # Bu yol "chat" sayfasına hiç ulaşmaz (yukarıda erken dönülür); bilinmeyen
-    # sayfa NULL döner ve rehberlik verilmez.
+    # Tek kaynak sayfa eşlemesi; bilinmeyen sayfa rehberlik üretmez.
     page_name_tr <- ai_expert_page_name_tr(page)
     if (is.null(page_name_tr)) return()
 
@@ -455,6 +452,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 	endpoint_val <- params$endpoint
 	max_tokens_val <- generation_cfg$max_tokens
 	temperature_val <- generation_cfg$temperature
+	llm_started_at <- Sys.time()
+	cat(mergen_ai_expert_trace_line("llm_request_start", generation_id = generation_id, page_id = page), "\n")
 
 	tracked_future_promise(
 	  task_fn = function() {
@@ -481,18 +480,21 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 		temperature_val = temperature_val
 	  )
 	) %...>% (function(guidance_text) {
-      if (!is.null(guidance_text) && nzchar(guidance_text) && !is_stt_modal_active() && identical(isolate(input$tabs), page)) {
-        # Konuşma sırasında aktif konuşma varsa durdurup yenisini başlat
-        if (isTRUE(ai_expert$is_speaking())) {
-          ai_expert$stop_speaking(0)
-        }
+      cat(mergen_ai_expert_trace_line("llm_complete", generation_id = generation_id,
+        page_id = page, duration_ms = as.numeric(difftime(Sys.time(), llm_started_at, units = "secs")) * 1000), "\n")
+      guidance_is_current <- mergen_ai_expert_generation_is_current(generation_id,
+        isolate(guidance_generation()), page, isolate(navigation_page()))
+      if (isTRUE(guidance_is_current) && !is.null(guidance_text) &&
+          nzchar(guidance_text) && !is_stt_modal_active()) {
+        if (isTRUE(ai_expert$is_speaking())) ai_expert$stop_speaking(0)
         ai_expert$start_speaking(guidance_text, ai_expert$COOLDOWN_PAGE)
         last_page_talk_time(Sys.time())
       }
-      schedule_idle_chat()
+      if (isTRUE(guidance_is_current)) schedule_idle_chat()
     }) %...!% (function(e) {
-      cat(sprintf("[AI_EXPERT] Sayfa rehberliği hatası: %s\n", conditionMessage(e)))
-      schedule_idle_chat()
+      cat("[AI_EXPERT] Sayfa rehberliği hatası.\n")
+      if (mergen_ai_expert_generation_is_current(generation_id,
+        isolate(guidance_generation()), page, isolate(navigation_page()))) schedule_idle_chat()
     })
   }
 
@@ -604,8 +606,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
         }
       }
       schedule_idle_chat()
-    }) %...!% (function(e) {
-      cat(sprintf("[AI_EXPERT] Boşta konuşma hatası: %s\n", conditionMessage(e)))
+	}) %...!% (function(e) {
+      cat("[AI_EXPERT] Boşta konuşma hatası.\n")
       schedule_idle_chat()
     })
   }

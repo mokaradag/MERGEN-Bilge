@@ -81,6 +81,25 @@ test_that("iptal edilen iş başlatılmaz ve iptal sonucu döner", {
   expect_identical(q$active_count(), 0L)
 })
 
+test_that("beklerken eskiyen kuyruk işi worker başlamadan iptal edilir", {
+  q <- mergen_tts_create_queue(1L)
+  ctrl <- .make_controller()
+  stale <- FALSE
+  cancelled <- NULL
+
+  q$submit(ctrl$factory("active"))
+  p <- q$submit(ctrl$factory("stale"), should_cancel = function() stale)
+  promises::then(p, function(value) cancelled <<- value)
+  .drain()
+  stale <- TRUE
+  ctrl$resolvers[["active"]](list(success = TRUE))
+  .drain()
+
+  expect_false("stale" %in% ctrl$started)
+  expect_true(isTRUE(cancelled$cancelled))
+  expect_identical(q$active_count(), 0L)
+})
+
 test_that("bir işin hatası kuyruğu kilitlemez; sıradaki başlar", {
   q <- mergen_tts_create_queue(1L)
   ctrl <- .make_controller()
@@ -133,4 +152,24 @@ test_that("stats sayaçları doğru raporlar", {
   expect_identical(s$started, 2L)
   expect_identical(s$active, 2L)
   expect_identical(s$pending, 1L)
+})
+
+test_that("açılış-kritik ilk parça bekleyen normal işlerden önce başlar", {
+  q <- mergen_tts_create_queue(1L)
+  ctrl <- .make_controller()
+
+  q$submit(ctrl$factory("active"))
+  q$submit(ctrl$factory("later"), priority = MERGEN_TTS_QUEUE_PRIORITY_NORMAL)
+  q$submit(ctrl$factory("first"), priority = MERGEN_TTS_QUEUE_PRIORITY_STARTUP)
+  .drain()
+  expect_identical(ctrl$started, "active")
+
+  ctrl$resolvers[["active"]](list(success = TRUE))
+  .drain()
+  expect_identical(ctrl$started, c("active", "first"))
+  expect_identical(q$active_count(), 1L)
+
+  ctrl$resolvers[["first"]](list(success = TRUE))
+  .drain()
+  expect_identical(ctrl$started, c("active", "first", "later"))
 })

@@ -39,8 +39,9 @@ if (!exists("%...!%", mode = "function", inherits = TRUE)) `%...!%` <- promises:
 #' AI Uzman Konuşma Dizisi Oluştur (eager, sıralı, eskime-korumalı)
 #'
 #' @param chunks Parça metinleri (list veya character; en az 1)
-#' @param synthesize function(text) -> promise; sonuç list(success, audio_src,
-#'   duration, media_duration, retryable, cancelled) çözer. Gerçek TTS çağrısı.
+#' @param synthesize function(text, startup_priority, chunk_index) -> promise; sonuç
+#'   list(success, audio_src, duration, media_duration, retryable, cancelled)
+#'   çözer. İlk parçada startup_priority=TRUE, diğerlerinde FALSE gönderilir.
 #' @param send_message function(type, data); istemciye özel mesaj gönderir
 #'   (ör. session$sendCustomMessage).
 #' @param is_active function() -> logical; dizinin hâlâ güncel VE konuşmanın
@@ -49,8 +50,6 @@ if (!exists("%...!%", mode = "function", inherits = TRUE)) `%...!%` <- promises:
 #'   gönderim yükleri için veri alanları.
 #' @param first_chunk_promise (opsiyonel) 1. parça için önceden hazır/uçuşta
 #'   promise (ön ısıtma). Başarısız olursa taze sentez ile denenir.
-#' @param on_start (opsiyonel) function(); 1. parça gönderilmeden hemen önce bir
-#'   kez çağrılır (ör. görselleştirici tetikleme).
 #' @param log (opsiyonel) function(msg); gizlilik-güvenli tanılama.
 #' @param max_retries Parça başına sınırlı yeniden deneme (varsayılan 1).
 #' @return list(start, snapshot): start() diziyi başlatır; snapshot() test için
@@ -58,7 +57,7 @@ if (!exists("%...!%", mode = "function", inherits = TRUE)) `%...!%` <- promises:
 mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_message,
                                                  is_active, meta = list(),
                                                  first_chunk_promise = NULL,
-                                                 on_start = NULL, log = NULL,
+                                                 log = NULL,
                                                  max_retries = 1L) {
   chunks <- as.list(chunks)
   total <- length(chunks)
@@ -116,6 +115,7 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
     if (!isTRUE(st$first_dispatched) || isTRUE(st$fallback_mode)) return(invisible(NULL))
     while (st$next_dispatch <= total && isTRUE(st$resolved[st$next_dispatch])) {
       send_queue_chunk(st$next_dispatch, st$items[[st$next_dispatch]])
+      log(sprintf("stage=audio_dispatch chunk=%d", st$next_dispatch))
       st$next_dispatch <- st$next_dispatch + 1L
     }
     invisible(NULL)
@@ -124,18 +124,16 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
   on_first_success <- function(res) {
     if (isTRUE(st$first_dispatched)) return(invisible(NULL))
     st$first_dispatched <- TRUE
-    if (is.function(on_start)) try(on_start(), silent = TRUE)
     send_start_with_audio(chunks[[1]], res$audio_src, audio_dur(res))
-    log("chunk=1 dispatched=start_with_audio")
+    log("stage=audio_dispatch chunk=1 mode=audio")
     flush()
     invisible(NULL)
   }
   on_first_fail <- function() {
     if (isTRUE(st$first_dispatched) || isTRUE(st$fallback_mode)) return(invisible(NULL))
     st$fallback_mode <- TRUE
-    if (is.function(on_start)) try(on_start(), silent = TRUE)
     send_subtitle_fallback()
-    log("chunk=1 dispatched=subtitle_only_fallback")
+    log("stage=audio_dispatch chunk=1 mode=subtitle_only")
     invisible(NULL)
   }
 
@@ -157,9 +155,13 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
   # Sınırlı yeniden deneme; asla reddetmez (son başarısızlığı sonuç listesine
   # normalize eder). synthesize'in kendi hatası veya kurtarılabilir başarısızlığı
   # bir kez daha denenir.
-  synth_with_retry <- function(text) {
+  synth_with_retry <- function(text, idx, startup_priority = FALSE) {
     attempt <- function(left) {
-      p <- tryCatch(synthesize(text), error = function(e) promises::promise_reject(e))
+      log(sprintf("stage=tts_queue_submit chunk=%d startup=%s", idx, isTRUE(startup_priority)))
+      p <- tryCatch(
+        synthesize(text, startup_priority = startup_priority, chunk_index = idx),
+        error = function(e) promises::promise_reject(e)
+      )
       p %...>% (function(res) {
         if (left > 0L && is_recoverable(res)) {
           log("retry=recoverable_failure")
@@ -182,7 +184,7 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
   # dene; o da olmazsa tüm-metin altyazı geri dönüşü.
   try_fresh_first <- function() {
     if (isTRUE(st$first_dispatched) || isTRUE(st$fallback_mode)) return(invisible(NULL))
-    synth_with_retry(chunks[[1]]) %...>% (function(res2) {
+    synth_with_retry(chunks[[1]], 1L, startup_priority = TRUE) %...>% (function(res2) {
       if (!active()) return(invisible(NULL))
       if (chunk_ok(res2)) on_first_success(res2) else on_first_fail()
     }) %...!% (function(e) {
@@ -196,7 +198,11 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
     st$submitted[1] <- TRUE
     # Ön ısıtma promise'i varsa 1. parça için onu kullan (yeniden deneme yok);
     # yoksa taze sentez + sınırlı yeniden deneme.
-    src <- if (!is.null(first_chunk_promise)) first_chunk_promise else synth_with_retry(chunks[[1]])
+    src <- if (!is.null(first_chunk_promise)) {
+      first_chunk_promise
+    } else {
+      synth_with_retry(chunks[[1]], 1L, startup_priority = TRUE)
+    }
     src %...>% (function(res) {
       if (!active()) return(invisible(NULL))
       if (chunk_ok(res)) { on_first_success(res); return(invisible(NULL)) }
@@ -211,7 +217,7 @@ mergen_ai_expert_new_speech_sequence <- function(chunks, synthesize, send_messag
   submit_later <- function(idx) {
     if (isTRUE(st$submitted[idx])) return(invisible(NULL))
     st$submitted[idx] <- TRUE
-    synth_with_retry(chunks[[idx]]) %...>% (function(res) {
+    synth_with_retry(chunks[[idx]], idx, startup_priority = FALSE) %...>% (function(res) {
       if (active()) finalize_later(idx, res)
     }) %...!% (function(e) {
       if (active()) finalize_later(idx, list(success = FALSE))

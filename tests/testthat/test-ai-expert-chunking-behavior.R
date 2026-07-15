@@ -101,10 +101,57 @@ testthat::test_that(".ai_expert_split_long_piece virgül yoksa kelime kelime bö
   testthat::expect_true(all(nchar(res) <= 20L))
 })
 
-testthat::test_that(".ai_expert_split_long_piece bölünemeyen tek uzun kelimeyi korur", {
+testthat::test_that(".ai_expert_split_long_piece tek uzun sözcüğü güvenle böler", {
   .ai_expert_chunking_source_once()
-  # Tek kelime sınırı aşsa bile bölünemez; olduğu gibi döner.
-  testthat::expect_identical(.ai_expert_split_long_piece("supercalifragilistic", 5L),
-                             "supercalifragilistic")
+  res <- .ai_expert_split_long_piece("supercalifragilistic", 5L)
+  testthat::expect_true(all(nchar(res) <= 5L))
+  testthat::expect_identical(paste0(res, collapse = ""), "supercalifragilistic")
   testthat::expect_type(.ai_expert_split_long_piece("a b c d e f g h", 5L), "character")
+})
+
+testthat::test_that("kısa parça yakın-sınır parçayla birleşirken sert üst sınır korunur", {
+  .ai_expert_chunking_source_once()
+  text <- paste("Kısa.", paste(rep("uzunluk", 9), collapse = " "))
+  out <- split_text_for_ai_expert_tts(
+    text, max_chunk_chars = 60L, min_chunk_chars = 20L, first_chunk_chars = 60L
+  )
+
+  testthat::expect_true(all(vapply(out, nchar, integer(1)) <= 60L))
+  testthat::expect_identical(paste(unlist(out), collapse = " "), text)
+})
+
+testthat::test_that("uzun virgül, noktalı virgül ve iki nokta metni eksiksiz bölünür", {
+  .ai_expert_chunking_source_once()
+  text <- paste(
+    "Birinci bölüm ayrıntıları açıklar, ikinci bölüm örnekleri sıralar;",
+    "üçüncü bölüm sonucu belirtir: son değerlendirme burada tamamlanır."
+  )
+  out <- split_text_for_ai_expert_tts(
+    text, max_chunk_chars = 48L, min_chunk_chars = 18L, first_chunk_chars = 48L
+  )
+
+  testthat::expect_true(all(vapply(out, nchar, integer(1)) <= 48L))
+  testthat::expect_identical(paste(unlist(out), collapse = " "), text)
+})
+
+testthat::test_that("noktalamasız ve Türkçe karakterli metin tam yeniden kurulur", {
+  .ai_expert_chunking_source_once()
+  text <- paste(rep("çığöşü İletişim dönüşüm özgürlük", 8L), collapse = " ")
+  out <- split_text_for_ai_expert_tts(
+    text, max_chunk_chars = 55L, min_chunk_chars = 20L, first_chunk_chars = 40L
+  )
+
+  testthat::expect_false(any(!nzchar(trimws(unlist(out)))))
+  testthat::expect_true(all(vapply(out, nchar, integer(1)) <= 55L))
+  testthat::expect_identical(paste(unlist(out), collapse = " "), text)
+})
+
+testthat::test_that("varsayılan ilk parça açılış gecikmesi için daha küçüktür", {
+  .ai_expert_chunking_source_once()
+  text <- paste(rep("başlangıç gecikmesini azaltan güvenli sözcükler", 12L), collapse = " ")
+  out <- split_text_for_ai_expert_tts(text)
+
+  testthat::expect_lte(nchar(out[[1L]]), MERGEN_AI_EXPERT_TTS_FIRST_CHUNK_CHARS)
+  testthat::expect_true(all(vapply(out, nchar, integer(1)) <= MERGEN_AI_EXPERT_TTS_MAX_CHUNK_CHARS))
+  testthat::expect_identical(paste(unlist(out), collapse = " "), text)
 })
