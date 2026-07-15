@@ -49,7 +49,7 @@
   env
 }
 
-test_that("sondaki exact Kaynak satırları doğrulanıp kaynak kaydına yükseltilir", {
+test_that("sondaki tam Kaynak satırları doğrulanıp kaynak kaydına yükseltilir", {
   env <- .source_langflow_plain_source_handler_for_test()
 
   pdf_name <- paste0(
@@ -97,7 +97,7 @@ test_that("sondaki exact Kaynak satırları doğrulanıp kaynak kaydına yüksel
   )))
 })
 
-test_that("çözümlenemeyen veya sonda olmayan Kaynak satırları fail-closed kalır", {
+test_that("çözümlenemeyen veya sonda olmayan Kaynak satırları kapalı güvenlik davranışını korur", {
   env <- .source_langflow_plain_source_handler_for_test()
   resolver <- function(base_dir, target) NULL
 
