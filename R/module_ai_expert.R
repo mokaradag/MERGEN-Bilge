@@ -446,7 +446,9 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       ended_payload <- input$ai_expert_speech_ended
       ended_seq <- if (is.list(ended_payload)) ended_payload$speechSeq else NULL
       has_seq <- !is.null(ended_seq) && length(ended_seq) > 0L && !is.na(suppressWarnings(as.integer(ended_seq[[1]])))
-      is_current_end <- !has_seq || identical(isolate(speech_seq()), suppressWarnings(as.integer(ended_seq[[1]])))
+      # Güncel istemci her ended sinyalinde server speechSeq taşır; eksik veya
+      # eşleşmeyen belirteçler eski olay sayılır ve yeni konuşmayı kapatamaz.
+      is_current_end <- has_seq && identical(isolate(speech_seq()), suppressWarnings(as.integer(ended_seq[[1]])))
       if (isTRUE(is_speaking()) && isTRUE(is_current_end)) {
         is_speaking(FALSE)
         # Dizi tamamlandı: belirteci ilerlet ki bu konuşmadan geç gelebilecek

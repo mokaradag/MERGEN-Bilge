@@ -331,6 +331,9 @@ test_that("ai_expert_speech_ended: eski speechSeq yeni konuşmayı kapatmaz", {
       session$setInputs(ai_expert_speech_ended = list(speechSeq = 0L))
       expect_true(isTRUE(session$returned$is_speaking()))
 
+      session$setInputs(ai_expert_speech_ended = as.numeric(Sys.time()))
+      expect_true(isTRUE(session$returned$is_speaking()))
+
       session$setInputs(ai_expert_speech_ended = list(speechSeq = 1L))
       expect_false(isTRUE(session$returned$is_speaking()))
     }
