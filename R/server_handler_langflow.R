@@ -128,7 +128,7 @@ mergen_langflow_promote_validated_text_sources <- function(
     }
     seen_paths <- c(seen_paths, found_key)
 
-    title <- basename(gsub("\\\\", "/", candidate))
+    title <- basename(gsub("\\\\", "/", found_path))
     promoted[[length(promoted) + 1L]] <- list(
       title = title,
       path = candidate,
@@ -273,8 +273,8 @@ handle_langflow_chat_mode <- function(ctx) {
       # Öncelik Langflow'un yapılandırılmış kaynak üstverisindedir. Akış yalnızca
       # düz "Kaynak: dosya.ext" satırları döndürdüyse, bu satırlar ancak
       # local_model_paths altındaki gerçek bir dosyaya çözümlenirse yükseltilir.
-      # Böylece kullanıcıya görünen exact dosya adları tıklanabilir olurken,
-      # uydurma/erişilemeyen adlar düz metin ve fail-closed kalır.
+      # Böylece kullanıcıya görünen tam dosya adları tıklanabilir olurken,
+      # uydurma/erişilemeyen adlar düz metin olarak kalır.
       final_text <- result$text
       final_sources <- result$sources %||% list()
       if (!length(final_sources)) {
@@ -313,7 +313,7 @@ handle_langflow_chat_mode <- function(ctx) {
       if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
         err_msg <- redact_sensitive_text(err_msg)
       }
-      ctx$add_message_fn(paste0("\U0000274C Langflow hatası: ", err_msg), "ai")
+      ctx$add_message_fn(paste0("\U000026A0\U0000FE0F ", err_msg), "ai")
       showToast(ctx$session, err_msg, "error")
     }
 
