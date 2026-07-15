@@ -58,13 +58,6 @@ Bu belge uygulama davranışını değiştirmez; yalnızca güvenli çalıştır
 - Görsel anlama: `MERGEN_VISION_MODELS` ve gerekiyorsa `MERGEN_ENABLE_VISION`.
 - Görsel üretimi: image generation endpoint/model/timeout ayarları.
 - TTS/STT: endpoint, model, voice, timeout ve SSL doğrulama seçenekleri.
-- VoxCPM2 ses profilleri: `LOCAL_TTS_MODEL=VoxCPM2`, `LOCAL_TTS_VOICE=default`,
-  `LOCAL_TTS_PROFILES_ENABLED`, `LOCAL_TTS_VOICE_DIR` (depo dışı biyometrik ses
-  klasörü), `LOCAL_TTS_SPEED`, `LOCAL_TTS_RESPONSE_FORMAT`, `LOCAL_TTS_USE_REF_TEXT`,
-  `LOCAL_TTS_MAX_CONCURRENCY`, `LOCAL_TTS_CACHE_*`. Kurulum/kayıt/geri dönüş:
-  [`docs/voxcpm2-ses-profilleri.md`](docs/voxcpm2-ses-profilleri.md). Gerçek
-  referans WAV'lar GitHub'a konmaz; `.Renviron` değişince R süreci tam yeniden
-  başlatılır.
 - Dosya deposu: `MCP_FILES_BASE`, `MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MERGEN_MCP_BASE_DIR`, `MERGEN_LOG_DIR`.
 - Bilge Yolaç: Claude Code CLI/Node path, çalışma dizini, izin modu ve tool listesi.
 

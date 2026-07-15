@@ -246,18 +246,13 @@ mergen_seam_registry <- function() {
         "yardımcıları, karakter video ve görsel üretim/galeri ön yüz",
         "sahipliği."
       ),
-      manifest_sections = c("ai_expert_helpers", "tts_ses_profilleri", "module_ai_audio"),
+      manifest_sections = c("ai_expert_helpers", "module_ai_audio"),
       extra_runtime_files = character(0),
       guard_tests = c(
         "tests/testthat/test-e2e-media-audio-state-regression.R",
         "tests/testthat/test-audio-lifecycle-owner-smoke.R",
         "tests/testthat/test-saved-chat-reload-no-tts-contract.R",
-        "tests/testthat/test-generated-image-card-html-contract.R",
-        "tests/testthat/test-tts-voice-manifest-behavior.R",
-        "tests/testthat/test-tts-voice-cache-behavior.R",
-        "tests/testthat/test-tts-audio-cache-behavior.R",
-        "tests/testthat/test-tts-request-behavior.R",
-        "tests/testthat/test-tts-queue-behavior.R"
+        "tests/testthat/test-generated-image-card-html-contract.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-e2e-media-audio-state-regression.R\")",

@@ -15,34 +15,6 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
-### (Yayınlanmadı) 2026-07-14 VoxCPM2 referans-ses profilleri (beş persona)
-
-- **İki jenerik TTS sesi yerine beş uygulama-tarafı VoxCPM2 profili.** Emre,
-  Selin, Deniz, Can ve İpek için seçilen personaya göre bir referans WAV isteğe
-  `ref_audio` + `ref_text` olarak eklenir; VoxCPM2 sesi klonlar. Hem "Yanıtları
-  Seslendir" hem "AI Uzman Konuşması" aynı profili çözer. Uzak sunucuda
-  adlandırılmış özel ses gerekmez.
-- **Güvenlik sınırı:** gerçek referans kayıtları biyometrik veridir; `www`
-  altında tutulmaz, GitHub'a commit edilmez, loglanmaz, tarayıcıya döndürülmez.
-  Dağıtım-yerel `LOCAL_TTS_VOICE_DIR` klasöründe durur. GitHub'daki
-  `deployment/tts_voices_template/` yalnızca yer tutucu + `*.example` içerir.
-- **Başlangıç:** TTS 0–100 yükleme kapısına ve Hızlı Başlangıç zorunlu boot
-  anahtarlarına eklenmez. Odak/Dinamik hiçbir profil yüklemez; Bütünleşik yalnızca
-  seçili profili asenkron yükler; profil yükleme tembel, idempotent ve dedup'lıdır.
-- **Önbellek + eşzamanlılık:** WAV yalnızca profil sürümü başına bir kez base64'lenir;
-  üretilen-ses dağıtım-yerel, sınırlı (boyut + TTL) önbelleğe alınır (tekrarlayan
-  ifadeler birebir aynı, ağsız döner); TTS istekleri sınırlı eşzamanlılık kuyruğundan
-  geçer (varsayılan 2).
-- **Geri dönüş:** eski modele dönüş yalnızca `.Renviron` ile (`LOCAL_TTS_MODEL` veya
-  `LOCAL_TTS_PROFILES_ENABLED=FALSE`), kod değişikliği gerekmeden. Ayrıntı:
-  [`voxcpm2-ses-profilleri.md`](voxcpm2-ses-profilleri.md).
-- Yeni çevrimdışı testler: `test-tts-voice-*`, `test-tts-audio-cache-behavior`,
-  `test-tts-request-behavior`, `test-tts-queue-behavior`,
-  `test-tts-profile-preload-behavior`, `test-tts-persona-profile-contract`,
-  `test-tts-voice-template-contract`. VM'de canlı TTS uç noktası ile doğrulama
-  gerekir (cloud'da kanıtlanamaz).
-
-
 ### (Yayınlanmadı) 2026-07-12 Süreç Yönetimi Langflow çoklu akış onarımı + tıklanabilir belge kaynakları
 
 - **Satır içi yorum akış listesini artık kirletmiyor.** `readRenviron()`

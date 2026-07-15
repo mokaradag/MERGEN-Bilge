@@ -332,22 +332,15 @@ if (exists("apply_deep_thinking_model_capabilities", mode = "function", inherits
 }
 
 # --- SES SENTEZİ (TTS) YAPILANDIRMASI ---
-# OpenAI uyumlu ses uç noktası + VoxCPM2 referans-ses profili ayarları.
-# Ayrıştırma/varsayılan mantığı helpers_tts_voice_config.R'dedir (bu dosyanın
-# 520 satır/6 fonksiyon maintainability bütçesini korumak için). İzole test/debug
-# bağlamında helper yüklü değilse güvenli jenerik yapılandırmaya düşülür.
-if (exists("mergen_build_tts_config", mode = "function", inherits = TRUE)) {
-  tts_config <- mergen_build_tts_config()
-} else {
-  tts_config <- list(
-    base_url        = Sys.getenv("LOCAL_TTS_ENDPOINT", ""),
-    api_key         = Sys.getenv("LOCAL_TTS_API_KEY", ""),
-    model           = Sys.getenv("LOCAL_TTS_MODEL", "tts-1-hd"),
-    default_voice   = Sys.getenv("LOCAL_TTS_VOICE", "default"),
-    timeout_seconds = as.numeric(Sys.getenv("LOCAL_TTS_TIMEOUT", "90")),
-    verify_ssl      = isTRUE(as.logical(Sys.getenv("LOCAL_TTS_VERIFY_SSL", "TRUE")))
-  )
-}
+# OpenAI uyumlu ses uç noktası
+tts_config <- list(
+  base_url        = Sys.getenv("LOCAL_TTS_ENDPOINT", ""),
+  api_key         = Sys.getenv("LOCAL_TTS_API_KEY", ""),
+  model           = Sys.getenv("LOCAL_TTS_MODEL", "tts-1-hd"),
+  default_voice   = Sys.getenv("LOCAL_TTS_VOICE", "tr-male-1"),
+  timeout_seconds = as.numeric(Sys.getenv("LOCAL_TTS_TIMEOUT", "90")),
+  verify_ssl      = isTRUE(as.logical(Sys.getenv("LOCAL_TTS_VERIFY_SSL", "TRUE")))
+)
 
 # --- SES TANIMA (STT) YAPILANDIRMASI ---
 stt_config <- list(

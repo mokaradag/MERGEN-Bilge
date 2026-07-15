@@ -112,18 +112,7 @@ handle_streaming_tts_mode <- function(ctx) {
       tts_engine_param <- NULL
       tts_voice_param <- NULL
       if (isTRUE(settings_data$enable_tts_audio)) {
-        streaming_profile_sel <- tryCatch({
-          if (exists("mergen_tts_resolve_profile_id", mode = "function", inherits = TRUE)) {
-            mergen_tts_resolve_profile_id(char_id = local_char_id, config = tts_config)
-          } else if (exists("mergen_tts_profile_for_character", mode = "function", inherits = TRUE)) {
-            mergen_tts_profile_for_character(local_char_id)
-          } else {
-            NULL
-          }
-        }, error = function(e) NULL)
-        tts_engine_param <- function(text, voice = NULL) {
-          tts_processor$synthesize_speech(text, voice = voice, profile_id = streaming_profile_sel)
-        }
+        tts_engine_param <- tts_processor$synthesize_speech
         tts_voice_param <- resolved_voice
       }
 

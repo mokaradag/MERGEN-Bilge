@@ -172,28 +172,10 @@ SERVICE_DESK_RATE_LIMIT_URL=https://<your-servicedesk>/rate-limit
 
 # Yerel metin-konuşma (TTS) ayarları
 LOCAL_TTS_ENDPOINT=https://your-tts-endpoint/v1
-# Üretimde VoxCPM2 referans-ses profilleri kullanılır. Eski modele geri dönmek
-# için LOCAL_TTS_MODEL değerini değiştirmek yeterlidir (kod değişikliği gerekmez).
-LOCAL_TTS_MODEL=VoxCPM2
-LOCAL_TTS_VOICE=default
+LOCAL_TTS_MODEL=tts-1-hd
+LOCAL_TTS_VOICE=tr-male-1
 LOCAL_TTS_VERIFY_SSL=TRUE
 LOCAL_TTS_TIMEOUT=90
-
-# --- VoxCPM2 referans-ses profili ayarları (Emre/Selin/Deniz/Can/İpek) ---
-# Profiller yalnızca: profiles_enabled=TRUE + model VoxCPM2 + voice_dir dolu ise etkinleşir.
-# Gerçek referans WAV'lar biyometrik veridir; depo dışında, erişimi kısıtlı klasörde tutulur.
-LOCAL_TTS_PROFILES_ENABLED=TRUE
-LOCAL_TTS_VOICE_DIR=C:/MERGEN_Bilge_Data/tts_voices
-LOCAL_TTS_SPEED=1.0
-LOCAL_TTS_RESPONSE_FORMAT=wav
-LOCAL_TTS_USE_REF_TEXT=TRUE
-LOCAL_TTS_MAX_CONCURRENCY=2
-
-# --- Üretilen-ses önbelleği (dağıtım-yerel, sınırlı) ---
-LOCAL_TTS_CACHE_ENABLED=TRUE
-LOCAL_TTS_CACHE_DIR=C:/MERGEN_Bilge_Data/tts_cache
-LOCAL_TTS_CACHE_MAX_MB=512
-LOCAL_TTS_CACHE_TTL_DAYS=30
 
 LOCAL_STT_ENDPOINT=http://localhost:8080/v1/audio/transcriptions
 LOCAL_STT_MODEL=whisper-large-v3

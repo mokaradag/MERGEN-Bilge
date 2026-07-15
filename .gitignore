@@ -73,11 +73,3 @@ bilge_yolac_downloads/*
 # testthat failing-test debris (local diagnostic runs)
 tests/testthat/_problems/
 tests/testthat/testthat-problems.rds
-
-# VoxCPM2 ses profili şablonu: gerçek biyometrik kayıtlar / gerçek manifest /
-# gerçek transcript ASLA commit edilmez. Yalnızca .gitkeep, README ve *.example
-# dosyaları izlenir. Gerçek dağıtım verisi depo dışında (ör. C:/MERGEN_Bilge_Data)
-# tutulur.
-deployment/tts_voices_template/**/*.wav
-deployment/tts_voices_template/manifest.json
-deployment/tts_voices_template/reference_transcript_tr_v1.txt

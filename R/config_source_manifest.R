@@ -78,9 +78,6 @@ source_manifest_sections <- list(
   config_api_model_keys = c(
     "R/helpers_vision_model_capabilities.R",
     "R/helpers_deep_thinking_model_capabilities.R",
-    # TTS/VoxCPM2 yapılandırma üreticisi config_api.R'den ÖNCE yüklenir; config_api.R
-    # source-time'da mergen_build_tts_config() çağırır (persona -> profil çözümleyici de burada).
-    "R/helpers_tts_voice_config.R",
     "R/config_api.R",
     "R/helpers_api_model_config.R",
     "R/helpers_api_model_tool_runtime.R",
@@ -382,21 +379,6 @@ source_manifest_sections <- list(
     "R/module_settings.R",
     "R/module_api_key_choice_modal.R",
     "R/module_api_key.R"
-  ),
-
-  # tts_ses_profilleri: VoxCPM2 referans-ses profili altyapısı. WAV doğrulama +
-  # manifest, profil bellek önbelleği, üretilen-ses önbelleği, istek gövdesi/plan,
-  # sınırlı eşzamanlılık kuyruğu ve başlangıç ön yükleme politikası. module_tts.R
-  # (module_ai_audio) bu yardımcıları çalışma zamanında kullandığı için ondan
-  # ÖNCE yüklenir. Bağımlılık sırası: manifest -> profil önbelleği -> ses önbelleği
-  # -> istek/plan -> kuyruk -> ön yükleme politikası.
-  tts_ses_profilleri = c(
-    "R/helpers_tts_voice_manifest.R",
-    "R/helpers_tts_voice_cache.R",
-    "R/helpers_tts_audio_cache.R",
-    "R/helpers_tts_request.R",
-    "R/helpers_tts_queue.R",
-    "R/helpers_tts_profile_preload.R"
   ),
 
   # module_ai_audio: Yapay zeka/ses modülleri: AI işleme, AI Uzman, TTS/TTS

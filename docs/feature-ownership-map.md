@@ -247,15 +247,6 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **DB/servis:** `MB_Users` (AI Uzman bağlamı: ad/birim/son giriş), `MB_Messages`
   (son mesajlar); TTS/STT uç noktaları (`LOCAL_TTS_ENDPOINT`,
   `LOCAL_STT_ENDPOINT`), `AI_EXPERT_MODEL`; referans bilgi tabanı `ai_rehber.md`.
-- **VoxCPM2 ses profilleri (`tts_ses_profilleri` bölümü):** beş persona için
-  uygulama-tarafı referans-ses klonlama. Dosyalar: `R/helpers_tts_voice_config.R`
-  (config üreticisi + persona→profil çözümleyici), `R/helpers_tts_voice_manifest.R`
-  (WAV/manifest doğrulama + profil çözme), `R/helpers_tts_voice_cache.R` (profil
-  bellek önbelleği), `R/helpers_tts_audio_cache.R` (üretilen-ses önbelleği),
-  `R/helpers_tts_request.R` (istek/plan), `R/helpers_tts_queue.R` (sınırlı
-  eşzamanlılık), `R/helpers_tts_profile_preload.R` (başlangıç politikası).
-  Gerçek referans WAV'lar biyometrik veridir; depo dışında `LOCAL_TTS_VOICE_DIR`
-  altında tutulur. Ayrıntı: [`voxcpm2-ses-profilleri.md`](voxcpm2-ses-profilleri.md).
 - **Testler:** `test-ai-expert-db-fetch-behavior.R`,
   `test-ai-expert-user-data-split-contract.R` (worker-safe DB okuyucu ayrımı +
   kaynak sırası + okuma sınırı sözleşmesi),
@@ -268,12 +259,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-ai-expert-pronunciation-behavior.R`, `test-ai-expert-chunking-behavior.R`,
   `test-ai-expert-frontend-split-contract.R` (manager/handler ayrımı + manifest/zone sırası),
   `test-e2e-media-audio-state-regression.R`, `test-audio-lifecycle-owner-smoke.R`,
-  `test-saved-chat-reload-no-tts-contract.R`,
-  `test-tts-voice-config-behavior.R`, `test-tts-voice-manifest-behavior.R`,
-  `test-tts-voice-cache-behavior.R`, `test-tts-audio-cache-behavior.R`,
-  `test-tts-request-behavior.R`, `test-tts-queue-behavior.R`,
-  `test-tts-profile-preload-behavior.R`, `test-tts-persona-profile-contract.R`,
-  `test-tts-voice-template-contract.R`.
+  `test-saved-chat-reload-no-tts-contract.R`.
 - **Smoke/kanıt:** ux-smoke ses/TTS/STT duck-restore yaşam döngüsü; kayıtlı sohbet
   reload'da eski TTS otomatik oynatma yok.
 - **Bilinen risk / sıradaki hedef:** AI Uzman frontend handler yoğunluğu azaltıldı:

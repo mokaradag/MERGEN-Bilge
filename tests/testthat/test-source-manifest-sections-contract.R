@@ -48,7 +48,6 @@
   "module_chat",
   "module_files_media",
   "module_settings_api_key",
-  "tts_ses_profilleri",
   "module_ai_audio",
   "module_identity_startup",
   "module_claude_code",
@@ -81,9 +80,7 @@
   # config_app_core n = 7L -> 8L bilinçli güncelleme: indeks kilidi
   # (R/config_file_store_index_lock.R) fonksiyon-yoğunluk bölmesiyle ayrı dosyaya alındı.
   config_app_core = list(first = "R/config_sso.R", last = "R/config_version_history.R", n = 8L),
-  # 9 -> 10 bilinçli güncelleme: VoxCPM2 TTS yapılandırma üreticisi
-  # (R/helpers_tts_voice_config.R) config_api.R'den ÖNCE eklendi.
-  config_api_model_keys = list(first = "R/helpers_vision_model_capabilities.R", last = "R/helpers_api_key_password_toggle.R", n = 10L),
+  config_api_model_keys = list(first = "R/helpers_vision_model_capabilities.R", last = "R/helpers_api_key_password_toggle.R", n = 9L),
   config_claude_code = list(first = "R/config_claude_code.R", last = "R/config_claude_code_plugins.R", n = 2L),
   # Bilinçli güncelleme: bölge VERİSİ (config_ui_asset_zones.R) ile bölge
   # DOĞRULAYICI API'si (config_ui_asset_zone_validators.R) ayrı dosyalara
@@ -138,9 +135,6 @@
   module_chat = list(first = "R/module_chat_history_background.R", last = "R/module_feedback.R", n = 9L),
   module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 7L),
   module_settings_api_key = list(first = "R/module_settings_kisisel.R", last = "R/module_api_key.R", n = 7L),
-  # VoxCPM2 referans-ses profili altyapısı module_ai_audio'dan (module_tts.R
-  # bu yardımcıları kullanır) ÖNCE yeni bölümde yüklenir.
-  tts_ses_profilleri = list(first = "R/helpers_tts_voice_manifest.R", last = "R/helpers_tts_profile_preload.R", n = 6L),
   module_ai_audio = list(first = "R/module_ai_processing.R", last = "R/module_character_video.R", n = 6L),
   # Bilinçli güncelleme: başlangıç şeridi (startup lane) için saf çözümleme
   # yardımcıları (R/helpers_startup_lane.R; appLoadingUI ortam varsayılanını
@@ -394,12 +388,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # ortak_oturumlar bölümüne; düşünme paneli plan/kabuk yardımcıları
   # (R/helpers_send_message_thinking_panel.R; request_lifecycle bölünmesi)
   # chat_send_message_runtime bölümüne eklendi.
-  # 332L -> 339L bilinçli güncelleme: VoxCPM2 referans-ses profili altyapısı.
-  # config_api_model_keys'e TTS yapılandırma üreticisi (R/helpers_tts_voice_config.R)
-  # ve yeni tts_ses_profilleri bölümüne 6 çalışma zamanı yardımcısı (manifest,
-  # profil önbelleği, ses önbelleği, istek/plan, kuyruk, ön yükleme politikası)
-  # eklendi.
-  expect_equal(length(runtime), 339L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 332L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]
