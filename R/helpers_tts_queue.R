@@ -103,7 +103,7 @@ mergen_tts_create_queue <- function(max_concurrency = 2L) {
 
   q$submit <- function(factory, should_cancel = NULL,
                        priority = MERGEN_TTS_QUEUE_PRIORITY_NORMAL,
-                       resolve_before_pump = FALSE) {
+                       resolve_before_pump = FALSE, metadata = NULL) {
     if (!is.function(factory)) stop("factory bir fonksiyon olmalıdır.", call. = FALSE)
     priority <- suppressWarnings(as.numeric(priority)[1])
     if (is.na(priority) || !is.finite(priority)) priority <- MERGEN_TTS_QUEUE_PRIORITY_NORMAL
@@ -117,6 +117,7 @@ mergen_tts_create_queue <- function(max_concurrency = 2L) {
       should_cancel = should_cancel,
       priority = priority,
       resolve_before_pump = isTRUE(resolve_before_pump),
+      metadata = metadata,
       resolve = captured$resolve,
       reject = captured$reject
     )
@@ -126,13 +127,17 @@ mergen_tts_create_queue <- function(max_concurrency = 2L) {
     p
   }
 
-  q$cancel_pending <- function() {
+  q$cancel_pending <- function(predicate = NULL) {
     if (length(q$pending) == 0L) return(0L)
+    if (!is.null(predicate) && !is.function(predicate)) {
+      stop("predicate bir fonksiyon veya NULL olmalıdır.", call. = FALSE)
+    }
     keep <- list()
     cancelled_count <- 0L
     for (rec in q$pending) {
+      matches_scope <- is.null(predicate) || tryCatch(isTRUE(predicate(rec$metadata)), error = function(e) FALSE)
       should_drop <- FALSE
-      if (is.function(rec$should_cancel)) {
+      if (isTRUE(matches_scope) && is.function(rec$should_cancel)) {
         should_drop <- tryCatch(isTRUE(rec$should_cancel()), error = function(e) FALSE)
       }
       if (isTRUE(should_drop)) {

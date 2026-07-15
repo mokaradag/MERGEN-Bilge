@@ -410,7 +410,7 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
             format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3%z"), as.character(priority), nchar(speech_text)))
         }
         queue$submit(worker_factory, should_cancel = should_cancel, priority = priority,
-                     resolve_before_pump = TRUE)
+                     resolve_before_pump = TRUE, metadata = trace_context)
       } else {
         worker_factory()
       }
@@ -442,8 +442,12 @@ ttsProcessingServer <- function(id, settings_data = NULL) {
       tts_available = tts_available,
       prepare_tts_text = prepare_tts_text,
       preload_profile = preload_profile,
-      cancel_pending = function() {
-        if (is.environment(queue) && is.function(queue$cancel_pending)) queue$cancel_pending() else 0L
+      cancel_pending = function(predicate = NULL) {
+        if (is.environment(queue) && is.function(queue$cancel_pending)) {
+          queue$cancel_pending(predicate = predicate)
+        } else {
+          0L
+        }
       }
     )
   })

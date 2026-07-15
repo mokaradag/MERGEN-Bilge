@@ -419,7 +419,12 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
           ),
           first_chunk_promise = first_chunk_promise,
           log = seq_log,
-          cancel_pending = tts_processor$cancel_pending
+          cancel_pending = function() {
+            tts_processor$cancel_pending(function(ctx) {
+              is.list(ctx) && identical(ctx$sequence_id, seq_id) &&
+                isTRUE(suppressWarnings(as.integer(ctx$chunk_index) > 1L))
+            })
+          }
         )
         speech_sequence$start()
       } else {
