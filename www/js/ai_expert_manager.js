@@ -1,4 +1,10 @@
-// AI Uzman altyazı, gerçek medya oynatma ve müzik ducking durum makinesi.
+// www/js/ai_expert_manager.js
+// Dosya Yolu: www/js/ai_expert_manager.js
+// Açıklama: AI Uzman altyazı animasyonları, TTS senkronizasyonu ve
+//            müzik ses kısma (ducking) yönetimi.
+//            Altyazı gösterimi TTS sesi ile senkronize başlatılır.
+//            Durdurma butonu doğrudan çalışır.
+//            Yazı tipi boyutu ayarlardan alınır.
 
 const AIExpertManager = {
 
@@ -805,7 +811,6 @@ const AIExpertManager = {
 
     this._stopAudio();
 
-    // Altyazıyı hemen gizle
     var strip = this._getStrip();
     var textEl = this._getTextElement();
 
@@ -828,8 +833,6 @@ const AIExpertManager = {
     this.state.totalChunks = 1;
     this.state.nextChunkIndex = 1;
     this.state.queuedChunks = [];
-
-    // Shiny'ye konuşma bitti sinyali gönder (tek sefer; yinelenme koruması)
     this._emitSpeechEnded(data && data.nsPrefix);
 
     console.log('[AI_EXPERT] Konuşma durduruldu');
@@ -861,9 +864,7 @@ const AIExpertManager = {
   // --- SAYFA BAZLI KONUM AYARI ---
   _applyPageClass: function(strip) {
     if (!strip) return;
-    // Önceki sayfa sınıflarını kaldır
     strip.classList.remove('ai-expert-page-chat', 'ai-expert-page-files');
-    // Aktif sayfaya göre sınıf ekle
     var page = this.state.currentPage || 'chat';
     if (page === 'chat') {
       strip.classList.add('ai-expert-page-chat');
@@ -875,14 +876,12 @@ const AIExpertManager = {
   // Aktif sayfayı güncelle (R tarafından çağrılır)
   setPage: function(page) {
     this.state.currentPage = page || 'chat';
-    // Eğer konuşma devam ediyorsa konum sınıfını hemen güncelle
     var strip = this._getStrip();
     if (strip) {
       this._applyPageClass(strip);
     }
   },
 
-  // --- DOM ELEMAN YARDIMCILARI ---
   _getStrip: function() {
     if (!this.state.nsPrefix) return null;
     return document.getElementById(this.state.nsPrefix + 'subtitle_strip');
@@ -899,5 +898,4 @@ const AIExpertManager = {
   }
 };
 
-// Global erişim
 window.AIExpertManager = AIExpertManager;
