@@ -1,12 +1,12 @@
 # ==============================================================================
-
-if (!exists("%||%", mode = "function", inherits = TRUE)) {
-  `%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
-}
 # Dosya Yolu: R/helpers_ai_expert_lifecycle.R
 # Açıklama: Otomatik AI Uzman konuşmaları için saf nesil-belirteci, iptal yüklemi
 #           ve içerik taşımayan performans izi yardımcıları.
 # ==============================================================================
+
+if (!exists("%||%", mode = "function", inherits = TRUE)) {
+  `%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+}
 
 MERGEN_AI_EXPERT_TRACE_STAGES <- c(
   "navigation_trigger", "greeting_trigger", "llm_request_start", "llm_complete",
