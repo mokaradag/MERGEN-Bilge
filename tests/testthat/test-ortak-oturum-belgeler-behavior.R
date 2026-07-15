@@ -173,7 +173,7 @@ local({
 
 .oo_belge_test_dosya <- function(ad, icerik = "Türkçe içerik: ğüşiöç İIıi") {
   yol <- file.path(tempdir(), ad)
-  writeLines(icerik, yol, useBytes = FALSE)
+  writeLines(enc2utf8(icerik), yol, useBytes = TRUE)
   yol
 }
 
