@@ -264,10 +264,13 @@ settingsYapilandirmaUIImpl <- function(id) {
             label = NULL,
             value = claude_code_config$timeout_seconds,
             min = 30,
-            max = 600,
-            step = 30
+            max = 14400,
+            step = 300
           ),
-          tags$small(class = "setting-description", "30-600 saniye arası")
+          tags$small(
+            class = "setting-description",
+            "30-14.400 saniye arası (en fazla 4 saat)"
+          )
         )
       ),
       column(
