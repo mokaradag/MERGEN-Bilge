@@ -274,6 +274,20 @@ mergen_langflow_finalize_answer <- function(text, structured_sources = list()) {
       if (n_entries > 0L) {
         sup_map <- stats::setNames(as.character(seq_len(n_entries)), as.character(seq_len(n_entries)))
       }
+
+      # Bazı akışlar yapısal kaynakları gönderirken aynı listeyi yanıtın sonunda
+      # düzyazı "Kaynak:" bloğu olarak da tekrarlar. Tıklanabilir kaynakça için
+      # yapısal kaynaklar kanonik kalsın; ancak ham tekrar bloğu sohbette/DB'de
+      # görünmesin diye yalnızca geçerli sondaki düzyazı bloğunu metinden sök.
+      parsed_structured_tail <- tryCatch(mergen_langflow_parse_prose_sources(txt), error = function(e) NULL)
+      if (!is.null(parsed_structured_tail) && length(parsed_structured_tail$records) > 0) {
+        tail_txt <- as.character(parsed_structured_tail$tail %||% "")[1]
+        txt <- if (nzchar(tail_txt)) {
+          paste0(parsed_structured_tail$prose, "\n\n", tail_txt)
+        } else {
+          parsed_structured_tail$prose
+        }
+      }
     }
   }
 

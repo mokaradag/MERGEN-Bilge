@@ -102,8 +102,15 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
   }
 
   scores <- vapply(cand, .score_path_by_parts, integer(1), parts = left)
+  # İpucu skoru yalnızca gerçekten sol parçaların TÜMÜ aday yolunda geçtiğinde
+  # güvenilir kabul edilir. Aksi halde, aynı basename'e sahip ama bambaşka bir
+  # klasörde duran alakasız dosyayı açmak yerine NULL dönüp sonraki güvenli
+  # arama/fallback adımlarına bırakırız.
+  if (!length(scores) || max(scores, na.rm = TRUE) < length(left)) return(NULL)
+
   ord <- order(scores, decreasing = TRUE, na.last = NA)
   for (i in ord) {
+    if (scores[[i]] < length(left)) next
     p <- cand[[i]]
     if (path_exists_relaxed(p)) return(p)
   }
