@@ -303,6 +303,12 @@ mergen_kaynakca_marker_split <- function(content) {
     }
     expected_code <- .kaynakca_marker_code(rec$title, rec$path, rec$page, rec$type)
     if (!nzchar(rec$path) || !identical(rec$code, expected_code)) return(NULL)
+    normalized_path <- gsub("\\\\", "/", rec$path)
+    path_parts <- strsplit(normalized_path, "/", fixed = TRUE)[[1]]
+    hint_parts <- strsplit(normalized_path, "&&", fixed = TRUE)[[1]]
+    safe_parts <- c(path_parts, hint_parts)
+    if (grepl("^/", normalized_path) || grepl("^[A-Za-z]:", normalized_path) ||
+        any(safe_parts %in% c(".", "..")) || any(grepl(":", safe_parts, fixed = TRUE))) return(NULL)
     rec$code <- NULL
     entries[[length(entries) + 1L]] <- rec
   }

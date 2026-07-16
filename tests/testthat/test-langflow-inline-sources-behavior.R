@@ -568,12 +568,27 @@ test_that("mergen_langflow_kaynakca_marker_block && ipucunda gezinme/sürücü p
   block <- env$mergen_langflow_kaynakca_marker_block(list(
     list(title = "dosya.pdf", path = "ust&&..&&dosya.pdf", page = "", type = "pdf"),
     list(title = "dosya.pdf", path = "ust&&C:&&dosya.pdf", page = "", type = "pdf"),
+    list(title = "dosya.pdf", path = "https://ornek.gecersiz/dosya.pdf", page = "", type = "pdf"),
     list(title = "guvenli.pdf", path = "ust&&guvenli.pdf", page = "", type = "pdf")
   ))
 
   expect_match(block, "[KAYNAK 1] guvenli.pdf", fixed = TRUE)
   expect_false(grepl("ust&&..&&dosya.pdf", block, fixed = TRUE))
   expect_false(grepl("ust&&C:&&dosya.pdf", block, fixed = TRUE))
+  expect_false(grepl("https://ornek.gecersiz/dosya.pdf", block, fixed = TRUE))
+})
+
+test_that("mergen_kaynakca_marker_split eski imzalı güvensiz && ipuçlarını render'a taşımaz", {
+  testthat::skip_if_not_installed("openssl")
+  env <- .source_langflow_inline_env()
+  unsafe_path <- "ust&&..&&dosya.pdf"
+  code <- env$.kaynakca_marker_code("dosya.pdf", unsafe_path, "", "pdf")
+  marker <- paste0(
+    "Metin\n\nKaynakça:\n",
+    "[KAYNAK 1] dosya.pdf | yol=", unsafe_path, " | kod=", code, " | tur=pdf\n"
+  )
+
+  expect_null(env$mergen_kaynakca_marker_split(marker))
 })
 test_that("mergen_langflow_finalize_answer yapısal kaynak varken yinelenen düzyazı Kaynak bloğunu söker", {
   testthat::skip_if_not_installed("openssl")
