@@ -137,26 +137,32 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
   NULL
 }
 
-# Akıllı arama: önce TAM ipucu ile dene, sonra klasik basename
+# Akıllı arama: önce TAM basename eşleşmesi, sonra ipucu, son çare parça içerme.
 search_file_in_folder <- function(base_path, target_filename) {
   log_info("[FILE SEARCH] base='{base_path}', target='{target_filename}'")
   if (!dir.exists(base_path)) {
     log_error("[FILE SEARCH] taban klasör yok: '{base_path}'")
     return(NULL)
   }
-  # 1) '&&' ipucu varsa onu kullan (indeks içi aday daraltma + puanlama)
+  # 1) ÖNCE tam basename eşleşmesi (düz '&&' dosya adı tam eşleşmesi dahil).
+  #    Bu adım ipucu-skorlu aramadan (2) ÖNCE gelmelidir: gerçek disk adı '&&'
+  #    İÇEREN düz bir dosyaysa (kategori öneki gömülü ad), '.search_with_hint'
+  #    yalnızca ipucunun SON parçasını basename sayıp arar; taban klasörde aynı
+  #    son-parça adına sahip alakasız bir dosya varsa (ör. başka bir yerdeki
+  #    düz "prosedur.pdf"), tam eşleşme önce denenmezse o alakasız dosya
+  #    yanlışlıkla döndürülebilir.
+  hit <- .search_from_index(base_path, target_filename)
+  if (!is.null(hit)) {
+    log_info("[FILE SEARCH] tam eşleşme: {hit}")
+    return(hit)
+  }
+  # 2) '&&' ipucu varsa (gerçek alt klasör ipucu biçimi) skorlu arama dene.
   if (is.character(target_filename) && grepl("&&", target_filename, fixed = TRUE)) {
     hit_hint <- .search_with_hint(base_path, target_filename)
     if (!is.null(hit_hint)) {
       log_info("[FILE SEARCH] ipucu ile bulundu: {hit_hint}")
       return(hit_hint)
     }
-  }
-  # 2) Sade basename araması (düz '&&' dosya adı tam eşleşmesi dahil)
-  hit <- .search_from_index(base_path, target_filename)
-  if (!is.null(hit)) {
-    log_info("[FILE SEARCH] indeks eşleşmesi: {hit}")
-    return(hit)
   }
   # 3) '&&' düz dosya adı için son çare: tüm parçaları içeren en iyi aday
   if (is.character(target_filename) && grepl("&&", target_filename, fixed = TRUE)) {

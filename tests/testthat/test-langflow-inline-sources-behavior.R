@@ -31,29 +31,51 @@ test_that(".langflow_inline_sup_to_citation <sup>(n)</sup> atıflarını [n]'e �
   f <- env$.langflow_inline_sup_to_citation
 
   expect_identical(f("Metin<sup>(1)</sup> devam."), "Metin[1] devam.")
-  expect_identical(f("A<sup>1</sup> B<sup>(2)</sup>"), "A[1] B[2]")
-  # Tek üstsimgede birden çok sayı
+  # Tek üstsimgede birden çok parantezli sayı grubu
   expect_identical(f("X<sup>(1)(2)</sup>"), "X[1][2]")
-  expect_identical(f("X<sup>1, 2</sup>"), "X[1][2]")
+  expect_identical(f("X<sup>(1, 2)</sup>"), "X[1][2]")
   # Büyük/küçük harf duyarsız etiket
   expect_identical(f("Y<SUP>(3)</SUP>"), "Y[3]")
   # <sup> yoksa metin değişmez
   expect_identical(f("Sade metin."), "Sade metin.")
-  # Rakamsız üstsimge kaldırılır
-  expect_identical(f("A<sup>x</sup>B"), "AB")
+  # CITATION-ŞEKİLLİ DEĞİL (parantezsiz bare rakam / harf): sıradan üs/dipnot
+  # gösterimi olabilir (m<sup>2</sup> gibi); DOKUNULMAZ, yanlışlıkla atfa
+  # dönüştürülmez veya kaybolmaz.
+  expect_identical(f("A<sup>1</sup> B<sup>(2)</sup>"), "A<sup>1</sup> B[2]")
+  expect_identical(f("X<sup>1, 2</sup>"), "X<sup>1, 2</sup>")
+  expect_identical(f("A<sup>x</sup>B"), "A<sup>x</sup>B")
+  expect_identical(f("Alan m<sup>2</sup> olarak hesaplanır."), "Alan m<sup>2</sup> olarak hesaplanır.")
   # num_map ile yeniden eşleme (orijinal numara -> pozisyon)
   expect_identical(f("A<sup>(1)</sup> C<sup>(3)</sup>", num_map = c("1" = "1", "3" = "2")), "A[1] C[2]")
   # Eşleşmeyen numara DÜŞÜRÜLÜR (etkisiz; subscript hatası da vermez)
   expect_identical(f("A<sup>(9)</sup>", num_map = c("1" = "1")), "A")
   # Kısmen eşleşen üstsimge: yalnızca eşleşen numara kalır
   expect_identical(f("A<sup>(1)(9)</sup>", num_map = c("1" = "1")), "A[1]")
-  # Öznitelikli üstsimge etiketi de yakalanır (class vb.)
+  # Öznitelikli üstsimge etiketi de yakalanır (class vb.); sayılar YALNIZCA
+  # etiket İÇERİĞİNDEN alınır, açılış etiketindeki öznitelik değeri değil.
   expect_identical(f('X<sup class="citation">(1)</sup>'), "X[1]")
-  expect_identical(f("Y<sup data-x='1'>2</sup>"), "Y[2]")
+  expect_identical(f("Y<sup data-x='1'>(2)</sup>"), "Y[2]")
   # <supper> gibi farklı etiket yakalanmaz (sözcük sınırı)
   expect_identical(f("m<supper>3</supper>"), "m<supper>3</supper>")
   # Boş güvenli
   expect_identical(f(""), "")
+})
+
+test_that(".langflow_sup_is_citation_shaped yalnızca tamamen parantezli rakam gruplarını kabul eder", {
+  env <- .source_langflow_inline_env()
+  shaped <- env$.langflow_sup_is_citation_shaped
+
+  expect_true(shaped("(1)"))
+  expect_true(shaped("(1)(2)"))
+  expect_true(shaped("(1, 2)"))
+  expect_true(shaped("( 1 )"))
+  expect_false(shaped("1"))
+  expect_false(shaped("1, 2"))
+  expect_false(shaped("2"))
+  expect_false(shaped("x"))
+  expect_false(shaped("(1"))
+  expect_false(shaped("1)"))
+  expect_false(shaped(""))
 })
 
 test_that("mergen_langflow_parse_prose_sources sondaki 'Kaynak:' bölümünü ayrıştırır ve düzyazıyı ayırır", {
@@ -235,6 +257,44 @@ test_that("mergen_langflow_finalize_answer girişlerden sonraki metni korur (ses
   expect_match(out, "\n\nKaynakça:\n[KAYNAK 1]", fixed = TRUE)
 })
 
+test_that("mergen_langflow_parse_prose_sources numaralı girişler arasındaki boş satırı atlar (listeyi kesmez)", {
+  env <- .source_langflow_inline_env()
+  parse <- env$mergen_langflow_parse_prose_sources
+
+  metin <- paste0(
+    "Metin.\n\nKaynak:\n",
+    "(1) Grup&&a.pdf\n",
+    "\n",
+    "(2) Grup&&b.pdf\n"
+  )
+  res <- parse(metin)
+  expect_false(is.null(res))
+  expect_length(res$records, 2L)
+  expect_identical(res$records[[1]]$title, "a.pdf")
+  expect_identical(res$records[[2]]$title, "b.pdf")
+  expect_identical(res$tail, "")
+})
+
+test_that("mergen_langflow_finalize_answer boş satırla ayrılmış girişlerdeki atıfları doğru eşler", {
+  testthat::skip_if_not_installed("openssl")
+  env <- .source_langflow_inline_env()
+  finalize <- env$mergen_langflow_finalize_answer
+
+  metin <- paste0(
+    "Birinci cümle.<sup>(1)</sup>\n",
+    "İkinci cümle.<sup>(2)</sup>\n\n",
+    "Kaynak:\n",
+    "(1) Grup&&a.pdf\n",
+    "\n",
+    "(2) Grup&&b.pdf\n"
+  )
+  out <- finalize(metin, list())
+  expect_match(out, "Birinci cümle.[1]", fixed = TRUE)
+  expect_match(out, "İkinci cümle.[2]", fixed = TRUE)
+  expect_match(out, "[KAYNAK 1] a.pdf", fixed = TRUE)
+  expect_match(out, "[KAYNAK 2] b.pdf", fixed = TRUE)
+})
+
 test_that("mergen_langflow_parse_prose_sources BÜYÜK harf başlıkları tanır (KAYNAK / KAYNAKÇA)", {
   env <- .source_langflow_inline_env()
   parse <- env$mergen_langflow_parse_prose_sources
@@ -360,6 +420,31 @@ test_that("search_file_in_folder '&&' düz dosya adını alt klasörde çözer",
   expect_identical(
     normalizePath(found, winslash = "/"),
     normalizePath(file.path(alt, fname), winslash = "/")
+  )
+})
+
+test_that("search_file_in_folder ipucu skorlu aramadan önce TAM '&&' eşleşmesini tercih eder", {
+  base_dir <- tempfile()
+  dir.create(base_dir, recursive = TRUE)
+
+  # Alakasız dosya: yalnızca ipucunun SON parçasıyla aynı basename'e sahip
+  # (yanlış eşleşme adayı). '.search_with_hint' bu adaya düşerse yanlış dosya
+  # açılırdı.
+  decoy_dir <- file.path(base_dir, "Alakasiz")
+  dir.create(decoy_dir, recursive = TRUE)
+  writeLines("yanlis", file.path(decoy_dir, "prosedur.pdf"))
+
+  # Gerçek düz '&&' adı: aranan TAM hedef.
+  real_dir <- file.path(base_dir, "Gercek")
+  dir.create(real_dir, recursive = TRUE)
+  fname <- "Grup&&Kalite&&prosedur.pdf"
+  writeLines("dogru", file.path(real_dir, fname))
+
+  found <- search_file_in_folder(base_dir, fname)
+  expect_false(is.null(found))
+  expect_identical(
+    normalizePath(found, winslash = "/"),
+    normalizePath(file.path(real_dir, fname), winslash = "/")
   )
 })
 

@@ -20,15 +20,28 @@
   c("pdf", "doc", "docx", "docm", "txt", "csv", "xls", "xlsx", "ppt", "pptx", "md")
 }
 
+# Etiket içeriği "citation-şekilli" mi? Yalnızca bir veya daha fazla parantezli
+# rakam grubu, örn. "(1)", "(1)(2)", "(1, 2)" kabul edilir (boşluklar önce
+# ayıklanır). Bare (parantezsiz) rakam -- m<sup>2</sup> gibi sıradan üs/dipnot
+# gösterimi -- citation SAYILMAZ; bu, gerçek Langflow biçimiyle (<sup>(n)</sup>)
+# örtüşür ve sıradan üs/dipnot içeriğinin yanlışlıkla atfa dönüştürülmesini
+# veya kaybolmasını önler.
+.langflow_sup_is_citation_shaped <- function(inner) {
+  trimmed <- gsub("[ \t]+", "", inner)
+  grepl("^(\\([0-9]+([,;][0-9]+)*\\))+$", trimmed, perl = TRUE)
+}
+
 # Gövdedeki <sup>...</sup> üstsimge atıflarını [n] biçimine çevirir. Markdown
 # kaçışı (<,> -> &lt;,&gt;) üstsimgeyi metne çevirdiğinden, atıflar burada erken
 # [n]'e indirgenir; citation_handler.js bunları tıklanabilir üstsimge rozetine
 # dönüştürür. Bir üstsimge birden çok sayı taşıyabilir (<sup>(1)(2)</sup>) ve
-# öznitelik içerebilir (<sup class="citation">(1)</sup>).
+# öznitelik içerebilir (<sup class="citation">(1)</sup>). Yalnızca CITATION-
+# ŞEKİLLİ (tamamen parantezli rakam grupları) içerik dönüştürülür; sıradan
+# (parantezsiz) üs/dipnot gösterimleri (m<sup>2</sup> gibi) DOKUNULMADAN kalır.
 # num_map verilirse orijinal numara -> pozisyon yeniden eşlenir (Kaynak listesi
 # 1..n sırasıyla numaralanmadıysa atıf/kaynak hizası korunur). Eşleşmeyen numara
 # DÜŞÜRÜLÜR (etkisiz): yoğun yeniden numaralanan Kaynakça'da yanlış belgeye atıf
-# yapmasını önler. Tüm numaraları düşen üstsimge tamamen kaldırılır.
+# yapmasını önler. Tüm numaraları düşen citation-şekilli üstsimge kaldırılır.
 .langflow_inline_sup_to_citation <- function(text, num_map = NULL) {
   txt <- as.character(text %||% "")[1]
   if (is.na(txt) || !nzchar(txt)) return(text)
@@ -46,8 +59,11 @@
     # değerlerindeki rakamlar (class="cite-3", data-x='1' ...) atıf sayılmamalı.
     inner <- sub("^<sup\\b[^>]*>", "", chunk, perl = TRUE, ignore.case = TRUE)
     inner <- sub("</sup>$", "", inner, perl = TRUE, ignore.case = TRUE)
+
+    if (!.langflow_sup_is_citation_shaped(inner)) return(chunk)
+
     nums <- regmatches(inner, gregexpr("[0-9]+", inner, perl = TRUE))[[1]]
-    if (!length(nums)) return("")
+    if (!length(nums)) return(chunk)
     if (!is.null(num_map)) {
       mapped <- character(0)
       for (n in nums) {
@@ -154,7 +170,9 @@ mergen_langflow_parse_prose_sources <- function(text) {
   while (idx <= n_after) {
     ln <- after[idx]
     if (!nzchar(trimws(ln))) {
-      if (saw_entry) break
+      # Boş satırlar HER ZAMAN atlanır (listeyi bitirmez); bazı Langflow
+      # akışları numaralı girişler arasına boşluk bırakır. Liste yalnızca
+      # gerçek (boş olmayan) numarasız bir satırla sonlanır.
       idx <- idx + 1L
       next
     }

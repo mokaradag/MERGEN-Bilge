@@ -48,6 +48,17 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   (`.oo_langflow_yanit_metni`) uygulanır; oda `.source-link`'i
   `data-source-scope="model_bases"` kapsamını korur (çapraz-kullanıcı sızıntısı
   önlenir).
+- **Sağlamlaştırma (kod incelemesi sonrası):** Eşleşmeyen/aralık dışı atıflar
+  artık etkisiz kılınır (yanlış belgeye kaymaz); girişlerden sonraki metin
+  ("Not:" gibi) sessizce düşürülmez; `<sup>` dönüşümü yalnızca gerçek bir
+  Kaynakça bloğu varken VE etiket içeriği tamamen parantezli rakam grubuysa
+  uygulanır (`m<sup>2</sup>` gibi sıradan üs/dipnot gösterimi dokunulmadan
+  kalır); başlık BÜYÜK harfi de tanır (`KAYNAK:`, `KAYNAKÇA:`); öznitelikli
+  `<sup>` etiketleri yakalanır (sayılar yalnızca etiket içeriğinden okunur);
+  `ppt`/`pptx` dosya indeksine eklendi; numaralı girişler arasındaki boş
+  satırlar listeyi kesmez; `search_file_in_folder()` artık ÖNCE tam basename
+  eşleşmesini dener (ipucu-skorlu aramadan önce), böylece aynı son-parça adına
+  sahip alakasız bir dosya yanlışlıkla döndürülmez.
 - **Regresyon kapsamı:** `tests/testthat/test-langflow-inline-sources-behavior.R`
   (üstsimge dönüşümü, düzyazı ayrıştırma, imzalı işaretleyici yükseltme, kırıntı
   yolu render'ı, XSS kaçışı, alt klasör/`&&` dosya çözümlemesi). Mevcut
