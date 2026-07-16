@@ -53,7 +53,8 @@
 }
 
 .create_test_document <- function(root, relative_path) {
-  full_path <- file.path(root, strsplit(relative_path, "/", fixed = TRUE)[[1]])
+  segments <- strsplit(relative_path, "/", fixed = TRUE)[[1]]
+  full_path <- do.call(file.path, as.list(c(root, segments)))
   dir.create(dirname(full_path), recursive = TRUE, showWarnings = FALSE)
   writeBin(charToRaw("test document"), full_path)
   full_path
