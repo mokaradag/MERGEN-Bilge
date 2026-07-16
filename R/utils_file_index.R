@@ -110,6 +110,33 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
   NULL
 }
 
+# '&&' parçalarının TÜMÜNÜ (son parça dahil) yol içinde barındıran indeks
+# girişini seçer. '&&' düz dosya adının parçasıysa (dizin değil; disk basename'i
+# 'A&&B&&dosya.pdf' gibi '&&' içerir) tam ad bu yolla yakalanır: '.search_with_hint'
+# yalnızca son parçayı basename varsayıp başarısız olur, bu yardımcı ise tüm
+# parçaların geçtiği en iyi adayı bulur. Boşluk/büyük-küçük harf farklarına da
+# dayanıklıdır. Tüm parçalar geçmiyorsa (best < parça sayısı) NULL döner.
+.search_all_parts_contained <- function(base_path, hint) {
+  if (!is.character(hint) || length(hint) == 0 || is.na(hint[1])) return(NULL)
+  parts <- trimws(strsplit(as.character(hint[1]), "&&", fixed = TRUE)[[1]])
+  parts <- parts[nzchar(parts)]
+  if (!length(parts)) return(NULL)
+
+  idx <- .build_basename_index(base_path)
+  if (!length(idx$map)) return(NULL)
+  all_paths <- unlist(idx$map, use.names = FALSE)
+  if (!length(all_paths)) return(NULL)
+
+  scores <- vapply(all_paths, .score_path_by_parts, integer(1), parts = parts)
+  if (max(scores) < length(parts)) return(NULL)
+  ord <- order(scores, decreasing = TRUE, na.last = NA)
+  for (i in ord) {
+    p <- all_paths[[i]]
+    if (path_exists_relaxed(p)) return(p)
+  }
+  NULL
+}
+
 # Akıllı arama: önce TAM ipucu ile dene, sonra klasik basename
 search_file_in_folder <- function(base_path, target_filename) {
   log_info("[FILE SEARCH] base='{base_path}', target='{target_filename}'")
@@ -125,11 +152,19 @@ search_file_in_folder <- function(base_path, target_filename) {
       return(hit_hint)
     }
   }
-  # 2) Sade basename araması
+  # 2) Sade basename araması (düz '&&' dosya adı tam eşleşmesi dahil)
   hit <- .search_from_index(base_path, target_filename)
   if (!is.null(hit)) {
     log_info("[FILE SEARCH] indeks eşleşmesi: {hit}")
     return(hit)
+  }
+  # 3) '&&' düz dosya adı için son çare: tüm parçaları içeren en iyi aday
+  if (is.character(target_filename) && grepl("&&", target_filename, fixed = TRUE)) {
+    hit_all <- .search_all_parts_contained(base_path, target_filename)
+    if (!is.null(hit_all)) {
+      log_info("[FILE SEARCH] parça içerme ile bulundu: {hit_all}")
+      return(hit_all)
+    }
   }
   log_warn("[FILE SEARCH] eşleşme yok: target='{target_filename}'")
   NULL

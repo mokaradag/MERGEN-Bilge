@@ -129,20 +129,19 @@ handle_langflow_chat_mode <- function(ctx) {
     ctx$values$typing <- FALSE
 
     if (isTRUE(result$success)) {
-      # Belge kaynakları (başlık/yol/sayfa/tür) düz metin Kaynakça işaretleyici
-      # bloğu olarak içeriğe eklenir; render sırasında process_message_content
-      # bloğu güvenli tıklanabilir .source-link HTML'ine yükseltir. İçerik DB'ye
-      # işaretleyiciyle kaydedildiği için kayıtlı sohbet yeniden yüklemesinde de
-      # aynı tıklanabilir Kaynakça üretilir.
+      # Belge kaynakları tıklanabilir Kaynakça'ya yükseltilir ve satır içi
+      # <sup>(n)</sup> atıfları [n] üstsimge rozetlerine çevrilir. Kaynaklar ya
+      # YAPISAL JSON alanından (result$sources) ya da yanıt metninin sonundaki
+      # düz "Kaynak:" bölümünden gelir; her iki durumda da mesaj imzalı işaretleyici
+      # bloğuyla DB'ye kaydedilir, böylece kayıtlı sohbet yeniden yüklemesinde de
+      # aynı tıklanabilir Kaynakça + üstsimge atıfları üretilir. Yardımcı yüklü
+      # değilse (izole test) metin olduğu gibi kalır.
       final_text <- result$text
-      if (exists("mergen_langflow_kaynakca_marker_block", mode = "function", inherits = TRUE)) {
-        kaynak_blok <- tryCatch(
-          mergen_langflow_kaynakca_marker_block(result$sources),
-          error = function(e) ""
+      if (exists("mergen_langflow_finalize_answer", mode = "function", inherits = TRUE)) {
+        final_text <- tryCatch(
+          mergen_langflow_finalize_answer(result$text, result$sources),
+          error = function(e) result$text
         )
-        if (nzchar(kaynak_blok)) {
-          final_text <- paste0(final_text, kaynak_blok)
-        }
       }
       ctx$add_message_fn(final_text, "ai")
     } else {

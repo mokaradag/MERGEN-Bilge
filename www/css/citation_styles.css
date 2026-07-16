@@ -64,3 +64,11 @@
   opacity: 0.65;
   font-size: 0.9em;
 }
+
+/* ─── Kaynakça Kırıntı Yolu (.kaynakca-breadcrumb) ───────── */
+/* Düz "A&&B&&dosya.pdf" adlarında yalnızca son parça (dosya adı) tıklanabilir; */
+/* önceki kategori parçaları " - " ile birleşip soluk kırıntı yolu olur.       */
+.kaynakca-breadcrumb {
+  opacity: 0.6;
+  font-size: 0.92em;
+}

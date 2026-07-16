@@ -396,15 +396,38 @@ mergen_kaynakca_marker_html <- function(entries, scope = "personal") {
       ""
     }
 
+    # Düz "A&&B&&dosya.pdf" adlarında (dizin değil, düz dosya adı ayracı) yalnızca
+    # SON parça (görünen dosya adı) tıklanabilir olur; önceki parçalar " - " ile
+    # birleşip soluk kırıntı yolu (breadcrumb) olarak gösterilir. Böylece uzun
+    # kategori öneki bağlantının altını çizmeden okunur kalır. '&&' içermeyen
+    # yollarda (yapısal kaynaklar) mevcut davranış korunur: başlık tıklanabilir.
+    path_raw <- as.character(rec$path %||% "")[1]
+    breadcrumb_html <- ""
+    link_text <- title
+    if (grepl("&&", path_raw, fixed = TRUE)) {
+      segs <- trimws(strsplit(path_raw, "&&", fixed = TRUE)[[1]])
+      segs <- segs[nzchar(segs)]
+      if (length(segs) >= 1) {
+        link_text <- segs[length(segs)]
+        if (length(segs) > 1) {
+          parents <- paste(segs[seq_len(length(segs) - 1L)], collapse = " - ")
+          breadcrumb_html <- paste0(
+            "<span class='kaynakca-breadcrumb'>",
+            htmltools::htmlEscape(parents), " - </span>"
+          )
+        }
+      }
+    }
+
     entry_html <- c(entry_html, paste0(
       "<span class='kaynakca-entry' data-entry='", i, "'>",
-      i, ") ", icon_html,
+      i, ") ", icon_html, breadcrumb_html,
       "<span class='source-link' data-source-id='",
       htmltools::htmlEscape(source_id, attribute = TRUE),
       "' data-filename='", htmltools::htmlEscape(hint, attribute = TRUE),
       "'", scope_attr,
       " style='color:#007bff; cursor:pointer; text-decoration:underline;'>",
-      htmltools::htmlEscape(title),
+      htmltools::htmlEscape(link_text),
       "</span>", page_html,
       "</span>"
     ))

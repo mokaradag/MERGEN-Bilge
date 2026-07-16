@@ -228,6 +228,7 @@ source_manifest_sections <- list(
     "R/helpers_send_message_core.R",
     "R/helpers_langflow_runtime.R",
     "R/helpers_langflow_sources.R",
+    "R/helpers_langflow_inline_sources.R",
     "R/helpers_vision_context.R",
     "R/helpers_send_message_prompting.R",
     "R/helpers_quick_action_intro_messages.R"

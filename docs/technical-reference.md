@@ -1094,6 +1094,18 @@ Render sırasında `process_message_content()` bu bloğu güvenli tıklanabilir 
 
 Ortak oturum (Süreç/Uygulama Uzmanı) odalarında da aynı Kaynakça üretilir: `oo_arac_langflow_uret()` yanıt metnine işaretleyici bloğunu ekler, `oo_mesaj_html()` bunu `render_safe_markdown_html()` düzyazısıyla birlikte tıklanabilir HTML'e yükseltir. Ancak ORTAK odada `.source-link` `data-source-scope="model_bases"` taşır: tıklama çözümlemesi KİŞİSEL kullanıcı kovasını ATLAR ve yalnızca kurumsal model taban klasörlerinde arar. Böylece bir katılımcının oluşturduğu atıf, tıklayan başka bir katılımcının kişisel dosyalarına çözümlenemez (çapraz-kullanıcı sızıntısı önlenir). Tekil sohbet varsayılan `personal` kapsamıyla mevcut davranışı korur.
 
+#### Metin içi (düzyazı) "Kaynak:" bölümü ve `<sup>(n)</sup>` atıfları
+
+Bazı akışlar kaynakları YAPISAL JSON alanında değil, yanıt METNİNİN sonuna düz bir "Kaynak:" listesi ve gövdeye satır içi `<sup>(1)</sup>` üstsimge atıfları olarak yazar. Bu biçim `R/helpers_langflow_inline_sources.R` katmanıyla yakalanır (işleyicinin tek giriş noktası `mergen_langflow_finalize_answer()`; Süreç/Uygulama Uzmanı için `R/server_handler_langflow.R`, ortak oda için `.oo_langflow_yanit_metni()`):
+
+- `mergen_langflow_parse_prose_sources()` sondaki "Kaynak(lar/ça):" başlığını ve altındaki `(1) ...`, `1) ...`, `1. ...` biçimli numaralı girişleri ayrıştırır; düzyazıyı bölümden ayırır. URL/mutlak yol/sürücü/`..` gezinme girişleri ve belge uzantısı taşımayanlar reddedilir (kaynak uydurulmaz).
+- Ayrıştırılan girişler aynı imzalı `mergen_langflow_kaynakca_marker_block()` işaretleyicisine yükseltilir; böylece render, kalıcılık ve güvenlik davranışı yapısal kaynaklarla birebir aynıdır (kayıtlı sohbet yeniden yüklemesi dahil).
+- `<sup>(n)</sup>` atıfları `[n]` biçimine çevrilir. Markdown ham HTML'i kaçırdığından üstsimge etiketi erken indirgenir; render'da `citation_handler.js` `[n]` metnini `.citation-ref` üstsimge rozetine dönüştürür (tıklama, aynı mesajdaki `.kaynakca-entry[data-entry=n]` girişine yumuşak kaydırır ve kısa süre vurgular). Kaynak listesi 1..n sırasıyla numaralanmadıysa (örn. 2 atlanmışsa) atıflar pozisyona yeniden eşlenir, böylece atıf/kaynak hizası korunur.
+
+Bu belgelerdeki dosya adları çoğunlukla `A&&B&&dosya.pdf` gibi DÜZ (dizin değil) `&&` ayraçlı gerçek adlardır; disk basename'i `&&` içerir. Kaynakça render'ında (`mergen_kaynakca_marker_html()`) yalnızca son parça (görünen dosya adı) tıklanabilir `.source-link` olur; önceki kategori parçaları `.kaynakca-breadcrumb` sınıfıyla soluk, `" - "` ile birleşmiş kırıntı yolu olarak gösterilir (uzun önek bağlantının altını çizmeden okunur kalır). `&&` içermeyen (yapısal) yollarda mevcut davranış korunur: başlık tıklanabilir. `data-filename` her durumda tam `&&` adını taşır; `handle_source_file_click()` -> `search_file_in_folder()` bu adı özyinelemeli indeks üzerinden çözer. `&&` düz dosya adı ayracıysa `search_file_in_folder()` tam basename eşleşmesine ve son çare olarak tüm `&&` parçalarını içeren en iyi adaya (`.search_all_parts_contained()`) başvurur; böylece belgeler alt klasörlerde olsa bile bulunur.
+
+Regresyon kapsamı: `tests/testthat/test-langflow-inline-sources-behavior.R` (üstsimge dönüşümü, düzyazı ayrıştırma, imzalı işaretleyici yükseltme, kırıntı yolu render'ı, XSS kaçışı ve alt klasör/`&&` dosya çözümlemesi).
+
 ---
 
 ## Deneyim Modları

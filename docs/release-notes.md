@@ -15,6 +15,46 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ## Son Değişiklikler
 
 
+### (Yayınlanmadı) 2026-07-16 Langflow metin içi "Kaynak:" bölümü + `<sup>(n)</sup>` atıfları tıklanabilir oldu
+
+- **Metin içine yazılan belge kaynakları artık tıklanabilir.** Bazı Süreç
+  Yönetimi / Uygulama Uzmanı akışları kaynakları yapısal JSON alanında değil,
+  yanıt METNİNİN sonuna düz bir "Kaynak:" listesi olarak yazıyordu; bu liste
+  düz metin kalıyor, önizleme açılmıyordu. Yeni
+  `R/helpers_langflow_inline_sources.R` katmanı (`mergen_langflow_finalize_answer`,
+  `mergen_langflow_parse_prose_sources`) sondaki "Kaynak(lar/ça):" bölümünü ve
+  `(1) ...` / `1) ...` / `1. ...` girişlerini ayrıştırıp mevcut imzalı Kaynakça
+  işaretleyicisine yükseltir. Böylece render, güvenlik ve kalıcılık davranışı
+  yapısal kaynaklarla birebir aynıdır (kayıtlı sohbet yeniden yüklemesi dahil).
+  URL/mutlak yol/sürücü/`..` gezinme ve belge uzantısı taşımayan girişler
+  reddedilir (kaynak uydurulmaz).
+- **`<sup>(1)</sup>` üstsimge atıfları düzgün gösteriliyor ve kaynağa kayıyor.**
+  Markdown ham HTML'i kaçırdığından `<sup>(1)</sup>` düz metin olarak görünüyordu.
+  Atıflar artık erken `[n]` biçimine çevrilir; `citation_handler.js` bunları
+  tıklanabilir `.citation-ref` üstsimge rozetine dönüştürür ve tıklandığında
+  aynı mesajdaki ilgili Kaynakça girişine yumuşak kaydırıp kısa süre vurgular.
+  Kaynak listesi 1..n sırasıyla numaralanmadıysa atıflar pozisyona yeniden
+  eşlenir (atıf/kaynak hizası korunur).
+- **`A&&B&&dosya.pdf` düz adları kırıntı yolu olarak okunur.** Bu belgelerin
+  gerçek disk adları `&&` ayraçlı düz (dizin olmayan) adlardır. Kaynakça'da
+  yalnızca son parça (görünen dosya adı) tıklanabilir olur; önceki kategori
+  parçaları `" - "` ile birleşip soluk `.kaynakca-breadcrumb` kırıntı yolu olarak
+  gösterilir. `&&` içermeyen (yapısal) yollarda mevcut davranış korunur.
+- **Alt klasör çözümlemesi.** `data-filename` tam `&&` adını taşır;
+  `search_file_in_folder()` özyinelemeli indeks üzerinden tam basename eşleşmesi
+  ve son çare olarak tüm `&&` parçalarını içeren en iyi adayla
+  (`.search_all_parts_contained()`) belgeyi alt klasörlerde de bulur.
+- **Ortak Oturum tutarlılığı.** Aynı yükseltme ortak oda Langflow yolunda da
+  (`.oo_langflow_yanit_metni`) uygulanır; oda `.source-link`'i
+  `data-source-scope="model_bases"` kapsamını korur (çapraz-kullanıcı sızıntısı
+  önlenir).
+- **Regresyon kapsamı:** `tests/testthat/test-langflow-inline-sources-behavior.R`
+  (üstsimge dönüşümü, düzyazı ayrıştırma, imzalı işaretleyici yükseltme, kırıntı
+  yolu render'ı, XSS kaçışı, alt klasör/`&&` dosya çözümlemesi). Mevcut
+  `test-langflow-sources-behavior.R`, `test-langflow-handler-behavior.R`,
+  `test-file-index.R` ve manifest/bölüm sözleşmeleri güncellendi.
+
+
 ### (Yayınlanmadı) 2026-07-12 Süreç Yönetimi Langflow çoklu akış onarımı + tıklanabilir belge kaynakları
 
 - **Satır içi yorum akış listesini artık kirletmiyor.** `readRenviron()`
