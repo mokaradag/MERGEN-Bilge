@@ -63,8 +63,8 @@
 test_that("araç ailesi yalnız kendi teknik model kökünü seçer", {
   env <- .source_langflow_plain_source_handler_for_test()
   paths <- list(
-    mergensurecyonetimi = "//server/share/process-root",
-    mergenuygulamauzmani = "//server/share/app-root"
+    mergensurecyonetimi = "//host/share/process-root",
+    mergenuygulamauzmani = "//host/share/app-root"
   )
 
   process_bases <- env$mergen_langflow_model_bases_for_tool(
@@ -78,8 +78,8 @@ test_that("araç ailesi yalnız kendi teknik model kökünü seçer", {
     tool_mode_config = list(app_expert = list(title = "Uygulama Uzmanı"))
   )
 
-  expect_identical(process_bases, "//server/share/process-root")
-  expect_identical(app_bases, "//server/share/app-root")
+  expect_identical(process_bases, "//host/share/process-root")
+  expect_identical(app_bases, "//host/share/app-root")
 })
 
 test_that("literal satır kaçışlı ve markdown vurgulu gerçek kaynak biçimi yükseltilir", {
