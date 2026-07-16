@@ -1,9 +1,8 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-langflow-plain-source-promotion-behavior.R
-# Açıklama: Süreç Yönetimi ve Uygulama Uzmanı Langflow yanıtlarının sonunda
-#           düz "Kaynak: dosya.ext" olarak gelen, local_model_paths altında
-#           gerçekten bulunan dosyaların güvenli tıklanabilir Kaynakça
-#           işaretleyicisine yükseltilmesini doğrular.
+# Açıklama: Süreç Yönetimi ve Uygulama Uzmanı Langflow yanıtlarında görülen
+#           kaynak biçimlerinin, araçla eşleşen model köklerinde rekürsif olarak
+#           doğrulanıp güvenli Kaynakça işaretleyicisine yükseltilmesini sınar.
 # ==============================================================================
 
 .source_langflow_plain_source_handler_for_test <- function(canned_result = NULL) {
@@ -12,6 +11,7 @@
 
   for (f in c(
     "R/utils_common.R",
+    "R/utils_file_index.R",
     "R/helpers_api_model_config.R",
     "R/helpers_api_model_tool_runtime.R",
     "R/helpers_langflow_runtime.R",
@@ -23,7 +23,10 @@
   env$removeUI <- function(...) invisible(NULL)
   env$showToast <- function(...) invisible(NULL)
   env$log_debug <- function(...) invisible(NULL)
+  env$log_info <- function(...) invisible(NULL)
   env$log_warn <- function(...) invisible(NULL)
+  env$log_error <- function(...) invisible(NULL)
+  env$path_exists_relaxed <- function(path) isTRUE(file.exists(path))
   env$mergen_is_current_request <- function(...) TRUE
   env$mergen_send_message_release_values_token <- function(values, req_id = NULL) {
     values$backpressure_token <- NULL
@@ -49,96 +52,153 @@
   env
 }
 
-test_that("sondaki tam Kaynak satırları doğrulanıp kaynak kaydına yükseltilir", {
+.create_test_document <- function(root, relative_path) {
+  full_path <- file.path(root, strsplit(relative_path, "/", fixed = TRUE)[[1]])
+  dir.create(dirname(full_path), recursive = TRUE, showWarnings = FALSE)
+  writeBin(charToRaw("test document"), full_path)
+  full_path
+}
+
+test_that("üretimdeki köşeli parantez ve Genel Kaynak Listesi biçimi yükseltilir", {
   env <- .source_langflow_plain_source_handler_for_test()
+  root <- tempfile("app-expert-root-")
+  dir.create(root, recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
 
-  pdf_name <- paste0(
-    "Kurumsal Proje Yönetim Süreci İzleci&&",
-    "İşçilik Girişi İş Talimatı.pdf"
-  )
-  docx_name <- sub("\\.pdf$", ".docx", pdf_name)
-
-  resolver_calls <- list()
-  resolver <- function(base_dir, target) {
-    resolver_calls[[length(resolver_calls) + 1L]] <<- c(base_dir, target)
-    if (target %in% c(pdf_name, docx_name)) {
-      return(file.path(base_dir, target))
-    }
-    NULL
-  }
+  filename <- "p6_pro_user.pdf"
+  .create_test_document(root, filename)
 
   original <- paste(
-    "İşçilik girişi adımları yukarıda açıklanmıştır.",
-    paste0("Kaynak: ", pdf_name),
-    paste0("Kaynak: ", docx_name),
+    "Uygulamanın temel özellikleri açıklanmıştır.",
+    paste0("Kaynak: [", filename, "]"),
+    "",
+    "Genel Kaynak Listesi:",
+    paste0("\u2022 ", filename),
     sep = "\n"
   )
-  out <- env$mergen_langflow_promote_validated_text_sources(
-    original,
+
+  out <- env$mergen_langflow_promote_validated_sources(
+    text = original,
+    structured_sources = list(),
     local_model_paths = list(
-      "technical name 1" = "//main/repository/top-folder",
-      "technical name 2" = "//main/repository/top-folder2"
+      mergensurecyonetimi = tempfile("unused-process-root-"),
+      mergenuygulamauzmani = root
     ),
-    resolver = resolver,
-    path_exists_fn = function(path) TRUE
+    tool_family = "app_expert",
+    tool_mode_config = list(app_expert = list(title = "Uygulama Uzmanı")),
+    resolver = env$search_file_in_folder,
+    path_exists_fn = file.exists
   )
 
-  expect_identical(out$text, "İşçilik girişi adımları yukarıda açıklanmıştır.")
-  expect_length(out$sources, 2L)
-  expect_identical(out$sources[[1]]$title, pdf_name)
-  expect_identical(out$sources[[1]]$path, pdf_name)
-  expect_identical(out$sources[[1]]$type, "pdf")
-  expect_identical(out$sources[[2]]$title, docx_name)
-  expect_identical(out$sources[[2]]$path, docx_name)
-  expect_true(any(vapply(
-    resolver_calls,
-    function(call) identical(call[[2]], pdf_name),
-    logical(1)
-  )))
+  expect_identical(out$base_count, 1L)
+  expect_length(out$sources, 1L)
+  expect_identical(out$sources[[1]]$title, filename)
+  expect_identical(out$sources[[1]]$path, filename)
+  expect_false(grepl("Kaynak:", out$text, fixed = TRUE))
+  expect_false(grepl("Genel Kaynak Listesi:", out$text, fixed = TRUE))
+  expect_identical(out$text, "Uygulamanın temel özellikleri açıklanmıştır.")
 })
 
-test_that("çözümlenemeyen veya sonda olmayan Kaynak satırları kapalı güvenlik davranışını korur", {
+test_that("Süreç Yönetimi kökü altındaki çok katmanlı klasörler rekürsif aranır", {
   env <- .source_langflow_plain_source_handler_for_test()
-  resolver <- function(base_dir, target) NULL
+  process_root <- tempfile("process-root-")
+  app_root <- tempfile("app-root-")
+  dir.create(process_root, recursive = TRUE)
+  dir.create(app_root, recursive = TRUE)
+  on.exit(unlink(c(process_root, app_root), recursive = TRUE, force = TRUE), add = TRUE)
 
-  unresolved <- "Yanıt\nKaynak: bulunamayan.pdf"
-  out_unresolved <- env$mergen_langflow_promote_validated_text_sources(
-    unresolved,
-    local_model_paths = list(model = "//repo"),
-    resolver = resolver,
-    path_exists_fn = function(path) TRUE
-  )
-  expect_identical(out_unresolved$text, unresolved)
-  expect_length(out_unresolved$sources, 0L)
+  filename <- "uretim-sureci-rehberi.pdf"
+  .create_test_document(process_root, paste("birim", "alt-surec", filename, sep = "/"))
+  .create_test_document(app_root, "baska-belge.pdf")
 
-  non_trailing <- "Kaynak: mevcut.pdf\nBu satır yanıtın devamıdır."
-  out_non_trailing <- env$mergen_langflow_promote_validated_text_sources(
-    non_trailing,
-    local_model_paths = list(model = "//repo"),
-    resolver = function(base_dir, target) file.path(base_dir, target),
-    path_exists_fn = function(path) TRUE
+  out <- env$mergen_langflow_promote_validated_sources(
+    text = paste("Yanıt", "Genel Kaynak Listesi:", paste0("- ", filename), sep = "\n"),
+    structured_sources = list(),
+    local_model_paths = list(
+      mergensurecyonetimi = process_root,
+      mergenuygulamauzmani = app_root
+    ),
+    tool_family = "process",
+    tool_mode_config = list(process = list(title = "Süreç Yönetimi Sistemi")),
+    resolver = env$search_file_in_folder,
+    path_exists_fn = file.exists
   )
-  expect_identical(out_non_trailing$text, non_trailing)
-  expect_length(out_non_trailing$sources, 0L)
+
+  expect_identical(out$base_count, 1L)
+  expect_length(out$sources, 1L)
+  expect_identical(out$sources[[1]]$title, filename)
+  expect_identical(out$sources[[1]]$path, paste("birim", "alt-surec", filename, sep = "/"))
 })
 
-test_that("Langflow handler doğrulanmış düz kaynakları kalıcı Kaynakça işaretleyicisine çevirir", {
+test_that("yapılandırılmış ve metinsel kaynaklar birlikte doğrulanır ve teklenir", {
+  env <- .source_langflow_plain_source_handler_for_test()
+  root <- tempfile("combined-root-")
+  dir.create(root, recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  filename <- "kullanim-kilavuzu.pdf"
+  .create_test_document(root, paste("kilavuzlar", filename, sep = "/"))
+
+  out <- env$mergen_langflow_promote_validated_sources(
+    text = paste("Yanıt", paste0("Kaynak: [", filename, "]"), sep = "\n"),
+    structured_sources = list(list(title = filename, path = filename, type = "pdf")),
+    local_model_paths = list(mergenuygulamauzmani = root),
+    tool_family = "app_expert",
+    resolver = env$search_file_in_folder,
+    path_exists_fn = file.exists
+  )
+
+  expect_length(out$sources, 1L)
+  expect_identical(out$sources[[1]]$path, paste("kilavuzlar", filename, sep = "/"))
+  expect_identical(out$text, "Yanıt")
+})
+
+test_that("çözümlenemeyen kaynak satırları kapalı güvenlik davranışıyla korunur", {
+  env <- .source_langflow_plain_source_handler_for_test()
+  root <- tempfile("empty-root-")
+  dir.create(root, recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  original <- paste(
+    "Yanıt",
+    "Kaynak: [bulunamayan.pdf]",
+    "Genel Kaynak Listesi:",
+    "- bulunamayan.pdf",
+    sep = "\n"
+  )
+  out <- env$mergen_langflow_promote_validated_sources(
+    text = original,
+    structured_sources = list(),
+    local_model_paths = list(mergenuygulamauzmani = root),
+    tool_family = "app_expert",
+    resolver = env$search_file_in_folder,
+    path_exists_fn = file.exists
+  )
+
+  expect_identical(out$text, original)
+  expect_length(out$sources, 0L)
+})
+
+test_that("Langflow handler gerçek kaynak biçimini kalıcı tıklanabilir işaretleyiciye çevirir", {
   skip_if_not_installed("openssl")
 
-  pdf_name <- paste0(
-    "Kurumsal Proje Yönetim Süreci İzleci&&",
-    "İşçilik Girişi İş Talimatı.pdf"
-  )
-  docx_name <- sub("\\.pdf$", ".docx", pdf_name)
+  root <- tempfile("handler-root-")
+  dir.create(root, recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  filename <- "p6_pro_user.pdf"
+  .create_test_document(root, filename)
 
   env <- .source_langflow_plain_source_handler_for_test(
     canned_result = list(
       success = TRUE,
       text = paste(
-        "İşçilik girişi adımları:",
-        "1. Team Member uygulamasına giriş yapılır.",
-        paste0("Kaynak: ", pdf_name),
-        paste0("Kaynak: ", docx_name),
+        "Uygulamanın temel özellikleri:",
+        "- Planlama ve kontrol.",
+        paste0("Kaynak: [", filename, "]"),
+        "",
+        "Genel Kaynak Listesi:",
+        paste0("\u2022 ", filename),
         sep = "\n"
       ),
       error = NULL,
@@ -146,10 +206,6 @@ test_that("Langflow handler doğrulanmış düz kaynakları kalıcı Kaynakça i
       sources = list()
     )
   )
-  env$search_file_in_folder <- function(base_dir, target) {
-    if (target %in% c(pdf_name, docx_name)) file.path(base_dir, target) else NULL
-  }
-  env$path_exists_relaxed <- function(path) TRUE
 
   rec <- new.env()
   rec$messages <- list()
@@ -162,38 +218,32 @@ test_that("Langflow handler doğrulanmış düz kaynakları kalıcı Kaynakça i
 
   config <- list(
     local_model_paths = list(
-      "technical name 1" = "//main/repository/top-folder",
-      "technical name 2" = "//main/repository/top-folder2"
+      mergensurecyonetimi = tempfile("unused-root-"),
+      mergenuygulamauzmani = root
     ),
     langflow = list(
       base_url = "https://lf.example.com",
       api_key = "fake-key",
       timeout_seconds = 300,
-      process_flows = list(
-        list(key = "flow_1", id = "pf-1", name = "Süreç Akışı 1")
-      ),
-      flow_ids = list()
+      flow_ids = list(app_expert = "app-flow-1")
     ),
     tool_mode_config = list(
-      process = list(family = "process", runtime = "langflow")
+      app_expert = list(family = "app_expert", runtime = "langflow", title = "Uygulama Uzmanı")
     )
   )
 
   ctx <- list(
     session = list(token = "tok-session"),
     values = values,
-    tool_family = "process",
-    selected_process_flow = "flow_1",
-    user_message_text = "İşçilik girişi nasıl yapılır?",
+    tool_family = "app_expert",
+    selected_process_flow = NULL,
+    user_message_text = "Uygulamayı açıkla.",
     current_user_id = 7L,
     chat_id_val = "chat-1",
     stop_generation = function() FALSE,
     active_request_id = function() "req-1",
     add_message_fn = function(content, type, html = NULL) {
-      rec$messages[[length(rec$messages) + 1L]] <- list(
-        content = content,
-        type = type
-      )
+      rec$messages[[length(rec$messages) + 1L]] <- list(content = content, type = type)
       list(id = "m1")
     },
     reset_chat_state_fn = function() {
@@ -207,16 +257,11 @@ test_that("Langflow handler doğrulanmış düz kaynakları kalıcı Kaynakça i
   expect_length(rec$messages, 1L)
 
   content <- rec$messages[[1]]$content
-  expect_false(grepl(paste0("Kaynak: ", pdf_name), content, fixed = TRUE))
+  expect_false(grepl("Genel Kaynak Listesi:", content, fixed = TRUE))
   expect_match(content, "Kaynakça:", fixed = TRUE)
   expect_match(
     content,
-    paste0("[KAYNAK 1] ", pdf_name, " | yol=", pdf_name),
-    fixed = TRUE
-  )
-  expect_match(
-    content,
-    paste0("[KAYNAK 2] ", docx_name, " | yol=", docx_name),
+    paste0("[KAYNAK 1] ", filename, " | yol=", filename),
     fixed = TRUE
   )
   expect_identical(rec$messages[[1]]$type, "ai")
