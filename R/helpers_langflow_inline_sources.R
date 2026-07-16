@@ -132,7 +132,7 @@
   segs <- trimws(segs)
   segs <- segs[nzchar(segs)]
   if (!length(segs)) return(NULL)
-  if (any(segs %in% c(".", ".."))) return(NULL)
+  if (any(segs %in% c(".", "..")) || any(grepl(":", segs, fixed = TRUE))) return(NULL)
 
   last_seg <- segs[length(segs)]
   ext <- tolower(tools::file_ext(last_seg))
