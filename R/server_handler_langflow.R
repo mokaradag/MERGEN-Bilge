@@ -8,6 +8,8 @@
 #           bayat-istek koruması desenini izler.
 # ==============================================================================
 
+.MERGEN_LANGFLOW_SOURCE_RESOLVER_VERSION <- "v4"
+
 .MERGEN_LANGFLOW_DOCUMENT_EXTENSIONS <- c(
   "pdf", "doc", "docx", "docm", "txt", "csv", "xls", "xlsx",
   "ppt", "pptx", "json", "md", "r", "py", "log"
@@ -75,7 +77,6 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
     family,
     process = c("process", "surec", "surecyonetimi"),
     appexpert = c("appexpert", "uygulama", "uygulamauzmani"),
-    app_expert = c("appexpert", "uygulama", "uygulamauzmani"),
     character(0)
   )
   title_token <- if (is.list(mode_cfg)) .mergen_langflow_normalize_key(mode_cfg$title) else ""
@@ -92,9 +93,44 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
   if (any(matched_idx)) unique(unname(paths[matched_idx])) else unique(unname(paths))
 }
 
+# Mesaj render katmanı literal "\\n" dizilerini gerçek satır sonuna çevirir.
+# Kaynak ayrıştırma render'dan ÖNCE çalıştığından aynı normalizasyon burada da
+# yapılır; aksi halde ekranda ayrı satırlar görünen kaynak bölümü sunucuda tek
+# satır kalır ve hiçbir aday çıkarılamaz.
+.mergen_langflow_normalize_source_text <- function(value) {
+  txt <- as.character(value %||% "")[1]
+  if (is.na(txt) || !nzchar(txt)) return(if (is.na(txt)) "" else txt)
+
+  txt <- gsub("\r\n?", "\n", txt, perl = TRUE)
+  txt <- gsub("\\\\r\\\\n", "\n", txt, fixed = TRUE)
+  txt <- gsub("\\\\n", "\n", txt, fixed = TRUE)
+  txt <- gsub("\\\\r", "\n", txt, fixed = TRUE)
+  txt <- gsub("(?i)<br[[:space:]]*/?>", "\n", txt, perl = TRUE)
+  txt <- gsub("(?i)</p[[:space:]]*>", "\n", txt, perl = TRUE)
+  txt
+}
+
+# Kaynak başlığı/maddesi ayrıştırılırken yalnızca sunum işaretlerini kaldırır.
+# Orijinal mesaj satırı değiştirilmez; bu değer yalnızca kaynak tespiti içindir.
+# Dosya adlarındaki alt çizgi ve literal && korunur.
+.mergen_langflow_source_parse_line <- function(value) {
+  line <- trimws(as.character(value %||% "")[1])
+  if (is.na(line) || !nzchar(line)) return("")
+
+  line <- gsub("(?i)<br[[:space:]]*/?>", " ", line, perl = TRUE)
+  line <- gsub("<[^>]+>", "", line, perl = TRUE)
+  line <- gsub("(?i)&nbsp;|&#160;", " ", line, perl = TRUE)
+  line <- gsub("(?i)&amp;", "&", line, perl = TRUE)
+  line <- gsub("(?i)&lbrack;|&#91;", "[", line, perl = TRUE)
+  line <- gsub("(?i)&rbrack;|&#93;", "]", line, perl = TRUE)
+  line <- sub("^[[:space:]]*#{1,6}[[:space:]]*", "", line, perl = TRUE)
+  line <- gsub("\\*\\*|__", "", line, perl = TRUE)
+  trimws(line)
+}
+
 .mergen_langflow_strip_source_wrappers <- function(value) {
-  candidate <- trimws(as.character(value %||% "")[1])
-  if (is.na(candidate) || !nzchar(candidate)) return("")
+  candidate <- .mergen_langflow_source_parse_line(value)
+  if (!nzchar(candidate)) return("")
 
   repeat {
     before <- candidate
@@ -102,6 +138,9 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
     candidate <- sub("^['\"](.*)['\"]$", "\\1", candidate, perl = TRUE)
     candidate <- sub("^\\[(.*)\\]$", "\\1", candidate, perl = TRUE)
     candidate <- sub("^\\((.*)\\)$", "\\1", candidate, perl = TRUE)
+    candidate <- sub("^\\*{1,3}(.*)\\*{1,3}$", "\\1", candidate, perl = TRUE)
+    candidate <- sub("^_{2,3}(.*)_{2,3}$", "\\1", candidate, perl = TRUE)
+    candidate <- sub("^~~(.*)~~$", "\\1", candidate, perl = TRUE)
     candidate <- trimws(candidate)
     if (identical(candidate, before)) break
   }
@@ -111,8 +150,8 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
 # "Kaynak: [dosya.pdf]", markdown bağlantısı ve kaynak-listesi madde işaretleri
 # gibi üretimde görülen biçimlerden güvenli göreli belge adaylarını çıkarır.
 .mergen_langflow_fragment_candidates <- function(fragment) {
-  raw <- trimws(as.character(fragment %||% "")[1])
-  if (is.na(raw) || !nzchar(raw)) return(character(0))
+  raw <- .mergen_langflow_source_parse_line(fragment)
+  if (!nzchar(raw)) return(character(0))
 
   raw <- sub("^[[:space:]]*(?:[-*+]|[0-9]+[.)]|\u2022)[[:space:]]*", "", raw, perl = TRUE)
   candidates <- character(0)
@@ -151,6 +190,7 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
   )[[1]]
   if (length(match) >= 2L) candidate <- trimws(match[[2]])
   candidate <- sub("[[:space:]]*[,;]+$", "", candidate, perl = TRUE)
+  candidate <- .mergen_langflow_strip_source_wrappers(candidate)
 
   if (.mergen_langflow_safe_relative_document(candidate)) candidate else character(0)
 }
@@ -159,8 +199,8 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
 # açıkça kaynak olarak etiketlenmiş satırlar incelenir; normal yanıt düzyazısında
 # geçen dosya adları kendiliğinden kaynak sayılmaz.
 .mergen_langflow_text_source_items <- function(text, max_sources = 20L) {
-  txt <- as.character(text %||% "")[1]
-  if (is.na(txt) || !nzchar(txt)) {
+  txt <- .mergen_langflow_normalize_source_text(text)
+  if (!nzchar(txt)) {
     return(list(lines = txt, items = list(), headers = list()))
   }
 
@@ -169,8 +209,9 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
   headers <- list()
   active_header <- NA_integer_
   header_pattern <- paste0(
-    "^(Kaynak|Kaynaklar|Source|Sources|Genel[[:space:]]+Kaynak[[:space:]]+Listesi|",
-    "General[[:space:]]+Source[[:space:]]+List)[[:space:]]*:[[:space:]]*(.*)$"
+    "^(Kaynak|Kaynaklar|Kaynakça|Source|Sources|References|",
+    "Genel[[:space:]]+Kaynak[[:space:]]+Listesi|General[[:space:]]+Source[[:space:]]+List)",
+    "[[:space:]]*:[[:space:]]*(.*)$"
   )
 
   add_item <- function(candidate, line_index, header_index) {
@@ -187,10 +228,10 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
   }
 
   for (i in seq_along(lines)) {
-    line_trimmed <- trimws(lines[[i]])
+    line_parsed <- .mergen_langflow_source_parse_line(lines[[i]])
     header_match <- regmatches(
-      line_trimmed,
-      regexec(header_pattern, line_trimmed, ignore.case = TRUE, perl = TRUE)
+      line_parsed,
+      regexec(header_pattern, line_parsed, ignore.case = TRUE, perl = TRUE)
     )[[1]]
 
     if (length(header_match) == 3L) {
@@ -204,14 +245,14 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
     }
 
     if (is.na(active_header)) next
-    if (!nzchar(line_trimmed)) next
+    if (!nzchar(line_parsed)) next
 
     is_bullet <- grepl(
       "^[[:space:]]*(?:[-*+]|[0-9]+[.)]|\u2022)[[:space:]]+",
-      lines[[i]],
+      line_parsed,
       perl = TRUE
     )
-    candidates <- .mergen_langflow_fragment_candidates(line_trimmed)
+    candidates <- .mergen_langflow_fragment_candidates(line_parsed)
     if (length(candidates) && (is_bullet || length(candidates) == 1L)) {
       for (candidate in candidates) add_item(candidate, i, active_header)
       next
@@ -233,27 +274,20 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
   gsub("\\\\", "/", normalized)
 }
 
-.mergen_langflow_relative_path <- function(found_path, base_dir) {
-  found <- .mergen_langflow_normalized_path(found_path)
-  base <- sub("/+$", "", .mergen_langflow_normalized_path(base_dir))
-  if (!nzchar(found)) return("")
-
-  prefix <- paste0(tolower(base), "/")
-  relative <- if (nzchar(base) && startsWith(tolower(found), prefix)) {
-    substr(found, nchar(base) + 2L, nchar(found))
-  } else {
-    basename(found)
-  }
-  relative <- gsub("\\\\", "/", relative)
-  if (.mergen_langflow_safe_relative_document(relative)) relative else basename(found)
+# Kaynak tıklama hattının eski "&&" sözleşmesi hem alt klasör ayracı hem de
+# üretimdeki gerçek dosya adlarının literal parçası olarak kullanılıyor. Bu iki
+# anlam çakıştığında göreli alt-klasör yolunu işaretleyiciye taşımak dosya adını
+# böler. Dosya indeksi zaten model kökü altında rekürsif olduğundan güvenli ve
+# kararlı tıklama ipucu olarak gerçek basename kullanılır.
+.mergen_langflow_click_path <- function(found_path) {
+  basename(gsub("\\\\", "/", as.character(found_path %||% "")[1]))
 }
 
 # Yapılandırılmış Langflow kaynaklarını ve model metnindeki gerçek kaynak
 # bölümlerini aynı güvenli çözümleme hattında birleştirir. Her aday, seçili aracın
 # model tabanlarında search_file_in_folder() ile rekürsif aranır. Bulunan tam UNC
-# yolu istemciye yazılmaz; tabana göre göreli alt-klasör yolu Kaynakça işaretleyici
-# ipucu olarak saklanır. Böylece süreç aracı iki veya daha fazla alt klasör
-# derinliğindeki belgeleri de doğru önizleme penceresinde açabilir.
+# yolu istemciye yazılmaz; doğrulanmış gerçek basename Kaynakça işaretleyicisinin
+# tıklama ipucu olur.
 mergen_langflow_promote_validated_sources <- function(
   text,
   structured_sources = list(),
@@ -264,8 +298,7 @@ mergen_langflow_promote_validated_sources <- function(
   path_exists_fn = NULL,
   max_sources = 20L
 ) {
-  txt <- as.character(text %||% "")[1]
-  if (is.na(txt)) txt <- ""
+  txt <- .mergen_langflow_normalize_source_text(text)
 
   max_sources <- suppressWarnings(as.integer(max_sources[1]))
   if (is.na(max_sources) || max_sources < 1L) {
@@ -298,17 +331,15 @@ mergen_langflow_promote_validated_sources <- function(
   resolved_items <- rep(FALSE, length(parsed_text$items))
 
   resolve_candidate <- function(candidate, page = "") {
-    candidate <- trimws(as.character(candidate %||% "")[1])
+    candidate <- .mergen_langflow_strip_source_wrappers(candidate)
     if (!.mergen_langflow_safe_relative_document(candidate)) return(FALSE)
 
     hit_path <- NULL
-    hit_base <- NULL
     for (base_dir in bases) {
       hit <- tryCatch(resolver(base_dir, candidate), error = function(e) NULL)
       hit <- as.character(hit %||% "")[1]
       if (!is.na(hit) && nzchar(hit) && isTRUE(path_exists_fn(hit))) {
         hit_path <- hit
-        hit_base <- base_dir
         break
       }
     }
@@ -317,10 +348,9 @@ mergen_langflow_promote_validated_sources <- function(
     found_key <- tolower(.mergen_langflow_normalized_path(hit_path))
     if (!(found_key %in% seen_paths) && length(sources) < max_sources) {
       title <- basename(gsub("\\\\", "/", hit_path))
-      relative_path <- .mergen_langflow_relative_path(hit_path, hit_base)
       sources[[length(sources) + 1L]] <<- list(
         title = title,
-        path = relative_path,
+        path = .mergen_langflow_click_path(hit_path),
         page = if (grepl("^[0-9]+$", page)) page else "",
         type = tolower(tools::file_ext(title))
       )
@@ -352,7 +382,7 @@ mergen_langflow_promote_validated_sources <- function(
   }
 
   remove_lines <- integer(0)
-  if (length(resolved_items)) {
+  if (length(resolved_items) && any(resolved_items)) {
     remove_lines <- vapply(
       parsed_text$items[resolved_items],
       function(item) item$line_index,
@@ -523,16 +553,17 @@ handle_langflow_chat_mode <- function(ctx) {
     ctx$values$typing <- FALSE
 
     if (isTRUE(result$success)) {
+      original_text <- as.character(result$text %||% "")[1]
       prepared <- tryCatch(
         mergen_langflow_promote_validated_sources(
-          text = result$text,
+          text = original_text,
           structured_sources = result$sources %||% list(),
           local_model_paths = config$local_model_paths %||% list(),
           tool_family = tool_family,
           tool_mode_config = config$tool_mode_config %||% list()
         ),
         error = function(e) list(
-          text = result$text,
+          text = original_text,
           sources = list(),
           candidate_count = 0L,
           base_count = 0L
@@ -540,12 +571,7 @@ handle_langflow_chat_mode <- function(ctx) {
       )
       final_text <- prepared$text
       final_sources <- prepared$sources
-      log_info(paste0(
-        "[LANGFLOW SOURCE] tool=", tool_family,
-        " bases=", prepared$base_count %||% 0L,
-        " candidates=", prepared$candidate_count %||% 0L,
-        " resolved=", length(final_sources)
-      ))
+      kaynak_blok <- ""
 
       # Belge kaynakları (başlık/yol/sayfa/tür) düz metin Kaynakça işaretleyici
       # bloğu olarak içeriğe eklenir; render sırasında process_message_content
@@ -557,10 +583,30 @@ handle_langflow_chat_mode <- function(ctx) {
           mergen_langflow_kaynakca_marker_block(final_sources),
           error = function(e) ""
         )
-        if (nzchar(kaynak_blok)) {
-          final_text <- paste0(final_text, kaynak_blok)
-        }
       }
+
+      marker_ready <- nzchar(kaynak_blok)
+      log_info(paste0(
+        "[LANGFLOW SOURCE] resolver=", .MERGEN_LANGFLOW_SOURCE_RESOLVER_VERSION,
+        " tool=", tool_family,
+        " bases=", prepared$base_count %||% 0L,
+        " candidates=", prepared$candidate_count %||% 0L,
+        " resolved=", length(final_sources),
+        " marker=", marker_ready
+      ))
+
+      if (marker_ready) {
+        final_text <- paste0(final_text, kaynak_blok)
+      } else if (length(final_sources)) {
+        # İmzalı marker üretilemediyse kaynak metnini sessizce kaybetme. Bu durum
+        # çoğunlukla openssl paketinin üretim ortamında bulunmadığını gösterir.
+        final_text <- original_text
+        log_warn(paste0(
+          "[LANGFLOW SOURCE] resolver=", .MERGEN_LANGFLOW_SOURCE_RESOLVER_VERSION,
+          " kaynak çözüldü ancak güvenli marker üretilemedi; düz metin korundu"
+        ))
+      }
+
       ctx$add_message_fn(final_text, "ai")
     } else {
       err_msg <- result$error %||% "Langflow yanıtı alınamadı."
