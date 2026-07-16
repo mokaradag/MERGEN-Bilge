@@ -60,7 +60,7 @@
   full_path
 }
 
-test_that("üretimdeki köşeli parantez ve Genel Kaynak Listesi biçimi yükseltilir", {
+test_that("literal satır kaçışlı ve markdown vurgulu gerçek kaynak biçimi yükseltilir", {
   env <- .source_langflow_plain_source_handler_for_test()
   root <- tempfile("app-expert-root-")
   dir.create(root, recursive = TRUE)
@@ -69,13 +69,15 @@ test_that("üretimdeki köşeli parantez ve Genel Kaynak Listesi biçimi yüksel
   filename <- "p6_pro_user.pdf"
   .create_test_document(root, filename)
 
+  # Langflow bazı akışlarda satır sonlarını gerçek LF yerine literal "\\n"
+  # olarak, başlıkları ve maddeyi de markdown kalın vurgusuyla döndürüyor.
   original <- paste(
     "Uygulamanın temel özellikleri açıklanmıştır.",
-    paste0("Kaynak: [", filename, "]"),
+    paste0("**Kaynak:** [", filename, "]"),
     "",
-    "Genel Kaynak Listesi:",
-    paste0("\u2022 ", filename),
-    sep = "\n"
+    "**Genel Kaynak Listesi:**",
+    paste0("- **", filename, "**"),
+    sep = "\\n"
   )
 
   out <- env$mergen_langflow_promote_validated_sources(
@@ -100,6 +102,32 @@ test_that("üretimdeki köşeli parantez ve Genel Kaynak Listesi biçimi yüksel
   expect_identical(out$text, "Uygulamanın temel özellikleri açıklanmıştır.")
 })
 
+test_that("HTML ile vurgulanan Kaynak satırı da ayrıştırılır", {
+  env <- .source_langflow_plain_source_handler_for_test()
+  root <- tempfile("html-source-root-")
+  dir.create(root, recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  filename <- "yonetim-rehberi.pdf"
+  .create_test_document(root, filename)
+
+  original <- paste0(
+    "Yanıt<br><strong>Kaynak:</strong> [", filename, "]",
+    "<br><strong>Genel Kaynak Listesi:</strong><br>• <strong>", filename, "</strong>"
+  )
+  out <- env$mergen_langflow_promote_validated_sources(
+    text = original,
+    local_model_paths = list(mergenuygulamauzmani = root),
+    tool_family = "app_expert",
+    resolver = env$search_file_in_folder,
+    path_exists_fn = file.exists
+  )
+
+  expect_length(out$sources, 1L)
+  expect_identical(out$sources[[1]]$path, filename)
+  expect_identical(out$text, "Yanıt")
+})
+
 test_that("Süreç Yönetimi kökü altındaki çok katmanlı klasörler rekürsif aranır", {
   env <- .source_langflow_plain_source_handler_for_test()
   process_root <- tempfile("process-root-")
@@ -108,7 +136,9 @@ test_that("Süreç Yönetimi kökü altındaki çok katmanlı klasörler rekürs
   dir.create(app_root, recursive = TRUE)
   on.exit(unlink(c(process_root, app_root), recursive = TRUE, force = TRUE), add = TRUE)
 
-  filename <- "uretim-sureci-rehberi.pdf"
+  # Üretimde literal && dosya adının parçası olabildiği için tıklama ipucu
+  # alt-klasör ayracı olarak yeniden && üretmemeli; gerçek basename korunmalı.
+  filename <- "uretim-sureci&&rehberi.pdf"
   .create_test_document(process_root, paste("birim", "alt-surec", filename, sep = "/"))
   .create_test_document(app_root, "baska-belge.pdf")
 
@@ -128,7 +158,7 @@ test_that("Süreç Yönetimi kökü altındaki çok katmanlı klasörler rekürs
   expect_identical(out$base_count, 1L)
   expect_length(out$sources, 1L)
   expect_identical(out$sources[[1]]$title, filename)
-  expect_identical(out$sources[[1]]$path, paste("birim", "alt-surec", filename, sep = "/"))
+  expect_identical(out$sources[[1]]$path, filename)
 })
 
 test_that("yapılandırılmış ve metinsel kaynaklar birlikte doğrulanır ve teklenir", {
@@ -150,7 +180,7 @@ test_that("yapılandırılmış ve metinsel kaynaklar birlikte doğrulanır ve t
   )
 
   expect_length(out$sources, 1L)
-  expect_identical(out$sources[[1]]$path, paste("kilavuzlar", filename, sep = "/"))
+  expect_identical(out$sources[[1]]$path, filename)
   expect_identical(out$text, "Yanıt")
 })
 
@@ -196,11 +226,11 @@ test_that("Langflow handler gerçek kaynak biçimini kalıcı tıklanabilir işa
       text = paste(
         "Uygulamanın temel özellikleri:",
         "- Planlama ve kontrol.",
-        paste0("Kaynak: [", filename, "]"),
+        paste0("**Kaynak:** [", filename, "]"),
         "",
-        "Genel Kaynak Listesi:",
-        paste0("\u2022 ", filename),
-        sep = "\n"
+        "**Genel Kaynak Listesi:**",
+        paste0("• **", filename, "**"),
+        sep = "\\n"
       ),
       error = NULL,
       status = 200L,
