@@ -34,7 +34,7 @@ test_that("search_file_in_folder ipucu ile dosyayı bulur", {
   expect_equal(normalizePath(found, winslash = "/"), normalizePath(target_file, winslash = "/"))
 })
 
-# Üretim dosya adlarının kendisi literal `&&` taşıyabilir. Aynı kökte son parçaya
+# Dosya adlarının kendisi literal `&&` taşıyabilir. Aynı kökte son parçaya
 # benzeyen ayrı bir dosya olsa bile tam basename eşleşmesi öncelikli olmalıdır.
 test_that("search_file_in_folder literal && içeren tam dosya adını önce bulur", {
   base_dir <- tempfile()
