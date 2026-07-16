@@ -1,9 +1,9 @@
-# Generated Speech Metadata
+# Otomatik Üretilen Konuşma Üst Verileri
 
-This directory is reserved for generated metadata such as
-`speech_manifest.json`.
+Bu dizin, `speech_manifest.json` gibi otomatik üretilen üst veriler için
+ayrılmıştır.
 
-Do not enter duration values, checksums, persona mappings, or paths manually.
-The later playback-integration step must add a generator that derives them from
-the shared scripts and WAV headers. This scaffold intentionally contains no
-hand-written manifest.
+Süre değerlerini, sağlama toplamlarını, persona eşlemelerini veya dosya yollarını
+elle girmeyin. Daha sonraki oynatma bütünleştirmesi; bu bilgileri ortak konuşma
+metinlerinden ve WAV başlıklarından türeten bir üretici eklemelidir. Bu iskelet,
+bilerek elle yazılmış bir bildirim dosyası içermez.
