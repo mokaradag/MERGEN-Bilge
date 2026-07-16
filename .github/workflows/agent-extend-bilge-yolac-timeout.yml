@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - agent/extend-bilge-yolac-timeout-4h
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
 
 permissions:
   contents: write
