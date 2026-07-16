@@ -33,3 +33,21 @@ test_that("search_file_in_folder ipucu ile dosyayı bulur", {
   found <- search_file_in_folder(base_dir, "projeA&&mart&&butce.xlsx")
   expect_equal(normalizePath(found, winslash = "/"), normalizePath(target_file, winslash = "/"))
 })
+
+# Üretim dosya adlarının kendisi literal `&&` taşıyabilir. Aynı kökte son parçaya
+# benzeyen ayrı bir dosya olsa bile tam basename eşleşmesi öncelikli olmalıdır.
+test_that("search_file_in_folder literal && içeren tam dosya adını önce bulur", {
+  base_dir <- tempfile()
+  dir.create(base_dir, recursive = TRUE)
+
+  nested_dir <- file.path(base_dir, "birim", "alt-surec")
+  dir.create(nested_dir, recursive = TRUE)
+
+  exact_file <- file.path(nested_dir, "uretim&&rehberi.pdf")
+  misleading_file <- file.path(base_dir, "rehberi.pdf")
+  writeLines("exact", exact_file)
+  writeLines("misleading", misleading_file)
+
+  found <- search_file_in_folder(base_dir, "uretim&&rehberi.pdf")
+  expect_equal(normalizePath(found, winslash = "/"), normalizePath(exact_file, winslash = "/"))
+})
