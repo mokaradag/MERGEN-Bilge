@@ -17,7 +17,7 @@
 
 # Desteklenen belge uzantıları (tıklanabilir kaynak yalnızca bunlar için üretilir).
 .langflow_inline_doc_exts <- function() {
-  c("pdf", "doc", "docx", "docm", "txt", "csv", "xls", "xlsx", "ppt", "pptx", "md")
+  c("pdf", "doc", "docx")
 }
 
 # Etiket içeriği "citation-şekilli" mi? Yalnızca bir veya daha fazla parantezli
@@ -124,14 +124,12 @@
 
   # URL / mutlak yol / sürücü harfi reddi.
   if (grepl("^[A-Za-z][A-Za-z0-9+.-]*://", name)) return(NULL)
-  norm <- gsub("\\\\", "/", name)
+  norm <- trimws(gsub("\\\\", "/", name))
   if (grepl("^/", norm) || grepl("^[A-Za-z]:", norm)) return(NULL)
 
   # '&&' (düz ad ayracı) veya '/' (gerçek dizin) parçalarına ayır; gezinme kontrolü.
-  segs <- strsplit(norm, "(&&|/)", perl = TRUE)[[1]]
-  segs <- trimws(segs)
-  segs <- segs[nzchar(segs)]
-  if (!length(segs)) return(NULL)
+  segs <- trimws(strsplit(norm, "(&&|/)", perl = TRUE)[[1]])
+  if (!length(segs) || any(!nzchar(segs))) return(NULL)
   if (any(segs %in% c(".", "..")) || any(grepl(":", segs, fixed = TRUE))) return(NULL)
 
   last_seg <- segs[length(segs)]
@@ -140,7 +138,7 @@
 
   type <- if (identical(ext, "pdf")) {
     "pdf"
-  } else if (ext %in% c("doc", "docx", "docm")) {
+  } else if (ext %in% c("doc", "docx")) {
     "docx"
   } else {
     ext

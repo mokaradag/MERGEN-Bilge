@@ -53,12 +53,13 @@
   path_like <- function(x) {
     val <- trimws(as.character(x %||% "")[1])
     if (is.na(val) || !nzchar(val) || grepl("^[A-Za-z][A-Za-z0-9+.-]*://", val)) return(FALSE)
-    normalized <- gsub("\\\\", "/", val)
+    normalized <- trimws(gsub("\\\\", "/", val))
     if (grepl("^/", normalized) || grepl("^[A-Za-z]:", normalized)) return(FALSE)
-    parts <- strsplit(normalized, "/", fixed = TRUE)[[1]]
-    if (any(parts %in% c(".", ".."))) return(FALSE)
-    ext <- tolower(tools::file_ext(normalized))
-    ext %in% c("pdf", "doc", "docx", "docm", "txt", "csv", "xls", "xlsx", "ppt", "pptx")
+    parts <- trimws(strsplit(normalized, "(/|&&)", perl = TRUE)[[1]])
+    if (!length(parts) || any(!nzchar(parts))) return(FALSE)
+    if (any(parts %in% c(".", "..")) || any(grepl(":", parts, fixed = TRUE))) return(FALSE)
+    ext <- tolower(tools::file_ext(parts[length(parts)]))
+    ext %in% c("pdf", "doc", "docx")
   }
   page <- .langflow_source_field(doc, c("page", "page_number", "page_label", "sayfa"))
   type <- .langflow_source_field(doc, c("type", "file_type", "filetype", "tur"))
@@ -240,11 +241,12 @@ mergen_langflow_kaynakca_marker_block <- function(sources) {
     line <- paste0("[KAYNAK ", length(lines) + 1L, "] ", title)
     path <- .kaynakca_marker_sanitize(rec$path)
     if (!nzchar(path) && grepl("\\.[A-Za-z0-9]{1,8}$", title)) path <- title
-    normalized_path <- gsub("\\\\", "/", path)
+    normalized_path <- trimws(gsub("\\\\", "/", path))
     safe_parts <- trimws(strsplit(normalized_path, "(/|&&)", perl = TRUE)[[1]])
     if (!nzchar(path) || grepl("^/", normalized_path) ||
-        grepl("^[A-Za-z]:", normalized_path) ||
-        any(safe_parts %in% c(".", "..")) || any(grepl(":", safe_parts, fixed = TRUE))) next
+        grepl("^[A-Za-z]:", normalized_path) || !length(safe_parts) ||
+        any(!nzchar(safe_parts)) || any(safe_parts %in% c(".", "..")) ||
+        any(grepl(":", safe_parts, fixed = TRUE))) next
     page <- .kaynakca_marker_sanitize(rec$page)
     if (!grepl("^[0-9]+$", page)) page <- ""
     type <- tolower(gsub("[^a-z0-9]", "", .kaynakca_marker_sanitize(rec$type)))
@@ -301,9 +303,10 @@ mergen_kaynakca_marker_split <- function(content) {
     }
     expected_code <- .kaynakca_marker_code(rec$title, rec$path, rec$page, rec$type)
     if (!nzchar(rec$path) || !identical(rec$code, expected_code)) return(NULL)
-    normalized_path <- gsub("\\\\", "/", rec$path)
+    normalized_path <- trimws(gsub("\\\\", "/", rec$path))
     safe_parts <- trimws(strsplit(normalized_path, "(/|&&)", perl = TRUE)[[1]])
     if (grepl("^/", normalized_path) || grepl("^[A-Za-z]:", normalized_path) ||
+        !length(safe_parts) || any(!nzchar(safe_parts)) ||
         any(safe_parts %in% c(".", "..")) || any(grepl(":", safe_parts, fixed = TRUE))) return(NULL)
     rec$code <- NULL
     entries[[length(entries) + 1L]] <- rec
