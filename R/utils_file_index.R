@@ -12,7 +12,7 @@ FILE_INDEX_TTL_MIN <- suppressWarnings(as.numeric(Sys.getenv("MCP_INDEX_TTL_MIN"
 if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 10
 
 # Belirtilen klasördeki dosyaları tarar ve basename -> tam yol haritası oluşturur
-.build_basename_index <- function(base_path, pattern = "\\.(docx|doc|pdf|pptx|ppt|xlsx|xls|csv|txt|json|md|r|py|log)$", force = FALSE) {
+.build_basename_index <- function(base_path, pattern = "\\.(docx|docm|doc|pdf|pptx|ppt|xlsx|xls|csv|txt|json|md|r|py|log)$", force = FALSE) {
   # not: büyük ağ klasörlerinde tekrar taramayı sınırlamak için TTL
   now <- Sys.time()
   key <- normalizePath(base_path, winslash = "/", mustWork = FALSE)
@@ -116,11 +116,21 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
 # yalnızca son parçayı basename varsayıp başarısız olur, bu yardımcı ise tüm
 # parçaların geçtiği en iyi adayı bulur. Boşluk/büyük-küçük harf farklarına da
 # dayanıklıdır. Tüm parçalar geçmiyorsa (best < parça sayısı) NULL döner.
+#
+# GÜVENLİK: bu son çare yalnızca UZANTISIZ son parça için etkindir (opt-in).
+# Bu noktaya gelindiğinde tam basename eşleşmesi (adım 1) VE ipucu-skorlu
+# arama (adım 2, son parçanın TAM basename eşleşmesini arar) zaten başarısız
+# olmuştur. Son parçanın bir uzantısı varsa (ör. "prosedur.pdf"), yalnızca
+# alt-dize içerme skoruna dayanarak dosya açmak, atıflanan gerçek dosya DİSKTE
+# YOKKEN yanlışlıkla benzer adlı ALAKASIZ bir dosyayı (ör. "eski-prosedur.pdf")
+# önizlemeye açabilir. Bu durumda "bulunamadı" demek, yanlış belge açmaktan
+# daha güvenlidir; bu yüzden uzantılı son parçalarda bu son çare devre dışıdır.
 .search_all_parts_contained <- function(base_path, hint) {
   if (!is.character(hint) || length(hint) == 0 || is.na(hint[1])) return(NULL)
   parts <- trimws(strsplit(as.character(hint[1]), "&&", fixed = TRUE)[[1]])
   parts <- parts[nzchar(parts)]
   if (!length(parts)) return(NULL)
+  if (nzchar(tools::file_ext(parts[length(parts)]))) return(NULL)
 
   idx <- .build_basename_index(base_path)
   if (!length(idx$map)) return(NULL)

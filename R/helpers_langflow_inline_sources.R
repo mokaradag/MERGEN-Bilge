@@ -83,6 +83,23 @@
   txt
 }
 
+# Belge adının sonuna eklenmiş sayfa açıklamasını (varsa) uzantı doğrulamasından
+# ÖNCE ayırır. Yalnızca "<ad>.<uzanti> (Sayfa N)" / "<ad>.<uzanti> (Page N)" /
+# "<ad>.<uzanti>, s. N" / "<ad>.<uzanti>, p. N" biçimleri desteklenir; ek GERÇEK
+# bir uzantıdan SONRA gelmelidir (grup1 `.*\.[A-Za-z0-9]+` ile zorlanır). Aksi
+# halde ad DEĞİŞMEDEN kalır (gerçek dosya adlarını yanlışlıkla bozma riskini
+# sınırlamak için dar bir kalıp). Dönüş: list(name=<ek olmadan ad>, page=<rakam
+# veya "">).
+.langflow_strip_page_suffix <- function(name) {
+  m <- regmatches(name, regexec(
+    "^(.*\\.[A-Za-z0-9]+)\\s*(?:\\((?:[Ss]ayfa|[Pp]age)\\s*([0-9]+)\\)|,\\s*[SsPp]\\.?\\s*([0-9]+))\\s*$",
+    name, perl = TRUE
+  ))[[1]]
+  if (length(m) != 4) return(list(name = name, page = ""))
+  page <- if (nzchar(m[3])) m[3] else m[4]
+  list(name = trimws(m[2]), page = page)
+}
+
 # Tek bir düz "Kaynak" satırı adayını (numaralı girişin metni) kanonik kayda
 # çevirir: list(title, path, page, type). Güvenlik: URL/mutlak/sürücü/gezinme
 # (../.) girişleri ve belge uzantısı taşımayanlar reddedilir (NULL). '&&' düz
@@ -97,6 +114,13 @@
   name <- trimws(name)
   name <- sub("[.,;]+$", "", name)
   if (!nzchar(name)) return(NULL)
+
+  # Sayfa açıklaması eki (varsa) belge uzantısı doğrulamasından ÖNCE ayrılır;
+  # örn. "Grup&&dosya.pdf (Sayfa 3)" veya "dosya.pdf, s. 3" gibi ekler uzantı
+  # denetimini bozmasın diye sondan çıkarılır ve page alanına taşınır.
+  page_split <- .langflow_strip_page_suffix(name)
+  name <- page_split$name
+  page_value <- page_split$page
 
   # URL / mutlak yol / sürücü harfi reddi.
   if (grepl("^[A-Za-z][A-Za-z0-9+.-]*://", name)) return(NULL)
@@ -122,7 +146,7 @@
     ext
   }
 
-  list(title = last_seg, path = name, page = "", type = type, num = trimws(as.character(num %||% "")[1]))
+  list(title = last_seg, path = name, page = page_value, type = type, num = trimws(as.character(num %||% "")[1]))
 }
 
 # Yanıt metninin SONUNDAKİ düz "Kaynak(lar/ça):" bölümünü ayrıştırır.

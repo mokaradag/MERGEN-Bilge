@@ -461,3 +461,101 @@ test_that("search_file_in_folder parça içerme ile boşluk/varyant farkına day
     normalizePath(file.path(base_dir, "Grup 1&&Kalite&&prosedur final.pdf"), winslash = "/")
   )
 })
+
+test_that("search_file_in_folder uzantılı ipucunda parça-içerme son çaresini devre dışı bırakır (yanlış dosya açmaz)", {
+  base_dir <- tempfile()
+  dir.create(base_dir, recursive = TRUE)
+  decoy_dir <- file.path(base_dir, "A", "B")
+  dir.create(decoy_dir, recursive = TRUE)
+  # Atıflanan gerçek dosya (A&&B&&prosedur.pdf) DİSKTE YOK; yalnızca alt-dize
+  # olarak tüm parçaları içeren ALAKASIZ bir dosya var.
+  writeLines("yanlis", file.path(decoy_dir, "eski-prosedur.pdf"))
+
+  found <- search_file_in_folder(base_dir, "A&&B&&prosedur.pdf")
+  expect_null(found)
+})
+
+test_that("search_file_in_folder docm uzantısını indeksler ve alt klasörde çözer", {
+  base_dir <- tempfile()
+  dir.create(base_dir, recursive = TRUE)
+  alt <- file.path(base_dir, "AltKlasor")
+  dir.create(alt, recursive = TRUE)
+
+  fname <- "Grup 1&&Makro&&otomasyon.docm"
+  writeLines("ornek", file.path(alt, fname))
+
+  found <- search_file_in_folder(base_dir, fname)
+  expect_false(is.null(found))
+  expect_identical(
+    normalizePath(found, winslash = "/"),
+    normalizePath(file.path(alt, fname), winslash = "/")
+  )
+})
+
+test_that(".langflow_strip_page_suffix parantezli/virgüllü sayfa eklerini uzantıdan sonra ayırır", {
+  env <- .source_langflow_inline_env()
+  strip <- env$.langflow_strip_page_suffix
+
+  r1 <- strip("Grup&&dosya.pdf (Sayfa 3)")
+  expect_identical(r1$name, "Grup&&dosya.pdf")
+  expect_identical(r1$page, "3")
+
+  r2 <- strip("dosya.pdf, s. 5")
+  expect_identical(r2$name, "dosya.pdf")
+  expect_identical(r2$page, "5")
+
+  r3 <- strip("Grup&&dosya.docx (Page 2)")
+  expect_identical(r3$name, "Grup&&dosya.docx")
+  expect_identical(r3$page, "2")
+
+  # Sayfa eki yoksa ad değişmeden kalır.
+  r4 <- strip("Grup&&kilavuz.pdf")
+  expect_identical(r4$name, "Grup&&kilavuz.pdf")
+  expect_identical(r4$page, "")
+
+  # Uzantıdan ÖNCE gelen benzer metin (ör. dosya adının kendi parçası) yanlışlıkla
+  # sayfa eki sayılmaz; uzantı en sonda olduğundan ad değişmeden kalır.
+  r5 <- strip("Analiz (Sayfa 3).pdf")
+  expect_identical(r5$name, "Analiz (Sayfa 3).pdf")
+  expect_identical(r5$page, "")
+})
+
+test_that(".langflow_prose_source_record sayfa açıklaması eklenmiş kaynak adlarını doğru ayrıştırır", {
+  env <- .source_langflow_inline_env()
+  rec_fn <- env$.langflow_prose_source_record
+
+  r1 <- rec_fn("Grup&&dosya.pdf (Sayfa 3)")
+  expect_false(is.null(r1))
+  expect_identical(r1$path, "Grup&&dosya.pdf")
+  expect_identical(r1$title, "dosya.pdf")
+  expect_identical(r1$type, "pdf")
+  expect_identical(r1$page, "3")
+
+  r2 <- rec_fn("Grup&&dosya.pdf, s. 5")
+  expect_false(is.null(r2))
+  expect_identical(r2$path, "Grup&&dosya.pdf")
+  expect_identical(r2$page, "5")
+
+  # Sayfa eki yoksa mevcut davranış korunur (page = "").
+  r3 <- rec_fn("Grup&&kilavuz.pdf")
+  expect_false(is.null(r3))
+  expect_identical(r3$page, "")
+})
+
+test_that("mergen_langflow_parse_prose_sources sayfa açıklamalı kaynak satırlarını reddetmez", {
+  env <- .source_langflow_inline_env()
+  parse <- env$mergen_langflow_parse_prose_sources
+
+  metin <- paste0(
+    "Metin.\n\nKaynak:\n",
+    "(1) Grup&&dosya.pdf (Sayfa 3)\n",
+    "(2) Grup&&kilavuz.docx, s. 7\n"
+  )
+  res <- parse(metin)
+  expect_false(is.null(res))
+  expect_length(res$records, 2L)
+  expect_identical(res$records[[1]]$path, "Grup&&dosya.pdf")
+  expect_identical(res$records[[1]]$page, "3")
+  expect_identical(res$records[[2]]$path, "Grup&&kilavuz.docx")
+  expect_identical(res$records[[2]]$page, "7")
+})

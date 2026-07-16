@@ -59,6 +59,13 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   satırlar listeyi kesmez; `search_file_in_folder()` artık ÖNCE tam basename
   eşleşmesini dener (ipucu-skorlu aramadan önce), böylece aynı son-parça adına
   sahip alakasız bir dosya yanlışlıkla döndürülmez.
+- **İkinci sağlamlaştırma turu:** `docm` dosya indeksine eklendi (Word makro
+  belgeleri de tıklanabilir); son çare parça-içerme araması artık yalnızca
+  UZANTISIZ ipucu için etkin (atıflanan dosya diskte hiç yokken alakasız
+  benzer adlı bir dosyayı yanlışlıkla açmaz — "bulunamadı" döner); "Grup&&
+  dosya.pdf (Sayfa 3)" veya "dosya.pdf, s. 3" gibi belge uzantısından sonraki
+  sayfa açıklaması ekleri artık uzantı doğrulamasını bozmadan ayrıştırılıp
+  sayfa numarasına dönüştürülür.
 - **Regresyon kapsamı:** `tests/testthat/test-langflow-inline-sources-behavior.R`
   (üstsimge dönüşümü, düzyazı ayrıştırma, imzalı işaretleyici yükseltme, kırıntı
   yolu render'ı, XSS kaçışı, alt klasör/`&&` dosya çözümlemesi). Mevcut
