@@ -241,9 +241,7 @@ mergen_langflow_kaynakca_marker_block <- function(sources) {
     path <- .kaynakca_marker_sanitize(rec$path)
     if (!nzchar(path) && grepl("\\.[A-Za-z0-9]{1,8}$", title)) path <- title
     normalized_path <- gsub("\\\\", "/", path)
-    path_parts <- strsplit(normalized_path, "/", fixed = TRUE)[[1]]
-    hint_parts <- strsplit(normalized_path, "&&", fixed = TRUE)[[1]]
-    safe_parts <- c(path_parts, hint_parts)
+    safe_parts <- strsplit(normalized_path, "(/|&&)", perl = TRUE)[[1]]
     if (!nzchar(path) || grepl("^/", normalized_path) ||
         grepl("^[A-Za-z]:", normalized_path) ||
         any(safe_parts %in% c(".", "..")) || any(grepl(":", safe_parts, fixed = TRUE))) next
@@ -304,9 +302,7 @@ mergen_kaynakca_marker_split <- function(content) {
     expected_code <- .kaynakca_marker_code(rec$title, rec$path, rec$page, rec$type)
     if (!nzchar(rec$path) || !identical(rec$code, expected_code)) return(NULL)
     normalized_path <- gsub("\\\\", "/", rec$path)
-    path_parts <- strsplit(normalized_path, "/", fixed = TRUE)[[1]]
-    hint_parts <- strsplit(normalized_path, "&&", fixed = TRUE)[[1]]
-    safe_parts <- c(path_parts, hint_parts)
+    safe_parts <- strsplit(normalized_path, "(/|&&)", perl = TRUE)[[1]]
     if (grepl("^/", normalized_path) || grepl("^[A-Za-z]:", normalized_path) ||
         any(safe_parts %in% c(".", "..")) || any(grepl(":", safe_parts, fixed = TRUE))) return(NULL)
     rec$code <- NULL
