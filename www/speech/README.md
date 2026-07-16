@@ -59,9 +59,12 @@ No page-guidance assets should be added for:
 2. Record the exact text in each persona voice.
 3. Save every recording as PCM WAV with the same basename as the script.
 4. Do not copy or rewrite subtitle text inside persona folders.
-5. Generate `generated/speech_manifest.json` with the repository's manifest
-   generator after WAV files are added. Duration and checksums must be derived
-   automatically from the WAV files; they are not entered manually.
+5. The playback-integration step must generate `generated/speech_manifest.json`
+   automatically after WAV files are added. Duration and checksums must be
+   derived from the WAV files; they are never entered manually.
+
+This asset-only scaffold does not yet add the manifest generator or runtime
+playback wiring.
 
 Recommended WAV profile: mono, 16-bit PCM, consistent loudness, minimal leading
 silence, and a short natural trailing silence.
