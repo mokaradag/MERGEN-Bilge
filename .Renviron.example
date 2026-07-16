@@ -215,6 +215,8 @@ DESTEK_CHATBOT_MODEL=technical name 1
 CLAUDE_CODE_CLI_PATH=C:/Users/<user>/AppData/Roaming/npm/claude.cmd
 CLAUDE_CODE_NODE_PATH=C:/Program Files/nodejs/node.exe
 CLAUDE_CODE_DEFAULT_WORKDIR=C:/Temp/mergen_claude
+# Bilge Yolaç ajan çalıştırma zaman aşımı (saniye). 14400 = 4 saat.
+CLAUDE_CODE_TIMEOUT=14400
 
 CLAUDE_CODE_THINKING_MODELS=model-a,model-b
 CLAUDE_CODE_BINARY_DOC_EXTENSIONS=pdf,xlsx,xls,doc,docx,ppt,pptx
