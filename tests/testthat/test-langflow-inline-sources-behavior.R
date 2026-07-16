@@ -559,3 +559,43 @@ test_that("mergen_langflow_parse_prose_sources sayfa açıklamalı kaynak satır
   expect_identical(res$records[[2]]$path, "Grup&&kilavuz.docx")
   expect_identical(res$records[[2]]$page, "7")
 })
+test_that("mergen_langflow_finalize_answer yapısal kaynak varken yinelenen düzyazı Kaynak bloğunu söker", {
+  testthat::skip_if_not_installed("openssl")
+  env <- .source_langflow_inline_env()
+  finalize <- env$mergen_langflow_finalize_answer
+
+  structured <- list(list(title = "prosedur.pdf", path = "Grup&&prosedur.pdf", page = "", type = "pdf"))
+  metin <- paste0(
+    "Cevap.<sup>(1)</sup>\n\n",
+    "Kaynak:\n",
+    "(1) Grup&&prosedur.pdf\n"
+  )
+  out <- finalize(metin, structured)
+
+  expect_match(out, "Cevap.[1]", fixed = TRUE)
+  expect_false(grepl("\nKaynak:\n", out, fixed = TRUE))
+  expect_match(out, "[KAYNAK 1] prosedur.pdf", fixed = TRUE)
+})
+
+test_that("search_file_in_folder ipucu sol parçaları eşleşmeyen aynı-basename adayı döndürmez", {
+  base_dir <- tempfile()
+  dir.create(base_dir, recursive = TRUE)
+  decoy_dir <- file.path(base_dir, "Alakasiz")
+  dir.create(decoy_dir, recursive = TRUE)
+  writeLines("yanlis", file.path(decoy_dir, "prosedur.pdf"))
+
+  found <- search_file_in_folder(base_dir, "Grup&&Kalite&&prosedur.pdf")
+  expect_null(found)
+})
+
+test_that("search_file_in_folder ipucu skorunda taban klasör adındaki parçaları saymaz", {
+  parent_dir <- tempfile("Grup-Kalite-")
+  base_dir <- file.path(parent_dir, "belgeler")
+  dir.create(base_dir, recursive = TRUE)
+  decoy_dir <- file.path(base_dir, "Alakasiz")
+  dir.create(decoy_dir, recursive = TRUE)
+  writeLines("yanlis", file.path(decoy_dir, "prosedur.pdf"))
+
+  found <- search_file_in_folder(base_dir, "Grup&&Kalite&&prosedur.pdf")
+  expect_null(found)
+})
