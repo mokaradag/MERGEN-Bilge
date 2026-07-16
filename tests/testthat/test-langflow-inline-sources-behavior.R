@@ -587,3 +587,15 @@ test_that("search_file_in_folder ipucu sol parçaları eşleşmeyen aynı-basena
   found <- search_file_in_folder(base_dir, "Grup&&Kalite&&prosedur.pdf")
   expect_null(found)
 })
+
+test_that("search_file_in_folder ipucu skorunda taban klasör adındaki parçaları saymaz", {
+  parent_dir <- tempfile("Grup-Kalite-")
+  base_dir <- file.path(parent_dir, "belgeler")
+  dir.create(base_dir, recursive = TRUE)
+  decoy_dir <- file.path(base_dir, "Alakasiz")
+  dir.create(decoy_dir, recursive = TRUE)
+  writeLines("yanlis", file.path(decoy_dir, "prosedur.pdf"))
+
+  found <- search_file_in_folder(base_dir, "Grup&&Kalite&&prosedur.pdf")
+  expect_null(found)
+})

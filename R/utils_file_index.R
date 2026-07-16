@@ -101,11 +101,16 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
     return(NULL)
   }
 
-  scores <- vapply(cand, .score_path_by_parts, integer(1), parts = left)
-  # İpucu skoru yalnızca gerçekten sol parçaların TÜMÜ aday yolunda geçtiğinde
-  # güvenilir kabul edilir. Aksi halde, aynı basename'e sahip ama bambaşka bir
-  # klasörde duran alakasız dosyayı açmak yerine NULL dönüp sonraki güvenli
-  # arama/fallback adımlarına bırakırız.
+  base_norm <- normalizePath(base_path, winslash = "/", mustWork = FALSE)
+  cand_rel <- vapply(cand, function(p) {
+    p_norm <- normalizePath(p, winslash = "/", mustWork = FALSE)
+    prefix <- paste0(base_norm, "/")
+    if (startsWith(p_norm, prefix)) substr(p_norm, nchar(prefix) + 1L, nchar(p_norm)) else p_norm
+  }, character(1))
+  scores <- vapply(cand_rel, .score_path_by_parts, integer(1), parts = left)
+  # İpucu skoru yalnızca adayın taban klasöre göre göreli yolunda sol parçaların
+  # TÜMÜ geçtiğinde güvenilir kabul edilir. Mutlak taban yolundaki rastlantısal
+  # sözcükler (örn. geçici klasör adı) yanlış dosyayı geçerli kılamaz.
   if (!length(scores) || max(scores, na.rm = TRUE) < length(left)) return(NULL)
 
   ord <- order(scores, decreasing = TRUE, na.last = NA)
@@ -144,7 +149,13 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
   all_paths <- unlist(idx$map, use.names = FALSE)
   if (!length(all_paths)) return(NULL)
 
-  scores <- vapply(all_paths, .score_path_by_parts, integer(1), parts = parts)
+  base_norm <- normalizePath(base_path, winslash = "/", mustWork = FALSE)
+  rel_paths <- vapply(all_paths, function(p) {
+    p_norm <- normalizePath(p, winslash = "/", mustWork = FALSE)
+    prefix <- paste0(base_norm, "/")
+    if (startsWith(p_norm, prefix)) substr(p_norm, nchar(prefix) + 1L, nchar(p_norm)) else p_norm
+  }, character(1))
+  scores <- vapply(rel_paths, .score_path_by_parts, integer(1), parts = parts)
   if (max(scores) < length(parts)) return(NULL)
   ord <- order(scores, decreasing = TRUE, na.last = NA)
   for (i in ord) {
