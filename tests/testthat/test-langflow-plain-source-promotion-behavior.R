@@ -60,6 +60,28 @@
   full_path
 }
 
+test_that("araç ailesi yalnız kendi teknik model kökünü seçer", {
+  env <- .source_langflow_plain_source_handler_for_test()
+  paths <- list(
+    mergensurecyonetimi = "//server/share/process-root",
+    mergenuygulamauzmani = "//server/share/app-root"
+  )
+
+  process_bases <- env$mergen_langflow_model_bases_for_tool(
+    paths,
+    tool_family = "process",
+    tool_mode_config = list(process = list(title = "Süreç Yönetimi Sistemi"))
+  )
+  app_bases <- env$mergen_langflow_model_bases_for_tool(
+    paths,
+    tool_family = "app_expert",
+    tool_mode_config = list(app_expert = list(title = "Uygulama Uzmanı"))
+  )
+
+  expect_identical(process_bases, "//server/share/process-root")
+  expect_identical(app_bases, "//server/share/app-root")
+})
+
 test_that("literal satır kaçışlı ve markdown vurgulu gerçek kaynak biçimi yükseltilir", {
   env <- .source_langflow_plain_source_handler_for_test()
   root <- tempfile("app-expert-root-")
