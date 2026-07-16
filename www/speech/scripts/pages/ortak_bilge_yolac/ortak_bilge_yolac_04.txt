@@ -1,0 +1,1 @@
+Ortak Bilge Yolaç oturumları, birden fazla kullanıcının aynı ajan çalışmasını izlemesini sağlar. İlgili kaydı açarak ortak komutları, yanıtları ve belgeleri inceleyin.

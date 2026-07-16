@@ -1,0 +1,1 @@
+Yeni özellikler ve kullanım davranışındaki değişiklikler burada listelenir. Yakın zamanda fark ettiğiniz bir değişikliğin açıklamasını sürüm notlarında bulabilirsiniz.

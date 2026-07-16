@@ -1,0 +1,1 @@
+Bilge Yolaç ve genel yapay zekâ kullanımına ilişkin bazı teknik seçenekler bu bölümde bulunur. Bir ayarı değiştirmeden önce açıklamasını kontrol etmeniz yararlı olur.

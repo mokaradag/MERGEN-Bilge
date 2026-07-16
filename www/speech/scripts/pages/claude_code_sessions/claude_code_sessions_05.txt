@@ -1,0 +1,1 @@
+Oturumlar sayfası, Çalışma Alanı’nda başlattığınız görevlerin geçmişini düzenler. İlgili oturumu seçerek önceki komutları ve üretilen çıktıları inceleyebilirsiniz.

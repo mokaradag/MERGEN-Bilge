@@ -1,0 +1,1 @@
+Yapılandırma sayfasındasınız. Model, analiz araçları, yazı görünümü, animasyonlar, ses seçenekleri ve Bilge Yolaç ile ilişkili tercihleri buradan yönetebilirsiniz.

@@ -1,0 +1,1 @@
+Ortak Söyleşiler, birden fazla kullanıcının aynı konuşma bağlamında çalışmasını sağlar. İlgili oturumu seçerek ekip çalışmasına devam edebilirsiniz.

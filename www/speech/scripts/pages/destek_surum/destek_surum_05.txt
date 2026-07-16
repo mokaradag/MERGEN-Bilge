@@ -1,0 +1,1 @@
+Bir özelliğin ne zaman eklendiğini veya hangi sorunun giderildiğini merak ediyorsanız sürüm geçmişini inceleyin. Kayıtlar değişiklikleri sürüm bazında özetler.

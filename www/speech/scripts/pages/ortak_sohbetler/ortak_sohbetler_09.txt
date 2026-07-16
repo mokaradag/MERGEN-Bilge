@@ -1,0 +1,1 @@
+Ortak Söyleşiler sayfası, yalnızca Normal Söyleşi türündeki ekip oturumlarını gösterir. Davetleri ve tüm ortak çalışma türlerini Ortak Çalışmalarım bölümünden yönetebilirsiniz.

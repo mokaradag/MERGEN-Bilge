@@ -1,0 +1,1 @@
+Bir proje klasörünü incelemek ya da düzenlemek istiyorsanız önce çalışma alanını belirleyin. Sonra beklediğiniz sonucu, sınırları ve doğrulama adımlarını komutunuzda belirtin.

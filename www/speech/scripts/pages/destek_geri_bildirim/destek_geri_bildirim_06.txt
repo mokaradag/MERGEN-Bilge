@@ -1,0 +1,1 @@
+Hata bildirimi oluştururken beklediğiniz davranışı ve gerçekleşen sonucu ayrı ayrı yazmanız yararlı olur. Uygunsa destekleyici bir dosya da ekleyebilirsiniz.

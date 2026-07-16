@@ -1,0 +1,1 @@
+Kod inceleme, hata ayıklama, test yazımı ve dokümantasyon gibi işler için doğru yerdesiniz. Başlamadan önce çalışma klasörünün doğru seçildiğini kontrol edin.

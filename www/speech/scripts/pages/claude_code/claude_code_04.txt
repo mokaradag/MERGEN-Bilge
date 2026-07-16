@@ -1,0 +1,1 @@
+Bilge Yolaç çalışma alanı, standart söyleşiden farklıdır. Seçili klasörü incelemek, dosya üretmek veya teknik bir görevi tamamlamak için ayrıntılı komutunuzu yazın.

@@ -1,0 +1,1 @@
+Geçmiş bir Bilge Yolaç çalışmasının durumunu kontrol etmek için ilgili oturumu açın. Böylece aynı klasör ve görev bağlamını yeniden değerlendirebilirsiniz.

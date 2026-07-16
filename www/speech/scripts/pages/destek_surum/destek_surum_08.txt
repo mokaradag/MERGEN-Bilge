@@ -1,0 +1,1 @@
+Yenilikler bölümü, uygulamadaki değişikliklere hızlı uyum sağlamanıza yardımcı olur. Özellikle yeni bir seçenek gördüğünüzde ilgili sürüm notunu kontrol edebilirsiniz.
