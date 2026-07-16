@@ -126,7 +126,7 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
   line <- gsub("(?i)&lbrack;|&#91;", "[", line, perl = TRUE)
   line <- gsub("(?i)&rbrack;|&#93;", "]", line, perl = TRUE)
   line <- sub("^[[:space:]]*#{1,6}[[:space:]]*", "", line, perl = TRUE)
-  line <- gsub("\\*\\*|__", "", line, perl = TRUE)
+  line <- gsub("\\*\\*", "", line, perl = TRUE)
   trimws(line)
 }
 
