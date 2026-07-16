@@ -1,0 +1,1 @@
+Dosya Yönetimi’ndesiniz. Belgelerinizi yükleyebilir, listeleyebilir, önizleyebilir ve seçtiğiniz dosyaları söyleşi bağlamına ekleyebilirsiniz.

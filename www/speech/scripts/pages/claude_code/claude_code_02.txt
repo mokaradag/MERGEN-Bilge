@@ -1,0 +1,1 @@
+Burası Bilge Yolaç’ın araç odaklı çalışma alanıdır. Önce çalışma klasörünü ve uygun senaryoyu seçin, ardından görevinizi açık bir komutla başlatın.

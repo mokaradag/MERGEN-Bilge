@@ -1,0 +1,1 @@
+Ortak Çalışmalarım alanı, ekip odalarının ayrıntılı görünümünü açar. Odaya Yaz ekip içi mesaj gönderir; Yapay Zekâya Sor ise yanıtı tüm katılımcılarla paylaşır.

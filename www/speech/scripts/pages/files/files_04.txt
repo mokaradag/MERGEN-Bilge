@@ -1,0 +1,1 @@
+Dosya Yönetimi, yüklediğiniz içerikleri düzenli biçimde görmenizi sağlar. Çalışacağınız dosyayı seçerek önizleyebilir ve ilgili analiz akışında kullanabilirsiniz.

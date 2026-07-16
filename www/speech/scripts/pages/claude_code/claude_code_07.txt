@@ -1,0 +1,1 @@
+Çalışma Alanı, Bilge Yolaç’ın klasör ve dosya odaklı görevlerini yürütür. Hazır senaryolardan birini seçebilir veya Serbest Komut ile kendi iş akışınızı tanımlayabilirsiniz.

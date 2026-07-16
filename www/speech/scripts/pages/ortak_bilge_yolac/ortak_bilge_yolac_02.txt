@@ -1,0 +1,1 @@
+Bu sayfa yalnızca Bilge Yolaç türündeki ortak oturumları listeler. Üretilen dosyalar önce ortak oda belgesi olarak saklanır ve ekip üyeleri tarafından görülebilir.

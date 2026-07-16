@@ -1,0 +1,1 @@
+Yapılandırma, çalışma deneyiminizin ayrıntılarını yönetir. Seslendirme, arayüz görünümü veya analiz seçeneklerinden gereksiniminize uygun olanları etkinleştirin.

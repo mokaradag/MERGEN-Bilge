@@ -1,0 +1,1 @@
+Burada PDF, Excel ve Word belgeleriyle de çalışabilirsiniz. Dosyayı çalışma klasörüne yerleştirin; tamamlanan çıktılar mesajın altında indirilebilir bağlantı olarak sunulabilir.

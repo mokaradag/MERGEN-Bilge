@@ -1,0 +1,1 @@
+Bu sayfada modelleri ve belirli araçları seçebilir, yazı boyutu ile animasyon gibi arayüz ayarlarını değiştirebilirsiniz. Değişiklikleri çalışma biçiminize göre yapın.

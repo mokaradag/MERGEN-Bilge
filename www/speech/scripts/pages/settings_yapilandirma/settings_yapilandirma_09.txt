@@ -1,0 +1,1 @@
+Burada yaptığınız ayarlar MERGEN Bilge’nin nasıl yanıt verdiğini ve arayüzün nasıl davrandığını etkileyebilir. Gereksinim duymadığınız özellikleri kapatarak daha sade bir deneyim oluşturabilirsiniz.

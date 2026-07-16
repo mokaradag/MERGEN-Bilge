@@ -1,0 +1,1 @@
+Burada PDF, Word, Excel, CSV ve benzeri dosyalarınızı yönetebilirsiniz. Dosyanın yalnızca yüklenmediğini, gerektiğinde söyleşinin çalışma bağlamına eklendiğini unutmayın.

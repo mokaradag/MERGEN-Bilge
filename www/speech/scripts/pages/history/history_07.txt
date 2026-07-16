@@ -1,0 +1,1 @@
+Bir konuya yeniden dönmek istiyorsanız geçmişteki söyleşiyi seçin. Böylece önceki mesajlar korunur ve çalışmayı sıfırdan anlatmanız gerekmez.
