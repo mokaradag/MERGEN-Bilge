@@ -110,14 +110,26 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
   NULL
 }
 
-# Akıllı arama: önce TAM ipucu ile dene, sonra klasik basename
+# Akıllı arama: önce gerçek TAM basename'i dene. Üretimde "&&" bazı dosya
+# adlarının literal parçasıdır; bunu doğrudan klasör ipucu gibi parçalamak aynı
+# kökte bulunan daha kısa başka bir dosyaya yanlış eşleşebilir. Tam ad bulunmazsa
+# geriye dönük A&&B&&dosya.ext ipucu sözleşmesine düş.
 search_file_in_folder <- function(base_path, target_filename) {
   log_info("[FILE SEARCH] base='{base_path}', target='{target_filename}'")
   if (!dir.exists(base_path)) {
     log_error("[FILE SEARCH] taban klasör yok: '{base_path}'")
     return(NULL)
   }
-  # 1) '&&' ipucu varsa onu kullan (indeks içi aday daraltma + puanlama)
+
+  # 1) Tam basename eşleşmesi. Alt klasörler indeks oluşturulurken zaten
+  # rekürsif tarandığından doğrudan kökte olma zorunluluğu yoktur.
+  hit_exact <- .search_from_index(base_path, target_filename)
+  if (!is.null(hit_exact)) {
+    log_info("[FILE SEARCH] tam indeks eşleşmesi: {hit_exact}")
+    return(hit_exact)
+  }
+
+  # 2) Tam ad bulunmadıysa '&&' klasör ipucunu kullan.
   if (is.character(target_filename) && grepl("&&", target_filename, fixed = TRUE)) {
     hit_hint <- .search_with_hint(base_path, target_filename)
     if (!is.null(hit_hint)) {
@@ -125,12 +137,7 @@ search_file_in_folder <- function(base_path, target_filename) {
       return(hit_hint)
     }
   }
-  # 2) Sade basename araması
-  hit <- .search_from_index(base_path, target_filename)
-  if (!is.null(hit)) {
-    log_info("[FILE SEARCH] indeks eşleşmesi: {hit}")
-    return(hit)
-  }
+
   log_warn("[FILE SEARCH] eşleşme yok: target='{target_filename}'")
   NULL
 }
