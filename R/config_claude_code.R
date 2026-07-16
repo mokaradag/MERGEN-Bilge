@@ -18,7 +18,7 @@ claude_code_config <- list(
   default_workdir = Sys.getenv("CLAUDE_CODE_DEFAULT_WORKDIR", ""),
 
   # Maksimum istek süresi (saniye)
-  timeout_seconds = as.integer(Sys.getenv("CLAUDE_CODE_TIMEOUT", "14400")),
+  timeout_seconds = as.integer(Sys.getenv("CLAUDE_CODE_TIMEOUT", "600")),
 
   # Varsayılan model (boş ise settings.json'dan okunur)
   default_model = Sys.getenv("CLAUDE_CODE_MODEL", ""),
