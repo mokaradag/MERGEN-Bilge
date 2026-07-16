@@ -140,6 +140,8 @@ test_that("mergen_langflow_parse_prose_sources bölüm yoksa/geçersiz kaynakta 
   expect_null(parse("Metin.\n\nKaynak:\n(1) /kok/gizli/dosya.pdf\n"))
   expect_null(parse("Metin.\n\nKaynak:\n(1) C:/gizli/dosya.docx\n"))
   expect_null(parse("Metin.\n\nKaynak:\n(1) ust&&..&&dosya.pdf\n"))
+  expect_null(parse("Metin.\n\nKaynak:\n(1) ust&&C:&&dosya.pdf\n"))
+  expect_null(parse("Metin.\n\nKaynak:\n(1) javascript:dosya.pdf\n"))
   # Belge uzantısı olmayan giriş
   expect_null(parse("Metin.\n\nKaynak:\n(1) sadece_metin_ek_yok\n"))
   # Başlık gibi görünen ama giriş içermeyen satır bölümü tetiklemez
@@ -558,6 +560,20 @@ test_that("mergen_langflow_parse_prose_sources sayfa açıklamalı kaynak satır
   expect_identical(res$records[[1]]$page, "3")
   expect_identical(res$records[[2]]$path, "Grup&&kilavuz.docx")
   expect_identical(res$records[[2]]$page, "7")
+})
+
+test_that("mergen_langflow_kaynakca_marker_block && ipucunda gezinme/sürücü parçalarını imzalamaz", {
+  testthat::skip_if_not_installed("openssl")
+  env <- .source_langflow_inline_env()
+  block <- env$mergen_langflow_kaynakca_marker_block(list(
+    list(title = "dosya.pdf", path = "ust&&..&&dosya.pdf", page = "", type = "pdf"),
+    list(title = "dosya.pdf", path = "ust&&C:&&dosya.pdf", page = "", type = "pdf"),
+    list(title = "guvenli.pdf", path = "ust&&guvenli.pdf", page = "", type = "pdf")
+  ))
+
+  expect_match(block, "[KAYNAK 1] guvenli.pdf", fixed = TRUE)
+  expect_false(grepl("ust&&..&&dosya.pdf", block, fixed = TRUE))
+  expect_false(grepl("ust&&C:&&dosya.pdf", block, fixed = TRUE))
 })
 test_that("mergen_langflow_finalize_answer yapısal kaynak varken yinelenen düzyazı Kaynak bloğunu söker", {
   testthat::skip_if_not_installed("openssl")

@@ -242,8 +242,11 @@ mergen_langflow_kaynakca_marker_block <- function(sources) {
     if (!nzchar(path) && grepl("\\.[A-Za-z0-9]{1,8}$", title)) path <- title
     normalized_path <- gsub("\\\\", "/", path)
     path_parts <- strsplit(normalized_path, "/", fixed = TRUE)[[1]]
+    hint_parts <- strsplit(normalized_path, "&&", fixed = TRUE)[[1]]
+    safe_parts <- c(path_parts, hint_parts)
     if (!nzchar(path) || grepl("^/", normalized_path) ||
-        grepl("^[A-Za-z]:", normalized_path) || any(path_parts %in% c(".", ".."))) next
+        grepl("^[A-Za-z]:", normalized_path) ||
+        any(safe_parts %in% c(".", "..")) || any(grepl(":", safe_parts, fixed = TRUE))) next
     page <- .kaynakca_marker_sanitize(rec$page)
     if (!grepl("^[0-9]+$", page)) page <- ""
     type <- tolower(gsub("[^a-z0-9]", "", .kaynakca_marker_sanitize(rec$type)))
