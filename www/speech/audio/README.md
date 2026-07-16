@@ -1,9 +1,9 @@
-# Persona WAV Recordings
+# Persona WAV Kayıtları
 
-The audio tree mirrors the shared script tree for each persona.
+Ses klasörü ağacı, her persona için ortak konuşma metni ağacını yansıtır.
 
-Place PCM WAV files in the matching directory and preserve the script basename.
-For example:
+PCM WAV dosyalarını karşılık gelen dizine yerleştirin ve konuşma metninin temel
+dosya adını koruyun. Örnek:
 
 ```text
 scripts/pages/history/history_04.txt
@@ -11,6 +11,6 @@ audio/emre/pages/history/history_04.wav
 audio/selin/pages/history/history_04.wav
 ```
 
-The `.gitkeep` files only preserve empty recording directories and may remain
-after WAV files are added. Subtitle text comes from `../scripts`; do not add
-duplicate `.txt` files under `audio`.
+`.gitkeep` dosyaları yalnızca boş kayıt dizinlerinin depoda korunmasını sağlar ve
+WAV dosyaları eklendikten sonra da kalabilir. Altyazı metni `../scripts`
+dizininden okunur; `audio` altında yinelenen `.txt` dosyaları oluşturmayın.
