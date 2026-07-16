@@ -23,29 +23,43 @@
 # Gövdedeki <sup>...</sup> üstsimge atıflarını [n] biçimine çevirir. Markdown
 # kaçışı (<,> -> &lt;,&gt;) üstsimgeyi metne çevirdiğinden, atıflar burada erken
 # [n]'e indirgenir; citation_handler.js bunları tıklanabilir üstsimge rozetine
-# dönüştürür. Bir üstsimge birden çok sayı taşıyabilir (<sup>(1)(2)</sup>).
+# dönüştürür. Bir üstsimge birden çok sayı taşıyabilir (<sup>(1)(2)</sup>) ve
+# öznitelik içerebilir (<sup class="citation">(1)</sup>).
 # num_map verilirse orijinal numara -> pozisyon yeniden eşlenir (Kaynak listesi
-# 1..n sırasıyla numaralanmadıysa atıf/kaynak hizası korunur); eşleşmeyen numara
-# olduğu gibi bırakılır.
+# 1..n sırasıyla numaralanmadıysa atıf/kaynak hizası korunur). Eşleşmeyen numara
+# DÜŞÜRÜLÜR (etkisiz): yoğun yeniden numaralanan Kaynakça'da yanlış belgeye atıf
+# yapmasını önler. Tüm numaraları düşen üstsimge tamamen kaldırılır.
 .langflow_inline_sup_to_citation <- function(text, num_map = NULL) {
   txt <- as.character(text %||% "")[1]
   if (is.na(txt) || !nzchar(txt)) return(text)
   if (!grepl("<sup", txt, ignore.case = TRUE)) return(txt)
 
-  m <- gregexpr("<sup>.*?</sup>", txt, perl = TRUE, ignore.case = TRUE)
+  # Öznitelikli açılış etiketini de yakala; <supper> gibi farklı etiketi yakalama
+  # (\\b sözcük sınırı).
+  m <- gregexpr("<sup\\b[^>]*>.*?</sup>", txt, perl = TRUE, ignore.case = TRUE)
   chunks <- regmatches(txt, m)[[1]]
   if (!length(chunks)) return(txt)
 
+  map_names <- if (!is.null(num_map)) names(num_map) else character(0)
   replacements <- vapply(chunks, function(chunk) {
-    nums <- regmatches(chunk, gregexpr("[0-9]+", chunk, perl = TRUE))[[1]]
+    # Sayılar YALNIZCA etiket İÇERİĞİNDEN alınır; açılış etiketindeki öznitelik
+    # değerlerindeki rakamlar (class="cite-3", data-x='1' ...) atıf sayılmamalı.
+    inner <- sub("^<sup\\b[^>]*>", "", chunk, perl = TRUE, ignore.case = TRUE)
+    inner <- sub("</sup>$", "", inner, perl = TRUE, ignore.case = TRUE)
+    nums <- regmatches(inner, gregexpr("[0-9]+", inner, perl = TRUE))[[1]]
     if (!length(nums)) return("")
     if (!is.null(num_map)) {
-      map_names <- names(num_map)
-      nums <- vapply(nums, function(n) {
-        mapped <- if (n %in% map_names) as.character(num_map[[n]]) else NA_character_
-        if (is.na(mapped) || !nzchar(mapped)) n else mapped
-      }, character(1))
+      mapped <- character(0)
+      for (n in nums) {
+        if (n %in% map_names) {
+          v <- as.character(num_map[[n]])
+          if (!is.na(v) && nzchar(v)) mapped <- c(mapped, v)
+        }
+        # Eşleşmeyen numara atlanır (etkisiz).
+      }
+      nums <- mapped
     }
+    if (!length(nums)) return("")
     paste0("[", nums, "]", collapse = "")
   }, character(1))
 
@@ -111,9 +125,12 @@ mergen_langflow_parse_prose_sources <- function(text) {
   lines <- strsplit(txt, "\n", fixed = TRUE)[[1]]
   if (!length(lines)) return(NULL)
 
-  # "Kaynak" / "Kaynaklar" / "Kaynakça" / "Kaynakca" / "Kaynakları" başlığı
-  # (satır kendi başına, isteğe bağlı markdown/blockquote süsleriyle).
-  heading_re <- "^[ \t>*_#-]*[Kk]aynak(lar|ça|ca|ları|lari)?[ \t]*:?[ \t*_]*$"
+  # "Kaynak" / "Kaynaklar" / "Kaynakça" / "Kaynakca" / "Kaynakları" başlığı;
+  # başlık kendi satırında tek başına olmalı (isteğe bağlı markdown/blockquote
+  # süsleriyle). "Kaynak" kısmı BÜYÜK/küçük harf duyarsızdır (KAYNAK:, KAYNAKÇA:
+  # dahil); ek (lar/ça/ları...) herhangi harften oluşabilir (`ignore.case`
+  # Türkçe Ç için güvenilmez olduğundan açık harf sınıfı kullanılır).
+  heading_re <- "^[ \t>*_#-]*[Kk][Aa][Yy][Nn][Aa][Kk][A-Za-zçÇğĞıİöÖşŞüÜ]*[ \t]*:?[ \t*_]*$"
   heading_idx <- NA_integer_
   for (i in rev(seq_along(lines))) {
     if (grepl(heading_re, lines[i], perl = TRUE)) {
@@ -132,23 +149,39 @@ mergen_langflow_parse_prose_sources <- function(text) {
     character(0)
   }
 
-  for (ln in after) {
+  n_after <- length(after)
+  idx <- 1L
+  while (idx <= n_after) {
+    ln <- after[idx]
     if (!nzchar(trimws(ln))) {
-      if (saw_entry) break else next
+      if (saw_entry) break
+      idx <- idx + 1L
+      next
     }
     m <- regmatches(ln, regexec(entry_re, ln, perl = TRUE))[[1]]
     if (length(m) != 3) {
       # Numaralı giriş değil: girişler başladıysa dur, başlamadıysa atla.
-      if (saw_entry) break else next
+      if (saw_entry) break
+      idx <- idx + 1L
+      next
     }
     saw_entry <- TRUE
     rec <- .langflow_prose_source_record(m[3], m[2])
     if (!is.null(rec)) {
       records[[length(records) + 1L]] <- rec
     }
+    idx <- idx + 1L
   }
 
   if (!length(records)) return(NULL)
+
+  # Girişlerden SONRA kalan metin (örn. sarmalanmış bir açıklama veya "Not:"
+  # ibaresi) sessizce düşürülmez; düzyazıya eklenmek üzere korunur.
+  tail <- if (saw_entry && idx <= n_after) {
+    trimws(paste(after[idx:n_after], collapse = "\n"))
+  } else {
+    ""
+  }
 
   prose <- if (heading_idx > 1L) {
     trimws(paste(lines[seq_len(heading_idx - 1L)], collapse = "\n"))
@@ -156,17 +189,28 @@ mergen_langflow_parse_prose_sources <- function(text) {
     ""
   }
 
-  list(prose = prose, records = records)
+  list(prose = prose, records = records, tail = tail)
+}
+
+# Üretilen imzalı işaretleyici bloğundaki [KAYNAK n] giriş sayısını sayar.
+.langflow_count_marker_entries <- function(marker_block) {
+  m <- gregexpr("\\[KAYNAK [0-9]+\\]", marker_block, perl = TRUE)[[1]]
+  if (length(m) == 1L && m[1] == -1L) return(0L)
+  length(m)
 }
 
 # Langflow yanıt metnini son biçimine getirir (işleyicinin tek giriş noktası):
-#   1) <sup>(n)</sup> atıflarını [n]'e çevirir.
-#   2) Kaynakça işaretleyici bloğu ekler: önce YAPISAL kaynaklar (mevcut davranış),
+#   1) Kaynakça işaretleyici bloğu ekler: önce YAPISAL kaynaklar (mevcut davranış),
 #      yoksa düzyazı "Kaynak:" bölümü ayrıştırılıp bölüm SÖKÜLÜR ve imzalı
-#      işaretleyici bloğu eklenir.
-# İşaretleyici üretici yüklü değilse (izole test/worker) metin yalnızca üstsimge
-# dönüşümünü alır. Sonuç DB'ye kaydedilir; render'da process_message_content
-# tıklanabilir Kaynakça'ya yükseltir.
+#      işaretleyici bloğu eklenir. Girişlerden sonraki metin (varsa) düzyazıya
+#      taşınarak korunur.
+#   2) YALNIZCA tıklanabilir bir Kaynakça bloğu üretildiğinde <sup>(n)</sup>
+#      atıflarını [n]'e çevirir; aksi halde "m<sup>2</sup>" gibi sıradan çıktı
+#      yanlış atıf gibi görünmez ve ham metin korunur. Atıflar render edilen
+#      giriş sayısına hizalanır; aralık dışı/eşleşmeyen atıflar etkisiz kılınır.
+# İşaretleyici üretici yüklü değilse (izole test/worker) metin değişmeden döner.
+# Sonuç DB'ye kaydedilir; render'da process_message_content tıklanabilir
+# Kaynakça'ya yükseltir.
 mergen_langflow_finalize_answer <- function(text, structured_sources = list()) {
   txt <- as.character(text %||% "")[1]
   if (is.na(txt)) txt <- ""
@@ -181,6 +225,14 @@ mergen_langflow_finalize_answer <- function(text, structured_sources = list()) {
       mergen_langflow_kaynakca_marker_block(structured_sources),
       error = function(e) ""
     )
+    if (nzchar(marker_block)) {
+      # Yapısal kaynaklarda atıflar 1..n (render edilen giriş sayısı) ile hizalı
+      # varsayılır; aralık dışı atıflar etkisiz kılınır.
+      n_entries <- .langflow_count_marker_entries(marker_block)
+      if (n_entries > 0L) {
+        sup_map <- stats::setNames(as.character(seq_len(n_entries)), as.character(seq_len(n_entries)))
+      }
+    }
   }
 
   if (!nzchar(marker_block) && has_block_fn) {
@@ -191,18 +243,19 @@ mergen_langflow_finalize_answer <- function(text, structured_sources = list()) {
         error = function(e) ""
       )
       if (nzchar(block)) {
-        txt <- parsed$prose
+        tail_txt <- as.character(parsed$tail %||% "")[1]
+        txt <- if (nzchar(tail_txt)) paste0(parsed$prose, "\n\n", tail_txt) else parsed$prose
         marker_block <- block
-        # Orijinal Kaynak numarası -> pozisyon eşlemesi (üstsimge hizalaması).
+        # Orijinal Kaynak numarası -> yoğun pozisyon eşlemesi (üstsimge hizalaması).
         orig_nums <- vapply(parsed$records, function(r) as.character(r$num %||% ""), character(1))
         sup_map <- stats::setNames(as.character(seq_along(orig_nums)), orig_nums)
       }
     }
   }
 
-  txt <- .langflow_inline_sup_to_citation(txt, sup_map)
-
+  # Üstsimge dönüşümü yalnızca gerçek bir Kaynakça bloğu varken uygulanır.
   if (nzchar(marker_block)) {
+    txt <- .langflow_inline_sup_to_citation(txt, sup_map)
     txt <- paste0(txt, marker_block)
   }
   txt

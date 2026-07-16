@@ -43,8 +43,15 @@ test_that(".langflow_inline_sup_to_citation <sup>(n)</sup> atıflarını [n]'e �
   expect_identical(f("A<sup>x</sup>B"), "AB")
   # num_map ile yeniden eşleme (orijinal numara -> pozisyon)
   expect_identical(f("A<sup>(1)</sup> C<sup>(3)</sup>", num_map = c("1" = "1", "3" = "2")), "A[1] C[2]")
-  # Eşleşmeyen numara olduğu gibi korunur (subscript hatası vermez)
-  expect_identical(f("A<sup>(9)</sup>", num_map = c("1" = "1")), "A[9]")
+  # Eşleşmeyen numara DÜŞÜRÜLÜR (etkisiz; subscript hatası da vermez)
+  expect_identical(f("A<sup>(9)</sup>", num_map = c("1" = "1")), "A")
+  # Kısmen eşleşen üstsimge: yalnızca eşleşen numara kalır
+  expect_identical(f("A<sup>(1)(9)</sup>", num_map = c("1" = "1")), "A[1]")
+  # Öznitelikli üstsimge etiketi de yakalanır (class vb.)
+  expect_identical(f('X<sup class="citation">(1)</sup>'), "X[1]")
+  expect_identical(f("Y<sup data-x='1'>2</sup>"), "Y[2]")
+  # <supper> gibi farklı etiket yakalanmaz (sözcük sınırı)
+  expect_identical(f("m<supper>3</supper>"), "m<supper>3</supper>")
   # Boş güvenli
   expect_identical(f(""), "")
 })
@@ -176,6 +183,90 @@ test_that("mergen_langflow_finalize_answer yapısal kaynaklar varken düzyazı a
   out <- finalize("Cevap<sup>(1)</sup> metni.", structured)
   expect_match(out, "Cevap[1] metni.", fixed = TRUE)
   expect_match(out, "[KAYNAK 1] Kalite Prosedürü", fixed = TRUE)
+})
+
+test_that("mergen_langflow_finalize_answer kaynak yoksa <sup> çevirmez (sıradan üstsimge korunur)", {
+  env <- .source_langflow_inline_env()
+  finalize <- env$mergen_langflow_finalize_answer
+
+  # Kaynakça bloğu üretilmediyse (yapısal kaynak yok + düzyazı "Kaynak:" yok),
+  # "m<sup>2</sup>" gibi matematiksel üstsimge yanlış atıf gibi görünmez.
+  out <- finalize("Alan m<sup>2</sup> olarak hesaplanır.", list())
+  expect_false(grepl("[2]", out, fixed = TRUE))
+  expect_match(out, "m<sup>2</sup>", fixed = TRUE)
+})
+
+test_that("mergen_langflow_finalize_answer atlanan kaynak numarasında eşleşmeyen atıfı etkisiz kılar", {
+  testthat::skip_if_not_installed("openssl")
+  env <- .source_langflow_inline_env()
+  finalize <- env$mergen_langflow_finalize_answer
+
+  # (1) reddedilir (URL), (2) kabul edilir -> tek yoğun giriş [1] olur.
+  # <sup>(1)</sup> yanlış belgeye kaymamalı: DÜŞÜRÜLÜR. <sup>(2)</sup> -> [1].
+  metin <- paste0(
+    "Cümle bir.<sup>(1)</sup>\n",
+    "Cümle iki.<sup>(2)</sup>\n\n",
+    "Kaynak:\n",
+    "(1) https://ornek.gecersiz/dis.pdf\n",
+    "(2) Grup&&gecerli.pdf\n"
+  )
+  out <- finalize(metin, list())
+  expect_match(out, "Cümle bir.\n", fixed = TRUE)
+  expect_false(grepl("Cümle bir.[1]", out, fixed = TRUE))
+  expect_match(out, "Cümle iki.[1]", fixed = TRUE)
+  expect_match(out, "[KAYNAK 1] gecerli.pdf", fixed = TRUE)
+})
+
+test_that("mergen_langflow_finalize_answer girişlerden sonraki metni korur (sessizce düşürmez)", {
+  testthat::skip_if_not_installed("openssl")
+  env <- .source_langflow_inline_env()
+  finalize <- env$mergen_langflow_finalize_answer
+
+  metin <- paste0(
+    "Ana cevap metni.\n\n",
+    "Kaynak:\n",
+    "(1) Grup&&kilavuz.pdf\n\n",
+    "Not: Belgeler kurumsal klasorde saklanir."
+  )
+  out <- finalize(metin, list())
+  # Trailing "Not:" metni korunur (düzyazıya taşınır); Kaynakça yine en sonda.
+  expect_match(out, "Not: Belgeler kurumsal klasorde saklanir.", fixed = TRUE)
+  expect_match(out, "Ana cevap metni.", fixed = TRUE)
+  expect_match(out, "\n\nKaynakça:\n[KAYNAK 1]", fixed = TRUE)
+})
+
+test_that("mergen_langflow_parse_prose_sources BÜYÜK harf başlıkları tanır (KAYNAK / KAYNAKÇA)", {
+  env <- .source_langflow_inline_env()
+  parse <- env$mergen_langflow_parse_prose_sources
+
+  r1 <- parse("Metin.\n\nKAYNAK:\n(1) Grup&&rapor.pdf\n")
+  expect_false(is.null(r1))
+  expect_length(r1$records, 1L)
+
+  r2 <- parse("Metin.\n\nKAYNAKÇA:\n(1) Grup&&kilavuz.docx\n")
+  expect_false(is.null(r2))
+  expect_length(r2$records, 1L)
+
+  r3 <- parse("Metin.\n\nKAYNAKLAR\n1) Grup&&deck.pptx\n")
+  expect_false(is.null(r3))
+  expect_identical(r3$records[[1]]$type, "pptx")
+})
+
+test_that("search_file_in_folder pptx uzantısını indeksler ve alt klasörde çözer", {
+  base_dir <- tempfile()
+  dir.create(base_dir, recursive = TRUE)
+  alt <- file.path(base_dir, "AltKlasor")
+  dir.create(alt, recursive = TRUE)
+
+  fname <- "Grup 1&&Sunum&&tanitim.pptx"
+  writeLines("ornek", file.path(alt, fname))
+
+  found <- search_file_in_folder(base_dir, fname)
+  expect_false(is.null(found))
+  expect_identical(
+    normalizePath(found, winslash = "/"),
+    normalizePath(file.path(alt, fname), winslash = "/")
+  )
 })
 
 test_that("mergen_kaynakca_marker_html '&&' düz adlarında kırıntı yolu + son parça tıklanabilir üretir", {
