@@ -1,0 +1,128 @@
+name: Apply Bilge Yolac 4h timeout update
+
+on:
+  push:
+    branches:
+      - agent/extend-bilge-yolac-timeout-4h
+
+permissions:
+  contents: write
+
+jobs:
+  apply-timeout-update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/extend-bilge-yolac-timeout-4h
+          fetch-depth: 0
+
+      - name: Apply asserted replacements
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "R/config_claude_code.R",
+              'timeout_seconds = as.integer(Sys.getenv("CLAUDE_CODE_TIMEOUT", "600")),',
+              'timeout_seconds = as.integer(Sys.getenv("CLAUDE_CODE_TIMEOUT", "14400")),'
+          )
+
+          replace_once(
+              "R/module_settings_yapilandirma_ui.R",
+              '''          numericInput(
+            inputId = ns("claude_code_timeout"),
+            label = NULL,
+            value = claude_code_config$timeout_seconds,
+            min = 30,
+            max = 600,
+            step = 30
+          ),
+          tags$small(class = "setting-description", "30-600 saniye arası")''',
+              '''          numericInput(
+            inputId = ns("claude_code_timeout"),
+            label = NULL,
+            value = claude_code_config$timeout_seconds,
+            min = 30,
+            max = 14400,
+            step = 300
+          ),
+          tags$small(
+            class = "setting-description",
+            "30-14.400 saniye arası (en fazla 4 saat)"
+          )'''
+          )
+
+          replace_once(
+              ".Renviron.example",
+              '''CLAUDE_CODE_DEFAULT_WORKDIR=C:/Temp/mergen_claude
+
+CLAUDE_CODE_THINKING_MODELS=model-a,model-b''',
+              '''CLAUDE_CODE_DEFAULT_WORKDIR=C:/Temp/mergen_claude
+# Bilge Yolaç ajan çalıştırma zaman aşımı (saniye). 14400 = 4 saat.
+CLAUDE_CODE_TIMEOUT=14400
+
+CLAUDE_CODE_THINKING_MODELS=model-a,model-b'''
+          )
+
+          replace_once(
+              "docs/technical-reference.md",
+              '''CLAUDE_CODE_DEFAULT_WORKDIR=
+CLAUDE_CODE_TIMEOUT=600
+CLAUDE_CODE_MODEL=''',
+              '''CLAUDE_CODE_DEFAULT_WORKDIR=
+# Ajan görevleri için varsayılan üst sınır: 14.400 saniye (4 saat)
+CLAUDE_CODE_TIMEOUT=14400
+CLAUDE_CODE_MODEL='''
+          )
+
+          test_path = Path("tests/testthat/test-claude-code-timeout-default-contract.R")
+          test_path.write_text('''# Bilge Yolaç zaman aşımı varsayılanı ve UI sınırı için hafif sözleşme testi.\n\ntestthat::test_that("Bilge Yolaç timeout defaults to four hours", {\n  find_root <- function() {\n    candidates <- c(".", "..", "../..", "../../..")\n    for (candidate in candidates) {\n      if (file.exists(file.path(candidate, "R", "config_claude_code.R"))) {\n        return(normalizePath(candidate, winslash = "/", mustWork = TRUE))\n      }\n    }\n    stop("Depo kökü bulunamadı.")\n  }\n\n  root <- find_root()\n  read_repo <- function(...) {\n    paste(readLines(file.path(root, ...), warn = FALSE, encoding = "UTF-8"), collapse = "\\n")\n  }\n\n  config_text <- read_repo("R", "config_claude_code.R")\n  ui_text <- read_repo("R", "module_settings_yapilandirma_ui.R")\n  env_text <- read_repo(".Renviron.example")\n  docs_text <- read_repo("docs", "technical-reference.md")\n\n  testthat::expect_match(\n    config_text,\n    'Sys.getenv\\("CLAUDE_CODE_TIMEOUT", "14400"\\)',\n    perl = TRUE\n  )\n  testthat::expect_match(ui_text, "max = 14400", fixed = TRUE)\n  testthat::expect_match(ui_text, "step = 300", fixed = TRUE)\n  testthat::expect_match(ui_text, "en fazla 4 saat", fixed = TRUE)\n  testthat::expect_match(env_text, "CLAUDE_CODE_TIMEOUT=14400", fixed = TRUE)\n  testthat::expect_match(docs_text, "CLAUDE_CODE_TIMEOUT=14400", fixed = TRUE)\n  testthat::expect_false(grepl("CLAUDE_CODE_TIMEOUT=600", docs_text, fixed = TRUE))\n})\n''', encoding="utf-8")
+          PY
+
+      - name: Verify the focused contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          checks = {
+              "R/config_claude_code.R": ['Sys.getenv("CLAUDE_CODE_TIMEOUT", "14400")'],
+              "R/module_settings_yapilandirma_ui.R": ["max = 14400", "step = 300", "en fazla 4 saat"],
+              ".Renviron.example": ["CLAUDE_CODE_TIMEOUT=14400"],
+              "docs/technical-reference.md": ["CLAUDE_CODE_TIMEOUT=14400", "14.400 saniye (4 saat)"],
+              "tests/testthat/test-claude-code-timeout-default-contract.R": ["timeout defaults to four hours"],
+          }
+          for path, needles in checks.items():
+              text = Path(path).read_text(encoding="utf-8")
+              for needle in needles:
+                  if needle not in text:
+                      raise SystemExit(f"{path}: missing {needle!r}")
+          if "CLAUDE_CODE_TIMEOUT=600" in Path("docs/technical-reference.md").read_text(encoding="utf-8"):
+              raise SystemExit("technical-reference still contains the old timeout")
+          PY
+
+      - name: Commit and push changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            R/config_claude_code.R \
+            R/module_settings_yapilandirma_ui.R \
+            .Renviron.example \
+            docs/technical-reference.md \
+            tests/testthat/test-claude-code-timeout-default-contract.R
+          git commit -m "Extend Bilge Yolaç timeout to four hours"
+          git push origin HEAD:agent/extend-bilge-yolac-timeout-4h
