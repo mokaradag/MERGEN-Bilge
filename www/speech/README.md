@@ -1,18 +1,18 @@
-# Pre-generated Speech Assets
+# Önceden Üretilmiş Konuşma Varlıkları
 
-This directory contains the shared scripts and persona-specific WAV locations for
-MERGEN Bilge welcome speech and page guidance.
+Bu dizin, MERGEN Bilge karşılama konuşması ve sayfa rehberliği için kullanılan
+ortak konuşma metinlerini ve persona bazlı WAV kayıt konumlarını içerir.
 
-## Content model
+## İçerik modeli
 
-- There are **10 shared script variants** for the welcome speech.
-- There are **10 shared script variants** for each supported page.
-- The exact same script text is recorded separately in the voices of `emre`,
-  `selin`, `deniz`, `can`, and `ipek`.
-- Subtitle text is always read from the shared `.txt` file. The audio file must
-  use the same basename.
+- Karşılama konuşması için **10 ortak metin çeşidi** bulunur.
+- Desteklenen her sayfa için **10 ortak metin çeşidi** bulunur.
+- Aynı konuşma metni `emre`, `selin`, `deniz`, `can` ve `ipek` sesleriyle
+  ayrı ayrı kaydedilir.
+- Altyazı metni her zaman ortak `.txt` dosyasından okunur. Ses dosyası,
+  metin dosyasıyla aynı temel dosya adını kullanmalıdır.
 
-Example:
+Örnek:
 
 ```text
 scripts/pages/files/files_03.txt
@@ -23,7 +23,7 @@ audio/can/pages/files/files_03.wav
 audio/ipek/pages/files/files_03.wav
 ```
 
-## Pages with guidance
+## Rehberlik bulunan sayfalar
 
 - `history` — Söyleşi Geçmişi
 - `saved_chats` — Kayıtlı Söyleşiler
@@ -40,12 +40,12 @@ audio/ipek/pages/files/files_03.wav
 - `destek_surum` — Yenilikler
 - `destek_hakkinda` — Hakkında
 
-## Pages that must remain silent
+## Sessiz kalması gereken sayfalar
 
-No page-guidance assets should be added for:
+Aşağıdaki sayfalar için sayfa rehberliği varlığı eklenmemelidir:
 
-- `chat` — Ana Söyleşi; the startup welcome speech already covers it.
-- `settings_kisisel` — Kişiselleştirme; persona introduction videos play there.
+- `chat` — Ana Söyleşi; açılıştaki karşılama konuşması bu sayfayı zaten kapsar.
+- `settings_kisisel` — Kişiselleştirme; persona tanıtım videoları burada oynatılır.
 - `admin_analytics` — Genel Analiz.
 - `admin_geri_bildirim` — Geri Bildirim Analizi.
 - `admin_hata_analizi` — Hata Analizi.
@@ -53,18 +53,19 @@ No page-guidance assets should be added for:
 - `admin_dokumantasyon` — Dokümantasyon.
 - `health` — Sistem Durumu.
 
-## Recording workflow
+## Kayıt iş akışı
 
-1. Select a shared `.txt` script.
-2. Record the exact text in each persona voice.
-3. Save every recording as PCM WAV with the same basename as the script.
-4. Do not copy or rewrite subtitle text inside persona folders.
-5. The playback-integration step must generate `generated/speech_manifest.json`
-   automatically after WAV files are added. Duration and checksums must be
-   derived from the WAV files; they are never entered manually.
+1. Ortak bir `.txt` konuşma metni seçin.
+2. Metni değiştirmeden her persona sesiyle ayrı ayrı kaydedin.
+3. Her kaydı, konuşma metniyle aynı temel dosya adını kullanarak PCM WAV biçiminde kaydedin.
+4. Altyazı metnini persona klasörlerine kopyalamayın veya yeniden yazmayın.
+5. WAV dosyaları eklendikten sonra oynatma bütünleştirmesi,
+   `generated/speech_manifest.json` dosyasını otomatik olarak üretmelidir.
+   Süre ve sağlama toplamı bilgileri WAV dosyalarından türetilmeli, hiçbir zaman
+   elle girilmemelidir.
 
-This asset-only scaffold does not yet add the manifest generator or runtime
-playback wiring.
+Yalnızca varlık yapısını hazırlayan bu iskelet, bildirim dosyası üreticisini veya
+çalışma zamanı oynatma bağlantılarını henüz içermez.
 
-Recommended WAV profile: mono, 16-bit PCM, consistent loudness, minimal leading
-silence, and a short natural trailing silence.
+Önerilen WAV profili: mono, 16 bit PCM, tutarlı ses düzeyi, en az başlangıç
+sessizliği ve kısa, doğal bir bitiş sessizliği.
