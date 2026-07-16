@@ -50,9 +50,7 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
   } else {
     as.character(local_model_paths)
   }
-  paths <- as.character(paths)
-  keep <- !is.na(paths) & nzchar(trimws(paths))
-  paths <- paths[keep]
+  paths <- paths[!is.na(paths) & nzchar(trimws(as.character(paths)))]
   if (!length(paths)) return(character(0))
 
   mode_cfg <- tryCatch(tool_mode_config[[tool_family]], error = function(e) NULL)
@@ -66,11 +64,11 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
   explicit_keys <- unique(explicit_keys[!is.na(explicit_keys) & nzchar(trimws(explicit_keys))])
   if (length(explicit_keys) && !is.null(names(paths))) {
     matched <- paths[names(paths) %in% explicit_keys]
-    if (length(matched)) return(unique(unname(matched)))
+    if (length(matched)) return(unique(unname(as.character(matched))))
   }
 
   path_names <- names(paths)
-  if (is.null(path_names) || !length(path_names)) return(unique(unname(paths)))
+  if (is.null(path_names) || !length(path_names)) return(unique(as.character(paths)))
 
   family <- .mergen_langflow_normalize_key(tool_family)
   fixed_tokens <- switch(
@@ -90,7 +88,11 @@ mergen_langflow_model_bases_for_tool <- function(local_model_paths,
     logical(1)
   )
 
-  if (any(matched_idx)) unique(unname(paths[matched_idx])) else unique(unname(paths))
+  if (any(matched_idx)) {
+    unique(unname(as.character(paths[matched_idx])))
+  } else {
+    unique(unname(as.character(paths)))
+  }
 }
 
 # Mesaj render katmanı literal "\\n" dizilerini gerçek satır sonuna çevirir.
