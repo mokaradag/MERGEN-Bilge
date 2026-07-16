@@ -509,6 +509,15 @@ oo_arac_langflow_cagrisi_hazirla <- function(plan, soran_id, oturum_id, config =
 # (then/senkron dal) çalışır; worker tarafına marker üretimi taşınmaz.
 .oo_langflow_yanit_metni <- function(yanit) {
   metin <- as.character(yanit$text %||% "")[1]
+  # Yapısal kaynaklar veya düzyazı "Kaynak:" bölümü tıklanabilir Kaynakça'ya
+  # yükseltilir; satır içi <sup>(n)</sup> atıfları [n]'e çevrilir. finalize
+  # yardımcısı yoksa eski (yalnızca yapısal işaretleyici) davranışa düşülür.
+  if (exists("mergen_langflow_finalize_answer", mode = "function", inherits = TRUE)) {
+    return(tryCatch(
+      mergen_langflow_finalize_answer(yanit$text, yanit$sources),
+      error = function(e) metin
+    ))
+  }
   if (exists("mergen_langflow_kaynakca_marker_block", mode = "function", inherits = TRUE)) {
     blok <- tryCatch(mergen_langflow_kaynakca_marker_block(yanit$sources), error = function(e) "")
     if (nzchar(blok)) metin <- paste0(metin, blok)

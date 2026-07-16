@@ -113,7 +113,10 @@
   # 12 -> 13 bilinçli güncelleme: Langflow belge kaynak çıkarımı + tıklanabilir
   # Kaynakça işaretleyici yardımcıları (R/helpers_langflow_sources.R)
   # helpers_langflow_runtime.R'den SONRA eklendi (.langflow_pluck bağımlılığı).
-  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 14L),
+  # 13 -> 14 bilinçli güncelleme: Langflow düzyazı "Kaynak:" bölümü + satır içi
+  # <sup>(n)</sup> atıf yükseltme yardımcıları (R/helpers_langflow_inline_sources.R)
+  # helpers_langflow_sources.R'den SONRA eklendi (marker bloğu bağımlılığı).
+  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 15L),
   summarization_followup = list(first = "R/helpers_summarization_modes.R", last = "R/helpers_followup_questions.R", n = 3L),
   analysis_helpers = list(first = "R/helpers_deep_analysis.R", last = "R/helpers_pk_analysis_query_selection.R", n = 5L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
@@ -388,7 +391,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # ortak_oturumlar bölümüne; düşünme paneli plan/kabuk yardımcıları
   # (R/helpers_send_message_thinking_panel.R; request_lifecycle bölünmesi)
   # chat_send_message_runtime bölümüne eklendi.
-  expect_equal(length(runtime), 332L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 332L -> 333L bilinçli güncelleme: Langflow düzyazı "Kaynak:" bölümü + satır içi
+  # <sup>(n)</sup> atıf yükseltme yardımcıları (R/helpers_langflow_inline_sources.R)
+  # chat_send_message_runtime bölümüne eklendi.
+  expect_equal(length(runtime), 333L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

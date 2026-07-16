@@ -53,12 +53,13 @@
   path_like <- function(x) {
     val <- trimws(as.character(x %||% "")[1])
     if (is.na(val) || !nzchar(val) || grepl("^[A-Za-z][A-Za-z0-9+.-]*://", val)) return(FALSE)
-    normalized <- gsub("\\\\", "/", val)
+    normalized <- trimws(gsub("\\\\", "/", val))
     if (grepl("^/", normalized) || grepl("^[A-Za-z]:", normalized)) return(FALSE)
-    parts <- strsplit(normalized, "/", fixed = TRUE)[[1]]
-    if (any(parts %in% c(".", ".."))) return(FALSE)
-    ext <- tolower(tools::file_ext(normalized))
-    ext %in% c("pdf", "doc", "docx", "docm", "txt", "csv", "xls", "xlsx", "ppt", "pptx")
+    parts <- trimws(strsplit(normalized, "(/|&&)", perl = TRUE)[[1]])
+    if (!length(parts) || any(!nzchar(parts))) return(FALSE)
+    if (any(parts %in% c(".", "..")) || any(grepl(":", parts, fixed = TRUE))) return(FALSE)
+    ext <- tolower(tools::file_ext(parts[length(parts)]))
+    ext %in% c("pdf", "doc", "docx")
   }
   page <- .langflow_source_field(doc, c("page", "page_number", "page_label", "sayfa"))
   type <- .langflow_source_field(doc, c("type", "file_type", "filetype", "tur"))
@@ -240,10 +241,12 @@ mergen_langflow_kaynakca_marker_block <- function(sources) {
     line <- paste0("[KAYNAK ", length(lines) + 1L, "] ", title)
     path <- .kaynakca_marker_sanitize(rec$path)
     if (!nzchar(path) && grepl("\\.[A-Za-z0-9]{1,8}$", title)) path <- title
-    normalized_path <- gsub("\\\\", "/", path)
-    path_parts <- strsplit(normalized_path, "/", fixed = TRUE)[[1]]
+    normalized_path <- trimws(gsub("\\\\", "/", path))
+    safe_parts <- trimws(strsplit(normalized_path, "(/|&&)", perl = TRUE)[[1]])
     if (!nzchar(path) || grepl("^/", normalized_path) ||
-        grepl("^[A-Za-z]:", normalized_path) || any(path_parts %in% c(".", ".."))) next
+        grepl("^[A-Za-z]:", normalized_path) || !length(safe_parts) ||
+        any(!nzchar(safe_parts)) || any(safe_parts %in% c(".", "..")) ||
+        any(grepl(":", safe_parts, fixed = TRUE))) next
     page <- .kaynakca_marker_sanitize(rec$page)
     if (!grepl("^[0-9]+$", page)) page <- ""
     type <- tolower(gsub("[^a-z0-9]", "", .kaynakca_marker_sanitize(rec$type)))
@@ -300,6 +303,11 @@ mergen_kaynakca_marker_split <- function(content) {
     }
     expected_code <- .kaynakca_marker_code(rec$title, rec$path, rec$page, rec$type)
     if (!nzchar(rec$path) || !identical(rec$code, expected_code)) return(NULL)
+    normalized_path <- trimws(gsub("\\\\", "/", rec$path))
+    safe_parts <- trimws(strsplit(normalized_path, "(/|&&)", perl = TRUE)[[1]])
+    if (grepl("^/", normalized_path) || grepl("^[A-Za-z]:", normalized_path) ||
+        !length(safe_parts) || any(!nzchar(safe_parts)) ||
+        any(safe_parts %in% c(".", "..")) || any(grepl(":", safe_parts, fixed = TRUE))) return(NULL)
     rec$code <- NULL
     entries[[length(entries) + 1L]] <- rec
   }
@@ -335,7 +343,7 @@ mergen_strip_kaynakca_marker <- function(content) {
     return(trimws(as.character(title %||% "")[1]))
   }
 
-  segments <- strsplit(gsub("\\\\", "/", raw), "/", fixed = TRUE)[[1]]
+  segments <- strsplit(gsub("\\\\", "/", raw), "(/|&&)", perl = TRUE)[[1]]
   segments <- trimws(segments)
   segments <- segments[nzchar(segments)]
   segments <- segments[!(segments %in% c(".", "..")) & !grepl(":", segments, fixed = TRUE)]
@@ -396,15 +404,38 @@ mergen_kaynakca_marker_html <- function(entries, scope = "personal") {
       ""
     }
 
+    # Düz "A&&B&&dosya.pdf" adlarında (dizin değil, düz dosya adı ayracı) yalnızca
+    # SON parça (görünen dosya adı) tıklanabilir olur; önceki parçalar " - " ile
+    # birleşip soluk kırıntı yolu (breadcrumb) olarak gösterilir. Böylece uzun
+    # kategori öneki bağlantının altını çizmeden okunur kalır. '&&' içermeyen
+    # yollarda (yapısal kaynaklar) mevcut davranış korunur: başlık tıklanabilir.
+    path_raw <- as.character(rec$path %||% "")[1]
+    breadcrumb_html <- ""
+    link_text <- title
+    if (grepl("&&", path_raw, fixed = TRUE)) {
+      segs <- trimws(strsplit(path_raw, "&&", fixed = TRUE)[[1]])
+      segs <- segs[nzchar(segs)]
+      if (length(segs) >= 1) {
+        link_text <- segs[length(segs)]
+        if (length(segs) > 1) {
+          parents <- paste(segs[seq_len(length(segs) - 1L)], collapse = " - ")
+          breadcrumb_html <- paste0(
+            "<span class='kaynakca-breadcrumb'>",
+            htmltools::htmlEscape(parents), " - </span>"
+          )
+        }
+      }
+    }
+
     entry_html <- c(entry_html, paste0(
       "<span class='kaynakca-entry' data-entry='", i, "'>",
-      i, ") ", icon_html,
+      i, ") ", icon_html, breadcrumb_html,
       "<span class='source-link' data-source-id='",
       htmltools::htmlEscape(source_id, attribute = TRUE),
       "' data-filename='", htmltools::htmlEscape(hint, attribute = TRUE),
       "'", scope_attr,
       " style='color:#007bff; cursor:pointer; text-decoration:underline;'>",
-      htmltools::htmlEscape(title),
+      htmltools::htmlEscape(link_text),
       "</span>", page_html,
       "</span>"
     ))

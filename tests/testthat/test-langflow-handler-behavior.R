@@ -19,7 +19,8 @@
     "R/helpers_api_model_config.R",
     "R/helpers_api_model_tool_runtime.R",
     "R/helpers_langflow_runtime.R",
-    "R/helpers_langflow_sources.R"
+    "R/helpers_langflow_sources.R",
+    "R/helpers_langflow_inline_sources.R"
   )) {
     source(file.path(repo_root, f), encoding = "UTF-8", local = env)
   }
