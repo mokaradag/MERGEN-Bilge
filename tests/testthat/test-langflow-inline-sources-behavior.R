@@ -349,6 +349,22 @@ test_that("mergen_kaynakca_marker_html '&&' düz adlarında kırıntı yolu + so
   expect_match(html, "fa-file-pdf", fixed = TRUE)
 })
 
+
+test_that("mergen_kaynakca_marker_html tıklama ipucunda boşluklu && gezinme parçalarını taşımaz", {
+  testthat::skip_if_not_installed("htmltools")
+  env <- .source_langflow_inline_env()
+
+  html <- env$mergen_kaynakca_marker_html(list(
+    list(title = "secret.pdf", path = "A&& .. &&secret.pdf", page = "", type = "pdf"),
+    list(title = "dosya.docx", path = "A&& C: &&dosya.docx", page = "", type = "docx")
+  ))
+
+  expect_false(grepl("data-filename='A&amp;&amp; .. &amp;&amp;secret.pdf'", html, fixed = TRUE))
+  expect_false(grepl("data-filename='A&amp;&amp; C: &amp;&amp;dosya.docx'", html, fixed = TRUE))
+  expect_match(html, "data-filename='A&amp;&amp;secret.pdf'", fixed = TRUE)
+  expect_match(html, "data-filename='A&amp;&amp;dosya.docx'", fixed = TRUE)
+})
+
 test_that("mergen_kaynakca_marker_html '&&' içermeyen yolda mevcut davranışı korur (başlık tıklanabilir)", {
   testthat::skip_if_not_installed("htmltools")
   env <- .source_langflow_inline_env()

@@ -340,7 +340,7 @@ mergen_strip_kaynakca_marker <- function(content) {
     return(trimws(as.character(title %||% "")[1]))
   }
 
-  segments <- strsplit(gsub("\\\\", "/", raw), "/", fixed = TRUE)[[1]]
+  segments <- strsplit(gsub("\\\\", "/", raw), "(/|&&)", perl = TRUE)[[1]]
   segments <- trimws(segments)
   segments <- segments[nzchar(segments)]
   segments <- segments[!(segments %in% c(".", "..")) & !grepl(":", segments, fixed = TRUE)]
