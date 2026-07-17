@@ -26,7 +26,12 @@ const AIExpertManager = {
     nextChunkIndex: 1,        // Sıradaki beklenecek parça indeksi
     queuedChunks: [],         // Hazır gelen ses parçaları kuyruğu
     chunkWaitTimer: null,     // Sonraki parçayı bekleme zamanlayıcısı
-    speechToken: 0            // Eski zamanlayıcıların yeni konuşmayı kapatmasını önler
+    speechToken: 0,           // Eski zamanlayıcıların yeni konuşmayı kapatmasını önler
+    serverSpeechToken: null   // Sunucudan gelen mergen_speech_begin() token'ı;
+                              // ai_expert_speech_ended yankısıyla geri gönderilir
+                              // ki sunucu bayat (server-initiated stop_speaking
+                              // sonrası hemen üzerine yeni konuşma başlayan)
+                              // sinyalleri yeni konuşmanın durumunu bozmadan ayırt edebilsin
   },
 
   // --- Yapılandırma ---
@@ -62,6 +67,8 @@ const AIExpertManager = {
     this.state.nextChunkIndex = 1;
     this.state.queuedChunks = [];
     this.state.speechToken += 1;
+    this.state.serverSpeechToken = (data.speechToken !== undefined && data.speechToken !== null)
+      ? data.speechToken : null;
 
     // Önceki konuşmadan kalmış zamanlayıcıları temizle
     if (this.state.typeInterval) {
@@ -152,6 +159,8 @@ const AIExpertManager = {
     this.state.accentColor = data.accentColor || '#7C4DFF';
     this.state.fontSize = data.fontSize || 'medium';
     this.state.speechToken += 1;
+    this.state.serverSpeechToken = (data.speechToken !== undefined && data.speechToken !== null)
+      ? data.speechToken : null;
 
     // Önceki konuşmadan kalmış zamanlayıcıları temizle
     if (this.state.typeInterval) {
@@ -590,10 +599,15 @@ const AIExpertManager = {
       window.ttsVisualizerState.setIdle();
     }
 
-    // Shiny'ye konuşma bitti sinyali gönder
+    // Shiny'ye konuşma bitti sinyali gönder. speechToken, bu bitişin HANGİ
+    // sunucu konuşmasına ait olduğunu taşır; sunucu bayat (server-initiated
+    // stop_speaking() sonrası hemen üzerine yeni konuşma başlayan) yankıları
+    // bu token ile ayırt edip yeni konuşmanın durumunu bozmadan yoksayabilir.
     if (this.state.nsPrefix) {
       var inputId = this.state.nsPrefix + 'ai_expert_speech_ended';
-      Shiny.setInputValue(inputId, Date.now(), { priority: 'event' });
+      Shiny.setInputValue(inputId,
+        { at: Date.now(), speechToken: this.state.serverSpeechToken },
+        { priority: 'event' });
     }
   },
 
@@ -657,11 +671,16 @@ const AIExpertManager = {
     this.state.nextChunkIndex = 1;
     this.state.queuedChunks = [];
 
-    // Shiny'ye konuşma bitti sinyali gönder
+    // Shiny'ye konuşma bitti sinyali gönder. speechToken bu YAKALANMIŞ
+    // (durdurulan) konuşmaya aittir: stop_speaking()'in aynı R turunda hemen
+    // yeni bir konuşma başlatabildiği durumda (öncelikli kesme), sunucu bu
+    // token'ı aktif token ile karşılaştırıp bayat yankıyı yoksayabilir.
     if (this.state.nsPrefix || (data && data.nsPrefix)) {
       var prefix = this.state.nsPrefix || data.nsPrefix || '';
       var inputId = prefix + 'ai_expert_speech_ended';
-      Shiny.setInputValue(inputId, Date.now(), { priority: 'event' });
+      Shiny.setInputValue(inputId,
+        { at: Date.now(), speechToken: this.state.serverSpeechToken },
+        { priority: 'event' });
     }
 
     console.log('[AI_EXPERT] Konuşma durduruldu');

@@ -204,6 +204,32 @@ testthat::test_that("persona_static_ready canlı kilit özetini manifestle karş
   testthat::expect_false(mergen_speech_persona_static_ready("emre", root))
 })
 
+testthat::test_that(
+  paste0("persona_static_ready kimlik etkileyen ortam değişikliğinde canlı ",
+         "sentezle AYNI şekilde fail-closed reddeder (Codex P2)"),
+  {
+    speech_tests_source_chain()
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    speech_tests_make_tree(root)
+
+    m <- mergen_speech_manifest_build(root)$manifest
+    mergen_speech_manifest_write(m, mergen_speech_manifest_path(root))
+    testthat::expect_true(mergen_speech_persona_static_ready("emre", root))
+    testthat::expect_true(mergen_speech_voice_lock_validate("emre", root)$ok)
+
+    # Kilit dosyasının BAYTLARI dokunulmadan kalır (üretimden sonra hiçbir
+    # yeniden üretim yapılmadı); yalnızca kimlik etkileyen bir ortam
+    # değişkeni (LOCAL_TTS_MODEL) değişir. lock_sha bu durumda AYNI kalır
+    # (dosya değişmedi), bu yüzden yalnızca canlı profil parmak izi
+    # karşılaştırması bu bayat-yapılandırma durumunu yakalayabilir.
+    withr::local_envvar(LOCAL_TTS_MODEL = "farkli-bir-model")
+
+    testthat::expect_false(mergen_speech_voice_lock_validate("emre", root)$ok)
+    testthat::expect_false(mergen_speech_persona_static_ready("emre", root))
+  }
+)
+
 testthat::test_that("asset_lookup doğru kaydı bulur", {
   speech_tests_source_chain()
   speech_tests_reset_caches()

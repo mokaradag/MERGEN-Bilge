@@ -382,7 +382,8 @@ mergen_speech_asset_lookup <- function(manifest, persona, scenario, page = NULL,
 }
 
 #' Persona statik varlıkları çalışır durumda mı? Manifest + canlı voice-lock
-#' özeti eşleşmesi (ucuz kontrol; 750 dosya taranmaz).
+#' özeti eşleşmesi + canlı profil parmak izi (ucuz kontrol; 750 dosya taranmaz,
+#' yalnızca tek küçük referans WAV/metin yeniden özetlenir).
 mergen_speech_persona_static_ready <- function(persona, root = mergen_speech_root()) {
   loaded <- mergen_speech_manifest_runtime(root)
   if (!isTRUE(loaded$ok)) return(FALSE)
@@ -395,5 +396,22 @@ mergen_speech_persona_static_ready <- function(persona, root = mergen_speech_roo
 
   lock_sha <- mergen_speech_sha256_file(mergen_speech_voice_lock_path(persona, root))
   if (is.na(lock_sha)) return(FALSE)
-  identical(lock_sha, as.character(entry$voice_lock_sha256))
+  if (!identical(lock_sha, as.character(entry$voice_lock_sha256))) return(FALSE)
+
+  # lock_sha yalnızca voice-lock.json'ın disk üzerindeki HAM BAYTLARININ
+  # üretimden beri değişmediğini kanıtlar. LOCAL_TTS_MODEL, VOXCPM2_SPEED gibi
+  # kimlik etkileyen ortam değişkenleri üretimden SONRA değişirse dosya
+  # baytları aynı kalır, ama canlı sentez mergen_speech_voice_lock_validate()
+  # üzerinden profil parmak izi uyuşmazlığıyla fail-closed reddedilir. Statik
+  # oynatma da AYNI korumaya sahip olmalıdır; aksi halde eski profil altında
+  # üretilmiş WAV'lar, canlı sentez reddederken sessizce çalınmaya devam eder.
+  lock <- mergen_speech_voice_lock_read(persona, root)
+  if (is.null(lock)) return(FALSE)
+  profile <- mergen_speech_voice_profile(persona, root)
+  fingerprint <- mergen_speech_profile_identity_fingerprint(profile)
+  if (is.na(fingerprint) || !identical(fingerprint, as.character(lock$profile_fingerprint))) {
+    return(FALSE)
+  }
+
+  TRUE
 }

@@ -83,6 +83,7 @@
     scheduled: [],
     playingNotified: false,
     headerSkipped: false,
+    headerBuf: null,       // RIFF/olmayan kararı verilene kadar biriken baştaki baytlar
     carry: null,           // Kareye hizalanmayan artık baytlar sonraki parçaya taşınır
     pending: [],           // AudioContext 'running' olana kadar bekleyen ham PCM parçaları
     resuming: false,       // resume() çağrıldı, .then/.catch bekleniyor
@@ -100,6 +101,7 @@
     pcm.endReceived = false;
     pcm.playingNotified = false;
     pcm.headerSkipped = false;
+    pcm.headerBuf = null;
     pcm.carry = null;
     pcm.pending = [];
   }
@@ -199,11 +201,30 @@
   function pcmScheduleChunk(bytes) {
     if (!pcm.ctx) return;
 
-    // İlk parça WAV başlığıyla gelirse (RIFF) 44 baytlık başlığı atla
+    // İlk parça(lar) WAV başlığıyla gelirse (RIFF) 44 baytlık başlığı atla.
+    // Sunucu pompası ilk parçayı 44 bayttan KISA gönderebilir (parça boyutu
+    // sunucu tarafında dosya büyüme hızına bağlıdır); bu durumda RIFF
+    // kararını HEMEN vermek (ve headerSkipped'i erken kilitlemek) başlığın
+    // geri kalanının PCM örneği olarak çözülmesine ve tüm akışın kalıcı
+    // biçimde yanlış bayt sınırında bozulmasına yol açardı. Bu yüzden karar
+    // verilene kadar (>= 44 bayt birikene kadar) baytlar bir arabellekte
+    // tutulur; hiçbir şey erken çözülmez/zamanlanmaz.
     if (!pcm.headerSkipped) {
+      if (pcm.headerBuf && pcm.headerBuf.length) {
+        var headerMerged = new Uint8Array(pcm.headerBuf.length + bytes.length);
+        headerMerged.set(pcm.headerBuf, 0);
+        headerMerged.set(bytes, pcm.headerBuf.length);
+        bytes = headerMerged;
+        pcm.headerBuf = null;
+      }
+
+      if (bytes.length < 44) {
+        pcm.headerBuf = bytes;
+        return;
+      }
+
       pcm.headerSkipped = true;
-      if (bytes.length >= 44 &&
-          bytes[0] === 0x52 && bytes[1] === 0x49 &&
+      if (bytes[0] === 0x52 && bytes[1] === 0x49 &&
           bytes[2] === 0x46 && bytes[3] === 0x46) {
         bytes = bytes.subarray(44);
       }
@@ -339,6 +360,17 @@
 
       Shiny.addCustomMessageHandler('speechPcmStreamEnd', function(data) {
         if (!data || String(data.streamId) !== pcm.streamId) return;
+
+        // Akış, 44 bayttan kısa toplam yanıtla bitebilir: başlık kararı hiç
+        // verilmemiş olabilir. Kalan baytları PCM olarak işle (başlıksız
+        // sayılır) ki sessizce kaybolmasınlar.
+        if (pcm.headerBuf && pcm.headerBuf.length) {
+          var leftoverHeaderBytes = pcm.headerBuf;
+          pcm.headerBuf = null;
+          pcm.headerSkipped = true;
+          pcmEnqueueOrSchedule(leftoverHeaderBytes);
+        }
+
         pcm.endReceived = true;
         // Hiç parça oynatılmadıysa/zamanlanmış kuyruk boşsa VE AudioContext
         // devam etmesini bekleyen kuyruklanmış parça da yoksa hemen bitir.

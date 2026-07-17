@@ -162,6 +162,13 @@ mergen_speech_active_kind <- function(session) {
   state$active_kind
 }
 
+#' Aktif konuşma token'ını oku (yoksa 0L). İstemciden gelen "konuşma bitti"
+#' yankılarının HANGİ konuşmaya ait olduğunu doğrulamak için kullanılır.
+mergen_speech_active_token <- function(session) {
+  state <- mergen_speech_state(session)
+  state$active_token %||% 0L
+}
+
 #' Kişisel önek için konu metnini temizle: satır sonlarını at, kelime
 #' sınırında kısalt. Hassas/uzun içerik konuşmaya taşınmaz.
 mergen_speech_prefix_topic_clean <- function(topic, max_chars = 48L) {

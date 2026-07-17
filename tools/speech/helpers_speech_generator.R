@@ -18,33 +18,67 @@ speech_gen_resolve_tts_api_key <- function() {
 
 # --- Kilit dosyası: iki üretici aynı varlık ağacına eşzamanlı yazamaz ---
 
+#' Kilit sahibi bilgi dosyası: kilit dizini içinde (üretici teşhis metni).
+.speech_gen_lock_owner_path <- function(lock_path) {
+  file.path(lock_path, "owner.txt")
+}
+
+# dir.create() işletim sistemi düzeyinde ATOMİKTİR (tek bir mkdir sistem
+# çağrısı): iki süreç aynı anda çağırırsa yalnızca BİRİ TRUE alır, diğeri
+# FALSE. Eski desen file.exists() KONTROLÜ + writeLines() YAZIMI arasında
+# TOCTOU (kontrol-sonra-eylem) yarışına açıktı: iki operatör/RStudio oturumu
+# neredeyse aynı anda başlarsa ikisi de kilidi "boş" görüp belgelenmiş kilide
+# rağmen aynı varlık ağacına eşzamanlı yazabiliyordu. Kilit artık bir
+# DİZİNDİR; sahip bilgisi dizin içindeki owner.txt dosyasındadır.
 speech_gen_acquire_lock <- function(root = mergen_speech_root(),
                                     stale_minutes = 120) {
   lock_path <- mergen_speech_generator_lock_path(root)
   dir.create(dirname(lock_path), recursive = TRUE, showWarnings = FALSE)
 
-  if (file.exists(lock_path)) {
+  acquired <- isTRUE(dir.create(lock_path, showWarnings = FALSE))
+
+  if (!acquired) {
+    if (!dir.exists(lock_path)) {
+      stop(sprintf("Üretici kilit dizini oluşturulamadı: %s", lock_path), call. = FALSE)
+    }
+
     age_mins <- suppressWarnings(as.numeric(difftime(
       Sys.time(), file.info(lock_path)$mtime, units = "mins"
     )))
     if (is.na(age_mins) || age_mins < stale_minutes) {
-      lock_info <- tryCatch(readLines(lock_path, warn = FALSE), error = function(e) "")
+      lock_info <- tryCatch(
+        readLines(.speech_gen_lock_owner_path(lock_path), warn = FALSE),
+        error = function(e) ""
+      )
       stop(sprintf(
         paste0("Üretici kilidi aktif: %s (sahip: %s). Başka bir üretici koşuyor ",
                "olabilir. Bayat olduğundan eminseniz speech_gen_release_lock() çağırın."),
         lock_path, paste(lock_info, collapse = " ")
       ), call. = FALSE)
     }
+
+    # Bayat kilidi devral: sil, sonra TEKRAR atomik oluşturmayı dene. Bu
+    # ikinci deneme de dir.create()'in atomikliğinden yararlanır; iki süreç
+    # aynı anda devralmaya çalışırsa yine yalnızca biri kazanır ve diğeri
+    # burada güvenle hata verir (sessizce üzerine yazmaz).
     message(sprintf("Bayat üretici kilidi (%.0f dk) devralınıyor: %s", age_mins, lock_path))
+    unlink(lock_path, recursive = TRUE, force = TRUE)
+    if (!isTRUE(dir.create(lock_path, showWarnings = FALSE))) {
+      stop(sprintf(
+        "Üretici kilidi devralınamadı (başka bir süreç aynı anda kazandı): %s",
+        lock_path
+      ), call. = FALSE)
+    }
   }
 
   writeLines(sprintf("pid=%s host=%s at=%s", Sys.getpid(),
-                     Sys.info()[["nodename"]], format(Sys.time())), lock_path)
+                     Sys.info()[["nodename"]], format(Sys.time())),
+            .speech_gen_lock_owner_path(lock_path))
   invisible(lock_path)
 }
 
 speech_gen_release_lock <- function(root = mergen_speech_root()) {
-  unlink(mergen_speech_generator_lock_path(root))
+  unlink(mergen_speech_generator_lock_path(root), recursive = TRUE, force = TRUE)
   invisible(TRUE)
 }
 

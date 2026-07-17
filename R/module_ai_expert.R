@@ -574,12 +574,14 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 		  avatarSrc   = avatar_src,
 		  accentColor = accent_color,
 		  nsPrefix    = ns(""),
-		  fontSize    = font_size
+		  fontSize    = font_size,
+		  speechToken = decision$token
 		))
 
 		session$sendCustomMessage("aiExpertNoAudioFallback", list(
-		  textLength = nchar(text),
-		  nsPrefix   = ns("")
+		  textLength  = nchar(text),
+		  nsPrefix    = ns(""),
+		  speechToken = decision$token
 		))
 	  }
 
@@ -618,10 +620,24 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
     }, ignoreInit = TRUE)
 
     # --- İstemciden "konuşma bitti" sinyali ---
+    # start_speaking() bir konuşmayı KESERKEN aynı R turunda stop_speaking(0)
+    # çağırıp hemen yeni token kurabilir; eski konuşmanın bayat durdurma
+    # yankısı sunucuya YENİ konuşma başladıktan SONRA ulaşabilir. Token
+    # eşleşmezse yankı yoksayılır (token yoksa eski davranış korunur).
     observeEvent(input$ai_expert_speech_ended, {
+      payload <- input$ai_expert_speech_ended
+      raw_token <- if (is.list(payload)) payload$speechToken else NULL
+      # Her zaman TEK skaler (NULL/uzunluk-0/uzunluk>1 -> NA_integer_).
+      echoed_token <- if (is.null(raw_token)) NA_integer_ else suppressWarnings(as.integer(raw_token))[1]
+
+      if (!is.na(echoed_token) &&
+          !identical(echoed_token, as.integer(mergen_speech_active_token(session)))) {
+        return(invisible(NULL))
+      }
+
       if (isTRUE(is_speaking())) {
         is_speaking(FALSE)
-        mergen_speech_end(session)
+        mergen_speech_end(session, token = if (is.na(echoed_token)) NULL else echoed_token)
         # Bekleme süresini başlat (aktif senaryo bekleme süresiyle)
         cd <- isolate(active_cooldown_seconds()) %||% COOLDOWN_AFTER_PAGE
         start_cooldown(cd)
