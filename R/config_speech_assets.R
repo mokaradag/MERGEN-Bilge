@@ -101,12 +101,20 @@ mergen_speech_expected_audio_total <- function() {
   mergen_speech_expected_audio_per_persona() * length(mergen_speech_personas())
 }
 
-#' Üretilen WAV'ların beklenen ses profili. Örnekleme hızı VoxCPM2 modelinin
-#' doğal hızına göre VOXCPM2_EXPECTED_SAMPLE_RATE ile ayarlanır.
+#' Üretilen WAV'ların beklenen ses profili. VoxCPM2 referans girdisini
+#' 16 kHz olarak işleyebilir, ancak üretilmiş ses çıktısı 48 kHz'dir.
+#' VOXCPM2_EXPECTED_SAMPLE_RATE yalnızca üretilmiş WAV/PCM çıktısını tanımlar.
 mergen_speech_expected_wav_profile <- function() {
-  rate <- suppressWarnings(as.integer(Sys.getenv("VOXCPM2_EXPECTED_SAMPLE_RATE", "16000")))
-  if (is.na(rate) || rate <= 0) rate <- 16000L
-  list(sample_rate = rate, channels = 1L, bits_per_sample = 16L)
+  rate <- suppressWarnings(as.integer(
+    Sys.getenv("VOXCPM2_EXPECTED_SAMPLE_RATE", "48000")
+  ))
+  if (is.na(rate) || rate <= 0L) rate <- 48000L
+
+  list(
+    sample_rate = rate,
+    channels = 1L,
+    bits_per_sample = 16L
+  )
 }
 
 #' Tüm beklenen varlıkların tablosu: senaryo, sayfa, çeşit, kimlik ve yollar.
