@@ -62,8 +62,11 @@
       getManager().playAudio(data);
     });
 
-    // Ses olmadan geri dönüş mesajı
+    // Ses olmadan geri dönüş mesajı. Bayat (eski) bir başarısız konuşmanın geç
+    // gelen ses-yok geri dönüşü, YENİ konuşmaya karşı gizleme zamanlayıcısı
+    // kuramamalı; bu yüzden token güncel değilse yok say.
     Shiny.addCustomMessageHandler('aiExpertNoAudioFallback', function(data) {
+      if (!speechTokenIsCurrent(data)) return;
       getManager().noAudioFallback(data);
     });
 

@@ -83,6 +83,7 @@
     scheduled: [],
     playingNotified: false,
     headerSkipped: false,
+    carry: null,          // Kareye hizalanmayan artık baytlar sonraki parçaya taşınır
     drainTimer: null
   };
 
@@ -97,6 +98,7 @@
     pcm.endReceived = false;
     pcm.playingNotified = false;
     pcm.headerSkipped = false;
+    pcm.carry = null;
   }
 
   function pcmNotifyPlaying(isPlaying) {
@@ -159,18 +161,35 @@
         bytes = bytes.subarray(44);
       }
     }
-    if (bytes.length < 2) return;
+    // Önceki parçadan taşınan (tam kareye tamamlanmayan) baytları öne ekle.
+    // Sunucu pompası bayt sınırını 16-bit örneğe/kanal karesine hizalamayabilir;
+    // artık baytlar sonraki parçaya taşınmazsa tek bir tek bayt bile sonraki
+    // tüm örnekleri yanlış sınırda çözer ve akış boyunca sesi bozar.
+    if (pcm.carry && pcm.carry.length) {
+      var merged = new Uint8Array(pcm.carry.length + bytes.length);
+      merged.set(pcm.carry, 0);
+      merged.set(bytes, pcm.carry.length);
+      bytes = merged;
+      pcm.carry = null;
+    }
 
-    // 16-bit little-endian PCM -> Float32
-    var sampleCount = Math.floor(bytes.length / 2);
-    var view = new DataView(bytes.buffer, bytes.byteOffset, sampleCount * 2);
+    var bytesPerFrame = pcm.channels * 2;   // 16-bit örnek * kanal sayısı
+    var frameCount = Math.floor(bytes.length / bytesPerFrame);
+    var usableBytes = frameCount * bytesPerFrame;
+
+    // Tam kareye tamamlanmayan kalan baytları sonraki parça için sakla (kopya)
+    if (usableBytes < bytes.length) {
+      pcm.carry = bytes.slice(usableBytes);
+    }
+    if (frameCount < 1) return;
+
+    // 16-bit little-endian PCM -> Float32 (yalnızca tam kareler)
+    var sampleCount = frameCount * pcm.channels;
+    var view = new DataView(bytes.buffer, bytes.byteOffset, usableBytes);
     var floats = new Float32Array(sampleCount);
     for (var i = 0; i < sampleCount; i++) {
       floats[i] = view.getInt16(i * 2, true) / 32768;
     }
-
-    var frameCount = Math.floor(sampleCount / pcm.channels);
-    if (frameCount < 1) return;
 
     var buffer = pcm.ctx.createBuffer(pcm.channels, frameCount, pcm.sampleRate);
     for (var ch = 0; ch < pcm.channels; ch++) {

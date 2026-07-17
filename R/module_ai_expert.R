@@ -450,8 +450,9 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
           ))
 
           session$sendCustomMessage("aiExpertNoAudioFallback", list(
-            textLength = nchar(text),
-            nsPrefix   = ns("")
+            textLength  = nchar(text),
+            nsPrefix    = ns(""),
+            speechToken = decision$token
           ))
 
           invisible(NULL)

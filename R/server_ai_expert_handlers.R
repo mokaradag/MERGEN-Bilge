@@ -416,11 +416,17 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     is_playing <- isTRUE(input$tts_is_playing)
     ai_expert$set_tts_vocalizing(is_playing)
     if (is_playing) {
-      mergen_speech_begin(session, "response_tts")
+      # Önce aktif AI konuşmasını durdur, SONRA response_tts durumunu kur.
+      # stop_speaking() token'sız mergen_speech_end() çağırıp aktif konuşma
+      # durumunu koşulsuz temizler; response_tts'i önce kurarsak stop_speaking
+      # onu da siler ve öncelik matrisi kullanıcı isteği yanıt sesini görmez
+      # (gezinme rehberliği yanıt sesinin üzerine konuşabilir). Sıralamayı ters
+      # çevirmek response_tts durumunu korur.
       if (isTRUE(ai_expert$is_speaking())) {
         cat("[AI_EXPERT] TTS seslendirmesi başladı, AI konuşması durduruluyor.\n")
         ai_expert$stop_speaking()
       }
+      mergen_speech_begin(session, "response_tts")
     } else if (identical(mergen_speech_active_kind(session), "response_tts")) {
       mergen_speech_end(session)
     }

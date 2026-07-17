@@ -202,30 +202,55 @@ mergen_voxcpm2_stream_to_file <- function(body,
     `Authorization` = paste("Bearer", api_key)
   )
 
-  bytes_written <- 0
-  con <- file(out_path, "wb")
+  out_con <- file(out_path, "wb")
+  on.exit(try(close(out_con), silent = TRUE), add = TRUE)
 
+  # Yanıt gövdesini yalnızca HTTP durumu 2xx doğrulandıktan SONRA ses dosyasına
+  # yaz. Bağlantı elle açılır: libcurl gövde baytlarından ÖNCE üstbilgileri
+  # aldığı için durum kodu ilk okumadan önce handle_data() ile alınabilir.
+  # Böylece 401/500 gibi hata gövdeleri (JSON/metin) ana sürecin akış pompası
+  # tarafından tarayıcıya ham PCM olarak gönderilip gürültü üretmez.
   result <- tryCatch({
-    curl::curl_fetch_stream(endpoint_url, function(chunk) {
-      writeBin(chunk, con)
-      flush(con)
-      bytes_written <<- bytes_written + length(chunk)
-    }, handle = handle)
+    http_con <- curl::curl(endpoint_url, handle = handle)
+    open(http_con, "rbf")
+    on.exit(try(close(http_con), silent = TRUE), add = TRUE)
+
+    status <- tryCatch(as.integer(curl::handle_data(handle)$status_code),
+                       error = function(e) NA_integer_)
+    ok_status <- !is.na(status) && status >= 200 && status < 300
+
+    written <- 0
+    err_body <- raw(0)
+    while (isIncomplete(http_con)) {
+      buf <- readBin(http_con, raw(), 32768L)
+      if (length(buf) == 0L) next
+      if (ok_status) {
+        writeBin(buf, out_con)
+        flush(out_con)
+        written <- written + length(buf)
+      } else if (length(err_body) < 512L) {
+        take <- min(length(buf), 512L - length(err_body))
+        err_body <- c(err_body, buf[seq_len(take)])
+      }
+    }
+    list(status = status, ok = ok_status, written = written, err_body = err_body)
   }, error = function(e) e)
 
-  close(con)
-
   if (inherits(result, "error")) {
-    return(fail(sprintf("Akış hatası: %s", conditionMessage(result)),
-                bytes = bytes_written))
+    return(fail(sprintf("Akış hatası: %s", conditionMessage(result))))
   }
 
-  status <- tryCatch(as.integer(result$status_code), error = function(e) NA_integer_)
-  if (!is.na(status) && (status < 200 || status >= 300)) {
-    return(fail(sprintf("HTTP %d akış hatası.", status), status, bytes_written))
+  if (!isTRUE(result$ok)) {
+    snippet <- tryCatch(rawToChar(result$err_body), error = function(e) "")
+    return(fail(
+      sprintf("HTTP %s akış hatası: %s",
+              if (is.na(result$status)) "?" else as.character(result$status),
+              substr(snippet, 1, 300)),
+      result$status, result$written
+    ))
   }
-  if (bytes_written == 0) return(fail("Akış boş döndü.", status))
+  if (isTRUE(result$written == 0)) return(fail("Akış boş döndü.", result$status))
 
-  list(success = TRUE, bytes_written = bytes_written,
-       http_status = status, error = NULL)
+  list(success = TRUE, bytes_written = result$written,
+       http_status = result$status, error = NULL)
 }

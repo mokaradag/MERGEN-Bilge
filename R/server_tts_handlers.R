@@ -155,6 +155,20 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
       return(invisible(NULL))
     }
 
+    # legacy_alias modunda synthesize_speech, persona_id yerine `voice`
+    # argümanını kullanır. Belgelenen geçiş modunun seçili karakterin
+    # tts_voice'unu koruması için eski ses etiketini çöz; aksi halde yanıt
+    # seslendirmesi varsayılan sese çöker. Kilitli referans modunda voice
+    # yok sayılır, bu yüzden NULL bırakılır.
+    legacy_voice <- if (identical(mergen_speech_voice_mode(), "legacy_alias")) {
+      tryCatch(
+        get_character_record(shiny::isolate(settings_data$selected_character))$tts_voice,
+        error = function(e) NULL
+      )
+    } else {
+      NULL
+    }
+
     # chunked_pcm modunda yanıt, cümle parçalamadan gerçek PCM akışıyla
     # seslendirilir; akış başlatılamazsa tamponlu parça hattına düşülür.
     if (identical(mergen_voxcpm2_streaming_mode(), "chunked_pcm") && !is.na(persona_id)) {
@@ -194,7 +208,8 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
         idx <- chunk_idx
         current_text <- chunk_text
 
-        tts_processor$synthesize_speech(current_text, persona_id = persona_id) %...>%
+        tts_processor$synthesize_speech(current_text, voice = legacy_voice,
+                                        persona_id = persona_id) %...>%
           (function(res) send_chunk(res, idx)) %...!%
           (function(e) cat(sprintf("[TTS] Parça %d hatası: %s\n", idx, conditionMessage(e))))
       })

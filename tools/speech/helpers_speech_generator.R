@@ -5,6 +5,17 @@
 # Çalışma zamanı yardımcıları (R/config_speech_assets.R zinciri) TEK kaynak
 # olarak source edilir; sayı/harita burada kopyalanmaz. Shiny gerektirmez.
 
+# --- TTS API anahtarı çözümü ---
+# LOCAL_TTS_API_KEY tanımlı ama BOŞ olduğunda R'ın Sys.getenv(name, fallback)
+# çağrısı fallback'e DÜŞMEZ; var olan boş dizeyi döndürür. `.Renviron.example`
+# LOCAL_TTS_API_KEY'i boş opsiyonel geçiş olarak tanımlar; bu yüzden TTS'e özgü
+# değer nzchar() değilse belgelenen LOCAL_LLM_API_KEY yedeğine açıkça düşülür.
+speech_gen_resolve_tts_api_key <- function() {
+  tts_key <- Sys.getenv("LOCAL_TTS_API_KEY", "")
+  if (nzchar(tts_key)) return(tts_key)
+  Sys.getenv("LOCAL_LLM_API_KEY", "")
+}
+
 # --- Kilit dosyası: iki üretici aynı varlık ağacına eşzamanlı yazamaz ---
 
 speech_gen_acquire_lock <- function(root = mergen_speech_root(),
@@ -53,7 +64,7 @@ speech_gen_env_check <- function(root = mergen_speech_root(), verbose = TRUE) {
     problems <- c(problems, "LOCAL_TTS_ENDPOINT tanımlı değil (.Renviron kontrol edin).")
   }
 
-  api_key <- Sys.getenv("LOCAL_TTS_API_KEY", Sys.getenv("LOCAL_LLM_API_KEY", ""))
+  api_key <- speech_gen_resolve_tts_api_key()
   if (!nzchar(api_key)) {
     problems <- c(problems,
       "TTS API anahtarı bulunamadı (LOCAL_TTS_API_KEY veya LOCAL_LLM_API_KEY).")
@@ -175,7 +186,7 @@ speech_gen_synthesize_wav <- function(text, reference, profile,
                                       sleep_fn = Sys.sleep) {
   if (is.null(synth_fn)) {
     endpoint <- mergen_voxcpm2_endpoint_url()
-    api_key <- Sys.getenv("LOCAL_TTS_API_KEY", Sys.getenv("LOCAL_LLM_API_KEY", ""))
+    api_key <- speech_gen_resolve_tts_api_key()
     timeout_val <- suppressWarnings(as.numeric(Sys.getenv("LOCAL_TTS_TIMEOUT", "120")))
     if (is.na(timeout_val) || timeout_val <= 0) timeout_val <- 120
     verify_ssl <- !tolower(Sys.getenv("LOCAL_TTS_VERIFY_SSL", "TRUE")) %in%
@@ -426,7 +437,7 @@ speech_gen_reference_candidate <- function(persona, root = mergen_speech_root(),
 
   if (is.null(synth_fn)) {
     endpoint <- mergen_voxcpm2_endpoint_url()
-    api_key <- Sys.getenv("LOCAL_TTS_API_KEY", Sys.getenv("LOCAL_LLM_API_KEY", ""))
+    api_key <- speech_gen_resolve_tts_api_key()
     verify_ssl <- !tolower(Sys.getenv("LOCAL_TTS_VERIFY_SSL", "TRUE")) %in%
       c("false", "f", "0", "no")
     synth_fn <- function(b) {

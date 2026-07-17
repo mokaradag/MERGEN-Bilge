@@ -253,9 +253,14 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
       if (isTRUE(dispatch_guard$done)) return(invisible(NULL))
       dispatch_guard$done <- TRUE
 
-      # Persona tanıtım videosu/sessiz yüzey koruması: gönderim anında kontrol
+      # Karşılama yalnızca sohbet/başlangıç yüzeyinde geçerlidir: gönderim
+      # anında kontrol. Gecikmeli (deadline) gönderim penceresinde kullanıcı
+      # sohbetten ayrılıp rehberli bir sayfaya (ör. Dosya Yönetimi) geçtiyse,
+      # yalnızca sessiz sayfaları değil sohbet DIŞINDAKİ her yüzeyi bastır ki
+      # karşılama, o sayfanın rehberlik klibini önüne geçip kesmesin.
       current_tab <- tryCatch(shiny::isolate(input$tabs), error = function(e) NULL)
-      if (!is.null(current_tab) && current_tab %in% mergen_speech_idle_muted_pages()) {
+      if (!is.null(current_tab) && nzchar(current_tab) &&
+          !identical(current_tab, "chat")) {
         .speech_perf_log("welcome_suppressed", sprintf("page=%s", current_tab))
         return(invisible(NULL))
       }
