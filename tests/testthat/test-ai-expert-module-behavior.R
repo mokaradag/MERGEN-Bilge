@@ -12,6 +12,10 @@ if (requireNamespace("shiny", quietly = TRUE)) {
   suppressMessages(library(shiny))
 }
 
+# Modül artık hibrit konuşma politikası yardımcılarına (idle-muted sayfa
+# kümesi, öncelik/begin/end, token) dayanır; zinciri globalenv'e yükle.
+speech_tests_source_chain()
+
 .aiexp_env <- new.env(parent = globalenv())
 source(
   file.path(resolve_repo_root_for_tests(), "R", "module_ai_expert.R"),

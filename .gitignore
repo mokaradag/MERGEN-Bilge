@@ -70,6 +70,20 @@ artifacts/browser-concurrency/
 bilge_yolac_downloads/*
 !bilge_yolac_downloads/.gitkeep
 
+# Üretilen konuşma varlıkları VM-YERELDİR ve GitHub'a gönderilmez: onaylı
+# referans WAV'ları, voice-lock kilitleri, 750 üretim WAV'ı, otomatik manifest
+# ve üretici durum/kilit/aday dosyaları. Ortak .txt metinleri, reference.txt
+# dosyaları, README'ler ve klasör iskeleti (.gitkeep) commit EDİLİR. Depo
+# güncellemeleri/dağıtım senkronizasyonu VM-yerel üretilmiş dosyaları SİLMEMELİDİR.
+www/speech/voices/*/reference.wav
+www/speech/voices/*/voice-lock.json
+www/speech/audio/**/*.wav
+www/speech/generated/speech_manifest.json
+www/speech/generated/*state*
+www/speech/generated/*lock*
+www/speech/generated/*progress*
+www/speech/generated/candidates/
+
 # testthat failing-test debris (local diagnostic runs)
 tests/testthat/_problems/
 tests/testthat/testthat-problems.rds

@@ -105,9 +105,17 @@ handle_streaming_tts_mode <- function(ctx) {
       )
 
       local_char_id <- normalize_character_id(current_settings$selected_character)
-      local_chars_data <- get_characters_data()
-      local_char_def <- if (!is.null(local_chars_data)) Find(function(x) x$id == local_char_id, local_chars_data$styles) else NULL
-      resolved_voice <- if (!is.null(local_char_def) && !is.null(local_char_def$tts_voice)) local_char_def$tts_voice else "tr-male-1"
+
+      # Kilitli referans modunda ses kimliği persona kimliğidir; sentez katmanı
+      # onaylı referansı fail-closed çözer. legacy_alias modunda eski karakter
+      # tts_voice etiketi korunur.
+      resolved_voice <- if (identical(mergen_speech_voice_mode(), "legacy_alias")) {
+        local_chars_data <- get_characters_data()
+        local_char_def <- if (!is.null(local_chars_data)) Find(function(x) x$id == local_char_id, local_chars_data$styles) else NULL
+        if (!is.null(local_char_def) && !is.null(local_char_def$tts_voice)) local_char_def$tts_voice else "tr-male-1"
+      } else {
+        local_char_id
+      }
 
       tts_engine_param <- NULL
       tts_voice_param <- NULL

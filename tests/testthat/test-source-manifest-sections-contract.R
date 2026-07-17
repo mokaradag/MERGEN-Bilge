@@ -43,6 +43,7 @@
   "sso_identity_helpers",
   "support_admin_health_helpers",
   "ai_expert_helpers",
+  "speech_assets",
   "claude_code_helpers",
   "llm_pipeline",
   "module_chat",
@@ -126,6 +127,10 @@
   # Bilinçli güncelleme: R/helpers_ai_expert_handlers_support.R (AI Uzman handler
   # saf karar yardımcıları) bölüm sonuna eklendi; 3 -> 4 dosya.
   ai_expert_helpers = list(first = "R/helpers_ai_expert_user_data.R", last = "R/helpers_ai_expert_handlers_support.R", n = 4L),
+  # Bilinçli güncelleme: hibrit VoxCPM2 konuşma katmanı (speech_assets) yeni
+  # bölüm olarak ai_expert_helpers'tan sonra eklendi (8 dosya; yapı tanımı +
+  # yol kurucuları fonksiyon-yoğunluk bölmesiyle iki dosyadır).
+  speech_assets = list(first = "R/config_speech_assets.R", last = "R/helpers_speech_warmup.R", n = 8L),
   # 26 -> 27: doküman özetleme orkestrasyonu helpers_claude_code_documents.R'den
   # R/helpers_claude_code_document_summary.R'ye ayrıldı (documents'tan sonra,
   # run_lifecycle'dan önce).
@@ -179,7 +184,11 @@
   server_observers = list(first = "R/server_observers_startup.R", last = "R/server_observers_misc.R", n = 11L),
   # Bilinçli güncelleme: R/server_handler_langflow.R (Süreç/Uygulama Uzmanı
   # Langflow işleyicisi) görsel üretim handler'ından sonra bölüme eklendi; 10 -> 11.
-  server_handlers_send_message = list(first = "R/server_tts_handlers.R", last = "R/server_send_message.R", n = 11L)
+  # 11 -> 13 bilinçli güncelleme: hibrit konuşma çalışma zamanı
+  # (R/server_speech_assets_runtime.R) ve PCM akış köprüsü
+  # (R/server_speech_pcm_stream.R) bölüm başına eklendi; ai_expert
+  # handler'larından önce yüklenirler.
+  server_handlers_send_message = list(first = "R/server_speech_assets_runtime.R", last = "R/server_send_message.R", n = 13L)
 )
 
 test_that("source_manifest_sections beklenen sırada ve adlarda bölümler içerir", {
@@ -394,7 +403,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 332L -> 333L bilinçli güncelleme: Langflow düzyazı "Kaynak:" bölümü + satır içi
   # <sup>(n)</sup> atıf yükseltme yardımcıları (R/helpers_langflow_inline_sources.R)
   # chat_send_message_runtime bölümüne eklendi.
-  expect_equal(length(runtime), 333L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 333L -> 343L bilinçli güncelleme: hibrit VoxCPM2 konuşma katmanı: yeni
+  # speech_assets bölümü (8 dosya) + server_handlers_send_message başına
+  # R/server_speech_assets_runtime.R ve R/server_speech_pcm_stream.R eklendi.
+  expect_equal(length(runtime), 343L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

@@ -144,12 +144,25 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
     full_text <- as.character(content)[1]
     if (!nzchar(full_text)) return(invisible(NULL))
 
-    # Persona verisini al (eski kimlikler normalleştirilerek çözülür)
-    character_data <- get_character_record(shiny::isolate(settings_data$selected_character))
-    voice_sel <- if (!is.null(character_data) && !is.null(character_data$tts_voice)) {
-      character_data$tts_voice
-    } else {
-      "tr-male-1"
+    # Persona kimliği fail-closed çözülür: kilitli referans modunda yanıt
+    # seslendirmesi de önceden üretilmiş varlıklarla AYNI persona sesini
+    # kullanır; genel erkek/kadın ses takma adlarına düşülmez.
+    persona_id <- mergen_speech_canonical_persona(
+      shiny::isolate(settings_data$selected_character)
+    )
+    if (is.na(persona_id) && !identical(mergen_speech_voice_mode(), "legacy_alias")) {
+      cat("[TTS] Yanıt seslendirmesi reddedildi: persona kimliği çözülemedi (fail-closed).\n")
+      return(invisible(NULL))
+    }
+
+    # chunked_pcm modunda yanıt, cümle parçalamadan gerçek PCM akışıyla
+    # seslendirilir; akış başlatılamazsa tamponlu parça hattına düşülür.
+    if (identical(mergen_voxcpm2_streaming_mode(), "chunked_pcm") && !is.na(persona_id)) {
+      streamed <- tryCatch(
+        mergen_speech_pcm_stream_start(session, persona_id, full_text, message_id = msg_id),
+        error = function(e) FALSE
+      )
+      if (isTRUE(streamed)) return(invisible(NULL))
     }
 
     send_chunk <- function(res, idx) {
@@ -181,7 +194,7 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
         idx <- chunk_idx
         current_text <- chunk_text
 
-        tts_processor$synthesize_speech(current_text, voice = voice_sel) %...>%
+        tts_processor$synthesize_speech(current_text, persona_id = persona_id) %...>%
           (function(res) send_chunk(res, idx)) %...!%
           (function(e) cat(sprintf("[TTS] Parça %d hatası: %s\n", idx, conditionMessage(e))))
       })

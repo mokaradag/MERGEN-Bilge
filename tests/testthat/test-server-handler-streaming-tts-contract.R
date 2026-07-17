@@ -85,6 +85,9 @@ test_that("manifest handler'ı send_message'tan önce yükler (bağımlılık-ö
   env$build_followup_suggestions <- function(...) list("Takip sorusu 1")
   env$normalize_character_id <- function(x) "emre"
   env$get_characters_data <- function() NULL
+  # Kilitli referans modunda çözümlenen ses persona kimliğinin kendisidir;
+  # mod çözümleyicisi gerçek adaptör dosyasından gelir (tek kaynak).
+  env$mergen_speech_voice_mode <- function() "locked_reference"
   # Dal kararını doğrudan kontrol et (gerçek helper'ın kendi testi vardır).
   env$mergen_send_message_request_state <- function(active_request_id, req_id, stop_generation) request_state
 

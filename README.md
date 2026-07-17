@@ -23,7 +23,7 @@ MERGEN Bilge, kurum içi/on-prem ortamlarda çalışmaya uygun bir yapay zekâ d
 - Türkçe odaklı yapay zekâ söyleşi deneyimi ve persona sistemi.
 - Dosya yükleme, dosya yönetimi, önizleme, tablo/veri okuma ve analiz akışları.
 - Görsel üretimi, görsel galerisi ve desteklenen modellerde görsel anlama (image input / vision).
-- TTS, STT, karşılama medyası ve sesli rehberlik bileşenleri.
+- TTS, STT, karşılama medyası ve sesli rehberlik bileşenleri; hibrit VoxCPM2 konuşma mimarisi (kilitli persona referans sesleri, önceden üretilmiş karşılama/sayfa rehberliği WAV'ları). Üretim/operatör akışı: [`docs/speech-operator-runbook.md`](docs/speech-operator-runbook.md).
 - Destek Merkezi, Geri Bildirim & Hata, Yenilikler ve Hakkında sayfaları.
 - Yönetici/Sistem Durumu ekranları ve sağlık/operasyon sinyalleri.
 - Bilge Yolaç: Claude Code ile web üzerinden çalışan kodlama ajanı alanı ve eklenti sistemi.

@@ -114,23 +114,28 @@ const AIExpertManager = {
       strip.classList.remove('ai-expert-entering');
     }, 600);
 
-    // Müzik ses kısma
+    // ÖNEMLİ: Müzik kısma, görselleştirici ve yazma animasyonu ses GERÇEKTEN
+    // duyulmaya başlayınca ('playing' olayı) başlar. Statik WAV'larda indirme
+    // gecikmesi olabilir; görselleştirici sessizken oynamamalıdır.
+    // Sesi oynat (altyazı yazımı 'playing' olayında senkron başlar)
+    this._playAudioInternal(data.audioSrc, data.audioDuration);
+
+    console.log('[AI_EXPERT] Altyazı + ses başlatıldı (oynatma bekleniyor):', this.state.currentText.substring(0, 50) + '...');
+  },
+
+  // --- GERÇEK OYNATMA BAŞLADI (audio 'playing' olayı) ---
+  // Müzik kısma ve görselleştirici yalnızca duyulabilir ses varken çalışır;
+  // yazma animasyonu her parçanın oynatma anında (metniyle) yeniden başlar.
+  _onAudioPlaying: function() {
+    if (!this.state.isSpeaking || this.state.stopRequested) return;
+
     if (window.MusicManager) {
       window.MusicManager.duck('ai_expert');
     }
-
-    // TTS görselleştiricisini aktive et
     if (window.ttsVisualizerState && window.ttsVisualizerState.setTalking) {
       window.ttsVisualizerState.setTalking();
     }
-
-    // Yazma animasyonunu başlat
     this._startTyping();
-
-    // Sesi oynat (senkronize - altyazıyla birlikte)
-    this._playAudioInternal(data.audioSrc, data.audioDuration);
-
-    console.log('[AI_EXPERT] Altyazı + ses senkronize başlatıldı:', this.state.currentText.substring(0, 50) + '...');
   },
 
   // --- BAŞLATMA (Sadece Altyazı - TTS Yoksa) ---
@@ -325,6 +330,12 @@ const AIExpertManager = {
     audio.preload = 'auto';
     this.state.audioElement = audio;
 
+    // Görselleştirici/kısma/yazma yalnızca GERÇEK oynatma başlayınca
+    audio.addEventListener('playing', function() {
+      if (self.state.audioElement !== audio) return;
+      self._onAudioPlaying();
+    }, { once: true });
+
     audio.addEventListener('ended', function() {
       if (self.state.audioElement !== audio) return;
       self._onAudioEnded();
@@ -353,7 +364,9 @@ const AIExpertManager = {
 			window.ttsVisualizerState.setIdle();
 		  }
 
-		  // Ses oynatılamazsa altyazı deneyimini koru, müziği kilitli bırakma
+		  // Ses oynatılamazsa altyazı deneyimini koru, müziği kilitli bırakma.
+		  // 'playing' olayı hiç gelmeyeceği için yazma animasyonunu burada başlat.
+		  self._startTyping();
 		  self._scheduleHide(self._estimateReadTime(self.state.currentText));
 		});
     }
@@ -417,7 +430,8 @@ const AIExpertManager = {
 
     console.log('[AI_EXPERT] Sıradaki ses parçası oynatılıyor:', item.index);
 
-    this._startTyping();
+    // Yazma animasyonu parçanın 'playing' olayında başlar; müzik kısma dizi
+    // boyunca kesintisiz sürer (parçalar arasında unduck/duck yapılmaz).
     this._playAudioInternal(item.audioSrc, item.audioDuration);
 
     return true;

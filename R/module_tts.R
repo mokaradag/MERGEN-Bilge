@@ -56,10 +56,18 @@ ttsProcessingServer <- function(id) {
     }
 
     #' Asenkron olarak ses sentezle
+    #'
+    #' Kilitli referans modunda (varsayılan) persona kimliği zorunludur ve
+    #' istek gövdesine onaylı referans sesi + birebir referans metni eklenir.
+    #' Referans çözülemezse istek fail-closed reddedilir; başka bir sese
+    #' asla sessizce düşülmez. legacy_alias modu yalnızca bilinçli operatör
+    #' geçişi içindir.
+    #'
     #' @param text Seslendirilecek metin
-    #' @param voice Kullanılacak ses (opsiyonel)
+    #' @param voice Eski ses etiketi (yalnızca legacy_alias modunda kullanılır)
+    #' @param persona_id Kanonik/eski persona kimliği (kilitli mod için)
     #' @return promise nesnesi: list(success, audio_src, voice, duration, error)
-    synthesize_speech <- function(text, voice = NULL) {
+    synthesize_speech <- function(text, voice = NULL, persona_id = NULL) {
       if (!tts_available()) {
         cat("[TTS] Seslendirme kullanılamıyor: uç nokta yapılandırılmamış\n")
         return(promises::promise_resolve(list(
@@ -75,9 +83,51 @@ ttsProcessingServer <- function(id) {
         )))
       }
 
+      # --- Persona kimlik çözümü (fail-closed sınır) ---
+      reference_payload <- NULL
+      request_body <- NULL
+
+      if (!identical(mergen_speech_voice_mode(), "legacy_alias")) {
+        persona <- mergen_speech_canonical_persona(persona_id %||% voice)
+        if (is.na(persona)) {
+          cat("[TTS] Kilitli referans modunda persona çözülemedi; istek reddedildi.\n")
+          return(promises::promise_resolve(list(
+            success = FALSE, audio_src = NULL, voice = voice, duration = 0,
+            error = "Persona sesi çözülemedi; kilitli referans modu başka sese izin vermez."
+          )))
+        }
+
+        reference_payload <- mergen_speech_reference_payload(persona)
+        if (!isTRUE(reference_payload$ok)) {
+          cat(sprintf(
+            "[TTS] Persona '%s' kilitli referansı doğrulanamadı (%s); istek reddedildi.\n",
+            persona, reference_payload$reason
+          ))
+          return(promises::promise_resolve(list(
+            success = FALSE, audio_src = NULL, voice = persona, duration = 0,
+            error = sprintf(
+              "Persona sabit ses referansı kullanılamıyor (%s); üretici çalıştırılana kadar bu persona konuşamaz.",
+              reference_payload$reason
+            )
+          )))
+        }
+
+        runtime_format <- Sys.getenv("VOXCPM2_RUNTIME_FORMAT", "mp3")
+        request_body <- mergen_voxcpm2_request_body(
+          profile = reference_payload$profile,
+          text = speech_text,
+          reference = reference_payload,
+          response_format = runtime_format
+        )
+      }
+
       # --- ANA SÜREÇ DEĞİŞKENLERİ (Future içine aktarılmadan önce yakalanır) ---
       speech_url   <- build_speech_url()
-      voice_to_use <- voice %||% tts_config$default_voice %||% "tr-male-1"
+      voice_to_use <- if (!is.null(reference_payload)) {
+        reference_payload$persona_id
+      } else {
+        voice %||% tts_config$default_voice %||% "tr-male-1"
+      }
       api_key      <- resolve_tts_api_key()
       model_to_use <- tts_config$model %||% "tts-1-hd"
       # Uzun AI Uzman konuşmalarında son parçanın zaman aşımına düşmemesi için
@@ -122,13 +172,19 @@ ttsProcessingServer <- function(id) {
           `Authorization` = paste("Bearer", api_key)
         )
 
-        # Gövde (Body) Kurulumu
-        body_data <- list(
-          model = model_to_use,
-          voice = voice_to_use,
-          input = speech_text,
-          response_format = "mp3"
-        )
+        # Gövde (Body) Kurulumu: kilitli referans modunda gövde adaptörle ana
+        # süreçte kurulur (referans sesi + metni dahil); legacy modda eski
+        # OpenAI uyumlu düz gövde korunur.
+        body_data <- if (!is.null(request_body)) {
+          request_body
+        } else {
+          list(
+            model = model_to_use,
+            voice = voice_to_use,
+            input = speech_text,
+            response_format = "mp3"
+          )
+        }
         
         # Yapılandırma Kurulumu (Gerekiyorsa SSL doğrulaması atlanır)
         req_config <- if (isTRUE(should_verify)) {

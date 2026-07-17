@@ -291,6 +291,7 @@ ui_asset_ownership_zones <- list(
       "js/tts_visualizer.js",
       "js/music_manager.js",
       "js/audio_lifecycle_guard.js",
+      "js/speech_controller.js",
       "js/stt_client.js",
       "js/tts_manager.js",
       "js/ai_expert_manager.js",

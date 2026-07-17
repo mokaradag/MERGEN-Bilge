@@ -14,6 +14,45 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-07-17 Hibrit VoxCPM2 konuşma mimarisi: kilitli persona sesleri + önceden üretilmiş karşılama/rehberlik
+
+- **Karşılama ve sayfa rehberliği artık önceden üretilmiş persona WAV'larıyla
+  anında başlıyor.** Gezinme anında LLM çağrısı kaldırıldı; 150 ortak Türkçe
+  metin (10 karşılama + 14 rehberli sayfa x 10 çeşit) oturum kapsamlı karışık
+  torbayla (tekrar önlemeli) seçilir ve altyazı metni her zaman ortak `.txt`
+  dosyasından okunur. Ana Söyleşi, Kişiselleştirme, yönetici sayfaları ve
+  Sistem Durumu bilinçli olarak rehberliksizdir.
+- **Her personanın sesi kalıcı olarak kilitlendi.** `voices/<persona>/`
+  altındaki onaylı `reference.wav` + `reference.txt` + `voice-lock.json`
+  üçlüsü; toplu üretim, kişisel karşılama öneki, boşta konuşma ve "Yanıtları
+  Seslendir" dahil TÜM sentez isteklerinde aynı konuşmacıyı garanti eder.
+  Kilit yoksa/bozuksa konuşma fail-closed reddedilir; `tr-male-1` benzeri
+  genel takma adlara veya başka personaya asla düşülmez.
+- **Deterministik kişisel karşılama öneki**: "Merhaba <ad>, en son ... üzerine
+  çalışmıştık." metni LLM'siz kurulur, persona onaylandığı anda sentezlenmeye
+  başlar ve `VOXCPM2_PREFIX_DEADLINE_MS` içinde hazır değilse atılır — statik
+  karşılamayı hiçbir koşulda geciktirmez; önek+karşılama tek konuşma yaşam
+  döngüsüdür (tek müzik kısma aralığı, kesintisiz altyazı).
+- **Tek konuşma yaşam döngüsü ve öncelik matrisi**: yanıt seslendirme >
+  karşılama > sayfa rehberliği > boşta konuşma. Sunucu token'ları tekdüze
+  artar; bayat rehberlik/önek/parça yeni konuşmaya karışamaz
+  (`window.MergenSpeech`). Görselleştirici ve müzik kısma artık gerçek
+  `playing` olayında başlar.
+- **RStudio üretici aracı** (`tools/speech/generate_voxcpm2_assets.R`):
+  aday referans üret → dinle → onayla/kilitle → 150/750 WAV üret →
+  `speech_manifest.json` otomatik üret. Atomik yazım, kesinti sonrası devam,
+  sınırlı yeniden deneme, eşzamanlılık kilidi ve gizli değer redaksiyonu
+  içerir. Üretilen varlıklar VM-yereldir ve GitHub'a gönderilmez. Operatör
+  rehberi: [`speech-operator-runbook.md`](speech-operator-runbook.md).
+- **Gerçek akış altyapısı (opsiyonel)**: `VOXCPM2_STREAMING_MODE=chunked_pcm`
+  ham PCM'i Web Audio kuyruğuna parça parça akıtır (tam sentez bitmeden ses
+  başlar; tamamlanma kuyruk boşalmasıyla belirlenir). Varsayılan `buffered`
+  modu dürüstçe "gerçek akış değil" olarak belgelenir; VM doğrulaması
+  yapılmadan chunked_pcm açılmamalıdır.
+- VM-tarafı kanıt gerektirir: gerçek VoxCPM2 referans klonlama alan adları,
+  üretilen ses kalitesi/persona ayrıklığı ve uçtan uca karşılama/rehberlik
+  oynatması Windows VM'de doğrulanır.
+
 
 ### (Yayınlanmadı) 2026-07-16 Langflow metin içi "Kaynak:" bölümü + `<sup>(n)</sup>` atıfları tıklanabilir oldu
 

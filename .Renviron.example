@@ -170,12 +170,48 @@ MERGEN_LOG_DIR="//mainserver/MERGEN Bilge/logs"
 SERVICE_DESK_API_KEY_URL=https://<your-servicedesk>/api-key
 SERVICE_DESK_RATE_LIMIT_URL=https://<your-servicedesk>/rate-limit
 
-# Yerel metin-konuşma (TTS) ayarları
+# Yerel metin-konuşma (TTS / VoxCPM2) ayarları
 LOCAL_TTS_ENDPOINT=https://your-tts-endpoint/v1
-LOCAL_TTS_MODEL=tts-1-hd
+LOCAL_TTS_MODEL=voxcpm2
 LOCAL_TTS_VOICE=tr-male-1
 LOCAL_TTS_VERIFY_SSL=TRUE
 LOCAL_TTS_TIMEOUT=90
+
+# --- Hibrit VoxCPM2 konuşma mimarisi ---
+# Ses kimlik modu: locked_reference (varsayılan; persona başına onaylı sabit
+# referans zorunlu, yoksa konuşma fail-closed reddedilir) | legacy_alias
+# (yalnızca bilinçli operatör geçişi; eski tr-male-1/tr-female-1 etiketleri).
+MERGEN_SPEECH_VOICE_MODE=locked_reference
+# Akış taşıması: buffered (varsayılan; tam yanıt) | chunked_pcm (uç nokta ham
+# PCM'i parça parça akıtabildiğinde gerçek akış; VM'de doğrulandıktan sonra açın).
+VOXCPM2_STREAMING_MODE=buffered
+# Süreç başına bir kez koşan VoxCPM2 ısındırması
+VOXCPM2_WARMUP_ENABLED=TRUE
+VOXCPM2_WARMUP_TIMEOUT=30
+VOXCPM2_WARMUP_MAX_RETRIES=2
+# Kişisel karşılama öneki için kesin süre sınırı (ms); önek bu sürede hazır
+# değilse atılır ve statik karşılama hemen başlar.
+VOXCPM2_PREFIX_DEADLINE_MS=2500
+# Tarayıcıya önden ısıtılacak statik klip sayısı üst sınırı
+VOXCPM2_PRELOAD_LIMIT=3
+# Üretilen/beklenen WAV örnekleme hızı (VoxCPM2 model doğal hızı)
+VOXCPM2_EXPECTED_SAMPLE_RATE=16000
+# Referans klonlama alan adları (uç nokta sözleşmesine göre; VM'de doğrulayın)
+VOXCPM2_REF_AUDIO_FIELD=ref_audio
+VOXCPM2_REF_TEXT_FIELD=ref_text
+# Canlı sentez yanıt biçimi (önceden üretilmiş varlıklar her zaman WAV'dır)
+VOXCPM2_RUNTIME_FORMAT=mp3
+# İsteğe bağlı kimlik parametreleri (boş bırakılırsa gönderilmez)
+VOXCPM2_SPEED=1.0
+VOXCPM2_CFG_VALUE=
+VOXCPM2_INFERENCE_TIMESTEPS=
+# Aday referans üretiminde persona başına ses tasarımı tohumları (yalnızca
+# üretici 1. aşamada kullanılır; üç erkek + iki kadın AYRI konuşmacı olmalı)
+# VOXCPM2_DESIGN_VOICE_EMRE=
+# VOXCPM2_DESIGN_VOICE_SELIN=
+# VOXCPM2_DESIGN_VOICE_DENIZ=
+# VOXCPM2_DESIGN_VOICE_CAN=
+# VOXCPM2_DESIGN_VOICE_IPEK=
 
 LOCAL_STT_ENDPOINT=http://localhost:8080/v1/audio/transcriptions
 LOCAL_STT_MODEL=whisper-large-v3
