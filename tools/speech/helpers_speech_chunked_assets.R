@@ -433,6 +433,17 @@ if (!isTRUE(attr(speech_gen_state_write, "speech_gen_chunk_wrapper"))) {
             nzchar(as.character(current_entry$audio_sha256 %||% ""))) {
           current_entry$generation_pipeline_signature <- signature
           state[[id]] <- current_entry
+        } else if (!is.null(previous_entry)) {
+          # Base speech_gen_run() kendi yerel state kopyasını taşır. Önceki
+          # çağrıda eklenen imzayı bu kopyada yoksa koru; aksi halde sonraki
+          # dosyanın yazımında daha önce tamamlanan girdinin imzası silinirdi.
+          previous_signature <- as.character(
+            previous_entry$generation_pipeline_signature %||% ""
+          )[1]
+          if (nzchar(previous_signature)) {
+            current_entry$generation_pipeline_signature <- previous_signature
+            state[[id]] <- current_entry
+          }
         }
       }
     }
@@ -485,6 +496,7 @@ if (!isTRUE(attr(speech_gen_run, "speech_gen_chunk_wrapper"))) {
   }
   attr(speech_gen_run, "speech_gen_chunk_wrapper") <- TRUE
 }
+
 
 # Manifest üretimi, yarım kalmış bir geçişte eski tek-istek WAV'larını yeni
 # parça hattıyla karıştırmamalıdır. Sidecar imzası uyuşmayan varlıklar manifest
