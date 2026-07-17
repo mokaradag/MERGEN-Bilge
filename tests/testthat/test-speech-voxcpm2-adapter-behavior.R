@@ -63,9 +63,15 @@ testthat::test_that("kilitli modda gövde referans sesi + birebir metni taşır"
   payload <- mergen_speech_reference_payload("emre", root)
   testthat::expect_true(payload$ok)
 
-  body <- mergen_voxcpm2_request_body(payload$profile, "Merhaba dünya",
-                                      payload, response_format = "wav")
-  testthat::expect_identical(body$voice, "emre")
+  body <- mergen_voxcpm2_request_body(
+    payload$profile,
+    "Merhaba dünya",
+    payload,
+    response_format = "wav"
+  )
+
+  # Uç nokta yalnızca "default" kabul eder; persona kimliği referans yükündedir.
+  testthat::expect_identical(body$voice, "default")
   testthat::expect_identical(body$input, "Merhaba dünya")
   testthat::expect_identical(body$response_format, "wav")
   testthat::expect_identical(body$ref_audio, payload$ref_b64)
