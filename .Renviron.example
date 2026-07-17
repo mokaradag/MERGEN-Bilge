@@ -172,7 +172,7 @@ SERVICE_DESK_RATE_LIMIT_URL=https://<your-servicedesk>/rate-limit
 
 # Yerel metin-konuşma (TTS / VoxCPM2) ayarları
 LOCAL_TTS_ENDPOINT=https://your-tts-endpoint/v1
-LOCAL_TTS_MODEL=voxcpm2
+LOCAL_TTS_MODEL=VoxCPM2
 LOCAL_TTS_VOICE=tr-male-1
 LOCAL_TTS_VERIFY_SSL=TRUE
 LOCAL_TTS_TIMEOUT=90
