@@ -74,7 +74,21 @@ testthat::test_that("kilitli modda gövde referans sesi + birebir metni taşır"
   testthat::expect_identical(body$voice, "default")
   testthat::expect_identical(body$input, "Merhaba dünya")
   testthat::expect_identical(body$response_format, "wav")
-  testthat::expect_identical(body$ref_audio, payload$ref_b64)
+
+  ref_audio_prefix <- "data:audio/wav;base64,"
+
+  testthat::expect_true(
+    startsWith(body$ref_audio, ref_audio_prefix)
+  )
+
+  testthat::expect_identical(
+    substring(
+      body$ref_audio,
+      nchar(ref_audio_prefix) + 1L
+    ),
+    payload$ref_b64
+  )
+
   testthat::expect_identical(body$ref_text, payload$ref_text)
   testthat::expect_identical(body$speed, 1.0)
   testthat::expect_null(body$stream)
@@ -86,9 +100,25 @@ testthat::test_that("kilitli modda gövde referans sesi + birebir metni taşır"
   # Alan adları eşlenince gövde yeni adları kullanır
   withr::local_envvar(VOXCPM2_REF_AUDIO_FIELD = "speaker_audio",
                       VOXCPM2_REF_TEXT_FIELD = "speaker_prompt")
-  mapped <- mergen_voxcpm2_request_body(payload$profile, "Selam", payload)
-  testthat::expect_identical(mapped$speaker_audio, payload$ref_b64)
-  testthat::expect_identical(mapped$speaker_prompt, payload$ref_text)
+  mapped <- mergen_voxcpm2_request_body(
+    payload$profile,
+    "Selam",
+    payload
+  )
+
+  testthat::expect_identical(
+    mapped$speaker_audio,
+    paste0(
+      "data:audio/wav;base64,",
+      payload$ref_b64
+    )
+  )
+
+  testthat::expect_identical(
+    mapped$speaker_prompt,
+    payload$ref_text
+  )
+
   testthat::expect_null(mapped$ref_audio)
 })
 
