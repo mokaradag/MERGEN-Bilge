@@ -222,8 +222,12 @@ VOXCPM2_INFERENCE_TIMESTEPS=
 LOCAL_STT_ENDPOINT=http://localhost:8080/v1/audio/transcriptions
 LOCAL_STT_MODEL=whisper-large-v3
 
-# İsteğe bağlı: TTS/STT API anahtarı override (boşsa ana şifreli anahtar kullanılır)
+# İsteğe bağlı: TTS/STT API anahtarı override
 LOCAL_TTS_API_KEY=
+
+# Konuşma varlığı üreticisinin kullanacağı şifreli kişisel anahtarın kullanıcı adı
+MERGEN_SPEECH_API_KEY_USER=mokaradag
+
 LOCAL_STT_API_KEY=
 
 # Filtreleme için kullanılacak model
