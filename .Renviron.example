@@ -205,8 +205,14 @@ VOXCPM2_RUNTIME_FORMAT=mp3
 VOXCPM2_SPEED=1.0
 VOXCPM2_CFG_VALUE=
 VOXCPM2_INFERENCE_TIMESTEPS=
-# Aday referans üretiminde persona başına ses tasarımı tohumları (yalnızca
-# üretici 1. aşamada kullanılır; üç erkek + iki kadın AYRI konuşmacı olmalı)
+# Aday referans üretiminde persona başına İSTEĞE BAĞLI doğal dil ses tasarımı
+# override'ı (yalnızca üretici 1. aşamada kullanılır). Bu değerler kayıtlı ses
+# adı, eski takma ad (tr-male-1/tr-female-1) veya sayısal tohum DEĞİLDİR; öyle
+# görünen değerler yok sayılır. VoxCPM2 Voice Design sözleşmesinde aday isteği
+# her zaman voice=default ile gider ve bu tanım input metninin başına parantez
+# içinde eklenir (LOCAL_TTS_VOICE aday isteğine karışmaz). Boş bırakılırsa
+# tools/speech/helpers_speech_generator.R içindeki yerleşik beş persona tanımı
+# (üç erkek + iki kadın AYRI konuşmacı) kullanılır.
 # VOXCPM2_DESIGN_VOICE_EMRE=
 # VOXCPM2_DESIGN_VOICE_SELIN=
 # VOXCPM2_DESIGN_VOICE_DENIZ=

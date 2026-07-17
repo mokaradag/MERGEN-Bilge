@@ -472,6 +472,101 @@ speech_gen_run <- function(persona, root = mergen_speech_root(),
                  elapsed_secs = elapsed, preview = FALSE))
 }
 
+# --- VoxCPM2 Voice Design sözleşmesi (aday referans üretimi) ---
+# VM'de DOĞRULANMIŞ sözleşme: tests/scripts/test_voxcpm2_persona_voices.R beş
+# FARKLI persona sesini aynı servise karşı bu istek biçimiyle başarıyla üretir:
+#   - `voice` alanı HER ZAMAN "default"tur. Bu VoxCPM2 kurulumunda tr-male-1 /
+#     tr-female-1 gibi KAYITLI ses adları yoktur; kayıtlı olmayan bir ad
+#     gönderilirse servis yönlendiricisi HTTP 503 "No Healthy Address Found"
+#     döndürür. LOCAL_TTS_VOICE bu isteğe asla sızmamalıdır.
+#   - Doğal dil ses tasarımı tanımı `input` metninin BAŞINA parantez içinde
+#     eklenir: "(<tasarım>)<metin>".
+#   - Referans klonlama alanları (ref_audio/ref_text) bu aşamada gönderilmez.
+
+#' Beş personanın amaçlanan Voice Design tanımları (üretici tek kaynağı).
+#' Metinler VM'de doğrulanan tests/scripts/test_voxcpm2_persona_voices.R
+#' betiğiyle birebir aynıdır; üç erkek (emre, deniz, can) + iki kadın
+#' (selin, ipek) AYRI konuşmacıdır. Kayıtlı ses adı DEĞİL, VoxCPM2 Voice
+#' Design özelliğine gönderilen doğal dil tanımlarıdır.
+speech_gen_voice_design_descriptions <- function() {
+  list(
+    emre = paste(
+      "An adult Turkish male voice with a calm, balanced and trustworthy presence.",
+      "Warm but restrained, medium-low pitch, natural professional tone.",
+      "He sounds pragmatic, reassuring and clear, never theatrical or overly dramatic.",
+      "Native-level fluent Standard Turkish pronunciation, precise articulation, normal pace and short natural pauses."
+    ),
+    selin = paste(
+      "An adult Turkish female voice that sounds constructive, confident and solution-oriented.",
+      "Clear medium pitch, professional warmth and a positive forward-moving energy.",
+      "She sounds capable and encouraging without becoming overly cheerful or promotional.",
+      "Native-level fluent Standard Turkish pronunciation, crisp articulation, normal pace and natural pauses."
+    ),
+    deniz = paste(
+      "An adult Turkish male strategist with a composed, thoughtful and analytical voice.",
+      "Low to medium-low pitch, measured delivery and quiet confidence.",
+      "He sounds long-term oriented and structured, with deliberate emphasis on important points.",
+      "Native-level fluent Standard Turkish pronunciation, clear articulation, moderately measured pace and natural pauses."
+    ),
+    can = paste(
+      "An adult Turkish male voice that is precise, disciplined and respectfully critical.",
+      "Medium pitch, firm but calm delivery, with crisp and direct articulation.",
+      "He sounds attentive to risks and evidence, never harsh, aggressive or sarcastic.",
+      "Native-level fluent Standard Turkish pronunciation, controlled pace and short natural pauses."
+    ),
+    ipek = paste(
+      "An adult Turkish female teacher and guide with a warm, patient and empathetic voice.",
+      "Clear medium pitch, gentle confidence and an approachable professional tone.",
+      "She explains calmly and reassuringly, without sounding childish, artificial or exaggerated.",
+      "Native-level fluent Standard Turkish pronunciation, very clear articulation, comfortable pace and natural pauses."
+    )
+  )
+}
+
+#' VOXCPM2_DESIGN_VOICE_<PERSONA> ortam değişkeni adı. ASCII chartr kullanılır;
+#' Türkçe yerel ayarda toupper("ipek") "İPEK" ürettiği için toupper güvensizdir.
+.speech_gen_design_env_name <- function(persona) {
+  paste0(
+    "VOXCPM2_DESIGN_VOICE_",
+    chartr("abcdefghijklmnopqrstuvwxyz", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", persona)
+  )
+}
+
+#' Override değeri doğal dil ses tasarımı tanımı DEĞİL gibi görünüyorsa TRUE.
+#' VOXCPM2_DESIGN_VOICE_* değişkenleri kayıtlı ses kimliği, eski takma ad
+#' (tr-male-1/tr-female-1/default) veya sayısal tohum olarak KULLANILAMAZ;
+#' böyle değerler yok sayılır ve yerleşik tanıma düşülür.
+.speech_gen_design_override_gecersiz <- function(value) {
+  v <- trimws(as.character(value)[1])
+  v <- chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", v)
+  if (!nzchar(v)) return(TRUE)
+  if (identical(v, "default")) return(TRUE)
+  if (grepl("^tr-(male|female)-[0-9]+$", v)) return(TRUE)
+  if (grepl("^[-+.]?[0-9][0-9.]*$", v)) return(TRUE)
+  FALSE
+}
+
+#' Persona için etkin Voice Design tanımını çöz: geçerli bir doğal dil
+#' override'ı varsa o, yoksa yerleşik tanım döner. Tanım `voice` alanına
+#' DEĞİL, input metninin başına gider.
+speech_gen_voice_design_description <- function(persona) {
+  persona <- mergen_speech_canonical_persona(persona)
+  if (is.na(persona)) return(NA_character_)
+
+  env_name <- .speech_gen_design_env_name(persona)
+  override <- Sys.getenv(env_name, "")
+  if (nzchar(trimws(override))) {
+    if (!.speech_gen_design_override_gecersiz(override)) return(trimws(override))
+    message(sprintf(
+      paste0("%s değeri doğal dil ses tasarımı tanımı değil (kayıtlı ses adı ",
+             "veya sayısal tohum görünümünde); yok sayıldı, yerleşik tanım kullanılacak."),
+      env_name
+    ))
+  }
+
+  as.character(speech_gen_voice_design_descriptions()[[persona]])
+}
+
 # --- Referans adayı üretimi ve onay/kilitleme ---
 
 speech_gen_reference_candidate <- function(persona, root = mergen_speech_root(),
@@ -485,17 +580,24 @@ speech_gen_reference_candidate <- function(persona, root = mergen_speech_root(),
     stop(sprintf("Referans metni okunamadı: %s", profile$reference_text_path), call. = FALSE)
   }
 
-  # Aday üretimi referanssız ses TASARIMI isteğidir: yalnızca bu aşamada,
-  # kilitlenecek sesin kendisini üretmek için referans alanları gönderilmez.
+  # Aday üretimi referanssız ses TASARIMI isteğidir ve yukarıdaki doğrulanmış
+  # VoxCPM2 Voice Design sözleşmesini kullanmak ZORUNDADIR: voice = "default",
+  # doğal dil tasarım tanımı input'un başında, referans alanları gönderilmez.
+  design <- speech_gen_voice_design_description(persona)
+  if (is.na(design) || !nzchar(design)) {
+    stop(sprintf("Persona '%s' için ses tasarımı tanımı çözülemedi.", persona),
+         call. = FALSE)
+  }
+
   body <- list(
     model = profile$model,
-    input = ref_text,
-    voice = Sys.getenv(sprintf("VOXCPM2_DESIGN_VOICE_%s", toupper(persona)),
-                       Sys.getenv("LOCAL_TTS_VOICE", "default")),
+    input = paste0("(", design, ")", ref_text),
+    voice = "default",
     response_format = "wav"
   )
   for (nm in names(profile$identity_params)) {
-    if (!is.null(profile$identity_params[[nm]])) body[[nm]] <- profile$identity_params[[nm]]
+    param <- profile$identity_params[[nm]]
+    if (!is.null(param) && !is.na(param)) body[[nm]] <- param
   }
 
   if (is.null(synth_fn)) {

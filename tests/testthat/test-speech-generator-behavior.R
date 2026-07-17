@@ -4,7 +4,10 @@
 #           dizinlerde): aday referans + onay/kilit akışı, sessiz değişim
 #           reddi, bilinçli reset ve çıktı geçersizleştirme, 150/750 plan,
 #           önizleme/max_files/atlama/devam, atomik yazım, yeniden deneme
-#           sınıflandırması, eşzamanlılık kilidi ve gizli değer redaksiyonu.
+#           sınıflandırması, eşzamanlılık kilidi, gizli değer redaksiyonu ve
+#           VM'de doğrulanmış VoxCPM2 Voice Design aday istek sözleşmesi
+#           (voice=default, tasarım tanımı input başında, LOCAL_TTS_VOICE
+#           sızıntısı yok, ağ/anahtar gerektirmez).
 # ==============================================================================
 
 .speech_gen_test_fake_synth <- function(sample_rate = 16000L) {
@@ -471,5 +474,188 @@ testthat::test_that(
     )))
     # Diğer 149 varlık etkilenmemelidir; yalnızca düzenlenen dışlanır.
     testthat::expect_identical(length(build_after$manifest$personas$emre$assets), 149L)
+  }
+)
+
+# ==============================================================================
+# VoxCPM2 Voice Design aday istek sözleşmesi (VM'de doğrulanmış):
+# tests/scripts/test_voxcpm2_persona_voices.R betiği beş farklı persona sesini
+# voice="default" + input başında doğal dil tasarım tanımı ile üretir. Aday
+# üretimi AYNI sözleşmeyi kullanmalıdır; kayıtlı olmayan bir ses adı (örn.
+# LOCAL_TTS_VOICE=tr-male-1) sızarsa servis HTTP 503 "No Healthy Address
+# Found" döndürür. Buradaki testler sahte synth_fn ile istek gövdesini yakalar;
+# GERÇEK ağ isteği atılmaz ve API anahtarı kullanılmaz.
+# ==============================================================================
+
+testthat::test_that(
+  paste0("aday referans isteği doğrulanmış Voice Design sözleşmesini kullanır: ",
+         "voice=default, tasarım input başında, ağ/anahtar gerekmez"),
+  {
+    speech_tests_source_generator()
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    .speech_gen_test_setup(root, personas = "emre")
+
+    # Uç nokta ve TÜM anahtar değişkenleri kaldırılır: sahte synth_fn ile koşu
+    # yine başarılı olmalıdır (gerçek HTTP isteği/anahtar çözümü yok). VM'deki
+    # LOCAL_TTS_VOICE=tr-male-1 değeri de ayarlanır ki sızıntı kanıtlanabilsin.
+    withr::local_envvar(c(
+      LOCAL_TTS_ENDPOINT = NA,
+      LOCAL_TTS_API_KEY = NA,
+      LOCAL_LLM_API_KEY = NA,
+      LOCAL_TTS_VOICE = "tr-male-1",
+      VOXCPM2_DESIGN_VOICE_EMRE = NA,
+      VOXCPM2_SPEED = NA,
+      VOXCPM2_CFG_VALUE = NA,
+      VOXCPM2_INFERENCE_TIMESTEPS = NA
+    ))
+
+    captured_body <- NULL
+    wav <- mergen_wav_build_pcm(n_samples = 8000L, sample_rate = 16000L)
+    capture_synth <- function(body) {
+      captured_body <<- body
+      list(success = TRUE, audio_raw = wav, content_type = "audio/wav",
+           http_status = 200L, error = NULL)
+    }
+
+    cand <- speech_gen_reference_candidate("emre", root, synth_fn = capture_synth)
+    testthat::expect_true(file.exists(cand))
+
+    # 1) voice HER ZAMAN "default": bu kurulumda kayıtlı ses adı yoktur
+    testthat::expect_identical(captured_body$voice, "default")
+
+    # 2) LOCAL_TTS_VOICE=tr-male-1 gövdenin HİÇBİR alanına sızamaz
+    serialized <- as.character(jsonlite::toJSON(captured_body, auto_unbox = TRUE))
+    testthat::expect_false(grepl("tr-male-1", serialized, fixed = TRUE))
+
+    # 3) Doğal dil tasarım tanımı input'un BAŞINDA parantez içindedir; referans
+    #    metni tanımın hemen ardından DEĞİŞMEDEN gelir
+    design <- speech_gen_voice_design_descriptions()$emre
+    ref_text <- .speech_read_utf8_text(mergen_speech_reference_text_path("emre", root))
+    testthat::expect_identical(captured_body$input, paste0("(", design, ")", ref_text))
+
+    # 4) Gövde alanları sözleşmeyle sınırlıdır: referans klonlama alanı yok,
+    #    anahtar/kimlik alanı yok (speed profil kimlik parametresinden gelir)
+    testthat::expect_identical(
+      sort(names(captured_body)),
+      sort(c("model", "input", "voice", "response_format", "speed"))
+    )
+  }
+)
+
+testthat::test_that(
+  paste0("VOXCPM2_DESIGN_VOICE_* eski takma ad veya sayısal tohum olarak ",
+         "kullanılamaz; voice=default kalır ve yerleşik tanıma düşülür"),
+  {
+    speech_tests_source_generator()
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    .speech_gen_test_setup(root, personas = c("emre", "ipek"))
+
+    # Yanlış kullanım senaryosu: operatör eski takma adı / sayısal tohumu
+    # tasarım değişkenine yazmış. İkisi de yok sayılmalı, istek yine sözleşmeye
+    # uygun gitmelidir.
+    withr::local_envvar(c(
+      LOCAL_TTS_VOICE = "tr-male-1",
+      VOXCPM2_DESIGN_VOICE_EMRE = "tr-male-1",
+      VOXCPM2_DESIGN_VOICE_IPEK = "42"
+    ))
+
+    captured <- list()
+    wav <- mergen_wav_build_pcm(n_samples = 8000L, sample_rate = 16000L)
+    capture_synth <- function(body) {
+      captured[[length(captured) + 1L]] <<- body
+      list(success = TRUE, audio_raw = wav, content_type = "audio/wav",
+           http_status = 200L, error = NULL)
+    }
+
+    suppressMessages({
+      speech_gen_reference_candidate("emre", root, synth_fn = capture_synth)
+      speech_gen_reference_candidate("ipek", root, synth_fn = capture_synth)
+    })
+
+    descs <- speech_gen_voice_design_descriptions()
+    testthat::expect_identical(captured[[1]]$voice, "default")
+    testthat::expect_identical(captured[[2]]$voice, "default")
+
+    # Eski takma ad ne voice alanına ne input'a girer; yerleşik tanım kullanılır
+    emre_json <- as.character(jsonlite::toJSON(captured[[1]], auto_unbox = TRUE))
+    testthat::expect_false(grepl("tr-male-1", emre_json, fixed = TRUE))
+    testthat::expect_true(startsWith(captured[[1]]$input, paste0("(", descs$emre, ")")))
+
+    # Sayısal tohum yok sayılır; ipek yerleşik tanımıyla üretilir
+    testthat::expect_true(startsWith(captured[[2]]$input, paste0("(", descs$ipek, ")")))
+    testthat::expect_false(startsWith(captured[[2]]$input, "(42)"))
+  }
+)
+
+testthat::test_that(
+  "geçerli doğal dil tasarım override'ı input başına gider; voice yine default",
+  {
+    speech_tests_source_generator()
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    .speech_gen_test_setup(root, personas = "selin")
+
+    override_design <- "A bright adult Turkish female narrator voice used only for this test."
+    withr::local_envvar(c(
+      LOCAL_TTS_VOICE = "tr-female-1",
+      VOXCPM2_DESIGN_VOICE_SELIN = override_design
+    ))
+
+    captured_body <- NULL
+    wav <- mergen_wav_build_pcm(n_samples = 8000L, sample_rate = 16000L)
+    capture_synth <- function(body) {
+      captured_body <<- body
+      list(success = TRUE, audio_raw = wav, content_type = "audio/wav",
+           http_status = 200L, error = NULL)
+    }
+
+    speech_gen_reference_candidate("selin", root, synth_fn = capture_synth)
+
+    testthat::expect_identical(captured_body$voice, "default")
+    ref_text <- .speech_read_utf8_text(mergen_speech_reference_text_path("selin", root))
+    testthat::expect_identical(captured_body$input,
+                               paste0("(", override_design, ")", ref_text))
+    serialized <- as.character(jsonlite::toJSON(captured_body, auto_unbox = TRUE))
+    testthat::expect_false(grepl("tr-female-1", serialized, fixed = TRUE))
+  }
+)
+
+testthat::test_that(
+  "beş persona AYRI amaçlanan Voice Design tanımı kullanır (3 erkek + 2 kadın)",
+  {
+    speech_tests_source_generator()
+
+    descs <- speech_gen_voice_design_descriptions()
+    testthat::expect_identical(sort(names(descs)), sort(mergen_speech_personas()))
+
+    vals <- vapply(descs, identity, character(1))
+    testthat::expect_true(all(nzchar(vals)))
+    testthat::expect_identical(length(unique(unname(vals))), 5L)
+
+    # Amaçlanan konuşmacı dağılımı: üç erkek (can, deniz, emre), iki kadın
+    # (ipek, selin); tanımlar cinsiyeti açıkça taşır
+    male_ids <- names(vals)[grepl("Turkish male", vals, fixed = TRUE)]
+    female_ids <- names(vals)[grepl("Turkish female", vals, fixed = TRUE)]
+    testthat::expect_identical(sort(male_ids), c("can", "deniz", "emre"))
+    testthat::expect_identical(sort(female_ids), c("ipek", "selin"))
+
+    # Persona başına imza ifadeleri: tanımlar birbirinin kopyası olamaz
+    testthat::expect_match(descs$emre, "calm, balanced", fixed = TRUE)
+    testthat::expect_match(descs$selin, "constructive, confident", fixed = TRUE)
+    testthat::expect_match(descs$deniz, "strategist", fixed = TRUE)
+    testthat::expect_match(descs$can, "respectfully critical", fixed = TRUE)
+    testthat::expect_match(descs$ipek, "teacher and guide", fixed = TRUE)
+
+    # Ortam değişkeni adı ASCII üretilir: Türkçe yerel ayarın toupper("ipek")
+    # -> "İPEK" tuzağı ortam adına sızamaz
+    testthat::expect_identical(.speech_gen_design_env_name("ipek"),
+                               "VOXCPM2_DESIGN_VOICE_IPEK")
+
+    # Override yokken çözücü yerleşik tanımı döndürür
+    withr::local_envvar(c(VOXCPM2_DESIGN_VOICE_DENIZ = NA))
+    testthat::expect_identical(speech_gen_voice_design_description("deniz"),
+                               descs$deniz)
   }
 )
