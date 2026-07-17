@@ -163,7 +163,7 @@ speech_gen_validate_script_tree <- function(root = mergen_speech_root()) {
       problems <- c(problems, sprintf("Metin UTF-8 olarak okunamadı (mojibake?): %s", path))
     } else if (!nzchar(txt)) {
       problems <- c(problems, sprintf("Metin boş: %s", path))
-    } else if (grepl("Ã[-¿]|Ä±Ä", txt)) {
+    } else if (grepl("\\x{00C3}|\\x{00C4}|\\x{00C5}", txt, perl = TRUE)) {
       problems <- c(problems, sprintf("Metin mojibake içeriyor görünümünde: %s", path))
     }
   }
