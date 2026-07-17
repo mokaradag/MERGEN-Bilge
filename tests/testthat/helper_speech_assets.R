@@ -7,6 +7,8 @@
 
 speech_tests_source_chain <- function() {
   if (exists("mergen_speech_manifest_build", envir = globalenv(),
+             mode = "function", inherits = TRUE) &&
+      exists("split_text_for_ai_expert_tts", envir = globalenv(),
              mode = "function", inherits = TRUE)) {
     return(invisible(TRUE))
   }
@@ -25,7 +27,8 @@ speech_tests_source_chain <- function() {
     "R/helpers_speech_voxcpm2_adapter.R",
     "R/helpers_speech_manifest.R",
     "R/helpers_speech_playback_policy.R",
-    "R/helpers_speech_warmup.R"
+    "R/helpers_speech_warmup.R",
+    "R/helpers_ai_expert_chunking.R"
   )
   for (f in files) {
     source(file.path(root, f), encoding = "UTF-8", local = globalenv())
@@ -37,12 +40,19 @@ speech_tests_source_chain <- function() {
 speech_tests_source_generator <- function() {
   speech_tests_source_chain()
   if (exists("speech_gen_plan", envir = globalenv(),
+             mode = "function", inherits = TRUE) &&
+      exists("speech_gen_split_asset_text", envir = globalenv(),
              mode = "function", inherits = TRUE)) {
     return(invisible(TRUE))
   }
+
+  root <- resolve_repo_root_for_tests()
   source(
-    file.path(resolve_repo_root_for_tests(), "tools", "speech",
-              "helpers_speech_generator.R"),
+    file.path(root, "tools", "speech", "helpers_speech_generator.R"),
+    encoding = "UTF-8", local = globalenv()
+  )
+  source(
+    file.path(root, "tools", "speech", "helpers_speech_chunked_assets.R"),
     encoding = "UTF-8", local = globalenv()
   )
   invisible(TRUE)
