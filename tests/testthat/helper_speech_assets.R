@@ -50,11 +50,12 @@ speech_tests_source_generator <- function() {
 
 # Geçici kökte ortak metin ağacı + (isteğe bağlı) referans/kilit/WAV kur.
 # Dönen kök MERGEN_SPEECH_ROOT olarak ayarlanmaz; testler withr ile ayarlar.
-speech_tests_make_tree <- function(root,
-                                   with_references = TRUE,
-                                   with_audio = TRUE,
-                                   personas = NULL,
-                                   sample_rate = 16000L) {
+speech_tests_make_tree <- function(
+    root,
+    with_references = TRUE,
+    with_audio = TRUE,
+    personas = NULL,
+    sample_rate = mergen_speech_expected_wav_profile()$sample_rate) {
   speech_tests_source_chain()
   if (is.null(personas)) personas <- mergen_speech_personas()
 
@@ -65,7 +66,11 @@ speech_tests_make_tree <- function(root,
                expected$script_path[i])
   }
 
-  wav_bytes <- mergen_wav_build_pcm(n_samples = 8000L, sample_rate = sample_rate)
+  # Yarım saniyelik, etkin üretim profiliyle uyumlu fixture.
+  wav_bytes <- mergen_wav_build_pcm(
+    n_samples = as.integer(sample_rate / 2L),
+    sample_rate = sample_rate
+  )
 
   if (isTRUE(with_references)) {
     for (persona in personas) {
