@@ -232,7 +232,13 @@ speech_gen_write_wav_atomic <- function(audio_raw, final_path,
   check <- mergen_wav_validate(tmp, expected = expected)
   if (!isTRUE(check$ok)) {
     unlink(tmp)
-    return(list(ok = FALSE, reason = check$reason))
+
+    return(list(
+      ok = FALSE,
+      reason = check$reason,
+      info = check$info,
+      expected = expected
+    ))
   }
 
   if (!file.rename(tmp, final_path)) {
@@ -627,8 +633,28 @@ speech_gen_reference_candidate <- function(persona, root = mergen_speech_root(),
 
   candidate_path <- mergen_speech_candidate_reference_path(persona, root)
   write_res <- speech_gen_write_wav_atomic(res$audio_raw, candidate_path)
+
   if (!isTRUE(write_res$ok)) {
-    stop(sprintf("Aday WAV doğrulanamadı/yazılamadı: %s", write_res$reason), call. = FALSE)
+    rate_details <- ""
+
+    if (identical(write_res$reason, "ornekleme_hizi_uyusmuyor") &&
+        !is.null(write_res$info) &&
+        !is.null(write_res$expected)) {
+      rate_details <- sprintf(
+        " (beklenen=%s Hz, gerçek=%s Hz)",
+        write_res$expected$sample_rate %||% "bilinmiyor",
+        write_res$info$sample_rate %||% "bilinmiyor"
+      )
+    }
+
+    stop(
+      sprintf(
+        "Aday WAV doğrulanamadı/yazılamadı: %s%s",
+        write_res$reason,
+        rate_details
+      ),
+      call. = FALSE
+    )
   }
 
   message(sprintf(
