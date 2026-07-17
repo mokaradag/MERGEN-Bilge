@@ -74,7 +74,8 @@ local({
     "R/helpers_speech_wav.R",
     "R/helpers_speech_voice_profiles.R",
     "R/helpers_speech_voxcpm2_adapter.R",
-    "R/helpers_speech_manifest.R"
+    "R/helpers_speech_manifest.R",
+    "R/helpers_ai_expert_chunking.R"
   )
   for (f in runtime_files) {
     path <- file.path(repo_root, f)
@@ -94,6 +95,8 @@ local({
   assign("API_KEYS_DIR", operator_api_keys_dir, envir = globalenv())
 
   source(file.path(repo_root, "tools", "speech", "helpers_speech_generator.R"),
+         encoding = "UTF-8")
+  source(file.path(repo_root, "tools", "speech", "helpers_speech_chunked_assets.R"),
          encoding = "UTF-8")
 
   # Operatör anahtarı çözüm sırası:
