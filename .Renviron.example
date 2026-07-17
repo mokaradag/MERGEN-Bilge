@@ -194,9 +194,10 @@ VOXCPM2_WARMUP_MAX_RETRIES=2
 VOXCPM2_PREFIX_DEADLINE_MS=2500
 # Tarayıcıya önden ısıtılacak statik klip sayısı üst sınırı
 VOXCPM2_PRELOAD_LIMIT=3
-# Üretilen/beklenen WAV örnekleme hızı (VoxCPM2 model doğal hızı)
-VOXCPM2_EXPECTED_SAMPLE_RATE=16000
-# Referans klonlama alan adları (uç nokta sözleşmesine göre; VM'de doğrulayın)
+
+# VoxCPM2 üretilmiş WAV çıktı hızı: 48 kHz
+VOXCPM2_EXPECTED_SAMPLE_RATE=48000
+
 VOXCPM2_REF_AUDIO_FIELD=ref_audio
 VOXCPM2_REF_TEXT_FIELD=ref_text
 # Canlı sentez yanıt biçimi (önceden üretilmiş varlıklar her zaman WAV'dır)
