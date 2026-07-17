@@ -32,7 +32,8 @@ RStudio'dan çalıştırılır; Shiny uygulamasının açık olması gerekmez.
    - `LOCAL_TTS_ENDPOINT` (VoxCPM2 servis URL'si)
    - `LOCAL_TTS_API_KEY` (veya `LOCAL_LLM_API_KEY`)
    - `LOCAL_TTS_MODEL=voxcpm2` (servisteki gerçek model kimliği)
-   - `VOXCPM2_EXPECTED_SAMPLE_RATE` (modelin doğal hızı; varsayılan 16000)
+   - `VOXCPM2_EXPECTED_SAMPLE_RATE=48000` (VoxCPM2 üretilmiş ses çıktı hızı;
+      16 kHz değeri referans/encoder girdisi içindir)
    - Gerekiyorsa `VOXCPM2_REF_AUDIO_FIELD` / `VOXCPM2_REF_TEXT_FIELD`
      (uç noktanın referans klonlama alan adları; bkz. Bölüm 8)
 3. R paketleri: `httr`, `jsonlite`, `openssl`, `base64enc`, `curl`
