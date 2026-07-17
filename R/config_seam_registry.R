@@ -243,16 +243,20 @@ mergen_seam_registry <- function() {
       title = "Medya, Ses ve AI Uzman",
       description = paste(
         "TTS/STT/arka plan müziği yaşam döngüsü, AI Uzman konuşma",
-        "yardımcıları, karakter video ve görsel üretim/galeri ön yüz",
-        "sahipliği."
+        "yardımcıları, hibrit VoxCPM2 konuşma varlıkları (kilitli persona",
+        "referansları + statik karşılama/rehberlik), karakter video ve",
+        "görsel üretim/galeri ön yüz sahipliği."
       ),
-      manifest_sections = c("ai_expert_helpers", "module_ai_audio"),
+      manifest_sections = c("ai_expert_helpers", "speech_assets", "module_ai_audio"),
       extra_runtime_files = character(0),
       guard_tests = c(
         "tests/testthat/test-e2e-media-audio-state-regression.R",
         "tests/testthat/test-audio-lifecycle-owner-smoke.R",
         "tests/testthat/test-saved-chat-reload-no-tts-contract.R",
-        "tests/testthat/test-generated-image-card-html-contract.R"
+        "tests/testthat/test-generated-image-card-html-contract.R",
+        "tests/testthat/test-speech-asset-tree-contract.R",
+        "tests/testthat/test-speech-voice-profiles-behavior.R",
+        "tests/testthat/test-speech-playback-policy-behavior.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-e2e-media-audio-state-regression.R\")",

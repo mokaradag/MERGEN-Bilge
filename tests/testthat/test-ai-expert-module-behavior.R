@@ -12,6 +12,10 @@ if (requireNamespace("shiny", quietly = TRUE)) {
   suppressMessages(library(shiny))
 }
 
+# Modül artık hibrit konuşma politikası yardımcılarına (idle-muted sayfa
+# kümesi, öncelik/begin/end, token) dayanır; zinciri globalenv'e yükle.
+speech_tests_source_chain()
+
 .aiexp_env <- new.env(parent = globalenv())
 source(
   file.path(resolve_repo_root_for_tests(), "R", "module_ai_expert.R"),
@@ -251,6 +255,56 @@ test_that("stop_speaking pozitif bekleme süresiyle çağrılınca can_speak bek
     }
   )
 })
+
+test_that(
+  paste0("ai_expert_speech_ended: bayat (eski token'a ait) yankı YENİ ",
+         "konuşmanın durumunu bozmaz (Codex P2)"),
+  {
+    skip_if_not_installed("shiny")
+
+    sd <- .aiexp_settings()
+    kayit <- new.env(); kayit$msgs <- list()
+
+    testthat::local_mocked_bindings(delay = function(ms, expr) invisible(NULL), .package = "shinyjs")
+
+    shiny::testServer(
+      .aiexp_env$aiExpertServer,
+      args = list(id = "ax", settings_data = sd,
+                  tts_processor = .tts_processor_off(),
+                  tts_visualizer = list(trigger = function(...) NULL, stop = function() NULL)),
+      {
+        root <- .subset2(session, "parent")
+        root$sendCustomMessage <- function(type, message) kayit$msgs[[type]] <- message
+
+        # İlk konuşma: token T1 kurulur.
+        session$returned$start_speaking("İlk konuşma", kind = "idle")
+        expect_true(isTRUE(session$returned$is_speaking()))
+        t1 <- kayit$msgs$aiExpertStartSubtitle$speechToken
+        expect_true(is.numeric(t1))
+
+        # Sayfa rehberliği kesmesi: start_speaking() önce eski konuşmayı
+        # stop_speaking(0) ile durdurur, SONRA hemen yeni T2 token'ını kurar
+        # (öncelik matrisi page_guidance'ın idle'ı kesmesine izin verir).
+        kayit$msgs <- list()
+        session$returned$start_speaking("İkinci konuşma", kind = "page_guidance")
+        expect_true(isTRUE(session$returned$is_speaking()))
+        t2 <- kayit$msgs$aiExpertStartSubtitle$speechToken
+        expect_true(is.numeric(t2))
+        expect_false(identical(t1, t2))
+
+        # Bayat yankı: eski (kesilen) T1 konuşmasına ait "bitti" sinyali,
+        # sunucuya YENİ konuşma (T2) çoktan başladıktan sonra ulaşmış gibi
+        # simüle edilir. Bu YENİ konuşmayı KAPATMAMALIDIR.
+        session$setInputs(ai_expert_speech_ended = list(at = 1, speechToken = t1))
+        expect_true(isTRUE(session$returned$is_speaking()))
+
+        # Güncel yankı: T2'ye ait sinyal konuşmayı gerçekten kapatmalıdır.
+        session$setInputs(ai_expert_speech_ended = list(at = 2, speechToken = t2))
+        expect_false(isTRUE(session$returned$is_speaking()))
+      }
+    )
+  }
+)
 
 # -----------------------------------------------------------------------------
 # prewarm_speaking koruma yolları

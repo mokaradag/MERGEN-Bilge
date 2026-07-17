@@ -2110,13 +2110,26 @@ MERGEN_ALLOW_DEFAULT_API_KEY=TRUE
 MERGEN_REQUIRE_PERSONAL_API_KEY=FALSE
 MERGEN_DEFAULT_API_KEY=<kurum-api-anahtari>
 
-# TTS
+# TTS (VoxCPM2)
 LOCAL_TTS_ENDPOINT=https://your-tts-endpoint.example.com/v1
 LOCAL_TTS_API_KEY=your-tts-key
-LOCAL_TTS_MODEL=tts-1-hd
+LOCAL_TTS_MODEL=voxcpm2
 LOCAL_TTS_VOICE=tr-male-1
 LOCAL_TTS_TIMEOUT=30
 LOCAL_TTS_VERIFY_SSL=TRUE
+
+# Hibrit VoxCPM2 konuşma mimarisi (ayrıntı: docs/speech-operator-runbook.md).
+# Kilitli persona referans modu varsayılandır; referans yoksa persona
+# konuşması fail-closed reddedilir (başka sese düşülmez).
+MERGEN_SPEECH_VOICE_MODE=locked_reference
+VOXCPM2_STREAMING_MODE=buffered
+VOXCPM2_WARMUP_ENABLED=TRUE
+VOXCPM2_PREFIX_DEADLINE_MS=2500
+VOXCPM2_PRELOAD_LIMIT=3
+VOXCPM2_EXPECTED_SAMPLE_RATE=16000
+VOXCPM2_REF_AUDIO_FIELD=ref_audio
+VOXCPM2_REF_TEXT_FIELD=ref_text
+VOXCPM2_RUNTIME_FORMAT=mp3
 
 # STT
 LOCAL_STT_ENDPOINT=https://your-stt-endpoint.example.com/v1/audio/transcriptions

@@ -90,8 +90,9 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
     # Aktif bekleme süresi (dinamik olarak değişir)
     active_cooldown_seconds <- reactiveVal(15)
 
-    # Yasaklı sayfalar (bu sayfalarda AI konuşmaz)
-    MUTED_PAGES <- c("settings_kisisel", "admin_analytics", "health")
+    # Yasaklı sayfalar (bu sayfalarda otomatik AI konuşması yapılmaz).
+    # Tek yetkili politika kaynağı: R/config_speech_assets.R.
+    MUTED_PAGES <- mergen_speech_idle_muted_pages()
 
     # --- Yardımcı: AI Uzman konuşması mümkün mü? ---
     can_speak <- function() {
@@ -193,13 +194,10 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       if (!tts_available) return(invisible(FALSE))
 
       char_id <- normalize_character_id(selected_char_id %||% isolate(settings_data$selected_character))
-      char_info <- get_character_record(char_id)
 
-      voice_sel <- if (!is.null(char_info) && !is.null(char_info$tts_voice)) {
-        char_info$tts_voice
-      } else {
-        "tr-male-1"
-      }
+      # Kilitli referans modunda ses kimliği persona kimliğinin kendisidir;
+      # sentez katmanı referansı fail-closed çözer.
+      voice_sel <- char_id
 
       cached <- get_prewarmed_tts(text, char_id, voice_sel)
       if (!is.null(cached)) return(invisible(TRUE))
@@ -215,7 +213,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         char_id
       ))
 
-      tts_promise <- tts_processor$synthesize_speech(chunks[[1]], voice = voice_sel)
+      tts_promise <- tts_processor$synthesize_speech(chunks[[1]], persona_id = char_id)
 
       prewarming_tts(list(
         text = text,
@@ -259,10 +257,22 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 	
     # --- Konuşmayı başlat ---
     # ÖNEMLİ: Altyazı ve ses senkronizasyonu
-    # TTS hazır olana kadar altyazı başlatılmaz, böylece senkronize olurlar
-	start_speaking <- function(text, cooldown_secs = COOLDOWN_AFTER_PAGE) {
+    # TTS hazır olana kadar altyazı başlatılmaz, böylece senkronize olurlar.
+    # `kind` konuşma türüdür (welcome/page_guidance/idle) ve tek yetkili
+    # öncelik matrisinden geçer; `static_plan` verilirse sentez atlanır ve
+    # önceden üretilmiş WAV dizisi tek konuşma olarak oynatılır.
+	start_speaking <- function(text, cooldown_secs = COOLDOWN_AFTER_PAGE,
+	                           kind = "idle", static_plan = NULL) {
 	  if (is.null(text) || !nzchar(text)) return(invisible(NULL))
-	  if (isTRUE(is_speaking())) return(invisible(NULL))
+
+	  if (isTRUE(is_speaking())) {
+	    gate <- mergen_speech_priority_decision(mergen_speech_active_kind(session), kind)
+	    if (!isTRUE(gate$allow)) return(invisible(NULL))
+	    stop_speaking(0)
+	  }
+
+	  decision <- mergen_speech_begin(session, kind)
+	  if (!isTRUE(decision$allow)) return(invisible(NULL))
 
 	  # Telaffuz/yazım düzeltmesini güvenlik ağı olarak burada da uygula.
 	  # call_ai_expert_llm zaten bu düzeltmeyi yapar; ancak doğrudan
@@ -285,6 +295,42 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 	  # Yazı tipi boyutunu ayarlardan al
 	  font_size <- isolate(settings_data$font_size) %||% "medium"
 
+	  # --- Statik plan: önceden üretilmiş WAV dizisi (önek + karşılama /
+	  # sayfa rehberliği). Sentez yok; altyazı metni ortak senaryo metnidir.
+	  # Görselleştirici/müzik kısma istemcide GERÇEK oynatma anında başlar.
+	  if (!is.null(static_plan) && length(static_plan$items %||% list()) > 0) {
+	    items <- static_plan$items
+	    tts_visualizer$trigger(duration = 0)
+
+	    session$sendCustomMessage("aiExpertStartWithAudio", list(
+	      text          = items[[1]]$text,
+	      totalChunks   = length(items),
+	      avatarSrc     = avatar_src,
+	      accentColor   = accent_color,
+	      nsPrefix      = ns(""),
+	      audioSrc      = items[[1]]$audio_src,
+	      audioDuration = (items[[1]]$duration_ms %||% 0) / 1000,
+	      fontSize      = font_size,
+	      speechToken   = decision$token
+	    ))
+
+	    if (length(items) > 1) {
+	      for (item_idx in seq.int(2L, length(items))) {
+	        session$sendCustomMessage("aiExpertQueueAudioChunk", list(
+	          index         = item_idx - 1L,
+	          text          = items[[item_idx]]$text,
+	          audioSrc      = items[[item_idx]]$audio_src,
+	          audioDuration = (items[[item_idx]]$duration_ms %||% 0) / 1000,
+	          nsPrefix      = ns(""),
+	          speechToken   = decision$token
+	        ))
+	      }
+	    }
+
+	    active_cooldown_seconds(cooldown_secs)
+	    return(invisible(NULL))
+	  }
+
 	  # TTS ile seslendirme kontrolü
 	  tts_available <- FALSE
 	  tryCatch({
@@ -292,12 +338,9 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 	  }, error = function(e) {})
 
       if (tts_available) {
-        # TTS ses tonunu karakter ayarından al
-        voice_sel <- if (!is.null(char_info) && !is.null(char_info$tts_voice)) {
-          char_info$tts_voice
-        } else {
-          "tr-male-1"
-        }
+        # Kilitli referans modunda ses kimliği persona kimliğinin kendisidir;
+        # sentez katmanı onaylı referansı fail-closed çözer.
+        voice_sel <- char_id
 
         # İlk sesi daha hızlı başlatmak için metni kısa parçalara böl
         chunks <- split_text_for_ai_expert_tts(text, max_chunk_chars = 220, min_chunk_chars = 70)
@@ -324,7 +367,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
                 current_idx, total_chunks, nchar(current_text)
               ))
 
-              tts_processor$synthesize_speech(current_text, voice = voice_sel) %...>%
+              tts_processor$synthesize_speech(current_text, persona_id = char_id) %...>%
                 (function(res) {
                   if (!isTRUE(is_speaking())) return()
 
@@ -339,7 +382,8 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
                       text          = current_text,
                       audioSrc      = res$audio_src,
                       audioDuration = res$duration,
-                      nsPrefix      = ns("")
+                      nsPrefix      = ns(""),
+                      speechToken   = decision$token
                     ))
                   } else {
                     cat(sprintf(
@@ -377,7 +421,8 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
             nsPrefix      = ns(""),
             audioSrc      = audio_src,
             audioDuration = audio_duration,
-            fontSize      = font_size
+            fontSize      = font_size,
+            speechToken   = decision$token
           ))
 
           first_chunk_dispatched <<- TRUE
@@ -400,19 +445,21 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
             avatarSrc   = avatar_src,
             accentColor = accent_color,
             nsPrefix    = ns(""),
-            fontSize    = font_size
+            fontSize    = font_size,
+            speechToken = decision$token
           ))
 
           session$sendCustomMessage("aiExpertNoAudioFallback", list(
-            textLength = nchar(text),
-            nsPrefix   = ns("")
+            textLength  = nchar(text),
+            nsPrefix    = ns(""),
+            speechToken = decision$token
           ))
 
           invisible(NULL)
         }
 
         synthesize_first_chunk_now <- function() {
-          tts_processor$synthesize_speech(chunks[[1]], voice = voice_sel) %...>%
+          tts_processor$synthesize_speech(chunks[[1]], persona_id = char_id) %...>%
             (function(first_res) {
               if (!isTRUE(is_speaking())) return()
 
@@ -527,12 +574,14 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 		  avatarSrc   = avatar_src,
 		  accentColor = accent_color,
 		  nsPrefix    = ns(""),
-		  fontSize    = font_size
+		  fontSize    = font_size,
+		  speechToken = decision$token
 		))
 
 		session$sendCustomMessage("aiExpertNoAudioFallback", list(
-		  textLength = nchar(text),
-		  nsPrefix   = ns("")
+		  textLength  = nchar(text),
+		  nsPrefix    = ns(""),
+		  speechToken = decision$token
 		))
 	  }
 
@@ -545,6 +594,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
     # --- Konuşmayı durdur ---
     stop_speaking <- function(cooldown_secs = NULL) {
       is_speaking(FALSE)
+      mergen_speech_end(session)
       session$sendCustomMessage("aiExpertStopSubtitle", list(
         nsPrefix = ns("")
       ))
@@ -570,9 +620,24 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
     }, ignoreInit = TRUE)
 
     # --- İstemciden "konuşma bitti" sinyali ---
+    # start_speaking() bir konuşmayı KESERKEN aynı R turunda stop_speaking(0)
+    # çağırıp hemen yeni token kurabilir; eski konuşmanın bayat durdurma
+    # yankısı sunucuya YENİ konuşma başladıktan SONRA ulaşabilir. Token
+    # eşleşmezse yankı yoksayılır (token yoksa eski davranış korunur).
     observeEvent(input$ai_expert_speech_ended, {
+      payload <- input$ai_expert_speech_ended
+      raw_token <- if (is.list(payload)) payload$speechToken else NULL
+      # Her zaman TEK skaler (NULL/uzunluk-0/uzunluk>1 -> NA_integer_).
+      echoed_token <- if (is.null(raw_token)) NA_integer_ else suppressWarnings(as.integer(raw_token))[1]
+
+      if (!is.na(echoed_token) &&
+          !identical(echoed_token, as.integer(mergen_speech_active_token(session)))) {
+        return(invisible(NULL))
+      }
+
       if (isTRUE(is_speaking())) {
         is_speaking(FALSE)
+        mergen_speech_end(session, token = if (is.na(echoed_token)) NULL else echoed_token)
         # Bekleme süresini başlat (aktif senaryo bekleme süresiyle)
         cd <- isolate(active_cooldown_seconds()) %||% COOLDOWN_AFTER_PAGE
         start_cooldown(cd)

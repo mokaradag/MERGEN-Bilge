@@ -287,6 +287,24 @@ source_manifest_sections <- list(
     "R/helpers_ai_expert_handlers_support.R"
   ),
 
+  # speech_assets: Hibrit VoxCPM2 konuşma katmanı: varlık ağacı yapılandırması,
+  # WAV ayrıştırma, persona ses profilleri + kilitli referans (voice-lock)
+  # doğrulaması, VoxCPM2 adaptörü, manifest üret/yükle, oynatma politikası
+  # (rehberlik/öncelik/karışık torba) ve süreç kapsamlı ısındırma. Sıra
+  # bağımlıdır: yapılandırma -> WAV -> profiller -> adaptör -> manifest ->
+  # politika -> ısındırma. module_ai_audio ve server handler katmanı bu
+  # yardımcılara dayanır.
+  speech_assets = c(
+    "R/config_speech_assets.R",
+    "R/config_speech_asset_paths.R",
+    "R/helpers_speech_wav.R",
+    "R/helpers_speech_voice_profiles.R",
+    "R/helpers_speech_voxcpm2_adapter.R",
+    "R/helpers_speech_manifest.R",
+    "R/helpers_speech_playback_policy.R",
+    "R/helpers_speech_warmup.R"
+  ),
+
   # claude_code_helpers: Bilge Yolaç yardımcı zinciri: kullanıcı guard, upload
   # klasörü, model config, süreç/runtime workdir, güvenlik politikası, dizin
   # listeleme, streaming/formatlama, indirmeler, workdir tarama/snapshot,
@@ -574,10 +592,14 @@ source_manifest_sections <- list(
     "R/server_observers_misc.R"
   ),
 
-  # server_handlers_send_message: Server handler/gönderme hattı: TTS/müzik/AI
-  # Uzman handler'ları, özetleme/görsel üretimi/gerçek streaming handler'ları,
-  # LLM yanıt handler'ları ve send_message.
+  # server_handlers_send_message: Server handler/gönderme hattı: hibrit konuşma
+  # çalışma zamanı (statik karşılama/rehberlik + kişisel önek) ve PCM akış
+  # köprüsü, TTS/müzik/AI Uzman handler'ları, özetleme/görsel üretimi/gerçek
+  # streaming handler'ları, LLM yanıt handler'ları ve send_message. Konuşma
+  # çalışma zamanı, ai_expert handler'larından ÖNCE yüklenmelidir.
   server_handlers_send_message = c(
+    "R/server_speech_assets_runtime.R",
+    "R/server_speech_pcm_stream.R",
     "R/server_tts_handlers.R",
     "R/server_music_handlers.R",
     "R/server_ai_expert_handlers.R",

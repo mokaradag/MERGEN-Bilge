@@ -91,6 +91,11 @@ $(document).ready(function() {
       this.queue = [];
       this.isPlaying = false;
 
+      // chunked_pcm modundaki gerçek akış oynatıcısını da durdur
+      if (window.MergenSpeech && typeof window.MergenSpeech.pcmStop === 'function') {
+        window.MergenSpeech.pcmStop();
+      }
+
       setVisualizerIdle();
 
       // "Seslendirmeyi Durdur" basıldığında onended çalışmadığı için

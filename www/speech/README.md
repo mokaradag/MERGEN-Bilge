@@ -53,19 +53,38 @@ Aşağıdaki sayfalar için sayfa rehberliği varlığı eklenmemelidir:
 - `admin_dokumantasyon` — Dokümantasyon.
 - `health` — Sistem Durumu.
 
-## Kayıt iş akışı
+## Üretim iş akışı (RStudio / Windows VM)
 
-1. Ortak bir `.txt` konuşma metni seçin.
-2. Metni değiştirmeden her persona sesiyle ayrı ayrı kaydedin.
-3. Her kaydı, konuşma metniyle aynı temel dosya adını kullanarak PCM WAV biçiminde kaydedin.
-4. Altyazı metnini persona klasörlerine kopyalamayın veya yeniden yazmayın.
-5. WAV dosyaları eklendikten sonra oynatma bütünleştirmesi,
-   `generated/speech_manifest.json` dosyasını otomatik olarak üretmelidir.
-   Süre ve sağlama toplamı bilgileri WAV dosyalarından türetilmeli, hiçbir zaman
-   elle girilmemelidir.
+Tüm üretim `tools/speech/generate_voxcpm2_assets.R` operatör betiğiyle yapılır;
+elle kayıt yerleştirilmez. Sıra ve komutlar için tek yetkili belge:
+`docs/speech-operator-runbook.md`.
 
-Yalnızca varlık yapısını hazırlayan bu iskelet, bildirim dosyası üreticisini veya
-çalışma zamanı oynatma bağlantılarını henüz içermez.
+1. `speech_asset_env_check()` ile ortam/uç nokta/metin ağacını doğrulayın.
+2. Her persona için `generate_reference_candidate("<persona>")` ile aday
+   referansı üretin, DİNLEYİN ve `approve_reference_voice("<persona>")` ile
+   kilitleyin (voice-lock.json yazılır).
+3. `generate_persona_speech_assets("<persona>")` ile 150 WAV'ı üretin
+   (kesinti sonrası aynı komut kaldığı yerden sürer).
+4. `validate_speech_assets()` ile sayıları/başlıkları/özetleri denetleyin.
+5. `generate_speech_manifest()` ile `generated/speech_manifest.json` dosyasını
+   OTOMATİK üretin. Süre ve sağlama toplamı bilgileri gerçek WAV
+   başlıklarından türetilir; hiçbir alan elle girilmez.
+
+Beklenen üretim sayıları: 150 ortak metin, persona başına 150 WAV, toplam
+750 WAV, 5 referans WAV, 5 voice-lock ve 1 manifest.
+
+## Üretilen dosyalar ve Git politikası
+
+Üretilen dosyalar (referans WAV'lar, voice-lock kilitleri, 750 üretim WAV'ı,
+manifest ve üretici durum/kilit/aday dosyaları) VM-YERELDİR ve `.gitignore`
+ile GitHub dışında tutulur. Depo güncellemeleri/dağıtım senkronizasyonu bu
+dosyaları SİLMEMELİDİR; `www/speech/` altındaki üretilmiş içerik düzenli
+yedeklenmelidir. Ortak `.txt` metinleri, `reference.txt` dosyaları, README'ler
+ve `.gitkeep` iskeleti commit edilir.
+
+Varlıklar üretilmeden önce uygulama güvenli davranır: açılış kırılmaz, statik
+karşılama/rehberlik sessizce atlanır ve kilitli referansı olmayan persona
+için canlı konuşma başka bir sese düşmek yerine reddedilir (fail-closed).
 
 Önerilen WAV profili: mono, 16 bit PCM, tutarlı ses düzeyi, en az başlangıç
 sessizliği ve kısa, doğal bir bitiş sessizliği.

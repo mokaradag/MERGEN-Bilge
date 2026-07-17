@@ -26,7 +26,12 @@ const AIExpertManager = {
     nextChunkIndex: 1,        // Sıradaki beklenecek parça indeksi
     queuedChunks: [],         // Hazır gelen ses parçaları kuyruğu
     chunkWaitTimer: null,     // Sonraki parçayı bekleme zamanlayıcısı
-    speechToken: 0            // Eski zamanlayıcıların yeni konuşmayı kapatmasını önler
+    speechToken: 0,           // Eski zamanlayıcıların yeni konuşmayı kapatmasını önler
+    serverSpeechToken: null   // Sunucudan gelen mergen_speech_begin() token'ı;
+                              // ai_expert_speech_ended yankısıyla geri gönderilir
+                              // ki sunucu bayat (server-initiated stop_speaking
+                              // sonrası hemen üzerine yeni konuşma başlayan)
+                              // sinyalleri yeni konuşmanın durumunu bozmadan ayırt edebilsin
   },
 
   // --- Yapılandırma ---
@@ -62,6 +67,8 @@ const AIExpertManager = {
     this.state.nextChunkIndex = 1;
     this.state.queuedChunks = [];
     this.state.speechToken += 1;
+    this.state.serverSpeechToken = (data.speechToken !== undefined && data.speechToken !== null)
+      ? data.speechToken : null;
 
     // Önceki konuşmadan kalmış zamanlayıcıları temizle
     if (this.state.typeInterval) {
@@ -114,23 +121,28 @@ const AIExpertManager = {
       strip.classList.remove('ai-expert-entering');
     }, 600);
 
-    // Müzik ses kısma
+    // ÖNEMLİ: Müzik kısma, görselleştirici ve yazma animasyonu ses GERÇEKTEN
+    // duyulmaya başlayınca ('playing' olayı) başlar. Statik WAV'larda indirme
+    // gecikmesi olabilir; görselleştirici sessizken oynamamalıdır.
+    // Sesi oynat (altyazı yazımı 'playing' olayında senkron başlar)
+    this._playAudioInternal(data.audioSrc, data.audioDuration);
+
+    console.log('[AI_EXPERT] Altyazı + ses başlatıldı (oynatma bekleniyor):', this.state.currentText.substring(0, 50) + '...');
+  },
+
+  // --- GERÇEK OYNATMA BAŞLADI (audio 'playing' olayı) ---
+  // Müzik kısma ve görselleştirici yalnızca duyulabilir ses varken çalışır;
+  // yazma animasyonu her parçanın oynatma anında (metniyle) yeniden başlar.
+  _onAudioPlaying: function() {
+    if (!this.state.isSpeaking || this.state.stopRequested) return;
+
     if (window.MusicManager) {
       window.MusicManager.duck('ai_expert');
     }
-
-    // TTS görselleştiricisini aktive et
     if (window.ttsVisualizerState && window.ttsVisualizerState.setTalking) {
       window.ttsVisualizerState.setTalking();
     }
-
-    // Yazma animasyonunu başlat
     this._startTyping();
-
-    // Sesi oynat (senkronize - altyazıyla birlikte)
-    this._playAudioInternal(data.audioSrc, data.audioDuration);
-
-    console.log('[AI_EXPERT] Altyazı + ses senkronize başlatıldı:', this.state.currentText.substring(0, 50) + '...');
   },
 
   // --- BAŞLATMA (Sadece Altyazı - TTS Yoksa) ---
@@ -147,6 +159,8 @@ const AIExpertManager = {
     this.state.accentColor = data.accentColor || '#7C4DFF';
     this.state.fontSize = data.fontSize || 'medium';
     this.state.speechToken += 1;
+    this.state.serverSpeechToken = (data.speechToken !== undefined && data.speechToken !== null)
+      ? data.speechToken : null;
 
     // Önceki konuşmadan kalmış zamanlayıcıları temizle
     if (this.state.typeInterval) {
@@ -325,6 +339,12 @@ const AIExpertManager = {
     audio.preload = 'auto';
     this.state.audioElement = audio;
 
+    // Görselleştirici/kısma/yazma yalnızca GERÇEK oynatma başlayınca
+    audio.addEventListener('playing', function() {
+      if (self.state.audioElement !== audio) return;
+      self._onAudioPlaying();
+    }, { once: true });
+
     audio.addEventListener('ended', function() {
       if (self.state.audioElement !== audio) return;
       self._onAudioEnded();
@@ -353,7 +373,9 @@ const AIExpertManager = {
 			window.ttsVisualizerState.setIdle();
 		  }
 
-		  // Ses oynatılamazsa altyazı deneyimini koru, müziği kilitli bırakma
+		  // Ses oynatılamazsa altyazı deneyimini koru, müziği kilitli bırakma.
+		  // 'playing' olayı hiç gelmeyeceği için yazma animasyonunu burada başlat.
+		  self._startTyping();
 		  self._scheduleHide(self._estimateReadTime(self.state.currentText));
 		});
     }
@@ -417,7 +439,8 @@ const AIExpertManager = {
 
     console.log('[AI_EXPERT] Sıradaki ses parçası oynatılıyor:', item.index);
 
-    this._startTyping();
+    // Yazma animasyonu parçanın 'playing' olayında başlar; müzik kısma dizi
+    // boyunca kesintisiz sürer (parçalar arasında unduck/duck yapılmaz).
     this._playAudioInternal(item.audioSrc, item.audioDuration);
 
     return true;
@@ -576,10 +599,15 @@ const AIExpertManager = {
       window.ttsVisualizerState.setIdle();
     }
 
-    // Shiny'ye konuşma bitti sinyali gönder
+    // Shiny'ye konuşma bitti sinyali gönder. speechToken, bu bitişin HANGİ
+    // sunucu konuşmasına ait olduğunu taşır; sunucu bayat (server-initiated
+    // stop_speaking() sonrası hemen üzerine yeni konuşma başlayan) yankıları
+    // bu token ile ayırt edip yeni konuşmanın durumunu bozmadan yoksayabilir.
     if (this.state.nsPrefix) {
       var inputId = this.state.nsPrefix + 'ai_expert_speech_ended';
-      Shiny.setInputValue(inputId, Date.now(), { priority: 'event' });
+      Shiny.setInputValue(inputId,
+        { at: Date.now(), speechToken: this.state.serverSpeechToken },
+        { priority: 'event' });
     }
   },
 
@@ -643,11 +671,16 @@ const AIExpertManager = {
     this.state.nextChunkIndex = 1;
     this.state.queuedChunks = [];
 
-    // Shiny'ye konuşma bitti sinyali gönder
+    // Shiny'ye konuşma bitti sinyali gönder. speechToken bu YAKALANMIŞ
+    // (durdurulan) konuşmaya aittir: stop_speaking()'in aynı R turunda hemen
+    // yeni bir konuşma başlatabildiği durumda (öncelikli kesme), sunucu bu
+    // token'ı aktif token ile karşılaştırıp bayat yankıyı yoksayabilir.
     if (this.state.nsPrefix || (data && data.nsPrefix)) {
       var prefix = this.state.nsPrefix || data.nsPrefix || '';
       var inputId = prefix + 'ai_expert_speech_ended';
-      Shiny.setInputValue(inputId, Date.now(), { priority: 'event' });
+      Shiny.setInputValue(inputId,
+        { at: Date.now(), speechToken: this.state.serverSpeechToken },
+        { priority: 'event' });
     }
 
     console.log('[AI_EXPERT] Konuşma durduruldu');

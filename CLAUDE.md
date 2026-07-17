@@ -6555,7 +6555,36 @@ Do not move these chunking helpers back into `R/module_ai_expert.R`; the separat
 
 `R/helpers_ai_expert_handlers_support.R` owns the pure decision helpers used by `R/server_ai_expert_handlers.R`: `ai_expert_page_name_tr()` (single-source page id → Turkish page name; returns `"Ana Söyleşi"` for `chat`, `NULL` for unknown), `ai_expert_first_idle_delay_ms()` / `ai_expert_idle_interval_ms()` (frequency → milliseconds), and `build_ai_expert_idle_user_context()` (idle-chat user-context string assembly; it takes `now_text` instead of calling `Sys.time()` so it stays deterministic). Keep this helper free of Shiny/reactive access, DB/network calls, `tracked_future_promise`, and mutable runtime state. Load it in the `ai_expert_helpers` manifest section before `R/server_ai_expert_handlers.R`.
 
-Do not move this pure decision logic (the page-name `switch` maps, the frequency `switch` wrappers, or the idle context-parts assembly) back into `R/server_ai_expert_handlers.R`; the split keeps the handler below its near-limit budget (652 lines / 22 functions). The three AI Expert LLM `tracked_future_promise(call_ai_expert_llm)` blocks are a VM-only async path proven only on the Windows VM; do not restructure their worker-globals export from cloud sessions. Protected by `tests/testthat/test-ai-expert-handlers-support-behavior.R` and `tests/testthat/test-ai-expert-handlers-support-contract.R`.
+Do not move this pure decision logic (the page-name `switch` maps, the frequency `switch` wrappers, or the idle context-parts assembly) back into `R/server_ai_expert_handlers.R`. After the hybrid speech rework, only the IDLE chat still calls the LLM (`tracked_future_promise(call_ai_expert_llm)`, task_type `ai_expert_idle_chat`); it is a VM-only async path proven only on the Windows VM — do not restructure its worker-globals export from cloud sessions. Protected by `tests/testthat/test-ai-expert-handlers-support-behavior.R` and `tests/testthat/test-ai-expert-handlers-support-contract.R`.
+
+### Hybrid VoxCPM2 speech assets and locked persona voice contract
+
+The AI Expert welcome and page guidance now play PRE-GENERATED persona WAV assets; live synthesis (idle speech, "Yanıtları Seslendir", personalized welcome prefix) uses the SAME locked persona reference voice. Full operator flow: `docs/speech-operator-runbook.md`.
+
+Non-negotiable rules:
+
+- The single authority for the asset tree is the `speech_assets` manifest section (owner seam `medya_ses`), loaded in this order: `R/config_speech_assets.R` (structure: 5 personas, 14 guided pages, 10 variants, counts 150/750, silent + idle-muted page sets), `R/config_speech_asset_paths.R` (path/URL builders; split to hold the function ratchet), `R/helpers_speech_wav.R` (RIFF/WAVE parse/validate/build — duration comes from real headers, never elapsed time), `R/helpers_speech_voice_profiles.R` (voice profiles, voice-lock build/validate, fail-closed reference payload), `R/helpers_speech_voxcpm2_adapter.R` (the ONLY file that knows endpoint field names; `VOXCPM2_REF_AUDIO_FIELD`/`VOXCPM2_REF_TEXT_FIELD` env-mappable), `R/helpers_speech_manifest.R` (manifest build/validate/atomic-write/process-cached runtime load), `R/helpers_speech_playback_policy.R` (guidance policy, priority matrix, session speech state/tokens, shuffle bags, deterministic prefix builder), `R/helpers_speech_warmup.R` (process-scoped warmup state machine). Do not duplicate persona/page maps or counts anywhere else — the generator, manifest, runtime, and tests all derive from this chain.
+- FAIL-CLOSED voice identity: `mergen_speech_canonical_persona()` accepts only the five canonical ids plus the known legacy migration aliases; every other value (including `tr-male-1`, `tr-female-1`, `default`) returns NA. In `MERGEN_SPEECH_VOICE_MODE=locked_reference` (default), `module_tts.R::synthesize_speech()` refuses to synthesize without a validated `voices/<persona>/voice-lock.json` + `reference.wav` + `reference.txt` triple; it must NEVER silently fall back to another voice or to Emre. `legacy_alias` mode is a deliberate operator escape hatch only.
+- Generated assets are VM-LOCAL and gitignored (reference WAVs, voice-locks, 750 production WAVs, `speech_manifest.json`, generator state/lock/candidates). Only shared `.txt` scripts, `reference.txt` files, READMEs, and `.gitkeep` scaffolding are committed. Never write tests that require production WAVs in the repo — use `mergen_wav_build_pcm()` fixtures via `tests/testthat/helper_speech_assets.R`.
+- The generator is operator-only (`tools/speech/generate_voxcpm2_assets.R` + `helpers_speech_generator.R`, NOT in the source manifest): two-stage reference flow (candidate → listen → approve/lock), atomic writes, per-file resume state, bounded retries (429/5xx/timeouts only), a concurrency lock file, and secret/base64 redaction in all messages. Approved references are never silently replaced (`reset_reference = TRUE` required; invalidates that persona's outputs).
+- Speech lifecycle single-ownership: `module_ai_expert.R::start_speaking(kind, static_plan)` is the one entry point for welcome/page-guidance/idle; it consults `mergen_speech_begin()` (priority: response_tts > welcome > page_guidance > idle; navigation guidance may replace welcome; idle never interrupts anything) and stamps a monotonically increasing server token into every `aiExpertStartWithAudio`/`aiExpertQueueAudioChunk` message. `www/js/speech_controller.js` (`window.MergenSpeech`) drops stale tokens in the `ai_expert_handlers.js` binding layer, and `ai_expert_manager.js` starts visualizer/music-duck/typing only on the real audio `playing` event (duck is held across a prefix+welcome sequence and released once).
+- Page guidance NEVER calls an LLM at navigation time; the greeting LLM path was removed. `server_speech_assets_runtime.R` owns static welcome/guidance dispatch, the deterministic personalized prefix (started at persona confirmation, discarded past `VOXCPM2_PREFIX_DEADLINE_MS` — it must never delay the static welcome), bounded prefetch (`speechPrefetch`), and the once-per-R-process VoxCPM2 warmup trigger. `server_speech_pcm_stream.R` owns the opt-in `VOXCPM2_STREAMING_MODE=chunked_pcm` true-streaming bridge (worker streams bytes to a file, the main process pumps base64 chunks to the Web Audio queue; completion = stream end + client queue drain). The default `buffered` mode is honestly documented as NOT true streaming.
+- Before assets are generated the app must stay safe: no boot crash (missing manifest → static speech unavailable + one diagnostic log), welcome/guidance skipped silently, live persona speech rejected fail-closed, all non-speech features untouched.
+
+Protected by:
+
+- `tests/testthat/test-speech-asset-tree-contract.R`
+- `tests/testthat/test-speech-wav-behavior.R`
+- `tests/testthat/test-speech-voice-profiles-behavior.R`
+- `tests/testthat/test-speech-voxcpm2-adapter-behavior.R`
+- `tests/testthat/test-speech-manifest-behavior.R`
+- `tests/testthat/test-speech-playback-policy-behavior.R`
+- `tests/testthat/test-speech-warmup-behavior.R`
+- `tests/testthat/test-speech-generator-behavior.R`
+- `tests/testthat/test-speech-runtime-contract.R`
+
+VM-only proof (not provable in cloud): real VoxCPM2 reference cloning field names, generated voice quality/persona distinctness, chunked_pcm endpoint capability, and end-to-end welcome/guidance playback run on the Windows VM per `docs/speech-operator-runbook.md`.
+
 ### Audio
 - TTS still plays,
 - STT modal still opens,

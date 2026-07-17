@@ -362,6 +362,9 @@ test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", 
     "js/tts_visualizer.js",
     "js/music_manager.js",
     "js/audio_lifecycle_guard.js",
+    # Bilinçli güncelleme: paylaşılan konuşma denetleyicisi (token kaydı +
+    # PCM akış oynatıcısı) tüketicilerinden (tts_manager/ai_expert_*) önce.
+    "js/speech_controller.js",
     "js/stt_client.js",
     "js/intro_animation.js",
     "js/neural_welcome.js",

@@ -235,14 +235,27 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `R/helpers_ai_expert_chunking.R` (TTS metin parçalama),
   `R/helpers_ai_expert_handlers_support.R` (handler saf karar yardımcıları:
   `ai_expert_page_name_tr`, `ai_expert_first_idle_delay_ms`,
-  `ai_expert_idle_interval_ms`, `build_ai_expert_idle_user_context`).
+  `ai_expert_idle_interval_ms`, `build_ai_expert_idle_user_context`);
+  hibrit konuşma katmanı (`speech_assets` bölümü): `R/config_speech_assets.R`
+  + `R/config_speech_asset_paths.R` (varlık ağacı/yollar),
+  `R/helpers_speech_wav.R` (WAV ayrıştırma), `R/helpers_speech_voice_profiles.R`
+  (kilitli persona referansları, fail-closed), `R/helpers_speech_voxcpm2_adapter.R`
+  (uç nokta adaptörü), `R/helpers_speech_manifest.R` (manifest üret/yükle),
+  `R/helpers_speech_playback_policy.R` (rehberlik politikası + öncelik +
+  karışık torba + önek), `R/helpers_speech_warmup.R` (süreç kapsamlı ısındırma).
 - **UI/server modülleri:** `R/module_ai_expert.R`, `R/server_ai_expert_handlers.R`,
+  `R/server_speech_assets_runtime.R` (statik karşılama/rehberlik + kişisel önek),
+  `R/server_speech_pcm_stream.R` (chunked_pcm gerçek akış köprüsü),
   `R/module_tts.R`, `R/module_tts_visualizer.R`, `R/module_stt.R`,
   `R/module_character_video.R`, `R/server_tts_handlers.R`,
-  `R/server_music_handlers.R`.
-- **JS/CSS:** `www/js/ai_expert_manager.js` (altyazı/ses durum makinesi),
-  `www/js/ai_expert_handlers.js` (Shiny özel mesaj handler'ları + stop-button binding),
-  `www/js/tts_manager.js`, `www/js/tts_visualizer.js`, `www/js/stt_client.js`,
+  `R/server_music_handlers.R`. Operatör üreticisi (manifest dışı):
+  `tools/speech/generate_voxcpm2_assets.R` + `helpers_speech_generator.R`.
+- **JS/CSS:** `www/js/speech_controller.js` (konuşma token kaydı + PCM akış
+  oynatıcısı + önden ısıtma), `www/js/ai_expert_manager.js` (altyazı/ses durum
+  makinesi; görselleştirici/kısma gerçek `playing` olayında),
+  `www/js/ai_expert_handlers.js` (Shiny özel mesaj handler'ları + token
+  korumaları + stop-button binding), `www/js/tts_manager.js`,
+  `www/js/tts_visualizer.js`, `www/js/stt_client.js`,
   `www/js/music_manager.js`, ilgili CSS varlıkları.
 - **DB/servis:** `MB_Users` (AI Uzman bağlamı: ad/birim/son giriş), `MB_Messages`
   (son mesajlar); TTS/STT uç noktaları (`LOCAL_TTS_ENDPOINT`,
