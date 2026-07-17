@@ -32,6 +32,11 @@ mergen_speech_audio_path <- function(persona, scenario, page = NULL, variant = 1
   }
 }
 
+#' Persona'ya özel WAV ses ağacının kök dizini (toplu silme/tarama için).
+mergen_speech_persona_audio_root <- function(persona, root = mergen_speech_root()) {
+  file.path(root, "audio", persona)
+}
+
 #' Tarayıcı tarafında kullanılacak göreli ses URL'si. www/ altındaki her alt
 #' klasör app.R tarafından kendi adıyla resource path olarak kaydedilir; bu
 #' nedenle URL "speech/..." önekiyle başlar.

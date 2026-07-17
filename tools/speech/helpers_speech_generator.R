@@ -515,6 +515,25 @@ speech_gen_reference_approve <- function(persona, root = mergen_speech_root(),
       persona, length(old_state)
     ))
     speech_gen_state_write(persona, list(), root)
+
+    # Durum kaydını temizlemek TEK BAŞINA yeterli değildir: mergen_speech_
+    # manifest_build() üretici sidecar durumuna değil yalnızca WAV başlığına
+    # (format) bakar, bu yüzden eski sesle üretilmiş bir WAV, YENİ voice-lock
+    # kimliği altında geçerli görünüp yayınlanabilir (üretici yarıda kesilse/
+    # atlansa bile). Eski WAV'ları hemen silmek bu pencereyi kapatır: eksik
+    # dosyalar generate_speech_manifest()'i fail-closed biçimde engeller,
+    # yeniden üretim tamamlanana kadar eski ses hiçbir zaman yeni kimlik
+    # altında sunulmaz.
+    audio_root <- mergen_speech_persona_audio_root(persona, root)
+    if (dir.exists(audio_root)) {
+      removed_n <- length(list.files(audio_root, pattern = "\\.wav$",
+                                     recursive = TRUE, ignore.case = TRUE))
+      unlink(audio_root, recursive = TRUE, force = TRUE)
+      message(sprintf(
+        "Persona '%s' için %d eski ses dosyası silindi (eski sesle karışma önlendi).",
+        persona, removed_n
+      ))
+    }
   }
 
   # Adayı atomik kur, sonra kilidi yaz

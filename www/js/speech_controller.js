@@ -83,7 +83,9 @@
     scheduled: [],
     playingNotified: false,
     headerSkipped: false,
-    carry: null,          // Kareye hizalanmayan artık baytlar sonraki parçaya taşınır
+    carry: null,           // Kareye hizalanmayan artık baytlar sonraki parçaya taşınır
+    pending: [],           // AudioContext 'running' olana kadar bekleyen ham PCM parçaları
+    resuming: false,       // resume() çağrıldı, .then/.catch bekleniyor
     drainTimer: null
   };
 
@@ -99,6 +101,51 @@
     pcm.playingNotified = false;
     pcm.headerSkipped = false;
     pcm.carry = null;
+    pcm.pending = [];
+  }
+
+  // Bağlam 'running' değilse (askıya alınmış/kullanıcı etkileşimi bekliyor)
+  // parçayı zamanlamak yerine kuyruğa al; devam edince (veya zaten
+  // çalışıyorsa) sırayla zamanla. Bu, source.start()'un askıda bir bağlamda
+  // sessizce "asılı kalmasını" (zaman ilerlemez, onended asla ateşlenmez,
+  // görselleştirici/müzik kısma ve tts_is_playing durumu takılı kalır) önler.
+  function pcmEnqueueOrSchedule(bytes) {
+    if (pcm.ctx && pcm.ctx.state === 'running' && !pcm.pending.length) {
+      pcmScheduleChunk(bytes);
+      return;
+    }
+    pcm.pending.push(bytes);
+    pcmEnsureContextRunning();
+  }
+
+  function pcmFlushPending() {
+    if (!pcm.pending.length) return;
+    var queued = pcm.pending;
+    pcm.pending = [];
+    for (var i = 0; i < queued.length; i++) {
+      pcmScheduleChunk(queued[i]);
+    }
+  }
+
+  function pcmEnsureContextRunning() {
+    if (!pcm.ctx) return;
+    if (pcm.ctx.state === 'running') { pcmFlushPending(); return; }
+    if (pcm.resuming) return;
+
+    pcm.resuming = true;
+    var expectedStreamId = pcm.streamId;
+    pcm.ctx.resume().then(function() {
+      pcm.resuming = false;
+      // Bu arada akış değişmiş/durdurulmuş olabilir; bayat sonucu yoksay.
+      if (pcm.streamId !== expectedStreamId) return;
+      pcmFlushPending();
+    }).catch(function(e) {
+      pcm.resuming = false;
+      console.warn('[SPEECH] AudioContext devam ettirilemedi (kullanıcı etkileşimi gerekebilir):', e);
+      // Sesli oynatma mümkün değil: bekleyen parçaları at, akışı temizle.
+      pcm.pending = [];
+      if (pcm.streamId === expectedStreamId) MergenSpeech.pcmStop();
+    });
   }
 
   function pcmNotifyPlaying(isPlaying) {
@@ -209,8 +256,9 @@
     source.onended = function() {
       var idx = pcm.scheduled.indexOf(source);
       if (idx >= 0) pcm.scheduled.splice(idx, 1);
-      // Tamamlanma: akış sonu geldi VE kuyruk gerçekten boşaldı
-      if (pcm.endReceived && pcm.scheduled.length === 0 && pcm.streamId) {
+      // Tamamlanma: akış sonu geldi VE zamanlanmış kuyruk gerçekten boşaldı VE
+      // AudioContext devam etmesini bekleyen (henüz zamanlanmamış) parça yok.
+      if (pcm.endReceived && pcm.scheduled.length === 0 && !pcm.pending.length && pcm.streamId) {
         pcmFinish(pcm.streamId, true);
       }
     };
@@ -260,7 +308,6 @@
             var Ctx = window.AudioContext || window.webkitAudioContext;
             pcm.ctx = new Ctx();
           }
-          if (pcm.ctx.state === 'suspended') pcm.ctx.resume();
         } catch (e) {
           console.warn('[SPEECH] AudioContext açılamadı:', e);
           return;
@@ -274,12 +321,17 @@
         pcm.endReceived = false;
         pcm.playingNotified = false;
         pcm.headerSkipped = false;
+        pcm.pending = [];
+
+        // Askıya alınmışsa (kullanıcı etkileşimi bekliyor) devam ettirmeyi
+        // hemen başlat; gelecek parçalar 'running' olana kadar kuyruklanır.
+        pcmEnsureContextRunning();
       });
 
       Shiny.addCustomMessageHandler('speechPcmStreamChunk', function(data) {
         if (!data || String(data.streamId) !== pcm.streamId) return;
         try {
-          pcmScheduleChunk(base64ToBytes(String(data.b64 || '')));
+          pcmEnqueueOrSchedule(base64ToBytes(String(data.b64 || '')));
         } catch (e) {
           console.warn('[SPEECH] PCM parçası çözülemedi:', e);
         }
@@ -288,8 +340,9 @@
       Shiny.addCustomMessageHandler('speechPcmStreamEnd', function(data) {
         if (!data || String(data.streamId) !== pcm.streamId) return;
         pcm.endReceived = true;
-        // Hiç parça oynatılmadıysa/kuyruk boşsa hemen bitir
-        if (pcm.scheduled.length === 0) {
+        // Hiç parça oynatılmadıysa/zamanlanmış kuyruk boşsa VE AudioContext
+        // devam etmesini bekleyen kuyruklanmış parça da yoksa hemen bitir.
+        if (pcm.scheduled.length === 0 && !pcm.pending.length) {
           pcmFinish(pcm.streamId, true);
         }
       });

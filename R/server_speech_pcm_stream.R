@@ -39,9 +39,14 @@ mergen_speech_pcm_stream_cancel <- function(session, stream_id) {
 #' @param persona_id Kanonik/eski persona kimliği (fail-closed çözülür).
 #' @param text Seslendirilecek tam metin.
 #' @param message_id İlgili sohbet mesajı kimliği (istemci görünürlüğü için).
+#' @param on_stream_failed Akış hiç ses baytı göndermeden "error" ile
+#'   bittiğinde çağrılan isteğe bağlı sıfır argümanlı geri çağrı (tamponlu
+#'   hatta düşme). En az bir bayt gönderildiyse ÇAĞRILMAZ; kısmen oynatılmış
+#'   sesin üzerine tamponlu hat ikinci kez başlayıp çakışmasın diye.
 #' @return TRUE akış başlatıldıysa; FALSE (çağıran tamponlu hatta düşebilir).
 mergen_speech_pcm_stream_start <- function(session, persona_id, text,
-                                           message_id = NULL) {
+                                           message_id = NULL,
+                                           on_stream_failed = NULL) {
   if (!identical(mergen_voxcpm2_streaming_mode(), "chunked_pcm")) return(FALSE)
 
   text <- tryCatch(as.character(text)[1], error = function(e) "")
@@ -128,6 +133,17 @@ mergen_speech_pcm_stream_start <- function(session, persona_id, text,
     ))
     if (identical(status, "completed")) {
       .speech_perf_log("response_stream_sent", sprintf("stream=%s", stream_id))
+    } else if (identical(status, "error") && isTRUE(rec$sent_bytes == 0) &&
+               is.function(on_stream_failed)) {
+      # Akış hiç ses baytı göndermeden başarısız oldu (ör. uç nokta
+      # response_format=pcm/stream=TRUE'yu desteklemiyor): kullanıcı sessiz
+      # kalmasın diye tamponlu (buffered) parça hattına düş. En az bir bayt
+      # gönderildiyse buraya girilmez (yukarıdaki koşul), çünkü kısmen
+      # oynatılmış sesin üzerine ikinci bir hat başlatmak çakışma yaratır.
+      .speech_perf_log("response_stream_fallback", sprintf("stream=%s", stream_id))
+      tryCatch(on_stream_failed(), error = function(e) {
+        cat(sprintf("[SPEECH] PCM akış düşme (fallback) hatası: %s\n", conditionMessage(e)))
+      })
     }
   }
 

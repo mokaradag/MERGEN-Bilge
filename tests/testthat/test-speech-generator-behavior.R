@@ -177,6 +177,45 @@ testthat::test_that("referans reset persona çıktılarının tamamını geçers
   testthat::expect_identical(sum(plan$action == "generate"), 150L)
 })
 
+testthat::test_that(
+  paste0("referans reset eski WAV'ları diskten siler; yarım kalan yeniden ",
+         "üretim manifest yayınını fail-closed biçimde engeller"),
+  {
+    speech_tests_source_generator()
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    .speech_gen_test_setup(root)
+
+    fake <- .speech_gen_test_fake_synth()
+    speech_gen_reference_candidate("can", root, synth_fn = fake)
+    speech_gen_reference_approve("can", root)
+    speech_gen_run("can", root, synth_fn = fake)
+
+    plan_before <- speech_gen_plan("can", root)
+    testthat::expect_identical(sum(plan_before$action == "skip"), 150L)
+    testthat::expect_true(all(file.exists(plan_before$audio_path)))
+
+    # Bilinçli reset: eski WAV'lar diskten silinmelidir (yeni referansla asla
+    # karışmasınlar diye), yeniden üretim henüz yapılmamış olsa bile.
+    new_wav_synth <- function(body) {
+      list(success = TRUE,
+           audio_raw = mergen_wav_build_pcm(n_samples = 9600L, sample_rate = 16000L),
+           content_type = "audio/wav", http_status = 200L, error = NULL)
+    }
+    speech_gen_reference_candidate("can", root, synth_fn = new_wav_synth)
+    speech_gen_reference_approve("can", root, reset_reference = TRUE)
+
+    testthat::expect_false(any(file.exists(plan_before$audio_path)))
+
+    # Yeniden üretim ATLANIRSA/kesintiye uğrarsa, manifest üretimi eksik-dosya
+    # hatasıyla GÜVENLİ biçimde engellenmelidir; eski ses hiçbir zaman yeni
+    # voice-lock kimliği altında yayınlanamaz (bkz. Codex P2 incelemesi).
+    build <- mergen_speech_manifest_build(root)
+    testthat::expect_false(build$ok)
+    testthat::expect_true(any(grepl("can.*dosya_yok", build$problems)))
+  }
+)
+
 testthat::test_that("atomik yazım: geçersiz sentez çıktısı hedefe asla ulaşmaz", {
   speech_tests_source_generator()
   speech_tests_reset_caches()

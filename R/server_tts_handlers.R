@@ -169,16 +169,6 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
       NULL
     }
 
-    # chunked_pcm modunda yanıt, cümle parçalamadan gerçek PCM akışıyla
-    # seslendirilir; akış başlatılamazsa tamponlu parça hattına düşülür.
-    if (identical(mergen_voxcpm2_streaming_mode(), "chunked_pcm") && !is.na(persona_id)) {
-      streamed <- tryCatch(
-        mergen_speech_pcm_stream_start(session, persona_id, full_text, message_id = msg_id),
-        error = function(e) FALSE
-      )
-      if (isTRUE(streamed)) return(invisible(NULL))
-    }
-
     send_chunk <- function(res, idx) {
       if (isTRUE(stop_generation())) return()
 
@@ -196,26 +186,48 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
       }
     }
 
-    # Metni parçalara böl (uzun metinler için çoklu parça desteği)
-    chunks <- split_text_into_chunks(full_text, max_chunk_chars = 800)
-    cat(sprintf("[TTS] Metin %d parçaya bölündü (toplam: %d karakter)\n", length(chunks), nchar(full_text)))
+    # Tamponlu (buffered) parça hattı: normal yol olarak KULLANILABİLİR, ayrıca
+    # chunked_pcm akışının hiç ses baytı göndermeden başarısız olması durumunda
+    # düşme (fallback) geri çağrısı olarak da kullanılır. Bu nedenle idempotent
+    # olması gerekmez (yalnızca bir kez, ya normal ya da düşme yolunda çağrılır).
+    run_buffered_chunks <- function() {
+      chunks <- split_text_into_chunks(full_text, max_chunk_chars = 800)
+      cat(sprintf("[TTS] Metin %d parçaya bölündü (toplam: %d karakter)\n", length(chunks), nchar(full_text)))
 
-    # Her parça için TTS isteği oluştur
-    for (i in seq_along(chunks)) {
-      chunk_text <- chunks[[i]]
-      chunk_idx <- i - 1L
-      local({
-        idx <- chunk_idx
-        current_text <- chunk_text
+      for (i in seq_along(chunks)) {
+        chunk_text <- chunks[[i]]
+        chunk_idx <- i - 1L
+        local({
+          idx <- chunk_idx
+          current_text <- chunk_text
 
-        tts_processor$synthesize_speech(current_text, voice = legacy_voice,
-                                        persona_id = persona_id) %...>%
-          (function(res) send_chunk(res, idx)) %...!%
-          (function(e) cat(sprintf("[TTS] Parça %d hatası: %s\n", idx, conditionMessage(e))))
-      })
+          tts_processor$synthesize_speech(current_text, voice = legacy_voice,
+                                          persona_id = persona_id) %...>%
+            (function(res) send_chunk(res, idx)) %...!%
+            (function(e) cat(sprintf("[TTS] Parça %d hatası: %s\n", idx, conditionMessage(e))))
+        })
+      }
+
+      invisible(NULL)
     }
 
-    invisible(NULL)
+    # chunked_pcm modunda yanıt, cümle parçalamadan gerçek PCM akışıyla
+    # seslendirilir. mergen_speech_pcm_stream_start() worker zamanlanır
+    # zamanlanmaz TRUE döner (asenkron); akış SONRADAN hiç ses baytı
+    # göndermeden başarısız olursa on_stream_failed geri çağrısı tamponlu
+    # hatta düşer, böylece kullanıcı desteklenmeyen akış yapılandırmasında
+    # sessiz kalmaz.
+    if (identical(mergen_voxcpm2_streaming_mode(), "chunked_pcm") && !is.na(persona_id)) {
+      streamed <- tryCatch(
+        mergen_speech_pcm_stream_start(session, persona_id, full_text,
+                                       message_id = msg_id,
+                                       on_stream_failed = run_buffered_chunks),
+        error = function(e) FALSE
+      )
+      if (isTRUE(streamed)) return(invisible(NULL))
+    }
+
+    run_buffered_chunks()
   }
 
   list(

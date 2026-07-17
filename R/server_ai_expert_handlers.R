@@ -56,11 +56,16 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     isTRUE(isolate(input$stt_modal_active))
   }
 
+  # KASITLI OLARAK is_speaking() KONTROLÜ YOK: sayfa rehberliği kullanıcının
+  # gezinme eylemidir ve start_speaking() içindeki öncelik matrisi
+  # (mergen_speech_priority_decision) "page_guidance" türünün aktif
+  # karşılama/eski rehberliği KESMESİNE zaten izin verir (stop_active=TRUE).
+  # Burada is_speaking() nedeniyle erken dönersek o kesme mantığına hiç
+  # ulaşılmaz ve eski klip yeni sayfada çalmaya devam eder.
   can_speak_basic <- function() {
     if (!isTRUE(settings_data$enable_ai_expert)) return(FALSE)
     if (!identical(settings_data$experience_mode, "kesif")) return(FALSE)
     if (is_stt_modal_active()) return(FALSE)
-    if (isTRUE(ai_expert$is_speaking())) return(FALSE)
     if (isTRUE(isolate(values$is_sending))) return(FALSE)
     return(TRUE)
   }

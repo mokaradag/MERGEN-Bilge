@@ -164,6 +164,56 @@ testthat::test_that(
 )
 
 testthat::test_that(
+  paste0("art arda rehberli sayfalara geçiş aktif konuşma (karşılama/eski ",
+         "rehberlik) sürerken bile yeni rehberliği GÖNDERİR (Codex P2: ",
+         "can_speak_basic() eski is_speaking() kapısı start_speaking()'in ",
+         "kendi öncelik matrisine ulaşmadan erken dönmemelidir)"),
+  {
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    speech_tests_make_tree(root)
+    m <- mergen_speech_manifest_build(root)$manifest
+    mergen_speech_manifest_write(m, mergen_speech_manifest_path(root))
+    withr::local_envvar(MERGEN_SPEECH_ROOT = root,
+                        VOXCPM2_WARMUP_ENABLED = "false")
+    withr::defer(speech_tests_reset_caches())
+
+    env <- .ai_expert_pg_env()
+    # is_speaking() baştan sona TRUE kalır: start_speaking() sahte fonksiyonu
+    # bu bayrağı değiştirmez, yani karşılama/önceki rehberlik hâlâ çalıyormuş
+    # gibi davranılır.
+    spoke <- .pg_spoke(speaking = TRUE)
+    ai_expert <- .ai_expert_stub(spoke)
+
+    testthat::with_mocked_bindings(
+      {
+        shiny::testServer(
+          .ai_expert_wrapper(env = env, ai_expert = ai_expert),
+          {
+            session$setInputs(tabs = "files")  # ignoreInit tüketir
+
+            # İlk rehberli sayfa: aktif konuşma sürüyorken bile GÖNDERİLMELİDİR
+            # (kesme kararı start_speaking() içindeki öncelik matrisine aittir).
+            session$setInputs(tabs = "history")
+            testthat::expect_identical(spoke$n, 1L)
+            testthat::expect_identical(spoke$last_kind, "page_guidance")
+
+            # İkinci rehberli sayfa: is_speaking() hâlâ TRUE; eski gate burada
+            # da engellememelidir (regresyondan önce ikinci klip hiç çalmazdı).
+            session$setInputs(tabs = "saved_chats")
+            testthat::expect_identical(spoke$n, 2L)
+            testthat::expect_identical(spoke$last_kind, "page_guidance")
+          }
+        )
+      },
+      delay = function(ms, expr) invisible(NULL),
+      runjs = function(...) invisible(NULL),
+      .package = "shinyjs"
+    )
+  }
+)
+
+testthat::test_that(
   "sessiz sayfaya (Kişiselleştirme) geçiş rehberlik ÜRETMEZ ve aktif konuşmayı durdurur",
   {
     speech_tests_reset_caches()
