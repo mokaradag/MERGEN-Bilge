@@ -63,7 +63,11 @@ mergen_voxcpm2_request_body <- function(profile, text, reference = NULL,
 
   if (!is.null(reference) && isTRUE(reference$ok)) {
     fields <- mergen_voxcpm2_ref_field_names()
-    body$voice <- reference$persona_id
+
+    # Persona kimliği ref_audio + ref_text ile belirlenir.
+    # Bu VoxCPM2 uç noktası yalnızca voice="default" kabul eder.
+    body$voice <- "default"
+
     body[[fields$audio]] <- reference$ref_b64
     body[[fields$text]] <- reference$ref_text
   } else if (identical(mergen_speech_voice_mode(), "legacy_alias")) {
