@@ -126,8 +126,14 @@ speech_gen_env_check <- function(root = mergen_speech_root(), verbose = TRUE) {
 
   api_key <- speech_gen_resolve_tts_api_key()
   if (!nzchar(api_key)) {
-    problems <- c(problems,
-      "TTS API anahtarı bulunamadı (LOCAL_TTS_API_KEY veya LOCAL_LLM_API_KEY).")
+    problems <- c(
+      problems,
+      paste0(
+        "TTS API anahtarı bulunamadı. ",
+        "LOCAL_TTS_API_KEY, LOCAL_LLM_API_KEY veya ",
+        "MERGEN_SPEECH_API_KEY_USER ayarını kontrol edin."
+      )
+    )
   }
 
   tree <- speech_gen_validate_script_tree(root)
