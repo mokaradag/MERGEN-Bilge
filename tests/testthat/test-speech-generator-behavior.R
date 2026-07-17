@@ -311,6 +311,78 @@ testthat::test_that("eşzamanlılık kilidi ikinci üreticiyi engeller ve bırak
   speech_gen_release_lock(root)
 })
 
+testthat::test_that(
+  "kilit sahip dosyası heartbeat ile tazelenir; uzun koşu yaşa dayalı bayat sayılmaz (Codex P2)",
+  {
+    speech_tests_source_generator()
+    root <- withr::local_tempdir()
+
+    lock_path <- mergen_speech_generator_lock_path(root)
+    owner_path <- file.path(lock_path, "owner.txt")
+    old_time <- Sys.time() - as.difftime(200, units = "mins")
+
+    # Heartbeat ÇAĞRILMAZSA: 200 dk sonra ikinci oturum devralabilmelidir
+    # (mevcut stale_minutes=120 varsayılanını aşıyor).
+    speech_gen_acquire_lock(root)
+    Sys.setFileTime(owner_path, old_time)
+    testthat::expect_no_error(speech_gen_acquire_lock(root, stale_minutes = 120))
+    speech_gen_release_lock(root)
+
+    # Heartbeat ÇAĞRILDIYSA: sahip dosyasının mtime'ı tazelenir; ikinci
+    # oturum hâlâ aktif kabul edip reddetmelidir.
+    speech_gen_acquire_lock(root)
+    Sys.setFileTime(owner_path, old_time)
+    speech_gen_lock_heartbeat(root)
+    testthat::expect_error(
+      speech_gen_acquire_lock(root, stale_minutes = 120),
+      regexp = "kilidi aktif"
+    )
+    speech_gen_release_lock(root)
+  }
+)
+
+testthat::test_that(
+  "referans reset, çalışan bir üretici kilidi tutulurken reddedilir (Codex P2)",
+  {
+    speech_tests_source_generator()
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    .speech_gen_test_setup(root, personas = "emre")
+
+    fake <- .speech_gen_test_fake_synth()
+    speech_gen_reference_candidate("emre", root, synth_fn = fake)
+    speech_gen_reference_approve("emre", root)
+    speech_gen_run("emre", root, synth_fn = fake)
+
+    plan_before <- speech_gen_plan("emre", root)
+    testthat::expect_identical(sum(plan_before$action == "skip"), 150L)
+    testthat::expect_true(all(file.exists(plan_before$audio_path)))
+
+    # Başka bir "oturum" gibi kilidi elle al (aktif speech_gen_run()
+    # simülasyonu).
+    speech_gen_acquire_lock(root)
+    withr::defer(speech_gen_release_lock(root))
+
+    # Yeni aday hazırla ve reset dene: kilit tutulduğu için REDDEDİLMELİDİR;
+    # aksi halde çalışan üretici ESKİ referans yükünü zaten yakalamış
+    # olabileceğinden, resetimiz sonrasında da eski sesle WAV üretmeye devam
+    # edip YENİ kilidin üzerine yazabilirdi.
+    new_wav_synth <- function(body) {
+      list(success = TRUE,
+           audio_raw = mergen_wav_build_pcm(n_samples = 9600L, sample_rate = 16000L),
+           content_type = "audio/wav", http_status = 200L, error = NULL)
+    }
+    speech_gen_reference_candidate("emre", root, synth_fn = new_wav_synth)
+    testthat::expect_error(
+      speech_gen_reference_approve("emre", root, reset_reference = TRUE),
+      regexp = "kilidi aktif"
+    )
+
+    # Ses dosyaları HÂLÂ eski (silinmedi); araya girme engellendi.
+    testthat::expect_true(all(file.exists(plan_before$audio_path)))
+  }
+)
+
 testthat::test_that("üretici hata metinleri gizli değer/base64 sızdırmaz", {
   speech_tests_source_generator()
   speech_tests_reset_caches()
@@ -351,3 +423,53 @@ testthat::test_that("durum dosyası atomik yazılır ve kesinti sonrası devam s
   writeLines("{bozuk json", path)
   testthat::expect_identical(speech_gen_state_read("emre", root), list())
 })
+
+testthat::test_that(
+  paste0("gerçek üretici koşusu sonrası manifest, sidecar üretici durumuyla ",
+         "eşleşir ve 'durum kaydı bayat' sorunu ÜRETMEZ (Codex P2 happy path)"),
+  {
+    speech_tests_source_generator()
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    .speech_gen_test_setup(root, personas = "emre")
+
+    fake <- .speech_gen_test_fake_synth()
+    speech_gen_reference_candidate("emre", root, synth_fn = fake)
+    speech_gen_reference_approve("emre", root)
+    speech_gen_run("emre", root, synth_fn = fake)
+
+    build <- mergen_speech_manifest_build(root)
+    testthat::expect_false(any(grepl("emre.*durum kaydı bayat", build$problems)))
+    testthat::expect_identical(length(build$manifest$personas$emre$assets), 150L)
+  }
+)
+
+testthat::test_that(
+  paste0("script metni düzenlenip WAV yeniden üretilmeden manifest üretimi, ",
+         "o varlığı bayat durum kaydıyla REDDEDER (Codex P2)"),
+  {
+    speech_tests_source_generator()
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    .speech_gen_test_setup(root, personas = "emre")
+
+    fake <- .speech_gen_test_fake_synth()
+    speech_gen_reference_candidate("emre", root, synth_fn = fake)
+    speech_gen_reference_approve("emre", root)
+    speech_gen_run("emre", root, synth_fn = fake)
+
+    build_before <- mergen_speech_manifest_build(root)
+    testthat::expect_false(any(grepl("emre.*durum kaydı bayat", build_before$problems)))
+
+    # Operatör bir metni düzenler ama karşılık gelen WAV'ı YENİDEN ÜRETMEZ.
+    expected <- mergen_speech_expected_assets(root)
+    writeLines("Bu metin operatör tarafından elle değiştirildi.", expected$script_path[1])
+
+    build_after <- mergen_speech_manifest_build(root)
+    testthat::expect_true(any(grepl(
+      sprintf("emre.*durum kaydı bayat.*%s", expected$id[1]), build_after$problems
+    )))
+    # Diğer 149 varlık etkilenmemelidir; yalnızca düzenlenen dışlanır.
+    testthat::expect_identical(length(build_after$manifest$personas$emre$assets), 149L)
+  }
+)

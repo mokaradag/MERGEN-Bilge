@@ -16,6 +16,16 @@ MERGEN_SPEECH_MANIFEST_SCHEMA_VERSION <- 1L
   paste0("www/speech/", rel)
 }
 
+#' Üretici sidecar durumunu (generation_state_<persona>.json) oku; yoksa/
+#' bozuksa boş liste. tools/speech/helpers_speech_generator.R'deki
+#' speech_gen_state_read()'in salt-okunur, çalışma zamanı güvenli eşleniği
+#' (o dosya yalnızca operatör oturumlarında source edilir).
+mergen_speech_generation_state_read <- function(persona, root = mergen_speech_root()) {
+  path <- mergen_speech_generation_state_path(persona, root)
+  if (!file.exists(path)) return(list())
+  tryCatch(jsonlite::fromJSON(path, simplifyVector = FALSE), error = function(e) list())
+}
+
 #' Manifesti gerçek varlık ağacından üret.
 #'
 #' @param root Konuşma varlık kökü.
@@ -40,6 +50,20 @@ mergen_speech_manifest_build <- function(root = mergen_speech_root(),
       next
     }
 
+    lock_sha <- mergen_speech_sha256_file(lock_path)
+
+    # Üretici sidecar durumu YALNIZCA gerçek speech_gen_run() koşusundan
+    # sonra vardır (generation_state_<persona>.json). Varsa, her varlığın
+    # BU sidecar'a kayıtlı metin/ses/kilit özetleriyle eşleştiğini doğrula:
+    # WAV başlığı (format) tek başına geçerlidir ama operatör bir .txt
+    # script'i düzenleyip karşılık gelen WAV'ı yeniden üretmeden
+    # generate_speech_manifest() çalıştırırsa, yeni altyazı metnini ESKİ
+    # (bayat) sesle eşleştirip yayınlayabilir. Sidecar durumu yoksa (ör.
+    # test fixture'ları gerçek üreticiyi hiç çalıştırmaz) bu çapraz kontrol
+    # zarif biçimde atlanır; yalnızca format doğrulaması uygulanır.
+    gen_state <- mergen_speech_generation_state_read(persona, root)
+    has_generator_state <- file.exists(mergen_speech_generation_state_path(persona, root))
+
     assets <- vector("list", nrow(expected))
 
     for (i in seq_len(nrow(expected))) {
@@ -53,6 +77,7 @@ mergen_speech_manifest_build <- function(root = mergen_speech_root(),
         problems <- c(problems, sprintf("metin eksik/boş: %s", script_path))
         next
       }
+      script_sha <- mergen_speech_sha256_text(script_text)
 
       wav_check <- mergen_wav_validate(audio_path, expected = wav_profile)
       if (!isTRUE(wav_check$ok)) {
@@ -61,6 +86,22 @@ mergen_speech_manifest_build <- function(root = mergen_speech_root(),
           persona, wav_check$reason, audio_path
         ))
         next
+      }
+      audio_sha <- mergen_speech_sha256_file(audio_path)
+
+      if (isTRUE(has_generator_state)) {
+        state_entry <- gen_state[[row$id]]
+        state_matches <- !is.null(state_entry) &&
+          identical(as.character(state_entry$script_sha256 %||% ""), script_sha) &&
+          identical(as.character(state_entry$audio_sha256 %||% ""), audio_sha) &&
+          identical(as.character(state_entry$voice_lock_sha256 %||% ""), as.character(lock_sha))
+        if (!isTRUE(state_matches)) {
+          problems <- c(problems, sprintf(
+            "persona '%s': üretici durum kaydı bayat/eksik (metin yeniden üretilmeden değişmiş olabilir): %s",
+            persona, row$id
+          ))
+          next
+        }
       }
 
       assets[[i]] <- list(
@@ -74,15 +115,15 @@ mergen_speech_manifest_build <- function(root = mergen_speech_root(),
         sample_rate = wav_check$info$sample_rate,
         channels = wav_check$info$channels,
         bits_per_sample = wav_check$info$bits_per_sample,
-        script_sha256 = mergen_speech_sha256_text(script_text),
-        audio_sha256 = mergen_speech_sha256_file(audio_path)
+        script_sha256 = script_sha,
+        audio_sha256 = audio_sha
       )
     }
 
     assets <- Filter(Negate(is.null), assets)
 
     persona_entries[[persona]] <- list(
-      voice_lock_sha256 = mergen_speech_sha256_file(lock_path),
+      voice_lock_sha256 = lock_sha,
       reference_wav_sha256 = as.character(lock_validation$lock$reference_wav_sha256),
       reference_text_sha256 = as.character(lock_validation$lock$reference_text_sha256),
       assets = assets

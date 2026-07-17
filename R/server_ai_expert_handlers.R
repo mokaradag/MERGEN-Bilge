@@ -222,7 +222,15 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     # özellikle persona tanıtım videosuyla üst üste binme engellenir.
     policy <- mergen_speech_guidance_policy(page)
     if (!identical(policy, "guided")) {
-      if (!identical(page, "chat") && isTRUE(ai_expert$is_speaking())) {
+      # Ana Söyleşi'ye dönüş İSTİSNASI yalnızca karşılama/boşta konuşmasını
+      # (kind="welcome"/"idle") KAPSAR; bu sayfa zaten karşılama tarafından
+      # kapsanır ve durdurulmamalıdır. Ancak BAŞKA bir sayfadan sızmış bir
+      # "page_guidance" klibi hâlâ çalıyorsa (kullanıcı hızlıca ileri-geri
+      # gezindiyse) chat'e dönüşte de durmalıdır; aksi halde eski sayfaya
+      # özgü rehberlik Ana Söyleşi'de çalmaya devam eder.
+      should_stop_on_return <- !identical(page, "chat") ||
+        identical(mergen_speech_active_kind(session), "page_guidance")
+      if (should_stop_on_return && isTRUE(ai_expert$is_speaking())) {
         cat(sprintf("[AI_EXPERT] Sessiz sayfaya geçiş (%s), aktif konuşma durduruluyor.\n", page))
         ai_expert$stop_speaking(0)
       }

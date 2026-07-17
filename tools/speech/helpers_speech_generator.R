@@ -42,8 +42,20 @@ speech_gen_acquire_lock <- function(root = mergen_speech_root(),
       stop(sprintf("Üretici kilit dizini oluşturulamadı: %s", lock_path), call. = FALSE)
     }
 
+    # Yaş, KİLİT DİZİNİNİN değil SAHİP DOSYASININ mtime'ından hesaplanır:
+    # speech_gen_run() her üretilen WAV'dan sonra speech_gen_lock_heartbeat()
+    # ile owner.txt'yi yeniden yazıp mtime'ını tazeler. Yaş dizin mtime'ından
+    # (yalnızca oluşturulduğunda kurulur) hesaplansaydı, stale_minutes'i aşan
+    # uzun/yavaş bir koşu hâlâ aktifken bile bayat sayılıp ikinci bir
+    # oturumun devralmasına (ve aynı ağaca eşzamanlı yazmasına) izin verirdi.
+    owner_path <- .speech_gen_lock_owner_path(lock_path)
+    heartbeat_mtime <- if (file.exists(owner_path)) {
+      file.info(owner_path)$mtime
+    } else {
+      file.info(lock_path)$mtime
+    }
     age_mins <- suppressWarnings(as.numeric(difftime(
-      Sys.time(), file.info(lock_path)$mtime, units = "mins"
+      Sys.time(), heartbeat_mtime, units = "mins"
     )))
     if (is.na(age_mins) || age_mins < stale_minutes) {
       lock_info <- tryCatch(
@@ -75,6 +87,20 @@ speech_gen_acquire_lock <- function(root = mergen_speech_root(),
                      Sys.info()[["nodename"]], format(Sys.time())),
             .speech_gen_lock_owner_path(lock_path))
   invisible(lock_path)
+}
+
+#' Kilit sahip dosyasını yeniden yaz (mtime'ını tazeler). Uzun süren üretim
+#' koşuları sırasında speech_gen_run() döngüsünde periyodik çağrılır ki
+#' speech_gen_acquire_lock()'un yaşa dayalı bayatlık kontrolü hâlâ aktif bir
+#' koşuyu bayat sanıp devralmasın. Kilit bu köke ait değilse (henüz
+#' alınmamış/serbest bırakılmış) sessizce hiçbir şey yapmaz.
+speech_gen_lock_heartbeat <- function(root = mergen_speech_root()) {
+  lock_path <- mergen_speech_generator_lock_path(root)
+  if (!dir.exists(lock_path)) return(invisible(FALSE))
+  writeLines(sprintf("pid=%s host=%s at=%s", Sys.getpid(),
+                     Sys.info()[["nodename"]], format(Sys.time())),
+            .speech_gen_lock_owner_path(lock_path))
+  invisible(TRUE)
 }
 
 speech_gen_release_lock <- function(root = mergen_speech_root()) {
@@ -425,6 +451,9 @@ speech_gen_run <- function(persona, root = mergen_speech_root(),
     # Durum her dosyadan sonra atomik yazılır: kesinti sonrası kaldığı yerden sürer
     speech_gen_state_write(persona, state, root)
     generated <- generated + 1L
+    # Kilit sahip dosyasını tazele: 750 dosyalık uzun bir koşu stale_minutes'i
+    # aşarsa bile hâlâ aktif olduğu için başka bir oturum tarafından devralınmasın.
+    speech_gen_lock_heartbeat(root)
   }
 
   elapsed <- as.numeric(difftime(Sys.time(), started_at, units = "secs"))
@@ -542,6 +571,15 @@ speech_gen_reference_approve <- function(persona, root = mergen_speech_root(),
   }
 
   if (isTRUE(reset_reference) && file.exists(lock_path)) {
+    # generator.lock'u BURADA al ve fonksiyon çıkana kadar tut (aşağıdaki
+    # yeni referans/kilit yazımını da kapsar). Başka bir oturumun
+    # speech_gen_run()'ı bu kilidi ZATEN tutuyorsa (aktif üretim sürüyorsa)
+    # bu çağrı güvenle hata verir; aksi halde o koşu ESKİ referans yükünü
+    # zaten yakalamış olabileceğinden, resetimiz sonrasında da eski sesle
+    # WAV üretmeye devam edip YENİ kilidin üzerine yazabilirdi.
+    speech_gen_acquire_lock(root)
+    on.exit(speech_gen_release_lock(root), add = TRUE)
+
     old_state <- speech_gen_state_read(persona, root)
     message(sprintf(
       paste0("UYARI: Persona '%s' referansı SIFIRLANIYOR. Bu personaya ait üretilmiş ",

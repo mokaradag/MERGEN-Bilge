@@ -214,6 +214,58 @@ testthat::test_that(
 )
 
 testthat::test_that(
+  paste0("Ana Söyleşi'ye dönüşte sızmış bir page_guidance klibi DURDURULUR ",
+         "(Codex P2); karşılama/boşta konuşması ise KORUNUR"),
+  {
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    speech_tests_make_tree(root)
+    m <- mergen_speech_manifest_build(root)$manifest
+    mergen_speech_manifest_write(m, mergen_speech_manifest_path(root))
+    withr::local_envvar(MERGEN_SPEECH_ROOT = root,
+                        VOXCPM2_WARMUP_ENABLED = "false")
+    withr::defer(speech_tests_reset_caches())
+
+    env <- .ai_expert_pg_env()
+    spoke <- .pg_spoke(speaking = TRUE)
+    ai_expert <- .ai_expert_stub(spoke)
+
+    testthat::with_mocked_bindings(
+      {
+        shiny::testServer(
+          .ai_expert_wrapper(env = env, ai_expert = ai_expert),
+          {
+            session$setInputs(tabs = "files")  # ignoreInit tüketir
+
+            # Başka sayfadan sızmış bir page_guidance klibi hâlâ çalıyor
+            # gibi durum kur (gerçek session konuşma durumu, sahte
+            # ai_expert$is_speaking()'ten bağımsızdır).
+            mergen_speech_begin(session, "page_guidance")
+
+            # Ana Söyleşi'ye dönüş: sızmış klip DURDURULMALIDIR.
+            session$setInputs(tabs = "chat")
+            testthat::expect_identical(spoke$stops, 1L)
+
+            # Şimdi karşılama/boşta konuşması sürüyor gibi durum kur.
+            spoke$speaking <- TRUE
+            mergen_speech_begin(session, "welcome")
+
+            session$setInputs(tabs = "files")
+            session$setInputs(tabs = "chat")
+            # welcome/idle bu sayfaya aittir: chat dönüşü EK durdurma
+            # ÇAĞIRMAMALIDIR (durdurma sayacı 1'de kalır).
+            testthat::expect_identical(spoke$stops, 1L)
+          }
+        )
+      },
+      delay = function(ms, expr) invisible(NULL),
+      runjs = function(...) invisible(NULL),
+      .package = "shinyjs"
+    )
+  }
+)
+
+testthat::test_that(
   "sessiz sayfaya (Kişiselleştirme) geçiş rehberlik ÜRETMEZ ve aktif konuşmayı durdurur",
   {
     speech_tests_reset_caches()
