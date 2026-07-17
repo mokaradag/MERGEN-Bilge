@@ -62,9 +62,13 @@ local({
     message("UYARI: depo kökünde .Renviron yok; ortam değişkenleri mevcut oturumdan okunacak.")
   }
 
-  # Çalışma zamanı konuşma yardımcılarını TEK kaynak olarak yükle
+  # Çalışma zamanı konuşma yardımcılarını TEK kaynak olarak yükle. Operatör
+  # üreticisi Shiny oturumuna sahip değildir; buna karşın üretim VM'sindeki
+  # mevcut şifreli api_keys/<kullanıcı>_api_key kaydını güvenle çözebilmek için
+  # uygulamanın aynı helpers_api_key_crypto.R katmanı da yüklenir.
   runtime_files <- c(
     "R/utils_common.R",
+    "R/helpers_api_key_crypto.R",
     "R/config_speech_assets.R",
     "R/config_speech_asset_paths.R",
     "R/helpers_speech_wav.R",
@@ -78,8 +82,51 @@ local({
     source(path, encoding = "UTF-8")
   }
 
+  # helpers_api_key_crypto.R normal uygulamada getwd() üzerinden api_keys yolunu
+  # kurar. Operatör betiği farklı bir çalışma dizininden source edilebildiği için
+  # yolu açıkça bulunan depo köküne sabitle; hiçbir anahtar değeri yazdırılmaz.
+  operator_api_keys_dir <- normalizePath(
+    file.path(repo_root, "api_keys"),
+    winslash = "/",
+    mustWork = FALSE
+  )
+  dir.create(operator_api_keys_dir, showWarnings = FALSE, recursive = TRUE)
+  assign("API_KEYS_DIR", operator_api_keys_dir, envir = globalenv())
+
   source(file.path(repo_root, "tools", "speech", "helpers_speech_generator.R"),
          encoding = "UTF-8")
+
+  # Operatör anahtarı çözüm sırası:
+  # 1) TTS'e özel ortam anahtarı
+  # 2) genel yerel LLM ortam anahtarı
+  # 3) MERGEN_SPEECH_API_KEY_USER ile açıkça seçilen mevcut şifreli kullanıcı kaydı
+  # Kullanıcı seçimi zorunludur; api_keys klasöründe birden fazla dosya varsa
+  # sessizce ilkini seçmek kimlik/güvenlik hatası olur. Ham anahtar loglanmaz.
+  operator_key_resolver <- function() {
+    tts_key <- Sys.getenv("LOCAL_TTS_API_KEY", "")
+    if (nzchar(tts_key)) return(tts_key)
+
+    llm_key <- Sys.getenv("LOCAL_LLM_API_KEY", "")
+    if (nzchar(llm_key)) return(llm_key)
+
+    operator_user <- trimws(Sys.getenv("MERGEN_SPEECH_API_KEY_USER", ""))
+    if (!nzchar(operator_user)) return("")
+
+    stored_key <- tryCatch(
+      load_user_api_key(operator_user),
+      error = function(e) NULL
+    )
+    stored_key <- as.character(stored_key %||% "")[1]
+    if (is.na(stored_key) || !nzchar(stored_key)) return("")
+
+    stored_key
+  }
+
+  assign(
+    "speech_gen_resolve_tts_api_key",
+    operator_key_resolver,
+    envir = globalenv()
+  )
 
   assign(".speech_generator_repo_root", repo_root, envir = globalenv())
 })
