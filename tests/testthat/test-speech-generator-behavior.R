@@ -10,11 +10,30 @@
 #           sızıntısı yok, ağ/anahtar gerektirmez).
 # ==============================================================================
 
-.speech_gen_test_fake_synth <- function(sample_rate = 16000L) {
-  wav <- mergen_wav_build_pcm(n_samples = 8000L, sample_rate = sample_rate)
+.speech_gen_test_wav <- function(
+    duration_ms = 500L,
+    sample_rate = mergen_speech_expected_wav_profile()$sample_rate) {
+  mergen_wav_build_pcm(
+    n_samples = as.integer(sample_rate * duration_ms / 1000L),
+    sample_rate = sample_rate
+  )
+}
+
+.speech_gen_test_fake_synth <- function(
+    sample_rate = mergen_speech_expected_wav_profile()$sample_rate) {
+  wav <- .speech_gen_test_wav(
+    duration_ms = 500L,
+    sample_rate = sample_rate
+  )
+
   function(body) {
-    list(success = TRUE, audio_raw = wav, content_type = "audio/wav",
-         http_status = 200L, error = NULL)
+    list(
+      success = TRUE,
+      audio_raw = wav,
+      content_type = "audio/wav",
+      http_status = 200L,
+      error = NULL
+    )
   }
 }
 
@@ -169,9 +188,13 @@ testthat::test_that("referans reset persona çıktılarının tamamını geçers
 
   # Yeni aday + bilinçli reset
   new_wav_synth <- function(body) {
-    list(success = TRUE,
-         audio_raw = mergen_wav_build_pcm(n_samples = 9600L, sample_rate = 16000L),
-         content_type = "audio/wav", http_status = 200L, error = NULL)
+    list(
+      success = TRUE,
+      audio_raw = .speech_gen_test_wav(duration_ms = 600L),
+      content_type = "audio/wav",
+      http_status = 200L,
+      error = NULL
+    )
   }
   speech_gen_reference_candidate("can", root, synth_fn = new_wav_synth)
   speech_gen_reference_approve("can", root, reset_reference = TRUE)
@@ -201,9 +224,13 @@ testthat::test_that(
     # Bilinçli reset: eski WAV'lar diskten silinmelidir (yeni referansla asla
     # karışmasınlar diye), yeniden üretim henüz yapılmamış olsa bile.
     new_wav_synth <- function(body) {
-      list(success = TRUE,
-           audio_raw = mergen_wav_build_pcm(n_samples = 9600L, sample_rate = 16000L),
-           content_type = "audio/wav", http_status = 200L, error = NULL)
+      list(
+        success = TRUE,
+        audio_raw = .speech_gen_test_wav(duration_ms = 600L),
+        content_type = "audio/wav",
+        http_status = 200L,
+        error = NULL
+      )
     }
     speech_gen_reference_candidate("can", root, synth_fn = new_wav_synth)
     speech_gen_reference_approve("can", root, reset_reference = TRUE)
@@ -232,7 +259,10 @@ testthat::test_that("atomik yazım: geçersiz sentez çıktısı hedefe asla ula
     list.files(dirname(final_path), pattern = "\\.tmp_"), 0L
   )
 
-  ok <- speech_gen_write_wav_atomic(mergen_wav_build_pcm(n_samples = 8000L), final_path)
+  ok <- speech_gen_write_wav_atomic(
+    .speech_gen_test_wav(),
+    final_path
+  )
   testthat::expect_true(ok$ok)
   testthat::expect_true(file.exists(final_path))
 })
@@ -272,8 +302,13 @@ testthat::test_that("geçici hata sınırlı denemeyle aşılır; kalıcı hata 
       return(list(success = FALSE, audio_raw = NULL, content_type = NA,
                   http_status = 503L, error = "geçici"))
     }
-    list(success = TRUE, audio_raw = mergen_wav_build_pcm(n_samples = 8000L),
-         content_type = "audio/wav", http_status = 200L, error = NULL)
+    list(
+      success = TRUE,
+      audio_raw = .speech_gen_test_wav(),
+      content_type = "audio/wav",
+      http_status = 200L,
+      error = NULL
+    )
   }
 
   profile <- mergen_speech_voice_profile("emre", root)
@@ -371,9 +406,13 @@ testthat::test_that(
     # olabileceğinden, resetimiz sonrasında da eski sesle WAV üretmeye devam
     # edip YENİ kilidin üzerine yazabilirdi.
     new_wav_synth <- function(body) {
-      list(success = TRUE,
-           audio_raw = mergen_wav_build_pcm(n_samples = 9600L, sample_rate = 16000L),
-           content_type = "audio/wav", http_status = 200L, error = NULL)
+      list(
+        success = TRUE,
+        audio_raw = .speech_gen_test_wav(duration_ms = 600L),
+        content_type = "audio/wav",
+        http_status = 200L,
+        error = NULL
+      )
     }
     speech_gen_reference_candidate("emre", root, synth_fn = new_wav_synth)
     testthat::expect_error(
@@ -511,7 +550,7 @@ testthat::test_that(
     ))
 
     captured_body <- NULL
-    wav <- mergen_wav_build_pcm(n_samples = 8000L, sample_rate = 16000L)
+    wav <- .speech_gen_test_wav()
     capture_synth <- function(body) {
       captured_body <<- body
       list(success = TRUE, audio_raw = wav, content_type = "audio/wav",
@@ -562,7 +601,7 @@ testthat::test_that(
     ))
 
     captured <- list()
-    wav <- mergen_wav_build_pcm(n_samples = 8000L, sample_rate = 16000L)
+    wav <- .speech_gen_test_wav()
     capture_synth <- function(body) {
       captured[[length(captured) + 1L]] <<- body
       list(success = TRUE, audio_raw = wav, content_type = "audio/wav",
@@ -604,7 +643,7 @@ testthat::test_that(
     ))
 
     captured_body <- NULL
-    wav <- mergen_wav_build_pcm(n_samples = 8000L, sample_rate = 16000L)
+    wav <- .speech_gen_test_wav()
     capture_synth <- function(body) {
       captured_body <<- body
       list(success = TRUE, audio_raw = wav, content_type = "audio/wav",
