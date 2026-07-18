@@ -58,9 +58,8 @@ testthat::test_that(
     input <- shiny::reactiveValues(tabs = "chat")
     settings_data <- shiny::reactiveValues(selected_character = "emre")
 
-    session <- speech_tests_fake_session()
+    session <- shiny::MockShinySession$new()
     session$userData$user_first_name <- "Onur"
-    session$sendCustomMessage <- function(...) invisible(NULL)
 
     calls <- new.env(parent = emptyenv())
     calls$n <- 0L
