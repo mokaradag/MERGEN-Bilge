@@ -58,6 +58,18 @@ speech_tests_source_generator <- function() {
   invisible(TRUE)
 }
 
+# Windows'un yerel kod sayfasına dönüştürmeden UTF-8 baytları yaz. Konuşma
+# okuyucusu geçersiz UTF-8'i bilinçli olarak reddettiği için test fixture'ları
+# da üretim metinleriyle aynı bayt sözleşmesini kullanmalıdır.
+speech_tests_write_utf8_text <- function(text, path) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  value <- paste(as.character(text), collapse = "\n")
+  con <- file(path, open = "wb")
+  on.exit(close(con), add = TRUE)
+  writeBin(charToRaw(enc2utf8(value)), con)
+  invisible(path)
+}
+
 # Geçici kökte ortak metin ağacı + (isteğe bağlı) referans/kilit/WAV kur.
 # Dönen kök MERGEN_SPEECH_ROOT olarak ayarlanmaz; testler withr ile ayarlar.
 speech_tests_make_tree <- function(
@@ -71,9 +83,10 @@ speech_tests_make_tree <- function(
 
   expected <- mergen_speech_expected_assets(root)
   for (i in seq_len(nrow(expected))) {
-    dir.create(dirname(expected$script_path[i]), recursive = TRUE, showWarnings = FALSE)
-    writeLines(sprintf("Deneme metni %s: dosyalarınızı buradan yönetin.", expected$id[i]),
-               expected$script_path[i])
+    speech_tests_write_utf8_text(
+      sprintf("Deneme metni %s: dosyalarınızı buradan yönetin.", expected$id[i]),
+      expected$script_path[i]
+    )
   }
 
   # Yarım saniyelik, etkin üretim profiliyle uyumlu fixture.
@@ -86,13 +99,15 @@ speech_tests_make_tree <- function(
     for (persona in personas) {
       dir.create(mergen_speech_voice_dir(persona, root), recursive = TRUE,
                  showWarnings = FALSE)
-      writeLines(sprintf("Merhaba, ben %s referans metniyim.", persona),
-                 mergen_speech_reference_text_path(persona, root))
+      speech_tests_write_utf8_text(
+        sprintf("Merhaba, ben %s referans metniyim.", persona),
+        mergen_speech_reference_text_path(persona, root)
+      )
       writeBin(wav_bytes, mergen_speech_reference_wav_path(persona, root))
 
       profile <- mergen_speech_voice_profile(persona, root)
       lock <- mergen_speech_voice_lock_payload(profile)
-      writeLines(
+      speech_tests_write_utf8_text(
         as.character(jsonlite::toJSON(lock, auto_unbox = TRUE)),
         mergen_speech_voice_lock_path(persona, root)
       )
