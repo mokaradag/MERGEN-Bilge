@@ -84,8 +84,8 @@ bs_db_start_run <- function(user_id, harita, zorluk, tohum, mod = "kampanya",
     mevcut <- DBI::dbGetQuery(
       handle$conn,
       paste(
-        "SELECT GameRunID, MapID, Difficulty, Seed, Mode",
-        "FROM MB_Game_Runs WHERE UserID = ? AND ClientToken = ?"
+        "SELECT GameRunID, MapID, Difficulty, Seed, Mode, ChallengeSeasonID,",
+        "BlueprintID FROM MB_Game_Runs WHERE UserID = ? AND ClientToken = ?"
       ),
       params = normalize_db_params(list(uid, jeton))
     )
@@ -98,7 +98,12 @@ bs_db_start_run <- function(user_id, harita, zorluk, tohum, mod = "kampanya",
         harita = as.character(mevcut$MapID[1]),
         zorluk = as.character(mevcut$Difficulty[1]),
         tohum = as.integer(mevcut$Seed[1]),
-        mod = as.character(mevcut$Mode[1])
+        mod = as.character(mevcut$Mode[1]),
+        sezon_id = .bs_db_kosu_sezon_id(mevcut),
+        plan_id = {
+          deger <- suppressWarnings(as.integer(mevcut$BlueprintID[1]))
+          if (length(deger) == 0L || is.na(deger)) NULL else deger
+        }
       ))
     }
 
@@ -146,7 +151,9 @@ bs_db_start_run <- function(user_id, harita, zorluk, tohum, mod = "kampanya",
       harita = as.character(harita)[1],
       zorluk = as.character(zorluk)[1],
       tohum = as.integer(tohum),
-      mod = as.character(mod)[1]
+      mod = as.character(mod)[1],
+      sezon_id = if (is.null(sezon_id)) NULL else as.integer(sezon_id),
+      plan_id = if (is.null(plan_id)) NULL else as.integer(plan_id)
     )
   },
   fallback = NULL,

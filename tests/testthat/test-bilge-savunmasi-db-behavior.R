@@ -237,10 +237,15 @@ test_that("koşu başlatma jetonla idempotenttir ve eski aktif koşuyu kapatır"
   expect_identical(kosu1$harita, "baglam_kapisi")
   expect_identical(kosu1$tohum, 111L)
 
-  # Aynı jetonla tekrar: aynı koşu kimliği döner (yeniden deneme güvenliği).
-  tekrar <- bs_db_start_run(101L, "baglam_kapisi", "normal", 111L,
+  # Aynı jetonla tekrar: aynı koşu kimliği ve kalıcı satır alanları döner
+  # (yeniden deneme/devam güvenliği). Çağrının yeni çözdüğü tohum/harita
+  # istemciye sızarsa sonuç özeti kosu_eslesmesi ile reddedilir.
+  tekrar <- bs_db_start_run(101L, "celiski_kavsagi", "zor", 999L,
                             istemci_jetonu = "jeton-a", conn = conn)
   expect_identical(tekrar$kosu_id, kosu1$kosu_id)
+  expect_identical(tekrar$harita, kosu1$harita)
+  expect_identical(tekrar$zorluk, kosu1$zorluk)
+  expect_identical(tekrar$tohum, kosu1$tohum)
 
   # Yeni jeton yeni koşu açar; önceki Aktif koşu Bırakıldı olur.
   kosu2 <- bs_db_start_run(101L, "celiski_kavsagi", "normal", 222L,

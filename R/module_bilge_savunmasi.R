@@ -242,14 +242,19 @@ bilgeSavunmasiServer <- function(id, current_user_id) {
         )
       }
 
+      # Idempotent resume/start requests can return an already-persisted run
+      # for the supplied client token. In that branch, the freshly resolved
+      # config above may contain a new campaign seed (or a new weekly seed
+      # after ISO-week rollover), so the client must receive the run fields
+      # that actually live in MB_Game_Runs.
       gonder("bs-kosu-basladi", list(
         kosu_id = if (!is.null(kosu)) kosu$kosu_id else NULL,
         kalici = !is.null(kosu),
-        mod = cozum$mod,
-        harita = cozum$harita,
-        zorluk = cozum$zorluk,
-        tohum = cozum$tohum,
-        plan_id = cozum$plan_id,
+        mod = if (!is.null(kosu)) kosu$mod else cozum$mod,
+        harita = if (!is.null(kosu)) kosu$harita else cozum$harita,
+        zorluk = if (!is.null(kosu)) kosu$zorluk else cozum$zorluk,
+        tohum = if (!is.null(kosu)) kosu$tohum else cozum$tohum,
+        plan_id = if (!is.null(kosu)) kosu$plan_id else cozum$plan_id,
         istemci_jetonu = as.character(istek$istemci_jetonu %||% "")[1]
       ))
     })
