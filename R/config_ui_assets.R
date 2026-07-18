@@ -148,7 +148,8 @@ ui_asset_css_groups <- list(
       "css/claude_code_streaming.css",
       "css/claude_code_plugins.css",
       "css/claude_code_sessions.css",
-      "css/bilge_yolac_welcome.css"
+      "css/bilge_yolac_welcome.css",
+      "css/bilge_savunmasi.css"
     )
   )),
   codemirror = c(
@@ -290,6 +291,7 @@ ui_asset_js_groups <- list(
       "js/explore_character_step.js",
       "js/surum_bilgilendirme.js",
       "js/claude_code_pixel_chars.js",
+      "js/bilge_yolac_karsilama.js",
       "js/claude_code.js",
       "js/claude_code_streaming.js",
       "js/claude_code_plugins.js",
@@ -297,24 +299,29 @@ ui_asset_js_groups <- list(
       "js/ortak_oturumlar.js"
     )
   )),
-  bilge_yolac = c(
-    "js/bilge_yolac_motor.js",
-    "js/bilge_yolac_fizik.js",
-    "js/bilge_yolac_varliklar.js",
-    "js/bilge_yolac_seviye.js",
-    "js/bilge_yolac_dunya.js",
-    "js/bilge_yolac_karakterler.js",
-    "js/bilge_yolac_cephanelik.js",
-    "js/bilge_yolac_dusmanlar.js",
-    "js/bilge_yolac_efektler.js",
-    "js/bilge_yolac_arayuz.js",
-    "js/bilge_yolac_etkilesim.js",
-    "js/bilge_yolac_oyun.js",
-    "js/bilge_yolac_kopru.js"
+  # Bilge Savunması (kule savunma oyunu): çekirdek altyapı -> denge/harita
+  # verisi -> dalga -> saf simülasyon -> çizim/efekt/girdi/HUD -> ses ->
+  # Shiny köprüsü -> menü/sonuç katmanları -> sayfa orkestratörü. Oyun motoru
+  # sayfa açılana kadar başlatılmaz; bu grup yalnızca tanımları yükler.
+  bilge_savunmasi = c(
+    "js/bilge_savunmasi_cekirdek.js",
+    "js/bilge_savunmasi_denge.js",
+    "js/bilge_savunmasi_haritalar.js",
+    "js/bilge_savunmasi_dalga.js",
+    "js/bilge_savunmasi_sim.js",
+    "js/bilge_savunmasi_cizim.js",
+    "js/bilge_savunmasi_efekt.js",
+    "js/bilge_savunmasi_girdi.js",
+    "js/bilge_savunmasi_hud.js",
+    "js/bilge_savunmasi_ses.js",
+    "js/bilge_savunmasi_kopru.js",
+    "js/bilge_savunmasi_menu.js",
+    "js/bilge_savunmasi_sonuc.js",
+    "js/bilge_savunmasi_uygulama.js"
   )
 )
 
-ui_asset_deferred_js_groups <- c("threejs", "deferred", "bilge_yolac")
+ui_asset_deferred_js_groups <- c("threejs", "deferred", "bilge_savunmasi")
 
 ui_asset_js_render_plan <- list(
   list(group = "diagnostics", defer = FALSE),
@@ -325,7 +332,7 @@ ui_asset_js_render_plan <- list(
   list(group = "sso", defer = FALSE),
   list(group = "critical", defer = FALSE),
   list(group = "deferred", defer = TRUE),
-  list(group = "bilge_yolac", defer = TRUE)
+  list(group = "bilge_savunmasi", defer = TRUE)
 )
 
 # Kritik istemci tarafı bağımlılık sırası.
@@ -398,24 +405,30 @@ ui_asset_js_order_rules <- list(
   c("js/excel_coding_deep_thinking.js", "js/tools_model_lock.js"),
 
   c("js/claude_code_pixel_chars.js", "js/claude_code.js"),
+  # Retro karşılama sahnesi piksel persona verisine bağımlıdır.
+  c("js/claude_code_pixel_chars.js", "js/bilge_yolac_karsilama.js"),
   c("js/claude_code.js", "js/claude_code_streaming.js"),
   c("js/claude_code_streaming.js", "js/claude_code_plugins.js"),
   # Oturum hidrasyonu claude_code.js'in window.MergenClaudeCode köprüsüne bağlıdır.
   c("js/claude_code.js", "js/claude_code_sessions.js"),
   c("js/claude_code_plugins.js", "js/claude_code_sessions.js"),
 
-  c("js/bilge_yolac_motor.js", "js/bilge_yolac_fizik.js"),
-  c("js/bilge_yolac_fizik.js", "js/bilge_yolac_varliklar.js"),
-  c("js/bilge_yolac_varliklar.js", "js/bilge_yolac_seviye.js"),
-  c("js/bilge_yolac_seviye.js", "js/bilge_yolac_dunya.js"),
-  c("js/bilge_yolac_dunya.js", "js/bilge_yolac_karakterler.js"),
-  c("js/bilge_yolac_karakterler.js", "js/bilge_yolac_cephanelik.js"),
-  c("js/bilge_yolac_cephanelik.js", "js/bilge_yolac_dusmanlar.js"),
-  c("js/bilge_yolac_dusmanlar.js", "js/bilge_yolac_efektler.js"),
-  c("js/bilge_yolac_efektler.js", "js/bilge_yolac_arayuz.js"),
-  c("js/bilge_yolac_arayuz.js", "js/bilge_yolac_etkilesim.js"),
-  c("js/bilge_yolac_etkilesim.js", "js/bilge_yolac_oyun.js"),
-  c("js/bilge_yolac_oyun.js", "js/bilge_yolac_kopru.js")
+  # Bilge Savunması bağımlılık zinciri: isim alanı/altyapı önce, veri
+  # (denge/harita) sonra, simülasyon ve görsel katmanlar ardından, orkestratör
+  # en sonda yüklenir.
+  c("js/bilge_savunmasi_cekirdek.js", "js/bilge_savunmasi_denge.js"),
+  c("js/bilge_savunmasi_denge.js", "js/bilge_savunmasi_haritalar.js"),
+  c("js/bilge_savunmasi_haritalar.js", "js/bilge_savunmasi_dalga.js"),
+  c("js/bilge_savunmasi_dalga.js", "js/bilge_savunmasi_sim.js"),
+  c("js/bilge_savunmasi_sim.js", "js/bilge_savunmasi_cizim.js"),
+  c("js/bilge_savunmasi_cizim.js", "js/bilge_savunmasi_efekt.js"),
+  c("js/bilge_savunmasi_efekt.js", "js/bilge_savunmasi_girdi.js"),
+  c("js/bilge_savunmasi_girdi.js", "js/bilge_savunmasi_hud.js"),
+  c("js/bilge_savunmasi_hud.js", "js/bilge_savunmasi_ses.js"),
+  c("js/bilge_savunmasi_ses.js", "js/bilge_savunmasi_kopru.js"),
+  c("js/bilge_savunmasi_kopru.js", "js/bilge_savunmasi_menu.js"),
+  c("js/bilge_savunmasi_menu.js", "js/bilge_savunmasi_sonuc.js"),
+  c("js/bilge_savunmasi_sonuc.js", "js/bilge_savunmasi_uygulama.js")
 )
 
 # Kritik CSS katman/kaskad sırası kuralları.

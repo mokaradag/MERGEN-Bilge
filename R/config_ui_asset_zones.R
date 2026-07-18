@@ -463,13 +463,16 @@ ui_asset_ownership_zones <- list(
   ),
 
   bilge_yolac_oyun = list(
-    title = "Bilge Yolaç oyun ve karşılama katmanı",
+    title = "Bilge Savunması oyunu ve Bilge Yolaç karşılama katmanı",
     owner_seam = "bilge_yolac",
     css_groups = character(0),
-    js_groups = c("bilge_yolac"),
-    css = c("css/bilge_yolac_welcome.css"),
-    js = character(0),
-    guard_tests = c("tests/testthat/test-frontend-maintainability-ratchet.R")
+    js_groups = c("bilge_savunmasi"),
+    css = c("css/bilge_yolac_welcome.css", "css/bilge_savunmasi.css"),
+    js = c("js/bilge_yolac_karsilama.js"),
+    guard_tests = c(
+      "tests/testthat/test-bilge-savunmasi-lifecycle-contract.R",
+      "tests/testthat/test-frontend-maintainability-ratchet.R"
+    )
   )
 )
 

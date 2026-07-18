@@ -232,9 +232,52 @@ $(function(){
 
           div(
             class = "cc-output-wrapper",
+            # Retro (8-bit) karşılama sahnesi. Eski etkileşimli mini OYUN
+            # kaldırıldı: burada oyun döngüsü, girdi yakalama veya ses YOKTUR.
+            # www/js/bilge_yolac_karsilama.js piksel personayı (mevcut
+            # claude_code_pixel_chars verisiyle) dekoratif olarak canlandırır
+            # ve CLI-esintili esprili ipucu satırını daktilo eder. Sahne
+            # yalnızca karşılama görünürken çalışır; mesaj gelince durur.
             div(
               id = ns("welcome_screen"),
-              class = "cc-welcome-screen cc-welcome-active"
+              class = "cc-welcome-screen cc-welcome-active cc-welcome-retro",
+              div(
+                class = "cc-cli-kutusu",
+                role = "presentation",
+                div(
+                  class = "cc-cli-baslik",
+                  span(class = "cc-cli-yildiz", `aria-hidden` = "true",
+                       HTML("&#10035;")),
+                  tags$b("Bilge Yolaç"),
+                  span(class = "cc-cli-surum", "ajan çalışma alanı")
+                ),
+                div(
+                  class = "cc-cli-satir",
+                  span(class = "cc-cli-komut", "> "),
+                  "Merhaba! Soldan bir proje klasörü seç, aşağıya komutunu yaz."
+                ),
+                div(
+                  class = "cc-cli-satir cc-cli-ipucu-satiri",
+                  span(class = "cc-cli-komut", "> "),
+                  span(id = ns("cli_ipucu"), class = "cc-cli-ipucu",
+                       `aria-live` = "polite",
+                       "İpucu: Klasörünü seç; Bilge Yolaç dosyaları okur."),
+                  span(class = "cc-cli-imlec", `aria-hidden` = "true")
+                ),
+                if (bilge_savunmasi_enabled()) {
+                  tags$button(
+                    type = "button",
+                    class = "cc-cli-oyun-satiri",
+                    `data-bs-ac` = "1",
+                    `aria-label` = "Bilge Savunması oyununu aç",
+                    span(class = "cc-cli-komut", `aria-hidden` = "true", "> "),
+                    span(class = "cc-cli-oyun-etiket", "[OYNA]"),
+                    "Bilge Savunması'nı Aç — beş uzmanla Bilgi Çekirdeği'ni savun"
+                  )
+                }
+              ),
+              # Piksel persona sahnesi (canvas JS tarafından buraya eklenir).
+              div(id = ns("karsilama_sahne"), class = "cc-karsilama-sahne")
             ),
             div(
               id = ns("output_area"),

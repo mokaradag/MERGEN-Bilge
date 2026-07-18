@@ -52,6 +52,7 @@
   "module_ai_audio",
   "module_identity_startup",
   "module_claude_code",
+  "bilge_savunmasi",
   "ortak_oturumlar",
   "module_analysis",
   "module_support",
@@ -153,6 +154,11 @@
   # (R/module_claude_code_sessions_ui.R + R/module_claude_code_sessions.R)
   # stream_poll'dan sonra, ana server modülünden önce eklendi.
   module_claude_code = list(first = "R/module_claude_code_plugins.R", last = "R/module_claude_code.R", n = 7L),
+  # Bilinçli ekleme: Bilge Savunması (kule savunma oyunu) bölümü.
+  # Yapılandırma/persona manifesti + saf doğrulama + MB_Game_* DB katmanı
+  # (çekirdek -> koşu -> topluluk) + UI/sunucu modülü (7 dosya,
+  # module_claude_code'dan sonra, ortak_oturumlar'dan önce).
+  bilge_savunmasi = list(first = "R/config_bilge_savunmasi.R", last = "R/module_bilge_savunmasi.R", n = 7L),
   # Bilinçli güncelleme: Ortak Oturumlar (işbirlikçi çalışma odaları) bölümü
   # eklendi: saf yetki/e-posta yardımcıları + MB_OrtakOturumlar DB katmanı +
   # oda/davet/hub modülleri (12 dosya, module_claude_code'dan sonra).
@@ -406,7 +412,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 333L -> 343L bilinçli güncelleme: hibrit VoxCPM2 konuşma katmanı: yeni
   # speech_assets bölümü (8 dosya) + server_handlers_send_message başına
   # R/server_speech_assets_runtime.R ve R/server_speech_pcm_stream.R eklendi.
-  expect_equal(length(runtime), 343L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 343L -> 350L bilinçli güncelleme: Bilge Savunması bölümü (7 dosya:
+  # config + doğrulama + MB_Game_* DB katmanı + UI/sunucu modülü) eklendi.
+  expect_equal(length(runtime), 350L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

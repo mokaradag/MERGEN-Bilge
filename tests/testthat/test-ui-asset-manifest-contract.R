@@ -112,22 +112,25 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
     )
   )
 
+  # Bilinçli güncelleme: eski Bilge Yolaç karşılama mini oyunu kaldırıldı;
+  # yerine adanmış sayfada yaşayan Bilge Savunması (kule savunma) grubu geldi.
   expect_identical(
-    asset_env$ui_asset_js_groups$bilge_yolac,
+    asset_env$ui_asset_js_groups$bilge_savunmasi,
     c(
-      "js/bilge_yolac_motor.js",
-      "js/bilge_yolac_fizik.js",
-      "js/bilge_yolac_varliklar.js",
-      "js/bilge_yolac_seviye.js",
-      "js/bilge_yolac_dunya.js",
-      "js/bilge_yolac_karakterler.js",
-      "js/bilge_yolac_cephanelik.js",
-      "js/bilge_yolac_dusmanlar.js",
-      "js/bilge_yolac_efektler.js",
-      "js/bilge_yolac_arayuz.js",
-      "js/bilge_yolac_etkilesim.js",
-      "js/bilge_yolac_oyun.js",
-      "js/bilge_yolac_kopru.js"
+      "js/bilge_savunmasi_cekirdek.js",
+      "js/bilge_savunmasi_denge.js",
+      "js/bilge_savunmasi_haritalar.js",
+      "js/bilge_savunmasi_dalga.js",
+      "js/bilge_savunmasi_sim.js",
+      "js/bilge_savunmasi_cizim.js",
+      "js/bilge_savunmasi_efekt.js",
+      "js/bilge_savunmasi_girdi.js",
+      "js/bilge_savunmasi_hud.js",
+      "js/bilge_savunmasi_ses.js",
+      "js/bilge_savunmasi_kopru.js",
+      "js/bilge_savunmasi_menu.js",
+      "js/bilge_savunmasi_sonuc.js",
+      "js/bilge_savunmasi_uygulama.js"
     )
   )
 
@@ -347,7 +350,9 @@ test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", 
     "css/claude_code_plugins.css",
     # Bilinçli güncelleme: Bilge Yolaç Oturumları sayfası stilleri eklendi.
     "css/claude_code_sessions.css",
-    "css/bilge_yolac_welcome.css"
+    "css/bilge_yolac_welcome.css",
+    # Bilinçli güncelleme: Bilge Savunması sayfa stilleri eklendi.
+    "css/bilge_savunmasi.css"
   )
 
   expected_deferred_js <- c(
@@ -405,6 +410,9 @@ test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", 
     "js/explore_character_step.js",
     "js/surum_bilgilendirme.js",
     "js/claude_code_pixel_chars.js",
+    # Bilinçli güncelleme: retro (8-bit) Çalışma Alanı karşılama sahnesi;
+    # piksel persona verisinden SONRA yüklenir, oyun döngüsü içermez.
+    "js/bilge_yolac_karsilama.js",
     "js/claude_code.js",
     "js/claude_code_streaming.js",
     "js/claude_code_plugins.js",

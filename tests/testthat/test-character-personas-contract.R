@@ -206,16 +206,24 @@ test_that("explore_character_step.js varsayılan persona olarak emre kullanır",
   expect_true(grepl("_selectedCharId = 'emre'", js, fixed = TRUE))
 })
 
-test_that("Bilge Yolaç oyun dosyaları yalnızca yeni persona kimliklerini kullanır", {
+test_that("Bilge Savunması oyun dosyaları yalnızca yeni persona kimliklerini kullanır", {
+  # Bilinçli güncelleme: eski Bilge Yolaç karşılama mini oyunu kaldırıldı;
+  # tarama artık adanmış Bilge Savunması sayfasının dosyalarını kapsar.
   game_files <- c(
-    "bilge_yolac_karakterler.js",
-    "bilge_yolac_cephanelik.js",
-    "bilge_yolac_varliklar.js",
-    "bilge_yolac_motor.js",
-    "bilge_yolac_dunya.js",
-    "bilge_yolac_seviye.js",
-    "bilge_yolac_dusmanlar.js",
-    "bilge_yolac_efektler.js"
+    "bilge_savunmasi_cekirdek.js",
+    "bilge_savunmasi_denge.js",
+    "bilge_savunmasi_haritalar.js",
+    "bilge_savunmasi_dalga.js",
+    "bilge_savunmasi_sim.js",
+    "bilge_savunmasi_cizim.js",
+    "bilge_savunmasi_efekt.js",
+    "bilge_savunmasi_girdi.js",
+    "bilge_savunmasi_hud.js",
+    "bilge_savunmasi_ses.js",
+    "bilge_savunmasi_kopru.js",
+    "bilge_savunmasi_menu.js",
+    "bilge_savunmasi_sonuc.js",
+    "bilge_savunmasi_uygulama.js"
   )
 
   # Kelime sınırı kullanılır; aksi halde "erlik", "rehberlik" gibi Türkçe
@@ -235,22 +243,23 @@ test_that("Bilge Yolaç oyun dosyaları yalnızca yeni persona kimliklerini kull
   }
 })
 
-test_that("Bilge Yolaç oyuncu profilleri ve persona tanımları yeni kimlikleri taşır", {
-  karakterler <- .read_file_bytes_safe(
-    file.path(.personas_repo_root, "www", "js", "bilge_yolac_karakterler.js")
+test_that("Bilge Savunması kahraman tanımları yeni kimlikleri taşır", {
+  # Kahraman sırası girdi katmanında kanonik beşliyi kullanır.
+  girdi <- .read_file_bytes_safe(
+    file.path(.personas_repo_root, "www", "js", "bilge_savunmasi_girdi.js")
   )
-  expect_true(grepl('"emre", "selin", "deniz", "can", "ipek"', karakterler, fixed = TRUE))
+  expect_true(grepl('["emre", "selin", "deniz", "can", "ipek"]', girdi, fixed = TRUE))
 
-  cephanelik <- .read_file_bytes_safe(
-    file.path(.personas_repo_root, "www", "js", "bilge_yolac_cephanelik.js")
+  # Denge tablosu her kanonik persona için kahraman kaydı içerir.
+  denge <- .read_file_bytes_safe(
+    file.path(.personas_repo_root, "www", "js", "bilge_savunmasi_denge.js")
   )
   for (id in .new_persona_ids) {
     expect_true(
-      grepl(paste0(id, ":"), cephanelik, fixed = TRUE),
-      info = paste0("OYUNCU_PROFILLERI '", id, "' profilini içermeli")
+      grepl(paste0(id, ":"), denge, fixed = TRUE),
+      info = paste0("kahramanlar tablosu '", id, "' kaydını içermeli")
     )
   }
-  expect_true(grepl("OYUNCU_PROFILLERI.emre", cephanelik, fixed = TRUE))
 })
 
 test_that("claude_code pixel persona verisi yeni kimlikleri kullanır", {

@@ -31,6 +31,15 @@ navigationObserversInit <- function(input, session, values, render_welcome_scree
       })
     }
     
+    if (input$tabs == "bilge_savunmasi") {
+      # Bilge Savunması tembel başlatma: oyun manifesti ve kayıtlı ilerleme
+      # yalnızca sayfa ilk kez/yeniden açıldığında istemciye gönderilir.
+      shinyjs::runjs(sprintf(
+        "Shiny.setInputValue('bilge_savunmasi_module-page_opened', %s, {priority: 'event'});",
+        as.numeric(Sys.time())
+      ))
+    }
+
     if (input$tabs == "history") {
       shinyjs::runjs(sprintf(
         "Shiny.setInputValue('history_module-external_refresh_trigger', %s, {priority: 'event'});",
