@@ -163,6 +163,8 @@ bs_harita_katalogu <- function() {
       dalga_sayisi = 8L,
       taban_cekirdek = 20L,
       dalga_dusman_ust_siniri = 28L,
+      dalga_dusman_sayilari = c(6L, 12L, 10L, 12L, 11L, 10L, 15L, 12L),
+      dalga_patron_sayilari = c(0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L),
       acilis_kosulu = NULL
     ),
     celiski_kavsagi = list(
@@ -172,6 +174,8 @@ bs_harita_katalogu <- function() {
       dalga_sayisi = 10L,
       taban_cekirdek = 20L,
       dalga_dusman_ust_siniri = 34L,
+      dalga_dusman_sayilari = c(8L, 12L, 12L, 10L, 13L, 10L, 11L, 13L, 17L, 10L),
+      dalga_patron_sayilari = c(0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L, 0L, 1L),
       acilis_kosulu = "baglam_kapisi"
     ),
     bilgi_cekirdegi = list(
@@ -181,6 +185,8 @@ bs_harita_katalogu <- function() {
       dalga_sayisi = 12L,
       taban_cekirdek = 20L,
       dalga_dusman_ust_siniri = 42L,
+      dalga_dusman_sayilari = c(14L, 13L, 12L, 11L, 12L, 9L, 14L, 12L, 18L, 16L, 13L, 11L),
+      dalga_patron_sayilari = c(0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L),
       acilis_kosulu = "celiski_kavsagi"
     )
   )
@@ -200,6 +206,22 @@ bs_zorluk_katalogu <- function() {
 # Tek dalga için sunucu tarafı puan üst sınırı hesabında kullanılan katsayılar.
 BS_DUSMAN_PUAN_UST_SINIRI <- 18L   # Normal düşman başına en yüksek taban puan
 BS_PATRON_PUAN_UST_SINIRI <- 320L  # Patron dalgası ek puan üst sınırı
+
+# Sunucu tarafı dalga puan hesabı, istemcinin bildirdiği olduruldu/puan
+# alanlarına değil bu deterministik harita planından türetilen düşman sayısına
+# dayanır. Kimlikler www/js/bilge_savunmasi_denge.js ile aynı tutulmalıdır.
+.bs_haftalik_dalga_sayi_carpanlari <- list(
+  hizli_tehditler = 1,
+  kisitli_kaynak = 1,
+  dirya_dalgalar = 1.2
+)
+
+bs_dalga_sayi_carpani <- function(degistirici = NULL) {
+  kimlik <- if (is.null(degistirici)) "" else as.character(degistirici)[1]
+  if (is.na(kimlik)) kimlik <- ""
+  carpan <- .bs_haftalik_dalga_sayi_carpanlari[[kimlik]]
+  if (is.null(carpan)) 1 else as.numeric(carpan)
+}
 
 # İstemcinin izin verilen en yüksek oyun hızı çarpanı (bkz.
 # www/js/bilge_savunmasi_uygulama.js: kosu.hiz yalnızca 1 veya 2 olabilir).

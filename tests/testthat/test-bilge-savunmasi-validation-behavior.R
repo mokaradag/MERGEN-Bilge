@@ -56,63 +56,39 @@ test_that("geçerli koşu özeti kabul edilir ve puan sunucuda hesaplanır", {
 
   expect_true(sonuc$gecerli)
   expect_null(sonuc$neden)
-  # 8 dalga x 60 puan + çekirdek 20*25 + zafer 500 = 1480
-  expect_identical(sonuc$puan, 1480L)
+  # Sunucuya ait deterministik dalga planı + çekirdek 20*25 + zafer 500.
+  expect_identical(sonuc$puan, 3224L)
   expect_identical(sonuc$yildiz, 3L)
-  expect_identical(sonuc$xp, 148L)
+  expect_identical(sonuc$xp, 322L)
   expect_true(sonuc$zafer)
   expect_identical(sonuc$kahramanlar, c("emre", "selin"))
 })
 
-test_that("şişirilmiş dalga puanı sunucu üst sınırıyla kırpılır", {
+test_that("dalga puanı istemci puan ve olduruldu alanlarından bağımsızdır", {
   ozet <- .bs_test_gecerli_ozet()
-  # İstemci 5. dalga için fahiş puan beyan ediyor (öldürme sayısı gerçek: 8).
-  ozet$dalga_ozetleri[[5]]$puan <- 999999
-
   sonuc <- bs_kosu_ozeti_dogrula(ozet, .bs_test_kosu())
-  expect_true(sonuc$gecerli)
 
-  harita <- bs_harita_katalogu()$baglam_kapisi
-  sinir <- bs_dalga_puan_siniri(harita, 5L, olduruldu = 8L)
-  beklenen <- as.integer(round(7 * 60 + sinir + 20 * 25 + 500))
-  expect_identical(sonuc$puan, beklenen)
-  expect_true(sonuc$puan < 999999)
-})
-
-test_that("puan, doğrulanmış öldürme sayısına dayanır; sıfır öldürmeyle şişirilmiş puan reddedilir", {
-  # Güvenlik regresyonu: istemci hiçbir düşman öldürmediğini bildirirken
-  # (olduruldu = 0) her dalga için üst sınıra eşit fahiş puan beyan ediyor.
-  # bs_puan_yeniden_hesapla() bu beyanı doğrulanmış öldürme sayısından
-  # (0) türetilen sınıra göre kırpmalı, yani dalga katkısı sıfır olmalı.
-  ozet <- .bs_test_gecerli_ozet()
-  ozet$dalga_ozetleri <- lapply(ozet$dalga_ozetleri, function(d) {
+  sahte <- ozet
+  sahte$dalga_ozetleri <- lapply(sahte$dalga_ozetleri, function(d) {
     d$olduruldu <- 0L
     d$puan <- 999999
     d
   })
+  sahte_sonuc <- bs_kosu_ozeti_dogrula(sahte, .bs_test_kosu())
 
-  sonuc <- bs_kosu_ozeti_dogrula(ozet, .bs_test_kosu())
-  expect_true(sonuc$gecerli)
-  # Dalga puanı katkısı sıfır: yalnızca çekirdek (20*25) ve zafer (500) bonusu kalır.
-  expect_identical(sonuc$puan, as.integer(20 * 25 + 500))
-  expect_true(sonuc$puan < 1480L)
-  expect_identical(sonuc$xp, bs_xp_hesapla(sonuc$puan))
+  expect_true(sahte_sonuc$gecerli)
+  expect_identical(sahte_sonuc$puan, sonuc$puan)
+  expect_true(sahte_sonuc$puan < 999999)
 })
 
-test_that("bs_dalga_puan_siniri öldürme sayısını haritanın üst sınırına kırpar", {
+test_that("bs_dalga_puan_siniri sunucu harita planı ve değiştirici sınırını kullanır", {
   harita <- bs_harita_katalogu()$baglam_kapisi
 
-  # Bildirilen öldürme sayısı harita üst sınırını (28) aşarsa yine de kırpılır.
-  asiri <- bs_dalga_puan_siniri(harita, 1L, olduruldu = 999L)
-  tam <- bs_dalga_puan_siniri(harita, 1L, olduruldu = 28L)
-  expect_identical(asiri, tam)
-
-  # Öldürme sayısı sıfırsa patron dalgasında bile ek puan verilmez.
-  expect_identical(bs_dalga_puan_siniri(harita, 8L, olduruldu = 0L), 0L)
-  expect_true(bs_dalga_puan_siniri(harita, 8L, olduruldu = 1L) > 0L)
-
-  # olduruldu verilmezse (geriye dönük uyum) eski davranış korunur.
-  expect_identical(bs_dalga_puan_siniri(harita, 1L), tam)
+  expect_identical(bs_dalga_puan_siniri(harita, 1L), 6L * BS_DUSMAN_PUAN_UST_SINIRI)
+  expect_identical(bs_dalga_puan_siniri(harita, 8L),
+                   12L * BS_DUSMAN_PUAN_UST_SINIRI + BS_PATRON_PUAN_UST_SINIRI)
+  expect_identical(bs_dalga_puan_siniri(harita, 7L, degistirici = "dirya_dalgalar"),
+                   18L * BS_DUSMAN_PUAN_UST_SINIRI)
 })
 
 test_that("koşu özeti doğrulaması hile sınırlarını reddeder", {
@@ -205,8 +181,8 @@ test_that("yenilgi özeti zafer bonusu olmadan kabul edilir", {
   expect_true(sonuc$gecerli)
   expect_false(sonuc$zafer)
   expect_identical(sonuc$yildiz, 0L)
-  # 4 dalga x 60; çekirdek 0; zafer bonusu yok.
-  expect_identical(sonuc$puan, 240L)
+  # İlk 4 dalganın sunucu planı puanı; çekirdek 0; zafer bonusu yok.
+  expect_identical(sonuc$puan, 1040L)
 })
 
 test_that("yıldız eşikleri ve seviye hesabı beklenen değerleri üretir", {
@@ -222,7 +198,7 @@ test_that("yıldız eşikleri ve seviye hesabı beklenen değerleri üretir", {
   expect_identical(bs_seviye_hesapla(600), 3L)
 
   # XP koşu başına 400 ile sınırlıdır.
-  expect_identical(bs_xp_hesapla(1480), 148L)
+  expect_identical(bs_xp_hesapla(3224), 322L)
   expect_identical(bs_xp_hesapla(99999), 400L)
 })
 
