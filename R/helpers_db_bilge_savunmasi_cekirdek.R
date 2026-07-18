@@ -136,11 +136,27 @@ bs_db_reset_availability_cache <- function() {
   invisible(NULL)
 }
 
+bs_db_required_tables <- function() {
+  c(
+    "MB_Game_Profiles",
+    "MB_Game_CampaignProgress",
+    "MB_Game_HeroProgress",
+    "MB_Game_Runs",
+    "MB_Game_RunCheckpoints",
+    "MB_Game_Achievements",
+    "MB_Game_ChallengeSeasons",
+    "MB_Game_ChallengeEntries",
+    "MB_Game_Blueprints",
+    "MB_Game_CommunityContributions"
+  )
+}
+
 #' MB_Game_* Tabloları Erişilebilir mi?
 #'
-#' @description Aşamalı devreye alma için üç nöbetçi tabloyu kontrol eder
-#' (Profiles, Runs, ChallengeSeasons). TRUE kalıcı önbelleğe alınır; FALSE
-#' 60 saniye boyunca tekrar sorgulanmaz.
+#' @description Aşamalı devreye alma için yalnızca birkaç nöbetçi tabloyu değil,
+#' kalıcılık akışlarının okuduğu/yazdığı tam MB_Game tablo kümesini kontrol
+#' eder. TRUE kalıcı önbelleğe alınır; FALSE 60 saniye boyunca tekrar
+#' sorgulanmaz.
 bs_db_tables_available <- function(conn = NULL, force_refresh = FALSE) {
   cached <- .bs_db_state$available
 
@@ -166,9 +182,11 @@ bs_db_tables_available <- function(conn = NULL, force_refresh = FALSE) {
     on.exit(.bs_db_release(handle), add = TRUE)
 
     ok <- .bs_db_try(
-      isTRUE(DBI::dbExistsTable(handle$conn, "MB_Game_Profiles")) &&
-        isTRUE(DBI::dbExistsTable(handle$conn, "MB_Game_Runs")) &&
-        isTRUE(DBI::dbExistsTable(handle$conn, "MB_Game_ChallengeSeasons")),
+      all(vapply(
+        bs_db_required_tables(),
+        function(tablo) isTRUE(DBI::dbExistsTable(handle$conn, tablo)),
+        logical(1)
+      )),
       fallback = FALSE,
       uyari = "Bilge Savunması tabloları kontrol edilemedi:"
     )

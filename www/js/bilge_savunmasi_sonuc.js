@@ -55,7 +55,9 @@
       }
 
       var planHtml = "";
-      if (!sonuc.yerel && sonuc.kabul && kosu.kosuId) {
+      var haftalikKosu = kosu.mod === "haftalik" ||
+        (kosu.sim && kosu.sim.durum && kosu.sim.durum.mod === "haftalik");
+      if (!haftalikKosu && !sonuc.yerel && sonuc.kabul && kosu.kosuId) {
         planHtml = '<button type="button" class="bs-yan-dugme" ' +
           'data-bs-komut="plan-yayinla">' +
           '<i class="fa fa-compass-drafting" aria-hidden="true"></i> ' +
@@ -109,6 +111,18 @@
 
     // ── Plan yayınlama akışı ──────────────────────────────────────────────────
     planYayinlaGoster: function(kosu) {
+      var haftalikKosu = kosu && (kosu.mod === "haftalik" ||
+        (kosu.sim && kosu.sim.durum && kosu.sim.durum.mod === "haftalik"));
+      if (haftalikKosu) {
+        kosu.hud.kaplamaGoster(
+          '<h3>Plan Yayınlanamaz</h3>' +
+          '<p class="bs-kaplama-notu">Haftalık meydan okuma koşuları özel ' +
+          'değiştiriciyle oynandığı için savunma planı olarak yayınlanamaz.</p>' +
+          '<div class="bs-sonuc-dugmeler"><button type="button" class="bs-yan-dugme" ' +
+          'data-bs-komut="menu-don">Menüye Dön</button></div>'
+        );
+        return;
+      }
       kosu.hud.kaplamaGoster(
         '<h3>Savunma Planını Yayınla</h3>' +
         '<p class="bs-kaplama-notu">Planın; harita, tohum ve yerleşim özetinle ' +
@@ -125,6 +139,9 @@
     },
 
     planGonder: function(kosu) {
+      var haftalikKosu = kosu && (kosu.mod === "haftalik" ||
+        (kosu.sim && kosu.sim.durum && kosu.sim.durum.mod === "haftalik"));
+      if (haftalikKosu) return;
       var girdiEl = document.getElementById("bs-plan-baslik");
       var baslik = girdiEl ? girdiEl.value : "";
       var yerlesimler = [];
