@@ -187,6 +187,25 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
     invisible(NULL)
   }
 
+  session_is_closed <- function() {
+    tryCatch(
+      is.function(session$isClosed) && isTRUE(session$isClosed()),
+      error = function(e) FALSE
+    )
+  }
+
+  dispatch_in_session <- function(expr) {
+    if (session_is_closed()) return(invisible(NULL))
+
+    # later/promise callbacks do not automatically inherit either a reactive
+    # consumer or Shiny's default session domain. Both are needed here:
+    # reactiveVal reads require isolate(), while shinyjs resolves its session
+    # through getDefaultReactiveDomain().
+    shiny::withReactiveDomain(session, {
+      shiny::isolate(force(expr))
+    })
+  }
+
   # --- Kişisel öneki persona onaylandığı anda hazırlamaya başla ---
   prewarm_welcome <- function(persona_id) {
     persona <- mergen_speech_canonical_persona(persona_id)
@@ -256,6 +275,7 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
     dispatch <- function(include_prefix) {
       if (isTRUE(dispatch_guard$done)) return(invisible(NULL))
       dispatch_guard$done <- TRUE
+      if (session_is_closed()) return(invisible(NULL))
 
       # Karşılama yalnızca sohbet/başlangıç yüzeyinde geçerlidir: gönderim
       # anında kontrol. Gecikmeli (deadline) gönderim penceresinde kullanıcı
@@ -285,18 +305,14 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
         if (length(items) > 1) "evet" else "hayır"
       ))
 
-      # Deadline/promise callbacks anlık bir reactive consumer dışında çalışır.
-      # AI Uzman modülü kendi reactiveVal durumunu okuduğu için çağrıyı açıkça
-      # isolate bağlamına al; aksi halde .getReactiveEnvironment() hatası tüm
-      # Shiny oturumunu sonlandırır.
-      shiny::isolate({
+      dispatch_in_session(
         ai_expert$start_speaking(
           items[[1]]$text,
           cooldown_secs = ai_expert$COOLDOWN_GREETING,
           kind = "welcome",
           static_plan = list(items = items)
         )
-      })
+      )
       invisible(NULL)
     }
 
@@ -342,16 +358,14 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
       "page=%s persona=%s variant=%d", page, persona, variant
     ))
 
-    # Şu an observer içinden çağrılır; isolate koruması gelecekte gecikmeli bir
-    # dispatch eklenirse aynı reactive-context çökmesini önlemeye devam eder.
-    shiny::isolate({
+    dispatch_in_session(
       ai_expert$start_speaking(
         item$text,
         cooldown_secs = ai_expert$COOLDOWN_PAGE,
         kind = "page_guidance",
         static_plan = list(items = list(item))
       )
-    })
+    )
 
     # Tüketilen klipten sonra bu sayfanın SIRADAKİ adayını önden ısıt
     next_variant <- mergen_speech_shuffle_bag_peek(state$bags, bag_key)
