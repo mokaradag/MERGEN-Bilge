@@ -581,6 +581,22 @@
   padding: 20px;
 }
 .bs-oyun-kaplama.bs-kaplama-acik { display: flex; }
+.bs-oyun-kaplama.bs-geri-sayim-kaplama {
+  inset: auto 24px auto auto;
+  top: 92px;
+  width: min(360px, calc(100vw - 32px));
+  align-items: flex-start;
+  justify-content: flex-end;
+  background: transparent;
+  padding: 0;
+  pointer-events: none;
+}
+.bs-oyun-kaplama.bs-geri-sayim-kaplama .bs-kaplama-panel {
+  width: 100%;
+  padding: 16px 18px;
+  pointer-events: none;
+}
+.bs-oyun-kaplama.bs-geri-sayim-kaplama .bs-yan-dugme { pointer-events: auto; }
 .bs-kaplama-panel {
   width: min(440px, 92vw);
   text-align: center;

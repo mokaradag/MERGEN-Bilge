@@ -58,8 +58,12 @@
   TRUE
 }
 
-# İstemci başlangıç yükünü derler (profil paketi + haftalık + devam koşusu).
-.bs_srv_init_yuku <- function(uid) {
+# İlerleme paketini (kalıcılık/profil/kampanya/kahraman/başarım/devam)
+# çözer. Hem ilk sayfa açılışında (.bs_srv_init_yuku) hem de kalıcı bir koşu
+# sonuçlandıktan sonra menüye dönüşte istemcinin BAYAT ilerleme göstermemesi
+# için tam sayfa init'i beklemeden yeniden istenebilir (bkz.
+# input$bs_profil_yenile ve www/js/bilge_savunmasi_uygulama.js "sunucu-profil").
+.bs_srv_profil_yuku <- function(uid) {
   kalicilik <- isTRUE(bs_db_tables_available())
 
   bundle <- NULL
@@ -70,19 +74,28 @@
   }
 
   list(
-    etkin = TRUE,
-    surumler = bs_surum_bilgisi(),
-    personalar = bs_persona_manifest(),
-    haritalar = bs_harita_katalogu(),
-    zorluklar = bs_zorluk_katalogu(),
-    basarim_katalogu = bs_basarim_katalogu(),
-    haftalik = bs_haftalik_meydan_okuma(),
     kalicilik = kalicilik,
     profil = if (!is.null(bundle)) bundle$profil else NULL,
     kampanya = if (!is.null(bundle)) .bs_srv_df_satirlari(bundle$kampanya) else list(),
     kahraman_ilerlemesi = if (!is.null(bundle)) .bs_srv_df_satirlari(bundle$kahramanlar) else list(),
     basarimlar = if (!is.null(bundle)) .bs_srv_df_satirlari(bundle$basarimlar) else list(),
     devam = devam
+  )
+}
+
+# İstemci başlangıç yükünü derler (statik manifest alanları + ilerleme paketi).
+.bs_srv_init_yuku <- function(uid) {
+  c(
+    list(
+      etkin = TRUE,
+      surumler = bs_surum_bilgisi(),
+      personalar = bs_persona_manifest(),
+      haritalar = bs_harita_katalogu(),
+      zorluklar = bs_zorluk_katalogu(),
+      basarim_katalogu = bs_basarim_katalogu(),
+      haftalik = bs_haftalik_meydan_okuma()
+    ),
+    .bs_srv_profil_yuku(uid)
   )
 }
 
@@ -109,6 +122,30 @@
   }
 
   if (identical(mod, "plan")) {
+    # "Devam Et" isteği zaten var olan bir kalıcı koşunun kosu_id/istemci_
+    # jetonunu taşır (bkz. www/js/bilge_savunmasi_uygulama.js kosuIstegiGonder
+    # düzleştirmesi). Böyle bir devamda harita/zorluk/tohum/plan_id, planın
+    # HÂLÂ var olup olmadığına bakılmaksızın doğrudan aktif koşu satırından
+    # çözülmelidir; aksi halde plan sahibi planı sildiğinde, hâlâ etkin ve
+    # kontrol noktalı bir devam denemesi plan_bulunamadi ile reddedilir.
+    istek_kosu_id <- suppressWarnings(as.integer(istek$kosu_id))
+    istek_jeton <- .bs_metin_temizle(istek$istemci_jetonu, 64L)
+    if (!is.null(uid) && !is.na(istek_kosu_id) && nzchar(istek_jeton)) {
+      aktif <- bs_db_active_run(uid)
+      if (!is.null(aktif) && identical(aktif$kosu_id, istek_kosu_id) &&
+          identical(as.character(aktif$mod), "plan") &&
+          identical(aktif$istemci_jetonu, istek_jeton)) {
+        return(list(
+          mod = "plan",
+          harita = aktif$harita,
+          zorluk = aktif$zorluk,
+          tohum = aktif$tohum,
+          sezon_id = NULL,
+          plan_id = aktif$plan_id
+        ))
+      }
+    }
+
     plan_id <- suppressWarnings(as.integer(istek$plan_id))
     if (is.na(plan_id)) return(list(hata = "plan_kimligi"))
     plan <- bs_db_get_blueprint(plan_id)
@@ -251,16 +288,46 @@ bilgeSavunmasiServer <- function(id, current_user_id) {
       # config above may contain a new campaign seed (or a new weekly seed
       # after ISO-week rollover), so the client must receive the run fields
       # that actually live in MB_Game_Runs.
+      etkin_mod <- if (!is.null(kosu)) kosu$mod else cozum$mod
+      degistirici <- NULL
+      if (identical(etkin_mod, "haftalik")) {
+        # Değiştirici KOŞUNUN KENDİ sezonundan çözülür; istemcinin "şimdiki"
+        # haftaya bakması YANLIŞTIR. Aksi halde hafta dönümünden sonra devam
+        # edilen eski bir haftalık koşu, yanlışlıkla yeni haftanın
+        # değiştiricisiyle (düşman hızı/kaynak/dalga yoğunluğu) oynanır.
+        etkin_sezon_id <- if (!is.null(kosu)) kosu$sezon_id else cozum$sezon_id
+        sezon_kaydi <- if (!is.null(etkin_sezon_id)) {
+          bs_db_get_season_by_id(etkin_sezon_id)
+        } else {
+          NULL
+        }
+        degistirici <- if (!is.null(sezon_kaydi)) {
+          sezon_kaydi$degistirici
+        } else {
+          bs_haftalik_meydan_okuma()$degistirici
+        }
+      }
+
       gonder("bs-kosu-basladi", list(
         kosu_id = if (!is.null(kosu)) kosu$kosu_id else NULL,
         kalici = !is.null(kosu),
-        mod = if (!is.null(kosu)) kosu$mod else cozum$mod,
+        mod = etkin_mod,
         harita = if (!is.null(kosu)) kosu$harita else cozum$harita,
         zorluk = if (!is.null(kosu)) kosu$zorluk else cozum$zorluk,
         tohum = if (!is.null(kosu)) kosu$tohum else cozum$tohum,
         plan_id = if (!is.null(kosu)) kosu$plan_id else cozum$plan_id,
+        degistirici = degistirici,
         istemci_jetonu = as.character(istek$istemci_jetonu %||% "")[1]
       ))
+    })
+
+    # İlerleme yenileme: kalıcı bir koşu sonuçlandıktan sonra menüye dönüşte
+    # profil/kampanya/kahraman/başarım verisi tam sayfa açılışı beklemeden
+    # tazelenir (bkz. www/js/bilge_savunmasi_uygulama.js "sunucu-profil").
+    shiny::observeEvent(input$bs_profil_yenile, {
+      if (!bilge_savunmasi_enabled()) return(NULL)
+      uid <- .bs_srv_resolve_uid(current_user_id)
+      gonder("bs-profil", .bs_srv_profil_yuku(uid))
     })
 
     # Kontrol noktası: dalga sınırında sınırlı durum yazımı.

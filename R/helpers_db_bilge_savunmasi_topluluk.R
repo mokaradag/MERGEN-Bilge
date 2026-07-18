@@ -106,19 +106,30 @@ bs_db_get_season_by_id <- function(sezon_id, conn = NULL) {
     satir <- DBI::dbGetQuery(
       handle$conn,
       paste(
-        "SELECT ChallengeSeasonID, WeekCode, MapID, Difficulty, Seed",
+        "SELECT ChallengeSeasonID, WeekCode, MapID, Difficulty, Seed, ConfigJson",
         "FROM MB_Game_ChallengeSeasons WHERE ChallengeSeasonID = ?"
       ),
       params = normalize_db_params(list(sid))
     )
     if (nrow(satir) == 0L) return(NULL)
 
+    # Değiştirici (haftalık düşman hızı/kaynak/dalga yoğunluğu artışı), sezon
+    # OLUŞTURULURKEN ConfigJson içine yazılan tam meydan okuma bileşiminden
+    # okunur. Bu, bir koşu devam ederken hafta dönse bile o koşunun KENDİ
+    # sezonuna ait değiştiricinin (istemcinin "şimdiki" hafta bilgisi değil)
+    # doğru şekilde çözülmesini sağlar.
+    yapilandirma <- tryCatch(
+      jsonlite::fromJSON(satir$ConfigJson[1] %||% "{}", simplifyVector = FALSE),
+      error = function(e) list()
+    )
+
     list(
       sezon_id = as.integer(satir$ChallengeSeasonID[1]),
       hafta_kodu = as.character(satir$WeekCode[1]),
       harita = as.character(satir$MapID[1]),
       zorluk = as.character(satir$Difficulty[1]),
-      tohum = as.integer(satir$Seed[1])
+      tohum = as.integer(satir$Seed[1]),
+      degistirici = yapilandirma$degistirici
     )
   },
   fallback = NULL,
@@ -417,7 +428,7 @@ bs_db_publish_blueprint <- function(user_id, kosu_id, baslik, plan,
     kosu <- DBI::dbGetQuery(
       handle$conn,
       paste(
-        "SELECT GameRunID, Status, MapID, Difficulty, Seed, Score, Stars,",
+        "SELECT GameRunID, Status, Mode, MapID, Difficulty, Seed, Score, Stars,",
         "FinalWave, CoreHealth",
         "FROM MB_Game_Runs WHERE GameRunID = ? AND UserID = ?"
       ),
@@ -425,6 +436,17 @@ bs_db_publish_blueprint <- function(user_id, kosu_id, baslik, plan,
     )
     if (nrow(kosu) == 0L ||
         !as.character(kosu$Status[1]) %in% c("Tamamlandı", "Yenilgi")) {
+      return(NULL)
+    }
+
+    # Haftalık meydan okuma koşuları o haftaya özgü bir değiştiriciyle
+    # (düşman hızı/kaynak/dalga yoğunluğu) oynanır; savunma planı yalnızca
+    # harita/zorluk/tohum taşır ve deneme (plan) modu hiçbir değiştirici
+    # uygulamaz. Böyle bir koşudan plan yayınlamak, yaratıcının
+    # değiştiriciyle elde ettiği sonucu değiştiricisiz bir tekrar oynanışla
+    # haksız biçimde kıyaslar; bu yüzden haftalık koşu kaynaklı yayın
+    # reddedilir.
+    if (identical(as.character(kosu$Mode[1]), "haftalik")) {
       return(NULL)
     }
 

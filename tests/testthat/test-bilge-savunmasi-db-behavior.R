@@ -208,6 +208,12 @@ test_that("profil oluşturma, tekrar okuma ve ayar kaydetme çalışır", {
 
   expect_true(bs_db_tables_available(conn = conn, force_refresh = TRUE))
 
+  eksik_conn <- .bs_test_db_kur()
+  on.exit(DBI::dbDisconnect(eksik_conn), add = TRUE)
+  DBI::dbRemoveTable(eksik_conn, "MB_Game_Blueprints")
+  bs_db_reset_availability_cache()
+  expect_false(bs_db_tables_available(conn = eksik_conn, force_refresh = TRUE))
+
   profil <- bs_db_get_or_create_profile(101L, conn = conn)
   expect_identical(profil$seviye, 1L)
   expect_identical(profil$xp, 0L)
@@ -399,9 +405,9 @@ test_that("sonuçlandırma idempotenttir, ödülleri bir kez yazar ve izole eder
 
   sonuc <- bs_db_finalize_run(101L, kosu$kosu_id, "jeton-fin", ozet, conn = conn)
   expect_true(sonuc$kabul)
-  expect_identical(sonuc$puan, 1480L)
+  expect_identical(sonuc$puan, 3224L)
   expect_identical(sonuc$yildiz, 3L)
-  expect_identical(sonuc$xp, 148L)
+  expect_identical(sonuc$xp, 322L)
   expect_false(sonuc$tekrar)
   expect_true(all(c("ilk_zafer", "uc_yildiz", "kusursuz_savunma", "tam_kadro")
                   %in% sonuc$yeni_basarimlar))
@@ -410,12 +416,12 @@ test_that("sonuçlandırma idempotenttir, ödülleri bir kez yazar ve izole eder
   tekrar <- bs_db_finalize_run(101L, kosu$kosu_id, "jeton-fin", ozet, conn = conn)
   expect_true(tekrar$kabul)
   expect_true(tekrar$tekrar)
-  expect_identical(tekrar$puan, 1480L)
+  expect_identical(tekrar$puan, 3224L)
   expect_length(tekrar$yeni_basarimlar, 0L)
 
   profil <- bs_db_get_or_create_profile(101L, conn = conn)
-  expect_identical(profil$xp, 148L)          # iki kez yazılmadı
-  expect_identical(profil$seviye, 1L)
+  expect_identical(profil$xp, 322L)          # iki kez yazılmadı
+  expect_identical(profil$seviye, 2L)
 
   bundle <- bs_db_load_profile_bundle(101L, conn = conn)
   expect_identical(nrow(bundle$kampanya), 1L)
@@ -733,4 +739,250 @@ test_that("koşu bırakma yalnızca sahibinin aktif koşusunu kapatır", {
   expect_true(bs_db_abandon_run(101L, kosu$kosu_id, conn = conn))
   expect_false(bs_db_abandon_run(101L, kosu$kosu_id, conn = conn))
   expect_null(bs_db_active_run(101L, conn = conn))
+})
+
+test_that("sonuçlandırma durum geçişini Aktif koşuluyla iddia eder; eşzamanlı ele geçirmede ödül tekrar uygulanmaz", {
+  conn <- .bs_test_db_kur()
+  on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
+
+  kosu <- bs_db_start_run(101L, "baglam_kapisi", "normal", 321L,
+                          istemci_jetonu = "jeton-yaris", conn = conn)
+  ozet <- .bs_test_db_ozet(321L)
+
+  gercek_dogrula <- bs_kosu_ozeti_dogrula
+  on.exit(assign("bs_kosu_ozeti_dogrula", gercek_dogrula, envir = globalenv()),
+          add = TRUE)
+  # bs_kosu_ozeti_dogrula() normal biçimde geçerli bir sonuç üretir, ancak
+  # yan etki olarak AYNI bağlantı/transaction üzerinde satırı eşzamanlı bir
+  # "kazanan" sonuçlandırma isteği gibi ÖNCEDEN Tamamlandı yapar (tek
+  # bağlantı üzerinden yarış durumunu deterministik biçimde simüle eder;
+  # bkz. "yeni koşu eklemesi başarısız olursa..." testindeki NOT NULL
+  # kısıt tekniği ile aynı yaklaşım). Gerçek kod bu durumu
+  # WHERE ... AND Status = 'Aktif' koşuluyla yakalamalı ve ödülleri
+  # (kampanya/kahraman/profil/başarım) TEKRAR uygulamak yerine artık
+  # sonuçlanmış satırı idempotent olarak döndürmelidir.
+  assign("bs_kosu_ozeti_dogrula", function(...) {
+    DBI::dbExecute(
+      conn,
+      paste(
+        "UPDATE MB_Game_Runs SET Status = 'Tamamlandı', Score = 7,",
+        "Stars = 1, XPEarned = 2, FinalWave = 1, CoreHealth = 5,",
+        "DurationSeconds = 10 WHERE GameRunID = ?"
+      ),
+      params = list(kosu$kosu_id)
+    )
+    gercek_dogrula(...)
+  }, envir = globalenv())
+
+  sonuc <- bs_db_finalize_run(101L, kosu$kosu_id, "jeton-yaris", ozet, conn = conn)
+
+  expect_true(sonuc$kabul)
+  expect_true(sonuc$tekrar)
+  # Sunucunun asıl doğrulama/ödül hesabı (1480 puan) değil, "kazanan"
+  # eşzamanlı isteğin satıra yazdığı sentinel değerler dönmelidir.
+  expect_identical(sonuc$puan, 7L)
+  expect_identical(sonuc$yildiz, 1L)
+  expect_identical(sonuc$xp, 2L)
+
+  # Kampanya/kahraman/profil ilerlemesi İKİNCİ KEZ yazılmamış olmalı.
+  profil <- bs_db_get_or_create_profile(101L, conn = conn)
+  expect_identical(profil$xp, 0L)
+  bundle <- bs_db_load_profile_bundle(101L, conn = conn)
+  expect_identical(nrow(bundle$kampanya), 0L)
+  expect_identical(nrow(bundle$kahramanlar), 0L)
+})
+
+test_that("haftalık koşudan savunma planı yayınlanamaz (değiştirici planla taşınmaz)", {
+  conn <- .bs_test_db_kur()
+  on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
+
+  meydan <- bs_haftalik_meydan_okuma(
+    as.POSIXct("2026-07-15 12:00:00", tz = "Europe/Istanbul")
+  )
+  sezon <- bs_db_get_or_create_season(meydan, conn = conn)
+
+  kosu <- bs_db_start_run(101L, meydan$harita, meydan$zorluk, meydan$tohum,
+                          mod = "haftalik", sezon_id = sezon$sezon_id,
+                          istemci_jetonu = "haftalik-plan", conn = conn)
+  harita_kaydi <- bs_harita_katalogu()[[meydan$harita]]
+  dalgalar <- lapply(seq_len(harita_kaydi$dalga_sayisi), function(i) {
+    list(dalga = i, olduruldu = 8L, sizinti = 0L, puan = 60,
+         cekirdek = 20, kaynak = 150)
+  })
+  ozet <- list(
+    sema = BS_SEMA_SURUMU, oyun_surumu = BS_OYUN_SURUMU,
+    harita = meydan$harita, zorluk = meydan$zorluk, tohum = meydan$tohum,
+    mod = "haftalik", dalga_ozetleri = dalgalar,
+    son_dalga = harita_kaydi$dalga_sayisi, son_cekirdek = 20, zafer = TRUE,
+    sure_saniye = 90, kullanilan_kahramanlar = list("emre"), olay_ozeti = list()
+  )
+  sonuc <- bs_db_finalize_run(101L, kosu$kosu_id, "haftalik-plan", ozet, conn = conn)
+  expect_true(sonuc$kabul)
+
+  plan <- list(
+    sema = BS_SEMA_SURUMU, harita = meydan$harita, zorluk = meydan$zorluk,
+    tohum = meydan$tohum, baslik = "Haftalık Plan",
+    yerlesimler = list(list(kahraman = "emre", x = 2L, y = 2L, seviye = 1L, dalga = 1L))
+  )
+  # Regresyon: haftalık koşunun değiştiricisi plana taşınmaz (plan/deneme
+  # modu hiç değiştirici uygulamaz); yaratıcının değiştiriciyle elde ettiği
+  # sonuçla haksız kıyaslamayı önlemek için yayın tamamen reddedilir.
+  expect_null(bs_db_publish_blueprint(101L, kosu$kosu_id, "Haftalık Plan",
+                                      plan, conn = conn))
+  expect_length(bs_db_list_blueprints(conn = conn), 0L)
+
+  # Normal (kampanya) koşulu yayın hâlâ çalışır (regresyon değil).
+  kampanya_kosu <- bs_db_start_run(101L, "baglam_kapisi", "normal", 707L,
+                                   istemci_jetonu = "kampanya-plan", conn = conn)
+  kampanya_sonuc <- bs_db_finalize_run(101L, kampanya_kosu$kosu_id,
+                                       "kampanya-plan", .bs_test_db_ozet(707L),
+                                       conn = conn)
+  expect_true(kampanya_sonuc$kabul)
+  kampanya_plan <- list(
+    sema = BS_SEMA_SURUMU, harita = "baglam_kapisi", zorluk = "normal",
+    tohum = 707L, baslik = "Kampanya Planı",
+    yerlesimler = list(list(kahraman = "emre", x = 2L, y = 2L, seviye = 1L, dalga = 1L))
+  )
+  kampanya_plan_id <- bs_db_publish_blueprint(101L, kampanya_kosu$kosu_id,
+                                              "Kampanya Planı", kampanya_plan,
+                                              conn = conn)
+  expect_true(is.integer(kampanya_plan_id) && kampanya_plan_id > 0L)
+})
+
+test_that("sezon kaydı ConfigJson'dan değiştiriciyi de döndürür (devam eden koşunun KENDİ sezonu)", {
+  conn <- .bs_test_db_kur()
+  on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
+
+  meydan <- bs_haftalik_meydan_okuma(
+    as.POSIXct("2026-07-15 12:00:00", tz = "Europe/Istanbul")
+  )
+  sezon <- bs_db_get_or_create_season(meydan, conn = conn)
+
+  yeniden_okunan <- bs_db_get_season_by_id(sezon$sezon_id, conn = conn)
+  expect_false(is.null(yeniden_okunan$degistirici))
+  expect_identical(yeniden_okunan$degistirici$id, meydan$degistirici$id)
+  expect_identical(yeniden_okunan$degistirici$ad, meydan$degistirici$ad)
+
+  # Var olmayan sezon kimliği için hâlâ NULL döner (regresyon değil).
+  expect_null(bs_db_get_season_by_id(999999L, conn = conn))
+})
+
+test_that("plan modunda devam isteği, plan silinmiş olsa bile aktif koşudan çözülür", {
+  conn <- .bs_test_db_kur()
+  on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
+
+  # Bir plan yayınlanır; başka bir kullanıcı bu planı dener (mod=plan).
+  kaynak_kosu <- bs_db_start_run(101L, "baglam_kapisi", "normal", 606L,
+                                 istemci_jetonu = "plan-kaynak", conn = conn)
+  kaynak_sonuc <- bs_db_finalize_run(101L, kaynak_kosu$kosu_id, "plan-kaynak",
+                                     .bs_test_db_ozet(606L), conn = conn)
+  expect_true(kaynak_sonuc$kabul)
+  plan <- list(
+    sema = BS_SEMA_SURUMU, harita = "baglam_kapisi", zorluk = "normal",
+    tohum = 606L, baslik = "Deneme Planı",
+    yerlesimler = list(list(kahraman = "emre", x = 1L, y = 1L, seviye = 1L, dalga = 1L))
+  )
+  plan_id <- bs_db_publish_blueprint(101L, kaynak_kosu$kosu_id, "Deneme Planı",
+                                     plan, conn = conn)
+  expect_true(is.integer(plan_id) && plan_id > 0L)
+
+  # 102 numaralı kullanıcı planı dener; aktif (plan modlu) bir koşusu olur.
+  deneme_kosu <- bs_db_start_run(102L, "baglam_kapisi", "normal", 606L,
+                                 mod = "plan", plan_id = plan_id,
+                                 istemci_jetonu = "plan-deneme", conn = conn)
+  expect_false(is.null(deneme_kosu))
+
+  # Deneme sürerken plan sahibi planı SİLER.
+  expect_true(bs_db_soft_delete_blueprint(101L, plan_id, conn = conn))
+  expect_null(bs_db_get_blueprint(plan_id, conn = conn))
+
+  # .bs_srv_kosu_istegi_cozumle() içindeki bs_db_active_run()/
+  # bs_db_get_blueprint() çağrıları conn parametresi almaz (üretimde
+  # get_connection() kullanılır); bu testte enjekte edilen SQLite'a
+  # yönlendirmek için geçici olarak forward edilirler. Enjekte edilen
+  # bağlantı, çakışmayı önlemek için ayrı bir isimle (test_conn) kapatılır;
+  # sarıcıların kendi `conn` parametresi bilerek gölgede bırakılmaz.
+  test_conn <- conn
+  eski_aktif <- bs_db_active_run
+  eski_plan <- bs_db_get_blueprint
+  on.exit({
+    assign("bs_db_active_run", eski_aktif, envir = globalenv())
+    assign("bs_db_get_blueprint", eski_plan, envir = globalenv())
+  }, add = TRUE)
+  assign("bs_db_active_run", function(user_id, conn = NULL) {
+    eski_aktif(user_id, conn = test_conn)
+  }, envir = globalenv())
+  assign("bs_db_get_blueprint", function(plan_id, conn = NULL) {
+    eski_plan(plan_id, conn = test_conn)
+  }, envir = globalenv())
+
+  # Regresyon: "Devam Et" isteği (kosu_id/istemci_jetonu düzleştirilmiş)
+  # plan_bulunamadi ile reddedilmemeli; aktif koşudan (harita/zorluk/tohum/
+  # plan_id) doğrudan çözülmelidir.
+  istek_devam <- list(
+    mod = "plan", plan_id = plan_id,
+    kosu_id = deneme_kosu$kosu_id, istemci_jetonu = "plan-deneme"
+  )
+  cozum <- .bs_srv_kosu_istegi_cozumle(102L, istek_devam)
+  expect_null(cozum$hata)
+  expect_identical(cozum$harita, "baglam_kapisi")
+  expect_identical(cozum$zorluk, "normal")
+  expect_identical(cozum$tohum, 606L)
+  expect_identical(cozum$plan_id, plan_id)
+
+  # Karşılaştırma: plan_id/kosu_id OLMADAN (yeni bir plan denemesi gibi)
+  # aynı silinmiş plana başvurmak hâlâ reddedilmelidir (normal davranış
+  # korunur; yalnızca gerçek devam istekleri bu korumadan yararlanır).
+  yeni_istek <- list(mod = "plan", plan_id = plan_id)
+  cozum_yeni <- .bs_srv_kosu_istegi_cozumle(102L, yeni_istek)
+  expect_identical(cozum_yeni$hata, "plan_bulunamadi")
+})
+
+test_that(".bs_srv_profil_yuku() ile .bs_srv_init_yuku() aynı ilerleme alanlarını üretir (bölünme sözleşmesi)", {
+  eski_tablolar <- bs_db_tables_available
+  eski_bundle <- bs_db_load_profile_bundle
+  eski_devam <- bs_db_active_run
+  on.exit({
+    assign("bs_db_tables_available", eski_tablolar, envir = globalenv())
+    assign("bs_db_load_profile_bundle", eski_bundle, envir = globalenv())
+    assign("bs_db_active_run", eski_devam, envir = globalenv())
+  }, add = TRUE)
+
+  sahte_bundle <- list(
+    profil = list(profil_id = 1L, seviye = 3L, xp = 500L,
+                  toplam_puan = 4000L, ayarlar = list()),
+    kampanya = data.frame(MapID = "baglam_kapisi", Difficulty = "normal",
+                          Stars = 3L, BestScore = 1200L, HighestWave = 8L,
+                          CompletedCount = 1L, LastPlayedAt = "2026-07-15",
+                          stringsAsFactors = FALSE),
+    kahramanlar = data.frame(HeroID = "emre", UsesCount = 2L, MasteryXP = 30L,
+                             stringsAsFactors = FALSE),
+    basarimlar = data.frame(ItemID = "ilk_zafer", ItemType = "basarim",
+                            EarnedAt = "2026-07-15", stringsAsFactors = FALSE)
+  )
+  sahte_devam <- list(kosu_id = 7L, harita = "baglam_kapisi", zorluk = "normal",
+                      mod = "kampanya", kontrol_dalga = 3L)
+
+  assign("bs_db_tables_available", function(...) TRUE, envir = globalenv())
+  assign("bs_db_load_profile_bundle", function(...) sahte_bundle, envir = globalenv())
+  assign("bs_db_active_run", function(...) sahte_devam, envir = globalenv())
+
+  profil_yuku <- .bs_srv_profil_yuku(101L)
+  init_yuku <- .bs_srv_init_yuku(101L)
+
+  for (alan in c("kalicilik", "profil", "kampanya", "kahraman_ilerlemesi",
+                "basarimlar", "devam")) {
+    expect_identical(init_yuku[[alan]], profil_yuku[[alan]], info = paste("alan:", alan))
+  }
+  expect_identical(profil_yuku$devam, sahte_devam)
+  expect_identical(profil_yuku$profil$seviye, 3L)
+  expect_length(profil_yuku$kampanya, 1L)
+  expect_identical(profil_yuku$kampanya[[1]]$Stars, 3L)
+
+  # init yükü ayrıca statik manifest alanlarını da taşımalı.
+  expect_identical(init_yuku$etkin, TRUE)
+  expect_false(is.null(init_yuku$surumler))
+  expect_false(is.null(init_yuku$personalar))
+  expect_false(is.null(init_yuku$haritalar))
+  expect_false(is.null(init_yuku$haftalik))
 })

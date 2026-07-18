@@ -281,6 +281,7 @@
 
       // ── Kaplamalar ────────────────────────────────────────────────────────
       hud.kaplamaGoster = function(icHtml, sinif) {
+        hud.baglar.kaplama.classList.remove("bs-geri-sayim-kaplama");
         hud.baglar.kaplama.innerHTML =
           '<div class="bs-kaplama-panel ' + (sinif || "") + '">' + icHtml + '</div>';
         hud.baglar.kaplama.classList.add("bs-kaplama-acik");
@@ -288,6 +289,7 @@
 
       hud.kaplamaKapat = function() {
         hud.baglar.kaplama.classList.remove("bs-kaplama-acik");
+        hud.baglar.kaplama.classList.remove("bs-geri-sayim-kaplama");
         hud.baglar.kaplama.innerHTML = "";
       };
 
@@ -303,6 +305,7 @@
             BS.denge.ekonomi.erkenBaslatmaBonusu + ' kaynak)</button>',
           patronMu ? "bs-kaplama-patron" : ""
         );
+        hud.baglar.kaplama.classList.add("bs-geri-sayim-kaplama");
       };
 
       hud.duraklatGoster = function() {

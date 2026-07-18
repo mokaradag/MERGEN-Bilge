@@ -69,6 +69,10 @@
       return gonder("bs_topluluk", { t: Date.now() });
     },
 
+    profilYenileIste: function() {
+      return gonder("bs_profil_yenile", { t: Date.now() });
+    },
+
     planYayinla: function(kosuId, baslik, plan) {
       return gonder("bs_plan_yayinla", {
         kosu_id: kosuId, baslik: baslik, plan: plan
@@ -99,6 +103,7 @@
       ["bs-plan-listesi", "sunucu-plan-listesi"],
       ["bs-plan-config", "sunucu-plan-config"],
       ["bs-plan-yaniti", "sunucu-plan-yaniti"],
+      ["bs-profil", "sunucu-profil"],
       ["bs-hata", "sunucu-hata"]
     ];
     esle.forEach(function(cift) {

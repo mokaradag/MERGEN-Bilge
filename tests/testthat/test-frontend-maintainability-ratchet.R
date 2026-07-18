@@ -158,7 +158,13 @@ test_that("frontend JS/CSS büyüklük ve yoğunluk bütçeleri sessizce aşılm
   max_app_js_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_LINES", 850L)
   # 1150L -> 1490L: aynı bilinçli Ortak Çalışmalarım genişlemesi (yukarıya bakınız).
   max_app_css_lines <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_CSS_LINES", 1490L)
-  max_app_js_functions <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_FUNCTIONS", 60L)
+  # 60L -> 62L bilinçli güncelleme (Bilge Savunması codex P2 düzeltmeleri):
+  # www/js/bilge_savunmasi_uygulama.js iki küçük yardımcı fonksiyon kazandı
+  # (acikPanelAdi: menüye dönüşte tazelenen profil verisini açık panele
+  # yeniden çizmek için; menuyeDonVeTazele: cikis-evet/menu-don dallarının
+  # ortak menüye dönüş+tazeleme akışını tekilleştirir). Diğer bütçeler
+  # (satır/olay dinleyicisi/Shiny mesaj tutamı) DEĞİŞMEDİ.
+  max_app_js_functions <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_FUNCTIONS", 62L)
   max_app_js_event_handlers <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_JS_EVENT_HANDLERS", 32L)
   max_app_js_shiny_handlers <- .as_int_env_frontend("MERGEN_TEST_MAX_FRONTEND_APP_SHINY_HANDLERS", 20L)
 

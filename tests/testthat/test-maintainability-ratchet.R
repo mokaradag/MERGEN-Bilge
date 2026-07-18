@@ -101,7 +101,13 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   # ayrılan Bilge Yolaç DB katmanı R/helpers_ortak_oturum_db_bilge_yolac.R) ve
   # sunum-karar yardımcıları R/helpers_ortak_oturum_sunum.R'ye taşındı
   # (permissions 27 -> 24) — böylece fonksiyon tavanı gevşetilmedi.
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 761L)
+  # 761L -> 778L bilinçli güncelleme (Bilge Savunması codex P2 düzeltmeleri):
+  # R/helpers_db_bilge_savunmasi_topluluk.R (778; haftalık koşulardan plan
+  # yayınının reddi + sezon ConfigJson'undan değiştirici okuma) yeni tabanı
+  # oluşturdu. 800+ satır dosya sayısı 0, 25+ fonksiyon dosya sayısı 0 (bu
+  # dosya 20 fonksiyon) ve en yüksek fonksiyon sayısı 24 KORUNUR; yalnızca
+  # en büyük dosya satır tavanı yükseldi.
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 778L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 24L)
 
   actual_large_files <- sum(score_report$lines >= 800)

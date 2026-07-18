@@ -75,19 +75,34 @@ bs_patron_dalgasi_mi <- function(dalga_no, dalga_sayisi) {
   (d %% 4L == 0L) || (d == n)
 }
 
-#' Tek Dalga İçin Sunucu Puan Üst Sınırı
+#' Tek Dalga İçin Sunucu Puanı
 #'
-#' @description Üst sınır, istemcinin serbestçe beyan ettiği `puan` değerine
-#' DEĞİL, aynı dalga özetinde ayrıca doğrulanmış `olduruldu` (öldürme) sayısına
-#' dayanır. Böylece hiçbir düşman öldürmeden yalnızca yüksek bir `puan` beyan
-#' etmek sıfır puanla sonuçlanır. `olduruldu` verilmezse (geriye dönük uyum
-#' için) haritanın dalga başına düşman üst sınırı kullanılır. Patron ek puanı
-#' yalnızca en az bir öldürme bildirilmişse eklenir.
-bs_dalga_puan_siniri <- function(harita_kaydi, dalga_no, olduruldu = NULL) {
+#' @description Dalga puanı istemcinin serbestçe beyan ettiği `puan` veya
+#' `olduruldu` değerlerinden değil, sunucunun harita kataloğunda tuttuğu
+#' deterministik dalga düşman sayısından türetilir. Haftalık sayı değiştiricisi
+#' varsa sunucuya ait normal düşman sayısına uygulanır ve sonuç yine haritanın
+#' dalga üst sınırıyla kırpılır.
+bs_dalga_puan_siniri <- function(harita_kaydi, dalga_no, degistirici = NULL) {
   ust <- .bs_tam_sayi(harita_kaydi$dalga_dusman_ust_siniri, 30L)
-  adet <- if (is.null(olduruldu)) ust else .bs_tam_sayi(olduruldu, 0L)
+  d <- .bs_tam_sayi(dalga_no)
+  sayilar <- harita_kaydi$dalga_dusman_sayilari
+  patron_sayilari <- harita_kaydi$dalga_patron_sayilari
+  adet <- if (!is.na(d) && length(sayilar) >= d) .bs_tam_sayi(sayilar[[d]], ust) else ust
+  patron_adet <- if (!is.na(d) && length(patron_sayilari) >= d) {
+    .bs_tam_sayi(patron_sayilari[[d]], 0L)
+  } else {
+    0L
+  }
+  carpan <- if (exists("bs_dalga_sayi_carpani", mode = "function", inherits = TRUE)) {
+    bs_dalga_sayi_carpani(degistirici)
+  } else {
+    1
+  }
   if (is.na(adet) || adet < 0L) adet <- 0L
-  adet <- min(adet, ust)
+  if (is.na(patron_adet) || patron_adet < 0L) patron_adet <- 0L
+  if (is.na(carpan) || !is.finite(carpan) || carpan <= 0) carpan <- 1
+  normal_adet <- max(0L, adet - patron_adet)
+  adet <- min(as.integer(round(normal_adet * carpan)) + patron_adet, ust)
 
   taban <- adet * BS_DUSMAN_PUAN_UST_SINIRI
   if (adet > 0L && bs_patron_dalgasi_mi(dalga_no, harita_kaydi$dalga_sayisi)) {
@@ -100,26 +115,18 @@ bs_dalga_puan_siniri <- function(harita_kaydi, dalga_no, olduruldu = NULL) {
 
 #' Dalga Özetlerinden Sunucu Puanını Yeniden Hesapla
 #'
-#' @description İstemcinin dalga başına puan beyanlarını, AYNI dalga özetinde
-#' sunucu tarafından ayrıca doğrulanmış öldürme sayısından (`olduruldu`)
-#' türetilen sunucu üst sınırlarıyla kırparak toplar, çekirdek ve zafer
-#' bonusunu ekler, zorluk çarpanını uygular. Dönen değer sunucunun NİHAİ
-#' puanıdır. `olduruldu` bildirilmezse (veya sıfırsa) o dalganın puan katkısı
-#' sıfırlanır; istemci yalnızca `puan` alanını şişirerek öldürme yapmadan
-#' puan/XP/yıldız kazanamaz.
+#' @description Dalga puanını istemci beyanından bağımsız olarak, sunucuya ait
+#' deterministik dalga planından hesaplar; çekirdek ve zafer bonusunu ekler,
+#' zorluk çarpanını uygular. Dönen değer sunucunun NİHAİ puanıdır.
 bs_puan_yeniden_hesapla <- function(dalga_ozetleri,
                                     son_cekirdek,
                                     harita_kaydi,
                                     zorluk_kaydi,
-                                    zafer = FALSE) {
+                                    zafer = FALSE,
+                                    degistirici = NULL) {
   ham <- 0
   for (dalga in dalga_ozetleri) {
-    puan <- .bs_sayi(dalga$puan, 0)
-    if (is.na(puan) || puan < 0) puan <- 0
-    olduruldu <- .bs_tam_sayi(dalga$olduruldu, 0L)
-    if (is.na(olduruldu) || olduruldu < 0L) olduruldu <- 0L
-    sinir <- bs_dalga_puan_siniri(harita_kaydi, dalga$dalga, olduruldu)
-    ham <- ham + min(puan, sinir)
+    ham <- ham + bs_dalga_puan_siniri(harita_kaydi, dalga$dalga, degistirici)
   }
 
   cekirdek <- max(0, .bs_sayi(son_cekirdek, 0))
@@ -282,7 +289,8 @@ bs_kosu_ozeti_dogrula <- function(ozet,
   }
 
   puan <- bs_puan_yeniden_hesapla(
-    dalgalar, son_cekirdek, harita_kaydi, zorluk_kaydi, zafer = zafer
+    dalgalar, son_cekirdek, harita_kaydi, zorluk_kaydi, zafer = zafer,
+    degistirici = kosu$degistirici
   )
   yildiz <- bs_yildiz_hesapla(son_cekirdek, taban_cekirdek, zafer)
 
