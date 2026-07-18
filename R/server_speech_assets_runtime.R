@@ -376,11 +376,16 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
 
   # Isındırmayı hızlı başlangıç şeridini bloklamadan, oturum kurulumundan
   # sonra ertelenmiş olarak tetikle (süreçte yalnızca ilk oturum başlatır).
-  later::later(function() {
-    tryCatch(.speech_trigger_process_warmup(session), error = function(e) {
-      cat(sprintf("[SPEECH] Isındırma tetikleyici hatası: %s\n", conditionMessage(e)))
-    })
-  }, delay = 3)
+  # Testler veya kapalı ortamlar VOXCPM2_WARMUP_ENABLED=false verdiğinde
+  # gecikmeli callback hiç kurulmasın; aksi halde local_envvar() test bitince
+  # geri alınabilir ve callback yanlışlıkla gerçek TTS ısındırması başlatabilir.
+  if (mergen_speech_warmup_should_start()) {
+    later::later(function() {
+      tryCatch(.speech_trigger_process_warmup(session), error = function(e) {
+        cat(sprintf("[SPEECH] Isındırma tetikleyici hatası: %s\n", conditionMessage(e)))
+      })
+    }, delay = 3)
+  }
 
   list(
     static_ready = static_ready,
