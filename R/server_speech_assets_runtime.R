@@ -149,7 +149,11 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
 
   resolve_user_id <- function() {
     uid <- tryCatch({
-      if (is.function(current_user_id)) current_user_id() else current_user_id
+      if (is.function(current_user_id)) {
+        shiny::isolate(current_user_id())
+      } else {
+        current_user_id
+      }
     }, error = function(e) 0L)
     uid <- suppressWarnings(as.integer(uid))
     if (is.na(uid) || uid < 0L) uid <- 0L
@@ -281,12 +285,18 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
         if (length(items) > 1) "evet" else "hayır"
       ))
 
-      ai_expert$start_speaking(
-        items[[1]]$text,
-        cooldown_secs = ai_expert$COOLDOWN_GREETING,
-        kind = "welcome",
-        static_plan = list(items = items)
-      )
+      # Deadline/promise callbacks anlık bir reactive consumer dışında çalışır.
+      # AI Uzman modülü kendi reactiveVal durumunu okuduğu için çağrıyı açıkça
+      # isolate bağlamına al; aksi halde .getReactiveEnvironment() hatası tüm
+      # Shiny oturumunu sonlandırır.
+      shiny::isolate({
+        ai_expert$start_speaking(
+          items[[1]]$text,
+          cooldown_secs = ai_expert$COOLDOWN_GREETING,
+          kind = "welcome",
+          static_plan = list(items = items)
+        )
+      })
       invisible(NULL)
     }
 
@@ -332,12 +342,16 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
       "page=%s persona=%s variant=%d", page, persona, variant
     ))
 
-    ai_expert$start_speaking(
-      item$text,
-      cooldown_secs = ai_expert$COOLDOWN_PAGE,
-      kind = "page_guidance",
-      static_plan = list(items = list(item))
-    )
+    # Şu an observer içinden çağrılır; isolate koruması gelecekte gecikmeli bir
+    # dispatch eklenirse aynı reactive-context çökmesini önlemeye devam eder.
+    shiny::isolate({
+      ai_expert$start_speaking(
+        item$text,
+        cooldown_secs = ai_expert$COOLDOWN_PAGE,
+        kind = "page_guidance",
+        static_plan = list(items = list(item))
+      )
+    })
 
     # Tüketilen klipten sonra bu sayfanın SIRADAKİ adayını önden ısıt
     next_variant <- mergen_speech_shuffle_bag_peek(state$bags, bag_key)
