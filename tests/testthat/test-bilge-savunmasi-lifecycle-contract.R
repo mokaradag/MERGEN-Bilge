@@ -178,7 +178,9 @@ test_that("DB koşu başlatma hatası kalıcılıksız oyunu engellemez", {
   server_mod <- .bs_lc_oku("R", "module_bilge_savunmasi.R")
   baslangic <- regexpr("input$bs_kosu_baslat", server_mod, fixed = TRUE)
   expect_true(baslangic > 0)
-  govde <- substr(server_mod, baslangic, baslangic + 2200L)
+  # Pencere, haftalık değiştirici çözümleme bloğunu (bkz. "bs_db_get_season_by_id"
+  # regresyon testi) de kapsayacak kadar geniştir.
+  govde <- substr(server_mod, baslangic, baslangic + 2600L)
 
   expect_true(.bs_lc_iceriyor(govde, "bs_db_start_run("))
   expect_true(.bs_lc_iceriyor(govde, "bs-kosu-basladi"))
@@ -276,6 +278,144 @@ test_that("sekmeden ayrılınca belge düzeyindeki klavye dinleyicisi çözülü
   expect_true(.bs_lc_iceriyor(donuldu_govdesi, "BS.girdi.bagla("))
 })
 
+test_that("menüye dönüş ilerlemeyi (profil/kampanya/kahraman/başarım) tam sayfa init beklemeden tazeler", {
+  # Regresyon: kalıcı bir kampanya koşusu sonuçlandıktan sonra menüye
+  # dönüşte yalnızca liderlik/topluluk isteniyordu; profil/kampanya/
+  # kahraman/başarım verisi BS.veri.init'te BAYAT kalıyor ve bir sonraki
+  # harita ya da gelişmiş zorluk sekme yeniden açılana kadar kilitli
+  # görünebiliyordu.
+  server_mod <- .bs_lc_oku("R", "module_bilge_savunmasi.R")
+  expect_true(.bs_lc_iceriyor(server_mod, "input$bs_profil_yenile"))
+  expect_true(.bs_lc_iceriyor(server_mod, "bs-profil"))
+  expect_true(.bs_lc_iceriyor(server_mod, ".bs_srv_profil_yuku"))
+
+  kopru <- .bs_lc_oku("www", "js", "bilge_savunmasi_kopru.js")
+  expect_true(.bs_lc_iceriyor(kopru, "profilYenileIste"))
+  expect_true(.bs_lc_iceriyor(kopru, '["bs-profil", "sunucu-profil"]'))
+
+  uygulama <- .bs_lc_oku("www", "js", "bilge_savunmasi_uygulama.js")
+  expect_true(.bs_lc_iceriyor(uygulama, '"sunucu-profil"'))
+  expect_true(.bs_lc_iceriyor(uygulama, "function menuyeDonVeTazele"))
+
+  menuyedon_baslangic <- regexpr("function menuyeDonVeTazele", uygulama, fixed = TRUE)
+  expect_true(menuyedon_baslangic > 0)
+  menuyedon_govdesi <- substr(uygulama, menuyedon_baslangic, menuyedon_baslangic + 400L)
+  expect_true(.bs_lc_iceriyor(menuyedon_govdesi, "BS.kopru.liderlikIste()"))
+  expect_true(.bs_lc_iceriyor(menuyedon_govdesi, "BS.kopru.toplulukIste()"))
+  expect_true(.bs_lc_iceriyor(menuyedon_govdesi, "BS.kopru.profilYenileIste()"))
+})
+
+test_that("haftalık koşuda değiştirici KOŞUNUN KENDİ sezonundan çözülür, istemcinin şimdiki haftasından değil", {
+  # Regresyon: hafta dönümünden sonra devam edilen eski bir haftalık koşu,
+  # istemcinin BS.veri.init.haftalik.degistirici (şimdiki hafta) alanına
+  # bakıldığı için yanlış (yeni haftanın) değiştiricisiyle oynanabiliyordu.
+  server_mod <- .bs_lc_oku("R", "module_bilge_savunmasi.R")
+  baslangic <- regexpr("input$bs_kosu_baslat", server_mod, fixed = TRUE)
+  expect_true(baslangic > 0)
+  govde <- substr(server_mod, baslangic, baslangic + 3200L)
+  expect_true(.bs_lc_iceriyor(govde, "bs_db_get_season_by_id(etkin_sezon_id)"))
+  expect_true(.bs_lc_iceriyor(govde, "degistirici = degistirici"))
+
+  topluluk_helper <- .bs_lc_oku("R", "helpers_db_bilge_savunmasi_topluluk.R")
+  expect_true(.bs_lc_iceriyor(topluluk_helper, "degistirici = yapilandirma$degistirici"))
+
+  uygulama <- .bs_lc_oku("www", "js", "bilge_savunmasi_uygulama.js")
+  expect_true(.bs_lc_iceriyor(uygulama, "veri.degistirici.id"))
+  expect_false(.bs_lc_iceriyor(uygulama, "BS.veri.init.haftalik.degistirici.id"))
+})
+
+test_that("Devam Et tüketildiğinde bayat devam bandı her zaman temizlenir (kontrol noktası olsun ya da olmasın)", {
+  # Regresyon: kontrol noktası olmayan bir devam tüketildiğinde
+  # BS.veri.init.devam null'lanmıyor, .bs-devam-karti DOM'da kalıyordu; bu
+  # bayat kart menüye dönüşte yeniden görünür ve tıklanınca BS.veri.init.
+  # devam.mod'a boş referansla çöker ya da kapalı bir jetonu yeniden
+  # kullanmayı dener.
+  uygulama <- .bs_lc_oku("www", "js", "bilge_savunmasi_uygulama.js")
+
+  expect_false(.bs_lc_iceriyor(
+    uygulama, "if (istek.devam && istek.devam.kontrol_durum) {"
+  ))
+
+  baslangic <- regexpr("if (istek.devam) {", uygulama, fixed = TRUE)
+  expect_true(baslangic > 0)
+  govde <- substr(uygulama, baslangic, baslangic + 600L)
+  expect_true(.bs_lc_iceriyor(govde, "istek.devam.kontrol_durum"))
+  expect_true(.bs_lc_iceriyor(govde, "BS.veri.init.devam = null"))
+  expect_true(.bs_lc_iceriyor(govde, "bs-devam-karti"))
+  expect_true(.bs_lc_iceriyor(govde, "devamKarti.remove()"))
+
+  kontrol_konumu <- regexpr("istek.devam.kontrol_durum", govde, fixed = TRUE)
+  temizlik_konumu <- regexpr("BS.veri.init.devam = null", govde, fixed = TRUE)
+  expect_true(kontrol_konumu > 0 && temizlik_konumu > 0)
+  expect_true(kontrol_konumu < temizlik_konumu)
+})
+
+test_that("koşu bitmeden çıkışta (cikis-evet) aktif koşu bırakılmaz; kontrol noktası devam edilebilir kalır", {
+  # Regresyon: "Koşudan çıkılsın mı? Kaydedilen son kontrol noktasından
+  # devam edebilirsin." onayından sonra sunucuya kosuBirak() gönderiliyordu;
+  # bu, koşuyu Bırakıldı yapıyor ve bs_db_active_run() artık onu
+  # döndürmediği için onay metnindeki devam vaadini kırıyordu.
+  uygulama <- .bs_lc_oku("www", "js", "bilge_savunmasi_uygulama.js")
+
+  cikis_baslangic <- regexpr('komut === "cikis-evet"', uygulama, fixed = TRUE)
+  expect_true(cikis_baslangic > 0)
+  menudon_baslangic <- regexpr('komut === "menu-don"', uygulama, fixed = TRUE)
+  expect_true(menudon_baslangic > 0)
+  expect_true(cikis_baslangic < menudon_baslangic)
+
+  cikis_govdesi <- substr(uygulama, cikis_baslangic, menudon_baslangic)
+  expect_false(.bs_lc_iceriyor(cikis_govdesi, "BS.kopru.kosuBirak"))
+  expect_true(.bs_lc_iceriyor(cikis_govdesi, "menuyeDonVeTazele()"))
+
+  menudon_govdesi <- substr(uygulama, menudon_baslangic, menudon_baslangic + 200L)
+  expect_true(.bs_lc_iceriyor(menudon_govdesi, "BS.kopru.kosuBirak(kosu.kosuId)"))
+  expect_true(.bs_lc_iceriyor(menudon_govdesi, "menuyeDonVeTazele()"))
+})
+
+test_that("plan modunda devam isteği plan silindiğinde bile aktif koşudan çözülür (sunucu koruması)", {
+  # Regresyon: plan sahibi bir denemeyi sürerken planı silerse, hâlâ etkin
+  # ve kontrol noktalı devam isteği plan_bulunamadi ile reddediliyordu.
+  server_mod <- .bs_lc_oku("R", "module_bilge_savunmasi.R")
+  plan_baslangic <- regexpr('identical(mod, "plan")', server_mod, fixed = TRUE)
+  expect_true(plan_baslangic > 0)
+  govde <- substr(server_mod, plan_baslangic, plan_baslangic + 1400L)
+  expect_true(.bs_lc_iceriyor(govde, "bs_db_active_run(uid)"))
+  expect_true(.bs_lc_iceriyor(govde, "identical(aktif$kosu_id, istek_kosu_id)"))
+
+  koruma_konumu <- regexpr("bs_db_active_run(uid)", govde, fixed = TRUE)
+  plan_bulunamadi_konumu <- regexpr('"plan_bulunamadi"', govde, fixed = TRUE)
+  expect_true(koruma_konumu > 0 && plan_bulunamadi_konumu > 0)
+  expect_true(koruma_konumu < plan_bulunamadi_konumu)
+})
+
+test_that("sonuçlandırma UPDATE'leri Status = Aktif koşuluyla korunur (atomik iddia)", {
+  # Regresyon: eşzamanlı iki sonuçlandırma isteği aynı Aktif satırı görüp
+  # ikisi de koşulsuz UPDATE ile eşleşebiliyor, kampanya/kahraman/profil/
+  # başarım ödülleri İKİNCİ KEZ uygulanabiliyordu.
+  kosu_helper <- .bs_lc_oku("R", "helpers_db_bilge_savunmasi_kosu.R")
+  expect_true(.bs_lc_iceriyor(kosu_helper, "AND Status = ?"))
+  expect_true(.bs_lc_iceriyor(kosu_helper, "guncellenen == 0L"))
+  expect_true(.bs_lc_iceriyor(kosu_helper, "guncellenen_red == 0L"))
+})
+
+test_that("sekmeye dönüşte bitmiş koşunun sonuç kaplaması duraklatma ile üzerine yazılmaz", {
+  # Regresyon: sekmeden ayrılıp bitmiş bir koşuya (sonuç kaplaması açıkken)
+  # dönüldüğünde sayfayaDonuldu() her zaman duraklatGoster() çağırıyor,
+  # "Menüye Dön"/"Planı Yayınla" gibi doğrulanmış sonuç eylemlerini
+  # gizliyordu.
+  uygulama <- .bs_lc_oku("www", "js", "bilge_savunmasi_uygulama.js")
+  baslangic <- regexpr("function sayfayaDonuldu", uygulama, fixed = TRUE)
+  expect_true(baslangic > 0)
+  govde <- substr(uygulama, baslangic, baslangic + 900L)
+  expect_true(.bs_lc_iceriyor(govde, "kosu.sim.durum.bitti"))
+  expect_true(.bs_lc_iceriyor(govde, "kosu.hud.duraklatGoster()"))
+
+  koruma_konumu <- regexpr("!kosu.sim.durum.bitti", govde, fixed = TRUE)
+  duraklat_konumu <- regexpr("kosu.hud.duraklatGoster()", govde, fixed = TRUE)
+  expect_true(koruma_konumu > 0 && duraklat_konumu > 0)
+  expect_true(koruma_konumu < duraklat_konumu)
+})
+
 test_that("sekme aktif değilken gelen koşu başlatma yanıtı oyun kaynağı oluşturmaz", {
   # Regresyon: kullanıcı koşu başlattıktan hemen sonra başka bir sekmeye
   # geçerse, sunucunun asenkron "sunucu-kosu-basladi" yanıtı sekme zaten
@@ -286,8 +426,10 @@ test_that("sekme aktif değilken gelen koşu başlatma yanıtı oyun kaynağı o
   baslangic <- regexpr('BS.olaylar.ekle("sunucu-kosu-basladi"', uygulama, fixed = TRUE)
   expect_true(baslangic > 0)
   # Canvas/girdi bağlama satırlarını da kapsayacak kadar geniş bir pencere
-  # (bu olay kaydı, koşu nesnesini kurana kadar yaklaşık 2000 karakter sürer).
-  govde <- substr(uygulama, baslangic, baslangic + 2200L)
+  # (bu olay kaydı, koşu nesnesini kurana kadar yaklaşık 3000 karakter sürer;
+  # haftalık değiştirici çözümleme ve devam bandı temizleme blokları da bu
+  # aralıktadır).
+  govde <- substr(uygulama, baslangic, baslangic + 3200L)
 
   expect_true(.bs_lc_iceriyor(govde, "!uygulama.sayfadaMi"))
   expect_true(.bs_lc_iceriyor(govde, "BS.kopru.kosuBirak(veri.kosu_id)"))

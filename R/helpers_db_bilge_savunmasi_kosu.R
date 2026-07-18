@@ -618,17 +618,30 @@ bs_db_finalize_run <- function(user_id, kosu_id, istemci_jetonu, ozet,
     )
 
     if (!isTRUE(dogrulama$gecerli)) {
-      DBI::dbExecute(
+      # Durum geçişi Aktif koşuluyla iddia edilir: eşzamanlı bir istek bu
+      # satırı zaten sonuçlandırmış olabilir (bkz. aşağıdaki kabul dalındaki
+      # aynı koruma). 0 satır etkilenirse bu isteğin reddi UYGULANMAZ; artık
+      # sonuçlanmış satır idempotent yanıt olarak döndürülür.
+      guncellenen_red <- DBI::dbExecute(
         handle$conn,
         paste(
           "UPDATE MB_Game_Runs SET Status = ?, RejectReason = ?,",
-          "FinalizedAt = ? WHERE GameRunID = ? AND UserID = ?"
+          "FinalizedAt = ? WHERE GameRunID = ? AND UserID = ? AND Status = ?"
         ),
         params = normalize_db_params(list(
           "Reddedildi", normalize_db_technical_value(dogrulama$neden),
-          .bs_db_now_stamp(), as.integer(kosu_id), uid
+          .bs_db_now_stamp(), as.integer(kosu_id), uid, "Aktif"
         ))
       )
+      if (guncellenen_red == 0L) {
+        guncel_red <- .bs_db_kosu_satiri(handle$conn, uid, kosu_id)
+        DBI::dbRollback(handle$conn)
+        tamamlandi <- TRUE
+        return(
+          if (!is.null(guncel_red)) .bs_db_sonuc_paketi(guncel_red, tekrar = TRUE)
+          else list(kabul = FALSE, neden = "sunucu_hatasi")
+        )
+      }
       DBI::dbCommit(handle$conn)
       tamamlandi <- TRUE
       return(list(kabul = FALSE, neden = dogrulama$neden))
@@ -647,21 +660,37 @@ bs_db_finalize_run <- function(user_id, kosu_id, istemci_jetonu, ozet,
       olay_ozeti <- "[]"
     }
 
-    DBI::dbExecute(
+    # Durum geçişi Aktif koşuluyla iddia edilir (WHERE ... AND Status =
+    # 'Aktif'): eşzamanlı bir sonuçlandırma isteği bu satırı bizden önce ele
+    # geçirmiş olabilir. Koşulsuz bir UPDATE, satır artık Aktif olmasa bile
+    # başarıyla eşleşir ve kampanya/kahraman/profil/başarım ödüllerini
+    # İKİNCİ KEZ uygulardı. 0 satır etkilenirse bu isteğin ödülleri
+    # UYGULANMAZ; artık sonuçlanmış satır idempotent yanıt olarak döndürülür.
+    guncellenen <- DBI::dbExecute(
       handle$conn,
       paste(
         "UPDATE MB_Game_Runs SET Status = ?, Score = ?, Stars = ?, XPEarned = ?,",
         "FinalWave = ?, CoreHealth = ?, DurationSeconds = ?,",
         "ScoreDetailJson = ?, EventSummaryJson = ?, FinalizedAt = ?",
-        "WHERE GameRunID = ? AND UserID = ?"
+        "WHERE GameRunID = ? AND UserID = ? AND Status = ?"
       ),
       params = normalize_db_params(list(
         durum, dogrulama$puan, dogrulama$yildiz, dogrulama$xp,
         dogrulama$son_dalga, dogrulama$son_cekirdek, dogrulama$sure_saniye,
         puan_detay, olay_ozeti, .bs_db_now_stamp(),
-        as.integer(kosu_id), uid
+        as.integer(kosu_id), uid, "Aktif"
       ))
     )
+
+    if (guncellenen == 0L) {
+      guncel <- .bs_db_kosu_satiri(handle$conn, uid, kosu_id)
+      DBI::dbRollback(handle$conn)
+      tamamlandi <- TRUE
+      return(
+        if (!is.null(guncel)) .bs_db_sonuc_paketi(guncel, tekrar = TRUE)
+        else list(kabul = FALSE, neden = "sunucu_hatasi")
+      )
+    }
 
     # Kampanya ilerlemesi yalnızca kampanya modunda güncellenir.
     if (identical(as.character(kosu$Mode[1]), "kampanya")) {

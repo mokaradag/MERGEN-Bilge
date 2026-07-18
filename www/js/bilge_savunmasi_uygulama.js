@@ -202,6 +202,21 @@
     if (!plan || !plan.plan_id) return;
     kosuBaslat({ mod: "plan", plan_id: plan.plan_id, planBilgi: plan });
   });
+  BS.olaylar.ekle("sunucu-profil", function(veri) {
+    // Kalıcı bir koşu sonuçlandıktan sonra menüye dönüşte istemcinin BAYAT
+    // profil/kampanya/kahraman/başarım göstermesini önler (bkz. hud-kaplama
+    // "cikis-evet"/"menu-don" -> menuyeDonVeTazele). Tam sayfa açılışı
+    // (bs-init) beklemeden ilerleme paketini tazeler.
+    if (!veri || !BS.veri.init) return;
+    BS.veri.init.profil = veri.profil || null;
+    BS.veri.init.kampanya = veri.kampanya || [];
+    BS.veri.init.kahraman_ilerlemesi = veri.kahraman_ilerlemesi || [];
+    BS.veri.init.basarimlar = veri.basarimlar || [];
+    BS.menu.profilOzetiCiz(uygulama.kok);
+    var acikPanel = acikPanelAdi();
+    if (acikPanel) BS.menu.panelGoster(uygulama.kok, acikPanel);
+  });
+
   BS.olaylar.ekle("sunucu-hata", function(veri) {
     var mesajlar = {
       harita_kilitli: "Bu harita henüz kilitli.",
@@ -226,6 +241,12 @@
     var alan = uygulama.kok &&
       uygulama.kok.querySelector(".bs-panel-alani");
     return alan && alan.getAttribute("data-bs-acik-panel") === ad;
+  }
+
+  function acikPanelAdi() {
+    var alan = uygulama.kok &&
+      uygulama.kok.querySelector(".bs-panel-alani");
+    return (alan && alan.getAttribute("data-bs-acik-panel")) || "";
   }
 
   // ── Koşu başlatma: önce Öncü Uzman seçim ekranı, sonra sunucu isteği ───────
@@ -293,11 +314,13 @@
     var harita = BS.haritalar.haritaAl(veri.harita);
     if (!harita) return;
 
-    var degistirici = null;
-    if (veri.mod === "haftalik" && BS.veri.init.haftalik &&
-        BS.veri.init.haftalik.degistirici) {
-      degistirici = BS.veri.init.haftalik.degistirici.id;
-    }
+    // Değiştirici (kimliği) KOŞUNUN KENDİ sezonundan sunucu tarafından
+    // çözülüp bu yanıtla birlikte gönderilir (bkz. R/module_bilge_savunmasi.R).
+    // İstemcinin "şimdiki" hafta bilgisine (BS.veri.init.haftalik) bakması
+    // YANLIŞTIR: hafta dönümünden sonra devam edilen eski bir haftalık koşu,
+    // yanlışlıkla yeni haftanın değiştiricisiyle oynanabilir.
+    var degistirici = (veri.mod === "haftalik" && veri.degistirici)
+      ? veri.degistirici.id : null;
 
     var sim = BS.sim.olustur({
       haritaId: veri.harita,
@@ -309,12 +332,23 @@
     });
     if (!sim) return;
 
-    // Devam akışı: son kontrol noktasından durum yükle.
-    if (istek.devam && istek.devam.kontrol_durum) {
-      try {
-        sim.seriYukle(JSON.parse(istek.devam.kontrol_durum));
-      } catch (hata) { /* baştan başlar */ }
+    // Devam akışı: varsa son kontrol noktasından durum yükle. "devam" alanı
+    // ve menüdeki bant, kontrol noktası olsun ya da olmasın HER ZAMAN
+    // temizlenir; aksi halde menüye dönüşte bayat bir "Devam Et" kartı kalır
+    // ve tıklanınca ya BS.veri.init.devam.mod'a boş referansla çöker ya da
+    // artık kapalı olan bir jetonu yeniden kullanmayı dener.
+    if (istek.devam) {
+      if (istek.devam.kontrol_durum) {
+        try {
+          sim.seriYukle(JSON.parse(istek.devam.kontrol_durum));
+        } catch (hata) { /* baştan başlar */ }
+      }
       BS.veri.init.devam = null;
+      var devamNotu = el("kalicilik_notu");
+      if (devamNotu) {
+        var devamKarti = devamNotu.querySelector(".bs-devam-karti");
+        if (devamKarti) devamKarti.remove();
+      }
     }
 
     var personalar = {};
@@ -674,13 +708,17 @@
       kosuBaslat(yeniIstek);
     } else if (komut === "cikis-onay") {
       BS.olaylar.yay("hud-cikis", {});
-    } else if (komut === "cikis-evet" || komut === "menu-don") {
+    } else if (komut === "cikis-evet") {
+      // Koşu bitmemiş çıkış: onay metni son kontrol noktasından devam
+      // edilebileceğini söyler. Bunu gerçekleştirmek için koşu sunucuda
+      // Aktif KALMALIDIR (bs_db_active_run yalnızca Status = Aktif satırları
+      // döndürür); bu dalda kasıtlı olarak koşu bırakma isteği GÖNDERİLMEZ.
+      // Aksi halde koşu Bırakıldı olur ve kontrol noktası devam edilemez
+      // hale gelir.
+      menuyeDonVeTazele();
+    } else if (komut === "menu-don") {
       if (kosu.kosuId && !kosu.sonucGonderildi) BS.kopru.kosuBirak(kosu.kosuId);
-      kosuYokEt();
-      menuGoster();
-      // Menü verilerini tazele (profil/yıldız/liderlik değişmiş olabilir).
-      BS.kopru.liderlikIste();
-      BS.kopru.toplulukIste();
+      menuyeDonVeTazele();
     } else if (komut === "plan-yayinla") {
       BS.sonuc.planYayinlaGoster(kosu);
     } else if (komut === "plan-gonder") {
@@ -700,6 +738,17 @@
     BS.efekt.temizle();
     BS.ses.tumunuDurdur();
     uygulama.kosu = null;
+  }
+
+  // Koşuyu yok edip menüye döner ve menü verilerini tazeler: profil/yıldız/
+  // kampanya/kahraman ilerlemesi/liderlik, kalıcı bir sonuçlandırmadan sonra
+  // değişmiş olabilir (bkz. "sunucu-profil").
+  function menuyeDonVeTazele() {
+    kosuYokEt();
+    menuGoster();
+    BS.kopru.liderlikIste();
+    BS.kopru.toplulukIste();
+    BS.kopru.profilYenileIste();
   }
 
   // ── Sekme/görünürlük yaşam döngüsü ──────────────────────────────────────────
@@ -734,7 +783,13 @@
       kosu.girdi = BS.girdi.bagla(kosu.cizici, kosu.sim, kosu.arayuz);
     }
     kosu.cizici.boyutlandir();
-    kosu.hud.duraklatGoster();
+    // Koşu zaten bitmişse sunucu tarafından doğrulanmış sonuç kaplaması
+    // (BS.sonuc.goster) gösteriliyor olabilir; duraklatma kaplamasıyla
+    // ÜZERİNE YAZILMAZ, aksi halde "Menüye Dön"/"Planı Yayınla" gibi
+    // doğrulanmış sonuç eylemleri gizlenir.
+    if (!kosu.sim.durum.bitti) {
+      kosu.hud.duraklatGoster();
+    }
     dongulBaslat();
   }
 
