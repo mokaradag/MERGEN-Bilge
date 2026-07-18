@@ -66,17 +66,53 @@ test_that("geçerli koşu özeti kabul edilir ve puan sunucuda hesaplanır", {
 
 test_that("şişirilmiş dalga puanı sunucu üst sınırıyla kırpılır", {
   ozet <- .bs_test_gecerli_ozet()
-  # İstemci 5. dalga için fahiş puan beyan ediyor.
+  # İstemci 5. dalga için fahiş puan beyan ediyor (öldürme sayısı gerçek: 8).
   ozet$dalga_ozetleri[[5]]$puan <- 999999
 
   sonuc <- bs_kosu_ozeti_dogrula(ozet, .bs_test_kosu())
   expect_true(sonuc$gecerli)
 
   harita <- bs_harita_katalogu()$baglam_kapisi
-  sinir <- bs_dalga_puan_siniri(harita, 5L)
+  sinir <- bs_dalga_puan_siniri(harita, 5L, olduruldu = 8L)
   beklenen <- as.integer(round(7 * 60 + sinir + 20 * 25 + 500))
   expect_identical(sonuc$puan, beklenen)
   expect_true(sonuc$puan < 999999)
+})
+
+test_that("puan, doğrulanmış öldürme sayısına dayanır; sıfır öldürmeyle şişirilmiş puan reddedilir", {
+  # Güvenlik regresyonu: istemci hiçbir düşman öldürmediğini bildirirken
+  # (olduruldu = 0) her dalga için üst sınıra eşit fahiş puan beyan ediyor.
+  # bs_puan_yeniden_hesapla() bu beyanı doğrulanmış öldürme sayısından
+  # (0) türetilen sınıra göre kırpmalı, yani dalga katkısı sıfır olmalı.
+  ozet <- .bs_test_gecerli_ozet()
+  ozet$dalga_ozetleri <- lapply(ozet$dalga_ozetleri, function(d) {
+    d$olduruldu <- 0L
+    d$puan <- 999999
+    d
+  })
+
+  sonuc <- bs_kosu_ozeti_dogrula(ozet, .bs_test_kosu())
+  expect_true(sonuc$gecerli)
+  # Dalga puanı katkısı sıfır: yalnızca çekirdek (20*25) ve zafer (500) bonusu kalır.
+  expect_identical(sonuc$puan, as.integer(20 * 25 + 500))
+  expect_true(sonuc$puan < 1480L)
+  expect_identical(sonuc$xp, bs_xp_hesapla(sonuc$puan))
+})
+
+test_that("bs_dalga_puan_siniri öldürme sayısını haritanın üst sınırına kırpar", {
+  harita <- bs_harita_katalogu()$baglam_kapisi
+
+  # Bildirilen öldürme sayısı harita üst sınırını (28) aşarsa yine de kırpılır.
+  asiri <- bs_dalga_puan_siniri(harita, 1L, olduruldu = 999L)
+  tam <- bs_dalga_puan_siniri(harita, 1L, olduruldu = 28L)
+  expect_identical(asiri, tam)
+
+  # Öldürme sayısı sıfırsa patron dalgasında bile ek puan verilmez.
+  expect_identical(bs_dalga_puan_siniri(harita, 8L, olduruldu = 0L), 0L)
+  expect_true(bs_dalga_puan_siniri(harita, 8L, olduruldu = 1L) > 0L)
+
+  # olduruldu verilmezse (geriye dönük uyum) eski davranış korunur.
+  expect_identical(bs_dalga_puan_siniri(harita, 1L), tam)
 })
 
 test_that("koşu özeti doğrulaması hile sınırlarını reddeder", {
@@ -122,7 +158,8 @@ test_that("koşu özeti doğrulaması hile sınırlarını reddeder", {
   ozet <- .bs_test_gecerli_ozet(); ozet$sure_saniye <- 10
   expect_identical(bs_kosu_ozeti_dogrula(ozet, kosu)$neden, "sure_makullugu")
 
-  # Sunucu saatine göre geçen süreden belirgin uzun beyan.
+  # Sunucu saatine göre geçen süreden belirgin uzun beyan (2x hız payının
+  # ötesinde bile aşırı): 400 > (100*2)+90 = 290, yine reddedilmeli.
   ozet <- .bs_test_gecerli_ozet()
   sonuc <- bs_kosu_ozeti_dogrula(ozet, kosu, sunucu_gecen_saniye = 100)
   expect_identical(sonuc$neden, "sure_sunucu_uyumu")
@@ -131,6 +168,28 @@ test_that("koşu özeti doğrulaması hile sınırlarını reddeder", {
   ozet <- .bs_test_gecerli_ozet()
   ozet$kullanilan_kahramanlar <- list("emre", "mergen")
   expect_identical(bs_kosu_ozeti_dogrula(ozet, kosu)$neden, "kahraman_kimlikleri")
+})
+
+test_that("süre doğrulaması izin verilen en yüksek hız çarpanını hesaba katar", {
+  # Güvenlik/oynanabilirlik regresyonu: istemci sim.tick(gercekDt * kosu.hiz)
+  # ile OYUN saatini ilerletir; kosu.hiz en fazla 2 olabilir (bkz.
+  # www/js/bilge_savunmasi_uygulama.js). Meşru 2x hızlandırılmış bir koşuda
+  # bildirilen sure_saniye (oyun saati), sunucu saatine göre GERÇEK geçen
+  # süreden (sunucu_gecen_saniye) neredeyse iki kat büyük olabilir.
+  kosu <- .bs_test_kosu()
+  ozet <- .bs_test_gecerli_ozet()  # sure_saniye = 400 (oyun saati)
+
+  # Gerçek geçen süre yalnızca ~210 saniye olsa bile (oyunun neredeyse
+  # tamamı 2x hızda oynanmış), koşu artık reddedilmemeli:
+  # 400 <= (210*2)+90 = 510.
+  sonuc <- bs_kosu_ozeti_dogrula(ozet, kosu, sunucu_gecen_saniye = 210)
+  expect_true(sonuc$gecerli)
+  expect_null(sonuc$neden)
+
+  # BS_MAKS_HIZ_CARPANI ötesinde bir oran (istemcinin sunabileceğinden daha
+  # hızlı) hâlâ reddedilmeli: 400 > (100*2)+90 = 290.
+  asiri <- bs_kosu_ozeti_dogrula(ozet, kosu, sunucu_gecen_saniye = 100)
+  expect_identical(asiri$neden, "sure_sunucu_uyumu")
 })
 
 test_that("yenilgi özeti zafer bonusu olmadan kabul edilir", {

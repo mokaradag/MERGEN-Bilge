@@ -170,6 +170,22 @@ test_that("sayfa kablolaması tembel başlatma sözleşmesini korur", {
   expect_true(.bs_lc_iceriyor(wiring, "bilge_savunmasi_enabled()"))
 })
 
+
+test_that("DB koşu başlatma hatası kalıcılıksız oyunu engellemez", {
+  # Regresyon: tablolar/kullanıcı mevcutken bs_db_start_run() NULL dönerse
+  # oyun tamamen engellenmemeli; mevcut kalıcılıksız/serbest oyun yolu
+  # korunmalı ve istemciye kalici = FALSE ile bs-kosu-basladi gitmelidir.
+  server_mod <- .bs_lc_oku("R", "module_bilge_savunmasi.R")
+  baslangic <- regexpr("input$bs_kosu_baslat", server_mod, fixed = TRUE)
+  expect_true(baslangic > 0)
+  govde <- substr(server_mod, baslangic, baslangic + 2200L)
+
+  expect_true(.bs_lc_iceriyor(govde, "bs_db_start_run("))
+  expect_true(.bs_lc_iceriyor(govde, "bs-kosu-basladi"))
+  expect_true(.bs_lc_iceriyor(govde, "kalici = !is.null(kosu)"))
+  expect_false(.bs_lc_iceriyor(govde, "neden = \"kosu_kaydi\""))
+})
+
 test_that("retro karşılama sahnesi dekoratiftir ve oyun başlatmaz", {
   karsilama <- .bs_lc_oku("www", "js", "bilge_yolac_karsilama.js")
 
@@ -214,4 +230,74 @@ test_that("oyun modülü UI iskeleti bayrak kapalıyken sakin karta düşer", {
   kapali_html <- as.character(env$bilgeSavunmasiUI("bilge_savunmasi_module"))
   expect_true(grepl("bs-sayfa-kapali", kapali_html, fixed = TRUE))
   expect_false(grepl("canvas_kabi", kapali_html, fixed = TRUE))
+})
+
+test_that("Devam Et isteği harita/zorluk/plan_id alanlarını istek.devam altından düzleştirir", {
+  # Regresyon: kosuIstegiGonder() yalnızca üst seviye istek.harita/
+  # istek.zorluk/istek.plan_id okursa, "Devam Et" akışı (istek.devam altında
+  # taşınan alanlar) sunucuya boş harita/zorluk/plan kimliği gönderir; sunucu
+  # istek çözücüsü bunu harita_zorluk/plan_kimligi ile reddeder ya da
+  # (haftalık modda) sessizce yeni bir koşu başlatır.
+  uygulama <- .bs_lc_oku("www", "js", "bilge_savunmasi_uygulama.js")
+  expect_true(.bs_lc_iceriyor(uygulama, "function kosuIstegiGonder"))
+  expect_true(.bs_lc_iceriyor(uygulama, "var devam = istek.devam"))
+  expect_true(.bs_lc_iceriyor(uygulama, "devam.harita"))
+  expect_true(.bs_lc_iceriyor(uygulama, "devam.zorluk"))
+  expect_true(.bs_lc_iceriyor(uygulama, "devam.plan_id"))
+
+  # Düzleştirilecek sezon_id/plan_id sunucu tarafında da mevcut olmalı;
+  # aksi halde istemcinin düzleştirebileceği bir plan_id hiç gelmez.
+  kosu_helper <- .bs_lc_oku("R", "helpers_db_bilge_savunmasi_kosu.R")
+  expect_true(.bs_lc_iceriyor(kosu_helper, "bs_db_active_run"))
+  expect_true(.bs_lc_iceriyor(kosu_helper, "BlueprintID"))
+})
+
+test_that("sekmeden ayrılınca belge düzeyindeki klavye dinleyicisi çözülür ve dönüşte yeniden bağlanır", {
+  # Regresyon: BS.girdi.bagla() belge (document) düzeyinde bir "keydown"
+  # dinleyicisi kurar (Boşluk/F/Esc/1-5, e.preventDefault() ile). Oyun
+  # sekmesinden ayrılınca yalnızca RAF döngüsü durdurulursa bu dinleyici
+  # etkin kalır ve diğer uygulama sayfalarında normal klavye davranışını
+  # bozar. sayfadanAyrildi() kosu.girdi.coz() çağırmalı; sayfayaDonuldu()
+  # aynı canvas/sim/arayuz ile yeniden BS.girdi.bagla() çağırmalıdır.
+  uygulama <- .bs_lc_oku("www", "js", "bilge_savunmasi_uygulama.js")
+
+  ayrildi_baslangic <- regexpr("function sayfadanAyrildi", uygulama, fixed = TRUE)
+  expect_true(ayrildi_baslangic > 0)
+  donuldu_baslangic <- regexpr("function sayfayaDonuldu", uygulama, fixed = TRUE)
+  expect_true(donuldu_baslangic > 0)
+
+  ayrildi_govdesi <- substr(uygulama, ayrildi_baslangic,
+                            ayrildi_baslangic + 700L)
+  donuldu_govdesi <- substr(uygulama, donuldu_baslangic,
+                            donuldu_baslangic + 400L)
+
+  expect_true(.bs_lc_iceriyor(ayrildi_govdesi, "kosu.girdi.coz()"))
+  expect_true(.bs_lc_iceriyor(ayrildi_govdesi, "kosu.girdi = null"))
+  expect_true(.bs_lc_iceriyor(donuldu_govdesi, "BS.girdi.bagla("))
+})
+
+test_that("sekme aktif değilken gelen koşu başlatma yanıtı oyun kaynağı oluşturmaz", {
+  # Regresyon: kullanıcı koşu başlattıktan hemen sonra başka bir sekmeye
+  # geçerse, sunucunun asenkron "sunucu-kosu-basladi" yanıtı sekme zaten
+  # pasifken gelebilir. Bu durumda canvas/klavye dinleyicisi/geri sayım/
+  # müzik OLUŞTURULMAMALI; kalıcı bir koşu açıldıysa hemen bırakılmalıdır.
+  uygulama <- .bs_lc_oku("www", "js", "bilge_savunmasi_uygulama.js")
+
+  baslangic <- regexpr('BS.olaylar.ekle("sunucu-kosu-basladi"', uygulama, fixed = TRUE)
+  expect_true(baslangic > 0)
+  # Canvas/girdi bağlama satırlarını da kapsayacak kadar geniş bir pencere
+  # (bu olay kaydı, koşu nesnesini kurana kadar yaklaşık 2000 karakter sürer).
+  govde <- substr(uygulama, baslangic, baslangic + 2200L)
+
+  expect_true(.bs_lc_iceriyor(govde, "!uygulama.sayfadaMi"))
+  expect_true(.bs_lc_iceriyor(govde, "BS.kopru.kosuBirak(veri.kosu_id)"))
+
+  # Koruma, canvas/girdi oluşturmadan (BS.cizim.olustur / BS.girdi.bagla)
+  # ÖNCE gelmelidir.
+  koruma_konumu <- regexpr("!uygulama.sayfadaMi", govde, fixed = TRUE)
+  cizim_konumu <- regexpr("BS.cizim.olustur(kap", govde, fixed = TRUE)
+  girdi_konumu <- regexpr("BS.girdi.bagla(cizici", govde, fixed = TRUE)
+  expect_true(koruma_konumu > 0 && cizim_konumu > 0 && girdi_konumu > 0)
+  expect_true(koruma_konumu < cizim_konumu)
+  expect_true(koruma_konumu < girdi_konumu)
 })

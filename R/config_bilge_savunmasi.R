@@ -201,6 +201,13 @@ bs_zorluk_katalogu <- function() {
 BS_DUSMAN_PUAN_UST_SINIRI <- 18L   # Normal düşman başına en yüksek taban puan
 BS_PATRON_PUAN_UST_SINIRI <- 320L  # Patron dalgası ek puan üst sınırı
 
+# İstemcinin izin verilen en yüksek oyun hızı çarpanı (bkz.
+# www/js/bilge_savunmasi_uygulama.js: kosu.hiz yalnızca 1 veya 2 olabilir).
+# Süre makullüğü doğrulaması, bildirilen OYUN süresini (sure_saniye) sunucu
+# saatine göre GERÇEK geçen süreyle karşılaştırırken bu çarpanı hesaba
+# katmalıdır; aksi halde meşru 2x hızlandırılmış koşular reddedilir.
+BS_MAKS_HIZ_CARPANI <- 2
+
 # Yıldız eşikleri: kalan çekirdek oranına göre (zafer = en az 1 yıldız).
 BS_YILDIZ_ESIKLERI <- c(uc = 0.90, iki = 0.60)
 
