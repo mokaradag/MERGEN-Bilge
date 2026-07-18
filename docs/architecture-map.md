@@ -41,6 +41,7 @@ R/Shiny uygulama kabuğu: app.R -> global.R -> ui.R + server.R
 | Destek/Yardım/Yenilikler | `R/helpers_destek_database.R`, `version_history.md`, destek modülleri ve CSS/JS varlıkları | Yardım Merkezi, Geri Bildirim & Hata, Yenilikler ve Hakkında alanları. |
 | Admin/Sistem Durumu | `R/helpers_admin_analytics.R`, `R/helpers_health_*.R`, admin modülleri | Yönetim panelleri, hata/feedback analizleri, sağlık kontrolleri. |
 | Bilge Yolaç / Claude Code | `R/helpers_claude_code_*.R`, `R/config_claude_code*.R`, `bilge_yolac_plugins/` | Web-wrapped Claude Code oturumu, güvenli çalışma dizini, streaming, download ve eklenti sistemi. |
+| Bilge Savunması (oyun) | `R/config_bilge_savunmasi.R`, `R/helpers_bilge_savunmasi_validation.R`, `R/helpers_db_bilge_savunmasi_*.R`, `R/module_bilge_savunmasi*.R`, `www/js/bilge_savunmasi_*.js` | Adanmış kule savunma sayfası: sunucu-otoriter doğrulama/puanlama, MB_Game_* kalıcılığı, eşzamansız haftalık meydan okuma/plan/topluluk. |
 
 ## Kaynak Manifesti ve Yükleme Sırası
 
@@ -108,7 +109,7 @@ Seam listesi (id -> sahiplenilen manifest bölümleri):
 | `mcp_analiz` | `mcp_tools`, `chartlab_helpers`, `analysis_helpers`, `module_analysis` | MCP excel/bootstrap, PK analiz RLS |
 | `dosya_yasam_dongusu` | `files_preview_pipeline`, `file_manager_helpers`, `module_files_media` | dosya lifecycle, çözümleme güvenliği, upload doğrulama |
 | `medya_ses` | `ai_expert_helpers`, `module_ai_audio` | ses yaşam döngüsü, TTS autoplay koruması |
-| `bilge_yolac` | `config_claude_code`, `claude_code_helpers`, `module_claude_code` | güvenlik politikası, run lifecycle, stream HTML güvenliği |
+| `bilge_yolac` | `config_claude_code`, `claude_code_helpers`, `module_claude_code`, `bilge_savunmasi` | güvenlik politikası, run lifecycle, stream HTML güvenliği, oyun yaşam döngüsü/DB davranışı |
 | `destek_yonetici_saglik` | `support_admin_health_helpers`, `module_support`, `module_admin`, `module_health_chartlab` | admin refactor + tablo helper sözleşmeleri, sağlık panosu |
 | `shiny_calisma_zamani` | `server_init_runtime`, `server_core_outputs_welcome`, `server_observers` (+ `server.R`, `ui.R`) | runtime context, core interaction/observer, module wiring |
 | `frontend_varlik` | `config_ui_assets` | UI asset manifest, bölge sözleşmesi, frontend ratchet |
@@ -179,6 +180,7 @@ Bilge Yolaç, Claude Code Web benzeri kalıcı bir ajan oturum deneyimi sunar. K
 | TTS/STT veya AI Uzman konuşması | `R/helpers_ai_expert.R`, `R/helpers_ai_expert_user_data.R`, `R/helpers_ai_expert_chunking.R`, `R/helpers_ai_expert_handlers_support.R`, `R/server_ai_expert_handlers.R`, API key helper'ları ve `.Renviron.example`. |
 | SSO veya kimlik | `R/config_sso.R`, `R/helpers_sso.R`, `R/helpers_sso_signature.R`, [`../RUNBOOK.md`](../RUNBOOK.md). |
 | Bilge Yolaç / Claude Code | `R/config_claude_code.R`, `R/helpers_claude_code_*.R`, `bilge_yolac_plugins/`, [`../CLAUDE.md`](../CLAUDE.md). |
+| Bilge Savunması oyunu | [`bilge-savunmasi.md`](bilge-savunmasi.md), `R/config_bilge_savunmasi.R`, `R/helpers_bilge_savunmasi_validation.R`, `docs/sql/2026-07-bilge-savunmasi.sql`. |
 | Deployment, VM veya launcher | [`../RUNBOOK.md`](../RUNBOOK.md), `run_mergen_prod.bat`, `run_mergen_prod.R`, `tools/test_mergen_prod_launcher.ps1`. |
 | Paket veya `renv` | [`dependency-locking.md`](dependency-locking.md), [`../RENV_LOCK_STATUS.md`](../RENV_LOCK_STATUS.md), `R/config_packages.R`, `tools/renv_snapshot.R`. |
 | Dokümantasyon-only değişiklik | README/dokümantasyon haritası, [`../AGENTS.md`](../AGENTS.md), uygun hafif doğrulama komutu. |

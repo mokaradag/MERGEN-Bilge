@@ -14,6 +14,48 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-07-18 Bilge Savunması: adanmış kule savunma oyunu ve eski mini oyunun emekliliği
+
+- **Yeni sayfa: Bilge Yolaç > Bilge Savunması.** Beş kanonik MERGEN Bilge
+  uzmanı (Emre/Selin/Deniz/Can/İpek) belirgin rollerle oynanabilir savunmacı
+  oldu; her koşu premium "Öncü Uzman" seçim ekranıyla başlar (ilk
+  konuşlandırma ücretsiz + yetenek %20 hızlı). Üç haritalık kampanya (Bağlam
+  Kapısı 8, Çelişki Kavşağı 10, Bilgi Çekirdeği 12 dalga), patron dalgaları,
+  3 kademeli yükseltme, hız/duraklat/erken başlatma, kalite seviyeleri
+  (Yüksek/Dengeli/Performans), azaltılmış hareket ve klavye/dokunmatik desteği.
+- **Sunucu-otoriter ilerleme.** Koşu kimliği sunucudan, istemci jetonuyla
+  idempotent; nihai puan/yıldız/XP `bs_kosu_ozeti_dogrula()` ile sunucuda
+  yeniden hesaplanır (dalga puan sınırları, süre makullüğü, çekirdek/onarım
+  toleransı, sürüm ve kanonik kahraman kontrolleri). Geçersiz özet
+  `Reddedildi` olur ve hiçbir ödül yazmaz.
+- **Yeni `MB_Game_*` ailesi (10 tablo).** Kurulum manuel ve idempotenttir:
+  `docs/sql/2026-07-bilge-savunmasi.sql` (+ yıkıcı rollback betiği; RUNBOOK
+  9C). Tablolar yokken oyun kalıcılıksız serbest modda çalışır; uygulama
+  çökmez. Özellik bayrağı: `MERGEN_BILGE_SAVUNMASI_ENABLED` (varsayılan açık).
+- **Eşzamansız çok oyunculu.** Haftalık meydan okuma (Europe/Istanbul ISO
+  haftasından deterministik tohum/harita/değiştirici), şeffaf eşitlik
+  bozucularla zengin liderlik (ad + rumuz + departman; e-posta/sicil asla),
+  yayın sonrası değişmez savunma planları ("Aynı Koşulda Dene" + hayalet
+  kıyas) ve haftalık topluluk operasyonu. Gerçek zamanlı ağ/PvP bilinçli
+  olarak YOK.
+- **Eski Bilge Yolaç karşılama mini oyunu tamamen kaldırıldı** (13
+  `bilge_yolac_*.js` dosyası). Çalışma Alanı karşılaması artık dekoratif
+  retro 8-bit sahne: mevcut piksel persona verisiyle animasyon kataloğu
+  (yürü/koş/düşün/selamla/zıpla/uyu; tıklayınca persona değişir) + Claude
+  Code CLI esintili esprili daktilo ipuçları + `[OYNA]` geçiş satırı. Sahne
+  oyun değildir: girdi yakalamaz, ses çalmaz, mesaj gelince durur.
+- **Ses/müzik uyumu.** Oyun sayfası açıkken MERGEN arka fon müziği owner
+  tabanlı kısılır (`MusicManager.duck("oyun")`), sayfadan çıkınca bırakılır.
+  Oyunun kendi sesleri isteğe bağlı yerel dosyalardır; yoksa sessiz ve tam
+  işlevlidir.
+- **Doğrulama.** 4 yeni odaklı test dosyası (config/doğrulama/SQLite DB/yaşam
+  döngüsü; ~760 iddia) + manifest/seam/bölge/persona/frontend-ratchet
+  sözleşmeleri bilinçli güncellendi; parse sanity (993 dosya) ve Shiny boot
+  smoke bulutta geçti. SQL Server Türkçe at-rest doğrulaması ve gerçek çok
+  kullanıcılı SSO liderlik akışı VM kapılarında kanıtlanır. Ayrıntı:
+  [`bilge-savunmasi.md`](bilge-savunmasi.md).
+
+
 ### (Yayınlanmadı) 2026-07-17 Hibrit VoxCPM2 konuşma mimarisi: kilitli persona sesleri + önceden üretilmiş karşılama/rehberlik
 
 - **Karşılama ve sayfa rehberliği artık önceden üretilmiş persona WAV'larıyla

@@ -571,6 +571,45 @@ Tablolar kurulmadan da uygulama tam çalışır: Ortak Oturum sayfaları
 `test-ortak-oturum-sql-contract.R`, `test-ortak-oturum-ui-contract.R`,
 `test-ortak-oturum-permissions-behavior.R`.
 
+### 9C. Bilge Savunması tabloları (bir kerelik kurulum)
+
+Bilge Savunması (kule savunma oyunu; `Bilge Yolaç > Bilge Savunması`) için
+10 yeni tablo gerekir (`MB_Game_*` ailesi). Kurulum UYGULAMA TARAFINDAN
+OTOMATİK YAPILMAZ; DBA/operatör SSMS üzerinden bir kez uygular. Ayrıntılı
+tasarım/operasyon rehberi: [`docs/bilge-savunmasi.md`](docs/bilge-savunmasi.md).
+
+Aşamalı devreye alma kontrol listesi:
+
+1. (İsteğe bağlı) Kod dağıtımından sonra sayfayı geçici gizlemek için
+   `.Renviron`'a `MERGEN_BILGE_SAVUNMASI_ENABLED=FALSE` ekleyin ve R sürecini
+   yeniden başlatın (bayrak varsayılan AÇIKTIR).
+2. DB yedeği alın (standart değişiklik prosedürü).
+3. `docs/sql/2026-07-bilge-savunmasi.sql` betiğini SSMS'te uygulayın.
+   Betik idempotenttir: tablolar/indeksler zaten varsa hiçbir şey yapmaz;
+   yıkıcı ifade içermez ve mevcut `MB_Chats`/`MB_Messages`/`MB_Users`/
+   `MB_ClaudeCode_*`/`MB_Ortak*` tablolarına dokunmaz.
+4. Betiğin sonundaki doğrulama SELECT'i 10 tabloyu da listelemelidir.
+5. Bayrağı kapattıysanız açın (`TRUE` yapın veya satırı silin) ve R sürecini
+   yeniden başlatın. Tablo erişilebilirliği ilk kullanımda algılanır
+   (FALSE sonucu 60 sn önbelleklenir).
+6. Doğrulama: sayfayı açın ("İlerleme kaydediliyor" rozeti görünmeli);
+   Bağlam Kapısı'nda kısa bir koşu bitirin; SSMS'te `MB_Game_Runs`
+   (`Status`, `Score`) ve `MB_Game_Profiles` satırlarını, Türkçe durum
+   değerlerinin (`Tamamlandı`, `Bırakıldı`) mojibake olmadığını doğrulayın.
+   İkinci bir kullanıcıyla liderlik/ilerleme izolasyonunu kontrol edin.
+7. Geri alma gerekirse: ÖNCE bayrağı kapatıp uygulamayı yeniden başlatın
+   (veri korunur, sayfa gizlenir). Veri de kaldırılacaksa YEDEK aldıktan
+   sonra `docs/sql/2026-07-bilge-savunmasi-rollback.sql` betiğini uygulayın
+   (YIKICIDIR; yalnızca `MB_Game_*` ailesini düşürür).
+
+Tablolar kurulmadan da uygulama tam çalışır: oyun "Kalıcılık kapalı"
+rozetiyle serbest modda oynanabilir kalır; liderlik/plan/ilerleme panelleri
+açıklayıcı not gösterir ve hiçbir kişisel akış etkilenmez. İlgili odaklı
+testler: `test-bilge-savunmasi-db-behavior.R`,
+`test-bilge-savunmasi-validation-behavior.R`,
+`test-bilge-savunmasi-lifecycle-contract.R`,
+`test-bilge-savunmasi-config-behavior.R`.
+
 ## 10. Dağıtım Sonrası Smoke Testleri
 
 - Ana sayfa açılıyor mu?
@@ -709,6 +748,7 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
 - Bağımlılık kilitleme: [`docs/dependency-locking.md`](docs/dependency-locking.md)
 - On-prem kilit durumu: [`RENV_LOCK_STATUS.md`](RENV_LOCK_STATUS.md)
 - Değişiklik notları: [`docs/release-notes.md`](docs/release-notes.md)
+- Bilge Savunması oyunu: [`docs/bilge-savunmasi.md`](docs/bilge-savunmasi.md)
 - Dokümantasyon hub'ı: [`docs/README.md`](docs/README.md)
 
 ---
