@@ -149,7 +149,11 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
 
   resolve_user_id <- function() {
     uid <- tryCatch({
-      if (is.function(current_user_id)) current_user_id() else current_user_id
+      if (is.function(current_user_id)) {
+        shiny::isolate(current_user_id())
+      } else {
+        current_user_id
+      }
     }, error = function(e) 0L)
     uid <- suppressWarnings(as.integer(uid))
     if (is.na(uid) || uid < 0L) uid <- 0L
@@ -181,6 +185,25 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
       urls = as.list(utils::head(urls, limit))
     ))
     invisible(NULL)
+  }
+
+  session_is_closed <- function() {
+    tryCatch(
+      is.function(session$isClosed) && isTRUE(session$isClosed()),
+      error = function(e) FALSE
+    )
+  }
+
+  dispatch_in_session <- function(expr) {
+    if (session_is_closed()) return(invisible(NULL))
+
+    # later/promise callbacks do not automatically inherit either a reactive
+    # consumer or Shiny's default session domain. Both are needed here:
+    # reactiveVal reads require isolate(), while shinyjs resolves its session
+    # through getDefaultReactiveDomain().
+    shiny::withReactiveDomain(session, {
+      shiny::isolate(force(expr))
+    })
   }
 
   # --- Kişisel öneki persona onaylandığı anda hazırlamaya başla ---
@@ -252,6 +275,7 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
     dispatch <- function(include_prefix) {
       if (isTRUE(dispatch_guard$done)) return(invisible(NULL))
       dispatch_guard$done <- TRUE
+      if (session_is_closed()) return(invisible(NULL))
 
       # Karşılama yalnızca sohbet/başlangıç yüzeyinde geçerlidir: gönderim
       # anında kontrol. Gecikmeli (deadline) gönderim penceresinde kullanıcı
@@ -281,11 +305,13 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
         if (length(items) > 1) "evet" else "hayır"
       ))
 
-      ai_expert$start_speaking(
-        items[[1]]$text,
-        cooldown_secs = ai_expert$COOLDOWN_GREETING,
-        kind = "welcome",
-        static_plan = list(items = items)
+      dispatch_in_session(
+        ai_expert$start_speaking(
+          items[[1]]$text,
+          cooldown_secs = ai_expert$COOLDOWN_GREETING,
+          kind = "welcome",
+          static_plan = list(items = items)
+        )
       )
       invisible(NULL)
     }
@@ -332,11 +358,13 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
       "page=%s persona=%s variant=%d", page, persona, variant
     ))
 
-    ai_expert$start_speaking(
-      item$text,
-      cooldown_secs = ai_expert$COOLDOWN_PAGE,
-      kind = "page_guidance",
-      static_plan = list(items = list(item))
+    dispatch_in_session(
+      ai_expert$start_speaking(
+        item$text,
+        cooldown_secs = ai_expert$COOLDOWN_PAGE,
+        kind = "page_guidance",
+        static_plan = list(items = list(item))
+      )
     )
 
     # Tüketilen klipten sonra bu sayfanın SIRADAKİ adayını önden ısıt
@@ -348,11 +376,16 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
 
   # Isındırmayı hızlı başlangıç şeridini bloklamadan, oturum kurulumundan
   # sonra ertelenmiş olarak tetikle (süreçte yalnızca ilk oturum başlatır).
-  later::later(function() {
-    tryCatch(.speech_trigger_process_warmup(session), error = function(e) {
-      cat(sprintf("[SPEECH] Isındırma tetikleyici hatası: %s\n", conditionMessage(e)))
-    })
-  }, delay = 3)
+  # Testler veya kapalı ortamlar VOXCPM2_WARMUP_ENABLED=false verdiğinde
+  # gecikmeli callback hiç kurulmasın; aksi halde local_envvar() test bitince
+  # geri alınabilir ve callback yanlışlıkla gerçek TTS ısındırması başlatabilir.
+  if (mergen_speech_warmup_should_start()) {
+    later::later(function() {
+      tryCatch(.speech_trigger_process_warmup(session), error = function(e) {
+        cat(sprintf("[SPEECH] Isındırma tetikleyici hatası: %s\n", conditionMessage(e)))
+      })
+    }, delay = 3)
+  }
 
   list(
     static_ready = static_ready,
