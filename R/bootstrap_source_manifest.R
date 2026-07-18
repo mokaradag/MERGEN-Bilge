@@ -466,6 +466,14 @@ source_manifest_required_order <- list(
   c("R/module_claude_code_sessions_ui.R", "R/module_claude_code_sessions.R"),
   c("R/module_claude_code_sessions.R", "R/module_claude_code.R"),
 
+  # Bilge Savunması: paylaşılan .bs_db_* altyapısı koşu/topluluk DB
+  # katmanlarından önce, doğrulama katmanı DB koşu katmanından önce yüklenir.
+  c("R/config_bilge_savunmasi.R", "R/helpers_bilge_savunmasi_validation.R"),
+  c("R/helpers_bilge_savunmasi_validation.R", "R/helpers_db_bilge_savunmasi_cekirdek.R"),
+  c("R/helpers_db_bilge_savunmasi_cekirdek.R", "R/helpers_db_bilge_savunmasi_kosu.R"),
+  c("R/helpers_db_bilge_savunmasi_cekirdek.R", "R/helpers_db_bilge_savunmasi_topluluk.R"),
+  c("R/helpers_db_bilge_savunmasi_kosu.R", "R/module_bilge_savunmasi.R"),
+
   c("R/helpers_llm_response_postprocess.R", "R/helpers_llm_api.R"),
   c("R/helpers_llm_api.R", "R/helpers_llm_stream_io.R"),
   c("R/helpers_llm_stream_io.R", "R/helpers_llm_sse_events.R"),

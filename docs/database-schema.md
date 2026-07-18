@@ -18,6 +18,7 @@ Bu belge, MERGEN Bilge uygulamasının güncel R kaynaklarında kullanılan veri
 | `R/helpers_sso.R` | `DC01_user_base` yetkilendirme okuması. |
 | `tests/scripts/run_vm_encoding_preflight_real.R` | VM/SQL Server Türkçe kodlama preflight için kritik tablo/kolon beklentileri. |
 | `R/helpers_db_claude_code_session_queries.R`, `R/helpers_db_claude_code_sessions.R` | Bilge Yolaç kalıcı oturumları: `MB_ClaudeCode_Sessions` / `MB_ClaudeCode_Runs` oluşturma/listeleme/yükleme/yumuşak silme davranışı. |
+| `R/helpers_db_bilge_savunmasi_cekirdek.R`, `R/helpers_db_bilge_savunmasi_kosu.R`, `R/helpers_db_bilge_savunmasi_topluluk.R` | Bilge Savunması oyunu: `MB_Game_*` ailesi profil/koşu/kontrol noktası/başarım/haftalık sezon/liderlik/plan/topluluk davranışı. |
 
 ## Tablo Akış Diyagramı
 
@@ -34,6 +35,10 @@ erDiagram
     MB_Users ||--o{ MB_Destek_Hata_Bildir : reports
     MB_Users ||--o{ MB_ClaudeCode_Sessions : owns_agent_sessions
     MB_ClaudeCode_Sessions ||--o{ MB_ClaudeCode_Runs : contains_runs
+    MB_Users ||--o{ MB_Game_Profiles : owns_game_profile
+    MB_Users ||--o{ MB_Game_Runs : plays_runs
+    MB_Game_Runs ||--o{ MB_Game_RunCheckpoints : saves_checkpoints
+    MB_Game_ChallengeSeasons ||--o{ MB_Game_ChallengeEntries : ranks_entries
     DC01_user_base ||..o{ MB_Users : enriches_authorizes
     DC01_userr ||..o{ MB_Users : email_lookup
 ```
@@ -163,6 +168,44 @@ Bakım notları:
 - Okuma sınırında yalnızca görünen kolonlar `normalize_db_read_visible_value()` ile geri açılır; `Workdir`, model kimlikleri ve `Status` gibi teknik kolonlara mojibake onarımı uygulanmaz.
 - Bu tablolara API anahtarı, token, ortam değişkeni veya ikili dosya içeriği yazılmaz.
 - "Çıktıyı Temizle", model değişimi ve workdir değişimi kalıcı geçmişi SİLMEZ; yalnızca aktif oturum bağını koparır. Arşivleme yalnızca Oturumlar sayfasındaki açık kullanıcı eylemiyle `IsDeleted = 1` olarak yapılır.
+
+## Bilge Savunması (Kule Savunma Oyunu) Tabloları
+
+Kurulum betiği: `docs/sql/2026-07-bilge-savunmasi.sql` (manuel DBA/operatör;
+uygulama açılışında OTOMATİK ÇALIŞTIRILMAZ). Geri alma:
+`docs/sql/2026-07-bilge-savunmasi-rollback.sql` (YIKICI; yalnızca yedek ve
+bayrak kapatma sonrası). Tasarım/operasyon ayrıntısı:
+[`bilge-savunmasi.md`](bilge-savunmasi.md). Oyun verisi kişisel
+`MB_Chats`/`MB_Messages`/`MB_ClaudeCode_*`/`MB_Ortak*` ailesinden kasıtlı
+olarak AYRIDIR. Durum/mod değerleri Türkçedir (`Aktif`, `Tamamlandı`,
+`Yenilgi`, `Bırakıldı`, `Reddedildi` / `kampanya`, `haftalik`, `plan`).
+
+| Tablo | Amaç | Kritik kısıt/indeks |
+|---|---|---|
+| `MB_Game_Profiles` | Oyuncu seviyesi/XP/toplam puan + oyun ayarları JSON'u | `UQ (UserID)` |
+| `MB_Game_CampaignProgress` | Harita+zorluk başına yıldız/en iyi puan/en yüksek dalga | `UQ (UserID, MapID, Difficulty)` |
+| `MB_Game_HeroProgress` | Persona başına kullanım ve ustalık XP'si | `UQ (UserID, HeroID)` |
+| `MB_Game_Runs` | Sunucu kimlikli koşu kaydı: tohum, sürümler, durum, doğrulanmış puan/yıldız/XP, `RejectReason`, sınırlı olay özeti | `UQ (UserID, ClientToken)` (idempotent yeniden deneme); `IX (UserID, Status, GameRunID DESC)` |
+| `MB_Game_RunCheckpoints` | Dalga sınırında devam durumu (boyut sınırlı JSON) | `UQ (GameRunID, WaveNumber)`; FK -> Runs |
+| `MB_Game_Achievements` | Başarımlar + kalıcı açılımlar (`ItemType`: `basarim`/`acilim`) | `UQ (UserID, ItemID)` |
+| `MB_Game_ChallengeSeasons` | Haftalık meydan okuma bileşimi (deterministik tohum) | `UQ (WeekCode)` |
+| `MB_Game_ChallengeEntries` | Kullanıcı başına tek liderlik girişi | `UQ (ChallengeSeasonID, UserID)`; liderlik indeksi `(Sezon, Score DESC, CoreHealth DESC, FinalWave DESC, DurationSeconds ASC)` |
+| `MB_Game_Blueprints` | Yayın sonrası değişmez savunma planları (`bs_plan_dogrula` süzgeçli yük) | `IX (IsDeleted, BlueprintID DESC)` |
+| `MB_Game_CommunityContributions` | Haftalık topluluk operasyonu katkıları | `UQ (GameRunID)` (koşu başına tek katkı); `IX (WeekCode, UserID)` |
+
+Bakım notları:
+
+- Nihai puan/yıldız/XP istemciden alınmaz; `bs_kosu_ozeti_dogrula()` sunucu
+  doğrulaması bağlayıcıdır ve geçersiz özet koşuyu `Reddedildi` işaretler.
+- Sonuçlandırma TEK transaction'dadır (koşu + kampanya + kahraman + profil +
+  başarımlar); hata durumunda tam geri alınır, bağlantı açık işlemle havuza
+  dönmez.
+- Liderlik/plan görünümleri `MB_Users`'tan yalnızca `KaynakAdi`,
+  `KullaniciAdi`, `Departman` okur; e-posta/sicil istemciye taşınmaz,
+  erişilemezse "Oyuncu #<id>" maskesine düşülür.
+- Bu tablolara gizli değer, görsel ikili içerik yazılmaz; JSON kolonları
+  uygulama tarafında boyut sınırlıdır (koşu ~60k, kontrol noktası ~40k,
+  plan ~20k karakter).
 
 ## Ortak Oturumlar (İşbirlikçi Çalışma Odaları) Tabloları
 

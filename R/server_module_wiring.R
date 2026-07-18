@@ -82,6 +82,7 @@ serverBindSettingsAndRefs <- function(input,
                                       forward_refs_init_fn = serverInitForwardRefs,
                                       claude_code_server_fn = claudeCodeServer,
                                       claude_code_sessions_server_fn = claudeCodeSessionsServer,
+                                      bilge_savunmasi_server_fn = bilgeSavunmasiServer,
                                       ortak_calismalar_server_fn = ortakCalismalarServer,
                                       visual_settings_sync_init_fn = visualSettingsSyncInit,
                                       chat_outputs_init_fn = chatOutputsInit,
@@ -95,6 +96,7 @@ serverBindSettingsAndRefs <- function(input,
     forward_refs_init_fn = forward_refs_init_fn,
     claude_code_server_fn = claude_code_server_fn,
     claude_code_sessions_server_fn = claude_code_sessions_server_fn,
+    bilge_savunmasi_server_fn = bilge_savunmasi_server_fn,
     ortak_calismalar_server_fn = ortak_calismalar_server_fn,
     visual_settings_sync_init_fn = visual_settings_sync_init_fn,
     chat_outputs_init_fn = chat_outputs_init_fn,
@@ -139,6 +141,15 @@ serverBindSettingsAndRefs <- function(input,
       claude_code_sessions$refresh("tab")
     }
   }, ignoreInit = TRUE)
+
+  # Bilge Savunması: adanmış oyun sayfası modülü. Oyun motoru sayfa açılana
+  # kadar başlatılmaz; bayrak kapalıysa gözlemciler hiç kurulmaz.
+  if (bilge_savunmasi_enabled()) {
+    bilge_savunmasi_server_fn(
+      "bilge_savunmasi_module",
+      current_user_id = current_user_id_provider
+    )
+  }
 
   # Ortak Oturumlar: hub/sohbet/bilge_yolac yüzeyleri tek modülden beslenir;
   # canlı kullanıcı kimliği SAĞLAYICISI geçirilir (başlangıç anlık görüntüsü değil).

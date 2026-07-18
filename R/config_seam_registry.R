@@ -275,7 +275,8 @@ mergen_seam_registry <- function() {
       manifest_sections = c(
         "config_claude_code",
         "claude_code_helpers",
-        "module_claude_code"
+        "module_claude_code",
+        "bilge_savunmasi"
       ),
       extra_runtime_files = character(0),
       guard_tests = c(
@@ -284,7 +285,9 @@ mergen_seam_registry <- function() {
         "tests/testthat/test-claude-code-stream-html-safety-contract.R",
         "tests/testthat/test-claude-code-process-refactor-contract.R",
         "tests/testthat/test-claude-code-runtime-workdir-contract.R",
-        "tests/testthat/test-claude-code-document-download-link-encoding.R"
+        "tests/testthat/test-claude-code-document-download-link-encoding.R",
+        "tests/testthat/test-bilge-savunmasi-db-behavior.R",
+        "tests/testthat/test-bilge-savunmasi-lifecycle-contract.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-claude-code-security-policy-contract.R\")",

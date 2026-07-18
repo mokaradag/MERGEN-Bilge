@@ -113,9 +113,6 @@
       var welcome = document.getElementById(data.welcomeId);
       if (welcome && welcome.classList.contains('cc-welcome-active')) {
         welcome.classList.remove('cc-welcome-active');
-        if (typeof window.ccStopWelcome === 'function') {
-          window.ccStopWelcome();
-        }
       }
     }
 

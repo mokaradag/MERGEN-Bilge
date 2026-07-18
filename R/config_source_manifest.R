@@ -447,6 +447,21 @@ source_manifest_sections <- list(
     "R/module_claude_code.R"
   ),
 
+  # bilge_savunmasi: Bilge Savunması (kule savunma oyunu). Yapılandırma +
+  # persona oyun manifesti önce, saf doğrulama/puanlama katmanı sonra, DB
+  # katmanı (çekirdek altyapı -> koşu yaşam döngüsü -> eşzamansız topluluk)
+  # ardından, UI ve sunucu modülü en sonda. MB_Game_* tabloları yoksa tüm
+  # katman güvenli boş sonuçla çalışır (docs/bilge-savunmasi.md).
+  bilge_savunmasi = c(
+    "R/config_bilge_savunmasi.R",
+    "R/helpers_bilge_savunmasi_validation.R",
+    "R/helpers_db_bilge_savunmasi_cekirdek.R",
+    "R/helpers_db_bilge_savunmasi_kosu.R",
+    "R/helpers_db_bilge_savunmasi_topluluk.R",
+    "R/module_bilge_savunmasi_ui.R",
+    "R/module_bilge_savunmasi.R"
+  ),
+
   # ortak_oturumlar: Ortak Oturumlar (işbirlikçi çalışma odaları): saf
   # yetki/e-posta yardımcıları önce, DB katmanı (çekirdek -> katılım -> davet
   # -> mesaj -> belge -> bakım) sonra, UI/davet/oda/hub modülleri en sonda.

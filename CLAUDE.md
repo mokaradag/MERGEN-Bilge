@@ -712,19 +712,22 @@ Current contract:
 - Do not duplicate model-lock logic in `analysis_tools.js`, `image_tools.js`, `summarization_tools.js`, or future tool scripts.
 - For ChartLab line/area charts, preserve the X-axis preference order: date column first, then categorical column, then numeric fallback. When categorical X values repeat, aggregate numeric Y values, defaulting to mean unless a specific aggregation is provided. Do not revert to the older behavior that selected numeric X too early and made line charts behave like scatter plots.
 
-### Bilge Yolaç game behavior contract
+### Bilge Savunması (tower defense) game contract
 
-The Bilge Yolaç mini-game should preserve the recent control and level-flow fixes:
-- no unintended rightward team drift when no key is pressed,
-- no automatic firing loop,
-- SPACE is manual fire with cooldown,
-- mouse click fires toward the clicked target,
-- "Çıktıyı Temizle" / reset must reinitialize running state and animation frame state,
-- level transitions must reset character x/y positions and movement values,
-- demo AI must not move characters during victory or transition states,
-- invalid or NaN level input must fall back safely.
+The old interactive Bilge Yolaç welcome mini-game (13 `bilge_yolac_*.js` files, `window.BilgeYolac`, `ccStartWelcome`/`ccStopWelcome`, `cc-init-welcome` handlers) is RETIRED and must not be reintroduced. The game now lives on its own page: **Bilge Yolaç > Bilge Savunması** (`tabName = "bilge_savunmasi"`). Full design/ops guide: `docs/bilge-savunmasi.md`.
 
-Keep HUD, title, level, and victory text readable; do not shrink the recently enlarged game text sizes without a deliberate UI reason.
+Non-negotiable boundaries:
+
+- LAZY LIFECYCLE: app startup performs NO game work. The engine initializes only after the navigation observer sends `bilge_savunmasi_module-page_opened` and the module replies `bs-init`. Leaving the tab (or hiding the window) pauses the sim, cancels the RAF loop, detaches input listeners, and releases the MERGEN music duck; nothing keeps running invisibly.
+- The Çalışma Alanı welcome screen is a DECORATIVE retro 8-bit scene (`www/js/bilge_yolac_karsilama.js` + rewritten `www/css/bilge_yolac_welcome.css`): pixel persona sprites from the existing `claude_code_pixel_chars.js` data, CLI-style typed tips, and the `[OYNA]` launch line (`data-bs-ac`). It never captures input for gameplay, never plays audio, never sends Shiny inputs, stops when `cc-welcome-active` is removed, and honors `prefers-reduced-motion`.
+- SERVER AUTHORITY: run identity is issued by the server (`bs_db_start_run`, `UserID + ClientToken` unique → idempotent retries). Final score/stars/XP are NEVER taken from the client: `bs_kosu_ozeti_dogrula()` re-computes score with per-wave caps, core/repair tolerance (+3 per wave, mirrored in the sim), duration plausibility against the server clock, version checks, and canonical hero ids. Invalid summaries mark the run `Reddedildi` and write NO progression. Finalization is one transaction (run + campaign + hero + profile + achievements) with rollback before connection release.
+- PERSISTENCE: `MB_Game_*` family only (10 tables; manual idempotent DDL `docs/sql/2026-07-bilge-savunmasi.sql`, destructive rollback script separate). Never write game data into `MB_Chats`/`MB_Messages`/`MB_ClaudeCode_*`/`MB_Ortak*`. Missing tables must keep the game playable in non-persistent mode with an explanatory badge — never crash the app. Turkish stored states (`Aktif`, `Tamamlandı`, `Yenilgi`, `Bırakıldı`, `Reddedildi`; modes `kampanya`/`haftalik`/`plan`).
+- PERSONA IDENTITY: `R/config_characters.R` stays the single source; `bs_persona_manifest()` only adds game role/ability metadata (ability ids are the canonical modern set: `cozum_dalgasi`, `sinyal_taramasi`, `rota_projesi`, `dogrulama_isini`, `rehber_halkasi`). No mythological ids/labels/art anywhere in game-facing files (scanned by `test-character-personas-contract.R`). Hero portraits load from canonical `characters/resim|avatar/<id>/` paths with an accent-colored initial fallback; faces are cover-cropped, never stretched.
+- ASYNC MULTIPLAYER ONLY: weekly challenge (deterministic Europe/Istanbul week code + seed via `bs_haftalik_meydan_okuma()`), immutable validated blueprints, and community totals. No real-time networking/PvP/chat. Leaderboards expose only `KaynakAdi`/`KullaniciAdi`/`Departman` (masked fallback), never email/sicil. Tie-breakers stay: score > core > wave > time > earliest submission (`bs_liderlik_sirala`).
+- FEATURE FLAG: `bilge_savunmasi_enabled()` (`MERGEN_BILGE_SAVUNMASI_ENABLED`, default ON) hides the menu item, skips server observers, and renders a calm disabled card; keep all three gates.
+- FRONTEND BUDGETS: the `bilge_savunmasi` JS group order in `R/config_ui_assets.R` is dependency order (cekirdek first, uygulama last); the sim (`bilge_savunmasi_sim.js`) stays renderer-independent and deterministic (seeded RNG only); background music ducking goes through `MusicManager.duck("oyun")`/`unduck("oyun")` in `bilge_savunmasi_ses.js` (owner model — never a boolean flag). Do not merge game files back into monoliths; per-file ratchet budgets apply.
+
+Protected by: `tests/testthat/test-bilge-savunmasi-config-behavior.R`, `test-bilge-savunmasi-validation-behavior.R`, `test-bilge-savunmasi-db-behavior.R` (real SQLite), `test-bilge-savunmasi-lifecycle-contract.R`, plus the manifest/seam/zone/persona/frontend-ratchet contracts. VM-only proof: SQL Server Turkish at-rest values, portrait binaries, real multi-user SSO leaderboard flow.
 
 ### Bilge Yolaç / Claude Code security regression contract
 

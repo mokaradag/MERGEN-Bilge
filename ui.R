@@ -41,7 +41,11 @@ ui <- dashboardPage(
       menuItem("Bilge Yolaç", icon = icon("robot"), startExpanded = FALSE,
         menuSubItem("Çalışma Alanı", tabName = "claude_code", icon = icon("terminal")),
         menuSubItem("Oturumlar", tabName = "claude_code_sessions", icon = icon("clock-rotate-left")),
-        menuSubItem("Ortak Bilge Yolaç Oturumları", tabName = "ortak_bilge_yolac", icon = icon("users"))
+        menuSubItem("Ortak Bilge Yolaç Oturumları", tabName = "ortak_bilge_yolac", icon = icon("users")),
+        # Bilge Savunması: özellik bayrağı kapalıysa menüde görünmez.
+        if (bilge_savunmasi_enabled()) {
+          menuSubItem("Bilge Savunması", tabName = "bilge_savunmasi", icon = icon("chess-rook"))
+        }
       ),
       # Ortak Çalışmalarım: ekip tabanlı ortak oturumların merkez sayfası.
       # Kişisel geçmişten (Söyleşi Geçmişim / Bilge Yolaç Oturumlarım) ayrıdır.
@@ -432,6 +436,9 @@ ui <- dashboardPage(
 
       # Bilge Yolaç Oturumları Sekmesi (kalıcı ajan oturum geçmişi)
       tabItem(tabName = "claude_code_sessions", claudeCodeSessionsUI("claude_code_sessions_module")),
+
+      # Bilge Savunması (kule savunma oyunu; bayrak kapalıysa sakin bilgi kartı)
+      tabItem(tabName = "bilge_savunmasi", bilgeSavunmasiUI("bilge_savunmasi_module")),
 
       # Ortak Oturumlar Sekmeleri: tek modül kimliği, üç yüzey (destek deseni).
       # Oda yalnızca hub yüzeyine gömülür; diğer yüzeyler filtreli listelerdir.

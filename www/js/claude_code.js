@@ -156,9 +156,6 @@
       var welcome = document.getElementById(data.welcomeId);
       if (welcome) {
         welcome.classList.remove('cc-welcome-active');
-        if (typeof window.ccStopWelcome === 'function') {
-          window.ccStopWelcome();
-        }
       }
     }
 
@@ -297,10 +294,6 @@
       var welcome = document.getElementById(data.welcomeId);
       if (welcome) {
         welcome.classList.add('cc-welcome-active');
-        // Karşılama animasyonunu yeniden başlat
-        if (typeof window.ccStartWelcome === 'function') {
-          window.ccStartWelcome(data.welcomeId);
-        }
       }
     }
   });
@@ -440,10 +433,6 @@
       badge.style.background = 'linear-gradient(135deg, ' + accent + ' 0%, ' + hover + ' 100%)';
     }
 
-    // Karşılama ekranını da güncelle
-    if (typeof window.ccUpdateWelcomeTheme === 'function') {
-      window.ccUpdateWelcomeTheme(data.characterId, accent);
-    }
   });
 
   // -------------------------------------------------------------------------
