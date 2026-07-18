@@ -254,7 +254,9 @@
       harita: istek.harita || (devam && devam.harita) || null,
       zorluk: istek.zorluk || (devam && devam.zorluk) || null,
       plan_id: istek.plan_id != null ? istek.plan_id :
-        ((devam && devam.plan_id != null) ? devam.plan_id : null)
+        ((devam && devam.plan_id != null) ? devam.plan_id : null),
+      kosu_id: devam && devam.kosu_id ? devam.kosu_id : null,
+      istemci_jetonu: devam && devam.istemci_jetonu ? devam.istemci_jetonu : null
     });
   }
 
@@ -279,10 +281,12 @@
     // Sekmeden ayrılınca gelen gecikmiş yanıt: kullanıcı başlatma isteğini
     // gönderdikten sonra başka bir uygulama sekmesine geçmiş olabilir. Bu
     // durumda hiçbir oyun kaynağı (canvas/klavye dinleyicisi/geri sayım/
-    // müzik) oluşturulmaz; kalıcı bir koşu sunucuda açıldıysa hemen
-    // bırakılır ki Aktif koşu kilitli kalmasın.
+    // müzik) oluşturulmaz. Yeni başlatmalarda sunucuda açılan kalıcı koşu
+    // hemen bırakılır ki Aktif koşu kilitli kalmasın; Devam Et yanıtlarında
+    // ise aynı checkpoint'li koşu kimliği/jetonu yeniden kullanılır, bu yüzden
+    // koşuyu bırakmak kullanıcının devam hakkını kaybettirir.
     if (!uygulama.sayfadaMi) {
-      if (veri.kalici && veri.kosu_id) BS.kopru.kosuBirak(veri.kosu_id);
+      if (!istek.devam && veri.kalici && veri.kosu_id) BS.kopru.kosuBirak(veri.kosu_id);
       return;
     }
 

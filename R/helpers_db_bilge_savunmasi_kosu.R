@@ -225,7 +225,7 @@ bs_db_active_run <- function(user_id, conn = NULL) {
       handle$conn,
       paste(
         "SELECT GameRunID, MapID, Difficulty, Seed, Mode, ChallengeSeasonID,",
-        "BlueprintID, StartedAt",
+        "BlueprintID, ClientToken, StartedAt",
         "FROM MB_Game_Runs WHERE UserID = ? AND Status = ?",
         "ORDER BY GameRunID DESC"
       ),
@@ -248,6 +248,7 @@ bs_db_active_run <- function(user_id, conn = NULL) {
       zorluk = as.character(kosu$Difficulty[1]),
       tohum = as.integer(kosu$Seed[1]),
       mod = as.character(kosu$Mode[1]),
+      istemci_jetonu = as.character(kosu$ClientToken[1]),
       sezon_id = .bs_db_kosu_sezon_id(kosu),
       plan_id = {
         deger <- suppressWarnings(as.integer(kosu$BlueprintID[1]))
