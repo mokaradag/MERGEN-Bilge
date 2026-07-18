@@ -82,6 +82,49 @@ bs_db_get_or_create_season <- function(meydan = bs_haftalik_meydan_okuma(),
   uyari = "Meydan okuma sezonu hazırlanamadı:")
 }
 
+#' Sezonu Kimliğine Göre Getir (Yeniden Türetmeden)
+#'
+#' @description Verilen ChallengeSeasonID'ye ait sezon kaydını olduğu gibi
+#' döndürür; "şimdiki" haftayı YENİDEN TÜRETMEZ. Haftalık bir koşu, ISO hafta
+#' dönümünün tam ortasında bitirilebilir; liderlik gönderimi koşunun
+#' BAŞLARKEN atandığı sezonu kullanmalıdır, aksi halde
+#' bs_db_submit_challenge_entry() sezon uyuşmazlığından geçerli koşuyu
+#' reddeder. Bulunamazsa NULL döner.
+bs_db_get_season_by_id <- function(sezon_id, conn = NULL) {
+  sid <- suppressWarnings(as.integer(sezon_id))
+  if (length(sid) == 0L || is.na(sid)) return(NULL)
+
+  handle <- .bs_db_try(
+    .bs_db_acquire(conn),
+    fallback = NULL,
+    uyari = "Meydan okuma sezonu için DB bağlantısı alınamadı:"
+  )
+  if (is.null(handle)) return(NULL)
+  on.exit(.bs_db_release(handle), add = TRUE)
+
+  .bs_db_try({
+    satir <- DBI::dbGetQuery(
+      handle$conn,
+      paste(
+        "SELECT ChallengeSeasonID, WeekCode, MapID, Difficulty, Seed",
+        "FROM MB_Game_ChallengeSeasons WHERE ChallengeSeasonID = ?"
+      ),
+      params = normalize_db_params(list(sid))
+    )
+    if (nrow(satir) == 0L) return(NULL)
+
+    list(
+      sezon_id = as.integer(satir$ChallengeSeasonID[1]),
+      hafta_kodu = as.character(satir$WeekCode[1]),
+      harita = as.character(satir$MapID[1]),
+      zorluk = as.character(satir$Difficulty[1]),
+      tohum = as.integer(satir$Seed[1])
+    )
+  },
+  fallback = NULL,
+  uyari = "Sezon getirilemedi:")
+}
+
 # Yeni giriş eski girişten daha mı iyi? (liderlik eşitlik bozucularıyla)
 .bs_db_giris_daha_iyi_mi <- function(yeni, eski) {
   if (yeni$puan != eski$puan) return(yeni$puan > eski$puan)
@@ -272,8 +315,12 @@ bs_db_challenge_leaderboard <- function(sezon_id, user_id = NULL, limit = 20L,
       params = normalize_db_params(list(as.integer(sezon_id)))
     )
 
-    if (nrow(girisler) > 500L) girisler <- girisler[seq_len(500L), , drop = FALSE]
+    # Kırpmadan ÖNCE sırala: sorgu ORDER BY içermez, bu yüzden 500 satır
+    # sınırı sıralanmamış (rastgele) sonuç kümesine uygulanırsa yüksek
+    # puanlı satırlar düşebilir ve hem gösterilen ilk sıralar hem de
+    # benim_sira yanlış çıkabilir.
     girisler <- bs_liderlik_sirala(girisler)
+    if (nrow(girisler) > 500L) girisler <- girisler[seq_len(500L), , drop = FALSE]
 
     uid <- .bs_db_kullanici_id(user_id)
     benim_sira <- if (!is.null(uid) && nrow(girisler) > 0L) {

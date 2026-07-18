@@ -61,6 +61,10 @@ local({
     source(file.path(repo_root, "R", "helpers_db_bilge_savunmasi_topluluk.R"),
            encoding = "UTF-8", local = globalenv())
   }
+  if (!exists(".bs_srv_bitirme_sonrasi", mode = "function", inherits = TRUE)) {
+    source(file.path(repo_root, "R", "module_bilge_savunmasi.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
 })
 
 # SQLite şeması: docs/sql/2026-07-bilge-savunmasi.sql tablolarının test aynası.
@@ -250,6 +254,45 @@ test_that("koşu başlatma jetonla idempotenttir ve eski aktif koşuyu kapatır"
   expect_identical(aktif$kosu_id, kosu2$kosu_id)
 })
 
+test_that("yeni koşu eklemesi başarısız olursa eski Aktif koşu Bırakıldı yapılmaz (transaction)", {
+  conn <- .bs_test_db_kur()
+  on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
+
+  kosu1 <- bs_db_start_run(101L, "baglam_kapisi", "normal", 111L,
+                           istemci_jetonu = "jeton-once", conn = conn)
+  expect_false(is.null(kosu1))
+
+  # İkinci başlatma isteği, geçici bir DB hatasını simüle eder: Seed NOT NULL
+  # kısıtını ihlal eden NA tohum, INSERT'i başarısızlığa uğratır. Düzeltme
+  # öncesi kod, eski Aktif koşuyu Bırakıldı yapan UPDATE'i INSERT'ten ÖNCE
+  # ayrı bir işlemde (transaction'sız) commit ederdi; bu durumda kullanıcı
+  # ne eski devam edilebilir koşusunu ne de yeni bir koşu alırdı.
+  basarisiz <- bs_db_start_run(101L, "baglam_kapisi", "normal", NA_integer_,
+                               istemci_jetonu = "jeton-basarisiz", conn = conn)
+  expect_null(basarisiz)
+
+  # Eski koşu HÂLÂ Aktif olmalı: kapatma + ekleme tek transaction'da geri
+  # alınmış olmalı.
+  durumlar <- DBI::dbGetQuery(
+    conn,
+    "SELECT GameRunID, Status FROM MB_Game_Runs WHERE UserID = 101 ORDER BY GameRunID"
+  )
+  expect_identical(nrow(durumlar), 1L)
+  expect_identical(durumlar$Status, "Aktif")
+  expect_identical(as.integer(durumlar$GameRunID[1]), kosu1$kosu_id)
+
+  # Başarısız istekten kaynaklı yarım kalmış ikinci bir satır YOKTUR.
+  basarisiz_satir <- DBI::dbGetQuery(
+    conn, "SELECT COUNT(*) AS n FROM MB_Game_Runs WHERE ClientToken = ?",
+    params = list("jeton-basarisiz")
+  )
+  expect_identical(as.integer(basarisiz_satir$n[1]), 0L)
+
+  # Kullanıcı devam edilebilir aktif koşusunu kaybetmemiş olmalı.
+  aktif <- bs_db_active_run(101L, conn = conn)
+  expect_identical(aktif$kosu_id, kosu1$kosu_id)
+})
+
 test_that("kontrol noktası tekdüze ilerler ve devam akışını besler", {
   conn <- .bs_test_db_kur()
   on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
@@ -272,6 +315,47 @@ test_that("kontrol noktası tekdüze ilerler ve devam akışını besler", {
   devam <- bs_db_active_run(101L, conn = conn)
   expect_identical(devam$kontrol_dalga, 4L)
   expect_true(grepl("guncel", devam$kontrol_durum, fixed = TRUE))
+  # Sezon/plan atanmamış sıradan bir kampanya koşusunda NULL kalmalı.
+  expect_null(devam$sezon_id)
+  expect_null(devam$plan_id)
+})
+
+test_that("devam edilebilir aktif koşu, sezon ve plan kimliğini de taşır (devam düzleştirme sözleşmesi)", {
+  # Regresyon: istemci "Devam Et" isteğini gönderirken harita/zorluk/plan_id
+  # istek.devam altından düzleştirilir (bkz. www/js/bilge_savunmasi_uygulama.js
+  # kosuIstegiGonder). Bu alanlar bs_db_active_run() tarafından hiç
+  # döndürülmezse istemci onları düzleştiremez; bu sözleşme testi
+  # bs_db_active_run()'ın sezon_id/plan_id alanlarını gerçekten taşıdığını
+  # doğrular.
+  conn <- .bs_test_db_kur()
+  on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
+
+  meydan <- bs_haftalik_meydan_okuma(
+    as.POSIXct("2026-07-15 12:00:00", tz = "Europe/Istanbul")
+  )
+  sezon <- bs_db_get_or_create_season(meydan, conn = conn)
+
+  kosu <- bs_db_start_run(101L, meydan$harita, meydan$zorluk, meydan$tohum,
+                          mod = "haftalik", sezon_id = sezon$sezon_id,
+                          istemci_jetonu = "jeton-haftalik-devam", conn = conn)
+  expect_false(is.null(kosu))
+
+  devam <- bs_db_active_run(101L, conn = conn)
+  expect_identical(devam$kosu_id, kosu$kosu_id)
+  expect_identical(devam$mod, "haftalik")
+  expect_identical(devam$harita, meydan$harita)
+  expect_identical(devam$zorluk, meydan$zorluk)
+  expect_identical(devam$sezon_id, sezon$sezon_id)
+  expect_null(devam$plan_id)
+
+  # Plan (blueprint) modlu bir koşuda plan_id de taşınmalıdır.
+  plan_kosu <- bs_db_start_run(102L, "baglam_kapisi", "normal", 55L,
+                               mod = "plan", plan_id = 777L,
+                               istemci_jetonu = "jeton-plan-devam", conn = conn)
+  expect_false(is.null(plan_kosu))
+  devam_plan <- bs_db_active_run(102L, conn = conn)
+  expect_identical(devam_plan$plan_id, 777L)
+  expect_null(devam_plan$sezon_id)
 })
 
 test_that("sonuçlandırma idempotenttir, ödülleri bir kez yazar ve izole eder", {
@@ -417,6 +501,113 @@ test_that("haftalık sezon idempotenttir ve liderlik zengin profil taşır", {
   expect_identical(tablo$ilkler[[2]]$oyuncu, "Gülşah Yıldız")
   expect_true(tablo$ilkler[[2]]$benim)
   expect_identical(tablo$benim_sira, 2L)
+})
+
+test_that("hafta dönümünde bitirilen haftalık koşu, BAŞLADIĞI sezona gönderilir", {
+  conn <- .bs_test_db_kur()
+  on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
+
+  # Koşu, PAZAR gecesi (eski ISO hafta, W28) başlar.
+  eski_meydan <- bs_haftalik_meydan_okuma(
+    as.POSIXct("2026-07-12 23:50:00", tz = "Europe/Istanbul")
+  )
+  eski_sezon <- bs_db_get_or_create_season(eski_meydan, conn = conn)
+
+  kosu <- bs_db_start_run(101L, eski_meydan$harita, eski_meydan$zorluk,
+                          eski_meydan$tohum, mod = "haftalik",
+                          sezon_id = eski_sezon$sezon_id,
+                          istemci_jetonu = "hafta-donumu", conn = conn)
+
+  harita_kaydi <- bs_harita_katalogu()[[eski_meydan$harita]]
+  dalgalar <- lapply(seq_len(harita_kaydi$dalga_sayisi), function(i) {
+    list(dalga = i, olduruldu = 8L, sizinti = 0L, puan = 60,
+         cekirdek = 20, kaynak = 150)
+  })
+  ozet <- list(
+    sema = BS_SEMA_SURUMU, oyun_surumu = BS_OYUN_SURUMU,
+    harita = eski_meydan$harita, zorluk = eski_meydan$zorluk,
+    tohum = eski_meydan$tohum, mod = "haftalik", dalga_ozetleri = dalgalar,
+    son_dalga = harita_kaydi$dalga_sayisi, son_cekirdek = 20, zafer = TRUE,
+    # Süre, sunucu saatine göre geçen (gerçek, ~0 saniye) süreye göre makul
+    # kalmalı: >= dalga_sayisi*6 ve <= sunucu_gecen_saniye + 90.
+    sure_saniye = 65, kullanilan_kahramanlar = list("emre"), olay_ozeti = list()
+  )
+
+  # Koşu PAZARTESİ sabahı (yeni ISO hafta, W29) sonuçlandırılır; "şimdiki"
+  # hafta artık koşunun başladığı haftadan FARKLIDIR.
+  yeni_meydan <- bs_haftalik_meydan_okuma(
+    as.POSIXct("2026-07-13 00:10:00", tz = "Europe/Istanbul")
+  )
+  expect_false(identical(eski_meydan$hafta_kodu, yeni_meydan$hafta_kodu))
+  yeni_sezon <- bs_db_get_or_create_season(yeni_meydan, conn = conn)
+  expect_false(identical(eski_sezon$sezon_id, yeni_sezon$sezon_id))
+
+  sonuc <- bs_db_finalize_run(101L, kosu$kosu_id, "hafta-donumu", ozet, conn = conn)
+  expect_true(sonuc$kabul)
+  # Sonuç, koşunun BAŞLADIĞI (eski) sezonu taşımalı; "şimdiki" sezonu değil.
+  expect_identical(sonuc$sezon_id, eski_sezon$sezon_id)
+
+  istek <- list(mod = "haftalik")
+  paket <- .bs_srv_bitirme_sonrasi(101L, kosu$kosu_id, istek, sonuc, conn = conn)
+  expect_true(paket$kabul)
+  # Regresyon: liderlik paketi "şimdiki" sezonu DEĞİL, koşunun gerçek
+  # sezonunu yansıtmalı; aksi halde skor liderlik tablosuna hiç ulaşmaz.
+  expect_identical(paket$sezon$sezon_id, eski_sezon$sezon_id)
+
+  giris <- DBI::dbGetQuery(
+    conn,
+    "SELECT ChallengeSeasonID FROM MB_Game_ChallengeEntries WHERE GameRunID = ?",
+    params = list(kosu$kosu_id)
+  )
+  expect_identical(nrow(giris), 1L)
+  expect_identical(as.integer(giris$ChallengeSeasonID[1]), eski_sezon$sezon_id)
+
+  # "Şimdiki" (yeni) sezonun liderlik tablosunda bu koşu YOKTUR.
+  yeni_liderlik <- bs_db_challenge_leaderboard(yeni_sezon$sezon_id, conn = conn)
+  expect_identical(yeni_liderlik$toplam_katilimci, 0L)
+
+  # Koşunun gerçek (eski) sezonunun liderlik tablosunda bu koşu VARDIR.
+  eski_liderlik <- bs_db_challenge_leaderboard(eski_sezon$sezon_id, conn = conn)
+  expect_identical(eski_liderlik$toplam_katilimci, 1L)
+})
+
+test_that("liderlik tablosu 500 kaydı kırpmadan ÖNCE sıralar (en yüksek puan kaybolmaz)", {
+  conn <- .bs_test_db_kur()
+  on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
+
+  meydan <- bs_haftalik_meydan_okuma(
+    as.POSIXct("2026-07-15 12:00:00", tz = "Europe/Istanbul")
+  )
+  sezon <- bs_db_get_or_create_season(meydan, conn = conn)
+
+  # 600 giriş doğrudan eklenir (gerçek koşu akışını atlayarak hızlı kurulum).
+  # Sorgunun ORDER BY içermemesi nedeniyle satırlar ekleme (rowid) sırasıyla
+  # döner; en yüksek puanlı giriş BİLEREK en sona eklenir. Düzeltme öncesi
+  # kod sıralamadan önce ilk 500 satırı aldığından bu girişi tamamen
+  # kaybederdi ve hem "ilkler" hem de "benim_sira" yanlış çıkardı.
+  n <- 600L
+  girisler_df <- data.frame(
+    ChallengeSeasonID = rep(as.integer(sezon$sezon_id), n),
+    UserID = seq.int(1000L, 1000L + n - 1L),
+    GameRunID = seq_len(n),
+    Score = c(seq.int(1L, n - 1L), 999999L),
+    CoreHealth = rep(15, n),
+    FinalWave = rep(8L, n),
+    DurationSeconds = rep(300, n),
+    SubmittedAt = rep("2026-07-15 12:00:00", n),
+    stringsAsFactors = FALSE
+  )
+  DBI::dbAppendTable(conn, "MB_Game_ChallengeEntries", girisler_df)
+
+  en_yuksek_uid <- 1000L + n - 1L
+  tablo <- bs_db_challenge_leaderboard(sezon$sezon_id, user_id = en_yuksek_uid,
+                                       conn = conn)
+
+  expect_identical(tablo$toplam_katilimci, 500L)
+  expect_identical(tablo$benim_sira, 1L)
+  expect_length(tablo$ilkler, 20L)  # varsayılan sayfa boyutu (limit)
+  expect_identical(tablo$ilkler[[1]]$puan, 999999)
+  expect_true(tablo$ilkler[[1]]$benim)
 })
 
 test_that("topluluk katkısı koşu bazında idempotenttir ve toplamlar doğru", {

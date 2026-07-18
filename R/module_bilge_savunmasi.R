@@ -156,8 +156,9 @@
 }
 
 # Sonuçlandırma sonrası eşzamansız çok oyunculu kayıtları işler (haftalık
-# giriş + topluluk katkısı) ve istemci yanıt paketini tamamlar.
-.bs_srv_bitirme_sonrasi <- function(uid, kosu_id, istek, sonuc) {
+# giriş + topluluk katkısı) ve istemci yanıt paketini tamamlar. `conn`
+# testlerde SQLite enjeksiyonu için opsiyoneldir; üretimde NULL bırakılır.
+.bs_srv_bitirme_sonrasi <- function(uid, kosu_id, istek, sonuc, conn = NULL) {
   if (!isTRUE(sonuc$kabul)) return(sonuc)
 
   # Topluluk katkısı: doğrulanmış dalga özetlerinden etkisizleştirme toplamı.
@@ -171,14 +172,21 @@
   }
   hafta <- bs_hafta_kodu()
   bs_db_add_community_contribution(uid, kosu_id, hafta,
-                                   etkisizlestirilen = etkisiz)
+                                   etkisizlestirilen = etkisiz, conn = conn)
 
   # Haftalık koşu: liderlik girişini işle ve güncel tabloyu pakete ekle.
-  if (identical(as.character(istek$mod %||% "")[1], "haftalik")) {
-    sezon <- bs_db_get_or_create_season(bs_haftalik_meydan_okuma())
+  # ÖNEMLİ: "şimdiki" hafta burada YENİDEN TÜRETİLMEZ. Koşu, ISO hafta
+  # dönümünün tam ortasında bitirilmiş olabilir; bu durumda "şimdiki" hafta
+  # koşunun BAŞLADIĞI haftadan farklı olur ve bs_db_submit_challenge_entry()
+  # sezon uyuşmazlığından geçerli koşuyu sessizce reddeder. Bunun yerine
+  # koşunun MB_Game_Runs.ChallengeSeasonID alanında sunucu tarafından
+  # BAŞLARKEN sabitlenmiş sezonu (sonuc$sezon_id) kullanılır.
+  if (identical(as.character(istek$mod %||% "")[1], "haftalik") &&
+      !is.null(sonuc$sezon_id)) {
+    sezon <- bs_db_get_season_by_id(sonuc$sezon_id, conn = conn)
     if (!is.null(sezon)) {
-      bs_db_submit_challenge_entry(uid, sezon$sezon_id, kosu_id)
-      sonuc$liderlik <- bs_db_challenge_leaderboard(sezon$sezon_id, uid)
+      bs_db_submit_challenge_entry(uid, sezon$sezon_id, kosu_id, conn = conn)
+      sonuc$liderlik <- bs_db_challenge_leaderboard(sezon$sezon_id, uid, conn = conn)
       sonuc$sezon <- sezon
     }
   }

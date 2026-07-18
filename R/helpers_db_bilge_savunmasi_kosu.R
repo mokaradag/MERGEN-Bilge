@@ -43,11 +43,15 @@
   invisible(NULL)
 }
 
-#' Yeni Koşu Başlat (Sunucu Kimlikli, Jetonla Idempotent)
+#' Yeni Koşu Başlat (Sunucu Kimlikli, Jetonla Idempotent, İşlem-Güvenli)
 #'
 #' @description Kullanıcı için yeni bir koşu kaydı açar ve sunucu koşu
 #' kimliğini döndürür. Aynı istemci jetonuyla tekrarlanan çağrı mevcut kaydı
-#' döndürür (yeniden deneme güvenliği). Önceki Aktif koşular Bırakıldı yapılır.
+#' döndürür (yeniden deneme güvenliği). Önceki Aktif koşuları Bırakıldı yapma
+#' ve yeni koşuyu ekleme TEK transaction içindedir: ekleme herhangi bir
+#' nedenle (geçici DB hatası, kısıt/encoding hatası) başarısız olursa eski
+#' koşu(lar) Bırakıldı olarak COMMIT EDİLMEZ; kullanıcı devam edilebilir
+#' kontrol noktasını kaybetmeden tam geri alma (rollback) yapılır.
 #' @return Liste: kosu_id, tohum, harita, zorluk, mod veya NULL.
 bs_db_start_run <- function(user_id, harita, zorluk, tohum, mod = "kampanya",
                             sezon_id = NULL, plan_id = NULL,
@@ -59,12 +63,22 @@ bs_db_start_run <- function(user_id, harita, zorluk, tohum, mod = "kampanya",
   if (!nzchar(jeton)) return(NULL)
 
   handle <- .bs_db_try(
-    .bs_db_acquire(conn),
+    .bs_db_acquire(conn, tx = TRUE),
     fallback = NULL,
     uyari = "Koşu başlatma için DB bağlantısı alınamadı:"
   )
   if (is.null(handle)) return(NULL)
   on.exit(.bs_db_release(handle), add = TRUE)
+
+  tamamlandi <- FALSE
+  DBI::dbBegin(handle$conn)
+  # Geri alma bağlantı bırakılmadan ÖNCE çalışmalı (after = FALSE): havuza
+  # açık transaction'lı bağlantı dönmez.
+  on.exit({
+    if (!tamamlandi) {
+      try(DBI::dbRollback(handle$conn), silent = TRUE)
+    }
+  }, add = TRUE, after = FALSE)
 
   .bs_db_try({
     mevcut <- DBI::dbGetQuery(
@@ -76,6 +90,9 @@ bs_db_start_run <- function(user_id, harita, zorluk, tohum, mod = "kampanya",
       params = normalize_db_params(list(uid, jeton))
     )
     if (nrow(mevcut) > 0L) {
+      # Yalnızca okuma yapıldı; yazım yok, güvenle geri alınabilir.
+      DBI::dbRollback(handle$conn)
+      tamamlandi <- TRUE
       return(list(
         kosu_id = as.integer(mevcut$GameRunID[1]),
         harita = as.character(mevcut$MapID[1]),
@@ -121,6 +138,9 @@ bs_db_start_run <- function(user_id, harita, zorluk, tohum, mod = "kampanya",
       ))
     )
 
+    DBI::dbCommit(handle$conn)
+    tamamlandi <- TRUE
+
     list(
       kosu_id = kosu_id,
       harita = as.character(harita)[1],
@@ -149,6 +169,17 @@ bs_db_start_run <- function(user_id, harita, zorluk, tohum, mod = "kampanya",
   res
 }
 
+# Koşu satırındaki ChallengeSeasonID'yi güvenle okur (NA/NULL ise NULL döner).
+# Haftalık liderlik gönderimi, koşu BAŞLARKEN atanan bu sezonu kullanmalıdır;
+# sonuçlandırma anında "şimdiki" hafta yeniden türetilirse, hafta haftalık
+# koşu sırasında değişmişse (ISO hafta dönümü) sezon uyuşmazlığından skor
+# liderlik tablosuna hiç ulaşamaz.
+.bs_db_kosu_sezon_id <- function(kosu) {
+  deger <- suppressWarnings(as.integer(kosu$ChallengeSeasonID[1]))
+  if (length(deger) == 0L || is.na(deger)) return(NULL)
+  deger
+}
+
 # Sonuçlanmış koşu satırından istemci sonuç paketi üretir (idempotent yanıt).
 .bs_db_sonuc_paketi <- function(kosu, tekrar = TRUE) {
   list(
@@ -159,6 +190,7 @@ bs_db_start_run <- function(user_id, harita, zorluk, tohum, mod = "kampanya",
       "kosu_kapali"
     },
     kosu_id = as.integer(kosu$GameRunID[1]),
+    sezon_id = .bs_db_kosu_sezon_id(kosu),
     puan = as.integer(kosu$Score[1] %||% 0L),
     yildiz = as.integer(kosu$Stars[1] %||% 0L),
     xp = as.integer(kosu$XPEarned[1] %||% 0L),
@@ -171,7 +203,11 @@ bs_db_start_run <- function(user_id, harita, zorluk, tohum, mod = "kampanya",
 #' Devam Edilebilir Aktif Koşuyu Getir
 #'
 #' @description Kullanıcının en son Aktif koşusunu ve varsa en son kontrol
-#' noktasını döndürür (sayfaya geri dönüşte devam akışı için).
+#' noktasını döndürür (sayfaya geri dönüşte devam akışı için). ChallengeSeasonID
+#' ve BlueprintID de dahildir: istemci "Devam Et" isteğini gönderirken bu
+#' alanları düzleştirip (flatten) koşu başlatma isteğine taşımalıdır, aksi
+#' halde haftalık/plan modlu devam istekleri harita_zorluk/plan_kimligi
+#' nedeniyle reddedilir veya sessizce yeni bir koşu başlatır.
 bs_db_active_run <- function(user_id, conn = NULL) {
   uid <- .bs_db_kullanici_id(user_id)
   if (is.null(uid)) return(NULL)
@@ -188,7 +224,8 @@ bs_db_active_run <- function(user_id, conn = NULL) {
     kosu <- DBI::dbGetQuery(
       handle$conn,
       paste(
-        "SELECT GameRunID, MapID, Difficulty, Seed, Mode, StartedAt",
+        "SELECT GameRunID, MapID, Difficulty, Seed, Mode, ChallengeSeasonID,",
+        "BlueprintID, StartedAt",
         "FROM MB_Game_Runs WHERE UserID = ? AND Status = ?",
         "ORDER BY GameRunID DESC"
       ),
@@ -211,6 +248,11 @@ bs_db_active_run <- function(user_id, conn = NULL) {
       zorluk = as.character(kosu$Difficulty[1]),
       tohum = as.integer(kosu$Seed[1]),
       mod = as.character(kosu$Mode[1]),
+      sezon_id = .bs_db_kosu_sezon_id(kosu),
+      plan_id = {
+        deger <- suppressWarnings(as.integer(kosu$BlueprintID[1]))
+        if (length(deger) == 0L || is.na(deger)) NULL else deger
+      },
       kontrol_dalga = if (nrow(kontrol) > 0L) as.integer(kontrol$WaveNumber[1]) else NULL,
       kontrol_durum = if (nrow(kontrol) > 0L) as.character(kontrol$StateJson[1]) else NULL
     )
@@ -633,6 +675,7 @@ bs_db_finalize_run <- function(user_id, kosu_id, istemci_jetonu, ozet,
       kabul = TRUE,
       neden = NULL,
       kosu_id = as.integer(kosu_id),
+      sezon_id = .bs_db_kosu_sezon_id(kosu),
       puan = dogrulama$puan,
       yildiz = dogrulama$yildiz,
       xp = dogrulama$xp,

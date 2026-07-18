@@ -243,11 +243,18 @@
 
   function kosuIstegiGonder(istek) {
     uygulama.bekleyenIstek = istek;
+    // "Devam Et" akışında harita/zorluk/plan_id üst seviyede DEĞİL,
+    // istek.devam altındadır (bkz. sunucu-init "devam" alanı). Bu alanlar
+    // düzleştirilmezse sunucu istek çözücüsü harita/zorluk veya plan
+    // kimliğini eksik bulur ve devamı reddeder ya da (haftalık modda)
+    // sessizce yeni bir koşu başlatır.
+    var devam = istek.devam || null;
     BS.kopru.kosuBaslat({
       mod: istek.mod,
-      harita: istek.harita,
-      zorluk: istek.zorluk,
-      plan_id: istek.plan_id
+      harita: istek.harita || (devam && devam.harita) || null,
+      zorluk: istek.zorluk || (devam && devam.zorluk) || null,
+      plan_id: istek.plan_id != null ? istek.plan_id :
+        ((devam && devam.plan_id != null) ? devam.plan_id : null)
     });
   }
 
@@ -268,6 +275,16 @@
     if (!veri || uygulama.kosu) return;
     var istek = uygulama.bekleyenIstek || {};
     uygulama.bekleyenIstek = null;
+
+    // Sekmeden ayrılınca gelen gecikmiş yanıt: kullanıcı başlatma isteğini
+    // gönderdikten sonra başka bir uygulama sekmesine geçmiş olabilir. Bu
+    // durumda hiçbir oyun kaynağı (canvas/klavye dinleyicisi/geri sayım/
+    // müzik) oluşturulmaz; kalıcı bir koşu sunucuda açıldıysa hemen
+    // bırakılır ki Aktif koşu kilitli kalmasın.
+    if (!uygulama.sayfadaMi) {
+      if (veri.kalici && veri.kosu_id) BS.kopru.kosuBirak(veri.kosu_id);
+      return;
+    }
 
     var harita = BS.haritalar.haritaAl(veri.harita);
     if (!harita) return;
@@ -692,6 +709,14 @@
       cancelAnimationFrame(kosu.rafId);
       kosu.rafId = null;
     }
+    // Belge düzeyinde klavye dinleyicisi (Boşluk/F/Esc/1-5, bkz.
+    // bilge_savunmasi_girdi.js) sekmeden ayrılınca ÇÖZÜLMELİDİR; aksi
+    // halde bu tuşlar koşu yok edilene kadar diğer uygulama sayfalarında
+    // da preventDefault() ile ele geçirilmeye devam eder.
+    if (kosu.girdi) {
+      kosu.girdi.coz();
+      kosu.girdi = null;
+    }
     BS.ses.tumunuDurdur();
   }
 
@@ -699,6 +724,11 @@
     BS.ses.uygulamaMuzigiKis();
     var kosu = uygulama.kosu;
     if (!kosu || kosu.rafId) return;
+    // sayfadanAyrildi() sırasında çözülen klavye/fare dinleyicisini,
+    // aynı canvas/sim/arayuz bağlamıyla yeniden bağla.
+    if (!kosu.girdi) {
+      kosu.girdi = BS.girdi.bagla(kosu.cizici, kosu.sim, kosu.arayuz);
+    }
     kosu.cizici.boyutlandir();
     kosu.hud.duraklatGoster();
     dongulBaslat();
