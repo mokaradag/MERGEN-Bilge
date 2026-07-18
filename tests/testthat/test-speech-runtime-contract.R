@@ -94,6 +94,13 @@ testthat::test_that("JS token korumaları ve PCM oynatıcı çıpaları yerinded
   testthat::expect_true(grepl("addEventListener('playing'", manager,
                               fixed = TRUE, useBytes = TRUE))
 
+  # Eski geçiş zamanlayıcıları yeni sayfanın altyazısını gizleyemez
+  for (anchor in c("hideToken !== self.state.speechToken",
+                   "stopToken !== self.state.speechToken")) {
+    testthat::expect_true(grepl(anchor, manager, fixed = TRUE, useBytes = TRUE),
+                          info = anchor)
+  }
+
   # Durdurma kontrolleri PCM akışını da durdurur
   testthat::expect_true(grepl("MergenSpeech.pcmStop", tts, fixed = TRUE, useBytes = TRUE))
 })
@@ -149,10 +156,26 @@ testthat::test_that("AI Uzman modülü statik plan + öncelik + token sözleşme
 
   for (anchor in c("static_plan = NULL", "mergen_speech_begin",
                    "mergen_speech_priority_decision", "mergen_speech_end",
-                   "speechToken", "mergen_speech_idle_muted_pages")) {
+                   "speechToken", "mergen_speech_idle_muted_pages",
+                   "speech_is_current", "remaining_chunks_started",
+                   "first_chunk_promise")) {
     testthat::expect_true(grepl(anchor, module_txt, fixed = TRUE, useBytes = TRUE),
                           info = anchor)
   }
+
+  first_submit <- regexpr(
+    "first_chunk_promise <- tts_processor$synthesize_speech",
+    module_txt, fixed = TRUE, useBytes = TRUE
+  )[1]
+  eager_submit <- regexpr(
+    "queue_remaining_chunks(chunks, 2L)",
+    module_txt, fixed = TRUE, useBytes = TRUE
+  )[1]
+  first_wait <- regexpr(
+    "first_chunk_promise %...>%",
+    module_txt, fixed = TRUE, useBytes = TRUE
+  )[1]
+  testthat::expect_true(first_submit < eager_submit && eager_submit < first_wait)
 })
 
 testthat::test_that("statik öğe kurucusu metin+URL+süre döndürür ve eksikte NULL verir", {

@@ -378,3 +378,52 @@ testthat::test_that(
     )
   }
 )
+
+testthat::test_that(
+  "aynı sayfanın yakın yinelenen ziyareti susar, 15 dakika sonra rehberlik yeniden oynar",
+  {
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    speech_tests_make_tree(root)
+    m <- mergen_speech_manifest_build(root)$manifest
+    mergen_speech_manifest_write(m, mergen_speech_manifest_path(root))
+    withr::local_envvar(MERGEN_SPEECH_ROOT = root,
+                        VOXCPM2_WARMUP_ENABLED = "false")
+    withr::defer(speech_tests_reset_caches())
+
+    env <- .ai_expert_pg_env()
+    clock <- new.env(parent = emptyenv())
+    clock$now <- as.POSIXct("2026-07-18 12:00:00", tz = "UTC")
+    env$Sys.time <- function() clock$now
+
+    spoke <- .pg_spoke()
+    ai_expert <- .ai_expert_stub(spoke)
+
+    testthat::with_mocked_bindings(
+      {
+        shiny::testServer(
+          .ai_expert_wrapper(env = env, ai_expert = ai_expert),
+          {
+            session$setInputs(tabs = "files")  # ignoreInit tüketir
+
+            session$setInputs(tabs = "history")
+            testthat::expect_identical(spoke$n, 1L)
+
+            session$setInputs(tabs = "chat")
+            clock$now <- clock$now + 5
+            session$setInputs(tabs = "history")
+            testthat::expect_identical(spoke$n, 1L)
+
+            session$setInputs(tabs = "chat")
+            clock$now <- clock$now + 15 * 60
+            session$setInputs(tabs = "history")
+            testthat::expect_identical(spoke$n, 2L)
+          }
+        )
+      },
+      delay = function(ms, expr) invisible(NULL),
+      runjs = function(...) invisible(NULL),
+      .package = "shinyjs"
+    )
+  }
+)
