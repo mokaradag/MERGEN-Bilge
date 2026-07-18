@@ -100,8 +100,10 @@ testthat::test_that("tahrif edilen referans WAV/metin özet uyuşmazlığıyla r
   testthat::expect_identical(res$reason, "referans_wav_ozeti_uyusmuyor")
 
   # Metin tahrifatı (selin'de)
-  writeLines("Değiştirilmiş referans metni.",
-             mergen_speech_reference_text_path("selin", root))
+  speech_tests_write_utf8_text(
+    "Değiştirilmiş referans metni.",
+    mergen_speech_reference_text_path("selin", root)
+  )
   res2 <- mergen_speech_voice_lock_validate("selin", root)
   testthat::expect_false(res2$ok)
   testthat::expect_identical(res2$reason, "referans_metin_ozeti_uyusmuyor")

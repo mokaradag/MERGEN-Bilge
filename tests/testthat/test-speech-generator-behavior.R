@@ -157,7 +157,7 @@ testthat::test_that("metin değişimi ve geçersiz mevcut WAV yeniden üretimi t
   speech_gen_run("deniz", root, synth_fn = fake)
 
   # Metin değişti -> yalnızca o varlık üretilir
-  writeLines("Güncellenmiş metin çğı.", expected$script_path[5])
+  speech_tests_write_utf8_text("Güncellenmiş metin çğı.", expected$script_path[5])
   plan <- speech_gen_plan("deniz", root)
   testthat::expect_identical(sum(plan$action == "generate"), 1L)
   testthat::expect_identical(plan$reason[5], "metin_degisti")
@@ -505,7 +505,10 @@ testthat::test_that(
 
     # Operatör bir metni düzenler ama karşılık gelen WAV'ı YENİDEN ÜRETMEZ.
     expected <- mergen_speech_expected_assets(root)
-    writeLines("Bu metin operatör tarafından elle değiştirildi.", expected$script_path[1])
+    speech_tests_write_utf8_text(
+      "Bu metin operatör tarafından elle değiştirildi.",
+      expected$script_path[1]
+    )
 
     build_after <- mergen_speech_manifest_build(root)
     testthat::expect_true(any(grepl(
