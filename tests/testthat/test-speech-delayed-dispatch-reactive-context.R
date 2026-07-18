@@ -32,7 +32,7 @@ testthat::test_that(
 )
 
 testthat::test_that(
-  "gecikmeli karşılama dispatch'i reactive context dışında uygulamayı çökertmez",
+  "gecikmeli karşılama dispatch'i reactive ve Shiny session context dışında çökmez",
   {
     speech_tests_source_chain()
     speech_tests_reset_caches()
@@ -64,12 +64,17 @@ testthat::test_that(
 
     calls <- new.env(parent = emptyenv())
     calls$n <- 0L
+    calls$domain_ok <- FALSE
     speaking <- shiny::reactiveVal(FALSE)
 
     ai_expert <- list(
       start_speaking = function(...) {
-        # Gerçek aiExpertServer ile aynı biçimde reactiveVal OKUR. Runtime
-        # isolate koruması yoksa bu satır .getReactiveEnvironment hatası verir.
+        # Gerçek aiExpertServer hem reactiveVal okur hem de ttsVisualizer
+        # üzerinden shinyjs çağırır. İlki isolate, ikincisi session domain ister.
+        calls$domain_ok <- identical(shiny::getDefaultReactiveDomain(), session)
+        if (!isTRUE(calls$domain_ok)) {
+          stop("Shiny session domain kurulmadı")
+        }
         if (isTRUE(speaking())) return(invisible(NULL))
         speaking(TRUE)
         calls$n <- calls$n + 1L
@@ -97,6 +102,7 @@ testthat::test_that(
     testthat::expect_true(runtime$play_welcome("emre"))
 
     testthat::expect_no_error(later::run_now(timeoutSecs = 0.1))
+    testthat::expect_true(calls$domain_ok)
     testthat::expect_identical(calls$n, 1L)
   }
 )
