@@ -199,6 +199,15 @@ testthat::test_that(
     root <- withr::local_tempdir()
     .speech_chunk_test_setup(root)
 
+    reference_fake <- function(body) {
+      list(
+        success = TRUE,
+        audio_raw = .speech_chunk_test_wav(active_ms = 400L),
+        content_type = "audio/wav",
+        http_status = 200L,
+        error = NULL
+      )
+    }
     fake <- function(body) {
       list(
         success = TRUE,
@@ -209,7 +218,7 @@ testthat::test_that(
       )
     }
 
-    speech_gen_reference_candidate("emre", root, synth_fn = fake)
+    speech_gen_reference_candidate("emre", root, synth_fn = reference_fake)
     speech_gen_reference_approve("emre", root)
     generated <- speech_gen_run("emre", root, synth_fn = fake)
     testthat::expect_identical(generated$generated, 150L)
