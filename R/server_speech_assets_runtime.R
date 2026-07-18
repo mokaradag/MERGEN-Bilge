@@ -358,7 +358,7 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
       "page=%s persona=%s variant=%d", page, persona, variant
     ))
 
-    dispatch_in_session(
+    started <- dispatch_in_session(
       ai_expert$start_speaking(
         item$text,
         cooldown_secs = ai_expert$COOLDOWN_PAGE,
@@ -366,6 +366,7 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
         static_plan = list(items = list(item))
       )
     )
+    if (!isTRUE(started)) return(FALSE)
 
     # Tüketilen klipten sonra bu sayfanın SIRADAKİ adayını önden ısıt
     next_variant <- mergen_speech_shuffle_bag_peek(state$bags, bag_key)

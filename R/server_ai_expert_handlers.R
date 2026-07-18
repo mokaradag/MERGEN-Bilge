@@ -15,11 +15,12 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
                                   current_user_id, chat_history_rv = NULL) {
 
   # --- Durum değişkenleri ---
-  greeting_done       <- reactiveVal(FALSE)
-  visited_pages       <- reactiveVal(character(0))  # Ziyaret edilen sayfalar
-  idle_timer_active   <- reactiveVal(FALSE)         # Boşta zamanlayıcısı aktif mi
-  last_page_talk_time <- reactiveVal(NULL)          # Son sayfa konuşma zamanı
-  idle_talk_counter   <- reactiveVal(0L)            # Boşta konuşma sayacı (tekrar önleme)
+  greeting_done        <- reactiveVal(FALSE)
+  page_guidance_times  <- reactiveVal(list())       # Sayfa bazında son rehberlik zamanı
+  idle_timer_active    <- reactiveVal(FALSE)        # Boşta zamanlayıcısı aktif mi
+  idle_talk_counter    <- reactiveVal(0L)            # Boşta konuşma sayacı (tekrar önleme)
+
+  PAGE_GUIDANCE_REPEAT_SECS <- 15 * 60
 
   # Hibrit konuşma çalışma zamanı: statik karşılama/rehberlik + kişisel önek
   speech_runtime <- speechAssetsRuntimeInit(
@@ -249,8 +250,6 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     if (!isTRUE(settings_data$enable_ai_expert)) return()
     if (!identical(settings_data$experience_mode, "kesif")) return()
 
-    visited_pages(unique(c(isolate(visited_pages()), page)))
-
     # GECİKMESİZ: rehberlik klibi statik varlıktan anında seçilip gönderilir
     trigger_page_guidance(page)
 
@@ -266,9 +265,22 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     current <- isolate(input$tabs)
     if (!identical(current, page)) return()
 
+    now <- Sys.time()
+    guidance_times <- isolate(page_guidance_times())
+    last_guidance <- guidance_times[[page]]
+    if (!is.null(last_guidance)) {
+      elapsed <- as.numeric(difftime(now, last_guidance, units = "secs"))
+      if (is.finite(elapsed) && elapsed < PAGE_GUIDANCE_REPEAT_SECS) {
+        if (isTRUE(ai_expert$is_speaking())) ai_expert$stop_speaking(0)
+        cat(sprintf("[AI_EXPERT] Sayfa rehberliği yakın zamanda oynatıldı, atlandı: %s\n", page))
+        return()
+      }
+    }
+
     dispatched <- speech_runtime$play_page_guidance(page)
     if (isTRUE(dispatched)) {
-      last_page_talk_time(Sys.time())
+      guidance_times[[page]] <- now
+      page_guidance_times(guidance_times)
     }
     schedule_idle_chat()
   }

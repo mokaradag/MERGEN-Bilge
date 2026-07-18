@@ -169,6 +169,52 @@ mergen_speech_active_token <- function(session) {
   state$active_token %||% 0L
 }
 
+#' Sonraki TTS parçalarını başlangıç mesajına kadar tutan gönderici.
+mergen_speech_chunk_dispatcher <- function(session, token, is_speaking) {
+  state <- new.env(parent = emptyenv())
+  state$started <- FALSE
+  state$claimed <- FALSE
+  state$pending <- list()
+
+  is_current <- function() {
+    isTRUE(is_speaking()) && identical(
+      as.integer(token), as.integer(mergen_speech_active_token(session))
+    )
+  }
+
+  claim_synthesis <- function() {
+    if (isTRUE(state$claimed) || !is_current()) return(FALSE)
+    state$claimed <- TRUE
+    TRUE
+  }
+
+  queue <- function(payload) {
+    if (!is_current()) return(invisible(FALSE))
+    if (isTRUE(state$started)) {
+      session$sendCustomMessage("aiExpertQueueAudioChunk", payload)
+      return(invisible(TRUE))
+    }
+    state$pending[[as.character(payload$index)]] <- payload
+    invisible(TRUE)
+  }
+
+  start <- function() {
+    if (!is_current()) return(invisible(FALSE))
+    state$started <- TRUE
+    if (length(state$pending) > 0L) {
+      indexes <- sort(as.integer(names(state$pending)))
+      for (index in indexes) {
+        session$sendCustomMessage("aiExpertQueueAudioChunk", state$pending[[as.character(index)]])
+      }
+      state$pending <- list()
+    }
+    invisible(TRUE)
+  }
+
+  list(is_current = is_current, claim_synthesis = claim_synthesis,
+       queue = queue, start = start)
+}
+
 #' Kişisel önek için konu metnini temizle: satır sonlarını at, kelime
 #' sınırında kısalt. Hassas/uzun içerik konuşmaya taşınmaz.
 mergen_speech_prefix_topic_clean <- function(topic, max_chars = 48L) {

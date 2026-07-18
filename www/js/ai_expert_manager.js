@@ -559,12 +559,15 @@ const AIExpertManager = {
 
     var strip = this._getStrip();
     var textEl = this._getTextElement();
+    var hideToken = this.state.speechToken;
+    var self = this;
 
     if (strip) {
       strip.classList.remove('ai-expert-visible', 'ai-expert-speaking', 'ai-expert-entering');
       strip.classList.add('ai-expert-exiting');
 
       setTimeout(function() {
+        if (hideToken !== self.state.speechToken) return;
         strip.classList.remove('ai-expert-exiting');
         strip.classList.add('ai-expert-hidden');
       }, 500);
@@ -614,6 +617,9 @@ const AIExpertManager = {
   // --- DURDURMA (Kullanıcı butona tıkladığında veya R'dan sinyal geldiğinde) ---
   stopSubtitle: function(data) {
     console.log('[AI_EXPERT] Konuşma durduruluyor...');
+    this.state.speechToken += 1;
+    var stopToken = this.state.speechToken;
+    var self = this;
 
     // Durdurma bayrağını ayarla (animasyon döngüsünü kırmak için)
     this.state.stopRequested = true;
@@ -653,6 +659,7 @@ const AIExpertManager = {
       strip.classList.remove('ai-expert-visible', 'ai-expert-speaking', 'ai-expert-entering');
       strip.classList.add('ai-expert-exiting');
       setTimeout(function() {
+        if (stopToken !== self.state.speechToken) return;
         strip.classList.remove('ai-expert-exiting');
         strip.classList.add('ai-expert-hidden');
       }, 300);
