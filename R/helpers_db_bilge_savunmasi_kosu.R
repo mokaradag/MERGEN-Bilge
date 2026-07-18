@@ -85,14 +85,18 @@ bs_db_start_run <- function(user_id, harita, zorluk, tohum, mod = "kampanya",
       handle$conn,
       paste(
         "SELECT GameRunID, MapID, Difficulty, Seed, Mode, ChallengeSeasonID,",
-        "BlueprintID FROM MB_Game_Runs WHERE UserID = ? AND ClientToken = ?"
+        "BlueprintID, Status FROM MB_Game_Runs WHERE UserID = ? AND ClientToken = ?"
       ),
       params = normalize_db_params(list(uid, jeton))
     )
     if (nrow(mevcut) > 0L) {
-      # Yalnızca okuma yapıldı; yazım yok, güvenle geri alınabilir.
+      # Aynı jeton yalnızca açık koşu başlatma/devam idempotency'si için
+      # yeniden kullanılabilir. Sonuçlanmış/reddedilmiş/bırakılmış bir koşuyu
+      # "başladı" diye istemciye geri göndermek kapalı koşu üzerinde yeni oyun
+      # kurar; INSERT de benzersiz jeton kısıtı nedeniyle başarılamaz.
       DBI::dbRollback(handle$conn)
       tamamlandi <- TRUE
+      if (!identical(as.character(mevcut$Status[1]), "Aktif")) return(NULL)
       return(list(
         kosu_id = as.integer(mevcut$GameRunID[1]),
         harita = as.character(mevcut$MapID[1]),
@@ -167,7 +171,7 @@ bs_db_start_run <- function(user_id, harita, zorluk, tohum, mod = "kampanya",
     paste(
       "SELECT GameRunID, MapID, Difficulty, Seed, Mode, ChallengeSeasonID,",
       "BlueprintID, Status, ClientToken, StartedAt, Score, Stars, XPEarned,",
-      "FinalWave, CoreHealth, DurationSeconds",
+      "FinalWave, CoreHealth, DurationSeconds, RejectReason",
       "FROM MB_Game_Runs WHERE GameRunID = ? AND UserID = ?"
     ),
     params = normalize_db_params(list(as.integer(kosu_id), uid))
@@ -194,7 +198,8 @@ bs_db_start_run <- function(user_id, harita, zorluk, tohum, mod = "kampanya",
     neden = if (as.character(kosu$Status[1]) %in% c("Tamamlandı", "Yenilgi")) {
       NULL
     } else {
-      "kosu_kapali"
+      neden <- as.character(kosu$RejectReason[1] %||% "")[1]
+      if (is.na(neden) || !nzchar(neden)) "kosu_kapali" else neden
     },
     kosu_id = as.integer(kosu$GameRunID[1]),
     sezon_id = .bs_db_kosu_sezon_id(kosu),

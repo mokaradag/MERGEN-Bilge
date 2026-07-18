@@ -292,7 +292,8 @@ bs_db_submit_challenge_entry <- function(user_id, sezon_id, kosu_id,
 #'
 #' @description Sezonun girişlerini deterministik eşitlik bozucularla sıralar;
 #' ilk `limit` girişi, kullanıcının kendi sırasını ve yakın komşularını
-#' döndürür. Girdi hacmi sınırlıdır (en fazla 500 satır işlenir).
+#' döndürür. `toplam_katilimci` ve `benim_sira`, görüntüleme kırpmasından
+#' önceki tam sıralı sezon kümesinden hesaplanır.
 bs_db_challenge_leaderboard <- function(sezon_id, user_id = NULL, limit = 20L,
                                         conn = NULL) {
   handle <- .bs_db_try(
@@ -315,22 +316,38 @@ bs_db_challenge_leaderboard <- function(sezon_id, user_id = NULL, limit = 20L,
       params = normalize_db_params(list(as.integer(sezon_id)))
     )
 
-    # Kırpmadan ÖNCE sırala: sorgu ORDER BY içermez, bu yüzden 500 satır
-    # sınırı sıralanmamış (rastgele) sonuç kümesine uygulanırsa yüksek
-    # puanlı satırlar düşebilir ve hem gösterilen ilk sıralar hem de
-    # benim_sira yanlış çıkabilir.
+    # Kırpmadan ÖNCE sırala: sorgu ORDER BY içermez, bu yüzden görüntüleme
+    # penceresi sıralanmamış (rastgele) sonuç kümesine uygulanırsa yüksek
+    # puanlı satırlar düşebilir. Sıra ve toplam da aynı tam sıralı kümeden
+    # hesaplanır; aksi halde ilk pencerenin dışında kalan kullanıcının
+    # benim_sira değeri NULL, toplam_katilimci ise kırpılmış sayı olur.
     girisler <- bs_liderlik_sirala(girisler)
-    if (nrow(girisler) > 500L) girisler <- girisler[seq_len(500L), , drop = FALSE]
+    toplam_katilimci <- nrow(girisler)
 
     uid <- .bs_db_kullanici_id(user_id)
-    benim_sira <- if (!is.null(uid) && nrow(girisler) > 0L) {
+    benim_sira <- if (!is.null(uid) && toplam_katilimci > 0L) {
       hangi <- which(as.integer(girisler$UserID) == uid)
       if (length(hangi) > 0L) as.integer(hangi[1]) else NULL
     } else {
       NULL
     }
 
-    profiller <- .bs_db_kullanici_profilleri(handle$conn, girisler$UserID)
+    limit_n <- suppressWarnings(as.integer(limit)[1])
+    if (is.na(limit_n) || limit_n < 1L) limit_n <- 20L
+    limit_n <- min(limit_n, 100L)
+
+    ilkler_n <- min(toplam_katilimci, limit_n)
+    yakin_aralik <- integer(0)
+    if (!is.null(benim_sira) && benim_sira > ilkler_n) {
+      yakin_aralik <- seq(max(1L, benim_sira - 2L),
+                          min(toplam_katilimci, benim_sira + 2L))
+    }
+    gorunen_indeksler <- unique(c(if (ilkler_n > 0L) seq_len(ilkler_n) else integer(0),
+                                  yakin_aralik))
+    profiller <- .bs_db_kullanici_profilleri(
+      handle$conn,
+      if (length(gorunen_indeksler) > 0L) girisler$UserID[gorunen_indeksler] else integer(0)
+    )
 
     paketle <- function(satirlar, siralar) {
       lapply(seq_along(siralar), function(i) {
@@ -352,21 +369,20 @@ bs_db_challenge_leaderboard <- function(sezon_id, user_id = NULL, limit = 20L,
       })
     }
 
-    ilkler_n <- min(nrow(girisler), max(1L, as.integer(limit)))
-    ilkler <- if (nrow(girisler) > 0L) {
+    ilkler <- if (ilkler_n > 0L) {
       paketle(girisler[seq_len(ilkler_n), , drop = FALSE], seq_len(ilkler_n))
     } else {
       list()
     }
 
-    yakinlar <- list()
-    if (!is.null(benim_sira) && benim_sira > ilkler_n) {
-      aralik <- seq(max(1L, benim_sira - 2L), min(nrow(girisler), benim_sira + 2L))
-      yakinlar <- paketle(girisler[aralik, , drop = FALSE], aralik)
+    yakinlar <- if (length(yakin_aralik) > 0L) {
+      paketle(girisler[yakin_aralik, , drop = FALSE], yakin_aralik)
+    } else {
+      list()
     }
 
     list(
-      toplam_katilimci = nrow(girisler),
+      toplam_katilimci = toplam_katilimci,
       benim_sira = benim_sira,
       ilkler = ilkler,
       yakinlar = yakinlar

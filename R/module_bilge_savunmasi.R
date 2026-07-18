@@ -233,13 +233,18 @@ bilgeSavunmasiServer <- function(id, current_user_id) {
       }
 
       kosu <- NULL
-      if (isTRUE(bs_db_tables_available()) && !is.null(uid)) {
+      kalicilik_var <- isTRUE(bs_db_tables_available()) && !is.null(uid)
+      if (isTRUE(kalicilik_var)) {
         kosu <- bs_db_start_run(
           uid,
           harita = cozum$harita, zorluk = cozum$zorluk, tohum = cozum$tohum,
           mod = cozum$mod, sezon_id = cozum$sezon_id, plan_id = cozum$plan_id,
           istemci_jetonu = istek$istemci_jetonu
         )
+        if (is.null(kosu)) {
+          gonder("bs-hata", list(neden = "kosu_kaydi"))
+          return(NULL)
+        }
       }
 
       # Idempotent resume/start requests can return an already-persisted run
@@ -249,7 +254,7 @@ bilgeSavunmasiServer <- function(id, current_user_id) {
       # that actually live in MB_Game_Runs.
       gonder("bs-kosu-basladi", list(
         kosu_id = if (!is.null(kosu)) kosu$kosu_id else NULL,
-        kalici = !is.null(kosu),
+        kalici = isTRUE(kalicilik_var),
         mod = if (!is.null(kosu)) kosu$mod else cozum$mod,
         harita = if (!is.null(kosu)) kosu$harita else cozum$harita,
         zorluk = if (!is.null(kosu)) kosu$zorluk else cozum$zorluk,

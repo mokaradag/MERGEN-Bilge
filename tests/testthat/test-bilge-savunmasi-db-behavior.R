@@ -259,6 +259,22 @@ test_that("koşu başlatma jetonla idempotenttir ve eski aktif koşuyu kapatır"
   expect_identical(aktif$kosu_id, kosu2$kosu_id)
 })
 
+test_that("kapalı koşu jetonu yeni başlatma yanıtı olarak döndürülmez", {
+  conn <- .bs_test_db_kur()
+  on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
+
+  kosu <- bs_db_start_run(101L, "baglam_kapisi", "normal", 333L,
+                          istemci_jetonu = "jeton-kapali", conn = conn)
+  sonuc <- bs_db_finalize_run(101L, kosu$kosu_id, "jeton-kapali",
+                              .bs_test_db_ozet(333L), conn = conn)
+  expect_true(sonuc$kabul)
+
+  # Regresyon: aynı ClientToken artık Aktif olmayan satıra aitse, benzersiz
+  # jeton kısıtını atlayıp eski koşuyu "başladı" gibi döndürmemelidir.
+  expect_null(bs_db_start_run(101L, "celiski_kavsagi", "normal", 444L,
+                              istemci_jetonu = "jeton-kapali", conn = conn))
+})
+
 test_that("yeni koşu eklemesi başarısız olursa eski Aktif koşu Bırakıldı yapılmaz (transaction)", {
   conn <- .bs_test_db_kur()
   on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
@@ -444,6 +460,7 @@ test_that("geçersiz özet Reddedildi olur ve ilerleme yazmaz", {
                                .bs_test_db_ozet(7L), conn = conn)
   expect_false(tekrar$kabul)
   expect_true(tekrar$tekrar)
+  expect_identical(tekrar$neden, "kosu_eslesmesi")
 })
 
 test_that("haftalık sezon idempotenttir ve liderlik zengin profil taşır", {
@@ -608,11 +625,21 @@ test_that("liderlik tablosu 500 kaydı kırpmadan ÖNCE sıralar (en yüksek pua
   tablo <- bs_db_challenge_leaderboard(sezon$sezon_id, user_id = en_yuksek_uid,
                                        conn = conn)
 
-  expect_identical(tablo$toplam_katilimci, 500L)
+  expect_identical(tablo$toplam_katilimci, 600L)
   expect_identical(tablo$benim_sira, 1L)
   expect_length(tablo$ilkler, 20L)  # varsayılan sayfa boyutu (limit)
   expect_identical(tablo$ilkler[[1]]$puan, 999999)
   expect_true(tablo$ilkler[[1]]$benim)
+
+  orta_uid <- 1000L + 520L
+  orta_tablo <- bs_db_challenge_leaderboard(sezon$sezon_id, user_id = orta_uid,
+                                            conn = conn)
+  # Regresyon: kullanıcı ilk gösterim penceresinin dışında kalsa bile tam
+  # sıralamadaki yeri ve yakın çevresi kaybolmamalıdır.
+  expect_identical(orta_tablo$toplam_katilimci, 600L)
+  expect_false(is.null(orta_tablo$benim_sira))
+  expect_true(any(vapply(orta_tablo$yakinlar, function(x) isTRUE(x$benim), logical(1))))
+
 })
 
 test_that("topluluk katkısı koşu bazında idempotenttir ve toplamlar doğru", {
