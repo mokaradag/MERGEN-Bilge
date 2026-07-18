@@ -1,4 +1,4 @@
-# ============================================================================== 
+# ==============================================================================
 # Dosya Yolu: tests/testthat/test-speech-voice-profiles-behavior.R
 # Açıklama: Persona ses kimliği fail-closed sözleşmesi: kanonik persona çözümü
 #           (eski kimlikler yalnızca geçiş sınırından; bilinmeyenler NA),
