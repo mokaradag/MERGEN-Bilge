@@ -25,11 +25,12 @@ testthat::test_that("manifest tam ağaçtan doğru sayılarla üretilir", {
   testthat::expect_setequal(names(m$personas), mergen_speech_personas())
 
   asset <- m$personas$emre$assets[[1]]
+  expected_rate <- as.integer(mergen_speech_expected_wav_profile()$sample_rate)
   testthat::expect_true(startsWith(asset$script_path, "www/speech/"))
   testthat::expect_true(startsWith(asset$audio_path, "www/speech/"))
-  # Süre gerçek WAV başlığından: 8000 örnek @16kHz = 500 ms
+  # Süre ve örnekleme hızı gerçek WAV başlığından ve etkin profilden gelir.
   testthat::expect_equal(as.numeric(asset$duration_ms), 500, tolerance = 2)
-  testthat::expect_identical(as.integer(asset$sample_rate), 16000L)
+  testthat::expect_identical(as.integer(asset$sample_rate), expected_rate)
   testthat::expect_true(nchar(asset$script_sha256) == 64L)
   testthat::expect_true(nchar(asset$audio_sha256) == 64L)
 })
@@ -103,7 +104,7 @@ testthat::test_that("bayat metin özeti ve kilit uyuşmazlığı tespit edilir",
   m <- mergen_speech_manifest_build(root)$manifest
 
   # Metin değişti -> özet bayat
-  writeLines("Yepyeni metin çğı.", expected$script_path[1])
+  speech_tests_write_utf8_text("Yepyeni metin çğı.", expected$script_path[1])
   val <- mergen_speech_manifest_validate(m, root)
   testthat::expect_false(val$ok)
   testthat::expect_true(any(grepl("metin özeti bayat", val$problems)))
