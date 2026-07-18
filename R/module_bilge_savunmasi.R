@@ -241,10 +241,9 @@ bilgeSavunmasiServer <- function(id, current_user_id) {
           mod = cozum$mod, sezon_id = cozum$sezon_id, plan_id = cozum$plan_id,
           istemci_jetonu = istek$istemci_jetonu
         )
-        if (is.null(kosu)) {
-          gonder("bs-hata", list(neden = "kosu_kaydi"))
-          return(NULL)
-        }
+        # DB geçici olarak koşu açamazsa oyun yine kalıcılıksız başlayabilmelidir.
+        # Bu, tablolar eksikken kullanılan serbest oyun sözleşmesinin DB hata
+        # anlarında da korunmasını sağlar; yanıt paketi kalici = FALSE olur.
       }
 
       # Idempotent resume/start requests can return an already-persisted run
@@ -254,7 +253,7 @@ bilgeSavunmasiServer <- function(id, current_user_id) {
       # that actually live in MB_Game_Runs.
       gonder("bs-kosu-basladi", list(
         kosu_id = if (!is.null(kosu)) kosu$kosu_id else NULL,
-        kalici = isTRUE(kalicilik_var),
+        kalici = !is.null(kosu),
         mod = if (!is.null(kosu)) kosu$mod else cozum$mod,
         harita = if (!is.null(kosu)) kosu$harita else cozum$harita,
         zorluk = if (!is.null(kosu)) kosu$zorluk else cozum$zorluk,

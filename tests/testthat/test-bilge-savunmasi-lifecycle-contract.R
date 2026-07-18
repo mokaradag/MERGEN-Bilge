@@ -170,6 +170,22 @@ test_that("sayfa kablolaması tembel başlatma sözleşmesini korur", {
   expect_true(.bs_lc_iceriyor(wiring, "bilge_savunmasi_enabled()"))
 })
 
+
+test_that("DB koşu başlatma hatası kalıcılıksız oyunu engellemez", {
+  # Regresyon: tablolar/kullanıcı mevcutken bs_db_start_run() NULL dönerse
+  # oyun tamamen engellenmemeli; mevcut kalıcılıksız/serbest oyun yolu
+  # korunmalı ve istemciye kalici = FALSE ile bs-kosu-basladi gitmelidir.
+  server_mod <- .bs_lc_oku("R", "module_bilge_savunmasi.R")
+  baslangic <- regexpr("input$bs_kosu_baslat", server_mod, fixed = TRUE)
+  expect_true(baslangic > 0)
+  govde <- substr(server_mod, baslangic, baslangic + 2200L)
+
+  expect_true(.bs_lc_iceriyor(govde, "bs_db_start_run("))
+  expect_true(.bs_lc_iceriyor(govde, "bs-kosu-basladi"))
+  expect_true(.bs_lc_iceriyor(govde, "kalici = !is.null(kosu)"))
+  expect_false(.bs_lc_iceriyor(govde, "neden = \"kosu_kaydi\""))
+})
+
 test_that("retro karşılama sahnesi dekoratiftir ve oyun başlatmaz", {
   karsilama <- .bs_lc_oku("www", "js", "bilge_yolac_karsilama.js")
 
