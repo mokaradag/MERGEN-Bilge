@@ -271,6 +271,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     if (!is.null(last_guidance)) {
       elapsed <- as.numeric(difftime(now, last_guidance, units = "secs"))
       if (is.finite(elapsed) && elapsed < PAGE_GUIDANCE_REPEAT_SECS) {
+        if (isTRUE(ai_expert$is_speaking())) ai_expert$stop_speaking(0)
         cat(sprintf("[AI_EXPERT] Sayfa rehberliği yakın zamanda oynatıldı, atlandı: %s\n", page))
         return()
       }

@@ -57,11 +57,13 @@ suppressMessages({
     can_speak = function() TRUE,
     start_speaking = function(text, cooldown_secs = NULL, kind = "idle",
                               static_plan = NULL) {
+      if (!isTRUE(spoke$allow_start)) return(invisible(FALSE))
       spoke$n <- spoke$n + 1L
       spoke$last_text <- text
       spoke$last_kind <- kind
       spoke$last_plan <- static_plan
-      invisible(NULL)
+      spoke$speaking <- TRUE
+      invisible(TRUE)
     },
     stop_speaking = function(...) {
       spoke$stops <- spoke$stops + 1L
@@ -112,6 +114,7 @@ suppressMessages({
   spoke$last_kind <- NULL
   spoke$last_plan <- NULL
   spoke$speaking <- speaking
+  spoke$allow_start <- TRUE
   spoke
 }
 
@@ -413,11 +416,56 @@ testthat::test_that(
             clock$now <- clock$now + 5
             session$setInputs(tabs = "history")
             testthat::expect_identical(spoke$n, 1L)
+            testthat::expect_identical(spoke$stops, 1L)
 
             session$setInputs(tabs = "chat")
             clock$now <- clock$now + 15 * 60
             session$setInputs(tabs = "history")
             testthat::expect_identical(spoke$n, 2L)
+          }
+        )
+      },
+      delay = function(ms, expr) invisible(NULL),
+      runjs = function(...) invisible(NULL),
+      .package = "shinyjs"
+    )
+  }
+)
+
+testthat::test_that(
+  "reddedilen rehberlik denemesi sayfa bekleme süresini tüketmez",
+  {
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    speech_tests_make_tree(root)
+    m <- mergen_speech_manifest_build(root)$manifest
+    mergen_speech_manifest_write(m, mergen_speech_manifest_path(root))
+    withr::local_envvar(MERGEN_SPEECH_ROOT = root,
+                        VOXCPM2_WARMUP_ENABLED = "false")
+    withr::defer(speech_tests_reset_caches())
+
+    env <- .ai_expert_pg_env()
+    clock <- new.env(parent = emptyenv())
+    clock$now <- as.POSIXct("2026-07-18 12:00:00", tz = "UTC")
+    env$Sys.time <- function() clock$now
+    spoke <- .pg_spoke()
+    spoke$allow_start <- FALSE
+    ai_expert <- .ai_expert_stub(spoke)
+
+    testthat::with_mocked_bindings(
+      {
+        shiny::testServer(
+          .ai_expert_wrapper(env = env, ai_expert = ai_expert),
+          {
+            session$setInputs(tabs = "files")
+            session$setInputs(tabs = "history")
+            testthat::expect_identical(spoke$n, 0L)
+
+            session$setInputs(tabs = "chat")
+            clock$now <- clock$now + 5
+            spoke$allow_start <- TRUE
+            session$setInputs(tabs = "history")
+            testthat::expect_identical(spoke$n, 1L)
           }
         )
       },

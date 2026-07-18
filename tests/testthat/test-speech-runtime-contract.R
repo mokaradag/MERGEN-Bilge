@@ -157,7 +157,7 @@ testthat::test_that("AI Uzman modülü statik plan + öncelik + token sözleşme
   for (anchor in c("static_plan = NULL", "mergen_speech_begin",
                    "mergen_speech_priority_decision", "mergen_speech_end",
                    "speechToken", "mergen_speech_idle_muted_pages",
-                   "speech_is_current", "remaining_chunks_started",
+                   "mergen_speech_chunk_dispatcher", "chunk_dispatch$claim_synthesis()",
                    "first_chunk_promise")) {
     testthat::expect_true(grepl(anchor, module_txt, fixed = TRUE, useBytes = TRUE),
                           info = anchor)
@@ -176,6 +176,12 @@ testthat::test_that("AI Uzman modülü statik plan + öncelik + token sözleşme
     module_txt, fixed = TRUE, useBytes = TRUE
   )[1]
   testthat::expect_true(first_submit < eager_submit && eager_submit < first_wait)
+
+  runtime_txt <- .speech_contract_read("R/server_speech_assets_runtime.R")
+  testthat::expect_true(grepl("started <- dispatch_in_session", runtime_txt,
+                              fixed = TRUE, useBytes = TRUE))
+  testthat::expect_true(grepl("if (!isTRUE(started)) return(FALSE)", runtime_txt,
+                              fixed = TRUE, useBytes = TRUE))
 })
 
 testthat::test_that("statik öğe kurucusu metin+URL+süre döndürür ve eksikte NULL verir", {

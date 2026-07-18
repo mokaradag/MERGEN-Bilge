@@ -89,6 +89,36 @@ testthat::test_that("oturum konuşma durumu tekdüze artan token üretir ve baya
   testthat::expect_null(mergen_speech_active_kind(session))
 })
 
+testthat::test_that("sonraki TTS parçaları başlangıç mesajından önce gönderilmez", {
+  speech_tests_source_chain()
+  session <- speech_tests_fake_session()
+  sent <- list()
+  session$sendCustomMessage <- function(type, payload) {
+    sent[[length(sent) + 1L]] <<- list(type = type, payload = payload)
+  }
+
+  decision <- mergen_speech_begin(session, "idle")
+  speaking <- TRUE
+  dispatcher <- mergen_speech_chunk_dispatcher(
+    session, decision$token, function() speaking
+  )
+
+  testthat::expect_true(dispatcher$claim_synthesis())
+  testthat::expect_false(dispatcher$claim_synthesis())
+  dispatcher$queue(list(index = 2L, speechToken = decision$token))
+  dispatcher$queue(list(index = 1L, speechToken = decision$token))
+  testthat::expect_length(sent, 0L)
+
+  testthat::expect_true(dispatcher$start())
+  testthat::expect_identical(vapply(sent, function(x) x$payload$index, integer(1)), 1:2)
+
+  dispatcher$queue(list(index = 3L, speechToken = decision$token))
+  testthat::expect_identical(sent[[3]]$payload$index, 3L)
+  speaking <- FALSE
+  testthat::expect_false(dispatcher$queue(list(index = 4L)))
+  testthat::expect_length(sent, 3L)
+})
+
 testthat::test_that("karışık torba 10 çeşidi tüketmeden tekrar etmez", {
   speech_tests_source_chain()
 
