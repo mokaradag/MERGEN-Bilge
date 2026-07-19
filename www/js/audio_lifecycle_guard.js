@@ -45,6 +45,9 @@
     var owners = ownerList();
     var hasOwners = owners.length > 0;
     var sttActive = owners.indexOf('stt') >= 0;
+    // "oyun" sahibi (Bilge Savunması sayfası) uygulama müziğini TAM susturur:
+    // oyun kendi müzik setini çalar, iki müzik üst üste binmez.
+    var fullSilence = sttActive || owners.indexOf('oyun') >= 0;
 
     manager.state._sttActive = sttActive;
     manager.state.isDucked = hasOwners;
@@ -54,7 +57,7 @@
     var targetVolume = manager.state.normalVolume;
     var duration = 600;
 
-    if (sttActive) {
+    if (fullSilence) {
       targetVolume = 0;
       duration = 300;
     } else if (hasOwners) {

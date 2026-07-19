@@ -30,21 +30,29 @@
       function konumIsle(clientX, clientY) {
         hucreGuncelle(clientX, clientY);
 
-        // Yerleştirme modu: uygun hücreye bırak.
-        if (arayuz.yerlesimKahraman) {
+        // Yerleştirme modu: uygun hücreye bırak (kahraman veya kule).
+        if (arayuz.yerlesimKahraman || arayuz.yerlesimKule) {
           if (arayuz.hucreDurumu === "insa") {
-            BS.olaylar.yay("girdi-yerlestir", {
-              kahraman: arayuz.yerlesimKahraman,
-              x: arayuz.hucre.x,
-              y: arayuz.hucre.y
-            });
+            if (arayuz.yerlesimKahraman) {
+              BS.olaylar.yay("girdi-yerlestir", {
+                kahraman: arayuz.yerlesimKahraman,
+                x: arayuz.hucre.x,
+                y: arayuz.hucre.y
+              });
+            } else {
+              BS.olaylar.yay("girdi-kule-yerlestir", {
+                kule: arayuz.yerlesimKule,
+                x: arayuz.hucre.x,
+                y: arayuz.hucre.y
+              });
+            }
           } else {
             BS.olaylar.yay("girdi-uyari", { neden: "hucre" });
           }
           return;
         }
 
-        // Seçim: hücredeki kahramanı bul.
+        // Seçim: hücredeki kahramanı, yoksa kuleyi bul.
         var bulunan = null;
         Object.keys(sim.durum.kahramanlar).forEach(function(id) {
           var k = sim.durum.kahramanlar[id];
@@ -53,7 +61,12 @@
           }
         });
         arayuz.seciliKahraman = bulunan;
-        BS.olaylar.yay("girdi-sec", { kahraman: bulunan });
+        arayuz.seciliKule = null;
+        if (!bulunan && sim.kuleBul) {
+          var kule = sim.kuleBul(arayuz.hucre.x, arayuz.hucre.y);
+          if (kule) arayuz.seciliKule = kule.no;
+        }
+        BS.olaylar.yay("girdi-sec", { kahraman: bulunan, kule: arayuz.seciliKule });
       }
 
       ekle(tuval, "mousemove", function(e) {
@@ -84,9 +97,15 @@
         }
 
         var kahramanSirasi = ["emre", "selin", "deniz", "can", "ipek"];
+        var kuleSirasi = ["gozetleme", "veri_topu", "kripto_isik"];
         if (e.key >= "1" && e.key <= "5") {
           var id = kahramanSirasi[parseInt(e.key, 10) - 1];
           BS.olaylar.yay("girdi-kahraman-kisayol", { kahraman: id });
+          e.preventDefault();
+        } else if (e.key >= "6" && e.key <= "8") {
+          BS.olaylar.yay("girdi-kule-kisayol", {
+            kule: kuleSirasi[parseInt(e.key, 10) - 6]
+          });
           e.preventDefault();
         } else if (e.key === " ") {
           BS.olaylar.yay("girdi-duraklat", {});
@@ -100,8 +119,9 @@
             e.preventDefault();
           }
         } else if (e.key === "Escape") {
-          if (arayuz.yerlesimKahraman) {
+          if (arayuz.yerlesimKahraman || arayuz.yerlesimKule) {
             arayuz.yerlesimKahraman = null;
+            arayuz.yerlesimKule = null;
             BS.olaylar.yay("girdi-iptal", {});
           } else {
             BS.olaylar.yay("girdi-menu", {});

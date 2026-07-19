@@ -54,6 +54,8 @@
     BS.veri.init = veri;
     BS.cizim.portreleriYukle(veri.personalar);
     BS.menu.profilOzetiCiz(uygulama.kok);
+    // Oyun müzik listeleri (menü + seviye grupları) sunucudan gelir.
+    BS.ses.muzikListesiAyarla(veri.muzik);
 
     // Kalıcılık rozeti ve açıklaması.
     var rozet = el("kalicilik_rozeti");
@@ -97,13 +99,24 @@
 
     uygulama.hazir = true;
     uygulama.sayfadaMi = true;
-    if (!uygulama.kosu) menuGoster();
-    // Oyun sayfası açıkken MERGEN Bilge arka fon müziği kısılır.
+    if (!uygulama.kosu) {
+      menuGoster();
+      // Menü teması: ilk kullanıcı etkileşiminde başlar (autoplay kuralı).
+      BS.sahne.menuMuzigi();
+    }
+    // Oyun sayfası açıkken MERGEN Bilge arka fon müziği tamamen susturulur.
     BS.ses.uygulamaMuzigiKis();
   });
 
   // ── Menü etkileşimi (tek delege dinleyici) ──────────────────────────────────
   document.addEventListener("click", function(e) {
+    // Oyun sayfasındaki HER tıklama etkileşim sayılır: autoplay engeline
+    // takılıp bekleyen menü/seviye müziği ilk gerçek tıklamada başlar.
+    if (uygulama.sayfadaMi && uygulama.hazir &&
+        e.target.closest && e.target.closest(".bs-sayfa")) {
+      BS.ses.etkilesimIsaretle();
+    }
+
     // Bilge Yolaç karşılama kartından oyuna geçiş.
     var acDugme = e.target.closest("[data-bs-ac]");
     if (acDugme) {
@@ -359,6 +372,7 @@
     BS.efekt.temizle();
 
     var arayuz = { seciliKahraman: null, yerlesimKahraman: null,
+                   seciliKule: null, yerlesimKule: null,
                    hucre: null, hucreDurumu: null };
     var hud = BS.hud.kur({
       ust: el("hud_ust"), alt: el("hud_alt"),
@@ -382,66 +396,21 @@
 
     oyunGoster();
     cizici.boyutlandir();
-    planRehberiKur();
-    ogreticiIlerlet("baslangic");
+    BS.sahne.planRehberiKur(uygulama.kosu, el("hud_yan"));
+    BS.sahne.ogreticiIlerlet("baslangic");
+    // Tam ekran boyut değişimlerinde tuval yeniden ölçeklenir (tek kurulum).
+    BS.sahne.tamEkranDinle(function() {
+      if (uygulama.kosu && uygulama.kosu.cizici) {
+        uygulama.kosu.cizici.boyutlandir();
+      }
+    });
     hud.geriSayimGoster(sim.durum.dalgaNo + 1,
                         BS.dalga.patronDalgasiMi(sim.durum.dalgaNo + 1,
                                                  harita.dalgaSayisi));
     geriSayimBaslat();
-    BS.ses.muzikBaslat();
+    BS.sahne.seviyeMuzigi(harita);
     dongulBaslat();
   });
-
-  // ── Öğretici (yalnızca ilk harita, ilerleme yokken) ─────────────────────────
-  function ogreticiGerekliMi() {
-    var veri = BS.veri.init;
-    return uygulama.kosu && uygulama.kosu.sim.durum.haritaId === "baglam_kapisi" &&
-      (!veri.kampanya || veri.kampanya.length === 0);
-  }
-
-  function ogreticiIlerlet(asama) {
-    if (!ogreticiGerekliMi()) return;
-    var kosu = uygulama.kosu;
-    var metinler = {
-      baslangic: "Alttaki karttan bir savunucu seç ve rotanın yanına yerleştir. " +
-        "Emre dengeli bir başlangıçtır.",
-      yerlestirildi: "Harika! Dalga başlayınca tehditler soldan çekirdeğe akar. " +
-        "Hazır olunca dalgayı başlat.",
-      dalga2: "Kaynak biriktikçe savunucuya tıklayıp Yükselt ile güçlendir; " +
-        "Q ile yetenek kullan."
-    };
-    if (metinler[asama] && kosu.ogreticiAdimi !== asama) {
-      kosu.ogreticiAdimi = asama;
-      kosu.hud.ogreticiGoster(metinler[asama]);
-      setTimeout(function() {
-        if (uygulama.kosu === kosu) kosu.hud.ogreticiGoster(null);
-      }, 9000);
-    }
-  }
-
-  // ── Plan (blueprint) rehber paneli ──────────────────────────────────────────
-  function planRehberiKur() {
-    var kosu = uygulama.kosu;
-    if (!kosu || !kosu.planBilgi) return;
-    var yan = el("hud_yan");
-    if (!yan) return;
-    var plan = kosu.planBilgi;
-    var sonuc = plan.yaratici_sonucu || {};
-    var yerlesimler = (plan.plan && plan.plan.yerlesimler) || [];
-
-    var bolum = document.createElement("div");
-    bolum.className = "bs-yan-bolum bs-plan-rehberi";
-    bolum.innerHTML = '<h4 class="bs-yan-baslik">Plan Rehberi</h4>' +
-      '<p class="bs-yan-notu">' + BS.yardimci.htmlKacis(plan.baslik || "") +
-      ' · Hedef: ' + BS.yardimci.sayiBicimle(sonuc.puan || 0) + ' puan</p>' +
-      '<ul class="bs-plan-zaman-cizelgesi">' +
-      yerlesimler.map(function(y) {
-        return '<li data-bs-plan-dalga="' + y.dalga + '">D' + y.dalga + ": " +
-          BS.yardimci.htmlKacis(y.kahraman) + " (" + y.x + "," + y.y +
-          ") K" + y.seviye + '</li>';
-      }).join("") + '</ul>';
-    yan.appendChild(bolum);
-  }
 
   // ── Geri sayım ──────────────────────────────────────────────────────────────
   function geriSayimBaslat() {
@@ -472,7 +441,7 @@
     kosu.hud.kaplamaKapat();
     if (kosu.sim.dalgaBaslat(erken)) {
       BS.ses.efekt("dalga");
-      if (kosu.sim.durum.dalgaNo === 2) ogreticiIlerlet("dalga2");
+      if (kosu.sim.durum.dalgaNo === 2) BS.sahne.ogreticiIlerlet("dalga2");
     }
   }
 
@@ -574,7 +543,7 @@
       kosu.arayuz.seciliKahraman = veri.kahraman;
       kosu.hud.secimGuncelle();
       BS.ses.efekt("yerlestir");
-      ogreticiIlerlet("yerlestirildi");
+      BS.sahne.ogreticiIlerlet("yerlestirildi");
     } else if (sonucYer.neden === "kaynak") {
       kosu.hud.ogreticiGoster("Yeterli kaynak yok.");
       setTimeout(function() {
@@ -588,6 +557,8 @@
     if (!kosu) return;
     var k = kosu.sim.durum.kahramanlar[veri.kahraman];
     if (!k) return;
+    kosu.arayuz.yerlesimKule = null;
+    kosu.arayuz.seciliKule = null;
     if (k.yerlesik) {
       kosu.arayuz.seciliKahraman = veri.kahraman;
       kosu.arayuz.yerlesimKahraman = null;
@@ -597,6 +568,15 @@
       kosu.arayuz.seciliKahraman = null;
     }
     kosu.hud.secimGuncelle();
+  });
+
+  // Kule yerleştirme/yükseltme/satış olay bağlayıcıları sahne katmanındadır
+  // (BS.sahne.kuleOlaylariniBagla); burada yalnızca kayıt tetiklenir.
+  BS.sahne.kuleOlaylariniBagla();
+
+  // Tam ekran: oyun görünümü öğesi hedeflenir; çıkışta da aynı komut.
+  BS.olaylar.ekle("hud-tamekran", function() {
+    BS.sahne.tamEkranDegistir(el("oyun_gorunumu"));
   });
 
   BS.olaylar.ekle("girdi-sec", function() {
@@ -735,6 +715,8 @@
     if (kosu.cizici) kosu.cizici.yokEt();
     BS.efekt.temizle();
     BS.ses.tumunuDurdur();
+    // Koşu tam ekranda yok edildiyse menü normal görünüme döner.
+    if (BS.sahne.tamEkranMi()) BS.sahne.tamEkranDegistir(null);
     uygulama.kosu = null;
   }
 
@@ -744,6 +726,7 @@
   function menuyeDonVeTazele() {
     kosuYokEt();
     menuGoster();
+    BS.sahne.menuMuzigi();
     BS.kopru.liderlikIste();
     BS.kopru.toplulukIste();
     BS.kopru.profilYenileIste();
@@ -773,6 +756,8 @@
 
   function sayfayaDonuldu() {
     BS.ses.uygulamaMuzigiKis();
+    // Ayrılırken durdurulan oyun müziği (menü ya da seviye grubu) sürer.
+    BS.ses.muzikSurdur();
     var kosu = uygulama.kosu;
     if (!kosu || kosu.rafId) return;
     // sayfadanAyrildi() sırasında çözülen klavye/fare dinleyicisini,
@@ -801,6 +786,8 @@
       } else {
         uygulama.sayfadaMi = false;
         sayfadanAyrildi();
+        // Menü müziği koşu olmasa da durur (sayfadanAyrildi koşuya bağlıdır).
+        BS.ses.tumunuDurdur();
         secimEkraniKapat();
         // Sayfadan ayrılınca MERGEN Bilge müziği normale döner.
         BS.ses.uygulamaMuzigiBirak();
@@ -811,8 +798,13 @@
   document.addEventListener("visibilitychange", function() {
     // Görünürlük olayları globaldir; yalnızca oyun sekmesindeyken uygulanır.
     if (!uygulama.sayfadaMi) return;
-    if (document.hidden) sayfadanAyrildi();
-    else if (uygulama.kosu) sayfayaDonuldu();
+    if (document.hidden) {
+      sayfadanAyrildi();
+      BS.ses.tumunuDurdur();
+    } else {
+      // Koşu yoksa da menü müziği sürer (sayfayaDonuldu koşusuz güvenlidir).
+      sayfayaDonuldu();
+    }
   });
 
   window.addEventListener("resize", function() {

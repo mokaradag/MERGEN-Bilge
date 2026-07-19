@@ -70,13 +70,16 @@ mergen_speech_silent_pages <- function() {
 
 #' Boşta (idle) konuşmanın sessiz kaldığı sayfalar. Ortak (paylaşımlı) odalar
 #' rehberlik klibi alır ama sürekli boşta konuşma almaz; kişiselleştirme,
-#' yönetici ve sağlık sayfalarında hiçbir otomatik konuşma yapılmaz.
+#' yönetici ve sağlık sayfalarında hiçbir otomatik konuşma yapılmaz. Bilge
+#' Savunması oyun sayfası da tamamen sessizdir: oyun kendi müzik/efekt
+#' katmanını çalar, boşta konuşma oyunla üst üste binmez.
 mergen_speech_idle_muted_pages <- function() {
   unique(c(
     setdiff(mergen_speech_silent_pages(), "chat"),
     "ortak_calismalar",
     "ortak_sohbetler",
-    "ortak_bilge_yolac"
+    "ortak_bilge_yolac",
+    "bilge_savunmasi"
   ))
 }
 

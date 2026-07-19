@@ -27,8 +27,8 @@
     if (!canvas) return;
     var ctx = canvas.getContext('2d');
     var charData = PIXEL_CHARS_MINI[characterId] || PIXEL_CHARS_MINI.emre;
+    // Düşünme döngüsü zenginleştirilmiş kareler arasında yavaşça döner.
     var frameIdx = Math.floor(frame / 20) % charData.frames.length;
-    var pixels = charData.frames[frameIdx];
     var pixelSize = 3;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -36,14 +36,23 @@
     // Zıplama efekti
     var bounceY = Math.sin(frame * 0.08) * 1.5;
 
-    for (var y = 0; y < pixels.length; y++) {
-      for (var x = 0; x < pixels[y].length; x++) {
-        var val = pixels[y][x];
-        if (val === 0) continue;
-        if (val === 1) ctx.fillStyle = charData.color;
-        else if (val === 2) ctx.fillStyle = charData.darkColor;
-        else ctx.fillStyle = charData.lightColor || charData.color;
-        ctx.fillRect(x * pixelSize, y * pixelSize + bounceY, pixelSize - 1, pixelSize - 1);
+    // Genişletilmiş palet + açık/koyu temaya duyarlı kontur ortak yardımcıdadır.
+    if (window.MergenPixelSprite) {
+      window.MergenPixelSprite.ciz(ctx, charData, frameIdx, {
+        pixelSize: pixelSize, offsetX: 0, offsetY: bounceY
+      });
+    } else {
+      // Yardımcı yüklenmediyse basit geriye uyumlu çizim.
+      var pixels = charData.frames[frameIdx];
+      for (var y = 0; y < pixels.length; y++) {
+        for (var x = 0; x < pixels[y].length; x++) {
+          var val = pixels[y][x];
+          if (val === 0) continue;
+          if (val === 1) ctx.fillStyle = charData.color;
+          else if (val === 2) ctx.fillStyle = charData.darkColor;
+          else ctx.fillStyle = charData.lightColor || charData.color;
+          ctx.fillRect(x * pixelSize, y * pixelSize + bounceY, pixelSize - 1, pixelSize - 1);
+        }
       }
     }
 

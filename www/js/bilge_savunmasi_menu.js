@@ -247,7 +247,9 @@
     // ── Kampanya ──────────────────────────────────────────────────────────────
     kampanyaPaneli: function() {
       var veri = BS.veri.init;
-      var siralar = ["baglam_kapisi", "celiski_kavsagi", "bilgi_cekirdegi"];
+      // Harita sırası tek kaynaktan (BS.haritalar) türetilir; yeni harita
+      // eklendiğinde menü kendiliğinden genişler.
+      var siralar = BS.haritalar.siraliListe().map(function(h) { return h.id; });
 
       return '<div class="bs-panel"><h3 class="bs-panel-baslik">Kampanya</h3>' +
         '<div class="bs-harita-kartlari">' +
@@ -548,15 +550,20 @@
         '<li><b>Dalgayı başlat:</b> Geri sayımı bekle ya da erken başlat bonusu ' +
         'için "Dalgayı Başlat"a bas. Rota üzerindeki tehditler Bilgi ' +
         'Çekirdeği\'ne ulaşırsa çekirdek hasar alır.</li>' +
+        '<li><b>Kule inşa et:</b> Alt çubuğun sağındaki kule kartlarından ' +
+        '(Gözcü Kulesi, Veri Topçusu, Kripto Işını) istediğin kadar kule kur; ' +
+        'kuleler de üç kademelidir ve sökülebilir. Gözcü hızlı tekil atış, ' +
+        'Topçu alan hasarı, Kripto zırh delme sağlar.</li>' +
         '<li><b>Kaynak yönet:</b> Etkisizleştirilen her tehdit kaynak verir. ' +
-        'Kaynakla yeni savunucu yerleştir veya kademe yükselt (3 kademe).</li>' +
+        'Kaynakla yeni savunucu/kule yerleştir veya kademe yükselt.</li>' +
         '<li><b>Yetenek kullan:</b> Her uzmanın güçlü bir aktif yeteneği vardır ' +
         '(kartın yanındaki şimşek). Patron dalgalarında fark yaratır.</li>' +
         '<li><b>Sinerji kur:</b> Emre yakın savunucuları hızlandırır; İpek ' +
         'menzil ve kaynak desteği verir; Can\'ın işaretlediği hedefe herkes ' +
         'daha çok hasar vurur; Deniz yavaşlatır, Selin çekirdeği onarır.</li>' +
-        '<li><b>Kısayollar:</b> 1-5 savunucu seç, Q seçili yetenek, Boşluk ' +
-        'duraklat, F hız, Esc iptal/menü.</li>' +
+        '<li><b>Kısayollar:</b> 1-5 savunucu seç, 6-8 kule seç, Q seçili ' +
+        'yetenek, Boşluk duraklat, F hız, Esc iptal/menü. Üst çubuktaki ' +
+        'genişletme düğmesi oyunu tam ekrana alır.</li>' +
         '</ol>' +
         '<p class="bs-yan-notu">Yıldızlar kalan çekirdeğe göre verilir: ' +
         '%90+ üç, %60+ iki, zafer bir yıldız. Puanı sunucu doğrular ve ' +

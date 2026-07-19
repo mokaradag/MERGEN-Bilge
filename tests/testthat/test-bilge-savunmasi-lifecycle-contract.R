@@ -26,9 +26,12 @@
 .bs_lc_oyun_js <- c(
   "bilge_savunmasi_cekirdek.js", "bilge_savunmasi_denge.js",
   "bilge_savunmasi_haritalar.js", "bilge_savunmasi_dalga.js",
-  "bilge_savunmasi_sim.js", "bilge_savunmasi_cizim.js",
+  "bilge_savunmasi_sim_kuleler.js", "bilge_savunmasi_sim.js",
+  "bilge_savunmasi_varliklar.js", "bilge_savunmasi_cizim_zemin.js",
+  "bilge_savunmasi_cizim.js",
   "bilge_savunmasi_efekt.js", "bilge_savunmasi_girdi.js",
   "bilge_savunmasi_hud.js", "bilge_savunmasi_ses.js",
+  "bilge_savunmasi_sahne.js",
   "bilge_savunmasi_kopru.js", "bilge_savunmasi_menu.js",
   "bilge_savunmasi_sonuc.js", "bilge_savunmasi_dogrulama.js",
   "bilge_savunmasi_uygulama.js"
@@ -271,8 +274,10 @@ test_that("sekmeden ayrılınca belge düzeyindeki klavye dinleyicisi çözülü
 
   ayrildi_govdesi <- substr(uygulama, ayrildi_baslangic,
                             ayrildi_baslangic + 700L)
+  # Pencere, sayfayaDonuldu başına eklenen oyun-müziği sürdürme satırını da
+  # kapsayacak kadar geniştir (BS.ses.muzikSurdur() + açıklama).
   donuldu_govdesi <- substr(uygulama, donuldu_baslangic,
-                            donuldu_baslangic + 400L)
+                            donuldu_baslangic + 600L)
 
   expect_true(.bs_lc_iceriyor(ayrildi_govdesi, "kosu.girdi.coz()"))
   expect_true(.bs_lc_iceriyor(ayrildi_govdesi, "kosu.girdi = null"))

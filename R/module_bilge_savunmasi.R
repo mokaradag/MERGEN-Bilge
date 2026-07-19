@@ -93,7 +93,8 @@
       haritalar = bs_harita_katalogu(),
       zorluklar = bs_zorluk_katalogu(),
       basarim_katalogu = bs_basarim_katalogu(),
-      haftalik = bs_haftalik_meydan_okuma()
+      haftalik = bs_haftalik_meydan_okuma(),
+      muzik = bs_muzik_katalogu()
     ),
     .bs_srv_profil_yuku(uid)
   )

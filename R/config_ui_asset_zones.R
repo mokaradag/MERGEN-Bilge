@@ -452,6 +452,7 @@ ui_asset_ownership_zones <- list(
     ),
     js = c(
       "js/claude_code_pixel_chars.js",
+      "js/pixel_sprite_render.js",
       "js/claude_code.js",
       "js/claude_code_streaming.js",
       "js/claude_code_plugins.js",

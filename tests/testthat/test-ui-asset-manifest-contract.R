@@ -114,6 +114,8 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
 
   # Bilinçli güncelleme: eski Bilge Yolaç karşılama mini oyunu kaldırıldı;
   # yerine adanmış sayfada yaşayan Bilge Savunması (kule savunma) grubu geldi.
+  # Kule sistemi, 2.5D görsel katmanları (varlık yükleyici + zemin ressamı) ve
+  # sahne destek katmanı (tam ekran/müzik/öğretici) eklenince grup genişledi.
   expect_identical(
     asset_env$ui_asset_js_groups$bilge_savunmasi,
     c(
@@ -121,12 +123,16 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
       "js/bilge_savunmasi_denge.js",
       "js/bilge_savunmasi_haritalar.js",
       "js/bilge_savunmasi_dalga.js",
+      "js/bilge_savunmasi_sim_kuleler.js",
       "js/bilge_savunmasi_sim.js",
+      "js/bilge_savunmasi_varliklar.js",
+      "js/bilge_savunmasi_cizim_zemin.js",
       "js/bilge_savunmasi_cizim.js",
       "js/bilge_savunmasi_efekt.js",
       "js/bilge_savunmasi_girdi.js",
       "js/bilge_savunmasi_hud.js",
       "js/bilge_savunmasi_ses.js",
+      "js/bilge_savunmasi_sahne.js",
       "js/bilge_savunmasi_kopru.js",
       "js/bilge_savunmasi_menu.js",
       "js/bilge_savunmasi_sonuc.js",
@@ -411,6 +417,9 @@ test_that("UI sayfa ve deferred manifest bölümleme sırası birebir korunur", 
     "js/explore_character_step.js",
     "js/surum_bilgilendirme.js",
     "js/claude_code_pixel_chars.js",
+    # Bilinçli güncelleme: ortak piksel çizim yardımcısı (açık/koyu temaya
+    # duyarlı kontur) persona verisinden SONRA, tüketicilerden ÖNCE yüklenir.
+    "js/pixel_sprite_render.js",
     # Bilinçli güncelleme: retro (8-bit) Çalışma Alanı karşılama sahnesi;
     # piksel persona verisinden SONRA yüklenir, oyun döngüsü içermez.
     "js/bilge_yolac_karsilama.js",

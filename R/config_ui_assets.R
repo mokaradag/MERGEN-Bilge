@@ -292,6 +292,7 @@ ui_asset_js_groups <- list(
       "js/explore_character_step.js",
       "js/surum_bilgilendirme.js",
       "js/claude_code_pixel_chars.js",
+      "js/pixel_sprite_render.js",
       "js/bilge_yolac_karsilama.js",
       "js/claude_code.js",
       "js/claude_code_streaming.js",
@@ -300,21 +301,25 @@ ui_asset_js_groups <- list(
       "js/ortak_oturumlar.js"
     )
   )),
-  # Bilge Savunması (kule savunma oyunu): çekirdek altyapı -> denge/harita
-  # verisi -> dalga -> saf simülasyon -> çizim/efekt/girdi/HUD -> ses ->
-  # Shiny köprüsü -> menü/sonuç katmanları -> sayfa orkestratörü. Oyun motoru
-  # sayfa açılana kadar başlatılmaz; bu grup yalnızca tanımları yükler.
+  # Bilge Savunması (kule savunma): çekirdek -> denge/harita -> dalga -> sim
+  # (kule uzantısı + çekirdek) -> görsel (varlık/zemin/çizim) -> efekt/girdi/
+  # HUD -> ses -> sahne -> köprü -> menü/sonuç -> orkestratör. Sayfa açılana
+  # kadar başlatılmaz; grup yalnızca tanımları yükler.
   bilge_savunmasi = c(
     "js/bilge_savunmasi_cekirdek.js",
     "js/bilge_savunmasi_denge.js",
     "js/bilge_savunmasi_haritalar.js",
     "js/bilge_savunmasi_dalga.js",
+    "js/bilge_savunmasi_sim_kuleler.js",
     "js/bilge_savunmasi_sim.js",
+    "js/bilge_savunmasi_varliklar.js",
+    "js/bilge_savunmasi_cizim_zemin.js",
     "js/bilge_savunmasi_cizim.js",
     "js/bilge_savunmasi_efekt.js",
     "js/bilge_savunmasi_girdi.js",
     "js/bilge_savunmasi_hud.js",
     "js/bilge_savunmasi_ses.js",
+    "js/bilge_savunmasi_sahne.js",
     "js/bilge_savunmasi_kopru.js",
     "js/bilge_savunmasi_menu.js",
     "js/bilge_savunmasi_sonuc.js",
@@ -407,6 +412,10 @@ ui_asset_js_order_rules <- list(
   c("js/excel_coding_deep_thinking.js", "js/tools_model_lock.js"),
 
   c("js/claude_code_pixel_chars.js", "js/claude_code.js"),
+  # Ortak piksel çizim yardımcısı persona verisinden sonra, tüketicilerden önce.
+  c("js/claude_code_pixel_chars.js", "js/pixel_sprite_render.js"),
+  c("js/pixel_sprite_render.js", "js/claude_code.js"),
+  c("js/pixel_sprite_render.js", "js/bilge_yolac_karsilama.js"),
   # Retro karşılama sahnesi piksel persona verisine bağımlıdır.
   c("js/claude_code_pixel_chars.js", "js/bilge_yolac_karsilama.js"),
   c("js/claude_code.js", "js/claude_code_streaming.js"),
@@ -415,19 +424,22 @@ ui_asset_js_order_rules <- list(
   c("js/claude_code.js", "js/claude_code_sessions.js"),
   c("js/claude_code_plugins.js", "js/claude_code_sessions.js"),
 
-  # Bilge Savunması bağımlılık zinciri: isim alanı/altyapı önce, veri
-  # (denge/harita) sonra, simülasyon ve görsel katmanlar ardından, orkestratör
-  # en sonda yüklenir.
+  # Bilge Savunması bağımlılık zinciri (altyapı -> veri -> sim -> görsel ->
+  # ses/sahne -> köprü/menü -> orkestratör).
   c("js/bilge_savunmasi_cekirdek.js", "js/bilge_savunmasi_denge.js"),
   c("js/bilge_savunmasi_denge.js", "js/bilge_savunmasi_haritalar.js"),
   c("js/bilge_savunmasi_haritalar.js", "js/bilge_savunmasi_dalga.js"),
-  c("js/bilge_savunmasi_dalga.js", "js/bilge_savunmasi_sim.js"),
-  c("js/bilge_savunmasi_sim.js", "js/bilge_savunmasi_cizim.js"),
+  c("js/bilge_savunmasi_dalga.js", "js/bilge_savunmasi_sim_kuleler.js"),
+  c("js/bilge_savunmasi_sim_kuleler.js", "js/bilge_savunmasi_sim.js"),
+  c("js/bilge_savunmasi_sim.js", "js/bilge_savunmasi_varliklar.js"),
+  c("js/bilge_savunmasi_varliklar.js", "js/bilge_savunmasi_cizim_zemin.js"),
+  c("js/bilge_savunmasi_cizim_zemin.js", "js/bilge_savunmasi_cizim.js"),
   c("js/bilge_savunmasi_cizim.js", "js/bilge_savunmasi_efekt.js"),
   c("js/bilge_savunmasi_efekt.js", "js/bilge_savunmasi_girdi.js"),
   c("js/bilge_savunmasi_girdi.js", "js/bilge_savunmasi_hud.js"),
   c("js/bilge_savunmasi_hud.js", "js/bilge_savunmasi_ses.js"),
-  c("js/bilge_savunmasi_ses.js", "js/bilge_savunmasi_kopru.js"),
+  c("js/bilge_savunmasi_ses.js", "js/bilge_savunmasi_sahne.js"),
+  c("js/bilge_savunmasi_sahne.js", "js/bilge_savunmasi_kopru.js"),
   c("js/bilge_savunmasi_kopru.js", "js/bilge_savunmasi_menu.js"),
   c("js/bilge_savunmasi_menu.js", "js/bilge_savunmasi_sonuc.js"),
   c("js/bilge_savunmasi_sonuc.js", "js/bilge_savunmasi_dogrulama.js"),
