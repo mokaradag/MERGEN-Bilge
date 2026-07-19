@@ -93,6 +93,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
     # Doğal konuşma bitişi kancası (tek slot; sahibi handlers katmanıdır)
     speech_ended_cb <- new.env(parent = emptyenv())
     speech_ended_cb$fn <- NULL
+    manual_stop_tokens <- new.env(parent = emptyenv())
 
     # Yasaklı sayfalar (bu sayfalarda otomatik AI konuşması yapılmaz).
     # Tek yetkili politika kaynağı: R/config_speech_assets.R.
@@ -573,9 +574,16 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 	}
 
     # --- Konuşmayı durdur ---
-    stop_speaking <- function(cooldown_secs = NULL) {
+    stop_speaking <- function(cooldown_secs = NULL, manual = FALSE) {
+      active_token <- as.integer(mergen_speech_active_token(session))
+      if (isTRUE(manual) && !is.na(active_token) && active_token > 0L) {
+        manual_stop_tokens[[as.character(active_token)]] <- TRUE
+      }
       is_speaking(FALSE)
       mergen_speech_end(session)
+      if (isTRUE(manual)) {
+        ai_expert_konusma_bitti_bildir(speech_ended_cb, manual_stop = TRUE)
+      }
       session$sendCustomMessage("aiExpertStopSubtitle", list(
         nsPrefix = ns("")
       ))
@@ -597,7 +605,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
     # --- Durdurma butonu observer ---
     observeEvent(input$stop_ai_talk, {
       cat("[AI_EXPERT] Durdurma butonu tıklandı.\n")
-      stop_speaking(COOLDOWN_AFTER_STOP)
+      stop_speaking(COOLDOWN_AFTER_STOP, manual = TRUE)
     }, ignoreInit = TRUE)
 
     # --- İstemciden "konuşma bitti" sinyali ---
@@ -616,6 +624,13 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         return(invisible(NULL))
       }
 
+      manual_stop_echo <- !is.na(echoed_token) &&
+        isTRUE(manual_stop_tokens[[as.character(echoed_token)]])
+      if (isTRUE(manual_stop_echo)) {
+        rm(list = as.character(echoed_token), envir = manual_stop_tokens)
+        return(invisible(NULL))
+      }
+
       if (isTRUE(is_speaking())) {
         is_speaking(FALSE)
         mergen_speech_end(session, token = if (is.na(echoed_token)) NULL else echoed_token)
@@ -624,7 +639,11 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         start_cooldown(cd)
         # Doğal bitiş kancası: kuyruğa alınmış sayfa rehberliği gibi bekleyen
         # işler konuşma bittiği anda deterministik olarak devam edebilsin.
-        ai_expert_konusma_bitti_bildir(speech_ended_cb)
+        # Manuel durdurma yankıları doğal bitiş değildir; bekleyen rehberliği
+        # başlatmadan düşürürüz.
+        if (!isTRUE(manual_stop_echo)) {
+          ai_expert_konusma_bitti_bildir(speech_ended_cb, manual_stop = FALSE)
+        }
       }
     }, ignoreInit = TRUE)
 

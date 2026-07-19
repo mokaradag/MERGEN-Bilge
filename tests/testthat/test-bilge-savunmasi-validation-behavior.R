@@ -121,6 +121,21 @@ test_that("bs_dalga_puan_siniri öldürme sayısını haritanın üst sınırın
   expect_true(is.integer(bs_dalga_puan_siniri(harita, 3L, olduruldu = 5L)))
 })
 
+
+
+test_that("patron bonusu yalnızca patronun öldüğü kanıtlanınca verilir", {
+  harita <- bs_harita_katalogu()$baglam_kapisi
+
+  # 8. dalga 11 normal + 1 patron içerir; yalnızca bir öldürme, patronun
+  # öldüğünü kanıtlamaz ve patron bonusunu almamalıdır.
+  expect_identical(bs_dalga_puan_siniri(harita, 8L, olduruldu = 1L),
+                   1L * BS_DUSMAN_PUAN_UST_SINIRI)
+
+  # Tüm dalga temizlenince patron bonusu verilir.
+  expect_identical(bs_dalga_puan_siniri(harita, 8L, olduruldu = 12L),
+                   12L * BS_DUSMAN_PUAN_UST_SINIRI + BS_PATRON_PUAN_UST_SINIRI)
+})
+
 test_that("bs_dalga_puan_siniri sunucu harita planı ve değiştirici sınırını kullanır", {
   harita <- bs_harita_katalogu()$baglam_kapisi
 

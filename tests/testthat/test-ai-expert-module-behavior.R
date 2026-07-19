@@ -263,6 +263,37 @@ test_that("stop_speaking pozitif bekleme süresiyle çağrılınca can_speak bek
   )
 })
 
+test_that("manuel durdurma yankısı kuyruklanmış bitiş kancasını çalıştırmaz", {
+  skip_if_not_installed("shiny")
+
+  sd <- .aiexp_settings()
+  kayit <- new.env(); kayit$msgs <- list(); kayit$bitti <- 0L
+
+  testthat::local_mocked_bindings(delay = function(ms, expr) invisible(NULL), .package = "shinyjs")
+
+  shiny::testServer(
+    .aiexp_env$aiExpertServer,
+    args = list(id = "ax", settings_data = sd,
+                tts_processor = .tts_processor_off(),
+                tts_visualizer = list(trigger = function(...) NULL, stop = function() NULL)),
+    {
+      root <- .subset2(session, "parent")
+      root$sendCustomMessage <- function(type, message) kayit$msgs[[type]] <- message
+      session$returned$set_speech_ended_callback(function() kayit$bitti <- kayit$bitti + 1L)
+
+      session$returned$start_speaking("Kuyruklu boşta konuşma", kind = "idle")
+      token <- kayit$msgs$aiExpertStartSubtitle$speechToken
+
+      session$setInputs(stop_ai_talk = 0L)
+      session$setInputs(stop_ai_talk = 1L)
+      session$setInputs(ai_expert_speech_ended = list(at = 1, speechToken = token))
+
+      expect_false(isTRUE(session$returned$is_speaking()))
+      expect_identical(kayit$bitti, 0L)
+    }
+  )
+})
+
 test_that(
   paste0("ai_expert_speech_ended: bayat (eski token'a ait) yankı YENİ ",
          "konuşmanın durumunu bozmaz (Codex P2)"),

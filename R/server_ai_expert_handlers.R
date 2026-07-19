@@ -328,7 +328,11 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   }
 
   # Kuyruklanmış rehberliği (hâlâ geçerliyse) oynat; değilse sessizce düşür.
-  fire_pending_guidance <- function() {
+  fire_pending_guidance <- function(manual_stop = FALSE) {
+    if (isTRUE(manual_stop)) {
+      pending_guidance_clear()
+      return(invisible(FALSE))
+    }
     page <- pending_guidance$page
     if (is.null(page)) return(invisible(FALSE))
     my_gen <- pending_guidance$gen

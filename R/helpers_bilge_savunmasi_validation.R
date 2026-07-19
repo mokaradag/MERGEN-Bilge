@@ -120,7 +120,13 @@ bs_dalga_puan_siniri <- function(harita_kaydi, dalga_no, olduruldu = NULL,
   }
 
   taban <- etkin * BS_DUSMAN_PUAN_UST_SINIRI
-  if (etkin > 0L && bs_patron_dalgasi_mi(dalga_no, harita_kaydi$dalga_sayisi)) {
+  patron_bonus_hakki <- if (is.null(olduruldu)) {
+    TRUE
+  } else {
+    etkin >= adet
+  }
+  if (isTRUE(patron_bonus_hakki) &&
+      bs_patron_dalgasi_mi(dalga_no, harita_kaydi$dalga_sayisi)) {
     taban <- taban + BS_PATRON_PUAN_UST_SINIRI
   }
   as.integer(taban)
