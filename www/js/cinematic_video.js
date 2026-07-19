@@ -8,11 +8,25 @@
 
 
 // Medya tanılama logu: üretimde sessiz; localStorage.MERGEN_DEBUG_MEDIA = "1"
-// ile açılır. Uyarı/hata logları (console.warn/error) her zaman açık kalır.
+// ile açılır. Beklenen medya oynatma uyarıları/hataları da aynı kapıya bağlıdır.
 var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || function() {
   try {
     if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
       console.log.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+var mergenMediaWarn = window.__mergenMediaWarn = window.__mergenMediaWarn || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.warn.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+var mergenMediaError = window.__mergenMediaError = window.__mergenMediaError || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.error.apply(console, arguments);
     }
   } catch (e) {}
 };
@@ -103,13 +117,13 @@ const CinematicVideoManager = {
         this._initConfig = config;
 
         if (!this._ensureElements()) {
-            console.error('[VIDEO] Kritik DOM elemanları eksik.');
+            mergenMediaError('[VIDEO] Kritik DOM elemanları eksik.');
             return;
         }
 
         // Statik görsel yükleme hatası yönetimi
         this.elements.image.onerror = () => {
-            console.warn('[VIDEO] Görsel yüklenemedi. Kırık ikon görünmemesi için gizleniyor.');
+            mergenMediaWarn('[VIDEO] Görsel yüklenemedi. Kırık ikon görünmemesi için gizleniyor.');
             if (this.elements.image) this.elements.image.style.opacity = '0';
             if (this.elements.video) this.elements.video.poster = "";
         };
@@ -224,14 +238,14 @@ const CinematicVideoManager = {
      */
     getRandomVideo: function(type) {
         if (!this.state.data || !this.state.data.videos || !this.state.data.videos[type]) {
-            console.warn('[VIDEO] \'' + type + '\' kategorisi bulunamadı');
+            mergenMediaWarn('[VIDEO] \'' + type + '\' kategorisi bulunamadı');
             return null;
         }
 
         var videos = this.state.data.videos[type];
 
         if (!videos || (Array.isArray(videos) && videos.length === 0)) {
-            console.warn('[VIDEO] \'' + type + '\' için video listesi boş');
+            mergenMediaWarn('[VIDEO] \'' + type + '\' için video listesi boş');
             return null;
         }
 
@@ -240,7 +254,7 @@ const CinematicVideoManager = {
         }
 
         if (!Array.isArray(videos)) {
-            console.error('[VIDEO] \'' + type + '\' geçersiz format:', typeof videos);
+            mergenMediaError('[VIDEO] \'' + type + '\' geçersiz format:', typeof videos);
             return null;
         }
 
@@ -280,7 +294,7 @@ const CinematicVideoManager = {
                     return; // init() _pendingLoad'u işleyerek loadCharacter'ı yeniden çağıracak
                 }
             } else {
-                console.warn('[VIDEO] DOM elemanları henüz hazır değil, veri saklanıyor ve bekleniyor');
+                mergenMediaWarn('[VIDEO] DOM elemanları henüz hazır değil, veri saklanıyor ve bekleniyor');
                 this.state.data = data;
                 this.state.currentChar = data.character;
                 this._pendingLoad = { data: data, trigger: trigger };
@@ -342,7 +356,7 @@ const CinematicVideoManager = {
         var videoSrc = this.getRandomVideo(type);
 
         if (!videoSrc) {
-            console.warn('[VIDEO] \'' + type + '\' için video yok, görsele dönülüyor.');
+            mergenMediaWarn('[VIDEO] \'' + type + '\' için video yok, görsele dönülüyor.');
             this.showImage();
             this.scheduleNextLoop();
             return;
@@ -392,17 +406,17 @@ const CinematicVideoManager = {
 
                 // Tarayıcı kısıtlaması nedeniyle engellenirse sessiz modda tekrar dene
                 if (error.name === 'NotAllowedError' && self.elements.video && !self.elements.video.muted) {
-                    console.warn('[VIDEO] Sesli oynatma engellendi, sessiz deneniyor');
+                    mergenMediaWarn('[VIDEO] Sesli oynatma engellendi, sessiz deneniyor');
                     self.elements.video.muted = true;
                     self.elements.video.play().catch(function(e2) {
                         if (seqId !== self._playSeqId) return;
                         if (e2.name === 'AbortError') return;
-                        console.error('[VIDEO] Oynatma tamamen başarısız:', e2);
+                        mergenMediaError('[VIDEO] Oynatma tamamen başarısız:', e2);
                         self.handleVideoError(e2);
                     });
                     return;
                 }
-                console.error('[VIDEO] Oynatma hatası:', error);
+                mergenMediaError('[VIDEO] Oynatma hatası:', error);
                 self.handleVideoError(error);
             });
         }
@@ -454,7 +468,7 @@ const CinematicVideoManager = {
                 playPromise.catch(function(error) {
                     if (seqId !== self._playSeqId) return;
                     if (error.name === 'AbortError') return;
-                    console.warn('[VIDEO] Devam ettirme başarısız:', error.name);
+                    mergenMediaWarn('[VIDEO] Devam ettirme başarısız:', error.name);
                 });
             }
         }
@@ -502,7 +516,7 @@ const CinematicVideoManager = {
         // AbortError'ları sessizce yoksay - yarış durumundan kaynaklanan beklenen davranış
         if (error && error.name === 'AbortError') return;
 
-        console.error('[VIDEO] Hata oluştu:', error);
+        mergenMediaError('[VIDEO] Hata oluştu:', error);
         this.showImage();
 
         // Müzik kısılmış kaldıysa geri getir
@@ -544,7 +558,7 @@ const CinematicVideoManager = {
             } else if (retryCount >= maxRetries) {
                 clearInterval(self._retryTimer);
                 self._retryTimer = null;
-                console.warn('[VIDEO] Zamanlayıcı zaman aşımı: elemanlar bulunamadı');
+                mergenMediaWarn('[VIDEO] Zamanlayıcı zaman aşımı: elemanlar bulunamadı');
             }
         }, retryDelay);
     },
@@ -560,7 +574,7 @@ const CinematicVideoManager = {
         if (!this.elements.video || !this.elements.image) {
             var found = this._ensureElements() || this._findElementsByClass();
             if (!found) {
-                console.warn('[VIDEO] Seçim animasyonu: elemanlar bulunamadı, iptal edildi');
+                mergenMediaWarn('[VIDEO] Seçim animasyonu: elemanlar bulunamadı, iptal edildi');
                 return;
             }
         }

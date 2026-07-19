@@ -4,11 +4,25 @@
 
 
 // Medya tanılama logu: üretimde sessiz; localStorage.MERGEN_DEBUG_MEDIA = "1"
-// ile açılır. Uyarı/hata logları (console.warn/error) her zaman açık kalır.
+// ile açılır. Beklenen medya oynatma uyarıları/hataları da aynı kapıya bağlıdır.
 var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || function() {
   try {
     if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
       console.log.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+var mergenMediaWarn = window.__mergenMediaWarn = window.__mergenMediaWarn || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.warn.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+var mergenMediaError = window.__mergenMediaError = window.__mergenMediaError || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.error.apply(console, arguments);
     }
   } catch (e) {}
 };
@@ -162,7 +176,7 @@ const MusicManager = {
   // ─── RASTGELE PARÇA ÇAL ───
 	_playRandomFrom: function(playlist) {
 	  if (!this.state.enabled || !playlist || playlist.length === 0) {
-		console.warn('[MUSIC] Çalınacak parça yok');
+		mergenMediaWarn('[MUSIC] Çalınacak parça yok');
 		return;
 	  }
 
@@ -171,7 +185,7 @@ const MusicManager = {
 	  });
 
 	  if (available.length === 0) {
-		console.error('[MUSIC] Playlist içindeki tüm parçalar hatalı görünüyor. Sonsuz deneme engellendi.');
+		mergenMediaError('[MUSIC] Playlist içindeki tüm parçalar hatalı görünüyor. Sonsuz deneme engellendi.');
 		this._stopAudio();
 		this.state.phase = 'waiting_character';
 		return;
@@ -210,7 +224,7 @@ const MusicManager = {
       audio.play().catch(function(e) {
         if (self._intentionalStop) return;
         if (e.name === 'AbortError') return;
-        console.warn('[MUSIC] Oynatma hatası:', e.message || e);
+        mergenMediaWarn('[MUSIC] Oynatma hatası:', e.message || e);
       });
 
       var playingFileName = src.split('/').pop();
@@ -246,7 +260,7 @@ const MusicManager = {
 		// Bozuk yüzde-encoding varsa log bile çökmesin
 	  }
 
-	  console.warn(
+	  mergenMediaWarn(
 		'[MUSIC] Ses yükleme hatası:',
 		fileName,
 		'| Ardışık hata:',
@@ -256,7 +270,7 @@ const MusicManager = {
 	  );
 
 	  if (self._consecutiveTrackErrors >= self.config.maxConsecutiveTrackErrors) {
-		console.error('[MUSIC] Çok fazla ardışık ses hatası. Tarayıcı kilitlenmesini önlemek için müzik döngüsü durduruldu.');
+		mergenMediaError('[MUSIC] Çok fazla ardışık ses hatası. Tarayıcı kilitlenmesini önlemek için müzik döngüsü durduruldu.');
 		self._stopAudio();
 		self.state.phase = 'waiting_character';
 		return;

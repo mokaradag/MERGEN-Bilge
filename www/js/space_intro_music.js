@@ -9,11 +9,25 @@
   'use strict';
 
 // Medya tanılama logu: üretimde sessiz; localStorage.MERGEN_DEBUG_MEDIA = "1"
-// ile açılır. Uyarı/hata logları (console.warn/error) her zaman açık kalır.
+// ile açılır. Beklenen medya oynatma uyarıları/hataları da aynı kapıya bağlıdır.
 var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || function() {
   try {
     if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
       console.log.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+var mergenMediaWarn = window.__mergenMediaWarn = window.__mergenMediaWarn || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.warn.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+var mergenMediaError = window.__mergenMediaError = window.__mergenMediaError || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.error.apply(console, arguments);
     }
   } catch (e) {}
 };
@@ -65,7 +79,7 @@ var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || functi
       });
 
       if (available.length === 0) {
-        console.warn('[SPACE-MUSIC] Intro playlist içindeki tüm parçalar hatalı; döngü durduruldu.');
+        mergenMediaWarn('[SPACE-MUSIC] Intro playlist içindeki tüm parçalar hatalı; döngü durduruldu.');
         this._active = false;
         this._stopAudio();
         return;
@@ -99,7 +113,7 @@ var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || functi
         self._fadeTo(audio, targetVol, self._fadeTime);
         audio.play().catch(function(e) {
           if (self._intentionalStop || e.name === 'AbortError') return;
-          console.warn('[SPACE-MUSIC] Oynatma hatası:', e.message || e);
+          mergenMediaWarn('[SPACE-MUSIC] Oynatma hatası:', e.message || e);
         });
 
         mergenMediaDbg('[SPACE-MUSIC] Çalınıyor:', decodeURIComponent(src.split('/').pop()));
@@ -117,14 +131,14 @@ var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || functi
         self._failedTrackUrls[src] = true;
         self._consecutiveTrackErrors++;
 
-        console.warn(
+        mergenMediaWarn(
           '[SPACE-MUSIC] Yükleme hatası, sonraki parçaya geçiliyor',
           '| Ardışık hata:',
           self._consecutiveTrackErrors
         );
 
         if (self._consecutiveTrackErrors >= self._maxConsecutiveTrackErrors) {
-          console.warn('[SPACE-MUSIC] Çok fazla intro ses hatası; sonsuz döngü engellendi.');
+          mergenMediaWarn('[SPACE-MUSIC] Çok fazla intro ses hatası; sonsuz döngü engellendi.');
           self._active = false;
           self._stopAudio();
           return;
@@ -288,7 +302,7 @@ var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || functi
           SpaceIntroMusic.init(data);
         }
       } catch(e) {
-        console.warn('[SPACE-MUSIC] Gömülü veri ayrıştırma hatası:', e);
+        mergenMediaWarn('[SPACE-MUSIC] Gömülü veri ayrıştırma hatası:', e);
       }
     }
 
