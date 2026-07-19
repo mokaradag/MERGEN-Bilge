@@ -8,6 +8,11 @@
 (function($) {
   'use strict';
 
+  var NEW_CHAT_SELECTOR = '#new_chat_btn';
+  var SAVE_SETTINGS_SELECTOR = '#settings_kisisel_module-save_settings, ' +
+    '#settings_yapilandirma_module-save_settings';
+  var BUSY_GUARD_SELECTOR = NEW_CHAT_SELECTOR + ', ' + SAVE_SETTINGS_SELECTOR;
+
   function mergenButtonBusyAck(btn) {
     if (btn.classList.contains('mergen-btn-busy')) return false;
     btn.classList.add('mergen-btn-busy');
@@ -26,9 +31,24 @@
     return true;
   }
 
+  // Yakalama aşamasında engelleme: `pointer-events: none` yalnızca fare/dokunma
+  // tabanlı tıklamaları durdurur. Odaklanmış bir düğmede Enter/Boşluk ile
+  // tetiklenen klavye click'i bu CSS kuralını atlar ve Shiny'nin action-button
+  // bağlayıcısı bu betikten önce yüklendiği için köpürme (bubble) aşamasında
+  // engellemek de yetersiz kalır. Yakalama aşamasında durdurmak, meşgul
+  // düğmeye yönelik her kaynaktan gelen tıklamanın Shiny'ye hiç ulaşmamasını
+  // garanti eder (bkz. theme_manager.js aynı desen).
+  document.addEventListener('click', function(ev) {
+    if (!ev || !ev.target || !ev.target.closest) return;
+    var btn = ev.target.closest(BUSY_GUARD_SELECTOR);
+    if (!btn || !btn.classList.contains('mergen-btn-busy')) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+  }, true);
+
   // Yeni Söyleşi: anında geri bildirim + gereksiz otomatik konuşmayı yerelde
   // durdur (kullanıcı eylemi otomatik konuşmadan önceliklidir).
-  $(document).on('click', '#new_chat_btn', function() {
+  $(document).on('click', NEW_CHAT_SELECTOR, function() {
     if (!mergenButtonBusyAck(this)) return;
 
     if (window.MergenSpeech && window.MergenSpeech.markStopped) {
@@ -41,8 +61,6 @@
 
   // Ayarları Kaydet (Kişiselleştirme/Yapılandırma): kısa ömürlü meşgul durumu;
   // yinelenen gönderim görünümünü engeller, sayfa donmuş gibi görünmez.
-  $(document).on('click',
-    '#settings_kisisel_module-save_settings, ' +
-    '#settings_yapilandirma_module-save_settings',
+  $(document).on('click', SAVE_SETTINGS_SELECTOR,
     function() { mergenButtonBusyAck(this); });
 })(jQuery);
