@@ -219,7 +219,7 @@ ai_expert_kalan_parcalari_kuyrukla <- function(all_chunks, baslangic,
     on_drained = function(teslim_edilen) {
       if (!chunk_dispatch$is_current()) return(invisible(NULL))
       if (teslim_edilen < length(all_chunks)) {
-        session$sendCustomMessage("aiExpertSequenceComplete", list(
+        chunk_dispatch$complete(list(
           deliveredChunks = teslim_edilen,
           nsPrefix        = ns_prefix,
           speechToken     = speech_token
@@ -231,8 +231,8 @@ ai_expert_kalan_parcalari_kuyrukla <- function(all_chunks, baslangic,
 }
 
 #' Doğal konuşma bitişi kancasını güvenle çağır (tek slotlu env sahibi).
-ai_expert_konusma_bitti_bildir <- function(cb_env) {
+ai_expert_konusma_bitti_bildir <- function(cb_env, ...) {
   cb <- cb_env$fn
-  if (is.function(cb)) tryCatch(cb(), error = function(e) NULL)
+  if (is.function(cb)) tryCatch(cb(...), error = function(e) NULL)
   invisible(NULL)
 }

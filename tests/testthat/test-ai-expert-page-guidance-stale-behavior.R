@@ -557,9 +557,10 @@ testthat::test_that(
             session$setInputs(tabs = "history")
             testthat::expect_identical(spoke$n, 0L)
 
-            # ...ama kullanıcı sohbete dönerse (sessiz yüzey) kuyruk boşalır;
-            # boşta konuşma bitince BAYAT history rehberliği OYNATILMAZ.
-            session$setInputs(tabs = "chat")
+            # ...ama manuel durdurma kancası gelirse kuyruk temizlenir;
+            # sonraki doğal bitiş BAYAT history rehberliği OYNATMAZ.
+            testthat::expect_true(is.function(spoke$speech_ended_cb))
+            spoke$speech_ended_cb(manual_stop = TRUE)
             spoke$speaking <- FALSE
             mergen_speech_end(session)
             spoke$speech_ended_cb()
