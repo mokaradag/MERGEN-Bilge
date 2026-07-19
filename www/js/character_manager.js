@@ -1,5 +1,16 @@
 // www/js/character_manager.js
 
+
+// Medya tanılama logu: üretimde sessiz; localStorage.MERGEN_DEBUG_MEDIA = "1"
+// ile açılır. Uyarı/hata logları (console.warn/error) her zaman açık kalır.
+var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.log.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+
 $(document).ready(function() {
   // Karakter butonu yönetimi
   Shiny.addCustomMessageHandler('updateCharacterButtons', function(data) {
@@ -79,7 +90,7 @@ $(document).ready(function() {
     // Video overlay aktifse resim geçişini atla
     const videoOverlay = container.querySelector('.character-video-overlay');
     if (videoOverlay && videoOverlay.classList.contains('is-active')) {
-      console.log('[Image] Video aktif, resim geçişi atlandı');
+      mergenMediaDbg('[Image] Video aktif, resim geçişi atlandı');
       return;
     }
 
@@ -114,7 +125,7 @@ $(document).ready(function() {
       // Video hala aktifse resmi gösterme
       const currentOverlay = container.querySelector('.character-video-overlay');
       if (currentOverlay && currentOverlay.classList.contains('is-active')) {
-        console.log('[Image] Video hala aktif, resim gizli kalacak');
+        mergenMediaDbg('[Image] Video hala aktif, resim gizli kalacak');
         incoming.style.opacity = '0';
         incoming.style.visibility = 'hidden';
       }

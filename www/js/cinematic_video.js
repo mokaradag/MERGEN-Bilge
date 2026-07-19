@@ -6,6 +6,17 @@
  * otomatik oynatma politikalarını ve statik görsel geçişlerini kontrol eder.
  */
 
+
+// Medya tanılama logu: üretimde sessiz; localStorage.MERGEN_DEBUG_MEDIA = "1"
+// ile açılır. Uyarı/hata logları (console.warn/error) her zaman açık kalır.
+var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.log.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+
 const CinematicVideoManager = {
     // Yönetici durumu: Mevcut karakter, video listeleri, zamanlayıcılar ve oynatma durumu
     state: {
@@ -121,7 +132,7 @@ const CinematicVideoManager = {
             var unmuteOnInteraction = function() {
                 if (self.elements.video) {
                     self.elements.video.muted = false;
-                    console.log('[VIDEO] Kullanıcı etkileşimi algılandı, ses açıldı');
+                    mergenMediaDbg('[VIDEO] Kullanıcı etkileşimi algılandı, ses açıldı');
                 }
                 document.removeEventListener('click', unmuteOnInteraction);
                 document.removeEventListener('keydown', unmuteOnInteraction);
@@ -150,11 +161,11 @@ const CinematicVideoManager = {
                     // Elemanları yeniden doğrula (sekme geçişlerinde referans kaybı koruması)
                     this._ensureElements();
                     if (this.state.data) {
-                        console.log('[VIDEO] Kişiselleştirme sekmesine girildi, giriş (intro) başlatılıyor');
+                        mergenMediaDbg('[VIDEO] Kişiselleştirme sekmesine girildi, giriş (intro) başlatılıyor');
                         this.playSequence('intro');
                     }
                 } else {
-                    console.log('[VIDEO] Kişiselleştirme sekmesinden çıkıldı, kaynak tüketmemek için durduruluyor');
+                    mergenMediaDbg('[VIDEO] Kişiselleştirme sekmesinden çıkıldı, kaynak tüketmemek için durduruluyor');
                     this.stopEverything();
                     // Müzik kısılmış kaldıysa geri getir
                     if (window.MusicManager && window.MusicManager.state.isDucked) {
@@ -167,13 +178,13 @@ const CinematicVideoManager = {
         }
 
         this._initialized = true;
-        console.log('[VIDEO] CinematicVideoManager başarıyla başlatıldı.');
+        mergenMediaDbg('[VIDEO] CinematicVideoManager başarıyla başlatıldı.');
 
         // Bekleyen karakter yüklemesi varsa şimdi işle
         if (this._pendingLoad) {
             var pending = this._pendingLoad;
             this._pendingLoad = null;
-            console.log('[VIDEO] Bekleyen karakter yüklemesi işleniyor:', pending.data.character);
+            mergenMediaDbg('[VIDEO] Bekleyen karakter yüklemesi işleniyor:', pending.data.character);
             this.loadCharacter({ data: pending.data, trigger: pending.trigger });
         }
     },
@@ -234,7 +245,7 @@ const CinematicVideoManager = {
         }
 
         var selected = videos[Math.floor(Math.random() * videos.length)];
-        console.log('[VIDEO] \'' + type + '\' seçildi:', selected);
+        mergenMediaDbg('[VIDEO] \'' + type + '\' seçildi:', selected);
         return selected;
     },
 
@@ -246,7 +257,7 @@ const CinematicVideoManager = {
         var data = message.data || message;
         var trigger = message.trigger || 'auto';
 
-        console.log('[VIDEO] Karakter yükleniyor:', data.character, 'tetikleyici:', trigger);
+        mergenMediaDbg('[VIDEO] Karakter yükleniyor:', data.character, 'tetikleyici:', trigger);
 
         // DOM elemanları null ise yeniden bulmayı dene
         if (!this.elements.video || !this.elements.image) {
@@ -260,7 +271,7 @@ const CinematicVideoManager = {
             }
 
             if (found) {
-                console.log('[VIDEO] Elemanlar bulundu ve bağlandı.');
+                mergenMediaDbg('[VIDEO] Elemanlar bulundu ve bağlandı.');
                 // Başlatma henüz yapılmadıysa şimdi yap
                 if (!this._initialized) {
                     // Veri kaybolmaması için init() öncesinde pendingLoad'a yaz
@@ -282,7 +293,7 @@ const CinematicVideoManager = {
         // Çift tetikleme koruması: aynı karakter + aynı tetikleyici zaten işlendiyse yoksay
         // (click ve auto sırayla geldiğinde ikincisini atla)
         if (this.state.currentChar === data.character && trigger === 'auto' && this.state.isPlaying) {
-            console.log('[VIDEO] Aynı karakter zaten oynatılıyor, yinelenen auto tetikleyicisi atlandı');
+            mergenMediaDbg('[VIDEO] Aynı karakter zaten oynatılıyor, yinelenen auto tetikleyicisi atlandı');
             return;
         }
 
@@ -298,13 +309,13 @@ const CinematicVideoManager = {
             var safeImage = encodeURI(data.image);
             this.elements.image.src = safeImage;
             this.elements.video.poster = safeImage;
-            console.log('[VIDEO] Resim ve poster güncellendi:', safeImage);
+            mergenMediaDbg('[VIDEO] Resim ve poster güncellendi:', safeImage);
         }
 
         var self = this;
         var playIntro = function() {
             if (self._isKisiselTabActive()) {
-                console.log('[VIDEO] Giriş videosu başlatılıyor');
+                mergenMediaDbg('[VIDEO] Giriş videosu başlatılıyor');
                 self.playSequence('intro');
             }
         };
@@ -323,7 +334,7 @@ const CinematicVideoManager = {
      */
     playSequence: function(type) {
         if (!this._isKisiselTabActive()) {
-            console.log('[VIDEO] Kişiselleştirme sekmesinde değiliz, oynatma iptal edildi.');
+            mergenMediaDbg('[VIDEO] Kişiselleştirme sekmesinde değiliz, oynatma iptal edildi.');
             return;
         }
 
@@ -348,7 +359,7 @@ const CinematicVideoManager = {
     showVideo: function(src) {
         if (!this.elements.video) return;
 
-        console.log('[VIDEO] Oynatılıyor:', src);
+        mergenMediaDbg('[VIDEO] Oynatılıyor:', src);
 
         // Mevcut sekans kimliğini yakala (yarış durumu koruması)
         var seqId = this._playSeqId;
@@ -403,7 +414,7 @@ const CinematicVideoManager = {
     showImage: function() {
         if (!this.elements.container) return;
 
-        console.log('[VIDEO] Statik görsele geçiliyor');
+        mergenMediaDbg('[VIDEO] Statik görsele geçiliyor');
 
         // CSS sınıfını kaldırarak varsayılan (görselin göründüğü) duruma dön
         this.elements.container.classList.remove('video-playing');
@@ -454,7 +465,7 @@ const CinematicVideoManager = {
      * Mantık: Giriş -> Bekleme -> Döngü, Seçim -> Bekleme -> Döngü
      */
     handleVideoEnd: function() {
-        console.log('[VIDEO] Video sona erdi. Tip:', this.state.lastVideoType);
+        mergenMediaDbg('[VIDEO] Video sona erdi. Tip:', this.state.lastVideoType);
 
         this.showImage();
 
@@ -476,7 +487,7 @@ const CinematicVideoManager = {
         this.clearTimer();
         var self = this;
 
-        console.log('[VIDEO] Sonraki döngü planlandı: ' + this.config.imageDisplayDuration + 'ms');
+        mergenMediaDbg('[VIDEO] Sonraki döngü planlandı: ' + this.config.imageDisplayDuration + 'ms');
         this.state.timer = setTimeout(function() {
             if (self._isKisiselTabActive()) {
                 self.playSequence('loop');
@@ -523,7 +534,7 @@ const CinematicVideoManager = {
             if (found) {
                 clearInterval(self._retryTimer);
                 self._retryTimer = null;
-                console.log('[VIDEO] Zamanlayıcıyla elemanlar bulundu, yükleme devam ediyor');
+                mergenMediaDbg('[VIDEO] Zamanlayıcıyla elemanlar bulundu, yükleme devam ediyor');
                 if (!self._initialized) {
                     self.init(self._initConfig);
                 } else {
@@ -553,7 +564,7 @@ const CinematicVideoManager = {
                 return;
             }
         }
-        console.log('[VIDEO] Seçim animasyonu tetiklendi.');
+        mergenMediaDbg('[VIDEO] Seçim animasyonu tetiklendi.');
         this.playSequence('select');
     },
 
@@ -609,7 +620,7 @@ $(document).ready(function() {
         if (!CinematicVideoManager._initialized) {
             var found = CinematicVideoManager._findElementsByClass();
             if (found) {
-                console.log('[VIDEO] Sekme geçişinde başlatma tetiklendi');
+                mergenMediaDbg('[VIDEO] Sekme geçişinde başlatma tetiklendi');
                 CinematicVideoManager.init(CinematicVideoManager._initConfig);
             }
         } else {
@@ -631,7 +642,7 @@ $(document).ready(function() {
                 // İlk kez: başlat
                 var found = CinematicVideoManager._findElementsByClass();
                 if (found) {
-                    console.log('[VIDEO] Kişiselleştirme sekmesinde başlatma tetiklendi');
+                    mergenMediaDbg('[VIDEO] Kişiselleştirme sekmesinde başlatma tetiklendi');
                     CinematicVideoManager.init(CinematicVideoManager._initConfig);
                 }
             } else {
@@ -641,7 +652,7 @@ $(document).ready(function() {
                 }
                 // Veri mevcut ve oynatılmıyorsa giriş videosunu başlat
                 if (CinematicVideoManager.state.data && !CinematicVideoManager.state.isPlaying) {
-                    console.log('[VIDEO] Sekme geçişinde giriş videosu başlatılıyor');
+                    mergenMediaDbg('[VIDEO] Sekme geçişinde giriş videosu başlatılıyor');
                     CinematicVideoManager.playSequence('intro');
                 }
             }

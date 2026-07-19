@@ -1,6 +1,17 @@
 // www/js/app_core.js
 // Bu dosya uygulamanın çekirdek mantığını, gözlemcileri ve bağlantı durumlarını yönetir.
 
+
+// Medya tanılama logu: üretimde sessiz; localStorage.MERGEN_DEBUG_MEDIA = "1"
+// ile açılır. Uyarı/hata logları (console.warn/error) her zaman açık kalır.
+var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.log.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+
 let globalMessageObserver = null;
 
 $(document).ready(function() {
@@ -108,7 +119,7 @@ $(document).ready(function() {
     });
 
     if (isReconnection) {
-      console.log('[MERGEN] message observer reinitialized after reconnection');
+      mergenMediaDbg('[MERGEN] message observer reinitialized after reconnection');
     }
   }
 
@@ -147,7 +158,7 @@ $(document).ready(function() {
       subtree: true
     });
     if (isReconnection) {
-      console.log('[MERGEN] CodeMirror observer reinitialized after reconnection');
+      mergenMediaDbg('[MERGEN] CodeMirror observer reinitialized after reconnection');
     }
   }
  
@@ -202,7 +213,7 @@ $(document).ready(function() {
 
 	window.sendCapabilityMessage = function(message, model) {
 	  if (model) {
-		console.log('Setting model to:', model);
+		mergenMediaDbg('Setting model to:', model);
 
 		// Use Shiny.setInputValue if available, otherwise set input directly
 		if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {

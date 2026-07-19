@@ -8,6 +8,16 @@
 (function() {
   'use strict';
 
+// Medya tanılama logu: üretimde sessiz; localStorage.MERGEN_DEBUG_MEDIA = "1"
+// ile açılır. Uyarı/hata logları (console.warn/error) her zaman açık kalır.
+var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.log.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+
   var SpaceIntroMusic = {
     _audio: null,
     _playlist: [],         // Sunucudan gelen parça listesi
@@ -36,7 +46,7 @@
       this._playlist = files;
       this._failedTrackUrls = {};
       this._consecutiveTrackErrors = 0;
-      console.log('[SPACE-MUSIC] Playlist alındı:', files.length, 'parça');
+      mergenMediaDbg('[SPACE-MUSIC] Playlist alındı:', files.length, 'parça');
 
       if (files.length > 0 && !this._active) {
         this._active = true;
@@ -92,7 +102,7 @@
           console.warn('[SPACE-MUSIC] Oynatma hatası:', e.message || e);
         });
 
-        console.log('[SPACE-MUSIC] Çalınıyor:', decodeURIComponent(src.split('/').pop()));
+        mergenMediaDbg('[SPACE-MUSIC] Çalınıyor:', decodeURIComponent(src.split('/').pop()));
       }, { once: true });
 
       audio.addEventListener('ended', function() {
@@ -228,7 +238,7 @@
         finish();
       }
 
-      console.log('[SPACE-MUSIC] Kalıcı durdurma (mod seçildi)');
+      mergenMediaDbg('[SPACE-MUSIC] Kalıcı durdurma (mod seçildi)');
     },
 
     // Karakter videosu sırasında sesi kıs
@@ -274,7 +284,7 @@
       try {
         var data = JSON.parse(embeddedData.textContent);
         if (data && data.files && data.files.length > 0) {
-          console.log('[SPACE-MUSIC] Gömülü veri bulundu, hemen başlatılıyor');
+          mergenMediaDbg('[SPACE-MUSIC] Gömülü veri bulundu, hemen başlatılıyor');
           SpaceIntroMusic.init(data);
         }
       } catch(e) {

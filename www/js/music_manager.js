@@ -2,6 +2,17 @@
 // Arka plan müzik yönetim sistemi - Tek ses kaynağı mimarisi
 // Akış: Ana Tema (bir kez, sadece ilk başlatmada) → Karakter Müziği (rastgele döngü)
 
+
+// Medya tanılama logu: üretimde sessiz; localStorage.MERGEN_DEBUG_MEDIA = "1"
+// ile açılır. Uyarı/hata logları (console.warn/error) her zaman açık kalır.
+var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.log.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+
 const MusicManager = {
   // Tek global durum
   state: {
@@ -49,7 +60,7 @@ const MusicManager = {
     this.state.normalVolume = settings.volume || 0.3;
     this.state.character = settings.character || 'emre';
 
-    console.log('[MUSIC] Başlatıldı:', this.state.enabled ? 'AÇIK' : 'KAPALI',
+    mergenMediaDbg('[MUSIC] Başlatıldı:', this.state.enabled ? 'AÇIK' : 'KAPALI',
                 '| Karakter:', this.state.character);
 
     if (this.state.enabled) {
@@ -69,7 +80,7 @@ const MusicManager = {
 
     // Ana tema daha önce çalındıysa doğrudan karakter müziğine geç
     if (this._themePlayedOnce) {
-      console.log('[MUSIC] Ana tema zaten çalındı, doğrudan karakter müziğine geçiliyor');
+      mergenMediaDbg('[MUSIC] Ana tema zaten çalındı, doğrudan karakter müziğine geçiliyor');
       this._requestPlaylist('karakter');
     } else {
       // İlk kez: sunucudan tema playlist'ini iste
@@ -100,20 +111,20 @@ const MusicManager = {
 		nonce: Math.random()
 	  }, { priority: 'event' });
 
-	  console.log('[MUSIC] Playlist isteniyor:', type, '| Karakter:', this.state.character, '| ID:', requestId);
+	  mergenMediaDbg('[MUSIC] Playlist isteniyor:', type, '| Karakter:', this.state.character, '| ID:', requestId);
 	},
 
   // ─── SUNUCUDAN GELEN PLAYLIST'İ İŞLE ───
   receivePlaylist: function(data) {
     // Müzik kapalıysa yoksay
     if (!this.state.enabled) {
-      console.log('[MUSIC] Müzik kapalı, gelen playlist yoksayıldı');
+      mergenMediaDbg('[MUSIC] Müzik kapalı, gelen playlist yoksayıldı');
       return;
     }
 
 	// Eski/gecikmeli yanıtları yoksay
 	if (data.requestId && data.requestId < this._pendingRequestId) {
-	  console.log('[MUSIC] Eski playlist yanıtı yoksayıldı (ID:', data.requestId, '< güncel:', this._pendingRequestId, ')');
+	  mergenMediaDbg('[MUSIC] Eski playlist yanıtı yoksayıldı (ID:', data.requestId, '< güncel:', this._pendingRequestId, ')');
 	  return;
 	}
 
@@ -125,7 +136,7 @@ const MusicManager = {
 	var files = data.files || [];
 	var type = data.type || 'tema';
 
-    console.log('[MUSIC] Playlist alındı:', type, '|', files.length, 'parça');
+    mergenMediaDbg('[MUSIC] Playlist alındı:', type, '|', files.length, 'parça');
 
     if (type === 'tema') {
       this._themePlaylist = files;
@@ -208,7 +219,7 @@ const MusicManager = {
       } catch (decodeErr) {
         // Bozuk yüzde-encoding varsa oynatma logu müziği bozmasın
       }
-      console.log('[MUSIC] Oynatılıyor [' + self.state.phase + ']:', playingFileName);
+      mergenMediaDbg('[MUSIC] Oynatılıyor [' + self.state.phase + ']:', playingFileName);
     }, { once: true });
 
     audio.addEventListener('ended', function() {
@@ -267,7 +278,7 @@ const MusicManager = {
 
     if (this.state.phase === 'theme') {
       // Ana tema bitti → karakter müziğine geç
-      console.log('[MUSIC] Ana tema bitti, karakter müziğine geçiliyor');
+      mergenMediaDbg('[MUSIC] Ana tema bitti, karakter müziğine geçiliyor');
       this.state.phase = 'waiting_character';
 
       if (this._characterPlaylist.length > 0) {
@@ -378,7 +389,7 @@ const MusicManager = {
 
   // Müziği aç/kapat (sadece "Ayarları Kaydet" butonundan çağrılmalı)
   toggle: function(enabled, character) {
-    console.log('[MUSIC] toggle:', enabled ? 'AÇIK' : 'KAPALI', '| Karakter:', character || this.state.character);
+    mergenMediaDbg('[MUSIC] toggle:', enabled ? 'AÇIK' : 'KAPALI', '| Karakter:', character || this.state.character);
 
     var characterChanged = character && character !== this.state.character;
     if (character) {
@@ -408,13 +419,13 @@ const MusicManager = {
 		  this._pendingRequestType === 'tema';
 
 		if (anaTemaBekleniyor) {
-		  console.log('[MUSIC] Ana tema playlist yanıtı bekleniyor; karakter müziğine erken geçiş engellendi');
+		  mergenMediaDbg('[MUSIC] Ana tema playlist yanıtı bekleniyor; karakter müziğine erken geçiş engellendi');
 		  return;
 		}
 
 		// Müzik açık ama ana tema henüz hiç çalınmadıysa yeniden tema iste.
 		if (this.state.phase === 'idle' && !this._themePlayedOnce) {
-		  console.log('[MUSIC] Ana tema akışı yeniden besleniyor');
+		  mergenMediaDbg('[MUSIC] Ana tema akışı yeniden besleniyor');
 		  this._requestPlaylist('tema');
 		  return;
 		}
@@ -432,7 +443,7 @@ const MusicManager = {
 		  );
 
 		if (karakterMuzigiYenidenBaslatilsin) {
-		  console.log('[MUSIC] Aynı açık duruma geçildi, karakter müziği akışı yeniden başlatılıyor');
+		  mergenMediaDbg('[MUSIC] Aynı açık duruma geçildi, karakter müziği akışı yeniden başlatılıyor');
 		  this._startCharacterMusic();
 		}
 	  }
@@ -473,7 +484,7 @@ const MusicManager = {
   // Karakter değişikliği (sadece "Ayarları Kaydet" sonrası çağrılır)
   setCharacter: function(character) {
     if (!character || character === this.state.character) return;
-    console.log('[MUSIC] Karakter değişti:', this.state.character, '->', character);
+    mergenMediaDbg('[MUSIC] Karakter değişti:', this.state.character, '->', character);
     this.state.character = character;
 
     if (!this.state.enabled) return;

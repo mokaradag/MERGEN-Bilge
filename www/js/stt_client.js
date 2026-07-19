@@ -1,5 +1,16 @@
 // www/js/stt_client.js
 
+
+// Medya tanılama logu: üretimde sessiz; localStorage.MERGEN_DEBUG_MEDIA = "1"
+// ile açılır. Uyarı/hata logları (console.warn/error) her zaman açık kalır.
+var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.log.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+
 window.STT_Client = (function() {
     let mediaRecorder = null;
     let audioContext = null;
@@ -66,7 +77,7 @@ window.STT_Client = (function() {
         window.jQuery(modal)
             .off('hidden.bs.modal.mergenSttCleanup')
             .one('hidden.bs.modal.mergenSttCleanup', function() {
-                console.log('[STT] Modal kapanış fallback temizliği çalıştı');
+                mergenMediaDbg('[STT] Modal kapanış fallback temizliği çalıştı');
                 try {
                     stopAndCleanup(nsPrefix || '');
                 } catch (e) {

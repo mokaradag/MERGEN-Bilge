@@ -448,7 +448,10 @@ test_that("kritik frontend dosyaları kendi taban çizgilerinden büyümez", {
   }
 
   assert_frontend_file_budget("www/js/input_handlers.js", 260L, 23L, 16L, 0L)
-  assert_frontend_file_budget("www/js/app_core.js", 270L, 28L, 8L, 0L)
+  # app_core 270L -> 282L, 28 -> 29 fn bilinçli güncelleme: medya tanılama
+  # logları üretimde susturuldu; debug kapısı (mergenMediaDbg, localStorage
+  # MERGEN_DEBUG_MEDIA) dosya içinde tanımlanır.
+  assert_frontend_file_budget("www/js/app_core.js", 282L, 29L, 8L, 0L)
   assert_frontend_file_budget("www/js/welcome_tooltip_manager.js", 260L, 22L, 14L, 0L)
   assert_frontend_file_budget("www/js/claude_code.js", 620L, 36L, 16L, 12L)
   assert_frontend_file_budget("www/js/claude_code_streaming.js", 700L, 30L, 8L, 4L)
