@@ -151,14 +151,14 @@ Doğrulayıcı gerçek RIFF/WAVE başlığını okur; süreler başlıktan hesap
   Seslendir, kişisel önek) reddedilir; BAŞKA SESLE KONUŞULMAZ. Log'da
   `fail-closed` nedeni görünür.
 - Geçici operatör kaçışı (önerilmez): `MERGEN_SPEECH_VOICE_MODE=legacy_alias`
-  eski `tr-male-1`/`tr-female-1` davranışına bilinçli döner.
+  eski uç noktanın kayıtlı ses etiketi davranışına bilinçli döner.
 
 ## 8. VoxCPM2 uç nokta sözleşmesi doğrulaması (ilk kurulum)
 
 Aday referans üretimi (1. aşama) referanssız bir **Voice Design** isteğidir ve
 VM'de `tests/scripts/test_voxcpm2_persona_voices.R` ile doğrulanmış sözleşmeyi
 kullanır: istek her zaman `voice = "default"` ile gider (bu kurulumda
-`tr-male-1` / `tr-female-1` gibi kayıtlı ses adları YOKTUR; kayıtlı olmayan bir
+kayıtlı ses adları YOKTUR; kayıtlı olmayan bir
 ad gönderilirse servis HTTP 503 "No Healthy Address Found" döndürür) ve doğal
 dil ses tasarımı tanımı `input` metninin başına parantez içinde eklenir.
 `LOCAL_TTS_VOICE` yalnızca eski `legacy_alias` çalışma zamanı modunu
@@ -194,7 +194,7 @@ akış başlatılamazsa yanıt seslendirmesi otomatik olarak tamponlu hatta dü�
 | Belirti | Neden / Çözüm |
 | --- | --- |
 | `Üretici kilidi aktif` | Başka koşu var ya da bayat kilit: `speech_gen_release_lock()` |
-| Aday üretiminde `HTTP 503: No Healthy Address Found` | İstek kayıtlı olmayan bir ses adıyla gitmiş olabilir (örn. `voice=tr-male-1`). Aday sözleşmesi `voice=default` + input başında doğal dil tasarım tanımıdır; depo/kod güncel mi kontrol edin, gerekirse servisi `tests/scripts/test_voxcpm2_persona_voices.R` ile doğrulayın |
+| Aday üretiminde `HTTP 503: No Healthy Address Found` | İstek kayıtlı olmayan bir ses adıyla gitmiş olabilir (örn. kayıtlı olmayan eski bir ses etiketi). Aday sözleşmesi `voice=default` + input başında doğal dil tasarım tanımıdır; depo/kod güncel mi kontrol edin, gerekirse servisi `tests/scripts/test_voxcpm2_persona_voices.R` ile doğrulayın |
 | `onaylı referans yok` | Önce `generate_reference_candidate` + `approve_reference_voice` |
 | `voice_lock_degisti` nedeniyle toplu yeniden üretim planı | Kilit/parametre değişti; beklenen davranıştır |
 | `profil_parmak_izi_uyusmuyor` | `.Renviron`'daki VOXCPM2_SPEED/CFG değerleri onay anındakinden farklı; ya geri alın ya `reset_reference` akışını uygulayın |

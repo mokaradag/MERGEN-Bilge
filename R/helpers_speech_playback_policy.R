@@ -178,7 +178,9 @@ mergen_speech_chunk_dispatcher <- function(session, token, is_speaking) {
   state$pending_complete <- NULL
 
   is_current <- function() {
-    isTRUE(is_speaking()) && identical(
+    # later/promise geri çağrılarından da çağrılır: reaktif bağlam olmadan
+    # çıplak reactiveVal okuması uygulamayı üst düzeyde çökertir; isolate şart.
+    shiny::isolate(isTRUE(is_speaking())) && identical(
       as.integer(token), as.integer(mergen_speech_active_token(session))
     )
   }

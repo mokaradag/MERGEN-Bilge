@@ -147,3 +147,18 @@ fm_create_file_manager_attachment_setter <- function(session,
     invisible(TRUE)
   }
 }
+# Dosya Yönetimi ilk sayfa açılış taraması: önce tablo üzerinde yükleme örtüsü
+# çizilir, senkron kalıcı klasör taraması bir tick ertelenir. Aksi halde tarama
+# ilk render'ı bloklar ve sayfa saniyelerce boş görünür.
+fm_baslat_sayfa_acilis_taramasi <- function(session, refresh_fn) {
+  shinyjs::addClass(id = "files_table", class = "mb-table-loading", asis = FALSE)
+  later::later(function() {
+    shiny::withReactiveDomain(session, {
+      shiny::isolate({
+        try(refresh_fn("page_open"), silent = TRUE)
+        shinyjs::removeClass(id = "files_table", class = "mb-table-loading", asis = FALSE)
+      })
+    })
+  }, delay = 0.05)
+  invisible(NULL)
+}

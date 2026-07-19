@@ -51,8 +51,14 @@ ai_expert_baslangic_kapisi <- function(dispatch_fn, deadline_secs = 6) {
       if (!isTRUE(kapi$tampon_hazir) && is.finite(deadline_secs) &&
           deadline_secs > 0) {
         later::later(function() {
-          kapi$tampon_hazir <- TRUE
-          dene()
+          # Çıplak later geri çağrısı: hata üst düzeye kaçarsa runApp çöker.
+          tryCatch({
+            kapi$tampon_hazir <- TRUE
+            dene()
+          }, error = function(e) {
+            cat(sprintf("[AI_EXPERT] Başlangıç kapısı süre sınırı hatası: %s\n",
+                        conditionMessage(e)))
+          })
         }, delay = deadline_secs)
       }
       dene()
@@ -164,16 +170,20 @@ ai_expert_chunk_pipeline_baslat <- function(parcalar, baslangic, synth_fn,
         promises::then(
           synth_fn(parca_metin),
           onFulfilled = function(res) {
-            gecerli <- isTRUE(res$success) && nzchar(res$audio_src %||% "")
-            parca_sonuclandi(parca_idx, if (gecerli) {
-              list(text = parca_metin, audio_src = res$audio_src,
-                   duration = res$duration %||% 0)
-            } else {
-              FALSE
+            tryCatch({
+              gecerli <- isTRUE(res$success) && nzchar(res$audio_src %||% "")
+              parca_sonuclandi(parca_idx, if (gecerli) {
+                list(text = parca_metin, audio_src = res$audio_src,
+                     duration = res$duration %||% 0)
+              } else {
+                FALSE
+              })
+            }, error = function(e) {
+              cat(sprintf("[AI_EXPERT] Parça teslim hatası: %s\n", conditionMessage(e)))
             })
           },
           onRejected = function(e) {
-            parca_sonuclandi(parca_idx, FALSE)
+            tryCatch(parca_sonuclandi(parca_idx, FALSE), error = function(e2) NULL)
           }
         )
       })

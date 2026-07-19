@@ -100,39 +100,39 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
     MUTED_PAGES <- mergen_speech_idle_muted_pages()
 
     # --- Yardımcı: AI Uzman konuşması mümkün mü? ---
-    can_speak <- function() {
-      # 1. Özellik açık mı?
-      if (!isTRUE(settings_data$enable_ai_expert)) return(FALSE)
+    # Promise/later geri çağrılarından da çağrılır; okumalar isolate içindedir.
+    can_speak <- function() isolate({
+        # 1. Özellik açık mı?
+        if (!isTRUE(settings_data$enable_ai_expert)) return(FALSE)
 
-      # 2. Bütünleşik mod mu?
-      if (!identical(settings_data$experience_mode, "kesif")) return(FALSE)
+        # 2. Bütünleşik mod mu?
+        if (!identical(settings_data$experience_mode, "kesif")) return(FALSE)
 
-      # 3. Yasaklı sayfa mı?
-      page <- isolate(current_page())
-      if (page %in% MUTED_PAGES) return(FALSE)
+        # 3. Yasaklı sayfa mı?
+        page <- current_page()
+        if (page %in% MUTED_PAGES) return(FALSE)
 
-      # 4. Zaten konuşuyor mu?
-      if (isTRUE(is_speaking())) return(FALSE)
+        # 4. Zaten konuşuyor mu?
+        if (isTRUE(is_speaking())) return(FALSE)
 
-      # 5. TTS yanıt seslendirmesi aktif mi? (yarış durumu önleme)
-      if (isTRUE(tts_vocalizing())) return(FALSE)
+        # 5. TTS yanıt seslendirmesi aktif mi? (yarış durumu önleme)
+        if (isTRUE(tts_vocalizing())) return(FALSE)
 
-      # 6. Bekleme süresinde mi?
-      if (isTRUE(is_cooldown())) return(FALSE)
+        # 6. Bekleme süresinde mi?
+        if (isTRUE(is_cooldown())) return(FALSE)
 
-      # 7. Son konuşmadan yeterli süre geçti mi?
-      lst <- isolate(last_speak_time())
-      cooldown_secs <- isolate(active_cooldown_seconds())
-      if (!is.null(lst)) {
-        elapsed <- as.numeric(difftime(Sys.time(), lst, units = "secs"))
-        if (elapsed < cooldown_secs) return(FALSE)
-      }
+        # 7. Son konuşmadan yeterli süre geçti mi?
+        lst <- last_speak_time(); cooldown_secs <- active_cooldown_seconds()
+        if (!is.null(lst)) {
+          elapsed <- as.numeric(difftime(Sys.time(), lst, units = "secs"))
+          if (elapsed < cooldown_secs) return(FALSE)
+        }
 
-      # 8. Kullanıcı aktif mi? (yazıyorsa veya istek gönderdiyse konuşma)
-      if (isTRUE(user_is_active())) return(FALSE)
+        # 8. Kullanıcı aktif mi? (yazıyorsa veya istek gönderdiyse konuşma)
+        if (isTRUE(user_is_active())) return(FALSE)
 
-      return(TRUE)
-    }
+        TRUE
+    })
 
     # --- Bekleme süresini başlat (senaryo bazlı) ---
     start_cooldown <- function(cooldown_secs) {
@@ -270,7 +270,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 	                           kind = "idle", static_plan = NULL) {
 	  if (is.null(text) || !nzchar(text)) return(invisible(FALSE))
 
-	  if (isTRUE(is_speaking())) {
+	  if (isTRUE(isolate(is_speaking()))) {
 	    gate <- mergen_speech_priority_decision(mergen_speech_active_kind(session), kind)
 	    if (!isTRUE(gate$allow)) return(invisible(FALSE))
 	    stop_speaking(0)

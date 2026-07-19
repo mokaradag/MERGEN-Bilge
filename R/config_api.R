@@ -337,7 +337,7 @@ tts_config <- list(
   base_url        = Sys.getenv("LOCAL_TTS_ENDPOINT", ""),
   api_key         = Sys.getenv("LOCAL_TTS_API_KEY", ""),
   model           = Sys.getenv("LOCAL_TTS_MODEL", "tts-1-hd"),
-  default_voice   = Sys.getenv("LOCAL_TTS_VOICE", "tr-male-1"),
+  default_voice   = Sys.getenv("LOCAL_TTS_VOICE", ""),
   timeout_seconds = as.numeric(Sys.getenv("LOCAL_TTS_TIMEOUT", "90")),
   verify_ssl      = isTRUE(as.logical(Sys.getenv("LOCAL_TTS_VERIFY_SSL", "TRUE")))
 )

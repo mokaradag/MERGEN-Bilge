@@ -116,6 +116,9 @@ miscObserversInit <- function(input, output, session, values,
       )
     }
   })
+  # Karşılama ekranı açıkken kenar çubuğu gizli sayılabildiğinden menü ancak
+  # ilk tıklamada beliriyordu; render gizliyken de çalışmalı.
+  outputOptions(output, "admin_menu_item", suspendWhenHidden = FALSE)
 
   # Yönetici analitik sunucularını yetki geldikten sonra tek sefer başlat
   observeEvent(mevcut_yetki(), {

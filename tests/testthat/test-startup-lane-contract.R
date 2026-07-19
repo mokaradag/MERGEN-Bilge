@@ -459,9 +459,10 @@ testthat::test_that("ayarlar koordinatörü şerit varsayılanını, yüklemeyi 
   # localStorage'tan geri yükleme yalnızca kesin şeritleri kabul eder
   testthat::expect_true(.startup_lane_has(txt, 'loaded$startup_lane'))
   testthat::expect_true(.startup_lane_has(txt, 'c("fast_lane", "rich_lane")'))
-  # Sıfırlama: ask_once + radyo temizliği + canlı sınıf geri alma
+  # Sıfırlama: kalıcı tercih ask_once kalır; radyo görünür varsayılana
+  # (Zengin Deneyim) çekilir; seçimsiz radyo grubu belirsiz durum üretiyordu.
   testthat::expect_true(.startup_lane_has(txt, 'settings$startup_lane             <- "ask_once"'))
-  testthat::expect_true(.startup_lane_has(txt, '"startup_experience_lane"), selected = character(0)'))
+  testthat::expect_true(.startup_lane_has(txt, '"startup_experience_lane"), selected = "rich_lane"'))
   testthat::expect_true(.startup_lane_has(txt, 'applyStartupLane", list(lane = "rich_lane")'))
 })
 

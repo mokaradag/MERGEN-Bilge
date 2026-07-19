@@ -76,8 +76,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   # Burada is_speaking() nedeniyle erken dönersek o kesme mantığına hiç
   # ulaşılmaz ve eski klip yeni sayfada çalmaya devam eder.
   can_speak_basic <- function() {
-    if (!isTRUE(settings_data$enable_ai_expert)) return(FALSE)
-    if (!identical(settings_data$experience_mode, "kesif")) return(FALSE)
+    if (!isTRUE(isolate(settings_data$enable_ai_expert))) return(FALSE)
+    if (!identical(isolate(settings_data$experience_mode), "kesif")) return(FALSE)
     if (is_stt_modal_active()) return(FALSE)
     if (isTRUE(isolate(values$is_sending))) return(FALSE)
     return(TRUE)
@@ -342,7 +342,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     if (!identical(isolate(input$tabs), page)) return(invisible(FALSE))
     if (!identical(mergen_speech_guidance_policy(page), "guided")) return(invisible(FALSE))
     if (guidance_recently_played(page)) return(invisible(FALSE))
-    if (isTRUE(ai_expert$is_speaking())) return(invisible(FALSE))
+    if (isTRUE(isolate(ai_expert$is_speaking()))) return(invisible(FALSE))
 
     cat(sprintf("[AI_EXPERT] Kuyruklanmış sayfa rehberliği oynatılıyor: %s (nesil %d)\n", page, my_gen))
     dispatch_page_guidance(page)
@@ -357,8 +357,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
   # --- Boşta konuşma ---
   trigger_idle_chat <- function() {
-    if (!isTRUE(settings_data$enable_ai_expert) ||
-        !identical(settings_data$experience_mode, "kesif")) {
+    if (!isTRUE(isolate(settings_data$enable_ai_expert)) ||
+        !identical(isolate(settings_data$experience_mode), "kesif")) {
       schedule_idle_chat()
       return()
     }
@@ -377,7 +377,17 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       schedule_idle_chat()
       return()
     }
-    if (isTRUE(values$is_sending)) {
+    if (isTRUE(isolate(values$is_sending)) || isTRUE(isolate(values$typing))) {
+      schedule_idle_chat()
+      return()
+    }
+    # Boşta konuşma UYGULAMANIN EN DÜŞÜK ÖNCELİKLİ işidir: boş future işçisi
+    # yokken (LLM/TTS/özet gibi kullanıcı işleri sürerken) kuyruğa girmez.
+    serbest_isci <- suppressWarnings(as.numeric(
+      try(future::nbrOfFreeWorkers(), silent = TRUE)
+    ))[1]
+    if (!is.na(serbest_isci) && serbest_isci < 1) {
+      cat("[AI_EXPERT] Boş işçi yok; boşta konuşma ertelendi (son öncelik).\n")
       schedule_idle_chat()
       return()
     }
@@ -439,6 +449,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 	max_tokens_val <- generation_cfg$max_tokens
 	temperature_val <- generation_cfg$temperature
 
+	# explicit mod: gözlemci/oturum kapanış zinciri worker'a serileştirilmez;
+	# eski auto mod her gönderimde olay döngüsünü saniyelerce blokluyordu.
 	tracked_future_promise(
 	  task_fn = function() {
 		call_ai_expert_llm(
@@ -453,8 +465,13 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 	  },
 	  task_type = "ai_expert_idle_chat",
 	  session_token = session$token,
+	  dependency_mode = "explicit",
 	  globals = list(
 		call_ai_expert_llm = call_ai_expert_llm,
+		safe_trimws = safe_trimws,
+		safe_nzchar = safe_nzchar,
+		normalize_utf8_text = normalize_utf8_text,
+		sanitize_ai_expert_pronunciation = sanitize_ai_expert_pronunciation,
 		system_prompt = system_prompt,
 		user_context = user_context,
 		model_name_val = model_name_val,
@@ -467,16 +484,21 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       # Bayat bağlam koruması: boşta metni istek anındaki sayfa adına göre
       # üretilir; kullanıcı bu sırada başka sayfaya geçtiyse metin artık
       # bağlamsal olarak geçersizdir ve oynatılmaz. Kuyrukta rehberlik
-      # bekliyorsa boşta konuşma onun önüne geçemez.
-      tab_degisti <- !identical(isolate(input$tabs) %||% "chat", current_page_val)
-      if (!is.null(idle_text) && nzchar(idle_text) && !is_stt_modal_active() &&
-          !tab_degisti && is.null(pending_guidance$page)) {
-        if (ai_expert$can_speak()) {
-          ai_expert$start_speaking(idle_text, ai_expert$COOLDOWN_IDLE)
+      # bekliyorsa boşta konuşma onun önüne geçemez. tryCatch: bu geri çağrı
+      # reaktif bağlam dışında koşar; kaçan hata uygulamayı çökertmemeli.
+      tryCatch({
+        tab_degisti <- !identical(isolate(input$tabs) %||% "chat", current_page_val)
+        if (!is.null(idle_text) && nzchar(idle_text) && !is_stt_modal_active() &&
+            !tab_degisti && is.null(pending_guidance$page)) {
+          if (ai_expert$can_speak()) {
+            ai_expert$start_speaking(idle_text, ai_expert$COOLDOWN_IDLE)
+          }
+        } else if (!is.null(pending_guidance$page)) {
+          fire_pending_guidance()
         }
-      } else if (!is.null(pending_guidance$page)) {
-        fire_pending_guidance()
-      }
+      }, error = function(e) {
+        cat(sprintf("[AI_EXPERT] Boşta konuşma oynatma hatası: %s\n", conditionMessage(e)))
+      })
       schedule_idle_chat()
     }) %...!% (function(e) {
       cat(sprintf("[AI_EXPERT] Boşta konuşma hatası: %s\n", conditionMessage(e)))

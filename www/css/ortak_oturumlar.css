@@ -67,22 +67,23 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-height: 0;
 }
 
+/* DIŞ kapsayıcı ızgara DEĞİLDİR: dış da ızgara olursa uiOutput sarmalayıcısı
+ * tek ızgara hücresine (≈340px) sıkışır ve kartlar tek sütunda dizilir. */
 .oo-oturum-listesi {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 16px;
+  display: block;
+  min-width: 0;
+  padding-bottom: 24px;
 }
 
-/* Kartlar renderUI çıktısının (uiOutput sarmalayıcısı) İÇİNDE üretilir; ızgara
- * ve boşluk kuralları gerçek kart ebeveynine (çıktı düğümü) de uygulanır. Aksi
- * halde sarmalayıcı tek ızgara hücresi olur ve kartlar birbirine yapışır. */
 .oo-oturum-listesi > .shiny-html-output {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 18px;
   min-width: 0;
+  align-items: stretch;
 }
 
 /* Oda açık: kabuk viewport'u doldurur, oda alt boşluk bırakmadan yayılır
@@ -123,17 +124,20 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 13px;
   padding: 18px 18px 16px;
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--color-surface);
+  background: linear-gradient(160deg,
+    color-mix(in srgb, var(--oo-kart-aksan, var(--oo-accent, #3b82f6)) 9%, var(--color-surface)) 0%,
+    var(--color-surface) 42%);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-card);
   transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
   overflow: hidden;
 }
 
-/* İnce üst aksan şeridi (sakin, tek renk; kart profesyonel görünür). */
+/* İnce üst aksan şeridi (kart türüne göre renklenir). */
 .oo-oturum-karti::before {
   content: "";
   position: absolute;
@@ -141,47 +145,90 @@
   left: 0;
   right: 0;
   height: 3px;
-  background: var(--oo-accent, var(--color-info));
-  opacity: 0.85;
+  background: linear-gradient(90deg,
+    var(--oo-kart-aksan, var(--oo-accent, #3b82f6)), transparent 78%);
+  opacity: 0.95;
 }
+
+
+/* Tür bazlı aksan: Söyleşi odaları mavi, Bilge Yolaç odaları menekşe. */
+.oo-kart-tur-sohbet { --oo-kart-aksan: var(--color-info, #3b82f6); }
+.oo-kart-tur-by     { --oo-kart-aksan: #8b5cf6; }
+.oo-davet-karti     { --oo-kart-aksan: #10b981; }
+.oo-kart-arsiv      { opacity: 0.78; filter: saturate(0.75); }
 
 .oo-oturum-karti:hover {
   transform: translateY(-3px);
-  border-color: var(--oo-accent, var(--color-info));
+  border-color: var(--oo-kart-aksan, var(--oo-accent, #3b82f6));
+  border-color: color-mix(in srgb, var(--oo-kart-aksan, var(--oo-accent, #3b82f6)) 55%, var(--color-border));
   box-shadow: var(--shadow-card-hover, 0 12px 30px rgba(0, 0, 0, 0.28));
 }
 
 .oo-kart-baslik {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 1.08em;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  gap: 12px;
+  min-width: 0;
+}
+
+.oo-kart-ikon-kutu {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  border-radius: 12px;
+  background: rgba(110, 130, 200, 0.14);
+  background: color-mix(in srgb, var(--oo-kart-aksan, var(--oo-accent, #3b82f6)) 16%, transparent);
+  border: 1px solid var(--color-border);
+  border-color: color-mix(in srgb, var(--oo-kart-aksan, var(--oo-accent, #3b82f6)) 32%, transparent);
 }
 
 .oo-kart-ikon {
-  color: var(--oo-accent, var(--color-info));
+  color: var(--oo-kart-aksan, var(--oo-accent, var(--color-info)));
+  font-size: 17px;
 }
+
+.oo-kart-baslik-govde { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 
 .oo-kart-baslik-metin {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 1.06em;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
-.oo-kart-rozetler {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.oo-kart-tur-etiketi {
+  font-size: 0.74em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--oo-kart-aksan, var(--oo-accent, var(--color-info)));
 }
+
+.oo-kart-rozetler { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .oo-kart-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  font-size: 0.86em;
+  gap: 8px 10px;
+  font-size: 0.85em;
   color: var(--color-muted);
+}
+
+.oo-meta-oge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(140, 150, 175, 0.1);
+  background: color-mix(in srgb, var(--color-text, #fff) 5%, transparent);
+  border: 1px solid var(--color-border);
+  white-space: nowrap;
 }
 
 .oo-kart-aksiyonlar {
@@ -189,10 +236,9 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: auto;
-}
-
-.oo-davet-karti {
-  border-left: 3px solid var(--color-info);
+  padding-top: 4px;
+  border-top: 1px dashed var(--color-border);
+  border-top-color: color-mix(in srgb, var(--color-border) 70%, transparent);
 }
 
 /* --- Kart eylem butonları (liste kartları) --------------------------------- */

@@ -173,14 +173,16 @@ SERVICE_DESK_RATE_LIMIT_URL=https://<your-servicedesk>/rate-limit
 # Yerel metin-konuşma (TTS / VoxCPM2) ayarları
 LOCAL_TTS_ENDPOINT=https://your-tts-endpoint/v1
 LOCAL_TTS_MODEL=VoxCPM2
-LOCAL_TTS_VOICE=tr-male-1
+# LOCAL_TTS_VOICE yalnizca legacy_alias modunda okunur; kilitli referans
+# modunda ses kimligi persona kimligidir (emre/selin/deniz/can/ipek).
+LOCAL_TTS_VOICE=
 LOCAL_TTS_VERIFY_SSL=TRUE
 LOCAL_TTS_TIMEOUT=90
 
 # --- Hibrit VoxCPM2 konuşma mimarisi ---
 # Ses kimlik modu: locked_reference (varsayılan; persona başına onaylı sabit
 # referans zorunlu, yoksa konuşma fail-closed reddedilir) | legacy_alias
-# (yalnızca bilinçli operatör geçişi; eski tr-male-1/tr-female-1 etiketleri).
+# (yalnızca bilinçli operatör geçişi; eski uç noktanın kayıtlı ses etiketleri).
 MERGEN_SPEECH_VOICE_MODE=locked_reference
 # Akış taşıması: buffered (varsayılan; tam yanıt) | chunked_pcm (uç nokta ham
 # PCM'i parça parça akıtabildiğinde gerçek akış; VM'de doğrulandıktan sonra açın).
@@ -191,7 +193,7 @@ VOXCPM2_WARMUP_TIMEOUT=30
 VOXCPM2_WARMUP_MAX_RETRIES=2
 # Kişisel karşılama öneki için kesin süre sınırı (ms); önek bu sürede hazır
 # değilse atılır ve statik karşılama hemen başlar.
-VOXCPM2_PREFIX_DEADLINE_MS=2500
+VOXCPM2_PREFIX_DEADLINE_MS=4000
 # Tarayıcıya önden ısıtılacak statik klip sayısı üst sınırı
 VOXCPM2_PRELOAD_LIMIT=3
 # Üretilen WAV/PCM çıktı hızı. VoxCPM2 16 kHz referans kabul eder,
@@ -208,7 +210,7 @@ VOXCPM2_CFG_VALUE=
 VOXCPM2_INFERENCE_TIMESTEPS=
 # Aday referans üretiminde persona başına İSTEĞE BAĞLI doğal dil ses tasarımı
 # override'ı (yalnızca üretici 1. aşamada kullanılır). Bu değerler kayıtlı ses
-# adı, eski takma ad (tr-male-1/tr-female-1) veya sayısal tohum DEĞİLDİR; öyle
+# adı, eski ses takma adı veya sayısal tohum DEĞİLDİR; öyle
 # görünen değerler yok sayılır. VoxCPM2 Voice Design sözleşmesinde aday isteği
 # her zaman voice=default ile gider ve bu tanım input metninin başına parantez
 # içinde eklenir (LOCAL_TTS_VOICE aday isteğine karışmaz). Boş bırakılırsa

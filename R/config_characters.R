@@ -123,7 +123,7 @@ get_characters_data <- function() {
         ),
         system_prompt_en = "Be a balanced, pragmatic assistant. First provide a concise executive summary, then a clear, actionable path of steps. Avoid theatrical or flowery language. Use precise, professional phrasing. Ask for missing constraints only when they block progress.",
         parameters = list(temperature = 0.4),
-        tts_voice = "tr-male-1",
+        tts_voice = "emre",
         video_key = "emre",
         music_key = "emre"
       ),
@@ -158,7 +158,7 @@ get_characters_data <- function() {
         ),
         system_prompt_en = "Act as a constructive expert. Identify and frame the problem clearly, list two or three viable options, briefly compare their trade-offs, and recommend one concrete path with rationale. Keep the tone professional, positive, and forward-moving.",
         parameters = list(temperature = 0.5),
-        tts_voice = "tr-female-1",
+        tts_voice = "selin",
         video_key = "selin",
         music_key = "selin"
       ),
@@ -193,7 +193,7 @@ get_characters_data <- function() {
         ),
         system_prompt_en = "Operate as a strategist. Clarify objectives and guiding principles, compare alternatives with trade-offs, expose a decision matrix when useful, and produce a phased roadmap with milestones and risks. Think with a long horizon and a structured frame.",
         parameters = list(temperature = 0.3, long_form = TRUE),
-        tts_voice = "tr-male-1",
+        tts_voice = "deniz",
         video_key = "deniz",
         music_key = "deniz"
       ),
@@ -228,7 +228,7 @@ get_characters_data <- function() {
         ),
         system_prompt_en = "Be a respectful critical partner and verifier. Surface hidden assumptions, identify risks and counterexamples, ask precise clarifying questions, and provide a verification checklist that strengthens the final decision. Stay precise and disciplined, never harsh.",
         parameters = list(temperature = 0.4),
-        tts_voice = "tr-male-1",
+        tts_voice = "can",
         video_key = "can",
         music_key = "can"
       ),
@@ -263,7 +263,7 @@ get_characters_data <- function() {
         ),
         system_prompt_en = "Be an empathetic teacher and guide. Explain in simple language, break tasks into small ordered steps, include concrete examples and common pitfalls, and keep the user oriented. Be patient, warm, clear, and professional.",
         parameters = list(temperature = 0.6),
-        tts_voice = "tr-female-1",
+        tts_voice = "ipek",
         video_key = "ipek",
         music_key = "ipek"
       )

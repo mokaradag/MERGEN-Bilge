@@ -72,16 +72,14 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 		# Hafif yeniden gösterme yolunda da modern welcome animasyonlarını yeniden bağla.
 		# Karakter seçimi Kişiselleştirme sayfasında gizli welcome canvas'ını etkilemiş
 		# olabilir; Ana Söyleşi'ye dönünce video, neural canvas ve greeting tekrar
-		# görünür DOM ölçüleriyle başlatılmalıdır.
-		shinyjs::delay(80, {
-		  session$sendCustomMessage("initModernWelcome", list())
-
-		  shinyjs::delay(80, {
-		    session$sendCustomMessage("initPersonalGreeting", list(
-		      first_name = resolve_user_first_name()
-		    ))
-		  })
-		})
+		# görünür DOM ölçüleriyle başlatılmalıdır. Mesajlar ANINDA gönderilir:
+		# istemci tarafı (modern_welcome_handler.js) DOM hazır olana dek kendi
+		# içinde yeniden dener; sunucu tarafı shinyjs::delay tur atlatması video
+		# ve neural animasyonun başlamasını gereksiz geciktiriyordu.
+		session$sendCustomMessage("initModernWelcome", list())
+		session$sendCustomMessage("initPersonalGreeting", list(
+		  first_name = resolve_user_first_name()
+		))
 
 		return(invisible(NULL))
 	  }
@@ -124,17 +122,17 @@ welcomeHandlersInit <- function(session, values, saved_chats_data, session_files
 
 	  session$userData$welcome_screen_attached <- TRUE
 
-		# Animasyonları başlat (yalnızca gerçek full render'da çağrılmalı)
+		# Animasyonları başlat (yalnızca gerçek full render'da çağrılmalı).
+		# insertUI(immediate=TRUE) DOM mesajı websocket'te bu mesajlardan önce
+		# gider; istemci tarafı ayrıca DOM hazır olana dek kendi içinde yeniden
+		# dener. Sunucu tarafı gecikme turları video/neural başlangıcını
+		# geciktirdiği için kaldırıldı.
+		session$sendCustomMessage("initModernWelcome", list())
+		session$sendCustomMessage("initPersonalGreeting", list(
+		  first_name = resolve_user_first_name()
+		))
+
 		shinyjs::delay(40, {
-		  session$sendCustomMessage("initModernWelcome", list())
-
-		  # Kişiselleştirilmiş karşılama animasyonunu başlat
-		  shinyjs::delay(80, {
-			session$sendCustomMessage("initPersonalGreeting", list(
-			  first_name = resolve_user_first_name()
-			))
-		  })
-
 		  # Açılış yükleme ekranı, welcome istemci bileşenleri GERÇEKTEN hazır
 		  # olmadan kapanmasın: sol arka plan videosunun OYNUYOR olması, dinamik
 		  # karşılama ve Son Konuşmalar bölümünün varlığı kontrol edilir.
