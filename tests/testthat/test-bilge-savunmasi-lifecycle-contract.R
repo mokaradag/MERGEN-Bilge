@@ -468,15 +468,20 @@ test_that("sonuç doğrulaması sınırlı zaman aşımı, tekrar deneme ve baya
   expect_true(.bs_lc_iceriyor(zaman_govde, "kosu.sonSonuc"))
 
   # Sonuç işleyicisi: bayat kimlik + yinelenen yanıt korumaları, zamanlayıcı
-  # temizliğinden ve gösterimden ÖNCE gelir.
+  # temizliğinden ve gösterimden ÖNCE gelir. Kimliksiz (null) sonuc.kosu_id de
+  # aktif koşunun bilinen bir kosuId'si varken bayat sayılıp reddedilmelidir
+  # (Codex PR #636 P2 2. tur: "Reject result messages that lack the active
+  # run id"); ayrıntılı davranış test-bilge-savunmasi-dogrulama-behavior.R'de.
   sonuc_baslangic <- regexpr('BS.olaylar.ekle("sunucu-kosu-sonuc"',
                              dogrulama, fixed = TRUE)
   expect_true(sonuc_baslangic > 0)
-  sonuc_govde <- substr(dogrulama, sonuc_baslangic, sonuc_baslangic + 900L)
-  expect_true(.bs_lc_iceriyor(sonuc_govde, "sonuc.kosu_id != null"))
+  sonuc_govde <- substr(dogrulama, sonuc_baslangic, sonuc_baslangic + 1100L)
+  expect_true(.bs_lc_iceriyor(sonuc_govde, "kosu.kosuId != null"))
+  expect_true(.bs_lc_iceriyor(sonuc_govde, "sonuc.kosu_id == null"))
+  expect_true(.bs_lc_iceriyor(sonuc_govde, "Number(sonuc.kosu_id) !== Number(kosu.kosuId)"))
   expect_true(.bs_lc_iceriyor(sonuc_govde, "if (kosu.sonSonuc) return;"))
   expect_true(.bs_lc_iceriyor(sonuc_govde, "zamanlayiciDurdur(kosu)"))
-  kimlik_konumu <- regexpr("sonuc.kosu_id != null", sonuc_govde, fixed = TRUE)
+  kimlik_konumu <- regexpr("kosu.kosuId != null", sonuc_govde, fixed = TRUE)
   goster_konumu <- regexpr("BS.sonuc.goster", sonuc_govde, fixed = TRUE)
   expect_true(kimlik_konumu > 0 && goster_konumu > 0)
   expect_true(kimlik_konumu < goster_konumu)
