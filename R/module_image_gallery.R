@@ -142,6 +142,10 @@ imageGalleryServer <- function(id, current_user_id) {
 
       gallery_loading(TRUE)
       later::later(function() {
+        # Oturum kapandıysa (testServer/oturum sonu) yok edilmiş modül
+        # reaktiflerine dokunma; bayat geri çağrı sessizce düşer.
+        kapali <- tryCatch(isTRUE(session$isClosed()), error = function(e) TRUE)
+        if (kapali) return(invisible(NULL))
         shiny::withReactiveDomain(session, {
           shiny::isolate({
             tryCatch(

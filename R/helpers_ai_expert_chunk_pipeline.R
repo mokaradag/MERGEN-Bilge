@@ -28,8 +28,11 @@ ai_expert_chunk_pipeline_policy <- function() {
 #' Oynatma başlangıç kapısı: ilk parça hazır OLSA BİLE, başlangıç tamponu
 #' parçası sonuçlanana (ya da sınırlı süre dolana) kadar oynatma başlatılmaz.
 #' Böylece yüklü sunucuda 1. parçadan sonra uzun sessizlik oluşmaz; tampon
-#' hiç sonuçlanmazsa süre sınırı oynatmayı yine de başlatır.
-ai_expert_baslangic_kapisi <- function(dispatch_fn, deadline_secs = 6) {
+#' hiç sonuçlanmazsa süre sınırı oynatmayı yine de başlatır. `domain`
+#' verilirse süre sınırı geri çağrısı o Shiny oturum alanıyla koşar (çıplak
+#' later geri çağrısında shinyjs oturumu çözemez).
+ai_expert_baslangic_kapisi <- function(dispatch_fn, deadline_secs = 6,
+                                       domain = NULL) {
   kapi <- new.env(parent = emptyenv())
   kapi$ilk <- NULL
   kapi$tampon_hazir <- FALSE
@@ -54,7 +57,7 @@ ai_expert_baslangic_kapisi <- function(dispatch_fn, deadline_secs = 6) {
           # Çıplak later geri çağrısı: hata üst düzeye kaçarsa runApp çöker.
           tryCatch({
             kapi$tampon_hazir <- TRUE
-            dene()
+            if (is.null(domain)) dene() else shiny::withReactiveDomain(domain, dene())
           }, error = function(e) {
             cat(sprintf("[AI_EXPERT] Başlangıç kapısı süre sınırı hatası: %s\n",
                         conditionMessage(e)))

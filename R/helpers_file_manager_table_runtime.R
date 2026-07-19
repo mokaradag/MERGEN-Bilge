@@ -153,6 +153,9 @@ fm_create_file_manager_attachment_setter <- function(session,
 fm_baslat_sayfa_acilis_taramasi <- function(session, refresh_fn) {
   shinyjs::addClass(id = "files_table", class = "mb-table-loading", asis = FALSE)
   later::later(function() {
+    # Oturum kapandıysa bayat geri çağrı yok edilmiş reaktiflere dokunmasın.
+    kapali <- tryCatch(isTRUE(session$isClosed()), error = function(e) TRUE)
+    if (kapali) return(invisible(NULL))
     shiny::withReactiveDomain(session, {
       shiny::isolate({
         try(refresh_fn("page_open"), silent = TRUE)

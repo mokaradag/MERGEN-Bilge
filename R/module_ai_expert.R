@@ -440,7 +440,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         # sonuçlanana (veya süre sınırına) kadar başlamaz; tek parçada anında.
         baslangic_kapisi <- ai_expert_baslangic_kapisi(
           dispatch_fn = dispatch_audio_start,
-          deadline_secs = pipeline_policy$baslangic_tampon_suresi_sn
+          deadline_secs = pipeline_policy$baslangic_tampon_suresi_sn, domain = session
         )
 
         synthesize_first_chunk_now <- function() {

@@ -81,7 +81,7 @@
 .oo-oturum-listesi > .shiny-html-output {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
-  gap: 18px;
+  gap: 16px;
   min-width: 0;
   align-items: stretch;
 }

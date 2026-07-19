@@ -64,7 +64,8 @@ ttsVisualizerServer <- function(id, settings_data) {
     #' @param state Durum ("idle", "talking", "stop")
     #' @param duration Konuşma süresi (saniye)
     send_state <- function(state = "idle", duration = NULL) {
-      char_id <- normalize_character_id(settings_data$selected_character)
+      # Promise/later geri çağrılarından da çağrılır; bağlamsız okuma güvenli olmalı.
+      char_id <- normalize_character_id(isolate(settings_data$selected_character))
       char_info <- get_character_record(char_id)
 
       display_name <- if (!is.null(char_info)) char_info$display_name else "EMRE ONAT"
