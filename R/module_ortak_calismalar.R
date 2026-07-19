@@ -106,27 +106,37 @@ oo_liste_karti <- function(satir, ac_input_id, arsiv_input_id, arsivde = FALSE) 
   son_etkinlik <- as.character(satir$SonEtkinlikZamani %||% "")[1]
 
   kaynak_etiketi <- if (identical(kaynak, "BilgeYolaç")) "Bilge Yolaç" else "Söyleşi"
+  tur_sinifi <- if (identical(kaynak, "BilgeYolaç")) "oo-kart-tur-by" else "oo-kart-tur-sohbet"
 
   div(
-    class = "oo-oturum-karti",
+    class = paste(
+      "oo-oturum-karti", tur_sinifi,
+      if (isTRUE(arsivde)) "oo-kart-arsiv" else ""
+    ),
     `data-oo-oturum-id` = as.character(oturum_id),
     div(
       class = "oo-kart-baslik",
-      icon(if (identical(kaynak, "BilgeYolaç")) "robot" else "comments", class = "oo-kart-ikon"),
-      tags$span(class = "oo-kart-baslik-metin", HTML(htmltools::htmlEscape(baslik)))
+      div(
+        class = "oo-kart-ikon-kutu",
+        icon(if (identical(kaynak, "BilgeYolaç")) "robot" else "comments", class = "oo-kart-ikon")
+      ),
+      div(
+        class = "oo-kart-baslik-govde",
+        tags$span(class = "oo-kart-baslik-metin", HTML(htmltools::htmlEscape(baslik))),
+        tags$span(class = "oo-kart-tur-etiketi", kaynak_etiketi)
+      )
     ),
     div(
       class = "oo-kart-rozetler",
-      tags$span(class = "oo-rozet oo-rozet-kaynak", kaynak_etiketi),
       tags$span(class = "oo-rozet oo-rozet-durum", HTML(htmltools::htmlEscape(durum))),
       if (nzchar(rol)) tags$span(class = "oo-rozet oo-rozet-rol", HTML(htmltools::htmlEscape(rol))) else NULL
     ),
     div(
       class = "oo-kart-meta",
-      tags$span(tagList(icon("users"), span(sprintf(" %d katılımcı", katilimci_sayisi)))),
-      tags$span(tagList(icon("file-lines"), span(sprintf(" %d belge", belge_sayisi)))),
+      tags$span(class = "oo-meta-oge", tagList(icon("users"), span(sprintf(" %d katılımcı", katilimci_sayisi)))),
+      tags$span(class = "oo-meta-oge", tagList(icon("file-lines"), span(sprintf(" %d belge", belge_sayisi)))),
       if (nzchar(son_etkinlik)) {
-        tags$span(tagList(icon("clock"), span(paste0(" ", son_etkinlik))))
+        tags$span(class = "oo-meta-oge", tagList(icon("clock"), span(paste0(" ", son_etkinlik))))
       } else {
         NULL
       }
@@ -167,8 +177,15 @@ oo_davet_karti <- function(satir, kabul_input_id, red_input_id) {
     `data-oo-davet-id` = as.character(davet_id),
     div(
       class = "oo-kart-baslik",
-      icon("envelope-open-text", class = "oo-kart-ikon"),
-      tags$span(class = "oo-kart-baslik-metin", HTML(htmltools::htmlEscape(baslik)))
+      div(
+        class = "oo-kart-ikon-kutu",
+        icon("envelope-open-text", class = "oo-kart-ikon")
+      ),
+      div(
+        class = "oo-kart-baslik-govde",
+        tags$span(class = "oo-kart-baslik-metin", HTML(htmltools::htmlEscape(baslik))),
+        tags$span(class = "oo-kart-tur-etiketi", "Davet")
+      )
     ),
     div(
       class = "oo-kart-meta",

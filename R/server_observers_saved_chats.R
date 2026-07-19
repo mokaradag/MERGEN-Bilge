@@ -3,6 +3,45 @@
 # Açıklama: Kayıtlı söyleşilerin yüklenmesi, silinmesi ve temizlenmesi ile ilgili observer fonksiyonları.
 # Bu dosya server.R'den ayrılarak modülerlik sağlanmıştır.
 
+#' "Söyleşi yüklendi" toast'ını mesaj balonları DOM'a GERÇEKTEN eklendikten
+#' sonra göster. Balonlar hiç görünmezse (yükleme başarısız/yarım) toast
+#' gösterilmez; boş söyleşilerde beklenecek balon olmadığından hemen gösterilir.
+mergen_show_chat_loaded_toast <- function(session, title, last_message_id = NULL) {
+  metin <- paste("Söyleşi yüklendi:", as.character(title %||% ""))
+
+  if (is.null(last_message_id) || !nzchar(as.character(last_message_id)[1])) {
+    showToast(session, metin, "info")
+    return(invisible(NULL))
+  }
+
+  payload <- jsonlite::toJSON(
+    list(
+      text = metin,
+      lastId = paste0("message_wrapper_", as.character(last_message_id)[1])
+    ),
+    auto_unbox = TRUE
+  )
+
+  shinyjs::runjs(sprintf("
+    (function() {
+      var info = %s;
+      var attempts = 0;
+      var timer = setInterval(function() {
+        attempts += 1;
+        var ready = !!document.getElementById(info.lastId);
+        if (ready || attempts >= 50) {
+          clearInterval(timer);
+          if (ready && typeof window.showToast === 'function') {
+            window.showToast(info.text, 'info');
+          }
+        }
+      }, 100);
+    })();
+  ", payload))
+
+  invisible(NULL)
+}
+
 #' Kayıtlı Sohbet Gözlemcilerini Başlat
 #' @description Kayıtlı söyleşi işlemleri için observer'ları kurar
 #' @param input Shiny input nesnesi
@@ -366,10 +405,14 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     shinyjs::delay(120, {
       shinyjs::runjs("if (typeof window.scrollToBottom === 'function') window.scrollToBottom(false);")
     })
-    # Başarı toast'ı içerik ekleme mesajlarından SONRA gönderilir; istemci
-    # websocket mesajlarını sırayla işlediği için toast, mesaj balonları DOM'a
-    # eklendikten sonra görünür (içerikten önce "yüklendi" denmez).
-    showToast(session, paste("Söyleşi yüklendi:", chat_to_load$title), "info")
+    # Başarı toast'ı, son mesaj balonu DOM'da GERÇEKTEN görünene dek bekletilir;
+    # içerik ekranda belirmeden "yüklendi" denmez.
+    son_mesaj_id <- if (length(values$messages) > 0) {
+      values$messages[[length(values$messages)]]$id
+    } else {
+      NULL
+    }
+    mergen_show_chat_loaded_toast(session, chat_to_load$title, son_mesaj_id)
     cat(sprintf(
       "[CHAT PERF] Kayıtlı söyleşi yüklendi - chat_id=%s, mesaj=%d, %.0f ms\n",
       chat_id, length(values$messages),

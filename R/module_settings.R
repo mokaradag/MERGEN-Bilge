@@ -620,9 +620,11 @@ settingsInit <- function(session, parent_session = NULL) {
     updateSelectInput(session, paste0(ycfg_ns, "analysis_detail_level"), selected = "standart")
     updateNumericInput(session, paste0(ycfg_ns, "claude_code_timeout"), value = claude_code_config$timeout_seconds)
     updateSliderInput(session, paste0(ycfg_ns, "music_volume"), value = 0.3)
-    # Şerit radyosu seçimsiz; fast-lane sınıfı canlı kaldırılır (kalıcı yazım yok).
-    yapilandirma$temp_startup_lane(NULL)
-    updateRadioButtons(session, paste0(ycfg_ns, "startup_experience_lane"), selected = character(0))
+    # Şerit radyosu görünür varsayılana (Zengin Deneyim) çekilir; seçimsiz
+    # bırakmak radyo grubunu belirsiz duruma düşürüyordu. Kalıcı tercih
+    # ask_once kalır; kullanıcı kaydederse görünen seçim kalıcılaşır.
+    yapilandirma$temp_startup_lane("rich_lane")
+    updateRadioButtons(session, paste0(ycfg_ns, "startup_experience_lane"), selected = "rich_lane")
     session$sendCustomMessage("applyStartupLane", list(lane = "rich_lane"))
 
     reset_true_checkboxes <- c(

@@ -32,10 +32,12 @@
   )
 }
 
-#' Kişisel önek gecikme sınırı (ms).
+#' Kişisel önek gecikme sınırı (ms). Önek sentezi artık "Başlayalım" anında
+#' (seçim videosu oynarken) başladığı için bu sınır çoğunlukla hiç beklenmez;
+#' yine de statik karşılamayı en fazla bu kadar geciktirebilir.
 .speech_prefix_deadline_ms <- function() {
-  ms <- suppressWarnings(as.numeric(Sys.getenv("VOXCPM2_PREFIX_DEADLINE_MS", "2500")))
-  if (is.na(ms) || ms < 0) ms <- 2500
+  ms <- suppressWarnings(as.numeric(Sys.getenv("VOXCPM2_PREFIX_DEADLINE_MS", "4000")))
+  if (is.na(ms) || ms < 0) ms <- 4000
   ms
 }
 
@@ -99,7 +101,21 @@
       },
       task_type = "tts",
       session_token = session$token,
-      meta = list(purpose = "voxcpm2_warmup")
+      meta = list(purpose = "voxcpm2_warmup"),
+      # explicit mod: açılış yakınında koşan ısındırma, oturum kapanış
+      # zincirini serileştirip olay döngüsünü bloklamasın.
+      dependency_mode = "explicit",
+      globals = list(
+        `%||%` = `%||%`,
+        mergen_voxcpm2_synthesize_blocking = mergen_voxcpm2_synthesize_blocking,
+        mergen_voxcpm2_redact = mergen_voxcpm2_redact,
+        mergen_voxcpm2_ref_field_names = mergen_voxcpm2_ref_field_names,
+        body = body,
+        endpoint = endpoint,
+        api_key = api_key,
+        timeout_val = timeout_val,
+        verify_ssl = verify_ssl
+      )
     ) %...>% (function(res) {
       if (isTRUE(res$success)) {
         .speech_perf_log("warmup_ready", "")

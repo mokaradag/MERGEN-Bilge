@@ -223,11 +223,18 @@ testthat::test_that("kalıcı dosya envanteri tembel yükleme sözleşmesi stati
   nav_txt <- .read_repo_text_unsupported("R/server_observers_navigation.R")
   loading_js <- .read_repo_text_unsupported("www/js/app_loading.js")
 
-  # Açılış tetikleri artık tarama başlatmaz; sayfa açılışı tembel taramayı yapar.
+  # Açılış tetikleri artık tarama başlatmaz; sayfa açılışı tembel taramayı
+  # yükleme örtüsüyle bir tick erteleyen yardımcı üzerinden yapar.
+  tablo_runtime_txt <- .read_repo_text_unsupported("R/helpers_file_manager_table_runtime.R")
   testthat::expect_true(grepl("persisted_scan_pending", module_txt, fixed = TRUE))
   testthat::expect_true(grepl("input$page_opened", module_txt, fixed = TRUE))
   testthat::expect_false(grepl('refresh_from_user_folder("initial")', module_txt, fixed = TRUE))
-  testthat::expect_true(grepl('refresh_from_user_folder("page_open")', module_txt, fixed = TRUE))
+  testthat::expect_true(grepl(
+    "fm_baslat_sayfa_acilis_taramasi(session, refresh_from_user_folder)",
+    module_txt, fixed = TRUE
+  ))
+  testthat::expect_true(grepl('refresh_fn("page_open")', tablo_runtime_txt, fixed = TRUE))
+  testthat::expect_true(grepl("mb-table-loading", tablo_runtime_txt, fixed = TRUE))
   testthat::expect_true(grepl("deferred = TRUE", module_txt, fixed = TRUE))
 
   # Navigasyon, Dosya Yönetimi açılışında page_opened olayını gönderir.

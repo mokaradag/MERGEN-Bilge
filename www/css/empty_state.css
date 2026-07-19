@@ -14,3 +14,92 @@
   font-size: 14px;
   color: var(--text-muted);
 }
+
+/* --- Yükleme durumu (galeri / dosya tabloları arka planda taranırken) --- */
+.mergen-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 56px 20px;
+  text-align: center;
+  color: var(--text-muted, #9aa4b2);
+}
+
+.mergen-loading-state h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text, #e8ecf3);
+}
+
+.mergen-loading-state p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted, #9aa4b2);
+}
+
+.mergen-loading-spinner {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3px solid rgba(124, 77, 255, 0.18);
+  border-top-color: var(--primary-color, #7c4dff);
+  animation: mergen-loading-spin 0.9s linear infinite;
+}
+
+@keyframes mergen-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Tablo üstü yükleme örtüsü: kapsayıcıya .mb-table-loading sınıfı eklenir */
+.mb-table-loading {
+  position: relative;
+  pointer-events: none;
+}
+
+.mb-table-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at center, rgba(15, 18, 30, 0.55), rgba(15, 18, 30, 0.75));
+  z-index: 5;
+}
+
+.mb-table-loading::before {
+  content: "";
+  position: absolute;
+  top: calc(50% - 21px);
+  left: calc(50% - 21px);
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3px solid rgba(124, 77, 255, 0.25);
+  border-top-color: var(--primary-color, #7c4dff);
+  animation: mergen-loading-spin 0.9s linear infinite;
+  z-index: 6;
+}
+
+/* Açık tema karşılıkları */
+html[data-theme="light"] .mergen-loading-state h4 {
+  color: #1d2733;
+}
+
+html[data-theme="light"] .mergen-loading-state,
+html[data-theme="light"] .mergen-loading-state p {
+  color: #5b6b7c;
+}
+
+html[data-theme="light"] .mergen-loading-spinner,
+html[data-theme="light"] .mb-table-loading::before {
+  border-color: rgba(7, 119, 128, 0.2);
+  border-top-color: var(--mb-brand-support-teal, #077780);
+}
+
+html[data-theme="light"] .mb-table-loading::after {
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.6), rgba(244, 246, 249, 0.82));
+}

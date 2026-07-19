@@ -487,8 +487,8 @@ speech_gen_run <- function(persona, root = mergen_speech_root(),
 # --- VoxCPM2 Voice Design sözleşmesi (aday referans üretimi) ---
 # VM'de DOĞRULANMIŞ sözleşme: tests/scripts/test_voxcpm2_persona_voices.R beş
 # FARKLI persona sesini aynı servise karşı bu istek biçimiyle başarıyla üretir:
-#   - `voice` alanı HER ZAMAN "default"tur. Bu VoxCPM2 kurulumunda tr-male-1 /
-#     tr-female-1 gibi KAYITLI ses adları yoktur; kayıtlı olmayan bir ad
+#   - `voice` alanı HER ZAMAN "default"tur. Bu VoxCPM2 kurulumunda KAYITLI
+#     ses adları yoktur; kayıtlı olmayan bir ad
 #     gönderilirse servis yönlendiricisi HTTP 503 "No Healthy Address Found"
 #     döndürür. LOCAL_TTS_VOICE bu isteğe asla sızmamalıdır.
 #   - Doğal dil ses tasarımı tanımı `input` metninin BAŞINA parantez içinde
@@ -546,7 +546,7 @@ speech_gen_voice_design_descriptions <- function() {
 
 #' Override değeri doğal dil ses tasarımı tanımı DEĞİL gibi görünüyorsa TRUE.
 #' VOXCPM2_DESIGN_VOICE_* değişkenleri kayıtlı ses kimliği, eski takma ad
-#' (tr-male-1/tr-female-1/default) veya sayısal tohum olarak KULLANILAMAZ;
+#' (eski takma ad/default) veya sayısal tohum olarak KULLANILAMAZ;
 #' böyle değerler yok sayılır ve yerleşik tanıma düşülür.
 .speech_gen_design_override_gecersiz <- function(value) {
   v <- trimws(as.character(value)[1])

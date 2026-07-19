@@ -78,6 +78,12 @@ imageGalleryServer <- function(id, current_user_id) {
     # refresh_gallery girdisini gönderir) etkinleşir; o ana kadar tarama atlanır.
     gallery_activated <- reactiveVal(FALSE)
 
+    # Tarama sürerken kullanıcıya yükleme durumu gösterilir. Tarama bir "tick"
+    # ertelenir ki yükleme animasyonu taramadan ÖNCE ekrana çizilebilsin; aksi
+    # halde senkron tarama ilk render'ı blokluyor ve sayfa saniyelerce boş
+    # görünüyordu.
+    gallery_loading <- reactiveVal(FALSE)
+
     delete_image_trigger <- reactiveVal(NULL)
     clear_all_trigger <- reactiveVal(0)
     navigate_to_chat_trigger <- reactiveVal(NULL)
@@ -92,14 +98,8 @@ imageGalleryServer <- function(id, current_user_id) {
       setequal(a_key, b_key)
     }
 
-    refresh_gallery_cache <- function(force = FALSE) {
-      # Galeri hiç açılmadıysa tarama yapma: açılıştaki auth-sonrası refresh
-      # tetikleri (SSO refreshable-module kancası dahil) burada güvenle atlanır.
-      # İlk gerçek sayfa açılışı gallery_activated'ı TRUE yapar ve tarar.
-      if (!isTRUE(gallery_activated())) {
-        return(invisible(NULL))
-      }
-
+    # Gerçek (senkron) tarama gövdesi; yalnızca ertelenmiş geri çağrıdan koşar.
+    gallery_do_scan <- function(force = FALSE) {
       uid <- coerce_user_id(resolve_current_user_id())
       effective_user_id(uid)
 
@@ -126,6 +126,38 @@ imageGalleryServer <- function(id, current_user_id) {
       if (isTRUE(force)) {
         gallery_revision(gallery_revision() + 1)
       }
+      invisible(NULL)
+    }
+
+    refresh_gallery_cache <- function(force = FALSE) {
+      # Galeri hiç açılmadıysa tarama yapma: açılıştaki auth-sonrası refresh
+      # tetikleri (SSO refreshable-module kancası dahil) burada güvenle atlanır.
+      # İlk gerçek sayfa açılışı gallery_activated'ı TRUE yapar ve tarar.
+      if (!isTRUE(gallery_activated())) {
+        return(invisible(NULL))
+      }
+      if (isTRUE(isolate(gallery_loading()))) {
+        return(invisible(NULL))
+      }
+
+      gallery_loading(TRUE)
+      later::later(function() {
+        # Oturum kapandıysa (testServer/oturum sonu) yok edilmiş modül
+        # reaktiflerine dokunma; bayat geri çağrı sessizce düşer.
+        kapali <- tryCatch(isTRUE(session$isClosed()), error = function(e) TRUE)
+        if (kapali) return(invisible(NULL))
+        shiny::withReactiveDomain(session, {
+          shiny::isolate({
+            tryCatch(
+              gallery_do_scan(force = force),
+              error = function(e) {
+                cat(sprintf("[IMAGE_GALLERY] tarama hatası: %s\n", conditionMessage(e)))
+              }
+            )
+            gallery_loading(FALSE)
+          })
+        })
+      }, delay = 0.05)
       invisible(NULL)
     }
 
@@ -213,6 +245,16 @@ imageGalleryServer <- function(id, current_user_id) {
 
     output$gallery_content <- renderUI({
       imgs <- paginated_images()
+
+      # İlk tarama sürerken kullanıcı boş ekran yerine yükleme durumu görür.
+      if (isTRUE(gallery_loading()) && nrow(imgs) == 0) {
+        return(div(
+          class = "mergen-loading-state",
+          div(class = "mergen-loading-spinner"),
+          h4("Görseller yükleniyor"),
+          p("Görsel galeriniz taranıyor, lütfen bekleyin...")
+        ))
+      }
 
       if (nrow(imgs) == 0) {
         search_val <- input$search_images
@@ -446,7 +488,7 @@ imageGalleryServer <- function(id, current_user_id) {
         refresh_trigger(refresh_trigger() + 1)
       } else {
         refresh_gallery_cache(force = TRUE)
-        showToast(session, "Galeri yenilendi.", "success")
+        showToast(session, "Galeri yenileniyor...", "info")
       }
     })
 

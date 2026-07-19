@@ -231,8 +231,8 @@ moduleServer(id, function(input, output, session) {
 
     observeEvent(input$page_opened, {
       if (!isTRUE(persisted_scan_pending()) || (isTRUE(SSO_ENABLED) && !is_auth_ready())) return()
-      refresh_from_user_folder("page_open")
       persisted_scan_pending(FALSE)
+      fm_baslat_sayfa_acilis_taramasi(session, refresh_from_user_folder)
     }, ignoreInit = TRUE)
 
     if (is.null(session$userData$temp_files)) session$userData$temp_files <- list()

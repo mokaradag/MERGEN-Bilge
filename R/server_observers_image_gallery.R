@@ -257,8 +257,13 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     } else {
       shinyjs::runjs("setTimeout(function() { scrollToBottom(false); }, 80);")
     }
-    # Başarı toast'ı içerik ekleme mesajından SONRA gönderilir (dürüst sıralama).
-    showToast(session, paste("Söyleşi yüklendi:", chat_title), "info")
+    # Başarı toast'ı, son mesaj balonu DOM'da GERÇEKTEN görünene dek bekletilir.
+    son_mesaj_id <- if (length(values$messages) > 0) {
+      values$messages[[length(values$messages)]]$id
+    } else {
+      NULL
+    }
+    mergen_show_chat_loaded_toast(session, chat_title, son_mesaj_id)
     cat(sprintf(
       "[CHAT PERF] Galeriden söyleşi yüklendi - chat_id=%s, mesaj=%d, %.0f ms\n",
       chat_id, length(values$messages),

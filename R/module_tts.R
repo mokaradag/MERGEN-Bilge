@@ -126,7 +126,7 @@ ttsProcessingServer <- function(id) {
       voice_to_use <- if (!is.null(reference_payload)) {
         reference_payload$persona_id
       } else {
-        voice %||% tts_config$default_voice %||% "tr-male-1"
+        voice %||% tts_config$default_voice %||% "emre"
       }
       api_key      <- resolve_tts_api_key()
       model_to_use <- tts_config$model %||% "tts-1-hd"
@@ -284,6 +284,23 @@ ttsProcessingServer <- function(id) {
       meta = list(
         voice = voice_to_use,
         model = model_to_use
+      ),
+      # explicit mod: oturum/kapanış zinciri worker'a serileştirilmez. Eski
+      # auto mod her TTS gönderiminde olay döngüsünü 6-8 sn blokluyordu
+      # (müzik/karşılama/tablolar donuyordu). Gövde yalnızca aşağıdaki
+      # değerleri + httr::/base64enc:: ad alanlarını kullanır.
+      dependency_mode = "explicit",
+      globals = list(
+        `%||%` = `%||%`,
+        speech_url = speech_url,
+        model_to_use = model_to_use,
+        voice_to_use = voice_to_use,
+        api_key = api_key,
+        request_body = request_body,
+        speech_text = speech_text,
+        should_verify = should_verify,
+        timeout_val = timeout_val,
+        debug_log_file = debug_log_file
       )
     ) %...!% (function(e) {
         # İşlenmemiş istisnaları (exception) logla

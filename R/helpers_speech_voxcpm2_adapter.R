@@ -76,7 +76,7 @@ mergen_voxcpm2_request_body <- function(profile, text, reference = NULL,
 
     body[[fields$text]] <- reference$ref_text
   } else if (identical(mergen_speech_voice_mode(), "legacy_alias")) {
-    body$voice <- as.character(legacy_voice %||% Sys.getenv("LOCAL_TTS_VOICE", "tr-male-1"))
+    body$voice <- as.character(legacy_voice %||% Sys.getenv("LOCAL_TTS_VOICE", "default"))
   } else {
     stop("Kilitli referans modunda referans yükü olmadan istek kurulamaz (fail-closed).")
   }

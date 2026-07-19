@@ -112,7 +112,7 @@ handle_streaming_tts_mode <- function(ctx) {
       resolved_voice <- if (identical(mergen_speech_voice_mode(), "legacy_alias")) {
         local_chars_data <- get_characters_data()
         local_char_def <- if (!is.null(local_chars_data)) Find(function(x) x$id == local_char_id, local_chars_data$styles) else NULL
-        if (!is.null(local_char_def) && !is.null(local_char_def$tts_voice)) local_char_def$tts_voice else "tr-male-1"
+        if (!is.null(local_char_def) && !is.null(local_char_def$tts_voice)) local_char_def$tts_voice else local_char_id
       } else {
         local_char_id
       }

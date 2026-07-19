@@ -176,6 +176,37 @@
           c.fillRect(nx - nr, ny - nr, nr * 2, nr * 2);
         }
 
+        // Altıgen plaka dokusu: zemine metalik panel hissi verir (tek seferlik).
+        c.strokeStyle = "rgba(255,255,255,0.035)";
+        c.lineWidth = 1;
+        var plakaR = h * 1.35;
+        var plakaH = plakaR * Math.sqrt(3) / 2;
+        for (var phy = -1; phy * plakaH * 2 < arka.height + plakaR; phy++) {
+          for (var phx = -1; phx * plakaR * 1.5 < arka.width + plakaR; phx++) {
+            var pcx = phx * plakaR * 1.5;
+            var pcy = phy * plakaH * 2 + (phx % 2 ? plakaH : 0);
+            c.beginPath();
+            for (var pv = 0; pv < 6; pv++) {
+              var pa = Math.PI / 3 * pv;
+              var pvx = pcx + Math.cos(pa) * plakaR * 0.92;
+              var pvy = pcy + Math.sin(pa) * plakaR * 0.92;
+              if (pv === 0) c.moveTo(pvx, pvy); else c.lineTo(pvx, pvy);
+            }
+            c.closePath();
+            c.stroke();
+          }
+        }
+
+        // İnce tanecik (grain): düz degrade yüzeyi kırar, doku derinliği katar.
+        for (var gr = 0; gr < 240; gr++) {
+          var grx = rng.sonraki() * arka.width;
+          var gry = rng.sonraki() * arka.height;
+          c.globalAlpha = 0.02 + rng.sonraki() * 0.04;
+          c.fillStyle = rng.sonraki() > 0.5 ? "#ffffff" : "#000000";
+          c.fillRect(grx, gry, 1.4, 1.4);
+        }
+        c.globalAlpha = 1;
+
         // Paralaks yıldız/veri noktaları (görsel tohum: harita kimliği).
         c.fillStyle = "rgba(255,255,255,0.16)";
         for (var i = 0; i < 110; i++) {
@@ -540,15 +571,53 @@
             dusmanYoluOlustur(dusman.tanim.sekil, r);
             ctx.fill();
             ctx.shadowBlur = 0;
-            // Gövde derinliği: koyu iç çekirdek + üst kenar ışığı.
+            // Gövde derinliği: koyu iç çekirdek + üst kenar ışığı + parlak
+            // cam kubbe + ön vizör gözü + şekle özgü aksan (motor/perçin).
             if (!performans) {
               ctx.fillStyle = "rgba(0,0,0,0.32)";
               dusmanYoluOlustur(dusman.tanim.sekil, r * 0.55);
               ctx.fill();
+
+              var kubbe = ctx.createRadialGradient(
+                -r * 0.35, -r * 0.4, 0, 0, 0, r * 1.1
+              );
+              kubbe.addColorStop(0, "rgba(255,255,255,0.34)");
+              kubbe.addColorStop(0.45, "rgba(255,255,255,0.06)");
+              kubbe.addColorStop(1, "rgba(0,0,0,0.28)");
+              ctx.fillStyle = kubbe;
+              dusmanYoluOlustur(dusman.tanim.sekil, r);
+              ctx.fill();
+
               ctx.strokeStyle = "rgba(255,255,255,0.35)";
               ctx.lineWidth = 1.2;
               dusmanYoluOlustur(dusman.tanim.sekil, r * 0.92);
               ctx.stroke();
+
+              // Ön vizör gözü: yön hissi ve "yaratık" kimliği.
+              ctx.fillStyle = "rgba(255,255,255,0.85)";
+              ctx.beginPath();
+              ctx.ellipse(r * 0.42, 0, r * 0.2, r * 0.12, 0, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = "rgba(10,14,24,0.9)";
+              ctx.beginPath();
+              ctx.arc(r * 0.48, 0, r * 0.06, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Şekle özgü aksan: ok/üçgen arkada motor ışıkları, karede perçinler.
+              if (dusman.tanim.sekil === "ucgen" || dusman.tanim.sekil === "ok") {
+                ctx.fillStyle = "rgba(255,255,255,0.5)";
+                ctx.beginPath();
+                ctx.arc(-r * 0.5, -r * 0.34, r * 0.09, 0, Math.PI * 2);
+                ctx.arc(-r * 0.5, r * 0.34, r * 0.09, 0, Math.PI * 2);
+                ctx.fill();
+              } else if (dusman.tanim.sekil === "kare" || dusman.tanim.sekil === "yigin") {
+                ctx.fillStyle = "rgba(255,255,255,0.4)";
+                [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function(k) {
+                  ctx.beginPath();
+                  ctx.arc(k[0] * r * 0.52, k[1] * r * 0.52, r * 0.07, 0, Math.PI * 2);
+                  ctx.fill();
+                });
+              }
             }
             ctx.restore();
           }

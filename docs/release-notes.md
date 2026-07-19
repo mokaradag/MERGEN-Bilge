@@ -68,7 +68,7 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   altındaki onaylı `reference.wav` + `reference.txt` + `voice-lock.json`
   üçlüsü; toplu üretim, kişisel karşılama öneki, boşta konuşma ve "Yanıtları
   Seslendir" dahil TÜM sentez isteklerinde aynı konuşmacıyı garanti eder.
-  Kilit yoksa/bozuksa konuşma fail-closed reddedilir; `tr-male-1` benzeri
+  Kilit yoksa/bozuksa konuşma fail-closed reddedilir; eski kayıtlı ses etiketi benzeri
   genel takma adlara veya başka personaya asla düşülmez.
 - **Deterministik kişisel karşılama öneki**: "Merhaba <ad>, en son ... üzerine
   çalışmıştık." metni LLM'siz kurulur, persona onaylandığı anda sentezlenmeye
