@@ -205,7 +205,7 @@ bs_zorluk_katalogu <- function() {
 
 # Tek dalga için sunucu tarafı puan üst sınırı hesabında kullanılan katsayılar.
 BS_DUSMAN_PUAN_UST_SINIRI <- 18L   # Normal düşman başına en yüksek taban puan
-BS_PATRON_PUAN_UST_SINIRI <- 320L  # Patron dalgası ek puan üst sınırı
+BS_PATRON_PUAN_UST_SINIRI <- 110L  # Patron öldürme başına en yüksek taban puan
 
 # Sunucu tarafı dalga puan hesabı, istemcinin bildirdiği olduruldu/puan
 # alanlarına değil bu deterministik harita planından türetilen düşman sayısına

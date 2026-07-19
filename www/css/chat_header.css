@@ -217,3 +217,20 @@ html[data-theme="light"] .chat-header .header-stat-item {
   min-height: 0 !important;
   max-height: none !important;
 }
+/* Anında düğme geri bildirimi: sunucu turu beklenirken meşgul görünümü
+   (tıklama algılandı hissi + yinelenen tıklama koruması). Yeni Söyleşi ve
+   Ayarları Kaydet düğmeleri kullanır. */
+.mergen-btn-busy {
+  opacity: 0.6;
+  pointer-events: none;
+  position: relative;
+}
+.mergen-btn-busy .fa-plus,
+.mergen-btn-busy .fa-save,
+.mergen-btn-busy .fa-floppy-disk {
+  animation: mergen-btn-busy-spin 0.9s linear infinite;
+}
+@keyframes mergen-btn-busy-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

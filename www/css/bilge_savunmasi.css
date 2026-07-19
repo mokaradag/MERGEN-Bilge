@@ -628,8 +628,33 @@
   background: rgba(13, 19, 34, 0.95);
   border: 1px solid rgba(76, 201, 240, 0.45);
   font-size: 13px;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bs-ogretici-kapat {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.75);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 50%;
+  line-height: 1;
+}
+.bs-ogretici-kapat:hover,
+.bs-ogretici-kapat:focus-visible {
+  color: #fff;
+  background: rgba(76, 201, 240, 0.25);
+}
+/* Yalnızca bilgi balonu açıkken kaplama sahneyi karartmaz ve tıklamayı
+   engellemez; karartma gerçek panellerin (sonuç/duraklat/onay) ömrüne bağlıdır. */
+.bs-oyun-kaplama.bs-kaplama-saydam {
+  background: transparent;
   pointer-events: none;
 }
+.bs-oyun-kaplama.bs-kaplama-saydam .bs-ogretici { pointer-events: auto; }
 
 /* ── Duyarlılık ─────────────────────────────────────────────────────────── */
 @media (max-width: 1100px) {
@@ -884,3 +909,23 @@ html[data-theme="light"] .bs-liderlik-departman { color: #5a6d8c; }
 
 /* Öncü kartı vurgusu (kahraman çubuğunda) */
 .bs-kart-oncu .bs-kahraman-portre { box-shadow: 0 0 12px -2px var(--bs-aksan, #4cc9f0); }
+
+/* Açık tema: kaplama panelleri ve bilgi balonu açık yüzeye geçer; aksi halde
+   açık tema metin renkleri (koyu) koyu panel üzerinde okunmaz kalıyordu. */
+html[data-theme="light"] .bs-kaplama-panel {
+  background: linear-gradient(160deg, #ffffff, #eef3fb);
+  border-color: rgba(28, 111, 143, 0.35);
+  box-shadow: 0 18px 60px rgba(34, 49, 74, 0.25);
+}
+html[data-theme="light"] .bs-kaplama-panel h3 { color: #10263f; }
+html[data-theme="light"] .bs-ogretici {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(28, 111, 143, 0.4);
+  color: #22314a;
+}
+html[data-theme="light"] .bs-ogretici-kapat { color: rgba(34, 49, 74, 0.65); }
+html[data-theme="light"] .bs-ogretici-kapat:hover,
+html[data-theme="light"] .bs-ogretici-kapat:focus-visible {
+  color: #10263f;
+  background: rgba(28, 111, 143, 0.15);
+}

@@ -16,9 +16,18 @@
   invisible(NULL)
 }
 
+# Persona video listeleri süreç ömrü boyunca değişmez; UNC/ağ paylaşımında
+# list.files() saniyeler sürebildiği için sonuç süreç kapsamında önbelleğe
+# alınır. Bu, Kişiselleştirme'de persona tıklamalarının arayüzü dondurmasını
+# engeller (her tıklamada 3 dizin taraması yerine tek seferlik tarama).
+.character_video_data_cache <- new.env(parent = emptyenv())
+
 get_character_video_data <- function(char_id) {
   # Persona kimliğini yeni biçime normalleştir (eski kimlikler de çözülür)
   char_key <- normalize_character_id(char_id)
+
+  cached <- get0(char_key, envir = .character_video_data_cache, ifnotfound = NULL)
+  if (!is.null(cached)) return(cached)
 
   .character_video_debug(
     "[VIDEO R] get_character_video_data çağrıldı: '{char_id}' -> '{char_key}'",
@@ -71,7 +80,8 @@ get_character_video_data <- function(char_id) {
       select = scan_videos("select")
     )
   )
-  
+
+  assign(char_key, result, envir = .character_video_data_cache)
   return(result)
 }
 

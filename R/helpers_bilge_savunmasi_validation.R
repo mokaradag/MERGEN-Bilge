@@ -10,7 +10,8 @@
 #   * Bu dosya SAFTIR: Shiny, DB, ağ, dosya sistemi ve reaktif durum içermez;
 #     izole testlerde tek başına (config ile birlikte) source edilebilir.
 #   * İstemciden gelen hiçbir serbest puan değeri doğrudan kabul edilmez.
-#     bs_puan_yeniden_hesapla() dalga başına üst sınır uygular.
+#     bs_puan_yeniden_hesapla() dalga başına, doğrulanmış öldürme sayısından
+#     türetilen üst sınırı uygular; sıfır öldürme sıfır dalga puanı demektir.
 #   * Patron dalgası kuralı (dalga %% 4 == 0 veya son dalga) istemci
 #     www/js/bilge_savunmasi_dalga.js ile AYNI olmalıdır.
 #   * Plan yükleri yalnızca bilinen alanları, sınırlı boyutları ve kanonik
@@ -75,14 +76,18 @@ bs_patron_dalgasi_mi <- function(dalga_no, dalga_sayisi) {
   (d %% 4L == 0L) || (d == n)
 }
 
-#' Tek Dalga İçin Sunucu Puanı
+#' Tek Dalga İçin Sunucu Puan Üst Sınırı
 #'
-#' @description Dalga puanı istemcinin serbestçe beyan ettiği `puan` veya
-#' `olduruldu` değerlerinden değil, sunucunun harita kataloğunda tuttuğu
-#' deterministik dalga düşman sayısından türetilir. Haftalık sayı değiştiricisi
-#' varsa sunucuya ait normal düşman sayısına uygulanır ve sonuç yine haritanın
-#' dalga üst sınırıyla kırpılır.
-bs_dalga_puan_siniri <- function(harita_kaydi, dalga_no, degistirici = NULL) {
+#' @description Dalga puan üst sınırı istemcinin serbestçe beyan ettiği `puan`
+#' değerinden değil, sunucunun harita kataloğunda tuttuğu deterministik dalga
+#' düşman sayısından türetilir. Haftalık sayı değiştiricisi varsa sunucuya ait
+#' normal düşman sayısına uygulanır ve sonuç yine haritanın dalga üst sınırıyla
+#' kırpılır. `olduruldu` verildiğinde etkin düşman sayısı DOĞRULANMIŞ öldürme
+#' sayısına (haritanın dalga planıyla kırpılarak) indirgenir; böylece üst sınır
+#' gerçekten etkisizleştirilen tehdit sayısını yansıtır. `olduruldu`
+#' verilmediğinde eski deterministik plan davranışı korunur (geri uyumluluk).
+bs_dalga_puan_siniri <- function(harita_kaydi, dalga_no, olduruldu = NULL,
+                                 degistirici = NULL) {
   ust <- .bs_tam_sayi(harita_kaydi$dalga_dusman_ust_siniri, 30L)
   d <- .bs_tam_sayi(dalga_no)
   sayilar <- harita_kaydi$dalga_dusman_sayilari
@@ -104,9 +109,29 @@ bs_dalga_puan_siniri <- function(harita_kaydi, dalga_no, degistirici = NULL) {
   normal_adet <- max(0L, adet - patron_adet)
   adet <- min(as.integer(round(normal_adet * carpan)) + patron_adet, ust)
 
-  taban <- adet * BS_DUSMAN_PUAN_UST_SINIRI
-  if (adet > 0L && bs_patron_dalgasi_mi(dalga_no, harita_kaydi$dalga_sayisi)) {
-    taban <- taban + BS_PATRON_PUAN_UST_SINIRI
+  etkin <- adet
+  if (!is.null(olduruldu)) {
+    o <- .bs_tam_sayi(olduruldu)
+    if (!is.na(o)) {
+      # Doğrulanmış öldürme sayısı haritanın dalga üst sınırına kırpılır;
+      # istemci dalganın ürettiğinden fazla tehdit etkisizleştirmiş olamaz.
+      etkin <- max(0L, min(o, adet))
+    }
+  }
+
+  if (patron_adet > 0L && bs_patron_dalgasi_mi(dalga_no, harita_kaydi$dalga_sayisi)) {
+    # Özet yalnızca toplam öldürme sayısını taşır; hangi öldürmenin patron
+    # olduğunu kanıtlayamayız. Bu yüzden üst sınır, aynı `olduruldu` sayısı
+    # için mümkün olan EN YÜKSEK meşru dağılımı kabul eder: önce patron
+    # öldürmeleri, sonra normal düşmanlar. Böylece tek patron öldürüp dalgayı
+    # temizlemeyen meşru koşular kırpılmaz; yine de öldürme sayısı kadar puan
+    # üst sınırı korunur.
+    patron_etkin <- min(etkin, patron_adet)
+    normal_etkin <- max(0L, etkin - patron_etkin)
+    taban <- normal_etkin * BS_DUSMAN_PUAN_UST_SINIRI +
+      patron_etkin * BS_PATRON_PUAN_UST_SINIRI
+  } else {
+    taban <- etkin * BS_DUSMAN_PUAN_UST_SINIRI
   }
   as.integer(taban)
 }
@@ -115,9 +140,12 @@ bs_dalga_puan_siniri <- function(harita_kaydi, dalga_no, degistirici = NULL) {
 
 #' Dalga Özetlerinden Sunucu Puanını Yeniden Hesapla
 #'
-#' @description Dalga puanını istemci beyanından bağımsız olarak, sunucuya ait
-#' deterministik dalga planından hesaplar; çekirdek ve zafer bonusunu ekler,
-#' zorluk çarpanını uygular. Dönen değer sunucunun NİHAİ puanıdır.
+#' @description Dalga puanı, doğrulanmış öldürme sayısından türetilen sunucu
+#' üst sınırıyla kırpılmış istemci dalga puanıdır: beyan edilen `puan` hiçbir
+#' zaman `bs_dalga_puan_siniri(...)` değerini aşamaz ve sıfır öldürmeli bir
+#' dalga puan üretemez. `puan` alanı olmayan eski dalga özetleri üst sınırın
+#' kendisiyle puanlanır (geri uyumluluk). Çekirdek ve zafer bonusu eklenir,
+#' zorluk çarpanı uygulanır. Dönen değer sunucunun NİHAİ puanıdır.
 bs_puan_yeniden_hesapla <- function(dalga_ozetleri,
                                     son_cekirdek,
                                     harita_kaydi,
@@ -126,7 +154,12 @@ bs_puan_yeniden_hesapla <- function(dalga_ozetleri,
                                     degistirici = NULL) {
   ham <- 0
   for (dalga in dalga_ozetleri) {
-    ham <- ham + bs_dalga_puan_siniri(harita_kaydi, dalga$dalga, degistirici)
+    sinir <- bs_dalga_puan_siniri(
+      harita_kaydi, dalga$dalga,
+      olduruldu = dalga$olduruldu, degistirici = degistirici
+    )
+    beyan <- .bs_sayi(dalga$puan)
+    ham <- ham + if (is.na(beyan)) sinir else max(0, min(beyan, sinir))
   }
 
   cekirdek <- max(0, .bs_sayi(son_cekirdek, 0))

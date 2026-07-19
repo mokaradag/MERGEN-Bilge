@@ -73,6 +73,7 @@ suppressMessages({
     set_page = function(p) invisible(NULL),
     set_user_active = function(x) invisible(NULL),
     set_tts_vocalizing = function(x) invisible(NULL),
+    set_speech_ended_callback = function(cb) spoke$speech_ended_cb <- cb,
     prewarm_speaking = function(...) invisible(NULL),
     COOLDOWN_GREETING = 1,
     COOLDOWN_PAGE = 1,
@@ -466,6 +467,155 @@ testthat::test_that(
             spoke$allow_start <- TRUE
             session$setInputs(tabs = "history")
             testthat::expect_identical(spoke$n, 1L)
+          }
+        )
+      },
+      delay = function(ms, expr) invisible(NULL),
+      runjs = function(...) invisible(NULL),
+      .package = "shinyjs"
+    )
+  }
+)
+
+testthat::test_that(
+  "sesli boşta konuşma rehberli sayfaya geçişte KESİLMEZ; rehberlik bitişe kuyruklanır",
+  {
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    speech_tests_make_tree(root)
+    m <- mergen_speech_manifest_build(root)$manifest
+    mergen_speech_manifest_write(m, mergen_speech_manifest_path(root))
+    withr::local_envvar(MERGEN_SPEECH_ROOT = root,
+                        VOXCPM2_WARMUP_ENABLED = "false")
+    withr::defer(speech_tests_reset_caches())
+
+    env <- .ai_expert_pg_env()
+    spoke <- .pg_spoke(speaking = TRUE)
+    ai_expert <- .ai_expert_stub(spoke)
+
+    testthat::with_mocked_bindings(
+      {
+        shiny::testServer(
+          .ai_expert_wrapper(env = env, ai_expert = ai_expert),
+          {
+            session$setInputs(tabs = "chat")  # ignoreInit tüketir
+
+            # Gerçek boşta konuşma durumu: kind="idle" kayıtlı ve sesli.
+            mergen_speech_begin(session, "idle")
+
+            # Rehberli sayfaya geçiş: boşta konuşma DURDURULMAZ, rehberlik
+            # gönderilmez; bitişin arkasına kuyruklanır.
+            session$setInputs(tabs = "history")
+            testthat::expect_identical(spoke$n, 0L)
+            testthat::expect_identical(spoke$stops, 0L)
+
+            # Doğal bitiş: modülün bitiş yankısını taklit et (durum temizlenir,
+            # kayıtlı konuşma-bitti kancası çağrılır).
+            spoke$speaking <- FALSE
+            mergen_speech_end(session)
+            testthat::expect_true(is.function(spoke$speech_ended_cb))
+            spoke$speech_ended_cb()
+
+            # Kuyruklanan rehberlik deterministik olarak oynatıldı.
+            testthat::expect_identical(spoke$n, 1L)
+            testthat::expect_identical(spoke$last_kind, "page_guidance")
+          }
+        )
+      },
+      delay = function(ms, expr) invisible(NULL),
+      runjs = function(...) invisible(NULL),
+      .package = "shinyjs"
+    )
+  }
+)
+
+testthat::test_that(
+  "kuyruklanmış rehberlik hedef sayfa değişince veya kullanıcı eylemi gelince düşer",
+  {
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    speech_tests_make_tree(root)
+    m <- mergen_speech_manifest_build(root)$manifest
+    mergen_speech_manifest_write(m, mergen_speech_manifest_path(root))
+    withr::local_envvar(MERGEN_SPEECH_ROOT = root,
+                        VOXCPM2_WARMUP_ENABLED = "false")
+    withr::defer(speech_tests_reset_caches())
+
+    env <- .ai_expert_pg_env()
+    spoke <- .pg_spoke(speaking = TRUE)
+    ai_expert <- .ai_expert_stub(spoke)
+
+    testthat::with_mocked_bindings(
+      {
+        shiny::testServer(
+          .ai_expert_wrapper(env = env, ai_expert = ai_expert),
+          {
+            session$setInputs(tabs = "chat")
+            mergen_speech_begin(session, "idle")
+
+            # history rehberliği kuyruğa girer...
+            session$setInputs(tabs = "history")
+            testthat::expect_identical(spoke$n, 0L)
+
+            # ...ama manuel durdurma kancası gelirse kuyruk temizlenir;
+            # sonraki doğal bitiş BAYAT history rehberliği OYNATMAZ.
+            testthat::expect_true(is.function(spoke$speech_ended_cb))
+            spoke$speech_ended_cb(manual_stop = TRUE)
+            spoke$speaking <- FALSE
+            mergen_speech_end(session)
+            spoke$speech_ended_cb()
+            testthat::expect_identical(spoke$n, 0L)
+          }
+        )
+      },
+      delay = function(ms, expr) invisible(NULL),
+      runjs = function(...) invisible(NULL),
+      .package = "shinyjs"
+    )
+  }
+)
+
+testthat::test_that(
+  paste0("kuyruklanmış rehberlik STT modalı açılınca da düşer (Codex PR #636 ",
+         "P2: STT sesli giriş kesmesi bekleyen rehberliği temizlemeli)"),
+  {
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    speech_tests_make_tree(root)
+    m <- mergen_speech_manifest_build(root)$manifest
+    mergen_speech_manifest_write(m, mergen_speech_manifest_path(root))
+    withr::local_envvar(MERGEN_SPEECH_ROOT = root,
+                        VOXCPM2_WARMUP_ENABLED = "false")
+    withr::defer(speech_tests_reset_caches())
+
+    env <- .ai_expert_pg_env()
+    spoke <- .pg_spoke(speaking = TRUE)
+    ai_expert <- .ai_expert_stub(spoke)
+
+    testthat::with_mocked_bindings(
+      {
+        shiny::testServer(
+          .ai_expert_wrapper(env = env, ai_expert = ai_expert),
+          {
+            session$setInputs(tabs = "chat")
+            mergen_speech_begin(session, "idle")
+
+            # history rehberliği kuyruğa girer (boşta konuşma sürüyor)...
+            session$setInputs(tabs = "history")
+            testthat::expect_identical(spoke$n, 0L)
+
+            # ...kullanıcı STT (sesli giriş) modalını açar: aktif konuşma
+            # durdurulur VE kuyruklanmış rehberlik de geçersiz kılınmalıdır.
+            session$setInputs(stt_modal_active = TRUE)
+            testthat::expect_identical(spoke$stops, 1L)
+
+            # Modal kapanır; ardından doğal bitiş yankısı gelir (örn. gecikmiş
+            # bir zamanlayıcı tetiklemesi). Bayat "history" rehberliği ASLA
+            # oynatılmamalıdır (regresyondan önce spoke$n burada 1 olurdu).
+            session$setInputs(stt_modal_active = FALSE)
+            mergen_speech_end(session)
+            spoke$speech_ended_cb()
+            testthat::expect_identical(spoke$n, 0L)
           }
         )
       },

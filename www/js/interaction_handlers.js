@@ -1,6 +1,17 @@
 // www/js/interaction_handlers.js
 // Bu dosya kullanıcı etkileşimlerini (tıklamalar, sekme değişimleri vb.) yönetir.
 
+
+// Medya tanılama logu: üretimde sessiz; localStorage.MERGEN_DEBUG_MEDIA = "1"
+// ile açılır. Uyarı/hata logları (console.warn/error) her zaman açık kalır.
+var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.log.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+
 $(document).ready(function() {
   // Takip sorusu seçeneğine tıklama
   $(document).on('click', '.followup-option', function(e) {
@@ -40,8 +51,8 @@ $(document).on('click', '.source-link', function() {
   // çözer (çapraz-kullanıcı sızıntısı önlenir). Öznitelik yoksa boş = kişisel.
   const scope = this.getAttribute('data-source-scope') || '';
 
-  console.log('[SOURCE CLICK] User clicked:', filename);
-  console.log('[SOURCE CLICK] Source ID:', sourceId);
+  mergenMediaDbg('[SOURCE CLICK] User clicked:', filename);
+  mergenMediaDbg('[SOURCE CLICK] Source ID:', sourceId);
 
   Shiny.setInputValue('source_file_clicked', {
     filename: filename,

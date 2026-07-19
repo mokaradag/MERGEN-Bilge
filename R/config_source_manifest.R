@@ -284,6 +284,7 @@ source_manifest_sections <- list(
     "R/helpers_ai_expert_user_data.R",
     "R/helpers_ai_expert.R",
     "R/helpers_ai_expert_chunking.R",
+    "R/helpers_ai_expert_chunk_pipeline.R",
     "R/helpers_ai_expert_handlers_support.R"
   ),
 

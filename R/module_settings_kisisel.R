@@ -247,8 +247,8 @@ settingsKisiselServer <- function(id, settings, parent_session = NULL) {
       # Gerçek uygulama sadece "Ayarları Kaydet" ile yapılır.
       update_character_display(char_id, committed = FALSE)
 
-      Sys.sleep(0.05)
-
+      # Not: WebSocket mesajları sıralı iletilir; UI iş parçacığını bloklayan
+      # eski Sys.sleep(0.05) beklemesi kaldırıldı.
       session$sendCustomMessage("updateCharacterVideo", list(
         data = get_character_video_data(char_id),
         trigger = "click",

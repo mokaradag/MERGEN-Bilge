@@ -210,6 +210,7 @@ ui_asset_ownership_zones <- list(
     ),
     js = c(
       "js/input_handlers.js",
+      "js/button_busy_ack.js",
       "js/code-collapse.js",
       "js/table_scroll_handler.js",
       "js/codemirror-manager.js",

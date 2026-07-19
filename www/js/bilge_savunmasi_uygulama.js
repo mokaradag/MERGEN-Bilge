@@ -540,6 +540,8 @@
   }
 
   // ── Koşu sonu ───────────────────────────────────────────────────────────────
+  // Doğrulama yaşam döngüsü (zaman aşımı/tekrar dene/bayat yanıt koruması)
+  // BS.dogrulama katmanındadır (bilge_savunmasi_dogrulama.js).
   function kosuSonuIsle(kosu, zafer) {
     if (kosu.sonucGonderildi) return;
     kosu.sonucGonderildi = true;
@@ -551,11 +553,7 @@
     kosu.ozet = ozet;
 
     if (kosu.kosuId && kosu.kalici) {
-      kosu.hud.kaplamaGoster(
-        '<h3>' + (zafer ? "Zafer!" : "Çekirdek Düştü") + '</h3>' +
-        '<p class="bs-kaplama-notu">Sonuç sunucuda doğrulanıyor...</p>'
-      );
-      BS.kopru.kosuBitir(kosu.kosuId, kosu.jeton, ozet);
+      BS.dogrulama.gonder(kosu);
     } else {
       // Kalıcılık yok: yerel gösterim (ödül/kayıt yazılmaz).
       var puan = BS.sonuc.yerelPuan(ozet);
@@ -565,13 +563,6 @@
       });
     }
   }
-
-
-  BS.olaylar.ekle("sunucu-kosu-sonuc", function(sonuc) {
-    if (!uygulama.kosu || !sonuc) return;
-    uygulama.kosu.sonSonuc = sonuc;
-    BS.sonuc.goster(uygulama.kosu, sonuc);
-  });
 
   // ── Girdi/HUD olayları ──────────────────────────────────────────────────────
   BS.olaylar.ekle("girdi-yerlestir", function(veri) {
@@ -723,6 +714,12 @@
       BS.sonuc.planYayinlaGoster(kosu);
     } else if (komut === "plan-gonder") {
       BS.sonuc.planGonder(kosu);
+    } else if (komut === "dogrulama-tekrar") {
+      if (kosu.kosuId && kosu.kalici && kosu.ozet && !kosu.sonSonuc) {
+        BS.dogrulama.gonder(kosu);
+      }
+    } else if (komut === "ogretici-kapat") {
+      kosu.hud.ogreticiGoster(null);
     }
   });
 
@@ -731,6 +728,7 @@
     var kosu = uygulama.kosu;
     if (!kosu) return;
     geriSayimDurdur();
+    BS.dogrulama.zamanlayiciDurdur(kosu);
     if (kosu.rafId) cancelAnimationFrame(kosu.rafId);
     if (kosu.girdi) kosu.girdi.coz();
     if (kosu.hud) kosu.hud.temizle();

@@ -20,6 +20,18 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   idle_timer_active    <- reactiveVal(FALSE)        # Boşta zamanlayıcısı aktif mi
   idle_talk_counter    <- reactiveVal(0L)            # Boşta konuşma sayacı (tekrar önleme)
 
+  # Bekleyen sayfa rehberliği: sesli boşta konuşma doğal biçimde biterken
+  # hedef sayfanın rehberliği kesme yerine SIRAYA alınır. Tek slot; her yeni
+  # gezinme öncekini geçersiz kılar (nesil sayacı bayat tetiklemeyi engeller).
+  pending_guidance <- new.env(parent = emptyenv())
+  pending_guidance$page <- NULL
+  pending_guidance$gen <- 0L
+
+  pending_guidance_clear <- function() {
+    pending_guidance$page <- NULL
+    pending_guidance$gen <- pending_guidance$gen + 1L
+  }
+
   PAGE_GUIDANCE_REPEAT_SECS <- 15 * 60
 
   # Hibrit konuşma çalışma zamanı: statik karşılama/rehberlik + kişisel önek
@@ -217,6 +229,9 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     page <- input$tabs
     ai_expert$set_page(page)
 
+    # Her gezinme, önceki hedefe kuyruklanmış rehberliği geçersiz kılar.
+    pending_guidance_clear()
+
     # Tek yetkili rehberlik politikası: rehberli/sessiz sayfa kümeleri
     # R/config_speech_assets.R'de tanımlıdır. Sessiz yüzeye (Kişiselleştirme,
     # yönetici sayfaları, Sistem Durumu) geçişte aktif konuşma nazikçe durur;
@@ -250,10 +265,19 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     if (!isTRUE(settings_data$enable_ai_expert)) return()
     if (!identical(settings_data$experience_mode, "kesif")) return()
 
-    # GECİKMESİZ: rehberlik klibi statik varlıktan anında seçilip gönderilir
+    # GECİKMESİZ: rehberlik klibi statik varlıktan anında seçilip gönderilir;
+    # sesli boşta konuşma sürüyorsa kesilmez, rehberlik sırasına alınır.
     trigger_page_guidance(page)
 
   }, ignoreInit = TRUE)
+
+  # Rehberlik tekrar penceresi: sayfa yakın zamanda rehberlik aldıysa TRUE.
+  guidance_recently_played <- function(page, now = Sys.time()) {
+    last_guidance <- isolate(page_guidance_times())[[page]]
+    if (is.null(last_guidance)) return(FALSE)
+    elapsed <- as.numeric(difftime(now, last_guidance, units = "secs"))
+    is.finite(elapsed) && elapsed < PAGE_GUIDANCE_REPEAT_SECS
+  }
 
   # Sayfa rehberliği konuşması: önceden üretilmiş persona WAV'ı oynatılır.
   # Gezinme anında LLM ÇAĞRILMAZ; metin ortak senaryo dosyasından gelir.
@@ -265,30 +289,83 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     current <- isolate(input$tabs)
     if (!identical(current, page)) return()
 
-    now <- Sys.time()
-    guidance_times <- isolate(page_guidance_times())
-    last_guidance <- guidance_times[[page]]
-    if (!is.null(last_guidance)) {
-      elapsed <- as.numeric(difftime(now, last_guidance, units = "secs"))
-      if (is.finite(elapsed) && elapsed < PAGE_GUIDANCE_REPEAT_SECS) {
-        if (isTRUE(ai_expert$is_speaking())) ai_expert$stop_speaking(0)
-        cat(sprintf("[AI_EXPERT] Sayfa rehberliği yakın zamanda oynatıldı, atlandı: %s\n", page))
-        return()
+    active_kind <- mergen_speech_active_kind(session)
+
+    if (guidance_recently_played(page)) {
+      # Rehberlik bastırıldı (15 dk kuralı): sesli BOŞTA konuşması DOĞAL
+      # biçimde bitmeye bırakılır; bayat rehberlik/karşılama klipleri ise
+      # eski davranışla durdurulur (başka sayfanın klibi burada çalmasın).
+      if (!identical(active_kind, "idle") && isTRUE(ai_expert$is_speaking())) {
+        ai_expert$stop_speaking(0)
       }
+      cat(sprintf("[AI_EXPERT] Sayfa rehberliği yakın zamanda oynatıldı, atlandı: %s\n", page))
+      return()
     }
 
+    # Sesli boşta konuşma sürüyorsa kesme: rehberliği bitişin hemen arkasına
+    # kuyrukla. Karşılama/eski rehberlik ise öncelik matrisi kesmeye izin
+    # verir ve anında oynatılır (kullanıcı gezinme eylemi).
+    if (isTRUE(ai_expert$is_speaking()) && identical(active_kind, "idle")) {
+      pending_guidance$page <- page
+      pending_guidance$gen <- pending_guidance$gen + 1L
+      cat(sprintf("[AI_EXPERT] Boşta konuşma bitince oynatılmak üzere rehberlik sıraya alındı: %s\n", page))
+      return()
+    }
+
+    dispatch_page_guidance(page)
+  }
+
+  # Rehberlik klibini gerçekten gönder ve tekrar penceresini işaretle.
+  dispatch_page_guidance <- function(page) {
     dispatched <- speech_runtime$play_page_guidance(page)
     if (isTRUE(dispatched)) {
-      guidance_times[[page]] <- now
+      guidance_times <- isolate(page_guidance_times())
+      guidance_times[[page]] <- Sys.time()
       page_guidance_times(guidance_times)
     }
     schedule_idle_chat()
+    invisible(dispatched)
+  }
+
+  # Kuyruklanmış rehberliği (hâlâ geçerliyse) oynat; değilse sessizce düşür.
+  fire_pending_guidance <- function(manual_stop = FALSE) {
+    if (isTRUE(manual_stop)) {
+      pending_guidance_clear()
+      return(invisible(FALSE))
+    }
+    page <- pending_guidance$page
+    if (is.null(page)) return(invisible(FALSE))
+    my_gen <- pending_guidance$gen
+    pending_guidance_clear()
+
+    if (!can_speak_basic()) return(invisible(FALSE))
+    if (!identical(isolate(input$tabs), page)) return(invisible(FALSE))
+    if (!identical(mergen_speech_guidance_policy(page), "guided")) return(invisible(FALSE))
+    if (guidance_recently_played(page)) return(invisible(FALSE))
+    if (isTRUE(ai_expert$is_speaking())) return(invisible(FALSE))
+
+    cat(sprintf("[AI_EXPERT] Kuyruklanmış sayfa rehberliği oynatılıyor: %s (nesil %d)\n", page, my_gen))
+    dispatch_page_guidance(page)
+    invisible(TRUE)
+  }
+
+  # Doğal konuşma bitişinde bekleyen rehberlik deterministik olarak devam eder.
+  # (Eski/test taklidi modül nesneleri bu API'yi taşımayabilir; savunmacı kayıt.)
+  if (is.function(ai_expert$set_speech_ended_callback)) {
+    ai_expert$set_speech_ended_callback(fire_pending_guidance)
   }
 
   # --- Boşta konuşma ---
   trigger_idle_chat <- function() {
     if (!isTRUE(settings_data$enable_ai_expert) ||
         !identical(settings_data$experience_mode, "kesif")) {
+      schedule_idle_chat()
+      return()
+    }
+    # Kuyrukta rehberlik varken yeni boşta konuşma BAŞLATILMAZ; önce
+    # rehberlik denenir (konuşma bitişi yankısı kaybolsa bile toparlanır).
+    if (!is.null(pending_guidance$page)) {
+      fire_pending_guidance()
       schedule_idle_chat()
       return()
     }
@@ -387,10 +464,18 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 		temperature_val = temperature_val
 	  )
 	) %...>% (function(idle_text) {
-      if (!is.null(idle_text) && nzchar(idle_text) && !is_stt_modal_active()) {
+      # Bayat bağlam koruması: boşta metni istek anındaki sayfa adına göre
+      # üretilir; kullanıcı bu sırada başka sayfaya geçtiyse metin artık
+      # bağlamsal olarak geçersizdir ve oynatılmaz. Kuyrukta rehberlik
+      # bekliyorsa boşta konuşma onun önüne geçemez.
+      tab_degisti <- !identical(isolate(input$tabs) %||% "chat", current_page_val)
+      if (!is.null(idle_text) && nzchar(idle_text) && !is_stt_modal_active() &&
+          !tab_degisti && is.null(pending_guidance$page)) {
         if (ai_expert$can_speak()) {
           ai_expert$start_speaking(idle_text, ai_expert$COOLDOWN_IDLE)
         }
+      } else if (!is.null(pending_guidance$page)) {
+        fire_pending_guidance()
       }
       schedule_idle_chat()
     }) %...!% (function(e) {
@@ -403,6 +488,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   observeEvent(values$is_sending, {
     if (isTRUE(values$is_sending)) {
       ai_expert$set_user_active(TRUE)
+      # Kullanıcı eylemi bekleyen otomatik konuşmaları da geçersiz kılar.
+      pending_guidance_clear()
       if (isTRUE(ai_expert$is_speaking())) {
         cat("[AI_EXPERT] Kullanıcı mesaj gönderiyor, konuşma durduruluyor.\n")
         ai_expert$stop_speaking()
@@ -419,9 +506,16 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
     ai_expert$set_user_active(stt_active)
 
-    if (stt_active && isTRUE(ai_expert$is_speaking())) {
-      cat("[AI_EXPERT] STT modalı açıldı, AI konuşması durduruluyor.\n")
-      ai_expert$stop_speaking()
+    if (stt_active) {
+      # Kullanıcı sesli giriş başlattı; bu da mesaj gönderimi gibi bekleyen
+      # otomatik rehberliği geçersiz kılar. Aksi halde STT kapandıktan sonra
+      # trigger_idle_chat() zamanlayıcısı bu bayat rehberliği ateşleyebilir
+      # (Codex PR #636 P2 incelemesi).
+      pending_guidance_clear()
+      if (isTRUE(ai_expert$is_speaking())) {
+        cat("[AI_EXPERT] STT modalı açıldı, AI konuşması durduruluyor.\n")
+        ai_expert$stop_speaking()
+      }
     }
 
     if (!stt_active) {

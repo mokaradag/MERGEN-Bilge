@@ -1,5 +1,16 @@
 // www/js/tts_manager.js
 
+
+// Medya tanılama logu: üretimde sessiz; localStorage.MERGEN_DEBUG_MEDIA = "1"
+// ile açılır. Uyarı/hata logları (console.warn/error) her zaman açık kalır.
+var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.log.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+
 $(document).ready(function() {
   // -------------------------------------------------
   // TTS (Metin Okuma) Kuyruk Sistemi
@@ -202,7 +213,7 @@ $(document).ready(function() {
         playPromise.then(() => {
           if (window.mergenTTS.currentAudio !== audio) return;
 
-          console.log('[MERGEN TTS] Parça oynatılıyor', item.index);
+          mergenMediaDbg('[MERGEN TTS] Parça oynatılıyor', item.index);
         }).catch(error => {
           if (window.mergenTTS.currentAudio !== audio) return;
 

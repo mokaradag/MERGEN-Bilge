@@ -490,12 +490,19 @@ settingsInit <- function(session, parent_session = NULL) {
     showToast(session, "Ayarlar kaydedildi!", "success")
   }
 
+  # Not: Bu gözlemciler öncelikli (priority > 0) OLMAMALI. Bir ayar değişip
+  # hemen ardından Kaydet'e tıklandığında, değişen input ve kaydetme tıklaması
+  # aynı Shiny flush'ında işlenebilir; alt modüllerdeki input->settings kopya
+  # gözlemcileri varsayılan (0) öncelikte ve bu dosyadan önce oluşturulduğu
+  # için eşit öncelikte önce çalışır. Buradaki gözlemcilere daha yüksek öncelik
+  # verilirse, henüz kopyalanmamış input değeri kaydedilirken başarı toast'ı
+  # gösterilebilir (Codex PR #636 P2 incelemesi).
   observeEvent(kisisel$save_trigger(), {
-    save_all_settings()
+    mergen_perf_time("settings_save_kisisel", save_all_settings())
   }, ignoreInit = TRUE)
 
   observeEvent(yapilandirma$save_trigger(), {
-    save_all_settings()
+    mergen_perf_time("settings_save_yapilandirma", save_all_settings())
   }, ignoreInit = TRUE)
 
   # ---- Sıfırla (her iki alt sekmeden tetiklenebilir) ----

@@ -405,9 +405,9 @@ test_that("sonuçlandırma idempotenttir, ödülleri bir kez yazar ve izole eder
 
   sonuc <- bs_db_finalize_run(101L, kosu$kosu_id, "jeton-fin", ozet, conn = conn)
   expect_true(sonuc$kabul)
-  expect_identical(sonuc$puan, 3224L)
+  expect_identical(sonuc$puan, 1480L)
   expect_identical(sonuc$yildiz, 3L)
-  expect_identical(sonuc$xp, 322L)
+  expect_identical(sonuc$xp, 148L)
   expect_false(sonuc$tekrar)
   expect_true(all(c("ilk_zafer", "uc_yildiz", "kusursuz_savunma", "tam_kadro")
                   %in% sonuc$yeni_basarimlar))
@@ -416,12 +416,12 @@ test_that("sonuçlandırma idempotenttir, ödülleri bir kez yazar ve izole eder
   tekrar <- bs_db_finalize_run(101L, kosu$kosu_id, "jeton-fin", ozet, conn = conn)
   expect_true(tekrar$kabul)
   expect_true(tekrar$tekrar)
-  expect_identical(tekrar$puan, 3224L)
+  expect_identical(tekrar$puan, 1480L)
   expect_length(tekrar$yeni_basarimlar, 0L)
 
   profil <- bs_db_get_or_create_profile(101L, conn = conn)
-  expect_identical(profil$xp, 322L)          # iki kez yazılmadı
-  expect_identical(profil$seviye, 2L)
+  expect_identical(profil$xp, 148L)          # iki kez yazılmadı
+  expect_identical(profil$seviye, 1L)
 
   bundle <- bs_db_load_profile_bundle(101L, conn = conn)
   expect_identical(nrow(bundle$kampanya), 1L)

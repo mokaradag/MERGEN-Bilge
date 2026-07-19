@@ -175,6 +175,7 @@ mergen_speech_chunk_dispatcher <- function(session, token, is_speaking) {
   state$started <- FALSE
   state$claimed <- FALSE
   state$pending <- list()
+  state$pending_complete <- NULL
 
   is_current <- function() {
     isTRUE(is_speaking()) && identical(
@@ -198,6 +199,16 @@ mergen_speech_chunk_dispatcher <- function(session, token, is_speaking) {
     invisible(TRUE)
   }
 
+  complete <- function(payload) {
+    if (!is_current()) return(invisible(FALSE))
+    if (isTRUE(state$started)) {
+      session$sendCustomMessage("aiExpertSequenceComplete", payload)
+      return(invisible(TRUE))
+    }
+    state$pending_complete <- payload
+    invisible(TRUE)
+  }
+
   start <- function() {
     if (!is_current()) return(invisible(FALSE))
     state$started <- TRUE
@@ -208,11 +219,15 @@ mergen_speech_chunk_dispatcher <- function(session, token, is_speaking) {
       }
       state$pending <- list()
     }
+    if (!is.null(state$pending_complete)) {
+      session$sendCustomMessage("aiExpertSequenceComplete", state$pending_complete)
+      state$pending_complete <- NULL
+    }
     invisible(TRUE)
   }
 
   list(is_current = is_current, claim_synthesis = claim_synthesis,
-       queue = queue, start = start)
+       queue = queue, complete = complete, start = start)
 }
 
 #' Kişisel önek için konu metnini temizle: satır sonlarını at, kelime

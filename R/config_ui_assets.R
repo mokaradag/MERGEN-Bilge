@@ -219,6 +219,7 @@ ui_asset_js_groups <- list(
     "js/modern_welcome_handler.js",
 	"js/ui_init.js",
     "js/input_handlers.js",
+    "js/button_busy_ack.js",
     "js/interaction_handlers.js",
     "js/app_core.js",
     "js/welcome_tooltip_manager.js",
@@ -317,6 +318,7 @@ ui_asset_js_groups <- list(
     "js/bilge_savunmasi_kopru.js",
     "js/bilge_savunmasi_menu.js",
     "js/bilge_savunmasi_sonuc.js",
+    "js/bilge_savunmasi_dogrulama.js",
     "js/bilge_savunmasi_uygulama.js"
   )
 )
@@ -428,7 +430,8 @@ ui_asset_js_order_rules <- list(
   c("js/bilge_savunmasi_ses.js", "js/bilge_savunmasi_kopru.js"),
   c("js/bilge_savunmasi_kopru.js", "js/bilge_savunmasi_menu.js"),
   c("js/bilge_savunmasi_menu.js", "js/bilge_savunmasi_sonuc.js"),
-  c("js/bilge_savunmasi_sonuc.js", "js/bilge_savunmasi_uygulama.js")
+  c("js/bilge_savunmasi_sonuc.js", "js/bilge_savunmasi_dogrulama.js"),
+  c("js/bilge_savunmasi_dogrulama.js", "js/bilge_savunmasi_uygulama.js")
 )
 
 # Kritik CSS katman/kaskad sırası kuralları.

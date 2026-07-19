@@ -107,16 +107,19 @@ testthat::test_that("sonraki TTS parçaları başlangıç mesajından önce gön
   testthat::expect_false(dispatcher$claim_synthesis())
   dispatcher$queue(list(index = 2L, speechToken = decision$token))
   dispatcher$queue(list(index = 1L, speechToken = decision$token))
+  dispatcher$complete(list(deliveredChunks = 2L, speechToken = decision$token))
   testthat::expect_length(sent, 0L)
 
   testthat::expect_true(dispatcher$start())
-  testthat::expect_identical(vapply(sent, function(x) x$payload$index, integer(1)), 1:2)
+  testthat::expect_identical(vapply(sent[1:2], function(x) x$payload$index, integer(1)), 1:2)
+  testthat::expect_identical(sent[[3]]$type, "aiExpertSequenceComplete")
+  testthat::expect_identical(sent[[3]]$payload$deliveredChunks, 2L)
 
   dispatcher$queue(list(index = 3L, speechToken = decision$token))
-  testthat::expect_identical(sent[[3]]$payload$index, 3L)
+  testthat::expect_identical(sent[[4]]$payload$index, 3L)
   speaking <- FALSE
   testthat::expect_false(dispatcher$queue(list(index = 4L)))
-  testthat::expect_length(sent, 3L)
+  testthat::expect_length(sent, 4L)
 })
 
 testthat::test_that("karışık torba 10 çeşidi tüketmeden tekrar etmez", {

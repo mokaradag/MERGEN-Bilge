@@ -57,6 +57,13 @@
       getManager().queueAudioChunk(data);
     });
 
+    // Dizi tamamlandı: başarısız parçalar dizi sonunu kısalttıysa gerçek
+    // teslim sayısı bildirilir; istemci eksik parçayı boşuna beklemez.
+    Shiny.addCustomMessageHandler('aiExpertSequenceComplete', function(data) {
+      if (!speechTokenIsCurrent(data)) return;
+      getManager().sequenceComplete(data);
+    });
+
     // Ses oynatma mesajı (eski uyumluluk)
     Shiny.addCustomMessageHandler('aiExpertPlayAudio', function(data) {
       getManager().playAudio(data);

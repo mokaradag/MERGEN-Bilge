@@ -281,15 +281,17 @@
 
       // ── Kaplamalar ────────────────────────────────────────────────────────
       hud.kaplamaGoster = function(icHtml, sinif) {
-        hud.baglar.kaplama.classList.remove("bs-geri-sayim-kaplama");
+        hud.baglar.kaplama.classList.remove("bs-geri-sayim-kaplama",
+                                            "bs-kaplama-saydam");
         hud.baglar.kaplama.innerHTML =
           '<div class="bs-kaplama-panel ' + (sinif || "") + '">' + icHtml + '</div>';
         hud.baglar.kaplama.classList.add("bs-kaplama-acik");
       };
 
       hud.kaplamaKapat = function() {
-        hud.baglar.kaplama.classList.remove("bs-kaplama-acik");
-        hud.baglar.kaplama.classList.remove("bs-geri-sayim-kaplama");
+        hud.baglar.kaplama.classList.remove("bs-kaplama-acik",
+                                            "bs-geri-sayim-kaplama",
+                                            "bs-kaplama-saydam");
         hud.baglar.kaplama.innerHTML = "";
       };
 
@@ -333,14 +335,28 @@
       hud.ogreticiGoster = function(metin) {
         var eski = hud.baglar.kaplama.querySelector(".bs-ogretici");
         if (eski) eski.remove();
-        if (!metin) return;
+        var panelVar = !!hud.baglar.kaplama.querySelector(".bs-kaplama-panel");
+        if (!metin) {
+          // Panel yoksa kaplama tamamen kapanır; karartma ve tıklama
+          // kilidi bilgi balonunun ömrüne bağlıdır, patronun ömrüne değil.
+          if (!panelVar) {
+            hud.baglar.kaplama.classList.remove("bs-kaplama-acik",
+                                                "bs-kaplama-saydam");
+          }
+          return;
+        }
         var kutu = document.createElement("div");
         kutu.className = "bs-ogretici";
         kutu.setAttribute("role", "note");
         kutu.innerHTML = '<i class="fa fa-graduation-cap" aria-hidden="true"></i> ' +
-          kacis(metin);
+          '<span class="bs-ogretici-metin">' + kacis(metin) + '</span>' +
+          '<button type="button" class="bs-ogretici-kapat" ' +
+                  'data-bs-komut="ogretici-kapat" aria-label="Bilgiyi kapat">' +
+            '<i class="fa fa-xmark" aria-hidden="true"></i></button>';
         hud.baglar.kaplama.appendChild(kutu);
         hud.baglar.kaplama.classList.add("bs-kaplama-acik");
+        // Yalnızca bilgi balonu varken sahne kararmaz, tıklamalar engellenmez.
+        hud.baglar.kaplama.classList.toggle("bs-kaplama-saydam", !panelVar);
       };
 
       hud.hizGoster = function(hiz) {
@@ -357,7 +373,9 @@
         hud.baglar.alt.innerHTML = "";
         hud.baglar.yan.innerHTML = "";
         hud.baglar.kaplama.innerHTML = "";
-        hud.baglar.kaplama.classList.remove("bs-kaplama-acik");
+        hud.baglar.kaplama.classList.remove("bs-kaplama-acik",
+                                            "bs-geri-sayim-kaplama",
+                                            "bs-kaplama-saydam");
       };
 
       return hud;
