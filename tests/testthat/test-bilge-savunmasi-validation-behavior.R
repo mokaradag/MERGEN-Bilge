@@ -112,7 +112,7 @@ test_that("bs_dalga_puan_siniri öldürme sayısını haritanın üst sınırın
   expect_identical(bs_dalga_puan_siniri(harita, 1L, olduruldu = 999L),
                    bs_dalga_puan_siniri(harita, 1L))
   expect_identical(bs_dalga_puan_siniri(harita, 8L, olduruldu = 999L),
-                   12L * BS_DUSMAN_PUAN_UST_SINIRI + BS_PATRON_PUAN_UST_SINIRI)
+                   11L * BS_DUSMAN_PUAN_UST_SINIRI + BS_PATRON_PUAN_UST_SINIRI)
 
   # Negatif/sıfır öldürme puan üretmez (patron bonusu dahil).
   expect_identical(bs_dalga_puan_siniri(harita, 8L, olduruldu = 0L), 0L)
@@ -123,17 +123,21 @@ test_that("bs_dalga_puan_siniri öldürme sayısını haritanın üst sınırın
 
 
 
-test_that("patron bonusu yalnızca patronun öldüğü kanıtlanınca verilir", {
+test_that("patron dalgası kısmi patron öldürmelerini güvenli üst sınırla korur", {
   harita <- bs_harita_katalogu()$baglam_kapisi
 
-  # 8. dalga 11 normal + 1 patron içerir; yalnızca bir öldürme, patronun
-  # öldüğünü kanıtlamaz ve patron bonusunu almamalıdır.
+  # 8. dalga 11 normal + 1 patron içerir. Özet yalnızca toplam öldürme
+  # sayısı taşıdığı için tek öldürme patron olabilir; üst sınır bunu korumalı.
   expect_identical(bs_dalga_puan_siniri(harita, 8L, olduruldu = 1L),
-                   1L * BS_DUSMAN_PUAN_UST_SINIRI)
+                   BS_PATRON_PUAN_UST_SINIRI)
 
-  # Tüm dalga temizlenince patron bonusu verilir.
+  # Bir patron + bir normal düşman olabilecek en yüksek meşru dağılımdır.
+  expect_identical(bs_dalga_puan_siniri(harita, 8L, olduruldu = 2L),
+                   BS_PATRON_PUAN_UST_SINIRI + BS_DUSMAN_PUAN_UST_SINIRI)
+
+  # Tüm dalga temizlenince 11 normal + 1 patron öldürme üst sınırı uygulanır.
   expect_identical(bs_dalga_puan_siniri(harita, 8L, olduruldu = 12L),
-                   12L * BS_DUSMAN_PUAN_UST_SINIRI + BS_PATRON_PUAN_UST_SINIRI)
+                   11L * BS_DUSMAN_PUAN_UST_SINIRI + BS_PATRON_PUAN_UST_SINIRI)
 })
 
 test_that("bs_dalga_puan_siniri sunucu harita planı ve değiştirici sınırını kullanır", {
@@ -142,7 +146,7 @@ test_that("bs_dalga_puan_siniri sunucu harita planı ve değiştirici sınırın
   # olduruldu verilmeyen eski çağrılar deterministik plan davranışını korur.
   expect_identical(bs_dalga_puan_siniri(harita, 1L), 6L * BS_DUSMAN_PUAN_UST_SINIRI)
   expect_identical(bs_dalga_puan_siniri(harita, 8L),
-                   12L * BS_DUSMAN_PUAN_UST_SINIRI + BS_PATRON_PUAN_UST_SINIRI)
+                   11L * BS_DUSMAN_PUAN_UST_SINIRI + BS_PATRON_PUAN_UST_SINIRI)
   expect_identical(bs_dalga_puan_siniri(harita, 7L, degistirici = "dirya_dalgalar"),
                    18L * BS_DUSMAN_PUAN_UST_SINIRI)
 })

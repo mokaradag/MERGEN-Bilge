@@ -119,15 +119,19 @@ bs_dalga_puan_siniri <- function(harita_kaydi, dalga_no, olduruldu = NULL,
     }
   }
 
-  taban <- etkin * BS_DUSMAN_PUAN_UST_SINIRI
-  patron_bonus_hakki <- if (is.null(olduruldu)) {
-    TRUE
+  if (patron_adet > 0L && bs_patron_dalgasi_mi(dalga_no, harita_kaydi$dalga_sayisi)) {
+    # Özet yalnızca toplam öldürme sayısını taşır; hangi öldürmenin patron
+    # olduğunu kanıtlayamayız. Bu yüzden üst sınır, aynı `olduruldu` sayısı
+    # için mümkün olan EN YÜKSEK meşru dağılımı kabul eder: önce patron
+    # öldürmeleri, sonra normal düşmanlar. Böylece tek patron öldürüp dalgayı
+    # temizlemeyen meşru koşular kırpılmaz; yine de öldürme sayısı kadar puan
+    # üst sınırı korunur.
+    patron_etkin <- min(etkin, patron_adet)
+    normal_etkin <- max(0L, etkin - patron_etkin)
+    taban <- normal_etkin * BS_DUSMAN_PUAN_UST_SINIRI +
+      patron_etkin * BS_PATRON_PUAN_UST_SINIRI
   } else {
-    etkin >= adet
-  }
-  if (isTRUE(patron_bonus_hakki) &&
-      bs_patron_dalgasi_mi(dalga_no, harita_kaydi$dalga_sayisi)) {
-    taban <- taban + BS_PATRON_PUAN_UST_SINIRI
+    taban <- etkin * BS_DUSMAN_PUAN_UST_SINIRI
   }
   as.integer(taban)
 }
