@@ -574,3 +574,54 @@ testthat::test_that(
     )
   }
 )
+
+testthat::test_that(
+  paste0("kuyruklanmış rehberlik STT modalı açılınca da düşer (Codex PR #636 ",
+         "P2: STT sesli giriş kesmesi bekleyen rehberliği temizlemeli)"),
+  {
+    speech_tests_reset_caches()
+    root <- withr::local_tempdir()
+    speech_tests_make_tree(root)
+    m <- mergen_speech_manifest_build(root)$manifest
+    mergen_speech_manifest_write(m, mergen_speech_manifest_path(root))
+    withr::local_envvar(MERGEN_SPEECH_ROOT = root,
+                        VOXCPM2_WARMUP_ENABLED = "false")
+    withr::defer(speech_tests_reset_caches())
+
+    env <- .ai_expert_pg_env()
+    spoke <- .pg_spoke(speaking = TRUE)
+    ai_expert <- .ai_expert_stub(spoke)
+
+    testthat::with_mocked_bindings(
+      {
+        shiny::testServer(
+          .ai_expert_wrapper(env = env, ai_expert = ai_expert),
+          {
+            session$setInputs(tabs = "chat")
+            mergen_speech_begin(session, "idle")
+
+            # history rehberliği kuyruğa girer (boşta konuşma sürüyor)...
+            session$setInputs(tabs = "history")
+            testthat::expect_identical(spoke$n, 0L)
+
+            # ...kullanıcı STT (sesli giriş) modalını açar: aktif konuşma
+            # durdurulur VE kuyruklanmış rehberlik de geçersiz kılınmalıdır.
+            session$setInputs(stt_modal_active = TRUE)
+            testthat::expect_identical(spoke$stops, 1L)
+
+            # Modal kapanır; ardından doğal bitiş yankısı gelir (örn. gecikmiş
+            # bir zamanlayıcı tetiklemesi). Bayat "history" rehberliği ASLA
+            # oynatılmamalıdır (regresyondan önce spoke$n burada 1 olurdu).
+            session$setInputs(stt_modal_active = FALSE)
+            mergen_speech_end(session)
+            spoke$speech_ended_cb()
+            testthat::expect_identical(spoke$n, 0L)
+          }
+        )
+      },
+      delay = function(ms, expr) invisible(NULL),
+      runjs = function(...) invisible(NULL),
+      .package = "shinyjs"
+    )
+  }
+)

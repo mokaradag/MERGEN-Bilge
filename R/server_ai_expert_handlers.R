@@ -506,9 +506,16 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
     ai_expert$set_user_active(stt_active)
 
-    if (stt_active && isTRUE(ai_expert$is_speaking())) {
-      cat("[AI_EXPERT] STT modalı açıldı, AI konuşması durduruluyor.\n")
-      ai_expert$stop_speaking()
+    if (stt_active) {
+      # Kullanıcı sesli giriş başlattı; bu da mesaj gönderimi gibi bekleyen
+      # otomatik rehberliği geçersiz kılar. Aksi halde STT kapandıktan sonra
+      # trigger_idle_chat() zamanlayıcısı bu bayat rehberliği ateşleyebilir
+      # (Codex PR #636 P2 incelemesi).
+      pending_guidance_clear()
+      if (isTRUE(ai_expert$is_speaking())) {
+        cat("[AI_EXPERT] STT modalı açıldı, AI konuşması durduruluyor.\n")
+        ai_expert$stop_speaking()
+      }
     }
 
     if (!stt_active) {

@@ -242,7 +242,7 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # eşzamanlılık/sıralı teslim/başlangıç tamponu ile
   # R/helpers_ai_expert_chunk_pipeline.R'ye ayrıldı; modülde yalnızca ince
   # uyarlayıcı + doğal bitiş kancası kaldı (667 satır, 23 fonksiyon).
-  assert_current_budget("R/module_ai_expert.R", 686L, 23L)
+  assert_current_budget("R/module_ai_expert.R", 694L, 23L)
   # AI Uzman yardımcı dosyası, worker-safe DB okuyucuları
   # helpers_ai_expert_user_data.R'ye ayrıldıktan sonra 24-fonksiyon küresel
   # tavanından indi (680/24 -> 507/13). Bütçe geri tırmanışı kilitler.

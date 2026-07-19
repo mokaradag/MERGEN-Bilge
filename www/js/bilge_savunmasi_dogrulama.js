@@ -62,10 +62,18 @@
   BS.olaylar.ekle("sunucu-kosu-sonuc", function(sonuc) {
     var kosu = BS.uygulama && BS.uygulama.kosu;
     if (!kosu || !sonuc) return;
-    // Bayat yanıt koruması: yanıt koşu kimliği taşıyorsa aktif koşuyla
-    // eşleşmelidir; eski bir koşunun geç yanıtı yeni koşuyu ezemez.
-    if (sonuc.kosu_id != null && kosu.kosuId != null &&
-        Number(sonuc.kosu_id) !== Number(kosu.kosuId)) return;
+    // Bayat yanıt koruması: aktif koşunun bilinen bir kimliği varsa (gonder()
+    // yalnızca kosu.kosuId doluyken çağrılır), yanıt bu kimliği taşımalıdır.
+    // Sunucu, istek biçimi/kimlik doğrulaması erken başarısız olduğunda
+    // kosu_id İÇERMEYEN bir yanıt da gönderebilir; bu durumda eşleşme
+    // doğrulanamaz, bu yüzden kimliksiz yanıt da bayat/yanlış koşuya ait
+    // sayılıp reddedilir. Aksi halde menüye dönüp yeni bir koşu başlatan
+    // kullanıcı, eski koşunun geç kimliksiz yanıtını yeni koşu için görebilir
+    // (Codex PR #636 P2 incelemesi).
+    if (kosu.kosuId != null) {
+      if (sonuc.kosu_id == null) return;
+      if (Number(sonuc.kosu_id) !== Number(kosu.kosuId)) return;
+    }
     // Yinelenen/geç yanıt: sonuç zaten işlendiyse yeniden uygulanmaz.
     if (kosu.sonSonuc) return;
     zamanlayiciDurdur(kosu);

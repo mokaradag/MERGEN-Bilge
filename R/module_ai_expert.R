@@ -362,9 +362,17 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         pipeline_policy <- ai_expert_chunk_pipeline_policy()
 
         queue_remaining_chunks <- function(all_chunks, start_index = 2L) {
-          if (!chunk_dispatch$claim_synthesis() ||
-              start_index > length(all_chunks)) {
+          if (start_index > length(all_chunks)) {
             baslangic_kapisi$tampon_hazir()
+            return(invisible(NULL))
+          }
+          if (!chunk_dispatch$claim_synthesis()) {
+            # Kalan parça sentezi zaten başka bir çağrı tarafından üstlenildi
+            # (ör. ön ısıtılan ilk parça başarısız olup synthesize_first_chunk_now()
+            # yeniden dener). O hattın kendi on_buffer_settled geri çağrısı
+            # tamponu zamanında açacaktır; burada erken açmak henüz
+            # sonuçlanmamış tamponla oynatmayı başlatıp 1. parça sonrası
+            # sessizliği geri getirir (Codex PR #636 P2 incelemesi).
             return(invisible(NULL))
           }
           ai_expert_kalan_parcalari_kuyrukla(
