@@ -130,6 +130,7 @@ test_that("UI varlık manifesti dosyaları, sırası ve çevrimdışı sözleşm
       "js/bilge_savunmasi_kopru.js",
       "js/bilge_savunmasi_menu.js",
       "js/bilge_savunmasi_sonuc.js",
+      "js/bilge_savunmasi_dogrulama.js",
       "js/bilge_savunmasi_uygulama.js"
     )
   )

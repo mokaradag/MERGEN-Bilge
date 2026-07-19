@@ -491,12 +491,12 @@ settingsInit <- function(session, parent_session = NULL) {
   }
 
   observeEvent(kisisel$save_trigger(), {
-    save_all_settings()
-  }, ignoreInit = TRUE)
+    mergen_perf_time("settings_save_kisisel", save_all_settings())
+  }, ignoreInit = TRUE, priority = 10)
 
   observeEvent(yapilandirma$save_trigger(), {
-    save_all_settings()
-  }, ignoreInit = TRUE)
+    mergen_perf_time("settings_save_yapilandirma", save_all_settings())
+  }, ignoreInit = TRUE, priority = 10)
 
   # ---- Sıfırla (her iki alt sekmeden tetiklenebilir) ----
   reset_all_settings <- function() {

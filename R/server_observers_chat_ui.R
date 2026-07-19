@@ -114,7 +114,9 @@ chatUIObserversInit <- function(input, session, values, start_new_chat,
     # kaldırıldı. start_new_chat() karşılamayı zaten replace_existing = TRUE ile
     # tam render eder; 300 ms sonra aynı ekranı ÜÇÜNCÜ kez yıkıp yeniden kurmak
     # görünür bir gecikme/titreme yaratıyordu ve hiçbir ek durum taşımıyordu.
-  }, ignoreInit = TRUE)
+    # priority: kullanıcı eylemi, aynı flush'taki boşta konuşma/zamanlayıcı
+    # gözlemcilerinin önüne geçer (algılanan tepki süresi).
+  }, ignoreInit = TRUE, priority = 10)
   
   observeEvent(input$followup_question_clicked, {
     req(is.list(input$followup_question_clicked))
