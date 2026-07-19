@@ -127,7 +127,7 @@
   support_admin_health_helpers = list(first = "R/helpers_destek_database.R", last = "R/helpers_health_checks.R", n = 7L),
   # Bilinçli güncelleme: R/helpers_ai_expert_handlers_support.R (AI Uzman handler
   # saf karar yardımcıları) bölüm sonuna eklendi; 3 -> 4 dosya.
-  ai_expert_helpers = list(first = "R/helpers_ai_expert_user_data.R", last = "R/helpers_ai_expert_handlers_support.R", n = 4L),
+  ai_expert_helpers = list(first = "R/helpers_ai_expert_user_data.R", last = "R/helpers_ai_expert_handlers_support.R", n = 5L),
   # Bilinçli güncelleme: hibrit VoxCPM2 konuşma katmanı (speech_assets) yeni
   # bölüm olarak ai_expert_helpers'tan sonra eklendi (8 dosya; yapı tanımı +
   # yol kurucuları fonksiyon-yoğunluk bölmesiyle iki dosyadır).
@@ -414,7 +414,11 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # R/server_speech_assets_runtime.R ve R/server_speech_pcm_stream.R eklendi.
   # 343L -> 350L bilinçli güncelleme: Bilge Savunması bölümü (7 dosya:
   # config + doğrulama + MB_Game_* DB katmanı + UI/sunucu modülü) eklendi.
-  expect_equal(length(runtime), 350L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 350L -> 351L bilinçli güncelleme: AI Uzman TTS parça hattı (sınırlı
+  # eşzamanlılık + sıralı teslim + başlangıç tamponu kapısı)
+  # R/helpers_ai_expert_chunk_pipeline.R olarak ai_expert_helpers bölümüne
+  # (chunking'den sonra) eklendi.
+  expect_equal(length(runtime), 351L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

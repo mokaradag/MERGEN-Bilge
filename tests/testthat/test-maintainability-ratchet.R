@@ -238,7 +238,11 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/helpers_ai_expert_handlers_support.R", 180L, 8L)
   assert_current_budget("R/module_file_manager.R", 560L, 10L)
   assert_current_budget("R/helpers_file_manager_upload_runtime.R", 140L, 3L)
-  assert_current_budget("R/module_ai_expert.R", 686L, 22L)
+  # 686L/22L -> 686L/23L bilinçli güncelleme: TTS parça hattı sınırlı
+  # eşzamanlılık/sıralı teslim/başlangıç tamponu ile
+  # R/helpers_ai_expert_chunk_pipeline.R'ye ayrıldı; modülde yalnızca ince
+  # uyarlayıcı + doğal bitiş kancası kaldı (667 satır, 23 fonksiyon).
+  assert_current_budget("R/module_ai_expert.R", 686L, 23L)
   # AI Uzman yardımcı dosyası, worker-safe DB okuyucuları
   # helpers_ai_expert_user_data.R'ye ayrıldıktan sonra 24-fonksiyon küresel
   # tavanından indi (680/24 -> 507/13). Bütçe geri tırmanışı kilitler.

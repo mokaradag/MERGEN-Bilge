@@ -17,6 +17,13 @@ if (requireNamespace("shiny", quietly = TRUE)) {
 speech_tests_source_chain()
 
 .aiexp_env <- new.env(parent = globalenv())
+# Modül, TTS parça hattı yardımcılarına (chunk pipeline) dayanır; izole
+# testte manifest sırasını yansıtarak ÖNCE helper zinciri yüklenir.
+source(
+  file.path(resolve_repo_root_for_tests(), "R", "helpers_ai_expert_chunk_pipeline.R"),
+  encoding = "UTF-8",
+  local = .aiexp_env
+)
 source(
   file.path(resolve_repo_root_for_tests(), "R", "module_ai_expert.R"),
   encoding = "UTF-8",

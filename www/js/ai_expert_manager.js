@@ -6,6 +6,17 @@
 //            Durdurma butonu doğrudan çalışır.
 //            Yazı tipi boyutu ayarlardan alınır.
 
+
+// Medya tanılama logu: üretimde sessiz; localStorage.MERGEN_DEBUG_MEDIA = "1"
+// ile açılır. Uyarı/hata logları (console.warn/error) her zaman açık kalır.
+var mergenMediaDbg = window.__mergenMediaDbg = window.__mergenMediaDbg || function() {
+  try {
+    if (window.localStorage && localStorage.getItem('MERGEN_DEBUG_MEDIA') === '1' && window.console) {
+      console.log.apply(console, arguments);
+    }
+  } catch (e) {}
+};
+
 const AIExpertManager = {
 
   // --- Durum değişkenleri ---
@@ -127,7 +138,7 @@ const AIExpertManager = {
     // Sesi oynat (altyazı yazımı 'playing' olayında senkron başlar)
     this._playAudioInternal(data.audioSrc, data.audioDuration);
 
-    console.log('[AI_EXPERT] Altyazı + ses başlatıldı (oynatma bekleniyor):', this.state.currentText.substring(0, 50) + '...');
+    mergenMediaDbg('[AI_EXPERT] Altyazı + ses başlatıldı (oynatma bekleniyor):', this.state.currentText.substring(0, 50) + '...');
   },
 
   // --- GERÇEK OYNATMA BAŞLADI (audio 'playing' olayı) ---
@@ -226,7 +237,7 @@ const AIExpertManager = {
     // Yazma animasyonunu başlat
     this._startTyping();
 
-    console.log('[AI_EXPERT] Altyazı başlatıldı (sessiz):', this.state.currentText.substring(0, 50) + '...');
+    mergenMediaDbg('[AI_EXPERT] Altyazı başlatıldı (sessiz):', this.state.currentText.substring(0, 50) + '...');
   },
 
   // --- YAZI TİPİ BOYUTU UYGULAMA ---
@@ -399,10 +410,32 @@ const AIExpertManager = {
       return a.index - b.index;
     });
 
-    console.log('[AI_EXPERT] Parça kuyruğa alındı:', chunkIndex, 'Beklenen:', this.state.nextChunkIndex);
+    mergenMediaDbg('[AI_EXPERT] Parça kuyruğa alındı:', chunkIndex, 'Beklenen:', this.state.nextChunkIndex);
 
     if (!this.state.audioElement) {
       this._tryPlayNextQueuedChunk();
+    }
+  },
+
+  // --- DİZİ TAMAMLANDI: gerçek teslim sayısını uygula ---
+  // Başarısız parçalar diziyi kısaltmışsa sunucu gerçek sayıyı bildirir;
+  // bekleyen parça kalmadıysa konuşma doğal biçimde sonlandırılır.
+  sequenceComplete: function(data) {
+    if (!this.state.isSpeaking) return;
+
+    var delivered = Math.max(1, Number((data && data.deliveredChunks) || 1));
+    if (delivered < this.state.totalChunks) {
+      this.state.totalChunks = delivered;
+    }
+
+    // Beklenen indeks artık teslim edilmeyecekse bekleme döngüsünü kapat.
+    if (this.state.nextChunkIndex >= this.state.totalChunks &&
+        !this.state.audioElement && this.state.queuedChunks.length === 0) {
+      if (this.state.chunkWaitTimer) {
+        clearTimeout(this.state.chunkWaitTimer);
+        this.state.chunkWaitTimer = null;
+      }
+      this._scheduleHide(800);
     }
   },
 
@@ -437,7 +470,7 @@ const AIExpertManager = {
       this.state.chunkWaitTimer = null;
     }
 
-    console.log('[AI_EXPERT] Sıradaki ses parçası oynatılıyor:', item.index);
+    mergenMediaDbg('[AI_EXPERT] Sıradaki ses parçası oynatılıyor:', item.index);
 
     // Yazma animasyonu parçanın 'playing' olayında başlar; müzik kısma dizi
     // boyunca kesintisiz sürer (parçalar arasında unduck/duck yapılmaz).
@@ -456,7 +489,7 @@ const AIExpertManager = {
       this.state.chunkWaitTimer = null;
     }
 
-    console.log('[AI_EXPERT] Sonraki parça bekleniyor. Beklenen indeks:', this.state.nextChunkIndex);
+    mergenMediaDbg('[AI_EXPERT] Sonraki parça bekleniyor. Beklenen indeks:', this.state.nextChunkIndex);
 
     var poll = function() {
       if (!self.state.isSpeaking) return;
@@ -553,7 +586,7 @@ const AIExpertManager = {
       this.state.queuedChunks.length > 0 ||
       this.state.nextChunkIndex < this.state.totalChunks
     )) {
-      console.log('[AI_EXPERT] Aktif parça akışı devam ettiği için gizleme ertelendi.');
+      mergenMediaDbg('[AI_EXPERT] Aktif parça akışı devam ettiği için gizleme ertelendi.');
       return;
     }
 
@@ -616,7 +649,7 @@ const AIExpertManager = {
 
   // --- DURDURMA (Kullanıcı butona tıkladığında veya R'dan sinyal geldiğinde) ---
   stopSubtitle: function(data) {
-    console.log('[AI_EXPERT] Konuşma durduruluyor...');
+    mergenMediaDbg('[AI_EXPERT] Konuşma durduruluyor...');
     this.state.speechToken += 1;
     var stopToken = this.state.speechToken;
     var self = this;
@@ -690,7 +723,7 @@ const AIExpertManager = {
         { priority: 'event' });
     }
 
-    console.log('[AI_EXPERT] Konuşma durduruldu');
+    mergenMediaDbg('[AI_EXPERT] Konuşma durduruldu');
   },
 
   // --- ZORLA TEMİZLEME (yeni konuşma başlamadan önce) ---

@@ -90,6 +90,10 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
     # Aktif bekleme süresi (dinamik olarak değişir)
     active_cooldown_seconds <- reactiveVal(15)
 
+    # Doğal konuşma bitişi kancası (tek slot; sahibi handlers katmanıdır)
+    speech_ended_cb <- new.env(parent = emptyenv())
+    speech_ended_cb$fn <- NULL
+
     # Yasaklı sayfalar (bu sayfalarda otomatik AI konuşması yapılmaz).
     # Tek yetkili politika kaynağı: R/config_speech_assets.R.
     MUTED_PAGES <- mergen_speech_idle_muted_pages()
@@ -351,57 +355,24 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
           length(chunks), nchar(text)
         ))
 
+        # Kalan parçalar: sınırlı eşzamanlılık + sıralı teslim + boşalınca
+        # gerçek teslim sayısını bildirme (istemci eksik parçada asılı kalmaz).
+        # Hat kurulumu R/helpers_ai_expert_chunk_pipeline.R içindedir.
+        pipeline_policy <- ai_expert_chunk_pipeline_policy()
+
         queue_remaining_chunks <- function(all_chunks, start_index = 2L) {
-          total_chunks <- length(all_chunks)
-          if (start_index > total_chunks ||
-              !chunk_dispatch$claim_synthesis()) return(invisible(NULL))
-
-          # Kalan parçaları seri değil, eşzamanlı başlat.
-          # Böylece son parça önceki parçaların sentezini bekleyip gecikmez.
-          for (idx in seq.int(start_index, total_chunks)) {
-            local({
-              current_idx <- idx
-              current_text <- all_chunks[[current_idx]]
-
-              cat(sprintf(
-                "[AI_EXPERT] TTS parça %d/%d sentezleniyor (%d karakter)...\n",
-                current_idx, total_chunks, nchar(current_text)
-              ))
-
-              tts_processor$synthesize_speech(current_text, persona_id = char_id) %...>%
-                (function(res) {
-                  if (!chunk_dispatch$is_current()) return()
-
-                  if (isTRUE(res$success) && nzchar(res$audio_src)) {
-                    cat(sprintf(
-                      "[AI_EXPERT] TTS parça %d/%d hazır (Süre: %.2fs)\n",
-                      current_idx, total_chunks, res$duration
-                    ))
-
-                    chunk_dispatch$queue(list(
-                      index         = current_idx - 1L,
-                      text          = current_text,
-                      audioSrc      = res$audio_src,
-                      audioDuration = res$duration,
-                      nsPrefix      = ns(""),
-                      speechToken   = decision$token
-                    ))
-                  } else {
-                    cat(sprintf(
-                      "[AI_EXPERT] TTS parça %d/%d başarısız.\n",
-                      current_idx, total_chunks
-                    ))
-                  }
-                }) %...!%
-                (function(e) {
-                  cat(sprintf(
-                    "[AI_EXPERT] TTS parça %d/%d hatası: %s\n",
-                    current_idx, total_chunks, conditionMessage(e)
-                  ))
-                })
-            })
+          if (!chunk_dispatch$claim_synthesis() ||
+              start_index > length(all_chunks)) {
+            baslangic_kapisi$tampon_hazir()
+            return(invisible(NULL))
           }
-
+          ai_expert_kalan_parcalari_kuyrukla(
+            all_chunks = all_chunks, baslangic = start_index,
+            tts_processor = tts_processor, char_id = char_id,
+            chunk_dispatch = chunk_dispatch, session = session,
+            ns_prefix = ns(""), speech_token = decision$token,
+            kapi = baslangic_kapisi, policy = pipeline_policy
+          )
           invisible(NULL)
         }
 
@@ -456,6 +427,13 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
           invisible(NULL)
         }
 
+        # Başlangıç tamponu kapısı: çok parçalı yanıtta oynatma, 2. parça
+        # sonuçlanana (veya süre sınırına) kadar başlamaz; tek parçada anında.
+        baslangic_kapisi <- ai_expert_baslangic_kapisi(
+          dispatch_fn = dispatch_audio_start,
+          deadline_secs = pipeline_policy$baslangic_tampon_suresi_sn
+        )
+
         synthesize_first_chunk_now <- function() {
           first_chunk_promise <- tts_processor$synthesize_speech(chunks[[1]], persona_id = char_id)
           queue_remaining_chunks(chunks, 2L)
@@ -470,12 +448,11 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
                   first_res$duration
                 ))
 
-                dispatch_audio_start(
-                  first_chunk_text = chunks[[1]],
-                  all_chunks = chunks,
+                baslangic_kapisi$ilk_hazir(list(
+                  text = chunks[[1]], chunks = chunks,
                   audio_src = first_res$audio_src,
-                  audio_duration = first_res$duration
-                )
+                  duration = first_res$duration
+                ))
               } else {
                 dispatch_subtitle_fallback()
               }
@@ -507,12 +484,12 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
 
           queue_remaining_chunks(resolved_chunks, 2L)
 
-          dispatch_audio_start(
-            first_chunk_text = prewarmed$first_chunk_text %||% resolved_chunks[[1]],
-            all_chunks = resolved_chunks,
+          baslangic_kapisi$ilk_hazir(list(
+            text = prewarmed$first_chunk_text %||% resolved_chunks[[1]],
+            chunks = resolved_chunks,
             audio_src = prewarmed$audio_src,
-            audio_duration = prewarmed$duration
-          )
+            duration = prewarmed$duration
+          ))
 
           prewarmed_tts(NULL)
 
@@ -543,12 +520,12 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
                   ready$duration
                 ))
 
-                dispatch_audio_start(
-                  first_chunk_text = ready$first_chunk_text %||% resolved_chunks[[1]],
-                  all_chunks = resolved_chunks,
+                baslangic_kapisi$ilk_hazir(list(
+                  text = ready$first_chunk_text %||% resolved_chunks[[1]],
+                  chunks = resolved_chunks,
                   audio_src = ready$audio_src,
-                  audio_duration = ready$duration
-                )
+                  duration = ready$duration
+                ))
 
                 prewarmed_tts(NULL)
               } else {
@@ -645,6 +622,9 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
         # Bekleme süresini başlat (aktif senaryo bekleme süresiyle)
         cd <- isolate(active_cooldown_seconds()) %||% COOLDOWN_AFTER_PAGE
         start_cooldown(cd)
+        # Doğal bitiş kancası: kuyruğa alınmış sayfa rehberliği gibi bekleyen
+        # işler konuşma bittiği anda deterministik olarak devam edebilsin.
+        ai_expert_konusma_bitti_bildir(speech_ended_cb)
       }
     }, ignoreInit = TRUE)
 
@@ -676,6 +656,7 @@ aiExpertServer <- function(id, settings_data, tts_processor, tts_visualizer) {
       },
       set_user_active   = function(active) user_is_active(active),
       set_tts_vocalizing = function(active) tts_vocalizing(active),
+      set_speech_ended_callback = function(cb) speech_ended_cb$fn <- cb,
       # Bekleme süreleri dış erişim için
       COOLDOWN_GREETING = COOLDOWN_AFTER_GREETING,
       COOLDOWN_PAGE     = COOLDOWN_AFTER_PAGE,
