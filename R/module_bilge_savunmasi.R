@@ -122,12 +122,8 @@
   }
 
   if (identical(mod, "plan")) {
-    # "Devam Et" isteği zaten var olan bir kalıcı koşunun kosu_id/istemci_
-    # jetonunu taşır (bkz. www/js/bilge_savunmasi_uygulama.js kosuIstegiGonder
-    # düzleştirmesi). Böyle bir devamda harita/zorluk/tohum/plan_id, planın
-    # HÂLÂ var olup olmadığına bakılmaksızın doğrudan aktif koşu satırından
-    # çözülmelidir; aksi halde plan sahibi planı sildiğinde, hâlâ etkin ve
-    # kontrol noktalı bir devam denemesi plan_bulunamadi ile reddedilir.
+    # Devam isteği plan silinse bile aktif koşu satırından çözülür; koruma
+    # plan_bulunamadi reddinden ÖNCE gelir (sunucu koruması sözleşmesi).
     istek_kosu_id <- suppressWarnings(as.integer(istek$kosu_id))
     istek_jeton <- .bs_metin_temizle(istek$istemci_jetonu, 64L)
     if (!is.null(uid) && !is.na(istek_kosu_id) && nzchar(istek_jeton)) {
@@ -371,6 +367,8 @@ bilgeSavunmasiServer <- function(id, current_user_id) {
         ozet = istek$ozet
       )
       sonuc <- .bs_srv_bitirme_sonrasi(uid, kosu_id, istek, sonuc)
+      # Bayat yanıt koruması: istemci, sonucu aktif koşu kimliğiyle eşleştirir.
+      sonuc$kosu_id <- kosu_id
       gonder("bs-kosu-sonuc", sonuc)
     })
 

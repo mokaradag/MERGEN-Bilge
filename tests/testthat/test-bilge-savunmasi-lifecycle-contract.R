@@ -30,7 +30,8 @@
   "bilge_savunmasi_efekt.js", "bilge_savunmasi_girdi.js",
   "bilge_savunmasi_hud.js", "bilge_savunmasi_ses.js",
   "bilge_savunmasi_kopru.js", "bilge_savunmasi_menu.js",
-  "bilge_savunmasi_sonuc.js", "bilge_savunmasi_uygulama.js"
+  "bilge_savunmasi_sonuc.js", "bilge_savunmasi_dogrulama.js",
+  "bilge_savunmasi_uygulama.js"
 )
 
 test_that("eski Bilge Yolaç mini oyunu tamamen emekli edildi", {
@@ -442,4 +443,78 @@ test_that("sekme aktif değilken gelen koşu başlatma yanıtı oyun kaynağı o
   expect_true(koruma_konumu > 0 && cizim_konumu > 0 && girdi_konumu > 0)
   expect_true(koruma_konumu < cizim_konumu)
   expect_true(koruma_konumu < girdi_konumu)
+})
+
+test_that("sonuç doğrulaması sınırlı zaman aşımı, tekrar deneme ve bayat yanıt korumasıyla çalışır", {
+  # Regresyon: "Zafer! Sonuç sunucuda doğrulanıyor..." kaplaması, sunucu
+  # yanıtı hiç gelmezse süresiz asılı kalıyordu. Doğrulama artık sınırlı bir
+  # zamanlayıcıyla bekler, zaman aşımında idempotent "Tekrar Dene" sunar,
+  # geç/yinelenen yanıtları yok sayar ve koşu kimliği eşleşmeyen bayat
+  # yanıtların yeni koşuyu ezmesini engeller.
+  dogrulama <- .bs_lc_oku("www", "js", "bilge_savunmasi_dogrulama.js")
+  uygulama <- .bs_lc_oku("www", "js", "bilge_savunmasi_uygulama.js")
+
+  expect_true(.bs_lc_iceriyor(dogrulama, "ZAMAN_ASIMI_MS"))
+  expect_true(.bs_lc_iceriyor(dogrulama, 'data-bs-komut="dogrulama-tekrar"'))
+  expect_true(.bs_lc_iceriyor(uygulama, 'komut === "dogrulama-tekrar"'))
+  expect_true(.bs_lc_iceriyor(uygulama, "BS.dogrulama.gonder(kosu)"))
+
+  # Zaman aşımı geri çağrısı koşu değişimini ve geç yanıtı denetler.
+  zaman_baslangic <- regexpr("kosu.dogrulamaZamanlayici = setTimeout",
+                             dogrulama, fixed = TRUE)
+  expect_true(zaman_baslangic > 0)
+  zaman_govde <- substr(dogrulama, zaman_baslangic, zaman_baslangic + 900L)
+  expect_true(.bs_lc_iceriyor(zaman_govde, "BS.uygulama.kosu !== kosu"))
+  expect_true(.bs_lc_iceriyor(zaman_govde, "kosu.sonSonuc"))
+
+  # Sonuç işleyicisi: bayat kimlik + yinelenen yanıt korumaları, zamanlayıcı
+  # temizliğinden ve gösterimden ÖNCE gelir.
+  sonuc_baslangic <- regexpr('BS.olaylar.ekle("sunucu-kosu-sonuc"',
+                             dogrulama, fixed = TRUE)
+  expect_true(sonuc_baslangic > 0)
+  sonuc_govde <- substr(dogrulama, sonuc_baslangic, sonuc_baslangic + 900L)
+  expect_true(.bs_lc_iceriyor(sonuc_govde, "sonuc.kosu_id != null"))
+  expect_true(.bs_lc_iceriyor(sonuc_govde, "if (kosu.sonSonuc) return;"))
+  expect_true(.bs_lc_iceriyor(sonuc_govde, "zamanlayiciDurdur(kosu)"))
+  kimlik_konumu <- regexpr("sonuc.kosu_id != null", sonuc_govde, fixed = TRUE)
+  goster_konumu <- regexpr("BS.sonuc.goster", sonuc_govde, fixed = TRUE)
+  expect_true(kimlik_konumu > 0 && goster_konumu > 0)
+  expect_true(kimlik_konumu < goster_konumu)
+
+  # Koşu yok edilirken (yeniden başlatma/menüye dönüş/gezinme) doğrulama
+  # zamanlayıcısı da temizlenir.
+  yoket_baslangic <- regexpr("function kosuYokEt()", uygulama, fixed = TRUE)
+  expect_true(yoket_baslangic > 0)
+  yoket_govde <- substr(uygulama, yoket_baslangic, yoket_baslangic + 600L)
+  expect_true(.bs_lc_iceriyor(yoket_govde, "BS.dogrulama.zamanlayiciDurdur(kosu)"))
+
+  # Sunucu, sonuca koşu kimliğini ekler (istemci bayat yanıt eşleştirmesi).
+  server_mod <- .bs_lc_oku("R", "module_bilge_savunmasi.R")
+  expect_true(.bs_lc_iceriyor(server_mod, "sonuc$kosu_id <- kosu_id"))
+})
+
+test_that("bilgi balonu (öğretici/patron) sahneyi karartmaz ve kapanınca kaplamayı serbest bırakır", {
+  # Regresyon: patron bilgi balonu bs-kaplama-acik sınıfını ekliyor, balon
+  # kaldırılınca sınıf kalıyordu; sahne patron ölene kadar karartılmış ve
+  # tıklamaya kapalı kalıyordu. Balon artık saydam kaplama modunda gösterilir
+  # ve panel yokken kapanışta kaplamayı tamamen serbest bırakır.
+  hud <- .bs_lc_oku("www", "js", "bilge_savunmasi_hud.js")
+
+  ogretici_baslangic <- regexpr("hud.ogreticiGoster = function",
+                                hud, fixed = TRUE)
+  expect_true(ogretici_baslangic > 0)
+  ogretici_govde <- substr(hud, ogretici_baslangic, ogretici_baslangic + 1400L)
+  expect_true(.bs_lc_iceriyor(ogretici_govde, "bs-kaplama-saydam"))
+  expect_true(.bs_lc_iceriyor(ogretici_govde, "bs-kaplama-panel"))
+  expect_true(.bs_lc_iceriyor(ogretici_govde, 'data-bs-komut="ogretici-kapat"'))
+
+  # Gerçek panel açılışı saydam modu sıfırlar; kapanış her iki sınıfı da siler.
+  expect_true(.bs_lc_iceriyor(hud, '"bs-kaplama-saydam");'))
+
+  css <- .bs_lc_oku("www", "css", "bilge_savunmasi.css")
+  expect_true(.bs_lc_iceriyor(css, ".bs-oyun-kaplama.bs-kaplama-saydam"))
+  expect_true(.bs_lc_iceriyor(css, "pointer-events: none;"))
+
+  uygulama <- .bs_lc_oku("www", "js", "bilge_savunmasi_uygulama.js")
+  expect_true(.bs_lc_iceriyor(uygulama, 'komut === "ogretici-kapat"'))
 })

@@ -154,6 +154,7 @@
       function arkaPlanCiz() {
         var tema = harita.tema;
         var c = arkaCtx;
+        var h = cizici.hucre;
 
         var grd = c.createLinearGradient(0, 0, 0, arka.height);
         grd.addColorStop(0, tema.zemin1);
@@ -161,10 +162,23 @@
         c.fillStyle = grd;
         c.fillRect(0, 0, arka.width, arka.height);
 
-        // Paralaks yıldız/veri noktaları (görsel tohum: harita kimliği).
         var rng = BS.rng.olustur(BS.rng.dizedenTohum(harita.id));
+
+        // Derinlik: seyrek nebula/veri bulutu lekeleri (tek seferlik maliyet).
+        for (var n = 0; n < 5; n++) {
+          var nx = rng.sonraki() * arka.width;
+          var ny = rng.sonraki() * arka.height;
+          var nr = (0.18 + rng.sonraki() * 0.22) * arka.width;
+          var bulut = c.createRadialGradient(nx, ny, 0, nx, ny, nr);
+          bulut.addColorStop(0, tema.vurgu + "10");
+          bulut.addColorStop(1, "rgba(0,0,0,0)");
+          c.fillStyle = bulut;
+          c.fillRect(nx - nr, ny - nr, nr * 2, nr * 2);
+        }
+
+        // Paralaks yıldız/veri noktaları (görsel tohum: harita kimliği).
         c.fillStyle = "rgba(255,255,255,0.16)";
-        for (var i = 0; i < 90; i++) {
+        for (var i = 0; i < 110; i++) {
           var px = rng.sonraki() * arka.width;
           var py = rng.sonraki() * arka.height;
           var b = rng.sonraki() * 1.6 + 0.4;
@@ -173,60 +187,156 @@
         }
         c.globalAlpha = 1;
 
-        // Izgara çizgileri.
+        // İnce devre izleri: inşa alanına teknoloji dokusu katar.
         c.strokeStyle = tema.izgara;
         c.lineWidth = 1;
-        for (var gx = 0; gx <= izgara.genislik; gx++) {
+        for (var d = 0; d < 14; d++) {
+          var dx = Math.floor(rng.sonraki() * izgara.genislik);
+          var dy = Math.floor(rng.sonraki() * izgara.yukseklik);
+          var uz = 2 + Math.floor(rng.sonraki() * 4);
+          var yatay = rng.sonraki() > 0.5;
+          c.globalAlpha = 0.35;
           c.beginPath();
-          c.moveTo(cizici.kenarX + gx * cizici.hucre, cizici.kenarY);
-          c.lineTo(cizici.kenarX + gx * cizici.hucre,
-                   cizici.kenarY + izgara.yukseklik * cizici.hucre);
+          c.moveTo(hucreX(dx), hucreY(dy));
+          c.lineTo(hucreX(yatay ? dx + uz : dx), hucreY(yatay ? dy : dy + uz));
           c.stroke();
-        }
-        for (var gy = 0; gy <= izgara.yukseklik; gy++) {
+          c.globalAlpha = 0.5;
           c.beginPath();
-          c.moveTo(cizici.kenarX, cizici.kenarY + gy * cizici.hucre);
-          c.lineTo(cizici.kenarX + izgara.genislik * cizici.hucre,
-                   cizici.kenarY + gy * cizici.hucre);
-          c.stroke();
+          c.arc(hucreX(dx), hucreY(dy), 1.6, 0, Math.PI * 2);
+          c.fill();
         }
+        c.globalAlpha = 1;
 
-        // Rotalar: kenarlıklı geniş şerit + orta çizgi.
+        // Izgara: çizgi yerine hafif kesişim noktaları (daha sakin zemin).
+        c.fillStyle = tema.izgara;
+        for (var gx = 1; gx < izgara.genislik; gx++) {
+          for (var gy = 1; gy < izgara.yukseklik; gy++) {
+            c.globalAlpha = 0.5;
+            c.fillRect(cizici.kenarX + gx * h - 1,
+                       cizici.kenarY + gy * h - 1, 2, 2);
+          }
+        }
+        c.globalAlpha = 1;
+
+        // Rotalar: dış ışıma -> koyu taban -> yüzey dolgusu -> kenar ışığı ->
+        // orta şerit + yön okları + köşe düğümleri (katmanlı veri yolu görünümü).
         harita.yollar.forEach(function(yol) {
           c.lineCap = "round";
           c.lineJoin = "round";
+
+          c.strokeStyle = tema.vurgu + "22";
+          c.lineWidth = h * 0.96;
+          yolCiz(c, yol);
           c.strokeStyle = tema.yolKenar;
-          c.lineWidth = cizici.hucre * 0.78;
+          c.lineWidth = h * 0.8;
           yolCiz(c, yol);
           c.strokeStyle = tema.yol;
-          c.lineWidth = cizici.hucre * 0.62;
+          c.lineWidth = h * 0.62;
           yolCiz(c, yol);
-          c.strokeStyle = "rgba(255,255,255,0.07)";
-          c.lineWidth = 2;
-          c.setLineDash([cizici.hucre * 0.3, cizici.hucre * 0.35]);
+          c.strokeStyle = "rgba(255,255,255,0.05)";
+          c.lineWidth = h * 0.5;
+          yolCiz(c, yol);
+
+          // Kenar ışığı: üstten aydınlatılmış ince çizgiler.
+          c.strokeStyle = tema.vurgu + "33";
+          c.lineWidth = 1.5;
+          c.setLineDash([h * 0.55, h * 0.2]);
           yolCiz(c, yol);
           c.setLineDash([]);
 
-          // Giriş kapısı işareti.
+          // Orta şerit.
+          c.strokeStyle = "rgba(255,255,255,0.09)";
+          c.lineWidth = 2;
+          c.setLineDash([h * 0.3, h * 0.35]);
+          yolCiz(c, yol);
+          c.setLineDash([]);
+
+          // Segment yön okları (akış hissi; statik, ucuz).
+          c.fillStyle = "rgba(255,255,255,0.14)";
+          for (var s = 0; s < yol.length - 1; s++) {
+            var ax = hucreX(yol[s].x), ay = hucreY(yol[s].y);
+            var bx = hucreX(yol[s + 1].x), by = hucreY(yol[s + 1].y);
+            var mx = (ax + bx) / 2, my = (ay + by) / 2;
+            var aci = Math.atan2(by - ay, bx - ax);
+            c.save();
+            c.translate(mx, my);
+            c.rotate(aci);
+            c.beginPath();
+            c.moveTo(h * 0.14, 0);
+            c.lineTo(-h * 0.06, -h * 0.12);
+            c.lineTo(-h * 0.06, h * 0.12);
+            c.closePath();
+            c.fill();
+            c.restore();
+          }
+
+          // Köşe düğümleri: dönüşlerde devre bağlantı noktası.
+          for (var k = 1; k < yol.length - 1; k++) {
+            c.fillStyle = tema.yolKenar;
+            c.beginPath();
+            c.arc(hucreX(yol[k].x), hucreY(yol[k].y), h * 0.16, 0, Math.PI * 2);
+            c.fill();
+            c.strokeStyle = tema.vurgu + "55";
+            c.lineWidth = 1.5;
+            c.stroke();
+          }
+
+          // Giriş kapısı: ışıma halkalı portal + çift ok.
           var giris = yol[0];
-          c.fillStyle = tema.vurgu;
-          c.globalAlpha = 0.7;
+          var gxp = hucreX(giris.x), gyp = hucreY(giris.y);
+          var kapi = c.createRadialGradient(gxp, gyp, 0, gxp, gyp, h * 0.9);
+          kapi.addColorStop(0, tema.vurgu + "44");
+          kapi.addColorStop(1, "rgba(0,0,0,0)");
+          c.fillStyle = kapi;
+          c.fillRect(gxp - h, gyp - h, h * 2, h * 2);
+          c.strokeStyle = tema.vurgu + "88";
+          c.lineWidth = 2;
           c.beginPath();
-          c.moveTo(hucreX(giris.x) - cizici.hucre * 0.32, hucreY(giris.y) - cizici.hucre * 0.3);
-          c.lineTo(hucreX(giris.x) + cizici.hucre * 0.05, hucreY(giris.y));
-          c.lineTo(hucreX(giris.x) - cizici.hucre * 0.32, hucreY(giris.y) + cizici.hucre * 0.3);
-          c.closePath();
-          c.fill();
+          c.arc(gxp, gyp, h * 0.42, 0, Math.PI * 2);
+          c.stroke();
+          c.fillStyle = tema.vurgu;
+          c.globalAlpha = 0.8;
+          [0, 0.22].forEach(function(kayma) {
+            c.beginPath();
+            c.moveTo(gxp - h * (0.3 - kayma), gyp - h * 0.22);
+            c.lineTo(gxp + h * (0.02 + kayma), gyp);
+            c.lineTo(gxp - h * (0.3 - kayma), gyp + h * 0.22);
+            c.closePath();
+            c.fill();
+          });
           c.globalAlpha = 1;
         });
 
-        // İnşa edilemez hücre dokusu.
-        c.fillStyle = "rgba(0,0,0,0.25)";
-        harita.insaEdilemez.forEach(function(h) {
-          c.fillRect(cizici.kenarX + h.x * cizici.hucre,
-                     cizici.kenarY + h.y * cizici.hucre,
-                     cizici.hucre, cizici.hucre);
+        // İnşa edilemez hücreler: çapraz taramalı doku (yalnızca koyu leke değil).
+        harita.insaEdilemez.forEach(function(hc) {
+          var ix = cizici.kenarX + hc.x * h;
+          var iy = cizici.kenarY + hc.y * h;
+          c.fillStyle = "rgba(0,0,0,0.28)";
+          c.fillRect(ix, iy, h, h);
+          c.save();
+          c.beginPath();
+          c.rect(ix, iy, h, h);
+          c.clip();
+          c.strokeStyle = "rgba(255,255,255,0.05)";
+          c.lineWidth = 1;
+          for (var t = -1; t < 3; t++) {
+            c.beginPath();
+            c.moveTo(ix + t * (h / 2), iy);
+            c.lineTo(ix + t * (h / 2) + h, iy + h);
+            c.stroke();
+          }
+          c.restore();
         });
+
+        // Kenar vinyeti: sahneyi çerçeveler, odağı rotaya toplar.
+        var vin = c.createRadialGradient(
+          arka.width / 2, arka.height / 2, arka.height * 0.35,
+          arka.width / 2, arka.height / 2, arka.height * 0.85
+        );
+        vin.addColorStop(0, "rgba(0,0,0,0)");
+        vin.addColorStop(1, "rgba(0,0,0,0.32)");
+        c.fillStyle = vin;
+        c.fillRect(0, 0, arka.width, arka.height);
       }
 
       function yolCiz(c, yol) {
@@ -270,6 +380,23 @@
         ctx.arc(x, y, r * (0.52 + nabiz), 0, Math.PI * 2);
         ctx.stroke();
 
+        // Dönen koruma halkası: çekirdeğin "canlı" hedef hissi.
+        if (!BS.kalite.azaltilmisHareket &&
+            BS.kalite.seviye !== "performans") {
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(cizici.zaman * 0.7);
+          ctx.strokeStyle = harita.tema.vurgu + "77";
+          ctx.lineWidth = 2;
+          for (var seg = 0; seg < 3; seg++) {
+            ctx.beginPath();
+            ctx.arc(0, 0, r * 0.62, seg * Math.PI * 2 / 3,
+                    seg * Math.PI * 2 / 3 + Math.PI * 0.42);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
         // Can oranı yayı + kalkan yayı.
         var oran = durum.cekirdek / durum.tabanCekirdek;
         ctx.strokeStyle = oran > 0.6 ? "#7ae582" : (oran > 0.3 ? "#ffd166" : "#e63946");
@@ -288,49 +415,143 @@
         }
       }
 
-      function dusmanSekliCiz(dusman, x, y, r) {
-        var sekil = dusman.tanim.sekil;
+      // Gövde yolu (0,0 merkezli): yön dönüşü ctx.rotate ile uygulanır.
+      function dusmanYoluOlustur(sekil, r) {
         ctx.beginPath();
         if (sekil === "ucgen" || sekil === "ok") {
-          ctx.moveTo(x + r, y);
-          ctx.lineTo(x - r * 0.7, y - r * 0.75);
-          ctx.lineTo(x - r * 0.7, y + r * 0.75);
+          ctx.moveTo(r, 0);
+          ctx.lineTo(-r * 0.7, -r * 0.75);
+          ctx.lineTo(-r * 0.35, 0);
+          ctx.lineTo(-r * 0.7, r * 0.75);
         } else if (sekil === "kare" || sekil === "yigin") {
-          ctx.rect(x - r * 0.75, y - r * 0.75, r * 1.5, r * 1.5);
+          ctx.rect(-r * 0.75, -r * 0.75, r * 1.5, r * 1.5);
         } else if (sekil === "elmas" || sekil === "kalkan") {
-          ctx.moveTo(x, y - r);
-          ctx.lineTo(x + r * 0.8, y);
-          ctx.lineTo(x, y + r);
-          ctx.lineTo(x - r * 0.8, y);
+          ctx.moveTo(0, -r);
+          ctx.lineTo(r * 0.8, 0);
+          ctx.lineTo(0, r);
+          ctx.lineTo(-r * 0.8, 0);
         } else if (sekil === "altigen" || sekil === "kolos" ||
                    sekil === "firtina" || sekil === "kaos") {
           for (var i = 0; i < 6; i++) {
             var aci = Math.PI / 3 * i - Math.PI / 6;
-            var px = x + Math.cos(aci) * r;
-            var py = y + Math.sin(aci) * r;
+            var px = Math.cos(aci) * r;
+            var py = Math.sin(aci) * r;
             if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
           }
         } else {
-          ctx.arc(x, y, r * 0.85, 0, Math.PI * 2);
+          ctx.arc(0, 0, r * 0.85, 0, Math.PI * 2);
         }
         ctx.closePath();
+      }
+
+      function patronCiz(dusman, x, y, r) {
+        var donme = cizici.zaman * 0.9;
+        // Dış tehdit halkası: yavaş dönen kesikli çember + diken uçları.
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(donme);
+        ctx.strokeStyle = dusman.tanim.renk + "88";
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([r * 0.5, r * 0.32]);
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 1.28, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = dusman.tanim.renk;
+        for (var i = 0; i < 4; i++) {
+          var a = Math.PI / 2 * i;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a) * r * 1.44, Math.sin(a) * r * 1.44);
+          ctx.lineTo(Math.cos(a + 0.22) * r * 1.2, Math.sin(a + 0.22) * r * 1.2);
+          ctx.lineTo(Math.cos(a - 0.22) * r * 1.2, Math.sin(a - 0.22) * r * 1.2);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // İç çekirdek: nabız atan ikinci katman.
+        var nabiz = BS.kalite.azaltilmisHareket
+          ? 1 : 1 + Math.sin(cizici.zaman * 3.4) * 0.05;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(-donme * 0.6);
+        ctx.fillStyle = "rgba(8, 12, 22, 0.85)";
+        dusmanYoluOlustur(dusman.tanim.sekil, r * 0.66 * nabiz);
         ctx.fill();
+        ctx.strokeStyle = dusman.tanim.renk;
+        ctx.lineWidth = 2;
+        dusmanYoluOlustur(dusman.tanim.sekil, r * 0.66 * nabiz);
+        ctx.stroke();
+        ctx.restore();
       }
 
       function dusmanlariCiz(durum) {
+        var yuksekKalite = BS.kalite.seviye === "yuksek";
+        var performans = BS.kalite.seviye === "performans";
+
         durum.dusmanlar.forEach(function(dusman) {
           var x = cizici.kenarX + (dusman.x + 0.5) * cizici.hucre;
           var y = cizici.kenarY + (dusman.y + 0.5) * cizici.hucre;
           var r = cizici.hucre * (dusman.patronMu ? 0.62 : 0.3);
 
+          // Yön: bir önceki karedeki konumdan türetilir (çizim durumu
+          // düşman nesnesinde saklanır; sim alanlarına dokunulmaz).
+          var vx = x - (dusman._cx != null ? dusman._cx : x);
+          var vy = y - (dusman._cy != null ? dusman._cy : y);
+          if (vx * vx + vy * vy > 0.01) {
+            dusman._aci = Math.atan2(vy, vx);
+          }
+          dusman._cx = x; dusman._cy = y;
+          var aci = dusman._aci || 0;
+
+          // Yürüyüş salınımı: gövde hafifçe iner/kalkar (kimlik no ile faz).
+          var bob = (performans || BS.kalite.azaltilmisHareket || dusman.patronMu)
+            ? 0 : Math.sin(cizici.zaman * 6 + dusman.no * 1.7) * r * 0.08;
+
           ctx.globalAlpha = dusman.gizliMi ? 0.22 : 1;
 
-          if (BS.kalite.seviye === "yuksek" && !dusman.gizliMi) {
+          // Zemin gölgesi: derinlik hissi (ucuz elips).
+          if (!performans && !dusman.gizliMi) {
+            ctx.fillStyle = "rgba(0,0,0,0.3)";
+            ctx.beginPath();
+            ctx.ellipse(x, y + r * 0.82, r * 0.7, r * 0.24, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          if (yuksekKalite && !dusman.gizliMi) {
             ctx.shadowColor = dusman.tanim.renk;
             ctx.shadowBlur = dusman.patronMu ? 18 : 8;
           }
-          ctx.fillStyle = dusman.tanim.renk;
-          dusmanSekliCiz(dusman, x, y, r);
+
+          if (dusman.patronMu) {
+            ctx.fillStyle = dusman.tanim.renk;
+            ctx.save();
+            ctx.translate(x, y);
+            dusmanYoluOlustur(dusman.tanim.sekil, r);
+            ctx.fill();
+            ctx.restore();
+            ctx.shadowBlur = 0;
+            patronCiz(dusman, x, y, r);
+          } else {
+            ctx.save();
+            ctx.translate(x, y + bob);
+            ctx.rotate(aci);
+            ctx.fillStyle = dusman.tanim.renk;
+            dusmanYoluOlustur(dusman.tanim.sekil, r);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            // Gövde derinliği: koyu iç çekirdek + üst kenar ışığı.
+            if (!performans) {
+              ctx.fillStyle = "rgba(0,0,0,0.32)";
+              dusmanYoluOlustur(dusman.tanim.sekil, r * 0.55);
+              ctx.fill();
+              ctx.strokeStyle = "rgba(255,255,255,0.35)";
+              ctx.lineWidth = 1.2;
+              dusmanYoluOlustur(dusman.tanim.sekil, r * 0.92);
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
           ctx.shadowBlur = 0;
 
           // Durum halkaları: yavaş (mavi), işaretli (turuncu), kalkan (yay).
@@ -360,13 +581,29 @@
             ctx.stroke();
           }
 
-          // Can çubuğu.
+          // Can çubuğu: yalnızca hasar almış tehditlerde (patron her zaman).
           var oran = BS.yardimci.kirp(dusman.can / dusman.maxCan, 0, 1);
-          var cw = r * 2;
-          ctx.fillStyle = "rgba(0,0,0,0.55)";
-          ctx.fillRect(x - cw / 2, y - r - 12, cw, 4);
-          ctx.fillStyle = oran > 0.5 ? "#7ae582" : (oran > 0.25 ? "#ffd166" : "#e63946");
-          ctx.fillRect(x - cw / 2, y - r - 12, cw * oran, 4);
+          if (oran < 1 || dusman.patronMu) {
+            var cw = r * 2;
+            var ch = dusman.patronMu ? 6 : 4;
+            var cy = y - r - (dusman.patronMu ? 16 : 12);
+            ctx.fillStyle = "rgba(0,0,0,0.6)";
+            ctx.fillRect(x - cw / 2 - 1, cy - 1, cw + 2, ch + 2);
+            ctx.fillStyle = oran > 0.5 ? "#7ae582"
+              : (oran > 0.25 ? "#ffd166" : "#e63946");
+            ctx.fillRect(x - cw / 2, cy, cw * oran, ch);
+            if (dusman.patronMu) {
+              // Patron çubuğu çeyrek bölmeli: kalan güç okunaklı.
+              ctx.strokeStyle = "rgba(0,0,0,0.5)";
+              ctx.lineWidth = 1;
+              for (var bq = 1; bq < 4; bq++) {
+                ctx.beginPath();
+                ctx.moveTo(x - cw / 2 + cw * bq / 4, cy);
+                ctx.lineTo(x - cw / 2 + cw * bq / 4, cy + ch);
+                ctx.stroke();
+              }
+            }
+          }
 
           ctx.globalAlpha = 1;
         });
@@ -443,6 +680,7 @@
       }
 
       function mermileriCiz(durum) {
+        var performans = BS.kalite.seviye === "performans";
         durum.mermiler.forEach(function(mermi) {
           var x = cizici.kenarX + (mermi.x + 0.5) * cizici.hucre;
           var y = cizici.kenarY + (mermi.y + 0.5) * cizici.hucre;
@@ -450,12 +688,38 @@
             cozum: "#b8b8ff", sinyal: "#8ecae6", rota: "#4cc9f0",
             dogrulama: "#f77f00", rehber: "#ffc8dd"
           };
-          ctx.fillStyle = renkler[mermi.tip] || "#fff";
+          var renk = renkler[mermi.tip] || "#fff";
+
+          // İz: bir önceki kare konumundan mevcut konuma ışıklı kuyruk.
+          if (!performans && mermi._cx != null) {
+            var izGrd = ctx.createLinearGradient(mermi._cx, mermi._cy, x, y);
+            izGrd.addColorStop(0, renk + "00");
+            izGrd.addColorStop(1, renk + "aa");
+            ctx.strokeStyle = izGrd;
+            ctx.lineWidth = mermi.tip === "dogrulama" ? 3 : 2;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(mermi._cx, mermi._cy);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+          }
+          mermi._cx = x; mermi._cy = y;
+
+          ctx.fillStyle = renk;
           ctx.beginPath();
           ctx.arc(x, y, mermi.tip === "dogrulama" ? 4 : 3, 0, Math.PI * 2);
           ctx.fill();
+          if (!performans) {
+            ctx.fillStyle = "#ffffff";
+            ctx.globalAlpha = 0.85;
+            ctx.beginPath();
+            ctx.arc(x, y, 1.4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
           if (BS.kalite.seviye === "yuksek") {
-            ctx.globalAlpha = 0.35;
+            ctx.fillStyle = renk;
+            ctx.globalAlpha = 0.3;
             ctx.beginPath();
             ctx.arc(x, y, 7, 0, Math.PI * 2);
             ctx.fill();

@@ -56,34 +56,75 @@ test_that("geçerli koşu özeti kabul edilir ve puan sunucuda hesaplanır", {
 
   expect_true(sonuc$gecerli)
   expect_null(sonuc$neden)
-  # Sunucuya ait deterministik dalga planı + çekirdek 20*25 + zafer 500.
-  expect_identical(sonuc$puan, 3224L)
+  # Dalga başına min(beyan 60, doğrulanmış öldürme sınırı) + çekirdek 20*25
+  # + zafer 500: 8*60 + 1000 = 1480.
+  expect_identical(sonuc$puan, 1480L)
   expect_identical(sonuc$yildiz, 3L)
-  expect_identical(sonuc$xp, 322L)
+  expect_identical(sonuc$xp, 148L)
   expect_true(sonuc$zafer)
   expect_identical(sonuc$kahramanlar, c("emre", "selin"))
 })
 
-test_that("dalga puanı istemci puan ve olduruldu alanlarından bağımsızdır", {
-  ozet <- .bs_test_gecerli_ozet()
-  sonuc <- bs_kosu_ozeti_dogrula(ozet, .bs_test_kosu())
+test_that("şişirilmiş dalga puanı sunucu üst sınırıyla kırpılır", {
+  harita <- bs_harita_katalogu()$baglam_kapisi
 
-  sahte <- ozet
-  sahte$dalga_ozetleri <- lapply(sahte$dalga_ozetleri, function(d) {
+  # 8 doğrulanmış öldürme -> üst sınır 8 * düşman taban puanı (patron yok).
+  expect_identical(bs_dalga_puan_siniri(harita, 5L, olduruldu = 8L),
+                   8L * BS_DUSMAN_PUAN_UST_SINIRI)
+
+  # Beyan edilen dalga puanı üst sınırı aşarsa toplam, sınır toplamına düşer.
+  ozet <- .bs_test_gecerli_ozet()
+  ozet$dalga_ozetleri <- lapply(ozet$dalga_ozetleri, function(d) {
+    d$puan <- 999999
+    d
+  })
+  sonuc <- bs_kosu_ozeti_dogrula(ozet, .bs_test_kosu())
+  sinir_toplami <- sum(vapply(seq_len(8L), function(i) {
+    bs_dalga_puan_siniri(harita, i, olduruldu = 8L)
+  }, integer(1)))
+
+  expect_true(sonuc$gecerli)
+  expect_identical(sonuc$puan, as.integer(sinir_toplami + 20 * 25 + 500))
+  expect_true(sonuc$puan < 999999)
+})
+
+test_that("puan, doğrulanmış öldürme sayısına dayanır; sıfır öldürmeyle şişirilmiş puan reddedilir", {
+  ozet <- .bs_test_gecerli_ozet()
+  ozet$dalga_ozetleri <- lapply(ozet$dalga_ozetleri, function(d) {
     d$olduruldu <- 0L
     d$puan <- 999999
     d
   })
-  sahte_sonuc <- bs_kosu_ozeti_dogrula(sahte, .bs_test_kosu())
+  sonuc <- bs_kosu_ozeti_dogrula(ozet, .bs_test_kosu())
 
-  expect_true(sahte_sonuc$gecerli)
-  expect_identical(sahte_sonuc$puan, sonuc$puan)
-  expect_true(sahte_sonuc$puan < 999999)
+  expect_true(sonuc$gecerli)
+  # Sıfır doğrulanmış öldürme sıfır dalga puanı demektir; yalnızca çekirdek
+  # ve zafer bonusu kalır.
+  expect_identical(sonuc$puan, as.integer(20 * 25 + 500))
+  expect_true(sonuc$puan < 1480L)
+})
+
+test_that("bs_dalga_puan_siniri öldürme sayısını haritanın üst sınırına kırpar", {
+  harita <- bs_harita_katalogu()$baglam_kapisi
+
+  # Şişirilmiş öldürme sayısı dalganın deterministik planına kırpılır ve
+  # plan tabanlı eski üst sınırı asla aşamaz.
+  expect_identical(bs_dalga_puan_siniri(harita, 1L, olduruldu = 999L),
+                   bs_dalga_puan_siniri(harita, 1L))
+  expect_identical(bs_dalga_puan_siniri(harita, 8L, olduruldu = 999L),
+                   12L * BS_DUSMAN_PUAN_UST_SINIRI + BS_PATRON_PUAN_UST_SINIRI)
+
+  # Negatif/sıfır öldürme puan üretmez (patron bonusu dahil).
+  expect_identical(bs_dalga_puan_siniri(harita, 8L, olduruldu = 0L), 0L)
+
+  # Dönen değer her zaman tam sayıdır.
+  expect_true(is.integer(bs_dalga_puan_siniri(harita, 3L, olduruldu = 5L)))
 })
 
 test_that("bs_dalga_puan_siniri sunucu harita planı ve değiştirici sınırını kullanır", {
   harita <- bs_harita_katalogu()$baglam_kapisi
 
+  # olduruldu verilmeyen eski çağrılar deterministik plan davranışını korur.
   expect_identical(bs_dalga_puan_siniri(harita, 1L), 6L * BS_DUSMAN_PUAN_UST_SINIRI)
   expect_identical(bs_dalga_puan_siniri(harita, 8L),
                    12L * BS_DUSMAN_PUAN_UST_SINIRI + BS_PATRON_PUAN_UST_SINIRI)
@@ -181,8 +222,8 @@ test_that("yenilgi özeti zafer bonusu olmadan kabul edilir", {
   expect_true(sonuc$gecerli)
   expect_false(sonuc$zafer)
   expect_identical(sonuc$yildiz, 0L)
-  # İlk 4 dalganın sunucu planı puanı; çekirdek 0; zafer bonusu yok.
-  expect_identical(sonuc$puan, 1040L)
+  # İlk 4 dalganın kırpılmış beyan puanı (4*60); çekirdek 0; zafer bonusu yok.
+  expect_identical(sonuc$puan, 240L)
 })
 
 test_that("yıldız eşikleri ve seviye hesabı beklenen değerleri üretir", {
