@@ -111,36 +111,44 @@ test_that("boş index yolu tanımlı değil olarak döner", {
   expect_identical(res$status[1], "not_configured")
 })
 
-test_that("depolama kökü çözümleyicisi kanonik seçeneği ham ortam değerinden önce kullanır", {
-  # config_file_store.R açılışta MERGEN_FILES_ROOT değerini dir.create edip
-  # normalize ederek mergen.files_root seçeneğine yazar. Ham UNC ortam değeri
-  # Windows'ta var olan klasörde bile yanlış negatif verebildiği için sağlık
-  # kontrolü, uygulamanın gerçekten kullandığı kanonik seçeneği önceliklendirir.
-  old_opt <- options(mergen.files_root = "/kanonik/kok")
-  old_env <- Sys.getenv("MERGEN_FILES_ROOT", unset = NA_character_)
-  withr::defer({
-    options(old_opt)
-    if (is.na(old_env)) Sys.unsetenv("MERGEN_FILES_ROOT") else Sys.setenv(MERGEN_FILES_ROOT = old_env)
-  })
-  Sys.setenv(MERGEN_FILES_ROOT = "//sunucu/pay/ham/data")
+test_that("yol varyant üreteci slash/backslash biçimlerini kapsar", {
+  variants <- .health_path_variants("//sunucu/pay/MERGEN Bilge/data")
+  # forward-slash ve backslash UNC biçimleri denenecek adaylar arasında olmalı.
+  expect_true("//sunucu/pay/MERGEN Bilge/data" %in% variants)
+  expect_true("\\\\sunucu\\pay\\MERGEN Bilge\\data" %in% variants)
+  # Boş yol boş vektör döndürür.
+  expect_identical(.health_path_variants(""), character(0))
+})
 
-  # Kanonik seçenek ham ortam değerini geçersiz kılar.
-  expect_identical(
-    .health_configured_root("mergen.files_root", "MERGEN_FILES_ROOT", getwd()),
-    "/kanonik/kok"
-  )
+test_that("var olan ancak yazılamayan klasör KRİTİK değil UYARI olarak raporlanır", {
+  # Kullanıcı senaryosu: UNC klasörü gerçekten var (Explorer'da görünüyor) ama
+  # yol formu ya da izin nedeniyle yazma denemesi başarısız oluyor. Bu durumda
+  # panel "Kritik / bulunamadı" değil, "Uyarı" göstermelidir.
+  existing <- tempfile("var-ama-yazilamaz-")
+  dir.create(existing, recursive = TRUE)
 
-  # Seçenek boşsa ham ortam değerine düşer.
-  options(mergen.files_root = "")
-  expect_identical(
-    .health_configured_root("mergen.files_root", "MERGEN_FILES_ROOT", getwd()),
-    "//sunucu/pay/ham/data"
-  )
+  # Tüm varyantlarda yazma başarısız gibi davran (izin reddi taklidi).
+  old_probe <- .health_write_probe
+  assign(".health_write_probe",
+         function(...) list(ok = FALSE, error = "izin reddedildi (test)"),
+         envir = .GlobalEnv)
+  withr::defer(assign(".health_write_probe", old_probe, envir = .GlobalEnv))
 
-  # İkisi de boşsa varsayılan kullanılır.
-  Sys.unsetenv("MERGEN_FILES_ROOT")
-  expect_identical(
-    .health_configured_root("mergen.files_root", "MERGEN_FILES_ROOT", "VARSAYILAN"),
-    "VARSAYILAN"
-  )
+  res <- health_check_path_writable("ro.test", "Salt Okunur", existing)
+  expect_identical(res$status[1], "warning")
+  expect_true(grepl("erişilebilir", res$detail[1], fixed = TRUE))
+})
+
+test_that("gerçekten olmayan klasör yazma başarısızsa kritik kalır", {
+  missing <- file.path(tempdir(), paste0("gercekten-yok-", as.integer(Sys.time())))
+  if (dir.exists(missing)) unlink(missing, recursive = TRUE, force = TRUE)
+
+  old_probe <- .health_write_probe
+  assign(".health_write_probe",
+         function(...) list(ok = FALSE, error = "yol yok (test)"),
+         envir = .GlobalEnv)
+  withr::defer(assign(".health_write_probe", old_probe, envir = .GlobalEnv))
+
+  res <- health_check_path_writable("missing2.test", "Eksik", missing)
+  expect_identical(res$status[1], "critical")
 })
