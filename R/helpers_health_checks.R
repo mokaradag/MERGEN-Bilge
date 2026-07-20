@@ -94,6 +94,11 @@ health_check_env_contract <- function(required = c("LOCAL_LLM_ENDPOINT", "DB_DSN
         if (length(suppressWarnings(list.files(p, all.files = TRUE, no.. = TRUE))) > 0L) {
           hit <- TRUE; break
         }
+        # Üst klasörü listele; hedefin adı orada mı? dir.exists(UNC) yanlış negatif
+        # verse de üst klasör listelemesi çalışabilir.
+        if (basename(p) %in% suppressWarnings(list.files(dirname(p), all.files = TRUE, no.. = TRUE))) {
+          hit <- TRUE; break
+        }
       } else if (isTRUE(file.exists(p))) {
         hit <- TRUE; break
       }
@@ -103,6 +108,12 @@ health_check_env_contract <- function(required = c("LOCAL_LLM_ENDPOINT", "DB_DSN
       }
       if (exists("path_exists_relaxed", mode = "function", inherits = TRUE) &&
           isTRUE(path_exists_relaxed(p))) {
+        hit <- TRUE; break
+      }
+      # normalizePath(mustWork=TRUE) hata VERMEDEN dönerse yol GERÇEKTEN vardır.
+      # config_file_store.R açılışta bu çağrıyı files_root için başarıyla yapar
+      # (M:\... değeri buradan gelir); yani var olan UNC klasörünü kesin tespit eder.
+      if (nzchar(suppressWarnings(tryCatch(normalizePath(p, mustWork = TRUE), error = function(e) "")))) {
         hit <- TRUE; break
       }
     }
@@ -125,7 +136,7 @@ health_check_env_contract <- function(required = c("LOCAL_LLM_ENDPOINT", "DB_DSN
   list(ok = isTRUE(ok), error = probe_error)
 }
 
-health_check_path_writable <- function(id, label, path, create_if_missing = FALSE, expect_file = FALSE) {
+health_check_path_writable <- function(id, label, path, create_if_missing = FALSE, expect_file = FALSE, require_write = TRUE) {
   health_safe_check(id, label, {
     start <- Sys.time()
     path <- as.character(path %||% "")[1]
@@ -171,9 +182,24 @@ health_check_path_writable <- function(id, label, path, create_if_missing = FALS
       }
     }
 
-    # Hiçbir varyant yazılamadı. Klasör ERİŞİLEBİLİR ise (var ama yazma
-    # kanıtlanamadı) bu kritik değil, uyarıdır; hiç bulunamadıysa kritiktir.
-    if (.health_path_present(raw_target, is_dir = TRUE)) {
+    # Hiçbir varyant yazılamadı. Klasörün gerçekten var olup olmadığını sağlam
+    # yöntemlerle belirle (bkz. .health_path_present -> normalizePath(mustWork=TRUE)).
+    present <- .health_path_present(raw_target, is_dir = TRUE)
+
+    if (present && !isTRUE(require_write)) {
+      # Bu kök için KÖK yazması zorunlu değildir (asıl yazma hedefi index.json
+      # ayrıca kontrol edilir). Klasör var ve erişilebilir -> sağlıklı.
+      return(health_result(
+        id, label, "ok",
+        normalizePath(raw_target, winslash = "/", mustWork = FALSE),
+        "Klasör mevcut ve erişilebilir.",
+        health_ms(start),
+        remediation = ""
+      ))
+    }
+
+    if (present) {
+      # Klasör ERİŞİLEBİLİR ama yazma kanıtlanamadı: kritik değil, uyarı.
       return(health_result(
         id, label, "warning",
         normalizePath(raw_target, winslash = "/", mustWork = FALSE),
@@ -496,7 +522,10 @@ health_collect_checks <- function(perf_tracker = NULL, include_slow = TRUE) {
     health_check_http_endpoint("tts.endpoint", "TTS Endpoint", Sys.getenv("LOCAL_TTS_ENDPOINT", ""), FALSE, 2),
     health_check_http_endpoint("stt.endpoint", "STT Endpoint", Sys.getenv("LOCAL_STT_ENDPOINT", ""), FALSE, 2),
     health_check_http_endpoint("image.endpoint", "Görsel Üretim Endpoint", Sys.getenv("IMAGE_GEN_ENDPOINT", Sys.getenv("LOCAL_IMAGE_ENDPOINT", "")), FALSE, 2),
-    health_check_path_writable("storage.files_root", "MERGEN_FILES_ROOT", files_root, FALSE),
+    # files_root: KÖK yazması zorunlu değil (asıl yazma hedefi index.json ayrı
+    # kontrol edilir). Var olan bir kök, yazma testi UNC/izin nedeniyle geçmese
+    # bile "kritik/bulunamadı" gösterilmemeli; require_write = FALSE.
+    health_check_path_writable("storage.files_root", "MERGEN_FILES_ROOT", files_root, FALSE, require_write = FALSE),
     health_check_path_writable("storage.uploads_root", "MERGEN_UPLOADS_DIR", Sys.getenv("MERGEN_UPLOADS_DIR", file.path(getwd(), "mergen_uploads")), TRUE),
     health_check_path_writable("storage.log_dir", "Log Dizini", Sys.getenv("MERGEN_LOG_DIR", file.path(getwd(), "logs")), TRUE),
     health_check_path_writable("storage.mcp_base", "MERGEN_MCP_BASE_DIR", Sys.getenv("MERGEN_MCP_BASE_DIR", ""), FALSE),

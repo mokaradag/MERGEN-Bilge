@@ -120,6 +120,33 @@ test_that("yol varyant üreteci slash/backslash biçimlerini kapsar", {
   expect_identical(.health_path_variants(""), character(0))
 })
 
+test_that("require_write=FALSE: var olan klasör yazma testi geçmese bile SAĞLIKLI (ok)", {
+  # files_root senaryosu: kök gerçekten var (Explorer'da görünür) ama UNC/izin
+  # nedeniyle yazma testi geçmiyor. KÖK yazması bu kontrol için zorunlu değil
+  # (asıl yazma hedefi index.json ayrı kontrol edilir), o yüzden UYARI/KRİTİK
+  # değil SAĞLIKLI (ok) olmalı.
+  existing <- tempfile("kok-var-yazilmaz-")
+  dir.create(existing, recursive = TRUE)
+
+  old_probe <- .health_write_probe
+  assign(".health_write_probe",
+         function(...) list(ok = FALSE, error = "yazma reddedildi (test)"),
+         envir = .GlobalEnv)
+  withr::defer(assign(".health_write_probe", old_probe, envir = .GlobalEnv))
+
+  res <- health_check_path_writable("files_root.test", "Kök", existing,
+                                    create_if_missing = FALSE, require_write = FALSE)
+  expect_identical(res$status[1], "ok")
+
+  # Ama gerçekten olmayan klasör require_write=FALSE olsa da kritik kalır.
+  missing <- file.path(tempdir(), paste0("kok-yok-", as.integer(Sys.time()), "-", sample(1e6, 1)))
+  if (dir.exists(missing)) unlink(missing, recursive = TRUE, force = TRUE)
+  res2 <- health_check_path_writable("files_root.missing", "Kök Yok", missing,
+                                     create_if_missing = FALSE, require_write = FALSE)
+  expect_identical(res2$status[1], "critical")
+  expect_false(dir.exists(missing))
+})
+
 test_that("var olan ancak yazılamayan klasör KRİTİK değil UYARI olarak raporlanır", {
   # Kullanıcı senaryosu: UNC klasörü gerçekten var (Explorer'da görünüyor) ama
   # yol formu ya da izin nedeniyle yazma denemesi başarısız oluyor. Bu durumda
