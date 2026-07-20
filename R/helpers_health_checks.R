@@ -57,41 +57,59 @@ health_check_path_writable <- function(id, label, path, create_if_missing = FALS
       target_dir <- tryCatch(resolve_readable_path(target_dir), error = function(e) target_dir)
     }
 
+    if (isTRUE(create_if_missing)) {
+      try(dir.create(target_dir, recursive = TRUE, showWarnings = FALSE), silent = TRUE)
+    }
+
+    # UNC/Unicode Windows yollarında dir.exists()/file.exists() yanlış negatif
+    # dönebilir. Sağlık için asıl kanıt, hedef dizinde gerçek yazma + silme işlemidir.
+    probe <- tempfile(pattern = ".health-", tmpdir = target_dir)
+    probe_error <- ""
+    ok <- tryCatch({
+      writeLines("ok", probe, useBytes = TRUE)
+      unlink(probe, force = TRUE) == 0
+    }, error = function(e) {
+      probe_error <<- conditionMessage(e)
+      FALSE
+    })
+
+    if (ok) {
+      return(health_result(
+        id, label,
+        status = "ok",
+        value = normalizePath(path, winslash = "/", mustWork = FALSE),
+        detail = "Yazma testi başarılı.",
+        duration_ms = health_ms(start),
+        remediation = ""
+      ))
+    }
+
     target_exists <- isTRUE(tryCatch(dir.exists(target_dir), error = function(e) FALSE))
+    if (!target_exists && requireNamespace("fs", quietly = TRUE)) {
+      target_exists <- isTRUE(tryCatch(fs::dir_exists(target_dir), error = function(e) FALSE))
+    }
     if (!target_exists && exists("path_exists_relaxed", mode = "function", inherits = TRUE)) {
       target_exists <- isTRUE(tryCatch(path_exists_relaxed(target_dir), error = function(e) FALSE))
     }
 
-    if (!target_exists && isTRUE(create_if_missing)) {
-      dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
-      target_exists <- isTRUE(tryCatch(dir.exists(target_dir), error = function(e) FALSE))
-      if (!target_exists && exists("path_exists_relaxed", mode = "function", inherits = TRUE)) {
-        target_exists <- isTRUE(tryCatch(path_exists_relaxed(target_dir), error = function(e) FALSE))
-      }
+    detail <- if (target_exists) {
+      if (nzchar(probe_error)) paste("Yazma testi başarısız:", probe_error) else "Yazma testi başarısız."
+    } else {
+      "Klasör bulunamadı veya uygulamanın çalışma hesabından erişilemiyor."
     }
-
-    if (!target_exists) {
-      return(health_result(id, label, "critical", path, "Klasör bulunamadı.", health_ms(start), remediation = "Klasörü oluşturun veya yapılandırma yolunu düzeltin."))
-    }
-
-    probe <- tempfile(pattern = ".health-", tmpdir = target_dir)
-    ok <- tryCatch({
-      writeLines("ok", probe, useBytes = TRUE)
-      file.exists(probe) && unlink(probe, force = TRUE) == 0
-    }, error = function(e) FALSE)
 
     health_result(
       id, label,
-      status = if (ok) "ok" else "critical",
+      status = "critical",
       value = normalizePath(path, winslash = "/", mustWork = FALSE),
-      detail = if (ok) "Yazma testi başarılı." else "Yazma testi başarısız.",
+      detail = detail,
       duration_ms = health_ms(start),
-      remediation = if (ok) "" else "Windows klasör izinlerini ve servis kullanıcısını kontrol edin."
+      remediation = "UNC paylaşım erişimini, Windows klasör izinlerini ve uygulamanın çalışma hesabını kontrol edin."
     )
   })
 }
 
-health_check_index_json <- function(path = Sys.getenv("MERGEN_INDEX_PATH", "")) {
+health_check_index_json <- function(path = getOption("mergen.index_path", Sys.getenv("MERGEN_INDEX_PATH", ""))) {
   health_safe_check("storage.index_json", "Index JSON Okuma/Yazma", {
     start <- Sys.time()
     path <- as.character(path %||% "")[1]
@@ -104,12 +122,37 @@ health_check_index_json <- function(path = Sys.getenv("MERGEN_INDEX_PATH", "")) 
       parent <- tryCatch(resolve_readable_path(parent), error = function(e) parent)
     }
 
-    parent_exists <- isTRUE(tryCatch(dir.exists(parent), error = function(e) FALSE))
-    if (!parent_exists && exists("path_exists_relaxed", mode = "function", inherits = TRUE)) {
-      parent_exists <- isTRUE(tryCatch(path_exists_relaxed(parent), error = function(e) FALSE))
-    }
-    if (!parent_exists) {
-      return(health_result("storage.index_json", "Index JSON Okuma/Yazma", "critical", path, "Üst klasör bulunamadı.", health_ms(start), remediation = "Index üst klasörünü oluşturun."))
+    # index.json ilk dosya kaydına kadar oluşmayabilir. Üst klasörün gerçek
+    # yazılabilirliğini, varlık API'lerine güvenmeden doğrudan geçici dosyayla ölç.
+    probe <- tempfile(pattern = ".index-health-", tmpdir = parent, fileext = ".json")
+    probe_error <- ""
+    writable <- tryCatch({
+      writeLines("{}", probe, useBytes = TRUE)
+      unlink(probe, force = TRUE) == 0
+    }, error = function(e) {
+      probe_error <<- conditionMessage(e)
+      FALSE
+    })
+
+    if (!writable) {
+      parent_exists <- isTRUE(tryCatch(dir.exists(parent), error = function(e) FALSE))
+      if (!parent_exists && requireNamespace("fs", quietly = TRUE)) {
+        parent_exists <- isTRUE(tryCatch(fs::dir_exists(parent), error = function(e) FALSE))
+      }
+      if (!parent_exists && exists("path_exists_relaxed", mode = "function", inherits = TRUE)) {
+        parent_exists <- isTRUE(tryCatch(path_exists_relaxed(parent), error = function(e) FALSE))
+      }
+
+      detail <- if (parent_exists) {
+        if (nzchar(probe_error)) paste("Üst klasörde yazma başarısız:", probe_error) else "Üst klasörde yazma başarısız."
+      } else {
+        "Üst klasör bulunamadı veya uygulamanın çalışma hesabından erişilemiyor."
+      }
+      return(health_result(
+        "storage.index_json", "Index JSON Okuma/Yazma", "critical", path, detail,
+        health_ms(start),
+        remediation = "Index üst klasörünün UNC erişimini ve Windows izinlerini kontrol edin."
+      ))
     }
 
     resolved_path <- file.path(parent, basename(path))
@@ -118,24 +161,27 @@ health_check_index_json <- function(path = Sys.getenv("MERGEN_INDEX_PATH", "")) 
     }
     index_exists <- isTRUE(tryCatch(file.exists(resolved_path), error = function(e) FALSE))
     if (!index_exists && exists("path_exists_relaxed", mode = "function", inherits = TRUE)) {
-      index_exists <- isTRUE(tryCatch(path_exists_relaxed(path), error = function(e) FALSE))
+      index_exists <- isTRUE(tryCatch(path_exists_relaxed(resolved_path), error = function(e) FALSE))
     }
 
-    readable <- if (index_exists) file.access(resolved_path, 4) == 0 else TRUE
-    probe <- tempfile(pattern = ".index-health-", tmpdir = parent, fileext = ".json")
-    writable <- tryCatch({
-      writeLines("{}", probe, useBytes = TRUE)
-      unlink(probe, force = TRUE) == 0
-    }, error = function(e) FALSE)
-
-    status <- if (readable && writable) "ok" else "critical"
-    detail <- if (!index_exists && writable) {
-      "Index dosyası henüz oluşturulmamış; üst klasörde yazma uygun."
+    readable <- if (!index_exists) {
+      TRUE
     } else {
-      paste(
-        if (readable) "Okuma uygun." else "Okuma başarısız.",
-        if (writable) "Yazma uygun." else "Yazma başarısız."
-      )
+      tryCatch({
+        con <- file(resolved_path, open = "rb")
+        on.exit(close(con), add = TRUE)
+        readBin(con, what = "raw", n = 1L)
+        TRUE
+      }, error = function(e) FALSE)
+    }
+
+    status <- if (readable) "ok" else "critical"
+    detail <- if (!index_exists) {
+      "Index dosyası henüz oluşturulmamış; üst klasörde yazma uygun."
+    } else if (readable) {
+      "Okuma uygun. Yazma uygun."
+    } else {
+      "Okuma başarısız. Yazma uygun."
     }
     health_result("storage.index_json", "Index JSON Okuma/Yazma", status, path, detail, health_ms(start),
                   remediation = if (status == "ok") "" else "Index dosyası ve klasör izinlerini kontrol edin.")
@@ -270,20 +316,20 @@ health_check_http_endpoint <- function(id, label, endpoint, configured_required 
   health_safe_check(id, label, {
     start <- Sys.time()
     endpoint <- as.character(endpoint %||% "")
-	if (!nzchar(endpoint)) {
-	  status <- if (configured_required) "critical" else "not_configured"
-	  return(health_result(id, label, status, "Tanımlı değil", "Uç nokta yapılandırılmamış.", health_ms(start), remediation = "Gerekliyse ilgili LOCAL_*_ENDPOINT değerini tanımlayın."))
-	}
+    if (!nzchar(endpoint)) {
+      status <- if (configured_required) "critical" else "not_configured"
+      return(health_result(id, label, status, "Tanımlı değil", "Uç nokta yapılandırılmamış.", health_ms(start), remediation = "Gerekliyse ilgili LOCAL_*_ENDPOINT değerini tanımlayın."))
+    }
 
-	endpoint_host <- tolower(sub("^https?://([^/:]+).*$", "\\1", endpoint))
-	if (grepl("\\.com\\.tr$", endpoint_host)) {
-	  return(health_result(id, label, "ok", "Atlandı", ".com.tr on-prem uç nokta tanımlı; canlı çağrı yapılmadan sağlıklı kabul edildi.", health_ms(start), remediation = ""))
-	}
+    endpoint_host <- tolower(sub("^https?://([^/:]+).*$", "\\1", endpoint))
+    if (grepl("\\.com\\.tr$", endpoint_host)) {
+      return(health_result(id, label, "ok", "Atlandı", ".com.tr on-prem uç nokta tanımlı; canlı çağrı yapılmadan sağlıklı kabul edildi.", health_ms(start), remediation = ""))
+    }
 
-	if (health_is_public_url(endpoint)) {
-	  return(health_result(id, label, "warning", "Atlandı", "Genel internet adresi algılandı; offline sağlık sayfası public endpoint çağırmaz.", health_ms(start), remediation = "On-prem yerel uç nokta kullanın."))
-	}
-	if (!requireNamespace("httr", quietly = TRUE)) {
+    if (health_is_public_url(endpoint)) {
+      return(health_result(id, label, "warning", "Atlandı", "Genel internet adresi algılandı; offline sağlık sayfası public endpoint çağırmaz.", health_ms(start), remediation = "On-prem yerel uç nokta kullanın."))
+    }
+    if (!requireNamespace("httr", quietly = TRUE)) {
       return(health_result(id, label, "unknown", endpoint, "httr paketi yok.", health_ms(start), remediation = "httr paket kurulumunu kontrol edin."))
     }
     res <- try(httr::GET(endpoint, httr::timeout(timeout_sec)), silent = TRUE)
@@ -342,6 +388,15 @@ if (!exists("health_check_runtime_info", mode = "function")) {
 }
 
 health_collect_checks <- function(perf_tracker = NULL, include_slow = TRUE) {
+  files_root <- getOption(
+    "mergen.files_root",
+    Sys.getenv("MERGEN_FILES_ROOT", getwd())
+  )
+  index_path <- getOption(
+    "mergen.index_path",
+    Sys.getenv("MERGEN_INDEX_PATH", "")
+  )
+
   checks <- list(
     health_check_app_boot(),
     health_check_git_version(),
@@ -356,11 +411,11 @@ health_collect_checks <- function(perf_tracker = NULL, include_slow = TRUE) {
     health_check_http_endpoint("tts.endpoint", "TTS Endpoint", Sys.getenv("LOCAL_TTS_ENDPOINT", ""), FALSE, 2),
     health_check_http_endpoint("stt.endpoint", "STT Endpoint", Sys.getenv("LOCAL_STT_ENDPOINT", ""), FALSE, 2),
     health_check_http_endpoint("image.endpoint", "Görsel Üretim Endpoint", Sys.getenv("IMAGE_GEN_ENDPOINT", Sys.getenv("LOCAL_IMAGE_ENDPOINT", "")), FALSE, 2),
-    health_check_path_writable("storage.files_root", "MERGEN_FILES_ROOT", Sys.getenv("MERGEN_FILES_ROOT", getwd()), FALSE),
+    health_check_path_writable("storage.files_root", "MERGEN_FILES_ROOT", files_root, FALSE),
     health_check_path_writable("storage.uploads_root", "MERGEN_UPLOADS_DIR", Sys.getenv("MERGEN_UPLOADS_DIR", file.path(getwd(), "mergen_uploads")), TRUE),
     health_check_path_writable("storage.log_dir", "Log Dizini", Sys.getenv("MERGEN_LOG_DIR", file.path(getwd(), "logs")), TRUE),
     health_check_path_writable("storage.mcp_base", "MERGEN_MCP_BASE_DIR", Sys.getenv("MERGEN_MCP_BASE_DIR", ""), FALSE),
-    health_check_index_json(),
+    health_check_index_json(index_path),
     health_check_disk_free(getwd(), "storage.disk_free", "Uygulama Diski"),
     health_check_disk_free(Sys.getenv("MERGEN_UPLOADS_DIR", getwd()), "storage.upload_disk_free", "Upload Root Boş Alan"),
     health_check_worker_info(),
