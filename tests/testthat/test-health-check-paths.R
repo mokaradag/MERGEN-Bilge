@@ -28,7 +28,10 @@ test_that("geçici klasör yazılabilir olarak raporlanır", {
 test_that("eksik klasör kritik olarak raporlanır", {
   missing <- file.path(tempdir(), paste0("missing-", as.integer(Sys.time())))
   if (dir.exists(missing)) unlink(missing, recursive = TRUE, force = TRUE)
-  res <- health_check_path_writable("missing.write", "Eksik Klasör", missing)
+  expect_warning(
+    res <- health_check_path_writable("missing.write", "Eksik Klasör", missing),
+    regexp = NA
+  )
   expect_identical(res$status[1], "critical")
 })
 
