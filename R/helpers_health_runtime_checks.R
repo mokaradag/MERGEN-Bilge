@@ -1,8 +1,270 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_health_runtime_checks.R
-# Açıklama: Sistem Durumu paneli için runtime, SSO, paket ve Bilge Yolaç
+# Açıklama: Sistem Durumu paneli için depolama, runtime, SSO, paket ve Bilge Yolaç
 #            sağlık kontrol fonksiyonlarını içerir.
 # ==============================================================================
+
+# --- DEPOLAMA KONTROLÜ ORTAK YARDIMCILARI ---
+# UNC/Unicode Windows yollarında base R varlık/yazma API'leri yol FORMUNA çok
+# duyarlıdır: aynı klasör forward-slash UNC (`//sunucu/pay/...`), backslash UNC
+# (`\\sunucu\pay\...`), kodlaması onarılmış ya da mapped-drive (`M:\...`)
+# biçiminde farklı davranabilir. Ayrıca config açılışta files_root'u
+# normalizePath(mustWork=TRUE) ile `M:\sunucu\pay\...` gibi GEÇERSİZ bir
+# mapped-drive dizesine bozabilir. Bu yüzden kontrol tek bir dizeye güvenmez;
+# yolun tüm makul varyantlarını üretip her birini dener.
+
+# Bir yolun denenecek makul varyantlarını üretir (temiz UNC onarımı dahil).
+.health_path_variants <- function(path) {
+  path <- as.character(path %||% "")[1]
+  if (!nzchar(path)) {
+    return(character(0))
+  }
+  variants <- c(
+    path,
+    chartr("\\", "/", path),  # forward-slash UNC biçimi
+    chartr("/", "\\", path),  # backslash UNC biçimi (tek ters slash)
+    suppressWarnings(enc2utf8(path))
+  )
+  # Opsiyonel onarıcılar (yoksa atlanır). normalize_mcp_path forward-slash UNC'yi
+  # korur; normalize_utf8_path kodlamayı onarır (mustWork=FALSE olduğu için M:\...
+  # bozulmasına yol açmaz, index yolunun çalışan biçimiyle aynıdır);
+  # resolve_readable_path base R ile açılabilen biçimi bulur. Geçersiz bir
+  # varyant üretilse bile yazma denemesi zararsızca başarısız olur.
+  for (fn in c("repair_turkish_mojibake_path", "normalize_mcp_path", "normalize_utf8_path", "resolve_readable_path")) {
+    if (exists(fn, mode = "function", inherits = TRUE)) {
+      variants <- c(variants, tryCatch(get(fn)(path), error = function(e) NULL))
+    }
+  }
+  unique(variants[nzchar(variants)])
+}
+
+# dir.exists()/file.exists() forward-slash UNC'de yanlış negatif dönebilir; yol
+# varyantlarını ve birden çok yöntemi (file.info, list.files, fs, relaxed) dener.
+# Yazma iznine bakmaz; yalnızca klasörün ERİŞİLEBİLİR olup olmadığını söyler.
+.health_path_present <- function(path, is_dir = TRUE) {
+  isTRUE(tryCatch({
+    hit <- FALSE
+    for (p in .health_path_variants(path)) {
+      if (is_dir) {
+        info_isdir <- suppressWarnings(file.info(p)$isdir)
+        if (isTRUE(dir.exists(p)) || (length(info_isdir) == 1L && isTRUE(info_isdir))) {
+          hit <- TRUE; break
+        }
+        # Erişilebilir dizin, içinde dosya varsa list.files ile hatasız listelenir.
+        if (length(suppressWarnings(list.files(p, all.files = TRUE, no.. = TRUE))) > 0L) {
+          hit <- TRUE; break
+        }
+        # Üst klasörü listele; hedefin adı orada mı? dir.exists(UNC) yanlış negatif
+        # verse de üst klasör listelemesi çalışabilir.
+        if (basename(p) %in% suppressWarnings(list.files(dirname(p), all.files = TRUE, no.. = TRUE))) {
+          hit <- TRUE; break
+        }
+      } else if (isTRUE(file.exists(p))) {
+        hit <- TRUE; break
+      }
+      if (requireNamespace("fs", quietly = TRUE) &&
+          isTRUE(if (is_dir) fs::dir_exists(p) else fs::file_exists(p))) {
+        hit <- TRUE; break
+      }
+      if (exists("path_exists_relaxed", mode = "function", inherits = TRUE) &&
+          isTRUE(path_exists_relaxed(p))) {
+        hit <- TRUE; break
+      }
+      # normalizePath(mustWork=TRUE) hata VERMEDEN dönerse yol GERÇEKTEN vardır.
+      # config_file_store.R açılışta bu çağrıyı files_root için başarıyla yapar
+      # (M:\... değeri buradan gelir); yani var olan UNC klasörünü kesin tespit eder.
+      if (nzchar(suppressWarnings(tryCatch(normalizePath(p, mustWork = TRUE), error = function(e) "")))) {
+        hit <- TRUE; break
+      }
+    }
+    hit
+  }, error = function(e) FALSE))
+}
+
+# Hedef dizinde gerçek yazma + silme denemesi. Varlık API'lerine güvenmeden
+# yazılabilirliği kanıtlar; ok/hata mesajını birlikte döndürür.
+.health_write_probe <- function(target_dir, pattern = ".health-", fileext = "") {
+  probe_error <- ""
+  probe <- tempfile(pattern = pattern, tmpdir = target_dir, fileext = fileext)
+  ok <- tryCatch({
+    suppressWarnings(writeLines("ok", probe, useBytes = TRUE))
+    unlink(probe, force = TRUE) == 0
+  }, error = function(e) {
+    probe_error <<- conditionMessage(e)
+    FALSE
+  })
+  list(ok = isTRUE(ok), error = probe_error)
+}
+
+health_check_path_writable <- function(id, label, path, create_if_missing = FALSE, expect_file = FALSE, require_write = TRUE) {
+  health_safe_check(id, label, {
+    start <- Sys.time()
+    path <- as.character(path %||% "")[1]
+    if (!nzchar(path)) {
+      return(health_result(id, label, "not_configured", "Tanımlı değil", "Yol boş.", health_ms(start), remediation = "İlgili ortam değişkenini tanımlayın."))
+    }
+
+    raw_target <- if (expect_file) dirname(path) else path
+    # Türkçe UNC yollarında .Renviron kodlaması yüzünden mojibake olabilir
+    # (ör. "Geliştirme" -> "GeliÅŸtirme"); bu bozuk baytlarla dir.exists ve yazma
+    # başarısız olur (Sys.getenv ham baytları döndürür). Onar ki gerçek klasör
+    # bulunabilsin ve panelde temiz görünsün. config_file_store.R aynı onarımı yapar.
+    if (exists("repair_turkish_mojibake_path", mode = "function", inherits = TRUE)) {
+      raw_target <- repair_turkish_mojibake_path(raw_target)
+    }
+    candidates <- .health_path_variants(raw_target)
+
+    # Windows'ta UNC yollarında tempfile+writeLines ve dir.exists/list.files, yol
+    # o R oturumunda dir.create ile "canlandırılmadan" (SMB bağlantısı kurulmadan)
+    # yanlış başarısız olabilir. mergen_uploads/logs create_if_missing=TRUE ile
+    # bu canlandırmayı yaptığı için yazılabilir çıkıyor; files_root ise
+    # create_if_missing=FALSE olduğu için canlandırılmadan "bulunamadı" veriyordu.
+    # Bu yüzden hedefi her durumda dir.create ile canlandır (var olan dizinde
+    # zararsız no-op). Ancak create_if_missing FALSE iken GERÇEKTEN eksik bir
+    # klasörü otomatik oluşturup maskelememek için, yeni oluşturduysak geri al.
+    created_new <- isTRUE(dir.create(candidates[1], recursive = TRUE, showWarnings = FALSE))
+    if (created_new && !isTRUE(create_if_missing)) {
+      unlink(candidates[1], recursive = TRUE, force = TRUE)
+      return(health_result(
+        id, label, "critical",
+        normalizePath(raw_target, winslash = "/", mustWork = FALSE),
+        "Klasör bulunamadı veya uygulamanın çalışma hesabından erişilemiyor.",
+        health_ms(start),
+        remediation = "UNC paylaşım erişimini, Windows klasör izinlerini ve uygulamanın çalışma hesabını kontrol edin."
+      ))
+    }
+
+    # Asıl kanıt gerçek yazma+silme; yol formu (forward-slash UNC, mapped-drive,
+    # kodlama) yazmayı engelleyebildiği için TÜM varyantlar denenir. Biri
+    # yazılabilirse klasör sağlıklıdır.
+    probe <- list(ok = FALSE, error = "")
+    for (cand in candidates) {
+      probe <- .health_write_probe(cand)
+      if (probe$ok) {
+        return(health_result(
+          id, label, "ok",
+          normalizePath(cand, winslash = "/", mustWork = FALSE),
+          "Yazma testi başarılı.", health_ms(start), remediation = ""
+        ))
+      }
+    }
+
+    # Hiçbir varyant yazılamadı. Klasörün gerçekten var olup olmadığını sağlam
+    # yöntemlerle belirle (bkz. .health_path_present -> normalizePath(mustWork=TRUE)).
+    present <- .health_path_present(raw_target, is_dir = TRUE)
+
+    if (present && !isTRUE(require_write)) {
+      # Bu kök için KÖK yazması zorunlu değildir (asıl yazma hedefi index.json
+      # ayrıca kontrol edilir). Klasör var ve erişilebilir -> sağlıklı.
+      return(health_result(
+        id, label, "ok",
+        normalizePath(raw_target, winslash = "/", mustWork = FALSE),
+        "Klasör mevcut ve erişilebilir.",
+        health_ms(start),
+        remediation = ""
+      ))
+    }
+
+    if (present) {
+      # Klasör ERİŞİLEBİLİR ama yazma kanıtlanamadı: kritik değil, uyarı.
+      return(health_result(
+        id, label, "warning",
+        normalizePath(raw_target, winslash = "/", mustWork = FALSE),
+        if (nzchar(probe$error)) paste("Klasör erişilebilir, yazma testi başarısız:", probe$error) else "Klasör erişilebilir ancak yazma testi doğrulanamadı.",
+        health_ms(start),
+        remediation = "Klasör mevcut; servis hesabının bu klasördeki YAZMA iznini ve UNC paylaşım erişimini kontrol edin."
+      ))
+    }
+
+    health_result(
+      id, label, "critical",
+      normalizePath(raw_target, winslash = "/", mustWork = FALSE),
+      "Klasör bulunamadı veya uygulamanın çalışma hesabından erişilemiyor.",
+      health_ms(start),
+      remediation = "UNC paylaşım erişimini, Windows klasör izinlerini ve uygulamanın çalışma hesabını kontrol edin."
+    )
+  })
+}
+
+health_check_index_json <- function(path = getOption("mergen.index_path", Sys.getenv("MERGEN_INDEX_PATH", ""))) {
+  health_safe_check("storage.index_json", "Index JSON Okuma/Yazma", {
+    start <- Sys.time()
+    path <- as.character(path %||% "")[1]
+    if (!nzchar(path)) {
+      return(health_result("storage.index_json", "Index JSON Okuma/Yazma", "not_configured", "Tanımlı değil", "MERGEN_INDEX_PATH boş.", health_ms(start), remediation = "MERGEN_INDEX_PATH değerini tanımlayın."))
+    }
+
+    # Türkçe mojibake onarımı (bkz. health_check_path_writable): "GeliÅŸtirme"
+    # gibi bozuk baytlar gerçek klasörü bulunamaz hale getirir.
+    if (exists("repair_turkish_mojibake_path", mode = "function", inherits = TRUE)) {
+      path <- repair_turkish_mojibake_path(path)
+    }
+
+    parent <- dirname(path)
+    parent_candidates <- .health_path_variants(parent)
+
+    # UNC canlandırma (bkz. health_check_path_writable). Üst klasör gerçekten
+    # yoksa oluşturduğumuzu geri alıp kritik döneriz.
+    created_new <- isTRUE(dir.create(parent_candidates[1], recursive = TRUE, showWarnings = FALSE))
+    if (created_new) {
+      unlink(parent_candidates[1], recursive = TRUE, force = TRUE)
+      return(health_result(
+        "storage.index_json", "Index JSON Okuma/Yazma", "critical", path,
+        "Üst klasör bulunamadı veya uygulamanın çalışma hesabından erişilemiyor.",
+        health_ms(start),
+        remediation = "Index üst klasörünün UNC erişimini ve Windows izinlerini kontrol edin."
+      ))
+    }
+
+    # index.json ilk dosya kaydına kadar oluşmayabilir. Üst klasörün gerçek
+    # yazılabilirliğini varlık API'lerine güvenmeden, tüm yol varyantlarında ölç.
+    probe <- list(ok = FALSE, error = "")
+    for (cand in parent_candidates) {
+      probe <- .health_write_probe(cand, pattern = ".index-health-", fileext = ".json")
+      if (probe$ok) break
+    }
+
+    if (!probe$ok) {
+      parent_present <- .health_path_present(parent, is_dir = TRUE)
+      detail <- if (parent_present) {
+        if (nzchar(probe$error)) paste("Üst klasörde yazma başarısız:", probe$error) else "Üst klasörde yazma doğrulanamadı."
+      } else {
+        "Üst klasör bulunamadı veya uygulamanın çalışma hesabından erişilemiyor."
+      }
+      return(health_result(
+        "storage.index_json", "Index JSON Okuma/Yazma",
+        if (parent_present) "warning" else "critical",
+        path, detail, health_ms(start),
+        remediation = "Index üst klasörünün UNC erişimini ve Windows izinlerini kontrol edin."
+      ))
+    }
+
+    resolved_path <- file.path(parent, basename(path))
+    index_exists <- .health_path_present(resolved_path, is_dir = FALSE)
+
+    readable <- if (!index_exists) {
+      TRUE
+    } else {
+      isTRUE(tryCatch({
+        con <- file(resolved_path, open = "rb")
+        on.exit(close(con), add = TRUE)
+        readBin(con, what = "raw", n = 1L)
+        TRUE
+      }, error = function(e) FALSE))
+    }
+
+    status <- if (readable) "ok" else "critical"
+    detail <- if (!index_exists) {
+      "Index dosyası henüz oluşturulmamış; üst klasörde yazma uygun."
+    } else if (readable) {
+      "Okuma uygun. Yazma uygun."
+    } else {
+      "Okuma başarısız. Yazma uygun."
+    }
+    health_result("storage.index_json", "Index JSON Okuma/Yazma", status, path, detail, health_ms(start),
+                  remediation = if (status == "ok") "" else "Index dosyası ve klasör izinlerini kontrol edin.")
+  })
+}
 
 health_check_runtime_info <- function(perf_tracker = NULL) {
   start <- Sys.time()
