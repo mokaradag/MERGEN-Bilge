@@ -66,7 +66,7 @@ health_check_path_writable <- function(id, label, path, create_if_missing = FALS
     probe <- tempfile(pattern = ".health-", tmpdir = target_dir)
     probe_error <- ""
     ok <- tryCatch({
-      writeLines("ok", probe, useBytes = TRUE)
+      suppressWarnings(writeLines("ok", probe, useBytes = TRUE))
       unlink(probe, force = TRUE) == 0
     }, error = function(e) {
       probe_error <<- conditionMessage(e)
@@ -127,7 +127,7 @@ health_check_index_json <- function(path = getOption("mergen.index_path", Sys.ge
     probe <- tempfile(pattern = ".index-health-", tmpdir = parent, fileext = ".json")
     probe_error <- ""
     writable <- tryCatch({
-      writeLines("{}", probe, useBytes = TRUE)
+      suppressWarnings(writeLines("{}", probe, useBytes = TRUE))
       unlink(probe, force = TRUE) == 0
     }, error = function(e) {
       probe_error <<- conditionMessage(e)
@@ -388,10 +388,13 @@ if (!exists("health_check_runtime_info", mode = "function")) {
 }
 
 health_collect_checks <- function(perf_tracker = NULL, include_slow = TRUE) {
-  files_root <- getOption(
-    "mergen.files_root",
-    Sys.getenv("MERGEN_FILES_ROOT", getwd())
-  )
+  # Sağlık paneli yapılandırılan UNC yolunu sınar. config_file_store tarafından
+  # normalizePath ile oturuma özgü bir mapped-drive harfine çevrilen option,
+  # servis hesabında bulunmayabilir ve yanlış kritik üretebilir.
+  files_root <- Sys.getenv("MERGEN_FILES_ROOT", "")
+  if (!nzchar(files_root)) {
+    files_root <- getOption("mergen.files_root", getwd())
+  }
   index_path <- getOption(
     "mergen.index_path",
     Sys.getenv("MERGEN_INDEX_PATH", "")
