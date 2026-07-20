@@ -81,4 +81,12 @@ if [[ "${PROFILE}" == "cloud-quick" ]]; then
 fi
 echo "Rscript: $(command -v Rscript)"
 
+# Quick ve cloud-quick akışlarında iki gerçek bakım ratchet testi zorunludur.
+# Böylece focused test listesi yanlışlıkla değişse bile AI ajanları final yanıttan
+# önce backend/runtime ve frontend bakım bütçelerini doğrudan doğrular.
+if [[ "${AI_REPO_PROFILE}" == "quick" ]]; then
+  echo "Running mandatory maintainability ratchet gate..."
+  bash tools/maintainability_ratchet_gate.sh
+fi
+
 Rscript tests/scripts/ai_repo_check.R --profile "${AI_REPO_PROFILE}" "$@"
