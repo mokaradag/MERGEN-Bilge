@@ -294,6 +294,15 @@ appLoadingUI <- function() {
       tags$div(class = "alo-vignette"),
       tags$div(class = "alo-codestream"),
       tags$div(
+        style = "position:absolute;top:24px;left:28px;z-index:50;pointer-events:none;",
+        tags$img(
+          src = "img/company_logo.svg",
+          alt = "Şirket Logosu",
+          style = "height:32px;width:auto;filter:brightness(1) drop-shadow(0 0 8px rgba(255,255,255,0.15));"
+        )
+      ),
+      tags$style(HTML(".deep-space-company-logo img { height: 32px; }")),
+      tags$div(
         class = "alo-stage",
         tags$div(
           class = "alo-mark",
