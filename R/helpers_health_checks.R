@@ -44,6 +44,66 @@ health_check_env_contract <- function(required = c("LOCAL_LLM_ENDPOINT", "DB_DSN
   ))
 }
 
+# --- DEPOLAMA KONTROLÜ ORTAK YARDIMCILARI ---
+# UNC/Unicode Windows yollarında base R varlık API'leri yanlış negatif
+# dönebildiği için varlık/okunabilir-yol/yazma denemeleri tek noktada toplanır.
+# Bu, hem tekrarı önler hem de her denemeyi ayrı tryCatch ile sarmaktan doğan
+# fonksiyon şişmesini (bakım ratchet'i) engeller.
+
+# Depolama kökünü (files_root/index) çözer: önce uygulamanın açılışta dir.create
+# edip normalize ederek yazdığı KANONİK seçenek, sonra ham ortam değeri, en son
+# varsayılan. Ham UNC ortam değeri Windows'ta yanlış negatif verebildiği için
+# uygulamanın gerçekten kullandığı seçenek önceliklidir.
+.health_configured_root <- function(option_name, env_name, default = "") {
+  configured <- as.character(getOption(option_name, "") %||% "")[1]
+  if (nzchar(configured)) {
+    return(configured)
+  }
+  env_value <- Sys.getenv(env_name, "")
+  if (nzchar(env_value)) {
+    return(env_value)
+  }
+  default
+}
+
+# resolve_readable_path yoksa yolu olduğu gibi döndürür.
+.health_resolve_readable <- function(path) {
+  if (!exists("resolve_readable_path", mode = "function", inherits = TRUE)) {
+    return(path)
+  }
+  tryCatch(resolve_readable_path(path), error = function(e) path)
+}
+
+# dir.exists()/file.exists() yanlış negatif dönebilir; fs ve path_exists_relaxed
+# ile de dener. Tek tryCatch içinde tutularak fonksiyon sayısı düşük kalır.
+.health_path_present <- function(path, is_dir = TRUE) {
+  isTRUE(tryCatch({
+    hit <- if (is_dir) isTRUE(dir.exists(path)) else isTRUE(file.exists(path))
+    if (!hit && requireNamespace("fs", quietly = TRUE)) {
+      hit <- if (is_dir) isTRUE(fs::dir_exists(path)) else isTRUE(fs::file_exists(path))
+    }
+    if (!hit && exists("path_exists_relaxed", mode = "function", inherits = TRUE)) {
+      hit <- isTRUE(path_exists_relaxed(path))
+    }
+    hit
+  }, error = function(e) FALSE))
+}
+
+# Hedef dizinde gerçek yazma + silme denemesi. Varlık API'lerine güvenmeden
+# yazılabilirliği kanıtlar; ok/hata mesajını birlikte döndürür.
+.health_write_probe <- function(target_dir, pattern = ".health-", fileext = "") {
+  probe_error <- ""
+  probe <- tempfile(pattern = pattern, tmpdir = target_dir, fileext = fileext)
+  ok <- tryCatch({
+    suppressWarnings(writeLines("ok", probe, useBytes = TRUE))
+    unlink(probe, force = TRUE) == 0
+  }, error = function(e) {
+    probe_error <<- conditionMessage(e)
+    FALSE
+  })
+  list(ok = isTRUE(ok), error = probe_error)
+}
+
 health_check_path_writable <- function(id, label, path, create_if_missing = FALSE, expect_file = FALSE) {
   health_safe_check(id, label, {
     start <- Sys.time()
@@ -52,28 +112,16 @@ health_check_path_writable <- function(id, label, path, create_if_missing = FALS
       return(health_result(id, label, "not_configured", "Tanımlı değil", "Yol boş.", health_ms(start), remediation = "İlgili ortam değişkenini tanımlayın."))
     }
 
-    target_dir <- if (expect_file) dirname(path) else path
-    if (exists("resolve_readable_path", mode = "function", inherits = TRUE)) {
-      target_dir <- tryCatch(resolve_readable_path(target_dir), error = function(e) target_dir)
-    }
+    target_dir <- .health_resolve_readable(if (expect_file) dirname(path) else path)
 
     if (isTRUE(create_if_missing)) {
       try(dir.create(target_dir, recursive = TRUE, showWarnings = FALSE), silent = TRUE)
     }
 
-    # UNC/Unicode Windows yollarında dir.exists()/file.exists() yanlış negatif
-    # dönebilir. Sağlık için asıl kanıt, hedef dizinde gerçek yazma + silme işlemidir.
-    probe <- tempfile(pattern = ".health-", tmpdir = target_dir)
-    probe_error <- ""
-    ok <- tryCatch({
-      suppressWarnings(writeLines("ok", probe, useBytes = TRUE))
-      unlink(probe, force = TRUE) == 0
-    }, error = function(e) {
-      probe_error <<- conditionMessage(e)
-      FALSE
-    })
-
-    if (ok) {
+    # UNC/Unicode Windows yollarında dir.exists() yanlış negatif dönebilir.
+    # Sağlık için asıl kanıt, hedef dizinde gerçek yazma + silme işlemidir.
+    probe <- .health_write_probe(target_dir)
+    if (probe$ok) {
       return(health_result(
         id, label,
         status = "ok",
@@ -84,16 +132,9 @@ health_check_path_writable <- function(id, label, path, create_if_missing = FALS
       ))
     }
 
-    target_exists <- isTRUE(tryCatch(dir.exists(target_dir), error = function(e) FALSE))
-    if (!target_exists && requireNamespace("fs", quietly = TRUE)) {
-      target_exists <- isTRUE(tryCatch(fs::dir_exists(target_dir), error = function(e) FALSE))
-    }
-    if (!target_exists && exists("path_exists_relaxed", mode = "function", inherits = TRUE)) {
-      target_exists <- isTRUE(tryCatch(path_exists_relaxed(target_dir), error = function(e) FALSE))
-    }
-
+    target_exists <- .health_path_present(target_dir, is_dir = TRUE)
     detail <- if (target_exists) {
-      if (nzchar(probe_error)) paste("Yazma testi başarısız:", probe_error) else "Yazma testi başarısız."
+      if (nzchar(probe$error)) paste("Yazma testi başarısız:", probe$error) else "Yazma testi başarısız."
     } else {
       "Klasör bulunamadı veya uygulamanın çalışma hesabından erişilemiyor."
     }
@@ -117,34 +158,14 @@ health_check_index_json <- function(path = getOption("mergen.index_path", Sys.ge
       return(health_result("storage.index_json", "Index JSON Okuma/Yazma", "not_configured", "Tanımlı değil", "MERGEN_INDEX_PATH boş.", health_ms(start), remediation = "MERGEN_INDEX_PATH değerini tanımlayın."))
     }
 
-    parent <- dirname(path)
-    if (exists("resolve_readable_path", mode = "function", inherits = TRUE)) {
-      parent <- tryCatch(resolve_readable_path(parent), error = function(e) parent)
-    }
+    parent <- .health_resolve_readable(dirname(path))
 
     # index.json ilk dosya kaydına kadar oluşmayabilir. Üst klasörün gerçek
     # yazılabilirliğini, varlık API'lerine güvenmeden doğrudan geçici dosyayla ölç.
-    probe <- tempfile(pattern = ".index-health-", tmpdir = parent, fileext = ".json")
-    probe_error <- ""
-    writable <- tryCatch({
-      suppressWarnings(writeLines("{}", probe, useBytes = TRUE))
-      unlink(probe, force = TRUE) == 0
-    }, error = function(e) {
-      probe_error <<- conditionMessage(e)
-      FALSE
-    })
-
-    if (!writable) {
-      parent_exists <- isTRUE(tryCatch(dir.exists(parent), error = function(e) FALSE))
-      if (!parent_exists && requireNamespace("fs", quietly = TRUE)) {
-        parent_exists <- isTRUE(tryCatch(fs::dir_exists(parent), error = function(e) FALSE))
-      }
-      if (!parent_exists && exists("path_exists_relaxed", mode = "function", inherits = TRUE)) {
-        parent_exists <- isTRUE(tryCatch(path_exists_relaxed(parent), error = function(e) FALSE))
-      }
-
-      detail <- if (parent_exists) {
-        if (nzchar(probe_error)) paste("Üst klasörde yazma başarısız:", probe_error) else "Üst klasörde yazma başarısız."
+    probe <- .health_write_probe(parent, pattern = ".index-health-", fileext = ".json")
+    if (!probe$ok) {
+      detail <- if (.health_path_present(parent, is_dir = TRUE)) {
+        if (nzchar(probe$error)) paste("Üst klasörde yazma başarısız:", probe$error) else "Üst klasörde yazma başarısız."
       } else {
         "Üst klasör bulunamadı veya uygulamanın çalışma hesabından erişilemiyor."
       }
@@ -155,24 +176,18 @@ health_check_index_json <- function(path = getOption("mergen.index_path", Sys.ge
       ))
     }
 
-    resolved_path <- file.path(parent, basename(path))
-    if (exists("resolve_readable_path", mode = "function", inherits = TRUE)) {
-      resolved_path <- tryCatch(resolve_readable_path(resolved_path), error = function(e) resolved_path)
-    }
-    index_exists <- isTRUE(tryCatch(file.exists(resolved_path), error = function(e) FALSE))
-    if (!index_exists && exists("path_exists_relaxed", mode = "function", inherits = TRUE)) {
-      index_exists <- isTRUE(tryCatch(path_exists_relaxed(resolved_path), error = function(e) FALSE))
-    }
+    resolved_path <- .health_resolve_readable(file.path(parent, basename(path)))
+    index_exists <- .health_path_present(resolved_path, is_dir = FALSE)
 
     readable <- if (!index_exists) {
       TRUE
     } else {
-      tryCatch({
+      isTRUE(tryCatch({
         con <- file(resolved_path, open = "rb")
         on.exit(close(con), add = TRUE)
         readBin(con, what = "raw", n = 1L)
         TRUE
-      }, error = function(e) FALSE)
+      }, error = function(e) FALSE))
     }
 
     status <- if (readable) "ok" else "critical"
@@ -388,17 +403,14 @@ if (!exists("health_check_runtime_info", mode = "function")) {
 }
 
 health_collect_checks <- function(perf_tracker = NULL, include_slow = TRUE) {
-  # Sağlık paneli yapılandırılan UNC yolunu sınar. config_file_store tarafından
-  # normalizePath ile oturuma özgü bir mapped-drive harfine çevrilen option,
-  # servis hesabında bulunmayabilir ve yanlış kritik üretebilir.
-  files_root <- Sys.getenv("MERGEN_FILES_ROOT", "")
-  if (!nzchar(files_root)) {
-    files_root <- getOption("mergen.files_root", getwd())
-  }
-  index_path <- getOption(
-    "mergen.index_path",
-    Sys.getenv("MERGEN_INDEX_PATH", "")
-  )
+  # Sağlık kontrolü, uygulamanın GERÇEKTEN kullandığı kanonik yolu sınamalıdır.
+  # config_file_store.R açılışta MERGEN_FILES_ROOT ortam değerini okuyup dir.create
+  # eder ve normalize ederek mergen.files_root seçeneğine yazar. Ham UNC ortam
+  # değeri (`//sunucu/pay/... /data`) Windows'ta dir.exists()/yazma denemesinde
+  # yanlış negatif verebilir; bu yüzden önce kanonik seçenek, sonra ortam değeri
+  # kullanılır (index kontrolüyle aynı öncelik sırası).
+  files_root <- .health_configured_root("mergen.files_root", "MERGEN_FILES_ROOT", getwd())
+  index_path <- .health_configured_root("mergen.index_path", "MERGEN_INDEX_PATH", "")
 
   checks <- list(
     health_check_app_boot(),

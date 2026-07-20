@@ -110,3 +110,37 @@ test_that("boş index yolu tanımlı değil olarak döner", {
   res <- health_check_index_json("")
   expect_identical(res$status[1], "not_configured")
 })
+
+test_that("depolama kökü çözümleyicisi kanonik seçeneği ham ortam değerinden önce kullanır", {
+  # config_file_store.R açılışta MERGEN_FILES_ROOT değerini dir.create edip
+  # normalize ederek mergen.files_root seçeneğine yazar. Ham UNC ortam değeri
+  # Windows'ta var olan klasörde bile yanlış negatif verebildiği için sağlık
+  # kontrolü, uygulamanın gerçekten kullandığı kanonik seçeneği önceliklendirir.
+  old_opt <- options(mergen.files_root = "/kanonik/kok")
+  old_env <- Sys.getenv("MERGEN_FILES_ROOT", unset = NA_character_)
+  withr::defer({
+    options(old_opt)
+    if (is.na(old_env)) Sys.unsetenv("MERGEN_FILES_ROOT") else Sys.setenv(MERGEN_FILES_ROOT = old_env)
+  })
+  Sys.setenv(MERGEN_FILES_ROOT = "//sunucu/pay/ham/data")
+
+  # Kanonik seçenek ham ortam değerini geçersiz kılar.
+  expect_identical(
+    .health_configured_root("mergen.files_root", "MERGEN_FILES_ROOT", getwd()),
+    "/kanonik/kok"
+  )
+
+  # Seçenek boşsa ham ortam değerine düşer.
+  options(mergen.files_root = "")
+  expect_identical(
+    .health_configured_root("mergen.files_root", "MERGEN_FILES_ROOT", getwd()),
+    "//sunucu/pay/ham/data"
+  )
+
+  # İkisi de boşsa varsayılan kullanılır.
+  Sys.unsetenv("MERGEN_FILES_ROOT")
+  expect_identical(
+    .health_configured_root("mergen.files_root", "MERGEN_FILES_ROOT", "VARSAYILAN"),
+    "VARSAYILAN"
+  )
+})
