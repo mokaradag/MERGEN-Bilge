@@ -30,6 +30,15 @@
 - If validation fails, summarize the failed step and any produced artifact/log path; do not hide the failure.
 - Only say “tests passed,” “I verified,” “I ran the app,” or “the check is green” when the relevant command actually completed successfully and the validation summary contains zero failed steps.
 
+### Mandatory maintainability gate for Codex and coding agents
+
+- For every task that changes application code, R files, JavaScript, CSS, or runtime configuration, the final post-edit validation must run `bash tools/ai_validate.sh quick` at minimum.
+- That validation must include and pass both `tests/testthat/test-maintainability-ratchet.R` and `tests/testthat/test-frontend-maintainability-ratchet.R`. The quick/cloud-quick validation entry point enforces these tests directly through `tools/maintainability_ratchet_gate.sh`.
+- Validation performed before the last code edit does not count. If code changes after a successful validation run, run the validation again before the final answer.
+- If either ratchet fails, refactor or otherwise fix the implementation before answering. Do not raise ratchet thresholds, budgets, baselines, or allowlists merely to make a regression pass unless the user explicitly requests a deliberate baseline change.
+- Do not provide a successful final answer while either mandatory ratchet is failing. Report the exact failure honestly if it cannot be resolved within the task.
+- The AI environment setup installs a local pre-commit hook when possible so the same mandatory ratchet gate is checked again against the final working tree before commit.
+
 ## Operational soak / load gate
 
 - The operational soak gate (`tests/scripts/run_operational_soak_gate.R`) is **separate** from the VM evidence gate and from `ai_validate`. It does not replace them.
