@@ -70,7 +70,7 @@ health_check_env_contract <- function(required = c("LOCAL_LLM_ENDPOINT", "DB_DSN
   # bozulmasına yol açmaz, index yolunun çalışan biçimiyle aynıdır);
   # resolve_readable_path base R ile açılabilen biçimi bulur. Geçersiz bir
   # varyant üretilse bile yazma denemesi zararsızca başarısız olur.
-  for (fn in c("normalize_mcp_path", "normalize_utf8_path", "resolve_readable_path")) {
+  for (fn in c("repair_turkish_mojibake_path", "normalize_mcp_path", "normalize_utf8_path", "resolve_readable_path")) {
     if (exists(fn, mode = "function", inherits = TRUE)) {
       variants <- c(variants, tryCatch(get(fn)(path), error = function(e) NULL))
     }
@@ -145,6 +145,13 @@ health_check_path_writable <- function(id, label, path, create_if_missing = FALS
     }
 
     raw_target <- if (expect_file) dirname(path) else path
+    # Türkçe UNC yollarında .Renviron kodlaması yüzünden mojibake olabilir
+    # (ör. "Geliştirme" -> "GeliÅŸtirme"); bu bozuk baytlarla dir.exists ve yazma
+    # başarısız olur (Sys.getenv ham baytları döndürür). Onar ki gerçek klasör
+    # bulunabilsin ve panelde temiz görünsün. config_file_store.R aynı onarımı yapar.
+    if (exists("repair_turkish_mojibake_path", mode = "function", inherits = TRUE)) {
+      raw_target <- repair_turkish_mojibake_path(raw_target)
+    }
     candidates <- .health_path_variants(raw_target)
 
     # Windows'ta UNC yollarında tempfile+writeLines ve dir.exists/list.files, yol
@@ -225,6 +232,12 @@ health_check_index_json <- function(path = getOption("mergen.index_path", Sys.ge
     path <- as.character(path %||% "")[1]
     if (!nzchar(path)) {
       return(health_result("storage.index_json", "Index JSON Okuma/Yazma", "not_configured", "Tanımlı değil", "MERGEN_INDEX_PATH boş.", health_ms(start), remediation = "MERGEN_INDEX_PATH değerini tanımlayın."))
+    }
+
+    # Türkçe mojibake onarımı (bkz. health_check_path_writable): "GeliÅŸtirme"
+    # gibi bozuk baytlar gerçek klasörü bulunamaz hale getirir.
+    if (exists("repair_turkish_mojibake_path", mode = "function", inherits = TRUE)) {
+      path <- repair_turkish_mojibake_path(path)
     }
 
     parent <- dirname(path)

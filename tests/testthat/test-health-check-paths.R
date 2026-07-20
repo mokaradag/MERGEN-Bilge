@@ -111,6 +111,31 @@ test_that("boş index yolu tanımlı değil olarak döner", {
   expect_identical(res$status[1], "not_configured")
 })
 
+test_that("mojibake Türkçe yol onarılıp gerçek klasör bulunur (files_root)", {
+  # VM senaryosu: Sys.getenv Türkçe UNC yolunu mojibake döndürür
+  # (ör. "Geliştirme" -> "GeliÅŸtirme"); repair_turkish_mojibake_path bunu onarır.
+  # Kontrol onarılmış yolu kullanmalı, gerçek klasörü bulmalı ve temiz göstermeli.
+  base <- tempfile("moji-root-")
+  real <- file.path(base, "Gelistirme_REAL", "data")
+  dir.create(real, recursive = TRUE)
+  mojibake_in <- file.path(base, "Gelistirme_MOJI", "data")
+
+  had <- exists("repair_turkish_mojibake_path", envir = .GlobalEnv, inherits = FALSE)
+  old <- if (had) get("repair_turkish_mojibake_path", envir = .GlobalEnv) else NULL
+  assign("repair_turkish_mojibake_path",
+         function(p) gsub("Gelistirme_MOJI", "Gelistirme_REAL", p, fixed = TRUE),
+         envir = .GlobalEnv)
+  withr::defer({
+    if (had) assign("repair_turkish_mojibake_path", old, envir = .GlobalEnv)
+    else rm("repair_turkish_mojibake_path", envir = .GlobalEnv)
+  })
+
+  res <- health_check_path_writable("moji.files_root", "Kök", mojibake_in,
+                                    create_if_missing = FALSE, require_write = FALSE)
+  expect_identical(res$status[1], "ok")
+  expect_true(grepl("Gelistirme_REAL", res$value[1], fixed = TRUE))
+})
+
 test_that("yol varyant üreteci slash/backslash biçimlerini kapsar", {
   variants <- .health_path_variants("//sunucu/pay/MERGEN Bilge/data")
   # forward-slash ve backslash UNC biçimleri denenecek adaylar arasında olmalı.
