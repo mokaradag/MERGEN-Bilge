@@ -300,7 +300,12 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # htmltools etiket render katmanı config_ui_asset_tags.R'ye taşındı. VERİ dosyası
   # düşük fonksiyon sayısında kilitlenir (fonksiyon mantığı geri sızmasını engeller);
   # bütçeler geri birleşmeyi ve büyümeyi yakalar.
-  assert_current_budget("R/config_ui_assets.R", 470L, 2L)
+  # 470L -> 485L bilinçli güncelleme: Bilge Savunması kule/2.5D/sahne/müzik
+  # genişletmesi 5 yeni oyun JS dosyası (sim_kuleler, varliklar, cizim_zemin,
+  # sahne) + ortak piksel çizici (pixel_sprite_render.js) manifeste eklendi.
+  # Bu bir DATA-dosyası manifest genişlemesidir; fonksiyon sayısı 2L değişmedi
+  # (load-order tek sahibi bu dosyadır, girdiler yardımcıya çıkarılamaz).
+  assert_current_budget("R/config_ui_assets.R", 485L, 2L)
   assert_current_budget("R/config_ui_asset_validators.R", 300L, 13L)
   assert_current_budget("R/config_ui_asset_tags.R", 110L, 8L)
 })

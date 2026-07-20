@@ -45,7 +45,7 @@
       class = "bs-menu-ust",
       htmltools::tags$div(
         class = "bs-menu-tanitim",
-        htmltools::tags$h2(class = "bs-menu-hero-baslik", "Bilgi Çekirdeği'ni Savun"),
+        htmltools::tags$h2(class = "bs-menu-hero-baslik", "Bilgi \u00c7ekirde\u011fi'ni Savun"),
         htmltools::tags$p(
           class = "bs-menu-hero-metin",
           paste(

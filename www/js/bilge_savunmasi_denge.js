@@ -1,10 +1,10 @@
 // www/js/bilge_savunmasi_denge.js
 // Bilge Savunması merkezi denge yapılandırması: kahraman (persona) oyun
-// istatistikleri, tehdit (düşman) tanımları, patronlar, ekonomi, zorluk
-// çarpanları ve haftalık değiştirici etkileri. TÜM sayısal denge buradadır;
-// simülasyon ve HUD bu tablodan okur. Kimlik alanları (ad, renk, portre)
-// sunucudan gelen persona manifesti ile birleştirilir — burada yeniden
-// TANIMLANMAZ.
+// istatistikleri, kule tanımları, tehdit (düşman) tanımları, patronlar,
+// ekonomi, zorluk çarpanları ve haftalık değiştirici etkileri. TÜM sayısal
+// denge buradadır; simülasyon ve HUD bu tablodan okur. Kimlik alanları
+// (ad, renk, portre) sunucudan gelen persona manifesti ile birleştirilir —
+// burada yeniden TANIMLANMAZ.
 
 (function() {
   "use strict";
@@ -12,22 +12,27 @@
   var BS = window.BilgeSavunmasi = window.BilgeSavunmasi || {};
 
   BS.denge = {
-    DENGE_SURUMU: "2026.07",
+    DENGE_SURUMU: "2026.07.2",
 
     ekonomi: {
       satisIadeOrani: 0.7,        // satışta geri dönen kaynak oranı
-      dalgaTamamlamaBonusu: 14,   // her dalga sonunda verilen kaynak
+      dalgaTamamlamaBonusu: 18,   // her dalga sonunda verilen kaynak
       erkenBaslatmaBonusu: 8,     // geri sayımı atlayana ek kaynak
       baslangicKaynak: {
-        baglam_kapisi: 130,
-        celiski_kavsagi: 150,
-        bilgi_cekirdegi: 170
+        baglam_kapisi: 160,
+        celiski_kavsagi: 180,
+        bilgi_cekirdegi: 200,
+        veri_labirenti: 210,
+        sinyal_vadisi: 220,
+        karar_zirvesi: 240
       }
     },
 
+    // Kule eklenmesiyle savunma gücü arttığı için tehdit dayanıklılığı
+    // yükseltildi (Kingdom Rush tarzı baskı eğrisi).
     zorluklar: {
-      normal:   { canCarpani: 1.0,  hizCarpani: 1.0,  kaynakCarpani: 1.0 },
-      gelismis: { canCarpani: 1.45, hizCarpani: 1.12, kaynakCarpani: 0.9 }
+      normal:   { canCarpani: 1.18, hizCarpani: 1.0,  kaynakCarpani: 1.0 },
+      gelismis: { canCarpani: 1.7,  hizCarpani: 1.14, kaynakCarpani: 0.9 }
     },
 
     // Haftalık meydan okuma değiştiricileri (R .bs_haftalik_degistiriciler
@@ -167,6 +172,101 @@
     },
 
     // ════════════════════════════════════════════════════════════════════════
+    //  KULELER — inşa edilebilir savunma yapıları (Kingdom Rush esinli).
+    //  Kahramanların aksine aynı kuleden birden çok inşa edilebilir; üç
+    //  kademelidir (taban + iki yükseltme) ve satılabilir.
+    // ════════════════════════════════════════════════════════════════════════
+    kuleler: {
+      gozetleme: {
+        ad: "Gözcü Kulesi",
+        aciklama: "Hızlı tekil atış; kalabalık zayıf tehditlere karşı ideal",
+        maliyet: 45,
+        menzil: 2.6,
+        hasar: 7,
+        atisAraligi: 0.5,
+        mermiHizi: 10,
+        mermiTipi: "gozcu",
+        yukseltmeler: [
+          { maliyet: 40, hasar: 11, menzil: 2.8,
+            aciklama: "Gözetleme optiği güçlenir" },
+          { maliyet: 70, hasar: 16, menzil: 3.0, atisAraligi: 0.4,
+            aciklama: "Çift namlu: atış temposu artar" }
+        ]
+      },
+      veri_topu: {
+        ad: "Veri Topçusu",
+        aciklama: "Yavaş ama alan hasarlı gülle; sürülere karşı etkili",
+        maliyet: 80,
+        menzil: 3.2,
+        hasar: 24,
+        atisAraligi: 2.3,
+        mermiHizi: 6,
+        mermiTipi: "topcu",
+        alanYaricapi: 1.1,
+        yukseltmeler: [
+          { maliyet: 65, hasar: 36, alanYaricapi: 1.25,
+            aciklama: "Patlama alanı genişler" },
+          { maliyet: 110, hasar: 52, alanYaricapi: 1.45, menzil: 3.5,
+            aciklama: "Ağır veri güllesi: yüksek alan hasarı" }
+        ]
+      },
+      kripto_isik: {
+        ad: "Kripto Işını",
+        aciklama: "Zırh delici enerji ışını; zırhlı ve kalkanlı tehditleri eritir",
+        maliyet: 65,
+        menzil: 3.0,
+        hasar: 13,
+        atisAraligi: 0.95,
+        mermiHizi: 12,
+        mermiTipi: "kripto",
+        zirhDelme: 0.6,
+        yukseltmeler: [
+          { maliyet: 55, hasar: 19, zirhDelme: 0.75,
+            aciklama: "Işın odaklaması zırhı daha derin deler" },
+          { maliyet: 95, hasar: 27, zirhDelme: 0.9, menzil: 3.4,
+            aciklama: "Tam çözünürlük: neredeyse tüm zırhı yok sayar" }
+        ]
+      }
+    },
+
+    kuleAl: function(id) {
+      return BS.denge.kuleler[id] || null;
+    },
+
+    // Kule yükseltme sonrası etkin istatistikler (seviye: 0..2; 0 = taban).
+    kuleIstatistik: function(id, seviye) {
+      var taban = BS.denge.kuleAl(id);
+      if (!taban) return null;
+      var sonuc = {
+        hasar: taban.hasar,
+        menzil: taban.menzil,
+        atisAraligi: taban.atisAraligi,
+        alanYaricapi: taban.alanYaricapi || 0,
+        zirhDelme: taban.zirhDelme || 0
+      };
+      for (var i = 0; i < seviye && i < taban.yukseltmeler.length; i++) {
+        var yuk = taban.yukseltmeler[i];
+        if (yuk.hasar != null) sonuc.hasar = yuk.hasar;
+        if (yuk.menzil != null) sonuc.menzil = yuk.menzil;
+        if (yuk.atisAraligi != null) sonuc.atisAraligi = yuk.atisAraligi;
+        if (yuk.alanYaricapi != null) sonuc.alanYaricapi = yuk.alanYaricapi;
+        if (yuk.zirhDelme != null) sonuc.zirhDelme = yuk.zirhDelme;
+      }
+      return sonuc;
+    },
+
+    // Bir kulenin o ana kadarki toplam yatırımı (satış iadesi hesabı).
+    kuleYatirim: function(id, seviye) {
+      var taban = BS.denge.kuleAl(id);
+      if (!taban) return 0;
+      var toplam = taban.maliyet;
+      for (var i = 0; i < seviye && i < taban.yukseltmeler.length; i++) {
+        toplam += taban.yukseltmeler[i].maliyet;
+      }
+      return toplam;
+    },
+
+    // ════════════════════════════════════════════════════════════════════════
     //  TEHDİTLER — bilgi/karar dünyasından modern kavramlar. "puan" değerleri
     //  sunucu tarafı dalga puan sınırıyla uyumludur (tekil tehdit <= 18).
     // ════════════════════════════════════════════════════════════════════════
@@ -223,6 +323,16 @@
         ad: "Dağınık İstek", can: 22, hiz: 1.45, zirh: 0, puan: 4, kaynak: 4,
         renk: "#a2d2ff", sekil: "nokta", ozellik: "surulu",
         aciklama: "Küçük gruplar hâlinde art arda gelir"
+      },
+      veri_solucani: {
+        ad: "Veri Solucanı", can: 210, hiz: 0.7, zirh: 4,
+        puan: 15, kaynak: 16, renk: "#9d4edd", sekil: "yigin",
+        aciklama: "Ağır zırhlı, yavaş ilerleyen bozuk veri kümesi"
+      },
+      golge_istek: {
+        ad: "Gölge İstek", can: 62, hiz: 1.5, zirh: 1,
+        puan: 9, kaynak: 10, renk: "#577590", sekil: "damla", ozellik: "gizli",
+        aciklama: "Hızlı ve aralıklı görünmez; Sinyal Taraması açığa çıkarır"
       }
     },
 
@@ -241,6 +351,11 @@
         ad: "Kaos Çekirdeği", can: 2400, hiz: 0.4, zirh: 6, puan: 110,
         kaynak: 110, renk: "#7209b7", sekil: "kaos", ozellik: "iyilestiren",
         aciklama: "Bilgi Çekirdeği'nin karanlık aynası; yanındakileri onarır"
+      },
+      veri_hortumu: {
+        ad: "Veri Hortumu", can: 3200, hiz: 0.4, zirh: 6, puan: 100,
+        kaynak: 100, renk: "#f9844a", sekil: "firtina", ozellik: "hizlanan",
+        aciklama: "Çekirdeğe yaklaştıkça ivmelenen dev veri burgacı"
       }
     },
 

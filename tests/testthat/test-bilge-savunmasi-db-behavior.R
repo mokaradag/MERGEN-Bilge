@@ -473,8 +473,14 @@ test_that("haftalık sezon idempotenttir ve liderlik zengin profil taşır", {
   conn <- .bs_test_db_kur()
   on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
 
+  # Sabit bir hafta seçilir; kampanya 6 haritaya çıktığında haftalık rotasyon
+  # bu tarih için 10 dalgalı Çelişki Kavşağı'nı seçer. Test koşusu anında
+  # sonuçlandığından (sunucu geçen süresi ~0) süre üst sınırı ~90s'dir; bu
+  # yüzden bu test yalnızca dalga başına alt sınırı (dalga*6) 90'ın altında
+  # kalan bir haritayla geçerlidir (16 dalgalı Karar Zirvesi burada kullanılamaz;
+  # gerçek oyunda uzun koşu süresi bu sınırı zaten aşar).
   meydan <- bs_haftalik_meydan_okuma(
-    as.POSIXct("2026-07-15 12:00:00", tz = "Europe/Istanbul")
+    as.POSIXct("2026-06-17 12:00:00", tz = "Europe/Istanbul")
   )
   sezon1 <- bs_db_get_or_create_season(meydan, conn = conn)
   sezon2 <- bs_db_get_or_create_season(meydan, conn = conn)
@@ -535,9 +541,12 @@ test_that("hafta dönümünde bitirilen haftalık koşu, BAŞLADIĞI sezona gön
   conn <- .bs_test_db_kur()
   on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
 
-  # Koşu, PAZAR gecesi (eski ISO hafta, W28) başlar.
+  # Koşu, PAZAR gecesi (eski ISO hafta, W25) başlar. Kampanya 6 haritaya
+  # çıkınca haftalık rotasyon bu hafta için 10 dalgalı Çelişki Kavşağı'nı
+  # seçer; anında sonuçlanan test koşusu süre üst sınırına (~90s) takılmadan
+  # geçerli kalır (sure_saniye = 65, dalga alt sınırı 60).
   eski_meydan <- bs_haftalik_meydan_okuma(
-    as.POSIXct("2026-07-12 23:50:00", tz = "Europe/Istanbul")
+    as.POSIXct("2026-06-21 23:50:00", tz = "Europe/Istanbul")
   )
   eski_sezon <- bs_db_get_or_create_season(eski_meydan, conn = conn)
 
@@ -561,10 +570,10 @@ test_that("hafta dönümünde bitirilen haftalık koşu, BAŞLADIĞI sezona gön
     sure_saniye = 65, kullanilan_kahramanlar = list("emre"), olay_ozeti = list()
   )
 
-  # Koşu PAZARTESİ sabahı (yeni ISO hafta, W29) sonuçlandırılır; "şimdiki"
+  # Koşu PAZARTESİ sabahı (yeni ISO hafta, W26) sonuçlandırılır; "şimdiki"
   # hafta artık koşunun başladığı haftadan FARKLIDIR.
   yeni_meydan <- bs_haftalik_meydan_okuma(
-    as.POSIXct("2026-07-13 00:10:00", tz = "Europe/Istanbul")
+    as.POSIXct("2026-06-22 00:10:00", tz = "Europe/Istanbul")
   )
   expect_false(identical(eski_meydan$hafta_kodu, yeni_meydan$hafta_kodu))
   yeni_sezon <- bs_db_get_or_create_season(yeni_meydan, conn = conn)
@@ -796,8 +805,10 @@ test_that("haftalık koşudan savunma planı yayınlanamaz (değiştirici planla
   conn <- .bs_test_db_kur()
   on.exit({ DBI::dbDisconnect(conn); bs_db_reset_availability_cache() }, add = TRUE)
 
+  # 10 dalgalı Çelişki Kavşağı'nı seçen sabit hafta: anında sonuçlanan test
+  # koşusu (~0s sunucu süresi) süre üst sınırına takılmaz (bkz. rotasyon notu).
   meydan <- bs_haftalik_meydan_okuma(
-    as.POSIXct("2026-07-15 12:00:00", tz = "Europe/Istanbul")
+    as.POSIXct("2026-06-17 12:00:00", tz = "Europe/Istanbul")
   )
   sezon <- bs_db_get_or_create_season(meydan, conn = conn)
 
@@ -814,7 +825,7 @@ test_that("haftalık koşudan savunma planı yayınlanamaz (değiştirici planla
     harita = meydan$harita, zorluk = meydan$zorluk, tohum = meydan$tohum,
     mod = "haftalik", dalga_ozetleri = dalgalar,
     son_dalga = harita_kaydi$dalga_sayisi, son_cekirdek = 20, zafer = TRUE,
-    sure_saniye = 90, kullanilan_kahramanlar = list("emre"), olay_ozeti = list()
+    sure_saniye = 75, kullanilan_kahramanlar = list("emre"), olay_ozeti = list()
   )
   sonuc <- bs_db_finalize_run(101L, kosu$kosu_id, "haftalik-plan", ozet, conn = conn)
   expect_true(sonuc$kabul)

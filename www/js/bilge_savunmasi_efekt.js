@@ -43,6 +43,9 @@
           BS.efekt.metin(olay.x, olay.y, "+" + olay.iade, "#8ecae6");
         } else if (olay.tip === "yetenek") {
           BS.efekt.patlama(olay.x, olay.y, "#ffffff", 18);
+        } else if (olay.tip === "patlama_alani") {
+          // Veri Topçusu alan vuruşu: geniş turuncu parçacık halkası.
+          BS.efekt.patlama(olay.x, olay.y, "#f4845f", 20);
         } else if (olay.tip === "onarim") {
           BS.efekt.metin(9, 1, "Onarım +" + olay.miktar, "#7ae582");
         } else if (olay.tip === "kaynak") {

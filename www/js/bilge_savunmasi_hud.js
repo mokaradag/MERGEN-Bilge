@@ -52,12 +52,39 @@
           '<button type="button" class="bs-ust-dugme" data-bs-komut="duraklat" ' +
                   'id="bs-dugme-duraklat" aria-label="Duraklat">' +
             '<i class="fa fa-pause" aria-hidden="true"></i></button>' +
+          '<button type="button" class="bs-ust-dugme" data-bs-komut="tamekran" ' +
+                  'id="bs-dugme-tamekran" aria-label="Tam ekran">' +
+            '<i class="fa fa-expand" aria-hidden="true"></i></button>' +
           '<button type="button" class="bs-ust-dugme" data-bs-komut="menu" ' +
                   'aria-label="Koşudan çık">' +
             '<i class="fa fa-door-open" aria-hidden="true"></i> Çık</button>' +
         '</div>';
 
-      // ── Kahraman çubuğu ───────────────────────────────────────────────────
+      // ── Kahraman + kule çubuğu ────────────────────────────────────────────
+      var kuleIkonlari = {
+        gozetleme: "fa-tower-observation",
+        veri_topu: "fa-burst",
+        kripto_isik: "fa-gem"
+      };
+      var kuleKartlari = Object.keys(BS.denge.kuleler).map(function(tip) {
+        var tanim = BS.denge.kuleAl(tip);
+        return (
+          '<div class="bs-kule-karti" id="bs-kule-kart-' + kacis(tip) + '">' +
+            '<button type="button" class="bs-kule-sec" data-bs-komut="kule" ' +
+                    'data-bs-arg="' + kacis(tip) + '" ' +
+                    'title="' + kacis(tanim.ad + ": " + tanim.aciklama) + '" ' +
+                    'aria-label="' + kacis(tanim.ad) + '">' +
+              '<span class="bs-kule-ikon" aria-hidden="true">' +
+                '<i class="fa ' + (kuleIkonlari[tip] || "fa-chess-rook") +
+                '"></i></span>' +
+              '<span class="bs-kule-ad">' + kacis(tanim.ad) + '</span>' +
+              '<span class="bs-kule-maliyet" id="bs-kule-maliyet-' + kacis(tip) +
+                '">' + tanim.maliyet + '</span>' +
+            '</button>' +
+          '</div>'
+        );
+      }).join("");
+
       var kahramanSirasi = ["emre", "selin", "deniz", "can", "ipek"];
       hud.baglar.alt.innerHTML = kahramanSirasi.map(function(id) {
         var persona = hud.personalar[id] || { ad: id, aksan: "#4cc9f0" };
@@ -89,7 +116,8 @@
             '</button>' +
           '</div>'
         );
-      }).join("");
+      }).join("") +
+        '<span class="bs-alt-ayrac" aria-hidden="true"></span>' + kuleKartlari;
 
       // ── Yan panel ─────────────────────────────────────────────────────────
       hud.baglar.yan.innerHTML =
@@ -108,6 +136,7 @@
       dinle(hud.baglar.ust, function(komut) {
         if (komut === "hiz") BS.olaylar.yay("girdi-hiz", {});
         else if (komut === "duraklat") BS.olaylar.yay("girdi-duraklat", {});
+        else if (komut === "tamekran") BS.olaylar.yay("hud-tamekran", {});
         else if (komut === "menu") BS.olaylar.yay("hud-cikis", {});
       });
 
@@ -116,6 +145,8 @@
           BS.olaylar.yay("girdi-kahraman-kisayol", { kahraman: arg });
         } else if (komut === "yetenek") {
           BS.olaylar.yay("girdi-yetenek", { kahraman: arg });
+        } else if (komut === "kule") {
+          BS.olaylar.yay("girdi-kule-kisayol", { kule: arg });
         }
       });
 
@@ -123,6 +154,11 @@
         if (komut === "yukselt") BS.olaylar.yay("hud-yukselt", { kahraman: arg });
         else if (komut === "sat") BS.olaylar.yay("hud-sat", { kahraman: arg });
         else if (komut === "tasi") BS.olaylar.yay("hud-tasi", { kahraman: arg });
+        else if (komut === "kule-yukselt") {
+          BS.olaylar.yay("hud-kule-yukselt", { kule: parseInt(arg, 10) });
+        } else if (komut === "kule-sat") {
+          BS.olaylar.yay("hud-kule-sat", { kule: parseInt(arg, 10) });
+        }
       });
 
       dinle(hud.baglar.kaplama, function(komut, arg) {
@@ -205,6 +241,60 @@
             }
           }
         });
+
+        // Kule kartları: karşılanabilirlik ve yerleşim modu vurgusu.
+        Object.keys(BS.denge.kuleler).forEach(function(tip) {
+          var kart = document.getElementById("bs-kule-kart-" + tip);
+          if (!kart) return;
+          var tanim = BS.denge.kuleAl(tip);
+          kart.classList.toggle("bs-kart-yetersiz", durum.kaynak < tanim.maliyet);
+          kart.classList.toggle("bs-kart-yerlesim",
+                                hud.arayuz.yerlesimKule === tip);
+        });
+      };
+
+      // Seçili kule paneli: istatistik + yükselt/sat düğmeleri.
+      hud.kuleSecimGuncelle = function(icerik) {
+        var durum = hud.sim.durum;
+        var kule = hud.sim.kuleNoIleBul
+          ? hud.sim.kuleNoIleBul(hud.arayuz.seciliKule) : null;
+        if (!kule) return false;
+
+        var tanim = BS.denge.kuleAl(kule.tip);
+        var ist = BS.denge.kuleIstatistik(kule.tip, kule.seviye);
+        var sonrakiYuk = kule.seviye < tanim.yukseltmeler.length
+          ? tanim.yukseltmeler[kule.seviye] : null;
+        var iade = Math.round(BS.denge.kuleYatirim(kule.tip, kule.seviye) *
+                              BS.denge.ekonomi.satisIadeOrani);
+
+        icerik.innerHTML =
+          '<div class="bs-secim-baslik" style="--bs-aksan:#8ecae6">' +
+            '<strong>' + kacis(tanim.ad) + '</strong>' +
+            '<span>Kule · Kademe ' + (kule.seviye + 1) + '</span></div>' +
+          '<ul class="bs-secim-istatistik">' +
+            '<li>Hasar <b>' + Math.round(ist.hasar) + '</b></li>' +
+            '<li>Menzil <b>' + ist.menzil.toFixed(1) + '</b></li>' +
+            '<li>Atış <b>' + ist.atisAraligi.toFixed(2) + 's</b></li>' +
+            (ist.alanYaricapi > 0
+              ? '<li>Alan <b>' + ist.alanYaricapi.toFixed(1) + '</b></li>' : "") +
+            (ist.zirhDelme > 0
+              ? '<li>Zırh Delme <b>%' + Math.round(ist.zirhDelme * 100) +
+                '</b></li>' : "") +
+          '</ul>' +
+          (sonrakiYuk
+            ? '<button type="button" class="bs-yan-dugme bs-yan-dugme-birincil" ' +
+              'data-bs-komut="kule-yukselt" data-bs-arg="' + kule.no + '" ' +
+              (durum.kaynak < sonrakiYuk.maliyet ? "disabled " : "") + '>' +
+              '<i class="fa fa-arrow-up" aria-hidden="true"></i> Yükselt (' +
+              sonrakiYuk.maliyet + ')</button>' +
+              '<p class="bs-yan-aciklama">' + kacis(sonrakiYuk.aciklama) + '</p>'
+            : '<p class="bs-yan-aciklama">En yüksek kademede.</p>') +
+          '<button type="button" class="bs-yan-dugme" data-bs-komut="kule-sat" ' +
+                  'data-bs-arg="' + kule.no + '" ' +
+                  'title="Kule kaldırılır; yatırımın bir bölümü geri döner">' +
+            '<i class="fa fa-rotate-left" aria-hidden="true"></i> Sök (+' +
+            iade + ')</button>';
+        return true;
       };
 
       hud.secimGuncelle = function() {
@@ -214,9 +304,10 @@
         var durum = hud.sim.durum;
 
         if (!id || !durum.kahramanlar[id] || !durum.kahramanlar[id].yerlesik) {
+          if (hud.arayuz.seciliKule && hud.kuleSecimGuncelle(icerik)) return;
           icerik.innerHTML =
-            '<p class="bs-yan-notu">Bir savunucu seçin veya alttaki kartlardan ' +
-            'yerleştirin.</p>';
+            '<p class="bs-yan-notu">Bir savunucu/kule seçin veya alttaki ' +
+            'kartlardan yerleştirin.</p>';
           return;
         }
 
@@ -258,8 +349,7 @@
       hud.dalgaOnizlemeGuncelle = function(durum) {
         var kutu = document.getElementById("bs-dalga-onizleme");
         if (!kutu) return;
-        var sonrakiNo = durum.dalgaDurumu === "aktif"
-          ? durum.dalgaNo + 1 : durum.dalgaNo + 1;
+        var sonrakiNo = durum.dalgaNo + 1;
         if (sonrakiNo > durum.harita.dalgaSayisi) {
           kutu.innerHTML = '<p class="bs-yan-notu">Son dalga! Çekirdeği koru.</p>';
           return;

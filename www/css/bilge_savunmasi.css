@@ -401,11 +401,27 @@
 .bs-yardim-listesi li { margin-bottom: 8px; }
 
 /* ── Oyun görünümü ──────────────────────────────────────────────────────── */
+/* Oyun görünümü sayfanın kalan dikey alanını TAMAMEN doldurur: alt boşluk
+   bırakılmaz; tuval kabı esner, HUD çubukları doğal yüksekliğinde kalır. */
 .bs-oyun-gorunumu {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex: 1 1 auto;
   min-height: 60vh;
+}
+.bs-sayfa:has(.bs-oyun-gorunumu:not(.bs-gizli)) {
+  height: calc(100vh - 110px);
+  min-height: 0;
+  padding-bottom: 12px;
+}
+
+/* Tam ekran modu: oyun görünümü tüm ekranı kaplar; koyu zemin korunur. */
+.bs-oyun-gorunumu:fullscreen,
+.bs-oyun-gorunumu:-webkit-full-screen {
+  background: #0b101b;
+  padding: 12px 16px;
+  gap: 10px;
 }
 
 .bs-hud-ust {
@@ -438,7 +454,13 @@
 .bs-ust-dugme:hover { background: rgba(255, 255, 255, 0.14); }
 .bs-ust-dugme:focus-visible { outline: 2px solid #4cc9f0; }
 
-.bs-oyun-orta { display: flex; gap: 10px; align-items: stretch; }
+.bs-oyun-orta {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
+}
 .bs-canvas-kabi {
   position: relative;
   flex: 1 1 auto;
@@ -568,6 +590,49 @@
   border-color: #ffd166;
 }
 .bs-yetenek-dugme:focus-visible { outline: 2px solid #4cc9f0; }
+
+/* Kule kartları: kahraman çubuğunun devamında, ayraçla ayrılmış inşa menüsü */
+.bs-alt-ayrac {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 4px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.bs-kule-karti { position: relative; display: flex; align-items: center; }
+.bs-kule-sec {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 76px;
+  padding: 8px 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(142, 202, 230, 0.25);
+  background: #101a2e;
+  color: #e8ecf4;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.bs-kule-sec:hover { transform: translateY(-2px); border-color: rgba(142, 202, 230, 0.6); }
+.bs-kule-sec:focus-visible { outline: 2px solid #8ecae6; }
+.bs-kule-ikon {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(142, 202, 230, 0.12);
+  color: #8ecae6;
+  font-size: 15px;
+}
+.bs-kule-ad { font-size: 10.5px; font-weight: 700; text-align: center; line-height: 1.2; }
+.bs-kule-maliyet { font-size: 11px; color: #ffd166; }
+.bs-kule-karti.bs-kart-yetersiz { opacity: 0.55; }
+.bs-kule-karti.bs-kart-yerlesim .bs-kule-sec {
+  border-color: #7ae582;
+  box-shadow: 0 0 0 2px rgba(122, 229, 130, 0.35);
+}
 
 /* Kaplamalar */
 .bs-oyun-kaplama {
@@ -726,6 +791,16 @@ html[data-theme="light"] .bs-kahraman-sec {
   border-color: rgba(34, 49, 74, 0.18);
   color: #22314a;
 }
+html[data-theme="light"] .bs-kule-sec {
+  background: #f4f7fc;
+  border-color: rgba(7, 119, 128, 0.3);
+  color: #22314a;
+}
+html[data-theme="light"] .bs-kule-ikon {
+  background: rgba(7, 119, 128, 0.12);
+  color: #077780;
+}
+html[data-theme="light"] .bs-alt-ayrac { background: rgba(34, 49, 74, 0.16); }
 html[data-theme="light"] .bs-liderlik-tablosu th { color: #5a6d8c; }
 html[data-theme="light"] .bs-liderlik-tablosu td { border-color: rgba(34, 49, 74, 0.1); }
 html[data-theme="light"] .bs-basarim-karti { background: #f4f7fc; border-color: rgba(34, 49, 74, 0.12); }

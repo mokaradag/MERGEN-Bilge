@@ -171,6 +171,7 @@
           var k = durum.kahramanlar[id];
           return k.yerlesik && k.x === hx && k.y === hy;
         });
+        if (!dolu && sim.kuleBul && sim.kuleBul(hx, hy)) dolu = true;
         return dolu ? "dolu" : "insa";
       };
 
@@ -337,11 +338,13 @@
       };
 
       // ── Hasar çözümü ────────────────────────────────────────────────────────
-      function hasarVer(dusman, hamHasar, kaynakKahraman, dogrulamaMi) {
+      // secenek: isteğe bağlı { zirhDelme } — kule kaynaklı hasar için
+      // (kaynakKahraman null iken) zırh delme oranı buradan uygulanır.
+      function hasarVer(dusman, hamHasar, kaynakKahraman, dogrulamaMi, secenek) {
         if (dusman.can <= 0) return;
 
         var ist = null;
-        var kahraman = durum.kahramanlar[kaynakKahraman];
+        var kahraman = kaynakKahraman ? durum.kahramanlar[kaynakKahraman] : null;
         if (kahraman && kahraman.yerlesik) {
           ist = BS.denge.kahramanIstatistik(kaynakKahraman, kahraman.seviye);
         }
@@ -353,6 +356,7 @@
 
         var zirh = dusman.zirh;
         if (dogrulamaMi && ist) zirh *= (1 - ist.zirhDelme);
+        else if (secenek && secenek.zirhDelme > 0) zirh *= (1 - secenek.zirhDelme);
         hasar = Math.max(1, hasar - zirh);
 
         if (dusman.kalkan > 0) {
@@ -648,6 +652,9 @@
           fx("atis", { x: kahraman.x, y: kahraman.y, kahraman: id });
         });
 
+        // Kule atışları (uzantı katmanı; dalga aktifken çalışır).
+        if (sim.kuleTik) sim.kuleTik(dt);
+
         // Mermiler.
         durum.mermiler = durum.mermiler.filter(function(mermi) {
           var hedef = null;
@@ -662,6 +669,11 @@
           var uzaklik = BS.yardimci.mesafe(mermi.x, mermi.y, hedef.x, hedef.y);
           var adim = mermi.hiz * dt;
           if (uzaklik <= adim + 0.15) {
+            if (mermi.sahipTip === "kule") {
+              sim.kuleVurusUygula(mermi, hedef);
+              fx("vurus", { x: hedef.x, y: hedef.y, tip: mermi.tip });
+              return false;
+            }
             if (mermi.isaretle) hedef.isaretKalan = BS.denge.kahramanlar.can.isaret.sure;
             if (mermi.yavasCarpan > 0) {
               hedef.yavasCarpan = Math.min(
@@ -715,7 +727,8 @@
             }),
           dalgaOzetleri: durum.dalgaOzetleri,
           toplamPuan: durum.toplamPuan,
-          toplamOlduruldu: durum.toplamOlduruldu
+          toplamOlduruldu: durum.toplamOlduruldu,
+          kuleler: sim.kuleSeriDurum ? sim.kuleSeriDurum() : []
         };
       };
 
@@ -742,6 +755,8 @@
                                                tanim.yukseltmeler.length);
           }
         });
+        // Eski kontrol noktalarında kuleler alanı olmayabilir (geriye uyum).
+        if (sim.kuleSeriYukle) sim.kuleSeriYukle(kayit.kuleler);
         durum.dalgaDurumu = durum.dalgaNo >= harita.dalgaSayisi
           ? "tamamlandi" : "hazirlik";
         olayEkle("devam", { d: durum.dalgaNo });
@@ -759,6 +774,13 @@
             kullanilan.push(olay.k);
           }
         });
+        // Kule kullanım özeti: analitik amaçlıdır; sunucu puanlamasına girmez.
+        var kule_tipleri = [];
+        durum.olaylar.forEach(function(olay) {
+          if (olay.tip === "kule" && kule_tipleri.indexOf(olay.t) < 0) {
+            kule_tipleri.push(olay.t);
+          }
+        });
         return {
           sema: BS.SEMA,
           oyun_surumu: BS.SURUM,
@@ -772,9 +794,17 @@
           zafer: durum.zafer,
           sure_saniye: Math.round(durum.sure),
           kullanilan_kahramanlar: kullanilan,
+          kullanilan_kuleler: kule_tipleri,
           olay_ozeti: durum.olaylar
         };
       };
+
+      // Kule uzantısını bağla (yerleştirme/atış/seri yardımcıları sim'e eklenir).
+      if (BS.simKuleler && BS.simKuleler.bagla) {
+        BS.simKuleler.bagla(sim, {
+          durum: durum, olayEkle: olayEkle, fx: fx, hasarVer: hasarVer
+        });
+      }
 
       return sim;
     }

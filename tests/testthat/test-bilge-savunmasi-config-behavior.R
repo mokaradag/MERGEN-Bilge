@@ -98,30 +98,65 @@ test_that("persona oyun manifesti eski mitolojik kimlik içermez", {
   }
 })
 
-test_that("harita kataloğu üç haritayı doğru kilit zinciriyle taşır", {
+test_that("harita kataloğu altı haritayı doğru kilit zinciriyle taşır", {
   katalog <- bs_harita_katalogu()
 
+  # Bilinçli genişletme: kampanya 3 -> 6 haritaya çıktı (Veri Labirenti,
+  # Sinyal Vadisi, Karar Zirvesi eklendi); kilit zinciri doğrusaldır.
   expect_identical(
     names(katalog),
-    c("baglam_kapisi", "celiski_kavsagi", "bilgi_cekirdegi")
+    c("baglam_kapisi", "celiski_kavsagi", "bilgi_cekirdegi",
+      "veri_labirenti", "sinyal_vadisi", "karar_zirvesi")
   )
   expect_null(katalog$baglam_kapisi$acilis_kosulu)
   expect_identical(katalog$celiski_kavsagi$acilis_kosulu, "baglam_kapisi")
   expect_identical(katalog$bilgi_cekirdegi$acilis_kosulu, "celiski_kavsagi")
+  expect_identical(katalog$veri_labirenti$acilis_kosulu, "bilgi_cekirdegi")
+  expect_identical(katalog$sinyal_vadisi$acilis_kosulu, "veri_labirenti")
+  expect_identical(katalog$karar_zirvesi$acilis_kosulu, "sinyal_vadisi")
 
   expect_identical(katalog$baglam_kapisi$dalga_sayisi, 8L)
   expect_identical(katalog$celiski_kavsagi$dalga_sayisi, 10L)
   expect_identical(katalog$bilgi_cekirdegi$dalga_sayisi, 12L)
+  expect_identical(katalog$veri_labirenti$dalga_sayisi, 12L)
+  expect_identical(katalog$sinyal_vadisi$dalga_sayisi, 14L)
+  expect_identical(katalog$karar_zirvesi$dalga_sayisi, 16L)
 
+  # Kilit zinciri sıralaması doğrusaldır (her harita bir öncekine bağlıdır).
   for (kayit in katalog) {
     expect_true(kayit$taban_cekirdek > 0)
     expect_true(kayit$dalga_dusman_ust_siniri > 0)
     expect_true(nzchar(kayit$ad))
+    # Dalga sayısı, düşman/patron sayı vektörlerinin uzunluğuyla tutarlı.
+    expect_length(kayit$dalga_dusman_sayilari, kayit$dalga_sayisi)
+    expect_length(kayit$dalga_patron_sayilari, kayit$dalga_sayisi)
+    expect_true(all(kayit$dalga_dusman_sayilari <= kayit$dalga_dusman_ust_siniri))
   }
 
   zorluklar <- bs_zorluk_katalogu()
   expect_identical(names(zorluklar), c("normal", "gelismis"))
   expect_true(zorluklar$gelismis$puan_carpani > zorluklar$normal$puan_carpani)
+})
+
+test_that("oyun müzik kataloğu üç grup taşır ve boş klasörlerde güvenli çalışır", {
+  gruplar <- bs_muzik_gruplari()
+  expect_identical(gruplar, c("menu", "bolum_1", "bolum_2"))
+
+  # Boş/yok dizin: her grup boş liste; oyun sessiz ama tam işlevli kalır.
+  bos <- bs_muzik_katalogu(tempfile())
+  expect_identical(names(bos), gruplar)
+  for (g in gruplar) expect_length(as.character(bos[[g]]), 0L)
+
+  # Parça konulunca gruptan URL listesi üretilir (I() ile dizi olarak gider).
+  kok <- tempfile()
+  dir.create(file.path(kok, "menu"), recursive = TRUE)
+  writeLines("x", file.path(kok, "menu", "tema_01.mp3"))
+  writeLines("x", file.path(kok, "menu", "tema_02.ogg"))
+  dolu <- bs_muzik_katalogu(kok)
+  urller <- as.character(dolu$menu)
+  expect_length(urller, 2L)
+  expect_true(all(grepl("^assets/bilge_savunmasi/muzik/menu/", urller)))
+  expect_true(inherits(dolu$menu, "AsIs"))
 })
 
 test_that("hafta kodu ve tohum türetimi deterministiktir", {

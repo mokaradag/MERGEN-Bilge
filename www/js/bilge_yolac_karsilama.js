@@ -179,15 +179,19 @@
 
     durum.kare += dt * 60;
 
-    // Kare seçimi: yürüyüş/idle 0, düşünme 1-2 arası döner, selamlama 2.
-    var kareler = veri.frames;
+    // Kare seçimi: yürüyüş/idle 0-1, düşünme 2-3 arası döner, selamlama 4.
+    var kareSayisi = veri.frames.length;
     var kareIndex = 0;
-    if (durum.eylem === "dusun" && kareler.length > 2) {
-      kareIndex = 1 + (Math.floor(durum.kare / 24) % 2);
-    } else if (durum.eylem === "selamla" && kareler.length > 2) {
-      kareIndex = (Math.floor(durum.kare / 14) % 2) === 0 ? 2 : 0;
+    if (durum.eylem === "yuru" || durum.eylem === "kos") {
+      kareIndex = (Math.floor(durum.kare / 16) % 2);   // idle <-> nefes
+    } else if (durum.eylem === "dusun" && kareSayisi > 3) {
+      kareIndex = 2 + (Math.floor(durum.kare / 24) % 2);
+    } else if (durum.eylem === "selamla") {
+      kareIndex = (Math.floor(durum.kare / 14) % 2) === 0 ? (kareSayisi - 1) : 0;
+    } else if (durum.eylem === "dur" || durum.eylem === "uyu") {
+      kareIndex = 1;
     }
-    var pikseller = kareler[Math.min(kareIndex, kareler.length - 1)];
+    kareIndex = Math.min(kareIndex, kareSayisi - 1);
 
     // Dikey ofset: yürüyüş sallanması, zıplama parabolü, uyku çökmesi.
     var dikey = 0;
@@ -212,15 +216,23 @@
     ctx.scale(durum.yon, olcekY);
     ctx.globalAlpha = durum.eylem === "uyu" ? 0.75 : 1;
 
-    for (var y = 0; y < pikseller.length; y++) {
-      for (var x = 0; x < pikseller[y].length; x++) {
-        var deger = pikseller[y][x];
-        if (deger === 0) continue;
-        if (deger === 1) ctx.fillStyle = veri.color;
-        else if (deger === 2) ctx.fillStyle = veri.darkColor;
-        else ctx.fillStyle = veri.lightColor || veri.color;
-        ctx.fillRect((x - 8) * pikselBoyu, (y - 16) * pikselBoyu,
-                     pikselBoyu - 1, pikselBoyu - 1);
+    // Genişletilmiş palet + açık/koyu temaya duyarlı kontur ortak yardımcıdadır.
+    if (window.MergenPixelSprite) {
+      window.MergenPixelSprite.ciz(ctx, veri, kareIndex, {
+        pixelSize: pikselBoyu, offsetX: -8 * pikselBoyu, offsetY: -16 * pikselBoyu
+      });
+    } else {
+      var pikseller = veri.frames[kareIndex];
+      for (var y = 0; y < pikseller.length; y++) {
+        for (var x = 0; x < pikseller[y].length; x++) {
+          var deger = pikseller[y][x];
+          if (deger === 0) continue;
+          if (deger === 1) ctx.fillStyle = veri.color;
+          else if (deger === 2) ctx.fillStyle = veri.darkColor;
+          else ctx.fillStyle = veri.lightColor || veri.color;
+          ctx.fillRect((x - 8) * pikselBoyu, (y - 16) * pikselBoyu,
+                       pikselBoyu - 1, pikselBoyu - 1);
+        }
       }
     }
     ctx.restore();

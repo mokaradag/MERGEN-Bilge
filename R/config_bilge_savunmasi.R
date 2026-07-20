@@ -188,6 +188,39 @@ bs_harita_katalogu <- function() {
       dalga_dusman_sayilari = c(14L, 13L, 12L, 11L, 12L, 9L, 14L, 12L, 18L, 16L, 13L, 11L),
       dalga_patron_sayilari = c(0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L),
       acilis_kosulu = "celiski_kavsagi"
+    ),
+    veri_labirenti = list(
+      sira = 4L,
+      ad = "Veri Labirenti",
+      aciklama = "Uzun kıvrımlı tek rota; dayanıklılık ve kule yerleşimi sınavı",
+      dalga_sayisi = 12L,
+      taban_cekirdek = 20L,
+      dalga_dusman_ust_siniri = 42L,
+      dalga_dusman_sayilari = c(14L, 14L, 13L, 11L, 12L, 13L, 17L, 11L, 14L, 11L, 16L, 10L),
+      dalga_patron_sayilari = c(0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L),
+      acilis_kosulu = "bilgi_cekirdegi"
+    ),
+    sinyal_vadisi = list(
+      sira = 5L,
+      ad = "Sinyal Vadisi",
+      aciklama = "Çift vadi rotası ve dört patron dalgalı uzun savunma",
+      dalga_sayisi = 14L,
+      taban_cekirdek = 20L,
+      dalga_dusman_ust_siniri = 46L,
+      dalga_dusman_sayilari = c(16L, 15L, 13L, 13L, 12L, 12L, 14L, 13L, 16L, 11L, 12L, 11L, 16L, 10L),
+      dalga_patron_sayilari = c(0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L, 0L, 1L),
+      acilis_kosulu = "veri_labirenti"
+    ),
+    karar_zirvesi = list(
+      sira = 6L,
+      ad = "Karar Zirvesi",
+      aciklama = "Üç rotalı final savunması; en yoğun baskı eğrisi",
+      dalga_sayisi = 16L,
+      taban_cekirdek = 20L,
+      dalga_dusman_ust_siniri = 48L,
+      dalga_dusman_sayilari = c(16L, 16L, 15L, 13L, 11L, 13L, 16L, 14L, 18L, 12L, 14L, 12L, 16L, 13L, 23L, 12L),
+      dalga_patron_sayilari = c(0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L, 0L, 0L, 0L, 1L),
+      acilis_kosulu = "sinyal_vadisi"
     )
   )
 }
@@ -292,6 +325,58 @@ bs_haftalik_meydan_okuma <- function(tarih = Sys.time()) {
   )
 }
 
+# --- Oyun müzik kataloğu ------------------------------------------------------
+
+# Tek path segmentini UTF-8 yüzde-kodlamasıyla kodlar (Türkçe dosya adları
+# Windows/VM yerel kodlamasında %DC gibi native bayta düşmesin; beklenen form
+# UTF-8'dir: Ü -> %C3%9C).
+.bs_muzik_url_segment <- function(x) {
+  x <- as.character(x)
+  y <- iconv(x, from = "", to = "UTF-8", sub = "byte")
+  if (is.na(y)) y <- enc2utf8(x)
+  utils::URLencode(y, reserved = TRUE)
+}
+
+#' Oyun Müzik Grupları
+#'
+#' @description Menü teması + üçer haritalık seviye grupları. Klasör yapısı:
+#' www/assets/bilge_savunmasi/muzik/<grup>/*.mp3|ogg|m4a. Operatör bu
+#' klasörlere birden çok parça koyabilir; istemci her gruptan rastgele çalar.
+bs_muzik_gruplari <- function() {
+  c("menu", "bolum_1", "bolum_2")
+}
+
+#' Oyun Müzik Kataloğu
+#'
+#' @description Müzik klasörlerini tarar ve grup başına tarayıcıya servis
+#' edilebilir URL listesi döndürür. Dosya yoksa grup boş listedir; oyun bu
+#' durumda sessiz çalışmaya devam eder (ses katmanı no-op sözleşmesi).
+#' Vektörler I(...) ile sarılır ki tek parçalı gruplar JSON'a skaler değil
+#' dizi olarak gitsin (istemci dizi bekler).
+#' @param kok Müzik kök dizini (test için geçersiz kılınabilir).
+bs_muzik_katalogu <- function(kok = file.path("www", "assets",
+                                              "bilge_savunmasi", "muzik")) {
+  sonuc <- list()
+  for (grup in bs_muzik_gruplari()) {
+    dizin <- file.path(kok, grup)
+    dosyalar <- character(0)
+    if (dir.exists(dizin)) {
+      dosyalar <- sort(list.files(
+        dizin, pattern = "\\.(mp3|ogg|m4a)$", ignore.case = TRUE
+      ))
+    }
+    urller <- vapply(dosyalar, function(dosya) {
+      paste(
+        vapply(c("assets", "bilge_savunmasi", "muzik", grup, dosya),
+               .bs_muzik_url_segment, character(1)),
+        collapse = "/"
+      )
+    }, character(1), USE.NAMES = FALSE)
+    sonuc[[grup]] <- I(urller)
+  }
+  sonuc
+}
+
 # --- Başarım kataloğu ---------------------------------------------------------
 
 #' Başarım ve Kalıcı Açılım Kataloğu
@@ -309,7 +394,7 @@ bs_basarim_katalogu <- function() {
     list(id = "patron_avcisi", tur = "basarim", ad = "Patron Avcısı",
          aciklama = "Bir patron dalgasını çekirdek kaybı olmadan atlat"),
     list(id = "kampanya_ustasi", tur = "basarim", ad = "Kampanya Ustası",
-         aciklama = "Üç kampanya haritasını da tamamla"),
+         aciklama = "Tüm kampanya haritalarını tamamla"),
     list(id = "haftalik_katilimci", tur = "basarim", ad = "Haftalık Katılımcı",
          aciklama = "Bir haftalık meydan okumayı tamamla"),
     list(id = "tam_kadro", tur = "basarim", ad = "Tam Kadro",
