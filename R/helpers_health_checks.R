@@ -136,8 +136,24 @@ health_check_path_writable <- function(id, label, path, create_if_missing = FALS
     raw_target <- if (expect_file) dirname(path) else path
     candidates <- .health_path_variants(raw_target)
 
-    if (isTRUE(create_if_missing)) {
-      try(dir.create(candidates[1], recursive = TRUE, showWarnings = FALSE), silent = TRUE)
+    # Windows'ta UNC yollarında tempfile+writeLines ve dir.exists/list.files, yol
+    # o R oturumunda dir.create ile "canlandırılmadan" (SMB bağlantısı kurulmadan)
+    # yanlış başarısız olabilir. mergen_uploads/logs create_if_missing=TRUE ile
+    # bu canlandırmayı yaptığı için yazılabilir çıkıyor; files_root ise
+    # create_if_missing=FALSE olduğu için canlandırılmadan "bulunamadı" veriyordu.
+    # Bu yüzden hedefi her durumda dir.create ile canlandır (var olan dizinde
+    # zararsız no-op). Ancak create_if_missing FALSE iken GERÇEKTEN eksik bir
+    # klasörü otomatik oluşturup maskelememek için, yeni oluşturduysak geri al.
+    created_new <- isTRUE(dir.create(candidates[1], recursive = TRUE, showWarnings = FALSE))
+    if (created_new && !isTRUE(create_if_missing)) {
+      unlink(candidates[1], recursive = TRUE, force = TRUE)
+      return(health_result(
+        id, label, "critical",
+        normalizePath(raw_target, winslash = "/", mustWork = FALSE),
+        "Klasör bulunamadı veya uygulamanın çalışma hesabından erişilemiyor.",
+        health_ms(start),
+        remediation = "UNC paylaşım erişimini, Windows klasör izinlerini ve uygulamanın çalışma hesabını kontrol edin."
+      ))
     }
 
     # Asıl kanıt gerçek yazma+silme; yol formu (forward-slash UNC, mapped-drive,
@@ -186,11 +202,25 @@ health_check_index_json <- function(path = getOption("mergen.index_path", Sys.ge
     }
 
     parent <- dirname(path)
+    parent_candidates <- .health_path_variants(parent)
+
+    # UNC canlandırma (bkz. health_check_path_writable). Üst klasör gerçekten
+    # yoksa oluşturduğumuzu geri alıp kritik döneriz.
+    created_new <- isTRUE(dir.create(parent_candidates[1], recursive = TRUE, showWarnings = FALSE))
+    if (created_new) {
+      unlink(parent_candidates[1], recursive = TRUE, force = TRUE)
+      return(health_result(
+        "storage.index_json", "Index JSON Okuma/Yazma", "critical", path,
+        "Üst klasör bulunamadı veya uygulamanın çalışma hesabından erişilemiyor.",
+        health_ms(start),
+        remediation = "Index üst klasörünün UNC erişimini ve Windows izinlerini kontrol edin."
+      ))
+    }
 
     # index.json ilk dosya kaydına kadar oluşmayabilir. Üst klasörün gerçek
     # yazılabilirliğini varlık API'lerine güvenmeden, tüm yol varyantlarında ölç.
     probe <- list(ok = FALSE, error = "")
-    for (cand in .health_path_variants(parent)) {
+    for (cand in parent_candidates) {
       probe <- .health_write_probe(cand, pattern = ".index-health-", fileext = ".json")
       if (probe$ok) break
     }

@@ -139,6 +139,39 @@ test_that("var olan ancak yazılamayan klasör KRİTİK değil UYARI olarak rapo
   expect_true(grepl("erişilebilir", res$detail[1], fixed = TRUE))
 })
 
+test_that("var olan klasör create_if_missing=FALSE olsa da dir.create ile canlandırılıp ok döner", {
+  # UNC klasörleri Windows'ta yol dir.create ile canlandırılmadan yanlış
+  # başarısız olabildiği için, var olan bir klasör create_if_missing=FALSE iken
+  # de canlandırılıp yazma testi geçmelidir (mergen_uploads/logs ile aynı davranış).
+  existing <- tempfile("var-olan-kok-")
+  dir.create(existing, recursive = TRUE)
+  res <- health_check_path_writable("prime.test", "Canlandırma", existing, create_if_missing = FALSE)
+  expect_identical(res$status[1], "ok")
+  expect_true(dir.exists(existing))
+})
+
+test_that("create_if_missing=FALSE eksik klasörü oluşturup MASKELEMEZ (geri alır)", {
+  missing <- file.path(tempdir(), paste0("prime-geri-al-", as.integer(Sys.time()), "-", sample(1e6, 1)))
+  if (dir.exists(missing)) unlink(missing, recursive = TRUE, force = TRUE)
+
+  res <- health_check_path_writable("prime.rollback", "Geri Al", missing, create_if_missing = FALSE)
+
+  expect_identical(res$status[1], "critical")
+  # Canlandırma için oluşturulmuş olsa bile geri alınmalı; eksik klasör kalmamalı.
+  expect_false(dir.exists(missing))
+})
+
+test_that("create_if_missing=TRUE eksik klasörü oluşturur ve korur", {
+  missing <- file.path(tempdir(), paste0("prime-olustur-", as.integer(Sys.time()), "-", sample(1e6, 1)))
+  if (dir.exists(missing)) unlink(missing, recursive = TRUE, force = TRUE)
+
+  res <- health_check_path_writable("prime.create", "Oluştur", missing, create_if_missing = TRUE)
+
+  expect_identical(res$status[1], "ok")
+  expect_true(dir.exists(missing))
+  unlink(missing, recursive = TRUE, force = TRUE)
+})
+
 test_that("gerçekten olmayan klasör yazma başarısızsa kritik kalır", {
   missing <- file.path(tempdir(), paste0("gercekten-yok-", as.integer(Sys.time())))
   if (dir.exists(missing)) unlink(missing, recursive = TRUE, force = TRUE)
