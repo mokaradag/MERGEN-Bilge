@@ -283,4 +283,11 @@ else
   echo "R packages will be installed later by the explicit validation step if requested."
 fi
 
+# AI sandbox kurulumu, mevcut Codex ortam ayarını değiştirmeden final çalışma
+# ağacını commit anında da korumak için yerel ratchet pre-commit kancasını kurar.
+# İstenirse MERGEN_AI_INSTALL_GIT_HOOKS=false ile devre dışı bırakılabilir.
+if [[ "${MERGEN_AI_INSTALL_GIT_HOOKS:-true}" == "true" ]]; then
+  bash tools/install_ai_git_hooks.sh
+fi
+
 echo "OK: MERGEN AI R environment is ready."
