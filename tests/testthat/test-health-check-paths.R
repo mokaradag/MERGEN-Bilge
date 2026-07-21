@@ -13,6 +13,7 @@
   repo_root <- resolve_repo_root_for_tests()
   source(file.path(repo_root, "R", "helpers_health_formatters.R"), encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_files_path.R"), encoding = "UTF-8", local = globalenv())
+  source(file.path(repo_root, "R", "helpers_health_runtime_checks.R"), encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_health_checks.R"), encoding = "UTF-8", local = globalenv())
 }
 
