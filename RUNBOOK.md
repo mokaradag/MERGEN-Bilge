@@ -16,6 +16,7 @@ Bu belge MERGEN Bilge için **kanonik operasyon kılavuzudur**. Windows VM / on-
 | On-prem kilit durumu | [`RENV_LOCK_STATUS.md`](RENV_LOCK_STATUS.md) |
 | Mimari yön bulma | [`docs/architecture-map.md`](docs/architecture-map.md) |
 | Değişiklik notları | [`docs/release-notes.md`](docs/release-notes.md) |
+| Son VM evidence gate durumu | [`docs/vm-evidence-status.md`](docs/vm-evidence-status.md) |
 
 ## 1. Amaç ve Kapsam
 
@@ -183,20 +184,20 @@ MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke
 
 `MERGEN_BROWSER_BIN` açıkça ayarlanmışsa require modu OTOMATİK etkinleşir: sessiz SKIP devre dışıdır ve kullanılamayan binary yolu erken ve açık hata verir. Tarayıcı bildirilen bir ortamda browser smoke artık sessizce atlanamaz.
 
-
 ### 7.6 VM evidence gate (güncel release kanıtı)
 
-15 Haziran 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son kanıt `artifacts/vm-evidence/20260615-130127/evidence.json` altında beklenir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır.
+21 Temmuz 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son kanıt `artifacts/vm-evidence/20260721-044643/evidence.json` altında beklenir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır. Ayrıntılı son koşum kaydı için [`docs/vm-evidence-status.md`](docs/vm-evidence-status.md) izlenir.
 
-PowerShell external-app akışı için uygulama ayrı pencerede `http://127.0.0.1:28081` üzerinde açıkken gate şu ortamla koşturulur:
+Son başarılı external-app koşumunda uygulama zaten `http://127.0.0.1:8009` üzerinde çalışırken gate şu ortamla koşturuldu:
 
 ```powershell
-$env:MERGEN_BROWSER_UX_BASE_URL = "http://127.0.0.1:28081"
+$env:MERGEN_EVIDENCE_PROFILE = "vm"
+$env:MERGEN_BROWSER_UX_BASE_URL = "http://127.0.0.1:8009"
 $env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
 & $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
 ```
 
-Geçerli release kanıtı sayılması için özet satırında `Toplam: 13 passed, 0 failed, 0 skipped` görülmeli ve `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight`, `full_testthat` adımları `PASSED` olmalıdır.
+Geçerli release kanıtı sayılması için özet satırında `Toplam: 13 passed, 0 failed, 0 skipped` görülmeli ve hiçbir adım `FAILED` veya `SKIPPED` olmamalıdır. 21 Temmuz 2026 koşumunda `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight` ve diğer gate adımlarının tümü `PASSED` olmuştur.
 
 ### 7.7 Operasyonel soak / yük kapısı (dayanıklılık kanıtı)
 
@@ -288,7 +289,6 @@ darboğaza katkı yapıyorsa `http_loadgen.saturation_hint` =
 `loadgen_below_target_concurrency` görünür (bunu app kapasitesi sanmayın). Son
 kanıtlanmış kilometre taşı yeni koşum aksini kanıtlayana kadar **300 aktif proxy
 kullanıcı / 90 dakika**'dır.
-
 
 Hafta sonu/operatör tanısal geri dönüşü: yük-dengelemeli URL yoksa operatörler
 iki yerel arka uç worker başlatıp `8008` ve `8009` hedeflerine geçici bir
@@ -407,7 +407,6 @@ Yine de 1.000 gerçek aktif insan chat oturumu, gerçek upstream LLM throughput'
 1000 gerçek browser/websocket oturumu veya üretim ağı uçtan uca kapasitesi olarak
 sunulamaz.
 
-
 2026-06-26/27 Windows VM proxy attach soak failure finding: latest screenshot-transcribed
 kanıt path is `artifacts/soak/20260626-212908/soak_evidence.json` (`created_at`
 shown as `2026-06-27T02:01:24Z`). The run attached to `http://127.0.0.1:8009/`
@@ -431,7 +430,6 @@ without clear CPU pressure: app port backlog/accept queue, httpuv/Shiny event lo
 Windows TCP limits, client connection reuse/timeouts, and intermediate 350/400/425
 ladder steps. Full details are in `docs/operational-soak-gate.md` section 13A.
 
-
 2026-06-27 newer Windows VM proxy attach retest: latest screenshot-transcribed
 kanıt path is `artifacts/soak/20260627-093805/soak_evidence.json` (`created_at`
 shown as `2026-06-27T10:29:30Z`). The retest still failed the overall gate because
@@ -446,7 +444,6 @@ the longest-duration stable proxy attach milestone. Follow-up should probe 410/4
 compare burst against ramped/paced arrival, and account for `loadgen_loop_lag_high`
 before treating the result as app-side capacity. Full details are in
 `docs/operational-soak-gate.md` section 13B.
-
 
 #### 2026-06-27/28 long split proxy soak evidence: FAIL capacity gate
 
@@ -748,6 +745,7 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
 - Bağımlılık kilitleme: [`docs/dependency-locking.md`](docs/dependency-locking.md)
 - On-prem kilit durumu: [`RENV_LOCK_STATUS.md`](RENV_LOCK_STATUS.md)
 - Değişiklik notları: [`docs/release-notes.md`](docs/release-notes.md)
+- Son VM evidence gate durumu: [`docs/vm-evidence-status.md`](docs/vm-evidence-status.md)
 - Bilge Savunması oyunu: [`docs/bilge-savunmasi.md`](docs/bilge-savunmasi.md)
 - Dokümantasyon hub'ı: [`docs/README.md`](docs/README.md)
 
@@ -756,7 +754,6 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
 ## Ek: Önceki Runbook'tan Korunan Operasyonel Notlar
 
 Aşağıdaki bölüm önceki runbook'un ana operasyonel ruhunu korumak için bırakılmıştır; yukarıdaki yapı kanonik navigasyondur.
-
 
 # MERGEN Bilge - Üretim Operasyon Kılavuzu (RUNBOOK)
 
@@ -839,14 +836,15 @@ operasyonu için normal tam koşum repo kökünden doğrudan Rscript ile çalı�
 
 #### Milestone: tam Windows VM evidence gate geçti
 
-2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone'u kaydedildi; son başarılı yeniden doğrulama 2026-06-15 tarihinde alındı:
+2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone'u kaydedildi; önceki başarılı yeniden doğrulama 2026-06-15 tarihinde, en son başarılı yeniden doğrulama ise 2026-07-21 tarihinde alındı:
 
 - `Toplam: 13 passed, 0 failed, 0 skipped`
 - `full_testthat PASSED` — tam izole testthat suite geçti.
 - `browser_ux_smoke PASSED` — mandatory browser proof gerçek tarayıcıda `UX_SMOKE_DONE:PASS` üretti.
 - `vm_preflight_real PASSED` — VM/SSO/DB/LLM üretim-benzeri preflight geçti.
 - `db_encoding_preflight PASSED` — transactional Türkçe DB encoding preflight geçti.
-- Başarılı koşum örneği: `artifacts/vm-evidence/20260615-130127/evidence.json`.
+- Önceki başarılı koşum örneği: `artifacts/vm-evidence/20260615-130127/evidence.json`.
+- En son başarılı koşum: `artifacts/vm-evidence/20260721-044643/evidence.json`.
 
 Bu, MERGEN Bilge'nin on-prem Windows VM readiness/release doğrulaması için önemli bir
 kilometre taşıdır. Kanıt kapısı yalnızca `evidence.json` içinde `passed` görünen adımlar
