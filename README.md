@@ -95,9 +95,9 @@ bash tools/ai_validate.sh cloud-quick
 
 ### Windows VM evidence gate milestone
 
-MERGEN Bilge'nin on-prem Windows VM doğrulamasında önemli bir readiness/release kilometre taşı kaydedildi ve **15 Haziran 2026** tarihinde yeniden doğrulandı: `tests/scripts/run_vm_evidence_gate.R` tam koşumu VM üzerinde uçtan uca geçti. Son başarılı koşumda `Toplam: 13 passed, 0 failed, 0 skipped` görüldü; özellikle `full_testthat`, `browser_ux_smoke`, `vm_preflight_real` ve `db_encoding_preflight` adımları `PASSED` oldu. Son kanıt artifact'ı: `artifacts/vm-evidence/20260615-130127/evidence.json`.
+MERGEN Bilge'nin on-prem Windows VM doğrulaması **21 Temmuz 2026** tarihinde yeniden başarıyla tamamlandı: `tests/scripts/run_vm_evidence_gate.R` tam koşumu VM üzerinde uçtan uca geçti ve `Toplam: 13 passed, 0 failed, 0 skipped` sonucu verdi. `full_testthat`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, source/UI asset manifest sözleşmeleri ve diğer gate adımlarının tümü `PASSED` oldu. Son kanıt artifact'ı: `artifacts/vm-evidence/20260721-044643/evidence.json`. Ayrıntılı son koşum kaydı: [`docs/vm-evidence-status.md`](docs/vm-evidence-status.md).
 
-Bu kanıt kapısı `artifacts/vm-evidence/<timestamp>/evidence.json` altında secret-safe makine-okunur sonuç üretir. Güncel durum; tam izole testthat suite'inin, VM preflight'ın, DB encoding preflight'ın ve gerçek browser UX smoke kanıtının aynı VM koşumunda geçtiğini gösterir. Browser proof external-app modunda `http://127.0.0.1:28081` üzerinden, `MERGEN_BROWSER_UX_BASE_URL=http://127.0.0.1:28081` ve `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ile alınmıştır. Uzun süreli saha yükü, manuel kırılgan-akış QA'sı veya eski legacy DB satırlarının temizliği gibi kapsamları otomatik olarak kanıtlamaz; ayrıntılı komutlar ve zorunlu browser UX smoke iki-pencere akışı için [`RUNBOOK.md`](RUNBOOK.md) izlenmelidir.
+Bu kanıt kapısı `artifacts/vm-evidence/<timestamp>/evidence.json` altında secret-safe makine-okunur sonuç üretir. 21 Temmuz 2026 koşumunda browser proof, zaten çalışan uygulamaya external-app modunda `http://127.0.0.1:8009` üzerinden bağlanarak ve `MERGEN_BROWSER_UX_BASE_URL=http://127.0.0.1:8009` ile `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ayarlanarak alındı. Bu sonuç, aynı VM koşumunda tam izole testthat suite'inin, VM preflight'ın, DB encoding preflight'ın ve gerçek browser UX smoke'un geçtiğini kanıtlar; uzun süreli saha yükü, manuel kırılgan-akış QA'sı veya eski legacy DB satırlarının temizliği gibi kapsamları otomatik olarak kanıtlamaz. Operasyonel komutlar ve kanıt kapsamı için [`RUNBOOK.md`](RUNBOOK.md) izlenmelidir.
 
 ### DB bağlantı havuzu ve etkileşimli soak seridi (2026-06-22)
 
@@ -130,6 +130,7 @@ Bu kanıt kapısı `artifacts/vm-evidence/<timestamp>/evidence.json` altında se
 | [`docs/architecture-map.md`](docs/architecture-map.md) | Kod veya dokümantasyon değişikliğinden önce mimari yön bulma. |
 | [`docs/database-schema.md`](docs/database-schema.md) | Güncel uygulama kaynaklarına göre DB tablo yapısı ve tablo akışları. |
 | [`RUNBOOK.md`](RUNBOOK.md) | Windows VM/on-prem operasyon, dağıtım, doğrulama ve sorun giderme. |
+| [`docs/vm-evidence-status.md`](docs/vm-evidence-status.md) | En son başarılı Windows VM evidence gate koşumu, artifact yolu ve kanıt kapsamı. |
 | [`docs/operational-soak-gate.md`](docs/operational-soak-gate.md) | Operasyonel soak/yük kapısı: fake/proxy/real-canary/interactive seritleri, profiller, anahtar yönlendirme kanıtı ve 1.000 kullanıcı rollout planı. |
 | [`docs/database-pooling.md`](docs/database-pooling.md) | İşlem-güvenli, opt-in DB bağlantı havuzu: `MERGEN_DB_POOL_*` ayarları, `with_db_transaction` sözleşmesi ve VM/SQL Server doğrulama adımları. |
 | [`docs/dependency-locking.md`](docs/dependency-locking.md) | `renv`, `renv.lock`, VM kilit üretimi ve bağımlılık politikası. |
@@ -143,4 +144,4 @@ Bu kanıt kapısı `artifacts/vm-evidence/<timestamp>/evidence.json` altında se
 - **Secrets commit edilmez.** API anahtarları, token'lar, parolalar, gerçek DSN'ler ve özel uç noktalar dokümantasyona veya loglara eklenmez.
 - **`renv.lock` özel kurallara bağlıdır.** Windows VM/on-prem kilit üretimi dışında Linux/cloud/Codex ortamında kilit üretmeyin.
 - **Dokümantasyon-only değişiklikler runtime davranışını değiştirmez.** Repo politikası gereği en az hafif doğrulama çalıştırılır; sadece çalıştırılan doğrulamanın kanıtı iddia edilir.
-- **Üretim/on-prem/Windows VM davranışı özel kısıtlara sahiptir.** Operasyonel kararlar için README değil [`RUNBOOK.md`](RUNBOOK.md), [`CLAUDE.md`](CLAUDE.md) ve [`docs/dependency-locking.md`](docs/dependency-locking.md) esas alınmalıdır.
+- **Üretim/on-prem/Windows VM davranışı özel kısıtlamalara sahiptir.** Operasyonel kararlar için README değil [`RUNBOOK.md`](RUNBOOK.md), [`CLAUDE.md`](CLAUDE.md) ve [`docs/dependency-locking.md`](docs/dependency-locking.md) esas alınmalıdır.
