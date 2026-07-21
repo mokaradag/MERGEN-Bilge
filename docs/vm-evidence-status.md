@@ -12,6 +12,7 @@ Bu belge, MERGEN Bilge'nin en son **başarılı Windows VM evidence gate** koşu
 - **Makine-okunur kanıt:** `artifacts/vm-evidence/20260721-044643/evidence.json`
 - **Browser external-app URL:** `http://127.0.0.1:8009`
 - **Browser smoke zorlaması:** `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true`
+- **Kayıt kaynağı:** 21 Temmuz 2026 tarihli Windows VM konsol çıktısı ve operatör ekran görüntüleri
 
 Koşum sonunda `OK: VM kanit kapisi basariyla tamamlandi.` mesajı alınmıştır.
 
