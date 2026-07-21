@@ -1,0 +1,107 @@
+name: Temporary VM evidence docs refresh
+
+on:
+  push:
+    branches:
+      - agent/update-vm-evidence-20260721
+
+permissions:
+  contents: write
+
+jobs:
+  patch-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/update-vm-evidence-20260721
+          fetch-depth: 0
+
+      - name: Patch current VM evidence documentation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          runbook_path = Path('RUNBOOK.md')
+          runbook = runbook_path.read_text(encoding='utf-8')
+
+          old_current = '''15 Haziran 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son kanıt `artifacts/vm-evidence/20260615-130127/evidence.json` altında beklenir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır.
+
+          PowerShell external-app akışı için uygulama ayrı pencerede `http://127.0.0.1:28081` üzerinde açıkken gate şu ortamla koşturulur:
+
+          ```powershell
+          $env:MERGEN_BROWSER_UX_BASE_URL = "http://127.0.0.1:28081"
+          $env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
+          & $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
+          ```
+
+          Geçerli release kanıtı sayılması için özet satırında `Toplam: 13 passed, 0 failed, 0 skipped` görülmeli ve `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight`, `full_testthat` adımları `PASSED` olmalıdır.'''.replace('          ', '')
+
+          new_current = '''21 Temmuz 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son kanıt `artifacts/vm-evidence/20260721-044643/evidence.json` altında beklenir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır. Ayrıntılı son koşum kaydı için [`docs/vm-evidence-status.md`](docs/vm-evidence-status.md) izlenir.
+
+          Son başarılı external-app koşumunda uygulama zaten `http://127.0.0.1:8009` üzerinde çalışırken gate şu ortamla koşturuldu:
+
+          ```powershell
+          $env:MERGEN_EVIDENCE_PROFILE = "vm"
+          $env:MERGEN_BROWSER_UX_BASE_URL = "http://127.0.0.1:8009"
+          $env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
+          & $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
+          ```
+
+          Geçerli release kanıtı sayılması için özet satırında `Toplam: 13 passed, 0 failed, 0 skipped` görülmeli ve hiçbir adım `FAILED` veya `SKIPPED` olmamalıdır. 21 Temmuz 2026 koşumunda `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight` ve diğer gate adımlarının tümü `PASSED` olmuştur.'''.replace('          ', '')
+
+          if old_current not in runbook:
+              raise SystemExit('Current VM evidence block not found; refusing partial update')
+          runbook = runbook.replace(old_current, new_current, 1)
+
+          old_history_line = '2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone\'u kaydedildi; son başarılı yeniden doğrulama 2026-06-15 tarihinde alındı:'
+          new_history_line = '2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone\'u kaydedildi; önceki yeniden doğrulama 2026-06-15 tarihinde, en son başarılı yeniden doğrulama ise 2026-07-21 tarihinde alındı:'
+          if old_history_line not in runbook:
+              raise SystemExit('Historical VM milestone line not found')
+          runbook = runbook.replace(old_history_line, new_history_line, 1)
+
+          old_artifact_bullet = '- Başarılı koşum örneği: `artifacts/vm-evidence/20260615-130127/evidence.json`.'
+          new_artifact_bullet = '- Önceki başarılı koşum örneği: `artifacts/vm-evidence/20260615-130127/evidence.json`.\n- En son başarılı koşum: `artifacts/vm-evidence/20260721-044643/evidence.json`.'
+          if old_artifact_bullet not in runbook:
+              raise SystemExit('Historical artifact bullet not found')
+          runbook = runbook.replace(old_artifact_bullet, new_artifact_bullet, 1)
+
+          related_marker = '- Değişiklik notları: [`docs/release-notes.md`](docs/release-notes.md)\n'
+          related_insert = related_marker + '- Son VM evidence gate durumu: [`docs/vm-evidence-status.md`](docs/vm-evidence-status.md)\n'
+          if related_marker not in runbook:
+              raise SystemExit('RUNBOOK related-doc marker not found')
+          runbook = runbook.replace(related_marker, related_insert, 1)
+
+          runbook_path.write_text(runbook, encoding='utf-8', newline='\n')
+
+          release_path = Path('docs/release-notes.md')
+          release = release_path.read_text(encoding='utf-8')
+          heading = '### (Yayınlanmadı) 2026-07-21 Windows VM evidence gate yeniden doğrulandı: 13/13 adım geçti'
+          if heading not in release:
+              marker = '## Son Değişiklikler\n\n'
+              if marker not in release:
+                  raise SystemExit('Release notes insertion marker not found')
+              entry = '''### (Yayınlanmadı) 2026-07-21 Windows VM evidence gate yeniden doğrulandı: 13/13 adım geçti
+
+- `tests/scripts/run_vm_evidence_gate.R` Windows VM üzerinde `vm/vm` profiliyle yeniden başarıyla tamamlandı: `Toplam: 13 passed, 0 failed, 0 skipped`.
+- `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, source/UI asset manifest sözleşmeleri, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight` ve `renv_status` dahil 13 adımın tümü `PASSED` oldu.
+- Son kanıt artifact'ı `artifacts/vm-evidence/20260721-044643/evidence.json`; browser proof zaten çalışan uygulamaya `http://127.0.0.1:8009` üzerinden external-app modunda bağlanarak ve `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ile bloklayıcı çalıştırılarak alındı.
+- Bu koşum tam VM gate kapsamı için güçlü release/readiness kanıtıdır; uzun süreli gerçek kullanıcı yükü, gerçek upstream LLM throughput'u, manuel kırılgan-akış QA'sı veya legacy mojibake temizliği yerine geçmez. Güncel kayıt: [`vm-evidence-status.md`](vm-evidence-status.md); operasyon prosedürü: [`../RUNBOOK.md`](../RUNBOOK.md).
+
+'''
+              release = release.replace(marker, marker + entry, 1)
+              release_path.write_text(release, encoding='utf-8', newline='\n')
+
+          workflow = Path('.github/workflows/tmp-update-vm-evidence-docs.yml')
+          if workflow.exists():
+              workflow.unlink()
+          PY
+
+      - name: Commit documentation refresh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add RUNBOOK.md docs/release-notes.md .github/workflows/tmp-update-vm-evidence-docs.yml
+          git diff --cached --check
+          git commit -m "docs: update VM evidence runbook and release notes [skip ci]"
+          git push origin HEAD:agent/update-vm-evidence-20260721
