@@ -143,10 +143,16 @@
 .cc-karsilama-tuvali {
   display: block;
   width: 100%;
-  height: 96px;
+  height: 128px;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   cursor: pointer;
+}
+
+@media (min-width: 1025px) {
+  #shiny-tab-claude_code > .claude-code-container { height: 100%; }
+  .claude-code-container .cc-main-content { padding-bottom: 4px; }
+  .claude-code-container .cc-dir-card { max-height: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -159,11 +165,46 @@
   }
 }
 
-/* Açık tema iç içerik uyarlaması (kapsayıcı arka planı tema dosyasında).
-   Terminal kutusu açık temada da kasıtlı olarak koyu kalır (retro yüzey). */
+/* Açık temada CLI yüzeyi ve metinleri açık tema paletiyle gösterilir. */
 html[data-theme="light"] .cc-cli-kutusu {
-  background: rgba(10, 16, 28, 0.92);
-  border-color: rgba(18, 128, 92, 0.6);
+  background: linear-gradient(180deg, #ffffff 0%, #f7f9fd 100%);
+  border-color: rgba(0, 48, 135, 0.24);
+  color: var(--color-text, #0f1c33);
+  box-shadow: 0 8px 22px rgba(15, 28, 51, 0.10);
+}
+
+html[data-theme="light"] .cc-cli-baslik b,
+html[data-theme="light"] .cc-cli-komut {
+  color: var(--mb-brand-primary, #003087);
+}
+
+html[data-theme="light"] .cc-cli-surum {
+  color: var(--color-muted, #5b6577);
+}
+
+html[data-theme="light"] .cc-cli-satir,
+html[data-theme="light"] .cc-cli-ipucu {
+  color: var(--color-text-soft, #1f2a44);
+}
+
+html[data-theme="light"] .cc-cli-yildiz,
+html[data-theme="light"] .cc-cli-oyun-etiket {
+  color: #b45309;
+}
+
+html[data-theme="light"] .cc-cli-oyun-satiri {
+  background: rgba(0, 48, 135, 0.04);
+  border-color: rgba(0, 48, 135, 0.28);
+  color: var(--color-text, #0f1c33);
+}
+
+html[data-theme="light"] .cc-cli-oyun-satiri:hover,
+html[data-theme="light"] .cc-cli-oyun-satiri:focus-visible {
+  background: rgba(0, 48, 135, 0.08);
+}
+
+html[data-theme="light"] .cc-cli-imlec {
+  background: var(--mb-brand-primary, #003087);
 }
 
 html[data-theme="light"] .cc-karsilama-tuvali {

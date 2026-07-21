@@ -107,9 +107,9 @@
     if (!sahne || !durum.canvas) return;
     var gen = Math.max(280, sahne.clientWidth || 600);
     durum.canvas.width = gen;
-    durum.canvas.height = 96;
+    durum.canvas.height = 128;
     durum.canvas.style.width = "100%";
-    durum.canvas.style.height = "96px";
+    durum.canvas.style.height = "128px";
     if (durum.ctx) durum.ctx.imageSmoothingEnabled = false;
   }
 
