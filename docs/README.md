@@ -11,7 +11,7 @@ Bu sayfa, MERGEN Bilge dokümantasyonunda doğru belgeye hızlı gitmek için ha
 | Kodlama ajanıyım | [`../CLAUDE.md`](../CLAUDE.md) | [`../AGENTS.md`](../AGENTS.md), [`architecture-map.md`](architecture-map.md) |
 | Üretim operatörüyüm | [`../RUNBOOK.md`](../RUNBOOK.md) | [`dependency-locking.md`](dependency-locking.md), [`../RENV_LOCK_STATUS.md`](../RENV_LOCK_STATUS.md) |
 | Windows VM sorunu debug ediyorum | [`../RUNBOOK.md`](../RUNBOOK.md) | [`architecture-map.md`](architecture-map.md), [`../CLAUDE.md`](../CLAUDE.md) |
-| VM evidence gate / browser proof çalıştırıyorum | [`../RUNBOOK.md`](../RUNBOOK.md) | [`technical-reference.md`](technical-reference.md), [`release-notes.md`](release-notes.md) |
+| VM evidence gate / browser proof çalıştırıyorum | [`../RUNBOOK.md`](../RUNBOOK.md) | [`vm-evidence-status.md`](vm-evidence-status.md), [`technical-reference.md`](technical-reference.md), [`release-notes.md`](release-notes.md) |
 | Bağımlılık kilitlemeyi anlamak istiyorum | [`dependency-locking.md`](dependency-locking.md) | [`../RENV_LOCK_STATUS.md`](../RENV_LOCK_STATUS.md) |
 | Asistan davranışını anlamak istiyorum | [`../ai_rehber.md`](../ai_rehber.md) | [`release-notes.md`](release-notes.md) |
 | Release geçmişini inceliyorum | [`release-notes.md`](release-notes.md) | [`technical-reference.md`](technical-reference.md) |
@@ -28,6 +28,7 @@ Bu sayfa, MERGEN Bilge dokümantasyonunda doğru belgeye hızlı gitmek için ha
 | [`feature-ownership-map.md`](feature-ownership-map.md) | Kritik özelliklerin (sohbet/streaming, dosya, DB/encoding, SSO, API anahtarı, görsel/vision, admin/sağlık, Bilge Yolaç, destek) birincil dosya/test/servis sahipliği ve sıradaki sertleştirme hedefleri. |
 | [`database-schema.md`](database-schema.md) | Uygulama kaynaklarına göre DB tablo yapısı, ilişkiler ve tablo akış diyagramı. |
 | [`../RUNBOOK.md`](../RUNBOOK.md) | Kanonik Windows VM/on-prem operasyon kılavuzu; `run_vm_evidence_gate.R`, mandatory browser UX smoke external-app workflow ve `artifacts/vm-evidence/<timestamp>/evidence.json` kanıt artifact'ları burada açıklanır. |
+| [`vm-evidence-status.md`](vm-evidence-status.md) | En son başarılı Windows VM evidence gate koşumu; 21 Temmuz 2026 tarihli 13/13 geçiş, artifact yolu, browser attach ayarı ve kanıt kapsamı. |
 | [`operational-soak-gate.md`](operational-soak-gate.md) | Operasyonel soak/yük kapısı (`run_operational_soak_gate.R`); fake/proxy/real-canary/**interactive** serit tasarımı, profiller, anahtar yönlendirme/izolasyon kanıtı, `artifacts/soak/<timestamp>/` artifact'ları ve 1.000 kullanıcı rollout planı. |
 | [`database-pooling.md`](database-pooling.md) | İşlem-güvenli, opt-in DB bağlantı havuzu (`R/helpers_db_pool.R`); `MERGEN_DB_POOL_*` yapılandırması, `with_db_transaction` sözleşmesi, encoding koruması ve Windows VM/SQL Server doğrulama adımları. |
 | [`speech-operator-runbook.md`](speech-operator-runbook.md) | Hibrit VoxCPM2 konuşma varlıkları: kilitli persona referans sesleri, RStudio üretici komutları (aday→dinle→onayla→750 WAV→manifest), Git/yedekleme politikası ve varlıklar üretilmeden önceki fail-closed davranış. |
