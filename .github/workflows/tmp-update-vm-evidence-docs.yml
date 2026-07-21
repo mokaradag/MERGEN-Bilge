@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/update-vm-evidence-20260721
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -54,8 +57,8 @@ jobs:
               raise SystemExit('Current VM evidence block not found; refusing partial update')
           runbook = runbook.replace(old_current, new_current, 1)
 
-          old_history_line = '2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone\'u kaydedildi; son başarılı yeniden doğrulama 2026-06-15 tarihinde alındı:'
-          new_history_line = '2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone\'u kaydedildi; önceki yeniden doğrulama 2026-06-15 tarihinde, en son başarılı yeniden doğrulama ise 2026-07-21 tarihinde alındı:'
+          old_history_line = "2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone'u kaydedildi; son başarılı yeniden doğrulama 2026-06-15 tarihinde alındı:"
+          new_history_line = "2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone'u kaydedildi; önceki yeniden doğrulama 2026-06-15 tarihinde, en son başarılı yeniden doğrulama ise 2026-07-21 tarihinde alındı:"
           if old_history_line not in runbook:
               raise SystemExit('Historical VM milestone line not found')
           runbook = runbook.replace(old_history_line, new_history_line, 1)
