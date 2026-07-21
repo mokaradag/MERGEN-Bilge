@@ -150,7 +150,7 @@
 }
 
 @media (min-width: 1025px) {
-  .claude-code-container { height: calc(100vh - 45px); }
+  #shiny-tab-claude_code > .claude-code-container { height: 100%; }
   .claude-code-container .cc-main-content { padding-bottom: 4px; }
   .claude-code-container .cc-dir-card { max-height: none; }
 }
