@@ -284,7 +284,10 @@ ortak_sunum_gecen_saniye <- function(baslama_zamani, now_text = NULL) {
     return(NA_integer_)
   }
 
-  simdi_metni <- as.character(now_text %||% format(Sys.time(), tz = "UTC"))[1]
+  # baslama_zamani, .oo_db_now() ile Türkiye saatinde (+3) saklanır. Varsayılan
+  # "şimdi" de aynı +3 kaydırmayı kullanır; her iki değer de UTC olarak
+  # ayrıştırıldığından +3'ler farkta sadeleşir ve geçen süre doğru hesaplanır.
+  simdi_metni <- as.character(now_text %||% format(Sys.time() + 3 * 3600, "%Y-%m-%d %H:%M:%S", tz = "UTC"))[1]
   simdi <- suppressWarnings(as.POSIXct(simdi_metni, tz = "UTC"))
   if (is.na(simdi)) {
     return(NA_integer_)

@@ -210,12 +210,17 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       api_endpoint
     ))
     
+  # İstek zaman aşımı yapılandırılabilir (worker-güvenli env). Yoğunluk altında
+  # araç/ikinci-geçiş çağrıları uzun sürebildiği için varsayılan 1800 sn.
+  worker_timeout_sec <- suppressWarnings(as.numeric(Sys.getenv("MERGEN_LLM_TIMEOUT_SEC", "1800")))
+  if (is.na(worker_timeout_sec) || worker_timeout_sec <= 0) worker_timeout_sec <- 1800
+
   response <- httr::POST(
     api_endpoint,
     do.call(httr::add_headers, hdrs),
     body = jsonlite::toJSON(body, auto_unbox = TRUE),
     encode = "raw",
-    httr::timeout(300)
+    httr::timeout(worker_timeout_sec)
   )
 
   status <- httr::status_code(response)
@@ -244,7 +249,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       do.call(httr::add_headers, hdrs),
       body = jsonlite::toJSON(body, auto_unbox = TRUE),
       encode = "raw",
-      httr::timeout(300)
+      httr::timeout(worker_timeout_sec)
     )
     status <- httr::status_code(response)
     resp_txt_raw <- try(httr::content(response, "text", encoding = "UTF-8"), silent = TRUE)

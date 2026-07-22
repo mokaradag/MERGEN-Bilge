@@ -79,6 +79,7 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
 
     # Geçici değişkenler (kaydet butonuna basılana kadar uygulanmaz)
     temp_model_selection <- reactiveVal(api_config$local_models[1])
+    temp_font_size <- reactiveVal("medium")
     temp_image_size <- reactiveVal("1024x1024")
     temp_image_quality_hd <- reactiveVal(FALSE)
     temp_summary_detail_level <- reactiveVal("standard")
@@ -304,8 +305,24 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
       }
     }, ignoreInit = TRUE)
 
+    # Yazı Tipi Boyutu: YALNIZCA bekleyen (pending) değeri günceller; görünür
+    # yazı boyutu ancak "Ayarları Kaydet" ile uygulanır (issue #6). Diğer temp
+    # ayarlarla aynı desen (model_selection, image_size ...).
+    observeEvent(input$font_size, {
+      temp_font_size(input$font_size)
+    }, ignoreInit = TRUE)
+
+    # Kayıtlı yazı boyutu değişirse (açılış, localStorage geri yükleme, kaydetme
+    # veya sıfırlama) bekleyen değer ve açılır menü kayıtlı duruma hizalanır.
+    observeEvent(settings$font_size, {
+      req(settings$font_size)
+      if (!identical(settings$font_size, temp_font_size())) {
+        temp_font_size(settings$font_size)
+        updateSelectInput(session, "font_size", selected = settings$font_size)
+      }
+    })
+
     # Arayüz ayarları - anlık güncelleme
-    observeEvent(input$font_size,               { settings$font_size               <- input$font_size })
     observeEvent(input$enable_animations,       { settings$enable_animations       <- input$enable_animations })
     observeEvent(input$enable_timestamps,       { settings$enable_timestamps       <- input$enable_timestamps })
     observeEvent(input$enable_typing_indicator, { settings$enable_typing_indicator <- input$enable_typing_indicator })
@@ -510,7 +527,7 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
       }, ignoreInit = TRUE)
     })
 
-    # --- Claude Code Yapılandırma Kartı ---
+    # --- Bilge Yolaç Yapılandırma Kartı ---
 
     # CLI durumunu göster
     output$cc_cli_status_info <- renderUI({
@@ -627,6 +644,7 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
       save_trigger = save_trigger,
       reset_trigger = reset_trigger,
       temp_model_selection = temp_model_selection,
+      temp_font_size = temp_font_size,
       temp_image_size = temp_image_size,
       temp_image_quality_hd = temp_image_quality_hd,
       temp_summary_detail_level = temp_summary_detail_level,

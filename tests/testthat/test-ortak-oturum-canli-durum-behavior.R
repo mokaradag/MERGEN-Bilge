@@ -37,9 +37,11 @@ local({
   }
 })
 
-# UTC duvar-saati metni üretir (heartbeat yazımıyla aynı biçim: .oo_db_now).
-.ocd_utc <- function(offset_sn = 0) {
-  format(Sys.time() + offset_sn, "%Y-%m-%d %H:%M:%S", tz = "UTC")
+# Türkiye saati (+3) duvar-saati metni üretir; heartbeat yazımıyla aynı biçim
+# (.oo_db_now / datetime('now','+3 hours')). Tazelik okuması da julianday('now',
+# '+3 hours') kullandığından yaş (yani sınıflandırma) doğru kalır.
+.ocd_ist <- function(offset_sn = 0) {
+  format(Sys.time() + offset_sn + 3 * 3600, "%Y-%m-%d %H:%M:%S", tz = "UTC")
 }
 
 .ocd_conn <- function() {
@@ -53,7 +55,7 @@ local({
     conn,
     "INSERT INTO MB_Kullanici_CanliDurum (KullaniciID, OturumAnahtari, Sayfa, SonKalpAtisiZamani, Durum, SonGorulenOrtakOturumID, OlusturmaZamani) VALUES (?,?,?,?,?,?,?)",
     params = list(uid, oturum_anahtari %||% paste0("tok_", uid, "_", offset_sn), "ortak_calismalar",
-                  .ocd_utc(offset_sn), "Çevrimİçi", if (is.na(gorulen)) NA_integer_ else as.integer(gorulen), .ocd_utc(offset_sn))
+                  .ocd_ist(offset_sn), "Çevrimİçi", if (is.na(gorulen)) NA_integer_ else as.integer(gorulen), .ocd_ist(offset_sn))
   )
 }
 

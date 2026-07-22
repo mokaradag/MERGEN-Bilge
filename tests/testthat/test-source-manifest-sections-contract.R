@@ -144,7 +144,10 @@
   module_chat = list(first = "R/module_chat_history_background.R", last = "R/module_feedback.R", n = 9L),
   module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 7L),
   module_settings_api_key = list(first = "R/module_settings_kisisel.R", last = "R/module_api_key.R", n = 7L),
-  module_ai_audio = list(first = "R/module_ai_processing.R", last = "R/module_character_video.R", n = 6L),
+  # 6L -> 7L bilinçli güncelleme: STT ses parçası çevirisi SAF worker-güvenli
+  # yardımcısı (R/helpers_stt_transcription.R) module_stt.R'den ÖNCE eklendi;
+  # ağır av dönüştürme + HTTP POST arka plana (tracked_future_promise) taşındı.
+  module_ai_audio = list(first = "R/module_ai_processing.R", last = "R/module_character_video.R", n = 7L),
   # Bilinçli güncelleme: başlangıç şeridi (startup lane) için saf çözümleme
   # yardımcıları (R/helpers_startup_lane.R; appLoadingUI ortam varsayılanını
   # gömer) ve şerit sunucu gözlemcileri (R/module_startup_lane.R;
@@ -418,7 +421,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # eşzamanlılık + sıralı teslim + başlangıç tamponu kapısı)
   # R/helpers_ai_expert_chunk_pipeline.R olarak ai_expert_helpers bölümüne
   # (chunking'den sonra) eklendi.
-  expect_equal(length(runtime), 351L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 351L -> 352L bilinçli güncelleme: STT ses parçası çevirisi SAF worker-güvenli
+  # yardımcısı (R/helpers_stt_transcription.R) module_ai_audio bölümüne
+  # (module_stt.R'den ÖNCE) eklendi.
+  expect_equal(length(runtime), 352L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

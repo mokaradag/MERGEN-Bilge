@@ -155,7 +155,9 @@ call_local_llm_sse_worker <- function(chat_history,
     })
 
     temp_value <- if (!is.null(current_settings$temperature)) current_settings$temperature else 0.4
-    max_tokens_val <- current_settings$max_output_tokens %||% 4096
+    # Varsayilan cikti token limiti yuksek tutulur; uzun kod bloklari/yanitlar
+    # akiste kesilmesin (issue #7). Worker-guvenli literal.
+    max_tokens_val <- current_settings$max_output_tokens %||% 32768L
 
 	body <- list(
 	  model = selected_model,
@@ -475,13 +477,18 @@ call_local_llm_sse_worker <- function(chat_history,
       invisible(NULL)
     }
 
+    # Akış zaman aşımı yapılandırılabilir (worker-güvenli env). Düşünen modeller
+    # yoğunluk altında uzun sürebildiği için varsayılan 1800 sn'ye çıkarıldı.
+    sse_timeout_sec <- suppressWarnings(as.numeric(Sys.getenv("MERGEN_LLM_TIMEOUT_SEC", "1800")))
+    if (is.na(sse_timeout_sec) || sse_timeout_sec <= 0) sse_timeout_sec <- 1800
+
     h <- curl::new_handle()
     curl::handle_setheaders(h, .list = as.list(headers))
     curl::handle_setopt(
       h,
       post = TRUE,
       postfields = jsonlite::toJSON(body, auto_unbox = TRUE, null = "null"),
-      timeout_ms = 300000
+      timeout_ms = as.integer(sse_timeout_sec * 1000)
     )
 
     # Durumlu UTF-8 çözücü: SSE parçaları çoklu baytlı karakterlerin ortasında
@@ -571,7 +578,7 @@ call_local_llm_sse_worker <- function(chat_history,
             do.call(httr::add_headers, as.list(headers)),
             body = jsonlite::toJSON(ns_body, auto_unbox = TRUE),
             encode = "raw",
-            httr::timeout(300)
+            httr::timeout(sse_timeout_sec)
           )
           if (identical(httr::status_code(ns_resp), 200L) ||
               identical(as.integer(httr::status_code(ns_resp)), 200L)) {

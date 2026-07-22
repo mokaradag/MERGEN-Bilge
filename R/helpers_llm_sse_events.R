@@ -13,7 +13,7 @@
 # Bu durumda enc2utf8 sonrası yapılacak gsub/strsplit/nchar gibi işlemler
 # "input string 1 is invalid UTF-8" hatasını fırlatır. Bu fonksiyon durumsuz
 # bir güvenli çözücüdür ve geçersiz baytları siler. Durumlu (yarım baytları
-# bir sonraki parçaya taşıyan) versiyon için R/helpers_llm_stream_io.R içindeki
+# bir sonraki parçaya taşıyan) sürüm için R/helpers_llm_stream_io.R içindeki
 # create_utf8_stream_decoder() yardımcısı kullanılır.
 
 decode_utf8_raw_chunk <- function(raw_chunk) {

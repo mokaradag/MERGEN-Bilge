@@ -26,7 +26,8 @@ test_that("mergen_determine_tool_family SQL modunu önceliklendirir", {
   )
 
   expect_identical(result$tool_family, "sql_analysis")
-  expect_identical(result$current_settings$max_output_tokens, 4096)
+  # Uzun yanit/kod bloklari kesilmesin diye cikti limiti 32768'e cikarildi (issue #7).
+  expect_identical(result$current_settings$max_output_tokens, 32768L)
 })
 
 # MCP modunun yalnızca dosya yüklemesi olduğunda seçildiğini doğrular.

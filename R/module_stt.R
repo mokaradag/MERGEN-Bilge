@@ -29,15 +29,23 @@ sttServer <- function(id, parent_session, settings) {
     }
     
     rv <- reactiveValues(
-      transcription_history = "",
+      transcription_history = "", # Sunucu otoriter biriktirilmiş metin (issue #3)
+      transcribe_gen = 0L,        # Çeviri jetonu: bayat asenkron sonuçları eler
       is_recording = FALSE,
       accept_chunks = FALSE # Kilit mekanizması
     )
-    
+
     final_text <- reactiveVal("")
-    
+
+    # Biriktirilmiş metni metin alanına yazar (tek nokta).
+    push_transcription <- function(value) {
+      rv$transcription_history <- value
+      updateTextAreaInput(session, "transcribed_text", value = value)
+    }
+
     start_session <- function() {
       rv$transcription_history <- ""
+      rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
       rv$is_recording <- TRUE
       rv$accept_chunks <- TRUE
       
@@ -170,17 +178,20 @@ sttServer <- function(id, parent_session, settings) {
       })
     }
     
-    # Temizle Butonu
+    # Temizle Butonu: hem metin alanını hem de sunucu otoriter geçmişi sıfırla.
+    # Jeton artırılır ki uçuşta olan (henüz dönmemiş) çeviriler temizlenen metne
+    # geri eklenmesin.
     observeEvent(input$clear_btn, {
-      updateTextAreaInput(session, "transcribed_text", value = "")
+      rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
+      push_transcription("")
     })
-    
+
     observeEvent(input$toggle_record_btn, {
       if (rv$is_recording) {
         # --- DURDURMA İŞLEMİ ---
         rv$is_recording <- FALSE
         rv$accept_chunks <- FALSE # KİLİT: Artık gelen hiç bir paketi kabul etme
-        
+
         updateActionButton(session, "toggle_record_btn", label = "Devam Et", icon = icon("microphone"))
         shinyjs::runjs(sprintf("$('#%s').removeClass('recording').addClass('paused');", ns("toggle_record_btn")))
         shinyjs::runjs(sprintf("window.STT_Client.stopRecording('%s');", id))
@@ -188,10 +199,17 @@ sttServer <- function(id, parent_session, settings) {
         shinyjs::runjs(sprintf("$('.stt-char-status').text('Bekliyor');"))
         shinyjs::runjs(sprintf("$('.stt-visualizer-wrapper').addClass('paused-mode');"))
       } else {
-        # --- BAŞLATMA İŞLEMİ ---
+        # --- BAŞLATMA İŞLEMİ (Devam Et) ---
+        # Duraklatma sırasında kullanıcı metin alanını elle düzenlemiş olabilir;
+        # devam etmeden önce sunucu geçmişini görünen metinle eşitle. Duraklama
+        # sırasında asenkron parça eklenmediği için metin alanı güvenilirdir.
+        edited_text <- as.character(isolate(input$transcribed_text) %||% "")[1]
+        if (is.na(edited_text)) edited_text <- ""
+        rv$transcription_history <- edited_text
+
         rv$is_recording <- TRUE
         rv$accept_chunks <- TRUE # Kilidi aç
-        
+
         updateActionButton(session, "toggle_record_btn", label = "Durdur", icon = icon("stop"))
         shinyjs::runjs(sprintf("$('#%s').removeClass('paused').addClass('recording');", ns("toggle_record_btn")))
         shinyjs::runjs(sprintf("window.STT_Client.startRecording('%s');", id))
@@ -203,84 +221,70 @@ sttServer <- function(id, parent_session, settings) {
     
     observeEvent(input$audio_chunk, {
       req(input$audio_chunk)
-      
+
       # KİLİT KONTROLÜ: Eğer kullanıcı durdurduysa, asla işleme.
-      # Bu, "Durdur"a basıldığı an kesilen yarım cümlelerin veya 
+      # Bu, "Durdur"a basıldığı an kesilen yarım cümlelerin veya
       # sessizlik anında modelin uydurduğu "Altyazı..." metinlerinin eklenmesini engeller.
 	  if (!isTRUE(rv$accept_chunks)) return(NULL)
-      
+
       api_url <- Sys.getenv("LOCAL_STT_ENDPOINT")
       api_model <- Sys.getenv("LOCAL_STT_MODEL")
       api_key <- Sys.getenv("LOCAL_STT_API_KEY", "")
-      
+
       if (!nzchar(api_key)) {
         api_key <- session$userData$ai_api_key
       }
       if (!nzchar(api_key)) return(NULL)
       api_key <- trimws(api_key)
-      
-      audio_binary <- tryCatch(
-        base64enc::base64decode(input$audio_chunk),
-        error = function(e) { return(NULL) }
-      )
-      req(audio_binary)
-      
-      input_file <- tempfile(fileext = ".webm")
-      wav_file <- tempfile(fileext = ".wav")
-      writeBin(audio_binary, input_file)
-      
-      tryCatch({
-        av::av_audio_convert(input_file, wav_file, format = "wav", sample_rate = 16000, channels = 1)
-        
-        # Dosya boyutu kontrolü (Sessizlik filtresi 2. katman)
-        if (file.size(wav_file) < 2500) return(NULL)
 
-        body_params <- list(
-          file = httr::upload_file(wav_file, type = "audio/wav"),
-          model = api_model,
-          language = "tr",
-          task = "transcribe"
+      # Çeviri, gönderim anındaki üretim jetonu ile ilişkilendirilir; böylece
+      # yeni oturum/temizle sonrası dönen bayat sonuçlar geçmişe eklenmez.
+      chunk_b64 <- input$audio_chunk
+      dispatch_gen <- isolate(rv$transcribe_gen)
+      stt_timeout <- suppressWarnings(as.numeric(Sys.getenv("MERGEN_STT_TIMEOUT_SEC", "30")))
+      if (is.na(stt_timeout) || stt_timeout <= 0) stt_timeout <- 30
+
+      # AĞIR İŞ ARKA PLANDA: av dönüştürme + HTTP POST worker'a taşındı. Böylece
+      # ana olay döngüsü bloklanmaz ve İptal/Onayla/Temizle/Durdur butonları
+      # her zaman anında yanıt verir (issue #1).
+      promise <- tracked_future_promise(
+        task_fn = function() {
+          mergen_stt_transcribe_chunk(chunk_b64, api_url, api_model, api_key, stt_timeout)
+        },
+        task_type = "stt_transcribe",
+        session_token = session$token,
+        dependency_mode = "explicit",
+        globals = list(
+          mergen_stt_transcribe_chunk = mergen_stt_transcribe_chunk,
+          chunk_b64 = chunk_b64,
+          api_url = api_url,
+          api_model = api_model,
+          api_key = api_key,
+          stt_timeout = stt_timeout
         )
-        
-        res <- httr::POST(
-          url = api_url,
-          httr::add_headers(Authorization = paste("Bearer", api_key)),
-          body = body_params,
-          encode = "multipart",
-          httr::timeout(10)
-        )
-        
-        if (httr::status_code(res) == 200) {
-          content_json <- httr::content(res, as = "text", encoding = "UTF-8")
-          parsed <- jsonlite::fromJSON(content_json)
-          text_segment <- parsed$text
-          
-          if (!is.null(text_segment) && nzchar(text_segment)) {
-            Encoding(text_segment) <- "UTF-8"
-            clean_text <- trimws(text_segment)
-            
-            # Basit filtreler: Modelin tipik halüsinasyonları
-            # (Ancak kilit mekanizması zaten çoğunu çözecek)
-            if (grepl("^(Altyazı|Alt yazı)", clean_text, ignore.case = TRUE)) return(NULL)
-            if (grepl("^(Evet\\.|Hımmm|Sadece|Teşekkürler\\.)", clean_text) && nchar(clean_text) < 10) return(NULL)
-            
-            if (nzchar(clean_text)) {
-              # Kilit son kez kontrol edilir (Asenkron gecikme için)
-              if (isolate(rv$accept_chunks)) {
-                current_ui_val <- input$transcribed_text
-                sep <- if (nzchar(current_ui_val) && !grepl("\\s$", current_ui_val)) " " else ""
-                new_val <- paste0(current_ui_val, sep, clean_text)
-                updateTextAreaInput(session, "transcribed_text", value = new_val)
-              }
-            }
-          }
+      )
+
+      promise %...>% (function(clean_text) {
+        # Bayat oturum/temizle sonucu ise yok say (yeni jeton).
+        if (!identical(dispatch_gen, isolate(rv$transcribe_gen))) return(invisible(NULL))
+        # Kayıt duraklatıldıysa (Durdur) geç gelen sonucu ekleme.
+        if (!isTRUE(isolate(rv$accept_chunks))) return(invisible(NULL))
+        if (is.null(clean_text) || length(clean_text) == 0 || !nzchar(clean_text)) {
+          return(invisible(NULL))
         }
-      }, error = function(e) {
+
+        # BİRİKTİRME: taban her zaman sunucu otoriter geçmiştir; metin alanının
+        # gecikmeli round-trip değeri değildir. Bu, konuşup durup tekrar
+        # konuşulduğunda ilk parçanın silinmesini önler (issue #3).
+        base <- as.character(isolate(rv$transcription_history) %||% "")[1]
+        if (is.na(base)) base <- ""
+        sep <- if (nzchar(base) && !grepl("\\s$", base)) " " else ""
+        push_transcription(paste0(base, sep, clean_text))
+      }) %...!% (function(e) {
         cat("[STT Error]", conditionMessage(e), "\n")
-      }, finally = {
-        if (file.exists(input_file)) unlink(input_file)
-        if (file.exists(wav_file)) unlink(wav_file)
       })
+
+      invisible(NULL)
     })
     
     observeEvent(input$accept_btn, {
@@ -288,7 +292,14 @@ sttServer <- function(id, parent_session, settings) {
       set_stt_modal_active_js(FALSE)
       
       shinyjs::runjs(sprintf("window.STT_Client.stopAndCleanup('%s');", id))
-      text_to_send <- trimws(input$transcribed_text)
+      text_to_send <- trimws(as.character(input$transcribed_text %||% "")[1])
+      if (is.na(text_to_send)) text_to_send <- ""
+      # Metin alanı round-trip gecikmesi nedeniyle boş görünüyorsa, sunucu
+      # otoriter geçmişe düş (son parça kaybolmasın).
+      if (!nzchar(text_to_send)) {
+        text_to_send <- trimws(as.character(isolate(rv$transcription_history) %||% "")[1])
+        if (is.na(text_to_send)) text_to_send <- ""
+      }
       removeModal()
       if (nzchar(text_to_send)) {
         final_text(text_to_send)

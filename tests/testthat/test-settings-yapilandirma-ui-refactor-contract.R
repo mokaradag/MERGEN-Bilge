@@ -98,7 +98,7 @@ test_that("Yapılandırma UI dosyası yalnızca UI sorumluluğunu taşır", {
     "Model Ayarları",
     "API Anahtarı Yönetimi",
     "Analiz Araçları",
-    "Claude Code Yapılandırma",
+    "Bilge Yolaç Yapılandırma",
     "Arayüz Ayarları",
     "claude_code_timeout"
   )
@@ -215,7 +215,7 @@ test_that("Eski public UI adı wrapper olarak korunur ve büyük UI bloğu geri 
 
   moved_ui_markers <- c(
     'h3("Model Ayarları"',
-    'h3("Claude Code Yapılandırma"',
+    'h3("Bilge Yolaç Yapılandırma"',
     'h3("Ses Ayarları"',
     'h3("Özetleme Ayarları"'
   )

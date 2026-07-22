@@ -38,6 +38,9 @@ history_accessible_date_range_input <- function(ns) {
         type = "date",
         class = "form-control history-native-date-input",
         value = start_value,
+        # lang="tr-TR": tarayıcı tarih alanını gün/ay/yıl (dd/mm/yyyy) biçiminde
+        # gösterir; varsayılan İngilizce yerel ay/gün/yıl (mm/dd/yyyy) yerine.
+        lang = "tr-TR",
         `data-history-date-role` = "start",
         `aria-label` = "Başlangıç tarihi"
       ),
@@ -57,6 +60,7 @@ history_accessible_date_range_input <- function(ns) {
         type = "date",
         class = "form-control history-native-date-input",
         value = end_value,
+        lang = "tr-TR",
         `data-history-date-role` = "end",
         `aria-label` = "Bitiş tarihi"
       )

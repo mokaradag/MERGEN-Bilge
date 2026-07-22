@@ -408,6 +408,7 @@ source_manifest_sections <- list(
     "R/module_ai_expert.R",
     "R/module_tts.R",
     "R/module_tts_visualizer.R",
+    "R/helpers_stt_transcription.R",
     "R/module_stt.R",
     "R/module_character_video.R"
   ),

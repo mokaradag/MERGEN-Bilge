@@ -2725,12 +2725,32 @@ Non-negotiable boundaries:
   (`ortak_db_canli_durumlar()`) and refreshes on modal open. Do not re-inline the
   filter decision into the renderUI. The heartbeat WRITE uses the SAME DB clock:
   `ortak_db_kalp_atisi()` sets `SonKalpAtisiZamani`/`OlusturmaZamani` via a
-  DB-clock SQL expression (`SYSUTCDATETIME()` on SQL Server, `datetime('now')` on
-  SQLite), not an R `.oo_db_now()` param — so write and read share one clock and
-  even a positive R↔DB skew (DB ahead) cannot inflate a fresh heartbeat past the
-  thresholds. Do not revert the write to an R-clock timestamp param; the write is
-  logged on failure (`Canlı durum kalp atışı yazılamadı`), and the DB-clock read
-  is what makes the freshness check driver-timezone-immune.
+  DB-clock SQL expression, not an R `.oo_db_now()` param — so write and read share
+  one clock and even a positive R↔DB skew (DB ahead) cannot inflate a fresh
+  heartbeat past the thresholds. Do not revert the write to an R-clock timestamp
+  param; the write is logged on failure (`Canlı durum kalp atışı yazılamadı`), and
+  the DB-clock read is what makes the freshness check driver-timezone-immune.
+- TIMEZONE (Europe/Istanbul, fixed +3, no DST): ALL `MB_Ortak*` / `MB_Kullanici_CanliDurum`
+  timestamps are stored in TURKEY LOCAL TIME so they read correctly in SSMS/UI
+  (they were previously GMT/UTC). `.oo_db_now()` returns `Sys.time() + 3*3600`
+  formatted as UTC (`.OO_TZ_OFFSET_SN`); the heartbeat DB-clock write is
+  `DATEADD(HOUR, 3, SYSUTCDATETIME())` (SQL Server) / `datetime('now','+3 hours')`
+  (SQLite). CRITICAL: the freshness read (`yas_ifadesi`) uses the SAME +3 shift
+  (`DATEADD(HOUR, 3, SYSUTCDATETIME())` / `julianday('now','+3 hours')`), so the
+  +3 cancels in the DATEDIFF/julianday difference and the age (thus the
+  online/idle/offline classification) is UNCHANGED — write and read must ALWAYS be
+  shifted together. The R-side "now" for real-instant-vs-stored comparisons is
+  also shifted +3h to match the Istanbul-stored value parsed as UTC: the two bayat
+  generation-lock checks (`ortak_db_uretim_kilidi_al` / `ortak_db_uretim_kilidi_devam_edebilir`,
+  `difftime(Sys.time() + 3 * 3600, baslama, ...)`) and the elapsed timer
+  (`ortak_sunum_gecen_saniye` default `now_text`). The DDL column defaults
+  (`docs/sql/2026-07-ortak-oturumlar.sql`) use `DATEADD(HOUR, 3, SYSUTCDATETIME())`
+  for new installs; the app always writes the timestamp explicitly so existing DBs
+  are Istanbul-correct without a DDL migration. Do NOT change `.oo_db_now()` back
+  to bare UTC, and do NOT shift only the write (that makes every user always
+  online) or only the read (that breaks the test). Protected by
+  `tests/testthat/test-ortak-oturum-canli-durum-behavior.R` (Istanbul insert +
+  DB-clock age).
 - Change-aware polling (item: accumulating console warnings): the room's 4s poll
   writes DB data into reactiveVal slots (`mesajlar_rv`/`katilimcilar_rv`/
   `belgeler_rv`/`oturum_rv`/`katilim_rv`/`canli_rv`/`uretim_rv`/`kuyruk_rv`) through
@@ -2873,6 +2893,86 @@ tab, real SMTP sending, direct token-token WebSocket push (currently 2s DB-poll
 broadcast). VM-only proof: SQL Server Turkish at-rest checks, the `KismiYanit` /
 `SecilenPersona` ALTERs, the real CLI bridge, live vision endpoint, and
 multi-user SSO room flow run on the Windows VM gates, not in cloud sessions.
+
+### Sesli Giriş (STT) async transcription contract
+
+Sesli Giriş (STT) chunk transcription runs OFF the main Shiny event loop so the
+modal's buttons stay responsive, and the transcript is server-authoritative so
+it never loses earlier text.
+
+Current contract:
+
+- The heavy work (base64 decode + `av::av_audio_convert` + STT HTTP POST) lives
+  in the PURE, worker-safe helper `mergen_stt_transcribe_chunk()`
+  (`R/helpers_stt_transcription.R`, loaded in the `module_ai_audio` manifest
+  section immediately BEFORE `R/module_stt.R`). It uses only namespaced package
+  calls (`av::`/`httr::`/`jsonlite::`/`base64enc::`) and its own args — no Shiny,
+  reactive, or external-global dependency — so it is dispatched via
+  `tracked_future_promise(..., dependency_mode = "explicit", globals = list(...))`.
+- The `input$audio_chunk` observer must NOT do the decode/convert/POST inline on
+  the main thread (that blocked the event loop for up to the STT timeout, freezing
+  İptal/Onayla/Temizle/Durdur). It snapshots the chunk + config + `rv$transcribe_gen`,
+  dispatches to the worker, and appends in the `%...>%` callback.
+- The transcript is server-authoritative: `rv$transcription_history` (NOT the
+  round-tripped `input$transcribed_text`) is the append base, pushed to the
+  textarea via `push_transcription()`. This is what fixes "talk, pause, talk
+  again erases the first part" — the round-trip lag is no longer the source of
+  truth. On resume (Devam Et) the history syncs FROM the textarea (to keep manual
+  edits made while paused); Temizle and `start_session()` bump `rv$transcribe_gen`
+  so in-flight/stale results are dropped; the append callback re-checks
+  `rv$accept_chunks` and the generation token.
+- Timeouts are configurable: STT via `MERGEN_STT_TIMEOUT_SEC` (default 30). The
+  client silence gate (`SILENCE_THRESHOLD` in `www/js/stt_client.js`) is 0.02 so
+  short/soft phrases still send.
+- Protected by `tests/testthat/test-stt-module-behavior.R` (lock/no-key/no-POST
+  paths must reach the early returns before any worker dispatch). VM-only proof:
+  real microphone + STT endpoint end-to-end.
+
+### Yazı Tipi Boyutu pending-until-save contract
+
+The Yapılandırma "Yazı Tipi Boyutu" (font size) select is PENDING-until-save,
+like `model_selection`/`image_size`/`startup_experience_lane`. `input$font_size`
+updates ONLY `temp_font_size` (a `reactiveVal` in `R/module_settings_yapilandirma.R`);
+the visible font changes ONLY when "Ayarları Kaydet" runs `save_all_settings()`
+(`R/module_settings.R`) which sets `settings$font_size <- yapilandirma$temp_font_size()`.
+A `settings$font_size` observer re-syncs the pending value + select on
+boot/restore/save/reset. Do NOT reintroduce the immediate
+`observeEvent(input$font_size, { settings$font_size <- input$font_size })` path
+(it applied the font before save). The `server_observers_settings.R`
+`updateFontSize` message and `settings$font_size`-driven apply stay unchanged —
+they just fire on the committed value now. Test fakes that mock
+`settingsYapilandirmaServer` must expose `temp_font_size`.
+
+### Yönetici Paneli CSS-only tooltip contract
+
+Admin panel tooltips are CSS-only (`data-admin-tooltip` attribute +
+`[data-admin-tooltip]:hover::after` in `www/css/admin_analytics.css`), NOT
+Bootstrap tooltips. Bootstrap tooltips (`data-toggle="tooltip"` + `.tooltip()`
+init) flickered / vanished on hover under `renderUI` redraws, `container:'body'`
+positioning, and the `.metric-card:hover` transform — the same failure mode the
+health dashboard already fixed. `admin_create_metric_card()` /
+`admin_create_info_button()` (`R/helpers_admin_analytics.R`) emit
+`data-admin-tooltip` (info button also `aria-label`); `admin_init_tooltips()` is a
+no-op (kept for its call sites; only clears stray `.tooltip` DOM). Do NOT
+reintroduce Bootstrap tooltip init for admin elements. Protected by
+`tests/testthat/test-admin-analytics-formatters-behavior.R` (`data-admin-tooltip`).
+
+### Model reset / timeout / output-token notes
+
+- Yeni Söyleşi resets the model to the first valid chat model
+  (`api_config$local_models[1]`) when the active model is NOT a valid local chat
+  model (e.g. the image tool leaves `dall-e-3` selected). Guard lives in the
+  `input$new_chat_btn` observer (`R/server_observers_chat_ui.R`) and only fires
+  when `!(current_model %in% api_config$local_models)`, so a user's deliberate
+  valid model choice is preserved.
+- LLM/chat request timeout default is `MERGEN_LLM_TIMEOUT_SEC` (default 1800s),
+  read worker-safe via `Sys.getenv` in the SSE (`R/helpers_llm_sse.R`), worker
+  (`R/helpers_llm_worker.R`), and non-streaming (`R/helpers_llm_api.R`) paths. Do
+  not hard-code 300 back.
+- Default output token limit is 32768 (was 4096, which trimmed long code blocks):
+  the `%||% 32768L` fallbacks in `R/helpers_llm_api.R` / `R/helpers_llm_sse.R` and
+  the coding/sql_analysis tool-family settings in `R/helpers_send_message_core.R`.
+  Worker-safe literal (no helper serialized to the worker).
 
 ### Bilge Yolaç run lifecycle request-id contract
 

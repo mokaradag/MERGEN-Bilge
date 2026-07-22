@@ -123,8 +123,9 @@ admin_create_metric_card <- function(title, value, icon_name, color_class = "pri
                                      subtitle = NULL, tooltip = NULL) {
   div(
     class = paste("metric-card", color_class),
-    `data-toggle` = if (!is.null(tooltip)) "tooltip" else NULL,
-    title = tooltip,
+    # Araç ipucu CSS-only (data-admin-tooltip). Bootstrap tooltip yerine; kart
+    # hover transform'u + renderUI yeniden çizimi ile titremeyi önler (issue #9).
+    `data-admin-tooltip` = tooltip,
     div(class = "metric-icon", icon(icon_name)),
     div(
       class = "metric-content",
@@ -140,9 +141,9 @@ admin_create_metric_card <- function(title, value, icon_name, color_class = "pri
 admin_create_info_button <- function(info_text) {
   tags$span(
     class = "info-btn",
-    title = info_text,
-    `data-toggle` = "tooltip",
-    `data-placement` = "top",
+    # CSS-only araç ipucu (data-admin-tooltip); aria-label erişilebilirlik için.
+    `data-admin-tooltip` = info_text,
+    `aria-label` = info_text,
     icon("info-circle")
   )
 }
@@ -338,10 +339,15 @@ admin_refresh_setup <- function(input, session, refresh_btn_id = "refresh_analyt
   )
 }
 
-#' Bootstrap tooltip'lerini yeniden başlat (sekme değişikliğinden sonra)
+#' Araç ipuçlarını hazırla (sekme değişikliğinden sonra)
 #' @param session Shiny session
+#' @details Araç ipuçları artık CSS-only (data-admin-tooltip); Bootstrap tooltip
+#'   init KALDIRILDI. Bootstrap tooltip'leri renderUI yeniden çizimi, kart hover
+#'   transform'u ve container:'body' konumlamasıyla titreyip anında kayboluyordu
+#'   (issue #9). CSS ::after tooltip'i tetikleyici elemanın pseudo-öğesidir;
+#'   hover'da kararlıdır ve JS/init gerektirmez. Bu fonksiyon geriye dönük
+#'   uyumluluk için korunur ve olası bayat Bootstrap tooltip DOM'unu temizler.
 admin_init_tooltips <- function(session) {
-  shinyjs::delay(100, {
-    shinyjs::runjs("$('.admin-scrollable-content [data-toggle=\"tooltip\"]').tooltip({container: 'body', trigger: 'hover', delay: {show: 100, hide: 300}});")
-  })
+  shinyjs::runjs("if (window.jQuery) { window.jQuery('.tooltip').remove(); }")
+  invisible(NULL)
 }

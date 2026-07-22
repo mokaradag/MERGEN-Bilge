@@ -30,7 +30,9 @@ window.STT_Client = (function() {
     
     // Config
     const CHUNK_INTERVAL_MS = 3000;
-    const SILENCE_THRESHOLD = 0.025; 
+    // Sessizlik eşiği biraz düşürüldü: kısa/alçak sesli "merhaba" gibi ifadeler
+    // eskiden istemci tarafında elenip hiç gönderilmiyordu (issue #2).
+    const SILENCE_THRESHOLD = 0.02;
 
     function restoreMusicAfterSTT() {
         if (window.MusicManager &&

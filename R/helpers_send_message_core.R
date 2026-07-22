@@ -42,14 +42,16 @@ mergen_determine_tool_family <- function(settings_data, uploaded_count, skip_mcp
     tool_family <- "none"
   } else if (cfg_sql_analysis_on) {
     tool_family <- "sql_analysis"
-    current_settings$max_output_tokens <- 4096
+    # Uzun yanitlarin/kod bloklarinin kesilmemesi icin yuksek cikti limiti (issue #7).
+    current_settings$max_output_tokens <- 32768L
   } else if (excel_allowed) {
     tool_family <- "mcp_excel"
   } else if (cfg_summarization_on) {
     tool_family <- "summarization"
   } else if (cfg_coding_on) {
     tool_family <- "coding"
-    current_settings$max_output_tokens <- 4096
+    # Kodlama araci: uzun kod bloklari kesilmesin diye yuksek cikti limiti (issue #7).
+    current_settings$max_output_tokens <- 32768L
   } else if (isTRUE(settings_data$enable_process_tools)) {
     tool_family <- "process"
   } else if (isTRUE(settings_data$enable_app_expert_tools)) {

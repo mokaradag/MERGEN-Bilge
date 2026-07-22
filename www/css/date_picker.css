@@ -157,4 +157,12 @@
 .history-native-date-input::-webkit-calendar-picker-indicator {
   opacity: 0.85;
   cursor: pointer;
+  /* Koyu tema (varsayılan): takvim seçici ikonu varsayılan olarak koyudur ve
+     koyu arka planda görünmez; beyaza çevir. Açık tema aşağıda geri alınır. */
+  filter: invert(1) brightness(1.8);
+}
+
+/* Açık temada ikon zaten görünür; varsayılan koyu ikonu koru. */
+html[data-theme="light"] .history-native-date-input::-webkit-calendar-picker-indicator {
+  filter: none;
 }

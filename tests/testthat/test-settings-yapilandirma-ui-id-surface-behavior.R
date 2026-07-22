@@ -99,7 +99,7 @@ test_that("Yapılandırma UI tüm kart başlıklarını ve özel yapıları koru
 
   card_titles <- c(
     "Model Ayarları", "API Anahtarı Yönetimi", "Analiz Araçları",
-    "Claude Code Yapılandırma", "Arayüz Ayarları", "Kısayollar",
+    "Bilge Yolaç Yapılandırma", "Arayüz Ayarları", "Kısayollar",
     "Başlangıç Deneyimi",
     "Ses Ayarları", "AI Uzman Konuşması", "Görsel Oluşturma Ayarları",
     "Özetleme Ayarları", "Proje ve Kaynak Analizi Ayarları"
