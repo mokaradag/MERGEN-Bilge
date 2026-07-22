@@ -399,6 +399,31 @@
   }
 }
 
+html[data-theme="light"] .generated-image-container {
+  background: var(--color-surface, #ffffff);
+  border-color: var(--color-border, #d8dde7);
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme="light"] .image-description {
+  background: var(--color-surface-2, #f7f8fc);
+  border-left-color: var(--mb-brand-primary, #003087);
+}
+
+html[data-theme="light"] .image-description p {
+  color: var(--color-text-soft, #1f2a44);
+}
+
+html[data-theme="light"] .image-action-btn-modern {
+  background: rgba(0, 48, 135, 0.06);
+  color: var(--color-muted, #5b6577);
+}
+
+html[data-theme="light"] .image-action-btn-modern:hover {
+  background: rgba(0, 48, 135, 0.12);
+  color: var(--mb-brand-primary, #003087);
+}
+
 /* ------------------------------------------------------------------------------
  * RESPONSIVE DÜZENLEMELER
  * ------------------------------------------------------------------------------ */
