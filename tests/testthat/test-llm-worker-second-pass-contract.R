@@ -140,6 +140,9 @@ test_that("ikinci geçiş gövdesi model adından bağımsız doğru istek oluş
   expect_identical(body$model, "runtime-model-under-test")
   expect_false(isTRUE(body$stream))
   expect_identical(body$temperature, 0.4)
+  # Varsayılan çıktı token limiti (streaming/non-streaming worker yollarıyla aynı
+  # sözleşme); önceden ikinci geçiş gövdesi max_tokens'i hiç göndermiyordu.
+  expect_identical(body$max_tokens, 32768L)
 
   body_without_temperature <- llm_worker_second_pass_body(
     selected_model = "temperature-omitting-test-model",
@@ -148,6 +151,15 @@ test_that("ikinci geçiş gövdesi model adından bağımsız doğru istek oluş
   )
 
   expect_null(body_without_temperature$temperature)
+
+  body_with_custom_limit <- llm_worker_second_pass_body(
+    selected_model = "runtime-model-under-test",
+    messages_payload = list(list(role = "user", content = "Merhaba")),
+    temp_value = 0.4,
+    max_tokens_val = 9999L
+  )
+
+  expect_identical(body_with_custom_limit$max_tokens, 9999L)
 })
 
 test_that("SSE yalnızca düşünce döndürürse mesaj gövdesine basılmaz ve non-streaming cevaba düşülür", {
@@ -191,7 +203,7 @@ test_that("SSE yalnızca düşünce döndürürse mesaj gövdesine basılmaz ve 
 
   assign(
     "llm_worker_call_second_pass_non_streaming",
-    function(api_endpoint, hdrs, body, selected_model) {
+    function(api_endpoint, hdrs, body, selected_model, timeout_sec = 300) {
       captured$non_stream_called <- TRUE
       captured$non_stream_body <- body
 
@@ -276,7 +288,7 @@ test_that("SSE gerçek yanıt döndürürse non-streaming geri dönüş çağrı
 
   assign(
     "llm_worker_call_second_pass_non_streaming",
-    function(api_endpoint, hdrs, body, selected_model) {
+    function(api_endpoint, hdrs, body, selected_model, timeout_sec = 300) {
       stop("SSE gerçek yanıt döndürdüğünde non-streaming geri dönüş çağrılmamalı.")
     },
     envir = globalenv()
