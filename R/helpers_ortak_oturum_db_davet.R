@@ -391,7 +391,10 @@ ortak_db_kalp_atisi <- function(kullanici_id,
   # tümden ortadan kalkar; DB saati R'den ILERI olsa bile taze bir kalp atışı asla
   # eşiği aşıp yanlışça Boşta/ÇevrimDışı görünmez. Zaman param olarak değil, SQL
   # ifadesi olarak gömülür (lehçe farkı yalnızca ifadede).
-  zaman_sql <- if (.oo_db_is_sqlite(handle$conn)) "datetime('now')" else "SYSUTCDATETIME()"
+  # Türkiye saati (Europe/Istanbul, +3). Saklanan SonKalpAtisiZamani/OlusturmaZamani
+  # yerel saatte okunur; tazelik okuması (yas_ifadesi) de AYNI +3 kaydırmayı
+  # kullandığından yaş (DATEDIFF) değişmez, sınıflandırma korunur.
+  zaman_sql <- if (.oo_db_is_sqlite(handle$conn)) "datetime('now', '+3 hours')" else "DATEADD(HOUR, 3, SYSUTCDATETIME())"
 
   sonuc <- .oo_db_try({
     guncellenen <- DBI::dbExecute(
@@ -501,10 +504,13 @@ ortak_db_canli_durumlar <- function(simdi = Sys.time(), conn = NULL) {
   on.exit(.oo_db_release(handle), add = TRUE)
 
   # Yaş (saniye) lehçeye göre DB'nin kendi saatiyle hesaplanır.
+  # "Şimdi" saklama saatiyle (Türkiye +3) AYNI kaydırmayı kullanır. Saklanan
+  # değer de +3 olduğundan +3'ler DATEDIFF/julianday farkında sadeleşir; yaş
+  # (dolayısıyla taze/boşta/çevrimdışı sınıflandırması) UTC ile aynıdır.
   yas_ifadesi <- if (.oo_db_is_sqlite(handle$conn)) {
-    "CAST((julianday('now') - julianday(c.SonKalpAtisiZamani)) * 86400 AS INTEGER)"
+    "CAST((julianday('now', '+3 hours') - julianday(c.SonKalpAtisiZamani)) * 86400 AS INTEGER)"
   } else {
-    "DATEDIFF(SECOND, c.SonKalpAtisiZamani, SYSUTCDATETIME())"
+    "DATEDIFF(SECOND, c.SonKalpAtisiZamani, DATEADD(HOUR, 3, SYSUTCDATETIME()))"
   }
 
   # Birincil yol: sunucu-saatli yaş sütunuyla oku. Beklenmedik bir lehçe/hata
@@ -573,19 +579,24 @@ ortak_db_canli_durumlar <- function(simdi = Sys.time(), conn = NULL) {
     return(sonuc)
   }
 
-  # Güvenli düşüş yolu: eski R-tarafı zaman damgası sınıflandırması. POSIXct
-  # değeri doğrudan geçilir (metne çevrilmez); ortak_sunum_durumu POSIXct/metni
-  # güvenle işler.
-  zamanlar <- suppressWarnings(as.POSIXct(
-    as.character(sonuc$SonKalpAtisiZamani), tz = "UTC"
-  ))
+  # Güvenli düşüş yolu: eski R-tarafı zaman damgası sınıflandırması. Birincil
+  # yoldaki +3 saatlik saklama/şimdi temeli burada da korunur; aksi halde
+  # İstanbul duvar saatiyle yazılmış yeni kalp atışları UTC ``simdi`` karşısında
+  # gelecekte kalıp yanlışlıkla Çevrimİçi görünebilir.
+  zaman_metni <- trimws(sub("T", " ", as.character(sonuc$SonKalpAtisiZamani), fixed = TRUE))
+  zaman_metni <- sub("\\.[0-9]+", "", zaman_metni)
+  zamanlar <- suppressWarnings(as.POSIXct(zaman_metni, tz = "UTC"))
+  simdi_fallback <- simdi + (3 * 60 * 60)
   sirali <- order(sonuc$KullaniciID, zamanlar, decreasing = TRUE)
   sonuc <- sonuc[sirali, , drop = FALSE]
-  sonuc <- sonuc[!duplicated(sonuc$KullaniciID), , drop = FALSE]
+  zamanlar <- zamanlar[sirali]
+  tekil <- !duplicated(sonuc$KullaniciID)
+  sonuc <- sonuc[tekil, , drop = FALSE]
+  zamanlar <- zamanlar[tekil]
 
   sonuc$CanliDurum <- vapply(
     seq_len(nrow(sonuc)),
-    function(i) ortak_sunum_durumu(sonuc$SonKalpAtisiZamani[i], simdi = simdi),
+    function(i) ortak_sunum_durumu(sonuc$SonKalpAtisiZamani[i], simdi = simdi_fallback),
     character(1),
     USE.NAMES = FALSE
   )

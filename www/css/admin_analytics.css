@@ -543,12 +543,55 @@ section.content,
   height: 340px !important;
 }
 
-.tooltip {
-  pointer-events: none;
+/* =============================================================================
+   Araç ipuçları: CSS-only (Bootstrap tooltip yerine). Bootstrap tooltip'leri
+   yönetici panelinde renderUI yeniden çizimi + container:'body' + kart hover
+   transform'u ile titreyip anında kayboluyordu (issue #9). CSS ::after tooltip'i
+   tetikleyici elemanın pseudo-öğesidir: hover'da kararlıdır, JS/init gerektirmez
+   ve kart transform'uyla birlikte hareket ettiği için titremez.
+   ============================================================================= */
+[data-admin-tooltip] {
+  position: relative;
 }
 
-.tooltip.in {
-  transition: opacity 0.15s ease-out;
+[data-admin-tooltip]::after {
+  content: attr(data-admin-tooltip);
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%) translateY(-4px);
+  max-width: 320px;
+  width: max-content;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 9999;
+  padding: 8px 11px;
+  border-radius: 10px;
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.97);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.36);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-transform: none;
+  letter-spacing: normal;
+  text-align: left;
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0s linear 0.12s;
+}
+
+[data-admin-tooltip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0s linear 0s;
+}
+
+/* Bayat Bootstrap tooltip DOM'u için güvenlik (artık üretilmez). */
+.tooltip {
+  pointer-events: none;
 }
 
 /* "#" satır numarası başlığını gizle (datatables.css ile uyum) */

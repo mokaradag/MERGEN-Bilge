@@ -167,11 +167,18 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     messages_payload <- llm_worker_merge_system_messages_to_front(messages_payload)
 
     temp_value <- if (!is.null(settings$temperature)) settings$temperature else 0.4
+    # Varsayilan cikti token limiti yuksek tutulur; uzun kod bloklari/yanitlar
+    # kesilmesin (bkz. helpers_llm_api.R / helpers_llm_sse.R ile aynı sözleşme).
+    # Onceden bu worker yolu max_tokens'i hic serilestirmiyordu; SQL analizi/
+    # Kodlama Uzmani gibi araclarin ayarladigi yuksek limit (32768) uc noktaya
+    # hic ulasmiyor, varsayilan (genelde dusuk) limitte kaliyordu (issue #7).
+    max_tokens_val <- settings$max_output_tokens %||% 32768L
 
 	body <- list(
 	  model = selected_model,
 	  messages = messages_payload,
-	  stream = FALSE
+	  stream = FALSE,
+	  max_tokens = max_tokens_val
 	)
 
 	if (!should_omit_temperature(selected_model)) {
@@ -210,12 +217,17 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       api_endpoint
     ))
     
+  # İstek zaman aşımı yapılandırılabilir (worker-güvenli env). Yoğunluk altında
+  # araç/ikinci-geçiş çağrıları uzun sürebildiği için varsayılan 1800 sn.
+  worker_timeout_sec <- suppressWarnings(as.numeric(Sys.getenv("MERGEN_LLM_TIMEOUT_SEC", "1800")))
+  if (is.na(worker_timeout_sec) || worker_timeout_sec <= 0) worker_timeout_sec <- 1800
+
   response <- httr::POST(
     api_endpoint,
     do.call(httr::add_headers, hdrs),
     body = jsonlite::toJSON(body, auto_unbox = TRUE),
     encode = "raw",
-    httr::timeout(300)
+    httr::timeout(worker_timeout_sec)
   )
 
   status <- httr::status_code(response)
@@ -244,7 +256,7 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
       do.call(httr::add_headers, hdrs),
       body = jsonlite::toJSON(body, auto_unbox = TRUE),
       encode = "raw",
-      httr::timeout(300)
+      httr::timeout(worker_timeout_sec)
     )
     status <- httr::status_code(response)
     resp_txt_raw <- try(httr::content(response, "text", encoding = "UTF-8"), silent = TRUE)
@@ -569,7 +581,8 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
           chart_blocks_text = chart_blocks_text,
           charts_to_store = charts_to_store,
           add_fallback_chart = add_fallback_chart,
-          worker_start_time = worker_start_time
+          worker_start_time = worker_start_time,
+          timeout_sec = worker_timeout_sec
         )
 
         if (!isTRUE(ikinci_gecis$ok)) {

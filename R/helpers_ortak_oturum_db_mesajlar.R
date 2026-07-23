@@ -294,8 +294,11 @@ ortak_db_uretim_kilidi_al <- function(oturum_id,
         baslama <- suppressWarnings(as.POSIXct(
           as.character(aktif$BaslamaZamani[1]), tz = "UTC"
         ))
+        # BaslamaZamani artık Türkiye saatinde (+3) saklanır; UTC olarak
+        # ayrıştırıldığında +3 sa ileri görünür. "Şimdi" de +3 kaydırılır ki
+        # yaş gerçek geçen süreyi versin (bayat kilit devralması bozulmasın).
         yas_dakika <- if (length(baslama) == 1L && !is.na(baslama)) {
-          as.numeric(difftime(Sys.time(), baslama, units = "mins"))
+          as.numeric(difftime(Sys.time() + 3 * 3600, baslama, units = "mins"))
         } else {
           Inf
         }
@@ -490,8 +493,10 @@ ortak_db_aktif_uretim_var_mi <- function(oturum_id, conn = NULL, bayat_dakika = 
     baslama <- suppressWarnings(as.POSIXct(
       as.character(aktif$BaslamaZamani[1]), tz = "UTC"
     ))
+    # BaslamaZamani Türkiye saatinde (+3) saklanır; "şimdi" de +3 kaydırılır
+    # (bkz. yukarıdaki bayat kilit denetimi).
     yas_dakika <- if (length(baslama) == 1L && !is.na(baslama)) {
-      as.numeric(difftime(Sys.time(), baslama, units = "mins"))
+      as.numeric(difftime(Sys.time() + 3 * 3600, baslama, units = "mins"))
     } else {
       Inf
     }

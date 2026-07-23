@@ -105,8 +105,97 @@ test_that("non-streaming çağrısı 200 dışı durumda success=FALSE + status 
   expect_identical(out$content, "")
 })
 
+test_that("non-streaming çağrısı verilen timeout_sec'i httr::POST'a iletir (varsayılan 300sn)", {
+  captured <- new.env(parent = emptyenv())
+  testthat::local_mocked_bindings(
+    POST = function(url, ...) {
+      dots <- list(...)
+      req_configs <- Filter(function(x) inherits(x, "request"), dots)
+      captured$timeout_ms <- vapply(req_configs, function(x) {
+        tm <- x$options$timeout_ms
+        if (is.null(tm)) NA_real_ else as.numeric(tm)
+      }, numeric(1))
+      structure(list(), class = "sp_fake_resp")
+    },
+    status_code = function(resp) 200L,
+    content = function(x, as = NULL, ...) {
+      if (identical(as, "parsed")) list(content = "yanıt", reasoning = "") else ""
+    },
+    .package = "httr"
+  )
+
+  # Varsayılan (parametre verilmezse) eski 300sn davranışı korunmalı.
+  .sp_real_non_stream(
+    api_endpoint = "http://local/api",
+    hdrs = list(`Content-Type` = "application/json"),
+    body = list(model = "runtime-model"),
+    selected_model = "runtime-model"
+  )
+  expect_true(any(captured$timeout_ms == 300000, na.rm = TRUE))
+
+  # Uzatılmış zaman aşımı (ör. MERGEN_LLM_TIMEOUT_SEC=1800) doğru şekilde iletilmeli.
+  .sp_real_non_stream(
+    api_endpoint = "http://local/api",
+    hdrs = list(`Content-Type` = "application/json"),
+    body = list(model = "runtime-model"),
+    selected_model = "runtime-model",
+    timeout_sec = 1800
+  )
+  expect_true(any(captured$timeout_ms == 1800000, na.rm = TRUE))
+})
+
+test_that("llm_worker_run_mcp_second_pass verilen timeout_sec'i gerçek non-streaming çağrısına iletir (NON-SSE yol)", {
+  captured <- new.env(parent = emptyenv())
+  testthat::local_mocked_bindings(
+    POST = function(url, ...) {
+      dots <- list(...)
+      req_configs <- Filter(function(x) inherits(x, "request"), dots)
+      captured$timeout_ms <- vapply(req_configs, function(x) {
+        tm <- x$options$timeout_ms
+        if (is.null(tm)) NA_real_ else as.numeric(tm)
+      }, numeric(1))
+      structure(list(), class = "sp_fake_resp")
+    },
+    status_code = function(resp) 200L,
+    content = function(x, as = NULL, ...) {
+      if (identical(as, "parsed")) list(content = "yanıt", reasoning = "") else ""
+    },
+    .package = "httr"
+  )
+
+  # SSE kapalı -> NON-SSE yol, gerçek (stub'lanmamış) non-streaming yardımcısı çağrılır.
+  args <- .sp_run_args(settings = list())
+  args$timeout_sec <- 1800
+  do.call(.sp_env$llm_worker_run_mcp_second_pass, args)
+
+  expect_true(any(captured$timeout_ms == 1800000, na.rm = TRUE))
+})
+
+test_that("llm_worker_run_mcp_second_pass settings$max_output_tokens'ı gerçek non-streaming gövdesine iletir (NON-SSE yol)", {
+  captured <- new.env(parent = emptyenv())
+  testthat::local_mocked_bindings(
+    POST = function(url, ..., body = NULL) {
+      captured$body <- jsonlite::fromJSON(body)
+      structure(list(), class = "sp_fake_resp")
+    },
+    status_code = function(resp) 200L,
+    content = function(x, as = NULL, ...) {
+      if (identical(as, "parsed")) list(content = "yanıt", reasoning = "") else ""
+    },
+    .package = "httr"
+  )
+
+  # SQL Analizi/Kod Uzmanı tool_family'sinin ayarladığı özel limit örneği
+  # (varsayılan 32768'den farklı bir değer, iletimin gerçekten çalıştığını
+  # kanıtlamak için).
+  args <- .sp_run_args(settings = list(max_output_tokens = 9999L))
+  do.call(.sp_env$llm_worker_run_mcp_second_pass, args)
+
+  expect_identical(as.integer(captured$body$max_tokens), 9999L)
+})
+
 test_that("NON-SSE yol: non-streaming başarısı ok=TRUE + ai2 + reasoning döndürür", {
-  .sp_env$llm_worker_call_second_pass_non_streaming <- function(api_endpoint, hdrs, body, selected_model) {
+  .sp_env$llm_worker_call_second_pass_non_streaming <- function(api_endpoint, hdrs, body, selected_model, timeout_sec = 300) {
     list(success = TRUE, status = 200L, error_body = "", content = "Non-SSE final yanıt", reasoning = "r1")
   }
   on.exit(.sp_env$llm_worker_call_second_pass_non_streaming <- .sp_real_non_stream, add = TRUE)
@@ -120,7 +209,7 @@ test_that("NON-SSE yol: non-streaming başarısı ok=TRUE + ai2 + reasoning dön
 })
 
 test_that("NON-SSE yol: non-streaming hatası ok=FALSE + araç-sonucu yedeği döndürür", {
-  .sp_env$llm_worker_call_second_pass_non_streaming <- function(api_endpoint, hdrs, body, selected_model) {
+  .sp_env$llm_worker_call_second_pass_non_streaming <- function(api_endpoint, hdrs, body, selected_model, timeout_sec = 300) {
     list(success = FALSE, status = 503L, error_body = "down", content = "", reasoning = "")
   }
   on.exit(.sp_env$llm_worker_call_second_pass_non_streaming <- .sp_real_non_stream, add = TRUE)
@@ -136,7 +225,7 @@ test_that("SSE başarısız + non-streaming retry de başarısız -> ok=FALSE/ye
   .sp_env$call_local_llm_sse_worker <- function(chat_history, current_settings, stream_file, stop_file = NULL) {
     list(success = FALSE, content = "", reasoning = "canlı düşünce metni", error = "sse-boom")
   }
-  .sp_env$llm_worker_call_second_pass_non_streaming <- function(api_endpoint, hdrs, body, selected_model) {
+  .sp_env$llm_worker_call_second_pass_non_streaming <- function(api_endpoint, hdrs, body, selected_model, timeout_sec = 300) {
     list(success = FALSE, status = 500L, error_body = "retry-down", content = "", reasoning = "")
   }
   on.exit({

@@ -29,6 +29,16 @@
 --     yardımcıları (normalize_db_visible_value / normalize_db_technical_value
 --     / normalize_db_params) ile korunur. DB_CLIENT_ENCODING=WINDOWS-1254
 --     üretim sözleşmesi değişmez.
+--   * ZAMAN DAMGALARI TÜRKİYE SAATİNDE (Europe/Istanbul, sabit +3, DST yok)
+--     saklanır; böylece SSMS'te ve arayüzde yerel saat okunur. Kolon DEFAULT
+--     değerleri DATEADD(HOUR, 3, SYSUTCDATETIME()) kullanır ve uygulama tarafı
+--     .oo_db_now() (= Sys.time()+3sa) / heartbeat datetime('now','+3 hours') ile
+--     birebir hizalıdır. Tazelik (canlı durum) okuması da AYNI +3 kaydırmayı
+--     kullandığından yaş/DATEDIFF değişmez. Mevcut kurulumda kolonlar zaten
+--     varsa bu betik DEFAULT'u DEĞİŞTİRMEZ (idempotent); uygulama zaten her
+--     yazımda zaman damgasını açıkça .oo_db_now() ile verdiğinden veri yine
+--     Türkiye saatinde olur. DEFAULT'u da hizalamak isteyen DBA, ilgili
+--     DF_* kısıtını manuel DROP/ADD edebilir.
 --   * Geri alma betiği: docs/sql/2026-07-ortak-oturumlar-rollback.sql
 -- =============================================================================
 
@@ -70,7 +80,7 @@ BEGIN
         OturumDurumu NVARCHAR(50) NOT NULL CONSTRAINT DF_MB_OrtakOturumlar_OturumDurumu DEFAULT N'Aktif',
         PaylasimBaslangicTipi NVARCHAR(100) NULL,
         SonEtkinlikZamani DATETIME2(0) NULL,
-        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakOturumlar_OlusturmaZamani DEFAULT SYSUTCDATETIME(),
+        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakOturumlar_OlusturmaZamani DEFAULT (DATEADD(HOUR, 3, SYSUTCDATETIME())),
         GuncellemeZamani DATETIME2(0) NULL,
         MetaJson NVARCHAR(MAX) NULL,
         CONSTRAINT CK_MB_OrtakOturumlar_KaynakTuru CHECK (KaynakTuru IN (N'NormalSohbet', N'BilgeYolaç')),
@@ -117,7 +127,7 @@ BEGIN
         DavetZamani DATETIME2(0) NULL,
         KatilmaZamani DATETIME2(0) NULL,
         SonGorulmeZamani DATETIME2(0) NULL,
-        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakKatilim_Olusturma DEFAULT SYSUTCDATETIME(),
+        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakKatilim_Olusturma DEFAULT (DATEADD(HOUR, 3, SYSUTCDATETIME())),
         CONSTRAINT UQ_MB_OrtakKatilim_Oturum_Kullanici UNIQUE (OrtakOturumID, KullaniciID),
         CONSTRAINT CK_MB_OrtakKatilim_Rol CHECK (Rol IN (N'Sahip', N'OturumYöneticisi', N'Katılımcı', N'İzleyici')),
         CONSTRAINT CK_MB_OrtakKatilim_Durum CHECK (KatilimDurumu IN (N'DavetEdildi', N'Katıldı', N'Reddetti', N'Çıkarıldı', N'Ayrıldı')),
@@ -154,7 +164,7 @@ BEGIN
         DavetDurumu NVARCHAR(50) NOT NULL CONSTRAINT DF_MB_OrtakDavet_Durum DEFAULT N'Bekliyor',
         DavetMesaji NVARCHAR(MAX) NULL,
         DavetTokenHash NVARCHAR(256) NULL,
-        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakDavet_Olusturma DEFAULT SYSUTCDATETIME(),
+        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakDavet_Olusturma DEFAULT (DATEADD(HOUR, 3, SYSUTCDATETIME())),
         SonGonderimZamani DATETIME2(0) NULL,
         KabulZamani DATETIME2(0) NULL,
         SonCevapZamani DATETIME2(0) NULL,
@@ -191,7 +201,7 @@ BEGIN
         SonKalpAtisiZamani DATETIME2(0) NOT NULL,
         Durum NVARCHAR(50) NOT NULL,
         SonGorulenOrtakOturumID BIGINT NULL,
-        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_CanliDurum_Olusturma DEFAULT SYSUTCDATETIME(),
+        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_CanliDurum_Olusturma DEFAULT (DATEADD(HOUR, 3, SYSUTCDATETIME())),
         CONSTRAINT UQ_MB_CanliDurum_Kullanici_Oturum UNIQUE (KullaniciID, OturumAnahtari),
         CONSTRAINT CK_MB_CanliDurum_Durum CHECK (Durum IN (N'Çevrimİçi', N'Boşta', N'ÇevrimDışı')),
         CONSTRAINT FK_MB_CanliDurum_Kullanici FOREIGN KEY (KullaniciID) REFERENCES dbo.MB_Users(UserID),
@@ -224,7 +234,7 @@ BEGIN
         IlgiliOturumID BIGINT NULL,
         OkunduMu BIT NOT NULL CONSTRAINT DF_MB_Bildirimler_Okundu DEFAULT 0,
         Durum NVARCHAR(50) NOT NULL CONSTRAINT DF_MB_Bildirimler_Durum DEFAULT N'Bekliyor',
-        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_Bildirimler_Olusturma DEFAULT SYSUTCDATETIME(),
+        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_Bildirimler_Olusturma DEFAULT (DATEADD(HOUR, 3, SYSUTCDATETIME())),
         OkunmaZamani DATETIME2(0) NULL,
         CONSTRAINT CK_MB_Bildirimler_Tur CHECK (BildirimTuru IN (N'OrtakOturumDavet', N'OrtakOturumÇağrı', N'BelgeKaydetmeİsteği')),
         CONSTRAINT CK_MB_Bildirimler_Durum CHECK (Durum IN (N'Bekliyor', N'KabulEdildi', N'Reddedildi', N'SüresiDoldu')),
@@ -259,7 +269,7 @@ BEGIN
         BagliMesajID BIGINT NULL,
         MesajSirasi BIGINT NOT NULL,
         LLMGonderildiMi BIT NOT NULL CONSTRAINT DF_MB_OrtakMesaj_LLM DEFAULT 0,
-        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakMesaj_Olusturma DEFAULT SYSUTCDATETIME(),
+        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakMesaj_Olusturma DEFAULT (DATEADD(HOUR, 3, SYSUTCDATETIME())),
         MetaJson NVARCHAR(MAX) NULL,
         CONSTRAINT UQ_MB_OrtakMesaj_Sira UNIQUE (OrtakOturumID, MesajSirasi),
         CONSTRAINT CK_MB_OrtakMesaj_Tur CHECK (MesajTuru IN (N'OdaMesajı', N'YapayZekaSorusu', N'YapayZekaYanıtı', N'SistemMesajı', N'BelgeBildirimi')),
@@ -291,7 +301,7 @@ BEGIN
         OrtakMesajID BIGINT NOT NULL,
         SiraNo BIGINT NOT NULL,
         Durum NVARCHAR(50) NOT NULL CONSTRAINT DF_MB_OrtakAIKuyruk_Durum DEFAULT N'Bekliyor',
-        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakAIKuyruk_Olusturma DEFAULT SYSUTCDATETIME(),
+        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakAIKuyruk_Olusturma DEFAULT (DATEADD(HOUR, 3, SYSUTCDATETIME())),
         BaslamaZamani DATETIME2(0) NULL,
         BitisZamani DATETIME2(0) NULL,
         CONSTRAINT CK_MB_OrtakAIKuyruk_Durum CHECK (Durum IN (N'Bekliyor', N'Çalışıyor', N'Tamamlandı', N'İptalEdildi', N'Hata')),
@@ -321,7 +331,7 @@ BEGIN
         OrtakMesajID BIGINT NULL,
         IstekID NVARCHAR(128) NOT NULL,
         KilitDurumu NVARCHAR(50) NOT NULL,
-        BaslamaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakAktifUretim_Baslama DEFAULT SYSUTCDATETIME(),
+        BaslamaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakAktifUretim_Baslama DEFAULT (DATEADD(HOUR, 3, SYSUTCDATETIME())),
         GuncellemeZamani DATETIME2(0) NULL,
         CONSTRAINT CK_MB_OrtakAktifUretim_Durum CHECK (KilitDurumu IN (N'Çalışıyor', N'İptalEdildi', N'Tamamlandı', N'Hata')),
         CONSTRAINT FK_MB_OrtakAktifUretim_Oturum FOREIGN KEY (OrtakOturumID) REFERENCES dbo.MB_OrtakOturumlar(OrtakOturumID),
@@ -355,7 +365,7 @@ BEGIN
         Karakter NVARCHAR(50) NULL,
         ClaudeCliSessionID NVARCHAR(200) NULL,
         OturumDurumu NVARCHAR(50) NOT NULL CONSTRAINT DF_MB_OrtakBY_OturumDurumu DEFAULT N'Aktif',
-        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakBY_Olusturma DEFAULT SYSUTCDATETIME(),
+        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakBY_Olusturma DEFAULT (DATEADD(HOUR, 3, SYSUTCDATETIME())),
         SonCalistirmaZamani DATETIME2(0) NULL,
         MetaJson NVARCHAR(MAX) NULL,
         CONSTRAINT CK_MB_OrtakBY_OturumDurumu CHECK (OturumDurumu IN (N'Aktif', N'Arşivlendi', N'Kapandı')),
@@ -380,7 +390,7 @@ BEGIN
         CalistirmaSirasi INT NOT NULL,
         ExitCode INT NULL,
         SureSaniye DECIMAL(10,2) NULL,
-        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakBYCalisma_Olusturma DEFAULT SYSUTCDATETIME(),
+        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakBYCalisma_Olusturma DEFAULT (DATEADD(HOUR, 3, SYSUTCDATETIME())),
         CONSTRAINT UQ_MB_OrtakBYCalisma_Sira UNIQUE (OrtakBilgeYolacOturumID, CalistirmaSirasi),
         CONSTRAINT CK_MB_OrtakBYCalisma_Durum CHECK (Durum IN (N'Çalışıyor', N'Tamamlandı', N'Başarısız', N'Durduruldu')),
         CONSTRAINT FK_MB_OrtakBYCalisma_Oturum FOREIGN KEY (OrtakBilgeYolacOturumID) REFERENCES dbo.MB_OrtakBilgeYolac_Oturumlar(OrtakBilgeYolacOturumID),
@@ -415,7 +425,7 @@ BEGIN
         DosyaHash NVARCHAR(128) NULL,
         DosyaDurumu NVARCHAR(50) NOT NULL CONSTRAINT DF_MB_OrtakDosya_Durum DEFAULT N'Üretildi',
         DosyaSahipligi NVARCHAR(80) NOT NULL CONSTRAINT DF_MB_OrtakDosya_Sahiplik DEFAULT N'OrtakOturumDosyası',
-        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakDosya_Olusturma DEFAULT SYSUTCDATETIME(),
+        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakDosya_Olusturma DEFAULT (DATEADD(HOUR, 3, SYSUTCDATETIME())),
         MetaJson NVARCHAR(MAX) NULL,
         CONSTRAINT CK_MB_OrtakDosya_Durum CHECK (DosyaDurumu IN (N'Üretildi', N'Silindi', N'ErişimKapatıldı')),
         CONSTRAINT CK_MB_OrtakDosya_Sahiplik CHECK (DosyaSahipligi IN (N'OrtakOturumDosyası', N'KullanıcıKopyası')),
@@ -465,7 +475,7 @@ BEGIN
         OlayTuru NVARCHAR(100) NOT NULL,
         TetikleyenKullaniciID INT NULL,
         PayloadJson NVARCHAR(MAX) NULL,
-        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakOlay_Olusturma DEFAULT SYSUTCDATETIME(),
+        OlusturmaZamani DATETIME2(0) NOT NULL CONSTRAINT DF_MB_OrtakOlay_Olusturma DEFAULT (DATEADD(HOUR, 3, SYSUTCDATETIME())),
         CONSTRAINT CK_MB_OrtakOlay_Tur CHECK (OlayTuru IN (
             N'KullanıcıKatıldı',
             N'KullanıcıAyrıldı',

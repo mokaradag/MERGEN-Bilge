@@ -7,6 +7,7 @@
 # ==============================================================================
 
 testthat::local_edition(3)
+suppressMessages(library(promises))
 
 .stt_env <- new.env(parent = globalenv())
 source(
@@ -152,6 +153,355 @@ test_that("audio_chunk: kayıt kabul kapalıyken (kilit) STT çağrısı yapılm
       session$setInputs(audio_chunk = "ZHVtbXk=")  # base64 "dummy"
 
       expect_identical(kayit$post, 0L)
+    }
+  )
+})
+
+test_that("toggle_record_btn (Durdur): transcribe_gen ve kuyruk sıfırlanmaz (uçuştaki parçalar korunur)", {
+  skip_if_not_installed("shiny")
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    {
+      testthat::local_mocked_bindings(
+        runjs = function(code, ...) invisible(NULL),
+        .package = "shinyjs"
+      )
+
+      # Kayıt sırasında dispatch edilmiş, henüz sonuçlanmamış bir STT parçasını
+      # simüle et (uçuştaki durum).
+      rv$is_recording <- TRUE
+      rv$accept_chunks <- TRUE
+      gen_once_dispatched <- isolate(rv$transcribe_gen)
+      rv$next_chunk_seq <- 5L
+      rv$next_append_seq <- 3L
+      rv$pending_stt_chunks <- 1L
+
+      session$setInputs(toggle_record_btn = 1) # Durdur
+
+      # Duraklatma yeni paket kabulünü kapatmalı...
+      expect_false(isolate(rv$accept_chunks))
+      expect_false(isolate(rv$is_recording))
+      # ...ama üretim jetonunu VE kuyruğu sıfırlamamalı; aksi halde uçuştaki
+      # parça sonuçlandığında üretim uyuşmazlığı yüzünden sessizce düşer.
+      expect_identical(isolate(rv$transcribe_gen), gen_once_dispatched)
+      expect_identical(isolate(rv$next_chunk_seq), 5L)
+      expect_identical(isolate(rv$next_append_seq), 3L)
+      expect_identical(isolate(rv$pending_stt_chunks), 1L)
+    }
+  )
+})
+
+test_that("Durdur sonrası çözülen STT parçası geçmişe eklenir (düşürülmez)", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("promises")
+
+  # tracked_future_promise, gerçek future/worker'a gitmeden elle çözülebilir
+  # bir promise döndürecek şekilde .stt_env içinde GEÇİCİ olarak değiştirilir
+  # (sttServer bu ismi .stt_env -> globalenv() zincirinde arar). Test sonunda
+  # geri yüklenir ki diğer testleri etkilemesin.
+  had_override <- exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)
+  old_override <- if (had_override) get("tracked_future_promise", envir = .stt_env) else NULL
+  on.exit({
+    if (had_override) {
+      assign("tracked_future_promise", old_override, envir = .stt_env)
+    } else if (exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)) {
+      rm("tracked_future_promise", envir = .stt_env)
+    }
+  }, add = TRUE)
+
+  resolve_fn <- NULL
+  .stt_env$tracked_future_promise <- function(task_fn, ..., globals = list()) {
+    promises::promise(function(resolve, reject) {
+      resolve_fn <<- resolve
+    })
+  }
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    {
+      testthat::local_mocked_bindings(
+        runjs = function(code, ...) invisible(NULL),
+        delay = function(ms, expr) expr,
+        .package = "shinyjs"
+      )
+      testthat::local_mocked_bindings(
+        showModal = function(...) invisible(NULL),
+        .package = "shiny"
+      )
+
+      session$userData$ai_api_key <- "sk-test"
+      session$returned$start_session()
+      session$setInputs(audio_chunk = "ZHVtbXk=") # parça dispatch edildi, henüz çözülmedi
+
+      expect_identical(isolate(rv$pending_stt_chunks), 1L)
+
+      # Kullanıcı, parça hâlâ uçuştayken Durdur'a basar.
+      session$setInputs(toggle_record_btn = 1)
+      expect_false(isolate(rv$accept_chunks))
+
+      # Parça ŞİMDİ (duraklatmadan SONRA) gerçek metinle çözülür.
+      resolve_fn("merhaba dünya")
+      for (i in seq_len(50)) {
+        if (later::loop_empty()) break
+        later::run_now(timeout = 0)
+      }
+      session$flushReact()
+
+      # Metin düşürülmemeli; sunucu geçmişine ve metin alanına eklenmiş olmalı.
+      expect_identical(isolate(rv$transcription_history), "merhaba dünya")
+      expect_identical(isolate(rv$pending_stt_chunks), 0L)
+    }
+  )
+})
+
+test_that("Durdur sonrası kayıtçının gönderdiği TEK final parça kapıdan geçer (düşürülmez)", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("promises")
+
+  had_override <- exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)
+  old_override <- if (had_override) get("tracked_future_promise", envir = .stt_env) else NULL
+  on.exit({
+    if (had_override) {
+      assign("tracked_future_promise", old_override, envir = .stt_env)
+    } else if (exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)) {
+      rm("tracked_future_promise", envir = .stt_env)
+    }
+  }, add = TRUE)
+
+  dispatch_count <- 0L
+  .stt_env$tracked_future_promise <- function(task_fn, ..., globals = list()) {
+    dispatch_count <<- dispatch_count + 1L
+    promises::promise(function(resolve, reject) resolve("final parça"))
+  }
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    {
+      testthat::local_mocked_bindings(
+        runjs = function(code, ...) invisible(NULL),
+        .package = "shinyjs"
+      )
+
+      session$userData$ai_api_key <- "sk-test"
+      rv$is_recording <- TRUE
+      rv$accept_chunks <- TRUE
+
+      # Durdur: kapı kapanır ama kayıtçının stop() sonrası göndereceği TEK
+      # final parça için bütçe (expect_final_chunk) açılır.
+      session$setInputs(toggle_record_btn = 1)
+      expect_false(isolate(rv$accept_chunks))
+      expect_true(isolate(rv$expect_final_chunk))
+
+      # Kayıtçının 'stop' olayı, henüz dispatch edilmemiş final blobu gönderir.
+      session$setInputs(audio_chunk = "ZHVtbXk=")
+      for (i in seq_len(50)) {
+        if (later::loop_empty()) break
+        later::run_now(timeout = 0)
+      }
+      session$flushReact()
+
+      # Bu parça KAPIDAN GEÇMİŞ (dispatch edilmiş) ve metne eklenmiş olmalı;
+      # düşürülmemeli.
+      expect_identical(dispatch_count, 1L)
+      expect_identical(isolate(rv$transcription_history), "final parça")
+      # Bütçe tek kullanımlıktır; tüketildikten sonra kapanmalı.
+      expect_false(isolate(rv$expect_final_chunk))
+
+      # Olası bir SONRAKİ (beklenmeyen) parça artık normal şekilde reddedilmeli.
+      session$setInputs(audio_chunk = "c2Vjb25k") # base64 "second"
+      expect_identical(dispatch_count, 1L)
+    }
+  )
+})
+
+test_that("Onayla sonrası kayıtçının gönderdiği TEK final parça beklenip eklenir", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("promises")
+
+  had_override <- exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)
+  old_override <- if (had_override) get("tracked_future_promise", envir = .stt_env) else NULL
+  on.exit({
+    if (had_override) {
+      assign("tracked_future_promise", old_override, envir = .stt_env)
+    } else if (exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)) {
+      rm("tracked_future_promise", envir = .stt_env)
+    }
+  }, add = TRUE)
+
+  resolve_fn <- NULL
+  .stt_env$tracked_future_promise <- function(task_fn, ..., globals = list()) {
+    promises::promise(function(resolve, reject) {
+      resolve_fn <<- resolve
+    })
+  }
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    {
+      testthat::local_mocked_bindings(
+        runjs = function(code, ...) invisible(NULL),
+        # Bu testte gerçek gecikme penceresinin HİÇ tetiklenmediği (henüz
+        # dolmadığı) senaryo modellenir: tamamlanma yalnızca parçanın kendi
+        # çözülme (promise resolve) yolundan gelmelidir, zamanlayıcıdan değil.
+        delay = function(ms, expr) invisible(NULL),
+        .package = "shinyjs"
+      )
+
+      session$userData$ai_api_key <- "sk-test"
+      rv$is_recording <- TRUE
+      rv$accept_chunks <- TRUE
+
+      session$setInputs(transcribed_text = "önceki metin")
+      session$setInputs(accept_btn = 1)
+
+      # Onayla anında kapı kapanır ama final parça bütçesi açılmış olmalı;
+      # gecikme penceresi (mock nedeniyle) hiç tetiklenmediği için henüz
+      # dispatch edilmemiş parça bekleniyorsa finish_accept çağrılmamalı
+      # (final_text hâlâ boş).
+      expect_false(isolate(rv$accept_chunks))
+      expect_true(isolate(rv$expect_final_chunk))
+      expect_identical(session$returned$final_text(), "")
+
+      # Kayıtçının final parçası (Onayla sonrası) gelir.
+      session$setInputs(audio_chunk = "ZHVtbXk=")
+      expect_identical(isolate(rv$pending_stt_chunks), 1L)
+
+      # Final parça çözülür; artık bekleyen kalmadığı için tamamlanmalı.
+      resolve_fn("son parça")
+      for (i in seq_len(50)) {
+        if (later::loop_empty()) break
+        later::run_now(timeout = 0)
+      }
+      session$flushReact()
+
+      expect_identical(session$returned$final_text(), "önceki metin son parça")
+    }
+  )
+})
+
+test_that("Elle düzenlenen metin, bekleyen bir STT parçası eklenirken korunur", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("promises")
+
+  had_override <- exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)
+  old_override <- if (had_override) get("tracked_future_promise", envir = .stt_env) else NULL
+  on.exit({
+    if (had_override) {
+      assign("tracked_future_promise", old_override, envir = .stt_env)
+    } else if (exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)) {
+      rm("tracked_future_promise", envir = .stt_env)
+    }
+  }, add = TRUE)
+
+  resolve_fn <- NULL
+  .stt_env$tracked_future_promise <- function(task_fn, ..., globals = list()) {
+    promises::promise(function(resolve, reject) {
+      resolve_fn <<- resolve
+    })
+  }
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    {
+      testthat::local_mocked_bindings(
+        runjs = function(code, ...) invisible(NULL),
+        .package = "shinyjs"
+      )
+
+      session$userData$ai_api_key <- "sk-test"
+      rv$is_recording <- TRUE
+      rv$accept_chunks <- TRUE
+
+      # İlk parça zaten sunucu tarafından itilmiş gibi kur (ör. önceki bir
+      # STT sonucu). Senkron kapısının açılması için son push'un üzerinden
+      # bolluk süresinden (STT_EDIT_SYNC_GRACE_SEC) FAZLA zaman geçmiş gibi
+      # göster (deterministik test: gerçek Sys.sleep yerine geçmişe çekilir).
+      push_transcription("ilk")
+      rv$last_push_time <- Sys.time() - 1
+
+      # Kullanıcı, hâlâ kayıt sürerken metin alanında elle düzeltme yapar.
+      session$setInputs(transcribed_text = "ilk düzeltildi")
+
+      # Bu düzenlemeden SONRA dispatch edilen bir STT parçası çözülür.
+      session$setInputs(audio_chunk = "ZHVtbXk=")
+      resolve_fn("ikinci")
+      for (i in seq_len(50)) {
+        if (later::loop_empty()) break
+        later::run_now(timeout = 0)
+      }
+      session$flushReact()
+
+      # Elle yapılan düzeltme KORUNMALI; STT parçası onun üzerine değil,
+      # onun DEVAMINA eklenmeli.
+      expect_identical(isolate(rv$transcription_history), "ilk düzeltildi ikinci")
+    }
+  )
+})
+
+test_that("Ardışık hızlı parça çözümlerinde henüz yansımamış istemci değeri 'elle düzenleme' sanılmaz (yarış korunur)", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("promises")
+
+  had_override <- exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)
+  old_override <- if (had_override) get("tracked_future_promise", envir = .stt_env) else NULL
+  on.exit({
+    if (had_override) {
+      assign("tracked_future_promise", old_override, envir = .stt_env)
+    } else if (exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)) {
+      rm("tracked_future_promise", envir = .stt_env)
+    }
+  }, add = TRUE)
+
+  resolvers <- list()
+  .stt_env$tracked_future_promise <- function(task_fn, ..., globals = list()) {
+    idx <- length(resolvers) + 1L
+    promises::promise(function(resolve, reject) {
+      resolvers[[idx]] <<- resolve
+    })
+  }
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    {
+      testthat::local_mocked_bindings(
+        runjs = function(code, ...) invisible(NULL),
+        .package = "shinyjs"
+      )
+
+      session$userData$ai_api_key <- "sk-test"
+      rv$is_recording <- TRUE
+      rv$accept_chunks <- TRUE
+
+      # İki parça art arda hızlıca dispatch edilir (istemci textarea'sı henüz
+      # HİÇBİRİNİ yansıtmamıştır - input$transcribed_text hiç set edilmedi).
+      session$setInputs(audio_chunk = "aXJz") # base64 "irs" (parça 1)
+      session$setInputs(audio_chunk = "aWtp") # base64 "iki" (parça 2)
+
+      # Birinci parça çözülür ve hemen ardından (bolluk süresi dolmadan)
+      # ikinci parça da çözülür.
+      resolvers[[1]]("birinci")
+      for (i in seq_len(50)) {
+        if (later::loop_empty()) break
+        later::run_now(timeout = 0)
+      }
+      resolvers[[2]]("ikinci")
+      for (i in seq_len(50)) {
+        if (later::loop_empty()) break
+        later::run_now(timeout = 0)
+      }
+      session$flushReact()
+
+      # İstemcinin henüz yansıtmadığı (input$transcribed_text hâlâ boş/NULL)
+      # değer sahte bir "elle düzenleme" sanılıp geçmişi geriye almamalı;
+      # her iki parça da SIRAYLA eklenmiş olmalı.
+      expect_identical(isolate(rv$transcription_history), "birinci ikinci")
     }
   )
 })

@@ -204,7 +204,7 @@ get_current_version <- function() {
 #' Görünür sürüm etiketini getir (örn. "v1.1")
 #'
 #' @description Sidebar, hakkında, karşılama gibi görünür alanlarda
-#'   kullanılan "v<sayı>" biçimindeki etikettir. Versiyon değişikliği
+#'   kullanılan "v<sayı>" biçimindeki etikettir. Sürüm değişikliği
 #'   tek bir noktadan (version_history.md) yapıldığında bu helper
 #'   tüm yerleri otomatik günceller.
 #'

@@ -21,8 +21,34 @@
   (sürümleri ayırmak için)
 -->
 
-## v1.1 | 2026-05-21 | Modern Asistan Persona Sistemi
+## v1.2 | 2026-07-22 | Kullanım İyileştirmeleri ve Düzeltmeler
 badge: Yeni
+
+### Öne Çıkanlar
+- Sesli Giriş daha akıcı: butonlar her zaman anında yanıt verir ve konuşma metni silinmeden birikir
+- Uzun kod blokları ve yanıtlar artık kesilmiyor
+- Yazı tipi boyutu yalnızca "Ayarları Kaydet" ile uygulanır
+
+### Yeni Özellikler | sparkles
+- Sesli Giriş çevirisi arka planda çalışır; "İptal", "Onayla ve Gönder", "Temizle" ve "Durdur/Devam Et" butonları hiç donmadan anında yanıt verir
+- Sesli Giriş metni artık ekleyerek büyür: konuşup durup tekrar konuşulduğunda önceki metin korunur
+- Kısa/alçak sesli ifadeler (örn. "merhaba") daha iyi yakalanır
+
+### İyileştirmeler | arrow-up-right-dots
+- Yeni Söyleşi başlatıldığında model otomatik olarak varsayılana döner (Görsel Uzmanı sonrası "dall-e-3" takılı kalmaz)
+- Sohbet yanıtı için bekleme süresi (timeout) belirgin şekilde artırıldı
+- Söyleşi Geçmişi tarih aralığı gün/ay/yıl biçiminde gösterilir; koyu temada takvim ikonu artık görünür
+- Yönetici Paneli araç ipuçları titremeden, kararlı biçimde gösterilir
+- Yapılandırma sayfasındaki "Claude Code Yapılandırma" kartı "Bilge Yolaç Yapılandırma" olarak adlandırıldı
+- Uygulama genelinde "versiyon" yerine tutarlı biçimde "sürüm" kullanılır
+
+### Teknik | code
+- Ortak Oturum tablolarındaki (MB_OrtakOturum_*, MB_Kullanici_CanliDurum) zaman damgaları Türkiye saatinde (Europe/Istanbul) saklanır; tazelik/yaş hesabı korunur
+- Varsayılan çıktı token limiti yükseltildi (uzun kod bloklarının kesilmesini önler)
+
+---
+
+## v1.1 | 2026-05-21 | Modern Asistan Persona Sistemi
 
 ### Öne Çıkanlar
 - Karakter sistemi modern kurumsal AI persona'larıyla yenilendi: Emre, Selin, Deniz, Can ve İpek

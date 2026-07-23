@@ -84,8 +84,10 @@ call_local_llm <- function(chat_history, current_settings) {
 
   # Sıcaklık ve maksimum token ayarları
   temp_value <- if (!is.null(current_settings$temperature)) current_settings$temperature else 0.4
-  # Varsayilan token limiti: 4096 (uzun kod bloklarinin kesilmesini onler)
-  max_tokens_val <- current_settings$max_output_tokens %||% 4096
+  # Varsayilan cikti token limiti yuksek tutulur; uzun kod bloklari/yanitlar
+  # kesilmesin (modeller >=128k baglam). Onceki 4096 limiti uzun kod bloklarini
+  # kesiyordu (issue #7). Worker-guvenli literal (helper worker'a tasinmaz).
+  max_tokens_val <- current_settings$max_output_tokens %||% 32768L
 
   body <- list(
     model = selected_model,
@@ -115,11 +117,11 @@ call_local_llm <- function(chat_history, current_settings) {
 	# varsayilan sureyi tek noktadan yonetiyoruz.
 	request_timeout_sec <- suppressWarnings(as.numeric(
 	  current_settings$request_timeout_sec %||%
-		getOption("mergen.llm_timeout_sec", Sys.getenv("MERGEN_LLM_TIMEOUT_SEC", "900"))
+		getOption("mergen.llm_timeout_sec", Sys.getenv("MERGEN_LLM_TIMEOUT_SEC", "1800"))
 	))
 
 	if (is.na(request_timeout_sec) || request_timeout_sec <= 0) {
-	  request_timeout_sec <- 900
+	  request_timeout_sec <- 1800
 	}
 
   log_info(sprintf(

@@ -169,7 +169,9 @@ testthat::test_that("admin_create_metric_card değer, başlık, renk ve ipucunu 
   testthat::expect_true(grepl("42", html, fixed = TRUE))
   testthat::expect_true(grepl("Toplam Hata", html, fixed = TRUE))
   testthat::expect_true(grepl("son 7", html, fixed = TRUE))
-  testthat::expect_true(grepl("data-toggle", html, fixed = TRUE))
+  # Araç ipucu artık CSS-only (data-admin-tooltip); Bootstrap data-toggle yerine.
+  testthat::expect_true(grepl("data-admin-tooltip", html, fixed = TRUE))
+  testthat::expect_true(grepl("Toplam hata sayısı", html, fixed = TRUE))
 })
 
 testthat::test_that("admin_create_info_button ipucu metnini ve tooltip tetiğini taşır", {
@@ -182,6 +184,7 @@ testthat::test_that("admin_create_info_button ipucu metnini ve tooltip tetiğini
   html <- as.character(btn)
 
   testthat::expect_true(grepl("info-btn", html, fixed = TRUE))
-  testthat::expect_true(grepl("data-toggle", html, fixed = TRUE))
+  # Araç ipucu artık CSS-only (data-admin-tooltip); Bootstrap data-toggle yerine.
+  testthat::expect_true(grepl("data-admin-tooltip", html, fixed = TRUE))
   testthat::expect_true(grepl("Bu metrik neyi", html, fixed = TRUE))
 })

@@ -144,8 +144,15 @@ ortak_db_reset_availability_cache <- function() {
     any(grepl("sqlite", class(conn), ignore.case = TRUE))
 }
 
+# Ortak Oturum zaman damgaları Türkiye saatinde (Europe/Istanbul, sabit +3, DST
+# yok) saklanır; böylece SSMS'te ve arayüzde yerel saat okunur (issue: MB_*
+# tablolarındaki GMT damgaları). DB-tarafı ifadelerle birebir hizalıdır:
+# SQL Server DATEADD(HOUR,3,SYSUTCDATETIME()) / SQLite datetime('now','+3 hours').
+# Sabit +3 saniye eklenip UTC olarak biçimlenir (tz veritabanına bağımlı değil).
+.OO_TZ_OFFSET_SN <- 3L * 3600L
+
 .oo_db_now <- function() {
-  format(Sys.time(), "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  format(Sys.time() + .OO_TZ_OFFSET_SN, "%Y-%m-%d %H:%M:%S", tz = "UTC")
 }
 
 # Pozitif tam sayı normalizasyonu; geçersiz değer NA döner (fail-closed).

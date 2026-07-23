@@ -70,12 +70,35 @@ chatUIObserversInit <- function(input, session, values, start_new_chat,
           enable_image_tools = FALSE
         )
         session$sendCustomMessage("saveSettings", settings_list)
-        
-        showToast(session, 
-          paste0("Yeni söyleşi başlatıldı. Devre dışı bırakılan araçlar: ", 
-                 paste(deactivated_tools, collapse = ", ")), 
+
+        showToast(session,
+          paste0("Yeni söyleşi başlatıldı. Devre dışı bırakılan araçlar: ",
+                 paste(deactivated_tools, collapse = ", ")),
           "info")
         cat("[NEW_CHAT] Devre dışı bırakılan araçlar:", paste(deactivated_tools, collapse = ", "), "\n")
+      }
+
+      # Görsel Uzmanı aktifken model "dall-e-3" olarak kilitlenir. Yeni söyleşide
+      # araç kapatıldığında bu görsel modeli sohbet için geçersizdir; seçili model
+      # geçerli bir yerel sohbet modeli değilse varsayılana (açılır listedeki ilk
+      # model) sessizce dönülür.
+      # NOT: api_config, izole test/smoke bağlamlarında (config_api.R henüz
+      # source edilmemişken) mevcut olmayabilir; bu durumda sıfırlama
+      # sessizce atlanır ve gizli global bağımlılık yüzünden hata fırlatılmaz.
+      if (exists("api_config", inherits = TRUE)) {
+        valid_chat_models <- as.character(api_config$local_models %||% character(0))
+        current_model <- as.character(isolate(settings_data$model_selection) %||% "")[1]
+        if (length(valid_chat_models) > 0 &&
+            nzchar(current_model) &&
+            !(current_model %in% valid_chat_models)) {
+          default_chat_model <- valid_chat_models[1]
+          if (!is.na(default_chat_model) && nzchar(default_chat_model)) {
+            isolate({ settings_data$model_selection <- default_chat_model })
+            updateSelectInput(session, "settings_yapilandirma_module-model_selection",
+                              selected = default_chat_model)
+            session$sendCustomMessage("saveSettings", list(model_selection = default_chat_model))
+          }
+        }
       }
     }
     

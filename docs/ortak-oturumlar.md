@@ -240,8 +240,9 @@ temiz bir servis dikişidir (ileride gerçek gönderim eklenirse durum kaydı zo
   değeri ile ODBC'nin `DATETIME2`'yi POSIXct'e çevirirken uyguladığı saat dilimi
   yorumu KARŞILAŞTIRILMAZ. `ortak_db_canli_durumlar()` sunucu-tarafı bir yaş
   sütunu seçer — SQL Server'da `DATEDIFF(SECOND, c.SonKalpAtisiZamani,
-  SYSUTCDATETIME())`, SQLite'ta `CAST((julianday('now') -
-  julianday(c.SonKalpAtisiZamani)) * 86400 AS INTEGER)` — ve R yalnızca bu yaşı
+  DATEADD(HOUR, 3, SYSUTCDATETIME()))`, SQLite'ta `CAST((julianday('now',
+  '+3 hours') - julianday(c.SonKalpAtisiZamani)) * 86400 AS INTEGER)` — ve R
+  yalnızca bu yaşı
   Türkçe duruma eşler (`ortak_sunum_durumu`, tek eşik kaynağı: `ref - yas`):
   ≤120 sn → `Çevrimİçi`; ≤300 sn → `Boşta`; aksi → `ÇevrimDışı`. Böylece istemci
   tarafı ODBC saat dilimi/an dönüşümü denklemden çıkar; taze bir kalp atışının
@@ -254,10 +255,23 @@ temiz bir servis dikişidir (ileride gerçek gönderim eklenirse durum kaydı zo
   lehçede başarısız olursa eski `SonKalpAtisiZamani` + `ortak_sunum_durumu()`
   yoluna güvenli düşülür. Yazma yolu (`ortak_db_kalp_atisi`) da AYNI DB saatini
   kullanır: `SonKalpAtisiZamani`/`OlusturmaZamani` R `.oo_db_now()` parametresiyle
-  değil, DB-saat SQL ifadesiyle (`SYSUTCDATETIME()` / SQLite `datetime('now')`)
-  yazılır. Böylece yazma ve okuma tek saati paylaşır; DB saati R'den ILERI olsa
-  bile taze bir kalp atışı eşiği aşıp yanlışça çevrim dışı görünmez. Başarısızlıkta
-  loglar (`Canlı durum kalp atışı yazılamadı`).
+  değil, DB-saat SQL ifadesiyle (`DATEADD(HOUR, 3, SYSUTCDATETIME())` / SQLite
+  `datetime('now','+3 hours')`) yazılır. Böylece yazma ve okuma tek saati
+  paylaşır; DB saati R'den ILERI olsa bile taze bir kalp atışı eşiği aşıp yanlışça
+  çevrim dışı görünmez. Başarısızlıkta loglar (`Canlı durum kalp atışı
+  yazılamadı`).
+- **Saat dilimi (Türkiye, Europe/Istanbul, sabit +3, DST yok):** Tüm
+  `MB_Ortak*` / `MB_Kullanici_CanliDurum` zaman damgaları Türkiye YEREL saatinde
+  saklanır (önceden GMT/UTC idi) ki SSMS ve arayüzde doğru okunsun. `.oo_db_now()`
+  `Sys.time() + 3sa` üretir; kalp atışı DB-saat yazımı `DATEADD(HOUR, 3,
+  SYSUTCDATETIME())` / `datetime('now','+3 hours')`. KRİTİK: tazelik okuması
+  (yaş) da AYNI +3 kaydırmayı kullanır, dolayısıyla +3 farkta sadeleşir ve
+  yaş/sınıflandırma DEĞİŞMEZ — yazma ve okuma DAİMA birlikte kaydırılmalıdır.
+  Gerçek-an vs saklı-değer karşılaştırmaları (bayat üretim kilidi, `ortak_sunum_gecen_saniye`
+  geçen süre sayacı) da R "şimdi"sini +3sa kaydırır. Yeni kurulumlar için DDL
+  kolon DEFAULT'ları `DATEADD(HOUR, 3, SYSUTCDATETIME())` kullanır; uygulama her
+  yazımda zaman damgasını açıkça verdiğinden mevcut DB'ler ek migrasyona ihtiyaç
+  duymaz.
 - `ortak_sunum_durumu` yine de POSIXct / ISO `T` / kesirli-saniyeli metin
   biçimlerine dayanıklıdır (güvenli düşüş yolu ve başka çağıranlar için).
   Regresyon: `tests/testthat/test-ortak-oturum-canli-durum-behavior.R` ve
@@ -645,8 +659,9 @@ encoding preflight kapılarıyla doğrulanmalıdır (RUNBOOK).
   sınıflandırır (§5 "Canlı durum"). Böylece istemci tarafı ODBC saat dilimi/an
   dönüşümü — davet panelinin "Çevrim İçi Kullanıcılar" sekmesinin boş kalmasının
   kök nedeni — tamamen devre dışı bırakılır. Yazma yolu da aynı DB saatini
-  kullanır (`ortak_db_kalp_atisi` → `SYSUTCDATETIME()` / SQLite `datetime('now')`),
-  böylece R↔DB saat kayması her iki yönde de (DB ileri/geri) taze kalp atışını
+  kullanır (`ortak_db_kalp_atisi` → `DATEADD(HOUR, 3, SYSUTCDATETIME())` / SQLite
+  `datetime('now','+3 hours')`; Türkiye yerel saati, tazelik okumasıyla aynı +3
+  kaydırma), böylece R↔DB saat kayması her iki yönde de (DB ileri/geri) taze kalp atışını
   etkilemez (PR #590 kod incelemesi geri bildirimi). Negatif yaş güvenlik ağı
   olarak taze sayılır; yaş sorgusu başarısız olursa eski yola güvenli düşülür.
   Regresyon: `tests/testthat/test-ortak-oturum-canli-durum-behavior.R`.

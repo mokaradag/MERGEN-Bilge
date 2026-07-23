@@ -16,7 +16,7 @@ sonrası sadece ES module (`examples/jsm/`) destekler.
 - **three.min.js** (Three.js r147 UMD build)
   - Kaynak: https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js
 
-### Eklenti Dosyaları (UMD/global versiyonları)
+### Eklenti Dosyaları (UMD/global sürümleri)
 Bu dosyalar global `THREE` nesnesine eklenti olarak eklenir ve
 ES module import gerektirmez:
 
@@ -62,7 +62,7 @@ Aşağıdaki dosyaları `www/lib/threejs/textures/` dizinine indirin:
 ### Samanyolu Arka Planı
 - **starmap.jpg** (Eşdikdörtgen projeksiyon Samanyolu haritası)
   - Kaynak: https://cdn.eso.org/images/large/eso0932a.jpg
-  - Boyut: ~30 MB (yüksek çözünürlüklü versiyonu tercih edin)
+  - Boyut: ~30 MB (yüksek çözünürlüklü sürümü tercih edin)
   - NOT: Bu dosya olmadan arka plan siyah kalır
 
 ### Dünya Dokuları

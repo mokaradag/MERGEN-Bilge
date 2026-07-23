@@ -291,7 +291,7 @@ html[data-theme="light"] .tool-bg-layer .alo-code-line {
 .tool-bg-layer .alo-tok-prose   { color: #b3bacb; }
 .tool-bg-layer .alo-tok-qmark   { color: #e5c07b; font-weight: 600; }
 
-/* Açık tema için aynı paleti daha koyu/kontrastlı versiyonla değiştir */
+/* Açık tema için aynı paleti daha koyu/kontrastlı sürümle değiştir */
 html[data-theme="light"] .tool-bg-layer .alo-tok-comment { color: rgba(15, 28, 51, 0.48); }
 html[data-theme="light"] .tool-bg-layer .alo-tok-keyword { color: #6b21a8; }
 html[data-theme="light"] .tool-bg-layer .alo-tok-string  { color: #166534; }

@@ -391,6 +391,8 @@ settingsInit <- function(session, parent_session = NULL) {
 
     # Yapılandırma geçici değerlerini uygula
     settings$model_selection <- yapilandirma$temp_model_selection()
+    # Yazı boyutu yalnızca kaydet anında uygulanır (issue #6).
+    settings$font_size <- yapilandirma$temp_font_size()
     settings$image_size <- yapilandirma$temp_image_size()
     settings$image_quality_hd <- yapilandirma$temp_image_quality_hd()
     settings$summary_detail_level <- yapilandirma$temp_summary_detail_level()
@@ -564,6 +566,7 @@ settingsInit <- function(session, parent_session = NULL) {
 
     # Yapılandırma geçici değerlerini sıfırla
     yapilandirma$temp_model_selection(default_model)
+    yapilandirma$temp_font_size("medium")
     yapilandirma$temp_image_size("1024x1024")
     yapilandirma$temp_image_quality_hd(FALSE)
     yapilandirma$temp_summary_detail_level("standard")

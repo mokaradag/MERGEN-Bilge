@@ -119,7 +119,8 @@ test_that(".syap_claude_code_card zaman aşımı + bağlantı testi + CLI durumu
   .syap_expect_ids(r$html, c(
     "claude_code_timeout", "cc_test_connection", "cc_test_result_ui", "cc_cli_status_info"
   ))
-  testthat::expect_true(grepl("Claude Code Yapılandırma", r$html, fixed = TRUE))
+  # Kart başlığı "Claude Code" yerine "Bilge Yolaç" kullanır (issue #5).
+  testthat::expect_true(grepl("Bilge Yolaç Yapılandırma", r$html, fixed = TRUE))
   # claude_code_config$timeout_seconds stub değeri numericInput'a yansımalı.
   testthat::expect_true(grepl("120", r$html, fixed = TRUE))
   .syap_expect_no_ids(r$html, c("enable_image_tools", "summary_focus_mode"))

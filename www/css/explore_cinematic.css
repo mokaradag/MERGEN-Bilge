@@ -320,7 +320,7 @@
   transform: translateY(-8px);
 }
 
-/* Kart içi ışıma (spotlight) - GPU yükü azaltılmış versiyon */
+/* Kart içi ışıma (spotlight) - GPU yükü azaltılmış sürüm */
 .cinematic-mode-card.spotlight-card::before {
   content: '';
   position: absolute;

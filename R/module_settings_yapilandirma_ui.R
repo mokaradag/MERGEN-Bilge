@@ -242,9 +242,9 @@ settingsYapilandirmaUIImpl <- function(id) {
 .syap_claude_code_card <- function(ns) {
   div(
     class = "settings-card cc-config-card",
-    h3("Claude Code Yapılandırma", class = "settings-title"),
+    h3("Bilge Yolaç Yapılandırma", class = "settings-title"),
     p(
-      "Claude Code CLI bağlantı ayarları, zaman aşımı ve durum bilgisi.",
+      "Bilge Yolaç CLI bağlantı ayarları, zaman aşımı ve durum bilgisi.",
       class = "setting-description"
     ),
     fluidRow(
@@ -252,7 +252,7 @@ settingsYapilandirmaUIImpl <- function(id) {
         width = 4,
         h4("Zaman Aşımı", class = "setting-subtitle"),
         p(
-          "Claude Code komutları için maksimum bekleme süresi.",
+          "Bilge Yolaç komutları için maksimum bekleme süresi.",
           class = "setting-description",
           style = "margin-top:4px;"
         ),
@@ -277,7 +277,7 @@ settingsYapilandirmaUIImpl <- function(id) {
         width = 4,
         h4("Bağlantı Testi", class = "setting-subtitle"),
         p(
-          "Claude Code CLI erişimini test edin.",
+          "Bilge Yolaç CLI erişimini test edin.",
           class = "setting-description",
           style = "margin-top:4px;"
         ),
@@ -295,7 +295,7 @@ settingsYapilandirmaUIImpl <- function(id) {
         width = 4,
         h4("CLI Durumu", class = "setting-subtitle"),
         p(
-          "Claude Code CLI kurulum ve erişim bilgisi.",
+          "Bilge Yolaç CLI kurulum ve erişim bilgisi.",
           class = "setting-description",
           style = "margin-top:4px;"
         ),

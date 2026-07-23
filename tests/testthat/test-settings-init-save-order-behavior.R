@@ -88,6 +88,7 @@
         save_trigger = reactiveVal(0),
         reset_trigger = reactiveVal(0),
         temp_model_selection = reactiveVal("model-a"),
+        temp_font_size = reactiveVal("medium"),
         temp_image_size = reactiveVal("1024x1024"),
         temp_image_quality_hd = reactiveVal(FALSE),
         temp_summary_detail_level = reactiveVal("standard"),
