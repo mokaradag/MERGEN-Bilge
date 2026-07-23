@@ -245,12 +245,17 @@ sttServer <- function(id, parent_session, settings) {
       if (rv$is_recording) {
         # --- DURDURMA İŞLEMİ ---
         rv$is_recording <- FALSE
-        rv$accept_chunks <- FALSE # KİLİT: Artık gelen hiç bir paketi kabul etme
-        # Duraklatma öncesi uçuşta olan parçalar artık bu kayıt üretimine ait
-        # değildir; sıra göstergelerini sıfırla ki Devam Et sonrası yeni
-        # parçalar eski, atlanmış bir sırayı bekleyip kilitlenmesin.
-        rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
-        reset_stt_queue()
+        rv$accept_chunks <- FALSE # KİLİT: Artık YENİ ses paketi kabul etme/gönderme
+        # ÖNEMLİ: transcribe_gen VE kuyruk (next_chunk_seq/next_append_seq/
+        # pending_stt_chunks/completed_stt_chunks) BİLEREK sıfırlanmaz.
+        # Duraklatmadan önce dispatch edilmiş STT parçaları hâlâ AYNI kayıt
+        # üretimine aittir; mergen_stt_transcribe_chunk() bir HTTP zaman
+        # aşımıyla (MERGEN_STT_TIMEOUT_SEC) her zaman sonuçlanır, bu yüzden
+        # kuyruk kilitlenme riski yoktur. Üretimi burada artırmak/kuyruğu
+        # sıfırlamak, duraklatmadan hemen önce söylenen son parçanın veya tüm
+        # cümlenin sessizce düşmesine yol açıyordu. Sıfırlama yalnızca
+        # Temizle/İptal/Yeni Oturum akışlarında yapılır (kullanıcı bilerek
+        # vazgeçtiği için).
 
         updateActionButton(session, "toggle_record_btn", label = "Devam Et", icon = icon("microphone"))
         shinyjs::runjs(sprintf("$('#%s').removeClass('recording').addClass('paused');", ns("toggle_record_btn")))
@@ -328,11 +333,17 @@ sttServer <- function(id, parent_session, settings) {
       )
 
       promise %...>% (function(clean_text) {
-        # Yalnızca sayacı artıran üretim aynıysa tamamlanma/sayaç güncelle.
-        # Stale callback'ler yeni oturumun bekleyen sayacını azaltamaz.
+        # Yalnızca üretim (transcribe_gen) hâlâ aynıysa tamamlanma/sayaç
+        # güncelle. Stale callback'ler (Temizle/İptal/Yeni Oturum ile
+        # üretim artırılmış) yeni oturumun bekleyen sayacını azaltamaz.
+        # NOT: Durdur (duraklatma) artık üretimi artırmaz/kuyruğu sıfırlamaz;
+        # bu yüzden duraklatmadan önce dispatch edilmiş bir parça, sonuç
+        # duraklatma sırasında/sonrasında gelse bile burada üretim eşleştiği
+        # için METİN HER ZAMAN eklenir (canlı `accept_chunks` durumuna göre
+        # boşaltılmaz). Bu, "Durdur"a basar basmaz uçuştaki son parçanın
+        # sessizce kaybolmasını önler.
         if (identical(dispatch_gen, isolate(rv$transcribe_gen))) {
-          should_append <- isTRUE(isolate(rv$accept_chunks)) || isTRUE(isolate(rv$accept_after_pending))
-          clean_text <- if (isTRUE(should_append)) as.character(clean_text %||% "")[1] else ""
+          clean_text <- as.character(clean_text %||% "")[1]
           if (is.na(clean_text)) clean_text <- ""
           completed <- isolate(rv$completed_stt_chunks)
           completed[[as.character(chunk_seq)]] <- clean_text

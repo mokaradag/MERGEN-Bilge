@@ -7,6 +7,7 @@
 # ==============================================================================
 
 testthat::local_edition(3)
+suppressMessages(library(promises))
 
 .stt_env <- new.env(parent = globalenv())
 source(
@@ -152,6 +153,106 @@ test_that("audio_chunk: kayıt kabul kapalıyken (kilit) STT çağrısı yapılm
       session$setInputs(audio_chunk = "ZHVtbXk=")  # base64 "dummy"
 
       expect_identical(kayit$post, 0L)
+    }
+  )
+})
+
+test_that("toggle_record_btn (Durdur): transcribe_gen ve kuyruk sıfırlanmaz (uçuştaki parçalar korunur)", {
+  skip_if_not_installed("shiny")
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    {
+      testthat::local_mocked_bindings(
+        runjs = function(code, ...) invisible(NULL),
+        .package = "shinyjs"
+      )
+
+      # Kayıt sırasında dispatch edilmiş, henüz sonuçlanmamış bir STT parçasını
+      # simüle et (uçuştaki durum).
+      rv$is_recording <- TRUE
+      rv$accept_chunks <- TRUE
+      gen_once_dispatched <- isolate(rv$transcribe_gen)
+      rv$next_chunk_seq <- 5L
+      rv$next_append_seq <- 3L
+      rv$pending_stt_chunks <- 1L
+
+      session$setInputs(toggle_record_btn = 1) # Durdur
+
+      # Duraklatma yeni paket kabulünü kapatmalı...
+      expect_false(isolate(rv$accept_chunks))
+      expect_false(isolate(rv$is_recording))
+      # ...ama üretim jetonunu VE kuyruğu sıfırlamamalı; aksi halde uçuştaki
+      # parça sonuçlandığında üretim uyuşmazlığı yüzünden sessizce düşer.
+      expect_identical(isolate(rv$transcribe_gen), gen_once_dispatched)
+      expect_identical(isolate(rv$next_chunk_seq), 5L)
+      expect_identical(isolate(rv$next_append_seq), 3L)
+      expect_identical(isolate(rv$pending_stt_chunks), 1L)
+    }
+  )
+})
+
+test_that("Durdur sonrası çözülen STT parçası geçmişe eklenir (düşürülmez)", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("promises")
+
+  # tracked_future_promise, gerçek future/worker'a gitmeden elle çözülebilir
+  # bir promise döndürecek şekilde .stt_env içinde GEÇİCİ olarak değiştirilir
+  # (sttServer bu ismi .stt_env -> globalenv() zincirinde arar). Test sonunda
+  # geri yüklenir ki diğer testleri etkilemesin.
+  had_override <- exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)
+  old_override <- if (had_override) get("tracked_future_promise", envir = .stt_env) else NULL
+  on.exit({
+    if (had_override) {
+      assign("tracked_future_promise", old_override, envir = .stt_env)
+    } else if (exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)) {
+      rm("tracked_future_promise", envir = .stt_env)
+    }
+  }, add = TRUE)
+
+  resolve_fn <- NULL
+  .stt_env$tracked_future_promise <- function(task_fn, ..., globals = list()) {
+    promises::promise(function(resolve, reject) {
+      resolve_fn <<- resolve
+    })
+  }
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    {
+      testthat::local_mocked_bindings(
+        runjs = function(code, ...) invisible(NULL),
+        delay = function(ms, expr) expr,
+        .package = "shinyjs"
+      )
+      testthat::local_mocked_bindings(
+        showModal = function(...) invisible(NULL),
+        .package = "shiny"
+      )
+
+      session$userData$ai_api_key <- "sk-test"
+      session$returned$start_session()
+      session$setInputs(audio_chunk = "ZHVtbXk=") # parça dispatch edildi, henüz çözülmedi
+
+      expect_identical(isolate(rv$pending_stt_chunks), 1L)
+
+      # Kullanıcı, parça hâlâ uçuştayken Durdur'a basar.
+      session$setInputs(toggle_record_btn = 1)
+      expect_false(isolate(rv$accept_chunks))
+
+      # Parça ŞİMDİ (duraklatmadan SONRA) gerçek metinle çözülür.
+      resolve_fn("merhaba dünya")
+      for (i in seq_len(50)) {
+        if (later::loop_empty()) break
+        later::run_now(timeout = 0)
+      }
+      session$flushReact()
+
+      # Metin düşürülmemeli; sunucu geçmişine ve metin alanına eklenmiş olmalı.
+      expect_identical(isolate(rv$transcription_history), "merhaba dünya")
+      expect_identical(isolate(rv$pending_stt_chunks), 0L)
     }
   )
 })
