@@ -28,6 +28,18 @@ sttServer <- function(id, parent_session, settings) {
       ))
     }
 
+    # Elle düzenleme senkronizasyonu, yalnızca son sunucu push'undan bu kadar
+    # zaman geçtiyse uygulanır (bkz. flush_completed_stt_chunks). Bu, istemcinin
+    # henüz yansıtmadığı KENDİ push'umuzu yanlışlıkla "elle düzenleme" sanıp
+    # üzerine yazma riskini (ardışık hızlı parça birleştirme yarışını) önler;
+    # gerçek elle düzenlemeler tipik olarak bundan çok daha uzun sürer.
+    STT_EDIT_SYNC_GRACE_SEC <- 0.4
+    # Onayla/Durdur sonrası kayıtçının stop() olayı TEK bir final ses parçası
+    # daha gönderebilir (henüz dispatch edilmemiş bir segment); bu parçanın
+    # kapıda (accept_chunks kapalıyken) sessizce düşmemesi için kısa, sınırlı
+    # bir bekleme uygulanır.
+    STT_FINAL_CHUNK_GRACE_MS <- 500
+
     rv <- reactiveValues(
       transcription_history = "", # Sunucu otoriter biriktirilmiş metin (issue #3)
       transcribe_gen = 0L,        # Çeviri jetonu: bayat asenkron sonuçları eler
@@ -37,7 +49,10 @@ sttServer <- function(id, parent_session, settings) {
       next_append_seq = 1L,
       pending_stt_chunks = 0L,
       completed_stt_chunks = list(),
-      accept_after_pending = FALSE
+      accept_after_pending = FALSE,
+      expect_final_chunk = FALSE, # Kayıtçının stop() sonrası TEK final parçası için bütçe
+      last_pushed_value = "",     # Sunucunun textarea'ya en son yazdığı değer
+      last_push_time = NULL       # O son yazımın zamanı (elle düzenleme tespiti için)
     )
 
     final_text <- reactiveVal("")
@@ -45,6 +60,8 @@ sttServer <- function(id, parent_session, settings) {
     # Biriktirilmiş metni metin alanına yazar (tek nokta).
     push_transcription <- function(value) {
       rv$transcription_history <- value
+      rv$last_pushed_value <- value
+      rv$last_push_time <- Sys.time()
       updateTextAreaInput(session, "transcribed_text", value = value)
     }
 
@@ -54,9 +71,38 @@ sttServer <- function(id, parent_session, settings) {
       rv$pending_stt_chunks <- 0L
       rv$completed_stt_chunks <- list()
       rv$accept_after_pending <- FALSE
+      rv$expect_final_chunk <- FALSE
+      rv$last_pushed_value <- ""
+      rv$last_push_time <- NULL
+    }
+
+    # Kullanıcı, sunucunun son gönderdiği metinden FARKLI bir değeri metin
+    # alanına elle yazmış olabilir (ör. Durdur sırasında bir düzeltme
+    # yaptıysa). Bir STT parçası biriktirilmiş metne eklenmeden ÖNCE bu elle
+    # yapılan düzenleme sunucu geçmişine senkronize edilir; aksi halde geç
+    # gelen bir parça bu düzeltmenin üzerine yazardı.
+    sync_manual_edit_if_settled <- function() {
+      live_text <- as.character(isolate(input$transcribed_text) %||% "")[1]
+      last_pushed <- as.character(isolate(rv$last_pushed_value) %||% "")[1]
+      if (is.na(live_text) || is.na(last_pushed) || identical(live_text, last_pushed)) {
+        return(invisible(NULL))
+      }
+
+      last_push_time <- isolate(rv$last_push_time)
+      grace_elapsed <- is.null(last_push_time) ||
+        as.numeric(difftime(Sys.time(), last_push_time, units = "secs")) >= STT_EDIT_SYNC_GRACE_SEC
+      if (!grace_elapsed) {
+        return(invisible(NULL))
+      }
+
+      rv$transcription_history <- live_text
+      rv$last_pushed_value <- live_text
+      invisible(NULL)
     }
 
     flush_completed_stt_chunks <- function() {
+      sync_manual_edit_if_settled()
+
       repeat {
         key <- as.character(isolate(rv$next_append_seq))
         completed <- isolate(rv$completed_stt_chunks)
@@ -246,6 +292,11 @@ sttServer <- function(id, parent_session, settings) {
         # --- DURDURMA İŞLEMİ ---
         rv$is_recording <- FALSE
         rv$accept_chunks <- FALSE # KİLİT: Artık YENİ ses paketi kabul etme/gönderme
+        # Kayıtçının stop() sonrası tetiklenen 'stop' olayı, henüz dispatch
+        # edilmemiş TEK bir final ses parçası daha gönderebilir (bkz.
+        # observeEvent(input$audio_chunk) kapısı). Bu parçanın kapıda
+        # sessizce düşmemesi için tek kullanımlık bir bütçe açılır.
+        rv$expect_final_chunk <- TRUE
         # ÖNEMLİ: transcribe_gen VE kuyruk (next_chunk_seq/next_append_seq/
         # pending_stt_chunks/completed_stt_chunks) BİLEREK sıfırlanmaz.
         # Duraklatmadan önce dispatch edilmiş STT parçaları hâlâ AYNI kayıt
@@ -271,6 +322,8 @@ sttServer <- function(id, parent_session, settings) {
         edited_text <- as.character(isolate(input$transcribed_text) %||% "")[1]
         if (is.na(edited_text)) edited_text <- ""
         rv$transcription_history <- edited_text
+        rv$last_pushed_value <- edited_text
+        rv$last_push_time <- Sys.time()
 
         rv$is_recording <- TRUE
         rv$accept_chunks <- TRUE # Kilidi aç
@@ -287,10 +340,13 @@ sttServer <- function(id, parent_session, settings) {
     observeEvent(input$audio_chunk, {
       req(input$audio_chunk)
 
-      # KİLİT KONTROLÜ: Eğer kullanıcı durdurduysa, asla işleme.
-      # Bu, "Durdur"a basıldığı an kesilen yarım cümlelerin veya
-      # sessizlik anında modelin uydurduğu "Altyazı..." metinlerinin eklenmesini engeller.
-	  if (!isTRUE(rv$accept_chunks)) return(NULL)
+      # KİLİT KONTROLÜ: Kayıt kapalıyken YENİ paketleri işleme. Tek istisna:
+      # Durdur/Onayla sonrası kayıtçının stop() olayının gönderdiği TEK final
+      # parça (expect_final_chunk bütçesi) kapıdan geçebilir; aksi halde bu
+      # parça henüz dispatch bile edilmeden sessizce kaybolurdu. Bütçe tek
+      # kullanımlıktır ve burada hemen tüketilir.
+	  if (!isTRUE(rv$accept_chunks) && !isTRUE(rv$expect_final_chunk)) return(NULL)
+      rv$expect_final_chunk <- FALSE
 
       api_url <- Sys.getenv("LOCAL_STT_ENDPOINT")
       api_model <- Sys.getenv("LOCAL_STT_MODEL")
@@ -382,16 +438,34 @@ sttServer <- function(id, parent_session, settings) {
       accepted_text <- as.character(isolate(input$transcribed_text) %||% "")[1]
       if (is.na(accepted_text)) accepted_text <- ""
       rv$transcription_history <- accepted_text
+      rv$last_pushed_value <- accepted_text
+      rv$last_push_time <- Sys.time()
       rv$accept_chunks <- FALSE
       rv$accept_after_pending <- TRUE
+      # Kayıtçının stop() sonrası göndermiş olabileceği TEK final parça için
+      # kapı bütçesi açılır (bkz. observeEvent(input$audio_chunk)).
+      rv$expect_final_chunk <- TRUE
       shinyjs::runjs(sprintf("window.STT_Client.stopAndCleanup('%s');", id))
       updateActionButton(session, "accept_btn", label = "Metin hazırlanıyor...", icon = icon("spinner"))
       shinyjs::disable("accept_btn")
 
       flush_completed_stt_chunks()
-      if (isolate(rv$pending_stt_chunks) == 0L) {
-        finish_accept()
-      }
+
+      # Bu final parçanın sunucuya ulaşıp dispatch edilmesi (pending sayacına
+      # yansıması) için kısa, sınırlı bir bekleme uygulanır; aksi halde bu
+      # segment hiç dispatch edilmeden Onayla anında kaybolur. Parça bu süre
+      # içinde dispatch edilirse normal "pending == 0 olunca tamamla" akışı
+      # zaten devreye girer (bkz. promise %...>%); hiç gelmezse (sessizlik),
+      # süre sonunda pencere kapatılır ve normal şekilde tamamlanır.
+      # accept_after_pending kontrolü, promise çözümünün bu bekleme bitmeden
+      # zaten tamamlamış olabileceği durumda tekrar finish_accept() çağrılmasını
+      # engeller (idempotentlik).
+      shinyjs::delay(STT_FINAL_CHUNK_GRACE_MS, {
+        rv$expect_final_chunk <- FALSE
+        if (isTRUE(isolate(rv$accept_after_pending)) && isolate(rv$pending_stt_chunks) == 0L) {
+          finish_accept()
+        }
+      })
     })
 
     observeEvent(input$dismiss_btn, {
