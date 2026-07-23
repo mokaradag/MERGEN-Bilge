@@ -166,22 +166,25 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
       }
     }
 
-    filter_timeout <- 8
-    result <- tryCatch({
-      R.utils::withTimeout({
-        call_local_llm(messages, list(
-          model_selection = filter_model,
-          temperature = 0.0,
-          max_output_tokens = 4000,
-          enable_mcp_tools = FALSE,
-          shiny_session = session,
-          api_key_override = api_key_val
-        ))
-      }, timeout = filter_timeout, onTimeout = "silent")
-    }, error = function(e) {
-      cat("[FILTER_AI] Timeout veya hata, AI filtreleme atlanıyor\n")
-      NULL
-    })
+	filter_timeout <- 8
+
+	result <- tryCatch({
+	  call_local_llm(messages, list(
+		model_selection = filter_model,
+		temperature = 0.0,
+		max_output_tokens = 4000,
+		enable_mcp_tools = FALSE,
+		shiny_session = session,
+		api_key_override = api_key_val,
+		request_timeout_sec = filter_timeout
+	  ))
+	}, error = function(e) {
+	  cat(sprintf(
+		"[FILTER_AI] Timeout veya hata, AI filtreleme atlanıyor: %s\n",
+		conditionMessage(e)
+	  ))
+	  NULL
+	})
 
     if (is.function(stop_check) && isTRUE(stop_check())) {
       cat("[FILTER_AI] Durdurma talebi alindi (LLM cagrisi sonrasinda)\n")
