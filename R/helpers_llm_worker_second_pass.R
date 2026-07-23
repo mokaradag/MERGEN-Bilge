@@ -12,11 +12,13 @@ llm_worker_second_pass_messages <- function(chat_history) {
 
 llm_worker_second_pass_body <- function(selected_model,
                                         messages_payload,
-                                        temp_value) {
+                                        temp_value,
+                                        max_tokens_val = 32768L) {
   body <- list(
     model = selected_model,
     messages = messages_payload,
-    stream = FALSE
+    stream = FALSE,
+    max_tokens = max_tokens_val
   )
 
   if (!should_omit_temperature(selected_model)) {
@@ -74,13 +76,17 @@ llm_worker_second_pass_fallback_response <- function(tool_results_raw,
 llm_worker_call_second_pass_non_streaming <- function(api_endpoint,
                                                       hdrs,
                                                       body,
-                                                      selected_model) {
+                                                      selected_model,
+                                                      timeout_sec = 300) {
+  timeout_sec <- suppressWarnings(as.numeric(timeout_sec))
+  if (is.na(timeout_sec) || timeout_sec <= 0) timeout_sec <- 300
+
   response <- httr::POST(
     api_endpoint,
     do.call(httr::add_headers, hdrs),
     body = jsonlite::toJSON(body, auto_unbox = TRUE),
     encode = "raw",
-    httr::timeout(300)
+    httr::timeout(timeout_sec)
   )
 
   status <- httr::status_code(response)
@@ -152,13 +158,15 @@ llm_worker_run_mcp_second_pass <- function(chat_history,
                                            chart_blocks_text,
                                            charts_to_store,
                                            add_fallback_chart,
-                                           worker_start_time) {
+                                           worker_start_time,
+                                           timeout_sec = 300) {
   messages_payload2 <- llm_worker_second_pass_messages(chat_history)
 
   body2 <- llm_worker_second_pass_body(
     selected_model = selected_model,
     messages_payload = messages_payload2,
-    temp_value = temp_value
+    temp_value = temp_value,
+    max_tokens_val = settings$max_output_tokens %||% 32768L
   )
 
   hdrs2 <- llm_worker_second_pass_headers(api_key)
@@ -234,7 +242,8 @@ llm_worker_run_mcp_second_pass <- function(chat_history,
       api_endpoint = api_endpoint,
       hdrs = hdrs2,
       body = body2,
-      selected_model = selected_model
+      selected_model = selected_model,
+      timeout_sec = timeout_sec
     )
 
     if (!isTRUE(non_stream$success)) {
@@ -268,7 +277,8 @@ llm_worker_run_mcp_second_pass <- function(chat_history,
     api_endpoint = api_endpoint,
     hdrs = hdrs2,
     body = body2,
-    selected_model = selected_model
+    selected_model = selected_model,
+    timeout_sec = timeout_sec
   )
 
   if (!isTRUE(non_stream$success)) {

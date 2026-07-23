@@ -84,6 +84,42 @@ test_that("araçsız mutlu yol: içerik + sayısal süre + boş chart_store dön
   expect_null(out$reasoning_content)
 })
 
+test_that("istek gövdesi max_tokens alanını içerir (varsayılan 32768, settings geçersiz kılabilir)", {
+  .clw_env$extract_llm_content_and_sources <- function(response_content, model_id = NULL) {
+    list(content = "Merhaba", reasoning = "")
+  }
+  captured <- new.env(parent = emptyenv())
+  testthat::local_mocked_bindings(
+    POST = function(url, ..., body = NULL) {
+      captured$body <- jsonlite::fromJSON(body)
+      .clw_response
+    },
+    status_code = function(resp) 200L,
+    content = function(x, as = NULL, ...) if (identical(as, "parsed")) list(id = "x") else "",
+    .package = "httr"
+  )
+
+  # Varsayılan: settings$max_output_tokens verilmemişse 32768 kullanılmalı
+  # (streaming/non-streaming yollarıyla aynı varsayılan sözleşme).
+  .clw_env$call_llm_worker(
+    chat_history = .clw_history(),
+    settings = .clw_settings(),
+    api_endpoint = "http://local/api",
+    enable_tools = FALSE
+  )
+  expect_identical(as.integer(captured$body$max_tokens), 32768L)
+
+  # SQL Analizi/Kod Uzmanı gibi araçların ayarladığı özel limit uç noktaya
+  # gerçekten iletilmeli (önceden bu worker yolu max_tokens'i hiç göndermiyordu).
+  .clw_env$call_llm_worker(
+    chat_history = .clw_history(),
+    settings = .clw_settings(max_output_tokens = 9999L),
+    api_endpoint = "http://local/api",
+    enable_tools = FALSE
+  )
+  expect_identical(as.integer(captured$body$max_tokens), 9999L)
+})
+
 test_that("düşünen-model reasoning metni reasoning_content olarak taşınır", {
   .clw_env$extract_llm_content_and_sources <- function(response_content, model_id = NULL) {
     list(content = "Yanıt gövdesi", reasoning = "iç düşünce izi")
