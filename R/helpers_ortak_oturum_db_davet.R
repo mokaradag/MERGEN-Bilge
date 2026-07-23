@@ -579,19 +579,24 @@ ortak_db_canli_durumlar <- function(simdi = Sys.time(), conn = NULL) {
     return(sonuc)
   }
 
-  # Güvenli düşüş yolu: eski R-tarafı zaman damgası sınıflandırması. POSIXct
-  # değeri doğrudan geçilir (metne çevrilmez); ortak_sunum_durumu POSIXct/metni
-  # güvenle işler.
-  zamanlar <- suppressWarnings(as.POSIXct(
-    as.character(sonuc$SonKalpAtisiZamani), tz = "UTC"
-  ))
+  # Güvenli düşüş yolu: eski R-tarafı zaman damgası sınıflandırması. Birincil
+  # yoldaki +3 saatlik saklama/şimdi temeli burada da korunur; aksi halde
+  # İstanbul duvar saatiyle yazılmış yeni kalp atışları UTC ``simdi`` karşısında
+  # gelecekte kalıp yanlışlıkla Çevrimİçi görünebilir.
+  zaman_metni <- trimws(sub("T", " ", as.character(sonuc$SonKalpAtisiZamani), fixed = TRUE))
+  zaman_metni <- sub("\\.[0-9]+", "", zaman_metni)
+  zamanlar <- suppressWarnings(as.POSIXct(zaman_metni, tz = "UTC"))
+  simdi_fallback <- simdi + (3 * 60 * 60)
   sirali <- order(sonuc$KullaniciID, zamanlar, decreasing = TRUE)
   sonuc <- sonuc[sirali, , drop = FALSE]
-  sonuc <- sonuc[!duplicated(sonuc$KullaniciID), , drop = FALSE]
+  zamanlar <- zamanlar[sirali]
+  tekil <- !duplicated(sonuc$KullaniciID)
+  sonuc <- sonuc[tekil, , drop = FALSE]
+  zamanlar <- zamanlar[tekil]
 
   sonuc$CanliDurum <- vapply(
     seq_len(nrow(sonuc)),
-    function(i) ortak_sunum_durumu(sonuc$SonKalpAtisiZamani[i], simdi = simdi),
+    function(i) ortak_sunum_durumu(sonuc$SonKalpAtisiZamani[i], simdi = simdi_fallback),
     character(1),
     USE.NAMES = FALSE
   )

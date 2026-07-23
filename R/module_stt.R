@@ -27,12 +27,17 @@ sttServer <- function(id, parent_session, settings) {
         active_js
       ))
     }
-    
+
     rv <- reactiveValues(
       transcription_history = "", # Sunucu otoriter biriktirilmiş metin (issue #3)
       transcribe_gen = 0L,        # Çeviri jetonu: bayat asenkron sonuçları eler
       is_recording = FALSE,
-      accept_chunks = FALSE # Kilit mekanizması
+      accept_chunks = FALSE, # Kilit mekanizması
+      next_chunk_seq = 1L,
+      next_append_seq = 1L,
+      pending_stt_chunks = 0L,
+      completed_stt_chunks = list(),
+      accept_after_pending = FALSE
     )
 
     final_text <- reactiveVal("")
@@ -43,16 +48,65 @@ sttServer <- function(id, parent_session, settings) {
       updateTextAreaInput(session, "transcribed_text", value = value)
     }
 
+    reset_stt_queue <- function() {
+      rv$next_chunk_seq <- 1L
+      rv$next_append_seq <- 1L
+      rv$pending_stt_chunks <- 0L
+      rv$completed_stt_chunks <- list()
+      rv$accept_after_pending <- FALSE
+    }
+
+    flush_completed_stt_chunks <- function() {
+      repeat {
+        key <- as.character(isolate(rv$next_append_seq))
+        completed <- isolate(rv$completed_stt_chunks)
+        if (!key %in% names(completed)) break
+
+        clean_text <- completed[[key]]
+        completed[[key]] <- NULL
+        rv$completed_stt_chunks <- completed
+        rv$next_append_seq <- isolate(rv$next_append_seq) + 1L
+
+        if (is.null(clean_text) || length(clean_text) == 0L) next
+        clean_text <- as.character(clean_text)[1]
+        if (is.na(clean_text) || !nzchar(clean_text)) next
+
+        # BİRİKTİRME: taban her zaman sunucu otoriter geçmiştir; metin alanının
+        # gecikmeli round-trip değeri değildir. Bu, konuşup durup tekrar
+        # konuşulduğunda ilk parçanın silinmesini ve paralel STT dönüşlerinde
+        # parça sırasının bozulmasını önler.
+        base <- as.character(isolate(rv$transcription_history) %||% "")[1]
+        if (is.na(base)) base <- ""
+        sep <- if (nzchar(base) && !grepl("\\s$", base)) " " else ""
+        push_transcription(paste0(base, sep, clean_text))
+      }
+    }
+
+    finish_accept <- function() {
+      # Onay akışında otoriter metin sunucu geçmişidir. Accept anında elle
+      # düzenlenmiş metin bu geçmişe yazılır; beklenen STT callback'leri de aynı
+      # geçmişe append eder. Böylece textarea round-trip'i gecikse bile beklenen
+      # son parçalar gönderilen metinden düşmez.
+      text_to_send <- trimws(as.character(isolate(rv$transcription_history) %||% "")[1])
+      if (is.na(text_to_send)) text_to_send <- ""
+      rv$accept_after_pending <- FALSE
+      removeModal()
+      if (nzchar(text_to_send)) {
+        final_text(text_to_send)
+      }
+    }
+
     start_session <- function() {
       rv$transcription_history <- ""
       rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
       rv$is_recording <- TRUE
       rv$accept_chunks <- TRUE
-      
+      reset_stt_queue()
+
       # 1. Ayarlardan persona bilgisini al (eski kimlikler normalleştirilir)
       chars <- tryCatch(get_characters_data(), error = function(e) NULL)
       selected_id <- normalize_character_id(settings$selected_character)
-      
+
       char_info <- NULL
       if (!is.null(chars) && !is.null(chars$styles)) {
         for (c in chars$styles) {
@@ -70,7 +124,7 @@ sttServer <- function(id, parent_session, settings) {
           accent = "#7C4DFF"
         )
       }
-      
+
       # 2. Font Boyutu Sınıfını Belirle
       current_font <- settings$font_size %||% "medium"
       font_class <- switch(current_font,
@@ -79,7 +133,7 @@ sttServer <- function(id, parent_session, settings) {
                            "large" = "stt-font-large",
                            "xlarge" = "stt-font-xlarge",
                            "stt-font-medium")
-      
+
       showModal(modalDialog(
         id = ns("stt_modal"),
         # Başlık revizyonu: Daha sade, font uyumlu
@@ -88,25 +142,25 @@ sttServer <- function(id, parent_session, settings) {
           tags$i(class = "fas fa-microphone-lines", style = "color: #7C4DFF;"),
           span("Sesli İletişim", style = "margin-left: 12px; font-family: 'Segoe UI', sans-serif; letter-spacing: 0.5px;")
         ),
-        footer = NULL, 
+        footer = NULL,
         size = "l",
         easyClose = FALSE,
         fade = TRUE,
         class = "stt-modal-dialog",
-        
+
         div(
           class = "stt-modal-body",
-          
+
           # --- YENİ GÖRSELLEŞTİRİCİ ALANI ---
           div(
             class = "stt-visualizer-wrapper",
-            
+
             # Sol: Modern Dalga Formu
             div(
               class = "stt-vis-canvas-container",
               tags$canvas(id = ns("visualizer_canvas"))
             ),
-            
+
             # Sağ: Karakter Bilgi Paneli (Boşluğu doldurur)
             div(
               class = "stt-vis-info-panel",
@@ -127,25 +181,25 @@ sttServer <- function(id, parent_session, settings) {
               )
             )
           ),
-          
+
           div(id = ns("stt_status"), class = "stt-status recording", "Mikrofon Açık"),
-          
+
           # --- METİN ALANI ---
           div(
             class = "stt-editor-container",
             div(class = font_class, # Font sınıfı buraya uygulanır
                 textAreaInput(
-                  ns("transcribed_text"), 
-                  label = NULL, 
-                  value = "", 
-                  placeholder = "Konuşmanız burada metne dönüşecek...", 
-                  width = "100%", 
+                  ns("transcribed_text"),
+                  label = NULL,
+                  value = "",
+                  placeholder = "Konuşmanız burada metne dönüşecek...",
+                  width = "100%",
                   rows = 6,
                   resize = "vertical"
                 )
             )
           ),
-          
+
           # --- KONTROLLER ---
           div(
             class = "stt-controls",
@@ -162,10 +216,10 @@ sttServer <- function(id, parent_session, settings) {
           )
         )
       ))
-      
+
       # STT modalının açık olduğunu uygulama geneline bildir
       set_stt_modal_active_js(TRUE)
-      
+
       # JS Client'ı başlat
       shinyjs::delay(500, {
         session$sendCustomMessage("initSTT", list(
@@ -177,12 +231,13 @@ sttServer <- function(id, parent_session, settings) {
         ))
       })
     }
-    
+
     # Temizle Butonu: hem metin alanını hem de sunucu otoriter geçmişi sıfırla.
     # Jeton artırılır ki uçuşta olan (henüz dönmemiş) çeviriler temizlenen metne
     # geri eklenmesin.
     observeEvent(input$clear_btn, {
       rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
+      reset_stt_queue()
       push_transcription("")
     })
 
@@ -191,6 +246,11 @@ sttServer <- function(id, parent_session, settings) {
         # --- DURDURMA İŞLEMİ ---
         rv$is_recording <- FALSE
         rv$accept_chunks <- FALSE # KİLİT: Artık gelen hiç bir paketi kabul etme
+        # Duraklatma öncesi uçuşta olan parçalar artık bu kayıt üretimine ait
+        # değildir; sıra göstergelerini sıfırla ki Devam Et sonrası yeni
+        # parçalar eski, atlanmış bir sırayı bekleyip kilitlenmesin.
+        rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
+        reset_stt_queue()
 
         updateActionButton(session, "toggle_record_btn", label = "Devam Et", icon = icon("microphone"))
         shinyjs::runjs(sprintf("$('#%s').removeClass('recording').addClass('paused');", ns("toggle_record_btn")))
@@ -218,7 +278,7 @@ sttServer <- function(id, parent_session, settings) {
         shinyjs::runjs(sprintf("$('.stt-visualizer-wrapper').removeClass('paused-mode');"))
       }
     })
-    
+
     observeEvent(input$audio_chunk, {
       req(input$audio_chunk)
 
@@ -241,6 +301,9 @@ sttServer <- function(id, parent_session, settings) {
       # yeni oturum/temizle sonrası dönen bayat sonuçlar geçmişe eklenmez.
       chunk_b64 <- input$audio_chunk
       dispatch_gen <- isolate(rv$transcribe_gen)
+      chunk_seq <- isolate(rv$next_chunk_seq)
+      rv$next_chunk_seq <- chunk_seq + 1L
+      rv$pending_stt_chunks <- isolate(rv$pending_stt_chunks) + 1L
       stt_timeout <- suppressWarnings(as.numeric(Sys.getenv("MERGEN_STT_TIMEOUT_SEC", "30")))
       if (is.na(stt_timeout) || stt_timeout <= 0) stt_timeout <- 30
 
@@ -265,55 +328,71 @@ sttServer <- function(id, parent_session, settings) {
       )
 
       promise %...>% (function(clean_text) {
-        # Bayat oturum/temizle sonucu ise yok say (yeni jeton).
-        if (!identical(dispatch_gen, isolate(rv$transcribe_gen))) return(invisible(NULL))
-        # Kayıt duraklatıldıysa (Durdur) geç gelen sonucu ekleme.
-        if (!isTRUE(isolate(rv$accept_chunks))) return(invisible(NULL))
-        if (is.null(clean_text) || length(clean_text) == 0 || !nzchar(clean_text)) {
-          return(invisible(NULL))
-        }
+        # Yalnızca sayacı artıran üretim aynıysa tamamlanma/sayaç güncelle.
+        # Stale callback'ler yeni oturumun bekleyen sayacını azaltamaz.
+        if (identical(dispatch_gen, isolate(rv$transcribe_gen))) {
+          should_append <- isTRUE(isolate(rv$accept_chunks)) || isTRUE(isolate(rv$accept_after_pending))
+          clean_text <- if (isTRUE(should_append)) as.character(clean_text %||% "")[1] else ""
+          if (is.na(clean_text)) clean_text <- ""
+          completed <- isolate(rv$completed_stt_chunks)
+          completed[[as.character(chunk_seq)]] <- clean_text
+          rv$completed_stt_chunks <- completed
+          flush_completed_stt_chunks()
 
-        # BİRİKTİRME: taban her zaman sunucu otoriter geçmiştir; metin alanının
-        # gecikmeli round-trip değeri değildir. Bu, konuşup durup tekrar
-        # konuşulduğunda ilk parçanın silinmesini önler (issue #3).
-        base <- as.character(isolate(rv$transcription_history) %||% "")[1]
-        if (is.na(base)) base <- ""
-        sep <- if (nzchar(base) && !grepl("\\s$", base)) " " else ""
-        push_transcription(paste0(base, sep, clean_text))
+          rv$pending_stt_chunks <- max(0L, isolate(rv$pending_stt_chunks) - 1L)
+          if (isTRUE(isolate(rv$accept_after_pending)) && isolate(rv$pending_stt_chunks) == 0L) {
+            finish_accept()
+          }
+        }
+        invisible(NULL)
       }) %...!% (function(e) {
         cat("[STT Error]", conditionMessage(e), "\n")
+        if (identical(dispatch_gen, isolate(rv$transcribe_gen))) {
+          completed <- isolate(rv$completed_stt_chunks)
+          completed[[as.character(chunk_seq)]] <- ""
+          rv$completed_stt_chunks <- completed
+          flush_completed_stt_chunks()
+
+          rv$pending_stt_chunks <- max(0L, isolate(rv$pending_stt_chunks) - 1L)
+          if (isTRUE(isolate(rv$accept_after_pending)) && isolate(rv$pending_stt_chunks) == 0L) {
+            finish_accept()
+          }
+        }
+        invisible(NULL)
       })
 
       invisible(NULL)
     })
-    
+
     observeEvent(input$accept_btn, {
       # STT modalı kapanıyor bilgisini uygulama geneline bildir
       set_stt_modal_active_js(FALSE)
-      
+
+      accepted_text <- as.character(isolate(input$transcribed_text) %||% "")[1]
+      if (is.na(accepted_text)) accepted_text <- ""
+      rv$transcription_history <- accepted_text
+      rv$accept_chunks <- FALSE
+      rv$accept_after_pending <- TRUE
       shinyjs::runjs(sprintf("window.STT_Client.stopAndCleanup('%s');", id))
-      text_to_send <- trimws(as.character(input$transcribed_text %||% "")[1])
-      if (is.na(text_to_send)) text_to_send <- ""
-      # Metin alanı round-trip gecikmesi nedeniyle boş görünüyorsa, sunucu
-      # otoriter geçmişe düş (son parça kaybolmasın).
-      if (!nzchar(text_to_send)) {
-        text_to_send <- trimws(as.character(isolate(rv$transcription_history) %||% "")[1])
-        if (is.na(text_to_send)) text_to_send <- ""
-      }
-      removeModal()
-      if (nzchar(text_to_send)) {
-        final_text(text_to_send)
+      updateActionButton(session, "accept_btn", label = "Metin hazırlanıyor...", icon = icon("spinner"))
+      shinyjs::disable("accept_btn")
+
+      flush_completed_stt_chunks()
+      if (isolate(rv$pending_stt_chunks) == 0L) {
+        finish_accept()
       }
     })
-    
+
     observeEvent(input$dismiss_btn, {
       # STT modalı kapanıyor bilgisini uygulama geneline bildir
       set_stt_modal_active_js(FALSE)
-      
+
+      rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
+      reset_stt_queue()
       shinyjs::runjs(sprintf("window.STT_Client.stopAndCleanup('%s');", id))
       removeModal()
     })
-    
+
     return(list(
       start_session = start_session,
       final_text = final_text
