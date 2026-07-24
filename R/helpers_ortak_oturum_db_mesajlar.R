@@ -287,7 +287,8 @@ ortak_db_uretim_kilidi_al <- function(oturum_id,
         params = normalize_db_params(list(oturum_id))
       )
 
-      calisiyor <- nrow(aktif) > 0L && identical(aktif$KilitDurumu[1], "Çalışıyor")
+      calisiyor <- nrow(aktif) > 0L &&
+        isTRUE(as.character(aktif$KilitDurumu[1]) == "Çalışıyor")
 
       if (calisiyor) {
         # Bayat kilit denetimi: başlama zamanı eşiği aştıysa devralınır.
@@ -314,47 +315,47 @@ ortak_db_uretim_kilidi_al <- function(oturum_id,
       } else {
         if (nrow(aktif) > 0L) {
           # Tamamlanmış/iptal edilmiş eski kilit satırı işlem kilidi altında yeniden kullanılır.
-			simdi <- .oo_db_now()
-			ortak_mesaj_id <- .oo_db_pos_int(mesaj_id)
+          simdi <- .oo_db_now()
+          ortak_mesaj_id <- .oo_db_pos_int(mesaj_id)
 
-			tryCatch(
-			  DBI::dbExecute(
-				handle$conn,
-				paste(
-				  "UPDATE MB_OrtakOturum_AktifUretimler SET BaslatanKullaniciID = ?,",
-				  "OrtakMesajID = ?, IstekID = ?, KilitDurumu = ?, BaslamaZamani = ?,",
-				  "GuncellemeZamani = ?, KismiYanit = NULL WHERE OrtakOturumID = ?"
-				),
-				params = normalize_db_params(list(
-				  baslatan,
-				  ortak_mesaj_id,
-				  normalize_db_technical_value(istek_id),
-				  normalize_db_technical_value("Çalışıyor"),
-				  simdi,
-				  simdi,
-				  oturum_id
-				))
-			  ),
-			  error = function(e) {
-				DBI::dbExecute(
-				  handle$conn,
-				  paste(
-					"UPDATE MB_OrtakOturum_AktifUretimler SET BaslatanKullaniciID = ?,",
-					"OrtakMesajID = ?, IstekID = ?, KilitDurumu = ?, BaslamaZamani = ?,",
-					"GuncellemeZamani = ? WHERE OrtakOturumID = ?"
-				  ),
-				  params = normalize_db_params(list(
-					baslatan,
-					ortak_mesaj_id,
-					normalize_db_technical_value(istek_id),
-					normalize_db_technical_value("Çalışıyor"),
-					simdi,
-					simdi,
-					oturum_id
-				  ))
-				)
-			  }
-			)
+          tryCatch(
+            DBI::dbExecute(
+              handle$conn,
+              paste(
+                "UPDATE MB_OrtakOturum_AktifUretimler SET BaslatanKullaniciID = ?,",
+                "OrtakMesajID = ?, IstekID = ?, KilitDurumu = ?, BaslamaZamani = ?,",
+                "GuncellemeZamani = ?, KismiYanit = NULL WHERE OrtakOturumID = ?"
+              ),
+              params = normalize_db_params(list(
+                baslatan,
+                ortak_mesaj_id,
+                normalize_db_technical_value(istek_id),
+                normalize_db_technical_value("Çalışıyor"),
+                simdi,
+                simdi,
+                oturum_id
+              ))
+            ),
+            error = function(e) {
+              DBI::dbExecute(
+                handle$conn,
+                paste(
+                  "UPDATE MB_OrtakOturum_AktifUretimler SET BaslatanKullaniciID = ?,",
+                  "OrtakMesajID = ?, IstekID = ?, KilitDurumu = ?, BaslamaZamani = ?,",
+                  "GuncellemeZamani = ? WHERE OrtakOturumID = ?"
+                ),
+                params = normalize_db_params(list(
+                  baslatan,
+                  ortak_mesaj_id,
+                  normalize_db_technical_value(istek_id),
+                  normalize_db_technical_value("Çalışıyor"),
+                  simdi,
+                  simdi,
+                  oturum_id
+                ))
+              )
+            }
+          )
         } else {
           DBI::dbExecute(
             handle$conn,
@@ -485,7 +486,8 @@ ortak_db_aktif_uretim_var_mi <- function(oturum_id, conn = NULL, bayat_dakika = 
       "SELECT KilitDurumu, BaslamaZamani FROM MB_OrtakOturum_AktifUretimler WHERE OrtakOturumID = ?",
       params = list(oturum_id)
     )
-    calisiyor <- nrow(aktif) > 0L && identical(aktif$KilitDurumu[1], "Çalışıyor")
+    calisiyor <- nrow(aktif) > 0L &&
+      isTRUE(as.character(aktif$KilitDurumu[1]) == "Çalışıyor")
     if (!isTRUE(calisiyor)) {
       return(FALSE)
     }
