@@ -325,7 +325,7 @@ ortak_db_uretim_kilidi_al <- function(oturum_id,
 				  "OrtakMesajID = ?, IstekID = ?, KilitDurumu = ?, BaslamaZamani = ?,",
 				  "GuncellemeZamani = ?, KismiYanit = NULL WHERE OrtakOturumID = ?"
 				),
-				params = normalize_db_params(list(
+				params = .oo_db_bind_params(handle$conn, list(
 				  baslatan,
 				  ortak_mesaj_id,
 				  normalize_db_technical_value(istek_id),
@@ -343,7 +343,7 @@ ortak_db_uretim_kilidi_al <- function(oturum_id,
 					"OrtakMesajID = ?, IstekID = ?, KilitDurumu = ?, BaslamaZamani = ?,",
 					"GuncellemeZamani = ? WHERE OrtakOturumID = ?"
 				  ),
-				  params = normalize_db_params(list(
+				  params = .oo_db_bind_params(handle$conn, list(
 					baslatan,
 					ortak_mesaj_id,
 					normalize_db_technical_value(istek_id),
@@ -364,7 +364,7 @@ ortak_db_uretim_kilidi_al <- function(oturum_id,
               " KilitDurumu, BaslamaZamani)",
               "VALUES (?, ?, ?, ?, ?, ?)"
             ),
-            params = normalize_db_params(list(
+            params = .oo_db_bind_params(handle$conn, list(
               oturum_id,
               baslatan,
               .oo_db_pos_int(mesaj_id),
@@ -410,7 +410,7 @@ ortak_db_uretim_kilidi_mesaj_bagla <- function(oturum_id,
         "SET OrtakMesajID = ?, GuncellemeZamani = ?",
         "WHERE OrtakOturumID = ? AND IstekID = ? AND KilitDurumu = ?"
       ),
-      params = normalize_db_params(list(
+      params = .oo_db_bind_params(handle$conn, list(
         mesaj_id,
         .oo_db_now(),
         oturum_id,
@@ -452,7 +452,7 @@ ortak_db_uretim_kilidi_birak <- function(oturum_id,
         "UPDATE MB_OrtakOturum_AktifUretimler SET KilitDurumu = ?,",
         "GuncellemeZamani = ? WHERE OrtakOturumID = ? AND IstekID = ?"
       ),
-      params = normalize_db_params(list(
+      params = .oo_db_bind_params(handle$conn, list(
         normalize_db_technical_value(sonuc_durumu),
         .oo_db_now(),
         oturum_id,
