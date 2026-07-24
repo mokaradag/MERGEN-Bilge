@@ -51,3 +51,29 @@
   left: 50px !important;
   max-width: calc(100% - 50px) !important;
 }
+
+#voice_btn,
+#send_stop_btn {
+  padding: 0 !important;
+}
+
+#voice_btn > .action-label,
+#send_stop_btn > .action-label {
+  display: none !important;
+}
+
+#voice_btn > .action-icon,
+#send_stop_btn > .action-icon {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+}
+
+#voice_btn > .action-icon > i,
+#send_stop_btn > .action-icon > i {
+  margin: 0 !important;
+  line-height: 1 !important;
+}
