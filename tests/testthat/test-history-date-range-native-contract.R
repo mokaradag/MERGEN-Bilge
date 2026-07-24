@@ -53,6 +53,6 @@ test_that("Söyleşi Geçmişi yerel tarih aralığı bootstrap-datepicker yükl
   expect_true(grepl("history-date-range-set", js_text, fixed = TRUE))
   expect_true(grepl("Shiny\\.setInputValue", js_text, perl = TRUE))
   expect_true(grepl("formatDisplayDate", js_text, fixed = TRUE))
-  expect_true(grepl("match[3] + '/' + match[2] + '/' + match[1]", js_text, fixed = TRUE))
+  expect_true(grepl("match[3] + '.' + match[2] + '.' + match[1]", js_text, fixed = TRUE))
   expect_true(grepl("history-native-date-display-shell", css_text, fixed = TRUE))
 })
