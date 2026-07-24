@@ -111,6 +111,21 @@ testthat::test_that("PDF kaynağı aynı adlı Word belgesine çözümlenir", {
   )
 })
 
+testthat::test_that("düz && içeren PDF adı aynı gövdeli Word belgesine çözümlenir", {
+  .fileidx_source_once()
+  base <- tempfile("idx_flat_word")
+  dir.create(base, recursive = TRUE)
+  word_file <- file.path(base, "Surecler&&Alt Surec&&Talimati.docx")
+  writeLines("x", word_file)
+
+  bulunan <- search_file_in_folder(base, "Surecler&&Alt Surec&&Talimati.pdf")
+
+  testthat::expect_identical(
+    normalizePath(bulunan, winslash = "/"),
+    normalizePath(word_file, winslash = "/")
+  )
+})
+
 testthat::test_that("tam PDF varsa Word yedeğinden önce seçilir", {
   .fileidx_source_once()
   base <- tempfile("idx_exact")
