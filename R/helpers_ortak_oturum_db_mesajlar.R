@@ -287,8 +287,7 @@ ortak_db_uretim_kilidi_al <- function(oturum_id,
         params = normalize_db_params(list(oturum_id))
       )
 
-      calisiyor <- nrow(aktif) > 0L &&
-        isTRUE(as.character(aktif$KilitDurumu[1]) == "Çalışıyor")
+      calisiyor <- nrow(aktif) > 0L && isTRUE(as.character(aktif$KilitDurumu[1]) == "Çalışıyor")
 
       if (calisiyor) {
         # Bayat kilit denetimi: başlama zamanı eşiği aştıysa devralınır.
@@ -486,8 +485,7 @@ ortak_db_aktif_uretim_var_mi <- function(oturum_id, conn = NULL, bayat_dakika = 
       "SELECT KilitDurumu, BaslamaZamani FROM MB_OrtakOturum_AktifUretimler WHERE OrtakOturumID = ?",
       params = list(oturum_id)
     )
-    calisiyor <- nrow(aktif) > 0L &&
-      isTRUE(as.character(aktif$KilitDurumu[1]) == "Çalışıyor")
+    calisiyor <- nrow(aktif) > 0L && isTRUE(as.character(aktif$KilitDurumu[1]) == "Çalışıyor")
     if (!isTRUE(calisiyor)) {
       return(FALSE)
     }
