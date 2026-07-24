@@ -144,6 +144,25 @@ ortak_db_reset_availability_cache <- function() {
     any(grepl("sqlite", class(conn), ignore.case = TRUE))
 }
 
+# DB parametre bağlama: SQLite (yalnızca çevrimdışı testler) için istemci/
+# native kodlama indirgemesini atlar. normalize_db_params() -> normalize_db_value()
+# DB_CLIENT_ENCODING (veya Windows'ta UTF-8 olmayan native locale) UTF-8
+# değilse karakter parametrelerini native/istemci baytlarına indirger; bu,
+# gerçek SQL Server/ODBC bağlantısında sürücü tarafından simetrik olarak geri
+# çözülür, ancak RSQLite döndürdüğü metni her zaman UTF-8 işaretlediğinden
+# SQLite'ta bu indirgeme geri dönüşsüz bozulmaya (örn. "Çalışıyor" durum
+# karşılaştırmalarının identical() ile eşleşmemesi) yol açar. Parametreler bu
+# noktaya kadar zaten normalize_db_technical_value()/normalize_db_visible_value()
+# ile UTF-8 olarak hazırlanmıştır; SQLite dalında bu haliyle bağlanır. Gerçek
+# SQL Server/ODBC yolu değişmeden normalize_db_params() üzerinden geçer.
+.oo_db_bind_params <- function(conn, params, repair_mojibake = FALSE) {
+  if (.oo_db_is_sqlite(conn)) {
+    params
+  } else {
+    normalize_db_params(params, repair_mojibake = repair_mojibake)
+  }
+}
+
 # Ortak Oturum zaman damgaları Türkiye saatinde (Europe/Istanbul, sabit +3, DST
 # yok) saklanır; böylece SSMS'te ve arayüzde yerel saat okunur (issue: MB_*
 # tablolarındaki GMT damgaları). DB-tarafı ifadelerle birebir hizalıdır:
