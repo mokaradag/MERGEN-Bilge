@@ -132,8 +132,12 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
   last <- tail(parts, 1)
   if (!identical(tolower(tools::file_ext(last)), "pdf")) return(NULL)
 
-  target_stem <- tolower(tools::file_path_sans_ext(basename(last)))
-  if (!nzchar(target_stem)) return(NULL)
+  target_stems <- unique(tolower(c(
+    tools::file_path_sans_ext(basename(as.character(hint[1]))),
+    tools::file_path_sans_ext(basename(last))
+  )))
+  target_stems <- target_stems[nzchar(target_stems)]
+  if (!length(target_stems)) return(NULL)
 
   idx <- .build_basename_index(base_path)
   all_paths <- unique(unlist(idx$map, use.names = FALSE))
@@ -142,7 +146,7 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
   word_exts <- c("docx", "docm", "doc")
   candidate_exts <- tolower(tools::file_ext(all_paths))
   candidate_stems <- tolower(tools::file_path_sans_ext(basename(all_paths)))
-  cand <- all_paths[candidate_exts %in% word_exts & candidate_stems == target_stem]
+  cand <- all_paths[candidate_exts %in% word_exts & candidate_stems %in% target_stems]
   cand <- cand[vapply(cand, path_exists_relaxed, logical(1))]
   if (!length(cand)) return(NULL)
 
