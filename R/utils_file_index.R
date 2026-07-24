@@ -122,6 +122,50 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
   NULL
 }
 
+.search_pdf_word_fallback <- function(base_path, hint) {
+  if (!is.character(hint) || length(hint) == 0 || is.na(hint[1])) return(NULL)
+
+  parts <- trimws(strsplit(as.character(hint[1]), "&&", fixed = TRUE)[[1]])
+  parts <- parts[nzchar(parts)]
+  if (!length(parts)) return(NULL)
+
+  last <- tail(parts, 1)
+  if (!identical(tolower(tools::file_ext(last)), "pdf")) return(NULL)
+
+  target_stem <- tolower(tools::file_path_sans_ext(basename(last)))
+  if (!nzchar(target_stem)) return(NULL)
+
+  idx <- .build_basename_index(base_path)
+  all_paths <- unique(unlist(idx$map, use.names = FALSE))
+  if (!length(all_paths)) return(NULL)
+
+  word_exts <- c("docx", "docm", "doc")
+  candidate_exts <- tolower(tools::file_ext(all_paths))
+  candidate_stems <- tolower(tools::file_path_sans_ext(basename(all_paths)))
+  cand <- all_paths[candidate_exts %in% word_exts & candidate_stems == target_stem]
+  cand <- cand[vapply(cand, path_exists_relaxed, logical(1))]
+  if (!length(cand)) return(NULL)
+
+  left <- if (length(parts) > 1) parts[seq_len(length(parts) - 1)] else character(0)
+  if (length(left)) {
+    base_norm <- normalizePath(base_path, winslash = "/", mustWork = FALSE)
+    cand_rel <- vapply(cand, function(p) {
+      p_norm <- normalizePath(p, winslash = "/", mustWork = FALSE)
+      prefix <- paste0(base_norm, "/")
+      if (startsWith(p_norm, prefix)) substr(p_norm, nchar(prefix) + 1L, nchar(p_norm)) else p_norm
+    }, character(1))
+    scores <- vapply(cand_rel, .score_path_by_parts, integer(1), parts = left)
+    cand <- cand[scores == length(left)]
+    if (!length(cand)) return(NULL)
+  }
+
+  priorities <- match(tolower(tools::file_ext(cand)), word_exts)
+  cand <- cand[priorities == min(priorities)]
+  if (length(cand) != 1L) return(NULL)
+
+  cand[[1]]
+}
+
 # '&&' parçalarının TÜMÜNÜ (son parça dahil) yol içinde barındıran indeks
 # girişini seçer. '&&' düz dosya adının parçasıysa (dizin değil; disk basename'i
 # 'A&&B&&dosya.pdf' gibi '&&' içerir) tam ad bu yolla yakalanır: '.search_with_hint'
@@ -165,7 +209,7 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
   NULL
 }
 
-# Akıllı arama: önce TAM basename eşleşmesi, sonra ipucu, son çare parça içerme.
+# Akıllı arama: önce TAM basename eşleşmesi, sonra ipucu, sonra güvenli tür eşlemesi.
 search_file_in_folder <- function(base_path, target_filename) {
   log_info("[FILE SEARCH] base='{base_path}', target='{target_filename}'")
   if (!dir.exists(base_path)) {
@@ -192,7 +236,13 @@ search_file_in_folder <- function(base_path, target_filename) {
       return(hit_hint)
     }
   }
-  # 3) '&&' düz dosya adı için son çare: tüm parçaları içeren en iyi aday
+  # 3) Langflow PDF atıfı diskteki aynı adlı Word belgesine çözümlenebilir.
+  hit_word <- .search_pdf_word_fallback(base_path, target_filename)
+  if (!is.null(hit_word)) {
+    log_info("[FILE SEARCH] aynı adlı Word belgesi bulundu: {hit_word}")
+    return(hit_word)
+  }
+  # 4) '&&' düz dosya adı için son çare: tüm parçaları içeren en iyi aday
   if (is.character(target_filename) && grepl("&&", target_filename, fixed = TRUE)) {
     hit_all <- .search_all_parts_contained(base_path, target_filename)
     if (!is.null(hit_all)) {
