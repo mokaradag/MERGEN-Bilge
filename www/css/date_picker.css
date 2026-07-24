@@ -147,6 +147,36 @@
   min-height: 34px;
 }
 
+.history-native-date-display-shell {
+  position: relative;
+  flex: 0 0 170px;
+  width: 170px;
+  min-width: 0;
+}
+
+.history-native-date-display-shell .history-native-date-input {
+  width: 100% !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+  caret-color: transparent;
+}
+
+.history-native-date-display {
+  position: absolute;
+  top: 50%;
+  left: 13px;
+  right: 36px;
+  transform: translateY(-50%);
+  color: var(--text-secondary);
+  line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.history-native-date-display.is-placeholder {
+  color: var(--text-muted);
+}
+
 .history-native-date-separator {
   color: var(--text-secondary) !important;
   font-size: 18px;

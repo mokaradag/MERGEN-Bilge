@@ -36,6 +36,7 @@ test_that("Söyleşi Geçmişi yerel tarih aralığı bootstrap-datepicker yükl
   module_text <- .read_history_date_contract_text("R", "module_chat_history.R")
   manifest_text <- .read_history_date_contract_text("R", "config_ui_assets.R")
   js_text <- .read_history_date_contract_text("www", "js", "history_date_range.js")
+  css_text <- .read_history_date_contract_text("www", "css", "date_picker.css")
 
   expect_false(
     grepl("dateRangeInput\\s*\\(", module_text, perl = TRUE),
@@ -51,4 +52,7 @@ test_that("Söyleşi Geçmişi yerel tarih aralığı bootstrap-datepicker yükl
   expect_true(grepl('"js/history_date_range.js"', manifest_text, fixed = TRUE))
   expect_true(grepl("history-date-range-set", js_text, fixed = TRUE))
   expect_true(grepl("Shiny\\.setInputValue", js_text, perl = TRUE))
+  expect_true(grepl("formatDisplayDate", js_text, fixed = TRUE))
+  expect_true(grepl("match[3] + '.' + match[2] + '.' + match[1]", js_text, fixed = TRUE))
+  expect_true(grepl("history-native-date-display-shell", css_text, fixed = TRUE))
 })

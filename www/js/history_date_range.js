@@ -58,8 +58,51 @@
     );
   }
 
+  function formatDisplayDate(value) {
+    var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+    return match ? match[3] + '.' + match[2] + '.' + match[1] : '';
+  }
+
+  function updateDateDisplay(input) {
+    if (!input) return;
+
+    var shell = input.closest('.history-native-date-display-shell');
+    var display = shell && shell.querySelector('.history-native-date-display');
+    if (!display) return;
+
+    display.textContent = formatDisplayDate(input.value) || 'gg.aa.yyyy';
+    display.classList.toggle('is-placeholder', !input.value);
+  }
+
+  function enhanceDateInput(input) {
+    if (!input || input.dataset.displayEnhanced === 'true') {
+      updateDateDisplay(input);
+      return;
+    }
+
+    var shell = document.createElement('span');
+    var display = document.createElement('span');
+
+    shell.className = 'history-native-date-display-shell';
+    display.className = 'history-native-date-display';
+    display.setAttribute('aria-hidden', 'true');
+
+    input.parentNode.insertBefore(shell, input);
+    shell.appendChild(input);
+    shell.appendChild(display);
+    input.dataset.displayEnhanced = 'true';
+
+    updateDateDisplay(input);
+  }
+
   function initContainer(container) {
     if (!container || container.dataset.initialized === 'true') return;
+
+    var startEl = container.querySelector('[data-history-date-role="start"]');
+    var endEl = container.querySelector('[data-history-date-role="end"]');
+
+    enhanceDateInput(startEl);
+    enhanceDateInput(endEl);
 
     // Shiny hazır değilse initialized yazma; shiny:connected ile tekrar denenecek.
     if (emitRange(container)) {
@@ -95,6 +138,8 @@
 
       startEl.value = message.start || '';
       endEl.value = message.end || '';
+      updateDateDisplay(startEl);
+      updateDateDisplay(endEl);
 
       emitRange(container);
     });
@@ -118,6 +163,7 @@
       return;
     }
 
+    updateDateDisplay(target);
     emitRange(target.closest('.history-native-date-range'));
   });
 
@@ -127,6 +173,7 @@
       return;
     }
 
+    updateDateDisplay(target);
     emitRange(target.closest('.history-native-date-range'));
   });
 
