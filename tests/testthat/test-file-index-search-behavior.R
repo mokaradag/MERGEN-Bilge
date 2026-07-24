@@ -12,6 +12,10 @@
   if (exists(".score_path_by_parts", envir = globalenv(),
              mode = "function", inherits = TRUE) &&
       exists(".search_with_hint", envir = globalenv(),
+             mode = "function", inherits = TRUE) &&
+      exists(".search_pdf_word_fallback", envir = globalenv(),
+             mode = "function", inherits = TRUE) &&
+      exists("search_file_in_folder", envir = globalenv(),
              mode = "function", inherits = TRUE)) {
     return(invisible(TRUE))
   }
@@ -90,4 +94,64 @@ testthat::test_that(".search_with_hint sol parçalarla en iyi adayı puanlayarak
   # "ankara && rapor.pdf" -> ankara yolu seçilir.
   secilen2 <- .search_with_hint(base, "ankara && rapor.pdf")
   testthat::expect_true(grepl("/ankara/", secilen2, fixed = TRUE))
+})
+
+testthat::test_that("PDF kaynağı aynı adlı Word belgesine çözümlenir", {
+  .fileidx_source_once()
+  base <- tempfile("idx_word")
+  dir.create(file.path(base, "surecler"), recursive = TRUE)
+  word_file <- file.path(base, "surecler", "Is Akisi Talimati.docx")
+  writeLines("x", word_file)
+
+  bulunan <- search_file_in_folder(base, "surecler&&Is Akisi Talimati.pdf")
+
+  testthat::expect_identical(
+    normalizePath(bulunan, winslash = "/"),
+    normalizePath(word_file, winslash = "/")
+  )
+})
+
+testthat::test_that("tam PDF varsa Word yedeğinden önce seçilir", {
+  .fileidx_source_once()
+  base <- tempfile("idx_exact")
+  dir.create(base, recursive = TRUE)
+  pdf_file <- file.path(base, "Kilavuz.pdf")
+  writeLines("pdf", pdf_file)
+  writeLines("docx", file.path(base, "Kilavuz.docx"))
+
+  bulunan <- search_file_in_folder(base, "Kilavuz.pdf")
+
+  testthat::expect_identical(
+    normalizePath(bulunan, winslash = "/"),
+    normalizePath(pdf_file, winslash = "/")
+  )
+})
+
+testthat::test_that("klasör ipucu aynı adlı Word belgeleri arasında doğru adayı seçer", {
+  .fileidx_source_once()
+  base <- tempfile("idx_hint_word")
+  dir.create(file.path(base, "surec_a"), recursive = TRUE)
+  dir.create(file.path(base, "surec_b"), recursive = TRUE)
+  writeLines("a", file.path(base, "surec_a", "Talimati.docx"))
+  word_file <- file.path(base, "surec_b", "Talimati.docx")
+  writeLines("b", word_file)
+
+  bulunan <- search_file_in_folder(base, "surec_b&&Talimati.pdf")
+
+  testthat::expect_identical(
+    normalizePath(bulunan, winslash = "/"),
+    normalizePath(word_file, winslash = "/")
+  )
+})
+
+testthat::test_that("ipucusuz belirsiz Word eşleşmesi yanlış dosya açmaz", {
+  .fileidx_source_once()
+  base <- tempfile("idx_ambiguous_word")
+  dir.create(file.path(base, "a"), recursive = TRUE)
+  dir.create(file.path(base, "b"), recursive = TRUE)
+  writeLines("a", file.path(base, "a", "Talimati.docx"))
+  writeLines("b", file.path(base, "b", "Talimati.docx"))
+
+  testthat::expect_null(search_file_in_folder(base, "Talimati.pdf"))
+  testthat::expect_null(search_file_in_folder(base, "Talimati.xlsx"))
 })
