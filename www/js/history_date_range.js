@@ -60,7 +60,7 @@
 
   function formatDisplayDate(value) {
     var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
-    return match ? match[3] + '/' + match[2] + '/' + match[1] : '';
+    return match ? match[3] + '.' + match[2] + '.' + match[1] : '';
   }
 
   function updateDateDisplay(input) {
@@ -70,7 +70,7 @@
     var display = shell && shell.querySelector('.history-native-date-display');
     if (!display) return;
 
-    display.textContent = formatDisplayDate(input.value) || 'gg/aa/yyyy';
+    display.textContent = formatDisplayDate(input.value) || 'gg.aa.yyyy';
     display.classList.toggle('is-placeholder', !input.value);
   }
 
