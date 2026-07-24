@@ -100,6 +100,30 @@
   list(name = trimws(m[2]), page = page)
 }
 
+# Bazı Langflow akışları kaynak satırını "[yol/dosya.pdf - açıklama]" veya
+# "yol/dosya.pdf - açıklama" biçiminde döndürür. Açıklama dosya yolunun parçası
+# değildir; uzantı denetiminden önce yalnızca açık "boşluk-tire-boşluk" sınırında
+# sökülür. Eşleşmeyen metin değiştirilmez; sonraki güvenlik/yol denetimleri aynen
+# uygulanır.
+.langflow_strip_source_description <- function(name) {
+  candidate <- trimws(as.character(name %||% "")[1])
+  if (is.na(candidate) || !nzchar(candidate)) return(candidate)
+
+  patterns <- c(
+    "^\\[(.+?\\.(?:pdf|docx|doc))[ \\t]+-[ \\t]+(.+)\\]$",
+    "^(.+?\\.(?:pdf|docx|doc))[ \\t]+-[ \\t]+(.+)$"
+  )
+  for (pattern in patterns) {
+    m <- regmatches(candidate, regexec(
+      pattern, candidate, perl = TRUE, ignore.case = TRUE
+    ))[[1]]
+    if (length(m) == 3L && nzchar(trimws(m[2]))) {
+      return(trimws(m[2]))
+    }
+  }
+  candidate
+}
+
 # Tek bir düz "Kaynak" satırı adayını (numaralı girişin metni) kanonik kayda
 # çevirir: list(title, path, page, type). Güvenlik: URL/mutlak/sürücü/gezinme
 # (../.) girişleri ve belge uzantısı taşımayanlar reddedilir (NULL). '&&' düz
@@ -114,6 +138,10 @@
   name <- trimws(name)
   name <- sub("[.,;]+$", "", name)
   if (!nzchar(name)) return(NULL)
+
+  # Köşeli parantezli "dosya - açıklama" biçiminde yalnızca kanonik dosya yolu
+  # tutulur; açıklama tıklama çözümleme ipucuna karışmaz.
+  name <- .langflow_strip_source_description(name)
 
   # Sayfa açıklaması eki (varsa) belge uzantısı doğrulamasından ÖNCE ayrılır;
   # örn. "Grup&&dosya.pdf (Sayfa 3)" veya "dosya.pdf, s. 3" gibi ekler uzantı
