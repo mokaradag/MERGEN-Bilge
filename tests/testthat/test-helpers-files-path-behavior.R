@@ -93,14 +93,10 @@ testthat::test_that("normalize_for_path_compare UNC önekleri, çoklu slash ve b
   testthat::expect_identical(normalize_for_path_compare("/Data/FILE.CSV"), "/data/file.csv")
 })
 
-testthat::test_that("normalize_for_path_compare tek ters-slash'ı normalize etmez (mevcut sınırlama)", {
+testthat::test_that("normalize_for_path_compare tek ters-slash ve UNC ayraçlarını normalize eder", {
   .helperspath_source_once()
-  # Karakterizasyon: gsub fixed deseni iki-ters-slash olduğu için segment
-  # arasındaki TEK ters slash dönüştürülmez; yalnızca küçük harfe iner.
-  # (R kaynağında "a\\b\\c" -> gerçek dize a\b\c)
-  testthat::expect_identical(normalize_for_path_compare("a\\b\\c"), "a\\b\\c")
-  # Baştaki çift ters-slash (UNC) tek forward-slash'a iner, iç tek slash kalır.
-  testthat::expect_identical(normalize_for_path_compare("\\\\srv\\share"), "/srv\\share")
+  testthat::expect_identical(normalize_for_path_compare("a\\b\\c"), "a/b/c")
+  testthat::expect_identical(normalize_for_path_compare("\\\\srv\\share"), "/srv/share")
 })
 
 # ------------------------------------------------------------------------------

@@ -78,7 +78,7 @@ normalize_for_path_compare <- function(path) {
     return("")
   }
 
-  cleaned <- gsub("\\\\", "/", candidate, fixed = TRUE)
+  cleaned <- gsub("\\", "/", candidate, fixed = TRUE)
   cleaned <- sub("^//\\?/UNC", "//", cleaned, perl = TRUE)
   cleaned <- sub("^//\\?/", "//", cleaned, perl = TRUE)
   cleaned <- sub("^//(?=[A-Za-z]:)", "", cleaned, perl = TRUE)
