@@ -168,17 +168,10 @@ copy_to_mcp_base <- function(upload, user_id) {
     }
   }
 
-  dest_readable <- tryCatch(
-    resolve_readable_path(dest_chr),
-    error = function(e) dest_chr
-  )
-
-  if (path_exists_relaxed(dest_readable)) {
-    return(gsub("\\\\", "/", as.character(dest_readable), fixed = TRUE))
-  }
-
-  # Varlık zaten doğrulandı; safe_windows_short_path() depolama kökünü değiştirebileceğinden burada ÇAĞRILMAZ.
-  dest_chr
+  # Kopyalayan ve çözen katmanlar aynı yol biçimini döndürmelidir. Özellikle
+  # Windows 8.3 kısa yol ile uzun yol aynı fiziksel dosya için farklı kimlik
+  # üretmemelidir; must_exist = FALSE kısa yola zorlamadan tekilleştirir.
+  normalize_mcp_path(dest_chr, must_exist = FALSE)
 }
 
 # Bir data.frame nesnesini hızlı önizleme amacıyla basit CSV markdown metnine dönüştürür.
