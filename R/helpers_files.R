@@ -177,7 +177,8 @@ copy_to_mcp_base <- function(upload, user_id) {
     return(gsub("\\\\", "/", as.character(dest_readable), fixed = TRUE))
   }
 
-  safe_windows_short_path(dest_readable, must_exist = TRUE)
+  # Varlık zaten doğrulandı; safe_windows_short_path() depolama kökünü değiştirebileceğinden burada ÇAĞRILMAZ.
+  dest_chr
 }
 
 # Bir data.frame nesnesini hızlı önizleme amacıyla basit CSV markdown metnine dönüştürür.

@@ -286,6 +286,10 @@ test_that("aynı görünen adlı dosyalar kullanıcı bazında ayrı indekslenir
 
 test_that("eşzamanlı parti sayısı yapılandırılan sınırı aşmaz", {
   env <- .ingestionEnv()
+  # Ortam değişkeni ayarlıysa R seçeneğinden önceliklidir (bkz.
+  # file_ingestion_int_setting()); geliştirici/VM .Renviron dosyasında gerçek
+  # bir değer varsa test override'ını sessizce geçersiz kılabilir.
+  withr::local_envvar(c(MERGEN_FILE_INGESTION_MAX_CONCURRENT = ""))
   withr::local_options(list(mergen.file_ingestion.max_concurrent = 2L))
   env$file_ingestion_pool_has_capacity <- function() TRUE
 
@@ -308,6 +312,10 @@ test_that("worker havuzu doluyken yeni alım görevi gönderilmez", {
 
 test_that("kuyruk dolduğunda iş sessizce düşürülmez, açık red döner", {
   env <- .ingestionEnv()
+  # Ortam değişkeni ayarlıysa R seçeneğinden önceliklidir (bkz.
+  # file_ingestion_int_setting()); geliştirici/VM .Renviron dosyasında gerçek
+  # bir değer varsa test override'ını sessizce geçersiz kılabilir.
+  withr::local_envvar(c(MERGEN_FILE_INGESTION_MAX_QUEUE = ""))
   withr::local_options(list(mergen.file_ingestion.max_queue = 2L))
 
   expect_true(env$file_ingestion_enqueue(list(id = "1", session_token = "t1")))
@@ -329,6 +337,10 @@ test_that("kapanan oturumun bekleyen işleri kuyruktan düşer", {
 
 test_that("kapasite yokken parti kuyruğa alınır, varken hemen başlar", {
   env <- .ingestionEnv()
+  # Ortam değişkeni ayarlıysa R seçeneğinden önceliklidir (bkz.
+  # file_ingestion_int_setting()); geliştirici/VM .Renviron dosyasında gerçek
+  # bir değer varsa test override'ını sessizce geçersiz kılabilir.
+  withr::local_envvar(c(MERGEN_FILE_INGESTION_MAX_CONCURRENT = ""))
   withr::local_options(list(mergen.file_ingestion.max_concurrent = 1L))
   env$file_ingestion_pool_has_capacity <- function() TRUE
 
