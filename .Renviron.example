@@ -150,6 +150,17 @@ MERGEN_UPLOADS_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
 MERGEN_INDEX_PATH="//mainserver/MERGEN Bilge/data/index.json"
 MERGEN_MCP_BASE_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
 
+# --- Bloklamayan dosya alım (ingestion) hattı ---
+# Yükleme doğrulaması, kalıcı klasöre kopyalama ve bütünlük denetimi Shiny olay
+# döngüsünde DEĞİL, future worker'ında çalışır. Aşağıdaki sınırlar aynı anda kaç
+# YÜKLEME PARTİSİNİN worker havuzunu kullanabileceğini belirler; sohbet/akış/TTS
+# görevlerinin aç kalmaması için varsayılan bilinçli olarak düşüktür.
+# Bir parti kendi dosyalarını SIRAYLA işler; dosya başına ayrı worker açılmaz.
+#   MERGEN_FILE_INGESTION_MAX_CONCURRENT=2
+#   MERGEN_FILE_INGESTION_MAX_QUEUE=32
+# Ayrıntılı alım metrikleri (dosya adı/yol içermez; varsayılan KAPALI):
+#   MERGEN_FILE_INGESTION_METRICS=false
+
 # Günlük log dizini. Uygulama, günlük dosyasını (mergen_YYYYMMDD.log) BU dizine
 # yazar. ÖNEMLİ: Üretim başlatıcısı (run_mergen_prod.bat) bugünün mergen_*.log
 # dosyasını UYGULAMA KLASÖRÜNÜN yerel "logs\" dizininde ön-oluşturur ve canlı

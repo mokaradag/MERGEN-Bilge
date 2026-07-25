@@ -183,14 +183,20 @@ source_manifest_sections <- list(
     "R/helpers_chartlab.R"
   ),
 
-  # files_preview_pipeline: Görsel galeri, önizleme, dosya pipeline ve dosya
-  # yol/okuma yardımcıları.
+  # files_preview_pipeline: Görsel galeri, önizleme, dosya pipeline, dosya
+  # yol/okuma yardımcıları ve bloklamayan dosya alım (ingestion) hattı.
+  # Alım zinciri saf plan -> worker -> kuyruk -> ana süreç runtime sırasını
+  # korur ve copy_to_mcp_base tanımlandıktan SONRA yüklenir.
   files_preview_pipeline = c(
     "R/helpers_image_gallery.R",
     "R/helpers_preview.R",
     "R/helpers_file_pipeline.R",
     "R/helpers_files_path.R",
-    "R/helpers_files.R"
+    "R/helpers_files.R",
+    "R/helpers_file_ingestion_task.R",
+    "R/helpers_file_ingestion_worker.R",
+    "R/helpers_file_ingestion_queue.R",
+    "R/helpers_file_ingestion_runtime.R"
   ),
 
   # file_manager_helpers: Dosya Yönetimi yardımcı zinciri: politika, bağlam

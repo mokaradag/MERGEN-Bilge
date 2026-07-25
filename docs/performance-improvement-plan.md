@@ -35,7 +35,7 @@ As of the pre-index-cache 2026-06-19 baseline, the comparable fake-lane smoke ar
 1. LLM request latency or stalled fake/proxy requests occupy too much Shiny/future capacity near 24 active users.
 2. Message send preparation may perform repeated synchronous work before handing off to the async/streaming path.
 3. **[ADDRESSED in code 2026-06-22; VM/SQL-Server validation pending]** DB connection pooling is now **implemented as an opt-in, transaction-safe layer** in `R/helpers_db_pool.R` (was previously absent — `R/config_file_store.R` still keeps `pool <- NULL` as the backward-compatible default). Before this change `get_connection()` opened a fresh direct ODBC connection (and disconnected) on *every* call, and `finalize_stream_message()` in `R/server_handler_true_streaming.R` ran a **sequence** of these synchronous DB ops on the main Shiny event loop per finished message (`ensure_chat_ready()`, `log_ai_usage()`, `save_message_to_db()`, `update_message_reasoning_content()`, `saved_chats_data$refresh()`). The **transaction-safety constraint still holds and is now respected**: `save_message_to_db()` runs a multi-statement transaction (`dbBegin`/`dbGetQuery`/`dbCommit`), and a naive global `pool::dbPool` *would* be unsafe (a `Pool` cannot hold a transaction across statements). The new layer therefore uses transaction-aware checkout — `db_acquire_tx_connection()` does `pool::poolCheckout()` for the transaction site, rolls back **before** returning the connection, and `with_db_transaction()`/`with_db_connection()` guarantee return on every path. Reads are pooled automatically (the pool object is registered into `.GlobalEnv$pool`, which the unchanged `get_connection()` already consults). Pooling is **default OFF** (`MERGEN_DB_POOL_ENABLED`), so cloud/test/boot behavior is unchanged; it is initialized once at app start (`app.R` `onStart`) and closed on `onStop`. Offline leak/checkout/release/rollback/encoding tests pass against real SQLite (`tests/testthat/test-db-pool-behavior.R`) and the interactive soak lane proves no leak (checkout==return) under repeated session load. **Still pending:** enabling `MERGEN_DB_POOL_ENABLED=TRUE` on the Windows VM and re-validating Turkish at-rest writes against SQL Server (`run_vm_encoding_preflight_real.R`) plus a re-run of the attach soak boundary to measure the real-chat capacity delta.
-4. File context/MCP registry preparation may repeatedly scan or copy session file metadata.
+4. **[ADDRESSED in code 2026-07-25; VM validation pending]** File upload ingestion ran fully on the Shiny event loop. Both entry points (`fm_process_bulk_upload_batch()` in the File Manager, `handle_file_upload_batch()` in Ana Söyleşi) executed `validate_uploaded_file()` + `digest::digest(file=)` hashing + `fs::file_copy()` + size verification + a per-file `index.json` read/modify/write **synchronously inside an observer**; the File Manager path additionally wrapped the whole `for` loop in `withProgress()`. A multi-file batch therefore froze the uploading session *and every other session on that R process* for the duration of the disk work — worst on UNC/network shares and near the 25 MB per-file cap. The same file was also registered **twice** (pipeline + summarizer), doubling index lock/IO. This is now a bounded-concurrency background pipeline (`R/helpers_file_ingestion_*.R`): the observer does only cheap metadata planning and returns; validation/hash/copy/verify run in one future task per batch (files sequential), capped by `MERGEN_FILE_INGESTION_MAX_CONCURRENT` (default 2) with a bounded queue and a `future::nbrOfFreeWorkers()` gate so uploads cannot starve LLM/streaming/TTS/STT. Persistent index writes stay in the main process **on purpose** (the `dir.create` index lock polls with `Sys.sleep()`; cross-process contention would be worse than one short local write) but are now **batched into a single mutation per batch**. Registration happens exactly once. **Still pending:** measuring real UNC copy latency and second-session responsiveness during a large batch on the Windows VM.
 5. Streaming/promise callback cleanup may add pressure when many requests time out simultaneously.
 6. A single Shiny process may be the long-term architecture limit; do not change deployment before measuring app-path bottlenecks.
 7. **[CONFIRMED for the pre-cache soak number; mitigated by index cache — static + VM-console evidence 2026-06-19]** The fake/smoke soak lane is **GET-only** against the app root (`soak_client.R:86,108-110` `httpget=TRUE`; load target `cfg$app_url` per `run_operational_soak_gate.R:235`). It serves the static `dashboardPage` index (`ui.R:7`) by re-serializing the tag tree per request on one httpuv thread, and never opens a websocket session — so it does **not** exercise hypotheses 1–5 (chat/LLM/DB). The historical 22→24 cliff was single-threaded **index-serving** saturation. After index caching, repeated isolated VM `GET /` timings improved from ~0.64 s to ~0.007 s warm cache, and VM console soak observations report 250/420 s and 1000/420 s PASS in smoke/fake mode. Therefore the soak-lane lever was per-request index serialization cost; DB pooling remains a separate real-chat/session concern.
@@ -73,6 +73,60 @@ As of the pre-index-cache 2026-06-19 baseline, the comparable fake-lane smoke ar
 | 2026-06-19 | Restored maintainability ratchet after the daily-log-file reliability work pushed `R/config_logging.R` to 27 functions: extracted the daily-file cluster (`current_mergen_log_date`, `current_mergen_log_file_path`, `mergen_daily_file_appender`, `mergen_ensure_daily_log_file`) to new foundation file `R/config_logging_daily_file.R` (loaded before `config_logging.R`). | `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")` (222 PASS) + manifest/seam/zone/section contracts + `parse_sanity_check.R` (842 files) | PASS (score 100/100, max functions 24, 0 files ≥25 functions) | Behavior byte-for-byte unchanged; pure maintainability split. |
 
 ## Session notes
+
+### 2026-07-25 — File upload ingestion moved off the Shiny event loop (bounded concurrency)
+
+Root cause confirmed by reading the pre-change code, not by inference:
+
+| Entry point | Blocking work on the event loop |
+|---|---|
+| `fm_process_bulk_upload_batch()` (`R/helpers_file_manager_upload_runtime.R`) | Whole batch inside one `observeEvent`, wrapped in `withProgress()`: per file `validate_uploaded_file()` (stat + `file.access`), `copy_to_mcp_base()` (xxhash64 of the full file + `fs::file_copy` + size check), `ensure_persisted_upload_index()` → `mergen_register_uploaded_file()` (index lock + full `index.json` read/write), `process_uploaded_file()`. |
+| `handle_file_upload_batch()` (`R/helpers_file_pipeline.R`) | `shinyjs::delay(50, ...)` yielded *between* files, but each file still ran `copy_to_mcp_base()` + size verification + `global_register_file()` synchronously. |
+| `processAndSummarizeFile()` | Called `global_register_file()` **again** for the same file → duplicate index lock + full index write per upload. |
+
+Only the summarization step was already async.
+
+Change: a shared four-layer ingestion pipeline (`R/helpers_file_ingestion_task.R`
+pure plan → `R/helpers_file_ingestion_worker.R` worker execution →
+`R/helpers_file_ingestion_queue.R` bounded slots/queue →
+`R/helpers_file_ingestion_runtime.R` main-process dispatch/commit/cancel). One
+future task per **batch** (its files sequential) instead of one per file, so a
+20-file drop cannot fan out into 20 workers. Worker dispatch uses
+`dependency_mode = "explicit"` with a **memoized** globals bundle
+(`file_ingestion_worker_globals()`), so the recursive `.GlobalEnv` dependency
+scan runs once per R process rather than per batch — the same trap that caused
+the 2026-07-11 fast-lane regression.
+
+Deliberate non-changes:
+
+- Persistent index writes stay in the main process. The index lock is
+  `dir.create`-based and polls with `Sys.sleep()` when contended; today only the
+  main process writes it, so contention is zero. Moving writes into workers
+  would introduce genuine cross-process contention and could block the event
+  loop for up to the 5 s lock timeout. Instead the write is now **one batched
+  mutation per batch** (`mergen_index_persisted_files()`), so main-process index
+  cost is independent of batch size.
+- The 25 MB cap is unchanged. Verified (not assumed) that Shiny's `FileUploader`
+  POSTs **one file per HTTP request**, so `shiny.maxRequestSize` is effectively a
+  per-file limit and the existing "Dosya başına en fazla 25 MB" wording is
+  accurate; a regression test now locks that semantics.
+
+Evidence produced in this session (offline, Linux cloud checkout):
+
+| Check | Result |
+|---|---|
+| `test-file-ingestion-pipeline-behavior.R` | PASS (92 assertions; real temp-FS copy, integrity, cleanup, per-user isolation, queue bounds, cancel/session gating) |
+| `test-file-ingestion-contract.R` | PASS (layer split, no live Shiny object in the worker path, index stays main-process, exactly-once registration, dispatch does no expensive work) |
+| `test-file-pipeline-upload-batch-behavior.R` | PASS (42 assertions; unsupported extension never reaches the worker; dispatch returns with zero copy/index/summarize side effects) |
+| `test-upload-size-policy.R` | PASS (per-file semantics, `shiny.maxRequestSize` derivation, browser guard checks each file) |
+| `test-maintainability-ratchet.R` | PASS (score 100/100, max file 778 lines / 24 functions unchanged) |
+| `smoke_app_boot.R`, `parse_sanity_check.R`, `seam_doctor.R` | PASS |
+| soak `interactive_file_ingestion` check | Added to the interactive lane; runs real copy + user-bucket isolation per session |
+
+Not proven here: real UNC/network-share copy latency, Windows short-path/Turkish
+path behavior under load, real multi-user SSO concurrency, and actual
+event-loop responsiveness of a second browser session during a large batch.
+Those remain Windows VM gates.
 
 ### 2026-07-11 — Fast-lane startup: preview `tracked_future_promise()` synchronous dependency scan blocked the critical path
 

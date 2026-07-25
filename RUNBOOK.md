@@ -60,6 +60,7 @@ Bu belge uygulama davranışını değiştirmez; yalnızca güvenli çalıştır
 - Görsel üretimi: image generation endpoint/model/timeout ayarları.
 - TTS/STT: endpoint, model, voice, timeout ve SSL doğrulama seçenekleri.
 - Dosya deposu: `MCP_FILES_BASE`, `MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MERGEN_MCP_BASE_DIR`, `MERGEN_LOG_DIR`.
+- Dosya alım (ingestion) hattı (opsiyonel): `MERGEN_FILE_INGESTION_MAX_CONCURRENT` (varsayılan `2`; aynı anda kaç YÜKLEME PARTİSİ worker havuzunu kullanabilir — sohbet/akış/TTS/STT görevlerinin aç kalmaması için bilinçli olarak düşüktür), `MERGEN_FILE_INGESTION_MAX_QUEUE` (varsayılan `32`; sınırlı FIFO kuyruk, dolduğunda kullanıcı açık uyarı alır, dosya sessizce düşmez) ve `MERGEN_FILE_INGESTION_METRICS` (varsayılan kapalı; açıldığında dosya adı/yol içermeyen tek satırlık alım metrikleri yazılır — 5 sn'yi aşan partiler için bu satır zaten her zaman yazılır). Bir parti tek worker görevidir ve kendi dosyalarını sırayla işler; dosya başına worker açılmaz. Yükleme doğrulama/kopyalama artık Shiny olay döngüsünde çalışmaz, ancak kalıcı indeks yazımı bilinçli olarak ana süreçte kalır (parti başına TEK mutasyon).
 - Bilge Yolaç: Claude Code CLI/Node path, çalışma dizini, izin modu ve tool listesi.
 
 > Gerçek secret değerlerini dokümantasyona, PR açıklamasına, log kesitine veya validation kanıt içine koymayın.

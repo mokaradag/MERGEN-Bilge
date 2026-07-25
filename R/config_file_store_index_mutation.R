@@ -131,6 +131,23 @@ repair_index_display_names_from_path <- function() {
   invisible(idx_fixed)
 }
 
+# İndeks girdisinin anahtar/görünen ad/yol normalizasyonu tek kaynaktan gelir;
+# tekil kayıt ve toplu kayıt yolları aynı kuralları kullanır.
+.file_store_index_entry <- function(path, display_name) {
+  display_name <- basename(as.character(display_name %||% "")[1])
+  path <- as.character(path %||% "")[1]
+
+  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
+    display_name <- normalize_text_utf8(display_name, repair_mojibake = TRUE)
+    path <- normalize_text_utf8(path, repair_mojibake = FALSE)
+  } else {
+    display_name <- enc2utf8(display_name)
+    path <- enc2utf8(path)
+  }
+
+  list(key = tolower(display_name), path = path, display = display_name)
+}
+
 # ==============================================================================
 # DOSYA KAYIT FONKSİYONU
 # Kaynak dosyayı kalıcı depoya kopyalar ve kullanıcı kovasına indeksler.
@@ -221,18 +238,10 @@ mergen_register_uploaded_file <- function(src_path,
     }
   }
 
-  display_name <- basename(as_name)
-
-  if (exists("normalize_text_utf8", mode = "function", inherits = TRUE)) {
-    display_name <- normalize_text_utf8(display_name, repair_mojibake = TRUE)
-    dest_norm <- normalize_text_utf8(dest_norm, repair_mojibake = FALSE)
-  } else {
-    display_name <- enc2utf8(display_name)
-    dest_norm <- enc2utf8(dest_norm)
-  }
-
-  key <- tolower(display_name)
-  entry <- list(path = dest_norm, display = display_name)
+  kayit <- .file_store_index_entry(dest_norm, as_name)
+  dest_norm <- kayit$path
+  key <- kayit$key
+  entry <- list(path = kayit$path, display = kayit$display)
 
   .file_store_mutate_index(function(idx) {
     if (!is.null(user_id)) {
@@ -247,6 +256,40 @@ mergen_register_uploaded_file <- function(src_path,
   })
 
   dest_norm
+}
+
+# Kalıcı klasöre ZATEN kopyalanmış dosyaları TEK indeks mutasyonunda kaydeder.
+# Dosya alım hattı (R/helpers_file_ingestion_runtime.R) kopyalamayı worker'da
+# yaptığı için burada yeniden kopyalama yapılmaz; parti başına tek kilit/tek
+# JSON yazımı ile ana süreçteki indeks maliyeti dosya sayısından bağımsız kalır.
+mergen_index_persisted_files <- function(entries, user_id = NULL) {
+  entries <- entries %||% list()
+  if (!length(entries)) return(character())
+
+  hazirlanan <- lapply(entries, function(e) {
+    .file_store_index_entry(e$path, e$display %||% basename(e$path %||% ""))
+  })
+  hazirlanan <- Filter(function(e) nzchar(e$key) && nzchar(e$path), hazirlanan)
+
+  if (!length(hazirlanan)) return(character())
+
+  .file_store_mutate_index(function(idx) {
+    for (kayit in hazirlanan) {
+      girdi <- list(path = kayit$path, display = kayit$display)
+
+      if (!is.null(user_id)) {
+        uid <- as.character(user_id)
+        if (is.null(idx[[uid]])) idx[[uid]] <- list()
+        idx[[uid]][[kayit$key]] <- girdi
+      } else {
+        idx[[kayit$key]] <- girdi
+      }
+    }
+
+    idx
+  })
+
+  vapply(hazirlanan, function(e) e$display, character(1))
 }
 
 # Esnek seçenekli takma ad; server tarafından MCP dosyalarını kaydetmek için kullanılır

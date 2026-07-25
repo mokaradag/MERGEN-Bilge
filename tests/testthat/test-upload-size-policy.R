@@ -90,3 +90,40 @@ test_that("25 MB üstündeki dosya reddedilir", {
     expect_equal(sonuc$code, "too_large")
   })
 })
+
+# Sınır DOSYA BAŞINADIR: Shiny fileInput her dosyayı ayrı HTTP isteğiyle yükler
+# (shiny.js FileUploader dosya dizinini tek tek ilerletir), bu yüzden
+# shiny.maxRequestSize toplam parti boyutuna değil tek dosyaya uygulanır.
+# Bu sözleşme UI metni ("Dosya başına en fazla N MB") ile tutarlıdır.
+test_that("boyut sınırı toplu yüklemede dosya BAŞINA uygulanır", {
+  .with_options(list(mergen.upload_max_mb = 25L), {
+    kucuk_bir <- tempfile(fileext = ".txt")
+    kucuk_iki <- tempfile(fileext = ".txt")
+    .create_file_with_size(kucuk_bir, 20L * 1024L * 1024L)
+    .create_file_with_size(kucuk_iki, 20L * 1024L * 1024L)
+
+    # Toplam 40 MB > 25 MB olmasına rağmen her dosya tek tek geçerlidir.
+    expect_true(validate_uploaded_file(kucuk_bir, "bir.txt", allowed_ext = "txt")$ok)
+    expect_true(validate_uploaded_file(kucuk_iki, "iki.txt", allowed_ext = "txt")$ok)
+  })
+})
+
+test_that("shiny.maxRequestSize merkezi upload sınırından türetilir", {
+  global_txt <- readLines(file.path(.repo_root, "global.R"), warn = FALSE, encoding = "UTF-8")
+  global_txt <- paste(global_txt, collapse = "\n")
+
+  expect_true(grepl("shiny.maxRequestSize = mergen_upload_max_mb \\* 1024\\^2", global_txt, perl = TRUE))
+  expect_false(grepl("30 \\* 1024\\^2", global_txt, perl = TRUE))
+})
+
+test_that("tarayıcı tarafı koruma her dosyayı ayrı ayrı denetler", {
+  ui_txt <- readLines(
+    file.path(.repo_root, "R", "module_file_manager_ui.R"),
+    warn = FALSE, encoding = "UTF-8"
+  )
+  ui_txt <- paste(ui_txt, collapse = "\n")
+
+  expect_true(grepl("for (var i = 0; i < files.length; i++)", ui_txt, fixed = TRUE))
+  expect_true(grepl("files[i].size > maxBytes", ui_txt, fixed = TRUE))
+  expect_true(grepl("Dosya başına en fazla", ui_txt, fixed = TRUE))
+})

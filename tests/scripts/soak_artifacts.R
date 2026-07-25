@@ -406,6 +406,14 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
         sprintf("Etkilesimli upload dogrulama (basarisiz=%s).",
                 as.character(interactive$upload_failures %||% NA)))
 
+    # Dosya alim hatti (kopyalama + butunluk + kullanici kovasi izolasyonu) da
+    # HER ZAMAN enforced: sessiz bir alim regresyonu PASS gecmemelidir.
+    add("interactive_file_ingestion", TRUE, isTRUE(interactive$ingest_pass),
+        TRUE, isTRUE(interactive$ingest_pass),
+        sprintf("Etkilesimli dosya alim hatti (basarisiz=%s, bayt=%s).",
+                as.character(interactive$ingest_failures %||% NA),
+                as.character(interactive$ingest_bytes %||% NA)))
+
     add("interactive_tx_rollback_clean", TRUE, isTRUE(interactive$rollback_pass),
         TRUE, isTRUE(interactive$rollback_pass),
         "Niyetli islem hatasi rollback ile satir birakmadi.")

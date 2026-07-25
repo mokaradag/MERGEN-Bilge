@@ -237,7 +237,10 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/server_ai_expert_handlers.R", 660L, 22L)
   assert_current_budget("R/helpers_ai_expert_handlers_support.R", 180L, 8L)
   assert_current_budget("R/module_file_manager.R", 560L, 10L)
-  assert_current_budget("R/helpers_file_manager_upload_runtime.R", 140L, 3L)
+  # 140L/3 -> 175L/7 bilinçli güncelleme: senkron toplu yükleme döngüsü ortak
+  # dosya alım hattına taşındı; dosya artık plan gönderimi + ana süreç commit'i
+  # + yükleme runtime fabrikası sorumluluğunu taşıyor.
+  assert_current_budget("R/helpers_file_manager_upload_runtime.R", 175L, 7L)
   # 686L/22L -> 686L/23L bilinçli güncelleme: TTS parça hattı sınırlı
   # eşzamanlılık/sıralı teslim/başlangıç tamponu ile
   # R/helpers_ai_expert_chunk_pipeline.R'ye ayrıldı; modülde yalnızca ince
@@ -305,6 +308,14 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # sahne) + ortak piksel çizici (pixel_sprite_render.js) manifeste eklendi.
   # Bu bir DATA-dosyası manifest genişlemesidir; fonksiyon sayısı 2L değişmedi
   # (load-order tek sahibi bu dosyadır, girdiler yardımcıya çıkarılamaz).
+  # Bloklamayan dosya alım hattı: her katman tek sorumlulukta ve küçük kalmalı.
+  # Saf plan / worker yürütme / kuyruk / ana süreç orkestrasyonu ayrımı geri
+  # birleştirilmemelidir.
+  assert_current_budget("R/helpers_file_ingestion_task.R", 240L, 10L)
+  assert_current_budget("R/helpers_file_ingestion_worker.R", 250L, 13L)
+  assert_current_budget("R/helpers_file_ingestion_queue.R", 220L, 20L)
+  assert_current_budget("R/helpers_file_ingestion_runtime.R", 265L, 19L)
+
   assert_current_budget("R/config_ui_assets.R", 485L, 2L)
   assert_current_budget("R/config_ui_asset_validators.R", 300L, 13L)
   assert_current_budget("R/config_ui_asset_tags.R", 110L, 8L)
@@ -490,8 +501,13 @@ test_that("module_file_manager.R state runtime extraction sonrası 800 satır al
   )
 
   max_fm_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_LINES", 560L)
-  max_upload_helper_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_UPLOAD_RUNTIME_LINES", 140L)
-  max_upload_helper_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_UPLOAD_RUNTIME_FUNCTIONS", 3L)
+  # 140L/3 -> 175L/7 bilinçli güncelleme: toplu yükleme artık olay döngüsünde
+  # senkron for döngüsü çalıştırmıyor. Dosya, ortak alım hattına gönderim +
+  # ana süreç commit'i + yükleme runtime fabrikası sorumluluğunu üstlendi;
+  # pahalı doğrulama/kopyalama/bütünlük denetimi R/helpers_file_ingestion_*.R
+  # dosyalarına taşındı. Bütçe yeni gerçek tabanı kilitler.
+  max_upload_helper_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_UPLOAD_RUNTIME_LINES", 175L)
+  max_upload_helper_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_UPLOAD_RUNTIME_FUNCTIONS", 7L)
   max_helper_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_STATE_RUNTIME_LINES", 450L)
   max_helper_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_STATE_RUNTIME_FUNCTIONS", 10L)
   max_delete_helper_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_DELETE_RUNTIME_LINES", 90L)

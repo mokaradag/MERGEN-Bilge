@@ -37,8 +37,8 @@ test_that("file manager UI ve server upload limit kararını helper üzerinden a
 
   expect_true(grepl("fm_upload_limit_mb\\(\\)", ui_txt, perl = TRUE))
   expect_true(grepl("fm_upload_limit_bytes\\(upload_limit_mb\\)", ui_txt, perl = TRUE))
-  expect_true(grepl("fm_process_bulk_upload_batch\\(", server_txt, perl = TRUE))
-  expect_true(grepl("max_mb <- fm_upload_limit_mb\\(\\)", upload_runtime_txt, perl = TRUE))
+  expect_true(grepl("fm_dispatch_bulk_upload_batch\\(", server_txt, perl = TRUE))
+  expect_true(grepl("max_size_mb = fm_upload_limit_mb\\(\\)", upload_runtime_txt, perl = TRUE))
 })
 
 test_that("file manager modülü attach ve uzantı policy kararlarını runtime helper üzerinden alıyor", {

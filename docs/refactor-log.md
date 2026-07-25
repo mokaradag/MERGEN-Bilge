@@ -7,6 +7,96 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 ---
 
 
+## 2026-07-25 — Bloklamayan dosya alım (ingestion) hattı
+
+### Seçilen paket / neden
+Dosya yükleme, Shiny olay döngüsünde senkron çalışan tek büyük kalan iş yüküydü.
+Hem Dosya Yönetimi toplu yüklemesi hem de Ana Söyleşi yüklemesi; doğrulama,
+tam dosya hash'i, kalıcı klasöre kopyalama, boyut doğrulaması ve dosya başına
+`index.json` oku/değiştir/yaz işlemini observer içinde yapıyordu. Çok dosyalı
+bir parti bu yüzden yükleyen oturumu ve aynı R sürecini paylaşan diğer
+oturumları donduruyordu. Ayrıca aynı dosya iki kez indeksleniyordu.
+
+### Değişen dosyalar
+- Yeni: `R/helpers_file_ingestion_task.R` (saf plan: normalizasyon, worker görev
+  anlık görüntüsü, ucuz üstveri reddi, duplicate tespiti, özet/metrik),
+  `R/helpers_file_ingestion_worker.R` (worker: yetkili doğrulama + kopyalama +
+  bütünlük + yarım hedef temizliği + önbelleğe alınmış global paketi),
+  `R/helpers_file_ingestion_queue.R` (sınırlı eşzamanlılık, sınırlı kuyruk,
+  worker havuzu kapasite kapısı, `later` yeniden deneme pompası),
+  `R/helpers_file_ingestion_runtime.R` (gönderim, oturum/iptal denetleyicisi,
+  toplu indeks commit'i, tamamlanma geri çağrısı).
+- `R/helpers_file_manager_upload_runtime.R`: `fm_process_bulk_upload_batch()`
+  yerine `fm_dispatch_bulk_upload_batch()` + `fm_commit_bulk_upload_results()` +
+  `fm_create_upload_runtime()`; `withProgress()` senkron döngüsü kaldırıldı.
+- `R/helpers_file_pipeline.R`: `handle_file_upload_batch()` plan + gönderim
+  şekline geçti (`process_next()` özyinelemesi kaldırıldı),
+  `chat_upload_commit_results()` eklendi, `processAndSummarizeFile()`
+  `already_persisted` bayrağını aldı (tam-bir-kez kayıt).
+- `R/config_file_store_index_mutation.R`: `.file_store_index_entry()` ortak
+  normalizasyonu + `mergen_index_persisted_files()` (parti başına TEK mutasyon).
+- `R/module_file_manager.R`: yükleme runtime fabrikası, iptal denetleyicisinin
+  "Tümünü Temizle" akışına bağlanması.
+- Kayıt/sözleşme: `R/config_source_manifest.R` (files_preview_pipeline 5 → 9),
+  `.Renviron.example` (yeni alım değişkenleri).
+- Soak: `tests/scripts/soak_interactive_lane.R` + `tests/scripts/soak_artifacts.R`
+  (`interactive_file_ingestion` kontrolü).
+
+### Önce/sonra
+- `fm_process_bulk_upload_batch()` (senkron for + `withProgress`) → gönderim
+  anında dönen `fm_dispatch_bulk_upload_batch()`; pahalı iş worker'da.
+- Dosya başına 2 indeks yazımı (pipeline + özetleyici) → parti başına 1 yazım.
+- Dosya başına sınırsız future riski → parti başına tek worker görevi,
+  varsayılan 2 eşzamanlı parti, 32'lik sınırlı kuyruk.
+- `R/helpers_file_manager_upload_runtime.R` 118/3 → 165/6 (bütçe bilinçli olarak
+  175/7'ye güncellendi); `R/module_file_manager.R` 559/9 → 557/9.
+- Küresel bakım skoru 100/100, en büyük dosya 778 satır / 24 fonksiyon: DEĞİŞMEDİ.
+
+### Korunan davranış sözleşmeleri
+- Kullanıcı izolasyonu (`user_<id>` kovası), Türkçe görünen ad, storage adının
+  UI'ya sızmaması, uzantı beyaz listesi, 25 MB dosya-başı sınırı, duplicate
+  uyarısı, özetleme devri, önizleme/indirme/silme/yenileme/temizleme akışları.
+- Desteklenmeyen uzantı worker'a HİÇ gönderilmez (gizli kaydedilmiş-ama-geçersiz
+  yükleme yok).
+- Bir dosyanın hatası partiyi düşürmez; yarım hedef silinir.
+- Oturum kapanışında dosya yine indekslenir ama UI mutasyonu yapılmaz; açık
+  iptalde kopyalar silinir ve indekse yazılmaz.
+
+### Eklenen/güncellenen testler
+- Yeni: `tests/testthat/test-file-ingestion-pipeline-behavior.R` (92 assertion),
+  `tests/testthat/test-file-ingestion-contract.R`.
+- Güncellendi: `test-file-pipeline-upload-batch-behavior.R` (async sözleşme +
+  "gönderim anında yan etki yok" performans kontratı),
+  `test-file-manager-state-runtime-contract.R`, `test-file-manager-module-policy-wiring.R`,
+  `test-upload-size-policy.R` (dosya-başı sınır semantiği),
+  `test-source-manifest-sections-contract.R`, `test-maintainability-ratchet.R`.
+
+### Gerçekten çalıştırılan doğrulamalar
+`parse_sanity_check.R` (1012 dosya), `smoke_app_boot.R`, `seam_doctor.R`,
+maintainability raporu + ratchet, kaynak manifest/bölüm/seam/zone sözleşmeleri,
+production + secret-leak sözleşmeleri, dosya/upload/manager/store/worker/pipeline/
+ingestion/mcp/session desenine uyan tüm testthat dosyaları (0 fail), operasyonel
+soak gate sözleşmesi.
+
+### Manuel QA (kullanıcı tarafı)
+- Dosya Yönetimi'ne 5-10 dosyalık bir parti bırakın; parti işlenirken tabloda
+  gezinin, başka sekmeye geçin ve bir hızlı eylem tıklayın — arayüz donmamalı.
+- Aynı anda ikinci bir tarayıcı oturumu açın; ilk oturum yüklerken ikinci oturum
+  yanıt vermeye devam etmeli.
+- Türkçe adlı bir dosya yükleyin, tam yeniden başlatma sonrası adın korunduğunu
+  doğrulayın.
+- Yükleme sürerken "Tümünü Temizle" deneyin; parti tabloya satır geri
+  eklememeli.
+- Desteklenmeyen uzantı ve 25 MB üstü dosya reddedilmeli.
+
+### Bilinen risk / atlanan doğrulama
+- Gerçek UNC/ağ paylaşımı kopyalama gecikmesi, Windows kısa yol/Türkçe path
+  davranışı, çok kullanıcılı SSO eşzamanlılığı ve büyük parti sırasında ikinci
+  tarayıcı oturumunun gerçek yanıt süresi YALNIZCA Windows VM'de doğrulanabilir.
+- Kalıcı indeks yazımı hâlâ ana süreçtedir (bilinçli); çok büyük indekslerde bu
+  maliyet ölçülmelidir.
+
+
 ## 2026-07-03 — Başlangıç şeritleri: Hızlı Başlangıç / Zengin Deneyim
 
 ### Seçilen paket / neden

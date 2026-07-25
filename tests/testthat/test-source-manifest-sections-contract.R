@@ -108,7 +108,9 @@
   language_messaging = list(first = "R/helpers_language.R", last = "R/helpers_messaging.R", n = 2L),
   mcp_tools = list(first = "R/helpers_mcp_context.R", last = "R/helpers_mcp_tools.R", n = 9L),
   chartlab_helpers = list(first = "R/helpers_chartlab_spec.R", last = "R/helpers_chartlab.R", n = 2L),
-  files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_files.R", n = 5L),
+  # 5L -> 9L bilinçli güncelleme: bloklamayan dosya alım hattı (saf plan ->
+  # worker -> kuyruk -> ana süreç runtime) helpers_files.R'den SONRA eklendi.
+  files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_file_ingestion_runtime.R", n = 9L),
   file_manager_helpers = list(first = "R/helpers_file_manager_policy.R", last = "R/helpers_file_manager_table_runtime.R", n = 12L),
   # Bilinçli güncelleme: R/helpers_langflow_runtime.R (kurumsal Langflow akış
   # çağrısı saf yardımcıları) send_message core'dan sonra bölüme eklendi; 11 -> 12.
@@ -424,7 +426,13 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 351L -> 352L bilinçli güncelleme: STT ses parçası çevirisi SAF worker-güvenli
   # yardımcısı (R/helpers_stt_transcription.R) module_ai_audio bölümüne
   # (module_stt.R'den ÖNCE) eklendi.
-  expect_equal(length(runtime), 352L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 352L -> 356L bilinçli güncelleme: bloklamayan dosya alım (ingestion) hattı
+  # files_preview_pipeline bölümüne (helpers_files.R'den SONRA) eklendi:
+  # saf plan (R/helpers_file_ingestion_task.R), worker yürütme
+  # (R/helpers_file_ingestion_worker.R), sınırlı eşzamanlılık/kuyruk
+  # (R/helpers_file_ingestion_queue.R) ve ana süreç orkestrasyonu
+  # (R/helpers_file_ingestion_runtime.R).
+  expect_equal(length(runtime), 356L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

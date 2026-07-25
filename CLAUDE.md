@@ -1046,6 +1046,43 @@ Manual validation after startup or intro/welcome changes:
 - Open Görsel Galerisi, Dosya Yönetimi, Kayıtlı Söyleşiler, and Yenilikler.
 - Check the browser console for JavaScript errors.
 
+### 1C.0) Non-blocking file ingestion contract
+
+Uploaded-file ingestion is OFF the Shiny event loop. Before this boundary existed, both upload entry points ran validation + `digest::digest(file=)` hashing + `fs::file_copy` + size verification + a per-file `index.json` read/modify/write **synchronously inside a Shiny observer** (the File Manager path additionally wrapped a whole `for` loop in `withProgress()`), so a multi-file batch froze the uploading session and every other session sharing that R process. Do not reintroduce that shape.
+
+Current contract:
+
+- `R/helpers_file_ingestion_task.R` is the PURE plan layer: upload normalization, worker task snapshots (plain scalars only), cheap metadata rejection (empty name, missing path, extension whitelist, reported-size limit), duplicate-name detection, result summaries and the secret-safe metrics line. No Shiny, no reactive, no session, no filesystem writes.
+- `R/helpers_file_ingestion_worker.R` is the WORKER layer: authoritative `validate_uploaded_file()`, `copy_to_mcp_base()`, integrity verification (`file_ingestion_verify_copy()`) and partial-destination cleanup (`file_ingestion_discard_dest()`). It never writes the persistent index, never touches Shiny/reactive state, and returns plain result lists with per-phase timings. `file_ingestion_worker_globals()` memoizes the export bundle once per R process so dependency scanning never runs on the event loop.
+- `R/helpers_file_ingestion_queue.R` owns bounded concurrency: one worker task per BATCH (its files run sequentially), `MERGEN_FILE_INGESTION_MAX_CONCURRENT` (default 2) concurrent batches, `MERGEN_FILE_INGESTION_MAX_QUEUE` (default 32) bounded FIFO queue, a `future::nbrOfFreeWorkers()` capacity gate so uploads cannot starve LLM/streaming/TTS/STT tasks, and a `later::later` retry pump so queued work can never hang. A full queue returns an explicit `rejected` status — files are never silently dropped.
+- `R/helpers_file_ingestion_runtime.R` owns the MAIN-PROCESS side: `file_ingestion_submit_batch()`, the session/cancellation controller, batched index commit and the completion callback. The persistent index write stays in the main process ON PURPOSE — moving it to workers would create real cross-process contention on the `dir.create` index lock, whose `Sys.sleep()` poll would then block the event loop.
+- Index writes are batched: `mergen_index_persisted_files()` (`R/config_file_store_index_mutation.R`) registers a whole batch in ONE `.file_store_mutate_index()` call, so main-process index cost is independent of batch size. Its key/display/path normalization is shared with `mergen_register_uploaded_file()` through `.file_store_index_entry()`.
+- Registration happens EXACTLY ONCE. `processAndSummarizeFile()` takes `already_persisted` and additionally skips copy+register when the file is already under the MCP base; do not restore the old double `global_register_file()` call (pipeline + summarizer).
+- Both entry points share the pipeline: `fm_dispatch_bulk_upload_batch()` (`R/helpers_file_manager_upload_runtime.R`) and `handle_file_upload_batch()` (`R/helpers_file_pipeline.R`). Do not fork a second async implementation.
+- Promise callbacks are NOT inside a reactive context. `fm_commit_bulk_upload_results()` and `chat_upload_commit_results()` wrap their module-state work in `shiny::isolate()`; a bare `reactiveVal`/`reactiveValues` read there throws "Operation not allowed without an active reactive context" (see the Ortak Oturum reactive-context lesson).
+- Session/stale safety: the controller captures `session$token`, drops queued jobs on `onSessionEnded`, and carries a cancellation epoch. Session closed → the batch is still INDEXED (uploads are legitimate and session-independent) but no UI/reactive mutation runs. Explicitly cancelled (`file_ingestion_cancel_controller()`, wired to "Tümünü Temizle") → copied destinations are unlinked and nothing is indexed.
+- A per-file failure never fails the batch: successful files still commit, failed files report their own Turkish error, and a failed/partial destination is unlinked so no orphaned file or index entry remains.
+- Upload limit semantics: Shiny's `fileInput` uploads ONE FILE PER HTTP REQUEST, so `shiny.maxRequestSize` (derived from `getOption("mergen.upload_max_mb", 25L)`) is a PER-FILE limit. The browser guard checks each file individually and the UI text "Dosya başına en fazla N MB" is accurate. Do not raise the production cap.
+- Metrics are opt-in (`MERGEN_FILE_INGESTION_METRICS`, default off) plus an always-on line for batches slower than 5 s. The line reports counts/bytes/timings and queue depth only — never file names, paths or secrets.
+
+Protected by:
+
+- `tests/testthat/test-file-ingestion-contract.R`
+- `tests/testthat/test-file-ingestion-pipeline-behavior.R`
+- `tests/testthat/test-file-pipeline-upload-batch-behavior.R`
+- `tests/testthat/test-file-manager-state-runtime-contract.R`
+- `tests/testthat/test-upload-size-policy.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-file-ingestion-contract.R")`
+- `testthat::test_file("tests/testthat/test-file-ingestion-pipeline-behavior.R")`
+- `testthat::test_file("tests/testthat/test-file-pipeline-upload-batch-behavior.R")`
+- `testthat::test_file("tests/testthat/test-file-manager-state-runtime-contract.R")`
+- `testthat::test_file("tests/testthat/test-upload-size-policy.R")`
+
+VM-only proof (not provable in cloud): real UNC/network-share copy latency, Windows short-path/Turkish-path behavior under load, real multi-user SSO concurrency, and the actual event-loop responsiveness of a second browser session during a large batch.
+
 ### 1C) File lifecycle and File Manager boundary contract
 
 Uploaded file lifecycle is a protected boundary. Do not trade security or user isolation for convenience.

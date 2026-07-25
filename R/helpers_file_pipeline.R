@@ -72,7 +72,8 @@ processAndSummarizeFile <- function(file_info,
                                     session_files_reactive,
                                     update_manager_ui = TRUE,
                                     show_toast = TRUE,
-                                    auto_attach = FALSE) {
+                                    auto_attach = FALSE,
+                                    already_persisted = FALSE) {
   note_id <- showNotification(sprintf("İşlem başlatıldı: %s", file_info$name),
                               duration = NULL, type = "message")
 
@@ -88,26 +89,27 @@ processAndSummarizeFile <- function(file_info,
                 file_info$name))
   }
 
-  # Ensure file is persisted under MCP base
+  # Kalıcılaştırma TEK yerde yapılır. Dosya alım hattı (veya Dosya Yönetimi)
+  # tarafından zaten kopyalanıp indekslenmiş dosya için burada ikinci kez
+  # kopyalama/indeks yazımı YAPILMAZ; kayıt tam olarak bir kez gerçekleşir.
   dest <- file_info$datapath
-  if (!is_under_mcp_base(dest)) {
+  zaten_kalici <- isTRUE(already_persisted) || is_under_mcp_base(dest)
+
+  if (!zaten_kalici) {
     dest <- copy_to_mcp_base(list(name = file_info$name, datapath = file_info$datapath), effective_user_id)
+
+    tryCatch({
+      global_register_file(
+        dest, file_info$name,
+        user_id = effective_user_id,
+        persist_under_mcp_base = TRUE
+      )
+      cat("[FILE PIPELINE] Dosya indekse kaydedildi:", file_info$name, "\n")
+    }, error = function(e) {
+      cat("[FILE PIPELINE] İndeks kaydı başarısız:", conditionMessage(e), "\n")
+    })
   }
 
-  # ============================================================================
-  # KRİTİK: Dosyayı HEMEN indekse kaydet (özetleme başarısız olsa bile kalıcı olmalı)
-  # ============================================================================
-  tryCatch({
-    global_register_file(
-      dest, file_info$name,
-      user_id = effective_user_id,
-      persist_under_mcp_base = TRUE
-    )
-    cat("[FILE PIPELINE] Dosya indekse kaydedildi:", file_info$name, "\n")
-  }, error = function(e) {
-    cat("[FILE PIPELINE] İndeks kaydı başarısız:", conditionMessage(e), "\n")
-  })
-  
   # MCP araçları için oturum dosya kayıt defterini merkezi helper ile güncelle
   session_user_data_put_list_item(
     session,
@@ -195,7 +197,53 @@ processAndSummarizeFile <- function(file_info,
   invisible(NULL)
 }
 
-# Handle a batch from fileInput with identical logic to server.R observer
+# Ana Söyleşi yüklemesinin ANA SÜREÇ commit'i: kopyalama/indeksleme bittikten
+# sonra dosyayı sohbet bağlamına ekler ve özetlemeyi kuyruğa alır.
+# Promise geri çağrısı reaktif bağlam içinde olmadığı için isolate kullanılır.
+chat_upload_commit_results <- function(results, ctx, batch_id = NULL) {
+  if (!is.null(batch_id)) try(removeNotification(batch_id), silent = TRUE)
+
+  shiny::isolate({
+    for (sonuc in results %||% list()) {
+      if (!isTRUE(sonuc$ok)) {
+        showToast(
+          ctx$session,
+          sprintf("'%s' kalıcı klasöre kaydedilemedi: %s", sonuc$name, sonuc$error %||% "bilinmeyen hata"),
+          "warning"
+        )
+        next
+      }
+
+      uf <- list(
+        name = sonuc$name,
+        datapath = sonuc$dest,
+        size = sonuc$size,
+        type = sonuc$type
+      )
+
+      ctx$file_to_add_reactive(uf)
+
+      processAndSummarizeFile(
+        uf,
+        current_user_id = ctx$user_id,
+        session = ctx$session,
+        settings = ctx$settings_data,
+        file_manager_data = ctx$file_manager_data,
+        session_files_reactive = ctx$session_files_reactive,
+        update_manager_ui = TRUE,
+        show_toast = TRUE,
+        auto_attach = FALSE,
+        already_persisted = TRUE
+      )
+    }
+  })
+
+  invisible(NULL)
+}
+
+# fileInput/sürükle-bırak toplu yüklemesini ortak dosya alım hattına gönderir.
+# Doğrulama, kopyalama ve bütünlük denetimi arka planda çalışır; bu fonksiyon
+# olay döngüsünü bloklamadan hemen döner.
 handle_file_upload_batch <- function(uploads_df,
                                      current_user_id,
                                      session,
@@ -205,11 +253,17 @@ handle_file_upload_batch <- function(uploads_df,
                                      file_to_add_reactive) {
   if (is.null(uploads_df)) return(invisible(NULL))
 
+  if (is.data.frame(uploads_df)) {
+    if (nrow(uploads_df) == 0) return(invisible(NULL))
+  } else if (!(is.list(uploads_df) && !is.null(uploads_df$name))) {
+    showToast(session, "Dosya yükleme bilgisi okunamadı.", "error")
+    return(invisible(NULL))
+  }
+
   # SSO modunda başlangıçta gelen 0L yerine oturumdaki gerçek kullanıcıyı kullan
   effective_user_id <- suppressWarnings(as.integer(session$userData$user_id %||% current_user_id %||% 0L))
   if (is.na(effective_user_id)) effective_user_id <- 0L
 
-  # SSO modunda 0L ile başlayan user_id'yi oturumdan çözümle
   if (effective_user_id <= 0L) {
     cat(sprintf("[UPLOAD BATCH] UYARI: effective_user_id=%d, session$userData$user_id=%s, current_user_id=%s\n",
                 effective_user_id,
@@ -217,127 +271,69 @@ handle_file_upload_batch <- function(uploads_df,
                 as.character(current_user_id %||% "NULL")))
   }
 
-  uploads <- NULL
-  if (is.data.frame(uploads_df)) {
-    if (nrow(uploads_df) == 0) return(invisible(NULL))
-    uploads <- lapply(seq_len(nrow(uploads_df)), function(i) {
-      list(
-        name     = as.character(uploads_df$name[i]),
-        datapath = as.character(uploads_df$datapath[i]),
-        size     = suppressWarnings(as.numeric(uploads_df$size[i] %||% NA_real_)),
-        type     = as.character(uploads_df$type[i] %||% "")
-      )
-    })
-  } else if (is.list(uploads_df) && !is.null(uploads_df$name)) {
-    uploads <- list(list(
-      name     = uploads_df$name,
-      datapath = uploads_df$datapath,
-      size     = uploads_df$size %||% suppressWarnings(file.info(uploads_df$datapath)$size),
-      type     = uploads_df$type %||% ""
-    ))
+  # İzin verilen uzantılar tek kaynaktan (fm_normal_allowed_extensions) gelir;
+  # böylece Ana Söyleşi ve Dosya Yönetimi yükleme yolları tutarlı kalır.
+  allowed_exts <- if (exists("fm_normal_allowed_extensions", mode = "function", inherits = TRUE)) {
+    fm_normal_allowed_extensions()
   } else {
-    showToast(session, "Dosya yükleme bilgisi okunamadı.", "error")
-    return(invisible(NULL))
+    c("txt","pdf","docx","xlsx","xls","csv","json","r","py","md","log","xml","html",
+      "jpg","jpeg","png","gif","webp","bmp","svg")
   }
 
-  total <- length(uploads)
-  cat(sprintf("[UPLOAD] %d dosya alındı: %s\n",
-              total, paste(vapply(uploads, `[[`, "", "name"), collapse = ", ")))
+  batch_id <- file_ingestion_new_batch_id("chat")
+  plan <- file_ingestion_plan_batch(
+    uploads = uploads_df,
+    existing_names = character(),
+    user_id = effective_user_id,
+    allowed_ext = allowed_exts,
+    max_size_mb = getOption("mergen.upload_max_mb", 25L),
+    batch_id = batch_id
+  )
 
-  note_id <- showNotification(if (total > 1) "Dosyalar alındı. İşleme başlanıyor\U2026" else
-                                            "Dosya alındı. İşleme başlanıyor\U2026",
-                              duration = NULL, type = "message")
-
-  process_next <- function(i) {
-    if (i > total) {
-      removeNotification(note_id)
-      return(invisible(NULL))
-    }
-    uf <- uploads[[i]]
-	
-    # İzin verilen uzantılar tek kaynaktan (fm_normal_allowed_extensions) gelir;
-    # böylece Ana Söyleşi ve Dosya Yönetimi yükleme yolları tutarlı kalır.
-    allowed_exts <- if (exists("fm_normal_allowed_extensions", mode = "function", inherits = TRUE)) {
-      fm_normal_allowed_extensions()
-    } else {
-      c("txt","pdf","docx","xlsx","xls","csv","json","r","py","md","log","xml","html",
-        "jpg","jpeg","png","gif","webp","bmp","svg")
-    }
-    ext <- tolower(tools::file_ext(uf$name))
-    
-    if (!ext %in% allowed_exts) {
-      showToast(session, sprintf("'%s' uzantılı dosya desteklenmiyor. İşlem atlandı.", ext), "warning")
-      shinyjs::delay(50, process_next(i + 1))
-      return(invisible(NULL))
-    }
-	
-    removeNotification(note_id)
-    note_id <<- showNotification(sprintf("[%d/%d] İşleniyor: %s", i, total, uf$name),
-                                 duration = NULL, type = "message")
-
-    # Dosyayı kalıcı dizine kopyala ve hemen indekse kaydet
-    copy_ok <- FALSE
-    tryCatch({
-      dest <- copy_to_mcp_base(uf, effective_user_id)
-
-      # Ek doğrulama: dosya boyutunu karşılaştır
-      src_size <- suppressWarnings(file.info(uf$datapath)$size)
-      dest_size <- suppressWarnings(file.info(dest)$size)
-      if (!is.na(src_size) && !is.na(dest_size) && dest_size > 0) {
-        uf$datapath <- dest
-        copy_ok <- TRUE
-        cat(sprintf("[UPLOAD BATCH] Dosya kopyalandı: %s -> %s (boyut: %d bayt)\n",
-                    uf$name, dest, dest_size))
-      } else if (path_exists_relaxed(dest)) {
-        # fs::file_info başarısız olabilir ama dosya mevcut olabilir (ağ paylaşımı)
-        uf$datapath <- dest
-        copy_ok <- TRUE
-        cat(sprintf("[UPLOAD BATCH] Dosya kopyalandı (boyut doğrulanamadı): %s -> %s\n",
-                    uf$name, dest))
-      } else {
-        cat(sprintf("[UPLOAD BATCH] HATA: Dosya kopyalandı ama doğrulanamadı: %s -> %s (src_size=%s, dest_size=%s)\n",
-                    uf$name, dest,
-                    as.character(src_size %||% "NA"), as.character(dest_size %||% "NA")))
-      }
-
-      # Hemen indekse kaydet (özetleme başarısız olsa bile dosya kalıcı olacak)
-      if (copy_ok) {
-        tryCatch({
-          global_register_file(dest, uf$name, user_id = effective_user_id, persist_under_mcp_base = TRUE)
-          cat("[UPLOAD BATCH] Dosya indekse kaydedildi:", uf$name, "\n")
-        }, error = function(reg_err) {
-          cat("[UPLOAD BATCH] İndeks kaydı başarısız:", conditionMessage(reg_err), "\n")
-        })
-      }
-    }, error = function(e) {
-      cat(sprintf("[UPLOAD BATCH] Dosya kopyalama hatası: %s (user_id=%s, hedef_dizin=%s)\n",
-                  conditionMessage(e), as.character(effective_user_id),
-                  tryCatch(file.path(Sys.getenv("MCP_FILES_BASE"), paste0("user_", effective_user_id)),
-                           error = function(e2) "bilinmiyor")))
-    })
-
-    # Dosya kopyalama başarısız olsa bile UI'da göster (geçici yol ile)
-    # ancak kullanıcıyı uyar
-    if (!copy_ok) {
-      showToast(session, sprintf("'%s' kalıcı klasöre kaydedilemedi. Dosya bu oturumda kullanılabilir ancak kalıcı olmayacak.", uf$name), "warning")
-    }
-
-    file_to_add_reactive(uf)
-
-    processAndSummarizeFile(
-      uf,
-      current_user_id = effective_user_id,
-      session = session,
-      settings = settings_data,
-      file_manager_data = file_manager_data,
-      session_files_reactive = session_files_reactive,
-      update_manager_ui = TRUE,
-      show_toast = TRUE,
-      auto_attach = FALSE
+  for (red in plan$rejected %||% list()) {
+    showToast(
+      session,
+      sprintf("'%s' dosyası işlenemedi: %s", red$name, red$error %||% "desteklenmiyor"),
+      "warning"
     )
-
-    shinyjs::delay(50, process_next(i + 1))
   }
 
-  process_next(1)
+  if (!length(plan$tasks)) return(invisible(NULL))
+
+  cat(sprintf("[UPLOAD] %d dosya alındı ve alım hattına gönderiliyor.\n", length(plan$tasks)))
+
+  showNotification(
+    sprintf("%d dosya arka planda işleniyor\U2026", length(plan$tasks)),
+    duration = NULL,
+    type = "message",
+    id = batch_id
+  )
+
+  commit_ctx <- list(
+    session = session,
+    user_id = effective_user_id,
+    settings_data = settings_data,
+    file_manager_data = file_manager_data,
+    session_files_reactive = session_files_reactive,
+    file_to_add_reactive = file_to_add_reactive
+  )
+
+  outcome <- file_ingestion_submit_batch(
+    controller = file_ingestion_session_controller(session),
+    tasks = plan$tasks,
+    user_id = effective_user_id,
+    on_complete = function(results, ctx) chat_upload_commit_results(results, commit_ctx, ctx$batch_id),
+    on_failure = function(message, tasks) {
+      try(removeNotification(batch_id), silent = TRUE)
+      showToast(session, "Dosyalar işlenemedi. Lütfen tekrar deneyin.", "error")
+    },
+    batch_id = batch_id
+  )
+
+  if (identical(outcome$status, "rejected")) {
+    try(removeNotification(batch_id), silent = TRUE)
+    showToast(session, "Yükleme kuyruğu dolu. Lütfen biraz sonra tekrar deneyin.", "warning")
+  }
+
+  invisible(outcome)
 }
