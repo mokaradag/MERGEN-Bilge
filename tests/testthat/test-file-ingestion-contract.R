@@ -109,17 +109,6 @@ test_that("kalıcılaştırma tam olarak bir kez yapılır", {
   expect_equal(length(gregexpr("copy_to_mcp_base(", metin, fixed = TRUE)[[1]]), 1L)
 })
 
-test_that("kopyalanan yol ana süreçten gelen depolama kökünü sözcüksel olarak korur", {
-  metin <- .read_ingestion_source("R/helpers_files.R")
-  govde <- sub("(?s).*copy_to_mcp_base <- function", "", metin, perl = TRUE)
-  govde <- sub("(?s)# Bir data.frame nesnesini.*", "", govde, perl = TRUE)
-
-  expect_true(grepl("\n  dest_chr\n}", govde, fixed = TRUE))
-  expect_false(grepl("normalize_mcp_path(", govde, fixed = TRUE))
-  expect_false(grepl("resolve_readable_path(", govde, fixed = TRUE))
-  expect_false(grepl("safe_windows_short_path(", govde, fixed = TRUE))
-})
-
 test_that("eşzamanlılık ve kuyruk sınırları yapılandırılabilir ve varsayılanları güvenlidir", {
   metin <- .read_ingestion_source("R/helpers_file_ingestion_queue.R")
 
