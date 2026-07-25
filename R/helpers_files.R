@@ -156,9 +156,9 @@ copy_to_mcp_base <- function(upload, user_id) {
     cat(sprintf("[copy_to_mcp_base] UYARI: Boyut uyuşmazlığı! kaynak=%d, hedef=%d\n", src_size, dest_size))
   }
 
-  # Dosya gerçekten oluştuysa yolu olduğu gibi koru.
-  # Burada enc2utf8 uygulamak UNC + Türkçe karakterli yollarda
-  # Geliştirme -> GeliÅŸtirme gibi bozulmaya yol açabiliyor.
+  # Ana süreçten gelen storage_base sözcüksel olarak korunur. normalizePath(),
+  # resolve_readable_path() veya Windows 8.3 dönüşümü aynı fiziksel yolu farklı
+  # bir kökle döndürebilir ve worker'ın zorlanan kök sözleşmesini bozar.
   dest_chr <- gsub("\\\\", "/", as.character(dest), fixed = TRUE)
 
   if (.Platform$OS.type == "windows" && grepl("^/[^/]", dest_chr)) {
@@ -168,10 +168,7 @@ copy_to_mcp_base <- function(upload, user_id) {
     }
   }
 
-  # Kopyalayan ve çözen katmanlar aynı yol biçimini döndürmelidir. Özellikle
-  # Windows 8.3 kısa yol ile uzun yol aynı fiziksel dosya için farklı kimlik
-  # üretmemelidir; must_exist = FALSE kısa yola zorlamadan tekilleştirir.
-  normalize_mcp_path(dest_chr, must_exist = FALSE)
+  dest_chr
 }
 
 # Bir data.frame nesnesini hızlı önizleme amacıyla basit CSV markdown metnine dönüştürür.
