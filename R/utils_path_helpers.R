@@ -93,6 +93,13 @@ safe_windows_short_path <- function(path, must_exist = FALSE) {
 
 # --- UTF-8 YOL NORMALİZASYONU ---
 # Yol dizelerini UTF-8 uyumlu hâle getirir; ayırıcıları standartlaştırır.
+# NOT: Windows kısa (8.3) yola zorlama YALNIZCA çağıran açıkça mustWork = TRUE
+# istediğinde uygulanır (ör. resolve_mcp_base_dir() UNC/Türkçe kök çözümü).
+# mustWork = FALSE ile çağıran taraf yalnızca kozmetik normalizasyon ister;
+# dosyanın o an var olması bu davranışı değiştirmemeli. Aksi halde
+# resolve_uploaded_file() gibi zaten var olan bir dosyayı döndüren çağrılar,
+# worker'ın oluşturduğu uzun adı sessizce 8.3 kısa ada çevirir ve dosya
+# kimliği/eşitliği bozulur.
 normalize_utf8_path <- function(path, mustWork = FALSE) {
   candidate <- .as_scalar_path(path)
   if (!nzchar(candidate)) {
@@ -122,12 +129,18 @@ normalize_utf8_path <- function(path, mustWork = FALSE) {
 
     if (!is.na(normalized) && nzchar(normalized)) {
       normalized <- gsub("\\\\", "/", normalized, fixed = TRUE)
+      if (!isTRUE(mustWork)) {
+        return(normalized)
+      }
       exists_now <- .path_exists_any(normalized)
       return(safe_windows_short_path(normalized, must_exist = exists_now))
     }
   }
 
   fallback <- gsub("\\\\", "/", candidate_utf8, fixed = TRUE)
+  if (!isTRUE(mustWork)) {
+    return(fallback)
+  }
   safe_windows_short_path(fallback, must_exist = .path_exists_any(fallback))
 }
 
