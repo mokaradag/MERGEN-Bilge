@@ -113,7 +113,9 @@ test_that("worker, ana süreçten gelen depolama kökünü zorlar (seçenekler w
   sonuc <- env$file_ingestion_execute_task(gorev)
 
   expect_true(sonuc$ok)
-  expect_true(startsWith(sonuc$dest, hedef_kok))
+  sonuc_kok <- env$normalize_for_path_compare(sonuc$dest)
+  hedef_kok_norm <- env$normalize_for_path_compare(hedef_kok)
+  expect_true(startsWith(sonuc_kok, paste0(hedef_kok_norm, "/")))
   expect_true(grepl("user_42", sonuc$dest, fixed = TRUE))
   # Görev bittiğinde çağıranın seçeneği geri yüklenmiş olmalı.
   expect_identical(getOption("mergen.mcp_base_dir"), file.path(tempdir(), "yanlis_kok"))
