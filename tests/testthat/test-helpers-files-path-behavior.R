@@ -1,4 +1,4 @@
-# ================================================================================
+# ==============================================================================
 # Dosya Yolu: tests/testthat/test-helpers-files-path-behavior.R
 # Açıklama: R/helpers_files_path.R yol/UNC/karşılaştırma yardımcılarının
 #           DAVRANIŞSAL testleri. Mevcut test-helpers-files-path-contract.R
@@ -11,7 +11,7 @@
 #               kardeş önek, eşitlik, ortam fallback) -> davranışsal olarak HİÇ
 #               test edilmiyordu.
 #           fs paketine bağımlı OLMADAN, yalnızca gerçek geçici dosyalar ve base R.
-# ================================================================================
+# ==============================================================================
 
 .helperspath_source_once <- function() {
   if (exists("is_under_mcp_base", envir = globalenv(),
