@@ -17,7 +17,6 @@
   for (dosya in c(
     "R/utils_upload_validator.R",
     "R/helpers_worker_monitor.R",
-    "R/helpers_files_path.R",
     "R/helpers_files.R",
     "R/helpers_file_ingestion_task.R",
     "R/helpers_file_ingestion_worker.R",
