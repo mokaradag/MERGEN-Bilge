@@ -117,9 +117,23 @@ test_that("eşzamanlılık ve kuyruk sınırları yapılandırılabilir ve varsa
   expect_true(grepl("MERGEN_FILE_INGESTION_METRICS", metin, fixed = TRUE))
   expect_true(grepl("future::nbrOfFreeWorkers", metin, fixed = TRUE))
 
-  ornek <- .read_ingestion_source(".Renviron.example")
-  expect_true(grepl("MERGEN_FILE_INGESTION_MAX_CONCURRENT", ornek, fixed = TRUE))
-  expect_true(grepl("MERGEN_FILE_INGESTION_MAX_QUEUE", ornek, fixed = TRUE))
+  ayar_env <- new.env(parent = globalenv())
+  source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_file_ingestion_queue.R"),
+    encoding = "UTF-8",
+    local = ayar_env
+  )
+  withr::local_envvar(c(
+    MERGEN_FILE_INGESTION_MAX_CONCURRENT = "",
+    MERGEN_FILE_INGESTION_MAX_QUEUE = ""
+  ))
+  withr::local_options(list(
+    mergen.file_ingestion.max_concurrent = NULL,
+    mergen.file_ingestion.max_queue = NULL
+  ))
+
+  expect_identical(ayar_env$file_ingestion_max_concurrent(), 2L)
+  expect_identical(ayar_env$file_ingestion_max_queue(), 32L)
 })
 
 test_that("gönderim çağrısı pahalı işi olay döngüsünde yapmaz", {
