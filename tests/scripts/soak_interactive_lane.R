@@ -51,6 +51,8 @@ soak_interactive_bootstrap <- function() {
     "R/helpers_db_unicode_escape.R", "R/helpers_db_encoding.R",
     "R/helpers_db_connection.R", "R/helpers_db_pool.R",
     "R/utils_safe_path.R", "R/utils_atomic_write.R", "R/utils_upload_validator.R",
+    "R/utils_path_helpers.R", "R/helpers_files_path.R", "R/helpers_files.R",
+    "R/helpers_file_ingestion_task.R", "R/helpers_file_ingestion_worker.R",
     "R/helpers_api_key_crypto.R", "R/helpers_api_key_identity.R",
     "R/helpers_streaming_poll_lifecycle.R", "R/helpers_streaming_abort_lifecycle.R"
   )
@@ -67,7 +69,8 @@ soak_interactive_bootstrap <- function() {
                     "normalize_db_visible_value", "normalize_db_read_visible_value",
                     "db_visible_text_has_mojibake", "validate_uploaded_file",
                     "mergen_stream_classify_poll_lines", "mergen_stream_abort_cleanup_plan",
-                    "mb_api_key_get_effective_key")
+                    "mb_api_key_get_effective_key",
+                    "file_ingestion_plan_batch", "file_ingestion_execute_batch")
   present <- vapply(required_fns, function(fn) exists(fn, mode = "function"), logical(1))
   available <- ok && all(present) &&
     requireNamespace("pool", quietly = TRUE) &&
@@ -259,6 +262,41 @@ soak_interactive_run_session <- function(cfg, metrics, session_idx, do_stop) {
     upload_pass
   })
 
+  # 7b) GERCEK dosya alim hatti (plan -> worker yurutme). Uretimde bu is future
+  # worker'inda calisir; burada AYNI fonksiyonlar in-process olculur: dogrulama,
+  # kalici kovaya kopyalama, butunluk denetimi ve kullanici izolasyonu.
+  ingest_pass <- FALSE; ingest_bytes <- 0
+  .soak_interactive_timed(metrics, "file_ingest", function() {
+    yuklemeler <- lapply(seq_len(2L), function(i) {
+      p <- tempfile(fileext = ".txt")
+      writeBin(as.raw(rep(66L, 64L * 1024L)), p)
+      list(
+        name = sprintf("T\u00fcrk\u00e7e_rapor_%d_%d.txt", session_idx, i),
+        datapath = p, size = file.info(p)$size, type = "text/plain"
+      )
+    })
+    on.exit(unlink(vapply(yuklemeler, function(u) u$datapath, character(1))), add = TRUE)
+
+    plan <- file_ingestion_plan_batch(
+      uploads = yuklemeler, user_id = as.character(user_id),
+      allowed_ext = c("txt"), max_size_mb = 25L,
+      batch_id = sprintf("soak-%d", session_idx)
+    )
+    sonuclar <- file_ingestion_execute_batch(plan$tasks)
+
+    hepsi_ok <- length(sonuclar) == 2L &&
+      all(vapply(sonuclar, function(r) isTRUE(r$ok), logical(1)))
+    kendi_kovasi <- all(vapply(sonuclar, function(r) {
+      grepl(sprintf("user_%s", user_id), r$dest %||% "", fixed = TRUE)
+    }, logical(1)))
+    ingest_bytes <<- sum(vapply(sonuclar, function(r) {
+      v <- suppressWarnings(as.numeric(r$size %||% 0)); if (is.finite(v)) v else 0
+    }, numeric(1)))
+
+    ingest_pass <<- isTRUE(hepsi_ok) && isTRUE(kendi_kovasi)
+    ingest_pass
+  })
+
   # 8) Kayitli/gecmis oku + cross-session izolasyon. Once AYRI bir KOMSU
   # kullanici icin sentinel sohbet+mesaj yazilir; sonra ayni app-facing okuyucu
   # (WHERE user_id = ?) ile bu kullanicinin satirlari okunur ve komsu satirinin
@@ -312,6 +350,8 @@ soak_interactive_run_session <- function(cfg, metrics, session_idx, do_stop) {
     key_owner_mismatch_rejected = isTRUE(key_mismatch_rejected),
     rollback_pass = isTRUE(rollback_pass),
     upload_pass = isTRUE(upload_pass),
+    ingest_pass = isTRUE(ingest_pass),
+    ingest_bytes = as.numeric(ingest_bytes),
     mojibake_hit = isTRUE(mojibake_hit),
     user_id = user_id
   )
@@ -362,9 +402,20 @@ soak_interactive_lane <- function(cfg, sessions = NULL, stop_fraction = 0.25) {
     return(list(available = FALSE, reason = "SQLite havuzu/sema kurulamadi."))
   }
 
+  # Alim seridi gercek dosya kopyalar; kalici kovayi lane-yerel gecici dizine al.
+  old_mcp_base <- getOption("mergen.mcp_base_dir", NULL)
+  ingest_base <- file.path(tempdir(), paste0("soak_ingest_", basename(tempfile())))
+  dir.create(ingest_base, recursive = TRUE, showWarnings = FALSE)
+  options(mergen.mcp_base_dir = ingest_base)
+  on.exit({
+    options(mergen.mcp_base_dir = old_mcp_base)
+    suppressWarnings(unlink(ingest_base, recursive = TRUE, force = TRUE))
+  }, add = TRUE)
+
   loop_start <- Sys.time()
   iso_fail <- 0L; exclusion_fail <- 0L; key_mismatch_fail <- 0L
   rollback_fail <- 0L; upload_fail <- 0L; mojibake_hits <- 0L
+  ingest_fail <- 0L; ingest_bytes_total <- 0
   total_sessions <- 0L
 
   for (it in seq_len(iterations)) {
@@ -377,6 +428,8 @@ soak_interactive_lane <- function(cfg, sessions = NULL, stop_fraction = 0.25) {
       if (!isTRUE(res$key_owner_mismatch_rejected)) key_mismatch_fail <- key_mismatch_fail + 1L
       if (!isTRUE(res$rollback_pass)) rollback_fail <- rollback_fail + 1L
       if (!isTRUE(res$upload_pass)) upload_fail <- upload_fail + 1L
+      if (!isTRUE(res$ingest_pass)) ingest_fail <- ingest_fail + 1L
+      ingest_bytes_total <- ingest_bytes_total + as.numeric(res$ingest_bytes %||% 0)
       if (isTRUE(res$mojibake_hit)) mojibake_hits <- mojibake_hits + 1L
     }
   }
@@ -410,12 +463,17 @@ soak_interactive_lane <- function(cfg, sessions = NULL, stop_fraction = 0.25) {
     rollback_failures = rollback_fail,
     upload_pass = (upload_fail == 0L),
     upload_failures = upload_fail,
+    ingest_pass = (ingest_fail == 0L),
+    ingest_failures = ingest_fail,
+    ingest_bytes = as.numeric(ingest_bytes_total),
     mojibake_hits = as.integer(mojibake_hits),
     metrics_df = metrics_df,
     note = paste(
       "In-process etkilesimli oturumlar: GERCEK DB havuzu/islem/encoding/streaming",
-      "karar yollari + dosya dogrulama + anahtar izolasyonu. Tek-surecte ardisik;",
-      "gercek tarayici/websocket DEGIL, uretim T-SQL DEGIL (lane-yerel SQLite)."
+      "karar yollari + dosya dogrulama + GERCEK dosya alim hatti (kopyalama/",
+      "butunluk/kullanici izolasyonu) + anahtar izolasyonu. Tek-surecte ardisik;",
+      "gercek tarayici/websocket DEGIL, uretim T-SQL DEGIL (lane-yerel SQLite),",
+      "gercek future worker esszamanligi DEGIL."
     )
   )
 }

@@ -92,14 +92,22 @@ açmaz**. Etkileşimli serit bu boşluğu kapatır.
   (`mergen_stream_classify_poll_lines`), asistan mesajı kaydetme, stop/iptal
   kararı (`mergen_stream_abort_cleanup_plan`) + niyetli işlem ROLLBACK
   doğrulaması, küçük dosya yükleme doğrulaması (`validate_uploaded_file`),
-  kullanıcı-kapsamlı kayıtlı/geçmiş okuma ve oturum kapatma.
+  **gerçek dosya alım hattı** (`file_ingestion_plan_batch` +
+  `file_ingestion_execute_batch`: iki dosyalık parti, gerçek kopyalama, bütünlük
+  denetimi ve `user_<id>` kovası izolasyonu), kullanıcı-kapsamlı kayıtlı/geçmiş
+  okuma ve oturum kapatma.
 - Ölçülenler: eylem başarı oranı, p50/p95/p99 gecikme, throughput, **DB havuz
   sayaçları** (checkout/return/sızıntı, tx begin/commit/rollback), oturumlar
   arası izolasyon, Türkçe round-trip mojibake ve sır sızıntısı.
+- Dosya alım kontrolü `interactive_file_ingestion` adıyla raporlanır ve
+  **her zaman enforced**'tır (upload doğrulaması ve rollback gibi); sessiz bir
+  alım regresyonu PASS geçemez. Alım seridi lane-yerel geçici bir MCP tabanı
+  kullanır ve koşum sonunda temizler.
 - **Sınır:** tek-süreçte **ardışık** oturumlardır (gerçek tarayıcı/websocket
-  eşzamanlılığı DEĞİL) ve **lane-yerel SQLite** kullanır (üretim T-SQL/SQL Server
-  DEĞİL). Bu sınırlar `soak_evidence.json` içinde `does_not_prove` altında açıkça
-  yazılır.
+  eşzamanlılığı DEĞİL), **lane-yerel SQLite** kullanır (üretim T-SQL/SQL Server
+  DEĞİL) ve dosya alımını **in-process** ölçer — gerçek future worker
+  eşzamanlılığı ya da UNC/ağ paylaşımı gecikmesi DEĞİL. Bu sınırlar
+  `soak_evidence.json` içinde `does_not_prove` altında açıkça yazılır.
 
 > HTTP seridi `MERGEN_SOAK_HTTP_LANE=false` ile kapatılabilir; bu durumda kapı
 > yalnızca in-process + etkileşimli seritleri çalıştırır ve **çalışan bir uygulama

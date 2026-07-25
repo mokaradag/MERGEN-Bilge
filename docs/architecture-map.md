@@ -59,7 +59,7 @@ R/Shiny uygulama kabuğu: app.R -> global.R -> ui.R + server.R
 | `config_app_core` / `config_api_model_keys` | SSO/dosya deposu/karakter yapılandırması, model ve API anahtarı çözümleme | `R/config_*.R`, `R/helpers_api_*` |
 | `database` / `sql_library` | DB encoding/bağlantı/okuma-yazma ve SQL kütüphanesi | `R/helpers_db_*`, `R/helpers_database.R` |
 | `mcp_tools` / `chartlab_helpers` | MCP araç zinciri ve ChartLab | `R/helpers_mcp_*`, `R/helpers_chartlab*.R` |
-| `files_preview_pipeline` / `file_manager_helpers` | Dosya yaşam döngüsü, önizleme, Dosya Yönetimi yardımcıları | `R/helpers_file*`, `R/module_file_manager*.R`; upload runtime helper storage sonrası/delete runtime öncesi, delete runtime helper ise state runtime öncesi source edilir. |
+| `files_preview_pipeline` / `file_manager_helpers` | Dosya yaşam döngüsü, önizleme, bloklamayan dosya alım hattı, Dosya Yönetimi yardımcıları | `R/helpers_file*`, `R/module_file_manager*.R`; alım hattı `helpers_files.R` SONRASINDA saf plan → worker → kuyruk → ana süreç runtime sırasıyla yüklenir; upload runtime helper storage sonrası/delete runtime öncesi, delete runtime helper ise state runtime öncesi source edilir. |
 | `chat_send_message_runtime` / `llm_pipeline` | Sohbet/gönderme akışı ve LLM/SSE/worker hattı | `R/helpers_send_message_*`, `R/helpers_streaming_*`, `R/helpers_llm_*` |
 | `claude_code_helpers` / `module_claude_code` | Bilge Yolaç yardımcıları ve modülleri | `R/helpers_claude_code_*`, `R/module_claude_code*.R` |
 | `ortak_oturumlar` | Ortak Oturumlar (işbirlikçi çalışma odaları): saf yetki/e-posta yardımcıları, `MB_OrtakOturumlar` DB katmanı ve oda/davet/hub modülleri | `R/helpers_ortak_oturum_*`, `R/module_ortak_*` |

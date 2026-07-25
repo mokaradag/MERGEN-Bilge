@@ -21,7 +21,7 @@ MERGEN Bilge, kurum içi/on-prem ortamlarda çalışmaya uygun bir yapay zekâ d
 ## Temel yetenekler
 
 - Türkçe odaklı yapay zekâ söyleşi deneyimi ve persona sistemi.
-- Dosya yükleme, dosya yönetimi, önizleme, tablo/veri okuma ve analiz akışları.
+- Dosya yükleme, dosya yönetimi, önizleme, tablo/veri okuma ve analiz akışları. Yükleme, doğrulama/kopyalama/bütünlük denetimini arayüzü bloklamayan, sınırlı eşzamanlılıklı bir arka plan hattında yürütür; çok dosyalı yüklemeler sırasında uygulama kullanılabilir kalır.
 - Görsel üretimi, görsel galerisi ve desteklenen modellerde görsel anlama (image input / vision).
 - TTS, STT, karşılama medyası ve sesli rehberlik bileşenleri; hibrit VoxCPM2 konuşma mimarisi (kilitli persona referans sesleri, önceden üretilmiş karşılama/sayfa rehberliği WAV'ları). Üretim/operatör akışı: [`docs/speech-operator-runbook.md`](docs/speech-operator-runbook.md).
 - Destek Merkezi, Geri Bildirim & Hata, Yenilikler ve Hakkında sayfaları.

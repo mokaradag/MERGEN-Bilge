@@ -86,9 +86,15 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`,
   `R/config_file_store_registry.R`, `R/utils_safe_path.R`, `R/utils_upload_validator.R`,
   `R/helpers_files.R`, `R/helpers_mcp_file_resolver.R`.
+- **Dosya alım (ingestion) hattı:** `R/helpers_file_ingestion_task.R` (saf plan),
+  `R/helpers_file_ingestion_worker.R` (worker: doğrulama + kopyalama + bütünlük),
+  `R/helpers_file_ingestion_queue.R` (sınırlı eşzamanlılık + kuyruk),
+  `R/helpers_file_ingestion_runtime.R` (ana süreç gönderim/commit/iptal).
+  Kalıcı indeks yazımı bilinçli olarak ana süreçte kalır ve parti başına TEK
+  mutasyondur (`mergen_index_persisted_files()`).
 - **UI/server modülleri:** `R/module_file_manager_ui.R`, `R/module_file_manager.R`,
   `R/module_file_preview.R`, `R/helpers_file_manager_*.R` (özellikle
-  `R/helpers_file_manager_delete_runtime.R`: kalıcı dosya silme + indeks temizliği; `R/helpers_file_manager_upload_runtime.R`: toplu upload doğrulama/kalıcılaştırma/indeks yazma),
+  `R/helpers_file_manager_delete_runtime.R`: kalıcı dosya silme + indeks temizliği; `R/helpers_file_manager_upload_runtime.R`: toplu upload gönderimi + ana süreç commit'i),
   `R/server_observers_files.R`.
 - **JS/CSS:** `www/js/input_handlers.js` (drag/drop), `www/css/file_manager*.css`.
 - **DB/servis:** JSON indeks (`MERGEN_INDEX_PATH`); disk depoları
@@ -103,17 +109,22 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `test-adversarial-hostile-input-behavior.R` (traversal/bidi/safe_join),
   `test-file-manager-delete-runtime-behavior.R` (doğrudan kalıcı yol silme,
   Türkçe display-name ile indeks temizliği, resolve/fallback sırası),
-  `test-file-manager-state-runtime-contract.R` (toplu upload helper ayrımı,
-  duplicate/validasyon/kalıcı kopya ve Türkçe dosya adı davranışı).
+  `test-file-manager-state-runtime-contract.R` (toplu upload gönderim/commit
+  ayrımı, duplicate/validasyon ve Türkçe dosya adı davranışı),
+  `test-file-ingestion-pipeline-behavior.R` (plan/worker/kuyruk/commit davranışı,
+  gerçek geçici dosya sistemiyle kopyalama + bütünlük + kullanıcı izolasyonu),
+  `test-file-ingestion-contract.R` (katman ayrımı, worker'a canlı Shiny nesnesi
+  taşınmaması, indeksin ana süreçte kalması, tam-bir-kez kayıt).
 - **Smoke/kanıt:** `run_fragile_flow_manual_preflight.R`, ux-smoke File Manager
-  Türkçe display-name kontrolü.
-- **Bilinen risk / sıradaki hedef:** bidi-override reddi + `summarize_file_with_llm`
-  + `handle_file_upload_batch` (uzantı-reddi dalı dahil) davranışsal kapsama
-  eklendi; `module_file_manager.R` kalıcı silme fiziksel lifecycle dalı
-  `helpers_file_manager_delete_runtime.R` içine, toplu upload dosya başı
-  doğrulama/kalıcılaştırma dalı `helpers_file_manager_upload_runtime.R` içine
-  çıkarıldı ve `module_file_manager.R` 550/9 bütçeye indi. Kalan açık alan
-  kalmadı (yeni yükleme/silme davranışı eklenince genişletilir).
+  Türkçe display-name kontrolü, operasyonel soak `interactive_file_ingestion`
+  kontrolü (gerçek kopyalama + kullanıcı kovası izolasyonu).
+- **Bilinen risk / sıradaki hedef:** toplu yükleme artık Shiny olay döngüsünde
+  senkron çalışmıyor; doğrulama/hash/kopyalama/bütünlük denetimi sınırlı
+  eşzamanlılıklı alım hattına taşındı ve kalıcı kayıt tam olarak bir kez
+  yapılıyor. Kalıcı indeks yazımı hâlâ ana süreçtedir (kilit çekişmesini
+  önlemek için bilinçli); çok büyük indekslerde bu maliyet ölçülmelidir.
+  Gerçek UNC gecikmesi ve çok kullanıcılı SSO eşzamanlılığı yalnızca Windows
+  VM'de doğrulanabilir.
 
 ## DB / Persistence ve Türkçe Kodlama
 

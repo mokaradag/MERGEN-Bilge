@@ -14,6 +14,55 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-07-25 Dosya yükleme artık arayüzü dondurmuyor (bloklamayan alım hattı)
+
+- **Sorun.** Hem Dosya Yönetimi toplu yüklemesi hem de Ana Söyleşi yüklemesi;
+  dosya doğrulama, tam dosya hash'i, kalıcı klasöre kopyalama, boyut doğrulaması
+  ve dosya başına kalıcı indeks yazımını **Shiny olay döngüsünde senkron**
+  yapıyordu (Dosya Yönetimi ayrıca tüm döngüyü ilerleme çubuğuyla sarıyordu).
+  Çok dosyalı bir parti, yükleyen kullanıcının oturumunu ve aynı R sürecini
+  paylaşan **diğer kullanıcıların oturumlarını** geçici olarak yanıtsız
+  bırakabiliyordu. Etki, yavaş disk / UNC ağ paylaşımı ve 25 MB sınırına yakın
+  PDF/Excel dosyalarında daha belirgindi. Ayrıca aynı dosya iki kez
+  indeksleniyordu (gereksiz kilit + tam indeks yazımı).
+
+- **Çözüm.** Her iki yükleme girişi de ortak, sınırlı eşzamanlılıklı bir arka
+  plan alım hattını kullanıyor. Observer artık yalnızca ucuz planı yapıp
+  **hemen dönüyor**; doğrulama/hash/kopyalama/bütünlük denetimi arka planda
+  çalışıyor. Bir parti tek arka plan görevidir ve kendi dosyalarını sırayla
+  işler; dosya başına sınırsız işçi açılmaz. Varsayılan olarak aynı anda en
+  fazla 2 parti çalışır, kuyruk 32 parti ile sınırlıdır ve worker havuzu
+  doluysa yükleme sohbet/akış/ses görevlerini aç bırakmaz.
+
+- **Kullanıcı deneyimi.** Yükleme sırasında "N dosya arka planda işleniyor…"
+  bildirimi görünür ve arayüz kullanılabilir kalır. Tablo satırları, model
+  bağlamı ve özetleme işi dosyalar gerçekten kalıcılaştıktan sonra üretilir.
+  Bir dosyanın hatası partiyi düşürmez; başarısız dosya kendi hatasını
+  raporlar, yarım kalan kopya silinir ve diğer dosyalar normal şekilde
+  tamamlanır. Kuyruk dolarsa dosya sessizce düşmez, kullanıcı açık uyarı alır.
+
+- **Veri güvenliği.** Kayıt tam olarak bir kez yapılır ve kalıcı indeks yazımı
+  parti başına tek işleme indirgenmiştir. Oturum kapanırsa dosya yine
+  indekslenir (kullanıcı bir sonraki girişte görür) ama arayüz mutasyonu
+  yapılmaz; "Tümünü Temizle" ile açıkça iptal edilen partinin kopyaları
+  silinir ve indekse yazılmaz. Kullanıcı izolasyonu, Türkçe dosya adları,
+  uzantı beyaz listesi ve 25 MB dosya-başı sınırı değişmedi.
+
+- **Yeni operasyonel ayarlar (opsiyonel).** `MERGEN_FILE_INGESTION_MAX_CONCURRENT`
+  (varsayılan `2`), `MERGEN_FILE_INGESTION_MAX_QUEUE` (varsayılan `32`),
+  `MERGEN_FILE_INGESTION_METRICS` (varsayılan kapalı; dosya adı/yol içermeyen
+  tek satırlık alım metrikleri).
+
+- **Doğrulama.** Çevrimdışı davranış/sözleşme testleri eklendi
+  (`test-file-ingestion-pipeline-behavior.R`, `test-file-ingestion-contract.R`)
+  ve mevcut yükleme testleri yeni asenkron sözleşmeye güncellendi; operasyonel
+  soak etkileşimli seridine `interactive_file_ingestion` kontrolü eklendi.
+  Bakım skoru 100/100 ve küresel dosya bütçeleri değişmedi.
+  **Windows VM'de doğrulanacak:** gerçek UNC kopyalama gecikmesi, Türkçe/kısa
+  yol davranışı, çok kullanıcılı SSO eşzamanlılığı ve büyük parti sırasında
+  ikinci tarayıcı oturumunun gerçek yanıt süresi.
+
+
 ### (Yayınlanmadı) 2026-07-18 Bilge Savunması: adanmış kule savunma oyunu ve eski mini oyunun emekliliği
 
 - **Yeni sayfa: Bilge Yolaç > Bilge Savunması.** Beş kanonik MERGEN Bilge

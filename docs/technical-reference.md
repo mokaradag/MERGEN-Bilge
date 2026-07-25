@@ -600,11 +600,74 @@ Dosya Yönetimi ekranında dosya başına varsayılan yükleme sınırı 25 MB�
 
 Dosya yükleme sınırı artık tek merkezden yönetilir: uygulama genelinde `getOption("mergen.upload_max_mb", 25L)` değeri esas alınır ve `shiny.maxRequestSize` bu merkezi değerden türetilir. Böylece tarayıcı tarafı uyarı, sunucu tarafı doğrulama ve Shiny HTTP upload sınırı farklı sabit değerlere ayrışmaz.
 
-Dosya Yönetimi yapısı bakım yapılabilirliği artırmak için küçük sorumluluklara ayrılmıştır: `R/module_file_manager_ui.R` yalnızca `fileManagerUI()` arayüzünü ve tarayıcı tarafı upload sınırı kontrolünü içerir; `R/module_file_manager.R` ise `fileManagerServer()` tarafındaki yükleme, silme, bağlama, kalıcı dosya yenileme ve oturum durumu işlemlerine odaklanır. Ortak seçim/uzantı/yükleme politikaları, kullanıcı kimliği normalizasyonu ve küçük saf biçimlendirme yardımcıları `R/helpers_file_manager_policy.R` içinde tutulur. Model bağlamı temizleme planı, stale seçim ID’leri, MCP Excel-only kuralı ve tek Excel seçimi `R/helpers_file_manager_context_policy.R` içinde saf biçimde hesaplanır. Dosya tablosu şeması ve satır HTML üretimi `R/helpers_file_manager_table.R` içinde tutulur; böylece sunucu modülü tablo markup ayrıntılarını tekrar yazmadan dosya durumu ve refresh akışına odaklanır. Oturum içi dosya kayıt defteri ve UNC/yerel path normalizasyonu `R/helpers_file_manager_session_registry.R` içinde tutulur; böylece aynı path/registry davranışı yükleme, özet senkronizasyonu ve refresh geri yükleme akışlarında tekrar yazılmaz. File Manager sunucu çalışma zamanı yardımcıları `R/helpers_file_manager_runtime.R`, kalıcı depolama yardımcıları ise `R/helpers_file_manager_storage.R` içinde tutulur. SSO akışında geçici `0` kullanıcı kimliği gerçek kullanıcı sağlayıcısını maskelemez. Kalıcı dosya yenileme akışında eskiyen refresh isteklerinin yeni dosya durumunu ezmesini önlemek için request-token tabanlı koruma uygulanır. Bu request-token koruması `R/helpers_file_manager_refresh_guard.R` içinde saf ve test edilebilir bir yardımcı olarak tutulur; `R/module_file_manager.R` yalnızca refresh orkestrasyonu ve Shiny state güncellemesine odaklanır. Son File Manager bakım refactor’ında dosya state mutasyonu ve kalıcı klasörden yenileme çalışma zamanı `R/helpers_file_manager_state_runtime.R` dosyasına ayrılmıştır. Kalıcı dosya silme fiziksel lifecycle dalı ayrıca `R/helpers_file_manager_delete_runtime.R` içindeki `fm_delete_persisted_file_artifacts()` sınırına taşınmıştır; bu yardımcı doğrudan persisted/datapath/path adaylarını, `resolve_uploaded_file()` fallback’ini, kullanıcı klasörü basename fallback’ini ve indeks temizliğini aynı sırayla korur. Toplu upload dosya başı doğrulama ve kalıcılaştırma dalı `R/helpers_file_manager_upload_runtime.R` içindeki `fm_process_bulk_upload_batch()` sınırına taşınmıştır; duplicate ayrımı, SSO/auth-ready gate, merkezi upload validator, `copy_to_mcp_base()`, persisted-size güncellemesi, indeks yazma ve `process_uploaded_file(..., generate_message = FALSE)` sırası korunur. Bu dosya `sync_file_to_context`, `append_uploaded_file_row`, `remove_file_by_name`, `process_uploaded_file` ve `fm_create_refresh_from_user_folder()` gibi yardımcıları tek sorumluluk altında toplar. `R/module_file_manager.R` artık ağırlıklı olarak Shiny modül orkestrasyonu, observer bağlama ve UI/state akışını koordine etmeye odaklanır. Toplu yükleme akışında SSO/kimlik hazır olmadan dosya state’inin mutasyona uğramasını önleyen auth-readiness koruması eklenmiş; kalıcı dosya yenilemede request-token tabanlı eski istek koruması korunmuştur. Bu ayrım `R/module_file_manager.R` dosyasını 800 satır eşiğinin altına düşürmüş ve File Manager refactor kazanımı `test-file-manager-state-runtime-contract.R`, `test-file-manager-module-policy-wiring.R`, `test-source-manifest-contract.R` ve `test-maintainability-ratchet.R` ile güvence altına alınmıştır.
+Dosya Yönetimi yapısı bakım yapılabilirliği artırmak için küçük sorumluluklara ayrılmıştır: `R/module_file_manager_ui.R` yalnızca `fileManagerUI()` arayüzünü ve tarayıcı tarafı upload sınırı kontrolünü içerir; `R/module_file_manager.R` ise `fileManagerServer()` tarafındaki yükleme, silme, bağlama, kalıcı dosya yenileme ve oturum durumu işlemlerine odaklanır. Ortak seçim/uzantı/yükleme politikaları, kullanıcı kimliği normalizasyonu ve küçük saf biçimlendirme yardımcıları `R/helpers_file_manager_policy.R` içinde tutulur. Model bağlamı temizleme planı, stale seçim ID’leri, MCP Excel-only kuralı ve tek Excel seçimi `R/helpers_file_manager_context_policy.R` içinde saf biçimde hesaplanır. Dosya tablosu şeması ve satır HTML üretimi `R/helpers_file_manager_table.R` içinde tutulur; böylece sunucu modülü tablo markup ayrıntılarını tekrar yazmadan dosya durumu ve refresh akışına odaklanır. Oturum içi dosya kayıt defteri ve UNC/yerel path normalizasyonu `R/helpers_file_manager_session_registry.R` içinde tutulur; böylece aynı path/registry davranışı yükleme, özet senkronizasyonu ve refresh geri yükleme akışlarında tekrar yazılmaz. File Manager sunucu çalışma zamanı yardımcıları `R/helpers_file_manager_runtime.R`, kalıcı depolama yardımcıları ise `R/helpers_file_manager_storage.R` içinde tutulur. SSO akışında geçici `0` kullanıcı kimliği gerçek kullanıcı sağlayıcısını maskelemez. Kalıcı dosya yenileme akışında eskiyen refresh isteklerinin yeni dosya durumunu ezmesini önlemek için request-token tabanlı koruma uygulanır. Bu request-token koruması `R/helpers_file_manager_refresh_guard.R` içinde saf ve test edilebilir bir yardımcı olarak tutulur; `R/module_file_manager.R` yalnızca refresh orkestrasyonu ve Shiny state güncellemesine odaklanır. Son File Manager bakım refactor’ında dosya state mutasyonu ve kalıcı klasörden yenileme çalışma zamanı `R/helpers_file_manager_state_runtime.R` dosyasına ayrılmıştır. Kalıcı dosya silme fiziksel lifecycle dalı ayrıca `R/helpers_file_manager_delete_runtime.R` içindeki `fm_delete_persisted_file_artifacts()` sınırına taşınmıştır; bu yardımcı doğrudan persisted/datapath/path adaylarını, `resolve_uploaded_file()` fallback’ini, kullanıcı klasörü basename fallback’ini ve indeks temizliğini aynı sırayla korur. Toplu upload artık Shiny olay döngüsünde senkron çalışmaz: `R/helpers_file_manager_upload_runtime.R` içindeki `fm_dispatch_bulk_upload_batch()` yalnızca ucuz planı (duplicate ayrımı, uzantı/raporlanan boyut reddi, SSO/auth-ready gate, geçerli kullanıcı kimliği) yapar ve partiyi ortak dosya alım hattına gönderir; doğrulama, hash + `copy_to_mcp_base()` kopyalaması ve bütünlük denetimi worker'da çalışır. Worker bittiğinde `fm_commit_bulk_upload_results()` ana süreçte indeks sonrası tablo satırlarını üretir ve `process_uploaded_file(..., generate_message = FALSE)` sırasını korur. Bu dosya `sync_file_to_context`, `append_uploaded_file_row`, `remove_file_by_name`, `process_uploaded_file` ve `fm_create_refresh_from_user_folder()` gibi yardımcıları tek sorumluluk altında toplar. `R/module_file_manager.R` artık ağırlıklı olarak Shiny modül orkestrasyonu, observer bağlama ve UI/state akışını koordine etmeye odaklanır. Toplu yükleme akışında SSO/kimlik hazır olmadan dosya state’inin mutasyona uğramasını önleyen auth-readiness koruması eklenmiş; kalıcı dosya yenilemede request-token tabanlı eski istek koruması korunmuştur. Bu ayrım `R/module_file_manager.R` dosyasını 800 satır eşiğinin altına düşürmüş ve File Manager refactor kazanımı `test-file-manager-state-runtime-contract.R`, `test-file-manager-module-policy-wiring.R`, `test-source-manifest-contract.R` ve `test-maintainability-ratchet.R` ile güvence altına alınmıştır.
 
 Son ön yüz seçici bakımında File Manager model bağlamı checkbox sözleşmesi ayrıca sertleştirilmiştir. `removeExcelFromContext` artık dosya adını doğrudan CSS attribute selector içine yerleştirmez; `input.attach-checkbox[data-filename]` öğelerini dolaşıp `data-filename` değerini düz metin olarak karşılaştırır. Böylece tırnak, köşeli parantez, ters eğik çizgi veya seçici açısından özel karakter içeren dosya adları tarayıcıda selector hatası üretmeden bağlamdan çıkarılabilir. Sessiz checkbox durum güncellemesi için kullanılan istemci handler kaydı da `R/helpers_file_manager_attach_client.R` içine ayrılmıştır; bu yardımcı `R/config_source_manifest.R` içinde `R/module_file_manager.R` öncesinde yüklenir ve `test-source-manifest-contract.R` ile korunur. Son güncellemede bu sınır daha da daraltılmış; attach-state istemci kaydı `R/module_file_manager.R` içinde tekrar gömülü JS olarak tutulmak yerine yalnızca `R/helpers_file_manager_attach_client.R` üzerinden yapılacak şekilde merkezileştirilmiş ve global no-op handler’ın tek kez, namespace bazlı `setAttachState` handler’larının ise modül namespace’iyle kaydolması korunmuştur.
 
 Son File Manager politika testleri, kullanıcıya özel yükleme klasörünün `user_<id>` biçiminde deterministik türetilmesini ve `0`, `unknown` gibi geçersiz kullanıcı kimlikleriyle kalıcı indeks/persist işlemi yapılmamasını doğrular. Son davranış kapsamı ayrıca özetleme modunda Excel dosyalarının reddedilmesini, MCP Excel bağlam temizliğinde non-Excel ve fazla Excel seçimlerinin kaldırılmasını, refresh guard ile eski yenileme sonuçlarının yeni dosya durumunu ezmemesini ve upload validator tarafında bozuk UTF-8 dosya adlarının, ASCII denetim baytı içeren güvensiz adların reddedilmesini sınar. Geçerli UTF-8 Türkçe dosya adları korunur; noktalı beyaz liste uzantıları ve büyük harfli görünen dosya adları doğru kabul edilir. Bu davranışlar `R/helpers_file_manager_policy.R`, `R/helpers_file_manager_context_policy.R`, `R/helpers_file_manager_refresh_guard.R`, `R/helpers_file_manager_storage.R` ve `R/utils_upload_validator.R` sınırında `tests/testthat/test-file-manager-policy-contract.R`, `tests/testthat/test-upload-validator.R` ve `tests/testthat/test-e2e-file-context-regression.R` ile korunur.
+
+#### Bloklamayan dosya alım (ingestion) hattı
+
+Dosya yükleme artık Shiny olay döngüsünü bloklamaz. Önceki davranışta hem Ana
+Söyleşi hem de Dosya Yönetimi yükleme yolu; doğrulama, `digest::digest(file=)`
+hash'i, kalıcı klasöre kopyalama, boyut doğrulaması ve `index.json` oku/değiştir/
+yaz işlemini dosya başına **senkron olarak observer içinde** çalıştırıyordu
+(Dosya Yönetimi ayrıca tüm `for` döngüsünü `withProgress()` ile sarıyordu). Çok
+dosyalı bir parti bu nedenle hem yükleyen oturumu hem de aynı R sürecini
+paylaşan diğer oturumları donduruyordu.
+
+Yeni hat dört katmandan oluşur ve her iki yükleme girişi de AYNI hattı kullanır:
+
+| Katman | Dosya | Sorumluluk |
+|---|---|---|
+| Saf plan | `R/helpers_file_ingestion_task.R` | Yükleme normalizasyonu, worker görev anlık görüntüsü (yalnız düz skaler), ucuz üstveri reddi (boş ad, eksik yol, uzantı beyaz listesi, raporlanan boyut), duplicate tespiti, sonuç/metrik özetleri. Shiny/reaktif/dosya yazımı yok. |
+| Worker | `R/helpers_file_ingestion_worker.R` | Yetkili `validate_uploaded_file()`, `copy_to_mcp_base()`, bütünlük doğrulaması ve yarım hedef temizliği. Kalıcı indeks yazmaz, Shiny state'e dokunmaz. `file_ingestion_worker_globals()` export paketini süreç başına bir kez önbelleğe alır. |
+| Kuyruk | `R/helpers_file_ingestion_queue.R` | Sınırlı eşzamanlılık: parti başına TEK worker görevi (dosyalar sırayla), `MERGEN_FILE_INGESTION_MAX_CONCURRENT` (varsayılan 2), `MERGEN_FILE_INGESTION_MAX_QUEUE` (varsayılan 32), `future::nbrOfFreeWorkers()` kapasite kapısı ve `later::later` yeniden deneme pompası. |
+| Ana süreç | `R/helpers_file_ingestion_runtime.R` | Gönderim, oturum/iptal denetleyicisi, TEK toplu indeks yazımı ve tamamlanma geri çağrısı. |
+
+Kalıcı indeks yazımı **bilinçli olarak ana süreçte** kalır. İndeks kilidi
+`dir.create` tabanlıdır ve alınamadığında `Sys.sleep()` ile yoklar; yazımı
+worker'lara taşımak süreçler arası gerçek çekişme yaratır ve bu yoklama ana
+olay döngüsünü bloklayabilirdi. Bunun yerine yazım **parti başına tek
+mutasyona** indirgenmiştir (`mergen_index_persisted_files()`), böylece ana
+süreçteki indeks maliyeti dosya sayısından bağımsızdır.
+
+Kayıt tam olarak bir kez yapılır. Daha önce `handle_file_upload_batch()` ve
+`processAndSummarizeFile()` aynı dosya için `global_register_file()` çağırıyordu
+(iki kilit + iki tam indeks yazımı). Artık `processAndSummarizeFile()`
+`already_persisted` bayrağını ve MCP tabanı kontrolünü dikkate alır; zaten
+kalıcılaştırılmış dosyayı yeniden kopyalamaz ve yeniden indekslemez.
+
+Oturum ve iptal güvenliği: denetleyici `session$token` değerini tutar,
+`onSessionEnded` ile bekleyen işleri kuyruktan düşürür ve bir iptal dönemi
+(epoch) taşır. Oturum kapandıysa dosya yine **indekslenir** (yükleme meşrudur,
+kullanıcı bir sonraki girişte görür) ancak hiçbir UI/reaktif mutasyon çalışmaz.
+Parti açıkça iptal edildiyse (`file_ingestion_cancel_controller()`, "Tümünü
+Temizle" akışına bağlıdır) kopyalanan hedefler silinir ve indekse yazılmaz.
+Bir dosyanın hatası partiyi düşürmez: başarılı dosyalar commit edilir, hatalı
+dosya kendi Türkçe hatasını raporlar ve yarım kalan hedef dosya silinir.
+
+Promise geri çağrıları reaktif BAĞLAM içinde değildir; `fm_commit_bulk_upload_results()`
+ve `chat_upload_commit_results()` modül state'ine dokunan işi `shiny::isolate()`
+içine alır.
+
+Boyut sınırı semantiği: Shiny `fileInput` her dosyayı **ayrı HTTP isteğiyle**
+yükler, bu yüzden `shiny.maxRequestSize` (merkezî `getOption("mergen.upload_max_mb", 25L)`
+değerinden türetilir) etkin olarak **dosya başına** sınırdır. Tarayıcı tarafı
+koruma her dosyayı tek tek denetler ve "Dosya başına en fazla N MB" metni
+doğrudur; üretim sınırı yükseltilmemiştir.
+
+Metrikler opt-in'dir (`MERGEN_FILE_INGESTION_METRICS`, varsayılan kapalı); 5
+saniyeyi aşan partiler için her zaman tek satır yazılır. Satır yalnızca sayı,
+bayt, süre ve kuyruk derinliği içerir — dosya adı, yol veya gizli değer içermez.
+
+Bu sınır `tests/testthat/test-file-ingestion-contract.R`,
+`tests/testthat/test-file-ingestion-pipeline-behavior.R`,
+`tests/testthat/test-file-pipeline-upload-batch-behavior.R`,
+`tests/testthat/test-file-manager-state-runtime-contract.R` ve
+`tests/testthat/test-upload-size-policy.R` ile korunur. Gerçek UNC gecikmesi,
+Windows kısa yol/Türkçe path davranışı ve çok kullanıcılı SSO eşzamanlılığı
+yalnızca Windows VM'de doğrulanabilir.
 
 #### Dosya çözümleme ve kullanıcı izolasyonu
 

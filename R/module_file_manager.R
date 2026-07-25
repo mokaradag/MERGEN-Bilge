@@ -298,6 +298,18 @@ moduleServer(id, function(input, output, session) {
     remove_file_by_name <- file_action_helpers$remove_file_by_name
     process_uploaded_file <- file_action_helpers$process_uploaded_file
 
+    # Toplu yükleme arka planda çalıştığı için oturum/iptal koruması gerekir:
+    # kapanan oturumda UI'ya dokunulmaz, "Tümünü Temizle" sonrası uçuştaki
+    # partinin kopyaladığı dosyalar temizlenir ve indekse yazılmaz.
+    upload_runtime <- fm_create_upload_runtime(
+      session = session,
+      process_uploaded_file = process_uploaded_file,
+      message_data = message_data,
+      message_trigger = message_trigger,
+      files_added_to_context = files_added_to_context,
+      fm_debug = fm_debug
+    )
+
 	# Dynamic downloads
     observe({
       lapply(names(module_values$file_contents), function(fid) {
@@ -355,38 +367,19 @@ moduleServer(id, function(input, output, session) {
       existing_names <- vapply(module_values$file_contents, `[[`, "", "name")
       uid <- module_user_id_chr()
 
-      batch_result <- fm_process_bulk_upload_batch(
+      # Doğrulama/kopyalama/bütünlük denetimi arka plana gider; observer anında
+      # döner ve olay döngüsü serbest kalır. Tablo satırları ve bildirimler
+      # commit geri çağrısında ana süreçte üretilir.
+      fm_dispatch_bulk_upload_batch(
         files_df = files_df,
         existing_names = existing_names,
         session = session,
         uid = uid,
         is_auth_ready = is_auth_ready,
-        is_under_mcp_base = is_under_mcp_base,
-        ensure_persisted_upload_index = ensure_persisted_upload_index,
-        process_uploaded_file = process_uploaded_file,
+        controller = upload_runtime$controller,
+        commit_ctx = upload_runtime$commit_ctx,
         fm_debug = fm_debug
       )
-
-      if (length(batch_result$duplicate_names) > 0) {
-        showToast(
-          session,
-          paste("Dosya(lar) zaten mevcut:", paste(batch_result$duplicate_names, collapse = ", ")),
-          "warning"
-        )
-      }
-
-      saved_infos <- batch_result$saved_infos %||% list()
-      if (length(saved_infos) > 0) {
-        message_data(list(
-          content = sprintf("%d dosya yüklendi.", length(saved_infos)),
-          html    = sprintf("\U0001F4CE <b>%d dosya</b> yüklendi ve sohbete eklendi.", length(saved_infos)),
-          type    = "system"
-        ))
-        message_trigger(message_trigger() + 1)
-        showToast(session, paste(length(saved_infos), "dosya başarıyla yüklendi!"), "success")
-
-        files_added_to_context(saved_infos)
-      }
 
       shinyjs::delay(100, session$sendCustomMessage('resetBulkUploadCaption', list()))
     }, ignoreInit = TRUE)
@@ -476,7 +469,11 @@ moduleServer(id, function(input, output, session) {
 
     observeEvent(input$confirm_clear_files, {
       removeModal()
-    
+
+      # 0) Uçuştaki toplu yükleme partisi bu temizliği ezmesin: kopyaları
+      # temizlenir, indekse yazılmaz ve tabloya satır eklemez.
+      file_ingestion_cancel_controller(upload_runtime$controller)
+
       # 1) Physically delete everything in the user's persisted bucket and clear index
       uid <- isolate(module_user_id_chr())
       if (!is.null(uid)) try(mergen_clear_user_bucket(uid), silent = TRUE)

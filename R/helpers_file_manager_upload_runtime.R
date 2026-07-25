@@ -1,118 +1,165 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_file_manager_upload_runtime.R
-# Açıklama: Dosya Yönetimi toplu yükleme doğrulama ve kalıcılaştırma runtime'ı.
+# Açıklama: Dosya Yönetimi toplu yükleme gönderimi ve tamamlanma bağlayıcısı.
+#           Doğrulama, hash + kalıcı klasöre kopyalama ve bütünlük denetimi
+#           ARTIK burada senkron çalışmaz; ortak dosya alım hattına
+#           (R/helpers_file_ingestion_*.R) sınırlı eşzamanlılıkla devredilir.
+#           Bu dosyada yalnızca ucuz plan/bildirim ve ana süreç commit'i kalır.
 # ==============================================================================
 
-fm_process_bulk_upload_batch <- function(
-  files_df,
-  existing_names,
-  session,
-  uid,
-  is_auth_ready,
-  is_under_mcp_base,
-  ensure_persisted_upload_index,
-  process_uploaded_file,
-  fm_debug
-) {
-  if (is.null(files_df) || nrow(files_df) == 0) return(list(saved_infos = list(), duplicate_names = character()))
+# Toplu yükleme için oturum kapsamlı denetleyici ve commit bağlamını üretir.
+# Modül yalnızca bu fabrikayı çağırır; yükleme durumu burada toplanır.
+fm_create_upload_runtime <- function(session,
+                                     process_uploaded_file,
+                                     message_data,
+                                     message_trigger,
+                                     files_added_to_context,
+                                     fm_debug) {
+  list(
+    controller = file_ingestion_create_controller(session = session, debug_fn = fm_debug),
+    commit_ctx = list(
+      session = session,
+      process_uploaded_file = process_uploaded_file,
+      message_data = message_data,
+      message_trigger = message_trigger,
+      files_added_to_context = files_added_to_context,
+      fm_debug = fm_debug
+    )
+  )
+}
 
-  new_df <- files_df[!files_df$name %in% existing_names, , drop = FALSE]
-  dup_df <- files_df[files_df$name %in% existing_names, , drop = FALSE]
-  duplicate_names <- as.character(dup_df$name %||% character())
+# Plan aşamasındaki ucuz redleri ve yinelenen adları kullanıcıya bildirir.
+fm_report_upload_plan_issues <- function(session, plan) {
+  if (length(plan$duplicate_names) > 0L) {
+    showToast(
+      session,
+      paste("Dosya(lar) zaten mevcut:", paste(plan$duplicate_names, collapse = ", ")),
+      "warning"
+    )
+  }
 
-  if (nrow(new_df) == 0) {
-    return(list(saved_infos = list(), duplicate_names = duplicate_names))
+  for (red in plan$rejected %||% list()) {
+    showToast(
+      session,
+      sprintf("Dosya reddedildi: %s - %s", red$name, red$error %||% "bilinmeyen doğrulama hatası"),
+      "error"
+    )
+  }
+
+  invisible(TRUE)
+}
+
+# Worker tamamlandıktan sonra ANA SÜREÇTE çalışır: tablo satırları, bağlam
+# senkronizasyonu ve kullanıcı bildirimleri burada üretilir.
+# Promise geri çağrısı reaktif BAĞLAM içinde değildir; modül state'i okuyan tüm
+# iş shiny::isolate() içine alınır (yazmalar yine dinleyicileri tetikler).
+fm_commit_bulk_upload_results <- function(results, ctx, batch_id = NULL) {
+  if (!is.null(batch_id)) try(removeNotification(batch_id), silent = TRUE)
+
+  shiny::isolate({
+    saved_infos <- list()
+
+    for (sonuc in results %||% list()) {
+      if (!isTRUE(sonuc$ok)) {
+        ctx$fm_debug("upload_reject", sprintf("%s -> %s", sonuc$name, sonuc$code %||% "unknown"))
+        showToast(
+          ctx$session,
+          sprintf("Dosya kaydedilemedi: %s - %s", sonuc$name, sonuc$error %||% "bilinmeyen hata"),
+          "error"
+        )
+        next
+      }
+
+      saved <- ctx$process_uploaded_file(
+        list(name = sonuc$name, datapath = sonuc$dest, size = sonuc$size, type = sonuc$type),
+        generate_message = FALSE
+      )
+
+      if (!is.null(saved)) saved_infos[[length(saved_infos) + 1L]] <- saved
+    }
+
+    if (length(saved_infos) > 0L) {
+      ctx$message_data(list(
+        content = sprintf("%d dosya yüklendi.", length(saved_infos)),
+        html    = sprintf("\U0001F4CE <b>%d dosya</b> yüklendi ve sohbete eklendi.", length(saved_infos)),
+        type    = "system"
+      ))
+      ctx$message_trigger(ctx$message_trigger() + 1)
+      showToast(ctx$session, paste(length(saved_infos), "dosya başarıyla yüklendi!"), "success")
+      ctx$files_added_to_context(saved_infos)
+    }
+
+    invisible(saved_infos)
+  })
+}
+
+# Toplu yüklemeyi planlar ve arka plan alım hattına gönderir. Olay döngüsünde
+# yalnızca ucuz üstveri işi yapılır; dönüş anında gerçekleşir.
+fm_dispatch_bulk_upload_batch <- function(files_df,
+                                          existing_names,
+                                          session,
+                                          uid,
+                                          is_auth_ready,
+                                          controller,
+                                          commit_ctx,
+                                          fm_debug) {
+  batch_id <- file_ingestion_new_batch_id("fm")
+
+  plan <- file_ingestion_plan_batch(
+    uploads = files_df,
+    existing_names = existing_names,
+    user_id = uid,
+    allowed_ext = fm_normal_allowed_extensions(),
+    max_size_mb = fm_upload_limit_mb(),
+    batch_id = batch_id
+  )
+
+  fm_report_upload_plan_issues(session, plan)
+
+  if (!length(plan$tasks)) {
+    return(invisible(list(status = "empty", batch_id = batch_id)))
   }
 
   if (isTRUE(SSO_ENABLED) && !is_auth_ready()) {
     fm_debug("upload_skip", "auth henüz tamamlanmadığı için toplu yükleme ertelendi")
     showToast(session, "Kimlik doğrulama tamamlanmadan dosya yüklenemez.", "warning")
-    return(list(saved_infos = list(), duplicate_names = duplicate_names, auth_blocked = TRUE))
+    return(invisible(list(status = "auth_blocked", batch_id = batch_id)))
   }
 
-  saved_infos <- list()
+  if (!file_ingestion_valid_user_id(uid)) {
+    fm_debug("persist_abort", "geçersiz user_id nedeniyle toplu yükleme iptal edildi")
+    showToast(session, "Dosyalar kalıcı klasöre kaydedilemedi: kullanıcı kimliği çözümlenemedi.", "error")
+    return(invisible(list(status = "invalid_user", batch_id = batch_id)))
+  }
 
-  withProgress(message = 'Dosyalar yükleniyor...', value = 0, {
-    for (i in seq_len(nrow(new_df))) {
-      incProgress(1 / nrow(new_df), detail = new_df$name[i])
+  showNotification(
+    sprintf("%d dosya arka planda işleniyor\U2026", length(plan$tasks)),
+    duration = NULL,
+    type = "message",
+    id = batch_id
+  )
 
-      upload_row <- new_df[i, , drop = FALSE]
-      upload_name <- as.character(upload_row$name[1] %||% "")
-      upload_path <- as.character(upload_row$datapath[1] %||% "")
+  outcome <- file_ingestion_submit_batch(
+    controller = controller,
+    tasks = plan$tasks,
+    user_id = uid,
+    on_complete = function(results, ctx) fm_commit_bulk_upload_results(results, commit_ctx, ctx$batch_id),
+    on_failure = function(message, tasks) {
+      try(removeNotification(batch_id), silent = TRUE)
+      fm_debug("upload_error", message)
+      showToast(session, "Dosyalar işlenemedi. Lütfen tekrar deneyin.", "error")
+    },
+    batch_id = batch_id
+  )
 
-      if (!nzchar(uid) || identical(uid, "unknown") || identical(uid, "0")) {
-        fm_debug("persist_abort", sprintf("geçersiz user_id nedeniyle kaydedilemedi: %s", upload_name))
-        showToast(session, paste("Dosya kalıcı klasöre kaydedilemedi:", upload_name), "error")
-        next
-      }
+  if (identical(outcome$status, "rejected")) {
+    try(removeNotification(batch_id), silent = TRUE)
+    showToast(session, "Yükleme kuyruğu dolu. Lütfen biraz sonra tekrar deneyin.", "warning")
+  }
 
-      if (exists("validate_uploaded_file", envir = globalenv(), inherits = FALSE)) {
-        max_mb <- fm_upload_limit_mb()
-        allowed_upload_exts <- if (exists("fm_normal_allowed_extensions", mode = "function", inherits = TRUE)) {
-          fm_normal_allowed_extensions()
-        } else {
-          NULL
-        }
+  fm_debug("upload_dispatch", sprintf(
+    "batch=%s dosya=%d durum=%s", batch_id, length(plan$tasks), outcome$status
+  ))
 
-        dogrulama <- validate_uploaded_file(
-          path = upload_path,
-          filename = upload_name,
-          max_size_mb = max_mb,
-          allowed_ext = allowed_upload_exts
-        )
-
-        if (!isTRUE(dogrulama$ok)) {
-          fm_debug(
-            "upload_validation_reject",
-            sprintf("%s -> %s (%s)", upload_name, dogrulama$code %||% "unknown", dogrulama$error %||% "")
-          )
-          showToast(
-            session,
-            sprintf("Dosya reddedildi: %s - %s", upload_name, dogrulama$error %||% "bilinmeyen doğrulama hatası"),
-            "error"
-          )
-          next
-        }
-      }
-
-      if (!is_under_mcp_base(upload_path)) {
-        persisted_path <- tryCatch({
-          copy_to_mcp_base(
-            list(
-              name = upload_name,
-              datapath = upload_path,
-              size = suppressWarnings(as.numeric(upload_row$size[1] %||% NA_real_)),
-              type = as.character(upload_row$type[1] %||% "")
-            ),
-            uid
-          )
-        }, error = function(e) {
-          fm_debug("persist_error", sprintf("%s -> %s", upload_name, conditionMessage(e)))
-          ""
-        })
-
-        if (!nzchar(persisted_path) || !path_exists_relaxed(persisted_path)) {
-          showToast(session, paste("Dosya kalıcı klasöre kaydedilemedi:", upload_name), "error")
-          next
-        }
-
-        upload_row$datapath[1] <- persisted_path
-
-        persisted_size <- suppressWarnings(file.info(persisted_path)$size[1])
-        if (!is.na(persisted_size)) {
-          upload_row$size[1] <- persisted_size
-        }
-      }
-
-      final_persisted_path <- as.character(upload_row$datapath[1] %||% "")
-      ensure_persisted_upload_index(abs_path = final_persisted_path, display_name = upload_name, uid = uid)
-
-      result <- process_uploaded_file(upload_row, generate_message = FALSE)
-      if (!is.null(result)) {
-        saved_infos[[length(saved_infos) + 1]] <- result
-      }
-    }
-  })
-
-  list(saved_infos = saved_infos, duplicate_names = duplicate_names)
+  invisible(outcome)
 }
