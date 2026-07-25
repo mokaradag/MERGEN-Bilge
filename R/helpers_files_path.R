@@ -1,9 +1,9 @@
-# ==============================================================================
+# ================================================================================
 # Dosya Yolu: R/helpers_files_path.R
 # Açıklama: Dosya/MCP akışlarında kullanılan UNC, Windows path, encoding ve
 #           karşılaştırma yardımcılarını toplar. Bu dosya yan etkisiz kalmalı;
 #           dosya kopyalama, içerik okuma veya Shiny state mutasyonu içermez.
-# ==============================================================================
+# ================================================================================
 
 # UNC yolunu base R fonksiyonları (file(), readBin, pdftools vb.) için okunabilir formata çevirir.
 # path_exists_relaxed() dosyanın varlığını doğrular ancak base R'ın açamayacağı bir yol döndürebilir.
@@ -78,7 +78,7 @@ normalize_for_path_compare <- function(path) {
     return("")
   }
 
-  cleaned <- gsub("\\\\", "/", candidate, fixed = TRUE)
+  cleaned <- gsub("\\", "/", candidate, fixed = TRUE)
   cleaned <- sub("^//\\?/UNC", "//", cleaned, perl = TRUE)
   cleaned <- sub("^//\\?/", "//", cleaned, perl = TRUE)
   cleaned <- sub("^//(?=[A-Za-z]:)", "", cleaned, perl = TRUE)
