@@ -156,9 +156,9 @@ copy_to_mcp_base <- function(upload, user_id) {
     cat(sprintf("[copy_to_mcp_base] UYARI: Boyut uyuşmazlığı! kaynak=%d, hedef=%d\n", src_size, dest_size))
   }
 
-  # Ana süreçten gelen storage_base sözcüksel olarak korunur. normalizePath(),
-  # resolve_readable_path() veya Windows 8.3 dönüşümü aynı fiziksel yolu farklı
-  # bir kökle döndürebilir ve worker'ın zorlanan kök sözleşmesini bozar.
+  # Dosya gerçekten oluştuysa yolu olduğu gibi koru.
+  # Burada enc2utf8 uygulamak UNC + Türkçe karakterli yollarda
+  # Geliştirme -> GeliÅŸtirme gibi bozulmaya yol açabiliyor.
   dest_chr <- gsub("\\\\", "/", as.character(dest), fixed = TRUE)
 
   if (.Platform$OS.type == "windows" && grepl("^/[^/]", dest_chr)) {
@@ -168,6 +168,16 @@ copy_to_mcp_base <- function(upload, user_id) {
     }
   }
 
+  dest_readable <- tryCatch(
+    resolve_readable_path(dest_chr),
+    error = function(e) dest_chr
+  )
+
+  if (path_exists_relaxed(dest_readable)) {
+    return(gsub("\\\\", "/", as.character(dest_readable), fixed = TRUE))
+  }
+
+  # Varlık zaten doğrulandı; safe_windows_short_path() depolama kökünü değiştirebileceğinden burada ÇAĞRILMAZ.
   dest_chr
 }
 
