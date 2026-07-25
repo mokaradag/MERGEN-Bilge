@@ -177,11 +177,7 @@ copy_to_mcp_base <- function(upload, user_id) {
     return(gsub("\\\\", "/", as.character(dest_readable), fixed = TRUE))
   }
 
-  # Hedefin var olduğu birkaç satır önce (dest_exists) zaten doğrulandı.
-  # Burada safe_windows_short_path() ÇAĞIRMAK istenmez: dosya var olduğu
-  # sürece bu fonksiyon her koşulda Windows kısa (8.3) yola döner ve worker'ın
-  # ana süreçten zorladığı depolama kökünü (storage_base) sessizce değiştirir.
-  # dest_readable biçim değiştirmiş olsa bile doğrulanmış uzun yolu koru.
+  # Varlık zaten doğrulandı; safe_windows_short_path() depolama kökünü değiştirebileceğinden burada ÇAĞRILMAZ.
   dest_chr
 }
 
