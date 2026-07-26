@@ -68,17 +68,22 @@
     normalizePath(path, winslash = "/", mustWork = must_exist)
   }
 
-  source(
-    file.path(repo_root, "R", "helpers_claude_code_runtime_resolver.R"),
-    encoding = "UTF-8",
-    local = test_env
-  )
-
-  source(
-    file.path(repo_root, "R", "helpers_claude_code_runtime_workdir.R"),
-    encoding = "UTF-8",
-    local = test_env
-  )
+  # Runtime hazırlık zinciri: sınırlar -> sınırlı tarayıcı -> hazırlık
+  # yardımcıları -> runtime workdir. İzole test bu sırayı korumalıdır.
+  for (dosya in c(
+    "config_claude_code.R",
+    "helpers_claude_code_bounded_scan.R",
+    "helpers_claude_code_runtime_prepare.R",
+    "helpers_claude_code_output_sync.R",
+    "helpers_claude_code_runtime_resolver.R",
+    "helpers_claude_code_runtime_workdir.R"
+  )) {
+    source(
+      file.path(repo_root, "R", dosya),
+      encoding = "UTF-8",
+      local = test_env
+    )
+  }
 
   test_env
 }
@@ -194,24 +199,32 @@ test_that("runtime workdir aynalama çalışma başına benzersiz dizin kullanı
     info = "Eski paylaşılan active_dir runtime klasörü yeniden kullanılmamalıdır."
   )
 
-  expect_true(file.exists(file.path(first$runtime_workdir, "girdi.txt")))
-  expect_true(file.exists(file.path(second$runtime_workdir, "girdi.txt")))
+  # Kaynak klasörün TAMAMI kopyalanmaz; gerekli girdiler izole `input`
+  # bölmesine aktarılır ve runtime düzeni input/output/metadata içerir.
+  expect_true(file.exists(file.path(first$runtime_workdir, "input", "girdi.txt")))
+  expect_true(file.exists(file.path(second$runtime_workdir, "input", "girdi.txt")))
+
+  expect_true(dir.exists(file.path(first$runtime_workdir, "output")))
+  expect_true(dir.exists(file.path(first$runtime_workdir, "metadata")))
+  expect_true(dir.exists(file.path(first$runtime_workdir, "document_support")))
 })
 
-test_that("module_claude_code.R çalışma request kimliğini runtime workdir token olarak geçirir", {
+test_that("çalışma request kimliği runtime workdir token olarak geçirilir", {
+  # Hazırlık ana Shiny sürecinden arka plan worker'ına taşındığı için bu
+  # çağrı artık hazırlık görevi dosyasında yaşar.
   module_text <- .read_repo_text_cc_runtime_workdir_contract(
-    "R/module_claude_code.R"
+    "R/helpers_claude_code_run_prepare_task.R"
   )
 
   expect_true(
     grepl(
-      "prepare_claude_runtime_workdir\\s*\\([\\s\\S]*runtime_token\\s*=\\s*run_request_id",
+      "prepare_claude_runtime_workdir\\s*\\([\\s\\S]*runtime_token\\s*=\\s*request\\$request_id",
       module_text,
       perl = TRUE
     ),
     info = paste(
-      "R/module_claude_code.R prepare_claude_runtime_workdir() çağrısında",
-      "runtime_token = run_request_id geçmelidir."
+      "R/helpers_claude_code_run_prepare_task.R prepare_claude_runtime_workdir()",
+      "çağrısında runtime_token = request$request_id geçmelidir."
     )
   )
 })
@@ -251,9 +264,10 @@ test_that("prepare_claude_runtime_workdir mevcut runtime workdir verildiğinde y
   expect_true(isTRUE(ikinci$reused))
   expect_identical(ikinci$runtime_workdir, ilk$runtime_workdir)
 
-  # Kaynaktaki yeni dosya runtime klasörüne de yansımalı (re-mirror).
-  expect_true(file.exists(file.path(ikinci$runtime_workdir, "girdi.txt")))
-  expect_true(file.exists(file.path(ikinci$runtime_workdir, "ek.txt")))
+  # Takip çağrısında kaynak klasör yeniden aynalanmaz; yalnızca gerekli
+  # girdi dosyaları input bölmesinde tazelenir.
+  expect_true(file.exists(file.path(ikinci$runtime_workdir, "input", "girdi.txt")))
+  expect_true(file.exists(file.path(ikinci$runtime_workdir, "input", "ek.txt")))
 })
 
 test_that("prepare_claude_runtime_workdir farklı kullanıcı kovasındaki runtime'ı yeniden kullanmaz", {
@@ -288,44 +302,44 @@ test_that("prepare_claude_runtime_workdir farklı kullanıcı kovasındaki runti
   expect_false(identical(sonuc$runtime_workdir, baska_user_runtime))
 })
 
-test_that("module_claude_code.R Claude CLI runtime workdir'ini takip çağrıları için yeniden kullanır", {
-  module_text <- .read_repo_text_cc_runtime_workdir_contract(
-    "R/module_claude_code.R"
+test_that("Claude CLI runtime workdir'i takip çağrıları için yeniden kullanılır", {
+  dispatch_text <- .read_repo_text_cc_runtime_workdir_contract(
+    "R/helpers_claude_code_run_dispatch.R"
   )
 
   expect_true(
     grepl(
-      "existing_runtime_workdir\\s*=\\s*mevcut_runtime_workdir",
-      module_text,
+      "existing_runtime_workdir\\s*=\\s*mevcut_runtime",
+      dispatch_text,
       perl = TRUE
     ),
     info = paste(
-      "R/module_claude_code.R prepare_claude_runtime_workdir() çağrısında",
-      "mevcut runtime klasörünü existing_runtime_workdir ile geçmelidir."
+      "R/helpers_claude_code_run_dispatch.R hazırlık isteğinde mevcut runtime",
+      "klasörünü existing_runtime_workdir ile geçmelidir."
     )
   )
 
   expect_true(
     grepl(
       "rv\\$active_runtime_workdir\\s*<-",
-      module_text,
+      dispatch_text,
       perl = TRUE
     ),
     info = paste(
-      "R/module_claude_code.R aynalama yapıldığında runtime klasörünü",
-      "rv$active_runtime_workdir alanında saklamalıdır."
+      "R/helpers_claude_code_run_dispatch.R aynalama yapıldığında runtime",
+      "klasörünü rv$active_runtime_workdir alanında saklamalıdır."
     )
   )
 
   expect_true(
     grepl(
       "rv\\$active_runtime_source\\s*<-",
-      module_text,
+      dispatch_text,
       perl = TRUE
     ),
     info = paste(
-      "R/module_claude_code.R aynalama yapıldığında kaynak workdir'i",
-      "rv$active_runtime_source alanında saklamalıdır."
+      "R/helpers_claude_code_run_dispatch.R aynalama yapıldığında kaynak",
+      "workdir'i rv$active_runtime_source alanında saklamalıdır."
     )
   )
 })
@@ -356,6 +370,6 @@ test_that("runtime workdir tek slash ağ yolunu relaxed resolver ile aynalar", {
 
   expect_true(isTRUE(sonuc$mirrored))
   expect_true(dir.exists(sonuc$runtime_workdir))
-  expect_true(file.exists(file.path(sonuc$runtime_workdir, "girdi.txt")))
+  expect_true(file.exists(file.path(sonuc$runtime_workdir, "input", "girdi.txt")))
   expect_equal(sonuc$source_workdir, source_dir)
 })

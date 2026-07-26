@@ -325,6 +325,9 @@ source_manifest_sections <- list(
     "R/helpers_claude_code_process.R",
     "R/helpers_claude_code_api_key.R",
     "R/helpers_claude_code_runtime_resolver.R",
+    "R/helpers_claude_code_bounded_scan.R",
+    "R/helpers_claude_code_runtime_prepare.R",
+    "R/helpers_claude_code_output_sync.R",
     "R/helpers_claude_code_runtime_workdir.R",
     "R/helpers_claude_code_security_policy.R",
     "R/helpers_claude_code_path_policy.R",
@@ -338,18 +341,27 @@ source_manifest_sections <- list(
     "R/helpers_claude_code_downloads_html.R",
     "R/helpers_claude_code_existing_file_link.R",
     "R/helpers_claude_code_workdir_scan.R",
+    "R/helpers_claude_code_file_stability.R",
     "R/helpers_claude_code_workdir_snapshot.R",
     "R/helpers_claude_code_plugins.R",
     "R/helpers_claude_code_document_extractors.R",
     "R/helpers_claude_code_documents.R",
     "R/helpers_claude_code_document_summary.R",
+    # Arka plan hazırlık görevi: sınırlı tarama + girdi kopyalama + doküman
+    # çıkarımı + çalıştırma öncesi snapshot. Runtime workdir, workdir scan ve
+    # doküman yardımcılarından SONRA yüklenmelidir.
+    "R/helpers_claude_code_run_prepare_task.R",
     # Kalıcı oturum runtime köprüsü: DB katmanı (database bölümü) ile çalışma
     # alanı modülü arasında; run_lifecycle bu köprüdeki persist çağrılarını
     # guard'lı exists() ile kullanır. Workbench oturum API fabrikası
     # (hidrasyon + yeni oturum) module_claude_code.R tarafından çağrılır.
     "R/helpers_claude_code_session_persistence.R",
     "R/helpers_claude_code_workbench_session_api.R",
-    "R/helpers_claude_code_run_lifecycle.R"
+    "R/helpers_claude_code_run_lifecycle.R",
+    # Ana süreç tarafı: hazırlık gönderimi/aşama durumu ve süreç başlatma,
+    # ardından çalıştırma sonrası çıktı işleme ve sonlandırma.
+    "R/helpers_claude_code_run_dispatch.R",
+    "R/helpers_claude_code_run_completion.R"
   ),
 
   # llm_pipeline: LLM hattı: araç formatlayıcılar, yanıt post-process,

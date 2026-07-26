@@ -214,7 +214,11 @@ build_claude_code_document_prompt <- function(orijinal_prompt,
 prepare_claude_code_document_context <- function(prompt,
                                                  runtime_workdir,
                                                  source_workdir = NULL,
-                                                 user_id = NULL) {
+                                                 user_id = NULL,
+                                                 request_id = NULL,
+                                                 explicit_files = character(0),
+                                                 support_base_dir = NULL,
+                                                 limits = NULL) {
   sonuc <- list(
     prompt = prompt,
     document_task_detected = FALSE,
@@ -274,18 +278,36 @@ prepare_claude_code_document_context <- function(prompt,
     source_workdir %||% runtime_workdir
   }
 
-  dokumanlar <- list_claude_code_binary_documents(
+  dokuman_adaylari <- list_claude_code_binary_documents(
     dokuman_kaynak_dizini,
     extensions = binary_exts
   )
+
+  if (!length(dokuman_adaylari)) {
+    return(sonuc)
+  }
+
+  dokuman_secimi <- cc_select_documents_for_request(
+    prompt = prompt,
+    documents = dokuman_adaylari,
+    explicit_files = explicit_files,
+    limits = limits
+  )
+
+  dokumanlar <- dokuman_secimi$files
 
   if (!length(dokumanlar)) {
     return(sonuc)
   }
 
   sonuc$has_binary_docs <- TRUE
+  sonuc$document_selection <- dokuman_secimi
 
-  destek_dizini <- get_claude_code_document_support_dir(user_id = user_id)
+  destek_dizini <- get_claude_code_document_support_dir(
+    user_id = user_id,
+    request_id = request_id,
+    base_dir = support_base_dir
+  )
   reader_template_path <- get_office_document_reader_template_path()
 
   hazir_dosyalar <- list()

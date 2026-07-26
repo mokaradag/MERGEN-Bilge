@@ -1,0 +1,483 @@
+# ==============================================================================
+# Dosya Yolu: R/helpers_claude_code_runtime_prepare.R
+# Açıklama: Bilge Yolaç izole runtime çalışma alanı düzeni (input/output/
+#           metadata/document_support), büyük klasör preflight kararı, gerekli
+#           girdi dosyalarının seçimi ve kopyalanması ile yalnızca değişen
+#           çıktıların geri aktarım planı.
+#
+#           Bu dosya Shiny, reaktif değer, DB veya süreç yönetimi içermez;
+#           arka plan worker sürecinde çalıştırılabilir.
+# ==============================================================================
+
+CLAUDE_CODE_LIMIT_MESSAGE <- paste(
+  "Seçilen klasör güvenli çalışma sınırlarını aşıyor.",
+  "Bilge Yolaç klasörün tamamını kopyalamadı.",
+  "Lütfen daha küçük bir alt klasör veya gerekli dosyaları seçin."
+)
+
+# Hazırlık kodu hem ana Shiny sürecinde hem de arka plan worker'ında çalışır.
+# Worker'da logger appender yapılandırılmamış olabileceğinden log çağrıları
+# asla hazırlığı düşürmemelidir.
+cc_log_info <- function(message) {
+  tryCatch({
+    if (exists("log_info", mode = "function", inherits = TRUE)) {
+      log_info(message)
+    }
+  }, error = function(e) NULL)
+
+  invisible(NULL)
+}
+
+cc_log_warn <- function(message) {
+  tryCatch({
+    if (exists("log_warn", mode = "function", inherits = TRUE)) {
+      log_warn(message)
+    }
+  }, error = function(e) NULL)
+
+  invisible(NULL)
+}
+
+cc_runtime_base_dir <- function() {
+  file.path(tempdir(), "claude_code_runtime")
+}
+
+cc_runtime_user_dir <- function(user_id = NULL) {
+  file.path(
+    cc_runtime_base_dir(),
+    paste0("user_", as.character(user_id %||% "default"))
+  )
+}
+
+#' İzole runtime çalışma alanı düzenini hesapla
+#'
+#' @param user_id Kullanıcı kimliği
+#' @param run_token Çalışma başına benzersiz klasör adı
+#' @return root/input/output/metadata/document_support yollarını içeren liste
+cc_runtime_dir_layout <- function(user_id = NULL, run_token = "run") {
+  kok <- file.path(cc_runtime_user_dir(user_id), as.character(run_token)[1])
+
+  list(
+    root = kok,
+    input = file.path(kok, "input"),
+    output = file.path(kok, "output"),
+    metadata = file.path(kok, "metadata"),
+    document_support = file.path(kok, "document_support")
+  )
+}
+
+#' Runtime çalışma alanı klasörlerini oluştur
+#'
+#' @param layout cc_runtime_dir_layout() çıktısı
+#' @return Normalize edilmiş düzen listesi
+cc_runtime_ensure_layout <- function(layout) {
+  for (yol in unlist(layout, use.names = FALSE)) {
+    if (!dir.exists(yol)) {
+      dir.create(yol, recursive = TRUE, showWarnings = FALSE)
+    }
+  }
+
+  lapply(layout, function(yol) {
+    tryCatch(
+      normalizePath(yol, winslash = "/", mustWork = FALSE),
+      error = function(e) yol
+    )
+  })
+}
+
+# ------------------------------------------------------------------------------
+# PREFLIGHT: BÜYÜK KLASÖR POLİTİKASI
+# ------------------------------------------------------------------------------
+
+#' Preflight tarama sonucunu güvenli çalışma sınırlarına göre değerlendir
+#'
+#' @param scan cc_scan_directory_bounded() çıktısı
+#' @param limits Sınır listesi
+#' @return list(ok, blocked, limited, reason, message, metrics)
+cc_evaluate_workdir_preflight <- function(scan, limits = NULL) {
+  if (!is.list(scan) || !isTRUE(scan$ok)) {
+    return(list(
+      ok = TRUE,
+      blocked = FALSE,
+      limited = FALSE,
+      reason = "scan_unavailable",
+      message = "",
+      metrics = list(file_count = 0L, dir_count = 0L, total_bytes = 0)
+    ))
+  }
+
+  max_files <- cc_runtime_limit("preflight_max_files", 1500, limits)
+  max_dirs <- cc_runtime_limit("preflight_max_dirs", 400, limits)
+  max_bytes <- cc_runtime_limit("preflight_max_total_bytes", 256 * 1024^2, limits)
+
+  asim <- character(0)
+  if (scan$file_count > max_files) asim <- c(asim, "max_files")
+  if (scan$dir_count > max_dirs) asim <- c(asim, "max_directories")
+  if (scan$total_bytes > max_bytes) asim <- c(asim, "max_total_bytes")
+  if (isTRUE(scan$truncated)) asim <- c(asim, scan$truncated_reason)
+
+  asim <- unique(asim[nzchar(asim)])
+
+  metrics <- list(
+    file_count = scan$file_count,
+    dir_count = scan$dir_count,
+    total_bytes = scan$total_bytes,
+    elapsed_ms = scan$elapsed_ms,
+    truncated = isTRUE(scan$truncated),
+    truncated_reason = scan$truncated_reason
+  )
+
+  if (!length(asim)) {
+    return(list(
+      ok = TRUE,
+      blocked = FALSE,
+      limited = FALSE,
+      reason = "",
+      message = "",
+      metrics = metrics
+    ))
+  }
+
+  # Sınır aşıldığında bile görev güvenli bir alt kümeyle sürdürülebilir;
+  # bu yüzden çalıştırma engellenmez, yalnızca sınırlı mod bildirilir.
+  list(
+    ok = TRUE,
+    blocked = FALSE,
+    limited = TRUE,
+    reason = paste(asim, collapse = ","),
+    message = CLAUDE_CODE_LIMIT_MESSAGE,
+    metrics = metrics
+  )
+}
+
+# Kaynak dizini sınırlı biçimde tarar (preflight + girdi seçimi için ortak yol)
+cc_scan_source_workdir <- function(source_dir, limits = NULL) {
+  cc_scan_directory_bounded(
+    root = source_dir,
+    max_files = cc_runtime_limit("scan_max_files", 2000, limits),
+    max_dirs = cc_runtime_limit("scan_max_dirs", 500, limits),
+    max_depth = cc_runtime_limit("scan_max_depth", 6, limits),
+    max_total_bytes = cc_runtime_limit("scan_max_total_bytes", 512 * 1024^2, limits),
+    max_elapsed_ms = cc_runtime_limit("scan_timeout_ms", 4000, limits)
+  )
+}
+
+# ------------------------------------------------------------------------------
+# GEREKLİ GİRDİ DOSYALARININ SEÇİMİ
+# ------------------------------------------------------------------------------
+
+#' Prompt metninde geçen dosya adlarını çıkar
+#'
+#' @param prompt Kullanıcı metni
+#' @return Küçük harfe çevrilmiş aday dosya adları
+cc_extract_prompt_file_mentions <- function(prompt) {
+  metin <- enc2utf8(paste(as.character(prompt %||% ""), collapse = " "))
+  if (!nzchar(metin)) return(character(0))
+
+  eslesmeler <- tryCatch(
+    regmatches(
+      metin,
+      gregexpr("[^\\s\"'`<>|:*?]+\\.[A-Za-z0-9]{1,8}\\b", metin, perl = TRUE)
+    )[[1]],
+    error = function(e) character(0)
+  )
+
+  if (!length(eslesmeler)) return(character(0))
+
+  eslesmeler <- gsub("[\\\\/]+", "/", eslesmeler, perl = TRUE)
+  eslesmeler <- sub("[.,;:)\\]]+$", "", eslesmeler, perl = TRUE)
+  eslesmeler <- eslesmeler[nzchar(eslesmeler)]
+
+  unique(tolower(eslesmeler))
+}
+
+.cc_prepare_mention_matches <- function(files, relatives, mentions) {
+  if (!length(files) || !length(mentions)) return(logical(length(files)))
+
+  rel_key <- tolower(relatives)
+  base_key <- tolower(basename(files))
+
+  vapply(seq_along(files), function(i) {
+    any(vapply(mentions, function(m) {
+      identical(m, base_key[i]) ||
+        identical(m, rel_key[i]) ||
+        endsWith(rel_key[i], paste0("/", m))
+    }, logical(1)))
+  }, logical(1))
+}
+
+#' Çalıştırma için gerçekten gerekli girdi dosyalarını seç
+#'
+#' Öncelik sırası: açıkça seçilen dosyalar, prompt içinde adı geçen dosyalar,
+#' ardından sınırlı otomatik alt küme. Hiçbir durumda klasörün tamamı
+#' "gerekli girdi" sayılmaz.
+#'
+#' @param prompt Kullanıcı metni
+#' @param files Taranan dosya yolları
+#' @param file_sizes Dosya boyutları
+#' @param root Kaynak kök dizin
+#' @param explicit_files UI tarafından açıkça seçilen dosyalar
+#' @param limits Sınır listesi
+#' @return list(files, relatives, total_bytes, selection_mode, skipped, truncated)
+cc_select_input_files <- function(prompt,
+                                  files,
+                                  file_sizes = NULL,
+                                  root = "",
+                                  explicit_files = character(0),
+                                  limits = NULL) {
+  files <- as.character(files %||% character(0))
+  bos <- list(
+    files = character(0),
+    relatives = character(0),
+    total_bytes = 0,
+    selection_mode = "none",
+    skipped = character(0),
+    truncated = FALSE
+  )
+
+  if (!length(files)) return(bos)
+
+  boyutlar <- suppressWarnings(as.numeric(file_sizes %||% rep(NA_real_, length(files))))
+  if (length(boyutlar) != length(files)) {
+    boyutlar <- rep(NA_real_, length(files))
+  }
+  boyutlar[!is.finite(boyutlar)] <- 0
+
+  relatives <- cc_scan_relative_paths(files, root)
+
+  max_files <- cc_runtime_limit("max_input_files", 40, limits)
+  max_file_bytes <- cc_runtime_limit("max_input_file_bytes", 25 * 1024^2, limits)
+  max_total_bytes <- cc_runtime_limit("max_input_total_bytes", 100 * 1024^2, limits)
+  auto_max <- cc_runtime_limit("auto_select_max_files", 25, limits)
+
+  explicit_files <- as.character(explicit_files %||% character(0))
+  explicit_key <- tolower(c(basename(explicit_files), gsub("\\", "/", explicit_files, fixed = TRUE)))
+  explicit_key <- unique(explicit_key[nzchar(explicit_key)])
+
+  secim_modu <- "auto"
+  secilen_idx <- integer(0)
+
+  if (length(explicit_key)) {
+    secilen_idx <- which(.cc_prepare_mention_matches(files, relatives, explicit_key))
+    if (length(secilen_idx)) secim_modu <- "explicit"
+  }
+
+  if (!length(secilen_idx)) {
+    mentions <- cc_extract_prompt_file_mentions(prompt)
+    if (length(mentions)) {
+      secilen_idx <- which(.cc_prepare_mention_matches(files, relatives, mentions))
+      if (length(secilen_idx)) secim_modu <- "prompt"
+    }
+  }
+
+  if (!length(secilen_idx)) {
+    # Prompt hiçbir dosyaya işaret etmiyorsa klasörün tamamı gerekli girdi
+    # sayılmaz; yalnızca sınırlı ve deterministik bir alt küme kopyalanır.
+    sira <- order(boyutlar, tolower(relatives))
+    secilen_idx <- sira[seq_len(min(length(sira), max(0L, as.integer(auto_max))))]
+    secim_modu <- "auto"
+  }
+
+  secilen_idx <- unique(secilen_idx)
+  secilen_idx <- secilen_idx[order(tolower(relatives[secilen_idx]))]
+
+  sonuc_dosyalar <- character(0)
+  sonuc_rel <- character(0)
+  atlananlar <- character(0)
+  toplam <- 0
+  kesildi <- FALSE
+
+  for (i in secilen_idx) {
+    if (length(sonuc_dosyalar) >= max_files) {
+      kesildi <- TRUE
+      break
+    }
+
+    if (boyutlar[i] > max_file_bytes) {
+      atlananlar <- c(atlananlar, relatives[i])
+      next
+    }
+
+    if (toplam + boyutlar[i] > max_total_bytes) {
+      kesildi <- TRUE
+      break
+    }
+
+    sonuc_dosyalar <- c(sonuc_dosyalar, files[i])
+    sonuc_rel <- c(sonuc_rel, relatives[i])
+    toplam <- toplam + boyutlar[i]
+  }
+
+  list(
+    files = sonuc_dosyalar,
+    relatives = sonuc_rel,
+    total_bytes = toplam,
+    selection_mode = secim_modu,
+    skipped = unique(atlananlar),
+    truncated = kesildi
+  )
+}
+
+#' Seçilen girdi dosyalarını runtime input klasörüne kopyala
+#'
+#' Göreli klasör yapısı korunur; klasörün tamamı için özyinelemeli
+#' file.copy() kullanılmaz.
+#'
+#' @param files Kaynak dosya yolları
+#' @param relatives Köke göre göreli yollar
+#' @param input_dir Hedef input klasörü
+#' @return list(copied, failed, total_bytes, results)
+cc_copy_files_to_runtime_input <- function(files, relatives, input_dir) {
+  files <- as.character(files %||% character(0))
+  relatives <- as.character(relatives %||% character(0))
+
+  if (!length(files) || !nzchar(as.character(input_dir %||% "")[1])) {
+    return(list(copied = character(0), failed = character(0), total_bytes = 0, results = list()))
+  }
+
+  if (length(relatives) != length(files)) {
+    relatives <- basename(files)
+  }
+
+  kopyalananlar <- character(0)
+  basarisizlar <- character(0)
+  sonuclar <- list()
+  toplam <- 0
+
+  for (i in seq_along(files)) {
+    hedef <- file.path(input_dir, relatives[i])
+    hedef_dizin <- dirname(hedef)
+
+    if (!dir.exists(hedef_dizin)) {
+      dir.create(hedef_dizin, recursive = TRUE, showWarnings = FALSE)
+    }
+
+    ok <- tryCatch(
+      file.copy(
+        from = files[i],
+        to = hedef,
+        overwrite = TRUE,
+        copy.mode = TRUE,
+        copy.date = TRUE
+      ),
+      error = function(e) FALSE
+    )
+
+    if (!isTRUE(ok) || !isTRUE(file.exists(hedef))) {
+      basarisizlar <- c(basarisizlar, relatives[i])
+      sonuclar[[length(sonuclar) + 1L]] <- list(
+        source_path = files[i],
+        dest_path = hedef,
+        success = FALSE,
+        size = NA_real_,
+        error = "Dosya kopyalanamadı"
+      )
+      next
+    }
+
+    boyut <- suppressWarnings(as.numeric(file.info(hedef)$size[1]))
+    if (!is.finite(boyut)) boyut <- 0
+    toplam <- toplam + boyut
+
+    kopyalananlar <- c(kopyalananlar, hedef)
+    sonuclar[[length(sonuclar) + 1L]] <- list(
+      source_path = files[i],
+      dest_path = hedef,
+      success = TRUE,
+      size = boyut,
+      error = ""
+    )
+  }
+
+  list(
+    copied = kopyalananlar,
+    failed = basarisizlar,
+    total_bytes = toplam,
+    results = sonuclar
+  )
+}
+
+#' Bu çalıştırma için işlenecek dokümanları sınırlı biçimde seç
+#'
+#' Büyük bir klasördeki her doküman işlenmez. Öncelik sırası: açıkça seçilen
+#' dosyalar, prompt içinde adı geçen dosyalar, ardından sınırlı alt küme.
+#'
+#' @param prompt Kullanıcı metni
+#' @param documents Aday doküman yolları
+#' @param explicit_files Açıkça seçilen dosyalar
+#' @param limits Sınır listesi
+#' @return list(files, selection_mode, skipped, truncated)
+cc_select_documents_for_request <- function(prompt,
+                                            documents,
+                                            explicit_files = character(0),
+                                            limits = NULL) {
+  documents <- unique(as.character(documents %||% character(0)))
+
+  if (!length(documents)) {
+    return(list(
+      files = character(0),
+      selection_mode = "none",
+      skipped = character(0),
+      truncated = FALSE
+    ))
+  }
+
+  max_docs <- cc_runtime_limit("max_documents", 10, limits)
+  max_doc_bytes <- cc_runtime_limit("max_document_bytes", 25 * 1024^2, limits)
+  max_total_bytes <- cc_runtime_limit("max_documents_total_bytes", 80 * 1024^2, limits)
+
+  adlar <- tolower(basename(documents))
+
+  anahtarlar <- unique(tolower(c(
+    basename(as.character(explicit_files %||% character(0))),
+    cc_extract_prompt_file_mentions(prompt)
+  )))
+  anahtarlar <- anahtarlar[nzchar(anahtarlar)]
+
+  secilen_idx <- integer(0)
+  secim_modu <- "auto"
+
+  if (length(anahtarlar)) {
+    secilen_idx <- which(adlar %in% anahtarlar)
+    if (length(secilen_idx)) secim_modu <- "prompt"
+  }
+
+  if (!length(secilen_idx)) {
+    secilen_idx <- order(adlar)
+  }
+
+  boyutlar <- suppressWarnings(as.numeric(file.info(documents)$size))
+  boyutlar[!is.finite(boyutlar)] <- 0
+
+  secilenler <- character(0)
+  atlananlar <- character(0)
+  toplam <- 0
+  kesildi <- FALSE
+
+  for (i in secilen_idx) {
+    if (length(secilenler) >= max_docs) {
+      kesildi <- TRUE
+      break
+    }
+
+    if (boyutlar[i] > max_doc_bytes) {
+      atlananlar <- c(atlananlar, basename(documents[i]))
+      next
+    }
+
+    if (toplam + boyutlar[i] > max_total_bytes) {
+      kesildi <- TRUE
+      break
+    }
+
+    secilenler <- c(secilenler, documents[i])
+    toplam <- toplam + boyutlar[i]
+  }
+
+  list(
+    files = secilenler,
+    selection_mode = secim_modu,
+    skipped = unique(atlananlar),
+    truncated = kesildi
+  )
+}

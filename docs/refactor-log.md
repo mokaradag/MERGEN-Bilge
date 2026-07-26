@@ -7,6 +7,114 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 ---
 
 
+## 2026-07-26 — Bloklamayan Bilge Yolaç çalıştırma hattı (büyük klasör / eşzamanlılık)
+
+### Seçilen paket / neden
+Bilge Yolaç, Shiny olay döngüsünde senkron çalışan son büyük iş yüküydü. Çok
+sayıda iç içe klasör ve dosya içeren bir klasör seçildiğinde süreç başlamadan
+ÖNCE (UNC/Unicode dizinlerin özyinelemeli `file.copy()` ile TAM aynalanması,
+`list.files(recursive = TRUE)` ile sınırsız snapshot, doküman algılama ve
+PDF/Excel/DOCX metin çıkarımı) ve SONRA (aynı toplamanın iki kez çalışması,
+runtime klasörünün tamamının kaynak dizine geri kopyalanması, `Sys.sleep()`
+bekleme döngüleri) yapılan işler ana R sürecinde çalışıyordu. Tek bir kullanıcı
+bu yüzden aynı worker'ı paylaşan TÜM oturumları dondurabiliyordu. Ayrıca durum
+çubuğu, Claude süreci henüz başlamamışken "Çalışıyor" gösteriyordu.
+
+### Değişen dosyalar
+- Yeni: `R/helpers_claude_code_bounded_scan.R` (gerçekten sınırlı, artımlı
+  tarayıcı: sınıra ulaşınca ERKEN durur, kesilme nedeni + ölümcül olmayan
+  hatalar + atlananlar raporlar, bağlantı döngüsü/kök kaçışı korumalı),
+  `R/helpers_claude_code_runtime_prepare.R` (izole `input`/`output`/`metadata`/
+  `document_support` düzeni, preflight kararı, gerekli girdi ve doküman seçimi,
+  kopyalama), `R/helpers_claude_code_output_sync.R` (bölge tespiti, yalnızca
+  değişen çıktı için aktarım planı/uygulaması, yaş tabanlı klasör temizliği),
+  `R/helpers_claude_code_file_stability.R` (yalnızca worker'da çalışan, bütçeli
+  kararlılık beklemesi), `R/helpers_claude_code_run_prepare_task.R` (arka plan
+  hazırlık görevi + önbelleğe alınmış global paketi),
+  `R/helpers_claude_code_run_dispatch.R` (ana süreç: aşama durumu, hazırlık
+  gönderimi, model çözümü, süreç başlatma),
+  `R/helpers_claude_code_run_completion.R` (arka plan çıktı işleme + TEK
+  SEFERLİK toplama + sonlandırma).
+- `R/helpers_claude_code_runtime_workdir.R`: tam aynalama yerine seçici girdi
+  aktarımı; `sync_claude_runtime_workdir_back()` yalnızca değişen çıktıyı yazar.
+- `R/helpers_claude_code_workdir_scan.R`: snapshot/diff sınırlı tarayıcıya
+  taşındı, kesilme uyarısı eklendi; kararlılık bekleyicisi ayrı dosyaya çıktı.
+- `R/helpers_claude_code_document_extractors.R` / `_documents.R`: request bazlı
+  izole doküman destek dizini (ortak klasör artık her istekte SİLİNMEZ),
+  sınırlı doküman seçimi.
+- `R/helpers_claude_code_downloads.R`: sabit 1.5 sn `Sys.sleep` döngüleri
+  yapılandırılabilir `cc_wait_for_path_visible()` bütçesine indirgendi.
+- `R/module_claude_code.R` / `R/module_claude_code_stream_poll.R`: observer'lar
+  yalnızca gönderim/sonlandırma yapar; toplama tek seferlik bayrakla korunur.
+- Kayıt/sözleşme: `R/config_claude_code.R` (`claude_code_runtime_limits`),
+  `R/config_source_manifest.R` (claude_code_helpers 29 → 36), `.Renviron.example`.
+
+### Önce/sonra
+- Kaynak klasörün tamamı özyinelemeli kopyalanıyordu → yalnızca gerekli girdiler
+  (açık seçim → promptta adı geçen → sınırlı otomatik alt küme).
+- `list.files(recursive = TRUE)` + sonradan kırpma → sınıra ulaşınca duran
+  artımlı gezinme.
+- Runtime klasörünün tamamı geri kopyalanıyordu → yalnızca bu çalıştırmada
+  oluşan/değişen, onaylı çıktı bölgesindeki dosyalar.
+- Çıktı diff + indirme staging iki kez çalışıyordu → çalıştırma başına bir kez.
+- `R/module_claude_code.R` 646 → 328 satır;
+  `R/module_claude_code_stream_poll.R` 578 → 230 satır.
+- Küresel bakım skoru 100/100, en büyük dosya 778 satır / 24 fonksiyon:
+  DEĞİŞMEDİ.
+
+### Korunan davranış sözleşmeleri
+- UNC/ağ paylaşımı ve Türkçe/ASCII dışı yollar, Windows kısa/uzun ad
+  kanonikleştirme, Claude CLI streaming ve `--resume` sürekliliği (runtime
+  klasörü takip sorularında yeniden kullanılır), Durdur davranışı, model seçimi,
+  üretilen dosya indirme kartları, kalıcı oturumlar, Dosya Yönetimi yenilemesi,
+  çevrimdışı/on-prem çalışma, çıktı yolu güvenlik denetimleri ve üretilen
+  `.txt`/`.log`/`.csv`/`.md` için UTF-8 BOM normalizasyonu.
+- `request_id` yaşam döngüsü: her geri çağrı `cc_is_active_run()` ile doğrulanır;
+  stale geri çağrı yeni çalışmayı bozamaz; hazırlık hatası tutarlı UI durumu
+  bırakır.
+
+### Eklenen/güncellenen testler
+- Yeni: `tests/testthat/test-claude-code-bounded-scan-behavior.R` (39 assertion),
+  `tests/testthat/test-claude-code-run-prepare-behavior.R` (95 assertion).
+- Güncellendi: `test-claude-code-runtime-workdir-contract.R`,
+  `test-claude-code-workdir-scan-contract.R`,
+  `test-claude-code-run-lifecycle-contract.R`,
+  `test-claude-code-document-orchestration-behavior.R`,
+  `test-claude-code-sessions-module-contract.R`,
+  `test-claude-code-synthetic-tools-contract.R`,
+  `test-source-manifest-sections-contract.R`.
+
+### Gerçekten çalıştırılan doğrulamalar
+`bash tools/ai_validate.sh quick` (0 failed / 0 skipped),
+`bash tools/ai_validate.sh full --boot-smoke`, `parse_sanity_check.R` (1017
+dosya), dosya-dosya tüm testthat paketi (593 dosya, 0 sorunlu), maintainability
+raporu + ratchet (100/100), kaynak manifest/bölüm/seam/zone sözleşmeleri.
+
+### Manuel QA (kullanıcı tarafı)
+- Bilge Yolaç'ta çok sayıda alt klasör ve dosya içeren büyük bir klasör seçip
+  komut çalıştırın; durum çubuğu sırayla `Hazırlanıyor` → `Dosyalar taranıyor` →
+  `Model başlatılıyor` → `Çalışıyor` göstermeli ve arayüz donmamalı.
+- Aynı anda ikinci bir tarayıcı oturumu açın; ilk oturum büyük klasörü
+  hazırlarken ikinci oturum yanıt vermeye devam etmeli.
+- Aynı söyleşide takip sorusu sorun; CLI oturumu (`--resume`) kopmamalı.
+- Bir dosya ürettirin; indirme kartı görünmeli ve dosya kaynak klasöre
+  aktarılmalı. Kaynak klasörde `input/` veya `metadata/` OLUŞMAMALI.
+- UNC (`//sunucu/paylasim/...`) ve Türkçe karakterli klasörlerle tekrarlayın.
+- Hazırlık sırasında Durdur'a basın; arayüz temiz biçimde `Durduruldu` durumuna
+  dönmeli ve sonraki çalıştırma normal başlamalı.
+
+### Bilinen risk / atlanan doğrulama
+- Gerçek UNC/ağ paylaşımı gecikmesi, Windows kısa yol/Türkçe path davranışı, çok
+  kullanıcılı SSO eşzamanlılığı ve büyük klasör hazırlığı sırasında ikinci
+  tarayıcı oturumunun gerçek yanıt süresi YALNIZCA Windows VM'de doğrulanabilir.
+- Bilge Yolaç'ta çoklu dosya seçimi UI'si bulunmadığından `explicit_files`
+  şimdilik boş geçilir; parametre uçtan uca bağlıdır ve böyle bir UI eklendiğinde
+  doğrudan kullanılabilir.
+- Sınırlı tarayıcı, TEK bir dizin içindeki çok büyük dosya listesini yine de o
+  dizin için listeler (ağaç genelinde sınır uygulanır); patolojik tek-dizin
+  durumları `max_entries` ile kırpılır.
+
+
 ## 2026-07-25 — Bloklamayan dosya alım (ingestion) hattı
 
 ### Seçilen paket / neden

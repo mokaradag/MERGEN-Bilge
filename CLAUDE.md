@@ -3039,6 +3039,51 @@ Validation after edits:
 - Do not run or change runtime code.
 - Do not delete any existing documentation content.
 
+### Bilge Yolaç non-blocking run pipeline contract
+
+Bilge Yolaç run preparation and completion are a protected CONCURRENCY boundary. A single user selecting a large, deeply nested directory must never freeze the main Shiny event loop for other sessions sharing the same R worker. Full guide: `docs/technical-reference.md` "Bilge Yolaç bloklamayan çalıştırma hattı".
+
+Non-negotiable rules:
+
+- NEVER mirror the whole selected source directory. `prepare_claude_runtime_workdir()` builds a per-run isolated workspace `<temp>/claude_code_runtime/user_<id>/run_<request_id>/{input,output,metadata,document_support}` and copies ONLY the files the task actually needs (explicitly selected → prompt-mentioned → bounded automatic subset). Do not restore recursive `file.copy()` of the source tree, and do not re-mirror on follow-up prompts — a reused runtime workdir (needed for Claude CLI `--resume` continuity) only refreshes required inputs.
+- NEVER enumerate a directory tree and truncate afterwards. `cc_scan_directory_bounded()` (`R/helpers_claude_code_bounded_scan.R`) traverses incrementally and stops the moment a limit is hit. It supports max files/directories/depth/total bytes/elapsed time/individual file size/entries, returns structured metrics plus `truncated` + `truncated_reason` + non-fatal `errors` + `skipped`, keeps one inaccessible subdirectory from failing the whole scan, and does not follow directory symlinks/junctions (real-path revisit check blocks both loops and allowed-root escapes). Default exclusions (`.git`, `node_modules`, `renv/library`, build/cache/temp dirs, Bilge Yolaç runtime/download/document-support dirs) stay configurable.
+- Preflight is a policy, not a hard block: `cc_evaluate_workdir_preflight()` marks a run `limited` and surfaces the Turkish message `Seçilen klasör güvenli çalışma sınırlarını aşıyor...` while continuing with a safe subset. All thresholds live in `claude_code_runtime_limits` (`R/config_claude_code.R`) and are `.Renviron`-overridable; do not hard-code new limits elsewhere.
+- Expensive work must stay off the main process. Bounded scan, input selection/copy, document detection and PDF/Excel/DOCX extraction, pre-run output snapshot, post-run diff, download staging and output sync run in `tracked_future_promise(..., dependency_mode = "explicit")` workers: `cc_prepare_run_workspace()` (`R/helpers_claude_code_run_prepare_task.R`) and `cc_process_run_outputs()` (`R/helpers_claude_code_run_completion.R`). Only plain serializable data crosses the boundary — never a Shiny session, reactive value, process handle, or DB connection. Worker global bundles are memoized once per process (`cc_run_prepare_worker_globals()`, `cc_run_output_worker_globals()`); do not switch these dispatches to `dependency_mode = "auto"` (the auto-scan runs on the event loop).
+- Request-id lifecycle protection is preserved: every promise callback re-checks `cc_is_active_run()`, preparation has its own timeout (`prepare_timeout_sec`), a stale callback must never mutate a newer request, and a Stop pressed during preparation must not let a late callback restart or finalize the old run. Preparation failure goes through `cc_fail_run_preparation()` — it must not start Claude, must show a clear error, restore the Run button, reset Stop, clear process/stream state and clear the active request only when the failing callback still owns it.
+- Preparation state is SEPARATE from model execution state. `claude_code_run_stages` (`R/helpers_claude_code_run_dispatch.R`) owns `Hazırlanıyor`, `Dosyalar taranıyor`, `Gerekli dosyalar hazırlanıyor`, `Dokümanlar hazırlanıyor`, `Model başlatılıyor`, `Çalışıyor`, `Çıktılar işleniyor`, `Çıktılar aktarılıyor`, `Tamamlandı`, `Durduruldu`, `Hata`, `Zaman Aşımı`. `rv$is_running` may still guard duplicate submissions, but never show `Çalışıyor` before the Claude process actually started.
+- Snapshots cover only the approved writable output area (runtime root + `output`, excluding `input`/`metadata`/`document_support`) through `cc_snapshot_run_output_area()`; a truncated snapshot must be logged and warned about, never silently treated as complete. Windows short/long-name canonicalization, case-insensitive dedup, generated-file detection, download cards and UTF-8 BOM normalization for generated text files are unchanged.
+- Sync back only generated/changed output files. `sync_claude_runtime_workdir_back()` delegates to `cc_plan_output_sync()` / `cc_apply_output_sync_plan()` (`R/helpers_claude_code_output_sync.R`): only files inside the approved output zone, created/changed during this run, passing path policy and size limits, with destinations verified inside the source root. `..` traversal, absolute-path escape, symlink escape, runtime metadata, input copies and document-support files are all rejected. It returns per-file structured results (source, destination, success, size, error); one failure must not block the others, and an empty plan performs no copying.
+- Document preparation is request-specific: selection prefers explicit files, then prompt-mentioned files, then a bounded subset, limited by document count/size/total bytes on top of the existing PDF-page/Excel-sheet/DOCX-paragraph/character caps. `get_claude_code_document_support_dir(user_id, request_id, base_dir)` must NOT delete the shared per-user directory on every request; concurrent runs get isolated per-request folders and stale folders are removed by the age-based `cc_cleanup_stale_document_support_dirs()` / `cc_cleanup_stale_runtime_dirs()` policy that never touches an active run.
+- End-of-run work happens exactly ONCE per run. The poll observer guards with `env$cikti_islendi`, clears `rv$active_process` to stop polling, and must not call `collect_claude_code_workdir_changes_downloads()` or `cc_collect_streaming_run_downloads()` directly; the cached collection feeds download HTML, synthetic tool uses, `rv$last_result`, persistence, output history and the File Manager refresh decision. Do not reintroduce a second collection call in either the success or the error branch.
+- Blocking waits (`cc_wait_for_path_visible()`, `wait_for_stable_claude_code_file_paths()`) may only run in background workers, are bounded by `file_settle_total_ms`, and must never appear in `R/module_claude_code.R`, `R/module_claude_code_stream_poll.R`, `R/helpers_claude_code_run_dispatch.R` or `R/helpers_claude_code_run_completion.R`. Windows/UNC timing tolerance is preserved without making unrelated sessions wait.
+- Structured timing logs are part of the field-diagnostic path: `[WORKDIR_PREFLIGHT]`, `[BOUNDED_SCAN]`, `[RUNTIME_PREPARE]`, `[INPUT_COPY]`, `[DOCUMENT_PREPARE]`, `[PROCESS_START]`, `[OUTPUT_DIFF]`, `[DOWNLOAD_STAGE]`, `[OUTPUT_SYNC]`. They carry counts, bytes, elapsed ms, truncation reason, request id and whether the work ran asynchronously — never API keys, document contents, or unnecessary sensitive full paths. Preparation/worker code logs through the failure-safe `cc_log_info()` / `cc_log_warn()` wrappers because a worker may have no logger appender.
+- Backward compatibility is preserved: UNC/Unicode/Windows paths, Claude CLI streaming and `--resume`, Stop behavior, model selection, generated download cards, persistent sessions, File Manager refresh, offline/on-prem operation, output path security controls and UTF-8 BOM normalization for generated `.txt`/`.log`/`.csv`/`.md`.
+- Manifest order in the `claude_code_helpers` section is dependency order and must be preserved: `helpers_claude_code_bounded_scan.R` → `helpers_claude_code_runtime_prepare.R` → `helpers_claude_code_output_sync.R` → `helpers_claude_code_runtime_workdir.R` → ... → `helpers_claude_code_workdir_scan.R` → `helpers_claude_code_file_stability.R` → `helpers_claude_code_workdir_snapshot.R` → document chain → `helpers_claude_code_run_prepare_task.R` → `helpers_claude_code_run_lifecycle.R` → `helpers_claude_code_run_dispatch.R` → `helpers_claude_code_run_completion.R`. Isolated tests that execute these helpers must source the same chain.
+- Multi-worker deployment (several R processes behind a load balancer) is an ADDITIONAL resilience measure only; it never replaces non-blocking application code.
+
+Protected by:
+
+- `tests/testthat/test-claude-code-bounded-scan-behavior.R`
+- `tests/testthat/test-claude-code-run-prepare-behavior.R`
+- `tests/testthat/test-claude-code-runtime-workdir-contract.R`
+- `tests/testthat/test-claude-code-workdir-scan-contract.R`
+- `tests/testthat/test-claude-code-run-lifecycle-contract.R`
+- `tests/testthat/test-claude-code-document-orchestration-behavior.R`
+- `tests/testthat/test-claude-code-downloads-security-behavior.R`
+- `tests/testthat/test-source-manifest-sections-contract.R`
+- `tests/testthat/test-maintainability-ratchet.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-claude-code-bounded-scan-behavior.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-run-prepare-behavior.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-runtime-workdir-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-workdir-scan-contract.R")`
+- `testthat::test_file("tests/testthat/test-claude-code-run-lifecycle-contract.R")`
+- `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")`
+
+VM-only proof (not provable in cloud): real UNC/network-share latency, Windows short-path/Turkish-path behavior under load, real multi-user SSO concurrency, and the actual event-loop responsiveness of a second browser session while a large folder is being prepared.
+
 ### Bilge Yolaç directory-listing contract
 
 Bilge Yolaç directory listing is intentionally split from the broad CLI helper file.

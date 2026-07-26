@@ -26,7 +26,7 @@ MERGEN Bilge, kurum içi/on-prem ortamlarda çalışmaya uygun bir yapay zekâ d
 - TTS, STT, karşılama medyası ve sesli rehberlik bileşenleri; hibrit VoxCPM2 konuşma mimarisi (kilitli persona referans sesleri, önceden üretilmiş karşılama/sayfa rehberliği WAV'ları). Üretim/operatör akışı: [`docs/speech-operator-runbook.md`](docs/speech-operator-runbook.md).
 - Destek Merkezi, Geri Bildirim & Hata, Yenilikler ve Hakkında sayfaları.
 - Yönetici/Sistem Durumu ekranları ve sağlık/operasyon sinyalleri.
-- Bilge Yolaç: Claude Code ile web üzerinden çalışan kodlama ajanı alanı ve eklenti sistemi.
+- Bilge Yolaç: Claude Code ile web üzerinden çalışan kodlama ajanı alanı ve eklenti sistemi. Çalıştırma hattı ana Shiny olay döngüsünü bloke etmez: seçilen klasörün tamamı kopyalanmaz, dizin taraması gerçekten sınırlıdır ve pahalı dosya işleri arka plan sürecinde yürütülür; böylece büyük bir klasör seçen tek bir kullanıcı diğer oturumları donduramaz. Ayrıntı: [`docs/technical-reference.md`](docs/technical-reference.md) "Bilge Yolaç bloklamayan çalıştırma hattı".
 - Ortak Oturumlar: ekip tabanlı paylaşılan yapay zekâ çalışma odaları; oda içi yazışma ("Odaya Yaz") ile yapay zekâ sorusu ("Yapay Zekâya Sor") ayrımı, davet/canlı durum, ortak belgeler ve "Kendi Dosyalarıma Kaydet" akışı. Ayrıntı: [`docs/ortak-oturumlar.md`](docs/ortak-oturumlar.md); DB kurulumu RUNBOOK §9B.
 - SSO/Keycloak hazır kimlik doğrulama sınırı ve yerel geliştirme modu.
 

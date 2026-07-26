@@ -68,6 +68,106 @@ claude_code_config <- list(
 )
 
 # ------------------------------------------------------------------------------
+# BÜYÜK KLASÖR / EŞZAMANLILIK SINIRLARI
+# Bilge Yolaç bir çalıştırmayı hazırlarken kaynak klasörün tamamını asla
+# kopyalamaz ve asla sınırsız taramaz. Aşağıdaki sınırlar hem preflight
+# taramasını hem de girdi/çıktı aktarımını çerçeveler. Tümü .Renviron
+# üzerinden geçersiz kılınabilir.
+# ------------------------------------------------------------------------------
+
+.cc_limit_num <- function(env_name, default_value) {
+  ham <- Sys.getenv(env_name, "")
+  if (!nzchar(ham)) return(default_value)
+
+  deger <- suppressWarnings(as.numeric(ham))
+  if (length(deger) != 1L || is.na(deger) || deger < 0) {
+    return(default_value)
+  }
+
+  deger
+}
+
+claude_code_runtime_limits <- list(
+  # Preflight taraması (kaynak klasörün güvenli sınırlar içinde olup olmadığı)
+  scan_max_files = .cc_limit_num("CLAUDE_CODE_SCAN_MAX_FILES", 2000),
+  scan_max_dirs = .cc_limit_num("CLAUDE_CODE_SCAN_MAX_DIRS", 500),
+  scan_max_depth = .cc_limit_num("CLAUDE_CODE_SCAN_MAX_DEPTH", 6),
+  scan_max_total_bytes = .cc_limit_num(
+    "CLAUDE_CODE_SCAN_MAX_TOTAL_MB", 512
+  ) * 1024^2,
+  scan_timeout_ms = .cc_limit_num("CLAUDE_CODE_SCAN_TIMEOUT_MS", 4000),
+
+  # "Bu klasör güvenli sınırların dışında" kararının eşikleri
+  preflight_max_files = .cc_limit_num("CLAUDE_CODE_PREFLIGHT_MAX_FILES", 1500),
+  preflight_max_dirs = .cc_limit_num("CLAUDE_CODE_PREFLIGHT_MAX_DIRS", 400),
+  preflight_max_total_bytes = .cc_limit_num(
+    "CLAUDE_CODE_PREFLIGHT_MAX_TOTAL_MB", 256
+  ) * 1024^2,
+
+  # Runtime input klasörüne kopyalanacak dosya sınırları
+  max_input_files = .cc_limit_num("CLAUDE_CODE_MAX_INPUT_FILES", 40),
+  max_input_file_bytes = .cc_limit_num(
+    "CLAUDE_CODE_MAX_INPUT_FILE_MB", 25
+  ) * 1024^2,
+  max_input_total_bytes = .cc_limit_num(
+    "CLAUDE_CODE_MAX_INPUT_TOTAL_MB", 100
+  ) * 1024^2,
+
+  # Prompt hiçbir dosyayı işaret etmediğinde otomatik seçilecek üst sınır
+  auto_select_max_files = .cc_limit_num("CLAUDE_CODE_AUTO_SELECT_MAX_FILES", 25),
+
+  # Çıktı tarama / geri senkron sınırları
+  output_scan_max_files = .cc_limit_num("CLAUDE_CODE_OUTPUT_SCAN_MAX_FILES", 1000),
+  output_scan_max_depth = .cc_limit_num("CLAUDE_CODE_OUTPUT_SCAN_MAX_DEPTH", 8),
+  max_output_file_bytes = .cc_limit_num(
+    "CLAUDE_CODE_MAX_OUTPUT_FILE_MB", 100
+  ) * 1024^2,
+  max_output_total_bytes = .cc_limit_num(
+    "CLAUDE_CODE_MAX_OUTPUT_TOTAL_MB", 400
+  ) * 1024^2,
+
+  # Doküman hazırlama sınırları
+  max_documents = .cc_limit_num("CLAUDE_CODE_MAX_DOCUMENTS", 10),
+  max_document_bytes = .cc_limit_num(
+    "CLAUDE_CODE_MAX_DOCUMENT_MB", 25
+  ) * 1024^2,
+  max_documents_total_bytes = .cc_limit_num(
+    "CLAUDE_CODE_MAX_DOCUMENTS_TOTAL_MB", 80
+  ) * 1024^2,
+
+  # Arka plan hazırlık zaman aşımı ve dosya kararlılık beklemesi
+  prepare_timeout_sec = .cc_limit_num("CLAUDE_CODE_PREPARE_TIMEOUT_SEC", 180),
+  file_settle_total_ms = .cc_limit_num("CLAUDE_CODE_FILE_SETTLE_TOTAL_MS", 1200),
+
+  # Eski runtime / doküman destek klasörlerinin saklanma süresi (saniye)
+  runtime_retention_sec = .cc_limit_num("CLAUDE_CODE_RUNTIME_RETENTION_SEC", 21600)
+)
+
+#' Bilge Yolaç çalışma zamanı sınırını güvenli biçimde okur
+#'
+#' @param name Sınır adı
+#' @param default_value Sınır tanımlı değilse dönecek değer
+#' @param limits Sınır listesi (varsayılan: claude_code_runtime_limits)
+#' @return Sayısal sınır değeri
+cc_runtime_limit <- function(name, default_value = Inf, limits = NULL) {
+  if (is.null(limits)) {
+    limits <- tryCatch(
+      get("claude_code_runtime_limits", inherits = TRUE),
+      error = function(e) list()
+    )
+  }
+
+  deger <- tryCatch(limits[[name]], error = function(e) NULL)
+  deger <- suppressWarnings(as.numeric(deger[1]))
+
+  if (length(deger) != 1L || is.na(deger)) {
+    return(default_value)
+  }
+
+  deger
+}
+
+# ------------------------------------------------------------------------------
 # MODEL KATMANLARI
 # settings.json'daki teknik model adları yerine kullanıcı dostu Türkçe
 # etiketler gösterilir. Sıralama bu listedeki sıraya göre yapılır.

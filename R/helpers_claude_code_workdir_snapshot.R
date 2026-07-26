@@ -281,15 +281,23 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
                                                            runtime_workdir = "",
                                                            source_workdir = "",
                                                            user_id = 0L,
-                                                           session_token = "") {
-  # 1) Çalışma dizini taraması ile yeni/değişmiş dosyaları bul
+                                                           session_token = "",
+                                                           changed_files = NULL,
+                                                           exclude_dirs = NULL,
+                                                           limits = NULL) {
+  # 1) Yeni/değişmiş dosyalar: hazır liste verilmişse tarama tekrarlanmaz.
+  #    Böylece aynı çalıştırma için diff/staging iki kez çalışmaz.
   yeni_dosyalar <- character(0)
 
-  if (nzchar(runtime_workdir) && dir.exists(runtime_workdir)) {
+  if (!is.null(changed_files)) {
+    yeni_dosyalar <- unique(as.character(changed_files))
+  } else if (nzchar(runtime_workdir) && dir.exists(runtime_workdir)) {
     yeni_dosyalar <- tryCatch(
       diff_claude_code_workdir_snapshot(
         before_snapshot = before_snapshot,
-        workdir = runtime_workdir
+        workdir = runtime_workdir,
+        exclude_dirs = exclude_dirs %||% cc_scan_default_excluded_dirs(),
+        limits = limits
       ),
       error = function(e) character(0)
     )

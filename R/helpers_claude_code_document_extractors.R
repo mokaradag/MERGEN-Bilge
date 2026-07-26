@@ -57,7 +57,9 @@ truncate_claude_doc_text <- function(metin, max_karakter = 120000L) {
   )
 }
 
-list_claude_code_binary_documents <- function(workdir, extensions = NULL) {
+list_claude_code_binary_documents <- function(workdir,
+                                              extensions = NULL,
+                                              max_files = 200L) {
   if (is.null(workdir) || !nzchar(workdir) || !dir.exists(workdir)) {
     return(character(0))
   }
@@ -81,24 +83,49 @@ list_claude_code_binary_documents <- function(workdir, extensions = NULL) {
     return(character(0))
   }
 
+  max_files <- suppressWarnings(as.integer(max_files[1]))
+  if (!is.na(max_files) && max_files > 0L && length(ogeler) > max_files) {
+    ogeler <- ogeler[seq_len(max_files)]
+  }
+
   uzantilar <- tolower(tools::file_ext(ogeler))
 
   unique(ogeler[nzchar(uzantilar) & uzantilar %in% tolower(extensions)])
 }
 
-get_claude_code_document_support_dir <- function(user_id = NULL) {
-  hedef <- file.path(
-    tempdir(),
-    "claude_code_runtime",
-    paste0("user_", as.character(user_id %||% "default")),
-    "document_support"
-  )
+# Eşzamanlı çalıştırmaların birbirinin çıkarımlarını silmemesi için doküman
+# destek klasörü çalışma (request) başına izole edilir. Ortak kullanıcı
+# klasörü ASLA her istekte silinmez; eskiyen klasörler yaşa göre temizlenir.
+get_claude_code_document_support_dir <- function(user_id = NULL,
+                                                 request_id = NULL,
+                                                 base_dir = NULL) {
+  kok <- as.character(base_dir %||% "")[1]
 
-  if (dir.exists(hedef)) {
-    unlink(hedef, recursive = TRUE, force = TRUE)
+  if (!nzchar(kok)) {
+    kok <- file.path(
+      tempdir(),
+      "claude_code_runtime",
+      paste0("user_", as.character(user_id %||% "default")),
+      "document_support"
+    )
   }
 
-  dir.create(hedef, recursive = TRUE, showWarnings = FALSE)
+  token <- as.character(request_id %||% "")[1]
+  if (is.na(token) || !nzchar(token)) {
+    token <- paste0(
+      format(Sys.time(), "%Y%m%d%H%M%OS3"),
+      "_",
+      sprintf("%04d", sample.int(10000L, 1L) - 1L)
+    )
+  }
+
+  token <- sanitize_claude_doc_cache_name(token)
+
+  hedef <- file.path(kok, token)
+
+  if (!dir.exists(hedef)) {
+    dir.create(hedef, recursive = TRUE, showWarnings = FALSE)
+  }
 
   normalizePath(hedef, winslash = "/", mustWork = FALSE)
 }

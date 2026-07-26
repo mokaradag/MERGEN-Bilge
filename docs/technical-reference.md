@@ -534,6 +534,169 @@ Güvenli `settings.json` örneği:
 }
 ```
 
+### Bilge Yolaç bloklamayan çalıştırma hattı (büyük klasör ve eşzamanlılık)
+
+Bilge Yolaç çalıştırmaları artık ana Shiny olay döngüsünü bloke etmez. Daha önce
+çok sayıda iç içe klasör ve dosya içeren bir klasör seçildiğinde, süreç
+başlamadan ÖNCE ve bittikten SONRA yapılan pahalı dosya sistemi işleri ana R
+sürecinde senkron çalışıyordu; bu da aynı R worker'ını paylaşan TÜM oturumların
+donmuş görünmesine yol açıyordu. Yeni hat üç ilkeye dayanır: **klasörün tamamını
+kopyalama**, **gerçekten sınırlı tara**, **pahalı işi arka plana al**.
+
+#### İzole runtime çalışma alanı düzeni
+
+Windows VM üzerinde sorun çıkarabilen UNC, ağ paylaşımı veya ASCII dışı karakter
+içeren çalışma dizinleri için çalışma başına izole bir runtime alanı hazırlanır:
+
+    <temp>/claude_code_runtime/user_<id>/run_<request_id>/
+      input/             -> göreve GERÇEKTEN gereken girdi dosyalarının kopyaları
+      output/            -> üretilen dosyalar için onaylı yazılabilir alan
+      metadata/          -> çalıştırma metadatası (asla geri aktarılmaz)
+      document_support/  -> bu çalıştırmaya ait doküman metin çıkarımları
+
+Kaynak klasör ASLA özyinelemeli `file.copy()` ile aynalanmaz. Girdi seçimi
+öncelik sırasıyla yapılır: (1) açıkça seçilen dosyalar, (2) promptta adı geçen
+dosyalar, (3) sınırlı ve deterministik otomatik alt küme. Prompt hiçbir dosyaya
+işaret etmiyorsa klasörün tamamı "gerekli girdi" sayılmaz. Aynı söyleşideki
+takip sorularında runtime klasörü yeniden KULLANILIR (Claude CLI `--resume`
+oturum metadatası bu klasöre bağlıdır), ancak kaynak klasör yeniden aynalanmaz;
+yalnızca gerekli girdi dosyaları tazelenir. Sahiplik:
+`R/helpers_claude_code_runtime_prepare.R` (düzen, preflight kararı, girdi seçimi
+ve kopyalama) + `R/helpers_claude_code_runtime_workdir.R` (hazırlık akışı).
+
+#### Gerçekten sınırlı dizin tarayıcısı
+
+`cc_scan_directory_bounded()` (`R/helpers_claude_code_bounded_scan.R`) tüm ağacı
+`list.files(recursive = TRUE)` ile numaralandırıp sonradan kırpmaz; artımlı
+gezinir ve sınıra ulaşıldığı ANDA durur. Yapılandırılabilir sınırlar: maksimum
+dosya sayısı, dizin sayısı, derinlik, toplam bayt, tarama süresi, tek dosya
+boyutu ve işlenecek öge sayısı. Dönüş yapısı bulunan dosya/dizinleri, sayaçları,
+toplam baytı, geçen süreyi, kesilme durumunu ve NEDENİNİ, ölümcül olmayan erişim
+hatalarını ve atlanan yolları içerir. Tek bir erişilemeyen alt dizin taramanın
+tamamını düşürmez. Varsayılan hariç tutmalar: `.git`, `.svn`, `.hg`,
+`node_modules`, `.Rproj.user`, `renv/library`, `packrat`, `build`, `dist`,
+`target`, `bin`, `obj`, `coverage`, önbellek/geçici dizinler ve Bilge Yolaç'ın
+kendi runtime/indirme/doküman destek klasörleri (yapılandırılabilir). Dizin
+bağlantıları (symlink/junction) varsayılan olarak takip edilmez; gerçek yol
+üzerinden tekrar-ziyaret kontrolü hem döngüleri hem de izinli kök dışına kaçışı
+engeller.
+
+#### Büyük klasör preflight politikası
+
+Çalıştırma hazırlanmadan önce sınırlı bir preflight taraması yapılır ve
+`cc_evaluate_workdir_preflight()` sonucu değerlendirir. Sınırlar aşıldığında
+görev güvenli bir alt kümeyle SÜRDÜRÜLÜR ve kullanıcıya şu uyarı gösterilir:
+
+> Seçilen klasör güvenli çalışma sınırlarını aşıyor. Bilge Yolaç klasörün
+> tamamını kopyalamadı. Lütfen daha küçük bir alt klasör veya gerekli dosyaları
+> seçin.
+
+Tüm sınırlar `.Renviron` üzerinden geçersiz kılınabilir (`claude_code_runtime_limits`,
+`R/config_claude_code.R`); anahtar listesi için `.Renviron.example` dosyasına bakın.
+
+#### Pahalı işlerin ana olay döngüsünden çıkarılması
+
+Sınırlı kaynak taraması, gerekli girdi dosyalarının seçimi/kopyalanması, doküman
+algılama ve PDF/Excel/DOCX metin çıkarımı, çalıştırma öncesi çıktı anlık
+görüntüsü, çalıştırma sonrası çıktı diff'i, indirme staging'i ve çıktı geri
+aktarımı ana Shiny sürecinde YAPILMAZ. Bu işler `tracked_future_promise(...,
+dependency_mode = "explicit")` ile arka plan worker'ına gönderilir:
+
+| Aşama | Ana süreç (gönderim/sonlandırma) | Worker (ağır iş) |
+|---|---|---|
+| Hazırlık | `R/helpers_claude_code_run_dispatch.R` (`cc_dispatch_run_preparation`, `cc_start_streaming_run`) | `R/helpers_claude_code_run_prepare_task.R` (`cc_prepare_run_workspace`) |
+| Çıktı işleme | `R/helpers_claude_code_run_completion.R` (`cc_dispatch_run_output_processing`, `cc_finish_streaming_run`) | aynı dosyadaki `cc_process_run_outputs` |
+
+Worker'a yalnızca serileştirilebilir düz veri geçirilir; Shiny session, reaktif
+nesne, süreç tanıtıcısı veya DB bağlantısı ASLA geçirilmez. Global bağımlılık
+paketi süreç başına BİR KEZ oluşturulup önbelleklenir
+(`cc_run_prepare_worker_globals()` / `cc_run_output_worker_globals()`), böylece
+gönderim anında bağımlılık taraması ana iş parçacığını dondurmaz. Mevcut
+`request_id` yaşam döngüsü korunur: her geri çağrı `cc_is_active_run()` ile
+doğrulanır, stale (eski) bir geri çağrı daha yeni bir çalışmanın durumunu
+değiştiremez, hazırlık için ayrı bir zaman aşımı uygulanır ve kullanıcı Durdur'a
+bastığında geç gelen geri çağrı çalıştırmayı yeniden başlatamaz.
+
+#### Çalıştırma aşamaları (hazırlık ile model çalıştırma ayrımı)
+
+Durum çubuğu artık gerçek aşamayı gösterir; Claude süreci başlamadan
+"Çalışıyor" yazılmaz: `Hazırlanıyor` → `Dosyalar taranıyor` →
+`Gerekli dosyalar hazırlanıyor` → `Dokümanlar hazırlanıyor` →
+`Model başlatılıyor` → `Çalışıyor` → `Çıktılar işleniyor` →
+`Çıktılar aktarılıyor` → `Tamamlandı` / `Durduruldu` / `Hata` / `Zaman Aşımı`.
+Aşama tanımları `claude_code_run_stages` içindedir. Hazırlık başarısız olursa
+Claude başlatılmaz, hata gösterilir, `Çalıştır` düğmesi geri gelir, Durdur
+gizlenir, süreç/akış durumu temizlenir ve oturum kalıcı olarak "çalışıyor"
+durumunda takılı kalmaz.
+
+#### Çıktı: yalnızca onaylı alan taranır, yalnızca değişen dosya geri yazılır
+
+Çalıştırma öncesi/sonrası anlık görüntü kaynak klasörün tamamını değil, yalnızca
+onaylı yazılabilir çıktı alanını (runtime kökü + `output`; `input`, `metadata` ve
+`document_support` hariç) sınırlı tarayıcı ile tarar. Anlık görüntü kesilirse
+loglanır ve uyarı üretilir; eksiklik sessizce gizlenmez. Geri aktarım
+(`R/helpers_claude_code_output_sync.R`) runtime klasörünün tamamını kopyalamaz:
+yalnızca onaylı çıktı bölgesinde bulunan, bu çalıştırmada oluşmuş veya değişmiş,
+mevcut yol güvenliği politikalarını geçen ve boyut sınırlarını aşmayan dosyalar
+aktarılır. `..` traversal'ı, mutlak yol kaçışı, bağlantı ile kök dışına çıkma,
+runtime metadatasının veya girdi kopyalarının çıktı gibi geri yazılması
+engellenir. Dosya başına yapılandırılmış sonuç (kaynak, hedef, başarı, boyut,
+hata) döner ve tek bir dosyanın başarısızlığı diğerlerini engellemez.
+Aktarılacak dosya yoksa hiçbir kopyalama yapılmaz.
+
+#### Doküman hazırlığı çalıştırmaya özeldir
+
+Büyük bir klasördeki her doküman işlenmez. Seçim önceliği açıkça seçilen
+dosyalar → promptta adı geçen dosyalar → sınırlı alt küme biçimindedir; doküman
+sayısı, tek doküman boyutu ve toplam bayt sınırlanır (mevcut PDF sayfa, Excel
+sayfa/satır/sütun, DOCX paragraf ve karakter sınırları korunur). Metin çıkarımı
+worker'da çalışır. `get_claude_code_document_support_dir()` artık ortak kullanıcı
+klasörünü her istekte SİLMEZ; destek dizini `request_id` ile çalışma başına
+izole edilir, böylece eşzamanlı çalıştırmalar birbirinin çıkarımlarını bozmaz.
+Eskiyen runtime ve doküman destek klasörleri aktif çalışmaları etkilemeyen
+yaş tabanlı bir politika ile temizlenir.
+
+#### Tekrarlanan iş ve bloklayan bekleme kaldırıldı
+
+Bir çalıştırma için çıktı diff'i, üretilen dosya toplama, kodlama normalizasyonu
+ve indirme staging'i YALNIZCA BİR KEZ yapılır; sonuç indirme HTML'i, sentetik
+araç kullanımı üretimi, `rv$last_result`, kalıcı çalışma kaydı, çıktı geçmişi ve
+Dosya Yönetimi yenileme kararı için yeniden kullanılır. Poll gözlemcisi
+`env$cikti_islendi` bayrağıyla korunur ve artık toplama fonksiyonlarını doğrudan
+çağırmaz. Dosya görünürlüğü/kararlılığı için kullanılan bekleme döngüleri
+(`cc_wait_for_path_visible()`, `wait_for_stable_claude_code_file_paths()`)
+yalnızca arka plan worker'ında çalışır ve toplam süreleri
+`CLAUDE_CODE_FILE_SETTLE_TOTAL_MS` ile sınırlıdır. Windows/UNC zamanlama
+toleransı korunur, ancak ilgisiz Shiny oturumları beklemez.
+
+#### Operasyonel loglar ve tanılama
+
+Yapılandırılmış zamanlama logları saha tanılaması içindir:
+`[WORKDIR_PREFLIGHT]`, `[BOUNDED_SCAN]`, `[RUNTIME_PREPARE]`, `[INPUT_COPY]`,
+`[DOCUMENT_PREPARE]`, `[PROCESS_START]`, `[OUTPUT_DIFF]`, `[DOWNLOAD_STAGE]`,
+`[OUTPUT_SYNC]`. Loglar dosya/dizin sayısı, toplam bayt, geçen milisaniye,
+kesilme nedeni, request kimliği ve işin arka planda çalışıp çalışmadığını
+içerir; API anahtarı, doküman içeriği veya gereksiz hassas tam yol içermez ve
+projenin mevcut redaksiyon kurallarına uyar.
+
+#### Çok worker'lı dağıtım (ek dayanıklılık)
+
+Uygulama kodunun bloklamaması birincil çözümdür. Buna ek olarak üretimde birden
+çok R worker'ı ile dağıtım yapmak (ör. Shiny Server Pro / ShinyProxy / yük
+dengeleyici arkasında birden çok süreç) tek bir yavaş isteğin etkisini daha da
+azaltır. Bu bir yedek dayanıklılık katmanıdır; bloklamayan uygulama kodunun
+YERİNE geçmez.
+
+Bu hattı koruyan testler: `tests/testthat/test-claude-code-bounded-scan-behavior.R`,
+`tests/testthat/test-claude-code-run-prepare-behavior.R`,
+`tests/testthat/test-claude-code-runtime-workdir-contract.R`,
+`tests/testthat/test-claude-code-workdir-scan-contract.R`,
+`tests/testthat/test-claude-code-run-lifecycle-contract.R`,
+`tests/testthat/test-claude-code-document-orchestration-behavior.R`,
+`tests/testthat/test-claude-code-downloads-security-behavior.R`,
+`tests/testthat/test-source-manifest-sections-contract.R` ve
+`tests/testthat/test-maintainability-ratchet.R`.
+
 #### Bilge Yolaç güvenli CLI çalıştırma politikası
 
 Bilge Yolaç, Claude Code CLI çalıştırma davranışını merkezi bir güvenlik ilkesi üzerinden yönetir. Bu sınırın temel amacı, kullanıcı deneyimini bozmadan dosya sistemi erişimini daha denetlenebilir hâle getirmektir. CLI izinleri, çalışma dizini kökleri, çıktı kökleri ve tehlikeli izin kararları `R/helpers_claude_code_security_policy.R` içinde; kullanıcı promptu içindeki dış dosya yolu yazma/düzenleme/silme niyetleri ise `R/helpers_claude_code_prompt_security_policy.R` içinde izole edilmiştir.

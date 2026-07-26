@@ -60,8 +60,32 @@
     if (is.null(x)) y else x
   }
 
+  test_env$log_warn <- function(...) invisible(NULL)
+  test_env$CLAUDE_CODE_LOG_PREFIX <- "[TEST]"
+
+  # Sınırlı tarayıcı ve çalışma zamanı sınırları scan helper'ın gerçek
+  # bağımlılıklarıdır; izole test bunları da yüklemelidir.
+  source(
+    file.path(repo_root, "R", "config_claude_code.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
+  source(
+    file.path(repo_root, "R", "helpers_claude_code_bounded_scan.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
   source(
     file.path(repo_root, "R", "helpers_claude_code_workdir_scan.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
+  # Dosya kararlılık beklemesi ayrı bir sorumluluk dosyasına taşındı.
+  source(
+    file.path(repo_root, "R", "helpers_claude_code_file_stability.R"),
     encoding = "UTF-8",
     local = test_env
   )
@@ -91,8 +115,7 @@ test_that("Bilge Yolaç workdir scan yardımcıları ayrı dosyaya taşınmışt
     "canonicalize_claude_code_file_path",
     "deduplicate_claude_code_file_paths",
     "snapshot_claude_code_workdir_files",
-    "diff_claude_code_workdir_snapshot",
-    "wait_for_stable_claude_code_file_paths"
+    "diff_claude_code_workdir_snapshot"
   )
 
   for (fn in moved_functions) {
@@ -121,11 +144,26 @@ test_that("Bilge Yolaç workdir scan helper source sırası korunur", {
     c(
       "R/helpers_claude_code_downloads.R",
       "R/helpers_claude_code_workdir_scan.R",
+      "R/helpers_claude_code_file_stability.R",
       "R/helpers_claude_code_workdir_snapshot.R",
       "R/helpers_claude_code_documents.R"
     ),
     label = "Bilge Yolaç workdir scan source sırası bozulmuş:"
   )
+})
+
+test_that("dosya kararlılık bekleyicisi ayrı sorumluluk dosyasında yaşar", {
+  stability_text <- .read_repo_text_cc_workdir_scan_contract(
+    "R/helpers_claude_code_file_stability.R"
+  )
+  scan_text <- .read_repo_text_cc_workdir_scan_contract(
+    "R/helpers_claude_code_workdir_scan.R"
+  )
+
+  pattern <- "wait_for_stable_claude_code_file_paths\\s*<-\\s*function\\s*\\("
+
+  expect_true(grepl(pattern, stability_text, perl = TRUE))
+  expect_false(grepl(pattern, scan_text, perl = TRUE))
 })
 
 test_that("Bilge Yolaç workdir scan helper dosyası parse ve source edilebilir kalır", {

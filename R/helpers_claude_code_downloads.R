@@ -5,6 +5,41 @@
 #           altındaki bilge_yolac_downloads/ klasörüne kopyalanır.
 # ==============================================================================
 
+#' Bir dosyanın görünür hale gelmesini sınırlı süre bekler
+#'
+#' Windows/UNC paylaşımlarında yeni yazılan dosya kısa süre `file.exists()`
+#' için görünmeyebilir. Bekleme bütçesi yapılandırılabilir ve bu yardımcı
+#' YALNIZCA arka plan worker'ında çağrılmalıdır; ana Shiny sürecinde
+#' çağrılırsa tüm oturumlar bloke olur.
+#'
+#' @param path Beklenecek dosya yolu
+#' @param budget_ms Toplam bekleme bütçesi (ms)
+#' @return Dosya görünür olduysa TRUE
+cc_wait_for_path_visible <- function(path, budget_ms = NULL) {
+  yol <- as.character(path %||% "")[1]
+  if (!nzchar(yol)) return(FALSE)
+
+  budget_ms <- suppressWarnings(as.numeric(budget_ms)[1])
+
+  if (length(budget_ms) != 1L || !is.finite(budget_ms)) {
+    budget_ms <- suppressWarnings(as.numeric(
+      tryCatch(cc_runtime_limit("file_settle_total_ms", 1200), error = function(e) 1200)
+    )[1])
+  }
+
+  if (length(budget_ms) != 1L || !is.finite(budget_ms) || budget_ms < 0) {
+    budget_ms <- 1200
+  }
+
+  son <- Sys.time() + (budget_ms / 1000)
+
+  while (!isTRUE(file.exists(yol)) && Sys.time() < son) {
+    Sys.sleep(0.05)
+  }
+
+  isTRUE(file.exists(yol))
+}
+
 #' Bilge Yolaç indirme kök klasörünü döndürür
 #'
 #' @return İndirme kök klasörü
@@ -87,11 +122,8 @@ resolve_claude_code_generated_path <- function(path_value,
 
     # Windows/UNC/ağ klasörlerinde yeni yazılan dosya bazen birkaç yüz ms
     # sonra bu süreç tarafından görünür hale geliyor. Ham yol fallback'ine
-    # düşmeden önce kısa süre bekle.
-    son_bekleme <- Sys.time() + 1.5
-    while (!isTRUE(file.exists(aday_norm)) && Sys.time() < son_bekleme) {
-      Sys.sleep(0.1)
-    }
+    # düşmeden önce sınırlı bütçeyle bekle (arka plan worker'ında çalışır).
+    cc_wait_for_path_visible(aday_norm)
 
     if (isTRUE(file.exists(aday_norm)) && !isTRUE(dir.exists(aday_norm))) {
       if (length(allowed_roots) &&
@@ -210,11 +242,8 @@ stage_claude_code_downloads <- function(file_paths,
 
     # Dosya yazma işlemi bitmiş görünse bile özellikle Windows/UNC üzerinde
     # file.exists() kısa süre FALSE dönebilir. İndirme kartını kaçırmamak için
-    # çok kısa bekle.
-    son_bekleme <- Sys.time() + 1.5
-    while (!isTRUE(file.exists(kaynak)) && Sys.time() < son_bekleme) {
-      Sys.sleep(0.1)
-    }
+    # sınırlı bütçeyle bekle.
+    cc_wait_for_path_visible(kaynak)
 
     if (!isTRUE(file.exists(kaynak)) || isTRUE(dir.exists(kaynak))) next
 
@@ -250,10 +279,7 @@ stage_claude_code_downloads <- function(file_paths,
 
     # URL/HTML kartı üretmeden önce staged hedef dosyanın gerçekten görünür
     # olduğundan emin ol. Böylece href, dosya hazır olmadan ekrana basılmaz.
-    son_bekleme <- Sys.time() + 1.5
-    while (!isTRUE(file.exists(hedef_yol)) && Sys.time() < son_bekleme) {
-      Sys.sleep(0.1)
-    }
+    cc_wait_for_path_visible(hedef_yol)
 
     if (!isTRUE(file.exists(hedef_yol)) || isTRUE(dir.exists(hedef_yol))) next
 
@@ -384,10 +410,7 @@ cc_stage_tool_use_write_paths_as_downloads <- function(tool_uses,
     aday <- normalizePath(raw_yol, winslash = "/", mustWork = FALSE)
 
     # Yedek yolda da aynı zamanlama farkını tolere et.
-    son_bekleme <- Sys.time() + 1.5
-    while (!isTRUE(file.exists(aday)) && Sys.time() < son_bekleme) {
-      Sys.sleep(0.1)
-    }
+    cc_wait_for_path_visible(aday)
 
     if (isTRUE(file.exists(aday)) && !isTRUE(dir.exists(aday))) {
       yollar <- c(yollar, aday)
@@ -451,7 +474,10 @@ cc_collect_streaming_run_downloads <- function(before_snapshot,
                                                runtime_workdir = "",
                                                source_workdir = "",
                                                user_id = 0L,
-                                               session_token = "") {
+                                               session_token = "",
+                                               changed_files = NULL,
+                                               exclude_dirs = NULL,
+                                               limits = NULL) {
   birincil <- tryCatch(
     collect_claude_code_workdir_changes_downloads(
       before_snapshot = before_snapshot,
@@ -459,7 +485,10 @@ cc_collect_streaming_run_downloads <- function(before_snapshot,
       runtime_workdir = runtime_workdir,
       source_workdir = source_workdir,
       user_id = user_id,
-      session_token = session_token
+      session_token = session_token,
+      changed_files = changed_files,
+      exclude_dirs = exclude_dirs,
+      limits = limits
     ),
     error = function(e) list()
   )

@@ -1,15 +1,18 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_claude_code_runtime_workdir.R
 # Açıklama: Bilge Yolaç için kullanıcı çalışma alanı ve Windows/UNC/Unicode
-#           çalışma dizini aynalama yardımcıları.
+#           çalışma dizini hazırlığı.
 #
-#           Bu dosya, Claude Code CLI'ın Windows VM üzerinde problemli UNC veya
-#           ASCII dışı çalışma dizinlerinde kararsız çalışmasını önlemek için
-#           kullanıcı dizinini geçici yerel bir runtime dizinine aynalar.
+#           Claude Code CLI Windows VM üzerinde UNC veya ASCII dışı çalışma
+#           dizinlerinde kararsız çalıştığı için bu durumlarda izole bir yerel
+#           runtime çalışma alanı hazırlanır. Runtime alanı `input`, `output`,
+#           `metadata` ve `document_support` bölmelerinden oluşur; kaynak
+#           klasörün TAMAMI asla özyinelemeli olarak kopyalanmaz. Yalnızca
+#           göreve gerçekten gereken girdi dosyaları `input` altına aktarılır.
 #           Runtime dizini çalışma başına benzersizdir; böylece aynı kullanıcının
-#           eşzamanlı veya hızlı ardışık çalıştırmaları birbirinin active_dir
-#           klasörünü silmez.
+#           eşzamanlı veya hızlı ardışık çalıştırmaları birbirini bozmaz.
 # ==============================================================================
+
 # Kullanıcı için izole bir çalışma alanı oluşturur veya mevcut olanı döndürür
 get_user_workspace <- function(user_id, base_dir = NULL) {
   if (is.null(base_dir) || !nzchar(base_dir)) {
@@ -57,84 +60,53 @@ is_problematic_windows_workdir <- function(path) {
   isTRUE(unc_mi || ascii_disi_var_mi)
 }
 
-# Dizin içeriğini yerel çalışma alanına aynala
-mirror_directory_to_local_workspace <- function(source_dir, target_dir) {
+#' Gerekli girdi dosyalarını yerel runtime input klasörüne aktar
+#'
+#' Klasörün tamamı özyinelemeli olarak kopyalanmaz; sınırlı tarama sonucundan
+#' seçilen dosyalar göreli yapısı korunarak aktarılır.
+#'
+#' @param source_dir Kaynak dizin
+#' @param target_dir Hedef input dizini
+#' @param prompt Kullanıcı metni (dosya adı çıkarımı için)
+#' @param explicit_files Açıkça seçilmiş dosyalar
+#' @param limits Sınır listesi
+#' @param scan Hazır tarama sonucu (yeniden taramayı önlemek için)
+#' @return list(ok, selection, copy, scan)
+mirror_directory_to_local_workspace <- function(source_dir,
+                                                target_dir,
+                                                prompt = NULL,
+                                                explicit_files = character(0),
+                                                limits = NULL,
+                                                scan = NULL) {
   if (!dir.exists(target_dir)) {
     dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
   }
 
-  ogeler <- tryCatch(
-    list.files(
-      source_dir,
-      full.names = TRUE,
-      recursive = FALSE,
-      all.files = FALSE,
-      include.dirs = TRUE
-    ),
-    error = function(e) character(0)
+  if (is.null(scan) || !is.list(scan)) {
+    scan <- cc_scan_source_workdir(source_dir, limits = limits)
+  }
+
+  secim <- cc_select_input_files(
+    prompt = prompt,
+    files = scan$files,
+    file_sizes = scan$file_sizes,
+    root = scan$root %||% source_dir,
+    explicit_files = explicit_files,
+    limits = limits
   )
 
-  # UNC / ağ paylaşımı kaynaklı dizinlerde base R list.files bazen boş
-  # döner; fs::dir_ls aynı paylaşımı genellikle başarıyla listeler.
-  # Aksi halde mirror sessizce boş runtime klasörü üretir ve CLI dizini
-  # "completely empty" olarak görür.
-  if (!length(ogeler)) {
-    dirs_fs <- tryCatch(
-      as.character(fs::dir_ls(source_dir, recurse = FALSE, type = "directory")),
-      error = function(e) character(0)
-    )
-
-    files_fs <- tryCatch(
-      as.character(fs::dir_ls(source_dir, recurse = FALSE, type = "file")),
-      error = function(e) character(0)
-    )
-
-    ogeler <- unique(c(dirs_fs, files_fs))
-  }
-
-  if (!length(ogeler)) {
-    return(invisible(TRUE))
-  }
-
-  kopya_ok <- tryCatch(
-    file.copy(
-      from = ogeler,
-      to = target_dir,
-      overwrite = TRUE,
-      recursive = TRUE,
-      copy.mode = TRUE,
-      copy.date = TRUE
-    ),
-    error = function(e) rep(FALSE, length(ogeler))
+  kopya <- cc_copy_files_to_runtime_input(
+    files = secim$files,
+    relatives = secim$relatives,
+    input_dir = target_dir
   )
 
-  if (any(!kopya_ok)) {
-    for (i in seq_along(ogeler)) {
-      if (isTRUE(kopya_ok[i])) next
-
-      kaynak <- ogeler[i]
-      hedef <- file.path(target_dir, basename(kaynak))
-
-      tryCatch({
-        if (dir.exists(kaynak)) {
-          if (dir.exists(hedef)) unlink(hedef, recursive = TRUE, force = TRUE)
-          fs::dir_copy(kaynak, hedef, overwrite = TRUE)
-        } else {
-          fs::file_copy(kaynak, hedef, overwrite = TRUE)
-        }
-      }, error = function(e) {
-        log_warn(paste(
-          CLAUDE_CODE_LOG_PREFIX,
-          "Yerel aynalama sırasında öge kopyalanamadı:",
-          basename(kaynak),
-          "-",
-          conditionMessage(e)
-        ))
-      })
-    }
-  }
-
-  invisible(TRUE)
+  list(
+    ok = TRUE,
+    selection = secim,
+    copy = kopya,
+    scan = scan
+  )
 }
 
 .cc_runtime_workdir_token <- function(runtime_token = NULL) {
@@ -192,20 +164,51 @@ mirror_directory_to_local_workspace <- function(source_dir, target_dir) {
   isTRUE(tryCatch(dir.exists(yol), error = function(e) FALSE))
 }
 
-# Problemli ağ/Unicode dizinlerini yerel ASCII çalışma klasörüne taşır.
+.cc_runtime_prepare_result <- function(workdir,
+                                       source_dir = NULL,
+                                       mirrored = FALSE,
+                                       reused = FALSE,
+                                       layout = NULL,
+                                       selection = NULL,
+                                       preflight = NULL,
+                                       scan = NULL) {
+  list(
+    runtime_workdir = workdir,
+    source_workdir = source_dir %||% workdir,
+    mirrored = isTRUE(mirrored),
+    reused = isTRUE(reused),
+    layout = layout,
+    selection = selection,
+    preflight = preflight,
+    scan_metrics = if (is.list(scan)) {
+      list(
+        file_count = scan$file_count,
+        dir_count = scan$dir_count,
+        total_bytes = scan$total_bytes,
+        elapsed_ms = scan$elapsed_ms,
+        truncated = isTRUE(scan$truncated),
+        truncated_reason = scan$truncated_reason
+      )
+    } else {
+      NULL
+    }
+  )
+}
+
+# Problemli ağ/Unicode dizinlerini izole yerel runtime alanına hazırlar.
 # existing_runtime_workdir verilirse ve aynı kullanıcı kovası altında geçerli
 # bir klasörse yeniden kullanılır; bu sayede Claude CLI --resume oturumu
-# takip eden sorularda kaybolmaz.
+# takip eden sorularda kaybolmaz. Yeniden kullanımda kaynak klasör yeniden
+# aynalanmaz; yalnızca gerekli girdi dosyaları tazelenir.
 prepare_claude_runtime_workdir <- function(workdir,
                                            user_id = NULL,
                                            runtime_token = NULL,
-                                           existing_runtime_workdir = NULL) {
+                                           existing_runtime_workdir = NULL,
+                                           prompt = NULL,
+                                           explicit_files = character(0),
+                                           limits = NULL) {
   if (is.null(workdir) || !nzchar(workdir)) {
-    return(list(
-      runtime_workdir = workdir,
-      source_workdir = workdir,
-      mirrored = FALSE
-    ))
+    return(.cc_runtime_prepare_result(workdir))
   }
 
   original_workdir <- as.character(workdir %||% "")[1]
@@ -216,118 +219,140 @@ prepare_claude_runtime_workdir <- function(workdir,
     # Problemli ağ yolu algılandıysa CLI'a doğrudan göndermeyelim;
     # ama gerçek dizin çözülemediği için kullanıcıya açık bir log bırakalım.
     if (isTRUE(is_problematic_windows_workdir(original_workdir))) {
-      log_warn(paste(
+      cc_log_warn(paste(
         CLAUDE_CODE_LOG_PREFIX,
-        "Problemli çalışma dizini algılandı ancak yerel aynalama için çözülemedi:",
+        "Problemli çalışma dizini algılandı ancak yerel hazırlık için çözülemedi:",
         original_workdir
       ))
     }
 
-    return(list(
-      runtime_workdir = workdir,
-      source_workdir = workdir,
-      mirrored = FALSE
-    ))
+    return(.cc_runtime_prepare_result(workdir))
   }
 
   problemli_mi <- isTRUE(is_problematic_windows_workdir(original_workdir)) ||
     isTRUE(is_problematic_windows_workdir(source_dir))
 
-  if (!isTRUE(problemli_mi)) {
-    return(list(
-      runtime_workdir = source_dir,
-      source_workdir = source_dir,
-      mirrored = FALSE
-    ))
-  }
+  tarama <- cc_scan_source_workdir(source_dir, limits = limits)
+  preflight <- cc_evaluate_workdir_preflight(tarama, limits = limits)
 
-  # Takip eden sorularda mevcut runtime klasörünü yeniden kullan: Claude CLI
-  # oturum metadatası bu klasöre bağlı olduğundan yeni runtime klasörü her
-  # seferinde "No conversation found with session ID" hatasına yol açar.
-  if (isTRUE(.cc_runtime_workdir_reusable(existing_runtime_workdir, user_id))) {
-    reuse_yol <- normalizePath(
-      existing_runtime_workdir,
-      winslash = "/",
-      mustWork = FALSE
-    )
-
-    # Kaynak dizinin yeni dosyaları runtime klasörüne yansısın diye yeniden
-    # aynala; mevcut runtime içeriği korunur, eksik veya değişen dosyalar
-    # üzerine yazılır.
-    tryCatch(
-      mirror_directory_to_local_workspace(source_dir, reuse_yol),
-      error = function(e) {
-        log_warn(paste(
-          CLAUDE_CODE_LOG_PREFIX,
-          "Mevcut runtime workdir yeniden aynalanamadı:",
-          conditionMessage(e)
-        ))
-      }
-    )
-
-    log_info(paste(
-      CLAUDE_CODE_LOG_PREFIX,
-      "Mevcut runtime workdir yeniden kullanıldı:",
-      source_dir,
-      "->",
-      reuse_yol
-    ))
-
-    return(list(
-      runtime_workdir = reuse_yol,
-      source_workdir = source_dir,
-      mirrored = TRUE,
-      reused = TRUE
-    ))
-  }
-
-  run_dir <- .cc_runtime_workdir_token(runtime_token)
-
-  local_base <- file.path(
-    tempdir(),
-    "claude_code_runtime",
-    paste0("user_", as.character(user_id %||% "default")),
-    run_dir
-  )
-
-  dir.create(local_base, recursive = TRUE, showWarnings = FALSE)
-
-  mirror_directory_to_local_workspace(source_dir, local_base)
-
-  local_base <- normalizePath(local_base, winslash = "/", mustWork = FALSE)
-
-  log_info(paste(
+  cc_log_info(sprintf(
+    "%s [WORKDIR_PREFLIGHT] dosya=%d | dizin=%d | bayt=%.0f | sure_ms=%.0f | kesildi=%s | sinirli=%s",
     CLAUDE_CODE_LOG_PREFIX,
-    "Problemli çalışma dizini yerel alana aynalandı:",
-    source_dir,
-    "->",
-    local_base
+    tarama$file_count, tarama$dir_count, tarama$total_bytes,
+    tarama$elapsed_ms, isTRUE(tarama$truncated), isTRUE(preflight$limited)
   ))
 
-  list(
-    runtime_workdir = local_base,
-    source_workdir = source_dir,
+  if (!isTRUE(problemli_mi)) {
+    return(.cc_runtime_prepare_result(
+      workdir = source_dir,
+      source_dir = source_dir,
+      preflight = preflight,
+      scan = tarama
+    ))
+  }
+
+  reuse_mi <- isTRUE(.cc_runtime_workdir_reusable(existing_runtime_workdir, user_id))
+
+  runtime_kok <- if (isTRUE(reuse_mi)) {
+    normalizePath(existing_runtime_workdir, winslash = "/", mustWork = FALSE)
+  } else {
+    aday <- file.path(
+      cc_runtime_user_dir(user_id),
+      .cc_runtime_workdir_token(runtime_token)
+    )
+    dir.create(aday, recursive = TRUE, showWarnings = FALSE)
+    normalizePath(aday, winslash = "/", mustWork = FALSE)
+  }
+
+  duzen <- cc_runtime_ensure_layout(list(
+    root = runtime_kok,
+    input = file.path(runtime_kok, "input"),
+    output = file.path(runtime_kok, "output"),
+    metadata = file.path(runtime_kok, "metadata"),
+    document_support = file.path(runtime_kok, "document_support")
+  ))
+
+  aktarim <- mirror_directory_to_local_workspace(
+    source_dir = source_dir,
+    target_dir = duzen$input,
+    prompt = prompt,
+    explicit_files = explicit_files,
+    limits = limits,
+    scan = tarama
+  )
+
+  cc_log_info(sprintf(
+    "%s [INPUT_COPY] mod=%s | kopyalanan=%d | basarisiz=%d | bayt=%.0f | yeniden_kullanim=%s | runtime=%s",
+    CLAUDE_CODE_LOG_PREFIX,
+    aktarim$selection$selection_mode %||% "",
+    length(aktarim$copy$copied %||% character(0)),
+    length(aktarim$copy$failed %||% character(0)),
+    aktarim$copy$total_bytes %||% 0,
+    isTRUE(reuse_mi),
+    duzen$root
+  ))
+
+  .cc_runtime_prepare_result(
+    workdir = duzen$root,
+    source_dir = source_dir,
     mirrored = TRUE,
-    reused = FALSE
+    reused = reuse_mi,
+    layout = duzen,
+    selection = aktarim$selection,
+    preflight = preflight,
+    scan = tarama
   )
 }
 
-# Yerel çalışma alanındaki değişiklikleri kaynak dizine geri senkronlar
-sync_claude_runtime_workdir_back <- function(runtime_workdir, source_workdir) {
-  if (is.null(runtime_workdir) || !nzchar(runtime_workdir)) return(invisible(FALSE))
-  if (is.null(source_workdir) || !nzchar(source_workdir)) return(invisible(FALSE))
-  if (!dir.exists(runtime_workdir)) return(invisible(FALSE))
-  if (!dir.exists(source_workdir)) return(invisible(FALSE))
+# Yalnızca bu çalıştırmada üretilen/değişen çıktı dosyalarını kaynak dizine
+# aktarır. Runtime klasörünün tamamı asla geri kopyalanmaz.
+sync_claude_runtime_workdir_back <- function(runtime_workdir,
+                                             source_workdir,
+                                             changed_files = character(0),
+                                             layout = NULL,
+                                             limits = NULL) {
+  if (is.null(runtime_workdir) || !nzchar(runtime_workdir)) return(invisible(list()))
+  if (is.null(source_workdir) || !nzchar(source_workdir)) return(invisible(list()))
+  if (!dir.exists(runtime_workdir)) return(invisible(list()))
+  if (!dir.exists(source_workdir)) return(invisible(list()))
 
-  mirror_directory_to_local_workspace(runtime_workdir, source_workdir)
+  if (is.null(layout) || !is.list(layout)) {
+    layout <- list(
+      root = runtime_workdir,
+      input = file.path(runtime_workdir, "input"),
+      output = file.path(runtime_workdir, "output"),
+      metadata = file.path(runtime_workdir, "metadata"),
+      document_support = file.path(runtime_workdir, "document_support")
+    )
+  }
 
-  log_info(paste(
+  plan <- cc_plan_output_sync(
+    changed_files = changed_files,
+    layout = layout,
+    source_workdir = source_workdir,
+    limits = limits
+  )
+
+  if (!length(plan$items %||% list())) {
+    cc_log_info(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "[OUTPUT_SYNC] Aktarılacak yeni/değişen çıktı dosyası yok."
+    ))
+    return(invisible(list()))
+  }
+
+  sonuclar <- cc_apply_output_sync_plan(plan)
+
+  basarili <- sum(vapply(sonuclar, function(x) isTRUE(x$success), logical(1)))
+
+  cc_log_info(sprintf(
+    "%s [OUTPUT_SYNC] aktarilan=%d | basarisiz=%d | atlanan=%d | bayt=%.0f",
     CLAUDE_CODE_LOG_PREFIX,
-    "Yerel çalışma alanı kaynak dizine geri senkronlandı:",
-    runtime_workdir,
-    "->",
-    source_workdir
+    basarili,
+    length(sonuclar) - basarili,
+    length(plan$skipped %||% character(0)),
+    plan$total_bytes %||% 0
   ))
 
-  invisible(TRUE)
+  invisible(sonuclar)
 }
