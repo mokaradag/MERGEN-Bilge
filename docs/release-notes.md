@@ -14,6 +14,26 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-07-26 Windows VM evidence gate yeniden doğrulaması
+
+- Windows VM'deki tam `tests/scripts/run_vm_evidence_gate.R` koşumu
+  `Toplam: 13 passed, 0 failed, 0 skipped` sonucu ile yeniden başarıyla
+  tamamlandı. `full_testthat`, zorunlu gerçek `browser_ux_smoke`,
+  `vm_preflight_real`, transactional `db_encoding_preflight`, maintainability,
+  frontend ratchet, seam doctor ve source/UI asset manifest adımlarının tümü
+  `PASSED` oldu.
+- Browser proof, ayrı pencerede çalışan uygulamaya external-app modunda
+  `http://127.0.0.1:8009` üzerinden bağlanılarak ve
+  `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` zorlanarak alındı. Son makine-okunur
+  kanıt yolu `artifacts/vm-evidence/20260726-065220/evidence.json` olarak
+  kaydedildi.
+- Bu sonuç yalnızca artifact'ta geçen kapılar için VM readiness/release
+  kanıtıdır; uzun süreli saha yükünü, gerçek upstream LLM kapasitesini, bütün
+  kırılgan akışların manuel QA'sını veya legacy mojibake temizliğini tek başına
+  kanıtlamaz. Güncel kapsam ve süreler için
+  [`vm-evidence-status.md`](vm-evidence-status.md), operasyon prosedürü için
+  [`../RUNBOOK.md`](../RUNBOOK.md) izlenir.
+
 ### (Yayınlanmadı) 2026-07-25 Dosya yükleme artık arayüzü dondurmuyor (bloklamayan alım hattı)
 
 - **Sorun.** Hem Dosya Yönetimi toplu yüklemesi hem de Ana Söyleşi yüklemesi;
