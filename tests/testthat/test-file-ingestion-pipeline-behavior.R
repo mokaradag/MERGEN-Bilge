@@ -46,6 +46,53 @@
   )
 }
 
+# Windows'ta iki yol AYNI fiziksel dosyayı gösterse de dize olarak farklı
+# olabilir: kalıcı depolama kökü resolve_mcp_base_dir() tarafından bilinçli
+# olarak 8.3 kısa yola çevrilir (UNC/Türkçe kök güvenliği), bu yüzden
+# copy_to_mcp_base() kısa köklü bir hedef üretir; resolve_uploaded_file() ise
+# normalize_mcp_path() üzerinden normalizePath() ile uzun yolu döndürür.
+# Bu nedenle dize eşitliği yerine "aynı dosya mı" değişmezi doğrulanır.
+.ingestionCanonicalPath <- function(env, path) {
+  aday <- as.character(path %||% "")[1]
+  if (!nzchar(aday)) return("")
+
+  kanonik <- suppressWarnings(
+    tryCatch(
+      normalizePath(aday, winslash = "/", mustWork = FALSE),
+      error = function(e) aday
+    )
+  )
+
+  env$normalize_for_path_compare(kanonik)
+}
+
+.ingestionShortPath <- function(env, path) {
+  aday <- as.character(path %||% "")[1]
+  if (!nzchar(aday)) return("")
+  if (!exists("safe_windows_short_path", mode = "function", inherits = TRUE)) return("")
+
+  kisa <- tryCatch(
+    safe_windows_short_path(aday, must_exist = TRUE),
+    error = function(e) ""
+  )
+
+  env$normalize_for_path_compare(kisa)
+}
+
+.ingestionSamePath <- function(env, a, b) {
+  bir <- .ingestionCanonicalPath(env, a)
+  iki <- .ingestionCanonicalPath(env, b)
+
+  if (nzchar(bir) && identical(bir, iki)) return(TRUE)
+
+  # normalizePath() 8.3 kısa adı uzun ada çeviremediği Windows kurulumlarında
+  # karşılaştırma kısa yol tarafından da denenir (iki yön de aynı dosyayı verir).
+  bir_kisa <- .ingestionShortPath(env, a)
+  iki_kisa <- .ingestionShortPath(env, b)
+
+  nzchar(bir_kisa) && identical(bir_kisa, iki_kisa)
+}
+
 # ------------------------------------------------------------------------------
 # Saf plan katmanı
 # ------------------------------------------------------------------------------
@@ -279,8 +326,21 @@ test_that("aynı görünen adlı dosyalar kullanıcı bazında ayrı indekslenir
   mergen_index_persisted_files(list(list(path = bir$dest, display = "ortak_ad.txt")), user_id = "42")
   mergen_index_persisted_files(list(list(path = iki$dest, display = "ortak_ad.txt")), user_id = "77")
 
-  expect_identical(resolve_uploaded_file("ortak_ad.txt", user_id = "42"), bir$dest)
-  expect_identical(resolve_uploaded_file("ortak_ad.txt", user_id = "77"), iki$dest)
+  cozulen_42 <- resolve_uploaded_file("ortak_ad.txt", user_id = "42")
+  cozulen_77 <- resolve_uploaded_file("ortak_ad.txt", user_id = "77")
+
+  expect_true(env$path_exists_relaxed(cozulen_42))
+  expect_true(env$path_exists_relaxed(cozulen_77))
+
+  expect_true(
+    .ingestionSamePath(env, cozulen_42, bir$dest),
+    info = sprintf("42 -> cozulen='%s', beklenen='%s'", cozulen_42 %||% "", bir$dest)
+  )
+  expect_true(
+    .ingestionSamePath(env, cozulen_77, iki$dest),
+    info = sprintf("77 -> cozulen='%s', beklenen='%s'", cozulen_77 %||% "", iki$dest)
+  )
+  expect_false(.ingestionSamePath(env, cozulen_42, cozulen_77))
 })
 
 # ------------------------------------------------------------------------------
