@@ -59,7 +59,8 @@ truncate_claude_doc_text <- function(metin, max_karakter = 120000L) {
 
 list_claude_code_binary_documents <- function(workdir,
                                               extensions = NULL,
-                                              max_files = 200L) {
+                                              max_files = 200L,
+                                              limits = NULL) {
   if (is.null(workdir) || !nzchar(workdir) || !dir.exists(workdir)) {
     return(character(0))
   }
@@ -75,11 +76,24 @@ list_claude_code_binary_documents <- function(workdir,
   # Aday sınırı uzantı filtresinden SONRA uygulanır. Böylece yüzlerce metin
   # dosyasından sonra sıralanan bir PDF/DOCX gözden kaçmaz; taramanın kendisi
   # yine giriş/süre sınırlarıyla artımlı kalır.
+  #
+  # ÖNEMLİ: max_depth/max_dirs sıfır DEĞİLDİR. İzole runtime'da kopyalanan
+  # dokümanlar "input/reports/quarterly.pdf" gibi iç içe klasörlerde
+  # olabilir; yalnızca kökün doğrudan altına bakmak bunları hiç bulamazdı.
+  derinlik <- suppressWarnings(as.numeric(
+    if (exists("cc_runtime_limit", mode = "function", inherits = TRUE)) {
+      cc_runtime_limit("document_probe_max_depth", 4, limits)
+    } else {
+      4
+    }
+  ))
+  if (!is.finite(derinlik) || derinlik < 0) derinlik <- 4
+
   tarama <- cc_scan_directory_bounded(
     root = workdir,
     max_files = 20000L,
-    max_dirs = 0L,
-    max_depth = 0L,
+    max_dirs = 500L,
+    max_depth = derinlik,
     max_elapsed_ms = 4000L,
     max_entries = 20000L,
     exclude_dirs = character(0),

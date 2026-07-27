@@ -436,16 +436,24 @@ cc_snapshot_run_output_area <- function(runtime_workdir,
   # İzole runtime'da build/dist/bin gibi adlar onaylı output alanının normal
   # parçalarıdır; basename tabanlı kaynak-ağaç hariçleri burada uygulanmaz.
   # Input da başlangıç snapshot'ına girer ki Edit değişiklikleri bulunabilsin.
-  haric <- if (isTRUE(mirrored)) {
-    setdiff(cc_scan_runtime_excluded_dirs(), "input")
+  # metadata/document_support hariç tutması yalnızca runtime KÖKÜNDE
+  # uygulanır (exclude_rel_paths); basename eşleşmesi (exclude_dirs) "output/
+  # metadata" gibi gerçek üretilmiş iç içe dizinleri de yanlışlıkla dışarıda
+  # bırakırdı.
+  haric_dir <- character(0)
+  haric_rel <- character(0)
+
+  if (isTRUE(mirrored)) {
+    haric_rel <- setdiff(cc_scan_runtime_excluded_dirs(), "input")
   } else {
-    cc_scan_default_excluded_dirs()
+    haric_dir <- cc_scan_default_excluded_dirs()
   }
 
   snapshot_claude_code_workdir_files(
     workdir = runtime_workdir,
     recursive = TRUE,
-    exclude_dirs = haric,
+    exclude_dirs = haric_dir,
+    exclude_rel_paths = haric_rel,
     limits = limits
   )
 }

@@ -155,18 +155,40 @@ cc_bind_claude_code_stream_polling <- function(input,
       # devam eder.
       rv$active_process <- NULL
 
-      cc_dispatch_run_output_processing(list(
-        session = session,
-        ns = ns,
-        rv = rv,
-        env = env,
-        ayristirma = ayristirma,
-        cikis_kodu = cikis_kodu,
-        sure = sure,
-        hata_mesaji = hata_mesaji,
-        finalize_streaming = finalize_streaming,
-        observe_dir_contents = observe_dir_contents
-      ))
+      tryCatch({
+        cc_dispatch_run_output_processing(list(
+          session = session,
+          ns = ns,
+          rv = rv,
+          env = env,
+          ayristirma = ayristirma,
+          cikis_kodu = cikis_kodu,
+          sure = sure,
+          hata_mesaji = hata_mesaji,
+          finalize_streaming = finalize_streaming,
+          observe_dir_contents = observe_dir_contents
+        ))
+      }, error = function(e) {
+        # tracked_future_promise() worker'a gönderim ANINDA (ör. küme çökmüş
+        # veya globals serileştirilemiyorsa) senkron olarak da hata verebilir.
+        # Bu durumda hiçbir promise/catch zinciri hiç kurulmaz; UI hazırlık
+        # durumunda takılı kalmasın diye burada da açıkça sonlandırılır.
+        log_warn(paste(
+          CLAUDE_CODE_LOG_PREFIX,
+          "[OUTPUT_DIFF] Çıktı işleme worker'ı başlatılamadı:",
+          conditionMessage(e)
+        ))
+        cc_report_output_processing_failure(
+          list(
+            session = session,
+            ns = ns,
+            rv = rv,
+            env = env,
+            finalize_streaming = finalize_streaming
+          ),
+          e
+        )
+      })
     }
   })
 

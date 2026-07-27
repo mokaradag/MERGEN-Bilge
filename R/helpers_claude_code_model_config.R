@@ -333,7 +333,7 @@ prompt_requests_document_operation <- function(prompt) {
   grepl(islem_deseni, metin, perl = TRUE)
 }
 
-workdir_has_binary_documents <- function(workdir, extensions = NULL) {
+workdir_has_binary_documents <- function(workdir, extensions = NULL, limits = NULL) {
   if (is.null(workdir) || !nzchar(workdir) || !dir.exists(workdir)) return(FALSE)
 
   if (is.null(extensions) || !length(extensions)) {
@@ -342,6 +342,43 @@ workdir_has_binary_documents <- function(workdir, extensions = NULL) {
 
   extensions <- tolower(as.character(extensions))
   if (!length(extensions)) return(FALSE)
+
+  # Yalnızca kökün doğrudan altına bakmak, "input/reports/quarterly.pdf" gibi
+  # kopyalanmış iç içe dokümanları kaçırıyordu; bu da doküman görevi tespitini
+  # (ve dolayısıyla yerel metin çıkarımı yolunu) hiç tetiklemiyordu. Sınırlı
+  # tarayıcı kullanılabiliyorsa küçük bir derinlikle özyinelemeli bakılır;
+  # aksi halde eski davranışa (yalnızca kök) düşülür.
+  if (exists("cc_scan_directory_bounded", mode = "function", inherits = TRUE)) {
+    derinlik <- suppressWarnings(as.numeric(
+      if (exists("cc_runtime_limit", mode = "function", inherits = TRUE)) {
+        cc_runtime_limit("document_probe_max_depth", 4, limits)
+      } else {
+        4
+      }
+    ))
+    if (!is.finite(derinlik) || derinlik < 0) derinlik <- 4
+
+    tarama <- tryCatch(
+      cc_scan_directory_bounded(
+        root = workdir,
+        max_files = 400L,
+        max_dirs = 200L,
+        max_depth = derinlik,
+        max_elapsed_ms = 1500L,
+        max_entries = 4000L,
+        max_file_bytes = Inf,
+        exclude_dirs = character(0),
+        exclude_rel_paths = character(0)
+      ),
+      error = function(e) NULL
+    )
+
+    if (!is.null(tarama)) {
+      if (!length(tarama$files)) return(FALSE)
+      uzantilar <- tolower(tools::file_ext(tarama$files))
+      return(any(nzchar(uzantilar) & uzantilar %in% extensions))
+    }
+  }
 
   ogeler <- tryCatch(
     list.files(

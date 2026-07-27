@@ -661,3 +661,414 @@ test_that("cc_path_visibility_budget_remaining pencere dışında NULL döner", 
 
   expect_null(env$cc_path_visibility_budget_remaining())
 })
+
+# ------------------------------------------------------------------------------
+# 10) KESİLMİŞ/BOŞ TARAMADA BİLE İSTENEN DOSYA DİSKTEN ÇÖZÜLÜR
+# ------------------------------------------------------------------------------
+
+test_that("cc_select_input_files bos taramada bile istenen dosyayi diskten cozer", {
+  env <- .cc_hardening_env()
+  kok <- withr::local_tempdir()
+
+  dir.create(file.path(kok, "z"))
+  istenen <- file.path(kok, "z", "config.json")
+  writeLines("{}", istenen, useBytes = TRUE)
+
+  # Tarama kökte HİÇ dosya bulamamış gibi davranır (files = character(0));
+  # önceki davranışta bu durum erken bir bos sonuçla çıkardı ve prompt'ta
+  # açıkça istenen dosya hiç diskten çözülmezdi.
+  secim <- env$cc_select_input_files(
+    prompt = "Lütfen z/config.json dosyasını güncelle",
+    files = character(0),
+    file_sizes = numeric(0),
+    root = kok
+  )
+
+  expect_identical(secim$selection_mode, "prompt")
+  expect_true(any(grepl("config\\.json$", secim$files)))
+})
+
+test_that("cc_select_input_files kok verilmezse ve tarama bosşsa güvenle boş döner", {
+  env <- .cc_hardening_env()
+
+  secim <- env$cc_select_input_files(
+    prompt = "herhangi bir şey",
+    files = character(0),
+    root = ""
+  )
+
+  expect_length(secim$files, 0L)
+  expect_identical(secim$selection_mode, "none")
+})
+
+# ------------------------------------------------------------------------------
+# 11) İSTENEN DOSYA BOYUT SINIRINI AŞARSA SESSİZCE YUTULMAZ
+# ------------------------------------------------------------------------------
+
+test_that("cc_select_input_files boyutu asan ACIKÇA istenen dosyayi required_skipped isaretler", {
+  env <- .cc_hardening_env()
+  kok <- withr::local_tempdir()
+
+  buyuk <- file.path(kok, "buyuk.csv")
+  writeBin(as.raw(rep(1L, 4096L)), buyuk)
+
+  secim <- env$cc_select_input_files(
+    prompt = "buyuk.csv dosyasini incele",
+    files = buyuk,
+    file_sizes = 4096,
+    root = kok,
+    limits = list(max_input_file_bytes = 100)
+  )
+
+  expect_length(secim$files, 0L)
+  expect_true("buyuk.csv" %in% secim$required_skipped)
+})
+
+test_that("cc_select_input_files auto modda boyutu asan dosyayi required_skipped saymaz", {
+  env <- .cc_hardening_env()
+  kok <- withr::local_tempdir()
+
+  buyuk <- file.path(kok, "otomatik.csv")
+  writeBin(as.raw(rep(1L, 4096L)), buyuk)
+
+  secim <- env$cc_select_input_files(
+    prompt = "bu klasoru ozetle",
+    files = buyuk,
+    file_sizes = 4096,
+    root = kok,
+    limits = list(max_input_file_bytes = 100)
+  )
+
+  expect_identical(secim$selection_mode, "auto")
+  expect_length(secim$required_skipped, 0L)
+})
+
+test_that("mirror_directory_to_local_workspace boyutu asan gerekli girdide basarisiz doner", {
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_runtime_workdir.R")
+  kaynak <- withr::local_tempdir()
+  hedef <- withr::local_tempdir()
+
+  buyuk <- file.path(kaynak, "buyuk.csv")
+  writeBin(as.raw(rep(1L, 4096L)), buyuk)
+
+  sonuc <- env$mirror_directory_to_local_workspace(
+    source_dir = kaynak,
+    target_dir = hedef,
+    prompt = "buyuk.csv dosyasini incele",
+    limits = list(max_input_file_bytes = 100)
+  )
+
+  expect_false(isTRUE(sonuc$ok))
+  expect_true(grepl("boyut sınırını aştığı", sonuc$message, fixed = TRUE))
+})
+
+# ------------------------------------------------------------------------------
+# 12) MENTION ÇIKARIMI: BOŞLUKLU/TIRNAKLI DOSYA ADLARI VE HARF BÜYÜKLÜĞÜ
+# ------------------------------------------------------------------------------
+
+test_that("cc_extract_prompt_file_mentions tirnakli bosluklu dosya adini butun yakalar", {
+  env <- .cc_hardening_env()
+
+  mentions <- env$cc_extract_prompt_file_mentions(
+    'Lutfen "reports/Q1 budget.csv" dosyasini guncelle'
+  )
+
+  expect_true("reports/Q1 budget.csv" %in% mentions)
+})
+
+test_that("cc_extract_prompt_file_mentions harf buyuklugunu korur", {
+  env <- .cc_hardening_env()
+
+  mentions <- env$cc_extract_prompt_file_mentions("Data/Report.CSV dosyasini incele")
+
+  expect_true("Data/Report.CSV" %in% mentions)
+  expect_false("data/report.csv" %in% mentions)
+})
+
+test_that("cc_select_input_files tirnakli bosluklu dosya adini diskten cozer", {
+  env <- .cc_hardening_env()
+  kok <- withr::local_tempdir()
+
+  dir.create(file.path(kok, "reports"))
+  istenen <- file.path(kok, "reports", "Q1 budget.csv")
+  writeLines("veri", istenen, useBytes = TRUE)
+
+  secim <- env$cc_select_input_files(
+    prompt = 'Lutfen "reports/Q1 budget.csv" dosyasini guncelle',
+    files = character(0),
+    root = kok
+  )
+
+  expect_true(any(grepl("Q1 budget\\.csv$", secim$files)))
+})
+
+test_that("cc_select_input_files case-sensitive dosya sisteminde harf buyuklugunu korur", {
+  skip_on_os("windows")
+  env <- .cc_hardening_env()
+  kok <- withr::local_tempdir()
+
+  dir.create(file.path(kok, "Data"))
+  istenen <- file.path(kok, "Data", "Report.CSV")
+  writeLines("veri", istenen, useBytes = TRUE)
+
+  secim <- env$cc_select_input_files(
+    prompt = "Data/Report.CSV dosyasini incele",
+    files = character(0),
+    root = kok
+  )
+
+  expect_true(any(grepl("Report\\.CSV$", secim$files)))
+})
+
+# ------------------------------------------------------------------------------
+# 13) DAHİLİ RUNTIME BÖLGELERİ YALNIZCA KÖK DÜZEYİNDE HARİÇ TUTULUR
+# ------------------------------------------------------------------------------
+
+test_that("cc_snapshot_run_output_area output altindaki gercek 'metadata' dizinini hariç tutmaz", {
+  skip_if_not_installed("digest")
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_workdir_scan.R")
+  runtime <- withr::local_tempdir()
+
+  # output/metadata GERÇEK bir üretilen alt dizindir; runtime kökündeki
+  # dahili "metadata" bölmesiyle karıştırılıp basename ile hariç tutulmamalı.
+  ic_ice <- file.path(runtime, "output", "metadata")
+  dir.create(ic_ice, recursive = TRUE)
+  writeLines("veri", file.path(ic_ice, "rapor.json"), useBytes = TRUE)
+
+  snapshot <- env$cc_snapshot_run_output_area(runtime, mirrored = TRUE)
+  yollar <- if (length(snapshot)) vapply(snapshot, function(x) x$path, character(1)) else character(0)
+
+  expect_true(any(grepl("output/metadata/rapor\\.json$", yollar)))
+})
+
+test_that("cc_snapshot_run_output_area kok duzeyindeki dahili metadata bolmesini haric tutar", {
+  skip_if_not_installed("digest")
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_workdir_scan.R")
+  runtime <- withr::local_tempdir()
+
+  kok_metadata <- file.path(runtime, "metadata")
+  dir.create(kok_metadata, recursive = TRUE)
+  writeLines("lease", file.path(kok_metadata, "runtime-owner"), useBytes = TRUE)
+  dir.create(file.path(runtime, "output"), recursive = TRUE)
+
+  snapshot <- env$cc_snapshot_run_output_area(runtime, mirrored = TRUE)
+  yollar <- if (length(snapshot)) vapply(snapshot, function(x) x$path, character(1)) else character(0)
+
+  expect_false(any(grepl("/metadata/runtime-owner$", yollar)))
+})
+
+# ------------------------------------------------------------------------------
+# 14) İÇERİK İMZASI: AYNI MTIME/BOYUTTA GİZLİ İÇERİK DEĞİŞİKLİĞİ YAKALANIR
+# ------------------------------------------------------------------------------
+
+test_that("diff_claude_code_workdir_snapshot ayni mtime/boyutta icerik degisikligini yakalar", {
+  skip_if_not_installed("digest")
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_workdir_scan.R")
+
+  kok <- withr::local_tempdir()
+  dosya <- file.path(kok, "rapor.txt")
+  writeLines("ESKI-ICERIK", dosya, useBytes = TRUE)
+
+  once <- env$snapshot_claude_code_workdir_files(kok)
+
+  # Ayni boyutta farklı içerik yaz, sonra mtime'i eski değere geri al
+  # (cp -p / arşiv çıkarma gibi zaman damgasını koruyan araçları taklit eder).
+  eski_mtime <- file.info(dosya)$mtime[1]
+  writeLines("YENI-ICERIK", dosya, useBytes = TRUE)
+  Sys.setFileTime(dosya, eski_mtime)
+
+  degisenler <- env$diff_claude_code_workdir_snapshot(before_snapshot = once, workdir = kok)
+
+  expect_true(any(grepl("rapor\\.txt$", degisenler)))
+})
+
+test_that("diff_claude_code_workdir_snapshot degismeyen dosyayi degisen saymaz", {
+  skip_if_not_installed("digest")
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_workdir_scan.R")
+
+  kok <- withr::local_tempdir()
+  dosya <- file.path(kok, "sabit.txt")
+  writeLines("ayni-icerik", dosya, useBytes = TRUE)
+
+  once <- env$snapshot_claude_code_workdir_files(kok)
+  degisenler <- env$diff_claude_code_workdir_snapshot(before_snapshot = once, workdir = kok)
+
+  expect_length(degisenler, 0L)
+})
+
+# ------------------------------------------------------------------------------
+# 15) İÇ İÇE (NESTED) KOPYALANMIŞ DOKÜMANLAR KEŞFEDİLİR
+# ------------------------------------------------------------------------------
+
+test_that("list_claude_code_binary_documents ic ice kopyalanan dokumani bulur", {
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_document_extractors.R")
+  kok <- withr::local_tempdir()
+
+  dir.create(file.path(kok, "reports"))
+  belge <- file.path(kok, "reports", "quarterly.pdf")
+  writeLines("sahte-pdf-icerigi", belge, useBytes = TRUE)
+
+  bulunan <- env$list_claude_code_binary_documents(kok, extensions = c("pdf"))
+
+  expect_true(any(grepl("quarterly\\.pdf$", bulunan)))
+})
+
+test_that("workdir_has_binary_documents ic ice kopyalanan dokumani algilar", {
+  env <- .cc_hardening_env(extra_files = c(
+    "helpers_claude_code_document_extractors.R",
+    "helpers_claude_code_model_config.R"
+  ))
+  kok <- withr::local_tempdir()
+
+  dir.create(file.path(kok, "input", "reports"), recursive = TRUE)
+  belge <- file.path(kok, "input", "reports", "quarterly.pdf")
+  writeLines("sahte-pdf-icerigi", belge, useBytes = TRUE)
+
+  expect_true(env$workdir_has_binary_documents(file.path(kok, "input"), extensions = c("pdf")))
+})
+
+# ------------------------------------------------------------------------------
+# 16) ÇIKTI SENKRONİZASYON İSTİSNALARI YUTULMAZ
+# ------------------------------------------------------------------------------
+
+test_that("sync hatasi cikti islemeyi basarisiz kilar (yutulmaz)", {
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_run_completion.R")
+  runtime <- withr::local_tempdir()
+
+  env$diff_claude_code_workdir_snapshot <- function(...) character(0)
+  env$cc_collect_streaming_run_downloads <- function(...) list()
+  env$sync_claude_runtime_workdir_back <- function(...) stop("sistemik yol hatasi")
+
+  expect_error(
+    env$cc_process_run_outputs(list(
+      before_snapshot = list(), runtime_workdir = runtime,
+      source_workdir = runtime, mirrored = TRUE, limits = list()
+    )),
+    "sistemik yol hatasi"
+  )
+})
+
+# ------------------------------------------------------------------------------
+# 17) ÇIKTI AKTARIM KORUMA DOSYASI OLUŞTURULAMAZSA WORKER GÖNDERİLMEZ
+# ------------------------------------------------------------------------------
+
+test_that("guard dosyasi olusturulamazsa worker gonderilmeden acikca basarisiz olunur", {
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_run_completion.R")
+
+  worker_cagrildi <- FALSE
+  rapor_edildi <- new.env(parent = emptyenv())
+  rapor_edildi$hata <- NULL
+
+  env$tracked_future_promise <- function(...) {
+    worker_cagrildi <<- TRUE
+    stop("worker hiç çağrılmamalı")
+  }
+  env$cc_report_output_processing_failure <- function(ctx, error) {
+    rapor_edildi$hata <- error
+    invisible(TRUE)
+  }
+  env$file.create <- function(...) FALSE
+
+  ctx <- list(
+    session = list(token = "t"),
+    ns = function(x) x,
+    rv = new.env(parent = emptyenv()),
+    env = list(runtime_layout = list(metadata = tempdir()), request_id = "rid-guard"),
+    ayristirma = list(tool_uses = list())
+  )
+
+  env$cc_dispatch_run_output_processing(ctx)
+
+  expect_false(worker_cagrildi)
+  expect_false(is.null(rapor_edildi$hata))
+})
+
+# ------------------------------------------------------------------------------
+# 18) SINIRLI DİZİN LİSTELEME BAŞARISIZLIĞI SESSİZ "BOŞ DİZİN" GİBİ GÖSTERİLMEZ
+# ------------------------------------------------------------------------------
+
+test_that("list_directory_contents sinirli listeleyici basarisiz olunca sessiz bos dizin gostermez", {
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_directory_listing.R")
+  kok <- withr::local_tempdir()
+
+  env$cc_scan_list_dir_bounded <- function(...) {
+    list(
+      entries = character(0), truncated = FALSE, reason = "",
+      ok = FALSE, error = "listeleyici kod 1 ile sonlandi"
+    )
+  }
+
+  sonuc <- env$list_directory_contents(kok, max_items = 50L)
+
+  expect_true(isTRUE(sonuc$success))
+  expect_true(isTRUE(sonuc$truncated))
+  expect_true(!is.null(sonuc$truncated_reason) && nzchar(sonuc$truncated_reason))
+})
+
+test_that("list_directory_contents gercekten bos dizinde truncated=FALSE doner", {
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_directory_listing.R")
+  kok <- withr::local_tempdir()
+
+  sonuc <- env$list_directory_contents(kok, max_items = 50L)
+
+  expect_true(isTRUE(sonuc$success))
+  expect_false(isTRUE(sonuc$truncated))
+})
+
+# ------------------------------------------------------------------------------
+# 19) EŞZAMANSIZ PLANDA BİLE GÖNDERİM ANINDA SENKRON HATA AÇIKÇA SONLANDIRILIR
+# ------------------------------------------------------------------------------
+
+test_that("cc_dispatch_run_preparation gonderim aninda senkron hata verirse hazirlik acikca sonlandirilir", {
+  skip_if_not_installed("future")
+
+  repo_root <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
+  env$cc_log_info <- function(...) invisible(NULL)
+  env$cc_log_warn <- function(...) invisible(NULL)
+  env$log_error <- function(...) invisible(NULL)
+  env$CLAUDE_CODE_LOG_PREFIX <- "[TEST]"
+  env$CLAUDE_CODE_LIMIT_MESSAGE <- "sinir"
+  env$cc_runtime_limit <- function(name, default_value = Inf, limits = NULL) default_value
+
+  source(
+    file.path(repo_root, "R", "helpers_claude_code_run_dispatch.R"),
+    encoding = "UTF-8", local = env
+  )
+
+  bloke_mesajlari <- new.env(parent = emptyenv())
+  bloke_mesajlari$mesajlar <- character(0)
+
+  env$cc_is_active_run <- function(rv, request_id) TRUE
+  env$cc_send_run_blocked_message <- function(session, ns, message) {
+    bloke_mesajlari$mesajlar <- c(bloke_mesajlari$mesajlar, message)
+    invisible(TRUE)
+  }
+  env$cc_finalize_if_active <- function(...) invisible(TRUE)
+  env$cc_release_runtime_lease <- function(...) invisible(TRUE)
+  env$cc_claim_runtime_ownership <- function(...) ""
+  env$cc_build_run_prepare_request <- function(...) list()
+  env$cc_run_prepare_worker_globals <- function(...) list()
+
+  # Plan ASENKRON gibi görünsün (cc_future_plan_is_async() TRUE dönsün) ama
+  # tracked_future_promise() GÖNDERİM ANINDA senkron hata versin (ör. küme
+  # çökmüş veya globals serileştirilemiyor).
+  env$cc_future_plan_is_async <- function() TRUE
+  env$tracked_future_promise <- function(...) stop("worker kumesi coktu")
+
+  ctx <- list(
+    session = list(token = "t", sendCustomMessage = function(...) invisible(NULL)),
+    ns = function(x) x,
+    rv = new.env(parent = emptyenv()),
+    run_request_id = "istek-1",
+    finalize_streaming = function(...) invisible(TRUE),
+    prompt = "merhaba",
+    workdir = tempdir(),
+    user_id = 1L
+  )
+
+  expect_error(env$cc_dispatch_run_preparation(ctx), NA)
+  expect_length(bloke_mesajlari$mesajlar, 1L)
+  expect_true(grepl("worker kumesi coktu", bloke_mesajlari$mesajlar[1], fixed = TRUE))
+})

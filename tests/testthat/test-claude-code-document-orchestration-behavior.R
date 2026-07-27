@@ -48,10 +48,10 @@
                                docs = "/dokumanlar/rapor.pdf", has_docs = TRUE,
                                extract_text = "PDF metni") {
   env$get_claude_code_binary_doc_extensions <- function() c("pdf", "docx", "xls", "xlsx", "doc")
-  env$workdir_has_binary_documents <- function(dir, exts) isTRUE(has_docs)
+  env$workdir_has_binary_documents <- function(dir, exts, limits = NULL) isTRUE(has_docs)
   env$prompt_requests_existing_document_reading <- function(prompt) isTRUE(reading)
   env$prompt_requests_binary_document_creation <- function(prompt) isTRUE(creation)
-  env$list_claude_code_binary_documents <- function(dir, extensions = NULL, max_files = 200L) as.character(docs)
+  env$list_claude_code_binary_documents <- function(dir, extensions = NULL, max_files = 200L, limits = NULL) as.character(docs)
   env$get_claude_code_document_support_dir <- function(user_id = NULL,
                                                       request_id = NULL,
                                                       base_dir = NULL) support_dir

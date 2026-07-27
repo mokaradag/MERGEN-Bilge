@@ -96,17 +96,19 @@ mirror_directory_to_local_workspace <- function(source_dir,
   )
 
   basarisiz <- as.character(kopya$failed %||% character(0))
+  # Boyut sınırı nedeniyle atlanan gerekli girdi de kopyalama hatası sayılır.
+  gereken_atlanan <- as.character(secim$required_skipped %||% character(0))
+  mesaj_parcalari <- c(
+    if (length(basarisiz)) paste0("Gerekli girdi dosyaları kopyalanamadı: ", paste(basarisiz, collapse = ", ")),
+    if (length(gereken_atlanan)) paste0("İstenen dosya(lar) boyut sınırını aştığı için aktarılmadı: ", paste(gereken_atlanan, collapse = ", "))
+  )
 
   list(
-    ok = !length(basarisiz),
+    ok = !length(basarisiz) && !length(gereken_atlanan),
     selection = secim,
     copy = kopya,
     scan = scan,
-    message = if (length(basarisiz)) {
-      paste0("Gerekli girdi dosyaları kopyalanamadı: ", paste(basarisiz, collapse = ", "))
-    } else {
-      ""
-    }
+    message = paste(mesaj_parcalari, collapse = " ")
   )
 }
 

@@ -419,8 +419,11 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
   assert_file_budget("R/helpers_claude_code.R", 450L, 18L)
   assert_file_budget("R/helpers_claude_code_directory_listing.R", 260L, 19L)
   # Bütçe: UNC ağ paylaşımı için runtime workdir yeniden kullanım yolu ve
-  # fs::dir_ls fallback'i eklenince satır sayısı 240 -> ~325'e çıktı.
-  assert_file_budget("R/helpers_claude_code_runtime_workdir.R", 360L, 14L)
+  # fs::dir_ls fallback'i eklenince satır sayısı 240 -> ~325'e çıktı. Codex
+  # P1 düzeltmesi (boyut sınırı nedeniyle atlanan GEREKLİ girdinin artık
+  # sessizce yutulmayıp kopyalama hatası gibi raporlanması) 360 -> 365'e
+  # çıkardı.
+  assert_file_budget("R/helpers_claude_code_runtime_workdir.R", 365L, 14L)
   assert_file_budget("R/helpers_claude_code_workdir_scan.R", 423L, 14L)
   assert_file_budget("R/helpers_claude_code_workdir_snapshot.R", 450L, 24L)
   assert_file_budget("R/helpers_db_chat_mutations.R", 420L, 24L)

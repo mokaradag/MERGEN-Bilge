@@ -155,11 +155,16 @@ cc_process_run_outputs <- function(request) {
 
   # Runtime output/build, output/dist ve output/bin gerçek çıktılardır. İzole
   # çalışma alanında kaynak-ağaç basename hariçlerini uygulamayız; yalnızca
-  # dahili metadata/doküman alanları tarama dışında kalır.
-  haric <- if (isTRUE(request$mirrored)) {
-    cc_scan_runtime_excluded_dirs()
+  # dahili metadata/doküman alanları KÖK düzeyinde (exclude_rel_paths) tarama
+  # dışında kalır. Basename eşleşmesi (exclude_dirs) "output/metadata" gibi
+  # gerçek üretilmiş iç içe dizinleri de yanlışlıkla dışarıda bırakırdı.
+  haric_dir <- character(0)
+  haric_rel <- character(0)
+
+  if (isTRUE(request$mirrored)) {
+    haric_rel <- cc_scan_runtime_excluded_dirs()
   } else {
-    cc_scan_default_excluded_dirs()
+    haric_dir <- cc_scan_default_excluded_dirs()
   }
 
   diff_baslangic <- Sys.time()
@@ -175,7 +180,8 @@ cc_process_run_outputs <- function(request) {
     degisenler <- diff_claude_code_workdir_snapshot(
       before_snapshot = request$before_snapshot,
       workdir = request$runtime_workdir,
-      exclude_dirs = haric,
+      exclude_dirs = haric_dir,
+      exclude_rel_paths = haric_rel,
       limits = request$limits
     )
 
@@ -202,7 +208,7 @@ cc_process_run_outputs <- function(request) {
         user_id = request$user_id,
         session_token = request$session_token,
         changed_files = degisenler,
-        exclude_dirs = haric,
+        exclude_dirs = haric_dir,
         limits = request$limits,
         layout = request$layout
       )
@@ -216,16 +222,17 @@ cc_process_run_outputs <- function(request) {
   sync_sonuclari <- list()
 
   if (isTRUE(request$mirrored)) {
-    sync_sonuclari <- tryCatch(
-      sync_claude_runtime_workdir_back(
-        runtime_workdir = request$runtime_workdir,
-        source_workdir = request$source_workdir,
-        changed_files = degisenler,
-        layout = request$layout,
-        limits = request$limits,
-        active_guard = request$active_guard
-      ),
-      error = function(e) list()
+    # Sistemik bir dosya sistemi/yol hatasını boş sonuca dönüştürmeyin;
+    # aksi halde hiçbir dosya aktarılmadığı halde çalıştırma "Tamamlandı"
+    # olarak sonlandırılabilir. Hatanın bu future'ı reddetmesine izin
+    # verilir; çağıran promise catch'i bunu açık bir hata olarak raporlar.
+    sync_sonuclari <- sync_claude_runtime_workdir_back(
+      runtime_workdir = request$runtime_workdir,
+      source_workdir = request$source_workdir,
+      changed_files = degisenler,
+      layout = request$layout,
+      limits = request$limits,
+      active_guard = request$active_guard
     )
   }
 
@@ -347,7 +354,30 @@ cc_dispatch_run_output_processing <- function(ctx) {
     paste0("output-sync-", gsub("[^A-Za-z0-9_.-]", "_", ctx$env$request_id %||% "run"), ".active")
   )
   dir.create(dirname(guard), recursive = TRUE, showWarnings = FALSE)
-  file.create(guard)
+
+  # file.create() sonucu kontrol edilmezse (ör. izin değişikliği veya geçici
+  # disk dolması), var olmayan bir guard ile worker gönderilir;
+  # cc_apply_output_sync_plan() eksik guard'ı iptal gibi yorumlayıp hiçbir
+  # başarısız sonuç eklemeden çıkar ve çalıştırma yanlışlıkla "Tamamlandı"
+  # görünür. Guard oluşturulamazsa worker hiç gönderilmeden açık bir hata
+  # olarak sonlandırılır.
+  guard_olusturuldu <- isTRUE(tryCatch(file.create(guard), error = function(e) FALSE)) &&
+    isTRUE(tryCatch(file.exists(guard), error = function(e) FALSE))
+
+  if (!isTRUE(guard_olusturuldu)) {
+    cc_log_warn(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "[OUTPUT_SYNC] Aktarım koruma dosyası oluşturulamadı; çıktı işleme başlatılmadı."
+    ))
+    cc_report_output_processing_failure(
+      ctx,
+      simpleError(
+        "Çıktı aktarım koruma dosyası oluşturulamadı; çalıştırma güvenli biçimde tamamlanamadı."
+      )
+    )
+    return(invisible(TRUE))
+  }
+
   ctx$env$output_sync_guard <- guard
   istek <- cc_build_run_output_request(ctx$env, ctx$ayristirma$tool_uses %||% list())
 

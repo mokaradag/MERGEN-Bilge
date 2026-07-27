@@ -238,12 +238,12 @@ prepare_claude_code_document_context <- function(prompt,
 
   # Önce yerel aynalanmış çalışma dizinini kontrol et
   runtime_dokuman_var <- isTRUE(
-    workdir_has_binary_documents(runtime_workdir, binary_exts)
+    workdir_has_binary_documents(runtime_workdir, binary_exts, limits = limits)
   )
 
   # Kaynak dizin sadece yedek amaçlı kontrol edilir
   source_dokuman_var <- isTRUE(
-    workdir_has_binary_documents(source_workdir, binary_exts)
+    workdir_has_binary_documents(source_workdir, binary_exts, limits = limits)
   )
 
   # Doküman özet/okuma yolu (yerel metne çıkarma + non-streaming özet) yalnızca
@@ -279,8 +279,7 @@ prepare_claude_code_document_context <- function(prompt,
   }
 
   dokuman_adaylari <- list_claude_code_binary_documents(
-    dokuman_kaynak_dizini,
-    extensions = binary_exts
+    dokuman_kaynak_dizini, extensions = binary_exts, limits = limits
   )
 
   if (!length(dokuman_adaylari)) {

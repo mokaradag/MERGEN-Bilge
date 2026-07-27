@@ -47,10 +47,19 @@ cc_list_dir_relaxed <- function(dir_path, max_entries = 500L, timeout_ms = 2000L
     )
 
     gecerli <- is.list(sinirli) && !inherits(sinirli, "try-error")
-    entries <- if (gecerli) sinirli$entries else character(0)
+    # sinirli$ok == FALSE, listeleyici sürecin (find/PowerShell) kod
+    # döndürerek başarısız olduğu, geçerli bir R listesi (try-error DEĞİL)
+    # ama içerik güvenilmez anlamına gelir. Bu durumu "boş ama başarılı"
+    # gibi ele almak, gerçek bir listeleme hatasını sessiz boş dizin gibi
+    # gösterirdi.
+    basarili <- gecerli && !isFALSE(sinirli$ok)
+    entries <- if (basarili) sinirli$entries else character(0)
+    hata <- if (gecerli) as.character(sinirli$error %||% "")[1] else "Sınırlı dizin listeleyici çalıştırılamadı."
+
     return(structure(
       unique(as.character(entries %||% character(0))),
-      truncated = !gecerli || isTRUE(sinirli$truncated)
+      truncated = !basarili || isTRUE(sinirli$truncated),
+      error = hata
     ))
   }
 
@@ -165,6 +174,7 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
   calisan_dizin <- NULL
   tum_ogeler <- character(0)
   kesildi <- FALSE
+  listeleme_hatasi <- ""
 
   # Gezginde en fazla `max_items` öge gösterilir; sıralama için biraz fazlasını
   # okumak yeterlidir. Böylece dev klasörlerde bile okuma maliyeti sabittir.
@@ -184,15 +194,21 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
 
     bulunan_ogeler <- cc_list_dir_relaxed(aday, max_entries = listeleme_siniri)
 
-    # En azından çalışan dizini kaydet
+    # Bir listeleme BAŞARISIZLIĞI (sinirli$ok == FALSE) da boş sonuç
+    # döndürebilir. Bu durumu yalnızca "içerik bulundu" dalında kontrol etmek,
+    # başarısızlığı sessiz "boş dizin" gibi gösterirdi; bu yüzden truncated/
+    # error bilgisi ilk erişilebilir adaydan itibaren kaydedilir.
     if (is.null(calisan_dizin)) {
       calisan_dizin <- aday
+      kesildi <- isTRUE(attr(bulunan_ogeler, "truncated", exact = TRUE))
+      listeleme_hatasi <- as.character(attr(bulunan_ogeler, "error", exact = TRUE) %||% "")[1]
     }
 
     # İçerik bulduysak bunu tercih et
     if (length(bulunan_ogeler) > 0) {
       calisan_dizin <- aday
       kesildi <- isTRUE(attr(bulunan_ogeler, "truncated", exact = TRUE))
+      listeleme_hatasi <- as.character(attr(bulunan_ogeler, "error", exact = TRUE) %||% "")[1]
       tum_ogeler <- as.character(bulunan_ogeler)
       break
     }
@@ -234,6 +250,7 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
     error = "",
     toplam = length(tum_ogeler),
     truncated = isTRUE(kesildi),
+    truncated_reason = if (isTRUE(kesildi) && nzchar(listeleme_hatasi)) listeleme_hatasi else "",
     resolved_path = tryCatch(
       normalize_mcp_path(calisan_dizin, must_exist = FALSE),
       error = function(e) calisan_dizin

@@ -197,94 +197,122 @@ cc_dispatch_run_preparation <- function(ctx) {
     invisible(NULL)
   }
 
-  tracked_future_promise(
-    task_fn = function() {
-      cc_prepare_run_workspace(istek)
-    },
-    task_type = "claude_code_run_prepare",
-    session_token = ctx$session$token,
-    dependency_mode = "explicit",
-    globals = c(
-      list(istek = istek),
-      cc_run_prepare_worker_globals()
-    ),
-    packages = c("tools", "utils")
-  ) |>
-    promises::then(function(prep) {
-      cc_cancel_prepare_deadline()
-      if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
-        cc_release_runtime_lease(prep$runtime_lease %||% "")
-        return(NULL)
-      }
+  # tracked_future_promise() GÖNDERİM ANINDA senkron olarak da hata verebilir
+  # (ör. küme çökmüş veya globals serileştirilemiyorsa). Bu durumda ne
+  # `promises::then()` ne de `promises::catch()` hiç kurulur; hata bu
+  # dispatch çağrısının kendisinden fırlar. Zincirin tamamı burada
+  # sarmalanır ki böyle bir senkron başarısızlık da deadline'ı iptal edip
+  # hazırlığı açıkça sonlandırsın; aksi halde kullanıcı 180 saniyelik
+  # varsayılan zaman aşımına kadar "hazırlanıyor" durumunda kalırdı.
+  gonderim_hatasi <- tryCatch({
+    tracked_future_promise(
+      task_fn = function() {
+        cc_prepare_run_workspace(istek)
+      },
+      task_type = "claude_code_run_prepare",
+      session_token = ctx$session$token,
+      dependency_mode = "explicit",
+      globals = c(
+        list(istek = istek),
+        cc_run_prepare_worker_globals()
+      ),
+      packages = c("tools", "utils")
+    ) |>
+      promises::then(function(prep) {
+        cc_cancel_prepare_deadline()
+        if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
+          cc_release_runtime_lease(prep$runtime_lease %||% "")
+          return(NULL)
+        }
 
-      gecen <- as.numeric(difftime(Sys.time(), hazirlik_baslangic, units = "secs"))
+        gecen <- as.numeric(difftime(Sys.time(), hazirlik_baslangic, units = "secs"))
 
-      cc_log_info(sprintf(
-        paste0(
-          "%s [RUNTIME_PREPARE] request=%s | async=TRUE | toplam_ms=%.0f | ",
-          "runtime_ms=%.0f | dokuman_ms=%.0f | snapshot_ms=%.0f | ",
-          "girdi_dosya=%d | girdi_bayt=%.0f | secim=%s | aynalandi=%s | yeniden=%s"
-        ),
-        CLAUDE_CODE_LOG_PREFIX,
-        ctx$run_request_id,
-        prep$metrics$total_ms %||% 0,
-        prep$metrics$runtime_ms %||% 0,
-        prep$metrics$document_ms %||% 0,
-        prep$metrics$snapshot_ms %||% 0,
-        prep$metrics$input_files %||% 0L,
-        prep$metrics$input_bytes %||% 0,
-        prep$metrics$selection_mode %||% "",
-        isTRUE(prep$mirrored),
-        isTRUE(prep$reused)
-      ))
-
-      if (isTRUE(prep$blocked)) {
-        cc_release_runtime_lease(prep$runtime_lease %||% "")
-        cc_fail_run_preparation(ctx, prep$message %||% CLAUDE_CODE_LIMIT_MESSAGE)
-        return(NULL)
-      }
-
-      cc_start_streaming_run(ctx, prep)
-      NULL
-    }) |>
-    promises::catch(function(e) {
-      cc_cancel_prepare_deadline()
-      if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
-        return(NULL)
-      }
-
-      hata_metni <- conditionMessage(e)
-
-      cc_log_warn(paste(
-        CLAUDE_CODE_LOG_PREFIX,
-        "[RUNTIME_PREPARE] Hazırlık başarısız:",
-        gsub("[{}]", "", hata_metni)
-      ))
-
-      if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
-        tryCatch(
-          cc_persist_run_result(
-            rv = ctx$rv,
-            env = list(
-              prompt = ctx$prompt,
-              tum_satirlar = character(0),
-              calisma_dizini = ctx$workdir,
-              kaynak_calisma_dizini = ctx$workdir
-            ),
-            status = "failed",
-            final_output = paste0("Çalışma alanı hazırlığı başarısız: ", hata_metni)
+        cc_log_info(sprintf(
+          paste0(
+            "%s [RUNTIME_PREPARE] request=%s | async=TRUE | toplam_ms=%.0f | ",
+            "runtime_ms=%.0f | dokuman_ms=%.0f | snapshot_ms=%.0f | ",
+            "girdi_dosya=%d | girdi_bayt=%.0f | secim=%s | aynalandi=%s | yeniden=%s"
           ),
-          error = function(e2) NULL
+          CLAUDE_CODE_LOG_PREFIX,
+          ctx$run_request_id,
+          prep$metrics$total_ms %||% 0,
+          prep$metrics$runtime_ms %||% 0,
+          prep$metrics$document_ms %||% 0,
+          prep$metrics$snapshot_ms %||% 0,
+          prep$metrics$input_files %||% 0L,
+          prep$metrics$input_bytes %||% 0,
+          prep$metrics$selection_mode %||% "",
+          isTRUE(prep$mirrored),
+          isTRUE(prep$reused)
+        ))
+
+        if (isTRUE(prep$blocked)) {
+          cc_release_runtime_lease(prep$runtime_lease %||% "")
+          cc_fail_run_preparation(ctx, prep$message %||% CLAUDE_CODE_LIMIT_MESSAGE)
+          return(NULL)
+        }
+
+        cc_start_streaming_run(ctx, prep)
+        NULL
+      }) |>
+      promises::catch(function(e) {
+        cc_cancel_prepare_deadline()
+        if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
+          return(NULL)
+        }
+
+        hata_metni <- conditionMessage(e)
+
+        cc_log_warn(paste(
+          CLAUDE_CODE_LOG_PREFIX,
+          "[RUNTIME_PREPARE] Hazırlık başarısız:",
+          gsub("[{}]", "", hata_metni)
+        ))
+
+        if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
+          tryCatch(
+            cc_persist_run_result(
+              rv = ctx$rv,
+              env = list(
+                prompt = ctx$prompt,
+                tum_satirlar = character(0),
+                calisma_dizini = ctx$workdir,
+                kaynak_calisma_dizini = ctx$workdir
+              ),
+              status = "failed",
+              final_output = paste0("Çalışma alanı hazırlığı başarısız: ", hata_metni)
+            ),
+            error = function(e2) NULL
+          )
+        }
+
+        cc_fail_run_preparation(
+          ctx,
+          paste0("Çalışma alanı hazırlanamadı: ", hata_metni)
         )
-      }
 
-      cc_fail_run_preparation(
-        ctx,
-        paste0("Çalışma alanı hazırlanamadı: ", hata_metni)
-      )
+        NULL
+      })
 
-      NULL
-    })
+    NULL
+  }, error = function(e) e)
+
+  if (!is.null(gonderim_hatasi)) {
+    cc_cancel_prepare_deadline()
+
+    hata_metni <- conditionMessage(gonderim_hatasi)
+
+    cc_log_warn(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "[RUNTIME_PREPARE] Hazırlık worker'ı gönderilemedi:",
+      gsub("[{}]", "", hata_metni)
+    ))
+
+    cc_fail_run_preparation(
+      ctx,
+      paste0("Çalışma alanı hazırlığı başlatılamadı: ", hata_metni)
+    )
+  }
 
   invisible(TRUE)
 }
