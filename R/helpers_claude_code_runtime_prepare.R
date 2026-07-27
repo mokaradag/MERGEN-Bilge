@@ -158,7 +158,10 @@ cc_scan_source_workdir <- function(source_dir, limits = NULL) {
     max_dirs = cc_runtime_limit("scan_max_dirs", 500, limits),
     max_depth = cc_runtime_limit("scan_max_depth", 6, limits),
     max_total_bytes = cc_runtime_limit("scan_max_total_bytes", 512 * 1024^2, limits),
-    max_elapsed_ms = cc_runtime_limit("scan_timeout_ms", 4000, limits)
+    max_elapsed_ms = cc_runtime_limit("scan_timeout_ms", 4000, limits),
+    # Preflight metadata accounting must include oversized files. The
+    # per-file copy limit is applied later, when the bounded subset is chosen.
+    max_file_bytes = Inf
   )
 }
 

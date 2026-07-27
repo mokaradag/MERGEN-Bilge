@@ -233,6 +233,17 @@ cc_start_streaming_run <- function(ctx, prep) {
   ns <- ctx$ns
   rv <- ctx$rv
 
+  if (isTRUE(prep$snapshot_truncated)) {
+    unlink(prep$runtime_lease %||% "", force = TRUE)
+    mesaj <- paste0(
+      "Çıktı alanının başlangıç taraması güvenli sınırlar içinde tamamlanamadı; ",
+      "eksik dosya aktarımını önlemek için çalışma başlatılmadı."
+    )
+    cc_log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "[OUTPUT_SNAPSHOT]", mesaj))
+    cc_fail_run_preparation(ctx, mesaj)
+    return(invisible(FALSE))
+  }
+
   dokuman_baglami <- prep$document_context %||% list()
   kaynak_calisma_dizini <- prep$source_workdir %||% ctx$workdir
   calisma_dizini <- prep$effective_workdir %||% prep$runtime_workdir %||% ctx$workdir
@@ -391,6 +402,7 @@ cc_start_streaming_run <- function(ctx, prep) {
   stream_env$kaynak_calisma_dizini <- kaynak_calisma_dizini
   stream_env$mirror_kullanildi <- mirror_kullanildi
   stream_env$runtime_layout <- prep$layout
+  stream_env$runtime_lease <- prep$runtime_lease %||% ""
   stream_env$user_id <- ctx$user_id
   stream_env$session_token <- session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
   stream_env$request_id <- ctx$run_request_id
