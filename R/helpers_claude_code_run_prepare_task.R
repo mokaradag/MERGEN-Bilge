@@ -339,13 +339,10 @@ cc_prepare_run_workspace <- function(request) {
 
   snapshot_baslangic <- Sys.time()
 
-  snapshot <- tryCatch(
-    cc_snapshot_run_output_area(
-      runtime_workdir = etkin_workdir,
-      mirrored = mirrored,
-      limits = limits
-    ),
-    error = function(e) list()
+  snapshot <- cc_snapshot_run_output_area(
+    runtime_workdir = etkin_workdir,
+    mirrored = mirrored,
+    limits = limits
   )
 
   snapshot_ms <- gecen_ms(snapshot_baslangic)
