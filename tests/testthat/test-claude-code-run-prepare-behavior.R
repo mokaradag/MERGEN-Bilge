@@ -492,20 +492,7 @@ test_that("doküman aday sınırı uzantı filtresinden sonra uygulanır", {
   expect_identical(normalizePath(bulunan), normalizePath(rapor))
 })
 
-test_that("başarısız çıktı aktarımları başarılı sonuç sayılmaz", {
-  env <- .cc_dispatch_env()
-  source(
-    file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_run_completion.R"),
-    encoding = "UTF-8", local = env
-  )
-  outputs <- list(sync_results = list(
-    list(success = TRUE, dest_path = "iyi.txt"),
-    list(success = FALSE, dest_path = "yazilamadi.txt", error = "izin yok")
-  ))
-  expect_identical(length(env$cc_output_sync_failures(outputs)), 1L)
-  completion <- .cc_read_prepare_text("R/helpers_claude_code_run_completion.R")
-  expect_true(grepl("cc_report_output_sync_failure\\(ctx, outputs\\)", completion, perl = TRUE))
-})
+
 
 test_that("eskiyen doküman destek dizinleri yaşa göre temizlenir", {
   env <- .cc_prepare_env()
@@ -588,6 +575,23 @@ test_that("aktif runtime klasörü yaş temizliğinden korunur", {
 
   env
 }
+
+test_that("başarısız çıktı aktarımları başarılı sonuç sayılmaz", {
+  env <- .cc_dispatch_env()
+  source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_run_completion.R"),
+    encoding = "UTF-8", local = env
+  )
+  outputs <- list(sync_results = list(
+    list(success = TRUE, dest_path = "iyi.txt"),
+    list(success = FALSE, dest_path = "yazilamadi.txt", error = "izin yok")
+  ))
+  expect_identical(length(env$cc_output_sync_failures(outputs)), 1L)
+  completion <- .cc_read_prepare_text("R/helpers_claude_code_run_completion.R")
+  expect_true(grepl("cc_report_output_sync_failure\\(ctx, outputs\\)", completion, perl = TRUE))
+})
+
+
 
 .cc_fake_ctx <- function(env, rv, kayit) {
   list(

@@ -338,7 +338,6 @@ diff_claude_code_workdir_snapshot <- function(before_snapshot,
     "/BILGE_YOLAC_DOKUMAN_REHBERI\\.md$",
     "/document_support/",
     "/\\.document_support/",
-    "/input/",
     "/metadata/"
   )
 

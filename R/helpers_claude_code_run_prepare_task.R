@@ -238,6 +238,18 @@ cc_prepare_run_workspace <- function(request) {
 
   snapshot_scan <- attr(snapshot, "scan", exact = TRUE)
 
+  # A per-runtime lease is visible to every Shiny session/worker. Stale
+  # cleanup must never remove a runtime while another session owns it.
+  runtime_lease <- ""
+  if (isTRUE(mirrored) && is.list(layout) && nzchar(layout$metadata %||% "")) {
+    dir.create(layout$metadata, recursive = TRUE, showWarnings = FALSE)
+    runtime_lease <- file.path(
+      layout$metadata,
+      paste0("active-run-", gsub("[^A-Za-z0-9_.-]", "_", request$request_id), ".lease")
+    )
+    if (!isTRUE(file.create(runtime_lease))) runtime_lease <- ""
+  }
+
   # Eskimiş runtime/doküman destek klasörlerini yaşa göre temizle; aktif
   # çalışmanın klasörleri korunur.
   tryCatch(
@@ -273,6 +285,7 @@ cc_prepare_run_workspace <- function(request) {
     run_prompt = calistirma_promptu,
     snapshot = snapshot,
     snapshot_truncated = isTRUE(snapshot_scan$truncated),
+    runtime_lease = runtime_lease,
     metrics = list(
       total_ms = gecen_ms(baslangic),
       runtime_ms = runtime_ms,

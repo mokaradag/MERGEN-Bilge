@@ -128,7 +128,10 @@ cc_plan_output_sync <- function(changed_files,
     toplam <- toplam + boyut
   }
 
-  list(items = ogeler, skipped = unique(atlananlar), total_bytes = toplam)
+  list(
+    items = ogeler, skipped = unique(atlananlar), total_bytes = toplam,
+    source_workdir = hedef_kok
+  )
 }
 
 #' Geri aktarım planını uygula
@@ -147,6 +150,32 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       break
     }
     hedef_dizin <- dirname(oge$dest_path)
+
+    # Existing symlink/junction parents must be resolved before directory
+    # creation or copying; a lexical destination prefix check is not enough.
+    approved_root <- .cc_scan_norm(plan$source_workdir %||% hedef_dizin)
+    ancestor <- hedef_dizin
+    while (!dir.exists(ancestor) && !identical(dirname(ancestor), ancestor)) {
+      ancestor <- dirname(ancestor)
+    }
+    resolved_ancestor <- tryCatch(
+      .cc_scan_norm(normalizePath(ancestor, winslash = "/", mustWork = TRUE)),
+      error = function(e) ""
+    )
+    approved_key <- .cc_scan_key(approved_root)
+    ancestor_key <- .cc_scan_key(resolved_ancestor)
+    parent_safe <- nzchar(approved_root) && nzchar(resolved_ancestor) && (
+      identical(ancestor_key, approved_key) ||
+        startsWith(ancestor_key, paste0(approved_key, "/"))
+    )
+    if (!isTRUE(parent_safe)) {
+      sonuclar[[length(sonuclar) + 1L]] <- list(
+        source_path = oge$source_path, dest_path = oge$dest_path,
+        success = FALSE, size = oge$size,
+        error = "Hedef üst dizini onaylı kaynak kökün dışında"
+      )
+      next
+    }
 
     if (!dir.exists(hedef_dizin)) {
       dir.create(hedef_dizin, recursive = TRUE, showWarnings = FALSE)
@@ -228,6 +257,15 @@ cc_cleanup_stale_runtime_dirs <- function(user_id = NULL,
   for (aday in adaylar) {
     aday_norm <- .cc_scan_norm(aday)
     if (.cc_scan_key(aday_norm) %in% koru) next
+
+    leases <- tryCatch(
+      list.files(
+        file.path(aday, "metadata"), pattern = "^active-run-.*\\.lease$", recursive = FALSE,
+        full.names = TRUE, include.dirs = FALSE
+      ),
+      error = function(e) character(0)
+    )
+    if (length(leases)) next
 
     mtime <- tryCatch(file.info(aday)$mtime[1], error = function(e) NA)
     if (is.na(mtime)) next

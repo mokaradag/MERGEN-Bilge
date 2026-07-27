@@ -92,8 +92,21 @@ cc_scan_runtime_excluded_dirs <- function() {
   on.exit(if (proc$is_alive()) proc$kill(), add = TRUE)
 
   entries <- character(0)
+  stderr_lines <- character(0)
   truncated <- FALSE
   reason <- ""
+
+  drain_stderr <- function(all = FALSE) {
+    chunk <- if (isTRUE(all)) {
+      proc$read_all_error_lines()
+    } else {
+      proc$read_error_lines(n = 128L)
+    }
+    if (length(chunk) && length(stderr_lines) < 20L) {
+      stderr_lines <<- c(stderr_lines, chunk)[seq_len(min(20L, length(c(stderr_lines, chunk))))]
+    }
+    invisible(NULL)
+  }
 
   repeat {
     if (as.numeric(difftime(Sys.time(), deadline_ms$started, units = "secs")) * 1000 >
@@ -104,6 +117,9 @@ cc_scan_runtime_excluded_dirs <- function() {
     }
 
     available <- proc$poll_io(50)
+    if (identical(available[["error"]], "ready")) {
+      drain_stderr()
+    }
     if (identical(available[["output"]], "ready")) {
       chunk <- proc$read_output_lines(n = min(128L, limit + 1L - length(entries)))
       entries <- c(entries, chunk)
@@ -118,10 +134,17 @@ cc_scan_runtime_excluded_dirs <- function() {
     if (!proc$is_alive()) {
       chunk <- proc$read_all_output_lines()
       entries <- c(entries, chunk)
+      drain_stderr(all = TRUE)
       if (length(entries) > limit) {
         entries <- entries[seq_len(limit)]
         truncated <- TRUE
         reason <- "max_entries"
+      }
+      status <- proc$get_exit_status()
+      if (!is.null(status) && !identical(as.integer(status), 0L)) {
+        detail <- paste(stderr_lines[nzchar(stderr_lines)], collapse = " | ")
+        if (!nzchar(detail)) detail <- "ayrıntı bildirilmedi"
+        stop(sprintf("Dizin listeleyici kod %d ile sonlandı: %s", status, detail))
       }
       break
     }

@@ -204,6 +204,28 @@ cc_report_output_sync_failure <- function(ctx, outputs) {
   TRUE
 }
 
+cc_report_output_processing_failure <- function(ctx, error) {
+  mesaj <- paste0(
+    "Claude işlemi tamamlandı ancak çıktı dosyaları güvenli biçimde işlenemedi: ",
+    gsub("[{}]", "", conditionMessage(error))
+  )
+  ctx$session$sendCustomMessage("cc-stream-end", list(target = ctx$ns("output_area")))
+  ctx$session$sendCustomMessage("cc-add-message", list(
+    target = ctx$ns("output_area"), type = "error",
+    content = htmltools::htmlEscape(mesaj), timestamp = format(Sys.time(), "%H:%M:%S")
+  ))
+  ctx$rv$last_result <- list(success = FALSE, output = "", error = mesaj)
+  if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
+    cc_persist_run_result(ctx$rv, ctx$env, status = "failed", final_output = mesaj)
+  }
+  cc_finalize_if_active(
+    ctx$rv, ctx$env$request_id, ctx$finalize_streaming,
+    durum_metin = "Çıktı İşleme Hatası", durum_ikon = "exclamation-triangle",
+    durum_renk = "#E57373"
+  )
+  invisible(TRUE)
+}
+
 #' Çıktı işlemesini arka plana gönder ve sonucunda çalıştırmayı sonlandır
 #'
 #' @param ctx Sonlandırma bağlamı (session, ns, rv, env, ayristirma, ...)
@@ -236,6 +258,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
     promises::then(function(outputs) {
       if (!cc_is_active_run(ctx$rv, ctx$env$request_id)) {
         unlink(istek$active_guard, force = TRUE)
+        unlink(ctx$env$runtime_lease %||% "", force = TRUE)
         return(NULL)
       }
 
@@ -262,15 +285,18 @@ cc_dispatch_run_output_processing <- function(ctx) {
 
       if (cc_report_output_sync_failure(ctx, outputs)) {
         unlink(istek$active_guard, force = TRUE)
+        unlink(ctx$env$runtime_lease %||% "", force = TRUE)
         return(NULL)
       }
 
       cc_finish_streaming_run(ctx, outputs)
       unlink(istek$active_guard, force = TRUE)
+      unlink(ctx$env$runtime_lease %||% "", force = TRUE)
       NULL
     }) |>
     promises::catch(function(e) {
       unlink(istek$active_guard, force = TRUE)
+      unlink(ctx$env$runtime_lease %||% "", force = TRUE)
       if (!cc_is_active_run(ctx$rv, ctx$env$request_id)) {
         return(NULL)
       }
@@ -281,10 +307,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
         gsub("[{}]", "", conditionMessage(e))
       ))
 
-      cc_finish_streaming_run(
-        ctx,
-        list(downloads = list(), changed_files = character(0), sync_results = list())
-      )
+      cc_report_output_processing_failure(ctx, e)
       NULL
     })
 
