@@ -25,17 +25,17 @@ prompt_requests_binary_document_creation <- function(prompt) {
   # Türkçe + İngilizce üretme/yazma/kaydetme fiilleri
   uretme_deseni <- paste(
     c(
-      "olu\\u015ftur",       # oluştur
+      "olu\u015ftur",       # oluştur
       "olustur",
       "yarat",
-      "\\u00fcret",          # üret
+      "\u00fcret",          # üret
       "uret",
-      "haz\\u0131rla",       # hazırla
+      "haz\u0131rla",       # hazırla
       "hazirla",
-      "yaz\\u0131l",         # yazıl
+      "yaz\u0131l",         # yazıl
       "yazil",
       "kaydet",
-      "d\\u00f6n\\u00fc\\u015ft\\u00fcr",  # dönüştür
+      "d\u00f6n\u00fc\u015ft\u00fcr",  # dönüştür
       "donustur",
       "ekspor",
       "export",
@@ -87,12 +87,12 @@ prompt_requests_existing_document_reading <- function(prompt) {
       "\\bokuy",            # oku / okuy...
       "\\boku\\b",
       "incele",
-      "\\u00f6zetle",        # özetle
+      "\u00f6zetle",        # özetle
       "ozetle",
-      "\\u00f6zet\\u00e7",    # özetç...
-      "\\u00e7\\u0131kar",    # çıkar (metni çıkar)
+      "\u00f6zet\u00e7",    # özetç...
+      "\u00e7\u0131kar",    # çıkar (metni çıkar)
       "cikar",
-      "i\\u00e7eri\\u011fi",  # içeriği
+      "i\u00e7eri\u011fi",  # içeriği
       "icerigi",
       "summari",
       "\\bread\\b",

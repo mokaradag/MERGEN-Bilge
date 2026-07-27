@@ -128,7 +128,10 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
   guard_ok <- function() {
     !nzchar(active_guard %||% "") || isTRUE(file.exists(active_guard))
   }
-  approved_root <- .cc_scan_norm(as.character(plan$source_workdir %||% "")[1])
+  # Onayli kok ile cozulmus ata AYNI cozumleme semantigiyle hesaplanir;
+  # aksi halde Windows 8.3 kisa adi uzun adla karsilastirilir (bkz.
+  # cc_output_sync_canonical_root).
+  approved_root <- cc_output_sync_canonical_root(as.character(plan$source_workdir %||% "")[1])
   approved_key <- .cc_scan_key(approved_root)
   results <- skipped
 

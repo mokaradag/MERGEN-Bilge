@@ -256,7 +256,12 @@ test_that("cc_plan_output_sync input ve runtime kökü değişikliklerini redded
   plan <- env$cc_plan_output_sync(c(input, root_file), duzen, kaynak)
 
   expect_length(plan$items, 0L)
-  expect_setequal(plan$skipped, c(input, root_file))
+  # Plan yollari normalize edilmis (ileri bolu, Windows'ta 8.3 kisa ad uzun
+  # forma acilmis) halde dondurur. Beklenti de ayni normalizasyondan gecmelidir;
+  # aksi halde Windows'ta ham tempdir() kisa adi ile karsilastirilir ve test
+  # gercek bir hata olmadigi halde basarisiz olur.
+  beklenen <- vapply(c(input, root_file), env$.cc_scan_norm, character(1), USE.NAMES = FALSE)
+  expect_setequal(plan$skipped, beklenen)
 })
 
 test_that("cc_apply_output_sync_plan var olan symlink hedefini izlemez", {

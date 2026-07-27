@@ -47,6 +47,13 @@
   env$.cc_prepare_worker_cache <- new.env(parent = emptyenv())
   env$.cc_completion_worker_cache <- new.env(parent = emptyenv())
 
+  # Sertlestirme dosyalari uretimde temel yardimcilardan SONRA yuklenir ve
+  # onlarin paylasilan fonksiyonlarini (ornegin cc_output_sync_canonical_root)
+  # cagirir. Izole test ortami da ayni yukleme sirasini yansitmalidir.
+  for (temel in c("helpers_claude_code_bounded_scan.R", "helpers_claude_code_output_sync.R")) {
+    source(file.path(repo_root, "R", temel), encoding = "UTF-8", local = env)
+  }
+
   source(
     file.path(repo_root, "R", "helpers_claude_code_codex_runtime_fixes.R"),
     encoding = "UTF-8",
