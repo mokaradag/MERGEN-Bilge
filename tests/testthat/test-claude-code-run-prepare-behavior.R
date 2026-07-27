@@ -590,6 +590,11 @@ test_that("aktif runtime klasörü yaş temizliğinden korunur", {
     local = env
   )
 
+  # Bu testler gönderim/stale-callback davranışına odaklanır; future planı
+  # burada eşzamansız kabul edilir. Eşzamansız olmayan planın reddedilmesi
+  # test-claude-code-run-hardening-behavior.R içinde ayrıca doğrulanır.
+  env$cc_future_plan_is_async <- function() TRUE
+
   env
 }
 
@@ -817,6 +822,8 @@ test_that("bir oturumun büyük klasör hazırlığı ikinci oturumu bloke etmez
   rv$active_runtime_source <- NULL
   rv$active_runtime_workdir <- NULL
 
+  # Gerçek finalize_streaming çalıştırma durumunu temizler; deadline'ın bunu
+  # gerçekten çağırdığını doğrulayabilmek için stub aynı sözleşmeyi taklit eder.
   ctx <- list(
     session = list(token = "tok1", sendCustomMessage = function(...) invisible(TRUE)),
     ns = function(x) x,
@@ -826,7 +833,13 @@ test_that("bir oturumun büyük klasör hazırlığı ikinci oturumu bloke etmez
     workdir = tempdir(),
     prompt = "buyuk klasoru incele",
     explicit_files = character(0),
-    finalize_streaming = function(...) invisible(TRUE)
+    finalize_streaming = function(durum_metin, durum_ikon, durum_renk,
+                                  sure = NULL, request_id = NULL) {
+      rv$is_running <- FALSE
+      rv$active_request_id <- NULL
+      rv$son_durum <- durum_metin
+      invisible(TRUE)
+    }
   )
 
   env$cc_dispatch_run_preparation(ctx)
@@ -846,9 +859,18 @@ test_that("bir oturumun büyük klasör hazırlığı ikinci oturumu bloke etmez
   expect_equal(ikinci_oturum_yaniti, "1")
   expect_lt(gecen, 5)
 
+  # Deadline GLOBAL later döngüsünde planlanır; shiny::testServer kendi özel
+  # döngüsünü çalıştırdığı için burada global döngü açıkça boşaltılmalıdır.
+  # Aksi halde test ortama bağlı olarak deadline'ı hiç tetiklemez.
+  son <- Sys.time() + 3
+  while (isTRUE(rv$is_running) && Sys.time() < son) {
+    later::run_now(0.05)
+  }
+
   # Deadline ana olay döngüsünde uygulanır; çözülmeyen hazırlık aktif kalmaz.
   expect_false(isTRUE(rv$is_running))
   expect_null(rv$active_request_id)
+  expect_identical(rv$son_durum, "Zaman Aşımı")
 })
 
 test_that("hazırlık ve çıktı işleri açık bağımlılık modu ile gönderilir", {

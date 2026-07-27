@@ -30,6 +30,11 @@ cc_run_prepare_worker_globals <- function(refresh = FALSE,
   wanted <- c(
     "cc_prepare_run_workspace",
     "cc_prepare_run_prompt_note",
+    "cc_runtime_owner_file",
+    "cc_claim_runtime_ownership",
+    "cc_runtime_ownership_is",
+    "cc_acquire_reused_runtime_lease",
+    ".cc_runtime_workdir_reusable",
     "prepare_claude_runtime_workdir",
     "prepare_claude_code_document_context",
     "cc_snapshot_run_output_area",
@@ -130,6 +135,57 @@ cc_prepare_run_prompt_note <- function(prompt,
   )
 }
 
+# --- Yeniden kullanılan runtime sahipliği --------------------------------------
+# Aynı runtime klasörü takip eden sorularda yeniden kullanılır (CLI --resume).
+# Eski bir hazırlık worker'ı iptal edilse bile arka planda kopyalamaya devam
+# edebilir. Sahiplik işareti ANA süreçte, gönderim anında yazılır; worker
+# yazmadan önce ve dönmeden önce hâlâ sahip olduğunu doğrular. Böylece stale
+# worker yeni çalışmanın girdilerini/snapshot'ını ezemez.
+
+cc_runtime_owner_file <- function(runtime_workdir) {
+  yol <- as.character(runtime_workdir %||% "")[1]
+  if (is.na(yol) || !nzchar(yol)) return("")
+  file.path(yol, "metadata", "runtime-owner")
+}
+
+#' Yeniden kullanılan runtime'ın sahipliğini bu isteğe devret
+#'
+#' @param runtime_workdir Yeniden kullanılacak runtime kökü
+#' @param request_id Aktif çalıştırma kimliği
+#' @return Sahiplik dosyası yolu veya ""
+cc_claim_runtime_ownership <- function(runtime_workdir, request_id) {
+  yol <- cc_runtime_owner_file(runtime_workdir)
+  if (!nzchar(yol)) return("")
+
+  dir.create(dirname(yol), recursive = TRUE, showWarnings = FALSE)
+
+  ok <- tryCatch({
+    writeLines(as.character(request_id %||% "")[1], yol, useBytes = TRUE)
+    TRUE
+  }, error = function(e) FALSE)
+
+  if (!isTRUE(ok)) "" else yol
+}
+
+#' Runtime sahipliği hâlâ bu isteğe mi ait?
+#'
+#' @param runtime_workdir Runtime kökü
+#' @param request_id Aktif çalıştırma kimliği
+#' @return Sahiplik işareti yoksa veya eşleşiyorsa TRUE
+cc_runtime_ownership_is <- function(runtime_workdir, request_id) {
+  yol <- cc_runtime_owner_file(runtime_workdir)
+  if (!nzchar(yol) || !isTRUE(file.exists(yol))) return(TRUE)
+
+  sahip <- tryCatch(
+    as.character(readLines(yol, warn = FALSE))[1],
+    error = function(e) NA_character_
+  )
+
+  if (is.na(sahip) || !nzchar(sahip)) return(TRUE)
+
+  identical(sahip, as.character(request_id %||% "")[1])
+}
+
 # Yeniden kullanılan runtime, tarama/kopyalama başlamadan önce başka bir
 # oturumun stale temizliğine karşı korunmalıdır.
 cc_acquire_reused_runtime_lease <- function(existing_runtime_workdir,
@@ -176,6 +232,26 @@ cc_prepare_run_workspace <- function(request) {
     round(as.numeric(difftime(Sys.time(), from, units = "secs")) * 1000, 1)
   }
 
+  yeniden_kullanilan <- as.character(request$existing_runtime_workdir %||% "")[1]
+
+  # Sahipliği kaybettiysek (yeni bir çalışma aynı runtime'ı devraldı) hiçbir
+  # dosya yazmadan çekiliriz; aksi halde yeni çalışmanın girdileri bozulur.
+  sahiplik_dogrula <- function(asama) {
+    if (!nzchar(yeniden_kullanilan)) return(invisible(TRUE))
+    if (isTRUE(cc_runtime_ownership_is(yeniden_kullanilan, request$request_id))) {
+      return(invisible(TRUE))
+    }
+    stop(
+      paste0(
+        "Yeniden kullanılan çalışma alanı başka bir çalıştırmaya devredildi (",
+        asama, "); bu hazırlık iptal edildi."
+      ),
+      call. = FALSE
+    )
+  }
+
+  sahiplik_dogrula("baslangic")
+
   limits <- request$limits %||% list()
 
   runtime_baslangic <- Sys.time()
@@ -195,6 +271,8 @@ cc_prepare_run_workspace <- function(request) {
   )
 
   runtime_ms <- gecen_ms(runtime_baslangic)
+
+  sahiplik_dogrula("girdi_kopyalama")
 
   mirrored <- isTRUE(runtime$mirrored)
   layout <- runtime$layout
@@ -270,6 +348,8 @@ cc_prepare_run_workspace <- function(request) {
   )
 
   snapshot_ms <- gecen_ms(snapshot_baslangic)
+
+  sahiplik_dogrula("snapshot")
 
   snapshot_scan <- attr(snapshot, "scan", exact = TRUE)
 

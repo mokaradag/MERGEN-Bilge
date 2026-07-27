@@ -153,6 +153,55 @@ cc_scan_runtime_excluded_dirs <- function() {
   list(entries = entries, truncated = truncated, reason = reason)
 }
 
+#' Tek bir dizini sınırlı biçimde listele (özyinelemesiz)
+#'
+#' Ana Shiny sürecindeki dizin gezgini de dahil olmak üzere tek dizin
+#' listelemesi gereken yerlerde `list.files()` yerine kullanılır: yüz binlerce
+#' girdili düz bir klasörde bile en fazla `max_entries` öge okunur ve
+#' `timeout_ms` bütçesi aşıldığında numaralandırma durur.
+#'
+#' @param path Listelenecek dizin
+#' @param max_entries Okunacak maksimum öge sayısı
+#' @param timeout_ms Toplam listeleme bütçesi (ms)
+#' @return list(entries, truncated, reason, ok, error)
+cc_scan_list_dir_bounded <- function(path,
+                                     max_entries = 500L,
+                                     timeout_ms = 2000L) {
+  yol <- as.character(path %||% "")[1]
+  bos <- list(
+    entries = character(0), truncated = FALSE, reason = "",
+    ok = FALSE, error = ""
+  )
+
+  if (is.na(yol) || !nzchar(yol)) return(bos)
+  if (!isTRUE(tryCatch(dir.exists(yol), error = function(e) FALSE))) return(bos)
+
+  max_entries <- .cc_scan_int(max_entries, 500L)
+  timeout_ms <- .cc_scan_int(timeout_ms, 2000L)
+
+  sonuc <- tryCatch(
+    .cc_scan_list_entries(
+      yol,
+      max_entries = max_entries,
+      deadline_ms = list(started = Sys.time(), limit = timeout_ms)
+    ),
+    error = function(e) {
+      list(
+        entries = character(0), truncated = FALSE, reason = "listing_error",
+        error = conditionMessage(e)
+      )
+    }
+  )
+
+  list(
+    entries = as.character(sonuc$entries %||% character(0)),
+    truncated = isTRUE(sonuc$truncated),
+    reason = as.character(sonuc$reason %||% "")[1],
+    ok = !nzchar(as.character(sonuc$error %||% "")[1]),
+    error = as.character(sonuc$error %||% "")[1]
+  )
+}
+
 .cc_scan_result <- function(root,
                             files = character(0),
                             file_sizes = numeric(0),

@@ -67,6 +67,10 @@ cc_plan_output_sync <- function(changed_files,
 
   ogeler <- list()
   atlananlar <- character(0)
+  # Onaylı çıktı bölgesinde olup YALNIZCA boyut sınırı nedeniyle aktarılamayan
+  # dosyalar ayrı izlenir: bunlar kullanıcıya sessizce kaybolmamalı, kısmi
+  # başarısızlık olarak raporlanır.
+  atlanan_onayli <- list()
   toplam <- 0
 
   for (yol in changed_files) {
@@ -91,6 +95,11 @@ cc_plan_output_sync <- function(changed_files,
 
     if (boyut > max_file_bytes || toplam + boyut > max_total_bytes) {
       atlananlar <- c(atlananlar, kaynak)
+      atlanan_onayli[[length(atlanan_onayli) + 1L]] <- list(
+        source_path = kaynak,
+        size = boyut,
+        reason = if (boyut > max_file_bytes) "max_output_file_bytes" else "max_output_total_bytes"
+      )
       next
     }
 
@@ -130,8 +139,35 @@ cc_plan_output_sync <- function(changed_files,
 
   list(
     items = ogeler, skipped = unique(atlananlar), total_bytes = toplam,
+    skipped_approved = atlanan_onayli,
     source_workdir = hedef_kok
   )
+}
+
+#' Boyut sınırı nedeniyle aktarılamayan onaylı çıktıları başarısız sonuç yap
+#'
+#' `cc_plan_output_sync()` bu dosyaları yalnızca `skipped_approved` içinde
+#' tutar. Çalıştırma sonucunu değerlendiren taraf yalnızca sonuç listesine
+#' baktığı için, bunlar açık birer başarısız kayda dönüştürülür.
+#'
+#' @param plan cc_plan_output_sync() çıktısı
+#' @return Başarısız sonuç listesi
+cc_output_sync_skipped_results <- function(plan) {
+  atlananlar <- if (is.list(plan)) plan$skipped_approved %||% list() else list()
+  if (!length(atlananlar)) return(list())
+
+  lapply(atlananlar, function(oge) {
+    list(
+      source_path = oge$source_path %||% "",
+      dest_path = oge$source_path %||% "",
+      success = FALSE,
+      size = oge$size %||% NA_real_,
+      error = paste0(
+        "Çıktı boyut sınırını aştığı için kaynak klasöre aktarılmadı (",
+        oge$reason %||% "size_limit", ")"
+      )
+    )
+  })
 }
 
 #' Geri aktarım planını uygula
@@ -139,11 +175,15 @@ cc_plan_output_sync <- function(changed_files,
 #' @param plan cc_plan_output_sync() çıktısı
 #' @return Dosya başına yapılandırılmış sonuç listesi
 cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
+  # Boyut sınırı nedeniyle aktarılamayan onaylı çıktılar da sonuçlara girer;
+  # aksi halde çalıştırma eksik dosyayla "tamamlandı" görünür.
+  atlanan_sonuclar <- cc_output_sync_skipped_results(plan)
+
   if (!is.list(plan) || !length(plan$items %||% list())) {
-    return(list())
+    return(atlanan_sonuclar)
   }
 
-  sonuclar <- list()
+  sonuclar <- atlanan_sonuclar
 
   for (oge in plan$items) {
     if (!is.null(active_guard) && nzchar(active_guard) && !file.exists(active_guard)) {
@@ -231,11 +271,16 @@ cc_cleanup_stale_runtime_dirs <- function(user_id = NULL,
   kullanici_dizin <- cc_runtime_user_dir(user_id)
   if (!dir.exists(kullanici_dizin)) return(invisible(0L))
 
+  # NOT: max_age_sec NULL olduğunda as.numeric(NULL[1]) numeric(0) verir ve
+  # is.finite() boş vektör döndürerek `if` içinde hata üretir. Bu yüzden
+  # uzunluk kontrolü zorunludur.
   max_age_sec <- suppressWarnings(as.numeric(max_age_sec[1]))
-  if (!is.finite(max_age_sec)) {
-    max_age_sec <- cc_runtime_limit("runtime_retention_sec", 21600)
+  if (length(max_age_sec) != 1L || !is.finite(max_age_sec)) {
+    max_age_sec <- suppressWarnings(as.numeric(
+      cc_runtime_limit("runtime_retention_sec", 21600)
+    )[1])
   }
-  if (!is.finite(max_age_sec)) return(invisible(0L))
+  if (length(max_age_sec) != 1L || !is.finite(max_age_sec)) return(invisible(0L))
 
   adaylar <- tryCatch(
     list.dirs(kullanici_dizin, full.names = TRUE, recursive = FALSE),
@@ -294,7 +339,7 @@ cc_cleanup_stale_runtime_dirs <- function(user_id = NULL,
 #' @param keep_paths Korunacak klasör yolları
 #' @return Silinen klasör sayısı
 cc_cleanup_stale_document_support_dirs <- function(user_id = NULL,
-                                                   max_age_sec = 21600,
+                                                   max_age_sec = NULL,
                                                    keep_paths = character(0)) {
   kok <- file.path(
     tempdir(),
@@ -305,8 +350,17 @@ cc_cleanup_stale_document_support_dirs <- function(user_id = NULL,
 
   if (!dir.exists(kok)) return(invisible(0L))
 
+  # Saklama süresi tek kaynaktan gelir: operatör CLAUDE_CODE_RUNTIME_RETENTION_SEC
+  # değerini değiştirdiğinde doküman desteği de aynı süreye uyar.
   max_age_sec <- suppressWarnings(as.numeric(max_age_sec[1]))
-  if (!is.finite(max_age_sec) || max_age_sec < 0) return(invisible(0L))
+  if (length(max_age_sec) != 1L || !is.finite(max_age_sec)) {
+    max_age_sec <- suppressWarnings(as.numeric(
+      cc_runtime_limit("runtime_retention_sec", 21600)
+    )[1])
+  }
+  if (length(max_age_sec) != 1L || !is.finite(max_age_sec) || max_age_sec < 0) {
+    return(invisible(0L))
+  }
 
   adaylar <- tryCatch(
     list.dirs(kok, full.names = TRUE, recursive = FALSE),

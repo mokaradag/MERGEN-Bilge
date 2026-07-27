@@ -84,11 +84,52 @@ cc_fail_run_preparation <- function(ctx, message, stage = "hata") {
   invisible(TRUE)
 }
 
+#' Etkin future planı gerçekten eşzamansız mı?
+#'
+#' Üretimde PSOCK küme kurulamazsa `global.R` `future::sequential` planına
+#' düşer. O planda `tracked_future_promise()` gövdeyi GÖNDERİM ANINDA ana
+#' Shiny olay döngüsünde çalıştırır; büyük bir tarama/UNC kopyası veya doküman
+#' çıkarımı tüm oturumları bloke eder ve bağımsız deadline hiç tetiklenemez.
+#'
+#' @return Plan gerçekten eşzamansızsa TRUE
+cc_future_plan_is_async <- function() {
+  if (!requireNamespace("future", quietly = TRUE)) return(FALSE)
+
+  plan_siniflari <- tryCatch(
+    class(future::plan("list")[[1]]),
+    error = function(e) character(0)
+  )
+
+  if (!length(plan_siniflari)) return(FALSE)
+
+  !any(c("sequential", "uniprocess", "transparent") %in% plan_siniflari)
+}
+
 #' Hazırlık işini arka plan worker'ına gönder
 #'
 #' @param ctx Çalıştırma bağlamı (session, ns, rv ve düz veriler)
 #' @return invisible(TRUE)
 cc_dispatch_run_preparation <- function(ctx) {
+  # Eşzamansız olmayan planda hazırlık ana olay döngüsünde çalışır; bu
+  # durumda çalışmayı başlatmak yerine açıkça reddederiz.
+  if (!isTRUE(cc_future_plan_is_async())) {
+    cc_log_warn(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "[RUNTIME_PREPARE] Eşzamansız worker planı yok; çalıştırma reddedildi."
+    ))
+
+    cc_fail_run_preparation(
+      ctx,
+      paste0(
+        "Arka plan çalışma havuzu kullanılamıyor. Bilge Yolaç çalıştırması ",
+        "diğer oturumları bloke etmemek için başlatılmadı. Lütfen sistem ",
+        "yöneticisiyle iletişime geçin veya uygulamayı yeniden başlatın."
+      )
+    )
+
+    return(invisible(FALSE))
+  }
+
   cc_send_run_stage(ctx$session, ctx$ns, "taraniyor")
 
   mevcut_runtime <- NULL
@@ -99,6 +140,16 @@ cc_dispatch_run_preparation <- function(ctx) {
         as.character(ctx$workdir)
       )) {
     mevcut_runtime <- ctx$rv$active_runtime_workdir
+  }
+
+  # Sahiplik ANA süreçte, worker gönderilmeden önce devralınır. Böylece aynı
+  # runtime üzerinde çalışan eski/durdurulmuş bir hazırlık worker'ı bir
+  # sonraki kontrolünde çekilir ve yeni çalışmanın dosyalarını ezemez.
+  if (!is.null(mevcut_runtime) && nzchar(as.character(mevcut_runtime)[1])) {
+    tryCatch(
+      cc_claim_runtime_ownership(mevcut_runtime, ctx$run_request_id),
+      error = function(e) ""
+    )
   }
 
   istek <- cc_build_run_prepare_request(
@@ -118,7 +169,7 @@ cc_dispatch_run_preparation <- function(ctx) {
   # Başarı callback'inde geçen süreyi ölçmek zaman aşımı değildir: bloke bir
   # worker o callback'e hiç ulaşmaz. Ana later döngüsündeki bağımsız deadline
   # aktif isteği zamanında sonlandırır; geç dönen future stale guard'a takılır.
-  later::later(function() {
+  zaman_asimi_durumu$cancel <- later::later(function() {
     if (isTRUE(zaman_asimi_durumu$pending) &&
         cc_is_active_run(ctx$rv, ctx$run_request_id)) {
       zaman_asimi_durumu$pending <- FALSE
@@ -132,6 +183,19 @@ cc_dispatch_run_preparation <- function(ctx) {
       )
     }
   }, delay = zaman_asimi_sn)
+
+  # Hazırlık bittiği anda bekleyen deadline iptal edilir; aksi halde her
+  # çalıştırma tam süre boyunca session/prompt/API anahtarı bağlamını
+  # canlı tutan bir closure biriktirir.
+  cc_cancel_prepare_deadline <- function() {
+    zaman_asimi_durumu$pending <- FALSE
+    iptal <- zaman_asimi_durumu$cancel
+    if (is.function(iptal)) {
+      tryCatch(iptal(), error = function(e) NULL)
+    }
+    zaman_asimi_durumu$cancel <- NULL
+    invisible(NULL)
+  }
 
   tracked_future_promise(
     task_fn = function() {
@@ -147,7 +211,7 @@ cc_dispatch_run_preparation <- function(ctx) {
     packages = c("tools", "utils")
   ) |>
     promises::then(function(prep) {
-      zaman_asimi_durumu$pending <- FALSE
+      cc_cancel_prepare_deadline()
       if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
         cc_release_runtime_lease(prep$runtime_lease %||% "")
         return(NULL)
@@ -184,7 +248,7 @@ cc_dispatch_run_preparation <- function(ctx) {
       NULL
     }) |>
     promises::catch(function(e) {
-      zaman_asimi_durumu$pending <- FALSE
+      cc_cancel_prepare_deadline()
       if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
         return(NULL)
       }
@@ -243,17 +307,6 @@ cc_start_streaming_run <- function(ctx, prep) {
 
   if (isTRUE(prep$snapshot_truncated)) {
     cc_release_runtime_lease(prep$runtime_lease %||% "")
-    mesaj <- paste0(
-      "Çıktı alanının başlangıç taraması güvenli sınırlar içinde tamamlanamadı; ",
-      "eksik dosya aktarımını önlemek için çalışma başlatılmadı."
-    )
-    cc_log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "[OUTPUT_SNAPSHOT]", mesaj))
-    cc_fail_run_preparation(ctx, mesaj)
-    return(invisible(FALSE))
-  }
-
-  if (isTRUE(prep$snapshot_truncated)) {
-    unlink(prep$runtime_lease %||% "", force = TRUE)
     mesaj <- paste0(
       "Çıktı alanının başlangıç taraması güvenli sınırlar içinde tamamlanamadı; ",
       "eksik dosya aktarımını önlemek için çalışma başlatılmadı."
