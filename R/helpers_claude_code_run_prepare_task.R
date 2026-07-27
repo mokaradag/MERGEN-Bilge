@@ -130,12 +130,47 @@ cc_prepare_run_prompt_note <- function(prompt,
   )
 }
 
+# Yeniden kullanılan runtime, tarama/kopyalama başlamadan önce başka bir
+# oturumun stale temizliğine karşı korunmalıdır.
+cc_acquire_reused_runtime_lease <- function(existing_runtime_workdir,
+                                            user_id,
+                                            request_id) {
+  if (!isTRUE(.cc_runtime_workdir_reusable(existing_runtime_workdir, user_id))) {
+    return("")
+  }
+
+  metadata_dir <- file.path(existing_runtime_workdir, "metadata")
+  dir.create(metadata_dir, recursive = TRUE, showWarnings = FALSE)
+  lease <- file.path(
+    metadata_dir,
+    paste0("active-run-", gsub("[^A-Za-z0-9_.-]", "_", request_id), ".lease")
+  )
+
+  if (!isTRUE(file.create(lease))) {
+    stop("Yeniden kullanılan runtime için aktif çalışma lease'i oluşturulamadı.",
+         call. = FALSE)
+  }
+
+  lease
+}
+
 #' Bilge Yolaç çalıştırma hazırlığını arka planda yürüt
 #'
 #' @param request cc_build_run_prepare_request() çıktısı
 #' @return Düz veri hazırlık sonucu
 cc_prepare_run_workspace <- function(request) {
   baslangic <- Sys.time()
+  runtime_lease <- cc_acquire_reused_runtime_lease(
+    existing_runtime_workdir = request$existing_runtime_workdir %||% "",
+    user_id = request$user_id,
+    request_id = request$request_id
+  )
+  lease_handed_off <- FALSE
+  on.exit({
+    if (!isTRUE(lease_handed_off) && nzchar(runtime_lease)) {
+      unlink(runtime_lease, force = TRUE)
+    }
+  }, add = TRUE)
 
   gecen_ms <- function(from) {
     round(as.numeric(difftime(Sys.time(), from, units = "secs")) * 1000, 1)
@@ -240,8 +275,12 @@ cc_prepare_run_workspace <- function(request) {
 
   # A per-runtime lease is visible to every Shiny session/worker. Stale
   # cleanup must never remove a runtime while another session owns it.
-  runtime_lease <- ""
-  if (isTRUE(mirrored) && is.list(layout) && nzchar(layout$metadata %||% "")) {
+  if (!isTRUE(mirrored) || !isTRUE(runtime$reused)) {
+    if (nzchar(runtime_lease)) unlink(runtime_lease, force = TRUE)
+    runtime_lease <- ""
+  }
+  if (isTRUE(mirrored) && !nzchar(runtime_lease) &&
+      is.list(layout) && nzchar(layout$metadata %||% "")) {
     dir.create(layout$metadata, recursive = TRUE, showWarnings = FALSE)
     runtime_lease <- file.path(
       layout$metadata,
@@ -268,7 +307,7 @@ cc_prepare_run_workspace <- function(request) {
     error = function(e) NULL
   )
 
-  list(
+  result <- list(
     ok = TRUE,
     blocked = FALSE,
     message = "",
@@ -298,4 +337,6 @@ cc_prepare_run_workspace <- function(request) {
       snapshot_files = length(snapshot)
     )
   )
+  lease_handed_off <- TRUE
+  result
 }
