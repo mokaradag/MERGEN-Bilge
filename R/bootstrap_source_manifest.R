@@ -139,15 +139,47 @@ source_manifest_optional_paths <- function(envir = environment()) {
   enc2utf8(yollar)
 }
 
-# Manifest yollarını "mevcut" ve "eksik ama opsiyonel" olarak ayırır.
+# Opsiyonel yol GRUPLARI: birlikte anlamlı olan, atomik yüklenmesi gereken
+# dosya kümeleri. Bir grubun herhangi bir üyesi eksikse grubun TAMAMI atlanır.
+#
+# Bu, "yarım yüklenmiş katman" durumunu engeller: örneğin Codex output
+# hardening dosyası, runtime hardening katmanı yüklenmeden source edildiğinde
+# bilinçli olarak stop() eder. Runtime dosyası eksikken output dosyasını tek
+# başına yüklemek, bu guard'ı tetikleyip uygulamayı yine açılmaz hale getirir.
+source_manifest_optional_groups <- function(envir = environment()) {
+  gruplar <- get0(
+    "source_manifest_optional_source_groups",
+    envir = envir,
+    inherits = TRUE,
+    ifnotfound = list()
+  )
+
+  if (!is.list(gruplar)) return(list())
+  gruplar
+}
+
+# Manifest yollarını "yüklenecek" ve "eksik/eksik gruba ait opsiyonel" olarak
+# ayırır.
 source_manifest_present_paths <- function(paths, repo_root = getwd()) {
   paths <- enc2utf8(as.character(paths %||% character(0)))
   if (!length(paths)) return(paths)
 
-  var_mi <- file.exists(file.path(repo_root, paths))
-  opsiyonel <- paths %in% source_manifest_optional_paths()
+  opsiyonel <- source_manifest_optional_paths()
 
-  paths[var_mi | !opsiyonel]
+  # Eksik üyesi olan opsiyonel grupların tüm üyeleri düşer.
+  eksik_grup_uyeleri <- character(0)
+  for (grup in source_manifest_optional_groups()) {
+    grup <- enc2utf8(as.character(grup %||% character(0)))
+    if (!length(grup)) next
+    if (!all(file.exists(file.path(repo_root, grup)))) {
+      eksik_grup_uyeleri <- c(eksik_grup_uyeleri, grup)
+    }
+  }
+
+  var_mi <- file.exists(file.path(repo_root, paths))
+  atlanacak <- (paths %in% opsiyonel) & (!var_mi | paths %in% eksik_grup_uyeleri)
+
+  paths[!atlanacak]
 }
 
 source_manifest_validate_files <- function(paths, repo_root = getwd()) {

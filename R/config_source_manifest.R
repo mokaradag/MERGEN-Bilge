@@ -685,7 +685,19 @@ source_manifest_runtime_paths <- c(
 #
 # Bu listeye yeni dosya eklemek bilinçli bir karardır: eksikliği gerçekten
 # tolere edilebilir olmayan hiçbir runtime dosyası buraya eklenmemelidir.
-source_manifest_optional_source_paths <- c(
-  "R/helpers_claude_code_codex_runtime_fixes.R",
-  "R/helpers_claude_code_codex_output_fixes.R"
+# Gruplar ATOMİKTİR: bir üyesi eksikse grubun tamamı atlanır. Codex output
+# hardening dosyası, runtime hardening katmanı yüklenmeden source edildiğinde
+# bilinçli olarak stop() eder; bu yüzden ikisi ya birlikte yüklenir ya hiç
+# yüklenmez. Aksi halde yalnızca runtime dosyası eksik olan bir çalışma
+# kopyasında uygulama yine açılmaz.
+source_manifest_optional_source_groups <- list(
+  codex_hardening = c(
+    "R/helpers_claude_code_codex_runtime_fixes.R",
+    "R/helpers_claude_code_codex_output_fixes.R"
+  )
+)
+
+source_manifest_optional_source_paths <- unlist(
+  source_manifest_optional_source_groups,
+  use.names = FALSE
 )
