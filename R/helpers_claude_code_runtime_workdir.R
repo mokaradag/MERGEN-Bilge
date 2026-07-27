@@ -65,13 +65,12 @@ is_problematic_windows_workdir <- function(path) {
 #' @param explicit_files Açıkça seçilmiş dosyalar
 #' @param limits Sınır listesi
 #' @param scan Hazır tarama sonucu (yeniden taramayı önlemek için)
-#' @return list(ok, selection, copy, scan)
 mirror_directory_to_local_workspace <- function(source_dir,
                                                 target_dir,
                                                 prompt = NULL,
                                                 explicit_files = character(0),
-                                                limits = NULL,
-                                                scan = NULL) {
+                                                limits = NULL, scan = NULL,
+                                                ownership_guard = NULL) {
   if (!dir.exists(target_dir)) {
     dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
   }
@@ -92,7 +91,8 @@ mirror_directory_to_local_workspace <- function(source_dir,
   kopya <- cc_copy_files_to_runtime_input(
     files = secim$files,
     relatives = secim$relatives,
-    input_dir = target_dir
+    input_dir = target_dir,
+    ownership_guard = ownership_guard
   )
 
   basarisiz <- as.character(kopya$failed %||% character(0))
@@ -203,8 +203,8 @@ prepare_claude_runtime_workdir <- function(workdir,
                                            runtime_token = NULL,
                                            existing_runtime_workdir = NULL,
                                            prompt = NULL,
-                                           explicit_files = character(0),
-                                           limits = NULL) {
+                                           explicit_files = character(0), limits = NULL,
+                                           ownership_guard = NULL) {
   if (is.null(workdir) || !nzchar(workdir)) {
     return(.cc_runtime_prepare_result(workdir))
   }
@@ -273,9 +273,9 @@ prepare_claude_runtime_workdir <- function(workdir,
     source_dir = source_dir,
     target_dir = duzen$input,
     prompt = prompt,
-    explicit_files = explicit_files,
-    limits = limits,
-    scan = tarama
+    explicit_files = explicit_files, limits = limits,
+    scan = tarama,
+    ownership_guard = ownership_guard
   )
 
   cc_log_info(sprintf(

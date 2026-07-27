@@ -267,7 +267,8 @@ cc_prepare_run_workspace <- function(request) {
     },
     prompt = request$prompt,
     explicit_files = request$explicit_files,
-    limits = limits
+    limits = limits,
+    ownership_guard = function() sahiplik_dogrula("girdi_kopyalama")
   )
 
   runtime_ms <- gecen_ms(runtime_baslangic)

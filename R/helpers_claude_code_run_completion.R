@@ -169,14 +169,14 @@ cc_process_run_outputs <- function(request) {
   diff_kesme_nedeni <- ""
 
   if (nzchar(request$runtime_workdir %||% "") && dir.exists(request$runtime_workdir)) {
-    degisenler <- tryCatch(
-      diff_claude_code_workdir_snapshot(
-        before_snapshot = request$before_snapshot,
-        workdir = request$runtime_workdir,
-        exclude_dirs = haric,
-        limits = request$limits
-      ),
-      error = function(e) character(0)
+    # Diff başarısızlığını boş değişiklik listesine dönüştürmeyin. Çağıran
+    # promise catch'i bu hatayı kullanıcıya bildirir ve başarılı Claude çıkışını
+    # yanlışlıkla "Tamamlandı" olarak sonlandırmaz.
+    degisenler <- diff_claude_code_workdir_snapshot(
+      before_snapshot = request$before_snapshot,
+      workdir = request$runtime_workdir,
+      exclude_dirs = haric,
+      limits = request$limits
     )
 
     # Çalıştırma SONRASI tarama da sınıra takılabilir. Bu durumda değişen

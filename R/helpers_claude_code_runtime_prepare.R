@@ -484,8 +484,13 @@ cc_select_input_files <- function(prompt,
 #' @param files Kaynak dosya yolları
 #' @param relatives Köke göre göreli yollar
 #' @param input_dir Hedef input klasörü
+#' @param ownership_guard Her dosya yazımından önce/sonra çalıştırılan sahiplik
+#'   doğrulayıcısı. Sahiplik kaybedildiyse hata vermelidir.
 #' @return list(copied, failed, total_bytes, results)
-cc_copy_files_to_runtime_input <- function(files, relatives, input_dir) {
+cc_copy_files_to_runtime_input <- function(files,
+                                           relatives,
+                                           input_dir,
+                                           ownership_guard = NULL) {
   files <- as.character(files %||% character(0))
   relatives <- as.character(relatives %||% character(0))
 
@@ -503,6 +508,8 @@ cc_copy_files_to_runtime_input <- function(files, relatives, input_dir) {
   toplam <- 0
 
   for (i in seq_along(files)) {
+    if (is.function(ownership_guard)) ownership_guard()
+
     hedef <- file.path(input_dir, relatives[i])
     hedef_dizin <- dirname(hedef)
 
@@ -510,16 +517,41 @@ cc_copy_files_to_runtime_input <- function(files, relatives, input_dir) {
       dir.create(hedef_dizin, recursive = TRUE, showWarnings = FALSE)
     }
 
-    ok <- tryCatch(
+    # Kaynağı önce isteğe özel bir geçici dosyaya alın. Uzun bir dosya
+    # kopyalanırken sahiplik değişirse paylaşılan hedefe dokunmadan çıkabiliriz;
+    # yalnızca tamamlanmış staging dosyası sahiplik kontrolünden sonra terfi eder.
+    staging <- tempfile(pattern = ".cc-input-", tmpdir = hedef_dizin)
+    staged <- tryCatch(
       file.copy(
         from = files[i],
-        to = hedef,
+        to = staging,
         overwrite = TRUE,
         copy.mode = TRUE,
         copy.date = TRUE
       ),
       error = function(e) FALSE
     )
+
+    sahiplik_hatasi <- tryCatch({
+      if (is.function(ownership_guard)) ownership_guard()
+      NULL
+    }, error = function(e) e)
+    if (!is.null(sahiplik_hatasi)) {
+      unlink(staging, force = TRUE)
+      stop(sahiplik_hatasi)
+    }
+
+    ok <- isTRUE(staged) && isTRUE(file.exists(staging)) && isTRUE(tryCatch(
+      file.copy(
+        from = staging,
+        to = hedef,
+        overwrite = TRUE,
+        copy.mode = TRUE,
+        copy.date = TRUE
+      ),
+      error = function(e) FALSE
+    ))
+    unlink(staging, force = TRUE)
 
     if (!isTRUE(ok) || !isTRUE(file.exists(hedef))) {
       basarisizlar <- c(basarisizlar, relatives[i])

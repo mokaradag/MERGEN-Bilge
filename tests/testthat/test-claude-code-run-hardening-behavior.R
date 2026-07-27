@@ -480,6 +480,56 @@ test_that("yeni çalıştırma sahipliği devraldığında eski hazırlık sahib
   expect_true(env$cc_runtime_ownership_is(runtime, "istek-2"))
 })
 
+test_that("girdi kopyası sahipliği her dosya arasında yeniden doğrular", {
+  env <- .cc_hardening_env()
+  kaynak <- withr::local_tempdir()
+  hedef <- withr::local_tempdir()
+  dosyalar <- file.path(kaynak, c("bir.txt", "iki.txt"))
+  writeLines("eski-bir", dosyalar[1], useBytes = TRUE)
+  writeLines("eski-iki", dosyalar[2], useBytes = TRUE)
+  writeLines("yeni-iki", file.path(hedef, "iki.txt"), useBytes = TRUE)
+
+  kontrol_sayisi <- 0L
+  sahiplik_dogrula <- function() {
+    kontrol_sayisi <<- kontrol_sayisi + 1L
+    if (kontrol_sayisi >= 3L) stop("sahiplik kaybedildi", call. = FALSE)
+  }
+
+  expect_error(
+    env$cc_copy_files_to_runtime_input(
+      files = dosyalar,
+      relatives = basename(dosyalar),
+      input_dir = hedef,
+      ownership_guard = sahiplik_dogrula
+    ),
+    "sahiplik kaybedildi"
+  )
+
+  expect_identical(readLines(file.path(hedef, "iki.txt"), warn = FALSE), "yeni-iki")
+  expect_identical(kontrol_sayisi, 3L)
+})
+
+test_that("çalıştırma sonrası diff hatası çıktı işlemeyi başarısız kılar", {
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_run_completion.R")
+  runtime <- withr::local_tempdir()
+  toplama_cagrildi <- FALSE
+
+  env$diff_claude_code_workdir_snapshot <- function(...) stop("diff okunamadı")
+  env$cc_collect_streaming_run_downloads <- function(...) {
+    toplama_cagrildi <<- TRUE
+    list()
+  }
+
+  expect_error(
+    env$cc_process_run_outputs(list(
+      before_snapshot = list(), runtime_workdir = runtime,
+      source_workdir = runtime, mirrored = FALSE, limits = list()
+    )),
+    "diff okunamadı"
+  )
+  expect_false(toplama_cagrildi)
+})
+
 # ------------------------------------------------------------------------------
 # 8) EŞZAMANSIZ OLMAYAN FUTURE PLANI REDDEDİLİR
 # ------------------------------------------------------------------------------
