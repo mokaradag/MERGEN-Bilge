@@ -161,9 +161,10 @@ deduplicate_claude_code_file_paths <- function(paths) {
   kanonikler <- kanonikler[nzchar(kanonikler)]
   if (!length(kanonikler)) return(character(0))
 
-  # Windows'ta büyük/küçük harf farkını da yok say
-  anahtarlar <- tolower(kanonikler)
-  ilk_gorunumler <- !duplicated(anahtarlar)
+  # Harf büyüklüğü YALNIZCA Windows'ta yok sayılır: Unix'te "Rapor.TXT" ile
+  # "rapor.txt" ayrı dosyalardır, koşulsuz tolower() bir çıktıyı düşürürdü.
+  windows_mu <- identical(.Platform$OS.type, "windows")
+  ilk_gorunumler <- !duplicated(if (windows_mu) tolower(kanonikler) else kanonikler)
 
   kanonikler[ilk_gorunumler]
 }

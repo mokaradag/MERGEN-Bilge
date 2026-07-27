@@ -104,11 +104,19 @@ testthat::test_that("deduplicate_claude_code_file_paths aynı dosyayı ve boşla
   testthat::expect_identical(donen, canonicalize_claude_code_file_path(f1))
 })
 
-testthat::test_that("deduplicate_claude_code_file_paths büyük/küçük harf farkını yok sayar", {
+testthat::test_that("deduplicate_claude_code_file_paths harf büyüklüğünü platforma göre ele alır", {
   .ccscan_source_once()
   # Var olan kanonik bir taban dizin altında, yalnızca harf büyüklüğüyle ayrışan
-  # iki var-olmayan yol; canonicalize üst dizin mevcut olduğu için yolu olduğu gibi
-  # döndürür, dedup ise küçük harfli anahtara göre tekilleştirir.
+  # iki var-olmayan yol; canonicalize üst dizin mevcut olduğu için yolu olduğu
+  # gibi döndürür.
+  #
+  # SÖZLEŞME: tekilleştirme PLATFORMA DUYARLIDIR. Windows'ta dosya sistemi harf
+  # büyüklüğünü yok saydığı için iki yol aynı dosyadır ve katlanır. Unix'te
+  # "Rapor.TXT" ile "rapor.txt" GERÇEKTEN farklı iki dosyadır; koşulsuz
+  # tolower() ile katlamak üretilen bir çıktı dosyasını sessizce düşürürdü
+  # (indirme kartı/çıktı senkronizasyonu kaybı). Bu davranış PR #672 Codex
+  # sertleştirmesiyle düzeltildi; sertleştirme dosyaları manifest dışı
+  # kaldığı sürece ölü kod olduğu için bu ayrım fark edilmiyordu.
   base <- normalizePath(tempfile(pattern = "ccdedup"), winslash = "/", mustWork = FALSE)
   dir.create(base, recursive = TRUE, showWarnings = FALSE)
   on.exit(unlink(base, recursive = TRUE), add = TRUE)
@@ -117,7 +125,25 @@ testthat::test_that("deduplicate_claude_code_file_paths büyük/küçük harf fa
   p_lower <- paste0(base, "/rapor.txt")
 
   donen <- deduplicate_claude_code_file_paths(c(p_upper, p_lower))
-  testthat::expect_length(donen, 1L)
-  # İlk görünüm (büyük harfli) korunur.
-  testthat::expect_identical(donen, canonicalize_claude_code_file_path(p_upper))
+
+  if (identical(.Platform$OS.type, "windows")) {
+    testthat::expect_length(donen, 1L)
+    # İlk görünüm (büyük harfli) korunur.
+    testthat::expect_identical(donen, canonicalize_claude_code_file_path(p_upper))
+  } else {
+    testthat::expect_length(donen, 2L)
+    testthat::expect_identical(
+      donen,
+      c(
+        canonicalize_claude_code_file_path(p_upper),
+        canonicalize_claude_code_file_path(p_lower)
+      )
+    )
+  }
+
+  # Gerçekten aynı olan yol her platformda tekilleştirilir.
+  testthat::expect_length(
+    deduplicate_claude_code_file_paths(c(p_upper, p_upper)),
+    1L
+  )
 })
