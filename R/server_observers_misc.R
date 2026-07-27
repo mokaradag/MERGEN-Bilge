@@ -4,6 +4,77 @@
 # Geri bildirim buton senkronizasyonu, dosya yöneticisi mesajları, 
 # yönetici menüsü ve diğer küçük observer'lar burada toplanmıştır.
 
+# PR #672 Codex inceleme düzeltmeleri, ilgili bütün Bilge Yolaç yardımcıları
+# yüklendikten sonra tek ve açık bir geç-yükleme noktasından uygulanır.
+load_claude_code_codex_review_fixes <- function() {
+  if (isTRUE(get0(
+    ".claude_code_codex_review_fixes_loaded",
+    envir = globalenv(),
+    inherits = FALSE,
+    ifnotfound = FALSE
+  ))) {
+    return(invisible(TRUE))
+  }
+
+  required_helpers <- c(
+    "mirror_directory_to_local_workspace",
+    "cc_scan_directory_bounded",
+    "cc_dispatch_run_preparation",
+    "cc_dispatch_run_output_processing"
+  )
+  helpers_ready <- all(vapply(
+    required_helpers,
+    exists,
+    logical(1),
+    envir = globalenv(),
+    mode = "function",
+    inherits = TRUE
+  ))
+  if (!isTRUE(helpers_ready)) {
+    return(invisible(FALSE))
+  }
+
+  repo_candidates <- unique(c(
+    Sys.getenv("MERGEN_REPO_ROOT", ""),
+    getwd(),
+    file.path(getwd(), ".."),
+    file.path(getwd(), "..", "..")
+  ))
+  repo_candidates <- repo_candidates[nzchar(repo_candidates)]
+  fix_files <- c(
+    "helpers_claude_code_codex_runtime_fixes.R",
+    "helpers_claude_code_codex_output_fixes.R"
+  )
+  repo_root <- ""
+  for (candidate in repo_candidates) {
+    if (all(file.exists(file.path(candidate, "R", fix_files)))) {
+      repo_root <- candidate
+      break
+    }
+  }
+  if (!nzchar(repo_root)) {
+    stop("PR #672 Codex hardening dosyaları bulunamadı.", call. = FALSE)
+  }
+
+  for (fix_file in fix_files) {
+    source(
+      file.path(repo_root, "R", fix_file),
+      encoding = "UTF-8",
+      local = globalenv()
+    )
+  }
+  assign(
+    ".claude_code_codex_review_fixes_loaded",
+    TRUE,
+    envir = globalenv()
+  )
+  invisible(TRUE)
+}
+
+# Uygulama manifestinde bu dosya Bilge Yolaç yardımcılarından sonra yüklenir;
+# izole testlerde yardımcılar yoksa loader güvenle FALSE döner.
+load_claude_code_codex_review_fixes()
+
 #' Çeşitli UI Gözlemcilerini Başlat
 #' @description Çeşitli UI observer ve output tanımlarını kurar
 #' @param input Shiny input nesnesi
@@ -19,6 +90,8 @@
 miscObserversInit <- function(input, output, session, values, 
                                file_manager_data, filePreview, add_message,
                                api_key, user_config, pool = NULL) {
+  
+  load_claude_code_codex_review_fixes()
   
   admin_modulleri_baslatildi <- reactiveVal(FALSE)
   
