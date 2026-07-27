@@ -340,7 +340,7 @@ sync_claude_runtime_workdir_back <- function(runtime_workdir,
       CLAUDE_CODE_LOG_PREFIX,
       "[OUTPUT_SYNC] Aktarılacak yeni/değişen çıktı dosyası yok."
     ))
-    return(invisible(list()))
+    return(invisible(cc_output_sync_skipped_results(plan)))
   }
 
   sonuclar <- cc_apply_output_sync_plan(plan, active_guard = active_guard)

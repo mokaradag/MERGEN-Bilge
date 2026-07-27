@@ -284,7 +284,8 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
                                                            session_token = "",
                                                            changed_files = NULL,
                                                            exclude_dirs = NULL,
-                                                           limits = NULL) {
+                                                           limits = NULL,
+                                                           layout = NULL) {
   # 1) Yeni/değişmiş dosyalar: hazır liste verilmişse tarama tekrarlanmaz.
   #    Böylece aynı çalıştırma için diff/staging iki kez çalışmaz.
   yeni_dosyalar <- character(0)
@@ -335,6 +336,32 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
     allowed_roots = allowed_roots,
     context = "çalışma çıktısı"
   )
+
+  # Dahili runtime bölgeleri (metadata lease/manifest, doküman desteği) asla
+  # kullanıcı indirmesi değildir; boyut sınırları da normalizasyon ve
+  # kopyalama BAŞLAMADAN uygulanır.
+  if (exists("cc_filter_download_candidates", mode = "function", inherits = TRUE)) {
+    suzme <- tryCatch(
+      cc_filter_download_candidates(tum_yollar, layout = layout, limits = limits),
+      error = function(e) NULL
+    )
+
+    if (is.list(suzme)) {
+      if (length(suzme$rejected_zone)) {
+        log_warn(sprintf(
+          "%s [DOWNLOAD_STAGE] Dahili runtime bölgesindeki %d aday indirmeye alınmadı.",
+          CLAUDE_CODE_LOG_PREFIX, length(suzme$rejected_zone)
+        ))
+      }
+      if (length(suzme$rejected_size)) {
+        log_warn(sprintf(
+          "%s [DOWNLOAD_STAGE] Boyut sınırını aşan %d aday indirmeye alınmadı.",
+          CLAUDE_CODE_LOG_PREFIX, length(suzme$rejected_size)
+        ))
+      }
+      tum_yollar <- suzme$paths
+    }
+  }
 
   if (!length(tum_yollar)) return(list())
 

@@ -25,8 +25,30 @@ cc_build_dir_variants <- function(dir_path) {
   )))
 }
 
-# Aynı dizini hem base R hem fs ile listelemeyi dener.
-cc_list_dir_relaxed <- function(dir_path) {
+# Aynı dizini hem sınırlı tarayıcı hem base R hem fs ile listelemeyi dener.
+#
+# KRİTİK: Bu fonksiyon ana Shiny olay döngüsünden de (dizin gezgini yenileme)
+# çağrılır. Bu yüzden birincil yol `list.files()` DEĞİL, sınırlı artımlı
+# numaralandırmadır; yüz binlerce girdili büyük/UNC bir klasör tüm oturumları
+# bloke edemez. Sınırlı tarayıcı kullanılamazsa eski davranışa düşülür.
+cc_list_dir_relaxed <- function(dir_path, max_entries = 500L, timeout_ms = 2000L) {
+  # cc_scan_list_dir_bounded kendi içinde tam tryCatch korumalıdır ve hata
+  # durumunda güvenli boş sonuç döndürür; burada ek sarmalayıcıya gerek yoktur.
+  if (exists("cc_scan_list_dir_bounded", mode = "function", inherits = TRUE)) {
+    sinirli <- cc_scan_list_dir_bounded(
+      dir_path,
+      max_entries = max_entries,
+      timeout_ms = timeout_ms
+    )
+
+    if (is.list(sinirli) && length(sinirli$entries)) {
+      return(structure(
+        unique(as.character(sinirli$entries)),
+        truncated = isTRUE(sinirli$truncated)
+      ))
+    }
+  }
+
   files_base <- tryCatch(
     list.files(
       dir_path,
@@ -137,6 +159,11 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
 
   calisan_dizin <- NULL
   tum_ogeler <- character(0)
+  kesildi <- FALSE
+
+  # Gezginde en fazla `max_items` öge gösterilir; sıralama için biraz fazlasını
+  # okumak yeterlidir. Böylece dev klasörlerde bile okuma maliyeti sabittir.
+  listeleme_siniri <- max(as.integer(max_items %||% 100L), 1L) * 5L
 
   for (aday in aday_dizinler) {
     dizin_var_mi <- tryCatch(path_exists_relaxed(aday), error = function(e) FALSE)
@@ -150,7 +177,7 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
 
     if (!isTRUE(dizin_var_mi)) next
 
-    bulunan_ogeler <- cc_list_dir_relaxed(aday)
+    bulunan_ogeler <- cc_list_dir_relaxed(aday, max_entries = listeleme_siniri)
 
     # En azından çalışan dizini kaydet
     if (is.null(calisan_dizin)) {
@@ -160,7 +187,8 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
     # İçerik bulduysak bunu tercih et
     if (length(bulunan_ogeler) > 0) {
       calisan_dizin <- aday
-      tum_ogeler <- bulunan_ogeler
+      kesildi <- isTRUE(attr(bulunan_ogeler, "truncated", exact = TRUE))
+      tum_ogeler <- as.character(bulunan_ogeler)
       break
     }
   }
@@ -200,6 +228,7 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
     items = ogeler,
     error = "",
     toplam = length(tum_ogeler),
+    truncated = isTRUE(kesildi),
     resolved_path = tryCatch(
       normalize_mcp_path(calisan_dizin, must_exist = FALSE),
       error = function(e) calisan_dizin

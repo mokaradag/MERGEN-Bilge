@@ -224,6 +224,58 @@ cc_extract_prompt_file_mentions <- function(prompt) {
   }, logical(1))
 }
 
+#' Adı geçen dosyaları doğrudan diskte çöz (kesilmiş tarama yedeği)
+#'
+#' Sınırlı tarama, adı geçen dosya numaralandırılmadan önce kesilebilir. Bu
+#' durumda otomatik alt kümeye düşmek yerine, güvenli göreli yol adaylarını
+#' kökün altında doğrudan doğrularız. Mutlak yol, sürücü harfi ve `..`
+#' geçişleri asla kabul edilmez; sonuç her zaman kökün içinde kalır.
+#'
+#' @param mentions Küçük harfli aday dosya adları/göreli yollar
+#' @param root Kaynak kök dizin
+#' @param max_files Doğrulanacak maksimum dosya sayısı
+#' @return Kök altında var olan mutlak dosya yolları
+cc_resolve_mentioned_files_on_disk <- function(mentions,
+                                               root,
+                                               max_files = 40L) {
+  mentions <- unique(as.character(mentions %||% character(0)))
+  mentions <- mentions[nzchar(mentions)]
+
+  kok <- .cc_scan_norm(as.character(root %||% "")[1])
+  if (!length(mentions) || !nzchar(kok) ||
+      !isTRUE(tryCatch(dir.exists(kok), error = function(e) FALSE))) {
+    return(character(0))
+  }
+
+  kok_key <- .cc_scan_key(kok)
+  max_files <- max(0L, suppressWarnings(as.integer(max_files)))
+  if (!is.finite(max_files) || max_files == 0L) return(character(0))
+
+  bulunanlar <- character(0)
+
+  for (aday in mentions) {
+    if (length(bulunanlar) >= max_files) break
+
+    rel <- gsub("\\", "/", aday, fixed = TRUE)
+    rel <- sub("^\\./+", "", rel, perl = TRUE)
+
+    # Mutlak yol / sürücü harfi / UNC / üst dizin geçişi kabul edilmez.
+    if (grepl("^(?:[A-Za-z]:|/|//)", rel, perl = TRUE)) next
+    if (grepl("(^|/)\\.\\.(/|$)", rel, perl = TRUE)) next
+    if (!nzchar(rel)) next
+
+    hedef <- .cc_scan_norm(file.path(kok, rel))
+    hedef_key <- .cc_scan_key(hedef)
+
+    if (!startsWith(hedef_key, paste0(kok_key, "/"))) next
+    if (!isTRUE(file.exists(hedef)) || isTRUE(dir.exists(hedef))) next
+
+    bulunanlar <- c(bulunanlar, hedef)
+  }
+
+  unique(bulunanlar)
+}
+
 #' Çalıştırma için gerçekten gerekli girdi dosyalarını seç
 #'
 #' Öncelik sırası: açıkça seçilen dosyalar, prompt içinde adı geçen dosyalar,
@@ -280,11 +332,48 @@ cc_select_input_files <- function(prompt,
     if (length(secilen_idx)) secim_modu <- "explicit"
   }
 
-  if (!length(secilen_idx)) {
-    mentions <- cc_extract_prompt_file_mentions(prompt)
-    if (length(mentions)) {
-      secilen_idx <- which(.cc_prepare_mention_matches(files, relatives, mentions))
-      if (length(secilen_idx)) secim_modu <- "prompt"
+  mentions <- cc_extract_prompt_file_mentions(prompt)
+
+  if (!length(secilen_idx) && length(mentions)) {
+    secilen_idx <- which(.cc_prepare_mention_matches(files, relatives, mentions))
+    if (length(secilen_idx)) secim_modu <- "prompt"
+  }
+
+  # Tarama sınıra takıldıysa istenen dosya hiç numaralandırılmamış olabilir.
+  # Bu durumda rastgele bir otomatik alt kümeye düşmeden önce, güvenli
+  # göreli yol adaylarını doğrudan diskte çözeriz.
+  istenen_anahtarlar <- unique(c(explicit_key, mentions))
+  eksik_anahtarlar <- character(0)
+
+  if (length(istenen_anahtarlar)) {
+    eslesti <- vapply(
+      istenen_anahtarlar,
+      function(m) any(.cc_prepare_mention_matches(files, relatives, m)),
+      logical(1),
+      USE.NAMES = FALSE
+    )
+    eksik_anahtarlar <- istenen_anahtarlar[!eslesti]
+  }
+
+  if (length(eksik_anahtarlar) && nzchar(as.character(root %||% "")[1])) {
+    diskten <- cc_resolve_mentioned_files_on_disk(
+      mentions = eksik_anahtarlar,
+      root = root,
+      max_files = max_files
+    )
+    diskten <- setdiff(diskten, files)
+
+    if (length(diskten)) {
+      disk_boyut <- suppressWarnings(as.numeric(file.info(diskten)$size))
+      disk_boyut[!is.finite(disk_boyut)] <- 0
+
+      yeni_idx <- length(files) + seq_along(diskten)
+      files <- c(files, diskten)
+      boyutlar <- c(boyutlar, disk_boyut)
+      relatives <- c(relatives, cc_scan_relative_paths(diskten, root))
+
+      secilen_idx <- unique(c(secilen_idx, yeni_idx))
+      if (!identical(secim_modu, "explicit")) secim_modu <- "prompt"
     }
   }
 

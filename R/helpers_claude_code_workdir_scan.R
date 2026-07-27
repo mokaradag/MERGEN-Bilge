@@ -296,8 +296,12 @@ diff_claude_code_workdir_snapshot <- function(before_snapshot,
     limits = limits
   )
 
+  # Çalıştırma sonrası tarama da sınıra takılabilir. Bu bilgi çağıranın
+  # eksik çıktıyı "tamamlandı" sanmaması için sonuca iliştirilir.
+  sonraki_tarama <- attr(sonraki, "scan", exact = TRUE)
+
   if (!length(sonraki)) {
-    return(character(0))
+    return(structure(character(0), scan = sonraki_tarama))
   }
 
   once <- if (is.list(before_snapshot)) before_snapshot else list()
@@ -348,5 +352,8 @@ diff_claude_code_workdir_snapshot <- function(before_snapshot,
   }
 
   # Kanonik form üzerinden tekrar dedup (emniyet kemeri)
-  deduplicate_claude_code_file_paths(yeni_veya_degisen)
+  structure(
+    deduplicate_claude_code_file_paths(yeni_veya_degisen),
+    scan = sonraki_tarama
+  )
 }

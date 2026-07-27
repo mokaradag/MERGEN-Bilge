@@ -25,6 +25,12 @@ cc_run_output_worker_globals <- function(refresh = FALSE, envir = globalenv()) {
     "cc_collect_streaming_run_downloads",
     "cc_stage_tool_use_write_paths_as_downloads",
     "sync_claude_runtime_workdir_back",
+    "cc_output_sync_skipped_results",
+    "cc_runtime_zone_of_path",
+    "cc_filter_download_candidates",
+    "cc_with_path_visibility_budget",
+    "cc_path_visibility_budget_remaining",
+    ".cc_path_visibility_budget",
     "cc_scan_default_excluded_dirs",
     "cc_scan_runtime_excluded_dirs",
     "claude_code_runtime_limits",
@@ -77,6 +83,65 @@ cc_build_run_output_request <- function(env, tool_uses = list()) {
   )
 }
 
+#' İndirme adaylarını onaylı runtime bölgelerine ve boyut sınırlarına göre süz
+#'
+#' Metadata (lease/manifest) ve doküman destek dosyaları kullanıcı indirmesi
+#' değildir; onaylı çıktı alanı dışında kalan hiçbir aday staging'e girmez.
+#' Boyut sınırları da kopyalama BAŞLAMADAN uygulanır; aksi halde tek bir dev
+#' dosya worker'ı ve sunucu geçici diskini doldurabilir.
+#'
+#' @param paths Aday dosya yolları
+#' @param layout Runtime düzeni (NULL ise bölge süzgeci uygulanmaz)
+#' @param limits Sınır listesi
+#' @return list(paths, rejected_zone, rejected_size)
+cc_filter_download_candidates <- function(paths, layout = NULL, limits = NULL) {
+  yollar <- unique(as.character(paths %||% character(0)))
+  yollar <- yollar[nzchar(yollar)]
+
+  bos <- list(paths = character(0), rejected_zone = character(0),
+              rejected_size = character(0))
+  if (!length(yollar)) return(bos)
+
+  max_file_bytes <- cc_runtime_limit("max_output_file_bytes", 100 * 1024^2, limits)
+  max_total_bytes <- cc_runtime_limit("max_output_total_bytes", 400 * 1024^2, limits)
+
+  kabul <- character(0)
+  bolge_red <- character(0)
+  boyut_red <- character(0)
+  toplam <- 0
+
+  for (yol in yollar) {
+    if (is.list(layout) && nzchar(as.character(layout$root %||% "")[1])) {
+      bolge <- cc_runtime_zone_of_path(yol, layout)
+
+      # Runtime düzeni içindeyken yalnızca onaylı bölgeler indirilebilir.
+      # Düzenin tamamen dışındaki yollar (kaynak klasör) eski davranışta
+      # olduğu gibi politika süzgecine bırakılır.
+      if (nzchar(bolge) && !bolge %in% c("output", "input", "root")) {
+        bolge_red <- c(bolge_red, yol)
+        next
+      }
+    }
+
+    boyut <- suppressWarnings(as.numeric(file.info(yol)$size[1]))
+    if (!is.finite(boyut)) boyut <- 0
+
+    if (boyut > max_file_bytes || toplam + boyut > max_total_bytes) {
+      boyut_red <- c(boyut_red, yol)
+      next
+    }
+
+    kabul <- c(kabul, yol)
+    toplam <- toplam + boyut
+  }
+
+  list(
+    paths = kabul,
+    rejected_zone = unique(bolge_red),
+    rejected_size = unique(boyut_red)
+  )
+}
+
 #' Çalıştırma sonrası çıktı işlemesini arka planda BİR KEZ yürüt
 #'
 #' @param request cc_build_run_output_request() çıktısı
@@ -100,6 +165,9 @@ cc_process_run_outputs <- function(request) {
   diff_baslangic <- Sys.time()
 
   degisenler <- character(0)
+  diff_kesildi <- FALSE
+  diff_kesme_nedeni <- ""
+
   if (nzchar(request$runtime_workdir %||% "") && dir.exists(request$runtime_workdir)) {
     degisenler <- tryCatch(
       diff_claude_code_workdir_snapshot(
@@ -110,6 +178,14 @@ cc_process_run_outputs <- function(request) {
       ),
       error = function(e) character(0)
     )
+
+    # Çalıştırma SONRASI tarama da sınıra takılabilir. Bu durumda değişen
+    # dosya listesi eksiktir; sessizce "Tamamlandı" göstermek üretilen
+    # dosyaların kaybolmasını gizler.
+    diff_tarama <- attr(degisenler, "scan", exact = TRUE)
+    diff_kesildi <- isTRUE(diff_tarama$truncated)
+    diff_kesme_nedeni <- as.character(diff_tarama$truncated_reason %||% "")[1]
+    degisenler <- as.character(degisenler)
   }
 
   diff_ms <- gecen_ms(diff_baslangic)
@@ -117,16 +193,19 @@ cc_process_run_outputs <- function(request) {
   staging_baslangic <- Sys.time()
 
   indirmeler <- tryCatch(
-    cc_collect_streaming_run_downloads(
-      before_snapshot = request$before_snapshot,
-      tool_uses = request$tool_uses,
-      runtime_workdir = request$runtime_workdir,
-      source_workdir = request$source_workdir,
-      user_id = request$user_id,
-      session_token = request$session_token,
-      changed_files = degisenler,
-      exclude_dirs = haric,
-      limits = request$limits
+    cc_with_path_visibility_budget(
+      cc_collect_streaming_run_downloads(
+        before_snapshot = request$before_snapshot,
+        tool_uses = request$tool_uses,
+        runtime_workdir = request$runtime_workdir,
+        source_workdir = request$source_workdir,
+        user_id = request$user_id,
+        session_token = request$session_token,
+        changed_files = degisenler,
+        exclude_dirs = haric,
+        limits = request$limits,
+        layout = request$layout
+      )
     ),
     error = function(e) list()
   )
@@ -156,6 +235,8 @@ cc_process_run_outputs <- function(request) {
     downloads = indirmeler,
     changed_files = degisenler,
     sync_results = sync_sonuclari,
+    output_scan_truncated = isTRUE(diff_kesildi),
+    output_scan_truncated_reason = diff_kesme_nedeni,
     metrics = list(
       total_ms = gecen_ms(baslangic),
       diff_ms = diff_ms,
@@ -200,6 +281,36 @@ cc_report_output_sync_failure <- function(ctx, outputs) {
   cc_finalize_if_active(
     ctx$rv, ctx$env$request_id, ctx$finalize_streaming,
     durum_metin = "Aktarım Hatası", durum_ikon = "exclamation-triangle", durum_renk = "#E57373"
+  )
+  TRUE
+}
+
+cc_report_output_scan_truncation <- function(ctx, outputs) {
+  if (!isTRUE(outputs$output_scan_truncated)) return(FALSE)
+
+  neden <- as.character(outputs$output_scan_truncated_reason %||% "")[1]
+  mesaj <- paste0(
+    "Çalıştırma sonrası çıktı taraması güvenli sınırlar içinde tamamlanamadı",
+    if (nzchar(neden)) paste0(" (", neden, ")") else "",
+    "; üretilen dosyaların bir bölümü eksik kalabileceği için çalışma ",
+    "tamamlandı olarak işaretlenmedi."
+  )
+
+  cc_log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "[OUTPUT_DIFF]", mesaj))
+
+  ctx$session$sendCustomMessage("cc-stream-end", list(target = ctx$ns("output_area")))
+  ctx$session$sendCustomMessage("cc-add-message", list(
+    target = ctx$ns("output_area"), type = "error",
+    content = htmltools::htmlEscape(mesaj), timestamp = format(Sys.time(), "%H:%M:%S")
+  ))
+  ctx$rv$last_result <- list(success = FALSE, output = "", error = mesaj)
+  if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
+    cc_persist_run_result(ctx$rv, ctx$env, status = "failed", final_output = mesaj)
+  }
+  cc_finalize_if_active(
+    ctx$rv, ctx$env$request_id, ctx$finalize_streaming,
+    durum_metin = "Çıktı Taraması Eksik", durum_ikon = "exclamation-triangle",
+    durum_renk = "#E57373"
   )
   TRUE
 }
@@ -281,6 +392,12 @@ cc_dispatch_run_output_processing <- function(ctx) {
       # Kaynak dizine gerçekten dosya aktarıldıysa bunu aşama olarak bildir.
       if (length(outputs$sync_results %||% list()) > 0L) {
         cc_send_run_stage(ctx$session, ctx$ns, "aktarim")
+      }
+
+      if (cc_report_output_scan_truncation(ctx, outputs)) {
+        unlink(istek$active_guard, force = TRUE)
+        unlink(ctx$env$runtime_lease %||% "", force = TRUE)
+        return(NULL)
       }
 
       if (cc_report_output_sync_failure(ctx, outputs)) {

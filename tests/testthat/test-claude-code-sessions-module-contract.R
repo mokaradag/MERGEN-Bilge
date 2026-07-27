@@ -346,10 +346,20 @@ test_that("çalışma alanı runtime'ı kalıcı oturum köprüsünü doğru kul
     lengths(regmatches(poll, gregexpr("cc_persist_run_result(", poll, fixed = TRUE))),
     2L
   )
+  # Completion helper'ında BEŞ terminal yol kalıcılaştırma yapar:
+  #   1) cc_report_output_sync_failure       (kaynak dizine aktarım hatası)
+  #   2) cc_report_output_scan_truncation    (çalıştırma sonrası tarama eksik)
+  #   3) cc_report_output_processing_failure (çıktı worker'ı reddetti)
+  #   4) cc_finish_streaming_run             (başarılı çalıştırma)
+  #   5) cc_finish_streaming_run             (hata kodlu çalıştırma)
+  # Sessizce "Tamamlandı" gösterilen bir terminal yol kalmamalıdır.
   expect_identical(
     lengths(regmatches(completion, gregexpr("cc_persist_run_result(", completion, fixed = TRUE))),
-    2L
+    5L
   )
+  expect_true(grepl("cc_report_output_scan_truncation", completion, fixed = TRUE))
+  expect_true(grepl("cc_report_output_sync_failure", completion, fixed = TRUE))
+  expect_true(grepl("cc_report_output_processing_failure", completion, fixed = TRUE))
 
   # Çıktıyı Temizle / model / workdir değişimi yalnızca bağı koparır;
   # kalıcı geçmişi SİLMEZ.
