@@ -13,7 +13,8 @@
 #' Bir kökü karşılaştırma için kanonik forma çevir
 #'
 #' Windows'ta `tempdir()` ve kullanıcı profili yolları 8.3 KISA ad biçiminde
-#' gelebilir (`C:\\Users\\MOKARA~1\\...`). `normalizePath(mustWork = FALSE)`
+#' gelebilir (kullanici profili bileseni `KULLAN~1` gibi kisalir).
+#' `normalizePath(mustWork = FALSE)`
 #' var olmayan yolu olduğu gibi döndürdüğü için, karşılaştırmanın iki tarafı
 #' farklı semantikle çözülürse kısa ad ile uzun ad karşılaştırılır ve önek
 #' eşleşmesi tutmaz. Var olan yollarda `mustWork = TRUE` kısa adı uzun forma
@@ -214,8 +215,8 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     # creation or copying; a lexical destination prefix check is not enough.
     #
     # Onaylı kök ile çözülmüş ata AYNI çözümleme semantiğiyle hesaplanmalıdır.
-    # Aksi halde Windows'ta 8.3 kısa ad (C:\Users\MOKARA~1\...) ile uzun ad
-    # (C:/Users/mokaradag/...) karşılaştırılır, önek eşleşmesi tutmaz ve
+    # Aksi halde Windows'ta 8.3 kısa ad (KULLAN~1) ile uzun ad biçimi
+    # karşılaştırılır, önek eşleşmesi tutmaz ve
     # geçerli bir çıktı "onaylı kaynak kökün dışında" sayılarak sessizce
     # aktarılmaz. mustWork = TRUE her iki tarafta da kısa adı uzun forma açar.
     approved_root <- cc_output_sync_canonical_root(plan$source_workdir %||% hedef_dizin)
