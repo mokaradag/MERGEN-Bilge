@@ -59,7 +59,19 @@ test_that("config_source_manifest.R manifestindeki dosyalar repoda gerçekten va
 
   expect_gt(length(paths), 50L)
 
-  missing_paths <- paths[!file.exists(file.path(repo_root, paths))]
+  # Bilinçli olarak opsiyonel işaretlenmiş yollar bir çalışma kopyasında
+  # bulunmayabilir (boot güvenliği sözleşmesi); bunlar dışındaki her eksik
+  # dosya gerçek bir manifest hatasıdır.
+  opsiyonel_env <- new.env(parent = globalenv())
+  source(
+    file.path(repo_root, "R", "config_source_manifest.R"),
+    encoding = "UTF-8", local = opsiyonel_env
+  )
+  opsiyonel <- as.character(
+    opsiyonel_env$source_manifest_optional_source_paths %||% character(0)
+  )
+
+  missing_paths <- setdiff(paths[!file.exists(file.path(repo_root, paths))], opsiyonel)
 
   expect_equal(
     missing_paths,

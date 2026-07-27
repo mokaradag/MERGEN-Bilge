@@ -4,7 +4,27 @@
 #           yarış ve fail-closed bulgularının gerileme testleri.
 # ==============================================================================
 
+# Sertleştirme dosyaları manifeste OPSİYONEL olarak kayıtlıdır: güncellenmemiş
+# bir on-prem çalışma kopyasında fiziksel olarak bulunmayabilirler. Bu durumda
+# testler "cannot open file" hatasıyla patlamak yerine ATLANMALIDIR; aksi halde
+# eksik dosya, uygulamayı ilgilendiren gerçek bir hata gibi raporlanır.
+.cc_codex_review_files <- function() {
+  file.path(
+    resolve_repo_root_for_tests(), "R",
+    c("helpers_claude_code_codex_runtime_fixes.R",
+      "helpers_claude_code_codex_output_fixes.R")
+  )
+}
+
+.cc_codex_skip_if_absent <- function() {
+  testthat::skip_if_not(
+    all(file.exists(.cc_codex_review_files())),
+    "Codex sertleştirme dosyaları bu çalışma kopyasında yok (opsiyonel manifest yolu)."
+  )
+}
+
 .cc_codex_review_env <- function() {
+  .cc_codex_skip_if_absent()
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x)) y else x
@@ -42,11 +62,12 @@
 
 test_that("Codex hardening files parse and loader references both layers", {
   repo_root <- resolve_repo_root_for_tests()
-  files <- c(
-    file.path(repo_root, "R", "helpers_claude_code_codex_runtime_fixes.R"),
-    file.path(repo_root, "R", "helpers_claude_code_codex_output_fixes.R")
-  )
-  expect_silent(lapply(files, parse))
+
+  # Parse doğrulaması yalnızca dosyalar bu kopyada varken anlamlıdır; manifest
+  # ve sıra sözleşmesi ise dosyalar olmasa da doğrulanmalıdır.
+  if (all(file.exists(.cc_codex_review_files()))) {
+    expect_silent(lapply(.cc_codex_review_files(), parse))
+  }
 
   # Sertleştirme dosyaları kaynak manifestinden yüklenir. Manifest dışı
   # geç-yükleme, dosyaları seam sahipliği olmayan ölü koda çevirmişti.

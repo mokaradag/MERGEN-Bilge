@@ -672,3 +672,20 @@ source_manifest_runtime_paths <- c(
   source_manifest_group_1_paths,
   source_manifest_after_future_paths
 )
+
+# Bir çalışma kopyasında bulunmayabilecek manifest yolları.
+#
+# BOOT GÜVENLİĞİ SÖZLEŞMESİ: Manifest normalde eksik dosyada fail-fast yapar ve
+# bu davranış korunmalıdır. Aşağıdaki iki dosya bunun bilinçli istisnasıdır:
+# git'te izlenirler, ancak henüz güncellenmemiş bir on-prem çalışma kopyasında
+# fiziksel olarak bulunmayabilirler. Bunları ZORUNLU kılmak, üretimdeki
+# uygulamayı "Kaynak manifesti doğrulaması başarısız" hatasıyla hiç
+# açılmaz duruma sokar. Mevcut olduklarında normal sırayla yüklenirler;
+# bulunmadıklarında yalnızca sertleştirmeleri devre dışı kalır, uygulama açılır.
+#
+# Bu listeye yeni dosya eklemek bilinçli bir karardır: eksikliği gerçekten
+# tolere edilebilir olmayan hiçbir runtime dosyası buraya eklenmemelidir.
+source_manifest_optional_source_paths <- c(
+  "R/helpers_claude_code_codex_runtime_fixes.R",
+  "R/helpers_claude_code_codex_output_fixes.R"
+)

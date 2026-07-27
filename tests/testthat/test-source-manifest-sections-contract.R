@@ -456,7 +456,12 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
     info = paste("Bölümlenmiş manifestte tekrar eden R/ kaydı:", paste(duplicate_r_paths, collapse = ", "))
   )
 
-  missing_paths <- runtime[!file.exists(file.path(repo_root, runtime))]
+  # Bilinçli olarak opsiyonel işaretlenmiş yollar bir çalışma kopyasında
+  # bulunmayabilir (boot güvenliği sözleşmesi).
+  opsiyonel <- as.character(
+    .load_source_manifest_env_for_sections()$source_manifest_optional_source_paths %||% character(0)
+  )
+  missing_paths <- setdiff(runtime[!file.exists(file.path(repo_root, runtime))], opsiyonel)
 
   expect_equal(
     missing_paths,
