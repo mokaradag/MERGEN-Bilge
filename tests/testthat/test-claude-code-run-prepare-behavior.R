@@ -286,7 +286,7 @@ test_that("yalnızca yeni veya değişen çıktı dosyaları geri aktarılır", 
   expect_false(dir.exists(file.path(kaynak, "metadata")))
 })
 
-test_that("runtime output dışındaki dosyalar geri aktarılmaz", {
+test_that("runtime input düzenlemeleri aktarılır, dahili alanlar aktarılmaz", {
   env <- .cc_prepare_env()
   kaynak <- .cc_prepare_source_dir(2L)
 
@@ -310,8 +310,9 @@ test_that("runtime output dışındaki dosyalar geri aktarılmaz", {
     source_workdir = kaynak
   )
 
-  expect_length(plan$items, 0L)
-  expect_equal(length(plan$skipped), 3L)
+  expect_length(plan$items, 1L)
+  expect_identical(plan$items[[1]]$relative_path, "kaynak01.txt")
+  expect_equal(length(plan$skipped), 2L)
 })
 
 test_that("yol kaçışı ve izinli kök dışı hedefler reddedilir", {
@@ -437,7 +438,7 @@ test_that("çıktı anlık görüntüsü yalnızca onaylı yazılabilir alanı t
 
   expect_true(any(grepl("/output/cikti.txt$", yollar, perl = TRUE)))
   expect_false(any(grepl("/metadata/", yollar, fixed = TRUE)))
-  expect_false(any(grepl("/input/", yollar, fixed = TRUE)))
+  expect_true(any(grepl("/input/kaynak01.txt$", yollar, perl = TRUE)))
 })
 
 # ------------------------------------------------------------------------------
@@ -742,6 +743,9 @@ test_that("hazırlık gönderimi ana süreçte ağır işi çalıştırmaz", {
 
 test_that("bir oturumun büyük klasör hazırlığı ikinci oturumu bloke etmez", {
   env <- .cc_dispatch_env()
+  env$cc_runtime_limit <- function(name, default_value = Inf, limits = NULL) {
+    if (identical(name, "prepare_timeout_sec")) 0.05 else default_value
+  }
 
   ikinci_oturum_yaniti <- NULL
 
@@ -791,9 +795,9 @@ test_that("bir oturumun büyük klasör hazırlığı ikinci oturumu bloke etmez
   expect_equal(ikinci_oturum_yaniti, "1")
   expect_lt(gecen, 5)
 
-  # Birinci oturum hâlâ hazırlık aşamasındadır; olay döngüsü serbesttir.
-  expect_true(isTRUE(rv$is_running))
-  expect_equal(rv$active_request_id, "req-1")
+  # Deadline ana olay döngüsünde uygulanır; çözülmeyen hazırlık aktif kalmaz.
+  expect_false(isTRUE(rv$is_running))
+  expect_null(rv$active_request_id)
 })
 
 test_that("hazırlık ve çıktı işleri açık bağımlılık modu ile gönderilir", {

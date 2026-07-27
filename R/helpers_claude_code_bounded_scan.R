@@ -29,7 +29,7 @@ cc_scan_default_excluded_rel_paths <- function() {
 
 # Bilge Yolaç runtime düzeninde çıktı taramasına dahil edilmeyen alt klasörler.
 cc_scan_runtime_excluded_dirs <- function() {
-  c("input", "metadata", "document_support")
+  c("metadata", "document_support")
 }
 
 .cc_scan_int <- function(value, default) {
@@ -62,6 +62,72 @@ cc_scan_runtime_excluded_dirs <- function() {
   hedef <- tryCatch(Sys.readlink(path), error = function(e) NA_character_)
   if (length(hedef) != 1L || is.na(hedef)) return(FALSE)
   nzchar(hedef)
+}
+
+# Bir dizinin girdilerini işletim sistemi sürecinden artımlı olarak tüketir.
+# `list.files()` tek çağrıda bütün dizini belleğe aldığı için yüz binlerce
+# girdili düz dizinlerde sınırlar uygulanamadan önce bloke olabiliyordu.
+.cc_scan_list_entries <- function(path, max_entries, deadline_ms) {
+  limit <- max(0L, as.integer(max_entries))
+  if (limit == 0L) return(list(entries = character(0), truncated = TRUE, reason = "max_entries"))
+
+  if (!requireNamespace("processx", quietly = TRUE)) {
+    stop("Sınırlı dizin taraması için processx paketi gereklidir.")
+  }
+
+  if (.Platform$OS.type == "windows") {
+    escaped <- gsub("'", "''", normalizePath(path, winslash = "\\", mustWork = FALSE), fixed = TRUE)
+    command <- "powershell.exe"
+    args <- c(
+      "-NoProfile", "-NonInteractive", "-Command",
+      paste0("Get-ChildItem -LiteralPath '", escaped,
+             "' -Force:$false | ForEach-Object { $_.FullName }")
+    )
+  } else {
+    command <- "find"
+    args <- c(path, "-mindepth", "1", "-maxdepth", "1", "-print")
+  }
+
+  proc <- processx::process$new(command, args, stdout = "|", stderr = "|", cleanup = TRUE)
+  on.exit(if (proc$is_alive()) proc$kill(), add = TRUE)
+
+  entries <- character(0)
+  truncated <- FALSE
+  reason <- ""
+
+  repeat {
+    if (as.numeric(difftime(Sys.time(), deadline_ms$started, units = "secs")) * 1000 >
+        deadline_ms$limit) {
+      truncated <- TRUE
+      reason <- "timeout"
+      break
+    }
+
+    available <- proc$poll_io(50)
+    if (identical(available[["output"]], "ready")) {
+      chunk <- proc$read_output_lines(n = min(128L, limit + 1L - length(entries)))
+      entries <- c(entries, chunk)
+      if (length(entries) > limit) {
+        entries <- entries[seq_len(limit)]
+        truncated <- TRUE
+        reason <- "max_entries"
+        break
+      }
+    }
+
+    if (!proc$is_alive()) {
+      chunk <- proc$read_all_output_lines()
+      entries <- c(entries, chunk)
+      if (length(entries) > limit) {
+        entries <- entries[seq_len(limit)]
+        truncated <- TRUE
+        reason <- "max_entries"
+      }
+      break
+    }
+  }
+
+  list(entries = entries, truncated = truncated, reason = reason)
 }
 
 .cc_scan_result <- function(root,
@@ -188,36 +254,23 @@ cc_scan_directory_bounded <- function(root,
     mevcut <- kuyruk[[1L]]
     kuyruk <- kuyruk[-1L]
 
-    ogeler <- tryCatch(
-      list.files(
+    kalan_oge <- max_entries - islenen_oge
+    listeleme <- tryCatch(
+      .cc_scan_list_entries(
         mevcut$path,
-        all.files = FALSE,
-        full.names = TRUE,
-        no.. = TRUE,
-        include.dirs = TRUE
+        max_entries = kalan_oge,
+        deadline_ms = list(started = baslangic, limit = max_elapsed_ms)
       ),
       error = function(e) {
         hatalar <<- c(hatalar, paste0(mevcut$rel, ": ", conditionMessage(e)))
-        character(0)
+        list(entries = character(0), truncated = FALSE, reason = "")
       }
     )
 
-    # UNC / ağ paylaşımı dizinlerinde base R list.files bazen boş döner;
-    # fs::dir_ls aynı paylaşımı genellikle listeler. Bu yedek olmadan tarama
-    # Windows VM'de sessizce boş sonuç üretir.
-    if (!length(ogeler)) {
-      ogeler <- tryCatch(
-        as.character(fs::dir_ls(mevcut$path, recurse = FALSE, all = FALSE)),
-        error = function(e) character(0)
-      )
-    }
+    ogeler <- listeleme$entries
+    if (isTRUE(listeleme$truncated)) kes(listeleme$reason)
 
     if (!length(ogeler)) next
-
-    if (length(ogeler) > max_entries) {
-      ogeler <- ogeler[seq_len(max(0L, as.integer(max_entries)))]
-      kes("max_entries")
-    }
 
     bilgi <- tryCatch(
       file.info(ogeler, extra_cols = FALSE),

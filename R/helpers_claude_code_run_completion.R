@@ -69,6 +69,7 @@ cc_build_run_output_request <- function(env, tool_uses = list()) {
     layout = env$runtime_layout,
     mirrored = isTRUE(env$mirror_kullanildi),
     request_id = env$request_id %||% "",
+    active_guard = env$output_sync_guard %||% "",
     limits = tryCatch(
       get("claude_code_runtime_limits", inherits = TRUE),
       error = function(e) list()
@@ -87,9 +88,13 @@ cc_process_run_outputs <- function(request) {
     round(as.numeric(difftime(Sys.time(), from, units = "secs")) * 1000, 1)
   }
 
-  haric <- cc_scan_default_excluded_dirs()
-  if (isTRUE(request$mirrored)) {
-    haric <- unique(c(haric, cc_scan_runtime_excluded_dirs()))
+  # Runtime output/build, output/dist ve output/bin gerçek çıktılardır. İzole
+  # çalışma alanında kaynak-ağaç basename hariçlerini uygulamayız; yalnızca
+  # dahili metadata/doküman alanları tarama dışında kalır.
+  haric <- if (isTRUE(request$mirrored)) {
+    cc_scan_runtime_excluded_dirs()
+  } else {
+    cc_scan_default_excluded_dirs()
   }
 
   diff_baslangic <- Sys.time()
@@ -138,7 +143,8 @@ cc_process_run_outputs <- function(request) {
         source_workdir = request$source_workdir,
         changed_files = degisenler,
         layout = request$layout,
-        limits = request$limits
+        limits = request$limits,
+        active_guard = request$active_guard
       ),
       error = function(e) list()
     )
@@ -171,6 +177,13 @@ cc_process_run_outputs <- function(request) {
 #' @param ctx Sonlandırma bağlamı (session, ns, rv, env, ayristirma, ...)
 #' @return invisible(TRUE)
 cc_dispatch_run_output_processing <- function(ctx) {
+  guard <- file.path(
+    ctx$env$runtime_layout$metadata %||% tempdir(),
+    paste0("output-sync-", gsub("[^A-Za-z0-9_.-]", "_", ctx$env$request_id %||% "run"), ".active")
+  )
+  dir.create(dirname(guard), recursive = TRUE, showWarnings = FALSE)
+  file.create(guard)
+  ctx$env$output_sync_guard <- guard
   istek <- cc_build_run_output_request(ctx$env, ctx$ayristirma$tool_uses %||% list())
 
   cc_send_run_stage(ctx$session, ctx$ns, "cikti")
@@ -190,6 +203,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
   ) |>
     promises::then(function(outputs) {
       if (!cc_is_active_run(ctx$rv, ctx$env$request_id)) {
+        unlink(istek$active_guard, force = TRUE)
         return(NULL)
       }
 
@@ -215,9 +229,11 @@ cc_dispatch_run_output_processing <- function(ctx) {
       }
 
       cc_finish_streaming_run(ctx, outputs)
+      unlink(istek$active_guard, force = TRUE)
       NULL
     }) |>
     promises::catch(function(e) {
+      unlink(istek$active_guard, force = TRUE)
       if (!cc_is_active_run(ctx$rv, ctx$env$request_id)) {
         return(NULL)
       }

@@ -112,6 +112,26 @@ cc_dispatch_run_preparation <- function(ctx) {
 
   hazirlik_baslangic <- Sys.time()
   zaman_asimi_sn <- cc_runtime_limit("prepare_timeout_sec", 180)
+  zaman_asimi_durumu <- new.env(parent = emptyenv())
+  zaman_asimi_durumu$pending <- TRUE
+
+  # Başarı callback'inde geçen süreyi ölçmek zaman aşımı değildir: bloke bir
+  # worker o callback'e hiç ulaşmaz. Ana later döngüsündeki bağımsız deadline
+  # aktif isteği zamanında sonlandırır; geç dönen future stale guard'a takılır.
+  later::later(function() {
+    if (isTRUE(zaman_asimi_durumu$pending) &&
+        cc_is_active_run(ctx$rv, ctx$run_request_id)) {
+      zaman_asimi_durumu$pending <- FALSE
+      cc_fail_run_preparation(
+        ctx,
+        paste0(
+          "Çalışma alanı hazırlığı zaman aşımına uğradı (",
+          round(zaman_asimi_sn), " saniye). Lütfen daha küçük bir klasör seçin."
+        ),
+        stage = "zaman_asimi"
+      )
+    }
+  }, delay = zaman_asimi_sn)
 
   tracked_future_promise(
     task_fn = function() {
@@ -127,23 +147,12 @@ cc_dispatch_run_preparation <- function(ctx) {
     packages = c("tools", "utils")
   ) |>
     promises::then(function(prep) {
+      zaman_asimi_durumu$pending <- FALSE
       if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
         return(NULL)
       }
 
       gecen <- as.numeric(difftime(Sys.time(), hazirlik_baslangic, units = "secs"))
-
-      if (gecen > zaman_asimi_sn) {
-        cc_fail_run_preparation(
-          ctx,
-          paste0(
-            "Çalışma alanı hazırlığı zaman aşımına uğradı (",
-            round(gecen), " saniye). Lütfen daha küçük bir klasör seçin."
-          ),
-          stage = "zaman_asimi"
-        )
-        return(NULL)
-      }
 
       cc_log_info(sprintf(
         paste0(
@@ -173,6 +182,7 @@ cc_dispatch_run_preparation <- function(ctx) {
       NULL
     }) |>
     promises::catch(function(e) {
+      zaman_asimi_durumu$pending <- FALSE
       if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
         return(NULL)
       }

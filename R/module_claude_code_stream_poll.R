@@ -182,6 +182,12 @@ cc_bind_claude_code_stream_polling <- function(input,
 
       if (!is.null(env)) {
         env$durduruldu <- TRUE
+        # Çıktı worker'ı ana süreçteki reaktif isteği göremez. Bu dosyanın
+        # kaldırılması, worker'ın her kaynak yazısından hemen önce yaptığı
+        # kontrolü düşürür ve durdurulmuş çalıştırmanın stale yazmasını keser.
+        if (nzchar(env$output_sync_guard %||% "")) {
+          unlink(env$output_sync_guard, force = TRUE)
+        }
       }
 
       proc <- rv$active_process

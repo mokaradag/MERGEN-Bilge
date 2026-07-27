@@ -13,7 +13,6 @@
 #           eşzamanlı veya hızlı ardışık çalıştırmaları birbirini bozmaz.
 # ==============================================================================
 
-# Kullanıcı için izole bir çalışma alanı oluşturur veya mevcut olanı döndürür
 get_user_workspace <- function(user_id, base_dir = NULL) {
   if (is.null(base_dir) || !nzchar(base_dir)) {
     base_dir <- file.path(tempdir(), "claude_code_workspaces")
@@ -32,11 +31,6 @@ get_user_workspace <- function(user_id, base_dir = NULL) {
 
   normalizePath(user_dir, mustWork = FALSE)
 }
-# Windows cmd.exe / Claude Code CLI için problem çıkarabilecek yol mu?
-# NOT: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters slash'ı
-# eşler. `\\rehisds\share\sub` girdisinde baştaki çift slash + segment arası
-# tek slash bulunduğundan eski gsub UNC tespitini kaçırıyordu. Tek ters slash'a
-# göre değiştirme tüm UNC varyantlarını kanonik forma getirir.
 is_problematic_windows_workdir <- function(path) {
   if (.Platform$OS.type != "windows") return(FALSE)
   if (is.null(path) || !nzchar(path)) return(FALSE)
@@ -101,11 +95,18 @@ mirror_directory_to_local_workspace <- function(source_dir,
     input_dir = target_dir
   )
 
+  basarisiz <- as.character(kopya$failed %||% character(0))
+
   list(
-    ok = TRUE,
+    ok = !length(basarisiz),
     selection = secim,
     copy = kopya,
-    scan = scan
+    scan = scan,
+    message = if (length(basarisiz)) {
+      paste0("Gerekli girdi dosyaları kopyalanamadı: ", paste(basarisiz, collapse = ", "))
+    } else {
+      ""
+    }
   )
 }
 
@@ -145,12 +146,8 @@ mirror_directory_to_local_workspace <- function(source_dir,
   yol <- as.character(existing_runtime_workdir %||% "")[1]
   if (is.na(yol) || !nzchar(yol)) return(FALSE)
 
-  # NOT: Karma slash bağlamlarında segment karşılaştırması doğru çalışsın diye
-  # tek ters slash'a göre değiştirme yapılır; çiftli gsub yalnızca baştaki çift
-  # slash'ı yakalardı.
   yol_slash <- gsub("\\", "/", yol, fixed = TRUE)
 
-  # Yalnızca runtime alanı altında olan klasörler yeniden kullanılabilir.
   beklenen_kullanici_segmenti <- paste0(
     "/claude_code_runtime/user_",
     as.character(user_id %||% "default"),
@@ -242,7 +239,7 @@ prepare_claude_runtime_workdir <- function(workdir,
     tarama$elapsed_ms, isTRUE(tarama$truncated), isTRUE(preflight$limited)
   ))
 
-  if (!isTRUE(problemli_mi)) {
+  if (!isTRUE(problemli_mi) && !isTRUE(preflight$limited)) {
     return(.cc_runtime_prepare_result(
       workdir = source_dir,
       source_dir = source_dir,
@@ -292,6 +289,10 @@ prepare_claude_runtime_workdir <- function(workdir,
     duzen$root
   ))
 
+  if (!isTRUE(aktarim$ok)) stop(
+    aktarim$message %||% "Gerekli girdi dosyaları runtime alanına kopyalanamadı.", call. = FALSE
+  )
+
   .cc_runtime_prepare_result(
     workdir = duzen$root,
     source_dir = source_dir,
@@ -310,7 +311,8 @@ sync_claude_runtime_workdir_back <- function(runtime_workdir,
                                              source_workdir,
                                              changed_files = character(0),
                                              layout = NULL,
-                                             limits = NULL) {
+                                             limits = NULL,
+                                             active_guard = NULL) {
   if (is.null(runtime_workdir) || !nzchar(runtime_workdir)) return(invisible(list()))
   if (is.null(source_workdir) || !nzchar(source_workdir)) return(invisible(list()))
   if (!dir.exists(runtime_workdir)) return(invisible(list()))
@@ -341,7 +343,7 @@ sync_claude_runtime_workdir_back <- function(runtime_workdir,
     return(invisible(list()))
   }
 
-  sonuclar <- cc_apply_output_sync_plan(plan)
+  sonuclar <- cc_apply_output_sync_plan(plan, active_guard = active_guard)
 
   basarili <- sum(vapply(sonuclar, function(x) isTRUE(x$success), logical(1)))
 

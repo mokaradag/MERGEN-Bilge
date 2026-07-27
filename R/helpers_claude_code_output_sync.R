@@ -79,9 +79,9 @@ cc_plan_output_sync <- function(changed_files,
 
     bolge <- cc_runtime_zone_of_path(kaynak, layout)
 
-    # Girdi kopyaları, metadata ve doküman destek çıktıları asla kaynak
-    # dizine geri yazılmaz.
-    if (!bolge %in% c("output", "root")) {
+    # Kopyalanmış girdilerdeki doğrulanmış Edit değişiklikleri de özgün göreli
+    # yollarına geri taşınır. Metadata ve doküman desteği hiçbir zaman taşınmaz.
+    if (!bolge %in% c("output", "input", "root")) {
       atlananlar <- c(atlananlar, kaynak)
       next
     }
@@ -94,7 +94,14 @@ cc_plan_output_sync <- function(changed_files,
       next
     }
 
-    rel <- cc_scan_relative_paths(kaynak, if (identical(bolge, "output")) layout$output else root_norm)
+    zone_root <- if (identical(bolge, "output")) {
+      layout$output
+    } else if (identical(bolge, "input")) {
+      layout$input
+    } else {
+      root_norm
+    }
+    rel <- cc_scan_relative_paths(kaynak, zone_root)
     rel <- as.character(rel)[1]
 
     if (!nzchar(rel) || grepl("(^|/)\\.\\.(/|$)", rel, perl = TRUE) ||
@@ -128,7 +135,7 @@ cc_plan_output_sync <- function(changed_files,
 #'
 #' @param plan cc_plan_output_sync() çıktısı
 #' @return Dosya başına yapılandırılmış sonuç listesi
-cc_apply_output_sync_plan <- function(plan) {
+cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
   if (!is.list(plan) || !length(plan$items %||% list())) {
     return(list())
   }
@@ -136,6 +143,9 @@ cc_apply_output_sync_plan <- function(plan) {
   sonuclar <- list()
 
   for (oge in plan$items) {
+    if (!is.null(active_guard) && nzchar(active_guard) && !file.exists(active_guard)) {
+      break
+    }
     hedef_dizin <- dirname(oge$dest_path)
 
     if (!dir.exists(hedef_dizin)) {
@@ -145,6 +155,9 @@ cc_apply_output_sync_plan <- function(plan) {
     hata <- ""
 
     ok <- tryCatch(
+      if (!is.null(active_guard) && nzchar(active_guard) && !file.exists(active_guard)) {
+        FALSE
+      } else
       file.copy(
         from = oge$source_path,
         to = oge$dest_path,
@@ -302,10 +315,13 @@ cc_cleanup_stale_document_support_dirs <- function(user_id = NULL,
 cc_snapshot_run_output_area <- function(runtime_workdir,
                                         mirrored = FALSE,
                                         limits = NULL) {
-  haric <- cc_scan_default_excluded_dirs()
-
-  if (isTRUE(mirrored)) {
-    haric <- unique(c(haric, cc_scan_runtime_excluded_dirs()))
+  # İzole runtime'da build/dist/bin gibi adlar onaylı output alanının normal
+  # parçalarıdır; basename tabanlı kaynak-ağaç hariçleri burada uygulanmaz.
+  # Input da başlangıç snapshot'ına girer ki Edit değişiklikleri bulunabilsin.
+  haric <- if (isTRUE(mirrored)) {
+    setdiff(cc_scan_runtime_excluded_dirs(), "input")
+  } else {
+    cc_scan_default_excluded_dirs()
   }
 
   snapshot_claude_code_workdir_files(
