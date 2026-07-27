@@ -22,6 +22,21 @@
   env
 }
 
+# Kaynak metni bayt güvenli okur (Windows VM'de geçersiz UTF-8 baytları
+# taramayı kırmasın diye repo genelindeki desen kullanılır).
+.cc_bounded_scan_source_text <- function(code_only = FALSE) {
+  yol <- file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_bounded_scan.R")
+  ham <- readBin(yol, what = "raw", n = file.info(yol)$size)
+  metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+
+  if (!isTRUE(code_only)) return(metin)
+
+  # Açıklayıcı yorum satırları yasaklı-desen taramasında yanlış pozitif
+  # üretmesin diye ayıklanır (repo genelindeki tarama kuralı).
+  satirlar <- strsplit(metin, "\r?\n", perl = TRUE)[[1]]
+  paste(satirlar[!grepl("^\\s*#", satirlar)], collapse = "\n")
+}
+
 .cc_bounded_scan_fixture <- function(dosya_sayisi = 12L) {
   kok <- withr::local_tempdir(.local_envir = parent.frame())
 
@@ -166,19 +181,16 @@ test_that("erişilemeyen alt dizin taramayı düşürmez", {
 
 test_that("dizin listeleyici hatası tarama hatalarına aktarılır", {
   skip_on_os("windows")
+  skip_if(identical(Sys.info()[["effective_user"]], "root"),
+          "root okuma iznini yok sayar")
 
   env <- .cc_bounded_scan_env()
   kok <- withr::local_tempdir()
-  araclar <- withr::local_tempdir()
-  sahte_find <- file.path(araclar, "find")
 
-  writeLines(
-    c("#!/bin/sh", "echo 'paylasim erisilemez' >&2", "exit 23"),
-    sahte_find,
-    useBytes = TRUE
-  )
-  Sys.chmod(sahte_find, "755")
-  withr::local_path(c(araclar, Sys.getenv("PATH")))
+  # Okunamayan kök dizin: list.files() sessizce boş döner, bu yüzden
+  # listeleyici gerçek erişim hatasını ayrıca tespit etmelidir.
+  Sys.chmod(kok, "000")
+  withr::defer(Sys.chmod(kok, "700"))
 
   sonuc <- env$cc_scan_directory_bounded(kok)
 
@@ -186,8 +198,52 @@ test_that("dizin listeleyici hatası tarama hatalarına aktarılır", {
   expect_true(isTRUE(sonuc$truncated))
   expect_identical(sonuc$truncated_reason, "listing_error")
   expect_length(sonuc$files, 0L)
-  expect_true(any(grepl("kod 23", sonuc$errors, fixed = TRUE)))
-  expect_true(any(grepl("paylasim erisilemez", sonuc$errors, fixed = TRUE)))
+  expect_true(any(grepl("okuma izni yok", sonuc$errors, fixed = TRUE)))
+})
+
+test_that("dizin listeleyici kabuk alt süreci çalıştırmaz", {
+  # REGRESYON: powershell.exe/find ile listeleme, Türkçe adları konsol OEM
+  # kod sayfasıyla bozuyor ve uzun UNC yollarını satır genişliğinde katlıyordu.
+  kaynak <- .cc_bounded_scan_source_text(code_only = TRUE)
+
+  expect_false(grepl("powershell", kaynak, fixed = TRUE))
+  expect_false(grepl("Get-ChildItem", kaynak, fixed = TRUE))
+  expect_false(grepl("processx", kaynak, fixed = TRUE))
+})
+
+test_that("Türkçe karakterli dosya adları bozulmadan listelenir", {
+  env <- .cc_bounded_scan_env()
+  kok <- withr::local_tempdir()
+
+  # Parser/konsol bağımsızlığı için adlar Unicode kod noktalarından kurulur.
+  turkce_ad <- paste0(
+    "EK-U S", intToUtf8(0x00FC), "re", intToUtf8(0x00E7), " ",
+    intToUtf8(0x0130), intToUtf8(0x015F), " Ak", intToUtf8(0x0131),
+    intToUtf8(0x015F), "lar", intToUtf8(0x0131), ".txt"
+  )
+
+  hedef <- file.path(kok, turkce_ad)
+  yazildi <- tryCatch({
+    writeLines("veri", hedef, useBytes = TRUE)
+    file.exists(hedef)
+  }, error = function(e) FALSE, warning = function(w) FALSE)
+  skip_if_not(isTRUE(yazildi), "Dosya sistemi Türkçe adı desteklemiyor.")
+
+  sonuc <- env$cc_scan_directory_bounded(kok)
+
+  expect_true(isTRUE(sonuc$ok))
+  expect_length(sonuc$files, 1L)
+
+  bulunan <- basename(sonuc$files[[1]])
+  # Listelenen yol gerçekten diskte çözülebilmelidir; mojibake durumunda
+  # bayt dizisi farklı olacağı için file.exists() FALSE dönerdi.
+  expect_true(file.exists(sonuc$files[[1]]))
+  expect_identical(enc2utf8(bulunan), enc2utf8(turkce_ad))
+
+  # OEM -> ANSI bozulmasının imzası olan karakterler hiç görünmemelidir.
+  expect_false(grepl(intToUtf8(0x20AC), bulunan, fixed = TRUE))
+  expect_false(grepl(intToUtf8(0x0178), bulunan, fixed = TRUE))
+  expect_false(grepl(intToUtf8(0x2021), bulunan, fixed = TRUE))
 })
 
 test_that("alt dizin listeleme hatası erişilebilir kardeşleri engellemez", {

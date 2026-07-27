@@ -48,12 +48,29 @@ test_that("Codex hardening files parse and loader references both layers", {
   )
   expect_silent(lapply(files, parse))
 
+  # Sertleştirme dosyaları kaynak manifestinden yüklenir. Manifest dışı
+  # geç-yükleme, dosyaları seam sahipliği olmayan ölü koda çevirmişti.
+  expect_source_manifest_contains_for_tests(c(
+    "R/helpers_claude_code_codex_runtime_fixes.R",
+    "R/helpers_claude_code_codex_output_fixes.R"
+  ))
+
+  # Sertleştirmeler mevcut tanımların üzerine yazdığı için sıra kritiktir:
+  # önce değiştirilen özgün yardımcılar, sonra runtime, en son output.
+  expect_source_manifest_order_for_tests(c(
+    "R/helpers_claude_code_bounded_scan.R",
+    "R/helpers_claude_code_runtime_prepare.R",
+    "R/helpers_claude_code_output_sync.R",
+    "R/helpers_claude_code_run_completion.R",
+    "R/helpers_claude_code_codex_runtime_fixes.R",
+    "R/helpers_claude_code_codex_output_fixes.R"
+  ))
+
+  # Manifest dışı geç-yükleyici geri gelmemelidir.
   loader <- paste(readLines(
     file.path(repo_root, "R", "server_observers_misc.R"), warn = FALSE
   ), collapse = "\n")
-  expect_match(loader, "helpers_claude_code_codex_runtime_fixes\\.R")
-  expect_match(loader, "helpers_claude_code_codex_output_fixes\\.R")
-  expect_match(loader, "load_claude_code_codex_review_fixes\\(\\)")
+  expect_false(grepl("load_claude_code_codex_review_fixes", loader, fixed = TRUE))
 })
 
 test_that("ordinary local workdirs are always isolated and unresolved paths fail", {

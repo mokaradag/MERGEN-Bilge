@@ -361,7 +361,14 @@ source_manifest_sections <- list(
     # Ana süreç tarafı: hazırlık gönderimi/aşama durumu ve süreç başlatma,
     # ardından çalıştırma sonrası çıktı işleme ve sonlandırma.
     "R/helpers_claude_code_run_dispatch.R",
-    "R/helpers_claude_code_run_completion.R"
+    "R/helpers_claude_code_run_completion.R",
+    # PR #672 Codex inceleme sertleştirmeleri. Bu iki dosya yukarıdaki Bilge
+    # Yolaç yardımcılarında tanımlı fonksiyonların bir kısmını fail-closed
+    # sürümleriyle DEĞİŞTİRİR; bu yüzden zincirin EN SONUNDA ve runtime ->
+    # output sırasıyla yüklenmelidir. Manifest dışı geç-yükleme denenmemeli:
+    # o yol dosyaları sahipsiz bırakıp (seam doctor) sessizce ölü koda çevirir.
+    "R/helpers_claude_code_codex_runtime_fixes.R",
+    "R/helpers_claude_code_codex_output_fixes.R"
   ),
 
   # llm_pipeline: LLM hattı: araç formatlayıcılar, yanıt post-process,
