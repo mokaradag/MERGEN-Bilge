@@ -164,6 +164,32 @@ test_that("erişilemeyen alt dizin taramayı düşürmez", {
   expect_true("gorunur.txt" %in% basename(sonuc$files))
 })
 
+test_that("dizin listeleyici hatası tarama hatalarına aktarılır", {
+  skip_on_os("windows")
+
+  env <- .cc_bounded_scan_env()
+  kok <- withr::local_tempdir()
+  araclar <- withr::local_tempdir()
+  sahte_find <- file.path(araclar, "find")
+
+  writeLines(
+    c("#!/bin/sh", "echo 'paylasim erisilemez' >&2", "exit 23"),
+    sahte_find,
+    useBytes = TRUE
+  )
+  Sys.chmod(sahte_find, "755")
+  withr::local_path(c(araclar, Sys.getenv("PATH")))
+
+  sonuc <- env$cc_scan_directory_bounded(kok)
+
+  expect_false(isTRUE(sonuc$ok))
+  expect_true(isTRUE(sonuc$truncated))
+  expect_identical(sonuc$truncated_reason, "listing_error")
+  expect_length(sonuc$files, 0L)
+  expect_true(any(grepl("kod 23", sonuc$errors, fixed = TRUE)))
+  expect_true(any(grepl("paylasim erisilemez", sonuc$errors, fixed = TRUE)))
+})
+
 test_that("dizin bağlantısı döngüsü sonsuz gezinmeye yol açmaz", {
   skip_on_os("windows")
 

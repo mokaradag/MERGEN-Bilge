@@ -184,7 +184,8 @@ mirror_directory_to_local_workspace <- function(source_dir,
         total_bytes = scan$total_bytes,
         elapsed_ms = scan$elapsed_ms,
         truncated = isTRUE(scan$truncated),
-        truncated_reason = scan$truncated_reason
+        truncated_reason = scan$truncated_reason,
+        errors = scan$errors %||% character(0)
       )
     } else {
       NULL
@@ -209,7 +210,6 @@ prepare_claude_runtime_workdir <- function(workdir,
   }
 
   original_workdir <- as.character(workdir %||% "")[1]
-
   source_dir <- resolve_claude_runtime_source_dir(original_workdir)
 
   if (!nzchar(source_dir)) {
@@ -225,13 +225,10 @@ prepare_claude_runtime_workdir <- function(workdir,
 
     return(.cc_runtime_prepare_result(workdir))
   }
-
   problemli_mi <- isTRUE(is_problematic_windows_workdir(original_workdir)) ||
     isTRUE(is_problematic_windows_workdir(source_dir))
-
   tarama <- cc_scan_source_workdir(source_dir, limits = limits)
   preflight <- cc_evaluate_workdir_preflight(tarama, limits = limits)
-
   cc_log_info(sprintf(
     "%s [WORKDIR_PREFLIGHT] dosya=%d | dizin=%d | bayt=%.0f | sure_ms=%.0f | kesildi=%s | sinirli=%s",
     CLAUDE_CODE_LOG_PREFIX,
@@ -239,6 +236,9 @@ prepare_claude_runtime_workdir <- function(workdir,
     tarama$elapsed_ms, isTRUE(tarama$truncated), isTRUE(preflight$limited)
   ))
 
+  if (isTRUE(preflight$blocked)) stop(
+    preflight$message %||% "Kaynak klasör taraması başarısız oldu.", call. = FALSE
+  )
   if (!isTRUE(problemli_mi) && !isTRUE(preflight$limited)) {
     return(.cc_runtime_prepare_result(
       workdir = source_dir,

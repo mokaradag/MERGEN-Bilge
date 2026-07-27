@@ -52,6 +52,20 @@ cc_is_active_run <- function(rv, request_id = NULL) {
   !is.na(active) && nzchar(active) && identical(active, request_id)
 }
 
+#' Bir çalışma alanının aktif çalışma lease dosyasını bırak
+#'
+#' Terminal yolların aynı idempotent temizliği paylaşmasını sağlar. Boş veya
+#' daha önce kaldırılmış lease yolları başarıyla bırakılmış kabul edilir.
+cc_release_runtime_lease <- function(runtime_lease = NULL) {
+  lease <- tryCatch(as.character(runtime_lease %||% "")[1], error = function(e) "")
+  if (is.na(lease) || !nzchar(lease)) return(invisible(FALSE))
+
+  tryCatch({
+    unlink(lease, force = TRUE)
+    invisible(!file.exists(lease))
+  }, error = function(e) invisible(FALSE))
+}
+
 cc_abort_run_before_streaming <- function(rv, request_id = NULL) {
   if (!cc_is_active_run(rv, request_id)) {
     return(invisible(FALSE))
@@ -268,6 +282,7 @@ cc_handle_document_summary_run <- function(session,
                                            karakter,
                                            karakter_id,
                                            karakter_renk,
+                                           runtime_lease = "",
                                            finalize_streaming,
                                            observe_dir_contents) {
   # Doküman görevlerinde Claude Code CLI oturumu kesinlikle kullanılmaz.
@@ -277,6 +292,7 @@ cc_handle_document_summary_run <- function(session,
   target_dir <- kaynak_calisma_dizini %||% calisma_dizini
 
   if (!isTRUE(dokuman_baglami$text_sidecars_ready)) {
+    cc_release_runtime_lease(runtime_lease)
     cikarma_detayi <- paste(
       c(
         "Doküman görevi algılandı ancak yerel metin çıkarımı hazırlanamadı.",
@@ -361,6 +377,7 @@ cc_handle_document_summary_run <- function(session,
     session_token = session$token
   ) |>
     promises::then(function(sonuc) {
+      on.exit(cc_release_runtime_lease(runtime_lease), add = TRUE)
       if (!cc_is_active_run(rv, run_request_id)) {
         return(NULL)
       }
@@ -542,6 +559,7 @@ cc_handle_document_summary_run <- function(session,
       NULL
     }) |>
     promises::catch(function(e) {
+      on.exit(cc_release_runtime_lease(runtime_lease), add = TRUE)
       if (!cc_is_active_run(rv, run_request_id)) {
         return(NULL)
       }

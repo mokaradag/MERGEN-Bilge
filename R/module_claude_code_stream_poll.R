@@ -182,6 +182,7 @@ cc_bind_claude_code_stream_polling <- function(input,
 
       if (!is.null(env)) {
         env$durduruldu <- TRUE
+        cc_release_runtime_lease(env$runtime_lease %||% "")
         # Çıktı worker'ı ana süreçteki reaktif isteği göremez. Bu dosyanın
         # kaldırılması, worker'ın her kaynak yazısından hemen önce yaptığı
         # kontrolü düşürür ve durdurulmuş çalıştırmanın stale yazmasını keser.

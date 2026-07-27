@@ -251,6 +251,23 @@ test_that("preflight büyük klasörü sınırlı mod olarak bildirir", {
   expect_true(grepl("güvenli çalışma sınırlarını", karar$message, fixed = TRUE))
 })
 
+test_that("preflight dizin listeleme hatasını çalışmayı engelleyerek bildirir", {
+  env <- .cc_prepare_env()
+  tarama <- list(
+    ok = FALSE, file_count = 2L, dir_count = 1L, total_bytes = 8,
+    truncated = TRUE, truncated_reason = "listing_error",
+    errors = "alt: Dizin listeleyici kod 23 ile sonlandı"
+  )
+
+  karar <- env$cc_evaluate_workdir_preflight(tarama)
+
+  expect_false(isTRUE(karar$ok))
+  expect_true(isTRUE(karar$blocked))
+  expect_true(isTRUE(karar$limited))
+  expect_true(grepl("kod 23", karar$message, fixed = TRUE))
+  expect_identical(karar$metrics$errors, tarama$errors)
+})
+
 # ------------------------------------------------------------------------------
 # ÇIKTI ANLIK GÖRÜNTÜSÜ VE GERİ AKTARIM
 # ------------------------------------------------------------------------------

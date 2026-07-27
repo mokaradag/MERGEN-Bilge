@@ -126,6 +126,10 @@ create_akis_yardimcilari <- function(session, ns, rv) {
       return(invisible(FALSE))
     }
 
+    # Durdurma, zaman aşımı ve süreç başlatma hatası dahil bütün terminal
+    # yollar, stream ortamı reaktif durumdan çıkarılmadan lease'i bırakır.
+    cc_release_runtime_lease(rv$stream_env$runtime_lease %||% "")
+
     rv$is_running <- FALSE
     rv$active_process <- NULL
     rv$poll_state <- NULL
