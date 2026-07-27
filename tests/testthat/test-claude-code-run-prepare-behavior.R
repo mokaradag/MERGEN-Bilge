@@ -477,6 +477,36 @@ test_that("eşzamanlı doküman çalıştırmaları ayrı destek dizini kullanı
   expect_true(dir.exists(ikinci))
 })
 
+test_that("doküman aday sınırı uzantı filtresinden sonra uygulanır", {
+  env <- .cc_prepare_env()
+  kaynak <- withr::local_tempdir()
+  for (i in seq_len(250L)) writeLines("metin", file.path(kaynak, sprintf("a%03d.txt", i)))
+  rapor <- file.path(kaynak, "z-rapor.pdf")
+  writeLines("pdf", rapor)
+
+  source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_document_extractors.R"),
+    encoding = "UTF-8", local = env
+  )
+  bulunan <- env$list_claude_code_binary_documents(kaynak, extensions = "pdf", max_files = 1L)
+  expect_identical(normalizePath(bulunan), normalizePath(rapor))
+})
+
+test_that("başarısız çıktı aktarımları başarılı sonuç sayılmaz", {
+  env <- .cc_dispatch_env()
+  source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_run_completion.R"),
+    encoding = "UTF-8", local = env
+  )
+  outputs <- list(sync_results = list(
+    list(success = TRUE, dest_path = "iyi.txt"),
+    list(success = FALSE, dest_path = "yazilamadi.txt", error = "izin yok")
+  ))
+  expect_identical(length(env$cc_output_sync_failures(outputs)), 1L)
+  completion <- .cc_read_prepare_text("R/helpers_claude_code_run_completion.R")
+  expect_true(grepl("cc_report_output_sync_failure\\(ctx, outputs\\)", completion, perl = TRUE))
+})
+
 test_that("eskiyen doküman destek dizinleri yaşa göre temizlenir", {
   env <- .cc_prepare_env()
 

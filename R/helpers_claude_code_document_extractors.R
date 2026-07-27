@@ -68,29 +68,37 @@ list_claude_code_binary_documents <- function(workdir,
     extensions <- get_claude_code_binary_doc_extensions()
   }
 
-  ogeler <- tryCatch(
-    list.files(
-      workdir,
-      full.names = TRUE,
-      recursive = FALSE,
-      all.files = FALSE,
-      include.dirs = FALSE
-    ),
-    error = function(e) character(0)
+  if (!exists("cc_scan_directory_bounded", mode = "function", inherits = TRUE)) {
+    stop("Sınırlı doküman tarayıcısı yüklenmemiş.", call. = FALSE)
+  }
+
+  # Aday sınırı uzantı filtresinden SONRA uygulanır. Böylece yüzlerce metin
+  # dosyasından sonra sıralanan bir PDF/DOCX gözden kaçmaz; taramanın kendisi
+  # yine giriş/süre sınırlarıyla artımlı kalır.
+  tarama <- cc_scan_directory_bounded(
+    root = workdir,
+    max_files = 20000L,
+    max_dirs = 0L,
+    max_depth = 0L,
+    max_elapsed_ms = 4000L,
+    max_entries = 20000L,
+    exclude_dirs = character(0),
+    exclude_rel_paths = character(0)
   )
+  ogeler <- as.character(tarama$files %||% character(0))
 
   if (!length(ogeler)) {
     return(character(0))
   }
 
+  uzantilar <- tolower(tools::file_ext(ogeler))
+  ogeler <- unique(ogeler[nzchar(uzantilar) & uzantilar %in% tolower(extensions)])
+
   max_files <- suppressWarnings(as.integer(max_files[1]))
   if (!is.na(max_files) && max_files > 0L && length(ogeler) > max_files) {
     ogeler <- ogeler[seq_len(max_files)]
   }
-
-  uzantilar <- tolower(tools::file_ext(ogeler))
-
-  unique(ogeler[nzchar(uzantilar) & uzantilar %in% tolower(extensions)])
+  ogeler
 }
 
 # Eşzamanlı çalıştırmaların birbirinin çıkarımlarını silmemesi için doküman

@@ -172,6 +172,38 @@ cc_process_run_outputs <- function(request) {
   )
 }
 
+cc_output_sync_failures <- function(outputs) {
+  Filter(
+    function(x) is.list(x) && !isTRUE(x$success),
+    outputs$sync_results %||% list()
+  )
+}
+
+cc_report_output_sync_failure <- function(ctx, outputs) {
+  basarisiz <- cc_output_sync_failures(outputs)
+  if (!length(basarisiz)) return(FALSE)
+
+  yollar <- vapply(basarisiz, function(x) basename(x$dest_path %||% x$source_path %||% "dosya"), character(1))
+  mesaj <- paste0(
+    "Çalıştırma tamamlandı ancak ", length(basarisiz),
+    " çıktı kaynak klasöre aktarılamadı: ", paste(unique(yollar), collapse = ", ")
+  )
+  ctx$session$sendCustomMessage("cc-stream-end", list(target = ctx$ns("output_area")))
+  ctx$session$sendCustomMessage("cc-add-message", list(
+    target = ctx$ns("output_area"), type = "error",
+    content = htmltools::htmlEscape(mesaj), timestamp = format(Sys.time(), "%H:%M:%S")
+  ))
+  ctx$rv$last_result <- list(success = FALSE, output = "", error = mesaj)
+  if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
+    cc_persist_run_result(ctx$rv, ctx$env, status = "failed", final_output = mesaj)
+  }
+  cc_finalize_if_active(
+    ctx$rv, ctx$env$request_id, ctx$finalize_streaming,
+    durum_metin = "Aktarım Hatası", durum_ikon = "exclamation-triangle", durum_renk = "#E57373"
+  )
+  TRUE
+}
+
 #' Çıktı işlemesini arka plana gönder ve sonucunda çalıştırmayı sonlandır
 #'
 #' @param ctx Sonlandırma bağlamı (session, ns, rv, env, ayristirma, ...)
@@ -226,6 +258,11 @@ cc_dispatch_run_output_processing <- function(ctx) {
       # Kaynak dizine gerçekten dosya aktarıldıysa bunu aşama olarak bildir.
       if (length(outputs$sync_results %||% list()) > 0L) {
         cc_send_run_stage(ctx$session, ctx$ns, "aktarim")
+      }
+
+      if (cc_report_output_sync_failure(ctx, outputs)) {
+        unlink(istek$active_guard, force = TRUE)
+        return(NULL)
       }
 
       cc_finish_streaming_run(ctx, outputs)
