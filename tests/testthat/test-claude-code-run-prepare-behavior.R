@@ -303,7 +303,7 @@ test_that("yalnızca yeni veya değişen çıktı dosyaları geri aktarılır", 
   expect_false(dir.exists(file.path(kaynak, "metadata")))
 })
 
-test_that("runtime input düzenlemeleri aktarılır, dahili alanlar aktarılmaz", {
+test_that("yalnızca output düzenlemeleri aktarılır, diğer runtime alanları aktarılmaz", {
   env <- .cc_prepare_env()
   kaynak <- .cc_prepare_source_dir(2L)
 
@@ -327,9 +327,8 @@ test_that("runtime input düzenlemeleri aktarılır, dahili alanlar aktarılmaz"
     source_workdir = kaynak
   )
 
-  expect_length(plan$items, 1L)
-  expect_identical(plan$items[[1]]$relative_path, "kaynak01.txt")
-  expect_equal(length(plan$skipped), 2L)
+  expect_length(plan$items, 0L)
+  expect_equal(length(plan$skipped), 3L)
 })
 
 test_that("yol kaçışı ve izinli kök dışı hedefler reddedilir", {

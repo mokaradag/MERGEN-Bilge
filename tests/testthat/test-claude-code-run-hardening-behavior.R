@@ -81,6 +81,23 @@ test_that("cc_scan_list_dir_bounded var olmayan dizinde güvenle boş döner", {
   expect_false(isTRUE(sonuc$truncated))
 })
 
+test_that("cc_list_dir_relaxed sınırlı deneme boş veya hatalıysa sınırsız yola düşmez", {
+  env <- .cc_hardening_env("helpers_claude_code_directory_listing.R")
+  env$list.files <- function(...) stop("sınırsız listeleme çağrılmamalı")
+
+  env$cc_scan_list_dir_bounded <- function(...) {
+    list(entries = character(0), truncated = TRUE)
+  }
+  bos <- env$cc_list_dir_relaxed(tempdir())
+  expect_length(bos, 0L)
+  expect_true(isTRUE(attr(bos, "truncated", exact = TRUE)))
+
+  env$cc_scan_list_dir_bounded <- function(...) stop("zaman aşımı")
+  hatali <- env$cc_list_dir_relaxed(tempdir())
+  expect_length(hatali, 0L)
+  expect_true(isTRUE(attr(hatali, "truncated", exact = TRUE)))
+})
+
 # ------------------------------------------------------------------------------
 # 2) KESİLMİŞ TARAMADA ADI GEÇEN DOSYA DİSKTEN ÇÖZÜLÜR
 # ------------------------------------------------------------------------------
@@ -216,6 +233,53 @@ test_that("cc_output_sync_skipped_results atlanan onaylı çıktı yoksa boş d�
     env$cc_output_sync_skipped_results(list(skipped_approved = list())),
     0L
   )
+})
+
+test_that("cc_plan_output_sync input ve runtime kökü değişikliklerini reddeder", {
+  env <- .cc_hardening_env()
+  runtime <- withr::local_tempdir()
+  kaynak <- withr::local_tempdir()
+  duzen <- list(
+    root = runtime,
+    input = file.path(runtime, "input"),
+    output = file.path(runtime, "output"),
+    metadata = file.path(runtime, "metadata"),
+    document_support = file.path(runtime, "document_support")
+  )
+  dir.create(duzen$input)
+  dir.create(duzen$output)
+  input <- file.path(duzen$input, "girdi.txt")
+  root_file <- file.path(runtime, "cli.log")
+  writeLines("değişti", input, useBytes = TRUE)
+  writeLines("artifact", root_file, useBytes = TRUE)
+
+  plan <- env$cc_plan_output_sync(c(input, root_file), duzen, kaynak)
+
+  expect_length(plan$items, 0L)
+  expect_setequal(plan$skipped, c(input, root_file))
+})
+
+test_that("cc_apply_output_sync_plan var olan symlink hedefini izlemez", {
+  skip_on_os("windows")
+  env <- .cc_hardening_env()
+  kaynak <- withr::local_tempdir()
+  disari <- withr::local_tempdir()
+  runtime <- withr::local_tempdir()
+  cikti <- file.path(runtime, "rapor.txt")
+  dis_hedef <- file.path(disari, "onemli.txt")
+  hedef <- file.path(kaynak, "rapor.txt")
+  writeLines("yeni", cikti, useBytes = TRUE)
+  writeLines("koru", dis_hedef, useBytes = TRUE)
+  expect_true(file.symlink(dis_hedef, hedef))
+
+  plan <- list(
+    items = list(list(source_path = cikti, dest_path = hedef, size = 4)),
+    source_workdir = kaynak
+  )
+  sonuc <- env$cc_apply_output_sync_plan(plan)
+
+  expect_false(isTRUE(sonuc[[1]]$success))
+  expect_identical(readLines(dis_hedef, warn = FALSE), "koru")
 })
 
 # ------------------------------------------------------------------------------

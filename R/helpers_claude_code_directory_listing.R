@@ -32,21 +32,26 @@ cc_build_dir_variants <- function(dir_path) {
 # numaralandırmadır; yüz binlerce girdili büyük/UNC bir klasör tüm oturumları
 # bloke edemez. Sınırlı tarayıcı kullanılamazsa eski davranışa düşülür.
 cc_list_dir_relaxed <- function(dir_path, max_entries = 500L, timeout_ms = 2000L) {
-  # cc_scan_list_dir_bounded kendi içinde tam tryCatch korumalıdır ve hata
-  # durumunda güvenli boş sonuç döndürür; burada ek sarmalayıcıya gerek yoktur.
+  # Sınırlı uygulama bulunduysa bu çağrıdan sonra ASLA sınırsız listelemeye
+  # düşülmez. Özellikle yavaş UNC dizinlerinde zaman aşımı/hata sonucu boş
+  # gelebilir; aynı dizini list.files()/fs::dir_ls() ile yeniden denemek ana
+  # Shiny olay döngüsünü bloke eder.
   if (exists("cc_scan_list_dir_bounded", mode = "function", inherits = TRUE)) {
-    sinirli <- cc_scan_list_dir_bounded(
-      dir_path,
-      max_entries = max_entries,
-      timeout_ms = timeout_ms
+    sinirli <- try(
+      cc_scan_list_dir_bounded(
+        dir_path,
+        max_entries = max_entries,
+        timeout_ms = timeout_ms
+      ),
+      silent = TRUE
     )
 
-    if (is.list(sinirli) && length(sinirli$entries)) {
-      return(structure(
-        unique(as.character(sinirli$entries)),
-        truncated = isTRUE(sinirli$truncated)
-      ))
-    }
+    gecerli <- is.list(sinirli) && !inherits(sinirli, "try-error")
+    entries <- if (gecerli) sinirli$entries else character(0)
+    return(structure(
+      unique(as.character(entries %||% character(0))),
+      truncated = !gecerli || isTRUE(sinirli$truncated)
+    ))
   }
 
   files_base <- tryCatch(

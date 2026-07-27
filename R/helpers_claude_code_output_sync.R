@@ -62,7 +62,6 @@ cc_plan_output_sync <- function(changed_files,
   max_file_bytes <- cc_runtime_limit("max_output_file_bytes", 100 * 1024^2, limits)
   max_total_bytes <- cc_runtime_limit("max_output_total_bytes", 400 * 1024^2, limits)
 
-  root_norm <- .cc_scan_norm(layout$root %||% "")
   hedef_kok_key <- .cc_scan_key(hedef_kok)
 
   ogeler <- list()
@@ -83,9 +82,10 @@ cc_plan_output_sync <- function(changed_files,
 
     bolge <- cc_runtime_zone_of_path(kaynak, layout)
 
-    # Kopyalanmış girdilerdeki doğrulanmış Edit değişiklikleri de özgün göreli
-    # yollarına geri taşınır. Metadata ve doküman desteği hiçbir zaman taşınmaz.
-    if (!bolge %in% c("output", "input", "root")) {
+    # İzole çalışma alanı sözleşmesi gereği yalnızca onaylı output bölgesi
+    # kaynak dizine geri taşınabilir. Kopyalanmış input dosyalarındaki edits ve
+    # runtime kökündeki tesadüfi CLI dosyaları kaynak ağacı değiştiremez.
+    if (!identical(bolge, "output")) {
       atlananlar <- c(atlananlar, kaynak)
       next
     }
@@ -103,13 +103,7 @@ cc_plan_output_sync <- function(changed_files,
       next
     }
 
-    zone_root <- if (identical(bolge, "output")) {
-      layout$output
-    } else if (identical(bolge, "input")) {
-      layout$input
-    } else {
-      root_norm
-    }
+    zone_root <- layout$output
     rel <- cc_scan_relative_paths(kaynak, zone_root)
     rel <- as.character(rel)[1]
 
@@ -222,6 +216,38 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     }
 
     hata <- ""
+
+    # file.copy(overwrite = TRUE) var olan hedef bağlantısını izleyebilir ve
+    # onaylı kök dışındaki dosyayı ezebilir. Unix symlink'lerini doğrudan,
+    # Windows reparse-point/junction benzeri hedefleri de normalizePath ile
+    # çözülmüş hedefin onaylı kökün dışına çıkması üzerinden reddet.
+    hedef_var <- isTRUE(file.exists(oge$dest_path)) || isTRUE(dir.exists(oge$dest_path))
+    hedef_link <- if (hedef_var) {
+      tryCatch(nzchar(Sys.readlink(oge$dest_path)), error = function(e) FALSE)
+    } else {
+      FALSE
+    }
+    resolved_dest <- if (hedef_var) {
+      tryCatch(
+        .cc_scan_norm(normalizePath(oge$dest_path, winslash = "/", mustWork = TRUE)),
+        error = function(e) ""
+      )
+    } else {
+      oge$dest_path
+    }
+    resolved_dest_key <- .cc_scan_key(resolved_dest)
+    hedef_guvenli <- nzchar(resolved_dest) && (
+      identical(resolved_dest_key, approved_key) ||
+        startsWith(resolved_dest_key, paste0(approved_key, "/"))
+    )
+    if (isTRUE(hedef_link) || !isTRUE(hedef_guvenli)) {
+      sonuclar[[length(sonuclar) + 1L]] <- list(
+        source_path = oge$source_path, dest_path = oge$dest_path,
+        success = FALSE, size = oge$size,
+        error = "Hedef dosya bağlantı/reparse-point veya onaylı kökün dışında"
+      )
+      next
+    }
 
     ok <- tryCatch(
       if (!is.null(active_guard) && nzchar(active_guard) && !file.exists(active_guard)) {
