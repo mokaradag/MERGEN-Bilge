@@ -251,6 +251,27 @@ test_that("preflight büyük klasörü sınırlı mod olarak bildirir", {
   expect_true(grepl("güvenli çalışma sınırlarını", karar$message, fixed = TRUE))
 })
 
+test_that("yeniden kullanılan runtime bağlantılı bölgeyi reddeder", {
+  skip_on_os("windows")
+  env <- .cc_prepare_env()
+  layout <- env$cc_runtime_dir_layout(user_id = 77L, run_token = "baglantili")
+  layout <- env$cc_runtime_ensure_layout(layout)
+  disari <- withr::local_tempdir()
+
+  unlink(layout$output, recursive = TRUE, force = TRUE)
+  skip_if_not(
+    isTRUE(file.symlink(disari, layout$output)),
+    "Sembolik bağlantı oluşturulamadı."
+  )
+
+  expect_error(
+    env$cc_runtime_ensure_layout(layout),
+    "Runtime bölgesi bağlantı olamaz: output",
+    fixed = TRUE
+  )
+  expect_false(file.exists(file.path(disari, "yazildi.txt")))
+})
+
 test_that("preflight dizin listeleme hatasını çalışmayı engelleyerek bildirir", {
   env <- .cc_prepare_env()
   tarama <- list(

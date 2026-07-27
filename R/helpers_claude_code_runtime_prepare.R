@@ -71,9 +71,60 @@ cc_runtime_dir_layout <- function(user_id = NULL, run_token = "run") {
 #' @param layout cc_runtime_dir_layout() çıktısı
 #' @return Normalize edilmiş düzen listesi
 cc_runtime_ensure_layout <- function(layout) {
-  for (yol in unlist(layout, use.names = FALSE)) {
-    if (!dir.exists(yol)) {
-      dir.create(yol, recursive = TRUE, showWarnings = FALSE)
+  gerekli <- c("root", "input", "output", "metadata", "document_support")
+  if (!is.list(layout) || !all(gerekli %in% names(layout))) {
+    stop("Runtime dizini eksik veya geçersiz.")
+  }
+
+  baglanti_mi <- function(yol) {
+    hedef <- tryCatch(Sys.readlink(yol), error = function(e) NA_character_)
+    length(hedef) == 1L && !is.na(hedef) && nzchar(hedef)
+  }
+
+  kok <- as.character(layout$root)[1]
+  if (isTRUE(baglanti_mi(kok))) {
+    stop("Runtime kök dizini bağlantı olamaz.")
+  }
+
+  if (!dir.exists(kok) && !dir.create(kok, recursive = TRUE, showWarnings = FALSE)) {
+    stop("Runtime kök dizini oluşturulamadı.")
+  }
+  if (isTRUE(baglanti_mi(kok))) {
+    stop("Runtime kök dizini bağlantı olamaz.")
+  }
+
+  gercek_kok <- normalizePath(kok, winslash = "/", mustWork = TRUE)
+  kok_anahtar <- if (.Platform$OS.type == "windows") tolower(gercek_kok) else gercek_kok
+
+  # Yeniden kullanılan bir runtime'da model önceki bölgelerden birini
+  # symlink/junction ile değiştirmiş olabilir. Bu durumda dış hedefe yazmak
+  # yerine hazırlığı kapalı biçimde reddet.
+  for (ad in setdiff(gerekli, "root")) {
+    yol <- as.character(layout[[ad]])[1]
+    beklenen <- file.path(kok, ad)
+    yol_adresi <- normalizePath(yol, winslash = "/", mustWork = FALSE)
+    beklenen_adres <- normalizePath(beklenen, winslash = "/", mustWork = FALSE)
+    if (.Platform$OS.type == "windows") {
+      yol_adresi <- tolower(yol_adresi)
+      beklenen_adres <- tolower(beklenen_adres)
+    }
+    if (!identical(yol_adresi, beklenen_adres)) {
+      stop(sprintf("Runtime bölgesi beklenen konumda değil: %s", ad))
+    }
+    if (isTRUE(baglanti_mi(yol))) {
+      stop(sprintf("Runtime bölgesi bağlantı olamaz: %s", ad))
+    }
+    if (!dir.exists(yol) && !dir.create(yol, recursive = TRUE, showWarnings = FALSE)) {
+      stop(sprintf("Runtime bölgesi oluşturulamadı: %s", ad))
+    }
+    if (isTRUE(baglanti_mi(yol))) {
+      stop(sprintf("Runtime bölgesi bağlantı olamaz: %s", ad))
+    }
+
+    gercek <- normalizePath(yol, winslash = "/", mustWork = TRUE)
+    anahtar <- if (.Platform$OS.type == "windows") tolower(gercek) else gercek
+    if (!startsWith(anahtar, paste0(kok_anahtar, "/"))) {
+      stop(sprintf("Runtime bölgesi kök dışında: %s", ad))
     }
   }
 

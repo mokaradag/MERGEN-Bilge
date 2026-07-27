@@ -190,6 +190,27 @@ test_that("dizin listeleyici hatası tarama hatalarına aktarılır", {
   expect_true(any(grepl("paylasim erisilemez", sonuc$errors, fixed = TRUE)))
 })
 
+test_that("alt dizin listeleme hatası erişilebilir kardeşleri engellemez", {
+  env <- .cc_bounded_scan_env()
+  kok <- withr::local_tempdir()
+  dir.create(file.path(kok, "kapali"))
+  dir.create(file.path(kok, "acik"))
+  writeLines("veri", file.path(kok, "acik", "gorunur.txt"), useBytes = TRUE)
+
+  gercek_listeleyici <- env$.cc_scan_list_entries
+  env$.cc_scan_list_entries <- function(path, ...) {
+    if (identical(basename(path), "kapali")) stop("paylaşım erişilemez")
+    gercek_listeleyici(path, ...)
+  }
+
+  sonuc <- env$cc_scan_directory_bounded(kok)
+
+  expect_true(isTRUE(sonuc$ok))
+  expect_false(isTRUE(sonuc$truncated))
+  expect_true("gorunur.txt" %in% basename(sonuc$files))
+  expect_true(any(grepl("paylaşım erişilemez", sonuc$errors, fixed = TRUE)))
+})
+
 test_that("dizin bağlantısı döngüsü sonsuz gezinmeye yol açmaz", {
   skip_on_os("windows")
 
@@ -230,6 +251,25 @@ test_that("izinli kök dışına kaçan bağlantı atlanır", {
 
   expect_false("sizinti.txt" %in% basename(sonuc$files))
   expect_true("icerde.txt" %in% basename(sonuc$files))
+})
+
+test_that("izinli kök dışındaki dosya bağlantısı izole girdiye alınmaz", {
+  skip_on_os("windows")
+
+  env <- .cc_bounded_scan_env()
+  kok <- withr::local_tempdir()
+  disari <- withr::local_tempdir()
+  hedef <- file.path(disari, "sizinti.txt")
+  writeLines("disarida", hedef, useBytes = TRUE)
+  baglanti <- file.path(kok, "baglanti.txt")
+  skip_if_not(isTRUE(file.symlink(hedef, baglanti)), "Sembolik bağlantı oluşturulamadı.")
+
+  takip_yok <- env$cc_scan_directory_bounded(kok)
+  takip_var <- env$cc_scan_directory_bounded(kok, follow_symlinks = TRUE)
+
+  expect_false("baglanti.txt" %in% basename(takip_yok$files))
+  expect_false("sizinti.txt" %in% basename(takip_var$files))
+  expect_true(any(grepl("baglanti.txt", takip_yok$skipped, fixed = TRUE)))
 })
 
 test_that("göreli yol dönüşümü kök altındaki yapıyı korur", {

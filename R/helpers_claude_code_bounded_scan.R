@@ -296,6 +296,7 @@ cc_scan_directory_bounded <- function(root,
   dizinler <- character(0)
   hatalar <- character(0)
   atlananlar <- character(0)
+  kok_listeleme_hatasi <- FALSE
 
   toplam_bayt <- 0
   islenen_oge <- 0
@@ -335,7 +336,13 @@ cc_scan_directory_bounded <- function(root,
       ),
       error = function(e) {
         hatalar <<- c(hatalar, paste0(mevcut$rel, ": ", conditionMessage(e)))
-        kes("listing_error")
+        # Bir alt dizindeki ACL/paylaşım hatası erişilebilir kardeşlerin
+        # taranmasını engellemez. Yalnızca kökün kendisi listelenemiyorsa
+        # preflight için ölümcül bir tarama hatası olarak kalır.
+        if (identical(mevcut$depth, 0L)) {
+          kok_listeleme_hatasi <<- TRUE
+          kes("listing_error")
+        }
         list(entries = character(0), truncated = FALSE, reason = "")
       }
     )
@@ -367,8 +374,12 @@ cc_scan_directory_bounded <- function(root,
         break
       }
 
-      oge <- .cc_scan_norm(ogeler[i])
-      oge_ad <- basename(oge)
+      # Bağlantıyı normalizePath() hedefe çevirmeden önce, listeleyicinin
+      # döndürdüğü özgün yol üzerinden denetle.
+      ham_oge <- as.character(ogeler[i])
+      baglanti_mi <- isTRUE(.cc_scan_is_link(ham_oge))
+      oge <- .cc_scan_norm(ham_oge)
+      oge_ad <- basename(gsub("\\", "/", ham_oge, fixed = TRUE))
       oge_rel <- if (nzchar(mevcut$rel)) paste0(mevcut$rel, "/", oge_ad) else oge_ad
 
       dizin_mi <- isTRUE(bilgi$isdir[i])
@@ -379,7 +390,7 @@ cc_scan_directory_bounded <- function(root,
           next
         }
 
-        if (!isTRUE(follow_symlinks) && isTRUE(.cc_scan_is_link(oge))) {
+        if (!isTRUE(follow_symlinks) && baglanti_mi) {
           atlananlar <- c(atlananlar, oge_rel)
           next
         }
@@ -424,7 +435,21 @@ cc_scan_directory_bounded <- function(root,
         next
       }
 
-      if (!isTRUE(follow_symlinks) && isTRUE(.cc_scan_is_link(oge))) {
+      if (!isTRUE(follow_symlinks) && baglanti_mi) {
+        atlananlar <- c(atlananlar, oge_rel)
+        next
+      }
+
+      # Dosya bağlantıları takip edilse bile çözülmüş hedef izinli kökün
+      # dışındaysa izole runtime'a alınmaz.
+      gercek_dosya <- tryCatch(
+        normalizePath(ham_oge, winslash = "/", mustWork = TRUE),
+        error = function(e) oge
+      )
+      gercek_dosya <- .cc_scan_norm(gercek_dosya)
+      gercek_dosya_key <- .cc_scan_key(gercek_dosya)
+      if (!identical(gercek_dosya_key, izin_kok_key) &&
+          !startsWith(gercek_dosya_key, paste0(izin_kok_key, "/"))) {
         atlananlar <- c(atlananlar, oge_rel)
         next
       }
@@ -464,7 +489,7 @@ cc_scan_directory_bounded <- function(root,
     truncated_reason = kesme_nedeni,
     errors = unique(hatalar),
     skipped = unique(atlananlar),
-    ok = !length(hatalar)
+    ok = !isTRUE(kok_listeleme_hatasi)
   )
 }
 
