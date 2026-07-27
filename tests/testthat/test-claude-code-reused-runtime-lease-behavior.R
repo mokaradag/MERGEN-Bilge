@@ -1,4 +1,8 @@
-# Yeniden kullanılan runtime hazırlık boyunca stale temizliğinden korunmalıdır.
+# ==============================================================================
+# Dosya Yolu: tests/testthat/test-claude-code-reused-runtime-lease-behavior.R
+# Açıklama: Yeniden kullanılan runtime hazırlık boyunca stale temizliğinden korunmalıdır.
+# ==============================================================================
+
 test_that("yeniden kullanılan runtime hazırlık başlamadan önce lease alır", {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
