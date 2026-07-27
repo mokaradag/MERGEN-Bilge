@@ -139,6 +139,9 @@ claude_code_runtime_limits <- list(
   prepare_timeout_sec = .cc_limit_num("CLAUDE_CODE_PREPARE_TIMEOUT_SEC", 180),
   file_settle_total_ms = .cc_limit_num("CLAUDE_CODE_FILE_SETTLE_TOTAL_MS", 1200),
 
+  # Arka plan çıktı işleme (tarama/indirme sahneleme/kaynağa aktarım) zaman aşımı
+  output_process_timeout_sec = .cc_limit_num("CLAUDE_CODE_OUTPUT_PROCESS_TIMEOUT_SEC", 180),
+
   # Eski runtime / doküman destek klasörlerinin saklanma süresi (saniye)
   runtime_retention_sec = .cc_limit_num("CLAUDE_CODE_RUNTIME_RETENTION_SEC", 21600)
 )

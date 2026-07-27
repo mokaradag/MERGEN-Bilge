@@ -5,11 +5,8 @@
 # ==============================================================================
 
 # UNC/ağ paylaşımı/kodlama farkları için aynı dizinin olası varyasyonlarını üretir.
-# NOT: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters slash'ı
-# eşler. Kullanıcı `\\server\share\sub` yazdığında baştaki çift slash + segment
-# arası tek slash bulunur; eski gsub sonuç olarak `/server\share\sub` üretir.
-# Tek ters slash'a göre değiştirme kanonik UNC formunu doğru kurar ve orijinal
-# ters slash formunu da aday olarak korur.
+# NOT: tek ters slash'a göre değiştirme (çift slash yerine) `\\server\share\sub`
+# gibi UNC yollarını doğru kanonik forma çevirir; orijinal form da korunur.
 cc_build_dir_variants <- function(dir_path) {
   dir_raw <- as.character(dir_path %||% "")
   if (!length(dir_raw) || !nzchar(dir_raw[1])) return(character(0))
@@ -194,10 +191,8 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
 
     bulunan_ogeler <- cc_list_dir_relaxed(aday, max_entries = listeleme_siniri)
 
-    # Bir listeleme BAŞARISIZLIĞI (sinirli$ok == FALSE) da boş sonuç
-    # döndürebilir. Bu durumu yalnızca "içerik bulundu" dalında kontrol etmek,
-    # başarısızlığı sessiz "boş dizin" gibi gösterirdi; bu yüzden truncated/
-    # error bilgisi ilk erişilebilir adaydan itibaren kaydedilir.
+    # BAŞARISIZLIK (sinirli$ok == FALSE) da boş sonuç dönebilir; yalnızca
+    # "içerik bulundu" dalında kontrol etmek onu sessiz "boş dizin" gösterirdi.
     if (is.null(calisan_dizin)) {
       calisan_dizin <- aday
       kesildi <- isTRUE(attr(bulunan_ogeler, "truncated", exact = TRUE))
@@ -244,13 +239,17 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
     ogeler <- ogeler[siralama]
   }
 
+  # listeleme_hatasi yalnızca GERÇEK hatada (sinirli$ok == FALSE) doludur;
+  # max_entries kesmesi "" bırakır. Gerçek hata success = TRUE ile gizlenmez.
+  basarisiz_mi <- nzchar(listeleme_hatasi)
+
   list(
-    success = TRUE,
+    success = !basarisiz_mi,
     items = ogeler,
-    error = "",
+    error = if (basarisiz_mi) listeleme_hatasi else "",
     toplam = length(tum_ogeler),
     truncated = isTRUE(kesildi),
-    truncated_reason = if (isTRUE(kesildi) && nzchar(listeleme_hatasi)) listeleme_hatasi else "",
+    truncated_reason = if (isTRUE(kesildi) && basarisiz_mi) listeleme_hatasi else "",
     resolved_path = tryCatch(
       normalize_mcp_path(calisan_dizin, must_exist = FALSE),
       error = function(e) calisan_dizin

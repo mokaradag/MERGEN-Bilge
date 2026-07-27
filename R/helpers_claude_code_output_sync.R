@@ -249,22 +249,58 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       next
     }
 
-    ok <- tryCatch(
+    # Kaynağı önce hedefle AYNI dizindeki bir staging dosyasına kopyala.
+    # Büyük bir çıktı kopyalanırken çalıştırma durdurulmuş/stale olabilir;
+    # bu durumda kopya BAŞLAMADAN önceki guard kontrolü yeterli değildir,
+    # çünkü kopyalama sürerken de guard kaldırılmış olabilir. Hedefe
+    # taşımadan (promote) hemen önce guard tekrar doğrulanır; aksi halde
+    # durdurulmuş bir çalıştırma büyük bir kopyayı tamamlayıp kaynak
+    # dosyayı yine de değiştirebilir.
+    ok <- tryCatch({
       if (!is.null(active_guard) && nzchar(active_guard) && !file.exists(active_guard)) {
-        FALSE
-      } else
-      file.copy(
-        from = oge$source_path,
-        to = oge$dest_path,
-        overwrite = TRUE,
-        copy.mode = TRUE,
-        copy.date = TRUE
-      ),
-      error = function(e) {
-        hata <<- conditionMessage(e)
-        FALSE
+        stop("Çalıştırma durdurulduğu için aktarım başlatılmadı", call. = FALSE)
       }
-    )
+
+      staging <- tempfile(pattern = ".cc-output-", tmpdir = hedef_dizin)
+      staged <- isTRUE(tryCatch(
+        file.copy(
+          from = oge$source_path, to = staging,
+          overwrite = TRUE, copy.mode = TRUE, copy.date = TRUE
+        ),
+        error = function(e) FALSE
+      )) && isTRUE(file.exists(staging))
+
+      if (!isTRUE(staged)) {
+        unlink(staging, force = TRUE)
+        stop("Dosya kaynak dizine kopyalanamadı", call. = FALSE)
+      }
+
+      if (!is.null(active_guard) && nzchar(active_guard) && !file.exists(active_guard)) {
+        unlink(staging, force = TRUE)
+        stop("Çalıştırma durdurulduğu için aktarım iptal edildi", call. = FALSE)
+      }
+
+      tasindi <- isTRUE(tryCatch(file.rename(staging, oge$dest_path), error = function(e) FALSE))
+      if (!isTRUE(tasindi)) {
+        tasindi <- isTRUE(tryCatch(
+          file.copy(
+            from = staging, to = oge$dest_path,
+            overwrite = TRUE, copy.mode = TRUE, copy.date = TRUE
+          ),
+          error = function(e) FALSE
+        ))
+        unlink(staging, force = TRUE)
+      }
+
+      if (!isTRUE(tasindi)) {
+        stop("Dosya kaynak dizine aktarılamadı", call. = FALSE)
+      }
+
+      TRUE
+    }, error = function(e) {
+      hata <<- conditionMessage(e)
+      FALSE
+    })
 
     if (!isTRUE(ok) && !nzchar(hata)) {
       hata <- "Dosya kaynak dizine kopyalanamadı"

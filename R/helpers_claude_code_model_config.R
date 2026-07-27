@@ -358,10 +358,17 @@ workdir_has_binary_documents <- function(workdir, extensions = NULL, limits = NU
     ))
     if (!is.finite(derinlik) || derinlik < 0) derinlik <- 4
 
+    # max_files, max_entries'ten KÜÇÜK olursa tarayıcı gerçek giriş bütçesi
+    # (max_entries/max_elapsed_ms/max_depth) tükenmeden yalnızca ilk 400
+    # sıradan dosyayı bulduğunda "max_files" nedeniyle erken kesilirdi; bu da
+    # alfabetik olarak sonra gelen gerçek dokümanların hiç görülmemesine yol
+    # açardı. Bu yalnızca varlık kontrolü olduğundan (dosya listesi
+    # işlenmiyor), max_files'ı max_entries ile eşitlemek gerçek sınırlayıcıyı
+    # giriş/süre bütçesine bırakır.
     tarama <- tryCatch(
       cc_scan_directory_bounded(
         root = workdir,
-        max_files = 400L,
+        max_files = 4000L,
         max_dirs = 200L,
         max_depth = derinlik,
         max_elapsed_ms = 1500L,

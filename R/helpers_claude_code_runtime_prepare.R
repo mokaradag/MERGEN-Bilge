@@ -249,10 +249,8 @@ cc_extract_prompt_file_mentions <- function(prompt) {
   # regex denemesi TEK bir tryCatch altında toplanır (gereksiz ek anonim
   # fonksiyon/karmaşıklık bütçesi eklememek için).
   sonuc <- tryCatch({
-    tirnakli <- regmatches(
-      metin,
-      gregexpr("[\"'`]([^\"'`]+\\.[A-Za-z0-9]{1,8})[\"'`]", metin, perl = TRUE)
-    )[[1]]
+    tirnak_deseni <- "[\"'`]([^\"'`]+\\.[A-Za-z0-9]{1,8})[\"'`]"
+    tirnakli <- regmatches(metin, gregexpr(tirnak_deseni, metin, perl = TRUE))[[1]]
 
     ic_icerik <- character(0)
     if (length(tirnakli)) {
@@ -260,9 +258,18 @@ cc_extract_prompt_file_mentions <- function(prompt) {
       ic_icerik <- sub("[\"'`]$", "", ic_icerik, perl = TRUE)
     }
 
+    # Tırnaklı aralıklar genel regex'e TEKRAR girmemeli; aksi halde
+    # "reports/Q1 budget.csv" içindeki "budget.csv" ayrıca ve yanlışlıkla
+    # bağımsız bir aday olarak da yakalanır (istenmeyen ikinci dosya seçimi).
+    metin_tirnaksiz <- if (length(tirnakli)) {
+      gsub(tirnak_deseni, " ", metin, perl = TRUE)
+    } else {
+      metin
+    }
+
     eslesmeler <- regmatches(
-      metin,
-      gregexpr("[^\\s\"'`<>|:*?]+\\.[A-Za-z0-9]{1,8}\\b", metin, perl = TRUE)
+      metin_tirnaksiz,
+      gregexpr("[^\\s\"'`<>|:*?]+\\.[A-Za-z0-9]{1,8}\\b", metin_tirnaksiz, perl = TRUE)
     )[[1]]
 
     c(ic_icerik, eslesmeler)
@@ -283,11 +290,16 @@ cc_extract_prompt_file_mentions <- function(prompt) {
 .cc_prepare_mention_matches <- function(files, relatives, mentions) {
   if (!length(files) || !length(mentions)) return(logical(length(files)))
 
-  rel_key <- tolower(relatives)
-  base_key <- tolower(basename(files))
-  # Çağıranlar orijinal harf büyüklüğüyle mention geçebilir; karşılaştırma
-  # burada küçük harfe çevrilerek yapılır.
-  mention_keys <- tolower(as.character(mentions))
+  # Windows dosya sistemi büyük/küçük harf duyarsızdır; Linux/mac gibi
+  # case-sensitive dosya sistemlerinde harfleri küçültmek "Data/Report.CSV"
+  # isteğinin aynı dizindeki farklı bir "data/report.csv" dosyasıyla da
+  # yanlışlıkla eşleşmesine (ikisinin birden seçilmesine) yol açar.
+  duyarsiz <- identical(.Platform$OS.type, "windows")
+
+  rel_key <- if (duyarsiz) tolower(relatives) else relatives
+  base_key <- if (duyarsiz) tolower(basename(files)) else basename(files)
+  mention_keys <- as.character(mentions)
+  if (duyarsiz) mention_keys <- tolower(mention_keys)
 
   vapply(seq_along(files), function(i) {
     any(vapply(mention_keys, function(m) {
@@ -404,16 +416,17 @@ cc_select_input_files <- function(prompt,
 
   explicit_files <- as.character(explicit_files %||% character(0))
   # Orijinal harf büyüklüğü korunur (case-sensitive dosya sistemlerinde
-  # diskten çözümleme için); eşleştirme anahtarı ayrıca küçük harfe çevrilir.
+  # diskten çözümleme VE dosya eşleştirmesi için); harf büyüklüğü
+  # duyarsızlaştırma artık yalnızca .cc_prepare_mention_matches() içinde,
+  # platforma göre uygulanır.
   explicit_original <- c(basename(explicit_files), gsub("\\", "/", explicit_files, fixed = TRUE))
   explicit_original <- unique(explicit_original[nzchar(explicit_original)])
-  explicit_key <- unique(tolower(explicit_original))
 
   secim_modu <- "auto"
   secilen_idx <- integer(0)
 
-  if (length(explicit_key)) {
-    secilen_idx <- which(.cc_prepare_mention_matches(files, relatives, explicit_key))
+  if (length(explicit_original)) {
+    secilen_idx <- which(.cc_prepare_mention_matches(files, relatives, explicit_original))
     if (length(secilen_idx)) secim_modu <- "explicit"
   }
 
@@ -426,16 +439,13 @@ cc_select_input_files <- function(prompt,
 
   # Tarama sınıra takıldıysa istenen dosya hiç numaralandırılmamış olabilir.
   # Bu durumda rastgele bir otomatik alt kümeye düşmeden önce, güvenli
-  # göreli yol adaylarını doğrudan diskte çözeriz. Diskten çözümleme orijinal
-  # harf büyüklüğüne ihtiyaç duyar; eşleşme kontrolü için ayrı küçük harfli
-  # anahtar kullanılır.
+  # göreli yol adaylarını doğrudan diskte çözeriz.
   istenen_orijinal <- unique(c(explicit_original, mentions))
-  istenen_anahtarlar <- tolower(istenen_orijinal)
   eksik_orijinal <- character(0)
 
-  if (length(istenen_anahtarlar)) {
+  if (length(istenen_orijinal)) {
     eslesti <- vapply(
-      istenen_anahtarlar,
+      istenen_orijinal,
       function(m) any(.cc_prepare_mention_matches(files, relatives, m)),
       logical(1),
       USE.NAMES = FALSE
@@ -482,9 +492,15 @@ cc_select_input_files <- function(prompt,
   toplam <- 0
   kesildi <- FALSE
 
-  for (i in secilen_idx) {
+  for (idx_pos in seq_along(secilen_idx)) {
+    i <- secilen_idx[idx_pos]
+
     if (length(sonuc_dosyalar) >= max_files) {
       kesildi <- TRUE
+      # max_files sınırına takılan bu ve geri kalan tüm adaylar da atlanmış
+      # sayılır; aksi halde açıkça istenen ama sırada kalan bir dosya
+      # required_skipped'e hiç girmezdi.
+      atlananlar <- c(atlananlar, relatives[secilen_idx[idx_pos:length(secilen_idx)]])
       break
     }
 
@@ -495,6 +511,9 @@ cc_select_input_files <- function(prompt,
 
     if (toplam + boyutlar[i] > max_total_bytes) {
       kesildi <- TRUE
+      # Toplam bayt sınırı bu dosyada aşıldı; bu ve sıradaki tüm adaylar da
+      # aktarılamayacağı için aynı şekilde atlanmış sayılır.
+      atlananlar <- c(atlananlar, relatives[secilen_idx[idx_pos:length(secilen_idx)]])
       break
     }
 

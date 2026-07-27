@@ -1000,7 +1000,11 @@ test_that("list_directory_contents sinirli listeleyici basarisiz olunca sessiz b
 
   sonuc <- env$list_directory_contents(kok, max_items = 50L)
 
-  expect_true(isTRUE(sonuc$success))
+  # Gerçek bir listeleme başarısızlığı (sinirli$ok == FALSE) artık success =
+  # FALSE ile açıkça raporlanır; UI bunu sessiz "boş dizin" yerine gerçek bir
+  # hata mesajı olarak gösterir (bkz. cc_build_dir_contents_ui()).
+  expect_false(isTRUE(sonuc$success))
+  expect_true(nzchar(sonuc$error))
   expect_true(isTRUE(sonuc$truncated))
   expect_true(!is.null(sonuc$truncated_reason) && nzchar(sonuc$truncated_reason))
 })
@@ -1071,4 +1075,254 @@ test_that("cc_dispatch_run_preparation gonderim aninda senkron hata verirse hazi
   expect_error(env$cc_dispatch_run_preparation(ctx), NA)
   expect_length(bloke_mesajlari$mesajlar, 1L)
   expect_true(grepl("worker kumesi coktu", bloke_mesajlari$mesajlar[1], fixed = TRUE))
+})
+
+# ------------------------------------------------------------------------------
+# 20) TOPLAM BAYT SINIRINDA KESİLEN TÜM AÇIKÇA İSTENEN DOSYALAR RAPORLANIR
+# ------------------------------------------------------------------------------
+
+test_that("cc_select_input_files toplam bayt siniri kesince siradaki tum istenen dosyalar required_skipped'e girer", {
+  env <- .cc_hardening_env()
+  kok <- withr::local_tempdir()
+
+  # Üç açıkça istenen dosya; toplam bayt sınırı yalnızca ilkine yeter.
+  a <- file.path(kok, "a.csv")
+  b <- file.path(kok, "b.csv")
+  c_ <- file.path(kok, "c.csv")
+  writeBin(as.raw(rep(1L, 100L)), a)
+  writeBin(as.raw(rep(1L, 100L)), b)
+  writeBin(as.raw(rep(1L, 100L)), c_)
+
+  secim <- env$cc_select_input_files(
+    prompt = "a.csv b.csv c.csv dosyalarini incele",
+    files = c(a, b, c_),
+    file_sizes = c(100, 100, 100),
+    root = kok,
+    explicit_files = c(a, b, c_),
+    limits = list(max_input_total_bytes = 150)
+  )
+
+  # a.csv aktarılır; toplam sınır b.csv'de aşılır ve HEM b.csv HEM sıradaki
+  # c.csv da (önceden yalnızca kesmeye neden olan dosya raporlanırdı, kalan
+  # sıradaki istenenler sessizce yutulurdu) required_skipped'e girmelidir.
+  expect_true("b.csv" %in% secim$required_skipped)
+  expect_true("c.csv" %in% secim$required_skipped)
+})
+
+# ------------------------------------------------------------------------------
+# 21) TIRNAKLI DOSYA ADI GENEL REGEX'E İKİNCİ KEZ DÜŞMEZ
+# ------------------------------------------------------------------------------
+
+test_that("cc_extract_prompt_file_mentions tirnak icindeki alt dizeyi ikinci kez ayri aday yapmaz", {
+  env <- .cc_hardening_env()
+
+  mentions <- env$cc_extract_prompt_file_mentions(
+    'Lutfen "reports/Q1 budget.csv" dosyasini guncelle'
+  )
+
+  # "reports/Q1 budget.csv" tek bir aday olmalı; tırnak içindeki
+  # "budget.csv" alt dizesi genel (tırnaksız) regex'e tekrar düşüp ayrı ve
+  # yanlış bir ikinci dosya adayı üretmemeli.
+  expect_true("reports/Q1 budget.csv" %in% mentions)
+  expect_false("budget.csv" %in% mentions)
+})
+
+# ------------------------------------------------------------------------------
+# 22) SIKI SENKRONİZASYON GEÇİŞİ ÖNCESİ İPTAL YENİDEN KONTROL EDİLİR
+# ------------------------------------------------------------------------------
+
+test_that("cc_apply_output_sync_plan kopyalama sirasinda guard silinirse dosyayi hedefe tasimaz", {
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_output_sync.R")
+  kaynak_kok <- withr::local_tempdir()
+  hedef_kok <- withr::local_tempdir()
+
+  kaynak_dosya <- file.path(kaynak_kok, "cikti.txt")
+  writeLines("icerik", kaynak_dosya, useBytes = TRUE)
+  hedef_dosya <- file.path(hedef_kok, "cikti.txt")
+
+  guard <- withr::local_tempfile()
+  file.create(guard)
+
+  # Staging kopyası TAMAMLANDIKTAN hemen sonra (ama hedefe taşımadan/promote
+  # ÖNCE) guard dosyası kaldırılır; bu, kopyalama sürerken çalıştırmanın
+  # durdurulduğu senaryoyu simüle eder. cc_apply_output_sync_plan bu ikinci
+  # kontrolü YAKALAYIP tamamlanmış staging dosyasını hedefe taşımamalıdır.
+  gercek_file_copy <- file.copy
+  env$file.copy <- function(from, to, ...) {
+    sonuc <- gercek_file_copy(from, to, ...)
+    if (isTRUE(sonuc) && identical(basename(as.character(from)), "cikti.txt")) {
+      unlink(guard, force = TRUE)
+    }
+    sonuc
+  }
+
+  plan <- list(items = list(list(
+    source_path = kaynak_dosya, dest_path = hedef_dosya, size = file.info(kaynak_dosya)$size
+  )))
+
+  sonuclar <- env$cc_apply_output_sync_plan(plan, active_guard = guard)
+
+  expect_false(file.exists(hedef_dosya))
+  expect_length(sonuclar, 1L)
+  expect_false(isTRUE(sonuclar[[1]]$success))
+  expect_true(nzchar(sonuclar[[1]]$error %||% ""))
+})
+
+# ------------------------------------------------------------------------------
+# 23) KAYNAK/RUNTIME KÖKÜ KAYBOLURSA SENKRON SESSİZCE BAŞARILI SAYILMAZ
+# ------------------------------------------------------------------------------
+
+test_that("sync_claude_runtime_workdir_back kaynak dizini kaybolmusken degisiklik varsa acikca basarisiz olur", {
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_runtime_workdir.R")
+  runtime <- withr::local_tempdir()
+  kaynak <- file.path(tempdir(), "yok-artik-boyle-bir-kaynak-mergen")
+
+  sonuclar <- env$sync_claude_runtime_workdir_back(
+    runtime_workdir = runtime,
+    source_workdir = kaynak,
+    changed_files = "cikti.txt"
+  )
+
+  expect_length(sonuclar, 1L)
+  expect_false(isTRUE(sonuclar[[1]]$success))
+  expect_true(nzchar(sonuclar[[1]]$error %||% ""))
+})
+
+test_that("sync_claude_runtime_workdir_back degisiklik yoksa kok kaybolsa bile zararsiz erken cikar", {
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_runtime_workdir.R")
+  runtime <- withr::local_tempdir()
+  kaynak <- file.path(tempdir(), "yok-artik-boyle-bir-kaynak-mergen-2")
+
+  sonuclar <- env$sync_claude_runtime_workdir_back(
+    runtime_workdir = runtime,
+    source_workdir = kaynak,
+    changed_files = character(0)
+  )
+
+  expect_length(sonuclar, 0L)
+})
+
+# ------------------------------------------------------------------------------
+# 24) ÇIKTI TARAMASI KESİLİRSE STAGING/SYNC TAMAMEN ATLANIR
+# ------------------------------------------------------------------------------
+
+test_that("cikti taramasi kesilirse indirme sahnelemesi ve senkron hic cagrilmaz", {
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_run_completion.R")
+  runtime <- withr::local_tempdir()
+
+  env$diff_claude_code_workdir_snapshot <- function(...) {
+    structure(character(0), scan = list(truncated = TRUE, truncated_reason = "max_entries"))
+  }
+
+  staging_cagrildi <- FALSE
+  sync_cagrildi <- FALSE
+  env$cc_collect_streaming_run_downloads <- function(...) {
+    staging_cagrildi <<- TRUE
+    list()
+  }
+  env$sync_claude_runtime_workdir_back <- function(...) {
+    sync_cagrildi <<- TRUE
+    list()
+  }
+
+  sonuc <- env$cc_process_run_outputs(list(
+    before_snapshot = list(), runtime_workdir = runtime,
+    source_workdir = runtime, mirrored = TRUE, limits = list()
+  ))
+
+  expect_false(staging_cagrildi)
+  expect_false(sync_cagrildi)
+  expect_true(isTRUE(sonuc$output_scan_truncated))
+  expect_identical(sonuc$output_scan_truncated_reason, "max_entries")
+})
+
+# ------------------------------------------------------------------------------
+# 25) ÇIKTI İŞLEME İÇİN BAĞIMSIZ ZAMAN AŞIMI TAKILAN WORKER'I SONLANDIRIR
+# ------------------------------------------------------------------------------
+
+test_that("cc_dispatch_run_output_processing takilan worker'i bagimsiz deadline ile sonlandirir", {
+  env <- .cc_hardening_env(extra_files = c(
+    "helpers_claude_code_run_lifecycle.R",
+    "helpers_claude_code_run_dispatch.R",
+    "helpers_claude_code_run_completion.R"
+  ))
+  env$cc_runtime_limit <- function(name, default_value = Inf, limits = NULL) {
+    if (identical(name, "output_process_timeout_sec")) 0.05 else default_value
+  }
+
+  metadata_dir <- withr::local_tempdir()
+
+  # Worker HİÇ çözülmeyen bir promise döndürsün; deadline'ın devreye
+  # girmesi gerekir.
+  env$tracked_future_promise <- function(...) {
+    promises::promise(function(resolve, reject) invisible(NULL))
+  }
+
+  rv <- new.env(parent = emptyenv())
+  rv$active_request_id <- "rid-timeout"
+
+  rapor_edildi <- new.env(parent = emptyenv())
+  rapor_edildi$hata <- NULL
+  env$cc_report_output_processing_failure <- function(ctx, error) {
+    rapor_edildi$hata <- error
+    invisible(TRUE)
+  }
+
+  ctx <- list(
+    session = list(token = "t", sendCustomMessage = function(...) invisible(NULL)),
+    ns = function(x) x,
+    rv = rv,
+    env = list(
+      runtime_layout = list(metadata = metadata_dir),
+      request_id = "rid-timeout"
+    ),
+    ayristirma = list(tool_uses = list())
+  )
+
+  env$cc_dispatch_run_output_processing(ctx)
+
+  son <- Sys.time() + 3
+  while (is.null(rapor_edildi$hata) && Sys.time() < son) {
+    later::run_now(0.05)
+  }
+
+  expect_false(is.null(rapor_edildi$hata))
+  expect_true(grepl("zaman aşımı", conditionMessage(rapor_edildi$hata), fixed = TRUE))
+})
+
+# ------------------------------------------------------------------------------
+# 26) DOKÜMAN VARLIK PROBUNDA max_files, max_entries'TEN ÖNCE KESMEZ
+# ------------------------------------------------------------------------------
+
+test_that("workdir_has_binary_documents ilk 400 sıradan dosyadan sonra gelen belgeyi kaçırmaz", {
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_model_config.R")
+  kok <- withr::local_tempdir()
+
+  for (i in seq_len(410L)) {
+    writeLines("x", file.path(kok, sprintf("not%03d.txt", i)), useBytes = TRUE)
+  }
+  # Alfabetik olarak "not*.txt" dosyalarından SONRA gelecek gerçek bir belge.
+  writeLines("veri", file.path(kok, "zzz_rapor.pdf"), useBytes = TRUE)
+
+  sonuc <- env$workdir_has_binary_documents(kok, extensions = c("pdf", "docx", "xlsx"))
+
+  expect_true(isTRUE(sonuc))
+})
+
+# ------------------------------------------------------------------------------
+# 27) SINIRLI DİZİN LİSTELEMESİ GERÇEK HATADA success = FALSE DÖNER
+# ------------------------------------------------------------------------------
+
+test_that("list_directory_contents gercek listeleme hatasinda success FALSE doner ve UI hatasi gorunur", {
+  env <- .cc_hardening_env(extra_files = "helpers_claude_code_directory_listing.R")
+  kok <- withr::local_tempdir()
+
+  env$cc_scan_list_dir_bounded <- function(...) {
+    list(entries = character(0), truncated = FALSE, reason = "", ok = FALSE, error = "erisim reddedildi")
+  }
+
+  sonuc <- env$list_directory_contents(kok, max_items = 20L)
+
+  expect_false(isTRUE(sonuc$success))
+  expect_identical(sonuc$error, "erisim reddedildi")
 })

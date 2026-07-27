@@ -196,6 +196,20 @@ cc_process_run_outputs <- function(request) {
 
   diff_ms <- gecen_ms(diff_baslangic)
 
+  # Tarama kesildiyse `degisenler` EKSİKTİR; bu haliyle staging/sync
+  # yapmak eksik bir alt kümeyi güvenilir gibi kaynak dizine aktarır. Çağıran
+  # taraf zaten `output_scan_truncated` ile başarısız işaretleyecek.
+  if (isTRUE(diff_kesildi)) {
+    return(list(
+      downloads = list(), changed_files = degisenler, sync_results = list(),
+      output_scan_truncated = TRUE, output_scan_truncated_reason = diff_kesme_nedeni,
+      metrics = list(
+        total_ms = gecen_ms(baslangic), diff_ms = diff_ms, staging_ms = 0, sync_ms = 0,
+        changed_count = length(degisenler), download_count = 0L, synced_count = 0L
+      )
+    ))
+  }
+
   staging_baslangic <- Sys.time()
 
   indirmeler <- tryCatch(
@@ -383,6 +397,23 @@ cc_dispatch_run_output_processing <- function(ctx) {
 
   cc_send_run_stage(ctx$session, ctx$ns, "cikti")
 
+  # Hazırlık aşamasındaki bağımsız deadline deseninin aynısı: takılan bir
+  # worker çalıştırmayı "Çıktılar işleniyor" durumunda sonsuza bırakmamalı.
+  cikti_zaman_asimi_sn <- cc_runtime_limit("output_process_timeout_sec", 180, istek$limits)
+  cikti_zaman_asimi_durumu <- new.env(parent = emptyenv())
+  cikti_zaman_asimi_durumu$pending <- TRUE
+  cikti_zaman_asimi_durumu$cancel <- later::later(function() {
+    if (isTRUE(cikti_zaman_asimi_durumu$pending) &&
+        cc_is_active_run(ctx$rv, ctx$env$request_id)) {
+      cikti_zaman_asimi_durumu$pending <- FALSE
+      unlink(istek$active_guard, force = TRUE)
+      unlink(ctx$env$runtime_lease %||% "", force = TRUE)
+      cc_report_output_processing_failure(ctx, simpleError(sprintf(
+        "Çıktı işleme zaman aşımına uğradı (%.0f saniye).", cikti_zaman_asimi_sn
+      )))
+    }
+  }, delay = cikti_zaman_asimi_sn)
+
   tracked_future_promise(
     task_fn = function() {
       cc_process_run_outputs(istek)
@@ -397,6 +428,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
     packages = c("tools", "utils")
   ) |>
     promises::then(function(outputs) {
+      cikti_zaman_asimi_durumu$pending <- FALSE
       if (!cc_is_active_run(ctx$rv, ctx$env$request_id)) {
         unlink(istek$active_guard, force = TRUE)
         unlink(ctx$env$runtime_lease %||% "", force = TRUE)
@@ -442,6 +474,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
       NULL
     }) |>
     promises::catch(function(e) {
+      cikti_zaman_asimi_durumu$pending <- FALSE
       unlink(istek$active_guard, force = TRUE)
       unlink(ctx$env$runtime_lease %||% "", force = TRUE)
       if (!cc_is_active_run(ctx$rv, ctx$env$request_id)) {

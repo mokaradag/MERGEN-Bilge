@@ -315,10 +315,30 @@ sync_claude_runtime_workdir_back <- function(runtime_workdir,
                                              layout = NULL,
                                              limits = NULL,
                                              active_guard = NULL) {
-  if (is.null(runtime_workdir) || !nzchar(runtime_workdir)) return(invisible(list()))
-  if (is.null(source_workdir) || !nzchar(source_workdir)) return(invisible(list()))
-  if (!dir.exists(runtime_workdir)) return(invisible(list()))
-  if (!dir.exists(source_workdir)) return(invisible(list()))
+  degisen_var <- length(as.character(changed_files %||% character(0))) > 0L
+  kok_sebep <- ""
+  if (is.null(runtime_workdir) || !nzchar(runtime_workdir)) {
+    kok_sebep <- "Runtime çalışma dizini geçersiz"
+  } else if (is.null(source_workdir) || !nzchar(source_workdir)) {
+    kok_sebep <- "Kaynak çalışma dizini geçersiz"
+  } else if (!dir.exists(runtime_workdir)) {
+    kok_sebep <- "Runtime çalışma dizini artık erişilemiyor"
+  } else if (!dir.exists(source_workdir)) {
+    kok_sebep <- "Kaynak çalışma dizini artık erişilemiyor (ağ paylaşımı kopmuş olabilir)"
+  }
+
+  if (nzchar(kok_sebep)) {
+    # Senkronlanacak değişiklik yoksa kök eksikliği zararsız bir erken
+    # çıkıştır. Ancak aktarılacak dosya varken kök kaybolmuşsa (silinmiş,
+    # bağlantısı kopmuş UNC paylaşımı vb.) bunu sessiz "başarılı boş sync"
+    # gibi göstermek üretilen dosyaların kaybolmasını gizler.
+    if (!isTRUE(degisen_var)) return(invisible(list()))
+    cc_log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "[OUTPUT_SYNC]", kok_sebep))
+    return(invisible(list(list(
+      source_path = "", dest_path = as.character(source_workdir %||% "")[1],
+      success = FALSE, size = NA_real_, error = kok_sebep
+    ))))
+  }
 
   if (is.null(layout) || !is.list(layout)) {
     layout <- list(
