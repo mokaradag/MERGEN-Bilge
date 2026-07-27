@@ -468,3 +468,33 @@ test_that("Bilge Yolaç stop observer UI finalization'ı poll observer'a bırakm
     info = "Stop observer stale finalize koruması için request_id ile finalize etmelidir."
   )
 })
+
+test_that("runtime lease bırakma idempotenttir", {
+  env <- .source_cc_run_lifecycle_for_test()
+  lease <- tempfile(fileext = ".lease")
+  expect_true(file.create(lease))
+
+  expect_true(env$cc_release_runtime_lease(lease))
+  expect_false(file.exists(lease))
+  expect_true(env$cc_release_runtime_lease(lease))
+  expect_false(env$cc_release_runtime_lease(""))
+})
+
+test_that("terminal çalışma yolları runtime lease temizliğini taşır", {
+  dispatch <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_dispatch.R"
+  )
+  lifecycle <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_lifecycle.R"
+  )
+  akis <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code_akis.R")
+  poll <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/module_claude_code_stream_poll.R"
+  )
+
+  expect_match(dispatch, "cc_release_runtime_lease\\(prep\\$runtime_lease", perl = TRUE)
+  expect_match(dispatch, "runtime_lease = prep\\$runtime_lease", perl = TRUE)
+  expect_match(lifecycle, "on.exit\\(cc_release_runtime_lease\\(runtime_lease\\)", perl = TRUE)
+  expect_match(akis, "cc_release_runtime_lease\\(rv\\$stream_env\\$runtime_lease", perl = TRUE)
+  expect_match(poll, "cc_release_runtime_lease\\(env\\$runtime_lease", perl = TRUE)
+})

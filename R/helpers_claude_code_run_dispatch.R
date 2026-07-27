@@ -149,6 +149,7 @@ cc_dispatch_run_preparation <- function(ctx) {
     promises::then(function(prep) {
       zaman_asimi_durumu$pending <- FALSE
       if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
+        cc_release_runtime_lease(prep$runtime_lease %||% "")
         return(NULL)
       }
 
@@ -174,6 +175,7 @@ cc_dispatch_run_preparation <- function(ctx) {
       ))
 
       if (isTRUE(prep$blocked)) {
+        cc_release_runtime_lease(prep$runtime_lease %||% "")
         cc_fail_run_preparation(ctx, prep$message %||% CLAUDE_CODE_LIMIT_MESSAGE)
         return(NULL)
       }
@@ -232,9 +234,15 @@ cc_start_streaming_run <- function(ctx, prep) {
   session <- ctx$session
   ns <- ctx$ns
   rv <- ctx$rv
+  lease_handed_off <- FALSE
+  on.exit({
+    if (!isTRUE(lease_handed_off)) {
+      cc_release_runtime_lease(prep$runtime_lease %||% "")
+    }
+  }, add = TRUE)
 
   if (isTRUE(prep$snapshot_truncated)) {
-    unlink(prep$runtime_lease %||% "", force = TRUE)
+    cc_release_runtime_lease(prep$runtime_lease %||% "")
     mesaj <- paste0(
       "Çıktı alanının başlangıç taraması güvenli sınırlar içinde tamamlanamadı; ",
       "eksik dosya aktarımını önlemek için çalışma başlatılmadı."
@@ -317,6 +325,7 @@ cc_start_streaming_run <- function(ctx, prep) {
   }
 
   if (!isTRUE(model_cozumu$allow_run)) {
+    cc_release_runtime_lease(prep$runtime_lease %||% "")
     cc_fail_run_preparation(ctx, model_cozumu$reason)
     return(invisible(FALSE))
   }
@@ -381,9 +390,11 @@ cc_start_streaming_run <- function(ctx, prep) {
       karakter = ctx$character,
       karakter_id = ctx$character_id,
       karakter_renk = ctx$accent,
+      runtime_lease = prep$runtime_lease %||% "",
       finalize_streaming = ctx$finalize_streaming,
       observe_dir_contents = ctx$observe_dir_contents
     )
+    lease_handed_off <- TRUE
 
     return(invisible(TRUE))
   }
@@ -452,6 +463,7 @@ cc_start_streaming_run <- function(ctx, prep) {
     )
 
     rv$active_process <- proc
+    lease_handed_off <- TRUE
     cc_send_run_stage(session, ns, "calisiyor")
 
   }, error = function(e) {
