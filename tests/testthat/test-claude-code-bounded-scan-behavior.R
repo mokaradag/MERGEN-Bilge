@@ -182,7 +182,9 @@ test_that("dizin listeleyici hatası tarama hatalarına aktarılır", {
 
   sonuc <- env$cc_scan_directory_bounded(kok)
 
-  expect_true(isTRUE(sonuc$ok))
+  expect_false(isTRUE(sonuc$ok))
+  expect_true(isTRUE(sonuc$truncated))
+  expect_identical(sonuc$truncated_reason, "listing_error")
   expect_length(sonuc$files, 0L)
   expect_true(any(grepl("kod 23", sonuc$errors, fixed = TRUE)))
   expect_true(any(grepl("paylasim erisilemez", sonuc$errors, fixed = TRUE)))

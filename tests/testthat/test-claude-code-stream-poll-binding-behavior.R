@@ -28,6 +28,7 @@ if (requireNamespace("shiny", quietly = TRUE)) {
   env <- new.env(parent = globalenv())
   env$CLAUDE_CODE_LOG_PREFIX <- "[BILGE-YOLAC-TEST]"
   env$ensure_utf8 <- function(x) x
+  env$cc_release_runtime_lease <- function(...) invisible(TRUE)
   source(file.path(resolve_repo_root_for_tests(), "R", "module_claude_code_stream_poll.R"),
          encoding = "UTF-8", local = env)
   env

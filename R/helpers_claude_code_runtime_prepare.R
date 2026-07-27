@@ -96,13 +96,28 @@ cc_runtime_ensure_layout <- function(layout) {
 #' @return list(ok, blocked, limited, reason, message, metrics)
 cc_evaluate_workdir_preflight <- function(scan, limits = NULL) {
   if (!is.list(scan) || !isTRUE(scan$ok)) {
+    hata <- if (is.list(scan)) {
+      paste(as.character(scan$errors %||% character(0)), collapse = " | ")
+    } else {
+      ""
+    }
+    mesaj <- "Kaynak klasör güvenli biçimde taranamadı; çalışma başlatılmadı."
+    if (nzchar(hata)) mesaj <- paste(mesaj, hata)
+
     return(list(
-      ok = TRUE,
-      blocked = FALSE,
-      limited = FALSE,
+      ok = FALSE,
+      blocked = TRUE,
+      limited = TRUE,
       reason = "scan_unavailable",
-      message = "",
-      metrics = list(file_count = 0L, dir_count = 0L, total_bytes = 0)
+      message = mesaj,
+      metrics = list(
+        file_count = scan$file_count %||% 0L,
+        dir_count = scan$dir_count %||% 0L,
+        total_bytes = scan$total_bytes %||% 0,
+        truncated = isTRUE(scan$truncated),
+        truncated_reason = scan$truncated_reason %||% "",
+        errors = scan$errors %||% character(0)
+      )
     ))
   }
 

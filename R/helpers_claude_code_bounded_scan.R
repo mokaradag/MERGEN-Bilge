@@ -286,6 +286,7 @@ cc_scan_directory_bounded <- function(root,
       ),
       error = function(e) {
         hatalar <<- c(hatalar, paste0(mevcut$rel, ": ", conditionMessage(e)))
+        kes("listing_error")
         list(entries = character(0), truncated = FALSE, reason = "")
       }
     )
@@ -414,7 +415,7 @@ cc_scan_directory_bounded <- function(root,
     truncated_reason = kesme_nedeni,
     errors = unique(hatalar),
     skipped = unique(atlananlar),
-    ok = TRUE
+    ok = !length(hatalar)
   )
 }
 
