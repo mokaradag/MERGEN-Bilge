@@ -333,6 +333,9 @@ source_manifest_sections <- list(
     "R/helpers_claude_code_path_policy.R",
     "R/helpers_claude_code_prompt_security_policy.R",
     "R/helpers_claude_code_directory_listing.R",
+    # Dizin gezgini numaralandırmasını ana olay döngüsünden çıkaran worker
+    # global paketi; listeleme yardımcısından SONRA yüklenmelidir.
+    "R/helpers_claude_code_dir_listing_async.R",
     "R/helpers_claude_code.R",
     "R/helpers_claude_code_server_setup.R",
     "R/helpers_claude_code_streaming.R",

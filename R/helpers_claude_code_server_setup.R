@@ -350,31 +350,99 @@ cc_bind_server_setup <- function(input,
       return(invisible(FALSE))
     }
 
-    icerik <- list_directory_contents(
-      yol,
-      user_id = user_check$user_id
-    )
+    # Sonucu UI'ya uygula. Stale koruması hem senkron hem eşzamansız yolda
+    # aynıdır: yalnızca en güncel yenileme isteği ekranı değiştirebilir.
+    uygula_icerik <- function(icerik) {
+      if (!dir_refresh_guard$is_latest(refresh_id)) {
+        return(invisible(FALSE))
+      }
 
-    if (!dir_refresh_guard$is_latest(refresh_id)) {
-      return(invisible(FALSE))
+      resolved_yol <- icerik$resolved_path %||% yol
+
+      session$sendCustomMessage(
+        type = "cc-update-element-text",
+        message = list(
+          elementId = ns("dir_current_path"),
+          text = resolved_yol
+        )
+      )
+
+      output$dir_contents_ui <- renderUI({
+        if (!dir_refresh_guard$is_latest(refresh_id)) return(NULL)
+        cc_build_dir_contents_ui(icerik, ns = ns)
+      })
+
+      invisible(TRUE)
     }
 
-    resolved_yol <- icerik$resolved_path %||% yol
+    # Dizin numaralandırması (list.files + öge başına file.info) yüz binlerce
+    # girdili düz bir klasörde veya yavaş bir UNC paylaşımında saniyeler
+    # sürebilir. Bu ana Shiny olay döngüsünde çalıştığında AYNI R sürecini
+    # paylaşan tüm oturumlar donar. Bu yüzden gerçekten eşzamansız bir plan
+    # varsa numaralandırma arka plan worker'ına gönderilir; worker globals
+    # paketi süreç başına bir kez kurulduğu için gönderim anında bağımlılık
+    # taraması tekrarlanmaz.
+    if (isTRUE(cc_dir_listing_async_available())) {
+      hedef_yol <- yol
+      hedef_kullanici <- user_check$user_id
 
-    session$sendCustomMessage(
-      type = "cc-update-element-text",
-      message = list(
-        elementId = ns("dir_current_path"),
-        text = resolved_yol
-      )
-    )
+      gonderim_hatasi <- tryCatch({
+        output$dir_contents_ui <- renderUI({
+          if (!dir_refresh_guard$is_latest(refresh_id)) return(NULL)
+          tags$p(class = "cc-dir-empty", "Dizin içeriği yükleniyor...")
+        })
 
-    output$dir_contents_ui <- renderUI({
-      if (!dir_refresh_guard$is_latest(refresh_id)) return(NULL)
-      cc_build_dir_contents_ui(icerik, ns = ns)
-    })
+        tracked_future_promise(
+          task_fn = function() {
+            list_directory_contents(hedef_yol, user_id = hedef_kullanici)
+          },
+          task_type = "claude_code_dir_listing",
+          session_token = session$token,
+          dependency_mode = "explicit",
+          globals = c(
+            list(hedef_yol = hedef_yol, hedef_kullanici = hedef_kullanici),
+            cc_dir_listing_worker_globals()
+          ),
+          packages = c("tools", "utils", "fs")
+        ) |>
+          promises::then(function(icerik) {
+            # Oturum kapandıysa sendCustomMessage/renderUI hata fırlatır ve bu
+            # hata later döngüsünde ÜST DÜZEYDE yakalanmadan uygulamayı
+            # düşürebilir; geri çağrılar bu yüzden her zaman sarmalanır.
+            tryCatch(uygula_icerik(icerik), error = function(e) NULL)
+            NULL
+          }) |>
+          promises::catch(function(e) {
+            # Worker yolu başarısızsa kullanıcı boş ekranla kalmaz: gezinme
+            # senkron yola düşer. Bu istisnai bir yedek yoldur, normal akış
+            # değildir.
+            cc_log_warn(paste(
+              CLAUDE_CODE_LOG_PREFIX,
+              "[DIR_LISTING] Arka plan listeleme başarısız, senkron yola düşülüyor:",
+              gsub("[{}]", "", conditionMessage(e))
+            ))
+            tryCatch(
+              uygula_icerik(list_directory_contents(hedef_yol, user_id = hedef_kullanici)),
+              error = function(e2) NULL
+            )
+            NULL
+          })
 
-    invisible(TRUE)
+        NULL
+      }, error = function(e) e)
+
+      if (is.null(gonderim_hatasi)) {
+        return(invisible(TRUE))
+      }
+
+      cc_log_warn(paste(
+        CLAUDE_CODE_LOG_PREFIX,
+        "[DIR_LISTING] Arka plan listeleme gönderilemedi:",
+        gsub("[{}]", "", conditionMessage(gonderim_hatasi))
+      ))
+    }
+
+    uygula_icerik(list_directory_contents(yol, user_id = user_check$user_id))
   }
 
   observeEvent(input$dir_navigate, {

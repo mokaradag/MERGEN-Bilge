@@ -198,12 +198,6 @@ test_that("Claude Code dizin listeleme SSO ve stale refresh guard sözleşmesi k
     perl = TRUE
   )[[1]]
 
-  latest_hits <- gregexpr(
-    "dir_refresh_guard\\$is_latest\\(refresh_id\\)",
-    setup_text,
-    perl = TRUE
-  )[[1]]
-
   expect_true(
     guard_pos > 0,
     info = "Dizin listeleme öncesinde kullanıcı kimliği hazır olma kontrolü kalmalıdır."
@@ -214,8 +208,65 @@ test_that("Claude Code dizin listeleme SSO ve stale refresh guard sözleşmesi k
     info = "list_directory_contents() kullanıcı kimliği hazır olmadan çağrılmamalıdır."
   )
 
+  # Listeleme artık arka plan worker'ında da çalışabildiği için stale koruması
+  # tek bir uygulama fonksiyonunda toplanmıştır: senkron ve eşzamansız yolun
+  # ikisi de sonucu bu fonksiyondan geçirir.
+  uygula_pos <- regexpr("uygula_icerik <- function\\(icerik\\)", setup_text, perl = TRUE)[[1]]
+
   expect_true(
-    any(latest_hits > call_pos),
-    info = "Dizin listeleme sonucundan sonra stale refresh guard kontrolü yapılmalıdır."
+    uygula_pos > 0,
+    info = "Dizin listeleme sonucu tek bir stale korumalı uygulama fonksiyonundan geçmelidir."
+  )
+
+  uygula_govde <- substring(setup_text, uygula_pos, uygula_pos + 900L)
+
+  expect_true(
+    regexpr("dir_refresh_guard\\$is_latest\\(refresh_id\\)", uygula_govde, perl = TRUE)[[1]] <
+      regexpr("sendCustomMessage", uygula_govde, perl = TRUE)[[1]],
+    info = "UI güncellenmeden ÖNCE stale refresh guard kontrolü yapılmalıdır."
+  )
+
+  expect_true(
+    grepl("uygula_icerik(list_directory_contents(", setup_text, fixed = TRUE),
+    info = "Senkron yedek yol da sonucu stale korumalı uygulama fonksiyonuna vermelidir."
+  )
+})
+
+test_that("dizin gezgini numaralandırması ana olay döngüsünden çıkarılabilir", {
+  setup_text <- .read_repo_text_cc_dir_listing_contract(
+    "R/helpers_claude_code_server_setup.R"
+  )
+
+  # REGRESYON: yüz binlerce girdili düz/UNC bir klasörde list.files() +
+  # öge başına file.info() ana Shiny olay döngüsünde çalıştığında aynı R
+  # sürecini paylaşan TÜM oturumlar donuyordu.
+  expect_true(
+    grepl("cc_dir_listing_async_available()", setup_text, fixed = TRUE),
+    info = "Eşzamansız plan varlığı kontrol edilmelidir."
+  )
+
+  expect_true(
+    grepl("claude_code_dir_listing", setup_text, fixed = TRUE),
+    info = "Dizin listeleme izlenen bir worker görevi olarak gönderilmelidir."
+  )
+
+  expect_true(
+    grepl("dependency_mode = \"explicit\"", setup_text, fixed = TRUE),
+    info = "Gönderim anında bağımlılık taraması yapılmamalıdır (explicit mod)."
+  )
+
+  async_text <- .read_repo_text_cc_dir_listing_contract(
+    "R/helpers_claude_code_dir_listing_async.R"
+  )
+
+  expect_true(
+    grepl(".cc_dir_listing_worker_cache$globals", async_text, fixed = TRUE),
+    info = "Worker global paketi süreç başına bir kez önbelleklenmelidir."
+  )
+
+  expect_true(
+    grepl("if (!isTRUE(refresh) && !is.null(.cc_dir_listing_worker_cache$globals))",
+          async_text, fixed = TRUE),
+    info = "Önbellek refresh = FALSE çağrılarında yeniden kurulmamalıdır."
   )
 })

@@ -617,6 +617,23 @@ doğrulanır, stale (eski) bir geri çağrı daha yeni bir çalışmanın durumu
 değiştiremez, hazırlık için ayrı bir zaman aşımı uygulanır ve kullanıcı Durdur'a
 bastığında geç gelen geri çağrı çalıştırmayı yeniden başlatamaz.
 
+#### Dizin gezgini de ana olay döngüsünden çıkarıldı
+
+Sınırlı olmak ile bloklamamak aynı şey DEĞİLDİR: `list.files()` herhangi bir
+`max_entries`/zaman aşımı kontrolünden ÖNCE dizinin tamamını belleğe alır.
+Yüz binlerce girdili düz bir klasörde veya yavaş bir UNC paylaşımında Bilge
+Yolaç dizin gezgini bu yüzden hâlâ tüm oturumları donduruyordu.
+`observe_dir_contents()` (`R/helpers_claude_code_server_setup.R`) artık
+`cc_dir_listing_async_available()` TRUE iken `list_directory_contents()`
+çağrısını `tracked_future_promise(..., dependency_mode = "explicit")` ile arka
+plan worker'ına gönderir. Worker global paketi süreç başına bir kez kurulur
+(`cc_dir_listing_worker_globals()`, `R/helpers_claude_code_dir_listing_async.R`),
+böylece gönderim anında bağımlılık taraması tekrarlanmaz. Sonuç, senkron ve
+eşzamansız yolun ikisinde de aynı stale korumalı `uygula_icerik()` kapanışından
+geçer: yalnızca en güncel yenileme isteği ekranı değiştirebilir. Eşzamansız plan
+yoksa veya gönderim başarısız olursa senkron yola düşülür; kullanıcı hiçbir
+durumda boş ekranla kalmaz.
+
 #### Çalıştırma aşamaları (hazırlık ile model çalıştırma ayrımı)
 
 Durum çubuğu artık gerçek aşamayı gösterir; Claude süreci başlamadan
@@ -644,6 +661,23 @@ engellenir. Dosya başına yapılandırılmış sonuç (kaynak, hedef, başarı,
 hata) döner ve tek bir dosyanın başarısızlığı diğerlerini engellemez.
 Aktarılacak dosya yoksa hiçbir kopyalama yapılmaz.
 
+Diff'in ÜRETİLDİĞİNİ kanıtladığı bir çıktı, staging'den önce kaybolursa (virüs
+karantinası, geciken yeniden adlandırma, UNC görünürlük gecikmesi) artık genel
+"atlandı" listesinde kaybolmaz: onaylı çıktı bölgesindeki kayıp yollar
+`missing_output` nedeniyle açık birer başarısızlık olarak raporlanır, böylece
+çalıştırma ne indirme ne de kaynak kopyası üretmeden "başarılı" görünemez.
+
+Windows'a özgü iki tuzak bu sınırın parçasıdır. (1) `Sys.readlink()` Windows'ta
+HER yol için `NA` döner ve `nzchar(NA)` TRUE'dur; bağlantı tespiti yalnızca buna
+dayandığında var olan her hedef "bağlantı" sayılıp aynı dosyayı yeniden üreten
+her çalıştırmanın aktarımı bloke olur. Tespit bu yüzden çözülmüş yolun sözlüksel
+konumdan sapmasıyla yapılır (`cc_path_is_reparse_link()`), bu da POSIX
+symlink'lerini ve Windows junction/reparse noktalarını birlikte yakalar.
+(2) `tempdir()` ve kullanıcı profili yolları 8.3 KISA ad biçiminde
+(`KULLAN~1`) gelebilir; onaylı kök UZUN forma açılırken hedef HAM biçimde
+karşılaştırıldığında önek eşleşmez ve geçerli her çıktı sessizce "kök dışında"
+sayılırdı. Hedef artık aynı kanonik semantikten geçirilir.
+
 #### Doküman hazırlığı çalıştırmaya özeldir
 
 Büyük bir klasördeki her doküman işlenmez. Seçim önceliği açıkça seçilen
@@ -655,6 +689,19 @@ klasörünü her istekte SİLMEZ; destek dizini `request_id` ile çalışma baş
 izole edilir, böylece eşzamanlı çalıştırmalar birbirinin çıkarımlarını bozmaz.
 Eskiyen runtime ve doküman destek klasörleri aktif çalışmaları etkilemeyen
 yaş tabanlı bir politika ile temizlenir.
+
+Promptta adı geçen bir doküman klasörde BULUNAMAZSA hazırlık otomatik alt kümeye
+düşmez: çalıştırma `Açıkça istenen dokümanlar seçilen klasörde bulunamadı: ...`
+mesajıyla kapalı biçimde reddedilir. Aksi halde kullanıcının hiç sormadığı bir
+doküman özetlenip sonuç "başarılı" görünürdü. Aşırı engellemeyi önlemek için
+yalnızca gerçek doküman uzantısı taşıyan anmalar dikkate alınır; düzyazıdaki
+`3.5` veya `v1.2` gibi noktalı belirteçler bir çalıştırmayı bloke edemez.
+
+Doküman özeti worker'ı kaynak klasöre YAZMAZ: `dosya_aciklamalari.txt` önce
+izole `output/` alanında üretilir, kaynak klasöre terfi ise ana süreçteki
+`cc_is_active_run()` korumasından sonra yapılır. Böylece kullanıcı Durdur'a
+bastıktan sonra tamamlanan bir özet worker'ı iptal edilmiş bir çalıştırmanın
+çıktısını kaynak dosyanın üzerine yazamaz.
 
 #### Tekrarlanan iş ve bloklayan bekleme kaldırıldı
 
@@ -694,8 +741,16 @@ Bu hattı koruyan testler: `tests/testthat/test-claude-code-bounded-scan-behavio
 `tests/testthat/test-claude-code-run-lifecycle-contract.R`,
 `tests/testthat/test-claude-code-document-orchestration-behavior.R`,
 `tests/testthat/test-claude-code-downloads-security-behavior.R`,
+`tests/testthat/test-claude-code-codex-review-fixes.R`,
+`tests/testthat/test-claude-code-directory-listing-contract.R`,
 `tests/testthat/test-source-manifest-sections-contract.R` ve
 `tests/testthat/test-maintainability-ratchet.R`.
+
+Bu testler Windows VM'de de ÇALIŞIR. Üretim platformu Windows olduğu için
+POSIX'e özgü mekanizmalar `skip_on_os("windows")` ile atlanmaz; dizin bağlantısı
+için `Sys.junction()`, okunamayan dizin için lexical `list.files`/`file.access`
+mock'ları, dosya symlink'i için (yönetici hakkı gerektiğinden) sözlüksel benzetim
+kullanılır.
 
 #### Bilge Yolaç güvenli CLI çalıştırma politikası
 

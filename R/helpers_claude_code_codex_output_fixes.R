@@ -184,12 +184,25 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
 
     had_dest <- isTRUE(file.exists(dest)) || isTRUE(dir.exists(dest))
     if (had_dest) {
-      linked <- tryCatch(nzchar(Sys.readlink(dest)), error = function(e) TRUE)
+      # Sys.readlink() Windows'ta HER ZAMAN NA döner ve nzchar(NA) TRUE'dur;
+      # tek başına kullanıldığında var olan her hedefi bağlantı sanıp aynı
+      # dosyanın yeniden üretildiği her çalıştırmayı bloke ederdi. Bağlantı
+      # tespiti bu yüzden çözülmüş yolun sözlüksel konumdan sapmasıyla
+      # yapılır: symlink/junction her iki platformda da başka yere çözülür.
+      resolved_parent <- cc_output_sync_canonical_root(parent)
+      expected_dest <- if (nzchar(resolved_parent)) {
+        paste0(resolved_parent, "/", basename(.cc_scan_norm(dest)))
+      } else {
+        .cc_scan_norm(dest)
+      }
       resolved_dest <- tryCatch(
         .cc_scan_norm(normalizePath(dest, winslash = "/", mustWork = TRUE)),
         error = function(e) ""
       )
       resolved_key <- .cc_scan_key(resolved_dest)
+      linked <- !nzchar(resolved_dest) ||
+        !identical(resolved_key, .cc_scan_key(expected_dest)) ||
+        isTRUE(.cc_scan_is_link(dest))
       dest_safe <- nzchar(resolved_dest) && (
         identical(resolved_key, approved_key) || startsWith(resolved_key, paste0(approved_key, "/"))
       )
@@ -407,7 +420,21 @@ cc_dispatch_run_output_processing <- function(ctx) {
   "cc_plan_output_sync", "cc_apply_output_sync_plan", "cc_process_run_outputs"
 )
 
+# Süreç başına ÖNBELLEK sözleşmesi korunur. Sertleştirme katmanı yalnızca
+# yüklenirken önbelleği geçersiz kılar (aşağıdaki NULL atamaları); sonraki
+# gönderimler `refresh = FALSE` ile önbellekten okur.
+#
+# REGRESYON: Bu sarmalayıcılar önceden koşulsuz `refresh = TRUE` çağırıyordu.
+# Böylece her Bilge Yolaç çalıştırması, future gönderilmeden ÖNCE ana Shiny
+# olay döngüsünde `worker_monitor_expand_function_globals()` /
+# `codetools::findGlobals()` özyinelemesini baştan çalıştırıyor ve açık worker
+# globals'ının önlemek için var olduğu oturumlar arası donmayı geri
+# getiriyordu.
 cc_run_prepare_worker_globals <- function(refresh = FALSE, envir = globalenv()) {
+  if (!isTRUE(refresh) && !is.null(.cc_prepare_worker_cache$globals)) {
+    return(.cc_prepare_worker_cache$globals)
+  }
+
   bundle <- .cc_codex_original_cc_run_prepare_worker_globals(refresh = TRUE, envir = envir)
   bundle <- .cc_codex_add_named_worker_globals(
     bundle, .cc_codex_prepare_worker_names, envir
@@ -417,6 +444,10 @@ cc_run_prepare_worker_globals <- function(refresh = FALSE, envir = globalenv()) 
 }
 
 cc_run_output_worker_globals <- function(refresh = FALSE, envir = globalenv()) {
+  if (!isTRUE(refresh) && !is.null(.cc_completion_worker_cache$globals)) {
+    return(.cc_completion_worker_cache$globals)
+  }
+
   bundle <- .cc_codex_original_cc_run_output_worker_globals(refresh = TRUE, envir = envir)
   bundle <- .cc_codex_add_named_worker_globals(
     bundle, .cc_codex_output_worker_names, envir
@@ -425,5 +456,8 @@ cc_run_output_worker_globals <- function(refresh = FALSE, envir = globalenv()) {
   bundle
 }
 
+# Geç yüklenen sertleştirme sürümleri, temel katman tarafından önceden
+# doldurulmuş paketleri geçersiz kılar; ilk gönderim paketi bir kez yeniden
+# kurar ve sonraki gönderimler önbelleği kullanır.
 .cc_prepare_worker_cache$globals <- NULL
 .cc_completion_worker_cache$globals <- NULL

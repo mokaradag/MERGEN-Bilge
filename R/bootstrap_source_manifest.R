@@ -516,6 +516,8 @@ source_manifest_required_order <- list(
   c("R/helpers_claude_code_upload_folder.R", "R/helpers_claude_code_server_setup.R"),
   c("R/helpers_claude_code_process.R", "R/helpers_claude_code_runtime_workdir.R"),
   c("R/helpers_claude_code_runtime_workdir.R", "R/helpers_claude_code_directory_listing.R"),
+  c("R/helpers_claude_code_directory_listing.R", "R/helpers_claude_code_dir_listing_async.R"),
+  c("R/helpers_claude_code_dir_listing_async.R", "R/helpers_claude_code_server_setup.R"),
   c("R/helpers_claude_code_directory_listing.R", "R/helpers_claude_code.R"),
   c("R/helpers_claude_code.R", "R/helpers_claude_code_server_setup.R"),
   c("R/helpers_claude_code_downloads.R", "R/helpers_claude_code_downloads_html.R"),

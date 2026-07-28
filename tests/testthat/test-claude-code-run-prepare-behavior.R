@@ -252,17 +252,26 @@ test_that("preflight büyük klasörü sınırlı mod olarak bildirir", {
 })
 
 test_that("yeniden kullanılan runtime bağlantılı bölgeyi reddeder", {
-  skip_on_os("windows")
   env <- .cc_prepare_env()
   layout <- env$cc_runtime_dir_layout(user_id = 77L, run_token = "baglantili")
   layout <- env$cc_runtime_ensure_layout(layout)
   disari <- withr::local_tempdir()
 
   unlink(layout$output, recursive = TRUE, force = TRUE)
-  skip_if_not(
-    isTRUE(file.symlink(disari, layout$output)),
-    "Sembolik bağlantı oluşturulamadı."
-  )
+
+  # Windows'ta yönetici hakkı gerektirmeyen junction kullanılır. Sys.readlink()
+  # Windows'ta her zaman NA döndürdüğü için bağlantı tespiti
+  # cc_path_is_reparse_link() üzerinden çözülmüş yol karşılaştırmasıyla yapılır.
+  baglanti_ok <- if (.Platform$OS.type == "windows") {
+    isTRUE(suppressWarnings(tryCatch(
+      Sys.junction(disari, layout$output),
+      error = function(e) FALSE
+    )))
+  } else {
+    isTRUE(suppressWarnings(file.symlink(disari, layout$output)))
+  }
+
+  expect_true(baglanti_ok)
 
   expect_error(
     env$cc_runtime_ensure_layout(layout),
@@ -442,6 +451,173 @@ test_that("tek dosyanın başarısız aktarımı diğerlerini engellemez", {
   expect_false(isTRUE(sonuclar[[1]]$success))
   expect_true(isTRUE(sonuclar[[2]]$success))
   expect_true(file.exists(file.path(kaynak, "iyi.txt")))
+})
+
+test_that("hedef kökü kanonik olmayan biçimde verilse de çıktı aktarılır", {
+  # REGRESYON (Windows VM): tempdir() ve kullanıcı profili yolları 8.3 KISA ad
+  # biçiminde (KULLAN~1) gelebilir. Onaylı kök normalizePath(mustWork = TRUE)
+  # ile UZUN forma açılırken hedef yolu HAM biçimde karşılaştırılıyordu; önek
+  # eşleşmediği için geçerli her çıktı "onaylı kökün dışında" sayılıp sessizce
+  # aktarılmıyordu. Aynı sapma POSIX'te sembolik bağlantılı bir kök ile
+  # birebir üretilir.
+  env <- .cc_prepare_env()
+
+  gercek <- withr::local_tempdir()
+  takma_kok <- withr::local_tempdir()
+  takma <- file.path(takma_kok, "takma")
+
+  baglanti_ok <- if (.Platform$OS.type == "windows") {
+    isTRUE(suppressWarnings(tryCatch(
+      Sys.junction(gercek, takma),
+      error = function(e) FALSE
+    )))
+  } else {
+    isTRUE(suppressWarnings(file.symlink(gercek, takma)))
+  }
+
+  expect_true(baglanti_ok)
+
+  runtime <- withr::local_tempdir()
+  cikti <- file.path(runtime, "rapor.txt")
+  writeLines("rapor", cikti, useBytes = TRUE)
+
+  plan <- list(
+    items = list(list(
+      source_path = cikti,
+      dest_path = file.path(takma, "rapor.txt"),
+      relative_path = "rapor.txt",
+      size = 6
+    )),
+    skipped = character(0),
+    total_bytes = 6,
+    source_workdir = takma
+  )
+
+  sonuclar <- env$cc_apply_output_sync_plan(plan)
+
+  expect_true(isTRUE(sonuclar[[1]]$success))
+  expect_true(file.exists(file.path(gercek, "rapor.txt")))
+})
+
+test_that("var olan normal hedef üzerine yazılabilir", {
+  # REGRESYON (Windows): Sys.readlink() Windows'ta HER yol için NA döndürür ve
+  # nzchar(NA) TRUE'dur. Bağlantı tespiti yalnızca buna dayandığında var olan
+  # HER hedef "bağlantı" sayılıyor ve aynı dosyayı yeniden üreten her
+  # çalıştırmanın aktarımı bloke oluyordu.
+  env <- .cc_prepare_env()
+  kaynak <- withr::local_tempdir()
+  runtime <- withr::local_tempdir()
+
+  hedef <- file.path(kaynak, "rapor.txt")
+  writeLines("eski", hedef, useBytes = TRUE)
+
+  cikti <- file.path(runtime, "rapor.txt")
+  writeLines("yeni", cikti, useBytes = TRUE)
+
+  plan <- list(
+    items = list(list(
+      source_path = cikti,
+      dest_path = hedef,
+      relative_path = "rapor.txt",
+      size = 4
+    )),
+    skipped = character(0),
+    total_bytes = 4,
+    source_workdir = kaynak
+  )
+
+  sonuclar <- env$cc_apply_output_sync_plan(plan)
+
+  expect_true(isTRUE(sonuclar[[1]]$success))
+  expect_identical(readLines(hedef, warn = FALSE), "yeni")
+})
+
+test_that("üretildiği kanıtlanan çıktı kaybolursa sessizce atlanmaz", {
+  # Snapshot diff dosyanın üretildiğini kanıtladı; aktarımdan önce kaybolması
+  # (antivirüs karantinası, geciken yeniden adlandırma) çalıştırmayı "başarılı"
+  # göstermemelidir.
+  env <- .cc_prepare_env()
+  kaynak <- .cc_prepare_source_dir(1L)
+
+  sonuc <- env$prepare_claude_runtime_workdir(
+    kaynak,
+    user_id = 7L,
+    runtime_token = "kayip",
+    prompt = "kaynak01.txt incele"
+  )
+
+  kayip <- file.path(sonuc$layout$output, "kayip.txt")
+
+  plan <- env$cc_plan_output_sync(
+    changed_files = kayip,
+    layout = sonuc$layout,
+    source_workdir = kaynak
+  )
+
+  expect_length(plan$items, 0L)
+  expect_length(plan$skipped_approved, 1L)
+  expect_identical(plan$skipped_approved[[1]]$reason, "missing_output")
+
+  sonuclar <- env$cc_output_sync_skipped_results(plan)
+
+  expect_length(sonuclar, 1L)
+  expect_false(isTRUE(sonuclar[[1]]$success))
+  expect_true(grepl("kayboldu", sonuclar[[1]]$error, fixed = TRUE))
+})
+
+test_that("izole runtime dışındaki kayıp yol onaylı başarısızlık üretmez", {
+  # Yalnızca ONAYLI çıktı bölgesindeki kayıplar başarısızlık olarak
+  # raporlanır; input/metadata alanındaki yollar normal atlama olarak kalır.
+  env <- .cc_prepare_env()
+  kaynak <- .cc_prepare_source_dir(1L)
+
+  sonuc <- env$prepare_claude_runtime_workdir(
+    kaynak,
+    user_id = 7L,
+    runtime_token = "kayip_input",
+    prompt = "kaynak01.txt incele"
+  )
+
+  plan <- env$cc_plan_output_sync(
+    changed_files = file.path(sonuc$layout$input, "olmayan.txt"),
+    layout = sonuc$layout,
+    source_workdir = kaynak
+  )
+
+  expect_length(plan$items, 0L)
+  expect_length(plan$skipped_approved %||% list(), 0L)
+  expect_length(plan$skipped, 1L)
+})
+
+test_that("cc_path_is_reparse_link normal dizini bağlantı saymaz", {
+  env <- .cc_prepare_env()
+  kok <- withr::local_tempdir()
+  dosya <- file.path(kok, "veri.txt")
+  writeLines("veri", dosya, useBytes = TRUE)
+
+  expect_false(env$cc_path_is_reparse_link(kok))
+  expect_false(env$cc_path_is_reparse_link(dosya))
+  expect_false(env$cc_path_is_reparse_link(file.path(kok, "olmayan.txt")))
+  expect_false(env$cc_path_is_reparse_link(""))
+})
+
+test_that("cc_path_is_reparse_link gerçek bağlantıyı tespit eder", {
+  env <- .cc_prepare_env()
+  kok <- withr::local_tempdir()
+  disari <- withr::local_tempdir()
+  baglanti <- file.path(kok, "baglanti")
+
+  baglanti_ok <- if (.Platform$OS.type == "windows") {
+    isTRUE(suppressWarnings(tryCatch(
+      Sys.junction(disari, baglanti),
+      error = function(e) FALSE
+    )))
+  } else {
+    isTRUE(suppressWarnings(file.symlink(disari, baglanti)))
+  }
+
+  expect_true(baglanti_ok)
+  expect_true(env$cc_path_is_reparse_link(baglanti))
 })
 
 test_that("çıktı anlık görüntüsü yalnızca onaylı yazılabilir alanı tarar", {

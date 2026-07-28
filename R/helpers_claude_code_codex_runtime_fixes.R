@@ -396,6 +396,31 @@ cc_select_documents_for_request <- function(prompt,
     }, logical(1)))
     if (length(selected_idx)) mode <- "prompt"
   }
+
+  # Kullanıcı AÇIKÇA bir doküman adı verdiyse ve o ad keşfedilen dokümanların
+  # hiçbiriyle eşleşmiyorsa (ör. "missing.pdf" istendi, klasörde yalnızca
+  # "other.pdf" var), otomatik sıralı aday kümesine düşmek YANLIŞTIR:
+  # hazırlık hiç istenmemiş bir dokümanı çıkarır ve çalıştırma kullanıcının
+  # sormadığı içerik için "başarılı" görünür. Bu durum kapalı biçimde
+  # reddedilir.
+  #
+  # Aşırı engellemeyi önlemek için yalnızca GERÇEK doküman uzantısı taşıyan
+  # anmalar dikkate alınır; sıradan düzyazıdaki "3.5", "v1.2" gibi noktalı
+  # belirteçler bir çalıştırmayı bloke edemez.
+  if (!length(selected_idx) && length(requested)) {
+    dokuman_extleri <- tolower(get_claude_code_binary_doc_extensions())
+    istenen_dokuman <- requested[
+      tolower(tools::file_ext(requested)) %in% dokuman_extleri
+    ]
+
+    if (length(istenen_dokuman)) {
+      stop(paste0(
+        "Açıkça istenen dokümanlar seçilen klasörde bulunamadı: ",
+        paste(unique(basename(istenen_dokuman)), collapse = ", ")
+      ), call. = FALSE)
+    }
+  }
+
   if (!length(selected_idx)) selected_idx <- order(candidate_key)
 
   sizes <- suppressWarnings(as.numeric(file.info(documents)$size))
@@ -455,7 +480,9 @@ cc_prepare_run_workspace <- function(request) {
     as.character(result$document_context$extraction_errors %||% character(0)),
     collapse = " | "
   )
-  if (grepl("Açıkça istenen dokümanların tümü", errors, fixed = TRUE)) {
+  # Ortak önek iki fail-closed durumu da kapsar: istenen doküman sınırlar
+  # içinde hazırlanamadı VEYA klasörde hiç bulunamadı.
+  if (grepl("Açıkça istenen doküman", errors, fixed = TRUE)) {
     result$ok <- FALSE
     result$blocked <- TRUE
     result$message <- errors

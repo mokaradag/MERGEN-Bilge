@@ -58,10 +58,50 @@ cc_scan_runtime_excluded_dirs <- function() {
 
 # Dizin bağlantısı (symlink/junction) mı? Takip edilmeyen bağlantılar hem
 # döngüye hem de izinli kökün dışına kaçmaya yol açabilir.
+#
+# NOT: `Sys.readlink()` yalnızca POSIX'te anlamlıdır; Windows'ta HER yol için
+# NA döner. Bu yüzden NA açıkça "bağlantı değil" olarak yorumlanır
+# (nzchar(NA) TRUE olduğu için doğrudan kullanılamaz). Windows reparse
+# noktaları bu ucuz kontrolle değil, tarayıcının zaten hesapladığı çözülmüş
+# gerçek yol karşılaştırmasıyla (izinli kök + tekrar ziyaret kümesi)
+# yakalanır; girdi başına ek `normalizePath()` maliyeti UNC paylaşımlarında
+# taramayı belirgin biçimde yavaşlatırdı.
 .cc_scan_is_link <- function(path) {
   hedef <- tryCatch(Sys.readlink(path), error = function(e) NA_character_)
   if (length(hedef) != 1L || is.na(hedef)) return(FALSE)
   nzchar(hedef)
+}
+
+#' Yol bir bağlantı/reparse noktası mı (Windows dahil)
+#'
+#' `Sys.readlink()` Windows'ta çalışmadığı için junction/symlink tespiti
+#' çözülmüş yolun sözlüksel konumdan sapmasıyla yapılır: gerçek bir dizin
+#' `normalizePath(üst)/ad` ile aynı yere çözülürken bağlantı başka bir yere
+#' çözülür. 8.3 kısa ad farkını ortadan kaldırmak için karşılaştırmanın iki
+#' tarafı da `normalizePath()` üzerinden geçer.
+#'
+#' Bu kontrol girdi başına DEĞİL, seyrek çağrılan sınır noktalarında
+#' (runtime bölge doğrulaması, çıktı hedefi) kullanılmalıdır.
+#'
+#' @param path Kontrol edilecek yol
+#' @return Bağlantı ise TRUE
+cc_path_is_reparse_link <- function(path) {
+  yol <- as.character(path %||% "")[1]
+  if (is.na(yol) || !nzchar(yol)) return(FALSE)
+
+  if (isTRUE(.cc_scan_is_link(yol))) return(TRUE)
+  if (.Platform$OS.type != "windows") return(FALSE)
+
+  if (!isTRUE(file.exists(yol)) && !isTRUE(dir.exists(yol))) return(FALSE)
+
+  # Anonim işleyici sayısı bilinçli düşük tutulur (bkz. .cc_scan_list_entries);
+  # bu yüzden tryCatch yerine try(silent = TRUE) kullanılır.
+  cozulmus <- try(normalizePath(yol, winslash = "/", mustWork = TRUE), silent = TRUE)
+  ust <- try(normalizePath(dirname(yol), winslash = "/", mustWork = TRUE), silent = TRUE)
+  if (inherits(cozulmus, "try-error") || inherits(ust, "try-error")) return(FALSE)
+
+  beklenen <- paste0(.cc_scan_norm(ust), "/", basename(.cc_scan_norm(yol)))
+  !identical(.cc_scan_key(.cc_scan_norm(cozulmus)), .cc_scan_key(beklenen))
 }
 
 # Bir dizinin girdilerini sınırlı biçimde listeler.

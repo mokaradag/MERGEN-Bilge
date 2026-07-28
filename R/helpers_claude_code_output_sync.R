@@ -101,12 +101,28 @@ cc_plan_output_sync <- function(changed_files,
   for (yol in changed_files) {
     kaynak <- .cc_scan_norm(yol)
 
+    # Bölge kararı yalnızca sözlükseldir; dosya kaybolsa bile hangi alana ait
+    # olduğu bilinir. Bu yüzden varlık kontrolünden ÖNCE hesaplanır.
+    bolge <- cc_runtime_zone_of_path(kaynak, layout)
+
     if (!isTRUE(file.exists(kaynak)) || isTRUE(dir.exists(kaynak))) {
       atlananlar <- c(atlananlar, kaynak)
+
+      # Snapshot diff'i bu dosyanın ÜRETİLDİĞİNİ kanıtladı. Aktarımdan önce
+      # kaybolması (antivirüs karantinası, geciken araç yeniden adlandırması,
+      # ağ paylaşımı görünürlük gecikmesi) sessiz bir kayıptır: çalıştırma ne
+      # indirme ne de kaynak kopyası üretmeden "başarılı" görünürdü. Onaylı
+      # çıktı alanındaki kayıp dosyalar açık birer başarısızlık olarak
+      # raporlanır.
+      if (identical(bolge, "output")) {
+        atlanan_onayli[[length(atlanan_onayli) + 1L]] <- list(
+          source_path = kaynak,
+          size = NA_real_,
+          reason = if (isTRUE(dir.exists(kaynak))) "output_is_directory" else "missing_output"
+        )
+      }
       next
     }
-
-    bolge <- cc_runtime_zone_of_path(kaynak, layout)
 
     # İzole çalışma alanı sözleşmesi gereği yalnızca onaylı output bölgesi
     # kaynak dizine geri taşınabilir. Kopyalanmış input dosyalarındaki edits ve
@@ -164,11 +180,13 @@ cc_plan_output_sync <- function(changed_files,
   )
 }
 
-#' Boyut sınırı nedeniyle aktarılamayan onaylı çıktıları başarısız sonuç yap
+#' Onaylı alanda aktarılamayan çıktıları başarısız sonuç yap
 #'
 #' `cc_plan_output_sync()` bu dosyaları yalnızca `skipped_approved` içinde
 #' tutar. Çalıştırma sonucunu değerlendiren taraf yalnızca sonuç listesine
-#' baktığı için, bunlar açık birer başarısız kayda dönüştürülür.
+#' baktığı için, bunlar açık birer başarısız kayda dönüştürülür. Kapsam iki
+#' nedendir: boyut sınırını aşan çıktılar ve snapshot diff'inin ürettiğini
+#' kanıtladığı hâlde aktarımdan önce kaybolan çıktılar.
 #'
 #' @param plan cc_plan_output_sync() çıktısı
 #' @return Başarısız sonuç listesi
@@ -177,15 +195,29 @@ cc_output_sync_skipped_results <- function(plan) {
   if (!length(atlananlar)) return(list())
 
   lapply(atlananlar, function(oge) {
+    neden <- as.character(oge$reason %||% "size_limit")[1]
+
+    mesaj <- switch(
+      neden,
+      missing_output = paste0(
+        "Üretilen çıktı aktarımdan önce kayboldu veya erişilemez oldu (",
+        neden, ")"
+      ),
+      output_is_directory = paste0(
+        "Üretilen çıktı beklenmedik biçimde dizine dönüştü (", neden, ")"
+      ),
+      paste0(
+        "Çıktı boyut sınırını aştığı için kaynak klasöre aktarılmadı (",
+        neden, ")"
+      )
+    )
+
     list(
       source_path = oge$source_path %||% "",
       dest_path = oge$source_path %||% "",
       success = FALSE,
       size = oge$size %||% NA_real_,
-      error = paste0(
-        "Çıktı boyut sınırını aştığı için kaynak klasöre aktarılmadı (",
-        oge$reason %||% "size_limit", ")"
-      )
+      error = mesaj
     )
   })
 }
@@ -249,24 +281,38 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
 
     hata <- ""
 
-    # file.copy(overwrite = TRUE) var olan hedef bağlantısını izleyebilir ve
-    # onaylı kök dışındaki dosyayı ezebilir. Unix symlink'lerini doğrudan,
-    # Windows reparse-point/junction benzeri hedefleri de normalizePath ile
-    # çözülmüş hedefin onaylı kökün dışına çıkması üzerinden reddet.
-    hedef_var <- isTRUE(file.exists(oge$dest_path)) || isTRUE(dir.exists(oge$dest_path))
-    hedef_link <- if (hedef_var) {
-      tryCatch(nzchar(Sys.readlink(oge$dest_path)), error = function(e) FALSE)
+    # Hedef yol, onaylı kökle AYNI çözümleme semantiğiyle kanonik forma
+    # çevrilir. Windows'ta tempdir()/kullanıcı profili 8.3 KISA ad (KULLAN~1)
+    # biçiminde gelebilir; ham hedef yolunu kanonik onaylı kökle
+    # karşılaştırmak önek eşleşmesini bozar ve geçerli bir çıktı sessizce
+    # "onaylı kökün dışında" sayılarak hiç aktarılmazdı.
+    cozulmus_dizin <- cc_output_sync_canonical_root(hedef_dizin)
+    beklenen_hedef <- if (nzchar(cozulmus_dizin)) {
+      paste0(cozulmus_dizin, "/", basename(.cc_scan_norm(oge$dest_path)))
     } else {
-      FALSE
+      .cc_scan_norm(oge$dest_path)
     }
+
+    # file.copy(overwrite = TRUE) var olan hedef bağlantısını izleyebilir ve
+    # onaylı kök dışındaki dosyayı ezebilir. Sys.readlink() Windows'ta HER
+    # ZAMAN NA döndürdüğü için (nzchar(NA) == TRUE) tek başına kullanılamaz:
+    # var olan her hedefi bağlantı sanıp aktarımı bloke ederdi. Bunun yerine
+    # hedef, çözülmüş sözlüksel konumuyla karşılaştırılır; symlink/junction
+    # başka bir yere çözüldüğü için her iki platformda da yakalanır.
+    hedef_var <- isTRUE(file.exists(oge$dest_path)) || isTRUE(dir.exists(oge$dest_path))
     resolved_dest <- if (hedef_var) {
       tryCatch(
         .cc_scan_norm(normalizePath(oge$dest_path, winslash = "/", mustWork = TRUE)),
         error = function(e) ""
       )
     } else {
-      oge$dest_path
+      beklenen_hedef
     }
+    hedef_link <- isTRUE(hedef_var) && (
+      isTRUE(.cc_scan_is_link(oge$dest_path)) ||
+        !nzchar(resolved_dest) ||
+        !identical(.cc_scan_key(resolved_dest), .cc_scan_key(beklenen_hedef))
+    )
     resolved_dest_key <- .cc_scan_key(resolved_dest)
     hedef_guvenli <- nzchar(resolved_dest) && (
       identical(resolved_dest_key, approved_key) ||

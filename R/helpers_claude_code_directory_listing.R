@@ -145,6 +145,8 @@ cc_normalize_dir_entry <- function(file_path, user_id = NULL, idx_cache = list()
 
 #' Belirtilen dizindeki dosya ve klasörleri listeler
 #'
+#' NOT: Maliyetlidir; arka plan worker'ına gönderilmelidir
+#' (R/helpers_claude_code_dir_listing_async.R).
 #' @param path Dizin yolu
 #' @param max_items Maksimum öğe sayısı
 #' @param user_id Kullanıcı kimliği; kalıcı depolama görünen ad çözümlemesi için kullanılır
