@@ -179,8 +179,8 @@ mirror_directory_to_local_workspace <- function(source_dir,
     return(sonuc)
   }
 
-  # The source may grow while it is copied. Validate the bytes that actually
-  # reached the private staging tree before that tree can replace active input.
+  # Kaynak kopyalanırken büyüyebilir. Etkin girdinin yerini almadan önce özel
+  # hazırlama ağacına gerçekten ulaşan baytları doğrula.
   staged_files <- as.character(sonuc$copy$copied %||% character(0))
   staged_sizes <- suppressWarnings(as.numeric(file.info(staged_files)$size))
   max_file_bytes <- suppressWarnings(as.numeric(
