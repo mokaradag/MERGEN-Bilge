@@ -8,6 +8,10 @@
   flex-direction: row;
 }
 
+.ortak-calismalar-container .oo-composer-arac-satiri {
+  align-items: center;
+}
+
 html[data-theme="light"] .oo-oturum-karti,
 html[data-theme="light"] .oo-oda-yerlesim {
   background: rgba(255, 255, 255, 0.78);
