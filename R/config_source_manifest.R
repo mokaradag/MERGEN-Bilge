@@ -326,6 +326,9 @@ source_manifest_sections <- list(
     "R/helpers_claude_code_api_key.R",
     "R/helpers_claude_code_runtime_resolver.R",
     "R/helpers_claude_code_bounded_scan.R",
+    # Ad eşleştirme (prompt anmaları, depolama öneki -> görünen ad) hazırlık
+    # katmanından ÖNCE yüklenir; girdi ve doküman seçimi buna dayanır.
+    "R/helpers_claude_code_input_matching.R",
     "R/helpers_claude_code_runtime_prepare.R",
     "R/helpers_claude_code_output_sync.R",
     "R/helpers_claude_code_runtime_workdir.R",

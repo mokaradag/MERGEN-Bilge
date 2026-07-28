@@ -32,6 +32,9 @@ testthat::local_edition(3)
     normalizePath(path, winslash = "/", mustWork = FALSE)
   }
   source(file.path(repo_root, "R", "utils_common.R"), encoding = "UTF-8", local = env)
+  # Bağlantı tespiti ortak tarayıcı yardımcısındadır; üretimdeki yükleme
+  # sırası (bounded_scan -> downloads) test ortamında da yansıtılmalıdır.
+  source(file.path(repo_root, "R", "helpers_claude_code_bounded_scan.R"), encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "helpers_claude_code_path_policy.R"), encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "helpers_claude_code_downloads.R"), encoding = "UTF-8", local = env)
   env
@@ -167,17 +170,27 @@ testthat::test_that("stage_claude_code_downloads kök-dışı dosyayı kopyalama
 })
 
 testthat::test_that("stage_claude_code_downloads son kontrolde symlink kaynağı reddeder", {
-  testthat::skip_on_os("windows")
   env <- .ccdl_env()
   dl_root <- tempfile("ccdl_symlink_root_"); dir.create(dl_root)
   withr::local_options(mergen.claude_code_download_root = dl_root)
   allowed <- tempfile("ccdl_symlink_allowed_"); dir.create(allowed)
-  outside <- tempfile("ccdl_symlink_secret_"); writeLines("gizli", outside)
+  outside_dir <- tempfile("ccdl_symlink_secret_"); dir.create(outside_dir)
+  outside <- file.path(outside_dir, "rapor.txt"); writeLines("gizli", outside)
   link <- file.path(allowed, "rapor.txt")
   writeLines("onaylı", link)
+
+  # Windows'ta DOSYA symlink'i yönetici hakkı ister; son anda yapılan yer
+  # değiştirme orada yönetici gerektirmeyen junction ile taklit edilir.
   env$cc_wait_for_path_visible <- function(path, ...) {
-    unlink(path)
-    testthat::expect_true(file.symlink(outside, path))
+    unlink(path, recursive = TRUE, force = TRUE)
+    if (.Platform$OS.type == "windows") {
+      testthat::expect_true(isTRUE(suppressWarnings(tryCatch(
+        Sys.junction(outside_dir, path),
+        error = function(e) FALSE
+      ))))
+    } else {
+      testthat::expect_true(file.symlink(outside, path))
+    }
     TRUE
   }
 

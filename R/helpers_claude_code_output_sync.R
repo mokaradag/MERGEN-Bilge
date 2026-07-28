@@ -294,11 +294,10 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     }
 
     # file.copy(overwrite = TRUE) var olan hedef bağlantısını izleyebilir ve
-    # onaylı kök dışındaki dosyayı ezebilir. Sys.readlink() Windows'ta HER
-    # ZAMAN NA döndürdüğü için (nzchar(NA) == TRUE) tek başına kullanılamaz:
-    # var olan her hedefi bağlantı sanıp aktarımı bloke ederdi. Bunun yerine
-    # hedef, çözülmüş sözlüksel konumuyla karşılaştırılır; symlink/junction
-    # başka bir yere çözüldüğü için her iki platformda da yakalanır.
+    # onaylı kök dışındaki dosyayı ezebilir. Bağlantı tespiti taban ad
+    # karşılaştırmasıyla DEĞİL, ortak dizin düzeyli yardımcıyla yapılır;
+    # Windows'ta Türkçe taban adlar harf katlaması nedeniyle eşitsiz görünüp
+    # geçerli her aktarımı bloke ediyordu.
     hedef_var <- isTRUE(file.exists(oge$dest_path)) || isTRUE(dir.exists(oge$dest_path))
     resolved_dest <- if (hedef_var) {
       tryCatch(
@@ -309,9 +308,7 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       beklenen_hedef
     }
     hedef_link <- isTRUE(hedef_var) && (
-      isTRUE(.cc_scan_is_link(oge$dest_path)) ||
-        !nzchar(resolved_dest) ||
-        !identical(.cc_scan_key(resolved_dest), .cc_scan_key(beklenen_hedef))
+      !nzchar(resolved_dest) || isTRUE(cc_path_is_reparse_link(oge$dest_path))
     )
     resolved_dest_key <- .cc_scan_key(resolved_dest)
     hedef_guvenli <- nzchar(resolved_dest) && (

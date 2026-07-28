@@ -51,6 +51,26 @@
   paste(satirlar, collapse = "\n")
 }
 
+# Onaylı kökün İÇİNDE görünen ama dışarı çözülen bir kaynak yolu üretir.
+# POSIX'te dosya symlink'i, Windows'ta yönetici hakkı gerektirmeyen dizin
+# junction'ı kullanılır; iki platformda da aynı sözleşme doğrulanır.
+.cc_codex_disari_kaynak <- function(kok, disari_dizin, ad) {
+  if (.Platform$OS.type == "windows") {
+    baglanti_dizin <- file.path(kok, "dis")
+    testthat::expect_true(isTRUE(suppressWarnings(tryCatch(
+      Sys.junction(disari_dizin, baglanti_dizin),
+      error = function(e) FALSE
+    ))))
+    return(file.path(baglanti_dizin, ad))
+  }
+
+  baglanti <- file.path(kok, ad)
+  testthat::expect_true(isTRUE(suppressWarnings(
+    file.symlink(file.path(disari_dizin, ad), baglanti)
+  )))
+  baglanti
+}
+
 .cc_codex_skip_if_absent <- function() {
   testthat::skip_if_not(
     all(file.exists(.cc_codex_review_files())),
@@ -97,6 +117,7 @@
   # cagirir. Izole test ortami da ayni yukleme sirasini yansitmalidir.
   for (temel in c(
     "helpers_claude_code_bounded_scan.R",
+    "helpers_claude_code_input_matching.R",
     "helpers_claude_code_runtime_prepare.R",
     "helpers_claude_code_output_sync.R"
   )) {
@@ -660,14 +681,16 @@ test_that("var olan normal hedef Windows'ta da bağlantı sayılmaz", {
 })
 
 test_that("planlamadan sonra bağlantıya dönüşen çıktı kaynağı reddedilir", {
-  skip_on_os("windows")
   env <- .cc_codex_review_env()
   kaynak <- withr::local_tempdir()
   runtime <- withr::local_tempdir()
-  disari <- tempfile()
+  disari_dizin <- withr::local_tempdir()
+  disari <- file.path(disari_dizin, "rapor.txt")
   writeLines("gizli", disari, useBytes = TRUE)
-  cikti <- file.path(runtime, "rapor.txt")
-  expect_true(file.symlink(disari, cikti))
+
+  # Windows'ta DOSYA symlink'i yönetici hakkı ister; aynı sözleşme (onaylı
+  # output kökü dışına çözülen kaynak reddedilir) junction ile doğrulanır.
+  cikti <- .cc_codex_disari_kaynak(runtime, disari_dizin, "rapor.txt")
 
   sonuc <- env$cc_apply_output_sync_plan(list(
     source_workdir = kaynak,
@@ -719,14 +742,13 @@ test_that("çıktı terfisi güncel tekil ve toplam boyut sınırlarını uygula
 })
 
 test_that("runtime girdi kopyası son anda bağlantıya dönüşen kaynağı reddeder", {
-  skip_on_os("windows")
   env <- .cc_codex_review_env()
   kok <- withr::local_tempdir()
   hedef <- withr::local_tempdir()
-  disari <- tempfile()
-  writeLines("gizli", disari, useBytes = TRUE)
-  baglanti <- file.path(kok, "girdi.txt")
-  expect_true(file.symlink(disari, baglanti))
+  disari_dizin <- withr::local_tempdir()
+  writeLines("gizli", file.path(disari_dizin, "girdi.txt"), useBytes = TRUE)
+
+  baglanti <- .cc_codex_disari_kaynak(kok, disari_dizin, "girdi.txt")
 
   sonuc <- env$cc_copy_files_to_runtime_input(
     baglanti, "girdi.txt", hedef, source_root = kok
@@ -734,4 +756,87 @@ test_that("runtime girdi kopyası son anda bağlantıya dönüşen kaynağı red
 
   expect_identical(sonuc$failed, "girdi.txt")
   expect_false(file.exists(file.path(hedef, "girdi.txt")))
+})
+
+test_that("Türkçe adlı normal girdi runtime alanına kopyalanır", {
+  # REGRESYON: kaynak güvenlik denetimi tam yolu "üst dizin + taban ad" ile
+  # karşılaştırıyordu. Windows'ta Türkçe taban adlar harf katlaması nedeniyle
+  # eşitsiz görünüyor ve GEÇERLİ her dosya "bağlantı" sayılarak
+  # kopyalanmıyordu ("Çalışma alanı hazırlanamadı: Gerekli girdi dosyaları
+  # kopyalanamadı: ...").
+  env <- .cc_codex_review_env()
+  kok <- withr::local_tempdir()
+  hedef <- withr::local_tempdir()
+
+  ad <- paste0(
+    "20260727230224821_40022c68f89c4117_EK-U S", intToUtf8(0x00FC), "re",
+    intToUtf8(0x00E7), " ", intToUtf8(0x0130), intToUtf8(0x015F), " Ak",
+    intToUtf8(0x0131), intToUtf8(0x015F), "lar", intToUtf8(0x0131), ".pdf"
+  )
+  writeLines("veri", file.path(kok, ad), useBytes = TRUE)
+
+  sonuc <- env$cc_copy_files_to_runtime_input(
+    file.path(kok, ad), ad, hedef, source_root = kok
+  )
+
+  expect_length(sonuc$failed, 0L)
+  expect_true(file.exists(file.path(hedef, ad)))
+})
+
+test_that("yükleme klasöründeki depolama önekli doküman görünen adla eşleşir", {
+  # REGRESYON: "Yükleme Klasörüne git" ile açılan klasörde dosyalar diskte
+  # <zaman>_<hash>_<hash>_<görünen ad> biçiminde durur. Kullanıcı arayüzde
+  # gördüğü adla sorduğunda eşleşme tutmuyor ve çalıştırma "Açıkça istenen
+  # dokümanlar seçilen klasörde bulunamadı" ile bloke oluyordu.
+  env <- .cc_codex_review_env()
+  kok <- withr::local_tempdir()
+
+  gorunen <- "EK-U Sureci.pdf"
+  depo <- paste0("20260727230224821_40022c68f89c4117_2f0c175c515f_", gorunen)
+  yol <- file.path(kok, depo)
+  writeLines("pdf", yol, useBytes = TRUE)
+
+  sonuc <- env$cc_select_documents_for_request(
+    prompt = paste(gorunen, "dosyasini ozetle"),
+    documents = yol
+  )
+
+  expect_identical(sonuc$selection_mode, "prompt")
+  expect_identical(basename(sonuc$files), depo)
+})
+
+test_that("depolama önekli girdi görünen adla seçilir", {
+  env <- .cc_codex_review_env()
+  kok <- withr::local_tempdir()
+
+  gorunen <- "EK-U Sureci.pdf"
+  depo <- paste0("20260727230224821_40022c68f89c4117_2f0c175c515f_", gorunen)
+  yol <- file.path(kok, depo)
+  writeLines("veri", yol, useBytes = TRUE)
+
+  sonuc <- env$cc_select_input_files(
+    prompt = paste(gorunen, "dosyasini incele"),
+    files = yol,
+    file_sizes = file.info(yol)$size,
+    root = kok
+  )
+
+  expect_identical(sonuc$selection_mode, "prompt")
+  expect_identical(basename(sonuc$files), depo)
+})
+
+test_that("depolama öneki olmayan gerçekten eksik doküman hâlâ reddedilir", {
+  env <- .cc_codex_review_env()
+  kok <- withr::local_tempdir()
+  yol <- file.path(kok, "other.pdf")
+  writeLines("pdf", yol, useBytes = TRUE)
+
+  expect_error(
+    env$cc_select_documents_for_request(
+      prompt = "missing.pdf dosyasini ozetle",
+      documents = yol
+    ),
+    "bulunamadi|bulunamad",
+    fixed = FALSE
+  )
 })

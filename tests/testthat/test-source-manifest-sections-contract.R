@@ -149,7 +149,7 @@
   # 36L -> 38L bilinçli güncelleme: PR #672 Codex sertleştirme dosyaları
   # manifest dışı geç-yükleme yerine bölümün sonuna alındı (sahipsiz runtime
   # dosyası + sessiz ölü kod sorununu giderir).
-  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_codex_output_fixes.R", n = 39L),
+  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_codex_output_fixes.R", n = 40L),
   llm_pipeline = list(first = "R/helpers_llm_tool_formatters.R", last = "R/helpers_llm_worker.R", n = 11L),
   module_chat = list(first = "R/module_chat_history_background.R", last = "R/module_feedback.R", n = 9L),
   module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 7L),
@@ -447,7 +447,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # onları seam sahipliği olmayan ölü koda çeviriyordu.
   # 365L -> 366L bilinçli güncelleme: dizin gezgini numaralandırması ana Shiny
   # olay döngüsünden çıkarıldı (R/helpers_claude_code_dir_listing_async.R).
-  expect_equal(length(runtime), 366L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 367L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

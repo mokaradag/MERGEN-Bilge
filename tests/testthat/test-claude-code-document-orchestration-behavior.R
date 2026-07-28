@@ -29,6 +29,7 @@
   # yardımcılarında yaşar; izole test bunları da yüklemelidir.
   source(file.path(kok, "R", "config_claude_code.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_claude_code_bounded_scan.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_claude_code_input_matching.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_claude_code_runtime_prepare.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_claude_code_output_sync.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_claude_code_documents.R"), encoding = "UTF-8", local = env)

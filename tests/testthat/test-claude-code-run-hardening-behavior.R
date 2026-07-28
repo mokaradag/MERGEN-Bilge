@@ -35,6 +35,7 @@
   dosyalar <- c(
     "config_claude_code.R",
     "helpers_claude_code_bounded_scan.R",
+    "helpers_claude_code_input_matching.R",
     "helpers_claude_code_runtime_prepare.R",
     "helpers_claude_code_output_sync.R",
     extra_files
