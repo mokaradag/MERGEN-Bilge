@@ -64,89 +64,74 @@ cc_scan_runtime_excluded_dirs <- function() {
   nzchar(hedef)
 }
 
-# Bir dizinin girdilerini işletim sistemi sürecinden artımlı olarak tüketir.
-# `list.files()` tek çağrıda bütün dizini belleğe aldığı için yüz binlerce
-# girdili düz dizinlerde sınırlar uygulanamadan önce bloke olabiliyordu.
+# Bir dizinin girdilerini sınırlı biçimde listeler.
+#
+# KRİTİK ENCODING SÖZLEŞMESİ: Bu fonksiyon dizin girdilerini ASLA bir kabuk
+# alt sürecinden (powershell.exe / find) okumaz. Windows'ta PowerShell çıktısı
+# konsol OEM kod sayfasıyla (Türkçe Windows'ta CP857) yazılır; boru üzerinden
+# okunan baytlar R tarafında yerel ANSI (CP1254) kabul edildiğinde Türkçe
+# dosya adları bozulur (Ç->€, ş->Ÿ, ç->‡, İ->˜, ü/ı->kutu). Dahası PowerShell
+# biçimlendirici uzun satırları konsol genişliğinde (varsayılan 120 sütun)
+# katlar; uzun UNC yolları birden çok satıra bölünüp geçersiz yollara dönüşür.
+# Her iki bozulma da dosyaların diskte bulunamamasına ve izole runtime input
+# klasörünün boş kalmasına yol açar.
+#
+# Bu yüzden numaralandırma base R `list.files()` ile yapılır: adlar doğru
+# kodlamada döner, uzun UNC yolları bölünmez ve süreç başlatma maliyeti
+# (PowerShell için ~300-800 ms) ortadan kalkar. Sınırlar (max_entries,
+# zaman aşımı) listeleme sonrasında uygulanır; tek bir dizinin okunması
+# bir alt süreç başlatmaktan belirgin biçimde ucuzdur.
 .cc_scan_list_entries <- function(path, max_entries, deadline_ms) {
   limit <- max(0L, as.integer(max_entries))
   if (limit == 0L) return(list(entries = character(0), truncated = TRUE, reason = "max_entries"))
 
-  if (!requireNamespace("processx", quietly = TRUE)) {
-    stop("Sınırlı dizin taraması için processx paketi gereklidir.")
+  # Anonim işleyici sayısı bilinçli olarak düşük tutulur (maintainability
+  # ratchet bu dosyayı fonksiyon bütçesiyle korur); bu yüzden tryCatch yerine
+  # try(silent = TRUE) kullanılır.
+  gecen_ms <- as.numeric(difftime(Sys.time(), deadline_ms$started, units = "secs")) * 1000
+  if (isTRUE(gecen_ms > deadline_ms$limit)) {
+    return(list(entries = character(0), truncated = TRUE, reason = "timeout"))
   }
 
-  if (.Platform$OS.type == "windows") {
-    escaped <- gsub("'", "''", normalizePath(path, winslash = "\\", mustWork = FALSE), fixed = TRUE)
-    command <- "powershell.exe"
-    args <- c(
-      "-NoProfile", "-NonInteractive", "-Command",
-      paste0("Get-ChildItem -LiteralPath '", escaped,
-             "' -Force:$false | ForEach-Object { $_.FullName }")
-    )
-  } else {
-    command <- "find"
-    args <- c(path, "-mindepth", "1", "-maxdepth", "1", "-print")
+  # `all.files = FALSE` gizli/nokta ile başlayan girdileri dışarıda bırakır;
+  # bu, gezginin eski (regresyon öncesi) davranışıyla aynıdır.
+  ham <- try(
+    list.files(path, all.files = FALSE, full.names = TRUE, recursive = FALSE, no.. = TRUE),
+    silent = TRUE
+  )
+  if (inherits(ham, "try-error")) {
+    stop(sprintf("Dizin listelenemedi: %s", conditionMessage(attr(ham, "condition"))))
   }
 
-  proc <- processx::process$new(command, args, stdout = "|", stderr = "|", cleanup = TRUE)
-  on.exit(if (proc$is_alive()) proc$kill(), add = TRUE)
+  entries <- as.character(ham %||% character(0))
 
-  entries <- character(0)
-  stderr_lines <- character(0)
+  # Windows VM / UNC paylaşımlarında base R `list.files()` bazen erişilebilir
+  # bir paylaşım için de boş döner. Bu yüzden boş sonuçta `fs` yedeğine düşülür;
+  # `fs` de doğru kodlanmış adlar döndürdüğü için Türkçe adlar korunur.
+  if (!length(entries) && requireNamespace("fs", quietly = TRUE)) {
+    yedek <- try(fs::dir_ls(path, recurse = FALSE, all = FALSE, fail = FALSE), silent = TRUE)
+    if (!inherits(yedek, "try-error")) entries <- as.character(yedek)
+  }
+
+  # `list.files()` erişilemeyen bir dizin için hata vermez, sessizce boş döner.
+  # Gerçek erişim hatasını "boş dizin" gibi göstermemek için okunabilirliği
+  # ayrıca doğrularız; aksi halde paylaşım/ACL hatası sessiz kalırdı.
+  if (!length(entries) && !identical(unname(file.access(path, mode = 4L))[1], 0L)) {
+    stop(sprintf("Dizin listelenemedi: okuma izni yok (%s)", path))
+  }
+
   truncated <- FALSE
   reason <- ""
 
-  drain_stderr <- function(all = FALSE) {
-    chunk <- if (isTRUE(all)) {
-      proc$read_all_error_lines()
-    } else {
-      proc$read_error_lines(n = 128L)
-    }
-    if (length(chunk) && length(stderr_lines) < 20L) {
-      stderr_lines <<- c(stderr_lines, chunk)[seq_len(min(20L, length(c(stderr_lines, chunk))))]
-    }
-    invisible(NULL)
-  }
-
-  repeat {
-    if (as.numeric(difftime(Sys.time(), deadline_ms$started, units = "secs")) * 1000 >
-        deadline_ms$limit) {
+  if (length(entries) > limit) {
+    entries <- entries[seq_len(limit)]
+    truncated <- TRUE
+    reason <- "max_entries"
+  } else {
+    gecen_ms <- as.numeric(difftime(Sys.time(), deadline_ms$started, units = "secs")) * 1000
+    if (isTRUE(gecen_ms > deadline_ms$limit)) {
       truncated <- TRUE
       reason <- "timeout"
-      break
-    }
-
-    available <- proc$poll_io(50)
-    if (identical(available[["error"]], "ready")) {
-      drain_stderr()
-    }
-    if (identical(available[["output"]], "ready")) {
-      chunk <- proc$read_output_lines(n = min(128L, limit + 1L - length(entries)))
-      entries <- c(entries, chunk)
-      if (length(entries) > limit) {
-        entries <- entries[seq_len(limit)]
-        truncated <- TRUE
-        reason <- "max_entries"
-        break
-      }
-    }
-
-    if (!proc$is_alive()) {
-      chunk <- proc$read_all_output_lines()
-      entries <- c(entries, chunk)
-      drain_stderr(all = TRUE)
-      if (length(entries) > limit) {
-        entries <- entries[seq_len(limit)]
-        truncated <- TRUE
-        reason <- "max_entries"
-      }
-      status <- proc$get_exit_status()
-      if (!is.null(status) && !identical(as.integer(status), 0L)) {
-        detail <- paste(stderr_lines[nzchar(stderr_lines)], collapse = " | ")
-        if (!nzchar(detail)) detail <- "ayrıntı bildirilmedi"
-        stop(sprintf("Dizin listeleyici kod %d ile sonlandı: %s", status, detail))
-      }
-      break
     }
   }
 

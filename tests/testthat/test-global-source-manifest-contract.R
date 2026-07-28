@@ -146,3 +146,70 @@ test_that("global.R future cluster test modunda başlatılmaz sözleşmesini kor
     info = "Üretim koşumunda future cluster başlatma yolu korunmalı."
   )
 })
+# ------------------------------------------------------------------------------
+# Opsiyonel manifest yolları ve boot güvenliği
+#
+# REGRESYON: PR #672 Codex sertleştirme dosyaları manifeste ZORUNLU olarak
+# eklendiğinde, dosyaların henüz bulunmadığı on-prem çalışma kopyasında üretim
+# uygulaması "Kaynak manifesti doğrulaması başarısız: eksik kaynak dosya(lar)"
+# hatasıyla HİÇ AÇILMADI. Manifest eksik dosyada fail-fast yapmaya devam
+# etmelidir; yalnızca bilinçli olarak opsiyonel işaretlenmiş yollar tolere
+# edilir.
+# ------------------------------------------------------------------------------
+
+test_that("opsiyonel manifest yolları eksik olsa da doğrulama ve yükleme sürer", {
+  repo_root <- resolve_repo_root_for_tests()
+
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
+  source(file.path(repo_root, "R", "utils_safe_source.R"), encoding = "UTF-8", local = env)
+  source(file.path(repo_root, "R", "bootstrap_source_manifest.R"), encoding = "UTF-8", local = env)
+
+  kok <- withr::local_tempdir()
+  dir.create(file.path(kok, "R"))
+  writeLines("var_olan <- TRUE", file.path(kok, "R", "var_olan.R"), useBytes = TRUE)
+
+  yollar <- c("R/var_olan.R", "R/yok_ama_opsiyonel.R")
+
+  # Opsiyonel işaretlenmemişken eksik dosya ölümcül kalmalıdır.
+  env$source_manifest_optional_source_paths <- character(0)
+  expect_error(
+    env$source_manifest_validate_files(yollar, repo_root = kok),
+    "eksik kaynak dosya"
+  )
+
+  # Opsiyonel işaretlendiğinde doğrulama ve parse geçmelidir.
+  env$source_manifest_optional_source_paths <- "R/yok_ama_opsiyonel.R"
+  expect_true(env$source_manifest_validate_files(yollar, repo_root = kok))
+  expect_true(env$source_manifest_validate_parse(yollar, repo_root = kok))
+
+  # Eksik opsiyonel yol yükleme listesinden düşer, mevcut olan kalır.
+  expect_identical(
+    env$source_manifest_present_paths(yollar, repo_root = kok),
+    "R/var_olan.R"
+  )
+
+  # Opsiyonel OLMAYAN eksik dosya listede kalır ki fail-fast bozulmasın.
+  env$source_manifest_optional_source_paths <- character(0)
+  expect_identical(
+    env$source_manifest_present_paths(yollar, repo_root = kok),
+    yollar
+  )
+})
+
+test_that("Codex sertleştirme dosyaları opsiyonel işaretlidir", {
+  repo_root <- resolve_repo_root_for_tests()
+
+  env <- new.env(parent = globalenv())
+  source(file.path(repo_root, "R", "config_source_manifest.R"), encoding = "UTF-8", local = env)
+
+  opsiyonel <- env$source_manifest_optional_source_paths
+
+  expect_true(is.character(opsiyonel))
+  expect_true("R/helpers_claude_code_codex_runtime_fixes.R" %in% opsiyonel)
+  expect_true("R/helpers_claude_code_codex_output_fixes.R" %in% opsiyonel)
+
+  # Opsiyonel liste dar tutulur; her yol manifestte de yer almalıdır.
+  expect_true(all(opsiyonel %in% env$source_manifest_runtime_paths))
+  expect_lte(length(opsiyonel), 4L)
+})

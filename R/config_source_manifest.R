@@ -361,7 +361,14 @@ source_manifest_sections <- list(
     # Ana süreç tarafı: hazırlık gönderimi/aşama durumu ve süreç başlatma,
     # ardından çalıştırma sonrası çıktı işleme ve sonlandırma.
     "R/helpers_claude_code_run_dispatch.R",
-    "R/helpers_claude_code_run_completion.R"
+    "R/helpers_claude_code_run_completion.R",
+    # PR #672 Codex inceleme sertleştirmeleri. Bu iki dosya yukarıdaki Bilge
+    # Yolaç yardımcılarında tanımlı fonksiyonların bir kısmını fail-closed
+    # sürümleriyle DEĞİŞTİRİR; bu yüzden zincirin EN SONUNDA ve runtime ->
+    # output sırasıyla yüklenmelidir. Manifest dışı geç-yükleme denenmemeli:
+    # o yol dosyaları sahipsiz bırakıp (seam doctor) sessizce ölü koda çevirir.
+    "R/helpers_claude_code_codex_runtime_fixes.R",
+    "R/helpers_claude_code_codex_output_fixes.R"
   ),
 
   # llm_pipeline: LLM hattı: araç formatlayıcılar, yanıt post-process,
@@ -664,4 +671,33 @@ source_manifest_after_future_paths <- unlist(
 source_manifest_runtime_paths <- c(
   source_manifest_group_1_paths,
   source_manifest_after_future_paths
+)
+
+# Bir çalışma kopyasında bulunmayabilecek manifest yolları.
+#
+# BOOT GÜVENLİĞİ SÖZLEŞMESİ: Manifest normalde eksik dosyada fail-fast yapar ve
+# bu davranış korunmalıdır. Aşağıdaki iki dosya bunun bilinçli istisnasıdır:
+# git'te izlenirler, ancak henüz güncellenmemiş bir on-prem çalışma kopyasında
+# fiziksel olarak bulunmayabilirler. Bunları ZORUNLU kılmak, üretimdeki
+# uygulamayı "Kaynak manifesti doğrulaması başarısız" hatasıyla hiç
+# açılmaz duruma sokar. Mevcut olduklarında normal sırayla yüklenirler;
+# bulunmadıklarında yalnızca sertleştirmeleri devre dışı kalır, uygulama açılır.
+#
+# Bu listeye yeni dosya eklemek bilinçli bir karardır: eksikliği gerçekten
+# tolere edilebilir olmayan hiçbir runtime dosyası buraya eklenmemelidir.
+# Gruplar ATOMİKTİR: bir üyesi eksikse grubun tamamı atlanır. Codex output
+# hardening dosyası, runtime hardening katmanı yüklenmeden source edildiğinde
+# bilinçli olarak stop() eder; bu yüzden ikisi ya birlikte yüklenir ya hiç
+# yüklenmez. Aksi halde yalnızca runtime dosyası eksik olan bir çalışma
+# kopyasında uygulama yine açılmaz.
+source_manifest_optional_source_groups <- list(
+  codex_hardening = c(
+    "R/helpers_claude_code_codex_runtime_fixes.R",
+    "R/helpers_claude_code_codex_output_fixes.R"
+  )
+)
+
+source_manifest_optional_source_paths <- unlist(
+  source_manifest_optional_source_groups,
+  use.names = FALSE
 )
