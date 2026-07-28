@@ -265,17 +265,29 @@ test_that("cc_plan_output_sync input ve runtime kökü değişikliklerini redded
 })
 
 test_that("cc_apply_output_sync_plan var olan symlink hedefini izlemez", {
-  skip_on_os("windows")
   env <- .cc_hardening_env()
   kaynak <- withr::local_tempdir()
   disari <- withr::local_tempdir()
   runtime <- withr::local_tempdir()
   cikti <- file.path(runtime, "rapor.txt")
   dis_hedef <- file.path(disari, "onemli.txt")
-  hedef <- file.path(kaynak, "rapor.txt")
   writeLines("yeni", cikti, useBytes = TRUE)
   writeLines("koru", dis_hedef, useBytes = TRUE)
-  expect_true(file.symlink(dis_hedef, hedef))
+
+  # Windows'ta DOSYA symlink'i yönetici hakkı ister; aynı güvenlik sözleşmesi
+  # (var olan bağlantı hedefi izlenerek onaylı kök dışındaki dosya EZİLEMEZ)
+  # yönetici hakkı gerektirmeyen dizin junction'ı ile doğrulanır.
+  if (.Platform$OS.type == "windows") {
+    baglanti_dizin <- file.path(kaynak, "dis")
+    expect_true(isTRUE(suppressWarnings(tryCatch(
+      Sys.junction(disari, baglanti_dizin),
+      error = function(e) FALSE
+    ))))
+    hedef <- file.path(baglanti_dizin, "onemli.txt")
+  } else {
+    hedef <- file.path(kaynak, "rapor.txt")
+    expect_true(file.symlink(dis_hedef, hedef))
+  }
 
   plan <- list(
     items = list(list(source_path = cikti, dest_path = hedef, size = 4)),
@@ -808,7 +820,9 @@ test_that("cc_select_input_files tirnakli bosluklu dosya adini diskten cozer", {
 })
 
 test_that("cc_select_input_files case-sensitive dosya sisteminde harf buyuklugunu korur", {
-  skip_on_os("windows")
+  # NTFS de dahil olmak uzere hedef dosya sistemlerinin tumu harf buyuklugunu
+  # KORUR (arama case-insensitive olsa bile). Bu yuzden secim sonucu diskteki
+  # ozgun adi dondurmelidir; test artik Windows'ta da calisir.
   env <- .cc_hardening_env()
   kok <- withr::local_tempdir()
 

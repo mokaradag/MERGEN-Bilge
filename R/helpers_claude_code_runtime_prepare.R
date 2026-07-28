@@ -76,10 +76,7 @@ cc_runtime_ensure_layout <- function(layout) {
     stop("Runtime dizini eksik veya geçersiz.")
   }
 
-  baglanti_mi <- function(yol) {
-    hedef <- tryCatch(Sys.readlink(yol), error = function(e) NA_character_)
-    length(hedef) == 1L && !is.na(hedef) && nzchar(hedef)
-  }
+  baglanti_mi <- function(yol) cc_path_is_reparse_link(yol)
 
   kok <- as.character(layout$root)[1]
   if (isTRUE(baglanti_mi(kok))) {

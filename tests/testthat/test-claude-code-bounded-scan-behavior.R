@@ -37,6 +37,80 @@
   paste(satirlar[!grepl("^\\s*#", satirlar)], collapse = "\n")
 }
 
+# --- Platformdan bağımsız bağlantı/erişim yardımcıları --------------------
+#
+# Bu testler daha önce Windows'ta ATLANIYORDU. Oysa üretim platformu Windows
+# VM'dir: sınır kontrollerinin orada da doğrulanması gerekir. Bu yüzden POSIX'e
+# özgü mekanizmalar (chmod "000", file.symlink) platform uygun karşılıklarıyla
+# değiştirilir; hiçbiri yönetici hakkı gerektirmez.
+
+# Dizin bağlantısı: Windows'ta yönetici izni gerektirmeyen junction kullanılır.
+.cc_scan_dir_link <- function(hedef, baglanti) {
+  if (.Platform$OS.type == "windows") {
+    return(isTRUE(suppressWarnings(tryCatch(
+      Sys.junction(hedef, baglanti),
+      error = function(e) FALSE
+    ))))
+  }
+
+  isTRUE(suppressWarnings(tryCatch(
+    file.symlink(hedef, baglanti),
+    error = function(e) FALSE
+  )))
+}
+
+# Dosya bağlantısı yalnızca POSIX'te (ve yetkili Windows oturumlarında)
+# kurulabilir. Kurulamazsa çağıran taraf sözlüksel benzetime düşer.
+.cc_scan_file_link <- function(hedef, baglanti) {
+  isTRUE(suppressWarnings(tryCatch(
+    file.symlink(hedef, baglanti),
+    error = function(e) FALSE
+  )))
+}
+
+# Bir dizini gerçekten okunamaz yapmak POSIX'e özgüdür. Windows'ta (ve root
+# altında) aynı SÖZLEŞME, listeleyicinin dayandığı iki tabana lexical mock
+# uygulanarak doğrulanır: list.files() sessizce boş döner ve file.access()
+# okuma izni olmadığını bildirir. Fonksiyonlar env içine source edildiği için
+# bu atamalar base sürümlerinden önce bulunur.
+.cc_scan_can_chmod <- function() {
+  .Platform$OS.type != "windows" &&
+    !identical(Sys.info()[["user"]], "root") &&
+    !identical(Sys.info()[["effective_user"]], "root")
+}
+
+.cc_scan_mock_unreadable <- function(env, yollar) {
+  anahtar <- normalizePath(yollar, winslash = "/", mustWork = FALSE)
+
+  gercek_list <- base::list.files
+  gercek_access <- base::file.access
+  gercek_require <- base::requireNamespace
+
+  env$list.files <- function(path, ...) {
+    if (normalizePath(path, winslash = "/", mustWork = FALSE) %in% anahtar) {
+      return(character(0))
+    }
+    gercek_list(path, ...)
+  }
+
+  # `fs` yedeği namespace ile nitelenmiş çağrıdır ve lexical mock ile
+  # yakalanamaz; erişilemez dizin benzetiminde kullanılabilir olmadığı
+  # bildirilerek devre dışı bırakılır.
+  env$requireNamespace <- function(package, ...) {
+    if (identical(package, "fs")) return(FALSE)
+    gercek_require(package, ...)
+  }
+
+  env$file.access <- function(names, mode = 0L) {
+    if (normalizePath(names, winslash = "/", mustWork = FALSE) %in% anahtar) {
+      return(stats::setNames(-1L, names))
+    }
+    gercek_access(names, mode)
+  }
+
+  invisible(TRUE)
+}
+
 .cc_bounded_scan_fixture <- function(dosya_sayisi = 12L) {
   kok <- withr::local_tempdir(.local_envir = parent.frame())
 
@@ -159,9 +233,6 @@ test_that("hariç tutulan dizin listesi yapılandırılabilir", {
 })
 
 test_that("erişilemeyen alt dizin taramayı düşürmez", {
-  skip_on_os("windows")
-  skip_if(identical(Sys.info()[["user"]], "root"), "root her dizini okuyabilir.")
-
   env <- .cc_bounded_scan_env()
   kok <- withr::local_tempdir()
 
@@ -170,27 +241,33 @@ test_that("erişilemeyen alt dizin taramayı düşürmez", {
   kapali <- file.path(kok, "kapali")
   dir.create(kapali)
   writeLines("gizli", file.path(kapali, "gizli.txt"), useBytes = TRUE)
-  Sys.chmod(kapali, "000")
-  on.exit(Sys.chmod(kapali, "700"), add = TRUE)
+
+  if (.cc_scan_can_chmod()) {
+    Sys.chmod(kapali, "000")
+    on.exit(Sys.chmod(kapali, "700"), add = TRUE)
+  } else {
+    .cc_scan_mock_unreadable(env, kapali)
+  }
 
   sonuc <- env$cc_scan_directory_bounded(kok)
 
   expect_true(isTRUE(sonuc$ok))
   expect_true("gorunur.txt" %in% basename(sonuc$files))
+  expect_false("gizli.txt" %in% basename(sonuc$files))
 })
 
 test_that("dizin listeleyici hatası tarama hatalarına aktarılır", {
-  skip_on_os("windows")
-  skip_if(identical(Sys.info()[["effective_user"]], "root"),
-          "root okuma iznini yok sayar")
-
   env <- .cc_bounded_scan_env()
   kok <- withr::local_tempdir()
 
   # Okunamayan kök dizin: list.files() sessizce boş döner, bu yüzden
   # listeleyici gerçek erişim hatasını ayrıca tespit etmelidir.
-  Sys.chmod(kok, "000")
-  withr::defer(Sys.chmod(kok, "700"))
+  if (.cc_scan_can_chmod()) {
+    Sys.chmod(kok, "000")
+    withr::defer(Sys.chmod(kok, "700"))
+  } else {
+    .cc_scan_mock_unreadable(env, kok)
+  }
 
   sonuc <- env$cc_scan_directory_bounded(kok)
 
@@ -268,29 +345,27 @@ test_that("alt dizin listeleme hatası erişilebilir kardeşleri engellemez", {
 })
 
 test_that("dizin bağlantısı döngüsü sonsuz gezinmeye yol açmaz", {
-  skip_on_os("windows")
-
   env <- .cc_bounded_scan_env()
   kok <- withr::local_tempdir()
 
   dir.create(file.path(kok, "alt"))
   writeLines("veri", file.path(kok, "alt", "veri.txt"), useBytes = TRUE)
 
-  baglanti_ok <- suppressWarnings(
-    file.symlink(kok, file.path(kok, "alt", "dongu"))
-  )
-  skip_if_not(isTRUE(baglanti_ok), "Sembolik bağlantı oluşturulamadı.")
+  # Windows'ta junction, POSIX'te symlink: her ikisi de köke geri döner.
+  baglanti_ok <- .cc_scan_dir_link(kok, file.path(kok, "alt", "dongu"))
+  expect_true(baglanti_ok)
 
   sonuc <- env$cc_scan_directory_bounded(kok, max_elapsed_ms = 3000)
 
   expect_true(isTRUE(sonuc$ok))
   expect_false(identical(sonuc$truncated_reason, "timeout"))
   expect_true("veri.txt" %in% basename(sonuc$files))
+  # Döngü yalnızca bir kez ziyaret edilebilir; aynı dosya tekrar tekrar
+  # toplanmamalıdır.
+  expect_equal(sum(basename(sonuc$files) == "veri.txt"), 1L)
 })
 
 test_that("izinli kök dışına kaçan bağlantı atlanır", {
-  skip_on_os("windows")
-
   env <- .cc_bounded_scan_env()
   kok <- withr::local_tempdir()
   disari <- withr::local_tempdir()
@@ -298,10 +373,7 @@ test_that("izinli kök dışına kaçan bağlantı atlanır", {
   writeLines("disarida", file.path(disari, "sizinti.txt"), useBytes = TRUE)
   writeLines("icerde", file.path(kok, "icerde.txt"), useBytes = TRUE)
 
-  baglanti_ok <- suppressWarnings(
-    file.symlink(disari, file.path(kok, "kacak"))
-  )
-  skip_if_not(isTRUE(baglanti_ok), "Sembolik bağlantı oluşturulamadı.")
+  expect_true(.cc_scan_dir_link(disari, file.path(kok, "kacak")))
 
   sonuc <- env$cc_scan_directory_bounded(kok)
 
@@ -310,15 +382,36 @@ test_that("izinli kök dışına kaçan bağlantı atlanır", {
 })
 
 test_that("izinli kök dışındaki dosya bağlantısı izole girdiye alınmaz", {
-  skip_on_os("windows")
-
   env <- .cc_bounded_scan_env()
   kok <- withr::local_tempdir()
   disari <- withr::local_tempdir()
   hedef <- file.path(disari, "sizinti.txt")
   writeLines("disarida", hedef, useBytes = TRUE)
   baglanti <- file.path(kok, "baglanti.txt")
-  skip_if_not(isTRUE(file.symlink(hedef, baglanti)), "Sembolik bağlantı oluşturulamadı.")
+
+  gercek_baglanti <- .cc_scan_file_link(hedef, baglanti)
+
+  if (!isTRUE(gercek_baglanti)) {
+    # Windows'ta DOSYA symlink'i yönetici hakkı ister. Sözleşme yine de
+    # doğrulanır: bağlantı bildirimi ve çözülmüş hedef sözlüksel olarak
+    # taklit edilir; asıl korunan karar (izinli kök dışına çözülen girdi
+    # asla izole girdiye alınmaz) aynen çalıştırılır.
+    writeLines("yer tutucu", baglanti, useBytes = TRUE)
+    baglanti_norm <- normalizePath(baglanti, winslash = "/", mustWork = FALSE)
+    hedef_norm <- normalizePath(hedef, winslash = "/", mustWork = FALSE)
+
+    env$.cc_scan_is_link <- function(path) {
+      identical(normalizePath(path, winslash = "/", mustWork = FALSE), baglanti_norm)
+    }
+
+    gercek_norm <- base::normalizePath
+    env$normalizePath <- function(path, winslash = "\\", mustWork = NA) {
+      if (identical(gercek_norm(path, winslash = "/", mustWork = FALSE), baglanti_norm)) {
+        return(hedef_norm)
+      }
+      gercek_norm(path, winslash = winslash, mustWork = mustWork)
+    }
+  }
 
   takip_yok <- env$cc_scan_directory_bounded(kok)
   takip_var <- env$cc_scan_directory_bounded(kok, follow_symlinks = TRUE)

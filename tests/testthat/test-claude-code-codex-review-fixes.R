@@ -369,3 +369,157 @@ test_that("partial sync failures remain warnings and output deadline has cleanup
   expect_match(dispatch_body, "dispatch_error <- tryCatch", fixed = TRUE)
   expect_match(dispatch_body, "runtime_lease", fixed = TRUE)
 })
+
+# ------------------------------------------------------------------------------
+# PR #672 ikinci tur Codex bulguları
+# ------------------------------------------------------------------------------
+
+test_that("adı verilen ama bulunamayan doküman ilgisiz dokümanla değiştirilmez", {
+  env <- .cc_codex_review_env()
+  klasor <- withr::local_tempdir()
+
+  baska <- file.path(klasor, "other.pdf")
+  writeLines("icerik", baska, useBytes = TRUE)
+
+  env$cc_runtime_limit <- function(name, default, limits = NULL) default
+  env$cc_extract_prompt_file_mentions <- function(prompt) {
+    unlist(regmatches(prompt, gregexpr("[A-Za-z0-9_.-]+\\.[A-Za-z0-9]{1,8}", prompt)))
+  }
+  env$get_claude_code_binary_doc_extensions <- function() {
+    c("pdf", "xlsx", "xls", "docx", "doc")
+  }
+
+  # REGRESYON: istenen "missing.pdf" yok; hazırlık sessizce "other.pdf"
+  # dosyasını seçip kullanıcının hiç sormadığı içerik için başarı bildiriyordu.
+  expect_error(
+    env$cc_select_documents_for_request(
+      prompt = "missing.pdf dosyasını özetle",
+      documents = baska
+    ),
+    "Açıkça istenen dokümanlar seçilen klasörde bulunamadı",
+    fixed = TRUE
+  )
+
+  # Eşleşen ad verildiğinde normal seçim korunur.
+  eslesen <- env$cc_select_documents_for_request(
+    prompt = "other.pdf dosyasını özetle",
+    documents = baska
+  )
+  expect_identical(eslesen$selection_mode, "prompt")
+  expect_identical(basename(eslesen$files), "other.pdf")
+})
+
+test_that("düzyazıdaki noktalı belirteçler doküman seçimini bloke etmez", {
+  env <- .cc_codex_review_env()
+  klasor <- withr::local_tempdir()
+
+  baska <- file.path(klasor, "other.pdf")
+  writeLines("icerik", baska, useBytes = TRUE)
+
+  env$cc_runtime_limit <- function(name, default, limits = NULL) default
+  env$cc_extract_prompt_file_mentions <- function(prompt) {
+    unlist(regmatches(prompt, gregexpr("[A-Za-z0-9_.-]+\\.[A-Za-z0-9]{1,8}", prompt)))
+  }
+  env$get_claude_code_binary_doc_extensions <- function() {
+    c("pdf", "xlsx", "xls", "docx", "doc")
+  }
+
+  # "3.5" ve "v1.2" gerçek doküman uzantısı taşımaz; aşırı engelleme olmamalı.
+  sonuc <- env$cc_select_documents_for_request(
+    prompt = "Surum 1.2 ve 3.5 oranlarini iceren dokumanlari ozetle",
+    documents = baska
+  )
+
+  expect_identical(sonuc$selection_mode, "auto")
+  expect_identical(basename(sonuc$files), "other.pdf")
+})
+
+test_that("bulunamayan doküman hazırlığı bloklu sonuca dönüşür", {
+  env <- .cc_codex_review_env()
+
+  env$.cc_codex_original_cc_prepare_run_workspace <- function(request) {
+    list(
+      ok = TRUE,
+      document_context = list(
+        extraction_errors = "Açıkça istenen dokümanlar seçilen klasörde bulunamadı: missing.pdf"
+      )
+    )
+  }
+
+  sonuc <- env$cc_prepare_run_workspace(list())
+
+  expect_false(isTRUE(sonuc$ok))
+  expect_true(isTRUE(sonuc$blocked))
+  expect_true(grepl("missing.pdf", sonuc$message, fixed = TRUE))
+})
+
+test_that("worker global paketi her gönderimde yeniden taranmaz", {
+  env <- .cc_codex_review_env()
+
+  cagri <- 0L
+  env$.cc_codex_original_cc_run_prepare_worker_globals <- function(refresh = FALSE, envir = globalenv()) {
+    cagri <<- cagri + 1L
+    list(temel = TRUE)
+  }
+  env$.cc_codex_add_named_worker_globals <- function(bundle, names, envir = globalenv()) bundle
+  env$.cc_prepare_worker_cache$globals <- NULL
+
+  ilk <- env$cc_run_prepare_worker_globals()
+  ikinci <- env$cc_run_prepare_worker_globals()
+  ucuncu <- env$cc_run_prepare_worker_globals()
+
+  # REGRESYON: sarmalayıcı koşulsuz refresh = TRUE çağırıyordu; her Bilge Yolaç
+  # çalıştırması future gönderilmeden önce ana olay döngüsünde özyinelemeli
+  # global taramasını baştan çalıştırıyordu.
+  expect_identical(cagri, 1L)
+  expect_identical(ilk, ikinci)
+  expect_identical(ikinci, ucuncu)
+
+  # Açık refresh isteği önbelleği yeniler.
+  env$cc_run_prepare_worker_globals(refresh = TRUE)
+  expect_identical(cagri, 2L)
+})
+
+test_that("çıktı worker global paketi de önbelleği kullanır", {
+  env <- .cc_codex_review_env()
+
+  cagri <- 0L
+  env$.cc_codex_original_cc_run_output_worker_globals <- function(refresh = FALSE, envir = globalenv()) {
+    cagri <<- cagri + 1L
+    list(temel = TRUE)
+  }
+  env$.cc_codex_add_named_worker_globals <- function(bundle, names, envir = globalenv()) bundle
+  env$.cc_completion_worker_cache$globals <- NULL
+
+  env$cc_run_output_worker_globals()
+  env$cc_run_output_worker_globals()
+
+  expect_identical(cagri, 1L)
+})
+
+test_that("var olan normal hedef Windows'ta da bağlantı sayılmaz", {
+  # Sys.readlink() Windows'ta NA döner ve nzchar(NA) TRUE'dur; sertleştirilmiş
+  # aktarım yolu buna dayandığında var olan HER hedefi reddediyordu.
+  env <- .cc_codex_review_env()
+  kaynak <- withr::local_tempdir()
+  runtime <- withr::local_tempdir()
+
+  hedef <- file.path(kaynak, "rapor.txt")
+  writeLines("eski", hedef, useBytes = TRUE)
+
+  cikti <- file.path(runtime, "rapor.txt")
+  writeLines("yeni", cikti, useBytes = TRUE)
+
+  sonuc <- env$cc_apply_output_sync_plan(list(
+    source_workdir = kaynak,
+    skipped_approved = list(),
+    items = list(list(
+      source_path = cikti,
+      dest_path = hedef,
+      size = file.info(cikti)$size
+    ))
+  ))
+
+  expect_true(isTRUE(sonuc[[1]]$success))
+  expect_identical(readLines(hedef, warn = FALSE), "yeni")
+})

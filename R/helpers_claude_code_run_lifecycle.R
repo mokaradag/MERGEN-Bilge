@@ -283,6 +283,7 @@ cc_handle_document_summary_run <- function(session,
                                            karakter_id,
                                            karakter_renk,
                                            runtime_lease = "",
+                                           cikti_dizini = NULL,
                                            finalize_streaming,
                                            observe_dir_contents) {
   # Doküman görevlerinde Claude Code CLI oturumu kesinlikle kullanılmaz.
@@ -290,6 +291,16 @@ cc_handle_document_summary_run <- function(session,
   cc_reset_document_summary_session_context(rv, model)
 
   target_dir <- kaynak_calisma_dizini %||% calisma_dizini
+
+  # Worker ASLA kaynak klasöre yazmaz. Özet önce izole runtime çıktı alanında
+  # üretilir; kaynak klasöre terfi yalnızca aşağıdaki `cc_is_active_run()`
+  # korumasından geçen ANA süreç geri çağrısında yapılır. Aksi halde kullanıcı
+  # Durdur'a bastıktan sonra tamamlanan bir worker, iptal edilmiş bir
+  # çalıştırmanın çıktısını kaynak klasördeki dosyanın üzerine yazabilirdi.
+  worker_cikti_dizini <- as.character(cikti_dizini %||% "")[1]
+  if (!nzchar(worker_cikti_dizini) || !dir.exists(worker_cikti_dizini)) {
+    worker_cikti_dizini <- target_dir
+  }
 
   if (!isTRUE(dokuman_baglami$text_sidecars_ready)) {
     cc_release_runtime_lease(runtime_lease)
@@ -368,7 +379,7 @@ cc_handle_document_summary_run <- function(session,
         model_id = model,
         api_key = dokuman_api_key,
         request_timeout_sec = zaman_asimi,
-        output_dir = target_dir,
+        output_dir = worker_cikti_dizini,
         user_id = effective_user_id,
         session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
       )

@@ -498,3 +498,56 @@ test_that("terminal çalışma yolları runtime lease temizliğini taşır", {
   expect_match(akis, "cc_release_runtime_lease\\(rv\\$stream_env\\$runtime_lease", perl = TRUE)
   expect_match(poll, "cc_release_runtime_lease\\(env\\$runtime_lease", perl = TRUE)
 })
+
+# ------------------------------------------------------------------------------
+# DOKÜMAN ÖZETİ İZOLE ÇIKTI ALANINDA ÜRETİLİR
+# ------------------------------------------------------------------------------
+
+test_that("doküman özeti worker'ı kaynak klasöre yazmaz", {
+  lifecycle_txt <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_lifecycle.R"
+  )
+  dispatch_txt <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_dispatch.R"
+  )
+
+  # REGRESYON: özet worker'ı output_dir = kaynak klasör ile çağrılıyordu ve
+  # dosyayı promise geri çağrısındaki iptal kontrolünden ÖNCE yazıyordu.
+  # Kullanıcı Durdur'a bastıktan sonra biten bir worker, iptal edilmiş bir
+  # çalıştırmanın çıktısını kaynak klasördeki dosyanın üzerine yazabiliyordu.
+  expect_true(
+    grepl("cikti_dizini = NULL", lifecycle_txt, fixed = TRUE),
+    info = "Özet handler'ı izole çıktı dizinini parametre olarak almalıdır."
+  )
+
+  expect_true(
+    grepl("output_dir = worker_cikti_dizini", lifecycle_txt, fixed = TRUE),
+    info = "Worker izole çıktı alanına yazmalıdır."
+  )
+
+  expect_false(
+    grepl("output_dir = target_dir", lifecycle_txt, fixed = TRUE),
+    info = "Worker doğrudan kaynak klasöre yazmaya geri dönmemelidir."
+  )
+
+  expect_true(
+    grepl("cikti_dizini = prep$layout$output", dispatch_txt, fixed = TRUE),
+    info = "Dispatch, hazırlıktan gelen izole çıktı alanını iletmelidir."
+  )
+
+  # Kaynak klasöre terfi yalnızca iptal korumasından SONRA yapılır.
+  guard_pos <- regexpr("if \\(!cc_is_active_run\\(rv, run_request_id\\)\\)", lifecycle_txt, perl = TRUE)[[1]]
+  write_pos <- regexpr("hedef_yol <- file\\.path\\(target_dir", lifecycle_txt, perl = TRUE)[[1]]
+
+  expect_true(guard_pos > 0)
+  expect_true(write_pos > guard_pos)
+})
+
+test_that("izole çıktı dizini yoksa mevcut davranışa güvenle düşülür", {
+  env <- .source_cc_run_lifecycle_for_test()
+
+  govde <- paste(deparse(body(env$cc_handle_document_summary_run)), collapse = "\n")
+
+  expect_true(grepl("worker_cikti_dizini <- target_dir", govde, fixed = TRUE))
+  expect_true(grepl("dir.exists(worker_cikti_dizini)", govde, fixed = TRUE))
+})

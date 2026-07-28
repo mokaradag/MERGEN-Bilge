@@ -7,6 +7,98 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 ---
 
 
+## 2026-07-28 — PR #672 ikinci tur Codex bulguları ve Windows test paritesi
+
+### Seçilen paket / neden
+Bloklamayan çalıştırma hattı üzerinde Codex incelemesinden kalan beş P1 bulgusu
+kapatıldı. Bunlara ek olarak Windows VM'de gerçekten başarısız olan iki
+davranış hatası bulundu (ikisi de yalnızca Windows'ta ortaya çıkıyordu, Linux
+CI'da görünmüyordu) ve testlerin Windows'ta ATLANMASI sorunu giderildi: üretim
+platformu Windows olduğu için bu testlerin orada da çalışması gerekir.
+
+### Codex bulguları ve düzeltmeler
+1. **Dizin numaralandırması ana olay döngüsünde** — `list.files()` herhangi bir
+   sınır kontrolünden önce dizinin tamamını belleğe alır. `observe_dir_contents()`
+   artık `list_directory_contents()` çağrısını `tracked_future_promise(...,
+   dependency_mode = "explicit")` ile worker'a gönderir; global paket süreç
+   başına bir kez kurulur (`R/helpers_claude_code_dir_listing_async.R`).
+   Sonuç tek bir stale korumalı `uygula_icerik()` kapanışından geçer; eşzamansız
+   plan yoksa senkron yola düşülür.
+2. **Doküman özeti kaynak klasöre yazıyordu** — özet worker'ı `output_dir` olarak
+   izole `output/` alanını alır; kaynak klasöre terfi ana süreçteki
+   `cc_is_active_run()` korumasından SONRA yapılır. Durdur'dan sonra biten bir
+   worker artık kaynak dosyayı ezemez.
+3. **Bulunamayan doküman ilgisiz dokümanla değiştiriliyordu** —
+   `cc_select_documents_for_request()` adı verilen ama eşleşmeyen gerçek doküman
+   uzantılı anmalar için kapalı biçimde reddeder; düzyazıdaki `3.5` / `v1.2`
+   gibi belirteçler aşırı engelleme yapmaz.
+4. **Worker global paketi her gönderimde yeniden taranıyordu** — sertleştirme
+   sarmalayıcıları koşulsuz `refresh = TRUE` çağırıyordu; artık süreç başına
+   önbelleği kullanırlar ve yalnızca yükleme anında geçersiz kılarlar.
+5. **Kaybolan çıktı sessizce atlanıyordu** — diff'in ürettiğini kanıtladığı ama
+   staging'den önce kaybolan onaylı çıktılar `missing_output` nedeniyle açık
+   birer başarısızlık olarak raporlanır.
+
+### Windows VM davranış hataları (yalnızca Windows'ta görünür)
+- `Sys.readlink()` Windows'ta HER yol için `NA` döner ve `nzchar(NA)` TRUE'dur.
+  `cc_apply_output_sync_plan()` bu yüzden var olan HER hedefi "bağlantı" sayıp
+  aynı dosyayı yeniden üreten her çalıştırmanın aktarımını bloke ediyordu.
+  Bağlantı tespiti artık çözülmüş yolun sözlüksel konumdan sapmasıyla yapılır
+  (`cc_path_is_reparse_link()`), bu da junction/reparse noktalarını da yakalar.
+- `tempdir()` ve kullanıcı profili yolları 8.3 KISA ad (`KULLAN~1`) biçiminde
+  gelir. Onaylı kök `normalizePath(mustWork = TRUE)` ile UZUN forma açılırken
+  hedef HAM biçimde karşılaştırılıyor, önek eşleşmiyor ve geçerli her çıktı
+  sessizce "onaylı kökün dışında" sayılıyordu. Hedef artık aynı kanonik
+  semantikten geçirilir. (VM'deki
+  `test-claude-code-run-prepare-behavior.R:443/444` hatalarının kök nedeni.)
+- `cc_runtime_ensure_layout()` bölge bağlantı kontrolü de aynı NA sorunundan
+  etkileniyordu; ortak yardımcıya taşındı.
+
+### Windows'ta atlanan testler çalışır hale getirildi
+`skip_on_os("windows")` kullanan sekiz test platforma uygun karşılıklarla
+yeniden yazıldı: dizin bağlantısı için `Sys.junction()` (yönetici hakkı
+gerektirmez), okunamayan dizin için sourced test ortamına lexical
+`list.files`/`file.access`/`requireNamespace` mock'ları, dosya symlink'i için
+(Windows'ta yetki gerektiğinden) bağlantı bildiriminin ve çözülmüş hedefin
+sözlüksel benzetimi. Harf büyüklüğü testi NTFS de dahil tüm hedef dosya
+sistemleri adı KORUDUĞU için doğrudan çalıştırılır.
+
+### Değişen dosyalar
+- Yeni: `R/helpers_claude_code_dir_listing_async.R`.
+- Değişen: `R/helpers_claude_code_bounded_scan.R`,
+  `R/helpers_claude_code_output_sync.R`,
+  `R/helpers_claude_code_runtime_prepare.R`,
+  `R/helpers_claude_code_directory_listing.R`,
+  `R/helpers_claude_code_server_setup.R`,
+  `R/helpers_claude_code_run_lifecycle.R`,
+  `R/helpers_claude_code_run_dispatch.R`,
+  `R/helpers_claude_code_codex_runtime_fixes.R`,
+  `R/helpers_claude_code_codex_output_fixes.R`,
+  `R/config_source_manifest.R`, `R/bootstrap_source_manifest.R`.
+- Testler: `test-claude-code-bounded-scan-behavior.R`,
+  `test-claude-code-run-prepare-behavior.R`,
+  `test-claude-code-run-hardening-behavior.R`,
+  `test-claude-code-codex-review-fixes.R`,
+  `test-claude-code-run-lifecycle-contract.R`,
+  `test-claude-code-directory-listing-contract.R`,
+  `test-source-manifest-sections-contract.R`.
+- Dokümanlar: `CLAUDE.md`, `docs/technical-reference.md`, `docs/refactor-log.md`.
+
+### Korunan davranış sözleşmeleri
+İzole runtime düzeni, request-id yaşam döngüsü ve stale callback koruması,
+UNC/Türkçe yol davranışı, indirme kartları, kalıcı oturumlar, Dosya Yönetimi
+yenileme, çevrimdışı/on-prem çalışma ve mevcut Türkçe kullanıcı metinleri
+değişmedi. Bakım ratchet'i gevşetilmedi: dizin listeleme yardımcısı 260 satır /
+19 fonksiyon bütçesinde tutulmak için küçük bir yardımcı dosyaya bölündü.
+
+### Çalıştırılan doğrulama
+Linux/cloud oturumunda `testthat` ile ilgili tüm Bilge Yolaç, seam, manifest ve
+ratchet testleri ve `tests/scripts/parse_sanity_check.R` çalıştırıldı.
+Windows VM davranışı (junction, 8.3 kısa ad, `Sys.readlink` NA, gerçek UNC
+gecikmesi) yalnızca VM'de kanıtlanabilir; bu oturumda VM/SSO/DB/SQL Server
+doğrulaması YAPILMADI.
+
+
 ## 2026-07-26 — Bloklamayan Bilge Yolaç çalıştırma hattı (büyük klasör / eşzamanlılık)
 
 ### Seçilen paket / neden

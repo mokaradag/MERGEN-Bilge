@@ -483,6 +483,9 @@ cc_start_streaming_run <- function(ctx, prep) {
       karakter_id = ctx$character_id,
       karakter_renk = ctx$accent,
       runtime_lease = prep$runtime_lease %||% "",
+      # Özet worker'ı izole çıktı alanına yazar; kaynak klasöre terfi ana
+      # süreçteki iptal korumalı geri çağrıda yapılır.
+      cikti_dizini = prep$layout$output %||% "",
       finalize_streaming = ctx$finalize_streaming,
       observe_dir_contents = ctx$observe_dir_contents
     )
