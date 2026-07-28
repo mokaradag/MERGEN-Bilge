@@ -406,7 +406,10 @@ cc_bind_server_setup <- function(input,
           packages = c("tools", "utils", "fs")
         ) |>
           promises::then(function(icerik) {
-            uygula_icerik(icerik)
+            # Oturum kapandıysa sendCustomMessage/renderUI hata fırlatır ve bu
+            # hata later döngüsünde ÜST DÜZEYDE yakalanmadan uygulamayı
+            # düşürebilir; geri çağrılar bu yüzden her zaman sarmalanır.
+            tryCatch(uygula_icerik(icerik), error = function(e) NULL)
             NULL
           }) |>
           promises::catch(function(e) {
@@ -418,7 +421,10 @@ cc_bind_server_setup <- function(input,
               "[DIR_LISTING] Arka plan listeleme başarısız, senkron yola düşülüyor:",
               gsub("[{}]", "", conditionMessage(e))
             ))
-            uygula_icerik(list_directory_contents(hedef_yol, user_id = hedef_kullanici))
+            tryCatch(
+              uygula_icerik(list_directory_contents(hedef_yol, user_id = hedef_kullanici)),
+              error = function(e2) NULL
+            )
             NULL
           })
 
