@@ -232,133 +232,6 @@ cc_scan_source_workdir <- function(source_dir, limits = NULL) {
 # GEREKLİ GİRDİ DOSYALARININ SEÇİMİ
 # ------------------------------------------------------------------------------
 
-#' Prompt metninde geçen dosya adlarını çıkar
-#'
-#' @param prompt Kullanıcı metni
-#' @return Orijinal harf büyüklüğü korunmuş aday dosya adları/göreli yollar
-cc_extract_prompt_file_mentions <- function(prompt) {
-  metin <- enc2utf8(paste(as.character(prompt %||% ""), collapse = " "))
-  if (!nzchar(metin)) return(character(0))
-
-  # Tırnak/backtick içindeki dosya adları boşluk içerebilir (ör. "Q1 rapor.csv"
-  # veya `reports/Q1 budget.csv`). Boşlukta duran genel regex bunları tek
-  # kelimeye kırpar; tırnaklı içerik burada BÜTÜN olarak yakalanır. Her iki
-  # regex denemesi TEK bir tryCatch altında toplanır (gereksiz ek anonim
-  # fonksiyon/karmaşıklık bütçesi eklememek için).
-  sonuc <- tryCatch({
-    tirnak_deseni <- "[\"'`]([^\"'`]+\\.[A-Za-z0-9]{1,8})[\"'`]"
-    tirnakli <- regmatches(metin, gregexpr(tirnak_deseni, metin, perl = TRUE))[[1]]
-
-    ic_icerik <- character(0)
-    if (length(tirnakli)) {
-      ic_icerik <- sub("^[\"'`]", "", tirnakli, perl = TRUE)
-      ic_icerik <- sub("[\"'`]$", "", ic_icerik, perl = TRUE)
-    }
-
-    # Tırnaklı aralıklar genel regex'e TEKRAR girmemeli; aksi halde
-    # "reports/Q1 budget.csv" içindeki "budget.csv" ayrıca ve yanlışlıkla
-    # bağımsız bir aday olarak da yakalanır (istenmeyen ikinci dosya seçimi).
-    metin_tirnaksiz <- if (length(tirnakli)) {
-      gsub(tirnak_deseni, " ", metin, perl = TRUE)
-    } else {
-      metin
-    }
-
-    eslesmeler <- regmatches(
-      metin_tirnaksiz,
-      gregexpr("[^\\s\"'`<>|:*?]+\\.[A-Za-z0-9]{1,8}\\b", metin_tirnaksiz, perl = TRUE)
-    )[[1]]
-
-    c(ic_icerik, eslesmeler)
-  }, error = function(e) character(0))
-
-  if (!length(sonuc)) return(character(0))
-
-  sonuc <- gsub("[\\\\/]+", "/", sonuc, perl = TRUE)
-  sonuc <- sub("[.,;:)\\]]+$", "", sonuc, perl = TRUE)
-  sonuc <- sonuc[nzchar(sonuc)]
-
-  # NOT: harf büyüklüğü kasıtlı olarak KORUNUR (case-sensitive dosya
-  # sistemlerinde diskten çözümleme için gereklidir). Eşleştirme yapan
-  # çağıranlar kendi karşılaştırmasında tolower() uygulamalıdır.
-  unique(sonuc)
-}
-
-.cc_prepare_mention_matches <- function(files, relatives, mentions) {
-  if (!length(files) || !length(mentions)) return(logical(length(files)))
-
-  # Windows dosya sistemi büyük/küçük harf duyarsızdır; Linux/mac gibi
-  # case-sensitive dosya sistemlerinde harfleri küçültmek "Data/Report.CSV"
-  # isteğinin aynı dizindeki farklı bir "data/report.csv" dosyasıyla da
-  # yanlışlıkla eşleşmesine (ikisinin birden seçilmesine) yol açar.
-  duyarsiz <- identical(.Platform$OS.type, "windows")
-
-  rel_key <- if (duyarsiz) tolower(relatives) else relatives
-  base_key <- if (duyarsiz) tolower(basename(files)) else basename(files)
-  mention_keys <- as.character(mentions)
-  if (duyarsiz) mention_keys <- tolower(mention_keys)
-
-  vapply(seq_along(files), function(i) {
-    any(vapply(mention_keys, function(m) {
-      identical(m, base_key[i]) ||
-        identical(m, rel_key[i]) ||
-        endsWith(rel_key[i], paste0("/", m))
-    }, logical(1)))
-  }, logical(1))
-}
-
-#' Adı geçen dosyaları doğrudan diskte çöz (kesilmiş tarama yedeği)
-#'
-#' Sınırlı tarama, adı geçen dosya numaralandırılmadan önce kesilebilir. Bu
-#' durumda otomatik alt kümeye düşmek yerine, güvenli göreli yol adaylarını
-#' kökün altında doğrudan doğrularız. Mutlak yol, sürücü harfi ve `..`
-#' geçişleri asla kabul edilmez; sonuç her zaman kökün içinde kalır.
-#'
-#' @param mentions Küçük harfli aday dosya adları/göreli yollar
-#' @param root Kaynak kök dizin
-#' @param max_files Doğrulanacak maksimum dosya sayısı
-#' @return Kök altında var olan mutlak dosya yolları
-cc_resolve_mentioned_files_on_disk <- function(mentions,
-                                               root,
-                                               max_files = 40L) {
-  mentions <- unique(as.character(mentions %||% character(0)))
-  mentions <- mentions[nzchar(mentions)]
-
-  kok <- .cc_scan_norm(as.character(root %||% "")[1])
-  if (!length(mentions) || !nzchar(kok) ||
-      !isTRUE(tryCatch(dir.exists(kok), error = function(e) FALSE))) {
-    return(character(0))
-  }
-
-  kok_key <- .cc_scan_key(kok)
-  max_files <- max(0L, suppressWarnings(as.integer(max_files)))
-  if (!is.finite(max_files) || max_files == 0L) return(character(0))
-
-  bulunanlar <- character(0)
-
-  for (aday in mentions) {
-    if (length(bulunanlar) >= max_files) break
-
-    rel <- gsub("\\", "/", aday, fixed = TRUE)
-    rel <- sub("^\\./+", "", rel, perl = TRUE)
-
-    # Mutlak yol / sürücü harfi / UNC / üst dizin geçişi kabul edilmez.
-    if (grepl("^(?:[A-Za-z]:|/|//)", rel, perl = TRUE)) next
-    if (grepl("(^|/)\\.\\.(/|$)", rel, perl = TRUE)) next
-    if (!nzchar(rel)) next
-
-    hedef <- .cc_scan_norm(file.path(kok, rel))
-    hedef_key <- .cc_scan_key(hedef)
-
-    if (!startsWith(hedef_key, paste0(kok_key, "/"))) next
-    if (!isTRUE(file.exists(hedef)) || isTRUE(dir.exists(hedef))) next
-
-    bulunanlar <- c(bulunanlar, hedef)
-  }
-
-  unique(bulunanlar)
-}
-
 #' Çalıştırma için gerçekten gerekli girdi dosyalarını seç
 #'
 #' Öncelik sırası: açıkça seçilen dosyalar, prompt içinde adı geçen dosyalar,
@@ -590,16 +463,18 @@ cc_copy_files_to_runtime_input <- function(files,
     # Taramadan sonra değişebilen ağ paylaşımlarında kaynak yeniden çözülür.
     # Bağlantı/reparse-point veya seçilen kökten kaçış file.copy() çağrısından
     # hemen önce reddedilir.
+    #
+    # REGRESYON: bu denetim daha önce tam yolu "üst dizin + taban ad" ile
+    # karşılaştırıyordu. Windows'ta taban ad karşılaştırması Türkçe adlarda
+    # kodlama/harf katlama farkı yüzünden başarısız oluyor ve geçerli her
+    # dosya "bağlantı" sayılarak kopyalanmıyordu. Karar artık ortak
+    # cc_path_is_reparse_link() yardımcısında ve yalnızca dizin düzeyinde.
     kaynak_var <- isTRUE(file.exists(files[i]))
     cozulmus <- if (kaynak_var) {
       .cc_scan_norm(normalizePath(files[i], winslash = "/", mustWork = TRUE))
     } else ""
-    beklenen_ata <- if (kaynak_var) {
-      .cc_scan_norm(normalizePath(dirname(files[i]), winslash = "/", mustWork = TRUE))
-    } else ""
-    beklenen <- if (nzchar(beklenen_ata)) paste0(beklenen_ata, "/", basename(.cc_scan_norm(files[i]))) else ""
-    guvenli <- nzchar(cozulmus) && !isTRUE(dir.exists(files[i])) &&
-      !isTRUE(.cc_scan_is_link(files[i])) && identical(.cc_scan_key(cozulmus), .cc_scan_key(beklenen)) &&
+    guvenli <- kaynak_var && nzchar(cozulmus) && !isTRUE(dir.exists(files[i])) &&
+      !isTRUE(cc_path_is_reparse_link(files[i])) &&
       (!nzchar(kaynak_kok) || identical(.cc_scan_key(cozulmus), kaynak_kok_key) ||
          startsWith(.cc_scan_key(cozulmus), paste0(kaynak_kok_key, "/")))
     if (!isTRUE(guvenli)) {

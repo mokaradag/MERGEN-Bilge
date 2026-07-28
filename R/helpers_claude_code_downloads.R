@@ -308,14 +308,15 @@ stage_claude_code_downloads <- function(file_paths,
       context = "indirilecek dosya"
     )
     kaynak_key <- cc_policy_normalize_path(kaynak, must_exist = TRUE)
-    kaynak_ata <- cc_policy_normalize_path(dirname(kaynak), must_exist = TRUE)
-    beklenen_kaynak <- cc_policy_normalize_path(
-      file.path(kaynak_ata, basename(kaynak)), must_exist = FALSE
-    )
-    baglanti <- !identical(kaynak_key, beklenen_kaynak) || isTRUE(tryCatch({
-      hedef <- Sys.readlink(kaynak)
-      !is.na(hedef) && nzchar(hedef)
-    }, error = function(e) FALSE))
+    # Bağlantı tespiti ortak dizin düzeyli yardımcıdadır: Sys.readlink()
+    # Windows'ta hep NA döner ve taban ad karşılaştırması hem Türkçe adlarda
+    # yanlış pozitif üretir hem de var olan bağlantıyı hiç yakalamaz
+    # (normalizePath zaten hedefe çözer).
+    # Yardımcı çözülemezse FAIL-CLOSED: kaynak bağlantı sayılır ve atlanır.
+    baglanti <- isTRUE(tryCatch(
+      cc_path_is_reparse_link(kaynak),
+      error = function(e) TRUE
+    ))
     if (length(yeniden_onayli) != 1L || !identical(yeniden_onayli[1], kaynak_key) ||
         isTRUE(baglanti)) next
 

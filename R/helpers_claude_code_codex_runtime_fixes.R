@@ -18,7 +18,9 @@
 .cc_codex_original_prepare_claude_code_document_context <- prepare_claude_code_document_context
 
 .cc_codex_path_key <- function(path) {
-  path <- as.character(path %||% character(0))
+  # Kodlama UTF-8'e sabitlenir; Türkçe Windows'ta yerel kodlamalı ve UTF-8
+  # işaretli aynı ad farklı katlanır ve eşleşme tutmaz.
+  path <- enc2utf8(as.character(path %||% character(0)))
   if (.Platform$OS.type == "windows") tolower(path) else path
 }
 
@@ -427,15 +429,26 @@ cc_select_documents_for_request <- function(prompt,
   normalized <- gsub("\\", "/", documents, fixed = TRUE)
   candidate_key <- .cc_codex_path_key(normalized)
   base_key <- .cc_codex_path_key(basename(normalized))
+  # Yukleme klasorundeki dosyalar diskte depolama onekli durur; kullanici
+  # onlari arayuzde gordugu adla anar.
+  display_key <- .cc_codex_path_key(.cc_prepare_display_names(normalized))
   request_key <- .cc_codex_path_key(requested)
+
+  .cc_codex_doc_matches <- function(key) {
+    vapply(
+      seq_along(candidate_key),
+      function(i) .cc_prepare_key_matches(
+        c(base_key[i], display_key[i], candidate_key[i]), key
+      ),
+      logical(1)
+    )
+  }
 
   selected_idx <- integer(0)
   mode <- "auto"
   if (length(request_key)) {
     selected_idx <- which(vapply(seq_along(documents), function(i) {
-      any(vapply(request_key, function(key) {
-        identical(base_key[i], key) || identical(candidate_key[i], key) || endsWith(candidate_key[i], paste0("/", key))
-      }, logical(1)))
+      any(vapply(request_key, function(key) isTRUE(.cc_codex_doc_matches(key)[i]), logical(1)))
     }, logical(1)))
     if (length(selected_idx)) mode <- "prompt"
   }
@@ -458,10 +471,7 @@ cc_select_documents_for_request <- function(prompt,
 
     if (length(istenen_dokuman)) {
       istenen_anahtar <- .cc_codex_path_key(istenen_dokuman)
-      eslesti <- vapply(istenen_anahtar, function(key) {
-        any(base_key == key | candidate_key == key |
-              endsWith(candidate_key, paste0("/", key)))
-      }, logical(1))
+      eslesti <- vapply(istenen_anahtar, function(key) any(.cc_codex_doc_matches(key)), logical(1))
       eksik_dokuman <- istenen_dokuman[!eslesti]
 
       if (length(eksik_dokuman)) {

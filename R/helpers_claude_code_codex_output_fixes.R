@@ -165,17 +165,13 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       .cc_scan_norm(normalizePath(src, winslash = "/", mustWork = TRUE)),
       error = function(e) ""
     )
-    resolved_source_parent <- cc_output_sync_canonical_root(dirname(src))
-    expected_src <- if (nzchar(resolved_source_parent)) {
-      paste0(resolved_source_parent, "/", basename(.cc_scan_norm(src)))
-    } else {
-      .cc_scan_norm(src)
-    }
+    # Bağlantı tespiti taban ad karşılaştırmasıyla DEĞİL, ortak dizin düzeyli
+    # yardımcıyla yapılır; Türkçe adlarda Windows harf katlaması taban adı
+    # eşitsiz gösterip geçerli çıktıyı reddediyordu.
     source_safe <- nzchar(output_root) && nzchar(resolved_src) &&
       (identical(.cc_scan_key(resolved_src), .cc_scan_key(output_root)) ||
          startsWith(.cc_scan_key(resolved_src), paste0(.cc_scan_key(output_root), "/"))) &&
-      identical(.cc_scan_key(resolved_src), .cc_scan_key(expected_src)) &&
-      !isTRUE(.cc_scan_is_link(src))
+      !isTRUE(cc_path_is_reparse_link(src))
     if (!isTRUE(source_safe)) {
       fail("Çıktı kaynağı bağlantı/reparse-point veya onaylı output kökünün dışında")
       next
@@ -215,23 +211,14 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     if (had_dest) {
       # Sys.readlink() Windows'ta HER ZAMAN NA döner ve nzchar(NA) TRUE'dur;
       # tek başına kullanıldığında var olan her hedefi bağlantı sanıp aynı
-      # dosyanın yeniden üretildiği her çalıştırmayı bloke ederdi. Bağlantı
-      # tespiti bu yüzden çözülmüş yolun sözlüksel konumdan sapmasıyla
-      # yapılır: symlink/junction her iki platformda da başka yere çözülür.
-      resolved_parent <- cc_output_sync_canonical_root(parent)
-      expected_dest <- if (nzchar(resolved_parent)) {
-        paste0(resolved_parent, "/", basename(.cc_scan_norm(dest)))
-      } else {
-        .cc_scan_norm(dest)
-      }
+      # dosyanın yeniden üretildiği her çalıştırmayı bloke ederdi. Tespit
+      # ortak yardımcıda, dizin düzeyinde yapılır.
       resolved_dest <- tryCatch(
         .cc_scan_norm(normalizePath(dest, winslash = "/", mustWork = TRUE)),
         error = function(e) ""
       )
       resolved_key <- .cc_scan_key(resolved_dest)
-      linked <- !nzchar(resolved_dest) ||
-        !identical(resolved_key, .cc_scan_key(expected_dest)) ||
-        isTRUE(.cc_scan_is_link(dest))
+      linked <- !nzchar(resolved_dest) || isTRUE(cc_path_is_reparse_link(dest))
       dest_safe <- nzchar(resolved_dest) && (
         identical(resolved_key, approved_key) || startsWith(resolved_key, paste0(approved_key, "/"))
       )

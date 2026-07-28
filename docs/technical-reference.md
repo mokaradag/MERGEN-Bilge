@@ -678,6 +678,29 @@ symlink'lerini ve Windows junction/reparse noktalarını birlikte yakalar.
 karşılaştırıldığında önek eşleşmez ve geçerli her çıktı sessizce "kök dışında"
 sayılırdı. Hedef artık aynı kanonik semantikten geçirilir.
 
+#### Ad eşleştirme ve Windows yol/kodlama tuzakları
+
+Girdi ve doküman seçimindeki ad eşleştirmesi `R/helpers_claude_code_input_matching.R`
+dosyasındadır. İki gerçek durum bunu zorunlu kılar: yükleme klasöründeki dosyalar
+diskte `<zaman>_<hash>_<hash>_<görünen ad>` biçiminde durur, ve prompt'taki ad
+çıkarımı boşlukta durduğu için "EK-U Süreç.pdf" yalnızca "Süreç.pdf" olarak
+yakalanır. `.cc_prepare_display_names()` depolama önekini kaldırır,
+`.cc_prepare_key_matches()` ise anmayı tam ad ya da `/`, `_`, `-`, boşluk
+ayracından sonraki son parça olarak kabul eder. Gerçekten var olmayan bir
+doküman yine kapalı biçimde reddedilir.
+
+Windows'ta iki tuzak, geçerli her girdinin "bağlantı" sayılarak reddedilmesine
+yol açıyordu ("Çalışma alanı hazırlanamadı: Gerekli girdi dosyaları
+kopyalanamadı: <Türkçe ad>"). Birincisi, tam yolu "üst dizin + taban ad" ile
+karşılaştırmak: `normalizePath()` 8.3 kısa adı uzun ada ve diskteki kanonik
+harf büyüklüğüne çevirirken sonradan eklenen `basename()` çağıranın biçimini
+korur. İkincisi, `tolower()` yerel/kodlama duyarlıdır: Türkçe tek baytlı
+yerelde yerel kodlamalı dize bayt bazlı katlanıp "İ" -> "ı" olurken UTF-8
+işaretli dize geniş karakter yolundan "İ" -> "i" olur. Bu yüzden yol
+anahtarları katlamadan önce `enc2utf8()` ile sabitlenir ve bağlantı tespiti
+yalnızca DİZİN düzeyinde yapılır (`cc_path_is_reparse_link()`); onaylı kök
+dışına kaçış zaten ayrı bir önek kontrolüyle denetlenir.
+
 #### Doküman hazırlığı çalıştırmaya özeldir
 
 Büyük bir klasördeki her doküman işlenmez. Seçim önceliği açıkça seçilen

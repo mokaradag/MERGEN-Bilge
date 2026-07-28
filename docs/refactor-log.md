@@ -7,6 +7,77 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 ---
 
 
+## 2026-07-28 (2) — Bilge Yolaç girdi kopyalama regresyonu ve ad eşleştirme
+
+### Belirti
+"Yükleme Klasörüne git" ile açılan klasörde soru sorulduğunda çalıştırma
+her seferinde `Çalışma alanı hazırlanamadı: Gerekli girdi dosyaları
+kopyalanamadı: <depolama önekli Türkçe ad>` ile düşüyordu. Aynı hata Windows
+VM'deki testthat koşusunda da görünüyordu:
+`test-claude-code-run-prepare-behavior.R` içindeki "Türkçe/Unicode dosya
+adları girdi aktarımında korunur" testi `Türkçe_çalışma_özeti_İstanbul.txt`
+için hata veriyordu. Linux'ta ikisi de üretilemiyordu.
+
+### Kök neden
+`cc_copy_files_to_runtime_input()` içine eklenen kaynak güvenlik denetimi tam
+yolu "üst dizin + taban ad" ile karşılaştırıyordu. Windows'ta bu karşılaştırma
+iki nedenle kırılgandır:
+
+1. `normalizePath()` 8.3 kısa adı uzun ada ve diskteki kanonik harf
+   büyüklüğüne çevirir; sonradan eklenen `basename()` ise çağıranın biçimini
+   korur.
+2. `tolower()` yerel VE kodlama duyarlıdır. Türkçe tek baytlı yerelde yerel
+   kodlamalı dize bayt bazlı katlanır ("İ" -> "ı"), UTF-8 işaretli dize ise
+   geniş karakter yolundan katlanır ("İ" -> "i"). `paste0()` karışık kodlamalı
+   parçaları UTF-8'e çevirdiği için karşılaştırmanın iki tarafı farklı yoldan
+   geçiyordu.
+
+Sonuç: Türkçe adlı GEÇERLİ her dosya "bağlantı/reparse-point" sayılıp
+kopyalanmıyordu. Aynı desen `cc_apply_output_sync_plan()` (hem temel hem
+sertleştirilmiş sürüm) ve `stage_claude_code_downloads()` içinde de vardı;
+üretilen Türkçe adlı çıktılar da aynı şekilde reddedilecekti.
+
+### Düzeltme
+- `.cc_scan_norm()` artık `enc2utf8()` döndürür; `.cc_scan_key()` ve
+  `.cc_codex_path_key()` katlamadan ÖNCE kodlamayı UTF-8'e sabitler.
+- `cc_path_is_reparse_link()` yalnızca DİZİN düzeyinde karşılaştırır
+  (`dirname(normalizePath(yol))` ile `normalizePath(dirname(yol))`); taban ad
+  karşılaştırması tamamen kaldırıldı. Kök dışına kaçış zaten ayrı önek
+  kontrolüyle denetlendiği için güvenlik özelliği korunur.
+- Dört çağrı noktası (runtime girdi kopyası, temel ve sertleştirilmiş çıktı
+  aktarımı, indirme staging) ortak yardımcıya bağlandı; indirme yolundaki
+  yardımcı çözümü FAIL-CLOSED bırakıldı.
+
+### Ad eşleştirme (ikinci blokaj)
+Yükleme klasöründeki dosyalar diskte `<zaman>_<hash>_<hash>_<görünen ad>`
+biçiminde durur, kullanıcı ise arayüzde gördüğü adla sorar. Ayrıca prompt ad
+çıkarımı boşlukta durduğu için "EK-U Süreç.pdf" yalnızca "Süreç.pdf" olarak
+yakalanır. Son sertleştirme bu durumda otomatik seçime düşmek yerine
+`Açıkça istenen dokümanlar seçilen klasörde bulunamadı` ile bloke ediyordu.
+Ad eşleştirmesi `R/helpers_claude_code_input_matching.R` dosyasına alındı;
+depolama öneki `.cc_prepare_display_names()` ile kaldırılır ve
+`.cc_prepare_key_matches()` ayraç (`/`, `_`, `-`, boşluk) sonrası son parçayı
+da kabul eder. Gerçekten var olmayan doküman yine reddedilir.
+
+### Windows'ta atlanan üç test çalışır hale getirildi
+`test-claude-code-codex-review-fixes.R` (iki bağlantı testi) ve
+`test-claude-code-downloads-security-behavior.R` (staging symlink testi) artık
+Windows'ta da koşar: dosya symlink'i yönetici hakkı gerektirdiği için orada
+yönetici gerektirmeyen dizin junction'ı kullanılır ve aynı sözleşme (onaylı
+kök dışına çözülen kaynak reddedilir) doğrulanır.
+
+### Bakım ratchet'i
+`R/helpers_claude_code_runtime_prepare.R` 822 satır / 26 fonksiyona çıkmıştı.
+Bütçe gevşetilmedi; ad eşleştirme katmanı ayrı dosyaya bölündü (777 -> 650
+satır). Manifest sırası: `bounded_scan` -> `input_matching` -> `runtime_prepare`.
+
+### Çalıştırılan doğrulama
+Linux/cloud oturumunda tüm Bilge Yolaç, seam, manifest, ratchet ve production
+testleri, `parse_sanity_check.R`, seam doctor ve app boot smoke çalıştırıldı.
+Windows'a özgü davranış (8.3 kısa ad, Türkçe harf katlama, junction) yalnızca
+VM'de kanıtlanabilir; bu oturumda VM/SSO/DB doğrulaması YAPILMADI.
+
+
 ## 2026-07-28 — PR #672 ikinci tur Codex bulguları ve Windows test paritesi
 
 ### Seçilen paket / neden

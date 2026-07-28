@@ -49,11 +49,23 @@ cc_scan_runtime_excluded_dirs <- function() {
     error = function(e) as.character(path)[1]
   )
   out <- gsub("\\", "/", as.character(out)[1], fixed = TRUE)
-  sub("(?<=.)/+$", "", out, perl = TRUE)
+  # Kodlama işareti tek biçime getirilir: normalizePath() Windows'ta yerel
+  # kodlamalı, list.files() ise UTF-8 işaretli dize döndürür. İkisi paste0()
+  # ile birleşince karşılaştırmanın iki tarafı farklı kodlama yolundan geçer.
+  enc2utf8(sub("(?<=.)/+$", "", out, perl = TRUE))
 }
 
+# Yol karşılaştırma anahtarı.
+#
+# KRİTİK: tolower() yerel/kodlama duyarlıdır. Türkçe Windows'ta (CP1254 tek
+# baytlı yerel) yerel kodlamalı bir dizede bayt bazlı katlama uygulanır ve
+# "İ" -> "ı" olur; UTF-8 işaretli aynı metinde ise geniş karakter yolu
+# çalışır ve "İ" -> "i" olur. Karşılaştırmanın iki tarafı farklı kodlama
+# işareti taşıyorsa aynı dosya adı EŞİT ÇIKMAZ. Bu yüzden katlamadan önce
+# kodlama daima UTF-8'e sabitlenir.
 .cc_scan_key <- function(path) {
-  if (.Platform$OS.type == "windows") tolower(path) else path
+  yol <- enc2utf8(as.character(path))
+  if (.Platform$OS.type == "windows") tolower(yol) else yol
 }
 
 # Dizin bağlantısı (symlink/junction) mı? Takip edilmeyen bağlantılar hem
@@ -100,8 +112,15 @@ cc_path_is_reparse_link <- function(path) {
   ust <- try(normalizePath(dirname(yol), winslash = "/", mustWork = TRUE), silent = TRUE)
   if (inherits(cozulmus, "try-error") || inherits(ust, "try-error")) return(FALSE)
 
-  beklenen <- paste0(.cc_scan_norm(ust), "/", basename(.cc_scan_norm(yol)))
-  !identical(.cc_scan_key(.cc_scan_norm(cozulmus)), .cc_scan_key(beklenen))
+  # Yalnızca ÜST DİZİNLER karşılaştırılır. Taban ad karşılaştırması Windows'ta
+  # kırılgandır: normalizePath() 8.3 kısa adı uzun ada ve diskteki kanonik
+  # harf büyüklüğüne çevirir, Türkçe adlarda ise kodlama/harf katlama farkı
+  # oluşur. Bağlantı zaten üst dizini değiştirir; kök dışına kaçış ayrıca
+  # çağıran tarafta izinli kök önekiyle denetlenir.
+  !identical(
+    .cc_scan_key(.cc_scan_norm(dirname(cozulmus))),
+    .cc_scan_key(.cc_scan_norm(ust))
+  )
 }
 
 # Bir dizinin girdilerini sınırlı biçimde listeler.
