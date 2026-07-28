@@ -299,6 +299,26 @@ stage_claude_code_downloads <- function(file_paths,
 
     if (!isTRUE(file.exists(kaynak)) || isTRUE(dir.exists(kaynak))) next
 
+    # Bekleme sırasında modelin gecikmiş alt süreci dosyayı symlink/junction
+    # ile değiştirmiş olabilir. Web-served staging kopyasından hemen önce yolu
+    # yeniden çöz ve izinli kök/link politikasını tekrar uygula.
+    yeniden_onayli <- cc_policy_filter_generated_file_paths(
+      kaynak,
+      allowed_roots = allowed_roots,
+      context = "indirilecek dosya"
+    )
+    kaynak_key <- cc_policy_normalize_path(kaynak, must_exist = TRUE)
+    kaynak_ata <- cc_policy_normalize_path(dirname(kaynak), must_exist = TRUE)
+    beklenen_kaynak <- cc_policy_normalize_path(
+      file.path(kaynak_ata, basename(kaynak)), must_exist = FALSE
+    )
+    baglanti <- !identical(kaynak_key, beklenen_kaynak) || isTRUE(tryCatch({
+      hedef <- Sys.readlink(kaynak)
+      !is.na(hedef) && nzchar(hedef)
+    }, error = function(e) FALSE))
+    if (length(yeniden_onayli) != 1L || !identical(yeniden_onayli[1], kaynak_key) ||
+        isTRUE(baglanti)) next
+
     orijinal_ad <- basename(kaynak)
 
     guvenli_ad <- sanitize_claude_code_download_segment(

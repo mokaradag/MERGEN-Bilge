@@ -92,7 +92,8 @@ mirror_directory_to_local_workspace <- function(source_dir,
     files = secim$files,
     relatives = secim$relatives,
     input_dir = target_dir,
-    ownership_guard = ownership_guard
+    ownership_guard = ownership_guard,
+    source_root = scan$root %||% source_dir
   )
 
   basarisiz <- as.character(kopya$failed %||% character(0))

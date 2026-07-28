@@ -116,6 +116,7 @@ cc_plan_output_sync <- function(changed_files, layout, source_workdir, limits = 
     }))
   }
   plan$output_root <- as.character(layout$output %||% "")[1]
+  plan$limits <- limits
   plan
 }
 
@@ -135,6 +136,9 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
   approved_root <- cc_output_sync_canonical_root(as.character(plan$source_workdir %||% "")[1])
   approved_key <- .cc_scan_key(approved_root)
   results <- skipped
+  max_file_bytes <- cc_runtime_limit("max_output_file_bytes", 100 * 1024^2, plan$limits)
+  max_total_bytes <- cc_runtime_limit("max_output_total_bytes", 400 * 1024^2, plan$limits)
+  fresh_total <- 0
 
   for (item in plan$items) {
     dest <- as.character(item$dest_path %||% "")[1]
@@ -179,6 +183,10 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     source_size <- suppressWarnings(as.numeric(file.info(src)$size[1]))
     if (!is.finite(source_size)) {
       fail("Çıktı dosyası boyutu belirlenemedi")
+      next
+    }
+    if (source_size > max_file_bytes || fresh_total + source_size > max_total_bytes) {
+      fail("Çıktı dosyası güncel boyut sınırlarını aşıyor")
       next
     }
 
@@ -248,7 +256,8 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       next
     }
     staged_size <- suppressWarnings(as.numeric(file.info(staging)$size[1]))
-    if (!is.finite(staged_size) || !identical(staged_size, source_size)) {
+    if (!is.finite(staged_size) || !identical(staged_size, source_size) ||
+        staged_size > max_file_bytes || fresh_total + staged_size > max_total_bytes) {
       unlink(staging, force = TRUE)
       fail("Çıktı staging doğrulaması başarısız")
       next
@@ -287,6 +296,7 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       source_path = src, dest_path = dest, success = TRUE,
       size = source_size, error = ""
     )
+    fresh_total <- fresh_total + staged_size
   }
   results
 }

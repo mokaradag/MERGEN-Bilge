@@ -95,7 +95,11 @@
   # Sertlestirme dosyalari uretimde temel yardimcilardan SONRA yuklenir ve
   # onlarin paylasilan fonksiyonlarini (ornegin cc_output_sync_canonical_root)
   # cagirir. Izole test ortami da ayni yukleme sirasini yansitmalidir.
-  for (temel in c("helpers_claude_code_bounded_scan.R", "helpers_claude_code_output_sync.R")) {
+  for (temel in c(
+    "helpers_claude_code_bounded_scan.R",
+    "helpers_claude_code_runtime_prepare.R",
+    "helpers_claude_code_output_sync.R"
+  )) {
     source(file.path(repo_root, "R", temel), encoding = "UTF-8", local = env)
   }
 
@@ -678,4 +682,56 @@ test_that("planlamadan sonra bağlantıya dönüşen çıktı kaynağı reddedil
 
   expect_false(isTRUE(sonuc[[1]]$success))
   expect_false(file.exists(file.path(kaynak, "rapor.txt")))
+})
+
+test_that("bulunamayan istenen girdi otomatik dosya seçimine düşmez", {
+  env <- .cc_codex_review_env()
+  kok <- withr::local_tempdir()
+  ilgisiz <- file.path(kok, "ilgisiz.csv")
+  writeLines("yanlis", ilgisiz, useBytes = TRUE)
+
+  sonuc <- env$cc_select_input_files(
+    prompt = "missing.csv dosyasını incele",
+    files = ilgisiz,
+    file_sizes = file.info(ilgisiz)$size,
+    root = kok
+  )
+
+  expect_length(sonuc$files, 0L)
+  expect_true("missing.csv" %in% sonuc$required_skipped)
+})
+
+test_that("çıktı terfisi güncel tekil ve toplam boyut sınırlarını uygular", {
+  env <- .cc_codex_review_env()
+  kaynak <- withr::local_tempdir()
+  runtime <- withr::local_tempdir()
+  cikti <- file.path(runtime, "buyuyen.txt")
+  writeChar(strrep("x", 20), cikti, eos = NULL, useBytes = TRUE)
+
+  sonuc <- env$cc_apply_output_sync_plan(list(
+    source_workdir = kaynak, output_root = runtime, skipped_approved = list(),
+    limits = list(max_output_file_bytes = 10, max_output_total_bytes = 10),
+    items = list(list(source_path = cikti, dest_path = file.path(kaynak, "buyuyen.txt"), size = 1))
+  ))
+
+  expect_false(isTRUE(sonuc[[1]]$success))
+  expect_false(file.exists(file.path(kaynak, "buyuyen.txt")))
+})
+
+test_that("runtime girdi kopyası son anda bağlantıya dönüşen kaynağı reddeder", {
+  skip_on_os("windows")
+  env <- .cc_codex_review_env()
+  kok <- withr::local_tempdir()
+  hedef <- withr::local_tempdir()
+  disari <- tempfile()
+  writeLines("gizli", disari, useBytes = TRUE)
+  baglanti <- file.path(kok, "girdi.txt")
+  expect_true(file.symlink(disari, baglanti))
+
+  sonuc <- env$cc_copy_files_to_runtime_input(
+    baglanti, "girdi.txt", hedef, source_root = kok
+  )
+
+  expect_identical(sonuc$failed, "girdi.txt")
+  expect_false(file.exists(file.path(hedef, "girdi.txt")))
 })

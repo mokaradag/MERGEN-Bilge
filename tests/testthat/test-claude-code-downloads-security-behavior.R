@@ -166,6 +166,30 @@ testthat::test_that("stage_claude_code_downloads kök-dışı dosyayı kopyalama
   testthat::expect_length(staged, 0L)
 })
 
+testthat::test_that("stage_claude_code_downloads son kontrolde symlink kaynağı reddeder", {
+  testthat::skip_on_os("windows")
+  env <- .ccdl_env()
+  dl_root <- tempfile("ccdl_symlink_root_"); dir.create(dl_root)
+  withr::local_options(mergen.claude_code_download_root = dl_root)
+  allowed <- tempfile("ccdl_symlink_allowed_"); dir.create(allowed)
+  outside <- tempfile("ccdl_symlink_secret_"); writeLines("gizli", outside)
+  link <- file.path(allowed, "rapor.txt")
+  writeLines("onaylı", link)
+  env$cc_wait_for_path_visible <- function(path, ...) {
+    unlink(path)
+    testthat::expect_true(file.symlink(outside, path))
+    TRUE
+  }
+
+  res <- env$stage_claude_code_downloads(
+    file_paths = link, user_id = 7L, session_token = "tok3",
+    allowed_roots = c(allowed, dirname(outside))
+  )
+
+  testthat::expect_length(res, 0L)
+  testthat::expect_length(list.files(dl_root, recursive = TRUE), 0L)
+})
+
 testthat::test_that("stage_claude_code_downloads boş girdide boş liste döner", {
   env <- .ccdl_env()
   dl_root <- tempfile("ccdl_root3_"); dir.create(dl_root)

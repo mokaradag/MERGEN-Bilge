@@ -443,7 +443,7 @@ cc_select_input_files <- function(prompt,
   if (length(istenen_orijinal)) {
     eslesti <- vapply(
       istenen_orijinal,
-      function(m) any(.cc_prepare_mention_matches(files, relatives, m)),
+      function(m) any(.cc_prepare_mention_matches(files, relatives, unique(c(m, basename(m))))),
       logical(1),
       USE.NAMES = FALSE
     )
@@ -472,7 +472,17 @@ cc_select_input_files <- function(prompt,
     }
   }
 
-  if (!length(secilen_idx)) {
+  # Doğrudan disk çözümlemesinden sonra da bulunamayan adları koru. İstenen
+  # dosya yokken otomatik seçim yapmak, modeli ilgisiz verilerle çalıştırır.
+  eslesmeyen_istenen <- character(0)
+  for (istenen in istenen_orijinal) {
+    adaylar <- unique(c(istenen, basename(istenen)))
+    if (!any(.cc_prepare_mention_matches(files, relatives, adaylar))) {
+      eslesmeyen_istenen <- c(eslesmeyen_istenen, istenen)
+    }
+  }
+
+  if (!length(secilen_idx) && !length(eslesmeyen_istenen)) {
     # Prompt hiçbir dosyaya işaret etmiyorsa klasörün tamamı gerekli girdi
     # sayılmaz; yalnızca sınırlı ve deterministik bir alt küme kopyalanır.
     sira <- order(boyutlar, tolower(relatives))
@@ -523,7 +533,11 @@ cc_select_input_files <- function(prompt,
   # seçilmişti). Ancak kullanıcının AÇIKÇA seçtiği veya prompt'ta adı geçen
   # bir dosya yalnızca boyut sınırı nedeniyle atlandıysa, bu sessizce
   # yutulmamalı; çağıran bunu görüp çalıştırmayı reddedebilmelidir.
-  required_skipped <- if (identical(secim_modu, "auto")) character(0) else unique(atlananlar)
+  required_skipped <- if (identical(secim_modu, "auto") && !length(eslesmeyen_istenen)) {
+    character(0)
+  } else {
+    unique(c(atlananlar, eslesmeyen_istenen))
+  }
 
   list(
     files = sonuc_dosyalar,
@@ -550,7 +564,8 @@ cc_select_input_files <- function(prompt,
 cc_copy_files_to_runtime_input <- function(files,
                                            relatives,
                                            input_dir,
-                                           ownership_guard = NULL) {
+                                           ownership_guard = NULL,
+                                           source_root = "") {
   files <- as.character(files %||% character(0))
   relatives <- as.character(relatives %||% character(0))
 
@@ -566,9 +581,36 @@ cc_copy_files_to_runtime_input <- function(files,
   basarisizlar <- character(0)
   sonuclar <- list()
   toplam <- 0
+  kaynak_kok <- .cc_scan_norm(as.character(source_root %||% "")[1])
+  kaynak_kok_key <- .cc_scan_key(kaynak_kok)
 
   for (i in seq_along(files)) {
     if (is.function(ownership_guard)) ownership_guard()
+
+    # Taramadan sonra değişebilen ağ paylaşımlarında kaynak yeniden çözülür.
+    # Bağlantı/reparse-point veya seçilen kökten kaçış file.copy() çağrısından
+    # hemen önce reddedilir.
+    kaynak_var <- isTRUE(file.exists(files[i]))
+    cozulmus <- if (kaynak_var) {
+      .cc_scan_norm(normalizePath(files[i], winslash = "/", mustWork = TRUE))
+    } else ""
+    beklenen_ata <- if (kaynak_var) {
+      .cc_scan_norm(normalizePath(dirname(files[i]), winslash = "/", mustWork = TRUE))
+    } else ""
+    beklenen <- if (nzchar(beklenen_ata)) paste0(beklenen_ata, "/", basename(.cc_scan_norm(files[i]))) else ""
+    guvenli <- nzchar(cozulmus) && !isTRUE(dir.exists(files[i])) &&
+      !isTRUE(.cc_scan_is_link(files[i])) && identical(.cc_scan_key(cozulmus), .cc_scan_key(beklenen)) &&
+      (!nzchar(kaynak_kok) || identical(.cc_scan_key(cozulmus), kaynak_kok_key) ||
+         startsWith(.cc_scan_key(cozulmus), paste0(kaynak_kok_key, "/")))
+    if (!isTRUE(guvenli)) {
+      basarisizlar <- c(basarisizlar, relatives[i])
+      sonuclar[[length(sonuclar) + 1L]] <- list(
+        source_path = files[i], dest_path = file.path(input_dir, relatives[i]),
+        success = FALSE, size = NA_real_,
+        error = "Kaynak bağlantı/reparse-point veya onaylı kökün dışında"
+      )
+      next
+    }
 
     hedef <- file.path(input_dir, relatives[i])
     hedef_dizin <- dirname(hedef)
