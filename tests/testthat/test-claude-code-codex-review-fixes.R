@@ -66,6 +66,9 @@
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x)) y else x
+  env$get_claude_code_binary_doc_extensions <- function() {
+    c("pdf", "xlsx", "xls", "docx", "doc", "pptx", "ppt")
+  }
 
   captured <- c(
     "mirror_directory_to_local_workspace",
@@ -469,6 +472,31 @@ test_that("adı verilen ama bulunamayan doküman ilgisiz dokümanla değiştiril
   )
   expect_identical(eslesen$selection_mode, "prompt")
   expect_identical(basename(eslesen$files), "other.pdf")
+})
+
+test_that("eşleşen ve eksik doküman birlikte istendiğinde eksik olan reddedilir", {
+  env <- .cc_codex_review_env()
+  klasor <- withr::local_tempdir()
+
+  bulunan <- file.path(klasor, "found.pdf")
+  writeLines("icerik", bulunan, useBytes = TRUE)
+
+  env$cc_runtime_limit <- function(name, default, limits = NULL) default
+  env$cc_extract_prompt_file_mentions <- function(prompt) {
+    unlist(regmatches(prompt, gregexpr("[A-Za-z0-9_.-]+\\.[A-Za-z0-9]{1,8}", prompt)))
+  }
+  env$get_claude_code_binary_doc_extensions <- function() {
+    c("pdf", "xlsx", "xls", "docx", "doc")
+  }
+
+  expect_error(
+    env$cc_select_documents_for_request(
+      prompt = "found.pdf ve missing.pdf dosyalarını özetle",
+      documents = bulunan
+    ),
+    "missing.pdf",
+    fixed = TRUE
+  )
 })
 
 test_that("düzyazıdaki noktalı belirteçler doküman seçimini bloke etmez", {

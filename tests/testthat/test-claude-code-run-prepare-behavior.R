@@ -1086,6 +1086,27 @@ test_that("hazırlık ve çıktı işleri açık bağımlılık modu ile gönder
   expect_true(grepl("cc_dispatch_run_preparation\\(", modul, perl = TRUE))
 })
 
+test_that("hazırlık callback'leri kapanmış oturumda işlem başlatmaz", {
+  dispatch <- .cc_read_prepare_text("R/helpers_claude_code_run_dispatch.R")
+
+  # Hem başarı hem hata settlement callback'i websocket/UI işinden önce
+  # kapanmış oturumu bırakmalıdır. Başarı yolu ayrıca worker'ın lease'ini
+  # süreç başlatmadan serbest bırakır.
+  expect_gte(
+    lengths(regmatches(dispatch, gregexpr("ctx\\$session\\$isClosed\\(\\)", dispatch, perl = TRUE))),
+    2L
+  )
+  expect_true(grepl(
+    paste0(
+      "(?s)isTRUE\\(ctx\\$session\\$isClosed\\(\\)\\).*?",
+      "cc_release_runtime_lease\\(prep\\$runtime_lease.*?",
+      "cc_start_streaming_run\\(ctx, prep\\)"
+    ),
+    dispatch,
+    perl = TRUE
+  ))
+})
+
 test_that("bloklayan bekleme döngüleri ana süreç dosyalarında kalmaz", {
   for (yol in c(
     "R/module_claude_code.R",

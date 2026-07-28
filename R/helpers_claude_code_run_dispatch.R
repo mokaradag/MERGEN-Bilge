@@ -220,7 +220,8 @@ cc_dispatch_run_preparation <- function(ctx) {
     ) |>
       promises::then(function(prep) {
         cc_cancel_prepare_deadline()
-        if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
+        if (isTRUE(ctx$session$isClosed()) ||
+            !cc_is_active_run(ctx$rv, ctx$run_request_id)) {
           cc_release_runtime_lease(prep$runtime_lease %||% "")
           return(NULL)
         }
@@ -257,7 +258,11 @@ cc_dispatch_run_preparation <- function(ctx) {
       }) |>
       promises::catch(function(e) {
         cc_cancel_prepare_deadline()
-        if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
+        # Kapanmış bir Shiny oturumunda hata UI'si/persist callback'i çalıştırma.
+        # Özellikle hazırlık promise'i oturum kapandıktan sonra reddedilirse
+        # ikinci bir websocket gönderimi de başarısız olabilir.
+        if (isTRUE(ctx$session$isClosed()) ||
+            !cc_is_active_run(ctx$rv, ctx$run_request_id)) {
           return(NULL)
         }
 

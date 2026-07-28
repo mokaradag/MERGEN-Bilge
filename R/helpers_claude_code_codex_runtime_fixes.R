@@ -407,17 +407,26 @@ cc_select_documents_for_request <- function(prompt,
   # Aşırı engellemeyi önlemek için yalnızca GERÇEK doküman uzantısı taşıyan
   # anmalar dikkate alınır; sıradan düzyazıdaki "3.5", "v1.2" gibi noktalı
   # belirteçler bir çalıştırmayı bloke edemez.
-  if (!length(selected_idx) && length(requested)) {
+  if (length(requested)) {
     dokuman_extleri <- tolower(get_claude_code_binary_doc_extensions())
     istenen_dokuman <- requested[
       tolower(tools::file_ext(requested)) %in% dokuman_extleri
     ]
 
     if (length(istenen_dokuman)) {
-      stop(paste0(
-        "Açıkça istenen dokümanlar seçilen klasörde bulunamadı: ",
-        paste(unique(basename(istenen_dokuman)), collapse = ", ")
-      ), call. = FALSE)
+      istenen_anahtar <- .cc_codex_path_key(istenen_dokuman)
+      eslesti <- vapply(istenen_anahtar, function(key) {
+        any(base_key == key | candidate_key == key |
+              endsWith(candidate_key, paste0("/", key)))
+      }, logical(1))
+      eksik_dokuman <- istenen_dokuman[!eslesti]
+
+      if (length(eksik_dokuman)) {
+        stop(paste0(
+          "Açıkça istenen dokümanlar seçilen klasörde bulunamadı: ",
+          paste(unique(basename(eksik_dokuman)), collapse = ", ")
+        ), call. = FALSE)
+      }
     }
   }
 
