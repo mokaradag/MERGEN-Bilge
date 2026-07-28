@@ -5,6 +5,93 @@
 #           altındaki bilge_yolac_downloads/ klasörüne kopyalanır.
 # ==============================================================================
 
+#' Görünürlük bekleme bütçesi için tek bir toplama penceresi aç
+#'
+#' Bir toplama (collect/staging) işlemi boyunca TOPLAM bekleme süresi
+#' `file_settle_total_ms` ile sınırlıdır; her aday yol için ayrı bütçe
+#' harcanmaz. Pencere kapandığında önceki durum geri yüklenir.
+#'
+#' @param budget_ms Toplam bütçe (ms); NULL ise yapılandırılmış değer
+#' @return invisible(NULL)
+.cc_path_visibility_budget <- new.env(parent = emptyenv())
+.cc_path_visibility_budget$deadline <- NULL
+
+cc_with_path_visibility_budget <- function(expr, budget_ms = NULL) {
+  budget_ms <- suppressWarnings(as.numeric(budget_ms)[1])
+
+  if (length(budget_ms) != 1L || !is.finite(budget_ms) || budget_ms < 0) {
+    budget_ms <- suppressWarnings(as.numeric(
+      tryCatch(cc_runtime_limit("file_settle_total_ms", 1200), error = function(e) 1200)
+    )[1])
+  }
+
+  if (length(budget_ms) != 1L || !is.finite(budget_ms) || budget_ms < 0) {
+    budget_ms <- 1200
+  }
+
+  onceki <- .cc_path_visibility_budget$deadline
+  .cc_path_visibility_budget$deadline <- Sys.time() + (budget_ms / 1000)
+  on.exit(.cc_path_visibility_budget$deadline <- onceki, add = TRUE)
+
+  force(expr)
+}
+
+#' Etkin toplama bütçesinden kalan süreyi (ms) döndür
+#'
+#' @return Kalan ms veya pencere yoksa NULL
+cc_path_visibility_budget_remaining <- function() {
+  son <- .cc_path_visibility_budget$deadline
+  if (is.null(son)) return(NULL)
+
+  kalan <- as.numeric(difftime(son, Sys.time(), units = "secs")) * 1000
+  if (!is.finite(kalan) || kalan < 0) return(0)
+  kalan
+}
+
+#' Bir dosyanın görünür hale gelmesini sınırlı süre bekler
+#'
+#' Windows/UNC paylaşımlarında yeni yazılan dosya kısa süre `file.exists()`
+#' için görünmeyebilir. Bekleme bütçesi yapılandırılabilir ve bu yardımcı
+#' YALNIZCA arka plan worker'ında çağrılmalıdır; ana Shiny sürecinde
+#' çağrılırsa tüm oturumlar bloke olur.
+#'
+#' @param path Beklenecek dosya yolu
+#' @param budget_ms Toplam bekleme bütçesi (ms)
+#' @return Dosya görünür olduysa TRUE
+cc_wait_for_path_visible <- function(path, budget_ms = NULL) {
+  yol <- as.character(path %||% "")[1]
+  if (!nzchar(yol)) return(FALSE)
+
+  # Görünürlük bütçesi TOPLAM bir bütçedir. Aynı toplama işleminde onlarca
+  # aday yol denendiğinde her biri için ayrı ayrı tam bütçe harcanırsa
+  # paylaşılan worker havuzu dakikalarca meşgul kalır. Etkin bir toplama
+  # bütçesi varsa yalnızca KALAN süre kullanılır.
+  if (is.null(budget_ms)) {
+    kalan <- cc_path_visibility_budget_remaining()
+    if (!is.null(kalan)) budget_ms <- kalan
+  }
+
+  budget_ms <- suppressWarnings(as.numeric(budget_ms)[1])
+
+  if (length(budget_ms) != 1L || !is.finite(budget_ms)) {
+    budget_ms <- suppressWarnings(as.numeric(
+      tryCatch(cc_runtime_limit("file_settle_total_ms", 1200), error = function(e) 1200)
+    )[1])
+  }
+
+  if (length(budget_ms) != 1L || !is.finite(budget_ms) || budget_ms < 0) {
+    budget_ms <- 1200
+  }
+
+  son <- Sys.time() + (budget_ms / 1000)
+
+  while (!isTRUE(file.exists(yol)) && Sys.time() < son) {
+    Sys.sleep(0.05)
+  }
+
+  isTRUE(file.exists(yol))
+}
+
 #' Bilge Yolaç indirme kök klasörünü döndürür
 #'
 #' @return İndirme kök klasörü
@@ -87,11 +174,8 @@ resolve_claude_code_generated_path <- function(path_value,
 
     # Windows/UNC/ağ klasörlerinde yeni yazılan dosya bazen birkaç yüz ms
     # sonra bu süreç tarafından görünür hale geliyor. Ham yol fallback'ine
-    # düşmeden önce kısa süre bekle.
-    son_bekleme <- Sys.time() + 1.5
-    while (!isTRUE(file.exists(aday_norm)) && Sys.time() < son_bekleme) {
-      Sys.sleep(0.1)
-    }
+    # düşmeden önce sınırlı bütçeyle bekle (arka plan worker'ında çalışır).
+    cc_wait_for_path_visible(aday_norm)
 
     if (isTRUE(file.exists(aday_norm)) && !isTRUE(dir.exists(aday_norm))) {
       if (length(allowed_roots) &&
@@ -210,13 +294,31 @@ stage_claude_code_downloads <- function(file_paths,
 
     # Dosya yazma işlemi bitmiş görünse bile özellikle Windows/UNC üzerinde
     # file.exists() kısa süre FALSE dönebilir. İndirme kartını kaçırmamak için
-    # çok kısa bekle.
-    son_bekleme <- Sys.time() + 1.5
-    while (!isTRUE(file.exists(kaynak)) && Sys.time() < son_bekleme) {
-      Sys.sleep(0.1)
-    }
+    # sınırlı bütçeyle bekle.
+    cc_wait_for_path_visible(kaynak)
 
     if (!isTRUE(file.exists(kaynak)) || isTRUE(dir.exists(kaynak))) next
+
+    # Bekleme sırasında modelin gecikmiş alt süreci dosyayı symlink/junction
+    # ile değiştirmiş olabilir. Web-served staging kopyasından hemen önce yolu
+    # yeniden çöz ve izinli kök/link politikasını tekrar uygula.
+    yeniden_onayli <- cc_policy_filter_generated_file_paths(
+      kaynak,
+      allowed_roots = allowed_roots,
+      context = "indirilecek dosya"
+    )
+    kaynak_key <- cc_policy_normalize_path(kaynak, must_exist = TRUE)
+    # Bağlantı tespiti ortak dizin düzeyli yardımcıdadır: Sys.readlink()
+    # Windows'ta hep NA döner ve taban ad karşılaştırması hem Türkçe adlarda
+    # yanlış pozitif üretir hem de var olan bağlantıyı hiç yakalamaz
+    # (normalizePath zaten hedefe çözer).
+    # Yardımcı çözülemezse FAIL-CLOSED: kaynak bağlantı sayılır ve atlanır.
+    baglanti <- isTRUE(tryCatch(
+      cc_path_is_reparse_link(kaynak),
+      error = function(e) TRUE
+    ))
+    if (length(yeniden_onayli) != 1L || !identical(yeniden_onayli[1], kaynak_key) ||
+        isTRUE(baglanti)) next
 
     orijinal_ad <- basename(kaynak)
 
@@ -250,10 +352,7 @@ stage_claude_code_downloads <- function(file_paths,
 
     # URL/HTML kartı üretmeden önce staged hedef dosyanın gerçekten görünür
     # olduğundan emin ol. Böylece href, dosya hazır olmadan ekrana basılmaz.
-    son_bekleme <- Sys.time() + 1.5
-    while (!isTRUE(file.exists(hedef_yol)) && Sys.time() < son_bekleme) {
-      Sys.sleep(0.1)
-    }
+    cc_wait_for_path_visible(hedef_yol)
 
     if (!isTRUE(file.exists(hedef_yol)) || isTRUE(dir.exists(hedef_yol))) next
 
@@ -354,7 +453,9 @@ cc_stage_tool_use_write_paths_as_downloads <- function(tool_uses,
                                                        runtime_workdir = "",
                                                        source_workdir = "",
                                                        user_id = 0L,
-                                                       session_token = "") {
+                                                       session_token = "",
+                                                       layout = NULL,
+                                                       limits = NULL) {
   if (!length(tool_uses)) return(list())
 
   allowed_roots <- cc_policy_allowed_output_roots(
@@ -384,10 +485,7 @@ cc_stage_tool_use_write_paths_as_downloads <- function(tool_uses,
     aday <- normalizePath(raw_yol, winslash = "/", mustWork = FALSE)
 
     # Yedek yolda da aynı zamanlama farkını tolere et.
-    son_bekleme <- Sys.time() + 1.5
-    while (!isTRUE(file.exists(aday)) && Sys.time() < son_bekleme) {
-      Sys.sleep(0.1)
-    }
+    cc_wait_for_path_visible(aday)
 
     if (isTRUE(file.exists(aday)) && !isTRUE(dir.exists(aday))) {
       yollar <- c(yollar, aday)
@@ -402,6 +500,15 @@ cc_stage_tool_use_write_paths_as_downloads <- function(tool_uses,
     allowed_roots = allowed_roots,
     context = "araç çağrısından üretilen dosya"
   )
+
+  # Yedek yol da aynı bölge/boyut sözleşmesine uyar.
+  if (exists("cc_filter_download_candidates", mode = "function", inherits = TRUE)) {
+    suzme <- tryCatch(
+      cc_filter_download_candidates(yollar, layout = layout, limits = limits),
+      error = function(e) NULL
+    )
+    if (is.list(suzme)) yollar <- suzme$paths
+  }
 
   if (!length(yollar)) return(list())
 
@@ -451,7 +558,11 @@ cc_collect_streaming_run_downloads <- function(before_snapshot,
                                                runtime_workdir = "",
                                                source_workdir = "",
                                                user_id = 0L,
-                                               session_token = "") {
+                                               session_token = "",
+                                               changed_files = NULL,
+                                               exclude_dirs = NULL,
+                                               limits = NULL,
+                                               layout = NULL) {
   birincil <- tryCatch(
     collect_claude_code_workdir_changes_downloads(
       before_snapshot = before_snapshot,
@@ -459,7 +570,11 @@ cc_collect_streaming_run_downloads <- function(before_snapshot,
       runtime_workdir = runtime_workdir,
       source_workdir = source_workdir,
       user_id = user_id,
-      session_token = session_token
+      session_token = session_token,
+      changed_files = changed_files,
+      exclude_dirs = exclude_dirs,
+      limits = limits,
+      layout = layout
     ),
     error = function(e) list()
   )
@@ -471,7 +586,9 @@ cc_collect_streaming_run_downloads <- function(before_snapshot,
     runtime_workdir = runtime_workdir,
     source_workdir = source_workdir,
     user_id = user_id,
-    session_token = session_token
+    session_token = session_token,
+    layout = layout,
+    limits = limits
   )
 }
 

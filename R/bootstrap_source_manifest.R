@@ -113,6 +113,134 @@ source_manifest_validate_config_objects <- function(envir = globalenv()) {
   ))
 }
 
+# Bir checkout'ta bulunmayabilecek manifest yolları.
+#
+# BOOT GÜVENLİĞİ: Manifest normalde eksik dosyada fail-fast yapar; bu doğru
+# davranıştır. Ancak bazı runtime dosyaları yalnızca belirli çalışma
+# kopyalarında bulunur (vendor edilmiş frontend varlıklarındaki
+# `optional_in_checkout` deseninin runtime karşılığı). Böyle bir dosyayı
+# ZORUNLU hale getirmek, dosyanın bulunmadığı bir on-prem kopyasında
+# uygulamayı hiç açılmaz duruma sokar. Bu liste yalnızca bilinçli olarak
+# işaretlenmiş yollar için eksikliği tolere eder; listede olmayan her dosya
+# eskisi gibi fail-fast kalır.
+# NOT: Arama, fonksiyonun KENDİ çalışma ortamından yukarı doğru yapılır
+# (inherits = TRUE). Böylece manifest globalenv'e source edildiğinde de,
+# izole bir test ortamına source edildiğinde de aynı kod yolu çalışır;
+# sabit globalenv() araması izole testlerde yapılandırmayı göremezdi.
+source_manifest_optional_paths <- function(envir = environment()) {
+  yollar <- get0(
+    "source_manifest_optional_source_paths",
+    envir = envir,
+    inherits = TRUE,
+    ifnotfound = character(0)
+  )
+
+  if (!is.character(yollar) || !length(yollar)) return(character(0))
+  enc2utf8(yollar)
+}
+
+# Opsiyonel yol GRUPLARI: birlikte anlamlı olan, atomik yüklenmesi gereken
+# dosya kümeleri. Bir grubun herhangi bir üyesi eksikse grubun TAMAMI atlanır.
+#
+# Bu, "yarım yüklenmiş katman" durumunu engeller: örneğin Codex output
+# hardening dosyası, runtime hardening katmanı yüklenmeden source edildiğinde
+# bilinçli olarak stop() eder. Runtime dosyası eksikken output dosyasını tek
+# başına yüklemek, bu guard'ı tetikleyip uygulamayı yine açılmaz hale getirir.
+source_manifest_optional_groups <- function(envir = environment()) {
+  gruplar <- get0(
+    "source_manifest_optional_source_groups",
+    envir = envir,
+    inherits = TRUE,
+    ifnotfound = list()
+  )
+
+  if (!is.list(gruplar)) return(list())
+  gruplar
+}
+
+# Eksik opsiyonel dosya uyarısının süreç başına bir kez yazılmasını sağlar.
+.source_manifest_warned <- new.env(parent = emptyenv())
+
+# Beklenen bir dosya bulunamadığında AYNI dizindeki benzer adlı dosyaları
+# bulur. Kısmi/elle yapılan bir kopyalama sırasında ad tek karakter eksik
+# kalabilir (`..._fixe.R` yerine `..._fixes.R` gibi); bu durumda dosya
+# "eksik" görünür, sahipsiz bir dosya olarak da rapor edilir ve sorunun
+# gerçek nedeni gizli kalır.
+source_manifest_similar_files <- function(path, repo_root = getwd()) {
+  hedef <- basename(as.character(path %||% "")[1])
+  if (!nzchar(hedef)) return(character(0))
+
+  dizin <- dirname(file.path(repo_root, path))
+  if (!dir.exists(dizin)) return(character(0))
+
+  adaylar <- tryCatch(
+    list.files(dizin, pattern = "\\.[rR]$"),
+    error = function(e) character(0)
+  )
+  if (!length(adaylar)) return(character(0))
+
+  yakin <- tryCatch(
+    agrep(hedef, adaylar, max.distance = 0.1, ignore.case = TRUE, value = TRUE),
+    error = function(e) character(0)
+  )
+
+  setdiff(yakin, hedef)
+}
+
+# Manifest yollarını "yüklenecek" ve "eksik/eksik gruba ait opsiyonel" olarak
+# ayırır.
+source_manifest_present_paths <- function(paths, repo_root = getwd()) {
+  paths <- enc2utf8(as.character(paths %||% character(0)))
+  if (!length(paths)) return(paths)
+
+  opsiyonel <- source_manifest_optional_paths()
+
+  # Eksik üyesi olan opsiyonel grupların tüm üyeleri düşer.
+  eksik_grup_uyeleri <- character(0)
+  for (grup in source_manifest_optional_groups()) {
+    grup <- enc2utf8(as.character(grup %||% character(0)))
+    if (!length(grup)) next
+    eksikler <- grup[!file.exists(file.path(repo_root, grup))]
+    if (!length(eksikler)) next
+
+    eksik_grup_uyeleri <- c(eksik_grup_uyeleri, grup)
+
+    # SESSİZ DEĞİL: opsiyonel grup düştüğünde uygulama açılır ama o katmanın
+    # sertleştirmeleri DEVRE DIŞI kalır. Operatör bunu fark edemezse çalışma
+    # kopyasının bozuk olduğunu hiç öğrenemez.
+    #
+    # Bu fonksiyon boot sırasında birden çok kez çağrılır (doğrulama + yükleme);
+    # uyarı süreç başına dosya başına BİR KEZ yazılır.
+    for (eksik in eksikler) {
+      if (!is.null(.source_manifest_warned[[eksik]])) next
+      .source_manifest_warned[[eksik]] <- TRUE
+
+      benzer <- source_manifest_similar_files(eksik, repo_root = repo_root)
+      message(sprintf(
+        paste0(
+          "[KAYNAK MANIFESTI] Opsiyonel dosya bulunamadi, ilgili katman ",
+          "DEVRE DISI: %s%s"
+        ),
+        eksik,
+        if (length(benzer)) {
+          paste0(
+            " | Ayni dizinde benzer adli dosya(lar) var: ",
+            paste(benzer, collapse = ", "),
+            " -> calisma kopyasi git ile senkron degil."
+          )
+        } else {
+          ""
+        }
+      ))
+    }
+  }
+
+  var_mi <- file.exists(file.path(repo_root, paths))
+  atlanacak <- (paths %in% opsiyonel) & (!var_mi | paths %in% eksik_grup_uyeleri)
+
+  paths[!atlanacak]
+}
+
 source_manifest_validate_files <- function(paths, repo_root = getwd()) {
   if (!is.character(paths) || length(paths) == 0L) {
     source_manifest_stop("manifest boş veya karakter vektörü değil.")
@@ -134,7 +262,10 @@ source_manifest_validate_files <- function(paths, repo_root = getwd()) {
     ))
   }
 
+  # Opsiyonel işaretli yollar eksik olabilir; diğer her eksik dosya ölümcüldür.
+  opsiyonel <- source_manifest_optional_paths()
   missing_paths <- paths[!file.exists(file.path(repo_root, paths))]
+  missing_paths <- setdiff(missing_paths, opsiyonel)
   if (length(missing_paths) > 0L) {
     source_manifest_stop(sprintf(
       "eksik kaynak dosya(lar): %s",
@@ -190,7 +321,8 @@ source_manifest_try_parse_file <- function(path) {
 }
 
 source_manifest_validate_parse <- function(paths, repo_root = getwd()) {
-  for (path in paths) {
+  # Eksik olabilen opsiyonel yollar parse doğrulamasından da düşer.
+  for (path in source_manifest_present_paths(paths, repo_root = repo_root)) {
     source_manifest_try_parse_file(file.path(repo_root, path))
   }
 
@@ -295,7 +427,8 @@ source_manifest_load <- function(paths, encoding = "UTF-8") {
 
   source_manifest_validate_files(paths)
 
-  for (path in paths) {
+  # Bulunmayan opsiyonel yollar sessizce atlanır; uygulama açılmaya devam eder.
+  for (path in source_manifest_present_paths(paths)) {
     tryCatch(
       {
         safe_source(path, encoding = encoding)
@@ -440,8 +573,11 @@ source_manifest_required_order <- list(
 
   c("R/helpers_claude_code_user_guard.R", "R/helpers_claude_code_server_setup.R"),
   c("R/helpers_claude_code_upload_folder.R", "R/helpers_claude_code_server_setup.R"),
+  c("R/helpers_claude_code_input_matching.R", "R/helpers_claude_code_runtime_prepare.R"),
   c("R/helpers_claude_code_process.R", "R/helpers_claude_code_runtime_workdir.R"),
   c("R/helpers_claude_code_runtime_workdir.R", "R/helpers_claude_code_directory_listing.R"),
+  c("R/helpers_claude_code_directory_listing.R", "R/helpers_claude_code_dir_listing_async.R"),
+  c("R/helpers_claude_code_dir_listing_async.R", "R/helpers_claude_code_server_setup.R"),
   c("R/helpers_claude_code_directory_listing.R", "R/helpers_claude_code.R"),
   c("R/helpers_claude_code.R", "R/helpers_claude_code_server_setup.R"),
   c("R/helpers_claude_code_downloads.R", "R/helpers_claude_code_downloads_html.R"),

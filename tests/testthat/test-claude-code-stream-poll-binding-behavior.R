@@ -28,6 +28,12 @@ if (requireNamespace("shiny", quietly = TRUE)) {
   env <- new.env(parent = globalenv())
   env$CLAUDE_CODE_LOG_PREFIX <- "[BILGE-YOLAC-TEST]"
   env$ensure_utf8 <- function(x) x
+  env$cc_release_runtime_lease <- function(...) invisible(TRUE)
+  # Yalnızca süreç bitişi (!proc$is_alive()) dalına ulaşan testler için
+  # gereklidir; erken dallar (durduruldu/zaman aşımı) buna hiç ulaşmaz.
+  env$parse_claude_code_json_output <- function(text) {
+    list(text_output = "", tool_uses = list(), session_id = NULL)
+  }
   source(file.path(resolve_repo_root_for_tests(), "R", "module_claude_code_stream_poll.R"),
          encoding = "UTF-8", local = env)
   env
@@ -208,6 +214,46 @@ testthat::test_that("poll gözlemcisi env$durduruldu=TRUE: request-id kapsamlı 
     testthat::expect_length(fin$calls, 1L)
     testthat::expect_identical(fin$calls[[1]]$durum, "Durduruldu")
     testthat::expect_identical(fin$calls[[1]]$request_id, "rid-poll")
+  })
+})
+
+testthat::test_that("cikti isleme worker gonderimi senkron hata verirse: rapor edilir ve state serbest kalir", {
+  testthat::skip_if_not_installed("shiny")
+  env <- .csp_env()
+  fin <- .csp_finalize_rec()
+  proc <- .csp_fake_proc(alive = FALSE)
+  sp <- .csp_stream_env(request_id = "rid-dispatch-fail")
+
+  rapor <- new.env(parent = emptyenv())
+  rapor$ctx <- NULL
+  rapor$hata <- NULL
+
+  env$cc_dispatch_run_output_processing <- function(ctx) {
+    stop("worker gonderilemedi: kume coktu")
+  }
+  env$cc_report_output_processing_failure <- function(ctx, error) {
+    rapor$ctx <- ctx
+    rapor$hata <- error
+    invisible(TRUE)
+  }
+
+  srv <- .csp_make_server(env, list(
+    is_running = TRUE, active_process = proc, stream_env = sp,
+    poll_state = NULL, active_request_id = "ar-1"
+  ), fin)
+
+  shiny::testServer(srv, {
+    session$flushReact()
+
+    # rv$active_process senkron dispatch hatasına rağmen NULL'a çekilmiş
+    # olmalı; aksi halde durum "hazırlanıyor"da takılı kalır.
+    testthat::expect_null(session$returned$active_process)
+    testthat::expect_false(is.null(rapor$ctx))
+    testthat::expect_identical(rapor$ctx$env, sp)
+    testthat::expect_true(grepl("kume coktu", conditionMessage(rapor$hata), fixed = TRUE))
+    # Bu dal finalize_streaming'i DOĞRUDAN çağırmaz; hata raporlama
+    # cc_report_output_processing_failure'a devredilir (yukarıda stub'landı).
+    testthat::expect_length(fin$calls, 0L)
   })
 })
 

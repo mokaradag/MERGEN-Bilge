@@ -5,11 +5,8 @@
 # ==============================================================================
 
 # UNC/ağ paylaşımı/kodlama farkları için aynı dizinin olası varyasyonlarını üretir.
-# NOT: gsub("\\\\", "/", x, fixed=TRUE) yalnızca ardışık çift ters slash'ı
-# eşler. Kullanıcı `\\server\share\sub` yazdığında baştaki çift slash + segment
-# arası tek slash bulunur; eski gsub sonuç olarak `/server\share\sub` üretir.
-# Tek ters slash'a göre değiştirme kanonik UNC formunu doğru kurar ve orijinal
-# ters slash formunu da aday olarak korur.
+# NOT: tek ters slash'a göre değiştirme (çift slash yerine) `\\server\share\sub`
+# gibi UNC yollarını doğru kanonik forma çevirir; orijinal form da korunur.
 cc_build_dir_variants <- function(dir_path) {
   dir_raw <- as.character(dir_path %||% "")
   if (!length(dir_raw) || !nzchar(dir_raw[1])) return(character(0))
@@ -25,8 +22,44 @@ cc_build_dir_variants <- function(dir_path) {
   )))
 }
 
-# Aynı dizini hem base R hem fs ile listelemeyi dener.
-cc_list_dir_relaxed <- function(dir_path) {
+# Aynı dizini hem sınırlı tarayıcı hem base R hem fs ile listelemeyi dener.
+#
+# KRİTİK: Bu fonksiyon ana Shiny olay döngüsünden de (dizin gezgini yenileme)
+# çağrılır. Bu yüzden birincil yol `list.files()` DEĞİL, sınırlı artımlı
+# numaralandırmadır; yüz binlerce girdili büyük/UNC bir klasör tüm oturumları
+# bloke edemez. Sınırlı tarayıcı kullanılamazsa eski davranışa düşülür.
+cc_list_dir_relaxed <- function(dir_path, max_entries = 500L, timeout_ms = 2000L) {
+  # Sınırlı uygulama bulunduysa bu çağrıdan sonra ASLA sınırsız listelemeye
+  # düşülmez. Özellikle yavaş UNC dizinlerinde zaman aşımı/hata sonucu boş
+  # gelebilir; aynı dizini list.files()/fs::dir_ls() ile yeniden denemek ana
+  # Shiny olay döngüsünü bloke eder.
+  if (exists("cc_scan_list_dir_bounded", mode = "function", inherits = TRUE)) {
+    sinirli <- try(
+      cc_scan_list_dir_bounded(
+        dir_path,
+        max_entries = max_entries,
+        timeout_ms = timeout_ms
+      ),
+      silent = TRUE
+    )
+
+    gecerli <- is.list(sinirli) && !inherits(sinirli, "try-error")
+    # sinirli$ok == FALSE, listeleyici sürecin (find/PowerShell) kod
+    # döndürerek başarısız olduğu, geçerli bir R listesi (try-error DEĞİL)
+    # ama içerik güvenilmez anlamına gelir. Bu durumu "boş ama başarılı"
+    # gibi ele almak, gerçek bir listeleme hatasını sessiz boş dizin gibi
+    # gösterirdi.
+    basarili <- gecerli && !isFALSE(sinirli$ok)
+    entries <- if (basarili) sinirli$entries else character(0)
+    hata <- if (gecerli) as.character(sinirli$error %||% "")[1] else "Sınırlı dizin listeleyici çalıştırılamadı."
+
+    return(structure(
+      unique(as.character(entries %||% character(0))),
+      truncated = !basarili || isTRUE(sinirli$truncated),
+      error = hata
+    ))
+  }
+
   files_base <- tryCatch(
     list.files(
       dir_path,
@@ -112,6 +145,8 @@ cc_normalize_dir_entry <- function(file_path, user_id = NULL, idx_cache = list()
 
 #' Belirtilen dizindeki dosya ve klasörleri listeler
 #'
+#' NOT: Maliyetlidir; arka plan worker'ına gönderilmelidir
+#' (R/helpers_claude_code_dir_listing_async.R).
 #' @param path Dizin yolu
 #' @param max_items Maksimum öğe sayısı
 #' @param user_id Kullanıcı kimliği; kalıcı depolama görünen ad çözümlemesi için kullanılır
@@ -137,6 +172,12 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
 
   calisan_dizin <- NULL
   tum_ogeler <- character(0)
+  kesildi <- FALSE
+  listeleme_hatasi <- ""
+
+  # Gezginde en fazla `max_items` öge gösterilir; sıralama için biraz fazlasını
+  # okumak yeterlidir. Böylece dev klasörlerde bile okuma maliyeti sabittir.
+  listeleme_siniri <- max(as.integer(max_items %||% 100L), 1L) * 5L
 
   for (aday in aday_dizinler) {
     dizin_var_mi <- tryCatch(path_exists_relaxed(aday), error = function(e) FALSE)
@@ -150,17 +191,22 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
 
     if (!isTRUE(dizin_var_mi)) next
 
-    bulunan_ogeler <- cc_list_dir_relaxed(aday)
+    bulunan_ogeler <- cc_list_dir_relaxed(aday, max_entries = listeleme_siniri)
 
-    # En azından çalışan dizini kaydet
+    # BAŞARISIZLIK (sinirli$ok == FALSE) da boş sonuç dönebilir; yalnızca
+    # "içerik bulundu" dalında kontrol etmek onu sessiz "boş dizin" gösterirdi.
     if (is.null(calisan_dizin)) {
       calisan_dizin <- aday
+      kesildi <- isTRUE(attr(bulunan_ogeler, "truncated", exact = TRUE))
+      listeleme_hatasi <- as.character(attr(bulunan_ogeler, "error", exact = TRUE) %||% "")[1]
     }
 
     # İçerik bulduysak bunu tercih et
     if (length(bulunan_ogeler) > 0) {
       calisan_dizin <- aday
-      tum_ogeler <- bulunan_ogeler
+      kesildi <- isTRUE(attr(bulunan_ogeler, "truncated", exact = TRUE))
+      listeleme_hatasi <- as.character(attr(bulunan_ogeler, "error", exact = TRUE) %||% "")[1]
+      tum_ogeler <- as.character(bulunan_ogeler)
       break
     }
   }
@@ -195,11 +241,17 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
     ogeler <- ogeler[siralama]
   }
 
+  # listeleme_hatasi yalnızca GERÇEK hatada (sinirli$ok == FALSE) doludur;
+  # max_entries kesmesi "" bırakır. Gerçek hata success = TRUE ile gizlenmez.
+  basarisiz_mi <- nzchar(listeleme_hatasi)
+
   list(
-    success = TRUE,
+    success = !basarisiz_mi,
     items = ogeler,
-    error = "",
+    error = if (basarisiz_mi) listeleme_hatasi else "",
     toplam = length(tum_ogeler),
+    truncated = isTRUE(kesildi),
+    truncated_reason = if (isTRUE(kesildi) && basarisiz_mi) listeleme_hatasi else "",
     resolved_path = tryCatch(
       normalize_mcp_path(calisan_dizin, must_exist = FALSE),
       error = function(e) calisan_dizin

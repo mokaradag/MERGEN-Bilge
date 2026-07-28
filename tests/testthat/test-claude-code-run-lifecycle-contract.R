@@ -265,11 +265,27 @@ test_that("module_claude_code.R erken abortları lifecycle helper ile temizler",
   hit_count <- if (length(hits) == 1L && hits[1] == -1L) 0L else length(hits)
 
   expect_true(
-    hit_count >= 6L,
+    hit_count >= 5L,
     info = sprintf(
-      "Erken abort ve process başlatma hatası aktif request state'ini temizlemelidir. Bulunan çağrı sayısı: %d",
+      "Erken abort aktif request state'ini temizlemelidir. Bulunan çağrı sayısı: %d",
       hit_count
     )
+  )
+
+  # Hazırlık ve süreç başlatma hataları artık dispatch helper'ında aynı
+  # request-id korumalı temizleme yolundan geçer.
+  dispatch_txt <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_dispatch.R"
+  )
+
+  expect_true(
+    grepl("cc_fail_run_preparation\\s*<-\\s*function\\(", dispatch_txt, perl = TRUE),
+    info = "Hazırlık hatası temizliği cc_fail_run_preparation() içinde merkezileşmelidir."
+  )
+
+  expect_true(
+    grepl("cc_is_active_run\\(ctx\\$rv, ctx\\$run_request_id\\)", dispatch_txt, perl = TRUE),
+    info = "Hazırlık geri çağrıları stale request'e karşı cc_is_active_run() ile korunmalıdır."
   )
 
   expect_false(
@@ -295,59 +311,128 @@ test_that("module_claude_code.R doküman özetleme akışını lifecycle helper'
     info = "Bilge Yolaç aktif request kimliğini rv içinde işaretlemelidir."
   )
 
+  # Doküman özetleme ve akış başlatma, hazırlık tamamlandıktan sonra
+  # dispatch helper'ı üzerinden yürütülür.
+  dispatch_txt <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_dispatch.R"
+  )
+
   expect_true(
-    grepl("cc_handle_document_summary_run\\(", txt, perl = TRUE),
+    grepl("cc_dispatch_run_preparation\\(", txt, perl = TRUE),
+    info = "Pahalı hazırlık ana Shiny sürecinden dispatch helper'a delege edilmelidir."
+  )
+
+  expect_true(
+    grepl("cc_handle_document_summary_run\\(", dispatch_txt, perl = TRUE),
     info = "Doküman özetleme promise callback'leri helper'a taşınmış olmalıdır."
   )
 
   expect_true(
-    grepl("stream_env\\$request_id\\s*<-\\s*run_request_id", txt, perl = TRUE),
+    grepl("stream_env\\$request_id\\s*<-\\s*ctx\\$run_request_id", dispatch_txt, perl = TRUE),
     info = "Streaming env aktif request kimliğini taşımalıdır."
   )
 })
 
-test_that("module_claude_code_stream_poll.R normal streaming finalization request id ile korunur", {
-  txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code_stream_poll.R")
-
-  expect_true(
-    grepl(
-      'finalize_streaming\\(\\s*"Tamamlandı"\\s*,\\s*"check-circle"\\s*,\\s*"#81C784"\\s*,\\s*sure\\s*,\\s*request_id\\s*=\\s*env\\$request_id',
-      txt,
-      perl = TRUE
-    ),
-    info = "Normal başarılı streaming finalization stale poll callback'lere karşı env$request_id ile korunmalıdır."
+test_that("normal streaming finalization request id ile korunur", {
+  # Çalıştırma sonrası sonlandırma completion helper'ına taşındı; her iki
+  # dal da request-id korumalı cc_finalize_if_active() kullanır.
+  txt <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_completion.R"
   )
 
   expect_true(
     grepl(
-      'finalize_streaming\\(\\s*"Hata"\\s*,\\s*"exclamation-triangle"\\s*,\\s*"#E57373"\\s*,\\s*sure\\s*,\\s*request_id\\s*=\\s*env\\$request_id',
+      'durum_metin\\s*=\\s*"Tamamlandı"[\\s\\S]{0,200}?sure\\s*=\\s*sure',
       txt,
       perl = TRUE
     ),
-    info = "Normal hata streaming finalization stale poll callback'lere karşı env$request_id ile korunmalıdır."
+    info = "Başarılı sonlandırma cc_finalize_if_active() üzerinden yapılmalıdır."
+  )
+
+  expect_true(
+    grepl(
+      'durum_metin\\s*=\\s*"Hata"[\\s\\S]{0,200}?sure\\s*=\\s*sure',
+      txt,
+      perl = TRUE
+    ),
+    info = "Hata sonlandırması cc_finalize_if_active() üzerinden yapılmalıdır."
+  )
+
+  hits <- gregexpr(
+    "request_id\\s*=\\s*env\\$request_id",
+    txt,
+    perl = TRUE
+  )[[1]]
+
+  hit_count <- if (length(hits) == 1L && hits[1] == -1L) 0L else length(hits)
+
+  expect_true(
+    hit_count >= 2L,
+    info = sprintf(
+      "Sonlandırma çağrıları env$request_id ile korunmalıdır. Bulunan: %d",
+      hit_count
+    )
+  )
+
+  expect_true(
+    grepl("cc_is_active_run\\(ctx\\$rv, ctx\\$env\\$request_id\\)", txt, perl = TRUE),
+    info = "Çıktı işleme geri çağrıları stale request'e karşı korunmalıdır."
+  )
+})
+
+test_that("çıktı toplama ve indirme staging çalıştırma başına bir kez yapılır", {
+  poll_txt <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/module_claude_code_stream_poll.R"
+  )
+
+  expect_true(
+    grepl("env\\$cikti_islendi\\s*<-\\s*TRUE", poll_txt, perl = TRUE),
+    info = "Poll gözlemcisi çıktı işlemesini tek seferlik bayrakla korumalıdır."
   )
 
   expect_false(
-    grepl(
-      'finalize_streaming\\(\\s*"Tamamlandı"\\s*,\\s*"check-circle"\\s*,\\s*"#81C784"\\s*,\\s*sure\\s*\\)',
-      txt,
-      perl = TRUE
-    ),
-    info = "Başarılı streaming finalization request_id parametresiz kalmamalıdır."
+    grepl("collect_claude_code_workdir_changes_downloads\\(", poll_txt, perl = TRUE),
+    info = "Poll gözlemcisi indirme toplamayı doğrudan çağırmamalıdır."
   )
 
   expect_false(
-    grepl(
-      'finalize_streaming\\(\\s*"Hata"\\s*,\\s*"exclamation-triangle"\\s*,\\s*"#E57373"\\s*,\\s*sure\\s*\\)',
-      txt,
-      perl = TRUE
-    ),
-    info = "Hata streaming finalization request_id parametresiz kalmamalıdır."
+    grepl("cc_collect_streaming_run_downloads\\(", poll_txt, perl = TRUE),
+    info = "Poll gözlemcisi ikinci bir toplama çağrısı yapmamalıdır."
+  )
+
+  completion_txt <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_completion.R"
+  )
+
+  hits <- gregexpr(
+    "cc_collect_streaming_run_downloads\\(",
+    completion_txt,
+    perl = TRUE
+  )[[1]]
+
+  hit_count <- if (length(hits) == 1L && hits[1] == -1L) 0L else length(hits)
+
+  expect_equal(
+    hit_count,
+    1L,
+    info = "Çıktı worker'ı indirme toplamayı yalnızca bir kez çağırmalıdır."
   )
 })
 
 test_that("Bilge Yolaç stop observer UI finalization'ı poll observer'a bırakmaz", {
-  txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code_stream_poll.R")
+  tam_txt <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code_stream_poll.R")
+
+  # Yalnızca stop observer bloğu incelenir; poll bloğundaki süreç referansı
+  # temizliği (yoklamayı durdurmak için) bu sözleşmenin kapsamı dışındadır.
+  stop_baslangic <- regexpr(
+    "shiny::observeEvent\\(input\\$stop_command",
+    tam_txt,
+    perl = TRUE
+  )
+
+  expect_true(stop_baslangic > 0L)
+
+  txt <- substring(tam_txt, stop_baslangic)
 
   expect_true(
     grepl("shiny::observeEvent\\(input\\$stop_command", txt, perl = TRUE),
@@ -382,4 +467,87 @@ test_that("Bilge Yolaç stop observer UI finalization'ı poll observer'a bırakm
     ),
     info = "Stop observer stale finalize koruması için request_id ile finalize etmelidir."
   )
+})
+
+test_that("runtime lease bırakma idempotenttir", {
+  env <- .source_cc_run_lifecycle_for_test()
+  lease <- tempfile(fileext = ".lease")
+  expect_true(file.create(lease))
+
+  expect_true(env$cc_release_runtime_lease(lease))
+  expect_false(file.exists(lease))
+  expect_true(env$cc_release_runtime_lease(lease))
+  expect_false(env$cc_release_runtime_lease(""))
+})
+
+test_that("terminal çalışma yolları runtime lease temizliğini taşır", {
+  dispatch <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_dispatch.R"
+  )
+  lifecycle <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_lifecycle.R"
+  )
+  akis <- .read_repo_text_cc_run_lifecycle_contract("R/module_claude_code_akis.R")
+  poll <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/module_claude_code_stream_poll.R"
+  )
+
+  expect_match(dispatch, "cc_release_runtime_lease\\(prep\\$runtime_lease", perl = TRUE)
+  expect_match(dispatch, "runtime_lease = prep\\$runtime_lease", perl = TRUE)
+  expect_match(lifecycle, "on.exit\\(cc_release_runtime_lease\\(runtime_lease\\)", perl = TRUE)
+  expect_match(akis, "cc_release_runtime_lease\\(rv\\$stream_env\\$runtime_lease", perl = TRUE)
+  expect_match(poll, "cc_release_runtime_lease\\(env\\$runtime_lease", perl = TRUE)
+})
+
+# ------------------------------------------------------------------------------
+# DOKÜMAN ÖZETİ İZOLE ÇIKTI ALANINDA ÜRETİLİR
+# ------------------------------------------------------------------------------
+
+test_that("doküman özeti worker'ı kaynak klasöre yazmaz", {
+  lifecycle_txt <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_lifecycle.R"
+  )
+  dispatch_txt <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_dispatch.R"
+  )
+
+  # REGRESYON: özet worker'ı output_dir = kaynak klasör ile çağrılıyordu ve
+  # dosyayı promise geri çağrısındaki iptal kontrolünden ÖNCE yazıyordu.
+  # Kullanıcı Durdur'a bastıktan sonra biten bir worker, iptal edilmiş bir
+  # çalıştırmanın çıktısını kaynak klasördeki dosyanın üzerine yazabiliyordu.
+  expect_true(
+    grepl("cikti_dizini = NULL", lifecycle_txt, fixed = TRUE),
+    info = "Özet handler'ı izole çıktı dizinini parametre olarak almalıdır."
+  )
+
+  expect_true(
+    grepl("output_dir = worker_cikti_dizini", lifecycle_txt, fixed = TRUE),
+    info = "Worker izole çıktı alanına yazmalıdır."
+  )
+
+  expect_false(
+    grepl("output_dir = target_dir", lifecycle_txt, fixed = TRUE),
+    info = "Worker doğrudan kaynak klasöre yazmaya geri dönmemelidir."
+  )
+
+  expect_true(
+    grepl("cikti_dizini = prep$layout$output", dispatch_txt, fixed = TRUE),
+    info = "Dispatch, hazırlıktan gelen izole çıktı alanını iletmelidir."
+  )
+
+  # Kaynak klasöre terfi yalnızca iptal korumasından SONRA yapılır.
+  guard_pos <- regexpr("if \\(!cc_is_active_run\\(rv, run_request_id\\)\\)", lifecycle_txt, perl = TRUE)[[1]]
+  write_pos <- regexpr("hedef_yol <- file\\.path\\(target_dir", lifecycle_txt, perl = TRUE)[[1]]
+
+  expect_true(guard_pos > 0)
+  expect_true(write_pos > guard_pos)
+})
+
+test_that("izole çıktı dizini yoksa mevcut davranışa güvenle düşülür", {
+  env <- .source_cc_run_lifecycle_for_test()
+
+  govde <- paste(deparse(body(env$cc_handle_document_summary_run)), collapse = "\n")
+
+  expect_true(grepl("worker_cikti_dizini <- target_dir", govde, fixed = TRUE))
+  expect_true(grepl("dir.exists(worker_cikti_dizini)", govde, fixed = TRUE))
 })

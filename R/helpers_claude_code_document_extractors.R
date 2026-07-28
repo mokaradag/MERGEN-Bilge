@@ -57,7 +57,10 @@ truncate_claude_doc_text <- function(metin, max_karakter = 120000L) {
   )
 }
 
-list_claude_code_binary_documents <- function(workdir, extensions = NULL) {
+list_claude_code_binary_documents <- function(workdir,
+                                              extensions = NULL,
+                                              max_files = 200L,
+                                              limits = NULL) {
   if (is.null(workdir) || !nzchar(workdir) || !dir.exists(workdir)) {
     return(character(0))
   }
@@ -66,39 +69,85 @@ list_claude_code_binary_documents <- function(workdir, extensions = NULL) {
     extensions <- get_claude_code_binary_doc_extensions()
   }
 
-  ogeler <- tryCatch(
-    list.files(
-      workdir,
-      full.names = TRUE,
-      recursive = FALSE,
-      all.files = FALSE,
-      include.dirs = FALSE
-    ),
-    error = function(e) character(0)
+  if (!exists("cc_scan_directory_bounded", mode = "function", inherits = TRUE)) {
+    stop("Sınırlı doküman tarayıcısı yüklenmemiş.", call. = FALSE)
+  }
+
+  # Aday sınırı uzantı filtresinden SONRA uygulanır. Böylece yüzlerce metin
+  # dosyasından sonra sıralanan bir PDF/DOCX gözden kaçmaz; taramanın kendisi
+  # yine giriş/süre sınırlarıyla artımlı kalır.
+  #
+  # ÖNEMLİ: max_depth/max_dirs sıfır DEĞİLDİR. İzole runtime'da kopyalanan
+  # dokümanlar "input/reports/quarterly.pdf" gibi iç içe klasörlerde
+  # olabilir; yalnızca kökün doğrudan altına bakmak bunları hiç bulamazdı.
+  derinlik <- suppressWarnings(as.numeric(
+    if (exists("cc_runtime_limit", mode = "function", inherits = TRUE)) {
+      cc_runtime_limit("document_probe_max_depth", 4, limits)
+    } else {
+      4
+    }
+  ))
+  if (!is.finite(derinlik) || derinlik < 0) derinlik <- 4
+
+  tarama <- cc_scan_directory_bounded(
+    root = workdir,
+    max_files = 20000L,
+    max_dirs = 500L,
+    max_depth = derinlik,
+    max_elapsed_ms = 4000L,
+    max_entries = 20000L,
+    exclude_dirs = character(0),
+    exclude_rel_paths = character(0)
   )
+  ogeler <- as.character(tarama$files %||% character(0))
 
   if (!length(ogeler)) {
     return(character(0))
   }
 
   uzantilar <- tolower(tools::file_ext(ogeler))
+  ogeler <- unique(ogeler[nzchar(uzantilar) & uzantilar %in% tolower(extensions)])
 
-  unique(ogeler[nzchar(uzantilar) & uzantilar %in% tolower(extensions)])
+  max_files <- suppressWarnings(as.integer(max_files[1]))
+  if (!is.na(max_files) && max_files > 0L && length(ogeler) > max_files) {
+    ogeler <- ogeler[seq_len(max_files)]
+  }
+  ogeler
 }
 
-get_claude_code_document_support_dir <- function(user_id = NULL) {
-  hedef <- file.path(
-    tempdir(),
-    "claude_code_runtime",
-    paste0("user_", as.character(user_id %||% "default")),
-    "document_support"
-  )
+# Eşzamanlı çalıştırmaların birbirinin çıkarımlarını silmemesi için doküman
+# destek klasörü çalışma (request) başına izole edilir. Ortak kullanıcı
+# klasörü ASLA her istekte silinmez; eskiyen klasörler yaşa göre temizlenir.
+get_claude_code_document_support_dir <- function(user_id = NULL,
+                                                 request_id = NULL,
+                                                 base_dir = NULL) {
+  kok <- as.character(base_dir %||% "")[1]
 
-  if (dir.exists(hedef)) {
-    unlink(hedef, recursive = TRUE, force = TRUE)
+  if (!nzchar(kok)) {
+    kok <- file.path(
+      tempdir(),
+      "claude_code_runtime",
+      paste0("user_", as.character(user_id %||% "default")),
+      "document_support"
+    )
   }
 
-  dir.create(hedef, recursive = TRUE, showWarnings = FALSE)
+  token <- as.character(request_id %||% "")[1]
+  if (is.na(token) || !nzchar(token)) {
+    token <- paste0(
+      format(Sys.time(), "%Y%m%d%H%M%OS3"),
+      "_",
+      sprintf("%04d", sample.int(10000L, 1L) - 1L)
+    )
+  }
+
+  token <- sanitize_claude_doc_cache_name(token)
+
+  hedef <- file.path(kok, token)
+
+  if (!dir.exists(hedef)) {
+    dir.create(hedef, recursive = TRUE, showWarnings = FALSE)
+  }
 
   normalizePath(hedef, winslash = "/", mustWork = FALSE)
 }

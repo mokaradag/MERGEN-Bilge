@@ -7,6 +7,294 @@ Sıkı çalışma kuralları için İngilizce [`../CLAUDE.md`](../CLAUDE.md) oto
 ---
 
 
+## 2026-07-28 (2) — Bilge Yolaç girdi kopyalama regresyonu ve ad eşleştirme
+
+### Belirti
+"Yükleme Klasörüne git" ile açılan klasörde soru sorulduğunda çalıştırma
+her seferinde `Çalışma alanı hazırlanamadı: Gerekli girdi dosyaları
+kopyalanamadı: <depolama önekli Türkçe ad>` ile düşüyordu. Aynı hata Windows
+VM'deki testthat koşusunda da görünüyordu:
+`test-claude-code-run-prepare-behavior.R` içindeki "Türkçe/Unicode dosya
+adları girdi aktarımında korunur" testi `Türkçe_çalışma_özeti_İstanbul.txt`
+için hata veriyordu. Linux'ta ikisi de üretilemiyordu.
+
+### Kök neden
+`cc_copy_files_to_runtime_input()` içine eklenen kaynak güvenlik denetimi tam
+yolu "üst dizin + taban ad" ile karşılaştırıyordu. Windows'ta bu karşılaştırma
+iki nedenle kırılgandır:
+
+1. `normalizePath()` 8.3 kısa adı uzun ada ve diskteki kanonik harf
+   büyüklüğüne çevirir; sonradan eklenen `basename()` ise çağıranın biçimini
+   korur.
+2. `tolower()` yerel VE kodlama duyarlıdır. Türkçe tek baytlı yerelde yerel
+   kodlamalı dize bayt bazlı katlanır ("İ" -> "ı"), UTF-8 işaretli dize ise
+   geniş karakter yolundan katlanır ("İ" -> "i"). `paste0()` karışık kodlamalı
+   parçaları UTF-8'e çevirdiği için karşılaştırmanın iki tarafı farklı yoldan
+   geçiyordu.
+
+Sonuç: Türkçe adlı GEÇERLİ her dosya "bağlantı/reparse-point" sayılıp
+kopyalanmıyordu. Aynı desen `cc_apply_output_sync_plan()` (hem temel hem
+sertleştirilmiş sürüm) ve `stage_claude_code_downloads()` içinde de vardı;
+üretilen Türkçe adlı çıktılar da aynı şekilde reddedilecekti.
+
+### Düzeltme
+- `.cc_scan_norm()` artık `enc2utf8()` döndürür; `.cc_scan_key()` ve
+  `.cc_codex_path_key()` katlamadan ÖNCE kodlamayı UTF-8'e sabitler.
+- `cc_path_is_reparse_link()` yalnızca DİZİN düzeyinde karşılaştırır
+  (`dirname(normalizePath(yol))` ile `normalizePath(dirname(yol))`); taban ad
+  karşılaştırması tamamen kaldırıldı. Kök dışına kaçış zaten ayrı önek
+  kontrolüyle denetlendiği için güvenlik özelliği korunur.
+- Dört çağrı noktası (runtime girdi kopyası, temel ve sertleştirilmiş çıktı
+  aktarımı, indirme staging) ortak yardımcıya bağlandı; indirme yolundaki
+  yardımcı çözümü FAIL-CLOSED bırakıldı.
+
+### Ad eşleştirme (ikinci blokaj)
+Yükleme klasöründeki dosyalar diskte `<zaman>_<hash>_<hash>_<görünen ad>`
+biçiminde durur, kullanıcı ise arayüzde gördüğü adla sorar. Ayrıca prompt ad
+çıkarımı boşlukta durduğu için "EK-U Süreç.pdf" yalnızca "Süreç.pdf" olarak
+yakalanır. Son sertleştirme bu durumda otomatik seçime düşmek yerine
+`Açıkça istenen dokümanlar seçilen klasörde bulunamadı` ile bloke ediyordu.
+Ad eşleştirmesi `R/helpers_claude_code_input_matching.R` dosyasına alındı;
+depolama öneki `.cc_prepare_display_names()` ile kaldırılır ve
+`.cc_prepare_key_matches()` ayraç (`/`, `_`, `-`, boşluk) sonrası son parçayı
+da kabul eder. Gerçekten var olmayan doküman yine reddedilir.
+
+### Windows'ta atlanan üç test çalışır hale getirildi
+`test-claude-code-codex-review-fixes.R` (iki bağlantı testi) ve
+`test-claude-code-downloads-security-behavior.R` (staging symlink testi) artık
+Windows'ta da koşar: dosya symlink'i yönetici hakkı gerektirdiği için orada
+yönetici gerektirmeyen dizin junction'ı kullanılır ve aynı sözleşme (onaylı
+kök dışına çözülen kaynak reddedilir) doğrulanır.
+
+### Bakım ratchet'i
+`R/helpers_claude_code_runtime_prepare.R` 822 satır / 26 fonksiyona çıkmıştı.
+Bütçe gevşetilmedi; ad eşleştirme katmanı ayrı dosyaya bölündü (777 -> 650
+satır). Manifest sırası: `bounded_scan` -> `input_matching` -> `runtime_prepare`.
+
+### Çalıştırılan doğrulama
+Linux/cloud oturumunda tüm Bilge Yolaç, seam, manifest, ratchet ve production
+testleri, `parse_sanity_check.R`, seam doctor ve app boot smoke çalıştırıldı.
+Windows'a özgü davranış (8.3 kısa ad, Türkçe harf katlama, junction) yalnızca
+VM'de kanıtlanabilir; bu oturumda VM/SSO/DB doğrulaması YAPILMADI.
+
+
+## 2026-07-28 — PR #672 ikinci tur Codex bulguları ve Windows test paritesi
+
+### Seçilen paket / neden
+Bloklamayan çalıştırma hattı üzerinde Codex incelemesinden kalan beş P1 bulgusu
+kapatıldı. Bunlara ek olarak Windows VM'de gerçekten başarısız olan iki
+davranış hatası bulundu (ikisi de yalnızca Windows'ta ortaya çıkıyordu, Linux
+CI'da görünmüyordu) ve testlerin Windows'ta ATLANMASI sorunu giderildi: üretim
+platformu Windows olduğu için bu testlerin orada da çalışması gerekir.
+
+### Codex bulguları ve düzeltmeler
+1. **Dizin numaralandırması ana olay döngüsünde** — `list.files()` herhangi bir
+   sınır kontrolünden önce dizinin tamamını belleğe alır. `observe_dir_contents()`
+   artık `list_directory_contents()` çağrısını `tracked_future_promise(...,
+   dependency_mode = "explicit")` ile worker'a gönderir; global paket süreç
+   başına bir kez kurulur (`R/helpers_claude_code_dir_listing_async.R`).
+   Sonuç tek bir stale korumalı `uygula_icerik()` kapanışından geçer; eşzamansız
+   plan yoksa senkron yola düşülür.
+2. **Doküman özeti kaynak klasöre yazıyordu** — özet worker'ı `output_dir` olarak
+   izole `output/` alanını alır; kaynak klasöre terfi ana süreçteki
+   `cc_is_active_run()` korumasından SONRA yapılır. Durdur'dan sonra biten bir
+   worker artık kaynak dosyayı ezemez.
+3. **Bulunamayan doküman ilgisiz dokümanla değiştiriliyordu** —
+   `cc_select_documents_for_request()` adı verilen ama eşleşmeyen gerçek doküman
+   uzantılı anmalar için kapalı biçimde reddeder; düzyazıdaki `3.5` / `v1.2`
+   gibi belirteçler aşırı engelleme yapmaz.
+4. **Worker global paketi her gönderimde yeniden taranıyordu** — sertleştirme
+   sarmalayıcıları koşulsuz `refresh = TRUE` çağırıyordu; artık süreç başına
+   önbelleği kullanırlar ve yalnızca yükleme anında geçersiz kılarlar.
+5. **Kaybolan çıktı sessizce atlanıyordu** — diff'in ürettiğini kanıtladığı ama
+   staging'den önce kaybolan onaylı çıktılar `missing_output` nedeniyle açık
+   birer başarısızlık olarak raporlanır.
+
+### Windows VM davranış hataları (yalnızca Windows'ta görünür)
+- `Sys.readlink()` Windows'ta HER yol için `NA` döner ve `nzchar(NA)` TRUE'dur.
+  `cc_apply_output_sync_plan()` bu yüzden var olan HER hedefi "bağlantı" sayıp
+  aynı dosyayı yeniden üreten her çalıştırmanın aktarımını bloke ediyordu.
+  Bağlantı tespiti artık çözülmüş yolun sözlüksel konumdan sapmasıyla yapılır
+  (`cc_path_is_reparse_link()`), bu da junction/reparse noktalarını da yakalar.
+- `tempdir()` ve kullanıcı profili yolları 8.3 KISA ad (`KULLAN~1`) biçiminde
+  gelir. Onaylı kök `normalizePath(mustWork = TRUE)` ile UZUN forma açılırken
+  hedef HAM biçimde karşılaştırılıyor, önek eşleşmiyor ve geçerli her çıktı
+  sessizce "onaylı kökün dışında" sayılıyordu. Hedef artık aynı kanonik
+  semantikten geçirilir. (VM'deki
+  `test-claude-code-run-prepare-behavior.R:443/444` hatalarının kök nedeni.)
+- `cc_runtime_ensure_layout()` bölge bağlantı kontrolü de aynı NA sorunundan
+  etkileniyordu; ortak yardımcıya taşındı.
+
+### Windows'ta atlanan testler çalışır hale getirildi
+`skip_on_os("windows")` kullanan sekiz test platforma uygun karşılıklarla
+yeniden yazıldı: dizin bağlantısı için `Sys.junction()` (yönetici hakkı
+gerektirmez), okunamayan dizin için sourced test ortamına lexical
+`list.files`/`file.access`/`requireNamespace` mock'ları, dosya symlink'i için
+(Windows'ta yetki gerektiğinden) bağlantı bildiriminin ve çözülmüş hedefin
+sözlüksel benzetimi. Harf büyüklüğü testi NTFS de dahil tüm hedef dosya
+sistemleri adı KORUDUĞU için doğrudan çalıştırılır.
+
+### Değişen dosyalar
+- Yeni: `R/helpers_claude_code_dir_listing_async.R`.
+- Değişen: `R/helpers_claude_code_bounded_scan.R`,
+  `R/helpers_claude_code_output_sync.R`,
+  `R/helpers_claude_code_runtime_prepare.R`,
+  `R/helpers_claude_code_directory_listing.R`,
+  `R/helpers_claude_code_server_setup.R`,
+  `R/helpers_claude_code_run_lifecycle.R`,
+  `R/helpers_claude_code_run_dispatch.R`,
+  `R/helpers_claude_code_codex_runtime_fixes.R`,
+  `R/helpers_claude_code_codex_output_fixes.R`,
+  `R/config_source_manifest.R`, `R/bootstrap_source_manifest.R`.
+- Testler: `test-claude-code-bounded-scan-behavior.R`,
+  `test-claude-code-run-prepare-behavior.R`,
+  `test-claude-code-run-hardening-behavior.R`,
+  `test-claude-code-codex-review-fixes.R`,
+  `test-claude-code-run-lifecycle-contract.R`,
+  `test-claude-code-directory-listing-contract.R`,
+  `test-source-manifest-sections-contract.R`.
+- Dokümanlar: `CLAUDE.md`, `docs/technical-reference.md`, `docs/refactor-log.md`.
+
+### Korunan davranış sözleşmeleri
+İzole runtime düzeni, request-id yaşam döngüsü ve stale callback koruması,
+UNC/Türkçe yol davranışı, indirme kartları, kalıcı oturumlar, Dosya Yönetimi
+yenileme, çevrimdışı/on-prem çalışma ve mevcut Türkçe kullanıcı metinleri
+değişmedi. Bakım ratchet'i gevşetilmedi: dizin listeleme yardımcısı 260 satır /
+19 fonksiyon bütçesinde tutulmak için küçük bir yardımcı dosyaya bölündü.
+
+### Eksik opsiyonel dosyanın sessiz kalmaması
+VM'de `R/helpers_claude_code_codex_runtime_fixes.R` bulunamıyordu; aynı dizinde
+tek karakter eksik adlı bir kopya (`..._runtime_fixe.R`) vardı. Bu, aynı anda
+hem "eksik dosya" (16 sessiz skip) hem "sahipsiz dosya" (seam hatası) üretiyor,
+gerçek neden ise tek satırlık uzun hata mesajı konsolda kırpıldığı için
+görünmüyordu. Uygulama bu durumda AÇILIYOR ama Codex sertleştirmelerinin tamamı
+sessizce devre dışı kalıyordu.
+
+Artık eksiklik üç yerde AÇIKÇA raporlanır: `source_manifest_present_paths()`
+süreç başına bir kez `[KAYNAK MANIFESTI] ... DEVRE DISI` mesajı yazar,
+`test-claude-code-codex-review-fixes.R` 16 sessiz skip yerine tek ve açık bir
+hata verir, seam registry/doctor artık dosyaları TEK TEK ayrı satırlarda
+listeler. Üçü de `agrep()` ile aynı dizindeki benzer adlı dosyayı adlandırır.
+
+### Çalıştırılan doğrulama
+Linux/cloud oturumunda `testthat` ile ilgili tüm Bilge Yolaç, seam, manifest ve
+ratchet testleri ve `tests/scripts/parse_sanity_check.R` çalıştırıldı. Eksik
+dosya senaryosu, dosya geçici olarak yeniden adlandırılarak birebir taklit
+edildi: üç tanı yolunun da doğru dosya adını ve benzer adlı kopyayı bildirdiği
+doğrulandı.
+Windows VM davranışı (junction, 8.3 kısa ad, `Sys.readlink` NA, gerçek UNC
+gecikmesi) yalnızca VM'de kanıtlanabilir; bu oturumda VM/SSO/DB/SQL Server
+doğrulaması YAPILMADI.
+
+
+## 2026-07-26 — Bloklamayan Bilge Yolaç çalıştırma hattı (büyük klasör / eşzamanlılık)
+
+### Seçilen paket / neden
+Bilge Yolaç, Shiny olay döngüsünde senkron çalışan son büyük iş yüküydü. Çok
+sayıda iç içe klasör ve dosya içeren bir klasör seçildiğinde süreç başlamadan
+ÖNCE (UNC/Unicode dizinlerin özyinelemeli `file.copy()` ile TAM aynalanması,
+`list.files(recursive = TRUE)` ile sınırsız snapshot, doküman algılama ve
+PDF/Excel/DOCX metin çıkarımı) ve SONRA (aynı toplamanın iki kez çalışması,
+runtime klasörünün tamamının kaynak dizine geri kopyalanması, `Sys.sleep()`
+bekleme döngüleri) yapılan işler ana R sürecinde çalışıyordu. Tek bir kullanıcı
+bu yüzden aynı worker'ı paylaşan TÜM oturumları dondurabiliyordu. Ayrıca durum
+çubuğu, Claude süreci henüz başlamamışken "Çalışıyor" gösteriyordu.
+
+### Değişen dosyalar
+- Yeni: `R/helpers_claude_code_bounded_scan.R` (gerçekten sınırlı, artımlı
+  tarayıcı: sınıra ulaşınca ERKEN durur, kesilme nedeni + ölümcül olmayan
+  hatalar + atlananlar raporlar, bağlantı döngüsü/kök kaçışı korumalı),
+  `R/helpers_claude_code_runtime_prepare.R` (izole `input`/`output`/`metadata`/
+  `document_support` düzeni, preflight kararı, gerekli girdi ve doküman seçimi,
+  kopyalama), `R/helpers_claude_code_output_sync.R` (bölge tespiti, yalnızca
+  değişen çıktı için aktarım planı/uygulaması, yaş tabanlı klasör temizliği),
+  `R/helpers_claude_code_file_stability.R` (yalnızca worker'da çalışan, bütçeli
+  kararlılık beklemesi), `R/helpers_claude_code_run_prepare_task.R` (arka plan
+  hazırlık görevi + önbelleğe alınmış global paketi),
+  `R/helpers_claude_code_run_dispatch.R` (ana süreç: aşama durumu, hazırlık
+  gönderimi, model çözümü, süreç başlatma),
+  `R/helpers_claude_code_run_completion.R` (arka plan çıktı işleme + TEK
+  SEFERLİK toplama + sonlandırma).
+- `R/helpers_claude_code_runtime_workdir.R`: tam aynalama yerine seçici girdi
+  aktarımı; `sync_claude_runtime_workdir_back()` yalnızca değişen çıktıyı yazar.
+- `R/helpers_claude_code_workdir_scan.R`: snapshot/diff sınırlı tarayıcıya
+  taşındı, kesilme uyarısı eklendi; kararlılık bekleyicisi ayrı dosyaya çıktı.
+- `R/helpers_claude_code_document_extractors.R` / `_documents.R`: request bazlı
+  izole doküman destek dizini (ortak klasör artık her istekte SİLİNMEZ),
+  sınırlı doküman seçimi.
+- `R/helpers_claude_code_downloads.R`: sabit 1.5 sn `Sys.sleep` döngüleri
+  yapılandırılabilir `cc_wait_for_path_visible()` bütçesine indirgendi.
+- `R/module_claude_code.R` / `R/module_claude_code_stream_poll.R`: observer'lar
+  yalnızca gönderim/sonlandırma yapar; toplama tek seferlik bayrakla korunur.
+- Kayıt/sözleşme: `R/config_claude_code.R` (`claude_code_runtime_limits`),
+  `R/config_source_manifest.R` (claude_code_helpers 29 → 36), `.Renviron.example`.
+
+### Önce/sonra
+- Kaynak klasörün tamamı özyinelemeli kopyalanıyordu → yalnızca gerekli girdiler
+  (açık seçim → promptta adı geçen → sınırlı otomatik alt küme).
+- `list.files(recursive = TRUE)` + sonradan kırpma → sınıra ulaşınca duran
+  artımlı gezinme.
+- Runtime klasörünün tamamı geri kopyalanıyordu → yalnızca bu çalıştırmada
+  oluşan/değişen, onaylı çıktı bölgesindeki dosyalar.
+- Çıktı diff + indirme staging iki kez çalışıyordu → çalıştırma başına bir kez.
+- `R/module_claude_code.R` 646 → 328 satır;
+  `R/module_claude_code_stream_poll.R` 578 → 230 satır.
+- Küresel bakım skoru 100/100, en büyük dosya 778 satır / 24 fonksiyon:
+  DEĞİŞMEDİ.
+
+### Korunan davranış sözleşmeleri
+- UNC/ağ paylaşımı ve Türkçe/ASCII dışı yollar, Windows kısa/uzun ad
+  kanonikleştirme, Claude CLI streaming ve `--resume` sürekliliği (runtime
+  klasörü takip sorularında yeniden kullanılır), Durdur davranışı, model seçimi,
+  üretilen dosya indirme kartları, kalıcı oturumlar, Dosya Yönetimi yenilemesi,
+  çevrimdışı/on-prem çalışma, çıktı yolu güvenlik denetimleri ve üretilen
+  `.txt`/`.log`/`.csv`/`.md` için UTF-8 BOM normalizasyonu.
+- `request_id` yaşam döngüsü: her geri çağrı `cc_is_active_run()` ile doğrulanır;
+  stale geri çağrı yeni çalışmayı bozamaz; hazırlık hatası tutarlı UI durumu
+  bırakır.
+
+### Eklenen/güncellenen testler
+- Yeni: `tests/testthat/test-claude-code-bounded-scan-behavior.R` (39 assertion),
+  `tests/testthat/test-claude-code-run-prepare-behavior.R` (95 assertion).
+- Güncellendi: `test-claude-code-runtime-workdir-contract.R`,
+  `test-claude-code-workdir-scan-contract.R`,
+  `test-claude-code-run-lifecycle-contract.R`,
+  `test-claude-code-document-orchestration-behavior.R`,
+  `test-claude-code-sessions-module-contract.R`,
+  `test-claude-code-synthetic-tools-contract.R`,
+  `test-source-manifest-sections-contract.R`.
+
+### Gerçekten çalıştırılan doğrulamalar
+`bash tools/ai_validate.sh quick` (0 failed / 0 skipped),
+`bash tools/ai_validate.sh full --boot-smoke`, `parse_sanity_check.R` (1017
+dosya), dosya-dosya tüm testthat paketi (593 dosya, 0 sorunlu), maintainability
+raporu + ratchet (100/100), kaynak manifest/bölüm/seam/zone sözleşmeleri.
+
+### Manuel QA (kullanıcı tarafı)
+- Bilge Yolaç'ta çok sayıda alt klasör ve dosya içeren büyük bir klasör seçip
+  komut çalıştırın; durum çubuğu sırayla `Hazırlanıyor` → `Dosyalar taranıyor` →
+  `Model başlatılıyor` → `Çalışıyor` göstermeli ve arayüz donmamalı.
+- Aynı anda ikinci bir tarayıcı oturumu açın; ilk oturum büyük klasörü
+  hazırlarken ikinci oturum yanıt vermeye devam etmeli.
+- Aynı söyleşide takip sorusu sorun; CLI oturumu (`--resume`) kopmamalı.
+- Bir dosya ürettirin; indirme kartı görünmeli ve dosya kaynak klasöre
+  aktarılmalı. Kaynak klasörde `input/` veya `metadata/` OLUŞMAMALI.
+- UNC (`//sunucu/paylasim/...`) ve Türkçe karakterli klasörlerle tekrarlayın.
+- Hazırlık sırasında Durdur'a basın; arayüz temiz biçimde `Durduruldu` durumuna
+  dönmeli ve sonraki çalıştırma normal başlamalı.
+
+### Bilinen risk / atlanan doğrulama
+- Gerçek UNC/ağ paylaşımı gecikmesi, Windows kısa yol/Türkçe path davranışı, çok
+  kullanıcılı SSO eşzamanlılığı ve büyük klasör hazırlığı sırasında ikinci
+  tarayıcı oturumunun gerçek yanıt süresi YALNIZCA Windows VM'de doğrulanabilir.
+- Bilge Yolaç'ta çoklu dosya seçimi UI'si bulunmadığından `explicit_files`
+  şimdilik boş geçilir; parametre uçtan uca bağlıdır ve böyle bir UI eklendiğinde
+  doğrudan kullanılabilir.
+- Sınırlı tarayıcı, TEK bir dizin içindeki çok büyük dosya listesini yine de o
+  dizin için listeler (ağaç genelinde sınır uygulanır); patolojik tek-dizin
+  durumları `max_entries` ile kırpılır.
+
+
 ## 2026-07-25 — Bloklamayan dosya alım (ingestion) hattı
 
 ### Seçilen paket / neden

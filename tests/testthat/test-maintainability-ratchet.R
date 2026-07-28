@@ -107,7 +107,14 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   # oluşturdu. 800+ satır dosya sayısı 0, 25+ fonksiyon dosya sayısı 0 (bu
   # dosya 20 fonksiyon) ve en yüksek fonksiyon sayısı 24 KORUNUR; yalnızca
   # en büyük dosya satır tavanı yükseldi.
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 778L)
+  # 778L -> 795L bilinçli güncelleme (Bilge Yolaç çalıştırma hattı codex
+  # düzeltmeleri): R/helpers_claude_code_run_completion.R (795; kesilmiş
+  # çıktı taramasında staging/sync'i atlayan erken dönüş + arka plan çıktı
+  # işleme için hazırlık aşamasındakiyle aynı bağımsız deadline) yeni tabanı
+  # oluşturdu. 800+ satır dosya sayısı 0, 25+ fonksiyon dosya sayısı 0 (bu
+  # dosya 24 fonksiyon, artmadı) ve en yüksek fonksiyon sayısı 24 KORUNUR;
+  # yalnızca en büyük dosya satır tavanı yükseldi.
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 795L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 24L)
 
   actual_large_files <- sum(score_report$lines >= 800)
@@ -419,8 +426,14 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
   assert_file_budget("R/helpers_claude_code.R", 450L, 18L)
   assert_file_budget("R/helpers_claude_code_directory_listing.R", 260L, 19L)
   # Bütçe: UNC ağ paylaşımı için runtime workdir yeniden kullanım yolu ve
-  # fs::dir_ls fallback'i eklenince satır sayısı 240 -> ~325'e çıktı.
-  assert_file_budget("R/helpers_claude_code_runtime_workdir.R", 360L, 14L)
+  # fs::dir_ls fallback'i eklenince satır sayısı 240 -> ~325'e çıktı. Codex
+  # P1 düzeltmesi (boyut sınırı nedeniyle atlanan GEREKLİ girdinin artık
+  # sessizce yutulmayıp kopyalama hatası gibi raporlanması) 360 -> 365'e
+  # çıkardı. İkinci Codex düzeltmesi (senkronizasyon sırasında kaynak/runtime
+  # kökü kaybolursa - örn. koparılmış UNC paylaşımı - bunun artık sessiz
+  # "başarılı boş sync" yerine açık başarısızlık olarak raporlanması) 365 ->
+  # 385'e çıkardı.
+  assert_file_budget("R/helpers_claude_code_runtime_workdir.R", 385L, 14L)
   assert_file_budget("R/helpers_claude_code_workdir_scan.R", 423L, 14L)
   assert_file_budget("R/helpers_claude_code_workdir_snapshot.R", 450L, 24L)
   assert_file_budget("R/helpers_db_chat_mutations.R", 420L, 24L)

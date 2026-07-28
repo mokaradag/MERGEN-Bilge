@@ -30,6 +30,29 @@
 - If validation fails, summarize the failed step and any produced artifact/log path; do not hide the failure.
 - Only say “tests passed,” “I verified,” “I ran the app,” or “the check is green” when the relevant command actually completed successfully and the validation summary contains zero failed steps.
 
+## Bilge Yolaç non-blocking run pipeline
+
+- Bilge Yolaç never mirrors a whole selected directory and never scans a
+  directory tree unbounded. Required input files are copied into an isolated
+  per-run runtime workspace (`input`/`output`/`metadata`/`document_support`);
+  directory traversal goes through the bounded scanner
+  (`R/helpers_claude_code_bounded_scan.R`), which stops the moment a limit is
+  reached and reports the truncation reason.
+- Expensive filesystem work (bounded scan, input selection/copy, document text
+  extraction, pre-run output snapshot, post-run diff, download staging, output
+  sync) must stay OFF the main Shiny event loop. It is dispatched with
+  `tracked_future_promise(..., dependency_mode = "explicit")` through
+  `R/helpers_claude_code_run_prepare_task.R` and
+  `R/helpers_claude_code_run_completion.R`; only plain serializable data crosses
+  the worker boundary and every callback re-checks `cc_is_active_run()`.
+- Preparation state is separate from model execution state: the status bar shows
+  `Hazırlanıyor` / `Dosyalar taranıyor` / `Model başlatılıyor` before it shows
+  `Çalışıyor`. Never report "Çalışıyor" before the Claude process actually
+  started.
+- Output diff, generated-file collection and download staging run exactly ONCE
+  per run; only files created or changed inside the approved output area are
+  synced back to the source directory. See `docs/technical-reference.md`.
+
 ## Operational soak / load gate
 
 - The operational soak gate (`tests/scripts/run_operational_soak_gate.R`) is **separate** from the VM evidence gate and from `ai_validate`. It does not replace them.

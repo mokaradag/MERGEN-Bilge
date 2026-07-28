@@ -311,7 +311,10 @@ test_that("çalışma alanı runtime'ı kalıcı oturum köprüsünü doğru kul
   # rv kalıcı oturum alanları ve çalıştırma öncesi oturum başlatma
   expect_true(grepl("claude_session_record_id = NULL", modul, fixed = TRUE))
   expect_true(grepl("claude_session_persistence_available = NULL", modul, fixed = TRUE))
-  expect_true(grepl("cc_persist_session_begin(", modul, fixed = TRUE))
+  # Hazırlık arka plana taşındığı için oturum başlatma dispatch helper'ında
+  # (hazırlık tamamlandıktan sonra) yapılır.
+  dispatch <- .ccs_read_file_text(.ccs_repo_file("R", "helpers_claude_code_run_dispatch.R"))
+  expect_true(grepl("cc_persist_session_begin(", dispatch, fixed = TRUE))
   expect_true(grepl("cc_create_workbench_session_api(", modul, fixed = TRUE))
   expect_true(grepl("load_persisted_session", modul, fixed = TRUE))
   expect_true(grepl("start_new_session", modul, fixed = TRUE))
@@ -332,13 +335,31 @@ test_that("çalışma alanı runtime'ı kalıcı oturum köprüsünü doğru kul
   expect_true(grepl("cc-message-sender", claude_js, fixed = TRUE))
 
   # Akış tamamlanınca başarılı VE başarısız çalıştırmalar kalıcılaştırılır.
-  expect_true(grepl('status = "completed"', poll, fixed = TRUE))
+  # Çalıştırma sonrası sonlandırma completion helper'ına taşındı; zaman aşımı
+  # ve durdurma poll gözlemcisinde kalır.
+  completion <- .ccs_read_file_text(.ccs_repo_file("R", "helpers_claude_code_run_completion.R"))
+  expect_true(grepl('status = "completed"', completion, fixed = TRUE))
+  expect_true(grepl('status = "failed"', completion, fixed = TRUE))
   expect_true(grepl('status = "failed"', poll, fixed = TRUE))
   expect_true(grepl('status = "stopped"', poll, fixed = TRUE))
   expect_identical(
     lengths(regmatches(poll, gregexpr("cc_persist_run_result(", poll, fixed = TRUE))),
-    4L
+    2L
   )
+  # Completion helper'ında BEŞ terminal yol kalıcılaştırma yapar:
+  #   1) cc_report_output_sync_failure       (kaynak dizine aktarım hatası)
+  #   2) cc_report_output_scan_truncation    (çalıştırma sonrası tarama eksik)
+  #   3) cc_report_output_processing_failure (çıktı worker'ı reddetti)
+  #   4) cc_finish_streaming_run             (başarılı çalıştırma)
+  #   5) cc_finish_streaming_run             (hata kodlu çalıştırma)
+  # Sessizce "Tamamlandı" gösterilen bir terminal yol kalmamalıdır.
+  expect_identical(
+    lengths(regmatches(completion, gregexpr("cc_persist_run_result(", completion, fixed = TRUE))),
+    5L
+  )
+  expect_true(grepl("cc_report_output_scan_truncation", completion, fixed = TRUE))
+  expect_true(grepl("cc_report_output_sync_failure", completion, fixed = TRUE))
+  expect_true(grepl("cc_report_output_processing_failure", completion, fixed = TRUE))
 
   # Çıktıyı Temizle / model / workdir değişimi yalnızca bağı koparır;
   # kalıcı geçmişi SİLMEZ.

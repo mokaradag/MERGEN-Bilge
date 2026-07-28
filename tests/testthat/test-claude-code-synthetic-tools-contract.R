@@ -379,9 +379,10 @@ test_that("cc_synthesize_tool_uses_from_downloads birden fazla dosya için her b
   gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE)
 }
 
-test_that("module_claude_code_stream_poll.R cc-stream-end mesajına finalToolUsesHtml ekler", {
+test_that("cc-stream-end mesajı finalToolUsesHtml ekler", {
+  # Sonlandırma completion helper'ına taşındı (çıktı işleme arka planda).
   txt <- .read_repo_text_cc_final_tool_uses_contract(
-    "R/module_claude_code_stream_poll.R"
+    "R/helpers_claude_code_run_completion.R"
   )
 
   expect_true(

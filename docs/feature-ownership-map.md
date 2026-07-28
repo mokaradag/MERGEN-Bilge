@@ -373,11 +373,23 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 
 - **Seam:** `bilge_yolac`
 - **Birincil R dosyaları:** `R/config_claude_code*.R`, `R/helpers_claude_code_*.R`
-  (~31 dosya: güvenlik politikası, yol politikası, runtime workdir, süreç,
+  (~38 dosya: güvenlik politikası, yol politikası, runtime workdir, süreç,
   streaming, doküman çıkarma `R/helpers_claude_code_document_extractors.R`,
   doküman BAĞLAM hazırlığı `R/helpers_claude_code_documents.R` (+ paylaşılan UTF-8
   BOM yazıcı), doküman ÖZETLEME orkestrasyonu `R/helpers_claude_code_document_summary.R`,
   indirme, çalıştırma yaşam döngüsü).
+- **Bloklamayan çalıştırma hattı (büyük klasör / eşzamanlılık):** sınırlı dizin
+  tarayıcısı `R/helpers_claude_code_bounded_scan.R` (sınıra ulaşınca ERKEN durur);
+  izole runtime düzeni + preflight kararı + gerekli girdi seçimi/kopyalaması
+  `R/helpers_claude_code_runtime_prepare.R`; yalnızca-değişen çıktı aktarım planı
+  ve eskiyen klasör temizliği `R/helpers_claude_code_output_sync.R`; sınırlı
+  dosya kararlılık beklemesi (yalnızca worker) `R/helpers_claude_code_file_stability.R`;
+  arka plan hazırlık görevi `R/helpers_claude_code_run_prepare_task.R`; ana süreç
+  gönderim/aşama durumu + süreç başlatma `R/helpers_claude_code_run_dispatch.R`;
+  çalıştırma sonrası TEK SEFERLİK çıktı işleme + sonlandırma
+  `R/helpers_claude_code_run_completion.R`. Sınırlar `claude_code_runtime_limits`
+  (`R/config_claude_code.R`, `.Renviron` ile geçersiz kılınabilir). Ayrıntı:
+  `docs/technical-reference.md` "Bilge Yolaç bloklamayan çalıştırma hattı".
 - **UI/server modülleri:** `R/module_claude_code_ui.R`, `R/module_claude_code.R`,
   `R/module_claude_code_akis.R`, `R/module_claude_code_stream_poll.R`,
   `R/module_claude_code_plugins.R`, `www/js/claude_code*.js`, `www/css/claude_code*.css`.
@@ -398,6 +410,13 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 - **Testler:** `test-claude-code-security-policy-*`, `test-claude-code-prompt-path-policy-behavior.R`,
   `test-claude-code-run-lifecycle-contract.R`, `test-claude-code-stream-html-safety-contract.R`,
   `test-claude-code-workdir-*`, `test-cc-path-policy-collapse-behavior.R`,
+  `test-claude-code-bounded-scan-behavior.R` (sınırlı tarayıcı: erken durma,
+  dizin/derinlik/bayt/süre sınırları, hariç tutmalar, erişilemeyen alt dizin,
+  bağlantı döngüsü/kök kaçışı),
+  `test-claude-code-run-prepare-behavior.R` (izole runtime düzeni, klasörün
+  tamamının kopyalanmaması, yalnızca-değişen çıktı aktarımı, yol kaçış
+  koruması, eşzamanlı doküman destek izolasyonu, stale hazırlık geri çağrısı,
+  ana sürecin bloke olmaması),
   `test-claude-code-parse-stream-event-behavior.R` (stream-json olay ayrıştırma),
   `test-claude-code-connection-behavior.R` (check_claude_code_status processx-mock +
   test_claude_code_connection),

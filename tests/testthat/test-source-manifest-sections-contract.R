@@ -141,7 +141,15 @@
   # (R/helpers_claude_code_session_persistence.R) ve workbench oturum API
   # fabrikası (R/helpers_claude_code_workbench_session_api.R) run_lifecycle'dan
   # önce eklendi.
-  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_run_lifecycle.R", n = 29L),
+  # 29L -> 36L bilinçli güncelleme: Bilge Yolaç bloklamayan çalıştırma hattı.
+  # Sınırlı tarayıcı (bounded_scan), izole runtime hazırlığı (runtime_prepare),
+  # yalnızca-değişen çıktı aktarımı (output_sync), dosya kararlılık beklemesi
+  # (file_stability), arka plan hazırlık görevi (run_prepare_task) ile ana
+  # süreç gönderim/sonlandırma katmanları (run_dispatch, run_completion).
+  # 36L -> 38L bilinçli güncelleme: PR #672 Codex sertleştirme dosyaları
+  # manifest dışı geç-yükleme yerine bölümün sonuna alındı (sahipsiz runtime
+  # dosyası + sessiz ölü kod sorununu giderir).
+  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_codex_output_fixes.R", n = 40L),
   llm_pipeline = list(first = "R/helpers_llm_tool_formatters.R", last = "R/helpers_llm_worker.R", n = 11L),
   module_chat = list(first = "R/module_chat_history_background.R", last = "R/module_feedback.R", n = 9L),
   module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 7L),
@@ -432,7 +440,14 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # (R/helpers_file_ingestion_worker.R), sınırlı eşzamanlılık/kuyruk
   # (R/helpers_file_ingestion_queue.R) ve ana süreç orkestrasyonu
   # (R/helpers_file_ingestion_runtime.R).
-  expect_equal(length(runtime), 356L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 356L -> 363L bilinçli güncelleme: Bilge Yolaç bloklamayan çalıştırma hattı
+  # için eklenen yedi yeni yardımcı dosya (claude_code_helpers bölümü).
+  # 363L -> 365L bilinçli güncelleme: PR #672 Codex sertleştirme dosyaları
+  # (runtime + output) manifeste alındı; önceki manifest dışı geç-yükleme
+  # onları seam sahipliği olmayan ölü koda çeviriyordu.
+  # 365L -> 366L bilinçli güncelleme: dizin gezgini numaralandırması ana Shiny
+  # olay döngüsünden çıkarıldı (R/helpers_claude_code_dir_listing_async.R).
+  expect_equal(length(runtime), 367L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]
@@ -443,7 +458,12 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
     info = paste("Bölümlenmiş manifestte tekrar eden R/ kaydı:", paste(duplicate_r_paths, collapse = ", "))
   )
 
-  missing_paths <- runtime[!file.exists(file.path(repo_root, runtime))]
+  # Bilinçli olarak opsiyonel işaretlenmiş yollar bir çalışma kopyasında
+  # bulunmayabilir (boot güvenliği sözleşmesi).
+  opsiyonel <- as.character(
+    .load_source_manifest_env_for_sections()$source_manifest_optional_source_paths %||% character(0)
+  )
+  missing_paths <- setdiff(runtime[!file.exists(file.path(repo_root, runtime))], opsiyonel)
 
   expect_equal(
     missing_paths,

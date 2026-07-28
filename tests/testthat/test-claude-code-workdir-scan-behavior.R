@@ -52,6 +52,67 @@ testthat::test_that("prompt_requests_existing_document_reading boş/NULL girdide
 })
 
 # ------------------------------------------------------------------------------
+# NİYET TESPİTİ EŞLEŞTİRME MANTIĞI
+#
+# REGRESYON: Desenler perl = TRUE içinde ÇİFT ters-bölülü ("\\u00f6") Unicode
+# kaçışlarıyla yazılmıştı. PCRE2 "\u" desteklemez, bu yüzden BOŞ OLMAYAN her
+# prompt için grepl() önce uyarı sonra hata üretiyordu. Çağıranlar bunu
+# tryCatch(error = FALSE) ile sardığı için niyet tespiti ÜRETİMDE SESSİZCE
+# her zaman FALSE'a düşüyordu.
+#
+# Sonucu Bilge Yolaç'ta görünürdü: doküman görevi hiç algılanmadığı için metin
+# çıkarımı çalışmıyor, CLI çalışma dizini izole runtime kökü olarak kalıyor ve
+# ajan input/ altındaki HAM PDF'i kendi Read aracıyla okuyordu. Claude CLI
+# PDF okumasını base64 bir `document` içerik bloğuna çeviriyor; on-prem
+# Anthropic-uyumlu proxy bu blok tipini kabul etmediği için istek
+# "Input should be 'text', 'image', 'tool_use', ..." diyerek 400 dönüyordu.
+#
+# Desenler tek ters-bölülü ("ö") gerçek Unicode kaçışlarına çevrildi:
+# kaynak ASCII kalır, R parse anında gerçek karakteri üretir ve PCRE2 sorunu
+# ortadan kalkar.
+# ------------------------------------------------------------------------------
+
+testthat::test_that("niyet tespiti desenleri uyarı/hata üretmeden derlenir", {
+  .ccscan_source_once()
+
+  # Uyarı da hata da olmamalı: strict runner stop_on_warning = TRUE ile çalışır.
+  testthat::expect_no_warning(prompt_requests_existing_document_reading("test"))
+  testthat::expect_no_warning(prompt_requests_binary_document_creation("test"))
+  testthat::expect_no_error(prompt_requests_existing_document_reading("test"))
+  testthat::expect_no_error(prompt_requests_binary_document_creation("test"))
+})
+
+testthat::test_that("okuma niyeti Türkçe ve ASCII yazımda tespit edilir", {
+  .ccscan_source_once()
+
+  # Konsol/parser bağımsızlığı için Türkçe fixture kod noktalarından kurulur.
+  ozetle_tr <- paste0(
+    "dizindeki dosyalar", intToUtf8(0x0131), " ", intToUtf8(0x00F6), "zetle"
+  )
+
+  testthat::expect_true(prompt_requests_existing_document_reading(ozetle_tr))
+  testthat::expect_true(prompt_requests_existing_document_reading("dizindeki dosyalari ozetle"))
+  testthat::expect_true(prompt_requests_existing_document_reading("bu dosyayi incele"))
+  testthat::expect_true(prompt_requests_existing_document_reading("summarize the pdf"))
+
+  # Okuma niyeti olmayan prompt FALSE kalmalıdır.
+  testthat::expect_false(prompt_requests_existing_document_reading("merhaba"))
+})
+
+testthat::test_that("üretme niyeti ikili doküman uzantısıyla birlikte tespit edilir", {
+  .ccscan_source_once()
+
+  olustur_tr <- paste0("bir word belgesi olu", intToUtf8(0x015F), "tur")
+
+  testthat::expect_true(prompt_requests_binary_document_creation(olustur_tr))
+  testthat::expect_true(prompt_requests_binary_document_creation("create a docx report"))
+
+  # Üretme fiili var ama ikili doküman hedefi yok -> FALSE.
+  testthat::expect_false(prompt_requests_binary_document_creation("bir fonksiyon olustur"))
+  testthat::expect_false(prompt_requests_binary_document_creation("merhaba"))
+})
+
+# ------------------------------------------------------------------------------
 # canonicalize_claude_code_file_path
 # ------------------------------------------------------------------------------
 testthat::test_that("canonicalize_claude_code_file_path boş girdi için boş dize döndürür", {
@@ -104,11 +165,19 @@ testthat::test_that("deduplicate_claude_code_file_paths aynı dosyayı ve boşla
   testthat::expect_identical(donen, canonicalize_claude_code_file_path(f1))
 })
 
-testthat::test_that("deduplicate_claude_code_file_paths büyük/küçük harf farkını yok sayar", {
+testthat::test_that("deduplicate_claude_code_file_paths harf büyüklüğünü platforma göre ele alır", {
   .ccscan_source_once()
   # Var olan kanonik bir taban dizin altında, yalnızca harf büyüklüğüyle ayrışan
-  # iki var-olmayan yol; canonicalize üst dizin mevcut olduğu için yolu olduğu gibi
-  # döndürür, dedup ise küçük harfli anahtara göre tekilleştirir.
+  # iki var-olmayan yol; canonicalize üst dizin mevcut olduğu için yolu olduğu
+  # gibi döndürür.
+  #
+  # SÖZLEŞME: tekilleştirme PLATFORMA DUYARLIDIR. Windows'ta dosya sistemi harf
+  # büyüklüğünü yok saydığı için iki yol aynı dosyadır ve katlanır. Unix'te
+  # "Rapor.TXT" ile "rapor.txt" GERÇEKTEN farklı iki dosyadır; koşulsuz
+  # tolower() ile katlamak üretilen bir çıktı dosyasını sessizce düşürürdü
+  # (indirme kartı/çıktı senkronizasyonu kaybı). Bu davranış PR #672 Codex
+  # sertleştirmesiyle düzeltildi; sertleştirme dosyaları manifest dışı
+  # kaldığı sürece ölü kod olduğu için bu ayrım fark edilmiyordu.
   base <- normalizePath(tempfile(pattern = "ccdedup"), winslash = "/", mustWork = FALSE)
   dir.create(base, recursive = TRUE, showWarnings = FALSE)
   on.exit(unlink(base, recursive = TRUE), add = TRUE)
@@ -117,7 +186,25 @@ testthat::test_that("deduplicate_claude_code_file_paths büyük/küçük harf fa
   p_lower <- paste0(base, "/rapor.txt")
 
   donen <- deduplicate_claude_code_file_paths(c(p_upper, p_lower))
-  testthat::expect_length(donen, 1L)
-  # İlk görünüm (büyük harfli) korunur.
-  testthat::expect_identical(donen, canonicalize_claude_code_file_path(p_upper))
+
+  if (identical(.Platform$OS.type, "windows")) {
+    testthat::expect_length(donen, 1L)
+    # İlk görünüm (büyük harfli) korunur.
+    testthat::expect_identical(donen, canonicalize_claude_code_file_path(p_upper))
+  } else {
+    testthat::expect_length(donen, 2L)
+    testthat::expect_identical(
+      donen,
+      c(
+        canonicalize_claude_code_file_path(p_upper),
+        canonicalize_claude_code_file_path(p_lower)
+      )
+    )
+  }
+
+  # Gerçekten aynı olan yol her platformda tekilleştirilir.
+  testthat::expect_length(
+    deduplicate_claude_code_file_paths(c(p_upper, p_upper)),
+    1L
+  )
 })

@@ -136,10 +136,32 @@ if (length(ownership_gaps) > 0L) {
 }
 
 if (length(orphan_r_files) > 0L) {
-  all_problems <- c(all_problems, sprintf(
-    "Sahipsiz R/ runtime dosyası: %s",
-    paste(orphan_r_files, collapse = ", ")
-  ))
+  # Her sahipsiz dosya AYRI bir sorun kaydı olur: tek satırda birleştirilen
+  # uzun bir liste Windows konsolunda kırpılabilir ve dosya adının sonu
+  # kaybolarak yanlış teşhise yol açar.
+  for (orphan in orphan_r_files) {
+    benzer <- tryCatch(
+      setdiff(
+        agrep(basename(orphan), basename(gov_env$source_manifest_runtime_paths),
+              max.distance = 0.1, ignore.case = TRUE, value = TRUE),
+        basename(orphan)
+      ),
+      error = function(e) character(0)
+    )
+
+    all_problems <- c(all_problems, sprintf(
+      "Sahipsiz R/ runtime dosyası: %s%s",
+      orphan,
+      if (length(benzer)) {
+        sprintf(
+          " (manifestte benzer adlı kayıt: %s -> çalışma kopyası git ile senkron değil olabilir)",
+          paste(benzer, collapse = ", ")
+        )
+      } else {
+        ""
+      }
+    ))
+  }
 }
 
 cat("== MERGEN seam doctor ==\n")

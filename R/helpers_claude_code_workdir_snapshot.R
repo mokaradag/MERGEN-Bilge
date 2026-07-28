@@ -281,15 +281,24 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
                                                            runtime_workdir = "",
                                                            source_workdir = "",
                                                            user_id = 0L,
-                                                           session_token = "") {
-  # 1) Çalışma dizini taraması ile yeni/değişmiş dosyaları bul
+                                                           session_token = "",
+                                                           changed_files = NULL,
+                                                           exclude_dirs = NULL,
+                                                           limits = NULL,
+                                                           layout = NULL) {
+  # 1) Yeni/değişmiş dosyalar: hazır liste verilmişse tarama tekrarlanmaz.
+  #    Böylece aynı çalıştırma için diff/staging iki kez çalışmaz.
   yeni_dosyalar <- character(0)
 
-  if (nzchar(runtime_workdir) && dir.exists(runtime_workdir)) {
+  if (!is.null(changed_files)) {
+    yeni_dosyalar <- unique(as.character(changed_files))
+  } else if (nzchar(runtime_workdir) && dir.exists(runtime_workdir)) {
     yeni_dosyalar <- tryCatch(
       diff_claude_code_workdir_snapshot(
         before_snapshot = before_snapshot,
-        workdir = runtime_workdir
+        workdir = runtime_workdir,
+        exclude_dirs = exclude_dirs %||% cc_scan_default_excluded_dirs(),
+        limits = limits
       ),
       error = function(e) character(0)
     )
@@ -327,6 +336,32 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
     allowed_roots = allowed_roots,
     context = "çalışma çıktısı"
   )
+
+  # Dahili runtime bölgeleri (metadata lease/manifest, doküman desteği) asla
+  # kullanıcı indirmesi değildir; boyut sınırları da normalizasyon ve
+  # kopyalama BAŞLAMADAN uygulanır.
+  if (exists("cc_filter_download_candidates", mode = "function", inherits = TRUE)) {
+    suzme <- tryCatch(
+      cc_filter_download_candidates(tum_yollar, layout = layout, limits = limits),
+      error = function(e) NULL
+    )
+
+    if (is.list(suzme)) {
+      if (length(suzme$rejected_zone)) {
+        log_warn(sprintf(
+          "%s [DOWNLOAD_STAGE] Dahili runtime bölgesindeki %d aday indirmeye alınmadı.",
+          CLAUDE_CODE_LOG_PREFIX, length(suzme$rejected_zone)
+        ))
+      }
+      if (length(suzme$rejected_size)) {
+        log_warn(sprintf(
+          "%s [DOWNLOAD_STAGE] Boyut sınırını aşan %d aday indirmeye alınmadı.",
+          CLAUDE_CODE_LOG_PREFIX, length(suzme$rejected_size)
+        ))
+      }
+      tum_yollar <- suzme$paths
+    }
+  }
 
   if (!length(tum_yollar)) return(list())
 

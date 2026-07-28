@@ -1,10 +1,12 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_claude_code_workdir_scan.R
 # Açıklama: Bilge Yolaç çalışma dizini için niyet tespiti, dosya yolu
-#           kanonikleştirme, snapshot/diff üretimi ve yeni/değişen dosyaların
-#           kısa süreli kararlılık kontrolü yardımcılarını içerir.
-#           Bu dosya yalnızca tarama/karşılaştırma sorumluluğunu taşır;
-#           Türkçe metin kodlama normalizasyonu ve indirme staging akışı
+#           kanonikleştirme ve sınırlı snapshot/diff üretimi yardımcılarını
+#           içerir. Bu dosya yalnızca tarama/karşılaştırma sorumluluğunu taşır.
+#           Dosya kararlılık beklemesi R/helpers_claude_code_file_stability.R,
+#           runtime çıktı bölgesi anlık görüntüsü ve geri aktarım planı
+#           R/helpers_claude_code_output_sync.R, Türkçe metin kodlama
+#           normalizasyonu ve indirme staging akışı
 #           R/helpers_claude_code_workdir_snapshot.R içinde kalır.
 # ==============================================================================
 
@@ -23,17 +25,17 @@ prompt_requests_binary_document_creation <- function(prompt) {
   # Türkçe + İngilizce üretme/yazma/kaydetme fiilleri
   uretme_deseni <- paste(
     c(
-      "olu\\u015ftur",       # oluştur
+      "olu\u015ftur",       # oluştur
       "olustur",
       "yarat",
-      "\\u00fcret",          # üret
+      "\u00fcret",          # üret
       "uret",
-      "haz\\u0131rla",       # hazırla
+      "haz\u0131rla",       # hazırla
       "hazirla",
-      "yaz\\u0131l",         # yazıl
+      "yaz\u0131l",         # yazıl
       "yazil",
       "kaydet",
-      "d\\u00f6n\\u00fc\\u015ft\\u00fcr",  # dönüştür
+      "d\u00f6n\u00fc\u015ft\u00fcr",  # dönüştür
       "donustur",
       "ekspor",
       "export",
@@ -85,12 +87,12 @@ prompt_requests_existing_document_reading <- function(prompt) {
       "\\bokuy",            # oku / okuy...
       "\\boku\\b",
       "incele",
-      "\\u00f6zetle",        # özetle
+      "\u00f6zetle",        # özetle
       "ozetle",
-      "\\u00f6zet\\u00e7",    # özetç...
-      "\\u00e7\\u0131kar",    # çıkar (metni çıkar)
+      "\u00f6zet\u00e7",    # özetç...
+      "\u00e7\u0131kar",    # çıkar (metni çıkar)
       "cikar",
-      "i\\u00e7eri\\u011fi",  # içeriği
+      "i\u00e7eri\u011fi",  # içeriği
       "icerigi",
       "summari",
       "\\bread\\b",
@@ -159,9 +161,10 @@ deduplicate_claude_code_file_paths <- function(paths) {
   kanonikler <- kanonikler[nzchar(kanonikler)]
   if (!length(kanonikler)) return(character(0))
 
-  # Windows'ta büyük/küçük harf farkını da yok say
-  anahtarlar <- tolower(kanonikler)
-  ilk_gorunumler <- !duplicated(anahtarlar)
+  # Harf büyüklüğü YALNIZCA Windows'ta yok sayılır: Unix'te "Rapor.TXT" ile
+  # "rapor.txt" ayrı dosyalardır, koşulsuz tolower() bir çıktıyı düşürürdü.
+  windows_mu <- identical(.Platform$OS.type, "windows")
+  ilk_gorunumler <- !duplicated(if (windows_mu) tolower(kanonikler) else kanonikler)
 
   kanonikler[ilk_gorunumler]
 }
@@ -175,51 +178,102 @@ deduplicate_claude_code_file_paths <- function(paths) {
 
 #' Çalışma dizinindeki dosyaların anlık görüntüsünü al
 #'
+#' Tarama sınırlı gezinme ile yapılır: tüm ağaç numaralandırılıp sonradan
+#' kırpılmaz, sınıra ulaşıldığı anda durulur. Sonuca `scan` özniteliği ile
+#' tarama metrikleri (kesilme nedeni dahil) eklenir.
+#'
+#' Bir dosyanın ucuz, sınırlı-uzunluklu içerik imzasını hesapla
+#'
+#' Yalnızca mtime + boyut aynı görünen dosyalarda `cp -p` veya arşiv çıkarma
+#' gibi zaman damgasını koruyan araçların içerik değişikliğini gizlemesine
+#' karşı savunma amaçlıdır. Tüm dosyayı okumak yerine yalnızca ilk 64 KB
+#' hashlenir; böylece büyük dosyalarda bile maliyet sınırlı kalır.
+#'
+#' @param path Dosya yolu
+#' @param size Dosya boyutu (bayt)
+#' @return Hash metni, hesaplanamazsa NA_character_
+.cc_scan_content_signature <- function(path, size) {
+  boyut <- suppressWarnings(as.numeric(size))
+  if (!is.finite(boyut) || boyut <= 0) return(NA_character_)
+  if (!requireNamespace("digest", quietly = TRUE)) return(NA_character_)
+
+  tryCatch(
+    digest::digest(file = as.character(path)[1], algo = "xxhash64", length = 65536L),
+    error = function(e) NA_character_
+  )
+}
+
 #' @param workdir Taranacak kök dizin
 #' @param recursive Alt dizinleri de tara (varsayılan TRUE)
 #' @param max_files Performans için üst sınır
-#' @return Yol -> list(mtime, size) biçiminde isimlendirilmiş liste
+#' @param exclude_dirs Atlanacak dizin adları (herhangi bir derinlikte basename eşleşmesi)
+#' @param exclude_rel_paths Yalnızca KÖK düzeyinde atlanacak göreli yollar
+#'   (örn. runtime'ın kendi `metadata`/`document_support` bölmeleri).
+#'   `exclude_dirs`'ten farklı olarak "output/metadata" gibi iç içe, gerçekten
+#'   üretilmiş dizinleri hariç tutmaz.
+#' @param max_depth Maksimum derinlik
+#' @param limits Sınır listesi
+#' @return Yol -> list(mtime, size, signature) biçiminde isimlendirilmiş liste
 snapshot_claude_code_workdir_files <- function(workdir,
                                                 recursive = TRUE,
-                                                max_files = 5000L) {
+                                                max_files = NULL,
+                                                exclude_dirs = cc_scan_default_excluded_dirs(),
+                                                exclude_rel_paths = character(0),
+                                                max_depth = NULL,
+                                                limits = NULL) {
   if (is.null(workdir) || !nzchar(workdir) || !dir.exists(workdir)) {
     return(list())
   }
 
-  ogeler <- tryCatch(
-    list.files(
-      workdir,
-      full.names = TRUE,
-      recursive = recursive,
-      all.files = FALSE,
-      include.dirs = FALSE,
-      no.. = TRUE
+  max_files <- if (is.null(max_files)) {
+    cc_runtime_limit("output_scan_max_files", 1000, limits)
+  } else {
+    suppressWarnings(as.numeric(max_files[1]))
+  }
+
+  max_depth <- if (is.null(max_depth)) {
+    cc_runtime_limit("output_scan_max_depth", 8, limits)
+  } else {
+    suppressWarnings(as.numeric(max_depth[1]))
+  }
+
+  if (!isTRUE(recursive)) {
+    max_depth <- 0
+  }
+
+  tarama <- tryCatch(
+    cc_scan_directory_bounded(
+      root = workdir,
+      max_files = max_files,
+      max_dirs = cc_runtime_limit("scan_max_dirs", 500, limits),
+      max_depth = max_depth,
+      max_total_bytes = Inf,
+      max_elapsed_ms = cc_runtime_limit("scan_timeout_ms", 4000, limits),
+      max_file_bytes = Inf,
+      exclude_dirs = exclude_dirs,
+      exclude_rel_paths = c(cc_scan_default_excluded_rel_paths(), as.character(exclude_rel_paths %||% character(0)))
     ),
-    error = function(e) character(0)
+    error = function(e) NULL
   )
 
-  if (!length(ogeler)) {
-    return(list())
+  if (is.null(tarama) || !length(tarama$files)) {
+    return(structure(list(), scan = tarama))
   }
 
-  # Yalnızca gerçek dosyaları tut (yanlışlıkla dizin yakalanmışsa çıkar)
-  ogeler <- ogeler[!dir.exists(ogeler)]
-
-  if (!length(ogeler)) {
-    return(list())
-  }
-
-  if (length(ogeler) > max_files) {
-    ogeler <- ogeler[seq_len(max_files)]
-  }
-
+  ogeler <- tarama$files
   bilgi <- tryCatch(file.info(ogeler), error = function(e) NULL)
 
   if (is.null(bilgi) || nrow(bilgi) == 0L) {
-    return(list())
+    return(structure(list(), scan = tarama))
   }
 
   sonuc <- list()
+
+  # İçerik imzası yalnızca sınırlı sayıda dosya için hesaplanır; büyük çıktı
+  # ağaçlarında snapshot maliyetini artırmamak için bu bütçe aşıldığında
+  # imza hesaplanmaz ve karşılaştırma yalnızca mtime + boyuta dayanır (eski
+  # davranışla aynı, geriye dönük uyumlu).
+  icerik_imzasi_uygula <- length(ogeler) <= cc_runtime_limit("output_diff_content_check_budget", 200, limits)
 
   for (i in seq_along(ogeler)) {
     # Windows 8.3 kısa adları uzun kanonik forma çevir
@@ -236,11 +290,24 @@ snapshot_claude_code_workdir_files <- function(workdir,
     sonuc[[anahtar]] <- list(
       path = yol_norm,
       mtime = if (is.finite(mtime_val)) mtime_val else NA_real_,
-      size = if (is.finite(size_val)) size_val else NA_real_
+      size = if (is.finite(size_val)) size_val else NA_real_,
+      signature = if (isTRUE(icerik_imzasi_uygula)) {
+        .cc_scan_content_signature(ogeler[i], size_val)
+      } else {
+        NA_character_
+      }
     )
   }
 
-  sonuc
+  if (isTRUE(tarama$truncated)) {
+    log_warn(sprintf(
+      "%s [OUTPUT_DIFF] Çıktı taraması sınıra takıldı (%s); üretilen dosya listesi eksik olabilir.",
+      CLAUDE_CODE_LOG_PREFIX,
+      tarama$truncated_reason
+    ))
+  }
+
+  structure(sonuc, scan = tarama)
 }
 
 #' İki anlık görüntü arasındaki yeni veya değişmiş dosyaları döndür
@@ -249,11 +316,16 @@ snapshot_claude_code_workdir_files <- function(workdir,
 #' @param workdir Tekrar taranacak dizin
 #' @param recursive Alt dizinleri de tara
 #' @param max_files Üst sınır
+#' @param exclude_dirs Herhangi bir derinlikte basename ile atlanacak dizinler
+#' @param exclude_rel_paths Yalnızca KÖK düzeyinde atlanacak göreli yollar
 #' @return Yeni/değişmiş dosyaların yollarını içeren karakter vektörü
 diff_claude_code_workdir_snapshot <- function(before_snapshot,
                                                workdir,
                                                recursive = TRUE,
-                                               max_files = 5000L) {
+                                               max_files = NULL,
+                                               exclude_dirs = cc_scan_default_excluded_dirs(),
+                                               exclude_rel_paths = character(0),
+                                               limits = NULL) {
   if (is.null(workdir) || !nzchar(workdir) || !dir.exists(workdir)) {
     return(character(0))
   }
@@ -261,16 +333,31 @@ diff_claude_code_workdir_snapshot <- function(before_snapshot,
   sonraki <- snapshot_claude_code_workdir_files(
     workdir = workdir,
     recursive = recursive,
-    max_files = max_files
+    max_files = max_files,
+    exclude_dirs = exclude_dirs,
+    exclude_rel_paths = exclude_rel_paths,
+    limits = limits
   )
 
+  # Çalıştırma sonrası tarama da sınıra takılabilir. Bu bilgi çağıranın
+  # eksik çıktıyı "tamamlandı" sanmaması için sonuca iliştirilir.
+  sonraki_tarama <- attr(sonraki, "scan", exact = TRUE)
+
   if (!length(sonraki)) {
-    return(character(0))
+    return(structure(character(0), scan = sonraki_tarama))
   }
 
   once <- if (is.list(before_snapshot)) before_snapshot else list()
 
   yeni_veya_degisen <- character(0)
+  # İçerik imza karşılaştırması yalnızca mtime + boyut AYNI göründüğünde
+  # devreye girer (cp -p / arşiv çıkarma gibi zaman damgasını koruyan
+  # araçların gizlediği değişiklikleri yakalamak için).
+  icerik_kontrol_butcesi <- suppressWarnings(as.numeric(
+    cc_runtime_limit("output_diff_content_check_budget", 200, limits)
+  ))
+  if (!is.finite(icerik_kontrol_butcesi)) icerik_kontrol_butcesi <- 200
+  icerik_kontrolu <- 0L
 
   for (anahtar in names(sonraki)) {
     eski <- once[[anahtar]]
@@ -295,129 +382,42 @@ diff_claude_code_workdir_snapshot <- function(before_snapshot,
       degisti <- TRUE
     }
 
+    if (!isTRUE(degisti) && icerik_kontrolu < icerik_kontrol_butcesi) {
+      eski_imza <- as.character(eski$signature %||% NA_character_)[1]
+      yeni_imza <- as.character(yeni$signature %||% NA_character_)[1]
+
+      if (!is.na(eski_imza) && !is.na(yeni_imza) &&
+          nzchar(eski_imza) && nzchar(yeni_imza) &&
+          !identical(eski_imza, yeni_imza)) {
+        degisti <- TRUE
+      }
+
+      icerik_kontrolu <- icerik_kontrolu + 1L
+    }
+
     if (isTRUE(degisti)) {
       yeni_veya_degisen <- c(yeni_veya_degisen, yeni_yol)
     }
   }
 
-  # Bilge Yolaç iç yardımcı çıktılarını hariç tut
-  # (doküman özet destek dizini, rehber dosyası vb.)
-  haric_desenler <- c(
-    "/BILGE_YOLAC_DOKUMAN_REHBERI\\.md$",
-    "/document_support/",
-    "/\\.document_support/"
-  )
+  # Bilge Yolaç iç yardımcı çıktılarını hariç tut (doküman özet destek
+  # dizini, rehber dosyası vb.). Bu hariç tutma yalnızca runtime KÖKÜNDEKİ
+  # metadata/document_support için geçerlidir; "output/metadata/rapor.json"
+  # gibi GERÇEK üretilmiş iç içe dosyalar burada yanlışlıkla kaybolmaz.
+  if (length(yeni_veya_degisen)) {
+    rehber_mi <- tolower(basename(yeni_veya_degisen)) == "bilge_yolac_dokuman_rehberi.md"
 
-  for (desen in haric_desenler) {
-    yeni_veya_degisen <- yeni_veya_degisen[
-      !grepl(desen, yeni_veya_degisen, perl = TRUE)
-    ]
+    goreli <- cc_scan_relative_paths(yeni_veya_degisen, workdir)
+    goreli_key <- tolower(gsub("\\", "/", goreli, fixed = TRUE))
+    kok_ic_mi <- goreli_key %in% c("metadata", "document_support", ".document_support") |
+      grepl("^(metadata|document_support|\\.document_support)/", goreli_key, perl = TRUE)
+
+    yeni_veya_degisen <- yeni_veya_degisen[!(rehber_mi | kok_ic_mi)]
   }
 
   # Kanonik form üzerinden tekrar dedup (emniyet kemeri)
-  deduplicate_claude_code_file_paths(yeni_veya_degisen)
-}
-
-#' Yeni/değişen dosyaların kısa süreli kararlı hale gelmesini bekle
-#'
-#' Claude Code CLI döndükten hemen sonra Windows üzerinde dosya mtime/size
-#' bilgileri kısa süre oynayabilir veya child process dosyayı yeni kapatmış
-#' olabilir. Bu yardımcı, staging/encoding normalizasyonu başlamadan önce
-#' dosya imzasını kısa aralıklarla kontrol eder. Maksimum denemeden sonra
-#' dosyaları düşürmez; son görülen mevcut dosya listesini döndürerek önceki
-#' davranışı korur.
-#'
-#' @param file_paths Dosya yolları
-#' @param settle_ms Denemeler arasındaki bekleme süresi (ms)
-#' @param max_attempts Maksimum kontrol sayısı
-#' @return Kanonik, mevcut ve dosya olan yollar
-wait_for_stable_claude_code_file_paths <- function(file_paths,
-                                                    settle_ms = 75L,
-                                                    max_attempts = 4L) {
-  file_paths <- deduplicate_claude_code_file_paths(file_paths)
-  if (!length(file_paths)) return(character(0))
-
-  settle_ms <- suppressWarnings(as.integer(settle_ms[1] %||% 75L))
-  if (is.na(settle_ms) || settle_ms < 0L) {
-    settle_ms <- 75L
-  }
-
-  max_attempts <- suppressWarnings(as.integer(max_attempts[1] %||% 4L))
-  if (is.na(max_attempts) || max_attempts < 1L) {
-    max_attempts <- 1L
-  }
-
-  file_signature <- function(paths) {
-    mevcut <- paths[file.exists(paths) & !dir.exists(paths)]
-    mevcut <- deduplicate_claude_code_file_paths(mevcut)
-
-    if (!length(mevcut)) {
-      return(data.frame(
-        path = character(0),
-        size = numeric(0),
-        mtime = numeric(0),
-        stringsAsFactors = FALSE
-      ))
-    }
-
-    bilgi <- tryCatch(file.info(mevcut), error = function(e) NULL)
-    if (is.null(bilgi) || nrow(bilgi) == 0L) {
-      return(data.frame(
-        path = character(0),
-        size = numeric(0),
-        mtime = numeric(0),
-        stringsAsFactors = FALSE
-      ))
-    }
-
-    sonuc <- data.frame(
-      path = mevcut,
-      size = suppressWarnings(as.numeric(bilgi$size)),
-      mtime = suppressWarnings(as.numeric(bilgi$mtime)),
-      stringsAsFactors = FALSE
-    )
-
-    sonuc <- sonuc[order(tolower(sonuc$path)), , drop = FALSE]
-    rownames(sonuc) <- NULL
-    sonuc
-  }
-
-  same_signature <- function(a, b) {
-    if (!is.data.frame(a) || !is.data.frame(b)) return(FALSE)
-    if (!identical(nrow(a), nrow(b))) return(FALSE)
-    if (!identical(a$path, b$path)) return(FALSE)
-
-    same_size <- isTRUE(all.equal(a$size, b$size, check.attributes = FALSE))
-    same_mtime <- isTRUE(all.equal(a$mtime, b$mtime, check.attributes = FALSE))
-
-    isTRUE(same_size) && isTRUE(same_mtime)
-  }
-
-  previous <- file_signature(file_paths)
-  if (nrow(previous) == 0L) {
-    return(character(0))
-  }
-
-  latest <- previous
-
-  for (attempt in seq_len(max_attempts)) {
-    if (settle_ms > 0L) {
-      Sys.sleep(settle_ms / 1000)
-    }
-
-    current <- file_signature(file_paths)
-    if (nrow(current) == 0L) {
-      return(character(0))
-    }
-
-    latest <- current
-
-    if (isTRUE(same_signature(previous, current))) {
-      return(deduplicate_claude_code_file_paths(current$path))
-    }
-
-    previous <- current
-  }
-
-  deduplicate_claude_code_file_paths(latest$path)
+  structure(
+    deduplicate_claude_code_file_paths(yeni_veya_degisen),
+    scan = sonraki_tarama
+  )
 }

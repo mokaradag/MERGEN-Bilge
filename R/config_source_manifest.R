@@ -325,11 +325,20 @@ source_manifest_sections <- list(
     "R/helpers_claude_code_process.R",
     "R/helpers_claude_code_api_key.R",
     "R/helpers_claude_code_runtime_resolver.R",
+    "R/helpers_claude_code_bounded_scan.R",
+    # Ad eşleştirme (prompt anmaları, depolama öneki -> görünen ad) hazırlık
+    # katmanından ÖNCE yüklenir; girdi ve doküman seçimi buna dayanır.
+    "R/helpers_claude_code_input_matching.R",
+    "R/helpers_claude_code_runtime_prepare.R",
+    "R/helpers_claude_code_output_sync.R",
     "R/helpers_claude_code_runtime_workdir.R",
     "R/helpers_claude_code_security_policy.R",
     "R/helpers_claude_code_path_policy.R",
     "R/helpers_claude_code_prompt_security_policy.R",
     "R/helpers_claude_code_directory_listing.R",
+    # Dizin gezgini numaralandırmasını ana olay döngüsünden çıkaran worker
+    # global paketi; listeleme yardımcısından SONRA yüklenmelidir.
+    "R/helpers_claude_code_dir_listing_async.R",
     "R/helpers_claude_code.R",
     "R/helpers_claude_code_server_setup.R",
     "R/helpers_claude_code_streaming.R",
@@ -338,18 +347,34 @@ source_manifest_sections <- list(
     "R/helpers_claude_code_downloads_html.R",
     "R/helpers_claude_code_existing_file_link.R",
     "R/helpers_claude_code_workdir_scan.R",
+    "R/helpers_claude_code_file_stability.R",
     "R/helpers_claude_code_workdir_snapshot.R",
     "R/helpers_claude_code_plugins.R",
     "R/helpers_claude_code_document_extractors.R",
     "R/helpers_claude_code_documents.R",
     "R/helpers_claude_code_document_summary.R",
+    # Arka plan hazırlık görevi: sınırlı tarama + girdi kopyalama + doküman
+    # çıkarımı + çalıştırma öncesi snapshot. Runtime workdir, workdir scan ve
+    # doküman yardımcılarından SONRA yüklenmelidir.
+    "R/helpers_claude_code_run_prepare_task.R",
     # Kalıcı oturum runtime köprüsü: DB katmanı (database bölümü) ile çalışma
     # alanı modülü arasında; run_lifecycle bu köprüdeki persist çağrılarını
     # guard'lı exists() ile kullanır. Workbench oturum API fabrikası
     # (hidrasyon + yeni oturum) module_claude_code.R tarafından çağrılır.
     "R/helpers_claude_code_session_persistence.R",
     "R/helpers_claude_code_workbench_session_api.R",
-    "R/helpers_claude_code_run_lifecycle.R"
+    "R/helpers_claude_code_run_lifecycle.R",
+    # Ana süreç tarafı: hazırlık gönderimi/aşama durumu ve süreç başlatma,
+    # ardından çalıştırma sonrası çıktı işleme ve sonlandırma.
+    "R/helpers_claude_code_run_dispatch.R",
+    "R/helpers_claude_code_run_completion.R",
+    # PR #672 Codex inceleme sertleştirmeleri. Bu iki dosya yukarıdaki Bilge
+    # Yolaç yardımcılarında tanımlı fonksiyonların bir kısmını fail-closed
+    # sürümleriyle DEĞİŞTİRİR; bu yüzden zincirin EN SONUNDA ve runtime ->
+    # output sırasıyla yüklenmelidir. Manifest dışı geç-yükleme denenmemeli:
+    # o yol dosyaları sahipsiz bırakıp (seam doctor) sessizce ölü koda çevirir.
+    "R/helpers_claude_code_codex_runtime_fixes.R",
+    "R/helpers_claude_code_codex_output_fixes.R"
   ),
 
   # llm_pipeline: LLM hattı: araç formatlayıcılar, yanıt post-process,
@@ -652,4 +677,33 @@ source_manifest_after_future_paths <- unlist(
 source_manifest_runtime_paths <- c(
   source_manifest_group_1_paths,
   source_manifest_after_future_paths
+)
+
+# Bir çalışma kopyasında bulunmayabilecek manifest yolları.
+#
+# BOOT GÜVENLİĞİ SÖZLEŞMESİ: Manifest normalde eksik dosyada fail-fast yapar ve
+# bu davranış korunmalıdır. Aşağıdaki iki dosya bunun bilinçli istisnasıdır:
+# git'te izlenirler, ancak henüz güncellenmemiş bir on-prem çalışma kopyasında
+# fiziksel olarak bulunmayabilirler. Bunları ZORUNLU kılmak, üretimdeki
+# uygulamayı "Kaynak manifesti doğrulaması başarısız" hatasıyla hiç
+# açılmaz duruma sokar. Mevcut olduklarında normal sırayla yüklenirler;
+# bulunmadıklarında yalnızca sertleştirmeleri devre dışı kalır, uygulama açılır.
+#
+# Bu listeye yeni dosya eklemek bilinçli bir karardır: eksikliği gerçekten
+# tolere edilebilir olmayan hiçbir runtime dosyası buraya eklenmemelidir.
+# Gruplar ATOMİKTİR: bir üyesi eksikse grubun tamamı atlanır. Codex output
+# hardening dosyası, runtime hardening katmanı yüklenmeden source edildiğinde
+# bilinçli olarak stop() eder; bu yüzden ikisi ya birlikte yüklenir ya hiç
+# yüklenmez. Aksi halde yalnızca runtime dosyası eksik olan bir çalışma
+# kopyasında uygulama yine açılmaz.
+source_manifest_optional_source_groups <- list(
+  codex_hardening = c(
+    "R/helpers_claude_code_codex_runtime_fixes.R",
+    "R/helpers_claude_code_codex_output_fixes.R"
+  )
+)
+
+source_manifest_optional_source_paths <- unlist(
+  source_manifest_optional_source_groups,
+  use.names = FALSE
 )

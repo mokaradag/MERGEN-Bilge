@@ -25,6 +25,13 @@
   kok <- resolve_repo_root_for_tests()
   env$extract_supported_document_text_for_claude <- function(path) "ÖRNEK METİN"
   env$get_office_document_reader_template_path <- function() "/sahte/reader_template.R"
+  # Doküman seçimi sınırları ve prompt dosya-adı çıkarımı hazırlık
+  # yardımcılarında yaşar; izole test bunları da yüklemelidir.
+  source(file.path(kok, "R", "config_claude_code.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_claude_code_bounded_scan.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_claude_code_input_matching.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_claude_code_runtime_prepare.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_claude_code_output_sync.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_claude_code_documents.R"), encoding = "UTF-8", local = env)
   # Özetleme orkestrasyonu (summarize/write_summary_file/build_summary_messages)
   # document_summary.R'ye ayrıldı; aynı izole ortama yüklenir.
@@ -42,11 +49,13 @@
                                docs = "/dokumanlar/rapor.pdf", has_docs = TRUE,
                                extract_text = "PDF metni") {
   env$get_claude_code_binary_doc_extensions <- function() c("pdf", "docx", "xls", "xlsx", "doc")
-  env$workdir_has_binary_documents <- function(dir, exts) isTRUE(has_docs)
+  env$workdir_has_binary_documents <- function(dir, exts, limits = NULL) isTRUE(has_docs)
   env$prompt_requests_existing_document_reading <- function(prompt) isTRUE(reading)
   env$prompt_requests_binary_document_creation <- function(prompt) isTRUE(creation)
-  env$list_claude_code_binary_documents <- function(dir, extensions = NULL) as.list(docs)
-  env$get_claude_code_document_support_dir <- function(user_id = NULL) support_dir
+  env$list_claude_code_binary_documents <- function(dir, extensions = NULL, max_files = 200L, limits = NULL) as.character(docs)
+  env$get_claude_code_document_support_dir <- function(user_id = NULL,
+                                                      request_id = NULL,
+                                                      base_dir = NULL) support_dir
   env$get_claude_code_text_extractable_extensions <- function() c("pdf", "docx", "txt")
   env$sanitize_claude_doc_cache_name <- function(name) gsub("[^A-Za-z0-9_.-]", "_", name)
   env$extract_supported_document_text_for_claude <- function(path) extract_text
