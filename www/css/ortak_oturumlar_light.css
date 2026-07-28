@@ -2,6 +2,12 @@
  * Açıklama: Ortak oturum açık tema son katmanı. Büyük ortak_oturumlar.css
  * bakım bütçesini aşmadan açık tema yüzeylerini ayrı tutar.
  */
+
+/* Araç ayarlarının tek tek dikey dizilmesini engelle. */
+.ortak-calismalar-container .oo-arac-ayar-paneli .oo-arac-ayarlar {
+  flex-direction: row;
+}
+
 html[data-theme="light"] .oo-oturum-karti,
 html[data-theme="light"] .oo-oda-yerlesim {
   background: rgba(255, 255, 255, 0.78);
