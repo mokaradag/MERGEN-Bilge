@@ -120,13 +120,49 @@ test_that("R/ altında manifest ve seam allowlist dışında sahipsiz runtime do
 
   orphans <- setdiff(r_files, c(manifest_paths, allowlist))
 
+  # Sahipsiz dosyalar HER BİRİ AYRI SATIRDA raporlanır: tek satırlık uzun bir
+  # mesaj Windows konsolunda kırpılabilir ve dosya adının son karakterleri
+  # kaybolarak yanlış teşhise yol açar. Ayrıca manifestte BEKLENEN ama diskte
+  # olmayan benzer adlı bir dosya varsa (kısmi kopyalamada tek karakter eksik
+  # kalmış bir ad gibi) bu ilişki açıkça belirtilir.
+  orphan_report <- ""
+  if (length(orphans)) {
+    orphan_report <- paste0(
+      "\n",
+      paste(vapply(orphans, function(yol) {
+        benzer <- tryCatch(
+          setdiff(
+            agrep(basename(yol), basename(manifest_paths), max.distance = 0.1,
+                  ignore.case = TRUE, value = TRUE),
+            basename(yol)
+          ),
+          error = function(e) character(0)
+        )
+
+        paste0(
+          "  - ", yol,
+          if (length(benzer)) {
+            paste0(
+              "\n    Manifestte benzer adli kayit var: ",
+              paste(benzer, collapse = ", "),
+              " -> calisma kopyasi git ile senkron degil olabilir."
+            )
+          } else {
+            ""
+          }
+        )
+      }, character(1), USE.NAMES = FALSE), collapse = "\n")
+    )
+  }
+
   expect_equal(
     orphans,
     character(0),
-    info = paste(
-      "Sahipsiz R/ dosyası bulundu. Dosyayı R/config_source_manifest.R bölümüne",
-      "ekleyin ya da ilgili seam'in extra_runtime_files listesine alın:",
-      paste(orphans, collapse = ", ")
+    info = paste0(
+      "Sahipsiz R/ dosyasi bulundu. Dosyayi R/config_source_manifest.R bolumune ",
+      "ekleyin, ilgili seam'in extra_runtime_files listesine alin ya da artik ",
+      "bir kopyaysa silin:",
+      orphan_report
     )
   )
 })

@@ -16,10 +16,48 @@
   )
 }
 
+# Eksik dosyanın ADINI ve aynı dizindeki benzer adlı dosyaları raporlar.
+# Kısmi/elle kopyalamada ad tek karakter eksik kalabilir; o zaman dosya hem
+# "eksik" hem de "sahipsiz" görünür ve gerçek neden gizli kalır.
+.cc_codex_missing_report <- function() {
+  eksikler <- .cc_codex_review_files()
+  eksikler <- eksikler[!file.exists(eksikler)]
+  if (!length(eksikler)) return("")
+
+  satirlar <- vapply(eksikler, function(yol) {
+    adaylar <- tryCatch(
+      list.files(dirname(yol), pattern = "\\.[rR]$"),
+      error = function(e) character(0)
+    )
+    benzer <- tryCatch(
+      setdiff(
+        agrep(basename(yol), adaylar, max.distance = 0.1,
+              ignore.case = TRUE, value = TRUE),
+        basename(yol)
+      ),
+      error = function(e) character(0)
+    )
+
+    paste0(
+      "  - EKSIK: ", yol,
+      if (length(benzer)) {
+        paste0("\n    Ayni dizinde benzer adli dosya: ", paste(benzer, collapse = ", "))
+      } else {
+        ""
+      }
+    )
+  }, character(1), USE.NAMES = FALSE)
+
+  paste(satirlar, collapse = "\n")
+}
+
 .cc_codex_skip_if_absent <- function() {
   testthat::skip_if_not(
     all(file.exists(.cc_codex_review_files())),
-    "Codex sertleştirme dosyaları bu çalışma kopyasında yok (opsiyonel manifest yolu)."
+    paste0(
+      "Codex sertlestirme dosyalari bu calisma kopyasinda yok:\n",
+      .cc_codex_missing_report()
+    )
   )
 }
 
@@ -66,6 +104,30 @@
   )
   env
 }
+
+test_that("Codex sertleştirme dosyaları çalışma kopyasında mevcuttur", {
+  # Bu dosyalar git'te İZLENİR. Manifestteki "opsiyonel" işareti yalnızca
+  # kısmi bir on-prem kopyada uygulamanın hiç açılmamasını engellemek içindir;
+  # dosyaların GERÇEKTEN eksik olması normal bir durum DEĞİLDİR: o çalışma
+  # kopyasında Codex sertleştirmelerinin tamamı sessizce devre dışıdır.
+  #
+  # Bu yüzden eksiklik 16 sessiz "skip" yerine TEK ve açık bir hata verir;
+  # mesaj eksik dosyanın adını ve aynı dizindeki benzer adlı dosyaları
+  # (ör. tek karakter eksik kopyalanmış bir ad) içerir.
+  eksik_raporu <- .cc_codex_missing_report()
+
+  expect_identical(
+    eksik_raporu,
+    "",
+    info = paste0(
+      "Codex sertlestirme dosyalari calisma kopyasinda bulunamadi. Bu dosyalar ",
+      "git'te izlenir; calisma kopyasi dal ile senkron degil.\n",
+      eksik_raporu,
+      "\nCozum: bu dalı yeniden cekin (git fetch + git reset --hard) ve ",
+      "R/ altindaki artik/yanlis adli kopyalari temizleyin."
+    )
+  )
+})
 
 test_that("Codex hardening files parse and loader references both layers", {
   repo_root <- resolve_repo_root_for_tests()

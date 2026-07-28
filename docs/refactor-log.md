@@ -91,9 +91,26 @@ yenileme, çevrimdışı/on-prem çalışma ve mevcut Türkçe kullanıcı metin
 değişmedi. Bakım ratchet'i gevşetilmedi: dizin listeleme yardımcısı 260 satır /
 19 fonksiyon bütçesinde tutulmak için küçük bir yardımcı dosyaya bölündü.
 
+### Eksik opsiyonel dosyanın sessiz kalmaması
+VM'de `R/helpers_claude_code_codex_runtime_fixes.R` bulunamıyordu; aynı dizinde
+tek karakter eksik adlı bir kopya (`..._runtime_fixe.R`) vardı. Bu, aynı anda
+hem "eksik dosya" (16 sessiz skip) hem "sahipsiz dosya" (seam hatası) üretiyor,
+gerçek neden ise tek satırlık uzun hata mesajı konsolda kırpıldığı için
+görünmüyordu. Uygulama bu durumda AÇILIYOR ama Codex sertleştirmelerinin tamamı
+sessizce devre dışı kalıyordu.
+
+Artık eksiklik üç yerde AÇIKÇA raporlanır: `source_manifest_present_paths()`
+süreç başına bir kez `[KAYNAK MANIFESTI] ... DEVRE DISI` mesajı yazar,
+`test-claude-code-codex-review-fixes.R` 16 sessiz skip yerine tek ve açık bir
+hata verir, seam registry/doctor artık dosyaları TEK TEK ayrı satırlarda
+listeler. Üçü de `agrep()` ile aynı dizindeki benzer adlı dosyayı adlandırır.
+
 ### Çalıştırılan doğrulama
 Linux/cloud oturumunda `testthat` ile ilgili tüm Bilge Yolaç, seam, manifest ve
-ratchet testleri ve `tests/scripts/parse_sanity_check.R` çalıştırıldı.
+ratchet testleri ve `tests/scripts/parse_sanity_check.R` çalıştırıldı. Eksik
+dosya senaryosu, dosya geçici olarak yeniden adlandırılarak birebir taklit
+edildi: üç tanı yolunun da doğru dosya adını ve benzer adlı kopyayı bildirdiği
+doğrulandı.
 Windows VM davranışı (junction, 8.3 kısa ad, `Sys.readlink` NA, gerçek UNC
 gecikmesi) yalnızca VM'de kanıtlanabilir; bu oturumda VM/SSO/DB/SQL Server
 doğrulaması YAPILMADI.

@@ -158,6 +158,35 @@ source_manifest_optional_groups <- function(envir = environment()) {
   gruplar
 }
 
+# Eksik opsiyonel dosya uyarısının süreç başına bir kez yazılmasını sağlar.
+.source_manifest_warned <- new.env(parent = emptyenv())
+
+# Beklenen bir dosya bulunamadığında AYNI dizindeki benzer adlı dosyaları
+# bulur. Kısmi/elle yapılan bir kopyalama sırasında ad tek karakter eksik
+# kalabilir (`..._fixe.R` yerine `..._fixes.R` gibi); bu durumda dosya
+# "eksik" görünür, sahipsiz bir dosya olarak da rapor edilir ve sorunun
+# gerçek nedeni gizli kalır.
+source_manifest_similar_files <- function(path, repo_root = getwd()) {
+  hedef <- basename(as.character(path %||% "")[1])
+  if (!nzchar(hedef)) return(character(0))
+
+  dizin <- dirname(file.path(repo_root, path))
+  if (!dir.exists(dizin)) return(character(0))
+
+  adaylar <- tryCatch(
+    list.files(dizin, pattern = "\\.[rR]$"),
+    error = function(e) character(0)
+  )
+  if (!length(adaylar)) return(character(0))
+
+  yakin <- tryCatch(
+    agrep(hedef, adaylar, max.distance = 0.1, ignore.case = TRUE, value = TRUE),
+    error = function(e) character(0)
+  )
+
+  setdiff(yakin, hedef)
+}
+
 # Manifest yollarını "yüklenecek" ve "eksik/eksik gruba ait opsiyonel" olarak
 # ayırır.
 source_manifest_present_paths <- function(paths, repo_root = getwd()) {
@@ -171,8 +200,38 @@ source_manifest_present_paths <- function(paths, repo_root = getwd()) {
   for (grup in source_manifest_optional_groups()) {
     grup <- enc2utf8(as.character(grup %||% character(0)))
     if (!length(grup)) next
-    if (!all(file.exists(file.path(repo_root, grup)))) {
-      eksik_grup_uyeleri <- c(eksik_grup_uyeleri, grup)
+    eksikler <- grup[!file.exists(file.path(repo_root, grup))]
+    if (!length(eksikler)) next
+
+    eksik_grup_uyeleri <- c(eksik_grup_uyeleri, grup)
+
+    # SESSİZ DEĞİL: opsiyonel grup düştüğünde uygulama açılır ama o katmanın
+    # sertleştirmeleri DEVRE DIŞI kalır. Operatör bunu fark edemezse çalışma
+    # kopyasının bozuk olduğunu hiç öğrenemez.
+    #
+    # Bu fonksiyon boot sırasında birden çok kez çağrılır (doğrulama + yükleme);
+    # uyarı süreç başına dosya başına BİR KEZ yazılır.
+    for (eksik in eksikler) {
+      if (!is.null(.source_manifest_warned[[eksik]])) next
+      .source_manifest_warned[[eksik]] <- TRUE
+
+      benzer <- source_manifest_similar_files(eksik, repo_root = repo_root)
+      message(sprintf(
+        paste0(
+          "[KAYNAK MANIFESTI] Opsiyonel dosya bulunamadi, ilgili katman ",
+          "DEVRE DISI: %s%s"
+        ),
+        eksik,
+        if (length(benzer)) {
+          paste0(
+            " | Ayni dizinde benzer adli dosya(lar) var: ",
+            paste(benzer, collapse = ", "),
+            " -> calisma kopyasi git ile senkron degil."
+          )
+        } else {
+          ""
+        }
+      ))
     }
   }
 
