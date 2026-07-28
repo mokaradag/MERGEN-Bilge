@@ -69,6 +69,10 @@
   env$get_claude_code_binary_doc_extensions <- function() {
     c("pdf", "xlsx", "xls", "docx", "doc", "pptx", "ppt")
   }
+  env$cc_runtime_limit <- function(name, default, limits = NULL) {
+    value <- if (is.list(limits)) limits[[name]] else NULL
+    if (is.null(value)) default else value
+  }
 
   captured <- c(
     "mirror_directory_to_local_workspace",
@@ -405,6 +409,7 @@ test_that("output promotion rolls back when cancellation arrives during staging"
 
   result <- env$cc_apply_output_sync_plan(list(
     source_workdir = source_root,
+    output_root = runtime,
     skipped_approved = list(),
     items = list(list(source_path = src, dest_path = dest, size = file.info(src)$size))
   ), active_guard = guard)
@@ -472,6 +477,41 @@ test_that("adı verilen ama bulunamayan doküman ilgisiz dokümanla değiştiril
   )
   expect_identical(eslesen$selection_mode, "prompt")
   expect_identical(basename(eslesen$files), "other.pdf")
+})
+
+test_that("adı verilen doküman aday kümesi boşken de reddedilir", {
+  env <- .cc_codex_review_env()
+  env$cc_extract_prompt_file_mentions <- function(prompt) "missing.pdf"
+
+  expect_error(
+    env$cc_select_documents_for_request("missing.pdf dosyasını oku", character(0)),
+    "missing.pdf",
+    fixed = TRUE
+  )
+})
+
+test_that("taramadan sonra büyüyen girdiler taze boyut sınırlarına takılır", {
+  env <- .cc_codex_review_env()
+  root <- withr::local_tempdir()
+  input <- file.path(root, "active.log")
+  writeBin(as.raw(rep(1L, 32L)), input)
+  env$cc_extract_prompt_file_mentions <- function(prompt) "active.log"
+  env$cc_scan_relative_paths <- function(files, root) basename(files)
+  env$.cc_prepare_mention_matches <- function(files, relatives, mentions) {
+    basename(files) %in% basename(mentions)
+  }
+  env$.cc_codex_original_cc_select_input_files <- function(...) list(
+    files = input, relatives = "active.log", selection_mode = "prompt",
+    skipped = character(0), required_skipped = character(0), truncated = FALSE
+  )
+
+  result <- env$cc_select_input_files(
+    "active.log dosyasını kullan", input, file_sizes = 1, root = root,
+    limits = list(max_input_file_bytes = 16, max_input_total_bytes = 16)
+  )
+
+  expect_length(result$files, 0L)
+  expect_true("active.log" %in% result$required_skipped)
 })
 
 test_that("eşleşen ve eksik doküman birlikte istendiğinde eksik olan reddedilir", {
@@ -602,6 +642,7 @@ test_that("var olan normal hedef Windows'ta da bağlantı sayılmaz", {
 
   sonuc <- env$cc_apply_output_sync_plan(list(
     source_workdir = kaynak,
+    output_root = runtime,
     skipped_approved = list(),
     items = list(list(
       source_path = cikti,
@@ -612,4 +653,29 @@ test_that("var olan normal hedef Windows'ta da bağlantı sayılmaz", {
 
   expect_true(isTRUE(sonuc[[1]]$success))
   expect_identical(readLines(hedef, warn = FALSE), "yeni")
+})
+
+test_that("planlamadan sonra bağlantıya dönüşen çıktı kaynağı reddedilir", {
+  skip_on_os("windows")
+  env <- .cc_codex_review_env()
+  kaynak <- withr::local_tempdir()
+  runtime <- withr::local_tempdir()
+  disari <- tempfile()
+  writeLines("gizli", disari, useBytes = TRUE)
+  cikti <- file.path(runtime, "rapor.txt")
+  expect_true(file.symlink(disari, cikti))
+
+  sonuc <- env$cc_apply_output_sync_plan(list(
+    source_workdir = kaynak,
+    output_root = runtime,
+    skipped_approved = list(),
+    items = list(list(
+      source_path = cikti,
+      dest_path = file.path(kaynak, "rapor.txt"),
+      size = file.info(cikti)$size
+    ))
+  ))
+
+  expect_false(isTRUE(sonuc[[1]]$success))
+  expect_false(file.exists(file.path(kaynak, "rapor.txt")))
 })

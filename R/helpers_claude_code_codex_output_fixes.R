@@ -115,6 +115,7 @@ cc_plan_output_sync <- function(changed_files, layout, source_workdir, limits = 
       list(source_path = path, size = NA_real_, reason = "unknown_output_size")
     }))
   }
+  plan$output_root <- as.character(layout$output %||% "")[1]
   plan
 }
 
@@ -153,6 +154,26 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     }
     if (!nzchar(src) || !file.exists(src) || dir.exists(src)) {
       fail("Çıktı kaynağı artık erişilemiyor")
+      next
+    }
+    output_root <- cc_output_sync_canonical_root(plan$output_root %||% "")
+    resolved_src <- tryCatch(
+      .cc_scan_norm(normalizePath(src, winslash = "/", mustWork = TRUE)),
+      error = function(e) ""
+    )
+    resolved_source_parent <- cc_output_sync_canonical_root(dirname(src))
+    expected_src <- if (nzchar(resolved_source_parent)) {
+      paste0(resolved_source_parent, "/", basename(.cc_scan_norm(src)))
+    } else {
+      .cc_scan_norm(src)
+    }
+    source_safe <- nzchar(output_root) && nzchar(resolved_src) &&
+      (identical(.cc_scan_key(resolved_src), .cc_scan_key(output_root)) ||
+         startsWith(.cc_scan_key(resolved_src), paste0(.cc_scan_key(output_root), "/"))) &&
+      identical(.cc_scan_key(resolved_src), .cc_scan_key(expected_src)) &&
+      !isTRUE(.cc_scan_is_link(src))
+    if (!isTRUE(source_safe)) {
+      fail("Çıktı kaynağı bağlantı/reparse-point veya onaylı output kökünün dışında")
       next
     }
     source_size <- suppressWarnings(as.numeric(file.info(src)$size[1]))

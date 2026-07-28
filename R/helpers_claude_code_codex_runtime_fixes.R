@@ -103,7 +103,21 @@ cc_select_input_files <- function(prompt,
       suppressWarnings(as.numeric(file.info(selected)$size)),
       error = function(e) rep(NA_real_, length(selected))
     )
-    bad <- !is.finite(selected_sizes)
+    max_file_bytes <- suppressWarnings(as.numeric(
+      cc_runtime_limit("max_input_file_bytes", 25 * 1024^2, limits)
+    )[1])
+    max_total_bytes <- suppressWarnings(as.numeric(
+      cc_runtime_limit("max_input_total_bytes", 100 * 1024^2, limits)
+    )[1])
+    running_total <- 0
+    bad <- !is.finite(selected_sizes) | selected_sizes > max_file_bytes
+    for (i in seq_along(selected_sizes)) {
+      if (!bad[i] && running_total + selected_sizes[i] <= max_total_bytes) {
+        running_total <- running_total + selected_sizes[i]
+      } else {
+        bad[i] <- TRUE
+      }
+    }
     if (any(bad)) {
       bad_rel <- as.character(sonuc$relatives %||% basename(selected))[bad]
       sonuc$files <- selected[!bad]
@@ -163,6 +177,24 @@ mirror_directory_to_local_workspace <- function(source_dir,
   if (!isTRUE(sonuc$ok)) {
     unlink(staging, recursive = TRUE, force = TRUE)
     return(sonuc)
+  }
+
+  # The source may grow while it is copied. Validate the bytes that actually
+  # reached the private staging tree before that tree can replace active input.
+  staged_files <- as.character(sonuc$copy$copied %||% character(0))
+  staged_sizes <- suppressWarnings(as.numeric(file.info(staged_files)$size))
+  max_file_bytes <- suppressWarnings(as.numeric(
+    cc_runtime_limit("max_input_file_bytes", 25 * 1024^2, limits)
+  )[1])
+  max_total_bytes <- suppressWarnings(as.numeric(
+    cc_runtime_limit("max_input_total_bytes", 100 * 1024^2, limits)
+  )[1])
+  staging_invalid <- length(staged_sizes) != length(staged_files) ||
+    any(!is.finite(staged_sizes)) || any(staged_sizes > max_file_bytes) ||
+    sum(staged_sizes) > max_total_bytes
+  if (isTRUE(staging_invalid)) {
+    unlink(staging, recursive = TRUE, force = TRUE)
+    stop("Kopyalanan runtime girdileri güvenli dosya boyutu sınırlarını aşıyor.", call. = FALSE)
   }
 
   .cc_codex_guard_check(ownership_guard)
@@ -363,7 +395,24 @@ cc_select_documents_for_request <- function(prompt,
                                             explicit_files = character(0),
                                             limits = NULL) {
   documents <- unique(as.character(documents %||% character(0)))
-  if (!length(documents)) return(list(files = character(0), selection_mode = "none", skipped = character(0), truncated = FALSE))
+  requested <- unique(c(
+    basename(as.character(explicit_files %||% character(0))),
+    gsub("\\", "/", as.character(explicit_files %||% character(0)), fixed = TRUE),
+    cc_extract_prompt_file_mentions(prompt)
+  ))
+  requested <- requested[nzchar(requested)]
+  requested_documents <- requested[
+    tolower(tools::file_ext(requested)) %in% tolower(get_claude_code_binary_doc_extensions())
+  ]
+  if (!length(documents)) {
+    if (length(requested_documents)) {
+      stop(paste0(
+        "Açıkça istenen dokümanlar seçilen klasörde bulunamadı: ",
+        paste(unique(basename(requested_documents)), collapse = ", ")
+      ), call. = FALSE)
+    }
+    return(list(files = character(0), selection_mode = "none", skipped = character(0), truncated = FALSE))
+  }
 
   max_docs <- suppressWarnings(as.integer(cc_runtime_limit("max_documents", 10, limits))[1])
   if (is.na(max_docs) || max_docs < 1L) max_docs <- 1L
@@ -378,12 +427,6 @@ cc_select_documents_for_request <- function(prompt,
   normalized <- gsub("\\", "/", documents, fixed = TRUE)
   candidate_key <- .cc_codex_path_key(normalized)
   base_key <- .cc_codex_path_key(basename(normalized))
-  requested <- unique(c(
-    basename(as.character(explicit_files %||% character(0))),
-    gsub("\\", "/", as.character(explicit_files %||% character(0)), fixed = TRUE),
-    cc_extract_prompt_file_mentions(prompt)
-  ))
-  requested <- requested[nzchar(requested)]
   request_key <- .cc_codex_path_key(requested)
 
   selected_idx <- integer(0)
@@ -468,7 +511,24 @@ cc_select_documents_for_request <- function(prompt,
 }
 
 prepare_claude_code_document_context <- function(...) {
-  result <- .cc_codex_original_prepare_claude_code_document_context(...)
+  args <- list(...)
+  prompt <- as.character(args$prompt %||% "")[1]
+  explicit_files <- as.character(args$explicit_files %||% character(0))
+  requested <- unique(c(explicit_files, cc_extract_prompt_file_mentions(prompt)))
+  requested_documents <- requested[
+    tolower(tools::file_ext(requested)) %in% tolower(get_claude_code_binary_doc_extensions())
+  ]
+  if (length(requested_documents)) {
+    runtime <- as.character(args$runtime_workdir %||% "")[1]
+    source <- as.character(args$source_workdir %||% "")[1]
+    has_candidates <- any(vapply(c(runtime, source), function(path) {
+      nzchar(path) && dir.exists(path) && isTRUE(workdir_has_binary_documents(path))
+    }, logical(1)))
+    if (!has_candidates) {
+      cc_select_documents_for_request(prompt, character(0), explicit_files, args$limits)
+    }
+  }
+  result <- do.call(.cc_codex_original_prepare_claude_code_document_context, args)
   selection <- result$document_selection %||% list()
   if (!identical(selection$selection_mode %||% "auto", "auto") &&
       (isTRUE(selection$truncated) || length(selection$skipped %||% character(0)))) {
