@@ -143,6 +143,19 @@ test_that("henüz oluşturulmamış geçerli belirsiz log adı değiştirilmez",
   expect_identical(repair(missing_path), enc2utf8(missing_path))
 })
 
+test_that("güçlü kanıt yalnız gerçekten onarılan diziye bağlanır", {
+  repair <- load_prod_log_dir_repair()
+  root <- tempfile(pattern = "mergen-log-root-")
+  valid_standalone <- paste0(prod_log_u(0x00C5), "land")
+  ambiguous_pair <- prod_log_u(0x00C2, 0x00A9)
+  existing_path <- file.path(root, valid_standalone, ambiguous_pair, "logs")
+
+  expect_true(dir.create(existing_path, recursive = TRUE))
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  expect_identical(repair(existing_path), enc2utf8(existing_path))
+})
+
 test_that("önceden oluşmuş bozuk log dizini güçlü kanıtla onarılır", {
   repair <- load_prod_log_dir_repair()
   root <- tempfile(pattern = "mergen-log-root-")
@@ -248,6 +261,16 @@ test_that("log bootstrap güçlü ve belirsiz kanıtı ayrı değerlendirir", {
   expect_match(code, "original_exists <- dir.exists(path)", fixed = TRUE)
   expect_match(code, "repaired_exists <- dir.exists(repaired)", fixed = TRUE)
   expect_match(code, "strong_evidence <- mergen_log_path_has_strong_mojibake", fixed = TRUE)
-  expect_match(code, "c(0x00C3L, 0x00C4L, 0x00C5L)", fixed = TRUE)
+  expect_match(code, ".mergen_log_path_pass_has_strong_mojibake", fixed = TRUE)
+  expect_match(
+    code,
+    "original_codepoints[[1]] %in% c(0x00C3L, 0x00C4L, 0x00C5L)",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "any(codepoints %in% c(0x00C3L, 0x00C4L, 0x00C5L))",
+    code,
+    fixed = TRUE
+  ))
   expect_match(code, "!isTRUE(original_exists) && isTRUE(repaired_exists)", fixed = TRUE)
 })
