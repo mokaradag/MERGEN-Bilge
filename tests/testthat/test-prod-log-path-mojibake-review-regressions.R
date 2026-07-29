@@ -20,6 +20,7 @@ codex_log_review_read_utf8 <- function(path) {
   )[[1]]
 
   testthat::expect_false(is.na(text))
+  text <- gsub("\r\n?|\r", "\n", text, perl = TRUE)
   Encoding(text) <- "UTF-8"
   text
 }
