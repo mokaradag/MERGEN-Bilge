@@ -12,6 +12,32 @@
   align-items: center;
 }
 
+/* Yeni oturum modalını daralt; seçenekleri masaüstünde tek satırda tut. */
+#shiny-modal .modal-dialog:has(.oo-yeni-oturum-modal) {
+  width: calc(100% - 24px) !important;
+  max-width: 504px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#shiny-modal .oo-yeni-oturum-modal .form-group,
+#shiny-modal .oo-yeni-oturum-modal .shiny-input-container {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+#shiny-modal .oo-yeni-oturum-modal .shiny-options-group {
+  grid-template-columns: 1fr;
+}
+
+#shiny-modal .oo-yeni-oturum-modal .radio label {
+  min-height: 44px;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 0.83em;
+  white-space: nowrap;
+}
+
 html[data-theme="light"] .oo-oturum-karti,
 html[data-theme="light"] .oo-oda-yerlesim {
   background: rgba(255, 255, 255, 0.78);
@@ -37,4 +63,124 @@ html[data-theme="light"] .oo-oda-btn-notr {
 html[data-theme="light"] .oo-oda-btn-notr:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);
+}
+
+/* Seçili sekmeler. */
+html[data-theme="light"] .oo-hub-filtreler .radio-inline:has(> input[type="radio"]:checked),
+html[data-theme="light"] .oo-davet-paneli .radio-inline:has(> input[type="radio"]:checked) {
+  background: #1d4ed8 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+
+/* Arşiv düğmeleri. */
+html[data-theme="light"] button.oo-btn-oturum-arsiv,
+html[data-theme="light"] .oo-oturum-karti .oo-btn-oturum-arsiv {
+  background: #e2e8f0 !important;
+  border: 1px solid #64748b !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.16) !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] button.oo-btn-oturum-arsiv span,
+html[data-theme="light"] button.oo-btn-oturum-arsiv i,
+html[data-theme="light"] button.oo-btn-oturum-arsiv i::before {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+html[data-theme="light"] button.oo-btn-oturum-arsiv svg,
+html[data-theme="light"] button.oo-btn-oturum-arsiv svg path {
+  color: #0f172a !important;
+  fill: currentColor !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+html[data-theme="light"] button.oo-btn-oturum-arsiv:hover,
+html[data-theme="light"] .oo-oturum-karti .oo-btn-oturum-arsiv:hover {
+  background: #cbd5e1 !important;
+  border-color: #334155 !important;
+  color: #020617 !important;
+  -webkit-text-fill-color: #020617;
+}
+
+/* shinyWidgets tetikleri action-button sınıfındadır. */
+html[data-theme="light"] .oo-secici .action-button,
+html[data-theme="light"] .oo-secici button.bttn,
+html[data-theme="light"] .oo-secici .btn {
+  background: transparent !important;
+  border: none !important;
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569;
+  opacity: 1 !important;
+  visibility: visible !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="light"] .oo-secici .action-button i,
+html[data-theme="light"] .oo-secici .action-button .fas,
+html[data-theme="light"] .oo-secici .action-button .fa-microchip,
+html[data-theme="light"] .oo-secici .action-button .fa-masks-theater,
+html[data-theme="light"] .oo-secici .action-button .fa-toolbox,
+html[data-theme="light"] .oo-secici button.bttn i,
+html[data-theme="light"] .oo-secici .btn i {
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569;
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: inline-block !important;
+  min-width: 14px;
+  filter: none !important;
+}
+
+html[data-theme="light"] .oo-secici .fa-microchip::before,
+html[data-theme="light"] .oo-secici .fa-masks-theater::before,
+html[data-theme="light"] .oo-secici .fa-toolbox::before {
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+html[data-theme="light"] .oo-secici .action-button svg,
+html[data-theme="light"] .oo-secici .action-button svg path,
+html[data-theme="light"] .oo-secici .action-button svg use,
+html[data-theme="light"] .oo-secici button.bttn svg,
+html[data-theme="light"] .oo-secici .btn svg {
+  color: #475569 !important;
+  fill: currentColor !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+html[data-theme="light"] .oo-secici .action-button:hover,
+html[data-theme="light"] .oo-secici .action-button:focus,
+html[data-theme="light"] .oo-secici button.bttn:hover,
+html[data-theme="light"] .oo-secici button.bttn:focus,
+html[data-theme="light"] .oo-secici .btn:hover,
+html[data-theme="light"] .oo-secici .btn:focus,
+html[data-theme="light"] .oo-secici .btn.active {
+  background: transparent !important;
+  border: none !important;
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155;
+  box-shadow: none !important;
+}
+
+/* Hakkında başlığı. */
+html[data-theme="light"] .destek-hakkinda-hero .destek-hakkinda-title {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+
+@media (max-width: 540px) {
+  #shiny-modal .oo-yeni-oturum-modal .radio label {
+    white-space: normal;
+  }
 }
