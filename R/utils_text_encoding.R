@@ -1,4 +1,4 @@
-# ==============================================================================
+# ============================================================================== 
 # Dosya Yolu: R/utils_text_encoding.R
 # Açıklama: Kullanıcıya görünen metinler, süreç çıktıları, JSON/DB sınırı ve
 #           loglama için ortak UTF-8 normalizasyon yardımcıları.
@@ -14,9 +14,8 @@
   stats::setNames(0x80:0x9F, as.character(special))
 })
 
-.text_encoding_probable_mojibake_lead_bytes <- c(
-  0xC2L, 0xC3L, 0xC4L, 0xC5L,
-  0xD0L, 0xD1L, 0xE2L, 0xF0L
+.text_encoding_latin_mojibake_leads <- c(
+  0x00C2L, 0x00C3L, 0x00C4L, 0x00C5L
 )
 
 unicode_to_win1252_byte <- function(codepoint) {
@@ -46,6 +45,28 @@ unicode_to_latin1_byte <- function(codepoint) {
   as.integer(codepoint)
 }
 
+.should_decode_mojibake_candidate <- function(original_codepoints, decoded) {
+  if (!length(original_codepoints) || is.na(decoded) || !nzchar(decoded)) {
+    return(FALSE)
+  }
+
+  decoded_codepoints <- tryCatch(
+    utf8ToInt(decoded),
+    error = function(e) integer(0)
+  )
+  if (length(decoded_codepoints) != 1L) {
+    return(FALSE)
+  }
+
+  original_lead <- as.integer(original_codepoints[[1]])
+  decoded_codepoint <- as.integer(decoded_codepoints[[1]])
+
+  strong_latin_evidence <- original_lead %in% .text_encoding_latin_mojibake_leads
+  non_latin_or_symbol_target <- decoded_codepoint > 0x02AFL
+
+  isTRUE(strong_latin_evidence || non_latin_or_symbol_target)
+}
+
 .decode_mojibake_sequences_once <- function(text, byte_mapper) {
   if (!is.character(text) || length(text) != 1L || is.na(text) || !nzchar(text)) {
     return(text)
@@ -67,10 +88,7 @@ unicode_to_latin1_byte <- function(codepoint) {
 
   while (index <= length(codepoints)) {
     lead <- bytes[[index]]
-    probable_lead <- lead %in% .text_encoding_probable_mojibake_lead_bytes
-    width <- if (!isTRUE(probable_lead)) {
-      0L
-    } else if (lead >= 0xC2L && lead <= 0xDFL) {
+    width <- if (lead >= 0xC2L && lead <= 0xDFL) {
       2L
     } else if (lead >= 0xE0L && lead <= 0xEFL) {
       3L
@@ -98,9 +116,17 @@ unicode_to_latin1_byte <- function(codepoint) {
           )[[1]],
           error = function(e) NA_character_
         )
-        original <- intToUtf8(codepoints[index:end_index])
+        original_codepoints <- codepoints[index:end_index]
+        original <- intToUtf8(original_codepoints)
+        should_decode <- .should_decode_mojibake_candidate(
+          original_codepoints,
+          decoded
+        )
 
-        if (!is.na(decoded) && nzchar(decoded) && !identical(decoded, original)) {
+        if (!is.na(decoded) &&
+            nzchar(decoded) &&
+            !identical(decoded, original) &&
+            isTRUE(should_decode)) {
           output_count <- output_count + 1L
           output[[output_count]] <- enc2utf8(decoded)
           changed <- TRUE
@@ -323,7 +349,7 @@ mark_text_tree_utf8 <- function(x) {
       if (is.character(x[[nm]])) {
         x[[nm]] <- mark_text_utf8(x[[nm]])
       } else if (is.factor(x[[nm]])) {
-        levels(x[[nm]]) <- mark_text_utf8(levels(x[[nm]])
+        levels(x[[nm]]) <- mark_text_utf8(levels(x[[nm]]))
       } else if (is.list(x[[nm]])) {
         x[[nm]] <- mark_text_tree_utf8(x[[nm]])
       }
