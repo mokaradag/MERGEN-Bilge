@@ -55,7 +55,8 @@ unicode_to_latin1_byte <- function(codepoint) {
   }
 
   bytes <- vapply(codepoints, byte_mapper, integer(1), USE.NAMES = FALSE)
-  output <- character(0)
+  output <- character(length(codepoints))
+  output_count <- 0L
   changed <- FALSE
   index <- 1L
 
@@ -92,7 +93,8 @@ unicode_to_latin1_byte <- function(codepoint) {
         original <- intToUtf8(codepoints[index:end_index])
 
         if (!is.na(decoded) && nzchar(decoded) && !identical(decoded, original)) {
-          output <- c(output, enc2utf8(decoded))
+          output_count <- output_count + 1L
+          output[[output_count]] <- enc2utf8(decoded)
           changed <- TRUE
           index <- end_index + 1L
           next
@@ -100,7 +102,8 @@ unicode_to_latin1_byte <- function(codepoint) {
       }
     }
 
-    output <- c(output, intToUtf8(codepoints[[index]]))
+    output_count <- output_count + 1L
+    output[[output_count]] <- intToUtf8(codepoints[[index]])
     index <- index + 1L
   }
 
@@ -108,7 +111,7 @@ unicode_to_latin1_byte <- function(codepoint) {
     return(text)
   }
 
-  enc2utf8(paste0(output, collapse = ""))
+  enc2utf8(paste0(output[seq_len(output_count)], collapse = ""))
 }
 
 decode_win1252_mojibake_once <- function(text) {
@@ -171,7 +174,7 @@ strip_ansi_sequences <- function(x) {
   # CSI renk/biçim dizilerini temizle: ESC [ ... final-byte
   out <- gsub("\033\\[[0-9;?]*[ -/]*[@-~]", "", out, perl = TRUE)
 
-  # OSC başlık/link dizilerini temizle: ESC ] ... BEL veya ESC \
+  # OSC başlık/link dizisini temizle: ESC ] ... BEL veya ESC \
   out <- gsub("\033\\][^\007]*(\007|\033\\\\)", "", out, perl = TRUE)
 
   out
