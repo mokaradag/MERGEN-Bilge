@@ -26,6 +26,9 @@ test_that("ortak oturum açık tema kontrastı ve modal yerleşimi korunur", {
 
   expect_true(grepl(".oo-secici .action-button", css, fixed = TRUE))
   expect_true(grepl(".oo-secici button.bttn", css, fixed = TRUE))
+  expect_true(grepl("background: transparent !important", css, fixed = TRUE))
+  expect_true(grepl("border: none !important", css, fixed = TRUE))
+  expect_true(grepl("box-shadow: none !important", css, fixed = TRUE))
   expect_true(grepl(".fa-microchip::before", css, fixed = TRUE))
   expect_true(grepl(".fa-masks-theater::before", css, fixed = TRUE))
   expect_true(grepl(".fa-toolbox::before", css, fixed = TRUE))
