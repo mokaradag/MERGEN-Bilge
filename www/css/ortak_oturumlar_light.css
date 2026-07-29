@@ -115,8 +115,8 @@ html[data-theme="light"] .oo-secici button.bttn,
 html[data-theme="light"] .oo-secici .btn {
   background: transparent !important;
   border: none !important;
-  color: #0f172a !important;
-  -webkit-text-fill-color: #0f172a;
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569;
   opacity: 1 !important;
   visibility: visible !important;
   box-shadow: none !important;
@@ -129,8 +129,8 @@ html[data-theme="light"] .oo-secici .action-button .fa-masks-theater,
 html[data-theme="light"] .oo-secici .action-button .fa-toolbox,
 html[data-theme="light"] .oo-secici button.bttn i,
 html[data-theme="light"] .oo-secici .btn i {
-  color: #0f172a !important;
-  -webkit-text-fill-color: #0f172a;
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569;
   opacity: 1 !important;
   visibility: visible !important;
   display: inline-block !important;
@@ -141,8 +141,8 @@ html[data-theme="light"] .oo-secici .btn i {
 html[data-theme="light"] .oo-secici .fa-microchip::before,
 html[data-theme="light"] .oo-secici .fa-masks-theater::before,
 html[data-theme="light"] .oo-secici .fa-toolbox::before {
-  color: #0f172a !important;
-  -webkit-text-fill-color: #0f172a;
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569;
   opacity: 1 !important;
   visibility: visible !important;
 }
@@ -152,7 +152,7 @@ html[data-theme="light"] .oo-secici .action-button svg path,
 html[data-theme="light"] .oo-secici .action-button svg use,
 html[data-theme="light"] .oo-secici button.bttn svg,
 html[data-theme="light"] .oo-secici .btn svg {
-  color: #0f172a !important;
+  color: #475569 !important;
   fill: currentColor !important;
   stroke: currentColor !important;
   opacity: 1 !important;
@@ -168,8 +168,8 @@ html[data-theme="light"] .oo-secici .btn:focus,
 html[data-theme="light"] .oo-secici .btn.active {
   background: transparent !important;
   border: none !important;
-  color: #020617 !important;
-  -webkit-text-fill-color: #020617;
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155;
   box-shadow: none !important;
 }
 
