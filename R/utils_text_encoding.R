@@ -33,7 +33,15 @@ unicode_to_win1252_byte <- function(codepoint) {
   -1L
 }
 
-decode_win1252_mojibake_once <- function(text) {
+unicode_to_latin1_byte <- function(codepoint) {
+  if (is.na(codepoint) || codepoint < 0L || codepoint > 0xFFL) {
+    return(-1L)
+  }
+
+  as.integer(codepoint)
+}
+
+.decode_mojibake_sequences_once <- function(text, byte_mapper) {
   if (!is.character(text) || length(text) != 1L || is.na(text) || !nzchar(text)) {
     return(text)
   }
@@ -42,27 +50,89 @@ decode_win1252_mojibake_once <- function(text) {
     utf8ToInt(text),
     error = function(e) integer(0)
   )
-
   if (!length(codepoints)) {
     return(text)
   }
 
-  bytes <- vapply(codepoints, unicode_to_win1252_byte, integer(1), USE.NAMES = FALSE)
+  bytes <- vapply(codepoints, byte_mapper, integer(1), USE.NAMES = FALSE)
+  output <- character(0)
+  changed <- FALSE
+  index <- 1L
 
-  if (any(bytes < 0L) || !any(bytes >= 0x80L)) {
+  while (index <= length(codepoints)) {
+    lead <- bytes[[index]]
+    width <- if (lead >= 0xC2L && lead <= 0xDFL) {
+      2L
+    } else if (lead >= 0xE0L && lead <= 0xEFL) {
+      3L
+    } else if (lead >= 0xF0L && lead <= 0xF4L) {
+      4L
+    } else {
+      0L
+    }
+
+    end_index <- index + width - 1L
+    if (width > 0L && end_index <= length(bytes)) {
+      candidate_bytes <- bytes[index:end_index]
+      continuations <- candidate_bytes[-1L]
+      valid_continuations <- all(
+        continuations >= 0x80L & continuations <= 0xBFL
+      )
+
+      if (isTRUE(valid_continuations)) {
+        decoded <- tryCatch(
+          iconv(
+            list(as.raw(candidate_bytes)),
+            from = "UTF-8",
+            to = "UTF-8",
+            sub = NA_character_
+          )[[1]],
+          error = function(e) NA_character_
+        )
+        original <- intToUtf8(codepoints[index:end_index])
+
+        if (!is.na(decoded) && nzchar(decoded) && !identical(decoded, original)) {
+          output <- c(output, enc2utf8(decoded))
+          changed <- TRUE
+          index <- end_index + 1L
+          next
+        }
+      }
+    }
+
+    output <- c(output, intToUtf8(codepoints[[index]]))
+    index <- index + 1L
+  }
+
+  if (!isTRUE(changed)) {
     return(text)
   }
 
-  decoded <- tryCatch(
-    iconv(list(as.raw(bytes)), from = "UTF-8", to = "UTF-8", sub = NA_character_)[[1]],
-    error = function(e) NA_character_
-  )
+  enc2utf8(paste0(output, collapse = ""))
+}
 
-  if (is.na(decoded) || !nzchar(decoded) || identical(decoded, text)) {
-    return(text)
+decode_win1252_mojibake_once <- function(text) {
+  .decode_mojibake_sequences_once(text, unicode_to_win1252_byte)
+}
+
+decode_latin1_mojibake_once <- function(text) {
+  .decode_mojibake_sequences_once(text, unicode_to_latin1_byte)
+}
+
+text_has_mojibake <- function(x) {
+  if (is.null(x) || !is.character(x) || !length(x)) {
+    return(rep(FALSE, length(x)))
   }
 
-  enc2utf8(decoded)
+  vapply(x, function(value) {
+    if (is.na(value) || !nzchar(value)) {
+      return(FALSE)
+    }
+
+    utf8_value <- tryCatch(enc2utf8(value), error = function(e) value)
+    !identical(decode_win1252_mojibake_once(utf8_value), utf8_value) ||
+      !identical(decode_latin1_mojibake_once(utf8_value), utf8_value)
+  }, logical(1), USE.NAMES = FALSE)
 }
 
 repair_text_mojibake <- function(x, max_passes = 2L) {
@@ -81,6 +151,7 @@ repair_text_mojibake <- function(x, max_passes = 2L) {
 
     for (i in seq_len(max_passes)) {
       next_value <- decode_win1252_mojibake_once(current)
+      next_value <- decode_latin1_mojibake_once(next_value)
       if (identical(next_value, current)) {
         break
       }
