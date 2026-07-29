@@ -1,3 +1,10 @@
+# ==============================================================================
+# Dosya Yolu: tests/testthat/test-prod-log-path-mojibake-contract.R
+# Açıklama: Üretim log yolu mojibake onarımı ve kaynak sırası sözleşme testleri.
+#
+#
+# ==============================================================================
+
 testthat::local_edition(3)
 
 load_prod_log_dir_repair <- function() {
@@ -5,49 +12,75 @@ load_prod_log_dir_repair <- function() {
     file.path(resolve_repo_root_for_tests(), "run_mergen_prod.R"),
     encoding = "UTF-8"
   )
-  is_repair <- vapply(expressions, function(expr) {
-    is.call(expr) &&
-      length(expr) >= 3L &&
-      identical(expr[[1]], as.name("<-")) &&
-      identical(expr[[2]], as.name("repair_mergen_log_dir"))
-  }, logical(1))
-
-  expect_equal(sum(is_repair), 1L)
+  function_names <- c(
+    "mergen_mojibake_variant",
+    "mergen_turkish_mojibake_map",
+    "repair_mergen_log_dir"
+  )
   env <- new.env(parent = baseenv())
-  eval(expressions[[which(is_repair)]], envir = env)
+
+  for (function_name in function_names) {
+    is_target <- vapply(expressions, function(expr) {
+      is.call(expr) &&
+        length(expr) >= 3L &&
+        identical(expr[[1]], as.name("<-")) &&
+        identical(expr[[2]], as.name(function_name))
+    }, logical(1))
+
+    expect_equal(sum(is_target), 1L)
+    eval(expressions[[which(is_target)]], envir = env)
+  }
+
   env$repair_mergen_log_dir
 }
 
-test_that("log yolu merkezi çok geçişli onarımla aynı hedefte düzeltilir", {
+prod_log_u <- function(...) {
+  intToUtf8(as.integer(c(...)))
+}
+
+prod_log_path <- function(segment) {
+  paste0("//server/", segment, "/MERGEN Bilge/logs")
+}
+
+test_that("log yolu tek ve çift geçişli bozulmada aynı hedefte düzeltilir", {
   repair <- load_prod_log_dir_repair()
   repo_root <- resolve_repo_root_for_tests()
+  expected <- prod_log_path(paste0("Geli", prod_log_u(0x015F), "tirme"))
+  single_pass <- prod_log_path(paste0("Geli", prod_log_u(0x00C5, 0x0178), "tirme"))
+  double_pass <- prod_log_path(paste0(
+    "Geli",
+    prod_log_u(0x00C3, 0x2026, 0x00C5, 0x00B8),
+    "tirme"
+  ))
 
-  expect_identical(
-    repair("//server/GeliÅŸtirme/MERGEN Bilge/logs", repo_root),
-    "//server/Geliştirme/MERGEN Bilge/logs"
-  )
-  expect_identical(
-    repair("//server/GeliÃ…Å¸tirme/MERGEN Bilge/logs", repo_root),
-    "//server/Geliştirme/MERGEN Bilge/logs"
-  )
+  expect_identical(repair(single_pass, repo_root), expected)
+  expect_identical(repair(double_pass, repo_root), expected)
+})
+
+test_that("karışık geçerli ve bozuk bileşenler birlikte güvenle onarılır", {
+  repair <- load_prod_log_dir_repair()
+  repo_root <- resolve_repo_root_for_tests()
+  valid_segment <- paste0("Do", prod_log_u(0x011F), "ru")
+  corrupt_segment <- paste0("Geli", prod_log_u(0x00C5, 0x009F), "tirme")
+  repaired_segment <- paste0("Geli", prod_log_u(0x015F), "tirme")
+  input <- paste0("//server/", valid_segment, "/", corrupt_segment, "/logs")
+  expected <- paste0("//server/", valid_segment, "/", repaired_segment, "/logs")
+
+  expect_identical(repair(input, repo_root), expected)
 })
 
 test_that("geçerli özel log yolları değiştirilmez", {
   repair <- load_prod_log_dir_repair()
   repo_root <- resolve_repo_root_for_tests()
+  valid_paths <- c(
+    paste0("//server/", prod_log_u(0x00C5), "rsrapporter/logs"),
+    paste0("//server/", prod_log_u(0x00C3), "rea/logs"),
+    prod_log_path(paste0("Geli", prod_log_u(0x015F), "tirme"))
+  )
 
-  expect_identical(
-    repair("//server/Årsrapporter/logs", repo_root),
-    "//server/Årsrapporter/logs"
-  )
-  expect_identical(
-    repair("//server/Ãrea/logs", repo_root),
-    "//server/Ãrea/logs"
-  )
-  expect_identical(
-    repair("//server/MERGEN Bilge/logs", repo_root),
-    "//server/MERGEN Bilge/logs"
-  )
+  for (path in valid_paths) {
+    expect_identical(repair(path, repo_root), path)
+  }
 })
 
 test_that("üretim başlatıcısı onarılmış hedefi app kaynaklanmadan önce uygular", {
@@ -60,6 +93,7 @@ test_that("üretim başlatıcısı onarılmış hedefi app kaynaklanmadan önce 
 
   expect_match(code, 'file.path(repo_root, "R", "utils_text_encoding.R")', fixed = TRUE)
   expect_match(code, "repair_text_mojibake(path, max_passes = 2L)", fixed = TRUE)
+  expect_match(code, "mergen_turkish_mojibake_map()", fixed = TRUE)
   expect_match(code, "Sys.setenv(MERGEN_LOG_DIR = repaired_log_dir)", fixed = TRUE)
   expect_false(grepl('file.path(repo_root, "logs")', code, fixed = TRUE))
 
