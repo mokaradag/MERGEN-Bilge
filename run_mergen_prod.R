@@ -127,6 +127,11 @@ repair_mergen_log_dir <- function(path, repo_root) {
     return(path)
   }
 
+  # Yapılandırılmış dizin gerçekten varsa sezgisel kodlama onarımıyla değiştirme.
+  if (dir.exists(path)) {
+    return(path)
+  }
+
   encoding_env <- new.env(parent = baseenv())
   source(
     file.path(repo_root, "R", "utils_text_encoding.R"),
