@@ -9,8 +9,8 @@ Bu sayfa, MERGEN Bilge dokümantasyonunda doğru belgeye hızlı gitmek için ha
 | İlk kez MERGEN Bilge'yi tanıyorum | [`../README.md`](../README.md) | [`release-notes.md`](release-notes.md), [`../ai_rehber.md`](../ai_rehber.md) |
 | İlk kez geliştirme yapacağım | [`architecture-map.md`](architecture-map.md) | [`database-schema.md`](database-schema.md), [`../CLAUDE.md`](../CLAUDE.md), [`technical-reference.md`](technical-reference.md) |
 | Kodlama ajanıyım | [`../CLAUDE.md`](../CLAUDE.md) | [`../AGENTS.md`](../AGENTS.md), [`architecture-map.md`](architecture-map.md) |
-| Üretim operatörüyüm | [`../RUNBOOK.md`](../RUNBOOK.md) | [`dependency-locking.md`](dependency-locking.md), [`../RENV_LOCK_STATUS.md`](../RENV_LOCK_STATUS.md) |
-| Windows VM sorunu debug ediyorum | [`../RUNBOOK.md`](../RUNBOOK.md) | [`architecture-map.md`](architecture-map.md), [`../CLAUDE.md`](../CLAUDE.md) |
+| Üretim operatörüyüm | [`../RUNBOOK.md`](../RUNBOOK.md) | [`production-log-paths.md`](production-log-paths.md), [`dependency-locking.md`](dependency-locking.md), [`../RENV_LOCK_STATUS.md`](../RENV_LOCK_STATUS.md) |
+| Windows VM sorunu debug ediyorum | [`../RUNBOOK.md`](../RUNBOOK.md) | [`production-log-paths.md`](production-log-paths.md), [`architecture-map.md`](architecture-map.md), [`../CLAUDE.md`](../CLAUDE.md) |
 | VM evidence gate / browser proof çalıştırıyorum | [`../RUNBOOK.md`](../RUNBOOK.md) | [`vm-evidence-status.md`](vm-evidence-status.md), [`technical-reference.md`](technical-reference.md), [`release-notes.md`](release-notes.md) |
 | Bağımlılık kilitlemeyi anlamak istiyorum | [`dependency-locking.md`](dependency-locking.md) | [`../RENV_LOCK_STATUS.md`](../RENV_LOCK_STATUS.md) |
 | Asistan davranışını anlamak istiyorum | [`../ai_rehber.md`](../ai_rehber.md) | [`release-notes.md`](release-notes.md) |
@@ -28,6 +28,7 @@ Bu sayfa, MERGEN Bilge dokümantasyonunda doğru belgeye hızlı gitmek için ha
 | [`feature-ownership-map.md`](feature-ownership-map.md) | Kritik özelliklerin (sohbet/streaming, dosya, DB/encoding, SSO, API anahtarı, görsel/vision, admin/sağlık, Bilge Yolaç, destek) birincil dosya/test/servis sahipliği ve sıradaki sertleştirme hedefleri. |
 | [`database-schema.md`](database-schema.md) | Uygulama kaynaklarına göre DB tablo yapısı, ilişkiler ve tablo akış diyagramı. |
 | [`../RUNBOOK.md`](../RUNBOOK.md) | Kanonik Windows VM/on-prem operasyon kılavuzu; `run_vm_evidence_gate.R`, mandatory browser UX smoke external-app workflow ve `artifacts/vm-evidence/<timestamp>/evidence.json` kanıt artifact'ları burada açıklanır. |
+| [`production-log-paths.md`](production-log-paths.md) | `MERGEN_LOG_DIR` için kanonik odak belge: merkezî/UNC hedefin korunması, tek/çift geçişli mojibake onarımı, geçerli Unicode adların korunması, çok-worker başlangıç sözleşmesi ve operatör doğrulaması. |
 | [`vm-evidence-status.md`](vm-evidence-status.md) | En son başarılı Windows VM evidence gate koşumu; 28 Temmuz 2026 tarihli 13/13 geçiş, artifact yolu, browser attach ayarı ve kanıt kapsamı. |
 | [`operational-soak-gate.md`](operational-soak-gate.md) | Operasyonel soak/yük kapısı (`run_operational_soak_gate.R`); fake/proxy/real-canary/**interactive** serit tasarımı, profiller, anahtar yönlendirme/izolasyon kanıtı, `artifacts/soak/<timestamp>/` artifact'ları ve 1.000 kullanıcı rollout planı. |
 | [`database-pooling.md`](database-pooling.md) | İşlem-güvenli, opt-in DB bağlantı havuzu (`R/helpers_db_pool.R`); `MERGEN_DB_POOL_*` yapılandırması, `with_db_transaction` sözleşmesi, encoding koruması ve Windows VM/SQL Server doğrulama adımları. |
@@ -42,6 +43,7 @@ Bu sayfa, MERGEN Bilge dokümantasyonunda doğru belgeye hızlı gitmek için ha
 ## Kısa Uyarılar
 
 - `CLAUDE.md` İngilizcedir ve bu durum bilinçlidir; kodlama ajanı/bakımcı davranışında otoritatif kaynak odur.
+- `MERGEN_LOG_DIR` merkezî/UNC hedefini yerel `logs` dizinine sessizce yönlendirmeyin. Güçlü mojibake yol içinde yerinde onarılır; ayrıntılı ve kanonik sözleşme [`production-log-paths.md`](production-log-paths.md) içindedir.
 - Üretim-kritik sınır sahipliği (seam kayıt defteri, `R/config_seam_registry.R`) ve frontend bölge sahipliği (`R/config_ui_asset_zones.R`) [`architecture-map.md`](architecture-map.md) içindeki yönetişim katmanı bölümünde haritalanır; yeni runtime R dosyası veya frontend varlığı eklerken oradaki disiplin kuralları geçerlidir (`bash tools/seam_doctor.sh` ile doğrulanabilir).
 - Windows VM, SSO, DB encoding, dosya lifecycle ve `renv.lock` davranışları README'den değil runbook ve sözleşme belgelerinden yönetilir.
 - Türkçe karakter bütünlüğü korunmalıdır; UTF-8 bozulmamalı, mojibake üretilmemelidir.
