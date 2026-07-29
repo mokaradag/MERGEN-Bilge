@@ -117,52 +117,38 @@ if (file.exists(renviron_path)) {
   )
 }
 
-mergen_log_dir_has_mojibake <- function(path) {
+repair_mergen_log_dir <- function(path, repo_root) {
   if (is.null(path) || !length(path)) {
-    return(FALSE)
+    return("")
   }
 
   path <- trimws(as.character(path[[1]]))
   if (is.na(path) || !nzchar(path)) {
-    return(FALSE)
+    return(path)
   }
 
-  mojibake_pairs <- c(
-    "\u00C3\u2021", "\u00C3\u0087", "\u00C3\u00A7",
-    "\u00C4\u017E", "\u00C4\u009E", "\u00C4\u0178", "\u00C4\u009F",
-    "\u00C4\u00B0", "\u00C4\u00B1",
-    "\u00C3\u2013", "\u00C3\u0096", "\u00C3\u00B6",
-    "\u00C5\u017E", "\u00C5\u009E", "\u00C5\u0178", "\u00C5\u009F",
-    "\u00C3\u0153", "\u00C3\u009C", "\u00C3\u00BC"
+  encoding_env <- new.env(parent = baseenv())
+  sys.source(
+    file.path(repo_root, "R", "utils_text_encoding.R"),
+    envir = encoding_env
   )
 
-  any(vapply(
-    mojibake_pairs,
-    function(pair) grepl(pair, path, fixed = TRUE),
-    logical(1)
-  ))
+  repaired <- encoding_env$repair_text_mojibake(path, max_passes = 2L)
+  residual <- encoding_env$repair_text_mojibake(repaired, max_passes = 1L)
+
+  if (!identical(residual, repaired)) {
+    stop("MERGEN_LOG_DIR iki geçişte onarılamadı.", call. = FALSE)
+  }
+
+  repaired
 }
 
 local({
-  configured_log_dir <- trimws(Sys.getenv("MERGEN_LOG_DIR", ""))
+  configured_log_dir <- Sys.getenv("MERGEN_LOG_DIR", "")
+  repaired_log_dir <- repair_mergen_log_dir(configured_log_dir, repo_root)
 
-  if (isTRUE(mergen_log_dir_has_mojibake(configured_log_dir))) {
-    local_log_dir <- file.path(repo_root, "logs")
-    if (!dir.exists(local_log_dir)) {
-      dir.create(local_log_dir, recursive = TRUE, showWarnings = FALSE)
-    }
-
-    if (.Platform$OS.type == "windows") {
-      short_log_dir <- tryCatch(
-        shortPathName(local_log_dir),
-        error = function(e) ""
-      )
-      if (nzchar(short_log_dir)) {
-        local_log_dir <- short_log_dir
-      }
-    }
-
-    Sys.setenv(MERGEN_LOG_DIR = local_log_dir)
+  if (!identical(repaired_log_dir, trimws(configured_log_dir))) {
+    Sys.setenv(MERGEN_LOG_DIR = repaired_log_dir)
   }
 })
 
