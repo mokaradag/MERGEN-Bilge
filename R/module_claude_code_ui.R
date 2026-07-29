@@ -263,18 +263,7 @@ $(function(){
                        `aria-live` = "polite",
                        "İpucu: Klasörünü seç; Bilge Yolaç dosyaları okur."),
                   span(class = "cc-cli-imlec", `aria-hidden` = "true")
-                ),
-                if (bilge_savunmasi_enabled()) {
-                  tags$button(
-                    type = "button",
-                    class = "cc-cli-oyun-satiri",
-                    `data-bs-ac` = "1",
-                    `aria-label` = "Bilge Savunması oyununu aç",
-                    span(class = "cc-cli-komut", `aria-hidden` = "true", "> "),
-                    span(class = "cc-cli-oyun-etiket", "[OYNA]"),
-                    "Bilge Savunması'nı Aç — beş uzmanla Bilgi Çekirdeği'ni savun"
-                  )
-                }
+                )
               ),
               # Piksel persona sahnesi (canvas JS tarafından buraya eklenir).
               div(id = ns("karsilama_sahne"), class = "cc-karsilama-sahne")
