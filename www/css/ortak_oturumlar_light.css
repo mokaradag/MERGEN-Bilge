@@ -113,13 +113,13 @@ html[data-theme="light"] .oo-oturum-karti .oo-btn-oturum-arsiv:hover {
 html[data-theme="light"] .oo-secici .action-button,
 html[data-theme="light"] .oo-secici button.bttn,
 html[data-theme="light"] .oo-secici .btn {
-  background: #e2e8f0 !important;
-  border: 1px solid #64748b !important;
+  background: transparent !important;
+  border: none !important;
   color: #0f172a !important;
   -webkit-text-fill-color: #0f172a;
   opacity: 1 !important;
   visibility: visible !important;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12) !important;
+  box-shadow: none !important;
 }
 
 html[data-theme="light"] .oo-secici .action-button i,
@@ -166,10 +166,11 @@ html[data-theme="light"] .oo-secici button.bttn:focus,
 html[data-theme="light"] .oo-secici .btn:hover,
 html[data-theme="light"] .oo-secici .btn:focus,
 html[data-theme="light"] .oo-secici .btn.active {
-  background: #cbd5e1 !important;
-  border-color: #334155 !important;
+  background: transparent !important;
+  border: none !important;
   color: #020617 !important;
   -webkit-text-fill-color: #020617;
+  box-shadow: none !important;
 }
 
 /* Hakkında başlığı. */
