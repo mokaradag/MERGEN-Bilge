@@ -53,17 +53,20 @@
 }
 
 #voice_btn,
-#send_stop_btn {
+#send_stop_btn,
+#scroll_to_bottom {
   padding: 0 !important;
 }
 
 #voice_btn > .action-label,
-#send_stop_btn > .action-label {
+#send_stop_btn > .action-label,
+#scroll_to_bottom > .action-label {
   display: none !important;
 }
 
 #voice_btn > .action-icon,
-#send_stop_btn > .action-icon {
+#send_stop_btn > .action-icon,
+#scroll_to_bottom > .action-icon {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -73,7 +76,8 @@
 }
 
 #voice_btn > .action-icon > i,
-#send_stop_btn > .action-icon > i {
+#send_stop_btn > .action-icon > i,
+#scroll_to_bottom > .action-icon > i {
   margin: 0 !important;
   line-height: 1 !important;
 }
