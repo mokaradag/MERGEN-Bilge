@@ -7,10 +7,36 @@
 
 testthat::local_edition(3)
 
+read_repo_utf8_bytes <- function(path) {
+  size <- suppressWarnings(file.info(path)$size[[1]])
+  expect_false(is.na(size))
+
+  con <- file(path, open = "rb")
+  on.exit(close(con), add = TRUE)
+  raw_content <- readBin(con, what = "raw", n = size)
+  text <- iconv(
+    list(raw_content),
+    from = "UTF-8",
+    to = "UTF-8",
+    sub = "byte"
+  )[[1]]
+
+  expect_false(is.na(text))
+  Encoding(text) <- "UTF-8"
+  text
+}
+
+read_prod_launcher_bytes <- function() {
+  read_repo_utf8_bytes(
+    file.path(resolve_repo_root_for_tests(), "run_mergen_prod.R")
+  )
+}
+
 load_prod_log_dir_repair <- function() {
   expressions <- parse(
-    file.path(resolve_repo_root_for_tests(), "run_mergen_prod.R"),
-    encoding = "UTF-8"
+    text = read_prod_launcher_bytes(),
+    encoding = "UTF-8",
+    keep.source = FALSE
   )
   is_repair <- vapply(expressions, function(expr) {
     is.call(expr) &&
@@ -86,18 +112,27 @@ test_that("geçerli özel log yolları değiştirilmez", {
   }
 })
 
-test_that("üretim başlatıcısı onarılmış hedefi app kaynaklanmadan önce uygular", {
-  script <- readLines(
-    file.path(resolve_repo_root_for_tests(), "run_mergen_prod.R"),
-    warn = FALSE,
-    encoding = "UTF-8"
+test_that("ortak mojibake çözücüsü büyüyen çıktıyı yeniden kopyalamaz", {
+  code <- read_repo_utf8_bytes(
+    file.path(resolve_repo_root_for_tests(), "R", "utils_text_encoding.R")
   )
-  code <- paste(script, collapse = "\n")
+
+  expect_match(code, "output <- character(length(codepoints))", fixed = TRUE)
+  expect_match(code, "output_count <- output_count + 1L", fixed = TRUE)
+  expect_false(grepl("output <- c(output", code, fixed = TRUE))
+})
+
+test_that("üretim başlatıcısı bayt güvenli taranır ve yardımcıyı UTF-8 yükler", {
+  code <- read_prod_launcher_bytes()
+  script <- strsplit(code, "\n", fixed = TRUE)[[1]]
+  script <- sub("\r$", "", script)
 
   expect_match(code, 'file.path(repo_root, "R", "utils_text_encoding.R")', fixed = TRUE)
+  expect_match(code, 'encoding = "UTF-8"', fixed = TRUE)
   expect_match(code, "repair_text_mojibake(path, max_passes = 2L)", fixed = TRUE)
   expect_match(code, "text_has_mojibake(repaired)", fixed = TRUE)
   expect_match(code, "Sys.setenv(MERGEN_LOG_DIR = repaired_log_dir)", fixed = TRUE)
+  expect_false(grepl("sys.source(", code, fixed = TRUE))
   expect_false(grepl("mergen_turkish_mojibake_map", code, fixed = TRUE))
   expect_false(grepl('file.path(repo_root, "logs")', code, fixed = TRUE))
 
