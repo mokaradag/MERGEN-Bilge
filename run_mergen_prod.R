@@ -128,9 +128,10 @@ repair_mergen_log_dir <- function(path, repo_root) {
   }
 
   encoding_env <- new.env(parent = baseenv())
-  sys.source(
+  source(
     file.path(repo_root, "R", "utils_text_encoding.R"),
-    envir = encoding_env
+    encoding = "UTF-8",
+    local = encoding_env
   )
 
   repaired <- encoding_env$repair_text_mojibake(path, max_passes = 2L)
