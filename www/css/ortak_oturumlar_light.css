@@ -72,8 +72,13 @@ html[data-theme="light"] .oo-davet-paneli .radio-inline:has(> input[type="radio"
 
 /* Model, persona ve araç seçici ikonlarını açık temada görünür tut. */
 html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn i {
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn i,
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn svg {
   color: #334155 !important;
+}
+
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn svg {
+  fill: currentColor;
 }
 
 html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:hover,
@@ -81,7 +86,10 @@ html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:focus,
 html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn.active,
 html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:hover i,
 html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:focus i,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn.active i {
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn.active i,
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:hover svg,
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:focus svg,
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn.active svg {
   color: #0f172a !important;
 }
 
