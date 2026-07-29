@@ -108,6 +108,18 @@ test_that("geçerli karma Unicode bayt çiftleri değiştirilmez", {
   expect_identical(repair(path, repo_root), path)
 })
 
+test_that("mevcut geçerli log dizini sezgisel onarımdan önce korunur", {
+  repair <- load_prod_log_dir_repair()
+  repo_root <- resolve_repo_root_for_tests()
+  valid_pair <- prod_log_u(0x00C2, 0x00A9)
+  existing_path <- tempfile(pattern = paste0("mergen-", valid_pair, "-"))
+
+  expect_true(dir.create(existing_path, recursive = TRUE))
+  on.exit(unlink(existing_path, recursive = TRUE, force = TRUE), add = TRUE)
+
+  expect_identical(repair(existing_path, repo_root), enc2utf8(existing_path))
+})
+
 test_that("geçerli özel log yolları değiştirilmez", {
   repair <- load_prod_log_dir_repair()
   repo_root <- resolve_repo_root_for_tests()
@@ -120,6 +132,14 @@ test_that("geçerli özel log yolları değiştirilmez", {
   for (path in valid_paths) {
     expect_identical(repair(path, repo_root), path)
   }
+})
+
+test_that("ortak UTF-8 yardımcısı bayt güvenli ayrıştırılır", {
+  code <- read_repo_utf8_bytes(
+    file.path(resolve_repo_root_for_tests(), "R", "utils_text_encoding.R")
+  )
+
+  expect_silent(parse(text = code, encoding = "UTF-8", keep.source = FALSE))
 })
 
 test_that("ortak mojibake çözücüsü büyüyen çıktıyı yeniden kopyalamaz", {
@@ -139,6 +159,7 @@ test_that("üretim başlatıcısı bayt güvenli taranır ve yardımcıyı UTF-8
 
   expect_match(code, 'file.path(repo_root, "R", "utils_text_encoding.R")', fixed = TRUE)
   expect_match(code, 'encoding = "UTF-8"', fixed = TRUE)
+  expect_match(code, "dir.exists(path)", fixed = TRUE)
   expect_match(code, "repair_text_mojibake(path, max_passes = 2L)", fixed = TRUE)
   expect_match(code, "text_has_mojibake(repaired)", fixed = TRUE)
   expect_match(code, "Sys.setenv(MERGEN_LOG_DIR = repaired_log_dir)", fixed = TRUE)
@@ -146,6 +167,12 @@ test_that("üretim başlatıcısı bayt güvenli taranır ve yardımcıyı UTF-8
   expect_false(grepl("mergen_turkish_mojibake_map", code, fixed = TRUE))
   expect_false(grepl('file.path(repo_root, "logs")', code, fixed = TRUE))
 
+  existing_path_line <- grep("dir.exists(path)", script, fixed = TRUE)
+  heuristic_repair_line <- grep(
+    "repair_text_mojibake(path, max_passes = 2L)",
+    script,
+    fixed = TRUE
+  )
   repair_line <- grep(
     "Sys.setenv(MERGEN_LOG_DIR = repaired_log_dir)",
     script,
@@ -153,6 +180,9 @@ test_that("üretim başlatıcısı bayt güvenli taranır ve yardımcıyı UTF-8
   )
   app_source_line <- grep('source("app.R"', script, fixed = TRUE)
 
+  expect_length(existing_path_line, 1L)
+  expect_length(heuristic_repair_line, 1L)
+  expect_lt(existing_path_line, heuristic_repair_line)
   expect_length(repair_line, 1L)
   expect_length(app_source_line, 1L)
   expect_lt(repair_line, app_source_line)
