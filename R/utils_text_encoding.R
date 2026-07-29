@@ -14,6 +14,11 @@
   stats::setNames(0x80:0x9F, as.character(special))
 })
 
+.text_encoding_probable_mojibake_lead_bytes <- c(
+  0xC2L, 0xC3L, 0xC4L, 0xC5L,
+  0xD0L, 0xD1L, 0xE2L, 0xF0L
+)
+
 unicode_to_win1252_byte <- function(codepoint) {
   if (is.na(codepoint)) return(-1L)
   if (codepoint < 0x80L) return(as.integer(codepoint))
@@ -62,7 +67,10 @@ unicode_to_latin1_byte <- function(codepoint) {
 
   while (index <= length(codepoints)) {
     lead <- bytes[[index]]
-    width <- if (lead >= 0xC2L && lead <= 0xDFL) {
+    probable_lead <- lead %in% .text_encoding_probable_mojibake_lead_bytes
+    width <- if (!isTRUE(probable_lead)) {
+      0L
+    } else if (lead >= 0xC2L && lead <= 0xDFL) {
       2L
     } else if (lead >= 0xE0L && lead <= 0xEFL) {
       3L
@@ -315,7 +323,7 @@ mark_text_tree_utf8 <- function(x) {
       if (is.character(x[[nm]])) {
         x[[nm]] <- mark_text_utf8(x[[nm]])
       } else if (is.factor(x[[nm]])) {
-        levels(x[[nm]]) <- mark_text_utf8(levels(x[[nm]]))
+        levels(x[[nm]]) <- mark_text_utf8(levels(x[[nm]])
       } else if (is.list(x[[nm]])) {
         x[[nm]] <- mark_text_tree_utf8(x[[nm]])
       }
