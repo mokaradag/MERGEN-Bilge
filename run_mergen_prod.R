@@ -1,4 +1,4 @@
-# ============================================================================== 
+# ==============================================================================
 # Dosya Yolu: run_mergen_prod.R
 # Açıklama: MERGEN Bilge üretim başlatma betiği.
 #
@@ -9,7 +9,7 @@
 # - Üretimde app.R doğrudan seçilip Ctrl+Enter ile çalıştırılmamalıdır.
 # - Bu dosya repo kökünü bulur, .Renviron dosyasını yükler, app.R'ı güvenli
 #   biçimde source eder ve uygulamayı run_mergen_app() üzerinden başlatır.
-# ============================================================================== 
+# ==============================================================================
 
 # ------------------------------------------------------------------------------
 # 1. Script / repo kökünü güvenli tespit et
