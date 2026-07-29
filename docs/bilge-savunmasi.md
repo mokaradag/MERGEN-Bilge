@@ -83,12 +83,12 @@ seviyesine göre sınırlıdır (yüksek 220 / dengeli 120 / performans 40).
 
 `www/js/bilge_yolac_karsilama.js` + `www/css/bilge_yolac_welcome.css`:
 Çalışma Alanı karşılamasında CLI-esintili esprili terminal kutusu (daktilo
-ipucu satırı + `[OYNA] Bilge Savunması'nı Aç` retro düğmesi) ve
-zenginleştirilmiş `claude_code_pixel_chars.js` verisiyle çizilen 8-bit persona
-sahnesi vardır (yürüme/koşma/düşünme/selamlama/zıplama/uyuma; tıklayınca persona
-değişir). Sahne dekoratiftir: Shiny girdisi göndermez, ses çalmaz, yalnızca
-karşılama görünürken çalışır ve mesaj gelince/sekme değişince durur; azaltılmış
-hareket tercihinde tek karedir.
+ipucu satırı) ve zenginleştirilmiş `claude_code_pixel_chars.js` verisiyle
+çizilen 8-bit persona sahnesi vardır (yürüme/koşma/düşünme/selamlama/zıplama/
+uyuma; tıklayınca persona değişir). Sahne dekoratiftir: Shiny girdisi göndermez,
+ses çalmaz, yalnızca karşılama görünürken çalışır ve mesaj gelince/sekme
+değişince durur; azaltılmış hareket tercihinde tek karedir. Bilge Savunması
+yalnızca kendi sekmesinden açılır; karşılama ekranında oyun geçiş düğmesi yoktur.
 
 **Persona piksel sprite seti (paylaşımlı):** `claude_code_pixel_chars.js` beş
 kanonik personayı (emre/selin/deniz/can/ipek) BEŞER kareyle

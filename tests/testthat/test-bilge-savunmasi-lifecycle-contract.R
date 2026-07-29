@@ -205,11 +205,11 @@ test_that("retro karşılama sahnesi dekoratiftir ve oyun başlatmaz", {
   expect_false(.bs_lc_iceriyor(karsilama, "Shiny.setInputValue"))
   expect_false(.bs_lc_iceriyor(karsilama, "BilgeSavunmasi.sim"))
 
-  # Çalışma Alanı karşılaması retro iskeleti ve oyun geçiş satırını taşır.
+  # Çalışma Alanı karşılaması retro iskeleti taşır ve oyun geçiş satırı içermez.
   cc_ui <- .bs_lc_oku("R", "module_claude_code_ui.R")
   expect_true(.bs_lc_iceriyor(cc_ui, "cc-welcome-retro"))
   expect_true(.bs_lc_iceriyor(cc_ui, "karsilama_sahne"))
-  expect_true(.bs_lc_iceriyor(cc_ui, "data-bs-ac"))
+  expect_false(.bs_lc_iceriyor(cc_ui, "data-bs-ac"))
   expect_true(.bs_lc_iceriyor(cc_ui, "cli_ipucu"))
 })
 
