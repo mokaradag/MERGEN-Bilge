@@ -98,6 +98,16 @@ test_that("karışık Türkçe ve Latin mojibake bileşenleri merkezi yardımcı
   expect_identical(repair(input, repo_root), expected)
 })
 
+test_that("geçerli karma Unicode bayt çiftleri değiştirilmez", {
+  repair <- load_prod_log_dir_repair()
+  repo_root <- resolve_repo_root_for_tests()
+  valid_turkish <- paste0("Do", prod_log_u(0x011F), "ru")
+  valid_pair <- prod_log_u(0x00C9, 0x00A9)
+  path <- paste0("//server/", valid_turkish, "/", valid_pair, "/logs")
+
+  expect_identical(repair(path, repo_root), path)
+})
+
 test_that("geçerli özel log yolları değiştirilmez", {
   repair <- load_prod_log_dir_repair()
   repo_root <- resolve_repo_root_for_tests()
