@@ -58,11 +58,7 @@
           original_codepoints,
           decoded
         )
-        strong_candidate <- original_codepoints[[1]] %in% c(
-          0x00C3L,
-          0x00C4L,
-          0x00C5L
-        )
+        strong_candidate <- original_codepoints[[1]] %in% c(0x00C3L, 0x00C4L, 0x00C5L)
 
         if (!is.na(decoded) &&
             nzchar(decoded) &&
