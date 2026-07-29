@@ -12,6 +12,29 @@
   align-items: center;
 }
 
+/* Yeni oturum modalını içerikle eşleştir; seçenekleri tek satırlık kartlar yap. */
+#shiny-modal .modal-dialog:has(.oo-yeni-oturum-modal) {
+  width: calc(100% - 32px) !important;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#shiny-modal .oo-yeni-oturum-modal .form-group,
+#shiny-modal .oo-yeni-oturum-modal .shiny-input-container {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+#shiny-modal .oo-yeni-oturum-modal .shiny-options-group {
+  grid-template-columns: 1fr;
+}
+
+#shiny-modal .oo-yeni-oturum-modal .radio label {
+  min-height: 46px;
+  white-space: nowrap;
+}
+
 html[data-theme="light"] .oo-oturum-karti,
 html[data-theme="light"] .oo-oda-yerlesim {
   background: rgba(255, 255, 255, 0.78);
@@ -37,4 +60,33 @@ html[data-theme="light"] .oo-oda-btn-notr {
 html[data-theme="light"] .oo-oda-btn-notr:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);
+}
+
+/* Seçili sekmelerde açık tema metin kontrastını sabitle. */
+html[data-theme="light"] .oo-hub-filtreler .radio-inline:has(> input[type="radio"]:checked),
+html[data-theme="light"] .oo-davet-paneli .radio-inline:has(> input[type="radio"]:checked) {
+  background: #1d4ed8 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+
+/* Model, persona ve araç seçici ikonlarını açık temada görünür tut. */
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn,
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn i {
+  color: #334155 !important;
+}
+
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:hover,
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:focus,
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn.active,
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:hover i,
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:focus i,
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn.active i {
+  color: #0f172a !important;
+}
+
+@media (max-width: 640px) {
+  #shiny-modal .oo-yeni-oturum-modal .radio label {
+    white-space: normal;
+  }
 }
