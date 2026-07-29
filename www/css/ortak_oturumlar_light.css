@@ -12,10 +12,10 @@
   align-items: center;
 }
 
-/* Yeni oturum modalını içerikle eşleştir; seçenekleri tek satırlık kartlar yap. */
+/* Yeni oturum modalını daralt; seçenekleri masaüstünde tek satırda tut. */
 #shiny-modal .modal-dialog:has(.oo-yeni-oturum-modal) {
-  width: calc(100% - 32px) !important;
-  max-width: 720px;
+  width: calc(100% - 24px) !important;
+  max-width: 504px;
   margin-left: auto;
   margin-right: auto;
 }
@@ -31,7 +31,10 @@
 }
 
 #shiny-modal .oo-yeni-oturum-modal .radio label {
-  min-height: 46px;
+  min-height: 44px;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 0.83em;
   white-space: nowrap;
 }
 
@@ -62,7 +65,7 @@ html[data-theme="light"] .oo-oda-btn-notr:hover {
   color: var(--color-primary);
 }
 
-/* Seçili sekmelerde açık tema metin kontrastını sabitle. */
+/* Seçili sekmeler. */
 html[data-theme="light"] .oo-hub-filtreler .radio-inline:has(> input[type="radio"]:checked),
 html[data-theme="light"] .oo-davet-paneli .radio-inline:has(> input[type="radio"]:checked) {
   background: #1d4ed8 !important;
@@ -70,30 +73,60 @@ html[data-theme="light"] .oo-davet-paneli .radio-inline:has(> input[type="radio"
   -webkit-text-fill-color: #ffffff;
 }
 
-/* Model, persona ve araç seçici ikonlarını açık temada görünür tut. */
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn i,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn svg {
-  color: #334155 !important;
+/* Arşiv düğmeleri. */
+html[data-theme="light"] .ortak-calismalar-container .oo-btn-oturum-arsiv {
+  background: #ffffff !important;
+  border-color: #94a3b8 !important;
+  color: #1e293b !important;
 }
 
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn svg {
-  fill: currentColor;
+html[data-theme="light"] .ortak-calismalar-container .oo-btn-oturum-arsiv i,
+html[data-theme="light"] .ortak-calismalar-container .oo-btn-oturum-arsiv svg {
+  color: #1e293b !important;
+  fill: currentColor !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] .ortak-calismalar-container .oo-btn-oturum-arsiv:hover {
+  background: #eff6ff !important;
+  border-color: #2563eb !important;
+  color: #1d4ed8 !important;
+}
+
+/* Model, persona ve araç seçici tetikleri. */
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn {
+  background: #e2e8f0 !important;
+  border: 1px solid #94a3b8 !important;
+  color: #0f172a !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn i,
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn svg,
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn svg path,
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn svg use {
+  color: #0f172a !important;
+  fill: currentColor !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:hover,
 html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:focus,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn.active,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:hover i,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:focus i,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn.active i,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:hover svg,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:focus svg,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn.active svg {
-  color: #0f172a !important;
+html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn.active {
+  background: #cbd5e1 !important;
+  border-color: #64748b !important;
+  color: #020617 !important;
 }
 
-@media (max-width: 640px) {
+/* Hakkında başlığı. */
+html[data-theme="light"] .destek-hakkinda-hero .destek-hakkinda-title {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+
+@media (max-width: 540px) {
   #shiny-modal .oo-yeni-oturum-modal .radio label {
     white-space: normal;
   }
