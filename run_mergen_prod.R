@@ -1,4 +1,4 @@
-# ==============================================================================
+# ============================================================================== 
 # Dosya Yolu: run_mergen_prod.R
 # Açıklama: MERGEN Bilge üretim başlatma betiği.
 #
@@ -9,7 +9,7 @@
 # - Üretimde app.R doğrudan seçilip Ctrl+Enter ile çalıştırılmamalıdır.
 # - Bu dosya repo kökünü bulur, .Renviron dosyasını yükler, app.R'ı güvenli
 #   biçimde source eder ve uygulamayı run_mergen_app() üzerinden başlatır.
-# ==============================================================================
+# ============================================================================== 
 
 # ------------------------------------------------------------------------------
 # 1. Script / repo kökünü güvenli tespit et
@@ -116,6 +116,35 @@ if (file.exists(renviron_path)) {
     call. = FALSE
   )
 }
+
+local({
+  configured_log_dir <- trimws(Sys.getenv("MERGEN_LOG_DIR", ""))
+  mojibake_markers <- intToUtf8(c(0x00C3, 0x00C4, 0x00C5), multiple = TRUE)
+  has_mojibake_log_dir <- nzchar(configured_log_dir) && any(vapply(
+    mojibake_markers,
+    function(marker) grepl(marker, configured_log_dir, fixed = TRUE),
+    logical(1)
+  ))
+
+  if (isTRUE(has_mojibake_log_dir)) {
+    local_log_dir <- file.path(repo_root, "logs")
+    if (!dir.exists(local_log_dir)) {
+      dir.create(local_log_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+
+    if (.Platform$OS.type == "windows") {
+      short_log_dir <- tryCatch(
+        shortPathName(local_log_dir),
+        error = function(e) ""
+      )
+      if (nzchar(short_log_dir)) {
+        local_log_dir <- short_log_dir
+      }
+    }
+
+    Sys.setenv(MERGEN_LOG_DIR = local_log_dir)
+  }
+})
 
 # ------------------------------------------------------------------------------
 # 4. Port/host ayarlarını normalize et
