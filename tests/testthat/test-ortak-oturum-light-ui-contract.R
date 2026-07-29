@@ -20,5 +20,6 @@ test_that("ortak oturum açık tema kontrastı ve modal yerleşimi korunur", {
   expect_true(grepl("white-space: nowrap", css, fixed = TRUE))
 
   expect_true(grepl(".oo-secici .btn i", css, fixed = TRUE))
+  expect_true(grepl(".oo-secici .btn svg", css, fixed = TRUE))
   expect_true(grepl("color: #334155 !important", css, fixed = TRUE))
 })
