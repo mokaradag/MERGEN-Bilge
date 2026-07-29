@@ -2,8 +2,8 @@
 /* Bilge Yolaç retro (8-bit) karşılama sahnesi. Eski etkileşimli platformer
    mini OYUN kaldırıldı: bu ekran artık oyun değildir. CLI-esintili esprili
    terminal kutusu + dekoratif piksel persona sahnesi (bilge_yolac_karsilama.js)
-   içerir ve Bilge Savunması sayfasına geçiş satırı sunar. Açık tema kapsayıcı
-   arka planı theme_light_bilge_yolac.css tarafından yönetilir. */
+   içerir. Açık tema kapsayıcı arka planı theme_light_bilge_yolac.css tarafından
+   yönetilir. */
 
 .cc-welcome-screen {
   display: none;
@@ -100,38 +100,6 @@
   56%, 100% { opacity: 0; }
 }
 
-/* Bilge Savunması geçiş satırı: retro [OYNA] düğmesi. */
-.cc-cli-oyun-satiri {
-  display: block;
-  width: 100%;
-  margin-top: 10px;
-  padding: 8px 10px;
-  border: 1px dashed rgba(255, 209, 102, 0.6);
-  border-radius: 6px;
-  background: rgba(255, 209, 102, 0.06);
-  color: #d7e3f4;
-  font-family: inherit;
-  font-size: 12.5px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.cc-cli-oyun-satiri:hover,
-.cc-cli-oyun-satiri:focus-visible {
-  background: rgba(255, 209, 102, 0.14);
-  outline: none;
-  border-style: solid;
-}
-
-.cc-cli-oyun-satiri:focus-visible { box-shadow: 0 0 0 2px #ffd166; }
-
-.cc-cli-oyun-etiket {
-  color: #ffd166;
-  font-weight: 700;
-  margin-right: 8px;
-  letter-spacing: 1px;
-}
-
 /* Piksel persona sahnesi: alt şerit; canvas JS ile eklenir. */
 .cc-karsilama-sahne {
   width: 100%;
@@ -187,20 +155,8 @@ html[data-theme="light"] .cc-cli-ipucu {
   color: var(--color-text-soft, #1f2a44);
 }
 
-html[data-theme="light"] .cc-cli-yildiz,
-html[data-theme="light"] .cc-cli-oyun-etiket {
+html[data-theme="light"] .cc-cli-yildiz {
   color: #b45309;
-}
-
-html[data-theme="light"] .cc-cli-oyun-satiri {
-  background: rgba(0, 48, 135, 0.04);
-  border-color: rgba(0, 48, 135, 0.28);
-  color: var(--color-text, #0f1c33);
-}
-
-html[data-theme="light"] .cc-cli-oyun-satiri:hover,
-html[data-theme="light"] .cc-cli-oyun-satiri:focus-visible {
-  background: rgba(0, 48, 135, 0.08);
 }
 
 html[data-theme="light"] .cc-cli-imlec {
