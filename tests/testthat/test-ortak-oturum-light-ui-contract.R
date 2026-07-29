@@ -19,12 +19,16 @@ test_that("ortak oturum açık tema kontrastı ve modal yerleşimi korunur", {
   expect_true(grepl("grid-template-columns: 1fr", css, fixed = TRUE))
   expect_true(grepl("white-space: nowrap", css, fixed = TRUE))
 
-  expect_true(grepl(".oo-btn-oturum-arsiv", css, fixed = TRUE))
-  expect_true(grepl("border-color: #94a3b8 !important", css, fixed = TRUE))
-  expect_true(grepl("color: #1e293b !important", css, fixed = TRUE))
-
-  expect_true(grepl(".oo-secici .btn svg path", css, fixed = TRUE))
+  expect_true(grepl("button.oo-btn-oturum-arsiv", css, fixed = TRUE))
   expect_true(grepl("background: #e2e8f0 !important", css, fixed = TRUE))
+  expect_true(grepl("border: 1px solid #64748b !important", css, fixed = TRUE))
+  expect_true(grepl("-webkit-text-fill-color: #0f172a", css, fixed = TRUE))
+
+  expect_true(grepl(".oo-secici .action-button", css, fixed = TRUE))
+  expect_true(grepl(".oo-secici button.bttn", css, fixed = TRUE))
+  expect_true(grepl(".fa-microchip::before", css, fixed = TRUE))
+  expect_true(grepl(".fa-masks-theater::before", css, fixed = TRUE))
+  expect_true(grepl(".fa-toolbox::before", css, fixed = TRUE))
   expect_true(grepl("visibility: visible !important", css, fixed = TRUE))
 
   expect_true(grepl(".destek-hakkinda-hero .destek-hakkinda-title", css, fixed = TRUE))
