@@ -45,6 +45,7 @@ mergen_seam_registry <- function() {
         "global.R",
         "R/utils_safe_source.R",
         "R/bootstrap_source_manifest.R",
+        "R/bootstrap_log_path.R",
         "R/config_source_manifest.R"
       ),
       guard_tests = c(

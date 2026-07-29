@@ -117,6 +117,21 @@ if (file.exists(renviron_path)) {
   )
 }
 
+local({
+  encoding_env <- new.env(parent = baseenv())
+  source(
+    file.path(repo_root, "R", "utils_text_encoding.R"),
+    encoding = "UTF-8",
+    local = encoding_env
+  )
+  source(
+    file.path(repo_root, "R", "bootstrap_log_path.R"),
+    encoding = "UTF-8",
+    local = encoding_env
+  )
+  encoding_env$normalize_mergen_log_dir_env(max_passes = 2L)
+})
+
 # ------------------------------------------------------------------------------
 # 4. Port/host ayarlarını normalize et
 # ------------------------------------------------------------------------------

@@ -18,8 +18,8 @@
   invisible(TRUE)
 }
 
-.txtenc_u <- function(codepoint) {
-  intToUtf8(as.integer(codepoint))
+.txtenc_u <- function(...) {
+  intToUtf8(as.integer(c(...)))
 }
 
 testthat::test_that("unicode_to_win1252_byte ASCII/Latin1/özel eşlemeyi ve eşlenemezi doğru döndürür", {
@@ -39,6 +39,37 @@ testthat::test_that("repair_text_mojibake bilinen Türkçe mojibake örneklerini
   testthat::expect_identical(repair_text_mojibake("TÃ¼rkiye"), "Türkiye")
   testthat::expect_identical(repair_text_mojibake("baÅŸkent"), "başkent")
   testthat::expect_identical(repair_text_mojibake("yardÄ±mcÄ±"), "yardımcı")
+})
+
+testthat::test_that("repair_text_mojibake farklı yazı sistemlerindeki bozulmaları onarır", {
+  .txtenc_source_once()
+
+  japanese_mojibake <- .txtenc_u(
+    0x00E6, 0x2014, 0x00A5,
+    0x00E6, 0x0153, 0x00AC
+  )
+  arabic_mojibake <- .txtenc_u(0x00D8, 0x00A7)
+  greek_mojibake <- .txtenc_u(0x00CE, 0x00B1)
+
+  testthat::expect_identical(
+    repair_text_mojibake(japanese_mojibake),
+    .txtenc_u(0x65E5, 0x672C)
+  )
+  testthat::expect_identical(
+    repair_text_mojibake(arabic_mojibake),
+    .txtenc_u(0x0627)
+  )
+  testthat::expect_identical(
+    repair_text_mojibake(greek_mojibake),
+    .txtenc_u(0x03B1)
+  )
+})
+
+testthat::test_that("repair_text_mojibake geçerli Latin ve IPA bayt çiftini bozmaz", {
+  .txtenc_source_once()
+  valid_pair <- .txtenc_u(0x00C9, 0x00A9)
+
+  testthat::expect_identical(repair_text_mojibake(valid_pair), valid_pair)
 })
 
 testthat::test_that("repair_text_mojibake doğru Türkçe metni bozmaz (idempotent)", {

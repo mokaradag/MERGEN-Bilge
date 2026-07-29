@@ -9,6 +9,8 @@
 # çözüm devreye girer ve dosya farklı kodlamalarla okunup parse edilmeye çalışılır.
 required_boot_files <- c(
   "R/utils_safe_source.R",
+  "R/utils_text_encoding.R",
+  "R/bootstrap_log_path.R",
   "R/bootstrap_source_manifest.R",
   "R/config_source_manifest.R",
   "global.R",
@@ -38,6 +40,18 @@ boot_step <- function(step_name, expr) {
 
 boot_step("utils_safe_source", {
   source("R/utils_safe_source.R", encoding = "UTF-8", local = globalenv())
+})
+
+boot_step("utils_text_encoding", {
+  safe_source("R/utils_text_encoding.R", encoding = "UTF-8")
+})
+
+boot_step("bootstrap_log_path", {
+  safe_source("R/bootstrap_log_path.R", encoding = "UTF-8")
+})
+
+boot_step("MERGEN_LOG_DIR", {
+  normalize_mergen_log_dir_env(max_passes = 2L)
 })
 
 boot_step("bootstrap_source_manifest", {
@@ -101,11 +115,11 @@ validate_boot_state <- function(app_env = globalenv()) {
   # fonksiyondur; bu da geçerli bir Shiny UI sözleşmesidir.
   if (!is.function(ui_obj) &&
       !inherits(ui_obj, c("shiny.tag", "shiny.tag.list", "html"))) {
-	stop("Boot doğrulaması başarısız: ui nesnesi geçerli bir Shiny UI değil.", call. = FALSE)
+ 	stop("Boot doğrulaması başarısız: ui nesnesi geçerli bir Shiny UI değil.", call. = FALSE)
   }
 
   if (!exists("server", envir = app_env, mode = "function", inherits = FALSE)) {
-	stop("Boot doğrulaması başarısız: server fonksiyonu yüklenmedi.", call. = FALSE)
+ 	stop("Boot doğrulaması başarısız: server fonksiyonu yüklenmedi.", call. = FALSE)
   }
 
   invisible(TRUE)
