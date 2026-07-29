@@ -117,43 +117,19 @@ if (file.exists(renviron_path)) {
   )
 }
 
-repair_mergen_log_dir <- function(path, repo_root) {
-  if (is.null(path) || !length(path)) {
-    return("")
-  }
-
-  path <- enc2utf8(trimws(as.character(path[[1]])))
-  if (is.na(path) || !nzchar(path)) {
-    return(path)
-  }
-
-  # Yapılandırılmış dizin gerçekten varsa sezgisel kodlama onarımıyla değiştirme.
-  if (dir.exists(path)) {
-    return(path)
-  }
-
+local({
   encoding_env <- new.env(parent = baseenv())
   source(
     file.path(repo_root, "R", "utils_text_encoding.R"),
     encoding = "UTF-8",
     local = encoding_env
   )
-
-  repaired <- encoding_env$repair_text_mojibake(path, max_passes = 2L)
-  if (any(encoding_env$text_has_mojibake(repaired))) {
-    stop("MERGEN_LOG_DIR iki geçişte onarılamadı.", call. = FALSE)
-  }
-
-  repaired
-}
-
-local({
-  configured_log_dir <- Sys.getenv("MERGEN_LOG_DIR", "")
-  repaired_log_dir <- repair_mergen_log_dir(configured_log_dir, repo_root)
-
-  if (!identical(repaired_log_dir, trimws(configured_log_dir))) {
-    Sys.setenv(MERGEN_LOG_DIR = repaired_log_dir)
-  }
+  source(
+    file.path(repo_root, "R", "bootstrap_log_path.R"),
+    encoding = "UTF-8",
+    local = encoding_env
+  )
+  encoding_env$normalize_mergen_log_dir_env(max_passes = 2L)
 })
 
 # ------------------------------------------------------------------------------
