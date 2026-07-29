@@ -3,9 +3,9 @@
 # Açıklama: MERGEN_LOG_DIR için ortak, erken ve Windows/UNC güvenli onarım katmanı.
 # ==============================================================================
 
-.mergen_log_path_pass_has_strong_mojibake <- function(text, byte_mapper) {
+.mergen_decode_strong_mojibake_once <- function(text, byte_mapper) {
   if (!is.character(text) || length(text) != 1L || is.na(text) || !nzchar(text)) {
-    return(FALSE)
+    return(text)
   }
 
   codepoints <- tryCatch(
@@ -13,10 +13,13 @@
     error = function(e) integer(0)
   )
   if (!length(codepoints)) {
-    return(FALSE)
+    return(text)
   }
 
   bytes <- vapply(codepoints, byte_mapper, integer(1), USE.NAMES = FALSE)
+  output <- character(length(codepoints))
+  output_count <- 0L
+  changed <- FALSE
   index <- 1L
 
   while (index <= length(codepoints)) {
@@ -55,28 +58,66 @@
           original_codepoints,
           decoded
         )
+        strong_candidate <- original_codepoints[[1]] %in% c(
+          0x00C3L,
+          0x00C4L,
+          0x00C5L
+        )
 
         if (!is.na(decoded) &&
             nzchar(decoded) &&
             !identical(decoded, original) &&
-            isTRUE(should_decode)) {
-          # C3/C4/C5 yalnızca gerçekten çözülen adayın öncüsü olduğunda güçlü
-          # kanıttır. Yolun başka bir yerindeki geçerli Å/Ã/Ä karakteri, belirsiz
-          # bir C2 dizisini (örn. Â©) yanlışlıkla güçlü kanıta dönüştürmemelidir.
-          if (original_codepoints[[1]] %in% c(0x00C3L, 0x00C4L, 0x00C5L)) {
-            return(TRUE)
-          }
-
+            isTRUE(should_decode) &&
+            isTRUE(strong_candidate)) {
+          output_count <- output_count + 1L
+          output[[output_count]] <- enc2utf8(decoded)
+          changed <- TRUE
           index <- end_index + 1L
           next
         }
       }
     }
 
+    output_count <- output_count + 1L
+    output[[output_count]] <- intToUtf8(codepoints[[index]])
     index <- index + 1L
   }
 
-  FALSE
+  if (!isTRUE(changed)) {
+    return(text)
+  }
+
+  enc2utf8(paste0(output[seq_len(output_count)], collapse = ""))
+}
+
+.mergen_log_path_pass_has_strong_mojibake <- function(text, byte_mapper) {
+  !identical(
+    .mergen_decode_strong_mojibake_once(text, byte_mapper),
+    text
+  )
+}
+
+.mergen_repair_strong_mojibake <- function(path, max_passes = 2L) {
+  current <- path
+
+  for (i in seq_len(max_passes)) {
+    next_value <- .mergen_decode_strong_mojibake_once(
+      current,
+      unicode_to_win1252_byte
+    )
+    next_value <- .mergen_decode_strong_mojibake_once(
+      next_value,
+      unicode_to_latin1_byte
+    )
+
+    if (identical(next_value, current)) {
+      break
+    }
+
+    current <- next_value
+  }
+
+  enc2utf8(current)
 }
 
 mergen_log_path_has_strong_mojibake <- function(path,
@@ -102,12 +143,19 @@ mergen_log_path_has_strong_mojibake <- function(path,
     "unicode_to_latin1_byte",
     ".should_decode_mojibake_candidate"
   )
+  helper_env <- environment()
   missing_helpers <- required_helpers[!vapply(
     required_helpers,
-    exists,
+    function(helper_name) {
+      exists(
+        helper_name,
+        envir = helper_env,
+        mode = "function",
+        inherits = TRUE
+      )
+    },
     logical(1),
-    mode = "function",
-    inherits = TRUE
+    USE.NAMES = FALSE
   )]
   if (length(missing_helpers)) {
     stop(
@@ -197,10 +245,29 @@ repair_mergen_log_dir <- function(path, max_passes = 2L) {
     max_passes = max_passes
   )
 
-  # Güçlü kanıt varsa, önceki sürüm bozuk klasörü daha önce oluşturmuş olsa bile
-  # doğru hedefe geç. Belirsiz tek C2 dizilerinde ise yalnızca onarılmış hedef
-  # zaten mevcutsa yön değiştir; ilk çalıştırmada geçerli bir klasör adını bozma.
-  if (isTRUE(strong_evidence) || (!isTRUE(original_exists) && isTRUE(repaired_exists))) {
+  if (isTRUE(strong_evidence)) {
+    strong_repaired <- .mergen_repair_strong_mojibake(
+      path,
+      max_passes = max_passes
+    )
+
+    if (identical(strong_repaired, path) ||
+        mergen_log_path_has_strong_mojibake(
+          strong_repaired,
+          max_passes = max_passes
+        )) {
+      stop(
+        sprintf("MERGEN_LOG_DIR güçlü mojibake dizileri %d geçişte onarılamadı.", max_passes),
+        call. = FALSE
+      )
+    }
+
+    return(enc2utf8(strong_repaired))
+  }
+
+  # Belirsiz tek C2 dizilerinde (örn. Â©) yalnızca onarılmış hedef zaten mevcutsa
+  # yön değiştir; ilk çalıştırmada veya özgün hedef mevcutken geçerli adı koru.
+  if (!isTRUE(original_exists) && isTRUE(repaired_exists)) {
     return(enc2utf8(repaired))
   }
 
