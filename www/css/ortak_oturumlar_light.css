@@ -74,37 +74,84 @@ html[data-theme="light"] .oo-davet-paneli .radio-inline:has(> input[type="radio"
 }
 
 /* Arşiv düğmeleri. */
-html[data-theme="light"] .ortak-calismalar-container .oo-btn-oturum-arsiv {
-  background: #ffffff !important;
-  border-color: #94a3b8 !important;
-  color: #1e293b !important;
+html[data-theme="light"] button.oo-btn-oturum-arsiv,
+html[data-theme="light"] .oo-oturum-karti .oo-btn-oturum-arsiv {
+  background: #e2e8f0 !important;
+  border: 1px solid #64748b !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.16) !important;
+  opacity: 1 !important;
 }
 
-html[data-theme="light"] .ortak-calismalar-container .oo-btn-oturum-arsiv i,
-html[data-theme="light"] .ortak-calismalar-container .oo-btn-oturum-arsiv svg {
-  color: #1e293b !important;
+html[data-theme="light"] button.oo-btn-oturum-arsiv span,
+html[data-theme="light"] button.oo-btn-oturum-arsiv i,
+html[data-theme="light"] button.oo-btn-oturum-arsiv i::before {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+html[data-theme="light"] button.oo-btn-oturum-arsiv svg,
+html[data-theme="light"] button.oo-btn-oturum-arsiv svg path {
+  color: #0f172a !important;
   fill: currentColor !important;
   opacity: 1 !important;
+  visibility: visible !important;
 }
 
-html[data-theme="light"] .ortak-calismalar-container .oo-btn-oturum-arsiv:hover {
-  background: #eff6ff !important;
-  border-color: #2563eb !important;
-  color: #1d4ed8 !important;
+html[data-theme="light"] button.oo-btn-oturum-arsiv:hover,
+html[data-theme="light"] .oo-oturum-karti .oo-btn-oturum-arsiv:hover {
+  background: #cbd5e1 !important;
+  border-color: #334155 !important;
+  color: #020617 !important;
+  -webkit-text-fill-color: #020617;
 }
 
-/* Model, persona ve araç seçici tetikleri. */
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn {
+/* shinyWidgets tetikleri action-button sınıfındadır. */
+html[data-theme="light"] .oo-secici .action-button,
+html[data-theme="light"] .oo-secici button.bttn,
+html[data-theme="light"] .oo-secici .btn {
   background: #e2e8f0 !important;
-  border: 1px solid #94a3b8 !important;
+  border: 1px solid #64748b !important;
   color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a;
   opacity: 1 !important;
+  visibility: visible !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12) !important;
 }
 
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn i,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn svg,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn svg path,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn svg use {
+html[data-theme="light"] .oo-secici .action-button i,
+html[data-theme="light"] .oo-secici .action-button .fas,
+html[data-theme="light"] .oo-secici .action-button .fa-microchip,
+html[data-theme="light"] .oo-secici .action-button .fa-masks-theater,
+html[data-theme="light"] .oo-secici .action-button .fa-toolbox,
+html[data-theme="light"] .oo-secici button.bttn i,
+html[data-theme="light"] .oo-secici .btn i {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a;
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: inline-block !important;
+  min-width: 14px;
+  filter: none !important;
+}
+
+html[data-theme="light"] .oo-secici .fa-microchip::before,
+html[data-theme="light"] .oo-secici .fa-masks-theater::before,
+html[data-theme="light"] .oo-secici .fa-toolbox::before {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+html[data-theme="light"] .oo-secici .action-button svg,
+html[data-theme="light"] .oo-secici .action-button svg path,
+html[data-theme="light"] .oo-secici .action-button svg use,
+html[data-theme="light"] .oo-secici button.bttn svg,
+html[data-theme="light"] .oo-secici .btn svg {
   color: #0f172a !important;
   fill: currentColor !important;
   stroke: currentColor !important;
@@ -112,12 +159,17 @@ html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn svg use {
   visibility: visible !important;
 }
 
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:hover,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn:focus,
-html[data-theme="light"] .ortak-calismalar-container .oo-secici .btn.active {
+html[data-theme="light"] .oo-secici .action-button:hover,
+html[data-theme="light"] .oo-secici .action-button:focus,
+html[data-theme="light"] .oo-secici button.bttn:hover,
+html[data-theme="light"] .oo-secici button.bttn:focus,
+html[data-theme="light"] .oo-secici .btn:hover,
+html[data-theme="light"] .oo-secici .btn:focus,
+html[data-theme="light"] .oo-secici .btn.active {
   background: #cbd5e1 !important;
-  border-color: #64748b !important;
+  border-color: #334155 !important;
   color: #020617 !important;
+  -webkit-text-fill-color: #020617;
 }
 
 /* Hakkında başlığı. */
