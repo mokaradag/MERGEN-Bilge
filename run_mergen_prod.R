@@ -117,12 +117,58 @@ if (file.exists(renviron_path)) {
   )
 }
 
+mergen_mojibake_variant <- function(value, source_encoding) {
+  tryCatch(
+    iconv(
+      list(charToRaw(enc2utf8(value))),
+      from = source_encoding,
+      to = "UTF-8",
+      sub = NA_character_
+    )[[1]],
+    error = function(e) NA_character_
+  )
+}
+
+mergen_turkish_mojibake_map <- function() {
+  encodings <- c("WINDOWS-1252", "latin1")
+  turkish_chars <- intToUtf8(
+    c(0x00C7, 0x00E7, 0x011E, 0x011F, 0x0130, 0x0131,
+      0x00D6, 0x00F6, 0x015E, 0x015F, 0x00DC, 0x00FC),
+    multiple = TRUE
+  )
+  replacements <- character(0)
+
+  for (correct in turkish_chars) {
+    level_one <- unique(vapply(
+      encodings,
+      function(enc) mergen_mojibake_variant(correct, enc),
+      character(1)
+    ))
+    level_one <- level_one[!is.na(level_one) & nzchar(level_one) & level_one != correct]
+    level_two <- unique(unlist(lapply(level_one, function(value) {
+      vapply(
+        encodings,
+        function(enc) mergen_mojibake_variant(value, enc),
+        character(1)
+      )
+    }), use.names = FALSE))
+
+    variants <- unique(c(level_two, level_one))
+    variants <- variants[!is.na(variants) & nzchar(variants) & variants != correct]
+    for (variant in variants) {
+      replacements[[variant]] <- correct
+    }
+  }
+
+  replacements[order(nchar(names(replacements), type = "chars"), decreasing = TRUE)]
+}
+
 repair_mergen_log_dir <- function(path, repo_root) {
   if (is.null(path) || !length(path)) {
     return("")
   }
 
-  path <- trimws(as.character(path[[1]]))
+  path <- enc2utf8(trimws(as.character(path[[1]])))
   if (is.na(path) || !nzchar(path)) {
     return(path)
   }
@@ -134,9 +180,24 @@ repair_mergen_log_dir <- function(path, repo_root) {
   )
 
   repaired <- encoding_env$repair_text_mojibake(path, max_passes = 2L)
-  residual <- encoding_env$repair_text_mojibake(repaired, max_passes = 1L)
+  replacements <- mergen_turkish_mojibake_map()
 
-  if (!identical(residual, repaired)) {
+  for (pass in seq_len(2L)) {
+    previous <- repaired
+    for (marker in names(replacements)) {
+      repaired <- gsub(marker, replacements[[marker]], repaired, fixed = TRUE)
+    }
+    if (identical(repaired, previous)) {
+      break
+    }
+  }
+
+  has_residual <- any(vapply(
+    names(replacements),
+    function(marker) grepl(marker, repaired, fixed = TRUE),
+    logical(1)
+  ))
+  if (isTRUE(has_residual)) {
     stop("MERGEN_LOG_DIR iki geçişte onarılamadı.", call. = FALSE)
   }
 
