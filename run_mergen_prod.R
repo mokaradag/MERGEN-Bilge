@@ -117,16 +117,36 @@ if (file.exists(renviron_path)) {
   )
 }
 
-local({
-  configured_log_dir <- trimws(Sys.getenv("MERGEN_LOG_DIR", ""))
-  mojibake_markers <- intToUtf8(c(0x00C3, 0x00C4, 0x00C5), multiple = TRUE)
-  has_mojibake_log_dir <- nzchar(configured_log_dir) && any(vapply(
-    mojibake_markers,
-    function(marker) grepl(marker, configured_log_dir, fixed = TRUE),
+mergen_log_dir_has_mojibake <- function(path) {
+  if (is.null(path) || !length(path)) {
+    return(FALSE)
+  }
+
+  path <- trimws(as.character(path[[1]]))
+  if (is.na(path) || !nzchar(path)) {
+    return(FALSE)
+  }
+
+  mojibake_pairs <- c(
+    "\u00C3\u2021", "\u00C3\u0087", "\u00C3\u00A7",
+    "\u00C4\u017E", "\u00C4\u009E", "\u00C4\u0178", "\u00C4\u009F",
+    "\u00C4\u00B0", "\u00C4\u00B1",
+    "\u00C3\u2013", "\u00C3\u0096", "\u00C3\u00B6",
+    "\u00C5\u017E", "\u00C5\u009E", "\u00C5\u0178", "\u00C5\u009F",
+    "\u00C3\u0153", "\u00C3\u009C", "\u00C3\u00BC"
+  )
+
+  any(vapply(
+    mojibake_pairs,
+    function(pair) grepl(pair, path, fixed = TRUE),
     logical(1)
   ))
+}
 
-  if (isTRUE(has_mojibake_log_dir)) {
+local({
+  configured_log_dir <- trimws(Sys.getenv("MERGEN_LOG_DIR", ""))
+
+  if (isTRUE(mergen_log_dir_has_mojibake(configured_log_dir))) {
     local_log_dir <- file.path(repo_root, "logs")
     if (!dir.exists(local_log_dir)) {
       dir.create(local_log_dir, recursive = TRUE, showWarnings = FALSE)
