@@ -8,6 +8,9 @@
 #           edilerek, kök MockShinySession mesaj yakalamasıyla):
 #           - model çözümleme önceliği: DESTEK_CHATBOT_MODEL -> AI_EXPERT_MODEL
 #             -> FILTER_MODEL,
+#           - rehberin büyük bağlamda eksiksiz gönderilmesi,
+#           - küçük bağlamda tüm rehber taranarak ilgili bölümlerin seçilmesi,
+#           - geçmiş, rehber ve yanıtın ortak bağlam bütçesine uyması,
 #           - boş mesaj guard'ı (LLM çağrısı yapılmaz),
 #           - başarılı yanıt render'ı,
 #           - HTTP hata durumunda Türkçe kibar hata mesajı,
@@ -115,6 +118,14 @@
   }, character(1)), collapse = " ")
 }
 
+# İstek mesajlarının bayt üst sınırı + ayrılan çıktı ve güvenlik payı.
+.yardim_istek_butcesi <- function(body) {
+  mesaj_bayti <- sum(vapply(body$messages, function(m) {
+    nchar(m$role, type = "bytes") + nchar(m$content, type = "bytes") + 64L
+  }, numeric(1)))
+  mesaj_bayti + body$max_tokens + 1024L
+}
+
 # ------------------------------------------------------------------------------
 # Model çözümleme önceliği
 # ------------------------------------------------------------------------------
@@ -145,13 +156,15 @@ testthat::test_that("chatbot ilk ikisi yoksa FILTER_MODEL'e düşer", {
   testthat::expect_identical(rec$model, "filtre-modeli")
 })
 
-testthat::test_that("chatbot ai_rehber.md belgesinin tamamını gönderir", {
+testthat::test_that("chatbot büyük bağlamda ai_rehber.md belgesinin tamamını gönderir", {
   env <- .source_destek_yardim_for_test()
   repo_root <- resolve_repo_root_for_tests()
   withr::local_dir(repo_root)
 
   rec <- .run_yardim_chat(env, c(
-    LOCAL_LLM_ENDPOINT = "http://x/v1", DESTEK_CHATBOT_MODEL = "m"
+    LOCAL_LLM_ENDPOINT = "http://x/v1",
+    DESTEK_CHATBOT_MODEL = "m",
+    DESTEK_CHATBOT_CONTEXT_TOKENS = "256000"
   ), message = "Ortak Çalışmalarım nasıl kullanılır?")
 
   rehber_yolu <- file.path(repo_root, "ai_rehber.md")
@@ -164,6 +177,25 @@ testthat::test_that("chatbot ai_rehber.md belgesinin tamamını gönderir", {
   testthat::expect_gt(nchar(rehber), 12000)
   testthat::expect_true(endsWith(bilgi_mesaji, rehber))
   testthat::expect_false(grepl("[Bilgi tabani kisaltildi]", bilgi_mesaji, fixed = TRUE))
+})
+
+testthat::test_that("chatbot küçük bağlamda ilgili rehber bölümünü bütçe içinde seçer", {
+  env <- .source_destek_yardim_for_test()
+  repo_root <- resolve_repo_root_for_tests()
+  withr::local_dir(repo_root)
+
+  rec <- .run_yardim_chat(env, c(
+    LOCAL_LLM_ENDPOINT = "http://x/v1",
+    DESTEK_CHATBOT_MODEL = "m",
+    DESTEK_CHATBOT_CONTEXT_TOKENS = "16384"
+  ), message = "Bilge Savunması oyununda kuleleri nasıl geliştiririm?")
+
+  bilgi_mesaji <- rec$body$messages[[2]]$content
+  rehber_boyutu <- file.info(file.path(repo_root, "ai_rehber.md"))$size
+
+  testthat::expect_true(grepl("## 23. Bilge Savunması Kullanım Rehberi", bilgi_mesaji, fixed = TRUE))
+  testthat::expect_lt(nchar(bilgi_mesaji, type = "bytes"), rehber_boyutu)
+  testthat::expect_lte(.yardim_istek_butcesi(rec$body), 16384)
 })
 
 # ------------------------------------------------------------------------------
