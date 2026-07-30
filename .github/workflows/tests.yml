@@ -142,5 +142,3 @@ jobs:
         run: |
           # Repo kökünden çalıştırılır; tests/testthat.R ana giriş noktasıdır.
           source("tests/testthat.R", encoding = "UTF-8")
-
-# PR 688 validation trigger
