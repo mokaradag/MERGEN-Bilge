@@ -272,24 +272,19 @@ destekYardimServer <- function(id, current_user_id = NULL) {
         env_api_key <- Sys.getenv("LOCAL_LLM_API_KEY", unset = "")
         api_key <- if (!is.null(user_api_key) && nzchar(user_api_key)) user_api_key else env_api_key
 
-        # Bilgi tabanını boyut sınırı ile kes (büyük sistem mesajı 500 hatasına yol açabilir)
         bilgi_icerigi <- destek_guvenli_utf8(bilgi_tabani)
-        if (nchar(bilgi_icerigi) > 12000) {
-          bilgi_icerigi <- substr(bilgi_icerigi, 1, 12000)
-          bilgi_icerigi <- paste0(bilgi_icerigi, "\n\n[Bilgi tabani kisaltildi]")
-        }
 
         # Sistem mesajı (kısa talimatlar - bilgi tabanı ayrı mesajda)
         sistem_mesaji <- paste0(
           "Sen MERGEN Bilge uygulamasinin Yardim Asistanisin. ",
-          "Gorevin YALNIZCA sana verilen bilgi tabanindaki icerigi kullanarak kullanicinin sorularini yanitlamaktir. ",
+          "Gorevin YALNIZCA sana eksiksiz verilen bilgi tabanindaki icerigi kullanarak kullanicinin sorularini yanitlamaktir. ",
           "Bilgi tabani disinda bir konuda soru sorulursa, kibar bir sekilde bu konuda bilginin olmadigini belirt ",
           "ve kullaniciyi E-posta Destek (destek@mergen.ai) veya Telefon Destek (+90 850 123 45 67) kanallarina yonlendir.\n\n",
           "KURALLAR:\n",
           "- Sadece bilgi tabanindaki icerigi kullanarak yanit ver.\n",
           "- Uydurma veya tahmine dayali bilgi verme.\n",
           "- Yanitlarini Turkce ver.\n",
-          "- Kisa ve oz yanitlar ver, gereksiz uzatma.\n",
+          "- Soruyu dogrudan ve yeterli ayrintiyla yanitla; gerekiyorsa adimlari sirala.\n",
           "- Gerektiginde Markdown bicimlendirme kullanabilirsin (kalin, italik, liste, kod blogu).\n",
           "- Emoji kullanma."
         )
