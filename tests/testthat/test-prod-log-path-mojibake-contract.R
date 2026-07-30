@@ -22,6 +22,7 @@ read_repo_utf8_bytes <- function(path) {
   )[[1]]
 
   expect_false(is.na(text))
+  text <- gsub("\r\n?|\r", "\n", text, perl = TRUE)
   Encoding(text) <- "UTF-8"
   text
 }
