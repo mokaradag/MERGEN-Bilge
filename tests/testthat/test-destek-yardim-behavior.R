@@ -53,6 +53,7 @@
   rec$msgs <- list()
   rec$model <- NA_character_
   rec$posted <- FALSE
+  rec$body <- NULL
 
   record_runjs <- function(code) {
     rec$msgs[[length(rec$msgs) + 1L]] <- list(
@@ -82,6 +83,7 @@
           POST = function(url, body, ...) {
             rec$posted <- TRUE
             rec$model <- body$model
+            rec$body <- body
             structure(list(), class = "response")
           },
 
@@ -141,6 +143,27 @@ testthat::test_that("chatbot ilk ikisi yoksa FILTER_MODEL'e düşer", {
     AI_EXPERT_MODEL = "", FILTER_MODEL = "filtre-modeli"
   ), message = "Soru")
   testthat::expect_identical(rec$model, "filtre-modeli")
+})
+
+testthat::test_that("chatbot ai_rehber.md belgesinin tamamını gönderir", {
+  env <- .source_destek_yardim_for_test()
+  repo_root <- resolve_repo_root_for_tests()
+  withr::local_dir(repo_root)
+
+  rec <- .run_yardim_chat(env, c(
+    LOCAL_LLM_ENDPOINT = "http://x/v1", DESTEK_CHATBOT_MODEL = "m"
+  ), message = "Ortak Çalışmalarım nasıl kullanılır?")
+
+  rehber_yolu <- file.path(repo_root, "ai_rehber.md")
+  rehber_boyutu <- file.info(rehber_yolu)$size
+  ham_rehber <- readBin(rehber_yolu, what = "raw", n = rehber_boyutu)
+  rehber <- iconv(list(ham_rehber), from = "UTF-8", to = "UTF-8", sub = "")[[1]]
+  rehber <- sub("^\ufeff", "", rehber, perl = TRUE)
+  bilgi_mesaji <- rec$body$messages[[2]]$content
+
+  testthat::expect_gt(nchar(rehber), 12000)
+  testthat::expect_true(endsWith(bilgi_mesaji, rehber))
+  testthat::expect_false(grepl("[Bilgi tabani kisaltildi]", bilgi_mesaji, fixed = TRUE))
 })
 
 # ------------------------------------------------------------------------------
