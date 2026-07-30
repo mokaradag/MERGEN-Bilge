@@ -383,8 +383,8 @@ Yardım Merkezi şu iki ana parçadan oluşur:
 - yardım chatbotu
 
 İletişim bilgileri:
-- E-posta: destek@mergen.ai
-- Telefon: +90 850 123 45 67
+- E-posta: REHIS Proje Yönetim Birimi
+- Telefon: 81875
 
 Yardım chatbotu, MERGEN Bilge ile ilgili soruları yanıtlamak için tasarlanmıştır. Uygulama dışı veya bu rehberin kapsamı dışındaki sorular için kullanıcı uygun destek kanalına yönlendirilmelidir.
 
