@@ -185,6 +185,145 @@ destekYardimServer <- function(id, current_user_id = NULL) {
       enc2utf8(x)
     }
 
+    # UTF-8 bayt sayısı, token sayısı için güvenli üst sınır olarak kullanılır.
+    destek_bayt_sayisi <- function(x) {
+      if (is.null(x) || length(x) == 0L) return(0L)
+      x <- as.character(x)
+      x[is.na(x)] <- ""
+      sum(nchar(x, type = "bytes"))
+    }
+
+    # Metni UTF-8 karakterlerini bölmeden verilen bayt sınırına indir.
+    destek_bayta_kirp <- function(x, en_fazla_bayt) {
+      x <- destek_guvenli_utf8(x)
+      en_fazla_bayt <- suppressWarnings(as.integer(en_fazla_bayt))
+      if (!nzchar(x) || is.na(en_fazla_bayt) || en_fazla_bayt <= 0L) return("")
+      if (destek_bayt_sayisi(x) <= en_fazla_bayt) return(x)
+
+      alt <- 0L
+      ust <- nchar(x, type = "chars")
+      while (alt < ust) {
+        orta <- as.integer(ceiling((alt + ust) / 2))
+        if (destek_bayt_sayisi(substr(x, 1L, orta)) <= en_fazla_bayt) {
+          alt <- orta
+        } else {
+          ust <- orta - 1L
+        }
+      }
+      substr(x, 1L, alt)
+    }
+
+    # İlk geçerli pozitif ortam değişkenini oku.
+    destek_env_tamsayi <- function(adlar, varsayilan) {
+      for (ad in adlar) {
+        deger <- trimws(Sys.getenv(ad, unset = ""))
+        sayi <- suppressWarnings(as.integer(deger))
+        if (nzchar(deger) && !is.na(sayi) && sayi > 0L) return(sayi)
+      }
+      as.integer(varsayilan)
+    }
+
+    # Basit yerel bölüm seçimi için arama sözcüklerini hazırla.
+    destek_arama_sozcukleri <- function(x) {
+      x <- enc2utf8(tolower(destek_guvenli_utf8(x)))
+      x <- gsub("[^[:alnum:]çğıöşü]+", " ", x, perl = TRUE)
+      kelimeler <- unlist(strsplit(x, "\\s+", perl = TRUE), use.names = FALSE)
+      kelimeler <- kelimeler[nchar(kelimeler) >= 3L]
+      kelimeler <- setdiff(kelimeler, c(
+        "acaba", "ama", "bir", "bunu", "burada", "icin", "için", "ile",
+        "mi", "mı", "mu", "mü", "nasıl", "nedir", "olan", "olarak", "ve"
+      ))
+      unique(kelimeler)
+    }
+
+    # Rehberi ikinci ve üçüncü düzey Markdown başlıklarından bölümlere ayır.
+    destek_rehber_bolumleri <- function(rehber) {
+      satirlar <- strsplit(rehber, "\n", fixed = TRUE)[[1]]
+      baslangiclar <- grep("^#{2,3}\\s+", satirlar, perl = TRUE)
+      if (length(baslangiclar) == 0L) return(list(rehber))
+      if (baslangiclar[[1]] > 1L) baslangiclar <- c(1L, baslangiclar)
+      bitisler <- c(baslangiclar[-1L] - 1L, length(satirlar))
+      Map(function(a, b) paste(satirlar[a:b], collapse = "\n"), baslangiclar, bitisler)
+    }
+
+    # Rehber bütçeye sığmıyorsa tamamını tarayıp soruyla en ilgili bölümleri seç.
+    destek_rehber_sec <- function(rehber, soru, bayt_butcesi) {
+      rehber <- destek_guvenli_utf8(rehber)
+      bayt_butcesi <- suppressWarnings(as.integer(bayt_butcesi))
+      if (!nzchar(rehber) || is.na(bayt_butcesi) || bayt_butcesi <= 0L) return("")
+      if (destek_bayt_sayisi(rehber) <= bayt_butcesi) return(rehber)
+
+      bolumler <- destek_rehber_bolumleri(rehber)
+      bolum_metinleri <- vapply(bolumler, identity, character(1))
+      sorgu_kelimeleri <- destek_arama_sozcukleri(soru)
+      puanlar <- vapply(seq_along(bolumler), function(i) {
+        bolum <- bolumler[[i]]
+        baslik <- strsplit(bolum, "\n", fixed = TRUE)[[1]][1]
+        ortak <- intersect(sorgu_kelimeleri, destek_arama_sozcukleri(bolum))
+        baslik_ortak <- intersect(sorgu_kelimeleri, destek_arama_sozcukleri(baslik))
+        4 * length(baslik_ortak) + length(ortak)
+      }, numeric(1))
+
+      temel_bolumler <- unique(c(
+        1L,
+        grep("^## 1\\. MERGEN Bilge Nedir\\?", bolum_metinleri, perl = TRUE),
+        grep("^### 2\\.2 Yardım Asistanı İçin", bolum_metinleri, perl = TRUE)
+      ))
+      siralama <- unique(c(order(puanlar, decreasing = TRUE), temel_bolumler, seq_along(bolumler)))
+      secilenler <- integer()
+      kalan <- bayt_butcesi
+      ayirici_bayt <- destek_bayt_sayisi("\n\n---\n\n")
+
+      for (i in siralama) {
+        bolum <- bolumler[[i]]
+        gereken <- destek_bayt_sayisi(bolum) + if (length(secilenler)) ayirici_bayt else 0L
+        if (gereken <= kalan) {
+          secilenler <- c(secilenler, i)
+          kalan <- kalan - gereken
+        }
+        if (kalan < 512L) break
+      }
+
+      if (length(secilenler) == 0L) {
+        return(destek_bayta_kirp(bolumler[[siralama[[1]]]], bayt_butcesi))
+      }
+      paste(bolumler[sort(unique(secilenler))], collapse = "\n\n---\n\n")
+    }
+
+    # Mesajların UTF-8 bayt toplamına JSON/rol yükü için küçük bir pay ekle.
+    destek_mesaj_baytlari <- function(mesajlar) {
+      if (!is.list(mesajlar) || length(mesajlar) == 0L) return(0L)
+      sum(vapply(mesajlar, function(m) {
+        destek_bayt_sayisi(m$role %||% "") +
+          destek_bayt_sayisi(m$content %||% "") + 64L
+      }, integer(1)))
+    }
+
+    # En yeni mesajları toplam bütçeyi aşmadan ve sıralarını koruyarak seç.
+    destek_gecmis_sec <- function(gecmis, bayt_butcesi) {
+      bayt_butcesi <- suppressWarnings(as.integer(bayt_butcesi))
+      if (!is.list(gecmis) || length(gecmis) == 0L ||
+          is.na(bayt_butcesi) || bayt_butcesi <= 0L) return(list())
+
+      secilenler <- list()
+      kalan <- bayt_butcesi
+      for (i in rev(seq_along(gecmis))) {
+        m <- gecmis[[i]]
+        gereken <- destek_mesaj_baytlari(list(m))
+        if (gereken <= kalan || length(secilenler) == 0L) {
+          if (gereken > kalan) {
+            rol_bayti <- destek_bayt_sayisi(m$role %||% "") + 64L
+            m$content <- destek_bayta_kirp(m$content %||% "", max(0L, kalan - rol_bayti))
+            gereken <- destek_mesaj_baytlari(list(m))
+          }
+          secilenler <- c(list(m), secilenler)
+          kalan <- max(0L, kalan - gereken)
+        }
+        if (kalan < 128L) break
+      }
+      secilenler
+    }
+
     # Bilgi tabanını farklı kodlamaları deneyerek oku
     destek_dosya_oku <- function(dosya_yolu) {
       if (!file.exists(dosya_yolu)) {
@@ -273,11 +412,22 @@ destekYardimServer <- function(id, current_user_id = NULL) {
         api_key <- if (!is.null(user_api_key) && nzchar(user_api_key)) user_api_key else env_api_key
 
         bilgi_icerigi <- destek_guvenli_utf8(bilgi_tabani)
+        max_yanit_token <- 4096L
+        context_token_limiti <- destek_env_tamsayi(
+          c(
+            "DESTEK_CHATBOT_CONTEXT_TOKENS",
+            "AI_EXPERT_CONTEXT_TOKENS",
+            "LOCAL_LLM_CONTEXT_TOKENS"
+          ),
+          varsayilan = 32768L
+        )
+        context_token_limiti <- max(context_token_limiti, max_yanit_token + 8192L)
+        girdi_butcesi <- context_token_limiti - max_yanit_token - 1024L
 
         # Sistem mesajı (kısa talimatlar - bilgi tabanı ayrı mesajda)
         sistem_mesaji <- paste0(
           "Sen MERGEN Bilge uygulamasinin Yardim Asistanisin. ",
-          "Gorevin YALNIZCA sana eksiksiz verilen bilgi tabanindaki icerigi kullanarak kullanicinin sorularini yanitlamaktir. ",
+          "Gorevin YALNIZCA bu soru icin rehberin tamami taranarak secilen bilgi tabani icerigini kullanarak kullanicinin sorularini yanitlamaktir. ",
           "Bilgi tabani disinda bir konuda soru sorulursa, kibar bir sekilde bu konuda bilginin olmadigini belirt ",
           "ve kullaniciyi E-posta Destek (REHIS Proje Yönetimi Birimi) veya Telefon Destek (81875) kanallarina yonlendir.\n\n",
           "KURALLAR:\n",
@@ -288,20 +438,36 @@ destekYardimServer <- function(id, current_user_id = NULL) {
           "- Gerektiginde Markdown bicimlendirme kullanabilirsin (kalin, italik, liste, kod blogu).\n",
           "- Emoji kullanma."
         )
+        bilgi_on_eki <- paste0(
+          "MERGEN Bilge kullanici rehberinin tamami bu soru icin tarandi. ",
+          "Asagida baglam butcesine sigan rehberin tamami veya soruyla en ilgili bolumleri yer aliyor. ",
+          "Yalnizca bu icerikte acikca bulunan bilgilere dayan:\n\n"
+        )
+        hazirlik_mesaji <- "Anladim, bilgi tabanini inceledim. MERGEN Bilge hakkindaki sorularinizi yanitlamaya hazirim."
+
+        # Geçmiş ve rehber aynı toplam bağlam bütçesini paylaşır.
+        sabit_mesajlar <- list(
+          list(role = "system", content = sistem_mesaji),
+          list(role = "assistant", content = hazirlik_mesaji)
+        )
+        asgari_rehber_butcesi <- min(8192L, max(2048L, as.integer(girdi_butcesi * 0.35)))
+        gecmis_butcesi <- min(
+          12000L,
+          max(1024L, girdi_butcesi - destek_mesaj_baytlari(sabit_mesajlar) -
+                destek_bayt_sayisi(bilgi_on_eki) - 64L - asgari_rehber_butcesi)
+        )
+        son_mesajlar <- destek_gecmis_sec(tail(gecmis, 10), gecmis_butcesi)
+        sabit_bayt <- destek_mesaj_baytlari(c(sabit_mesajlar, son_mesajlar)) +
+          destek_bayt_sayisi(bilgi_on_eki) + 64L
+        rehber_butcesi <- max(1024L, girdi_butcesi - sabit_bayt)
+        secili_bilgi <- destek_rehber_sec(bilgi_icerigi, kullanici_mesaji, rehber_butcesi)
 
         # Mesaj listesini oluştur - bilgi tabanı ayrı user mesajı olarak
         mesajlar <- list(
           list(role = "system", content = sistem_mesaji),
-          list(role = "user", content = paste0(
-            "Asagidaki bilgi tabanini referans olarak kullan. ",
-            "Bundan sonraki sorularimi bu bilgi tabanina dayanarak yanitla:\n\n",
-            bilgi_icerigi
-          )),
-          list(role = "assistant", content = "Anladim, bilgi tabanini inceledim. MERGEN Bilge hakkindaki sorularinizi yanitmaya hazirim.")
+          list(role = "user", content = paste0(bilgi_on_eki, secili_bilgi)),
+          list(role = "assistant", content = hazirlik_mesaji)
         )
-
-        # Son 10 mesajı ekle (bağlam penceresi)
-        son_mesajlar <- tail(gecmis, 10)
         for (m in son_mesajlar) {
           mesajlar[[length(mesajlar) + 1]] <- m
         }
@@ -316,7 +482,7 @@ destekYardimServer <- function(id, current_user_id = NULL) {
           messages = mesajlar,
           stream = FALSE,
           temperature = 0.3,
-          max_tokens = 4096
+          max_tokens = max_yanit_token
         )
 
         # API çağrısı (httr encode = "json" kullan - kanıtlanmış yöntem)
