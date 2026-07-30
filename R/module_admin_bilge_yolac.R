@@ -172,18 +172,38 @@ admin_bilge_yolac_outputs <- function(output, bilge_yolac_data_fn, turkish_dt_la
     data <- bilge_yolac_data_fn()$daily_trend
     if (!is.data.frame(data) || nrow(data) == 0) return(highcharter::highchart())
 
+    data <- data[order(as.Date(data$session_date)), , drop = FALSE]
+    data$tarih_label <- format(as.Date(data$session_date), "%d.%m")
+    data$tarih_metin <- format(as.Date(data$session_date), "%d.%m.%Y")
+    chart_data <- lapply(seq_len(nrow(data)), function(i) {
+      list(y = as.numeric(data$cnt[i]), tarih = data$tarih_metin[i])
+    })
+
     highcharter::highchart() %>%
       highcharter::hc_chart(type = "areaspline", backgroundColor = "transparent") %>%
       highcharter::hc_title(text = NULL) %>%
-      highcharter::hc_xAxis(categories = as.character(data$session_date),
-                            labels = list(style = list(color = "#999"))) %>%
-      highcharter::hc_yAxis(title = list(text = NULL),
-                            labels = list(style = list(color = "#999")),
-                            gridLineColor = "#333") %>%
-      highcharter::hc_add_series(name = "Oturum", data = as.numeric(data$cnt),
-                                 color = "#7C4DFF") %>%
-      highcharter::hc_tooltip(backgroundColor = "#1a1a1a", borderColor = "#333",
-                              style = list(color = "#fff")) %>%
+      highcharter::hc_xAxis(
+        categories = data$tarih_label,
+        labels = list(style = list(color = "#999"), rotation = -45)
+      ) %>%
+      highcharter::hc_yAxis(
+        title = list(text = "Oturum Sayısı", style = list(color = "#999")),
+        labels = list(style = list(color = "#999")), gridLineColor = "#444"
+      ) %>%
+      highcharter::hc_plotOptions(
+        areaspline = list(marker = list(enabled = TRUE, radius = 3), lineWidth = 2.5)
+      ) %>%
+      highcharter::hc_add_series(
+        name = "Oturum", data = chart_data, color = "#22c55e",
+        fillColor = list(
+          linearGradient = list(x1 = 0, y1 = 0, x2 = 0, y2 = 1),
+          stops = list(list(0, "rgba(34, 197, 94, 0.3)"), list(1, "rgba(34, 197, 94, 0)"))
+        )
+      ) %>%
+      highcharter::hc_tooltip(
+        backgroundColor = "#1a1a1a", borderColor = "#333", style = list(color = "#fff"),
+        formatter = JS("function() { return '<b>' + this.point.tarih + '</b><br/>Oturum: ' + this.y; }")
+      ) %>%
       highcharter::hc_legend(enabled = FALSE) %>%
       highcharter::hc_credits(enabled = FALSE)
   })
@@ -196,20 +216,41 @@ admin_bilge_yolac_outputs <- function(output, bilge_yolac_data_fn, turkish_dt_la
       "completed" = "Tamamlandı", "failed" = "Başarısız",
       "stopped" = "Durduruldu", "active" = "Aktif"
     )
+    durum_renkler <- c(
+      "completed" = "#10b981", "failed" = "#ef4444",
+      "stopped" = "#f59e0b", "active" = "#3b82f6"
+    )
     durum <- as.character(data$Status)
-    ad <- ifelse(durum %in% names(etiketler), etiketler[durum], durum)
+    ad <- ifelse(
+      durum %in% names(etiketler), etiketler[durum],
+      ifelse(is.na(durum) | durum == "", "Bilinmiyor", durum)
+    )
+    chart_data <- lapply(seq_len(nrow(data)), function(i) {
+      list(
+        name = unname(ad[i]), y = as.numeric(data$cnt[i]),
+        color = ifelse(durum[i] %in% names(durum_renkler), durum_renkler[durum[i]], "#94a3b8")
+      )
+    })
 
     highcharter::highchart() %>%
       highcharter::hc_chart(type = "pie", backgroundColor = "transparent") %>%
       highcharter::hc_title(text = NULL) %>%
-      highcharter::hc_add_series(
-        name = "Oturum",
-        data = lapply(seq_len(nrow(data)), function(i) {
-          list(name = ad[i], y = as.numeric(data$cnt[i]))
-        })
+      highcharter::hc_plotOptions(
+        pie = list(
+          innerSize = "60%", borderWidth = 0,
+          dataLabels = list(
+            enabled = TRUE,
+            format = "<b>{point.name}</b>: {point.y}",
+            style = list(color = "#fff", textOutline = "none")
+          )
+        )
       ) %>%
-      highcharter::hc_tooltip(backgroundColor = "#1a1a1a", borderColor = "#333",
-                              style = list(color = "#fff")) %>%
+      highcharter::hc_add_series(name = "Durum", data = chart_data) %>%
+      highcharter::hc_tooltip(
+        backgroundColor = "#1a1a1a", borderColor = "#333",
+        style = list(color = "#fff"),
+        pointFormat = "<b>{point.y}</b> oturum ({point.percentage:.1f}%)"
+      ) %>%
       highcharter::hc_credits(enabled = FALSE)
   })
 
