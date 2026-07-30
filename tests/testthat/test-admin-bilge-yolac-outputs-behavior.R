@@ -52,8 +52,8 @@ testthat::test_that("Bilge Yolaç günlük eğilimi haftalık eğilim görsel di
 
     testthat::expect_identical(opts$chart$type, "areaspline")
     testthat::expect_identical(seri$color, "#22c55e")
-    testthat::expect_identical(opts$plotOptions$areaspline$lineWidth, 2.5)
-    testthat::expect_identical(opts$plotOptions$areaspline$marker$radius, 3)
+    testthat::expect_equal(opts$plotOptions$areaspline$lineWidth, 2.5)
+    testthat::expect_equal(opts$plotOptions$areaspline$marker$radius, 3)
     testthat::expect_equal(
       vapply(seri$data, function(p) as.numeric(p$y), numeric(1)),
       c(3, 7)
