@@ -1,4 +1,4 @@
-/* ==========================================================================
+/* ============================================================================
  * Dosya: www/js/ortak_oturumlar.js
  * Açıklama: Ortak Oturumlar istemci köprüsü.
  *   - data-oo-hedef-input taşıyan butonlar için delege tıklama: hedef Shiny
@@ -497,6 +497,17 @@
     if (ooSureTimer === null) {
       ooSureTimer = window.setInterval(ooSureSayaciniIsle, 1000);
     }
+  }
+
+  // Shiny çıktı olayları jQuery üzerinden yayılır; sayacı aynı kanaldan başlat.
+  if (window.jQuery) {
+    window.jQuery(document).on('shiny:value.ortakOturumSure', function (ev) {
+      var ad = ev && ev.name ? String(ev.name) : '';
+      if (ad.indexOf('uretim_durumu_alani') === -1) {
+        return;
+      }
+      window.setTimeout(ooSureSayaciniIsle, 30);
+    });
   }
 
   document.addEventListener('shiny:value', function (ev) {
