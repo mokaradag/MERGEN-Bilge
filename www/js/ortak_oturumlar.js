@@ -1,4 +1,4 @@
-/* ============================================================================
+/* ==========================================================================
  * Dosya: www/js/ortak_oturumlar.js
  * Açıklama: Ortak Oturumlar istemci köprüsü.
  *   - data-oo-hedef-input taşıyan butonlar için delege tıklama: hedef Shiny
