@@ -1,8 +1,8 @@
 # MERGEN Bilge - Yapay Zeka Rehberi
 # Amaç: Bu belge, MERGEN Bilge içindeki Yardım Asistanı ve AI Uzman davranışlarını besleyen ana referans metnidir.
 # Dil: Türkçe
-# Güncel Sürüm Referansı: v1.0
-# Son Güncelleme: Nisan 2026
+# Güncel Ürün Referansı: Temmuz 2026
+# Son Güncelleme: 30 Temmuz 2026
 
 ---
 
@@ -640,7 +640,826 @@ Yardım Asistanı, kapsam dışı veya çözülemeyen durumlarda kullanıcıyı 
 
 ---
 
-## 16. Son Not
+## 16. Güncel Menü Haritası ve Doğru Başlangıç Noktası
+
+MERGEN Bilge'nin sol menüsü, kişisel çalışmalar ile ekip çalışmalarını birbirinden ayırır. Kullanıcıya yol gösterirken aşağıdaki güncel menü yapısı esas alınmalıdır:
+
+- **Ana Söyleşi:** Yapay zekâ ile bireysel sohbet, dosya kullanımı ve hızlı eylemler.
+- **Söyleşi Yönetimi:**
+  - Söyleşi Geçmişi
+  - Kayıtlı Söyleşiler
+  - Ortak Söyleşiler
+  - Görsel Galerisi
+- **Bilge Yolaç:**
+  - Çalışma Alanı
+  - Oturumlar
+  - Ortak Bilge Yolaç Oturumları
+  - Bilge Savunması; bu özellik kurumunuzda etkinse görünür.
+- **Ortak Çalışmalarım:** Tüm ekip oturumlarının, davetlerin ve arşivlenmiş ortak oturumların merkezi.
+- **Dosya Yönetimi:** Kişisel dosyaları yükleme, listeleme, önizleme ve model bağlamına ekleme.
+- **Ayarlar:**
+  - Kişiselleştirme
+  - Yapılandırma
+- **Destek:**
+  - Yardım Merkezi
+  - Geri Bildirim & Hata
+  - Yenilikler
+  - Hakkında
+- **Yönetici sayfaları:** Yalnızca gerekli yetkiye sahip kullanıcılara gösterilir.
+
+Kullanıcı hangi sayfayı seçmesi gerektiğini sorarsa amaç üzerinden yönlendirme yapılmalıdır:
+
+- Genel bir soru, içerik üretimi veya tek kişilik çalışma için **Ana Söyleşi**.
+- Önceki bireysel konuşmayı bulmak için **Kayıtlı Söyleşiler** veya **Söyleşi Geçmişi**.
+- Dosya yükleyip daha sonra farklı çalışmalarda kullanmak için **Dosya Yönetimi**.
+- Bir proje klasörü, kod tabanı veya dosya kümesi üzerinde ajanla çalışmak için **Bilge Yolaç > Çalışma Alanı**.
+- Önceki Bilge Yolaç çalışmasını sürdürmek veya incelemek için **Bilge Yolaç > Oturumlar**.
+- Ekip arkadaşlarıyla aynı odada çalışmak için **Ortak Çalışmalarım**.
+- Yalnızca ortak normal söyleşileri görmek için **Söyleşi Yönetimi > Ortak Söyleşiler**.
+- Yalnızca ortak ajan çalışmalarını görmek için **Bilge Yolaç > Ortak Bilge Yolaç Oturumları**.
+- Uygulamayı eğlenceli bir savunma oyunu üzerinden keşfetmek için, görünüyorsa **Bilge Yolaç > Bilge Savunması**.
+- Ayar değiştirmek için **Ayarlar**, sorun bildirmek için **Destek**.
+
+---
+
+## 17. Ana Söyleşi Ayrıntılı Kullanım Rehberi
+
+### 17.1 Yeni bir söyleşi başlatma
+
+Kullanıcı **Yeni Söyleşi** düğmesiyle boş bir konuşma başlatır. Ayrıldığı söyleşi kaybolmaz; son etkinlik zamanı güncellenir ve uygun listelerde yeniden görülebilir. Hoş geldin ekranındaki **Son Konuşmalar**, yalnızca yeni oluşturulanları değil, en son etkin olan üç söyleşiyi gösterir.
+
+### 17.2 Mesaj yazma ve gönderme
+
+- Metin, alt bölümdeki mesaj kutusuna yazılır.
+- **Enter** mesajı gönderir.
+- **Shift + Enter** yeni satır açar.
+- Mesaj kutusunda görülen sayaç, yazılabilecek metin uzunluğunu takip etmeye yardımcı olur.
+- Yanıt üretilirken gönder düğmesi **Durdur** işlevine dönüşebilir. Kullanıcı işlemi sonlandırmak isterse bu düğmeyi kullanır.
+- Yanıt tamamlandıktan sonra, ayar açıksa ilgili devam soruları önerilebilir.
+
+### 17.3 Söyleşiyi kopyalama ve dışa aktarma
+
+Bir söyleşi başladıktan sonra:
+
+- **Sohbeti Kopyala**, görünür konuşma içeriğini panoya kopyalamak için kullanılır.
+- **Sohbeti Dışa Aktar**, mevcut söyleşiyi metin dosyası olarak indirmek için kullanılır.
+- Bu işlemler konuşmayı silmez veya başka bir söyleşiye taşımaz.
+
+### 17.4 Model seçimi
+
+Ana Söyleşi'de kullanılabilir modeller arasından seçim yapılabilir. Model bilgi alanında bağlam kapasitesi ve düşünme desteği gibi özellikler görülebilir. Bazı hızlı eylemler ve analiz araçları, kendi görevlerine uygun modeli otomatik seçer. Araç etkin olduğu sürece kullanıcının elle yaptığı model seçimi geçici olarak araç seçimine bırakılabilir.
+
+Yardım Asistanı belirli bir model adını kalıcı gerçek gibi söylememelidir. Kullanılabilir modeller kurum yapılandırmasına göre değişebilir. Kullanıcı güncel modeli, Ana Söyleşi model seçicisinden veya **Ayarlar > Yapılandırma > Model Ayarları** bölümünden görmelidir.
+
+### 17.5 Dosya ekleme
+
+Ana Söyleşi'ye dosya eklemek için:
+
+- dosya mesaj alanına sürüklenip bırakılabilir,
+- ataç düğmesine tıklanabilir,
+- **Ctrl + Alt + U** kısayolu kullanılabilir,
+- daha önce yüklenmiş bir dosya Dosya Yönetimi'nden model bağlamına eklenebilir.
+
+Dosya eklendikten sonra kullanıcı ne istediğini açıkça yazmalıdır. Örneğin “Bu raporu üç başlıkta özetle”, “Bu tablodaki aylık eğilimi açıkla” veya “Bu iki belge arasındaki farkları karşılaştır” denebilir.
+
+### 17.6 Sesli giriş ve sesli yanıt
+
+- Mikrofon düğmesi sesli giriş başlatır.
+- Konuşma metne dönüştürüldükten sonra kullanıcı metni gözden geçirip gönderebilir.
+- **Yanıtları Seslendir** açıksa yapay zekâ yanıtı sesli okunabilir.
+- Ses kaydı sırasında arka plan müziği duraklayabilir; yanıt seslendirilirken müzik sesi azalabilir.
+- Sesli özellikler görünmüyor veya çalışmıyorsa tarayıcı mikrofon izni, ses ayarları ve kurum ortamındaki özellik kullanılabilirliği kontrol edilmelidir.
+
+### 17.7 Düşünme ve hazırlık görünümü
+
+Düşünme destekli bir model veya derin analiz akışı seçildiğinde kullanıcı hazırlık, düşünme ya da analiz durumunu ayrı bir kartta görebilir. Bu kart işlemin sürdüğünü gösterir. Her model aynı görünümü sunmayabilir. Gösterilen metin, kullanıcıya süreci izletmek için düzenlenmiş bir çalışma görünümüdür; kesin bir işlem günlüğü olarak yorumlanmamalıdır.
+
+### 17.8 Görsel içeren sorular
+
+Desteklenen modellerde kullanıcı JPG, JPEG, PNG, GIF, WEBP, BMP veya SVG türündeki görselleri yükleyip görsel hakkında soru sorabilir. Örnekler:
+
+- “Bu şemayı açıkla.”
+- “Bu ekran görüntüsündeki hata mesajını özetle.”
+- “Bu grafikteki ana eğilimi söyle.”
+
+Görseli anlamlandırma ile yeni görsel üretme farklı işlemlerdir. Mevcut bir görseli yorumlamak için dosya eklenir; yeni görsel üretmek için **Görsel Oluşturma** hızlı eylemi seçilir.
+
+---
+
+## 18. Hızlı Eylemler ve Analiz Araçları
+
+Hızlı eylem kartları doğru çalışma biçimini hazırlar; kullanıcı adına otomatik olarak nihai işlem başlatmaz. Kart seçildikten sonra kullanıcı istemini yazmalı ve gerekiyorsa dosyasını eklemelidir.
+
+### 18.1 Süreç Yönetimi Sistemi
+
+Kurumsal süreçler, yönergeler, rehberler ve şablonlar hakkında çalışmak için kullanılır. Birden fazla süreç akışı sunuluyorsa, mesaj alanındaki süreç seçicisinden uygun akış seçilir. İyi bir istem; süreç adını, aranan bilgiyi ve beklenen çıktı biçimini belirtir.
+
+Örnek:
+
+“Teklif hazırlama sürecinin ana adımlarını, sorumlulukları ve gerekli belgeleri maddeleyerek açıkla.”
+
+### 18.2 Uygulama Uzmanı
+
+Uygulama geliştirme, yazılım yaklaşımı, çözüm değerlendirmesi ve uygulama odaklı uzman desteği için kullanılır. Bu kart, MERGEN Bilge'nin Yardım Asistanı değildir. Yardım Asistanı MERGEN Bilge'nin nasıl kullanılacağını anlatır; Uygulama Uzmanı ise kullanıcının uygulama geliştirme veya değerlendirme işine yardımcı olur.
+
+### 18.3 Proje ve Kaynak Analizi
+
+Proje, bütçe, iş gücü, kaynak, plan veya benzeri kurumsal veri soruları için kullanılır. Ekranda:
+
+- **Derin Düşünme** kapalıyken daha doğrudan bir analiz,
+- açıkken birden fazla sorgu veya veri bakışını bir araya getiren daha geniş analiz,
+- **Özet, Standart, Detaylı** seçenekleriyle yanıt ayrıntısı
+
+seçilebilir.
+
+Kullanıcı proje numarası, dönem, ölçüt veya karşılaştırılacak grubu açık yazmalıdır. Sonuç başlamazsa ilgili veri bağlamının kullanılabilirliği ve istemin açıklığı kontrol edilmelidir.
+
+### 18.4 Excel Analizi
+
+Excel veya tablo verileri için kullanılır. Kullanıcı:
+
+1. Excel dosyasını ekler.
+2. Çalışma sayfasını veya tabloyu belirtir.
+3. İncelenecek sütunları ve beklenen sonucu yazar.
+4. Gerekirse **Derin Düşünme** ile **Düşük/Yüksek** düşünme seviyesini seçer.
+
+Örnek istekler:
+
+- “Aylara göre gerçekleşen ve planlanan maliyeti karşılaştır.”
+- “Aykırı değerleri bul ve olası nedenlerini açıkla.”
+- “Bölümlere göre toplamı hesapla ve uygun bir grafik öner.”
+
+Excel aracı etkinse model bağlamına aynı anda yalnızca bir dosya eklenebilir. Araç kapalıyken birden fazla dosya seçilebilir.
+
+### 18.5 Görsel Oluşturma
+
+Metinden yeni görsel üretir. Kullanıcı:
+
+- kare, yatay veya dikey boyut seçebilir,
+- standart ya da HD kaliteyi kullanabilir,
+- konu, ortam, renk, üslup, kadraj ve istenmeyen unsurları açıklayabilir.
+
+Üretilen görseller **Görsel Galerisi**nde bulunur. Görsel üretmek ile yüklenmiş bir görseli yorumlatmak birbirinden farklıdır.
+
+### 18.6 Kodlama Desteği
+
+Tek bir kod parçasını açıklama, hata ayıklama, örnek üretme veya yeniden düzenleme gibi söyleşi tabanlı işler için kullanılır. Gerekirse **Derin Düşünme** ile **Düşük/Yüksek** seviye seçilebilir.
+
+Bir proje klasörünün birçok dosyası üzerinde çalışmak, dosya üretmek veya kalıcı ajan oturumu yürütmek için Kodlama Desteği yerine **Bilge Yolaç** daha uygundur.
+
+### 18.7 Özetleme Desteği
+
+Uzun belge özetlemek için kullanılır. Seçenekler:
+
+- **Kısa Özet:** en önemli noktalar.
+- **Standart:** ana yapı, bulgular ve sonuçlar.
+- **Detaylı:** daha geniş açıklama ve alt başlıklar.
+- **Genel:** belgenin bütününe dengeli bakış.
+- **Sayısal Veri:** rakamlar, oranlar, tarihler ve ölçümler.
+- **Karar & Öneri:** kararlar, eylemler, öneriler ve sorumluluklar.
+- **Karşılaştırma:** benzerlikler, ayrımlar ve değişimler.
+
+Kullanıcı özetin hedef kitlesini, uzunluğunu, korunması gereken başlıkları ve istenen çıktı biçimini de belirtebilir.
+
+### 18.8 Aynı anda etkin araç
+
+Ana Söyleşi'de aynı anda yalnızca bir analiz aracı etkin olabilir. Başka bir göreve geçerken yeni hızlı eylem seçilebilir veya etkin araç temizlenebilir. Kullanıcı “Neden model seçemiyorum?” diye sorarsa, etkin aracın kendi uygun modelini kullandığı ve araç kapatılınca normal model seçiminin geri geleceği açıklanmalıdır.
+
+---
+
+## 19. Dosya Yönetimi Ayrıntılı Rehberi
+
+### 19.1 Dosya yükleme
+
+**Dosya Yönetimi** birden fazla dosyayı birlikte yüklemeye uygundur. Kullanıcı dosyaları sürükleyip bırakabilir veya **Göz At** düğmesini kullanabilir. Güncel arayüz şu dosya ailelerini kabul eder:
+
+- Belgeler ve metin: TXT, PDF, DOCX, MD, LOG, XML, HTML
+- Tablolar ve veri: XLSX, XLS, CSV, JSON
+- Kod: R, PY
+- Görseller: JPG, JPEG, PNG, GIF, WEBP, BMP, SVG
+
+Eski Word `.doc` biçimi listede yer almaz; dosya önce `.docx` biçimine dönüştürülmelidir. Kullanılabilir dosya başına boyut sınırı yükleme alanında gösterilir. Sınırı aşan dosya yüklenmez ve kullanıcıya uyarı verilir.
+
+### 19.2 Arka planda işleme
+
+Dosya yükleme, özellikle büyük veya çok sayıda dosyada kısa süre alabilir. Güncel uygulamada dosyalar arka planda işlenirken kullanıcı diğer işlemlerine devam edebilir. Bildirim, kaç dosyanın işlendiğini gösterir. Bir dosyanın başarısız olması diğer uygun dosyaların yüklenmesini engellemez.
+
+Dosya, işleme tamamlanmadan tabloya veya model bağlamına gelmeyebilir. Bu durumda:
+
+1. İşlem bildirimini bekleyin.
+2. **Yenile** düğmesine basın.
+3. Hâlâ görünmüyorsa dosya türü ve boyutunu kontrol edin.
+4. Sorun sürerse **Geri Bildirim & Hata** sayfasından bildirin.
+
+### 19.3 Yüklenen dosyalar tablosu
+
+Tabloda yüklenen dosyalar görülür. Kullanıcı uygun eylemlerle dosyayı:
+
+- önizleyebilir,
+- indirebilir,
+- silebilir,
+- model bağlamına ekleyebilir veya bağlamdan çıkarabilir.
+
+**Tümünü Temizle**, kişisel dosya listesini topluca temizlemek için kullanılır ve dikkatli kullanılmalıdır. Devam eden bir yükleme varsa temizleme işlemi o yükleme grubunu da iptal edebilir.
+
+### 19.4 Model bağlamı
+
+Bir dosyanın listede bulunması, her soruda otomatik olarak yapay zekâya gönderildiği anlamına gelmez. **Model Bağlamı** seçimi, hangi dosyanın sonraki söyleşi isteğinde kullanılacağını belirler.
+
+- Normal kullanımda birden fazla dosya seçilebilir.
+- Excel aracı etkin olduğunda tek dosya seçimi kuralı uygulanır.
+- Bağlama eklenen dosya için kullanıcı yine de ne yapılacağını açıkça yazmalıdır.
+- Çok sayıda büyük dosya yerine yalnızca soruyla ilgili dosyaların seçilmesi daha açık sonuç verir.
+
+### 19.5 Önizleme
+
+Önizleme, dosyanın türüne göre metin, tablo, belge veya görsel görünümü sunabilir. Önizleme açılamıyorsa bu her zaman dosyanın analiz edilemeyeceği anlamına gelmez. Dosyayı bağlama ekleyip açık bir soruyla denemek mümkündür.
+
+### 19.6 Dosya sorunlarını giderme
+
+- **Dosya görünmiyor:** İşlemenin bitmesini bekleyin ve Yenile'yi kullanın.
+- **Tür desteklenmiyor:** Dosyayı desteklenen bir biçime dönüştürün.
+- **Boyut sınırı aşıldı:** Dosyayı küçültün veya anlamlı parçalara ayırın.
+- **Önizleme bozuk:** Dosyayı yerel uygulamasında açarak sağlamlığını kontrol edin ve yeniden yükleyin.
+- **Türkçe dosya adı bozuk:** Dosyayı yeniden yükleyin; sürerse ekran görüntüsüyle hata bildirin.
+- **Yanlış dosya yanıta karışıyor:** Model Bağlamı seçimlerini temizleyip yalnızca ilgili dosyayı seçin.
+
+---
+
+## 20. Söyleşi Yönetimi ve Görsel Galerisi
+
+### 20.1 Söyleşi Geçmişi
+
+Söyleşi Geçmişi, soru ve yanıt çiftlerini tarih aralığına göre incelemek için kullanılır.
+
+- Başlangıç ve bitiş tarihi seçilebilir.
+- **Bugün** düğmesi aralığı bugüne getirir.
+- **Yenile** güncel kayıtları getirir.
+- **Excel'e Aktar** görünen geçmişi çalışma dosyası olarak indirir.
+
+Bu sayfa, tam bir söyleşiyi sürdürmekten çok geçmiş soru-yanıt kayıtlarını inceleme ve dışa aktarma amacı taşır.
+
+### 20.2 Kayıtlı Söyleşiler
+
+Kayıtlı Söyleşiler'de bireysel sohbetler kartlar halinde bulunur.
+
+- **Başlıklarda ara** yalnızca söyleşi başlıklarını süzer.
+- **İçerikte Ara** tüm söyleşi metinlerinde arama açar.
+- Sayfalar arasında **İlk, Önceki, Sonraki, Son** düğmeleriyle dolaşılır.
+- Bir kart açılarak konuşmaya dönülebilir.
+- Tek bir söyleşi silinebilir.
+- **Tümünü Temizle** bütün kayıtlı kişisel söyleşileri kaldırır; dikkatli kullanılmalıdır.
+
+Eski bir söyleşiye yeni mesaj yazılırsa etkinlik zamanı güncellenir ve liste sıralamasında yukarı çıkabilir.
+
+### 20.3 Ortak Söyleşiler
+
+Bu liste yalnızca ekip ile paylaşılan normal söyleşileri gösterir. Kişisel Kayıtlı Söyleşiler ile karıştırılmamalıdır. Bir ortak söyleşideki içerik, davet kabul edilmeden açılmaz.
+
+### 20.4 Görsel Galerisi
+
+Görsel Galerisi, kullanıcının yapay zekâ ile oluşturduğu görselleri toplar.
+
+- Açıklama, tarih, dosya adı veya kaynak söyleşi üzerinden arama yapılabilir.
+- Sayfalar arasında İlk, Önceki, Sonraki ve Son düğmeleriyle gezinilebilir.
+- Görsel büyütülebilir ve indirilebilir.
+- Kaynak söyleşiye dönme seçeneği bulunabilir.
+- Tek bir görsel veya tüm görseller silinebilir.
+- **Yenile**, yeni üretilen görselleri listeye getirir.
+
+Yüklenmiş her görsel galeriye girmez; galeri esas olarak uygulama içinde oluşturulan görseller içindir.
+
+---
+
+## 21. Bilge Yolaç Ayrıntılı Rehberi
+
+### 21.1 Bilge Yolaç ne zaman seçilir?
+
+Bilge Yolaç, tek bir sohbet yanıtından daha geniş ve dosya odaklı çalışmalar içindir. Özellikle:
+
+- bir proje klasörünü inceleme,
+- birden çok kod dosyasında değişiklik planlama,
+- hata ayıklama,
+- test ve belge hazırlama,
+- dosya üretme,
+- uzun süren ajan görevlerini oturum halinde sürdürme
+
+amaçlarıyla kullanılır.
+
+### 21.2 Çalışma Alanı
+
+Sol bölümde proje dizini, model katmanı, hazır senaryolar, dizin içeriği ve eklentiler bulunur. Sağ bölümde ajan konuşması, komut kutusu ve çalışma durumu yer alır.
+
+Temel kullanım:
+
+1. **Proje Dizini** alanında çalışma klasörünü belirleyin.
+2. Gerekirse yükleme klasörüne gitme düğmesini kullanın.
+3. Bilgisayarınızdaki bir klasörü çalışma alanına aktarmak için yerel klasör düğmesini kullanın.
+4. **Hızlı, Dengeli veya Güçlü** model katmanlarından göreve uygun olanı seçin.
+5. Hazır bir senaryo seçin veya serbest komut yazın.
+6. **Çalıştır** düğmesine basın.
+7. Durum çubuğundan hazırlık, çalışma süresi ve tamamlanma durumunu izleyin.
+8. Gerekirse **Durdur** ile işlemi sonlandırın.
+
+Yerel klasör düğmesi, seçilen klasörün çalışma için uygun bir kopyasını oluşturur. Kullanıcı özgün klasör ile çalışma alanındaki kopyayı aynı şey sanmamalıdır.
+
+### 21.3 Hazır senaryolar
+
+Görünebilecek temel senaryolar:
+
+- Kod İnceleme
+- Hata Ayıklama
+- Dokümantasyon
+- Test Yazımı
+- Kod Düzenleme
+- Serbest Komut
+
+Senaryo, komutun başlangıç çerçevesini hazırlar. Kullanıcı yine hedefi, sınırı ve beklenen çıktıyı açıkça belirtmelidir.
+
+### 21.4 Dizin içeriği
+
+Dizin İçeriği alanı seçili çalışma klasöründe gezinmeye yarar.
+
+- Üst dizine çıkılabilir.
+- Klasörler açılabilir.
+- Liste yenilenebilir.
+- Kullanıcı ajanı çalıştırmadan önce doğru klasörde olduğunu doğrulamalıdır.
+
+### 21.5 Eklentiler
+
+Eklentiler paneli varsayılan olarak kapalı olabilir. Başlığa tıklanarak açılır. Eklentiler; kod inceleme, güvenlik değerlendirmesi, test, belge üretimi veya ofis dosyaları gibi uzmanlıklar sağlar. Görünen eklenti listesi kurumunuzdaki kuruluma göre değişebilir.
+
+Kullanıcı bir eklentiyi göremiyorsa:
+
+- panelin açık olduğundan emin olmalı,
+- Bilge Yolaç bağlantı durumunu kontrol etmeli,
+- gerekirse **Ayarlar > Yapılandırma > Bilge Yolaç Yapılandırma** bölümündeki bağlantı testini kullanmalıdır.
+
+### 21.6 Çıktılar ve indirilebilir dosyalar
+
+Bilge Yolaç dosya ürettiğinde, tamamlanan çalışmanın altında indirme bağlantıları gösterilir. Bağlantı işlem tamamlanmadan görünmeyebilir. Kullanıcı:
+
+- çalışmanın tamamlandığını kontrol etmeli,
+- çıktı alanını incelemeli,
+- bağlantı yoksa sayfayı yenileyip oturumu yeniden açmayı denemelidir.
+
+### 21.7 Bilge Yolaç Oturumları
+
+**Bilge Yolaç > Oturumlar**, kalıcı ajan çalışma geçmişidir.
+
+- **Yeni Oturum** yeni bir çalışma başlatır.
+- **Çalışma Alanı** aktif çalışma ekranına götürür.
+- **Yenile** oturum listesini günceller.
+- Başlık veya proje dizinine göre arama yapılabilir.
+- Duruma göre **Devam Edilebilir, Tamamlandı, Başarısız, Durduruldu, Arşivlenmiş** seçenekleriyle süzme yapılabilir.
+- Modele göre filtre uygulanabilir.
+- Son etkinlik, oluşturma tarihi veya çalıştırma sayısına göre sıralama yapılabilir.
+- Devam edilebilir bir oturum açılarak çalışma sürdürülebilir.
+
+Kişisel Bilge Yolaç oturumları, ortak Bilge Yolaç oturumlarından ayrıdır.
+
+### 21.8 Bilge Yolaç sorunlarını giderme
+
+- **Çalıştır başlamıyor:** Proje dizinini, bağlantı durumunu, model seçimini ve komutun boş olmadığını kontrol edin.
+- **Yanlış klasörde çalışıyor:** Proje Dizini ve Dizin İçeriği alanlarını doğrulayın.
+- **İşlem uzun sürüyor:** Durum çubuğunu izleyin; gerekirse Durdur'u kullanın.
+- **Oturum görünmüyor:** Oturumlar sayfasında Yenile'yi kullanın ve filtreleri Tümü'ne getirin.
+- **Belge okunmuyor:** Desteklenen biçimi ve dosyanın çalışma klasöründe olduğunu kontrol edin.
+- **Eski `.doc` dosyası:** Önce `.docx` biçimine dönüştürün.
+
+---
+
+## 22. Ortak Çalışmalar ve Ekip Oturumları
+
+### 22.1 Kişisel ve ortak çalışma ayrımı
+
+Üç farklı geçmiş türü vardır:
+
+- **Kayıtlı Söyleşiler / Söyleşi Geçmişi:** kullanıcının kişisel normal sohbetleri.
+- **Bilge Yolaç Oturumları:** kullanıcının kişisel ajan çalışmaları.
+- **Ortak Çalışmalarım:** ekip üyeleriyle paylaşılan oturumlar.
+
+Bir kişisel çalışma, kullanıcı açıkça ortak çalışma başlatmadıkça ekip odasına dönüşmez.
+
+### 22.2 Ortak Çalışmalarım merkezi
+
+Bu sayfada:
+
+- **Tümü** ile katılınmış ortak oturumlar,
+- **Davetlerim** ile bekleyen davetler,
+- **Arşivlenmiş Ortak Oturumlar** ile kullanıcının kendi listesinden kaldırdığı oturumlar
+
+görülür.
+
+**Yeni Ortak Oturum** ile ekip odası oluşturulur. **Yenile** listeyi günceller.
+
+### 22.3 Ortak oturum türleri
+
+- **Ortak Söyleşi:** Ana Söyleşi'ye benzeyen ekip sohbeti ve ortak yapay zekâ çalışması.
+- **Ortak Bilge Yolaç:** ajan ve dosya üretimi odaklı ekip çalışması.
+
+Oturum oluştururken tür, başlık ve paylaşımın nereden başlayacağı seçilir. Güvenli varsayılan, geçmiş kişisel içeriği paylaşmadan yalnızca bundan sonraki çalışmayı ortaklaştırmaktır.
+
+### 22.4 Davetler
+
+Oturum sahibi veya yöneticisi katılımcı çağırabilir.
+
+- Çevrim içi kullanıcıya MERGEN Bilge içinde çağrı gönderilebilir.
+- Çevrim dışı kullanıcı için e-posta taslağı hazırlanabilir.
+- E-posta otomatik gönderilmez; davet eden kişi taslağı gözden geçirip kendi e-posta uygulamasından gönderir.
+- Davet edilen kişi **Katıl, Daha Sonra veya Reddet** seçeneklerinden birini kullanabilir.
+- Davet kabul edilmeden oda mesajları, belgeler ve katılımcı ayrıntıları açılmaz.
+
+### 22.5 Roller
+
+- **Sahip:** Odayı kurar, tüm yönetim işlemlerini yapar, sahipliği devredebilir ve odayı herkes için kapatabilir.
+- **Oturum Yöneticisi:** Katılımcı çağırabilir ve yönetebilir; sahipliği devredemez.
+- **Katılımcı:** Odaya yazabilir, yapay zekâya soru sorabilir ve ortak belgelerle çalışabilir.
+- **İzleyici:** İçeriği okuyabilir ve ortak belgeyi kendi dosyalarına kopyalayabilir; odaya yazamaz veya yapay zekâya soru soramaz.
+
+Sahip odadan ayrılmak isterse önce sahipliği uygun bir katılımcıya devretmelidir.
+
+### 22.6 Odaya Yaz ve Yapay Zekâya Sor
+
+Bu iki düğme farklıdır:
+
+- **Odaya Yaz:** Mesajı yalnızca katılımcılara gönderir; yapay zekâ yanıtı üretmez.
+- **Yapay Zekâya Sor:** Soruyu yapay zekâya gönderir; soru ve yanıt tüm katılımcılar tarafından görülür.
+
+Kullanıcı “Neden yapay zekâ yanıt vermedi?” diye sorarsa önce hangi düğmeye bastığı kontrol edilmelidir. Oda mesajları kendiliğinden yapay zekâ bağlamına girmez.
+
+Bir odada aynı anda tek yapay zekâ yanıtı üretilebilir. Başka bir üretim sürerken yeni soru gönderilirse bekleme uyarısı görülebilir.
+
+### 22.7 Persona, model ve araç
+
+Ortak oturumun seçili bir personası vardır. Sahip veya oturum yöneticisi personayı değiştirebilir; diğer kullanıcılar seçili personayı görür.
+
+Ortak söyleşide:
+
+- model seçilebilir,
+- Proje ve Kaynak Analizi, Excel Analizi, Kodlama Desteği, Süreç Yönetimi, Uygulama Uzmanı veya Özetleme gibi uygun araçlar seçilebilir,
+- araç etkin olduğunda model seçimi araca bırakılabilir,
+- Görsel Oluşturma ortak odada sunulmayabilir.
+
+Ortak Bilge Yolaç oturumunda normal söyleşi araç seçicisi kullanılmaz; ajan çalışma akışı geçerlidir.
+
+### 22.8 Ortak belgeler
+
+Katılımcılar yetkileri uygunsa ortak odaya belge yükleyebilir. Yeni belge varsayılan olarak yapay zekâ bağlamına seçilebilir. Yalnızca seçili belgeler sonraki yapay zekâ sorusunda kullanılır.
+
+Ortak belgeler:
+
+- tüm erişimli katılımcılarca görülebilir,
+- bağlama eklenebilir veya bağlamdan çıkarılabilir,
+- yetkili kullanıcı tarafından kaldırılabilir,
+- **Kendi Dosyalarıma Kaydet** ile kişisel Dosya Yönetimi alanına kopyalanabilir.
+
+Bir ortak belge kendiliğinden kişisel dosyalara yazılmaz. Kopyalama işlemi kullanıcının açık seçimini gerektirir.
+
+### 22.9 Sohbeti temizleme ve yeni bağlam
+
+- **Yeni bağlam başlat**, önceki yapay zekâ konuşma bağlamından ayrılan yeni bir çalışma akışı başlatır.
+- **Sohbeti Temizle**, yetkili kullanıcı onay verirse odadaki mesajları kalıcı olarak temizler.
+- Sohbeti temizlemek ortak belgeleri silmez.
+
+Bu iki işlem aynı değildir. Kullanıcı yalnızca yeni bir konuya geçmek istiyorsa önce yeni bağlam seçeneğini değerlendirmelidir.
+
+### 22.10 Arşivleme
+
+- Kullanıcının **Arşivle** eylemi yalnızca kendi listesini etkiler; diğer katılımcılar oturumu görmeye devam eder.
+- **Geri Yükle** oturumu kullanıcının listesine döndürür.
+- Odayı herkes için arşivleme veya kapatma yalnızca gerekli yetkiye sahip kullanıcı tarafından yapılabilir.
+
+### 22.11 Ortak oturum sorunlarını giderme
+
+- **Davet görünmüyor:** Ortak Çalışmalarım > Davetlerim bölümünü yenileyin.
+- **Oda açılmıyor:** Davetin kabul edildiğini ve oturumun etkin olduğunu kontrol edin.
+- **Yazamıyorum:** Rolünüz İzleyici olabilir.
+- **Yapay zekâya soramıyorum:** Rolünüzü ve başka bir yanıtın sürüp sürmediğini kontrol edin.
+- **Belge yanıta girmiyor:** Belgenin ortak belgelerde seçili olduğunu kontrol edin.
+- **Kişisel dosyalarımda görünmüyor:** Ortak belgede Kendi Dosyalarıma Kaydet eylemini kullanın.
+- **Yanlış listeye bakıyorum:** Normal ortak sohbetler ile ortak Bilge Yolaç oturumlarının ayrı listeleri olduğunu hatırlayın.
+
+---
+
+## 23. Bilge Savunması Kullanım Rehberi
+
+Bilge Savunması, MERGEN Bilge karakterlerini kullanan bir kule savunma oyunudur. Menüde görünmesi kurumunuzdaki özellik ayarına bağlıdır.
+
+### 23.1 Oyunun amacı
+
+Gürültü, çelişki ve doğrulanmamış varsayımların Bilgi Çekirdeği'ne ulaşmasını engellemek için beş uzmandan yararlanılır. Uzmanlar rota boyunca uygun yerlere konuşlandırılır, dalgalar karşılanır ve gerektiğinde savunmacılar geliştirilir.
+
+### 23.2 Ana bölümler
+
+- **Kampanya:** Üç haritalık ana savunma ilerleyişi.
+- **Haftalık Meydan Okuma:** Aynı koşullarda puan karşılaştırmasına dayalı haftalık oyun.
+- **Oyuncu Planları:** Savunma planlarını inceleme, yayımlama veya deneme.
+- **Topluluk Operasyonu:** Ortak haftalık hedeflere katkı.
+- **Kahramanlar:** Beş uzmanın rolleri ve yetenekleri.
+- **İlerleme ve Başarımlar:** Yıldız, deneyim, seviye ve açılan içerikler.
+- **Oyun Ayarları:** Ses, kalite ve erişilebilirlik tercihleri.
+- **Nasıl Oynanır:** Kısa öğretici ve kurallar.
+
+### 23.3 Kampanya ve uzman seçimi
+
+Kampanya üç haritadan oluşur:
+
+- **Bağlam Kapısı**
+- **Çelişki Kavşağı**
+- **Bilgi Çekirdeği**
+
+Her koşunun başında bir **Öncü Uzman** seçilir. Öncü uzmanın ilk konuşlandırması ücretsizdir ve yeteneği daha hızlı hazır olabilir. Emre, Selin, Deniz, Can ve İpek farklı savunma görevlerine sahiptir; ayrıntılar Kahramanlar bölümünde görülebilir.
+
+### 23.4 Oyun sırasında
+
+Kullanıcı:
+
+- uygun konuşlandırma noktası seçer,
+- savunmacıyı yerleştirir,
+- biriken kaynakla geliştirme yapar,
+- oyunu duraklatabilir,
+- oyun hızını değiştirebilir,
+- hazırsa sonraki dalgayı erken başlatabilir.
+
+Patron dalgaları daha güçlüdür. Haritayı, savunmacı rollerini ve yükseltmeleri birlikte düşünmek gerekir.
+
+### 23.5 Kalite ve erişilebilirlik
+
+Oyun ayarlarında:
+
+- Yüksek,
+- Dengeli,
+- Performans
+
+kalite seçenekleri bulunabilir. Daha akıcı çalışma için Performans seçilebilir. Azaltılmış hareket seçeneği, hareketli görsel etkileri azaltır. Klavye, fare ve dokunmatik kullanım desteklenebilir.
+
+### 23.6 İlerleme kaydedilmiyorsa
+
+Oyun sayfasında kalıcılık durumunu belirten bir rozet veya açıklama bulunur. Kalıcı kayıt hazır değilse oyun serbest biçimde çalışabilir; ancak puan, yıldız, deneyim veya başarımlar sonraki girişe taşınmayabilir. Bu durumda kullanıcı oyunu oynayabilir, fakat ilerleme kaydının etkin olmadığını bilmelidir.
+
+### 23.7 Eski mini oyun
+
+Bilge Yolaç çalışma alanındaki retro karakter sahnesi yalnızca dekoratif karşılama alanıdır. Eski etkileşimli mini oyun kaldırılmıştır. Güncel oynanabilir oyun **Bilge Yolaç > Bilge Savunması** sayfasındadır.
+
+---
+
+## 24. Ayarlar Ayrıntılı Rehberi
+
+### 24.1 Ayarları kaydetme ve sıfırlama
+
+Kişiselleştirme ve Yapılandırma sayfalarında yapılan seçimler, **Ayarları Kaydet** düğmesine basılana kadar önizleme olarak kalabilir. **Varsayılana Dön**, ilgili ayarları başlangıç değerlerine getirir.
+
+### 24.2 Kişiselleştirme
+
+**Deneyim Modu**:
+
+- **Odak:** sade ve doğrudan çalışma.
+- **Dinamik:** işlev ve görsellik arasında dengeli deneyim.
+- **Bütünleşik:** persona, ses ve proaktif rehberliğin daha belirgin olduğu zengin deneyim.
+
+**Karakter**:
+
+- Emre Onat
+- Selin Sezgin
+- Deniz Özgün
+- Can Yalın
+- İpek Duru
+
+Karakter kartında yaklaşım, iletişim tarzı ve güçlü yönler görülebilir. Seçim önce önizlenir; uygulama geneline geçirmek için kaydetmek gerekir.
+
+### 24.3 Başlangıç Deneyimi
+
+- **Hızlı Başlangıç:** Doğrudan Ana Söyleşi'ye geçer; sinematik açılış, açılış müziği ve zengin medya ilk anda yüklenmez. Diğer sayfalar ve özellikler kaldırılmaz, açıldıklarında kullanılabilir.
+- **Zengin Deneyim:** Sinematik açılışı, Keşfet akışını ve gelişmiş deneyim modlarını sunar.
+
+Bu tercih tarayıcıya özgü olabilir ve bir sonraki açılışta uygulanır. Hızlı Başlangıç etkinse Deneyim Modu kartları gizlenebilir; Zengin Deneyim'e dönüldüğünde yeniden görünür.
+
+### 24.4 Model Ayarları
+
+- Kullanılabilir model seçilir.
+- Model açıklaması ve bağlam bilgisi görülür.
+- Düşünme desteği rozeti incelenebilir.
+- **Takip sorusu önerilerini göster** seçeneği yanıt sonrası önerileri açar veya kapatır.
+
+Model listesi kurum yapılandırmasına göre değişebilir.
+
+### 24.5 API anahtarı
+
+Kullanıcıya izin verilmişse kişisel API anahtarı güncellenebilir. **Rate Limit Artışı** düğmesi kurumun ilgili talep sayfasını açabilir. Kullanıcı API anahtarını sohbet mesajına, hata açıklamasına veya ekran görüntüsüne yazmamalıdır.
+
+### 24.6 Analiz araçları
+
+Kullanılabilir araçlar düğmeler halinde gösterilir. Aynı anda yalnızca bir araç etkin olabilir. Araç açıklaması, seçilen modun ne için kullanılacağını anlatır.
+
+### 24.7 Bilge Yolaç yapılandırması
+
+- En uzun bekleme süresi ayarlanabilir.
+- **Bağlantı Testi** ile ajan bağlantısı kontrol edilebilir.
+- Kurulum ve erişim durumu görüntülenebilir.
+
+Bu bölüm özellikle Bilge Yolaç çalışmıyorsa ilk kontrol noktasıdır.
+
+### 24.8 Arayüz ayarları
+
+Kullanıcı şu seçenekleri yönetebilir:
+
+- Zaman Damgaları
+- Yazma Göstergesi
+- Animasyonlar
+- Geniş Ekran
+- Akış Modu
+- Araç Arka Plan Animasyonları
+- Küçük, Orta, Büyük veya Çok Büyük yazı boyutu
+- Giriş animasyonu
+- API anahtarı seçim ekranı
+
+Araç arka plan animasyonları kapatıldığında analiz araçlarının işlevi değişmez; yalnızca görsel hareket azalır.
+
+### 24.9 Kısayollar
+
+- Enter: mesaj gönder
+- Shift + Enter: yeni satır
+- Ctrl + Alt + U: dosya yükle
+- Ctrl + Alt + N: yeni söyleşi
+- Page Up / Page Down: sayfayı kaydır
+
+### 24.10 Ses ayarları
+
+- **Yanıtları Seslendir:** yapay zekâ yanıtlarını otomatik okur.
+- **Arka Fon Müziği:** uygulama genelinde müziği açar veya kapatır.
+- **Ses Seviyesi:** müzik düzeyini ayarlar ve anlık uygulanabilir.
+
+### 24.11 AI Uzman Konuşması
+
+Bu ayarlar Bütünleşik modda geçerlidir:
+
+- AI Uzman Konuşması açık/kapalı,
+- Kısa, Orta veya Uzun konuşma,
+- Az, Orta veya Sık boşta konuşma,
+- Profesyonel, Samimi, Motivasyonel veya Bilimsel tarz.
+
+AI Uzman ile Yardım Asistanı aynı işlev değildir. AI Uzman uygulama içinde proaktif rehberlik ve sesli deneyim sunar; Yardım Asistanı ise Destek sayfasında MERGEN Bilge kullanım sorularını yanıtlar.
+
+### 24.12 Görsel, özetleme ve analiz varsayılanları
+
+Yapılandırma sayfasında:
+
+- görsel boyutu ve kalite,
+- özet ayrıntısı ve odak,
+- Proje ve Kaynak Analizi için Derin Düşünme ve ayrıntı
+
+varsayılanları belirlenebilir. Ana Söyleşi'de ilgili araç seçildiğinde küçük denetimler üzerinden geçici seçim yapılması da mümkündür.
+
+---
+
+## 25. Destek Sayfaları ve Bildirim Gönderme
+
+### 25.1 Yardım Merkezi
+
+Yardım Merkezi'nde:
+
+- E-posta Destek,
+- Telefon Destek,
+- MERGEN Bilge hakkında soruları yanıtlayan Yardım Asistanı
+
+bulunur.
+
+Yardım Asistanı'na menü, düğme, dosya, hızlı eylem, ayar, kişisel veya ortak çalışma, Bilge Yolaç, Bilge Savunması ve sorun giderme hakkında doğal Türkçe ile soru sorulabilir.
+
+### 25.2 Yardım Asistanı'nın yanıt ilkesi
+
+Yardım Asistanı:
+
+- bu rehberin bütününü temel alır,
+- kullanıcının sorusuna doğrudan ve adım adım yanıt verir,
+- uygulama içindeki güncel görünen adları kullanır,
+- kullanıcıya geliştirici ayrıntısı vermez,
+- kesin dayanağı olmayan bilgi üretmez,
+- özellik kurumunuzda görünmüyorsa bunun kullanılabilirliğe veya yetkiye bağlı olabileceğini belirtir,
+- çözülemeyen durumda resmî destek kanallarına yönlendirir.
+
+### 25.3 Geri Bildirim
+
+Geri Bildirim bölümünde kullanıcı:
+
+- genel memnuniyetini seçer,
+- 0-10 arasında tavsiye puanı verebilir,
+- Yeni Özellik İsteği, Tasarım Önerisi, Şikayet, Performans veya Diğer etiketlerini seçebilir,
+- en çok sevdiği noktaları yazabilir,
+- geliştirme önerisini paylaşabilir,
+- kendisiyle iletişime geçilmesine izin verebilir.
+
+Genel memnuniyet seçimi zorunlu olabilir; diğer alanlar ihtiyaca göre doldurulur.
+
+### 25.4 Hata bildirimi
+
+Hata bildirirken şu bilgiler yazılmalıdır:
+
+- sorun hangi sayfada oluştu,
+- hangi işlem yapılmıştı,
+- beklenen sonuç neydi,
+- gerçekte ne oldu,
+- sorun tekrar ediyor mu,
+- mümkünse ekran görüntüsü veya güvenli bir örnek dosya.
+
+Parola, API anahtarı, erişim belirteci, kişisel veri veya kurum açısından sakıncalı içerik eklenmemelidir.
+
+### 25.5 Yenilikler
+
+**Yenilikler** sayfası sürüm geçmişini ve kullanıcıya yansıyan değişiklikleri gösterir. Kullanıcı yeni sayfa, davranış veya iyileştirmelerin ne zaman geldiğini buradan izleyebilir.
+
+### 25.6 Hakkında
+
+**Hakkında** sayfası ürünün temel özelliklerini ve kısa sayfa rehberini sunar. İlk kez kullananlar için iyi bir başlangıçtır. En ayrıntılı kullanım yanıtları için Yardım Asistanı bu belgeyi temel alır.
+
+---
+
+## 26. Yetki, Görünürlük ve Ortama Göre Değişebilen Özellikler
+
+Her kullanıcı aynı menü ve düğmeleri görmeyebilir. Bunun başlıca nedenleri:
+
+- kullanıcı rolü veya yetkisi,
+- kurumunuzda özelliğin henüz etkinleştirilmemiş olması,
+- gerekli bağlantının hazır olmaması,
+- seçilen deneyim veya başlangıç biçimi,
+- seçilen modelin özelliği desteklememesi,
+- kişisel veya ortak çalışma türünün farklı denetimler sunması.
+
+Örnekler:
+
+- Yönetici sayfaları yalnızca yöneticilere görünür.
+- Bilge Savunması kurumunuzda kapalıysa menüde görünmez.
+- Ortak oturumda rolü İzleyici olan kullanıcı yazma düğmelerini kullanamaz.
+- Görsel anlama her modelde bulunmayabilir.
+- Hızlı Başlangıç bazı zengin deneyim kartlarını ilk anda gizleyebilir.
+- Ortak Bilge Yolaç odası ile ortak normal söyleşi aynı araçları göstermez.
+
+Yardım Asistanı görünmeyen bir özellik için önce doğru sayfayı, rolü ve ayarı kontrol ettirmeli; kullanıcının erişimi olduğunu varsaymamalıdır.
+
+---
+
+## 27. Sık Sorulan Sorular İçin Hazır Yanıt Çerçeveleri
+
+### “Hangi sayfadan başlamalıyım?”
+
+Ne yapmak istediğinizi belirleyin: genel sohbet için Ana Söyleşi, dosyaları kalıcı biçimde yönetmek için Dosya Yönetimi, proje klasörü üzerinde ajan çalışması için Bilge Yolaç, ekip çalışması için Ortak Çalışmalarım uygundur.
+
+### “Hızlı eyleme bastım, neden işlem başlamadı?”
+
+Hızlı eylem yalnızca uygun aracı ve çalışma biçimini hazırlar. Dosyanızı ekleyip ne istediğinizi mesaj olarak yazdığınızda işlem başlar.
+
+### “Dosyayı yükledim ama model kullanmıyor.”
+
+Dosyanın yüklenmiş olması tek başına yeterli değildir. Dosya Yönetimi'nde Model Bağlamı seçimini açın veya dosyayı Ana Söyleşi'ye ekleyin; ardından istediğiniz işlemi açıkça yazın.
+
+### “Neden yalnızca bir Excel dosyası seçebiliyorum?”
+
+Excel analiz aracı etkin olduğunda tek dosya kuralı uygulanır. Birden fazla dosyayla genel karşılaştırma yapmak istiyorsanız aracı kapatıp ilgili dosyaları normal bağlama ekleyebilir veya dosyaları tek çalışma kitabında birleştirebilirsiniz.
+
+### “Kodlama Desteği ile Bilge Yolaç arasındaki fark nedir?”
+
+Kodlama Desteği söyleşi içinde kod açıklama ve kısa görevler için uygundur. Bilge Yolaç proje klasörü, çoklu dosya, dosya üretimi, hazır senaryolar ve devam edilebilir ajan oturumları için tasarlanmıştır.
+
+### “Kayıtlı Söyleşiler ile Söyleşi Geçmişi arasındaki fark nedir?”
+
+Kayıtlı Söyleşiler konuşmaları başlık ve içerik aramasıyla yeniden açmaya yarar. Söyleşi Geçmişi soru-yanıt kayıtlarını tarih aralığına göre inceleme ve Excel'e aktarma ağırlıklıdır.
+
+### “Ortak oturumda yazdığım mesaja neden yapay zekâ cevap vermedi?”
+
+Odaya Yaz yalnızca katılımcılara mesaj gönderir. Yapay zekâ yanıtı için Yapay Zekâya Sor düğmesini kullanın.
+
+### “Ortak belge neden kişisel dosyalarımda yok?”
+
+Ortak belgeler kendiliğinden kişisel alana kopyalanmaz. Belgenin yanındaki Kendi Dosyalarıma Kaydet eylemini kullanın.
+
+### “Ortak oturumu arşivlersem ekipten silinir mi?”
+
+Kendi listenizdeki Arşivle eylemi yalnızca sizin görünümünüzü etkiler. Odayı herkes için kapatma ayrı ve yetkili bir işlemdir.
+
+### “Bilge Savunması görünmüyor.”
+
+Bu özellik kurumunuzda kapalı olabilir. Bilge Yolaç menüsünü kontrol edin; görünmüyorsa sistem yöneticinize veya destek kanalına başvurun.
+
+### “Ayarı değiştirdim ama uygulanmadı.”
+
+Kişiselleştirme veya Yapılandırma sayfasındaki **Ayarları Kaydet** düğmesine basın. Bazı başlangıç tercihleri bir sonraki uygulama açılışında etkili olur.
+
+### “Model adı neden değişti?”
+
+Kullanılabilir modeller kurum yapılandırmasına göre güncellenebilir. Güncel seçimi Ana Söyleşi model alanından veya Ayarlar > Yapılandırma > Model Ayarları bölümünden kontrol edin.
+
+### “Yanıt yarıda kaldı.”
+
+Durdur düğmesine yanlışlıkla basılmadığını, bağlantının sürdüğünü ve dosya işlemesinin tamamlandığını kontrol edin. İstemi daha küçük parçalara bölerek yeniden deneyin. Sorun sürerse hata bildirimi gönderin.
+
+### “Bir sayfa boş görünüyor.”
+
+Sayfayı Yenile düğmesiyle tazeleyin, etkin filtreleri Tümü'ne getirin ve kimlik doğrulamanın tamamlandığından emin olun. Özellik yetkiye bağlıysa farklı kullanıcılar farklı içerik görebilir.
+
+---
+
+## 28. Son Not
 
 Bu belge pasif bir ürün metni değildir. MERGEN Bilge içindeki:
 - Yardım Asistanı,
