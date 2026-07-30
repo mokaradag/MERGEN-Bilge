@@ -877,7 +877,7 @@ Bir dosyanın listede bulunması, her soruda otomatik olarak yapay zekâya gönd
 
 ### 19.6 Dosya sorunlarını giderme
 
-- **Dosya görünmiyor:** İşlemenin bitmesini bekleyin ve Yenile'yi kullanın.
+- **Dosya görünmüyor:** İşlemenin bitmesini bekleyin ve Yenile'yi kullanın.
 - **Tür desteklenmiyor:** Dosyayı desteklenen bir biçime dönüştürün.
 - **Boyut sınırı aşıldı:** Dosyayı küçültün veya anlamlı parçalara ayırın.
 - **Önizleme bozuk:** Dosyayı yerel uygulamasında açarak sağlamlığını kontrol edin ve yeniden yükleyin.
@@ -1105,9 +1105,9 @@ Ortak Bilge Yolaç oturumunda normal söyleşi araç seçicisi kullanılmaz; aja
 
 ### 22.8 Ortak belgeler
 
-Katılımcılar yetkileri uygunsa ortak odaya belge yükleyebilir. Yeni belge varsayılan olarak yapay zekâ bağlamına seçilebilir. Yalnızca seçili belgeler sonraki yapay zekâ sorusunda kullanılır.
+**Ortak Söyleşi** oturumlarında katılımcılar yetkileri uygunsa odaya belge yükleyebilir. Yeni belge varsayılan olarak yapay zekâ bağlamına seçilebilir. Yalnızca seçili belgeler sonraki yapay zekâ sorusunda kullanılır.
 
-Ortak belgeler:
+Ortak Söyleşi belgeleri:
 
 - tüm erişimli katılımcılarca görülebilir,
 - bağlama eklenebilir veya bağlamdan çıkarılabilir,
@@ -1115,6 +1115,8 @@ Ortak belgeler:
 - **Kendi Dosyalarıma Kaydet** ile kişisel Dosya Yönetimi alanına kopyalanabilir.
 
 Bir ortak belge kendiliğinden kişisel dosyalara yazılmaz. Kopyalama işlemi kullanıcının açık seçimini gerektirir.
+
+**Ortak Bilge Yolaç** oturumlarında bu yükleme ve bağlam seçimi paneli gösterilmez. Dosyalar Bilge Yolaç'ın ortak çalışma alanı üzerinden yönetilir; Ortak Söyleşi panelindeki belgeler bu oturumların yapay zekâ bağlamına girmez.
 
 ### 22.9 Sohbeti temizleme ve yeni bağlam
 
@@ -1126,8 +1128,9 @@ Bu iki işlem aynı değildir. Kullanıcı yalnızca yeni bir konuya geçmek ist
 
 ### 22.10 Arşivleme
 
-- Kullanıcının **Arşivle** eylemi yalnızca kendi listesini etkiler; diğer katılımcılar oturumu görmeye devam eder.
-- **Geri Yükle** oturumu kullanıcının listesine döndürür.
+- Kullanıcının kişisel **Arşivle** eylemi yalnızca kendi listesini etkiler; diğer katılımcılar oturumu görmeye devam eder.
+- **Geri Yükle**, yalnızca kullanıcının kişisel olarak arşivlediği etkin oturumu kendi listesine döndürür.
+- Oda sahibi odayı herkes için arşivlediyse veya kapattıysa, katılımcılar bunu kendi başlarına geri yükleyemez. Oda ancak sahibi gerekli yetkiyle yeniden etkinleştirdiğinde normal listelere döner.
 - Odayı herkes için arşivleme veya kapatma yalnızca gerekli yetkiye sahip kullanıcı tarafından yapılabilir.
 
 ### 22.11 Ortak oturum sorunlarını giderme
@@ -1136,7 +1139,7 @@ Bu iki işlem aynı değildir. Kullanıcı yalnızca yeni bir konuya geçmek ist
 - **Oda açılmıyor:** Davetin kabul edildiğini ve oturumun etkin olduğunu kontrol edin.
 - **Yazamıyorum:** Rolünüz İzleyici olabilir.
 - **Yapay zekâya soramıyorum:** Rolünüzü ve başka bir yanıtın sürüp sürmediğini kontrol edin.
-- **Belge yanıta girmiyor:** Belgenin ortak belgelerde seçili olduğunu kontrol edin.
+- **Belge yanıta girmiyor:** Ortak Söyleşi odasında belgenin ortak belgelerde seçili olduğunu kontrol edin. Ortak Bilge Yolaç odasında dosyaları ortak çalışma alanından yönetin.
 - **Kişisel dosyalarımda görünmüyor:** Ortak belgede Kendi Dosyalarıma Kaydet eylemini kullanın.
 - **Yanlış listeye bakıyorum:** Normal ortak sohbetler ile ortak Bilge Yolaç oturumlarının ayrı listeleri olduğunu hatırlayın.
 
@@ -1431,11 +1434,11 @@ Odaya Yaz yalnızca katılımcılara mesaj gönderir. Yapay zekâ yanıtı için
 
 ### “Ortak belge neden kişisel dosyalarımda yok?”
 
-Ortak belgeler kendiliğinden kişisel alana kopyalanmaz. Belgenin yanındaki Kendi Dosyalarıma Kaydet eylemini kullanın.
+Ortak Söyleşi belgeleri kendiliğinden kişisel alana kopyalanmaz. Belgenin yanındaki Kendi Dosyalarıma Kaydet eylemini kullanın. Ortak Bilge Yolaç oturumunda dosyaları ortak çalışma alanından yönetin.
 
 ### “Ortak oturumu arşivlersem ekipten silinir mi?”
 
-Kendi listenizdeki Arşivle eylemi yalnızca sizin görünümünüzü etkiler. Odayı herkes için kapatma ayrı ve yetkili bir işlemdir.
+Kendi listenizdeki Arşivle eylemi yalnızca sizin görünümünüzü etkiler. Odayı herkes için arşivleme veya kapatma ayrı ve yetkili bir işlemdir; bu durumdaki oda ancak sahibi yeniden etkinleştirdiğinde normal listelere döner.
 
 ### “Bilge Savunması görünmüyor.”
 
