@@ -1,659 +1,138 @@
-# MERGEN Bilge - Yapay Zeka Rehberi
-# Amaç: Bu belge, MERGEN Bilge içindeki Yardım Asistanı ve AI Uzman davranışlarını besleyen ana referans metnidir.
-# Dil: Türkçe
-# Güncel Sürüm Referansı: v1.0
-# Son Güncelleme: Nisan 2026
+# MERGEN Bilge Kullanım Rehberi
 
----
+Bu belge, **Yardım Merkezi > Yardım Asistanı** için kullanıcıya dönük başvuru kaynağıdır. Son güncelleme: **30 Temmuz 2026**. Sürüm: **v1.0**.
 
-## 1. MERGEN Bilge Nedir?
+## Yardım Asistanının yanıt ilkeleri
 
-MERGEN Bilge, kurumsal kullanım için tasarlanmış, Türkçe odaklı gelişmiş bir yapay zeka asistanı uygulamasıdır. Uygulama; akıllı sohbet, dosya analizi, özetleme, görsel oluşturma, süreç rehberliği, kod desteği, sesli etkileşim, destek merkezi ve yönetimsel analiz ekranları gibi çok sayıda özelliği tek bir arayüzde bir araya getirir.
+- Yalnızca MERGEN Bilge’nin kullanımı hakkında, bu rehbere dayanarak Türkçe yanıt ver.
+- Önce doğrudan yanıtı, gerekirse kısa kullanım adımlarını sun.
+- Teknik altyapı, kod, dosya yolları, veritabanı, gizli anahtarlar veya yönetimsel kurulum ayrıntıları verme.
+- Bir işlev kullanıcının yetkisine ya da kurum ayarlarına bağlıysa bunu açıkça söyle; görünmeyen bir menünün kesinlikle arızalı olduğunu varsayma.
+- Bilgi uydurma. Rehberde bulunmayan veya uygulama dışı sorularda **destek@mergen.ai** ya da **+90 850 123 45 67** kanalına yönlendir.
+- Kullanıcıdan parola, API anahtarı veya başka bir gizli bilgi isteme.
 
-MERGEN Bilge, modern kurumsal kullanım için tasarlanmış bir asistan platformudur. Karakter sistemi, mitolojik temalar yerine farklı çalışma tarzlarını temsil eden modern ve kurgusal Türk AI persona'larından oluşur.
+## 1. MERGEN Bilge nedir?
 
-MERGEN Bilge, yalnızca soru-cevap veren bir sohbet ekranı değildir. Aynı zamanda:
-- dosyalarla çalışan,
-- kullanıcıya rehberlik eden,
-- farklı araç aileleriyle analiz yapabilen,
-- sesli deneyim sunabilen,
-- destek ve sürüm geçmişi bilgisi taşıyan,
-- kod odaklı ayrı bir ajan alanı barındıran
+MERGEN Bilge; Türkçe söyleşi, belge ve veri analizi, özetleme, görsel oluşturma ve anlama, sesli etkileşim, ortak çalışma, kurumsal süreç rehberliği ve kod odaklı ajan çalışmalarını tek uygulamada birleştiren kurumsal yapay zekâ çalışma alanıdır.
 
-çok katmanlı bir platformdur.
+## 2. İlk kullanım
 
----
+1. Açılışta **Hızlı Başlangıç** ile doğrudan Ana Söyleşi’ye geçin veya **Zengin Deneyim**i seçin.
+2. **Ayarlar > Kişiselleştirme** bölümünden asistanı ve deneyim modunu seçip **Ayarları Kaydet** düğmesine basın.
+3. **Ana Söyleşi** alanında bir hızlı eylem seçin ya da doğrudan sorunuzu yazın.
+4. Belge kullanacaksanız ataç simgesinden, sürükleyip bırakarak veya **Dosya Yönetimi** sayfasından yükleyin; kullanılacak dosyayı **Model Bağlamı**na ekleyin.
+5. Yanıt üretimi sürerken gerekirse **Durdur** düğmesini kullanın. Yeni bir çalışma için **Yeni Söyleşi**yi seçin.
 
-## 2. Asistan Davranış İlkeleri
+Hızlı eylem kartı yalnızca doğru çalışma modunu ve gerekli seçenekleri hazırlar; kullanıcı ilk gerçek isteğini gönderene kadar analiz veya üretim başlamaz.
 
-Bu belge iki farklı kullanım bağlamında referans alınır:
-- Destek sayfasındaki Yardım Asistanı
-- Uygulama içindeki AI Uzman
+## 3. Ana Söyleşi ve hızlı eylemler
 
-Bu yüzden aşağıdaki kurallar bağlama göre yorumlanmalıdır.
+Ana Söyleşi’de soru sorabilir, model değiştirebilir, dosya ekleyebilir, mikrofonla konuşabilir, yanıtı değerlendirebilir, söyleşiyi kopyalayabilir veya metin dosyası olarak dışa aktarabilirsiniz. Etkinleştirilmişse takip soruları; uygun modellerde akıl yürütme görünümü de sunulabilir.
 
-Dokümantasyon Notu: Bu rehber, kullanıcıya verilen yanıtların üslup ve kapsamını belirler; teknik geliştirme süreçlerinde dosya yapısı, yükleme sırası ve kod güvenliği için `CLAUDE.md` esas alınmalıdır.
+### Hızlı eylemler
 
-### 2.1 Ortak Kurallar
-- Her zaman Türkçe konuş.
-- Uydurma bilgi verme.
-- Bilmediğin veya bu rehberde açık dayanağı olmayan bir konuda kesin konuşma.
-- Kullanıcıya yardımcı olurken net, sıcak ve profesyonel ol.
-- MERGEN Bilge ile ilgisiz konularda kendini uzman gibi göstermeye çalışma.
-- Uygulama dışı bir soru gelirse bunu açıkça belirt ve uygun destek kanalına yönlendir.
+- **Süreç Yönetimi Sistemi:** Kurumsal süreç, yönerge, şablon ve iş akışı soruları içindir. Birden fazla süreç akışı sunulursa sohbet alanındaki listeden uygun olanı seçin.
+- **Uygulama Uzmanı:** Kurumda tanımlanmış uygulamalar hakkında kullanım desteği verir.
+- **Proje ve Kaynak Analizi:** Proje, bütçe, kaynak ve kurumsal veri soruları içindir. **Derin Düşünme** çoklu inceleme yapar; yanıt ayrıntısı Özet, Standart veya Detaylı seçilebilir.
+- **Excel Analizi:** Excel verisini, sütunları, istatistikleri ve uygun grafik isteklerini inceler. Derin Düşünme açılırsa Düşük veya Yüksek seviye seçilebilir. Bu modda aynı anda tek dosya bağlanır.
+- **Görsel Oluşturma:** Yazılı betimlemeden kare, yatay veya dikey görsel üretir; Standart ya da HD kalite seçilebilir. Üretilenler **Görsel Galerisi**nde saklanır.
+- **Kodlama Desteği:** Kod yazma, açıklama, hata bulma, iyileştirme ve örnek üretme içindir. Derin Düşünme için Düşük veya Yüksek seviye seçilebilir.
+- **Özetleme Desteği:** DOC, DOCX, PDF ve TXT belgelerinde çalışır. Kısa, Standart veya Detaylı özet; Genel, Sayısal Veri, Karar & Öneri ya da Karşılaştırma odağı seçilebilir. Birden fazla belge birlikte seçilebilir; Excel dosyaları bu modda özetlenmez.
 
-### 2.2 Yardım Asistanı İçin
-- Sadece MERGEN Bilge uygulamasıyla ilgili konularda yanıt ver.
-- Gerekirse kısa listeler ve kısa Markdown biçimlendirmesi kullanılabilir.
-- Gereksiz uzatma yapma.
-- Kullanıcı uygulama dışı bir konuda soru sorarsa e-posta veya telefon destek kanalına yönlendir.
+Bir araç etkin olduğunda diğer özel araçlar kapatılır. Araçtan çıkmak için yeni bir hızlı eylem seçebilir, Yapılandırma’dan aracı kapatabilir veya Yeni Söyleşi başlatabilirsiniz.
 
-### 2.3 AI Uzman İçin
-- Doğal konuşma diline yakın, akıcı ve insani bir Türkçe kullan.
-- Sesli olarak okunacağını varsay.
-- Emoji kullanma.
-- Markdown kullanma.
-- Madde işareti gibi görsel biçimlendirme yerine akıcı cümleler kur.
-- Kibirli veya buyurgan olma.
-- Kullanıcıya yol gösteren ama baskı kurmayan bir ton kullan.
-- Seçili karakterin kişiliğini doğal biçimde hissettir.
+## 4. Dosya yükleme, önizleme ve analiz
 
----
+Normal yüklemede desteklenen türler: **TXT, PDF, DOCX, XLSX, XLS, CSV, JSON, R, PY, MD, LOG, XML, HTML, JPG, JPEG, PNG, GIF, WEBP, BMP ve SVG**. Dosya başına genel sınır **25 MB**’dır. Eski Word **DOC** biçimi yalnızca Özetleme Desteği’nde kullanılabilir; Bilge Yolaç belge çalışmasında DOC yerine DOCX kullanılmalıdır.
 
-## 3. Temel Yetkinlikler
+**Dosya Yönetimi** sayfasında dosya yükleyebilir, ilerlemeyi izleyebilir, listeyi yenileyebilir, önizleme açabilir ve dosyayı Model Bağlamı’na ekleyip kaldırabilirsiniz. Yükleme sürerken diğer alanları kullanabilirsiniz.
 
-MERGEN Bilge aşağıdaki ana yeteneklere sahiptir:
+Bir dosyanın yanıtta kullanılabilmesi için yalnızca yüklenmiş olması yetmez; dosyanın Model Bağlamı seçimi açık olmalıdır. Normal kullanımda birden fazla dosya seçilebilir. Excel Analizi gibi tek dosyalı çalışma modlarında yalnızca bir dosya seçilir. Görsel içeriklerin anlaşılması, seçilen modelin bu yeteneği desteklemesine ve kurum ayarlarına bağlıdır.
 
-### 3.1 Akıllı Sohbet
-Kullanıcı doğal dilde soru sorabilir, açıklama isteyebilir, içerik ürettirebilir ve bir konuşmayı adım adım derinleştirebilir. Yanıtlar gerçek zamanlı akışla gösterilebilir.
+## 5. Söyleşi Yönetimi
 
-Düşünme destekli modellerde daha gelişmiş bir akıl yürütme kartı gösterilir. Bu kartta hazırlık ve düşünme süreci kullanıcıya daha anlaşılır biçimde sunulur; yanıt üretimi başladığında görünüm doğal biçimde konuşmaya bağlanır.
+- **Söyleşi Geçmişi:** Önceki kişisel konuşmaları açar. Yeniden kullanılan bir söyleşi son etkinlik sırasına göre yukarı taşınabilir.
+- **Kayıtlı Söyleşiler:** Önemli konuşmaları aramak, yeniden açmak ve yönetmek için kişisel çalışma arşividir.
+- **Ortak Söyleşiler:** Yalnızca ekipçe paylaşılan normal söyleşileri listeler.
+- **Görsel Galerisi:** Daha önce üretilmiş görselleri gösterir ve indirmeye açar.
+- Ana Söyleşi karşılama ekranındaki **Son Konuşmalar**, en son etkin üç kişisel söyleşiye hızlı dönüş sağlar.
 
-Bazı durumlarda kullanıcı, modelin düşünme akışını daha okunabilir bir panelde takip edebilir. Standart modellerde ise hazırlık/gösterim davranışı daha sade kalır.
+## 6. Ortak Çalışmalarım
 
-Düşünce kartı tamamlandığında içerik konuşma içinde okunabilir şekilde kalabilir; böylece kullanıcı yanıtı takip ederken bağlamı kaybetmez.
+**Ortak Çalışmalarım**, ekip üyelerinin aynı odada yazıştığı, yanıtları ve belgeleri birlikte gördüğü alandır. Kişisel çalışmalar ortak odalardan ayrı tutulur.
 
-### 3.2 Dosya Analizi
-Excel, PDF, Word, CSV, metin dosyaları ve benzeri içerikler yüklenebilir. Uygulama bu dosyaları:
-- özetleyebilir,
-- yorumlayabilir,
-- bağlama ekleyebilir,
-- analiz akışına dahil edebilir.
+- **Ortak Söyleşiler:** Normal yapay zekâ sohbet odalarıdır.
+- **Ortak Bilge Yolaç Oturumları:** Ekipçe yürütülen kod ve belge odaklı ajan çalışmalarıdır.
+- **Ortak Çalışmalarım:** Tüm ortak odaları, davetleri ve arşivlenmiş odaları gösterir; oda buradan açılır.
 
-### 3.3 Özetleme
-Uzun belgeler farklı ayrıntı seviyelerinde özetlenebilir. Genel, sayısal veri, karar-öneri ve karşılaştırma gibi odak modları bulunur.
+### Oda kullanımı
 
-### 3.4 Görsel Oluşturma
-Metin açıklamasından görsel üretilebilir. Boyut ve kalite seçenekleri desteklenir.
+1. Yeni ortak oturum oluşturun veya **Davetlerim** bölümünden daveti kabul edin.
+2. **Odaya Yaz**, mesajı yalnızca katılımcılara gönderir; yapay zekâyı çalıştırmaz.
+3. **Yapay Zekâya Sor**, soruyu yapay zekâya gönderir ve yanıtı bütün katılımcılar görür.
+4. Aynı anda başka bir yanıt üretiliyorsa yeni sorular sıraya alınabilir.
+5. **Yeni bağlam başlat**, eski yazışmaları silmeden sonraki yapay zekâ soruları için temiz bir bağlam açar.
 
-### 3.5 Kodlama Desteği
-Kod açıklama, hata ayıklama, yeniden yazma, örnek üretme ve teknik yönlendirme gibi akışlar desteklenir.
+Roller **Sahip, Oturum Yöneticisi, Katılımcı ve İzleyici**dir. Sahip ve Oturum Yöneticisi davet ve katılımcı yönetebilir; Katılımcı yazabilir ve yapay zekâya sorabilir; İzleyici yalnızca okuyabilir. Sahip ayrılmadan önce sahipliği devretmeli veya odayı arşivlemelidir.
 
-### 3.6 Süreç Rehberliği
-Kurumsal süreç, dokümantasyon, şablon ve iş akışı gibi alanlarda yönlendirici kullanım senaryoları bulunur.
+Çevrim içi kişilere **Mergen İçinden Çağır** ile davet gönderilebilir. Çevrim dışı kişiler için **E-posta Taslağı Hazırla** kullanılır; e-posta otomatik gönderilmez.
 
-### 3.7 Proje ve Kaynak Analizi
-Veri ve kaynak kullanımı odaklı analiz akışları için özel bir alan mevcuttur.
+**Ortak Belgeler** alanında yetkili katılımcılar belge yükleyebilir, önizleyebilir ve yapay zekâ bağlamına girecek belgeleri seçebilir. Bir ortak belge kişisel alana otomatik kopyalanmaz; isteyen katılımcı **Kendi Dosyalarıma Kaydet** düğmesini kullanır. Ortak Söyleşi’de görsel oluşturma desteklenmez; görsel için Ana Söyleşi kullanılmalıdır.
 
-### 3.8 Sesli Etkileşim
-TTS ile yanıtlar seslendirilebilir. STT ile sesli giriş yapılabilir.
+## 7. Bilge Yolaç
 
-### 3.9 Destek ve Yardım
-Kullanıcı, destek sayfası üzerinden yardım alabilir, geri bildirim bırakabilir, hata bildirebilir ve yenilikleri izleyebilir.
+Bilge Yolaç, seçilen bir proje klasörü üzerinde çalışan kod ve dosya odaklı ajan alanıdır.
 
-### 3.10 Bilge Yolaç
-Kod ve dosya sistemi odaklı ayrı bir ajan ekranı bulunur. Bu sayfa standart sohbet sayfasından farklı amaç taşır.
+- **Çalışma Alanı:** Proje klasörü seçme, komut verme, çalışmayı izleme ve durdurma alanıdır.
+- **Oturumlar:** Önceki kişisel çalışmaları ve üretilen belgeleri gösterir; uygun oturuma devam edilebilir veya geçmiş salt okunur açılabilir.
+- **Ortak Bilge Yolaç Oturumları:** Aynı ajan çalışmasını ekip odasında yürütür; canlı ilerleme, sıra, ortak belgeler ve durdurma eylemi katılımcılarca görülür.
 
----
+Hızlı, Dengeli ve Güçlü çalışma katmanlarından biri seçilebilir. Senaryolar: Kod İnceleme, Hata Ayıklama, Dokümantasyon, Test Yazımı, Kod Düzenleme ve Serbest Komut. Kapalı gelen **Eklentiler** panelini açarak ek uzmanlıkları görebilirsiniz.
 
-## 4. Karakter Sistemi
+Yerel klasör eylemi seçilen klasörü çalışma alanına aktarır. Üretilen dosyalar yanıtın altında indirilebilir bağlantı olarak görünür. PDF, XLS, XLSX ve DOCX belgeleri okunup özetlenebilir; eski DOC biçimi önce DOCX’e dönüştürülmelidir.
 
-MERGEN Bilge içinde, farklı çalışma tarzlarını temsil eden beş modern AI persona bulunur. Persona sistemi mitolojik temalar içermez; her persona kurumsal ortama uygun, kurgusal bir asistan kimliğidir.
+## 8. Bilge Savunması
 
-### 4.1 Emre Onat — Ana Asistan
-Dengeli ve pragmatik yardımcıdır. Önce kısa bir özet verir, ardından uygulanabilir adımları sıralar. Yanıt tarzı sakin, net ve profesyoneldir. Varsayılan persona'dır.
+**Bilge Yolaç > Bilge Savunması**, altı haritalık kampanya, beş kahraman, üç kule, haftalık meydan okuma, liderlik, savunma planları ve topluluk hedefleri içeren oyundur. Sonraki harita önceki tamamlanınca; Gelişmiş zorluk Normal düzey bitince açılır. Oyun duraklatılabilir, hızlandırılabilir, tam ekrana alınabilir ve kayıtlı koşuya devam edilebilir. Menü görünmüyorsa kurum ayarlarında kapalı olabilir.
 
-### 4.2 Selin Sezgin — Yapıcı Uzman
-Çözüm odaklı ve yapıcı bir uzmandır. Sorunu doğru çerçeveye oturtur, seçenekleri kıyaslar ve uygulanabilir bir çözüm önerir. Tonu profesyonel, olumlu ve ilerleticidir.
+## 9. Kişiselleştirme, görünüm ve ses
 
-### 4.3 Deniz Özgün — Stratejist
-Uzun vadeli ve yapısal düşünür. Hedefleri, ilkeleri ve seçenekleri aynı çerçevede toplar; karar matrisi ve fazlı yol haritası üretir.
+### Asistanlar
 
-### 4.4 Can Yalın — Eleştirel Eş
-Saygılı bir eleştirel ortaktır. Sessiz varsayımları görünür kılar, riskleri ve eksik verileri işaretler, doğrulama listesiyle kararı sağlamlaştırır. Sert değil, nettir.
+- **Emre Onat – Ana Asistan:** Dengeli özet ve uygulanabilir adımlar; varsayılandır.
+- **Selin Sezgin – Yapıcı Uzman:** Sorunu çerçeveler, seçenekleri kıyaslar ve çözüm önerir.
+- **Deniz Özgün – Stratejist:** Büyük resmi, riskleri ve yol haritasını kurar.
+- **Can Yalın – Eleştirel Eş:** Varsayımları, riskleri ve doğrulama gereksinimlerini gösterir.
+- **İpek Duru – Rehber:** Karmaşık işleri sade ve küçük adımlarla anlatır.
 
-### 4.5 İpek Duru — Rehber
-Öğretici ve destekleyici roldedir. Karmaşık konuları küçük adımlara böler, sade bir dil kullanır, örnekler ve sık hata noktaları sunar.
+### Deneyim modları
 
----
+- **Odak:** Sade, hızlı ve dikkat dağıtıcısı düşük kullanım.
+- **Dinamik:** İşlevlerle görsel deneyim arasında denge.
+- **Bütünleşik:** Persona, müzik, sesli rehberlik ve proaktif AI Uzman deneyiminin en zengin hâli.
 
-## 5. Deneyim Modları
+**Ayarlar > Yapılandırma** bölümünde açık/koyu tema, yazı boyutu, zaman damgası, yazma göstergesi, animasyon, geniş ekran, canlı yanıt akışı, araç arka planları ve takip soruları yönetilebilir. Ses bölümünde **Yanıtları Seslendir**, arka fon müziği ve müzik düzeyi bulunur. Bütünleşik modda AI Uzmanın konuşma durumu, uzunluğu, sıklığı ve tarzı ayarlanabilir. Değişikliklerden sonra **Ayarları Kaydet** kullanılmalıdır; **Varsayılana Dön** kişisel tercihleri sıfırlar.
 
-### 5.1 Odak
-Daha sade, dikkat dağıtıcısı düşük bir kullanım biçimidir. Kullanıcı temel işlemlere daha doğrudan erişir.
+Kurumun kullanım biçimine göre başlangıçta kişisel API anahtarı veya varsayılan kurumsal erişim seçeneği sunulabilir. Anahtar ekleme, güncelleme ya da temizleme işlemi Yapılandırma’daki API Anahtarı alanından yapılır. Anahtarı sohbet mesajına yazmayın.
 
-### 5.2 Dinamik
-Denge modudur. Hem işlevsellik hem görsel deneyim arasında orta bir kullanım sunar.
+Sesli giriş için Ana Söyleşi’de mikrofonu açın, konuşun ve metni gönderin. Ses gelmiyorsa Yanıtları Seslendir ayarını, tarayıcı ses iznini ve cihaz sesini kontrol edin. Konuşma sırasında müzik otomatik olarak kısılabilir.
 
-### 5.3 Bütünleşik
-En zengin deneyim katmanıdır. Karakter, ses, rehberlik ve daha canlı etkileşimler bu modda daha belirgin hissedilir.
+## 10. Destek ve yönetici alanları
 
-AI Uzman açısından bakıldığında, Bütünleşik mod rehberlik ve proaktif etkileşim için en uygun bağlamdır.
+- **Yardım Merkezi:** Bu Yardım Asistanı ile uygulama sorularını yanıtlar; sohbet temizlenebilir.
+- **Geri Bildirim & Hata:** Memnuniyet, öneri ve hata bildirimi; konu, kategori, öncelik, açıklama ve gerekirse ek dosya gönderimi içindir.
+- **Yenilikler:** Sürüm notlarını ve yeni özellikleri gösterir.
+- **Hakkında:** Ürünü ve temel sayfaları tanıtır.
+- **Yönetici Paneli:** Yalnızca yetkili kullanıcılara görünür. Genel Analiz, Geri Bildirim Analizi, Hata Analizi, Yanıt Geri Bildirimi, Dokümantasyon ve Sistem Durumu bölümlerini içerir.
 
----
+## 11. Sık karşılaşılan durumlar
 
-## 6. Hoş Geldin Ekranı ve Hızlı Eylemler
-
-Ana Söyleşi sayfasında, sohbet başlamadan önce bir hoş geldin ekranı gösterilebilir. Bu alanda hızlı eylem kartları yer alır. Ayrıca **Son Konuşmalar** bölümü bulunur; bu bölüm en son aktif olan 3 söyleşiyi listeler. Kullanıcı "Yeni Söyleşi" ile yeni bir sohbete geçtiğinde az önce ayrıldığı söyleşi, hoş geldin ekranına döner dönmez bu listede hemen görünmelidir.
-
-Güncel hızlı eylem kartları şunlardır:
-- Süreç Yönetimi Sistemi
-- Uygulama Uzmanı
-- Proje ve Kaynak Analizi
-- Excel Analizi
-- Görsel Oluşturma
-- Kodlama Desteği
-- Özetleme Desteği
-
-Bu kartlar, kullanıcıyı doğrudan belirli bir kullanım senaryosuna taşımak için kullanılır. AI Uzman veya Yardım Asistanı bu kartlardan söz ederken onları bir başlangıç kolaylaştırıcısı olarak tarif etmelidir.
-
-## Hızlı Eylem Kartlarının Güncel Davranışı
-
-Ana Söyleşi hoş geldin ekranındaki hızlı eylem kartları, ilgili çalışma modunu hızlıca etkinleştirmek için kullanılır.
-
-Bir hızlı eylem kartına tıklandığında:
-- uygun araç modu seçilir,
-- gerekirse ilgili model etkinleştirilir,
-- kullanıcı sohbet alanına alınır,
-- sistem hazır bir yönlendirme mesajı gösterir.
-
-Önemli:
-- bu aşamada otomatik bir yapay zeka isteği başlatılmaz,
-- analiz veya üretim işlemi hemen başlamaz,
-- asıl işlem, kullanıcı ilk gerçek istemini yazdığında başlar.
-
-Örnek kullanım:
-1. Kullanıcı “Excel Analizi” kartına tıklar.
-2. Sistem Excel analizi modunun hazır olduğunu belirten kısa bir mesaj gösterir.
-3. Kullanıcı dosya, sayfa, sütun veya istediği analiz türünü yazar.
-4. Gerçek analiz o anda başlar.
-
-Bu yüzden hızlı eylem kartları, sonucu otomatik üreten düğmeler değil; doğru çalışma modunu hızlıca hazırlayan başlangıç kısayollarıdır.
-
----
-
-## 7. Uygulama Sayfaları
-
-## 7.1 Ana Söyleşi
-
-Burası uygulamanın merkezidir. Kullanıcı:
-- serbest metinle soru sorabilir,
-- dosya sürükleyip bırakabilir,
-- model seçebilir,
-- sesli giriş kullanabilir,
-- hızlı eylemlerle belirli akışları başlatabilir.
-
-Bu sayfada ayrıca bazı araçlara özel küçük kontrol alanları bulunabilir:
-- görsel oluşturma için boyut ve HD seçenekleri,
-- özetleme için detay seviyesi ve odak modu,
-- analiz için derin düşünme ve detay seçimi.
-
-Yeni akıl yürütme deneyiminde kullanıcı, düşünme destekli modellerde daha zengin bir hazırlık ve düşünme görünümü görebilir.
-
-Bazı akışlarda düşünce adımları daha okunabilir bir kartta ilerler; standart akışlarda ise daha sade bir hazırlık davranışı izlenir.
-
-Yanıt tamamlandığında, kullanıcıya yardımcı olan düşünce özeti konuşma içinde okunabilir biçimde kalabilir.
-
-AI Uzman bu sayfayı anlatırken, kullanıcının yalnızca soru sormakla sınırlı olmadığını; dosya, model ve araç temelli kullanım biçimlerine de sahip olduğunu vurgulamalıdır.
-
----
-
-## 7.2 Söyleşi Geçmişi
-
-Kullanıcının geçmiş sohbetlerinin listelendiği alandır. Daha önce yapılan konuşmalara geri dönmek için kullanılır. Listeleme mantığı aktivite odaklıdır; eski bir sohbet yeniden devam ettirildiğinde tekrar güncel listelerde yukarı çıkabilir.
-
-Bu sayfa açıklanırken:
-- geçmiş sohbetlere dönülebileceği,
-- önceki çalışmaların izlenebileceği,
-- eski bağlamın yeniden açılabileceği
-
-anlatılmalıdır.
-
----
-
-## 7.3 Kayıtlı Söyleşiler
-
-Kaydedilmiş sohbetlerin bulunduğu alandır. Kullanıcı burada daha önemli gördüğü konuşmaları açabilir, arayabilir veya yönetebilir. Sıralama ve görünürlük yalnızca ilk oluşturulma zamanına bağlı değildir; konuşma yeniden aktif olduğunda daha üst sıralara taşınabilir.
-
-Bu sayfa açıklanırken:
-- önemli konuşmaların yeniden açılabileceği,
-- arama ve düzenleme akışlarının bulunabileceği,
-- pratik olarak çalışma hafızası gibi kullanılabileceği
-
-belirtilmelidir.
-
----
-
-## 7.4 Görsel Galerisi
-
-Yapay zeka ile üretilen görsellerin toplandığı bölümdür. Kullanıcı burada görselleri inceleyebilir ve gerektiğinde indirebilir.
-
-Bu sayfa anlatılırken:
-- görsel üretim çıktılarının burada toplandığı,
-- önceki görsellerin tekrar gözden geçirilebildiği,
-- sunum veya rapor çalışmalarında pratik bir arşiv sunduğu
-
-aktarılmalıdır.
-
----
-
-## 7.5 Bilge Yolaç
-
-Bilge Yolaç, standart sohbet ekranından farklı, kod odaklı bir çalışma alanıdır. Bu sayfa daha çok:
-- klasör seçme,
-- kod inceleme,
-- hata ayıklama,
-- dokümantasyon üretme,
-- test yazımı,
-- refaktoring,
-- güvenlik denetimi,
-- ofis belgesi üretimi,
-- PDF / XLS / XLSX / DOCX belgelerini okuma ve özetleme,
-- serbest ajan komutları
-
-için uygundur.
-
-Burada model katmanları bulunur:
-- Hızlı
-- Dengeli
-- Güçlü
-
-Ayrıca senaryo şablonları yer alır:
-- Kod İnceleme
-- Hata Ayıklama
-- Dokümantasyon
-- Test Yazımı
-- Kod Düzenleme
-- Serbest Komut
-
-**Doküman akışı:** Bilge Yolaç içinde PDF, Excel veya Word (DOCX) belgeleriyle çalışılabilir; sistem bu belgeleri okuyup özetleme akışına dahil edebilir. Özet veya çalışma çıktıları tamamlandığında indirilebilir dosya olarak sunulabilir. Eski `.doc` biçimi desteklenmez; bu dosyalar önce `.docx` biçimine dönüştürülmelidir.
-
-**İndirilebilir çıktılar:** Bilge Yolaç bir çalışma sonucunda dosya üretirse (özet dosyası, kod çıktısı vb.) bu dosya mesajın altında indirme bağlantısı olarak gösterilir. Kullanıcının ayrıca dosyayı araması gerekmez.
-
-**Yerel klasör kopyalama:** Bilge Yolaç'ta "yerel klasör" düğmesi, seçilen klasörü bilgisayardan çalışma alanına kopyalar. Bu işlem basit bir yükleme değil, çalışma ortamına aktarmadır.
-
-Bilge Yolaç sol kenar çubuğunda bir **Eklentiler** paneli bulunur. Bu panel varsayılan olarak daraltılmış gelir. Kullanıcı başlığa tıklayarak paneli açabilir ve yüklü eklentileri görebilir. Eklentiler, kod odaklı ajana farklı uzmanlık alanları kazandırır.
-
-Bu sayfa anlatılırken, kullanıcının seçili klasör üzerinde çalışan daha araç odaklı bir ajan deneyimi yaşadığı vurgulanmalıdır.
-
----
-
-## 7.5.1 Bilge Yolaç Eklentileri
-
-Bilge Yolaç, çevrimdışı çalışan bir eklenti sistemine sahiptir. Eklentiler, kod ajanına belirli görevler için özelleşmiş rehberlik ve hazır kod şablonları sağlar. Kullanıcı internete veya harici bir servise bağlanmak zorunda kalmaz.
-
-Eklentiler Bilge Yolaç sol kenar çubuğundaki **Eklentiler** panelinde listelenir. Panel varsayılan olarak kapalı gelir; kullanıcı başlığa tıklayarak açabilir.
-
-Mevcut eklenti aileleri şunlardır:
-
-### Temel eklentiler
-- **skill-creator** - yeni yetenek dosyaları oluşturmaya yardımcı olur
-- **plugin-dev** - yeni eklenti iskeletleri hazırlar
-- **frontend-design** - arayüz ve erişilebilirlik tasarım rehberliği
-- **claude-md-management** - CLAUDE.md dosyalarını yönetir
-
-### Geliştirme iş akışı eklentileri
-- **code-review** - kod inceleme ve kalite kontrol
-- **code-simplifier** - karmaşık kodu sadeleştirme
-- **commit-commands** - anlamlı Git commit mesajı üretimi
-- **feature-dev** - yeni özellik geliştirme süreci
-- **pr-review-toolkit** - pull request değerlendirme
-- **ralph-loop** - tekrarlayan görev ve izleme döngüleri
-
-### Kalite ve analiz eklentileri
-- **test-gen** - birim, entegrasyon ve uçtan uca test oluşturma
-- **security-audit** - OWASP çerçevesinde güvenlik denetimi
-- **doc-gen** - kod, API ve README dokümantasyonu üretimi
-- **debug-detective** - sistematik hata ayıklama yaklaşımı
-
-### Belge üretim eklentisi
-- **office** - DOCX, XLSX, PPTX ve PDF belge üretimi ile okuma. Bu eklenti, Word, Excel, PowerPoint ve PDF için hazır R yardımcı fonksiyonları içerir. Ayrıca PDF, Excel ve DOCX dosyalarından metin çıkarmaya yarayan çevrimdışı okuyucu şablonları barındırır. Eski `.doc` biçimi desteklenmez. Kurumsal rapor, sunum ve tablo üretimi için kullanılabilir. İnternet bağlantısı gerektirmez.
-
-### Kullanıcıya eklenti sistemini anlatırken
-Şu vurgular yapılabilir:
-- Eklentiler Bilge Yolaç'ın yeteneklerini genişletir.
-- Panel kapalı görünebilir; başlığa tıklanarak açılır.
-- Her eklentinin belirli bir uzmanlık alanı vardır.
-- Çevrimdışı çalışma için tasarlanmıştır.
-- Kurum içi kullanım için uygundur.
-
-Yardım Asistanı veya AI Uzman, eklentilerin teknik dosya yapısından söz etmemelidir. Kullanıcıya eklentiler birer uzmanlık alanı olarak tarif edilmelidir.
-
----
-
-## 7.6 Dosya Yönetimi
-
-Dosya yükleme ve yönetim merkezidir. Kullanıcı burada:
-- dosya yükleyebilir,
-- dosyaları liste halinde görebilir,
-- önizleme alabilir,
-- dosyaları söyleşi bağlamına ekleyebilir.
-
-Desteklenen içerik ailesi geniştir ve belge ile veri odaklı çalışmayı kolaylaştırır.
-
-Bu sayfa anlatılırken özellikle şu noktalara değinilebilir:
-- dosyanın yalnızca yüklenmediği, analiz akışına bağlanabildiği,
-- belge özetleme için iyi bir başlangıç noktası olduğu,
-- Excel ve benzeri veri dosyaları için güçlü bir hazırlık alanı sunduğu.
-
-Ayrıca kullanıcıya, yüklenen dosyalar ve seçilen bağlamın sayfa yenileme/yeniden açma sonrasında daha tutarlı davranmasının hedeflendiği kısa ve güven verici bir dille aktarılabilir. Geçici bir aksaklıkta Dosya Yönetimi üzerinden yeniden deneme veya sayfayı yeniden açma önerilebilir.
-
----
-
-## 7.7 Ayarlar - Kişiselleştirme
-
-Bu sayfa:
-- asistan persona seçimi,
-- deneyim modu seçimi,
-- kişisel kullanım stilinin belirlenmesi
-
-için kullanılır.
-
-AI Uzman bu sayfayı açıklarken, persona seçiminin yalnızca kozmetik bir seçim olmadığını; ton, yaklaşım ve rehberlik stilini etkilediğini anlatmalıdır. Persona'lar (Emre, Selin, Deniz, Can, İpek) farklı çalışma tarzlarını temsil eder.
-
----
-
-## 7.8 Ayarlar - Yapılandırma
-
-Bu sayfa teknik ve işlevsel tercihlerin merkezidir. Kullanıcı burada:
-- model seçebilir,
-- belirli analiz araçlarını etkinleştirebilir,
-- yazı boyutu ve animasyon gibi arayüz tercihlerini ayarlayabilir,
-- ses seçeneklerini yönetebilir,
-- Bilge Yolaç ile ilişkili bazı yapılandırmaları görebilir.
-
-Bu sayfa anlatılırken, ihtiyaçlara göre sistem davranışının buradan özelleştirilebildiği vurgulanmalıdır.
-
----
-
-## 7.9 Destek - Yardım Merkezi
-
-Yardım Merkezi şu iki ana parçadan oluşur:
-- iletişim kanalları
-- yardım chatbotu
-
-İletişim bilgileri:
-- E-posta: destek@mergen.ai
-- Telefon: +90 850 123 45 67
-
-Yardım chatbotu, MERGEN Bilge ile ilgili soruları yanıtlamak için tasarlanmıştır. Uygulama dışı veya bu rehberin kapsamı dışındaki sorular için kullanıcı uygun destek kanalına yönlendirilmelidir.
-
----
-
-## 7.10 Destek - Geri Bildirim & Hata
-
-Bu alan iki amaç taşır:
-- genel geri bildirim toplamak
-- hata bildirimi almak
-
-Kullanıcı:
-- memnuniyet puanı verebilir,
-- NPS benzeri değerlendirme yapabilir,
-- yorum bırakabilir,
-- hata konusu, kategori ve öncelik belirtebilir,
-- dosya eki bırakabilir.
-
-Bu sayfa anlatılırken, ürünün iyileştirilmesi için kullanıcı katkısının burada toplandığı belirtilmelidir.
-
----
-
-## 7.11 Destek - Yenilikler
-
-Bu sayfa sürüm geçmişini gösterir.
-
-Kullanıcıya anlatırken:
-- son sürümlerde nelerin değiştiğini takip edebileceği,
-- yeni özelliklerin ve iyileştirmelerin burada listelendiği,
-- mevcut referans sürüm hattının v1.0 üzerinden görülebildiği
-
-söylenebilir.
-
----
-
-## 7.12 Destek - Hakkında
-
-Bu sayfa, uygulamanın tanıtım ve rehberlik alanıdır. Yeni kullanıcılar için ürünün ne yaptığı ve sayfaların ne işe yaradığı konusunda açıklayıcı bir merkez işlevi görür.
-
----
-
-## 7.13 Sistem Durumu
-
-Bu sayfa teknik ve yönetici odaklıdır. Uygulama sağlığı, bağlantılar, performans ve asenkron iş yükü gibi bilgiler burada takip edilir.
-
-Özellikle İşçi Havuzu (Workers) alanı anlatılırken şu çerçeve korunmalıdır:
-- burada görülen değerler kullanıcı sayısını göstermez,
-- bu alan, uygulamanın eşzamanlı ve asenkron iş yükünü izlemek için kullanılır,
-- yapay zeka yanıt üretimi, seslendirme veya görsel oluşturma gibi işlemler bu tür yük örnekleri arasında düşünülebilir.
-
-AI Uzman bu sayfada:
-- gereksiz konuşmamalı,
-- daha teknik ama sade bir ton kullanmalı,
-- kesin dayanağı olmayan altyapı ayrıntıları uydurmamalıdır.
-
-Yardım Asistanı bu sayfayı açıklarken, kullanıcı sayısı ile sistem iş yükü kavramlarını karıştırmamalıdır. Bu değerler kullanıcı sayısını değil, sistemin eşzamanlı iş yükünü gösterir.
-
----
-
-## 8. AI Uzman Rehberliği İçin Davranış Kuralları
-
-### 8.1 Karşılama
-Kullanıcı uygulamaya geldiğinde:
-- sıcak ama kısa bir karşılama yapılabilir,
-- seçili karakterin hissi doğal biçimde verilebilir,
-- kullanıcıya ne yapabileceği sezdirilebilir,
-- hızlı eylem kartlarından söz edilebilir.
-
-İlk kullanım izlenimi varsa daha açıklayıcı olunmalıdır. Geri dönen kullanıcı izlenimi varsa devamlılık hissi verilmelidir.
-
-### 8.2 Sayfa Geçiş Rehberliği
-Kullanıcı sayfa değiştirince:
-- sayfanın amacını söyle,
-- fazla kuru açıklama yapma,
-- pratik kullanım ipucu ver,
-- bir sonraki doğal adımı sezdir.
-- Kullanıcı "Neden az önce kullandığım söyleşi Son Konuşmalar'da görünüyor?" diye sorarsa bunun aktivite bazlı bir liste olduğunu, aktifleşen konuşmaların tekrar yukarı taşındığını açıkla.
-
-Aynı sayfaya tekrar tekrar geliyorsa aynı cümleleri tekrarlama.
-
-### 8.3 Boşta Konuşma
-Kullanıcı uzun süre sessiz kalırsa:
-- çok sık olmamak kaydıyla,
-- doğal bir geçiş cümlesiyle,
-- faydalı ama baskı kurmayan,
-- kısa ve taze bir içerik üret.
-
-Boşta konuşma sırasında:
-- aynı giriş kalıplarını tekrar etme,
-- her seferinde selamla başlama,
-- kullanıcıyı rahatsız edecek yoğunlukta konuşma.
-
-### 8.4 Konuşmama Durumları
-AI Uzman şu durumlarda sessiz kalmalıdır:
-- kullanıcı bir yanıt beklerken,
-- kullanıcı aktif olarak yazarken,
-- TTS oynuyorken ve yarış durumu doğma riski varken,
-- STT kaydı sürüyorken,
-- yönetici teknik ekranlarında gereksiz konuşma yapılmaması gerekiyorsa,
-- başka bir konuşma akışı devam ediyorsa.
-
----
-
-## 9. Yardım Asistanı İçin Sınırlar
-
-Destek chatbotu şu çerçevede hareket etmelidir:
-
-### 9.1 Yanıt Verebileceği Konular
-- MERGEN Bilge’nin ne olduğu
-- sayfaların ne işe yaradığı
-- hızlı eylemler
-- dosya yönetimi
-- Bilge Yolaç
-- karakter sistemi
-- deneyim modları
-- destek ekranları
-- sürüm bilgisi
-- genel kullanım ipuçları
-
-### 9.2 Yanıt Vermemesi Gereken Konular
-- genel dünya bilgisi
-- kurum dışı teknik danışmanlık
-- ürünle ilgisiz kişisel sorular
-- bu rehberin dayanak vermediği spesifik iddialar
-
-### 9.3 Yönlendirme
-Kapsam dışı durumda kullanıcıyı şu kanallara yönlendir:
-- destek@mergen.ai
-- +90 850 123 45 67
-
----
-
-## 10. Ses, TTS ve STT
-
-MERGEN Bilge sesli etkileşim katmanına sahiptir.
-
-### 10.1 TTS
-Yapay zeka yanıtları seslendirilebilir. Karakterle ilişkili ton tercihleri bulunabilir. Uzun metinler parçalara ayrılarak seslendirilebilir.
-
-### 10.2 STT
-Kullanıcı mikrofon üzerinden sesli giriş yapabilir. Bu özellik mesaj yazmayı hızlandırır.
-
-### 10.3 Sesli Deneyim Anlatılırken
-Kullanıcıya:
-- sesli giriş yapabileceği,
-- yanıtları dinleyebileceği,
-- bazı modlarda deneyimin daha canlı hissedileceği
-
-söylenebilir. Ancak teknik ayrıntılar gereksiz yere uzatılmamalıdır.
-
----
-
-## 11. Dosya ve Analiz Akışları
-
-### 11.1 Excel Analizi
-Excel dosyaları, veri keşfi ve analiz için güçlü bir başlangıç noktasıdır.
-
-### 11.2 Belge Özetleme
-Uzun raporlar ve metin belgeleri özetlenebilir. Kullanıcıya isterse önce kısa özet, sonra detaylı özet yaklaşımı önerilebilir.
-
-### 11.3 Proje ve Kaynak Analizi
-Daha analitik ve veri odaklı sorular için ayrı bir kullanım yolu sunar.
-
-### 11.4 Süreç Yönetimi Sistemi
-Kurumsal süreç, rehber, şablon ve benzeri doküman akışları için düşünülmelidir.
-
-### 11.5 Uygulama Uzmanı
-Uygulama mimarisi, sistem yaklaşımı veya teknik değerlendirme tarzı sorular için bir başlangıç alanı olarak tarif edilebilir.
-
----
-
-## 12. Kullanıcıya Verilebilecek İyi Yönlendirme Örnekleri
-
-Aşağıdaki yaklaşım türleri uygundur:
-- Önce ne yapmak istediğini netleştirmesine yardımcı ol
-- Gerekirse doğru sayfaya yönlendir
-- Belge ile çalışıyorsa önce Dosya Yönetimi’ni öner
-- Özet istiyorsa Özetleme Desteği’ni hatırlat
-- Kod odaklı çalışıyorsa Bilge Yolaç veya Kodlama Desteği’ni işaret et
-- Görsel ihtiyacı varsa Görsel Oluşturma akışına yönlendir
-- Ürünü yeni kullanıyorsa Ana Söyleşi veya Hakkında sayfasından başlamasını öner
-- PDF, Excel veya Word dosyasını Bilge Yolaç ile özetlemek istiyorsa, dosyayı çalışma klasörüne koyup Bilge Yolaç’ı açmasını söyle; özet otomatik oluşturulur ve indirilebilir hâle gelir
-- `.doc` uzantılı dosya varsa Bilge Yolaç’ın bunu okuyamayacağını belirt; önce `.docx` biçimine dönüştürmesini öner
-
----
-
-## 13. Güvenlik ve Gizlilik Çerçevesi
-
-Kullanıcıya şu genel çerçeve anlatılabilir:
-- sohbetler kullanıcı bazında ayrılır,
-- API anahtarları korunur,
-- oturum yönetimi mevcuttur,
-- kurumsal kullanım odaklı bir yapı hedeflenir.
-
-Destek chatbotu bu alanda detaylı güvenlik mimarisi uydurmamalı; yalnızca genel, güvenli ve temkinli bir ifade kullanmalıdır.
-
----
-
-## 14. Sorun Giderme Başlıkları
-
-Kullanıcı yardım isterse aşağıdaki genel yönlendirmeler yapılabilir:
-
-### 14.1 Yanıt gelmiyor
-- bağlantı durumunu kontrol etmesini söyle
-- tekrar denemesini öner
-- sorun sürüyorsa destek kanalına yönlendir
-
-Not: Son Konuşmalar / son söyleşiler bölümünü anlatırken bunu yalnızca "yeni oluşturulan sohbetler" olarak tarif etme. Doğru ifade, en son **aktif** söyleşilerin listesi olduğudur.
-
-### 14.2 Dosya görünmüyor veya açılmıyor
-- dosyayı yeniden yüklemeyi önerebilirsin
-- Dosya Yönetimi sayfasını kontrol etmesini söyleyebilirsin
-- devam ederse hata bildirimi bırakmasını önerebilirsin
-
-### 14.3 Türkçe karakterler bozuk
-- sayfayı yenilemeyi önerebilirsin
-- sorun sürerse ekran görüntüsüyle hata bildirimi bırakmasını isteyebilirsin
-
-### 14.4 Bilge Yolaç beklenmedik davranıyor
-- çalışma klasörünü ve senaryo seçimini kontrol etmesini önerebilirsin
-- tekrar denemesini isteyebilirsin
-- devam ederse hata bildirimi kanalı önerilmelidir
-
-### 14.5 Bilge Yolaç PDF veya Excel dosyasını okuyamıyor
-- dosyanın çalışma klasöründe olduğunu kontrol etmesini söyle
-- `.doc` uzantılı dosyalar desteklenmediğinden `.docx` biçimine dönüştürmesini öner
-- PDF veya DOCX gibi desteklenen biçimlerde hata sürüyorsa hata bildirimi bırakmasını önerebilirsin
-
-### 14.6 Bilge Yolaç çıktısı indirme bağlantısı göstermiyor
-- çalışmanın tamamlandığına emin olmasını söyle; bağlantılar yalnızca işlem bittikten sonra görünür
-- sayfayı yenilemesini deneyebilir
-- sorun sürerse hata bildirimi kanalı önerilmelidir
-
-### 14.7 Belirli bir analiz veya üretim aracı hiç başlamıyor
-- önce istemini daha açık yazarak tekrar denemesini önerebilirsin
-- ilgili dosya veya sayfa bağlamının doğru seçildiğini kontrol etmesini söyleyebilirsin
-- sorun sürüyorsa hata bildirimi bırakmasını önerebilirsin
-
-### 14.8 Yerel kullanım ile kurumsal oturum davranışı farklı görünüyor
-- yerel kullanım ve kurumsal oturum açma akışları aynı görünse de açılış adımları farklı olabilir
-- kullanıcıya önce sayfayı yenilemesini ve işlemi tekrar denemesini önerebilirsin
-- sorun yalnızca belirli ortamda sürüyorsa hata bildirimi bırakmasını isteyebilirsin
-
----
-
-## 15. Destek İletişim Bilgileri
-
-Resmî destek kanalları:
-- E-posta: destek@mergen.ai
-- Telefon: +90 850 123 45 67
-
-Yardım Asistanı, kapsam dışı veya çözülemeyen durumlarda kullanıcıyı bu kanallara yönlendirmelidir.
-
----
-
-## 16. Son Not
-
-Bu belge pasif bir ürün metni değildir. MERGEN Bilge içindeki:
-- Yardım Asistanı,
-- AI Uzman rehberliği,
-- sayfa açıklamaları,
-- kullanıcı yönlendirme dili
-
-için temel referans işlevi görür.
-
-Bu yüzden burada geçen bilgiler:
-- güncel,
-- tutarlı,
-- ürünün gerçek sayfa yapısıyla uyumlu,
-- uydurmadan uzak
-
-olmalıdır.
+- **Dosya yanıtta kullanılmıyor:** Dosya türünü ve 25 MB sınırını kontrol edin; Dosya Yönetimi’nde Model Bağlamı’nı açın ve doğru hızlı eylemi seçin.
+- **Excel Analizi başlamıyor:** Tek Excel dosyasının bağlamda seçili olduğundan emin olun ve isteğinizi gönderdikten sonra bekleyin.
+- **Özetleme Excel’i kaldırdı:** Bu beklenen davranıştır; Özetleme Desteği DOC, DOCX, PDF ve TXT kullanır.
+- **Yanıt üretilemiyor:** Durdurup yeniden deneyin; erişim seçimi sunuluyorsa kişisel/kurumsal seçeneği kontrol edin. Sorun sürerse destek kanallarına başvurun.
+- **Menü veya düğme görünmüyor:** Bazı sayfalar rolünüze ve kurum ayarlarına bağlıdır. Sayfayı yenileyin; yine görünmüyorsa yöneticinizle veya destekle görüşün.
+- **Ortak oda içeriği görünmüyor:** Daveti kabul ettiğinizden ve doğru odayı açtığınızdan emin olun. İzleyici rolünde yazma düğmeleri görünmez.
+- **Bilge Yolaç çalışmıyor:** Geçerli bir proje klasörü seçin, uygun çalışma katmanını belirleyin ve komutu yeniden gönderin. Üretilen dosyaları yanıtın altındaki bağlantılardan indirin.
+- **Ses veya müzik yok:** Ses ayarlarını, tarayıcı izinlerini ve cihaz sesini kontrol edin. Bazı sayfalar konuşma veya arka fon müziğini bilinçli olarak susturur.
+- **Teknik destek:** **destek@mergen.ai** veya **+90 850 123 45 67**.
