@@ -1,5 +1,7 @@
+# ==============================================================================
 # Dosya Yolu: tests/testthat/test-admin-bilge-yolac-outputs-behavior.R
 # Açıklama: Bilge Yolaç yönetici grafiklerinin görünüm sözleşmeleri.
+# ==============================================================================
 
 testthat::local_edition(3)
 
