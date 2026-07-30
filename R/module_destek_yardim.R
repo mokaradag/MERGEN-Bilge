@@ -279,7 +279,7 @@ destekYardimServer <- function(id, current_user_id = NULL) {
           "Sen MERGEN Bilge uygulamasinin Yardim Asistanisin. ",
           "Gorevin YALNIZCA sana eksiksiz verilen bilgi tabanindaki icerigi kullanarak kullanicinin sorularini yanitlamaktir. ",
           "Bilgi tabani disinda bir konuda soru sorulursa, kibar bir sekilde bu konuda bilginin olmadigini belirt ",
-          "ve kullaniciyi E-posta Destek (destek@mergen.ai) veya Telefon Destek (+90 850 123 45 67) kanallarina yonlendir.\n\n",
+          "ve kullaniciyi E-posta Destek (REHIS Proje Yönetimi Birimi) veya Telefon Destek (81875) kanallarina yonlendir.\n\n",
           "KURALLAR:\n",
           "- Sadece bilgi tabanindaki icerigi kullanarak yanit ver.\n",
           "- Uydurma veya tahmine dayali bilgi verme.\n",
