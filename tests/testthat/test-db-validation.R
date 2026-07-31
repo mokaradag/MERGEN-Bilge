@@ -21,17 +21,22 @@ test_that("validate_chat_title boş ve aşırı uzun başlığı reddeder", {
   expect_error(validate_chat_title(strrep("a", 201)))
 })
 
-# Mesaj içeriğinde boş ve limit aşımı durumlarının hata verdiğini doğrular.
+# Varsayılan güvenlik tavanını dağıtım ortamından yalıtarak doğrular.
 test_that("validate_message_content boş ve aşırı uzun içeriği reddeder", {
-  expect_error(validate_message_content(""))
-  expect_error(validate_message_content(strrep("x", mergen_max_message_chars() + 1L)))
+  withr::with_envvar(c(MERGEN_MAX_MESSAGE_CHARS = "1000000"), {
+    expect_error(validate_message_content(""))
+    expect_error(validate_message_content(strrep("x", 1000001L)))
+  })
 })
 
 # Uzun kod bloğu içeren yanıtlar (eski 20.000 karakter sınırının üzerinde)
-# artık kaydedilebilmelidir; kolon NVARCHAR(MAX).
+# artık kaydedilebilmelidir; kolon NVARCHAR(MAX). Test, üretim override'ından
+# bağımsız olarak belgelenen varsayılan tavanı kullanır.
 test_that("validate_message_content uzun kod bloklarını kabul eder", {
-  expect_true(validate_message_content(strrep("x", 20001)))
-  expect_true(validate_message_content(strrep("x", 200000)))
+  withr::with_envvar(c(MERGEN_MAX_MESSAGE_CHARS = "1000000"), {
+    expect_true(validate_message_content(strrep("x", 20001)))
+    expect_true(validate_message_content(strrep("x", 200000)))
+  })
 })
 
 # Güvenlik tavanı MERGEN_MAX_MESSAGE_CHARS ile ayarlanabilir olmalıdır.
