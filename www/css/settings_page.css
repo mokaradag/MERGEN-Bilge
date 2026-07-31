@@ -53,7 +53,7 @@
 }
 
 .settings-card:first-child {
-  margin-top: 0px; 
+  margin-top: 0px;
 }
 
 /* Arayüz Ayarları ve Kısayollar kartlarını eşit yükseklikte tut */
@@ -225,7 +225,7 @@
 /* Açık bir selectize listesi ipucuyla aynı alanı paylaşır; liste açıkken ipucu
    bastırılır. :has() desteklenmeyen tarayıcılarda kural yok sayılır ve önceki
    davranış korunur (aşamalı iyileştirme). */
-[data-settings-tooltip]:has(.selectize-control.dropdown-active)::after,
+[data-settings-tooltip]:has(.selectize-input.dropdown-active)::after,
 [data-settings-tooltip]:has(select:focus)::after {
   opacity: 0 !important;
   visibility: hidden !important;
@@ -255,8 +255,6 @@ html[data-theme="light"] [data-settings-tooltip]::after {
   font-size: 14px;
   color: var(--text-secondary);
 }
-
-
 
 .checkbox-item {
   margin-bottom: 30px !important;
@@ -299,7 +297,6 @@ html[data-theme="light"] [data-settings-tooltip]::after {
   border: 1px solid var(--border-color) !important;
   color: var(--text-secondary) !important;
 }
-
 
 /* --------------------------------------------------------------------------
    Başlangıç şeridi (startup lane) ayar yüzeyleri
