@@ -153,7 +153,7 @@ ui_asset_css_groups <- list(
     )
   )),
   codemirror = c(
-    "codemirror/codemirror.min.css",
+    "css/codemirror_compat.css",
     "codemirror/theme/material-darker.min.css",
     "codemirror/addon/fold/foldgutter.min.css"
   )
@@ -164,7 +164,7 @@ ui_asset_js_groups <- list(
     "js/console_error_probe.js"
   ),
   codemirror_core = c(
-    "codemirror/codemirror.min.js"
+    "js/codemirror_compat.js"
   ),
   codemirror_modes = c(
     "codemirror/mode/r.min.js",
@@ -215,9 +215,9 @@ ui_asset_js_groups <- list(
     "js/utils.js",
     "js/encoding_utils.js",
     "js/theme_manager.js",
-	"js/shiny_message_handlers.js",
+    "js/shiny_message_handlers.js",
     "js/modern_welcome_handler.js",
-	"js/ui_init.js",
+    "js/ui_init.js",
     "js/input_handlers.js",
     "js/button_busy_ack.js",
     "js/interaction_handlers.js",
@@ -346,12 +346,12 @@ ui_asset_js_render_plan <- list(
 # Bu kurallar kullanıcı deneyimini değiştirmez; manifest bakımında yanlış
 # sıralamayı erken yakalamak için doğrulanır.
 ui_asset_js_order_rules <- list(
-  c("js/console_error_probe.js", "codemirror/codemirror.min.js"),
+  c("js/console_error_probe.js", "js/codemirror_compat.js"),
   c("js/console_error_probe.js", "js/sso_auth.js"),
   c("js/console_error_probe.js", "js/utils.js"),
 
-  c("codemirror/codemirror.min.js", "codemirror/mode/r.min.js"),
-  c("codemirror/codemirror.min.js", "codemirror/addon/fold/foldcode.min.js"),
+  c("js/codemirror_compat.js", "codemirror/mode/r.min.js"),
+  c("js/codemirror_compat.js", "codemirror/addon/fold/foldcode.min.js"),
 
   c("lib/threejs/three.min.js", "lib/threejs/OrbitControls.js"),
   c("lib/threejs/three.min.js", "lib/threejs/Pass.js"),
