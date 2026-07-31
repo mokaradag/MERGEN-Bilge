@@ -5,18 +5,14 @@
 # ==============================================================================
 
 mergen_resolve_image_api_key <- function(session) {
-  plan <- tryCatch(
-    mb_api_key_get_cached_for_send(
+  tryCatch(
+    mb_api_key_get_feature_key_value(
       session = session,
       require_auth = TRUE,
-      allow_default = NULL,
       clear_on_mismatch = TRUE
     ),
-    error = function(e) list(key = "")
+    error = function(e) ""
   )
-
-  key <- tryCatch(as.character(plan$key %||% "")[1], error = function(e) "")
-  if (is.na(key)) "" else key
 }
 
 # Görsel oluşturma modunu işle
