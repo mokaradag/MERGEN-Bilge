@@ -94,24 +94,24 @@ handle_image_generation_mode <- function(ctx) {
     !mergen_is_current_request(active_request_id_local, req_id_local, stop_generation_local)
   }
 
-  tracked_future_promise(
-    task_fn = function() {
-      generate_image(
-        prompt = user_prompt_local,
-        api_key = api_key_local,
-        size = image_size_local,
-        quality = image_quality_local,
-        user_id = current_user_id_local,
-        chat_id = current_chat_id_local
-      )
-    },
-    task_type = "image_generation",
-    session_token = ctx$session$token,
-    meta = list(
-      size = image_size_local,
-      quality = image_quality_local
-    )
-  ) %...>% (function(result) {
+	tracked_future_promise(
+	  task_fn = function() {
+		generate_image(
+		  prompt = user_prompt_local,
+		  api_key = api_key_local,
+		  size = image_size_local,
+		  quality = image_quality_local,
+		  user_id = current_user_id_local,
+		  chat_id = current_chat_id_local
+		)
+	  },
+	  task_type = "image_generation",
+	  session_token = ctx$session$token,
+	  meta = list(
+		size = image_size_local,
+		quality = image_quality_local
+	  )
+	) %...>% (function(result) {
     # Bayat sonuç: kullanıcı durdurup yeni istek başlattıysa hiçbir UI
     # mutasyonu yapma. Görsel zaten galeriye kaydedildiği için kaybolmaz.
     if (isTRUE(is_stale_image_request())) {
