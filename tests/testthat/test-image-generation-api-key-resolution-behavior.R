@@ -1,3 +1,10 @@
+# ==============================================================================
+# Dosya Yolu: tests/testthat/test-image-generation-api-key-resolution-behavior.R
+# Açıklama: Görsel Uzmanı API anahtarı çözümlemesinin merkezi özellik anahtarı
+#           yardımcısını kullandığını ve çözümleme hatalarında güvenli biçimde
+#           boş anahtara düştüğünü doğrulayan davranış testleri.
+# ==============================================================================
+
 testthat::test_that("Görsel Uzmanı merkezi özellik anahtarı çözümleyicisini kullanır", {
   env <- new.env(parent = globalenv())
   env$.resolver_args <- NULL
