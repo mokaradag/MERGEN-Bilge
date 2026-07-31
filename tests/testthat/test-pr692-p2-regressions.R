@@ -1,6 +1,6 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-pr692-p2-regressions.R
-# Açıklama: PR #692 için Codex tarafından bildirilen dört P2 gerilemesini
+# Açıklama: PR #692 için Codex tarafından bildirilen P1/P2 gerilemelerini
 #           doğrudan sözleşme düzeyinde doğrular.
 # ==============================================================================
 
@@ -52,9 +52,9 @@ test_that("Selectize açıkken yapılandırma ipucu bastırılır", {
 
 test_that("mesaj güvenlik tavanı tamsayı taşmasında varsayılana düşer", {
   validation_env <- new.env(parent = baseenv())
-  sys.source(
+  source(
     file.path(repo_root_pr692, "R", "helpers_db_validation.R"),
-    envir = validation_env,
+    local = validation_env,
     encoding = "UTF-8"
   )
 
@@ -70,9 +70,9 @@ test_that("mesaj güvenlik tavanı tamsayı taşmasında varsayılana düşer", 
 
 test_that("MCP ikinci geçişi çıktı token ortam ayarını uygular", {
   second_pass_env <- new.env(parent = baseenv())
-  sys.source(
+  source(
     file.path(repo_root_pr692, "R", "helpers_llm_worker_second_pass.R"),
-    envir = second_pass_env,
+    local = second_pass_env,
     encoding = "UTF-8"
   )
 
@@ -100,17 +100,39 @@ test_that("MCP ikinci geçişi çıktı token ortam ayarını uygular", {
   })
 })
 
-test_that("yerel CodeMirror yapısı yönetici API'sini ve tam çizimi sağlar", {
-  core_js <- .read_pr692("www", "codemirror", "codemirror.min.js")
+test_that("yerel CodeMirror yapısı tam çizim ve ucuz refresh sağlar", {
+  core_js <- .read_pr692("www", "js", "codemirror_compat.js")
   manager_js <- .read_pr692("www", "js", "codemirror-manager.js")
-  core_css <- .read_pr692("www", "codemirror", "codemirror.min.css")
+  core_css <- .read_pr692("www", "css", "codemirror_compat.css")
 
   expect_false(grepl("extension placeholder", core_js, fixed = TRUE))
   expect_true(grepl("OfflineCodeMirror.prototype.on", core_js, fixed = TRUE))
   expect_true(grepl("OfflineCodeMirror.prototype.setSize", core_js, fixed = TRUE))
   expect_true(grepl("OfflineCodeMirror.prototype.refresh", core_js, fixed = TRUE))
   expect_true(grepl("this._wrapper.CodeMirror = this", core_js, fixed = TRUE))
-  expect_true(grepl("this._code.appendChild(row)", core_js, fixed = TRUE))
+  expect_true(grepl("self._code.appendChild(row)", core_js, fixed = TRUE))
+  expect_true(grepl("OfflineCodeMirror.prototype._needsRender", core_js, fixed = TRUE))
+  expect_true(grepl("if (this._needsRender()) this._render();", core_js, fixed = TRUE))
   expect_true(grepl("viewportMargin: Infinity", manager_js, fixed = TRUE))
   expect_true(grepl(".CodeMirror-line-row", core_css, fixed = TRUE))
+  expect_false(grepl("min-width: max-content", core_css, fixed = TRUE))
+  expect_true(grepl("flex: 1 1 auto", core_css, fixed = TRUE))
+})
+
+test_that("özel CodeMirror varlıkları app-owned ratchet kapsamındadır", {
+  manifest <- .read_pr692("R", "config_ui_assets.R")
+
+  expect_true(grepl('"js/codemirror_compat.js"', manifest, fixed = TRUE))
+  expect_true(grepl('"css/codemirror_compat.css"', manifest, fixed = TRUE))
+  expect_false(grepl('"codemirror/codemirror.min.js"', manifest, fixed = TRUE))
+  expect_false(grepl('"codemirror/codemirror.min.css"', manifest, fixed = TRUE))
+})
+
+test_that("yapılandırma ipuçları erişilebilir açıklamalara bağlanır", {
+  settings_js <- .read_pr692("www", "js", "settings_model_info.js")
+
+  expect_true(grepl("[data-settings-tooltip]", settings_js, fixed = TRUE))
+  expect_true(grepl("aria-describedby", settings_js, fixed = TRUE))
+  expect_true(grepl("settings-tooltip-sr", settings_js, fixed = TRUE))
+  expect_true(grepl("syncSettingsTooltipAccessibility(document)", settings_js, fixed = TRUE))
 })
