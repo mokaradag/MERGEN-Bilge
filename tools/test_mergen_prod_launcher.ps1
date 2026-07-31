@@ -92,7 +92,7 @@ Assert-Contains $runBatText 'set\s+"MERGEN_HOST=0\.0\.0\.0"' "run_mergen_prod.ba
 Assert-Contains $runBatText ('set\s+"MERGEN_PORT=' + [regex]::Escape($ExpectedPort) + '"') "run_mergen_prod.bat sets MERGEN_PORT=$ExpectedPort"
 Assert-Contains $runBatText 'Get-ChildItem\s+-Path\s+\$root\s+-Directory\s+-Filter\s+''R-\*''' "run_mergen_prod.bat dynamically detects newest R-* under Program Files"
 Assert-Contains $runBatText 'Rscript\.exe' "run_mergen_prod.bat uses Rscript.exe"
-Assert-Contains $runBatText '"%RSCRIPT_EXE%"\s+"run_mergen_prod\.R"' "run_mergen_prod.bat starts run_mergen_prod.R rather than directly calling shiny::runApp"
+Assert-Contains $runBatText '"%RSCRIPT_EXE%"\s+--encoding=UTF-8\s+"run_mergen_prod\.R"' "run_mergen_prod.bat starts run_mergen_prod.R with UTF-8 source encoding"
 Assert-Contains $runBatText 'goto\s+ERR_APP_DIR' "run_mergen_prod.bat uses goto-based error handling for app folder failures"
 Assert-Contains $runBatText 'goto\s+ERR_PKG_CHECK' "run_mergen_prod.bat uses goto-based error handling for package-check failures"
 Assert-NotContains $runBatText 'pushd\s+"%APP_DIR%\."' "run_mergen_prod.bat does not use the risky pushd \"%APP_DIR%.\" pattern"
