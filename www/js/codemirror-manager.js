@@ -61,7 +61,10 @@
           lineWrapping: true,
           foldGutter: true,
           gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
-          autoRefresh: true
+          autoRefresh: true,
+          // Yukseklik 'auto' oldugundan viewport sanallastirmasi uzun kodu
+          // kirpiyordu; Infinity belgenin tamamini render eder.
+          viewportMargin: Infinity
         });
         
         editor.on('gutterClick', function(cm, line, gutter, event) {

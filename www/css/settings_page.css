@@ -174,6 +174,71 @@
   font-family: var(--font-primary), "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "Apple Color Emoji", sans-serif !important;
 }
 
+/* --------------------------------------------------------------------------
+   Ayar ipuçları (salt-CSS tooltip)
+   Yapılandırma sayfasındaki her denetimin açıklaması, dikey alanı tüketen
+   .setting-description paragrafı yerine hover/focus ipucu olarak gösterilir.
+   Bootstrap tooltip BİLİNÇLİ kullanılmaz: renderUI yeniden çizimlerinde
+   titreme ve bayat .tooltip DOM kalıntısı üretiyordu (admin paneliyle aynı
+   desen). Klavye erişimi için :focus-within de tetikler.
+   -------------------------------------------------------------------------- */
+[data-settings-tooltip] {
+  position: relative;
+}
+
+[data-settings-tooltip]::after {
+  content: attr(data-settings-tooltip);
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  transform: translateY(-4px);
+  max-width: 320px;
+  width: max-content;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 9999;
+  padding: 8px 11px;
+  border-radius: 10px;
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.97);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.36);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0s linear 0.12s;
+}
+
+[data-settings-tooltip]:hover::after,
+[data-settings-tooltip]:focus-within::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0s linear 0s;
+}
+
+/* Açık bir selectize listesi ipucuyla aynı alanı paylaşır; liste açıkken ipucu
+   bastırılır. :has() desteklenmeyen tarayıcılarda kural yok sayılır ve önceki
+   davranış korunur (aşamalı iyileştirme). */
+[data-settings-tooltip]:has(.selectize-control.dropdown-active)::after,
+[data-settings-tooltip]:has(select:focus)::after {
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* Açık temada ipucu koyu yüzeyde kalır; beyaz metinle kontrast korunur. */
+html[data-theme="light"] [data-settings-tooltip]::after {
+  background: rgba(15, 28, 51, 0.97);
+  border-color: rgba(0, 48, 135, 0.28);
+  box-shadow: 0 12px 28px rgba(15, 28, 51, 0.22);
+  color: #ffffff;
+}
+
 /* Klavye kısayolları listesi */
 .shortcut-list {
   background: var(--background-dark);

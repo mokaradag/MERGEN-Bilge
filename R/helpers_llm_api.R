@@ -86,8 +86,13 @@ call_local_llm <- function(chat_history, current_settings) {
   temp_value <- if (!is.null(current_settings$temperature)) current_settings$temperature else 0.4
   # Varsayilan cikti token limiti yuksek tutulur; uzun kod bloklari/yanitlar
   # kesilmesin (modeller >=128k baglam). Onceki 4096 limiti uzun kod bloklarini
-  # kesiyordu (issue #7). Worker-guvenli literal (helper worker'a tasinmaz).
-  max_tokens_val <- current_settings$max_output_tokens %||% 32768L
+  # kesiyordu (issue #7). MERGEN_MAX_OUTPUT_TOKENS ile ayarlanabilir.
+  # Worker-guvenli: yalnizca base fonksiyonlar (helper worker'a tasinmaz).
+  max_tokens_val <- current_settings$max_output_tokens
+  if (is.null(max_tokens_val)) {
+    max_tokens_val <- suppressWarnings(as.integer(Sys.getenv("MERGEN_MAX_OUTPUT_TOKENS", "")))
+    if (is.na(max_tokens_val) || max_tokens_val < 256L) max_tokens_val <- 32768L
+  }
 
   body <- list(
     model = selected_model,

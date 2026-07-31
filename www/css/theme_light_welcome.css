@@ -168,9 +168,11 @@ html[data-theme="light"] .modern-welcome-title-accent {
   background-clip: text !important;
 }
 
+/* Panel perdesi artık açık olduğu için beyaz metin halesi kaldırıldı;
+   koyu marka rengi doğrudan yüksek kontrast verir. */
 html[data-theme="light"] .modern-welcome-title-group h1.personal-greeting-title {
   color: var(--color-text, #0f1c33) !important;
-  filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.65)) !important;
+  filter: none !important;
 }
 
 html[data-theme="light"] .modern-welcome-title-group .greeting-time-text {
@@ -184,7 +186,7 @@ html[data-theme="light"] .modern-welcome-title-group .greeting-time-text {
 html[data-theme="light"] .modern-welcome-title-group .greeting-name-text {
   color: var(--color-text, #0f1c33) !important;
   -webkit-text-fill-color: var(--color-text, #0f1c33) !important;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.72) !important;
+  text-shadow: none !important;
 }
 
 html[data-theme="light"] .modern-welcome-greeting-box {
@@ -193,7 +195,7 @@ html[data-theme="light"] .modern-welcome-greeting-box {
 }
 
 html[data-theme="light"] .modern-welcome-greeting-text {
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.55);
+  text-shadow: none;
   color: var(--color-text, #0f1c33) !important;
 }
 
@@ -207,8 +209,8 @@ html[data-theme="light"] .modern-welcome-greeting-cursor {
 }
 
 html[data-theme="light"] .modern-welcome-recent-title {
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.55);
-  color: var(--color-text-soft, #1f2a44) !important;
+  text-shadow: none;
+  color: var(--color-text, #0f1c33) !important;
 }
 
 html[data-theme="light"] .modern-welcome-recent-header {
@@ -236,21 +238,47 @@ html[data-theme="light"] .modern-welcome-card::before {
   opacity: 0.42 !important;
 }
 
+/* Açık temada panel perdeleri (scrim) bilinçli olarak opaklaştırıldı.
+   Altta koyu sinematik video / neural zemin durduğu için 0.16-0.18 beyaz
+   perde koyu metni okunmaz bırakıyordu (kişisel selamlama, "Hızlı Başlangıç"
+   ve "Son Konuşmalar" başlıkları). Video hâlâ görünür kalır, yalnızca
+   yumuşatılır. */
 html[data-theme="light"] .modern-welcome-left-panel {
-  background: rgba(255, 255, 255, 0.16) !important;
-  backdrop-filter: blur(10px) saturate(130%) !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.18) !important;
-  -webkit-backdrop-filter: blur(10px) saturate(130%) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.80) 0%, rgba(247, 249, 253, 0.72) 100%) !important;
+  backdrop-filter: blur(18px) saturate(126%) !important;
+  border-right: 1px solid rgba(0, 48, 135, 0.10) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(126%) !important;
 }
 
 html[data-theme="light"] .modern-welcome-right-panel {
-  background: rgba(255, 255, 255, 0.18) !important;
-  backdrop-filter: blur(10px) saturate(130%) !important;
-  -webkit-backdrop-filter: blur(10px) saturate(130%) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82) 0%, rgba(244, 246, 251, 0.74) 100%) !important;
+  backdrop-filter: blur(18px) saturate(126%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(126%) !important;
+}
+
+/* Neural taraf vinyeti açık temada koyu kenar bırakmamalı. */
+html[data-theme="light"] .modern-welcome-neural-vignette {
+  background: radial-gradient(circle, transparent 0%, rgba(15, 28, 51, 0.06) 100%) !important;
+}
+
+/* Hızlı Başlangıç (fast lane) statik zemini açık temada da açık kalmalı.
+   Koyu premium degrade yalnızca koyu temaya aittir; açık temada koyu metinle
+   birleşince kontrast tamamen kayboluyordu. */
+html[data-theme="light"].mergen-fast-lane .modern-welcome-video-container {
+  background:
+    radial-gradient(circle at 32% 30%, rgba(0, 48, 135, 0.10), transparent 58%),
+    radial-gradient(circle at 78% 82%, rgba(9, 120, 128, 0.08), transparent 60%),
+    linear-gradient(165deg, #f7f9fd 0%, #eaf0f9 55%, #f4f6fb 100%) !important;
+}
+
+html[data-theme="light"].mergen-fast-lane .modern-welcome-neural-canvas-wrapper {
+  background:
+    radial-gradient(circle at 62% 34%, rgba(0, 48, 135, 0.08), transparent 55%),
+    linear-gradient(200deg, #f7f9fd 0%, #eef2f8 60%, #f4f6fb 100%) !important;
 }
 
 html[data-theme="light"] .modern-welcome-actions-title {
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.55);
+  text-shadow: none;
   color: var(--color-text, #0f1c33) !important;
 }
 

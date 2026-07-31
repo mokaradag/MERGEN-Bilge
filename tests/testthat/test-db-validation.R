@@ -24,5 +24,29 @@ test_that("validate_chat_title boş ve aşırı uzun başlığı reddeder", {
 # Mesaj içeriğinde boş ve limit aşımı durumlarının hata verdiğini doğrular.
 test_that("validate_message_content boş ve aşırı uzun içeriği reddeder", {
   expect_error(validate_message_content(""))
-  expect_error(validate_message_content(strrep("x", 20001)))
+  expect_error(validate_message_content(strrep("x", mergen_max_message_chars() + 1L)))
+})
+
+# Uzun kod bloğu içeren yanıtlar (eski 20.000 karakter sınırının üzerinde)
+# artık kaydedilebilmelidir; kolon NVARCHAR(MAX).
+test_that("validate_message_content uzun kod bloklarını kabul eder", {
+  expect_true(validate_message_content(strrep("x", 20001)))
+  expect_true(validate_message_content(strrep("x", 200000)))
+})
+
+# Güvenlik tavanı MERGEN_MAX_MESSAGE_CHARS ile ayarlanabilir olmalıdır.
+test_that("mergen_max_message_chars ortam değişkenini onurlandırır", {
+  withr::with_envvar(c(MERGEN_MAX_MESSAGE_CHARS = ""), {
+    expect_equal(mergen_max_message_chars(), 1000000L)
+  })
+  withr::with_envvar(c(MERGEN_MAX_MESSAGE_CHARS = "50000"), {
+    expect_equal(mergen_max_message_chars(), 50000L)
+  })
+  # Geçersiz/çok küçük değerler güvenli varsayılana düşer.
+  withr::with_envvar(c(MERGEN_MAX_MESSAGE_CHARS = "abc"), {
+    expect_equal(mergen_max_message_chars(), 1000000L)
+  })
+  withr::with_envvar(c(MERGEN_MAX_MESSAGE_CHARS = "10"), {
+    expect_equal(mergen_max_message_chars(), 1000000L)
+  })
 })

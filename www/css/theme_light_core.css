@@ -166,6 +166,69 @@ html[data-theme="light"] .image-size-select {
   border: 1px solid var(--color-border) !important;
 }
 
+/* --------------------------------------------------------------------------
+   selectize açılır menüleri (Shiny selectInput varsayılanı)
+   selectize, .selectize-input içine gizli bir arama <input type="text">
+   yerleştirir. Yukarıdaki genel input kuralı bu iç alana da kenarlık/zemin
+   uyguladığı için seçili metnin yanında küçük, ince bir "giriş kutusu"
+   görünüyordu. İç input burada nötrlenir; kontrol ve açılır panel ise
+   gerçek bir form yüzeyi gibi biçimlendirilir.
+   -------------------------------------------------------------------------- */
+html[data-theme="light"] .selectize-control .selectize-input {
+  background: var(--color-surface) !important;
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="light"] .selectize-control .selectize-input input,
+html[data-theme="light"] .selectize-control .selectize-input input[type="text"] {
+  background: transparent !important;
+  color: var(--color-text) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+html[data-theme="light"] .selectize-control .selectize-input.focus {
+  border-color: var(--mb-brand-primary) !important;
+  box-shadow: 0 0 0 3px rgba(0, 48, 135, 0.15) !important;
+}
+
+html[data-theme="light"] .selectize-control .selectize-input .item {
+  color: var(--color-text) !important;
+}
+
+html[data-theme="light"] .selectize-control.single .selectize-input:after {
+  border-top-color: var(--color-muted) !important;
+}
+
+html[data-theme="light"] .selectize-dropdown {
+  background: var(--color-surface) !important;
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: 0 10px 26px rgba(15, 28, 51, 0.14) !important;
+}
+
+html[data-theme="light"] .selectize-dropdown .selectize-dropdown-content {
+  background: var(--color-surface) !important;
+}
+
+html[data-theme="light"] .selectize-dropdown .option {
+  background: var(--color-surface) !important;
+  color: var(--color-text) !important;
+}
+
+html[data-theme="light"] .selectize-dropdown .option.active,
+html[data-theme="light"] .selectize-dropdown .option:hover,
+html[data-theme="light"] .selectize-dropdown .active {
+  background: rgba(0, 48, 135, 0.08) !important;
+  color: var(--mb-brand-primary) !important;
+}
+
 html[data-theme="light"] label,
 html[data-theme="light"] .control-label {
   color: var(--color-text) !important;
