@@ -166,7 +166,7 @@ echo MERGEN Bilge - Canli Log
 echo [INFO] This window reports the exit code when the app stops.
 echo.
 
-"%RSCRIPT_EXE%" "run_mergen_prod.R" >> "logs\run_mergen_prod_console.log" 2>&1
+"%RSCRIPT_EXE%" --encoding=UTF-8 "run_mergen_prod.R" >> "logs\run_mergen_prod_console.log" 2>&1
 
 set "EXITCODE=%ERRORLEVEL%"
 
