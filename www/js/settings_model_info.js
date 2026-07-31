@@ -2,7 +2,8 @@
 // Dosya Yolu: www/js/settings_model_info.js
 // Açıklama: Yapılandırma sayfasındaki "Model Ayarları" kartında model seçimi
 //           yapıldığında bilgi panelini güncelleyen, yazma animasyonu, bağlam
-//           boyutu rozeti ve düşünme yeteneği ikonunu yöneten betik.
+//           boyutu rozeti ve düşünme yeteneği ikonunu yöneten betik. Ayrıca
+//           salt-CSS ayar ipuçlarını erişilebilir açıklamalara bağlar.
 
 (function() {
   'use strict';
@@ -15,8 +16,79 @@
   // Son seçilen model (gereksiz animasyonları önlemek için)
   var _lastSelectedModel = null;
 
+  // Erişilebilir ipucu kimlikleri için oturum içi sayaç.
+  var _settingsTooltipSequence = 0;
+
   // NS ön eki (Shiny modül ad alanı)
   var NS_PREFIX = 'settings_yapilandirma_module-';
+  var SETTINGS_TOOLTIP_SELECTOR = '[data-settings-tooltip]';
+
+  /**
+   * aria-describedby kimliklerini mevcut ilişkiyi bozmadan birleştirir.
+   * @param {HTMLElement} element - Açıklama bağlanacak denetim
+   * @param {string} descriptionId - Gizli açıklamanın kimliği
+   */
+  function appendDescribedById(element, descriptionId) {
+    var current = (element.getAttribute('aria-describedby') || '')
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (current.indexOf(descriptionId) === -1) current.push(descriptionId);
+    element.setAttribute('aria-describedby', current.join(' '));
+  }
+
+  /**
+   * Görsel CSS ipucunun metnini ekran okuyucu açıklamasına dönüştürür.
+   * @param {HTMLElement} host - data-settings-tooltip taşıyan sarmalayıcı
+   */
+  function ensureSettingsTooltipDescription(host) {
+    var text = (host.getAttribute('data-settings-tooltip') || '').trim();
+    if (!text) return;
+
+    var descriptionId = host.getAttribute('data-settings-tooltip-description-id');
+    var description = descriptionId ? document.getElementById(descriptionId) : null;
+
+    if (!description || description.parentNode !== host) {
+      _settingsTooltipSequence += 1;
+      descriptionId = 'settings-tooltip-description-' + _settingsTooltipSequence;
+      description = document.createElement('span');
+      description.id = descriptionId;
+      description.className = 'settings-tooltip-sr sr-only';
+      host.appendChild(description);
+      host.setAttribute('data-settings-tooltip-description-id', descriptionId);
+    }
+
+    description.textContent = text;
+
+    var controls = host.querySelectorAll([
+      'input:not([type="hidden"])',
+      'select',
+      'textarea',
+      'button',
+      'a[href]',
+      '[role="button"]',
+      '[role="combobox"]',
+      '.selectize-input'
+    ].join(', '));
+
+    controls.forEach(function(control) {
+      appendDescribedById(control, descriptionId);
+    });
+
+    if (controls.length === 0 && host.matches('[tabindex]')) {
+      appendDescribedById(host, descriptionId);
+    }
+  }
+
+  /**
+   * Yapılandırma sayfasındaki tüm salt-CSS ipuçlarını erişilebilir kılar.
+   * Shiny yeniden çizimlerinden sonra güvenle tekrar çağrılabilir.
+   * @param {Document|HTMLElement} root - Taranacak kök
+   */
+  function syncSettingsTooltipAccessibility(root) {
+    (root || document).querySelectorAll(SETTINGS_TOOLTIP_SELECTOR)
+      .forEach(ensureSettingsTooltipDescription);
+  }
 
   /**
    * Yazma efekti ile açıklama göster
@@ -204,8 +276,18 @@
           var shouldAnimate = (selectedModel !== _lastSelectedModel);
           _lastSelectedModel = selectedModel;
           updateModelInfoPanel(selectedModel, allMeta[selectedModel], shouldAnimate);
+          syncSettingsTooltipAccessibility(document);
         }, 100);
       }
+    });
+
+    // Dinamik uiOutput alanları yeniden çizildiğinde yeni denetimleri de bağla.
+    $(document).on('shiny:value', function(event) {
+      var target = event.target;
+      if (!target || !target.id || target.id.indexOf(NS_PREFIX) !== 0) return;
+      setTimeout(function() {
+        syncSettingsTooltipAccessibility(document);
+      }, 0);
     });
   }
 
@@ -214,7 +296,10 @@
    */
   function initModelInfo() {
     var panel = document.getElementById(NS_PREFIX + 'model_info_panel');
-    if (!panel || panel.dataset.initialized) return;
+    if (!panel) return;
+
+    syncSettingsTooltipAccessibility(document);
+    if (panel.dataset.initialized) return;
     panel.dataset.initialized = 'true';
 
     bindModelSelectionChange();
@@ -230,11 +315,6 @@
 
   // Sekme değişikliğinde yeniden başlat (Yapılandırma sekmesine geçiş)
   $(document).on('click', '[data-value="settings_yapilandirma"]', function() {
-    setTimeout(function() {
-      var panel = document.getElementById(NS_PREFIX + 'model_info_panel');
-      if (panel && !panel.dataset.initialized) {
-        initModelInfo();
-      }
-    }, 400);
+    setTimeout(initModelInfo, 400);
   });
 })();
