@@ -4,6 +4,17 @@
 #           server_send_message.R'den ayrıştırılarak modülerlik artırılmıştır.
 # ==============================================================================
 
+mergen_resolve_image_api_key <- function(session) {
+  tryCatch(
+    mb_api_key_get_feature_key_value(
+      session = session,
+      require_auth = TRUE,
+      clear_on_mismatch = TRUE
+    ),
+    error = function(e) ""
+  )
+}
+
 # Görsel oluşturma modunu işle
 # ctx: mesaj gönderme bağlamındaki tüm gerekli değişkenleri içeren liste
 # Döndürür: TRUE (işlendi ve erken dönüş yapılmalı)
@@ -24,7 +35,7 @@ handle_image_generation_mode <- function(ctx) {
     if (isTRUE(ctx$settings_data$image_quality_hd)) "hd" else "standard"
   }
 
-  api_key_for_image <- tryCatch(as.character(ctx$session$userData$ai_api_key)[1], error = function(e) "")
+  api_key_for_image <- mergen_resolve_image_api_key(ctx$session)
 
   if (!nzchar(api_key_for_image)) {
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)

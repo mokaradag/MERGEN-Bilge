@@ -49,6 +49,8 @@ suppressMessages(library(promises))
   env$showToast <- function(...) invisible(NULL)
   env$render_generated_image_html <- function(...) "<div>img</div>"
   env$log_debug <- function(...) invisible(NULL)
+  # Merkezi özellik anahtarı çözümleyicisini geçerli bir test anahtarıyla taklit et.
+  env$mb_api_key_get_feature_key_value <- function(...) "sk-test"
   # task_fn'i hiç çağırmadan, doğrudan kontrol edilen promise'i döndür.
   env$tracked_future_promise <- function(task_fn, ...) promise_factory()
   # Yarış koruması mergen_is_current_request'e dayanır; aynı env'e yüklenir.
