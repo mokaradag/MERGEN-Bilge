@@ -4,6 +4,21 @@
 #           server_send_message.R'den ayrıştırılarak modülerlik artırılmıştır.
 # ==============================================================================
 
+mergen_resolve_image_api_key <- function(session) {
+  plan <- tryCatch(
+    mb_api_key_get_cached_for_send(
+      session = session,
+      require_auth = TRUE,
+      allow_default = NULL,
+      clear_on_mismatch = TRUE
+    ),
+    error = function(e) list(key = "")
+  )
+
+  key <- tryCatch(as.character(plan$key %||% "")[1], error = function(e) "")
+  if (is.na(key)) "" else key
+}
+
 # Görsel oluşturma modunu işle
 # ctx: mesaj gönderme bağlamındaki tüm gerekli değişkenleri içeren liste
 # Döndürür: TRUE (işlendi ve erken dönüş yapılmalı)
@@ -24,7 +39,7 @@ handle_image_generation_mode <- function(ctx) {
     if (isTRUE(ctx$settings_data$image_quality_hd)) "hd" else "standard"
   }
 
-  api_key_for_image <- tryCatch(as.character(ctx$session$userData$ai_api_key)[1], error = function(e) "")
+  api_key_for_image <- mergen_resolve_image_api_key(ctx$session)
 
   if (!nzchar(api_key_for_image)) {
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
@@ -79,24 +94,24 @@ handle_image_generation_mode <- function(ctx) {
     !mergen_is_current_request(active_request_id_local, req_id_local, stop_generation_local)
   }
 
-	tracked_future_promise(
-	  task_fn = function() {
-		generate_image(
-		  prompt = user_prompt_local,
-		  api_key = api_key_local,
-		  size = image_size_local,
-		  quality = image_quality_local,
-		  user_id = current_user_id_local,
-		  chat_id = current_chat_id_local
-		)
-	  },
-	  task_type = "image_generation",
-	  session_token = ctx$session$token,
-	  meta = list(
-		size = image_size_local,
-		quality = image_quality_local
-	  )
-	) %...>% (function(result) {
+  tracked_future_promise(
+    task_fn = function() {
+      generate_image(
+        prompt = user_prompt_local,
+        api_key = api_key_local,
+        size = image_size_local,
+        quality = image_quality_local,
+        user_id = current_user_id_local,
+        chat_id = current_chat_id_local
+      )
+    },
+    task_type = "image_generation",
+    session_token = ctx$session$token,
+    meta = list(
+      size = image_size_local,
+      quality = image_quality_local
+    )
+  ) %...>% (function(result) {
     # Bayat sonuç: kullanıcı durdurup yeni istek başlattıysa hiçbir UI
     # mutasyonu yapma. Görsel zaten galeriye kaydedildiği için kaybolmaz.
     if (isTRUE(is_stale_image_request())) {
