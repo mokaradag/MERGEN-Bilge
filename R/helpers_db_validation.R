@@ -68,7 +68,11 @@ validate_chat_title <- function(title) {
 mergen_max_message_chars <- function() {
   raw_val <- Sys.getenv("MERGEN_MAX_MESSAGE_CHARS", "")
   parsed <- suppressWarnings(as.numeric(raw_val))
-  if (length(parsed) != 1L || is.na(parsed) || parsed < 1000) {
+  if (length(parsed) != 1L ||
+      is.na(parsed) ||
+      !is.finite(parsed) ||
+      parsed < 1000 ||
+      parsed > .Machine$integer.max) {
     return(1000000L)
   }
   as.integer(parsed)
