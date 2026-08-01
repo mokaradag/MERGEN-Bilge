@@ -22,11 +22,15 @@ This is a **work order with evidence**, not a specification to follow blindly.
    checkout ships only 4 placeholder examples. Design for 169+, but never assume
    you can see them.
 3. **Nothing here overrides `CLAUDE.md`.** Where they disagree, `CLAUDE.md` wins.
-   §10 lists the constraints that most commonly get violated in this area.
+   §13 lists the constraints that most commonly get violated in this area.
 4. **Phases are independently shippable.** Do not attempt the whole plan in one
    change. Phase 1 alone fixes most of what users report today.
 5. **Validation honesty is mandatory.** Cloud sessions cannot prove runtime, VM,
-   SSO, SQL Server, or browser behavior. §11 lists what is VM-only.
+   SSO, SQL Server, or browser behavior. §14 lists what is VM-only.
+6. **If you are building while the operator has no VM access, read §11 first.** It
+   defines the phase order by offline verifiability, the one-phase-per-PR rule, the
+   `MERGEN_PK_ENGINE` flag discipline, and the `.ai/pk-rebuild-progress.md` handoff
+   contract that lets the next session continue without re-deriving everything.
 
 ---
 
@@ -382,14 +386,90 @@ sicil numbers must be `exact` and must never be fuzzily altered**. `unit` and
 `decimals` drive both number formatting and Excel cell formats. `grain` is what
 stops project totals being summed once per activity row.
 
-**Generation strategy — do not hand-write this.**
+#### Two files — generated vs curated
+
+This split is mandatory. Without it, re-running the generator would destroy human
+curation, and the operator would be unable to refresh metadata after a SQL change.
+
+| File | Written by | Overwritten | Contents |
+|---|---|---|---|
+| `R/library_query_meta_auto.R` | generator | **Yes, every run** | `column_meta` skeletons: names, types, cardinality, null rate, `high_cardinality`, detected ids/dates/measure candidates |
+| `R/library_query_meta.R` | human | **Never** | `grain`, `additive`, `unit`, `primary_entity`, `intents`, `not_for`, `default_measures`, `default_group_by`, `row_cap`, `keywords`, `sample_questions`, plus any `column_meta` override |
+
+`R/config_sql_loader.R` merges them at startup with **curated values always winning**,
+field by field (not whole-record). The operator can therefore re-run the generator
+after any SQL change, or after adding query #170, with zero risk to their own work.
+
+#### Generation strategy — do not hand-write this
 
 | Tier | How | Effort |
 |---|---|---|
 | 0 | **No metadata must still work.** Infer `role` from R type + cardinality, `high_cardinality` from `n_distinct > 50`, `date` from class. Degraded but functional. | 0 |
-| 1 | One-time generator (`tools/pk/generate_query_meta.R`, VM-only, `TOP 500` per query): emits the `column_meta` skeleton with names, types, cardinality, null rate, ID detection, date detection, measure candidates. **Also validates declared `rls_columns` against actual columns → immediately surfaces every D6 hole.** | ~1 day, once |
-| 2 | LLM-drafted `keywords` + `sample_questions` from existing `name`/`description`/columns; human reviews. | ~45 s/query |
-| 3 | Human-only: `grain`, `additive`, `unit`, `primary_entity`, `intents`, `default_measures`. | ~2 min/query |
+| 1 | Generator `tools/pk/generate_query_meta.R` (VM-only, NOT in the source manifest) → writes `R/library_query_meta_auto.R`. **Also validates declared `rls_columns` against actual result columns, surfacing every D6 hole.** | ~1 day to build, minutes to run |
+| 2 | `keywords` + `sample_questions` — **OPTIONAL**, see below | 0–45 s/query |
+| 3 | Human-only: `grain`, `additive`, `unit`, `primary_entity`, `intents`, `default_measures` | ~2 min/query |
+
+#### Running the generator (operator instructions)
+
+RStudio on the Windows VM, matching the existing `tests/scripts/*.R` convention:
+
+```r
+Sys.setenv(MERGEN_PK_META_MODE = "sample")   # or "describe"
+source("tools/pk/generate_query_meta.R", encoding = "UTF-8")
+```
+
+Not SSMS (it must walk `query_library` in R), not PowerShell. It uses the normal
+`get_connection()` path and the SQL already preloaded by `R/config_sql_loader.R`.
+
+Two modes, because some production queries are expensive:
+
+* **`describe`** — uses `sys.dm_exec_describe_first_result_set` to obtain column
+  names and types **without executing** the query. Fast, zero DB load, no cardinality.
+* **`sample`** (default) — `TOP <MERGEN_PK_META_SAMPLE_ROWS>` (default 500) per query
+  for cardinality, null rate, ID detection and `high_cardinality` flags.
+
+Hard requirements for the generator:
+
+* **`source(...)`-safe**: never call `quit()`.
+* **Resumable**: per-query state file, so a run interrupted at query 120 resumes there.
+* **Never aborts on one failing query** — record the failure and continue.
+* **Read-only**: `SELECT` only, wrapped in a row cap. Never DDL, never writes.
+* **Secret-safe**: no DSN, credential, or connection string in output or logs.
+* **Turkish-safe**: results pass through `normalize_pk_dataframe_utf8()`; the emitted
+  R file is UTF-8 with Turkish comments.
+
+#### Query-library health report
+
+The generator also writes `artifacts/pk-meta/<timestamp>/health.json` + a readable
+summary. This is valuable **before any metadata is consumed**, because it audits all
+169 queries at once:
+
+* declared `rls_columns` that do not exist in the actual result → **every D6
+  fail-open hole, enumerated**
+* queries that error, return zero rows, or return more than `row_cap`
+* duplicate or missing `id` values
+* `date_columns` / `pre_aggregated_columns` naming columns that do not exist
+* columns whose type differs from what metadata declares
+
+#### On `keywords` / `sample_questions` — do NOT use the on-prem LLM
+
+These two fields are **optional**. Trigram+IDF retrieval over `name` + `description`
+plus two-pass AI selection (§5.2) work without them; they improve selection quality
+but are never required. Three acceptable paths:
+
+1. **Skip.** A permanently reasonable choice.
+2. **Draft in a capable cloud assistant session**, human-reviewed. Export a compact
+   `id, name, description, columns` CSV, have the draft produced there, paste into
+   `R/library_query_meta.R`, and edit. **The operator must first confirm that query
+   names and descriptions are permitted to leave the corporate network** — they are
+   library metadata rather than data, but may reveal programme names. If that answer
+   is no, use option 1 or 3.
+3. **Organic.** When telemetry shows a query was mis-selected, add two keywords to it.
+   Self-correcting, zero upfront cost.
+
+Do **not** generate these with the local on-prem models. Sub-par synonym sets would
+silently degrade retrieval, and the failure would be invisible until it caused a
+wrong query selection.
 
 **Prioritize by telemetry, not by list order.** Ship Phase 0 telemetry first; after a
 week the top ~30 queries will cover most traffic. Enrich those; the tail can stay at
@@ -712,6 +792,52 @@ within your authorization · filter matched nothing · query returned nothing.
 
 ---
 
+### 5.12 Worked example — what "correct" looks like end to end
+
+Concrete target behavior for one realistic Turkish request. Every artifact below is
+produced by R except the prose.
+
+**Question:** *"elektronik harp modernizasyon projesinde 2024'te kimler görevliydi,
+listeyi ver"*
+
+| Stage | Output |
+|---|---|
+| 2 Selection | Pass A → `q042, q055, q108, q011, q077`. Pass B → `q042` (Aktivite Rol Atamaları), confidence 82, alternates `q055`. Capability check: has `ProjeAdi`, `KaynakAdi`, `BaslangicTarihi` ✓ |
+| 3 Contract | `column_meta` matches result; `rls_columns` present ✓ |
+| 4 SQL | 41,930 rows (`row_cap` 50,000 not hit) |
+| 5 RLS | `Yetki = PY` → 12,405 rows |
+| 6 Filter plan | `AND[ OR[ ProjeAdi resolve "elektronik harp modernizasyon" ], BaslangicTarihi range 2024-01-01..2024-12-31 ]` — the date phrase *"2024'te"* resolved **in R** |
+| 7 Resolution | `ELEKTRONİK HARP SİSTEMLERİ MODERNİZASYON PROJESİ` — 0.94, margin 0.18 over #2 → **auto-accept**, single canonical value |
+| 8 Filtering | `ProjeAdi %in% c(...)` AND date range → 312 rows. Provenance recorded per leaf |
+| 9 Packet | Stats over **all 312 rows**: 47 distinct `KaynakAdi`, `KalanIscilik_sa` sum 18,420.5 (additive ✓), `TamamlanmaYuzde` weighted mean 61.3% (**not** summed), per-month histogram, 4 IQR outliers, 30 representative rows (top/bottom/outlier/stratified, seed 42) |
+| 10 Answer | 312 > `MERGEN_PK_DT_MAX_ROWS`? No → `DT` widget inline. User said *"listeyi ver"* → XLSX also attached. Prose cites only packet numbers |
+| 11 Provenance | Footer + `Bilgi` sheet + `MB_Analiz_Log` row |
+
+**Answer footer the user sees:**
+
+```
+Kaynak: q042 · Aktivite Rol Atamaları
+Filtre: ProjeAdi = "ELEKTRONİK HARP SİSTEMLERİ MODERNİZASYON PROJESİ"
+        (eşleşme: bulanık, %94) · BaslangicTarihi: 2024-01-01 – 2024-12-31
+Satır:  41.930 → 12.405 (yetki) → 312 (filtre)
+Ek:     Aktivite_Rol_Atamalari_20260801.xlsx (312 satır × 14 sütun)
+```
+
+**Two contrasting outcomes the same request must be able to produce:**
+
+*Ambiguous* — two projects score 0.88 and 0.85 → **no analysis runs.** The user sees
+chips: *"Hangisini kastettiniz?"* with both names and a "Tümü" option.
+
+*Unresolved* — best score 0.31 and the project is the subject of the question →
+**no full-set analysis.** The user sees: *"'elektronik harp modernizasyon' ile
+eşleşen bir proje bulunamadı. En yakın adaylar: … Farklı bir ifade deneyebilir veya
+proje kodunu verebilirsiniz."*
+
+Neither outcome is an empty table, and neither is a confident answer about the wrong
+population.
+
+---
+
 ## 6. File map
 
 **New (all must be added to `R/config_source_manifest.R` in dependency order, and
@@ -796,7 +922,12 @@ Two harnesses:
 
 ## 8. Phased plan
 
-Each phase is independently shippable and independently validatable.
+Each phase is independently shippable, independently validatable, and lands as its
+**own pull request**. Do not accumulate all phases on one branch — the operator must
+be able to review, validate and merge them one at a time.
+
+**Sequencing is by offline verifiability, not by phase number.** See §11 for the
+recommended order when the VM is unavailable.
 
 ### Phase 0 — Instrumentation (½ day)
 Telemetry (`MB_Analiz_Log`) + degradation disclosure + provenance footer.
@@ -821,10 +952,17 @@ epistemic labelling · remove the "generate a markdown table" instruction.
 absent from the packet.
 
 ### Phase 3 — Metadata foundation (1 day tooling + rolling enrichment)
-Generator · `R/library_query_meta.R` · startup contract validation · Tier-0
-inference for unenriched queries · enrich the top ~30 queries by telemetry.
-*Acceptance:* startup fails on an invalid contract; every enriched query has
-`grain` + `additive` + `unit`; unenriched queries still work.
+Generator (`tools/pk/generate_query_meta.R`) · the auto/curated file split ·
+merge-with-curated-winning in `config_sql_loader.R` · startup contract validation ·
+Tier-0 inference for unenriched queries · query-library health report.
+Then, on the VM: run the generator, act on the health report, and enrich the top ~30
+queries by telemetry.
+*Acceptance (offline):* generator is written, `source(...)`-safe, resumable, and
+unit-tested against a fake query library with a stubbed DBI connection; startup fails
+on an invalid contract; Tier-0 inference produces a usable `column_meta` for a query
+with no metadata at all.
+*Acceptance (VM):* generator runs clean over all 169 queries; health report is empty
+or every finding is triaged.
 
 ### Phase 4 — Entity resolution (2–3 days)
 `pk_tr_fold`-based resolver · decision policy · clarification chips ·
@@ -839,10 +977,21 @@ trigram+IDF retrieval.
 *Acceptance:* low-confidence requests ask instead of guessing; reordering
 `library_queries.R` changes nothing; recall@5 measured on the golden set.
 
-### Phase 6 — Non-blocking + performance (2–3 days)
+### Phase 6 — Non-blocking + performance (2–3 days) — **highest runtime risk**
 Async dispatch (D15) · SQL row caps · caching · deep-mode reconciliation (D16).
-*Acceptance:* a second browser session stays responsive while a large analysis runs
-on the VM.
+
+This phase touches the send-message/streaming path and its core benefit
+(event-loop responsiveness) **cannot be proven offline**. It therefore gets its own
+flag, `MERGEN_PK_ASYNC` (default `false`), independent of `MERGEN_PK_ENGINE`, so the
+v2 engine can be adopted on the VM *before* async execution is enabled. Build it
+last, ship it as the last PR, and validate it on its own.
+
+*Acceptance (offline):* worker global bundle is complete and memoized; no session,
+reactive value, or DB connection is serialized; every promise callback carries a
+request-id guard; every reactive read inside a promise/`later` callback is
+`shiny::isolate()`-wrapped; stale-callback tests pass with mocked `future`/`promises`.
+*Acceptance (VM):* a second browser session stays responsive while a large analysis
+runs; deep mode produces the same result as before the reconciliation.
 
 ### Phase 7 — Measurement (ongoing)
 Golden set to ~200 cases · live scored run · audit dashboard (selection accuracy,
@@ -851,20 +1000,224 @@ numeric-provenance mismatch rate).
 
 ---
 
-## 9. Design decisions to confirm with the operator
+## 9. Configuration surface
 
-1. Clarification UX — chips in the chat bubble vs a modal.
-2. Inline table threshold — is 200 rows right for the DT widget?
-3. Should XLSX export be automatic above the threshold, or an explicit user action?
-4. Add `openxlsx` to `required_packages` on the VM (for formatted export), or stay
-   on `writexl` only?
-5. Is a physically read-only DB principal available for the analysis connection?
-6. `MB_Analiz_Log` retention policy and whether question text may be stored
-   (it may contain project names — treat as sensitive).
+**Nothing in this tool may be a hard-coded magic number.** Every threshold, timeout,
+score cut-off and limit is resolved through one helper with a fixed precedence:
+
+> **per-query metadata → `.Renviron` env var → `options()` → built-in default**
+
+Per-query metadata beats the global, so one heavy financial query can carry
+`row_cap = 200000` while the global stays at 50,000, with no code change. This mirrors
+the `DB_CLIENT_ENCODING` contract in `CLAUDE.md`: the environment is honoured **before**
+R options and defaults.
+
+The resolver must be **worker-safe** — read with `Sys.getenv()` inside futures, never
+by serializing a helper closure (same rule as `MERGEN_LLM_TIMEOUT_SEC`).
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MERGEN_PK_ENGINE` | `v1` | `v1` = current pipeline, `v2` = rebuilt pipeline. **Master kill switch.** |
+| `MERGEN_PK_ASYNC` | `false` | Off-event-loop execution (Phase 6), independent of the engine flag |
+| `MERGEN_PK_SHADOW_MODE` | `false` | Run v2 alongside v1, log the comparison, show v1 (§10) |
+| `MERGEN_PK_SHADOW_SAMPLE_PCT` | `20` | Percentage of requests shadowed |
+| `MERGEN_PK_SELECT_TIMEOUT_SEC` | `20` | Per-pass selection LLM timeout (currently **absent** — D14) |
+| `MERGEN_PK_SELECT_RECALL_N` | `5` | Candidates carried from pass A to pass B |
+| `MERGEN_PK_SELECT_MIN_CONFIDENCE` | `50` | Below this → clarify instead of executing |
+| `MERGEN_PK_SELECT_MIN_MARGIN` | `15` | Minimum gap to the runner-up before auto-executing |
+| `MERGEN_PK_FILTER_TIMEOUT_SEC` | `20` | Filter-plan LLM timeout (today's `8` is too aggressive — D9) |
+| `MERGEN_PK_RESOLVE_AUTO_SCORE` | `85` | Single-candidate auto-accept threshold |
+| `MERGEN_PK_RESOLVE_MULTI_SCORE` | `70` | OR-expansion threshold |
+| `MERGEN_PK_RESOLVE_MIN_SCORE` | `40` | Below this → unresolved |
+| `MERGEN_PK_RESOLVE_AMBIGUITY_MARGIN` | `10` | Top-two gap below which we ask instead of guessing |
+| `MERGEN_PK_RESOLVE_MAX_CANDIDATES` | `5` | Maximum canonical values in one OR group |
+| `MERGEN_PK_NOOP_FILTER_RATIO` | `0.95` | Filter retaining more than this share is reported as ineffective |
+| `MERGEN_PK_ROW_CAP` | `50000` | SQL-side row cap; per-query `row_cap` overrides |
+| `MERGEN_PK_PROMPT_CHAR_BUDGET` | `120000` | Whole-payload budget (summary **+** tables **+** rows — D7) |
+| `MERGEN_PK_SAMPLE_ROWS` | `30` | Representative example rows in the packet |
+| `MERGEN_PK_SAMPLE_SEED` | `42` | Fixed seed → reproducible stratified sample |
+| `MERGEN_PK_TOPK_CATEGORIES` | `10` | Top-K values per categorical column |
+| `MERGEN_PK_GROUP_TOPN` | `15` | Groups before the `Diğer` roll-up |
+| `MERGEN_PK_INLINE_MAX_ROWS` | `15` | Markdown-table ceiling |
+| `MERGEN_PK_INLINE_MAX_COLS` | `8` | Markdown-table column ceiling |
+| `MERGEN_PK_DT_MAX_ROWS` | `200` | `DT` widget ceiling; above it → attachment |
+| `MERGEN_PK_EXPORT_MAX_ROWS` | `100000` | XLSX row cap (Excel's own limit is 1,048,576) |
+| `MERGEN_PK_CACHE_TTL_SEC` | `300` | `(query_id, rls_signature, filter_signature)` cache lifetime |
+| `MERGEN_PK_TELEMETRY` | `true` | Write `MB_Analiz_Log` |
+| `MERGEN_PK_LOG_QUESTION_TEXT` | `false` | **Privacy:** store the raw question, or only a hash |
+| `MERGEN_PK_NUMERIC_PROVENANCE_CHECK` | `true` | Flag answer numbers absent from the packet |
+| `MERGEN_PK_META_MODE` | `sample` | Generator mode: `sample` or `describe` |
+| `MERGEN_PK_META_SAMPLE_ROWS` | `500` | Rows fetched per query in `sample` mode |
+
+Add every new knob to `.Renviron.example` with a Turkish comment, and cover the
+precedence order with a contract test.
 
 ---
 
-## 10. Non-negotiable constraints (from `CLAUDE.md`)
+## 10. Feature flag, rollback and shadow mode
+
+This work replaces the engine of a production tool. It must be reversible without a
+code change.
+
+### Kill switch
+
+`MERGEN_PK_ENGINE` selects the pipeline. **`v1` is the default until the operator
+validates `v2` on the VM.** The v1 path must remain byte-for-byte reachable — do not
+refactor it "while you're in there". Deleting v1 happens later, in its own cleanup PR,
+only after v2 has run in production.
+
+Rollback is one `.Renviron` line plus a **full R process restart** (a browser refresh
+is not enough — same rule as the DB encoding variables).
+
+`MERGEN_PK_ASYNC` is deliberately separate, so v2 can be adopted while execution stays
+synchronous, isolating the riskiest change (§8, Phase 6).
+
+### Shadow mode — validate on real traffic without exposing users
+
+`MERGEN_PK_SHADOW_MODE=true` runs **both** engines for a sampled share of requests,
+shows the user the **v1** answer, and logs a structured comparison:
+
+| Compared | Not compared |
+|---|---|
+| selected query id + confidence | the LLM prose (non-deterministic, not meaningful to diff) |
+| resolved canonical entities | wording, ordering of narrative points |
+| filter provenance and logical grouping | |
+| rows before/after RLS and filtering | |
+| degradation flags raised | |
+
+This is the cheapest way to earn confidence in v2 against real Turkish questions and
+real data before flipping the switch. It costs roughly double the work per sampled
+request, so it is off by default and sampled (`MERGEN_PK_SHADOW_SAMPLE_PCT`).
+
+Recommended adoption sequence on the VM:
+
+1. `MERGEN_PK_ENGINE=v1` + `MERGEN_PK_SHADOW_MODE=true` for a few days → review
+   disagreements.
+2. `MERGEN_PK_ENGINE=v2`, `MERGEN_PK_ASYNC=false`, shadow off.
+3. `MERGEN_PK_ASYNC=true` after a separate responsiveness check.
+4. v1 removal PR.
+
+### Backward compatibility that must not break
+
+* `disable_ai_filters = TRUE` in a query definition must keep working in v2.
+* `analysis_mode = "full"`, `pre_aggregated_columns`, `date_columns`, `rls_columns`,
+  `db_target`, `info_file`, `info_url`, `sql_file` / inline `sql` all keep their
+  current meaning.
+* The Ortak Oturum bridge (`R/helpers_ortak_oturum_arac.R:406-455`) consumes
+  `prompt_context` / `user_context` from this tool. The v2 return contract must keep
+  those fields, or that call site must be updated in the same PR.
+* Deep Thinking (`analysis_deep_thinking`) and `analysis_detail_level` remain
+  user-visible settings with unchanged semantics.
+
+---
+
+## 11. Building without VM access — execution plan and session handoff
+
+The operator may be away for an extended period. Most of this plan is buildable and
+**genuinely provable** offline, because the hard logic lives in pure functions. What
+follows is how to do that safely.
+
+### What is provable offline
+
+| Phase | Buildable | Provable offline | Gap |
+|---|---|---|---|
+| 1 Correctness | 100% | **100%** | none — all pure functions |
+| 2 Packet + Excel | 100% | ~95% | `DT` widget rendering needs a browser |
+| 4 Entity resolver | 100% | **100%** | clarification chips UI needs a browser |
+| 0 Telemetry | 95% | ~80% | DDL written, not applied; test against real SQLite |
+| 5 Selection | 100% | ~60% | logic yes; **accuracy needs a real endpoint** |
+| 3 Metadata machinery | 100% | ~90% | generator cannot be **run**; metadata cannot be populated |
+| 6 Async | 100% | **~30%** | event-loop responsiveness is VM-only |
+
+### Recommended order when the VM is unavailable
+
+**1 → 2 → 4 → 0 → 5 → 3 → 6**
+
+Highest-confidence work first, riskiest last. Phase 6 lands last and on its own flag.
+
+### Session structure
+
+One phase ≈ one Claude Code session ≈ one pull request. Do not attempt multiple
+phases in a single session; context exhaustion mid-phase produces half-migrated code,
+which is worse than not starting.
+
+Each session must:
+
+1. Read this document **and re-verify** the defects it is about to fix (§0.1). Report
+   any that no longer reproduce.
+2. Read `.ai/pk-rebuild-progress.md` for what previous sessions did and decided.
+3. Implement exactly one phase, behind `MERGEN_PK_ENGINE=v2`.
+4. Add the offline tests listed for that phase in §7.
+5. Run `bash tools/ai_validate.sh quick` (or `cloud-quick` when heavy packages cannot
+   install), plus `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`,
+   `bash tools/seam_doctor.sh`, and the maintainability ratchet test.
+6. **Update `.ai/pk-rebuild-progress.md`** before finishing.
+7. Open a PR for that phase only.
+
+### `.ai/pk-rebuild-progress.md` contract
+
+Created by the first session, appended by every later one. Per phase:
+
+* status (`not_started` / `in_progress` / `offline_complete` / `vm_validated`)
+* files added and modified
+* tests added, and what each proves
+* **design decisions taken, with reasoning** — so a later session does not silently
+  reverse them
+* deviations from this plan, and why
+* what remains unproven and requires the VM
+* exact validation commands run, and their real results
+
+### Rules for the agent while the operator is away
+
+* **Never claim VM, runtime, browser, SSO, DB or SQL Server validation.** Cloud runs
+  prove parse sanity and offline contract tests, nothing more (`CLAUDE.md`, validation
+  honesty).
+* **Never delete or refactor the v1 path** to make v2 cleaner.
+* **Never raise a maintainability ratchet budget.** Split instead.
+* **Never invent query metadata.** The checkout has 4 placeholder queries; production
+  has ~169. Metadata is generated on the VM, not guessed here.
+* **If blocked, stop and document** in the progress file rather than guessing at
+  production behavior. A clearly documented blocker is a good outcome; a plausible
+  guess baked into the engine is not.
+* **If a design decision in this document turns out to be wrong when implemented, say
+  so in the progress file and in the PR**, and propose the alternative. This plan is
+  evidence-based, not infallible.
+
+---
+
+## 12. Design decisions to confirm with the operator
+
+### Resolved
+
+| # | Decision |
+|---|---|
+| R1 | **Phase 0 (telemetry) ships first.** It is cheap, it makes today's silent failures visible immediately, and its usage data is what prioritizes the Phase 3 metadata work. |
+| R2 | **`writexl` is the export baseline** — already in `required_packages`, correct native types, multi-sheet, zero new dependency (`renv.lock` is VM-generated, so a cloud session must not add packages). `openxlsx` formatting is gated behind `requireNamespace()`: plain-but-correct without it, polished with it. |
+| R3 | **`keywords` / `sample_questions` are optional and must not be generated by the on-prem LLMs** (§5.1). |
+| R4 | **Metadata lives in two files** — generated `R/library_query_meta_auto.R` and curated `R/library_query_meta.R`, merged with curated winning (§5.1). |
+| R5 | **Everything ships behind `MERGEN_PK_ENGINE`, with `v1` remaining the default** until VM validation (§10). |
+
+### Still open
+
+1. Clarification UX — chips in the chat bubble vs a modal.
+2. Inline table threshold — is `MERGEN_PK_DT_MAX_ROWS = 200` right for the `DT` widget?
+3. Should XLSX export be automatic above the threshold, or an explicit user action?
+4. Is a physically read-only DB principal available for the analysis connection (D23)?
+5. `MB_Analiz_Log` retention, and whether raw question text may be stored
+   (`MERGEN_PK_LOG_QUESTION_TEXT`) — questions may contain project names.
+6. **May query names and descriptions leave the corporate network** for the optional
+   `keywords` / `sample_questions` drafting path (§5.1, option 2)? If no, use option 1
+   or 3.
+7. Default `MERGEN_PK_ROW_CAP = 50000` — acceptable for the heaviest of the 169
+   queries, or should specific queries carry a larger per-query `row_cap`?
+8. Shadow-mode sampling percentage and how long to run it before flipping
+   `MERGEN_PK_ENGINE=v2` (§10).
+9. Should `openxlsx` be added to `required_packages` on the VM, enabling formatted
+   export permanently?
+
+---
+
+## 13. Non-negotiable constraints (from `CLAUDE.md`)
 
 * **Turkish text integrity.** UTF-8 everywhere; no Latinization; no mojibake. All
   DB writes go through `normalize_db_visible_value()` / `normalize_db_technical_value()`;
@@ -891,11 +1244,15 @@ numeric-provenance mismatch rate).
 
 ---
 
-## 11. What cannot be proven in a cloud session
+## 14. What cannot be proven in a cloud session
 
 These require the Windows VM and must be reported as unproven until run there:
 
 * Real behavior against the 169-query production library.
+* **Running `tools/pk/generate_query_meta.R`** — it needs the real query library and a
+  live DB connection, so `R/library_query_meta_auto.R` cannot be produced in a cloud
+  session, and the query-library health report cannot be generated.
+* Shadow-mode agreement rates against real Turkish questions.
 * SQL Server execution, Turkish at-rest values, and `sp_executesql` behavior.
 * RLS correctness against real `DC01_user_base` / PY / EPS permission data.
 * SSO identity readiness timing.
@@ -913,7 +1270,7 @@ Required VM gates for this work: `bash tools/ai_validate.sh full --boot-smoke`,
 
 ---
 
-## 12. Success criteria
+## 15. Success criteria
 
 The tool is done when all of the following hold:
 
