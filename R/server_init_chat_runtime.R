@@ -191,7 +191,7 @@ if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
     conn_list <- tryCatch(get_connection(), error = function(e) NULL)
     conn <- if (is.list(conn_list)) conn_list$conn %||% NULL else NULL
     if (!is.null(conn_list)) {
-      on.exit(try(release_connection(conn_list), silent = TRUE), add = TRUE)
+      on.exit(try(release_connection(conn_list), silent = TRUE)), add = TRUE)
     }
 
     try(
@@ -213,7 +213,7 @@ if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
     if (is_exception) stop(caught_error)
     result
   }
-}
+
 
 # ==============================================================================
 # Derin analiz — giriş anındaki iptali gözlemle
@@ -290,4 +290,11 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
 
     "\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi."
   }
+}
+
+# PR #695 Codex düzeltmesi: Yukarıdaki temel doğrudan-çıkış sarmalayıcısı
+# kurulduktan sonra DB-hata tekrar bağlantısı ve filtre temizliği sertleştirmesini
+# etkinleştir.
+if (exists("pk_codex_single_exit_fix_install", mode = "function", inherits = TRUE)) {
+  pk_codex_single_exit_fix_install()
 }

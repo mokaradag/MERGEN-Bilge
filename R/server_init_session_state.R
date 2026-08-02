@@ -102,3 +102,226 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
     sync_feedback_from_db = sync_feedback_from_db
   )
 }
+
+# ==============================================================================
+# PR #695 — Proje/Kaynak Analizi Codex çalışma zamanı düzeltmeleri
+# ==============================================================================
+# Bu katman server init bölümünde, analiz ve Ortak Oturum modüllerinden sonra
+# yüklenir. Büyük orkestratörleri büyütmeden dört sınırı sertleştirir:
+#   * ortak oda SQL yanıtlarında köken alt bilgisi,
+#   * DB hatası sonrasında bağlantı tekrarının önlenmesi,
+#   * derin analiz kimlik bağlantısının erken bırakılması,
+#   * yarım kalan filtre gözlemlerinin istek sonunda temizlenmesi.
+
+.pk_codex_runtime_env <- environment()
+
+.pk_codex_scalar_text <- function(x) {
+  if (is.null(x) || length(x) == 0L) return("")
+  out <- as.character(x)[1]
+  if (is.na(out)) "" else out
+}
+
+pk_filter_observation_clear <- function(request_id = NULL, question = NULL) {
+  state <- if (exists(".pk_filter_observation_state", inherits = TRUE)) {
+    get(".pk_filter_observation_state", inherits = TRUE)
+  } else {
+    NULL
+  }
+  if (!is.environment(state)) return(invisible(FALSE))
+
+  keys <- ls(state, all.names = TRUE)
+  if (length(keys) == 0L) return(invisible(FALSE))
+
+  request_id <- .pk_codex_scalar_text(request_id)
+  question <- .pk_codex_scalar_text(question)
+  if (!nzchar(request_id) && !nzchar(question)) return(invisible(FALSE))
+
+  remove_key <- vapply(keys, function(key) {
+    parts <- strsplit(key, "\u001f", fixed = TRUE)[[1]]
+    request_match <- nzchar(request_id) && length(parts) >= 1L &&
+      identical(parts[[1]], request_id)
+    question_match <- !nzchar(request_id) && nzchar(question) &&
+      length(parts) >= 4L && identical(parts[[4]], question)
+    request_match || question_match
+  }, logical(1))
+
+  doomed <- keys[remove_key]
+  if (length(doomed) == 0L) return(invisible(FALSE))
+
+  rm(list = doomed, envir = state)
+  invisible(TRUE)
+}
+
+.pk_codex_current_request_id <- function(session) {
+  if (!exists("pk_provenance_current_request_id", mode = "function", inherits = TRUE)) {
+    return(NULL)
+  }
+  tryCatch(pk_provenance_current_request_id(session), error = function(e) NULL)
+}
+
+.pk_codex_session_username <- function(session) {
+  tryCatch(
+    session$userData$system_username %||%
+      session$userData$username %||%
+      session$userData$user_name %||%
+      "Unknown",
+    error = function(e) "Unknown"
+  )
+}
+
+.pk_codex_database_failure_text <- function(text, is_exception = FALSE) {
+  if (isTRUE(is_exception)) return(TRUE)
+
+  text <- .pk_codex_scalar_text(text)
+  if (!nzchar(text)) return(FALSE)
+
+  patterns <- c(
+    "Veritabanı Hatası", "SQLSTATE", "ODBC", "nanodbc",
+    "Login timeout", "Login failed", "could not connect",
+    "Connection refused", "DSN=", "Driver="
+  )
+  any(vapply(patterns, function(pattern) {
+    grepl(pattern, text, fixed = TRUE, useBytes = TRUE)
+  }, logical(1)))
+}
+
+# server_init_chat_runtime.R kendi doğrudan-çıkış sarmalayıcısını kurduktan
+# sonra çağrılır. DB/SQL hata çıkışı biliniyorsa telemetri için ikinci bağlantı
+# açılmaz; pk_analysis_observe(conn = NULL) köken alt bilgisini yine hazırlar.
+pk_codex_single_exit_fix_install <- function() {
+  target_env <- .pk_codex_runtime_env
+  if (!exists(
+    ".pk_analiz_process_request_without_exit_observer",
+    mode = "function",
+    envir = target_env,
+    inherits = TRUE
+  ) || exists(
+    ".pk_codex_single_exit_installed",
+    envir = target_env,
+    inherits = FALSE
+  )) {
+    return(invisible(FALSE))
+  }
+
+  core <- get(
+    ".pk_analiz_process_request_without_exit_observer",
+    mode = "function",
+    envir = target_env,
+    inherits = TRUE
+  )
+
+  replacement <- function(user_prompt, chat_history, session,
+                           stop_check = NULL) {
+    started_at <- Sys.time()
+    request_id <- NULL
+    on.exit({
+      cleanup_request_id <- request_id %||% .pk_codex_current_request_id(session)
+      try(
+        pk_filter_observation_clear(cleanup_request_id, user_prompt),
+        silent = TRUE
+      )
+    }, add = TRUE)
+
+    caught_error <- NULL
+    result <- tryCatch(
+      core(
+        user_prompt = user_prompt,
+        chat_history = chat_history,
+        session = session,
+        stop_check = stop_check
+      ),
+      error = function(e) {
+        caught_error <<- e
+        e
+      }
+    )
+
+    request_id <- .pk_codex_current_request_id(session)
+    is_exception <- inherits(result, "condition")
+    is_direct_exit <- is_exception || is.character(result) ||
+      (is.list(result) && identical(result$type, "error_message"))
+    if (!isTRUE(is_direct_exit)) return(result)
+
+    has_pending_footer <- tryCatch(
+      !is.null(session$userData$pk_provenance_pending),
+      error = function(e) FALSE
+    )
+    if (isTRUE(has_pending_footer)) {
+      if (is_exception) stop(caught_error)
+      return(result)
+    }
+
+    auth_pending <- tryCatch(
+      identical(session$userData$auth_initialized, FALSE),
+      error = function(e) FALSE
+    )
+    if (isTRUE(auth_pending) ||
+        !exists("pk_analysis_observe", mode = "function", inherits = TRUE)) {
+      if (is_exception) stop(caught_error)
+      return(result)
+    }
+
+    response_text <- if (is_exception) {
+      conditionMessage(result)
+    } else if (is.character(result)) {
+      .pk_codex_scalar_text(result)
+    } else {
+      .pk_codex_scalar_text(result$content)
+    }
+
+    stopped <- grepl("İşlem Durduruldu", response_text, fixed = TRUE)
+    unauthorized <- grepl("Yetki Hatası", response_text, fixed = TRUE)
+    no_match <- grepl(
+      "mevcut analiz kütüphanesinde bulunamadı",
+      response_text,
+      fixed = TRUE
+    )
+
+    outcome <- if (stopped) {
+      "Durduruldu"
+    } else if (unauthorized) {
+      "Yetkisiz"
+    } else if (no_match) {
+      "EslesmeYok"
+    } else {
+      "Hata"
+    }
+
+    user_id <- tryCatch(session$userData$user_id %||% NULL, error = function(e) NULL)
+    database_failure <- .pk_codex_database_failure_text(response_text, is_exception)
+
+    conn_list <- NULL
+    conn <- NULL
+    if (!isTRUE(database_failure)) {
+      conn_list <- tryCatch(get_connection(), error = function(e) NULL)
+      conn <- if (is.list(conn_list)) conn_list$conn %||% NULL else NULL
+      if (!is.null(conn_list)) {
+        on.exit(try(release_connection(conn_list), silent = TRUE), add = TRUE)
+      }
+    }
+
+    try(
+      pk_analysis_observe(session, conn, list(
+        request_id = request_id,
+        question = user_prompt,
+        username = .pk_codex_session_username(session),
+        user_id = user_id,
+        deep_thinking = FALSE,
+        query_name = "Tekil analiz",
+        filter_status = if (stopped) "stopped" else "not_reached",
+        filters = list(),
+        outcome = outcome,
+        duration_ms = as.numeric(difftime(Sys.time(), started_at, units = "secs")) * 1000
+      )),
+      silent = TRUE
+    )
+
+    if (is_exception) stop(caught_error)
+    result
+  }
+
+  assign("pk_analiz_process_request", replacement, envir = target_env)
+  assign(".pk_codex_single_exit_installed", TRUE, envir = target_env)
+  invisible(TRUE)
+}
+
