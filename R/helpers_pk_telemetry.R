@@ -2,15 +2,32 @@
 # Dosya Yolu: R/helpers_pk_telemetry.R
 # Açıklama: Telemetri DB katmanı için uyumluluk yüzeyi. Temel fail-soft yazım
 #           helpers_pk_telemetry_base.R içinde korunur; bu dosya gözlem anında
-#           gerçek filtre yürütme bilgisini ve yapılandırılmış motoru uygular.
+#           gerçek filtre yürütme bilgisini, kullanıcı kimliğini ve
+#           yapılandırılmış motoru uygular.
 # ==============================================================================
 
-.pk_telemetry_base_path <- file.path("R", "helpers_pk_telemetry_base.R")
-if (!file.exists(.pk_telemetry_base_path)) {
-  stop(sprintf("%s bulunamadı.", .pk_telemetry_base_path), call. = FALSE)
+# Standart çalışma zamanında temel dosya kaynak manifesti tarafından bu
+# dosyadan önce yüklenir. İzole source()/testthat çalıştırmalarında ise mevcut
+# çalışma dizinine güvenmeden, bu dosyanın kendi konumundaki kardeş dosya yüklenir.
+if (!exists("pk_telemetry_log_analysis", mode = "function", inherits = FALSE)) {
+  .pk_telemetry_source_file <- tryCatch(
+    as.character(sys.frame(1)$ofile %||% "")[1],
+    error = function(e) ""
+  )
+  .pk_telemetry_base_path <- if (nzchar(.pk_telemetry_source_file)) {
+    file.path(dirname(normalizePath(.pk_telemetry_source_file, winslash = "/", mustWork = TRUE)),
+              "helpers_pk_telemetry_base.R")
+  } else {
+    ""
+  }
+
+  if (!nzchar(.pk_telemetry_base_path) || !file.exists(.pk_telemetry_base_path)) {
+    stop("helpers_pk_telemetry_base.R bulunamadı.", call. = FALSE)
+  }
+
+  source(.pk_telemetry_base_path, encoding = "UTF-8", local = environment())
+  rm(.pk_telemetry_source_file, .pk_telemetry_base_path)
 }
-source(.pk_telemetry_base_path, encoding = "UTF-8", local = environment())
-rm(.pk_telemetry_base_path)
 
 .pk_observation_query_meta <- function(info, filter_observation = NULL) {
   if (is.list(info$query_meta)) return(info$query_meta)
@@ -59,18 +76,33 @@ rm(.pk_telemetry_base_path)
   ))
 }
 
+.pk_observation_session_user_id <- function(session) {
+  value <- tryCatch(session$userData$user_id, error = function(e) NULL)
+  if (is.null(value) || length(value) == 0L) return(NULL)
+
+  value <- suppressWarnings(as.integer(value)[1])
+  if (is.na(value)) NULL else value
+}
+
 #' Bir analiz isteğini gözlemle: alt bilgiyi hazırla + telemetriyi yaz
 #'
-#' Bu bağdaştırıcı iki doğruluk garantisi ekler:
+#' Bu bağdaştırıcı şu doğruluk garantilerini verir:
 #'   1. toplulaştırılmış çıktı satırı yerine toplulaştırma öncesi eşleşen kayıt
 #'      sayısını kullanır;
 #'   2. yalnızca gerçekten uygulanan filtreleri gösterir ve düşürülenleri açıkça
-#'      kullanıcıya/telemetriye bildirir.
-#' Ayrıca motor etiketi sabit koddan değil, sorgu metadata -> ortam -> option ->
-#' varsayılan önceliğiyle çözülür.
+#'      kullanıcıya/telemetriye bildirir;
+#'   3. çağıran unutsa bile oturumdaki kimlik doğrulanmış user_id değerini
+#'      KullaniciID alanına taşır;
+#'   4. motor etiketi sorgu metadata -> ortam -> option -> varsayılan önceliğiyle
+#'      çözülür.
 pk_analysis_observe <- function(session, conn, info) {
   tryCatch({
     info <- if (is.list(info)) info else list()
+
+    if (is.null(info$user_id) || length(info$user_id) == 0L ||
+        is.na(suppressWarnings(as.integer(info$user_id)[1]))) {
+      info$user_id <- .pk_observation_session_user_id(session)
+    }
 
     filter_observation <- if (exists("pk_filter_observation_take", mode = "function", inherits = TRUE)) {
       tryCatch(pk_filter_observation_take(info), error = function(e) NULL)
@@ -85,6 +117,11 @@ pk_analysis_observe <- function(session, conn, info) {
       dropped_degradations <- .pk_dropped_filter_degradations(
         filter_observation$dropped_filters %||% list()
       )
+
+      if (length(info$filters %||% list()) > 0L &&
+          identical(info$filter_status, "ok_no_filter")) {
+        info$filter_status <- "ok_filtered"
+      }
 
       if (length(info$filters %||% list()) == 0L &&
           length(filter_observation$dropped_filters %||% list()) > 0L &&
