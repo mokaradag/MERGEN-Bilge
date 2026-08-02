@@ -22,6 +22,14 @@ serverInitChatRuntime <- function(session, values, settings_data, output,
                           audio_src = NULL, audio_voice = NULL,
                           reasoning_content = NULL) {
 
+    # SQL analizinin doğrudan dönen karakter/hata yanıtları normal LLM
+    # sonlandırıcılarına uğramaz. Mesaj ekleme sınırı, bekleyen köken alt
+    # bilgisini bütün AI yanıtlarında son bir kez ve idempotent biçimde tüketir.
+    if ((identical(type, "ai") || identical(type, "assistant")) &&
+        exists("pk_provenance_decorate", mode = "function", inherits = TRUE)) {
+      content <- pk_provenance_decorate(content, session)
+    }
+
     effective_user_id <- resolve_current_user_id()
 
     chat_add_message(
