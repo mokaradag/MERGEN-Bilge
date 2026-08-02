@@ -83,3 +83,107 @@ serverInitChatRuntime <- function(session, values, settings_data, output,
     simulate_streaming_stoppable = simulate_streaming_stoppable
   )
 }
+
+# ==============================================================================
+# Proje/Kaynak Analizi — doğrudan çıkış gözlem güvenlik ağı
+# ==============================================================================
+# module_proje_kaynak_analizi.R bu dosyadan önce yüklenir. Ana analiz motoru,
+# filtre aşamasına ulaşan sonuçları kendi bağlamında gözlemler. Aşağıdaki ince
+# sarmalayıcı yalnızca motorun doğrudan döndüğü ve henüz köken alt bilgisi
+# bırakmadığı çıkışları (başlangıç durdurma, kimlik/yetki, eşleşme yok, SQL ve
+# yapılandırma hataları vb.) tamamlar. Böylece başarılı yolların telemetrisi
+# yinelenmez.
+if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
+    !exists(".pk_analiz_process_request_without_exit_observer", inherits = FALSE)) {
+
+  .pk_analiz_process_request_without_exit_observer <- get(
+    "pk_analiz_process_request", mode = "function", inherits = TRUE
+  )
+
+  pk_analiz_process_request <- function(user_prompt, chat_history, session,
+                                        stop_check = NULL) {
+    started_at <- Sys.time()
+    result <- .pk_analiz_process_request_without_exit_observer(
+      user_prompt = user_prompt,
+      chat_history = chat_history,
+      session = session,
+      stop_check = stop_check
+    )
+
+    is_direct_exit <- is.character(result) ||
+      (is.list(result) && identical(result$type, "error_message"))
+    if (!isTRUE(is_direct_exit)) return(result)
+
+    # Motorun RLS-sıfır/filtre-sıfır gibi zaten gözlediği doğrudan yanıtlarında
+    # bekleyen bir alt bilgi vardır. Onları ikinci kez yazma.
+    has_pending_footer <- tryCatch(
+      !is.null(session$userData$pk_provenance_pending),
+      error = function(e) FALSE
+    )
+    if (isTRUE(has_pending_footer)) return(result)
+
+    if (!exists("pk_analysis_observe", mode = "function", inherits = TRUE)) {
+      return(result)
+    }
+
+    response_text <- if (is.character(result)) {
+      as.character(result)[1]
+    } else {
+      as.character(result$content %||% "")[1]
+    }
+    if (is.na(response_text)) response_text <- ""
+
+    stopped <- grepl("İşlem Durduruldu", response_text, fixed = TRUE)
+    unauthorized <- grepl("Yetki Hatası", response_text, fixed = TRUE)
+    no_match <- grepl("mevcut analiz kütüphanesinde bulunamadı", response_text, fixed = TRUE)
+
+    outcome <- if (stopped) {
+      "Durduruldu"
+    } else if (unauthorized) {
+      "Yetkisiz"
+    } else if (no_match) {
+      "EslesmeYok"
+    } else {
+      "Hata"
+    }
+
+    request_id <- if (exists("pk_provenance_current_request_id", mode = "function", inherits = TRUE)) {
+      tryCatch(pk_provenance_current_request_id(session), error = function(e) NULL)
+    } else {
+      NULL
+    }
+
+    username <- tryCatch(
+      session$userData$system_username %||%
+        session$userData$username %||%
+        session$userData$user_name %||%
+        "Unknown",
+      error = function(e) "Unknown"
+    )
+    user_id <- tryCatch(session$userData$user_id %||% NULL, error = function(e) NULL)
+
+    conn_list <- tryCatch(get_connection(), error = function(e) NULL)
+    conn <- if (is.list(conn_list)) conn_list$conn %||% NULL else NULL
+    if (!is.null(conn_list)) {
+      on.exit(try(release_connection(conn_list), silent = TRUE), add = TRUE)
+    }
+
+    try(
+      pk_analysis_observe(session, conn, list(
+        request_id = request_id,
+        question = user_prompt,
+        username = username,
+        user_id = user_id,
+        deep_thinking = FALSE,
+        query_name = "Tekil analiz",
+        filter_status = if (stopped) "stopped" else "not_reached",
+        filters = list(),
+        outcome = outcome,
+        duration_ms = as.numeric(difftime(Sys.time(), started_at, units = "secs")) * 1000
+      )),
+      silent = TRUE
+    )
+
+    result
+  }
+}
