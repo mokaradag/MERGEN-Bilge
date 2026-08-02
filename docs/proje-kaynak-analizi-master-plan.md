@@ -691,9 +691,18 @@ segment is bounded (at most two questions and a fixed character budget per query
 only in a sample question is still visible during recall. Resolve
 `MERGEN_PK_SELECT_RECALL_N` through the §9 precedence contract (default 5), validate it
 as a bounded integer **of at least 2**, and ask for exactly that many candidate **ids**.
-The minimum of two is part of the safety contract: a one-candidate recall cannot supply
-the runner-up confidence needed to enforce `MERGEN_PK_SELECT_MIN_MARGIN`. Full recall
-by construction applies over the supplied semantic fields.
+
+Pass A also receives a bounded follow-up context envelope: the last two relevant
+conversation turns and the prior stable selected query id, when that id still exists
+in the current library. For an elliptical follow-up such as `peki 2024 için?`, seed
+that prior id into the candidate set **before** applying the resolved recall-count
+limit, de-duplicate it against newly recalled ids, and fill the remaining slots from
+the full-library recall result. Pass B must still validate its capabilities and may
+reject it, but Pass A must never discard the only query-bearing context before Pass B
+can inspect the conversation. The minimum of two is part of the safety contract: a
+one-candidate recall cannot supply the runner-up confidence needed to enforce
+`MERGEN_PK_SELECT_MIN_MARGIN`. Full recall by construction applies over the supplied
+semantic fields and bounded follow-up context.
 
 **Do not reduce Pass A to `id | name`, and do not postpone all sample questions to
 Pass B.** A user's terminology frequently appears only in a query's description,
@@ -1034,7 +1043,9 @@ Additional required behaviors:
   approved case handling. No suffix stripping, no clitic stripping, no punctuation
   collapsing. If two distinct authorization codes ever normalize to the same key, that
   is a **hard error**, not a merge; assert it in the contract test.
-* Record the RLS scope in provenance (rows before/after, which rule applied).
+* Record the RLS scope only in restricted server telemetry: pre-RLS row count,
+  authorized row count, and the rule applied. Never place the pre-RLS count in
+  user-visible provenance, export metadata, or any model-facing packet.
 * **Longer term:** push predicates into SQL or use secured views, so unauthorized
   rows never enter R memory.
 
@@ -1045,7 +1056,7 @@ sample. The LLM receives facts, not data.
 
 ```
 Scope           selected query (id + name), grain, primary key, freshness
-Filters         applied filters, resolved canonical entities, rows before/after RLS & filter
+Filters         applied filters, resolved canonical entities, authorized rows before user filter, rows after filter
 Coverage        null rate per column, duplicate count at declared grain
 Numeric         per additive measure: n, sum, mean, median, p5/p25/p75/p95, min, max, sd,
                 IQR-outlier count.  Non-additive measures: NEVER summed; weighted mean
@@ -1061,6 +1072,13 @@ Examples        ~20-40 rows: top-N + bottom-N by primary measure + outliers +
                 fixed-seed STRATIFIED sample  (never head(500) — D18)
 Limitations     what this query cannot answer; what was truncated
 ```
+
+The model-facing packet contains **no pre-RLS row count**. For scoped users, that
+value exists exclusively in access-restricted server telemetry and is never sent to
+the LLM, cited in prose, written to the `Bilgi` sheet, or exposed through the footer.
+The packet may expose only the authorized population before user filters and the
+post-filter population. Numeric provenance checks must reject any attempted citation
+of a pre-RLS count because no such structured fact is available to composition.
 
 **Sparse/non-finite numeric measures have an explicit availability contract.** First
 coerce under the declared type and split finite values from missing/`NaN`/`Inf`,
@@ -1533,11 +1551,11 @@ delete coverage.
 | `test-pk-text-turkish-behavior.R` | `pk_tr_fold()` on İ/I/ı/i, composed/decomposed NFC equivalents, clitics, suffixes; locale independence; Phase-3a load-order availability |
 | `test-pk-filter-compile-behavior.R` | **OR-in-column / AND-across** (D1), complementary same-column range bounds stay AND, multi-value (D2), ranges, NOT, no-op detection; deterministic Turkish numeric/unit parsing including ambiguous/reversed bounds |
 | `test-pk-entity-resolver-behavior.R` | all 6 scoring tiers with exact formula boundary fixtures, exact ASCII-fold score 90 + collision clarification, validated local/approved alias registry + collision rejection, every decision-policy branch under overridden min/auto thresholds including plural-before-auto and max-candidate overflow, invalid threshold ordering fails safe, code-exactness |
-| `test-pk-query-selection-contract.R` | resolved `MERGEN_PK_SELECT_RECALL_N` (minimum 2) controls both Pass-A requested IDs and Pass-B candidate input; non-default value 3 is honored; fewer than two validated confidences returns `no_runner_up`; no literal five; stable IDs and alternate confidences |
+| `test-pk-query-selection-contract.R` | resolved `MERGEN_PK_SELECT_RECALL_N` (minimum 2) controls both Pass-A requested IDs and Pass-B candidate input; non-default value 3 is honored; fewer than two validated confidences returns `no_runner_up`; no literal five; stable IDs and alternate confidences; bounded follow-up context plus the prior stable query id is included in Pass A, and an elliptical follow-up retains that id before recall truncation |
 | `test-pk-filter-plan-contract.R` | typed tree validation; **rejects any executable expression** (D5) |
 | `test-pk-rls-failclosed-contract.R` | missing declared RLS column → **abort, not skip** (D6); startup schema check may be pending only when schema is unavailable, but request-time validation remains unconditional; an unavailable role scope aborts and an empty role scope yields **zero** rows, never all rows (D6b); scoped user messaging cannot distinguish out-of-scope-only from no accessible rows; `NA` in `Yetki` does not error; **no configuration value anywhere restores fail-open filtering** |
 | `test-pk-sql-readonly-gate-contract.R` | shared cross-engine parser/classifier allows only a single read-only SELECT/CTE-SELECT; rejects data-modifying CTEs, `SELECT INTO`, multiple statements, write/DDL/DCL/BACKUP/RESTORE/EXEC/sp_/xp_ forms; harmless keywords inside literals/comments do not create false positives; unknown syntax fails closed; generator uses the same gate (D23) |
-| `test-pk-analysis-packet-behavior.R` | additive vs non-additive; zero/one/finite sparse-measure availability contract (no all-missing zero, no `NA`/`NaN`/`Inf` fact); weighted means exclude disclosed missing/zero pairs, reject negative/non-finite weights, and return unavailable when no positive weight remains; stable `latest_by` + unique `latest_tie_by`; duplicate newest-row ties return `ambiguous_latest`; structured fact IDs and semantic context; budget accountant; stratified sample; `FİLTRELEME UYARISI` survives degradation (D7, D8) |
+| `test-pk-analysis-packet-behavior.R` | additive vs non-additive; zero/one/finite sparse-measure availability contract (no all-missing zero, no `NA`/`NaN`/`Inf` fact); weighted means exclude disclosed missing/zero pairs, reject negative/non-finite weights, and return unavailable when no positive weight remains; stable `latest_by` + unique `latest_tie_by`; duplicate newest-row ties return `ambiguous_latest`; structured fact IDs and semantic context; budget accountant; stratified sample; `FİLTRELEME UYARISI` survives degradation (D7, D8); the model-facing packet contains authorized-before-filter and after-filter counts only, never a pre-RLS count |
 | `test-pk-numeric-provenance-contract.R` | value plus fact ID/capability/unit/aggregation/scope/group/date validation; same token used for a wrong measure is rejected; warn/block fallbacks are deterministic |
 | `test-pk-export-xlsx-behavior.R` | native types, Turkish round-trip, writer-specific percentage contract, no pre-RLS count in `Bilgi`, multipart completeness by stable row ordinal while preserving legitimate duplicate rows, explicit refusal above the per-part limit, verification failure → CSV fallback, character formula neutralization while numeric `-125.50` remains numeric, **not served from `bilge_yolac_downloads`** |
 | `test-pk-query-meta-contract.R` | pre-execution declared/generated-schema validation is distinct from mandatory post-fetch actual-column validation; startup validation covers duplicate ids, capability registry/column/requirements consistency including exact measure/date/output-dimension capabilities, semantic requirements without mappings return `unknown_no_semantic_metadata`, optional local alias layer cannot alter non-alias fields, tracked aliases are synthetic/approved, conditional schema-dependent checks, actual `column_meta` match when schema exists, alias target/collision rules; arbitrary prefix samples cannot prove identifiers/null-free/low-cardinality metadata |
@@ -1720,7 +1738,8 @@ boolean; metadata-free semantic requirements refuse before SQL; reordering
 at least 2 and honored by both passes (including a non-default value of 3); a missing
 validated runner-up returns `no_runner_up` rather than bypassing the margin gate;
 recall@N is measured on the golden set, including a case whose distinguishing phrase
-appears only in `sample_questions`.
+appears only in `sample_questions`, plus an elliptical follow-up whose prior stable
+query id must be retained in Pass A before truncation.
 
 ### Phase 6 — Non-blocking + performance (2–3 days) — **highest runtime risk**
 Async dispatch (D15) · worker-visible cancellation + SQL deadline + guaranteed
