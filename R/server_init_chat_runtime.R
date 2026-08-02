@@ -133,6 +133,18 @@ if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
       return(result)
     }
 
+    # Windows SSO başlangıcında kimlik henüz kesinleşmemişken ana motor bilinçli
+    # olarak DB bağlantısı açmadan "kimlik hazırlanıyor" yanıtı döndürür. Bu
+    # güvenlik ağı o sınırı telemetri uğruna delmemelidir.
+    auth_pending <- tryCatch(
+      identical(session$userData$auth_initialized, FALSE),
+      error = function(e) FALSE
+    )
+    if (isTRUE(auth_pending)) {
+      if (is_exception) stop(caught_error)
+      return(result)
+    }
+
     if (!exists("pk_analysis_observe", mode = "function", inherits = TRUE)) {
       if (is_exception) stop(caught_error)
       return(result)
@@ -200,5 +212,82 @@ if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
 
     if (is_exception) stop(caught_error)
     result
+  }
+}
+
+# ==============================================================================
+# Derin analiz — giriş anındaki iptali gözlemle
+# ==============================================================================
+# Derin analiz motorunun kendi gözlemcisi ilk stop_check() dönüşünden sonra
+# kuruluyordu. Bu ince sarmalayıcı yalnızca çağrı girişinde zaten iptal edilmiş
+# istekleri yakalar; diğer bütün yolları değiştirmeden asıl motora devreder.
+if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
+    !exists(".pk_deep_analysis_process_without_entry_observer", inherits = FALSE)) {
+
+  .pk_deep_analysis_process_without_entry_observer <- get(
+    "pk_deep_analysis_process", mode = "function", inherits = TRUE
+  )
+
+  pk_deep_analysis_process <- function(user_prompt, chat_history, session,
+                                       detail_level = "standart",
+                                       stop_check = NULL) {
+    entry_stopped <- is.function(stop_check) && isTRUE(stop_check())
+    if (!isTRUE(entry_stopped)) {
+      return(.pk_deep_analysis_process_without_entry_observer(
+        user_prompt = user_prompt,
+        chat_history = chat_history,
+        session = session,
+        detail_level = detail_level,
+        stop_check = stop_check
+      ))
+    }
+
+    # SSO kimliği bekleniyorsa iptal yanıtı DB erişimi başlatmamalıdır. Kimlik
+    # hazır olduğunda ise iptal hem telemetriye hem köken alt bilgisine yazılır.
+    auth_pending <- tryCatch(
+      identical(session$userData$auth_initialized, FALSE),
+      error = function(e) FALSE
+    )
+    if (!isTRUE(auth_pending) &&
+        exists("pk_analysis_observe", mode = "function", inherits = TRUE)) {
+      started_at <- Sys.time()
+      request_id <- if (exists("pk_provenance_current_request_id", mode = "function", inherits = TRUE)) {
+        tryCatch(pk_provenance_current_request_id(session), error = function(e) NULL)
+      } else {
+        NULL
+      }
+      username <- tryCatch(
+        session$userData$system_username %||%
+          session$userData$username %||%
+          session$userData$user_name %||%
+          "Unknown",
+        error = function(e) "Unknown"
+      )
+      user_id <- tryCatch(session$userData$user_id %||% NULL, error = function(e) NULL)
+
+      conn_list <- tryCatch(get_connection(), error = function(e) NULL)
+      conn <- if (is.list(conn_list)) conn_list$conn %||% NULL else NULL
+      if (!is.null(conn_list)) {
+        on.exit(try(release_connection(conn_list), silent = TRUE), add = TRUE)
+      }
+
+      try(
+        pk_analysis_observe(session, conn, list(
+          request_id = request_id,
+          question = user_prompt,
+          username = username,
+          user_id = user_id,
+          deep_thinking = TRUE,
+          query_name = "Derin analiz",
+          filter_status = "stopped",
+          filters = list(),
+          outcome = "Durduruldu",
+          duration_ms = as.numeric(difftime(Sys.time(), started_at, units = "secs")) * 1000
+        )),
+        silent = TRUE
+      )
+    }
+
+    "\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi."
   }
 }
