@@ -12,8 +12,9 @@ if (!file.exists(.pk_telemetry_base_path)) {
 source(.pk_telemetry_base_path, encoding = "UTF-8", local = environment())
 rm(.pk_telemetry_base_path)
 
-.pk_observation_query_meta <- function(info) {
+.pk_observation_query_meta <- function(info, filter_observation = NULL) {
   if (is.list(info$query_meta)) return(info$query_meta)
+  if (is.list(filter_observation$query_meta)) return(filter_observation$query_meta)
   if (!exists("query_library", inherits = TRUE)) return(NULL)
 
   library <- get("query_library", inherits = TRUE)
@@ -92,7 +93,7 @@ pk_analysis_observe <- function(session, conn, info) {
       }
     }
 
-    query_meta <- .pk_observation_query_meta(info)
+    query_meta <- .pk_observation_query_meta(info, filter_observation)
     info$engine <- tryCatch(
       pk_config_resolve("MERGEN_PK_ENGINE", query_meta = query_meta),
       error = function(e) "v1"
