@@ -1,0 +1,426 @@
+name: Apply PR 694 remaining review fixes
+
+on:
+  push:
+    branches:
+      - pk/rebuild
+    paths:
+      - .github/workflows/pr694-review-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: pk/rebuild
+          fetch-depth: 0
+
+      - name: Apply contract corrections
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("docs/proje-kaynak-analizi-master-plan.md")
+          text = path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              ' 2. Query selection           AI recall → AI precision → capability validation',
+              ' 2. Capability + selection    independent requirements → AI recall → AI precision',
+              'architecture stage 2',
+          )
+
+          replace_once(
+              '''Stage 3 never claims to inspect live result columns. It validates only the typed request
+against metadata and any declared/generated static schema. Stage 5 begins with a
+mandatory comparison against the columns SQL actually returned, before any RLS,
+filtering or analysis can proceed; stale or absent generated schema can defer detection
+to this point, never skip it.''',
+              '''Stage 2 begins by deriving the request's capability requirements through a separate
+pre-selection seam that cannot see query ids, candidate descriptions or candidate
+columns. The selected candidate therefore cannot define the test it must pass. Stage 3
+never claims to inspect live result columns. It validates only those independently
+derived typed requirements against metadata and any declared/generated static schema.
+Stage 5 begins with a mandatory comparison against the columns SQL actually returned,
+before any RLS, filtering or analysis can proceed; stale or absent generated schema can
+defer detection to this point, never skip it.''',
+              'architecture independence paragraph',
+          )
+
+          replace_once(
+              '''`aggregate = "latest"` additionally **requires `latest_by`** (the ordering column)
+and `latest_tie_by` (one or more stable columns whose combined value uniquely orders
+rows within a grain at the newest timestamp). Without both, `latest` is not executable
+when a query has several date columns or duplicate rows at the newest timestamp.
+Rows with `NA` in `latest_by` are excluded. The loader rejects missing tie columns;
+runtime validation rejects a newest-timestamp group when `latest_tie_by` is duplicated
+or missing, returning an explicit `ambiguous_latest` status instead of choosing a value.
+Database return order, `grain_columns` order and a final “first row” fallback are never
+valid tie breakers.''',
+              '''`aggregate = "latest"` additionally **requires `latest_by`**, an explicit
+`latest_by_direction ∈ {asc, desc}`, and an ordered `latest_tie_order` list. Each tie
+entry is a structure such as
+`list(column = "RevizyonNo", direction = "desc",
+      semantics = "higher_revision_is_newer")`. The `semantics` declaration is
+human-reviewed metadata stating why the field is monotonically ordered for this
+business fact; uniqueness alone is not ordering. UUIDs, hashes, arbitrary surrogate
+ids, database return order and `grain_columns` order are never valid tie breakers.
+
+Rows with `NA` in `latest_by` are excluded. Runtime first selects the newest value using
+the declared `latest_by_direction`, then applies `latest_tie_order` entries in their
+listed order and declared directions. The loader rejects missing columns, directions,
+semantics or non-orderable tie fields. If more than one row remains, a tie value is
+missing, or no business-meaningful ordering contract exists, return explicit status
+`ambiguous_latest` and emit no latest fact. A final “first row” fallback is forbidden.''',
+              'latest ordering contract',
+          )
+
+          replace_once(
+              '''* **Always fail the build** for duplicate ids, missing SQL, malformed metadata,
+  unknown `role`/`aggregate` values, invalid alias collisions, unknown capability IDs,
+  capability role/unit mismatches, or `weight_by` pointing at a declared non-measure.''',
+              '''* **Always fail the build** for duplicate ids, missing SQL, malformed metadata,
+  unknown `role`/`aggregate` values, invalid alias collisions, unknown capability IDs,
+  capability role/unit mismatches, `weight_by` pointing at a declared non-measure, or
+  an incomplete `latest` ordering contract (missing direction, ordered tie semantics or
+  referenced tie columns).''',
+              'startup latest validation',
+          )
+
+          replace_once(
+              '''Replace the current AI-or-heuristic split. **The lexical scorer must never make a
+selection decision** — a shortlist that drops the correct query is an unrecoverable
+silent failure, which is exactly the bottleneck to avoid.
+
+**Pass A — recall (LLM, full library).**''',
+              '''Replace the current AI-or-heuristic split. **The lexical scorer must never make a
+selection decision** — a shortlist that drops the correct query is an unrecoverable
+silent failure, which is exactly the bottleneck to avoid.
+
+**Pass 0 — independent capability intent.** Before any query candidate is shown to a
+model, derive a typed `requirements` object from the raw request, bounded conversation
+context and the allowlisted `pk_capability_registry` only. This adapter receives no
+query ids, names, descriptions, SQL, `column_meta` or candidate list. It returns:
+
+```json
+{"status":"ok","requirements":{"entity":"project",
+ "measures":["labor.planned_hours"],"dates":["date.project_start"],
+ "dimensions":["dimension.resource"],"group_by":null},"ambiguities":[]}
+```
+
+R validates every capability id and field shape before recall. If the request supports
+more than one materially different capability interpretation, an id is unknown, or the
+adapter returns `ambiguous`/`malformed`, stop and ask a clarification question; do not
+let a later candidate selection resolve the ambiguity. Deterministic direct mappings
+may bypass the LLM, but they use the same typed result. This seam is independently
+stubbed in tests so a wrong candidate can never redefine *planned* labor as *remaining*
+labor merely because both the candidate and its self-described requirements agree.
+
+**Pass A — recall (LLM, full library).**''',
+              'independent pass 0',
+          )
+
+          replace_once(
+              '''* **Capability validation needs a typed statement of what the request needs.** The
+  gate cannot compare prose against metadata. Pass B therefore also returns a
+  `requirements` object — the entity kind, stable measure capability IDs, exact date
+  capability IDs, required output-dimension capability IDs and grouping the question
+  implies — which R validates deterministically against the candidate's `column_meta`:
+
+  ```json
+  "requirements": {"entity": "project",
+                   "measures": ["labor.planned_hours"],
+                   "dates": ["date.project_start"],
+                   "dimensions": ["dimension.resource"], "group_by": null}
+  ```
+
+  Every `requirements.measures[]`, `requirements.dates[]` and
+  `requirements.dimensions[]` value must be an allowlisted ID from
+  `pk_capability_registry`, and the selected query must expose that exact ID through a
+  column's `capability` field with the matching role. R never infers equivalence from
+  labels or column names. Thus planned labor cannot be confused with remaining labor, a
+  query exposing only `BitisTarihi` cannot satisfy *"2024'te başlayan projeler"*, and
+  declaring `entity = "project"` cannot satisfy *"projede kimler görevliydi"* unless a
+  person/resource output-dimension capability is also present.
+
+  Without this typed result there is no structured input to validate: intake is raw
+  prose and the typed filter plan does not exist until stage 6a, after SQL. A confident
+  model pointing at a query without the exact required capability cannot answer the
+  question, and the gate must prove that **before** execution.''',
+              '''* **Capability validation uses the independently derived Pass-0 result.** Pass B is
+  not allowed to create, amend or weaken `requirements`; its candidate id, confidence
+  and reason are ranking evidence only. R validates the Pass-0 entity kind, stable
+  measure capability IDs, exact date capability IDs, required output-dimension
+  capability IDs and grouping against the candidate's `column_meta`.
+
+  Every `requirements.measures[]`, `requirements.dates[]` and
+  `requirements.dimensions[]` value must be an allowlisted ID from
+  `pk_capability_registry`, and the selected query must expose that exact ID through a
+  column's `capability` field with the matching role. R never infers equivalence from
+  labels or column names. Thus planned labor cannot be confused with remaining labor, a
+  query exposing only `BitisTarihi` cannot satisfy *"2024'te başlayan projeler"*, and
+  declaring `entity = "project"` cannot satisfy *"projede kimler görevliydi"* unless a
+  person/resource output-dimension capability is also present.
+
+  A candidate that fails the independent requirements check is rejected even when Pass
+  B is highly confident. If no candidate satisfies the requirements, execution stops
+  with clarification choices. The selected candidate can never supply the predicate by
+  which its own suitability is judged.''',
+              'candidate-independent capability validation',
+          )
+
+          replace_once(
+              '''* **Timeout on both passes** (D14). Retry only on malformed/timed-out output, and
+  make the retry a *repair* attempt that includes the validation error — never an
+  identical replay.''',
+              '''* **Timeout on Pass 0 and both selection passes** (D14). Retry only on
+  malformed/timed-out output, and make the retry a *repair* attempt that includes the
+  validation error — never an identical replay. A failed Pass 0 clarifies; it never
+  falls through to candidate-defined requirements.''',
+              'selection timeout scope',
+          )
+
+          replace_once(
+              '''* Validate `rls_columns` at startup **when a declared/generated result schema is
+  available**. When it is not, mark the check pending and perform the same validation
+  unconditionally against the actual result before request-time RLS. No-metadata boot
+  support must never become no-validation execution.''',
+              '''* **Fail closed on role-to-column applicability.** Resolve the authenticated role
+  through an allowlisted role→scope registry before filtering. Every non-admin scoped
+  role must have an applicable enforcement contract: for example project-scoped roles
+  (`PY`, `KY-P`, `DIR-P`) require a non-`NULL`, non-empty project RLS column, while an
+  EPS-scoped role requires the EPS column. A `NULL`, `NA` or empty field is a contract
+  error, not “this query needs no restriction”, and the query stops before any result is
+  analyzed or returned.
+
+  The only exception is an explicit `rls_enforcement` declaration with
+  `mode = "secured_view"`, the exact allowlisted view identifier, `scope_kind`, and a
+  reviewed DBA control/attestation id. Startup and request-time validation must prove
+  that the executed query uses that exact secured object. A comment such as “the SQL
+  already filters” or an arbitrary view name is not proof and cannot bypass the required
+  result-column predicate.
+* Validate `rls_columns` and role applicability at startup **when a declared/generated
+  result schema is available**. When it is not, mark the schema check pending and
+  perform the same validation unconditionally against the actual result before
+  request-time RLS. No-metadata boot support must never become no-validation execution.''',
+              'role-specific RLS applicability',
+          )
+
+          replace_once(
+              '''Limitations     what this query cannot answer; what was truncated
+```
+
+The model-facing packet contains **no pre-RLS row count**.''',
+              '''Limitations     what this query cannot answer; what was truncated
+```
+
+**Declared grain is a correctness gate, not an informational warning.** Before emitting
+any additive overall or grouped fact, R verifies that every `grain_columns` field exists
+and that the combined grain key is unique over the authorized, user-filtered analysis
+scope. If any key is duplicated, every additive measure and derived additive group fact
+returns `invalid_grain_duplicates` with the duplicate-key count and emits **no numeric
+value**. The packet may still expose coverage, exact rows for export and unaffected
+non-additive facts, but its limitations must state that additive analysis is unavailable.
+
+Never call `unique()`, keep the first row, or silently aggregate duplicates to make the
+check pass: a duplicate may be a join multiplication or evidence that metadata declares
+a coarser grain than the data. The query metadata/SQL must be corrected to the true finer
+grain (or pre-aggregate in a separately reviewed query contract) before additive facts
+become executable.
+
+The model-facing packet contains **no pre-RLS row count**.''',
+              'duplicate grain additive gate',
+          )
+
+          replace_once(
+              '''6. **Export-part limit, not a completeness loophole.**
+   `MERGEN_PK_EXPORT_MAX_ROWS` (suggest 100,000) is the maximum rows in one exported
+   sheet/file part, well below Excel's 1,048,576-row sheet limit. When the exact
+   authorized filtered result is larger, split it deterministically into numbered
+   `Veri_001`, `Veri_002`, … sheets or numbered XLSX files and include a manifest in
+   `Bilgi`; every row must appear exactly once. If the full result cannot be represented
+   within Excel's hard limits or the configured safe file/part ceiling, **refuse the
+   export and ask the user to narrow the request**. Never truncate at the export limit
+   while promising a complete attachment. The prose and `Bilgi` state part counts or
+   the explicit refusal.''',
+              '''6. **Per-part and total export budgets — completeness is not a resource loophole.**
+   `MERGEN_PK_EXPORT_MAX_ROWS` (default 100,000) limits one sheet/file part. Three
+   independent request-wide ceilings are also mandatory:
+   `MERGEN_PK_EXPORT_MAX_TOTAL_ROWS` (default 500,000),
+   `MERGEN_PK_EXPORT_MAX_PARTS` (default 10), and
+   `MERGEN_PK_EXPORT_MAX_TOTAL_MB` (default 512 MiB across staged workbooks, CSV
+   fallbacks and verification copies).
+
+   Before creating the first temporary file, compute the exact row count and expected
+   part count, plus a conservative serialized-byte upper bound from native column types,
+   maximum UTF-8 cell widths and documented container/XML overhead. If any total ceiling
+   is exceeded — or no conservative byte bound can be established — **refuse before
+   staging** and ask the user to narrow the request. Optimistically writing until disk
+   fills is not an accepted fallback. During writing, a request-scoped quota also tracks
+   actual cumulative temporary bytes and aborts with full cleanup before accepting a
+   part that would cross the byte ceiling.
+
+   Results within all ceilings split deterministically into numbered `Veri_001`,
+   `Veri_002`, … sheets or numbered XLSX files with a manifest in `Bilgi`; every row
+   appears exactly once. Never truncate at any limit while promising a complete
+   attachment. The prose and `Bilgi` state total rows, part counts and either the
+   completed manifest or the explicit refusal.''',
+              'total export budget',
+          )
+
+          replace_once(
+              '| 2 Selection | Pass A → `q042, q055, q108, q011, q077`. Pass B → `q042` (Aktivite Rol Atamaları), confidence 82, alternates `q055`. Capability check: has `project`, `date.project_start`, and the required `dimension.resource` output capability ✓ |',
+              '| 2 Selection | Independent capability intent → `project` + `date.project_start` + `dimension.resource` (derived before candidates). Pass A → `q042, q055, q108, q011, q077`. Pass B → `q042` (Aktivite Rol Atamaları), confidence 82, alternates `q055`. The candidate satisfies the independent requirements ✓ |',
+              'worked example independent requirements',
+          )
+
+          replace_once(
+              '| 9 Packet | Stats over **all 312 rows**: 47 distinct `KaynakAdi`, `KalanIscilik_sa` sum 18,420.5 (additive ✓), `TamamlanmaYuzde` weighted mean 61.3% (**not** summed; positive finite weights available), per-month histogram, 4 IQR outliers, 30 representative rows (top/bottom/outlier/stratified, seed 42) |',
+              '| 9 Packet | Declared `activity_assignment` grain is unique ✓. Stats over **all 312 rows**: 47 distinct `KaynakAdi`, `KalanIscilik_sa` sum 18,420.5 (additive ✓), `TamamlanmaYuzde` weighted mean 61.3% (**not** summed; positive finite weights available), per-month histogram, 4 IQR outliers, 30 representative rows (top/bottom/outlier/stratified, seed 42) |',
+              'worked example grain gate',
+          )
+
+          replace_once(
+              '| `R/helpers_pk_query_selection_ai.R` | 2-pass AI selection, capability validation | LLM |',
+              '| `R/helpers_pk_query_selection_ai.R` | independent capability intent + 2-pass AI selection + candidate validation | LLM |',
+              'file map selection helper',
+          )
+
+          replace_once(
+              '| `test-pk-query-selection-contract.R` | resolved `MERGEN_PK_SELECT_RECALL_N` (minimum 2) controls both Pass-A requested IDs and Pass-B candidate input; non-default value 3 is honored; fewer than two validated confidences returns `no_runner_up`; no literal five; stable IDs and alternate confidences; bounded follow-up context plus the prior stable query id is included in Pass A, and an elliptical follow-up retains that id before recall truncation |',
+              '| `test-pk-query-selection-contract.R` | Pass-0 requirements are derived before recall and its stub receives no query/candidate metadata; a wrong candidate cannot redefine planned labor as remaining labor; ambiguous requirements clarify; resolved `MERGEN_PK_SELECT_RECALL_N` (minimum 2) controls both Pass-A requested IDs and Pass-B candidate input; non-default value 3 is honored; fewer than two validated confidences returns `no_runner_up`; no literal five; stable IDs and alternate confidences; bounded follow-up context plus the prior stable query id is included in Pass A, and an elliptical follow-up retains that id before recall truncation |',
+              'query selection tests',
+          )
+
+          replace_once(
+              '| `test-pk-rls-failclosed-contract.R` | missing declared RLS column → **abort, not skip** (D6); startup schema check may be pending only when schema is unavailable, but request-time validation remains unconditional; an unavailable role scope aborts and an empty role scope yields **zero** rows, never all rows (D6b); scoped user messaging cannot distinguish out-of-scope-only from no accessible rows; `NA` in `Yetki` does not error; **no configuration value anywhere restores fail-open filtering** |',
+              '| `test-pk-rls-failclosed-contract.R` | missing declared RLS column → **abort, not skip** (D6); every scoped role with a `NULL`/empty inapplicable role-specific column aborts before data use unless an exact allowlisted secured-view attestation validates; startup schema check may be pending only when schema is unavailable, but request-time validation remains unconditional; an unavailable role scope aborts and an empty role scope yields **zero** rows, never all rows (D6b); scoped user messaging cannot distinguish out-of-scope-only from no accessible rows; `NA` in `Yetki` does not error; **no configuration value anywhere restores fail-open filtering** |',
+              'RLS tests',
+          )
+
+          replace_once(
+              '| `test-pk-analysis-packet-behavior.R` | additive vs non-additive; zero/one/finite sparse-measure availability contract (no all-missing zero, no `NA`/`NaN`/`Inf` fact); weighted means exclude disclosed missing/zero pairs, reject negative/non-finite weights, and return unavailable when no positive weight remains; stable `latest_by` + unique `latest_tie_by`; duplicate newest-row ties return `ambiguous_latest`; structured fact IDs and semantic context; budget accountant; stratified sample; `FİLTRELEME UYARISI` survives degradation (D7, D8); the model-facing packet contains authorized-before-filter and after-filter counts only, never a pre-RLS count |',
+              '| `test-pk-analysis-packet-behavior.R` | additive vs non-additive; duplicate declared grain returns `invalid_grain_duplicates` and emits no additive facts; zero/one/finite sparse-measure availability contract (no all-missing zero, no `NA`/`NaN`/`Inf` fact); weighted means exclude disclosed missing/zero pairs, reject negative/non-finite weights, and return unavailable when no positive weight remains; `latest_by_direction` plus ordered, business-semantic tie fields choose deterministically, while a unique UUID alone is rejected and unresolved newest-row ties return `ambiguous_latest`; structured fact IDs and semantic context; budget accountant; stratified sample; `FİLTRELEME UYARISI` survives degradation (D7, D8); the model-facing packet contains authorized-before-filter and after-filter counts only, never a pre-RLS count |',
+              'analysis packet tests',
+          )
+
+          replace_once(
+              '| `test-pk-export-xlsx-behavior.R` | native types, Turkish round-trip, writer-specific percentage contract, no pre-RLS count in `Bilgi`, multipart completeness by stable row ordinal while preserving legitimate duplicate rows, explicit refusal above the per-part limit, verification failure → CSV fallback, character formula neutralization while numeric `-125.50` remains numeric, **not served from `bilge_yolac_downloads`** |',
+              '| `test-pk-export-xlsx-behavior.R` | native types, Turkish round-trip, writer-specific percentage contract, no pre-RLS count in `Bilgi`, multipart completeness by stable row ordinal while preserving legitimate duplicate rows, pre-staging refusal above total-row/part/byte budgets as well as the per-part limit, request-scoped temporary-byte quota cleanup, verification failure → CSV fallback, character formula neutralization while numeric `-125.50` remains numeric, **not served from `bilge_yolac_downloads`** |',
+              'export tests',
+          )
+
+          replace_once(
+              '''*Acceptance:* the new offline tests pass; under v2, a two-value same-column question
+returns the **union** of both; a nonsense value on the query's **primary** filter column''',
+              '''*Acceptance:* the new offline tests pass; every scoped role refuses a query whose
+applicable project/EPS RLS column is `NULL` or absent unless an exact secured-view
+attestation validates; under v2, a two-value same-column question returns the **union**
+of both; a nonsense value on the query's **primary** filter column''',
+              'phase 1 RLS acceptance',
+          )
+
+          replace_once(
+              '''remain numeric; weighted percentages never emit `NaN`, silently use negative weights or
+fall back to an unweighted mean; a result above `MERGEN_PK_EXPORT_MAX_ROWS` is either
+complete across verified numbered parts or explicitly refused — never silently
+truncated; the `Bilgi` sheet contains authorized-population-before-filter and''',
+              '''remain numeric; weighted percentages never emit `NaN`, silently use negative weights or
+fall back to an unweighted mean; duplicate declared grain blocks every additive fact
+until metadata/SQL is corrected; a result above `MERGEN_PK_EXPORT_MAX_ROWS` is either
+complete across verified numbered parts or explicitly refused, and any export above the
+configured total-row, total-part or total-byte budget is refused before staging — never
+silently truncated and never allowed to exhaust temporary storage; the `Bilgi` sheet
+contains authorized-population-before-filter and''',
+              'phase 2 acceptance',
+          )
+
+          replace_once(
+              '''### Phase 5 — Selection rebuild (2–3 days)
+Two-pass AI · stable ids (D13) · exact measure/date/output-dimension capability
+registry/validation · confidence gate · timeouts + repair retry (D14) · heuristic''',
+              '''### Phase 5 — Selection rebuild (2–3 days)
+Independent request-capability intent + two-pass AI · stable ids (D13) · exact
+measure/date/output-dimension capability registry/validation · confidence gate ·
+timeouts + repair retry (D14) · heuristic''',
+              'phase 5 description',
+          )
+
+          replace_once(
+              '''*Acceptance:* low-confidence requests ask instead of guessing; planned-vs-remaining
+labor, start-vs-finish dates and required person/resource output dimensions select by
+stable capability ID rather than lexical similarity, subject entity or a generic date
+boolean; metadata-free semantic requirements refuse before SQL; reordering''',
+              '''*Acceptance:* low-confidence requests ask instead of guessing; capability requirements
+are derived before candidates and without query-library metadata, so candidate ranking
+cannot redefine the requested measure/date/dimension; planned-vs-remaining labor,
+start-vs-finish dates and required person/resource output dimensions select by stable
+capability ID rather than lexical similarity, subject entity or a generic date boolean;
+ambiguous independent requirements clarify and metadata-free semantic requirements
+refuse before SQL; reordering''',
+              'phase 5 acceptance',
+          )
+
+          replace_once(
+              '| `MERGEN_PK_EXPORT_MAX_ROWS` | `100000` | Maximum rows per exported sheet/file part; larger exact results split into verified parts or are explicitly refused, never silently truncated |',
+              '''| `MERGEN_PK_EXPORT_MAX_ROWS` | `100000` | Maximum rows per exported sheet/file part; larger exact results split into verified parts only while all total budgets remain satisfied |
+| `MERGEN_PK_EXPORT_MAX_TOTAL_ROWS` | `500000` | Maximum rows across the complete export request; exceedance refuses before staging |
+| `MERGEN_PK_EXPORT_MAX_PARTS` | `10` | Maximum workbook/CSV parts across one export request; exceedance refuses before staging |
+| `MERGEN_PK_EXPORT_MAX_TOTAL_MB` | `512` | Conservative and actual cumulative temporary-byte ceiling across XLSX/CSV parts plus verification copies |''',
+              'export config budgets',
+          )
+
+          replace_once(
+              '''3. Every number in every answer traces to the correct structured R fact — measure,
+   unit, aggregation, authorized/filter scope, group and date window — over the **full**
+   dataset.''',
+              '''3. Every number in every answer traces to the correct structured R fact — measure,
+   unit, aggregation, authorized/filter scope, group and date window — over the **full**
+   dataset; additive facts exist only when the declared grain is unique.''',
+              'success grain criterion',
+          )
+
+          replace_once(
+              '''5. Requesting a long list yields a correct, verified, complete multipart Excel/CSV
+   export or an explicit request to narrow the result — never a silently capped file —
+   and a readable bubble.''',
+              '''5. Requesting a long list yields a correct, verified, complete multipart Excel/CSV
+   export within explicit total-row, part-count and temporary-byte budgets, or an
+   explicit pre-staging request to narrow the result — never a silently capped file or
+   unbounded staging job — and a readable bubble.''',
+              'success export criterion',
+          )
+
+          replace_once(
+              '''7. A missing or mistyped RLS column stops the query instead of exposing data.''',
+              '''7. A missing, mistyped or role-inapplicable (`NULL`) RLS column stops the query instead
+   of exposing data, unless a specific secured-view enforcement contract is verified.''',
+              'success RLS criterion',
+          )
+
+          path.write_text(text, encoding="utf-8", newline="\n")
+
+          workflow = Path(".github/workflows/pr694-review-fixes.yml")
+          workflow.unlink()
+          PY
+
+      - name: Commit corrected plan
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/proje-kaynak-analizi-master-plan.md .github/workflows/pr694-review-fixes.yml
+          git diff --cached --check
+          git commit -m "docs: address remaining Codex P1 and P2 findings"
+          git push origin HEAD:pk/rebuild
