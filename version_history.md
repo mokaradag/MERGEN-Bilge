@@ -35,6 +35,10 @@ badge: Yeni
 - Kısa/alçak sesli ifadeler (örn. "merhaba") daha iyi yakalanır
 
 ### İyileştirmeler | arrow-up-right-dots
+- Yapılandırma sayfasındaki her ayar artık üzerine gelindiğinde açıklama balonu gösterir; sayfayı doldurup yer kaplayan açıklama satırları kaldırıldı
+- Açık temada açılır menülerin yanında beliren küçük, boş giriş kutusu görüntüsü giderildi
+- Açık temada karşılama ekranındaki selamlama, "Hızlı Başlangıç" ve "Son Konuşmalar" başlıkları okunaklı hale getirildi
+- Uzun kod blokları sohbet içinde belirli bir satırdan sonra kesilmeden tamamen görüntülenir
 - Yeni Söyleşi başlatıldığında model otomatik olarak varsayılana döner (Görsel Uzmanı sonrası "dall-e-3" takılı kalmaz)
 - Sohbet yanıtı için bekleme süresi (timeout) belirgin şekilde artırıldı
 - Söyleşi Geçmişi tarih aralığı gün/ay/yıl biçiminde gösterilir; koyu temada takvim ikonu artık görünür
@@ -44,7 +48,9 @@ badge: Yeni
 
 ### Teknik | code
 - Ortak Oturum tablolarındaki (MB_OrtakOturum_*, MB_Kullanici_CanliDurum) zaman damgaları Türkiye saatinde (Europe/Istanbul) saklanır; tazelik/yaş hesabı korunur
-- Varsayılan çıktı token limiti yükseltildi (uzun kod bloklarının kesilmesini önler)
+- Varsayılan çıktı token limiti yükseltildi (uzun kod bloklarının kesilmesini önler); MERGEN_MAX_OUTPUT_TOKENS ile ayarlanabilir
+- Mesaj kaydetmedeki 20.000 karakterlik uygulama sınırı kaldırıldı; kolon NVARCHAR(MAX) olduğu için uzun kod içeren yanıtlar artık kaydedilebiliyor (MERGEN_MAX_MESSAGE_CHARS)
+- Kod görüntüleyici (CodeMirror) tüm belgeyi render eder; otomatik yükseklikte oluşan görsel kırpma giderildi
 
 ---
 

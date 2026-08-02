@@ -10,6 +10,33 @@ llm_worker_second_pass_messages <- function(chat_history) {
   merge_system_messages_to_front(messages_payload)
 }
 
+# MCP ikinci geçişi ayrı bir worker sürecinde de çalışabildiği için yalnızca
+# base R işlevleriyle açık istek ayarı -> ortam değişkeni -> güvenli varsayılan
+# sırasını uygular. Tamsayı aralığı dışında kalan değerler as.integer() ile NA
+# üretmeden önce reddedilir.
+llm_worker_resolve_max_output_tokens <- function(settings,
+                                                 default_value = 32768L) {
+  configured <- NULL
+  if (is.list(settings)) {
+    configured <- settings$max_output_tokens
+  }
+
+  if (is.null(configured)) {
+    configured <- Sys.getenv("MERGEN_MAX_OUTPUT_TOKENS", "")
+  }
+
+  parsed <- suppressWarnings(as.numeric(configured))
+  if (length(parsed) != 1L ||
+      is.na(parsed) ||
+      !is.finite(parsed) ||
+      parsed < 256 ||
+      parsed > .Machine$integer.max) {
+    return(as.integer(default_value))
+  }
+
+  as.integer(parsed)
+}
+
 llm_worker_second_pass_body <- function(selected_model,
                                         messages_payload,
                                         temp_value,
@@ -166,7 +193,7 @@ llm_worker_run_mcp_second_pass <- function(chat_history,
     selected_model = selected_model,
     messages_payload = messages_payload2,
     temp_value = temp_value,
-    max_tokens_val = settings$max_output_tokens %||% 32768L
+    max_tokens_val = llm_worker_resolve_max_output_tokens(settings)
   )
 
   hdrs2 <- llm_worker_second_pass_headers(api_key)

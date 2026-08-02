@@ -63,6 +63,21 @@ validate_chat_title <- function(title) {
   TRUE
 }
 
+# MessageContent NVARCHAR(MAX)'tır; bu yalnızca kaçak içeriğe karşı güvenlik
+# tavanıdır. Eski 20.000 sınırı uzun kod içeren yanıtların kaydını engelliyordu.
+mergen_max_message_chars <- function() {
+  raw_val <- Sys.getenv("MERGEN_MAX_MESSAGE_CHARS", "")
+  parsed <- suppressWarnings(as.numeric(raw_val))
+  if (length(parsed) != 1L ||
+      is.na(parsed) ||
+      !is.finite(parsed) ||
+      parsed < 1000 ||
+      parsed > .Machine$integer.max) {
+    return(1000000L)
+  }
+  as.integer(parsed)
+}
+
 validate_message_content <- function(content) {
   if (is.null(content) || length(content) != 1L || is.na(content)) {
     stop("Message content cannot be empty.", call. = FALSE)
@@ -70,8 +85,12 @@ validate_message_content <- function(content) {
 
   content <- as.character(content)
 
-  if (nchar(content) > 20000) {
-    stop("Message content exceeds maximum length of 20,000 characters.", call. = FALSE)
+  max_chars <- mergen_max_message_chars()
+  if (nchar(content) > max_chars) {
+    stop(
+      sprintf("Message content exceeds maximum length of %d characters.", max_chars),
+      call. = FALSE
+    )
   }
 
   if (nchar(content) < 1) {

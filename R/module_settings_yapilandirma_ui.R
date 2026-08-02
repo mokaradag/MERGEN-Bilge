@@ -6,6 +6,9 @@
 #            kartı odaklı, saf bir .syap_*(ns) yapıcısına bölünmüştür. Üretilen
 #            tag ağacı ve sunucuya bağlanan tüm ns kimlikleri birebir korunur
 #            (bkz. tests/testthat/test-settings-yapilandirma-ui-id-surface-behavior.R).
+#            Denetim açıklamaları `data-settings-tooltip` ile salt-CSS ipucu
+#            olarak verilir (bkz. www/css/settings_page.css); Bootstrap tooltip
+#            kullanılmaz.
 # ==============================================================================
 
 #' Yapılandırma Alt Sekmesi UI Uygulaması
@@ -79,14 +82,10 @@ settingsYapilandirmaUIImpl <- function(id) {
       column(
         width = 3,
         h4("Model Seçimi", class = "setting-subtitle"),
-        p(
-          "Kullanmak istediğiniz modeli seçin.",
-          class = "setting-description",
-          style = "margin-top:4px;"
-        ),
         div(
           class = "setting-item",
           style = "max-width: 250px;",
+          `data-settings-tooltip` = "Kullanmak istediğiniz modeli seçin.",
           {
             model_ids <- unname(api_config$local_models)
             model_labels <- names(api_config$local_models)
@@ -154,13 +153,9 @@ settingsYapilandirmaUIImpl <- function(id) {
         div(
           class = "setting-item followup-toggle",
           h4("Yanıt Sonrası Öneriler", class = "setting-subtitle"),
-          p(
-            "Model yanıtlarının sonunda otomatik takip soruları görüntüleyin.",
-            class = "setting-description",
-            style = "margin-top:4px;"
-          ),
           div(
             class = "checkbox-item followup-checkbox",
+            `data-settings-tooltip` = "Model yanıtlarının sonunda otomatik takip soruları görüntüleyin.",
             checkboxInput(
               inputId = ns("enable_followups"),
               label = tags$span("Takip sorusu önerilerini göster"),
@@ -181,12 +176,9 @@ settingsYapilandirmaUIImpl <- function(id) {
       column(
         width = 6,
         h4("API Anahtarını Güncelle", class = "setting-subtitle"),
-        p(
-          "LLM erişimi için kişisel API anahtarınızı yönetin.",
-          class = "setting-description"
-        ),
         div(
           class = "setting-item",
+          `data-settings-tooltip` = "LLM erişimi için kişisel API anahtarınızı yönetin.",
           div(
             style = "display:flex; flex-direction:row; gap:12px; align-items:center; flex-wrap:wrap;",
             actionButton(
@@ -251,14 +243,13 @@ settingsYapilandirmaUIImpl <- function(id) {
       column(
         width = 4,
         h4("Zaman Aşımı", class = "setting-subtitle"),
-        p(
-          "Bilge Yolaç komutları için maksimum bekleme süresi.",
-          class = "setting-description",
-          style = "margin-top:4px;"
-        ),
         div(
           class = "setting-item",
           style = "max-width: 200px;",
+          `data-settings-tooltip` = paste(
+            "Bilge Yolaç komutları için maksimum bekleme süresi.",
+            "30-14.400 saniye arası (en fazla 4 saat)."
+          ),
           numericInput(
             inputId = ns("claude_code_timeout"),
             label = NULL,
@@ -266,23 +257,15 @@ settingsYapilandirmaUIImpl <- function(id) {
             min = 30,
             max = 14400,
             step = 300
-          ),
-          tags$small(
-            class = "setting-description",
-            "30-14.400 saniye arası (en fazla 4 saat)"
           )
         )
       ),
       column(
         width = 4,
         h4("Bağlantı Testi", class = "setting-subtitle"),
-        p(
-          "Bilge Yolaç CLI erişimini test edin.",
-          class = "setting-description",
-          style = "margin-top:4px;"
-        ),
         div(
           class = "setting-item",
+          `data-settings-tooltip` = "Bilge Yolaç CLI erişimini test edin.",
           actionButton(
             ns("cc_test_connection"),
             label = tagList(icon("satellite-dish"), "Bağlantı Testi"),
@@ -294,12 +277,11 @@ settingsYapilandirmaUIImpl <- function(id) {
       column(
         width = 4,
         h4("CLI Durumu", class = "setting-subtitle"),
-        p(
-          "Bilge Yolaç CLI kurulum ve erişim bilgisi.",
-          class = "setting-description",
-          style = "margin-top:4px;"
-        ),
-        uiOutput(ns("cc_cli_status_info"))
+        div(
+          class = "setting-item",
+          `data-settings-tooltip` = "Bilge Yolaç CLI kurulum ve erişim bilgisi.",
+          uiOutput(ns("cc_cli_status_info"))
+        )
       )
     )
   )
@@ -322,20 +304,36 @@ settingsYapilandirmaUIImpl <- function(id) {
             h4("Görünüm", class = "setting-subtitle"),
             div(
               class = "toggle-group",
-              div(class = "checkbox-item", checkboxInput(ns("enable_timestamps"), "Zaman Damgaları", value = TRUE)),
-              div(class = "checkbox-item", checkboxInput(ns("enable_typing_indicator"), "Yazma Göstergesi", value = TRUE)),
-              div(class = "checkbox-item", checkboxInput(ns("enable_animations"), "Animasyonlar", value = TRUE)),
-              div(class = "checkbox-item", checkboxInput(ns("enable_widescreen"), "Geniş Ekran", value = TRUE)),
-              div(class = "checkbox-item", checkboxInput(ns("enable_streaming"), "Akış Modu", value = TRUE)),
+              div(
+                class = "checkbox-item",
+                `data-settings-tooltip` = "Her mesajın altında gönderim saatini gösterir.",
+                checkboxInput(ns("enable_timestamps"), "Zaman Damgaları", value = TRUE)
+              ),
+              div(
+                class = "checkbox-item",
+                `data-settings-tooltip` = "Model yanıt hazırlarken yazma/düşünme animasyonunu gösterir.",
+                checkboxInput(ns("enable_typing_indicator"), "Yazma Göstergesi", value = TRUE)
+              ),
+              div(
+                class = "checkbox-item",
+                `data-settings-tooltip` = "Arayüz geçiş ve giriş animasyonlarını etkinleştirir.",
+                checkboxInput(ns("enable_animations"), "Animasyonlar", value = TRUE)
+              ),
+              div(
+                class = "checkbox-item",
+                `data-settings-tooltip` = "Sohbet alanını geniş ekran düzeninde kullanır.",
+                checkboxInput(ns("enable_widescreen"), "Geniş Ekran", value = TRUE)
+              ),
+              div(
+                class = "checkbox-item",
+                `data-settings-tooltip` = "Yanıtları tamamlanmayı beklemeden akış halinde gösterir.",
+                checkboxInput(ns("enable_streaming"), "Akış Modu", value = TRUE)
+              ),
               # Araç bağlamlı sohbet arka plan animasyonları açma/kapama anahtarı.
-              # Aktif olduğunda welcome ekranından bir araç seçildiğinde sohbet
-              # arka planında ilgili araç temasına uygun hafif heptagon ve
-              # bağlam parçacık animasyonları görüntülenir.
-              div(class = "checkbox-item", checkboxInput(ns("enable_tool_backgrounds"), "Araç Arka Plan Animasyonları", value = TRUE)),
-              tags$p(
-                "Araç sohbetlerinde heptagon ve bağlama uygun arka plan parçacıklarını gösterir.",
-                class = "setting-description",
-                style = "margin-top: 2px; margin-bottom: 6px; padding-left: 24px;"
+              div(
+                class = "checkbox-item",
+                `data-settings-tooltip` = "Araç sohbetlerinde heptagon ve bağlama uygun arka plan parçacıklarını gösterir.",
+                checkboxInput(ns("enable_tool_backgrounds"), "Araç Arka Plan Animasyonları", value = TRUE)
               )
             )
           ),
@@ -344,6 +342,7 @@ settingsYapilandirmaUIImpl <- function(id) {
             div(
               class = "setting-item",
               style = "max-width: 250px;",
+              `data-settings-tooltip` = "Mesajların yazı tipi boyutunu ayarlar. Kaydettiğinizde uygulanır.",
               selectInput(
                 inputId = ns("font_size"),
                 label = "Yazı Tipi Boyutu:",
@@ -355,10 +354,6 @@ settingsYapilandirmaUIImpl <- function(id) {
                 ),
                 selected = "medium",
                 width = "100%"
-              ),
-              p(
-                "Mesajların yazı tipi boyutunu ayarlayın",
-                class = "setting-description"
               )
             ),
             div(
@@ -367,27 +362,24 @@ settingsYapilandirmaUIImpl <- function(id) {
               h4("Giriş Ekranı", class = "setting-subtitle"),
               div(
                 class = "checkbox-item",
+                `data-settings-tooltip` = "Uygulama açılışında derin uzay giriş ekranını gösterir.",
                 checkboxInput(
                   inputId = ns("show_intro_animation"),
                   label = "Giriş animasyonunu göster",
                   value = TRUE
                 )
               ),
-              p(
-                "Uygulama açılışında derin uzay giriş ekranını gösterir",
-                class = "setting-description"
-              ),
               div(
                 class = "checkbox-item",
+                `data-settings-tooltip` = paste(
+                  "Kişisel API anahtarınız yoksa açılışta API anahtarı seçim ekranını gösterir.",
+                  "Kapatırsanız tekrar sorulmaz; varsayılan kurum anahtarıyla devam edebilirsiniz."
+                ),
                 checkboxInput(
                   inputId = ns("show_api_key_onboarding"),
                   label = "API anahtarı seçim ekranını göster",
                   value = TRUE
                 )
-              ),
-              p(
-                "Kişisel API anahtarınız yoksa açılışta API anahtarı seçim ekranını gösterir. Kapatırsanız tekrar sorulmaz; varsayılan kurum anahtarıyla devam edebilirsiniz.",
-                class = "setting-description"
               )
             )
           )

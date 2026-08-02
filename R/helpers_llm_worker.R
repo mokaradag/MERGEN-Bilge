@@ -172,7 +172,12 @@ call_llm_worker <- function(chat_history, settings, api_endpoint, api_key = NULL
     # Onceden bu worker yolu max_tokens'i hic serilestirmiyordu; SQL analizi/
     # Kodlama Uzmani gibi araclarin ayarladigi yuksek limit (32768) uc noktaya
     # hic ulasmiyor, varsayilan (genelde dusuk) limitte kaliyordu (issue #7).
-    max_tokens_val <- settings$max_output_tokens %||% 32768L
+    # MERGEN_MAX_OUTPUT_TOKENS ile ayarlanabilir; worker-guvenli base cagrilar.
+    max_tokens_val <- settings$max_output_tokens
+    if (is.null(max_tokens_val)) {
+      max_tokens_val <- suppressWarnings(as.integer(Sys.getenv("MERGEN_MAX_OUTPUT_TOKENS", "")))
+      if (is.na(max_tokens_val) || max_tokens_val < 256L) max_tokens_val <- 32768L
+    }
 
 	body <- list(
 	  model = selected_model,

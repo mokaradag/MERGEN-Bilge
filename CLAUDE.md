@@ -657,6 +657,8 @@ Preferred validation escalation:
 - Preserve corporate blue hero headers, light cream surfaces, teal month-group accents, feedback/admin tab polish, Bilge Yolaç light tool surfaces, message action buttons, and welcome quick-action light-theme polish.
 - Do not add CDN or external font dependencies.
 - Do not force deep-space / cinematic / Explore modal areas into white light surfaces; they intentionally preserve the dark space experience.
+- **selectize light-theme boundary.** Shiny's default `selectInput()` renders a selectize control whose `.selectize-input` contains a hidden inline `<input type="text">`. The generic `html[data-theme="light"] input[type="text"]` rule in `theme_light_core.css` was painting a border + surface on that inner input, so light mode showed a small, thin, empty "input box" next to the selected value (most visible on Yapılandırma). `theme_light_core.css` owns the fix: the inner input is neutralized (transparent, no border/shadow/padding) while `.selectize-input`, `.selectize-input.focus`, `.selectize-dropdown` and `.option`/`.active` get real light form surfaces. Do not remove the inner-input reset when touching light form styling, and do not restyle selectize from a second theme file (single-definition rule).
+- **Welcome light-theme scrim contract.** The Ana Söyleşi welcome panels sit over a DARK cinematic video (`.modern-welcome-video-container`) and a DARK neural canvas, in both lanes. In light mode the panels therefore need a genuinely light scrim: `html[data-theme="light"] .modern-welcome-left-panel` / `.modern-welcome-right-panel` use ~0.72-0.82 white gradients with blur, and `html[data-theme="light"].mergen-fast-lane` overrides the fast-lane static gradients (which are premium DARK by design for dark theme) with light equivalents. Without these, the dark light-theme text (personal greeting, `Hızlı Başlangıç`, `Son Konuşmalar`) is dark-on-dark and unreadable. Because the scrim is now light, those three titles use plain `--color-text` with NO white text-shadow/drop-shadow halo — do not reintroduce the halos as a substitute for a readable background, and do not lower the scrim opacity back toward 0.18.
 
 ### Sidebar user panel, Department, and version source contract
 
@@ -2980,6 +2982,38 @@ boot/restore/save/reset. Do NOT reintroduce the immediate
 they just fire on the committed value now. Test fakes that mock
 `settingsYapilandirmaServer` must expose `temp_font_size`.
 
+### Yapılandırma CSS-only setting tooltip contract
+
+Per-control help text on the Yapılandırma page is a HOVER TOOLTIP, not an
+inline paragraph. Every control (checkbox, select, slider, numeric, action
+block) carries a `data-settings-tooltip` attribute on its `.checkbox-item` /
+`.setting-item` wrapper; the tooltip is rendered purely by CSS
+(`[data-settings-tooltip]::after` in `www/css/settings_page.css`, dark surface in
+both themes). This replaced the mixed state where some checkboxes had a
+`<p class="setting-description">` and some had nothing — that inconsistency also
+consumed most of the card's vertical space.
+
+Rules:
+
+- Bootstrap tooltips are FORBIDDEN here, for the same reason as the admin panel
+  and the health dashboard: they flicker and leave stale `.tooltip` DOM under
+  `renderUI` redraws. Do not add `data-toggle="tooltip"` or `.tooltip()` init for
+  settings controls.
+- Only CARD-LEVEL intro paragraphs (the `<p class="setting-description">`
+  directly under an `h3.settings-title`, plus the Başlangıç Deneyimi radio
+  `startup-lane-choice-desc` spans) stay as visible text — they describe the
+  whole card, not a single control. Do not reintroduce per-control
+  `setting-description` paragraphs.
+- A new control added to Yapılandırma MUST get a `data-settings-tooltip`;
+  leaving it bare reintroduces the inconsistency this contract fixes.
+- The tooltip is suppressed while a selectize list is open
+  (`:has(.selectize-control.dropdown-active)` / `:has(select:focus)`) so it can
+  never cover the option list. `:has()` is progressive enhancement — browsers
+  without it simply keep the tooltip visible.
+- The frozen ns id surface and card titles are unchanged; adding tooltip
+  attributes must keep `tests/testthat/test-settings-yapilandirma-ui-id-surface-behavior.R`
+  green (it asserts the EXACT id set, so a tooltip must never introduce an id).
+
 ### Yönetici Paneli CSS-only tooltip contract
 
 Admin panel tooltips are CSS-only (`data-admin-tooltip` attribute +
@@ -3007,9 +3041,39 @@ reintroduce Bootstrap tooltip init for admin elements. Protected by
   (`R/helpers_llm_worker.R`), and non-streaming (`R/helpers_llm_api.R`) paths. Do
   not hard-code 300 back.
 - Default output token limit is 32768 (was 4096, which trimmed long code blocks):
-  the `%||% 32768L` fallbacks in `R/helpers_llm_api.R` / `R/helpers_llm_sse.R` and
-  the coding/sql_analysis tool-family settings in `R/helpers_send_message_core.R`.
-  Worker-safe literal (no helper serialized to the worker).
+  the fallbacks in `R/helpers_llm_api.R` / `R/helpers_llm_sse.R` /
+  `R/helpers_llm_worker.R` and the coding/sql_analysis tool-family settings in
+  `R/helpers_send_message_core.R`. `MERGEN_MAX_OUTPUT_TOKENS` overrides the
+  fallback (values below 256 or unparseable fall back to 32768). These three
+  request builders run INSIDE future workers, so the resolution must stay
+  worker-safe: inline `Sys.getenv()` + `as.integer()` only, never a helper
+  function that would have to be serialized to the worker.
+
+### Long code block integrity contract
+
+"The generated code is cut off after a certain point" had three independent
+causes; all three are fixed and must not regress:
+
+1. **Output tokens.** See above — 32768 default, `MERGEN_MAX_OUTPUT_TOKENS`
+   tunable. Do not restore a 4096-class default anywhere in the request builders.
+2. **Persistence ceiling.** `validate_message_content()`
+   (`R/helpers_db_validation.R`) previously hard-rejected any message over
+   20,000 characters, and `save_message_to_db()` calls it BEFORE the transaction
+   — so a long code answer made the whole save throw and the message was lost on
+   reload. `MB_Messages.MessageContent` is `NVARCHAR(MAX)`, so that ceiling was
+   purely an app-level artifact. The guard is now a runaway-content safety cap of
+   1,000,000 characters via `mergen_max_message_chars()`, tunable with
+   `MERGEN_MAX_MESSAGE_CHARS` (values under 1000 or unparseable fall back to the
+   default). Keep a cap — just never one small enough to reject a real answer.
+3. **Browser rendering.** `www/js/codemirror-manager.js` builds read-only editors
+   with `editor.setSize('100%', 'auto')`. With an auto height, CodeMirror's
+   default `viewportMargin: 10` virtualizes the document and visually truncates
+   long code. `viewportMargin: Infinity` is REQUIRED with auto height and must
+   stay; removing it reintroduces the exact "cropped after N lines" symptom.
+
+Protected by `tests/testthat/test-db-validation.R` (long-content acceptance +
+`MERGEN_MAX_MESSAGE_CHARS` resolution). VM-only proof: a real long-code answer
+generated end-to-end, persisted, and re-read after a saved-chat reload.
 
 ### Bilge Yolaç run lifecycle request-id contract
 

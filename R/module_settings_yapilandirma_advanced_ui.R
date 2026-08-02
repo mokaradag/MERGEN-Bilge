@@ -3,6 +3,8 @@
 # Açıklama: Yapılandırma alt sekmesinin medya/görsel/analiz ayar kartları.
 #            R/module_settings_yapilandirma_ui.R ana kompozitörü bu saf kart
 #            yapıcılarını çağırır; server/runtime mantığı içermez.
+#            Denetim açıklamaları `data-settings-tooltip` ile salt-CSS ipucu
+#            olarak verilir (bkz. www/css/settings_page.css).
 # ==============================================================================
 
 .syap_audio_card <- function(ns) {
@@ -16,16 +18,12 @@
         div(
           class = "checkbox-item",
           style = "margin-top: 8px;",
+          `data-settings-tooltip` = "Yapay zekâ yanıtlarını otomatik olarak seslendirir.",
           checkboxInput(
             inputId = ns("enable_tts_audio"),
             label = tags$span("Yanıtları Seslendir"),
             value = FALSE
           )
-        ),
-        p(
-          "AI yanıtlarını otomatik seslendir.",
-          class = "setting-description",
-          style = "margin-top: 4px;"
         )
       ),
       column(
@@ -34,23 +32,21 @@
         div(
           class = "checkbox-item",
           style = "margin-top: 8px;",
+          `data-settings-tooltip` = "Uygulama genelinde arka plan müziği çalar.",
           checkboxInput(
             inputId = ns("enable_background_music"),
             label = tags$span("Arka Fon Müziği"),
             value = FALSE
           )
-        ),
-        p(
-          "Uygulama genelinde arka plan müziği çal.",
-          class = "setting-description",
-          style = "margin-top: 4px;"
         )
       ),
       column(
         width = 4,
         h4("Ses Seviyesi", class = "setting-subtitle"),
         div(
+          class = "setting-item",
           style = "margin-top: 8px;",
+          `data-settings-tooltip` = "Müzik ses seviyesi; değişiklik anında uygulanır.",
           sliderInput(
             inputId = ns("music_volume"),
             label = NULL,
@@ -60,11 +56,6 @@
             step = 0.05,
             width = "100%"
           )
-        ),
-        p(
-          "Müzik ses seviyesi (anlık uygulanır).",
-          class = "setting-description",
-          style = "margin-top: 4px;"
         )
       )
     )
@@ -87,16 +78,12 @@
         div(
           class = "checkbox-item",
           style = "margin-top: 8px;",
+          `data-settings-tooltip` = "AI uzmanını etkinleştirir veya devre dışı bırakır.",
           checkboxInput(
             inputId = ns("enable_ai_expert"),
             label = tags$span("AI Uzman Konuşması"),
             value = FALSE
           )
-        ),
-        p(
-          "AI uzmanını etkinleştir veya devre dışı bırak.",
-          class = "setting-description",
-          style = "margin-top: 4px;"
         )
       ),
       column(
@@ -105,6 +92,7 @@
         div(
           class = "setting-item",
           style = "margin-top: 8px; max-width: 200px;",
+          `data-settings-tooltip` = "AI uzmanın her konuşmasının ne kadar uzun olacağını belirler.",
           selectInput(
             inputId = ns("ai_expert_talk_length"),
             label = NULL,
@@ -116,11 +104,6 @@
             selected = "orta",
             width = "100%"
           )
-        ),
-        p(
-          "AI uzmanın her konuşmasının ne kadar uzun olacağını belirler.",
-          class = "setting-description",
-          style = "margin-top: 4px;"
         )
       ),
       column(
@@ -129,6 +112,7 @@
         div(
           class = "setting-item",
           style = "margin-top: 8px; max-width: 200px;",
+          `data-settings-tooltip` = "AI uzmanın ne sıklıkla boşta konuşma başlatacağını belirler.",
           selectInput(
             inputId = ns("ai_expert_talk_frequency"),
             label = NULL,
@@ -140,11 +124,6 @@
             selected = "orta",
             width = "100%"
           )
-        ),
-        p(
-          "AI uzmanın ne sıklıkla boşta konuşma başlatacağını belirler.",
-          class = "setting-description",
-          style = "margin-top: 4px;"
         )
       ),
       column(
@@ -153,6 +132,7 @@
         div(
           class = "setting-item",
           style = "margin-top: 8px; max-width: 200px;",
+          `data-settings-tooltip` = "AI uzmanın konuşma tonunu ve tarzını belirler.",
           selectInput(
             inputId = ns("ai_expert_talk_style"),
             label = NULL,
@@ -165,11 +145,6 @@
             selected = "profesyonel",
             width = "100%"
           )
-        ),
-        p(
-          "AI uzmanın konuşma tonunu ve tarzını belirler.",
-          class = "setting-description",
-          style = "margin-top: 4px;"
         )
       )
     )
@@ -190,6 +165,7 @@
         width = 6,
         div(
           class = "setting-item",
+          `data-settings-tooltip` = "Üretilecek görselin en-boy oranını ve çözünürlüğünü belirler.",
           h4("Görsel Boyutu", class = "setting-subtitle"),
           selectInput(
             inputId = ns("image_size"),
@@ -208,6 +184,7 @@
         width = 6,
         div(
           class = "setting-item",
+          `data-settings-tooltip` = "Standart veya HD kalite. HD daha ayrıntılıdır ancak üretimi daha uzun sürer.",
           h4("Görsel Kalitesi", class = "setting-subtitle"),
           div(
             class = "quality-switch-container",
@@ -243,12 +220,8 @@
         width = 6,
         div(
           class = "setting-item",
+          `data-settings-tooltip` = "Özetin ne kadar ayrıntılı olacağını belirler.",
           h4("Detay Seviyesi", class = "setting-subtitle"),
-          p(
-            "Özetin ne kadar ayrıntılı olacağını belirler.",
-            class = "setting-description",
-            style = "margin-top:4px;"
-          ),
           selectInput(
             inputId = ns("summary_detail_level"),
             label = NULL,
@@ -266,12 +239,8 @@
         width = 6,
         div(
           class = "setting-item",
+          `data-settings-tooltip` = "Özetin hangi konulara ağırlık vereceğini belirler.",
           h4("Odak Modu", class = "setting-subtitle"),
-          p(
-            "Özetin hangi konulara ağırlık vereceğini belirler.",
-            class = "setting-description",
-            style = "margin-top:4px;"
-          ),
           selectInput(
             inputId = ns("summary_focus_mode"),
             label = NULL,
@@ -304,12 +273,8 @@
         width = 6,
         div(
           class = "setting-item",
+          `data-settings-tooltip` = "Aktifken birden fazla sorgu seçilir ve toplu analiz yapılır.",
           h4("Derin Düşünme", class = "setting-subtitle"),
-          p(
-            "Aktifken birden fazla sorgu seçilir ve toplu analiz yapılır.",
-            class = "setting-description",
-            style = "margin-top:4px;"
-          ),
           div(
             class = "deep-thinking-switch-container",
             tags$label(
@@ -329,12 +294,8 @@
         width = 6,
         div(
           class = "setting-item",
+          `data-settings-tooltip` = "Yanıtın ne kadar ayrıntılı olacağını belirler.",
           h4("Detay Seviyesi", class = "setting-subtitle"),
-          p(
-            "Yanıtın ne kadar ayrıntılı olacağını belirler.",
-            class = "setting-description",
-            style = "margin-top:4px;"
-          ),
           selectInput(
             inputId = ns("analysis_detail_level"),
             label = NULL,
