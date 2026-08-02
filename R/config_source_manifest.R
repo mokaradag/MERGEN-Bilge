@@ -257,10 +257,12 @@ source_manifest_sections <- list(
     "R/helpers_pk_config.R",
     "R/helpers_pk_provenance.R",
     "R/helpers_pk_telemetry_record.R",
+    "R/helpers_pk_telemetry_base.R",
     "R/helpers_pk_telemetry.R",
     "R/helpers_deep_analysis.R",
     "R/helpers_pk_analysis_core.R",
     "R/helpers_pk_analysis_security_summary.R",
+    "R/helpers_pk_analysis_filters_base.R",
     "R/helpers_pk_analysis_filters.R",
     "R/helpers_pk_analysis_query_selection.R"
   ),
