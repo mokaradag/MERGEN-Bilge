@@ -1135,6 +1135,51 @@ follows is how to do that safely.
 
 Highest-confidence work first, riskiest last. Phase 6 lands last and on its own flag.
 
+### Branch and PR strategy — how phases build on each other
+
+The phases are sequentially dependent, but `main` must stay frozen until the operator
+can validate on the VM. Both properties are satisfied by an **integration branch**.
+
+```
+main  ──────────────────────────────────────────────────────►  (frozen, production)
+   └── pk/rebuild  ─●───●───●───●───●───●───●──►  final PR → main (after VM validation)
+                    │   │   │   │   │   │   │
+                    └───┴───┴───┴───┴───┴───┴──  one squash-merged PR per phase
+                                                 (pk/phase-1-correctness, …)
+```
+
+**Per-phase procedure:**
+
+1. Branch `pk/phase-<N>-<slug>` **from the tip of `origin/pk/rebuild`** — never from
+   `main`. It therefore already contains every previously completed phase.
+2. Open the PR with **base = `pk/rebuild`**, not `main`. The diff then shows *only*
+   that phase, so automated review sees ~1 phase of change instead of re-reviewing
+   everything already reviewed.
+3. Apply review findings as commits on the phase branch until clean.
+4. **Squash-merge into `pk/rebuild`.** This is safe: `pk/rebuild` is not production and
+   nothing ships from it.
+5. The next session branches from the updated `pk/rebuild`.
+
+**At the end:** a single PR `pk/rebuild → main`. Because every phase is squash-merged,
+`pk/rebuild` carries exactly one commit per phase, which keeps that final PR readable.
+The operator validates on the VM with `MERGEN_PK_ENGINE=v1` (everything dormant),
+flips to `v2`, then merges.
+
+**Rules:**
+
+* **Never** open a phase PR against `main`; the accumulated diff makes review useless.
+* **Never** branch a phase from `main`; it silently discards prior phases.
+* Do **not** leave the per-phase PRs unmerged waiting for VM validation — that is what
+  breaks the dependency chain. Merge them into `pk/rebuild`; `main` is protected by the
+  integration branch, not by leaving PRs open.
+* If `main` moves during the effort, merge `main` into `pk/rebuild` periodically so
+  conflicts surface early rather than all at once in the final PR.
+* If a later phase reveals an earlier phase was wrong, fix it as a normal PR into
+  `pk/rebuild`. Do not rewrite merged history.
+* Verify on the first PR that the repository's automated review runs against a
+  non-`main` base. If it does not, fall back to `main` as the base and accept the
+  redundant diff.
+
 ### Session structure
 
 One phase ≈ one Claude Code session ≈ one pull request. Do not attempt multiple
@@ -1143,29 +1188,45 @@ which is worse than not starting.
 
 Each session must:
 
-1. Read this document **and re-verify** the defects it is about to fix (§0.1). Report
+1. **Branch from `origin/pk/rebuild`** and confirm it is at the expected tip:
+   `git fetch origin pk/rebuild && git log --oneline -8 origin/pk/rebuild`.
+2. Read `.ai/pk-rebuild-progress.md`, then **cross-check its claims against that git
+   log**. If the file says phase 3 is merged and the log does not show it, trust the
+   log and record the discrepancy. This catches stale checkouts and sessions that
+   forgot to update the file.
+3. Read this document **and re-verify** the defects it is about to fix (§0.1). Report
    any that no longer reproduce.
-2. Read `.ai/pk-rebuild-progress.md` for what previous sessions did and decided.
-3. Implement exactly one phase, behind `MERGEN_PK_ENGINE=v2`.
-4. Add the offline tests listed for that phase in §7.
-5. Run `bash tools/ai_validate.sh quick` (or `cloud-quick` when heavy packages cannot
+4. Implement exactly one phase, behind `MERGEN_PK_ENGINE=v2`.
+5. Add the offline tests listed for that phase in §7.
+6. Run `bash tools/ai_validate.sh quick` (or `cloud-quick` when heavy packages cannot
    install), plus `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`,
    `bash tools/seam_doctor.sh`, and the maintainability ratchet test.
-6. **Update `.ai/pk-rebuild-progress.md`** before finishing.
-7. Open a PR for that phase only.
+7. **Update `.ai/pk-rebuild-progress.md`** before finishing — this is not optional; it
+   is the only channel through which reasoning reaches the next session.
+8. Open a PR for that phase only, with base `pk/rebuild`.
 
 ### `.ai/pk-rebuild-progress.md` contract
 
-Created by the first session, appended by every later one. Per phase:
+Created by the first session, appended by every later one. This file carries the
+**reasoning**; git carries the **code**. A session that reads only one of the two will
+make avoidable mistakes.
 
-* status (`not_started` / `in_progress` / `offline_complete` / `vm_validated`)
+Per phase:
+
+* status: `not_started` / `in_progress` / `in_review` / `merged_to_rebuild` /
+  `vm_validated`
+* branch name and PR link; the squash-merge commit SHA on `pk/rebuild` once merged
 * files added and modified
 * tests added, and what each proves
 * **design decisions taken, with reasoning** — so a later session does not silently
   reverse them
 * deviations from this plan, and why
+* review findings received and how each was resolved
 * what remains unproven and requires the VM
 * exact validation commands run, and their real results
+
+Plus a short header listing, in order, which phases are already merged into
+`pk/rebuild`. A session must not start phase N+1 while phase N is still `in_review`.
 
 ### Rules for the agent while the operator is away
 
