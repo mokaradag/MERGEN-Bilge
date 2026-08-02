@@ -3,7 +3,8 @@
 # Açıklama: PR #695 son Codex P1/P2 gerileme sözleşmeleri.
 # ==============================================================================
 
-.pk_final_repo_root <- function() resolve_repo_root_for_tests()
+.pk_final_repo_root_path <- resolve_repo_root_for_tests()
+.pk_final_repo_root <- function() .pk_final_repo_root_path
 
 .pk_final_source_env <- function(files) {
   env <- new.env(parent = globalenv())
@@ -147,4 +148,40 @@ test_that("direct single-analysis exits receive an observation exactly once", {
   user_data$pk_provenance_pending <- list(footer = "already observed")
   env$pk_analiz_process_request("soru", list(), session)
   expect_identical(captured$count, 1L)
+})
+
+test_that("unexpected single-analysis exceptions are observed before rethrow", {
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  env$pk_analiz_process_request <- function(...) stop("beklenmeyen hata")
+
+  captured <- new.env(parent = emptyenv())
+  captured$count <- 0L
+  env$pk_analysis_observe <- function(session, conn, info) {
+    captured$count <- captured$count + 1L
+    captured$info <- info
+    invisible("footer")
+  }
+  env$pk_provenance_current_request_id <- function(session) "req-error"
+  env$get_connection <- function(...) list(conn = NULL)
+  env$release_connection <- function(...) invisible(TRUE)
+
+  source(
+    file.path(.pk_final_repo_root(), "R", "server_init_chat_runtime.R"),
+    encoding = "UTF-8",
+    local = env
+  )
+
+  user_data <- new.env(parent = emptyenv())
+  user_data$user_id <- 99L
+  user_data$system_username <- "test.user"
+  session <- list(userData = user_data)
+
+  expect_error(
+    env$pk_analiz_process_request("soru", list(), session),
+    "beklenmeyen hata"
+  )
+  expect_identical(captured$count, 1L)
+  expect_identical(captured$info$outcome, "Hata")
+  expect_identical(captured$info$filter_status, "not_reached")
 })
