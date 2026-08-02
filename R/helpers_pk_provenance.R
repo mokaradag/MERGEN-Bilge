@@ -144,6 +144,10 @@ pk_degradations_from_filter_status <- function(status) {
     return("Uygulanmadı (analiz filtre aşamasına ulaşmadı).")
   }
 
+  if (identical(status, "stopped")) {
+    return("İptal edildi (filtreleme tamamlanmadı).")
+  }
+
   if (pk_filter_status_is_degraded(status)) {
     return("Uygulanamadı (aşağıdaki uyarıya bakınız).")
   }
