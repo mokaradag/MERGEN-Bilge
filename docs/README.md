@@ -34,6 +34,7 @@ Bu sayfa, MERGEN Bilge dokümantasyonunda doğru belgeye hızlı gitmek için ha
 | [`database-pooling.md`](database-pooling.md) | İşlem-güvenli, opt-in DB bağlantı havuzu (`R/helpers_db_pool.R`); `MERGEN_DB_POOL_*` yapılandırması, `with_db_transaction` sözleşmesi, encoding koruması ve Windows VM/SQL Server doğrulama adımları. |
 | [`speech-operator-runbook.md`](speech-operator-runbook.md) | Hibrit VoxCPM2 konuşma varlıkları: kilitli persona referans sesleri, RStudio üretici komutları (aday→dinle→onayla→750 WAV→manifest), Git/yedekleme politikası ve varlıklar üretilmeden önceki fail-closed davranış. |
 | [`performance-improvement-plan.md`](performance-improvement-plan.md) | Performans iş akışı: darboğaz hipotezleri, fazlar, DB havuzlama durumu ve kanıt tablosu. |
+| [`proje-kaynak-analizi-master-plan.md`](proje-kaynak-analizi-master-plan.md) | Proje ve Kaynak Analizi aracının yeniden inşa iş emri: doğrulanmış kusur envanteri (`file:line` kanıtlı), hedef aşamalı mimari, sorgu metadata sözleşmesi, Türkçe varlık çözümleme, deterministik analiz paketi, Excel dışa aktarım ve fazlı teslim planı. |
 | [`dependency-locking.md`](dependency-locking.md) | `renv`, `renv.lock`, Windows VM kilit üretimi ve CI/AI bootstrap davranışı. |
 | [`../RENV_LOCK_STATUS.md`](../RENV_LOCK_STATUS.md) | `renv.lock` dosyasının on-prem üretim deposu ile GitHub/Codex görünürlüğü arasındaki fark. |
 | [`release-notes.md`](release-notes.md) | Uzun değişiklik notları ve güncel bakım özeti. |
