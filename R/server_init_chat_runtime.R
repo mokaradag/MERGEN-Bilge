@@ -91,8 +91,8 @@ serverInitChatRuntime <- function(session, values, settings_data, output,
 # filtre aşamasına ulaşan sonuçları kendi bağlamında gözlemler. Aşağıdaki ince
 # sarmalayıcı yalnızca motorun doğrudan döndüğü ve henüz köken alt bilgisi
 # bırakmadığı çıkışları (başlangıç durdurma, kimlik/yetki, eşleşme yok, SQL ve
-# yapılandırma hataları vb.) tamamlar. Böylece başarılı yolların telemetrisi
-# yinelenmez.
+# yapılandırma hataları ile beklenmeyen istisnalar) tamamlar. Böylece başarılı
+# yolların telemetrisi yinelenmez.
 if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
     !exists(".pk_analiz_process_request_without_exit_observer", inherits = FALSE)) {
 
@@ -103,14 +103,22 @@ if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
   pk_analiz_process_request <- function(user_prompt, chat_history, session,
                                         stop_check = NULL) {
     started_at <- Sys.time()
-    result <- .pk_analiz_process_request_without_exit_observer(
-      user_prompt = user_prompt,
-      chat_history = chat_history,
-      session = session,
-      stop_check = stop_check
+    caught_error <- NULL
+    result <- tryCatch(
+      .pk_analiz_process_request_without_exit_observer(
+        user_prompt = user_prompt,
+        chat_history = chat_history,
+        session = session,
+        stop_check = stop_check
+      ),
+      error = function(e) {
+        caught_error <<- e
+        e
+      }
     )
 
-    is_direct_exit <- is.character(result) ||
+    is_exception <- inherits(result, "condition")
+    is_direct_exit <- is_exception || is.character(result) ||
       (is.list(result) && identical(result$type, "error_message"))
     if (!isTRUE(is_direct_exit)) return(result)
 
@@ -120,13 +128,19 @@ if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
       !is.null(session$userData$pk_provenance_pending),
       error = function(e) FALSE
     )
-    if (isTRUE(has_pending_footer)) return(result)
-
-    if (!exists("pk_analysis_observe", mode = "function", inherits = TRUE)) {
+    if (isTRUE(has_pending_footer)) {
+      if (is_exception) stop(caught_error)
       return(result)
     }
 
-    response_text <- if (is.character(result)) {
+    if (!exists("pk_analysis_observe", mode = "function", inherits = TRUE)) {
+      if (is_exception) stop(caught_error)
+      return(result)
+    }
+
+    response_text <- if (is_exception) {
+      conditionMessage(result)
+    } else if (is.character(result)) {
       as.character(result)[1]
     } else {
       as.character(result$content %||% "")[1]
@@ -184,6 +198,7 @@ if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
       silent = TRUE
     )
 
+    if (is_exception) stop(caught_error)
     result
   }
 }
