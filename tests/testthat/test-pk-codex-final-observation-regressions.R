@@ -185,3 +185,115 @@ test_that("unexpected single-analysis exceptions are observed before rethrow", {
   expect_identical(captured$info$outcome, "Hata")
   expect_identical(captured$info$filter_status, "not_reached")
 })
+
+test_that("pending SSO identity never opens a DB connection for telemetry", {
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  env$pk_analiz_process_request <- function(...) {
+    "⏳ **Kimlik Doğrulama Hazırlanıyor:** Lütfen tekrar deneyin."
+  }
+
+  captured <- new.env(parent = emptyenv())
+  captured$db_calls <- 0L
+  captured$observe_calls <- 0L
+  env$get_connection <- function(...) {
+    captured$db_calls <- captured$db_calls + 1L
+    list(conn = "unexpected")
+  }
+  env$release_connection <- function(...) invisible(TRUE)
+  env$pk_analysis_observe <- function(...) {
+    captured$observe_calls <- captured$observe_calls + 1L
+    invisible("")
+  }
+
+  source(
+    file.path(.pk_final_repo_root(), "R", "server_init_chat_runtime.R"),
+    encoding = "UTF-8",
+    local = env
+  )
+
+  user_data <- new.env(parent = emptyenv())
+  user_data$auth_initialized <- FALSE
+  session <- list(userData = user_data)
+
+  result <- env$pk_analiz_process_request("soru", list(), session)
+
+  expect_true(grepl("Kimlik Doğrulama Hazırlanıyor", result, fixed = TRUE))
+  expect_identical(captured$db_calls, 0L)
+  expect_identical(captured$observe_calls, 0L)
+})
+
+test_that("stopped filter provenance is rendered as cancelled", {
+  env <- .pk_final_source_env("R/helpers_pk_provenance.R")
+
+  footer <- env$pk_build_provenance_footer(list(
+    query_name = "Derin analiz",
+    filter_status = "stopped",
+    filters = list()
+  ))
+
+  expect_true(grepl("İptal edildi", footer, fixed = TRUE))
+  expect_false(grepl("soru genel olarak yorumlandı", footer, fixed = TRUE))
+})
+
+test_that("entry-time deep-analysis cancellation is observed without delegation", {
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+
+  captured <- new.env(parent = emptyenv())
+  captured$delegated <- 0L
+  captured$db_calls <- 0L
+  captured$release_calls <- 0L
+  captured$observe_calls <- 0L
+
+  env$pk_deep_analysis_process <- function(...) {
+    captured$delegated <- captured$delegated + 1L
+    "asıl motor çağrıldı"
+  }
+  env$get_connection <- function(...) {
+    captured$db_calls <- captured$db_calls + 1L
+    list(conn = "test-conn")
+  }
+  env$release_connection <- function(...) {
+    captured$release_calls <- captured$release_calls + 1L
+    invisible(TRUE)
+  }
+  env$pk_provenance_current_request_id <- function(session) "req-deep-stop"
+  env$pk_analysis_observe <- function(session, conn, info) {
+    captured$observe_calls <- captured$observe_calls + 1L
+    captured$conn <- conn
+    captured$info <- info
+    invisible("footer")
+  }
+
+  source(
+    file.path(.pk_final_repo_root(), "R", "server_init_chat_runtime.R"),
+    encoding = "UTF-8",
+    local = env
+  )
+
+  user_data <- new.env(parent = emptyenv())
+  user_data$auth_initialized <- TRUE
+  user_data$user_id <- 271L
+  user_data$system_username <- "deep.user"
+  session <- list(userData = user_data)
+
+  result <- env$pk_deep_analysis_process(
+    "soru",
+    list(),
+    session,
+    stop_check = function() TRUE
+  )
+
+  expect_true(grepl("İşlem Durduruldu", result, fixed = TRUE))
+  expect_identical(captured$delegated, 0L)
+  expect_identical(captured$db_calls, 1L)
+  expect_identical(captured$release_calls, 1L)
+  expect_identical(captured$observe_calls, 1L)
+  expect_identical(captured$conn, "test-conn")
+  expect_identical(captured$info$request_id, "req-deep-stop")
+  expect_identical(captured$info$user_id, 271L)
+  expect_true(isTRUE(captured$info$deep_thinking))
+  expect_identical(captured$info$filter_status, "stopped")
+  expect_identical(captured$info$outcome, "Durduruldu")
+})
