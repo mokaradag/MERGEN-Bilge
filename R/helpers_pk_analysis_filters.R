@@ -2,18 +2,32 @@
 # Dosya Yolu: R/helpers_pk_analysis_filters.R
 # Açıklama: AI filtre motoru için uyumluluk yüzeyi ve Faz 0 gözlem bağdaştırıcısı.
 #           Karar veren v1 motoru helpers_pk_analysis_filters_base.R içinde
-#           aynen korunur; bu dosya yalnızca gerçekten uygulanan/düşürülen
-#           filtreleri ve toplulaştırma öncesi eşleşen satır sayısını kaydeder.
+#           korunur. Bu dosya, filtre yürütmesini TEK GEÇİŞTE gözlemler; aynı R
+#           ifadesini telemetri amacıyla ikinci kez değerlendirmez.
 # ==============================================================================
 
-.pk_filter_engine_path <- file.path("R", "helpers_pk_analysis_filters_base.R")
-if (!file.exists(.pk_filter_engine_path)) {
-  stop(sprintf("%s bulunamadı.", .pk_filter_engine_path), call. = FALSE)
-}
-source(.pk_filter_engine_path, encoding = "UTF-8", local = environment())
-rm(.pk_filter_engine_path)
+# Standart çalışma zamanında temel dosya kaynak manifesti tarafından bu
+# dosyadan önce yüklenir. İzole source()/testthat çalıştırmalarında ise mevcut
+# çalışma dizinine güvenmeden, bu dosyanın kendi konumundaki kardeş dosya yüklenir.
+if (!exists("extract_filter_criteria_from_prompt", mode = "function", inherits = FALSE)) {
+  .pk_filter_source_file <- tryCatch(
+    as.character(sys.frame(1)$ofile %||% "")[1],
+    error = function(e) ""
+  )
+  .pk_filter_base_path <- if (nzchar(.pk_filter_source_file)) {
+    file.path(dirname(normalizePath(.pk_filter_source_file, winslash = "/", mustWork = TRUE)),
+              "helpers_pk_analysis_filters_base.R")
+  } else {
+    ""
+  }
 
-.pk_apply_smart_filters_engine <- apply_smart_filters
+  if (!nzchar(.pk_filter_base_path) || !file.exists(.pk_filter_base_path)) {
+    stop("helpers_pk_analysis_filters_base.R bulunamadı.", call. = FALSE)
+  }
+
+  source(.pk_filter_base_path, encoding = "UTF-8", local = environment())
+  rm(.pk_filter_source_file, .pk_filter_base_path)
+}
 
 if (!exists(".pk_filter_observation_state", inherits = FALSE) ||
     !is.environment(.pk_filter_observation_state)) {
@@ -86,94 +100,6 @@ if (!exists(".pk_filter_observation_state", inherits = FALSE) ||
   list(filter = filter %||% list(), reason = as.character(reason)[1])
 }
 
-.pk_filter_observation_probe <- function(data, filter_instructions) {
-  dt <- data.table::as.data.table(data)
-  filters <- filter_instructions$filters %||% list()
-  applied <- list()
-  dropped <- list()
-
-  expression <- filter_instructions$filter_expression
-  expression_applied <- FALSE
-
-  if (!is.null(expression) && nzchar(as.character(expression)[1])) {
-    expression <- as.character(expression)[1]
-    expression_applied <- tryCatch({
-      dt <- subset(dt, eval(parse(text = expression)))
-      TRUE
-    }, error = function(e) {
-      dropped[[length(dropped) + 1L]] <<- .pk_filter_dropped(
-        list(column = "filter_expression", value = expression, operation = "expression"),
-        paste0("ifade uygulanamadı: ", conditionMessage(e))
-      )
-      FALSE
-    })
-
-    if (isTRUE(expression_applied)) {
-      applied <- list(list(
-        column = "filter_expression",
-        value = expression,
-        operation = "expression"
-      ))
-    }
-  }
-
-  if (!isTRUE(expression_applied) && length(filters) > 0L) {
-    for (f in filters) {
-      col <- .pk_filter_observation_scalar(f$column)
-      val <- f$value
-      op <- .pk_filter_observation_scalar(f$operation %||% "exact_match")
-      if (!nzchar(op)) op <- "exact_match"
-
-      if (!nzchar(col) || !(col %in% names(dt))) {
-        dropped[[length(dropped) + 1L]] <- .pk_filter_dropped(f, "sütun veri kümesinde bulunamadı")
-        next
-      }
-
-      col_vals <- dt[[col]]
-      val_str <- .pk_filter_observation_scalar(val)
-
-      if (is.character(col_vals) || is.factor(col_vals)) {
-        val_regex <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", val_str)
-        col_vals_char <- as.character(col_vals)
-
-        if (identical(op, "contains")) {
-          dt <- dt[grepl(val_regex, col_vals_char, ignore.case = TRUE), ]
-        } else {
-          dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
-        }
-        applied[[length(applied) + 1L]] <- f
-        next
-      }
-
-      if (is.numeric(col_vals)) {
-        val_num <- suppressWarnings(as.numeric(val_str))
-        if (is.na(val_num)) {
-          dropped[[length(dropped) + 1L]] <- .pk_filter_dropped(f, "değer sayısal biçime dönüştürülemedi")
-          next
-        }
-
-        if (identical(op, "greater_than")) {
-          dt <- dt[col_vals > val_num, ]
-        } else if (identical(op, "less_than")) {
-          dt <- dt[col_vals < val_num, ]
-        } else {
-          dt <- dt[col_vals == val_num, ]
-        }
-        applied[[length(applied) + 1L]] <- f
-        next
-      }
-
-      dropped[[length(dropped) + 1L]] <- .pk_filter_dropped(f, "sütun türü filtreleme için desteklenmiyor")
-    }
-  }
-
-  list(
-    matched_rows = nrow(dt),
-    applied_filters = applied,
-    dropped_filters = dropped
-  )
-}
-
 .pk_filter_observation_store <- function(context, observation) {
   key <- .pk_filter_observation_key(
     context$request_id,
@@ -202,18 +128,196 @@ pk_filter_observation_take <- function(info) {
   observation
 }
 
+#' Filtreleri uygula ve aynı yürütme sırasında gözlem bilgisini kaydet
+#'
+#' Kritik sözleşme: filter_expression yalnızca bir kez değerlendirilir. Uygulanan
+#' filtreler, düşürülen filtreler ve toplulaştırma öncesi eşleşen satır sayısı,
+#' gerçek motor geçişinden alınır; telemetri için kod yeniden çalıştırılmaz.
 apply_smart_filters <- function(data, filter_instructions, user_prompt) {
-  result <- .pk_apply_smart_filters_engine(data, filter_instructions, user_prompt)
+  cat(sprintf("[SMART_FILTER] Baslangic satir: %d\n", nrow(data)))
 
-  observation <- tryCatch(
-    .pk_filter_observation_probe(data, filter_instructions),
-    error = function(e) NULL
-  )
+  context <- .pk_filter_observation_context(user_prompt)
+  applied <- list()
+  dropped <- list()
 
-  if (!is.null(observation)) {
-    context <- .pk_filter_observation_context(user_prompt)
-    .pk_filter_observation_store(context, observation)
+  finish <- function(result, matched_rows) {
+    try(
+      .pk_filter_observation_store(context, list(
+        matched_rows = as.integer(matched_rows),
+        applied_filters = applied,
+        dropped_filters = dropped
+      )),
+      silent = TRUE
+    )
+    result
   }
 
-  result
+  if (nrow(data) == 0) return(finish(data.frame(), 0L))
+
+  dt <- data.table::as.data.table(data)
+
+  filters <- filter_instructions$filters
+  aggregation <- filter_instructions$aggregation
+  group_col <- filter_instructions$group_column
+
+  genel_soru_kaliplari <- c(
+    "kaç", "toplam", "sayı", "adet", "hangi", "dağılım", "özet",
+    "analiz", "liste", "göster", "tüm", "hepsi", "en fazla",
+    "en az", "ortalama", "maksimum", "minimum"
+  )
+
+  prompt_lower <- tolower(user_prompt)
+  genel_soru_mu <- any(sapply(genel_soru_kaliplari, function(pattern) {
+    grepl(pattern, prompt_lower, fixed = TRUE)
+  }))
+
+  spesifik_varlik_var <- grepl("\\b[A-Z][0-9]{3,}\\b|\\b[A-Z]{1,3}[0-9]{1,}\\b", user_prompt, perl = TRUE) ||
+    grepl("[A-ZÜĞIŞÖÇ][a-züğışöç]+ [A-ZÜĞIŞÖÇ][a-züğışöç]+", user_prompt, perl = TRUE)
+
+  if (genel_soru_mu && !spesifik_varlik_var && (is.null(filters) || length(filters) == 0)) {
+    cat("[SMART_FILTER] GENEL SORU tespit edildi, filtre UYGULANMAYACAK.\n")
+    filters <- list()
+  }
+
+  cat(sprintf(
+    "[SMART_FILTER] Filtre sayisi: %d (Genel soru: %s, Spesifik varlik: %s)\n",
+    length(filters %||% list()),
+    genel_soru_mu,
+    spesifik_varlik_var
+  ))
+
+  cat(sprintf("[SMART_FILTER] Filtre sayisi: %d\n", length(filters %||% list())))
+  if (length(filters) > 0) {
+    for (i in seq_along(filters)) {
+      f <- filters[[i]]
+      cat(sprintf(
+        "[SMART_FILTER] Filtre #%d: sutun='%s', deger='%s', islem='%s'\n",
+        i,
+        f$column %||% "NULL",
+        f$value %||% "NULL",
+        f$operation %||% "NULL"
+      ))
+    }
+  }
+
+  applied_expression_success <- FALSE
+
+  if (!is.null(filter_instructions$filter_expression) &&
+      nzchar(as.character(filter_instructions$filter_expression)[1])) {
+    expr_str <- as.character(filter_instructions$filter_expression)[1]
+    cat(sprintf("[SMART_FILTER] Kompleks İfade Tespit Edildi: %s\n", expr_str))
+
+    tryCatch({
+      # Bu ifade gerçek motor geçişidir ve yalnızca burada değerlendirilir.
+      dt <- subset(dt, eval(parse(text = expr_str)))
+      cat(sprintf("[SMART_FILTER] İfade başarıyla uygulandı. Kalan satır: %d\n", nrow(dt)))
+      applied_expression_success <- TRUE
+      applied <- list(list(
+        column = "filter_expression",
+        value = expr_str,
+        operation = "expression"
+      ))
+    }, error = function(e) {
+      cat(sprintf("[SMART_FILTER] HATA: İfade uygulanamadı (%s). Standart filtre listesine (AND) dönülüyor.\n", e$message))
+      dropped[[length(dropped) + 1L]] <<- .pk_filter_dropped(
+        list(column = "filter_expression", value = expr_str, operation = "expression"),
+        paste0("ifade uygulanamadı: ", conditionMessage(e))
+      )
+      applied_expression_success <<- FALSE
+    })
+  }
+
+  if (!applied_expression_success) {
+    if (!is.null(filters) && length(filters) > 0) {
+      cat("[SMART_FILTER] Standart filtre listesi uygulanıyor (AND mantığı)...\n")
+
+      for (f in filters) {
+        col <- .pk_filter_observation_scalar(f$column)
+        val <- f$value
+        op <- .pk_filter_observation_scalar(f$operation %||% "exact_match")
+        if (!nzchar(op)) op <- "exact_match"
+
+        if (!nzchar(col) || !(col %in% names(dt))) {
+          dropped[[length(dropped) + 1L]] <- .pk_filter_dropped(
+            f, "sütun veri kümesinde bulunamadı"
+          )
+          next
+        }
+
+        col_vals <- dt[[col]]
+        val_str <- .pk_filter_observation_scalar(val)
+
+        if (is.character(col_vals) || is.factor(col_vals)) {
+          val_regex <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", val_str)
+          col_vals_char <- as.character(col_vals)
+
+          if (op == "exact_match") {
+            dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
+          } else if (op == "contains") {
+            dt <- dt[grepl(val_regex, col_vals_char, ignore.case = TRUE), ]
+          } else {
+            dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
+          }
+          applied[[length(applied) + 1L]] <- f
+          next
+        }
+
+        if (is.numeric(col_vals)) {
+          val_num <- suppressWarnings(as.numeric(val_str))
+          if (is.na(val_num)) {
+            dropped[[length(dropped) + 1L]] <- .pk_filter_dropped(
+              f, "değer sayısal biçime dönüştürülemedi"
+            )
+            next
+          }
+
+          if (op == "greater_than") {
+            dt <- dt[col_vals > val_num, ]
+          } else if (op == "less_than") {
+            dt <- dt[col_vals < val_num, ]
+          } else {
+            dt <- dt[col_vals == val_num, ]
+          }
+          applied[[length(applied) + 1L]] <- f
+          next
+        }
+
+        dropped[[length(dropped) + 1L]] <- .pk_filter_dropped(
+          f, "sütun türü filtreleme için desteklenmiyor"
+        )
+      }
+    } else {
+      if (is.null(aggregation) || !tolower(aggregation) %in% c("count", "sum", "group_by")) {
+        cat(sprintf(
+          "[SMART_FILTER] Ne filtre ne aggregation var. GENEL SORU olarak işleniyor - tüm veri döndürülecek (%d satır).\n",
+          nrow(dt)
+        ))
+      } else {
+        cat("[SMART_FILTER] Aggregation mevcut, filtre yok - tüm veri üzerinde aggregation yapılacak\n")
+      }
+    }
+  }
+
+  # Toplulaştırma bu noktadan sonra yapılır. Köken/telemetri için korunması
+  # gereken sayı, çıktı satırı değil burada eşleşen gerçek kayıt sayısıdır.
+  matched_rows <- nrow(dt)
+
+  if (!is.null(aggregation)) {
+    agg_str <- tolower(aggregation)
+
+    if (agg_str == "count") {
+      aciklama <- if (length(filters) > 0) "Filtrelenen Kayıt Sayısı" else "Toplam Kayıt Sayısı"
+      return(finish(data.frame(Sonuc = aciklama, Adet = matched_rows), matched_rows))
+    } else if (agg_str == "sum") {
+      num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
+      if (length(num_cols) > 0) {
+        sums <- lapply(num_cols, function(nc) sum(dt[[nc]], na.rm = TRUE))
+        return(finish(as.data.frame(sums), matched_rows))
+      }
+    } else if (agg_str == "group_by" && !is.null(group_col) && group_col %in% names(dt)) {
+      return(finish(as.data.frame(dt[, .N, by = group_col]), matched_rows))
+    }
+  }
+
+  finish(as.data.frame(dt), matched_rows)
 }
