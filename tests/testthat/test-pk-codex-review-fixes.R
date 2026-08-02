@@ -1,6 +1,6 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-pk-codex-review-fixes.R
-# Açıklama: PR #695 Codex P1/P2 çalışma zamanı düzeltmelerinin çevrimdışD�
+# Açıklama: PR #695 Codex P1/P2 çalışma zamanı düzeltmelerinin çevrimdışı
 #           davranış sözleşmeleri.
 # ==============================================================================
 
@@ -124,16 +124,7 @@ test_that("deep analysis releases RLS connection before short-lived telemetry", 
     "ok"
   }
   environment(core) <- env
-  env$.pk_deep_analysis_process_without_entry_observer <- core
-
-  public <- function(user_prompt, chat_history, session,
-                     detail_level = "standart", stop_check = NULL) {
-    .pk_deep_analysis_process_without_entry_observer(
-      user_prompt, chat_history, session, detail_level, stop_check
-    )
-  }
-  environment(public) <- env
-  env$pk_deep_analysis_process <- public
+  env$pk_deep_analysis_process <- core
 
   .source_pk_fix_layer(env)
 
