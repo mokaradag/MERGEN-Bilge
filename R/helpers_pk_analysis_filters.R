@@ -6,11 +6,32 @@
 #           kullanır.
 # ==============================================================================
 
+# Boş filtre sonucunun TİPLİ hâli (Faz 0 / D9).
+#
+# Bugün zaman aşımı, hata, bozuk yanıt ve "gerçekten filtre gerekmiyordu"
+# durumlarının tamamı aynı `list(filters = list(), aggregation = NULL)` değerini
+# döndürüyor; bu yüzden kullanıcı tek bir proje sorduğunda uç nokta yavaşsa araç
+# 4.000 projenin tamamını hiç söylemeden analiz edebiliyor.
+#
+# Bu yardımcı YALNIZCA gözlem amaçlıdır: `filters` / `aggregation` alanlarının
+# şekli ve içeriği DEĞİŞMEZ, yanına yalnızca `status` eklenir. v1 motorunun
+# hangi filtreyi uyguladığı bu değişiklikle aynen korunur.
+.pk_filter_empty_result <- function(status) {
+  list(filters = list(), aggregation = NULL, status = status)
+}
+
+# LLM çağrısının hata mesajından zaman aşımını ayırt eder. httr/curl zaman
+# aşımı hata olarak yüzeye çıktığı için sınıflandırma mesaj üzerinden yapılır.
+.pk_filter_classify_llm_error <- function(message_text) {
+  txt <- tolower(as.character(message_text %||% "")[1])
+  if (grepl("timeout|timed out|zaman a", txt, useBytes = TRUE)) "timeout" else "error"
+}
+
 extract_filter_criteria_from_prompt <- function(user_prompt, data_context, available_columns, conn, session = NULL, stop_check = NULL) {
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[FILTER_AI] Durdurma talebi alindi (AI filtreleme oncesi)\n")
-    return(list(filters = list(), aggregation = NULL))
+    return(.pk_filter_empty_result("stopped"))
   }
 
   cols_summary <- summarize_columns_for_ai(data_context)
@@ -145,10 +166,13 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
     list(role = "user", content = user_prompt)
   )
 
+  # LLM çağrısı başarısız olursa nedeni (timeout/error) burada tutulur.
+  llm_failure_status <- "error"
+
   tryCatch({
     if (is.function(stop_check) && isTRUE(stop_check())) {
       cat("[FILTER_AI] Durdurma talebi alindi (LLM cagrisinin hemen oncesi)\n")
-      return(list(filters = list(), aggregation = NULL))
+      return(.pk_filter_empty_result("stopped"))
     }
 
     filter_model <- getOption("mergen.filter_model", api_config$local_models[1])
@@ -179,8 +203,10 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 		request_timeout_sec = filter_timeout
 	  ))
 	}, error = function(e) {
+	  llm_failure_status <<- .pk_filter_classify_llm_error(conditionMessage(e))
 	  cat(sprintf(
-		"[FILTER_AI] Timeout veya hata, AI filtreleme atlanıyor: %s\n",
+		"[FILTER_AI] Timeout veya hata (%s), AI filtreleme atlanıyor: %s\n",
+		llm_failure_status,
 		conditionMessage(e)
 	  ))
 	  NULL
@@ -188,13 +214,13 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 
     if (is.function(stop_check) && isTRUE(stop_check())) {
       cat("[FILTER_AI] Durdurma talebi alindi (LLM cagrisi sonrasinda)\n")
-      return(list(filters = list(), aggregation = NULL))
+      return(.pk_filter_empty_result("stopped"))
     }
 
-    if (is.null(result)) return(list(filters = list(), aggregation = NULL))
+    if (is.null(result)) return(.pk_filter_empty_result(llm_failure_status))
 
     ai_content <- if (is.list(result)) result$content else result
-    if (is.null(ai_content) || length(ai_content) == 0) return(list(filters = list(), aggregation = NULL))
+    if (is.null(ai_content) || length(ai_content) == 0) return(.pk_filter_empty_result("malformed"))
 
     ai_text <- as.character(ai_content)[1]
     ai_text <- gsub("```json|```", "", ai_text)
@@ -202,12 +228,12 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 
     if (nchar(ai_text) < 50) {
       cat(sprintf("[FILTER_AI] Yanit cok kisa (%d karakter), iptal ediliyor.\n", nchar(ai_text)))
-      return(list(filters = list(), aggregation = NULL))
+      return(.pk_filter_empty_result("malformed"))
     }
 
     if (!grepl("\\{.*\\}", ai_text)) {
       cat("[FILTER_AI] JSON format algilanamadi.\n")
-      return(list(filters = list(), aggregation = NULL))
+      return(.pk_filter_empty_result("malformed"))
     }
 
     parsed <- tryCatch({
@@ -223,7 +249,7 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
       NULL
     })
 
-    if (is.null(parsed)) return(list(filters = list(), aggregation = NULL))
+    if (is.null(parsed)) return(.pk_filter_empty_result("malformed"))
 
     filters <- parsed$filters
     if (is.null(filters) || !is.list(filters)) filters <- list()
@@ -263,23 +289,26 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 
       if (length(valid_filters) == 0) {
         cat("[FILTER_AI] Tum filtreler gecersiz, iptal ediliyor.\n")
-        return(list(filters = list(), aggregation = NULL))
+        return(.pk_filter_empty_result("malformed"))
       }
 
       cat(sprintf("[FILTER_AI] %d gecerli filtre algilandi.\n", length(valid_filters)))
       filters <- valid_filters
     }
 
+    # Başarılı yol: model çalıştı. Filtre üretmemesi MEŞRU bir sonuçtur ve
+    # zaman aşımı/hatadan ayırt edilebilir olmalıdır.
     return(list(
       filters = filters,
       filter_expression = parsed$filter_expression,
       aggregation = parsed$aggregation,
-      group_column = parsed$group_column
+      group_column = parsed$group_column,
+      status = if (length(filters) > 0) "ok_filtered" else "ok_no_filter"
     ))
 
   }, error = function(e) {
     cat(sprintf("[FILTER_AI] Error: %s\n", e$message))
-    return(list(filters = list(), aggregation = NULL))
+    return(.pk_filter_empty_result(.pk_filter_classify_llm_error(conditionMessage(e))))
   })
 }
 

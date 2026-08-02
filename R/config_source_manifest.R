@@ -251,6 +251,13 @@ source_manifest_sections <- list(
   # analysis_helpers: Derin analiz ve Proje/Kaynak Analizi çekirdek/RLS-güvenlik
   # özeti/filtre/sorgu-seçimi yardımcıları.
   analysis_helpers = c(
+    # Faz 0: yapılandırma çözümleyicisi -> köken/bozulma -> telemetri kaydı
+    # (saf) -> telemetri yazımı (DB). Bağımlılık sırası zorunludur: yazım
+    # katmanı hem config'i, hem provenance'ı, hem de saf kayıt katmanını kullanır.
+    "R/helpers_pk_config.R",
+    "R/helpers_pk_provenance.R",
+    "R/helpers_pk_telemetry_record.R",
+    "R/helpers_pk_telemetry.R",
     "R/helpers_deep_analysis.R",
     "R/helpers_pk_analysis_core.R",
     "R/helpers_pk_analysis_security_summary.R",

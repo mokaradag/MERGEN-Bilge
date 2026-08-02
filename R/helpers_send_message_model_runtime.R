@@ -11,6 +11,13 @@ mergen_build_send_message_request_callbacks <- function(session,
                                                         req_id) {
   request_id <- req_id
 
+  # Proje ve Kaynak Analizi köken alt bilgisi istek kapsamlıdır. Bu kurucu her
+  # istek başında tam bir kez çalıştığı için bekleyen alt bilgi burada
+  # temizlenir ve aktif istek kimliği yazılır; böylece bayat bir alt bilgi bir
+  # sonraki yanıta iliştirilemez. try(): yardımcı yüklü değilse (izole test)
+  # sessizce atlanır.
+  try(pk_provenance_clear(session, request_id = request_id), silent = TRUE)
+
   list(
     cleanup = function(remove_typing_wrapper = TRUE) {
       mergen_send_message_release_values_token(values = values, req_id = request_id)

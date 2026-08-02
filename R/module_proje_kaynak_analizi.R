@@ -64,7 +64,35 @@ rm(pk_required_helpers, helper_spec, missing_helpers)
 
 pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_check = NULL) {
   cat("\n[PK_ANALIZ] >>> pk_analiz_process_request BASLATILDI <<<\n")
-  
+
+  # Faz 0 gözlemi: köken alt bilgisi + telemetri. Analiz akışını DEĞİŞTİRMEZ.
+  pk_started_at <- Sys.time()
+  pk_request_id <- if (exists("pk_provenance_current_request_id", mode = "function", inherits = TRUE)) {
+    pk_provenance_current_request_id(session)
+  } else {
+    NULL
+  }
+  # NOT: Kapanış `conn` ve `username` değerlerini ÇAĞRI ANINDA çözer; bu yüzden
+  # yalnızca o değişkenler tanımlandıktan sonraki çıkışlarda çağrılır.
+  pk_observe <- function(...) {
+    if (!exists("pk_analysis_observe", mode = "function", inherits = TRUE)) return(invisible(NULL))
+
+    # Düz atama kullanılır; utils::modifyList() liste değerli alanları
+    # (ör. filters) ada göre özyinelemeli birleştirir ve geçersiz kılmayı bozar.
+    pk_info <- list(
+      request_id  = pk_request_id,
+      question    = user_prompt,
+      username    = username,
+      engine      = "v1",
+      duration_ms = as.numeric(difftime(Sys.time(), pk_started_at, units = "secs")) * 1000
+    )
+    pk_over <- list(...)
+    if (length(pk_over) > 0) pk_info[names(pk_over)] <- pk_over
+
+    try(pk_analysis_observe(session, conn, pk_info), silent = TRUE)
+    invisible(NULL)
+  }
+
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (baslangic)\n")
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
@@ -282,6 +310,12 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   }
   
   if (nrow(secure_data) == 0) {
+      pk_observe(
+        query_id = selected_query$id, query_name = selected_query$name,
+        filter_status = "not_reached", filters = list(),
+        pre_rls_rows = nrow(raw_data), authorized_rows = 0L, filtered_rows = 0L,
+        outcome = "BosSonuc"
+      )
       return(paste0("\U0001F50D **Sonuc:** Sorgu calistirildi ancak yetkiniz dahilinde veri bulunamadi."))
   }
     
@@ -293,7 +327,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   if (isTRUE(selected_query$disable_ai_filters)) {
     cat("[PK_ANALIZ] Ozel Sorgu Ayari: AI Filtreleme devre disi birakildi. Sadece RLS verisi kullaniliyor.\n")
-    filter_criteria <- list(filters = list(), aggregation = NULL)
+    filter_criteria <- list(filters = list(), aggregation = NULL, status = "disabled")
     filtered_data <- secure_data
 	} else {
 	available_columns <- names(secure_data)
@@ -327,10 +361,26 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   if (nrow(filtered_data) == 0) {
     cat("[PK_ANALIZ] Filtreleme sonrasi veri yok, islem tamamlandi.\n")
-    return(list(
-      type = "error_message",
-      content = "\U0001F50D **Sonuç:** Filtreleme sonrası veri bulunamadı. Lütfen farklı kriterlerle tekrar deneyin."
-    ))
+
+    pk_observe(
+      query_id = selected_query$id, query_name = selected_query$name,
+      filter_status = filter_criteria$status, filters = filter_criteria$filters,
+      pre_rls_rows = nrow(raw_data), authorized_rows = nrow(secure_data),
+      filtered_rows = 0L, outcome = "BosSonuc"
+    )
+
+    # Bozulma (zaman aşımı/hata/bozuk yanıt) varsa boş sonucu sessizce
+    # "veri yok" gibi sunmak yanıltıcıdır; nedeni kullanıcıya söylenir.
+    bos_mesaj <- "\U0001F50D **Sonuç:** Filtreleme sonrası veri bulunamadı. Lütfen farklı kriterlerle tekrar deneyin."
+    if (exists("pk_filter_status_is_degraded", mode = "function", inherits = TRUE) &&
+        isTRUE(pk_filter_status_is_degraded(filter_criteria$status))) {
+      bozulmalar <- pk_degradations_from_filter_status(filter_criteria$status)
+      if (length(bozulmalar) > 0) {
+        bos_mesaj <- paste0(bos_mesaj, "\n\n\U000026A0\U0000FE0F ", bozulmalar[[1]]$message)
+      }
+    }
+
+    return(list(type = "error_message", content = bos_mesaj))
   }
   
   analysis_mode <- selected_query$analysis_mode %||% "summary"
@@ -465,7 +515,16 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   )
   
   cat("[PK_ANALIZ] AI baglami hazirlandi. List donduruluyor.\n")
-  
+
+  # Alt bilgi burada hazırlanıp istek kapsamlı yuvaya konur; nihai yanıt metnine
+  # akış sonlandırmasında iliştirilir (model onu ASLA yazmaz).
+  pk_observe(
+    query_id = selected_query$id, query_name = selected_query$name,
+    filter_status = filter_criteria$status, filters = filter_criteria$filters,
+    pre_rls_rows = nrow(raw_data), authorized_rows = nrow(secure_data),
+    filtered_rows = nrow(filtered_data), outcome = "Basarili"
+  )
+
   return(list(
     type = "data_analysis",
     data = secure_data,

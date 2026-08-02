@@ -360,6 +360,13 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
           if (length(msg_index) > 0) {
             final_text <- if (nchar(streaming_state$accumulated) > 0) streaming_state$accumulated else full_response
 
+            # Proje ve Kaynak Analizi köken alt bilgisi. TTS motoru yukarıda
+            # `full_response` ile ÇOKTAN çağrıldığı için alt bilgi burada
+            # eklendiğinde yalnızca ekrana/DB'ye gider, SESLENDİRİLMEZ.
+            if (exists("pk_provenance_decorate", mode = "function", inherits = TRUE)) {
+              final_text <- pk_provenance_decorate(final_text, session)
+            }
+
             chart_info <- build_chartlab_message(final_text, streaming_state$msg_id, session)
             if (isTRUE(chart_info$found)) {
               final_html <- chart_info$html

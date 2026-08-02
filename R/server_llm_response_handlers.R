@@ -285,6 +285,12 @@ llmResponseHandlersInit <- function(
 
           ai_msg <- NULL
 
+          # Proje ve Kaynak Analizi köken alt bilgisi (sahibi R'dir, model
+          # değil). PK dışı yanıtlarda içerik aynen kalır.
+          if (exists("pk_provenance_decorate", mode = "function", inherits = TRUE)) {
+            result$content <- pk_provenance_decorate(result$content, session)
+          }
+
           # AI mesajını ekle
           tryCatch({
             ai_msg <- add_message_fn(
