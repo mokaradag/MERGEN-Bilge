@@ -77,6 +77,7 @@ if (!exists(".pk_filter_observation_state", inherits = FALSE) ||
     request_id = request_id,
     query_id = query_meta$id %||% NULL,
     query_name = query_meta$name %||% NULL,
+    query_meta = query_meta,
     question = user_prompt
   )
 }
@@ -180,6 +181,7 @@ if (!exists(".pk_filter_observation_state", inherits = FALSE) ||
     context$query_name,
     context$question
   )
+  observation$query_meta <- context$query_meta
   assign(key, observation, envir = .pk_filter_observation_state)
   invisible(observation)
 }
