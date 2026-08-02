@@ -1,17 +1,15 @@
 name: PR 694 remaining Codex fixes
 
 on:
-  push:
-    branches:
-      - pk/rebuild
-    paths:
-      - .github/workflows/pr694-remaining-codex-fixes.yml
+  pull_request:
+    types: [edited]
 
 permissions:
   contents: write
 
 jobs:
   patch-document:
+    if: github.event.pull_request.number == 694 && github.event.pull_request.head.ref == 'pk/rebuild'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,12 +43,24 @@ jobs:
                   "Limitations     what this query cannot answer; what was truncated\n```\n\n**Sparse/non-finite numeric measures have an explicit availability contract.**",
                   "Limitations     what this query cannot answer; what was truncated\n```\n\nThe model-facing packet contains **no pre-RLS row count**. For scoped users, that\nvalue exists exclusively in access-restricted server telemetry and is never sent to\nthe LLM, cited in prose, written to the `Bilgi` sheet, or exposed through the footer.\nThe packet may expose only the authorized population before user filters and the\npost-filter population. Numeric provenance checks must reject any attempted citation\nof a pre-RLS count because no such structured fact is available to composition.\n\n**Sparse/non-finite numeric measures have an explicit availability contract.**"
               ),
+              (
+                  "| `test-pk-query-selection-contract.R` | resolved `MERGEN_PK_SELECT_RECALL_N` (minimum 2) controls both Pass-A requested IDs and Pass-B candidate input; non-default value 3 is honored; fewer than two validated confidences returns `no_runner_up`; no literal five; stable IDs and alternate confidences |",
+                  "| `test-pk-query-selection-contract.R` | resolved `MERGEN_PK_SELECT_RECALL_N` (minimum 2) controls both Pass-A requested IDs and Pass-B candidate input; non-default value 3 is honored; fewer than two validated confidences returns `no_runner_up`; no literal five; stable IDs and alternate confidences; bounded follow-up context plus the prior stable query id is included in Pass A, and an elliptical follow-up retains that id before recall truncation |"
+              ),
+              (
+                  "| `test-pk-analysis-packet-behavior.R` | additive vs non-additive; zero/one/finite sparse-measure availability contract (no all-missing zero, no `NA`/`NaN`/`Inf` fact); weighted means exclude disclosed missing/zero pairs, reject negative/non-finite weights, and return unavailable when no positive weight remains; stable `latest_by` + unique `latest_tie_by`; duplicate newest-row ties return `ambiguous_latest`; structured fact IDs and semantic context; budget accountant; stratified sample; `FİLTRELEME UYARISI` survives degradation (D7, D8) |",
+                  "| `test-pk-analysis-packet-behavior.R` | additive vs non-additive; zero/one/finite sparse-measure availability contract (no all-missing zero, no `NA`/`NaN`/`Inf` fact); weighted means exclude disclosed missing/zero pairs, reject negative/non-finite weights, and return unavailable when no positive weight remains; stable `latest_by` + unique `latest_tie_by`; duplicate newest-row ties return `ambiguous_latest`; structured fact IDs and semantic context; budget accountant; stratified sample; `FİLTRELEME UYARISI` survives degradation (D7, D8); the model-facing packet contains authorized-before-filter and after-filter counts only, never a pre-RLS count |"
+              ),
+              (
+                  "recall@N is measured on the golden set, including a case whose distinguishing phrase\nappears only in `sample_questions`.",
+                  "recall@N is measured on the golden set, including a case whose distinguishing phrase\nappears only in `sample_questions`, plus an elliptical follow-up whose prior stable\nquery id must be retained in Pass A before truncation."
+              ),
           ]
 
           for old, new in replacements:
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f'expected one occurrence, found {count}: {old[:80]!r}')
+                  raise SystemExit(f'expected one occurrence, found {count}: {old[:100]!r}')
               text = text.replace(old, new, 1)
 
           path.write_text(text, encoding='utf-8')
