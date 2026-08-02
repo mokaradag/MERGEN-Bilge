@@ -1,0 +1,75 @@
+name: PR 694 remaining Codex fixes
+
+on:
+  push:
+    branches:
+      - pk/rebuild
+    paths:
+      - .github/workflows/pr694-remaining-codex-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-document:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: pk/rebuild
+          fetch-depth: 1
+
+      - name: Apply remaining review fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/proje-kaynak-analizi-master-plan.md')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  "and ask for exactly that many candidate **ids**.\nThe minimum of two is part of the safety contract: a one-candidate recall cannot supply\nthe runner-up confidence needed to enforce `MERGEN_PK_SELECT_MIN_MARGIN`. Full recall\nby construction applies over the supplied semantic fields.",
+                  "and ask for exactly that many candidate **ids**.\n\nPass A also receives a bounded follow-up context envelope: the last two relevant\nconversation turns and the prior stable selected query id, when that id still exists\nin the current library. For an elliptical follow-up such as `peki 2024 için?`, seed\nthat prior id into the candidate set **before** applying the resolved recall-count\nlimit, de-duplicate it against newly recalled ids, and fill the remaining slots from\nthe full-library recall result. Pass B must still validate its capabilities and may\nreject it, but Pass A must never discard the only query-bearing context before Pass B\ncan inspect the conversation. The minimum of two is part of the safety contract: a\none-candidate recall cannot supply the runner-up confidence needed to enforce\n`MERGEN_PK_SELECT_MIN_MARGIN`. Full recall by construction applies over the supplied\nsemantic fields and bounded follow-up context."
+              ),
+              (
+                  "* Record the RLS scope in provenance (rows before/after, which rule applied).",
+                  "* Record the RLS scope only in restricted server telemetry: pre-RLS row count,\n  authorized row count, and the rule applied. Never place the pre-RLS count in\n  user-visible provenance, export metadata, or any model-facing packet."
+              ),
+              (
+                  "Filters         applied filters, resolved canonical entities, rows before/after RLS & filter",
+                  "Filters         applied filters, resolved canonical entities, authorized rows before user filter, rows after filter"
+              ),
+              (
+                  "Limitations     what this query cannot answer; what was truncated\n```\n\n**Sparse/non-finite numeric measures have an explicit availability contract.**",
+                  "Limitations     what this query cannot answer; what was truncated\n```\n\nThe model-facing packet contains **no pre-RLS row count**. For scoped users, that\nvalue exists exclusively in access-restricted server telemetry and is never sent to\nthe LLM, cited in prose, written to the `Bilgi` sheet, or exposed through the footer.\nThe packet may expose only the authorized population before user filters and the\npost-filter population. Numeric provenance checks must reject any attempted citation\nof a pre-RLS count because no such structured fact is available to composition.\n\n**Sparse/non-finite numeric measures have an explicit availability contract.**"
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one occurrence, found {count}: {old[:80]!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          rm -f .github/workflows/pr694-remaining-codex-fixes.yml
+
+      - name: Validate and commit
+        shell: bash
+        run: |
+          git diff --check
+          test "$(git diff --name-only | sort | tr '\n' ' ')" = ".github/workflows/pr694-remaining-codex-fixes.yml docs/proje-kaynak-analizi-master-plan.md "
+          grep -q 'Pass A also receives a bounded follow-up context envelope' docs/proje-kaynak-analizi-master-plan.md
+          grep -q 'seed.*prior id into the candidate set.*before' docs/proje-kaynak-analizi-master-plan.md
+          grep -q 'authorized rows before user filter, rows after filter' docs/proje-kaynak-analizi-master-plan.md
+          grep -q 'model-facing packet contains \*\*no pre-RLS row count\*\*' docs/proje-kaynak-analizi-master-plan.md
+          ! grep -q 'rows before/after RLS & filter' docs/proje-kaynak-analizi-master-plan.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A .github/workflows/pr694-remaining-codex-fixes.yml docs/proje-kaynak-analizi-master-plan.md
+          git commit -m "docs: address remaining Codex review findings"
+          git push origin HEAD:pk/rebuild
