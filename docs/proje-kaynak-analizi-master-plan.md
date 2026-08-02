@@ -548,7 +548,7 @@ or after adding query #170, with zero risk to their alias work or tracked curati
 
 | Tier | How | Effort |
 |---|---|---|
-| 0 | **Structural-only fallback.** Infer `role` from R type + cardinality, `high_cardinality` from `n_distinct > 50`, and `date` from class. This can support safe inspection/rendering only; stable semantic measure, date and output-dimension capability IDs remain unknown. | 0 |
+| 0 | **Structural-only fallback.** Infer `role` from declared/static schema and R type; infer `date` from class. Treat cardinality, null-rate, identifier and `high_cardinality` claims as unknown unless established by a representative bounded strategy or a one-sided observation that can only disprove/confirm the claimed property. This supports safe inspection/rendering only; stable semantic measure, date and output-dimension capability IDs remain unknown. | 0 |
 | 1 | Generator `tools/pk/generate_query_meta.R` (VM-only, NOT in the source manifest) → writes the **gitignored** `R/library_query_meta_local.R`, never a tracked file or `R/library_query_aliases_local.R`. **Also validates declared `rls_columns` against actual result columns, surfacing every D6 hole.** | ~1 day to build, minutes to run |
 | 2 | `keywords` + `sample_questions` — **OPTIONAL**, see below | 0–45 s/query |
 | 3 | Human-only: capability IDs, `grain`, `additive`, `unit`, `primary_entity`, `intents`, `default_measures` | ~2 min/query |
@@ -588,8 +588,21 @@ Two modes, because some production queries are expensive:
 
 * **`describe`** — uses `sys.dm_exec_describe_first_result_set` to obtain column
   names and types **without executing** the query. Fast, zero DB load, no cardinality.
-* **`sample`** (default) — `TOP <MERGEN_PK_META_SAMPLE_ROWS>` (default 500) per query
-  for cardinality, null rate, ID detection and `high_cardinality` flags.
+* **`sample`** (default) — obtains up to `<MERGEN_PK_META_SAMPLE_ROWS>` rows through a
+  representative bounded strategy when the query can be sampled safely (for example a
+  deterministic hash/reservoir or metadata-declared stratification), and records the
+  exact `sample_method` and seed. A bare `TOP n` prefix in database return order is not
+  representative and must not produce authoritative cardinality, null-rate, identifier
+  or low-cardinality metadata.
+
+When only a prefix is operationally feasible, record `sample_method = "prefix"` and
+mark sample-derived null rate, cardinality, identifier and `high_cardinality` conclusions
+as `unknown`/advisory. Only **one-sided** observations are safe: an observed duplicate
+disproves uniqueness, and more than 50 observed distinct values proves
+`high_cardinality = TRUE`; the absence of a duplicate/null or seeing ≤50 values cannot
+prove an ID, no-null or low-cardinality property. Prefix-derived observations must never
+drive query selection, RLS, automatic entity resolution or another security/correctness
+decision.
 
 A 500-row sample **cannot** tell a 501-row result from a five-million-row one, so it
 cannot support a row-cap finding on its own. Either run a bounded probe
@@ -677,8 +690,10 @@ segment is bounded (at most two questions and a fixed character budget per query
 169 queries remain comfortably within the 256 K context while terminology that exists
 only in a sample question is still visible during recall. Resolve
 `MERGEN_PK_SELECT_RECALL_N` through the §9 precedence contract (default 5), validate it
-as a positive bounded integer, and ask for exactly that many candidate **ids**. Full
-recall by construction over the supplied semantic fields.
+as a bounded integer **of at least 2**, and ask for exactly that many candidate **ids**.
+The minimum of two is part of the safety contract: a one-candidate recall cannot supply
+the runner-up confidence needed to enforce `MERGEN_PK_SELECT_MIN_MARGIN`. Full recall
+by construction applies over the supplied semantic fields.
 
 **Do not reduce Pass A to `id | name`, and do not postpone all sample questions to
 Pass B.** A user's terminology frequently appears only in a query's description,
@@ -702,7 +717,9 @@ turns. No literal five may remain in either pass. Return:
 code cannot compute the runner-up margin, cannot enforce
 `MERGEN_PK_SELECT_MIN_MARGIN`, and cannot tell a clear winner from a near-tie — which
 would leave the main safety gate against confidently running the wrong financial query
-unimplementable.
+unimplementable. If Pass A/B or the available library yields fewer than two candidates
+with validated confidence values, return typed status `no_runner_up`; do not
+auto-execute. Show the available candidate plus clarification choices instead.
 
 **Then, deterministically:**
 
@@ -735,8 +752,9 @@ unimplementable.
   question, and the gate must prove that **before** execution.
 * **Confidence is a signal, not a probability.** Combine it with the margin over the
   runner-up, capability validation, and lexical agreement.
-* **Below threshold, or alternates too close → ask.** Render the top 3 as clickable
-  chips. Executing nothing beats executing the wrong financial query.
+* **Below threshold, alternates too close, or no validated runner-up → ask.** Render
+  the top 3 as clickable chips. Executing nothing beats executing the wrong financial
+  query.
 * **Timeout on both passes** (D14). Retry only on malformed/timed-out output, and
   make the retry a *repair* attempt that includes the validation error — never an
   identical replay.
@@ -790,13 +808,28 @@ removed entirely (D5).
 Turkish relative dates (*"son 3 ay"*, *"geçen yıl"*, *"2024 Q3"*) are extracted as
 phrases and resolved **in R** — never by model arithmetic.
 
-**Anchor them to the request timestamp in the business timezone (Europe/Istanbul,
-fixed +3), not to the dataset's date range.** P6 plans routinely contain
-future-dated planned records, and an extract can be days or weeks stale; anchoring
-*"son 3 ay"* to `max(BitisTarihi)` would silently shift the window by months or years
-and produce statistics for the wrong period. The dataset range is used only to report
-coverage and to warn when the requested interval falls partly or wholly outside the
-available data (*"İstenen aralığın bir kısmı veride yok"*).
+**Numeric and unit-bearing filter phrases are parsed deterministically in R as well.**
+The model may return only the original phrase; it must not return a computed bound.
+The parser first applies NFC normalization and trimming, then accepts Turkish decimal
+comma, dot/space thousands groupings only when grouping is structurally valid, optional
+signs, and the explicit magnitude words `bin = 10^3`, `milyon = 10^6`,
+`milyar = 10^9`. It normalizes `TL`/`TRY`/`₺`, `%`, `saat` and other units only through
+the target column's `column_meta$unit` and `percent_scale` contract. Thus
+`"1,5 milyon TL"` becomes canonical numeric `1500000` with unit `TL`; an unknown or
+incompatible unit, ambiguous punctuation/grouping, overflow, or any non-finite value is
+a validation error rather than a guess. Each range endpoint is parsed independently and
+the resulting bounds must be ordered. The compiler receives only the validated numeric
+value plus provenance `{source_phrase, parsed_value, unit, multiplier}`. Contract tests
+cover comma decimals, grouped thousands, magnitude words, percentages under both scales,
+negative values, reversed ranges and ambiguous strings such as `1.234,56.7`.
+
+**Anchor relative dates to the request timestamp in the business timezone
+(Europe/Istanbul, fixed +3), not to the dataset's date range.** P6 plans routinely
+contain future-dated planned records, and an extract can be days or weeks stale;
+anchoring *"son 3 ay"* to `max(BitisTarihi)` would silently shift the window by months
+or years and produce statistics for the wrong period. The dataset range is used only to
+report coverage and to warn when the requested interval falls partly or wholly outside
+the available data (*"İstenen aralığın bir kısmı veride yok"*).
 
 ### 5.4 Entity resolution (`R/helpers_pk_entity_resolver.R`)
 
@@ -853,32 +886,49 @@ match (100), but above token containment. If the same ASCII key maps to more tha
 canonical Turkish value, return every colliding value tied at 90; never select one by
 iteration order. The normal ambiguity-margin rule then requires clarification.
 
-**Scoring cascade** (`stringdist` is already in `required_packages`):
+**Scoring cascade** (`stringdist` is already in `required_packages`). Tiers are tested
+in order and the first matching tier wins. Let `J = |U ∩ C| / |U ∪ C|` for the folded
+user/candidate token sets, and let `d` be Levenshtein distance divided by the larger
+folded string length. Every score is an integer; the formulas below are the contract,
+not illustrative ranges:
 
-| Tier | Rule | Score |
+| Tier | Rule | Exact score |
 |---|---|---|
-| 1 | Exact Turkish-fold match | 100 |
-| 2 | Known alias from the validated local/approved alias registry | 95 |
-| 3 | Exact ASCII-secondary-key match | 90 |
-| 4 | All user tokens contained, order-free | 85–89 |
-| 5 | Token-set Jaccard ≥ 0.6 | 60–84 |
-| 6 | Normalized edit distance ≤ 0.2 (typos) | 50–69 |
+| 1 | Exact Turkish-fold match | `100` |
+| 2 | Known alias from the validated local/approved alias registry | `95` |
+| 3 | Exact ASCII-secondary-key match | `90` |
+| 4 | All user tokens contained, order-free, after tiers 1–3 fail | `min(89, 85 + floor(4 * J))` |
+| 5 | `0.60 <= J < 1`, after tier 4 fails | `min(84, 60 + floor(25 * (J - 0.60) / 0.40))` |
+| 6 | `0 < d <= 0.20`, after tiers 1–5 fail | `max(50, 69 - floor(19 * d / 0.20))` |
 
+The empty-token and zero-length cases are invalid inputs, not zero-score shortcuts.
 Token-set similarity outranks plain edit distance for long project names, where the
-right words appear in a different order. Contract fixtures include `kalip → kalıp`
-(score 90) and an ASCII-key collision that must clarify rather than auto-select.
+right words appear in a different order. Boundary fixtures pin the formulas:
+`J = 0.60 → 60`, a tier-5 value just below `1 → 84`, `d = 0.20 → 50`, and tier-4
+examples that produce both 85 and 89. Contract fixtures also include
+`kalip → kalıp` (score 90), an ASCII-key collision that must clarify, and scores on
+either side of every configured ambiguity/auto threshold so an implementation cannot
+choose a different interpolation while still claiming conformance.
 
 **Decision policy — this is the safety mechanism, not the scoring:**
 
 | Situation | Action |
 |---|---|
 | 1 | Exact code / ID match | Filter automatically |
-| 2 | Top ≥ `MERGEN_PK_RESOLVE_MIN_SCORE` **and** margin over #2 < `MERGEN_PK_RESOLVE_AMBIGUITY_MARGIN` | **Ask.** Render the tied candidates as chips, with a "Tümü" option |
-| 3 | The user's phrase is explicitly plural and 2–5 candidates score ≥ `MERGEN_PK_RESOLVE_MULTI_SCORE` | **Ask**, defaulting the candidate chips to "Tümü"; do not let a high-scoring first candidate suppress the rest |
+| 2 | Top ≥ `MERGEN_PK_RESOLVE_MIN_SCORE` **and** margin over #2 < `MERGEN_PK_RESOLVE_AMBIGUITY_MARGIN` | **Ask.** Render the tied candidates as chips; offer "Tümü" only when the complete tied set is within the resolved max-candidate limit |
+| 3 | The user's phrase is explicitly plural and at least 2 candidates score ≥ `MERGEN_PK_RESOLVE_MULTI_SCORE` | **Ask** before any union; do not let a high-scoring first candidate suppress the rest |
 | 4 | Request is singular (or lacks several strong candidates), Top ≥ `MERGEN_PK_RESOLVE_AUTO_SCORE`, and margin over #2 is clear | Filter automatically on that single canonical value |
 | 5 | `MERGEN_PK_RESOLVE_MIN_SCORE` ≤ Top < `MERGEN_PK_RESOLVE_AUTO_SCORE` with a clear margin | **Ask for confirmation**, with that one candidate pre-selected: *"Şunu mu kastettiniz: …?"* Never auto-filter on it |
 | 6 | Top < `MERGEN_PK_RESOLVE_MIN_SCORE` **and** the entity is the subject of the question | **Do not analyze.** Report that the value could not be resolved and offer the nearest candidates |
 | 7 | Top < `MERGEN_PK_RESOLVE_MIN_SCORE` and the entity was a secondary refinement | Proceed unfiltered **with prominent disclosure** |
+
+For rules 2–3, resolve `MERGEN_PK_RESOLVE_MAX_CANDIDATES` and count the **entire**
+strong/tied set before rendering. When the total is within the limit, show every member
+and a "Tümü" choice. When it exceeds the limit, show only the top configured number
+plus an explicit *"N aday daha var"* overflow indicator; do **not** let "Tümü" include
+hidden candidates and do not execute. Ask the user to narrow, page, or select until the
+confirmed set is within the limit. Tests cover exactly 2, exactly the configured maximum,
+and maximum-plus-one candidates.
 
 Rule 5 exists because it is the **most common** outcome for long Turkish project names
 matched by token-set or edit distance — for example, a top score of 75 against a
@@ -908,8 +958,9 @@ the plural multi-candidate rule (rule 3) is checked before single-candidate
 auto-acceptance (rule 4). Thus a plural family request with scores 92, 81 and 76 cannot
 silently collapse to the 92-point candidate merely because it clears the auto threshold.
 Likewise two candidates scoring 88 and 85 trigger clarification rather than an automatic
-union. A union is applied only when the user picks "Tümü", or when the filter plan
-contained several *distinct* phrases that each resolved unambiguously.
+union. A union is applied only when the user explicitly confirms a fully visible set,
+or when the filter plan contained several *distinct* phrases that each resolved
+unambiguously.
 
 The last two rows are deliberate. Analyzing 4,000 projects when the user asked about
 one is misleading even with a disclaimer, because every figure in the prose answers a
@@ -963,10 +1014,12 @@ Additional required behaviors:
 * **Fail closed on the role scope** (D6b): a role that implies a scope (`PY`, `KY-P`,
   `DIR-P`) must resolve a **non-`NULL`** scope before any predicate is skipped. An
   *unavailable* scope (permission query errored) aborts; an *empty* scope (user absent
-  from the permission table) yields **zero rows**, never all rows. Distinguish the two
-  in the user-facing message — "yetki bilgisi alınamadı" versus "tanımlı projeniz
-  yok" — and cover both in `test-pk-rls-failclosed-contract.R`. Today both cases leave
-  the scope `NULL` and silently disable the filter.
+  from the permission table) yields **zero rows**, never all rows. Internally distinguish
+  the causes for restricted telemetry and operations, but do not tell a scoped user
+  whether matching rows exist outside their authorization; the user-safe empty-result
+  contract is in §5.11. Cover unavailable and empty scope in
+  `test-pk-rls-failclosed-contract.R`. Today both cases leave the scope `NULL` and
+  silently disable the filter.
 * Validate `rls_columns` at startup **when a declared/generated result schema is
   available**. When it is not, mark the check pending and perform the same validation
   unconditionally against the actual result before request-time RLS. No-metadata boot
@@ -1008,6 +1061,19 @@ Examples        ~20-40 rows: top-N + bottom-N by primary measure + outliers +
                 fixed-seed STRATIFIED sample  (never head(500) — D18)
 Limitations     what this query cannot answer; what was truncated
 ```
+
+**Sparse/non-finite numeric measures have an explicit availability contract.** First
+coerce under the declared type and split finite values from missing/`NaN`/`Inf`,
+recording every excluded count. When `n_finite = 0`, emit status
+`unavailable_no_finite_values` and coverage only — no sum, mean, median, min, max,
+quantile, standard-deviation or outlier numeric fact. In particular,
+`sum(x, na.rm = TRUE) == 0` must never turn an all-missing measure into a factual zero.
+When `n_finite = 1`, sum/mean/median/min/max may be emitted with status
+`single_observation`; standard deviation, percentile spread, IQR and outlier facts are
+`insufficient_data` and carry no numeric value. For `n_finite >= 2`, compute each
+statistic through a guarded helper; any non-finite result becomes an unavailable status,
+never `NA`, `NaN` or `Inf` in a fact. Every fact/status carries the finite and excluded
+counts so prose cannot hide sparse coverage.
 
 Every numeric fact also carries a stable `fact_id` plus semantic provenance:
 `measure_capability`, display label, exact value, unit, aggregation, authorized/filter
@@ -1154,11 +1220,18 @@ produce.
    export and ask the user to narrow the request**. Never truncate at the export limit
    while promising a complete attachment. The prose and `Bilgi` state part counts or
    the explicit refusal.
-7. **Verify before serving.** Read every written part back with `readxl`; assert total
-   row count across parts, per-part column count, no duplicate/missing partition rows,
-   and sample-column checksums. On failure **do not serve the file** — fall back to
-   UTF-8-**BOM** CSV parts (Excel needs the BOM to detect UTF-8, the same rule as the
-   Bilge Yolaç `.txt` contract) and say so in the answer.
+7. **Verify before serving without deleting legitimate duplicates.** Before splitting,
+   assign every source row a stable temporary ordinal (`.pk_export_row_id`) in the exact
+   authorized, filtered frame. Read every written part back with `readxl`; assert total
+   row count, per-part column count, that every expected ordinal appears exactly once
+   across all parts, and sample-column checksums. Remove/hide the ordinal from the
+   served workbook and CSV after verification. If a writer path cannot retain that
+   temporary field, verify a multiset key of `(serialized row value, occurrence index)`
+   instead. Duplicate source rows and duplicate grain keys are valid data and must be
+   preserved; never deduplicate them to make verification pass. On failure **do not
+   serve the file** — fall back to UTF-8-**BOM** CSV parts (Excel needs the BOM to
+   detect UTF-8, the same rule as the Bilge Yolaç `.txt` contract) and say so in the
+   answer.
 8. **Neutralize spreadsheet formulas in the CSV fallback, without corrupting typed
    values.** Apply neutralization only to cells whose **original column is character**
    and whose text begins with `=`, `+`, `-`, `@`, a tab or a carriage return. Prefix
@@ -1334,8 +1407,15 @@ start in `block`: a legitimate phrase such as *"yaklaşık üçte biri"* can tri
 matcher, and silently withholding a correct answer is its own failure mode. Acceptance
 criteria must name the active mode rather than asserting an absolute.
 
-**Empty-result taxonomy** — four distinct messages, not one: no such data · none
-within your authorization · filter matched nothing · query returned nothing.
+**Empty-result taxonomy is richer internally than it is user-visible.** Restricted
+telemetry may distinguish `no_rows_pre_rls`, `out_of_scope_only`, `filter_zero` and
+`query_zero` for diagnosis. A scoped user must **never** learn whether matching rows
+exist outside their authorization: pre-RLS zero and out-of-scope-only therefore render
+the same message, for example *"İstenen ölçütlerle erişebildiğiniz veriler içinde sonuç
+bulunamadı."* A zero result after an applied user filter may say that the filter matched
+no accessible rows, and a query execution that legitimately returned no rows may say so,
+but neither wording may imply the existence or count of unauthorized rows. Errors and
+unavailable RLS state remain separate safe failures, not empty-result variants.
 
 ---
 
@@ -1354,7 +1434,7 @@ listeyi ver"*
 | 4 SQL | 41,930 rows (`row_cap` 50,000 not hit) |
 | 5 Actual result + RLS | Returned columns satisfy `column_meta` and `rls_columns`; then `Yetki = PY` → 12,405 rows |
 | 6 Filter plan | `AND[ OR[ ProjeAdi resolve "elektronik harp modernizasyon" ], BaslangicTarihi range 2024-01-01..2024-12-31 ]` — the date phrase *"2024'te"* resolved **in R** |
-| 7 Resolution | `ELEKTRONİK HARP SİSTEMLERİ MODERNİZASYON PROJESİ` — score **88** (declared token-containment tier), margin **18** over #2 → clears 85 and the margin gate → **auto-accept**, single canonical value |
+| 7 Resolution | `ELEKTRONİK HARP SİSTEMLERİ MODERNİZASYON PROJESİ` — score **88** (declared token-containment formula), margin **18** over #2 → clears 85 and the margin gate → **auto-accept**, single canonical value |
 | 8 Filtering | `ProjeAdi %in% c(...)` AND date range → 312 rows. Provenance recorded per leaf |
 | 9 Packet | Stats over **all 312 rows**: 47 distinct `KaynakAdi`, `KalanIscilik_sa` sum 18,420.5 (additive ✓), `TamamlanmaYuzde` weighted mean 61.3% (**not** summed; positive finite weights available), per-month histogram, 4 IQR outliers, 30 representative rows (top/bottom/outlier/stratified, seed 42) |
 | 10 Answer | 312 > `MERGEN_PK_DT_MAX_ROWS` (200) → **attachment path**: XLSX plus a 10-row inline preview, not a `DT` widget. The explicit *"listeyi ver"* would have forced the attachment in any case. Prose cites only packet facts |
@@ -1451,20 +1531,21 @@ delete coverage.
 | Test | Covers |
 |---|---|
 | `test-pk-text-turkish-behavior.R` | `pk_tr_fold()` on İ/I/ı/i, composed/decomposed NFC equivalents, clitics, suffixes; locale independence; Phase-3a load-order availability |
-| `test-pk-filter-compile-behavior.R` | **OR-in-column / AND-across** (D1), complementary same-column range bounds stay AND, multi-value (D2), ranges, NOT, no-op detection |
-| `test-pk-entity-resolver-behavior.R` | all 6 scoring tiers, exact ASCII-fold score 90 + collision clarification, validated local/approved alias registry + collision rejection, every decision-policy branch under overridden min/auto thresholds including plural-before-auto, invalid threshold ordering fails safe, code-exactness |
-| `test-pk-query-selection-contract.R` | resolved `MERGEN_PK_SELECT_RECALL_N` controls both Pass-A requested IDs and Pass-B candidate input; non-default value 3 is honored; no literal five; stable IDs and alternate confidences |
+| `test-pk-filter-compile-behavior.R` | **OR-in-column / AND-across** (D1), complementary same-column range bounds stay AND, multi-value (D2), ranges, NOT, no-op detection; deterministic Turkish numeric/unit parsing including ambiguous/reversed bounds |
+| `test-pk-entity-resolver-behavior.R` | all 6 scoring tiers with exact formula boundary fixtures, exact ASCII-fold score 90 + collision clarification, validated local/approved alias registry + collision rejection, every decision-policy branch under overridden min/auto thresholds including plural-before-auto and max-candidate overflow, invalid threshold ordering fails safe, code-exactness |
+| `test-pk-query-selection-contract.R` | resolved `MERGEN_PK_SELECT_RECALL_N` (minimum 2) controls both Pass-A requested IDs and Pass-B candidate input; non-default value 3 is honored; fewer than two validated confidences returns `no_runner_up`; no literal five; stable IDs and alternate confidences |
 | `test-pk-filter-plan-contract.R` | typed tree validation; **rejects any executable expression** (D5) |
-| `test-pk-rls-failclosed-contract.R` | missing declared RLS column → **abort, not skip** (D6); startup schema check may be pending only when schema is unavailable, but request-time validation remains unconditional; an unavailable role scope aborts and an empty role scope yields **zero** rows, never all rows (D6b); `NA` in `Yetki` does not error; **no configuration value anywhere restores fail-open filtering** |
+| `test-pk-rls-failclosed-contract.R` | missing declared RLS column → **abort, not skip** (D6); startup schema check may be pending only when schema is unavailable, but request-time validation remains unconditional; an unavailable role scope aborts and an empty role scope yields **zero** rows, never all rows (D6b); scoped user messaging cannot distinguish out-of-scope-only from no accessible rows; `NA` in `Yetki` does not error; **no configuration value anywhere restores fail-open filtering** |
 | `test-pk-sql-readonly-gate-contract.R` | shared cross-engine parser/classifier allows only a single read-only SELECT/CTE-SELECT; rejects data-modifying CTEs, `SELECT INTO`, multiple statements, write/DDL/DCL/BACKUP/RESTORE/EXEC/sp_/xp_ forms; harmless keywords inside literals/comments do not create false positives; unknown syntax fails closed; generator uses the same gate (D23) |
-| `test-pk-analysis-packet-behavior.R` | additive vs non-additive; weighted means exclude disclosed missing/zero pairs, reject negative/non-finite weights, and return unavailable when no positive weight remains; stable `latest_by` + unique `latest_tie_by`; duplicate newest-row ties return `ambiguous_latest`; structured fact IDs and semantic context; budget accountant; stratified sample; `FİLTRELEME UYARISI` survives degradation (D7, D8) |
+| `test-pk-analysis-packet-behavior.R` | additive vs non-additive; zero/one/finite sparse-measure availability contract (no all-missing zero, no `NA`/`NaN`/`Inf` fact); weighted means exclude disclosed missing/zero pairs, reject negative/non-finite weights, and return unavailable when no positive weight remains; stable `latest_by` + unique `latest_tie_by`; duplicate newest-row ties return `ambiguous_latest`; structured fact IDs and semantic context; budget accountant; stratified sample; `FİLTRELEME UYARISI` survives degradation (D7, D8) |
 | `test-pk-numeric-provenance-contract.R` | value plus fact ID/capability/unit/aggregation/scope/group/date validation; same token used for a wrong measure is rejected; warn/block fallbacks are deterministic |
-| `test-pk-export-xlsx-behavior.R` | native types, Turkish round-trip, writer-specific percentage contract, no pre-RLS count in `Bilgi`, multipart completeness or explicit refusal above the per-part limit, verification failure → CSV fallback, character formula neutralization while numeric `-125.50` remains numeric, **not served from `bilge_yolac_downloads`** |
-| `test-pk-query-meta-contract.R` | pre-execution declared/generated-schema validation is distinct from mandatory post-fetch actual-column validation; startup validation covers duplicate ids, capability registry/column/requirements consistency including exact measure/date/output-dimension capabilities, semantic requirements without mappings return `unknown_no_semantic_metadata`, optional local alias layer cannot alter non-alias fields, tracked aliases are synthetic/approved, conditional schema-dependent checks, actual `column_meta` match when schema exists, alias target/collision rules |
+| `test-pk-export-xlsx-behavior.R` | native types, Turkish round-trip, writer-specific percentage contract, no pre-RLS count in `Bilgi`, multipart completeness by stable row ordinal while preserving legitimate duplicate rows, explicit refusal above the per-part limit, verification failure → CSV fallback, character formula neutralization while numeric `-125.50` remains numeric, **not served from `bilge_yolac_downloads`** |
+| `test-pk-query-meta-contract.R` | pre-execution declared/generated-schema validation is distinct from mandatory post-fetch actual-column validation; startup validation covers duplicate ids, capability registry/column/requirements consistency including exact measure/date/output-dimension capabilities, semantic requirements without mappings return `unknown_no_semantic_metadata`, optional local alias layer cannot alter non-alias fields, tracked aliases are synthetic/approved, conditional schema-dependent checks, actual `column_meta` match when schema exists, alias target/collision rules; arbitrary prefix samples cannot prove identifiers/null-free/low-cardinality metadata |
 | `test-pk-deep-reconciliation-contract.R` | cross-query arithmetic requires the same stable measure capability/fact identity and compatible scope; equal overlapping facts deduplicate deterministically; conflicting values emit `conflicting_fact` and refuse the combined figure |
 | `test-pk-async-deadline-contract.R` | each normal/deep SQL timeout is clamped to the remaining whole-analysis deadline, zero residual budget prevents dispatch, cancellation/error releases the connection |
 | `test-pk-degradation-disclosure-contract.R` | Phase-0 typed filter adapter distinguishes `no_filter`, `timeout` and `error`; every degradation path reaches the user-visible answer (D9) |
 | `test-pk-result-size-preflight-contract.R` | variable-width columns require declared maximum-width upper bounds or bounded chunk fetch; sample/average width cannot authorize materialization; breach aborts before retaining the over-limit chunk |
+| `test-pk-v1-compatibility-contract.R` | with `MERGEN_PK_ENGINE=v1`, D1–D5/D7–D9/D12 behavior remains byte/shape compatible; only unconditional RLS fail-closed, SQL read-only refusal, ODBC redaction and Phase-0 observation/status plumbing may differ |
 
 **Turkish golden set** — the thing that makes "world class" measurable.
 
@@ -1532,15 +1613,25 @@ D1 (OR-in-column, complementary range bounds stay AND) · D2 (multi-value) · D3
 (budget + warning) · D9 (consume the Phase-0 typed timeout/error status and prevent
 silent full-set continuation) · D12 (dead code) · D22 (redact ODBC errors) · **D23
 (shared statement-aware read-only SQL classifier for v1/v2/deep/generator)**.
-*Acceptance:* the new offline tests pass; a two-value same-column question returns the
-**union** of both; a nonsense value on the query's **primary** filter column produces an
-explicit *"çözümlenemedi"* response — **never an empty screen, and never a full-set
-analysis**, because statistics over every project answer a different question than the
-one asked (§5.4, rule 6). A nonsense value on a *secondary* filter is dropped with
-prominent disclosure and the analysis continues. The SQL classifier rejects
+
+**Engine boundary is explicit.** Only D6/D6b, D22 and D23 are unconditional
+cross-engine safety changes (with Phase-0 observation/status plumbing already owned by
+Phase 0). D1–D5, D7–D9 and D12 are **v2 behavior** and must remain behind
+`MERGEN_PK_ENGINE=v2`. Shared helpers may be extracted, but the v1 dispatch and its
+selection/filter decisions must produce the pre-existing result when the engine flag is
+`v1`; do not silently “improve” v1 while touching common files.
+
+*Acceptance:* the new offline tests pass; under v2, a two-value same-column question
+returns the **union** of both; a nonsense value on the query's **primary** filter column
+produces an explicit *"çözümlenemedi"* response — **never an empty screen, and never a
+full-set analysis**, because statistics over every project answer a different question
+than the one asked (§5.4, rule 6). A nonsense value on a *secondary* filter is dropped
+with prominent disclosure and the analysis continues. The SQL classifier rejects
 single-statement side effects (`SELECT INTO` included), data-modifying CTEs, multiple
 statements and every write/DDL/DCL/backup/execute fixture before any connection executes
-it, independent of whether the read-only DB principal is already available.
+it, independent of whether the read-only DB principal is already available. A dedicated
+v1 compatibility fixture proves that, apart from RLS fail-closed, SQL refusal, safe error
+redaction and observation-only status/telemetry, v1 decisions and outputs are unchanged.
 
 Phase 1 decides primary-versus-secondary from `primary_entity` (available because
 Phase 3a lands first), falling back to "the sole filter leaf is primary" when metadata
@@ -1598,7 +1689,8 @@ Phase-1 SQL classifier, never writes the alias overlay, and is unit-tested again
 fake query library with a stubbed DBI connection; startup fails on an invalid contract
 when the relevant schema exists; Tier-0 inference produces a usable structural
 `column_meta` for a query with no metadata at all but does not invent semantic
-capability IDs.
+capability IDs or promote arbitrary prefix-sample observations into authoritative
+identifier/null-rate/low-cardinality claims.
 *Acceptance (VM):* generator runs clean over all 169 queries; health report is empty
 or every finding is triaged.
 
@@ -1608,11 +1700,13 @@ validated local/approved alias registry · decision policy · clarification chip
 `chat_history` wiring for follow-up refinement (D11).
 *Acceptance:* long project names resolve from partial Turkish phrases; aliases exercise
 the 95-point tier without collisions or leaking production targets to Git; composed and
-decomposed Turkish strings resolve identically; `kalip → kalıp` scores exactly 90 and an
-ASCII-key collision clarifies; plural multi-candidate requests are evaluated before
-single-candidate auto-acceptance; every branch follows validated overridden configured
-thresholds; invalid threshold relationships fail safe before resolution; ambiguity
-produces chips, not a guess; codes are never fuzzed.
+decomposed Turkish strings resolve identically; every fuzzy tier matches the exact score
+formula and boundary fixtures; `kalip → kalıp` scores exactly 90 and an ASCII-key
+collision clarifies; plural multi-candidate requests are evaluated before
+single-candidate auto-acceptance; a set above `MERGEN_PK_RESOLVE_MAX_CANDIDATES` exposes
+overflow and cannot hide candidates behind "Tümü"; every branch follows validated
+overridden configured thresholds; invalid threshold relationships fail safe before
+resolution; ambiguity produces chips, not a guess; codes are never fuzzed.
 
 ### Phase 5 — Selection rebuild (2–3 days)
 Two-pass AI · stable ids (D13) · exact measure/date/output-dimension capability
@@ -1623,9 +1717,10 @@ labor, start-vs-finish dates and required person/resource output dimensions sele
 stable capability ID rather than lexical similarity, subject entity or a generic date
 boolean; metadata-free semantic requirements refuse before SQL; reordering
 `library_queries.R` changes nothing; the resolved `MERGEN_PK_SELECT_RECALL_N` value is
-honored by both passes (including a non-default value of 3); recall@N is measured on the
-golden set, including a case whose distinguishing phrase appears only in
-`sample_questions`.
+at least 2 and honored by both passes (including a non-default value of 3); a missing
+validated runner-up returns `no_runner_up` rather than bypassing the margin gate;
+recall@N is measured on the golden set, including a case whose distinguishing phrase
+appears only in `sample_questions`.
 
 ### Phase 6 — Non-blocking + performance (2–3 days) — **highest runtime risk**
 Async dispatch (D15) · worker-visible cancellation + SQL deadline + guaranteed
@@ -1686,7 +1781,7 @@ by serializing a helper closure (same rule as `MERGEN_LLM_TIMEOUT_SEC`).
 | `MERGEN_PK_SHADOW_MODE` | `false` | Run v2 alongside v1, log the comparison, show v1 (§10) |
 | `MERGEN_PK_SHADOW_SAMPLE_PCT` | `20` | Percentage of requests shadowed |
 | `MERGEN_PK_SELECT_TIMEOUT_SEC` | `20` | Per-pass selection LLM timeout (currently **absent** — D14) |
-| `MERGEN_PK_SELECT_RECALL_N` | `5` | Candidates requested by Pass A and carried unchanged into Pass B; both passes use the resolved value, never a literal 5 |
+| `MERGEN_PK_SELECT_RECALL_N` | `5` | Candidates requested by Pass A and carried unchanged into Pass B; must resolve to at least 2 so the runner-up margin can be enforced; both passes use the resolved value, never a literal 5 |
 | `MERGEN_PK_SELECT_MIN_CONFIDENCE` | `50` | Below this → clarify instead of executing |
 | `MERGEN_PK_SELECT_MIN_MARGIN` | `15` | Minimum gap to the runner-up before auto-executing |
 | `MERGEN_PK_FILTER_TIMEOUT_SEC` | `20` | Filter-plan LLM timeout (today's `8` is too aggressive — D9) |
@@ -1700,7 +1795,7 @@ by serializing a helper closure (same rule as `MERGEN_LLM_TIMEOUT_SEC`).
 | `MERGEN_PK_RESOLVE_MULTI_SCORE` | `70` | Plural candidate threshold; candidates are presented for confirmation, not silently unioned |
 | `MERGEN_PK_RESOLVE_MIN_SCORE` | `40` | Below this → unresolved; every resolver branch reads this resolved value, never a literal 40 |
 | `MERGEN_PK_RESOLVE_AMBIGUITY_MARGIN` | `10` | Top-two gap below which we ask instead of guessing |
-| `MERGEN_PK_RESOLVE_MAX_CANDIDATES` | `5` | Maximum canonical values in one confirmed OR group |
+| `MERGEN_PK_RESOLVE_MAX_CANDIDATES` | `5` | Maximum fully visible/confirmable canonical values in one OR group; larger sets require narrowing/paging and cannot hide values behind “Tümü” |
 | `MERGEN_PK_NOOP_FILTER_RATIO` | `0.95` | Filter retaining more than this share is reported as ineffective |
 | `MERGEN_PK_ENABLED` | `true` | Master on/off for the whole tool. `false` disables Proje ve Kaynak Analizi with a clear Turkish message. **This is the only rollback for an RLS contract problem** — there is deliberately no flag that restores fail-open filtering |
 | `MERGEN_PK_ROW_CAP` | `50000` | SQL-side row cap; per-query `row_cap` overrides |
@@ -1720,7 +1815,7 @@ by serializing a helper closure (same rule as `MERGEN_LLM_TIMEOUT_SEC`).
 | `MERGEN_PK_LOG_QUESTION_TEXT` | `false` | **Privacy:** store the raw question, or only a keyed fingerprint. With `false`, the fingerprint MUST be a normalized, server-keyed **HMAC** with key rotation — a plain unsalted hash does not protect low-entropy prompts drawn from a finite project vocabulary, since anyone who can read the table can hash the candidate questions and recover matches. If no key can be managed, omit the fingerprint entirely |
 | `MERGEN_PK_NUMERIC_PROVENANCE_MODE` | `log` | `off` / `log` / `warn` / `block` — enforcement level for answer facts that are absent or semantically mis-cited (§5.11). Ship in `log`, move to `warn` once the false-positive rate is calibrated on the VM |
 | `MERGEN_PK_META_MODE` | `sample` | Generator mode: `sample` or `describe` |
-| `MERGEN_PK_META_SAMPLE_ROWS` | `500` | Rows fetched per query in `sample` mode |
+| `MERGEN_PK_META_SAMPLE_ROWS` | `500` | Maximum rows fetched per query in `sample` mode; the sample method and evidentiary limits must be recorded |
 
 **SQL timeout precedence is bounded by the remaining whole-analysis budget.** At
 analysis start compute an absolute deadline. Immediately before every ODBC statement —
@@ -1759,11 +1854,17 @@ because gating them behind `v2` would defeat their purpose:
 | ODBC error redaction (D22) | none — always on | Same |
 | Telemetry + provenance footer + typed filter-adapter status (Phase 0) | `MERGEN_PK_TELEMETRY` (default `true`) for writes; status/disclosure remains fail-soft | Instrumentation behind `v2` records nothing while `v1` is the default. Distinguishing `ok_no_filter` from timeout/error is required for Phase-0 telemetry to be truthful, and does not change v1's selection/filter decision |
 
-All four are **observation-only or fail-safe**; none changes a v1 query-selection or
-filter-selection decision. That is the precise sense in which v1 is "unchanged" — its
-decision logic is untouched, while it may be observed, may refuse unsafe SQL, and may
-refuse rather than over-share. Each has its own independent rollback: operational
-misconfiguration is fixed or the tool is disabled; unsafe execution is never restored.
+**No other Phase-1 behavioral fix crosses the engine boundary.** D1–D5, D7–D9 and
+D12 are activated only by `MERGEN_PK_ENGINE=v2`; common helper extraction must dispatch
+through an explicit engine adapter and preserve v1 outputs. A regression test compares
+v1 before/after fixtures and permits differences only for the four rows above.
+
+All four cross-engine changes are **observation-only or fail-safe**; none changes a v1
+query-selection or filter-selection decision. That is the precise sense in which v1 is
+"unchanged" — its decision logic is untouched, while it may be observed, may refuse
+unsafe SQL, and may refuse rather than over-share. Each has its own independent rollback:
+operational misconfiguration is fixed or the tool is disabled; unsafe execution is
+never restored.
 
 Rollback is one `.Renviron` line plus a **full R process restart** (a browser refresh
 is not enough — same rule as the DB encoding variables).
@@ -1973,14 +2074,15 @@ Each session must:
    forgot to update the file.
 3. Read this document **and re-verify** the defects it is about to fix (§0.1). Report
    any that no longer reproduce.
-4. Implement exactly one phase. **v2 pipeline work goes behind `MERGEN_PK_ENGINE=v2`;
-   the four cross-engine changes must NOT** — RLS fail-closed (D6/D6b, unconditional),
-   statement-aware SQL classifier (D23, unconditional), ODBC error redaction (D22), and
-   observation-only telemetry plus typed filter status (`MERGEN_PK_TELEMETRY`,
-   fail-soft). Gating those behind `v2` would leave the fail-open RLS path and unsafe
-   SQL validator live, while collecting incomplete usage data for as long as `v1` is
-   the default, which is the entire period this work runs. See §10.
-5. Add the offline tests listed for that phase in §7.
+4. Implement exactly one phase. **Only the four §10 cross-engine changes may affect
+   v1:** RLS fail-closed (D6/D6b, unconditional), statement-aware SQL classifier (D23,
+   unconditional), ODBC error redaction (D22), and observation-only telemetry plus
+   typed filter status (`MERGEN_PK_TELEMETRY`, fail-soft). All other Phase-1 behavior —
+   D1–D5, D7–D9 and D12 — goes behind `MERGEN_PK_ENGINE=v2`, even when a helper is
+   shared. Gating a safety change behind `v2` would leave a vulnerability live; letting
+   a non-safety fix leak into v1 would violate the rollback contract. See §10.
+5. Add the offline tests listed for that phase in §7, including the v1 compatibility
+   fixture whenever a shared Phase-1 file changes.
 6. Run `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`,
    `bash tools/seam_doctor.sh`, the maintainability ratchet test, and
    `bash tools/ai_validate.sh quick` (or `cloud-quick` when heavy packages cannot
@@ -2049,12 +2151,12 @@ Plus a short header listing, in order, which phases are already merged into
 ### Resolved
 
 | # | Decision |
-|---|---|---|
+|---|---|
 | R1 | **Phase 0 (telemetry) ships first, with typed timeout/error/no-filter status plumbing.** It is cheap, it makes today's silent failures visible immediately, and its usage data is what prioritizes the Phase 3 metadata work. |
 | R2 | **`writexl` is the export baseline** — already in `required_packages`, correct native types, multi-sheet, zero new dependency (`renv.lock` is VM-generated, so a cloud session must not add packages). `openxlsx` formatting is gated behind `requireNamespace()`: plain-but-correct without it, polished with it. Phase-2 acceptance is writer-specific; `readxl` cannot prove rendered styles. |
 | R3 | **`keywords` / `sample_questions` are optional and must not be generated by the on-prem LLMs** (§5.1). When present, a bounded sample-question representation is included in Pass A so recall cannot lose terminology that appears only there. |
 | R4 | **Metadata uses four runtime layers** — committed empty scaffold `R/library_query_meta_auto.R`, gitignored generator output `R/library_query_meta_local.R`, tracked approved/synthetic curation `R/library_query_meta.R`, and the gitignored operator-maintained production alias overlay `R/library_query_aliases_local.R`. The generator writes only its local metadata output, so production schema statistics and alias targets cannot reach GitHub through a routine commit (§5.1). |
-| R5 | **The v2 *pipeline* ships behind `MERGEN_PK_ENGINE`, with `v1` remaining the default** until VM validation (§10). Four things sit outside that gate by design because they must apply to both engines: RLS fail-closed, the statement-aware SQL classifier, error redaction, and observation-only instrumentation plus typed filter status. |
+| R5 | **The v2 *pipeline* ships behind `MERGEN_PK_ENGINE`, with `v1` remaining the default** until VM validation (§10). Exactly four things sit outside that gate: RLS fail-closed, the statement-aware SQL classifier, error redaction, and observation-only instrumentation plus typed filter status. Every other Phase-1 behavioral correction is v2-only. |
 | R6 | **Capability validation uses stable ASCII-safe IDs for measures, date meanings and required output dimensions.** `requirements.measures` / `requirements.dates` / `requirements.dimensions` and `column_meta$capability` share one allowlisted registry, so planned versus remaining labor, start versus finish dates, and person/resource output cannot be confused by labels, subject entities, generic booleans or lexical matching. |
 
 ### Still open
