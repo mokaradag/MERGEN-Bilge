@@ -6,23 +6,31 @@ on:
       - pk/rebuild
     paths:
       - .github/workflows/pr694-final-codex-fixes.yml
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+    paths:
+      - .github/workflows/pr694-final-codex-fixes.yml
 
 permissions:
   contents: write
 
 jobs:
   patch-document:
+    if: github.event_name == 'push' || github.head_ref == 'pk/rebuild'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: pk/rebuild
-          fetch-depth: 2
+          fetch-depth: 3
 
       - name: Recover and run the reviewed patch
         shell: bash
         run: |
-          git show HEAD^:.github/workflows/pr694-final-codex-fixes.yml > /tmp/pr694-patch-source.yml
+          git show 82412f27bc94c98bf4f2706ec4a91b7b1007ec46:.github/workflows/pr694-final-codex-fixes.yml > /tmp/pr694-patch-source.yml
           python - <<'PY'
           from pathlib import Path
 
