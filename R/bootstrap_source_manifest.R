@@ -158,6 +158,22 @@ source_manifest_optional_groups <- function(envir = environment()) {
   gruplar
 }
 
+# Yokluğu BEKLENEN opsiyonel grup adları. Bunlar için eksiklik uyarısı
+# YAZILMAZ: gitignore'lu, VM'e özgü dosyalardır ve her bulut/CI checkout'unda
+# tasarım gereği bulunmazlar. Uyarı bastırma yalnızca MESAJI etkiler; dosya
+# yine opsiyoneldir ve eksikken atlanır.
+source_manifest_expected_absent_groups <- function(envir = environment()) {
+  adlar <- get0(
+    "source_manifest_expected_absent_source_groups",
+    envir = envir,
+    inherits = TRUE,
+    ifnotfound = character(0)
+  )
+
+  if (!is.character(adlar) || !length(adlar)) return(character(0))
+  adlar
+}
+
 # Eksik opsiyonel dosya uyarısının süreç başına bir kez yazılmasını sağlar.
 .source_manifest_warned <- new.env(parent = emptyenv())
 
@@ -197,13 +213,20 @@ source_manifest_present_paths <- function(paths, repo_root = getwd()) {
 
   # Eksik üyesi olan opsiyonel grupların tüm üyeleri düşer.
   eksik_grup_uyeleri <- character(0)
-  for (grup in source_manifest_optional_groups()) {
-    grup <- enc2utf8(as.character(grup %||% character(0)))
+  gruplar <- source_manifest_optional_groups()
+  beklenen_eksik <- source_manifest_expected_absent_groups()
+  grup_adlari <- names(gruplar) %||% rep("", length(gruplar))
+
+  for (grup_index in seq_along(gruplar)) {
+    grup <- enc2utf8(as.character(gruplar[[grup_index]] %||% character(0)))
     if (!length(grup)) next
     eksikler <- grup[!file.exists(file.path(repo_root, grup))]
     if (!length(eksikler)) next
 
     eksik_grup_uyeleri <- c(eksik_grup_uyeleri, grup)
+
+    # Yokluğu beklenen gruplar sessizce atlanır (bkz. yukarıdaki açıklama).
+    if (grup_adlari[grup_index] %in% beklenen_eksik) next
 
     # SESSİZ DEĞİL: opsiyonel grup düştüğünde uygulama açılır ama o katmanın
     # sertleştirmeleri DEVRE DIŞI kalır. Operatör bunu fark edemezse çalışma

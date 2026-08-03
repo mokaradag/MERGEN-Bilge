@@ -149,6 +149,27 @@ source_manifest_sections <- list(
     "R/helpers_database.R"
   ),
 
+  # pk_query_metadata: Proje/Kaynak Analizi sorgu metadata SÖZLEŞMESİ (Faz 3a).
+  # Sıra master plan §6 tarafından zorunlu kılınmıştır: Türkçe katlama
+  # yardımcısı önce yüklenir (alias anahtarları onunla normalleştirilir),
+  # ardından dört metadata/alias veri katmanı iskelet -> üretilen -> küre
+  # edilmiş -> yerel alias sırasıyla gelir ve hepsi R/config_sql_loader.R
+  # (bir sonraki bölüm) öncesinde biter; birleştirme/doğrulama orada çağrılır.
+  #
+  # Yerel iki dosya BİLİNÇLİ olarak opsiyoneldir: üretimden türetilmiş şema
+  # istatistikleri ve kurumsal kanonik adlar taşıdıkları için gitignore'ludur
+  # ve bulut checkout'unda YOKTUR. Yoklukları normaldir, hata değildir.
+  pk_query_metadata = c(
+    "R/helpers_pk_text_turkish.R",
+    "R/helpers_pk_query_meta_schema.R",
+    "R/helpers_pk_query_meta_access.R",
+    "R/library_query_meta_auto.R",
+    "R/library_query_meta_local.R",
+    "R/library_query_meta.R",
+    "R/library_query_aliases_local.R",
+    "R/helpers_pk_query_meta.R"
+  ),
+
   # sql_library: SQL kütüphane sorguları ve SQL loader.
   sql_library = c(
     "R/library_queries.R",
@@ -259,6 +280,10 @@ source_manifest_sections <- list(
     "R/helpers_pk_telemetry_record.R",
     "R/helpers_pk_telemetry_base.R",
     "R/helpers_pk_telemetry.R",
+    # Derin analiz: saf detay seviyesi kataloğu ve saf bağlam/prompt kurucu,
+    # orkestratörden ÖNCE yüklenir (bakım borcu ratchet'i için bölünmüştür).
+    "R/helpers_deep_analysis_detail.R",
+    "R/helpers_deep_analysis_context.R",
     "R/helpers_deep_analysis.R",
     "R/helpers_pk_analysis_core.R",
     "R/helpers_pk_analysis_security_summary.R",
@@ -709,7 +734,28 @@ source_manifest_optional_source_groups <- list(
   codex_hardening = c(
     "R/helpers_claude_code_codex_runtime_fixes.R",
     "R/helpers_claude_code_codex_output_fixes.R"
-  )
+  ),
+
+  # Faz 3a: üreticinin (generator) VM'de yazdığı sorgu metadata envanteri.
+  # Gerçek sütun adları, kardinalite ve null oranları taşır; gitignore'ludur.
+  pk_query_meta_local = "R/library_query_meta_local.R",
+
+  # Faz 3a: operatörün VM'de tuttuğu üretim alias -> kanonik değer haritaları.
+  # Kurumsal proje/program adları taşır; gitignore'ludur ve üretici ASLA yazmaz.
+  pk_query_aliases_local = "R/library_query_aliases_local.R"
+)
+
+# Yokluğu BEKLENEN opsiyonel gruplar.
+#
+# codex_hardening eksikse çalışma kopyası bozuktur ve bu GÜRÜLTÜLÜ bildirilir.
+# Buradaki gruplar ise tam tersidir: gitignore'lu, VM'e özgü dosyalardır ve her
+# bulut/CI checkout'unda TASARIM GEREĞİ yoktur. Onlar için her boot'ta uyarı
+# yazmak, gerçek bir sorunu gösteren codex_hardening uyarısını gürültüye
+# boğardı. Bu liste yalnızca MESAJI susturur; dosyalar yine opsiyoneldir ve
+# eksikken bölümün geri kalanı normal şekilde yüklenir.
+source_manifest_expected_absent_source_groups <- c(
+  "pk_query_meta_local",
+  "pk_query_aliases_local"
 )
 
 source_manifest_optional_source_paths <- unlist(

@@ -192,6 +192,7 @@ mergen_seam_registry <- function() {
       manifest_sections = c(
         "mcp_tools",
         "chartlab_helpers",
+        "pk_query_metadata",
         "analysis_helpers",
         "module_analysis"
       ),
@@ -201,11 +202,14 @@ mergen_seam_registry <- function() {
         "tests/testthat/test-mcp-bootstrap-refactor-contract.R",
         "tests/testthat/test-mcp-session-user-id-contract.R",
         "tests/testthat/test-chartlab-spec-refactor-contract.R",
-        "tests/testthat/test-pk-analysis-security-summary-contract.R"
+        "tests/testthat/test-pk-analysis-security-summary-contract.R",
+        "tests/testthat/test-pk-text-turkish-behavior.R",
+        "tests/testthat/test-pk-query-meta-contract.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-mcp-excel-resolve.R\")",
-        "testthat::test_file(\"tests/testthat/test-pk-analysis-security-summary-contract.R\")"
+        "testthat::test_file(\"tests/testthat/test-pk-analysis-security-summary-contract.R\")",
+        "testthat::test_file(\"tests/testthat/test-pk-query-meta-contract.R\")"
       ),
       related_seams = c("dosya_yasam_dongusu", "sohbet_llm_akis")
     ),

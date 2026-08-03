@@ -11,10 +11,10 @@
 #           bağımlılığı yoktur ve ortam değerleri future worker içinde
 #           doğrudan Sys.getenv() ile okunur (kapanış serileştirilmez).
 #
-# Not: Faz 0 yalnızca gerçekten TÜKETTİĞİ anahtarları kaydeder. Örneğin
-#      MERGEN_PK_FILTER_TIMEOUT_SEC burada YOKTUR; onu Faz 0'da tüketmek v1
-#      motorunun filtre sonuçlarını değiştirirdi ve bu, master planın §10
-#      motor sınırı sözleşmesine aykırıdır.
+# Not: Bu dosya yalnızca gerçekten TÜKETİLEN anahtarları kaydeder. Örneğin
+#      MERGEN_PK_FILTER_TIMEOUT_SEC burada YOKTUR; onu v1'de tüketmek motorun
+#      filtre sonuçlarını değiştirirdi ve bu, master planın §10 motor sınırı
+#      sözleşmesine aykırıdır.
 # ==============================================================================
 
 # Desteklenen anahtarların tek kaynağı. Yeni faz yeni anahtar eklerken bu
@@ -44,6 +44,13 @@ pk_config_spec <- list(
   MERGEN_PK_TELEMETRY_HMAC_KEY_ID = list(
     type = "character",
     default = "k1"
+  ),
+  # Sorgu sonucu satır tavanı. Ağır bir sorgu kendi tavanını metadata ile
+  # taşıyabilir; bu yüzden öncelik zincirinin ilk basamağı sorgu metadatasıdır.
+  MERGEN_PK_ROW_CAP = list(
+    type = "integer",
+    default = 50000L,
+    min = 1L
   )
 )
 
@@ -60,6 +67,7 @@ pk_config_option_key <- function(key) {
 # Mantıksal değer ayrıştırma; Türkçe operatör alışkanlıkları da desteklenir.
 .pk_config_as_logical <- function(value) {
   if (is.logical(value) && length(value) == 1L && !is.na(value)) return(value)
+  if (length(value) != 1L) return(NULL)
 
   txt <- tolower(trimws(as.character(value)[1]))
   if (is.na(txt) || !nzchar(txt)) return(NULL)
@@ -70,12 +78,17 @@ pk_config_option_key <- function(key) {
   NULL
 }
 
-# Tam sayı ayrıştırma; sınır dışı/çözümlenemeyen değer NULL döner (varsayılana düşer).
+# Tam sayılar yuvarlanmaz. Kesirli, taşan veya birden çok değer geçersizdir.
 .pk_config_as_integer <- function(value, spec) {
+  if (length(value) != 1L) return(NULL)
+
   num <- suppressWarnings(as.numeric(as.character(value)[1]))
   if (length(num) != 1L || is.na(num) || !is.finite(num)) return(NULL)
+  if (!identical(num, trunc(num))) return(NULL)
+  if (num < -.Machine$integer.max || num > .Machine$integer.max) return(NULL)
 
-  out <- as.integer(round(num))
+  out <- as.integer(num)
+  if (is.na(out)) return(NULL)
   if (!is.null(spec$min) && out < spec$min) return(NULL)
   if (!is.null(spec$max) && out > spec$max) return(NULL)
 
@@ -83,12 +96,12 @@ pk_config_option_key <- function(key) {
 }
 
 .pk_config_as_character <- function(value, spec) {
+  if (length(value) != 1L) return(NULL)
+
   txt <- as.character(value)[1]
-  if (length(txt) != 1L || is.na(txt)) return(NULL)
+  if (is.na(txt)) return(NULL)
 
   txt <- trimws(txt)
-  # Boş metin yalnızca varsayılanı da boş olan anahtarlarda geçerli sayılır;
-  # aksi halde "tanımsız" kabul edilip bir alt önceliğe düşülür.
   if (!nzchar(txt) && nzchar(spec$default %||% "")) return(NULL)
   if (!is.null(spec$allowed) && !(txt %in% spec$allowed)) return(NULL)
 
@@ -98,8 +111,7 @@ pk_config_option_key <- function(key) {
 # Ham bir adayı anahtarın tipine göre doğrular. Geçersizse NULL döner ki
 # çözümleyici bir sonraki önceliğe geçebilsin (sessiz varsayılana düşme).
 .pk_config_coerce <- function(value, spec) {
-  if (is.null(value)) return(NULL)
-  if (length(value) == 0L) return(NULL)
+  if (is.null(value) || length(value) == 0L) return(NULL)
 
   switch(
     spec$type %||% "character",
