@@ -37,8 +37,8 @@ local({
     default_measures = "KalanIscilik_sa",
     row_cap = 1000L,
     column_meta = list(
-      ProjeKodu = list(label = "Proje Kodu", role = "id", match = "exact"),
-      ProjeAdi = list(label = "Proje Adi", role = "dimension", match = "resolve", filterable = TRUE),
+      ProjeKodu = list(label = "Proje Kodu", role = "id", entity = "project", match = "exact"),
+      ProjeAdi = list(label = "Proje Adi", role = "dimension", entity = "project", match = "resolve", filterable = TRUE),
       KaynakKodu = list(
         label = "Kaynak Kodu", role = "dimension",
         capability = "dimension.resource", match = "exact", filterable = TRUE
@@ -126,6 +126,7 @@ test_that("toplama sözleşmesi non-additive ve ölçü olmayan sütunları koru
     fixed = TRUE
   )))
 
+  # Doğrulanmamış bir nesne tüketiciye ulaşsa bile accessor yanlış SUM açmaz.
   expect_equal(
     pk_meta_aggregate_for(list(meta = meta), "KalanIscilik_sa"),
     "none"
@@ -255,6 +256,107 @@ test_that("kararlı sorgu kimliği ve metadata katman şekli zorunludur", {
       aliases = list(), registry = .review_registry()
     ),
     "pk_query_meta_local adlandirilmis liste"
+  )
+})
+
+
+test_that("entity ve group_by gereksinimleri kapıda göz ardı edilmez", {
+  query <- list(meta = .review_meta())
+
+  expect_equal(
+    pk_meta_capability_check(query, list(entity = "project"))$status,
+    PK_META_STATUS_OK
+  )
+
+  yanlis_entity <- pk_meta_capability_check(query, list(entity = "resource"))
+  expect_equal(yanlis_entity$status, PK_META_STATUS_NO_SEMANTICS)
+  expect_equal(yanlis_entity$missing_entity, "resource")
+
+  expect_equal(
+    pk_meta_capability_check(query, list(group_by = "dimension.resource"))$status,
+    PK_META_STATUS_OK
+  )
+  expect_equal(
+    pk_meta_capability_check(query, list(group_by = "dimension.unknown"))$status,
+    PK_META_STATUS_NO_SEMANTICS
+  )
+
+  typo <- pk_meta_capability_check(query, list(measure = "labor.remaining_hours"))
+  expect_equal(typo$status, PK_META_STATUS_NO_SEMANTICS)
+  expect_true(any(grepl("bilinmeyen alan", typo$invalid_requirements, fixed = TRUE)))
+
+  bos <- pk_meta_capability_check(query, list(measures = ""))
+  expect_equal(bos$status, PK_META_STATUS_NO_SEMANTICS)
+  expect_true(length(bos$invalid_requirements) > 0L)
+})
+
+test_that("RLS alan adı yazım hataları ve tekrar eden gerçek sütunlar reddedilir", {
+  kutuphane <- .review_library()
+  kutuphane[[1]]$rls_columns$proje_kodu_clo <- "ProjeKodu"
+  kutuphane[[1]]$rls_columns$proje_kodu_col <- NULL
+
+  expect_error(
+    pk_query_meta_attach(
+      kutuphane,
+      auto = list(), local = list(), curated = list(q001 = .review_meta()),
+      aliases = list(), registry = .review_registry()
+    ),
+    "bilinmeyen alan"
+  )
+
+  query <- .review_library()[[1]]
+  query$meta <- .review_meta()
+  sonuc <- pk_meta_validate_actual_columns(
+    query,
+    c("ProjeKodu", "ProjeKodu", "ProjeAdi", "KaynakKodu", "BaslangicTarihi", "KalanIscilik_sa")
+  )
+  expect_false(sonuc$ok)
+  expect_true(sonuc$fail_closed)
+  expect_true(any(grepl("tekrar eden sutun", sonuc$errors, fixed = TRUE)))
+})
+
+test_that("curated alias kod ve exact sütunlara açık izin olmadan bağlanamaz", {
+  testthat::skip_if_not_installed("stringi")
+
+  meta <- .review_meta()
+  meta$column_meta$ProjeKodu$aliases <- c("p1" = "P1")
+  meta$column_meta$ProjeKodu$alias_provenance <- "synthetic"
+  expect_true(any(grepl(
+    "allow_aliases=TRUE",
+    pk_meta_validate_query("q001", meta, .review_registry()),
+    fixed = TRUE
+  )))
+
+  meta$column_meta$ProjeKodu$allow_aliases <- TRUE
+  expect_equal(pk_meta_validate_query("q001", meta, .review_registry()), character(0))
+})
+
+test_that("grain, primary entity, latest_by ve SQL sözleşmeleri yapısal olarak doğrulanır", {
+  grain <- .review_meta()
+  grain$grain_columns <- character(0)
+  expect_true(any(grepl(
+    "grain_columns zorunludur",
+    pk_meta_validate_query("q001", grain, .review_registry()),
+    fixed = TRUE
+  )))
+
+  primary <- .review_meta()
+  primary$primary_entity <- "KalanIscilik_sa"
+  expect_true(any(grepl(
+    "id veya dimension",
+    pk_meta_validate_query("q001", primary, .review_registry()),
+    fixed = TRUE
+  )))
+
+  no_sql <- .review_library()
+  no_sql[[1]]$sql <- ""
+  expect_error(
+    pk_query_meta_attach(
+      no_sql,
+      auto = list(), local = list(), curated = list(q001 = .review_meta()),
+      aliases = list(), registry = .review_registry()
+    ),
+    "bos olmayan SQL"
   )
 })
 
