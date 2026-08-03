@@ -13,7 +13,7 @@ reads only one of the two will make avoidable mistakes.
 | # | Phase | Status | Merge SHA on `pk/rebuild` |
 |---|---|---|---|
 | 0 | Instrumentation + status plumbing | `merged_to_rebuild` | `b1805f5` (PR #695) |
-| 3a | Metadata contract | `in_review` | — (PR open) |
+| 3a | Metadata contract | `in_review` | — (PR #696 open) |
 
 Planned order (§11): **0 → 3a → 1 → 2 → 4 → 5 → 6**, with **3b on the VM**.
 
@@ -228,7 +228,7 @@ is not installed in this container.
 * **Branch:** `claude/pk-phase-3a-metadata-5nf9m1` (see "Deviations" — the branch
   name is the session's assigned branch, not `pk/phase-3a-metadata`; it is cut
   from the same `origin/pk/rebuild` tip `b1805f5`)
-* **PR:** base `pk/rebuild` ← head `claude/pk-phase-3a-metadata-5nf9m1`
+* **PR:** #696, base `pk/rebuild` ← head `claude/pk-phase-3a-metadata-5nf9m1`
 * **Merge SHA:** _pending_
 
 ### Claims re-verified before writing code (§0.1)
