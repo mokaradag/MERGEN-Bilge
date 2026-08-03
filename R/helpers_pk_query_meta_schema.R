@@ -19,6 +19,10 @@ PK_META_ALIAS_PROVENANCE <- c("synthetic", "approved")
   is.logical(x) && length(x) == 1L && !is.na(x)
 }
 
+.pk_meta_is_scalar_logical_or_na <- function(x) {
+  is.logical(x) && length(x) == 1L
+}
+
 .pk_meta_is_text_vector <- function(x, allow_empty = TRUE) {
   if (!is.character(x)) return(FALSE)
   if (!length(x)) return(isTRUE(allow_empty))
@@ -126,8 +130,15 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
 
   if (.pk_meta_is_scalar_text(cmeta$match) && cmeta$match %in% c("resolve", "contains") &&
       !identical(cmeta$role, "dimension")) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
+      " role='%s' sutununda bulanik match kullanilamaz; resolve/contains yalnizca dimension icindir.",
+      cmeta$role
+    )))
+  }
+
+  if (!is.null(cmeta$entity) && !(cmeta$role %in% c("id", "dimension"))) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
-      " bulanik match yalnizca role='dimension' sutununda kullanilabilir."))
+      " entity yalnizca role='id' veya role='dimension' sutununda tanimlanabilir."))
   }
 
   if (!is.null(cmeta$aggregate) &&
@@ -143,6 +154,18 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
         " %s tek TRUE/FALSE olmalidir.", alan
       )))
     }
+  }
+
+  if (!is.null(cmeta$high_cardinality) &&
+      !.pk_meta_is_scalar_logical_or_na(cmeta$high_cardinality)) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
+      " high_cardinality tek TRUE/FALSE/NA olmalidir."))
+  }
+
+  if (!is.null(cmeta$tier) &&
+      !.pk_meta_is_whole_number(cmeta$tier, min = 0, max = .Machine$integer.max)) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
+      " tier negatif olmayan tam sayi olmalidir."))
   }
 
   if (!is.null(cmeta$decimals) &&
@@ -168,6 +191,12 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
     )))
   }
 
+  if (!is.null(cmeta$percent_scale) &&
+      (!.pk_meta_is_scalar_text(cmeta$unit) || !identical(trimws(cmeta$unit), "%"))) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
+      " percent_scale yalnizca unit='%' olan sutunda tanimlanabilir."))
+  }
+
   if (!identical(cmeta$role, "measure")) {
     if (!is.null(cmeta$additive)) {
       hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
@@ -186,7 +215,19 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
       " aggregate='sum' icin additive=TRUE zorunludur; aksi halde sessiz yanlis toplam uretilir."))
   }
 
+  if (!is.null(cmeta$domain)) {
+    if (!(cmeta$role %in% c("id", "dimension"))) {
+      hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
+        " domain yalnizca role='id' veya role='dimension' sutununda tanimlanabilir."))
+    }
+    hatalar <- c(hatalar, pk_meta_validate_domain_map(query_id, column, cmeta$domain))
+  }
+
   if (!is.null(cmeta$aliases)) {
+    if (!(cmeta$role %in% c("id", "dimension"))) {
+      hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
+        " aliases yalnizca role='id' veya role='dimension' sutununda tanimlanabilir."))
+    }
     if (!isTRUE(cmeta$allow_aliases) &&
         (identical(cmeta$role, "id") || identical(cmeta$match, "exact"))) {
       hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
@@ -239,6 +280,56 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
       if (is.na(kayit_birim)) "NULL" else kayit_birim,
       if (is.na(sutun_birim)) "NULL" else sutun_birim
     )))
+  }
+
+  unique(hatalar)
+}
+
+pk_meta_validate_domain_map <- function(query_id, column, domain) {
+  onek <- sprintf("column_meta['%s']$domain:", column)
+  if (is.null(domain)) return(character(0))
+
+  if (!(is.character(domain) || is.list(domain)) || is.null(names(domain)) ||
+      length(names(domain)) != length(domain)) {
+    return(.pk_meta_err(query_id, onek,
+      " adlandirilmis kanonik-deger -> etiket haritasi olmalidir."))
+  }
+
+  anahtarlar <- names(domain)
+  hatalar <- character(0)
+  if (any(is.na(anahtarlar) | !nzchar(trimws(anahtarlar)))) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
+      " bos veya NA kanonik anahtar iceremez."))
+  }
+
+  tekrar <- unique(anahtarlar[duplicated(anahtarlar)])
+  if (length(tekrar)) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
+      " tekrar eden kanonik anahtar: %s", paste(tekrar, collapse = ", ")
+    )))
+  }
+
+  etiketler <- vapply(domain, function(x) {
+    if (!.pk_meta_is_scalar_text(x)) return(NA_character_)
+    trimws(enc2utf8(as.character(x)[1]))
+  }, character(1))
+  if (any(is.na(etiketler))) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
+      " her etiket tek ve bos olmayan metin olmalidir."))
+  }
+
+  gecerli <- !is.na(etiketler)
+  if (any(gecerli)) {
+    katlanmis <- pk_tr_fold(etiketler[gecerli])
+    for (etiket in unique(katlanmis)) {
+      hedefler <- unique(anahtarlar[gecerli][katlanmis == etiket])
+      if (!is.na(etiket) && nzchar(etiket) && length(hedefler) > 1L) {
+        hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
+          " '%s' etiketi birden fazla kanonik degere isaret ediyor: %s",
+          etiket, paste(hedefler, collapse = " | ")
+        )))
+      }
+    }
   }
 
   unique(hatalar)
