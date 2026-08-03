@@ -1,81 +1,54 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_pk_query_meta_schema.R
-# Açıklama: Sorgu metadata sözleşmesinin SÖZLÜĞÜ ve ŞEMADAN BAĞIMSIZ
-#           doğrulayıcıları. Master plan §5.1.
-#
-# Sözleşme:
-#   * Bu dosya SAFTIR: Shiny/reactive/DB/ağ/dosya bağımlılığı yoktur.
-#   * Doğrulayıcılar `stop()` ETMEZ; hata METİNLERİNDEN oluşan bir karakter
-#     vektörü döner. Başlangıçta durdurma kararını tek bir yerde
-#     (`pk_query_meta_attach()`) veren taraf verir; böylece aynı kurallar
-#     testlerde ve üretici (generator) sağlık raporunda da çalıştırılabilir.
-#   * Buradaki kontroller ŞEMADAN BAĞIMSIZDIR: sorgu çalıştırılmadan, yalnızca
-#     metadata'nın kendi iç tutarlılığına bakarak yapılabilenlerdir. Gerçek
-#     sonuç sütunlarına bakan kontroller şemaya bağlıdır ve
-#     R/helpers_pk_query_meta_access.R içindedir.
+# Açıklama: Sorgu metadata sözlüğü ve şemadan bağımsız doğrulayıcılar.
 # ==============================================================================
 
-# Sütun rolleri. `role` özetlemeyi sürükler: `measure` toplanabilir mi diye
-# sorulur, `date` zaman penceresi kurar, `dimension` gruplama/filtre adayıdır,
-# `id` asla bulanık eşleşmez.
 PK_META_ROLES <- c("id", "dimension", "measure", "date")
-
-# Yetenek kaydında yalnızca ANLAMSAL roller bulunur; `id` bir yetenek değildir.
 PK_META_CAPABILITY_ROLES <- c("dimension", "measure", "date")
-
-# Toplama kipleri. `weighted_mean` ortalamaların ortalamasını engeller;
-# `latest` sıralama sütunu ve kararlı eşitlik bozucu olmadan çalıştırılamaz.
 PK_META_AGGREGATES <- c("sum", "mean", "weighted_mean", "latest", "none")
-
-# Eşleşme kipleri. Kod/sicil sütunları `exact` kalmalı ve ASLA bulanık
-# eşleştirilmemelidir.
 PK_META_MATCH_MODES <- c("exact", "resolve", "contains", "none")
-
-# Yüzde ölçeği. `unit = "%"` olan her ölçüde ZORUNLUDUR: aksi hâlde Excel'in
-# `0.0%` biçimi 61.3 değerini %6130,0 yapar (§5.9).
 PK_META_PERCENT_SCALES <- c("points", "fraction")
-
-# İzlenen (tracked) dosyadaki alias haritaları için kabul edilen köken
-# etiketleri. Üretimden türetilmiş kanonik hedefler Git'e giremez.
 PK_META_ALIAS_PROVENANCE <- c("synthetic", "approved")
-
-# Kararlı yetenek kimliği deseni: ASCII, küçük harf, noktayla ayrılmış.
 .PK_META_CAPABILITY_PATTERN <- "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
 
-# --- KÜÇÜK ORTAK YARDIMCILAR ---------------------------------------------------
-
-# Tek elemanlı, boş olmayan karakter değeri mi?
 .pk_meta_is_scalar_text <- function(x) {
   is.character(x) && length(x) == 1L && !is.na(x) && nzchar(trimws(x))
 }
 
-# Tek elemanlı, NA olmayan mantıksal değer mi?
 .pk_meta_is_scalar_flag <- function(x) {
   is.logical(x) && length(x) == 1L && !is.na(x)
 }
 
-# Hata metinlerini tek biçimde üretir; mesajlar Türkçe ve ASCII tanımlayıcılıdır.
+.pk_meta_is_text_vector <- function(x, allow_empty = TRUE) {
+  if (!is.character(x)) return(FALSE)
+  if (!length(x)) return(isTRUE(allow_empty))
+  all(!is.na(x) & nzchar(trimws(x)))
+}
+
+.pk_meta_is_whole_number <- function(x, min = NULL, max = NULL) {
+  if (length(x) != 1L) return(FALSE)
+  num <- suppressWarnings(as.numeric(x))
+  if (length(num) != 1L || is.na(num) || !is.finite(num) || num != trunc(num)) return(FALSE)
+  if (!is.null(min) && num < min) return(FALSE)
+  if (!is.null(max) && num > max) return(FALSE)
+  TRUE
+}
+
 .pk_meta_err <- function(query_id, ...) {
   sprintf("[%s] %s", as.character(query_id)[1], paste0(...))
 }
 
-#' Yetenek kaydını doğrula
-#'
-#' @return Hata metinleri (boşsa kayıt geçerlidir).
 pk_meta_validate_capability_registry <- function(registry) {
   if (is.null(registry)) return(character(0))
-
-  if (!is.list(registry)) {
-    return("pk_capability_registry bir liste olmalidir.")
-  }
+  if (!is.list(registry)) return("pk_capability_registry bir liste olmalidir.")
 
   adlar <- names(registry)
-  if (is.null(adlar) || any(!nzchar(adlar))) {
+  if (is.null(adlar) || length(adlar) != length(registry) ||
+      any(is.na(adlar) | !nzchar(trimws(adlar)))) {
     return("pk_capability_registry adlandirilmis bir liste olmalidir.")
   }
 
   hatalar <- character(0)
-
   tekrar <- unique(adlar[duplicated(adlar)])
   if (length(tekrar)) {
     hatalar <- c(hatalar, sprintf(
@@ -94,14 +67,12 @@ pk_meta_validate_capability_registry <- function(registry) {
 
   for (cap in adlar) {
     girdi <- registry[[cap]]
-
     if (!is.list(girdi)) {
       hatalar <- c(hatalar, sprintf("pk_capability_registry['%s'] liste olmalidir.", cap))
       next
     }
 
-    if (!.pk_meta_is_scalar_text(girdi$role) ||
-        !(girdi$role %in% PK_META_CAPABILITY_ROLES)) {
+    if (!.pk_meta_is_scalar_text(girdi$role) || !(girdi$role %in% PK_META_CAPABILITY_ROLES)) {
       hatalar <- c(hatalar, sprintf(
         "pk_capability_registry['%s']: gecersiz role (izinli: %s).",
         cap, paste(PK_META_CAPABILITY_ROLES, collapse = "/")
@@ -114,7 +85,6 @@ pk_meta_validate_capability_registry <- function(registry) {
       ))
     }
 
-    # Boyut ve tarih yeteneklerinin birimi olmaz.
     if (identical(girdi$role, "dimension") || identical(girdi$role, "date")) {
       if (!is.null(girdi$unit)) {
         hatalar <- c(hatalar, sprintf(
@@ -124,25 +94,26 @@ pk_meta_validate_capability_registry <- function(registry) {
     }
   }
 
-  hatalar
+  unique(hatalar)
 }
 
-#' Tek bir sütun metadata'sını doğrula (şemadan bağımsız)
 pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
   onek <- sprintf("column_meta['%s']:", column)
-
-  if (!is.list(cmeta)) {
-    return(.pk_meta_err(query_id, onek, " liste olmalidir."))
-  }
+  if (!is.list(cmeta)) return(.pk_meta_err(query_id, onek, " liste olmalidir."))
 
   hatalar <- character(0)
-
   if (!.pk_meta_is_scalar_text(cmeta$role) || !(cmeta$role %in% PK_META_ROLES)) {
-    hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
+    return(.pk_meta_err(query_id, onek, sprintf(
       " gecersiz role (izinli: %s).", paste(PK_META_ROLES, collapse = "/")
     )))
-    # Rol bilinmeden role bagli kontroller anlamsizdir.
-    return(hatalar)
+  }
+
+  for (alan in c("label", "entity", "unit")) {
+    if (!is.null(cmeta[[alan]]) && !.pk_meta_is_scalar_text(cmeta[[alan]])) {
+      hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
+        " %s ya NULL ya tek bos olmayan metin olmalidir.", alan
+      )))
+    }
   }
 
   if (!is.null(cmeta$match) &&
@@ -152,61 +123,86 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
     )))
   }
 
-  # Kod/kimlik sutunlari bulanik eslestirilemez.
-  if (identical(cmeta$role, "id") &&
-      .pk_meta_is_scalar_text(cmeta$match) &&
+  if (identical(cmeta$role, "id") && .pk_meta_is_scalar_text(cmeta$match) &&
       cmeta$match %in% c("resolve", "contains")) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
       " role='id' sutununda bulanik match kullanilamaz (exact/none olmalidir)."))
   }
 
   if (!is.null(cmeta$aggregate) &&
-      (!.pk_meta_is_scalar_text(cmeta$aggregate) ||
-       !(cmeta$aggregate %in% PK_META_AGGREGATES))) {
+      (!.pk_meta_is_scalar_text(cmeta$aggregate) || !(cmeta$aggregate %in% PK_META_AGGREGATES))) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
       " gecersiz aggregate (izinli: %s).", paste(PK_META_AGGREGATES, collapse = "/")
     )))
   }
 
-  if (!is.null(cmeta$additive) && !.pk_meta_is_scalar_flag(cmeta$additive)) {
-    hatalar <- c(hatalar, .pk_meta_err(query_id, onek, " additive tek TRUE/FALSE olmalidir."))
-  }
-
-  if (!is.null(cmeta$filterable) && !.pk_meta_is_scalar_flag(cmeta$filterable)) {
-    hatalar <- c(hatalar, .pk_meta_err(query_id, onek, " filterable tek TRUE/FALSE olmalidir."))
-  }
-
-  if (!is.null(cmeta$decimals)) {
-    ondalik <- suppressWarnings(as.numeric(cmeta$decimals[1]))
-    if (length(ondalik) != 1L || is.na(ondalik) || ondalik < 0) {
-      hatalar <- c(hatalar, .pk_meta_err(query_id, onek, " decimals negatif olmayan sayi olmalidir."))
-    }
-  }
-
-  # Yuzde olcegi: unit = "%" oldugunda ZORUNLU.
-  if (.pk_meta_is_scalar_text(cmeta$unit) && identical(trimws(cmeta$unit), "%")) {
-    if (!.pk_meta_is_scalar_text(cmeta$percent_scale) ||
-        !(cmeta$percent_scale %in% PK_META_PERCENT_SCALES)) {
+  for (alan in c("additive", "filterable", "allow_aliases")) {
+    if (!is.null(cmeta[[alan]]) && !.pk_meta_is_scalar_flag(cmeta[[alan]])) {
       hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
-        " unit='%%' iken percent_scale zorunludur (izinli: %s).",
-        paste(PK_META_PERCENT_SCALES, collapse = "/")
+        " %s tek TRUE/FALSE olmalidir.", alan
       )))
     }
   }
 
-  c(hatalar, .pk_meta_validate_column_capability(query_id, onek, cmeta, registry))
+  if (!is.null(cmeta$decimals) &&
+      !.pk_meta_is_whole_number(cmeta$decimals, min = 0, max = .Machine$integer.max)) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
+      " decimals negatif olmayan tam sayi olmalidir."))
+  }
+
+  if (!is.null(cmeta$percent_scale) &&
+      (!.pk_meta_is_scalar_text(cmeta$percent_scale) ||
+       !(cmeta$percent_scale %in% PK_META_PERCENT_SCALES))) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
+      " gecersiz percent_scale (izinli: %s).", paste(PK_META_PERCENT_SCALES, collapse = "/")
+    )))
+  }
+
+  if (.pk_meta_is_scalar_text(cmeta$unit) && identical(trimws(cmeta$unit), "%") &&
+      (!.pk_meta_is_scalar_text(cmeta$percent_scale) ||
+       !(cmeta$percent_scale %in% PK_META_PERCENT_SCALES))) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
+      " unit='%%' iken percent_scale zorunludur (izinli: %s).",
+      paste(PK_META_PERCENT_SCALES, collapse = "/")
+    )))
+  }
+
+  if (!identical(cmeta$role, "measure")) {
+    if (!is.null(cmeta$additive)) {
+      hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
+        " additive yalnizca role='measure' sutununda tanimlanabilir."))
+    }
+    if (.pk_meta_is_scalar_text(cmeta$aggregate) &&
+        cmeta$aggregate %in% c("sum", "mean", "weighted_mean")) {
+      hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
+        " aggregate='%s' yalnizca role='measure' sutununda kullanilabilir.", cmeta$aggregate
+      )))
+    }
+  }
+
+  if (identical(cmeta$aggregate, "sum") && !isTRUE(cmeta$additive)) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
+      " aggregate='sum' icin additive=TRUE zorunludur; aksi halde sessiz yanlis toplam uretilir."))
+  }
+
+  if (!is.null(cmeta$aliases)) {
+    katlama <- pk_meta_fold_alias_map(query_id, column, cmeta$aliases)
+    hatalar <- c(hatalar, katlama$errors)
+  }
+
+  c(
+    unique(hatalar),
+    .pk_meta_validate_column_capability(query_id, onek, cmeta, registry)
+  )
 }
 
-# Sütunun yetenek kimliğini kayda karşı doğrular (rol ve birim tutarlılığı).
 .pk_meta_validate_column_capability <- function(query_id, onek, cmeta, registry) {
   if (is.null(cmeta$capability)) return(character(0))
-
   if (!.pk_meta_is_scalar_text(cmeta$capability)) {
     return(.pk_meta_err(query_id, onek, " capability tek metin olmalidir."))
   }
 
   cap <- trimws(cmeta$capability)
-
   if (!is.list(registry) || is.null(registry[[cap]])) {
     return(.pk_meta_err(query_id, onek, sprintf(
       " bilinmeyen capability '%s' (pk_capability_registry icinde tanimli degil).", cap
@@ -215,6 +211,11 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
 
   kayit <- registry[[cap]]
   hatalar <- character(0)
+  if (!is.list(kayit)) {
+    return(.pk_meta_err(query_id, onek, sprintf(
+      " capability '%s' kaydi liste degil.", cap
+    )))
+  }
 
   if (!identical(cmeta$role, kayit$role)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
@@ -225,7 +226,6 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
 
   kayit_birim <- if (is.null(kayit$unit)) NA_character_ else trimws(as.character(kayit$unit)[1])
   sutun_birim <- if (is.null(cmeta$unit)) NA_character_ else trimws(as.character(cmeta$unit)[1])
-
   if (!identical(kayit_birim, sutun_birim)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
       " capability '%s' unit='%s' bekler, sutun unit='%s'.",
@@ -235,18 +235,9 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
     )))
   }
 
-  hatalar
+  unique(hatalar)
 }
 
-#' Alias haritasını katla ve doğrula
-#'
-#' Alias haritası ADLANDIRILMIŞ KARAKTER VEKTÖRÜDÜR: ad = kullanıcıya görünen
-#' alias, değer = o sütunun kapalı sözlüğündeki kanonik değer. Anahtarlar
-#' `pk_tr_fold()` ile normalleştirilir. Aynı normalleştirilmiş alias'ın FARKLI
-#' kanonik değerlere işaret etmesi sert sözleşme hatasıdır; "son yazan kazanır"
-#' davranışı YOKTUR.
-#'
-#' @return `list(aliases = <katlanmis adli vektor>, errors = <karakter>)`
 pk_meta_fold_alias_map <- function(query_id, column, aliases) {
   bos <- structure(character(0), names = character(0))
   if (is.null(aliases) || length(aliases) == 0L) {
@@ -254,8 +245,8 @@ pk_meta_fold_alias_map <- function(query_id, column, aliases) {
   }
 
   onek <- sprintf("column_meta['%s']$aliases:", column)
-
-  if (!is.character(aliases) || is.null(names(aliases))) {
+  if (!is.character(aliases) || is.null(names(aliases)) ||
+      length(names(aliases)) != length(aliases)) {
     return(list(
       aliases = bos,
       errors = .pk_meta_err(query_id, onek, " adlandirilmis karakter vektoru olmalidir.")
@@ -264,7 +255,6 @@ pk_meta_fold_alias_map <- function(query_id, column, aliases) {
 
   ham_ad <- names(aliases)
   hatalar <- character(0)
-
   katlanmis <- pk_tr_fold(ham_ad)
   gecersiz <- is.na(katlanmis) | !nzchar(katlanmis)
   if (any(gecersiz)) {
@@ -283,7 +273,6 @@ pk_meta_fold_alias_map <- function(query_id, column, aliases) {
   katlanmis <- katlanmis[tut]
   hedef <- hedef[tut]
 
-  # Ayni alias -> ayni deger tekrari zararsizdir; farkli deger sert hatadir.
   for (anahtar in unique(katlanmis)) {
     degerler <- unique(hedef[katlanmis == anahtar])
     if (length(degerler) > 1L) {
@@ -298,5 +287,5 @@ pk_meta_fold_alias_map <- function(query_id, column, aliases) {
   sonuc <- hedef[benzersiz]
   names(sonuc) <- katlanmis[benzersiz]
 
-  list(aliases = sonuc, errors = hatalar)
+  list(aliases = sonuc, errors = unique(hatalar))
 }
