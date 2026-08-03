@@ -27,7 +27,8 @@ PK_META_ALIAS_PROVENANCE <- c("synthetic", "approved")
 
 .pk_meta_is_whole_number <- function(x, min = NULL, max = NULL) {
   if (length(x) != 1L) return(FALSE)
-  num <- suppressWarnings(as.numeric(x))
+  if (is.logical(x) || is.list(x)) return(FALSE)
+  num <- suppressWarnings(as.numeric(as.character(x)))
   if (length(num) != 1L || is.na(num) || !is.finite(num) || num != trunc(num)) return(FALSE)
   if (!is.null(min) && num < min) return(FALSE)
   if (!is.null(max) && num > max) return(FALSE)
@@ -123,10 +124,10 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
     )))
   }
 
-  if (identical(cmeta$role, "id") && .pk_meta_is_scalar_text(cmeta$match) &&
-      cmeta$match %in% c("resolve", "contains")) {
+  if (.pk_meta_is_scalar_text(cmeta$match) && cmeta$match %in% c("resolve", "contains") &&
+      !identical(cmeta$role, "dimension")) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
-      " role='id' sutununda bulanik match kullanilamaz (exact/none olmalidir)."))
+      " bulanik match yalnizca role='dimension' sutununda kullanilabilir."))
   }
 
   if (!is.null(cmeta$aggregate) &&
@@ -186,6 +187,11 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
   }
 
   if (!is.null(cmeta$aliases)) {
+    if (!isTRUE(cmeta$allow_aliases) &&
+        (identical(cmeta$role, "id") || identical(cmeta$match, "exact"))) {
+      hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
+        " kod/kimlik veya exact sutunu alias alamaz; allow_aliases=TRUE zorunludur."))
+    }
     katlama <- pk_meta_fold_alias_map(query_id, column, cmeta$aliases)
     hatalar <- c(hatalar, katlama$errors)
   }
