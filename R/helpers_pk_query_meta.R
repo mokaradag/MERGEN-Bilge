@@ -103,6 +103,7 @@ pk_meta_merge_layers <- function(auto = list(), local = list(), curated = list()
   TRUE
 }
 
+# Birleşmiş katmanlardaki alias'ları da aynı sözleşmeyle katlar.
 pk_meta_normalize_aliases <- function(meta) {
   hatalar <- character(0)
   if (!is.list(meta) || !length(meta)) return(list(meta = meta, errors = hatalar))
@@ -199,7 +200,10 @@ pk_meta_apply_alias_overlay <- function(meta, overlay) {
       mevcut <- cmeta$aliases
       if (is.null(mevcut)) mevcut <- structure(character(0), names = character(0))
       yeni <- sorgu_alias[[sutun]]
-      birlesik_alias <- tryCatch(c(mevcut, yeni), error = function(e) NULL)
+      birlesik_alias <- tryCatch(
+        c(mevcut, yeni),
+        error = function(e) NULL
+      )
 
       if (is.null(birlesik_alias)) {
         hatalar <- c(hatalar, .pk_meta_err(id, sprintf(
@@ -233,6 +237,21 @@ pk_meta_validate_query <- function(query_id, meta, registry = NULL) {
   if (!is.null(meta$primary_entity) && !.pk_meta_is_scalar_text(meta$primary_entity)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, "primary_entity tek bos olmayan metin olmalidir."))
   }
+  if (!is.null(meta$entity) && !.pk_meta_is_scalar_text(meta$entity)) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, "entity tek bos olmayan metin olmalidir."))
+  }
+
+  for (alan in c("keywords", "sample_questions", "intents", "not_for")) {
+    if (!is.null(meta[[alan]]) && !.pk_meta_is_text_vector(meta[[alan]], allow_empty = TRUE)) {
+      hatalar <- c(hatalar, .pk_meta_err(query_id, sprintf(
+        "%s bos olmayan metinlerden olusan karakter vektoru olmalidir.", alan
+      )))
+    } else if (is.character(meta[[alan]]) && anyDuplicated(meta[[alan]])) {
+      hatalar <- c(hatalar, .pk_meta_err(query_id, sprintf(
+        "%s tekrar eden deger iceremez.", alan
+      )))
+    }
+  }
 
   for (alan in c("grain_columns", "default_group_by", "default_measures")) {
     if (!is.null(meta[[alan]]) && !.pk_meta_is_text_vector(meta[[alan]], allow_empty = TRUE)) {
@@ -255,6 +274,10 @@ pk_meta_validate_query <- function(query_id, meta, registry = NULL) {
   if (!is.null(meta$row_cap) &&
       !.pk_meta_is_whole_number(meta$row_cap, min = 1, max = .Machine$integer.max)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, "row_cap pozitif tam sayi olmalidir."))
+  }
+  if (!is.null(meta$tier) &&
+      !.pk_meta_is_whole_number(meta$tier, min = 0, max = .Machine$integer.max)) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, "tier negatif olmayan tam sayi olmalidir."))
   }
 
   if (!is.null(sutunlar) && !is.list(sutunlar)) {
@@ -462,7 +485,12 @@ pk_meta_validate_query <- function(query_id, meta, registry = NULL) {
     return(list(columns = names(schema), types = schema))
   }
   if (is.list(schema) && !is.null(names(schema))) {
-    tipler <- vapply(schema, function(x) as.character(x)[1], character(1))
+    tipler <- vapply(schema, function(x) {
+      if (length(x) != 1L) return(NA_character_)
+      txt <- tryCatch(as.character(x)[1], error = function(e) NA_character_)
+      if (is.na(txt) || !nzchar(trimws(txt))) return(NA_character_)
+      trimws(txt)
+    }, character(1))
     return(list(columns = names(schema), types = stats::setNames(tipler, names(schema))))
   }
   NULL
@@ -491,6 +519,15 @@ pk_meta_validate_schema_dependent <- function(query_id, meta, schema, rls_column
     hatalar <- c(hatalar, .pk_meta_err(query_id, sprintf(
       "result_schema icinde tekrar eden sutun adi: %s", paste(sema_tekrar, collapse = ", ")
     )))
+  }
+  if (!is.null(parcalar$types)) {
+    tipler <- as.character(parcalar$types)
+    gecersiz_tip <- names(parcalar$types)[is.na(tipler) | !nzchar(trimws(tipler))]
+    if (length(gecersiz_tip)) {
+      hatalar <- c(hatalar, .pk_meta_err(query_id, sprintf(
+        "result_schema gecersiz/bos tip iceriyor: %s", paste(gecersiz_tip, collapse = ", ")
+      )))
+    }
   }
 
   eksik_meta <- setdiff(names(meta$column_meta %||% list()), sema_sutunlari)
@@ -537,6 +574,7 @@ pk_meta_validate_schema_dependent <- function(query_id, meta, schema, rls_column
   for (sutun in intersect(names(meta$column_meta %||% list()), sema_sutunlari)) {
     cmeta <- meta$column_meta[[sutun]]
     if (!is.list(cmeta) || !.pk_meta_is_scalar_text(cmeta$role)) next
+    if (!.pk_meta_is_scalar_text(schema_types[[sutun]])) next
     yapisal <- .pk_meta_role_from_class(schema_types[[sutun]])
 
     if (identical(cmeta$role, "date") && !identical(yapisal, "date")) {
