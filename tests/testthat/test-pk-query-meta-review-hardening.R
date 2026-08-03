@@ -368,3 +368,64 @@ test_that("bozuk capability_variants nesnesi çökmek yerine sözleşme hatası 
   hatalar <- pk_meta_validate_query("q001", meta, .review_registry())
   expect_true(any(grepl("capability_variants", hatalar, fixed = TRUE)))
 })
+
+test_that("domain, seçim metadatası ve örneklem bayrakları biçim olarak doğrulanır", {
+  testthat::skip_if_not_installed("stringi")
+
+  domain <- .review_meta()
+  domain$column_meta$ProjeAdi$domain <- list("1" = "Aktif", "0" = "aktif")
+  expect_true(any(grepl(
+    "birden fazla kanonik degere",
+    pk_meta_validate_query("q001", domain, .review_registry()),
+    fixed = TRUE
+  )))
+
+  kardinalite <- .review_meta()
+  kardinalite$column_meta$ProjeAdi$high_cardinality <- "evet"
+  expect_true(any(grepl(
+    "high_cardinality tek TRUE/FALSE/NA",
+    pk_meta_validate_query("q001", kardinalite, .review_registry()),
+    fixed = TRUE
+  )))
+
+  secim <- .review_meta()
+  secim$keywords <- list("proje")
+  expect_true(any(grepl(
+    "keywords bos olmayan metinlerden",
+    pk_meta_validate_query("q001", secim, .review_registry()),
+    fixed = TRUE
+  )))
+
+  olcek <- .review_meta()
+  olcek$column_meta$KalanIscilik_sa$percent_scale <- "points"
+  expect_true(any(grepl(
+    "yalnizca unit='%'",
+    pk_meta_validate_query("q001", olcek, .review_registry()),
+    fixed = TRUE
+  )))
+})
+
+test_that("bozuk result_schema liste öğesi doğrulama hatasına dönüşür, başlangıcı çökertmez", {
+  meta <- .review_meta()
+  meta$result_schema <- list(
+    ProjeKodu = "character",
+    ProjeAdi = NULL,
+    KaynakKodu = "character",
+    BaslangicTarihi = "Date",
+    KalanIscilik_sa = "numeric"
+  )
+
+  hatalar <- pk_meta_validate_schema_dependent(
+    "q001", meta, meta$result_schema, .review_library()[[1]]$rls_columns
+  )
+  expect_true(any(grepl("gecersiz/bos tip", hatalar, fixed = TRUE)))
+
+  expect_error(
+    pk_query_meta_attach(
+      .review_library(),
+      auto = list(), local = list(), curated = list(q001 = meta),
+      aliases = list(), registry = .review_registry()
+    ),
+    "gecersiz/bos tip"
+  )
+})
