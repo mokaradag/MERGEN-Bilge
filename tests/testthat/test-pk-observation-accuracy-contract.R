@@ -1,6 +1,7 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-pk-codex-p1-p2-observation-regressions.R
-# Açıklama: PR #695 Codex P1/P2 gözlem doğruluğu gerileme sözleşmeleri.
+# Dosya Yolu: tests/testthat/test-pk-observation-accuracy-contract.R
+# Açıklama: Gözlem doğruluğu sözleşmeleri: toplulaştırma öncesi satır sayısı,
+#           yalnızca uygulanan filtreler ve düşürülen filtrelerin bildirimi.
 # ==============================================================================
 
 .pk_observation_test_env <- function() {

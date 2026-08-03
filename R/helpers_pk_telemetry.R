@@ -10,23 +10,65 @@
 # dosyadan önce yüklenir. İzole source()/testthat çalıştırmalarında ise mevcut
 # çalışma dizinine güvenmeden, bu dosyanın kendi konumundaki kardeş dosya yüklenir.
 if (!exists("pk_telemetry_log_analysis", mode = "function", inherits = FALSE)) {
-  .pk_telemetry_source_file <- tryCatch(
-    as.character(sys.frame(1)$ofile %||% "")[1],
-    error = function(e) ""
-  )
-  .pk_telemetry_base_path <- if (nzchar(.pk_telemetry_source_file)) {
-    file.path(dirname(normalizePath(.pk_telemetry_source_file, winslash = "/", mustWork = TRUE)),
-              "helpers_pk_telemetry_base.R")
-  } else {
-    ""
+  # 1) Bu dosyayı source eden çerçevedeki ofile üzerinden kardeş dosyayı bul.
+  #    testthat yığınında source çerçevesi sys.frame(1) DEĞİLDİR; bu yüzden tüm
+  #    çerçeveler içten dışa taranır. Mutlak yolla source edilen izole testler
+  #    (getwd() tempdir()) yalnızca bu adayla çözülür.
+  .pk_telemetry_sibling <- NULL
+  for (.pk_telemetry_i in rev(seq_len(sys.nframe()))) {
+    .pk_telemetry_of <- tryCatch(
+      get("ofile", envir = sys.frame(.pk_telemetry_i), inherits = FALSE),
+      error = function(e) NULL
+    )
+    if (is.character(.pk_telemetry_of) && length(.pk_telemetry_of) == 1L &&
+        !is.na(.pk_telemetry_of) && nzchar(.pk_telemetry_of)) {
+      .pk_telemetry_try <- file.path(
+        dirname(normalizePath(.pk_telemetry_of, winslash = "/", mustWork = FALSE)),
+        "helpers_pk_telemetry_base.R"
+      )
+      if (isTRUE(tryCatch(file.exists(.pk_telemetry_try), error = function(e) FALSE))) {
+        .pk_telemetry_sibling <- .pk_telemetry_try
+        break
+      }
+    }
   }
 
-  if (!nzchar(.pk_telemetry_base_path) || !file.exists(.pk_telemetry_base_path)) {
+  # 2) Çalışma dizininden bağımsız aday yollar: repo kökü, tests/testthat, MERGEN_REPO_ROOT.
+  .pk_telemetry_base_candidates <- c(
+    .pk_telemetry_sibling,
+    file.path("R", "helpers_pk_telemetry_base.R"),
+    file.path("..", "..", "R", "helpers_pk_telemetry_base.R"),
+    file.path("..", "R", "helpers_pk_telemetry_base.R"),
+    if (nzchar(Sys.getenv("MERGEN_REPO_ROOT"))) {
+      file.path(Sys.getenv("MERGEN_REPO_ROOT"), "R", "helpers_pk_telemetry_base.R")
+    } else {
+      NULL
+    }
+  )
+
+  .pk_telemetry_base_path <- NULL
+  for (.pk_telemetry_cand in .pk_telemetry_base_candidates) {
+    if (!is.null(.pk_telemetry_cand) && nzchar(.pk_telemetry_cand) &&
+        isTRUE(tryCatch(file.exists(.pk_telemetry_cand), error = function(e) FALSE))) {
+      .pk_telemetry_base_path <- .pk_telemetry_cand
+      break
+    }
+  }
+
+  if (is.null(.pk_telemetry_base_path)) {
     stop("helpers_pk_telemetry_base.R bulunamadı.", call. = FALSE)
   }
 
   source(.pk_telemetry_base_path, encoding = "UTF-8", local = environment())
-  rm(.pk_telemetry_source_file, .pk_telemetry_base_path)
+
+  # Source-time geçici değişkenler yalnızca var olduklarında silinir (warning-free).
+  for (.pk_telemetry_tmp in c(".pk_telemetry_sibling", ".pk_telemetry_i",
+                              ".pk_telemetry_of", ".pk_telemetry_try",
+                              ".pk_telemetry_base_candidates",
+                              ".pk_telemetry_base_path", ".pk_telemetry_cand")) {
+    if (exists(.pk_telemetry_tmp, inherits = FALSE)) rm(list = .pk_telemetry_tmp)
+  }
+  rm(.pk_telemetry_tmp)
 }
 
 .pk_observation_query_meta <- function(info, filter_observation = NULL) {

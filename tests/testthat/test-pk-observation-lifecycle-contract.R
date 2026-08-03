@@ -1,6 +1,7 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-pk-codex-final-observation-regressions.R
-# Açıklama: PR #695 son Codex P1/P2 gerileme sözleşmeleri.
+# Dosya Yolu: tests/testthat/test-pk-observation-lifecycle-contract.R
+# Açıklama: Filtre gözlemi yaşam döngüsü sözleşmeleri: istek kapsamlı anahtar,
+#           terk edilen gözlemlerin temizlenmesi ve tek seferlik tüketim.
 # ==============================================================================
 
 .pk_final_repo_root_path <- resolve_repo_root_for_tests()

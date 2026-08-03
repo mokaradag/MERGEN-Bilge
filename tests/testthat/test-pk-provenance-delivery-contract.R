@@ -1,6 +1,6 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-pk-codex-p2-regressions.R
-# Açıklama: PR #695 Codex P2 bulgularının gerileme sözleşmeleri:
+# Dosya Yolu: tests/testthat/test-pk-provenance-delivery-contract.R
+# Açıklama: Köken alt bilgisi teslim sözleşmeleri:
 #           derin analiz telemetrisi/kökeni, doğrudan yanıt dekorasyonu ve
 #           TTS yükünden köken alt bilgisinin çıkarılması.
 # ==============================================================================

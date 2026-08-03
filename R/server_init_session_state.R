@@ -113,9 +113,9 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
 #   * derin analiz kimlik bağlantısının erken bırakılması,
 #   * yarım kalan filtre gözlemlerinin istek sonunda temizlenmesi.
 
-.pk_codex_runtime_env <- environment()
+.pk_hook_runtime_env <- environment()
 
-.pk_codex_scalar_text <- function(x) {
+.pk_hook_scalar_text <- function(x) {
   if (is.null(x) || length(x) == 0L) return("")
   out <- as.character(x)[1]
   if (is.na(out)) "" else out
@@ -132,8 +132,8 @@ pk_filter_observation_clear <- function(request_id = NULL, question = NULL) {
   keys <- ls(state, all.names = TRUE)
   if (length(keys) == 0L) return(invisible(FALSE))
 
-  request_id <- .pk_codex_scalar_text(request_id)
-  question <- .pk_codex_scalar_text(question)
+  request_id <- .pk_hook_scalar_text(request_id)
+  question <- .pk_hook_scalar_text(question)
   if (!nzchar(request_id) && !nzchar(question)) return(invisible(FALSE))
 
   remove_key <- vapply(keys, function(key) {
@@ -152,14 +152,14 @@ pk_filter_observation_clear <- function(request_id = NULL, question = NULL) {
   invisible(TRUE)
 }
 
-.pk_codex_current_request_id <- function(session) {
+.pk_hook_current_request_id <- function(session) {
   if (!exists("pk_provenance_current_request_id", mode = "function", inherits = TRUE)) {
     return(NULL)
   }
   tryCatch(pk_provenance_current_request_id(session), error = function(e) NULL)
 }
 
-.pk_codex_session_username <- function(session) {
+.pk_hook_session_username <- function(session) {
   tryCatch(
     session$userData$system_username %||%
       session$userData$username %||%
@@ -169,10 +169,10 @@ pk_filter_observation_clear <- function(request_id = NULL, question = NULL) {
   )
 }
 
-.pk_codex_database_failure_text <- function(text, is_exception = FALSE) {
+.pk_hook_database_failure_text <- function(text, is_exception = FALSE) {
   if (isTRUE(is_exception)) return(TRUE)
 
-  text <- .pk_codex_scalar_text(text)
+  text <- .pk_hook_scalar_text(text)
   if (!nzchar(text)) return(FALSE)
 
   patterns <- c(
@@ -188,15 +188,15 @@ pk_filter_observation_clear <- function(request_id = NULL, question = NULL) {
 # server_init_chat_runtime.R kendi doğrudan-çıkış sarmalayıcısını kurduktan
 # sonra çağrılır. DB/SQL hata çıkışı biliniyorsa telemetri için ikinci bağlantı
 # açılmaz; pk_analysis_observe(conn = NULL) köken alt bilgisini yine hazırlar.
-pk_codex_single_exit_fix_install <- function() {
-  target_env <- .pk_codex_runtime_env
+pk_hook_single_exit_fix_install <- function() {
+  target_env <- .pk_hook_runtime_env
   if (!exists(
     ".pk_analiz_process_request_without_exit_observer",
     mode = "function",
     envir = target_env,
     inherits = TRUE
   ) || exists(
-    ".pk_codex_single_exit_installed",
+    ".pk_hook_single_exit_installed",
     envir = target_env,
     inherits = FALSE
   )) {
@@ -215,7 +215,7 @@ pk_codex_single_exit_fix_install <- function() {
     started_at <- Sys.time()
     request_id <- NULL
     on.exit({
-      cleanup_request_id <- request_id %||% .pk_codex_current_request_id(session)
+      cleanup_request_id <- request_id %||% .pk_hook_current_request_id(session)
       try(
         pk_filter_observation_clear(cleanup_request_id, user_prompt),
         silent = TRUE
@@ -236,7 +236,7 @@ pk_codex_single_exit_fix_install <- function() {
       }
     )
 
-    request_id <- .pk_codex_current_request_id(session)
+    request_id <- .pk_hook_current_request_id(session)
     is_exception <- inherits(result, "condition")
     is_direct_exit <- is_exception || is.character(result) ||
       (is.list(result) && identical(result$type, "error_message"))
@@ -264,9 +264,9 @@ pk_codex_single_exit_fix_install <- function() {
     response_text <- if (is_exception) {
       conditionMessage(result)
     } else if (is.character(result)) {
-      .pk_codex_scalar_text(result)
+      .pk_hook_scalar_text(result)
     } else {
-      .pk_codex_scalar_text(result$content)
+      .pk_hook_scalar_text(result$content)
     }
 
     stopped <- grepl("İşlem Durduruldu", response_text, fixed = TRUE)
@@ -288,7 +288,7 @@ pk_codex_single_exit_fix_install <- function() {
     }
 
     user_id <- tryCatch(session$userData$user_id %||% NULL, error = function(e) NULL)
-    database_failure <- .pk_codex_database_failure_text(response_text, is_exception)
+    database_failure <- .pk_hook_database_failure_text(response_text, is_exception)
 
     conn_list <- NULL
     conn <- NULL
@@ -304,7 +304,7 @@ pk_codex_single_exit_fix_install <- function() {
       pk_analysis_observe(session, conn, list(
         request_id = request_id,
         question = user_prompt,
-        username = .pk_codex_session_username(session),
+        username = .pk_hook_session_username(session),
         user_id = user_id,
         deep_thinking = FALSE,
         query_name = "Tekil analiz",
@@ -321,7 +321,7 @@ pk_codex_single_exit_fix_install <- function() {
   }
 
   assign("pk_analiz_process_request", replacement, envir = target_env)
-  assign(".pk_codex_single_exit_installed", TRUE, envir = target_env)
+  assign(".pk_hook_single_exit_installed", TRUE, envir = target_env)
   invisible(TRUE)
 }
 

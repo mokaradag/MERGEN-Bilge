@@ -153,7 +153,7 @@ serverBuildChatEngineDependencyBundle <- function(settings_data,
 # =============================================================================
 # PR #695 — Derin analiz ve Ortak Oturum Codex çalışma zamanı düzeltmeleri
 # =============================================================================
-.pk_codex_same_connection_list <- function(left, right) {
+.pk_hook_same_connection_list <- function(left, right) {
   if (is.null(left) || is.null(right)) return(FALSE)
   if (!is.list(left) || !is.list(right)) return(identical(left, right))
   identical(left$conn %||% NULL, right$conn %||% NULL)
@@ -163,29 +163,29 @@ serverBuildChatEngineDependencyBundle <- function(settings_data,
 # almadan önce çekirdeği sarılır. İlk bağlantı yalnızca RLS kimlik okumasına
 # kadar yaşar; gözlem çağrıları kısa ömürlü telemetri bağlantıları kullanır.
 if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
-    !exists(".pk_codex_deep_core", inherits = FALSE)) {
+    !exists(".pk_hook_deep_core", inherits = FALSE)) {
 
-  .pk_codex_deep_core <- get(
+  .pk_hook_deep_core <- get(
     "pk_deep_analysis_process", mode = "function", inherits = TRUE
   )
-  .pk_codex_deep_core_env <- environment(.pk_codex_deep_core)
-  .pk_codex_real_get_connection <- get(
-    "get_connection", mode = "function", envir = .pk_codex_deep_core_env, inherits = TRUE
+  .pk_hook_deep_core_env <- environment(.pk_hook_deep_core)
+  .pk_hook_real_get_connection <- get(
+    "get_connection", mode = "function", envir = .pk_hook_deep_core_env, inherits = TRUE
   )
-  .pk_codex_real_release_connection <- get(
-    "release_connection", mode = "function", envir = .pk_codex_deep_core_env, inherits = TRUE
+  .pk_hook_real_release_connection <- get(
+    "release_connection", mode = "function", envir = .pk_hook_deep_core_env, inherits = TRUE
   )
-  .pk_codex_real_get_user_rls_info <- get(
-    "get_user_rls_info", mode = "function", envir = .pk_codex_deep_core_env, inherits = TRUE
+  .pk_hook_real_get_user_rls_info <- get(
+    "get_user_rls_info", mode = "function", envir = .pk_hook_deep_core_env, inherits = TRUE
   )
-  .pk_codex_real_pk_analysis_observe <- get(
-    "pk_analysis_observe", mode = "function", envir = .pk_codex_deep_core_env, inherits = TRUE
+  .pk_hook_real_pk_analysis_observe <- get(
+    "pk_analysis_observe", mode = "function", envir = .pk_hook_deep_core_env, inherits = TRUE
   )
 
   pk_deep_analysis_process <- function(user_prompt, chat_history, session,
                                        detail_level = "standart",
                                        stop_check = NULL) {
-    request_id <- .pk_codex_current_request_id(session)
+    request_id <- .pk_hook_current_request_id(session)
     on.exit(
       try(pk_filter_observation_clear(request_id, user_prompt), silent = TRUE),
       add = TRUE
@@ -195,21 +195,21 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
     state$primary <- NULL
     state$primary_released <- FALSE
 
-    call_env <- new.env(parent = .pk_codex_deep_core_env)
+    call_env <- new.env(parent = .pk_hook_deep_core_env)
 
     call_env$get_connection <- function() {
-      conn_list <- .pk_codex_real_get_connection()
+      conn_list <- .pk_hook_real_get_connection()
       if (is.null(state$primary)) state$primary <- conn_list
       conn_list
     }
 
     call_env$release_connection <- function(conn_list) {
-      is_primary <- .pk_codex_same_connection_list(conn_list, state$primary)
+      is_primary <- .pk_hook_same_connection_list(conn_list, state$primary)
       if (is_primary && isTRUE(state$primary_released)) {
         return(invisible(NULL))
       }
       if (is_primary) state$primary_released <- TRUE
-      .pk_codex_real_release_connection(conn_list)
+      .pk_hook_real_release_connection(conn_list)
     }
 
     call_env$get_user_rls_info <- function(username, conn) {
@@ -218,12 +218,12 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
           try(call_env$release_connection(state$primary), silent = TRUE)
         }
       }, add = TRUE)
-      .pk_codex_real_get_user_rls_info(username, conn)
+      .pk_hook_real_get_user_rls_info(username, conn)
     }
 
     call_env$pk_analysis_observe <- function(session, conn, info) {
       telemetry_list <- tryCatch(
-        .pk_codex_real_get_connection(),
+        .pk_hook_real_get_connection(),
         error = function(e) NULL
       )
       telemetry_conn <- if (is.list(telemetry_list)) {
@@ -233,14 +233,14 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
       }
       if (!is.null(telemetry_list)) {
         on.exit(
-          try(.pk_codex_real_release_connection(telemetry_list), silent = TRUE),
+          try(.pk_hook_real_release_connection(telemetry_list), silent = TRUE),
           add = TRUE
         )
       }
-      .pk_codex_real_pk_analysis_observe(session, telemetry_conn, info)
+      .pk_hook_real_pk_analysis_observe(session, telemetry_conn, info)
     }
 
-    core <- .pk_codex_deep_core
+    core <- .pk_hook_deep_core
     environment(core) <- call_env
     core(
       user_prompt = user_prompt,
@@ -252,17 +252,17 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
   }
 }
 
-.pk_codex_room_footer_append <- function(text, footer) {
-  footer <- .pk_codex_scalar_text(footer)
+.pk_hook_room_footer_append <- function(text, footer) {
+  footer <- .pk_hook_scalar_text(footer)
   if (!nzchar(footer)) return(text)
 
-  base <- .pk_codex_scalar_text(text)
+  base <- .pk_hook_scalar_text(text)
   if (grepl("**Analiz Kaynağı", base, fixed = TRUE)) return(text)
   paste0(base, footer)
 }
 
-.pk_codex_room_footer_publish <- function(footer) {
-  footer <- .pk_codex_scalar_text(footer)
+.pk_hook_room_footer_publish <- function(footer) {
+  footer <- .pk_hook_scalar_text(footer)
   if (!nzchar(footer)) return(invisible(FALSE))
 
   for (frame in rev(sys.frames())) {
@@ -271,7 +271,7 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
     if (!has_store || !has_key) next
 
     store <- get(".pk_room_provenance_store", envir = frame, inherits = FALSE)
-    key <- .pk_codex_scalar_text(get(
+    key <- .pk_hook_scalar_text(get(
       ".pk_room_provenance_key", envir = frame, inherits = FALSE
     ))
     if (is.environment(store) && nzchar(key)) {
@@ -286,24 +286,24 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
 # Sentetik oda session'ındaki köken alt bilgisi açıkça köprü dönüşüne eklenir
 # ve aynı istek için Ortak Oturum üretim deposuna yayınlanır.
 if (exists("oo_arac_sql_baglami_kur", mode = "function", inherits = TRUE) &&
-    !exists(".pk_codex_room_sql_core", inherits = FALSE)) {
+    !exists(".pk_hook_room_sql_core", inherits = FALSE)) {
 
-  .pk_codex_room_sql_core <- get(
+  .pk_hook_room_sql_core <- get(
     "oo_arac_sql_baglami_kur", mode = "function", inherits = TRUE
   )
 
   oo_arac_sql_baglami_kur <- function(soru, gecmis, oda_session, arac_meta) {
-    result <- .pk_codex_room_sql_core(soru, gecmis, oda_session, arac_meta)
+    result <- .pk_hook_room_sql_core(soru, gecmis, oda_session, arac_meta)
     footer <- if (exists("pk_provenance_take", mode = "function", inherits = TRUE)) {
       tryCatch(pk_provenance_take(oda_session), error = function(e) NULL)
     } else {
       NULL
     }
 
-    footer <- .pk_codex_scalar_text(footer)
+    footer <- .pk_hook_scalar_text(footer)
     if (is.list(result) && nzchar(footer)) {
       result$provenance_footer <- footer
-      .pk_codex_room_footer_publish(footer)
+      .pk_hook_room_footer_publish(footer)
     }
     result
   }
@@ -312,14 +312,14 @@ if (exists("oo_arac_sql_baglami_kur", mode = "function", inherits = TRUE) &&
 # Her Ortak Oturum isteği için küçük bir alt-bilgi deposu kurulur. Doğrudan
 # yanıt ve asenkron model yanıtı aynı motor$tamamla sınırında tek kez süslenir.
 if (exists("ortakOturumYzBind", mode = "function", inherits = TRUE) &&
-    !exists(".pk_codex_room_bind_core", inherits = FALSE)) {
+    !exists(".pk_hook_room_bind_core", inherits = FALSE)) {
 
-  .pk_codex_room_bind_core <- get(
+  .pk_hook_room_bind_core <- get(
     "ortakOturumYzBind", mode = "function", inherits = TRUE
   )
 
   ortakOturumYzBind <- function(input, output, session, ctx, motor) {
-    result <- .pk_codex_room_bind_core(input, output, session, ctx, motor)
+    result <- .pk_hook_room_bind_core(input, output, session, ctx, motor)
 
     provenance_store <- new.env(parent = emptyenv())
     original_llm <- motor$llm_uret
@@ -329,7 +329,7 @@ if (exists("ortakOturumYzBind", mode = "function", inherits = TRUE) &&
       motor$llm_uret <- function(oturum_id, soru_id, soran_id, istek_id,
                                  kuyruk_id = NULL, persona_kimligi = NULL) {
         .pk_room_provenance_store <- provenance_store
-        .pk_room_provenance_key <- .pk_codex_scalar_text(istek_id)
+        .pk_room_provenance_key <- .pk_hook_scalar_text(istek_id)
         original_llm(
           oturum_id = oturum_id,
           soru_id = soru_id,
@@ -346,7 +346,7 @@ if (exists("ortakOturumYzBind", mode = "function", inherits = TRUE) &&
                                 yanit_metni = NULL, hata_metni = NULL,
                                 kuyruk_id = NULL, soran_id = NULL,
                                 persona_id = NULL) {
-        key <- .pk_codex_scalar_text(istek_id)
+        key <- .pk_hook_scalar_text(istek_id)
         footer <- if (nzchar(key) &&
                       exists(key, envir = provenance_store, inherits = FALSE)) {
           value <- get(key, envir = provenance_store, inherits = FALSE)
@@ -357,10 +357,10 @@ if (exists("ortakOturumYzBind", mode = "function", inherits = TRUE) &&
         }
 
         if (!is.null(yanit_metni)) {
-          yanit_metni <- .pk_codex_room_footer_append(yanit_metni, footer)
+          yanit_metni <- .pk_hook_room_footer_append(yanit_metni, footer)
         }
         if (!is.null(hata_metni)) {
-          hata_metni <- .pk_codex_room_footer_append(hata_metni, footer)
+          hata_metni <- .pk_hook_room_footer_append(hata_metni, footer)
         }
 
         original_finish(

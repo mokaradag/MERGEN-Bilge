@@ -295,6 +295,6 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
 # PR #695 Codex düzeltmesi: Yukarıdaki temel doğrudan-çıkış sarmalayıcısı
 # kurulduktan sonra DB-hata tekrar bağlantısı ve filtre temizliği sertleştirmesini
 # etkinleştir.
-if (exists("pk_codex_single_exit_fix_install", mode = "function", inherits = TRUE)) {
-  pk_codex_single_exit_fix_install()
+if (exists("pk_hook_single_exit_fix_install", mode = "function", inherits = TRUE)) {
+  pk_hook_single_exit_fix_install()
 }

@@ -6,27 +6,70 @@
 #           ifadesini telemetri amacıyla ikinci kez değerlendirmez.
 # ==============================================================================
 
-# Standart çalışma zamanında temel dosya kaynak manifesti tarafından bu
-# dosyadan önce yüklenir. İzole source()/testthat çalıştırmalarında ise mevcut
-# çalışma dizinine güvenmeden, bu dosyanın kendi konumundaki kardeş dosya yüklenir.
+# Standart çalışma zamanında temel dosya kaynak manifesti tarafından bu dosyadan
+# önce yüklenir ve bu blok hiç çalışmaz. İzole source()/testthat çalıştırmalarında
+# ise çalışma dizininden bağımsız aday yollar sırayla denenir: repo kökü,
+# tests/testthat ve MERGEN_REPO_ROOT. sys.frame(1)$ofile tek başına yeterli
+# değildir; testthat çağrı yığınının derininde ofile taşımayan bir çerçeve olur.
 if (!exists("extract_filter_criteria_from_prompt", mode = "function", inherits = FALSE)) {
-  .pk_filter_source_file <- tryCatch(
-    as.character(sys.frame(1)$ofile %||% "")[1],
-    error = function(e) ""
-  )
-  .pk_filter_base_path <- if (nzchar(.pk_filter_source_file)) {
-    file.path(dirname(normalizePath(.pk_filter_source_file, winslash = "/", mustWork = TRUE)),
-              "helpers_pk_analysis_filters_base.R")
-  } else {
-    ""
+  # 1) Bu dosyayı source eden çerçevedeki ofile üzerinden kardeş dosyayı bul.
+  #    testthat yığınında source çerçevesi sys.frame(1) DEĞİLDİR; bu yüzden tüm
+  #    çerçeveler içten dışa taranır. Mutlak yolla source edilen izole testler
+  #    (getwd() tempdir()) yalnızca bu adayla çözülür.
+  .pk_filter_sibling <- NULL
+  for (.pk_filter_i in rev(seq_len(sys.nframe()))) {
+    .pk_filter_of <- tryCatch(
+      get("ofile", envir = sys.frame(.pk_filter_i), inherits = FALSE),
+      error = function(e) NULL
+    )
+    if (is.character(.pk_filter_of) && length(.pk_filter_of) == 1L &&
+        !is.na(.pk_filter_of) && nzchar(.pk_filter_of)) {
+      .pk_filter_try <- file.path(
+        dirname(normalizePath(.pk_filter_of, winslash = "/", mustWork = FALSE)),
+        "helpers_pk_analysis_filters_base.R"
+      )
+      if (isTRUE(tryCatch(file.exists(.pk_filter_try), error = function(e) FALSE))) {
+        .pk_filter_sibling <- .pk_filter_try
+        break
+      }
+    }
   }
 
-  if (!nzchar(.pk_filter_base_path) || !file.exists(.pk_filter_base_path)) {
+  # 2) Çalışma dizininden bağımsız aday yollar: repo kökü, tests/testthat, MERGEN_REPO_ROOT.
+  .pk_filter_base_candidates <- c(
+    .pk_filter_sibling,
+    file.path("R", "helpers_pk_analysis_filters_base.R"),
+    file.path("..", "..", "R", "helpers_pk_analysis_filters_base.R"),
+    file.path("..", "R", "helpers_pk_analysis_filters_base.R"),
+    if (nzchar(Sys.getenv("MERGEN_REPO_ROOT"))) {
+      file.path(Sys.getenv("MERGEN_REPO_ROOT"), "R", "helpers_pk_analysis_filters_base.R")
+    } else {
+      NULL
+    }
+  )
+
+  .pk_filter_base_path <- NULL
+  for (.pk_filter_cand in .pk_filter_base_candidates) {
+    if (!is.null(.pk_filter_cand) && nzchar(.pk_filter_cand) &&
+        isTRUE(tryCatch(file.exists(.pk_filter_cand), error = function(e) FALSE))) {
+      .pk_filter_base_path <- .pk_filter_cand
+      break
+    }
+  }
+
+  if (is.null(.pk_filter_base_path)) {
     stop("helpers_pk_analysis_filters_base.R bulunamadı.", call. = FALSE)
   }
 
   source(.pk_filter_base_path, encoding = "UTF-8", local = environment())
-  rm(.pk_filter_source_file, .pk_filter_base_path)
+
+  # Source-time geçici değişkenler yalnızca var olduklarında silinir (warning-free).
+  for (.pk_filter_tmp in c(".pk_filter_sibling", ".pk_filter_i", ".pk_filter_of",
+                           ".pk_filter_try", ".pk_filter_base_candidates",
+                           ".pk_filter_base_path", ".pk_filter_cand")) {
+    if (exists(.pk_filter_tmp, inherits = FALSE)) rm(list = .pk_filter_tmp)
+  }
+  rm(.pk_filter_tmp)
 }
 
 if (!exists(".pk_filter_observation_state", inherits = FALSE) ||

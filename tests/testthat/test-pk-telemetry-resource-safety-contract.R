@@ -1,12 +1,16 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-pk-codex-review-fixes.R
-# Açıklama: PR #695 Codex P1/P2 çalışma zamanı düzeltmelerinin çevrimdışı
-#           davranış sözleşmeleri.
+# Dosya Yolu: tests/testthat/test-pk-telemetry-resource-safety-contract.R
+# Açıklama: Telemetri kaynak güvenliği sözleşmeleri: DB hatasında yeniden
+#           bağlanmama, gözlem deposunun sızdırmaması ve köken alt bilgisinin
+#           Ortak Oturum motorunda tek kez eklenmesi.
 # ==============================================================================
 
 .pk_fix_test_env <- function() {
   env <- new.env(parent = baseenv())
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  # environment(f) <- env yapılan sahte fonksiyonların gövdesinde env$... okunur.
+  # Arama zinciri env -> baseenv() olduğundan env kendini görebilmelidir.
+  env$env <- env
   env
 }
 
