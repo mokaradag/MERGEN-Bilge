@@ -239,7 +239,17 @@ pk_meta_validate_query <- function(query_id, meta, registry = NULL) {
       hatalar <- c(hatalar, .pk_meta_err(query_id, sprintf(
         "%s bos olmayan metinlerden olusan karakter vektoru olmalidir.", alan
       )))
+    } else if (is.character(meta[[alan]]) && anyDuplicated(meta[[alan]])) {
+      hatalar <- c(hatalar, .pk_meta_err(query_id, sprintf(
+        "%s tekrar eden sutun iceremez.", alan
+      )))
     }
+  }
+
+  if (!is.null(meta$grain) &&
+      !.pk_meta_is_text_vector(meta$grain_columns, allow_empty = FALSE)) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id,
+      "grain beyan edildiginde bos olmayan grain_columns zorunludur."))
   }
 
   if (!is.null(meta$row_cap) &&
@@ -352,6 +362,23 @@ pk_meta_validate_query <- function(query_id, meta, registry = NULL) {
     function(cm) is.list(cm) && identical(cm$role, "measure"),
     logical(1)
   )]
+  tarihler <- beyan[vapply(
+    sutunlar,
+    function(cm) is.list(cm) && identical(cm$role, "date"),
+    logical(1)
+  )]
+  varliklar <- beyan[vapply(
+    sutunlar,
+    function(cm) is.list(cm) && .pk_meta_is_scalar_text(cm$role) &&
+      cm$role %in% c("id", "dimension"),
+    logical(1)
+  )]
+  gruplanabilir <- beyan[vapply(
+    sutunlar,
+    function(cm) is.list(cm) && .pk_meta_is_scalar_text(cm$role) &&
+      cm$role %in% c("id", "dimension", "date"),
+    logical(1)
+  )]
   hatalar <- character(0)
 
   kontrol <- function(alan, degerler, izinli, etiket) {
@@ -367,10 +394,16 @@ pk_meta_validate_query <- function(query_id, meta, registry = NULL) {
   }
 
   if (.pk_meta_is_scalar_text(meta$primary_entity)) {
-    hatalar <- c(hatalar, kontrol("primary_entity", meta$primary_entity, beyan, "sutuna isaret ediyor"))
+    hatalar <- c(hatalar, kontrol(
+      "primary_entity", meta$primary_entity, varliklar,
+      "id veya dimension sutununa isaret ediyor"
+    ))
   }
   hatalar <- c(hatalar, kontrol("grain_columns", meta$grain_columns, beyan, "sutuna isaret ediyor"))
-  hatalar <- c(hatalar, kontrol("default_group_by", meta$default_group_by, beyan, "sutuna isaret ediyor"))
+  hatalar <- c(hatalar, kontrol(
+    "default_group_by", meta$default_group_by, gruplanabilir,
+    "id, dimension veya date sutununa isaret ediyor"
+  ))
   hatalar <- c(hatalar, kontrol("default_measures", meta$default_measures, olculer, "olcu sutununa isaret ediyor"))
 
   for (sutun in beyan) {
@@ -445,8 +478,20 @@ pk_meta_validate_schema_dependent <- function(query_id, meta, schema, rls_column
       "result_schema adlandirilmis karakter vektoru veya data.frame olmalidir."))))
   }
 
-  sema_sutunlari <- unique(parcalar$columns)
+  sema_ham <- parcalar$columns
+  sema_gecersiz <- sema_ham[is.na(sema_ham) | !nzchar(trimws(sema_ham))]
+  sema_tekrar <- unique(sema_ham[!is.na(sema_ham) & duplicated(sema_ham)])
+  sema_sutunlari <- unique(sema_ham)
   sema_sutunlari <- sema_sutunlari[!is.na(sema_sutunlari) & nzchar(trimws(sema_sutunlari))]
+  if (length(sema_gecersiz)) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id,
+      "result_schema bos veya NA sutun adi iceremez."))
+  }
+  if (length(sema_tekrar)) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, sprintf(
+      "result_schema icinde tekrar eden sutun adi: %s", paste(sema_tekrar, collapse = ", ")
+    )))
+  }
 
   eksik_meta <- setdiff(names(meta$column_meta %||% list()), sema_sutunlari)
   if (length(eksik_meta)) {
@@ -550,6 +595,11 @@ pk_meta_tracked_alias_audit <- function(curated) {
       next
     }
     ids <- c(ids, trimws(q_item$id))
+    if (!.pk_meta_is_scalar_text(q_item$sql)) {
+      hatalar <- c(hatalar, sprintf(
+        "query_library[[%d]] (%s) bos olmayan SQL tasimalidir.", i, trimws(q_item$id)
+      ))
+    }
   }
 
   tekrar <- unique(ids[duplicated(ids)])
