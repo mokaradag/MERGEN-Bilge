@@ -191,7 +191,7 @@ if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
     conn_list <- tryCatch(get_connection(), error = function(e) NULL)
     conn <- if (is.list(conn_list)) conn_list$conn %||% NULL else NULL
     if (!is.null(conn_list)) {
-      on.exit(try(release_connection(conn_list), silent = TRUE)), add = TRUE)
+      on.exit(try(release_connection(conn_list), silent = TRUE), add = TRUE)
     }
 
     try(
@@ -213,7 +213,7 @@ if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
     if (is_exception) stop(caught_error)
     result
   }
-
+}
 
 # ==============================================================================
 # Derin analiz — giriş anındaki iptali gözlemle
