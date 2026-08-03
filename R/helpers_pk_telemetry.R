@@ -165,9 +165,15 @@ pk_analysis_observe <- function(session, conn, info) {
         info$filter_status <- "ok_filtered"
       }
 
+      # Tüm filtreler düşürüldüyse sonuç bozulmuştur. "ok_no_filter" da buraya
+      # dâhildir: yalnızca filter_expression dönen ve değerlendirmesi başarısız
+      # olan istekte alt bilgi aksi halde hem "soru genel olarak yorumlandı" der
+      # hem de düşürülen filtre uyarısı gösterirdi; FiltreDurumu ise meşru bir
+      # filtresiz sonuç gibi yazılırdı. timeout/error/stopped/not_reached/disabled
+      # daha özgül bilgidir ve ezilmez.
       if (length(info$filters %||% list()) == 0L &&
           length(filter_observation$dropped_filters %||% list()) > 0L &&
-          identical(info$filter_status, "ok_filtered")) {
+          isTRUE(info$filter_status %in% c("ok_filtered", "ok_no_filter"))) {
         info$filter_status <- "malformed"
       }
     }

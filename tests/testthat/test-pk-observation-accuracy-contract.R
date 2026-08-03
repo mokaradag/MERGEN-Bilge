@@ -118,3 +118,102 @@ test_that("gözlem yalnız uygulanan filtreleri ve yapılandırılmış motoru k
   expect_true(grepl("not-a-number", captured$footer, fixed = TRUE))
   expect_identical(captured$request_id, "req-observe")
 })
+
+test_that("tüm filtreler düşürüldüyse ok_no_filter bozuk olarak raporlanır", {
+  env <- .pk_observation_test_env()
+  env$pk_provenance_current_request_id <- function(session) "req-expr"
+
+  captured <- new.env(parent = emptyenv())
+  env$pk_telemetry_log_analysis <- function(info, conn) {
+    captured$info <- info
+    invisible(TRUE)
+  }
+  env$pk_provenance_stash <- function(session, footer, request_id = NULL) {
+    captured$footer <- footer
+    invisible(TRUE)
+  }
+
+  # LLM yalnızca filter_expression döndürdü ve ifade değerlendirilemedi:
+  # uygulanan filtre yok, düşürülen tek bir ifade var.
+  result <- local({
+    session <- list()
+    selected_query <- list(id = "q-expr", name = "Ifade Sorgusu")
+    env$apply_smart_filters(
+      data.frame(amount = 1:5),
+      list(
+        filters = list(),
+        filter_expression = "bilinmeyen_sutun > 2",
+        aggregation = NULL,
+        group_column = NULL
+      ),
+      "ifade sorusu"
+    )
+  })
+
+  expect_identical(nrow(result), 5L)
+
+  env$pk_analysis_observe(list(), NULL, list(
+    request_id = "req-expr",
+    question = "ifade sorusu",
+    username = "kullanici",
+    query_id = "q-expr",
+    query_name = "Ifade Sorgusu",
+    filter_status = "ok_no_filter",
+    filters = list(),
+    pre_rls_rows = 5L,
+    authorized_rows = 5L,
+    filtered_rows = 5L,
+    outcome = "Basarili"
+  ))
+
+  # Alt bilgi "soru genel olarak yorumlandı" DEMEMELİ; durum bozuktur.
+  expect_identical(captured$info$filter_status, "malformed")
+  expect_true("filter_malformed" %in% captured$info$degradation_codes)
+  expect_true("filter_dropped" %in% captured$info$degradation_codes)
+  expect_false(grepl("genel olarak yorumland", captured$footer, fixed = TRUE))
+})
+
+test_that("düşürülen filtre stopped gibi özgül durumları ezmez", {
+  env <- .pk_observation_test_env()
+  env$pk_provenance_current_request_id <- function(session) "req-stopped"
+
+  captured <- new.env(parent = emptyenv())
+  env$pk_telemetry_log_analysis <- function(info, conn) {
+    captured$info <- info
+    invisible(TRUE)
+  }
+  env$pk_provenance_stash <- function(session, footer, request_id = NULL) {
+    invisible(TRUE)
+  }
+
+  local({
+    session <- list()
+    selected_query <- list(id = "q-stop", name = "Durdurulan")
+    env$apply_smart_filters(
+      data.frame(amount = 1:5),
+      list(
+        filters = list(),
+        filter_expression = "bilinmeyen_sutun > 2",
+        aggregation = NULL,
+        group_column = NULL
+      ),
+      "durdurulan soru"
+    )
+  })
+
+  env$pk_analysis_observe(list(), NULL, list(
+    request_id = "req-stopped",
+    question = "durdurulan soru",
+    username = "kullanici",
+    query_id = "q-stop",
+    query_name = "Durdurulan",
+    filter_status = "stopped",
+    filters = list(),
+    pre_rls_rows = 5L,
+    authorized_rows = 5L,
+    filtered_rows = 5L,
+    outcome = "Durduruldu"
+  ))
+
+  expect_identical(captured$info$filter_status, "stopped")
+})

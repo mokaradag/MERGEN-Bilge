@@ -169,9 +169,11 @@ pk_filter_observation_clear <- function(request_id = NULL, question = NULL) {
   )
 }
 
+# Çıkışın DB/SQL kaynaklı olup olmadığını METİNDEN sınıflandırır. İstisnalar da
+# koşulsuz DB hatası sayılmaz: aksi halde ayrıştırma, sorgu seçimi veya başka
+# uygulama hataları conn = NULL ile gözlemlenir ve MB_Analiz_Log'a hiç yazılmaz.
+# Yeniden bağlanmama yolu yalnızca gerçekten DB kaynaklı çıkışlara ayrılmıştır.
 .pk_hook_database_failure_text <- function(text, is_exception = FALSE) {
-  if (isTRUE(is_exception)) return(TRUE)
-
   text <- .pk_hook_scalar_text(text)
   if (!nzchar(text)) return(FALSE)
 
@@ -180,6 +182,17 @@ pk_filter_observation_clear <- function(request_id = NULL, question = NULL) {
     "Login timeout", "Login failed", "could not connect",
     "Connection refused", "DSN=", "Driver="
   )
+
+  # İstisna mesajlarında bağlantı katmanı hataları DBI/ODBC biçiminde görünür.
+  if (isTRUE(is_exception)) {
+    patterns <- c(
+      patterns,
+      "dbConnect", "dbGetQuery", "dbSendQuery", "dbExecute",
+      "Data source name not found",
+      "08001", "08S01", "HYT00", "IM002"
+    )
+  }
+
   any(vapply(patterns, function(pattern) {
     grepl(pattern, text, fixed = TRUE, useBytes = TRUE)
   }, logical(1)))

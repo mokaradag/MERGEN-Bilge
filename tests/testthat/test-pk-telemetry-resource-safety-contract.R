@@ -229,3 +229,101 @@ test_that("shared-room SQL provenance reaches direct and generated answers", {
     fixed = TRUE
   )
 })
+
+test_that("veritabanı kaynaklı olmayan istisnalar telemetri için bağlantı açar", {
+  env <- .pk_fix_test_env()
+  env$connection_calls <- 0L
+  env$observed_conn <- "not-called"
+  env$observed_outcome <- NULL
+  env$.pk_filter_observation_state <- new.env(parent = emptyenv())
+
+  # DB ile ilgisi olmayan bir uygulama hatası (ör. ayrıştırma / sorgu seçimi).
+  core <- function(user_prompt, chat_history, session, stop_check = NULL) {
+    stop("beklenmeyen ayrıştırma hatası")
+  }
+  environment(core) <- env
+  env$pk_analiz_process_request <- core
+  env$pk_provenance_current_request_id <- function(session) "req-app-error"
+  env$get_connection <- function() {
+    env$connection_calls <- env$connection_calls + 1L
+    list(conn = paste0("conn-", env$connection_calls))
+  }
+  env$release_connection <- function(conn_list) invisible(NULL)
+  env$pk_analysis_observe <- function(session, conn, info) {
+    env$observed_conn <- conn
+    env$observed_outcome <- info$outcome
+    session$userData$pk_provenance_pending <- list(footer = "footer")
+    invisible("footer")
+  }
+
+  .source_pk_fix_layer(env)
+
+  session <- list(userData = new.env(parent = emptyenv()))
+  session$userData$auth_initialized <- TRUE
+  session$userData$system_username <- "tester"
+
+  expect_error(
+    env$pk_analiz_process_request("soru", list(), session),
+    "beklenmeyen ayrıştırma hatası"
+  )
+
+  # Yeniden bağlanmama yolu yalnızca gerçek DB hatalarına ayrılmıştır; aksi
+  # halde conn = NULL ile gözlem yapılır ve MB_Analiz_Log yazımı atlanırdı.
+  expect_equal(env$connection_calls, 1L)
+  expect_equal(env$observed_conn, "conn-1")
+  expect_identical(env$observed_outcome, "Hata")
+})
+
+test_that("veritabanı istisnaları hâlâ yeniden bağlanmaz", {
+  env <- .pk_fix_test_env()
+  env$connection_calls <- 0L
+  env$observed_conn <- "not-called"
+  env$.pk_filter_observation_state <- new.env(parent = emptyenv())
+
+  core <- function(user_prompt, chat_history, session, stop_check = NULL) {
+    stop("nanodbc/nanodbc.cpp:1021: 08001: Login timeout expired")
+  }
+  environment(core) <- env
+  env$pk_analiz_process_request <- core
+  env$pk_provenance_current_request_id <- function(session) "req-db-exc"
+  env$get_connection <- function() {
+    env$connection_calls <- env$connection_calls + 1L
+    stop("telemetry must not reconnect")
+  }
+  env$release_connection <- function(conn_list) invisible(NULL)
+  env$pk_analysis_observe <- function(session, conn, info) {
+    env$observed_conn <- conn
+    session$userData$pk_provenance_pending <- list(footer = "footer")
+    invisible("footer")
+  }
+
+  .source_pk_fix_layer(env)
+
+  session <- list(userData = new.env(parent = emptyenv()))
+  session$userData$auth_initialized <- TRUE
+  session$userData$system_username <- "tester"
+
+  expect_error(
+    env$pk_analiz_process_request("soru", list(), session),
+    "Login timeout expired"
+  )
+  expect_equal(env$connection_calls, 0L)
+  expect_null(env$observed_conn)
+})
+
+test_that("istisna sınıflandırması yalnızca DB desenlerine dayanır", {
+  env <- .pk_fix_test_env()
+  env$.pk_filter_observation_state <- new.env(parent = emptyenv())
+  .source_pk_fix_layer(env)
+
+  classify <- env$.pk_hook_database_failure_text
+
+  expect_false(classify("beklenmeyen ayrıştırma hatası", is_exception = TRUE))
+  expect_false(classify("object 'x' not found", is_exception = TRUE))
+  expect_true(classify("nanodbc: Login failed", is_exception = TRUE))
+  expect_true(classify("08S01 baglanti koptu", is_exception = TRUE))
+  expect_true(classify("Error in dbGetQuery(...)", is_exception = TRUE))
+  expect_true(classify("**Veritabanı Hatası:** SQLSTATE 08001"))
+  expect_false(classify("normal bir yanit metni"))
+  expect_false(classify(NULL))
+})
