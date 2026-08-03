@@ -122,7 +122,10 @@
   # helpers_langflow_sources.R'den SONRA eklendi (marker bloğu bağımlılığı).
   chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 15L),
   summarization_followup = list(first = "R/helpers_summarization_modes.R", last = "R/helpers_followup_questions.R", n = 3L),
-  analysis_helpers = list(first = "R/helpers_deep_analysis.R", last = "R/helpers_pk_analysis_query_selection.R", n = 5L),
+  # Faz 0 (Proje ve Kaynak Analizi yeniden inşası): yapılandırma çözümleyicisi,
+  # köken/bozulma ve telemetri yardımcıları bölümün BAŞINA eklendi
+  # (bağımlılık sırası: config -> provenance -> telemetry).
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_analysis_query_selection.R", n = 11L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -447,7 +450,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # onları seam sahipliği olmayan ölü koda çeviriyordu.
   # 365L -> 366L bilinçli güncelleme: dizin gezgini numaralandırması ana Shiny
   # olay döngüsünden çıkarıldı (R/helpers_claude_code_dir_listing_async.R).
-  expect_equal(length(runtime), 367L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 367 -> 371: Faz 0 dört PK yardımcısı ekledi (config/provenance/telemetry-record/telemetry).
+  # 371 -> 373: Faz 0 ayrıca iki temel dosya ekledi (telemetry_base/analysis_filters_base);
+  # bunlar sarmalayıcılarından hemen önce yüklenir.
+  expect_equal(length(runtime), 373L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

@@ -142,6 +142,16 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
     if (!isTRUE(settings_data$enable_tts_audio)) return(invisible(NULL))
 
     full_text <- as.character(content)[1]
+
+    # Analiz kökeni ve bozulma bildirimi ekranda görünür meta veridir; TTS
+    # tarafından okunmamalıdır. R bu eki aşağıdaki kesin markdown sınırından
+    # itibaren eklediği için yalnızca bu son ek güvenli biçimde çıkarılır.
+    provenance_marker <- "\n\n---\n**Analiz Kaynağı"
+    marker_pos <- regexpr(provenance_marker, full_text, fixed = TRUE)[1]
+    if (!is.na(marker_pos) && marker_pos > 0L) {
+      full_text <- substr(full_text, 1L, marker_pos - 1L)
+    }
+
     if (!nzchar(full_text)) return(invisible(NULL))
 
     # Persona kimliği fail-closed çözülür: kilitli referans modunda yanıt

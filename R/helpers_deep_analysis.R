@@ -82,7 +82,6 @@ get_analysis_detail_instruction <- function(level_id) {
 find_multiple_queries_with_ai <- function(user_prompt, library, session, max_queries = 5) {
   cat("[DEEP_ANALYSIS] AI tabanlı çoklu sorgu seçimi başlatılıyor...\n")
 
-  # Kütüphane özetini hazırla
   library_context <- vapply(seq_along(library), function(i) {
     q <- library[[i]]
     sprintf("ID: %d | İSİM: %s | AÇIKLAMA: %s", i, q$name, q$description)
@@ -93,10 +92,8 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session, max_que
   system_instruction <- paste0(
     "Sen bir Veritabanı Sorgu Yönlendiricisisin. Kullanıcının Türkçe sorusunu analiz edip ",
     "İLGİLİ TÜM SQL sorgularını seç. Birden fazla sorgu seçebilirsin.\n\n",
-
     "### MEVCUT SORGULAR:\n",
     library_text, "\n\n",
-
     "### KURALLLAR:\n",
     "1. Kullanıcının sorusuyla DOĞRUDAN veya DOLAYLI ilgili TÜM sorguları seç.\n",
     "2. En az 1, en fazla ", max_queries, " sorgu seç.\n",
@@ -104,7 +101,6 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session, max_que
     "4. Sadece gerçekten ilgili sorguları seç - alakasız sorgu ekleme.\n",
     "5. AYNI SORGUYU BİRDEN FAZLA SEÇME - her match_id benzersiz olmalı!\n",
     "6. Sorgular güven skoruna göre AZALAN sırada olmalı.\n\n",
-
     "### ZORUNLU JSON ÇIKTISI:\n",
     "{\"matches\": [{\"match_id\": 1, \"confidence\": 90, \"reason\": \"Kısa açıklama\"}, ...]}\n\n",
     "- match_id: Sorgu ID numarası (1'den başlar)\n",
@@ -163,13 +159,11 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session, max_que
       return(NULL)
     }
 
-    # Eşleşmeleri işle (tekrarlı sorguları engelle)
     selected <- list()
     selected_indices <- integer(0)
     for (m in parsed$matches) {
       idx <- as.integer(m$match_id)
       if (!is.null(idx) && idx > 0 && idx <= length(library)) {
-        # Aynı sorgu zaten seçildiyse atla
         if (idx %in% selected_indices) {
           cat(sprintf("[DEEP_ANALYSIS] Tekrarlı sorgu atlandı: ID=%d ('%s')\n", idx, library[[idx]]$name))
           next
@@ -189,11 +183,9 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session, max_que
 
     if (length(selected) == 0) return(NULL)
 
-    # Güven skoruna göre sırala (azalan)
     scores <- vapply(selected, function(s) s$relevance_score, numeric(1))
     selected <- selected[order(scores, decreasing = TRUE)]
 
-    # Maksimum sorgu sayısını uygula
     if (length(selected) > max_queries) {
       selected <- selected[seq_len(max_queries)]
     }
@@ -211,7 +203,7 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session, max_que
 }
 
 # ------------------------------------------------------------------------------
-# TEKİL SORGU İŞLEME (Bağımsız Bağlam Penceresi)
+# TEKİL SORGU İŞLEME (Bağımsız BağLAM PENCERESİ)
 # ------------------------------------------------------------------------------
 
 #' Tek bir sorguyu çalıştır ve istatistiksel özet oluştur
@@ -223,8 +215,35 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session, max_que
 #' @param stop_check Durdurma kontrol fonksiyonu
 #' @return İşlenmiş sorgu sonucu listesi veya NULL (hata durumunda)
 execute_single_deep_query <- function(query, user_prompt, session, rls_info,
-                                       detail_config, stop_check = NULL) {
+                                      detail_config, stop_check = NULL) {
   query_name <- query$name %||% "Bilinmeyen Sorgu"
+  query_started_at <- Sys.time()
+
+  finish_result <- function(result,
+                            filter_status = "not_reached",
+                            filters = list(),
+                            pre_rls_rows = NA_integer_,
+                            authorized_rows = NA_integer_,
+                            filtered_rows = NA_integer_,
+                            outcome = NULL) {
+    if (is.null(outcome)) {
+      outcome <- if (isTRUE(result$success)) "Basarili" else "Hata"
+    }
+
+    result$pk_observation <- list(
+      query_id = query$id,
+      query_name = query_name,
+      filter_status = filter_status,
+      filters = filters %||% list(),
+      pre_rls_rows = pre_rls_rows,
+      authorized_rows = authorized_rows,
+      filtered_rows = filtered_rows,
+      outcome = outcome,
+      duration_ms = as.numeric(difftime(Sys.time(), query_started_at, units = "secs")) * 1000
+    )
+    result
+  }
+
   cat(sprintf("[DEEP_QUERY] İşleniyor: '%s'\n", query_name))
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
@@ -232,31 +251,28 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     return(NULL)
   }
 
-  # 1. Bağlantı kur
   conn_list <- tryCatch(get_connection(target = query$db_target %||% "primary"), error = function(e) NULL)
   if (is.null(conn_list)) {
     cat(sprintf("[DEEP_QUERY] '%s' - DB bağlantısı kurulamadı.\n", query_name))
-    return(list(
+    return(finish_result(list(
       query_name = query_name,
       success = FALSE,
       error_msg = "Veritabanı bağlantısı kurulamadı."
-    ))
+    )))
   }
   conn <- conn_list$conn
   on.exit(release_connection(conn_list), add = TRUE)
 
-  # 2. SQL içeriğini belirle
   sql_query_text <- ""
   if (!is.null(query$sql_file) && nzchar(query$sql_file)) {
     fpath <- query$sql_file
     if (file.exists(fpath)) {
-      # Dosyadan oku (basitleştirilmiş - ana modüldeki gibi kodlama kontrolü)
       sql_query_text <- tryCatch({
         f_con <- file(fpath, open = "rb")
+        on.exit(close(f_con), add = TRUE)
         f_size <- file.info(fpath)$size
         if (is.na(f_size)) f_size <- 0
         raw_content <- readBin(f_con, "raw", n = f_size)
-        close(f_con)
 
         has_bom_le <- length(raw_content) >= 2 && raw_content[1] == as.raw(0xff) && raw_content[2] == as.raw(0xfe)
         has_nulls <- any(raw_content == as.raw(0))
@@ -282,15 +298,21 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
   }
 
   if (!nzchar(sql_query_text)) {
-    return(list(query_name = query_name, success = FALSE, error_msg = "SQL kodu bulunamadı."))
+    return(finish_result(list(
+      query_name = query_name,
+      success = FALSE,
+      error_msg = "SQL kodu bulunamadı."
+    )))
   }
 
-  # Güvenlik kontrolü
   if (grepl("\\b(DELETE|DROP|TRUNCATE|ALTER)\\b", toupper(sql_query_text))) {
-    return(list(query_name = query_name, success = FALSE, error_msg = "Güvenlik ihlali."))
+    return(finish_result(list(
+      query_name = query_name,
+      success = FALSE,
+      error_msg = "Güvenlik ihlali."
+    )))
   }
 
-  # 3. Sorguyu çalıştır
   raw_data <- tryCatch(
     DBI::dbGetQuery(conn, trimws(sql_query_text)),
     error = function(e) {
@@ -299,27 +321,44 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     }
   )
 
-  if (is.null(raw_data) || nrow(raw_data) == 0) {
-    return(list(query_name = query_name, success = FALSE, error_msg = "Sorgu sonucu boş."))
+  if (is.null(raw_data)) {
+    return(finish_result(list(
+      query_name = query_name,
+      success = FALSE,
+      error_msg = "Sorgu çalıştırılamadı."
+    )))
+  }
+
+  if (nrow(raw_data) == 0) {
+    return(finish_result(
+      list(query_name = query_name, success = FALSE, error_msg = "Sorgu sonucu boş."),
+      pre_rls_rows = 0L,
+      authorized_rows = 0L,
+      filtered_rows = 0L,
+      outcome = "BosSonuc"
+    ))
   }
 
   if (is.function(stop_check) && isTRUE(stop_check())) return(NULL)
 
-  # 4. Tarih sütunlarını dönüştür
   if (!is.null(query$date_columns)) {
     raw_data <- convert_date_columns(raw_data, query$date_columns)
   }
 
-  # 5. RLS uygula
   secure_data <- apply_rls_to_data(raw_data, rls_info, query$rls_columns)
   if (nrow(secure_data) == 0) {
-    return(list(query_name = query_name, success = FALSE, error_msg = "Yetki dahilinde veri bulunamadı."))
+    return(finish_result(
+      list(query_name = query_name, success = FALSE, error_msg = "Yetki dahilinde veri bulunamadı."),
+      pre_rls_rows = nrow(raw_data),
+      authorized_rows = 0L,
+      filtered_rows = 0L,
+      outcome = "BosSonuc"
+    ))
   }
 
-  # 6. Akıllı filtreleme (AI destekli)
   if (isTRUE(query$disable_ai_filters)) {
     filtered_data <- secure_data
-    filter_criteria <- list(filters = list(), aggregation = NULL)
+    filter_criteria <- list(filters = list(), aggregation = NULL, status = "disabled")
   } else {
     available_columns <- names(secure_data)
     filter_criteria <- extract_filter_criteria_from_prompt(
@@ -328,17 +367,31 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
   }
 
+  filter_status <- filter_criteria$status %||% if (length(filter_criteria$filters %||% list()) > 0L) {
+    "ok_filtered"
+  } else {
+    "ok_no_filter"
+  }
+  applied_filters <- filter_criteria$filters %||% list()
+
   if (nrow(filtered_data) == 0) {
-    return(list(
-      query_name = query_name,
-      success = FALSE,
-      error_msg = "Filtreleme sonrası veri bulunamadı."
+    return(finish_result(
+      list(
+        query_name = query_name,
+        success = FALSE,
+        error_msg = "Filtreleme sonrası veri bulunamadı."
+      ),
+      filter_status = filter_status,
+      filters = applied_filters,
+      pre_rls_rows = nrow(raw_data),
+      authorized_rows = nrow(secure_data),
+      filtered_rows = 0L,
+      outcome = "BosSonuc"
     ))
   }
 
   if (is.function(stop_check) && isTRUE(stop_check())) return(NULL)
 
-  # 7. İstatistiksel özet oluştur (detay seviyesine göre kısıtlı)
   preview_rows <- detail_config$preview_rows %||% 20
   stat_summary <- generate_statistical_summary(
     filtered_data,
@@ -349,7 +402,6 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     pre_aggregated_columns = query$pre_aggregated_columns
   )
 
-  # Önizleme JSON
   preview_json <- if (!is.null(stat_summary$preview_data) && nrow(stat_summary$preview_data) > 0) {
     jsonlite::toJSON(head(stat_summary$preview_data, min(10, nrow(stat_summary$preview_data))),
                      auto_unbox = TRUE, pretty = FALSE)
@@ -360,15 +412,23 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
   cat(sprintf("[DEEP_QUERY] '%s' - Başarılı: %d satır, özet oluşturuldu.\n",
               query_name, stat_summary$row_count))
 
-  return(list(
-    query_name  = query_name,
-    query_desc  = query$description %||% "",
-    success     = TRUE,
-    row_count   = stat_summary$row_count,
-    summary_text = stat_summary$summary_text,
-    preview_json = preview_json,
-    relevance    = query$relevance_score %||% 0
-  ))
+  finish_result(
+    list(
+      query_name = query_name,
+      query_desc = query$description %||% "",
+      success = TRUE,
+      row_count = stat_summary$row_count,
+      summary_text = stat_summary$summary_text,
+      preview_json = preview_json,
+      relevance = query$relevance_score %||% 0
+    ),
+    filter_status = filter_status,
+    filters = applied_filters,
+    pre_rls_rows = nrow(raw_data),
+    authorized_rows = nrow(secure_data),
+    filtered_rows = nrow(filtered_data),
+    outcome = "Basarili"
+  )
 }
 
 # ------------------------------------------------------------------------------
@@ -381,8 +441,6 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
 #' @param detail_config Detay seviyesi yapılandırması
 #' @return LLM'e gönderilecek sistem promptu ve kullanıcı bağlamı
 build_deep_analysis_context <- function(query_results, user_prompt, detail_config) {
-
-  # Başarılı sonuçları filtrele
   successful <- Filter(function(r) isTRUE(r$success), query_results)
   failed <- Filter(function(r) !isTRUE(r$success), query_results)
 
@@ -405,8 +463,6 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
   base_max_tokens <- detail_config$max_tokens %||% 3000
   query_count <- length(successful)
 
-  # Çoklu sorgu varsa max_tokens'ı ölçekle - her ek sorgu için %30 artır
-  # Aksi halde LLM tüm sorguları raporlayamadan kesebilir
   if (query_count > 1) {
     scale_factor <- 1 + (query_count - 1) * 0.3
     max_tokens <- min(as.integer(base_max_tokens * scale_factor), 8192)
@@ -414,7 +470,6 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     max_tokens <- base_max_tokens
   }
 
-  # Her sorgu sonucunu bağlam bloğuna dönüştür
   data_blocks <- vapply(seq_along(successful), function(i) {
     r <- successful[[i]]
     paste0(
@@ -432,31 +487,25 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
 
   combined_data <- paste(data_blocks, collapse = "\n")
 
-  # Sistem promptu oluştur
   system_prompt <- paste0(
     "Sen MERGEN'in kıdemli veri analisti asistanısın. Primavera P6 ve SAP PS konusunda 15+ yıl deneyimin var.\n\n",
-
     "### DERİN ANALİZ MODU\n",
     "Bu istekte ÇOKLU SORGU sonuçları sunulmuştur. Görevin:\n",
     "1. HER SORGUYU BİREYSEL olarak analiz et - kendi bölümünde\n",
     "2. Sorgular arası İLİŞKİLERİ ve ORTAK PATERNLERİ tespit et\n",
     "3. GENEL BİR DEĞERLENDİRME ile bitir\n\n",
-
     "### DETAY SEVİYESİ TALİMATI:\n",
     detail_instruction, "\n\n",
-
     "### ZORUNLU YAPI:\n",
     "Her sorgu için:\n",
     "## \U0001F4CA [Sorgu Adı]\n",
     "- Temel bulgular ve istatistikler\n",
     "- Dikkat çeken noktalar\n\n",
-
     "Son bölüm:\n",
     "## \U0001F517 Genel Değerlendirme\n",
     "- Sorgular arası bağlantılar ve çapraz bulgular\n",
     "- Bütünsel öneriler\n",
     "- Uyarılar ve riskler\n\n",
-
     "### KRİTİK KURALLAR:\n",
     "- Sayıları DOĞRUDAN kullan, tahmin veya varsayım YAPMA\n",
     "- Her yorum veriye dayalı olmalı\n",
@@ -468,7 +517,6 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     "- TÜM başarılı sorguları mutlaka raporla - hiçbirini atlama!\n"
   )
 
-  # Başarısız sorgu bilgisi - LLM'e belirgin şekilde sun
   failed_note <- ""
   if (length(failed) > 0) {
     failed_note <- paste0(
@@ -483,7 +531,6 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     )
   }
 
-  # Kullanıcı bağlamı
   user_context <- paste0(
     "KULLANICI SORUSU:\n",
     user_prompt,
@@ -517,11 +564,18 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
 #' @param stop_check Durdurma kontrol fonksiyonu
 #' @return LLM bağlamı listesi veya hata mesajı
 pk_deep_analysis_process <- function(user_prompt, chat_history, session,
-                                      detail_level = "standart",
-                                      stop_check = NULL) {
+                                     detail_level = "standart",
+                                     stop_check = NULL) {
   cat("\n[DEEP_ANALYSIS] >>> DERİN ANALİZ BAŞLATILDI <<<\n")
   cat(sprintf("[DEEP_ANALYSIS] Detay Seviyesi: %s\n", detail_level))
   cat(sprintf("[DEEP_ANALYSIS] Kullanıcı Sorusu: '%s'\n", user_prompt))
+
+  pk_started_at <- Sys.time()
+  pk_request_id <- if (exists("pk_provenance_current_request_id", mode = "function", inherits = TRUE)) {
+    pk_provenance_current_request_id(session)
+  } else {
+    NULL
+  }
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
@@ -529,33 +583,100 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
 
   detail_config <- get_analysis_detail_config(detail_level)
 
-  # A. DB Bağlantısı ve RLS kontrolü
   conn_list <- get_connection()
   conn <- conn_list$conn
+  on.exit(release_connection(conn_list), add = TRUE)
 
   username <- session$userData$system_username %||% "Unknown"
+
+  pk_observe_deep <- function(observation) {
+    if (!exists("pk_analysis_observe", mode = "function", inherits = TRUE)) return("")
+
+    info <- list(
+      request_id = pk_request_id,
+      question = user_prompt,
+      username = username,
+      engine = "v1",
+      deep_thinking = TRUE,
+      duration_ms = as.numeric(difftime(Sys.time(), pk_started_at, units = "secs")) * 1000
+    )
+    if (is.list(observation) && length(observation) > 0L) {
+      info[names(observation)] <- observation
+    }
+
+    tryCatch({
+      footer <- pk_analysis_observe(session, conn, info)
+      footer <- as.character(footer)[1]
+      if (is.na(footer)) "" else footer
+    }, error = function(e) "")
+  }
+
+  stash_deep_footer <- function(footers) {
+    if (!exists("pk_provenance_stash", mode = "function", inherits = TRUE)) {
+      return(invisible(FALSE))
+    }
+
+    footers <- as.character(footers)
+    footers <- footers[!is.na(footers) & nzchar(footers)]
+    if (length(footers) == 0L) return(invisible(FALSE))
+
+    standard_prefix <- "\n\n---\n**Analiz Kaynağı**\n"
+    bodies <- vapply(footers, function(footer) {
+      body <- if (startsWith(footer, standard_prefix)) {
+        substring(footer, nchar(standard_prefix) + 1L)
+      } else {
+        footer
+      }
+      sub("\n$", "", body)
+    }, character(1))
+
+    combined_footer <- paste0(
+      "\n\n---\n",
+      "**Analiz Kaynağı (Derin Analiz)**\n",
+      paste(bodies, collapse = "\n\n"),
+      "\n"
+    )
+
+    pk_provenance_stash(session, combined_footer, request_id = pk_request_id)
+  }
+
   rls_info <- get_user_rls_info(username, conn)
-  release_connection(conn_list)
 
   if (!isTRUE(rls_info$authorized)) {
+    pk_observe_deep(list(
+      query_name = "Derin analiz",
+      filter_status = "not_reached",
+      filters = list(),
+      outcome = "Yetkisiz"
+    ))
     return("\U000026A0\U0000FE0F **Yetki Hatası:** Sistemde kullanıcı kaydınız bulunamadı.")
   }
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
+    pk_observe_deep(list(
+      query_name = "Derin analiz",
+      filter_status = "stopped",
+      filters = list(),
+      outcome = "Durduruldu"
+    ))
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz iptal edildi.")
   }
 
-  # B. Çoklu sorgu seçimi (AI)
   selected_queries <- find_multiple_queries_with_ai(user_prompt, query_library, session, max_queries = 5)
 
   if (is.null(selected_queries) || length(selected_queries) == 0) {
     cat("[DEEP_ANALYSIS] Çoklu seçim başarısız, tekil seçime düşülüyor.\n")
 
-    # Tekil seçime düş (mevcut select_smart_query kullan)
     single <- select_smart_query(user_prompt, query_library, chat_history)
     if (!is.null(single) && !is.null(single$id)) {
       selected_queries <- list(single)
     } else {
+      pk_observe_deep(list(
+        query_name = "Derin analiz",
+        filter_status = "not_reached",
+        filters = list(),
+        outcome = "EslesmeYok"
+      ))
       return("\U0001F914 Aradığınız bilgi mevcut analiz kütüphanesinde bulunamadı. Lütfen sorunuzu farklı kelimelerle deneyin.")
     }
   }
@@ -563,10 +684,15 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   cat(sprintf("[DEEP_ANALYSIS] %d sorgu işlenecek.\n", length(selected_queries)))
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
+    pk_observe_deep(list(
+      query_name = "Derin analiz",
+      filter_status = "stopped",
+      filters = list(),
+      outcome = "Durduruldu"
+    ))
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz iptal edildi.")
   }
 
-  # C. Her sorguyu bağımsız olarak çalıştır
   query_results <- list()
   for (i in seq_along(selected_queries)) {
     if (is.function(stop_check) && isTRUE(stop_check())) {
@@ -574,12 +700,13 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
       break
     }
 
+    selected_query <- selected_queries[[i]]
     cat(sprintf("[DEEP_ANALYSIS] Sorgu %d/%d işleniyor: '%s'\n",
-                i, length(selected_queries), selected_queries[[i]]$name))
+                i, length(selected_queries), selected_query$name))
 
     result <- tryCatch(
       execute_single_deep_query(
-        query = selected_queries[[i]],
+        query = selected_query,
         user_prompt = user_prompt,
         session = session,
         rls_info = rls_info,
@@ -589,23 +716,49 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
       error = function(e) {
         cat(sprintf("[DEEP_ANALYSIS] Sorgu hatası: %s\n", e$message))
         list(
-          query_name = selected_queries[[i]]$name %||% "?",
+          query_name = selected_query$name %||% "?",
           success = FALSE,
-          error_msg = e$message
+          error_msg = e$message,
+          pk_observation = list(
+            query_id = selected_query$id,
+            query_name = selected_query$name %||% "?",
+            filter_status = "not_reached",
+            filters = list(),
+            outcome = "Hata"
+          )
         )
       }
     )
 
     if (!is.null(result)) {
+      if (is.null(result$pk_observation)) {
+        result$pk_observation <- list(
+          query_id = selected_query$id,
+          query_name = result$query_name %||% selected_query$name,
+          filter_status = "not_reached",
+          filters = list(),
+          outcome = if (isTRUE(result$success)) "Basarili" else "Hata"
+        )
+      }
       query_results <- append(query_results, list(result))
     }
   }
 
   if (length(query_results) == 0) {
+    pk_observe_deep(list(
+      query_name = "Derin analiz",
+      filter_status = if (is.function(stop_check) && isTRUE(stop_check())) "stopped" else "not_reached",
+      filters = list(),
+      outcome = if (is.function(stop_check) && isTRUE(stop_check())) "Durduruldu" else "Hata"
+    ))
     return("\U000026A0\U0000FE0F **Derin Analiz:** Hiçbir sorgu çalıştırılamadı. Lütfen tekrar deneyin.")
   }
 
-  # D. Sonuçları birleştir
+  deep_footers <- vapply(query_results, function(result) {
+    pk_observe_deep(result$pk_observation)
+  }, character(1))
+  stash_deep_footer(deep_footers)
+
   successful_count <- sum(vapply(query_results, function(r) isTRUE(r$success), logical(1)))
   failed_count <- length(query_results) - successful_count
   cat(sprintf("[DEEP_ANALYSIS] %d sorgu tamamlandı (%d başarılı, %d başarısız), bağlam oluşturuluyor...\n",

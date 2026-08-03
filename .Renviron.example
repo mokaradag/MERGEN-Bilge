@@ -509,3 +509,34 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 # --- Tanılama (varsayılan KAPALI) ---
 #   Grep-dostu, sır-redakteli ilk-token/akış perf işaretleri için: MERGEN_PERF_LOG=1.
 # MERGEN_PERF_LOG=0
+#
+# =============================================================================
+# PROJE VE KAYNAK ANALİZİ (Faz 0: telemetri, köken alt bilgisi, bozulma)
+# =============================================================================
+#   Bu araçtaki her eşik/sınır tek bir öncelik sırasıyla çözülür:
+#     sorgu bazlı metadata -> .Renviron -> options() -> yerleşik varsayılan
+#   Geçersiz bir değer sessizce bir alt önceliğe düşer (varsayılana).
+#
+#   Hangi işlem hattının çalıştığı. Faz 0 yalnızca GÖZLEM yapar; bu değer
+#   telemetriye etiket olarak yazılır, dağıtım kararı vermez.
+# MERGEN_PK_ENGINE=v1
+#
+#   MB_Analiz_Log yazımı. Tablo YOKSA araç tam çalışmaya devam eder; telemetri
+#   tek bir uyarı satırıyla o süreç için devre dışı kalır (fail-soft).
+#   DDL: docs/sql/2026-08-pk-analiz-log.sql (DBA tarafından ELLE uygulanır).
+# MERGEN_PK_TELEMETRY=true
+#
+#   GİZLİLİK: ham soru metnini sakla (true) veya yalnızca anahtarlı parmak izi
+#   (false, varsayılan). Sorular proje adı içerebilir.
+# MERGEN_PK_LOG_QUESTION_TEXT=false
+#
+#   Parmak izi için SUNUCU ANAHTARI (HMAC-SHA256). Düz/anahtarsız özet YETMEZ:
+#   sorular sonlu bir proje sözlüğünden geldiği için düşük entropilidir ve
+#   tabloyu okuyabilen biri aday soruları özetleyip eşleştirebilir.
+#   Anahtar tanımlı değilse parmak izi HİÇ yazılmaz. Bu değer bir SIRDIR:
+#   loglanmaz, raporlanmaz, PR/dokümana yazılmaz.
+# MERGEN_PK_TELEMETRY_HMAC_KEY=
+#
+#   Anahtar rotasyon etiketi; parmak izinin yanında saklanır ki rotasyondan
+#   sonra eski satırlar hangi anahtarla üretildiği bilinerek yorumlanabilsin.
+# MERGEN_PK_TELEMETRY_HMAC_KEY_ID=k1

@@ -251,6 +251,11 @@ handle_true_streaming_mode <- function(ctx) {
       metric_name = "stream_text_truncated"
     )$text
 
+    # PK köken alt bilgisi (sahibi R, model değil); üst sınırdan SONRA eklenir.
+    if (exists("pk_provenance_decorate", mode = "function", inherits = TRUE)) {
+      final_text <- pk_provenance_decorate(final_text, session, request_id = stream_env$req_id)
+    }
+
     chart_info <- build_chartlab_message(final_text, stream_env$msg_id, session)
     if (isTRUE(chart_info$found)) {
       final_html <- chart_info$html
