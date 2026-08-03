@@ -87,3 +87,17 @@ www/speech/generated/candidates/
 # testthat failing-test debris (local diagnostic runs)
 tests/testthat/_problems/
 tests/testthat/testthat-problems.rds
+
+# Proje/Kaynak Analizi sorgu metadata YEREL katmanları (master plan §5.1).
+# Bu iki dosya ÜRETİMDEN TÜRETİLMİŞTİR ve GitHub'a gönderilmez:
+#   * _meta_local: üreticinin (generator) VM'de çıkardığı gerçek sütun adları,
+#     kardinalite, null oranı ve tespit edilen tanımlayıcılar,
+#   * _aliases_local: operatörün elle tuttuğu üretim alias -> kanonik değer
+#     haritaları (kurumsal proje/program adları).
+# Bunları izlemek, tek bir `git add -A` ile kurumsal şema istatistiklerini ve
+# proje adlarını yayınlamak demektir. İzlenen karşılıkları:
+# R/library_query_meta_auto.R (boş iskelet) ve R/library_query_meta.R (küre
+# edilmiş, yalnızca sentetik/onaylı içerik). Manifestte `optional` işaretlidir;
+# bulut checkout'unda yoklukları normaldir.
+R/library_query_meta_local.R
+R/library_query_aliases_local.R

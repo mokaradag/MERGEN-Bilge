@@ -31,6 +31,7 @@
   "config_ui_assets",
   "architecture_governance",
   "database",
+  "pk_query_metadata",
   "sql_library",
   "language_messaging",
   "mcp_tools",
@@ -104,6 +105,11 @@
   # worker katmanı (R/helpers_startup_chat_preview.R) helpers_db_chat_readers.R
   # sonrası, helpers_db_chat_mutations.R öncesi eklendi.
   database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 17L),
+  # Faz 3a: sorgu metadata sözleşmesi. Türkçe katlama yardımcısı + sözlük/
+  # doğrulayıcı + erişimci yardımcıları, ardından dört veri katmanı
+  # (iskelet -> üretilen -> küre edilmiş -> yerel alias) ve birleştirici;
+  # hepsi R/config_sql_loader.R'den ÖNCE (master plan §6 zorunlu sırası).
+  pk_query_metadata = list(first = "R/helpers_pk_text_turkish.R", last = "R/helpers_pk_query_meta.R", n = 8L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
   language_messaging = list(first = "R/helpers_language.R", last = "R/helpers_messaging.R", n = 2L),
   mcp_tools = list(first = "R/helpers_mcp_context.R", last = "R/helpers_mcp_tools.R", n = 9L),
@@ -453,7 +459,12 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 367 -> 371: Faz 0 dört PK yardımcısı ekledi (config/provenance/telemetry-record/telemetry).
   # 371 -> 373: Faz 0 ayrıca iki temel dosya ekledi (telemetry_base/analysis_filters_base);
   # bunlar sarmalayıcılarından hemen önce yüklenir.
-  expect_equal(length(runtime), 373L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 373 -> 381: Faz 3a yeni `pk_query_metadata` bölümünü ekledi (8 dosya):
+  # Türkçe katlama + metadata sözlük/erişim/birleştirme yardımcıları ve dört
+  # veri katmanı. İkisi (meta_local / aliases_local) BİLİNÇLİ olarak
+  # opsiyoneldir ve bulut checkout'unda bulunmaz; aşağıdaki eksik-dosya
+  # kontrolü onları opsiyonel listesi üzerinden hariç tutar.
+  expect_equal(length(runtime), 381L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

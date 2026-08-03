@@ -44,6 +44,15 @@ pk_config_spec <- list(
   MERGEN_PK_TELEMETRY_HMAC_KEY_ID = list(
     type = "character",
     default = "k1"
+  ),
+  # Faz 3a: satır tavanı. Sorgu metadata'sındaki `row_cap` alanı bu global
+  # değeri EZER (öncelik zinciri gereği), böylece ağır bir finans sorgusu kod
+  # değişikliği olmadan kendi tavanını taşıyabilir. Bu, metadata katmanının
+  # Tier-0 geri düşüşüdür: sorgu `row_cap` bildirmiyorsa buradaki değer geçerlidir.
+  MERGEN_PK_ROW_CAP = list(
+    type = "integer",
+    default = 50000L,
+    min = 1L
   )
 )
 

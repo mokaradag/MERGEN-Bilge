@@ -378,6 +378,28 @@ cat(sprintf(
   .sql_loaded_count, .sql_file_declared_count, .sql_inline_only_count
 ))
 
+# --- FAZ 3a: SORGU METADATA SOZLESMESI ----------------------------------------
+# Katmanlar (iskelet -> uretilen -> kure edilmis, kure edilmis kazanir) burada
+# birlestirilir, yalnizca-alias yerel bindirmesi uygulanir ve sozlesme
+# dogrulanir. Semadan BAGIMSIZ her gecersiz sozlesme baslangici DUSURUR; bu
+# bilincli olarak .SQL_LOADER_STRICT bayragindan bagimsizdir, cunku gecersiz
+# metadata ile acilan bir uygulama sessizce yanlis cevap uretir.
+#
+# Sema henuz yoksa (bulut checkout'u; uretici VM'de calismadi) semaya bagli
+# kontroller `pending_no_schema` olarak kaydedilir ve sorgu belgelenmis Tier-0
+# yapisal yolundan boot eder. Bu ERTELEME, istek zamani zorlamayi zayiflatmaz:
+# SQL dondukten sonraki gercek sutun dogrulamasi kosulsuzdur.
+if (exists("pk_query_meta_attach", mode = "function")) {
+  query_library <- pk_query_meta_attach(query_library)
+
+  cat(sprintf(
+    "[SQL_LOADER] PK metadata sozlesmesi dogrulandi: %d sorgu.\n",
+    length(query_library)
+  ))
+} else {
+  cat("[SQL_LOADER] UYARI: pk_query_meta_attach bulunamadi; PK metadata sozlesmesi UYGULANMADI.\n")
+}
+
 # --- GECICI NESNELERI TEMIZLE ---
 rm(
   .SQL_LOADER_DEBUG,

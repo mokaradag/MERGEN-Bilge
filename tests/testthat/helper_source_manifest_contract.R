@@ -57,6 +57,26 @@ source_manifest_paths_for_tests <- function() {
   enc2utf8(paths)
 }
 
+# Bölümlenmiş manifesti (source_manifest_sections) ad -> yol vektörü olarak
+# döndürür. Bölüm İÇİ sırayı doğrulayan testler bunu kullanmalıdır; manifesti
+# elle yeniden source etmek gereksiz tekrar üretir.
+source_manifest_sections_for_tests <- function() {
+  repo_root <- source_manifest_contract_repo_root()
+  manifest_env <- new.env(parent = globalenv())
+
+  source(
+    file.path(repo_root, "R", "config_source_manifest.R"),
+    encoding = "UTF-8",
+    local = manifest_env
+  )
+
+  if (!exists("source_manifest_sections", envir = manifest_env, inherits = FALSE)) {
+    stop("Test manifesti source_manifest_sections nesnesini bulamadı.", call. = FALSE)
+  }
+
+  get("source_manifest_sections", envir = manifest_env, inherits = FALSE)
+}
+
 expect_source_manifest_contains_for_tests <- function(required_paths,
                                                      paths = source_manifest_paths_for_tests(),
                                                      label = "Manifest içinde eksik kaynak kayıtları:") {

@@ -540,3 +540,9 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   Anahtar rotasyon etiketi; parmak izinin yanında saklanır ki rotasyondan
 #   sonra eski satırlar hangi anahtarla üretildiği bilinerek yorumlanabilsin.
 # MERGEN_PK_TELEMETRY_HMAC_KEY_ID=k1
+#
+#   Faz 3a — SATIR TAVANI. Sorgu metadata'sındaki `row_cap` alanı bu global
+#   değeri EZER (öncelik: sorgu metadata -> .Renviron -> options() -> varsayılan),
+#   böylece ağır bir sorgu kod değişikliği olmadan kendi tavanını taşıyabilir.
+#   Sorgu `row_cap` bildirmiyorsa metadata katmanının Tier-0 geri düşüşü budur.
+# MERGEN_PK_ROW_CAP=50000
