@@ -382,10 +382,19 @@ pk_meta_validate_actual_columns <- function(query, actual_columns) {
     ))
   }
 
+  # RLS sütun adları AYNI biçimde karşılaştırılmalıdır. `eksik_rls` yukarıda
+  # trimws() ile karşılaştırıldığı için mükerrer-sütun çakışması da trimlenmiş
+  # değer üzerinden bakılır. Aksi halde " PK " gibi boşluklu bir beyan, gerçek
+  # sonuçtaki mükerrer "PK" sütunuyla eşleşmez ve fail_closed SESSİZCE FALSE
+  # kalır; yani belirsiz bir RLS sütunu güvenli sayılır.
+  rls_beyan_edilen <- unique(trimws(as.character(
+    unlist(if (is.list(rls)) rls else list(), use.names = FALSE)
+  )))
+
   list(
     ok = !length(hatalar),
     fail_closed = length(rls_hatalari) > 0L || length(eksik_rls) > 0L ||
-      length(intersect(tekrar_gercek, unique(unlist(rls %||% list(), use.names = FALSE)))) > 0L,
+      length(intersect(tekrar_gercek, rls_beyan_edilen)) > 0L,
     invalid_rls = rls_hatalari,
     missing_rls = unique(eksik_rls),
     missing_declared = eksik_beyan,

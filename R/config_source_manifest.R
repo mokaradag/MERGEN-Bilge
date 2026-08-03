@@ -280,6 +280,10 @@ source_manifest_sections <- list(
     "R/helpers_pk_telemetry_record.R",
     "R/helpers_pk_telemetry_base.R",
     "R/helpers_pk_telemetry.R",
+    # Derin analiz: saf detay seviyesi kataloğu ve saf bağlam/prompt kurucu,
+    # orkestratörden ÖNCE yüklenir (bakım borcu ratchet'i için bölünmüştür).
+    "R/helpers_deep_analysis_detail.R",
+    "R/helpers_deep_analysis_context.R",
     "R/helpers_deep_analysis.R",
     "R/helpers_pk_analysis_core.R",
     "R/helpers_pk_analysis_security_summary.R",

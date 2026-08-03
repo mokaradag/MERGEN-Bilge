@@ -544,3 +544,96 @@ new `pk_query_metadata` section and the metadata contract validation) reported
 splitting the file, not by raising the budget — then re-run
 `bash tools/ai_validate.sh full --boot-smoke`. Both this phase and Phase 0 should
 be re-validated afterwards.
+
+---
+
+## Phase 3a — post-review fixes (independent review pass)
+
+The Codex reviewer never ran on PR #696 (it replied "You have reached your Codex
+usage limits for code reviews"), so no automated findings existed. The findings
+below come from an independent review of the phase diff plus the base branch.
+
+### 1 — Pre-existing ratchet breach fixed (was blocking the mandatory gate)
+
+`R/helpers_deep_analysis.R` was **780 lines / 16 functions** against a ratchet
+baseline of 627/12 (allowance 659/15). Reproduced on the untouched `pk/rebuild`
+tip, so it was **not** introduced by Phase 3a — it came from Phase 0's
+instrumentation commit. It was the ONLY thing failing the full suite (exactly two
+failures), and it halted the runner before Shiny boot smoke could execute.
+
+Fixed by **splitting**, never by raising the budget (CLAUDE.md forbids that):
+
+| New file | Moved responsibility | Purity |
+|---|---|---|
+| `R/helpers_deep_analysis_detail.R` | `ANALYSIS_DETAIL_LEVELS`, `get_analysis_detail_config()`, `get_analysis_detail_instruction()` | pure |
+| `R/helpers_deep_analysis_context.R` | `build_deep_analysis_context()` | pure |
+
+`helpers_deep_analysis.R` keeps query selection, single-query execution and
+`pk_deep_analysis_process()`, and drops to **595 lines / 13 functions**. Both new
+files load in `analysis_helpers` BEFORE the orchestrator. Frozen counts updated in
+the same change (`analysis_helpers` n 11 -> 13, total runtime 381 -> 383), as §6
+requires. `test-deep-analysis-split-contract.R` freezes the split, the purity of
+the two helpers, the manifest order and the post-split budget.
+
+### 2 — Empty capability registry rejected the legitimate Tier-0 state (P1)
+
+`pk_meta_validate_capability_registry(list())` returned an error, because
+`names(list())` is `NULL` and the "must be a named list" branch fired. Every
+sibling validator (`.pk_meta_validate_named_layer`, `.pk_meta_validate_rls_columns`)
+accepts empty input; this one did not. Since `pk_query_meta_attach()` `stop()`s on
+any finding and `.pk_meta_collect_layer()` falls back to `list()`, an
+uncurated-yet registry — the documented Tier-0 / fresh-checkout state — was
+**boot-fatal**. Fixed with the same early return the siblings use.
+
+### 3 — Empty domain map rejected, inconsistently with aliases (P2)
+
+`pk_meta_validate_domain_map(id, col, list())` errored for the same `names(NULL)`
+reason, while the sibling field `aliases` explicitly accepts an empty map. A
+column declaring `domain = list()` (declared, no mappings entered yet) aborted
+boot. Fixed; the two fields now behave identically.
+
+### 4 — RLS fail-closed verdict depended on whitespace (P2)
+
+In `pk_meta_validate_actual_columns()`, `missing_rls` compared RLS column names
+with `trimws()` but the duplicate-column collision test compared the **raw**
+declared value. A declaration of `" ProjeKodu "` therefore did not match a
+duplicated actual `ProjeKodu` column, and `fail_closed` stayed silently `FALSE` —
+an ambiguous RLS column read as safe. §8 makes this verdict Phase 1's
+unconditional gate, so the inconsistency was fixed now rather than inherited.
+Both forms now produce the same verdict.
+
+### 5 — Restored documentation deleted from `R/helpers_pk_config.R`
+
+Phase 3a removed the file header rationale, the priority-chain step comments and
+the roxygen blocks for `pk_config_resolve()` / `pk_config_safe_snapshot()` while
+adding `MERGEN_PK_ROW_CAP`. No ratchet covers this file (144 lines, no budget), so
+nothing forced the deletion. Restored verbatim, plus a comment for the new key.
+Comment-only; behavior untouched.
+
+### Reported, deliberately NOT changed
+
+`.pk_meta_validate_query_library()` requires non-empty SQL for every library
+entry, and `pk_query_meta_attach()` `stop()`s independently of
+`MERGEN_SQL_LOADER_STRICT`. A query declaring neither `sql_file` nor `sql` is left
+without SQL by the loader's non-strict path (unlike the read-error path, which
+assigns a placeholder), so in non-strict mode — used by `smoke_app_boot.R`,
+`run_ci_local.R` and several regression tests — boot now aborts with a
+metadata-flavoured message for what is really a SQL-loader problem. This is
+fail-closed, documented in `config_sql_loader.R`, and covered by an explicit test,
+so it is recorded as a deliberate design decision rather than silently changed.
+
+### Mutation checks
+
+Every fix was verified to actually fail when reverted, not merely to be green:
+
+| Reverted behavior | Result |
+|---|---|
+| empty-registry early return removed | 3 failures |
+| empty-domain early return removed | 2 failures |
+| RLS `trimws()` alignment removed | 1 failure |
+| split moved back into the orchestrator | ratchet + split contract fail |
+
+One of my own fixtures was wrong rather than the code: `"AYNI"` folds to `aynı`
+(dotless ı) under Turkish rules and correctly does NOT collide with ASCII
+`"Ayni"` -> `ayni`. The fixture now asserts both the real collision (`"Aynı"` /
+`"AYNI"`) and the correct non-collision.

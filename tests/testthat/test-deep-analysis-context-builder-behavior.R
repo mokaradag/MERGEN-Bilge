@@ -10,6 +10,12 @@ repo_root_dac <- resolve_repo_root_for_tests()
 
 .dac_env <- new.env(parent = globalenv())
 .dac_env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+# Türkçe yorum: build_deep_analysis_context artık saf bağlam kurucu dosyasında
+# yaşıyor; orkestratör dosyası yalnızca sıra/bağlam bütünlüğü için yüklenir.
+suppressWarnings(source(
+  file.path(repo_root_dac, "R/helpers_deep_analysis_context.R"),
+  encoding = "UTF-8", local = .dac_env
+))
 suppressWarnings(source(
   file.path(repo_root_dac, "R/helpers_deep_analysis.R"),
   encoding = "UTF-8", local = .dac_env

@@ -1,9 +1,24 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_pk_config.R
-# Açıklama: Proje ve Kaynak Analizi yapılandırma çözümleyicisi.
-# Öncelik: sorgu metadata -> ortam değişkeni -> options() -> varsayılan.
+# Açıklama: Proje ve Kaynak Analizi yapılandırma çözümleyicisi. Bu araçtaki
+#           hiçbir eşik/zaman aşımı/sınır sabit kodlanmaz; tümü tek bir
+#           öncelik sırasıyla çözülür:
+#
+#             sorgu bazlı metadata -> .Renviron ortam değişkeni -> options()
+#             -> yerleşik varsayılan
+#
+#           Dosya BİLEREK saf ve worker güvenlidir: Shiny/reactive/DB/ağ
+#           bağımlılığı yoktur ve ortam değerleri future worker içinde
+#           doğrudan Sys.getenv() ile okunur (kapanış serileştirilmez).
+#
+# Not: Bu dosya yalnızca gerçekten TÜKETİLEN anahtarları kaydeder. Örneğin
+#      MERGEN_PK_FILTER_TIMEOUT_SEC burada YOKTUR; onu v1'de tüketmek motorun
+#      filtre sonuçlarını değiştirirdi ve bu, master planın §10 motor sınırı
+#      sözleşmesine aykırıdır.
 # ==============================================================================
 
+# Desteklenen anahtarların tek kaynağı. Yeni faz yeni anahtar eklerken bu
+# listeye girdi ekler; çözümleyici kodu değişmez.
 pk_config_spec <- list(
   MERGEN_PK_ENGINE = list(
     type = "character",
@@ -18,15 +33,20 @@ pk_config_spec <- list(
     type = "logical",
     default = FALSE
   ),
+  # Gizli değer: yalnızca varlığı/uzunluğu raporlanabilir, değeri asla loglanmaz.
   MERGEN_PK_TELEMETRY_HMAC_KEY = list(
     type = "character",
     default = "",
     secret = TRUE
   ),
+  # Anahtar rotasyonu etiketi; parmak izinin yanında saklanır ki rotasyondan
+  # sonra eski satırlar hangi anahtarla üretildiği bilinerek yorumlanabilsin.
   MERGEN_PK_TELEMETRY_HMAC_KEY_ID = list(
     type = "character",
     default = "k1"
   ),
+  # Sorgu sonucu satır tavanı. Ağır bir sorgu kendi tavanını metadata ile
+  # taşıyabilir; bu yüzden öncelik zincirinin ilk basamağı sorgu metadatasıdır.
   MERGEN_PK_ROW_CAP = list(
     type = "integer",
     default = 50000L,
@@ -34,14 +54,17 @@ pk_config_spec <- list(
   )
 )
 
+# MERGEN_PK_TELEMETRY -> "telemetry" (sorgu metadata alan adı)
 pk_config_meta_key <- function(key) {
   tolower(sub("^MERGEN_PK_", "", as.character(key)[1]))
 }
 
+# MERGEN_PK_TELEMETRY -> "mergen.pk.telemetry" (options() adı)
 pk_config_option_key <- function(key) {
   paste0("mergen.pk.", pk_config_meta_key(key))
 }
 
+# Mantıksal değer ayrıştırma; Türkçe operatör alışkanlıkları da desteklenir.
 .pk_config_as_logical <- function(value) {
   if (is.logical(value) && length(value) == 1L && !is.na(value)) return(value)
   if (length(value) != 1L) return(NULL)
@@ -85,6 +108,8 @@ pk_config_option_key <- function(key) {
   txt
 }
 
+# Ham bir adayı anahtarın tipine göre doğrular. Geçersizse NULL döner ki
+# çözümleyici bir sonraki önceliğe geçebilsin (sessiz varsayılana düşme).
 .pk_config_coerce <- function(value, spec) {
   if (is.null(value) || length(value) == 0L) return(NULL)
 
@@ -97,6 +122,12 @@ pk_config_option_key <- function(key) {
   )
 }
 
+#' Yapılandırma değerini öncelik sırasıyla çöz
+#'
+#' @param key Anahtar adı (örn. "MERGEN_PK_TELEMETRY").
+#' @param query_meta Seçilen sorgunun metadata listesi (opsiyonel). Sorgu bazlı
+#'   değer global ayarı EZER; böylece ağır bir sorgu kendi sınırını taşıyabilir.
+#' @return Anahtarın tipine uygun tek elemanlı değer.
 pk_config_resolve <- function(key, query_meta = NULL) {
   key <- as.character(key)[1]
   spec <- pk_config_spec[[key]]
@@ -105,23 +136,31 @@ pk_config_resolve <- function(key, query_meta = NULL) {
     stop(sprintf("pk_config_resolve: tanimsiz yapilandirma anahtari '%s'.", key), call. = FALSE)
   }
 
+  # 1) Sorgu bazlı metadata
   if (is.list(query_meta)) {
     candidate <- .pk_config_coerce(query_meta[[pk_config_meta_key(key)]], spec)
     if (!is.null(candidate)) return(candidate)
   }
 
+  # 2) Ortam değişkeni (worker güvenli: doğrudan Sys.getenv)
   env_raw <- Sys.getenv(key, unset = NA_character_)
   if (!is.na(env_raw)) {
     candidate <- .pk_config_coerce(env_raw, spec)
     if (!is.null(candidate)) return(candidate)
   }
 
+  # 3) options()
   candidate <- .pk_config_coerce(getOption(pk_config_option_key(key), default = NULL), spec)
   if (!is.null(candidate)) return(candidate)
 
+  # 4) Yerleşik varsayılan
   spec$default
 }
 
+#' Gizli olmayan yapılandırma özeti (tanılama için)
+#'
+#' Gizli anahtarlar için yalnızca varlık/uzunluk bilgisi döner; ham değer
+#' hiçbir koşulda çıktıya girmez.
 pk_config_safe_snapshot <- function() {
   out <- list()
 

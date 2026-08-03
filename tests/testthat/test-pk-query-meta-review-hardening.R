@@ -429,3 +429,166 @@ test_that("bozuk result_schema liste öğesi doğrulama hatasına dönüşür, b
     "gecersiz/bos tip"
   )
 })
+
+# ------------------------------------------------------------------------------
+# BOŞ KAPSAYICI SÖZLEŞMESİ
+#
+# Doğrulayıcılar arasında tutarsızlık vardı: .pk_meta_validate_named_layer() ve
+# .pk_meta_validate_rls_columns() boş girdiyi kabul ederken,
+# pk_meta_validate_capability_registry() ve pk_meta_validate_domain_map() boş
+# girdiyi HATA sayıyordu (`names(list())` NULL döndüğü için). Bu, meşru
+# durumları başlangıçta düşürüyordu:
+#   * yetenek kaydı henüz küre edilmemişken (Tier-0 / taze checkout),
+#   * bir sütun domain alanını beyan edip henüz eşleme girmemişken.
+# Aşağıdaki testler hem boş kabulünü hem de gerçekten bozuk girdide
+# fail-closed davranışın KORUNDUĞUNU birlikte doğrular.
+# ------------------------------------------------------------------------------
+
+test_that("boş yetenek kaydı meşrudur ve başlangıcı düşürmez", {
+  expect_identical(pk_meta_validate_capability_registry(list()), character(0))
+  expect_identical(pk_meta_validate_capability_registry(NULL), character(0))
+  expect_identical(
+    pk_meta_validate_capability_registry(structure(list(), names = character(0))),
+    character(0)
+  )
+
+  # Boş kayıtla küre edilmemiş metadata katmanı başlangıcı düşürmemelidir.
+  expect_silent(
+    kutuphane <- pk_query_meta_attach(
+      .review_library(),
+      auto = list(), local = list(), curated = list(),
+      aliases = list(), registry = list()
+    )
+  )
+  expect_identical(kutuphane[[1]]$meta$schema_validation, PK_META_SCHEMA_PENDING)
+})
+
+test_that("boş yetenek kaydı gerçekten bozuk kayıtları gizlemez", {
+  expect_true(any(grepl(
+    "adlandirilmis bir liste",
+    pk_meta_validate_capability_registry(list(list(role = "measure"))),
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "gecersiz role",
+    pk_meta_validate_capability_registry(list("a.b" = list(role = "yok"))),
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "unit tanimlanamaz",
+    pk_meta_validate_capability_registry(list("a.b" = list(role = "dimension", unit = "saat"))),
+    fixed = TRUE
+  )))
+
+  # Kayıtta OLMAYAN yetenek kimliği hâlâ fail-closed olmalıdır.
+  meta <- .review_meta()
+  expect_true(any(grepl(
+    "bilinmeyen capability",
+    pk_meta_validate_query("q001", meta, list()),
+    fixed = TRUE
+  )))
+})
+
+test_that("boş domain haritası meşrudur ve alias sözleşmesiyle tutarlıdır", {
+  expect_identical(pk_meta_validate_domain_map("q001", "Durum", list()), character(0))
+  expect_identical(pk_meta_validate_domain_map("q001", "Durum", character(0)), character(0))
+
+  # Kardeş alan (aliases) zaten boşu kabul ediyordu; iki alan aynı davranmalıdır.
+  expect_identical(
+    pk_meta_fold_alias_map("q001", "Durum", character(0))$errors,
+    character(0)
+  )
+
+  expect_identical(
+    pk_meta_validate_column(
+      "q001", "Durum",
+      list(role = "dimension", domain = list()),
+      .review_registry()
+    ),
+    character(0)
+  )
+})
+
+test_that("boş domain kabulü bozuk domain haritalarını gizlemez", {
+  expect_true(any(grepl(
+    "adlandirilmis kanonik-deger",
+    pk_meta_validate_domain_map("q001", "Durum", list("etiket")),
+    fixed = TRUE
+  )))
+  # Türkçe katlama bilinçlidir: "AYNI" -> "aynı" (noktasız ı), "Aynı" -> "aynı".
+  # Bu çift GERÇEKTEN aynı anahtara katlanır; ASCII "Ayni" ise "ayni" olarak
+  # kalır ve çakışmaz. Çakışma tespiti bu katlama üzerinden yapılmalıdır.
+  expect_true(any(grepl(
+    "birden fazla kanonik degere",
+    pk_meta_validate_domain_map("q001", "Durum", list(A = "Aynı", B = "AYNI")),
+    fixed = TRUE
+  )))
+  expect_identical(
+    pk_meta_validate_domain_map("q001", "Durum", list(A = "Ayni", B = "AYNI")),
+    character(0)
+  )
+  expect_true(any(grepl(
+    "domain yalnizca role=",
+    pk_meta_validate_column(
+      "q001", "Tutar",
+      list(role = "measure", domain = list(A = "Etiket")),
+      .review_registry()
+    ),
+    fixed = TRUE
+  )))
+})
+
+# ------------------------------------------------------------------------------
+# RLS FAIL-CLOSED VERDİKTİ BİÇİMDEN BAĞIMSIZDIR
+#
+# eksik_rls karşılaştırması trimws() ile yapılırken, mükerrer-sütun çakışması
+# ham (trimlenmemiş) değerle bakılıyordu. Bu yüzden " PK " gibi boşluklu bir
+# RLS beyanı, gerçek sonuçtaki mükerrer "PK" sütunuyla eşleşmiyor ve
+# fail_closed SESSİZCE FALSE kalıyordu; yani belirsiz bir RLS sütunu güvenli
+# sayılıyordu. §8 bu verdikti Faz 1'in koşulsuz kapısı olarak kullanacaktır.
+# ------------------------------------------------------------------------------
+
+test_that("mükerrer RLS sütunu boşluklu beyanda da fail-closed üretir", {
+  meta <- list(column_meta = list(ProjeKodu = list(role = "id")))
+
+  bosluklu <- list(
+    id = "q001",
+    rls_columns = list(proje_kodu_col = " ProjeKodu "),
+    meta = meta
+  )
+  duz <- list(
+    id = "q001",
+    rls_columns = list(proje_kodu_col = "ProjeKodu"),
+    meta = meta
+  )
+
+  gercek <- c("ProjeKodu", "ProjeKodu", "Tutar")
+
+  bosluklu_sonuc <- pk_meta_validate_actual_columns(bosluklu, gercek)
+  duz_sonuc <- pk_meta_validate_actual_columns(duz, gercek)
+
+  expect_false(bosluklu_sonuc$ok)
+  expect_false(duz_sonuc$ok)
+
+  # Anlamca AYNI girdi AYNI verdikti üretmelidir.
+  expect_true(duz_sonuc$fail_closed)
+  expect_true(bosluklu_sonuc$fail_closed)
+  expect_identical(bosluklu_sonuc$fail_closed, duz_sonuc$fail_closed)
+})
+
+test_that("mükerrer olmayan temiz sonuçta fail-closed tetiklenmez", {
+  temiz <- list(
+    id = "q001",
+    rls_columns = list(proje_kodu_col = " ProjeKodu "),
+    meta = list(column_meta = list(ProjeKodu = list(role = "id")))
+  )
+
+  sonuc <- pk_meta_validate_actual_columns(temiz, c("ProjeKodu", "Tutar"))
+  expect_true(sonuc$ok)
+  expect_false(sonuc$fail_closed)
+
+  # Beyan edilen RLS sütunu gerçekten yoksa fail-closed KORUNMALIDIR.
+  eksik <- pk_meta_validate_actual_columns(temiz, c("Tutar"))
+  expect_false(eksik$ok)
+  expect_true(eksik$fail_closed)
+})

@@ -15,8 +15,10 @@
     return(invisible(TRUE))
   }
 
+  # Türkçe yorum: detay seviyesi kataloğu artık saf yardımcı dosyasında;
+  # orkestratör dosyası bu yardımcıları tanımlamaz.
   source(
-    file.path(resolve_repo_root_for_tests(), "R", "helpers_deep_analysis.R"),
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_deep_analysis_detail.R"),
     encoding = "UTF-8",
     local = globalenv()
   )

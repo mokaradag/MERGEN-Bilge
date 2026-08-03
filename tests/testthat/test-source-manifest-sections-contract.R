@@ -131,7 +131,10 @@
   # Faz 0 (Proje ve Kaynak Analizi yeniden inşası): yapılandırma çözümleyicisi,
   # köken/bozulma ve telemetri yardımcıları bölümün BAŞINA eklendi
   # (bağımlılık sırası: config -> provenance -> telemetry).
-  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_analysis_query_selection.R", n = 11L),
+  # n: 11 -> 13. R/helpers_deep_analysis.R bakım borcu ratchet bütçesini aştığı
+  # için iki saf yardımcıya bölündü (detail + context) ve ikisi de bu bölüme,
+  # orkestratörden ÖNCE eklendi. Bkz. test-deep-analysis-split-contract.R.
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_analysis_query_selection.R", n = 13L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -464,7 +467,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # veri katmanı. İkisi (meta_local / aliases_local) BİLİNÇLİ olarak
   # opsiyoneldir ve bulut checkout'unda bulunmaz; aşağıdaki eksik-dosya
   # kontrolü onları opsiyonel listesi üzerinden hariç tutar.
-  expect_equal(length(runtime), 381L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 381 -> 383: helpers_deep_analysis_detail.R + helpers_deep_analysis_context.R
+  # (ratchet bölünmesi, analysis_helpers bölümü).
+  expect_equal(length(runtime), 383L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

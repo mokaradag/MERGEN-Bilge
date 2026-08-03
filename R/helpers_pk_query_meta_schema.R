@@ -47,6 +47,14 @@ pk_meta_validate_capability_registry <- function(registry) {
   if (is.null(registry)) return(character(0))
   if (!is.list(registry)) return("pk_capability_registry bir liste olmalidir.")
 
+  # BOŞ kayıt MEŞRU bir durumdur: hiçbir yetenek henüz küre edilmemiştir.
+  # `names(list())` NULL döndügü icin bu erken cikis olmadan asagidaki
+  # "adlandirilmis olmalidir" kontrolu bos kaydi HATA sayar ve baslangici
+  # dusurur. Kardes dogrulayicilar (.pk_meta_validate_named_layer,
+  # .pk_meta_validate_rls_columns) da bos girdiyi ayni sekilde kabul eder;
+  # bu erken cikisi kaldirmak o sozlesmeyi bozar.
+  if (!length(registry)) return(character(0))
+
   adlar <- names(registry)
   if (is.null(adlar) || length(adlar) != length(registry) ||
       any(is.na(adlar) | !nzchar(trimws(adlar)))) {
@@ -288,6 +296,13 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
 pk_meta_validate_domain_map <- function(query_id, column, domain) {
   onek <- sprintf("column_meta['%s']$domain:", column)
   if (is.null(domain)) return(character(0))
+
+  # BOŞ domain haritasi MEŞRUDUR (alan beyan edildi, henuz eslesme girilmedi).
+  # `names(list())` / `names(character(0))` NULL oldugundan bu erken cikis
+  # olmadan asagidaki "adlandirilmis harita olmalidir" kontrolu bos haritayi
+  # HATA sayardi. pk_meta_fold_alias_map() bos alias haritasini zaten ayni
+  # sekilde kabul ediyor; iki alan arasindaki bu tutarlilik korunmalidir.
+  if (!length(domain)) return(character(0))
 
   if (!(is.character(domain) || is.list(domain)) || is.null(names(domain)) ||
       length(names(domain)) != length(domain)) {
