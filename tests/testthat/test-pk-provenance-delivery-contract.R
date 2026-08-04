@@ -94,7 +94,7 @@ test_that("derin analiz her sorguyu gözlemler ve tek birleşik köken alt bilgi
     )
   }
   env$.stashed <- NULL
-  env$pk_provenance_stash <- function(session, footer, request_id = NULL) {
+  env$pk_provenance_stash <- function(session, footer, request_id = NULL, ...) {
     env$.stashed <- list(footer = footer, request_id = request_id)
     invisible(TRUE)
   }

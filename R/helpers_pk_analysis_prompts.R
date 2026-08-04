@@ -102,3 +102,99 @@ pk_build_analysis_system_prompt <- function(analysis_mode, query) {
 
   system_prompt
 }
+
+# ==============================================================================
+# Faz 2 — v2 sistem istemi (§5.8 / D20)
+#
+# v1 istemi aynı anda "KÖK SEBEP analizi yap" ve "sektör benchmarks'leri ver"
+# istiyor, ne nedensel kanıt ne de herhangi bir benchmark verisi sağlıyor, sonra
+# da spekülasyonu yasaklıyordu. Bu, modele halüsinasyon TALİMATI vermektir.
+# Ayrıca "sonuçları MUTLAKA markdown tablo formatında sun" talimatı, aracın en
+# yüksek riskli LLM görevidir ve yuvarlanmış/uydurulmuş sayıların doğrudan
+# kaynağıdır; v2'de tabloyu R üretir.
+#
+# Yerine gelen sözleşme:
+#   * Epistemik etiketleme: Gözlem / Yorum / Olası açıklama / Öneri / Sınırlılık.
+#     Bir hipotez ASLA kanıtlanmış kök sebep gibi sunulmaz.
+#   * Her sayısal iddianın yanında `[fact:...]` referansı zorunludur; referans
+#     doğrulamadan (§5.11) sonra gösterimden silinir.
+#   * Model hiçbir aritmetik yapmaz ve tablo/ek üretmez.
+# ==============================================================================
+
+#' v2 analiz sistem istemini kur (epistemik etiketleme + olgu referansı)
+pk_build_analysis_system_prompt_v2 <- function(analysis_mode, query) {
+  query <- if (is.list(query)) query else list()
+
+  detayli <- identical(analysis_mode, "full")
+
+  system_prompt <- paste0(
+    "Sen MERGEN'in kıdemli veri analisti asistanısın. R tarafından hazırlanan ",
+    "ANALİZ PAKETİ senin TEK gerçeğindir.\n\n",
+    "SORGU: ", query$name %||% "", "\n",
+    "AMACI: ", query$description %||% "", "\n\n",
+
+    "\U000026A0\U0000FE0F TEMEL KURALLAR:\n",
+    "1. HESAPLAMA YAPMA. Toplama, ortalama, oran veya yüzde HESAPLAMA; pakette ",
+    "hazır bulunmayan hiçbir sayıyı yazma.\n",
+    "2. Her sayısal iddianın hemen ardına ilgili olgunun makine referansını koy: ",
+    "`[fact:OLGU_KIMLIGI]`. Referans, doğrulamadan sonra kullanıcıya gösterilen ",
+    "metinden otomatik olarak silinir.\n",
+    "3. Pakette 'KULLANILAMAZ' durumdaki bir olgunun sayısını ASLA uydurma; o ",
+    "değerin neden hesaplanamadığını Sınırlılık olarak yaz.\n",
+    "4. TABLO ÜRETME. Sonuç tablosu ve Excel eki R tarafından üretilir ve senin ",
+    "yanıtının altına otomatik eklenir.\n",
+    "5. 'FİLTRELEME UYARISI' varsa satır sayısı YALNIZCA kullanıcının filtresine ",
+    "aittir; 'X/Y' biçiminde oran verme, payda olarak yalnızca filtre sonrası ",
+    "satır sayısını kullan.\n",
+    "6. Elinde benchmark verisi YOKTUR; sektör kıyaslaması uydurma.\n\n",
+
+    "EPİSTEMİK ETİKETLEME (zorunlu):\n",
+    "- **Gözlem**: Doğrudan pakette bulunan hesaplanmış olgu.\n",
+    "- **Yorum**: Gözlemlerden savunulabilir çıkarım.\n",
+    "- **Olası açıklama**: Doğrulanması gereken hipotez. Kanıtlanmış kök sebep ",
+    "gibi SUNULAMAZ; 'olası' ifadesi korunur.\n",
+    "- **Öneri**: Somut, uygulanabilir adım.\n",
+    "- **Sınırlılık**: Bu sorgunun/paketin cevaplayamadığı şey, eksik veri, ",
+    "kırpılan bölüm.\n\n",
+
+    "ZORUNLU YAPI:\n",
+    "- **\U0001F4CB Özet**: 2-3 cümlede kritik bulgular (Gözlem etiketiyle).\n",
+    "- **\U0001F4CA Gözlemler**: Paketteki olgulara dayalı bulgular, her biri ",
+    "`[fact:...]` referanslı.\n",
+    if (detayli) {
+      "- **\U0001F50D Detaylı İnceleme**: Kritik ölçü/boyut başına ayrı bölüm.\n"
+    } else {
+      ""
+    },
+    "- **\U0001F4A1 Yorum ve Olası Açıklamalar**: Etiketleri açıkça kullan.\n",
+    "- **\U0001F3AF Öneriler**: Önceliklendirilmiş somut adımlar.\n",
+    "- **\U000026A0\U0000FE0F Sınırlılıklar**: Paketin 'SINIRLILIKLAR' bölümünü ve ",
+    "kullanılamaz olguları burada özetle.\n\n",
+
+    "TON: Doğal, akıcı, profesyonel Türkçe. 'Muhtemelen', 'sanırım' gibi ",
+    "belirsiz doldurma ifadelerinden kaçın; belirsizliği 'Olası açıklama' ",
+    "etiketiyle ifade et.\n"
+  )
+
+  if (!is.null(query$info_file) && nzchar(query$info_file)) {
+    file_path_normalized <- gsub("\\\\", "/", query$info_file)
+    system_prompt <- paste0(
+      system_prompt,
+      "\nEK DOSYA: Cevabinin en altina su HTML linkini ekle: <br><br>\U0001F449 ",
+      "<span class='analysis-file-link' data-filepath='", file_path_normalized,
+      "' style='color:#007bff; cursor:pointer; text-decoration:underline; font-weight:bold;'>",
+      "İlgili Dosyayı Görüntüle</span>\n"
+    )
+  }
+
+  if (!is.null(query$info_url) && nzchar(query$info_url)) {
+    system_prompt <- paste0(
+      system_prompt,
+      "\nEK LINK: Cevabinin en altina su HTML linkini ekle: <br><br>\U0001F310 ",
+      "<a href='", query$info_url, "' target='_blank' rel='noopener noreferrer'>",
+      "<b>Daha Fazla Bilgi</b></a>\n"
+    )
+  }
+
+  system_prompt
+}

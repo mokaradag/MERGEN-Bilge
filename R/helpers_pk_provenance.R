@@ -183,6 +183,34 @@ pk_degradations_from_filter_status <- function(status) {
   )
 }
 
+# Ek (attachment) satırı: dosya adı, satır x sütun ve (varsa) oturum kapsamlı
+# indirme bağlantısı. Reddedilen dışa aktarım da GÖRÜNÜR olmalıdır; sessizce
+# kırpılmış bir dosya "eksiksiz" gibi sunulmaz (§5.9 madde 6).
+.pk_footer_attachment_line <- function(attachment) {
+  if (!is.list(attachment)) return(NULL)
+
+  if (identical(attachment$status, "refused") || identical(attachment$status, "failed")) {
+    msg <- .pk_footer_sanitize(attachment$message %||% "", 300L)
+    if (!nzchar(msg)) return(NULL)
+    return(sprintf("- **Ek:** Üretilmedi — %s", msg))
+  }
+
+  dosyalar <- attachment$files %||% list()
+  if (!length(dosyalar)) return(NULL)
+
+  parcalar <- vapply(dosyalar, function(d) {
+    ad <- .pk_footer_sanitize(d$name %||% "", 80L)
+    olcu <- sprintf("%s satır × %s sütun", .pk_format_count(d$rows), .pk_format_count(d$cols))
+    if (is.null(d$url) || !nzchar(as.character(d$url)[1])) {
+      sprintf("%s (%s)", ad, olcu)
+    } else {
+      sprintf("[%s](%s) (%s)", ad, as.character(d$url)[1], olcu)
+    }
+  }, character(1))
+
+  sprintf("- **Ek:** %s", paste(parcalar, collapse = " · "))
+}
+
 #' Kullanıcıya görünen köken (provenance) alt bilgisini üret
 #'
 #' @param provenance `list(query_id=, query_name=, filter_status=, filters=,
@@ -216,6 +244,11 @@ pk_build_provenance_footer <- function(provenance) {
   row_line <- .pk_footer_row_line(provenance)
   if (!is.null(row_line)) {
     lines <- c(lines, sprintf("- **Satır:** %s", row_line))
+  }
+
+  attachment_line <- .pk_footer_attachment_line(provenance$attachment)
+  if (!is.null(attachment_line)) {
+    lines <- c(lines, attachment_line)
   }
 
   degradations <- provenance$degradations %||% list()
@@ -286,7 +319,14 @@ pk_provenance_current_request_id <- function(session) {
 }
 
 #' Alt bilgiyi istek kapsamlı olarak sakla
-pk_provenance_stash <- function(session, footer, request_id = NULL) {
+#'
+#' Faz 2: alt bilginin yanında, §5.11 sayısal köken doğrulaması için
+#' yapılandırılmış olgular ve `block` kipinde gösterilecek deterministik yedek
+#' metin de saklanabilir. Alanlar OPSİYONELDİR; verilmezse davranış Faz 0 ile
+#' aynıdır.
+pk_provenance_stash <- function(session, footer, request_id = NULL,
+                                facts = NULL, fallback_text = NULL,
+                                query_id = NULL) {
   store <- .pk_provenance_store(session)
   if (is.null(store)) return(invisible(FALSE))
   if (is.null(footer) || !nzchar(as.character(footer)[1])) return(invisible(FALSE))
@@ -294,7 +334,10 @@ pk_provenance_stash <- function(session, footer, request_id = NULL) {
   tryCatch({
     store[[.pk_provenance_slot]] <- list(
       footer = as.character(footer)[1],
-      request_id = if (is.null(request_id)) NULL else as.character(request_id)[1]
+      request_id = if (is.null(request_id)) NULL else as.character(request_id)[1],
+      facts = facts,
+      fallback_text = fallback_text,
+      query_id = query_id
     )
     invisible(TRUE)
   }, error = function(e) invisible(FALSE))
@@ -304,7 +347,10 @@ pk_provenance_stash <- function(session, footer, request_id = NULL) {
 #'
 #' `request_id` verilirse ve saklanan kimlikle uyuşmazsa alt bilgi
 #' İLİŞTİRİLMEZ (yanlış yanıta yapışmaktansa hiç görünmemesi yeğlenir).
-pk_provenance_take <- function(session, request_id = NULL) {
+#'
+#' @param full `TRUE` ise yalnızca alt bilgi metni değil, saklanan kaydın
+#'   tamamı (olgular ve yedek metin dâhil) döner.
+pk_provenance_take <- function(session, request_id = NULL, full = FALSE) {
   store <- .pk_provenance_store(session)
   if (is.null(store)) return(NULL)
 
@@ -318,6 +364,7 @@ pk_provenance_take <- function(session, request_id = NULL) {
     return(NULL)
   }
 
+  if (isTRUE(full)) return(pending)
   pending$footer
 }
 
@@ -327,13 +374,30 @@ pk_provenance_take <- function(session, request_id = NULL) {
 #' Hiçbir koşulda hata fırlatmaz; başarısızlıkta metin değişmeden döner.
 pk_provenance_decorate <- function(text, session, request_id = NULL) {
   tryCatch({
-    footer <- pk_provenance_take(session, request_id = request_id)
+    pending <- pk_provenance_take(session, request_id = request_id, full = TRUE)
+    if (is.null(pending) || !is.list(pending)) return(text)
+
+    footer <- pending$footer
     if (is.null(footer) || !nzchar(footer)) return(text)
 
     base_txt <- if (is.null(text) || length(text) == 0L) "" else as.character(text)[1]
     if (is.na(base_txt)) base_txt <- ""
 
     if (grepl("**Analiz Kaynağı**", base_txt, fixed = TRUE)) return(text)
+
+    # §5.11: Sayısal iddialar olgulara karşı doğrulanır ve `[fact:...]`
+    # referansları YALNIZCA doğrulamadan SONRA gösterimden silinir. Olgu
+    # saklanmamışsa (v1 yolu) bu adım tamamen atlanır.
+    if (!is.null(pending$facts) &&
+        exists("pk_numeric_provenance_apply", mode = "function", inherits = TRUE)) {
+      sonuc <- pk_numeric_provenance_apply(
+        base_txt, pending$facts, fallback_text = pending$fallback_text
+      )
+      base_txt <- sonuc$text
+      if (exists("pk_numeric_provenance_report", mode = "function", inherits = TRUE)) {
+        try(pk_numeric_provenance_report(sonuc, pending$query_id), silent = TRUE)
+      }
+    }
 
     paste0(base_txt, footer)
   }, error = function(e) text)

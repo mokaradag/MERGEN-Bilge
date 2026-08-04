@@ -204,12 +204,17 @@ mergen_seam_registry <- function() {
         "tests/testthat/test-chartlab-spec-refactor-contract.R",
         "tests/testthat/test-pk-analysis-security-summary-contract.R",
         "tests/testthat/test-pk-text-turkish-behavior.R",
-        "tests/testthat/test-pk-query-meta-contract.R"
+        "tests/testthat/test-pk-query-meta-contract.R",
+        "tests/testthat/test-pk-analysis-packet-behavior.R",
+        "tests/testthat/test-pk-numeric-provenance-contract.R",
+        "tests/testthat/test-pk-export-xlsx-behavior.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-mcp-excel-resolve.R\")",
         "testthat::test_file(\"tests/testthat/test-pk-analysis-security-summary-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-pk-query-meta-contract.R\")"
+        "testthat::test_file(\"tests/testthat/test-pk-query-meta-contract.R\")",
+        "testthat::test_file(\"tests/testthat/test-pk-analysis-packet-behavior.R\")",
+        "testthat::test_file(\"tests/testthat/test-pk-export-xlsx-behavior.R\")"
       ),
       related_seams = c("dosya_yasam_dongusu", "sohbet_llm_akis")
     ),

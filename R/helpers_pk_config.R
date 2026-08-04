@@ -75,6 +75,82 @@ pk_config_spec <- list(
     type = "integer",
     default = 120000L,
     min = 1000L
+  ),
+  # --- Faz 2 (§5.7): analiz paketi ----------------------------------------
+  # Kategorik sütun başına gösterilen ilk-K değer. Eski özet yalnızca ilk beş
+  # kategorik sütunu ve her birinin YALNIZCA ilk değerini veriyordu (D17).
+  MERGEN_PK_TOPK_CATEGORIES = list(
+    type = "integer",
+    default = 10L,
+    min = 1L
+  ),
+  # "Diğer" toplamasından önce gösterilen grup sayısı.
+  MERGEN_PK_GROUP_TOPN = list(
+    type = "integer",
+    default = 15L,
+    min = 1L
+  ),
+  # Pakete giren temsilî örnek satır sayısı (ilk-N + son-N + uç değer +
+  # tabakalı). Eski yol `head(data, 500)` ile KONUMSAL YANLI idi (D18).
+  MERGEN_PK_SAMPLE_ROWS = list(
+    type = "integer",
+    default = 30L,
+    min = 1L
+  ),
+  # Sabit tohum -> yeniden üretilebilir tabakalı örnek.
+  MERGEN_PK_SAMPLE_SEED = list(
+    type = "integer",
+    default = 42L
+  ),
+  # --- Faz 2 (§5.8): yanıt kompozisyonu eşikleri --------------------------
+  MERGEN_PK_INLINE_MAX_ROWS = list(
+    type = "integer",
+    default = 15L,
+    min = 1L
+  ),
+  MERGEN_PK_INLINE_MAX_COLS = list(
+    type = "integer",
+    default = 8L,
+    min = 1L
+  ),
+  MERGEN_PK_DT_MAX_ROWS = list(
+    type = "integer",
+    default = 200L,
+    min = 1L
+  ),
+  MERGEN_PK_INLINE_MAX_COLS_DT = list(
+    type = "integer",
+    default = 12L,
+    min = 1L
+  ),
+  # Ek yolunda baloncukta gösterilen önizleme satırı.
+  MERGEN_PK_PREVIEW_ROWS = list(
+    type = "integer",
+    default = 10L,
+    min = 1L
+  ),
+  # --- Faz 2 (§5.9): dışa aktarım ----------------------------------------
+  # TEK bir sayfa/parçadaki azami satır. Daha büyük sonuç ya doğrulanmış
+  # numaralı parçalara bölünür ya da AÇIKÇA reddedilir; sessizce kırpılmaz.
+  MERGEN_PK_EXPORT_MAX_ROWS = list(
+    type = "integer",
+    default = 100000L,
+    min = 1L
+  ),
+  # Parça tavanı. Aşılırsa dışa aktarım reddedilir ve kullanıcıdan sorusunu
+  # daraltması istenir.
+  MERGEN_PK_EXPORT_MAX_PARTS = list(
+    type = "integer",
+    default = 20L,
+    min = 1L
+  ),
+  # --- Faz 2 (§5.11): sayısal köken doğrulaması ---------------------------
+  # `log` ile başlanır: gerçek yanlış-pozitif oranı VM'de ölçülmeden `warn`
+  # veya `block` kipine geçilmez.
+  MERGEN_PK_NUMERIC_PROVENANCE_MODE = list(
+    type = "character",
+    default = "log",
+    allowed = c("off", "log", "warn", "block")
   )
 )
 

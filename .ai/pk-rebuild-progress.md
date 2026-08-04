@@ -14,7 +14,8 @@ reads only one of the two will make avoidable mistakes.
 |---|---|---|---|
 | 0 | Instrumentation + status plumbing | `merged_to_rebuild` | `b1805f5` (PR #695) |
 | 3a | Metadata contract | `merged_to_rebuild` | `aa39652` (PR #696) |
-| 1 | Surgical correctness | `in_review` | — (PR #697 open) |
+| 1 | Surgical correctness | `merged_to_rebuild` | `f1368b2` (PR #697) |
+| 2 | Deterministic analysis + export | `in_review` | — (PR open) |
 
 Planned order (§11): **0 → 3a → 1 → 2 → 4 → 5 → 6**, with **3b on the VM**.
 
@@ -654,12 +655,23 @@ One of my own fixtures was wrong rather than the code: `"AYNI"` folds to `aynı`
 
 ## Phase 1 — Surgical correctness
 
-* **Status:** `in_review`
+* **Status:** `merged_to_rebuild`
 * **Branch:** `claude/pk-phase-1-surgical-correctness-o6e6sg` (see "Deviations" — the
   harness-assigned branch name, not `pk/phase-1-correctness`; it is cut from the
   `origin/pk/rebuild` tip `aa39652`, which matched the expected tip exactly)
 * **PR:** #697, base `pk/rebuild` ← head `claude/pk-phase-1-surgical-correctness-o6e6sg`
-* **Merge SHA:** _pending_
+  — **merged**
+* **Merge SHA:** `f1368b2` (merge commit on `pk/rebuild`)
+
+> **Stale-record correction (made at the start of the Phase-2 session).** This
+> section and the header table read `in_review` / `_pending_`, but
+> `git log --oneline -3 origin/pk/rebuild` shows
+> `f1368b2 Merge pull request #697 from mokaradag/claude/pk-phase-1-surgical-correctness-o6e6sg`
+> at the tip. Per §11 ("trust the log, and record any discrepancy") the log wins
+> and both records were corrected. **This is the third consecutive phase whose
+> record was left stale by the session that opened its PR** — the correction is
+> cheap only because the cross-check is mandatory; the durable fix is to update
+> this file at merge time, not at PR time.
 
 ### Defects re-verified before writing code (§0.1)
 
@@ -1052,3 +1064,296 @@ deliberate §5.4 decision, so the pre-merge action is unchanged — **scan the q
 files for a leading `SET` / `GO` before enabling this on the VM.** The two
 residual RLS fail-open paths documented above are also unchanged; they are
 pre-existing policy, not review findings.
+
+---
+
+## Phase 2 — Deterministic analysis + export
+
+* **Status:** `in_review`
+* **Branch:** `claude/pk-phase-2-analysis-export-otxf78` (harness-assigned; see
+  "Deviations"). Cut from the `origin/pk/rebuild` tip `f1368b2`, which matched
+  the expected tip exactly.
+* **PR:** base `pk/rebuild` ← head `claude/pk-phase-2-analysis-export-otxf78`
+* **Merge SHA:** _pending_
+
+### Defects re-verified before writing code (§0.1)
+
+Line numbers had drifted (Phase 1 moved two of these functions into new files).
+Each was re-read in the current checkout. **Every claim still reproduces.**
+
+| Defect | Verdict | Evidence in the current code |
+|---|---|---|
+| **D17** statistics computed and thrown away | **REPRODUCES** | `R/helpers_pk_statistical_summary.R`: `lapply(head(cat_cols, 5), ...)` summarizes only the first five categorical columns, computes `top5 <- head(tbl, 5)` and then uses `as.integer(top5[1])` only. Silent on both counts. |
+| **D18** positionally biased sample | **REPRODUCES** | module: `dynamic_preview_rows <- if (nrow(filtered_data) <= 500) nrow(...) else 500`, then `preview_data <- head(data, max_preview_rows)`. |
+| **D19** scientific notation | **REPRODUCES** | `paste(capture.output(print(num_summary_df, row.names = FALSE)), collapse = "\n")` for the numeric AND date AND categorical tables. |
+| **D20** contradictory prompt | **REPRODUCES** | `pk_build_analysis_system_prompt()` demands `KÖK SEBEP` + `sektör benchmarks'leri` while forbidding speculation, and both branches carry `sonuçları MUTLAKA markdown tablo formatında sun`. |
+| **D21** dead pre-filter payload | **REPRODUCES** | module returned `data = secure_data`; `grep` confirms `server_send_message.R` reads only `prompt_context` / `user_context` / `max_tokens`, and the Ortak Oturum bridge only `prompt_context`. |
+
+Nothing in the plan was found to be withdrawn; nothing from §3.9 was resurrected.
+
+### Engine boundary as implemented
+
+§10 lists exactly four unconditional cross-engine items, and **all four already
+landed in Phases 0 and 1**. Phase 2 therefore adds **nothing** to v1: every new
+behavior sits behind `MERGEN_PK_ENGINE=v2`.
+
+| Item | Gating | Where |
+|---|---|---|
+| Analysis packet, packet text, budget | `v2` | `.pk_result_v2()` only |
+| Epistemic system prompt, no markdown-table instruction | `v2` | `pk_build_analysis_system_prompt_v2()`; the v1 builder is byte-untouched |
+| R-owned table + XLSX/CSV attachment | `v2` | `.pk_result_v2()` only |
+| Numeric provenance (`log`) | `v2` | activates only when the request stashed `facts`; v1 never does |
+| D21 `data = filtered_data` | `v2` | v1 still returns `secure_data` |
+
+`pk_build_analysis_result()` is the **single** place that branches. The six pure
+Phase-2 files are statically proven free of `pk_engine_is_v2`.
+
+### Files added
+
+| File | Purpose | Purity |
+|---|---|---|
+| `R/helpers_pk_packet_stats.R` | Locale-independent Turkish number formatting (D19), stable ASCII fact ids, scope signature, per-measure statistics under the sparse/non-finite contract, weighted-mean invalid-weight contract, `latest` tie contract. | pure |
+| `R/helpers_pk_analysis_packet.R` | Packet assembly: scope, filters, coverage, facts, categorical (ALL dimensions), dates, groups, stratified examples, limitations. | pure |
+| `R/helpers_pk_packet_render.R` | Packet → Turkish text + budget accountant with an explicit degradation ladder. | pure |
+| `R/helpers_pk_numeric_provenance.R` | `[fact:...]` claim extraction, Turkish number parsing, value **and** semantic (unit/availability) validation, `off/log/warn/block`, secret-safe mismatch-rate report. | pure |
+| `R/helpers_pk_export_plan.R` | Row ordinals, part planning / explicit refusal, writer-specific percent contract, CSV formula neutralization, `Bilgi` + `Özet` sheets, multiset verification. | pure |
+| `R/helpers_pk_export_xlsx.R` | writexl baseline + gated openxlsx formatting, `readxl` read-back verification, BOM CSV fallback, session-scoped serving + cleanup. | I/O |
+| `R/helpers_pk_answer_compose.R` | Ordered first-match rendering rules, R-owned markdown table, attachment card, deterministic facts summary. | pure |
+| `R/helpers_pk_analysis_result.R` | The one v1/v2 branch; owns the module's former tail. | I/O |
+
+### Files modified
+
+| File | Change |
+|---|---|
+| `R/module_proje_kaynak_analizi.R` | Tail (statistics → payload → prompt → return) delegated to `pk_build_analysis_result()`. **689 → 654 lines** (it shrank, per §6). |
+| `R/helpers_pk_analysis_prompts.R` | v1 builder **byte-untouched**; new `pk_build_analysis_system_prompt_v2()` added. |
+| `R/helpers_pk_provenance.R` | `- **Ek:**` footer line (incl. explicit refusal); `pk_provenance_stash()` optionally carries facts/fallback/query id; `pk_provenance_decorate()` runs numeric-provenance validation before appending. |
+| `R/helpers_pk_telemetry.R` | `pk_analysis_observe()` passes `attachment` into the footer and stashes `answer_block` + `facts` + `fallback_text`. |
+| `R/helpers_pk_config.R` | 12 new knobs (packet depth, composition thresholds, export limits, provenance mode). |
+| `R/config_source_manifest.R` | Eight new files in `analysis_helpers`, dependency-ordered. |
+| `R/config_seam_registry.R` | Three new guard tests + two focused-validation commands on `mcp_analiz`. |
+| `.Renviron.example` | All 12 knobs with Turkish comments stating they are v2-only. |
+| `tests/.../test-source-manifest-sections-contract.R` | Frozen anchors updated consciously: `analysis_helpers` 22 → 30, total 392 → 400. |
+| `tests/.../test-pk-observation-accuracy-contract.R`, `test-pk-provenance-delivery-contract.R` | Stubbed `pk_provenance_stash` signature widened with `...` to mirror the grown production signature (see design decision E9). |
+
+### Tests added, and what each **proves**
+
+| Test | Proves |
+|---|---|
+| `test-pk-analysis-packet-behavior.R` (146) | **D19**: 1.234.567.890 never becomes `1.23e+09`, output is byte-identical under `OutDec = ","`, and no packet file uses `capture.output`. **Sparse contract**: an all-missing measure yields `unavailable_no_finite_values` and **never** a factual zero; one observation yields `single_observation` for sum/mean/median/min/max and `insufficient_data` (value-free) for sd/percentiles/IQR; **no fact anywhere carries NA/NaN/Inf**. **Tier-0**: without `additive` neither sum nor mean is emitted, while distribution statistics still are. **Weighted mean**: zero-weight and missing pairs are excluded *with the count disclosed*; a negative or infinite weight invalidates the whole set; no positive pair returns `weighted_mean_unavailable` — never an unweighted mean, zero or `NaN`. **`latest`**: unique `latest_tie_by` resolves, a duplicated newest-timestamp key returns `ambiguous_latest`, and a missing tie declaration refuses. **Fact contract**: ids are stable ASCII even from a Turkish column name, and carry capability/unit/label/scope. **D17**: all six categorical columns are summarized (five would have been the old cap), top-K carries count **and** share, the remainder rolls into `Diğer (15 deger)`. **D18**: the example set is not `head()` — it spans ≥3 strata of a 400-row frame ordered by group, is reproducible under a fixed seed, and **restores the global RNG state**. **D7/D8**: the budget measures the whole payload and trims examples first, and `FİLTRELEME UYARISI` plus the degradation line survive **all five** budget levels down to 1000 chars; what was dropped is stated. **Scope**: a `pre_rls_rows` value passed into the builder appears nowhere in the packet or its rendered text. |
+| `test-pk-numeric-provenance-contract.R` (65) | Turkish/plain number parsing incl. rejection of ambiguous `1.234,56.7`. Correct value on the right fact passes; wrong value is `value_mismatch`; declared rounding tolerance accepts `18.420` for 18.420,5 but rejects `18.419`. **The plan's own example**: `47` exists in the packet as a distinct-person count, so *"tamamlanma %47"* citing that fact is rejected as `unit_mismatch`, while *"47 farklı kaynak"* citing the same fact passes — token membership alone can never authorize a claim. Unknown fact id, unavailable fact, and a fabricated `pre_rls.count.overall` citation are all rejected. Mode contract: default is `log`; `log` records but does **not** alter user-visible text; markers are stripped in every mode; `warn` marks the figures visibly; `block` replaces prose with the deterministic summary but does **not** fire when there is no mismatch. The mismatch-rate report contains counts/reasons and **not** the prose. |
+| `test-pk-export-xlsx-behavior.R` (~100) | Part planning covers every row exactly once; above the part ceiling the export is **explicitly refused** with a "narrow your request" message, not silently truncated. Sheet names are Excel-legal and keep Turkish characters. **Writer-specific percentage**: the `writexl` baseline stores `61.3` under `Tamamlanma (%)`, the `openxlsx` path stores `0.613` under `Tamamlanma`, `fraction` scales correctly in both, an undeclared `percent_scale` is **not** rescaled and is disclosed, and no path can display a value above 100 (i.e. `%6130,0` is unreachable). **Real 5,000-row XLSX**: read back with `readxl` — 5,000 rows, `Veri`/`Ozet`/`Bilgi` sheets, `Tutar` still **numeric** `-125.50`, `Tamamlanma (%)` still numeric `61.3`, Turkish `SENTETIK ÇALIŞMA İSTANBUL` intact. `Bilgi` carries the authorized and post-filter counts and **not** a `pre_rls_rows` value even when the caller passes one. Multipart: 250 rows at 100/part produce `Veri_001..003` whose union is exactly 1..250. Eight identical rows stay eight rows (no dedup); multiset verification still catches a missing or altered row. CSV fallback: verification failure deletes the unverified XLSX, writes a **UTF-8 BOM** CSV, neutralizes character `=1+1`/`-KAPALI-`/`@kullanici`/`+ek` while ordinary Turkish text and the **numeric** `-125.50` are untouched. Static: the export files never mention `bilge_yolac_downloads` or `addResourcePath` and do use `registerDataObj` + session cleanup, and serving really registers one cleanup per file. **Composition**: the ordered rules are proven with the plan's own ambiguous case (100×20 → attachment, not inline), Turkish `LİSTEYİ VER` is detected locale-independently, a 400-row result produces a <30-line bubble (not a table wall), and the R-owned markdown table escapes `|` and newlines. |
+| `test-pk-v1-compatibility-contract.R` (+13 new) | **D21** v1 still returns the 20-row pre-filter frame while v2 returns the 10-row post-filter frame. `prompt_context`/`user_context`/`query_name`/`max_tokens` — the fields `server_send_message.R` and the Ortak Oturum bridge read — are intact on **both** engines. **D20** the `markdown tablo` instruction is still present in the v1 prompt (both modes) and gone from v2, which instead carries all five epistemic labels and forbids invented benchmarks. Facts/answer block/attachment exist only on v2; the v1 payload keeps its `ISTATISTIKSEL OZET` + `ORNEK SATIRLAR (JSON)` shape and contains no `[fact:` marker. The six pure Phase-2 files are statically flag-free. Numeric provenance does not run at all when no facts were stashed (the v1 path), and when they are stashed the markers are stripped and the R block lands **before** the footer. The footer shows the attachment (and an explicit refusal) while never printing the pre-RLS count. |
+
+Total: **~324 new assertions**, all offline — no DB, LLM, browser, SSO, network
+or real secret. Every fixture is synthetic (`SENTETIK ...`, `q_sentetik`); no
+real project or programme name appears anywhere.
+
+**Mutation-checked.** Each new test was verified to genuinely fail when the fix
+it guards is reverted:
+
+| Reverted behavior | Failures |
+|---|---|
+| only the first five categorical columns summarized (D17) | 2 |
+| example rows back to `head(data, n)` (D18) | 6 |
+| number formatting back to `as.character()` (D19) | 14 |
+| `additive` gate removed (always sum) | 2 |
+| invalid weights fall back to an unweighted mean | 7 |
+| `FİLTRELEME UYARISI` droppable under budget (D8) | 5 |
+| writexl baseline stops rescaling/labelling percent | 4 |
+| part ceiling silently truncates instead of refusing | 7 |
+| CSV neutralization applied to numeric columns too | 2 |
+| pre-RLS count written into the `Bilgi` sheet | 1 |
+| composition rules reordered (rule 3 before rule 2) | 3 |
+| semantic unit check removed (token-only provenance) | 2 fail + 2 error |
+| `[fact:...]` markers left in the displayed text | 5 |
+| v2 returns the pre-filter frame (D21 reverted) | 1 |
+| v2 prompt keeps the markdown-table instruction (D20) | 4 |
+
+### Design decisions, with reasoning
+
+**E1 — Tier-0 emits distribution statistics but never a sum or a mean.**
+Phase 3a's named fallback is *"additive yok -> toplama YAPILMAZ"*, and every
+production query is Tier-0 today. Taken literally that would leave the packet
+with almost nothing. The distinction drawn here is between an **entity-level
+aggregate claim** (sum, mean — these need `additive`/`aggregate` and are
+withheld, with the reason stated in the fact's `note`) and a **description of
+the rows actually returned** (median, percentiles, min/max, sd, IQR outliers —
+these are true of the returned rows regardless of grain, because the Tier-0
+grain fallback is "each row is its own grain"). So Tier-0 still produces a
+usable packet without inventing additivity. Every withheld aggregate is a
+visible `KULLANILAMAZ (insufficient_data)` line, not a silent omission.
+
+**E2 — The outlier COUNT does not inherit the measure's unit.**
+Caught while smoke-testing: the first render produced
+`IQR uc deger sayisi: 0,0 saat`. A count is not a quantity. The `iqr_outliers`
+fact now uses a unit-free, zero-decimal spec.
+
+**E3 — The scope signature is readable text, not a hash.**
+§5.7 asks for a "scope signature". A hash would need a digest dependency and is
+useless in a log; `yetki=12405|filtre=312` is deterministic, greppable, and by
+construction cannot contain a pre-RLS count.
+
+**E4 — Multipart verification uses the plan's second permitted method.**
+§5.9 item 7 asks for a stable ordinal written into each part, read back, then
+removed from the served workbook — which means writing every file twice
+(unverified-with-ordinal, then served-without). The plan explicitly permits the
+alternative: *"verify a multiset key of `(serialized row value, occurrence
+index)`"*. The ordinal is still what makes the split deterministic
+(`plan$parts[[i]]$ordinals`), and verification compares per-part row/column
+counts plus the occurrence-indexed multiset, so legitimate duplicate rows are
+preserved and a missing/extra/altered row is still caught. A test asserts both
+directions.
+
+**E5 — The `dt` render mode is decided but presented as attachment + preview.**
+The pure decision function implements all four ordered rules faithfully and
+returns `mode = "dt"` for rule 4. Rendering it as a real `DT` widget needs an
+output-binding seam plus `pk_rebind_all_tables()` on saved-chat hydration
+(§5.9), which is browser-unprovable in a cloud session and materially larger
+than the rest of this phase. Until that lands, `dt` is rendered the same way as
+the attachment path (10-row preview + downloadable file), which is conservative
+in both directions: never a wall of table, never a broken widget. A later phase
+changes one renderer branch, not the decision. **Recorded as a deviation, not a
+silently narrowed scope.**
+
+**E6 — The mismatch rate is reported through a secret-safe log line, not a
+second `MB_Analiz_Log` row.** Validation happens at the answer-finalization
+seam, where there is no DB connection (`pk_analysis_observe()` runs earlier and
+owns the only `conn`). §8 asks for the measured rate to be *reported*; the log
+line carries mode, query id, claim count, mismatch count, rate and the distinct
+reasons — and provably not the prose. Writing it into `MB_Analiz_Log` needs the
+async request context that Phase 6 introduces.
+
+**E7 — `block` mode refuses and shows the deterministic summary; it does not
+regenerate.** §5.11 describes "rejected and regenerated once; on a second
+failure the deterministic table plus a short factual summary". The decorate seam
+cannot re-invoke the LLM. The deterministic fallback — the half that protects
+the user — is implemented; the single regeneration belongs to whoever owns the
+request loop. `block` is not the shipped mode (`log` is), so nothing depends on
+this today.
+
+**E8 — Reusing the Phase-0 provenance slot instead of inventing a second
+channel.** The R-owned block (table/preview + attachment card) is concatenated
+in front of the footer and travels through the existing single-slot stash, so it
+inherits Phase 0's request-id staleness guard, take-once semantics and
+idempotency for free. Facts and the fallback text ride alongside as optional
+fields; when they are absent the decorator behaves exactly as in Phase 0.
+
+**E9 — Two existing test stubs were widened, not weakened.**
+`pk_provenance_stash` grew three optional parameters. Three stubs declared the
+old three-argument signature, so the real call failed with "unused arguments"
+inside `pk_analysis_observe()`'s `tryCatch` and the tests captured nothing. The
+stubs now take `...`. No assertion was removed or relaxed.
+
+**E10 — The manifest comment was compressed rather than the ratchet raised.**
+Adding eight manifest entries pushed `R/config_source_manifest.R` to 797 lines
+against the frozen 795 maximum. The fix was to shorten the comment I had just
+added (five lines → two), not to touch the budget. The file is 793 lines and the
+global baseline is unchanged: score 100/100, 0 files ≥800 lines, 0 files ≥25
+functions, max file 795, max functions 24.
+
+**E11 — `openxlsx` is not installed in this container, so only the baseline path
+executed for real.** That is the intended shape: `writexl` is the required
+baseline (R2) and a cloud session must not add packages. The `openxlsx` value
+contract (`0.613` + `Tamamlanma`) is proven through the pure preparation
+function, which is where the two-orders-of-magnitude bug would live. The
+formatted **file** and its rendered style remain unproven here.
+
+### Deviations from the plan
+
+1. **Branch name.** The plan says `pk/phase-2-...`; the harness assigned
+   `claude/pk-phase-2-analysis-export-otxf78`. Substance preserved: cut from the
+   `origin/pk/rebuild` tip `f1368b2`, one phase only, PR base `pk/rebuild`.
+2. **Eight new files instead of the four §6 names.** §6 lists
+   `helpers_pk_analysis_packet.R`, `helpers_pk_answer_compose.R` and
+   `helpers_pk_export_xlsx.R`. The other five exist because the alternative was
+   growing files past their budgets: statistics/fact core and rendering split
+   out of the packet, the export plan split out of export I/O, numeric
+   provenance stands alone, and the result builder exists so the module could
+   **shrink** rather than grow. Each is single-purpose, manifest-declared and
+   seam-owned.
+3. **E5** (`dt` mode rendered as attachment + preview) is the one functional
+   narrowing, argued above.
+4. **E4**, **E6**, **E7** are method/scope choices within what the plan permits,
+   argued above.
+5. **`pk_rebind_all_tables()` and the saved-chat expiry card are NOT
+   implemented.** They belong to the `DT`-widget seam deferred in E5. Today a
+   reloaded saved chat shows the persisted prose, the R-owned markdown table and
+   the footer; the attachment link is session-scoped and simply stops resolving
+   after the session ends — which is the plan's own "expiry is the safe default"
+   position, but **without** the explicit expired-state card. That card is the
+   remaining §5.9 hydration item.
+
+No maintainability budget was raised. No v1 selection, filter or output decision
+changed.
+
+### Review findings received and how each was resolved
+
+None yet — PR just opened.
+
+### What remains unproven and needs the VM
+
+* **Real Excel rendering on Turkish Windows.** `readxl` proves the **stored
+  value**, never the rendered style. That `Tamamlanma (%) = 61.3` reads as a
+  percentage to a human, and that the file opens without a repair dialog, are
+  VM/browser gates.
+* **The `openxlsx` formatted path end to end.** `openxlsx` is absent in this
+  container, so `.pk_export_write_openxlsx()` — number formats, freeze panes,
+  auto column widths, the `0.0%` style — **has never executed**. Its
+  value-scaling decision is tested; its file output is not. This is the single
+  largest untested code path in the phase.
+* **The download card in a real browser.** Session-scoped `registerDataObj`
+  serving, the `Content-Disposition` filename with Turkish characters, and
+  cleanup on session end are all offline-stubbed here.
+* **v2 end to end.** No v2 request has run against a real query, real data, a
+  real filter LLM or a real endpoint. `MERGEN_PK_ENGINE=v2` is off by default
+  and must stay off until the VM validates it.
+* **The numeric-provenance false-positive rate.** `log` mode exists precisely
+  because that rate is unknown; it must be measured on real Turkish answers
+  before anyone considers `warn`.
+* **Memory/latency of building a packet over a large authorized set.** All
+  statistics are single-pass over the full vector by design (§5.7), but the
+  largest frame tested here is 5,000 rows.
+* **Saved-chat hydration behavior** for an expired attachment (see deviation 5).
+* Browser UX smoke **SKIPPED** in this container (no browser binary).
+
+### Exact validation commands run, and their real results
+
+Environment note: this container starts in a **POSIX/C locale**, which makes R
+fail to read the repo's UTF-8 sources. Every command below was run with
+`LC_ALL=C.UTF-8` (as Phase 1 documented).
+
+| Command | Result |
+|---|---|
+| `Rscript tests/scripts/parse_sanity_check.R` | `OK: 1088 dosya parse edildi.` |
+| 3 new + 1 extended Phase-2 test file | `fail=0 err=0 warn=0 skip=0` |
+| All `test-pk-*` / `test-deep-analysis-*` / `test-ortak-oturum-*` + manifest / seam / ratchet / production / secret contracts | `fail=0 err=0 warn=0` |
+| `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")` | `FAIL 0 WARN 0` |
+| `testthat::test_file("tests/testthat/test-pk-analysis-maintainability-contract.R")` | `FAIL 0 WARN 0` |
+| `testthat::test_file("tests/testthat/test-source-manifest-sections-contract.R")` | `FAIL 0 WARN 0` |
+| `testthat::test_file("tests/testthat/test-seam-registry-contract.R")` | `FAIL 0 WARN 0` |
+| `bash tools/seam_doctor.sh` | `SEAM_DOCTOR_RESULT: OK (yapısal sorun yok)` |
+| `source("tests/scripts/maintainability_report.R")` | Skor **100/100**; 800+ satır **0**; 25+ fonksiyon **0**; en büyük dosya **795**; en yüksek fonksiyon **24** — Faz 0/3a/1 taban çizgisiyle AYNI |
+| `bash tools/ai_validate.sh full --boot-smoke` | **PASSED** — `failed_steps: 0`, `skipped_steps: 0`. Artifact: `artifacts/ai-validation/20260804-183205/summary.json` |
+
+`full --boot-smoke` proof fields (verbatim from `summary.json`):
+
+```
+validation_execution_status: ran_by_ai_repo_check
+profile_requested: full          profile_effective: full
+failed_steps: 0                  skipped_steps: 0
+app_source_smoke_status:      passed
+full_testthat_suite_status:   passed      (359.2s, zero failures)
+shiny_boot_smoke_status:      passed
+browser_smoke_status:         skipped     <-- no Chrome/Chromium/Edge binary in this container
+db_sso_vm_validation_status:  not_performed_by_ai_validate
+sql_server_turkish_encoding_preflight_status: not_performed_by_ai_validate
+manual_fragile_flow_evidence_status:          not_performed_by_ai_validate
+```
+
+**Honesty boundary.** The mandatory `full --boot-smoke` gate for this phase
+**did run and did pass**, including app source smoke, the full testthat suite
+and Shiny boot smoke. Browser UX smoke **SKIPPED** (no browser binary — the
+runner exits 0 on that skip by design, so it is *not* browser proof). Nothing
+here proves runtime, VM, SSO, real DB, SQL Server Turkish encoding, real Excel
+rendering, or browser behavior; those remain the VM gates in §14 of the plan.

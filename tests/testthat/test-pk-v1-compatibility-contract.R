@@ -28,6 +28,21 @@
   env
 }
 
+# Yalnizca kod taranir; aciklama satirlari taranmaz (bayt guvenli okuma).
+.pk_v1_code_only <- function(rel_path) {
+  full <- file.path(resolve_repo_root_for_tests(), rel_path)
+  size <- suppressWarnings(file.info(full)$size[1])
+  if (is.na(size) || size <= 0) return("")
+  con <- file(full, open = "rb")
+  on.exit(close(con), add = TRUE)
+  raw_data <- readBin(con, what = "raw", n = size)
+  txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]])
+  if (is.na(txt)) return("")
+  satirlar <- strsplit(enc2utf8(txt), "\n", fixed = TRUE)[[1]]
+  satirlar <- satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)]
+  paste(satirlar, collapse = "\n")
+}
+
 .pk_v1_data <- function() {
   data.frame(
     ProjeAdi = c("SENTETIK RADAR", "SENTETIK ELEKTRONIK HARP", "SENTETIK LOJISTIK"),
@@ -318,4 +333,248 @@ test_that("v2 gozlemi filtre DEGERINI korur (koken alt bilgisi bos yazmaz)", {
       expect_false(grepl('= ""', satir, fixed = TRUE))
     })
   })
+})
+
+# ==============================================================================
+# Faz 2 — deterministik analiz + dışa aktarım (§5.7-§5.9, D17-D21)
+#
+# §10 dört çapraz-motor maddesini sayar ve Faz 2'nin HİÇBİRİ o listede yoktur.
+# Bu yüzden analiz paketi, R'ye ait tablo/ek, epistemik istem ve D21 düzeltmesi
+# YALNIZCA `MERGEN_PK_ENGINE=v2` altında etkin olmalıdır.
+# ==============================================================================
+
+.pk_v2_result_env <- function() {
+  repo_root <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  env$safe_unlink_if_exists <- function(path) invisible(TRUE)
+  env$normalize_pk_dataframe_utf8 <- function(df) df
+
+  for (f in c("helpers_pk_config.R", "helpers_pk_text_turkish.R",
+              "helpers_pk_provenance.R", "helpers_pk_prompt_budget.R",
+              "helpers_pk_analysis_prompts.R", "helpers_pk_packet_stats.R",
+              "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R",
+              "helpers_pk_numeric_provenance.R", "helpers_pk_export_plan.R",
+              "helpers_pk_export_xlsx.R", "helpers_pk_answer_compose.R",
+              "helpers_pk_statistical_summary.R", "helpers_pk_analysis_result.R")) {
+    source(file.path(repo_root, "R", f), encoding = "UTF-8", local = env)
+  }
+  env$MAX_ANALYSIS_PROMPT_CHARS <- 120000L
+  env
+}
+
+.pk_v2_frames <- function() {
+  yetkili <- data.frame(
+    ProjeAdi = rep(c("SENTETIK A", "SENTETIK B"), each = 10),
+    Saat = seq_len(20),
+    stringsAsFactors = FALSE
+  )
+  list(secure = yetkili, filtered = yetkili[1:10, , drop = FALSE])
+}
+
+.pk_v2_query <- function() {
+  list(id = "q_sentetik", name = "Sentetik Sorgu", description = "Sentetik açıklama",
+       meta = list(column_meta = list(
+         Saat = list(label = "Saat", role = "measure", unit = "saat", decimals = 1L,
+                     additive = TRUE, capability = "labor.remaining_hours")
+       )))
+}
+
+test_that("D21: v1 filtre ONCESI cerceveyi dondurur, v2 filtre SONRASI cerceveyi", {
+  env <- .pk_v2_result_env()
+  cerceve <- .pk_v2_frames()
+
+  v1 <- NULL
+  utils::capture.output(
+    v1 <- env$pk_build_analysis_result(cerceve$filtered, cerceve$secure,
+                                       .pk_v2_query(), "sentetik soru",
+                                       engine_is_v2 = FALSE),
+    type = "output"
+  )
+  expect_equal(nrow(v1$data), 20L)
+  expect_identical(v1$type, "data_analysis")
+
+  v2 <- env$pk_build_analysis_result(cerceve$filtered, cerceve$secure,
+                                     .pk_v2_query(), "sentetik soru",
+                                     engine_is_v2 = TRUE)
+  expect_equal(nrow(v2$data), 10L)
+  expect_identical(v2$type, "data_analysis")
+})
+
+test_that("Ortak Oturum koprusunun okudugu alanlar HER IKI motorda da korunur", {
+  env <- .pk_v2_result_env()
+  cerceve <- .pk_v2_frames()
+
+  for (v2 in c(FALSE, TRUE)) {
+    sonuc <- NULL
+    utils::capture.output(
+      sonuc <- env$pk_build_analysis_result(cerceve$filtered, cerceve$secure,
+                                            .pk_v2_query(), "sentetik soru",
+                                            engine_is_v2 = v2),
+      type = "output"
+    )
+    expect_true(is.character(sonuc$prompt_context) && nzchar(sonuc$prompt_context),
+                info = sprintf("engine_is_v2=%s icin prompt_context bos.", v2))
+    expect_true(is.character(sonuc$user_context) && nzchar(sonuc$user_context))
+    expect_identical(sonuc$query_name, "Sentetik Sorgu")
+    expect_equal(sonuc$max_tokens, 4096)
+  }
+})
+
+test_that("D20: 'markdown tablo uret' talimati v1'de DURUYOR, v2'de KALDIRILDI", {
+  env <- .pk_v2_result_env()
+  q <- .pk_v2_query()
+
+  for (kip in c("summary", "full")) {
+    v1_istem <- env$pk_build_analysis_system_prompt(kip, q)
+    expect_true(grepl("markdown tablo", v1_istem, fixed = TRUE),
+                info = "v1 istemi degistirilmemelidir (motor siniri).")
+
+    v2_istem <- env$pk_build_analysis_system_prompt_v2(kip, q)
+    expect_false(grepl("markdown tablo", v2_istem, fixed = TRUE))
+    expect_true(grepl("TABLO ÜRETME", v2_istem, fixed = TRUE))
+  }
+})
+
+test_that("D20: v2 istemi epistemik etiketleme kullanir ve benchmark istemez", {
+  env <- .pk_v2_result_env()
+  istem <- env$pk_build_analysis_system_prompt_v2("summary", .pk_v2_query())
+
+  for (etiket in c("Gözlem", "Yorum", "Olası açıklama", "Öneri", "Sınırlılık")) {
+    expect_true(grepl(etiket, istem, fixed = TRUE),
+                info = sprintf("'%s' etiketi v2 isteminde yok.", etiket))
+  }
+  expect_true(grepl("benchmark", istem, fixed = TRUE))
+  expect_true(grepl("uydurma", istem, fixed = TRUE))
+  expect_false(grepl("KÖK SEBEP", istem, fixed = TRUE))
+  expect_true(grepl("[fact:", istem, fixed = TRUE))
+})
+
+test_that("Olgular, R'ye ait blok ve ek YALNIZCA v2 sonucunda bulunur", {
+  env <- .pk_v2_result_env()
+  cerceve <- .pk_v2_frames()
+
+  v1 <- NULL
+  utils::capture.output(
+    v1 <- env$pk_build_analysis_result(cerceve$filtered, cerceve$secure,
+                                       .pk_v2_query(), "sentetik soru",
+                                       engine_is_v2 = FALSE),
+    type = "output"
+  )
+  expect_null(v1$pk_facts)
+  expect_null(v1$pk_answer_block)
+  expect_null(v1$pk_attachment)
+
+  v2 <- env$pk_build_analysis_result(cerceve$filtered, cerceve$secure,
+                                     .pk_v2_query(), "sentetik soru",
+                                     engine_is_v2 = TRUE)
+  expect_true(length(v2$pk_facts) > 0L)
+  expect_true(is.character(v2$pk_answer_block))
+  expect_true(grepl("Sonuç tablosu", v2$pk_answer_block, fixed = TRUE))
+  expect_true(grepl("[fact:", v2$user_context, fixed = TRUE))
+})
+
+test_that("v1 yuku eski istatistiksel ozet bicimini KORUR", {
+  env <- .pk_v2_result_env()
+  cerceve <- .pk_v2_frames()
+
+  v1 <- NULL
+  utils::capture.output(
+    v1 <- env$pk_build_analysis_result(cerceve$filtered, cerceve$secure,
+                                       .pk_v2_query(), "sentetik soru",
+                                       engine_is_v2 = FALSE),
+    type = "output"
+  )
+
+  expect_true(grepl("ISTATISTIKSEL OZET", v1$user_context, fixed = TRUE))
+  expect_true(grepl("ORNEK SATIRLAR (JSON)", v1$user_context, fixed = TRUE))
+  expect_false(grepl("ANALIZ PAKETI", v1$user_context, fixed = TRUE))
+  expect_false(grepl("[fact:", v1$user_context, fixed = TRUE))
+})
+
+test_that("Faz 2 dosyalari motor bayragina BAGLI kalir (sizinti yok)", {
+  # Sonuc kurucusu ayrimi yapan TEK yerdir; alt katmanlar bayragi okumaz.
+  for (dosya in c("R/helpers_pk_analysis_packet.R", "R/helpers_pk_packet_render.R",
+                  "R/helpers_pk_export_plan.R", "R/helpers_pk_export_xlsx.R",
+                  "R/helpers_pk_answer_compose.R", "R/helpers_pk_packet_stats.R")) {
+    kod <- .pk_v1_code_only(dosya)
+    expect_false(grepl("pk_engine_is_v2", kod, fixed = TRUE, useBytes = TRUE),
+                 info = sprintf("%s motor bayragini okumamalidir.", dosya))
+  }
+
+  kod <- .pk_v1_code_only("R/helpers_pk_analysis_result.R")
+  expect_true(grepl("engine_is_v2", kod, fixed = TRUE, useBytes = TRUE))
+})
+
+test_that("Sayisal koken dogrulamasi olgu SAKLANMAMISSA hic calismaz (v1 yolu)", {
+  env <- .pk_v2_result_env()
+  oturum <- list(userData = new.env(parent = emptyenv()))
+
+  env$pk_provenance_stash(oturum, "\n\n---\n**Analiz Kaynağı**\n- Sorgu: q\n")
+  metin <- env$pk_provenance_decorate("Yanit 999 [fact:uydurma.sum.overall].", oturum)
+
+  # Olgu yoksa dogrulama devreye girmez ve metin oldugu gibi kalir.
+  expect_true(grepl("[fact:uydurma.sum.overall]", metin, fixed = TRUE))
+  expect_true(grepl("Analiz Kaynağı", metin, fixed = TRUE))
+})
+
+test_that("Olgu saklandiginda isaretler silinir ve blok alt bilginin ONUNE gelir", {
+  env <- .pk_v2_result_env()
+  oturum <- list(userData = new.env(parent = emptyenv()))
+  olgular <- env$pk_measure_facts(c(1, 2, 3), "Saat",
+                                  list(label = "Saat", unit = "saat", decimals = 1L),
+                                  additive = TRUE)
+  kimlik <- Filter(function(o) identical(o$aggregation, "sum"), olgular)[[1]]$fact_id
+
+  env$pk_provenance_stash(
+    oturum,
+    paste0("\n\n**Önizleme**\n\n| a |\n", "\n\n---\n**Analiz Kaynağı**\n- Sorgu: q\n"),
+    facts = olgular, query_id = "q_sentetik"
+  )
+
+  metin <- NULL
+  utils::capture.output(
+    metin <- env$pk_provenance_decorate(
+      sprintf("Toplam 6,0 saat [fact:%s].", kimlik), oturum
+    ),
+    type = "output"
+  )
+
+  expect_false(grepl("[fact:", metin, fixed = TRUE))
+  expect_true(grepl("Toplam 6,0 saat.", metin, fixed = TRUE))
+  expect_lt(regexpr("Önizleme", metin, fixed = TRUE),
+            regexpr("Analiz Kaynağı", metin, fixed = TRUE))
+})
+
+test_that("Alt bilgi ek satirini gosterir ama RLS oncesi sayiyi ASLA yazmaz", {
+  env <- .pk_v2_result_env()
+
+  alt <- env$pk_build_provenance_footer(list(
+    query_id = "q_sentetik", query_name = "Sentetik Sorgu",
+    filter_status = "ok_filtered", filters = list(),
+    authorized_rows = 12405L, filtered_rows = 312L, pre_rls_rows = 41930L,
+    attachment = list(status = "ok", files = list(list(
+      name = "sentetik.xlsx", rows = 312L, cols = 14L, url = "session/pk_export_x"
+    )))
+  ))
+
+  expect_true(grepl("**Ek:**", alt, fixed = TRUE))
+  expect_true(grepl("sentetik.xlsx", alt, fixed = TRUE))
+  expect_true(grepl("312 satır × 14 sütun", alt, fixed = TRUE))
+  expect_true(grepl("12.405", alt, fixed = TRUE))
+  expect_false(grepl("41.930", alt, fixed = TRUE))
+  expect_false(grepl("41930", alt, fixed = TRUE))
+})
+
+test_that("Reddedilen ek alt bilgide de GORUNUR", {
+  env <- .pk_v2_result_env()
+  alt <- env$pk_build_provenance_footer(list(
+    query_id = "q_sentetik", query_name = "Sentetik", filter_status = "ok_filtered",
+    authorized_rows = 10L, filtered_rows = 10L,
+    attachment = list(status = "refused", files = list(),
+                      message = "Sonuç kümesi çok büyük; lütfen daraltın.")
+  ))
+
+  expect_true(grepl("Üretilmedi", alt, fixed = TRUE))
+  expect_true(grepl("daraltın", alt, fixed = TRUE))
 })

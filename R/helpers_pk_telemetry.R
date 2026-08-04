@@ -197,11 +197,25 @@ pk_analysis_observe <- function(session, conn, info) {
       filters         = info$filters %||% list(),
       authorized_rows = info$authorized_rows,
       filtered_rows   = info$filtered_rows,
-      degradations    = degradations
+      degradations    = degradations,
+      attachment      = info$attachment
     ))
 
     if (nzchar(footer)) {
-      pk_provenance_stash(session, footer, request_id = info$request_id)
+      # Faz 2: R'ye ait yanıt bloğu (tablo/önizleme + ek kartı) alt bilginin
+      # ÖNÜNE eklenir; olgular ve deterministik yedek metin ise §5.11 sayısal
+      # köken doğrulaması için birlikte saklanır. Alanlar yoksa (v1 yolu)
+      # davranış Faz 0 ile birebir aynıdır.
+      blok <- as.character(info$answer_block %||% "")[1]
+      if (is.na(blok)) blok <- ""
+
+      pk_provenance_stash(
+        session, paste0(blok, footer),
+        request_id = info$request_id,
+        facts = info$facts,
+        fallback_text = info$fallback_text,
+        query_id = info$query_id
+      )
     }
 
     info$filter_status <- status
