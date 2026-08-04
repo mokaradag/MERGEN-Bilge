@@ -546,3 +546,20 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   böylece ağır bir sorgu kod değişikliği olmadan kendi tavanını taşıyabilir.
 #   Sorgu `row_cap` bildirmiyorsa metadata katmanının Tier-0 geri düşüşü budur.
 # MERGEN_PK_ROW_CAP=50000
+#
+#   Faz 1 — FİLTRE PLANI LLM ZAMAN AŞIMI (saniye). v1 motorunda sabit 8 saniye
+#   kullanılır ve bu değer OKUNMAZ; ayar yalnızca MERGEN_PK_ENGINE=v2 iken
+#   tüketilir. v1'in 8 saniyesi fazla agresifti ve zaman aşımı "filtre
+#   gerekmedi" durumundan ayırt edilemiyordu (D9).
+# MERGEN_PK_FILTER_TIMEOUT_SEC=20
+#
+#   Faz 1 — ETKİSİZ FİLTRE ORANI. Bir filtre satırların bu oranından fazlasını
+#   koruyorsa "etkisiz" kabul edilir ve köken kaydında öyle raporlanır.
+#   Yalnızca v2 motoru tüketir.
+# MERGEN_PK_NOOP_FILTER_RATIO=0.95
+#
+#   Faz 1 — İSTEM KARAKTER BÜTÇESİ. Modele giden TÜM yükü kapsar: istatistiksel
+#   özet + tablolar + örnek satır JSON'u. v1'de yalnızca özet metni ölçülüyor,
+#   yüzlerce KB'lık örnek satır JSON'u bütçe kontrolünün dışında kalıyordu (D7).
+#   Yalnızca v2 motoru tüketir.
+# MERGEN_PK_PROMPT_CHAR_BUDGET=120000

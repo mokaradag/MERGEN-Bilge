@@ -134,7 +134,11 @@
   # n: 11 -> 13. R/helpers_deep_analysis.R bakım borcu ratchet bütçesini aştığı
   # için iki saf yardımcıya bölündü (detail + context) ve ikisi de bu bölüme,
   # orkestratörden ÖNCE eklendi. Bkz. test-deep-analysis-split-contract.R.
-  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_analysis_query_selection.R", n = 13L),
+  # Bilinçli güncelleme (Faz 1 — cerrahi doğruluk): koşulsuz güvenlik katmanı
+  # (safe_errors / sql_readonly / rls) + v2 davranış katmanı (filter_compile /
+  # filter_policy / filters_v2) + saf istem katmanı (prompt_budget /
+  # analysis_prompts) eklendi + saf istatistiksel özet kurucusu; 13 -> 22 dosya.
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_analysis_query_selection.R", n = 22L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -468,8 +472,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # opsiyoneldir ve bulut checkout'unda bulunmaz; aşağıdaki eksik-dosya
   # kontrolü onları opsiyonel listesi üzerinden hariç tutar.
   # 381 -> 383: helpers_deep_analysis_detail.R + helpers_deep_analysis_context.R
+  # 383 -> 392: Faz 1 (cerrahi doğruluk) dokuz yeni PK yardımcı dosyası
   # (ratchet bölünmesi, analysis_helpers bölümü).
-  expect_equal(length(runtime), 383L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 392L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

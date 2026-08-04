@@ -280,6 +280,25 @@ source_manifest_sections <- list(
     "R/helpers_pk_telemetry_record.R",
     "R/helpers_pk_telemetry_base.R",
     "R/helpers_pk_telemetry.R",
+    # Faz 1 koşulsuz güvenlik katmanı: hata redaksiyonu (D22), salt-okunur SQL
+    # sınıflandırıcısı (D23) ve kapalı başarısız RLS kararı (D6/D6b). Üçü de
+    # hem derin analiz hem ana modül tarafından tüketildiği için onlardan ÖNCE
+    # yüklenir. RLS kararı, Faz 3a metadata erişimcilerine dayanır; onlar
+    # pk_query_metadata bölümünde çok daha önce yüklenmiştir.
+    "R/helpers_pk_safe_errors.R",
+    "R/helpers_pk_sql_readonly.R",
+    "R/helpers_pk_rls.R",
+    # Faz 1 v2 davranış katmanı (MERGEN_PK_ENGINE=v2 arkasında): saf filtre
+    # derleyicisi -> saf sıfır-eşleşme politikası -> v2 yürütücüsü. Yürütücü
+    # ikisini de kullandığı için en sonda gelir; üçü de v1 uyumluluk yüzeyi
+    # olan helpers_pk_analysis_filters.R'den ÖNCE yüklenmelidir.
+    "R/helpers_pk_filter_compile.R",
+    "R/helpers_pk_filter_policy.R",
+    "R/helpers_pk_analysis_filters_v2.R",
+    # Saf istem bütçesi/yük kurucusu ve saf sistem istemi kurucusu; modül
+    # bunları yalnızca tüketir (modül KÜÇÜLMELİ, büyümemeli).
+    "R/helpers_pk_prompt_budget.R",
+    "R/helpers_pk_analysis_prompts.R",
     # Derin analiz: saf detay seviyesi kataloğu ve saf bağlam/prompt kurucu,
     # orkestratörden ÖNCE yüklenir (bakım borcu ratchet'i için bölünmüştür).
     "R/helpers_deep_analysis_detail.R",
@@ -287,6 +306,7 @@ source_manifest_sections <- list(
     "R/helpers_deep_analysis.R",
     "R/helpers_pk_analysis_core.R",
     "R/helpers_pk_analysis_security_summary.R",
+    "R/helpers_pk_statistical_summary.R",
     "R/helpers_pk_analysis_filters_base.R",
     "R/helpers_pk_analysis_filters.R",
     "R/helpers_pk_analysis_query_selection.R"

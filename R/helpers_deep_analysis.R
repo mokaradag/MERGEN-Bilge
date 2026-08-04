@@ -251,11 +251,15 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     )))
   }
 
-  if (grepl("\\b(DELETE|DROP|TRUNCATE|ALTER)\\b", toupper(sql_query_text))) {
+  # D23 + D16: Derin mod da ANA YOL ile ayni salt-okunur kapisini kullanir.
+  # Eski satir toupper() ile yerel bagimliydi (Turkce Windows'ta "I" sorunu) ve
+  # yalnizca dort komutu engelleyen bir KARA LISTE idi.
+  sql_gate <- pk_sql_readonly_guard(sql_query_text, context_label = "DEEP_QUERY")
+  if (!isTRUE(sql_gate$allowed)) {
     return(finish_result(list(
       query_name = query_name,
       success = FALSE,
-      error_msg = "Güvenlik ihlali."
+      error_msg = "Güvenlik ihlali: sorgu salt-okunur olarak doğrulanamadı."
     )))
   }
 
@@ -291,7 +295,28 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     raw_data <- convert_date_columns(raw_data, query$date_columns)
   }
 
-  secure_data <- apply_rls_to_data(raw_data, rls_info, query$rls_columns)
+  # D6/D6b: RLS kapali basarisiz oldugunda derin modda TEK sorgu basarisiz olur;
+  # calisma devam eder ve hata build_deep_analysis_context() ile raporlanir.
+  meta_gate <- pk_meta_actual_column_gate(query, names(raw_data), FALSE)
+  if (isTRUE(meta_gate$abort)) {
+    return(finish_result(list(
+      query_name = query_name,
+      success = FALSE,
+      error_msg = "Yetki sütunu doğrulanamadı; sorgu güvenli biçimde çalıştırılamadı."
+    )))
+  }
+
+  secure_data <- tryCatch(
+    apply_rls_to_data(raw_data, rls_info, query$rls_columns),
+    pk_rls_error = function(e) NULL
+  )
+  if (is.null(secure_data)) {
+    return(finish_result(list(
+      query_name = query_name,
+      success = FALSE,
+      error_msg = "Satır düzeyi yetki kuralları uygulanamadı; sorgu atlandı."
+    )))
+  }
   if (nrow(secure_data) == 0) {
     return(finish_result(
       list(query_name = query_name, success = FALSE, error_msg = "Yetki dahilinde veri bulunamadı."),

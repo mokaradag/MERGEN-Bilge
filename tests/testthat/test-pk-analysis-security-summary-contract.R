@@ -88,8 +88,22 @@
     local = helper_env
   )
 
+  # Faz 1: apply_rls_to_data karari artik saf pk_rls_plan() katmanindan gelir.
+  source(
+    file.path(repo_root, "R", "helpers_pk_rls.R"),
+    encoding = "UTF-8",
+    local = helper_env
+  )
+
   source(
     file.path(repo_root, "R", "helpers_pk_analysis_security_summary.R"),
+    encoding = "UTF-8",
+    local = helper_env
+  )
+
+  # Faz 1: generate_statistical_summary ayri dosyaya tasindi (400 satir butcesi).
+  source(
+    file.path(repo_root, "R", "helpers_pk_statistical_summary.R"),
     encoding = "UTF-8",
     local = helper_env
   )
@@ -222,6 +236,97 @@ test_that("apply_rls_to_data rol ve kolon sözleşmesini korur", {
 
   expect_equal(nrow(eps_data), 2L)
   expect_true(all(eps_data$EPSKodu == "E1"))
+})
+
+# Faz 1 / D6 / D6b: Davranis BILEREK degisti. Eskiden beyan edilen RLS sutunu
+# sonucta yoksa predikat SESSIZCE atlaniyor ve kullanici TUM satirlari
+# goruyordu; kapsam cozulemedigi (izin sorgusu hatasi) veya bos oldugu (izin
+# tablosunda satir yok) durumlarda da ayni sey oluyordu. Kapsam SILINMEDI,
+# yeni dogru davranisi iddia edecek sekilde genisletildi.
+test_that("apply_rls_to_data eksik RLS sutununda kapali basarisiz olur (D6)", {
+  helper_env <- .pk_load_security_summary_helper()
+
+  sample_data <- data.frame(
+    ProjeKodu = c("P1", "P2"),
+    Deger = c(1, 2),
+    stringsAsFactors = FALSE
+  )
+
+  # Beyan edilen sutun sonuc kumesinde YOK.
+  expect_error(
+    helper_env$apply_rls_to_data(
+      sample_data,
+      user_info = list(
+        Yetki = "PY",
+        allowed_projects = "P1",
+        scope_state_projects = "available"
+      ),
+      rls_cols = list(proje_kodu_col = "OlmayanSutun")
+    ),
+    class = "pk_rls_error"
+  )
+})
+
+test_that("apply_rls_to_data cozulemeyen kapsamda durur, bos kapsamda sifir satir dondurur (D6b)", {
+  helper_env <- .pk_load_security_summary_helper()
+
+  sample_data <- data.frame(
+    ProjeKodu = c("P1", "P2"),
+    Deger = c(1, 2),
+    stringsAsFactors = FALSE
+  )
+  rls_cols <- list(proje_kodu_col = "ProjeKodu")
+
+  # Izin sorgusu hata verdi -> kapsam COZULEMEDI -> DURDUR.
+  expect_error(
+    helper_env$apply_rls_to_data(
+      sample_data,
+      user_info = list(
+        Yetki = "PY",
+        allowed_projects = NULL,
+        scope_state_projects = "unavailable"
+      ),
+      rls_cols = rls_cols
+    ),
+    class = "pk_rls_error"
+  )
+
+  # Kullanici izin tablosunda YOK -> kapsam BOS -> SIFIR satir (tum satirlar degil).
+  bos_kapsam <- helper_env$apply_rls_to_data(
+    sample_data,
+    user_info = list(
+      Yetki = "PY",
+      allowed_projects = NULL,
+      scope_state_projects = "empty"
+    ),
+    rls_cols = rls_cols
+  )
+  expect_equal(nrow(bos_kapsam), 0L)
+
+  # Durum alani hic tasinmayan eski cagri yolu da GUVENLI tarafa duser.
+  expect_error(
+    helper_env$apply_rls_to_data(
+      sample_data,
+      user_info = list(Yetki = "PY", allowed_projects = NULL),
+      rls_cols = rls_cols
+    ),
+    class = "pk_rls_error"
+  )
+})
+
+test_that("apply_rls_to_data NA Yetki degerinde hata vermek yerine kapali basarisiz olur", {
+  helper_env <- .pk_load_security_summary_helper()
+
+  sample_data <- data.frame(ProjeKodu = "P1", stringsAsFactors = FALSE)
+
+  expect_error(
+    helper_env$apply_rls_to_data(
+      sample_data,
+      user_info = list(Yetki = NA_character_),
+      rls_cols = list(proje_kodu_col = "ProjeKodu")
+    ),
+    class = "pk_rls_error"
+  )
 })
 
 test_that("generate_statistical_summary filtre ve pre-aggregated uyarılarını korur", {

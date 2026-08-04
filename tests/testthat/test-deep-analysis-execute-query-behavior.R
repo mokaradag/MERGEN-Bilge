@@ -14,6 +14,12 @@
 .deepQueryEnv <- function() {
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
+  # Faz 1: derin mod artik ANA YOL ile ayni salt-okunur SQL kapisini ve kapali
+  # basarisiz RLS/gercek-sutun kapisini kullanir; yalitilmis ortam da yuklemeli.
+  for (yardimci in c("helpers_pk_sql_readonly.R", "helpers_pk_query_meta_schema.R",
+                     "helpers_pk_query_meta_access.R", "helpers_pk_rls.R")) {
+    source(file.path(kok, "R", yardimci), encoding = "UTF-8", local = env)
+  }
   source(file.path(kok, "R", "helpers_deep_analysis.R"), encoding = "UTF-8", local = env)
   # Varsayılan: geçerli bir bağlantı listesi döndüren stub
   env$.release_calls <- 0L
@@ -99,7 +105,9 @@ test_that("execute_single_deep_query tehlikeli SQL'i (DROP/DELETE/TRUNCATE/ALTER
       detail_config = .detailCfg
     )
     expect_false(res$success)
-    expect_identical(res$error_msg, "Güvenlik ihlali.")
+    # Faz 1 / D23: mesaj BILEREK daha ozgul hale geldi; kapi artik bir kara
+    # liste degil, ifade farkinda salt-okunur siniflandiricisidir.
+    expect_identical(res$error_msg, "Güvenlik ihlali: sorgu salt-okunur olarak doğrulanamadı.")
     expect_false(db_called)
   }
 })

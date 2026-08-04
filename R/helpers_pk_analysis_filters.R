@@ -143,6 +143,30 @@ if (!exists(".pk_filter_observation_state", inherits = FALSE) ||
   list(filter = filter %||% list(), reason = as.character(reason)[1])
 }
 
+# v2 derleyicisinin normalleştirilmiş yaprağını v1 filtre şekline çevirir.
+#
+# Gözlem hattının tamamı (köken alt bilgisi `.pk_footer_filter_line()` ve
+# düşürülen filtre bozulma metni `.pk_dropped_filter_degradations()`) `f$value`
+# alanını okur; normalleştirilmiş yaprakta ise alan adı ÇOĞULdur (`values`).
+# BUGÜN bu bir kusur DEĞİLDİR: `$` listelerde kısmi ad eşleştirmesi yaptığı için
+# `f$value` sessizce `values`'a çözülür ve alt bilgi doğru yazar. Ancak bu
+# kurtarma tesadüfidir ve iki yolla sessizce kaybolur: `[[` kısmi eşleştirme
+# YAPMAZ ve yaprağa "value" ile başlayan ikinci bir alan (ör. `value_label`)
+# eklendiği an eşleştirme belirsizleşip NULL döner. Sonuç, kullanıcının gördüğü
+# `ProjeAdi = "" (içerir)` satırı olurdu. Şekil bu yüzden AÇIKÇA çevrilir;
+# telemetri/köken tarafı da her iki motorda tek bir filtre şekli görür.
+.pk_filter_leaf_to_v1 <- function(leaf) {
+  leaf <- if (is.list(leaf)) leaf else list()
+
+  deger <- leaf$values %||% leaf$value %||% character(0)
+
+  list(
+    column = as.character(leaf$column %||% "?")[1],
+    value = as.character(deger),
+    operation = as.character(leaf$operation %||% "exact_match")[1]
+  )
+}
+
 .pk_filter_observation_store <- function(context, observation) {
   key <- .pk_filter_observation_key(
     context$request_id,
@@ -182,6 +206,42 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
   context <- .pk_filter_observation_context(user_prompt)
   applied <- list()
   dropped <- list()
+
+  # `context$query_meta` çağrı çerçevesinden toplanan TAM sorgu nesnesidir
+  # (`selected_query`), sorgunun metadata bloğu DEĞİLDİR. Motor kipi bu yüzden
+  # modülün okuduğu alanla AYNI yerden çözülmelidir: `selected_query$meta`.
+  # Tam nesneyi vermek `pk_config_resolve()`'un metadata basamağını
+  # `selected_query$engine` üzerinden okumasına yol açıyor ve modül ile filtre
+  # motoru farklı kipe düşebiliyordu: modül v2 sanıp politika/bütçe uygularken
+  # filtreler v1 gövdesinde kalıyor, D1-D5 sessizce devre dışı kalıyordu.
+  motor_meta <- if (is.list(context$query_meta)) context$query_meta$meta else NULL
+
+  # Motor sınırı (master plan §10): D1-D5/D12 YALNIZCA v2'de etkindir. v1
+  # gövdesi aşağıda değişmeden korunur; bayrak v1 iken bu dal hiç çalışmaz.
+  if (exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
+      isTRUE(pk_engine_is_v2(motor_meta)) &&
+      exists("pk_apply_smart_filters_v2", mode = "function", inherits = TRUE)) {
+
+    # Yürütücüye TAM sorgu nesnesi verilir; `pk_meta_primary_entity()` birincil
+    # varlığı `query$meta` üzerinden okur ve metadata bloğunu kendi çözer.
+    sonuc_v2 <- pk_apply_smart_filters_v2(data, filter_instructions, context$query_meta)
+    karar <- attr(sonuc_v2, PK_FILTER_V2_ATTR, exact = TRUE)
+
+    try(
+      .pk_filter_observation_store(context, list(
+        matched_rows = as.integer(karar$matched_rows %||% nrow(sonuc_v2)),
+        # Yapraklar v1 filtre şekline çevrilir; köken alt bilgisi ve düşürülen
+        # filtre uyarısı `value` alanını okur (bkz. .pk_filter_leaf_to_v1).
+        applied_filters = lapply(karar$applied %||% list(), .pk_filter_leaf_to_v1),
+        dropped_filters = lapply(karar$dropped %||% list(), function(d) {
+          .pk_filter_dropped(.pk_filter_leaf_to_v1(d$leaf), d$reason)
+        })
+      )),
+      silent = TRUE
+    )
+
+    return(sonuc_v2)
+  }
 
   finish <- function(result, matched_rows) {
     try(
