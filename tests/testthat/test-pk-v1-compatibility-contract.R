@@ -231,3 +231,42 @@ test_that("v2'ye ozgu davranis dosyalari motor bayragina BAGLI kalir", {
   expect_true(grepl("pk_filter_degraded_gate(", metin, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("pk_engine_v2 &&", metin, fixed = TRUE, useBytes = TRUE))
 })
+
+test_that("motor kipi sorgu metadatasindan (query$meta) cozulur", {
+  env <- .pk_v1_env()
+  veri <- .pk_v1_data()
+  talimat <- list(filters = list(
+    list(column = "Durum", operation = "exact_match", value = "Aktif")
+  ))
+
+  # `.pk_filter_observation_context()` cagri cercevesinden TAM sorgu nesnesini
+  # toplar; motor kipi bu yuzden modulun okudugu alanla AYNI yerden
+  # cozulmelidir. Aksi halde modul v2 sanip politika/butce uygularken filtreler
+  # v1 govdesinde kalir ve D1-D5 sessizce devre disi kalirdi.
+  cagir <- function(sorgu) {
+    selected_query <- sorgu
+    sonuc <- NULL
+    utils::capture.output(
+      sonuc <- env$apply_smart_filters(veri, talimat, "sentetik soru"),
+      type = "output"
+    )
+    sonuc
+  }
+
+  withr::with_envvar(list(MERGEN_PK_ENGINE = NA_character_), {
+    withr::with_options(list(mergen.pk.engine = NULL), {
+      v2_sonuc <- cagir(list(id = "q", name = "Q", meta = list(engine = "v2")))
+      expect_false(
+        is.null(attr(v2_sonuc, env$PK_FILTER_V2_ATTR, exact = TRUE)),
+        info = "meta$engine = v2 iken filtreler v2 govdesinde calismalidir."
+      )
+
+      # Ust duzey `engine` alani motor kipini DEGISTIRMEZ; modul onu okumaz.
+      v1_sonuc <- cagir(list(id = "q", name = "Q", engine = "v2", meta = list()))
+      expect_true(
+        is.null(attr(v1_sonuc, env$PK_FILTER_V2_ATTR, exact = TRUE)),
+        info = "Ust duzey engine alani v2'yi tetiklememelidir (modul meta okur)."
+      )
+    })
+  })
+})

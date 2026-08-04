@@ -183,12 +183,23 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
   applied <- list()
   dropped <- list()
 
+  # `context$query_meta` çağrı çerçevesinden toplanan TAM sorgu nesnesidir
+  # (`selected_query`), sorgunun metadata bloğu DEĞİLDİR. Motor kipi bu yüzden
+  # modülün okuduğu alanla AYNI yerden çözülmelidir: `selected_query$meta`.
+  # Tam nesneyi vermek `pk_config_resolve()`'un metadata basamağını
+  # `selected_query$engine` üzerinden okumasına yol açıyor ve modül ile filtre
+  # motoru farklı kipe düşebiliyordu: modül v2 sanıp politika/bütçe uygularken
+  # filtreler v1 gövdesinde kalıyor, D1-D5 sessizce devre dışı kalıyordu.
+  motor_meta <- if (is.list(context$query_meta)) context$query_meta$meta else NULL
+
   # Motor sınırı (master plan §10): D1-D5/D12 YALNIZCA v2'de etkindir. v1
   # gövdesi aşağıda değişmeden korunur; bayrak v1 iken bu dal hiç çalışmaz.
   if (exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
-      isTRUE(pk_engine_is_v2(context$query_meta)) &&
+      isTRUE(pk_engine_is_v2(motor_meta)) &&
       exists("pk_apply_smart_filters_v2", mode = "function", inherits = TRUE)) {
 
+    # Yürütücüye TAM sorgu nesnesi verilir; `pk_meta_primary_entity()` birincil
+    # varlığı `query$meta` üzerinden okur ve metadata bloğunu kendi çözer.
     sonuc_v2 <- pk_apply_smart_filters_v2(data, filter_instructions, context$query_meta)
     karar <- attr(sonuc_v2, PK_FILTER_V2_ATTR, exact = TRUE)
 

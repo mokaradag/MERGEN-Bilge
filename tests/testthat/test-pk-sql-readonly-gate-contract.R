@@ -244,3 +244,42 @@ test_that("kapi MERGEN_PK_ENGINE bayragindan BAGIMSIZDIR", {
     info = "Salt-okunur kapisi motor bayragina bagli olmamalidir (kosulsuz)."
   )
 })
+
+test_that("GO batch ayiricisi CR / LF / CRLF icin AYNI kararı üretir", {
+  env <- .pk_sql_gate_env()
+
+  # Derin mod SQL dosyasini HAM okur; Windows/SSMS dosyalari CRLF'tir. Kapi
+  # satir sonu ailesine gore FARKLI karar verirse ayni sorgu bir yolda
+  # calisir, digerinde "yasakli anahtar kelime" ile reddedilirdi.
+  for (eol in c("\n", "\r\n", "\r")) {
+    sonuc <- env$pk_sql_classify_readonly(
+      paste0("SELECT a FROM SentetikTablo", eol, "GO", eol)
+    )
+    expect_true(
+      isTRUE(sonuc$allowed),
+      info = sprintf(
+        "Sondaki GO satiri ayiricidir; tek SELECT kabul edilmelidir (eol=%s, gerekce=%s).",
+        gsub("\r", "CR", gsub("\n", "LF", eol)), sonuc$reason %||% "-"
+      )
+    )
+  }
+
+  # Gercek cok ifadeli batch her satir sonu ailesinde REDDEDILIR ve gerekce
+  # "birden fazla ifade" olarak raporlanir.
+  for (eol in c("\n", "\r\n", "\r")) {
+    sonuc <- env$pk_sql_classify_readonly(
+      paste0("SELECT 1", eol, "GO", eol, "SELECT 2", eol)
+    )
+    expect_false(
+      isTRUE(sonuc$allowed),
+      info = "Cok ifadeli batch her satir sonunda reddedilmelidir."
+    )
+    expect_identical(
+      sonuc$reason, "multiple_statements",
+      info = sprintf(
+        "Gerekce ifade sayisi olmalidir (eol=%s).",
+        gsub("\r", "CR", gsub("\n", "LF", eol))
+      )
+    )
+  }
+})

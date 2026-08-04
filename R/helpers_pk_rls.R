@@ -314,11 +314,26 @@ pk_meta_actual_column_gate <- function(query, actual_columns, engine_is_v2 = FAL
     return(bos)
   }
 
+  # Doğrulayıcı hatası SESSİZCE yutulmaz. Kapı burada bilerek açık kalır
+  # (asıl fail-closed karar `pk_rls_plan()` içindedir ve beyan edilen RLS
+  # sütunu eksikse zaten durdurur) ama gerekçe operatör loguna taşınır;
+  # aksi halde metadata katmanındaki bir bozukluk hiçbir iz bırakmazdı.
+  dogrulama_hatasi <- NULL
   sonuc <- tryCatch(
     pk_meta_validate_actual_columns(query, actual_columns),
-    error = function(e) NULL
+    error = function(e) {
+      dogrulama_hatasi <<- conditionMessage(e)
+      NULL
+    }
   )
-  if (!is.list(sonuc)) return(bos)
+  if (!is.list(sonuc)) {
+    if (!is.null(dogrulama_hatasi)) {
+      bos$warn <- sprintf(
+        "Metadata sutun dogrulayicisi calistirilamadi: %s", dogrulama_hatasi
+      )
+    }
+    return(bos)
+  }
 
   list(
     abort = isTRUE(sonuc$fail_closed),

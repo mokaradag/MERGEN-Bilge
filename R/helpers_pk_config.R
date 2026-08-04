@@ -229,7 +229,10 @@ pk_config_safe_snapshot <- function() {
         value = "<hidden>"
       )
     } else {
-      out[[key]] <- value
+      # `out[[key]] <- NULL` elemanı LISTEDEN SILER; çözülemeyen bir anahtar
+      # bu yüzden raporda hiç görünmezdi. Tanılamada "yok" ile "çözülemedi"
+      # ayrılabilsin diye açıkça NA yazılır.
+      out[[key]] <- value %||% NA
     }
   }
 

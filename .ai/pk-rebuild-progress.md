@@ -953,3 +953,52 @@ suite runs clean here.
 **M8 is now closed.** `pk_meta_validate_actual_columns()`, written and tested but
 deliberately unwired in Phase 3a, is called from both the main module and deep
 mode immediately before RLS. That was the one loose end Phase 3a left.
+
+---
+
+## Phase 1 — PR #697 review fixes
+
+A second pass over the Phase-1 diff found six defects. Each is fixed below with a
+mutation-verified regression test (the new assertions genuinely fail when the fix
+is reverted). No behavior beyond these defects was changed, and no budget was
+raised.
+
+| # | Sev | Defect | Fix |
+|---|---|---|---|
+| 1 | P1 | `pk_sql_split_statements()` only recognised a standalone `GO` when the line ended with `\n`. Deep mode passes the SQL file **raw** and Windows/SSMS files are CRLF, so the *same* query was classified differently by line ending: the LF form was allowed, the CRLF form was rejected as `forbidden_keyword`. A real multi-batch CRLF file was also mis-reported as a single statement. | Separator pattern now covers CR / LF / CRLF on both sides. |
+| 2 | P1 | `.pk_filter_mask_date()` parsed filter values with `suppressWarnings(as.Date(x))`, but `as.Date()` raises an **error** (not a warning) for unparseable text. LLM-produced values such as `"gecen ay"` therefore escaped through `apply_smart_filters()` and aborted the whole analysis with a raw English R error instead of dropping the leaf with a reason. | Both the value parse and the column parse go through a `tryCatch`-guarded helper; an unparseable value returns `NULL` and the leaf is dropped with its reason, as designed. |
+| 3 | P1 | Engine mode was resolved from two different fields. The module reads `selected_query$meta`, but `apply_smart_filters()` passed `context$query_meta` — which is the **full query object**, not its metadata block — so `pk_config_resolve()` read `selected_query$engine`. A query declaring `meta$engine = "v2"` got v2 policy/budget in the module while the filters silently stayed on the v1 body (D1–D5 disabled); a stray top-level `engine` field flipped the split the other way and discarded the v2 refusal verdict. | The filter surface resolves the engine from `context$query_meta$meta`, exactly like the module. The executor still receives the full query, because `pk_meta_primary_entity()` resolves the metadata block itself. |
+| 4 | P2 | `pk_meta_actual_column_gate()` swallowed a validator exception into `error = function(e) NULL` and returned the *open* verdict with no trace at all. | The reason is now carried out in `warn`, which the module already logs as `METADATA/RLS SUTUN UYUSMAZLIGI`. The gate deliberately stays open here — the authoritative fail-closed decision for a missing declared RLS column is `pk_rls_plan()`, which is unaffected — but it is no longer silent. |
+| 5 | P2 | `pk_config_safe_snapshot()` used `out[[key]] <- value`; assigning `NULL` **deletes** the element, so a key that failed to resolve vanished from the diagnostic snapshot instead of being reported. | Unresolvable values are written as `NA`, so "absent" and "unresolvable" stay distinguishable. |
+| 6 | P2 | `helpers_pk_analysis_filters_base.R`, `helpers_pk_analysis_security_summary.R` and `test-pk-analysis-security-summary-contract.R` were rewritten from CRLF to LF, turning an 11-line change into a 911-line diff and hiding the real edits. The repo has no `.gitattributes` and mixes endings (157 of 393 `R/*.R` files are CRLF). | Original CRLF endings restored. `helpers_pk_analysis_filters_base.R` 911 → **11** changed lines, `helpers_pk_analysis_security_summary.R` 568 → **284**, the test file 603 → **105**; ~1,700 lines of pure noise removed from the PR. |
+
+### Regression tests added
+
+| Test file | Asserts |
+|---|---|
+| `test-pk-sql-readonly-gate-contract.R` | A trailing `GO` line is a separator and a single SELECT stays allowed for CR, LF **and** CRLF; a genuine two-statement batch is rejected with `multiple_statements` in all three. Fails 4× before the fix. |
+| `test-pk-filter-compile-behavior.R` | An unparseable date value drops the leaf with a reason and leaves the row mask untouched, while a parseable value still filters. Errors before the fix. |
+| `test-pk-v1-compatibility-contract.R` | `meta$engine = "v2"` puts the filter surface on the v2 body; a top-level `engine` field does not. Fails 2× before the fix. |
+
+### Validation of the review fixes
+
+| Gate | Result |
+|---|---|
+| `Rscript tests/scripts/parse_sanity_check.R` | `OK: 1077 dosya parse edildi.` |
+| All `test-pk-*` / `test-deep-analysis-*` + ratchet / manifest / seam / production contracts | `pass=1057 fail=0 err=0 warn=0 skip=0` |
+| Mutation check (fixes reverted, tests kept) | 4 failures + 1 error + 2 failures — every new assertion is load-bearing |
+
+### Residual risks deliberately left alone
+
+Two fail-open paths inside the RLS layer are **pre-existing, documented policy**,
+not review findings, and changing either would lock out users without VM evidence:
+
+* `plan$unenforced` — a resolved scope whose query never declares the matching
+  column is logged and the rows are returned **unfiltered**. Already documented in
+  `helpers_pk_rls.R` as a bounded limit whose real fix is pushing the predicate
+  into SQL.
+* `MasrafYeriKodu` NA/`"ADMIN"` yields `allowed_depts = NULL`, which reads as
+  "no department restriction". `scope_state_depts` is never set, so the
+  `unavailable` state is unreachable for that dimension — harmless today because
+  the department code comes from the same `DC01_user_base` row that already
+  succeeded, but worth an explicit decision during VM validation.

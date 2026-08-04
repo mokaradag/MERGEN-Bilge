@@ -219,3 +219,46 @@ test_that("Turkce katlama otoritesi yoksa derleyici KAPALI BASARISIZ olur", {
     fixed = TRUE
   )
 })
+
+test_that("ayristirilamayan tarih degeri HATA yukseltmez, yaprak dusurulur", {
+  env <- .pk_compile_env()
+  veri <- .pk_compile_data()
+
+  # `as.Date("gecen ay")` UYARI degil HATA yukseltir; suppressWarnings() tek
+  # basina yetmez. Filtre degerleri LLM uretimidir ve bu bicimde bir metin
+  # kolayca gelir. Korumasiz halde hata apply_smart_filters() uzerinden disari
+  # sizar ve analiz, yapragi gerekcesiyle dusurmek yerine ham R hatasiyla coker.
+  yaprak <- env$pk_filter_normalize_leaf(
+    list(column = "Baslangic", operation = "greater_than", value = "gecen ay")
+  )
+
+  sonuc <- env$pk_filter_leaf_mask(veri, yaprak)
+  expect_false(
+    isTRUE(sonuc$ok),
+    info = "Cozulemeyen tarih degeri gecerli bir maske uretmemelidir."
+  )
+  expect_true(
+    is.character(sonuc$reason) && nzchar(sonuc$reason),
+    info = "Dusurulen yaprak gerekcesini tasimalidir."
+  )
+
+  derleme <- env$pk_filter_compile(
+    veri,
+    list(list(column = "Baslangic", operation = "greater_than", value = "gecen ay"))
+  )
+  expect_identical(
+    sum(derleme$mask), nrow(veri),
+    info = "Dusurulen tarih filtresi satirlari kesmemelidir."
+  )
+  expect_true(
+    length(derleme$dropped) == 1L,
+    info = "Cozulemeyen tarih filtresi tam olarak bir dusurme kaydi uretmelidir."
+  )
+
+  # Ayristirilabilir deger yolu DEGISMEZ.
+  gecerli <- env$pk_filter_compile(
+    veri,
+    list(list(column = "Baslangic", operation = "greater_or_equal", value = "2024-07-01"))
+  )
+  expect_identical(sum(gecerli$mask), 3L)
+})

@@ -201,13 +201,20 @@ pk_sql_mask_literals <- function(sql) {
 #'
 #' `;` ayırıcıdır. Kendi satırındaki `GO` batch ayırıcısı da ifade sınırı sayılır;
 #' böylece çok batch'li metin "birden fazla ifade" olarak reddedilir.
+#'
+#' Satır sonu ailesi CR/LF/CRLF olarak ele alınır. Ana modül metni kapıdan ÖNCE
+#' `\n` normalleştirir ama derin mod SQL dosyasını HAM okur; Windows/SSMS
+#' dosyaları CRLF'tir. Yalnızca `\n` arayan bir kalıp orada `GO` satırını
+#' ayırıcı olarak GÖRMEZ ve kapı, aynı sorgu için satır sonuna göre farklı
+#' karar verirdi: LF metinde geçerli sayılan tek SELECT + sondaki `GO`, CRLF
+#' metinde "yasaklı anahtar kelime" gerekçesiyle reddedilirdi.
 pk_sql_split_statements <- function(masked_sql) {
   masked_sql <- as.character(masked_sql %||% "")[1]
   if (is.na(masked_sql)) masked_sql <- ""
 
-  # Kendi satırındaki GO -> ifade ayırıcı.
+  # Kendi satırındaki GO -> ifade ayırıcı (CR, LF ve CRLF için).
   masked_sql <- gsub(
-    "(^|\n)[ \t]*GO[ \t]*(?=\n|$)", "\\1;", masked_sql,
+    "(^|\r\n|\n|\r)[ \t]*GO[ \t]*(?=\r\n|\n|\r|$)", "\\1;", masked_sql,
     ignore.case = TRUE, perl = TRUE, useBytes = TRUE
   )
 

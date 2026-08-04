@@ -123,13 +123,24 @@ pk_filter_normalize_leaf <- function(f) {
 }
 
 # Tarih sütunu için bir yaprağın maskesi.
+#
+# `as.Date()` ayrıştırılamayan metin için UYARI değil HATA yükseltir
+# ("character string is not in a standard unambiguous format"); bu yüzden
+# `suppressWarnings()` tek başına yetmez. Filtre değerleri LLM üretimidir ve
+# "geçen ay" gibi bir metin kolayca gelebilir. Korumasız hâlde bu hata
+# `apply_smart_filters()` üzerinden dışarı sızar ve analiz, yaprağı düşürüp
+# gerekçesini bildirmek yerine ham İngilizce R hatasıyla çöker.
 .pk_filter_mask_date <- function(col_vals, leaf) {
-  ayristir <- function(x) suppressWarnings(as.Date(x))
-  tarihler <- ayristir(leaf$values)
+  guvenli_tarih <- function(x) {
+    suppressWarnings(tryCatch(as.Date(x), error = function(e) as.Date(NA)))
+  }
+
+  tarihler <- guvenli_tarih(leaf$values)
   tarihler <- tarihler[!is.na(tarihler)]
   if (!length(tarihler)) return(NULL)
 
-  degerler <- as.Date(col_vals)
+  degerler <- guvenli_tarih(col_vals)
+  if (!inherits(degerler, "Date") || length(degerler) != length(col_vals)) return(NULL)
   gecerli <- !is.na(degerler)
 
   maske <- switch(
