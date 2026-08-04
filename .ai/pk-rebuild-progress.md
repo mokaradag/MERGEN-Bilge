@@ -1073,7 +1073,7 @@ pre-existing policy, not review findings.
 * **Branch:** `claude/pk-phase-2-analysis-export-otxf78` (harness-assigned; see
   "Deviations"). Cut from the `origin/pk/rebuild` tip `f1368b2`, which matched
   the expected tip exactly.
-* **PR:** base `pk/rebuild` ← head `claude/pk-phase-2-analysis-export-otxf78`
+* **PR:** #698, base `pk/rebuild` ← head `claude/pk-phase-2-analysis-export-otxf78`
 * **Merge SHA:** _pending_
 
 ### Defects re-verified before writing code (§0.1)
