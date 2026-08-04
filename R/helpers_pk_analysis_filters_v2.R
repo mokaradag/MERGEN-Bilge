@@ -106,7 +106,13 @@ pk_apply_smart_filters_v2 <- function(data, filter_instructions, query = NULL) {
   ))
 
   if (!is.null(aggregation)) {
-    agg <- tolower(as.character(aggregation)[1])
+    # Yerelden bağımsız ASCII küçük harf: Türkçe Windows'ta `tolower()` "I"yı
+    # noktasız `ı` yapar ve büyük harfle gelen bir toplulaştırma adı sessizce
+    # tanınmaz hâle gelir. Eşleşme kümesi saf ASCII olduğundan chartr yeterlidir.
+    agg <- chartr(
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz",
+      as.character(aggregation)[1]
+    )
 
     if (identical(agg, "count")) {
       aciklama <- if (length(filters) > 0) "Filtrelenen Kayıt Sayısı" else "Toplam Kayıt Sayısı"

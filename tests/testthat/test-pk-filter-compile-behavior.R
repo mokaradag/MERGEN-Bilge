@@ -18,6 +18,21 @@
   env
 }
 
+# Aciklama satirlari taranmaz; yalnizca kod taranir.
+.pk_compile_code_only <- function(rel_path) {
+  full <- file.path(resolve_repo_root_for_tests(), rel_path)
+  size <- suppressWarnings(file.info(full)$size[1])
+  if (is.na(size) || size <= 0) return("")
+  con <- file(full, open = "rb")
+  on.exit(close(con), add = TRUE)
+  raw_data <- readBin(con, what = "raw", n = size)
+  txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]])
+  if (is.na(txt)) return("")
+  satirlar <- strsplit(enc2utf8(txt), "\n", fixed = TRUE)[[1]]
+  satirlar <- satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)]
+  paste(satirlar, collapse = "\n")
+}
+
 # Sentetik veri: gerçek hiçbir proje/program adı içermez.
 .pk_compile_data <- function() {
   data.frame(
@@ -261,4 +276,42 @@ test_that("ayristirilamayan tarih degeri HATA yukseltmez, yaprak dusurulur", {
     list(list(column = "Baslangic", operation = "greater_or_equal", value = "2024-07-01"))
   )
   expect_identical(sum(gecerli$mask), 3L)
+})
+
+test_that("D3: islem adi YERELDEN BAGIMSIZ kucuk harfe indirilir", {
+  env <- .pk_compile_env()
+  veri <- .pk_compile_data()
+
+  # Turkce Windows yerel ayarinda `tolower("CONTAINS")` noktasiz `contaıns`
+  # uretir; islem hicbir listeyle eslesmez ve ALT DIZGE aramasi fark edilmeden
+  # TAM ESLESMEYE duser. Buyuk harfli islem adi LLM ciktisi icin siradan bir
+  # varyasyondur, dolayisiyla bu sessizce yanlis (cogunlukla bos) sonuc demektir
+  # ve bu dosyanin duzelttigi D3 kusurunun ta kendisidir.
+  buyuk <- env$pk_filter_normalize_leaf(
+    list(column = "ProjeAdi", value = "RADAR", operation = "CONTAINS")
+  )
+  expect_identical(buyuk$operation, "contains")
+
+  derleme <- env$pk_filter_compile(
+    veri, list(list(column = "ProjeAdi", value = "RADAR", operation = "CONTAINS"))
+  )
+  expect_equal(sum(derleme$mask), 1L)
+  expect_length(derleme$dropped, 0L)
+
+  # Diger I iceren islem adlari da ayni yolu izler.
+  for (cift in list(c("STARTS_WITH", "starts_with"), c("NOT_IN", "not_in"),
+                    c("IN", "in"), c("MIN", "min"))) {
+    yaprak <- env$pk_filter_normalize_leaf(
+      list(column = "Butce", value = "100", operation = cift[1])
+    )
+    expect_identical(yaprak$operation, cift[2], info = cift[1])
+  }
+
+  # Kaynak duzeyi muhafiz: yerel bagimli `tolower()` geri gelirse bu iddia
+  # duser. Katlama yalnizca ASCII A-Z ile sinirli oldugundan chartr dogrudur.
+  kaynak <- .pk_compile_code_only("R/helpers_pk_filter_compile.R")
+  expect_false(
+    grepl("tolower(", kaynak, fixed = TRUE, useBytes = TRUE),
+    info = "Yerel bagimli tolower() derleyiciye geri getirilmemelidir."
+  )
 })

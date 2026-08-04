@@ -161,8 +161,15 @@ pk_sql_mask_literals <- function(sql) {
     }
 
     if (identical(state, "satir_yorum")) {
-      if (identical(ch, "\n")) {
-        state <- "kod"; out[i] <- "\n"; i <- i + 1L; next
+      # T-SQL satır yorumunu CR, LF ve CRLF'in HEPSİ sonlandırır. Yalnızca `\n`
+      # arayan bir durum makinesi, CR ile biten bir dosyada yorumdan SONRAKİ
+      # tüm batch'i de yorum sayar ve `SELECT 1 -- x<CR>DROP TABLE T` metni
+      # "tek salt-okunur SELECT" olarak KABUL edilirdi (kapalı başarısız kapı
+      # sessizce AÇILIRDI). Ana modül metni kapıdan önce normalleştirir, ama
+      # derin mod SQL dosyasını HAM okur; bu yüzden burada karşılanmalıdır.
+      # Satır sonu karakteri AYNEN korunur: `GO` ayırıcısı onu arar.
+      if (identical(ch, "\n") || identical(ch, "\r")) {
+        state <- "kod"; out[i] <- ch; i <- i + 1L; next
       }
       out[i] <- " "; i <- i + 1L; next
     }

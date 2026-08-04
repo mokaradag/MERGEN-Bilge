@@ -223,3 +223,46 @@ test_that("ifsa blogu dusurulen, sifir eslesen ve etkisiz filtreleri isimlendiri
 
   expect_null(env$pk_filter_policy_disclosure_block(list(), list(), character(0)))
 })
+
+test_that("D4: birincil belirlenemez VE her filtre sifir eslesirse analiz REDDEDILIR", {
+  env <- .pk_policy_env()
+  veri <- .pk_policy_data()
+
+  # Uretimdeki sorgular su an Tier-0'dir: metadata birincil varligi beyan
+  # etmez ve birden fazla filtre sutunu varken birincil BELIRLENEMEZ. O halde
+  # "ikincil daraltmayi dusur, analiz sursun" kurali geriye HICBIR daraltma
+  # birakmaz ve tum yetkili kume uzerinden istatistik uretilir; bu tam olarak
+  # D4'un engellemek icin var oldugu sonuctur.
+  filtreler <- list(
+    list(column = "ProjeAdi", value = "HIC OLMAYAN PROJE", operation = "exact_match"),
+    list(column = "Durum", value = "HIC OLMAYAN DURUM", operation = "exact_match")
+  )
+  derleme <- env$pk_filter_compile(veri, filtreler)
+  politika <- env$pk_filter_zero_match_policy(veri, filtreler, derleme, NULL)
+
+  expect_null(politika$primary_column)
+  expect_identical(politika$action, "refuse")
+  expect_true(nzchar(politika$refusal_message))
+  # Mesaj eslesmeyen degerleri ADIYLA soyler; bos ekran/tum-kume degil.
+  expect_true(grepl("HIC OLMAYAN PROJE", politika$refusal_message, fixed = TRUE))
+  # Tum kume uzerinden devam EDILMEZ.
+  expect_equal(sum(politika$mask), 0L)
+})
+
+test_that("D4: filtrelerden EN AZ BIRI eslesiyorsa ikincil dusurme davranisi korunur", {
+  env <- .pk_policy_env()
+  veri <- .pk_policy_data()
+
+  # Yukaridaki kapali basarisiz dal, calisan bir daraltma varken DEVREYE
+  # GIRMEMELIDIR; aksi halde mesru ikincil-dusurme yolu kaybolurdu.
+  filtreler <- list(
+    list(column = "ProjeAdi", value = "SENTETIK ALFA", operation = "exact_match"),
+    list(column = "Durum", value = "HIC OLMAYAN DURUM", operation = "exact_match")
+  )
+  derleme <- env$pk_filter_compile(veri, filtreler)
+  politika <- env$pk_filter_zero_match_policy(veri, filtreler, derleme, NULL)
+
+  expect_identical(politika$action, "dropped_secondary")
+  expect_identical(politika$dropped_columns, "Durum")
+  expect_equal(sum(politika$mask), 1L)
+})

@@ -137,7 +137,7 @@
   # Bilinçli güncelleme (Faz 1 — cerrahi doğruluk): koşulsuz güvenlik katmanı
   # (safe_errors / sql_readonly / rls) + v2 davranış katmanı (filter_compile /
   # filter_policy / filters_v2) + saf istem katmanı (prompt_budget /
-  # analysis_prompts) eklendi; 13 -> 21 dosya.
+  # analysis_prompts) eklendi + saf istatistiksel özet kurucusu; 13 -> 22 dosya.
   analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_analysis_query_selection.R", n = 22L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact

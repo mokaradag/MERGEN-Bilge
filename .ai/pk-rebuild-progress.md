@@ -1002,3 +1002,53 @@ not review findings, and changing either would lock out users without VM evidenc
   `unavailable` state is unreachable for that dimension — harmless today because
   the department code comes from the same `DC01_user_base` row that already
   succeeded, but worth an explicit decision during VM validation.
+
+---
+
+## Phase 1 — PR #697 review, second round
+
+A third pass over the Phase-1 diff (after the six fixes above) found **two more
+fail-open / crash defects and two correctness defects**. Each production fix
+below is mutation-verified: the new assertions genuinely fail when the fix is
+reverted. Nothing outside these findings changed and no budget was raised.
+
+| # | Sev | Defect | Fix |
+|---|---|---|---|
+| 7 | **P1** | `pk_sql_mask_literals()` ended a `--` line comment on `\n` only. T-SQL ends it on CR, LF **or** CRLF, so in a CR-terminated file the masker swallowed the rest of the batch as comment and `SELECT 1 -- x<CR>DROP TABLE T` classified as a single read-only SELECT — the fail-closed gate **silently opened**. The main module normalises line endings before the gate, but deep mode passes the SQL file **raw**, so the hole was reachable. Round 2 fixed the same line-ending class for `GO`; this is its fail-**open** twin. | The line-comment state now terminates on CR as well as LF, and the terminator character is preserved so the `GO` splitter still sees it. |
+| 8 | **P1** | The module recognised an error return from `execute_pk_sql_unicode()` only by the `⚠️` prefix, but `pk_safe_error_message()` is deliberately **pass-through** for text that does not look like infrastructure diagnostics. `execute_pk_sql_unicode()`'s own first check raises exactly such a message (`"Bos SQL metni gonderilemez."`), as does any plain R error. The unprefixed text then failed the sentinel, was treated as the result set, and the flow died inside `apply_rls_to_data()` with a raw English `argument is of length zero`. Before this PR the handler always emitted the prefix, so this is a regression introduced by the D22 change. | `pk_user_error_text()` (new, in `helpers_pk_safe_errors.R`) guarantees the shared marker without touching `pk_safe_error_message()`'s tested redaction contract, and the module's sentinel is now the type check `is.character(raw_data)` — a successful query always returns a data.frame, so a character value can only be the error branch. |
+| 9 | P2 | `pk_filter_zero_match_policy()`: when no primary entity can be identified (every production query is Tier-0 today, so this is the normal case with ≥2 filter columns) **and every applied filter matched zero rows**, rule 2 dropped all of them and the analysis proceeded over the **entire authorised set** with only a footnote. That is precisely the outcome D4 exists to prevent — the user names a record that does not exist and receives whole-table statistics answering a different question. | When the primary column is unresolvable and *all* groups are zero-match, the verdict is `refuse`, matching the primary-column rule. The legitimate secondary-drop path is untouched: as long as at least one filter still narrows, behaviour is unchanged. |
+| 10 | P2 | `pk_filter_normalize_leaf()` lower-cased the operation name with `tolower()`. On the Turkish Windows VM — the production platform — `tolower("CONTAINS")` yields `contaıns` (dotless i), which matches no operation list, so a substring search silently degrades to **exact match** and returns wrong (usually empty) results. Uppercase operation names are an ordinary LLM output variation. This is the D3 defect this very file was written to fix; the same pattern also affected `pk_config_meta_key()` (`..._HMAC_KEY_ID` → `..._hmac_key_ıd`, so its metadata/`options()` steps were unreachable) and the v2 aggregation name. | All three now fold with an ASCII-only `chartr("A-Z","a-z")`. `pk_tr_fold()` is deliberately not used — these are ASCII protocol tokens, not Turkish prose — and the "no `chartr` for Turkish folding" rule in `helpers_pk_text_turkish.R` is unaffected. |
+
+### Hardening (not a defect)
+
+`apply_smart_filters()`'s v2 branch stored the compiler's normalised leaves
+(`values`, plural) directly as the observation's applied/dropped filters, while
+the provenance footer and the dropped-filter degradation text read `f$value`.
+This works **today** only because `$` does partial name matching on lists. The
+rescue is accidental: `[[` does not partial-match, and adding any second field
+starting with `value` makes the match ambiguous and returns `NULL`, at which
+point the user-visible line becomes `ProjeAdi = "" (içerir)`. The leaves are now
+translated to the v1 filter shape explicitly, and a regression guard locks the
+footer output. This assertion passes with and without the change — it is a guard,
+not evidence of a live bug.
+
+### Regression tests added
+
+| Test file | Asserts | Without the fix |
+|---|---|---|
+| `test-pk-sql-readonly-gate-contract.R` | A `--` comment followed by `DROP` / a second batch is rejected for CR, LF **and** CRLF; a leading comment line still leaves a valid SELECT allowed. | **4 failures** |
+| `test-pk-analiz-process-request-behavior.R` | A non-infrastructure SQL error (`"Bos SQL metni gonderilemez."`, `could not find function ...`) returns a single marked user message and never reaches `apply_rls_to_data()`. | **1 error** (`apply_rls_to_data` called with the error text) |
+| `test-pk-safe-error-redaction-contract.R` | `pk_user_error_text()` marks unmarked text, never double-marks, falls back to the generic message on empty/NA, and does not weaken redaction. | new coverage |
+| `test-pk-filter-policy-behavior.R` | No primary + all groups zero-match ⇒ `refuse` with zero mask; at least one surviving filter ⇒ the secondary-drop path is unchanged. | **4 failures** |
+| `test-pk-filter-compile-behavior.R` | `CONTAINS` / `STARTS_WITH` / `NOT_IN` / `IN` / `MIN` resolve locale-independently and `contains` still filters; source-level guard that `tolower(` does not return to the compiler. | **1 failure** |
+| `test-pk-v1-compatibility-contract.R` | The v2 observation exposes `column` / `value` / `operation` and the footer prints the real value. | guard (see above) |
+
+### Still true after this round
+
+The PR body's **highest-risk item is unchanged**: the read-only classifier has
+never been run against the ~169 real production queries, and a file that opens
+with `SET NOCOUNT ON;` is still rejected as `multiple_statements`. That remains a
+deliberate §5.4 decision, so the pre-merge action is unchanged — **scan the query
+files for a leading `SET` / `GO` before enabling this on the VM.** The two
+residual RLS fail-open paths documented above are also unchanged; they are
+pre-existing policy, not review findings.

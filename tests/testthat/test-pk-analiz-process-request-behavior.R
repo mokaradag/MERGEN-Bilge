@@ -188,6 +188,34 @@ test_that("pk_analiz_process_request ham ODBC hatasini sohbete gommez (D22)", {
   }
 })
 
+test_that("altyapi tanilamasi GIBI GORUNMEYEN SQL hatasi da kullanici mesajina donusur", {
+  # Redaksiyon bilerek gecirgendir: kendi urettigimiz Turkce mesajlar oldugu
+  # gibi doner (bkz. test-pk-safe-error-redaction-contract.R). Modul ise SQL
+  # yurutmesinden donen degerin veri mi hata mi oldugunu ORTAK ISARETTEN anlar.
+  # Isaret dusunce hata metni sonuc kumesi sanilyor ve akis apply_rls_to_data
+  # icinde ham bir R hatasiyla ("argument is of length zero") cokuyordu.
+  # execute_pk_sql_unicode()'un kendi ilk kontrolu tam olarak boyle bir mesaj
+  # firlatir; bu yol sentetik degil, gercek bir uretim yoludur.
+  for (ham in c("Bos SQL metni gonderilemez.",
+                "could not find function \"normalize_db_params\"")) {
+    env <- .pkAnalizEnv()
+    env$select_smart_query <- function(...) list(id = 1L, name = "S", sql = "SELECT * FROM tablo")
+    env$execute_pk_sql_unicode <- function(conn, sql) stop(ham, call. = FALSE)
+    env$apply_rls_to_data <- function(data, user_info, rls_cols) {
+      # Hata metni buraya ULASMAMALIDIR; ulasirsa nrow(NULL) uzerinden coker.
+      stop("apply_rls_to_data hata metniyle cagrildi", call. = FALSE)
+    }
+
+    res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
+
+    expect_true(is.character(res), info = ham)
+    expect_length(res, 1L)
+    # Kullaniciya donen metin ortak isareti TASIR.
+    expect_true(startsWith(res, "\U000026A0\U0000FE0F"), info = ham)
+    expect_true(grepl("Veritabanı Hatası", res, fixed = TRUE), info = ham)
+  }
+})
+
 # ---------------------------------------------------------------------------
 # find_best_query_with_ai
 # ---------------------------------------------------------------------------

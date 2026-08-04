@@ -85,6 +85,37 @@ test_that("pk_report_db_error ayrintiyi loga yazar, kullaniciya genel mesaj done
   expect_false(grepl("GizliSentetikTablo", kullanici, fixed = TRUE))
 })
 
+test_that("pk_user_error_text kullanici metnini her kosulda ISARETLER", {
+  env <- .pk_safe_err_env()
+
+  # Redaksiyon bilerek gecirgendir; bu yuzden modulun "veri mi hata mi"
+  # ayrimini yaptigi ortak isaret ayri bir katmanda garanti edilir.
+  isaretsiz <- "Bos SQL metni gonderilemez."
+  isaretli <- env$pk_user_error_text(isaretsiz)
+  expect_true(startsWith(isaretli, env$PK_USER_ERROR_PREFIX))
+  expect_true(grepl(isaretsiz, isaretli, fixed = TRUE))
+
+  # Zaten isaretli metin IKI KEZ isaretlenmez.
+  expect_identical(
+    env$pk_user_error_text(env$PK_GENERIC_DB_ERROR_MESSAGE),
+    env$PK_GENERIC_DB_ERROR_MESSAGE
+  )
+
+  # Bos/NA girdi genel mesaja duser.
+  for (girdi in list(NULL, NA_character_, "", "   ")) {
+    expect_identical(env$pk_user_error_text(girdi), env$PK_GENERIC_DB_ERROR_MESSAGE)
+  }
+
+  # Isaretleme redaksiyonu ZAYIFLATMAZ: ham ODBC metni yine genel mesaja duser.
+  ham <- "nanodbc/nanodbc.cpp:1655: 42S02: [Microsoft][ODBC Driver]Invalid object name 'GizliTablo'."
+  utils::capture.output(
+    kullanici <- env$pk_user_error_text(env$pk_report_db_error(ham, context_label = "TEST")),
+    type = "output"
+  )
+  expect_identical(kullanici, env$PK_GENERIC_DB_ERROR_MESSAGE)
+  expect_false(grepl("GizliTablo", kullanici, fixed = TRUE))
+})
+
 test_that("PK SQL hata yolu ham conditionMessage() gommez", {
   modul <- .pk_safe_err_code_only("R/module_proje_kaynak_analizi.R")
 

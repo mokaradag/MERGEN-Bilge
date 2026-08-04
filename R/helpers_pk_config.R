@@ -79,8 +79,16 @@ pk_config_spec <- list(
 )
 
 # MERGEN_PK_TELEMETRY -> "telemetry" (sorgu metadata alan adı)
+#
+# Küçük harfe indirme yerelden BAĞIMSIZ olmalıdır: Türkçe Windows yerel ayarında
+# `tolower("ID")` noktasız `ıd` üretir ve `..._HMAC_KEY_ID` anahtarı için hem
+# metadata hem options() basamağı sessizce ıskalanır. Anahtar adları saf ASCII
+# olduğundan A-Z ile sınırlı bir eşleme doğru ve yeterlidir.
 pk_config_meta_key <- function(key) {
-  tolower(sub("^MERGEN_PK_", "", as.character(key)[1]))
+  chartr(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz",
+    sub("^MERGEN_PK_", "", as.character(key)[1])
+  )
 }
 
 # MERGEN_PK_TELEMETRY -> "mergen.pk.telemetry" (options() adı)

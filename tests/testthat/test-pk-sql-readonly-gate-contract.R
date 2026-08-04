@@ -283,3 +283,52 @@ test_that("GO batch ayiricisi CR / LF / CRLF icin AYNI kararı üretir", {
     )
   }
 })
+
+test_that("satir yorumu CR / LF / CRLF'in HEPSINDE biter (kapi ACILMAZ)", {
+  env <- .pk_sql_gate_env()
+
+  # T-SQL satir yorumunu CR, LF ve CRLF'in hepsi sonlandirir. Durum makinesi
+  # yalnizca LF ariyorsa, CR ile biten bir dosyada yorumdan SONRAKI TUM batch
+  # de yorum sayilir ve maskelenmis metin "tek salt-okunur SELECT"e benzer:
+  # kapali basarisiz kapi SESSIZCE ACILIR. Ana modul metni kapidan once
+  # normallestirir ama derin mod SQL dosyasini HAM okur; bu yuzden kapinin
+  # kendisi satir sonu ailesinden bagimsiz olmalidir.
+  for (eol in c("\n", "\r\n", "\r")) {
+    etiket <- gsub("\r", "CR", gsub("\n", "LF", eol))
+
+    sonuc <- env$pk_sql_classify_readonly(
+      paste0("SELECT 1 -- zararsiz yorum", eol, "DROP TABLE SentetikTablo")
+    )
+    expect_false(
+      isTRUE(sonuc$allowed),
+      info = sprintf("Yorumdan sonraki DROP gizlenmemelidir (eol=%s).", etiket)
+    )
+    expect_identical(
+      sonuc$reason, "forbidden_keyword",
+      info = sprintf("Gerekce yasakli anahtar kelime olmalidir (eol=%s).", etiket)
+    )
+
+    batch <- env$pk_sql_classify_readonly(
+      paste0("SELECT 1 -- zararsiz yorum", eol, "GO", eol, "DELETE FROM SentetikTablo")
+    )
+    expect_false(
+      isTRUE(batch$allowed),
+      info = sprintf("Yorumdan sonraki ikinci batch gizlenmemelidir (eol=%s).", etiket)
+    )
+  }
+
+  # Yorumun MESRU davranisi korunur: yorum yalnizca kendi satirini yutar ve
+  # geride kalan tek SELECT kabul edilmeye devam eder.
+  for (eol in c("\n", "\r\n", "\r")) {
+    sonuc <- env$pk_sql_classify_readonly(
+      paste0("-- basliktaki aciklama", eol, "SELECT a FROM SentetikTablo")
+    )
+    expect_true(
+      isTRUE(sonuc$allowed),
+      info = sprintf(
+        "Bastaki yorum satiri gecerli SELECT'i reddetmemelidir (eol=%s, gerekce=%s).",
+        gsub("\r", "CR", gsub("\n", "LF", eol)), sonuc$reason %||% "-"
+      )
+    )
+  }
+})

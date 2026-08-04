@@ -130,8 +130,30 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
     }
   }
 
-  # 2) Yalnızca ikincil sütunlarda sıfır eşleşme -> düşür, ifşa et, devam et.
   dusurulen <- vapply(sifir_gruplar, function(g) g$column, character(1))
+
+  # 1b) Birincil varlık BELİRLENEMEDİ ve UYGULANAN HER filtre sıfır eşleşti.
+  # Bu durumda "ikincil daraltmayı düşür, analiz sürsün" kuralı geriye hiçbir
+  # daraltma bırakmaz: tüm yetkili küme üzerinden istatistik üretilir ve bu,
+  # §5.4 kural 6'nın engellemek için var olduğu sonucun ta kendisidir —
+  # kullanıcı adını verdiği kayıt bulunamamışken tüm veri setinin özetini alır.
+  # Kapalı başarısız karar REDdir; metadata birincil varlığı beyan ettiğinde
+  # (Faz 3b) bu dal yerini yukarıdaki birincil sütun kuralına bırakır.
+  if (is.null(birincil) && length(sifir_gruplar) == length(compiled$groups)) {
+    degerler <- unlist(
+      lapply(sifir_gruplar, function(g) {
+        unlist(lapply(g$applied, function(l) l$values), use.names = FALSE)
+      }),
+      use.names = FALSE
+    )
+    sonuc$action <- "refuse"
+    sonuc$refusal_message <- .pk_policy_zero_match_message(
+      paste(unique(dusurulen), collapse = "` / `"), degerler
+    )
+    return(sonuc)
+  }
+
+  # 2) Yalnızca ikincil sütunlarda sıfır eşleşme -> düşür, ifşa et, devam et.
   kalan <- Filter(function(f) {
     yaprak <- pk_filter_normalize_leaf(f)
     !(yaprak$column %in% dusurulen)

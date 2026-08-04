@@ -36,6 +36,11 @@ PK_GENERIC_DB_ERROR_MESSAGE <- paste0(
   "Sorun sürerse lütfen sistem yöneticisiyle iletişime geçin."
 )
 
+# Kullanıcıya dönen PK hata metinlerinin ORTAK başlangıç işareti. Modül, SQL
+# yürütmesinden dönen değerin veri mi yoksa hata metni mi olduğunu bu işaretle
+# ayırt eder.
+PK_USER_ERROR_PREFIX <- "\U000026A0\U0000FE0F"
+
 #' Ham hata metnini kullanıcıya gösterilebilir hale getir
 #'
 #' Metin altyapı tanılaması gibi görünüyorsa tamamen genel mesajla değiştirilir.
@@ -65,6 +70,30 @@ pk_safe_error_message <- function(raw_message) {
   }
 
   metin
+}
+
+#' Kullanıcıya dönecek hata metnini TANINABİLİR biçime getir
+#'
+#' `pk_safe_error_message()` bilerek geçirgendir: altyapı tanılaması gibi
+#' GÖRÜNMEYEN bir metin (örn. kendi ürettiğimiz Türkçe doğrulama mesajı)
+#' olduğu gibi döner. Bu doğru bir redaksiyon kararıdır ama tek başına yeterli
+#' değildir: çağıran modül SQL yürütmesinden dönen değerin veri mi hata metni
+#' mi olduğunu ortak işaretten anlar; işaret düşerse hata metni SONUÇ KÜMESİ
+#' sanılır ve akış ham bir R hatasıyla çöker. Bu yüzden kullanıcıya giden metin
+#' burada her koşulda işaretlenir.
+#'
+#' @return `PK_USER_ERROR_PREFIX` ile başlayan tek elemanlı karakter değer.
+pk_user_error_text <- function(message) {
+  metin <- as.character(message %||% "")[1]
+  if (is.na(metin) || !nzchar(trimws(metin))) {
+    return(PK_GENERIC_DB_ERROR_MESSAGE)
+  }
+
+  if (startsWith(metin, PK_USER_ERROR_PREFIX)) {
+    return(metin)
+  }
+
+  paste0(PK_USER_ERROR_PREFIX, " **Veritabanı Hatası:** ", metin)
 }
 
 #' Ham hatayı sunucu loguna yaz, kullanıcıya güvenli metni döndür

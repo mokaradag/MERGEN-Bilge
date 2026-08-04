@@ -270,3 +270,52 @@ test_that("motor kipi sorgu metadatasindan (query$meta) cozulur", {
     })
   })
 })
+
+test_that("v2 gozlemi filtre DEGERINI korur (koken alt bilgisi bos yazmaz)", {
+  env <- .pk_v1_env()
+  veri <- .pk_v1_data()
+
+  # Koken alt bilgisi (.pk_footer_filter_line) ve dusurulen filtre bozulma
+  # metni (.pk_dropped_filter_degradations) filtreyi `f$value` alanindan okur;
+  # v2 derleyicisinin normallestirilmis yapraginda ise alan adi COGULdur
+  # (`values`). Bu iddia bir REGRESYON MUHAFIZIDIR, mevcut bir kusurun kaniti
+  # DEGILDIR: bugun `$` kismi ad eslestirmesi sayesinde deger dogru yaziliyor.
+  # Muhafiz, o tesadufi kurtarma kaybolursa (`[[` kullanimi ya da yapraga
+  # "value" ile baslayan ikinci bir alan eklenmesi) alt bilginin sessizce
+  # `Durum = ""` yazmaya baslamasini engeller.
+  talimat <- list(filters = list(
+    list(column = "Durum", operation = "exact_match", value = "Aktif"),
+    list(column = "OlmayanSutun", operation = "exact_match", value = "X")
+  ))
+
+  withr::with_envvar(list(MERGEN_PK_ENGINE = "v2"), {
+    withr::with_options(list(mergen.pk.engine = NULL), {
+      utils::capture.output(
+        sonuc <- env$apply_smart_filters(veri, talimat, "sentetik deger sorusu"),
+        type = "output"
+      )
+      expect_false(is.null(attr(sonuc, env$PK_FILTER_V2_ATTR, exact = TRUE)))
+
+      gozlem <- env$pk_filter_observation_take(list(question = "sentetik deger sorusu"))
+      expect_false(is.null(gozlem))
+
+      expect_length(gozlem$applied_filters, 1L)
+      uygulanan <- gozlem$applied_filters[[1]]
+      expect_identical(uygulanan$column, "Durum")
+      expect_identical(uygulanan$value, "Aktif")
+      expect_identical(uygulanan$operation, "exact_match")
+
+      expect_length(gozlem$dropped_filters, 1L)
+      dusen <- gozlem$dropped_filters[[1]]$filter
+      expect_identical(dusen$column, "OlmayanSutun")
+      expect_identical(dusen$value, "X")
+
+      # Alt bilgi satiri degeri gercekten yazar.
+      satir <- env$.pk_footer_filter_line(list(
+        filter_status = "ok_filtered", filters = gozlem$applied_filters
+      ))
+      expect_true(grepl("Aktif", satir, fixed = TRUE))
+      expect_false(grepl('= ""', satir, fixed = TRUE))
+    })
+  })
+})

@@ -143,6 +143,30 @@ if (!exists(".pk_filter_observation_state", inherits = FALSE) ||
   list(filter = filter %||% list(), reason = as.character(reason)[1])
 }
 
+# v2 derleyicisinin normalleştirilmiş yaprağını v1 filtre şekline çevirir.
+#
+# Gözlem hattının tamamı (köken alt bilgisi `.pk_footer_filter_line()` ve
+# düşürülen filtre bozulma metni `.pk_dropped_filter_degradations()`) `f$value`
+# alanını okur; normalleştirilmiş yaprakta ise alan adı ÇOĞULdur (`values`).
+# BUGÜN bu bir kusur DEĞİLDİR: `$` listelerde kısmi ad eşleştirmesi yaptığı için
+# `f$value` sessizce `values`'a çözülür ve alt bilgi doğru yazar. Ancak bu
+# kurtarma tesadüfidir ve iki yolla sessizce kaybolur: `[[` kısmi eşleştirme
+# YAPMAZ ve yaprağa "value" ile başlayan ikinci bir alan (ör. `value_label`)
+# eklendiği an eşleştirme belirsizleşip NULL döner. Sonuç, kullanıcının gördüğü
+# `ProjeAdi = "" (içerir)` satırı olurdu. Şekil bu yüzden AÇIKÇA çevrilir;
+# telemetri/köken tarafı da her iki motorda tek bir filtre şekli görür.
+.pk_filter_leaf_to_v1 <- function(leaf) {
+  leaf <- if (is.list(leaf)) leaf else list()
+
+  deger <- leaf$values %||% leaf$value %||% character(0)
+
+  list(
+    column = as.character(leaf$column %||% "?")[1],
+    value = as.character(deger),
+    operation = as.character(leaf$operation %||% "exact_match")[1]
+  )
+}
+
 .pk_filter_observation_store <- function(context, observation) {
   key <- .pk_filter_observation_key(
     context$request_id,
@@ -206,9 +230,11 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     try(
       .pk_filter_observation_store(context, list(
         matched_rows = as.integer(karar$matched_rows %||% nrow(sonuc_v2)),
-        applied_filters = karar$applied %||% list(),
+        # Yapraklar v1 filtre şekline çevrilir; köken alt bilgisi ve düşürülen
+        # filtre uyarısı `value` alanını okur (bkz. .pk_filter_leaf_to_v1).
+        applied_filters = lapply(karar$applied %||% list(), .pk_filter_leaf_to_v1),
         dropped_filters = lapply(karar$dropped %||% list(), function(d) {
-          .pk_filter_dropped(d$leaf, d$reason)
+          .pk_filter_dropped(.pk_filter_leaf_to_v1(d$leaf), d$reason)
         })
       )),
       silent = TRUE

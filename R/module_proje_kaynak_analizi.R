@@ -282,14 +282,21 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 		selected_query$sql_file %||% "inline"
 	  ))
 
-	  return(pk_report_db_error(
+	  # Redaksiyon gecirgendir: altyapi tanilamasi GIBI GORUNMEYEN bir metin
+	  # (ornegin "Bos SQL metni gonderilemez.") oldugu gibi doner. Asagidaki
+	  # sentinel kontrolu icin metin her kosulda isaretlenir.
+	  return(pk_user_error_text(pk_report_db_error(
 		conditionMessage(e),
 		context_label = "PK_ANALIZ",
 		context_detail = sprintf("sorgu=%s", selected_query$id %||% "?")
-	  ))
+	  )))
 	})
-  
-  if (is.character(raw_data) && startsWith(raw_data, "\U000026A0\U0000FE0F")) return(raw_data)
+
+  # execute_pk_sql_unicode() BASARILI oldugunda daima data.frame doner; bu
+  # noktada karakter deger YALNIZCA hata dalindan gelebilir. Onek kontrolu tek
+  # basina kirilgandi: isareti tasimayan bir hata metni sonuc kumesi sanilip
+  # akisi ham bir R hatasiyla ("argument is of length zero") cokertiyordu.
+  if (is.character(raw_data)) return(raw_data)
   
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (SQL sonrasi)\n")

@@ -28,6 +28,23 @@ PK_FILTER_UPPER_OPS <- c("less_than", "less_or_equal", "to", "max")
 # Dışlama üreten işlemler (sütun içinde VE'lenen NOT).
 PK_FILTER_EXCLUDE_OPS <- c("not_equals", "exclude", "not_in", "not_contains")
 
+# İşlem adı gibi SAF ASCII belirteçleri için yerelden BAĞIMSIZ küçük harf.
+#
+# Burada `tolower()` KULLANILAMAZ: Türkçe Windows yerel ayarında `tolower("I")`
+# noktasız `ı` üretir, yani LLM'den büyük harfle gelen `CONTAINS` sessizce
+# `contaıns` olur, hiçbir işlem listesiyle eşleşmez ve alt dizge araması fark
+# edilmeden TAM EŞLEŞMEYE düşerek yanlış (çoğunlukla boş) sonuç verir. Bu, tam
+# olarak bu dosyanın düzelttiği D3 kusurunun kendisidir.
+#
+# `pk_tr_fold()` de kullanılamaz: o Türkçe metin katlamasıdır (İ/Ş/Ü/Ö/Ç ve
+# boşluk sadeleştirme), işlem adı ise ASCII bir protokol belirtecidir. Burada
+# `chartr()` doğru araçtır çünkü eşleme YALNIZCA A-Z ile sınırlıdır;
+# R/helpers_pk_text_turkish.R başlığındaki "Türkçe katlama için chartr
+# kullanma" uyarısı Türkçe harfler içindir ve ihlal edilmez.
+.pk_filter_ascii_lower <- function(x) {
+  chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", as.character(x))
+}
+
 .pk_filter_fold <- function(x) {
   if (exists("pk_tr_fold", mode = "function", inherits = TRUE)) {
     return(pk_tr_fold(x))
@@ -50,7 +67,7 @@ pk_filter_normalize_leaf <- function(f) {
 
   islem <- as.character(f$operation %||% "exact_match")[1]
   if (is.na(islem) || !nzchar(trimws(islem))) islem <- "exact_match"
-  islem <- tolower(trimws(islem))
+  islem <- .pk_filter_ascii_lower(trimws(islem))
 
   ham <- f$value
   if (is.list(ham)) ham <- unlist(ham, use.names = FALSE)
@@ -179,7 +196,7 @@ pk_filter_leaf_mask <- function(data, leaf) {
   } else if (is.numeric(col_vals)) {
     .pk_filter_mask_numeric(col_vals, leaf)
   } else if (is.logical(col_vals)) {
-    mantik <- tolower(leaf$values) %in% c("true", "1", "evet")
+    mantik <- .pk_filter_ascii_lower(leaf$values) %in% c("true", "1", "evet")
     if (!length(leaf$values)) NULL else col_vals %in% unique(mantik)
   } else {
     NULL
