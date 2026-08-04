@@ -190,7 +190,18 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
       }
     }
 
+	# D9: v1'in sabit 8 saniyesi fazla agresifti ve zaman asimi "filtre
+	# gerekmedi" ile ayirt edilemiyordu. Yapilandirilabilir deger YALNIZCA
+	# v2'de tuketilir; v1 karari degismesin diye 8 saniye korunur (§10).
 	filter_timeout <- 8
+	if (exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
+		isTRUE(pk_engine_is_v2()) &&
+		exists("pk_config_resolve", mode = "function", inherits = TRUE)) {
+	  filter_timeout <- tryCatch(
+		pk_config_resolve("MERGEN_PK_FILTER_TIMEOUT_SEC"),
+		error = function(e) 8
+	  )
+	}
 
 	result <- tryCatch({
 	  call_local_llm(messages, list(

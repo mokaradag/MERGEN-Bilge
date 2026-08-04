@@ -51,6 +51,30 @@ pk_config_spec <- list(
     type = "integer",
     default = 50000L,
     min = 1L
+  ),
+  # Faz 1 (D9): Filtre planı LLM zaman aşımı. v1'deki sabit 8 saniye fazla
+  # agresifti ve zaman aşımı "filtre gerekmedi" ile ayırt edilemiyordu.
+  # YALNIZCA v2 tüketir; v1 kendi sabit değerinde bırakılır ki motor sınırı
+  # sözleşmesi (§10) bozulmasın.
+  MERGEN_PK_FILTER_TIMEOUT_SEC = list(
+    type = "integer",
+    default = 20L,
+    min = 1L
+  ),
+  # Faz 1 (D1/D2): Bu orandan fazla satır bırakan filtre "etkisiz" sayılır ve
+  # köken kaydında böyle raporlanır.
+  MERGEN_PK_NOOP_FILTER_RATIO = list(
+    type = "double",
+    default = 0.95,
+    min = 0,
+    max = 1
+  ),
+  # Faz 1 (D7): Modele giden TÜM yükün (özet + tablolar + örnek satır JSON'u)
+  # karakter bütçesi. Eski kod yalnızca özet metnini ölçüyordu.
+  MERGEN_PK_PROMPT_CHAR_BUDGET = list(
+    type = "integer",
+    default = 120000L,
+    min = 1000L
   )
 )
 
@@ -95,6 +119,18 @@ pk_config_option_key <- function(key) {
   out
 }
 
+# Ondalık değerler. Tam sayıdan ayrı tutulur; NaN/Inf ve aralık dışı reddedilir.
+.pk_config_as_double <- function(value, spec) {
+  if (length(value) != 1L) return(NULL)
+
+  num <- suppressWarnings(as.numeric(as.character(value)[1]))
+  if (length(num) != 1L || is.na(num) || !is.finite(num)) return(NULL)
+  if (!is.null(spec$min) && num < spec$min) return(NULL)
+  if (!is.null(spec$max) && num > spec$max) return(NULL)
+
+  num
+}
+
 .pk_config_as_character <- function(value, spec) {
   if (length(value) != 1L) return(NULL)
 
@@ -117,9 +153,27 @@ pk_config_option_key <- function(key) {
     spec$type %||% "character",
     logical   = .pk_config_as_logical(value),
     integer   = .pk_config_as_integer(value, spec),
+    double    = .pk_config_as_double(value, spec),
     character = .pk_config_as_character(value, spec),
     NULL
   )
+}
+
+#' Etkin motor kipi ("v1" / "v2")
+#'
+#' Master plan §10: `v1` varsayılandır ve operatör VM'de doğrulayana kadar
+#' öyle kalır. D1-D5, D7-D9 ve D12 YALNIZCA `v2` altında etkinleşir; RLS
+#' kapalı başarısızlığı, salt-okunur SQL kapısı, ODBC redaksiyonu ve Faz 0
+#' gözlemi ise bayraktan BAĞIMSIZ çalışır.
+pk_engine_mode <- function(query_meta = NULL) {
+  tryCatch(
+    pk_config_resolve("MERGEN_PK_ENGINE", query_meta = query_meta),
+    error = function(e) "v1"
+  )
+}
+
+pk_engine_is_v2 <- function(query_meta = NULL) {
+  identical(pk_engine_mode(query_meta), "v2")
 }
 
 #' Yapılandırma değerini öncelik sırasıyla çöz

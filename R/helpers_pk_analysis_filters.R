@@ -183,6 +183,29 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
   applied <- list()
   dropped <- list()
 
+  # Motor sınırı (master plan §10): D1-D5/D12 YALNIZCA v2'de etkindir. v1
+  # gövdesi aşağıda değişmeden korunur; bayrak v1 iken bu dal hiç çalışmaz.
+  if (exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
+      isTRUE(pk_engine_is_v2(context$query_meta)) &&
+      exists("pk_apply_smart_filters_v2", mode = "function", inherits = TRUE)) {
+
+    sonuc_v2 <- pk_apply_smart_filters_v2(data, filter_instructions, context$query_meta)
+    karar <- attr(sonuc_v2, PK_FILTER_V2_ATTR, exact = TRUE)
+
+    try(
+      .pk_filter_observation_store(context, list(
+        matched_rows = as.integer(karar$matched_rows %||% nrow(sonuc_v2)),
+        applied_filters = karar$applied %||% list(),
+        dropped_filters = lapply(karar$dropped %||% list(), function(d) {
+          .pk_filter_dropped(d$leaf, d$reason)
+        })
+      )),
+      silent = TRUE
+    )
+
+    return(sonuc_v2)
+  }
+
   finish <- function(result, matched_rows) {
     try(
       .pk_filter_observation_store(context, list(

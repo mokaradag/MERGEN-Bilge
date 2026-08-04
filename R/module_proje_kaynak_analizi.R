@@ -221,7 +221,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	  return("\u26A0\uFE0F **Sistem Hatası:** SQL sorgusu yüklenemedi (dosya yolu algılandı).")
 	}
 
-	if (nchar(sql_query_text) < 10 || !grepl("SELECT|INSERT|UPDATE|DELETE|EXEC", sql_query_text, ignore.case = TRUE)) {
+	# D23: Eski dogrulama INSERT/UPDATE/EXEC iceren metni GECERLI sayiyordu.
+	# Gercek salt-okunur kapisi asagida final_sql uzerinde calisir; burada
+	# yalnizca bariz bos/kirik icerik elenir.
+	if (nchar(sql_query_text) < 10) {
 	  cat("[PK_ANALIZ] HATA: Gecersiz SQL icerigi!\n")
 	  cat(sprintf("[PK_ANALIZ] Icerik: %s\n", substr(sql_query_text, 1, 200)))
 	  return("\u26A0\uFE0F **Sistem Hatası:** Geçersiz SQL sorgusu yüklendi.")
@@ -247,24 +250,27 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 
 	cat(sprintf("[PK_ANALIZ] SQL DB'ye gonderiliyor (Ilk 100 kar.):\n--> %s...\n", substr(final_sql, 1, 100)))
 
+	# D23: Ifade farkinda, kapali basarisiz salt-okunur kapisi. Eski kara liste
+	# (DELETE|DROP|TRUNCATE|ALTER) MERGE, SELECT ... INTO, veri degistiren CTE,
+	# sp_/xp_ ve cok ifadeli batch'i serbest birakiyordu. Kapi baglanti
+	# CALISTIRILMADAN ONCE uygulanir ve her iki motor icin KOSULSUZDUR.
+	sql_gate <- pk_sql_readonly_guard(final_sql, context_label = "PK_ANALIZ")
+	if (!isTRUE(sql_gate$allowed)) {
+	  cat(sprintf(
+		"[PK_ANALIZ] SQL kapisi reddetti | Sorgu ID: %s | Dosya: %s\n",
+		selected_query$id %||% "?",
+		selected_query$sql_file %||% "inline"
+	  ))
+	  return(sql_gate$message)
+	}
+
 	raw_data <- tryCatch({
-	  # final_sql enc2utf8 ile UTF-8 işaretli olduğundan, Windows Türkçe (UTF-8
-	  # olmayan) yerel ayarda toupper()+grepl yerel-bağımlı davranıp hata
-	  # verebiliyordu; bu da güvenlik kapısının "Guvenlik ihlali" yerine genel
-	  # "Veritabanı Hatası" üretmesine yol açıyordu. Yasaklı SQL anahtar
-	  # kelimeleri ASCII olduğundan tarama useBytes=TRUE + ignore.case ile
-	  # yerelden bağımsız yapılır (toupper kaldırıldı); kapı her yerel ayarda
-	  # güvenilir tetiklenir.
-	  if (grepl("\\b(DELETE|DROP|TRUNCATE|ALTER)\\b", final_sql,
-				ignore.case = TRUE, perl = TRUE, useBytes = TRUE)) {
-		stop("Guvenlik ihlali: Yasakli SQL komutu.")
-	  }
 
 	  execute_pk_sql_unicode(conn, final_sql)
 
 	}, error = function(e) {
-	  err_msg <- conditionMessage(e)
-
+	  # D22: Ham ODBC/surucu/DSN tanilamasi ARTIK sohbete gomulmez; sunucu
+	  # loguna yazilir, kullanicaya genel Turkce mesaj doner.
 	  cat(sprintf(
 		"[PK_ANALIZ] SQL HATASI | DB: %s | Sorgu ID: %s | Sorgu Adi: %s\n",
 		selected_query$db_target %||% "primary",
@@ -275,13 +281,11 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 		"[PK_ANALIZ] SQL HATASI | SQL dosyasi: %s\n",
 		selected_query$sql_file %||% "inline"
 	  ))
-	  cat(sprintf("[PK_ANALIZ] SQL HATASI DETAY: %s\n", err_msg))
-	  cat(sprintf("[PK_ANALIZ] SQL ILK 500 KARAKTER:\n%s\n", substr(final_sql, 1, 500)))
 
-	  return(paste0(
-		"\u26A0\uFE0F **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.\n`",
-		err_msg,
-		"`"
+	  return(pk_report_db_error(
+		conditionMessage(e),
+		context_label = "PK_ANALIZ",
+		context_detail = sprintf("sorgu=%s", selected_query$id %||% "?")
 	  ))
 	})
   
@@ -301,7 +305,34 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     raw_data <- convert_date_columns(raw_data, selected_query$date_columns)
   }
   
-  secure_data <- apply_rls_to_data(raw_data, rls_info, selected_query$rls_columns)
+  # Faz 3a M8 baglantisi: SQL'den gelen GERCEK sutunlar, sorgu metadatasi ve
+  # rls_columns beyanina karsi RLS'ten ONCE dogrulanir.
+  pk_engine_v2 <- exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
+    isTRUE(pk_engine_is_v2(selected_query$meta))
+  meta_gate <- pk_meta_actual_column_gate(selected_query, names(raw_data), pk_engine_v2)
+  if (length(meta_gate$warn) > 0) {
+    cat(sprintf(
+      "[PK_ANALIZ] METADATA/RLS SUTUN UYUSMAZLIGI | sorgu=%s | %s\n",
+      selected_query$id %||% "?", paste(meta_gate$warn, collapse = " ; ")
+    ))
+  }
+  if (isTRUE(meta_gate$abort)) {
+    return(PK_RLS_ABORT_USER_MESSAGE)
+  }
+  if (isTRUE(meta_gate$engine_abort)) {
+    return(paste0(
+      "\U000026A0\U0000FE0F **Yapılandırma Hatası:** Sorgu sonucu, tanımlı sorgu ",
+      "metadatası ile uyuşmuyor. Analiz güvenli biçimde sürdürülemedi."
+    ))
+  }
+
+  # D6/D6b: RLS artik kapali basarisizdir; plan uretilemezse siniflandirilmis
+  # kosul yukselir ve kullaniciya ic ayrinti TASIMAYAN Turkce mesaj doner.
+  secure_data <- tryCatch(
+    apply_rls_to_data(raw_data, rls_info, selected_query$rls_columns),
+    pk_rls_error = function(e) conditionMessage(e)
+  )
+  if (is.character(secure_data)) return(secure_data)
   cat(sprintf("[PK_ANALIZ] RLS sonrasi: %d satir\n", nrow(secure_data)))
   
   if (is.function(stop_check) && isTRUE(stop_check())) {
@@ -325,6 +356,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
   
+  pk_filter_policy <- NULL
+
   if (isTRUE(selected_query$disable_ai_filters)) {
     cat("[PK_ANALIZ] Ozel Sorgu Ayari: AI Filtreleme devre disi birakildi. Sadece RLS verisi kullaniliyor.\n")
     filter_criteria <- list(filters = list(), aggregation = NULL, status = "disabled")
@@ -343,8 +376,42 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
                 filter_criteria$operation %||% "NULL",
                 filter_criteria$aggregation %||% "NULL"))
   
+	# D9: v2'de bozulmus filtre durumu (zaman asimi/hata/bozuk yanit) SESSIZCE
+	# tum kume uzerinden devam ETMEZ; analiz aciklamayla reddedilir.
+	if (pk_engine_v2 && exists("pk_filter_degraded_gate", mode = "function", inherits = TRUE)) {
+	  bozuk_kapi <- pk_filter_degraded_gate(filter_criteria$status)
+	  if (isTRUE(bozuk_kapi$refuse)) {
+		pk_observe(
+		  query_id = selected_query$id, query_name = selected_query$name,
+		  filter_status = filter_criteria$status, filters = list(),
+		  pre_rls_rows = nrow(raw_data), authorized_rows = nrow(secure_data),
+		  filtered_rows = 0L, outcome = "BosSonuc"
+		)
+		return(list(type = "error_message", content = bozuk_kapi$message))
+	  }
+	}
+
 	filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
+
+	# v2 politika karari, normalize_pk_dataframe_utf8() ozniteligi dusurmeden
+	# ONCE alinir.
+	if (pk_engine_v2 && exists("PK_FILTER_V2_ATTR", inherits = TRUE)) {
+	  pk_filter_policy <- attr(filtered_data, PK_FILTER_V2_ATTR, exact = TRUE)
+	}
+
 	filtered_data <- normalize_pk_dataframe_utf8(filtered_data)
+  }
+
+  # D4: Birincil filtre sutununda sifir eslesme -> ANALIZ YAPILMAZ. Bos ekran
+  # da, tum projeler uzerinden istatistik de dogru cevap degildir.
+  if (is.list(pk_filter_policy) && identical(pk_filter_policy$action, "refuse")) {
+    pk_observe(
+      query_id = selected_query$id, query_name = selected_query$name,
+      filter_status = filter_criteria$status, filters = list(),
+      pre_rls_rows = nrow(raw_data), authorized_rows = nrow(secure_data),
+      filtered_rows = 0L, outcome = "BosSonuc"
+    )
+    return(list(type = "error_message", content = pk_filter_policy$refusal_message))
   }
   
   cat(sprintf("[PK_ANALIZ] Filtreleme sonrası: %d satır (Orijinal: %d)\n", 
@@ -401,18 +468,13 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
               stat_summary$row_count,
               if (!is.null(stat_summary$preview_data)) nrow(stat_summary$preview_data) else 0))
   
-	preview_json <- if (!is.null(stat_summary$preview_data) && nrow(stat_summary$preview_data) > 0) {
-	  preview_data_safe <- normalize_pk_dataframe_utf8(stat_summary$preview_data)
-	  jsonlite::toJSON(preview_data_safe, auto_unbox = TRUE, pretty = FALSE, na = "null")
-	} else {
-	  "{}"
-	}
-  
-  data_str <- paste0(
-    stat_summary$summary_text,
-    "\n\n--- ORNEK SATIRLAR (JSON) ---\n",
-    preview_json,
-    "\n\n(Not: Yukaridaki istatistikler ", stat_summary$row_count, " satirdan olusturulmustur)"
+  # D7/D4: Model yuku (ozet + ornek satirlar + ifsa bloklari) tek bir saf
+  # kurucuda toplanir; modul yalnizca sonucu tuketir.
+  data_str <- pk_build_analysis_payload(
+    stat_summary = stat_summary,
+    query = selected_query,
+    engine_is_v2 = pk_engine_v2,
+    policy = pk_filter_policy
   )
   
   if (nrow(secure_data) > nrow(filtered_data)) {
@@ -422,87 +484,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     )
   }
   
-  if (analysis_mode == "full") {
-	system_prompt <- paste0(
-      "Sen Primavera P6 ve SAP PS alanında 15+ yıl deneyimli, sektörde saygın bir veri analistisin. Fortune 500 şirketlerine danışmanlık yapan bir uzman gibi konuş - profesyonel, net ve eyleme dönük.\n\n",
-      "Sorgu: ", selected_query$name, "\n",
-      "Amaç: ", selected_query$description, "\n\n",
-      "\U000026A0\U0000FE0F KRİTİK FİLTRELEME KURALI:\n",
-      "Eğer veri setinde 'FİLTRELEME UYARISI' görüyorsan:\n",
-      "- Verilen satır sayısı YALNIZCA kullanıcının spesifik filtreleme kriterine aittir\n",
-      "- Bu, TÜM projelerin/TÜM veritabanının satır sayısı DEĞİLDİR\n",
-      "- ASLA 'X/Y' formatında oran belirtme (örn: '5/4000 aktivite')\n",
-      "- Bunun yerine: 'Bu proje/filtre için X kayıt bulundu' şeklinde ifade et\n",
-      "- Yüzde hesaplarken payda olarak SADECE 'filtreleme sonrası satır' sayısını kullan\n\n",
-      "ANALİZ KRİTERLERİ:\n",
-      "1. DERİNLİK: Her sütunun hikayesini anlat - dağılım, anormallikler, eğilimler, sektör benchmarks'leri\n",
-      "2. KÖK SEBEP: Gözlemlenen desenlerin ALTINDA YATAN operasyonel/finansal sebepleri veriyle destekle\n",
-      "3. EYLEME DÖNÜK: Her bulgu için spesifik, uygulanabilir öneriler sun ve bu önerilerin iş etkisini sayısal olarak göster\n",
-      "4. YERSELLEŞTİRME: Verileri şirketin gerçek operasyonel kontekstine bağla - teorik değil pratik yorumla\n",
-      "5. TEMELLENDİRME: Sadece sağlanan verilerle konuş; varsayım, spekülasyon veya komik yorumlardan uzak dur\n",
-      "6. TON: Doğal, akıcı Türkçe; robotik olmayan, güven veren uzman dili\n\n",
-      "ZORUNLU YAPI:\n",
-      "- **\U0001F4CB Özet**: 2-3 cümlede kritik bulgular ve iş etkisi\n",
-      "- **\U0001F50D Detaylı İnceleme**: Her kritik sütun için ayrı bölüm (##)\n",
-      "- **\U0001F3AF Kök Nedenler**: Neden-sonuç ilişkilerini veriyle kanıtla\n",
-      "- **\U0001F4A1 Öneriler**: Önceliklendirilmiş, somut adımlar (1, 2, 3...)\n",
-      "- **\U000026A0\U0000FE0F Dikkat Edilmesi Gerekenler**: Veride görünen potansiyel sorunları belirt\n\n",
-      "TABLO FORMATI KURALI:\n",
-      "- Kullanıcı listeleme, sıralama veya karşılaştırma istiyorsa sonuçları MUTLAKA markdown tablo formatında sun\n",
-      "- Tablo formatı: | Sütun1 | Sütun2 | ... | şeklinde, başlık satırı ve ayırıcı ile\n",
-      "- Tablolarda en önemli sütunları seç, gereksiz sütunları dahil etme\n\n",
-      "KESİN KURALLAR:\n",
-      "- Sayıları doğrudan kullan, yuvarlama veya tahmin YAPMA\n",
-      "- Her yorum mutlaka veriye dayalı olmalı - hayal ürünü yorum yasak\n",
-      "- Genel, yüzeysel yorumlardan kaçın\n",
-      "- \"Görünüşe göre\", \"muhtemelen\", \"belki\" gibi belirsiz ifadeler KULLANMA\n",
-      "- Kullanıcıya ait olmayan ifadelerden (biz, sizin) uzak dur\n"
-    )
-  } else {
-	system_prompt <- paste0(
-      "Sen MERGEN'in kıdemli veri analisti asistansın. R tarafından hazırlanan istatistiksel özet, senin tek gerçeğindir. Kullanıcıya değer üretmek için bu verileri derinlemesine yorumla.\n\n",
-      "SORGU: ", selected_query$name, "\n",
-      "AMACI: ", selected_query$description, "\n\n",
-      "\U000026A0\U0000FE0F KRİTİK FİLTRELEME KURALI:\n",
-      "Eğer istatistiksel özette 'FİLTRELEME UYARISI' görüyorsan:\n",
-      "- Satır sayısı YALNIZCA kullanıcının spesifik filtreleme için geçerlidir\n",
-      "- Tüm veri seti için geçerli değildir\n",
-      "- ASLA 'X/Y oranında' veya 'toplam Y kayıttan X tanesi' gibi ifadeler kullanma\n",
-      "- Bunun yerine: 'Bu filtre kriteri için X kayıt tespit edildi' de\n\n",
-      "GÖREV:\n",
-      "1. Özeti sadece tekrar etme - anlamını, içgörüsünü ve iş etkisini çıkar\n",
-      "2. Her sayısal bulguyu KÖK SEBEP'e bağla: \"Neden bu sayı bu? Ne anlama geliyor?\"\n",
-      "3. EYLEME DÖNÜK ÖNERİLER: \"Ne yapılmalı?\" sorusuna veriyle yanıt ver\n",
-      "4. TEMELLENDİRME: Sadece sağlanan özetle konuş; varsayım, komik yorum veya spekülasyondan kaçın\n",
-      "5. PROFESYONEL TON: Güvenilir, bilge, robotik olmayan dil\n\n",
-      "ZORUNLU YAPI:\n",
-      "- **\U0001F4CB Özet**: 2-3 cümlede kritik bulgular ve etki\n",
-      "- **\U0001F4CA Analiz**: Verilerin hikayesini akıcı şekilde anlat\n",
-      "- **\U0001F4A1 Öneriler**: Somut, önceliklendirilmiş eylemler\n",
-      "- **\U000026A0\U0000FE0F Dikkat Çekenler**: Uç değerler, anormallikler, riskler\n\n",
-      "TABLO FORMATI KURALI:\n",
-      "- Kullanıcı listeleme, sıralama veya karşılaştırma istiyorsa sonuçları MUTLAKA markdown tablo formatında sun\n",
-      "- Tablo formatı: | Sütun1 | Sütun2 | ... | şeklinde, başlık satırı ve ayırıcı ile\n",
-      "- Tablolarda en önemli sütunları seç, gereksiz sütunları dahil etme\n\n",
-      "KURALLAR:\n",
-      "- Sayıları doğru kullan, tahmin veya varsayım yapma\n",
-      "- Her yorumu veriye bağla - hayal ürünü yorum yasak\n",
-      "- Yapıcı, çözüm odaklı ol\n",
-      "- Kullanıcıya değer katan net ifadeler kullan\n",
-      "- \"Muhtemelen\", \"sanırım\" gibi belirsizliklerden kaçın\n"
-    )
-  }
-
-	if (!is.null(selected_query$info_file) && nzchar(selected_query$info_file)) {
-	  file_path_normalized <- gsub("\\\\", "/", selected_query$info_file)
-	  system_prompt <- paste0(system_prompt, 
-		"\n8. EK DOSYA: Kullaniciya su dosyayi incelemesini oner. Cevabinin en altina su HTML linkini ekle: <br><br>\U0001F449 <span class='analysis-file-link' data-filepath='", file_path_normalized, "' style='color:#007bff; cursor:pointer; text-decoration:underline; font-weight:bold;'>İlgili Dosyayı Görüntüle</span>\n")
-	}
-
-	if (!is.null(selected_query$info_url) && nzchar(selected_query$info_url)) {
-	  system_prompt <- paste0(system_prompt, 
-		"\n9. EK LINK: Kullaniciya su adresi incelemesini oner. Cevabinin en altina su HTML linkini ekle: <br><br>\U0001F310 <a href='", selected_query$info_url, "' target='_blank' rel='noopener noreferrer'><b>Daha Fazla Bilgi</b></a>\n")
-	}
+  system_prompt <- pk_build_analysis_system_prompt(analysis_mode, selected_query)
   
   user_msg <- paste0(
     "KULLANICI SORUSU:\n",
