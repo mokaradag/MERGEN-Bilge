@@ -14,7 +14,7 @@ reads only one of the two will make avoidable mistakes.
 |---|---|---|---|
 | 0 | Instrumentation + status plumbing | `merged_to_rebuild` | `b1805f5` (PR #695) |
 | 3a | Metadata contract | `merged_to_rebuild` | `aa39652` (PR #696) |
-| 1 | Surgical correctness | `in_review` | — (PR open) |
+| 1 | Surgical correctness | `in_review` | — (PR #697 open) |
 
 Planned order (§11): **0 → 3a → 1 → 2 → 4 → 5 → 6**, with **3b on the VM**.
 
@@ -658,7 +658,7 @@ One of my own fixtures was wrong rather than the code: `"AYNI"` folds to `aynı`
 * **Branch:** `claude/pk-phase-1-surgical-correctness-o6e6sg` (see "Deviations" — the
   harness-assigned branch name, not `pk/phase-1-correctness`; it is cut from the
   `origin/pk/rebuild` tip `aa39652`, which matched the expected tip exactly)
-* **PR:** base `pk/rebuild` ← head `claude/pk-phase-1-surgical-correctness-o6e6sg`
+* **PR:** #697, base `pk/rebuild` ← head `claude/pk-phase-1-surgical-correctness-o6e6sg`
 * **Merge SHA:** _pending_
 
 ### Defects re-verified before writing code (§0.1)
