@@ -13,7 +13,8 @@ reads only one of the two will make avoidable mistakes.
 | # | Phase | Status | Merge SHA on `pk/rebuild` |
 |---|---|---|---|
 | 0 | Instrumentation + status plumbing | `merged_to_rebuild` | `b1805f5` (PR #695) |
-| 3a | Metadata contract | `in_review` | — (PR #696 open) |
+| 3a | Metadata contract | `merged_to_rebuild` | `aa39652` (PR #696) |
+| 1 | Surgical correctness | `in_review` | — (PR open) |
 
 Planned order (§11): **0 → 3a → 1 → 2 → 4 → 5 → 6**, with **3b on the VM**.
 
@@ -224,12 +225,23 @@ is not installed in this container.
 
 ## Phase 3a — Metadata contract
 
-* **Status:** `in_review`
+* **Status:** `merged_to_rebuild`
 * **Branch:** `claude/pk-phase-3a-metadata-5nf9m1` (see "Deviations" — the branch
   name is the session's assigned branch, not `pk/phase-3a-metadata`; it is cut
   from the same `origin/pk/rebuild` tip `b1805f5`)
-* **PR:** #696, base `pk/rebuild` ← head `claude/pk-phase-3a-metadata-5nf9m1`
-* **Merge SHA:** _pending_
+* **PR:** #696, base `pk/rebuild` ← head `claude/pk-phase-3a-metadata-5nf9m1` — **merged**
+* **Merge SHA:** `aa39652` (merge commit on `pk/rebuild`)
+
+> **Stale-record correction (made at the start of the Phase-1 session).** This
+> section previously read `in_review` / `_pending_`, and the phase table listed
+> Phase 3a as `in_review`. `git log --oneline -8 origin/pk/rebuild` shows
+> `aa39652 Merge pull request #696 from mokaradag/claude/pk-phase-3a-metadata-5nf9m1`
+> at the tip, so Phase 3a was already merged. Per §11 ("trust the log, and record
+> any discrepancy") the log wins and both the table and this section were
+> corrected. **This is the second consecutive phase in which the record was left
+> stale**; the same cross-check caught it both times. A session that skipped the
+> cross-check would have refused to start Phase 1 on the grounds that Phase 3a
+> was still `in_review`.
 
 ### Claims re-verified before writing code (§0.1)
 
@@ -637,3 +649,307 @@ One of my own fixtures was wrong rather than the code: `"AYNI"` folds to `aynı`
 (dotless ı) under Turkish rules and correctly does NOT collide with ASCII
 `"Ayni"` -> `ayni`. The fixture now asserts both the real collision (`"Aynı"` /
 `"AYNI"`) and the correct non-collision.
+
+---
+
+## Phase 1 — Surgical correctness
+
+* **Status:** `in_review`
+* **Branch:** `claude/pk-phase-1-surgical-correctness-o6e6sg` (see "Deviations" — the
+  harness-assigned branch name, not `pk/phase-1-correctness`; it is cut from the
+  `origin/pk/rebuild` tip `aa39652`, which matched the expected tip exactly)
+* **PR:** base `pk/rebuild` ← head `claude/pk-phase-1-surgical-correctness-o6e6sg`
+* **Merge SHA:** _pending_
+
+### Defects re-verified before writing code (§0.1)
+
+Line numbers had drifted; each was re-read in the current checkout. **Every claim
+still reproduces.** Nothing in the plan was found to be withdrawn.
+
+| Defect | Verdict | Evidence in the current code |
+|---|---|---|
+| **D1** same-column AND | **REPRODUCES** | `R/helpers_pk_analysis_filters.R` reassigns `dt <- dt[grepl(...), ]` per filter inside one loop; two `contains` leaves on one column intersect. |
+| **D2** multi-value truncation | **REPRODUCES** | `val_str <- .pk_filter_observation_scalar(val)` returns `as.character(x)[1]`. |
+| **D3** Turkish case | **REPRODUCES** | three `grepl(..., ignore.case = TRUE)` call sites for `exact_match`/`contains`/default. |
+| **D4** zero-match | **REPRODUCES** | module returns only *"Filtreleme sonrası veri bulunamadı"*. |
+| **D5** `eval(parse())` | **REPRODUCES** | `dt <- subset(dt, eval(parse(text = expr_str)))`. |
+| **D6** RLS column | **REPRODUCES** | three `if (col_name %in% names(filtered_data))` guards silently skip; `if (yetki == "ADMIN")` errors on `NA`. |
+| **D6b** role scope | **REPRODUCES** | `tryCatch(..., error = function(e) NULL)` **and** `if (nrow(user_rows) > 0)` both leave the scope `NULL`; `apply_rls_to_data` then skips the predicate. |
+| **D7** budget | **REPRODUCES** | budget checked against `summary_parts` only; `preview_json` assembled afterwards in the module. |
+| **D8** warning lost | **REPRODUCES** | the over-budget recursion passes only `max_preview_rows`/`max_total_chars`/`pre_aggregated_columns`. |
+| **D9** silent degradation | **REPRODUCES** | `filter_timeout <- 8`; degraded status recorded (Phase 0) but the analysis still proceeds over the full set. |
+| **D12** dead guard | **REPRODUCES** | condition requires `length(filters) == 0`, body assigns `filters <- list()`. |
+| **D22** ODBC leak | **REPRODUCES** | `conditionMessage(e)` embedded in the user-visible message. |
+| **D23** SQL gate | **REPRODUCES** | blocklist `\b(DELETE|DROP|TRUNCATE|ALTER)\b` plus a validator that **accepts** `INSERT|UPDATE|EXEC`; deep mode additionally uses locale-dependent `toupper()`. |
+
+### Engine boundary as implemented
+
+| Item | Gating | Where |
+|---|---|---|
+| D6 / D6b RLS fail-closed | **unconditional** | `R/helpers_pk_rls.R` + `apply_rls_to_data()` |
+| D23 read-only SQL classifier | **unconditional** | `R/helpers_pk_sql_readonly.R`, called by module **and** deep mode |
+| D22 ODBC redaction | **unconditional** | `R/helpers_pk_safe_errors.R` |
+| M8 actual-column gate (RLS verdict) | **unconditional** | `pk_meta_actual_column_gate()` |
+| D1 D2 D3 D4 D5 D7 D8 D9 D12 | `MERGEN_PK_ENGINE=v2` | compiler / policy / v2 executor / budget |
+
+Three of those files are **statically proven** free of `MERGEN_PK_ENGINE` and
+`pk_engine_is_v2` references, so a safety fix cannot be hidden behind the flag.
+
+### Files added
+
+| File | Purpose | Purity |
+|---|---|---|
+| `R/helpers_pk_sql_readonly.R` | D23 statement-aware, fail-closed read-only classifier: literal/comment/identifier masking, statement split (`;` + `GO`), forbidden keyword/prefix families, CTE terminal-statement check. | pure |
+| `R/helpers_pk_safe_errors.R` | D22 redaction: unsafe-diagnostic detection, generic Turkish message, log-then-return helper. | pure |
+| `R/helpers_pk_rls.R` | D6/D6b decision layer: `pk_rls_code_norm()`, collision guard, scope states, `pk_rls_plan()`, classed `pk_rls_stop()`, plus the M8 `pk_meta_actual_column_gate()`. | pure |
+| `R/helpers_pk_filter_compile.R` | D1/D2/D3 compiler: OR-in-column, AND-across-column, AND for complementary bounds, NOT, multi-value, Turkish fold, no-op detection. | pure |
+| `R/helpers_pk_filter_policy.R` | D4 zero-match policy (primary refuses / secondary drops with disclosure), D9 degraded gate, disclosure block. | pure |
+| `R/helpers_pk_analysis_filters_v2.R` | v2 executor tying compiler+policy to the v1 return shape; carries the decision as an attribute. | pure |
+| `R/helpers_pk_prompt_budget.R` | D7 whole-payload accountant + the single v1/v2 payload builder. | pure |
+| `R/helpers_pk_analysis_prompts.R` | System prompt builder, moved **byte-identically** out of the module. | pure |
+| `R/helpers_pk_statistical_summary.R` | `generate_statistical_summary()`, split out to hold the ≤400-line contract on the RLS file. | pure |
+
+### Files modified
+
+| File | Change |
+|---|---|
+| `R/module_proje_kaynak_analizi.R` | SQL gate before execution; redacted DB errors; M8 gate; RLS abort handling; v2 degraded gate + refusal; payload builder. **700 → 682 lines** (it shrank, per §6). |
+| `R/helpers_pk_analysis_security_summary.R` | `get_user_rls_info()` records typed scope states; `apply_rls_to_data()` delegates to `pk_rls_plan()` and fails closed. **373 → 194 lines.** |
+| `R/helpers_pk_statistical_summary.R` (new home) | D8: v2 recursion carries `mode`/`rls_total_rows`/`user_filter_applied`, and the basic-summary fallback keeps the warning. |
+| `R/helpers_deep_analysis.R` | Same shared SQL gate (locale-dependent `toupper()` removed), M8 gate, RLS abort handling. |
+| `R/helpers_pk_analysis_filters.R` | v2 dispatch in front of the untouched v1 body; observation contract preserved on both paths. |
+| `R/helpers_pk_analysis_filters_base.R` | `MERGEN_PK_FILTER_TIMEOUT_SEC` consumed **only** under v2; v1 keeps its literal 8. |
+| `R/helpers_pk_config.R` | New `double` type; three knobs; `pk_engine_mode()` / `pk_engine_is_v2()`. |
+| `R/config_source_manifest.R` | Nine new files in `analysis_helpers`, dependency-ordered. |
+| `.Renviron.example` | Three new knobs with Turkish comments stating they are v2-only. |
+| `tests/.../test-source-manifest-sections-contract.R` | Frozen anchors updated consciously: `analysis_helpers` 13 → 22, total 383 → 392. |
+
+### Tests added, and what each **proves**
+
+| Test | Proves |
+|---|---|
+| `test-pk-sql-readonly-gate-contract.R` (72) | Single SELECT / CTE-SELECT / parenthesised UNION accepted; Turkish `[bracketed]` and `"quoted"` identifiers and `]]` escapes are **not** false positives; keywords inside literals, line comments and **nested** block comments are inert; `SELECT ... INTO`, data-modifying CTEs and all 14 write/DDL/DCL/backup/execute families rejected; `sp_`/`xp_` prefixes rejected; multi-statement and `GO` batches rejected **with the reason named**; unterminated literal/comment/identifier and unknown statements fail **closed**; the refusal message carries neither the SQL nor the table name; both the module and deep mode call the same gate; the old blocklist and the write-accepting validator are gone; the classifier is statically free of engine-flag references. |
+| `test-pk-rls-failclosed-contract.R` (66) | Missing declared RLS column **aborts**, never skips; unavailable scope aborts, empty scope yields **zero** rows (never all), and a caller carrying no scope state falls to the safe side; `NA`/empty `Yetki` fails closed instead of erroring; ADMIN unchanged; a resolved-but-unenforceable scope is reported, not silent; `pk_rls_code_norm()` is minimal (no case folding, no suffix/punctuation handling) and statically does not use `pk_tr_fold`; the collision guard is proven to fire **when the normalizer is loosened** (the honest test, since the minimal normalizer cannot collide); the user message leaks no column/code/reason; M8 aborts unconditionally on an RLS mismatch while a non-RLS metadata mismatch aborts only under v2; both call sites are wired. |
+| `test-pk-filter-compile-behavior.R` (25) | Two same-column `contains` return the **union** (v1 returned 0); cross-column stays AND; complementary date **and** numeric bounds stay AND on one column; multi-value vectors and JSON lists survive intact; `İSTANBUL`/`KALIP` fold under Turkish rules where `ignore.case` fails; exclusions, invalid leaves, no-op ratio on both sides of the threshold, zero-match provenance, empty inputs; and the fold helper **fails closed** rather than falling back to `tolower()`. |
+| `test-pk-filter-policy-behavior.R` (51) | Primary zero-match **refuses** and names value + column, with no nearest-candidate text (Phase 4 owns that); secondary zero-match drops with disclosure while the primary filter still applies; primary resolution follows metadata → sole-leaf fallback → undetermined; degraded statuses refuse and say analysis was **not** run, while legitimate statuses do not; the `filter_expression` side-effect counter proves it is **never evaluated** in v2, and the source is free of `eval(parse(`/`subset(dt`; the dead D12 guard is absent; the v2 return shape matches v1 for list/count/sum/group_by/empty. |
+| `test-pk-prompt-budget-behavior.R` (22) | The budget covers the **whole** payload (short summary + huge JSON is trimmed); an over-budget summary sends zero preview rows and discloses it; a fitting payload is untouched; v1 payload building is byte-shape unchanged and un-budgeted; v2 emits the budget note; D8 — the v2 recursion **keeps** `FİLTRELEME UYARISI` while v1 still loses it; the knob follows metadata → env → default and rejects invalid values. |
+| `test-pk-safe-error-redaction-contract.R` (25) | Five synthetic ODBC/driver/DSN shapes all collapse to the generic message; our own Turkish validation text passes through; empty/NA fall back; detail is **logged** and not lost; the module uses the helper and the old `err_msg` embedding is gone; redaction is engine-independent. |
+| `test-pk-v1-compatibility-contract.R` (34) | `v1` is the default; under `v1` the D1 intersection, the D2 truncation, the D5 expression execution and the absence of the D4 policy are **all still present**, while the same fixtures under `v2` produce the corrected result; the v1 filter timeout literal is preserved; the Phase-0 observation contract holds on **both** engines; the four cross-engine files are statically flag-free while the module's v2 behavior is flag-gated. |
+
+Total: **295 new assertions**, all offline — no DB, LLM, browser, SSO, network or
+real secret. Every fixture is synthetic (`SENTETIK ...`, `q_sentetik`,
+`SentetikDsn`); no real project or programme name appears anywhere.
+
+**Mutation-checked.** Every new test was verified to actually fail when the fix it
+guards is reverted, rather than merely being green:
+
+| Reverted behavior | Failures |
+|---|---|
+| SQL gate accepts multi-statement batches | 6 |
+| SQL literal/comment/identifier masking removed | 11 |
+| missing RLS column skipped again (D6) | 3 |
+| unavailable/empty scope means "no filter" again (D6b) | 8 |
+| same-column AND instead of OR (D1) | 2 |
+| multi-value truncated to `[1]` (D2) | 3 |
+| `tolower()` instead of `pk_tr_fold()` (D3) | 3 |
+| zero-match policy disabled (D4) | 9 |
+| degraded-status gate disabled (D9) | 9 |
+| `eval(parse())` restored in v2 (D5) | 2 |
+| budget measured on the summary only (D7) | 3 |
+| v2 recursion drops context again (D8) | 2 |
+| raw ODBC message returned to the user (D22) | 7 |
+| M8 gate never aborts | 2 |
+| engine dispatch removed (v1 leak) | 5 |
+
+### Design decisions, with reasoning
+
+**P1 — `SET NOCOUNT ON;` before a SELECT is now refused, and that is a real
+deployment risk the operator must check.** §5.4/D23 is explicit: "no second
+statement". A production `.sql` file that opens with a session setting will
+therefore be rejected with reason `multiple_statements`. This is fail-closed and
+plan-conformant, but it is the single most likely way Phase 1 breaks a working
+query on the VM. The classifier logs the reason and statement count so the
+diagnosis is one log line, and a dedicated test pins the behavior. **Before
+enabling this on the VM, grep the ~169 query files for leading `SET`/`GO`.** If
+any exist, the conscious choice is to strip them or to extend the classifier with
+a narrow allowlist of provably side-effect-free session settings — not to weaken
+the single-statement rule generally.
+
+**P2 — `INTO` is a forbidden keyword anywhere in the statement, not just after
+`SELECT`.** Matching `SELECT ... INTO` positionally is fragile once CTEs, unions
+and subqueries are involved. Because bracketed/quoted identifiers are masked
+first, a column literally named `[Into]` is unaffected; only a bare `INTO` token
+trips it. Fail-closed beats clever parsing here.
+
+**P3 — RLS row matching stays byte-identical to v1; only the scope list is
+normalized.** `pk_rls_code_norm()` is applied to the *declared scope*, never to
+the data column being compared. Normalizing the data side (e.g. trimming) could
+make previously non-matching rows match, which **widens** a user's scope — the
+wrong direction for a security fix. The comparison remains `%in%` on raw column
+values, exactly as before.
+
+**P4 — The collision guard cannot fire today, and that is the point.** With a
+normalizer that only does UTF-8/NFC/trim, two genuinely distinct codes cannot
+collapse. The guard compares each code's `pk_rls_code_norm()` key against a
+*reference* key (NFC + trim), so it fires precisely when someone later loosens the
+normalizer. The test proves this by re-sourcing the file into an environment where
+`pk_rls_code_norm` has been replaced with a case-folding version. Asserting a
+collision against the production normalizer would have required a fixture that
+cannot exist.
+
+**P5 — A resolved-but-unenforceable scope keeps v1 behavior, and is logged.**
+If a scoped role has a valid scope but the query declares no matching
+`rls_columns` entry, there is no predicate to apply. Returning zero rows there
+would break every non-project-scoped query for PY users. The plan's long-term
+answer is SQL-side predicates (§5.6); until then this is reported in
+`plan$unenforced` and logged, never silent. **This is the one place where D6b's
+"never all rows" is not literally enforced, and it is stated here rather than
+buried.** The two cases the plan calls out — unavailable scope and empty scope —
+*are* enforced literally.
+
+**P6 — M8 is split into two verdicts, only one of which is unconditional.** A
+`fail_closed` verdict (declared RLS column missing/invalid/duplicated) aborts on
+both engines: it is a security verdict. A non-RLS metadata mismatch aborts only
+under v2, because v1 uses metadata for no decision at all, and aborting v1 for it
+would be a behavior change outside the four §10 cross-engine items. Since every
+production query is currently Tier-0, the second branch is inert in practice.
+
+**P7 — D9 refuses rather than continuing with disclosure.** §8 says "prevent
+silent full-set continuation". When the filter plan timed out we do not know what
+the user asked to filter on, so a disclosed full-set analysis would still answer a
+different question (§5.4 rule 6). v2 therefore returns an explicit Turkish
+"could not be determined" message and records the outcome. v1 is untouched.
+
+**P8 — `utils::modifyList()` is avoided again, and it bit again.** `pk_rls_plan()`
+and `pk_filter_compile()` both initially used it for their result skeletons; it
+merges list-valued fields recursively by name and silently **drops unnamed
+lists**, so `predicates` came back empty and the PY fixture returned all rows.
+This is the same trap recorded as Phase-0 D9. Both now use plain assignment. It
+was caught by an existing test, not by a new one — which is the argument for
+keeping that older coverage.
+
+**P9 — Two files were split purely for budget, with byte-identical content.**
+`pk_build_analysis_system_prompt()` was moved out of the module (verified
+byte-identical for both `full` and `summary` modes against the pre-change code)
+so the module could absorb the new call sites and still shrink; and
+`generate_statistical_summary()` moved to `R/helpers_pk_statistical_summary.R`
+because the RLS file's own contract test caps it at 400 lines. **No budget was
+raised anywhere.** The second split also isolates the function §5.7 says Phase 2
+will replace.
+
+**P10 — v2 decisions travel back to the module as an attribute, not a new return
+type.** `apply_smart_filters()` must keep returning a `data.frame` for every
+existing caller (including the Ortak Oturum bridge). The v2 policy decision rides
+in `attr(x, PK_FILTER_V2_ATTR)`, which the module reads **before**
+`normalize_pk_dataframe_utf8()` drops attributes.
+
+**P11 — Secondary drops reuse the Phase-0 provenance pipeline.** Rather than
+inventing a second disclosure channel, dropped zero-match columns are recorded as
+`dropped_filters` in the existing filter-observation store, which
+`pk_analysis_observe()` already converts into user-visible footer warnings.
+
+### Deviations from the plan
+
+1. **Branch name.** The plan says `pk/phase-1-correctness`; the harness assigned
+   `claude/pk-phase-1-surgical-correctness-o6e6sg`. The substance holds: cut from
+   the `origin/pk/rebuild` tip `aa39652` (which matched the expected tip), one
+   phase only, PR base `pk/rebuild`, never `main`.
+2. **Nine new files instead of the five §6 names.** §6 lists
+   `helpers_pk_filter_compile.R` and `helpers_pk_text_turkish.R` (the latter
+   already landed in Phase 3a). The other seven exist because the alternative was
+   growing `module_proje_kaynak_analizi.R` and
+   `helpers_pk_analysis_security_summary.R` past their contracts. Each new file is
+   single-purpose, pure, manifest-declared and seam-owned.
+3. **P5** (unenforceable-scope boundary) is narrower than a literal reading of
+   D6b, argued above.
+4. **P6/P7** are scope decisions, argued above.
+5. **Nearest-value hints deliberately omitted** — §8 assigns candidate ranking to
+   the Phase 4 resolver. A test asserts the refusal message does **not** contain
+   them, so a later phase upgrading the message is a conscious change.
+
+No maintainability budget was raised. No v1 selection or filter decision changed.
+
+### Review findings received and how each was resolved
+
+None yet — PR just opened.
+
+### What remains unproven and needs the VM
+
+* **The SQL classifier against the ~169 real query files.** Every fixture here is
+  synthetic. If any production query carries a leading `SET`/`GO`, a data-modifying
+  CTE, or an `EXEC`, it will now be refused (see **P1**). This is the highest-risk
+  item in the phase and must be checked before flipping anything on.
+* **Real SQL Server behavior** of the accepted statements — the classifier reasons
+  about text, not about what the driver executes.
+* **Real ODBC error shapes.** Redaction is matched against synthetic driver
+  messages; the real `nanodbc` text on the Windows VM may differ.
+* **Real RLS data.** `DC01_user_base`, `sql_permission_py` and `sql_permission_eps`
+  are never contacted here. The unavailable-vs-empty split is proven only against
+  a stubbed connection, and the **operational impact** of the new fail-closed
+  behavior (how many users/queries newly abort or return zero rows) is unknown
+  until it runs on the VM.
+* **Turkish folding on a Turkish Windows locale** for the filter comparisons —
+  Phase 3a's golden-byte assertion will detect drift, but it has not run there.
+* **The v2 path end to end.** No v2 request has ever been executed against a real
+  query, real data or a real filter LLM. `MERGEN_PK_ENGINE=v2` is off by default
+  and must stay off until the VM validates it.
+* **Deep mode** interaction with the new gates under real multi-query load.
+* Browser UX smoke **SKIPPED** in this container (no browser binary).
+
+### Exact validation commands run, and their real results
+
+Environment note: this container starts in a **POSIX/C locale**, which makes R fail
+to read the repo's UTF-8 sources. Every command below was run with `LC_ALL=C.UTF-8`.
+
+| Command | Result |
+|---|---|
+| `Rscript tests/scripts/parse_sanity_check.R` | `OK: 1077 dosya parse edildi.` |
+| 7 new Phase-1 test files | `pass=295 fail=0 warn=0 skip=0` |
+| All `test-pk-*` / `test-deep-analysis-*` + manifest/seam/ratchet/production/secret files | `fail=0 warn=0` |
+| `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")` | `FAIL 0 WARN 0 PASS 270` |
+| `testthat::test_file("tests/testthat/test-pk-analysis-maintainability-contract.R")` | `FAIL 0 WARN 0 PASS 7` |
+| `testthat::test_file("tests/testthat/test-source-manifest-sections-contract.R")` | `FAIL 0 WARN 0 PASS 170` |
+| `testthat::test_file("tests/testthat/test-seam-registry-contract.R")` | `FAIL 0 WARN 0 PASS 12` |
+| `bash tools/seam_doctor.sh` | `SEAM_DOCTOR_RESULT: OK (yapısal sorun yok)` |
+| `source("tests/scripts/maintainability_report.R")` | Skor **100/100**; 800+ satır **0**; 25+ fonksiyon **0**; en büyük dosya **795**; en yüksek fonksiyon **24** — Faz 0/3a taban çizgisiyle aynı, hiçbir bütçe yükseltilmedi |
+| `bash tools/ai_validate.sh full --boot-smoke` | **PASSED** — `failed_steps: 0`, `skipped_steps: 0`. Artifact: `artifacts/ai-validation/20260804-060423/summary.json` |
+
+`full --boot-smoke` proof fields (verbatim from `summary.json`):
+
+```
+validation_execution_status: ran_by_ai_repo_check
+profile_requested: full          profile_effective: full
+failed_steps: 0                  skipped_steps: 0
+app_source_smoke_status:      passed
+full_testthat_suite_status:   passed      (412.2s, zero failures)
+shiny_boot_smoke_status:      passed
+browser_smoke_status:         skipped     <-- no Chrome/Chromium/Edge binary in this container
+db_sso_vm_validation_status:  not_performed_by_ai_validate
+sql_server_turkish_encoding_preflight_status: not_performed_by_ai_validate
+manual_fragile_flow_evidence_status:          not_performed_by_ai_validate
+```
+
+**Honesty boundary.** The mandatory `full --boot-smoke` gate for this phase **did
+run and did pass**, including app source smoke, the full testthat suite and Shiny
+boot smoke. Browser UX smoke **SKIPPED** (no browser binary — the runner exits 0 on
+that skip by design, so it is *not* browser proof). Nothing here proves runtime,
+VM, SSO, real DB, SQL Server Turkish encoding, or browser behavior; those remain
+the VM gates in §14 of the plan. In particular, **no claim is made that the
+read-only classifier accepts the real production queries** (see **P1**).
+
+Note: the pre-existing `helpers_deep_analysis.R` ratchet breach that blocked the
+Phase-3a gate was already fixed on `pk/rebuild` (post-review split into
+`helpers_deep_analysis_detail.R` / `helpers_deep_analysis_context.R`), so the full
+suite runs clean here.
+
+### Behavior changes made to existing tests (coverage extended, never deleted)
+
+| Test | Change |
+|---|---|
+| `test-pk-analysis-security-summary-contract.R` | Loader sources `helpers_pk_rls.R` + `helpers_pk_statistical_summary.R`; three new tests assert the D6/D6b fail-closed contract alongside the unchanged ADMIN/PY/EPS cases. |
+| `test-deep-analysis-execute-query-behavior.R` | Loader sources the shared gate helpers; the expected refusal message is now the more specific D23 text. |
+| `test-pk-analiz-process-request-behavior.R` | Loader sources the new helpers; the forbidden-SQL test now asserts the gate refuses **before** connecting and leaks neither the SQL nor a DB-error wrapper; a new test asserts D22 redaction end to end. |
+
+**M8 is now closed.** `pk_meta_validate_actual_columns()`, written and tested but
+deliberately unwired in Phase 3a, is called from both the main module and deep
+mode immediately before RLS. That was the one loose end Phase 3a left.

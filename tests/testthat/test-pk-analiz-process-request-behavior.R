@@ -41,6 +41,15 @@
   )
   for (fn in guard_fns) assign(fn, function(...) NULL, envir = env)
 
+  # Faz 1: modul artik salt-okunur SQL kapisini, ODBC redaksiyonunu, kapali
+  # basarisiz RLS/gercek-sutun kapisini ve saf istem/yuk kuruculari tuketir.
+  for (yardimci in c("helpers_pk_config.R", "helpers_pk_safe_errors.R",
+                     "helpers_pk_sql_readonly.R", "helpers_pk_query_meta_schema.R",
+                     "helpers_pk_query_meta_access.R", "helpers_pk_rls.R",
+                     "helpers_pk_prompt_budget.R", "helpers_pk_analysis_prompts.R")) {
+    source(file.path(kok, "R", yardimci), encoding = "UTF-8", local = env)
+  }
+
   source(file.path(kok, "R", "module_proje_kaynak_analizi.R"), encoding = "UTF-8", local = env)
 
   env$cat <- function(...) invisible(NULL)
@@ -143,18 +152,40 @@ test_that("pk_analiz_process_request geçersiz/kısa SQL için sistem hatası d�
   expect_true(grepl("Geçersiz SQL sorgusu", res, fixed = TRUE))
 })
 
-test_that("pk_analiz_process_request yasaklı SQL komutunu reddeder (Faz 5 güvenlik)", {
+test_that("pk_analiz_process_request yasakli SQL komutunu reddeder (D23 salt-okunur kapisi)", {
   env <- .pkAnalizEnv()
-  # Türkçe yorum: geçerli görünen ama DELETE içeren SQL -> güvenlik ihlali
+  # Türkçe yorum: geçerli görünen ama DELETE içeren çok ifadeli SQL reddedilir.
   cagrildi <- new.env(parent = emptyenv()); cagrildi$exec <- FALSE
   env$execute_pk_sql_unicode <- function(conn, sql) { cagrildi$exec <- TRUE; data.frame(x = 1L) }
   env$select_smart_query <- function(...) list(id = 1L, name = "S",
                                                sql = "SELECT * FROM tablo; DELETE FROM tablo")
   res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
-  expect_true(grepl("Veritabanı Hatası", res, fixed = TRUE))
-  expect_true(grepl("Guvenlik ihlali", res, fixed = TRUE))
+
+  # Faz 1 / D23 + D22: Davranis BILEREK degisti. Eskiden kara liste bir stop()
+  # firlatiyor, bu da tryCatch tarafindan "Veritabani Hatasi: ... Guvenlik
+  # ihlali ..." seklinde HAM mesajla kullaniciya donuyordu. Artik kapi
+  # baglantidan ONCE reddeder ve genel guvenlik mesaji doner; ham SQL/hata
+  # metni sohbete SIZMAZ.
+  expect_true(grepl("Güvenlik Kontrolü", res, fixed = TRUE))
+  expect_false(grepl("DELETE", res, fixed = TRUE))
+  expect_false(grepl("Veritabanı Hatası", res, fixed = TRUE))
   # Türkçe yorum: yasaklı komut yüzünden gerçek SQL ÇALIŞTIRILMAMALI
   expect_false(cagrildi$exec)
+})
+
+test_that("pk_analiz_process_request ham ODBC hatasini sohbete gommez (D22)", {
+  env <- .pkAnalizEnv()
+  env$select_smart_query <- function(...) list(id = 1L, name = "S", sql = "SELECT * FROM tablo")
+  env$execute_pk_sql_unicode <- function(conn, sql) {
+    stop("nanodbc/nanodbc.cpp:1655: 42S02: [Microsoft][ODBC Driver]Invalid object name 'GizliTablo'.")
+  }
+
+  res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
+
+  expect_true(grepl("Veritabanı Hatası", res, fixed = TRUE))
+  for (sizinti in c("nanodbc", "42S02", "ODBC", "GizliTablo")) {
+    expect_false(grepl(sizinti, res, fixed = TRUE), info = sizinti)
+  }
 })
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,246 @@
+# ==============================================================================
+# Dosya Yolu: tests/testthat/test-pk-sql-readonly-gate-contract.R
+# Açıklama: D23 — ifade farkında, kapalı başarısız salt-okunur SQL
+#           sınıflandırıcısı. Tümü çevrimdışı ve deterministiktir: gerçek DB,
+#           LLM, tarayıcı, SSO, ağ veya gerçek sır KULLANILMAZ. Fixture'lar
+#           sentetiktir; gerçek proje/program adı geçmez.
+# ==============================================================================
+
+.pk_sql_gate_env <- function() {
+  repo_root <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  source(file.path(repo_root, "R", "helpers_pk_sql_readonly.R"),
+         encoding = "UTF-8", local = env)
+  env
+}
+
+.pk_sql_read_bytes <- function(rel_path) {
+  full <- file.path(resolve_repo_root_for_tests(), rel_path)
+  size <- suppressWarnings(file.info(full)$size[1])
+  if (is.na(size) || size <= 0) return("")
+  con <- file(full, open = "rb")
+  on.exit(close(con), add = TRUE)
+  raw_data <- readBin(con, what = "raw", n = size)
+  txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]])
+  if (is.na(txt)) "" else enc2utf8(txt)
+}
+
+test_that("tek bir salt-okunur SELECT ve CTE+SELECT kabul edilir", {
+  env <- .pk_sql_gate_env()
+
+  kabul <- c(
+    "SELECT * FROM SentetikTablo",
+    "   select a, b from t where x = 1   ",
+    "WITH c AS (SELECT 1 AS a) SELECT * FROM c",
+    "WITH a AS (SELECT 1 x), b AS (SELECT 2 y) SELECT * FROM a JOIN b ON 1 = 1",
+    "(SELECT 1 AS a) UNION ALL (SELECT 2 AS a)",
+    "SELECT TOP 10 a, SUM(b) OVER (PARTITION BY c) AS t FROM t WITH (NOLOCK) GROUP BY a, b, c ORDER BY a",
+    "SELECT CASE WHEN a > 1 THEN 'x' ELSE 'y' END AS d FROM t CROSS APPLY dbo.f(a)",
+    "SELECT * FROM t WHERE x = 1; "
+  )
+
+  for (sql in kabul) {
+    sonuc <- env$pk_sql_classify_readonly(sql)
+    expect_true(
+      isTRUE(sonuc$allowed),
+      info = sprintf("Gecerli salt-okunur SELECT reddedildi: %s (gerekce=%s)",
+                     substr(sql, 1, 60), sonuc$reason %||% "-")
+    )
+  }
+})
+
+test_that("Turkce koseli/tirnakli sutun adlari yanlis pozitif uretmez", {
+  env <- .pk_sql_gate_env()
+
+  # Koseli tanimlayici icindeki "Silme"/"Guncelleme" gibi kelimeler ve
+  # "]]" kacisi anahtar kelime taramasina GIRMEMELIDIR.
+  sqls <- c(
+    "SELECT [Silme Tarihi], [Güncelleme Zamani] FROM [Proje Özeti]",
+    "SELECT \"Insert Tarihi\" FROM t",
+    "SELECT [A]]B] FROM t"
+  )
+
+  for (sql in sqls) {
+    sonuc <- env$pk_sql_classify_readonly(sql)
+    expect_true(isTRUE(sonuc$allowed),
+                info = sprintf("Tanimlayici icerigi yanlis pozitif uretti: %s", sql))
+  }
+})
+
+test_that("literal ve yorum icindeki zararsiz anahtar kelimeler yanlis pozitif uretmez", {
+  env <- .pk_sql_gate_env()
+
+  sqls <- c(
+    "SELECT * FROM t WHERE Aciklama = 'DROP TABLE X'",
+    "SELECT * FROM t -- DELETE FROM Y\n",
+    "SELECT * FROM t /* MERGE INTO Z */",
+    "SELECT * FROM t /* dis /* ic */ hala yorum */",
+    "SELECT 'it''s an INSERT' AS a FROM t"
+  )
+
+  for (sql in sqls) {
+    sonuc <- env$pk_sql_classify_readonly(sql)
+    expect_true(isTRUE(sonuc$allowed),
+                info = sprintf("Literal/yorum icerigi yanlis pozitif uretti: %s", sql))
+  }
+})
+
+test_that("tek ifadeli yan etkiler reddedilir (SELECT ... INTO dahil)", {
+  env <- .pk_sql_gate_env()
+
+  sonuc <- env$pk_sql_classify_readonly("SELECT * INTO #gecici FROM t")
+  expect_false(isTRUE(sonuc$allowed))
+  expect_identical(sonuc$reason, "forbidden_keyword")
+  expect_identical(sonuc$statement_kind, "INTO")
+})
+
+test_that("veri degistiren CTE reddedilir", {
+  env <- .pk_sql_gate_env()
+
+  sonuc <- env$pk_sql_classify_readonly(
+    "WITH c AS (DELETE FROM t OUTPUT deleted.* ) SELECT * FROM c"
+  )
+  expect_false(isTRUE(sonuc$allowed))
+  expect_identical(sonuc$reason, "forbidden_keyword")
+})
+
+test_that("son ifadesi SELECT olmayan CTE reddedilir", {
+  env <- .pk_sql_gate_env()
+
+  sonuc <- env$pk_sql_classify_readonly("WITH c AS (SELECT 1 AS a) SEC * FROM c")
+  expect_false(isTRUE(sonuc$allowed))
+  expect_identical(sonuc$reason, "cte_not_select")
+})
+
+test_that("her write/DDL/DCL/backup/execute ailesi reddedilir", {
+  env <- .pk_sql_gate_env()
+
+  aile <- c(
+    INSERT    = "INSERT INTO t VALUES (1)",
+    UPDATE    = "UPDATE t SET a = 1",
+    DELETE    = "DELETE FROM t",
+    MERGE     = "MERGE t USING s ON 1 = 1 WHEN MATCHED THEN DELETE",
+    CREATE    = "CREATE TABLE t (a INT)",
+    DROP      = "DROP TABLE t",
+    ALTER     = "ALTER TABLE t ADD b INT",
+    TRUNCATE  = "TRUNCATE TABLE t",
+    GRANT     = "GRANT SELECT ON t TO kullanici",
+    DENY      = "DENY SELECT ON t TO kullanici",
+    REVOKE    = "REVOKE SELECT ON t FROM kullanici",
+    BACKUP    = "BACKUP DATABASE db TO DISK = 'x'",
+    RESTORE   = "RESTORE DATABASE db FROM DISK = 'x'",
+    EXEC      = "EXEC dbo.BirYordam"
+  )
+
+  for (ad in names(aile)) {
+    sonuc <- env$pk_sql_classify_readonly(aile[[ad]])
+    expect_false(isTRUE(sonuc$allowed), info = sprintf("%s ailesi kabul edildi!", ad))
+  }
+
+  # sp_ / xp_ onekleri ayrica engellenir.
+  for (sql in c("SELECT * FROM sp_yardimci()", "SELECT * FROM xp_cmdshell")) {
+    sonuc <- env$pk_sql_classify_readonly(sql)
+    expect_false(isTRUE(sonuc$allowed), info = sql)
+    expect_identical(sonuc$reason, "forbidden_prefix")
+  }
+})
+
+test_that("cok ifadeli batch ve GO ayirici reddedilir", {
+  env <- .pk_sql_gate_env()
+
+  cok <- env$pk_sql_classify_readonly("SELECT 1; SELECT 2")
+  expect_false(isTRUE(cok$allowed))
+  expect_identical(cok$reason, "multiple_statements")
+  expect_identical(cok$statement_count, 2L)
+
+  # Operator tanilamasi icin onemli: uretimdeki bir SQL dosyasi basinda
+  # "SET NOCOUNT ON;" tasiyorsa bu KAPALI BASARISIZ olur ve gerekce
+  # multiple_statements olarak raporlanir.
+  ayar <- env$pk_sql_classify_readonly("SET NOCOUNT ON;\nSELECT * FROM t")
+  expect_false(isTRUE(ayar$allowed))
+  expect_identical(ayar$reason, "multiple_statements")
+
+  go <- env$pk_sql_classify_readonly("SELECT * FROM t\nGO\nSELECT * FROM u")
+  expect_false(isTRUE(go$allowed))
+  expect_identical(go$reason, "multiple_statements")
+})
+
+test_that("ayristirma belirsizligi KAPALI BASARISIZ olur", {
+  env <- .pk_sql_gate_env()
+
+  belirsiz <- list(
+    unterminated_literal    = "SELECT * FROM t WHERE x = 'kapanmamis",
+    unterminated_comment    = "SELECT * FROM t /* kapanmamis",
+    unterminated_identifier = "SELECT [kapanmamis FROM t",
+    empty_sql               = "   ",
+    not_select              = "TANIMSIZ BIR IFADE"
+  )
+
+  for (gerekce in names(belirsiz)) {
+    sonuc <- env$pk_sql_classify_readonly(belirsiz[[gerekce]])
+    expect_false(isTRUE(sonuc$allowed), info = gerekce)
+    expect_identical(sonuc$reason, gerekce)
+  }
+
+  expect_false(isTRUE(env$pk_sql_classify_readonly(NULL)$allowed))
+  expect_false(isTRUE(env$pk_sql_classify_readonly(NA_character_)$allowed))
+})
+
+test_that("guard reddettiginde ham SQL kullaniciya donmez", {
+  env <- .pk_sql_gate_env()
+
+  sql <- "DROP TABLE GizliTablo"
+  # Gerekce sunucu loguna yazilir; test ciktisini kirletmemesi icin yutulur.
+  utils::capture.output(kapi <- env$pk_sql_readonly_guard(sql), type = "output")
+
+  expect_false(isTRUE(kapi$allowed))
+  expect_true(nzchar(kapi$message))
+  expect_false(grepl("GizliTablo", kapi$message, fixed = TRUE))
+  expect_false(grepl("DROP", kapi$message, fixed = TRUE))
+})
+
+test_that("kapi TUM PK SQL yurutme yollarinda baglidir (v1 / v2 / derin mod)", {
+  modul <- .pk_sql_read_bytes("R/module_proje_kaynak_analizi.R")
+  derin <- .pk_sql_read_bytes("R/helpers_deep_analysis.R")
+
+  expect_true(
+    grepl("pk_sql_readonly_guard(", modul, fixed = TRUE, useBytes = TRUE),
+    info = "Ana PK modulu salt-okunur kapisini cagirmalidir."
+  )
+  expect_true(
+    grepl("pk_sql_readonly_guard(", derin, fixed = TRUE, useBytes = TRUE),
+    info = "Derin analiz de AYNI kapiyi kullanmalidir."
+  )
+
+  # Eski kara liste ve izin veren dogrulayici GERI GELMEMELIDIR.
+  for (metin in list(modul, derin)) {
+    expect_false(
+      grepl("\\b(DELETE|DROP|TRUNCATE|ALTER)\\b", metin, fixed = TRUE, useBytes = TRUE),
+      info = "Eski kara liste SQL kapisi geri gelmemelidir."
+    )
+  }
+  expect_false(
+    grepl("SELECT|INSERT|UPDATE|DELETE|EXEC", modul, fixed = TRUE, useBytes = TRUE),
+    info = "Write formlarini KABUL EDEN eski dogrulayici geri gelmemelidir."
+  )
+
+  # Yerel bagimli toupper() ile SQL taramasi geri gelmemelidir (D16).
+  expect_false(
+    grepl("toupper(sql_query_text)", derin, fixed = TRUE, useBytes = TRUE),
+    info = "Yerel bagimli toupper() SQL taramasi geri gelmemelidir."
+  )
+})
+
+test_that("kapi MERGEN_PK_ENGINE bayragindan BAGIMSIZDIR", {
+  metin <- .pk_sql_read_bytes("R/helpers_pk_sql_readonly.R")
+
+  expect_false(
+    grepl("MERGEN_PK_ENGINE", metin, fixed = TRUE, useBytes = TRUE),
+    info = "Salt-okunur kapisi motor bayragina bagli olmamalidir (kosulsuz)."
+  )
+  expect_false(
+    grepl("pk_engine_is_v2", metin, fixed = TRUE, useBytes = TRUE),
+    info = "Salt-okunur kapisi motor bayragina bagli olmamalidir (kosulsuz)."
+  )
+})
