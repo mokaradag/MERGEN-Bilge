@@ -563,3 +563,60 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   yüzlerce KB'lık örnek satır JSON'u bütçe kontrolünün dışında kalıyordu (D7).
 #   Yalnızca v2 motoru tüketir.
 # MERGEN_PK_PROMPT_CHAR_BUDGET=120000
+#
+#   ---- Faz 2: deterministik analiz ve dışa aktarım (yalnızca v2) ----
+#
+#   ANALİZ PAKETİ. İstatistikler TÜM satırlar üzerinden hesaplanır; aşağıdaki
+#   değerler yalnızca modele SUNULAN derinliği belirler.
+#   Kategorik sütun başına gösterilen ilk-K değer (adet ve pay ile birlikte).
+#   Eski özet yalnızca ilk beş kategorik sütunu ve her birinin ilk değerini
+#   veriyordu (D17); artık TÜM boyut sütunları özetlenir.
+# MERGEN_PK_TOPK_CATEGORIES=10
+#
+#   "Diğer" toplamasından önce gösterilen grup sayısı.
+# MERGEN_PK_GROUP_TOPN=15
+#
+#   Pakete giren temsilî örnek satır sayısı: en yüksek/en düşük + uç değer +
+#   sabit tohumlu tabakalı örnek. Eski yol `head(data, 500)` ile SQL'in dönüş
+#   sırasına bağlı, konumsal yanlı bir örnekti (D18).
+# MERGEN_PK_SAMPLE_ROWS=30
+#
+#   Tabakalı örneğin sabit tohumu; aynı veri için aynı örnek üretilir.
+# MERGEN_PK_SAMPLE_SEED=42
+#
+#   YANIT KOMPOZİSYONU eşikleri. Kurallar SIRALIDIR ve ilk eşleşen kazanır:
+#   (1) kullanıcı açıkça liste/döküm/rapor/excel istedi -> ek + önizleme,
+#   (2) satır > DT_MAX_ROWS veya sütun > INLINE_MAX_COLS_DT -> ek + önizleme,
+#   (3) satır <= INLINE_MAX_ROWS ve sütun <= INLINE_MAX_COLS -> satır içi tablo,
+#   (4) diğer her şey -> kaydırılabilir tablo görünümü.
+# MERGEN_PK_INLINE_MAX_ROWS=15
+# MERGEN_PK_INLINE_MAX_COLS=8
+# MERGEN_PK_DT_MAX_ROWS=200
+# MERGEN_PK_INLINE_MAX_COLS_DT=12
+#
+#   Ek yolunda baloncukta gösterilen önizleme satırı sayısı.
+# MERGEN_PK_PREVIEW_ROWS=10
+#
+#   DIŞA AKTARIM. Tek bir sayfa/parçadaki azami satır sayısı. Daha büyük bir
+#   sonuç ya doğrulanmış numaralı parçalara bölünür ya da AÇIKÇA reddedilir;
+#   sessizce kırpılmış bir dosya "eksiksiz" diye SUNULMAZ.
+# MERGEN_PK_EXPORT_MAX_ROWS=100000
+#
+#   Parça tavanı. Aşılırsa dışa aktarım reddedilir ve kullanıcıdan sorusunu
+#   daraltması istenir.
+# MERGEN_PK_EXPORT_MAX_PARTS=20
+#
+#   XLSX bellek tavanı (hücre = satır x sütun). writexl tüm sayfaları AYNI ANDA
+#   ister; tavan aşılırsa XLSX hiç denenmez ve parçaları teker teker yazan
+#   akışlı CSV yoluna geçilir. Sessiz kırpma DEĞİLDİR: tüm satırlar aktarılır.
+# MERGEN_PK_EXPORT_MAX_CELLS=2000000
+#
+#   SAYISAL KÖKEN DOĞRULAMASI. Modelin ürettiği her sayı, R'nin hesapladığı
+#   yapılandırılmış olguya karşı denetlenir (değer + birim + kullanılabilirlik).
+#     off   -> kapalı
+#     log   -> uyuşmazlıklar yalnızca sunucu tarafında kaydedilir (KALİBRASYON)
+#     warn  -> doğrulanamayan sayılar kullanıcıya görünür biçimde işaretlenir
+#     block -> düzyazı reddedilir, R'nin hesapladığı değerler gösterilir
+#   `log` ile başlanır; gerçek yanlış-pozitif oranı VM'de ölçülmeden `warn`
+#   veya `block` kipine GEÇİLMEZ.
+# MERGEN_PK_NUMERIC_PROVENANCE_MODE=log

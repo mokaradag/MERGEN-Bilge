@@ -299,6 +299,17 @@ source_manifest_sections <- list(
     # bunları yalnızca tüketir (modül KÜÇÜLMELİ, büyümemeli).
     "R/helpers_pk_prompt_budget.R",
     "R/helpers_pk_analysis_prompts.R",
+    # Faz 2 (v2 arkasında) bağımlılık sırası: olgu çekirdeği -> paket -> paket
+    # metni -> sayısal köken -> dışa aktarım planı/G-Ç -> kompozisyon -> sonuç.
+    "R/helpers_pk_packet_stats.R",
+    "R/helpers_pk_analysis_packet.R",
+    "R/helpers_pk_packet_render.R",
+    "R/helpers_pk_numeric_provenance.R",
+    "R/helpers_pk_export_plan.R",
+    "R/helpers_pk_export_csv.R",
+    "R/helpers_pk_export_xlsx.R",
+    "R/helpers_pk_answer_compose.R",
+    "R/helpers_pk_analysis_result.R",
     # Derin analiz: saf detay seviyesi kataloğu ve saf bağlam/prompt kurucu,
     # orkestratörden ÖNCE yüklenir (bakım borcu ratchet'i için bölünmüştür).
     "R/helpers_deep_analysis_detail.R",

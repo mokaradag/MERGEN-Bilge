@@ -64,7 +64,7 @@ test_that("gözlem yalnız uygulanan filtreleri ve yapılandırılmış motoru k
     captured$info <- info
     invisible(TRUE)
   }
-  env$pk_provenance_stash <- function(session, footer, request_id = NULL) {
+  env$pk_provenance_stash <- function(session, footer, request_id = NULL, ...) {
     captured$footer <- footer
     captured$request_id <- request_id
     invisible(TRUE)
@@ -128,7 +128,7 @@ test_that("tüm filtreler düşürüldüyse ok_no_filter bozuk olarak raporlanı
     captured$info <- info
     invisible(TRUE)
   }
-  env$pk_provenance_stash <- function(session, footer, request_id = NULL) {
+  env$pk_provenance_stash <- function(session, footer, request_id = NULL, ...) {
     captured$footer <- footer
     invisible(TRUE)
   }
@@ -182,7 +182,7 @@ test_that("düşürülen filtre stopped gibi özgül durumları ezmez", {
     captured$info <- info
     invisible(TRUE)
   }
-  env$pk_provenance_stash <- function(session, footer, request_id = NULL) {
+  env$pk_provenance_stash <- function(session, footer, request_id = NULL, ...) {
     invisible(TRUE)
   }
 

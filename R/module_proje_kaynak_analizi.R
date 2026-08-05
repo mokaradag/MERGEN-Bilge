@@ -457,52 +457,53 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     return(list(type = "error_message", content = bos_mesaj))
   }
   
-  analysis_mode <- selected_query$analysis_mode %||% "summary"
-  user_filter_was_applied <- (nrow(filtered_data) < nrow(secure_data))
-  
-  dynamic_preview_rows <- if (nrow(filtered_data) <= 500) nrow(filtered_data) else 500
-  
-  stat_summary <- generate_statistical_summary(
-    filtered_data,
-    max_preview_rows = dynamic_preview_rows,
-    mode = analysis_mode,
-    rls_total_rows = nrow(secure_data),
-    user_filter_applied = user_filter_was_applied,
-    pre_aggregated_columns = selected_query$pre_aggregated_columns
-  )
-  
-  cat(sprintf("[PK_ANALIZ] Istatistiksel ozet olusturuldu: %d satir, %d onizleme\n",
-              stat_summary$row_count,
-              if (!is.null(stat_summary$preview_data)) nrow(stat_summary$preview_data) else 0))
-  
-  # D7/D4: Model yuku (ozet + ornek satirlar + ifsa bloklari) tek bir saf
-  # kurucuda toplanir; modul yalnizca sonucu tuketir.
-  data_str <- pk_build_analysis_payload(
-    stat_summary = stat_summary,
+  # Faz 2: istatistik/paket, sistem istemi, kompozisyon ve dışa aktarım tek bir
+  # kurucudadır. v1 dalı BİREBİR korunur; v2 dalı analiz paketini (§5.7), R'ye
+  # ait tabloyu/eki (§5.8-§5.9) ve olgu referanslarını (§5.11) üretir.
+  # Paket kurulumu, dışa aktarım yazımı/geri okuması ve grup kırılımı bu
+  # isteğin EN PAHALI adımlarıdır; `stop_check` kurucuya iletilir ve pahalı
+  # sınırların arasında değerlendirilir.
+  analiz_sonucu <- pk_build_analysis_result(
+    filtered_data = filtered_data,
+    secure_data = secure_data,
     query = selected_query,
+    user_prompt = user_prompt,
+    filter_criteria = filter_criteria,
+    policy = pk_filter_policy,
+    session = session,
     engine_is_v2 = pk_engine_v2,
-    policy = pk_filter_policy
+    username = username,
+    stop_check = stop_check
   )
-  
-  if (nrow(secure_data) > nrow(filtered_data)) {
-    data_str <- paste0(
-      data_str,
-      sprintf("\n\n(RLS ve filtreleme oncesi toplam %d satir vardi)", nrow(secure_data))
+
+  # Durdurma paket/dışa aktarım sırasında geldiyse sonuç GÖZLEMLENMEZ ve
+  # LLM akışına devam EDİLMEZ.
+  if (identical(analiz_sonucu$type, "pk_stopped") ||
+      (is.function(stop_check) && isTRUE(stop_check()))) {
+    cat("[PK_ANALIZ] Durdurma talebi alindi (paket/disa aktarim sonrasi)\n")
+    pk_observe(
+      query_id = selected_query$id, query_name = selected_query$name,
+      filter_status = filter_criteria$status, filters = filter_criteria$filters,
+      pre_rls_rows = nrow(raw_data), authorized_rows = nrow(secure_data),
+      filtered_rows = nrow(filtered_data), outcome = "Durduruldu",
+      engine = if (isTRUE(pk_engine_v2)) "v2" else "v1"
     )
+    return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
-  
-  system_prompt <- pk_build_analysis_system_prompt(analysis_mode, selected_query)
-  
-  user_msg <- paste0(
-    "KULLANICI SORUSU:\n",
-    user_prompt,
-    "\n\n--- R TARAFINDAN HAZIRLANAN ISTATISTIKSEL OZET ---\n",
-    data_str,
-    "\n\n--- OZET SONU ---\n\n",
-    "Talımat: Yukaridaki istatistikleri kullanarak kullanicinin sorusuna DOGRUDAN cevap ver. ",
-    "Sayilari AYNEN kullan. Trendleri ve onemli bulgulari vurgula."
-  )
-  
+
+  # Paket istem bütçesine sığmadıysa kurucu deterministik bir ret döndürür;
+  # bu bir LLM yanıtı değildir ve "Basarili" olarak kaydedilmemelidir.
+  if (identical(analiz_sonucu$type, "error_message")) {
+    pk_observe(
+      query_id = selected_query$id, query_name = selected_query$name,
+      filter_status = filter_criteria$status, filters = filter_criteria$filters,
+      pre_rls_rows = nrow(raw_data), authorized_rows = nrow(secure_data),
+      filtered_rows = nrow(filtered_data), outcome = "Reddedildi",
+      engine = if (isTRUE(pk_engine_v2)) "v2" else "v1"
+    )
+    return(analiz_sonucu)
+  }
+
   cat("[PK_ANALIZ] AI baglami hazirlandi. List donduruluyor.\n")
 
   # Alt bilgi burada hazırlanıp istek kapsamlı yuvaya konur; nihai yanıt metnine
@@ -511,17 +512,18 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     query_id = selected_query$id, query_name = selected_query$name,
     filter_status = filter_criteria$status, filters = filter_criteria$filters,
     pre_rls_rows = nrow(raw_data), authorized_rows = nrow(secure_data),
-    filtered_rows = nrow(filtered_data), outcome = "Basarili"
+    filtered_rows = nrow(filtered_data), outcome = "Basarili",
+    # Motor etiketi ÇÖZÜLMÜŞ değerdir: `pk_observe` varsayılanı "v1" olduğu
+    # için basarili her Faz-2 istegi v1 gibi kaydediliyor ve v2 yayilim
+    # olcumleri bozuluyordu.
+    engine = if (isTRUE(pk_engine_v2)) "v2" else "v1",
+    attachment = analiz_sonucu$pk_attachment,
+    answer_block = analiz_sonucu$pk_answer_block,
+    facts = analiz_sonucu$pk_facts,
+    fallback_text = analiz_sonucu$pk_fallback_text
   )
 
-  return(list(
-    type = "data_analysis",
-    data = secure_data,
-    prompt_context = system_prompt,
-    user_context = user_msg,
-    query_name = selected_query$name,
-    max_tokens = 4096
-  ))
+  return(analiz_sonucu)
 }
 
 # ==============================================================================
