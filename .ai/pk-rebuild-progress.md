@@ -16,7 +16,7 @@ reads only one of the two will make avoidable mistakes.
 | 3a | Metadata contract | `merged_to_rebuild` | `aa39652` (PR #696) |
 | 1 | Surgical correctness | `merged_to_rebuild` | `f1368b2` (PR #697) |
 | 2 | Deterministic analysis + export | `merged_to_rebuild` | `e3893dd` (PR #698) |
-| 4 | Entity resolution | `in_review` | — (PR open) |
+| 4 | Entity resolution | `in_review` | — (PR #699 open) |
 
 Planned order (§11): **0 → 3a → 1 → 2 → 4 → 5 → 6**, with **3b on the VM**.
 
@@ -1504,7 +1504,7 @@ Ratchet unchanged: score 100/100, 0 files at 800+ lines, 0 at 25+ functions.
 * **Branch:** `claude/phase-4-entity-resolver-60vwbl` (harness-assigned; see
   "Deviations"). Cut from the `origin/pk/rebuild` tip `e3893dd`, which matched
   the expected tip exactly.
-* **PR:** base `pk/rebuild` ← head `claude/phase-4-entity-resolver-60vwbl`
+* **PR:** #699, base `pk/rebuild` ← head `claude/phase-4-entity-resolver-60vwbl`
 * **Merge SHA:** _pending_ — correct this from `bash tools/pk_phase_status.sh`,
   not from memory (see "Durable fix for the stale-record problem" at the top).
 
