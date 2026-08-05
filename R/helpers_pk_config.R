@@ -152,6 +152,53 @@ pk_config_spec <- list(
     default = 2000000L,
     min = 1L
   ),
+  # --- Faz 4 (§5.4): varlık çözümleme eşikleri ----------------------------
+  # HEPSİ 0..100 aralığında tam sayıdır ve `pk_resolve_thresholds()` içinde
+  # AYRICA ilişkileri doğrulanır: MIN <= MULTI <= AUTO. Tek anahtar
+  # doğrulaması bu ilişkiyi yakalayamaz — örneğin MIN=90 ile AUTO=85 tek tek
+  # geçerli, birlikte tutarsızdır ve kapalı başarısızlığa yol açmalıdır.
+  #
+  # Çözümleyicideki HİÇBİR dal bu değerleri sabit kodlamaz (§5.4 açık kuralı).
+  #
+  # Tek adayın otomatik kabul edildiği eşik.
+  MERGEN_PK_RESOLVE_AUTO_SCORE = list(
+    type = "integer",
+    default = 85L,
+    min = 0L,
+    max = 100L
+  ),
+  # Çoğul isteklerde adayın "güçlü" sayıldığı eşik. Bu eşiği geçen adaylar
+  # sessizce BİRLEŞTİRİLMEZ; kullanıcıya onaylatılır.
+  MERGEN_PK_RESOLVE_MULTI_SCORE = list(
+    type = "integer",
+    default = 70L,
+    min = 0L,
+    max = 100L
+  ),
+  # Bu eşiğin altı "çözümlenemedi" sayılır (kural 6/7).
+  MERGEN_PK_RESOLVE_MIN_SCORE = list(
+    type = "integer",
+    default = 40L,
+    min = 0L,
+    max = 100L
+  ),
+  # Tepe ile ikinci aday arasındaki fark bu değerin altındaysa tahmin
+  # yürütülmez, kullanıcıya sorulur.
+  MERGEN_PK_RESOLVE_AMBIGUITY_MARGIN = list(
+    type = "integer",
+    default = 10L,
+    min = 0L,
+    max = 100L
+  ),
+  # Tek bir OR grubunda TAMAMEN görünür/onaylanabilir azami kanonik değer.
+  # Daha büyük kümeler daraltma/sayfalama gerektirir ve değerler "Tümü"
+  # arkasına SAKLANAMAZ.
+  MERGEN_PK_RESOLVE_MAX_CANDIDATES = list(
+    type = "integer",
+    default = 5L,
+    min = 1L,
+    max = 5L
+  ),
   # --- Faz 2 (§5.11): sayısal köken doğrulaması ---------------------------
   # `log` ile başlanır: gerçek yanlış-pozitif oranı VM'de ölçülmeden `warn`
   # veya `block` kipine geçilmez.

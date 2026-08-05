@@ -15,13 +15,41 @@ reads only one of the two will make avoidable mistakes.
 | 0 | Instrumentation + status plumbing | `merged_to_rebuild` | `b1805f5` (PR #695) |
 | 3a | Metadata contract | `merged_to_rebuild` | `aa39652` (PR #696) |
 | 1 | Surgical correctness | `merged_to_rebuild` | `f1368b2` (PR #697) |
-| 2 | Deterministic analysis + export | `in_review` | — (PR open) |
+| 2 | Deterministic analysis + export | `merged_to_rebuild` | `e3893dd` (PR #698) |
+| 4 | Entity resolution | `in_review` | — (PR open) |
 
 Planned order (§11): **0 → 3a → 1 → 2 → 4 → 5 → 6**, with **3b on the VM**.
 
 > A session must not start phase N+1 while phase N is still `in_review`.
-> Before starting, run `git fetch origin pk/rebuild && git log --oneline -8 origin/pk/rebuild`
-> and cross-check this table against the log. **Trust the log**, and record any discrepancy.
+> Before starting, run `git fetch origin pk/rebuild && bash tools/pk_phase_status.sh`
+> and cross-check this table against its output. **Trust the log**, and record any
+> discrepancy.
+
+### Durable fix for the stale-record problem (added in the Phase-4 session)
+
+The table above went stale at the start of **four consecutive phases** (3a, 1, 2, 4).
+That is a structural defect, not four independent slips: the merge SHA is written by
+the session that **opens** the PR, but that session ends *before* the merge happens, so
+it can only ever write `in_review` / `_pending_`. Nobody is present at merge time.
+
+Two changes, so the next session does not repeat this:
+
+1. **Implemented — `tools/pk_phase_status.sh`.** Derives the real merge state from
+   `git log --merges` on the integration branch and prints one line per PK phase
+   (`phase-<digit>` branch pattern), with SHA, PR number and branch. Read-only, no
+   dependencies, ASCII-only. This converts "remember to update a file" into one
+   command whose output *is* the authoritative table. It is not a runtime file, so it
+   carries no manifest/seam/ratchet obligation.
+2. **Recommended, NOT implemented — status should be written at merge time.** The
+   honest options are (a) the operator updates this file as part of merging, or (b) a
+   CI job on `pk/rebuild` rewrites the table from `tools/pk_phase_status.sh` output
+   after each merge. Neither is something this session can do from inside a PR that
+   has not merged yet, and adding a CI workflow is outside a Phase-4 entity-resolution
+   PR. Flagged for the operator rather than smuggled in.
+
+Until (2) exists, the convention stays: **the session that opens a PR writes
+`in_review`, and the NEXT session corrects it from `tools/pk_phase_status.sh`.** That
+is now a documented, one-command step rather than an act of memory.
 
 ---
 
@@ -1069,12 +1097,24 @@ pre-existing policy, not review findings.
 
 ## Phase 2 — Deterministic analysis + export
 
-* **Status:** `in_review`
+* **Status:** `merged_to_rebuild`
 * **Branch:** `claude/pk-phase-2-analysis-export-otxf78` (harness-assigned; see
   "Deviations"). Cut from the `origin/pk/rebuild` tip `f1368b2`, which matched
   the expected tip exactly.
 * **PR:** #698, base `pk/rebuild` ← head `claude/pk-phase-2-analysis-export-otxf78`
-* **Merge SHA:** _pending_
+  — **merged**
+* **Merge SHA:** `e3893dd` (merge commit on `pk/rebuild`)
+
+> **Stale-record correction (made at the start of the Phase-4 session).** This
+> section read `in_review` / `_pending_`, and the phase table listed Phase 2 as
+> `in_review`, but `git log --oneline -8 origin/pk/rebuild` shows
+> `e3893dd Merge pull request #698 from mokaradag/claude/pk-phase-2-analysis-export-otxf78`
+> at the tip, with the review-round commit `360c077` beneath it. Per §11 ("trust
+> the log, and record any discrepancy") the log wins and both records were
+> corrected. **This is the FOURTH consecutive phase whose record was left stale
+> by the session that opened its PR.** See "Durable fix for the stale-record
+> problem" below — the recurrence is now treated as a process defect rather than
+> four independent slips.
 
 ### Defects re-verified before writing code (§0.1)
 
@@ -1455,3 +1495,263 @@ Ratchet unchanged: score 100/100, 0 files at 800+ lines, 0 at 25+ functions.
 `R/helpers_pk_export_csv.R` was added to the `analysis_helpers` manifest section
 (frozen anchors 30 -> 31 and 400 -> 401 updated consciously).
 
+
+---
+
+## Phase 4 — Entity resolution
+
+* **Status:** `in_review`
+* **Branch:** `claude/phase-4-entity-resolver-60vwbl` (harness-assigned; see
+  "Deviations"). Cut from the `origin/pk/rebuild` tip `e3893dd`, which matched
+  the expected tip exactly.
+* **PR:** base `pk/rebuild` ← head `claude/phase-4-entity-resolver-60vwbl`
+* **Merge SHA:** _pending_ — correct this from `bash tools/pk_phase_status.sh`,
+  not from memory (see "Durable fix for the stale-record problem" at the top).
+
+### Defects re-verified before writing code (§0.1)
+
+| Defect | Verdict | Evidence in the current code |
+|---|---|---|
+| **D11** — `chat_history` declared and never read | **REPRODUCES** | `R/module_proje_kaynak_analizi.R:65` `pk_analiz_process_request(user_prompt, chat_history, session, stop_check)` and `:626` `select_smart_query(prompt, library, chat_history)`. `grep -n chat_history` over that file and `R/helpers_pk_analysis_query_selection.R` returns **only** those two signatures plus the pass-through at `:141`. Neither body references it. |
+| §5.4 `chartr()` / codepoint folding rejection | **HOLDS** | Re-measured, and independently re-confirmed by this phase: `pk_tr_fold("ELEKTRONIK")` = `elektronık` (dotless ı) vs `pk_tr_fold("elektronik")` = `elektronik`. See E3 — this asymmetry is real and load-bearing. |
+| §5.4 ASCII-secondary-key necessity | **HOLDS** | `KALIP` folds to `kalıp`; a user typing `kalip` matches on neither the fold nor edit distance at any tier. Only the ASCII key reaches it. |
+
+No claim from the plan was found to be withdrawn; nothing from §3.9 was resurrected.
+
+### Engine boundary as implemented
+
+All four new files are **pure** and statically free of `pk_engine_is_v2` /
+`pk_engine_mode` — asserted by `test-pk-entity-resolver-contract.R`. They are a
+new *capability*, not a new code path: nothing in the v1 request flow calls them,
+so v1 behavior is byte-identical. `pk_build_analysis_result()` remains the only
+v1/v2 branch point. Phase 5 (selection rebuild) owns wiring the resolver into
+`select_smart_query()`; see E6.
+
+### Files added
+
+| File | Purpose | Size |
+|---|---|---|
+| `R/helpers_pk_entity_normalize.R` | Normalization pipeline on top of `pk_tr_fold()`: apostrophe clitics, punctuation collapse, ASCII secondary key, suffix-stripped token set, plural heuristic. Pure. | 263 / 9 fn |
+| `R/helpers_pk_entity_score.R` | Six-tier scoring cascade with the exact §5.4 formulas; deterministic C-locale ordering. Pure. | 255 / 8 fn |
+| `R/helpers_pk_entity_resolver.R` | Threshold resolution + relationship validation (fail-safe), the seven-rule decision policy in order, clarification chips, overflow. Pure. | 338 / 11 fn |
+| `R/helpers_pk_entity_history.R` | D11: reads `chat_history`, detects elliptical follow-ups, inherits prior entity context. Pure. | 210 / 8 fn |
+| `tools/pk_phase_status.sh` | Derives real phase merge state from `git log`. Not runtime; no manifest/seam/ratchet obligation. | 60 |
+| 4 × `tests/testthat/test-pk-entity-*.R` | 351 assertions. | — |
+
+### Files modified
+
+| File | Change |
+|---|---|
+| `R/helpers_pk_config.R` | Five `MERGEN_PK_RESOLVE_*` keys registered (integer, 0..100; max-candidates 1..5). |
+| `.Renviron.example` | The five knobs with Turkish comments, including the fail-safe relationship rule. |
+| `R/config_source_manifest.R` | Four entity files in `analysis_helpers`, before `helpers_pk_filter_compile.R`. Optional-layer block moved out (E5). |
+| `R/bootstrap_source_manifest.R` | Received the optional / expected-absent layer data (E5). |
+| `tests/testthat/test-source-manifest-sections-contract.R` | Frozen anchors updated consciously: `analysis_helpers` n 31 → 35, total 401 → 405. |
+| 4 test files reading the optional-layer objects | Now source `bootstrap_source_manifest.R` too (E5). |
+
+### Tests added, and what each **proves**
+
+| Test | Proves |
+|---|---|
+| `test-pk-entity-normalize-behavior.R` (51) | Clitics stripped for straight **and** typographic apostrophes; ASCII key maps all six Turkish letters; composed/decomposed `İ` produce one key; suffix stripping is **non-destructive** (`hatta`, `yolda`, `bakım`, `onarım`, `tasarım`, `proje` survive intact) while `projelerinde → proje` and `şebekesi → şebeke` work; the `fold` key deliberately does **not** stem (E2); blank/NA inputs flagged; plural heuristic; byte-identical folding across `C` and `C.UTF-8`. |
+| `test-pk-entity-score-behavior.R` (65) | **Every contract formula pinned to an exact integer**: J=0.60→60, J=62/63→84, d=0.20→50, tier-4 at both 85 and 89, tier-6 ceiling 69 *and* the 80-char case →68 (proving "about 69" is not accepted), `kalip→kalıp`→90, alias→95, exact→100. Alias never beats an exact match; a missing alias target is reported. ASCII-key collisions return **all** colliding values tied at 90. `exact_only` refuses every fuzzy tier. Empty phrase/vocabulary are **invalid input**, not zero-score. Ordering is identical under reversed input. |
+| `test-pk-entity-resolver-contract.R` (190) | Defaults equal the §9 table. **`MIN=90 / AUTO=85` fails safe** — automatic resolution disabled, clear operator error, no partial branch evaluation. Under a valid `MIN=MULTI=AUTO=95`, a 90-point candidate is **never** auto-accepted. Rule ordering proven **in both directions**: 100-vs-87 plural clarifies at rule 3 (would have auto-accepted at 100 without the ordering) while the same phrase against a singular vocabulary auto-accepts at rule 4; three tied candidates clarify at rule 2 *before* rule 3. Rule 5 pre-selects and never filters; rules 6/7 split by entity role. Codes never fuzzed. Overflow at exactly 2 / exactly max / max+1, with `offer_all` forced FALSE and nothing executed on overflow. Static guards: purity, no engine flag, no `chartr`/`utf8ToInt`, fold not redefined, no literal threshold in any comparison, manifest order, config-spec registration. |
+| `test-pk-entity-history-behavior.R` (45) | D11 still reproduces in v1. Both message shapes (`role`/`content`, `type`/`content`) read; assistant messages never treated as user prompts; malformed history safe. Follow-up cues detected; the canonical *"peki 2024 için?"* example inherits the right entity and lands on **confirm**, not a silent filter. Inheritance is skipped when the current phrase already resolves; a non-follow-up never inherits; a failing inherited phrase preserves the **original** decision; config errors are not "fixed" by inheritance. |
+
+**Total: 351 assertions**, all offline — no DB, LLM, browser, SSO, network or real secret. Every fixture is synthetic (`SENTETIK …`, `alfa/beta`, `q001`); no real project or programme name appears.
+
+**Mutation-checked.** Each guard was verified to actually fail when its behavior is reverted:
+
+| Reverted behavior | Result |
+|---|---|
+| E3 ASCII-token support in tiers 4/5/6 | 4 failures |
+| tier-4 formula pinned to a constant 85 | 2 failures |
+| threshold relationship check disabled | 5 failures |
+| rule 3 (plural) disabled | 4 failures |
+| overflow leaves "Tümü" enabled | 2 failures |
+| `exact_only` guard removed (codes fuzzed) | 2 + 5 failures |
+| E4 question-word stripping removed | 6 failures |
+
+### Design decisions, with reasoning
+
+**E1 — Rule 1 is scoped to id/exact columns, not to "any score of 100".**
+Reading rule 1 as "any exact match auto-filters" would let a 100-point tie bypass
+the ambiguity rule. Two distinct canonical values *can* share a fold key (trailing
+whitespace, case), and silently taking the first would be exactly the
+iteration-order selection §5.4 forbids. On a `resolve` column a 100 flows through
+rules 2→4 and still auto-accepts when the margin is clear.
+
+**E2 — The `fold` key does not strip suffixes; only the token set does.**
+§5.4 lists suffix stripping "for matching only". Stemming is heuristic and lossy;
+binding the 100-point auto-accept path to it would let a heuristic drive the
+highest-confidence branch. Stemming therefore lives in tiers 4/5, where the score
+is capped at 89. Behavior for the realistic case is unchanged (`kalıpta` → `kalıp`
+still scores 89 → auto-accept), but the confidence claim is honest.
+
+**E3 — Token tiers are diacritic-insensitive; J is the max over fold and ASCII keys. (Deviation, argued.)**
+Found by a failing test, not by inspection. Turkish folding maps ASCII capital `I`
+to dotless `ı`, so an ALL-CAPS ASCII vocabulary value — very common in enterprise
+Turkish databases — folds to `elektronık` while the user's `elektronik` keeps the
+dotted `i`. **Measured: J = 0.50, below every tier, so partial-phrase matching
+produced *no match at all*.** Tier 3 rescues only whole-string equality, so §8's
+acceptance criterion ("long project names resolve from partial Turkish phrases")
+would have silently failed against exactly the data shape production is most
+likely to have. J is now computed over both representations and the **maximum**
+taken (and the minimum `d` for tier 6), so a score can only ever *increase*, every
+formula is byte-identical, and tier 3 (90) still outranks tier 4 (≤89). This
+extends the plan's ASCII-key idea from whole strings to tokens; recorded as a
+conscious deviation. Both the ALL-CAPS and the mixed-case Turkish paths are tested.
+
+**E4 — Question words are stripped from *inherited* prior prompts only. (Deviation, argued.)**
+Also found by a failing test. What gets inherited is not an entity phrase but the
+user's previous full *question*; the interrogative tokens inflate the token set.
+**Measured: `"elektronik harp şebekesi bütçesi nedir"` against
+`"Sentetik Elektronik Harp Şebekesi"` gives J = 0.50 — no match — so the plan's own
+D11 example did not work.** A Turkish interrogative list is applied **only** to
+inherited prior messages; the user's current phrase and the canonical candidates
+are untouched, and domain nouns (`bütçe`, `maliyet`) are deliberately *not* in the
+list because they can be discriminating. Extracting an entity phrase from the
+*current* question belongs to the filter plan (§5.3) and is Phase 5's job.
+
+**E5 — The optional-layer block moved from `config_source_manifest.R` to `bootstrap_source_manifest.R`. (Forced, and it deserves the operator's attention.)**
+`R/config_source_manifest.R` was at **794** lines against a **795** global cap, so
+**any** phase adding a runtime file would exceed it — even two files with zero
+comments (796). Raising the budget is forbidden, so the block had to move. The
+first attempt (a new `R/config_source_manifest_optional.R`) was **abandoned**: a
+manifest-external file must be registered in `R/config_seam_registry.R`, and that
+file sits at **exactly** its locked 580-line budget, so even the single mandatory
+ownership line fails. Bootstrap was chosen instead because it already owns
+manifest **policy data** (`source_manifest_required_order` is data), is already
+seam-owned and already sourced before the manifest — so no new boot file, no
+`app.R` change, no `global.R` change and no seam-registry change was needed. Read
+paths are unchanged: bootstrap's own `get0(..., inherits = TRUE)` helpers resolve
+the objects exactly as before. Result: manifest 755, bootstrap 742, seam 580,
+score back to **100/100**.
+
+> **Flagged for the operator, not fixed here.** Two catalog files —
+> `config_source_manifest.R` and `config_seam_registry.R` — are pure registries
+> whose length grows monotonically with the codebase, yet they are governed by
+> fixed line caps. `config_seam_registry.R` at exactly 580/580 means **no new
+> guard test or manifest-external file can ever be registered**. That is almost
+> certainly an unintended consequence of the "lock near-limit files" policy rather
+> than a deliberate freeze. A direct cost was paid in this PR: the four Phase-4
+> guard tests **could not be registered** in the `mcp_analiz` seam, so the seam
+> will not go red if entity resolution breaks. The tests still run in the full
+> suite. Recommended follow-up (its own PR): treat registry/catalog files the way
+> `R/library_queries.R` is already treated, or split them consciously.
+
+**E6 — The resolver is built and proven but NOT wired into the runtime.**
+Same restraint as Phase 3a's M8. `select_smart_query()` is the consumer, and
+Phase 5 rebuilds it wholesale; adding a v2 branch there now would collide with
+that work, and `pk_build_analysis_result()` must remain the only v1/v2 branch
+point. The D11 gap is closed at the layer that can be proven offline — the pure
+helper that actually *reads* `chat_history` — and Phase 5 owns the call site.
+
+**E7 — Suffix stripping is symmetric, with a bounded and stated precision cost.**
+Both the user phrase and the candidate go through the same stemmer; asymmetric
+stripping causes silent misses. The known cost is that a stem collision
+(`motorin` → `motor`) can match a genuinely different value. It is bounded: the
+score is capped at 89 and the decision policy still applies, so on a closed
+vocabulary containing both values rule 2 clarifies. The stop-list deliberately
+excludes single-letter and `-ım/-im` suffixes, which were the destructive cases.
+
+**E8 — Deterministic ordering uses `method = "radix"`.**
+`order()` on character defaults to locale collation, which would make candidate
+ordering differ between the Turkish Windows VM and a POSIX container. Radix sorts
+in C-locale byte order, so ties break identically everywhere — the concrete
+mechanism behind "never select one by iteration order".
+
+### Deviations from the plan
+
+1. **Branch name** — harness-assigned `claude/phase-4-entity-resolver-60vwbl`
+   rather than `pk/phase-4-entity-resolution`. Substance preserved: cut from the
+   expected `origin/pk/rebuild` tip, one phase, PR targets `pk/rebuild`.
+2. **E3** — token tiers made diacritic-insensitive (extends the ASCII key from
+   whole strings to tokens). Argued above; without it a §8 acceptance criterion
+   silently fails.
+3. **E4** — interrogative stripping for inherited prompts. Argued above; without
+   it the plan's own D11 example does not work.
+4. **E5** — an unrelated, pre-existing ratchet wall had to be moved for this phase
+   to land at all. Flagged rather than silently absorbed.
+5. **E1/E2/E6** are scope/safety restraints, not disagreements.
+
+Five new files, four resolver + one ops script. No maintainability budget raised;
+no v1 runtime behavior changed.
+
+### Review findings received and how each was resolved
+
+None yet — PR just opened.
+
+### What remains unproven and needs the VM
+
+* **No real vocabulary has ever been resolved.** Every fixture is synthetic. The
+  scoring cascade has never met real Turkish project/programme names, so tier
+  distribution, the practical usefulness of the 40/70/85/10/5 defaults, and the
+  real frequency of rule 5 vs rule 2 are all unmeasured.
+* **The alias tier has never seen a real alias registry.** `R/library_query_aliases_local.R`
+  cannot exist in a cloud checkout, so tier 2 is proven only against synthetic maps.
+* **Turkish folding under a real Turkish Windows locale.** Byte-identity is
+  asserted across `C`/`C.UTF-8` here; the VM locale has not been exercised.
+* **E3's premise should be confirmed against production data.** The ALL-CAPS
+  asymmetry is measured and real, but whether production vocabulary is actually
+  ALL-CAPS, mixed-case, or both is a VM question. If it is mixed-case only, E3 is
+  harmless; if ALL-CAPS, E3 is what makes partial matching work at all.
+* **E4's interrogative list is untuned.** It was derived from the plan's example,
+  not from real traffic. Over-stripping would only reduce inheritance recall
+  (safe direction), but the list should be reviewed against real questions.
+* **Suffix-stripping precision on real names (E7).** The false-merge risk is
+  argued and bounded but not measured against a real closed vocabulary.
+* **Nothing here is wired into a request**, so no end-to-end behavior — chips
+  rendering, confirmation UX, filter application — has been observed in a browser.
+* `MERGEN_PK_ENGINE=v2` stays **OFF** by default until the VM validates it.
+
+### Exact validation commands run, and their real results
+
+Environment note: this container starts in a **POSIX/C locale**, which makes R
+fail to read the repo's UTF-8 sources. Every command below was run with
+`LC_ALL=C.UTF-8`.
+
+| Command | Result |
+|---|---|
+| `Rscript tests/scripts/parse_sanity_check.R` | `OK: 1098 dosya parse edildi.` |
+| `testthat::test_file("tests/testthat/test-pk-entity-normalize-behavior.R")` | `FAIL 0, WARN 0, SKIP 0, PASS 51` |
+| `testthat::test_file("tests/testthat/test-pk-entity-score-behavior.R")` | `FAIL 0, WARN 0, SKIP 0, PASS 65` |
+| `testthat::test_file("tests/testthat/test-pk-entity-resolver-contract.R")` | `FAIL 0, WARN 0, SKIP 0, PASS 190` |
+| `testthat::test_file("tests/testthat/test-pk-entity-history-behavior.R")` | `FAIL 0, WARN 0, SKIP 0, PASS 45` |
+| `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")` | `FAIL 0, PASS 270` |
+| `testthat::test_file("tests/testthat/test-source-manifest-sections-contract.R")` | `FAIL 0, PASS 170` |
+| `testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")` | `FAIL 0, PASS 22` |
+| `testthat::test_file("tests/testthat/test-pk-query-meta-contract.R")` | `FAIL 0, PASS 145` |
+| `source("tests/scripts/maintainability_report.R", encoding = "UTF-8")` | Skor **100/100**; 800+ satır **0**; 25+ fonksiyon **0**; en büyük dosya **795**; en yüksek fonksiyon **24** — Faz 2 tabanıyla AYNI |
+| `bash tools/seam_doctor.sh` | `SEAM_DOCTOR_RESULT: OK (yapısal sorun yok)` |
+| app source boot (`MERGEN_RUN_APP=false`, placeholder env) | `BOOT_OK`; resolver helpers present through the real manifest; thresholds resolve to `40/70/85/10/5` |
+| `bash tools/ai_validate.sh full --boot-smoke` | **PASSED** — `Failed steps: 0`, `Skipped steps: 0`. Artifact: `artifacts/ai-validation/20260805-131905/summary.json` |
+
+`full --boot-smoke` proof fields (verbatim from `summary.json`):
+
+```
+validation_execution_status: ran_by_ai_repo_check
+profile_requested: full          profile_effective: full
+failed_steps: 0                  skipped_steps: 0
+app_source_smoke_status:      passed
+full_testthat_suite_status:   passed      (458.5s, zero failures)
+shiny_boot_smoke_status:      passed
+browser_smoke_status:         skipped     <-- no Chrome/Chromium/Edge binary in this container
+db_sso_vm_validation_status:  not_performed_by_ai_validate
+sql_server_turkish_encoding_preflight_status: not_performed_by_ai_validate
+manual_fragile_flow_evidence_status:          not_performed_by_ai_validate
+```
+
+**Honesty boundary.** The mandatory gate **did run and did pass**, including app
+source smoke, the full testthat suite and Shiny boot smoke. Browser UX smoke is
+**SKIPPED** (no browser binary; the runner exits 0 on that skip by design) and is
+therefore **not** browser proof. Nothing here proves runtime, VM, SSO, real DB,
+SQL Server Turkish encoding, or browser behavior — those remain the §14 VM gates.
+
+**Pre-existing noise, verified not mine.** The suite log contains one
+`Unhandled promise error: attempt to apply non-function`. It originates in
+`tests/testthat/test-claude-code-run-prepare-behavior.R` and was reproduced on a
+clean worktree at the untouched `origin/pk/rebuild` tip
+(`git worktree add /tmp/pkbase4 origin/pk/rebuild`), where that file reports
+`FAIL 0, WARN 0, SKIP 0, PASS 145` with the identical stderr line. It is
+stderr noise from a mocked promise, not a test failure, and is unrelated to PK.

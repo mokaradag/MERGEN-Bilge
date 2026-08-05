@@ -288,6 +288,16 @@ source_manifest_sections <- list(
     "R/helpers_pk_safe_errors.R",
     "R/helpers_pk_sql_readonly.R",
     "R/helpers_pk_rls.R",
+    # Faz 4 (§5.4) varlık çözümleme: normalleştirme -> puanlama şelalesi ->
+    # karar politikası -> sohbet geçmişi daraltması (D11). Bağımlılık sırası
+    # zorunludur; dördü de SAFTIR (Shiny/DB/ağ yok) ve Türkçe katlamayı
+    # pk_query_metadata bölümündeki `pk_tr_fold()` üzerinden alır — katlama
+    # KOPYALANMAZ. Boru hattı sırasında filtre derlemesinden ÖNCE gelir:
+    # bulanıklık HANGİ DEĞERİN filtreleneceğini çözer, hangi satırın değil.
+    "R/helpers_pk_entity_normalize.R",
+    "R/helpers_pk_entity_score.R",
+    "R/helpers_pk_entity_resolver.R",
+    "R/helpers_pk_entity_history.R",
     # Faz 1 v2 davranış katmanı (MERGEN_PK_ENGINE=v2 arkasında): saf filtre
     # derleyicisi -> saf sıfır-eşleşme politikası -> v2 yürütücüsü. Yürütücü
     # ikisini de kullandığı için en sonda gelir; üçü de v1 uyumluluk yüzeyi
@@ -742,54 +752,4 @@ source_manifest_after_future_paths <- unlist(
 source_manifest_runtime_paths <- c(
   source_manifest_group_1_paths,
   source_manifest_after_future_paths
-)
-
-# Bir çalışma kopyasında bulunmayabilecek manifest yolları.
-#
-# BOOT GÜVENLİĞİ SÖZLEŞMESİ: Manifest normalde eksik dosyada fail-fast yapar ve
-# bu davranış korunmalıdır. Aşağıdaki iki dosya bunun bilinçli istisnasıdır:
-# git'te izlenirler, ancak henüz güncellenmemiş bir on-prem çalışma kopyasında
-# fiziksel olarak bulunmayabilirler. Bunları ZORUNLU kılmak, üretimdeki
-# uygulamayı "Kaynak manifesti doğrulaması başarısız" hatasıyla hiç
-# açılmaz duruma sokar. Mevcut olduklarında normal sırayla yüklenirler;
-# bulunmadıklarında yalnızca sertleştirmeleri devre dışı kalır, uygulama açılır.
-#
-# Bu listeye yeni dosya eklemek bilinçli bir karardır: eksikliği gerçekten
-# tolere edilebilir olmayan hiçbir runtime dosyası buraya eklenmemelidir.
-# Gruplar ATOMİKTİR: bir üyesi eksikse grubun tamamı atlanır. Codex output
-# hardening dosyası, runtime hardening katmanı yüklenmeden source edildiğinde
-# bilinçli olarak stop() eder; bu yüzden ikisi ya birlikte yüklenir ya hiç
-# yüklenmez. Aksi halde yalnızca runtime dosyası eksik olan bir çalışma
-# kopyasında uygulama yine açılmaz.
-source_manifest_optional_source_groups <- list(
-  codex_hardening = c(
-    "R/helpers_claude_code_codex_runtime_fixes.R",
-    "R/helpers_claude_code_codex_output_fixes.R"
-  ),
-
-  # Faz 3a: üreticinin (generator) VM'de yazdığı sorgu metadata envanteri.
-  # Gerçek sütun adları, kardinalite ve null oranları taşır; gitignore'ludur.
-  pk_query_meta_local = "R/library_query_meta_local.R",
-
-  # Faz 3a: operatörün VM'de tuttuğu üretim alias -> kanonik değer haritaları.
-  # Kurumsal proje/program adları taşır; gitignore'ludur ve üretici ASLA yazmaz.
-  pk_query_aliases_local = "R/library_query_aliases_local.R"
-)
-
-# Yokluğu BEKLENEN opsiyonel gruplar.
-#
-# codex_hardening eksikse çalışma kopyası bozuktur ve bu GÜRÜLTÜLÜ bildirilir.
-# Buradaki gruplar ise tam tersidir: gitignore'lu, VM'e özgü dosyalardır ve her
-# bulut/CI checkout'unda TASARIM GEREĞİ yoktur. Onlar için her boot'ta uyarı
-# yazmak, gerçek bir sorunu gösteren codex_hardening uyarısını gürültüye
-# boğardı. Bu liste yalnızca MESAJI susturur; dosyalar yine opsiyoneldir ve
-# eksikken bölümün geri kalanı normal şekilde yüklenir.
-source_manifest_expected_absent_source_groups <- c(
-  "pk_query_meta_local",
-  "pk_query_aliases_local"
-)
-
-source_manifest_optional_source_paths <- unlist(
-  source_manifest_optional_source_groups,
-  use.names = FALSE
 )

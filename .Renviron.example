@@ -620,3 +620,37 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   `log` ile başlanır; gerçek yanlış-pozitif oranı VM'de ölçülmeden `warn`
 #   veya `block` kipine GEÇİLMEZ.
 # MERGEN_PK_NUMERIC_PROVENANCE_MODE=log
+#
+#   Faz 4 — VARLIK ÇÖZÜMLEME EŞİKLERİ (master plan §5.4). Kullanıcının yazdığı
+#   ifade, sütunun GERÇEK ayrık değerlerinden oluşan kapalı sözlüğe karşı altı
+#   katmanlı bir şelaleyle puanlanır (kesin katlama 100 / alias 95 / ASCII
+#   ikincil anahtar 90 / belirteç kapsama <=89 / Jaccard <=84 / düzenleme
+#   mesafesi <=69). Aşağıdaki eşikler PUANI DEĞİL, puanla NE YAPILACAĞINI
+#   belirler.
+#
+#   ÖNEMLİ: bu üç eşik arasında MIN <= MULTI <= AUTO ilişkisi ZORUNLUDUR.
+#   İlişki bozuksa (örn. MIN=90 ile AUTO=85) otomatik çözümleme TAMAMEN devre
+#   dışı bırakılır ve operatöre açık hata gösterilir; kısmen sıralı dallar
+#   değerlendirilmez. Bu bilinçli bir KAPALI BAŞARISIZLIK davranışıdır.
+#
+#   Tek adayın kullanıcıya sorulmadan otomatik kabul edildiği eşik.
+# MERGEN_PK_RESOLVE_AUTO_SCORE=85
+#
+#   Çoğul bir istekte adayın "güçlü" sayıldığı eşik. Bu eşiği geçen birden çok
+#   aday sessizce BİRLEŞTİRİLMEZ; kullanıcıya onaylatılır.
+# MERGEN_PK_RESOLVE_MULTI_SCORE=70
+#
+#   Bu eşiğin altındaki tepe puan "çözümlenemedi" sayılır. Varlık sorunun
+#   ÖZNESİYSE analiz hiç yapılmaz; ikincil bir daraltmaysa analiz filtresiz
+#   sürer ve durum kullanıcıya AÇIKÇA bildirilir.
+# MERGEN_PK_RESOLVE_MIN_SCORE=40
+#
+#   Tepe aday ile ikinci aday arasındaki fark bu değerin altındaysa tahmin
+#   yürütülmez, netleştirme çipleri gösterilir.
+# MERGEN_PK_RESOLVE_AMBIGUITY_MARGIN=10
+#
+#   Tek bir OR grubunda TAMAMEN görünür ve onaylanabilir azami kanonik değer
+#   (1..5). Küme bu sınırı aşarsa yalnızca ilk N aday gösterilir, "N aday daha
+#   var" uyarısı eklenir, "Tümü" seçeneği KAPATILIR ve sorgu ÇALIŞTIRILMAZ;
+#   gizli adaylar asla "Tümü" arkasına saklanamaz.
+# MERGEN_PK_RESOLVE_MAX_CANDIDATES=5
