@@ -169,18 +169,25 @@ pk_export_prepare_percent <- function(data, meta = list(), formatted = FALSE) {
   list(data = data, headers = basliklar, percent_columns = yuzde_sutunlari, notes = notlar)
 }
 
-#' CSV yedeğinde formül benzeri KARAKTER değerleri etkisizleştir (§5.9 madde 8)
+#' CSV yedeğinde formül benzeri METİN değerleri etkisizleştir (§5.9 madde 8)
 #'
-#' Yalnızca kaynak sütunu karakter olan ve metni `=`, `+`, `-`, `@`, sekme veya
-#' satır başı ile başlayan hücrelere uygulanır. Sayısal `-125.50` SAYI KALIR;
-#' karakter `-KAPALI-` etkisizleştirilir. Bu kural CSV'ye özgüdür — writexl
-#' metni zaten metin olarak saklar.
+#' Metni `=`, `+`, `-`, `@`, sekme veya satır başı ile başlayan METİN BENZERİ
+#' hücrelere uygulanır. Sayısal `-125.50` SAYI KALIR; karakter `-KAPALI-`
+#' etkisizleştirilir. `factor` (ve benzeri etiketli metin) sütunları da
+#' kapsanır: `write.csv()` bir faktör düzeyini metin olarak yazar, dolayısıyla
+#' `=HYPERLINK(...)` düzeyi CSV açıldığında Excel'de yine formül olur. Bu kural
+#' CSV'ye özgüdür — writexl metni zaten metin olarak saklar.
 pk_export_neutralize_csv <- function(data) {
   if (!is.data.frame(data) || !ncol(data)) return(data)
 
   for (sutun in names(data)) {
-    if (!is.character(data[[sutun]])) next
     degerler <- data[[sutun]]
+    if (is.numeric(degerler) || is.logical(degerler) ||
+        inherits(degerler, "Date") || inherits(degerler, "POSIXt")) {
+      next
+    }
+
+    degerler <- as.character(degerler)
     riskli <- !is.na(degerler) & grepl("^[=+@\\-\t\r]", degerler, perl = TRUE)
     if (any(riskli)) degerler[riskli] <- paste0("'", degerler[riskli])
     data[[sutun]] <- degerler
@@ -268,12 +275,92 @@ pk_export_summary_sheet <- function(packet) {
   )
 }
 
+# Elektronik tablo yazıcıları boş metni ve eksik değeri AYNI boş hücre olarak
+# saklar; geri okuyucu ikisini de `NA` verir. Sözleşme bu yüzden "boş <-> boş"
+# eşdeğerliğidir. Beklenen `NA` iken okunanın `"NA"` METNİ olması ise eşdeğer
+# DEĞİLDİR; eski `paste()` tabanlı anahtar bu ayrımı kaybediyordu.
+.pk_export_blank <- function(x) {
+  if (is.character(x)) return(is.na(x) | !nzchar(x))
+  is.na(x)
+}
+
+# Tek bir sütunu TİPİYLE BİRLİKTE ve SIRA KORUNARAK karşılaştırır. Hata varsa
+# Türkçe gerekçe, yoksa NULL döner.
+.pk_export_compare_column <- function(bek, ger, ad) {
+  bek_bos <- unname(.pk_export_blank(bek))
+  ger_bos <- unname(.pk_export_blank(ger))
+
+  if (!identical(bek_bos, ger_bos)) {
+    return(sprintf("'%s' sutununda bos hucre deseni degismis.", ad))
+  }
+  # Tüm hücreler boşsa okuyucu sütun tipini düşürebilir; bu meşru bir yuvarlak
+  # yolculuk artefaktıdır ve tip karşılaştırması yapılmaz.
+  if (all(bek_bos)) return(NULL)
+
+  dolu <- !bek_bos
+
+  if (is.numeric(bek)) {
+    if (!is.numeric(ger)) {
+      return(sprintf("'%s' sutunu sayisal degil metin olarak yazilmis.", ad))
+    }
+    b <- as.numeric(bek)[dolu]
+    g <- as.numeric(ger)[dolu]
+    # Sabit 6 basamağa yuvarlamak, metadata'nın 9 basamağa kadar izin verdiği
+    # bir ölçüde bozulmuş değeri geçirebilirdi. Tolerans yalnızca ikili kayan
+    # nokta gürültüsü kadardır.
+    if (any(abs(b - g) > pmax(1e-9, abs(b) * 1e-12))) {
+      return(sprintf("'%s' sutununda sayisal deger degismis.", ad))
+    }
+    return(NULL)
+  }
+
+  if (inherits(bek, "Date")) {
+    if (!(inherits(ger, "Date") || inherits(ger, "POSIXt"))) {
+      return(sprintf("'%s' sutunu tarih olarak yazilmamis.", ad))
+    }
+    if (!identical(format(as.Date(bek))[dolu],
+                   format(as.Date(ger, tz = "UTC"))[dolu])) {
+      return(sprintf("'%s' sutununda tarih degeri degismis.", ad))
+    }
+    return(NULL)
+  }
+
+  if (inherits(bek, "POSIXt")) {
+    if (!inherits(ger, "POSIXt")) {
+      return(sprintf("'%s' sutunu zaman damgasi olarak yazilmamis.", ad))
+    }
+    if (!identical(format(bek, "%Y-%m-%d %H:%M:%S", tz = "UTC")[dolu],
+                   format(ger, "%Y-%m-%d %H:%M:%S", tz = "UTC")[dolu])) {
+      return(sprintf("'%s' sutununda zaman damgasi degismis.", ad))
+    }
+    return(NULL)
+  }
+
+  if (is.logical(bek)) {
+    if (!is.logical(ger)) return(sprintf("'%s' sutunu mantiksal yazilmamis.", ad))
+    if (!identical(bek[dolu], ger[dolu])) {
+      return(sprintf("'%s' sutununda mantiksal deger degismis.", ad))
+    }
+    return(NULL)
+  }
+
+  if (is.numeric(ger)) {
+    return(sprintf("'%s' sutunu metin yerine sayi olarak yazilmis.", ad))
+  }
+  if (!identical(as.character(bek)[dolu], as.character(ger)[dolu])) {
+    return(sprintf("'%s' sutununda metin degeri degismis.", ad))
+  }
+
+  NULL
+}
+
 #' Yazılan parçayı kaynak parçayla karşılaştır (mükerrer satırları KORUYARAK)
 #'
-#' Sıra numarası fiziksel olarak yazılmadığı için doğrulama, planın izin
-#' verdiği ikinci yolu kullanır: `(serilestirilmis satir degeri, tekrar sirasi)`
-#' çoklu-kümesi. Meşru mükerrer satırlar bu sayede korunur ve eksik/fazla satır
-#' yine yakalanır.
+#' Karşılaştırma SIRA ve TİP KORUNARAK yapılır. Sıralanmış çoklu-küme
+#' karşılaştırması satırların herhangi bir permütasyonunu geçirirdi; oysa sıra
+#' sıralamalı/kronolojik sorgu sonuçlarında anlam taşır ve ters çevrilmiş bir
+#' sıralama "doğrulanmış" diye sunulamaz. Meşru mükerrer satırlar korunur;
+#' hiçbir aşamada tekilleştirme yapılmaz.
 pk_export_verify_multiset <- function(expected, actual) {
   if (!is.data.frame(expected) || !is.data.frame(actual)) {
     return(list(ok = FALSE, reason = "Karsilastirilacak cerceve yok."))
@@ -289,23 +376,20 @@ pk_export_verify_multiset <- function(expected, actual) {
     )))
   }
 
-  anahtar <- function(df) {
-    if (!nrow(df)) return(character(0))
-    ham <- do.call(paste, c(lapply(df, function(x) {
-      if (inherits(x, "Date") || inherits(x, "POSIXt")) return(as.character(x))
-      if (is.numeric(x)) return(formatC(as.numeric(x), format = "f", digits = 6,
-                                        big.mark = "", decimal.mark = "."))
-      as.character(x)
-    }), list(sep = "")))
-    ham[is.na(ham)] <- ""
-    paste0(ham, "#", stats::ave(seq_along(ham), ham, FUN = seq_along))
+  # Başlıklar da doğrulanır: yeniden adlandırılmış/kaymış bir başlık, değerler
+  # eşleşse bile kullanıcıya YANLIŞ ETİKET altında veri sunar.
+  if (!identical(names(expected), names(actual))) {
+    return(list(ok = FALSE, reason = "Sutun basliklari kaynakla ayni degil."))
+  }
+  if (anyDuplicated(names(expected)) > 0L) {
+    return(list(ok = FALSE, reason = "Mukerrer sutun basligi: etiketler belirsiz."))
   }
 
-  bek <- sort(anahtar(expected))
-  ger <- sort(anahtar(actual))
+  if (!nrow(expected)) return(list(ok = TRUE, reason = NULL))
 
-  if (!identical(bek, ger)) {
-    return(list(ok = FALSE, reason = "Yazilan parca kaynak satirlarla ayni coklu-kumeyi vermiyor."))
+  for (i in seq_along(expected)) {
+    hata <- .pk_export_compare_column(expected[[i]], actual[[i]], names(expected)[i])
+    if (!is.null(hata)) return(list(ok = FALSE, reason = hata))
   }
 
   list(ok = TRUE, reason = NULL)

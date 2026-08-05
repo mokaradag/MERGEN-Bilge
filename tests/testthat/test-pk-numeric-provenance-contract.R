@@ -325,10 +325,23 @@ test_that("Iddia yoksa oran sifirdir ve rapor yine uretilir", {
 
 # --- Deterministik tablo/ek LLM iddia ayristirmasindan GECMEZ -----------------
 
-test_that("Olgu indeksi kimliğe gore kurulur ve tekrarlar son degeri tutar", {
+test_that("Olgu indeksi kimliğe gore kurulur; CAKISAN kimlik alintilanamaz olur", {
   env <- .pk_prov_env()
-  index <- env$pk_facts_index(.pk_prov_facts(env))
+  olgular <- .pk_prov_facts(env)
+  index <- env$pk_facts_index(olgular)
+  kimlik <- .pk_prov_id(olgular, "KalanIscilik_sa", "sum")
 
   expect_true(all(grepl("^[A-Za-z0-9_.]+$", names(index))))
-  expect_equal(index[["labor_remaining_hours.sum.overall"]]$value, 18420.5)
+  expect_equal(index[[kimlik]]$value, 18420.5)
+
+  # PR #698 incelemesi: aynı kimliğe iki FARKLI olgu düşerse sessizce biri
+  # ezilmez; ikisi de kullanılamaz olur. Aksi hâlde doğru alıntılanmış bir sayı
+  # YANLIŞ ölçüye karşı doğrulanırdı.
+  catisan <- index[[kimlik]]
+  catisan$value <- 999
+  catisan$column <- "BaskaSutun"
+  cakisik <- env$pk_facts_index(list(index[[kimlik]], catisan))
+
+  expect_null(cakisik[[kimlik]]$value)
+  expect_identical(cakisik[[kimlik]]$status, "ambiguous_fact_id")
 })

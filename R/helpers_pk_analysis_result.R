@@ -68,15 +68,47 @@
   )
 }
 
+# Modelin gördüğü "uygulanan filtre" listesi, LLM'in ÇIKARDIĞI ham küme değil
+# gerçekten UYGULANAN kümedir. `apply_smart_filters()` geçersiz/etkisiz
+# filtreleri düşürür; ham kümeyi göstermek pakete, `Bilgi` sayfasına ve alt
+# bilgiye "bu filtre uygulandı" dedirtirdi — üstelik ifşa bloğu aynı filtrenin
+# düşürüldüğünü söylerken.
+.pk_result_effective_filters <- function(policy, filter_criteria) {
+  if (is.list(policy) && !is.null(policy$applied) &&
+      exists(".pk_filter_leaf_to_v1", mode = "function", inherits = TRUE)) {
+    donusen <- tryCatch(lapply(policy$applied, .pk_filter_leaf_to_v1), error = function(e) NULL)
+    if (is.list(donusen)) return(donusen)
+  }
+  filter_criteria$filters %||% list()
+}
+
+# Paket bütçesi, İSTEĞİN TAMAMINI kapsamalıdır: sistem istemi, kullanıcı
+# sorusu, politika ifşası ve kuyruk talimatları da aynı yükün parçasıdır.
+.pk_result_packet_budget <- function(overhead_chars, meta) {
+  butce <- if (exists("pk_prompt_char_budget", mode = "function", inherits = TRUE)) {
+    suppressWarnings(as.integer(pk_prompt_char_budget(query_meta = meta)))
+  } else {
+    120000L
+  }
+  if (length(butce) != 1L || is.na(butce) || butce <= 0L) butce <- 120000L
+
+  max(1000L, butce - as.integer(overhead_chars))
+}
+
 # v2 kuyruğu: analiz paketi + kompozisyon + dışa aktarım.
 .pk_result_v2 <- function(filtered_data, secure_data, query, user_prompt,
-                          analysis_mode, policy, filter_criteria, session) {
+                          analysis_mode, policy, filter_criteria, session,
+                          username = NULL, stop_check = NULL) {
+  durduruldu <- function() is.function(stop_check) && isTRUE(tryCatch(stop_check(), error = function(e) FALSE))
+  iptal <- list(type = "pk_stopped")
+
   meta <- .pk_result_meta(query)
+  etkin_filtreler <- .pk_result_effective_filters(policy, filter_criteria)
 
   paket <- pk_packet_build(filtered_data, query, list(
     authorized_rows = nrow(secure_data),
     filtered_rows = nrow(filtered_data),
-    filters = filter_criteria$filters %||% list(),
+    filters = etkin_filtreler,
     filter_status = filter_criteria$status,
     degradations = if (exists("pk_degradations_from_filter_status", mode = "function",
                               inherits = TRUE)) {
@@ -86,8 +118,6 @@
     },
     pre_aggregated_columns = query$pre_aggregated_columns
   ))
-
-  yazi <- pk_packet_render(paket)
 
   ifsa <- if (is.list(policy) &&
               exists("pk_filter_policy_disclosure_block", mode = "function", inherits = TRUE)) {
@@ -99,7 +129,62 @@
     NULL
   }
 
+  sistem_istemi <- pk_build_analysis_system_prompt_v2(analysis_mode, query)
+  kuyruk_talimati <- paste0(
+    "\n\n--- PAKET SONU ---\n\n",
+    "Talimat: YALNIZCA yukaridaki paketteki olgulari kullanarak cevap ver. ",
+    "Her sayisal iddianin yanina ilgili fact referansini koy. Hesaplama yapma, ",
+    "tablo uretme; tablo ve ek R tarafindan eklenecektir."
+  )
+  bas_talimati <- paste0("KULLANICI SORUSU:\n", user_prompt,
+                         "\n\n--- R TARAFINDAN HESAPLANAN ANALIZ PAKETI ---\n")
+
+  # Bütçe muhasebesi PAKETİN DEĞİL isteğin tamamınındır.
+  sabit_yuk <- nchar(sistem_istemi, type = "chars") +
+    nchar(bas_talimati, type = "chars") +
+    nchar(kuyruk_talimati, type = "chars") +
+    nchar(as.character(ifsa %||% ""), type = "chars")
+
+  if (durduruldu()) return(iptal)
+
+  yazi <- pk_packet_render(paket, budget = .pk_result_packet_budget(sabit_yuk, meta),
+                           query_meta = meta)
+
+  tum_olgular <- pk_packet_all_facts(paket)
+  yedek_metin <- pk_compose_facts_summary(paket$facts)
+
+  # Düşürme merdiveni ZORUNLU bölümler yüzünden bütçeyi aşabilir. Bu durumda
+  # paketi olduğu gibi göndermek, uç noktanın bağlam sınırını aşıp analizin
+  # TAMAMINI düşürebilirdi; deterministik özete inilir.
+  if (isTRUE(yazi$over_budget)) {
+    ozet <- paste(c(
+      "### BUTCE ASIMI",
+      paste("- Analiz paketi yapilandirilmis bicimde istem butcesine SIGMADI;",
+            "asagida yalnizca R tarafindan hesaplanan degerler yer aliyor."),
+      "",
+      yedek_metin
+    ), collapse = "\n")
+
+    if (nchar(ozet, type = "chars") <= yazi$budget) {
+      yazi$text <- ozet
+      yazi$chars <- nchar(ozet, type = "chars")
+      yazi$over_budget <- FALSE
+      yazi$omitted <- c(yazi$omitted, "Paket butce nedeniyle deterministik ozete indirildi.")
+    } else {
+      return(list(
+        type = "error_message",
+        content = paste0(
+          "\U000026A0\U0000FE0F **Sonuç çok geniş:** Bu sorgunun analiz paketi güvenli ",
+          "istem bütçesine sığmıyor. Lütfen sorunuzu daraltın (ör. tarih aralığı, ",
+          "proje veya ölçü kısıtı ekleyin)."
+        )
+      ))
+    }
+  }
+
   karar <- pk_compose_decide(nrow(filtered_data), ncol(filtered_data), user_prompt, meta)
+
+  if (durduruldu()) return(iptal)
 
   artefakt <- NULL
   if (!identical(karar$mode, "inline_table")) {
@@ -108,12 +193,16 @@
         filtered_data, paket,
         context = list(
           query_id = query$id, query_name = query$name,
-          username = tryCatch(session$userData$user_config$name, error = function(e) NULL),
-          filters = filter_criteria$filters %||% list(),
+          # Denetim kimliği, RLS/telemetride kullanılan KİMLİĞİ DOĞRULANMIŞ
+          # kullanıcı adıdır; `user_config$name` bir görünen ad olabilir,
+          # boş olabilir veya kullanıcı tarafından değiştirilebilir.
+          username = as.character(username %||%
+            tryCatch(session$userData$user_config$name, error = function(e) NULL) %||% "?")[1],
+          filters = etkin_filtreler,
           authorized_rows = nrow(secure_data), filtered_rows = nrow(filtered_data),
           rls_scope = "Kullanici yetkisi uygulandi"
         ),
-        base_name = query$id %||% "pk_analiz", query = query
+        base_name = query$id %||% "pk_analiz", query = query, format = karar$format
       ),
       error = function(e) {
         cat(sprintf("[PK_ANALIZ] Disa aktarim hatasi: %s\n", conditionMessage(e)))
@@ -124,29 +213,29 @@
     artefakt <- tryCatch(pk_export_serve(session, artefakt), error = function(e) artefakt)
   }
 
-  blok <- pk_compose_block(karar, filtered_data, artefakt, meta, meta)
+  if (durduruldu()) return(iptal)
+
+  blok <- paste0(pk_compose_block(karar, filtered_data, artefakt, meta, meta),
+                 pk_compose_reference_links(query))
 
   list(
     type = "data_analysis",
     # D21: v1 filtre ÖNCESİ çerçeveyi döndürüyordu ve hiçbir çağıran onu
     # okumuyordu. v2'de bu alan gerçekten sunulan veridir.
     data = filtered_data,
-    prompt_context = pk_build_analysis_system_prompt_v2(analysis_mode, query),
-    user_context = paste0(
-      "KULLANICI SORUSU:\n", user_prompt,
-      "\n\n--- R TARAFINDAN HESAPLANAN ANALIZ PAKETI ---\n", yazi$text,
-      if (is.null(ifsa)) "" else paste0("\n\n", ifsa),
-      "\n\n--- PAKET SONU ---\n\n",
-      "Talimat: YALNIZCA yukaridaki paketteki olgulari kullanarak cevap ver. ",
-      "Her sayisal iddianin yanina [fact:...] referansini koy. Hesaplama yapma, ",
-      "tablo uretme; tablo ve ek R tarafindan eklenecektir."
-    ),
+    prompt_context = sistem_istemi,
+    user_context = paste0(bas_talimati, yazi$text,
+                          if (is.null(ifsa)) "" else paste0("\n\n", ifsa),
+                          kuyruk_talimati),
     query_name = query$name,
     max_tokens = 4096,
-    pk_facts = paket$facts,
+    # Grup kırılımındaki ve bağlam bölümlerindeki olgular da doğrulama
+    # indeksine girer; aksi hâlde DOĞRU alıntılanmış bir grup toplamı
+    # `unknown_fact` sayılırdı.
+    pk_facts = tum_olgular,
     pk_answer_block = blok,
     pk_attachment = artefakt,
-    pk_fallback_text = pk_compose_facts_summary(paket$facts),
+    pk_fallback_text = yedek_metin,
     pk_packet_chars = yazi$chars
   )
 }
@@ -158,7 +247,8 @@
 #' @param policy v2 filtre politikası kararı (varsa).
 pk_build_analysis_result <- function(filtered_data, secure_data, query, user_prompt,
                                      filter_criteria = list(), policy = NULL,
-                                     session = NULL, engine_is_v2 = FALSE) {
+                                     session = NULL, engine_is_v2 = FALSE,
+                                     username = NULL, stop_check = NULL) {
   analysis_mode <- query$analysis_mode %||% "summary"
   kullanici_filtresi <- nrow(filtered_data) < nrow(secure_data)
 
@@ -168,5 +258,6 @@ pk_build_analysis_result <- function(filtered_data, secure_data, query, user_pro
   }
 
   .pk_result_v2(filtered_data, secure_data, query, user_prompt, analysis_mode,
-                policy, filter_criteria, session)
+                policy, filter_criteria, session, username = username,
+                stop_check = stop_check)
 }

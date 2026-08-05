@@ -306,6 +306,7 @@ source_manifest_sections <- list(
     "R/helpers_pk_packet_render.R",
     "R/helpers_pk_numeric_provenance.R",
     "R/helpers_pk_export_plan.R",
+    "R/helpers_pk_export_csv.R",
     "R/helpers_pk_export_xlsx.R",
     "R/helpers_pk_answer_compose.R",
     "R/helpers_pk_analysis_result.R",

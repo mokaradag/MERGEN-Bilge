@@ -1357,3 +1357,101 @@ and Shiny boot smoke. Browser UX smoke **SKIPPED** (no browser binary — the
 runner exits 0 on that skip by design, so it is *not* browser proof). Nothing
 here proves runtime, VM, SSO, real DB, SQL Server Turkish encoding, real Excel
 rendering, or browser behavior; those remain the VM gates in §14 of the plan.
+
+### Review round 1 — PR #698 (90 threads: 1 P0, ~32 P1, ~57 P2)
+
+All reported threads were addressed on branch
+`claude/pr-698-bug-fixes-tenpfb`. Grouped by the boundary they touch:
+
+**Export I/O (`helpers_pk_export_xlsx.R` + new `helpers_pk_export_csv.R`)**
+* **P0** every export now writes to its own `pk_export_run_dir()` — a
+  one-second timestamp under the process-global temp directory let two users
+  exporting the same query in the same second collide, so the later write
+  replaced the first user's RLS-filtered bytes and either session's cleanup
+  deleted the shared file.
+* `Ozet`/`Bilgi` carry no `pk_source_columns` attribute; the unguarded
+  `attr(df, ...)[i]` returned length-0 and `if (is.na(...))` threw, which the
+  outer `tryCatch` swallowed — **every** installation with `openxlsx` silently
+  fell back to CSV. Guarded on attribute length.
+* percent number format is now gated on the *declared* `percent_columns`, not on
+  `unit == "%"`, so an undeclared-scale `61.3` can no longer be styled `%6130.0`.
+  Declared `decimals` drives every format; units land in the header.
+* CSV fallback: streamed in 5.000-row blocks (no full-file `capture.output` +
+  `paste` + `charToRaw` copies), re-prepared with `formatted = FALSE` so
+  percentage points stay `61,3` instead of `0,613`, **all-or-nothing** across
+  parts, each part read back and verified, and `Ozet`/`Bilgi` written as
+  sidecars so the audit context survives the fallback.
+* downloads stream via `httpResponse(content = list(file =, owned = FALSE))`
+  instead of `readBin`-ing the whole artifact into the Shiny worker.
+* session cleanup moved to a per-session registry drained by ONE
+  `onSessionEnded` callback — `register_session_cleanup_on_end()` accepts only
+  the first registration, so later export callbacks were being discarded.
+* an XLSX memory ceiling (`MERGEN_PK_EXPORT_MAX_CELLS`, default 2.000.000)
+  routes oversized results straight to the streaming CSV path instead of
+  materializing every sheet at once.
+
+**Export verification (`helpers_pk_export_plan.R`)** — read-back comparison is
+now per-column, **typed and order-preserving**: headers compared exactly
+(duplicates rejected), `NA` distinguished from the literal `"NA"`, blank-cell
+round-trip defined explicitly, no global 6-digit rounding, and formula
+neutralization extended to factor/text-like columns.
+
+**Packet (`helpers_pk_analysis_packet.R`)** — composite group/grain keys are
+length-prefixed and injective (`("A | B","C")` no longer merges with
+`("A","B | C")`); groups are counted before row indices are built; dimensions
+above 5.000 distinct values skip full tabulation; stratified sampling draws
+from a bounded candidate pool with randomized stratum order and per-stratum
+`sample.int` (no full permutations, no `sample(idx, 1)` singleton trap); trimming
+respects selection priority; `Inf` is excluded from extremes; first/last
+boundary rows are actually included; blank text counts as missing; a declared
+grain violation **invalidates** sum/mean instead of being an informational
+count; incomplete declared group/grain keys suppress the section instead of
+silently regrouping; partial metadata is no longer reported as Tier-3; a
+character date column that cannot be parsed degrades to a limitation instead of
+aborting the request; time windows are only assigned when a single date column
+exists; `user_filter_applied` follows the accepted filter set, not a row-count
+drop.
+
+**Facts (`helpers_pk_packet_stats.R`)** — fact ids carry a stable checksum of
+the untruncated identity (`A-B` vs `A B` no longer collide); `bit64::integer64`
+above 2^53 is refused instead of silently coerced; `latest_by` must be coercible
+to an orderable type (`"31.12.2025"` no longer beats `"01.01.2026"`) and
+`latest_tie_by` now really breaks the tie; guarded non-finite results report
+`non_finite_result` instead of a reasonless `ok`; a declared `weighted_mean` /
+`latest` measure no longer gets a plain mean published beside it.
+
+**Prompt/render** — every model-visible number (categorical counts, coverage,
+dates, group rows) now has a structured fact and a matching marker, and group
+facts are flattened into the validation index; notes survive on successful
+facts; untrusted values are flattened and de-bracketed with an explicit
+data-boundary section; `Diğer` reports rows and share; the packet honors
+query-scoped budgets and the **whole request** is budgeted, with a deterministic
+fallback and an explicit refusal instead of shipping an over-budget packet.
+
+**Numeric provenance** — ambiguous dot forms yield both candidates (`0.613` is
+never 613); tolerance is `min(claim rounding, 0,1% materiality)` so `18.420` for
+18420,5 passes while `61` for 61,34 and `1.000.000.001.000` for 1e12 fail;
+compound/symbol units parse; invented units on unitless facts are rejected
+against a real unit vocabulary; a sum described as an average is flagged;
+duplicate fact ids become unquotable; validation failures fail **closed**.
+
+**Delivery** — `pk_provenance_take()` compares the request id *before*
+consuming the slot and `pk_provenance_stash()` refuses stale writes; decoration
+idempotency is tracked out of band instead of trusting model text; unclosed
+model code fences are closed before the R-owned block is appended; mandatory
+delivery is separated from fail-soft telemetry; the attachment is rendered once.
+
+**Module/registry** — `stop_check` is threaded through the packet/export
+phases; successful v2 requests are recorded as `v2`; the export audit sheet uses
+the authenticated RLS username; metadata links are emitted by R with attribute
+escaping and an `http(s)`-only scheme check instead of being dictated to the
+model; the seam registry now guards the delivery/provenance contracts.
+
+Regression coverage: `tests/testthat/test-pk-review-698-hardening.R` (~40 new
+behavioral tests, offline/deterministic) plus updates to the packet, export and
+provenance contract tests where the review deliberately changed a contract.
+
+Ratchet unchanged: score 100/100, 0 files at 800+ lines, 0 at 25+ functions.
+`R/helpers_pk_export_csv.R` was added to the `analysis_helpers` manifest section
+(frozen anchors 30 -> 31 and 400 -> 401 updated consciously).
+

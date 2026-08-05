@@ -24,6 +24,14 @@
 #                              olmayan sonuç NA/NaN/Inf olarak değil,
 #                              kullanılamaz durum olarak raporlanır.
 #
+#           KİMLİK ÇAKIŞMASI (PR #698 incelemesi): olgu kimliği ASCII'ye
+#           indirgenip 60 karaktere kırpılır. `A-B` ile `A B`, ya da ilk 60
+#           normalleştirilmiş karakteri aynı olan iki uzun proje adı aynı
+#           kimliği alırdı ve `pk_facts_index()` birini SESSİZCE ezerdi; doğru
+#           alıntılanmış bir sayı yanlış ölçüye karşı doğrulanırdı. Kimliğin
+#           sonuna, KIRPILMAMIŞ özgün kimlikten türetilen kararlı bir sağlama
+#           eklenir.
+#
 #           Dosya bilerek SAFTIR: Shiny/reactive/DB/ağ/LLM bağımlılığı yoktur.
 #           Yalnızca MERGEN_PK_ENGINE=v2 altında çağrılır.
 # ==============================================================================
@@ -36,6 +44,9 @@ PK_FACT_NO_FINITE <- "unavailable_no_finite_values"
 PK_FACT_INVALID_WEIGHTS <- "invalid_weight_set"
 PK_FACT_WEIGHTED_UNAVAILABLE <- "weighted_mean_unavailable"
 PK_FACT_AMBIGUOUS_LATEST <- "ambiguous_latest"
+PK_FACT_GRAIN_VIOLATION <- "grain_violation"
+PK_FACT_PRECISION <- "unsupported_precision"
+PK_FACT_NOT_FINITE_RESULT <- "non_finite_result"
 
 # Sayı biçimleme ---------------------------------------------------------------
 
@@ -114,6 +125,40 @@ pk_fact_slug <- function(x) {
   substr(txt, 1L, 60L)
 }
 
+#' Kimlik parçalarından kararlı, ASCII, çakışmaya dayanıklı sağlama
+#'
+#' Yeni bağımlılık eklenmemesi için saf tabanlı FNV-1a türevi kullanılır;
+#' aritmetik 24 bitte tutulur (çift duyarlıkta tam olarak temsil edilir).
+pk_fact_checksum <- function(parts) {
+  ham <- enc2utf8(paste(as.character(parts %||% ""), collapse = ""))
+  bayt <- as.integer(charToRaw(ham))
+
+  h <- 2166136261 %% 16777216
+  for (b in bayt) {
+    h <- bitwXor(as.integer(h), b)
+    h <- (h * 16777619) %% 16777216
+  }
+
+  sprintf("%06x", as.integer(h))
+}
+
+#' Bir olgu kimliğini kur (kayıt kurmadan)
+#'
+#' Paket kurucusu ile paket yazıcısı AYNI kimliği üretmek zorundadır: yazıcı
+#' `[fact:...]` işaretini basar, doğrulayıcı ise kurucunun ürettiği indeksi
+#' okur. Kimlik üretimi bu yüzden tek bir yerden gelir.
+pk_fact_id <- function(identity, aggregation, group_keys = character(0)) {
+  gruplar <- as.character(group_keys %||% character(0))
+  grup_slug <- if (length(gruplar)) {
+    paste(vapply(gruplar, pk_fact_slug, character(1)), collapse = "_")
+  } else {
+    "overall"
+  }
+
+  paste(c(pk_fact_slug(identity), pk_fact_slug(aggregation), grup_slug,
+          pk_fact_checksum(c(identity, aggregation, gruplar))), collapse = ".")
+}
+
 #' Kapsam imzası — okunur ve deterministik
 #'
 #' Karma (hash) yerine okunur metin kullanılır: hem tanılamada işe yarar hem de
@@ -147,13 +192,9 @@ pk_fact_record <- function(kind, column, aggregation, value = NULL, spec = list(
   cap <- spec$capability
   cap <- if (is.character(cap) && length(cap) == 1L && !is.na(cap) && nzchar(cap)) cap else NULL
 
-  kimlik_kok <- pk_fact_slug(cap %||% column)
-  grup_slug <- if (length(group_keys)) {
-    paste(vapply(as.character(group_keys), pk_fact_slug, character(1)), collapse = "_")
-  } else {
-    "overall"
-  }
-  fact_id <- paste(c(kimlik_kok, pk_fact_slug(aggregation), grup_slug), collapse = ".")
+  # Sağlama KIRPILMAMIŞ özgün kimlikten hesaplanır: normalleştirme/kırpma
+  # yüzünden aynı slug'a düşen iki farklı ölçü/grup artık AYNI kimliği alamaz.
+  fact_id <- pk_fact_id(cap %||% column, aggregation, group_keys)
 
   sayisal <- status %in% c(PK_FACT_OK, PK_FACT_SINGLE) &&
     is.numeric(value) && length(value) == 1L && is.finite(value)
@@ -181,6 +222,17 @@ pk_fact_record <- function(kind, column, aggregation, value = NULL, spec = list(
 
 # Sayısal ölçü istatistikleri --------------------------------------------------
 
+# SQL Server BIGINT sütunları çoğunlukla `bit64::integer64` olarak gelir.
+# `as.numeric()` 2^53 ustundeki tam sayıyı temsil EDEMEZ; 9007199254740993
+# sessizce 9007199254740992 olurdu. Böyle bir sütun hesaplanmaz, açıkça
+# desteklenmeyen kesinlik olarak raporlanır.
+.pk_precision_loss <- function(values) {
+  if (!inherits(values, "integer64")) return(FALSE)
+
+  num <- suppressWarnings(as.numeric(as.character(values)))
+  any(!is.na(num) & abs(num) > 2^53)
+}
+
 .pk_finite_split <- function(values) {
   ham <- suppressWarnings(as.numeric(values))
   sonlu <- ham[!is.na(ham) & is.finite(ham)]
@@ -201,17 +253,42 @@ pk_fact_record <- function(kind, column, aggregation, value = NULL, spec = list(
   out
 }
 
+# Sıralanabilir tipe indirge. Karakter bir damga ÜZERİNDE `max()` sözlük
+# sırasına göre çalışır: "31.12.2025" > "01.01.2026" ve "9" > "10".
+.pk_orderable <- function(x) {
+  if (inherits(x, "Date") || inherits(x, "POSIXt") || is.numeric(x)) return(x)
+  if (is.factor(x)) x <- as.character(x)
+  if (!is.character(x)) return(NULL)
+
+  dolu <- sum(!is.na(x))
+  tarih <- suppressWarnings(tryCatch(as.Date(x), error = function(e) NULL))
+  if (!is.null(tarih) && inherits(tarih, "Date") && sum(!is.na(tarih)) == dolu) {
+    return(tarih)
+  }
+
+  sayi <- suppressWarnings(as.numeric(x))
+  if (sum(!is.na(sayi)) == dolu) return(sayi)
+
+  NULL
+}
+
 #' Bir sayısal ölçü sütunu için olgu kümesi
 #'
-#' Toplama YALNIZCA `additive = TRUE` iken üretilir; ortalama yalnızca
-#' `aggregate` toplama/ortalama izni verdiğinde üretilir. Metadata yokken
-#' (Tier-0) ikisi de üretilmez — Faz 3a'nın adlandırılmış geri düşüşü budur:
-#' "additive yok -> toplama YAPILMAZ". Dağılım istatistikleri (medyan, yüzdelik,
-#' min/maks, std sapma, uç değer) DÖNEN SATIRLARI betimler; varlık düzeyinde
-#' toplulaştırma iddiası taşımaz ve bu yüzden Tier-0'da da güvenlidir.
+#' Toplama YALNIZCA `additive = TRUE` iken üretilir. Ortalama ise beyan edilen
+#' toplulaştırma FARKLI ve bağdaşmaz bir metrik dayattığında (ör.
+#' `weighted_mean`, `latest`) ÜRETİLMEZ: ağırlıklı ortalama beyan eden bir ölçü
+#' için düz satır ortalaması yayımlamak, sorgunun açıkça yanlış dediği sayıyı
+#' yetkili olgu diye sunmaktır. Metadata yokken (Tier-0) ikisi de üretilmez.
+#' Dağılım istatistikleri (medyan, yüzdelik, min/maks, std sapma, uç değer)
+#' DÖNEN SATIRLARI betimler; varlık düzeyinde toplulaştırma iddiası taşımaz ve
+#' bu yüzden Tier-0'da da güvenlidir.
+#'
+#' @param aggregate_blocked Beyan edilen tanecikte mükerrer satır varsa TRUE.
+#'   Toplam ve ortalama çift sayılacağı için ÜRETİLMEZ.
 pk_measure_facts <- function(values, column, spec = list(), scope = NULL,
                              group_keys = character(0), time_window = NULL,
-                             aggregate_mode = "none", additive = FALSE) {
+                             aggregate_mode = "none", additive = FALSE,
+                             aggregate_blocked = FALSE) {
   spec <- if (is.list(spec)) spec else list()
   bol <- .pk_finite_split(values)
 
@@ -231,6 +308,23 @@ pk_measure_facts <- function(values, column, spec = list(), scope = NULL,
     )
   }
 
+  # `.pk_guarded()` NULL döndüğünde (taşan toplam, tanımsız std sapma) olgu
+  # `ok` kalırsa pakette gerekçesiz "KULLANILAMAZ (ok)" görünürdü.
+  guvenli <- function(agg, deger, durum, not = NULL) {
+    if (is.null(deger)) {
+      return(yap(agg, NULL, PK_FACT_NOT_FINITE_RESULT,
+                 "Hesaplama sonlu bir deger uretmedi (tasma veya tanimsiz sonuc)."))
+    }
+    yap(agg, deger, durum, not)
+  }
+
+  if (.pk_precision_loss(values)) {
+    return(list(yap("distribution", NULL, PK_FACT_PRECISION, paste(
+      "Sutun 2^53 ustunde tam sayi tasiyor (BIGINT/integer64);",
+      "cift duyarlikli hesaplama degeri DEGISTIRIRDI, olgu URETILMEDI."
+    ))))
+  }
+
   if (bol$n_finite == 0L) {
     return(list(yap("distribution", NULL, PK_FACT_NO_FINITE,
                     "Sonlu deger yok; toplam/ortalama/medyan URETILMEDI.")))
@@ -239,30 +333,43 @@ pk_measure_facts <- function(values, column, spec = list(), scope = NULL,
   v <- bol$finite
   tekil <- bol$n_finite == 1L
   temel_durum <- if (tekil) PK_FACT_SINGLE else PK_FACT_OK
+  agg_kip <- as.character(aggregate_mode %||% "none")[1]
+  # Ortalamayı dışlayan beyanlar: bu ölçünün doğru metriği başka bir şeydir.
+  ortalama_disi <- agg_kip %in% c("weighted_mean", "latest", "min", "max",
+                                  "count", "count_distinct", "median")
 
   out <- list()
 
-  if (isTRUE(additive)) {
-    out[[length(out) + 1L]] <- yap("sum", .pk_guarded(sum(v)), temel_durum)
+  if (isTRUE(aggregate_blocked)) {
+    for (agg in c("sum", "mean")) {
+      out[[length(out) + 1L]] <- yap(
+        agg, NULL, PK_FACT_GRAIN_VIOLATION,
+        "Beyan edilen tanecikte mukerrer satir var; cift sayim riski nedeniyle URETILMEDI."
+      )
+    }
   } else {
-    out[[length(out) + 1L]] <- yap(
-      "sum", NULL, PK_FACT_INSUFFICIENT,
-      "additive dogrulanmadi; toplam URETILMEDI (Tier-0 geri dususu)."
-    )
+    if (isTRUE(additive)) {
+      out[[length(out) + 1L]] <- guvenli("sum", .pk_guarded(sum(v)), temel_durum)
+    } else {
+      out[[length(out) + 1L]] <- yap(
+        "sum", NULL, PK_FACT_INSUFFICIENT,
+        "additive dogrulanmadi; toplam URETILMEDI (Tier-0 geri dususu)."
+      )
+    }
+
+    if ((isTRUE(additive) || agg_kip %in% c("mean", "avg", "average")) && !ortalama_disi) {
+      out[[length(out) + 1L]] <- guvenli("mean", .pk_guarded(mean(v)), temel_durum)
+    } else {
+      out[[length(out) + 1L]] <- yap(
+        "mean", NULL, PK_FACT_INSUFFICIENT,
+        sprintf("aggregate='%s' duz ortalamaya izin vermiyor; ortalama URETILMEDI.", agg_kip)
+      )
+    }
   }
 
-  if (isTRUE(additive) || aggregate_mode %in% c("sum", "mean")) {
-    out[[length(out) + 1L]] <- yap("mean", .pk_guarded(mean(v)), temel_durum)
-  } else {
-    out[[length(out) + 1L]] <- yap(
-      "mean", NULL, PK_FACT_INSUFFICIENT,
-      "aggregate ortalamaya izin vermiyor; ortalama URETILMEDI."
-    )
-  }
-
-  out[[length(out) + 1L]] <- yap("median", .pk_guarded(stats::median(v)), temel_durum)
-  out[[length(out) + 1L]] <- yap("min", .pk_guarded(min(v)), temel_durum)
-  out[[length(out) + 1L]] <- yap("max", .pk_guarded(max(v)), temel_durum)
+  out[[length(out) + 1L]] <- guvenli("median", .pk_guarded(stats::median(v)), temel_durum)
+  out[[length(out) + 1L]] <- guvenli("min", .pk_guarded(min(v)), temel_durum)
+  out[[length(out) + 1L]] <- guvenli("max", .pk_guarded(max(v)), temel_durum)
 
   if (tekil) {
     for (agg in c("sd", "p05", "p25", "p75", "p95", "iqr_outliers")) {
@@ -274,7 +381,7 @@ pk_measure_facts <- function(values, column, spec = list(), scope = NULL,
     return(out)
   }
 
-  out[[length(out) + 1L]] <- yap("sd", .pk_guarded(stats::sd(v)), PK_FACT_OK)
+  out[[length(out) + 1L]] <- guvenli("sd", .pk_guarded(stats::sd(v)), PK_FACT_OK)
 
   q <- tryCatch(
     suppressWarnings(stats::quantile(v, probs = c(0.05, 0.25, 0.75, 0.95),
@@ -314,10 +421,16 @@ pk_measure_facts <- function(values, column, spec = list(), scope = NULL,
 #' `aggregate = "latest"` olgusu (§5.1 / §5.7)
 #'
 #' `latest_by` (sıralama sütunu) VE `latest_tie_by` (en yeni damgada satırı
-#' benzersiz kılan sütun(lar)) İKİSİ DE zorunludur. `latest_by` içinde `NA`
-#' olan satırlar dışlanır. En yeni damgada `latest_tie_by` mükerrer veya eksikse
-#' bir değer SEÇİLMEZ; `ambiguous_latest` döner. Veritabanı dönüş sırası,
-#' `grain_columns` sırası ve "ilk satır" yedeği geçerli eşitlik bozucu DEĞİLDİR.
+#' benzersiz kılan sütun(lar)) İKİSİ DE zorunludur. `latest_by` SIRALANABİLİR
+#' bir tipe indirgenemezse (ör. `"31.12.2025"` gibi yerel biçimli metin)
+#' `ambiguous_latest` döner; sözlük sırasına göre "en yeni" seçmek sessizce
+#' YANLIŞ satırı seçerdi. `latest_by` içinde `NA` olan satırlar dışlanır.
+#'
+#' EŞİTLİK BOZMA: en yeni damgada birden fazla satır varsa ve `latest_tie_by`
+#' bu satırları BENZERSİZ kılıyorsa, eşitlik sütunları üzerinde yerelden
+#' bağımsız (radix) artan sıralama uygulanır ve SON satır seçilir. Eşitlik
+#' anahtarı eksik ya da mükerrerse hiçbir değer SEÇİLMEZ. Veritabanı dönüş
+#' sırası ve "ilk satır" yedeği geçerli eşitlik bozucu DEĞİLDİR.
 pk_latest_fact <- function(data, column, spec = list(), scope = NULL,
                            group_keys = character(0), time_window = NULL) {
   spec <- if (is.list(spec)) spec else list()
@@ -343,7 +456,13 @@ pk_latest_fact <- function(data, column, spec = list(), scope = NULL,
                "latest_by veya latest_tie_by sutunu sonucta yok."))
   }
 
-  damga <- data[[sirala]]
+  damga <- .pk_orderable(data[[sirala]])
+  if (is.null(damga)) {
+    return(yap(NULL, PK_FACT_AMBIGUOUS_LATEST, sprintf(
+      "latest_by ('%s') siralanabilir bir tipe cevrilemedi; 'en yeni' SECILMEDI.", sirala
+    )))
+  }
+
   gecerli <- which(!is.na(damga))
   if (!length(gecerli)) {
     return(yap(NULL, PK_FACT_NO_FINITE, "latest_by tamamen bos; deger secilmedi."))
@@ -352,26 +471,153 @@ pk_latest_fact <- function(data, column, spec = list(), scope = NULL,
   en_yeni <- max(damga[gecerli])
   aday <- gecerli[damga[gecerli] == en_yeni]
 
-  anahtar <- do.call(paste, c(lapply(esitlik, function(s) as.character(data[[s]])[aday]),
-                              list(sep = "")))
-  if (any(is.na(anahtar)) || any(!nzchar(anahtar)) || anyDuplicated(anahtar) > 0L) {
+  anahtar <- do.call(paste, c(lapply(esitlik, function(s) {
+    ch <- as.character(data[[s]])[aday]
+    out <- paste0(nchar(ch, type = "bytes"), ":", ch)
+    out[is.na(ch)] <- "<NA>:"
+    out
+  }), list(sep = "|")))
+
+  if (any(grepl("^<NA>:", anahtar)) || anyDuplicated(anahtar) > 0L) {
     return(yap(NULL, PK_FACT_AMBIGUOUS_LATEST, sprintf(
       "En yeni damgada %d satir var ve latest_tie_by benzersiz degil; deger SECILMEDI.",
       length(aday)
     )))
   }
 
-  if (length(aday) != 1L) {
-    return(yap(NULL, PK_FACT_AMBIGUOUS_LATEST,
-               "En yeni damgada birden fazla benzersiz satir var; deger SECILMEDI."))
+  secilen <- if (length(aday) == 1L) {
+    aday
+  } else {
+    aday[order(anahtar, method = "radix")][length(aday)]
   }
 
-  deger <- .pk_guarded(suppressWarnings(as.numeric(data[[column]][aday])))
+  deger <- .pk_guarded(suppressWarnings(as.numeric(data[[column]][secilen])))
   if (is.null(deger)) {
     return(yap(NULL, PK_FACT_NO_FINITE, "En yeni satirdaki deger sonlu degil."))
   }
 
-  yap(deger, PK_FACT_OK, sprintf("En yeni %s = %s", sirala, as.character(en_yeni)))
+  not <- if (length(aday) == 1L) {
+    sprintf("En yeni %s = %s", sirala, as.character(en_yeni))
+  } else {
+    sprintf("En yeni %s = %s; %d esit satir arasindan latest_tie_by (%s) artan siralamada SON satir secildi.",
+            sirala, as.character(en_yeni), length(aday), paste(esitlik, collapse = ", "))
+  }
+
+  yap(deger, PK_FACT_OK, not)
+}
+
+# Sayım/kapsam olguları için kısa kayıt kurucusu (birimsiz, tam sayı).
+.pk_count_fact <- function(identity, aggregation, value, label,
+                           group_keys = character(0), scope = NULL) {
+  pk_fact_record(
+    kind = "context", column = identity, aggregation = aggregation,
+    value = value, spec = list(label = label, decimals = 0L),
+    status = PK_FACT_OK, scope = scope, group_keys = group_keys
+  )
+}
+
+#' Pakette MODELE GÖRÜNEN ama ölçü olmayan sayılar için olgu kümesi
+#'
+#' Kategorik dağılım, tarih, kapsama ve grup satır sayıları modele gönderilir
+#' ama §5.11 doğrulayıcısı yalnızca `packet$facts` indeksini okurdu. Model bu
+#' bulgulardan birini alıntılamak istediğinde ya sayıyı atlamak, ya olmayan bir
+#' kimlik uydurmak, ya da doğrulamayı atlayan işaretsiz bir sayı yazmak
+#' zorunda kalıyordu. Bu fonksiyon aynı sayılar için yapılandırılmış olgu
+#' üretir; kimlikler yazıcının bastığı `[fact:...]` işaretleriyle BİREBİR
+#' aynıdır.
+pk_packet_context_facts <- function(packet, scope = NULL) {
+  tanimlar <- list()
+
+  s <- packet$scope %||% list()
+  kapsama <- packet$coverage %||% list()
+
+  tanimlar <- c(tanimlar, list(
+    list(id = "__kapsam__", agg = "authorized_rows", value = s$authorized_rows,
+         label = "Yetkiniz dahilindeki satir"),
+    list(id = "__kapsam__", agg = "filtered_rows", value = s$filtered_rows,
+         label = "Analiz edilen satir"),
+    list(id = "__kapsama__", agg = "row_count", value = kapsama$rows,
+         label = "Satir sayisi"),
+    list(id = "__kapsama__", agg = "column_count", value = kapsama$columns,
+         label = "Sutun sayisi"),
+    list(id = "__kapsama__", agg = "grain_duplicates",
+         value = kapsama$duplicate_rows_at_grain, label = "Tanecikte mukerrer satir")
+  ))
+
+  for (m in (kapsama$missing %||% list())) {
+    tanimlar <- c(tanimlar, list(list(
+      id = m$column, agg = "missing_count", value = m$missing,
+      label = sprintf("%s bos deger", m$column)
+    )))
+  }
+
+  for (k in (packet$categorical %||% list())) {
+    tanimlar <- c(tanimlar, list(
+      list(id = k$column, agg = "distinct_count", value = k$distinct,
+           label = sprintf("%s farkli deger", k$label %||% k$column)),
+      list(id = k$column, agg = "other_rows",
+           value = if ((k$other_rows %||% 0L) > 0L) k$other_rows else NULL,
+           label = sprintf("%s diger satir", k$label %||% k$column))
+    ))
+    for (t in (k$top %||% list())) {
+      tanimlar <- c(tanimlar, list(list(
+        id = k$column, agg = "category_count", value = t$count,
+        label = sprintf("%s: %s", k$label %||% k$column, as.character(t$value)[1]),
+        group = as.character(t$value)[1]
+      )))
+    }
+  }
+
+  for (t in (packet$dates %||% list())) {
+    tanimlar <- c(tanimlar, list(list(
+      id = t$column, agg = "date_count", value = t$n,
+      label = sprintf("%s gecerli tarih", t$label %||% t$column)
+    )))
+  }
+
+  g <- packet$groups %||% list()
+  gruplama <- paste(as.character(g$group_by %||% character(0)), collapse = "+")
+  for (satir in (g$top %||% list())) {
+    tanimlar <- c(tanimlar, list(list(
+      id = gruplama, agg = "group_rows", value = satir$rows,
+      label = sprintf("%s satir sayisi", satir$group), group = satir$group
+    )))
+  }
+
+  out <- list()
+  for (t in tanimlar) {
+    deger <- suppressWarnings(as.numeric(t$value %||% NA_real_))
+    if (length(deger) != 1L || is.na(deger) || !is.finite(deger)) next
+    olgu <- .pk_count_fact(t$id, t$agg, deger, t$label,
+                           group_keys = as.character(t$group %||% character(0)),
+                           scope = scope)
+    out[[olgu$fact_id]] <- olgu
+  }
+
+  unname(out)
+}
+
+#' Paketin DOĞRULANABİLİR tüm olguları (ölçü + grup + bağlam)
+#'
+#' Grup kırılımındaki ölçü olguları da `[fact:...]` işaretiyle basıldığı hâlde
+#' indekse girmiyordu; doğru alıntılanmış bir grup toplamı `unknown_fact`
+#' sayılırdı. Kimliğe göre tekilleştirilir.
+pk_packet_all_facts <- function(packet) {
+  grup_olgulari <- unlist(
+    lapply(packet$groups$top %||% list(), function(satir) satir$facts %||% list()),
+    recursive = FALSE
+  )
+
+  hepsi <- c(packet$facts %||% list(), grup_olgulari %||% list(),
+             pk_packet_context_facts(packet, scope = packet$scope$scope_signature))
+
+  out <- list()
+  for (o in hepsi) {
+    if (!is.list(o) || !is.character(o$fact_id) || !nzchar(o$fact_id)) next
+    if (is.null(out[[o$fact_id]])) out[[o$fact_id]] <- o
+  }
+
+  unname(out)
 }
 
 #' Ağırlıklı ortalama olgusu (§5.7 geçersiz ağırlık sözleşmesi)
@@ -395,6 +641,13 @@ pk_weighted_mean_fact <- function(values, weights, column, spec = list(),
       group_keys = group_keys, time_window = time_window,
       n_finite = n_finite, n_excluded = n_excluded, note = not
     )
+  }
+
+  if (.pk_precision_loss(values) || .pk_precision_loss(weights)) {
+    return(yap(NULL, PK_FACT_PRECISION, paste(
+      "Olcu veya agirlik 2^53 ustunde tam sayi tasiyor (BIGINT/integer64);",
+      "agirlikli ortalama URETILMEDI."
+    )))
   }
 
   if (length(olcu) != length(agirlik)) {

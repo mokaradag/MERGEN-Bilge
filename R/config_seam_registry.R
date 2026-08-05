@@ -207,14 +207,20 @@ mergen_seam_registry <- function() {
         "tests/testthat/test-pk-query-meta-contract.R",
         "tests/testthat/test-pk-analysis-packet-behavior.R",
         "tests/testthat/test-pk-numeric-provenance-contract.R",
-        "tests/testthat/test-pk-export-xlsx-behavior.R"
+        "tests/testthat/test-pk-export-xlsx-behavior.R",
+        # Teslim/doğrulama sözleşmeleri de bu seam'e aittir: paket doğru kurulsa
+        # bile yanıt teslimi veya sayısal köken bozuksa seam YEŞİL olmamalıdır.
+        "tests/testthat/test-pk-provenance-delivery-contract.R",
+        "tests/testthat/test-pk-observation-accuracy-contract.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-mcp-excel-resolve.R\")",
         "testthat::test_file(\"tests/testthat/test-pk-analysis-security-summary-contract.R\")",
         "testthat::test_file(\"tests/testthat/test-pk-query-meta-contract.R\")",
         "testthat::test_file(\"tests/testthat/test-pk-analysis-packet-behavior.R\")",
-        "testthat::test_file(\"tests/testthat/test-pk-export-xlsx-behavior.R\")"
+        "testthat::test_file(\"tests/testthat/test-pk-export-xlsx-behavior.R\")",
+        "testthat::test_file(\"tests/testthat/test-pk-numeric-provenance-contract.R\")",
+        "testthat::test_file(\"tests/testthat/test-pk-provenance-delivery-contract.R\")"
       ),
       related_seams = c("dosya_yasam_dongusu", "sohbet_llm_akis")
     ),

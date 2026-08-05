@@ -36,7 +36,8 @@
   for (dosya in c("helpers_pk_config.R", "helpers_pk_text_turkish.R",
                   "helpers_pk_packet_stats.R", "helpers_pk_analysis_packet.R",
                   "helpers_pk_packet_render.R", "helpers_pk_export_plan.R",
-                  "helpers_pk_export_xlsx.R", "helpers_pk_answer_compose.R")) {
+                  "helpers_pk_export_csv.R", "helpers_pk_export_xlsx.R",
+                  "helpers_pk_answer_compose.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }
   env
@@ -219,9 +220,12 @@ test_that("5.000 satirlik sonuc dogru bir XLSX uretir ve geri okunur", {
   okunan <- as.data.frame(readxl::read_excel(yol, sheet = "Veri"))
   expect_equal(nrow(okunan), 5000L)
 
+  # PR #698 incelemesi: BEYAN EDILEN BIRIM basliga tasinir; aksi halde veri
+  # sayfasi "saat mi gun mu TL mi" sorusunu yanitlayamiyordu.
+  expect_true("Tutar (TL)" %in% names(okunan))
   # Yerel tipler: sayisal sayisal kalir, as.character()'a cevrilmez.
-  expect_true(is.numeric(okunan[["Tutar"]]))
-  expect_equal(okunan[["Tutar"]][1], -125.50)
+  expect_true(is.numeric(okunan[["Tutar (TL)"]]))
+  expect_equal(okunan[["Tutar (TL)"]][1], -125.50)
   expect_true(is.numeric(okunan[["Tamamlanma (%)"]]))
   expect_equal(okunan[["Tamamlanma (%)"]][1], 61.3)
 
@@ -374,7 +378,15 @@ test_that("Dogrulama basarisiz olursa XLSX SUNULMAZ; BOM'lu CSV yedegine dusulur
                                   base_name = "sentetik", dir = .pk_export_dir())
 
   expect_identical(artefakt$status, "csv_fallback")
-  expect_length(artefakt$files, 1L)
+  # PR #698 incelemesi: yedek yalnizca ham veri parcasini degil, XLSX'teki
+  # `Ozet`/`Bilgi` denetim baglamini da yan dosya olarak yazar; aksi halde
+  # indirilen/paylasilan CSV hangi populasyonu ve filtreleri temsil ettigini
+  # kaybediyordu.
+  expect_length(artefakt$files, 3L)
+  expect_true(any(grepl("_Ozet_", vapply(artefakt$files, function(f) f$name, character(1)),
+                        fixed = TRUE)))
+  expect_true(any(grepl("_Bilgi_", vapply(artefakt$files, function(f) f$name, character(1)),
+                        fixed = TRUE)))
   expect_identical(artefakt$files[[1]]$format, "csv")
   expect_true(grepl("CSV", artefakt$message, fixed = TRUE))
 
@@ -405,7 +417,15 @@ test_that("Disa aktarim bilge_yolac_downloads altina YAZMAZ", {
 
   kod <- .pk_export_code_only("R/helpers_pk_export_xlsx.R")
   expect_true(grepl("registerDataObj", kod, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("register_session_cleanup_on_end", kod, fixed = TRUE, useBytes = TRUE))
+  # PR #698 incelemesi: `register_session_cleanup_on_end()` oturum basina
+  # YALNIZCA BIR KEZ kayit kabul eder ve sonraki extra_cleanup listelerini
+  # eklemez; disa aktarim temizligi bu yuzden hic calismayabiliyordu. Yollar
+  # artik oturum defterine yazilir ve defteri bosaltan TEK bir geri cagri
+  # kaydedilir.
+  expect_true(grepl("onSessionEnded", kod, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("pk_export_cleanup_paths", kod, fixed = TRUE, useBytes = TRUE))
+  # Indirme dosyayi BELLEGE ALMADAN akitir.
+  expect_true(grepl("list(file = data$path", kod, fixed = TRUE, useBytes = TRUE))
 })
 
 test_that("Sunum oturum kapsamlidir ve oturum bitiminde temizlik kaydedilir", {
@@ -413,25 +433,57 @@ test_that("Sunum oturum kapsamlidir ve oturum bitiminde temizlik kaydedilir", {
 
   env <- .pk_export_env()
   kayitli <- new.env(parent = emptyenv())
-  kayitli$cagrildi <- FALSE
-  env$register_session_cleanup_on_end <- function(session, extra_cleanup = list()) {
-    kayitli$cagrildi <- TRUE
-    kayitli$adet <- length(extra_cleanup)
-    invisible(TRUE)
-  }
+  kayitli$geri_cagrilar <- list()
 
   sahte_session <- list(
     registerDataObj = function(name, data, filterFunc) paste0("session/", name),
+    onSessionEnded = function(fn) {
+      kayitli$geri_cagrilar[[length(kayitli$geri_cagrilar) + 1L]] <- fn
+      invisible(TRUE)
+    },
     userData = new.env(parent = emptyenv())
   )
 
   artefakt <- env$pk_export_build(data.frame(A = 1:3), list(facts = list()), list(),
                                   base_name = "sentetik", dir = .pk_export_dir())
   sunulan <- env$pk_export_serve(sahte_session, artefakt)
+  yol <- sunulan$files[[1]]$path
 
   expect_true(grepl("^session/pk_export_", sunulan$files[[1]]$url))
-  expect_true(kayitli$cagrildi)
-  expect_equal(kayitli$adet, 1L)
+  expect_length(kayitli$geri_cagrilar, 1L)
+  expect_true(yol %in% sahte_session$userData$pk_export_cleanup_paths)
+  expect_true(file.exists(yol))
+
+  # Ikinci bir disa aktarim, geri cagriyi TEKRAR kaydetmez ama defteri buyutur.
+  ikinci <- env$pk_export_serve(
+    sahte_session,
+    env$pk_export_build(data.frame(A = 4:6), list(facts = list()), list(),
+                        base_name = "sentetik2", dir = .pk_export_dir())
+  )
+  expect_length(kayitli$geri_cagrilar, 1L)
+  expect_true(ikinci$files[[1]]$path %in% sahte_session$userData$pk_export_cleanup_paths)
+
+  # Oturum bitince HER IKI dosya da silinir.
+  kayitli$geri_cagrilar[[1]]()
+  expect_false(file.exists(yol))
+  expect_false(file.exists(ikinci$files[[1]]$path))
+})
+
+test_that("Her disa aktarim TEKIL bir calisma dizinine yazar (cakisma yok)", {
+  skip_if_not_installed("writexl")
+
+  env <- .pk_export_env()
+  kok <- .pk_export_dir()
+  veri <- data.frame(A = 1:3)
+
+  a <- env$pk_export_build(veri, list(facts = list()), list(),
+                           base_name = "ayni_ad", dir = kok)
+  b <- env$pk_export_build(veri, list(facts = list()), list(),
+                           base_name = "ayni_ad", dir = kok)
+
+  expect_false(identical(a$files[[1]]$path, b$files[[1]]$path))
+  expect_true(file.exists(a$files[[1]]$path))
+  expect_true(file.exists(b$files[[1]]$path))
 })
 
 # --- Yanit kompozisyonu (§5.8) ------------------------------------------------

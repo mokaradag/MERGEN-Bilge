@@ -40,39 +40,69 @@ pk_numeric_provenance_mode <- function(query_meta = NULL) {
 #'
 #' "18.420,5" -> 18420.5 · "61,3" -> 61.3 · "18420.5" -> 18420.5
 #' Belirsiz gruplama (ör. "1.234,56.7") reddedilir.
-pk_parse_number_tr <- function(txt) {
+#' Bir sayı metninin OLASI tüm yorumları
+#'
+#' `18.420` Türkçe binlik gruplamadır (18420), ama `0.613` nokta-ondalıktır ve
+#' `12.345` ikisi de olabilir. Tek bir yorumu sessizce seçmek ya doğru bir
+#' iddiayı bloklar (`0.613`ü 613 sanmak) ya da yanlış ölçekli bir iddiayı
+#' onaylar. Bu yüzden belirsiz biçimde İKİ aday da döner; doğrulayıcı olguyla
+#' eşleşen yorumu kabul eder, eşleşen yoksa iddia yine reddedilir.
+pk_parse_number_candidates <- function(txt) {
   ham <- as.character(txt %||% "")[1]
-  if (is.na(ham) || !nzchar(ham)) return(NULL)
+  if (is.na(ham) || !nzchar(ham)) return(numeric(0))
 
   ham <- gsub("[[:space:] ]", "", ham)
   negatif <- startsWith(ham, "-")
   if (negatif || startsWith(ham, "+")) ham <- substring(ham, 2L)
 
-  if (!grepl("^[0-9.,]+$", ham)) return(NULL)
+  if (!grepl("^[0-9.,]+$", ham)) return(numeric(0))
 
   virgul <- gregexpr(",", ham, fixed = TRUE)[[1]]
   virgul_sayisi <- if (identical(virgul[1], -1L)) 0L else length(virgul)
-  if (virgul_sayisi > 1L) return(NULL)
+  if (virgul_sayisi > 1L) return(numeric(0))
+
+  adaylar <- character(0)
 
   if (virgul_sayisi == 1L) {
+    # Virgül varsa ondalık ayraçtır; nokta yalnızca gruplama olabilir.
     parcalar <- strsplit(ham, ",", fixed = TRUE)[[1]]
     tam <- parcalar[1]
     kesir <- if (length(parcalar) > 1L) parcalar[2] else ""
-    if (grepl(".", kesir, fixed = TRUE)) return(NULL)
-    if (grepl(".", tam, fixed = TRUE) && !grepl("^[0-9]{1,3}(\\.[0-9]{3})+$", tam)) return(NULL)
+    if (grepl(".", kesir, fixed = TRUE)) return(numeric(0))
+    if (grepl(".", tam, fixed = TRUE) && !grepl("^[0-9]{1,3}(\\.[0-9]{3})+$", tam)) {
+      return(numeric(0))
+    }
     tam <- gsub(".", "", tam, fixed = TRUE)
-    ham <- if (nzchar(kesir)) paste0(tam, ".", kesir) else tam
-  } else if (grepl("^[0-9]{1,3}(\\.[0-9]{3})+$", ham)) {
-    # Yalnızca binlik gruplama; "1.234" burada 1234'tur.
-    ham <- gsub(".", "", ham, fixed = TRUE)
-  } else if (lengths(regmatches(ham, gregexpr(".", ham, fixed = TRUE))) > 1L) {
-    return(NULL)
+    adaylar <- if (nzchar(kesir)) paste0(tam, ".", kesir) else tam
+  } else {
+    nokta <- lengths(regmatches(ham, gregexpr(".", ham, fixed = TRUE)))
+    gruplama <- grepl("^[1-9][0-9]{0,2}(\\.[0-9]{3})+$", ham)
+
+    if (gruplama && nokta == 1L) {
+      # Belirsiz: "12.345" hem 12345 hem 12,345 olabilir.
+      adaylar <- c(gsub(".", "", ham, fixed = TRUE), ham)
+    } else if (gruplama) {
+      adaylar <- gsub(".", "", ham, fixed = TRUE)
+    } else if (nokta > 1L) {
+      return(numeric(0))
+    } else {
+      # "0.613" gruplama OLAMAZ (binlik grup sıfırla başlamaz); sade ondalıktır.
+      adaylar <- ham
+    }
   }
 
-  num <- suppressWarnings(as.numeric(ham))
-  if (length(num) != 1L || is.na(num) || !is.finite(num)) return(NULL)
+  num <- suppressWarnings(as.numeric(adaylar))
+  num <- num[!is.na(num) & is.finite(num)]
+  if (!length(num)) return(numeric(0))
   if (negatif) num <- -num
-  num
+  unique(num)
+}
+
+#' Türkçe veya sade biçimli bir sayıyı ayrıştır (birincil yorum)
+pk_parse_number_tr <- function(txt) {
+  adaylar <- pk_parse_number_candidates(txt)
+  if (!length(adaylar)) return(NULL)
+  adaylar[1]
 }
 
 # İddia edilen sayının ondalık basamak sayısı -> yuvarlama toleransı.
@@ -100,17 +130,107 @@ pk_parse_number_tr <- function(txt) {
   0L
 }
 
-.pk_prov_tolerance <- function(gosterim, gercek) {
-  0.5 * 10^(-.pk_prov_decimals(gosterim)) + abs(as.numeric(gercek)) * 1e-9
+# Tolerans İKİ sınırın küçüğüdür:
+#   1. iddia edilen gösterimin yuvarlama adımı (`18.420` -> ±0,5), ve
+#   2. MADDİYET sınırı: olgunun büyüklüğünün binde biri.
+#
+# Yalnızca (1) kullanılırsa iddianın KABALIĞI doğrulamayı zayıflatır: model
+# `%61,34` bir olguyu `61`, `0,49` bir olguyu `0` yazıp geçerdi. Yalnızca (2)
+# kullanılırsa meşru yuvarlanmış alıntılar reddedilirdi. İkisinin küçüğü, hem
+# `18.420,5` -> `18.420` alıntısını kabul eder hem de `61,34` -> `61` iddiasını
+# reddeder.
+#
+# Eski göreli terim (`abs(value) * 1e-9`) büyüklükle büyüyordu: 1e12'de ±1.000,
+# 1e15'te ±1.000.000 hataya izin veriyordu; maddi olarak yanlış bir bütçe/maliyet
+# iddiası bu yüzden köken doğrulamasından geçebilirdi.
+.pk_prov_tolerance <- function(gosterim, gercek, olgu = NULL) {
+  buyukluk <- abs(as.numeric(gercek))
+  yuvarlama <- 0.5 * 10^(-.pk_prov_decimals(gosterim))
+  maddiyet <- max(buyukluk * 1e-3, .Machine$double.eps * 16)
+
+  min(yuvarlama, maddiyet) + buyukluk * .Machine$double.eps * 16
+}
+
+# Birim karşılaştırması yerelden bağımsız katlanır ("Saat" == "saat").
+.pk_prov_unit_fold <- function(x) {
+  txt <- as.character(x %||% "")[1]
+  if (length(txt) != 1L || is.na(txt)) return("")
+  txt <- chartr("ÇĞİIÖŞÜ", "cgiiosu", txt)
+  txt <- chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", txt)
+  trimws(sub("[.]+$", "", txt))
+}
+
+# Birimsiz bir olguya uydurulmuş birim eklendiğini ancak GERÇEK bir birim
+# sözlüğüne karşı söyleyebiliriz: "47 farkli kaynak" ifadesindeki "farkli"
+# birim değildir ve işaretlenmemelidir; "47 saat" ise işaretlenmelidir.
+.PK_PROV_KNOWN_UNITS <- c("%", "tl", "try", "usd", "eur", "saat", "gun", "gün",
+                          "adet", "kisi", "kişi", "ay", "yil", "yıl", "m2", "m²",
+                          "adam-saat", "kisi/saat", "kişi/saat")
+
+.pk_prov_unit_vocabulary <- function(index) {
+  bilinen <- vapply(index, function(o) .pk_prov_unit_fold(o$unit %||% ""), character(1))
+  unique(c(.PK_PROV_KNOWN_UNITS, bilinen[nzchar(bilinen)]))
+}
+
+# Türkçe toplulaştırma sözcükleri -> olgu toplulaştırması. Yalnızca AÇIKÇA
+# tanınan bir sözcük, alıntılanan olgunun toplulaştırmasıyla ÇELİŞTİĞİNDE
+# işaretlenir; bu, "bir toplamı ortalama diye sunmak" durumunu yakalar.
+.PK_PROV_AGG_WORDS <- list(
+  sum = c("toplam", "toplami", "toplamı"),
+  mean = c("ortalama", "ortalamasi", "ortalaması"),
+  weighted_mean = c("agirlikli ortalama", "ağırlıklı ortalama"),
+  median = c("medyan", "ortanca"),
+  max = c("en yuksek", "en yüksek", "maksimum", "azami"),
+  min = c("en dusuk", "en düşük", "minimum", "asgari"),
+  latest = c("en yeni", "en guncel", "en güncel")
+)
+
+.pk_prov_claimed_aggregation <- function(context) {
+  txt <- .pk_prov_unit_fold(context)
+  if (!nzchar(txt)) return(NULL)
+
+  bulunan <- character(0)
+  for (agg in names(.PK_PROV_AGG_WORDS)) {
+    for (sozcuk in .PK_PROV_AGG_WORDS[[agg]]) {
+      if (grepl(.pk_prov_unit_fold(sozcuk), txt, fixed = TRUE)) {
+        bulunan <- c(bulunan, agg)
+        break
+      }
+    }
+  }
+
+  # "agirlikli ortalama" hem weighted_mean hem mean eşleşir; en özgül olan
+  # kazanır ve belirsiz kalan durumda hiç iddia edilmemiş sayılır.
+  if ("weighted_mean" %in% bulunan) return("weighted_mean")
+  if (length(unique(bulunan)) != 1L) return(NULL)
+  bulunan[1]
 }
 
 #' Olguları kimliğe göre indeksle
+#'
+#' Aynı kimliğe iki farklı olgu düşerse İKİSİ DE kullanılamaz sayılır: sessizce
+#' birini ezmek, doğru alıntılanmış bir sayının YANLIŞ ölçüye karşı
+#' doğrulanması demekti.
 pk_facts_index <- function(facts) {
   out <- list()
   for (olgu in (facts %||% list())) {
-    if (is.list(olgu) && is.character(olgu$fact_id) && nzchar(olgu$fact_id)) {
+    if (!is.list(olgu) || !is.character(olgu$fact_id) || !nzchar(olgu$fact_id)) next
+
+    mevcut <- out[[olgu$fact_id]]
+    if (is.null(mevcut)) {
       out[[olgu$fact_id]] <- olgu
+      next
     }
+    if (identical(mevcut$value, olgu$value) && identical(mevcut$column, olgu$column) &&
+        identical(mevcut$aggregation, olgu$aggregation)) {
+      next
+    }
+
+    belirsiz <- mevcut
+    belirsiz$value <- NULL
+    belirsiz$status <- "ambiguous_fact_id"
+    belirsiz$note <- "Ayni kimlige birden fazla olgu dustu; alintilanamaz."
+    out[[olgu$fact_id]] <- belirsiz
   }
   out
 }
@@ -130,11 +250,19 @@ pk_facts_index <- function(facts) {
     isaret <- substr(txt, konum[i], konum[i] + uzunluk[i] - 1L)
     fact_id <- sub("^\\[fact:", "", sub("\\]$", "", isaret))
 
-    onceki <- substr(txt, max(1L, konum[i] - 60L), konum[i] - 1L)
+    # Bağlam penceresi hem sayıyı hem de iddia edilen toplulaştırma sözcüğünü
+    # ("toplam", "ortalama", ...) yakalayacak kadar geniştir.
+    onceki <- substr(txt, max(1L, konum[i] - 160L), konum[i] - 1L)
+    yakin <- substr(onceki, max(1L, nchar(onceki) - 60L), nchar(onceki))
+
+    # Birim yalnızca 1-12 harf değildir: `kişi/saat`, `adam-saat`, `m²`, `₺`
+    # gibi bileşik/simgesel birimler de olgunun gösteriminde geçebilir.
     eslesme <- regmatches(
-      onceki,
-      gregexpr("(%\\s*)?-?[0-9][0-9.,]*\\s*(%|[A-Za-zÇĞİÖŞÜçğıöşü]{1,12})?\\s*$",
-               onceki, perl = TRUE)
+      yakin,
+      gregexpr(paste0("(%\\s*)?-?[0-9][0-9.,]*\\s*",
+                      "(%|[A-Za-zÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac]",
+                      "[A-Za-zÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac/.-]{0,23})?\\s*$"),
+               yakin, perl = TRUE)
     )[[1]]
 
     ham <- if (length(eslesme)) trimws(eslesme[length(eslesme)]) else ""
@@ -150,8 +278,10 @@ pk_facts_index <- function(facts) {
       raw = ham,
       number_text = sayi_metni,
       value = pk_parse_number_tr(sayi_metni),
+      candidates = pk_parse_number_candidates(sayi_metni),
       percent = yuzde,
-      unit = trimws(birim)
+      unit = trimws(birim),
+      context = onceki
     )
   }
 
@@ -164,68 +294,85 @@ pk_facts_index <- function(facts) {
 pk_numeric_provenance_validate <- function(text, facts) {
   index <- pk_facts_index(facts)
   iddialar <- .pk_prov_claims(text)
+  sozluk <- .pk_prov_unit_vocabulary(index)
   uyusmazliklar <- list()
+
+  ekle <- function(...) {
+    uyusmazliklar[[length(uyusmazliklar) + 1L]] <<- list(...)
+    invisible(NULL)
+  }
 
   for (iddia in iddialar) {
     olgu <- index[[iddia$fact_id]]
 
     if (is.null(olgu)) {
-      uyusmazliklar[[length(uyusmazliklar) + 1L]] <- list(
-        fact_id = iddia$fact_id, reason = "unknown_fact", claimed = iddia$number_text
-      )
+      ekle(fact_id = iddia$fact_id, reason = "unknown_fact", claimed = iddia$number_text)
       next
     }
 
     if (is.null(olgu$value)) {
-      uyusmazliklar[[length(uyusmazliklar) + 1L]] <- list(
-        fact_id = iddia$fact_id, reason = "unavailable_fact", claimed = iddia$number_text,
-        status = olgu$status
-      )
+      ekle(fact_id = iddia$fact_id, reason = "unavailable_fact",
+           claimed = iddia$number_text, status = olgu$status)
       next
     }
 
-    if (is.null(iddia$value)) {
-      uyusmazliklar[[length(uyusmazliklar) + 1L]] <- list(
-        fact_id = iddia$fact_id, reason = "no_number", claimed = iddia$raw
-      )
+    adaylar <- iddia$candidates %||% numeric(0)
+    if (!length(adaylar)) {
+      ekle(fact_id = iddia$fact_id, reason = "no_number", claimed = iddia$raw)
       next
     }
 
-    if (abs(iddia$value - olgu$value) > .pk_prov_tolerance(iddia$number_text, olgu$value)) {
-      uyusmazliklar[[length(uyusmazliklar) + 1L]] <- list(
-        fact_id = iddia$fact_id, reason = "value_mismatch",
-        claimed = iddia$number_text, actual = olgu$value
-      )
+    # Belirsiz nokta biçimlerinde olguyla eşleşen yorum kabul edilir; hiçbiri
+    # eşleşmiyorsa iddia yine reddedilir.
+    tolerans <- .pk_prov_tolerance(iddia$number_text, olgu$value, olgu)
+    if (!any(abs(adaylar - olgu$value) <= tolerans)) {
+      ekle(fact_id = iddia$fact_id, reason = "value_mismatch",
+           claimed = iddia$number_text, actual = olgu$value)
       next
     }
 
-    # Anlamsal denetim: doğru sayı YANLIŞ ölçü için alıntılanamaz. Yüzde
-    # işareti taşıyan bir iddia, birimi yüzde OLMAYAN bir olguya bağlanamaz.
-    olgu_birimi <- as.character(olgu$unit %||% "")[1]
-    if (is.na(olgu_birimi)) olgu_birimi <- ""
+    # Anlamsal denetim: doğru sayı YANLIŞ ölçü için alıntılanamaz.
+    olgu_birimi <- .pk_prov_unit_fold(olgu$unit %||% "")
+    iddia_birimi <- .pk_prov_unit_fold(iddia$unit)
 
     if (isTRUE(iddia$percent) && !identical(olgu_birimi, "%")) {
-      uyusmazliklar[[length(uyusmazliklar) + 1L]] <- list(
-        fact_id = iddia$fact_id, reason = "unit_mismatch",
-        claimed = "%", actual = olgu_birimi
-      )
+      ekle(fact_id = iddia$fact_id, reason = "unit_mismatch",
+           claimed = "%", actual = olgu_birimi)
       next
     }
 
-    if (!isTRUE(iddia$percent) && identical(olgu_birimi, "%") && nzchar(iddia$unit)) {
-      uyusmazliklar[[length(uyusmazliklar) + 1L]] <- list(
-        fact_id = iddia$fact_id, reason = "unit_mismatch",
-        claimed = iddia$unit, actual = olgu_birimi
-      )
+    if (!isTRUE(iddia$percent) && identical(olgu_birimi, "%") && nzchar(iddia_birimi)) {
+      ekle(fact_id = iddia$fact_id, reason = "unit_mismatch",
+           claimed = iddia$unit, actual = olgu_birimi)
       next
     }
 
-    if (nzchar(iddia$unit) && nzchar(olgu_birimi) &&
-        !identical(tolower(iddia$unit), tolower(olgu_birimi))) {
-      uyusmazliklar[[length(uyusmazliklar) + 1L]] <- list(
-        fact_id = iddia$fact_id, reason = "unit_mismatch",
-        claimed = iddia$unit, actual = olgu_birimi
-      )
+    if (nzchar(iddia_birimi) && nzchar(olgu_birimi) &&
+        !identical(iddia_birimi, olgu_birimi)) {
+      ekle(fact_id = iddia$fact_id, reason = "unit_mismatch",
+           claimed = iddia$unit, actual = olgu_birimi)
+      next
+    }
+
+    # BİRİMSİZ bir olguya birim UYDURULAMAZ. Sıradan düzyazı sözcükleri
+    # ("47 farkli kaynak") işaretlenmesin diye yalnızca GERÇEK bir birim
+    # sözlüğüne düşen jetonlar uyuşmazlık sayılır.
+    if (!nzchar(olgu_birimi) && nzchar(iddia_birimi) &&
+        (isTRUE(iddia$percent) || iddia_birimi %in% sozluk)) {
+      ekle(fact_id = iddia$fact_id, reason = "unit_mismatch",
+           claimed = iddia$unit, actual = "(birimsiz)")
+      next
+    }
+
+    # Toplulaştırma denetimi: bir TOPLAM "ortalama" diye sunulamaz. Yalnızca
+    # açıkça tanınan bir toplulaştırma sözcüğü, olgunun toplulaştırmasıyla
+    # çeliştiğinde işaretlenir.
+    iddia_agg <- .pk_prov_claimed_aggregation(iddia$context)
+    olgu_agg <- as.character(olgu$aggregation %||% "")[1]
+    if (!is.null(iddia_agg) && nzchar(olgu_agg) && !identical(iddia_agg, olgu_agg) &&
+        olgu_agg %in% names(.PK_PROV_AGG_WORDS)) {
+      ekle(fact_id = iddia$fact_id, reason = "aggregation_mismatch",
+           claimed = iddia_agg, actual = olgu_agg)
     }
   }
 
@@ -263,7 +410,29 @@ pk_numeric_provenance_apply <- function(text, facts, mode = NULL, fallback_text 
                 checked = 0L, mismatches = list(), rate = 0, blocked = FALSE))
   }
 
-  sonuc <- pk_numeric_provenance_validate(ham, facts)
+  # KAPALI BAŞARISIZLIK: bozuk bir olgu/metadata uç durumu doğrulayıcıyı
+  # düşürürse çağıran ham model metnini gösterirdi — `block` kipinde bile.
+  # Hata, `block` davranışının aynısına (deterministik yedek) indirgenir.
+  sonuc <- tryCatch(pk_numeric_provenance_validate(ham, facts), error = function(e) {
+    cat(sprintf("[PK_ANALIZ] Sayisal koken dogrulamasi hata verdi: %s\n",
+                conditionMessage(e)))
+    NULL
+  })
+
+  if (is.null(sonuc)) {
+    yedek <- as.character(fallback_text %||% "")[1]
+    return(list(
+      text = paste0(
+        "\U000026A0\U0000FE0F **Yanıt doğrulanamadı:** Sayısal köken denetimi ",
+        "beklenmeyen bir hatayla karşılaştı; açıklama gösterilmiyor. Aşağıdaki ",
+        "değerler R tarafından hesaplanmıştır.",
+        if (!is.na(yedek) && nzchar(yedek)) paste0("\n\n", yedek) else ""
+      ),
+      mode = kip, checked = 0L,
+      mismatches = list(list(reason = "validator_error")), rate = 1, blocked = TRUE
+    ))
+  }
+
   temiz <- pk_numeric_provenance_strip(ham)
 
   if (identical(kip, "warn") && length(sonuc$mismatches)) {

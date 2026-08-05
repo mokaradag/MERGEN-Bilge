@@ -288,6 +288,7 @@ pk_build_provenance_footer <- function(provenance) {
 }
 
 .pk_provenance_request_slot <- "pk_provenance_request_id"
+.pk_provenance_done_slot <- "pk_provenance_decorated_ids"
 
 #' Yeni istek başlat: bekleyen alt bilgiyi temizle ve aktif istek kimliğini yaz
 #'
@@ -326,10 +327,20 @@ pk_provenance_current_request_id <- function(session) {
 #' aynıdır.
 pk_provenance_stash <- function(session, footer, request_id = NULL,
                                 facts = NULL, fallback_text = NULL,
-                                query_id = NULL) {
+                                query_id = NULL, mode = NULL) {
   store <- .pk_provenance_store(session)
   if (is.null(store)) return(invisible(FALSE))
   if (is.null(footer) || !nzchar(as.character(footer)[1])) return(invisible(FALSE))
+
+  # BAYAT İSTEK KORUMASI: yuva tektir. B isteği olgularını koyduktan sonra
+  # geç biten A isteği yazarsa B'nin sayısal doğrulaması, R'ye ait tablosu,
+  # eki ve alt bilgisi kaybolurdu; `pk_provenance_take()` içindeki kimlik
+  # denetimi ezilmiş kaydı GERİ GETİREMEZ.
+  aktif <- store[[.pk_provenance_request_slot]]
+  if (!is.null(request_id) && !is.null(aktif) &&
+      !identical(as.character(request_id)[1], as.character(aktif)[1])) {
+    return(invisible(FALSE))
+  }
 
   tryCatch({
     store[[.pk_provenance_slot]] <- list(
@@ -337,7 +348,8 @@ pk_provenance_stash <- function(session, footer, request_id = NULL,
       request_id = if (is.null(request_id)) NULL else as.character(request_id)[1],
       facts = facts,
       fallback_text = fallback_text,
-      query_id = query_id
+      query_id = query_id,
+      mode = mode
     )
     invisible(TRUE)
   }, error = function(e) invisible(FALSE))
@@ -357,12 +369,14 @@ pk_provenance_take <- function(session, request_id = NULL, full = FALSE) {
   pending <- tryCatch(store[[.pk_provenance_slot]], error = function(e) NULL)
   if (is.null(pending) || !is.list(pending)) return(NULL)
 
-  tryCatch(store[[.pk_provenance_slot]] <- NULL, error = function(e) NULL)
-
+  # Kimlik ÖNCE karşılaştırılır: uyuşmayan bayat bir tamamlama, yuvayı
+  # tüketerek YENİ isteğin kaydını silmemelidir.
   if (!is.null(request_id) && !is.null(pending$request_id) &&
       !identical(as.character(request_id)[1], pending$request_id)) {
     return(NULL)
   }
+
+  tryCatch(store[[.pk_provenance_slot]] <- NULL, error = function(e) NULL)
 
   if (isTRUE(full)) return(pending)
   pending$footer
@@ -370,7 +384,12 @@ pk_provenance_take <- function(session, request_id = NULL, full = FALSE) {
 
 #' Nihai yanıt metnine bekleyen alt bilgiyi iliştir
 #'
-#' Fonksiyon idempotenttir: alt bilgi zaten iliştirilmişse tekrar eklenmez.
+#' İdempotentlik MODEL METNİNE DEĞİL, istek kimliğine bağlıdır: eskiden metinde
+#' `**Analiz Kaynağı**` başlığını görmek dekorasyonu tamamen atlatıyordu, yani
+#' modelin (ya da bir veri değerinin yönlendirmesiyle) o başlığı yazması
+#' doğrulanmamış düzyazıyı `[fact:...]` işaretleriyle birlikte geçirir, R'ye ait
+#' bloğu ve alt bilgiyi düşürürdü.
+#'
 #' Hiçbir koşulda hata fırlatmaz; başarısızlıkta metin değişmeden döner.
 pk_provenance_decorate <- function(text, session, request_id = NULL) {
   tryCatch({
@@ -383,20 +402,40 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
     base_txt <- if (is.null(text) || length(text) == 0L) "" else as.character(text)[1]
     if (is.na(base_txt)) base_txt <- ""
 
-    if (grepl("**Analiz Kaynağı**", base_txt, fixed = TRUE)) return(text)
+    # Bant dışı idempotentlik: aynı istek ikinci kez dekore edilmez.
+    store <- .pk_provenance_store(session)
+    kimlik <- as.character(request_id %||% pending$request_id %||% "")[1]
+    if (is.environment(store) && nzchar(kimlik)) {
+      bitenler <- as.character(store[[.pk_provenance_done_slot]] %||% character(0))
+      if (kimlik %in% bitenler) return(text)
+      store[[.pk_provenance_done_slot]] <- utils::tail(unique(c(bitenler, kimlik)), 20L)
+    }
 
     # §5.11: Sayısal iddialar olgulara karşı doğrulanır ve `[fact:...]`
     # referansları YALNIZCA doğrulamadan SONRA gösterimden silinir. Olgu
     # saklanmamışsa (v1 yolu) bu adım tamamen atlanır.
+    #
+    # KAPALI BAŞARISIZLIK: doğrulama kendi içinde hata verse bile
+    # `pk_numeric_provenance_apply()` deterministik yedek metni döndürür
+    # (bkz. helpers_pk_numeric_provenance.R). Bekleyen kayıt zaten
+    # tüketildiği için dıştaki tryCatch'e düşüp ham model metnini döndürmek,
+    # `block` kipinde bile doğrulanmamış düzyazıyı göstermek olurdu.
     if (!is.null(pending$facts) &&
         exists("pk_numeric_provenance_apply", mode = "function", inherits = TRUE)) {
       sonuc <- pk_numeric_provenance_apply(
-        base_txt, pending$facts, fallback_text = pending$fallback_text
+        base_txt, pending$facts, mode = pending$mode,
+        fallback_text = pending$fallback_text
       )
       base_txt <- sonuc$text
       if (exists("pk_numeric_provenance_report", mode = "function", inherits = TRUE)) {
         try(pk_numeric_provenance_report(sonuc, pending$query_id), silent = TRUE)
       }
+    }
+
+    # Model metni kapatılmamış bir kod bloğuyla bitiyorsa, R'ye ait tablo/ek/alt
+    # bilgi o bloğun İÇİNE düşer ve indirme bağlantısı tıklanamaz hâle gelir.
+    if (exists("pk_compose_close_markdown", mode = "function", inherits = TRUE)) {
+      base_txt <- pk_compose_close_markdown(base_txt)
     }
 
     paste0(base_txt, footer)

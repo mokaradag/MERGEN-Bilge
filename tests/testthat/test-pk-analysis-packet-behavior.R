@@ -232,8 +232,16 @@ test_that("Her olgu kararli ASCII kimlik ve anlamsal baglam tasir", {
   )
 
   toplam <- .pk_packet_fact(olgular, "KalanIscilik_sa", "sum")
-  expect_identical(toplam$fact_id, "labor_remaining_hours.sum.overall")
+  # PR #698 incelemesi: kimliğe, KIRPILMAMIŞ özgün kimlikten türetilen kararlı
+  # bir sağlama eklenir. `A-B` ile `A B` gibi normalleştirmede aynı slug'a
+  # düşen iki ölçü artık AYNI kimliği alamaz (sessiz üzerine yazma yoktu).
+  expect_true(startsWith(toplam$fact_id, "labor_remaining_hours.sum.overall."))
+  expect_true(grepl("^labor_remaining_hours\\.sum\\.overall\\.[0-9a-f]{6}$",
+                    toplam$fact_id))
   expect_true(grepl("^[A-Za-z0-9_.]+$", toplam$fact_id))
+  # Aynı kimlik, aynı girdiden HER ZAMAN aynı üretilir.
+  expect_identical(toplam$fact_id,
+                   env$pk_fact_id("labor.remaining_hours", "sum", character(0)))
   expect_identical(toplam$measure_capability, "labor.remaining_hours")
   expect_identical(toplam$unit, "saat")
   expect_identical(toplam$label, "Kalan İşçilik")
@@ -286,8 +294,11 @@ test_that("D17: ilk-K disinda kalan degerler 'Diger' olarak toplanir", {
   expect_equal(kat$distinct, 25L)
   expect_length(kat$top, 10L)
   expect_equal(kat$other_values, 15L)
-  expect_true(grepl("Diger (15 deger)", env$pk_packet_render(paket, 200000L)$text,
-                    fixed = TRUE))
+  # PR #698 incelemesi: "Diğer" artık yalnızca kaç FARKLI değer kaldığını
+  # değil, KAÇ SATIR tuttuğunu ve payını da söyler (uzun kuyruk sayısız bir
+  # dipnot olarak görünemez).
+  expect_true(grepl("Diger (15 deger, 15 satir, %60,0)",
+                    env$pk_packet_render(paket, 200000L)$text, fixed = TRUE))
 })
 
 # --- D18: konumsal yanli olmayan ornek ----------------------------------------
@@ -474,7 +485,10 @@ test_that("Grup kirilimi default_group_by x default_measures ile calisir ve Dige
 
   olgu <- Filter(function(o) identical(o$aggregation, "sum"), gruplar$top[[1]]$facts)[[1]]
   expect_equal(olgu$value, 6)
-  expect_true(grepl("^saat\\.sum\\.b[0-9]+$", olgu$fact_id))
+  # Grup etiketi sütun adıyla nitelenir ("Bolum=\"B1\""): düz birleştirme
+  # `("A | B", "C")` ile `("A", "B | C")` gruplarını aynı gösterirdi.
+  expect_identical(gruplar$top[[1]]$group, "Bolum=\"B1\"")
+  expect_true(grepl("^saat\\.sum\\.bolum_b[0-9]+\\.[0-9a-f]{6}$", olgu$fact_id))
 })
 
 test_that("default_group_by yoksa grup kirilimi URETILMEZ", {

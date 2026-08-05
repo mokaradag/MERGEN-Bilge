@@ -138,7 +138,10 @@
   # (safe_errors / sql_readonly / rls) + v2 davranış katmanı (filter_compile /
   # filter_policy / filters_v2) + saf istem katmanı (prompt_budget /
   # analysis_prompts) eklendi + saf istatistiksel özet kurucusu; 13 -> 22 dosya.
-  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_analysis_query_selection.R", n = 30L),
+  # Bilinçli güncelleme: PR #698 inceleme düzeltmeleri —
+  # R/helpers_pk_export_csv.R (akışlı + doğrulanmış CSV yedeği ve çakışmasız
+  # dosya yolu tabanı) export_plan ile export_xlsx arasına eklendi; 30 -> 31.
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_analysis_query_selection.R", n = 31L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -477,7 +480,8 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 392 -> 400: Faz 2 (deterministik analiz + dışa aktarım) sekiz yeni PK
   # yardımcı dosyası: paket istatistikleri/kurucusu/metni, sayısal köken,
   # dışa aktarım planı/G-Ç, yanıt kompozisyonu ve sonuç kurucusu.
-  expect_equal(length(runtime), 400L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 400 -> 401: PR #698 inceleme düzeltmeleri, R/helpers_pk_export_csv.R.
+  expect_equal(length(runtime), 401L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

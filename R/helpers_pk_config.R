@@ -144,6 +144,14 @@ pk_config_spec <- list(
     default = 20L,
     min = 1L
   ),
+  # XLSX bellek tavanı (hücre = satır x sütun). `writexl` tüm sayfaları AYNI
+  # ANDA ister; tavan aşılırsa XLSX hiç denenmez ve parçaları teker teker yazan
+  # akışlı CSV yoluna geçilir. Sessiz kırpma DEĞİLDİR: tüm satırlar aktarılır.
+  MERGEN_PK_EXPORT_MAX_CELLS = list(
+    type = "integer",
+    default = 2000000L,
+    min = 1L
+  ),
   # --- Faz 2 (§5.11): sayısal köken doğrulaması ---------------------------
   # `log` ile başlanır: gerçek yanlış-pozitif oranı VM'de ölçülmeden `warn`
   # veya `block` kipine geçilmez.

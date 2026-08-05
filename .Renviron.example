@@ -606,6 +606,11 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   daraltması istenir.
 # MERGEN_PK_EXPORT_MAX_PARTS=20
 #
+#   XLSX bellek tavanı (hücre = satır x sütun). writexl tüm sayfaları AYNI ANDA
+#   ister; tavan aşılırsa XLSX hiç denenmez ve parçaları teker teker yazan
+#   akışlı CSV yoluna geçilir. Sessiz kırpma DEĞİLDİR: tüm satırlar aktarılır.
+# MERGEN_PK_EXPORT_MAX_CELLS=2000000
+#
 #   SAYISAL KÖKEN DOĞRULAMASI. Modelin ürettiği her sayı, R'nin hesapladığı
 #   yapılandırılmış olguya karşı denetlenir (değer + birim + kullanılabilirlik).
 #     off   -> kapalı

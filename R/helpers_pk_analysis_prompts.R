@@ -176,25 +176,11 @@ pk_build_analysis_system_prompt_v2 <- function(analysis_mode, query) {
     "etiketiyle ifade et.\n"
   )
 
-  if (!is.null(query$info_file) && nzchar(query$info_file)) {
-    file_path_normalized <- gsub("\\\\", "/", query$info_file)
-    system_prompt <- paste0(
-      system_prompt,
-      "\nEK DOSYA: Cevabinin en altina su HTML linkini ekle: <br><br>\U0001F449 ",
-      "<span class='analysis-file-link' data-filepath='", file_path_normalized,
-      "' style='color:#007bff; cursor:pointer; text-decoration:underline; font-weight:bold;'>",
-      "İlgili Dosyayı Görüntüle</span>\n"
-    )
-  }
-
-  if (!is.null(query$info_url) && nzchar(query$info_url)) {
-    system_prompt <- paste0(
-      system_prompt,
-      "\nEK LINK: Cevabinin en altina su HTML linkini ekle: <br><br>\U0001F310 ",
-      "<a href='", query$info_url, "' target='_blank' rel='noopener noreferrer'>",
-      "<b>Daha Fazla Bilgi</b></a>\n"
-    )
-  }
-
+  # v2'de metadata bağlantıları MODELE devredilmez. Ham HTML'i modele yazdırmak
+  # bağlantının atlanmasına, değiştirilmesine veya uydurulmasına açıktı; ayrıca
+  # metadata'daki tırnak/güvensiz şema hiçbir denetimden geçmeden üretilen
+  # işaretlemeyi bozabiliyordu. Bağlantılar artık R'ye ait yanıt bloğunda,
+  # öznitelik kaçışı ve şema doğrulamasıyla üretilir
+  # (bkz. pk_compose_reference_links()).
   system_prompt
 }
