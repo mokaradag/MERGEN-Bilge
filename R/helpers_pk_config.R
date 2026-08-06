@@ -152,6 +152,81 @@ pk_config_spec <- list(
     default = 2000000L,
     min = 1L
   ),
+  # --- Faz 4 (§5.4): varlık çözümleme -------------------------------------
+  # Çözümleme hattının filtre yoluna bağlanması. YALNIZCA v2 yürütücüsünden
+  # çağrılır; v1 davranışı bu anahtardan BAĞIMSIZ olarak bit bit korunur.
+  # Operatörün geri dönüş anahtarı olarak açık tutulur: gerçek sözlük
+  # davranışı VM'de ölçülene kadar kapatılabilir olmalıdır.
+  MERGEN_PK_RESOLVE_ENABLED = list(
+    type = "logical",
+    default = TRUE
+  ),
+  # --- Faz 4 (§5.4): varlık çözümleme eşikleri ----------------------------
+  # HEPSİ 0..100 aralığında tam sayıdır ve `pk_resolve_thresholds()` içinde
+  # AYRICA ilişkileri doğrulanır: MIN <= MULTI <= AUTO. Tek anahtar
+  # doğrulaması bu ilişkiyi yakalayamaz — örneğin MIN=90 ile AUTO=85 tek tek
+  # geçerli, birlikte tutarsızdır ve kapalı başarısızlığa yol açmalıdır.
+  #
+  # Çözümleyicideki HİÇBİR dal bu değerleri sabit kodlamaz (§5.4 açık kuralı).
+  #
+  # Tek adayın otomatik kabul edildiği eşik.
+  MERGEN_PK_RESOLVE_AUTO_SCORE = list(
+    type = "integer",
+    default = 85L,
+    min = 0L,
+    max = 100L
+  ),
+  # Çoğul isteklerde adayın "güçlü" sayıldığı eşik. Bu eşiği geçen adaylar
+  # sessizce BİRLEŞTİRİLMEZ; kullanıcıya onaylatılır.
+  MERGEN_PK_RESOLVE_MULTI_SCORE = list(
+    type = "integer",
+    default = 70L,
+    min = 0L,
+    max = 100L
+  ),
+  # Bu eşiğin altı "çözümlenemedi" sayılır (kural 6/7).
+  MERGEN_PK_RESOLVE_MIN_SCORE = list(
+    type = "integer",
+    default = 40L,
+    min = 0L,
+    max = 100L
+  ),
+  # Tepe ile ikinci aday arasındaki fark bu değerin altındaysa tahmin
+  # yürütülmez, kullanıcıya sorulur.
+  MERGEN_PK_RESOLVE_AMBIGUITY_MARGIN = list(
+    type = "integer",
+    default = 10L,
+    min = 0L,
+    max = 100L
+  ),
+  # Tek bir OR grubunda TAMAMEN görünür/onaylanabilir azami kanonik değer.
+  # Daha büyük kümeler daraltma/sayfalama gerektirir ve değerler "Tümü"
+  # arkasına SAKLANAMAZ.
+  MERGEN_PK_RESOLVE_MAX_CANDIDATES = list(
+    type = "integer",
+    default = 5L,
+    min = 1L,
+    max = 5L
+  ),
+  # Puanlamaya giren varlık ifadesinin azami karakter uzunluğu. Sınırsız
+  # ifade, mütevazı bir sözlükte bile aday başına iki Levenshtein hesabıyla
+  # PAYLAŞILAN Shiny sürecini meşgul edebilir (yapıştırılmış/kötü niyetli
+  # metin). Aşan ifade kırpılır ve bu durum karara AÇIKÇA yazılır.
+  MERGEN_PK_RESOLVE_MAX_PHRASE_CHARS = list(
+    type = "integer",
+    default = 160L,
+    min = 8L,
+    max = 4000L
+  ),
+  # Belirteç/mesafe katmanlarına giren azami aday sayısı. Kesin ve alias
+  # katmanları bu sınırdan ETKİLENMEZ; onlar karma araması ile çözülür.
+  # Tavan aşılırsa karar `scan_truncated` taşır; sessiz "eşleşme yok" olmaz.
+  MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES = list(
+    type = "integer",
+    default = 2000L,
+    min = 1L,
+    max = 200000L
+  ),
   # --- Faz 2 (§5.11): sayısal köken doğrulaması ---------------------------
   # `log` ile başlanır: gerçek yanlış-pozitif oranı VM'de ölçülmeden `warn`
   # veya `block` kipine geçilmez.
@@ -301,6 +376,56 @@ pk_config_resolve <- function(key, query_meta = NULL) {
 
   # 4) Yerleşik varsayılan
   spec$default
+}
+
+#' Bir anahtarı çöz VE geçersiz kaynakları RAPORLA
+#'
+#' `pk_config_resolve()` bilerek toleranslıdır: geçersiz bir öncelik basamağını
+#' atlar ve bir sonrakine geçer. Bu, çoğu ayar için doğru davranıştır — ama
+#' EŞİKLER için değildir. `MERGEN_PK_RESOLVE_AUTO_SCORE=bogus` sessizce
+#' varsayılan 85'e düşerse operatör eşiği DEĞİŞTİRDİĞİNİ sanır, oysa otomatik
+#' filtreleme hâlâ eski değerle çalışır. §5.4 sözleşmesi bunun tersini ister:
+#' geçersiz/çözülemeyen eşik otomatik çözümlemeyi DEVRE DIŞI bırakmalı ve
+#' operatöre açık hata göstermelidir.
+#'
+#' Bu yardımcı, ATLANMIŞ olan basamağı görünür kılar; kapalı başarısızlık
+#' kararını çağıran taraf verir.
+#'
+#' @return `list(value, invalid_sources)`. `invalid_sources`, değer TAŞIYAN ama
+#'   anahtarın tipine/aralığına UYMAYAN basamakların adlarıdır.
+pk_config_probe <- function(key, query_meta = NULL) {
+  key <- as.character(key)[1]
+  spec <- pk_config_spec[[key]]
+
+  if (is.null(spec)) {
+    stop(sprintf("pk_config_probe: tanimsiz yapilandirma anahtari '%s'.", key), call. = FALSE)
+  }
+
+  gecersiz <- character(0)
+  .ham_var <- function(x) !is.null(x) && length(x) == 1L &&
+    !is.na(x) && nzchar(trimws(as.character(x)[1]))
+
+  if (is.list(query_meta)) {
+    ham <- query_meta[[pk_config_meta_key(key)]]
+    if (.ham_var(ham) && is.null(.pk_config_coerce(ham, spec))) {
+      gecersiz <- c(gecersiz, "query_meta")
+    }
+  }
+
+  env_raw <- Sys.getenv(key, unset = NA_character_)
+  if (.ham_var(env_raw) && is.null(.pk_config_coerce(env_raw, spec))) {
+    gecersiz <- c(gecersiz, "environment")
+  }
+
+  opt_raw <- getOption(pk_config_option_key(key), default = NULL)
+  if (.ham_var(opt_raw) && is.null(.pk_config_coerce(opt_raw, spec))) {
+    gecersiz <- c(gecersiz, "options")
+  }
+
+  list(
+    value = pk_config_resolve(key, query_meta = query_meta),
+    invalid_sources = gecersiz
+  )
 }
 
 #' Gizli olmayan yapılandırma özeti (tanılama için)

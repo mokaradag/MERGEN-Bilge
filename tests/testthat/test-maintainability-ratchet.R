@@ -302,7 +302,28 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # doğrulayıcı dosyası 10 fonksiyonu taşır. Bütçeler geri birleşmeyi yakalar.
   assert_current_budget("R/config_ui_asset_zones.R", 550L, 2L)
   assert_current_budget("R/config_ui_asset_zone_validators.R", 360L, 12L)
-  assert_current_budget("R/config_seam_registry.R", 580L, 8L)
+  # Bilinçli güncelleme: seam guard test / odaklı doğrulama listeleri AYRI
+  # veri dosyasına (R/config_seam_guard_tests.R) çıkarıldı. Kayıt defteri TAM
+  # 580/580 tavanındaydı; sahiplik verisi seam SAYISIYLA, guard test listesi
+  # ise KOD TABANI büyüdükçe artar. İkisi aynı dosyada tutulduğunda sabit
+  # tavan, YENİ BİR TESTİN SEAM'E KAYDEDİLMESİNİ engelliyordu (Faz 4 guard
+  # testleri bu yüzden sahipsiz kalmıştı). 580/8 -> 430/8 + 300/1.
+  assert_current_budget("R/config_seam_registry.R", 430L, 8L)
+  assert_current_budget("R/config_seam_guard_tests.R", 300L, 1L)
+
+  # Faz 4 (§5.4) varlık çözümleme hattı. Her katman TEK sorumluluktadır ve
+  # geri birleştirilmemelidir: biçimbirim -> normalleştirme -> anım ->
+  # alias -> puanlama formülleri -> kapalı sözlük taraması -> karar
+  # politikası -> D11 geçmişi -> filtre hattına bağlama.
+  assert_current_budget("R/helpers_pk_entity_morph.R", 320L, 10L)
+  assert_current_budget("R/helpers_pk_entity_normalize.R", 460L, 14L)
+  assert_current_budget("R/helpers_pk_entity_mention.R", 150L, 5L)
+  assert_current_budget("R/helpers_pk_entity_alias.R", 170L, 4L)
+  assert_current_budget("R/helpers_pk_entity_score.R", 400L, 16L)
+  assert_current_budget("R/helpers_pk_entity_scan.R", 400L, 13L)
+  assert_current_budget("R/helpers_pk_entity_resolver.R", 680L, 17L)
+  assert_current_budget("R/helpers_pk_entity_history.R", 520L, 17L)
+  assert_current_budget("R/helpers_pk_entity_apply.R", 270L, 9L)
 
   # Varlık manifesti VERİ/DOĞRULAYICI/RENDER olarak üç dosyaya bölündü
   # (config_ui_asset_zones.R deseni): config_ui_assets.R 690 satırdan VERİ-odaklı

@@ -725,9 +725,12 @@ test_that("yerel katmanlar gitignore'ludur ve manifestte OPSİYONEL işaretlidir
   }
 
   # Manifestte bulunmalı ve OPSİYONEL olmalı (bulut checkout'unda yoklar).
+  # Opsiyonel yol tanımları ayrı VERİ dosyasındadır (Faz 4, E5).
   manifest_env <- new.env(parent = globalenv())
-  source(file.path(repo_root, "R", "config_source_manifest.R"),
-         encoding = "UTF-8", local = manifest_env)
+  for (manifest_dosyasi in c("bootstrap_source_manifest.R", "config_source_manifest.R")) {
+    source(file.path(repo_root, "R", manifest_dosyasi),
+           encoding = "UTF-8", local = manifest_env)
+  }
 
   runtime <- get("source_manifest_runtime_paths", envir = manifest_env)
   opsiyonel <- get("source_manifest_optional_source_paths", envir = manifest_env)
