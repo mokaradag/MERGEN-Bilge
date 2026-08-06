@@ -59,6 +59,42 @@ pk_apply_smart_filters_v2 <- function(data, filter_instructions, query = NULL) {
     cat("[SMART_FILTER_V2] filter_expression yok sayildi (D5: eval(parse) kaldirildi).\n")
   }
 
+  # --- Faz 4 (§5.4): VARLIK ÇÖZÜMLEME -------------------------------------
+  # Filtre planı doğrulandıktan SONRA, derlemeden ÖNCE. Bulanıklık HANGİ
+  # DEĞERİN filtreleneceğini çözer, hangi satırın değil; bu yüzden derleyiciye
+  # her zaman KANONİK değerler gider. Belirsiz/çözümlenemeyen bir ÖZNE analizi
+  # DURDURUR: yanlış bir varlık üzerinden üretilmiş sayı, hiç yanıt
+  # vermemekten daha zararlıdır.
+  cozumleme <- NULL
+  if (exists("pk_entity_resolve_filter_plan", mode = "function")) {
+    cozumleme <- tryCatch(
+      pk_entity_resolve_filter_plan(
+        data = data, filters = filters, query = query,
+        chat_history = filter_instructions$chat_history,
+        prior_context = filter_instructions$prior_entity_context
+      ),
+      error = function(e) {
+        cat(sprintf("[SMART_FILTER_V2] Varlik cozumleme atlandi: %s\n",
+                    conditionMessage(e)))
+        NULL
+      }
+    )
+  }
+
+  if (!is.null(cozumleme)) {
+    filters <- cozumleme$filters
+
+    if (identical(cozumleme$action, "halt")) {
+      karar <- bos_karar
+      karar$action <- "refuse"
+      karar$refusal_message <- cozumleme$message_tr
+      karar$disclosures <- cozumleme$disclosures
+      karar$entity_decisions <- cozumleme$decisions
+      karar$matched_rows <- 0L
+      return(sonuc_ekle(data[0, , drop = FALSE], 0L, karar))
+    }
+  }
+
   derleme <- pk_filter_compile(data, filters)
   politika <- pk_filter_zero_match_policy(data, filters, derleme, query)
 
@@ -80,7 +116,11 @@ pk_apply_smart_filters_v2 <- function(data, filter_instructions, query = NULL) {
   karar <- list(
     action = politika$action,
     refusal_message = politika$refusal_message,
-    disclosures = politika$disclosures,
+    disclosures = c(
+      politika$disclosures,
+      if (is.null(cozumleme)) character(0) else cozumleme$disclosures
+    ),
+    entity_decisions = if (is.null(cozumleme)) list() else cozumleme$decisions,
     dropped = dusenler,
     dropped_columns = politika$dropped_columns,
     noop_columns = derleme$noop_columns,

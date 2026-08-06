@@ -58,6 +58,7 @@ testthat::test_that("seam doctor hafif, secret-güvenli ve source-güvenli kalı
     "R/config_ui_assets.R",
     "R/config_ui_asset_zones.R",
     "R/config_ui_asset_zone_validators.R",
+    "R/config_seam_guard_tests.R",
     "R/config_seam_registry.R",
     "mergen_seam_registry_validate",
     "ui_asset_zones_validate",

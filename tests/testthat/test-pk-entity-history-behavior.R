@@ -15,14 +15,7 @@
 #   - Devralınan ifade de çözümlenemezse ORİJİNAL karar korunur.
 # ==============================================================================
 
-local({
-  repo_root <- resolve_repo_root_for_tests()
-  for (dosya in c("helpers_pk_config.R", "helpers_pk_text_turkish.R",
-                  "helpers_pk_entity_normalize.R", "helpers_pk_entity_score.R",
-                  "helpers_pk_entity_resolver.R", "helpers_pk_entity_history.R")) {
-    source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
-  }
-})
+pk_entity_source_chain_for_tests()
 
 .PK_HIST_SOZLUK <- c(
   "Sentetik Elektronik Harp Şebekesi",
@@ -38,11 +31,32 @@ test_that("D11 hâlâ geçerlidir: v1 yolu chat_history'yi OKUMAZ", {
   ham <- readBin(modul, "raw", file.info(modul)$size)
   metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
 
-  # `chat_history` yalnızca imza ve devretme satırlarında geçer; gövdede
-  # okunmaz. Faz 4 bu boşluğu SAF bir katmanla doldurur, v1 yolunu DEĞİŞTİRMEZ.
-  gecis_sayisi <- length(gregexpr("chat_history", metin, fixed = TRUE)[[1]])
-  expect_true(gecis_sayisi >= 2L,
+  # SAYMAK YETMEZ: `if (length(chat_history)) ...` eklemek de sayacı
+  # ARTIRIRDI ve test yine geçerdi. Bu yüzden geçiş yerlerinin TAMAMI tek tek
+  # doğrulanır: `chat_history` yalnızca İMZALARDA ve bir PASS-THROUGH
+  # argümanında görünebilir; bir GÖVDE OKUMASI (koşul, indeksleme, uzunluk,
+  # eleman erişimi) D11'in kapandığı anlamına gelir ve o zaman Faz 4'ün saf
+  # katmanı ile v1 yolu ÇAKIŞIR.
+  satirlar <- strsplit(metin, "\n", fixed = TRUE)[[1]]
+  kod <- satirlar[!grepl("^\\s*#", satirlar)]
+  gecisler <- trimws(kod[grepl("chat_history", kod, fixed = TRUE)])
+
+  expect_true(length(gecisler) >= 2L,
               info = "chat_history parametresi beklenen yerlerde bulunamadı.")
+
+  izinli <- c(
+    "pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_check = NULL) {",
+    "selected_query <- select_smart_query(user_prompt, query_library, chat_history)",
+    "select_smart_query <- function(prompt, library, chat_history) {"
+  )
+
+  expect_equal(
+    sort(gecisler), sort(izinli),
+    info = paste0(
+      "v1 yolunda beklenmeyen chat_history erişimi: ",
+      paste(setdiff(gecisler, izinli), collapse = " | ")
+    )
+  )
 })
 
 test_that("iki mesaj biçimi de okunur: role/content ve type/content", {
@@ -231,7 +245,14 @@ test_that("devralma en YENİ kullanıcı sorusundan başlar", {
   )
 
   expect_true(isTRUE(karar$inherited))
-  expect_equal(karar$values, "Sentetik Elektronik Harp Şebekesi")
+
+  # DEVRALINAN SONUÇ OTOMATİK DEĞİLDİR: devralınan şey kullanıcının BU
+  # mesajda yazmadığı bir filtredir. Karar onaya indirgenir ve `values`
+  # BOŞALTILIR; kanonik değer yalnızca ön seçili çip olarak sunulur.
+  expect_equal(karar$decision, "confirm")
+  expect_length(karar$values, 0L)
+  expect_equal(karar$chips[[1]]$value, "Sentetik Elektronik Harp Şebekesi")
+  expect_true(isTRUE(karar$chips[[1]]$preselected))
 })
 
 test_that("devam sorusu planı saf ve incelenebilirdir", {

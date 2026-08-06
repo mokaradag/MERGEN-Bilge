@@ -128,8 +128,16 @@ register_global_resource_path(
 # listesi ise config_source_manifest.R içinde tutulur. Böylece global.R yüksek
 # seviyeli boot akışını korur; kaynak sırası yine açık ve gözden geçirilebilirdir.
 # ------------------------------------------------------------------------------
+# Muhafız, bootstrap dosyasının SAHİPLENDİĞİ her nesneyi kapsamalıdır. Aksi
+# hâlde çalışan bir süreç checkout'u güncelleyip global.R'yi yeniden source
+# ettiğinde (dosya bunu açıkça destekler), ESKİ bootstrap fonksiyonları
+# muhafızı atlatır ve yeni taşınan manifest verisi hiç tanımlanmaz; opsiyonel
+# VM'e özgü yollar zorunlu sayılıp normal bir checkout boot edemez.
 if (!exists("source_manifest_validate", mode = "function") ||
-    !exists("source_manifest_required_order", inherits = FALSE)) {
+    !exists("source_manifest_required_order", inherits = FALSE) ||
+    !exists("source_manifest_optional_source_groups", inherits = FALSE) ||
+    !exists("source_manifest_optional_source_paths", inherits = FALSE) ||
+    !exists("source_manifest_expected_absent_source_groups", inherits = FALSE)) {
   safe_source("R/bootstrap_source_manifest.R", encoding = "UTF-8")
 }
 
@@ -191,3 +199,27 @@ if (requireNamespace("shiny", quietly = TRUE) &&
 }
 
 source_manifest_load(source_manifest_after_future_paths)
+
+# ------------------------------------------------------------------------------
+# VARLIK ÇÖZÜMLEME EŞİK İLİŞKİSİ (§5.4) — AÇILIŞTA DOĞRULANIR
+# ------------------------------------------------------------------------------
+# `MIN_SCORE=90`, `MULTI_SCORE=70`, `AUTO_SCORE=85` üçlüsü TEK TEK geçerlidir
+# (hepsi 0..100), ama BİRLİKTE tutarsızdır. Bu yalnızca ilk kullanıcı isteğinde
+# fark edilirse operatör yapılandırma hatasını üretimde öğrenir. Kontrol
+# burada, yapılandırma ve çözümleyici yüklendikten SONRA yapılır; uygulama
+# BLOKE EDİLMEZ (çözümleyici zaten kapalı başarısız olur), ancak hata açıkça
+# loglanır.
+if (exists("pk_resolve_thresholds", mode = "function")) {
+  tryCatch({
+    .pk_resolve_boot <- pk_resolve_thresholds()
+    if (!isTRUE(.pk_resolve_boot$valid)) {
+      log_error(paste0(
+        "[PK_RESOLVE] Varlık çözümleme eşikleri geçersiz; otomatik çözümleme ",
+        "devre dışı kalacak: ", paste(.pk_resolve_boot$errors, collapse = " ")
+      ))
+    }
+    rm(.pk_resolve_boot)
+  }, error = function(e) {
+    log_error("[PK_RESOLVE] Eşik doğrulaması çalıştırılamadı: {conditionMessage(e)}")
+  })
+}

@@ -13,12 +13,7 @@
 #   - Çoğulluk sezgiseli güvenli yönde çalışır.
 # ==============================================================================
 
-local({
-  repo_root <- resolve_repo_root_for_tests()
-  for (dosya in c("helpers_pk_text_turkish.R", "helpers_pk_entity_normalize.R")) {
-    source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
-  }
-})
+pk_entity_source_chain_for_tests()
 
 .PK_ENT_DOT <- intToUtf8(0x0307L)
 
@@ -76,8 +71,18 @@ test_that("noktalama sadeleştirilir ve belirteç kümesi üretilir", {
   expect_true(all(c("elektronik", "harp") %in% normal$tokens))
   expect_true("2024" %in% normal$tokens)
 
-  # Tekrarlı belirteçler kümede TEK kez görünür.
-  expect_equal(pk_entity_normalize("proje proje")$tokens, "proje")
+  # ÇOKLUK KORUNUR. Tekilleştirme "BORA BORA" ile "BORA"yı ayırt edilemez
+  # hâle getirir ve kapsama katmanı yanlış kanonik varlığı otomatik seçer.
+  expect_equal(pk_entity_normalize("proje proje")$tokens, c("proje", "proje"))
+})
+
+test_that("tekrarlı belirteçli ad tekil adla ÇAKIŞMAZ", {
+  testthat::skip_if_not_installed("stringi")
+
+  # Çokluk farkındalı kapsama olmadan J = 1.0 ve katman 4 puanı 89 olurdu;
+  # varsayılan AUTO 85 aşılır ve "BORA" sessizce seçilirdi.
+  karar <- pk_entity_resolve("BORA BORA", c("BORA"))
+  expect_false(identical(karar$decision, "auto"))
 })
 
 test_that("sonek soyma eşleştirme belirteçlerinde çalışır", {
@@ -150,10 +155,14 @@ test_that("normalleştirme yerelden bağımsızdır", {
   beklenen <- vapply(ornekler, function(x) pk_entity_normalize(x)$fold,
                      character(1), USE.NAMES = FALSE)
 
-  eski <- Sys.getlocale("LC_COLLATE")
-  for (yerel in c("C", "C.UTF-8")) {
+  # DOĞRU KATEGORİ `LC_CTYPE`'dır: Türkçe büyük/küçük harf dönüşümü ve
+  # karakter sınıflandırması ona bağlıdır. Yalnızca `LC_COLLATE` (sıralama)
+  # değiştirmek bu bağımlılığı HİÇ sınamaz; ileride kazara eklenen bir
+  # `tolower()` yolu testten geçmeye devam ederdi.
+  eski <- Sys.getlocale("LC_CTYPE")
+  for (yerel in c("C", "C.UTF-8", "tr_TR.UTF-8")) {
     denendi <- tryCatch({
-      Sys.setlocale("LC_COLLATE", yerel)
+      Sys.setlocale("LC_CTYPE", yerel)
       TRUE
     }, warning = function(w) FALSE, error = function(e) FALSE)
     if (!denendi) next
@@ -163,5 +172,5 @@ test_that("normalleştirme yerelden bağımsızdır", {
     expect_equal(simdiki, beklenen,
                  info = sprintf("Yerel '%s' altında katlama değişti.", yerel))
   }
-  tryCatch(Sys.setlocale("LC_COLLATE", eski), warning = function(w) NULL)
+  tryCatch(Sys.setlocale("LC_CTYPE", eski), warning = function(w) NULL)
 })

@@ -35,11 +35,29 @@ it can only ever write `in_review` / `_pending_`. Nobody is present at merge tim
 Two changes, so the next session does not repeat this:
 
 1. **Implemented — `tools/pk_phase_status.sh`.** Derives the real merge state from
-   `git log --merges` on the integration branch and prints one line per PK phase
-   (`phase-<digit>` branch pattern), with SHA, PR number and branch. Read-only, no
-   dependencies, ASCII-only. This converts "remember to update a file" into one
-   command whose output *is* the authoritative table. It is not a runtime file, so it
-   carries no manifest/seam/ratchet obligation.
+   the integration branch's **first-parent** history and prints **one line per PK
+   phase**, with SHA, PR number and branch. Read-only, no dependencies, ASCII-only
+   (byte-level assertion in `tests/testthat/test-pk-phase-status-contract.R`). This
+   converts "remember to update a file" into one command whose output *is* the
+   authoritative table. It is not a runtime file, so it carries no manifest/seam
+   obligation.
+
+   The review pass replaced every place where the script's *silence* could be
+   mistaken for evidence:
+
+   | Was | Now |
+   |---|---|
+   | `git log --merges` (walks merges *inside* feature branches) | `--first-parent` only; a `phase-5` merge inside the Phase-4 branch no longer marks Phase 5 integrated |
+   | any branch containing `phase-<digit>` | PK namespaces only (`pk/phase-`, `pk-phase-`, `claude/pk-phase-`, `claude/phase-`); `ui/phase-2-redesign` is no longer a false positive |
+   | greedy `.*phase-` | `${dal#*phase-}` (shortest prefix); `claude/pk-phase-4-fix-phase-5-prep` is Faz **4**, not 5 |
+   | merge commits only | squash merges recognized too (`(#N)` subject, plus the repo's own `Faz <N>` convention) |
+   | reverted merge still printed | matching `Revert "<subject>"` on the same history excludes it |
+   | every matching merge printed | first (newest) match per phase only — the retry PR wins, the obsolete SHA is not copyable |
+   | stale `origin/*` accepted | verified against `git ls-remote`; mismatch or unreachable remote is a **hard error** (`PK_PHASE_SKIP_REMOTE_CHECK=1` to opt out offline) |
+   | shallow clone silently reported "unmerged" | `git rev-parse --is-shallow-repository` aborts with an `--unshallow` instruction |
+   | `git log` failure produced empty output, exit 0 | output captured first; non-zero status aborts |
+   | `<ref>` passed straight to git | arguments beginning with `-` rejected (`--all` no longer widens the scan) |
+   | "everything not shown is unmerged" | **absence is explicitly NOT evidence** — rebase merges leave no distinguishable trace, and the closing note says so |
 2. **Recommended, NOT implemented — status should be written at merge time.** The
    honest options are (a) the operator updates this file as part of merging, or (b) a
    CI job on `pk/rebuild` rewrites the table from `tools/pk_phase_status.sh` output
@@ -1755,3 +1773,233 @@ clean worktree at the untouched `origin/pk/rebuild` tip
 (`git worktree add /tmp/pkbase4 origin/pk/rebuild`), where that file reports
 `FAIL 0, WARN 0, SKIP 0, PASS 145` with the identical stderr line. It is
 stderr noise from a mocked promise, not a test failure, and is unrelated to PK.
+
+---
+
+## Phase 4 — post-review fixes (independent review pass, PR #699)
+
+The review returned **93 findings — 32 P1, 61 P2, no P0**. All 93 are addressed
+below. Nothing was closed by weakening a test: every fix is measured, and each
+one is locked by a regression assertion in
+`tests/testthat/test-pk-entity-review-fixes.R` (129 assertions) or in the file
+that owns the contract.
+
+### The single structural cause behind most P1s
+
+Phase 4 as reviewed treated **the score** as the safety mechanism. Nine separate
+P1s were the same shape: a lossy or heuristic step produced a number ≥ `AUTO`,
+so rule 4 filtered a **wrong entity silently** — apostrophe stripping collapsing
+`O'NEIL` into `O'BRIEN`, punctuation collapsing `A+B` into `A/B`, ASCII folding
+`KİR` into `KIR`, `Mersin` stemming to `mers`, `kara deniz` matching
+`deniz kara`, `BORA BORA` matching `BORA`, a single generic token `proje`
+matching the one value that contains it.
+
+Raising thresholds would not fix these — the scores are *correct* under the
+formulas, which are contract. The fix is a second axis:
+
+> Every match now carries a `low_confidence` vector naming the lossy step it
+> depended on (`punct_lossy`, `ascii_lossy`, `compact_lossy`, `reordered`,
+> `single_token`, `stem_dependent`, `mention_derived`, `alias_lossy_key`).
+> **Rule 4 refuses any flagged match** and routes it to rule 5 (confirm).
+> Formulas, tier order and thresholds are unchanged; what changed is that a
+> number alone can no longer authorize an automatic filter.
+
+This is threshold-independent by construction, so it holds at every supported
+configuration including `MIN=MULTI=AUTO=0`.
+
+### The second structural cause: one key doing three jobs
+
+The reviewed code had a single `fold` key that was simultaneously the 100-point
+exact key, the punctuation-collapsed key and the token source. That is why
+`PRJ 001` matched `PRJ-001` on an **id** column. There are now three keys with
+separate jobs:
+
+| key | built from | used by |
+|---|---|---|
+| `exact` | `pk_tr_fold()` + apostrophe-form unification, **punctuation preserved** | tier 1 for `role="id"` / `match="exact"` — lossless, so `PRJ 001` ≠ `PRJ-001` |
+| `clitic` | `exact` + **verified** Turkish clitic/separator suffix removal | tier 1 for `match="resolve"` — `ANKA'nın` = `ANKA`, `O'NEIL` ≠ `O'BRIEN` |
+| `fold` / `compact` / `ascii` | punctuation collapsed / spaces removed / diacritics folded | tiers 3-6 only, and **always flagged lossy** |
+
+### Files split (ratchets held, nothing raised)
+
+The eight fixes above did not fit in four files. The layer was split by single
+responsibility; the global ratchet is **byte-identical to the Phase-2 baseline**
+— score `100/100`, `0` files ≥ 800 lines, `0` files ≥ 25 functions, max file
+`795`, max functions `24`.
+
+| File | Owns |
+|---|---|
+| `helpers_pk_entity_morph.R` | Turkish suffix table (buffer consonants, 1st/2nd-person possessives), vocabulary-validated stemming, consonant softening, plural-suffix signal |
+| `helpers_pk_entity_normalize.R` | the three keys, tokens (multiplicity preserved), plural detection |
+| `helpers_pk_entity_mention.R` | entity-span extraction (conjunction split, control/kind-token removal) |
+| `helpers_pk_entity_alias.R` | alias index: registry-key lookup, ASCII fallback, duplicate-key detection |
+| `helpers_pk_entity_score.R` | tier formulas only (now integer arithmetic) |
+| `helpers_pk_entity_scan.R` | closed-vocabulary scan: hash lookup for tiers 1-3, bounded shortlist for 4-6 |
+| `helpers_pk_entity_resolver.R` | decision policy |
+| `helpers_pk_entity_history.R` | D11 |
+| `helpers_pk_entity_apply.R` | **the wiring** (see below) |
+
+`R/config_seam_guard_tests.R` was also split out of `R/config_seam_registry.R`,
+which sat at exactly **580/580** — the very reason the PR shipped with its guard
+tests unregistered. Ownership data grows with the *number of seams*; guard-test
+lists grow with the *codebase*. Keeping both under one fixed cap made
+registering a new test structurally impossible. `mergen_seam_registry()` merges
+the two, so the public API is unchanged (580/8 → 430/8 + 300/1).
+
+### P1 — Phase 4 was dead code (finding: "wire the resolver into the request path")
+
+This was the most consequential finding: **all 351 assertions could pass while
+real requests behaved exactly as before**, because nothing called
+`pk_entity_resolve()`. `helpers_pk_entity_apply.R` now runs inside
+`pk_apply_smart_filters_v2()` — after filter-plan validation, **before**
+`pk_filter_compile()`, so the compiler only ever receives canonical values. The
+closed vocabulary is the column's **real distinct values**; the resolver can only
+*select* an existing value, never invent one.
+
+| decision | effect on the request |
+|---|---|
+| `auto` | leaf value replaced with the canonical value |
+| `confirm` / `clarify` | analysis **halts** (`action="refuse"` + Turkish message) |
+| `unresolved` (subject) | analysis **halts** |
+| `unfiltered` (refinement) | value dropped, disclosure surfaced |
+| `disabled` / `not_applicable` / `invalid_input` | value passed through untouched |
+
+`MERGEN_PK_RESOLVE_ENABLED` (default `TRUE`) is the operator's fallback. **v1 is
+untouched and remains byte-identical** — the call site is inside the v2 executor.
+Ordering is asserted statically (`test-pk-entity-apply-behavior.R`) so a future
+edit cannot move resolution after compilation.
+
+### Fail-closed paths that previously fell through
+
+* **Invalid threshold source.** `pk_config_resolve()` silently skips a malformed
+  value; for thresholds that meant `MERGEN_PK_RESOLVE_AUTO_SCORE=bogus`
+  resolved to `85` while `valid = TRUE`. New `pk_config_probe()` reports the
+  *skipped* source, and any invalid source now disables automatic resolution.
+* **Caller-supplied thresholds.** The `thresholds=` argument bypassed validation
+  entirely and trusted its own `valid=TRUE`. Every supplied object is now
+  re-normalized and re-validated (fields, ranges, integerness, relationships).
+* **Alias registry.** Duplicate folded keys with conflicting targets →
+  `config_error` instead of `match()` silently taking the first. Alias target
+  absent from the vocabulary → `unresolved`, not "continue with unrelated fuzzy
+  candidates". Target presence is now measured against the vocabulary, not
+  against "did the alias tier happen to win".
+* **Match mode.** The fuzzy cascade previously ran for every mode except
+  `exact`, so the metadata fail-safe `match="none"` could still auto-filter, and
+  `contains` was silently converted into canonical resolution. Tiers 2-6 now run
+  only for `resolve`; `none` → `disabled`, `contains` → `not_applicable`.
+* **Empty match set.** `MIN_SCORE=0`/`AUTO_SCORE=0` are supported and made rules
+  4/5 index `eslesmeler[[1]]` on an empty list (subscript out of bounds). The
+  empty-set branch now precedes every threshold branch.
+* **Vocabulary that is blank after normalization.** `c("---","///")` returned
+  `valid=TRUE` with no matches; for a refinement that meant proceeding
+  unfiltered and hiding malformed data. It is now `bos_sozluk`.
+
+### Integer contract for tiers 5 and 6
+
+Both boundary formulas were evaluated in binary floating point:
+`floor(25*(123/125-0.6)/0.4)` gives `23.999999999999996` → **83** where the
+contract says 84, and `floor(19*(1/95)/0.20)` gives `0.9999999999999999` → **69**
+where the contract says 68. At `MIN=MULTI=AUTO=69` that one point is the
+difference between *unresolved* and *automatic filtering*. Both are now derived
+from the integer intersection/union and distance/length counts:
+`60 + (125i − 75u) %/% (2u)` and `69 − (95d) %/% len`. Fixtures pin `123/125→84`
+and `1/95→68`.
+
+### Turkish morphology that the reviewed version could not reach
+
+`projesinde` stemmed to `projes` (buffer consonant `n` unmodelled),
+`projeyi`/`projeyle`/`projemiz`/`programımızda` did not stem at all,
+`projelerindekiler` stopped after a fixed three passes, `İHAlar` could not reach
+`İHA` (4-character stem floor), `kitabı` could not reach `KİTAP` (consonant
+softening). All resolve now. Short stems and single-vowel suffixes are allowed
+**only when the resulting stem actually exists in the closed vocabulary**, so no
+invented stems — and any stem the vocabulary did not validate is flagged
+`stem_dependent` and can never be auto-accepted.
+
+### Plural detection: both directions were wrong
+
+False negatives: `projelerde`, `kalıplardan`, `projelerin` (plural sits *under*
+the case suffix); `F-16'lar`, `TV'ler` (signal destroyed by clitic stripping);
+`tum`/`butun`/`birkac` (ASCII spellings absent). False positives: `SOLAR`,
+`DOLAR` (vowel-harmony + stem-length check now required), `KAYNAK LİSTESİ` and
+`HER` (`list`/`listele`/`listesi` removed from the cue set; an exact canonical
+match suppresses the cue), `sadece aktif olanlar` (generic participles are row
+refinement, not multi-entity intent). A plural request now **never** collapses to
+a single value through rules 4/5 — it clarifies or stays unresolved.
+
+### Requests that could not resolve at all
+
+`ANKA ve AKINCI projeleri` (J = 0.50 against either candidate), `ANKA projesi`
+against canonical `ANKA` (J = 0.50, edit ratio above ceiling) and `tüm ANKA`
+(J = 1/2 < 0.60) all reached rule 6 and **blocked the analysis**. Entity-span
+extraction splits conjunctions and drops control/kind tokens. It is an
+**additive second pass**: it runs only when the whole phrase reached no
+exact/alias/secondary-key tier, so `KAYNAK LİSTESİ` — a canonical name that
+contains a kind word — is unaffected. Mention-derived matches are flagged, so
+they confirm rather than auto-apply.
+
+### Performance (the reviewer's stall scenario)
+
+A miss on a 50k-value column performed ~100k `O(m*n)` Levenshtein computations
+per request on the **shared** Shiny process. The scan is now two-phase: tiers 1-3
+resolve by hash lookup, and tiers 4-6 see only a shortlist built from token
+sharing (a necessary condition for tiers 4/5) and the length band
+`|Δlen|·5 ≤ max(len)` (a necessary condition for tier 6) — both **supersets**, so
+no real match is lost. `MERGEN_PK_RESOLVE_MAX_PHRASE_CHARS` (160) and
+`MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES` (2000) bound the worst case, and a
+truncated scan is reported as `scan_truncated`, never as "no match".
+
+### Turkish restored in user-facing text
+
+`message_tr` and `overflow_note` were Latinized (`Varlik`, `cozumleme`,
+`gecersiz`, `Lutfen`). They are rendered to users; identifiers stay ASCII, visible
+text is Turkish. A regression asserts the messages contain Turkish characters and
+do **not** contain the Latinized forms.
+
+### D11 (history) — silent-inheritance paths closed
+
+| Was | Now |
+|---|---|
+| current message is already in `chat_history`, so a request became its own "previous question" | current phrase excluded before inheritance |
+| searched back up to 5 turns "until something resolves" — an intervening unrelated question was skipped and old context resurrected | only the immediately previous turn (or a persisted context) |
+| inherited `auto` silently added a filter the message never stated | inherited results are downgraded to **confirm** with `values` cleared |
+| lossy question-word rewrite could resolve a *different* canonical value | same downgrade; never automatic |
+| raw vs. stripped interpretations differed → iteration order chose | both evaluated; conflict → **clarify** |
+| short names lost in long prior questions (`ANKA 2024 bütçesi nedir`, J = 1/3) | token-level retry accepting **exact/alias only** |
+| an entity could be inherited into a different query/column with the same value | `prior_context` carries query/column identity; mismatch → no inheritance |
+| `peki AKINCI?` replaced the newly named entity with old context | leading markers stripped and the **current turn re-resolved first** |
+| `peki` matching `PEKİN` at 50 points suppressed the exact `ANKA` context | weak direct matches no longer outrank history |
+| current follow-up's plural intent lost (`peki hepsi?` auto-selected one value) | current plurality carried into the inherited decision |
+| `onu`/`bunu`/`ona`/`buna`, bare `2024 için?`, `aktif olanlar?`, `hepsi` not recognized | inflected pronouns + structural refinement signals added |
+| `limit = 0` still read one prior prompt | zero disables inheritance |
+
+### Test-suite findings
+
+`chat_history`-unread proof now asserts the **exact** allowed occurrence sites
+instead of a lower-bound count (`if (length(chat_history))` would have raised the
+count and still passed). The locale test varies `LC_CTYPE`, not `LC_COLLATE`
+(Turkish case conversion is a ctype property). The no-literal-threshold scan
+includes `k$score` comparisons, so rule 3's `multi_score` branch is actually
+covered, with a mutation assertion proving it entered the scan. Overflow chips
+are asserted to be the **top-ranked** candidates in order, not merely "from the
+vocabulary". The close-margin test adds a genuinely unequal pair (a tie-only
+fixture would pass a regression that auto-selects a close runner-up). The
+engine-flag scan rejects raw `MERGEN_PK_ENGINE` / `mergen.pk.engine` access, and
+the folding scan rejects direct ICU primitives (`stri_trans_tolower`,
+`stri_trans_nfc`, `tolower`, `toupper`), not just a re-definition named
+`pk_tr_fold`. All resolver tests clear **all** `MERGEN_PK_RESOLVE_*` variables
+and matching `options()` before asserting, so a configured VM cannot change
+branch behavior.
+
+### Reported and deliberately NOT changed
+
+Nothing. All 93 findings are addressed.
+
+### What still needs the VM
+
+Unchanged from the original Phase-4 entry, plus: the wiring has never run
+against a real query/column with a real closed vocabulary, real alias registry
+or real chat history; the two new resource bounds
+(`MAX_PHRASE_CHARS` / `MAX_SCAN_CANDIDATES`) are unmeasured against production
+cardinality; the clarification chips and confirmation flow have not been seen in
+a browser; and `MERGEN_PK_ENGINE=v2` remains **off**, so none of this is live.

@@ -16,13 +16,7 @@
 #   "kalip" -> "kalıp"  -> tam olarak 90
 # ==============================================================================
 
-local({
-  repo_root <- resolve_repo_root_for_tests()
-  for (dosya in c("helpers_pk_text_turkish.R", "helpers_pk_entity_normalize.R",
-                  "helpers_pk_entity_score.R")) {
-    source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
-  }
-})
+pk_entity_source_chain_for_tests()
 
 # En yüksek puanlı eşleşmeyi "katman/puan" biçiminde döndürür.
 .pk_ent_top <- function(phrase, candidates, ...) {
@@ -128,11 +122,39 @@ test_that("katman 5 SINIR: J = 1'in hemen altı tam 84 puandır", {
   testthat::skip_if_not_installed("stringi")
 
   # J = 62/63 = 0.98413 -> 60 + floor(25 * 0.38413 / 0.40) = 60 + 24 = 84.
+  #
+  # Fikstür, üretim ifade uzunluğu tavanını (MAX_PHRASE_CHARS) aşar; tavan
+  # gerçek bir güvenlik sınırıdır (yapıştırılmış metin paylaşılan süreci
+  # meşgul edemesin) ve BU test için bilerek yükseltilir.
   ortak <- paste0("t", seq_len(62), collapse = " ")
-  ust <- .pk_ent_top(paste(ortak, "zzzz"), c(ortak))
+  ust <- pk_entity_with_resolve_env(
+    c(MERGEN_PK_RESOLVE_MAX_PHRASE_CHARS = "4000"),
+    .pk_ent_top(paste(ortak, "zzzz"), c(ortak))
+  )
 
   expect_equal(ust$tier, "token_jaccard")
   expect_equal(ust$score, 84L)
+})
+
+test_that("katman 5 TAM SAYI sınırı kayan nokta tozuyla kaymaz", {
+  testthat::skip_if_not_installed("stringi")
+
+  # J = 123/125 = 0.984. Sözleşme 60 + floor(24) = 84 der. `floor(25 * (J -
+  # 0.6) / 0.4)` ikili kayan noktada 23.999999999999996 verir ve 83 üretir;
+  # geçerli bir 84 eşiğinde bu, "onaylanabilir" ile "çözümlenemedi" farkıdır.
+  expect_equal(.pk_entity_tier5_score_counts(123L, 125L), 84L)
+  expect_equal(.pk_entity_tier5_score_counts(62L, 63L), 84L)
+})
+
+test_that("katman 6 TAM SAYI sınırı otomatik eşiği AŞMAZ", {
+  testthat::skip_if_not_installed("stringi")
+
+  # 95 karakterlik iki dizgi, tek ikame: d = 1/95. Sözleşme 69 - floor(1) =
+  # 68 der. `floor(19 * d / 0.20)` ikili kayan noktada 0.9999999999999999
+  # verip 69 üretir; MIN=MULTI=AUTO=69 yapılandırmasında bu, çözümlenemeyen
+  # bir eşleşmeyi kural-4 OTOMATİK filtresine çevirir.
+  expect_equal(.pk_entity_tier6_score_counts(1L, 95L), 68L)
+  expect_equal(.pk_entity_tier6_score_counts(1L, 5L), 50L)
 })
 
 test_that("katman 6 SINIR: d = 0.20 tam 50 puandır", {

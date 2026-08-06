@@ -23,6 +23,9 @@
   source(file.path(repo_root, "R", "config_ui_asset_tags.R"), encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "config_ui_asset_zones.R"), encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "config_ui_asset_zone_validators.R"), encoding = "UTF-8", local = env)
+  # Guard test/odaklı doğrulama listesi AYRI veri dosyasındadır ve kayıt
+  # defteri onu birleştirir; VERİ dosyası ÖNCE yüklenmelidir.
+  source(file.path(repo_root, "R", "config_seam_guard_tests.R"), encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "config_seam_registry.R"), encoding = "UTF-8", local = env)
 
   env

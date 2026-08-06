@@ -96,7 +96,12 @@
   # dosyaya bölündü (config_ui_asset_validators.R + config_ui_asset_tags.R);
   # config_ui_assets.R 690 satırdan VERİ-odaklı dosyaya indi. 3 -> 5.
   config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_asset_zone_validators.R", n = 5L),
-  architecture_governance = list(first = "R/config_seam_registry.R", last = "R/config_seam_registry.R", n = 1L),
+  # Bilinçli güncelleme: seam guard test/odaklı doğrulama listesi AYRI veri
+  # dosyasına (R/config_seam_guard_tests.R) çıkarıldı. Kayıt defteri tam
+  # 580/580 bakım tavanındaydı ve Faz 4 guard testleri bu yüzden hiçbir
+  # seam'e KAYDEDİLEMİYORDU. Birleştirme mergen_seam_registry() içindedir;
+  # genel API değişmedi. 1 -> 2 dosya.
+  architecture_governance = list(first = "R/config_seam_guard_tests.R", last = "R/config_seam_registry.R", n = 2L),
   # database n = 12L -> 13L bilinçli güncelleme: işlem-güvenli DB bağlantı havuzu
   # (R/helpers_db_pool.R) helpers_db_connection.R'den SONRA bölüme eklendi.
   # 13L -> 15L bilinçli güncelleme: Bilge Yolaç kalıcı oturum katmanı
@@ -146,7 +151,10 @@
   # R/helpers_pk_export_csv.R (akışlı + doğrulanmış CSV yedeği ve çakışmasız
   # dosya yolu tabanı) export_plan ile export_xlsx arasına eklendi; 30 -> 31.
   # n 31 -> 35: Faz 4 varlık çözümleme dört saf dosya ekledi.
-  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_analysis_query_selection.R", n = 35L),
+  # Bilinçli güncelleme: Faz 4 (§5.4) varlık çözümleme hattı bölüme eklendi
+  # (morfoloji -> normalleştirme -> anım -> alias -> puanlama -> tarama ->
+  # karar -> geçmiş -> filtre hattına bağlama); 35 -> 40 dosya.
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_analysis_query_selection.R", n = 40L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -487,7 +495,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # dışa aktarım planı/G-Ç, yanıt kompozisyonu ve sonuç kurucusu.
   # 400 -> 401: PR #698 inceleme düzeltmeleri, R/helpers_pk_export_csv.R.
   # 401 -> 405: Faz 4 varlık çözümleme (normalize/score/resolver/history).
-  expect_equal(length(runtime), 405L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 411L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

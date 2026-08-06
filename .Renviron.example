@@ -633,6 +633,11 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   dışı bırakılır ve operatöre açık hata gösterilir; kısmen sıralı dallar
 #   değerlendirilmez. Bu bilinçli bir KAPALI BAŞARISIZLIK davranışıdır.
 #
+#   Çözümleme hattının filtre yoluna BAĞLANMASI. Kapatılırsa v2 motoru LLM'in
+#   ürettiği ham yaprak değerleriyle filtreler (Faz 4 öncesi davranış).
+#   v1 motoru bu anahtardan BAĞIMSIZDIR ve hiçbir koşulda etkilenmez.
+# MERGEN_PK_RESOLVE_ENABLED=TRUE
+#
 #   Tek adayın kullanıcıya sorulmadan otomatik kabul edildiği eşik.
 # MERGEN_PK_RESOLVE_AUTO_SCORE=85
 #
@@ -654,3 +659,12 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   var" uyarısı eklenir, "Tümü" seçeneği KAPATILIR ve sorgu ÇALIŞTIRILMAZ;
 #   gizli adaylar asla "Tümü" arkasına saklanamaz.
 # MERGEN_PK_RESOLVE_MAX_CANDIDATES=5
+#
+#   GÜVENLİK SINIRLARI (eşik değil, kaynak tavanı). Puanlamaya giren varlık
+#   ifadesinin azami uzunluğu ve belirteç/mesafe katmanlarına giren azami aday
+#   sayısı. Sınırsız ifade ya da 50 bin değerli bir sütun, aday başına iki
+#   Levenshtein hesabıyla PAYLAŞILAN Shiny sürecini kilitleyebilir. Kesin ve
+#   alias katmanları bu tavanlardan ETKİLENMEZ (karma araması ile çözülür) ve
+#   tavan aşıldığında karar `scan_truncated` taşır; sessiz "eşleşme yok" olmaz.
+# MERGEN_PK_RESOLVE_MAX_PHRASE_CHARS=160
+# MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES=2000

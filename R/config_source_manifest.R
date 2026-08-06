@@ -116,7 +116,11 @@ source_manifest_sections <- list(
   # architecture_governance: Üretim-kritik dikiş (seam) kayıt defteri. Saf
   # veri + saf doğrulama yardımcıları; çalışma zamanı davranışı değiştirmez.
   # Bölüm -> seam sahipliği test-seam-registry-contract.R ile doğrulanır.
+  # Guard test listesi AYRI veri dosyasındadır: sahiplik verisi seam sayısıyla,
+  # guard test listesi ise kod tabanı büyüdükçe artar. Kayıt defteri onu
+  # `mergen_seam_guard_tests()` ile birleştirdiği için ÖNCE yüklenir.
   architecture_governance = c(
+    "R/config_seam_guard_tests.R",
     "R/config_seam_registry.R"
   ),
 
@@ -294,10 +298,15 @@ source_manifest_sections <- list(
     # pk_query_metadata bölümündeki `pk_tr_fold()` üzerinden alır — katlama
     # KOPYALANMAZ. Boru hattı sırasında filtre derlemesinden ÖNCE gelir:
     # bulanıklık HANGİ DEĞERİN filtreleneceğini çözer, hangi satırın değil.
+    "R/helpers_pk_entity_morph.R",
     "R/helpers_pk_entity_normalize.R",
+    "R/helpers_pk_entity_mention.R",
+    "R/helpers_pk_entity_alias.R",
     "R/helpers_pk_entity_score.R",
+    "R/helpers_pk_entity_scan.R",
     "R/helpers_pk_entity_resolver.R",
     "R/helpers_pk_entity_history.R",
+    "R/helpers_pk_entity_apply.R",
     # Faz 1 v2 davranış katmanı (MERGEN_PK_ENGINE=v2 arkasında): saf filtre
     # derleyicisi -> saf sıfır-eşleşme politikası -> v2 yürütücüsü. Yürütücü
     # ikisini de kullandığı için en sonda gelir; üçü de v1 uyumluluk yüzeyi

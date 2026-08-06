@@ -14,30 +14,24 @@
 #   - Kodlar ASLA bulanıklaştırılmaz.
 # ==============================================================================
 
-local({
-  repo_root <- resolve_repo_root_for_tests()
-  for (dosya in c("helpers_pk_config.R", "helpers_pk_text_turkish.R",
-                  "helpers_pk_entity_normalize.R", "helpers_pk_entity_score.R",
-                  "helpers_pk_entity_resolver.R")) {
-    source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
-  }
-})
+pk_entity_source_chain_for_tests()
 
-# Eşikleri ortam değişkeniyle ezip geri alan yardımcı. Testler ASLA gerçek
-# `.Renviron` değerlerine bağlı kalmaz.
-.pk_res_with_env <- function(vars, code) {
-  eski <- Sys.getenv(names(vars), unset = NA_character_, names = TRUE)
-  do.call(Sys.setenv, as.list(vars))
-  on.exit({
-    for (ad in names(eski)) {
-      if (is.na(eski[[ad]])) Sys.unsetenv(ad) else do.call(Sys.setenv, setNames(list(eski[[ad]]), ad))
-    }
-  }, add = TRUE)
-  force(code)
+# Eşikleri ortam değişkeniyle ezip geri alan yardımcı.
+#
+# Yalıtım, testin AÇIKÇA ezdiği değişkenlerle sınırlı DEĞİLDİR: beş çözümleme
+# anahtarının tamamı ve karşılık gelen `options()` girdileri önce TEMİZLENİR.
+# Aksi hâlde yapılandırılmış bir VM'de veya geliştirici checkout'unda
+# ortamdaki `AMBIGUITY_MARGIN`/`MAX_CANDIDATES` değerleri dal davranışını
+# değiştirir; testler ya geçerli kodu düşürür ya da gerçek bir regresyonu
+# maskeler. Uygulama tests/testthat/helper_pk_entity.R içindedir.
+.pk_res_with_env <- function(vars = character(0), code) {
+  pk_entity_with_resolve_env(vars, code)
 }
 
 test_that("varsayılan eşikler §9 tablosuyla aynıdır ve geçerlidir", {
-  esikler <- pk_resolve_thresholds()
+  # Dağıtım yapılandırması bu iddiayı EZMEMELİDİR: ortam ve options()
+  # basamakları temizlenmiş hâlde ölçülür.
+  esikler <- .pk_res_with_env(character(0), pk_resolve_thresholds())
 
   expect_true(esikler$valid)
   expect_equal(esikler$min_score, 40L)
@@ -65,7 +59,7 @@ test_that("MIN=90 / AUTO=85 ilişkisi KAPALI BAŞARISIZ olur", {
     karar <- pk_entity_resolve("ANKA", c("ANKA"))
     expect_equal(karar$decision, "config_error")
     expect_equal(length(karar$values), 0L)
-    expect_true(grepl("devre disi", karar$message_tr, fixed = TRUE))
+    expect_true(grepl("devre dışı", karar$message_tr, fixed = TRUE))
   })
 })
 
@@ -132,6 +126,20 @@ test_that("kural 2 kural 4'ten ÖNCE gelir: 88/85 birleşmez, netleştirir", {
   expect_equal(yakin$rule, 2L)
   expect_equal(length(yakin$values), 0L)
   expect_true(length(yakin$chips) >= 2L)
+
+  # Yukarıdaki çift EŞİT puan alır (87/87). Sözleşmenin ASIL iddiası ise
+  # FARKLI ama marj içinde kalan puanların da netleştirilmesidir; yalnızca
+  # beraberliği netleştirip yakın ikinciyi otomatik seçen bir regresyon
+  # eşit-puan fikstüründen GEÇERDİ.
+  esit_olmayan <- pk_entity_resolve(
+    "kalip", c("KALIP", "KALIP DESTEK"), thresholds = esikler
+  )
+  puanlar <- vapply(esit_olmayan$candidates, function(k) k$score, integer(1))
+  expect_true(length(puanlar) >= 2L)
+  expect_true(puanlar[1] != puanlar[2], info = "Fikstür yine beraberlik uretti.")
+  expect_true((puanlar[1] - puanlar[2]) < esikler$ambiguity_margin)
+  expect_equal(esit_olmayan$decision, "clarify")
+  expect_equal(esit_olmayan$rule, 2L)
 })
 
 test_that("kural 3 kural 4'ten ÖNCE gelir: çoğul istek 92'ye ÇÖKMEZ", {
@@ -147,11 +155,16 @@ test_that("kural 3 kural 4'ten ÖNCE gelir: çoğul istek 92'ye ÇÖKMEZ", {
 
   # Puanlar 100 ve 87: fark 13 >= 10 olduğu için kural 2 DEVREYE GİRMEZ.
   # Tepe puan 100 >= AUTO 85 olduğundan, kural 3 kural 4'ten önce
-  # denenmeseydi bu istek sessizce "hatlar projesi" adayına ÇÖKERDİ. Testin
-  # yakaladığı regresyon tam olarak budur.
-  sozluk <- c("hatlar projesi", "alfa beta hatlar projesi")
+  # denenmeseydi bu istek sessizce tek adaya ÇÖKERDİ. Testin yakaladığı
+  # regresyon tam olarak budur.
+  #
+  # İfade BİLEREK kanonik bir değerle birebir aynı DEĞİLDİR: yazılan metin
+  # bir kanonik değere tam eşitse çoğul ipucu BASTIRILIR (`SOLAR`,
+  # `KAYNAK LİSTESİ` gibi adlar `-lar/-ler` ile bitebilir ya da ipucu sözcüğü
+  # içerebilir). Burada niyet açık bir niceleyiciyle ("tüm") verilir.
+  sozluk <- c("hatlar", "alfa hatlar")
 
-  karar <- pk_entity_resolve("hatlar projesi", sozluk, thresholds = esikler)
+  karar <- pk_entity_resolve("tüm hatlar", sozluk, thresholds = esikler)
 
   expect_true(isTRUE(karar$plural))
   expect_equal(karar$top_score, 100L)
@@ -176,7 +189,7 @@ test_that("kural 2 EŞİT adaylarda kural 3'ten önce gelir", {
   # devreye girer. Bu, kural sırasının diğer yönünü kanıtlar: çoğulluk
   # sinyali belirsizliği EZMEZ.
   sozluk <- c("alfa hatlar projesi", "beta hatlar projesi", "gama hatlar projesi")
-  karar <- pk_entity_resolve("hatlar projesi", sozluk)
+  karar <- pk_entity_resolve("tüm hatlar projesi", sozluk)
 
   expect_true(isTRUE(karar$plural))
   expect_equal(karar$margin, 0L)
@@ -331,7 +344,17 @@ test_that("taşma çipleri gizli adayları ASLA içermez", {
   expect_equal(karar$overflow_count, 3L)
   expect_false(isTRUE(karar$offer_all))
 
-  # "Tümü" kapalı olduğu için görünmeyen 3 aday hiçbir yoldan seçilemez.
+  # Yalnızca "sözlükten geldi" demek YETMEZ: alttaki iki adayı gösterip
+  # üstteki üçünü gizleyen bir regresyon de o iddiayı sağlar. Çipler
+  # puana göre AZALAN, eşitlikte kanonik değere göre ARTAN sıradaki İLK
+  # ikisi OLMALIDIR.
+  beklenen <- vapply(karar$candidates, function(k) k$value, character(1))
+  expect_equal(cip_degerleri, utils::head(beklenen, 2L))
+
+  # Kalan adaylar çiplerde GÖRÜNMEZ.
+  expect_true(all(!(setdiff(beklenen, cip_degerleri) %in% cip_degerleri)))
+
+  # "Tümü" kapalı olduğu için görünmeyen adaylar hiçbir yoldan seçilemez.
   expect_true(all(cip_degerleri %in% sozluk))
 })
 
@@ -375,12 +398,9 @@ test_that("karar kaydı her dalda AYNI alan setini taşır", {
   iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
 }
 
-.PK_RES_DOSYALAR <- c(
-  "helpers_pk_entity_normalize.R",
-  "helpers_pk_entity_score.R",
-  "helpers_pk_entity_resolver.R",
-  "helpers_pk_entity_history.R"
-)
+# Tek kaynak: tests/testthat/helper_pk_entity.R. Faz 4 bölündükçe yeni dosya
+# eklemek unutulursa saf/motor/katlama taramaları SESSİZCE kapsam kaybeder.
+.PK_RES_DOSYALAR <- PK_ENTITY_RUNTIME_FILES
 
 test_that("Faz 4 dosyaları SAFTIR: Shiny/reactive/DB/ağ bağımlılığı yoktur", {
   repo_root <- resolve_repo_root_for_tests()
@@ -415,12 +435,23 @@ test_that("Faz 4 dosyaları motor bayrağını OKUMAZ", {
   # Motor sınırı sözleşmesi: v1/v2 dallanması YALNIZCA
   # `pk_build_analysis_result()` içinde olur. Saf Faz 4 dosyaları bayraktan
   # tamamen habersizdir; çağıran taraf onları v2 arkasında kullanır.
+  # Sarmalayıcı fonksiyon adlarını yasaklamak YETMEZ: bir dosya bayrağı
+  # doğrudan ortam değişkeni, options() anahtarı ya da yapılandırma
+  # çözümleyicisi üzerinden de okuyabilir ve tarama yine YEŞİL kalırdı.
+  yasak <- c(
+    "pk_engine_is_v2", "pk_engine_mode",
+    "MERGEN_PK_ENGINE", "mergen.pk.engine"
+  )
+
   for (dosya in .PK_RES_DOSYALAR) {
-    govde <- .pk_res_read(file.path(repo_root, "R", dosya))
-    expect_false(grepl("pk_engine_is_v2", govde, fixed = TRUE, useBytes = TRUE),
-                 info = dosya)
-    expect_false(grepl("pk_engine_mode", govde, fixed = TRUE, useBytes = TRUE),
-                 info = dosya)
+    satirlar <- strsplit(.pk_res_read(file.path(repo_root, "R", dosya)),
+                         "\n", fixed = TRUE)[[1]]
+    govde <- paste(satirlar[!grepl("^\\s*#", satirlar)], collapse = "\n")
+
+    for (token in yasak) {
+      expect_false(grepl(token, govde, fixed = TRUE, useBytes = TRUE),
+                   info = sprintf("%s icinde motor bayragi erisimi: %s", dosya, token))
+    }
   }
 })
 
@@ -438,6 +469,16 @@ test_that("Türkçe katlama KOPYALANMAZ; tek kaynak pk_tr_fold()'dur", {
     expect_false(grepl("chartr(", govde, fixed = TRUE, useBytes = TRUE), info = dosya)
     expect_false(grepl("utf8ToInt", govde, fixed = TRUE, useBytes = TRUE), info = dosya)
 
+    # ICU Türkçe katlama/NFC İLKELLERİ de doğrudan çağrılamaz: `pk_tr_fold`
+    # adını kullanmayan bir kopya (stri_trans_tolower(..., locale = "tr") +
+    # stri_trans_nfc) tek-otorite sözleşmesini aynı şekilde bozar ve Faz 4
+    # normalleştirmesinin katlamadan SESSİZCE ayrışmasına izin verir.
+    for (ilkel in c("stri_trans_tolower", "stri_trans_nfc", "stri_trans_general",
+                    "stri_trans_casefold", "toupper(", "tolower(")) {
+      expect_false(grepl(ilkel, govde, fixed = TRUE, useBytes = TRUE),
+                   info = sprintf("%s icinde dogrudan katlama ilkeli: %s", dosya, ilkel))
+    }
+
     # Katlama yeniden TANIMLANMAMALIDIR.
     expect_false(grepl("pk_tr_fold <- function", govde, fixed = TRUE, useBytes = TRUE),
                  info = dosya)
@@ -451,14 +492,24 @@ test_that("karar dalları ÇÖZÜLMÜŞ yapılandırmayı okur, literal eşik ta
   satirlar <- strsplit(govde, "\n", fixed = TRUE)[[1]]
   kod <- satirlar[!grepl("^\\s*#", satirlar)]
 
-  # Tepe puan / fark KARŞILAŞTIRMALARI (atama değil: `<-` hariç tutulur)
-  # YALNIZCA çözülmüş eşiklerle yapılır.
+  # Tepe puan / fark / ADAY PUANI KARŞILAŞTIRMALARI (atama değil: `<-` hariç
+  # tutulur) YALNIZCA çözülmüş eşiklerle yapılır.
+  #
+  # `k$score` dalı BİLİNÇLİ olarak kapsama alınmıştır: yalnızca `tepe`/`fark`
+  # taranırsa kural 3'ün `k$score >= esikler$multi_score` karşılaştırması hiç
+  # denetlenmez ve onu `k$score >= 70L` ile değiştirmek testi YEŞİL bırakırdı.
   karsilastirmalar <- grep(
-    "\\b(tepe|fark)\\s*(>=|<=|>|<(?!-))",
+    "(\\b(tepe|fark)|k\\$score)\\s*(>=|<=|>|<(?!-))",
     kod, value = TRUE, perl = TRUE
   )
-  expect_true(length(karsilastirmalar) >= 4L,
+  expect_true(length(karsilastirmalar) >= 5L,
               info = "Beklenen karar karsilastirmalari bulunamadi.")
+
+  # Çoğul dalı GERÇEKTEN kapsandı mı? (mutasyon koruması)
+  expect_true(
+    any(grepl("multi_score", karsilastirmalar, fixed = TRUE)),
+    info = "Kural 3 coklu esik karsilastirmasi taramaya girmedi."
+  )
 
   for (satir in karsilastirmalar) {
     expect_true(
