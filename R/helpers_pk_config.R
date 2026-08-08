@@ -230,10 +230,16 @@ pk_config_spec <- list(
   # --- Faz 5 (§5.2): iki geçişli sorgu seçimi -----------------------------
   # D14: v1'de seçim çağrısının HİÇ zaman aşımı yoktu ve asılı bir uç nokta
   # olay döngüsünü bloke ediyordu. Değer HER İKİ geçişte de ayrı ayrı uygulanır.
+  #
+  # ÜST SINIR bir güvenlik kontrolüdür, konfor değil: bu değer tam olarak
+  # "asılı uç nokta olay döngüsünü bloke etmesin" diye vardır ve doğrudan
+  # `request_timeout_sec` olarak iletilir. Sınırsız bırakıldığında bir yazım
+  # hatası (`86400`) her geçişi bir güne kadar bloke ederek D14'ü geri getirir.
   MERGEN_PK_SELECT_TIMEOUT_SEC = list(
     type = "integer",
     default = 20L,
-    min = 1L
+    min = 1L,
+    max = 120L
   ),
   # Geçiş A'nın isteyeceği ve Geçiş B'ye DEĞİŞMEDEN taşınacak aday sayısı.
   #
@@ -276,30 +282,77 @@ pk_config_spec <- list(
   ),
   # Geçiş A satırındaki açıklama karakter bütçesi. Alanlar KÜRESEL olarak
   # düşürülmez, tek tek ve DETERMİNİSTİK biçimde kırpılır (§5.2).
+  #
+  # TÜM Geçiş A bütçelerinin ÜST SINIRI vardır. Bunlar tam olarak tüm
+  # kütüphanenin tek istemde sığmasını garanti etmek için vardır; sınırsız
+  # bırakılan bir "bütçe" sağlaması gereken sınırı kaldırır ve recall
+  # kütüphane SIRASINA bağımlı hâle gelir.
   MERGEN_PK_SELECT_DESC_CHARS = list(
     type = "integer",
     default = 220L,
-    min = 40L
+    min = 40L,
+    max = 600L
   ),
   # Geçiş A satırındaki örnek soru başına karakter bütçesi.
   MERGEN_PK_SELECT_SAMPLE_CHARS = list(
     type = "integer",
     default = 120L,
-    min = 20L
+    min = 20L,
+    max = 400L
+  ),
+  # Geçiş A satırındaki sorgu ADI karakter bütçesi. Ad da kırpılır: başlangıç
+  # doğrulaması ada uzunluk sınırı koymaz ve tek bir devasa ad, diğer tüm
+  # bütçeleri anlamsız kılabilirdi.
+  MERGEN_PK_SELECT_NAME_CHARS = list(
+    type = "integer",
+    default = 120L,
+    min = 20L,
+    max = 400L
+  ),
+  # Geçiş A satırındaki anahtar kelime/niyet/uygun-değil alanlarının toplam
+  # karakter bütçesi.
+  MERGEN_PK_SELECT_KEYWORD_CHARS = list(
+    type = "integer",
+    default = 160L,
+    min = 20L,
+    max = 600L
+  ),
+  # Takip bağlamındaki konuşma turu başına karakter bütçesi. Örnek soru
+  # bütçesinden AYRIDIR: kütüphane yükünü küçültmek için `SAMPLE_CHARS`
+  # düşürüldüğünde eksiltili takip bağlamı sessizce yok olmamalıdır.
+  MERGEN_PK_SELECT_HISTORY_CHARS = list(
+    type = "integer",
+    default = 240L,
+    min = 40L,
+    max = 800L
+  ),
+  # Geçiş B aday bloklarının TOPLAM karakter bütçesi. Aday SAYISI tek başına
+  # bağlamı sınırlamaz: tek bir geniş sorgu tüm açıklama/örnek/sütun
+  # metadata'sıyla pencereyi taşırabilir.
+  MERGEN_PK_SELECT_PASS_B_CHARS = list(
+    type = "integer",
+    default = 24000L,
+    min = 2000L,
+    max = 120000L
   ),
   # Geçiş A satırına giren örnek soru sayısı (§5.2: `sample_questions[1:2]`).
+  # ÜST SINIR sözleşmenin kendisidir: §5.2 iki örnek soru der ve 169 sorguluk
+  # gerçek kütüphanede bu alan yükün en büyük bileşenidir.
   MERGEN_PK_SELECT_SAMPLE_N = list(
     type = "integer",
     default = 2L,
     min = 1L,
-    max = 5L
+    max = 2L
   ),
   # Takip bağlamı zarfına giren konuşma turu sayısı (§5.2: son 2 tur).
+  # Zarf bir GÜVENLİK sınırıdır, ayar değil: 10 tur seçim istemine ilgisiz
+  # eski konuşmayı taşır, 0 ise eksiltili takip sorusunu yorumlamak için
+  # gereken tek kanıtı siler.
   MERGEN_PK_SELECT_HISTORY_TURNS = list(
     type = "integer",
     default = 2L,
-    min = 0L,
-    max = 10L
+    min = 1L,
+    max = 2L
   ),
   # --- Faz 2 (§5.11): sayısal köken doğrulaması ---------------------------
   # `log` ile başlanır: gerçek yanlış-pozitif oranı VM'de ölçülmeden `warn`

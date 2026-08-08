@@ -31,13 +31,16 @@
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
 
-  # Türkçe yorum: guard'ın aradığı 12 yardımcı adı için yer-tutucu stub'lar
+  # Türkçe yorum: guard'ın aradığı 15 yardımcı adı için yer-tutucu stub'lar
   guard_fns <- c(
     "summarize_columns_for_ai", "normalize_sql_server_identifiers",
     "resolve_pk_analysis_username", "get_user_rls_info", "apply_rls_to_data",
     "generate_statistical_summary", "extract_filter_criteria_from_prompt",
     "apply_smart_filters", "pk_init_query_score_table", "pk_score_query_relevance",
-    "pk_compute_heuristic_query_scores", "print_score_table"
+    "pk_compute_heuristic_query_scores", "print_score_table",
+    # Faz 5 seçim zinciri de guard listesindedir; stub'lanmazsa modül tüm
+    # zinciri kaynaklamayı dener ve izole ortamda göreli yol çözülemez.
+    "pk_select_query_v2", "pk_select_run", "pk_select_decide"
   )
   for (fn in guard_fns) assign(fn, function(...) NULL, envir = env)
 
@@ -50,6 +53,9 @@
     source(file.path(kok, "R", yardimci), encoding = "UTF-8", local = env)
   }
 
+  # v1 AI seçicisi (`find_best_query_with_ai`) bakım borcu ratchet'i için
+  # modülden ÇIKARILDI; davranışı BİREBİR aynıdır ve bu dosya onu da test eder.
+  source(file.path(kok, "R", "helpers_pk_analysis_ai_selector.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "module_proje_kaynak_analizi.R"), encoding = "UTF-8", local = env)
 
   env$cat <- function(...) invisible(NULL)
@@ -62,7 +68,7 @@
   # Türkçe yorum: varsayılan hazır kimlik + yetkili RLS; testler gerektikçe ezer
   env$resolve_pk_analysis_username <- function(session) list(ready = TRUE, username = "kullanici1")
   env$get_user_rls_info <- function(username, conn) list(authorized = TRUE, rls_filter = "")
-  env$select_smart_query <- function(prompt, library, chat_history) NULL
+  env$select_smart_query <- function(prompt, library, chat_history, ...) NULL
   env
 }
 

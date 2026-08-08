@@ -28,8 +28,15 @@ PK_SELECT_SOURCE_CHAIN <- c(
   "library_query_meta.R",
   "helpers_pk_analysis_query_selection.R",
   "helpers_pk_query_retrieval.R",
+  "helpers_pk_query_selection_json.R",
+  "helpers_pk_query_selection_config.R",
+  "helpers_pk_query_selection_payload.R",
   "helpers_pk_query_selection_prompt.R",
+  "helpers_pk_query_selection_requirements.R",
   "helpers_pk_query_selection_parse.R",
+  "helpers_pk_query_selection_decide.R",
+  "helpers_pk_query_selection_degraded.R",
+  "helpers_pk_query_selection_session.R",
   "helpers_pk_query_selection_ai.R",
   "helpers_pk_query_selection_apply.R"
 )
@@ -37,8 +44,15 @@ PK_SELECT_SOURCE_CHAIN <- c(
 # Faz 5 çalışma zamanı dosyaları (manifest/ratchet doğrulamaları için).
 PK_SELECT_RUNTIME_FILES <- c(
   "helpers_pk_query_retrieval.R",
+  "helpers_pk_query_selection_json.R",
+  "helpers_pk_query_selection_config.R",
+  "helpers_pk_query_selection_payload.R",
   "helpers_pk_query_selection_prompt.R",
+  "helpers_pk_query_selection_requirements.R",
   "helpers_pk_query_selection_parse.R",
+  "helpers_pk_query_selection_decide.R",
+  "helpers_pk_query_selection_degraded.R",
+  "helpers_pk_query_selection_session.R",
   "helpers_pk_query_selection_ai.R",
   "helpers_pk_query_selection_apply.R"
 )
@@ -72,11 +86,24 @@ PK_SELECT_ENV_KEYS <- c(
   "MERGEN_PK_SELECT_SAMPLE_CHARS",
   "MERGEN_PK_SELECT_SAMPLE_N",
   "MERGEN_PK_SELECT_HISTORY_TURNS",
+  "MERGEN_PK_SELECT_NAME_CHARS",
+  "MERGEN_PK_SELECT_KEYWORD_CHARS",
+  "MERGEN_PK_SELECT_HISTORY_CHARS",
+  "MERGEN_PK_SELECT_PASS_B_CHARS",
   "MERGEN_PK_ENGINE"
 )
 
+# ÜRETİM eşlemesi kullanılır: `pk_config_option_key()` bilinçli olarak ASCII
+# `chartr()` uygular, çünkü Türkçe Windows yerelinde `tolower("I")` noktasız
+# `ı` üretir. Testte `tolower()` kullanmak, hedef VM'de `SELECT_TIMEOUT_SEC` /
+# `ENGINE` anahtarlarının YANLIŞ option adıyla temizlenmesine ve ortamdaki
+# `mergen.pk.*` ayarlarının testlere sızmasına yol açar.
 pk_select_option_keys <- function() {
-  paste0("mergen.pk.", tolower(sub("^MERGEN_PK_", "", PK_SELECT_ENV_KEYS)))
+  if (exists("pk_config_option_key", mode = "function", inherits = TRUE)) {
+    return(vapply(PK_SELECT_ENV_KEYS, pk_config_option_key, character(1), USE.NAMES = FALSE))
+  }
+  paste0("mergen.pk.", chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz",
+                              sub("^MERGEN_PK_", "", PK_SELECT_ENV_KEYS)))
 }
 
 pk_select_with_env <- function(vars = character(0), code) {
@@ -206,9 +233,13 @@ pk_select_stub_llm <- function(responses) {
 
   fn <- function(messages, settings) {
     kayit$i <- kayit$i + 1L
+    # Geçmiş artık SİSTEM mesajına gömülmez (istem enjeksiyonu sınırı); mesaj
+    # dizisi `system -> bağlam/onarım -> kullanıcı` şeklindedir. Kayıt bu yüzden
+    # ilk SİSTEM mesajını ve SON mesajı (gerçek istek) tutar.
     kayit$calls[[kayit$i]] <- list(
       system = messages[[1]]$content,
-      user = messages[[2]]$content,
+      user = messages[[length(messages)]]$content,
+      messages = messages,
       settings = settings
     )
 

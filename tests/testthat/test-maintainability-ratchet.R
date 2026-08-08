@@ -326,14 +326,32 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/helpers_pk_entity_apply.R", 270L, 9L)
 
   # Faz 5 (§5.2) iki geçişli sorgu seçimi. Katmanlar TEK sorumluluktadır ve
-  # geri birleştirilmemelidir: sözlüksel getirim (KARAR VERMEZ) -> istem/
-  # yapılandırma kurucuları -> ayrıştırma + karar politikası -> LLM
-  # orkestrasyonu (zaman aşımı/onarım) -> çalışma zamanına bağlama.
-  assert_current_budget("R/helpers_pk_query_retrieval.R", 360L, 17L)
-  assert_current_budget("R/helpers_pk_query_selection_prompt.R", 520L, 22L)
-  assert_current_budget("R/helpers_pk_query_selection_parse.R", 680L, 21L)
-  assert_current_budget("R/helpers_pk_query_selection_ai.R", 380L, 18L)
-  assert_current_budget("R/helpers_pk_query_selection_apply.R", 250L, 13L)
+  # geri birleştirilmemelidir: sözlüksel getirim (KARAR VERMEZ) -> katı JSON
+  # ilkeleri -> kapalı-başarısız yapılandırma -> istem yükü -> mesaj kurulumu ->
+  # `requirements` doğrulaması -> ayrıştırma -> karar politikası -> bozulma
+  # kipi -> oturum durumu -> LLM orkestrasyonu -> çalışma zamanına bağlama.
+  #
+  # İnceleme düzeltmeleri katılığı (katı ayrıştırma, geri alınamaz recall
+  # kanıtları, anlamsal alanlar, oturum kapsamı) büyüttüğü için üç dosya YEDİYE
+  # bölündü. HİÇBİR BÜTÇE GEVŞETİLMEDİ: `prompt` 520 -> 400, `parse` 680 -> 300,
+  # `ai` 380 -> 520 (orkestrasyon iptal/teşhis/onay yollarını da üstlendi),
+  # `apply` 250 -> 320, `retrieval` 360 -> 400 (not_for olumsuz kanıtı).
+  assert_current_budget("R/helpers_pk_query_retrieval.R", 400L, 17L)
+  assert_current_budget("R/helpers_pk_query_selection_json.R", 220L, 10L)
+  assert_current_budget("R/helpers_pk_query_selection_config.R", 300L, 10L)
+  assert_current_budget("R/helpers_pk_query_selection_payload.R", 460L, 18L)
+  assert_current_budget("R/helpers_pk_query_selection_prompt.R", 400L, 16L)
+  assert_current_budget("R/helpers_pk_query_selection_requirements.R", 300L, 12L)
+  assert_current_budget("R/helpers_pk_query_selection_parse.R", 300L, 8L)
+  assert_current_budget("R/helpers_pk_query_selection_decide.R", 400L, 10L)
+  assert_current_budget("R/helpers_pk_query_selection_degraded.R", 190L, 7L)
+  assert_current_budget("R/helpers_pk_query_selection_session.R", 220L, 14L)
+  assert_current_budget("R/helpers_pk_query_selection_ai.R", 520L, 21L)
+  assert_current_budget("R/helpers_pk_query_selection_apply.R", 320L, 14L)
+
+  # v1 AI seçicisi modülden çıkarıldı (davranış BİREBİR); modül orkestrasyona
+  # odaklı kalır ve 800 satır tavanına geri dayanmaz.
+  assert_current_budget("R/helpers_pk_analysis_ai_selector.R", 140L, 4L)
 
   # Varlık manifesti VERİ/DOĞRULAYICI/RENDER olarak üç dosyaya bölündü
   # (config_ui_asset_zones.R deseni): config_ui_assets.R 690 satırdan VERİ-odaklı

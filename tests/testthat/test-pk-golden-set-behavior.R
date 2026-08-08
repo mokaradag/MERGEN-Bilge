@@ -26,6 +26,56 @@ pk_select_source_chain_for_tests()
   jsonlite::fromJSON(.pk_golden_path(), simplifyVector = FALSE)
 }
 
+# Kaydedilmiş çıktılar SÖZLEŞMEYE UYGUN olmalıdır. Aksi hâlde altın küme,
+# seçim davranışını değil ayrıştırıcı toleransını ölçer: eksik `missing_info`
+# ya da `requirements` alanı, bir vakayı "doğru reddedildi" gibi gösterirken
+# gerçekte cevap BOZUK olduğu için reddedilmiş olurdu.
+.pk_golden_pass_a <- function(ids) {
+  sprintf("{\"candidates\": [%s]}", paste(sprintf("\"%s\"", ids), collapse = ", "))
+}
+
+.pk_golden_pass_b <- function(selected, candidate_ids, confidence = 88L,
+                              requirements = NULL) {
+  digerleri <- setdiff(candidate_ids, selected)
+  alternatifler <- paste(
+    vapply(digerleri, function(k) sprintf("{\"id\":\"%s\",\"confidence\":30}", k), character(1)),
+    collapse = ","
+  )
+
+  sprintf(
+    paste0("{\"id\":\"%s\",\"confidence\":%d,\"reason\":\"altin kume\",",
+           "\"alternates\":[%s],\"requirements\":%s,\"missing_info\":null}"),
+    selected, as.integer(confidence), alternatifler,
+    .pk_golden_requirements_json(requirements)
+  )
+}
+
+# `requirements` TAM şemayla ve DÜZ dizilerle serileştirilir.
+#
+# `jsonlite::toJSON(auto_unbox = FALSE)` fixture'daki `list("x")` değerini
+# `[["x"]]` yapar; iç içe dizi sözleşme dışıdır ve cevabı BOZUK yapar. Altın
+# küme, ayrıştırıcı toleransını değil SEÇİM davranışını ölçmelidir.
+.pk_golden_requirements_json <- function(requirements) {
+  alanlar <- c("measures", "dates", "dimensions", "group_by", "unsupported")
+  parcalar <- vapply(alanlar, function(alan) {
+    deger <- if (is.list(requirements)) requirements[[alan]] else NULL
+    deger <- as.character(unlist(deger, use.names = FALSE))
+    deger <- deger[!is.na(deger) & nzchar(deger)]
+    sprintf("\"%s\":[%s]", alan, paste(sprintf("\"%s\"", deger), collapse = ","))
+  }, character(1), USE.NAMES = FALSE)
+
+  varlik <- if (is.list(requirements)) requirements$entity else NULL
+  varlik_json <- if (is.null(varlik) || !length(varlik)) {
+    "\"entity\":null"
+  } else {
+    sprintf("\"entity\":\"%s\"", as.character(unlist(varlik))[1])
+  }
+
+  paste0("{", paste(c(varlik_json, parcalar), collapse = ","), "}")
+}
+
+
+
 test_that("altın küme fixture'ı vardır ve YALNIZCA sentetik veri taşır", {
   expect_true(file.exists(.pk_golden_path()))
 
@@ -91,7 +141,8 @@ test_that("recall@N: beklenen sorgu Geçiş A YÜKÜNDE görünür kalır", {
   cfg <- pk_select_normalize_config(list(
     timeout_sec = 20L, recall_n = 5L, min_confidence = 50L, min_margin = 15L,
     disagree_penalty = 15L, desc_chars = 220L, sample_chars = 120L,
-    sample_n = 2L, history_turns = 2L
+    sample_n = 2L, history_turns = 2L, name_chars = 120L, keyword_chars = 160L,
+    history_chars = 240L, pass_b_chars = 24000L
   ))
 
   payload <- pk_select_pass_a_payload(lib, cfg)
@@ -127,6 +178,48 @@ test_that("recall@N: beklenen sorgu Geçiş A YÜKÜNDE görünür kalır", {
       "Geçiş B geri getiremez (§5.2)."
     )
   )
+})
+
+test_that("recall@N: beklenen sorgu Geçiş A ÇIKTISINDA (ilk N aday) yer alır", {
+  # Yükün İÇERMESİ yetmez: yük zaten TÜM kütüphanedir, yani bu koşul her vaka
+  # için önemsiz biçimde doğrudur. Ölçülmesi gereken, `pk_select_run_pass_a()`
+  # çıktısının beklenen kimliği GERÇEKTEN döndürüp döndürmediğidir.
+  golden <- .pk_golden_load()
+  lib <- pk_select_test_library()
+  cfg <- pk_select_normalize_config(list(
+    timeout_sec = 20L, recall_n = 2L, min_confidence = 50L, min_margin = 15L,
+    disagree_penalty = 15L, desc_chars = 220L, sample_chars = 120L,
+    sample_n = 2L, history_turns = 2L, name_chars = 120L, keyword_chars = 160L,
+    history_chars = 240L, pass_b_chars = 24000L
+  ))
+  payload <- pk_select_pass_a_payload(lib, cfg)
+
+  # Kaydedilmiş recall çıktısı: sözlüksel sıralamanın ilk N kimliği. Bu, bir
+  # modelin makul biçimde döndüreceği kümedir ve YENİDEN ÜRETİLEBİLİRDİR.
+  index <- pk_retrieval_build_index(lib)
+
+  for (vaka in golden$cases) {
+    beklenen <- vaka$expected_query_id
+    if (is.null(beklenen) || isTRUE(vaka$elliptical)) next
+
+    ilk_n <- utils::head(pk_retrieval_score(index, vaka$soru)$query_id, cfg$recall_n)
+    stub <- pk_select_stub_llm(list(.pk_golden_pass_a(ilk_n)))
+    sonuc <- pk_select_run_pass_a(
+      vaka$soru, payload,
+      pk_select_follow_up_context(NULL, NULL, payload$ids, cfg, user_prompt = vaka$soru),
+      cfg, llm_fn = stub$fn
+    )
+
+    expect_true(isTRUE(sonuc$ok), info = sprintf("Vaka %s: Geçiş A çözülemedi.", vaka$id))
+    expect_equal(length(sonuc$ids), cfg$recall_n)
+    expect_true(
+      beklenen %in% sonuc$ids,
+      info = sprintf(
+        "Vaka %s ('%s'): beklenen %s, ilk %d aday arasında OLMALIDIR (recall@N).",
+        vaka$id, vaka$soru, beklenen, cfg$recall_n
+      )
+    )
+  }
 })
 
 test_that("sözlüksel getirim, altın kümede beklenen sorguyu ilk-3'e taşır", {
@@ -172,8 +265,14 @@ test_that("uçtan uca: altın küme vakaları kaydedilmiş LLM çıktısıyla ç
   cfg <- pk_select_normalize_config(list(
     timeout_sec = 20L, recall_n = 5L, min_confidence = 50L, min_margin = 15L,
     disagree_penalty = 15L, desc_chars = 220L, sample_chars = 120L,
-    sample_n = 2L, history_turns = 2L
+    sample_n = 2L, history_turns = 2L, name_chars = 120L, keyword_chars = 160L,
+    history_chars = 240L, pass_b_chars = 24000L
   ))
+
+  # Kütüphanedeki TÜM kararlı kimlikler; `recall_n = 5` ve dört sorgu olduğu
+  # için Geçiş A sözleşmesi "mevcut olanların TAMAMI"dır. Eksik doldurulmuş bir
+  # kayıt, tam olarak geri alınamaz recall kaybı hatasını kutsardı.
+  tum_kimlikler <- vapply(lib, function(q) q$id, character(1))
 
   dogru <- 0L
   toplam <- 0L
@@ -183,37 +282,31 @@ test_that("uçtan uca: altın küme vakaları kaydedilmiş LLM çıktısıyla ç
     beklenen <- vaka$expected_query_id
 
     if (identical(vaka$expected_selection, "refuse")) {
-      # Kapsam dışı: model düşük güven verir -> seçim REDDETMELİDİR.
+      # Kapsam dışı: model düşük güven verir -> seçim REDDETMELİDİR. Cevap
+      # SÖZLEŞMEYE UYGUNDUR; ret, bozuk ayrıştırma yüzünden değil DÜŞÜK GÜVEN
+      # yüzünden gelmelidir.
       stub <- pk_select_stub_llm(list(
-        "{\"candidates\":[\"q001\",\"q002\",\"q003\"]}",
-        "{\"id\":\"q001\",\"confidence\":12,\"alternates\":[{\"id\":\"q002\",\"confidence\":8}]}"
+        .pk_golden_pass_a(tum_kimlikler),
+        .pk_golden_pass_b("q001", tum_kimlikler, confidence = 12L)
       ))
       karar <- pk_select_run(vaka$soru, lib, llm_fn = stub$fn, cfg = cfg)
 
-      expect_false(
-        identical(karar$status, PK_SELECT_STATUS_AUTO),
-        info = sprintf("Vaka %s kapsam dışıdır; otomatik çalıştırılmamalıdır.", vaka$id)
+      expect_identical(
+        karar$status, PK_SELECT_STATUS_LOW_CONFIDENCE,
+        info = sprintf(
+          "Vaka %s kapsam dışıdır; DÜŞÜK GÜVEN nedeniyle reddedilmelidir.", vaka$id
+        )
       )
-      if (!identical(karar$status, PK_SELECT_STATUS_AUTO)) dogru <- dogru + 1L
+      if (identical(karar$status, PK_SELECT_STATUS_LOW_CONFIDENCE)) dogru <- dogru + 1L
       next
     }
 
-    # Kaydedilmiş Geçiş A/B çıktıları: doğru adayı içeren bir aday kümesi ve
-    # net bir kazanan. `requirements` fixture'dan gelir.
-    gereksinim <- vaka$expected_requirements
-    req_json <- if (is.null(gereksinim)) {
-      "null"
-    } else {
-      jsonlite::toJSON(gereksinim, auto_unbox = FALSE)
-    }
-
-    rakip <- if (identical(beklenen, "q001")) "q002" else "q001"
+    # Kaydedilmiş Geçiş A/B çıktıları: TAM kütüphane recall'ı ve net bir
+    # kazanan. `requirements` fixture'dan gelir.
     stub <- pk_select_stub_llm(list(
-      sprintf("{\"candidates\":[\"%s\",\"%s\"]}", beklenen, rakip),
-      sprintf(
-        "{\"id\":\"%s\",\"confidence\":88,\"reason\":\"altin kume\",\"alternates\":[{\"id\":\"%s\",\"confidence\":30}],\"requirements\":%s}",
-        beklenen, rakip, req_json
-      )
+      .pk_golden_pass_a(tum_kimlikler),
+      .pk_golden_pass_b(beklenen, tum_kimlikler,
+                        requirements = vaka$expected_requirements)
     ))
 
     karar <- pk_select_run(
@@ -247,24 +340,25 @@ test_that("eksiltili vaka, önceki kimlik OLMADAN aday kümesine giremez", {
   cfg <- pk_select_normalize_config(list(
     timeout_sec = 20L, recall_n = 2L, min_confidence = 50L, min_margin = 15L,
     disagree_penalty = 15L, desc_chars = 220L, sample_chars = 120L,
-    sample_n = 2L, history_turns = 2L
+    sample_n = 2L, history_turns = 2L, name_chars = 120L, keyword_chars = 160L,
+    history_chars = 240L, pass_b_chars = 24000L
   ))
 
   # Geçiş A, eksiltili soruda beklenen sorguyu bulamaz (gerçekçi senaryo).
   gecis_a <- "{\"candidates\":[\"q003\",\"q004\"]}"
 
   # Önceki kimlik OLMADAN: beklenen sorgu aday kümesinde YOK.
-  stub_yok <- pk_select_stub_llm(list(gecis_a, "{\"id\":\"q003\",\"confidence\":80,\"alternates\":[{\"id\":\"q004\",\"confidence\":20}]}"))
+  stub_yok <- pk_select_stub_llm(list(
+    gecis_a, .pk_golden_pass_b("q003", c("q003", "q004"), confidence = 80L)
+  ))
   karar_yok <- pk_select_run(eksiltili$soru, lib, llm_fn = stub_yok$fn, cfg = cfg)
   expect_false(eksiltili$expected_query_id %in% karar_yok$candidate_ids)
 
-  # Önceki kimlik İLE: tohumlama kırpmadan önce yapılır, aday kümeye girer.
+  # Önceki kimlik İLE: tohum, taze adayları DÜŞÜRMEDEN kümeye eklenir.
+  adaylar_var <- c(eksiltili$expected_query_id, "q003", "q004")
   stub_var <- pk_select_stub_llm(list(
     gecis_a,
-    sprintf(
-      "{\"id\":\"%s\",\"confidence\":85,\"alternates\":[{\"id\":\"q003\",\"confidence\":30}]}",
-      eksiltili$expected_query_id
-    )
+    .pk_golden_pass_b(eksiltili$expected_query_id, adaylar_var, confidence = 85L)
   ))
   karar_var <- pk_select_run(
     eksiltili$soru, lib,
@@ -275,5 +369,6 @@ test_that("eksiltili vaka, önceki kimlik OLMADAN aday kümesine giremez", {
   expect_true(eksiltili$expected_query_id %in% karar_var$candidate_ids)
   expect_identical(karar_var$query_id, eksiltili$expected_query_id)
   expect_identical(karar_var$status, PK_SELECT_STATUS_AUTO)
-  expect_lte(length(karar_var$candidate_ids), cfg$recall_n)
+  # Tohum, Geçiş A'nın taze adaylarını DÜŞÜRMEZ: küme bir eleman büyüyebilir.
+  expect_true(all(c("q003", "q004") %in% karar_var$candidate_ids))
 })

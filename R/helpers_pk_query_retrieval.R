@@ -285,6 +285,46 @@ pk_retrieval_top <- function(index, prompt, n) {
   utils::head(siralama, n)
 }
 
+#' Kullanıcının isteğini AÇIKÇA DIŞLAYAN sorgular
+#'
+#' `not_for`, "bu sorgu şu tür istekler için DEĞİLDİR" diyen küratörlü
+#' metadata'dır ve olumlu çanta modeline bilinçli olarak GİRMEZ (girerse
+#' sorguyu tam da dışladığı sorulara çeker). Ancak uyuşmazlık sinyali için
+#' OLUMSUZ KANIT olarak kullanılabilir: isteği açıkça dışlayan bir sorgunun
+#' seçilen sorgunun ÜSTÜNDE sıralanması, seçimin yanlış olduğuna dair kanıt
+#' DEĞİLDİR ve cezayı hak etmez.
+#'
+#' Eşleşme bilinçli olarak kaba ve ucuzdur: `not_for` metnindeki en az 3
+#' karakterlik bir belirteç, istemin belirteçleri arasında geçiyorsa dışlama
+#' sayılır.
+pk_retrieval_excluded_ids <- function(library, prompt) {
+  if (!is.list(library) || !length(library)) return(character(0))
+
+  istem <- unique(.pk_retrieval_tokens(prompt))
+  istem <- istem[nchar(istem) >= 3L]
+  if (!length(istem)) return(character(0))
+
+  dislanan <- character(0)
+  for (kayit in library) {
+    if (!is.list(kayit)) next
+
+    kimlik <- kayit$id
+    if (is.null(kimlik) || !length(kimlik) || is.na(kimlik[1])) next
+
+    meta <- if (is.list(kayit$meta)) kayit$meta else list()
+    metin <- .pk_retrieval_field_text(meta$not_for)
+    if (!length(metin)) next
+
+    belirtecler <- unique(.pk_retrieval_tokens(metin))
+    belirtecler <- belirtecler[nchar(belirtecler) >= 3L]
+    if (length(intersect(belirtecler, istem))) {
+      dislanan <- c(dislanan, trimws(as.character(kimlik)[1]))
+    }
+  }
+
+  unique(dislanan)
+}
+
 #' Sözlüksel UYUŞMAZLIK sinyali (§5.2 — karar değil, yalnızca zayıflatma)
 #'
 #' LLM'in seçtiği kimlik sözlüksel sıralamada nerede? Çok geride ise bu bir
@@ -292,9 +332,19 @@ pk_retrieval_top <- function(index, prompt, n) {
 #' bir `disagrees` bayrağı döndürür; güveni ne kadar düşüreceğine karar
 #' politikası karar verir.
 #'
-#' @param top_n Sözlüksel ilk-N penceresi. Seçim bu pencerenin DIŞINDA kaldıysa
-#'   uyuşmazlık raporlanır.
-pk_retrieval_agreement <- function(index, prompt, selected_id, top_n) {
+#' İKİ ÖLÇÜLMÜŞ DÜZELTME:
+#'   * BERABERLİK uyuşmazlık DEĞİLDİR. Sıralama eşit skorları kararlı kimliğe
+#'     göre böler; neredeyse aynı metadata'ya sahip iki kayıtta doğru seçim
+#'     yalnızca kimliği sonra geldiği için cezalandırılabiliyordu. Karşılaştırma
+#'     artık N. sıradaki SKORA karşı yapılır.
+#'   * `not_for` ile isteği AÇIKÇA dışlayan sorgular sıralamadan düşürülür;
+#'     aksi hâlde küratörün "bu soruya bakma" dediği adaylar doğru seçimi
+#'     pencerenin dışına itip gereksiz reddetme üretiyordu.
+#'
+#' @param top_n Sözlüksel ilk-N penceresi.
+#' @param library Kütüphane (yalnızca `not_for` olumsuz kanıtı için; `NULL`
+#'   verilirse dışlama uygulanmaz).
+pk_retrieval_agreement <- function(index, prompt, selected_id, top_n, library = NULL) {
   top_n <- suppressWarnings(as.integer(top_n)[1])
   if (!length(top_n) || is.na(top_n) || top_n < 1L) top_n <- 1L
 
@@ -310,13 +360,26 @@ pk_retrieval_agreement <- function(index, prompt, selected_id, top_n) {
   if (all(siralama$score <= 0)) return(bos)
 
   kimlik <- trimws(as.character(selected_id)[1])
+
+  if (!is.null(library)) {
+    dislanan <- setdiff(pk_retrieval_excluded_ids(library, prompt), kimlik)
+    if (length(dislanan)) {
+      siralama <- siralama[!(siralama$query_id %in% dislanan), , drop = FALSE]
+      if (!nrow(siralama)) return(bos)
+    }
+  }
+
   sira <- match(kimlik, siralama$query_id)
   if (is.na(sira)) return(bos)
+
+  kesim <- min(top_n, nrow(siralama))
+  esik <- as.numeric(siralama$score[kesim])
+  skor <- as.numeric(siralama$score[sira])
 
   list(
     available = TRUE,
     rank = as.integer(sira),
-    score = as.numeric(siralama$score[sira]),
-    disagrees = isTRUE(sira > top_n)
+    score = skor,
+    disagrees = isTRUE(sira > top_n) && isTRUE(skor < esik)
   )
 }
