@@ -142,7 +142,14 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   if (is.null(selected_query) || (!is.null(selected_query$all_scores) && is.null(selected_query$id))) {
     cat("[PK_ANALIZ] UYARI: Uygun bir sorgu ESLESMESI BULUNAMADI.\n")
-    
+
+    # Faz 5 (§5.2 / D10): v2 secim hatti ACIKCA "bilmiyorum" dediyse v1'in
+    # dusuk-esik geri donusu DEVREYE GIRMEZ. Yanlis bir finansal sorguyu
+    # calistirmaktansa kullaniciya sormak yeglenir.
+    if (!is.null(selected_query$refusal_message)) {
+      return(as.character(selected_query$refusal_message)[1])
+    }
+
     if (!is.null(selected_query$all_scores)) {
       best_score <- max(selected_query$all_scores$final_score, na.rm = TRUE)
       best_idx <- which.max(selected_query$all_scores$final_score)
@@ -165,16 +172,13 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     }
   }
   
-  relevance_pct <- selected_query$relevance_score %||% 0
-  method <- selected_query$selection_method %||% "unknown"
-  reason <- selected_query$selection_reason %||% ""
-  
-  cat(sprintf("[PK_ANALIZ] Secilen Sorgu: '%s' | İlgililik: %.1f%% | Yontem: %s\n", 
-              selected_query$name, relevance_pct, method))
-  if (nchar(reason) > 0) {
-    cat(sprintf("[PK_ANALIZ] Secim Nedeni: %s\n", reason))
+  # Secim tanilamasi (yalnizca cat) secim katmanina tasindi; modul orkestrasyona
+  # odakli kalir. Yardimci yoksa akis sessizce devam eder.
+  if (exists("pk_select_log_selection", mode = "function", inherits = TRUE)) {
+    pk_select_log_selection(selected_query)
   }
-  
+
+
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (sorgu secimi sonrasi)\n")
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
@@ -625,12 +629,24 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
 
 select_smart_query <- function(prompt, library, chat_history) {
   cat("[PK_ANALIZ] Akilli Sorgu Secici (Smart Query Selector) calisiyor...\n")
-  
+
   all_scores <- pk_init_query_score_table(library)
-  
+
   session_obj <- NULL
   try({ session_obj <- shiny::getDefaultReactiveDomain() }, silent=TRUE)
-  
+
+  # Motor siniri (master plan §10): Faz 5 iki gecisli secim hatti YALNIZCA
+  # MERGEN_PK_ENGINE=v2 iken calisir. Desen apply_smart_filters() ile AYNIDIR.
+  # v1 govdesi (AI dali + sezgisel dal + esikler) asagida DEGISMEDEN kalir;
+  # bayrak v1 iken bu dal hic calismaz. Hat calisamazsa NULL doner ve yine
+  # v1 govdesine dusulur.
+  if (exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
+      isTRUE(pk_engine_is_v2()) &&
+      exists("pk_select_query_v2", mode = "function", inherits = TRUE)) {
+    secim_v2 <- pk_select_query_v2(prompt, library, chat_history, session = session_obj)
+    if (!is.null(secim_v2)) return(secim_v2)
+  }
+
   ai_selection <- NULL
   ai_attempt <- 1
   max_ai_attempts <- 2

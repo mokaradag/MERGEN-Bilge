@@ -339,7 +339,19 @@ source_manifest_sections <- list(
     "R/helpers_pk_statistical_summary.R",
     "R/helpers_pk_analysis_filters_base.R",
     "R/helpers_pk_analysis_filters.R",
-    "R/helpers_pk_analysis_query_selection.R"
+    "R/helpers_pk_analysis_query_selection.R",
+    # Faz 5 (§5.2) iki geçişli sorgu seçimi. Bağımlılık sırası zorunludur:
+    # sözlüksel getirim (saf) -> istem/yapılandırma kurucuları -> ayrıştırma ve
+    # karar politikası -> LLM orkestrasyonu -> çalışma zamanına bağlama.
+    # Tümü v1 sezgiselinden SONRA yüklenir: bağlama katmanı v1 uyumlu
+    # `all_scores` tablosunu `pk_init_query_score_table()` üzerinden kurar.
+    # Sözlüksel katman KARAR VERMEZ (D10); yalnızca bozulma kipi, uyuşmazlık
+    # sinyali ve altın küme tanılaması içindir.
+    "R/helpers_pk_query_retrieval.R",
+    "R/helpers_pk_query_selection_prompt.R",
+    "R/helpers_pk_query_selection_parse.R",
+    "R/helpers_pk_query_selection_ai.R",
+    "R/helpers_pk_query_selection_apply.R"
   ),
 
   # sso_identity_helpers: SSO imza doğrulama, SSO akışı ve logout URL

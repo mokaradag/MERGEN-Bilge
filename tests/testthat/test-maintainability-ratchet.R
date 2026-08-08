@@ -325,6 +325,16 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/helpers_pk_entity_history.R", 520L, 17L)
   assert_current_budget("R/helpers_pk_entity_apply.R", 270L, 9L)
 
+  # Faz 5 (§5.2) iki geçişli sorgu seçimi. Katmanlar TEK sorumluluktadır ve
+  # geri birleştirilmemelidir: sözlüksel getirim (KARAR VERMEZ) -> istem/
+  # yapılandırma kurucuları -> ayrıştırma + karar politikası -> LLM
+  # orkestrasyonu (zaman aşımı/onarım) -> çalışma zamanına bağlama.
+  assert_current_budget("R/helpers_pk_query_retrieval.R", 360L, 17L)
+  assert_current_budget("R/helpers_pk_query_selection_prompt.R", 520L, 22L)
+  assert_current_budget("R/helpers_pk_query_selection_parse.R", 680L, 21L)
+  assert_current_budget("R/helpers_pk_query_selection_ai.R", 380L, 18L)
+  assert_current_budget("R/helpers_pk_query_selection_apply.R", 250L, 13L)
+
   # Varlık manifesti VERİ/DOĞRULAYICI/RENDER olarak üç dosyaya bölündü
   # (config_ui_asset_zones.R deseni): config_ui_assets.R 690 satırdan VERİ-odaklı
   # dosyaya indi; çözümleyici/doğrulayıcı API'si config_ui_asset_validators.R'ye,

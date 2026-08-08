@@ -132,7 +132,13 @@ mergen_seam_guard_tests <- function() {
         "tests/testthat/test-pk-entity-score-behavior.R",
         "tests/testthat/test-pk-entity-resolver-contract.R",
         "tests/testthat/test-pk-entity-history-behavior.R",
-        "tests/testthat/test-pk-entity-apply-behavior.R"
+        "tests/testthat/test-pk-entity-apply-behavior.R",
+        # Faz 5 (§5.2) iki geçişli sorgu seçimi. Bu seam'e AİTTİR: seçim
+        # bozulursa analiz doğru veriyi YANLIŞ soruya karşı çalıştırır ve
+        # aşağı akıştaki hiçbir kontrol bunu yakalayamaz.
+        "tests/testthat/test-pk-query-retrieval-behavior.R",
+        "tests/testthat/test-pk-query-selection-contract.R",
+        "tests/testthat/test-pk-golden-set-behavior.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-mcp-excel-resolve.R\")",
