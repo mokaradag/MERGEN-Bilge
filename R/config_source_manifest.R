@@ -339,34 +339,7 @@ source_manifest_sections <- list(
     "R/helpers_pk_statistical_summary.R",
     "R/helpers_pk_analysis_filters_base.R",
     "R/helpers_pk_analysis_filters.R",
-    "R/helpers_pk_analysis_query_selection.R",
-    # v1 AI seçicisi modülden ÇIKARILDI (ratchet bölünmesi); davranış BİREBİR
-    # korunur ve v2 hattı bu dosyayı çağırmaz.
-    "R/helpers_pk_analysis_ai_selector.R",
-    # Faz 5 (§5.2) iki geçişli sorgu seçimi. Bağımlılık sırası zorunludur:
-    # sözlüksel getirim (saf) -> istem/yapılandırma kurucuları -> ayrıştırma ve
-    # karar politikası -> LLM orkestrasyonu -> çalışma zamanına bağlama.
-    # Tümü v1 sezgiselinden SONRA yüklenir: bağlama katmanı v1 uyumlu
-    # `all_scores` tablosunu `pk_init_query_score_table()` üzerinden kurar.
-    # Sözlüksel katman KARAR VERMEZ (D10); yalnızca bozulma kipi, uyuşmazlık
-    # sinyali ve altın küme tanılaması içindir.
-    #
-    # Zincir: sözlüksel getirim (saf) -> katı JSON ilkeleri -> kapalı-başarısız
-    # yapılandırma -> istem yükü -> mesaj kurulumu -> `requirements`
-    # doğrulaması -> ayrıştırma -> karar politikası -> bozulma kipi -> oturum
-    # durumu -> LLM orkestrasyonu -> çalışma zamanına bağlama.
-    "R/helpers_pk_query_retrieval.R",
-    "R/helpers_pk_query_selection_json.R",
-    "R/helpers_pk_query_selection_config.R",
-    "R/helpers_pk_query_selection_payload.R",
-    "R/helpers_pk_query_selection_prompt.R",
-    "R/helpers_pk_query_selection_requirements.R",
-    "R/helpers_pk_query_selection_parse.R",
-    "R/helpers_pk_query_selection_decide.R",
-    "R/helpers_pk_query_selection_degraded.R",
-    "R/helpers_pk_query_selection_session.R",
-    "R/helpers_pk_query_selection_ai.R",
-    "R/helpers_pk_query_selection_apply.R"
+    "R/helpers_pk_analysis_query_selection.R"
   ),
 
   # sso_identity_helpers: SSO imza doğrulama, SSO akışı ve logout URL

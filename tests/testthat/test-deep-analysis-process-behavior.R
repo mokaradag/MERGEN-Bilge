@@ -30,7 +30,7 @@
   env$find_multiple_queries_with_ai <- function(user_prompt, library, session, max_queries = 5) {
     list(list(id = 1L, name = "Sorgu A"))
   }
-  env$select_smart_query <- function(prompt, library, chat_history, ...) NULL
+  env$select_smart_query <- function(prompt, library, chat_history) NULL
   env$execute_single_deep_query <- function(query, user_prompt, session, rls_info, detail_config, stop_check = NULL) {
     list(query_name = query$name, success = TRUE, row_count = 3L)
   }
@@ -98,7 +98,7 @@ test_that("pk_deep_analysis_process çoklu sorgu seçip bağlamı oluşturur", {
 test_that("pk_deep_analysis_process çoklu seçim başarısızsa tekil sorgu fallback'i kullanır", {
   env <- .deepProcessEnv()
   env$find_multiple_queries_with_ai <- function(...) NULL
-  env$select_smart_query <- function(prompt, library, chat_history, ...) list(id = 9L, name = "Tekil Sorgu")
+  env$select_smart_query <- function(prompt, library, chat_history) list(id = 9L, name = "Tekil Sorgu")
   yakalanan <- new.env(parent = emptyenv())
   env$execute_single_deep_query <- function(query, ...) {
     yakalanan$query_name <- query$name

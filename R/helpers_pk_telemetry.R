@@ -128,26 +128,6 @@ if (!exists("pk_telemetry_log_analysis", mode = "function", inherits = FALSE)) {
 
 # Gözlem zenginleştirme: filtre gözlemi, motor etiketi, durum ve bozulmalar.
 # FAIL-SOFT'tur; hata verirse çağıran yine de yanıtı teslim eder.
-#' Çağıranın bildirdiği ek bozulmaları normalleştir
-.pk_observation_extra_degradations <- function(x) {
-  if (is.null(x) || !length(x)) return(list())
-
-  metinler <- if (is.list(x)) {
-    vapply(x, function(d) {
-      deger <- if (is.list(d)) d$message else d
-      if (is.null(deger) || !length(deger) || is.na(deger[1])) NA_character_
-      else as.character(deger)[1]
-    }, character(1), USE.NAMES = FALSE)
-  } else {
-    as.character(x)
-  }
-
-  metinler <- metinler[!is.na(metinler) & nzchar(trimws(metinler))]
-  if (!length(metinler)) return(list())
-
-  lapply(metinler, function(m) list(code = "selection_degraded", message = m))
-}
-
 .pk_observation_enrich <- function(session, info) {
   if (is.null(info$user_id) || length(info$user_id) == 0L ||
       is.na(suppressWarnings(as.integer(info$user_id)[1]))) {
@@ -201,20 +181,11 @@ if (!exists("pk_telemetry_log_analysis", mode = "function", inherits = FALSE)) {
     }
   }
 
-  # Çağıran, filtre hattı dışında oluşan bozulmaları da bildirebilir (ör. Faz 5
-  # seçiminde sözlüksel uyuşmazlık nedeniyle güvenin düşürülmesi). Plan kuralı
-  # açıktır: her bozulma yanıtta GÖRÜNMELİDİR; yalnızca loglara yazılan bir
-  # zayıflatma, kullanıcı açısından hiç olmamış demektir.
-  ek_bozulmalar <- .pk_observation_extra_degradations(info$extra_degradations)
-  info$extra_degradations <- NULL
-
   status <- pk_filter_status_normalize(info$filter_status)
   list(
     info = info,
     status = status,
-    degradations = c(
-      pk_degradations_from_filter_status(status), dropped_degradations, ek_bozulmalar
-    ),
+    degradations = c(pk_degradations_from_filter_status(status), dropped_degradations),
     provenance_mode = tryCatch(pk_numeric_provenance_mode(query_meta), error = function(e) NULL)
   )
 }

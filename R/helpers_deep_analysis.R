@@ -512,35 +512,12 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz iptal edildi.")
   }
 
-  # Faz 5 motor sınırı (§5.2 / §10): `MERGEN_PK_ENGINE=v2` iken Derin Düşünme de
-  # kapılardan geçer. Eski akış `find_multiple_queries_with_ai()` kullanıyordu;
-  # o seçici KONUM kimliğiyle çalışır ve kararlı kimlik/yetenek/güven/marj ile
-  # reddetme kapılarının HİÇBİRİNİ uygulamaz — yani Derin Düşünme açıkken
-  # v2'nin tüm güvenlik sözleşmesi sessizce devre dışı kalıyordu.
-  pk_v2_secim <- exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
-    isTRUE(pk_engine_is_v2()) &&
-    exists("pk_select_query_v2", mode = "function", inherits = TRUE)
-
-  selected_queries <- if (pk_v2_secim) NULL else {
-    find_multiple_queries_with_ai(user_prompt, query_library, session, max_queries = 5)
-  }
+  selected_queries <- find_multiple_queries_with_ai(user_prompt, query_library, session, max_queries = 5)
 
   if (is.null(selected_queries) || length(selected_queries) == 0) {
-    cat("[DEEP_ANALYSIS] Tekil secime dusuluyor.\n")
-    single <- select_smart_query(
-      user_prompt, query_library, chat_history,
-      session = session, stop_check = stop_check
-    )
+    cat("[DEEP_ANALYSIS] Çoklu seçim başarısız, tekil seçime düşülüyor.\n")
 
-    # v2 acikca "bilmiyorum" dediyse Derin Dusunme de calistirmaz.
-    if (is.list(single) && is.null(single$id) && !is.null(single$refusal_message)) {
-      pk_observe_deep(list(
-        query_name = "Derin analiz", filter_status = "not_reached",
-        filters = list(), outcome = "Reddedildi"
-      ))
-      return(as.character(single$refusal_message)[1])
-    }
-
+    single <- select_smart_query(user_prompt, query_library, chat_history)
     if (!is.null(single) && !is.null(single$id)) {
       selected_queries <- list(single)
     } else {
