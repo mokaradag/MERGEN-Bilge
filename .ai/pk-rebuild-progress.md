@@ -17,7 +17,7 @@ reads only one of the two will make avoidable mistakes.
 | 1 | Surgical correctness | `merged_to_rebuild` | `f1368b2` (PR #697) |
 | 2 | Deterministic analysis + export | `merged_to_rebuild` | `e3893dd` (PR #698) |
 | 4 | Entity resolution | `merged_to_rebuild` | `6ad9c55` (PR #699) |
-| 5 | Selection rebuild | `in_review` | — (PR open) |
+| 5 | Selection rebuild | `in_review` | — (PR #700 open) |
 
 Planned order (§11): **0 → 3a → 1 → 2 → 4 → 5 → 6**, with **3b on the VM**.
 
@@ -2025,7 +2025,7 @@ a browser; and `MERGEN_PK_ENGINE=v2` remains **off**, so none of this is live.
 * **Branch:** `claude/pk-phase-5-selection-aqm568` (harness-assigned; see
   "Deviations"). Cut from the `origin/pk/rebuild` tip `6ad9c55`, which matched
   the expected tip exactly.
-* **PR:** base `pk/rebuild` ← head `claude/pk-phase-5-selection-aqm568`
+* **PR:** #700, base `pk/rebuild` ← head `claude/pk-phase-5-selection-aqm568`
 * **Merge SHA:** _pending_ — correct this from `bash tools/pk_phase_status.sh`,
   not from memory.
 
