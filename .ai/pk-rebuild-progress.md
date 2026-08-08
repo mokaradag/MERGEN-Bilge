@@ -16,9 +16,19 @@ reads only one of the two will make avoidable mistakes.
 | 3a | Metadata contract | `merged_to_rebuild` | `aa39652` (PR #696) |
 | 1 | Surgical correctness | `merged_to_rebuild` | `f1368b2` (PR #697) |
 | 2 | Deterministic analysis + export | `merged_to_rebuild` | `e3893dd` (PR #698) |
-| 4 | Entity resolution | `in_review` | — (PR #699 open) |
+| 4 | Entity resolution | `merged_to_rebuild` | `6ad9c55` (PR #699) |
+| 5 | Selection rebuild | `in_review` | — (PR open) |
 
 Planned order (§11): **0 → 3a → 1 → 2 → 4 → 5 → 6**, with **3b on the VM**.
+
+> **Stale-record correction (made at the start of the Phase-5 session).** Phase 4's
+> row read `in_review` / `—`. `bash tools/pk_phase_status.sh` reports
+> `Faz 4 merged_to_rebuild tip=merge SHA=6ad9c559 PR=#699`, and
+> `git log --oneline -8 origin/pk/rebuild` shows that merge at the tip. Per §11
+> the log wins; the row above was corrected. This is the fifth consecutive phase
+> to open with a stale table — the durable fix below (item 2, "status should be
+> written at merge time") remains **unimplemented** and is now the single most
+> repeated piece of avoidable friction in this project.
 
 > A session must not start phase N+1 while phase N is still `in_review`.
 > Before starting, run `git fetch origin pk/rebuild && bash tools/pk_phase_status.sh`
@@ -1518,7 +1528,10 @@ Ratchet unchanged: score 100/100, 0 files at 800+ lines, 0 at 25+ functions.
 
 ## Phase 4 — Entity resolution
 
-* **Status:** `in_review`
+* **Status:** `merged_to_rebuild` — **merge SHA `6ad9c55`, PR #699**
+  (corrected in the Phase-5 session from `tools/pk_phase_status.sh`; the
+  original `in_review` / `_pending_` text is preserved below for provenance)
+* **Status as originally written:** `in_review`
 * **Branch:** `claude/phase-4-entity-resolver-60vwbl` (harness-assigned; see
   "Deviations"). Cut from the `origin/pk/rebuild` tip `e3893dd`, which matched
   the expected tip exactly.
@@ -2003,3 +2016,331 @@ or real chat history; the two new resource bounds
 (`MAX_PHRASE_CHARS` / `MAX_SCAN_CANDIDATES`) are unmeasured against production
 cardinality; the clarification chips and confirmation flow have not been seen in
 a browser; and `MERGEN_PK_ENGINE=v2` remains **off**, so none of this is live.
+
+---
+
+## Phase 5 — Selection rebuild
+
+* **Status:** `in_review`
+* **Branch:** `claude/pk-phase-5-selection-aqm568` (harness-assigned; see
+  "Deviations"). Cut from the `origin/pk/rebuild` tip `6ad9c55`, which matched
+  the expected tip exactly.
+* **PR:** base `pk/rebuild` ← head `claude/pk-phase-5-selection-aqm568`
+* **Merge SHA:** _pending_ — correct this from `bash tools/pk_phase_status.sh`,
+  not from memory.
+
+### Defects re-verified before writing code (§0.1)
+
+Line numbers had drifted from the plan; each was re-read in the current checkout.
+
+| Defect | Verdict | Evidence in the current code |
+|---|---|---|
+| **D10** — neither selection path can say "I don't know" | **REPRODUCES** | *AI branch:* `module:602-616` accepts any `match_id`; `confidence` is written into `all_scores` at `:648-649` and **never compared to anything**, then logged as *"AI tarafindan kesin eslesme bulundu"* at `:651`. *Heuristic branch:* `query_selection.R:90-95` normalizes by its own max, so `max_score_pct` is exactly 100 whenever any score is non-zero; `:104-107` `(max_score >= 2) \|\| (max_score_pct >= 30)` is therefore unconditionally TRUE. The 7 hardcoded `grepl` domain bonuses are at `query_selection.R:65-71` (plan said `:65-71` — unchanged). |
+| **D13** — query IDs are list positions | **REPRODUCES** | `module:540` sends `sprintf("ID: %d \| ISIM: ...", i, ...)` — `i` is the **library index**; `:603-604` reads it back as `idx <- as.integer(parsed$match_id)` and indexes `library[[idx]]`. Plan cited `module:490`/`:553-554`; drifted to `:540`/`:603-604`. |
+| **D14** — no timeout, pointless retry | **REPRODUCES** | `call_local_llm()` at `module:585-592` passes **no** `request_timeout_sec` (compare `helpers_pk_analysis_filters_base.R:214`, which does). `module:638-642` loops `while (is.null(ai_selection) && ai_attempt <= 2)` re-issuing the **identical** `temperature = 0.0` call. Plan cited `module:588-592`; drifted to `:638-642`. |
+
+No claim from the plan was found to be withdrawn; nothing from §3.9 was resurrected.
+
+### The one plan sentence NOT executed literally, and why
+
+§5.2 says: *"**Delete the 7 hardcoded `grepl` domain bonuses** at
+`query_selection.R:65-71` and the normalize-by-max scoring that guarantees 100%
+(D10)."* Those lines were **not deleted from the v1 file**. Three independent
+constraints forbid it, and they all point the same way:
+
+* §10: *"The v1 **decision logic** must remain unchanged — do not refactor it
+  'while you're in there'"*, and *"Deleting v1 happens later, in its own cleanup
+  PR, only after v2 has run in production"*, and *"none changes a v1
+  query-selection or filter-selection decision"*.
+* `CLAUDE.md` (authoritative, overrides defaults) pins the formula
+  *"BİREBİR"*: name substring +50, name-word ×10, description-word ×2, the seven
+  +8 bonuses, max-normalization, `THRESHOLD_RAW=2`/`THRESHOLD_PCT=30`.
+* `tests/testthat/test-pk-analysis-query-selection-behavior.R` asserts that exact
+  behavior (including `expect_equal(res$all_scores$heuristic_score, c(100, 0))`).
+
+What §8's Phase-5 acceptance line actually asks for is *"heuristic **demoted to
+non-deciding** (D10)"* — not "file deleted". So the deletion is executed **in the
+v2 decision path**, which is where it changes behavior: the v2 pipeline never
+calls `pk_compute_heuristic_query_scores()` or `pk_score_query_relevance()`
+(statically asserted), and the replacement layer contains **no** domain bonuses,
+**no** max-normalization and **no** thresholds at all. The literal deletion from
+`helpers_pk_analysis_query_selection.R` belongs to the v1-removal PR that §10
+schedules. This is recorded as **deviation 2** below rather than silently
+absorbed.
+
+### Engine boundary as implemented
+
+Four of the five new files are **pure** and statically free of
+`pk_engine_is_v2` / `MERGEN_PK_ENGINE` / `mergen.pk.engine` (asserted). The fifth
+(`helpers_pk_query_selection_apply.R`) is the wiring layer. The single v2 branch
+lives at the top of `select_smart_query()` and mirrors the existing
+`apply_smart_filters()` pattern byte-for-byte in shape:
+
+```r
+if (exists("pk_engine_is_v2", ...) && isTRUE(pk_engine_is_v2()) &&
+    exists("pk_select_query_v2", ...)) {
+  secim_v2 <- pk_select_query_v2(prompt, library, chat_history, session = session_obj)
+  if (!is.null(secim_v2)) return(secim_v2)
+}
+```
+
+With `MERGEN_PK_ENGINE=v1` (the default) the branch never runs and the v1 body is
+untouched. If the v2 pipeline cannot run at all it returns `NULL` and the caller
+falls through to v1 — degradation, never a hard failure.
+
+### Files added
+
+| File | Purpose | Size |
+|---|---|---|
+| `R/helpers_pk_query_retrieval.R` | Character 3-gram + IDF cosine retrieval over Turkish-folded `name + description + keywords + sample_questions + column labels`. **Non-deciding.** Pure. | 328 / 15 fn |
+| `R/helpers_pk_query_selection_prompt.R` | Fail-closed config resolution + Pass A/B payload builders with deterministic per-field budgets. Pure. | 490 / 20 fn |
+| `R/helpers_pk_query_selection_parse.R` | JSON parsing, `requirements` allowlist + capability validation, deterministic decision policy. Pure. | 654 / 19 fn |
+| `R/helpers_pk_query_selection_ai.R` | Two-pass LLM orchestration: per-pass timeout, repair retry, degraded mode, prior-id seeding. Injectable `llm_fn`. | 338 / 16 fn |
+| `R/helpers_pk_query_selection_apply.R` | The wiring: v1-compatible return shape, refusal message, session prior-id slot, selection diagnostics. | 222 / 11 fn |
+| `tests/fixtures/pk_golden_set.json` | Committed golden corpus — **synthetic only**, 7 cases. | — |
+| `tests/testthat/helper_pk_selection.R` | Single source chain + env isolation + synthetic library/registry + stub LLM. | — |
+| 3 × `tests/testthat/test-pk-*` | 310 assertions. | — |
+
+### Files modified
+
+| File | Change |
+|---|---|
+| `R/helpers_pk_config.R` | Nine `MERGEN_PK_SELECT_*` keys registered. `RECALL_N` carries `min = 2L` (safety contract) and `max = 20L` (Pass B payload bound). |
+| `R/module_proje_kaynak_analizi.R` | v2 branch in `select_smart_query()`; refusal short-circuit before the v1 low-threshold fallback; selection diagnostics extracted to `pk_select_log_selection()`. 691 → 707 lines. |
+| `R/config_source_manifest.R` | Five files appended to `analysis_helpers`, after the v1 heuristic (the apply layer reuses `pk_init_query_score_table()`). |
+| `R/config_seam_guard_tests.R` | Three Phase-5 guard tests registered under `mcp_analiz` — the split made in Phase 4 is what made this possible. |
+| `.Renviron.example` | Nine knobs with Turkish comments. |
+| `tests/testthat/test-source-manifest-sections-contract.R` | Frozen anchors updated consciously: `analysis_helpers` n 40 → 45, last file, total 411 → 416. |
+| `tests/testthat/test-maintainability-ratchet.R` | Five **new** per-file budget locks. No existing budget raised. |
+| `tests/testthat/test-pk-entity-history-behavior.R` | Allowed `chat_history` occurrence set extended by the Phase-5 pass-through (see "Intentional test change"). |
+
+### Tests added, and what each **proves**
+
+| Test | Proves |
+|---|---|
+| `test-pk-query-retrieval-behavior.R` (51) | Turkish agglutination shares trigrams (`projelerin`/`projeye`/`projedeki`/`projelerinde` all share `pro`/`roj`/`oje`); IDF measurably down-weights the corpus-wide `sentetik` below the single-document `takvim`, and the discriminating term outranks the generic one; the score is **absolute cosine** — an irrelevant question stays < 0.5 and a good-but-imperfect match is **< 1.0** (v1's best was always exactly 100); all-zero scores are not lifted; ordering is identical under reversed input (radix/C-locale); a query with no stable id is dropped rather than given a positional id; the discriminating term living **only** in `sample_questions` is still retrievable; the disagreement signal returns **only** `available/rank/score/disagrees` and claims nothing when the lexical signal is empty; static scan proves no `grepl` bonus, no `max_heuristic`, no threshold, no `call_local_llm`, no engine flag. |
+| `test-pk-query-selection-contract.R` (200) | **`RECALL_N`**: 1 is rejected (not silently defaulted) and disables automatic selection; the resolved value is written into the Pass A prompt for 2/3/4; a non-default **3** truncates a 4-id recall to exactly 3 and the dropped candidate provably does **not** appear in the Pass B payload; no literal five in any of the five files (comments stripped first). **D13**: Pass A lines start `q001 \|`, never `ID: 1`; positional `"1"`/`"2"` are rejected as unknown; **reversing the library changes nothing**; an id outside the candidate set is refused. **Runner-up**: five distinct shapes (no alternates / no confidence / out-of-range / non-numeric / not a candidate) **all** yield `no_runner_up` with chips and never `auto`; alternates sort by own confidence with radix tie-break and the margin is computed from them; confidence and margin are separate gates and both are configurable; `MIN_CONFIDENCE + MIN_MARGIN > 100` fails closed. **Capabilities**: planned vs remaining labor separate by exact ID; start vs finish date separate; a person/resource output dimension is not satisfied by `entity = project`; an invented ID is `unknown_capability` (distinct from `capability_missing`); a column **name or label** is never accepted as an ID; metadata-free asserted requirements refuse; **unasserted** requirements do not trigger the gate; the capability gate fires **before** the confidence gate even at 98% confidence; a validator **crash** is `validator_error`, not "metadata missing". **Follow-up**: bounded envelope + prior id reach Pass A, older turns do not; the prior id survives **before** truncation and end-to-end into Pass B; a deleted prior id is not carried; all five Pass A fields survive aggressive budgets and clipping is marked. **D14**: both passes carry `request_timeout_sec`; the repair retry is a **different** prompt carrying the validation error; a timeout is **not** retried; a failed repair never auto-executes. **Degraded mode**: LLM down → top-3 chips, no query selected; lexical disagreement lowers confidence 60→45 and flips to clarify, penalty 0 leaves the decision untouched; `"connection refused"` is not a timeout. **Wiring**: the v2 call exists in `select_smart_query()`, is inside the engine gate (line-distance asserted), the engine gate behaves correctly at default/v1/v2, the refusal suppresses v1's fallback, the v1-compatible shape is returned with `heuristic_score` all-zero, the session remembers the id on `auto` and **not** on refusal, manifest order is dependency order, and all nine knobs are registered with their §9 defaults. Plus: a missing field never reaches the prompt as the literal string `"NA"`. |
+| `test-pk-golden-set-behavior.R` (59) | The committed fixture exists, is synthetic, carries no real row counts, and every case has id/question/expected selection; it **contains** a case whose discriminating phrase is only in `sample_questions` — and that claim is itself verified against the library (absent from name/description/keywords, present in sample questions); it contains an elliptical case carrying a prior stable id; recall@N — every expected query is present in the Pass A payload and the discriminating term survives clipping; lexical retrieval puts the expected query in the top 3 for every non-elliptical case; an out-of-scope question scores < 0.35 everywhere; end-to-end, all 7 cases resolve correctly against recorded stub output (in-scope → `auto` on the expected id, out-of-scope → refuses); and the elliptical case **fails to reach the candidate set without the prior id** and succeeds with it, under `recall_n = 2`. |
+
+**Total: 310 assertions**, all offline — no DB, LLM, browser, SSO, network or real
+secret. Every fixture is synthetic (`Sentetik …`, `q001`–`q004`, `gs001`–`gs007`);
+no real project or programme name appears.
+
+### Defects found by writing the tests (each measured, fixed, and locked)
+
+Three were found by a failing test or a probe, not by inspection:
+
+1. **Turkish tokenization was silently shattering every word.**
+   `strsplit(x, "[^[:alnum:]]+", perl = TRUE)` — PCRE's POSIX classes are
+   ASCII by default in this container, so **`işçilik` split into `i` + `ilik`**
+   and `işçilik bütçesi şubat ığdır` produced 8 fragments instead of 4 words.
+   Every Turkish term would have lost its discriminating trigrams. `perl = FALSE`
+   (TRE) is correct here but locale-dependent, which is no guarantee on the
+   Turkish Windows VM. Fixed with ICU (`stringi::stri_split_regex` over
+   `\p{L}`/`\p{N}`) — the same reasoning `pk_tr_fold()` already documents.
+   Verified byte-identical under `LC_ALL=C` and `LC_ALL=C.UTF-8` using
+   codepoint-built fixtures (identical trigram codepoint digests).
+2. **`NA` became the literal text `"NA"` in two separate layers.**
+   `paste(NA_character_)` yields `"NA"`, and `as.character(character(0))[1]`
+   yields `NA` which `%||%` does **not** catch (it only tests `NULL`). Result: a
+   query with an empty `description` contributed `na` trigrams to its own
+   document, and a query with `name = NA` emitted `qX | NA | …` into the Pass A
+   line — the model would have read `"NA"` as the query's name. An absent field
+   must mean **absence**, not content. Fixed in `.pk_retrieval_tokens()`,
+   `.pk_select_clip()` and `.pk_select_inline()`.
+3. **`"connection refused"` was classified as a timeout**, because the pattern
+   list contained the bare token `"connect"`. Both statuses reach degraded mode,
+   so behavior was unaffected — but the telemetry would have sent an operator
+   hunting for a hung endpoint. Real timeouts (including `"Connection timed
+   out"`) are already caught by `"timed out"`; the bare token was removed.
+
+A fourth was found by the pipeline itself: `pk_meta_capability_check()` crashing
+(missing `.pk_meta_is_scalar_text` in an isolated chain) was being swallowed by
+`tryCatch` and reported as **`capability_missing`** — i.e. a loading bug
+presented as "your metadata is incomplete". A crashing validator is now
+`validator_error`, still fail-closed but with a message that names it as a
+setup problem. The isolated test chain was also corrected to source
+`helpers_pk_query_meta_schema.R` and `library_query_meta.R`, so it matches
+runtime instead of diverging.
+
+### Design decisions, with reasoning
+
+**F1 — The lexical layer has three non-deciding roles and no fourth.**
+Degraded mode (top 3 as options, never auto-run), a disagreement signal that only
+*lowers* confidence, and golden-set diagnostics. It is statically forbidden from
+calling `pk_select_decide`, `call_local_llm` or the engine flag, and its returned
+object has no field that could be read as "run this".
+
+**F2 — The disagreement penalty is a configurable score, not a veto.**
+`MERGEN_PK_SELECT_DISAGREE_PENALTY` (default 15) subtracts from confidence, and
+the ordinary gates then apply. At `0` the signal is reported and nothing else.
+A veto would have made the lexical layer a decision-maker through the back door —
+exactly what §5.2 forbids.
+
+**F3 — The capability gate runs BEFORE the confidence gate.**
+§5.2: *"the gate must prove that **before** execution"*. A model pointing at a
+query with 98% confidence still cannot answer a question whose required measure
+that query does not expose. Test-locked in both directions.
+
+**F4 — `unknown_capability`, `capability_missing` and `validator_error` are three statuses, not one.**
+They have different causes and different remedies: a hallucinated ID is a model
+error (a repair retry can fix it), a missing capability means a different query
+is needed (retrying cannot help), and a validator crash is an operator/setup
+problem. Collapsing them would make the repair loop retry something it can never
+fix and would mis-address the operator.
+
+**F5 — Requirements are validated only when ASSERTED.**
+`pk_query_meta` is intentionally empty in this checkout (Phase 3b populates it on
+the VM). If an empty `requirements` object refused every request, v2 would be
+unusable before Phase 3b. So: no assertion → no gate; an assertion that cannot be
+proved → refuse. That is exactly §8's *"metadata-free semantic requirements
+refuse before SQL"*, and it keeps v2 adoptable in stages.
+
+**F6 — Seeding the prior query id happens BEFORE the recall truncation.**
+For `peki 2024 için?` the question carries no query-bearing term at all, so Pass A
+cannot find the right query; the only context is the previous turn. Seeding after
+truncation would drop it whenever recall was already full — proved by a test at
+`recall_n = 2` that fails without the seed and passes with it. Pass B may still
+reject the seeded candidate; Pass A simply must not discard it first.
+
+**F7 — `RECALL_N` is bounded above at 20, not unbounded.**
+§9 only specifies the minimum. But Pass B sends *full* descriptions, sample
+questions and column labels per candidate, so an unbounded N pushes Pass B past
+the context window, where truncation is silent candidate loss — the failure mode
+§5.2 exists to prevent. The lower bound of 2 is the plan's own safety contract
+and is enforced as a **hard config error**, not a silent default.
+
+**F8 — A v2 refusal suppresses v1's low-threshold fallback.**
+The module's existing no-match path picks the best-scoring query whenever
+`best_score >= 20`. Letting that run after v2 said "I don't know" would restore
+exactly the guessing D10 describes. The refusal short-circuits it.
+
+**F9 — `heuristic_score` stays 0 in the v2 score table.**
+The table keeps its v1 shape so `print_score_table()` and downstream code work
+unchanged, but writing the heuristic's numbers into it would tell a reader the
+heuristic was part of the decision. In v2 it is not.
+
+**F10 — Repair retry is bounded at one extra attempt and never replays a timeout.**
+Re-issuing an identical deterministic call was v1's bug. Waiting a second full
+timeout on a hung endpoint doubles the event-loop block and fixes nothing, so
+timeouts fail straight to degraded mode; only *malformed* output earns a repair
+attempt, and that attempt carries the validation error.
+
+### Intentional test change (§7: update, never delete)
+
+`test-pk-entity-history-behavior.R` asserts the **exact** set of `chat_history`
+occurrence sites in the module, to prove D11 still reproduces in v1. Phase 5 adds
+a fourth site. The allowed set was extended rather than the assertion weakened,
+because the test's real claim still holds: the new line is a **pass-through**, and
+the v1 body still never inspects `chat_history`. Any body read (condition,
+indexing, `length`, element access) still turns the test red. This is D11 closing
+on the **v2** side, which is what Phase 5 was scheduled to do.
+
+### Deviations from the plan
+
+1. **Branch name** — harness-assigned `claude/pk-phase-5-selection-aqm568` rather
+   than `pk/phase-5-selection-<slug>`. Substance preserved: cut from the expected
+   `origin/pk/rebuild` tip `6ad9c55`, one phase, PR targets `pk/rebuild`.
+2. **The 7 `grepl` bonuses and max-normalization were not deleted from the v1
+   file** — deleted from the v2 decision path instead. Fully argued above; §10
+   schedules the literal deletion for the v1-removal PR.
+3. **`RECALL_N` upper bound (20)** — added beyond §9, argued in F7.
+4. **`MERGEN_PK_SELECT_DISAGREE_PENALTY` and the four Pass-A budget knobs**
+   (`DESC_CHARS`, `SAMPLE_CHARS`, `SAMPLE_N`, `HISTORY_TURNS`) are not in §9's
+   table. They are score cut-offs and limits, and §9's own rule is that *nothing*
+   may be a hard-coded magic number, so they are registered rather than inlined.
+5. **The module grew by 16 lines (691 → 707) instead of shrinking.** The v2 branch
+   plus the refusal short-circuit is ~19 lines with its Turkish comments; the
+   selection diagnostics extraction gave ~6 back. A larger reduction was available
+   only by extracting v1 decision logic (the low-threshold fallback), which §10
+   explicitly forbids and which existing behavior tests pin in place. No budget
+   was raised: the file sits at 707 against the 795 global cap and the 1500
+   contract cap, and five new per-file locks were **added**. Reported rather than
+   disguised.
+
+### Review findings received and how each was resolved
+
+None yet — PR just opened.
+
+### What remains unproven and needs the VM
+
+* **No real LLM has ever run either pass.** Every test injects `llm_fn`. Whether
+  the on-prem model actually returns the contracted JSON — stable ids, alternates
+  *with their own confidences*, a well-formed `requirements` object — is
+  completely unmeasured. If it does not, the observable result is refusal, not a
+  wrong answer, but the clarification rate could be high at first.
+* **Prompt sizing against the real 169-query library.** The Pass A payload was
+  only ever built for a 4-query synthetic library. Whether 169 compact lines plus
+  the follow-up envelope fits comfortably, and whether the default budgets
+  (220/120 chars) are right for real descriptions, is a VM measurement.
+* **The default thresholds are guesses.** `MIN_CONFIDENCE = 50`,
+  `MIN_MARGIN = 15` and `DISAGREE_PENALTY = 15` come from §9, not from observed
+  traffic. The clarification-vs-wrong-answer trade-off can only be tuned against
+  real questions.
+* **Capability validation has never met real metadata.** `pk_query_meta` is empty
+  in this checkout, so every capability test runs against the synthetic registry.
+  Until Phase 3b populates real metadata on the VM, asserted requirements will
+  refuse — correct by F5, but it means the gate's real-world hit rate is unknown.
+* **recall@N is measured on 7 synthetic cases**, not the ~100–200 the plan
+  targets, and not against real Turkish phrasing. The trigram+IDF layer has never
+  seen a real query library.
+* **Clarification chips have never been rendered.** The decision produces chip
+  *data* and a numbered Turkish message; a clickable chip UI is a browser
+  concern and has not been built or seen.
+* **The elliptical follow-up path depends on a session slot** written on
+  successful selection. Its behavior across reconnects, new-chat resets and the
+  Ortak Oturum bridge is unobserved.
+* `MERGEN_PK_ENGINE=v2` stays **OFF** by default until the VM validates it.
+
+### Exact validation commands run, and their real results
+
+Environment note: this container starts in a **POSIX/C locale**, which makes R
+fail to read the repo's UTF-8 sources. Every command below was run with
+`LC_ALL=C.UTF-8` (same as Phase 4).
+
+| Command | Result |
+|---|---|
+| `Rscript tests/scripts/parse_sanity_check.R` | `OK: 1117 dosya parse edildi.` |
+| `bash tools/seam_doctor.sh` | `SEAM_DOCTOR_RESULT: OK (yapısal sorun yok)` |
+| `testthat::test_file("tests/testthat/test-maintainability-ratchet.R")` | `FAIL 0, WARN 0, SKIP 0, PASS 315` |
+| `testthat::test_file("tests/testthat/test-pk-query-retrieval-behavior.R")` | `FAIL 0, WARN 0, SKIP 0, PASS 51` |
+| `testthat::test_file("tests/testthat/test-pk-query-selection-contract.R")` | `FAIL 0, WARN 0, SKIP 0, PASS 200` |
+| `testthat::test_file("tests/testthat/test-pk-golden-set-behavior.R")` | `FAIL 0, WARN 0, SKIP 0, PASS 59` |
+| `testthat::test_file("tests/testthat/test-source-manifest-sections-contract.R")` | `FAIL 0, PASS 170` |
+| `testthat::test_file("tests/testthat/test-global-source-manifest-contract.R")` | `FAIL 0, PASS 22` |
+| `testthat::test_file("tests/testthat/test-source-manifest-contract.R")` | `FAIL 0, PASS 170` |
+| all 42 `test-pk-*.R` + 6 `test-deep-analysis-*.R`, one file at a time | `FAIL 0` in every file (see note below) |
+| `source("tests/scripts/maintainability_report.R", encoding = "UTF-8")` | Score **100/100**; 800+ line files **0**; 25+ function files **0**; largest file **795**; highest function count **24** — **identical to the Phase-4 baseline** |
+| app source boot (`MERGEN_RUN_APP=false`, placeholder env) | `BOOT_OK`; all six Phase-5 entry points resolve through the real manifest; config resolves to `20/5/50/15`; real capability registry has 6 ids; `pk_engine_mode()` = `v1`; the real 4-query library indexes and scores |
+| `bash tools/ai_validate.sh quick` | **PASSED** — `Failed steps: 0`, `Skipped steps: 0`. Artifact: `artifacts/ai-validation/20260808-105354/summary.json` |
+
+`quick` proof fields (verbatim from `summary.json`):
+
+```
+validation_execution_status: ran_by_ai_repo_check
+profile_requested: quick         profile_effective: quick
+failed_steps: 0                  skipped_steps: 0
+app_source_smoke_status:      passed
+shiny_boot_smoke_status:      not_requested
+browser_smoke_status:         not_requested
+db_sso_vm_validation_status:  not_performed_by_ai_validate
+sql_server_turkish_encoding_preflight_status: not_performed_by_ai_validate
+manual_fragile_flow_evidence_status:          not_performed_by_ai_validate
+```
+
+**Honesty boundary.** `quick` ran and passed, including app source smoke and the
+focused contract tests. It is **not** full-suite proof, **not** Shiny boot proof,
+**not** browser proof, and **not** VM/SSO/DB/SQL-Server-Turkish-encoding proof —
+those fields say `not_requested` / `not_performed_by_ai_validate` and remain the
+§14 VM gates. `full --boot-smoke` was **not** run: §8 assigns it to Phases 0, 1,
+2, 3a and 6 (RLS/security, source order, DB behavior, async, streaming,
+downloads), and Phase 5 touches none of those boundaries — it is entirely behind
+`MERGEN_PK_ENGINE=v2`, adds no DB/streaming/download path, and its one runtime
+edit is an engine-gated branch. The per-file PK/deep-analysis sweep above is
+reported as what it is: 48 files run individually, not a full-suite run.
+
+**One intentional test change, not a pre-existing failure.** The single failure
+encountered during the sweep was `test-pk-entity-history-behavior.R`, caused by
+this phase adding a fourth `chat_history` site; it was resolved by extending the
+allowed set, as documented under "Intentional test change". No other test needed
+modification.
