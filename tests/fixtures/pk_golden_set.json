@@ -1,0 +1,89 @@
+{
+  "_aciklama": [
+    "Proje ve Kaynak Analizi ALTIN KÜMESİ — TAAHHÜT EDİLEN (committed) korpus.",
+    "Master plan §7: bu dosyaya YALNIZCA sentetik ya da açıkça onaylanmış/redakte",
+    "edilmiş vakalar girer. Gerçek kullanıcı soruları, gerçek proje/program adları",
+    "ve gerçek satır sayıları BURAYA GİRMEZ; onlar VM tarafında, erişim denetimli",
+    "ve asla taahhüt edilmeyen korpusta durur.",
+    "",
+    "Buradaki tüm adlar uydurmadır ve 'Sentetik' önekiyle işaretlenmiştir.",
+    "Gerçek satır sayısı alanı yerine bilinçli olarak ŞEKİL iddiaları kullanılır.",
+    "",
+    "Sorgu kimlikleri tests/testthat/helper_pk_selection.R içindeki sentetik",
+    "kütüphaneye karşılık gelir (q001..q004); gerçek VM kütüphanesine DEĞİL."
+  ],
+  "_surum": 1,
+  "cases": [
+    {
+      "id": "gs001",
+      "soru": "Sentetik projelerin bütçesi ne durumda?",
+      "expected_query_id": "q001",
+      "expected_selection": "auto",
+      "note": "Doğrudan terminoloji: terim hem isimde hem anahtar kelimelerde geçer."
+    },
+    {
+      "id": "gs002",
+      "soru": "Sentetik projede kimler görevliydi?",
+      "expected_query_id": "q002",
+      "expected_selection": "auto",
+      "expected_requirements": {
+        "dimensions": ["dimension.resource"]
+      },
+      "note": "Kişi/kaynak çıktı boyutu gerektirir; özne varlığı tek başına yetmez."
+    },
+    {
+      "id": "gs003",
+      "soru": "Hangi sentetik işler ertelendi?",
+      "expected_query_id": "q003",
+      "expected_selection": "auto",
+      "distinguishing_field": "sample_questions",
+      "note": [
+        "AYIRT EDİCİ VAKA: 'ertelendi' terimi YALNIZCA q003'ün sample_questions",
+        "alanında geçer; ne isimde, ne açıklamada, ne de anahtar kelimelerde",
+        "vardır. Geçiş A yükü örnek soruları taşımazsa (veya kırparsa) bu sorgu",
+        "aday olamaz ve Geçiş B onu asla geri getiremez (§5.2)."
+      ]
+    },
+    {
+      "id": "gs004",
+      "soru": "peki 2024 için?",
+      "prior_query_id": "q001",
+      "expected_query_id": "q001",
+      "expected_selection": "auto",
+      "elliptical": true,
+      "note": [
+        "EKSİLTİLİ TAKİP VAKASI: soruda hiçbir sorgu-taşıyıcı terim yoktur.",
+        "Önceki kararlı sorgu kimliği, recall SINIRI UYGULANMADAN ÖNCE aday",
+        "kümesine tohumlanmalıdır; aksi hâlde Geçiş B konuşmayı inceleme",
+        "şansı bulamadan tek bağlam kaybolur."
+      ]
+    },
+    {
+      "id": "gs005",
+      "soru": "Sentetik projelerde planlanan işçilik kaç saat?",
+      "expected_query_id": "q001",
+      "expected_selection": "auto",
+      "expected_requirements": {
+        "measures": ["labor.planned_hours"]
+      },
+      "note": "Planlanan işçilik; kalan işçilikle KARIŞTIRILMAMALIDIR (kesin kimlik)."
+    },
+    {
+      "id": "gs006",
+      "soru": "Sentetik projelerde kalan işçilik kaç saat?",
+      "expected_query_id": "q002",
+      "expected_selection": "auto",
+      "expected_requirements": {
+        "measures": ["labor.remaining_hours"]
+      },
+      "note": "Sözlüksel olarak gs005 ile neredeyse aynı; ayrım yalnızca kimlikle yapılır."
+    },
+    {
+      "id": "gs007",
+      "soru": "Bu ay hava durumu nasıl olacak?",
+      "expected_query_id": null,
+      "expected_selection": "refuse",
+      "note": "Kütüphane kapsamı dışında: seçim 'bilmiyorum' diyebilmelidir (D10)."
+    }
+  ]
+}

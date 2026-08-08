@@ -46,8 +46,17 @@ test_that("D11 hâlâ geçerlidir: v1 yolu chat_history'yi OKUMAZ", {
 
   izinli <- c(
     "pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_check = NULL) {",
-    "selected_query <- select_smart_query(user_prompt, query_library, chat_history)",
-    "select_smart_query <- function(prompt, library, chat_history) {"
+    "user_prompt, query_library, chat_history,",
+    "select_smart_query <- function(prompt, library, chat_history,",
+    # Faz 5 (§5.2) BİLİNÇLİ güncelleme: v2 seçim hattı `chat_history`'yi
+    # GERÇEKTEN okur (sınırlı takip bağlamı zarfı + eksiltili takip için
+    # önceki kararlı sorgu kimliği). Bu, D11'in v2 tarafında KAPANMASIDIR.
+    #
+    # Testin ASIL iddiası korunur: aşağıdaki satır bir PASS-THROUGH'tur,
+    # gövde okuması değildir — v1 dalı `chat_history`'yi hâlâ hiç incelemez
+    # ve motor bayrağı v1 iken bu satır zaten çalışmaz. Koşul/indeksleme/
+    # uzunluk/eleman erişimi eklenirse test yine kırmızıya döner.
+    "prompt, library, chat_history,"
   )
 
   expect_equal(
