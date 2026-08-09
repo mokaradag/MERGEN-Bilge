@@ -145,6 +145,12 @@ if (exists(".pk_deep_analysis_process_base", inherits = FALSE)) {
     )
     yerel$execute_single_deep_query <- function(query, user_prompt, session, rls_info,
                                                 detail_config, stop_check = NULL) {
+      # Tekil yürütücü de girişte aynı kapıyı uygular. Commit bu kapının ÖNÜNE
+      # geçmemelidir: kullanıcı durdurduysa seçilmeyen sorgu takip durumuna
+      # yazılmamalıdır. Shiny ana olay döngüsünde bu kontrol ile commit arasında
+      # yield yoktur, dolayısıyla iptal durumu atomik olarak korunur.
+      if (is.function(stop_check) && isTRUE(stop_check())) return(NULL)
+
       if (!isTRUE(durum$committed) && is.list(durum$multi) &&
           is.list(durum$multi$primary) && !is.null(durum$multi$primary$id)) {
         try(pk_select_commit_selection(durum$multi$primary, session), silent = TRUE)
