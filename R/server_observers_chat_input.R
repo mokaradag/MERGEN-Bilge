@@ -43,11 +43,10 @@ chatInputObserversInit <- function(input, session, values, settings_data,
 
       # Faz 6 (§5.10): İPTAL İŞÇİYE ULAŞMALIDIR. Geri çağrıyı atmak (aşağıdaki
       # active_request_id değişimi) işçiyi ÇALIŞMAYA DEVAM ETTİRİR; DB
-      # bağlantısını ve işçi yuvasını tutar. İptal jetonu, aktif istek kimliği
-      # DEĞİŞTİRİLMEDEN ÖNCE işaretlenir — sonra işaretlenirse doğru dosya adı
-      # kaybolurdu.
+      # bağlantısını ve işçi yuvasını tutar. Jeton artık OTURUM + istek kimliği
+      # ile adlandırılır; başka bir oturumun aynı request_1 sayacına dokunamaz.
       if (exists("mergen_pk_signal_cancel", mode = "function", inherits = TRUE)) {
-        try(mergen_pk_signal_cancel(isolate(active_request_id())), silent = TRUE)
+        try(mergen_pk_signal_cancel(isolate(active_request_id()), session = session), silent = TRUE)
       }
 
       stop_generation(TRUE)
