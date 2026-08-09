@@ -18,7 +18,7 @@
 }
 
 # Önceki pencerenin SONU ile yeni pencerenin BAŞI arasındaki en uzun sıralı
-# örtüşmeyi bulur. Tek bir ortak ileti söyleşi kimliği sayılmaz.
+# örtüşmeyi bulur. Genel durumda tek bir ortak ileti söyleşi kimliği sayılmaz.
 .pk_select_history_overlap <- function(previous, current) {
   onceki <- as.character(previous %||% character(0))
   simdiki <- as.character(current %||% character(0))
@@ -29,6 +29,22 @@
     if (identical(utils::tail(onceki, k), utils::head(simdiki, k))) return(k)
   }
   0L
+}
+
+# İlk seçim çağrısı, sunucu ilk kullanıcı iletisini ekledikten hemen sonra
+# çalışır; dolayısıyla saklanan ilk pencere yalnızca bir `user|...` imzası
+# taşıyabilir. Bir sonraki çağrıda iki-iletilik örtüşme henüz mümkün değildir.
+# Bu dar geçiş yalnızca TEK bir durum kaydıyla eşleşiyorsa kabul edilir; aynı
+# ilk kullanıcı iletisine sahip birden fazla kayıt varsa belirsizlik nedeniyle
+# yeni söyleşi anahtarı üretilir.
+.pk_select_first_follow_up_match <- function(previous, current) {
+  onceki <- as.character(previous %||% character(0))
+  simdiki <- as.character(current %||% character(0))
+
+  length(onceki) == 1L &&
+    length(simdiki) >= 2L &&
+    startsWith(onceki[1], "user|") &&
+    identical(onceki[1], simdiki[1])
 }
 
 .pk_select_new_chat_key <- function(signatures, state) {
@@ -45,10 +61,11 @@
 
 #' Söyleşi anahtarı — durum bu anahtarla İZOLE edilir
 #'
-#' Dönen son-N geçmiş pencereleri aynı söyleşi sayılır ancak bunun için en az
-#' iki iletilik SIRALI suffix/prefix örtüşmesi gerekir. Böylece iki ayrı
-#' söyleşide geçen tek bir genel asistan yanıtı önceki sorgu/teklif durumunu
-#' yanlış söyleşiye taşıyamaz.
+#' Dönen son-N geçmiş pencereleri aynı söyleşi sayılır. Genel durumda bunun
+#' için en az iki iletilik SIRALI suffix/prefix örtüşmesi gerekir. Yalnızca ilk
+#' kullanıcı iletisinden sonraki ilk takip çağrısında, benzersiz tek-ileti
+#' başlangıç eşleşmesi kabul edilir; böylece ilk netleştirme/önceki-sorgu durumu
+#' korunurken genel tek-ileti çakışmaları söyleşileri birleştiremez.
 pk_select_chat_key <- function(chat_history, session = NULL) {
   imzalar <- .pk_select_history_signatures(chat_history)
   if (!length(imzalar)) return("__yeni__")
@@ -58,6 +75,7 @@ pk_select_chat_key <- function(chat_history, session = NULL) {
   durum <- .pk_select_state_read(session)
   eslesme <- character(0)
   eslesme_sayisi <- integer(0)
+  ilk_takip <- character(0)
 
   for (anahtar in names(durum)) {
     kayit <- durum[[anahtar]]
@@ -66,12 +84,16 @@ pk_select_chat_key <- function(chat_history, session = NULL) {
     if (ortak >= 2L) {
       eslesme <- c(eslesme, anahtar)
       eslesme_sayisi <- c(eslesme_sayisi, ortak)
+    } else if (.pk_select_first_follow_up_match(onceki, imzalar)) {
+      ilk_takip <- c(ilk_takip, anahtar)
     }
   }
 
   if (length(eslesme)) {
     en_iyi <- max(eslesme_sayisi)
     anahtar <- sort(eslesme[eslesme_sayisi == en_iyi], method = "radix")[1]
+  } else if (length(ilk_takip) == 1L) {
+    anahtar <- ilk_takip[1]
   } else {
     anahtar <- .pk_select_new_chat_key(imzalar, durum)
   }
