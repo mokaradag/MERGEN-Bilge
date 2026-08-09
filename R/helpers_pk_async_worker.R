@@ -8,6 +8,21 @@
   invisible(NULL)
 }
 
+# `helpers_pk_async_request.R` globals paketini logger tanımlanmadan önce
+# tanımlar. Manifestte bu dosya request helper'ından SONRA yüklendiği için,
+# paketi burada bir kez genişletmek bootstrap'ın daha source() çalışmadan hata
+# verdiği PSOCK yolunda `.pk_async_log` sembolünü de açıkça taşır.
+.pk_async_worker_globals_without_log <- get0(
+  "pk_async_worker_globals", mode = "function", inherits = TRUE, ifnotfound = NULL
+)
+if (is.function(.pk_async_worker_globals_without_log)) {
+  pk_async_worker_globals <- function(force = FALSE) {
+    paket <- .pk_async_worker_globals_without_log(force = force)
+    paket$.pk_async_log <- .pk_async_log
+    paket
+  }
+}
+
 pk_async_run_analysis <- function(request) {
   basladi <- Sys.time()
   tanilama <- list(bootstrap_cached = NA, bootstrap_loaded = 0L,
