@@ -55,26 +55,30 @@
   env
 }
 
-.pk_fake_session <- function() {
+.pk_fake_session <- function(token = "tok_1") {
   ud <- new.env(parent = emptyenv())
   ud$system_username <- "ali.veli"
   ud$auth_initialized <- TRUE
   list(
     userData = ud,
-    token = "tok_1",
+    token = token,
     onSessionEnded = function(fn) invisible(NULL)
   )
 }
 
 .pk_ctx <- function(env, req_id = "req_1", active = "req_1", stopped = FALSE,
-                    deep = FALSE, session = NULL) {
+                    deep = FALSE, session = NULL, chat_id = NULL) {
   kayit <- new.env(parent = emptyenv())
   kayit$devam <- list()
   kayit$mesajlar <- list()
   kayit$cleanup <- 0L
 
+  values <- new.env(parent = emptyenv())
+  values$current_chat_id <- chat_id
+
   ctx <- list(
     session = session %||% .pk_fake_session(),
+    values = values,
     user_message_text = "İstanbul projesinin kalan işçiliği nedir?",
     messages_to_process = list(
       list(role = "user", content = "önceki"),
@@ -302,11 +306,10 @@ test_that("başarılı işçi sonucu DEVAMI çağırır ve oturum yazımlarını
   expect_equal(h$kayit$devam[[1]]$max_tokens, 2222)
   expect_equal(h$kayit$devam[[1]]$messages[[1]]$content, "ISCI SISTEM")
   expect_equal(h$kayit$mesajlar, list())
-  # Oturum yazımı uygulanmış olmalıdır.
   expect_equal(h$ctx$session$userData[["pk_select_state"]]$s$query_id, "q42")
 })
 
-test_that("BAYAT geri çağrı hiçbir şeyi mutasyona uğratmaz", {
+test_that("BAYAT geri çağrı hiçbir şeyi mutasyona uğratmaz ve kendi slotunu bırakır", {
   env <- .pk_dispatch_env()
   arm <- .pk_arm_async(env, worker_result = list(
     status = "ok",
@@ -314,15 +317,37 @@ test_that("BAYAT geri çağrı hiçbir şeyi mutasyona uğratmaz", {
     session_writes = list(pk_select_state = list(s = list(query_id = "bayat")))
   ))
 
-  # Gönderim req_1 için; geri çağrı anında aktif istek req_2.
   h <- .pk_ctx(env, req_id = "req_1", active = "req_2")
+  birakilan <- character(0)
+  env$mergen_send_message_release_values_token <- function(values, req_id = NULL) {
+    birakilan <<- c(birakilan, as.character(req_id)[1])
+    invisible(TRUE)
+  }
   env$mergen_pk_analysis_execute(h$ctx)
   arm$fire()
 
   expect_length(h$kayit$devam, 0L)
   expect_length(h$kayit$mesajlar, 0L)
   expect_equal(h$kayit$cleanup, 0L)
-  # KRİTİK: bayat sonuç seçim durumunu EZMEDİ.
+  expect_equal(birakilan, "req_1")
+  expect_null(h$ctx$session$userData[["pk_select_state"]])
+})
+
+test_that("sohbet değişirse aynı request id sonucu YANLIŞ sohbete uygulanmaz", {
+  env <- .pk_dispatch_env()
+  arm <- .pk_arm_async(env, worker_result = list(
+    status = "ok",
+    result = list(prompt_context = "ESKI CHAT", user_context = "ESKI CHAT"),
+    session_writes = list(pk_select_state = list(s = list(query_id = "eski")))
+  ))
+
+  h <- .pk_ctx(env, chat_id = "chat_a")
+  env$mergen_pk_analysis_execute(h$ctx)
+  h$ctx$values$current_chat_id <- "chat_b"
+  arm$fire()
+
+  expect_length(h$kayit$devam, 0L)
+  expect_length(h$kayit$mesajlar, 0L)
   expect_null(h$ctx$session$userData[["pk_select_state"]])
 })
 
@@ -338,12 +363,33 @@ test_that("DURDURULMUŞ istek geri çağrısı hiçbir şeyi mutasyona uğratmaz
   kayit_ctx$ctx$stop_generation <- function() durduruldu
 
   env$mergen_pk_analysis_execute(kayit_ctx$ctx)
-  durduruldu <- TRUE   # kullanıcı gönderimden SONRA durdurdu
+  durduruldu <- TRUE
   arm$fire()
 
   expect_length(kayit_ctx$kayit$devam, 0L)
   expect_length(kayit_ctx$kayit$mesajlar, 0L)
   expect_null(kayit_ctx$ctx$session$userData[["pk_provenance_pending"]])
+})
+
+test_that("worker export URL'si provenance footer kopyasına da taşınır", {
+  env <- .pk_dispatch_env()
+  env$mergen_pk_serve_worker_artifact <- function(result, session) {
+    result$pk_answer_block <- "YENI_KART"
+    result
+  }
+  arm <- .pk_arm_async(env, worker_result = list(
+    status = "ok",
+    result = list(prompt_context = "S", user_context = "K", pk_answer_block = "ESKI_KART"),
+    session_writes = list(pk_provenance_pending = list(footer = "ESKI_KART\nALT_BILGI"))
+  ))
+
+  h <- .pk_ctx(env)
+  env$mergen_pk_analysis_execute(h$ctx)
+  arm$fire()
+
+  pending <- h$ctx$session$userData[["pk_provenance_pending"]]
+  expect_true(grepl("YENI_KART", pending$footer, fixed = TRUE))
+  expect_false(grepl("ESKI_KART", pending$footer, fixed = TRUE))
 })
 
 test_that("iptal ve zaman aşımı AYRI kullanıcı mesajları üretir", {
@@ -381,7 +427,6 @@ test_that("bootstrap başarısızlığı SENKRON yeniden denemeye düşer", {
   env$mergen_pk_analysis_execute(h$ctx)
   arm$fire()
 
-  # Kullanıcı DOĞRU yanıtı alır: senkron boru hattı sonucu devam ettirilir.
   expect_length(h$kayit$devam, 1L)
   expect_equal(h$kayit$devam[[1]]$messages[[1]]$content, "SENKRON SISTEM")
   expect_length(h$kayit$mesajlar, 0L)
@@ -434,7 +479,6 @@ test_that("işçi-güvensiz anlık görüntü SENKRON yola döner (sessiz serile
     gonderildi <<- TRUE
     structure(list(), class = "pk_fake_promise")
   }
-  # Anlık görüntüye kasıtlı olarak bir ortam sızdır.
   env$pk_async_build_request <- function(...) list(kotu = new.env())
 
   h <- .pk_ctx(env)
@@ -445,11 +489,11 @@ test_that("işçi-güvensiz anlık görüntü SENKRON yola döner (sessiz serile
   expect_equal(sonuc$messages_to_process[[1]]$content, "SENKRON SISTEM")
 })
 
-test_that("oturum kapanışı iptal jetonunu işaretler", {
+test_that("oturum kapanışı yalnız AKTİF session-scoped jetonu işaretler", {
   env <- .pk_dispatch_env()
-  arm <- .pk_arm_async(env, worker_result = list(status = "ok"))
+  arm <- .pk_arm_async(env, worker_result = list(status = "ok", result = NULL, session_writes = list()))
 
-  oturum <- .pk_fake_session()
+  oturum <- .pk_fake_session("tok_close")
   kapanis <- NULL
   oturum$onSessionEnded <- function(fn) kapanis <<- fn
 
@@ -457,38 +501,63 @@ test_that("oturum kapanışı iptal jetonunu işaretler", {
   env$mergen_pk_analysis_execute(h$ctx)
 
   expect_true(is.function(kapanis))
-  jeton <- env$pk_cancel_token_path("req_1")
+  jeton <- env$mergen_pk_cancel_token_for_session(oturum, "req_1")
   expect_false(env$pk_cancel_token_is_signalled(jeton))
   kapanis()
   expect_true(env$pk_cancel_token_is_signalled(jeton))
   env$pk_cancel_token_clear(jeton)
 })
 
-test_that("mergen_pk_signal_cancel jetonu yazar; geçersiz kimlikte no-op", {
+test_that("tamamlanmış isteğin session-end callback'i jetonu yeniden yaratmaz", {
   env <- .pk_dispatch_env()
-  jeton <- env$pk_cancel_token_path("iptal_testi")
+  arm <- .pk_arm_async(env, worker_result = list(status = "ok", result = NULL, session_writes = list()))
+
+  oturum <- .pk_fake_session("tok_done")
+  kapanis <- NULL
+  oturum$onSessionEnded <- function(fn) kapanis <<- fn
+  h <- .pk_ctx(env, session = oturum)
+  jeton <- env$mergen_pk_cancel_token_for_session(oturum, "req_1")
+
+  env$mergen_pk_analysis_execute(h$ctx)
+  arm$fire()
+  expect_false(env$pk_cancel_token_is_signalled(jeton))
+  kapanis()
+  expect_false(env$pk_cancel_token_is_signalled(jeton))
+})
+
+test_that("mergen_pk_signal_cancel session-scoped jetonu yazar; geçersiz kimlikte no-op", {
+  env <- .pk_dispatch_env()
+  oturum <- .pk_fake_session("tok_cancel")
+  jeton <- env$mergen_pk_cancel_token_for_session(oturum, "iptal_testi")
   env$pk_cancel_token_clear(jeton)
 
-  expect_true(env$mergen_pk_signal_cancel("iptal_testi"))
+  expect_true(env$mergen_pk_signal_cancel("iptal_testi", session = oturum))
   expect_true(env$pk_cancel_token_is_signalled(jeton))
   env$pk_cancel_token_clear(jeton)
 
-  expect_false(env$mergen_pk_signal_cancel(NULL))
-  expect_false(env$mergen_pk_signal_cancel(""))
-  expect_false(env$mergen_pk_signal_cancel(NA_character_))
+  expect_false(env$mergen_pk_signal_cancel(NULL, session = oturum))
+  expect_false(env$mergen_pk_signal_cancel("", session = oturum))
+  expect_false(env$mergen_pk_signal_cancel(NA_character_, session = oturum))
 })
 
-test_that("gönderim öncesinde BAYAT jeton temizlenir (anında iptal olmaz)", {
+test_that("aynı req_id iki oturumda farklı iptal jetonlarına ayrılır", {
   env <- .pk_dispatch_env()
-  jeton <- env$pk_cancel_token_path("req_1")
-  env$pk_cancel_token_signal(jeton)   # önceki süreçten kalmış bayat jeton
+  a <- env$mergen_pk_cancel_token_for_session(.pk_fake_session("tok_A"), "req_1")
+  b <- env$mergen_pk_cancel_token_for_session(.pk_fake_session("tok_B"), "req_1")
+  expect_false(identical(a, b))
+})
+
+test_that("gönderim öncesinde yalnız kendi BAYAT jetonu temizlenir", {
+  env <- .pk_dispatch_env()
+  oturum <- .pk_fake_session("tok_stale")
+  jeton <- env$mergen_pk_cancel_token_for_session(oturum, "req_1")
+  env$pk_cancel_token_signal(jeton)
   expect_true(env$pk_cancel_token_is_signalled(jeton))
 
   arm <- .pk_arm_async(env, worker_result = list(status = "ok"))
-  h <- .pk_ctx(env)
+  h <- .pk_ctx(env, session = oturum)
   env$mergen_pk_analysis_execute(h$ctx)
 
-  # Yeni istek bayat jetonla ANINDA iptal edilmemelidir.
   expect_false(env$pk_cancel_token_is_signalled(jeton))
 })
 
