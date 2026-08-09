@@ -2,34 +2,42 @@
 # Dosya Yolu: R/server_handler_pk_async.R
 # Açıklama: Faz 6 (§5.10) — Proje ve Kaynak Analizi GÖNDERİM katmanı.
 #           Senkron/asenkron kararını verir, işçiyi explicit-mode ile gönderir,
-#           istek-kimliği korumalı geri çağrıları bağlar ve devamı (continuation)
-#           çağırır.
-#
-# `R/server_send_message.R` bu dosyaya DELEGE eder ve kendisi ince kalır
-# (ratchet bütçesi). Handler deseni, `handle_true_streaming_mode(ctx)` /
-# `handle_streaming_tts_mode(ctx)` ile aynıdır. Sonuç uygulama / senkron yol /
-# istek hazırlığı yardımcıları `R/helpers_pk_async_apply.R` içindedir (manifestte
-# bu dosyadan ÖNCE yüklenir).
-#
-# YAŞAM DÖNGÜSÜ SÖZLEŞMESİ:
-#   * `session`, reaktif değer veya DB bağlantısı işçiye ASLA gitmez
-#     (`pk_async_validate_request()` savunmacı olarak doğrular),
-#   * her geri çağrı `pk_async_should_apply()` ile korunur,
-#   * geri çağrı içindeki HER reaktif okuma `shiny::isolate()` ile sarılır
-#     (promise/`later` geri çağrıları reaktif BAĞLAM içinde DEĞİLDİR — Ortak
-#     Oturum dersi),
-#   * iptal jetonu her çıkışta temizlenir.
+#           istek+sohbet kimliği korumalı geri çağrıları bağlar ve devamı çağırır.
 # ==============================================================================
 
+# Derin analiz gözlem fabrikası, `server_chat_engine_dependencies.R` içindeki
+# istek-kapsamlı `pk_analysis_observe` sarmalayıcısını korumalıdır. Fabrika ayrı
+# dosyaya çıkarılınca kendi lexical global ortamından `pk_analysis_observe`
+# çözmeye başlamış ve wrapper'ın kısa ömürlü telemetri bağlantısını atlamıştı.
+# Burada fabrikayı bir kez caller-aware yapıyoruz: çağıranın kapsamındaki gözlem
+# fonksiyonu varsa fabrikanın yerel lexical katmanına enjekte edilir.
+if (exists("pk_deep_observation_helpers", mode = "function", inherits = TRUE) &&
+    !exists(".pk_async_deep_observation_factory_core", envir = .GlobalEnv, inherits = FALSE)) {
+  assign(
+    ".pk_async_deep_observation_factory_core",
+    get("pk_deep_observation_helpers", mode = "function", inherits = TRUE),
+    envir = .GlobalEnv
+  )
+
+  pk_deep_observation_helpers <- function(...) {
+    factory <- get(".pk_async_deep_observation_factory_core", envir = .GlobalEnv,
+                   inherits = FALSE)
+    scoped_observer <- tryCatch(
+      get("pk_analysis_observe", envir = parent.frame(), mode = "function", inherits = TRUE),
+      error = function(e) NULL
+    )
+
+    if (is.function(scoped_observer)) {
+      scope_env <- new.env(parent = environment(factory))
+      scope_env$pk_analysis_observe <- scoped_observer
+      environment(factory) <- scope_env
+    }
+
+    factory(...)
+  }
+}
+
 #' PK analizini çalıştır: senkron veya asenkron
-#'
-#' @param ctx Alanlar: `session`, `values`, `user_message_text`,
-#'   `messages_to_process`, `deep_thinking`, `analysis_detail`, `req_id`,
-#'   `active_request_id`, `stop_generation`, `cleanup_send_message`,
-#'   `add_message_fn`, `continue_fn`.
-#' @return `list(action = "continue"|"answer"|"deferred"|"stop", ...)`.
-#'   `deferred` = işçi gönderildi; devam GERİ ÇAĞRIDA çalışacak, çağıran HEMEN
-#'   dönmelidir.
 mergen_pk_analysis_execute <- function(ctx) {
   if (isTRUE(tryCatch(ctx$stop_generation(), error = function(e) FALSE))) {
     return(list(action = "stop"))
@@ -63,45 +71,68 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   req_id <- as.character(ctx$req_id %||% "")[1]
 
   # Reaktif okumaları GÖNDERİMDEN ÖNCE yakala. Geri çağrılar reaktif BAĞLAM
-  # içinde çalışmaz; oradaki çıplak bir reactiveVal okuması
-  # "Operation not allowed without an active reactive context" ile patlar.
+  # içinde çalışmaz.
   mesajlar <- ctx$messages_to_process
   oturum <- ctx$session
 
-  # Oturum kapanırsa/durdurulursa işçi jetonu görür ve KENDİ KENDİNE durur.
-  # Yalnızca geri çağrıyı atmak işçiyi çalışır ve bağlantıyı tutar hâlde bırakır.
+  chat_key <- function(x) {
+    if (is.null(x) || length(x) == 0L) return("<new-chat>")
+    y <- tryCatch(as.character(x)[1], error = function(e) NA_character_)
+    if (is.na(y) || !nzchar(y)) "<new-chat>" else y
+  }
+  kaynak_chat <- tryCatch(shiny::isolate(ctx$values$current_chat_id), error = function(e) NULL)
+  kaynak_chat_key <- chat_key(kaynak_chat)
+
+  # onSessionEnded geri çağrısı kaldırılamaz. Bu yüzden callback yalnızca iş
+  # gerçekten HÂLÂ aktifken token'ı işaretler. İş tamamlandıktan sonra token
+  # temizlenip oturum kapanırsa eski callback dosyayı yeniden yaratamaz.
+  request_done <- FALSE
   iptal_kaydi <- tryCatch({
-    oturum$onSessionEnded(function() pk_cancel_token_signal(cancel_token))
+    oturum$onSessionEnded(function() {
+      if (!isTRUE(request_done)) pk_cancel_token_signal(cancel_token)
+    })
     TRUE
   }, error = function(e) FALSE)
   if (!isTRUE(iptal_kaydi)) {
     log_info("[PK_ASYNC] onSessionEnded kaydi yapilamadi; iptal jetonu yalnizca Durdur ile isaretlenecek.")
   }
 
-  # Devam (continuation): geri çağrıdan çağrılır. Reaktif olmayan bağlamda
-  # çalıştığı için tüm reaktif erişimler `isolate()` ile sarılıdır.
+  # Promise/later continuation'ının TAMAMI isolate içindedir. `add_message_fn`
+  # ve `continue_fn` alt çağrıları values/current_chat gibi reactives okuyabilir;
+  # yalnız üst seviyedeki açık okumaları isolate etmek yeterli değildir.
   devam_et <- function(uygulama) {
-    if (identical(uygulama$action, "answer")) {
-      ctx$cleanup_send_message()
-      ctx$add_message_fn(uygulama$answer, "ai")
-      return(invisible(NULL))
-    }
-    ctx$continue_fn(uygulama$messages_to_process, uygulama$max_output_tokens)
+    shiny::isolate({
+      if (identical(uygulama$action, "answer")) {
+        ctx$cleanup_send_message()
+        ctx$add_message_fn(uygulama$answer, "ai")
+        return(invisible(NULL))
+      }
+      ctx$continue_fn(uygulama$messages_to_process, uygulama$max_output_tokens)
+    })
   }
 
-  # Geri çağrı girişinde ORTAK koruma. Üç ret sebebi de AYRI loglanır.
-  koruma_gecti <- function(etiket) {
+  # Geri çağrı girişinde ORTAK koruma: request id + stop + sohbet kapsamı.
+  # Ret halinde genel cleanup çağrılmaz; yalnız BU req_id'ye ait backpressure
+  # slotu bırakılır. Böylece daha yeni isteğin UI/typing durumu sıfırlanmaz.
+  koruma_gecti <- function(etiket, result = NULL) {
     aktif <- tryCatch(shiny::isolate(ctx$active_request_id()), error = function(e) NULL)
     durduruldu <- isTRUE(tryCatch(shiny::isolate(ctx$stop_generation()), error = function(e) FALSE))
     karar <- pk_async_should_apply(aktif, req_id, stopped = durduruldu)
+    simdiki_chat <- tryCatch(shiny::isolate(ctx$values$current_chat_id), error = function(e) NULL)
+    ayni_chat <- identical(chat_key(simdiki_chat), kaynak_chat_key)
 
-    if (!isTRUE(karar$apply)) {
+    if (!isTRUE(karar$apply) || !isTRUE(ayni_chat)) {
+      sebep <- if (!isTRUE(karar$apply)) karar$reason else "chat_changed"
       log_info(sprintf(
-        "[PK_ASYNC] Bayat/durdurulmus geri cagri yok sayildi (%s, sebep=%s).",
-        etiket, karar$reason
+        "[PK_ASYNC] Bayat/durdurulmus/sohbet-degismis geri cagri yok sayildi (%s, sebep=%s).",
+        etiket, sebep
       ))
-      # Bayat istek: jetonunu temizle ki dosya sizmasin.
+      request_done <<- TRUE
       pk_cancel_token_clear(cancel_token)
+      try(mergen_pk_cleanup_worker_artifact(result), silent = TRUE)
+      try(shiny::isolate(
+        mergen_send_message_release_values_token(ctx$values, req_id = req_id)
+      ), silent = TRUE)
       return(FALSE)
     }
     TRUE
@@ -115,16 +146,14 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       task_type = if (isTRUE(request$deep_thinking)) "pk_deep_analysis" else "pk_analysis",
       session_token = tryCatch(oturum$token, error = function(e) NULL),
       dependency_mode = "explicit",
-      globals = c(
-        pk_async_worker_globals(),
-        list(request = request)
-      ),
+      globals = c(pk_async_worker_globals(), list(request = request)),
       packages = c("DBI", "jsonlite")
     ),
     error = function(e) e
   )
 
   if (inherits(vaat, "condition")) {
+    request_done <- TRUE
     log_warn(sprintf(
       "[PK_ASYNC] Gonderim basarisiz (%s); senkron yola donuluyor.",
       conditionMessage(vaat)
@@ -136,26 +165,24 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   promises::then(
     vaat,
     onFulfilled = function(worker_result) {
-      if (!isTRUE(koruma_gecti("fulfilled"))) return(invisible(NULL))
+      if (!isTRUE(koruma_gecti("fulfilled", worker_result$result))) return(invisible(NULL))
+      request_done <<- TRUE
       pk_cancel_token_clear(cancel_token)
 
       durum <- as.character(worker_result$status %||% "error")[1]
 
-      # Oturum yazımları (seçim durumu, köken alt bilgisi) YALNIZCA koruma
-      # geçtikten sonra uygulanır; bayat bir sonuç daha yeni bir isteğin
-      # durumunu EZEMEZ.
       tryCatch(
         pk_async_apply_session_writes(oturum, worker_result$session_writes),
         error = function(e) NULL
       )
 
       if (identical(durum, "ok")) {
-        return(devam_et(mergen_pk_apply_analysis_result(worker_result$result, mesajlar)))
+        # Worker vekilinde registerDataObj yoktur. Sunum ve session-end cleanup
+        # GERÇEK Shiny session'a burada bağlanır, yalnız guard geçtikten sonra.
+        sonuc <- mergen_pk_serve_worker_artifact(worker_result$result, oturum)
+        return(devam_et(mergen_pk_apply_analysis_result(sonuc, mesajlar)))
       }
 
-      # Bootstrap başarısızlığı OPERASYONEL bir ortam sorunudur, kullanıcının
-      # sorusuyla ilgisi yoktur: bir kez senkron yeniden denenir ki kullanıcı
-      # doğru yanıtı alsın; operatöre yüksek sesli uyarı loglanır.
       if (identical(durum, "bootstrap_failed")) {
         log_warn(paste0(
           "[PK_ASYNC] Isci bootstrap basarisiz; bu istek SENKRON yeniden ",
@@ -164,22 +191,27 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
         return(devam_et(mergen_pk_apply_analysis_result(mergen_pk_run_sync(ctx), mesajlar)))
       }
 
-      ctx$cleanup_send_message()
-      ctx$add_message_fn(
-        mergen_pk_worker_outcome_text(durum, worker_result$error), "ai"
-      )
+      shiny::isolate({
+        ctx$cleanup_send_message()
+        ctx$add_message_fn(
+          mergen_pk_worker_outcome_text(durum, worker_result$error), "ai"
+        )
+      })
       invisible(NULL)
     },
     onRejected = function(error) {
       if (!isTRUE(koruma_gecti("rejected"))) return(invisible(NULL))
+      request_done <<- TRUE
       pk_cancel_token_clear(cancel_token)
 
       log_warn(sprintf(
         "[PK_ASYNC] Isci reddedildi: %s",
         tryCatch(conditionMessage(error), error = function(e) "bilinmeyen")
       ))
-      ctx$cleanup_send_message()
-      ctx$add_message_fn(mergen_pk_worker_outcome_text("error"), "ai")
+      shiny::isolate({
+        ctx$cleanup_send_message()
+        ctx$add_message_fn(mergen_pk_worker_outcome_text("error"), "ai")
+      })
       invisible(NULL)
     }
   )
@@ -187,17 +219,14 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   list(action = "deferred")
 }
 
-#' Durdurma anında iptal jetonunu işaretle (durdur gözlemcisinden çağrılır)
-#'
-#' UI tarafında "sonucu yok say" kontrolü TEK BAŞINA iptal DEĞİLDİR: işçi
-#' çalışmaya devam eder, DB bağlantısını ve işçi yuvasını tutar.
-mergen_pk_signal_cancel <- function(request_id) {
-  if (!exists("pk_cancel_token_path", mode = "function", inherits = TRUE)) {
+#' Durdurma anında OTURUM-KAPSAMLI iptal jetonunu işaretle
+mergen_pk_signal_cancel <- function(request_id, session = NULL) {
+  if (!exists("mergen_pk_cancel_token_for_session", mode = "function", inherits = TRUE)) {
     return(invisible(FALSE))
   }
   kimlik <- tryCatch(as.character(request_id)[1], error = function(e) NA_character_)
   if (is.null(kimlik) || length(kimlik) == 0L || is.na(kimlik) || !nzchar(kimlik)) {
     return(invisible(FALSE))
   }
-  pk_cancel_token_signal(pk_cancel_token_path(kimlik))
+  pk_cancel_token_signal(mergen_pk_cancel_token_for_session(session, kimlik))
 }
