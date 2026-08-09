@@ -146,6 +146,23 @@ if (exists(".pk_deep_analysis_process_base", inherits = FALSE)) {
     durum$multi <- NULL
     durum$committed <- FALSE
 
+    # Çekirdeğin seçim uyumluluğu için motor bayrağını v1 göstermemiz gerekiyor,
+    # fakat telemetri gerçek isteğin motorunu raporlamalıdır. call_env içindeki
+    # güncel gözlem sarmalayıcısını yakalayıp yalnız `engine` alanını v2 olarak
+    # düzeltiriz; bağlantı/telemetri kaynak sarmalayıcıları aynen korunur.
+    if (exists("pk_analysis_observe", mode = "function", envir = yerel, inherits = TRUE)) {
+      temel_observe <- get(
+        "pk_analysis_observe", mode = "function", envir = yerel, inherits = TRUE
+      )
+      yerel$pk_analysis_observe <- local({
+        observe_fn <- temel_observe
+        function(session, conn, info, ...) {
+          if (is.list(info)) info$engine <- "v2"
+          observe_fn(session, conn, info, ...)
+        }
+      })
+    }
+
     yerel$pk_engine_is_v2 <- function() FALSE
     yerel$find_multiple_queries_with_ai <- function(prompt, library, owner_session,
                                                     max_queries = 5L) {
