@@ -8,8 +8,8 @@
 #   * Shiny/reaktif erişimi YOKTUR (vekil oturum düz bir ortamdır),
 #   * DB bağlantısı İŞÇİDE açılır ve İŞÇİDE bırakılır,
 #   * `stop_check` burada YEREL bir kapanıştır — serileştirme sorunu yoktur;
-#     iptal jetonunu (dosya) ve son tarihi yoklar, böylece mevcut boru hattının
-#     aşama kontrolleri DEĞİŞTİRİLMEDEN iptal-farkında hâle gelir,
+#     iptal jetonunu (dosya) ve son tarihi yoklar,
+#   * standart ve derin SQL yolları AYNI bounded executor'a bağlanır,
 #   * asla `stop()` ile dışarı sızmaz: her sonuç TİPLİ bir listedir.
 # ==============================================================================
 
@@ -73,7 +73,11 @@ pk_async_run_analysis <- function(request) {
     return(bitir("bootstrap_failed", error = "Isci giris noktalari eksik."))
   }
 
-  # --- 2) İptal jetonu + son tarih -------------------------------------------
+  # --- 2) İptal jetonu + MUTLAK son tarih ------------------------------------
+  # `cancel_token` ve `started_at_epoch` ANA SÜREÇTE üretildi. İşçi bunları
+  # yeniden tempdir()/Sys.time() üzerinden ÜRETMEZ; aksi hâlde PSOCK süreçleri
+  # farklı tempdir kullandığında iptal görünmez ve kuyruk bekleme süresi analiz
+  # bütçesine sayılmazdı.
   jeton <- as.character(request$cancel_token %||% "")[1]
   if (!nzchar(jeton)) jeton <- NULL
 
@@ -85,9 +89,6 @@ pk_async_run_analysis <- function(request) {
 
   son_tarih <- pk_deadline_at(baslangic, request$deadline_sec)
 
-  # İşçi-YEREL kapanış. Boru hattı bunu her aşama sınırında ZATEN çağırıyor;
-  # dolayısıyla iptal ve son tarih, mevcut aşama kontrolleri DEĞİŞTİRİLMEDEN
-  # işçiye ULAŞIR. Reaktif bir kapanış olmadığı için serileştirme sorunu yoktur.
   stop_check <- function() {
     kapi <- pk_async_stage_gate(jeton, son_tarih)
     isTRUE(kapi$halt)
@@ -96,13 +97,16 @@ pk_async_run_analysis <- function(request) {
   ilk_kapi <- pk_async_stage_gate(jeton, son_tarih)
   if (isTRUE(ilk_kapi$halt)) return(bitir(ilk_kapi$status))
 
+  # Bounded SQL alt katmanı da aynı dispatch-time mutlak son tarihi görür.
+  eski_deadline_option <- getOption("mergen.pk.async.deadline_at", default = NULL)
+  options(mergen.pk.async.deadline_at = son_tarih)
+  on.exit(options(mergen.pk.async.deadline_at = eski_deadline_option), add = TRUE)
+
   # --- 3) Oturum vekili ------------------------------------------------------
   vekil <- tryCatch(pk_async_worker_session(request), error = function(e) NULL)
   if (is.null(vekil)) return(bitir("error", error = "Oturum vekili kurulamadi."))
 
-  # Motor kipi işçide de AYNI çözülmelidir; aksi hâlde ana süreç v2 seçerken
-  # işçi v1 çalıştırabilir. Ortam değişkeni her iki süreçte de aynıdır, ancak
-  # isteğin çözdüğü kip AÇIKÇA taşınır ve `options()` ile sabitlenir.
+  # Motor kipi işçide de AYNI çözülmelidir.
   motor <- as.character(request$engine %||% "")[1]
   if (motor %in% c("v1", "v2")) {
     eski_motor <- getOption("mergen.pk.engine", default = NULL)
@@ -110,11 +114,87 @@ pk_async_run_analysis <- function(request) {
     on.exit(options(mergen.pk.engine = eski_motor), add = TRUE)
   }
 
-  # --- 4) Boru hattını çalıştır ---------------------------------------------
-  # Bağlantılar boru hattının KENDİ `on.exit`'i ile bırakılır ve o kod artık
-  # İŞÇİDE çalışıyor; ek olarak buradaki tryCatch hiçbir hatanın işçiden dışarı
-  # sızmasına izin vermez (sızan hata, geri çağrının reddedilmesine ve istek
-  # yaşam döngüsünün yarı-temizlenmiş kalmasına yol açardı).
+  # --- 4) Standart SQL yolunu bounded executor'a bağla -----------------------
+  # `module_proje_kaynak_analizi.R` geriye dönük olarak
+  # `execute_pk_sql_unicode()` çağırır. Worker içinde bu TEK giriş noktasını
+  # geçici olarak bounded executor'a yönlendiririz; süreç yeniden kullanılırsa
+  # global fonksiyon MUTLAKA geri yüklenir.
+  eski_unicode <- get0("execute_pk_sql_unicode", envir = .GlobalEnv,
+                       inherits = FALSE, ifnotfound = NULL)
+  had_unicode <- is.function(eski_unicode)
+
+  bounded_unicode <- function(conn, sql_text) {
+    coz <- function(key, fallback) {
+      if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) return(fallback)
+      tryCatch(pk_config_resolve(key), error = function(e) fallback)
+    }
+
+    exec <- pk_sql_execute_bounded(
+      conn = conn,
+      sql_text = sql_text,
+      unicode_param = TRUE,
+      chunk_rows = coz("MERGEN_PK_FETCH_CHUNK_ROWS", 5000L),
+      max_result_mb = coz("MERGEN_PK_MAX_RESULT_MB", 512L),
+      stage_gate = function() pk_async_stage_gate(jeton, son_tarih),
+      timeout_sec = coz("MERGEN_PK_SQL_TIMEOUT_SEC", 120L),
+      deadline_at = son_tarih
+    )
+
+    if (identical(exec$status, "ok")) return(exec$data)
+    if (identical(exec$status, "cancelled")) return(pk_async_halt_message("cancelled"))
+    if (identical(exec$status, "deadline")) return(pk_async_halt_message("deadline"))
+    if (identical(exec$status, "too_large")) {
+      return(if (exists("PK_RESULT_TOO_LARGE_MESSAGE", inherits = TRUE)) {
+        get("PK_RESULT_TOO_LARGE_MESSAGE", inherits = TRUE)
+      } else {
+        "\U0001F50D **Sonuç Kümesi Çok Büyük:** Sonuç güvenli bellek sınırını aşıyor."
+      })
+    }
+    if (identical(exec$status, "timeout")) {
+      return(paste0(
+        "\U000023F1\U0000FE0F **Sorgu Zaman Aşımı:** Veritabanı sorgusu ayrılan süre içinde ",
+        "tamamlanamadı. Lütfen sorunuzu daraltıp tekrar deneyin."
+      ))
+    }
+
+    hata <- as.character(exec$error %||% "Sorgu calistirilamadi.")[1]
+    stop(hata, call. = FALSE)
+  }
+
+  assign("execute_pk_sql_unicode", bounded_unicode, envir = .GlobalEnv)
+  on.exit({
+    if (isTRUE(had_unicode)) {
+      assign("execute_pk_sql_unicode", eski_unicode, envir = .GlobalEnv)
+    } else if (exists("execute_pk_sql_unicode", envir = .GlobalEnv, inherits = FALSE)) {
+      rm("execute_pk_sql_unicode", envir = .GlobalEnv)
+    }
+  }, add = TRUE)
+
+  # --- 5) Derin yolun eski türetilmiş bağlamını dispatch bağlamına sabitle ---
+  # Derin orkestratör tarih/token bilgisini tarihsel olarak içeride yeniden
+  # türetiyor. İmzasını tüm çağıranlarda kırmadan worker sürecinde yalnızca bu
+  # istek süresince iki saf kurucuyu sabitliyoruz. Böylece:
+  #   - deadline başlangıcı worker'ın çalışmaya BAŞLADIĞI an değil dispatch anıdır,
+  #   - cancel path worker tempdir'ından tekrar üretilmez; ana süreçteki TAM yol
+  #     kullanılır.
+  if (isTRUE(request$deep_thinking)) {
+    eski_deadline_fn <- get0("pk_deadline_at", envir = .GlobalEnv,
+                             inherits = FALSE, ifnotfound = NULL)
+    eski_token_fn <- get0("pk_cancel_token_path", envir = .GlobalEnv,
+                          inherits = FALSE, ifnotfound = NULL)
+    had_deadline_fn <- is.function(eski_deadline_fn)
+    had_token_fn <- is.function(eski_token_fn)
+
+    assign("pk_deadline_at", function(started_at, deadline_sec) son_tarih, envir = .GlobalEnv)
+    assign("pk_cancel_token_path", function(request_id, base_dir = NULL) jeton, envir = .GlobalEnv)
+
+    on.exit({
+      if (isTRUE(had_deadline_fn)) assign("pk_deadline_at", eski_deadline_fn, envir = .GlobalEnv)
+      if (isTRUE(had_token_fn)) assign("pk_cancel_token_path", eski_token_fn, envir = .GlobalEnv)
+    }, add = TRUE)
+  }
+
+  # --- 6) Boru hattını çalıştır ---------------------------------------------
   sonuc <- tryCatch({
     if (isTRUE(request$deep_thinking) &&
         exists("pk_deep_analysis_process", mode = "function", inherits = TRUE)) {
@@ -137,9 +217,6 @@ pk_async_run_analysis <- function(request) {
 
   yazimlar <- tryCatch(pk_async_harvest_session(vekil), error = function(e) list())
 
-  # İptal/son tarih boru hattının içinde tetiklenmiş olabilir: `stop_check`
-  # kullanıcıya görünen durdurma metnini döndürür. Durumu TİPLİ raporlamak,
-  # "iptal", "zaman aşımı" ve "sıradan hata" ayrımının kaybolmamasını sağlar.
   son_kapi <- pk_async_stage_gate(jeton, son_tarih)
   if (isTRUE(son_kapi$halt)) return(bitir(son_kapi$status, session_writes = yazimlar))
 
@@ -147,6 +224,12 @@ pk_async_run_analysis <- function(request) {
     return(bitir("error", session_writes = yazimlar,
                  error = .pk_async_safe_error_text(sonuc$message)))
   }
+
+  # `data` alanı ana süreçte hiçbir zaman tüketilmiyor; prompt_context /
+  # user_context / pk_answer_block ve attachment zaten worker içinde üretildi.
+  # Tam frame'i future IPC üzerinden ikinci kez taşımak büyük sonuçlarda RAM'i
+  # ikiye katlar. Bu yüzden yalnızca IPC'den HEMEN ÖNCE bırakılır.
+  if (is.list(sonuc) && !is.null(sonuc$data)) sonuc$data <- NULL
 
   bitir("ok", result = sonuc, session_writes = yazimlar)
 }
@@ -163,7 +246,6 @@ pk_async_run_analysis <- function(request) {
     ham <- tryCatch(redact_sensitive_text(ham), error = function(e) ham)
   }
 
-  # Altyapı tanılaması gibi görünen metin genelleştirilir.
   altyapi <- c("nanodbc", "SQLSTATE", "DSN=", "ODBC", "Driver", "sp_executesql",
                "TCP Provider", "SQL Server")
   if (any(vapply(altyapi, function(p) grepl(p, ham, fixed = TRUE), logical(1)))) {
