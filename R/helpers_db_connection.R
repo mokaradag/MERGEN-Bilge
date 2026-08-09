@@ -127,7 +127,11 @@ get_connection <- function(target = "primary") {
     odbc::odbc(),
     dsn = dsn_name,
     encoding = .DEFAULT_DB_CLIENT_ENCODING,
-    name_encoding = .DEFAULT_DB_NAME_ENCODING
+    name_encoding = .DEFAULT_DB_NAME_ENCODING,
+    # PSOCK workers are non-interactive, so odbc otherwise defaults this to
+    # FALSE. The bounded PK executor relies on R interrupts to trigger
+    # odbc's SQLCancel path while SQLExecute/SQLExecuteDirect is blocked.
+    interruptible = TRUE
   )
   .db_perf_log("db.connection_open", start = conn_start,
                fields = list(target = target, pooled = FALSE))
@@ -164,7 +168,8 @@ worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
         odbc::odbc(),
         dsn = Sys.getenv("DB_DSN", .DEFAULT_DSN),
         encoding = .DEFAULT_DB_CLIENT_ENCODING,
-        name_encoding = .DEFAULT_DB_NAME_ENCODING
+        name_encoding = .DEFAULT_DB_NAME_ENCODING,
+        interruptible = TRUE
       )
 
       return(conn)
