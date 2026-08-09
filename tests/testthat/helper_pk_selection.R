@@ -44,7 +44,8 @@ PK_SELECT_SOURCE_CHAIN <- c(
   "helpers_pk_query_selection_apply.R"
 )
 
-# Faz 5 çalışma zamanı dosyaları (manifest/ratchet doğrulamaları için).
+# Saf seçim çalışma zamanı dosyaları. Motor kipine bağlı derin-analiz köprüsü
+# ayrı tutulur; saflık sözleşmesi yalnızca bu küme üzerinde çalışır.
 PK_SELECT_RUNTIME_FILES <- c(
   "helpers_pk_query_retrieval.R",
   "helpers_pk_query_selection_json.R",
@@ -59,8 +60,11 @@ PK_SELECT_RUNTIME_FILES <- c(
   "helpers_pk_query_selection_session.R",
   "helpers_pk_query_selection_seed.R",
   "helpers_pk_query_selection_ai.R",
-  "helpers_pk_query_selection_deep.R",
   "helpers_pk_query_selection_apply.R"
+)
+
+PK_SELECT_ENGINE_BRIDGE_FILES <- c(
+  "helpers_pk_query_selection_deep.R"
 )
 
 pk_select_source_chain_for_tests <- function(extra = character(0),
