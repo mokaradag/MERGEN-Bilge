@@ -24,23 +24,7 @@
 # Oturumda tutulan söyleşi sayısı. Sınırsız büyüme, uzun ömürlü bir Shiny
 # oturumunda sessiz bellek birikimi olurdu.
 .PK_SELECT_STATE_MAX_CHATS <- 8L
-
-#' Söyleşi anahtarı — durum bu anahtarla İZOLE edilir
-#'
-#' Anahtar konuşmanın İLK mesajından türetilir: söyleşi boyunca kararlıdır,
-#' yeni söyleşide (boş geçmiş) ve kayıtlı başka bir söyleşi yüklendiğinde
-#' FARKLIDIR. DB kimliğine bağımlı değildir; worker/test bağlamında da çalışır.
-pk_select_chat_key <- function(chat_history) {
-  if (!is.list(chat_history) || !length(chat_history)) return("__yeni__")
-
-  ilk <- chat_history[[1]]
-  if (!is.list(ilk)) return("__yeni__")
-
-  icerik <- as.character(ilk$content %||% "")[1]
-  if (is.na(icerik) || !nzchar(trimws(icerik))) return("__yeni__")
-
-  substr(trimws(icerik), 1L, 200L)
-}
+.PK_SELECT_STATE_MAX_SIGNATURES <- 12L
 
 .pk_select_state_read <- function(session) {
   if (is.null(session)) return(list())
@@ -59,6 +43,69 @@ pk_select_chat_key <- function(chat_history) {
     session$userData[[.PK_SELECT_STATE_SLOT]] <- state
     invisible(TRUE)
   }, error = function(e) invisible(FALSE))
+}
+
+#' Söyleşi anahtarı — durum bu anahtarla İZOLE edilir
+#'
+#' Sunucu seçiciye yalnızca son 3/5 mesajı verebilir; dolayısıyla pencerenin ilk
+#' mesajını anahtar yapmak söyleşi uzadıkça anahtarı DEĞİŞTİRİR. Burada son
+#' pencerenin ileti imzaları oturumda tutulan önceki pencere imzalarıyla
+#' eşleştirilir. Ardışık pencereler en az bir iletiyi paylaştığı sürece aynı
+#' söyleşi anahtarı korunur; bütçe ilerledikçe önceki sorgu/netleştirme durumu
+#' erişilebilir kalır. Tamamen farklı bir geçmiş yeni bir anahtar üretir.
+#'
+#' `session = NULL` olan yalıtılmış test/worker çağrılarında eski deterministik
+#' ilk-ileti anahtarı geri dönüş olarak korunur.
+pk_select_chat_key <- function(chat_history, session = NULL) {
+  if (!is.list(chat_history) || !length(chat_history)) return("__yeni__")
+
+  imzalar <- vapply(chat_history, function(m) {
+    if (!is.list(m)) return("")
+    rol <- tolower(trimws(as.character(m$role %||% m$type %||% "user")[1]))
+    icerik <- trimws(as.character(m$content %||% "")[1])
+    if (is.na(icerik) || !nzchar(icerik)) return("")
+    paste0(rol, "|", substr(icerik, 1L, 300L))
+  }, character(1), USE.NAMES = FALSE)
+  imzalar <- unique(imzalar[!is.na(imzalar) & nzchar(imzalar)])
+  if (!length(imzalar)) return("__yeni__")
+
+  # Oturumsuz yolda durum tutulamaz; deterministik geri dönüş yeterlidir.
+  if (is.null(session)) return(substr(imzalar[1], 1L, 220L))
+
+  durum <- .pk_select_state_read(session)
+  eslesme <- character(0)
+  eslesme_sayisi <- integer(0)
+  if (length(durum)) {
+    for (anahtar in names(durum)) {
+      kayit <- durum[[anahtar]]
+      onceki <- if (is.list(kayit)) as.character(kayit$history_signatures %||% character(0)) else character(0)
+      ortak <- length(intersect(imzalar, onceki))
+      if (ortak > 0L) {
+        eslesme <- c(eslesme, anahtar)
+        eslesme_sayisi <- c(eslesme_sayisi, ortak)
+      }
+    }
+  }
+
+  if (length(eslesme)) {
+    en_iyi <- max(eslesme_sayisi)
+    adaylar <- eslesme[eslesme_sayisi == en_iyi]
+    anahtar <- sort(adaylar, method = "radix")[1]
+  } else {
+    anahtar <- substr(paste0("__chat__:", imzalar[1]), 1L, 240L)
+    if (anahtar %in% names(durum) && !is.list(durum[[anahtar]])) {
+      anahtar <- paste0(anahtar, ":", length(durum) + 1L)
+    }
+  }
+
+  kayit <- if (is.list(durum[[anahtar]])) durum[[anahtar]] else list()
+  kayit$history_signatures <- utils::tail(
+    unique(c(as.character(kayit$history_signatures %||% character(0)), imzalar)),
+    .PK_SELECT_STATE_MAX_SIGNATURES
+  )
+  durum[[anahtar]] <- kayit
+  .pk_select_state_write(session, durum)
+  anahtar
 }
 
 #' Önceki kararlı sorgu kimliğini oku (eksiltili takip için)
