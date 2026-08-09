@@ -35,15 +35,24 @@
 }
 
 # Önceki pencerenin SONU ile yeni pencerenin BAŞI arasındaki en uzun sıralı
-# örtüşmeyi bulur. Genel durumda tek bir ortak ileti söyleşi kimliği sayılmaz.
+# örtüşmeyi bulur. Genel durumda tek bir ortak metin söyleşi kimliği sayılmaz.
+# Ancak dönen kısa pencereler yalnızca bir ortak ileti bırakabilir; bu durumda
+# tek örtüşme ancak imza kararlı bir `id=` kimliği taşıyorsa kabul edilir.
 .pk_select_history_overlap <- function(previous, current) {
   onceki <- as.character(previous %||% character(0))
   simdiki <- as.character(current %||% character(0))
   ust <- min(length(onceki), length(simdiki))
-  if (ust < 2L) return(0L)
+  if (ust < 1L) return(0L)
 
-  for (k in seq.int(ust, 2L, by = -1L)) {
-    if (identical(utils::tail(onceki, k), utils::head(simdiki, k))) return(k)
+  for (k in seq.int(ust, 1L, by = -1L)) {
+    if (!identical(utils::tail(onceki, k), utils::head(simdiki, k))) next
+    if (k >= 2L) return(k)
+
+    tek <- utils::tail(onceki, 1L)
+    if (length(tek) == 1L &&
+        grepl("^[^|]+\\|id=[^|]+\\|", tek, perl = TRUE)) {
+      return(1L)
+    }
   }
   0L
 }
@@ -51,9 +60,9 @@
 # İlk seçim çağrısı, sunucu ilk kullanıcı iletisini ekledikten hemen sonra
 # çalışır; dolayısıyla saklanan ilk pencere yalnızca bir `user|...` imzası
 # taşıyabilir. Bir sonraki çağrıda iki-iletilik örtüşme henüz mümkün değildir.
-# Tek-ileti başlangıç eşleşmesi yalnızca hâlâ "ilk takip için uygun" işaretli
-# kayıtlarla kabul edilir. Normal çalışma zamanında ileti kimliği bu eşleşmeyi
-# aynı metinli farklı söyleşiler arasında da benzersiz kılar.
+# Kimliksiz tek-ileti başlangıç eşleşmesi yalnızca hâlâ "ilk takip için uygun"
+# işaretli kayıtlarla kabul edilir. Normal çalışma zamanında ileti kimliği varsa
+# bu eşleşme zaten `.pk_select_history_overlap()` tarafından güvenle yakalanır.
 .pk_select_first_follow_up_match <- function(previous, current) {
   onceki <- as.character(previous %||% character(0))
   simdiki <- as.character(current %||% character(0))
@@ -79,11 +88,10 @@
 #' Söyleşi anahtarı — durum bu anahtarla İZOLE edilir
 #'
 #' Dönen son-N geçmiş pencereleri aynı söyleşi sayılır. Genel durumda bunun
-#' için en az iki iletilik SIRALI suffix/prefix örtüşmesi gerekir. İlk takipte
-#' tek ileti yeterlidir; normal çalışma zamanındaki benzersiz ileti kimliği bu
-#' tek imzanın hangi söyleşiye ait olduğunu belirler. Kimliksiz eski/izole
-#' geçmişlerde birden çok aynı-açılış kaydı varsa seçim yapılmaz ve yeni durum
-#' açılır; başka bir söyleşinin durumu tahmin edilerek kullanılmaz.
+#' için en az iki iletilik SIRALI suffix/prefix örtüşmesi gerekir; dönen pencere
+#' yalnızca bir ortak ileti bıraktığında ise o imzanın kararlı `id=` kimliği
+#' taşıması yeterlidir. İlk takipte kimliksiz tek ileti ayrıca kabul edilir;
+#' birden çok aynı-açılış kaydı varsa seçim yapılmaz ve yeni durum açılır.
 pk_select_chat_key <- function(chat_history, session = NULL) {
   imzalar <- .pk_select_history_signatures(chat_history)
   if (!length(imzalar)) return("__yeni__")
@@ -99,7 +107,7 @@ pk_select_chat_key <- function(chat_history, session = NULL) {
     kayit <- durum[[anahtar]]
     onceki <- if (is.list(kayit)) kayit$history_signatures else NULL
     ortak <- .pk_select_history_overlap(onceki, imzalar)
-    if (ortak >= 2L) {
+    if (ortak >= 1L) {
       eslesme <- c(eslesme, anahtar)
       eslesme_sayisi <- c(eslesme_sayisi, ortak)
     } else if (is.list(kayit) &&
