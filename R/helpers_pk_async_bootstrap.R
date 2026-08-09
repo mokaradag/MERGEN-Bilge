@@ -18,8 +18,10 @@
 # işçi otomatik olarak onu da alır (sürüklenme yok), ama işçinin GÖREBİLECEĞİ
 # yüzey açıkça gözden geçirilebilir kalır.
 #
-# UI/modül/gözlemci bölümleri BİLİNÇLİ OLARAK DIŞARIDADIR: işçide Shiny yoktur
-# ve bir modül dosyasının işçide yüklenmesi hem gereksiz hem risklidir.
+# UI/gözlemci bölümleri BİLİNÇLİ OLARAK DIŞARIDADIR: işçide Shiny yoktur.
+# `module_analysis` ise bir UI modülü değil, PK işçisinin gerçek giriş noktası
+# `pk_analiz_process_request()` fonksiyonunu sahiplenen dosyadır; bu yüzden
+# açıkça bootstrap yüzeyine dahildir.
 pk_async_worker_manifest_sections <- function() {
   c(
     "foundation",
@@ -31,6 +33,7 @@ pk_async_worker_manifest_sections <- function() {
     "sql_library",
     "language_messaging",
     "analysis_helpers",
+    "module_analysis",
     "llm_pipeline"
   )
 }
