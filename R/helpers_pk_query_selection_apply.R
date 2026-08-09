@@ -18,6 +18,37 @@
 #   seçicisinin bir sorguyu otomatik çalıştırması demekti.
 # ==============================================================================
 
+# İZOLE `module_proje_kaynak_analizi.R` yüklemesinde Faz 5 zinciri bu dosyayı
+# kaynak eder, fakat v1 AI seçicisi ayrı helper olduğu için manifest dışı yolda
+# tanımsız kalabiliyordu. Normal manifestte dosya zaten daha önce yüklenmiştir;
+# bu koruma yalnızca eksik olduğunda çıkarılmış v1 helper'ını yükler ve v1 karar
+# mantığını değiştirmez.
+.pk_v1_selector_path <- file.path("R", "helpers_pk_analysis_ai_selector.R")
+if (!exists("find_best_query_with_ai", mode = "function", inherits = TRUE) &&
+    file.exists(.pk_v1_selector_path)) {
+  source(.pk_v1_selector_path, encoding = "UTF-8", local = globalenv())
+}
+rm(.pk_v1_selector_path)
+
+# Geçiş A'dan gelen taze adaylar ve önceki kararlı sorgu birlikte SON recall
+# sınırına tabi tutulur. Önceki sürüm tohumu ekleyip kümeyi recall_n+1'e
+# büyütüyor, Geçiş B istem/çıktı bütçesi sözleşmesini bozuyordu.
+pk_select_seed_candidates <- function(recalled_ids, prior_query_id, cfg) {
+  aday <- as.character(recalled_ids)
+  aday <- unique(aday[!is.na(aday) & nzchar(aday)])
+  sinir <- suppressWarnings(as.integer(cfg$recall_n)[1])
+  if (!length(sinir) || is.na(sinir) || sinir < 1L) return(character(0))
+
+  onceki <- NA_character_
+  if (!is.null(prior_query_id) && length(prior_query_id) && !is.na(prior_query_id[1])) {
+    onceki <- trimws(as.character(prior_query_id)[1])
+    if (!nzchar(onceki)) onceki <- NA_character_
+  }
+
+  if (is.na(onceki)) return(utils::head(aday, sinir))
+  utils::head(unique(c(onceki, aday)), sinir)
+}
+
 #' Karardan v1 uyumlu `all_scores` tablosu kur
 #'
 #' Tablo ŞEKLİ v1 ile aynıdır (`query_id`, `query_name`, `ai_score`,
@@ -372,4 +403,78 @@ pk_select_disclosures <- function(selected_query) {
 
   aciklamalar <- as.character(karar$disclosures %||% character(0))
   aciklamalar[!is.na(aciklamalar) & nzchar(trimws(aciklamalar))]
+}
+
+# Derin analiz dosyası bu helper'dan ÖNCE yüklenir. Temel orkestratörü bir kez
+# saklayıp yalnız v2 isteğinde, istek-yerel bir ortam üzerinden iki geçişli
+# çoklu seçiciyi bağlarız. Global fonksiyonları geçici olarak değiştirmediğimiz
+# için aynı Shiny sürecindeki eşzamanlı istekler birbirini etkileyemez.
+if (!exists(".pk_deep_analysis_process_base", inherits = FALSE) &&
+    exists("pk_deep_analysis_process", mode = "function", inherits = TRUE)) {
+  .pk_deep_analysis_process_base <- get("pk_deep_analysis_process", mode = "function", inherits = TRUE)
+}
+
+if (exists(".pk_deep_analysis_process_base", inherits = FALSE)) {
+  pk_deep_analysis_process <- function(user_prompt, chat_history, session,
+                                       detail_level = "standart",
+                                       stop_check = NULL) {
+    v2_aktif <- exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
+      isTRUE(pk_engine_is_v2()) &&
+      exists("pk_select_queries_v2", mode = "function", inherits = TRUE)
+
+    if (!isTRUE(v2_aktif)) {
+      return(.pk_deep_analysis_process_base(
+        user_prompt, chat_history, session,
+        detail_level = detail_level, stop_check = stop_check
+      ))
+    }
+
+    impl <- .pk_deep_analysis_process_base
+    yerel <- new.env(parent = environment(impl))
+    durum <- new.env(parent = emptyenv())
+    durum$multi <- NULL
+    durum$committed <- FALSE
+
+    # Temel fonksiyondaki v2->tekil kısa devresini kapatırız; onun legacy çoklu
+    # çağrı noktasına aşağıdaki GÜVENLİ v2 sağlayıcısını enjekte ederiz.
+    yerel$pk_engine_is_v2 <- function() FALSE
+    yerel$find_multiple_queries_with_ai <- function(prompt, library, owner_session,
+                                                    max_queries = 5L) {
+      durum$multi <- pk_select_queries_v2(
+        prompt, library, chat_history,
+        session = owner_session, stop_check = stop_check,
+        max_queries = max_queries
+      )
+      durum$multi$queries %||% list()
+    }
+
+    # v2 kararının reddetme/netleştirme şekli, temel orkestratörün mevcut
+    # fallback kolundan aynen kullanıcıya taşınır; ikinci bir LLM çağrısı yoktur.
+    yerel$select_smart_query <- function(prompt, library, history, ...) {
+      if (!is.list(durum$multi)) return(NULL)
+      durum$multi$primary
+    }
+
+    temel_execute <- get("execute_single_deep_query", mode = "function", envir = environment(impl), inherits = TRUE)
+    yerel$execute_single_deep_query <- function(query, user_prompt, session, rls_info,
+                                                detail_config, stop_check = NULL) {
+      # Temel orkestratörün seçim-sonrası durdurma kapısı geçildikten sonra ilk
+      # sorgu burada başlar; seçim ancak bu noktada kalıcılaştırılır.
+      if (!isTRUE(durum$committed) && is.list(durum$multi) &&
+          is.list(durum$multi$primary) && !is.null(durum$multi$primary$id)) {
+        try(pk_select_commit_selection(durum$multi$primary, session), silent = TRUE)
+        durum$committed <- TRUE
+      }
+      temel_execute(
+        query, user_prompt, session, rls_info, detail_config,
+        stop_check = stop_check
+      )
+    }
+
+    environment(impl) <- yerel
+    impl(
+      user_prompt, chat_history, session,
+      detail_level = detail_level, stop_check = stop_check
+    )
+  }
 }
