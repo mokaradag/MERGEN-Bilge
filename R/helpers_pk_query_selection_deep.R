@@ -39,7 +39,8 @@ if (exists(".pk_select_actual_column_gate_base", inherits = FALSE)) {
 #' Derin Düşünme için v2'nin aynı iki geçişli kararından güvenli çoklu küme üret
 pk_select_queries_v2 <- function(prompt, library, chat_history = NULL,
                                  session = NULL, llm_fn = NULL, cfg = NULL,
-                                 stop_check = NULL, max_queries = 5L) {
+                                 stop_check = NULL,
+                                 max_queries = pk_deep_max_queries()) {
   birincil <- pk_select_query_v2(
     prompt, library, chat_history,
     session = session, llm_fn = llm_fn, cfg = cfg, stop_check = stop_check
@@ -165,7 +166,7 @@ if (exists(".pk_deep_analysis_process_base", inherits = FALSE)) {
 
     yerel$pk_engine_is_v2 <- function() FALSE
     yerel$find_multiple_queries_with_ai <- function(prompt, library, owner_session,
-                                                    max_queries = 5L) {
+                                                    max_queries = pk_deep_max_queries()) {
       durum$multi <- pk_select_queries_v2(
         prompt, library, chat_history,
         session = owner_session, stop_check = stop_check,

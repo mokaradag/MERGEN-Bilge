@@ -249,378 +249,369 @@ sendMessageInit <- function(
 
     messages_to_process <- recent_messages
 
-    # SQL Analizi modu işleme
-    if (identical(tool_family, "sql_analysis")) {
-      deep_thinking_active <- isTRUE(settings_data$analysis_deep_thinking)
-      analysis_detail <- settings_data$analysis_detail_level %||% "standart"
-
-      if (deep_thinking_active) {
-        log_debug("[SERVER] Derin Düşünme modu aktif. Detay: {analysis_detail}. Çoklu sorgu analizi başlatılıyor...")
-      } else {
-        log_debug("[SERVER] Proje ve Kaynak Analizi seçildi (tekil mod). Modül çağırılıyor...")
+    # ------------------------------------------------------------------------
+    # Faz 6 (§5.10): analiz sonrası LLM gönderim aşaması, ADLANDIRILMIŞ bir
+    # devam (continuation) kapanışıdır. Senkron yol bunu doğrudan çağırır;
+    # asenkron PK yolu ise işçi geri çağrısından, istek-kimliği koruması
+    # geçtikten SONRA çağırır. Tek bir gövde olması bilinçlidir: iki ayrı
+    # kopya, MERGEN_PK_ASYNC açıldığında sessiz davranış farkı üretirdi.
+    #
+    # Kapanış lexical kapsam kullanır; hiçbir bağımlılık elle taşınmaz.
+    # `return()` çağrıları burada kapanıştan döner ve kapanış send_message'ın
+    # SON ifadesi olduğu için davranış birebir korunur.
+    # ------------------------------------------------------------------------
+    run_llm_request_stage <- function(messages_to_process, analysis_max_tokens = NULL) {
+      if (!is.null(analysis_max_tokens)) {
+        current_settings$max_output_tokens <- analysis_max_tokens
       }
 
-      if (isTRUE(stop_generation())) {
-        cleanup_send_message()
-        return(invisible(NULL))
-      }
-
-      analiz_result <- tryCatch({
-        if (deep_thinking_active) {
-          pk_deep_analysis_process(
-            user_message_text, messages_to_process, session,
-            detail_level = analysis_detail,
-            stop_check = stop_generation
-          )
-        } else {
-          pk_analiz_process_request(user_message_text, messages_to_process, session, stop_check = stop_generation)
-        }
-      }, error = function(e) {
-        paste0("\U000026A0\U0000FE0F Analiz modülü hatası: ", e$message)
-      })
-
-      if (is.character(analiz_result)) {
-        cleanup_send_message()
-        add_message_fn(analiz_result, "ai")
-        return(invisible(NULL))
-
-      } else if (is.list(analiz_result)) {
-        if (identical(analiz_result$type, "error_message")) {
-          cleanup_send_message()
-          add_message_fn(analiz_result$content, "ai")
-          return(invisible(NULL))
-        }
-
-        log_debug("[SERVER] SQL Analizi başarılı. Veriler LLM bağlamına ekleniyor... (Derin: {deep_thinking_active})")
-
-        if (!is.null(analiz_result$max_tokens)) {
-          current_settings$max_output_tokens <- analiz_result$max_tokens
-        }
-
-        last_idx <- length(messages_to_process)
-        if (last_idx > 0) {
-          messages_to_process[[last_idx]]$content <- analiz_result$user_context
-        }
-
-        sys_msg <- list(
-          role = "system",
-          content = analiz_result$prompt_context,
-          type = "system"
-        )
-        messages_to_process <- append(list(sys_msg), messages_to_process)
-      }
-    }
-
-    prompt_plan <- mergen_prepare_send_message_prompting(
-      tool_family = tool_family,
-      uploaded_count = uploaded_count,
-      settings_data = settings_data,
-      messages_to_process = messages_to_process
-    )
-
-    messages_to_process <- prompt_plan$messages_to_process
-    system_msg <- prompt_plan$system_msg
-    selected_char_id <- prompt_plan$selected_char_id
-    temperature_value <- prompt_plan$temperature_value
-
-    log_debug("[STYLE] Karakter: {selected_char_id} (sıcaklık: {sprintf('%.2f', temperature_value)})")
-
-    # DOSYA ÖZETLEME MODU
-    if (identical(tool_family, "summarization")) {
-      summarization_ctx <- list(
-        session = session,
-        input = input,
-        output = output,
-        values = values,
-        settings_data = settings_data,
-        ai_processor = ai_processor,
-        stop_generation = stop_generation,
-        active_request_id = active_request_id,
-        perf_tracker = perf_tracker,
-        api_config = api_config,
-        current_user_id = effective_user_id,
-        uploaded_count = uploaded_count,
-        user_message_text = user_message_text,
-        current_session_files = current_session_files,
-        user_prompt_msg = user_prompt_msg,
-        chat_id_val = isolate(values$current_chat_id),
-        saved_chats_data = saved_chats_data,
-        followup_tools = followup_tools,
-        fallback_followup_tool = fallback_followup_tool,
-        request_start_time = request_start_time,
-        add_message_fn = add_message_fn,
-        reset_chat_state_fn = reset_chat_state_fn
-      )
-      handle_summarization_mode(summarization_ctx)
-      return(invisible(NULL))
-
-    # GÖRSEL OLUŞTURMA MODU
-    } else if (identical(tool_family, "image")) {
-      image_ctx <- list(
-        session = session, input = input, values = values,
-        settings_data = settings_data,
-        user_message_text = user_message_text,
-        current_user_id = effective_user_id,
-        stop_generation = stop_generation,
-        active_request_id = active_request_id,
-        add_message_fn = add_message_fn, reset_chat_state_fn = reset_chat_state_fn
-      )
-      handle_image_generation_mode(image_ctx)
-      return(invisible(NULL))
-
-    # LANGFLOW MODU: runtime==langflow ise her koşulda buraya girer; yapılandırma
-    # eksikse handler net hata verir (normal LLM'ye SESSİZCE düşülmez).
-    } else if (is_langflow_tool_family(tool_family, api_config, require_config = FALSE)) {
-      handle_langflow_chat_mode(mergen_build_langflow_ctx(
-        session = session, input = input, values = values, settings_data = settings_data,
-        tool_family = tool_family, user_message_text = user_message_text,
-        effective_user_id = effective_user_id, stop_generation = stop_generation,
-        active_request_id = active_request_id, add_message_fn = add_message_fn,
-        reset_chat_state_fn = reset_chat_state_fn, api_config = api_config
-      ))
-      return(invisible(NULL))
-
-    } else {
-      context_plan <- mergen_build_uploaded_files_context_messages(
+      prompt_plan <- mergen_prepare_send_message_prompting(
         tool_family = tool_family,
         uploaded_count = uploaded_count,
-        uploaded_names = uploaded_names,
-        recent_messages = recent_messages,
-        system_msg = system_msg,
-        session = session,
-        messages_to_process = messages_to_process,
-        model_selected = model_selected,
-        api_config = api_config
+        settings_data = settings_data,
+        messages_to_process = messages_to_process
       )
 
-      messages_to_process <- context_plan$messages_to_process
+      messages_to_process <- prompt_plan$messages_to_process
+      system_msg <- prompt_plan$system_msg
+      selected_char_id <- prompt_plan$selected_char_id
+      temperature_value <- prompt_plan$temperature_value
+
+      log_debug("[STYLE] Karakter: {selected_char_id} (sıcaklık: {sprintf('%.2f', temperature_value)})")
+
+      # DOSYA ÖZETLEME MODU
+      if (identical(tool_family, "summarization")) {
+        summarization_ctx <- list(
+          session = session,
+          input = input,
+          output = output,
+          values = values,
+          settings_data = settings_data,
+          ai_processor = ai_processor,
+          stop_generation = stop_generation,
+          active_request_id = active_request_id,
+          perf_tracker = perf_tracker,
+          api_config = api_config,
+          current_user_id = effective_user_id,
+          uploaded_count = uploaded_count,
+          user_message_text = user_message_text,
+          current_session_files = current_session_files,
+          user_prompt_msg = user_prompt_msg,
+          chat_id_val = isolate(values$current_chat_id),
+          saved_chats_data = saved_chats_data,
+          followup_tools = followup_tools,
+          fallback_followup_tool = fallback_followup_tool,
+          request_start_time = request_start_time,
+          add_message_fn = add_message_fn,
+          reset_chat_state_fn = reset_chat_state_fn
+        )
+        handle_summarization_mode(summarization_ctx)
+        return(invisible(NULL))
+
+      # GÖRSEL OLUŞTURMA MODU
+      } else if (identical(tool_family, "image")) {
+        image_ctx <- list(
+          session = session, input = input, values = values,
+          settings_data = settings_data,
+          user_message_text = user_message_text,
+          current_user_id = effective_user_id,
+          stop_generation = stop_generation,
+          active_request_id = active_request_id,
+          add_message_fn = add_message_fn, reset_chat_state_fn = reset_chat_state_fn
+        )
+        handle_image_generation_mode(image_ctx)
+        return(invisible(NULL))
+
+      # LANGFLOW MODU: runtime==langflow ise her koşulda buraya girer; yapılandırma
+      # eksikse handler net hata verir (normal LLM'ye SESSİZCE düşülmez).
+      } else if (is_langflow_tool_family(tool_family, api_config, require_config = FALSE)) {
+        handle_langflow_chat_mode(mergen_build_langflow_ctx(
+          session = session, input = input, values = values, settings_data = settings_data,
+          tool_family = tool_family, user_message_text = user_message_text,
+          effective_user_id = effective_user_id, stop_generation = stop_generation,
+          active_request_id = active_request_id, add_message_fn = add_message_fn,
+          reset_chat_state_fn = reset_chat_state_fn, api_config = api_config
+        ))
+        return(invisible(NULL))
+
+      } else {
+        context_plan <- mergen_build_uploaded_files_context_messages(
+          tool_family = tool_family,
+          uploaded_count = uploaded_count,
+          uploaded_names = uploaded_names,
+          recent_messages = recent_messages,
+          system_msg = system_msg,
+          session = session,
+          messages_to_process = messages_to_process,
+          model_selected = model_selected,
+          api_config = api_config
+        )
+
+        messages_to_process <- context_plan$messages_to_process
+      }
+
+      # API anahtarı kontrolü
+      api_key_plan <- NULL
+      {
+        api_key_plan <- tryCatch(
+          mb_api_key_get_cached_for_send(
+            session = session,
+            require_auth = TRUE,
+            allow_default = NULL,
+            clear_on_mismatch = TRUE
+          ),
+          error = function(e) list(key = "", source = "missing", owner = NULL)
+        )
+
+        api_key_val <- as.character(api_key_plan$key %||% "")[1]
+
+        if (is.na(api_key_val) || !nzchar(api_key_val)) {
+          abort_send_message(
+            message = "API anahtarı eksik. Ayarlar > Model Ayarları > API Anahtarı Güncelleme üzerinden girin.",
+            type = "error"
+          )
+          return(invisible(NULL))
+        }
+      }
+
+      chat_id_val <- isolate(values$current_chat_id)
+
+      # Model daha önce tek noktadan çözüldü; burada yalnızca ayarlara sabitlenir.
+      log_info(sprintf(
+        "[DERIN DUSUNME] arac=%s excel=%s/%s coding=%s/%s -> model=%s",
+        tool_family,
+        excel_deep_on,
+        excel_deep_level,
+        coding_deep_on,
+        coding_deep_level,
+        model_selected
+      ))
+
+      current_settings$current_user_id <- effective_user_id
+      current_settings$tool_family <- tool_family
+
+      # Yalnızca gerçek MCP araç çağrısı için MCP aktif edilir
+      current_settings$enable_mcp_tools <- identical(tool_family, "mcp_excel")
+
+      current_settings$temperature      <- temperature_value
+      current_settings$uploaded_files   <- uploaded_names
+      current_settings$shiny_session    <- session
+      current_settings$api_key_override <- api_key_val
+      current_settings$api_key_source <- api_key_plan$source %||% "unknown"
+
+      # Düz hızlı sohbette ilk-token öncesi MCP/dosya hazırlığı atlanır; oturum
+      # snapshot'ı yine de güvenle boşaltılır (önceki MCP isteğinden artık kalmasın).
+      plain_fast_chat <- mergen_is_plain_fast_chat(
+        tool_family, uploaded_count, current_settings, settings_data
+      )
+      if (isTRUE(plain_fast_chat)) {
+        current_settings$mcp_registry_snapshot <- update_mcp_registry_snapshot_fn(list())
+      } else {
+        current_settings$mcp_registry_snapshot <- mergen_prepare_mcp_session_files(
+          session = session, file_manager_data = file_manager_data,
+          uploaded_names = uploaded_names, effective_user_id = effective_user_id,
+          current_settings = current_settings,
+          cache_mcp_file_locally_fn = cache_mcp_file_locally_fn,
+          update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot_fn,
+          tool_family = tool_family
+        )$mcp_snapshot
+      }
+
+      # Dosya yollarını Excel modunda ilet
+      current_settings$file_paths <- list()
+      if (identical(tool_family, "mcp_excel") && length(uploaded_names) > 0) {
+        registry_paths <- session_user_data_get_list(session, "current_session_files")
+        for (fname in uploaded_names) {
+          file_obj <- registry_paths[[fname]]
+          if (!is.list(file_obj)) next
+
+          full_path <- file_obj$path %||% file_obj$datapath
+          if (is.null(full_path) || !nzchar(full_path)) next
+
+          current_settings$file_paths[[fname]] <- as.character(full_path)
+          log_debug("[FILE PATH ADDED] {fname} -> {full_path}")
+        }
+      }
+
+      # Model seçilmemişse varsayılanı kullan
+      if (is.null(model_selected) || model_selected == "") {
+        model_selected <- api_config$local_models[1]
+      }
+
+      current_settings$model_selection <- model_selected
+
+  	# Düşünmeli SQL/Proje analizi akış planı. Model yetenekleri R/config_api.R
+  	# içindeki local_model_capabilities tarafından bildirilir; regex tahmini yok.
+  	# Düşünmeli SQL/Proje analizi artık canlı Düşünce Akışı için gerçek SSE ile
+  	# akıtılır; işçi tarafı non-streaming geri dönüşü güvenlik ağı olarak açılır.
+  	# TTS açıkken veya streaming kapalıyken eski güvenli non-streaming korunur.
+  	thinking_model_detected <- tryCatch(
+  	  isTRUE(is_thinking_model(model_selected)),
+  	  error = function(e) FALSE
+  	)
+  	sql_stream_plan <- mergen_sql_analysis_stream_plan(
+  	  tool_family = tool_family,
+  	  thinking_model = thinking_model_detected,
+  	  enable_streaming = isTRUE(current_settings$enable_streaming),
+  	  enable_mcp_tools = isTRUE(current_settings$enable_mcp_tools),
+  	  enable_tts_audio = isTRUE(settings_data$enable_tts_audio)
+  	)
+  	force_non_streaming_sql <- isTRUE(sql_stream_plan$force_non_streaming)
+  	if (isTRUE(sql_stream_plan$allow_non_streaming_fallback)) {
+  	  current_settings$allow_non_streaming_fallback <- TRUE
+  	}
+
+      stream_profile <- mergen_build_stream_profile(
+        tool_family = tool_family,
+        uploaded_count = uploaded_count,
+        settings_data = settings_data,
+        force_non_streaming_sql = force_non_streaming_sql
+      )
+
+      log_debug("Mesaj gönderiliyor, model: {model_selected}")
+  	if (isTRUE(sql_stream_plan$allow_non_streaming_fallback)) {
+  	  log_debug("[MONITORING] Düşünmeli SQL/Proje analizi: canlı SSE Düşünce Akışı + non-streaming güvenlik ağı")
+  	}
+  	if (isTRUE(force_non_streaming_sql)) {
+  	  log_debug("[MONITORING] SQL analizi için düşünmeli model tespit edildi; streaming kapatılıp non-streaming kullanılacak")
+  	}
+
+      log_info(sprintf(
+        "[CHAT PERF] LLM isteği hazırlanıyor - yol=%s, profil=%s, gecen=%.3f sn",
+        tool_family,
+        stream_profile$label,
+        as.numeric(difftime(Sys.time(), request_start_time, units = "secs"))
+      ))
+
+      # LLM çağrısı: Streaming veya Non-streaming
+      if (isTRUE(current_settings$enable_streaming) &&
+          !isTRUE(current_settings$enable_mcp_tools) &&
+          !isTRUE(settings_data$enable_tts_audio) &&
+          !isTRUE(force_non_streaming_sql)) {
+        # GERÇEK SSE modu
+        log_debug("[MONITORING] AI isteği başlatılıyor (GERÇEK SSE modu)")
+
+        # Kritik yol dostu: varsayılan olarak yalnızca hafif sayım/boyut özeti
+        # yazılır. Tam istem/ayar dökümü yalnızca açık tanılama bayrağıyla üretilir.
+        mergen_log_llm_request_debug(
+          "LLM_REQUEST_TRUE_STREAMING", model_selected, messages_to_process, current_settings
+        )
+
+        true_stream_ctx <- list(
+          session = session,
+          input = input,
+          output = output,
+          values = values,
+          settings_data = settings_data,
+          stop_generation = stop_generation,
+          active_request_id = active_request_id,
+          perf_tracker = perf_tracker,
+          api_config = api_config,
+          current_user_id = effective_user_id,
+          current_settings = current_settings,
+          model_selected = model_selected,
+          messages_to_process = messages_to_process,
+          user_message_text = user_message_text,
+          user_prompt_msg = user_prompt_msg,
+          chat_id_val = chat_id_val,
+          pending_chat_title = pending_chat_title,
+          saved_chats_data = saved_chats_data,
+          add_message_fn = add_message_fn,
+          reset_chat_state_fn = reset_chat_state_fn,
+          followup_tools = followup_tools,
+          fallback_followup_tool = fallback_followup_tool,
+          request_start_time = request_start_time,
+          stream_profile = stream_profile,
+          request_id = req_id
+        )
+
+        handle_true_streaming_mode(true_stream_ctx)
+
+      } else if (isTRUE(current_settings$enable_streaming) &&
+                 !isTRUE(current_settings$enable_mcp_tools) &&
+                 !isTRUE(force_non_streaming_sql)) {
+        # TTS (Yanıtları Seslendir) açık streaming yolu ayrı işleyiciye taşındı;
+        # gerçek SSE (handle_true_streaming_mode) ve non-streaming dalları gibi
+        # simetriktir. Stale-istek/durdurma kararları istek kimliği kapsamlı kalır.
+        streaming_tts_ctx <- list(
+          session = session,
+          values = values,
+          settings_data = settings_data,
+          stop_generation = stop_generation,
+          active_request_id = active_request_id,
+          perf_tracker = perf_tracker,
+          api_config = api_config,
+          ai_processor = ai_processor,
+          tts_processor = tts_processor,
+          followup_tools = followup_tools,
+          fallback_followup_tool = fallback_followup_tool,
+          simulate_streaming_stoppable_fn = simulate_streaming_stoppable_fn,
+          cleanup_send_message = cleanup_send_message,
+          abort_send_message = abort_send_message,
+          current_settings = current_settings,
+          model_selected = model_selected,
+          messages_to_process = messages_to_process,
+          user_message_text = user_message_text,
+          user_prompt_msg = user_prompt_msg,
+          chat_id_val = chat_id_val,
+          current_user_id = effective_user_id,
+          request_id = req_id
+        )
+        handle_streaming_tts_mode(streaming_tts_ctx)
+
+      } else {
+        # NON-STREAMING modu
+        log_debug("[MONITORING] AI isteği başlatılıyor (NON-STREAMING modu)")
+        generate_non_streaming_stoppable_fn(
+          messages_to_process,
+          current_settings,
+          user_prompt_msg,
+          chat_id_val,
+          model_selected,
+          last_user_text = user_message_text,
+          current_user_id = effective_user_id,
+          request_id = req_id
+        )
+      }
+
+      invisible(NULL)
     }
 
-    # API anahtarı kontrolü
-    api_key_plan <- NULL
-    {
-      api_key_plan <- tryCatch(
-        mb_api_key_get_cached_for_send(
-          session = session,
-          require_auth = TRUE,
-          allow_default = NULL,
-          clear_on_mismatch = TRUE
-        ),
-        error = function(e) list(key = "", source = "missing", owner = NULL)
-      )
+    # SQL Analizi modu: yürütme senkron (MERGEN_PK_ASYNC=false) veya asenkron
+    # olabilir. Karar ve yaşam döngüsü R/server_handler_pk_async.R'dedir; bu
+    # dosya yalnızca delege eder ve devamı sağlar.
+    if (identical(tool_family, "sql_analysis")) {
+      pk_outcome <- mergen_pk_analysis_execute(list(
+        session = session,
+        values = values,
+        user_message_text = user_message_text,
+        messages_to_process = messages_to_process,
+        deep_thinking = isTRUE(settings_data$analysis_deep_thinking),
+        analysis_detail = settings_data$analysis_detail_level %||% "standart",
+        req_id = req_id,
+        active_request_id = active_request_id,
+        stop_generation = stop_generation,
+        cleanup_send_message = cleanup_send_message,
+        add_message_fn = add_message_fn,
+        continue_fn = run_llm_request_stage
+      ))
 
-      api_key_val <- as.character(api_key_plan$key %||% "")[1]
-
-      if (is.na(api_key_val) || !nzchar(api_key_val)) {
-        abort_send_message(
-          message = "API anahtarı eksik. Ayarlar > Model Ayarları > API Anahtarı Güncelleme üzerinden girin.",
-          type = "error"
-        )
+      # `deferred` = işçi gönderildi; devam GERİ ÇAĞRIDA çalışır (hemen dönülür).
+      if (!identical(pk_outcome$action, "continue")) {
+        if (!identical(pk_outcome$action, "deferred")) cleanup_send_message()
+        if (identical(pk_outcome$action, "answer")) {
+          add_message_fn(pk_outcome$answer, "ai")
+        }
         return(invisible(NULL))
       }
+
+      return(run_llm_request_stage(
+        pk_outcome$messages_to_process,
+        pk_outcome$max_output_tokens
+      ))
     }
 
-    chat_id_val <- isolate(values$current_chat_id)
-
-    # Model daha önce tek noktadan çözüldü; burada yalnızca ayarlara sabitlenir.
-    log_info(sprintf(
-      "[DERIN DUSUNME] arac=%s excel=%s/%s coding=%s/%s -> model=%s",
-      tool_family,
-      excel_deep_on,
-      excel_deep_level,
-      coding_deep_on,
-      coding_deep_level,
-      model_selected
-    ))
-
-    current_settings$current_user_id <- effective_user_id
-    current_settings$tool_family <- tool_family
-
-    # Yalnızca gerçek MCP araç çağrısı için MCP aktif edilir
-    current_settings$enable_mcp_tools <- identical(tool_family, "mcp_excel")
-
-    current_settings$temperature      <- temperature_value
-    current_settings$uploaded_files   <- uploaded_names
-    current_settings$shiny_session    <- session
-    current_settings$api_key_override <- api_key_val
-    current_settings$api_key_source <- api_key_plan$source %||% "unknown"
-
-    # Düz hızlı sohbette ilk-token öncesi MCP/dosya hazırlığı atlanır; oturum
-    # snapshot'ı yine de güvenle boşaltılır (önceki MCP isteğinden artık kalmasın).
-    plain_fast_chat <- mergen_is_plain_fast_chat(
-      tool_family, uploaded_count, current_settings, settings_data
-    )
-    if (isTRUE(plain_fast_chat)) {
-      current_settings$mcp_registry_snapshot <- update_mcp_registry_snapshot_fn(list())
-    } else {
-      current_settings$mcp_registry_snapshot <- mergen_prepare_mcp_session_files(
-        session = session, file_manager_data = file_manager_data,
-        uploaded_names = uploaded_names, effective_user_id = effective_user_id,
-        current_settings = current_settings,
-        cache_mcp_file_locally_fn = cache_mcp_file_locally_fn,
-        update_mcp_registry_snapshot_fn = update_mcp_registry_snapshot_fn,
-        tool_family = tool_family
-      )$mcp_snapshot
-    }
-
-    # Dosya yollarını Excel modunda ilet
-    current_settings$file_paths <- list()
-    if (identical(tool_family, "mcp_excel") && length(uploaded_names) > 0) {
-      registry_paths <- session_user_data_get_list(session, "current_session_files")
-      for (fname in uploaded_names) {
-        file_obj <- registry_paths[[fname]]
-        if (!is.list(file_obj)) next
-
-        full_path <- file_obj$path %||% file_obj$datapath
-        if (is.null(full_path) || !nzchar(full_path)) next
-
-        current_settings$file_paths[[fname]] <- as.character(full_path)
-        log_debug("[FILE PATH ADDED] {fname} -> {full_path}")
-      }
-    }
-
-    # Model seçilmemişse varsayılanı kullan
-    if (is.null(model_selected) || model_selected == "") {
-      model_selected <- api_config$local_models[1]
-    }
-
-    current_settings$model_selection <- model_selected
-
-	# Düşünmeli SQL/Proje analizi akış planı. Model yetenekleri R/config_api.R
-	# içindeki local_model_capabilities tarafından bildirilir; regex tahmini yok.
-	# Düşünmeli SQL/Proje analizi artık canlı Düşünce Akışı için gerçek SSE ile
-	# akıtılır; işçi tarafı non-streaming geri dönüşü güvenlik ağı olarak açılır.
-	# TTS açıkken veya streaming kapalıyken eski güvenli non-streaming korunur.
-	thinking_model_detected <- tryCatch(
-	  isTRUE(is_thinking_model(model_selected)),
-	  error = function(e) FALSE
-	)
-	sql_stream_plan <- mergen_sql_analysis_stream_plan(
-	  tool_family = tool_family,
-	  thinking_model = thinking_model_detected,
-	  enable_streaming = isTRUE(current_settings$enable_streaming),
-	  enable_mcp_tools = isTRUE(current_settings$enable_mcp_tools),
-	  enable_tts_audio = isTRUE(settings_data$enable_tts_audio)
-	)
-	force_non_streaming_sql <- isTRUE(sql_stream_plan$force_non_streaming)
-	if (isTRUE(sql_stream_plan$allow_non_streaming_fallback)) {
-	  current_settings$allow_non_streaming_fallback <- TRUE
-	}
-
-    stream_profile <- mergen_build_stream_profile(
-      tool_family = tool_family,
-      uploaded_count = uploaded_count,
-      settings_data = settings_data,
-      force_non_streaming_sql = force_non_streaming_sql
-    )
-
-    log_debug("Mesaj gönderiliyor, model: {model_selected}")
-	if (isTRUE(sql_stream_plan$allow_non_streaming_fallback)) {
-	  log_debug("[MONITORING] Düşünmeli SQL/Proje analizi: canlı SSE Düşünce Akışı + non-streaming güvenlik ağı")
-	}
-	if (isTRUE(force_non_streaming_sql)) {
-	  log_debug("[MONITORING] SQL analizi için düşünmeli model tespit edildi; streaming kapatılıp non-streaming kullanılacak")
-	}
-
-    log_info(sprintf(
-      "[CHAT PERF] LLM isteği hazırlanıyor - yol=%s, profil=%s, gecen=%.3f sn",
-      tool_family,
-      stream_profile$label,
-      as.numeric(difftime(Sys.time(), request_start_time, units = "secs"))
-    ))
-
-    # LLM çağrısı: Streaming veya Non-streaming
-    if (isTRUE(current_settings$enable_streaming) &&
-        !isTRUE(current_settings$enable_mcp_tools) &&
-        !isTRUE(settings_data$enable_tts_audio) &&
-        !isTRUE(force_non_streaming_sql)) {
-      # GERÇEK SSE modu
-      log_debug("[MONITORING] AI isteği başlatılıyor (GERÇEK SSE modu)")
-
-      # Kritik yol dostu: varsayılan olarak yalnızca hafif sayım/boyut özeti
-      # yazılır. Tam istem/ayar dökümü yalnızca açık tanılama bayrağıyla üretilir.
-      mergen_log_llm_request_debug(
-        "LLM_REQUEST_TRUE_STREAMING", model_selected, messages_to_process, current_settings
-      )
-
-      true_stream_ctx <- list(
-        session = session,
-        input = input,
-        output = output,
-        values = values,
-        settings_data = settings_data,
-        stop_generation = stop_generation,
-        active_request_id = active_request_id,
-        perf_tracker = perf_tracker,
-        api_config = api_config,
-        current_user_id = effective_user_id,
-        current_settings = current_settings,
-        model_selected = model_selected,
-        messages_to_process = messages_to_process,
-        user_message_text = user_message_text,
-        user_prompt_msg = user_prompt_msg,
-        chat_id_val = chat_id_val,
-        pending_chat_title = pending_chat_title,
-        saved_chats_data = saved_chats_data,
-        add_message_fn = add_message_fn,
-        reset_chat_state_fn = reset_chat_state_fn,
-        followup_tools = followup_tools,
-        fallback_followup_tool = fallback_followup_tool,
-        request_start_time = request_start_time,
-        stream_profile = stream_profile,
-        request_id = req_id
-      )
-
-      handle_true_streaming_mode(true_stream_ctx)
-
-    } else if (isTRUE(current_settings$enable_streaming) &&
-               !isTRUE(current_settings$enable_mcp_tools) &&
-               !isTRUE(force_non_streaming_sql)) {
-      # TTS (Yanıtları Seslendir) açık streaming yolu ayrı işleyiciye taşındı;
-      # gerçek SSE (handle_true_streaming_mode) ve non-streaming dalları gibi
-      # simetriktir. Stale-istek/durdurma kararları istek kimliği kapsamlı kalır.
-      streaming_tts_ctx <- list(
-        session = session,
-        values = values,
-        settings_data = settings_data,
-        stop_generation = stop_generation,
-        active_request_id = active_request_id,
-        perf_tracker = perf_tracker,
-        api_config = api_config,
-        ai_processor = ai_processor,
-        tts_processor = tts_processor,
-        followup_tools = followup_tools,
-        fallback_followup_tool = fallback_followup_tool,
-        simulate_streaming_stoppable_fn = simulate_streaming_stoppable_fn,
-        cleanup_send_message = cleanup_send_message,
-        abort_send_message = abort_send_message,
-        current_settings = current_settings,
-        model_selected = model_selected,
-        messages_to_process = messages_to_process,
-        user_message_text = user_message_text,
-        user_prompt_msg = user_prompt_msg,
-        chat_id_val = chat_id_val,
-        current_user_id = effective_user_id,
-        request_id = req_id
-      )
-      handle_streaming_tts_mode(streaming_tts_ctx)
-
-    } else {
-      # NON-STREAMING modu
-      log_debug("[MONITORING] AI isteği başlatılıyor (NON-STREAMING modu)")
-      generate_non_streaming_stoppable_fn(
-        messages_to_process,
-        current_settings,
-        user_prompt_msg,
-        chat_id_val,
-        model_selected,
-        last_user_text = user_message_text,
-        current_user_id = effective_user_id,
-        request_id = req_id
-      )
-    }
-
-    invisible(NULL)
+    run_llm_request_stage(messages_to_process)
   }
 
   # Başlık üreticisi olarak doğrudan paylaşılan yardımcı kullanılır;

@@ -25,7 +25,8 @@
 #' @param session Shiny oturumu (API anahtarı çözümlemesi için)
 #' @param max_queries Maksimum seçilecek sorgu sayısı
 #' @return Seçilen sorgu listesi (her biri relevance_score ile)
-find_multiple_queries_with_ai <- function(user_prompt, library, session, max_queries = 5) {
+find_multiple_queries_with_ai <- function(user_prompt, library, session,
+                                          max_queries = pk_deep_max_queries()) {
   cat("[DEEP_ANALYSIS] AI tabanlı çoklu sorgu seçimi başlatılıyor...\n")
 
   library_context <- vapply(seq_along(library), function(i) {
@@ -209,38 +210,13 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
   conn <- conn_list$conn
   on.exit(release_connection(conn_list), add = TRUE)
 
-  sql_query_text <- ""
-  if (!is.null(query$sql_file) && nzchar(query$sql_file)) {
-    fpath <- query$sql_file
-    if (file.exists(fpath)) {
-      sql_query_text <- tryCatch({
-        f_con <- file(fpath, open = "rb")
-        on.exit(close(f_con), add = TRUE)
-        f_size <- file.info(fpath)$size
-        if (is.na(f_size)) f_size <- 0
-        raw_content <- readBin(f_con, "raw", n = f_size)
-
-        has_bom_le <- length(raw_content) >= 2 && raw_content[1] == as.raw(0xff) && raw_content[2] == as.raw(0xfe)
-        has_nulls <- any(raw_content == as.raw(0))
-
-        if (has_bom_le || has_nulls) {
-          iconv(list(raw_content), from = "UTF-16LE", to = "UTF-8")[[1]]
-        } else {
-          text_utf8 <- iconv(list(raw_content), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
-          if (grepl("<[0-9a-fA-F]{2}>", text_utf8)) {
-            converted <- iconv(list(raw_content), from = "WINDOWS-1254", to = "UTF-8")
-            if (length(converted) > 0 && !is.na(converted[[1]])) converted[[1]] else text_utf8
-          } else {
-            text_utf8
-          }
-        }
-      }, error = function(e) "")
-
-      sql_query_text <- gsub("^\ufeff", "", sql_query_text)
-    }
-  }
-  if (!nzchar(sql_query_text) && !is.null(query$sql)) {
-    sql_query_text <- query$sql
+  # D16: SQL kayna\u011f\u0131 ANA YOL ile ayn\u0131d\u0131r \u2014 startup'ta \u00f6ny\u00fcklenen `query$sql`
+  # B\u0130R\u0130NC\u0130LD\u0130R. Eski kod dosyay\u0131 \u0130STEK ANINDA yeniden okuyordu; UNC'de yava\u015ft\u0131
+  # ve tekil modun \u00e7al\u0131\u015ft\u0131rd\u0131\u011f\u0131 metinden sapabiliyordu.
+  sql_source <- pk_deep_query_sql_text(query)
+  sql_query_text <- sql_source$sql
+  if (!identical(sql_source$source, "preloaded") && nzchar(sql_query_text)) {
+    cat(sprintf("[DEEP_QUERY] '%s' - UYARI: onyuklu SQL bos, dosyaya dusuldu.\n", query_name))
   }
 
   if (!nzchar(sql_query_text)) {
@@ -263,13 +239,37 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     )))
   }
 
-  raw_data <- tryCatch(
-    DBI::dbGetQuery(conn, trimws(sql_query_text)),
-    error = function(e) {
-      cat(sprintf("[DEEP_QUERY] '%s' - SQL hatası: %s\n", query_name, e$message))
-      NULL
-    }
+  # D16 + Faz 6 (§5.10): ANA YOL ile aynı Unicode parametre yolu (Türkçe/köşeli
+  # parantezli sütun adları), ifade zaman aşımı, sınırlı parça getirimi ve
+  # parçalar arasında iptal/son tarih yoklaması. Eski satır düz
+  # `DBI::dbGetQuery()` idi ve iki mod Türkçe tanımlayıcılarda FARKLI davranıyordu.
+  # Önbellek anahtarı YETKİ İMZASINI taşır; isabet hiçbir kapıyı atlamaz (aşağıda
+  # gerçek-sütun doğrulaması ve RLS koşulsuz çalışır).
+  sql_exec <- pk_deep_execute_sql(
+    conn = conn, sql_text = sql_query_text,
+    deadline_at = detail_config$pk_deadline_at,
+    cancel_token = detail_config$pk_cancel_token,
+    query_meta = query$meta,
+    cache_key = pk_query_result_cache_key(query, rls_info, sql_query_text, engine = "deep")
   )
+
+  if (identical(sql_exec$status, "cancelled")) return(NULL)
+
+  if (!identical(sql_exec$status, "ok")) {
+    cat(sprintf("[DEEP_QUERY] '%s' - SQL durumu: %s\n", query_name, sql_exec$status))
+    return(finish_result(list(
+      query_name = query_name,
+      success = FALSE,
+      error_msg = switch(
+        sql_exec$status,
+        deadline = "Analiz zaman aşımına uğradı; sorgu çalıştırılamadı.",
+        too_large = "Sonuç kümesi güvenli bellek sınırını aşıyor.",
+        "Sorgu çalıştırılamadı."
+      )
+    )))
+  }
+
+  raw_data <- sql_exec$data
 
   if (is.null(raw_data)) {
     return(finish_result(list(
@@ -433,62 +433,44 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
 
   detail_config <- get_analysis_detail_config(detail_level)
 
+  # Faz 6 (§5.10): TÜM analizin duvar-saati son tarihi ve iptal jetonu, her
+  # sorgunun SQL yürütmesine taşınır. Ardışık geçerli SQL zaman aşımlarının
+  # toplamı bu bütçeyi AŞAMAZ; sonraki derin sorgu yalnızca KALAN bütçeyi alır.
+  detail_config$pk_deadline_at <- pk_deadline_at(
+    pk_started_at,
+    tryCatch(pk_config_resolve("MERGEN_PK_ANALYSIS_DEADLINE_SEC"), error = function(e) 300L)
+  )
+  detail_config$pk_cancel_token <- if (nzchar(as.character(pk_request_id %||% "")[1])) {
+    pk_cancel_token_path(pk_request_id)
+  } else {
+    NULL
+  }
+
+  # D16: kimlik ANA YOL ile AYNI kapıdan geçer. Eski satır
+  # `session$userData$system_username %||% "Unknown"` idi ve SSO hazırlık
+  # kapısını ATLIYORDU: derin mod RLS aramasını "Unknown" olarak yapabiliyordu.
+  # Kimlik hazır değilse DB'ye HİÇ gidilmez.
+  identity_state <- pk_deep_resolve_username(session)
+  if (!isTRUE(identity_state$ready)) {
+    cat(sprintf("[DEEP_ANALYSIS] Kimlik hazir degil. Sebep: %s\n", identity_state$reason))
+    return(identity_state$message)
+  }
+  username <- identity_state$username
+
   conn_list <- get_connection()
   conn <- conn_list$conn
   on.exit(release_connection(conn_list), add = TRUE)
 
-  username <- session$userData$system_username %||% "Unknown"
-
-  pk_observe_deep <- function(observation) {
-    if (!exists("pk_analysis_observe", mode = "function", inherits = TRUE)) return("")
-
-    info <- list(
-      request_id = pk_request_id,
-      question = user_prompt,
-      username = username,
-      engine = "v1",
-      deep_thinking = TRUE,
-      duration_ms = as.numeric(difftime(Sys.time(), pk_started_at, units = "secs")) * 1000
-    )
-    if (is.list(observation) && length(observation) > 0L) {
-      info[names(observation)] <- observation
-    }
-
-    tryCatch({
-      footer <- pk_analysis_observe(session, conn, info)
-      footer <- as.character(footer)[1]
-      if (is.na(footer)) "" else footer
-    }, error = function(e) "")
-  }
-
-  stash_deep_footer <- function(footers) {
-    if (!exists("pk_provenance_stash", mode = "function", inherits = TRUE)) {
-      return(invisible(FALSE))
-    }
-
-    footers <- as.character(footers)
-    footers <- footers[!is.na(footers) & nzchar(footers)]
-    if (length(footers) == 0L) return(invisible(FALSE))
-
-    standard_prefix <- "\n\n---\n**Analiz Kaynağı**\n"
-    bodies <- vapply(footers, function(footer) {
-      body <- if (startsWith(footer, standard_prefix)) {
-        substring(footer, nchar(standard_prefix) + 1L)
-      } else {
-        footer
-      }
-      sub("\n$", "", body)
-    }, character(1))
-
-    combined_footer <- paste0(
-      "\n\n---\n",
-      "**Analiz Kaynağı (Derin Analiz)**\n",
-      paste(bodies, collapse = "\n\n"),
-      "\n"
-    )
-
-    pk_provenance_stash(session, combined_footer, request_id = pk_request_id)
-  }
+  # Gözlem + birleşik köken alt bilgisi kapanışları FABRİKADADIR
+  # (R/helpers_deep_analysis_reconcile.R): orkestratör bakım ratchet bütçesinin
+  # (659 satır) altında kalmalıdır. Davranış BİREBİR korunur.
+  deep_observers <- pk_deep_observation_helpers(
+    session = session, conn = conn, username = username,
+    user_prompt = user_prompt, request_id = pk_request_id,
+    started_at = pk_started_at
+  )
+  pk_observe_deep <- deep_observers$observe
+  stash_deep_footer <- deep_observers$stash
 
   rls_info <- get_user_rls_info(username, conn)
 
@@ -521,8 +503,13 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
     isTRUE(pk_engine_is_v2()) &&
     exists("pk_select_query_v2", mode = "function", inherits = TRUE)
 
+  # Faz 6: sıralı-küme tavanı YAPILANDIRMADAN gelir (§9/§10); kodda sabit 5 kalmaz.
+  deep_query_ceiling <- pk_deep_max_queries()
+
   selected_queries <- if (pk_v2_secim) NULL else {
-    find_multiple_queries_with_ai(user_prompt, query_library, session, max_queries = 5)
+    find_multiple_queries_with_ai(
+      user_prompt, query_library, session, max_queries = deep_query_ceiling
+    )
   }
 
   if (is.null(selected_queries) || length(selected_queries) == 0) {
@@ -570,6 +557,19 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   for (i in seq_along(selected_queries)) {
     if (is.function(stop_check) && isTRUE(stop_check())) {
       cat(sprintf("[DEEP_ANALYSIS] Sorgu %d/%d - Durdurma talebi.\n", i, length(selected_queries)))
+      break
+    }
+
+    # Faz 6: SORGULAR ARASINDA son tarih/iptal kapısı. Aksi hâlde bütçe dolmuş
+    # olsa bile kalan sorgular sırayla çalışıp bağlantıyı tutmaya devam ederdi.
+    deep_gate <- pk_async_stage_gate(
+      detail_config$pk_cancel_token, detail_config$pk_deadline_at
+    )
+    if (isTRUE(deep_gate$halt)) {
+      cat(sprintf(
+        "[DEEP_ANALYSIS] Sorgu %d/%d - durum=%s; kalan sorgular calistirilmadi.\n",
+        i, length(selected_queries), deep_gate$status
+      ))
       break
     }
 
@@ -632,8 +632,13 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   }, character(1))
   stash_deep_footer(deep_footers)
 
-  successful_count <- sum(vapply(query_results, function(r) isTRUE(r$success), logical(1)))
-  failed_count <- length(query_results) - successful_count
+  # Faz 6 (D16, §10): PAKET seviyesinde uzlaştırma. Her paket kendi kökenini
+  # taşır; çapraz sorgu aritmetiği YASAKTIR ve kısıt istem bağlamına yazılır.
+  reconciliation <- pk_deep_reconcile_packets(query_results)
+  detail_config$pk_cross_query_instruction <- reconciliation$instruction
+
+  successful_count <- reconciliation$successful
+  failed_count <- reconciliation$failed
   cat(sprintf("[DEEP_ANALYSIS] %d sorgu tamamlandı (%d başarılı, %d başarısız), bağlam oluşturuluyor...\n",
               length(query_results), successful_count, failed_count))
 

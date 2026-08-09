@@ -4167,6 +4167,142 @@ The split is protected by:
 * `tests/testthat/test-pk-analysis-maintainability-contract.R`
 * `tests/testthat/test-source-manifest-sections-contract.R`
 
+### Proje ve Kaynak Analizi non-blocking execution contract (Phase 6, §5.10)
+
+Proje ve Kaynak Analizi execution is a protected CONCURRENCY boundary. Before this
+layer existed, `pk_analiz_process_request()` ran a SQL fetch plus two serial LLM
+calls **directly on the Shiny event loop**, and Deep Thinking ran 1 + up to 5 LLM
+calls plus 5 SQL round trips the same way (D15). On the VM that froze every other
+user's session. Full design: `docs/proje-kaynak-analizi-master-plan.md` §5.10.
+
+Non-negotiable rules:
+
+- **`MERGEN_PK_ASYNC` is a SEPARATE kill switch from `MERGEN_PK_ENGINE`, default
+  `false`.** The two flags are orthogonal by design so v2 can be adopted on the VM
+  while execution stays synchronous. Do not couple them, and do not flip the async
+  default merely because offline tests pass — the benefit (event-loop
+  responsiveness) **cannot be proven offline**. Rollback is that one line plus a
+  full R process restart.
+- **Dispatch is `tracked_future_promise(..., dependency_mode = "explicit")`.** Auto
+  mode runs `codetools::findGlobals()` on the event loop, which is the very freeze
+  Phase 6 removes. The globals bundle is memoized once per process
+  (`pk_async_worker_globals()`) and stays SMALL (~10 entries): the pipeline's
+  hundreds of functions are loaded IN THE WORKER by
+  `pk_async_worker_bootstrap()`, from the FROZEN manifest-section list
+  `pk_async_worker_manifest_sections()`. The list is frozen by SECTION, not by
+  file, so adding a helper to a listed section needs no change here; UI/module/
+  observer sections are deliberately excluded (there is no Shiny in the worker).
+- **No `session`, reactive value, or DB connection is ever serialized.**
+  `pk_async_build_request()` produces a plain immutable snapshot and
+  `pk_async_validate_request()` defensively rejects functions, environments and
+  `ShinySession`/`reactivevalues`/`DBIConnection`-shaped objects — a silent leak
+  becomes an unreadable worker serialization error in production. A snapshot that
+  fails validation falls back to the SYNCHRONOUS path; it is never sent anyway.
+- **Identity and the API key are resolved in the MAIN process.**
+  `resolve_pk_analysis_username()` runs before dispatch, so an SSO-not-ready
+  request never starts a worker (this also closes the D16 identity hole). Only a
+  key whose source is genuinely `personal` travels; a `default` institutional key
+  is NOT copied — the worker resolves it from its own environment, preserving the
+  personal/default semantics exactly.
+- **Cancellation must reach the worker.** Discarding the callback leaves the worker
+  running, still holding a DB connection and a worker slot; a handful of stopped
+  analyses would exhaust the pool. `R/helpers_pk_async_cancel.R` owns a
+  worker-visible **stop-file token** (same semantics as `streaming_should_stop()`:
+  only a REAL file is a stop flag — a directory, `NULL`, `NA` or `""` is not). The
+  Stop observer signals it **before** changing `active_request_id`, and
+  `onSessionEnded` signals it too. Inside the worker the token plus the deadline
+  become a LOCAL `stop_check` closure, so the pipeline's existing stage checks
+  become cancellation-aware with no pipeline change.
+- **Timeouts are always bounded by the remaining whole-analysis budget.**
+  `pk_sql_timeout_plan(configured, remaining)` returns
+  `min(configured, floor(remaining))` and refuses to dispatch at zero budget. A
+  per-query override may RAISE the SQL timeout but can never extend
+  `MERGEN_PK_ANALYSIS_DEADLINE_SEC`; a later Deep Thinking query receives only the
+  residual budget, so a sequence of individually valid timeouts cannot exceed the
+  request deadline. Cancellation, deadline and ordinary error stay THREE distinct
+  typed outcomes with distinct Turkish messages — never collapse them.
+- **Row capping is authorization-aware.** `pk_row_cap_plan()` returns
+  `sql_cap_after_authorization` (RLS pushed into SQL), `aggregate_full_cap_detail`
+  (statistics over the whole authorized set, only delivered detail rows trimmed) or
+  an explicit `refuse`. A naked `TOP n` applied BEFORE authorization is never a
+  strategy — it keeps an arbitrary prefix and the statistics over it are simply
+  wrong. Any truncation that can affect interpretation is surfaced by
+  `pk_row_cap_truncation_note()`.
+- **Materialization needs a PROVEN upper bound.**
+  `pk_column_width_upper_bound()` returns `NA` for `varchar(max)`,
+  `varbinary(max)`, `text`/`ntext`/`xml`, unknown types and any undeclared length;
+  a SINGLE unbounded column makes the whole result unbounded. Without a proven
+  bound, `pk_result_size_preflight()` requires the bounded chunk path
+  (`pk_sql_execute_bounded()`: `dbSendQuery` + chunked `dbFetch`, cancellation/
+  deadline polled between chunks, `dbClearResult` guaranteed by
+  `on.exit(..., after = FALSE)`, and the chunk that WOULD cross
+  `MERGEN_PK_MAX_RESULT_MB` rejected before acceptance). Observed sample widths,
+  averages and heuristics are not upper bounds.
+- **The cache is bounded by count AND bytes, and is authorization-scoped.**
+  `pk_cache_key()` always includes an RLS signature (`pk_cache_rls_signature()`),
+  so one user's authorized result can never be served to a different scope; a miss
+  is acceptable, a cross-user leak is not. An entry above
+  `MERGEN_PK_CACHE_MAX_ENTRY_MB` is NOT cached at all — it must never evict
+  everything else to fit. Byte accounting is corrected on replacement/eviction/TTL
+  expiry so the total cannot drift. The store is PROCESS-LOCAL; it is not a
+  distributed cache and the byte budgets are per process.
+- **Every promise callback is request-id guarded.** `pk_async_should_apply()`
+  distinguishes `ok` / `stale` / `stopped` / `unknown` and fails closed on a
+  missing id. Session writes harvested from the worker surrogate
+  (`pk_select_state`, `pk_provenance_pending` — an allow-list) are applied ONLY
+  after the guard passes, so a late result cannot overwrite a newer request's
+  selection state or footer. Every reactive read inside a callback is
+  `shiny::isolate()`-wrapped (promise/`later` callbacks run outside a reactive
+  context — the Ortak Oturum lesson).
+- **`server_send_message.R` delegates and stays thin.** The tail after analysis is
+  a single named continuation closure `run_llm_request_stage()`; the sync path
+  calls it inline and the async callback calls it after the guard. ONE body is
+  deliberate — two copies would drift silently once `MERGEN_PK_ASYNC` is on. Do
+  not restore the old inline `analiz_result <- tryCatch(...)` block.
+- **Async is an optimization, never a correctness requirement.** A non-async future
+  plan, a dispatch error, an unsafe snapshot or a worker `bootstrap_failed` all
+  fall back to the SYNCHRONOUS path with a loud operator warning, so the user still
+  gets the right answer.
+- **D16 reconciliation.** `R/helpers_deep_analysis_reconcile.R` closes the last
+  divergences: identity goes through the main path's gate
+  (`pk_deep_resolve_username()`, resolver injectable, fail-closed — never
+  `"Unknown"`); SQL comes from the PRELOADED `query$sql` (no request-time file
+  re-read); execution uses the main path's Unicode parameter route plus the Phase-6
+  bounds (`pk_deep_execute_sql()`); the ranked-set ceiling comes from
+  `pk_deep_max_queries()` (no hard-coded 5); and cancellation/deadline are checked
+  BETWEEN queries. `pk_deep_reconcile_packets()` reconciles at PACKET level:
+  each packet keeps its own provenance, one query's failure never drops its
+  siblings, and `cross_query_arithmetic_allowed` is a CONSTANT `FALSE` —
+  there is deliberately no config key to enable cross-query arithmetic, and matching
+  `grain` is not permission. The prohibition is written into the prompt context.
+- **The operational soak gate carries a PK lane** (`tests/scripts/soak_pk_analysis_lane.R`,
+  Lane E in `docs/operational-soak-gate.md`) with nine gate-enforced thresholds. Its
+  fake-lane smoke profile must PASS before `MERGEN_PK_ASYNC=true` is enabled; a
+  requested-but-unavailable lane FAILS the gate, because a skipped lane is never
+  evidence. It does NOT prove event-loop responsiveness, real worker-pool
+  saturation, real LLM behavior, or SQL Server timeout behavior.
+
+Protected by:
+
+- `tests/testthat/test-pk-async-contract.R`
+- `tests/testthat/test-pk-async-cancel-behavior.R`
+- `tests/testthat/test-pk-async-request-behavior.R`
+- `tests/testthat/test-pk-async-worker-behavior.R`
+- `tests/testthat/test-pk-async-dispatch-behavior.R`
+- `tests/testthat/test-pk-cache-behavior.R`
+- `tests/testthat/test-pk-result-size-behavior.R`
+- `tests/testthat/test-pk-sql-execute-bounded-behavior.R`
+- `tests/testthat/test-deep-analysis-reconcile-behavior.R`
+- `tests/testthat/test-operational-soak-gate-contract.R`
+- `tests/testthat/test-source-manifest-sections-contract.R`
+- `tests/testthat/test-maintainability-ratchet.R`
+
+VM-only proof (NOT provable in cloud): a second browser session staying responsive
+while a large analysis runs; real future worker-pool saturation and queueing; real
+SQL Server query-timeout behavior; DB connection release under real ODBC; SSO
+identity/RLS correctness for the worker surrogate; and Deep Thinking producing the
+same answer as before the reconciliation.
+
 ### File Manager modularization contract
 
 The File Manager layer is intentionally split to keep the large runtime module from growing again. Preserve this source order in `R/config_source_manifest.R`:

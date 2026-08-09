@@ -109,6 +109,47 @@ açmaz**. Etkileşimli serit bu boşluğu kapatır.
   eşzamanlılığı ya da UNC/ağ paylaşımı gecikmesi DEĞİL. Bu sınırlar
   `soak_evidence.json` içinde `does_not_prove` altında açıkça yazılır.
 
+### Lane E — PK-analiz (Faz 6 bloklamayan yürütme)
+
+Proje ve Kaynak Analizi'nin **bloklamayan yürütme** katmanı (iptal jetonu, duvar
+saati son tarihi, boyut sınırlı LRU önbellek, sınırlı SQL getirimi, istek-kimliği
+koruması ve işçi-güvenli anlık görüntü) **yük altında** çalıştırılır. İki-tarayıcı
+mutlu-yol kontrolü iptal fırtınasını, bayat tamamlanmayı, önbellek/bağlantı
+baskısını ve ardışık derin sorgu bütçesini **ölçemez**; Faz 6 planın en riskli
+eşzamanlılık değişikliğidir.
+
+- `tests/scripts/soak_pk_analysis_lane.R`; varsayılan AÇIK
+  (`MERGEN_SOAK_PK_LANE=true`), gerçek LLM/SQL Server GEREKTİRMEZ.
+- Her "oturum": istek kimliği üretimi → **işçi-güvenli anlık görüntü doğrulaması**
+  (`pk_async_validate_request`) → önbellek yoklama (`pk_cache_get/put`, yetki
+  imzalı anahtar) → **gerçek** sınırlı SQL getirimi (`pk_sql_execute_bounded`:
+  `dbSendQuery` + parçalı `dbFetch` + parça arası iptal/son tarih yoklaması) →
+  yetki farkında satır tavanı planı → **istek-kimliği koruması**
+  (`pk_async_should_apply`).
+- Üretilen baskılar: **iptal fırtınası** (her N. istek gerçek jeton dosyasıyla
+  iptal edilir), **bayat tamamlanma** (daha yeni istek eski geri çağrıyı
+  geçersiz kılar), **tekrarlayan/önbelleklenebilir istekler** (hit oranı +
+  tahliye), **çoklu yetki kapsamı** (kullanıcılar arası önbellek izolasyonu) ve
+  **Derin Düşünme bütçe bölüşümü**.
+- Gate-enforced eşikler: `pk_analysis_success_rate`, `pk_cancel_honoured`,
+  `pk_cancelled_never_applied`, `pk_stale_never_applied`,
+  `pk_fresh_always_applied`, `pk_snapshot_worker_safe`,
+  `pk_deep_deadline_respected`, `pk_connection_usable_after_fetch`,
+  `pk_cache_within_budget`. Serit **istendi ama çalışmadıysa**
+  `pk_analysis_lane_available` FAIL olur — atlanmış serit asla kanıt değildir.
+- **Sınır:** tek-süreçte **ardışık** oturumlardır (gerçek tarayıcı/websocket
+  eşzamanlılığı DEĞİL), **gerçek future işçi havuzu doygunluğu DEĞİL**, **gerçek
+  LLM davranışı DEĞİL**, **lane-yerel SQLite** kullanır (üretim T-SQL/ODBC
+  DEĞİL) ve **SQL Server sorgu zaman aşımı mekanizmasının gerçekten
+  uygulandığını KANITLAMAZ**. Bu sınırlar `soak_evidence.json` içinde
+  `pk_analysis_lane.does_not_prove` altında açıkça yazılır.
+
+> **`MERGEN_PK_ASYNC=true` açılmadan ÖNCE en az bu seridin fake-lane smoke
+> profilinde geçmesi gerekir** (master plan §8, Faz 6). Geçmesi, olay döngüsü
+> yanıt verebilirliğini kanıtlamaz — o yalnızca Windows VM'de ölçülebilir.
+
+---
+
 > HTTP seridi `MERGEN_SOAK_HTTP_LANE=false` ile kapatılabilir; bu durumda kapı
 > yalnızca in-process + etkileşimli seritleri çalıştırır ve **çalışan bir uygulama
 > URL'sine ihtiyaç duymaz** (bulut/uygulamasız etkileşimli kanıt için). HTTP
@@ -306,6 +347,25 @@ Rscript tests/scripts/run_operational_soak_gate.R
 | `MERGEN_SOAK_INTERACTIVE_LANE` | etkileşimli in-process oturum seridi (varsayılan TRUE) |
 | `MERGEN_SOAK_INTERACTIVE_USERS` | etkileşimli oturum sayısı (varsayılan `min(max(users,8),50)`) |
 | `MERGEN_SOAK_INTERACTIVE_ITERATIONS` | oturum kümesinin tekrar sayısı (varsayılan 1) |
+
+### PK-analiz seridi (Faz 6)
+
+| Değişken | Varsayılan | Açıklama |
+|---|---|---|
+| `MERGEN_SOAK_PK_LANE` | `true` | PK-analiz seridini aç/kapat. Kapatmak Faz 6 kapsamını KAYBEDER. |
+| `MERGEN_SOAK_PK_SESSIONS` | `max(users*3, 60)` (≤400) | Analiz oturumu sayısı. |
+| `MERGEN_SOAK_PK_DISTINCT_USERS` | `6` | Farklı yetki kapsamı sayısı (önbellek izolasyonu). |
+| `MERGEN_SOAK_PK_DISTINCT_QUERIES` | `5` | Farklı sorgu kimliği (önbellek hit oranı). |
+| `MERGEN_SOAK_PK_DEADLINE_SEC` | `300` | Analiz duvar-saati bütçesi. |
+| `MERGEN_SOAK_PK_SQL_TIMEOUT_SEC` | `120` | Yapılandırılmış SQL zaman aşımı. |
+| `MERGEN_SOAK_PK_ROW_CAP` | `50000` | Satır tavanı planı girdisi. |
+| `MERGEN_SOAK_PK_ROWS_PER_QUERY` | `4000` | Sorgu başına satır (getirim baskısı). |
+| `MERGEN_SOAK_PK_CHUNK_ROWS` | `1000` | Parça başına satır. |
+| `MERGEN_SOAK_PK_MAX_RESULT_MB` | `512` | Aktif sonuç/önbellek bayt tavanı. |
+| `MERGEN_SOAK_PK_CANCEL_EVERY` | `7` | Her N. istek gerçekten iptal edilir. |
+| `MERGEN_SOAK_PK_STALE_EVERY` | `5` | Her N. istek bayat tamamlanma üretir. |
+| `MERGEN_SOAK_PK_DEEP_EVERY` | `9` | Her N. istek Derin Düşünme olur. |
+| `MERGEN_SOAK_PK_DEEP_MAX_QUERIES` | `5` | Derin sıralı-küme tavanı (bütçe bölüşümü). |
 
 ### Kapasite eğrisi
 

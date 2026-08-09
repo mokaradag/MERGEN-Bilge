@@ -57,7 +57,8 @@ soak_source_modules <- function(env = parent.frame()) {
 soak_operational_scripts <- function() {
   c("run_operational_soak_gate.R", "soak_config.R", "soak_secret_redaction.R",
     "soak_metrics.R", "soak_scenarios.R", "soak_system_telemetry.R", "soak_client.R",
-    "soak_interactive_lane.R", "soak_artifacts.R", "mock_llm_server.R",
+    "soak_interactive_lane.R", "soak_pk_analysis_lane.R",
+    "soak_artifacts.R", "mock_llm_server.R",
     "proxy_llm_server.R")
 }
 
@@ -372,12 +373,31 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
                                     safe_path_allows_safe = TRUE),
                  session_cleanup = list(safe_unlink_ok = TRUE))
   mg <- env$soak_memory_growth(env$soak_sample_memory(), env$soak_sample_memory())
-  checks <- env$soak_evaluate_thresholds(cfg, s, inproc, list(total_leaks = 0L), mg, 0, TRUE, 0L)
+  # FAZ 6: PK-analiz seridi varsayilan ACIK oldugu icin gecen bir serit sonucu
+  # verilir; ATLANMIS seridin ENFORCED FAIL uretmesi asagida AYRICA kanitlanir.
+  pk_ok <- list(
+    available = TRUE, sessions = 60L,
+    summary = list(success_rate = 1, ok = 52L, cancelled = 8L, stale = 12L,
+                   p50_ms = 3, p95_ms = 9, p99_ms = 14),
+    cancel = list(storm_rounds = 8L, honoured = TRUE, never_applied = TRUE),
+    guard = list(stale_rounds = 12L, stale_never_applied = TRUE,
+                 fresh_always_applied = TRUE, snapshot_all_worker_safe = TRUE),
+    cache = list(entries = 20L, total_mb = 9.5, hit = 22L, miss = 38L,
+                 evicted = 0L, rejected_oversize = 0L, hit_observed = TRUE),
+    deep = list(dispatched = 3L, total_effective_sec = 300, budget_sec = 300,
+                budget_respected = TRUE),
+    db = list(connection_usable_after_bounded_fetch = TRUE),
+    does_prove = "test", does_not_prove = "test"
+  )
+
+  checks <- env$soak_evaluate_thresholds(cfg, s, inproc, list(total_leaks = 0L), mg, 0, TRUE, 0L,
+                                         NULL, NULL, pk_ok)
   outcome <- env$soak_threshold_outcome(checks)
   proofs <- env$soak_proof_statements(cfg, s, inproc, list(reachable = FALSE))
   ev <- env$soak_build_evidence(cfg, s, inproc, NULL, list(), list(total_leaks = 0L),
                                 list(), mg, list(), list(reachable = FALSE), NULL, checks, outcome,
-                                proofs, 1.0, character(0), character(0), TRUE, 0L)
+                                proofs, 1.0, character(0), character(0), TRUE, 0L,
+                                NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, pk_ok)
 
   # Sema alanlari mevcut.
   for (field in c("schema_version", "llm_lane", "user_base_target", "configured_concurrent_users",
@@ -390,6 +410,32 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
   testthat::expect_true(length(ev$does_not_prove) >= 3L)
   testthat::expect_true(ev$metrics$effective_success_rate >= 0.99)
   testthat::expect_true(ev$pass)
+
+  # FAZ 6 ENFORCEMENT: serit ISTENDI ama CALISMADIYSA kapi FAIL olmali.
+  # Atlanmis serit ASLA kanit degildir (master plan bolum 8, Faz 6).
+  checks_atlanmis <- env$soak_evaluate_thresholds(
+    cfg, s, inproc, list(total_leaks = 0L), mg, 0, TRUE, 0L, NULL, NULL, NULL
+  )
+  pk_yok <- Filter(function(c) identical(c$name, "pk_analysis_lane_available"),
+                   checks_atlanmis)
+  testthat::expect_length(pk_yok, 1L)
+  testthat::expect_false(isTRUE(pk_yok[[1]]$pass))
+  testthat::expect_false(isTRUE(env$soak_threshold_outcome(checks_atlanmis)$pass))
+
+  # PK serit esikleri gecen sonucta PASS olmali ve HEPSI olculmus olmali.
+  pk_adlari <- c("pk_analysis_success_rate", "pk_cancel_honoured",
+                 "pk_cancelled_never_applied", "pk_stale_never_applied",
+                 "pk_fresh_always_applied", "pk_snapshot_worker_safe",
+                 "pk_deep_deadline_respected", "pk_connection_usable_after_fetch",
+                 "pk_cache_within_budget")
+  for (ad in pk_adlari) {
+    kontrol <- Filter(function(c) identical(c$name, ad), checks)
+    testthat::expect_length(kontrol, 1L)
+    testthat::expect_true(isTRUE(kontrol[[1]]$measured), info = ad)
+    testthat::expect_true(isTRUE(kontrol[[1]]$pass), info = ad)
+  }
+  testthat::expect_true("pk_analysis_lane" %in% names(ev))
+  testthat::expect_true(isTRUE(ev$pk_analysis_lane$available))
 
   # Artifact yazimi + redaksiyon self-check (gecici dizinde).
   tmp <- file.path(tempdir(), paste0("soak_art_", as.integer(stats::runif(1, 1, 1e6))))

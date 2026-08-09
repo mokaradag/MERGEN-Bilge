@@ -95,16 +95,11 @@ source_manifest_sections <- list(
   ),
 
   # config_ui_assets: Frontend CSS/JS varlık manifesti (yükleme sırası
-  # sözleşmesi) ve frontend bölge (zone) sahiplik haritası. Bölge haritası
-  # manifestten SONRA yüklenir; yükleme sırasının tek sahibi manifest kalır.
-  # Varlık manifesti VERİ / DOĞRULAYICI / RENDER olarak üç dosyaya bölünmüştür
-  # (config_ui_asset_zones.R deseninin aynısı): VERİ (config_ui_assets.R) ->
-  # SAF çözümleyici/doğrulayıcı API'si (config_ui_asset_validators.R) ->
-  # htmltools etiket render katmanı (config_ui_asset_tags.R). Doğrulayıcı/etiket
-  # fonksiyonları veriyi çağrı anında çözer; veriden hemen sonra yüklenir.
-  # Bölge VERİSİ (config_ui_asset_zones.R) ile bölge DOĞRULAYICI API'si
-  # (config_ui_asset_zone_validators.R) ayrı dosyalardır; doğrulayıcı saf
-  # fonksiyonlar veriden hemen sonra yüklenir (boot'ta çağrılmaz).
+  # sözleşmesi) ve frontend bölge (zone) sahiplik haritası. İkisi de VERİ ->
+  # SAF DOĞRULAYICI -> RENDER olarak bölünmüştür ve doğrulayıcı/etiket
+  # fonksiyonları veriyi ÇAĞRI ANINDA çözdüğü için veriden hemen sonra yüklenir
+  # (boot'ta çağrılmazlar). Bölge haritası varlık manifestinden SONRA gelir;
+  # yükleme sırasının TEK sahibi varlık manifesti kalır.
   config_ui_assets = c(
     "R/config_ui_assets.R",
     "R/config_ui_asset_validators.R",
@@ -153,16 +148,12 @@ source_manifest_sections <- list(
     "R/helpers_database.R"
   ),
 
-  # pk_query_metadata: Proje/Kaynak Analizi sorgu metadata SÖZLEŞMESİ (Faz 3a).
-  # Sıra master plan §6 tarafından zorunlu kılınmıştır: Türkçe katlama
-  # yardımcısı önce yüklenir (alias anahtarları onunla normalleştirilir),
-  # ardından dört metadata/alias veri katmanı iskelet -> üretilen -> küre
-  # edilmiş -> yerel alias sırasıyla gelir ve hepsi R/config_sql_loader.R
-  # (bir sonraki bölüm) öncesinde biter; birleştirme/doğrulama orada çağrılır.
-  #
-  # Yerel iki dosya BİLİNÇLİ olarak opsiyoneldir: üretimden türetilmiş şema
-  # istatistikleri ve kurumsal kanonik adlar taşıdıkları için gitignore'ludur
-  # ve bulut checkout'unda YOKTUR. Yoklukları normaldir, hata değildir.
+  # pk_query_metadata: PK sorgu metadata SÖZLEŞMESİ (Faz 3a). Sıra §6 ile
+  # ZORUNLU: Türkçe katlama yardımcısı önce (alias anahtarlarını normalleştirir),
+  # sonra dört veri katmanı (iskelet -> üretilen -> küre edilmiş -> yerel alias);
+  # hepsi R/config_sql_loader.R'den ÖNCE biter (birleştirme/doğrulama orada).
+  # Yerel iki dosya BİLİNÇLİ opsiyoneldir (gitignore'lu; üretim şema
+  # istatistikleri/kanonik adlar): bulut checkout'unda yoklukları NORMALDİR.
   pk_query_metadata = c(
     "R/helpers_pk_text_turkish.R",
     "R/helpers_pk_query_meta_schema.R",
@@ -280,6 +271,14 @@ source_manifest_sections <- list(
     # (saf) -> telemetri yazımı (DB). Bağımlılık sırası zorunludur: yazım
     # katmanı hem config'i, hem provenance'ı, hem de saf kayıt katmanını kullanır.
     "R/helpers_pk_config.R",
+    # Faz 6 (§5.10) bloklamayan yürütme; sıra ZORUNLU (bkz. dosya başlıkları).
+    "R/helpers_pk_async_cancel.R",
+    "R/helpers_pk_result_size.R",
+    "R/helpers_pk_cache.R",
+    "R/helpers_pk_sql_execute.R",
+    "R/helpers_pk_async_bootstrap.R",
+    "R/helpers_pk_async_request.R",
+    "R/helpers_pk_async_worker.R",
     "R/helpers_pk_provenance.R",
     "R/helpers_pk_telemetry_record.R",
     "R/helpers_pk_telemetry_base.R",
@@ -329,8 +328,9 @@ source_manifest_sections <- list(
     "R/helpers_pk_export_xlsx.R",
     "R/helpers_pk_answer_compose.R",
     "R/helpers_pk_analysis_result.R",
-    # Derin analiz: saf detay seviyesi kataloğu ve saf bağlam/prompt kurucu,
-    # orkestratörden ÖNCE yüklenir (bakım borcu ratchet'i için bölünmüştür).
+    # Derin analiz: detay kataloğu + bağlam kurucu orkestratörden ÖNCE; Faz 6
+    # (D16) uzlaştırma katmanı ikisinden de ÖNCE (ikisi de onu çağırır).
+    "R/helpers_deep_analysis_reconcile.R",
     "R/helpers_deep_analysis_detail.R",
     "R/helpers_deep_analysis_context.R",
     "R/helpers_deep_analysis.R",
@@ -343,19 +343,14 @@ source_manifest_sections <- list(
     # v1 AI seçicisi modülden ÇIKARILDI (ratchet bölünmesi); davranış BİREBİR
     # korunur ve v2 hattı bu dosyayı çağırmaz.
     "R/helpers_pk_analysis_ai_selector.R",
-    # Faz 5 (§5.2) iki geçişli sorgu seçimi. Bağımlılık sırası zorunludur:
-    # sözlüksel getirim (saf) -> istem/yapılandırma kurucuları -> ayrıştırma ve
-    # karar politikası -> LLM orkestrasyonu -> çalışma zamanına bağlama.
-    # Tümü v1 sezgiselinden SONRA yüklenir: bağlama katmanı v1 uyumlu
-    # `all_scores` tablosunu `pk_init_query_score_table()` üzerinden kurar.
-    # Sözlüksel katman KARAR VERMEZ (D10); yalnızca bozulma kipi, uyuşmazlık
-    # sinyali ve altın küme tanılaması içindir.
-    #
-    # Zincir: sözlüksel getirim (saf) -> katı JSON ilkeleri -> kapalı-başarısız
-    # yapılandırma -> istem yükü -> mesaj kurulumu -> `requirements`
-    # doğrulaması -> ayrıştırma -> karar politikası -> bozulma kipi -> geçmiş
-    # kimliği -> oturum durumu -> recall tohumu -> LLM orkestrasyonu -> derin
-    # analiz köprüsü -> çalışma zamanına bağlama.
+    # Faz 5 (§5.2) iki geçişli sorgu seçimi; bağımlılık zinciri ZORUNLU:
+    # sözlüksel getirim (saf) -> katı JSON ilkeleri -> kapalı-başarısız
+    # yapılandırma -> istem yükü -> mesaj kurulumu -> `requirements` doğrulaması
+    # -> ayrıştırma -> karar politikası -> bozulma kipi -> geçmiş kimliği ->
+    # oturum durumu -> recall tohumu -> LLM orkestrasyonu -> derin analiz
+    # köprüsü -> çalışma zamanına bağlama. Tümü v1 sezgiselinden SONRA yüklenir
+    # (bağlama katmanı v1 uyumlu `all_scores` tablosunu kurar). Sözlüksel katman
+    # KARAR VERMEZ (D10); yalnızca bozulma/uyuşmazlık/altın küme tanılaması içindir.
     "R/helpers_pk_query_retrieval.R",
     "R/helpers_pk_query_selection_json.R",
     "R/helpers_pk_query_selection_config.R",
@@ -772,6 +767,10 @@ source_manifest_sections <- list(
     "R/helpers_llm_true_streaming_worker.R",
     "R/server_handler_true_streaming.R",
     "R/server_handler_streaming_tts.R",
+    # Faz 6: PK gönderim katmanı; uygulama yardımcıları orkestratörden, ikisi de
+    # send_message'dan ÖNCE (o DELEGE eder).
+    "R/helpers_pk_async_apply.R",
+    "R/server_handler_pk_async.R",
     "R/server_llm_response_handlers.R",
     "R/server_send_message.R"
   )

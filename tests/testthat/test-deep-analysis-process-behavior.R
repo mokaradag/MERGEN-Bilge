@@ -18,7 +18,23 @@
 .deepProcessEnv <- function() {
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+
+  # Faz 6: orkestratör artık iptal/son tarih aritmetiğini, yapılandırma
+  # çözümleyicisini ve derin uzlaştırma katmanını (D16) kullanır. CLAUDE.md
+  # kuralı gereği izole test GERÇEK sahip dosyaları yükler; stub'lanmaz.
+  for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
+                  "helpers_pk_result_size.R", "helpers_pk_sql_execute.R",
+                  "helpers_deep_analysis_reconcile.R")) {
+    source(file.path(kok, "R", dosya), encoding = "UTF-8", local = env)
+  }
+
   source(file.path(kok, "R", "helpers_deep_analysis.R"), encoding = "UTF-8", local = env)
+
+  # D16 kimlik kapısı: ana yolun çözümleyicisi stub'lanır (SSO/DB yok).
+  env$resolve_pk_analysis_username <- function(session) {
+    list(ready = TRUE, username = "kullanici1", reason = "ok")
+  }
 
   env$cat <- function(...) invisible(NULL)
   env$query_library <- list()

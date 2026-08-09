@@ -40,6 +40,16 @@ chatInputObserversInit <- function(input, session, values, settings_data,
 
     if (isTRUE(values$is_sending) || isTRUE(values$typing)) {
       cat("[STOP_BUTTON] Kullanıcı durdurma istedi\n")
+
+      # Faz 6 (§5.10): İPTAL İŞÇİYE ULAŞMALIDIR. Geri çağrıyı atmak (aşağıdaki
+      # active_request_id değişimi) işçiyi ÇALIŞMAYA DEVAM ETTİRİR; DB
+      # bağlantısını ve işçi yuvasını tutar. İptal jetonu, aktif istek kimliği
+      # DEĞİŞTİRİLMEDEN ÖNCE işaretlenir — sonra işaretlenirse doğru dosya adı
+      # kaybolurdu.
+      if (exists("mergen_pk_signal_cancel", mode = "function", inherits = TRUE)) {
+        try(mergen_pk_signal_cancel(isolate(active_request_id())), silent = TRUE)
+      }
+
       stop_generation(TRUE)
       active_request_id(paste0("cancelled_", as.numeric(Sys.time())))
     }

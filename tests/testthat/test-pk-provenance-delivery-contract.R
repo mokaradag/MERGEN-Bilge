@@ -45,12 +45,24 @@ test_that("doğrudan AI yanıtları mesaj sınırında bekleyen köken alt bilgi
 
 test_that("derin analiz her sorguyu gözlemler ve tek birleşik köken alt bilgisi saklar", {
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(a, b) if (is.null(a)) b else a
-  source(
-    file.path(resolve_repo_root_for_tests(), "R", "helpers_deep_analysis.R"),
-    encoding = "UTF-8",
-    local = env
-  )
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  # Faz 6 (D16): kimlik kapısı, son tarih aritmetiği, sınırlı SQL yürütme ve
+  # gözlem/alt bilgi FABRİKASI ayrı sahip dosyalarındadır; izole test GERÇEK
+  # sahipleri yükler (CLAUDE.md davranış-testi kuralı).
+  for (yardimci in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
+                     "helpers_pk_result_size.R", "helpers_pk_sql_execute.R",
+                     "helpers_deep_analysis_reconcile.R",
+                     "helpers_deep_analysis.R")) {
+    source(
+      file.path(resolve_repo_root_for_tests(), "R", yardimci),
+      encoding = "UTF-8", local = env
+    )
+  }
+
+  # D16 kimlik kapısı: ana yolun çözümleyicisi stub'lanır (SSO/DB yok).
+  env$resolve_pk_analysis_username <- function(session) {
+    list(ready = TRUE, username = "kullanici1", reason = "ok")
+  }
 
   env$cat <- function(...) invisible(NULL)
   env$query_library <- list()

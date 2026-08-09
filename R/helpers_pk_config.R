@@ -361,6 +361,90 @@ pk_config_spec <- list(
     type = "character",
     default = "log",
     allowed = c("off", "log", "warn", "block")
+  ),
+  # --- Faz 6 (§5.10): bloklamayan yürütme ve performans -------------------
+  # AYRI kill switch: MERGEN_PK_ENGINE'den BAĞIMSIZDIR. v2 motoru VM'de
+  # benimsenirken yürütme senkron kalabilir; en riskli değişiklik böylece
+  # tek başına doğrulanır (§10). Varsayılan KAPALI olmalıdır: bu bayrağın
+  # ana faydası (olay döngüsü yanıt verebilirliği) OFFLINE KANITLANAMAZ.
+  MERGEN_PK_ASYNC = list(
+    type = "logical",
+    default = FALSE
+  ),
+  # ODBC sorgu zaman aşımı: asılı kalan bir ifade bağlantıyı sonsuza kadar
+  # tutmasın. Ağır bir sorgu metadata ile bu değeri YÜKSELTEBİLİR, ancak
+  # asla kalan analiz bütçesinin ötesine geçemez (bkz. pk_sql_timeout_plan).
+  MERGEN_PK_SQL_TIMEOUT_SEC = list(
+    type = "integer",
+    default = 120L,
+    min = 1L
+  ),
+  # TÜM analizin duvar saati bütçesi. İşçi bu bütçe tükendiğinde durur ve
+  # bağlantısını serbest bırakır. Ardışık geçerli zaman aşımlarının toplamı
+  # bu bütçeyi AŞAMAZ.
+  MERGEN_PK_ANALYSIS_DEADLINE_SEC = list(
+    type = "integer",
+    default = 300L,
+    min = 1L
+  ),
+  # Sonuç önbelleği: giriş sayısı tavanı.
+  MERGEN_PK_CACHE_MAX_ENTRIES = list(
+    type = "integer",
+    default = 50L,
+    min = 0L
+  ),
+  # Sonuç önbelleği: toplam bayt bütçesi (MB). TTL TEK BAŞINA yeterli
+  # değildir; pencere içinde üretilen her büyük sonuç aynı anda yerleşik
+  # kalabilir.
+  MERGEN_PK_CACHE_MAX_MB = list(
+    type = "integer",
+    default = 512L,
+    min = 0L
+  ),
+  # Bu boyutun üzerindeki TEK bir giriş HİÇ önbelleğe alınmaz; diğer her şeyi
+  # tahliye ederek kendine yer açması YASAKTIR.
+  MERGEN_PK_CACHE_MAX_ENTRY_MB = list(
+    type = "integer",
+    default = 128L,
+    min = 0L
+  ),
+  # (query_id, rls_signature, filter_signature) önbellek ömrü.
+  MERGEN_PK_CACHE_TTL_SEC = list(
+    type = "integer",
+    default = 300L,
+    min = 0L
+  ),
+  # Derin Düşünme sıralı-küme tavanı (§10). v2 seçimi bu değeri okur; kodda
+  # sabit 5 kalmaz.
+  MERGEN_PK_DEEP_MAX_QUERIES = list(
+    type = "integer",
+    default = 5L,
+    min = 1L,
+    max = 20L
+  ),
+  # TEK bir materyalize sonucun aktif bellek tavanı (MB). Karar frame
+  # YÜKLENMEDEN ÖNCE verilir; önbellek bayt bütçesi yalnızca
+  # materyalizasyondan SONRA geçerlidir, dolayısıyla bir işçiyi tek geniş
+  # sorgudan koruyamaz.
+  MERGEN_PK_MAX_RESULT_MB = list(
+    type = "integer",
+    default = 512L,
+    min = 1L
+  ),
+  # Sonuç-boyutu ön kontrolünde R/sürücü nesne yükü için muhafazakâr çarpan.
+  # Beyan edilmiş maksimum sütun genişliklerinin toplamı, R karakter
+  # vektörlerinin gerçek bellek maliyetini OLDUĞU GİBİ vermez.
+  MERGEN_PK_RESULT_OVERHEAD_FACTOR = list(
+    type = "double",
+    default = 2.5,
+    min = 1
+  ),
+  # Kanıtlanmış üst sınır yokken zorunlu sınırlı-parça (chunk) getiriminde
+  # parça başına satır sayısı.
+  MERGEN_PK_FETCH_CHUNK_ROWS = list(
+    type = "integer",
+    default = 5000L,
+    min = 1L
   )
 )
 
