@@ -378,7 +378,7 @@ source_manifest_sections <- list(
   sso_identity_helpers = c(
     "R/helpers_sso_signature.R",
     "R/helpers_sso.R",
-    "R/helpers_logout.R"
+    "R/helpers_logout_url.R"
   ),
 
   # support_admin_health_helpers: Destek DB, admin analitik ve sağlık
