@@ -13,7 +13,7 @@ required_packages <- c(
   "data.table", "DBI", "dplyr", "DT", "duckdb", "fastmatch",
   "future", "glue", "htmltools", "httr", "jsonlite", "later",
   "logger", "lubridate", "markdown", "odbc", "openssl", "pdftools", "pool",
-  "promises", "purrr", "readr", "readxl", "shiny", "shinyBS",
+  "promises", "purrr", "readr", "readxl", "RSQLite", "shiny", "shinyBS",
   "shinycssloaders", "shinydashboard", "shinyjs", "shinyWidgets",
   "stringdist", "stringi", "stringr", "tibble", "tidyr", "urltools",
   "writexl", "xml2", "av"
