@@ -33,6 +33,52 @@ pk_sql_apply_statement_timeout <- function(conn, timeout_sec) {
   bayt
 }
 
+# A DBI chunk sınırı SATIR sayısını sınırlar; tek bir satırdaki NVARCHAR(MAX),
+# XML veya benzeri LOB yine dbFetch() içinde belleği aşabilir. Bu yüzden sonuç
+# metadata'sı ilk satır materialize edilmeden incelenir. Yalnızca açıkça
+# sınırsız/LOB olduğu kanıtlanan tipler reddedilir; eksik metadata fail-open
+# bırakılır ki normal sabit genişlikli kolonlar yanlışlıkla engellenmesin.
+.pk_sql_has_unbounded_lob <- function(column_info) {
+  if (is.null(column_info) || !is.data.frame(column_info) || nrow(column_info) == 0L) {
+    return(FALSE)
+  }
+
+  metadata_text <- unlist(lapply(column_info, function(x) {
+    tryCatch(as.character(x), error = function(e) character(0))
+  }), use.names = FALSE)
+  metadata_text <- tolower(trimws(metadata_text))
+  metadata_text <- metadata_text[!is.na(metadata_text) & nzchar(metadata_text)]
+
+  if (any(grepl("\\b(n?varchar|varbinary)\\s*\\(\\s*max\\s*\\)",
+                metadata_text, perl = TRUE))) {
+    return(TRUE)
+  }
+
+  explicit_lob <- c(
+    "text", "ntext", "image", "xml", "sql_variant", "json",
+    "geography", "geometry", "longvarchar", "wlongvarchar", "longvarbinary"
+  )
+  if (any(metadata_text %in% explicit_lob)) return(TRUE)
+  if (any(grepl("(^|[^a-z])(longvarchar|wlongvarchar|longvarbinary)([^a-z]|$)",
+                metadata_text, perl = TRUE))) {
+    return(TRUE)
+  }
+
+  alanlar <- tolower(names(column_info))
+  tip_idx <- which(alanlar %in% c("type", "data_type", "sql_type", "type_name", "typename"))
+  boyut_idx <- which(alanlar %in% c("max_length", "column_size", "length"))
+  if (length(tip_idx) > 0L && length(boyut_idx) > 0L) {
+    tipler <- tolower(trimws(as.character(column_info[[tip_idx[1L]]])))
+    boyutlar <- suppressWarnings(as.numeric(column_info[[boyut_idx[1L]]]))
+    if (any(tipler %in% c("varchar", "nvarchar", "varbinary") &
+            !is.na(boyutlar) & boyutlar < 0, na.rm = TRUE)) {
+      return(TRUE)
+    }
+  }
+
+  FALSE
+}
+
 pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
                                    chunk_rows = 5000L, max_result_mb = 512,
                                    stop_check = NULL, stage_gate = NULL,
@@ -154,6 +200,14 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   res <- gonderim$value
   on.exit(try(DBI::dbClearResult(res), silent = TRUE), add = TRUE, after = FALSE)
 
+  # LOB metadata kontrolü dbFetch()'ten ÖNCE yapılır; aksi halde tek bir dev
+  # hücre satır-parça sınırını aşarak süreç belleğinde materialize olabilir.
+  kolon_bilgisi <- tryCatch(DBI::dbColumnInfo(res), error = function(e) NULL)
+  if (isTRUE(.pk_sql_has_unbounded_lob(kolon_bilgisi))) {
+    return(bos("too_large", error = "unbounded_lob_schema",
+               timeout_mechanism = mekanizma))
+  }
+
   parcalar <- list()
   toplam_bayt <- 0
   toplam_satir <- 0L
@@ -171,7 +225,6 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
     if (!is.data.frame(parca) || nrow(parca) == 0L) break
 
     parca_bayt <- .pk_sql_frame_bytes(parca)
-    # Çok parçalı final rbind için tavanın yarısı assembly headroom olarak ayrılır.
     karar <- pk_chunk_accumulate_decision(
       toplam_bayt, parca_bayt, if (parca_sayisi == 0L) tavan_mb else tavan_mb / 2
     )
