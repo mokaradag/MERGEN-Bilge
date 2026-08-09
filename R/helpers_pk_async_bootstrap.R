@@ -18,10 +18,10 @@
 # işçi otomatik olarak onu da alır (sürüklenme yok), ama işçinin GÖREBİLECEĞİ
 # yüzey açıkça gözden geçirilebilir kalır.
 #
-# UI/gözlemci bölümleri BİLİNÇLİ OLARAK DIŞARIDADIR: işçide Shiny yoktur.
-# `module_analysis` ise bir UI modülü değil, PK işçisinin gerçek giriş noktası
-# `pk_analiz_process_request()` fonksiyonunu sahiplenen dosyadır; bu yüzden
-# açıkça bootstrap yüzeyine dahildir.
+# UI/modül/gözlemci bölümleri BİLİNÇLİ OLARAK DIŞARIDADIR: işçide Shiny yoktur.
+# Tek istisna, aşağıdaki dosya-listesi kurucusunda açıkça eklenen gerçek PK giriş
+# dosyasıdır (`module_proje_kaynak_analizi.R`). Böylece bütün module_analysis
+# bölümünü worker yüzeyine açmadan `pk_analiz_process_request()` yüklenir.
 pk_async_worker_manifest_sections <- function() {
   c(
     "foundation",
@@ -33,7 +33,6 @@ pk_async_worker_manifest_sections <- function() {
     "sql_library",
     "language_messaging",
     "analysis_helpers",
-    "module_analysis",
     "llm_pipeline"
   )
 }
@@ -45,7 +44,8 @@ pk_async_worker_manifest_sections <- function() {
 #' @return Repo köküne göreli dosya yolları; sıra manifest sırasıdır
 #'   (BAĞIMLILIK SIRASI KORUNUR).
 pk_async_worker_bootstrap_files <- function(sections = NULL, manifest = NULL) {
-  bolumler <- if (is.null(sections)) pk_async_worker_manifest_sections() else as.character(sections)
+  varsayilan <- is.null(sections)
+  bolumler <- if (varsayilan) pk_async_worker_manifest_sections() else as.character(sections)
 
   if (is.null(manifest)) {
     if (!exists("source_manifest_sections", inherits = TRUE)) return(character(0))
@@ -58,6 +58,15 @@ pk_async_worker_bootstrap_files <- function(sections = NULL, manifest = NULL) {
     dosyalar <- manifest[[bolum]]
     if (is.null(dosyalar)) next
     yollar <- c(yollar, as.character(dosyalar))
+  }
+
+  # Worker'ın gerçek giriş noktası runtime manifestinde module_analysis içinde
+  # yaşar. Bölümün tamamını izinli bölüm listesine katmak yerine yalnızca bu
+  # sahip dosya, varsayılan worker yüzeyinde explicit olarak eklenir.
+  if (isTRUE(varsayilan)) {
+    giris <- as.character(manifest[["module_analysis"]] %||% character(0))
+    giris <- giris[basename(giris) == "module_proje_kaynak_analizi.R"]
+    yollar <- c(yollar, giris)
   }
 
   # Manifest sırası korunur; yalnızca yinelenenler (bölümler arası) tekilleşir.
@@ -130,6 +139,7 @@ pk_async_worker_bootstrap <- function(repo_root, files) {
 pk_async_worker_entry_points <- function() {
   c(
     "pk_analiz_process_request",
+    "pk_sql_execute_bounded",
     "get_connection",
     "release_connection",
     "resolve_pk_analysis_username",
