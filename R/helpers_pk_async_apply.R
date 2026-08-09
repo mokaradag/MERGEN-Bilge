@@ -3,24 +3,9 @@
 # Açıklama: Faz 6 (§5.10) — PK analiz sonucunu mesaj bağlamına uygulama,
 #           SENKRON yürütme yolu, işçi durum -> kullanıcı metni eşlemesi ve
 #           asenkron istek hazırlığı.
-#
-# `R/server_handler_pk_async.R` içinden BÖLÜNMÜŞTÜR (bakım ratchet'inin
-# 25-fonksiyon tavanı). Ayrım aynı zamanda daha iyi bir sınır: "sonucu nasıl
-# uygularım / senkron nasıl çalıştırırım" ile "işçiyi nasıl gönderip yaşam
-# döngüsünü korurum" farklı sorumluluklardır.
-#
-# SENKRON ve ASENKRON yolun AYNI uygulama fonksiyonunu kullanması bilinçlidir:
-# iki ayrı uygulama, `MERGEN_PK_ASYNC` açıldığında sessiz davranış farkı üretirdi.
 # ==============================================================================
 
-
 #' Analiz sonucunu mesaj bağlamına uygula (SENKRON ve ASENKRON için TEK yol)
-#'
-#' Senkron ve asenkron yolun aynı uygulama fonksiyonunu kullanması bilinçlidir:
-#' iki ayrı uygulama, `MERGEN_PK_ASYNC` açıldığında sessiz davranış farkı üretirdi.
-#'
-#' @return `list(action = "continue"|"answer"|"stop", messages_to_process=,
-#'   max_output_tokens=, answer=, chips=)`.
 mergen_pk_apply_analysis_result <- function(analiz_result, messages_to_process) {
   if (is.character(analiz_result)) {
     return(list(action = "answer", answer = as.character(analiz_result)[1],
@@ -58,9 +43,6 @@ mergen_pk_apply_analysis_result <- function(analiz_result, messages_to_process) 
 }
 
 #' Analizi SENKRON çalıştır (v1 uyumluluk yolu; `MERGEN_PK_ASYNC=false`)
-#'
-#' Davranış Faz 5 sonundaki hâliyle BİREBİR aynıdır. Bu fonksiyon yalnızca
-#' mevcut çağrıyı tek bir yere toplar ki asenkron yol ile karşılaştırılabilir olsun.
 mergen_pk_run_sync <- function(ctx) {
   tryCatch({
     if (isTRUE(ctx$deep_thinking)) {
@@ -100,13 +82,77 @@ mergen_pk_worker_outcome_text <- function(status, error = NA_character_) {
   paste0("\U000026A0\U0000FE0F Analiz modülü hatası: ", mesaj)
 }
 
+#' İptal jetonunu OTURUM + istek kimliğiyle adlandır
+#'
+#' İstek sayaçları her Shiny oturumunda yeniden başlayabilir. Yalnız req_id ile
+#' üretilen global temp dosyası bu yüzden iki kullanıcının `request_1` isteğini
+#' aynı cancellation bayrağına bağlayabilirdi. `session$token` Shiny'nin oturum
+#' kapsamlı benzersiz anahtarıdır ve dosya adına slug edilerek eklenir.
+mergen_pk_cancel_token_for_session <- function(session, request_id) {
+  oturum <- tryCatch(as.character(session$token %||% "")[1], error = function(e) "")
+  if (is.na(oturum) || !nzchar(oturum)) oturum <- "session"
+
+  file.path(
+    pk_cancel_token_root(),
+    paste0(
+      "pk_stop_", .pk_cancel_token_slug(oturum), "_",
+      .pk_cancel_token_slug(request_id), ".flag"
+    )
+  )
+}
+
+#' Worker'da yazılmış dışa aktarımı GERÇEK Shiny oturumunda yeniden sun
+#'
+#' Worker vekilinde `registerDataObj` yoktur; dolayısıyla dosya üretilebilir ama
+#' URL üretilemez. Future sonucu ana sürece geldikten sonra aynı artifact gerçek
+#' session ile kaydedilir ve attachment kartındaki düz dosya satırı tıklanabilir
+#' oturum-kapsamlı URL ile değiştirilir.
+mergen_pk_serve_worker_artifact <- function(result, session) {
+  if (!is.list(result) || !is.list(result$pk_attachment)) return(result)
+  if (!exists("pk_export_serve", mode = "function", inherits = TRUE)) return(result)
+
+  eski <- result$pk_attachment
+  yeni <- tryCatch(pk_export_serve(session, eski), error = function(e) eski)
+  result$pk_attachment <- yeni
+
+  if (exists("pk_compose_attachment_card", mode = "function", inherits = TRUE) &&
+      is.character(result$pk_answer_block) && length(result$pk_answer_block) == 1L) {
+    eski_kart <- tryCatch(pk_compose_attachment_card(eski), error = function(e) NULL)
+    yeni_kart <- tryCatch(pk_compose_attachment_card(yeni), error = function(e) NULL)
+    if (is.character(eski_kart) && length(eski_kart) == 1L && nzchar(eski_kart) &&
+        is.character(yeni_kart) && length(yeni_kart) == 1L && nzchar(yeni_kart) &&
+        grepl(eski_kart, result$pk_answer_block, fixed = TRUE)) {
+      result$pk_answer_block <- sub(eski_kart, yeni_kart, result$pk_answer_block, fixed = TRUE)
+    }
+  }
+
+  result
+}
+
+#' Bayat/iptal edilmiş worker sonucunun sunulmamış dosyalarını temizle
+mergen_pk_cleanup_worker_artifact <- function(result) {
+  if (!is.list(result) || !is.list(result$pk_attachment)) return(invisible(FALSE))
+  dosyalar <- result$pk_attachment$files %||% list()
+  if (!is.list(dosyalar) || !length(dosyalar)) return(invisible(FALSE))
+
+  yollar <- vapply(dosyalar, function(x) {
+    if (!is.list(x)) return("")
+    as.character(x$path %||% "")[1]
+  }, character(1))
+  yollar <- yollar[!is.na(yollar) & nzchar(yollar)]
+
+  for (yol in yollar) try(unlink(yol, force = TRUE), silent = TRUE)
+  for (dizin in unique(dirname(yollar))) {
+    if (grepl("(^|/)run_[^/]*$", gsub("\\\\", "/", dizin)) &&
+        dir.exists(dizin) && !length(list.files(dizin))) {
+      try(unlink(dizin, recursive = TRUE, force = TRUE), silent = TRUE)
+    }
+  }
+
+  invisible(length(yollar) > 0L)
+}
+
 #' Asenkron gönderim için istek anlık görüntüsünü hazırla
-#'
-#' Kimlik ve API anahtarı ANA SÜREÇTE çözülür. Bu, D16'nın SSO hazırlık
-#' ihlalini de kapatır: kimlik hazır değilse işçi HİÇ başlatılmaz ve kullanıcı
-#' mevcut Türkçe "kimlik hazırlanıyor" mesajını alır.
-#'
-#' @return `list(ok=TRUE, request=)` veya `list(ok=FALSE, answer=)`.
 mergen_pk_prepare_async_request <- function(ctx) {
   kimlik <- tryCatch(resolve_pk_analysis_username(ctx$session), error = function(e) NULL)
   if (!is.list(kimlik) || !isTRUE(kimlik$ready)) {
@@ -125,9 +171,7 @@ mergen_pk_prepare_async_request <- function(ctx) {
     error = function(e) list(key = "", source = "missing", owner = NULL)
   )
 
-  jeton <- pk_cancel_token_path(ctx$req_id)
-  # Bayat bir jeton dosyası (önceki süreç çökmesi) yeni isteği ANINDA iptal
-  # ederdi; bu yüzden gönderimden önce temizlenir.
+  jeton <- mergen_pk_cancel_token_for_session(ctx$session, ctx$req_id)
   pk_cancel_token_clear(jeton)
 
   motor <- if (exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
@@ -155,9 +199,6 @@ mergen_pk_prepare_async_request <- function(ctx) {
 
   dogrulama <- pk_async_validate_request(istek)
   if (!isTRUE(dogrulama$safe)) {
-    # Sessizce serileştirmeye çalışmak yerine SENKRON yola dönülür: işçi
-    # tarafında anlaşılmaz bir serileştirme hatası almak, kullanıcıya yanlış
-    # bir "analiz başarısız" mesajı göstermekten daha kötüdür.
     log_warn(paste0(
       "[PK_ASYNC] Istek anlik goruntusu isci-guvenli degil; senkron yola donuluyor: ",
       paste(utils::head(dogrulama$violations, 5L), collapse = ", ")
