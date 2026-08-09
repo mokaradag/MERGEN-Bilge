@@ -13,13 +13,15 @@
     if (is.na(icerik) || !nzchar(icerik)) return("")
 
     # Normal sohbet çalışma zamanında her ileti kalıcı/oturum-yerel benzersiz bir
-    # `id` taşır (DB kaydı varsa bu değer DB kimliğine çevrilir). Aynı metinle
-    # başlayan iki ayrı söyleşiyi yalnız içerikten ayırmak mümkün değildir;
-    # dolayısıyla kimliği imzaya katmak gerçek söyleşi ayrımını korur. Eski veya
-    # izole çağrılarda kimlik yoksa içerik tabanlı güvenli geriye uyum korunur.
-    ham_kimlik <- m$id %||% m$db_id %||% ""
-    kimlik <- trimws(as.character(ham_kimlik)[1])
-    if (is.na(kimlik)) kimlik <- ""
+    # kimlik taşır. Akış sırasında `id` geçici kalabilir; DB'ye yazıldıktan sonra
+    # `db_id` kalıcı kimliği taşır ve kaydedilmiş söyleşi yeniden yüklendiğinde
+    # `id` bu DB kimliğinden kurulur. Bu yüzden varsa `db_id` tercih edilmelidir;
+    # aksi halde yeniden yükleme aynı ileti için farklı imza üretebilir.
+    db_kimligi <- trimws(as.character(m$db_id %||% "")[1])
+    if (is.na(db_kimligi)) db_kimligi <- ""
+    gecici_kimlik <- trimws(as.character(m$id %||% "")[1])
+    if (is.na(gecici_kimlik)) gecici_kimlik <- ""
+    kimlik <- if (nzchar(db_kimligi)) db_kimligi else gecici_kimlik
     kimlik_parcasi <- if (nzchar(kimlik)) {
       paste0("id=", substr(kimlik, 1L, 120L), "|")
     } else {
