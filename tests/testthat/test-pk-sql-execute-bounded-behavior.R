@@ -10,7 +10,7 @@
 #   - Getirimin ORTASINDA gelen iptal görülür ve TİPLİ durum döner.
 #   - Son tarih dolması iptal ile KARIŞTIRILMAZ.
 #   - Tavanı aşacak parça KABUL EDİLMEDEN durulur; veri DÖNMEZ.
-#   - Sonuç kümesi HER çıkış yolunda kapatılır (bağlantı temiz kalır).
+#   - Oluşturulan sonuç kümesi HER çıkış yolunda kapatılır (bağlantı temiz kalır).
 # ==============================================================================
 
 local({
@@ -165,7 +165,8 @@ test_that("son tarih dolması iptal ile KARIŞTIRILMAZ", {
 
   expect_equal(sonuc$status, "deadline")
   expect_null(sonuc$data)
-  expect_gte(.pk_clear_calls$n, 1L)
+  # Deadline ilk kapıda görülür: result oluşturulmadığı için clear edilecek nesne yoktur.
+  expect_equal(.pk_clear_calls$n, 0L)
 })
 
 test_that("gerçek iptal jetonu getirimi durdurur (dosya tabanlı sinyal)", {
@@ -189,7 +190,8 @@ test_that("gerçek iptal jetonu getirimi durdurur (dosya tabanlı sinyal)", {
   )
 
   expect_equal(sonuc$status, "cancelled")
-  expect_gte(.pk_clear_calls$n, 1L)
+  # Önceden işaretli token ilk kapıda durur; DB result hiç oluşturulmaz.
+  expect_equal(.pk_clear_calls$n, 0L)
 })
 
 test_that("tavanı aşacak parça KABUL EDİLMEDEN durulur", {
@@ -237,7 +239,8 @@ test_that("geçersiz SQL TİPLİ hata döner ve sonuç kümesi sızmaz", {
   )
   expect_equal(sonuc$status, "error")
   expect_true(nzchar(sonuc$error))
-  expect_gte(.pk_clear_calls$n, 1L)
+  # dbSendQuery hata verdiği için result oluşturulmaz; dolayısıyla clear yoktur.
+  expect_equal(.pk_clear_calls$n, 0L)
 })
 
 test_that("ifade zaman aşımı uygulanamadığında analiz iptal EDİLMEZ", {
