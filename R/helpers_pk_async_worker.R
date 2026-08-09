@@ -69,8 +69,10 @@ pk_async_run_analysis <- function(request) {
     on.exit(options(mergen.pk.engine = eski_motor), add = TRUE)
   }
 
-  # Standart modülün legacy SQL girişini worker süresince bounded executor'a bağla.
-  target_env <- environment(pk_async_run_analysis)
+  # Bootstrap edilen gerçek PK giriş noktası kendi lexical ortamında global
+  # yardımcıları çözer. Override'lar async wrapper'ın değil BU pipeline ortamına
+  # yazılmalıdır; PSOCK'ta ikisi aynı olmak zorunda değildir.
+  target_env <- environment(pk_analiz_process_request)
   eski_unicode <- get0("execute_pk_sql_unicode", envir = target_env,
                        inherits = TRUE, ifnotfound = NULL)
   chunk_rows <- tryCatch(pk_config_resolve("MERGEN_PK_FETCH_CHUNK_ROWS"),
