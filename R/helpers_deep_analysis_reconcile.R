@@ -45,13 +45,25 @@ pk_deep_resolve_username <- function(session, resolver = NULL) {
 #' Sorgu için SQL metnini çöz.
 #'
 #' Runtime'da tek kanonik kaynak startup sırasında önyüklenen `query$sql`'dir.
-#' Eksik önyükleme, request-time disk/UNC yeniden okumasına düşmek yerine
-#' fail-closed biçimde "missing" döner. `read_file_fn` yalnızca eski çağrı
-#' imzasıyla uyumluluk için korunur ve bilinçli olarak kullanılmaz.
+#' Eksik önyükleme artık kendiliğinden disk/UNC yeniden okumasına DÜŞMEZ.
+#' `read_file_fn` yalnızca çevrimdışı/izole testlerin açıkça enjekte edebildiği
+#' uyumluluk kancasıdır; üretim çağrıları bu argümanı vermez.
 pk_deep_query_sql_text <- function(query, read_file_fn = NULL) {
   onyuklu <- tryCatch(as.character(query$sql %||% "")[1], error = function(e) "")
   if (!is.na(onyuklu) && nzchar(trimws(onyuklu))) {
     return(list(sql = pk_deep_normalize_sql_text(onyuklu), source = "preloaded"))
+  }
+
+  # Otomatik dosya okuyucu YOKTUR. Yalnızca çağıranın AÇIKÇA enjekte ettiği
+  # test/uyumluluk okuyucusu kullanılabilir; böylece runtime fail-closed kalır.
+  if (is.function(read_file_fn)) {
+    dosya <- tryCatch(as.character(query$sql_file %||% "")[1], error = function(e) "")
+    if (!is.na(dosya) && nzchar(dosya)) {
+      metin <- tryCatch(as.character(read_file_fn(dosya))[1], error = function(e) "")
+      if (!is.na(metin) && nzchar(trimws(metin))) {
+        return(list(sql = pk_deep_normalize_sql_text(metin), source = "file"))
+      }
+    }
   }
 
   list(sql = "", source = "missing")
