@@ -45,8 +45,11 @@ pk_required_helpers <- list(
       file.path("R", "helpers_pk_query_selection_parse.R"),
       file.path("R", "helpers_pk_query_selection_decide.R"),
       file.path("R", "helpers_pk_query_selection_degraded.R"),
+      file.path("R", "helpers_pk_query_selection_history.R"),
       file.path("R", "helpers_pk_query_selection_session.R"),
+      file.path("R", "helpers_pk_query_selection_seed.R"),
       file.path("R", "helpers_pk_query_selection_ai.R"),
+      file.path("R", "helpers_pk_query_selection_deep.R"),
       file.path("R", "helpers_pk_query_selection_apply.R")
     )
   )

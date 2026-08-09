@@ -282,33 +282,6 @@ pk_select_library_index <- function(library) {
   indeks
 }
 
-#' Geçiş A adaylarını, ÖNCEKİ kararlı sorgu kimliğiyle tohumla (§5.2)
-#'
-#' Eksiltili takip sorularında ("peki 2024 için?") soru metninde artık hiçbir
-#' sorgu-taşıyıcı terim yoktur; Geçiş A doğru sorguyu bulamaz.
-#'
-#' TOHUM TAZE BİR ADAYI DÜŞÜREMEZ: önceki kimlik eskiden koşulsuz başa
-#' ekleniyor ve `head(recall_n)` SON adayı atıyordu. Yeni bir konuda Geçiş A
-#' doğru biçimde `q2,q3,q4` derken bayat `q1` yüzünden `q4` geri alınamaz
-#' biçimde kayboluyordu. Tohum artık recall kümesine EK olarak taşınır.
-pk_select_seed_candidates <- function(recalled_ids, prior_query_id, cfg) {
-  aday <- as.character(recalled_ids)
-  aday <- unique(aday[!is.na(aday) & nzchar(aday)])
-  aday <- utils::head(aday, cfg$recall_n)
-
-  if (is.null(prior_query_id) || !length(prior_query_id) ||
-      is.na(prior_query_id[1]) || !nzchar(trimws(as.character(prior_query_id)[1]))) {
-    return(aday)
-  }
-
-  onceki <- trimws(as.character(prior_query_id)[1])
-  if (onceki %in% aday) return(aday)
-
-  # Tohum EN BAŞA konur (eksiltili takipte en güçlü aday odur) ama hiçbir taze
-  # adayı düşürmez: küme bir eleman büyür.
-  c(onceki, aday)
-}
-
 #' Kullanıcı SUNULAN seçeneklerden birini açıkça seçti mi?
 #'
 #' Bozulma kipinde "hangisini istersiniz?" diye sorup, cevabı yeniden aynı

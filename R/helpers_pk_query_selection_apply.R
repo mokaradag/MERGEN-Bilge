@@ -1,34 +1,55 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_pk_query_selection_apply.R
-# Açıklama: Faz 5 (§5.2) — iki geçişli seçim hattının ÇALIŞMA ZAMANINA
-#           BAĞLANMASI.
+# Açıklama: Faz 5 (§5.2) — iki geçişli seçim hattının çalışma zamanına bağlanması.
 #
-# NEDEN AYRI DOSYA: Faz 4 incelemesinin en ağır bulgusu, çözümleyicinin
-#   351 testi geçerken GERÇEK isteklerde hiç çağrılmamasıydı ("Phase 4 was dead
-#   code"). Bu dosya, seçim hattının çağrı yerini AÇIKÇA sahiplenir.
-#
-# MOTOR SINIRI (§10): buradaki her şey YALNIZCA `MERGEN_PK_ENGINE=v2` iken
-#   çalışır. v1'in karar mantığı (AI dalı, sezgisel dal, eşikler, düşük skor
-#   geri dönüşü) BİT BİT korunur.
-#
-# KAPALI BAŞARISIZLIK SINIRI: v2 hattının İÇ hatası artık v1'e DÜŞMEZ. Bir
-#   yardımcı eksik ya da nesne bozuksa, operatörün `MERGEN_PK_ENGINE=v2` ile
-#   TAM OLARAK etkinleştirdiği güvenlik kapıları (güven, marj, ikinci aday,
-#   yetenek) sessizce devre dışı kalırdı; eski davranışta bu, kapısız v1
-#   seçicisinin bir sorguyu otomatik çalıştırması demekti.
+# MOTOR SINIRI: v2 yolu yalnızca MERGEN_PK_ENGINE=v2 iken çalışır; iç hata v1'e
+# sessizce düşmez. Derin-analiz çoklu seçim ve recall tohumu odaklı helper'lara
+# ayrılmıştır; bu dosya seçim kararını uygulama/telemetri sınırında tutar.
 # ==============================================================================
 
-#' Karardan v1 uyumlu `all_scores` tablosu kur
-#'
-#' Tablo ŞEKLİ v1 ile aynıdır (`query_id`, `query_name`, `ai_score`,
-#' `heuristic_score`, `final_score`), böylece `print_score_table()` ve modülün
-#' aşağı akış kodu değişmeden çalışır. `heuristic_score` sütunu v2'de bilinçli
-#' olarak 0 kalır: sezgisel skorlayıcı v2'de KARAR VERMEZ (D10).
-#'
-#' `final_score` SEÇİLEN satırda ETKİN güveni taşır. Karar sözlüksel uyuşmazlık
-#' cezasından SONRAKİ değerle verilir; ham güveni "Final Skor" diye göstermek,
-#' operatörün eşik ayarını gerçekte karar veren sayıdan farklı bir sayıya göre
-#' yapmasına yol açıyordu.
+# İzole module_proje_kaynak_analizi.R yüklemesinde çıkarılmış v1 AI seçicisini
+# gerekirse yükle. Normal manifestte zaten daha önce yüklenmiştir. İzole source()
+# çağrıları süreç CWD'sine bağlı olmamalıdır: önce bu dosyanın gerçek konumunu,
+# sonra açık repo kökünü, repo-root CWD'sini ve tests/testthat CWD'sini deneriz.
+.pk_v1_selector_name <- "helpers_pk_analysis_ai_selector.R"
+.pk_v1_source_file <- tryCatch({
+  ofile <- sys.frame(1)$ofile
+  if (is.null(ofile) || !length(ofile) || is.na(ofile[1]) || !nzchar(ofile[1])) {
+    NA_character_
+  } else {
+    normalizePath(ofile[1], winslash = "/", mustWork = FALSE)
+  }
+}, error = function(e) NA_character_)
+.pk_repo_root <- Sys.getenv("MERGEN_REPO_ROOT", unset = "")
+.pk_v1_selector_candidates <- unique(c(
+  if (!is.na(.pk_v1_source_file)) {
+    file.path(dirname(.pk_v1_source_file), .pk_v1_selector_name)
+  },
+  if (nzchar(.pk_repo_root)) {
+    file.path(.pk_repo_root, "R", .pk_v1_selector_name)
+  },
+  file.path("R", .pk_v1_selector_name),
+  file.path("..", "..", "R", .pk_v1_selector_name)
+))
+.pk_v1_selector_candidates <- .pk_v1_selector_candidates[
+  !is.na(.pk_v1_selector_candidates) & nzchar(.pk_v1_selector_candidates)
+]
+.pk_v1_selector_path <- .pk_v1_selector_candidates[
+  file.exists(.pk_v1_selector_candidates)
+]
+if (!exists("find_best_query_with_ai", mode = "function", inherits = TRUE) &&
+    length(.pk_v1_selector_path)) {
+  source(.pk_v1_selector_path[[1]], encoding = "UTF-8", local = globalenv())
+}
+rm(
+  .pk_v1_selector_name,
+  .pk_v1_source_file,
+  .pk_repo_root,
+  .pk_v1_selector_candidates,
+  .pk_v1_selector_path
+)
+
+#' Karardan v1 uyumlu all_scores tablosu kur
 pk_select_scores_table <- function(library, decision) {
   tablo <- if (exists("pk_init_query_score_table", mode = "function", inherits = TRUE)) {
     pk_init_query_score_table(library)
@@ -43,7 +64,9 @@ pk_select_scores_table <- function(library, decision) {
   if (!nrow(tablo)) return(tablo)
 
   puanla <- function(kimlik, ham, etkin = NULL) {
-    if (is.null(kimlik) || is.na(kimlik) || is.null(ham) || is.na(ham)) return(invisible(NULL))
+    if (is.null(kimlik) || is.na(kimlik) || is.null(ham) || is.na(ham)) {
+      return(invisible(NULL))
+    }
     satir <- which(tablo$query_id == kimlik)
     if (!length(satir)) return(invisible(NULL))
     tablo$ai_score[satir] <<- as.numeric(ham)
@@ -51,29 +74,17 @@ pk_select_scores_table <- function(library, decision) {
     invisible(NULL)
   }
 
-  # Sıra ÖNEMLİDİR: en az özgül kaynaktan en özgüle doğru yazılır, böylece
-  # seçilen satırın ETKİN güveni sonradan çipin HAM güveniyle ezilmez.
   for (cip in decision$chips %||% list()) {
     if (is.list(cip) && !is.null(cip$confidence)) puanla(cip$id, cip$confidence)
   }
-
-  # HER doğrulanmış alternatif yazılır. Eskiden yalnızca ilk ikinci aday
-  # yazılıyordu; geçerli skoru olan üçüncü aday tabloda 0 görünüyor ve
-  # tanılama "model skor vermedi" diyordu.
   for (kimlik in names(decision$alternate_scores %||% list())) {
     puanla(kimlik, decision$alternate_scores[[kimlik]])
   }
-
   puanla(decision$query_id, decision$confidence, decision$effective_confidence)
-
   tablo
 }
 
 #' Reddetme/netleştirme mesajını kullanıcıya gösterilecek Türkçe metne çevir
-#'
-#' Seçenekler (chips) NUMARALI liste olarak eklenir; numara ve ad, kullanıcının
-#' bir sonraki mesajında DETERMİNİSTİK olarak eşlenebilir (bkz.
-#' `pk_select_resolve_user_choice()`).
 pk_select_refusal_message <- function(decision) {
   ana <- decision$message_tr
   if (is.null(ana) || !length(ana) || is.na(ana[1]) || !nzchar(trimws(ana[1]))) {
@@ -84,7 +95,6 @@ pk_select_refusal_message <- function(decision) {
   }
 
   parcalar <- c(paste0("\U0001F914 **Analiz Seçimi Netleştirilmeli:** ", ana))
-
   cipler <- decision$chips %||% list()
   if (length(cipler)) {
     parcalar <- c(parcalar, "", "**Olası analizler:**")
@@ -93,19 +103,16 @@ pk_select_refusal_message <- function(decision) {
       ad <- as.character(cip$name %||% cip$id)[1]
       parcalar <- c(parcalar, sprintf("%d. %s", i, ad))
     }
-    parcalar <- c(parcalar, "", paste0(
+    parcalar <- c(
+      parcalar, "",
       "Numarasını ya da adını yazmanız yeterli; seçiminizi doğrudan uygularım."
-    ))
+    )
   }
 
   paste(parcalar, collapse = "\n")
 }
 
-#' Satır tabanlı günlüğe girecek metni TEMİZLE
-#'
-#' `selection_reason` doğrudan Geçiş B JSON'undan gelir. İçindeki CR/LF, sahte
-#' görünen `[PK_ANALIZ] ...` kayıtları üretip satır tabanlı tanılamayı
-#' bozabilir.
+#' Satır tabanlı günlüğe girecek metni temizle
 .pk_select_log_safe <- function(text, max_chars = 300L) {
   if (is.null(text) || !length(text) || is.na(text[1])) return("")
   metin <- gsub("[[:cntrl:]]+", " ", as.character(text)[1], perl = TRUE)
@@ -114,7 +121,7 @@ pk_select_refusal_message <- function(decision) {
   metin
 }
 
-#' Seçilen sorgunun TANILAMA satırlarını yaz
+#' Seçilen sorgunun tanılama satırlarını yaz
 pk_select_log_selection <- function(selected_query) {
   if (!is.list(selected_query)) return(invisible(FALSE))
 
@@ -126,16 +133,11 @@ pk_select_log_selection <- function(selected_query) {
     "[PK_ANALIZ] Secilen Sorgu: '%s' | İlgililik: %.1f%% | Yontem: %s\n",
     .pk_select_log_safe(selected_query$name, 200L), ilgililik, yontem
   ))
-  if (nchar(gerekce) > 0) {
-    cat(sprintf("[PK_ANALIZ] Secim Nedeni: %s\n", gerekce))
-  }
-
+  if (nchar(gerekce) > 0) cat(sprintf("[PK_ANALIZ] Secim Nedeni: %s\n", gerekce))
   invisible(TRUE)
 }
 
-#' v2 iç hatası için TİPLİ ret kararı
-#'
-#' `NULL` DÖNDÜRÜLMEZ: `NULL`, çağıranı v1 karar yoluna sokardı.
+#' v2 iç hatası için tipli ret kararı
 .pk_select_internal_failure <- function(library, message) {
   karar <- .pk_select_decision(
     PK_SELECT_STATUS_INTERNAL_ERROR,
@@ -153,21 +155,13 @@ pk_select_log_selection <- function(selected_query) {
   )
 }
 
-#' v2 SEÇİM GİRİŞ NOKTASI — `select_smart_query()` bunu çağırır
-#'
-#' @param session İSTEĞİN SAHİBİ olan oturum. Çağıran açıkça geçirmelidir:
-#'   Ortak Oturum köprüsü, soruyu soran kullanıcı için sentetik bir oturum
-#'   kurar ve varsayılan reaktif alan adı BAŞKA bir kullanıcıya aittir.
-#' @return `auto` kararında: seçilen kütüphane sorgusu + v1 uyumlu seçim
-#'   alanları. Diğer her kararda: `id` alanı OLMAYAN, `refusal_message` ve
-#'   yapısal `pk_selection` taşıyan liste.
+#' v2 seçim giriş noktası — select_smart_query() bunu çağırır
 pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
                                session = NULL, llm_fn = NULL, cfg = NULL,
                                stop_check = NULL) {
   if (!is.list(library) || !length(library)) return(NULL)
 
-  sohbet <- pk_select_chat_key(chat_history)
-
+  sohbet <- pk_select_chat_key(chat_history, session = session)
   karar <- tryCatch(
     .pk_select_decide_for_request(
       prompt, library, chat_history, session, llm_fn, cfg, stop_check, sohbet
@@ -184,7 +178,6 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
   }
 
   tablo <- pk_select_scores_table(library, karar)
-
   cat(sprintf(
     "[PK_SELECT] v2 karar=%s | sorgu=%s | guven=%s | etkin=%s | marj=%s | yetenek=%s\n",
     karar$status,
@@ -196,12 +189,8 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
   ))
 
   if (!identical(karar$status, PK_SELECT_STATUS_AUTO)) {
-    # Tamamlanmayan bir seçim, o söyleşideki "son başarılı seçim" iddiasını
-    # GEÇERSİZ kılar: konu değişmiş olabilir ve sonraki eksiltili soru artık
-    # eski analize ait değildir.
     pk_select_forget_query_id(session, sohbet)
     pk_select_remember_offer(session, karar$chips, sohbet)
-
     return(list(
       all_scores = tablo,
       refusal_message = pk_select_refusal_message(karar),
@@ -230,9 +219,6 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
   }
   secilen$all_scores <- tablo
   secilen$pk_selection <- karar
-  # Seçim, çağıran onu KABUL EDENE kadar kalıcılaştırılmaz (bkz.
-  # `pk_select_commit_selection()`): hemen iptal edilen bir `auto`, sonraki
-  # takip sorusunu kullanıcının durdurduğu analizle tohumlardı.
   secilen$pk_pending_chat_key <- sohbet
   secilen
 }
@@ -245,10 +231,6 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
   }
 
   indeks <- pk_select_library_index(library)
-
-  # Kullanıcı, önceki turda SUNULAN seçeneklerden birini açıkça adlandırdıysa
-  # seçim LLM'siz ve deterministik biçimde tamamlanır. Aksi hâlde bozulma kipi
-  # "birini söyleyin" deyip cevabı yine erişilemeyen seçiciye götürüyordu.
   onay <- pk_select_confirmed_decision(session, prompt, indeks, chat_key)
   if (!is.null(onay)) {
     onay$candidate_ids <- onay$query_id
@@ -269,11 +251,7 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
   )
 }
 
-#' Seçimi KALICILAŞTIR — çağıran iptal kapısını geçtikten SONRA çağrılır
-#'
-#' `pk_analiz_process_request()` seçimden sonra bir `stop_check` daha uygular.
-#' Kimlik o kapıdan ÖNCE yazılırsa, iptal edilen bir seçim sonraki eksiltili
-#' soruyu tohumlar.
+#' Seçimi kalıcılaştır — çağıran iptal kapısını geçtikten sonra çağrılır
 pk_select_commit_selection <- function(selected_query, session) {
   if (!is.list(selected_query) || is.null(selected_query$id)) return(invisible(FALSE))
 
@@ -285,10 +263,6 @@ pk_select_commit_selection <- function(selected_query, session) {
 }
 
 #' Seçim kararından yanıta/telemetriye taşınacak bozulma açıklamaları
-#'
-#' Plan kuralı: HER bozulma yanıtta görünmelidir. Sözlüksel güvenlik sinyali
-#' güveni düşürdüğü hâlde seçim yine de çalıştıysa, kullanıcı bunu görmeden
-#' sonucu okuyordu.
 pk_select_disclosures <- function(selected_query) {
   if (!is.list(selected_query)) return(character(0))
   karar <- selected_query$pk_selection
@@ -297,3 +271,6 @@ pk_select_disclosures <- function(selected_query) {
   aciklamalar <- as.character(karar$disclosures %||% character(0))
   aciklamalar[!is.na(aciklamalar) & nzchar(trimws(aciklamalar))]
 }
+
+# Recall tohumu ve Derin Düşünme köprüsü manifestte bu dosyadan ÖNCE yüklenir;
+# runtime bağlama katmanı çalışma dizinine göre ek kaynak yüklemez.

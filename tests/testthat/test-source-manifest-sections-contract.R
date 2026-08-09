@@ -156,7 +156,9 @@
   # karar -> geçmiş -> filtre hattına bağlama); 35 -> 40 dosya.
   # Bilinçli güncelleme: Faz 5 (§5.2) iki geçişli sorgu seçimi beş dosya
   # ekledi (getirim -> istem -> ayrıştırma/karar -> LLM -> bağlama); 40 -> 45.
-  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 53L),
+  # PR #701 inceleme düzeltmeleri: history/seed/deep sahipleri ayrıştırıldı;
+  # analysis_helpers bölümüne üç kayıt daha eklendi. 53 -> 56.
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 56L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -500,7 +502,8 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 411 -> 416: Faz 5 sorgu seçimi (retrieval/prompt/parse/ai/apply).
   # 416 -> 423: Faz 5 inceleme düzeltmeleri (json/config/payload/requirements/
   # decide/degraded/session bölünmeleri; ratchet bütçeleri korunur).
-  expect_equal(length(runtime), 424L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 424 -> 427: PR #701 history/seed/deep seçim sahiplerini manifeste ekledi.
+  expect_equal(length(runtime), 427L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]
