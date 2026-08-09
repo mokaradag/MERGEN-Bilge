@@ -689,8 +689,9 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 # MERGEN_PK_SELECT_MIN_CONFIDENCE=50
 #
 #   Tepe aday ile ikinci aday arasındaki asgari fark. Altında kalırsa yakın
-#   beraberlik sayılır ve yine sorulur. MIN_CONFIDENCE + MIN_MARGIN toplamı
-#   100'ü aşarsa hiçbir aday geçemez; bu yapılandırma AÇIK hata verir.
+#   beraberlik sayılır ve yine sorulur. MIN_CONFIDENCE ile MIN_MARGIN farklı
+#   nicelikleri sınırlar; toplamlarının 100'ü aşması geçersiz DEĞİLDİR. Her iki
+#   kapının da 0 olması otomatik seçimi korumasız bırakacağı için reddedilir.
 # MERGEN_PK_SELECT_MIN_MARGIN=15
 #
 #   Sözlüksel getirim (3-gram + IDF) LLM'in seçtiği sorguyu ilk-N dışında
