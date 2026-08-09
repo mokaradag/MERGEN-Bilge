@@ -11,7 +11,22 @@
     rol <- tolower(trimws(as.character(m$role %||% m$type %||% "user")[1]))
     icerik <- trimws(as.character(m$content %||% "")[1])
     if (is.na(icerik) || !nzchar(icerik)) return("")
-    paste0(rol, "|", substr(icerik, 1L, 300L))
+
+    # Normal sohbet çalışma zamanında her ileti kalıcı/oturum-yerel benzersiz bir
+    # `id` taşır (DB kaydı varsa bu değer DB kimliğine çevrilir). Aynı metinle
+    # başlayan iki ayrı söyleşiyi yalnız içerikten ayırmak mümkün değildir;
+    # dolayısıyla kimliği imzaya katmak gerçek söyleşi ayrımını korur. Eski veya
+    # izole çağrılarda kimlik yoksa içerik tabanlı güvenli geriye uyum korunur.
+    ham_kimlik <- m$id %||% m$db_id %||% ""
+    kimlik <- trimws(as.character(ham_kimlik)[1])
+    if (is.na(kimlik)) kimlik <- ""
+    kimlik_parcasi <- if (nzchar(kimlik)) {
+      paste0("id=", substr(kimlik, 1L, 120L), "|")
+    } else {
+      ""
+    }
+
+    paste0(rol, "|", kimlik_parcasi, substr(icerik, 1L, 300L))
   }, character(1), USE.NAMES = FALSE)
 
   imzalar[!is.na(imzalar) & nzchar(imzalar)]
@@ -35,9 +50,8 @@
 # çalışır; dolayısıyla saklanan ilk pencere yalnızca bir `user|...` imzası
 # taşıyabilir. Bir sonraki çağrıda iki-iletilik örtüşme henüz mümkün değildir.
 # Tek-ileti başlangıç eşleşmesi yalnızca hâlâ "ilk takip için uygun" işaretli
-# kayıtlarla kabul edilir. Aynı açılışla yeni bir söyleşi başlayınca eski tekli
-# kayıt uygunluktan çıkarılır; böylece ikinci söyleşinin ilk takibi kendi son
-# oluşturulan durumunu korur, eski söyleşinin durumu ona sızmaz.
+# kayıtlarla kabul edilir. Normal çalışma zamanında ileti kimliği bu eşleşmeyi
+# aynı metinli farklı söyleşiler arasında da benzersiz kılar.
 .pk_select_first_follow_up_match <- function(previous, current) {
   onceki <- as.character(previous %||% character(0))
   simdiki <- as.character(current %||% character(0))
@@ -63,11 +77,11 @@
 #' Söyleşi anahtarı — durum bu anahtarla İZOLE edilir
 #'
 #' Dönen son-N geçmiş pencereleri aynı söyleşi sayılır. Genel durumda bunun
-#' için en az iki iletilik SIRALI suffix/prefix örtüşmesi gerekir. Yalnızca ilk
-#' kullanıcı iletisinden sonraki ilk takip çağrısında, en son başlayan aynı
-#' açılışlı söyleşinin tek-ileti başlangıç eşleşmesi kabul edilir; böylece ilk
-#' netleştirme/önceki-sorgu durumu korunurken genel tek-ileti çakışmaları
-#' söyleşileri birleştiremez.
+#' için en az iki iletilik SIRALI suffix/prefix örtüşmesi gerekir. İlk takipte
+#' tek ileti yeterlidir; normal çalışma zamanındaki benzersiz ileti kimliği bu
+#' tek imzanın hangi söyleşiye ait olduğunu belirler. Kimliksiz eski/izole
+#' geçmişlerde birden çok aynı-açılış kaydı varsa seçim yapılmaz ve yeni durum
+#' açılır; başka bir söyleşinin durumu tahmin edilerek kullanılmaz.
 pk_select_chat_key <- function(chat_history, session = NULL) {
   imzalar <- .pk_select_history_signatures(chat_history)
   if (!length(imzalar)) return("__yeni__")
@@ -102,17 +116,6 @@ pk_select_chat_key <- function(chat_history, session = NULL) {
   } else {
     anahtar <- .pk_select_new_chat_key(imzalar, durum)
     yeni_anahtar <- TRUE
-  }
-
-  if (isTRUE(yeni_anahtar) && length(imzalar) == 1L && length(durum)) {
-    for (eski_anahtar in names(durum)) {
-      eski_kayit <- durum[[eski_anahtar]]
-      if (is.list(eski_kayit) &&
-          identical(as.character(eski_kayit$history_signatures %||% character(0)), imzalar)) {
-        eski_kayit$first_follow_up_eligible <- FALSE
-        durum[[eski_anahtar]] <- eski_kayit
-      }
-    }
   }
 
   kayit <- if (is.list(durum[[anahtar]])) durum[[anahtar]] else list()
