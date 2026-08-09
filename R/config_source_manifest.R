@@ -353,8 +353,9 @@ source_manifest_sections <- list(
     #
     # Zincir: sözlüksel getirim (saf) -> katı JSON ilkeleri -> kapalı-başarısız
     # yapılandırma -> istem yükü -> mesaj kurulumu -> `requirements`
-    # doğrulaması -> ayrıştırma -> karar politikası -> bozulma kipi -> oturum
-    # durumu -> LLM orkestrasyonu -> çalışma zamanına bağlama.
+    # doğrulaması -> ayrıştırma -> karar politikası -> bozulma kipi -> geçmiş
+    # kimliği -> oturum durumu -> recall tohumu -> LLM orkestrasyonu -> derin
+    # analiz köprüsü -> çalışma zamanına bağlama.
     "R/helpers_pk_query_retrieval.R",
     "R/helpers_pk_query_selection_json.R",
     "R/helpers_pk_query_selection_config.R",
@@ -364,8 +365,11 @@ source_manifest_sections <- list(
     "R/helpers_pk_query_selection_parse.R",
     "R/helpers_pk_query_selection_decide.R",
     "R/helpers_pk_query_selection_degraded.R",
+    "R/helpers_pk_query_selection_history.R",
     "R/helpers_pk_query_selection_session.R",
+    "R/helpers_pk_query_selection_seed.R",
     "R/helpers_pk_query_selection_ai.R",
+    "R/helpers_pk_query_selection_deep.R",
     "R/helpers_pk_query_selection_apply.R"
   ),
 
@@ -374,7 +378,7 @@ source_manifest_sections <- list(
   sso_identity_helpers = c(
     "R/helpers_sso_signature.R",
     "R/helpers_sso.R",
-    "R/helpers_logout_url.R"
+    "R/helpers_logout.R"
   ),
 
   # support_admin_health_helpers: Destek DB, admin analitik ve sağlık
