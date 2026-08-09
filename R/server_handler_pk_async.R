@@ -134,12 +134,28 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       request_done <<- TRUE
       pk_cancel_token_clear(cancel_token)
       durum <- as.character(worker_result$status %||% "error")[1]
-      try(pk_async_apply_session_writes(oturum, worker_result$session_writes), silent = TRUE)
 
       if (identical(durum, "ok")) {
-        sonuc <- mergen_pk_serve_worker_artifact(worker_result$result, oturum)
+        # Worker'da oluşturulan kart surrogate session nedeniyle URL'sizdir.
+        # Gerçek session'da serve ettikten sonra aynı eski blok worker'ın
+        # provenance footer kopyasında da yenilenir; nihai yanıt o footer'dan
+        # dekore edildiği için yalnız result alanını değiştirmek yeterli değildir.
+        eski_sonuc <- worker_result$result
+        sonuc <- mergen_pk_serve_worker_artifact(eski_sonuc, oturum)
+        pending <- worker_result$session_writes$pk_provenance_pending
+        eski_blok <- as.character(eski_sonuc$pk_answer_block %||% "")[1]
+        yeni_blok <- as.character(sonuc$pk_answer_block %||% "")[1]
+        if (is.list(pending) && is.character(pending$footer) && length(pending$footer) == 1L &&
+            nzchar(eski_blok) && nzchar(yeni_blok) && !identical(eski_blok, yeni_blok) &&
+            grepl(eski_blok, pending$footer, fixed = TRUE)) {
+          pending$footer <- sub(eski_blok, yeni_blok, pending$footer, fixed = TRUE)
+          worker_result$session_writes$pk_provenance_pending <- pending
+        }
+        try(pk_async_apply_session_writes(oturum, worker_result$session_writes), silent = TRUE)
         return(devam_et(mergen_pk_apply_analysis_result(sonuc, mesajlar)))
       }
+
+      try(pk_async_apply_session_writes(oturum, worker_result$session_writes), silent = TRUE)
       if (identical(durum, "bootstrap_failed")) {
         log_warn("[PK_ASYNC] Worker bootstrap basarisiz; senkron yeniden deneniyor.")
         return(devam_et(mergen_pk_apply_analysis_result(mergen_pk_run_sync(ctx), mesajlar)))
