@@ -29,15 +29,8 @@
   }, error = function(e) invisible(FALSE))
 }
 
-# Geçmiş imzası/kimliği kendi sorumluluk dosyasında tutulur; bu dosya oturum
-# durumunu okuma/yazma ve seçim/teklif yaşam döngüsüne odaklı kalır.
-.pk_select_history_path <- file.path("R", "helpers_pk_query_selection_history.R")
-if (!file.exists(.pk_select_history_path)) {
-  stop(sprintf("%s bulunamadı; sorgu seçimi oturum durumu yüklenemiyor.", .pk_select_history_path),
-       call. = FALSE)
-}
-source(.pk_select_history_path, encoding = "UTF-8", local = globalenv())
-rm(.pk_select_history_path)
+# Geçmiş imzası/kimliği kendi sorumluluk dosyasında tutulur ve manifestte bu
+# dosyadan ÖNCE yüklenir; oturum helper'ı çalışma dizinine göre kaynak yüklemez.
 
 #' Önceki kararlı sorgu kimliğini oku (eksiltili takip için)
 pk_select_prior_query_id <- function(session = NULL, chat_key = "__yeni__") {
