@@ -8,13 +8,46 @@
 # ==============================================================================
 
 # İzole module_proje_kaynak_analizi.R yüklemesinde çıkarılmış v1 AI seçicisini
-# gerekirse yükle. Normal manifestte zaten daha önce yüklenmiştir.
-.pk_v1_selector_path <- file.path("R", "helpers_pk_analysis_ai_selector.R")
+# gerekirse yükle. Normal manifestte zaten daha önce yüklenmiştir. İzole source()
+# çağrıları süreç CWD'sine bağlı olmamalıdır: önce bu dosyanın gerçek konumunu,
+# sonra açık repo kökünü, repo-root CWD'sini ve tests/testthat CWD'sini deneriz.
+.pk_v1_selector_name <- "helpers_pk_analysis_ai_selector.R"
+.pk_v1_source_file <- tryCatch({
+  ofile <- sys.frame(1)$ofile
+  if (is.null(ofile) || !length(ofile) || is.na(ofile[1]) || !nzchar(ofile[1])) {
+    NA_character_
+  } else {
+    normalizePath(ofile[1], winslash = "/", mustWork = FALSE)
+  }
+}, error = function(e) NA_character_)
+.pk_repo_root <- Sys.getenv("MERGEN_REPO_ROOT", unset = "")
+.pk_v1_selector_candidates <- unique(c(
+  if (!is.na(.pk_v1_source_file)) {
+    file.path(dirname(.pk_v1_source_file), .pk_v1_selector_name)
+  },
+  if (nzchar(.pk_repo_root)) {
+    file.path(.pk_repo_root, "R", .pk_v1_selector_name)
+  },
+  file.path("R", .pk_v1_selector_name),
+  file.path("..", "..", "R", .pk_v1_selector_name)
+))
+.pk_v1_selector_candidates <- .pk_v1_selector_candidates[
+  !is.na(.pk_v1_selector_candidates) & nzchar(.pk_v1_selector_candidates)
+]
+.pk_v1_selector_path <- .pk_v1_selector_candidates[
+  file.exists(.pk_v1_selector_candidates)
+]
 if (!exists("find_best_query_with_ai", mode = "function", inherits = TRUE) &&
-    file.exists(.pk_v1_selector_path)) {
-  source(.pk_v1_selector_path, encoding = "UTF-8", local = globalenv())
+    length(.pk_v1_selector_path)) {
+  source(.pk_v1_selector_path[[1]], encoding = "UTF-8", local = globalenv())
 }
-rm(.pk_v1_selector_path)
+rm(
+  .pk_v1_selector_name,
+  .pk_v1_source_file,
+  .pk_repo_root,
+  .pk_v1_selector_candidates,
+  .pk_v1_selector_path
+)
 
 #' Karardan v1 uyumlu all_scores tablosu kur
 pk_select_scores_table <- function(library, decision) {
