@@ -166,7 +166,7 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
                                stop_check = NULL) {
   if (!is.list(library) || !length(library)) return(NULL)
 
-  sohbet <- pk_select_chat_key(chat_history)
+  sohbet <- pk_select_chat_key(chat_history, session = session)
 
   karar <- tryCatch(
     .pk_select_decide_for_request(
@@ -235,6 +235,82 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
   # takip sorusunu kullanıcının durdurduğu analizle tohumlardı.
   secilen$pk_pending_chat_key <- sohbet
   secilen
+}
+
+#' Derin Düşünme için v2'nin AYNI iki geçişli kararından güvenli çoklu küme üret
+#'
+#' İlk sorgu normal `pk_select_query_v2()` yolunda tüm güven/marj/yetenek
+#' kapılarından geçmek zorundadır. Ek sorgular YALNIZCA Geçiş B'nin kararlı
+#' kimlikli alternatiflerinden seçilir; her biri kendi metadata eşiklerini ve
+#' aynı requirements yetenek doğrulamasını ayrıca geçer. Sözlüksel uyuşmazlık
+#' olasılığına karşı ek aday güveni `disagree_penalty` kadar baştan pay bırakır.
+#' Böylece Derin Düşünme çoklu analiz özelliğini korurken legacy konum-kimliğine
+#' dayalı `find_multiple_queries_with_ai()` v2'de yeniden devreye girmez.
+pk_select_queries_v2 <- function(prompt, library, chat_history = NULL,
+                                 session = NULL, llm_fn = NULL, cfg = NULL,
+                                 stop_check = NULL, max_queries = 5L) {
+  birincil <- pk_select_query_v2(
+    prompt, library, chat_history,
+    session = session, llm_fn = llm_fn, cfg = cfg, stop_check = stop_check
+  )
+
+  if (!is.list(birincil) || is.null(birincil$id)) {
+    return(list(primary = birincil, queries = list()))
+  }
+
+  sinir <- suppressWarnings(as.integer(max_queries)[1])
+  if (!length(sinir) || is.na(sinir) || sinir < 1L) sinir <- 1L
+  sinir <- min(sinir, 20L)
+  sonuc <- list(birincil)
+  if (sinir <= 1L) return(list(primary = birincil, queries = sonuc))
+
+  karar <- birincil$pk_selection
+  skorlar <- if (is.list(karar)) karar$alternate_scores %||% list() else list()
+  if (!length(skorlar)) return(list(primary = birincil, queries = sonuc))
+
+  temel_cfg <- pk_select_revalidate_config(cfg)
+  if (!isTRUE(temel_cfg$valid)) return(list(primary = birincil, queries = sonuc))
+
+  indeks <- pk_select_library_index(library)
+  yetenekler <- pk_select_capability_ids()
+  ids <- names(skorlar)
+  puanlar <- vapply(ids, function(k) as.numeric(skorlar[[k]]), numeric(1), USE.NAMES = FALSE)
+  sira <- order(-puanlar, ids, method = "radix")
+
+  for (kimlik in ids[sira]) {
+    if (length(sonuc) >= sinir) break
+    if (identical(kimlik, birincil$id)) next
+
+    sorgu <- indeks[[kimlik]]
+    if (!is.list(sorgu)) next
+
+    sorgu_cfg <- pk_select_config_for_query(temel_cfg, sorgu$meta)
+    if (!isTRUE(sorgu_cfg$valid)) next
+
+    guven <- suppressWarnings(as.numeric(skorlar[[kimlik]])[1])
+    if (!length(guven) || is.na(guven)) next
+
+    # Ek aday için doğrudan sözlüksel sıralama yeniden hesaplanmadığından,
+    # olası en kötü cezanın ardından da güven kapısını geçeceği kanıtlanır.
+    gerekli_guven <- min(100, as.numeric(sorgu_cfg$min_confidence) +
+      max(0, as.numeric(sorgu_cfg$disagree_penalty)))
+    if (guven < gerekli_guven) next
+
+    yetenek <- pk_select_validate_requirements(
+      sorgu, karar$requirements, yetenekler
+    )
+    if (!(yetenek$status %in% c("ok", "not_asserted"))) next
+
+    sorgu$relevance_score <- guven
+    sorgu$selection_method <- "ai_two_pass_deep"
+    sorgu$selection_reason <- paste0(
+      "Derin analiz ek adayı: Geçiş B güveni ve metadata yetenek kapıları geçti."
+    )
+    sorgu$pk_selection <- karar
+    sonuc[[length(sonuc) + 1L]] <- sorgu
+  }
+
+  list(primary = birincil, queries = sonuc)
 }
 
 #' Karar üretimi (hata sarmalayıcının içinde çalışır)
