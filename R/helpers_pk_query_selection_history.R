@@ -34,9 +34,10 @@
 # İlk seçim çağrısı, sunucu ilk kullanıcı iletisini ekledikten hemen sonra
 # çalışır; dolayısıyla saklanan ilk pencere yalnızca bir `user|...` imzası
 # taşıyabilir. Bir sonraki çağrıda iki-iletilik örtüşme henüz mümkün değildir.
-# Bu dar geçiş yalnızca TEK bir durum kaydıyla eşleşiyorsa kabul edilir; aynı
-# ilk kullanıcı iletisine sahip birden fazla kayıt varsa belirsizlik nedeniyle
-# yeni söyleşi anahtarı üretilir.
+# Tek-ileti başlangıç eşleşmesi yalnızca hâlâ "ilk takip için uygun" işaretli
+# kayıtlarla kabul edilir. Aynı açılışla yeni bir söyleşi başlayınca eski tekli
+# kayıt uygunluktan çıkarılır; böylece ikinci söyleşinin ilk takibi kendi son
+# oluşturulan durumunu korur, eski söyleşinin durumu ona sızmaz.
 .pk_select_first_follow_up_match <- function(previous, current) {
   onceki <- as.character(previous %||% character(0))
   simdiki <- as.character(current %||% character(0))
@@ -63,9 +64,10 @@
 #'
 #' Dönen son-N geçmiş pencereleri aynı söyleşi sayılır. Genel durumda bunun
 #' için en az iki iletilik SIRALI suffix/prefix örtüşmesi gerekir. Yalnızca ilk
-#' kullanıcı iletisinden sonraki ilk takip çağrısında, benzersiz tek-ileti
-#' başlangıç eşleşmesi kabul edilir; böylece ilk netleştirme/önceki-sorgu durumu
-#' korunurken genel tek-ileti çakışmaları söyleşileri birleştiremez.
+#' kullanıcı iletisinden sonraki ilk takip çağrısında, en son başlayan aynı
+#' açılışlı söyleşinin tek-ileti başlangıç eşleşmesi kabul edilir; böylece ilk
+#' netleştirme/önceki-sorgu durumu korunurken genel tek-ileti çakışmaları
+#' söyleşileri birleştiremez.
 pk_select_chat_key <- function(chat_history, session = NULL) {
   imzalar <- .pk_select_history_signatures(chat_history)
   if (!length(imzalar)) return("__yeni__")
@@ -84,11 +86,14 @@ pk_select_chat_key <- function(chat_history, session = NULL) {
     if (ortak >= 2L) {
       eslesme <- c(eslesme, anahtar)
       eslesme_sayisi <- c(eslesme_sayisi, ortak)
-    } else if (.pk_select_first_follow_up_match(onceki, imzalar)) {
+    } else if (is.list(kayit) &&
+               !identical(kayit$first_follow_up_eligible, FALSE) &&
+               .pk_select_first_follow_up_match(onceki, imzalar)) {
       ilk_takip <- c(ilk_takip, anahtar)
     }
   }
 
+  yeni_anahtar <- FALSE
   if (length(eslesme)) {
     en_iyi <- max(eslesme_sayisi)
     anahtar <- sort(eslesme[eslesme_sayisi == en_iyi], method = "radix")[1]
@@ -96,10 +101,27 @@ pk_select_chat_key <- function(chat_history, session = NULL) {
     anahtar <- ilk_takip[1]
   } else {
     anahtar <- .pk_select_new_chat_key(imzalar, durum)
+    yeni_anahtar <- TRUE
+  }
+
+  if (isTRUE(yeni_anahtar) && length(imzalar) == 1L && length(durum)) {
+    for (eski_anahtar in names(durum)) {
+      eski_kayit <- durum[[eski_anahtar]]
+      if (is.list(eski_kayit) &&
+          identical(as.character(eski_kayit$history_signatures %||% character(0)), imzalar)) {
+        eski_kayit$first_follow_up_eligible <- FALSE
+        durum[[eski_anahtar]] <- eski_kayit
+      }
+    }
   }
 
   kayit <- if (is.list(durum[[anahtar]])) durum[[anahtar]] else list()
   kayit$history_signatures <- utils::tail(imzalar, .PK_SELECT_STATE_MAX_SIGNATURES)
+  if (isTRUE(yeni_anahtar) && length(imzalar) == 1L) {
+    kayit$first_follow_up_eligible <- TRUE
+  } else if (length(imzalar) >= 2L) {
+    kayit$first_follow_up_eligible <- FALSE
+  }
   durum[[anahtar]] <- kayit
   .pk_select_state_write(session, durum)
   anahtar
