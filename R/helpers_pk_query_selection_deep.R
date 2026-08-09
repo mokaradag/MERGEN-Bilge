@@ -16,6 +16,26 @@
   gerekli
 }
 
+# Tekil derin yürütücü v1 uyumluluğu için gerçek-sütun kapısına FALSE geçirir.
+# v2 Derin Düşünme seçimi bu dosyada sorguya açık bir motor işareti taşır; kapı
+# bu işareti v2 modu gibi değerlendirir. Böylece birincil ve alternatif sorgular
+# beyan edilmiş non-RLS metadata sütunları SQL sonucunda yoksa fail-closed olur,
+# v1 sorgularıysa eski davranışını korur.
+if (!exists(".pk_select_actual_column_gate_base", inherits = FALSE) &&
+    exists("pk_meta_actual_column_gate", mode = "function", inherits = TRUE)) {
+  .pk_select_actual_column_gate_base <- get(
+    "pk_meta_actual_column_gate", mode = "function", inherits = TRUE
+  )
+}
+if (exists(".pk_select_actual_column_gate_base", inherits = FALSE)) {
+  pk_meta_actual_column_gate <- function(query, actual_columns, engine_v2 = FALSE) {
+    v2_derin <- is.list(query) && isTRUE(query$pk_engine_v2)
+    .pk_select_actual_column_gate_base(
+      query, actual_columns, isTRUE(engine_v2) || v2_derin
+    )
+  }
+}
+
 #' Derin Düşünme için v2'nin aynı iki geçişli kararından güvenli çoklu küme üret
 pk_select_queries_v2 <- function(prompt, library, chat_history = NULL,
                                  session = NULL, llm_fn = NULL, cfg = NULL,
@@ -29,6 +49,7 @@ pk_select_queries_v2 <- function(prompt, library, chat_history = NULL,
     return(list(primary = birincil, queries = list()))
   }
 
+  birincil$pk_engine_v2 <- TRUE
   sinir <- suppressWarnings(as.integer(max_queries)[1])
   if (!length(sinir) || is.na(sinir) || sinir < 1L) sinir <- 1L
   sinir <- min(sinir, 20L)
@@ -81,6 +102,7 @@ pk_select_queries_v2 <- function(prompt, library, chat_history = NULL,
       "Derin analiz ek adayı: Geçiş B güveni ve metadata yetenek kapıları geçti."
     )
     sorgu$pk_selection <- karar
+    sorgu$pk_engine_v2 <- TRUE
     sonuc[[length(sonuc) + 1L]] <- sorgu
   }
 
