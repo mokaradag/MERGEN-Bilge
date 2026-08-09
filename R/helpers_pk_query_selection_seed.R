@@ -3,11 +3,11 @@
 # Açıklama: Faz 5 (§5.2) — Geçiş A aday bütçesi ve önceki sorgu tohumu.
 # ==============================================================================
 
-#' Geçiş A adaylarını önceki kararlı sorguyla, recall bütçesini aşmadan tohumla
+#' Geçiş A adaylarını önceki kararlı sorguyla tohumla
 #'
-#' Taze recall adayları bütçenin sahibidir. Önceki sorgu yalnızca boş yer varsa
-#' eklenir; böylece konu değişiminde geçerli bir taze aday bayat tohum yüzünden
-#' geri alınamaz biçimde düşmez.
+#' `recall_n`, Geçiş A'nın taze recall bütçesidir. Önceki kararlı sorgu bu
+#' bütçenin dışında konuşma-bağlamı tohumu olarak korunur: taze recall kümesi
+#' eksilmez, ancak eksiltili bir takip de tek konuşma-derived adayını kaybetmez.
 pk_select_seed_candidates <- function(recalled_ids, prior_query_id, cfg) {
   aday <- as.character(recalled_ids)
   aday <- unique(aday[!is.na(aday) & nzchar(aday)])
@@ -16,13 +16,12 @@ pk_select_seed_candidates <- function(recalled_ids, prior_query_id, cfg) {
   if (!length(sinir) || is.na(sinir) || sinir < 1L) return(character(0))
 
   aday <- utils::head(aday, sinir)
-  if (length(aday) >= sinir || is.null(prior_query_id) || !length(prior_query_id) ||
-      is.na(prior_query_id[1])) {
+  if (is.null(prior_query_id) || !length(prior_query_id) || is.na(prior_query_id[1])) {
     return(aday)
   }
 
   onceki <- trimws(as.character(prior_query_id)[1])
   if (!nzchar(onceki) || onceki %in% aday) return(aday)
 
-  c(aday, onceki)
+  c(onceki, aday)
 }
