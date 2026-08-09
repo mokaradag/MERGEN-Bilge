@@ -239,19 +239,5 @@ pk_select_disclosures <- function(selected_query) {
   aciklamalar[!is.na(aciklamalar) & nzchar(trimws(aciklamalar))]
 }
 
-# Recall bütçesi ve Derin Düşünme köprüsü ayrı sorumluluk dosyalarında tutulur.
-.pk_select_split_helpers <- c(
-  file.path("R", "helpers_pk_query_selection_seed.R"),
-  file.path("R", "helpers_pk_query_selection_deep.R")
-)
-.pk_select_missing_helpers <- .pk_select_split_helpers[!file.exists(.pk_select_split_helpers)]
-if (length(.pk_select_missing_helpers)) {
-  stop(sprintf(
-    "Sorgu seçimi yardımcıları bulunamadı: %s",
-    paste(.pk_select_missing_helpers, collapse = ", ")
-  ), call. = FALSE)
-}
-for (.pk_select_helper in .pk_select_split_helpers) {
-  source(.pk_select_helper, encoding = "UTF-8", local = globalenv())
-}
-rm(.pk_select_split_helpers, .pk_select_missing_helpers, .pk_select_helper)
+# Recall tohumu ve Derin Düşünme köprüsü manifestte bu dosyadan ÖNCE yüklenir;
+# runtime bağlama katmanı çalışma dizinine göre ek kaynak yüklemez.
