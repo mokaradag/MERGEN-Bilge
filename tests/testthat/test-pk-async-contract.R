@@ -34,9 +34,14 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
     "R/helpers_pk_cache.R",
     "R/helpers_pk_sql_execute.R",
     "R/helpers_pk_async_bootstrap.R",
+    "R/helpers_pk_async_snapshot.R",
     "R/helpers_pk_async_request.R",
+    "R/helpers_pk_async_worker_sql.R",
     "R/helpers_pk_async_worker.R",
+    "R/helpers_pk_worker_observers.R",
     "R/helpers_deep_analysis_reconcile.R",
+    "R/helpers_deep_analysis_phase6.R",
+    "R/helpers_pk_async_lifecycle.R",
     "R/helpers_pk_async_apply.R",
     "R/server_handler_pk_async.R"
   )
@@ -55,7 +60,9 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
     "R/helpers_pk_cache.R",
     "R/helpers_pk_sql_execute.R",
     "R/helpers_pk_async_bootstrap.R",
+    "R/helpers_pk_async_snapshot.R",
     "R/helpers_pk_async_request.R",
+    "R/helpers_pk_async_worker_sql.R",
     "R/helpers_pk_async_worker.R"
   ))
 
@@ -68,6 +75,7 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
 
   # Gönderim işleyicisi send_message'dan ÖNCE yüklenmelidir (o buna delege eder).
   expect_source_manifest_order_for_tests(c(
+    "R/helpers_pk_async_lifecycle.R",
     "R/helpers_pk_async_apply.R",
     "R/server_handler_pk_async.R",
     "R/server_send_message.R"
@@ -134,7 +142,9 @@ test_that("durdur gözlemcisi iptali İŞÇİYE ulaştırır", {
 
 test_that("işçi kendi bağlantısını açar; ana süreç bağlantısı TAŞINMAZ", {
   isci <- .pk_async_read_bytes(file.path(.pk_async_repo(), "R/helpers_pk_async_worker.R"))
-  istek <- .pk_async_read_bytes(file.path(.pk_async_repo(), "R/helpers_pk_async_request.R"))
+  # Anlık görüntü DOĞRULAMASI ayrı dosyaya taşındı (ratchet bölünmesi); test
+  # runtime kodunu geri taşımak yerine YENİ SAHİBİ doğrular.
+  istek <- .pk_async_read_bytes(file.path(.pk_async_repo(), "R/helpers_pk_async_snapshot.R"))
 
   # İşçi boru hattını çağırır; boru hattı `get_connection()`/`on.exit` ile
   # bağlantıyı İŞÇİDE açar ve bırakır.
@@ -275,17 +285,28 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
 
   # Ölçülen taban çizgisi + küçük baş boşluk. GLOBAL tavan (800 satır /
   # 25 fonksiyon) ihlal edilmemelidir; bu yüzden hiçbir bütçe 24'ü aşmaz.
+  # PR #702 inceleme düzeltmeleri sonrası ÖLÇÜLEN taban çizgisi + küçük baş
+  # boşluk. GLOBAL tavan (800 satır / 25 fonksiyon) ihlal edilmemelidir; bu
+  # yüzden hiçbir bütçe 24'ü aşmaz. Sınıra dayanan yerler BÖLÜNEREK çözüldü:
+  # anlık görüntü doğrulaması, işçi SQL köprüsü, ana-süreç yaşam döngüsü,
+  # derin Faz 6 kurulumu ve v1 çoklu seçici ayrı dosyalardadır.
   butceler <- list(
     "R/helpers_pk_async_cancel.R" = c(290L, 24L),
-    "R/helpers_pk_result_size.R" = c(345L, 10L),
-    "R/helpers_pk_cache.R" = c(355L, 19L),
-    "R/helpers_pk_sql_execute.R" = c(215L, 17L),
-    "R/helpers_pk_async_bootstrap.R" = c(255L, 16L),
-    "R/helpers_pk_async_request.R" = c(305L, 21L),
-    "R/helpers_pk_async_worker.R" = c(190L, 17L),
+    "R/helpers_pk_result_size.R" = c(580L, 23L),
+    "R/helpers_pk_cache.R" = c(400L, 23L),
+    "R/helpers_pk_sql_execute.R" = c(380L, 22L),
+    "R/helpers_pk_async_bootstrap.R" = c(385L, 23L),
+    "R/helpers_pk_async_snapshot.R" = c(270L, 21L),
+    "R/helpers_pk_async_request.R" = c(295L, 21L),
+    "R/helpers_pk_async_worker_sql.R" = c(165L, 11L),
+    "R/helpers_pk_async_worker.R" = c(255L, 18L),
+    "R/helpers_pk_worker_observers.R" = c(155L, 9L),
     "R/helpers_deep_analysis_reconcile.R" = c(375L, 24L),
-    "R/helpers_pk_async_apply.R" = c(195L, 14L),
-    "R/server_handler_pk_async.R" = c(220L, 19L)
+    "R/helpers_deep_analysis_phase6.R" = c(140L, 11L),
+    "R/helpers_deep_analysis_selector.R" = c(170L, 5L),
+    "R/helpers_pk_async_lifecycle.R" = c(250L, 24L),
+    "R/helpers_pk_async_apply.R" = c(180L, 16L),
+    "R/server_handler_pk_async.R" = c(290L, 14L)
   )
 
   for (dosya in names(butceler)) {

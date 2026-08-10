@@ -19,7 +19,9 @@
   # izole test GERÇEK sahip dosyaları yükler.
   for (yardimci in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
                      "helpers_pk_result_size.R", "helpers_pk_sql_execute.R",
-                     "helpers_deep_analysis_reconcile.R")) {
+                     "helpers_deep_analysis_reconcile.R",
+                     "helpers_deep_analysis_phase6.R",
+                     "helpers_deep_analysis_selector.R")) {
     source(file.path(kok, "R", yardimci), encoding = "UTF-8", local = env)
   }
   source(file.path(kok, "R", "helpers_deep_analysis.R"), encoding = "UTF-8", local = env)

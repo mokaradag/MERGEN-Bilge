@@ -20,8 +20,10 @@
   env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
-                  "helpers_pk_async_bootstrap.R", "helpers_pk_async_request.R",
-                  "helpers_pk_async_worker.R")) {
+                  "helpers_pk_async_bootstrap.R", "helpers_pk_async_snapshot.R",
+                  "helpers_pk_async_request.R", "helpers_pk_result_size.R",
+                  "helpers_pk_cache.R", "helpers_pk_sql_execute.R",
+                  "helpers_pk_async_worker_sql.R", "helpers_pk_async_worker.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }
 
@@ -232,7 +234,12 @@ test_that("boru hattı hatası TİPLİ error döner ve işçiden dışarı SIZMA
 
   sonuc <- expect_no_error(env$pk_async_run_analysis(.pk_worker_request(env)))
   expect_equal(sonuc$status, "error")
-  expect_true(grepl("basit bir R hatasi", sonuc$error, fixed = TRUE))
+  # Faz 6 inceleme düzeltmesi: BEKLENMEYEN istisna metni kullanıcıya ASLA ham
+  # dönmez (yalnızca DB-benzeri metinleri genelleştiren allowlist yeterli
+  # değildi; dosya yolu/host/iç ayrıntı taşıyan metinler sızabiliyordu).
+  # Redakte edilmiş orijinal SUNUCU LOGUNDA kalır.
+  expect_false(grepl("basit bir R hatasi", sonuc$error, fixed = TRUE))
+  expect_true(nzchar(sonuc$error))
 })
 
 test_that("HAM ODBC/DSN tanılaması ana sürece TAŞINMAZ (D22)", {

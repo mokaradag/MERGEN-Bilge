@@ -52,6 +52,8 @@ test_that("derin analiz her sorguyu gözlemler ve tek birleşik köken alt bilgi
   for (yardimci in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
                      "helpers_pk_result_size.R", "helpers_pk_sql_execute.R",
                      "helpers_deep_analysis_reconcile.R",
+                     "helpers_deep_analysis_phase6.R",
+                     "helpers_deep_analysis_selector.R",
                      "helpers_deep_analysis.R")) {
     source(
       file.path(resolve_repo_root_for_tests(), "R", yardimci),

@@ -260,6 +260,9 @@ sendMessageInit <- function(
     # `return()` çağrıları burada kapanıştan döner ve kapanış send_message'ın
     # SON ifadesi olduğu için davranış birebir korunur.
     # ------------------------------------------------------------------------
+    # PK asenkron yolu doldurur; diğer akışlarda NULL kalır ve davranış değişmez.
+    mergen_send_message_api_key_snapshot <- NULL
+
     run_llm_request_stage <- function(messages_to_process, analysis_max_tokens = NULL) {
       if (!is.null(analysis_max_tokens)) {
         current_settings$max_output_tokens <- analysis_max_tokens
@@ -353,12 +356,13 @@ sendMessageInit <- function(
       # API anahtarı kontrolü
       api_key_plan <- NULL
       {
-        api_key_plan <- tryCatch(
+        # PK asenkron yolunda anahtar GÖNDERİM ANINDA dondurulmuştur (işçi de
+        # aynı planı taşır); burada yeniden çözmek, analiz başarılıyken "API
+        # anahtarı eksik" ile bitmesine yol açardı.
+        api_key_plan <- mergen_send_message_api_key_snapshot %||% tryCatch(
           mb_api_key_get_cached_for_send(
-            session = session,
-            require_auth = TRUE,
-            allow_default = NULL,
-            clear_on_mismatch = TRUE
+            session = session, require_auth = TRUE,
+            allow_default = NULL, clear_on_mismatch = TRUE
           ),
           error = function(e) list(key = "", source = "missing", owner = NULL)
         )
@@ -581,6 +585,13 @@ sendMessageInit <- function(
     # olabilir. Karar ve yaşam döngüsü R/server_handler_pk_async.R'dedir; bu
     # dosya yalnızca delege eder ve devamı sağlar.
     if (identical(tool_family, "sql_analysis")) {
+      # GÖNDERİM ANI anlık görüntüleri (ayarlar + etkin API anahtarı planı):
+      # asenkron kipte devam kapanışı dakikalar sonra çalışır ve canlı reaktif
+      # nesneyi yeniden okumak aynı isteği İKİ farklı durumdan derlerdi.
+      pk_dispatch_snapshot <- mergen_pk_send_snapshot(session, settings_data)
+      settings_data <- pk_dispatch_snapshot$settings %||% settings_data
+      mergen_send_message_api_key_snapshot <- pk_dispatch_snapshot$api_key_plan
+
       pk_outcome <- mergen_pk_analysis_execute(list(
         session = session,
         values = values,
@@ -601,6 +612,13 @@ sendMessageInit <- function(
         if (!identical(pk_outcome$action, "deferred")) cleanup_send_message()
         if (identical(pk_outcome$action, "answer")) {
           add_message_fn(pk_outcome$answer, "ai")
+          # v2 netleştirme çipleri (düşük güven / yakın beraberlik) yanıtla
+          # BİRLİKTE gösterilir; yalnızca prozayı eklemek kullanıcıdan seçmesini
+          # isteyip seçenekleri göstermemek olurdu.
+          if (exists("mergen_pk_emit_chips", mode = "function", inherits = TRUE)) {
+            try(mergen_pk_emit_chips(list(session = session, req_id = req_id),
+                                     pk_outcome$chips), silent = TRUE)
+          }
         }
         return(invisible(NULL))
       }

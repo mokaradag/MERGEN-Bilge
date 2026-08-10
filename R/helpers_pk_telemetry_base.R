@@ -66,6 +66,18 @@ pk_telemetry_enabled <- function() {
   }, error = function(e) invisible(NULL))
 }
 
+# Faz 6 (§5.10): telemetri GÖZLENEBİLİRLİKTİR; iptal/son tarih garantisini
+# BOZAMAZ. Bu iki senkron DB çağrısı analizin TERMİNAL yollarında çalışır;
+# sınırlanmazlarsa askıda kalan bir DB/ağ, analizi bitmiş bir isteğin işçisini
+# ve bağlantısını süresiz tutar. Bütçe yoksa (`Inf`) davranış DEĞİŞMEZ.
+.pk_telemetry_bounded <- function(fn) {
+  if (!exists(".db_with_elapsed_budget", mode = "function", inherits = TRUE) ||
+      !exists(".db_pk_teardown_budget_sec", mode = "function", inherits = TRUE)) {
+    return(fn())
+  }
+  .db_with_elapsed_budget(.db_pk_teardown_budget_sec(), fn)
+}
+
 #' MB_Analiz_Log tablosunun kullanılabilirliğini süreç başına bir kez tespit et
 #'
 #' @return TRUE (yazılabilir) / FALSE (yok veya erişilemiyor).
@@ -77,7 +89,9 @@ pk_telemetry_table_ready <- function(conn) {
   if (is.null(conn)) return(FALSE)
 
   ready <- tryCatch({
-    DBI::dbGetQuery(conn, "SELECT AnalizLogID FROM MB_Analiz_Log WHERE 1 = 0")
+    .pk_telemetry_bounded(function() {
+      DBI::dbGetQuery(conn, "SELECT AnalizLogID FROM MB_Analiz_Log WHERE 1 = 0")
+    })
     TRUE
   }, error = function(e) FALSE)
 
@@ -125,7 +139,7 @@ pk_telemetry_log_analysis <- function(info, conn) {
       params <- tryCatch(normalize_db_params(params), error = function(e) params)
     }
 
-    DBI::dbExecute(conn, sql, params = params)
+    .pk_telemetry_bounded(function() DBI::dbExecute(conn, sql, params = params))
     invisible(TRUE)
 
   }, error = function(e) {

@@ -62,11 +62,14 @@ local({
 
 test_that("parça parça getirim TAM sonucu üretir", {
   skip_if_not_installed("RSQLite")
-  .pk_arm_clear_counter()
   skip_if_not_installed("DBI")
 
   conn <- .pk_sql_test_conn(1000L)
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  # Sayaç FIXTURE KURULDUKTAN SONRA silahlanır: `dbWriteTable()` kendi iç
+  # sonuç kümelerini kapatır ve bunlar yürütücünün temizlik sözleşmesine ait
+  # DEĞİLDİR (aksi hâlde "hiç result açılmadı" iddiaları 0 yerine 7 görür).
+  .pk_arm_clear_counter()
 
   sonuc <- pk_sql_execute_bounded(
     conn, "SELECT * FROM veri ORDER BY id",
@@ -85,10 +88,10 @@ test_that("parça parça getirim TAM sonucu üretir", {
 
 test_that("boş sonuç sütun sözleşmesini korur", {
   skip_if_not_installed("RSQLite")
-  .pk_arm_clear_counter()
 
   conn <- .pk_sql_test_conn(10L)
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  .pk_arm_clear_counter()
 
   sonuc <- pk_sql_execute_bounded(
     conn, "SELECT * FROM veri WHERE id < 0",
@@ -127,10 +130,10 @@ test_that("Türkçe metin parça getiriminde bozulmadan döner", {
 
 test_that("getirimin ORTASINDA gelen iptal görülür ve veri DÖNMEZ", {
   skip_if_not_installed("RSQLite")
-  .pk_arm_clear_counter()
 
   conn <- .pk_sql_test_conn(1000L)
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  .pk_arm_clear_counter()
 
   cagri <- 0L
   sonuc <- pk_sql_execute_bounded(
@@ -152,10 +155,10 @@ test_that("getirimin ORTASINDA gelen iptal görülür ve veri DÖNMEZ", {
 
 test_that("son tarih dolması iptal ile KARIŞTIRILMAZ", {
   skip_if_not_installed("RSQLite")
-  .pk_arm_clear_counter()
 
   conn <- .pk_sql_test_conn(500L)
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  .pk_arm_clear_counter()
 
   sonuc <- pk_sql_execute_bounded(
     conn, "SELECT * FROM veri", unicode_param = FALSE,
@@ -171,7 +174,6 @@ test_that("son tarih dolması iptal ile KARIŞTIRILMAZ", {
 
 test_that("gerçek iptal jetonu getirimi durdurur (dosya tabanlı sinyal)", {
   skip_if_not_installed("RSQLite")
-  .pk_arm_clear_counter()
 
   kok <- file.path(tempdir(), paste0("pk_sql_cancel_", as.integer(runif(1, 1, 1e9))))
   dir.create(kok, recursive = TRUE, showWarnings = FALSE)
@@ -179,6 +181,7 @@ test_that("gerçek iptal jetonu getirimi durdurur (dosya tabanlı sinyal)", {
 
   conn <- .pk_sql_test_conn(300L)
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  .pk_arm_clear_counter()
 
   jeton <- pk_cancel_token_path("sql_iptal", base_dir = kok)
   pk_cancel_token_signal(jeton)
@@ -196,10 +199,10 @@ test_that("gerçek iptal jetonu getirimi durdurur (dosya tabanlı sinyal)", {
 
 test_that("tavanı aşacak parça KABUL EDİLMEDEN durulur", {
   skip_if_not_installed("RSQLite")
-  .pk_arm_clear_counter()
 
   conn <- .pk_sql_test_conn(20000L)
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  .pk_arm_clear_counter()
 
   # Çok küçük bir tavan: ilk parçalar bile bütçeyi hızla doldurur.
   sonuc <- pk_sql_execute_bounded(
@@ -229,10 +232,10 @@ test_that("boş SQL ve NULL bağlantı TİPLİ hata döner (stop atmaz)", {
 
 test_that("geçersiz SQL TİPLİ hata döner ve sonuç kümesi sızmaz", {
   skip_if_not_installed("RSQLite")
-  .pk_arm_clear_counter()
 
   conn <- .pk_sql_test_conn(5L)
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  .pk_arm_clear_counter()
 
   sonuc <- pk_sql_execute_bounded(
     conn, "SELECT * FROM olmayan_tablo", unicode_param = FALSE

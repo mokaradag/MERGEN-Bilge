@@ -285,7 +285,12 @@ init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE,
     maxSize = cfg$max_size,
     idleTimeout = cfg$idle_timeout_sec,
     validationInterval = 0,
-    validateQuery = "SELECT 1"
+    validateQuery = "SELECT 1",
+    # Faz 6 (§5.10): havuzun ürettiği FİZİKSEL ODBC bağlantıları da kesilebilir
+    # olmalıdır. Doğrudan bağlantı kurucusu bunu zaten geçiriyordu; havuz
+    # geçirmediği için `pk_sql_execute_bounded()` içindeki setTimeLimit
+    # interrupt'ı, SQLExecute bloklanmışken SQLCancel yoluna ULAŞAMIYORDU.
+    interruptible = TRUE
   )
 }
 

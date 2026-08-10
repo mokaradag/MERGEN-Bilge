@@ -89,6 +89,9 @@ pk_deep_execute_sql <- function(conn, sql_text, deadline_at = NULL,
     tryCatch(pk_config_resolve(key, query_meta), error = function(e) fallback)
   }
 
+  kapi <- function() pk_async_stage_gate(cancel_token, deadline_at)
+  tavan_mb <- coz("MERGEN_PK_MAX_RESULT_MB", 512L)
+
   onbellek_anahtari <- as.character(cache_key %||% "")[1]
   if (nzchar(onbellek_anahtari) &&
       exists("pk_cache_get", mode = "function", inherits = TRUE)) {
@@ -97,11 +100,25 @@ pk_deep_execute_sql <- function(conn, sql_text, deadline_at = NULL,
       error = function(e) list(hit = FALSE)
     )
     if (isTRUE(isabet$hit) && is.data.frame(isabet$value)) {
-      return(list(
-        status = "ok", data = isabet$value, rows = nrow(isabet$value),
-        error = NA_character_, timeout_sec = 0L, timeout_reason = "cache_hit",
-        timeout_mechanism = "none", cached = TRUE
-      ))
+      # İSABET HİÇBİR KAPIYI ATLAMAZ. İptal/son tarih ve GÜNCEL sonuç tavanı,
+      # ıskadaki ile AYNI biçimde uygulanır: aksi hâlde durdurulmuş bir istek
+      # önbellekten "başarı" ile çıkar ve sıkılaştırılmış bir bellek tavanı,
+      # eski/gevşek tavan altında kabul edilmiş bir girişi geçiremezdi.
+      erken <- kapi()
+      if (isTRUE(erken$halt)) {
+        return(list(status = erken$status, data = NULL, rows = 0L,
+                    error = NA_character_, timeout_sec = 0L,
+                    timeout_reason = "halted_before_cache_use",
+                    timeout_mechanism = "none", cached = FALSE))
+      }
+      if (isTRUE(pk_cache_entry_within_limit(isabet$value, tavan_mb))) {
+        return(list(
+          status = "ok", data = isabet$value, rows = nrow(isabet$value),
+          error = NA_character_, timeout_sec = 0L, timeout_reason = "cache_hit",
+          timeout_mechanism = "none", cached = TRUE
+        ))
+      }
+      try(pk_cache_invalidate(onbellek_anahtari), silent = TRUE)
     }
   }
 
@@ -115,15 +132,17 @@ pk_deep_execute_sql <- function(conn, sql_text, deadline_at = NULL,
     ))
   }
 
-  zaman_asimi <- pk_sql_apply_statement_timeout(conn, plan$timeout_sec)
-
+  # NOT: burada AYRICA `pk_sql_apply_statement_timeout()` ÇAĞRILMAZ. O çağrı
+  # sınırlanmamış bir `SET LOCK_TIMEOUT` gidiş-dönüşüydü ve bounded yürütücü
+  # zaten AYNI ayarı (bu kez kalan bütçeyle sınırlı biçimde) uyguluyor. Çift
+  # tur, bozulmuş bir DB/ağda Durdur ve son tarihten ÖNCE asılabiliyordu.
   sonuc <- pk_sql_execute_bounded(
     conn = conn,
     sql_text = sql_text,
     unicode_param = isTRUE(unicode_param),
     chunk_rows = coz("MERGEN_PK_FETCH_CHUNK_ROWS", 5000L),
-    max_result_mb = coz("MERGEN_PK_MAX_RESULT_MB", 512L),
-    stage_gate = function() pk_async_stage_gate(cancel_token, deadline_at),
+    max_result_mb = tavan_mb,
+    stage_gate = kapi,
     timeout_sec = plan$timeout_sec,
     deadline_at = deadline_at
   )
@@ -131,10 +150,16 @@ pk_deep_execute_sql <- function(conn, sql_text, deadline_at = NULL,
   if (identical(sonuc$status, "ok") && nzchar(onbellek_anahtari) &&
       is.data.frame(sonuc$data) &&
       exists("pk_cache_put", mode = "function", inherits = TRUE)) {
-    try(
-      pk_cache_put(onbellek_anahtari, sonuc$data, query_meta = query_meta),
-      silent = TRUE
-    )
+    # Yazımdan HEMEN ÖNCE tekrar kapı: yürütücünün son birleştirme aşaması
+    # sırasında gelen bir Durdur, yüzlerce MB'lık kalıcı bir önbellek yan
+    # etkisi bırakmamalıdır.
+    yazim_kapisi <- kapi()
+    if (!isTRUE(yazim_kapisi$halt)) {
+      try(
+        pk_cache_put(onbellek_anahtari, sonuc$data, query_meta = query_meta),
+        silent = TRUE
+      )
+    }
   }
 
   list(
@@ -144,7 +169,9 @@ pk_deep_execute_sql <- function(conn, sql_text, deadline_at = NULL,
     error = sonuc$error,
     timeout_sec = plan$timeout_sec,
     timeout_reason = plan$reason,
-    timeout_mechanism = zaman_asimi$mechanism,
+    # Gerçekte UYGULANAN mekanizma sınırlı yürütücüden gelir; ön kontrol
+    # değeri (ör. `deferred_pool`) tanılamayı yanıltıyordu.
+    timeout_mechanism = sonuc$timeout_mechanism %||% "none",
     cached = FALSE
   )
 }
@@ -184,6 +211,32 @@ pk_deep_reconcile_packets <- function(query_results) {
     )
   })
 
+  # BOZULMUŞ filtre durumu (zaman aşımı / bozuk LLM yanıtı) taşıyan bir paket
+  # BAŞARILI KANIT DEĞİLDİR. Filtre üretilemediğinde v2 yürütücüsü tüm yetkili
+  # kümeyi döndürebilir; paketi "başarılı" saymak, filtreli bir soruya tam-küme
+  # istatistiğini KENDİNDEN EMİN biçimde raporlamak olurdu.
+  bozuk_filtre <- vapply(koken, function(k) {
+    if (!exists("pk_filter_status_is_degraded", mode = "function", inherits = TRUE)) {
+      return(FALSE)
+    }
+    isTRUE(tryCatch(pk_filter_status_is_degraded(k$filter_status), error = function(e) FALSE))
+  }, logical(1))
+
+  if (any(bozuk_filtre)) {
+    for (i in which(bozuk_filtre)) {
+      koken[[i]]$success <- FALSE
+      koken[[i]]$error <- as.character(
+        koken[[i]]$error %||% "Filtre planı üretilemedi; paket kanıt olarak kullanılmadı."
+      )[1]
+      if (i <= length(paketler) && is.list(paketler[[i]])) {
+        paketler[[i]]$success <- FALSE
+        paketler[[i]]$error_msg <- as.character(
+          paketler[[i]]$error_msg %||% "Filtre planı üretilemedi; paket kanıt olarak kullanılmadı."
+        )[1]
+      }
+    }
+  }
+
   basarili <- vapply(koken, function(k) isTRUE(k$success), logical(1))
 
   list(
@@ -191,6 +244,7 @@ pk_deep_reconcile_packets <- function(query_results) {
     provenance = koken,
     successful = sum(basarili),
     failed = length(koken) - sum(basarili),
+    degraded_filter = sum(bozuk_filtre),
     cross_query_arithmetic_allowed = FALSE,
     instruction = PK_DEEP_NO_CROSS_ARITHMETIC_INSTRUCTION,
     comparability = pk_deep_packet_comparability(koken)

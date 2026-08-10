@@ -4,10 +4,10 @@
 #           Bu dosya uygulama kodu yüklemez; yalnızca açık, sıralı ve
 #           incelenebilir kaynak listesini tanımlar.
 #
-#           Manifest, onboarding yükünü azaltmak için özellik/katman ailelerine
-#           göre adlandırılmış bölümlere (source_manifest_sections) ayrılmıştır.
-#           Bölümler yalnızca okunabilirlik içindir; çalışma zamanı yükleme
-#           sırası bölümlerin sırayla birleştirilmesiyle BİREBİR korunur.
+#           Manifest, özellik/katman ailelerine göre adlandırılmış bölümlere
+#           (source_manifest_sections) ayrılmıştır. Bölümler yalnızca
+#           okunabilirlik içindir; çalışma zamanı yükleme sırası bölümlerin
+#           sırayla birleştirilmesiyle BİREBİR korunur.
 #
 #           Üç kanonik nesne bölümlerden türetilir ve global.R ile bootstrap
 #           doğrulaması bu nesneleri kullanmaya devam eder:
@@ -95,11 +95,9 @@ source_manifest_sections <- list(
   ),
 
   # config_ui_assets: Frontend CSS/JS varlık manifesti (yükleme sırası
-  # sözleşmesi) ve frontend bölge (zone) sahiplik haritası. İkisi de VERİ ->
-  # SAF DOĞRULAYICI -> RENDER olarak bölünmüştür ve doğrulayıcı/etiket
-  # fonksiyonları veriyi ÇAĞRI ANINDA çözdüğü için veriden hemen sonra yüklenir
-  # (boot'ta çağrılmazlar). Bölge haritası varlık manifestinden SONRA gelir;
-  # yükleme sırasının TEK sahibi varlık manifesti kalır.
+  # sözleşmesi) ve frontend bölge sahiplik haritası. VERİ -> SAF DOĞRULAYICI ->
+  # RENDER olarak bölünmüştür; doğrulayıcılar veriyi ÇAĞRI ANINDA çözer. Bölge
+  # haritası varlık manifestinden SONRA gelir; sıranın TEK sahibi manifesttir.
   config_ui_assets = c(
     "R/config_ui_assets.R",
     "R/config_ui_asset_validators.R",
@@ -149,11 +147,10 @@ source_manifest_sections <- list(
   ),
 
   # pk_query_metadata: PK sorgu metadata SÖZLEŞMESİ (Faz 3a). Sıra §6 ile
-  # ZORUNLU: Türkçe katlama yardımcısı önce (alias anahtarlarını normalleştirir),
-  # sonra dört veri katmanı (iskelet -> üretilen -> küre edilmiş -> yerel alias);
-  # hepsi R/config_sql_loader.R'den ÖNCE biter (birleştirme/doğrulama orada).
-  # Yerel iki dosya BİLİNÇLİ opsiyoneldir (gitignore'lu; üretim şema
-  # istatistikleri/kanonik adlar): bulut checkout'unda yoklukları NORMALDİR.
+  # ZORUNLU: Türkçe katlama önce, sonra dört veri katmanı (iskelet -> üretilen
+  # -> küre edilmiş -> yerel alias); hepsi config_sql_loader.R'den ÖNCE biter.
+  # Yerel iki dosya BİLİNÇLİ opsiyoneldir (gitignore'lu); bulut checkout'unda
+  # yoklukları NORMALDİR.
   pk_query_metadata = c(
     "R/helpers_pk_text_turkish.R",
     "R/helpers_pk_query_meta_schema.R",
@@ -267,9 +264,8 @@ source_manifest_sections <- list(
   # analysis_helpers: Derin analiz ve Proje/Kaynak Analizi çekirdek/RLS-güvenlik
   # özeti/filtre/sorgu-seçimi yardımcıları.
   analysis_helpers = c(
-    # Faz 0: yapılandırma çözümleyicisi -> köken/bozulma -> telemetri kaydı
-    # (saf) -> telemetri yazımı (DB). Bağımlılık sırası zorunludur: yazım
-    # katmanı hem config'i, hem provenance'ı, hem de saf kayıt katmanını kullanır.
+    # Faz 0: yapılandırma -> köken -> telemetri kaydı (saf) -> telemetri
+    # yazımı (DB). Sıra ZORUNLUDUR: yazım katmanı diğer üçünü de kullanır.
     "R/helpers_pk_config.R",
     # Faz 6 (§5.10) bloklamayan yürütme; sıra ZORUNLU (bkz. dosya başlıkları).
     "R/helpers_pk_async_cancel.R",
@@ -277,7 +273,9 @@ source_manifest_sections <- list(
     "R/helpers_pk_cache.R",
     "R/helpers_pk_sql_execute.R",
     "R/helpers_pk_async_bootstrap.R",
+    "R/helpers_pk_async_snapshot.R",
     "R/helpers_pk_async_request.R",
+    "R/helpers_pk_async_worker_sql.R",
     "R/helpers_pk_async_worker.R",
     "R/helpers_pk_provenance.R",
     "R/helpers_pk_telemetry_record.R",
@@ -291,12 +289,10 @@ source_manifest_sections <- list(
     "R/helpers_pk_safe_errors.R",
     "R/helpers_pk_sql_readonly.R",
     "R/helpers_pk_rls.R",
-    # Faz 4 (§5.4) varlık çözümleme: normalleştirme -> puanlama şelalesi ->
-    # karar politikası -> sohbet geçmişi daraltması (D11). Bağımlılık sırası
-    # zorunludur; dördü de SAFTIR (Shiny/DB/ağ yok) ve Türkçe katlamayı
-    # pk_query_metadata bölümündeki `pk_tr_fold()` üzerinden alır — katlama
-    # KOPYALANMAZ. Boru hattı sırasında filtre derlemesinden ÖNCE gelir:
-    # bulanıklık HANGİ DEĞERİN filtreleneceğini çözer, hangi satırın değil.
+    # Faz 4 (§5.4) varlık çözümleme: normalleştirme -> puanlama -> karar
+    # politikası -> geçmiş daraltması (D11). Sıra ZORUNLU; dördü de SAFTIR ve
+    # Türkçe katlamayı pk_query_metadata'daki `pk_tr_fold()` üzerinden alır.
+    # Filtre derlemesinden ÖNCE gelir: bulanıklık HANGİ DEĞERİ çözer.
     "R/helpers_pk_entity_morph.R",
     "R/helpers_pk_entity_normalize.R",
     "R/helpers_pk_entity_mention.R",
@@ -331,6 +327,8 @@ source_manifest_sections <- list(
     # Derin analiz: detay kataloğu + bağlam kurucu orkestratörden ÖNCE; Faz 6
     # (D16) uzlaştırma katmanı ikisinden de ÖNCE (ikisi de onu çağırır).
     "R/helpers_deep_analysis_reconcile.R",
+    "R/helpers_deep_analysis_phase6.R",
+    "R/helpers_deep_analysis_selector.R",
     "R/helpers_deep_analysis_detail.R",
     "R/helpers_deep_analysis_context.R",
     "R/helpers_deep_analysis.R",
@@ -642,7 +640,9 @@ source_manifest_sections <- list(
 
   # module_analysis: Proje/Kaynak Analizi modülü.
   module_analysis = c(
-    "R/module_proje_kaynak_analizi.R"
+    "R/module_proje_kaynak_analizi.R",
+    # Faz 6: PK gözlemci sarmalayıcıları (işçi-güvenli; bootstrap yüzeyinde de).
+    "R/helpers_pk_worker_observers.R"
   ),
 
   # module_support: Destek modülleri: Yardım Merkezi, Hakkında, Yenilikler,
@@ -769,6 +769,7 @@ source_manifest_sections <- list(
     "R/server_handler_streaming_tts.R",
     # Faz 6: PK gönderim katmanı; uygulama yardımcıları orkestratörden, ikisi de
     # send_message'dan ÖNCE (o DELEGE eder).
+    "R/helpers_pk_async_lifecycle.R",
     "R/helpers_pk_async_apply.R",
     "R/server_handler_pk_async.R",
     "R/server_llm_response_handlers.R",

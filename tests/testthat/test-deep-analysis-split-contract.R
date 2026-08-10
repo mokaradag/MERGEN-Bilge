@@ -64,8 +64,14 @@ test_that("orkestratör dosyası taşınan sorumlulukları geri almaz", {
   expect_false(grepl("get_analysis_detail_instruction <- function(", orkestratör, fixed = TRUE))
   expect_false(grepl("build_deep_analysis_context <- function(", orkestratör, fixed = TRUE))
 
+  # v1 ÇOKLU seçici de ratchet bütçesi nedeniyle taşındı; v1 TEKİL seçicisinin
+  # (helpers_pk_analysis_ai_selector.R) tam karşılığı olarak
+  # helpers_deep_analysis_selector.R içindedir. Orkestratöre geri alınmamalıdır.
+  expect_false(grepl("find_multiple_queries_with_ai <- function(", orkestratör, fixed = TRUE))
+  secici <- .read_repo_text_deep_split("R/helpers_deep_analysis_selector.R")
+  expect_true(grepl("find_multiple_queries_with_ai <- function(", secici, fixed = TRUE))
+
   # Orkestrasyon sorumluluğu burada KALMALIDIR.
-  expect_true(grepl("find_multiple_queries_with_ai <- function(", orkestratör, fixed = TRUE))
   expect_true(grepl("execute_single_deep_query <- function(", orkestratör, fixed = TRUE))
   expect_true(grepl("pk_deep_analysis_process <- function(", orkestratör, fixed = TRUE))
 })
@@ -73,13 +79,15 @@ test_that("orkestratör dosyası taşınan sorumlulukları geri almaz", {
 test_that("ayrılan yardımcılar saftır: Shiny/reactive/DB/ağ bağımlılığı yoktur", {
   for (yol in c(
     "R/helpers_deep_analysis_detail.R",
-    "R/helpers_deep_analysis_context.R"
+    "R/helpers_deep_analysis_context.R",
+    # Faz 6 kurulum/karar katmanı da SAFTIR (DB/ağ yok).
+    "R/helpers_deep_analysis_phase6.R"
   )) {
     metin <- .read_repo_text_deep_split(yol)
 
     for (yasak in c(
       "moduleServer(", "reactiveVal(", "reactiveValues(", "observeEvent(",
-      "session$", "get_connection(", "call_local_llm(", "httr::"
+      "get_connection(", "call_local_llm(", "httr::"
     )) {
       expect_false(
         grepl(yasak, metin, fixed = TRUE),
@@ -94,6 +102,8 @@ test_that("manifest ayrılan yardımcıları orkestratörden ÖNCE yükler", {
 
   expect_source_manifest_contains_for_tests(
     c(
+      "R/helpers_deep_analysis_phase6.R",
+      "R/helpers_deep_analysis_selector.R",
       "R/helpers_deep_analysis_detail.R",
       "R/helpers_deep_analysis_context.R",
       "R/helpers_deep_analysis.R"
@@ -103,6 +113,8 @@ test_that("manifest ayrılan yardımcıları orkestratörden ÖNCE yükler", {
 
   expect_source_manifest_order_for_tests(
     c(
+      "R/helpers_deep_analysis_phase6.R",
+      "R/helpers_deep_analysis_selector.R",
       "R/helpers_deep_analysis_detail.R",
       "R/helpers_deep_analysis_context.R",
       "R/helpers_deep_analysis.R"
@@ -118,7 +130,11 @@ test_that("bölünme sonrası orkestratör ratchet bütçesinin altındadır", {
   eslesme <- gregexpr("(<-|=)\\s*function\\s*\\(", metin, perl = TRUE)[[1]]
   fonksiyon_sayisi <- if (identical(eslesme[1], -1L)) 0L else length(eslesme)
 
-  # Ratchet tabanı 627 satır / 12 fonksiyon; izin sırasıyla 659 ve 15.
-  expect_lte(satir_sayisi, 659L)
-  expect_lte(fonksiyon_sayisi, 15L)
+  # PR #702 inceleme düzeltmeleri: Faz 6 kurulumu (son tarih/iptal jetonu/
+  # option yayını), kısmi-durma notu ve bozulmuş-filtre kararı
+  # helpers_deep_analysis_phase6.R'ye; v1 çoklu seçici
+  # helpers_deep_analysis_selector.R'ye taşındı. Ölçülen taban 598/10;
+  # izin 640 ve 14 (bütçe YÜKSELTİLMEDİ, dosya KÜÇÜLDÜ).
+  expect_lte(satir_sayisi, 640L)
+  expect_lte(fonksiyon_sayisi, 14L)
 })

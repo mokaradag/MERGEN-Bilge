@@ -1,76 +1,21 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_pk_async_request.R
 # Açıklama: Faz 6 (§5.10) — işçiye taşınacak DÜZ, DEĞİŞTİRİLEMEZ istek anlık
-#           görüntüsü, savunmacı işçi-güvenliği doğrulaması ve İSTEK-KİMLİĞİ
-#           koruması.
+#           görüntüsünün KURULMASI, İSTEK-KİMLİĞİ koruması, future planı
+#           YETENEK kapısı ve işçi globals paketi.
 #
 # Bu dosya SAFTIR: Shiny/reaktif/DB/ağ ÇAĞIRMAZ. Yalnızca ana süreçte hazırlanan
 # değerlerden düz veri üretir ve karar döndürür.
 #
-# TEMEL SÖZLEŞME: bir Shiny `session`, `reactiveValues`, reaktif ifade veya DB
-# bağlantısı işçiye ASLA serileştirilmez. `pk_async_validate_request()` bunu
-# savunmacı biçimde DOĞRULAR; sessiz bir sızıntı, üretimde işçi tarafında
-# anlaşılmaz serileştirme hatalarına dönüşür.
-#
-# İşçi bootstrap sözleşmesi, oturum vekili ve globals paketi AYRI dosyadadır:
-# `R/helpers_pk_async_bootstrap.R` (manifestte bu dosyadan ÖNCE yüklenir).
+# İşçi-güvenli anlık görüntü DOĞRULAMASI ve düz veri sanitizasyonu AYRI
+# dosyadadır: `R/helpers_pk_async_snapshot.R` (manifestte bu dosyadan ÖNCE
+# yüklenir). İşçi bootstrap sözleşmesi, oturum vekili ve dosya listesi
+# `R/helpers_pk_async_bootstrap.R` içindedir.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
 # İSTEK ANLIK GÖRÜNTÜSÜ
 # ------------------------------------------------------------------------------
-
-# İşçiye ASLA gitmemesi gereken nesne sınıfları. `ShinySession` sınıf adı
-# sürüme göre değişebildiği için ayrıca `environment` ve `DBIConnection`
-# kontrolü de yapılır.
-.PK_ASYNC_FORBIDDEN_CLASSES <- c(
-  "ShinySession", "MockShinySession", "session_proxy",
-  "reactivevalues", "reactive", "reactiveVal", "Observer",
-  "DBIConnection", "Pool", "OdbcConnection", "SQLiteConnection"
-)
-
-.pk_async_forbidden_reason <- function(x, path) {
-  if (is.function(x)) return(sprintf("%s: function", path))
-  if (is.environment(x)) return(sprintf("%s: environment", path))
-
-  siniflar <- tryCatch(class(x), error = function(e) character(0))
-  carpisan <- intersect(siniflar, .PK_ASYNC_FORBIDDEN_CLASSES)
-  if (length(carpisan) > 0L) {
-    return(sprintf("%s: %s", path, paste(carpisan, collapse = "/")))
-  }
-
-  NULL
-}
-
-#' Anlık görüntünün İŞÇİ-GÜVENLİ olduğunu doğrula (savunmacı)
-#'
-#' Sessiz bir oturum/reaktif/bağlantı sızıntısı, üretimde işçi tarafında
-#' anlaşılmaz bir serileştirme hatasına dönüşür ve iptal/temizleme sözleşmesini
-#' de bozar. Bu yüzden kontrol AÇIK ve TESTLİDİR.
-#'
-#' @return `list(safe = TRUE/FALSE, violations = <chr>)`.
-pk_async_validate_request <- function(request, path = "request", depth = 0L) {
-  ihlaller <- character(0)
-
-  if (depth > 12L) return(list(safe = TRUE, violations = character(0)))
-
-  sebep <- .pk_async_forbidden_reason(request, path)
-  if (!is.null(sebep)) return(list(safe = FALSE, violations = sebep))
-
-  if (is.list(request) && length(request) > 0L) {
-    adlar <- names(request)
-    if (is.null(adlar)) adlar <- rep("", length(request))
-    for (i in seq_along(request)) {
-      alt_ad <- if (nzchar(adlar[i])) adlar[i] else paste0("[[", i, "]]")
-      alt <- pk_async_validate_request(
-        request[[i]], path = paste0(path, "$", alt_ad), depth = depth + 1L
-      )
-      if (!isTRUE(alt$safe)) ihlaller <- c(ihlaller, alt$violations)
-    }
-  }
-
-  list(safe = length(ihlaller) == 0L, violations = ihlaller)
-}
 
 #' İşçiye taşınacak düz istek anlık görüntüsünü kur
 #'
@@ -91,7 +36,8 @@ pk_async_build_request <- function(user_prompt, chat_history, username,
                                    deadline_sec = NULL,
                                    engine = "v1",
                                    bootstrap_files = NULL,
-                                   started_at = Sys.time()) {
+                                   started_at = Sys.time(),
+                                   config_snapshot = NULL) {
   anahtar_kaynagi <- as.character(api_key_plan$source %||% "unknown")[1]
   kisisel_anahtar <- if (identical(anahtar_kaynagi, "personal")) {
     as.character(api_key_plan$key %||% "")[1]
@@ -121,61 +67,11 @@ pk_async_build_request <- function(user_prompt, chat_history, username,
     bootstrap_files = as.character(bootstrap_files %||% character(0)),
     cancel_token = as.character(cancel_token %||% "")[1],
     deadline_sec = suppressWarnings(as.numeric(deadline_sec %||% NA_real_)[1]),
+    # Ana süreçte çözülmüş yapılandırma (options() basamağı dahil) işçiye
+    # taşınır; aksi hâlde işçi farklı güvenlik sınırlarıyla çalışabilir.
+    pk_config = if (is.list(config_snapshot)) config_snapshot else pk_async_config_snapshot(),
     started_at_epoch = as.numeric(started_at)
   )
-}
-
-.pk_async_plain_history <- function(chat_history) {
-  if (!is.list(chat_history) || length(chat_history) == 0L) return(list())
-
-  lapply(chat_history, function(mesaj) {
-    if (!is.list(mesaj)) return(list(role = "user", content = as.character(mesaj)[1]))
-    list(
-      role = as.character(mesaj$role %||% "user")[1],
-      content = as.character(mesaj$content %||% "")[1],
-      type = as.character(mesaj$type %||% "")[1]
-    )
-  })
-}
-
-# Vekil oturumun `userData` içeriği: yalnızca ATOMİK, düz alanlar.
-.PK_ASYNC_USER_DATA_FIELDS <- c(
-  "system_username", "user_id", "auth_source", "auth_initialized",
-  "sso_active", "current_chat_id"
-)
-
-.pk_async_plain_user_data <- function(snapshot) {
-  if (!is.list(snapshot)) return(list())
-
-  cikti <- list()
-  for (alan in .PK_ASYNC_USER_DATA_FIELDS) {
-    deger <- snapshot[[alan]]
-    if (is.null(deger)) next
-    if (is.function(deger) || is.environment(deger) || is.list(deger)) next
-    if (length(deger) != 1L) next
-    cikti[[alan]] <- deger
-  }
-
-  cikti
-}
-
-#' Ana süreçte vekil oturum için `userData` anlık görüntüsü topla
-#'
-#' Gerçek `session` nesnesi ASLA taşınmaz; yalnızca bu düz alanlar.
-pk_async_capture_user_data <- function(session) {
-  if (is.null(session)) return(list())
-  ud <- tryCatch(session$userData, error = function(e) NULL)
-  if (is.null(ud)) return(list())
-
-  cikti <- list()
-  for (alan in .PK_ASYNC_USER_DATA_FIELDS) {
-    deger <- tryCatch(ud[[alan]], error = function(e) NULL)
-    if (is.null(deger) || length(deger) != 1L) next
-    if (is.function(deger) || is.environment(deger) || is.list(deger)) next
-    cikti[[alan]] <- deger
-  }
-
-  cikti
 }
 
 # ------------------------------------------------------------------------------
@@ -221,13 +117,85 @@ pk_async_enabled <- function(query_meta = NULL) {
   isTRUE(tryCatch(pk_config_resolve("MERGEN_PK_ASYNC", query_meta), error = function(e) FALSE))
 }
 
-pk_async_plan_is_async <- function() {
-  if (!requireNamespace("future", quietly = TRUE)) return(FALSE)
+# Plan sınıfı TEK BAŞINA yeterli değildir:
+#   * `multisession`/`multicore` tek işçiyle KURULDUĞUNDA future sequential'a
+#     düşer; iş yine olay döngüsünde çalışır (tam olarak D15 donması).
+#   * `multicore` fork tabanlıdır: işçi ana sürecin durumunu (ve `.GlobalEnv$pool`
+#     üzerinden CANLI DB havuzunu) devralır. ODBC/Pool tutamaçları fork sonrası
+#     paylaşılamaz ve bu Faz 6'nın "bağlantı işçiye geçmez" sınırını ihlal eder.
+#   * Uzak `cluster` işçileri ana sürecin dosya sistemini GÖRMEZ: `repo_root`
+#     bootstrap'ı ve dosya tabanlı iptal jetonu orada anlamsızdır.
+.PK_ASYNC_REJECTED_PLAN_CLASSES <- c(
+  "sequential", "uniprocess", "transparent", "multicore"
+)
+
+pk_async_plan_capability <- function() {
+  if (!requireNamespace("future", quietly = TRUE)) {
+    return(list(ok = FALSE, reason = "future_missing"))
+  }
 
   tryCatch({
-    plan_siniflari <- class(future::plan("list")[[1]])
-    !any(c("sequential", "uniprocess", "transparent") %in% plan_siniflari)
-  }, error = function(e) FALSE)
+    strateji <- future::plan("list")[[1]]
+    siniflar <- class(strateji)
+
+    carpisan <- intersect(siniflar, .PK_ASYNC_REJECTED_PLAN_CLASSES)
+    if (length(carpisan) > 0L) {
+      return(list(ok = FALSE, reason = paste0("plan_", carpisan[1])))
+    }
+
+    isci_sayisi <- suppressWarnings(as.numeric(
+      tryCatch(future::nbrOfWorkers(), error = function(e) NA_real_)
+    )[1])
+    if (!is.na(isci_sayisi) && is.finite(isci_sayisi) && isci_sayisi < 2) {
+      # Tek işçi = etkin sequential fallback.
+      return(list(ok = FALSE, reason = "single_worker_plan"))
+    }
+
+    if ("cluster" %in% siniflar && !isTRUE(.pk_async_cluster_is_local(strateji))) {
+      return(list(ok = FALSE, reason = "remote_cluster_plan"))
+    }
+
+    list(ok = TRUE, reason = "ok")
+  }, error = function(e) list(ok = FALSE, reason = "plan_probe_failed"))
+}
+
+# Uzak küme tespiti: düğüm adları yalnızca localhost/127.0.0.1 ise ana süreçle
+# aynı dosya sistemi paylaşılır. Ad çözülemezse UZAK varsayılır (kapalı başarısız).
+.pk_async_cluster_is_local <- function(strategy) {
+  dugumler <- tryCatch(environment(strategy)$workers, error = function(e) NULL)
+  if (is.null(dugumler)) dugumler <- tryCatch(attr(strategy, "workers"), error = function(e) NULL)
+
+  adlar <- tryCatch({
+    if (is.character(dugumler)) {
+      dugumler
+    } else if (is.numeric(dugumler)) {
+      rep("localhost", length.out = 1L)
+    } else if (is.list(dugumler)) {
+      vapply(dugumler, function(n) as.character(n$host %||% "")[1], character(1))
+    } else {
+      character(0)
+    }
+  }, error = function(e) character(0))
+
+  adlar <- adlar[!is.na(adlar) & nzchar(adlar)]
+  if (!length(adlar)) return(FALSE)
+  all(tolower(adlar) %in% c("localhost", "127.0.0.1", "::1"))
+}
+
+pk_async_plan_is_async <- function() {
+  isTRUE(pk_async_plan_capability()$ok)
+}
+
+#' Faz 6 asenkron çalışma zamanı ETKİN Mİ?
+#'
+#' Faz 6'nın yeni denetimleri (mutlak analiz son tarihi, sonuç önbelleği, satır
+#' tavanı reddi) `MERGEN_PK_ASYNC=false` iken DEVREYE GİRMEZ; aksi hâlde ilan
+#' edilen tek adımlık geri alma yolu gerçek bir geri alma olmazdı. İşçi içinde
+#' bayrak okunamasa bile dispatch anında kurulan mutlak son tarih option'ı
+#' asenkron kipin kanıtıdır.
+pk_async_mode_active <- function(query_meta = NULL) {
+  if (!is.null(getOption("mergen.pk.async.deadline_at", NULL))) return(TRUE)
+  isTRUE(tryCatch(pk_async_enabled(query_meta), error = function(e) FALSE))
 }
 
 #' Asenkron gönderim yapılabilir mi? (niyet + yetenek + bağımlılıklar)
@@ -235,8 +203,9 @@ pk_async_available <- function(query_meta = NULL) {
   if (!isTRUE(pk_async_enabled(query_meta))) {
     return(list(available = FALSE, reason = "flag_off"))
   }
-  if (!isTRUE(pk_async_plan_is_async())) {
-    return(list(available = FALSE, reason = "future_plan_not_async"))
+  plan_durumu <- pk_async_plan_capability()
+  if (!isTRUE(plan_durumu$ok)) {
+    return(list(available = FALSE, reason = plan_durumu$reason %||% "future_plan_not_async"))
   }
   if (!exists("tracked_future_promise", mode = "function", inherits = TRUE)) {
     return(list(available = FALSE, reason = "tracked_future_promise_missing"))
@@ -263,6 +232,12 @@ pk_async_worker_globals <- function(force = FALSE) {
   }
 
   paket <- list(
+    # `%||%` bootstrap'tan ÖNCE gereklidir: `pk_async_worker_bootstrap()` kendi
+    # gövdesinde `files %||% character(0)` değerlendirir ve explicit-mode'da
+    # özyinelemeli global genişletme YOKTUR. Eksikse temiz her işçi tipli
+    # fallback yerine ham bir "could not find function" hatasıyla ölürdü.
+    `%||%` = get("%||%", mode = "function", inherits = TRUE),
+    pk_async_config_install = pk_async_config_install,
     pk_async_worker_bootstrap = pk_async_worker_bootstrap,
     pk_async_worker_session = pk_async_worker_session,
     pk_async_harvest_session = pk_async_harvest_session,

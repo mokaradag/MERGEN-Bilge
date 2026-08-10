@@ -7,9 +7,23 @@ mergen_pk_apply_analysis_result <- function(analiz_result, messages_to_process) 
     return(list(action = "answer", answer = as.character(analiz_result)[1],
                 messages_to_process = messages_to_process, chips = list()))
   }
+  # Beklenmeyen bir tip (NULL, sayı, ...) "devam et" olarak yorumlanamaz:
+  # SQL Analizi kipinde bu, kullanıcının ham istemini HİÇBİR veritabanı
+  # bağlamı olmadan nihai LLM'e göndermek demektir. Bir sözleşme ihlali,
+  # sessizce temelsiz ama normal görünen bir yanıta dönüşmemelidir.
   if (!is.list(analiz_result)) {
-    return(list(action = "continue", messages_to_process = messages_to_process,
-                max_output_tokens = NULL))
+    try(log_warn(sprintf(
+      "[PK] Analiz sonucu beklenmeyen tipte (%s); istek kapali basarisiz.",
+      paste(class(analiz_result), collapse = "/")
+    )), silent = TRUE)
+    return(list(
+      action = "answer",
+      answer = paste0(
+        "\U000026A0\U0000FE0F **Analiz Tamamlanamadı:** Analiz beklenmeyen bir ",
+        "sonuç üretti ve güvenli biçimde sürdürülemedi. Lütfen tekrar deneyin."
+      ),
+      messages_to_process = messages_to_process, chips = list()
+    ))
   }
   if (identical(analiz_result$type, "error_message")) {
     return(list(action = "answer",
@@ -32,6 +46,16 @@ mergen_pk_apply_analysis_result <- function(analiz_result, messages_to_process) 
        max_output_tokens = analiz_result$max_tokens)
 }
 
+# `MERGEN_PK_ASYNC` VARSAYILAN OLARAK KAPALI olduğundan bu yakalama NORMAL
+# üretim yoludur. `conditionMessage()` metnini olduğu gibi sohbete gömmek,
+# modülün SQL hata sanitizasyonundan ÖNCE oluşan bir ODBC/DSN/sürücü
+# tanılamasını doğrudan kullanıcıya gösterirdi. İşçi yolu zaten redakte
+# ediyor; senkron yol da AYNI sınırı uygular.
+PK_SYNC_GENERIC_ERROR_MESSAGE <- paste0(
+  "\U000026A0\U0000FE0F **Analiz Hatası:** Analiz sırasında beklenmeyen bir ",
+  "hata oluştu. Lütfen tekrar deneyin."
+)
+
 mergen_pk_run_sync <- function(ctx) {
   tryCatch({
     if (isTRUE(ctx$deep_thinking)) {
@@ -46,26 +70,14 @@ mergen_pk_run_sync <- function(ctx) {
       )
     }
   }, error = function(e) {
-    paste0("\U000026A0\U0000FE0F Analiz modülü hatası: ", conditionMessage(e))
+    ham <- tryCatch(conditionMessage(e), error = function(x) "")
+    if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
+      ham <- tryCatch(redact_sensitive_text(ham), error = function(x) ham)
+    }
+    try(log_error(sprintf("[PK_SYNC] Analiz modulu hatasi: %s", substr(ham, 1L, 400L))),
+        silent = TRUE)
+    PK_SYNC_GENERIC_ERROR_MESSAGE
   })
-}
-
-mergen_pk_worker_outcome_text <- function(status, error = NA_character_) {
-  if (identical(status, "cancelled") || identical(status, "deadline")) {
-    return(pk_async_halt_message(status))
-  }
-  if (identical(status, "bootstrap_failed")) {
-    return(paste0(
-      "\U000026A0\U0000FE0F **Analiz Altyapısı Hazır Değil:** Analiz arka plan ",
-      "işçisinde başlatılamadı. Analiz senkron olarak yeniden denendi."
-    ))
-  }
-  mesaj <- try(as.character(error)[1], silent = TRUE)
-  if (inherits(mesaj, "try-error")) mesaj <- NA_character_
-  if (is.null(mesaj) || !length(mesaj) || is.na(mesaj) || !nzchar(mesaj)) {
-    mesaj <- "Analiz tamamlanamadı."
-  }
-  paste0("\U000026A0\U0000FE0F Analiz modülü hatası: ", mesaj)
 }
 
 # req_id oturumlar arasında çakışabilir; token adı session$token ile namespace edilir.
@@ -78,51 +90,6 @@ mergen_pk_cancel_token_for_session <- function(session, request_id) {
     paste0("pk_stop_", .pk_cancel_token_slug(oturum), "_",
            .pk_cancel_token_slug(request_id), ".flag")
   )
-}
-
-# Worker vekili registerDataObj içermez. Guard geçince artifact gerçek session'da sunulur.
-mergen_pk_serve_worker_artifact <- function(result, session) {
-  if (!is.list(result) || !is.list(result$pk_attachment) ||
-      !exists("pk_export_serve", mode = "function", inherits = TRUE)) return(result)
-
-  eski <- result$pk_attachment
-  yeni <- try(pk_export_serve(session, eski), silent = TRUE)
-  if (inherits(yeni, "try-error")) yeni <- eski
-  result$pk_attachment <- yeni
-
-  if (exists("pk_compose_attachment_card", mode = "function", inherits = TRUE) &&
-      is.character(result$pk_answer_block) && length(result$pk_answer_block) == 1L) {
-    eski_kart <- try(pk_compose_attachment_card(eski), silent = TRUE)
-    yeni_kart <- try(pk_compose_attachment_card(yeni), silent = TRUE)
-    if (inherits(eski_kart, "try-error")) eski_kart <- NULL
-    if (inherits(yeni_kart, "try-error")) yeni_kart <- NULL
-    if (is.character(eski_kart) && length(eski_kart) == 1L && nzchar(eski_kart) &&
-        is.character(yeni_kart) && length(yeni_kart) == 1L && nzchar(yeni_kart) &&
-        grepl(eski_kart, result$pk_answer_block, fixed = TRUE)) {
-      result$pk_answer_block <- sub(eski_kart, yeni_kart, result$pk_answer_block, fixed = TRUE)
-    }
-  }
-  result
-}
-
-mergen_pk_cleanup_worker_artifact <- function(result) {
-  if (!is.list(result) || !is.list(result$pk_attachment)) return(invisible(FALSE))
-  dosyalar <- result$pk_attachment$files %||% list()
-  if (!is.list(dosyalar) || !length(dosyalar)) return(invisible(FALSE))
-
-  yollar <- vapply(dosyalar, function(x) {
-    if (!is.list(x)) return("")
-    as.character(x$path %||% "")[1]
-  }, character(1))
-  yollar <- yollar[!is.na(yollar) & nzchar(yollar)]
-  for (yol in yollar) try(unlink(yol, force = TRUE), silent = TRUE)
-  for (dizin in unique(dirname(yollar))) {
-    norm <- gsub("\\\\", "/", dizin)
-    if (grepl("(^|/)run_[^/]*$", norm) && dir.exists(dizin) && !length(list.files(dizin))) {
-      try(unlink(dizin, recursive = TRUE, force = TRUE), silent = TRUE)
-    }
-  }
-  invisible(length(yollar) > 0L)
 }
 
 mergen_pk_prepare_async_request <- function(ctx) {
@@ -145,6 +112,8 @@ mergen_pk_prepare_async_request <- function(ctx) {
 
   jeton <- mergen_pk_cancel_token_for_session(ctx$session, ctx$req_id)
   pk_cancel_token_clear(jeton)
+  # Durdur gözlemcisi yalnızca KAYITLI istekler için jeton yazar.
+  mergen_pk_register_cancel_token(ctx$session, ctx$req_id)
   motor <- if (exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
                isTRUE(tryCatch(pk_engine_is_v2(), error = function(e) FALSE))) "v2" else "v1"
 
@@ -158,7 +127,10 @@ mergen_pk_prepare_async_request <- function(ctx) {
     deadline_sec = tryCatch(pk_config_resolve("MERGEN_PK_ANALYSIS_DEADLINE_SEC"),
                             error = function(e) 300L),
     engine = motor, bootstrap_files = pk_async_worker_bootstrap_files(),
-    started_at = Sys.time()
+    started_at = Sys.time(),
+    # Ana süreçte çözülmüş `options()` basamağı işçiye taşınır; aksi hâlde
+    # kalıcı PSOCK işçisi farklı güvenlik sınırlarıyla çalışabilir.
+    config_snapshot = tryCatch(pk_async_config_snapshot(), error = function(e) list())
   )
 
   dogrulama <- pk_async_validate_request(istek)

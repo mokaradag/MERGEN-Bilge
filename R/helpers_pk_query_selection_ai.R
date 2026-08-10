@@ -89,6 +89,26 @@ pk_select_llm_invoke <- function(messages, cfg, session = NULL, llm_fn = NULL,
     error = function(e) list()
   )
 
+  # Faz 6 (§5.10): her geçiş KALAN analiz bütçesiyle de sınırlanır. Yalnızca
+  # `cfg$timeout_sec` (120s'e kadar) kullanmak, kuyruk/bootstrap/RLS sonrası
+  # birkaç saniye kalmış bir istekte işçiyi ve DB bağlantısını seçici zaman
+  # aşımı dolana kadar meşgul ederdi.
+  etkin_timeout <- cfg$timeout_sec
+  .select_deadline <- getOption("mergen.pk.async.deadline_at", NULL)
+  if (!is.null(.select_deadline) &&
+      exists("pk_sql_timeout_plan", mode = "function", inherits = TRUE) &&
+      exists("pk_deadline_remaining_sec", mode = "function", inherits = TRUE)) {
+    .select_plan <- tryCatch(
+      pk_sql_timeout_plan(cfg$timeout_sec, pk_deadline_remaining_sec(.select_deadline)),
+      error = function(e) list(dispatch = TRUE, timeout_sec = cfg$timeout_sec)
+    )
+    if (!isTRUE(.select_plan$dispatch)) {
+      return(structure(list(), class = "pk_select_llm_error",
+                       message = "Kalan analiz butcesi yok; secim cagrisi gonderilmedi."))
+    }
+    etkin_timeout <- as.integer(.select_plan$timeout_sec)
+  }
+
   ayarlar <- list(
     model_selection = model,
     temperature = 0.0,
@@ -97,7 +117,7 @@ pk_select_llm_invoke <- function(messages, cfg, session = NULL, llm_fn = NULL,
     shiny_session = session,
     api_key_override = .pk_select_api_key(session, creds),
     # D14: v1'de bu alan HİÇ YOKTU.
-    request_timeout_sec = cfg$timeout_sec
+    request_timeout_sec = etkin_timeout
   )
 
   sonuc <- tryCatch(

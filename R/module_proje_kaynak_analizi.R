@@ -365,6 +365,17 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	  return(sql_gate$message)
 	}
 
+	# Faz 6 (§5.10): SEÇİLEN sorgunun metadata'sı ve yetki kapsamı, imzalar
+	# değişmeden aşağı akışa (sınırlı SQL yürütücüsü, sonuç önbelleği, satır
+	# tavanı) görünür kılınır. Yapılandırma sözleşmesi sorgu metadata'sına EN
+	# YÜKSEK önceliği verir; bağlam olmadan bu basamak sessizce atlanıyordu.
+	if (exists("pk_set_exec_context", mode = "function", inherits = TRUE)) {
+	  pk_exec_ctx_restore <- pk_set_exec_context(
+		query = selected_query, rls_info = rls_info, engine = pk_engine_mode()
+	  )
+	  on.exit(try(pk_exec_ctx_restore(), silent = TRUE), add = TRUE)
+	}
+
 	raw_data <- tryCatch({
 
 	  execute_pk_sql_unicode(conn, final_sql)
@@ -530,9 +541,25 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     return(list(type = "error_message", content = pk_filter_policy$refusal_message))
   }
   
-  cat(sprintf("[PK_ANALIZ] Filtreleme sonrası: %d satır (Orijinal: %d)\n", 
+  cat(sprintf("[PK_ANALIZ] Filtreleme sonrası: %d satır (Orijinal: %d)\n",
               nrow(filtered_data), nrow(secure_data)))
-  
+
+  # Faz 6 (§5.10): YETKİ VE FİLTRE SONRASI satır tavanı. RLS'in içinde
+  # çalıştırılmaz (geniş bir yetkili küme, soru onu birkaç satıra indirse bile
+  # reddedilirdi) ve `MERGEN_PK_ASYNC=false` iken devreye girmez.
+  pk_cap_stage <- pk_row_cap_stage(filtered_data, query_meta = selected_query$meta)
+  if (identical(pk_cap_stage$status, "too_large")) {
+    cat("[PK_ANALIZ] Satir tavani asildi; analiz reddedildi.\n")
+    pk_observe(
+      query_id = selected_query$id, query_name = selected_query$name,
+      filter_status = filter_criteria$status, filters = filter_criteria$filters,
+      pre_rls_rows = nrow(raw_data), authorized_rows = nrow(secure_data),
+      filtered_rows = nrow(filtered_data), outcome = "SonucCokBuyuk"
+    )
+    return(list(type = "error_message", content = pk_row_cap_refuse_message()))
+  }
+
+
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (filtreleme sonrasi)\n")
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")

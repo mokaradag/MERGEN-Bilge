@@ -483,6 +483,14 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
   values$show_welcome <- TRUE
   session_files(list())
 
+  # Faz 6 (§5.10): kaydedilmemiş sohbetler `NULL` kimliği PAYLAŞIR. Nesil
+  # sayacı olmadan "kaydedilmemiş sohbet A" ile Yeni Söyleşi'den sonraki
+  # "kaydedilmemiş sohbet B" ayırt edilemez ve tamamlanan bir PK işçisinin
+  # sonucu taze sohbete düşebilirdi.
+  if (exists("mergen_pk_bump_chat_epoch", mode = "function", inherits = TRUE)) {
+    try(mergen_pk_bump_chat_epoch(session), silent = TRUE)
+  }
+
   # Yeni söyleşide dosya bağlamı ve MCP anlık görüntüsü temiz başlar.
   session_user_data_reset_lists(
     session,

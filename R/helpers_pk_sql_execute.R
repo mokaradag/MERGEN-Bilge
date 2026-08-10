@@ -2,25 +2,94 @@
 # Faz 6: fiziksel bağlantı, duvar-saati timeout ve bellek tavanlı SQL getirimi.
 # ==============================================================================
 
-pk_sql_apply_statement_timeout <- function(conn, timeout_sec) {
+#' Kalan bütçeyle SINIRLI bloklayan DB çağrısı
+#'
+#' HER senkron sürücü çağrısı (checkout, kontrol ifadeleri, gönderim, getirim,
+#' metadata, sonuç temizleme) bu sınırdan geçmelidir. Aksi hâlde tek bir askıda
+#' kalan yardımcı çağrı, tüm analiz son tarihini ve iptali ETKİSİZ kılar:
+#' istek zaman aşımına uğramış olsa bile işçi ve bağlantı meşgul kalır.
+#'
+#' @param budget_fn Kalan saniyeyi döndüren fonksiyon (`Inf` = bu katmanda
+#'   bütçe yok).
+#' @return `list(ok = TRUE, value = ) | list(ok = FALSE, status = , error = )`.
+pk_sql_bounded_call <- function(fn, budget_fn, floor_sec = 0.05) {
+  kalan <- tryCatch(budget_fn(), error = function(e) Inf)
+  if (length(kalan) != 1L || is.na(kalan)) kalan <- Inf
+  if (is.finite(kalan) && kalan <= 0) {
+    return(list(ok = FALSE, status = "deadline", error = NA_character_))
+  }
+
+  deger <- tryCatch({
+    if (is.finite(kalan)) {
+      setTimeLimit(cpu = Inf, elapsed = max(floor_sec, kalan), transient = TRUE)
+    }
+    fn()
+  }, error = function(e) e, finally = {
+    if (is.finite(kalan)) {
+      try(setTimeLimit(cpu = Inf, elapsed = Inf, transient = TRUE), silent = TRUE)
+    }
+  })
+
+  if (!inherits(deger, "condition")) return(list(ok = TRUE, value = deger))
+  list(ok = FALSE, status = "error", error = conditionMessage(deger))
+}
+
+# SQL Server oturum durumu olan LOCK_TIMEOUT, havuzdan alınan FİZİKSEL bir
+# bağlantıda kalıcıdır. Eski kod temizlikte koşulsuz `-1` yazıyordu; bu, havuza
+# iade edilen bağlantının ÖNCEKİ kilit-bekleme politikasını yok eder ve sonraki
+# ilgisiz istekler sonsuza kadar bekleyebilir. Bu yüzden önceki değer okunur.
+.pk_sql_read_lock_timeout <- function(conn, budget_fn) {
+  okuma <- pk_sql_bounded_call(
+    function() DBI::dbGetQuery(conn, "SELECT @@LOCK_TIMEOUT AS lt"), budget_fn
+  )
+  if (!isTRUE(okuma$ok) || !is.data.frame(okuma$value) || nrow(okuma$value) < 1L) {
+    return(NA_integer_)
+  }
+  deger <- suppressWarnings(as.integer(okuma$value[[1]][1]))
+  if (length(deger) != 1L || is.na(deger)) return(NA_integer_)
+  deger
+}
+
+pk_sql_apply_statement_timeout <- function(conn, timeout_sec, budget_fn = NULL) {
   saniye <- suppressWarnings(as.integer(timeout_sec)[1])
   if (length(saniye) != 1L || is.na(saniye) || saniye <= 0L) {
-    return(list(mechanism = "none", applied = FALSE, timeout_sec = 0L))
+    return(list(mechanism = "none", applied = FALSE, timeout_sec = 0L,
+                previous = NA_integer_))
   }
   if (inherits(conn, "Pool")) {
-    return(list(mechanism = "deferred_pool", applied = FALSE, timeout_sec = saniye))
+    return(list(mechanism = "deferred_pool", applied = FALSE, timeout_sec = saniye,
+                previous = NA_integer_))
   }
   if (is.null(conn) || !requireNamespace("DBI", quietly = TRUE)) {
-    return(list(mechanism = "none", applied = FALSE, timeout_sec = saniye))
+    return(list(mechanism = "none", applied = FALSE, timeout_sec = saniye,
+                previous = NA_integer_))
   }
-  uygulandi <- tryCatch({
-    DBI::dbExecute(conn, sprintf("SET LOCK_TIMEOUT %d", saniye * 1000L))
-    TRUE
-  }, error = function(e) FALSE)
-  if (isTRUE(uygulandi)) {
-    return(list(mechanism = "lock_timeout", applied = TRUE, timeout_sec = saniye))
+
+  butce <- if (is.function(budget_fn)) budget_fn else function() Inf
+  onceki <- .pk_sql_read_lock_timeout(conn, butce)
+
+  uygulama <- pk_sql_bounded_call(
+    function() DBI::dbExecute(conn, sprintf("SET LOCK_TIMEOUT %d", saniye * 1000L)),
+    butce
+  )
+  if (isTRUE(uygulama$ok)) {
+    return(list(mechanism = "lock_timeout", applied = TRUE, timeout_sec = saniye,
+                previous = onceki))
   }
-  list(mechanism = "none", applied = FALSE, timeout_sec = saniye)
+  list(mechanism = "none", applied = FALSE, timeout_sec = saniye, previous = onceki)
+}
+
+# Temizlikte ÖNCEKİ değeri geri yükle. Okunamamışsa `-1` (SQL Server
+# varsayılanı) yazılır; bu, eski davranışın korunduğu tek durumdur.
+.pk_sql_restore_lock_timeout <- function(conn, timeout_state, budget_fn) {
+  if (!isTRUE(timeout_state$applied)) return(invisible(FALSE))
+  onceki <- suppressWarnings(as.integer(timeout_state$previous)[1])
+  hedef <- if (length(onceki) == 1L && !is.na(onceki)) onceki else -1L
+  try(pk_sql_bounded_call(
+    function() DBI::dbExecute(conn, sprintf("SET LOCK_TIMEOUT %d", hedef)),
+    budget_fn
+  ), silent = TRUE)
+  invisible(TRUE)
 }
 
 .pk_sql_unicode_wrapper <- function() {
@@ -33,51 +102,21 @@ pk_sql_apply_statement_timeout <- function(conn, timeout_sec) {
   bayt
 }
 
-# A DBI chunk sınırı SATIR sayısını sınırlar; tek bir satırdaki NVARCHAR(MAX),
-# XML veya benzeri LOB yine dbFetch() içinde belleği aşabilir. Bu yüzden sonuç
-# metadata'sı ilk satır materialize edilmeden incelenir. Yalnızca açıkça
-# sınırsız/LOB olduğu kanıtlanan tipler reddedilir; eksik metadata fail-open
-# bırakılır ki normal sabit genişlikli kolonlar yanlışlıkla engellenmesin.
-.pk_sql_has_unbounded_lob <- function(column_info) {
-  if (is.null(column_info) || !is.data.frame(column_info) || nrow(column_info) == 0L) {
-    return(FALSE)
-  }
-
-  metadata_text <- unlist(lapply(column_info, function(x) {
-    tryCatch(as.character(x), error = function(e) character(0))
-  }), use.names = FALSE)
-  metadata_text <- tolower(trimws(metadata_text))
-  metadata_text <- metadata_text[!is.na(metadata_text) & nzchar(metadata_text)]
-
-  if (any(grepl("\\b(n?varchar|varbinary)\\s*\\(\\s*max\\s*\\)",
-                metadata_text, perl = TRUE))) {
-    return(TRUE)
-  }
-
-  explicit_lob <- c(
-    "text", "ntext", "image", "xml", "sql_variant", "json",
-    "geography", "geometry", "longvarchar", "wlongvarchar", "longvarbinary"
-  )
-  if (any(metadata_text %in% explicit_lob)) return(TRUE)
-  if (any(grepl("(^|[^a-z])(longvarchar|wlongvarchar|longvarbinary)([^a-z]|$)",
-                metadata_text, perl = TRUE))) {
-    return(TRUE)
-  }
-
-  alanlar <- tolower(names(column_info))
-  tip_idx <- which(alanlar %in% c("type", "data_type", "sql_type", "type_name", "typename"))
-  boyut_idx <- which(alanlar %in% c("max_length", "column_size", "length"))
-  if (length(tip_idx) > 0L && length(boyut_idx) > 0L) {
-    tipler <- tolower(trimws(as.character(column_info[[tip_idx[1L]]])))
-    boyutlar <- suppressWarnings(as.numeric(column_info[[boyut_idx[1L]]]))
-    if (any(tipler %in% c("varchar", "nvarchar", "varbinary") &
-            !is.na(boyutlar) & boyutlar < 0, na.rm = TRUE)) {
-      return(TRUE)
-    }
-  }
-
-  FALSE
-}
+# NOT: eski `.pk_sql_has_unbounded_lob()` KALDIRILDI. İki ayrı kusuru vardı:
+#
+#   1) Sınıflandırma `dbColumnInfo()` çerçevesinin TÜM alanlarını (kolon ADI
+#      dahil) düzleştirip tip adı arıyordu. Üretimdeki `odbc::OdbcResult`
+#      yolunda `type` SAYISAL bir ODBC kodudur; dolayısıyla gerçek LOB'lar
+#      YAKALANMIYOR, buna karşılık `text`/`xml` adlı bir kolon TAKMA ADI sonucu
+#      tamamen reddedebiliyordu.
+#   2) Kanıtlanamayan genişliği "kesinlikle çok büyük" sayıyordu. Kısa bir
+#      `nvarchar(max)` değeri taşıyan TEK SATIRLIK sonuç da böylece
+#      reddediliyordu — oysa sözleşme (§5.10) bu durumda ZORUNLU sınırlı-parça
+#      getirimini seçmeyi söyler.
+#
+# Yerine `pk_sql_plan_chunk_rows()` (R/helpers_pk_result_size.R) kullanılır:
+# metadata'dan KANITLANMIŞ satır genişliği türetilir, parça boyutu ona göre
+# küçültülür ve kanıt yoksa granülarite tek satıra iner.
 
 pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
                                    chunk_rows = 5000L, max_result_mb = 512,
@@ -128,18 +167,29 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   ilk <- kapi()
   if (!identical(ilk, "ok")) return(bos(ilk))
 
+  # Analiz bütçesi: kurulum/temizlik ÇAĞRILARI da bu bütçeden geçer.
+  analiz_kalan <- function() {
+    if (is.null(deadline_at)) Inf else pk_deadline_remaining_sec(deadline_at)
+  }
+
   query_conn <- conn
   checked_out <- FALSE
   if (inherits(conn, "Pool")) {
     if (!requireNamespace("pool", quietly = TRUE)) {
       return(bos("error", error = "Pool baglantisi icin 'pool' paketi gerekli."))
     }
-    query_conn <- tryCatch(pool::poolCheckout(conn), error = function(e) e)
-    if (inherits(query_conn, "condition")) return(bos("error", error = conditionMessage(query_conn)))
+    # Checkout tek başına yeni bir FİZİKSEL ODBC bağlantısı kurabilir; yavaş bir
+    # DSN/login burada kalan bütçeyi aşabilirdi.
+    alim <- pk_sql_bounded_call(function() pool::poolCheckout(conn), analiz_kalan)
+    if (!isTRUE(alim$ok)) {
+      return(bos(if (identical(alim$status, "deadline")) "deadline" else "error",
+                 error = alim$error))
+    }
+    query_conn <- alim$value
     checked_out <- TRUE
   }
 
-  timeout_state <- pk_sql_apply_statement_timeout(query_conn, etkin_timeout)
+  timeout_state <- pk_sql_apply_statement_timeout(query_conn, etkin_timeout, analiz_kalan)
   mekanizma <- paste(c(
     if (inherits(query_conn, "OdbcConnection")) "odbc_interrupt" else character(0),
     if (isTRUE(timeout_state$applied)) "lock_timeout" else character(0)
@@ -147,21 +197,30 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   if (!nzchar(mekanizma)) mekanizma <- timeout_state$mechanism %||% "none"
 
   on.exit({
-    if (isTRUE(timeout_state$applied)) {
-      try(DBI::dbExecute(query_conn, "SET LOCK_TIMEOUT -1"), silent = TRUE)
+    # Temizlik de SINIRLIDIR: askıda kalan bir geri yükleme/iade çağrısı,
+    # zaman aşımına uğramış bir isteğin işçisini ve bağlantısını tutmaya devam
+    # ederdi. Temizliğin kendi tabanı vardır (bütçe tükense bile denenmelidir).
+    temizlik_butce <- function() max(2, min(10, analiz_kalan()))
+    .pk_sql_restore_lock_timeout(query_conn, timeout_state, temizlik_butce)
+    if (isTRUE(checked_out)) {
+      try(pk_sql_bounded_call(function() pool::poolReturn(query_conn), temizlik_butce),
+          silent = TRUE)
     }
-    if (isTRUE(checked_out)) try(pool::poolReturn(query_conn), silent = TRUE)
   }, add = TRUE)
 
   ifade_son_tarihi <- if (is.finite(etkin_timeout) && etkin_timeout > 0) {
     Sys.time() + etkin_timeout
   } else as.POSIXct(NA)
 
-  bloklayan <- function(fn) {
-    kalan_analiz <- if (is.null(deadline_at)) Inf else pk_deadline_remaining_sec(deadline_at)
-    kalan_ifade <- if (!is.na(ifade_son_tarihi)) {
+  ifade_kalan <- function() {
+    if (!is.na(ifade_son_tarihi)) {
       as.numeric(difftime(ifade_son_tarihi, Sys.time(), units = "secs"))
     } else Inf
+  }
+
+  bloklayan <- function(fn) {
+    kalan_analiz <- analiz_kalan()
+    kalan_ifade <- ifade_kalan()
     kalan <- min(kalan_analiz, kalan_ifade)
     if (is.finite(kalan) && kalan <= 0) {
       return(list(ok = FALSE,
@@ -169,20 +228,13 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
                   error = NA_character_))
     }
 
-    deger <- tryCatch({
-      if (is.finite(kalan)) setTimeLimit(cpu = Inf, elapsed = max(0.05, kalan), transient = TRUE)
-      fn()
-    }, error = function(e) e, finally = {
-      if (is.finite(kalan)) try(setTimeLimit(cpu = Inf, elapsed = Inf, transient = TRUE), silent = TRUE)
-    })
-    if (!inherits(deger, "condition")) return(list(ok = TRUE, value = deger))
+    sonuc <- pk_sql_bounded_call(fn, function() kalan)
+    if (isTRUE(sonuc$ok)) return(sonuc)
 
-    ka <- if (is.null(deadline_at)) Inf else pk_deadline_remaining_sec(deadline_at)
-    ki <- if (!is.na(ifade_son_tarihi)) {
-      as.numeric(difftime(ifade_son_tarihi, Sys.time(), units = "secs"))
-    } else Inf
+    ka <- analiz_kalan()
+    ki <- ifade_kalan()
     durum <- if (is.finite(ka) && ka <= 0) "deadline" else if (is.finite(ki) && ki <= 0) "timeout" else "error"
-    list(ok = FALSE, status = durum, error = conditionMessage(deger))
+    list(ok = FALSE, status = durum, error = sonuc$error)
   }
 
   metin <- enc2utf8(trimws(as.character(sql_text)[1]))
@@ -198,15 +250,28 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
     return(bos(gonderim$status, error = gonderim$error, timeout_mechanism = mekanizma))
   }
   res <- gonderim$value
-  on.exit(try(DBI::dbClearResult(res), silent = TRUE), add = TRUE, after = FALSE)
+  on.exit({
+    try(pk_sql_bounded_call(function() DBI::dbClearResult(res),
+                            function() max(2, min(10, analiz_kalan()))), silent = TRUE)
+  }, add = TRUE, after = FALSE)
 
-  # LOB metadata kontrolü dbFetch()'ten ÖNCE yapılır; aksi halde tek bir dev
-  # hücre satır-parça sınırını aşarak süreç belleğinde materialize olabilir.
-  kolon_bilgisi <- tryCatch(DBI::dbColumnInfo(res), error = function(e) NULL)
-  if (isTRUE(.pk_sql_has_unbounded_lob(kolon_bilgisi))) {
-    return(bos("too_large", error = "unbounded_lob_schema",
-               timeout_mechanism = mekanizma))
+  # Metadata dbFetch()'ten ÖNCE okunur ve GÜVENLİ PARÇA BOYUTUNU belirler.
+  # Sınırsız/bilinmeyen tip sonucu REDDETMEZ; yalnızca materyalizasyon
+  # granülaritesini düşürür (bkz. pk_sql_plan_chunk_rows).
+  meta_okuma <- bloklayan(function() DBI::dbColumnInfo(res))
+  kolon_bilgisi <- if (isTRUE(meta_okuma$ok)) meta_okuma$value else NULL
+  if (!isTRUE(meta_okuma$ok) && meta_okuma$status %in% c("deadline", "timeout")) {
+    return(bos(meta_okuma$status, error = meta_okuma$error, timeout_mechanism = mekanizma))
   }
+
+  parca_plani <- tryCatch(
+    pk_sql_plan_chunk_rows(kolon_bilgisi, chunk_rows = parca_satir,
+                           max_result_mb = tavan_mb),
+    error = function(e) list(rows = parca_satir, bounded = FALSE,
+                             reason = "plan_failed")
+  )
+  parca_satir <- max(1L, suppressWarnings(as.integer(parca_plani$rows)[1]))
+  if (is.na(parca_satir)) parca_satir <- 1L
 
   parcalar <- list()
   toplam_bayt <- 0
@@ -248,10 +313,32 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   } else if (parca_sayisi == 1L) {
     veri <- parcalar[[1]]
   } else {
-    veri <- tryCatch(do.call(rbind, parcalar), error = function(e) e)
-    if (inherits(veri, "condition")) return(bos("error", error = conditionMessage(veri),
-                                                chunks = parca_sayisi,
-                                                timeout_mechanism = mekanizma))
+    # BİRLEŞTİRME de pahalı bir aşamadır: `rbind` bir an için parçaların TAMAMI
+    # ile birleşik frame'i AYNI ANDA tutar. Bu yüzden (a) hemen önce kapı tekrar
+    # yoklanır ve (b) ikili tepe kullanımı tavana karşı kontrol edilir.
+    durum <- kapi()
+    if (!identical(durum, "ok")) {
+      return(bos(durum, chunks = parca_sayisi, timeout_mechanism = mekanizma))
+    }
+    if (is.finite(toplam_bayt) && (toplam_bayt * 2) > tavan_mb * 1024 * 1024) {
+      rm(parcalar)
+      return(bos("too_large", error = "assembly_would_exceed_max_result_mb",
+                 chunks = parca_sayisi, timeout_mechanism = mekanizma))
+    }
+
+    birlestirme <- bloklayan(function() do.call(rbind, parcalar))
+    if (!isTRUE(birlestirme$ok)) {
+      return(bos(birlestirme$status, error = birlestirme$error,
+                 chunks = parca_sayisi, timeout_mechanism = mekanizma))
+    }
+    veri <- birlestirme$value
+
+    # Birleştirmeden SONRA da kapı yoklanır: durdurulan bir istek buradan
+    # `ok` ile çıkmamalıdır.
+    durum <- kapi()
+    if (!identical(durum, "ok")) {
+      return(bos(durum, chunks = parca_sayisi, timeout_mechanism = mekanizma))
+    }
   }
 
   son_bayt <- .pk_sql_frame_bytes(veri)

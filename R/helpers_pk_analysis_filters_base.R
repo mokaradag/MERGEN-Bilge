@@ -203,6 +203,25 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 	  )
 	}
 
+	# Faz 6 (§5.10): bloklayan filtre çağrısı KALAN analiz bütçesini AŞAMAZ.
+	# `MERGEN_PK_FILTER_TIMEOUT_SEC` üst sınırı yoktur; asılı bir uç nokta
+	# aksi hâlde işçiyi (ve açık DB bağlantısını) Durdur'un ve sert son tarihin
+	# çok ötesinde tutabilirdi.
+	.filter_deadline <- getOption("mergen.pk.async.deadline_at", NULL)
+	if (!is.null(.filter_deadline) &&
+		exists("pk_sql_timeout_plan", mode = "function", inherits = TRUE) &&
+		exists("pk_deadline_remaining_sec", mode = "function", inherits = TRUE)) {
+	  .filter_plan <- tryCatch(
+		pk_sql_timeout_plan(filter_timeout, pk_deadline_remaining_sec(.filter_deadline)),
+		error = function(e) list(dispatch = TRUE, timeout_sec = filter_timeout)
+	  )
+	  if (!isTRUE(.filter_plan$dispatch)) {
+		cat("[FILTER_AI] Kalan analiz butcesi yok; filtre planlamasi yapilmadi.\n")
+		return(.pk_filter_empty_result("timeout"))
+	  }
+	  filter_timeout <- as.numeric(.filter_plan$timeout_sec)
+	}
+
 	result <- tryCatch({
 	  call_local_llm(messages, list(
 		model_selection = filter_model,
