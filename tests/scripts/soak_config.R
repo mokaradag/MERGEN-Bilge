@@ -367,6 +367,10 @@ soak_resolve_config <- function() {
     pk_lane_stale_every = soak_env_int("MERGEN_SOAK_PK_STALE_EVERY", 5L),
     pk_lane_deep_every = soak_env_int("MERGEN_SOAK_PK_DEEP_EVERY", 9L),
     pk_lane_deep_max_queries = soak_env_int("MERGEN_SOAK_PK_DEEP_MAX_QUERIES", 5L),
+    # Onbellek BAYT butcesi tek-sonuc tavanindan (max_result_mb) FARKLIDIR;
+    # kapi ikisini karistirmamalidir.
+    pk_cache_max_mb = soak_env_int("MERGEN_SOAK_PK_CACHE_MAX_MB", 512L),
+    pk_cache_max_entry_mb = soak_env_int("MERGEN_SOAK_PK_CACHE_MAX_ENTRY_MB", 128L),
     capacity_curve_enabled = capacity_enabled,
     capacity_curve_users = soak_default_capacity_curve(),
     capacity_step_seconds = soak_env_int("MERGEN_SOAK_CAPACITY_STEP_SECONDS", 30L),
@@ -448,6 +452,24 @@ soak_config_public <- function(cfg) {
     interactive_iterations = cfg$interactive_iterations,
     pk_lane = cfg$pk_lane,
     pk_lane_sessions = cfg$pk_lane_sessions,
+    # Faz 6 GUVENLIK PARAMETRELERI artifact'te ACIKCA yer alir: kapinin hangi
+    # son tarih / SQL zaman asimi / satir tavani / sonuc tavani / onbellek
+    # butcesi altinda gectigi sonradan yeniden kurulabilir olmali. Yalnizca
+    # sonuclari kaydetmek, esikler degistiginde kanitin anlamini kaybettirir.
+    pk_safety = list(
+      deadline_sec = cfg$pk_lane_deadline_sec,
+      sql_timeout_sec = cfg$pk_lane_sql_timeout_sec,
+      row_cap = cfg$pk_lane_row_cap,
+      rows_per_query = cfg$pk_lane_rows_per_query,
+      chunk_rows = cfg$pk_lane_chunk_rows,
+      max_result_mb = cfg$pk_lane_max_result_mb,
+      cache_max_mb = cfg$pk_cache_max_mb,
+      cache_max_entry_mb = cfg$pk_cache_max_entry_mb,
+      deep_max_queries = cfg$pk_lane_deep_max_queries,
+      cancel_every = cfg$pk_lane_cancel_every,
+      stale_every = cfg$pk_lane_stale_every,
+      deep_every = cfg$pk_lane_deep_every
+    ),
     capacity_curve_enabled = cfg$capacity_curve_enabled,
     capacity_curve_users = cfg$capacity_curve_users,
     capacity_ladder_enabled = cfg$capacity_ladder_enabled,

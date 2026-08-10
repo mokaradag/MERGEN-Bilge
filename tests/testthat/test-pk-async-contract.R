@@ -30,6 +30,7 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
 
   faz6 <- c(
     "R/helpers_pk_async_cancel.R",
+    "R/helpers_pk_exec_context.R",
     "R/helpers_pk_result_size.R",
     "R/helpers_pk_cache.R",
     "R/helpers_pk_sql_execute.R",
@@ -41,6 +42,7 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
     "R/helpers_pk_worker_observers.R",
     "R/helpers_deep_analysis_reconcile.R",
     "R/helpers_deep_analysis_phase6.R",
+    "R/helpers_pk_async_session_registry.R",
     "R/helpers_pk_async_lifecycle.R",
     "R/helpers_pk_async_apply.R",
     "R/server_handler_pk_async.R"
@@ -56,6 +58,7 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
   expect_source_manifest_order_for_tests(c(
     "R/helpers_pk_config.R",
     "R/helpers_pk_async_cancel.R",
+    "R/helpers_pk_exec_context.R",
     "R/helpers_pk_result_size.R",
     "R/helpers_pk_cache.R",
     "R/helpers_pk_sql_execute.R",
@@ -75,6 +78,7 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
 
   # Gönderim işleyicisi send_message'dan ÖNCE yüklenmelidir (o buna delege eder).
   expect_source_manifest_order_for_tests(c(
+    "R/helpers_pk_async_session_registry.R",
     "R/helpers_pk_async_lifecycle.R",
     "R/helpers_pk_async_apply.R",
     "R/server_handler_pk_async.R",
@@ -106,9 +110,17 @@ test_that("gönderim katmanı geri çağrılarda istek-kimliği koruması ve iso
   expect_true(.pk_async_has(metin, "shiny::isolate(ctx$stop_generation())"))
   # Oturum yazımları YALNIZCA koruma geçtikten sonra uygulanır.
   expect_true(.pk_async_has(metin, "pk_async_apply_session_writes("))
-  # Oturum kapanışı işçiyi durdurur (geri çağrıyı atmak YETMEZ).
-  expect_true(.pk_async_has(metin, "onSessionEnded"))
-  expect_true(.pk_async_has(metin, "pk_cancel_token_signal("))
+  # Oturum kapanışı işçiyi durdurur (geri çağrıyı atmak YETMEZ). Kanca artık
+  # OTURUM BAŞINA TEKTİR ve kayıt defterindedir: istek başına bir kapanış
+  # kaydetmek, tamamlanan HER isteğin gönderim çerçevesini oturum ömrü boyunca
+  # canlı tutuyordu (bellek istek sayısıyla doğrusal büyüyordu).
+  expect_true(.pk_async_has(metin, "mergen_pk_register_active_request("))
+  expect_true(.pk_async_has(metin, "mergen_pk_session_open("))
+  kayit_defteri <- .pk_async_read_bytes(
+    file.path(.pk_async_repo(), "R/helpers_pk_async_session_registry.R")
+  )
+  expect_true(.pk_async_has(kayit_defteri, "onSessionEnded"))
+  expect_true(.pk_async_has(kayit_defteri, "pk_cancel_token_signal("))
 })
 
 test_that("send_message PK yolunu DELEGE eder ve devam kapanışı TEK gövdedir", {
@@ -292,10 +304,11 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
   # derin Faz 6 kurulumu ve v1 çoklu seçici ayrı dosyalardadır.
   butceler <- list(
     "R/helpers_pk_async_cancel.R" = c(290L, 24L),
-    "R/helpers_pk_result_size.R" = c(580L, 23L),
+    "R/helpers_pk_exec_context.R" = c(150L, 9L),
+    "R/helpers_pk_result_size.R" = c(520L, 20L),
     "R/helpers_pk_cache.R" = c(400L, 23L),
-    "R/helpers_pk_sql_execute.R" = c(380L, 22L),
-    "R/helpers_pk_async_bootstrap.R" = c(385L, 23L),
+    "R/helpers_pk_sql_execute.R" = c(400L, 23L),
+    "R/helpers_pk_async_bootstrap.R" = c(400L, 24L),
     "R/helpers_pk_async_snapshot.R" = c(270L, 21L),
     "R/helpers_pk_async_request.R" = c(295L, 21L),
     "R/helpers_pk_async_worker_sql.R" = c(165L, 11L),
@@ -304,7 +317,8 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     "R/helpers_deep_analysis_reconcile.R" = c(375L, 24L),
     "R/helpers_deep_analysis_phase6.R" = c(140L, 11L),
     "R/helpers_deep_analysis_selector.R" = c(170L, 5L),
-    "R/helpers_pk_async_lifecycle.R" = c(250L, 24L),
+    "R/helpers_pk_async_session_registry.R" = c(190L, 24L),
+    "R/helpers_pk_async_lifecycle.R" = c(200L, 16L),
     "R/helpers_pk_async_apply.R" = c(180L, 16L),
     "R/server_handler_pk_async.R" = c(290L, 14L)
   )

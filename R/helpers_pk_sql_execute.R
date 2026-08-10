@@ -121,7 +121,9 @@ pk_sql_apply_statement_timeout <- function(conn, timeout_sec, budget_fn = NULL) 
 pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
                                    chunk_rows = 5000L, max_result_mb = 512,
                                    stop_check = NULL, stage_gate = NULL,
-                                   timeout_sec = NULL, deadline_at = NULL) {
+                                   timeout_sec = NULL, deadline_at = NULL,
+                                   expected_rows = NA_real_,
+                                   overhead_factor = NULL) {
   bos <- function(status, error = NA_character_, data = NULL, rows = 0L,
                   bytes = 0, chunks = 0L, timeout_mechanism = "none") {
     list(status = status, data = data, rows = rows, bytes = bytes, chunks = chunks,
@@ -132,6 +134,20 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   }
   if (is.null(conn) || !requireNamespace("DBI", quietly = TRUE)) {
     return(bos("error", error = "DB baglantisi kullanilamiyor."))
+  }
+
+  beklenen_satir <- suppressWarnings(as.numeric(expected_rows)[1])
+  if (length(beklenen_satir) != 1L) beklenen_satir <- NA_real_
+  yuk_carpani <- suppressWarnings(as.numeric(
+    overhead_factor %||% tryCatch(
+      pk_config_resolve("MERGEN_PK_RESULT_OVERHEAD_FACTOR",
+                        pk_active_query_meta()),
+      error = function(e) 2.5
+    )
+  )[1])
+  if (length(yuk_carpani) != 1L || is.na(yuk_carpani) || !is.finite(yuk_carpani) ||
+      yuk_carpani < 1) {
+    yuk_carpani <- 2.5
   }
 
   parca_satir <- suppressWarnings(as.integer(chunk_rows)[1])
@@ -272,6 +288,30 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   )
   parca_satir <- max(1L, suppressWarnings(as.integer(parca_plani$rows)[1]))
   if (is.na(parca_satir)) parca_satir <- 1L
+
+  # ÖN DENETİM (preflight): satır sayısı ÖNCEDEN biliniyorsa (çağıran bir
+  # `COUNT(*)`/katalog tahmini verdiyse) ve genişlik KANITLANMIŞ üst sınırlıysa,
+  # tek bir parça bile getirmeden reddedilebilir. Bu, `MERGEN_PK_MAX_RESULT_MB`
+  # ile `MERGEN_PK_RESULT_OVERHEAD_FACTOR` denetimlerine GERÇEK çalışma zamanı
+  # etkisi kazandırır; öncesinde ikisi de yalnızca saf yardımcıda yaşıyordu.
+  # Satır sayısı BİLİNMİYORSA hiçbir şey değişmez: parçalı yol zaten tavanı
+  # parça parça uygular (ön denetim bir OPTİMİZASYONDUR, tek savunma değil).
+  if (is.finite(beklenen_satir) && beklenen_satir >= 0 &&
+      exists("pk_result_size_preflight", mode = "function", inherits = TRUE)) {
+    genislik <- tryCatch(
+      pk_result_width_upper_bound(pk_sql_columns_from_metadata(kolon_bilgisi)),
+      error = function(e) NULL
+    )
+    on_denetim <- tryCatch(
+      pk_result_size_preflight(beklenen_satir, genislik, tavan_mb,
+                               overhead_factor = yuk_carpani),
+      error = function(e) NULL
+    )
+    if (is.list(on_denetim) && identical(on_denetim$decision, "refuse")) {
+      return(bos("too_large", error = on_denetim$reason %||% "preflight_refused",
+                 timeout_mechanism = mekanizma))
+    }
+  }
 
   parcalar <- list()
   toplam_bayt <- 0

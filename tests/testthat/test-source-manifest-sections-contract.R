@@ -162,7 +162,7 @@
   # (iptal/son tarih, sonuç boyutu+satır tavanı, LRU önbellek, sınırlı SQL
   # getirimi, işçi bootstrap/vekil, istek anlık görüntüsü, işçi giriş noktası)
   # ve derin analiz uzlaştırma katmanı (D16) bir dosya ekledi. 56 -> 64.
-  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 68L),
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 69L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -249,7 +249,7 @@
   # handler'larından önce yüklenirler.
   # Bilinçli güncelleme: Faz 6 PK gönderim katmanı (uygulama yardımcıları +
   # gönderim işleyicisi) server_send_message.R'den ÖNCE eklendi. 13 -> 15.
-  server_handlers_send_message = list(first = "R/server_speech_assets_runtime.R", last = "R/server_send_message.R", n = 16L)
+  server_handlers_send_message = list(first = "R/server_speech_assets_runtime.R", last = "R/server_send_message.R", n = 17L)
 )
 
 test_that("source_manifest_sections beklenen sırada ve adlarda bölümler içerir", {
@@ -516,8 +516,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # helpers_deep_analysis_phase6.R = derin Faz 6 kurulum/karar katmanı,
   # helpers_deep_analysis_selector.R = v1 çoklu seçici);
   # module_analysis +1 (helpers_pk_worker_observers.R = işçi-güvenli PK
-  # gözlemci sarmalayıcıları); server_handlers_send_message +1
-  # (helpers_pk_async_lifecycle.R = ana-süreç istek yaşam döngüsü).
+  # gözlemci sarmalayıcıları); server_handlers_send_message +2
+  # (helpers_pk_async_lifecycle.R = tek-istek yaşam döngüsü,
+  # helpers_pk_async_session_registry.R = oturum kapsamlı aktif istek defteri).
   # Dördü de bakım ratchet'i (25 fonksiyon / 800 satır) ihlal etmemek için
   # yapılan BİLİNÇLİ bölünmelerdir.
   #
@@ -525,7 +526,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # önbellek, sınırlı SQL getirimi, işçi bootstrap/vekil, istek anlık görüntüsü,
   # işçi girişi) ve derin uzlaştırma; server_handlers_send_message +2 (uygulama
   # yardımcıları + gönderim işleyicisi). Toplam 427 -> 437.
-  expect_equal(length(runtime), 443L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # PR #702: `helpers_pk_exec_context.R` (istek kapsamlı yürütme bağlamı)
+  # `helpers_pk_result_size.R` içinden BÖLÜNDÜ. 444 -> 445.
+  expect_equal(length(runtime), 445L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

@@ -1,9 +1,12 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_pk_async_lifecycle.R
-# Açıklama: Faz 6 (§5.10) — PK asenkron isteğinin ANA SÜREÇ yaşam-döngüsü
-#           yardımcıları: kaydedilmemiş sohbet kimliği (nesil sayacı), kalan
-#           istek bütçesi, netleştirme çipleri, iptal-jetonu sahipliği ve işçi
-#           artifact'inin sunulması/temizlenmesi.
+# Açıklama: Faz 6 (§5.10) — TEK bir PK isteğinin ana-süreç yaşam-döngüsü:
+#           gönderim anı anlık görüntüsü, kalan istek bütçesi, netleştirme
+#           çipleri, kullanıcıya görünen sonuç metni ve işçi artifact'inin
+#           sunulması/temizlenmesi.
+#
+# Oturum kapsamlı kayıt defteri (aktif istekler, sohbet nesli, jeton sahipliği)
+# AYRI dosyadadır: `R/helpers_pk_async_session_registry.R`.
 #
 # Bu dosya `R/helpers_pk_async_apply.R` içinden BÖLÜNMÜŞTÜR: tek dosya bakım
 # ratchet'inin 25-fonksiyon tavanını tüketiyordu. Ayrım aynı zamanda daha iyi
@@ -15,12 +18,6 @@
 # sarmalanır.
 # ==============================================================================
 
-# ------------------------------------------------------------------------------
-# KAYDEDİLMEMİŞ SOHBET KİMLİĞİ (NESİL SAYACI)
-# ------------------------------------------------------------------------------
-# `current_chat_id == NULL` her kaydedilmemiş sohbet için AYNIDIR. Nesil
-# sayacı, "Yeni Söyleşi" sonrası taze sohbeti öncekinden ayırır; böylece
-# tamamlanan bir işçi sonucu yanlış sohbete uygulanamaz.
 #' GÖNDERİM ANI anlık görüntüsü (ayarlar + etkin API anahtarı planı)
 #'
 #' Asenkron PK yolunda devam kapanışı dakikalar sonra çalışır. O sırada
@@ -43,44 +40,21 @@ mergen_pk_send_snapshot <- function(session, settings_data) {
   list(settings = ayarlar, api_key_plan = anahtar)
 }
 
-mergen_pk_bump_chat_epoch <- function(session) {
-  ud <- tryCatch(session$userData, error = function(e) NULL)
-  if (is.null(ud)) return(invisible(NA_integer_))
-  mevcut <- suppressWarnings(as.integer(tryCatch(ud[["pk_unsaved_chat_epoch"]],
-                                                 error = function(e) NA_integer_))[1])
-  if (length(mevcut) != 1L || is.na(mevcut)) mevcut <- 0L
-  yeni <- mevcut + 1L
-  try(ud[["pk_unsaved_chat_epoch"]] <- yeni, silent = TRUE)
-  invisible(yeni)
-}
-
-mergen_pk_chat_identity <- function(session, values) {
-  kimlik <- try(shiny::isolate(values$current_chat_id), silent = TRUE)
-  if (inherits(kimlik, "try-error")) kimlik <- NULL
-
-  if (!is.null(kimlik) && length(kimlik)) {
-    metin <- try(as.character(kimlik)[1], silent = TRUE)
-    if (!inherits(metin, "try-error") && !is.na(metin) && nzchar(metin)) {
-      return(paste0("chat:", metin))
-    }
-  }
-
-  nesil <- suppressWarnings(as.integer(tryCatch(
-    session$userData[["pk_unsaved_chat_epoch"]], error = function(e) NA_integer_
-  ))[1])
-  if (length(nesil) != 1L || is.na(nesil)) nesil <- 0L
-  paste0("<new-chat>:", nesil)
-}
-
 # ------------------------------------------------------------------------------
 # İSTEK BÜTÇESİ (SENKRON YEDEK İÇİN)
 # ------------------------------------------------------------------------------
-mergen_pk_request_deadline_at <- function(request) {
+mergen_pk_request_started_at <- function(request) {
   baslangic <- suppressWarnings(as.numeric(request$started_at_epoch %||% NA_real_)[1])
   if (length(baslangic) != 1L || is.na(baslangic)) return(NULL)
+  as.POSIXct(baslangic, origin = "1970-01-01")
+}
+
+mergen_pk_request_deadline_at <- function(request) {
+  baslangic <- mergen_pk_request_started_at(request)
+  if (is.null(baslangic)) return(NULL)
   butce <- suppressWarnings(as.numeric(request$deadline_sec %||% NA_real_)[1])
   if (length(butce) != 1L || is.na(butce) || !is.finite(butce) || butce <= 0) return(NULL)
-  pk_deadline_at(as.POSIXct(baslangic, origin = "1970-01-01"), butce)
+  pk_deadline_at(baslangic, butce)
 }
 
 mergen_pk_residual_budget_sec <- function(request) {
@@ -145,33 +119,6 @@ mergen_pk_worker_outcome_text <- function(status, error = NA_character_) {
     mesaj <- "Analiz tamamlanamadı."
   }
   paste0("\U000026A0\U0000FE0F Analiz modülü hatası: ", mesaj)
-}
-
-# ------------------------------------------------------------------------------
-# JETON SAHİPLİĞİ KAYDI
-# ------------------------------------------------------------------------------
-# Durdur gözlemcisi HER istek için çalışır (sohbet, görsel, özetleme...).
-# Yalnızca PK dağıtıcısının SAHİP OLDUĞU istekler için jeton yazılmalıdır;
-# aksi hâlde hiçbir tamamlanma yolunun temizlemediği `.flag` dosyaları birikir.
-mergen_pk_register_cancel_token <- function(session, request_id) {
-  ud <- tryCatch(session$userData, error = function(e) NULL)
-  if (is.null(ud)) return(invisible(FALSE))
-  kimlik <- tryCatch(as.character(request_id)[1], error = function(e) NA_character_)
-  if (is.na(kimlik) || !nzchar(kimlik)) return(invisible(FALSE))
-
-  mevcut <- tryCatch(ud[["pk_cancel_token_owners"]], error = function(e) NULL)
-  if (!is.character(mevcut)) mevcut <- character(0)
-  # Kayıt penceresi sınırlı tutulur: oturum ömrü boyunca sınırsız büyümemeli.
-  mevcut <- utils::tail(unique(c(mevcut, kimlik)), 50L)
-  try(ud[["pk_cancel_token_owners"]] <- mevcut, silent = TRUE)
-  invisible(TRUE)
-}
-
-mergen_pk_request_has_cancel_token <- function(session, request_id) {
-  kimlik <- tryCatch(as.character(request_id)[1], error = function(e) NA_character_)
-  if (is.na(kimlik) || !nzchar(kimlik)) return(FALSE)
-  sahipler <- tryCatch(session$userData[["pk_cancel_token_owners"]], error = function(e) NULL)
-  is.character(sahipler) && kimlik %in% sahipler
 }
 
 # Worker vekili registerDataObj içermez. Guard geçince artifact gerçek session'da sunulur.

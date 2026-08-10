@@ -226,6 +226,13 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     values$current_chat_id <- chat_id
     values$show_welcome <- FALSE
 
+    # Faz 6 (§5.10): başka bir sohbete geçildiğinde, sonucu ZATEN atılacak bir
+    # PK işçisi DB bağlantısını ve işçi yuvasını doğal bitişine kadar tutmaya
+    # devam ederdi. Terk edilen istekler burada iptal edilir.
+    if (exists("mergen_pk_abandon_active_requests", mode = "function", inherits = TRUE)) {
+      try(mergen_pk_abandon_active_requests(session, release = FALSE), silent = TRUE)
+    }
+
     # Mesaj içeriğinden aktif aracı tespit et ve etkinleştir
     # Görsel Uzmanı tespiti güvenilir çalışıyor (görsel yanıtlar belirgin işaretçiler içerir).
     # Diğer araçlar için içerik tabanlı tespit yapılır; eşleşme yoksa araç durumu değiştirilmez.

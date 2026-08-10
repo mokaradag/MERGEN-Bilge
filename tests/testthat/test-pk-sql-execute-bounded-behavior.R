@@ -20,7 +20,7 @@ local({
     `%||%` <<- function(a, b) if (is.null(a)) b else a
   }
 
-  for (dosya in c("helpers_pk_async_cancel.R", "helpers_pk_result_size.R",
+  for (dosya in c("helpers_pk_async_cancel.R", "helpers_pk_exec_context.R", "helpers_pk_result_size.R",
                   "helpers_pk_sql_execute.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
   }

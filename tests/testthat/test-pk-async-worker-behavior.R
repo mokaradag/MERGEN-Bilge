@@ -21,7 +21,7 @@
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
                   "helpers_pk_async_bootstrap.R", "helpers_pk_async_snapshot.R",
-                  "helpers_pk_async_request.R", "helpers_pk_result_size.R",
+                  "helpers_pk_async_request.R", "helpers_pk_exec_context.R", "helpers_pk_result_size.R",
                   "helpers_pk_cache.R", "helpers_pk_sql_execute.R",
                   "helpers_pk_async_worker_sql.R", "helpers_pk_async_worker.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
@@ -297,4 +297,53 @@ test_that("bootstrap istisna atarsa da TİPLİ bootstrap_failed döner", {
   env$pk_async_worker_bootstrap <- function(...) stop("dosya sistemi erisilemez")
   sonuc <- expect_no_error(env$pk_async_run_analysis(.pk_worker_request(env)))
   expect_equal(sonuc$status, "bootstrap_failed")
+})
+
+# ------------------------------------------------------------------------------
+# İŞÇİ GLOBALS PAKETİ: BOOTSTRAP ÖNCESİ SEMBOLLER
+# ------------------------------------------------------------------------------
+# `dependency_mode = "explicit"` özyinelemeli global genişletme YAPMAZ. İşçi
+# bootstrap'tan ÖNCE mutlak son tarihi türetir ve ilk kapıyı yoklar; bu yolda
+# kullanılan her sembol pakette AÇIKÇA taşınmalıdır. Eksik olduklarında hiçbir
+# offline test kırılmaz — TEMİZ bir PSOCK işçisi ham bir "could not find
+# function" ile ölür ve hata ancak ÜRETİMDE görünürdü.
+test_that("işçi globals paketi bootstrap ÖNCESİ yardımcıları taşır", {
+  env <- .pk_worker_env()
+  paket <- env$pk_async_worker_globals(force = TRUE)
+
+  for (ad in c("%||%", "pk_deadline_at", "pk_deadline_expired",
+               "pk_deadline_remaining_sec", "pk_cancel_token_is_signalled",
+               "pk_async_stage_gate", "pk_async_halt_message",
+               "pk_async_worker_bootstrap", "pk_async_run_analysis")) {
+    expect_true(ad %in% names(paket), info = ad)
+    expect_true(is.function(paket[[ad]]), info = ad)
+  }
+})
+
+# ------------------------------------------------------------------------------
+# İŞÇİ TARAFI DB HAVUZU ADMİSYONU
+# ------------------------------------------------------------------------------
+# PSOCK işçisi ana sürecin `.GlobalEnv$pool` nesnesini göremez; havuz açıkken
+# bile doğrudan `dbConnect()` yoluna düşmek `MERGEN_DB_POOL_MAX_SIZE` tavanını
+# ve admisyon politikasını devre dışı bırakırdı.
+test_that("bootstrap sonrasi isci havuzu YALNIZCA havuz acikken kurulur", {
+  env <- .pk_worker_env()
+  cagrildi <- new.env(parent = emptyenv())
+  cagrildi$n <- 0L
+  env$init_db_pool_once <- function(target = "primary") {
+    cagrildi$n <- cagrildi$n + 1L
+    invisible(TRUE)
+  }
+
+  env$is_db_pool_enabled <- function() FALSE
+  env$.pk_async_worker_db_pool_init(env)
+  expect_equal(cagrildi$n, 0L)
+
+  env$is_db_pool_enabled <- function() TRUE
+  env$.pk_async_worker_db_pool_init(env)
+  expect_equal(cagrildi$n, 1L)
+
+  # Havuz kurulumu HATA verse bile bootstrap düşmemelidir.
+  env$init_db_pool_once <- function(target = "primary") stop("havuz kurulamadi")
+  expect_no_error(env$.pk_async_worker_db_pool_init(env))
 })

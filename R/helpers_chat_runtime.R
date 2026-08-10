@@ -483,12 +483,15 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
   values$show_welcome <- TRUE
   session_files(list())
 
-  # Faz 6 (§5.10): kaydedilmemiş sohbetler `NULL` kimliği PAYLAŞIR. Nesil
+  # Faz 6 (§5.10): kaydedilmemiş sohbetler `NULL` kimliği PAYLAŞIR; nesil
   # sayacı olmadan "kaydedilmemiş sohbet A" ile Yeni Söyleşi'den sonraki
   # "kaydedilmemiş sohbet B" ayırt edilemez ve tamamlanan bir PK işçisinin
-  # sonucu taze sohbete düşebilirdi.
-  if (exists("mergen_pk_bump_chat_epoch", mode = "function", inherits = TRUE)) {
-    try(mergen_pk_bump_chat_epoch(session), silent = TRUE)
+  # sonucu taze sohbete düşerdi. Ayrıca sonucu ZATEN atılacak işçi, DB
+  # bağlantısını ve işçi yuvasını doğal bitişine kadar tutmamalıdır.
+  for (fn in c("mergen_pk_bump_chat_epoch", "mergen_pk_abandon_active_requests")) {
+    if (exists(fn, mode = "function", inherits = TRUE)) {
+      try(get(fn, mode = "function")(session), silent = TRUE)
+    }
   }
 
   # Yeni söyleşide dosya bağlamı ve MCP anlık görüntüsü temiz başlar.

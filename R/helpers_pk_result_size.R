@@ -20,57 +20,6 @@
 
 .PK_RESULT_MB <- 1024 * 1024
 
-# ------------------------------------------------------------------------------
-# ETKİN YÜRÜTME BAĞLAMI
-# ------------------------------------------------------------------------------
-# Sorgu seçimi ile SQL yürütmesi/RLS arasındaki katmanlar (modül gövdesi,
-# `execute_pk_sql_unicode()` sembolü, `apply_rls_to_data()`) seçilen sorgunun
-# metadata'sını PARAMETRE olarak taşımaz. Yapılandırma sözleşmesi ise sorgu
-# metadata'sına EN YÜKSEK önceliği verir. Bu süreç-yerel bağlam, imzaları
-# değiştirmeden o metadata'yı (ve önbellek anahtarı için yetki kapsamını)
-# aşağı akışa görünür kılar.
-#
-# SAFTIR: yalnızca `options()` okur/yazar; Shiny/DB/ağ dokunuşu yoktur.
-
-#' Etkin yürütme bağlamını kur (geri yükleyici döndürür)
-#'
-#' @return Eski bağlamı geri yükleyen fonksiyon (`on.exit` ile çağrılmalıdır).
-pk_set_exec_context <- function(query = NULL, rls_info = NULL, engine = "") {
-  eski <- getOption("mergen.pk.exec_context", NULL)
-  options(mergen.pk.exec_context = list(
-    query = query, rls_info = rls_info, engine = as.character(engine %||% "")[1]
-  ))
-  function() options(mergen.pk.exec_context = eski)
-}
-
-#' Etkin yürütme bağlamını oku (yoksa boş liste)
-pk_active_exec_context <- function() {
-  baglam <- getOption("mergen.pk.exec_context", NULL)
-  if (!is.list(baglam)) return(list(query = NULL, rls_info = NULL, engine = ""))
-  baglam
-}
-
-#' Etkin sorgu metadata'sı (yoksa `NULL`)
-pk_active_query_meta <- function() {
-  sorgu <- pk_active_exec_context()$query
-  if (!is.list(sorgu)) return(NULL)
-  sorgu$meta
-}
-
-#' AKTİF istek durdurulmuş / süresi dolmuş mu? (imza değiştirmeden yoklama)
-#'
-#' Bloklayan LLM/HTTP aşamaları iptal jetonunu PARAMETRE olarak almaz. Dispatch
-#' anında yayınlanan option'lar üzerinden kapı yoklanabilir; böylece iptal
-#' edilmiş bir isteğin ara sonucu KULLANILMAZ ve sonraki aşamalar hiç başlamaz.
-#' Bütçe/jeton yoksa `FALSE` döner ve davranış değişmez.
-pk_active_stage_halt <- function() {
-  if (!exists("pk_async_stage_gate", mode = "function", inherits = TRUE)) return(FALSE)
-  jeton <- getOption("mergen.pk.async.cancel_token", NULL)
-  son_tarih <- getOption("mergen.pk.async.deadline_at", NULL)
-  if (is.null(jeton) && is.null(son_tarih)) return(FALSE)
-  isTRUE(tryCatch(pk_async_stage_gate(jeton, son_tarih)$halt, error = function(e) FALSE))
-}
-
 # Değişken genişlikli metin/ikili tipler. Beyan edilmiş MAKSİMUM uzunluk
 # VARSA üst sınır üretebilirler; yoksa (veya `-1` = MAX ise) üretmezler.
 .PK_VARWIDTH_TYPES <- c(

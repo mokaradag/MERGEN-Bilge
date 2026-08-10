@@ -454,14 +454,26 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
     }
 
     # Iptal SOZLESMESI: iptal edilen tur TIPLI durum dondurur ve ASLA uygulanmaz.
+    # ONCE "gercekten calistirildi mi": SIFIR iptal turu ile `all(...)` bos
+    # vektor uzerinde TRUE doner ve serit hicbir sey kanitlamadan yesil gorunur.
+    add("pk_cancel_exercised", TRUE, pk_lane$cancel$storm_rounds %||% 0L, 1L,
+        isTRUE(pk_lane$cancel$exercised),
+        "Iptal firtinasi EN AZ bir tur gercekten calistirilmis olmali.")
+    add("pk_cancel_inflight_exercised", TRUE, pk_lane$cancel$inflight_rounds %||% 0L, 1L,
+        isTRUE(pk_lane$cancel$inflight_exercised),
+        paste0("UCUS-ICI iptal (getirim BASLADIKTAN sonra) en az bir kez ",
+               "calistirilmali; yoksa parca-arasi kapi test edilmemis olur."))
     add("pk_cancel_honoured", TRUE, isTRUE(pk_lane$cancel$honoured), TRUE,
         isTRUE(pk_lane$cancel$honoured),
-        "Iptal edilen her tur cancelled/deadline durumu dondurmeli.")
+        "Iptal edilen her tur TAM OLARAK 'cancelled' durumu dondurmeli.")
     add("pk_cancelled_never_applied", TRUE, isTRUE(pk_lane$cancel$never_applied), TRUE,
         isTRUE(pk_lane$cancel$never_applied),
         "Durdurulmus istek geri cagrisi durumu MUTASYONA UGRATMAMALI.")
 
     # ISTEK-KIMLIGI yasam dongusu.
+    add("pk_stale_exercised", TRUE, pk_lane$guard$stale_rounds %||% 0L, 1L,
+        isTRUE(pk_lane$guard$stale_exercised),
+        "Bayat tamamlanma EN AZ bir tur gercekten calistirilmis olmali.")
     add("pk_stale_never_applied", TRUE, isTRUE(pk_lane$guard$stale_never_applied), TRUE,
         isTRUE(pk_lane$guard$stale_never_applied),
         "Bayat tamamlanma daha yeni istegi EZMEMELI.")
@@ -476,28 +488,88 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
     # SON TARIH: ardisik derin sorgularin toplami butceyi ASMAMALI.
     add("pk_deep_deadline_respected", TRUE, isTRUE(pk_lane$deep$budget_respected), TRUE,
         isTRUE(pk_lane$deep$budget_respected),
-        sprintf("Toplam etkin zaman asimi %ss <= butce %ss olmali.",
+        sprintf("Toplam etkin zaman asimi %ss <= butce %ss olmali (dagitilan=%s).",
                 as.character(pk_lane$deep$total_effective_sec %||% NA),
-                as.character(pk_lane$deep$budget_sec %||% NA)))
+                as.character(pk_lane$deep$budget_sec %||% NA),
+                as.character(pk_lane$deep$dispatched %||% NA)))
+    # Butce gercekten AKTARILIYOR mu: her sorguya tam zaman asimi verilseydi
+    # toplam da butceyi asmayabilirdi (az sayida sorguda), ama davranis YANLIS
+    # olurdu. Azalan etkin zaman asimi bunu ayirt eder.
+    add("pk_deep_budget_decreases", TRUE, isTRUE(pk_lane$deep$budget_decreases), TRUE,
+        isTRUE(pk_lane$deep$budget_decreases),
+        "Ardisik derin sorgular AZALAN kalan butce almali.")
+    add("pk_deep_halts_between_queries", TRUE,
+        isTRUE(pk_lane$deep$deadline_halts_between_queries) &&
+          isTRUE(pk_lane$deep$cancel_halts_between_queries), TRUE,
+        isTRUE(pk_lane$deep$deadline_halts_between_queries) &&
+          isTRUE(pk_lane$deep$cancel_halts_between_queries),
+        "Derin yol son tarih VE iptal durumunda sorgular ARASINDA durmali.")
 
     # BAGLANTI: sinirli getirim her cikis yolunda sonuc kumesini birakmali.
     add("pk_connection_usable_after_fetch", TRUE,
         isTRUE(pk_lane$db$connection_usable_after_bounded_fetch), TRUE,
         isTRUE(pk_lane$db$connection_usable_after_bounded_fetch),
         "Sinirli getirimden sonra baglanti hala kullanilabilir olmali.")
+    add("pk_connection_acquire_release_balanced", TRUE,
+        sprintf("%s/%s", as.character(pk_lane$db$acquired %||% NA),
+                as.character(pk_lane$db$released %||% NA)), "esit",
+        isTRUE(pk_lane$db$acquire_release_balanced),
+        paste0("Her tur al/birak sarmalayicisindan gecmeli; sayaclar ",
+               "dengelenmezse istek basina baglanti sizintisi vardir."))
 
-    # ONBELLEK: butce ASILMAMALI (hit orani raporlanir, esik yok).
+    # GERCEK PSOCK yolu: bu prob olmadan serit, `MERGEN_PK_ASYNC=true` ile
+    # fiilen etkinlesen kodu (serilestirme + temiz iscide bootstrap + future
+    # tamamlanma) HIC calistirmadan tum esikleri gecebilirdi.
+    add("pk_psock_async_path", TRUE,
+        pk_lane$psock$status %||% (pk_lane$psock$reason %||% "not_run"),
+        "cancelled", isTRUE(pk_lane$psock$ok),
+        paste0("GERCEK PSOCK iscisinde anlik goruntu serilestirme ve ",
+               "bootstrap-oncesi kapi calismali (terminal durum: cancelled)."))
+
+    # SINIRLI GETIRIM: `ok` donen tur TAM sonucu uretmeli. Sessizce kirpan bir
+    # regresyon yine `ok` dondurup %100 basari orani uretebilirdi.
+    add("pk_bounded_fetch_complete", TRUE,
+        pk_lane$fetch$complete_rounds %||% 0L, 1L,
+        isTRUE(pk_lane$fetch$rows_always_complete),
+        "Basarili sinirli getirim TAM satir kumesini dondurmeli (kirpma YOK).")
+
+    # ONBELLEK BUTCESI: karsilastirma ONBELLEK bayt butcesine (MAX_MB) gore
+    # yapilir. Onceden tek sonuc tavani (max_result_mb) ile kiyaslaniyordu;
+    # bunlar FARKLI sinirlardir ve yanlis kiyas gercek bir butce asimini
+    # gizleyebilirdi.
+    cache_budget_mb <- as.numeric(cfg$pk_cache_max_mb %||% 512)
     cache_ok <- is.finite(pk_lane$cache$total_mb %||% NA_real_) &&
-      pk_lane$cache$total_mb <= as.numeric(cfg$pk_lane_max_result_mb %||% 512)
+      pk_lane$cache$total_mb <= cache_budget_mb
     add("pk_cache_within_budget", TRUE, pk_lane$cache$total_mb,
-        cfg$pk_lane_max_result_mb %||% 512L, cache_ok,
+        cache_budget_mb, cache_ok,
         sprintf("Onbellek bayt butcesi asilmamali. hit=%s miss=%s tahliye=%s",
                 as.character(pk_lane$cache$hit), as.character(pk_lane$cache$miss),
                 as.character(pk_lane$cache$evicted)))
+
+    # ONBELLEK YOLLARI GERCEKTEN CALISTIRILDI MI: hit/tahliye gozlenmediyse
+    # "butcede kaldi" iddiasi bos onbellek uzerinden de saglanirdi.
+    add("pk_cache_hit_observed", TRUE, pk_lane$cache$hit %||% 0L, 1L,
+        isTRUE(pk_lane$cache$hit_observed),
+        "Tekrarlayan istekler EN AZ bir onbellek isabeti uretmeli.")
+    add("pk_cache_eviction_observed", TRUE, pk_lane$cache$evicted %||% 0L, 1L,
+        isTRUE(pk_lane$cache$eviction_observed),
+        sprintf(paste0("Ayrik giris sayisi LRU tavanini (%s) asmali ve TAHLIYE ",
+                       "yolu calistirilmali."),
+                as.character(pk_lane$cache$entries_ceiling %||% NA)))
+    add("pk_cache_scope_isolated", TRUE, isTRUE(pk_lane$cache$scope_isolated), TRUE,
+        isTRUE(pk_lane$cache$scope_isolated),
+        "Onbellek girisi YALNIZCA kendi yetki kapsamina donmeli (capraz sizinti YOK).")
   } else if (isTRUE(cfg$pk_lane)) {
     add("pk_analysis_lane_available", TRUE, FALSE, TRUE, FALSE,
         paste0("PK-analiz seridi istendi ama calismadi; Faz 6 bloklamayan ",
                "yurutme kapsami KAYBEDILDI. MERGEN_PK_ASYNC acilmamalidir."))
+  } else {
+    # KAPALI serit de kanit DEGILDIR. Onceden bu dal hicbir kontrol eklemiyordu,
+    # yani seridi kapatmak kapiyi Faz 6 kapsami OLMADAN yesil birakiyordu.
+    add("pk_analysis_lane_enabled", TRUE, FALSE, TRUE, FALSE,
+        paste0("PK-analiz seridi KAPALI (MERGEN_SOAK_PK_LANE=false). Faz 6 ",
+               "bloklamayan yurutme kapsami olculmedi; bu kosum MERGEN_PK_ASYNC ",
+               "acilmasi icin kanit sayilamaz."))
   }
 
   # 16) Kademeli kapasite merdiveni: HER calistirilan adim stabil esigi gecmeli.
@@ -762,6 +834,7 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
         cancellation = pk_lane$cancel,
         request_lifecycle = pk_lane$guard,
         cache = pk_lane$cache,
+        bounded_fetch = pk_lane$fetch,
         deep_thinking_budget = pk_lane$deep,
         db = pk_lane$db,
         does_prove = pk_lane$does_prove,
@@ -771,7 +844,12 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
       list(available = FALSE,
            reason = pk_lane$reason %||% "PK-analiz seridi calismadi (olculemeyen)")
     } else {
-      "PK-analiz seridi kapali"
+      # Kapali serit ARTIK kapiyi da dusurur (pk_analysis_lane_enabled); burada
+      # da neden acikca yazilir ki artifact tek basina okundugunda kapsam
+      # kaybinin farkina varilsin.
+      list(available = FALSE, enabled = FALSE,
+           reason = paste0("PK-analiz seridi KAPALI; Faz 6 bloklamayan yurutme ",
+                           "kapsami OLCULMEDI (bu kosum MERGEN_PK_ASYNC icin kanit degildir)"))
     },
     capacity_curve = capacity_rows %||% list(),
     capacity_ladder = if (!is.null(capacity_ladder) && isTRUE(capacity_ladder$ran)) {

@@ -110,6 +110,10 @@ jobs:
             any::purrr
             any::readr
             any::readxl
+            # RSQLite `required_packages` icindedir: config_packages.R eksik pakette
+            # ACILISTA stop() eder ve bir sonraki 'App boot smoke' adimi app.R'yi
+            # source ettigi icin is akisi bootstrap'ta kirilirdi.
+            any::RSQLite
             any::shiny
             any::shinyBS
             any::shinycssloaders

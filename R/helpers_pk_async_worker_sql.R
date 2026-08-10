@@ -47,7 +47,10 @@ pk_async_sql_status_box <- function() {
 #' Sınırlı/iptal edilebilir `execute_pk_sql_unicode()` yerine geçen köprü
 #'
 #' @param stage_gate Aşama kapısı (iptal + son tarih).
-#' @param deadline_at Mutlak analiz son tarihi.
+#' @param deadline_at Mutlak analiz son tarihi VEYA onu döndüren fonksiyon.
+#'   Fonksiyon biçimi, sorgu SEÇİLDİKTEN sonra uygulanan per-query
+#'   `analysis_deadline_sec` override'ının bu sınırlayıcıya da ULAŞMASI
+#'   içindir; sabit değer geçmişe dönük uyumluluk için desteklenir.
 #' @param status_box `pk_async_sql_status_box()` çıktısı.
 #' @param defaults Seçim yapılamadığında kullanılacak yedek sınırlar.
 #' @return `data.frame` (başarı) veya kullanıcıya görünen Türkçe metin.
@@ -101,7 +104,7 @@ pk_async_bounded_sql_executor <- function(stage_gate, deadline_at, status_box,
       max_result_mb = tavan_mb,
       stage_gate = stage_gate,
       timeout_sec = coz("MERGEN_PK_SQL_TIMEOUT_SEC", defaults$sql_timeout %||% 120L),
-      deadline_at = deadline_at
+      deadline_at = if (is.function(deadline_at)) deadline_at() else deadline_at
     )
 
     if (identical(exec$status, "ok")) {

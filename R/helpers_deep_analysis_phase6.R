@@ -59,14 +59,20 @@ pk_deep_phase6_setup <- function(detail_config, session, request_id, started_at)
   # değiştirmeden kalan bütçeyi görebilsin diye option olarak yayınlanır.
   eski_deadline <- getOption("mergen.pk.async.deadline_at", NULL)
   eski_token <- getOption("mergen.pk.async.cancel_token", NULL)
+  eski_start <- getOption("mergen.pk.async.started_at", NULL)
+  # `started_at`: sorgu seçildikten SONRA uygulanan per-query
+  # `analysis_deadline_sec` override'ı mutlak son tarihi AYNI başlangıçtan
+  # yeniden hesaplar; geçen süre sıfırlanmaz.
   options(mergen.pk.async.deadline_at = detail_config$pk_deadline_at,
-          mergen.pk.async.cancel_token = detail_config$pk_cancel_token)
+          mergen.pk.async.cancel_token = detail_config$pk_cancel_token,
+          mergen.pk.async.started_at = Sys.time())
 
   list(
     detail_config = detail_config,
     restore = function() {
       options(mergen.pk.async.deadline_at = eski_deadline,
-              mergen.pk.async.cancel_token = eski_token)
+              mergen.pk.async.cancel_token = eski_token,
+              mergen.pk.async.started_at = eski_start)
     }
   )
 }

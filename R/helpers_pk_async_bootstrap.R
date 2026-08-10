@@ -204,7 +204,35 @@ pk_async_worker_bootstrap <- function(repo_root, files,
   }
 
   assign(.PK_ASYNC_BOOTSTRAP_FLAG, parmak %||% TRUE, envir = hedef)
+  .pk_async_worker_db_pool_init(hedef)
   list(ok = TRUE, loaded = yuklenen, failed = character(0), cached = FALSE)
+}
+
+# İŞÇİ TARAFI DB HAVUZU ADMİSYONU
+#
+# PSOCK işçisi AYRI bir süreçtir: ana sürecin `.GlobalEnv$pool` nesnesini
+# GÖREMEZ. Havuz açıkken bile her asenkron PK isteği doğrudan `dbConnect()`
+# yoluna düşerdi; bu, `MERGEN_DB_POOL_MAX_SIZE` ve havuz sağlık/admisyon
+# politikasını TAM OLARAK Faz 6'nın eşzamanlı işçi eklediği anda devre dışı
+# bırakır ve canlı SQL Server oturum sayısını DB tavanı yerine future havuzu
+# belirlerdi.
+#
+# Havuz SÜREÇ-YERELDİR (bkz. CLAUDE.md DB pool sözleşmesi), bu yüzden doğru
+# davranış işçide KENDİ havuzunu kurmaktır: böylece yapılandırılmış tavan ve
+# checkout doğrulaması işçide de geçerli olur. Havuz kapalıysa (varsayılan)
+# hiçbir şey değişmez.
+.pk_async_worker_db_pool_init <- function(hedef) {
+  etkin <- tryCatch(
+    is.function(get0("is_db_pool_enabled", envir = hedef, inherits = TRUE)) &&
+      isTRUE(get("is_db_pool_enabled", envir = hedef)()),
+    error = function(e) FALSE
+  )
+  if (!isTRUE(etkin)) return(invisible(FALSE))
+  baslat <- get0("init_db_pool_once", envir = hedef, inherits = TRUE)
+  if (!is.function(baslat)) return(invisible(FALSE))
+  # HATA ASLA bootstrap'ı düşürmez: havuz kurulamazsa doğrudan bağlantı yolu
+  # zaten çalışır (yalnızca admisyon tavanı uygulanmaz).
+  isTRUE(tryCatch({ baslat("primary"); TRUE }, error = function(e) FALSE))
 }
 
 #' İşçinin ihtiyaç duyduğu MİNİMUM giriş noktalarının varlığını doğrula

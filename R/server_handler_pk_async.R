@@ -50,7 +50,6 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   kaynak_chat_key <- mergen_pk_chat_identity(oturum, ctx$values)
 
   request_done <- FALSE
-  session_ended <- FALSE
 
   butce_birak <- function() {
     try(shiny::isolate(
@@ -58,22 +57,22 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     ), silent = TRUE)
   }
 
-  # onSessionEnded YALNIZCA jetonu işaretlemez. Future zaten tamamlanmışsa
-  # jeton geç kalır; bu yüzden ayrıca bir "oturum kapandı" durumu kaydedilir ve
-  # sonraki her geri çağrı korumayı GEÇEMEZ. Ayrıca istek kapsamlı backpressure
-  # yuvası burada bırakılır: aksi hâlde bir kopma fırtınası, sağlıklı
-  # oturumlara dakikalarca "sunucu meşgul" döndürebilirdi.
+  bitir_istek <- function() {
+    request_done <<- TRUE
+    pk_cancel_token_clear(cancel_token)
+    try(mergen_pk_unregister_active_request(oturum, req_id), silent = TRUE)
+  }
+
+  # Oturum-sonu kancası OTURUM BAŞINA TEKTİR (bkz. helpers_pk_async_lifecycle.R):
+  # istek başına bir kapanış kaydetmek, tamamlanan HER isteğin gönderim
+  # çerçevesini oturum ömrü boyunca canlı tutuyordu. Kanca, kayıt defterindeki
+  # AKTİF istekleri iptal eder ve backpressure yuvalarını bırakır — bir kopma
+  # fırtınası aksi hâlde sağlıklı oturumlara dakikalarca "sunucu meşgul" derdi.
   kayit <- try({
-    oturum$onSessionEnded(function() {
-      session_ended <<- TRUE
-      if (!isTRUE(request_done)) {
-        pk_cancel_token_signal(cancel_token)
-        butce_birak()
-      }
-    })
+    mergen_pk_register_active_request(oturum, req_id, cancel_token, butce_birak)
     TRUE
   }, silent = TRUE)
-  if (!identical(kayit, TRUE)) log_info("[PK_ASYNC] onSessionEnded iptal kaydi yapilamadi.")
+  if (!identical(kayit, TRUE)) log_info("[PK_ASYNC] Aktif istek kaydi yapilamadi.")
 
   # continuation ve message insertion alt çağrıları da reactive okuyabildiği için
   # callback'teki tüm gövde isolate edilir.
@@ -90,10 +89,14 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   })
 
   koruma_gecti <- function(etiket, result = NULL) {
-    if (isTRUE(session_ended)) {
+    # Oturum KAPANDIYSA hiçbir geri çağrı uygulanamaz. Yalnızca jetonu
+    # işaretlemek yetmez: future zaten tamamlanmışsa jeton geç kalır ve
+    # istek kimliği/stop bayrağı/sohbet kimliği değişmediği için koruma
+    # geçebilirdi (kapalı bir oturumda export sunmak, oturum yazımı uygulamak
+    # ve nihai LLM'i tetiklemek demek olurdu).
+    if (!isTRUE(mergen_pk_session_open(oturum))) {
       log_info(sprintf("[PK_ASYNC] Callback yok sayildi (%s, sebep=session_ended).", etiket))
-      request_done <<- TRUE
-      pk_cancel_token_clear(cancel_token)
+      bitir_istek()
       try(mergen_pk_cleanup_worker_artifact(result), silent = TRUE)
       butce_birak()
       return(FALSE)
@@ -111,8 +114,7 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
 
     sebep <- if (!isTRUE(karar$apply)) karar$reason else "chat_changed"
     log_info(sprintf("[PK_ASYNC] Callback yok sayildi (%s, sebep=%s).", etiket, sebep))
-    request_done <<- TRUE
-    pk_cancel_token_clear(cancel_token)
+    bitir_istek()
     try(mergen_pk_cleanup_worker_artifact(result), silent = TRUE)
     butce_birak()
 
@@ -137,8 +139,14 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
                   messages_to_process = mesajlar, chips = list()))
     }
     eski <- getOption("mergen.pk.async.deadline_at", NULL)
-    options(mergen.pk.async.deadline_at = mergen_pk_request_deadline_at(request))
-    on.exit(options(mergen.pk.async.deadline_at = eski), add = TRUE)
+    eski_baslangic <- getOption("mergen.pk.async.started_at", NULL)
+    # Son tarih ORİJİNAL dispatch anından türetilir (senkron yeniden deneme
+    # bütçeyi SIFIRLAMAZ); `started_at` da yayınlanır ki sorgu seçildikten
+    # sonraki per-query override aynı başlangıcı kullansın.
+    options(mergen.pk.async.deadline_at = mergen_pk_request_deadline_at(request),
+            mergen.pk.async.started_at = mergen_pk_request_started_at(request))
+    on.exit(options(mergen.pk.async.deadline_at = eski,
+                    mergen.pk.async.started_at = eski_baslangic), add = TRUE)
     mergen_pk_apply_analysis_result(mergen_pk_run_sync(ctx), mesajlar)
   })
 
@@ -156,9 +164,8 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     silent = TRUE
   )
   if (inherits(vaat, "try-error")) {
-    request_done <- TRUE
+    bitir_istek()
     log_warn("[PK_ASYNC] Gonderim basarisiz; senkron yol.")
-    pk_cancel_token_clear(cancel_token)
     return(senkron_yedek("dispatch_failed"))
   }
 
@@ -166,8 +173,7 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     vaat,
     onFulfilled = function(worker_result) {
       if (!isTRUE(koruma_gecti("fulfilled", worker_result$result))) return(invisible(NULL))
-      request_done <<- TRUE
-      pk_cancel_token_clear(cancel_token)
+      bitir_istek()
       durum <- as.character(worker_result$status %||% "error")[1]
 
       if (identical(durum, "ok")) {
@@ -224,8 +230,7 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     },
     onRejected = function(error) {
       if (!isTRUE(koruma_gecti("rejected"))) return(invisible(NULL))
-      request_done <<- TRUE
-      pk_cancel_token_clear(cancel_token)
+      bitir_istek()
       # Buraya yalnızca ALTYAPI hataları düşer (serileştirme/işçi kaybı):
       # boru hattı hataları işçide tipli pakete dönüştürülür. Diğer altyapı
       # yollarıyla (gönderim hatası, bootstrap_failed) SİMETRİK olarak senkron
@@ -244,8 +249,7 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   # yanıt sessizce kaybolur.
   try(promises::catch(tamamlandi, function(hata) {
     log_warn("[PK_ASYNC] Devam kapanisi hata verdi; istek temizleniyor.")
-    request_done <<- TRUE
-    pk_cancel_token_clear(cancel_token)
+    bitir_istek()
     butce_birak()
     try(shiny::isolate({
       ctx$cleanup_send_message()

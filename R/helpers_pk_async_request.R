@@ -237,6 +237,19 @@ pk_async_worker_globals <- function(force = FALSE) {
     # özyinelemeli global genişletme YOKTUR. Eksikse temiz her işçi tipli
     # fallback yerine ham bir "could not find function" hatasıyla ölürdü.
     `%||%` = get("%||%", mode = "function", inherits = TRUE),
+    # İPTAL/SON TARİH yardımcıları da bootstrap'tan ÖNCE gereklidir:
+    # `pk_async_run_analysis()` mutlak son tarihi türetir ve İLK kapıyı
+    # bootstrap'tan önce yoklar (yavaş/askıda bir repo yolu Durdur'u yok
+    # saymasın diye). Explicit-mode özyinelemeli global genişletme YAPMADIĞI
+    # için bunlar açıkça taşınmalıdır; eksik olduklarında TEMİZ bir PSOCK
+    # işçisi "could not find function pk_deadline_at" ile ölür ve asenkron yol
+    # ancak üretimde patlardı.
+    pk_deadline_at = pk_deadline_at,
+    pk_deadline_expired = pk_deadline_expired,
+    pk_deadline_remaining_sec = pk_deadline_remaining_sec,
+    pk_cancel_token_is_signalled = pk_cancel_token_is_signalled,
+    pk_async_stage_gate = pk_async_stage_gate,
+    pk_async_halt_message = pk_async_halt_message,
     pk_async_config_install = pk_async_config_install,
     pk_async_worker_bootstrap = pk_async_worker_bootstrap,
     pk_async_worker_session = pk_async_worker_session,

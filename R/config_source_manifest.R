@@ -106,12 +106,10 @@ source_manifest_sections <- list(
     "R/config_ui_asset_zone_validators.R"
   ),
 
-  # architecture_governance: Üretim-kritik dikiş (seam) kayıt defteri. Saf
-  # veri + saf doğrulama yardımcıları; çalışma zamanı davranışı değiştirmez.
-  # Bölüm -> seam sahipliği test-seam-registry-contract.R ile doğrulanır.
-  # Guard test listesi AYRI veri dosyasındadır: sahiplik verisi seam sayısıyla,
-  # guard test listesi ise kod tabanı büyüdükçe artar. Kayıt defteri onu
-  # `mergen_seam_guard_tests()` ile birleştirdiği için ÖNCE yüklenir.
+  # architecture_governance: Üretim-kritik dikiş (seam) kayıt defteri. Saf veri
+  # + saf doğrulayıcılar; çalışma zamanı davranışı değiştirmez. Bölüm -> seam
+  # sahipliği test-seam-registry-contract.R ile doğrulanır. Guard test listesi
+  # AYRI veri dosyasındadır ve kayıt defteri onu birleştirdiği için ÖNCE gelir.
   architecture_governance = c(
     "R/config_seam_guard_tests.R",
     "R/config_seam_registry.R"
@@ -269,6 +267,7 @@ source_manifest_sections <- list(
     "R/helpers_pk_config.R",
     # Faz 6 (§5.10) bloklamayan yürütme; sıra ZORUNLU (bkz. dosya başlıkları).
     "R/helpers_pk_async_cancel.R",
+    "R/helpers_pk_exec_context.R",
     "R/helpers_pk_result_size.R",
     "R/helpers_pk_cache.R",
     "R/helpers_pk_sql_execute.R",
@@ -769,6 +768,7 @@ source_manifest_sections <- list(
     "R/server_handler_streaming_tts.R",
     # Faz 6: PK gönderim katmanı; uygulama yardımcıları orkestratörden, ikisi de
     # send_message'dan ÖNCE (o DELEGE eder).
+    "R/helpers_pk_async_session_registry.R",
     "R/helpers_pk_async_lifecycle.R",
     "R/helpers_pk_async_apply.R",
     "R/server_handler_pk_async.R",

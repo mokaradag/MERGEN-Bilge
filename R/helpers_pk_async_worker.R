@@ -49,6 +49,15 @@ pk_async_run_analysis <- function(request) {
   if (length(baslangic) != 1L || is.na(baslangic)) baslangic <- basladi
   son_tarih <- pk_deadline_at(baslangic, request$deadline_sec)
 
+  # İşçinin KENDİ kapısı da GÜNCEL (per-query override uygulanmış) son tarihi
+  # okur; aksi hâlde daha büyük bir sorgu bütçesi iç aşamalarda geçerli olur
+  # ama dış kapı yine küresel değerde keserdi. Seçim öncesi override olamaz,
+  # bu yüzden erken kapılarda dondurulmuş değere eşittir.
+  etkin_son_tarih <- function() {
+    aday <- getOption("mergen.pk.async.deadline_at", NULL)
+    if (inherits(aday, "POSIXct") && length(aday) == 1L && !is.na(aday)) aday else son_tarih
+  }
+
   bootstrap_oncesi <- pk_async_stage_gate(jeton, son_tarih)
   if (isTRUE(bootstrap_oncesi$halt)) return(bitir(bootstrap_oncesi$status))
 
@@ -82,7 +91,7 @@ pk_async_run_analysis <- function(request) {
     }
   }
 
-  stop_check <- function() isTRUE(pk_async_stage_gate(jeton, son_tarih)$halt)
+  stop_check <- function() isTRUE(pk_async_stage_gate(jeton, etkin_son_tarih())$halt)
   ilk_kapi <- pk_async_stage_gate(jeton, son_tarih)
   if (isTRUE(ilk_kapi$halt)) return(bitir(ilk_kapi$status))
 
@@ -91,10 +100,17 @@ pk_async_run_analysis <- function(request) {
   # sınırlayabilmesi için option olarak yayınlanır.
   eski_deadline_option <- getOption("mergen.pk.async.deadline_at", NULL)
   eski_token_option <- getOption("mergen.pk.async.cancel_token", NULL)
+  eski_start_option <- getOption("mergen.pk.async.started_at", NULL)
+  # `started_at` da yayınlanır: sorgu SEÇİLDİKTEN sonra `pk_set_exec_context()`
+  # per-query `analysis_deadline_sec` override'ını uygularken geçen süreyi
+  # SIFIRLAMAMALIDIR; mutlak son tarih hep AYNI başlangıçtan hesaplanır.
   options(mergen.pk.async.deadline_at = son_tarih,
-          mergen.pk.async.cancel_token = jeton)
+          mergen.pk.async.cancel_token = jeton,
+          mergen.pk.async.started_at = baslangic)
   on.exit(options(mergen.pk.async.deadline_at = eski_deadline_option,
-                  mergen.pk.async.cancel_token = eski_token_option), add = TRUE)
+                  mergen.pk.async.cancel_token = eski_token_option,
+                  mergen.pk.async.started_at = eski_start_option), add = TRUE)
+
 
   vekil <- tryCatch(pk_async_worker_session(request), error = function(e) NULL)
   if (is.null(vekil)) return(bitir("error", error = "Oturum vekili kurulamadi."))
@@ -118,8 +134,8 @@ pk_async_run_analysis <- function(request) {
   # için ayrı bir kutuya not edilir; nihai durum ondan üretilir.
   sql_durum <- pk_async_sql_status_box()
   bounded_unicode <- pk_async_bounded_sql_executor(
-    stage_gate = function() pk_async_stage_gate(jeton, son_tarih),
-    deadline_at = son_tarih,
+    stage_gate = function() pk_async_stage_gate(jeton, etkin_son_tarih()),
+    deadline_at = etkin_son_tarih,
     status_box = sql_durum
   )
   assign("execute_pk_sql_unicode", bounded_unicode, envir = target_env)
@@ -131,7 +147,7 @@ pk_async_run_analysis <- function(request) {
   if (isTRUE(request$deep_thinking)) {
     eski_deadline_fn <- get0("pk_deadline_at", envir = target_env, inherits = TRUE)
     eski_token_fn <- get0("pk_cancel_token_path", envir = target_env, inherits = TRUE)
-    assign("pk_deadline_at", function(started_at, deadline_sec) son_tarih, envir = target_env)
+    assign("pk_deadline_at", function(started_at, deadline_sec) etkin_son_tarih(), envir = target_env)
     assign("pk_cancel_token_path", function(request_id, base_dir = NULL) jeton, envir = target_env)
     on.exit({
       assign("pk_deadline_at", eski_deadline_fn, envir = target_env)
@@ -165,7 +181,7 @@ pk_async_run_analysis <- function(request) {
   })
 
   yazimlar <- tryCatch(pk_async_harvest_session(vekil), error = function(e) list())
-  son_kapi <- pk_async_stage_gate(jeton, son_tarih)
+  son_kapi <- pk_async_stage_gate(jeton, etkin_son_tarih())
   if (isTRUE(son_kapi$halt)) {
     # Boru hattı iptal/son tarih GÖZLENMEDEN önce büyük bir XLSX/CSV artifact'i
     # üretmiş olabilir. `sonuc` burada DÜŞÜRÜLDÜĞÜ için ana sürecin temizleyecek
