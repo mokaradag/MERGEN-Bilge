@@ -11,22 +11,36 @@ mergen_pk_analysis_execute <- function(ctx) {
   stopped <- try(ctx$stop_generation(), silent = TRUE)
   if (!inherits(stopped, "try-error") && isTRUE(stopped)) return(list(action = "stop"))
 
-  # Bu fonksiyon YALNIZCA PK istekleri için çalışır: jeton sahipliği burada
-  # kaydedilir ki Durdur gözlemcisi PK olmayan isteklerde boşuna `.flag`
-  # dosyası oluşturmasın (senkron yol da iptal jetonunu kullanır).
-  try(mergen_pk_register_cancel_token(ctx$session, ctx$req_id), silent = TRUE)
-
+  # JETON SAHİPLİĞİ YALNIZCA JETONU TÜKETEN YOL İÇİN KAYDEDİLİR.
+  #
+  # `MERGEN_PK_ASYNC=false` (geri alma) durumunda senkron yol `stop_generation`
+  # kullanır, dosya jetonunu DEĞİL. Sahiplik yine de kaydedilseydi Durdur
+  # gözlemcisi bir `.flag` dosyası yazar, ama o yolda dosyayı temizleyecek bir
+  # `bitir_istek()` OLMADIĞI için durdurulan her senkron PK isteği geride iptal
+  # artefaktı bırakırdı.
+  #
   # Yapılandırma sözleşmesi sorgu metadata'sına EN YÜKSEK önceliği verir.
   # Yönlendirme kararı `NULL` metadata ile alınırsa, `async = FALSE` işaretli
   # bir üretim sorgusu global bayrak açıkken yine işçiye gönderilirdi.
-  aktif_meta <- tryCatch(pk_active_query_meta(), error = function(e) NULL)
+  aktif_meta <- mergen_pk_routing_query_meta(ctx)
   uygun <- pk_async_available(aktif_meta)
   if (!isTRUE(uygun$available)) {
     if (!identical(uygun$reason, "flag_off")) {
       log_info(sprintf("[PK_ASYNC] Async yok (%s); senkron yol.", uygun$reason))
     }
+    # SINIRLI SQL GÜVENLİĞİ DEGRADE YOLDA DA KORUNUR: `flag_off` bilinçli geri
+    # almadır (eski davranış), ama yetenek sondası başarısız olduğunda (plan
+    # yok, bağımlılık eksik) standart senkron boru hattı bu PR'ın getirdiği
+    # bellek/son tarih sınırlarını ATLAR. Bu yüzden o yolda sınırlı yürütücü
+    # AÇIKÇA etkinleştirilir.
+    if (!identical(uygun$reason, "flag_off")) {
+      geri_al <- mergen_pk_force_bounded_sync()
+      on.exit(try(geri_al(), silent = TRUE), add = TRUE)
+    }
     return(mergen_pk_apply_analysis_result(mergen_pk_run_sync(ctx), ctx$messages_to_process))
   }
+
+  try(mergen_pk_register_cancel_token(ctx$session, ctx$req_id), silent = TRUE)
 
   hazirlik <- mergen_pk_prepare_async_request(ctx)
   if (!isTRUE(hazirlik$ok)) {
@@ -61,6 +75,12 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     request_done <<- TRUE
     pk_cancel_token_clear(cancel_token)
     try(mergen_pk_unregister_active_request(oturum, req_id), silent = TRUE)
+    # SAHİPLİK DE KALDIRILIR. Bu fonksiyon başarılı analizde `devam_et()`'in
+    # nihai LLM'i AYNI istek kimliğiyle başlatmasından ÖNCE çalışır; sahiplik
+    # kalırsa o sırada basılan Durdur `mergen_pk_request_has_cancel_token()`
+    # denetimini geçer ve işçi ÇOKTAN bittiği hâlde yeni bir `.flag` dosyası
+    # yazılır. O dosyayı temizleyecek bir PK yolu artık yoktur.
+    try(mergen_pk_unregister_cancel_token(oturum, req_id), silent = TRUE)
   }
 
   # Oturum-sonu kancası OTURUM BAŞINA TEKTİR (bkz. helpers_pk_async_lifecycle.R):
@@ -68,20 +88,36 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   # çerçevesini oturum ömrü boyunca canlı tutuyordu. Kanca, kayıt defterindeki
   # AKTİF istekleri iptal eder ve backpressure yuvalarını bırakır — bir kopma
   # fırtınası aksi hâlde sağlıklı oturumlara dakikalarca "sunucu meşgul" derdi.
-  kayit <- try({
-    mergen_pk_register_active_request(oturum, req_id, cancel_token, butce_birak)
-    TRUE
-  }, silent = TRUE)
-  if (!identical(kayit, TRUE)) log_info("[PK_ASYNC] Aktif istek kaydi yapilamadi.")
+  # KAYIT SONUCU KORUNUR. Eskiden `try` bloğu koşulsuz `TRUE` üretiyordu; kayıt
+  # defteri `FALSE` dönse (ör. `session$userData` alınamadı) bile gönderim
+  # yapılıyor ve oturum-sonu iptali/backpressure bırakma o isteği BULAMIYORDU.
+  kayit <- try(
+    isTRUE(mergen_pk_register_active_request(oturum, req_id, cancel_token, butce_birak)),
+    silent = TRUE
+  )
+  if (!identical(kayit, TRUE)) {
+    log_warn("[PK_ASYNC] Aktif istek kaydi yapilamadi; senkron yola donuluyor.")
+    # Yaşam döngüsü koruması KURULAMADIYSA asenkron gönderim yapılmaz: iptal
+    # edilemeyen ve backpressure'ı bırakılamayan bir işçi bırakmak, senkron
+    # yolun bloklamasından daha kötüdür.
+    pk_cancel_token_clear(cancel_token)
+    try(mergen_pk_unregister_cancel_token(oturum, req_id), silent = TRUE)
+    return(mergen_pk_apply_analysis_result(mergen_pk_run_sync(ctx), mesajlar))
+  }
 
   # continuation ve message insertion alt çağrıları da reactive okuyabildiği için
   # callback'teki tüm gövde isolate edilir.
   devam_et <- function(uygulama) shiny::isolate({
     if (identical(uygulama$action, "answer")) {
       ctx$cleanup_send_message()
-      ctx$add_message_fn(uygulama$answer, "ai")
+      # KÖKEN ALT BİLGİSİ: `add_message_fn` (çalışma zamanı `add_message()`)
+      # AI mesajlarında `pk_provenance_decorate()` çağırdığı için terminal
+      # yanıtlar da alt bilgiyi ALIR. Mesaj kimliği ise çipler için ZORUNLUDUR
+      # (aşağıya bakınız).
+      mesaj_kimligi <- ctx$add_message_fn(uygulama$answer, "ai")
       if (exists("mergen_pk_emit_chips", mode = "function", inherits = TRUE)) {
-        try(mergen_pk_emit_chips(ctx, uygulama$chips), silent = TRUE)
+        try(mergen_pk_emit_chips(ctx, uygulama$chips, message_id = mesaj_kimligi),
+            silent = TRUE)
       }
       return(invisible(NULL))
     }
@@ -106,6 +142,12 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     if (inherits(aktif, "try-error")) aktif <- NULL
     stopped <- try(shiny::isolate(ctx$stop_generation()), silent = TRUE)
     stopped <- !inherits(stopped, "try-error") && isTRUE(stopped)
+    # AÇIKÇA TERK EDİLMİŞ istek: kullanıcı A -> B -> A gezindiğinde istek
+    # kimliği ve sohbet kimliği yeniden EŞLEŞEBİLİR; terk işareti olmadan bu
+    # sonuç kabul edilir ve bayat yanıt/oturum yazımları uygulanırdı.
+    if (isTRUE(try(mergen_pk_request_abandoned(oturum, req_id), silent = TRUE))) {
+      stopped <- TRUE
+    }
     karar <- pk_async_should_apply(aktif, req_id, stopped = stopped)
 
     simdiki <- mergen_pk_chat_identity(oturum, ctx$values)
@@ -128,9 +170,27 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     FALSE
   }
 
+  # ALTYAPI ARIZASI PROMISE GERİ ÇAĞRISINDA SENKRON OLARAK TEKRAR OYNATILMAZ.
+  #
+  # `then()` geri çağrısı ANA SHINY SÜRECİNDE çalışır: orada `mergen_pk_run_sync()`
+  # çağırmak uzun bir SQL/LLM turunu olay döngüsüne taşır ve o R sürecindeki
+  # HER oturumu dondurur — üstelik geri çağrı bloklandığı sürece kullanıcının
+  # Durdur olayı da işlenemez. Bu tam olarak Faz 6'nın ortadan kaldırdığı D15
+  # donmasıdır. Bu yüzden geri çağrı yolunda TİPLİ bir altyapı hatası döndürülür.
+  altyapi_hatasi <- function(etiket) {
+    log_warn(sprintf("[PK_ASYNC] %s: senkron tekrar oynatma YAPILMADI (olay dongusu korunuyor).",
+                     etiket))
+    list(action = "answer",
+         answer = mergen_pk_worker_outcome_text("infrastructure"),
+         messages_to_process = mesajlar, chips = list())
+  }
+
   # Senkron yedeğe düşerken ORİJİNAL bütçe korunur. Bootstrap/gönderim hatası
   # zaten süre harcadı; taze bir son tarih vermek toplam duvar saatini ikiye
   # katlar ve olay döngüsünü tam da kaçınılmak istenen süre kadar bloklardı.
+  #
+  # SADECE GÖNDERİM ÖNCESİ yollarda kullanılır (dispatch hatası): orada henüz
+  # bir promise geri çağrısında değiliz ve çağıran zaten senkron akıştadır.
   senkron_yedek <- function(etiket) shiny::isolate({
     kalan <- mergen_pk_residual_budget_sec(request)
     if (is.finite(kalan) && kalan <= 0) {
@@ -150,11 +210,28 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     mergen_pk_apply_analysis_result(mergen_pk_run_sync(ctx), mesajlar)
   })
 
+  # SUNULMUŞ artifact temizlik kapsamında tutulur: devam kapanışı hata verirse
+  # (LLM kesintisi, mesaj ekleme hatası) bağlantısını içeren bir yanıt HİÇ
+  # işlenmez ve işçinin ürettiği XLSX/CSV oturum sonuna kadar erişilemez biçimde
+  # diskte kalırdı. Tekrarlanan kesintilerde bu, uzun ömürlü oturumlarda
+  # birikir.
+  sunulan_sonuc <- NULL
+
   session_token <- try(oturum$token, silent = TRUE)
   if (inherits(session_token, "try-error")) session_token <- NULL
   vaat <- try(
     tracked_future_promise(
-      task_fn = function() pk_async_run_analysis(request),
+      # `pk_async_run_analysis()` ANA SÜREÇTE tanımlanmış bir kapanıştır:
+      # serileştirildiğinde lexical ortamı İŞÇİNİN `globalenv()`'i olur ve
+      # explicit-mode'un izole globals ortamını GÖREMEZ. Bootstrap henüz
+      # çalışmadığı için o `globalenv()` boştur; bu yüzden bootstrap ÖNCESİ
+      # yardımcılar analiz başlamadan oraya kurulur.
+      task_fn = function() {
+        # Paket, görev fonksiyonunun KAPSAYAN ortamındadır (explicit-mode onu
+        # `environment(task_fn)` olarak bağlar); çağrı çerçevesinde değil.
+        pk_async_worker_install_globals(parent.env(environment()))
+        pk_async_run_analysis(request)
+      },
       task_type = if (isTRUE(request$deep_thinking)) "pk_deep_analysis" else "pk_analysis",
       session_token = session_token,
       dependency_mode = "explicit",
@@ -200,6 +277,9 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
           return(invisible(NULL))
         }
         sonuc <- sunum$result
+        # Artifact SUNULDU: devam kapanışı hata verirse temizlenebilmesi için
+        # dış kapsamda tutulur.
+        sunulan_sonuc <<- sonuc
 
         pending <- worker_result$session_writes$pk_provenance_pending
         eski_blok <- as.character(eski_sonuc$pk_answer_block %||% "")[1]
@@ -211,7 +291,11 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
           worker_result$session_writes$pk_provenance_pending <- pending
         }
         try(pk_async_apply_session_writes(oturum, worker_result$session_writes), silent = TRUE)
-        return(devam_et(mergen_pk_apply_analysis_result(sonuc, mesajlar)))
+        devam_et(mergen_pk_apply_analysis_result(sonuc, mesajlar))
+        # Buraya ULAŞILDIYSA yanıt teslim edildi: artifact sahipliği oturuma
+        # geçti ve hata yolunda SİLİNMEMELİDİR.
+        sunulan_sonuc <<- NULL
+        return(invisible(NULL))
       }
 
       # KABUL EDİLMEYEN sonuçların oturum yazımları UYGULANMAZ. İşçi bu
@@ -219,11 +303,17 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       # bir istek, canlı oturumun seçim durumunu ve köken alt bilgisini
       # EZEMEMELİDİR (sonraki istek oradan tohumlanıyor).
       if (identical(durum, "bootstrap_failed")) {
-        log_warn("[PK_ASYNC] Worker bootstrap basarisiz; senkron yeniden deneniyor.")
-        return(devam_et(senkron_yedek("bootstrap_failed")))
+        return(devam_et(altyapi_hatasi("bootstrap_failed")))
       }
       shiny::isolate({
         ctx$cleanup_send_message()
+        # BEKLEYEN KÖKEN KAYDI BURADA TÜKETİLİR. Kabul edilmeyen sonucun
+        # oturum yazımları uygulanmaz, ama ÖNCEKİ bir isteğin bekleyen kaydı
+        # oturumda durabilir; `add_message()` içindeki dekorasyon o BAYAT alt
+        # bilgiyi bu ilgisiz hata mesajına iliştirirdi.
+        if (exists("pk_provenance_take", mode = "function", inherits = TRUE)) {
+          try(pk_provenance_take(oturum), silent = TRUE)
+        }
         ctx$add_message_fn(mergen_pk_worker_outcome_text(durum, worker_result$error), "ai")
       })
       invisible(NULL)
@@ -232,12 +322,11 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       if (!isTRUE(koruma_gecti("rejected"))) return(invisible(NULL))
       bitir_istek()
       # Buraya yalnızca ALTYAPI hataları düşer (serileştirme/işçi kaybı):
-      # boru hattı hataları işçide tipli pakete dönüştürülür. Diğer altyapı
-      # yollarıyla (gönderim hatası, bootstrap_failed) SİMETRİK olarak senkron
-      # yola dönülür; aksi hâlde yalnızca bayrak açık diye istek sert biçimde
-      # başarısız olurdu.
-      log_warn("[PK_ASYNC] Isci reddedildi; senkron yol deneniyor.")
-      devam_et(senkron_yedek("worker_rejected"))
+      # boru hattı hataları işçide tipli pakete dönüştürülür. Bu geri çağrı ANA
+      # SÜREÇTE çalıştığı için senkron tekrar oynatma YAPILMAZ (bkz. yukarıdaki
+      # `altyapi_hatasi()` gerekçesi); kullanıcıya tipli bir altyapı mesajı
+      # verilir ve olay döngüsü serbest kalır.
+      devam_et(altyapi_hatasi("worker_rejected"))
       invisible(NULL)
     }
   )
@@ -251,6 +340,13 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     log_warn("[PK_ASYNC] Devam kapanisi hata verdi; istek temizleniyor.")
     bitir_istek()
     butce_birak()
+    # SUNULMUŞ ama TESLİM EDİLMEMİŞ artifact temizlenir: bağlantısını içeren
+    # bir yanıt hiç işlenmediği için dosya artık ERİŞİLEMEZ; oturum sonuna
+    # kadar tutmak, tekrarlanan kesintilerde büyük dosyaların birikmesi demektir.
+    if (!is.null(sunulan_sonuc)) {
+      try(mergen_pk_cleanup_worker_artifact(sunulan_sonuc), silent = TRUE)
+      sunulan_sonuc <<- NULL
+    }
     try(shiny::isolate({
       ctx$cleanup_send_message()
       ctx$add_message_fn(mergen_pk_worker_outcome_text("error"), "ai")

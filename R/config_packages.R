@@ -47,7 +47,23 @@ mergen_worker_bootstrap_mode <- function() {
            c("1", "true", "t", "yes", "on"))
 }
 
-missing_packages <- validate_required_packages()
+# DOĞRULAMA LİSTESİ DE İŞÇİDE FİLTRELENİR.
+#
+# `validate_required_packages()` her girdi için `requireNamespace()` çağırır ve
+# bu, paket NAMESPACE'ini (ve native DLL'lerini) YÜKLER. Yalnızca `library()`
+# adımını atlamak bu yüzden yetersizdi: arrow/duckdb/av/pdftools işçi belleğini
+# tam da bu daldan kaçınılmak istenen şekilde ZATEN ödemiş oluyordu.
+#
+# Atlanan paketler işçide DOĞRULANMAZ da: PK boru hattı hiçbirine girmez ve
+# `pkg::fn` kullanımları gerektiğinde namespace'i kendisi yükler.
+mergen_startup_validation_packages <- function() {
+  if (isTRUE(mergen_worker_bootstrap_mode())) {
+    return(setdiff(required_packages, mergen_worker_skip_packages()))
+  }
+  required_packages
+}
+
+missing_packages <- validate_required_packages(mergen_startup_validation_packages())
 
 if (length(missing_packages) > 0) {
   stop(

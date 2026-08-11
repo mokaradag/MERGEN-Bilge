@@ -195,8 +195,17 @@
 }
 
 # --- library_queries.R manifest sırası ile önceden yüklenmiş olmalı ---
-if (!exists("query_library", envir = globalenv(), inherits = FALSE) ||
-    !is.list(get("query_library", envir = globalenv(), inherits = FALSE))) {
+#
+# ARAMA `globalenv()` İLE SINIRLI DEĞİLDİR. Faz 6 PK işçisi manifest
+# dosyalarını önce bir SAHNELEME ortamına yükler ve `globalenv()`'e ancak
+# TAMAMI başarılı olduğunda taşır. `envir = globalenv(), inherits = FALSE`
+# sabitlemesi, `R/library_queries.R` bu dosyadan hemen ÖNCE başarıyla
+# yüklenmiş olsa bile bu guard'ın PATLAMASINA yol açıyordu; sonuç temiz bir
+# PSOCK işçisinde kalıcı `bootstrap_failed` ve her istekte senkron yedekti.
+# `environment()` bu dosyanın yüklendiği ortamdır (ana süreçte `globalenv()`),
+# dolayısıyla üretim davranışı DEĞİŞMEZ; yalnızca sahneleme ortamı da görünür.
+if (!exists("query_library", envir = environment(), inherits = TRUE) ||
+    !is.list(get("query_library", envir = environment(), inherits = TRUE))) {
   stop(
     "[SQL_LOADER] HATA: query_library bulunamadı. R/library_queries.R, R/config_sql_loader.R öncesinde manifestten yüklenmelidir.",
     call. = FALSE

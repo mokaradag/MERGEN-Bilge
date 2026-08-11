@@ -156,8 +156,21 @@ mergen_logging_worker_mode <- isTRUE(tolower(trimws(
 
 # Çoklu appender yapılandırması
 # Dosya logu düz metin olmalı
+#
+# İŞÇİ KİPİ SADECE "KURMA" DEĞİL, "TEMİZLE" DEMEKTİR: sıcak (yeniden
+# kullanılan) bir PSOCK işçisi ÖNCEKİ kod sürümüyle önyüklenmiş olabilir ve
+# index 1'de HÂLÂ `mergen_daily_file_appender` taşıyabilir. Kurulumu yalnızca
+# ATLAMAK o işçiyi düzeltmez; paylaşılan günlük dosyaya eşzamanlı append
+# sürerdi. Bu yüzden işçide index 1 AÇIKÇA sessiz bir appender'a çekilir.
 if (!isTRUE(mergen_logging_worker_mode)) {
   log_appender(mergen_daily_file_appender, index = 1)
+  log_layout(layout_glue, index = 1)
+} else {
+  # Sessiz appender: satırları yutar. `logger` index 1'i kaldırmaya izin
+  # vermediğinden (kaldırma indeksleri kaydırıp konsol appender'ını bozardı)
+  # yerine no-op yazılır. Konsol appender'ı index 2'de kalır; `log_*()`
+  # çağrıları işçide de görünür olmayı sürdürür.
+  log_appender(function(lines) invisible(NULL), index = 1)
   log_layout(layout_glue, index = 1)
 }
 

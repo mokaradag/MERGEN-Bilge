@@ -26,8 +26,27 @@
 #' @param max_queries Maksimum seçilecek sorgu sayısı
 #' @return Seçilen sorgu listesi (her biri relevance_score ile)
 find_multiple_queries_with_ai <- function(user_prompt, library, session,
-                                          max_queries = pk_deep_max_queries()) {
+                                          max_queries = pk_deep_max_queries(),
+                                          timeout_sec = 12,
+                                          stop_check = NULL) {
   cat("[DEEP_ANALYSIS] AI tabanlı çoklu sorgu seçimi başlatılıyor...\n")
+
+  # Durdur bu seçiciye de ULAŞMALIDIR: `pk_deep_analysis_process()` DB
+  # bağlantısını seçiciden ÖNCE açar, dolayısıyla iptal gözlenmezse hem işçi
+  # hem DB bağlantısı çağrı dönene kadar meşgul kalırdı. Kapı hem çağrı
+  # etrafında yoklanır hem de curl ilerleme geri çağrısı üzerinden aktarımı
+  # ANINDA keser (bkz. helpers_pk_cancel_http.R).
+  durduruldu <- function() {
+    if (is.function(stop_check) && isTRUE(tryCatch(stop_check(), error = function(e) FALSE))) {
+      return(TRUE)
+    }
+    exists("pk_active_stage_halt", mode = "function", inherits = TRUE) &&
+      isTRUE(tryCatch(pk_active_stage_halt(), error = function(e) FALSE))
+  }
+  if (durduruldu()) {
+    cat("[DEEP_ANALYSIS] Coklu secim iptal edildi (secim baslamadi).\n")
+    return(NULL)
+  }
 
   library_context <- vapply(seq_along(library), function(i) {
     q <- library[[i]]
@@ -74,6 +93,14 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session,
       api_key_val <- creds$default_api_key
     }
 
+    # Zaman aşımı artık KALAN analiz bütçesinden gelir (çağıran hesaplar);
+    # sabit 12 saniye, birkaç saniye kalmış bir istekte mutlak son tarihi
+    # aşmaya devam ederdi.
+    etkin_timeout <- suppressWarnings(as.numeric(timeout_sec)[1])
+    if (length(etkin_timeout) != 1L || is.na(etkin_timeout) || etkin_timeout <= 0) {
+      etkin_timeout <- 12
+    }
+
     result <- tryCatch({
       R.utils::withTimeout({
         call_local_llm(messages, list(
@@ -82,13 +109,19 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session,
           max_output_tokens = 500,
           enable_mcp_tools = FALSE,
           shiny_session = session,
-          api_key_override = api_key_val
+          api_key_override = api_key_val,
+          request_timeout_sec = etkin_timeout
         ))
-      }, timeout = 12, onTimeout = "silent")
+      }, timeout = etkin_timeout, onTimeout = "silent")
     }, error = function(e) {
       cat(sprintf("[DEEP_ANALYSIS] AI çoklu seçim zaman aşımı/hata: %s\n", e$message))
       NULL
     })
+
+    if (durduruldu()) {
+      cat("[DEEP_ANALYSIS] Coklu secim iptal edildi (sonuc kullanilmadi).\n")
+      return(NULL)
+    }
 
     if (is.null(result)) {
       cat("[DEEP_ANALYSIS] AI sonuç boş, tekil seçime düşülüyor.\n")

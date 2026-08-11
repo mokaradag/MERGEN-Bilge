@@ -34,64 +34,6 @@ pk_sql_bounded_call <- function(fn, budget_fn, floor_sec = 0.05) {
   list(ok = FALSE, status = "error", error = conditionMessage(deger))
 }
 
-# SQL Server oturum durumu olan LOCK_TIMEOUT, havuzdan alınan FİZİKSEL bir
-# bağlantıda kalıcıdır. Eski kod temizlikte koşulsuz `-1` yazıyordu; bu, havuza
-# iade edilen bağlantının ÖNCEKİ kilit-bekleme politikasını yok eder ve sonraki
-# ilgisiz istekler sonsuza kadar bekleyebilir. Bu yüzden önceki değer okunur.
-.pk_sql_read_lock_timeout <- function(conn, budget_fn) {
-  okuma <- pk_sql_bounded_call(
-    function() DBI::dbGetQuery(conn, "SELECT @@LOCK_TIMEOUT AS lt"), budget_fn
-  )
-  if (!isTRUE(okuma$ok) || !is.data.frame(okuma$value) || nrow(okuma$value) < 1L) {
-    return(NA_integer_)
-  }
-  deger <- suppressWarnings(as.integer(okuma$value[[1]][1]))
-  if (length(deger) != 1L || is.na(deger)) return(NA_integer_)
-  deger
-}
-
-pk_sql_apply_statement_timeout <- function(conn, timeout_sec, budget_fn = NULL) {
-  saniye <- suppressWarnings(as.integer(timeout_sec)[1])
-  if (length(saniye) != 1L || is.na(saniye) || saniye <= 0L) {
-    return(list(mechanism = "none", applied = FALSE, timeout_sec = 0L,
-                previous = NA_integer_))
-  }
-  if (inherits(conn, "Pool")) {
-    return(list(mechanism = "deferred_pool", applied = FALSE, timeout_sec = saniye,
-                previous = NA_integer_))
-  }
-  if (is.null(conn) || !requireNamespace("DBI", quietly = TRUE)) {
-    return(list(mechanism = "none", applied = FALSE, timeout_sec = saniye,
-                previous = NA_integer_))
-  }
-
-  butce <- if (is.function(budget_fn)) budget_fn else function() Inf
-  onceki <- .pk_sql_read_lock_timeout(conn, butce)
-
-  uygulama <- pk_sql_bounded_call(
-    function() DBI::dbExecute(conn, sprintf("SET LOCK_TIMEOUT %d", saniye * 1000L)),
-    butce
-  )
-  if (isTRUE(uygulama$ok)) {
-    return(list(mechanism = "lock_timeout", applied = TRUE, timeout_sec = saniye,
-                previous = onceki))
-  }
-  list(mechanism = "none", applied = FALSE, timeout_sec = saniye, previous = onceki)
-}
-
-# Temizlikte ÖNCEKİ değeri geri yükle. Okunamamışsa `-1` (SQL Server
-# varsayılanı) yazılır; bu, eski davranışın korunduğu tek durumdur.
-.pk_sql_restore_lock_timeout <- function(conn, timeout_state, budget_fn) {
-  if (!isTRUE(timeout_state$applied)) return(invisible(FALSE))
-  onceki <- suppressWarnings(as.integer(timeout_state$previous)[1])
-  hedef <- if (length(onceki) == 1L && !is.na(onceki)) onceki else -1L
-  try(pk_sql_bounded_call(
-    function() DBI::dbExecute(conn, sprintf("SET LOCK_TIMEOUT %d", hedef)),
-    budget_fn
-  ), silent = TRUE)
-  invisible(TRUE)
-}
-
 .pk_sql_unicode_wrapper <- function() {
   paste("DECLARE @sql NVARCHAR(MAX);", "SET @sql = ?;", "EXEC sp_executesql @sql;", sep = "\n")
 }
@@ -198,8 +140,14 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
     # DSN/login burada kalan bütçeyi aşabilirdi.
     alim <- pk_sql_bounded_call(function() pool::poolCheckout(conn), analiz_kalan)
     if (!isTRUE(alim$ok)) {
-      return(bos(if (identical(alim$status, "deadline")) "deadline" else "error",
-                 error = alim$error))
+      # `pk_sql_bounded_call()` yalnızca bütçe çağrıdan ÖNCE tükenmişse
+      # `"deadline"` üretir; checkout SIRASINDA dolan bütçe genel bir hata
+      # gibi görünür ve tipli son tarih sonucu KAYBOLURDU. Kalan bütçe burada
+      # YENİDEN yoklanır.
+      kalan <- analiz_kalan()
+      durum <- if (identical(alim$status, "deadline") ||
+                   (is.finite(kalan) && kalan <= 0)) "deadline" else "error"
+      return(bos(durum, error = alim$error))
     }
     query_conn <- alim$value
     checked_out <- TRUE
@@ -212,15 +160,29 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   ), collapse = "+")
   if (!nzchar(mekanizma)) mekanizma <- timeout_state$mechanism %||% "none"
 
+  # Sonuç kümesi temizliği de başarısız olabilir; o durumda bağlantı KİRLİDİR.
+  sonuc_temiz <- new.env(parent = emptyenv())
+  sonuc_temiz$dirty <- FALSE
+
   on.exit({
     # Temizlik de SINIRLIDIR: askıda kalan bir geri yükleme/iade çağrısı,
     # zaman aşımına uğramış bir isteğin işçisini ve bağlantısını tutmaya devam
     # ederdi. Temizliğin kendi tabanı vardır (bütçe tükense bile denenmelidir).
     temizlik_butce <- function() max(2, min(10, analiz_kalan()))
-    .pk_sql_restore_lock_timeout(query_conn, timeout_state, temizlik_butce)
+    geri_yukleme <- .pk_sql_restore_lock_timeout(query_conn, timeout_state, temizlik_butce)
+
     if (isTRUE(checked_out)) {
-      try(pk_sql_bounded_call(function() pool::poolReturn(query_conn), temizlik_butce),
-          silent = TRUE)
+      # İSTEK BAŞINA TEMİZLİĞİ TAMAMLANMAMIŞ bağlantı havuza İADE EDİLMEZ:
+      # sonraki ödünç alan bu isteğin `LOCK_TIMEOUT` değerini veya
+      # temizlenmemiş bir sonuç kümesini devralırdı. Böyle bir bağlantı
+      # geçersiz kılınır (fiziksel olarak kapatılır).
+      kirli <- isTRUE(geri_yukleme$dirty) || isTRUE(sonuc_temiz$dirty)
+      if (kirli) {
+        .pk_sql_invalidate_connection(query_conn, temizlik_butce)
+      } else {
+        try(pk_sql_bounded_call(function() pool::poolReturn(query_conn), temizlik_butce),
+            silent = TRUE)
+      }
     }
   }, add = TRUE)
 
@@ -267,8 +229,14 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   }
   res <- gonderim$value
   on.exit({
-    try(pk_sql_bounded_call(function() DBI::dbClearResult(res),
-                            function() max(2, min(10, analiz_kalan()))), silent = TRUE)
+    temizleme <- try(pk_sql_bounded_call(
+      function() DBI::dbClearResult(res),
+      function() max(2, min(10, analiz_kalan()))
+    ), silent = TRUE)
+    # Sonuç kümesi temizlenemediyse bağlantı KİRLİDİR; havuza iade edilmemelidir.
+    if (inherits(temizleme, "try-error") || !isTRUE(temizleme$ok)) {
+      sonuc_temiz$dirty <- TRUE
+    }
   }, add = TRUE, after = FALSE)
 
   # Metadata dbFetch()'ten ÖNCE okunur ve GÜVENLİ PARÇA BOYUTUNU belirler.
@@ -282,10 +250,27 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
 
   parca_plani <- tryCatch(
     pk_sql_plan_chunk_rows(kolon_bilgisi, chunk_rows = parca_satir,
-                           max_result_mb = tavan_mb),
-    error = function(e) list(rows = parca_satir, bounded = FALSE,
+                           max_result_mb = tavan_mb,
+                           # Yapılandırılmış yük çarpanı planlamaya da GİRER;
+                           # aksi hâlde `MERGEN_PK_RESULT_OVERHEAD_FACTOR`
+                           # override'ı sıradan getirimlerde ÖLÜ kalırdı
+                           # (`expected_rows` normalde bilinmez).
+                           overhead_factor = yuk_carpani),
+    # PLANLAYICI HATASI güvenlik arızasıdır: çağıranın istediği parçaya
+    # (normalde 5.000) dönmek, güvenli granülarite kurulamamışken büyük bir ilk
+    # `dbFetch()` yapmak olurdu. Kapalı başarısız: tek satır.
+    error = function(e) list(rows = 1L, bounded = FALSE,
                              reason = "plan_failed")
   )
+
+  # Sınırsız LOB sütunu materyalizasyondan ÖNCE reddedilir: satır granülaritesi
+  # tek bir LOB HÜCRESİNİ kesemez.
+  if (isTRUE(parca_plani$refuse)) {
+    return(bos("too_large",
+               error = as.character(parca_plani$reason %||% "unbounded_lob_column")[1],
+               timeout_mechanism = mekanizma))
+  }
+
   parca_satir <- max(1L, suppressWarnings(as.integer(parca_plani$rows)[1]))
   if (is.na(parca_satir)) parca_satir <- 1L
 

@@ -103,8 +103,11 @@ pk_select_llm_invoke <- function(messages, cfg, session = NULL, llm_fn = NULL,
       error = function(e) list(dispatch = TRUE, timeout_sec = cfg$timeout_sec)
     )
     if (!isTRUE(.select_plan$dispatch)) {
-      return(structure(list(), class = "pk_select_llm_error",
-                       message = "Kalan analiz butcesi yok; secim cagrisi gonderilmedi."))
+      # Bütçe TÜKENMESİ bir "LLM servisi yok" durumu DEĞİLDİR: hiç istek
+      # gönderilmedi. Genel LLM-hata sınıflandırmasından geçirmek, isteği
+      # yanlışlıkla "AI servisi kullanılamıyor" / clarify yoluna sokardı.
+      # Tipli TIMEOUT döndürülür ve dış istek son tarih olarak sonlanır.
+      return(list(ok = FALSE, text = NA_character_, status = PK_SELECT_STATUS_TIMEOUT))
     }
     etkin_timeout <- as.integer(.select_plan$timeout_sec)
   }
@@ -120,6 +123,21 @@ pk_select_llm_invoke <- function(messages, cfg, session = NULL, llm_fn = NULL,
     request_timeout_sec = etkin_timeout
   )
 
+  # İPTAL BLOKLAYAN ÇAĞRIYA DA ULAŞIR: PK kapısı yayınlanmışken `call_local_llm()`
+  # curl ilerleme geri çağrısını bağlar ve kapı ateşlendiğinde aktarım ANINDA
+  # kesilir (bkz. helpers_pk_cancel_http.R). Kesilen aktarım sıradan bir HTTP
+  # hatası gibi görünür; bu yüzden burada TİPLİ bir zaman aşımı/iptal sonucuna
+  # dönüştürülür — aksi hâlde Durdur "AI servisi kullanılamıyor" olarak rapor
+  # edilirdi.
+  .select_halted <- if (exists("pk_stage_halted", mode = "function", inherits = TRUE)) {
+    pk_stage_halted
+  } else {
+    function() FALSE
+  }
+  if (.select_halted()) {
+    return(list(ok = FALSE, text = NA_character_, status = PK_SELECT_STATUS_TIMEOUT))
+  }
+
   sonuc <- tryCatch(
     llm_fn(messages, ayarlar),
     error = function(e) {
@@ -128,10 +146,21 @@ pk_select_llm_invoke <- function(messages, cfg, session = NULL, llm_fn = NULL,
   )
 
   if (inherits(sonuc, "pk_select_llm_error")) {
+    ileti <- attr(sonuc, "message")
+    iptal <- .select_halted() ||
+      (exists("pk_http_cancelled_error", mode = "function", inherits = TRUE) &&
+         isTRUE(tryCatch(pk_http_cancelled_error(ileti), error = function(e) FALSE)))
+    if (isTRUE(iptal)) {
+      return(list(ok = FALSE, text = NA_character_, status = PK_SELECT_STATUS_TIMEOUT))
+    }
     return(list(
       ok = FALSE, text = NA_character_,
-      status = .pk_select_classify_error(attr(sonuc, "message"))
+      status = .pk_select_classify_error(ileti)
     ))
+  }
+
+  if (.select_halted()) {
+    return(list(ok = FALSE, text = NA_character_, status = PK_SELECT_STATUS_TIMEOUT))
   }
 
   if (is.null(sonuc)) {

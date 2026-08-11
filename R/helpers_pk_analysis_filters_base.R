@@ -197,8 +197,20 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 	if (exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
 		isTRUE(pk_engine_is_v2()) &&
 		exists("pk_config_resolve", mode = "function", inherits = TRUE)) {
+	  # SORGU BAZLI GEÇERSİZ KILMA ONURLANDIRILIR: `pk_config_resolve()` ikinci
+	  # argüman olarak sorgu metadata'sını alır; verilmezse SEÇİLİ sorgunun
+	  # `meta$MERGEN_PK_FILTER_TIMEOUT_SEC` değeri sessizce yok sayılıyordu.
+	  # Yavaş/karmaşık bir sorgu için tanımlanan daha uzun filtre süresi hiç
+	  # uygulanmıyor, global varsayılan kullanılıyordu. Kalan-bütçe üst sınırı
+	  # bunun ARDINDAN uygulanır; sert son tarih hâlâ bağlayıcıdır.
+	  .filter_meta <- tryCatch(
+		if (exists("pk_active_query_meta", mode = "function", inherits = TRUE)) {
+		  pk_active_query_meta()
+		} else NULL,
+		error = function(e) NULL
+	  )
 	  filter_timeout <- tryCatch(
-		pk_config_resolve("MERGEN_PK_FILTER_TIMEOUT_SEC"),
+		pk_config_resolve("MERGEN_PK_FILTER_TIMEOUT_SEC", query_meta = .filter_meta),
 		error = function(e) 8
 	  )
 	}

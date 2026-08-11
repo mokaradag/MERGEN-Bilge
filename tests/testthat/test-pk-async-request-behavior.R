@@ -23,8 +23,8 @@ local({
   }
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
-                  "helpers_pk_async_bootstrap.R", "helpers_pk_async_snapshot.R",
-                  "helpers_pk_async_request.R")) {
+                  "helpers_pk_async_worker_env.R", "helpers_pk_async_worker_pool.R", "helpers_pk_async_bootstrap.R", "helpers_pk_async_snapshot_validate.R", "helpers_pk_async_snapshot.R",
+                  "helpers_pk_async_plan.R", "helpers_pk_async_request.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
   }
 })
@@ -330,7 +330,14 @@ test_that("globals paketi KÜÇÜK kalır ve memoize edilir", {
 
   expect_identical(ilk, ikinci)  # aynı nesne: memoize
   # Yüzlerce boru hattı fonksiyonu SERİLEŞTİRİLMEZ; işçide bootstrap ile yüklenir.
-  expect_true(length(ilk) < 20L)
+  #
+  # Tavan `explicit` kip yüzünden bilinçli olarak yükseltildi: özyinelemeli
+  # global genişletme YOKTUR, bu yüzden bootstrap ÖNCESİ kullanılan HER sembol
+  # (parmak izi, sahneleme ortamı, havuz admisyonu, artifact kaydı, sır kurulumu)
+  # AÇIKÇA taşınmalıdır. Eksik biri offline hiçbir testi kırmaz — temiz bir PSOCK
+  # işçisi ham "could not find function" ile ölür. Sınır yine de KÜÇÜKTÜR:
+  # boru hattının kendisi taşınmaz.
+  expect_true(length(ilk) < 45L)
   expect_true("pk_async_worker_bootstrap" %in% names(ilk))
   expect_true("bootstrap_files" %in% names(ilk))
   expect_false("pk_analiz_process_request" %in% names(ilk))

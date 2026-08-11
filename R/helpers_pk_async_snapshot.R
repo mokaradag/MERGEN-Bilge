@@ -15,102 +15,6 @@
 # sızıntı, üretimde işçi tarafında anlaşılmaz serileştirme hatalarına dönüşür.
 # ==============================================================================
 
-# İşçiye ASLA gitmemesi gereken nesne sınıfları. `ShinySession` sınıf adı
-# sürüme göre değişebildiği için ayrıca `environment` ve `DBIConnection`
-# kontrolü de yapılır.
-.PK_ASYNC_FORBIDDEN_CLASSES <- c(
-  "ShinySession", "MockShinySession", "session_proxy",
-  "reactivevalues", "reactive", "reactiveVal", "Observer",
-  "DBIConnection", "Pool", "OdbcConnection", "SQLiteConnection"
-)
-
-# Süreç-yerel TUTAMAÇLAR. Sınıf adına güvenmek yetmez: `externalptr`, zayıf
-# referans ve S4 nesneleri sınıf listesinde görünmeyebilir ama işçiye
-# taşındıklarında ya geçersiz işaretçi olarak serileşir ya da canlı oturum/DB
-# durumunu sınırın ötesine sürükler.
-.PK_ASYNC_FORBIDDEN_TYPES <- c(
-  "externalptr", "weakref", "environment", "closure", "builtin", "special",
-  "bytecode", "pairlist", "S4", "promise", "..."
-)
-
-.pk_async_forbidden_reason <- function(x, path) {
-  if (is.function(x)) return(sprintf("%s: function", path))
-  if (is.environment(x)) return(sprintf("%s: environment", path))
-
-  tip <- tryCatch(typeof(x), error = function(e) "unknown")
-  if (tip %in% .PK_ASYNC_FORBIDDEN_TYPES) return(sprintf("%s: %s", path, tip))
-  if (isTRUE(tryCatch(isS4(x), error = function(e) FALSE))) {
-    return(sprintf("%s: S4", path))
-  }
-
-  siniflar <- tryCatch(class(x), error = function(e) character(0))
-  carpisan <- intersect(siniflar, .PK_ASYNC_FORBIDDEN_CLASSES)
-  if (length(carpisan) > 0L) {
-    return(sprintf("%s: %s", path, paste(carpisan, collapse = "/")))
-  }
-
-  NULL
-}
-
-# Öznitelikler de taşınır: bir `externalptr` yalnızca `attr(x, "handle")`
-# içinde saklanıyorsa liste özyinelemesi onu HİÇ görmezdi.
-.pk_async_attribute_violations <- function(x, path, depth) {
-  ozellikler <- tryCatch(attributes(x), error = function(e) NULL)
-  if (!is.list(ozellikler) || length(ozellikler) == 0L) return(character(0))
-
-  adlar <- names(ozellikler)
-  if (is.null(adlar)) adlar <- rep("", length(ozellikler))
-  atlanacak <- c("names", "class", "row.names", "dim", "dimnames", "levels", "comment")
-
-  ihlaller <- character(0)
-  for (i in seq_along(ozellikler)) {
-    if (nzchar(adlar[i]) && adlar[i] %in% atlanacak) next
-    alt_ad <- if (nzchar(adlar[i])) adlar[i] else paste0("[[", i, "]]")
-    alt <- pk_async_validate_request(
-      ozellikler[[i]], path = paste0(path, "@", alt_ad), depth = depth + 1L
-    )
-    if (!isTRUE(alt$safe)) ihlaller <- c(ihlaller, alt$violations)
-  }
-  ihlaller
-}
-
-#' Anlık görüntünün İŞÇİ-GÜVENLİ olduğunu doğrula (savunmacı)
-#'
-#' Sessiz bir oturum/reaktif/bağlantı sızıntısı, üretimde işçi tarafında
-#' anlaşılmaz bir serileştirme hatasına dönüşür ve iptal/temizleme sözleşmesini
-#' de bozar. Bu yüzden kontrol AÇIK ve TESTLİDİR.
-#'
-#' @return `list(safe = TRUE/FALSE, violations = <chr>)`.
-pk_async_validate_request <- function(request, path = "request", depth = 0L) {
-  ihlaller <- character(0)
-
-  # Derinlik bütçesi aşıldığında alt ağaç DENETLENMEMİŞTİR. Onu "güvenli"
-  # saymak, tam da denetimden kaçan yerde bir oturum/bağlantı sızıntısına izin
-  # vermek olurdu; bu yüzden KAPALI BAŞARISIZ olunur.
-  if (depth > 12L) {
-    return(list(safe = FALSE, violations = sprintf("%s: depth_limit_exceeded", path)))
-  }
-
-  sebep <- .pk_async_forbidden_reason(request, path)
-  if (!is.null(sebep)) return(list(safe = FALSE, violations = sebep))
-
-  if (is.list(request) && length(request) > 0L) {
-    adlar <- names(request)
-    if (is.null(adlar)) adlar <- rep("", length(request))
-    for (i in seq_along(request)) {
-      alt_ad <- if (nzchar(adlar[i])) adlar[i] else paste0("[[", i, "]]")
-      alt <- pk_async_validate_request(
-        request[[i]], path = paste0(path, "$", alt_ad), depth = depth + 1L
-      )
-      if (!isTRUE(alt$safe)) ihlaller <- c(ihlaller, alt$violations)
-    }
-  }
-
-  ihlaller <- c(ihlaller, .pk_async_attribute_violations(request, path, depth))
-
-  list(safe = length(ihlaller) == 0L, violations = ihlaller)
-}
-
 # `chat_add_message()` normal asistan turlarını `type = "ai"` olarak saklar ve
 # `role` alanını DOLDURMAZ. Rolü körlemesine "user" yapmak, v2 seçim durumunun
 # sohbet imzasını (`role %||% type`) senkron yoldan FARKLI üretirdi; aynı
@@ -207,6 +111,74 @@ pk_async_config_install <- function(snapshot) {
 
   eski <- do.call(options, yeni)
   eski
+}
+
+#' Anlık görüntüyü işçi ORTAM DEĞİŞKENİ basamağına da kur
+#'
+#' `pk_config_resolve()` önceliği "sorgu metadata -> ORTAM -> options"tır.
+#' Yalnızca `options()` yazmak yetmez: KALICI bir PSOCK işçisi ana süreç
+#' yapılandırmayı sıkılaştırdıktan sonra da ESKİ ortamını taşıyabilir ve o
+#' bayat ortam taze istek anlık görüntüsünü YENERDİ (ör. operatör
+#' `MERGEN_PK_MAX_RESULT_MB` değerini düşürür ama işçi eski gevşek sınırla
+#' devam eder). Bu yüzden istek süresince ortam da anlık görüntüye eşitlenir.
+#'
+#' @return Ortamı ESKİ hâline döndüren fonksiyon.
+pk_async_config_install_env <- function(snapshot) {
+  bos <- function() invisible(FALSE)
+  if (!is.list(snapshot) || length(snapshot) == 0L) return(bos)
+
+  yeni <- list()
+  eski <- list()
+  for (anahtar in names(snapshot)) {
+    deger <- snapshot[[anahtar]]
+    if (is.null(deger) || length(deger) != 1L) next
+    if (is.function(deger) || is.environment(deger) || is.list(deger)) next
+    eski[[anahtar]] <- Sys.getenv(anahtar, unset = NA_character_)
+    yeni[[anahtar]] <- as.character(deger)[1]
+  }
+  if (!length(yeni)) return(bos)
+
+  do.call(Sys.setenv, yeni)
+
+  function() {
+    for (anahtar in names(eski)) {
+      if (is.na(eski[[anahtar]])) Sys.unsetenv(anahtar)
+      else do.call(Sys.setenv, stats::setNames(list(eski[[anahtar]]), anahtar))
+    }
+    invisible(TRUE)
+  }
+}
+
+# ------------------------------------------------------------------------------
+# İŞÇİYE TAŞINAN SIRLAR (YALNIZCA GEREKENLER)
+# ------------------------------------------------------------------------------
+# Genel kural: sırlar işçiye TAŞINMAZ. Tek istisna, senkron yolun ZATEN
+# yazdığı sözde-anonim soru korelasyonudur: `pk_telemetry_question_fingerprint()`
+# anahtarsız `NA` döner ve asenkron istekler bu korelasyonu SESSİZCE kaybeder.
+# Anahtar burada AYRI bir alanla taşınır; hiçbir log/telemetri/artifact'a
+# yazılmaz ve genel yapılandırma anlık görüntüsüne KARIŞMAZ.
+.PK_ASYNC_WORKER_SECRET_KEYS <- c("MERGEN_PK_TELEMETRY_HMAC_KEY")
+
+pk_async_secret_snapshot <- function() {
+  if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) return(list())
+
+  cikti <- list()
+  for (anahtar in .PK_ASYNC_WORKER_SECRET_KEYS) {
+    deger <- tryCatch(pk_config_resolve(anahtar), error = function(e) NULL)
+    if (is.null(deger) || length(deger) != 1L) next
+    metin <- tryCatch(as.character(deger)[1], error = function(e) NA_character_)
+    if (is.na(metin) || !nzchar(metin)) next
+    cikti[[anahtar]] <- metin
+  }
+  cikti
+}
+
+#' Taşınan sırları işçide kur (geri yükleyici döndürür)
+pk_async_secret_install <- function(secrets) {
+  if (!is.list(secrets) || length(secrets) == 0L) return(function() invisible(FALSE))
+  gecerli <- secrets[intersect(names(secrets), .PK_ASYNC_WORKER_SECRET_KEYS)]
+  if (!length(gecerli)) return(function() invisible(FALSE))
+  pk_async_config_install_env(gecerli)
 }
 
 # Vekil oturumun `userData` içeriği: yalnızca ATOMİK, düz alanlar.

@@ -20,15 +20,17 @@
   env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
-                  "helpers_pk_async_bootstrap.R", "helpers_pk_async_snapshot.R",
-                  "helpers_pk_async_request.R", "helpers_pk_exec_context.R", "helpers_pk_result_size.R",
-                  "helpers_pk_cache.R", "helpers_pk_sql_execute.R",
+                  "helpers_pk_async_worker_env.R", "helpers_pk_async_worker_pool.R", "helpers_pk_async_bootstrap.R", "helpers_pk_async_snapshot_validate.R", "helpers_pk_async_snapshot.R",
+                  "helpers_pk_async_plan.R", "helpers_pk_async_request.R", "helpers_pk_exec_context.R", "helpers_pk_result_columns.R", "helpers_pk_result_size.R",
+                  "helpers_pk_cache_key.R", "helpers_pk_cache.R", "helpers_pk_sql_execute.R", "helpers_pk_sql_connection.R",
                   "helpers_pk_async_worker_sql.R", "helpers_pk_async_worker.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }
 
   # Varsayılan: bootstrap başarılı, giriş noktaları hazır, boru hattı bağlam döner.
-  env$pk_async_worker_bootstrap <- function(repo_root, files) {
+  # `...`: bootstrap artık aşama kapısı, işçi sayısı ve DB havuzu seçeneklerini
+  # de alır (iptal/son tarih bootstrap SIRASINDA da gözlenir).
+  env$pk_async_worker_bootstrap <- function(repo_root, files, ...) {
     list(ok = TRUE, loaded = length(files), failed = character(0), cached = FALSE)
   }
   env$pk_async_worker_ready <- function(...) list(ready = TRUE, missing = character(0))

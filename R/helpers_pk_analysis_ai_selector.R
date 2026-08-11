@@ -92,11 +92,11 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
       }
     }
 
-    # Durdur, bloklayan HTTP çağrısına ULAŞAMAZ; en azından çağrıdan HEMEN
-    # ÖNCE ve HEMEN SONRA yoklanır ki iptal edilmiş bir seçim sonucu
-    # kullanılmasın ve sonraki aşamalar hiç başlamasın.
-    # Aşama kapısı yardımcısı AYRI dosyadadır (helpers_pk_result_size.R);
-    # izole test/debug bağlamında yoksa davranış DEĞİŞMEZ.
+    # Durdur artık bloklayan HTTP çağrısına DA ULAŞIR: `call_local_llm()` PK
+    # kapısı yayınlanmışken curl ilerleme geri çağrısını bağlar ve kapı
+    # ateşlendiğinde aktarım ANINDA kesilir (bkz. helpers_pk_cancel_http.R).
+    # Buradaki ön/son yoklamalar, iptal edilmiş bir seçim sonucunun
+    # KULLANILMAMASINI garanti eder.
     # (`try()` kullanılır: ek anonim hata kapanışı bu dosyanın fonksiyon
     # bütçesini tüketirdi.)
     kapi_var <- exists("pk_active_stage_halt", mode = "function", inherits = TRUE)

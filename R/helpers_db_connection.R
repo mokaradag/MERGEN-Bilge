@@ -62,6 +62,26 @@ if (!exists("resolve_db_client_encoding", mode = "function", inherits = TRUE) ||
   max(2, min(10, kalan))
 }
 
+# Kalan bütçeden SÜRÜCÜ login zaman aşımı (saniye, tam sayı).
+#
+# ODBC `SQL_ATTR_LOGIN_TIMEOUT` saniye çözünürlüğündedir ve `0` = SINIRSIZ
+# demektir; bu yüzden taban 1 saniyedir. Bütçe yoksa yapılandırılmış varsayılan
+# kullanılır ve PK dışı çağıranların davranışı DEĞİŞMEZ.
+.DB_DEFAULT_LOGIN_TIMEOUT_SEC <- 30L
+
+.db_connect_timeout_sec <- function(budget_sec) {
+  varsayilan <- suppressWarnings(as.integer(
+    Sys.getenv("MERGEN_DB_LOGIN_TIMEOUT_SEC", unset = NA_character_)
+  ))
+  if (length(varsayilan) != 1L || is.na(varsayilan) || varsayilan < 1L) {
+    varsayilan <- .DB_DEFAULT_LOGIN_TIMEOUT_SEC
+  }
+
+  butce <- suppressWarnings(as.numeric(budget_sec)[1])
+  if (length(butce) != 1L || is.na(butce) || !is.finite(butce)) return(varsayilan)
+  max(1L, min(varsayilan, as.integer(floor(butce))))
+}
+
 .db_with_elapsed_budget <- function(budget_sec, fn) {
   butce <- suppressWarnings(as.numeric(budget_sec)[1])
   if (length(butce) != 1L || is.na(butce) || !is.finite(butce)) return(fn())
@@ -125,6 +145,24 @@ db_pool_healthy <- function(timeout_sec = 5) {
   isTRUE(info$valid)
 }
 
+# ------------------------------------------------------------------------------
+# VERİTABANI HEDEF TANIMLARI (DATABASE TARGET CONSTANTS)
+# ------------------------------------------------------------------------------
+# Uygulama genelinde hangi veritabanına gidileceğini belirten standart
+# etiketler; `R/library_queries.R` sorguları ve PK analiz modülü kullanır.
+#
+# `global.R` İÇİNDEN BURAYA TAŞINDI: Faz 6 PK işçisi `global.R`'yi HİÇ
+# yüklemez, yalnızca manifest bölümlerini yükler. Tanım orada kaldığı sürece
+# temiz bir PSOCK işçisinde `R/library_queries.R` "object 'DB_TARGETS' not
+# found" ile düşüyor ve asenkron yol her istekte senkron yedeğe iniyordu.
+# Manifest sırası `database` -> `sql_library` olduğundan tanım tüketicilerden
+# ÖNCE hazırdır.
+DB_TARGETS <- list(
+  PRIMARY   = "primary",   # Ana veritabanı (Varsayılan) -> .Renviron: DB_DSN
+  SECONDARY = "secondary", # İkincil veritabanı          -> .Renviron: DB_DSN_2
+  TERTIARY  = "tertiary"   # Üçüncül veritabanı          -> .Renviron: DB_DSN_3
+)
+
 get_connection <- function(target = "primary") {
   dsn_var <- switch(target,
     "primary"   = "DB_DSN",
@@ -167,12 +205,21 @@ get_connection <- function(target = "primary") {
   # DSN/login, kalan analiz bütçesinin ötesine geçebilir ve stop-file bu sırada
   # yoklanamaz; bu yüzden kurulum kalan bütçeyle SINIRLANIR.
   conn_budget <- .db_pk_residual_budget_sec()
+  # SÜRÜCÜ SEVİYESİ LOGIN ZAMAN AŞIMI.
+  #
+  # `setTimeLimit()` İŞ BİRLİĞİNE dayalıdır: derlenmiş çağrılar onu yalnızca
+  # kesme noktalarında gözler ve `odbc`'nin `interruptible = TRUE` desteği
+  # `SQLExecute`/`SQLExecuteDirect` içindir — BAĞLANTI KURULUMUNU kapsamaz.
+  # Yavaş bir DSN/login bu yüzden yalnızca elapsed sınırıyla GARANTİ altına
+  # alınamaz. `odbc::dbConnect(..., timeout = )` bunu sürücüye devreder.
+  login_timeout <- .db_connect_timeout_sec(conn_budget)
   conn <- .db_with_elapsed_budget(conn_budget, function() {
     DBI::dbConnect(
       odbc::odbc(),
       dsn = dsn_name,
       encoding = .DEFAULT_DB_CLIENT_ENCODING,
       name_encoding = .DEFAULT_DB_NAME_ENCODING,
+      timeout = login_timeout,
       # PSOCK workers are non-interactive, so odbc otherwise defaults this to
       # FALSE. The bounded PK executor relies on R interrupts to trigger
       # odbc's SQLCancel path while SQLExecute/SQLExecuteDirect is blocked.
@@ -192,19 +239,35 @@ release_connection <- function(conn_info) {
     return(invisible(NULL))
   }
 
-  tryCatch({
-    close_start <- proc.time()[["elapsed"]]
-    # Faz 6: `dbDisconnect()` senkron bir sürücü çağrısıdır. Zaman aşımına
-    # uğramış/iptal edilmiş bir istekte teardown askıda kalırsa, işçi yuvası
-    # sert analiz son tarihinin ÖTESİNDE meşgul kalırdı. Temizliğin kendi
-    # tabanı vardır: bütçe tükenmiş olsa bile kapatma denenmelidir.
+  close_start <- proc.time()[["elapsed"]]
+  # Faz 6: `dbDisconnect()` senkron bir sürücü çağrısıdır. Zaman aşımına
+  # uğramış/iptal edilmiş bir istekte teardown askıda kalırsa, işçi yuvası
+  # sert analiz son tarihinin ÖTESİNDE meşgul kalırdı. Temizliğin kendi
+  # tabanı vardır: bütçe tükenmiş olsa bile kapatma denenmelidir.
+  kapatildi <- tryCatch({
     .db_with_elapsed_budget(.db_pk_teardown_budget_sec(), function() {
       DBI::dbDisconnect(conn_info$conn)
     })
+    TRUE
+  }, error = function(e) FALSE)
+
+  if (isTRUE(kapatildi)) {
     .db_perf_log("db.connection_close", start = close_start, fields = list(pooled = FALSE))
-  }, error = function(e) {
-    invisible(NULL)
-  })
+    return(invisible(NULL))
+  }
+
+  # SINIRLI KAPATMA BAŞARISIZ. Hatayı yutup tek uygulama referansını düşürmek,
+  # fiziksel SQL Server oturumunu bir finalizer/GC'ye kadar AÇIK bırakır; arka
+  # arkaya yavaş kapanışlar bağlantı kapasitesini tüketebilir. Bu yüzden
+  # BÜTÇESİZ (son çare) bir kapatma denenir ve sonuç AÇIKÇA loglanır.
+  yeniden <- tryCatch({ DBI::dbDisconnect(conn_info$conn); TRUE }, error = function(e) FALSE)
+  .db_perf_log("db.connection_close", start = close_start,
+               fields = list(pooled = FALSE, bounded_close_failed = TRUE,
+                             forced_close_ok = isTRUE(yeniden)))
+  if (!isTRUE(yeniden) && exists("log_warn", mode = "function", inherits = TRUE)) {
+    try(log_warn("[DB] Baglanti kapatilamadi; fiziksel oturum ACIK kalmis olabilir."),
+        silent = TRUE)
+  }
 
   invisible(NULL)
 }

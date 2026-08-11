@@ -34,17 +34,46 @@ pk_deep_phase6_setup <- function(detail_config, session, request_id, started_at)
     return(list(detail_config = detail_config, restore = NULL))
   }
 
-  detail_config$pk_deadline_at <- pk_deadline_at(
+  # SENKRON YEDEK YOLU: `senkron_yedek()` ORİJİNAL dispatch son tarihini
+  # BİLEREK yayınlar (işçi/bootstrap süresi geri ÖDENMEZ). Burada taze bir
+  # `started_at` üzerinden yeni bir tam analiz penceresi hesaplamak, başarısız
+  # bir asenkron denemeden sonra toplam duvar saatini neredeyse İKİYE
+  # KATLARDI. Önceden yayınlanmış bir son tarih varsa ERKEN OLAN korunur.
+  hesaplanan <- pk_deadline_at(
     started_at,
     tryCatch(pk_config_resolve("MERGEN_PK_ANALYSIS_DEADLINE_SEC"), error = function(e) 300L)
   )
+  onceki_son_tarih <- getOption("mergen.pk.async.deadline_at", NULL)
+  detail_config$pk_deadline_at <- if (inherits(onceki_son_tarih, "POSIXct") &&
+                                      length(onceki_son_tarih) == 1L &&
+                                      !is.na(onceki_son_tarih)) {
+    if (inherits(hesaplanan, "POSIXct") && length(hesaplanan) == 1L && !is.na(hesaplanan)) {
+      min(onceki_son_tarih, hesaplanan)
+    } else {
+      onceki_son_tarih
+    }
+  } else {
+    hesaplanan
+  }
 
   # İptal jetonu OTURUM KAPSAMLIDIR. Durdur gözlemcisi
   # `mergen_pk_cancel_token_for_session()` yolunu işaretler; yalnızca istek
   # kimliğinden yeniden kurmak, HİÇ YAZILMAYAN bir dosyayı yoklamak olurdu.
   # Asenkron işçi bu sembolü zaten dispatch jetonuyla değiştirir.
+  #
+  # İŞÇİDE: `session` `pk_async_worker_session()` vekilidir ve `token` alanı
+  # gerçek Shiny oturum jetonu DEĞİL istek kimliğidir. Yolu vekil üzerinden
+  # YENİDEN KURMAK, ana sürecin işaretlediği dosyadan BAŞKA bir dosyayı
+  # izlemek olurdu (işçi yalnızca `pk_cancel_token_path()`'i override eder;
+  # bu dal onu ATLARDI) ve derin SQL/aşama kapıları Durdur'u KAÇIRIRDI.
+  # Bu yüzden ZATEN YAYINLANMIŞ dispatch jetonu varsa o KULLANILIR.
+  yayinlanan <- getOption("mergen.pk.async.cancel_token", NULL)
+  yayinlanan <- tryCatch(as.character(yayinlanan)[1], error = function(e) NA_character_)
+
   kimlik <- as.character(request_id %||% "")[1]
-  detail_config$pk_cancel_token <- if (nzchar(kimlik)) {
+  detail_config$pk_cancel_token <- if (!is.na(yayinlanan) && nzchar(yayinlanan)) {
+    yayinlanan
+  } else if (nzchar(kimlik)) {
     if (exists("mergen_pk_cancel_token_for_session", mode = "function", inherits = TRUE)) {
       tryCatch(mergen_pk_cancel_token_for_session(session, kimlik),
                error = function(e) pk_cancel_token_path(kimlik))
@@ -103,12 +132,28 @@ pk_deep_apply_partial_halt <- function(detail_config, halt_status, completed_cou
 #' üretilemediğinde TÜM yetkili küme üzerinden sessizce devam EDİLMEZ; aksi
 #' hâlde filtreli bir soruya tam-küme istatistiği kendinden emin biçimde
 #' dönerdi. Derin modda yalnızca O SORGU başarısız olur; çalışma sürer.
+#
+# KAPALI BAŞARISIZ OLUR: bu yardımcı, derin modun bozulmuş bir filtre planıyla
+# TÜM yetkili küme üzerinden sessizce analiz yapmasını ENGELLEMEK için vardır.
+# Politikanın kendisi eksik/hatalıysa `refuse = FALSE` dönmek, tam da ortadan
+# kaldırmak istediği güvensiz tam-küme davranışını GERİ GETİRİRDİ. Bu yüzden
+# eksik veya hata veren politika değerlendirmesi sorguyu REDDEDER.
 pk_deep_filter_degraded_decision <- function(filter_status) {
+  reddet <- function(mesaj) list(refuse = TRUE, message = as.character(mesaj)[1])
+
   if (!exists("pk_filter_degraded_gate", mode = "function", inherits = TRUE)) {
-    return(list(refuse = FALSE, message = NA_character_))
+    return(reddet(paste0(
+      "Filtre bozulma politikası değerlendirilemedi (politika yüklü değil); ",
+      "sorgu güvenlik gereği atlandı."
+    )))
   }
-  kapi <- tryCatch(pk_filter_degraded_gate(filter_status),
-                   error = function(e) list(refuse = FALSE))
+
+  kapi <- tryCatch(pk_filter_degraded_gate(filter_status), error = function(e) NULL)
+  if (is.null(kapi) || !is.list(kapi)) {
+    return(reddet(paste0(
+      "Filtre bozulma politikası değerlendirilemedi; sorgu güvenlik gereği atlandı."
+    )))
+  }
   if (!isTRUE(kapi$refuse)) return(list(refuse = FALSE, message = NA_character_))
 
   list(
@@ -117,4 +162,66 @@ pk_deep_filter_degraded_decision <- function(filter_status) {
       kapi$message %||% "Filtre planı üretilemedi; sorgu atlandı."
     )[1]
   )
+}
+
+# ------------------------------------------------------------------------------
+# v1 ÇOKLU SORGU SEÇİMİ (bütçe + tavan kararı)
+# ------------------------------------------------------------------------------
+#' v1 çoklu seçiciyi KALAN BÜTÇEYLE ve DOĞRU TAVANLA çalıştır
+#'
+#' İki karar birlikte verilir:
+#'
+#'  1) TAVAN: birincil sorgunun metadata'sı ancak seçimden SONRA bilinir ve
+#'     yapılandırma sözleşmesi ona EN YÜKSEK önceliği verir. Seçiciye yalnızca
+#'     küresel tavanı vermek, sorgu-seviyesi bir `deep_max_queries` override'ının
+#'     tavanı DÜŞÜREBİLİP ASLA YÜKSELTEMEMESİNE yol açardı. Bu yüzden seçim şema
+#'     üst sınırına kadar aday üretir; kesin tavan çağıranda uygulanır.
+#'
+#'  2) BÜTÇE: seçici KENDİ sabit zaman aşımını kullanırdı. Kalan bütçe o
+#'     zaman aşımından küçükse çağrı hiç GÖNDERİLMEZ; gönderildiğinde de ETKİN
+#'     zaman aşımı KALAN BÜTÇEDİR (plan yalnızca evet/hayır kapısı değildir).
+pk_deep_select_multi_queries <- function(user_prompt, query_library, session,
+                                         detail_config, stop_check = NULL) {
+  tavan <- max(pk_deep_max_queries(), pk_deep_max_queries_upper_bound())
+
+  plan <- pk_sql_timeout_plan(
+    12, pk_deadline_remaining_sec(detail_config$pk_deadline_at)
+  )
+  if (!isTRUE(plan$dispatch)) {
+    cat("[DEEP_ANALYSIS] Kalan butce yok; coklu secici calistirilmadi.\n")
+    return(NULL)
+  }
+
+  find_multiple_queries_with_ai(
+    user_prompt, query_library, session,
+    max_queries = tavan,
+    timeout_sec = plan$timeout_sec,
+    stop_check = stop_check
+  )
+}
+
+# ------------------------------------------------------------------------------
+# TİPLİ HALT SONUCU (sorgu içi iptal/son tarih)
+# ------------------------------------------------------------------------------
+# `execute_single_deep_query()` eskiden halt durumunda `NULL` dönüyordu; halt
+# SON seçilen sorguda gerçekleştiğinde durum KAYBOLUYOR ve kısmi sonuç sıradan
+# bir başarı gibi sunuluyordu.
+pk_deep_halt_result <- function(status) {
+  durum <- tryCatch(as.character(status)[1], error = function(e) NA_character_)
+  if (length(durum) != 1L || is.na(durum) || !nzchar(durum)) durum <- "cancelled"
+  structure(list(pk_halt_status = durum), class = "pk_deep_halt")
+}
+
+pk_deep_is_halt_result <- function(result) {
+  inherits(result, "pk_deep_halt") ||
+    (is.list(result) && nzchar(as.character(result$pk_halt_status %||% "")[1]))
+}
+
+# v2 filtre yürütücüsünün UYGULAMA SONRASI kararı (çerçeve özniteliğinde).
+.pk_deep_filter_v2_decision <- function(filtered_data) {
+  if (!exists("PK_FILTER_V2_ATTR", inherits = TRUE)) return(list())
+  karar <- tryCatch(attr(filtered_data, PK_FILTER_V2_ATTR, exact = TRUE),
+                    error = function(e) NULL)
+  if (!is.list(karar)) return(list())
+  karar
 }

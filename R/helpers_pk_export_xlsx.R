@@ -166,8 +166,27 @@
 #' @return `list(status=, files=, message=, total_rows=, cols=, format=, notes=)`
 pk_export_build <- function(data, packet = list(), context = list(),
                             base_name = "analiz", dir = NULL, query = NULL,
-                            format = NA_character_) {
+                            format = NA_character_, stop_check = NULL) {
   meta <- if (is.list(query) && is.list(query$meta)) query$meta else list()
+
+  # Dışa aktarım yazımı + geri okuma DOĞRULAMASI büyük dosyalarda uzun sürer ve
+  # kendi başına iptal/son tarih GÖZLEMEZDİ: Durdur o sırada gelirse işçi tüm
+  # I/O bitene kadar meşgul kalır, yani ilan edilen sert analiz son tarihi
+  # aşılırdı. Kapı aşamalar ARASINDA yoklanır; jeton/son tarih yoksa
+  # `pk_active_stage_halt()` `FALSE` döner ve davranış DEĞİŞMEZ.
+  durduruldu <- function() {
+    if (is.function(stop_check)) {
+      return(isTRUE(tryCatch(stop_check(), error = function(e) FALSE)))
+    }
+    if (!exists("pk_active_stage_halt", mode = "function", inherits = TRUE)) return(FALSE)
+    isTRUE(tryCatch(pk_active_stage_halt(), error = function(e) FALSE))
+  }
+  iptal_sonucu <- function(rows = 0L, cols = 0L) {
+    list(status = "cancelled", files = list(),
+         message = "Dışa aktarım kullanıcı isteğiyle durduruldu.",
+         total_rows = rows, cols = cols, format = NA_character_, notes = character(0))
+  }
+
   plan <- pk_export_plan(data, base_name = "Veri", query_meta = meta)
 
   if (identical(plan$status, "empty")) {
@@ -230,6 +249,7 @@ pk_export_build <- function(data, packet = list(), context = list(),
     sayfalar[["Bilgi"]] <- bilgi_sayfasi
 
     yol <- file.path(dizin, .pk_export_filename(base_name, "xlsx"))
+    if (durduruldu()) return(iptal_sonucu(plan$total_rows, ncol(govde)))
 
     yazildi <- tryCatch({
       if (bicimli) {
@@ -245,6 +265,15 @@ pk_export_build <- function(data, packet = list(), context = list(),
       cat(sprintf("[PK_ANALIZ] XLSX yazimi basarisiz: %s\n", conditionMessage(e)))
       FALSE
     })
+
+    # Yazım BİTTİ: dosya artık diskte. Bundan sonraki her başarısız/iptal
+    # yolunda temizlenebilmesi için ANINDA kaydedilir.
+    if (isTRUE(yazildi)) .pk_export_track_artifact(yol)
+
+    if (durduruldu()) {
+      if (!is.na(yol)) safe_unlink_if_exists(yol)
+      return(iptal_sonucu(plan$total_rows, ncol(govde)))
+    }
 
     dogrulama <- if (yazildi) {
       pk_export_verify_file(yol, plan, sayfalar)
@@ -271,9 +300,21 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # CSV yedeği: yüzde sözleşmesi CSV'ye göre YENİDEN kurulur, parçalar akışlı
   # yazılır ve her biri geri okunup doğrulanır. Bir parça bile doğrulanamazsa
   # yarım küme SUNULMAZ.
+  if (durduruldu()) return(iptal_sonucu(plan$total_rows, ncol(data)))
+
   csv <- .pk_export_csv_body(data, meta)
   paket <- pk_export_csv_bundle(dizin, base_name, plan, csv$body,
                                 summary_sheet = ozet_sayfasi, info_sheet = bilgi_sayfasi)
+  .pk_export_track_artifact(vapply(
+    paket$files %||% list(), function(f) as.character(f$path %||% "")[1], character(1)
+  ))
+
+  if (durduruldu()) {
+    for (dosya in paket$files %||% list()) {
+      try(safe_unlink_if_exists(as.character(dosya$path %||% "")[1]), silent = TRUE)
+    }
+    return(iptal_sonucu(plan$total_rows, ncol(csv$body)))
+  }
 
   if (!isTRUE(paket$ok)) {
     return(list(status = "failed", files = list(),
@@ -302,6 +343,14 @@ pk_export_build <- function(data, packet = list(), context = list(),
     parts = length(plan$parts),
     notes = c(hazir_notlar, csv$notes, as.character(dogrulama$reason %||% ""))
   )
+}
+
+# Artifact kaydı işçi ortamı yardımcısındadır (`helpers_pk_async_worker_env.R`);
+# burada GUARDED çağrılır, böylece dışa aktarım o katman olmadan da çalışır.
+.pk_export_track_artifact <- function(paths) {
+  if (!exists("pk_artifact_track", mode = "function", inherits = TRUE)) return(invisible(FALSE))
+  try(pk_artifact_track(paths), silent = TRUE)
+  invisible(TRUE)
 }
 
 #' Yazılan XLSX'i geri okuyup doğrula
@@ -344,103 +393,4 @@ pk_export_verify_file <- function(path, plan, sheets) {
   }, error = function(e) {
     list(ok = FALSE, reason = sprintf("Geri okuma hatasi: %s", conditionMessage(e)))
   })
-}
-
-#' Artefaktı OTURUM KAPSAMLI sun ve oturum bitiminde sil
-#'
-#' `bilge_yolac_downloads/` KULLANILMAZ: orası global bir kaynak yoludur ve
-#' RLS filtreli veriyi tahmin edilebilir bir URL üzerinden başka kullanıcılara
-#' açardı.
-pk_export_serve <- function(session, artifact) {
-  if (!is.list(artifact) || !length(artifact$files %||% list())) return(artifact)
-  if (is.null(session) || is.null(session$registerDataObj)) return(artifact)
-
-  temizlenecek <- character(0)
-
-  artifact$files <- lapply(artifact$files, function(dosya) {
-    yol <- normalizePath(dosya$path, winslash = "/", mustWork = FALSE)
-    tur <- if (identical(dosya$format, "csv")) {
-      "text/csv; charset=UTF-8"
-    } else {
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    }
-
-    url <- tryCatch(
-      session$registerDataObj(
-        name = paste0("pk_export_", gsub("[^A-Za-z0-9]", "_", dosya$name)),
-        data = list(path = yol, ctype = tur, fname = dosya$name),
-        filterFunc = function(data, req) {
-          if (!file.exists(data$path)) {
-            return(shiny::httpResponse(
-              status = 404L, content_type = "text/plain; charset=UTF-8",
-              content = "Analiz eki bulunamadi"
-            ))
-          }
-          # Dosya BELLEĞE ALINMADAN akıtılır: izin verilen tavanda tek bir
-          # indirme yüzlerce MB'ı paylaşılan Shiny sürecinde tutardı.
-          shiny::httpResponse(
-            status = 200L, content_type = data$ctype,
-            content = list(file = data$path, owned = FALSE),
-            headers = list(
-              "Content-Disposition" = sprintf("attachment; filename=\"%s\"", data$fname)
-            )
-          )
-        }
-      ),
-      error = function(e) {
-        cat(sprintf("[PK_ANALIZ] Ek sunulamadi: %s\n", conditionMessage(e)))
-        NULL
-      }
-    )
-
-    temizlenecek <<- c(temizlenecek, yol)
-    dosya$url <- url
-    dosya
-  })
-
-  .pk_export_register_cleanup(session, temizlenecek)
-  artifact
-}
-
-# Oturum kapsamlı temizlik DEFTERİ
-#
-# `register_session_cleanup_on_end()` oturum başına YALNIZCA BİR KEZ kayıt
-# kabul eder ve sonraki `extra_cleanup` listelerini eklemez; ilk kaydı çoğu
-# oturumda başka bir bileşen yaptığı için dışa aktarım temizliği hiç
-# çalışmayabiliyordu. Bu yüzden yollar oturuma ait bir deftere yazılır ve
-# defteri boşaltan TEK bir geri çağrı kaydedilir.
-.pk_export_register_cleanup <- function(session, paths) {
-  yollar <- as.character(paths %||% character(0))
-  yollar <- yollar[!is.na(yollar) & nzchar(yollar)]
-  if (!length(yollar)) return(invisible(FALSE))
-  if (is.null(session) || is.null(session$userData) || !is.environment(session$userData)) {
-    return(invisible(FALSE))
-  }
-
-  ud <- session$userData
-  mevcut <- tryCatch(ud$pk_export_cleanup_paths, error = function(e) NULL)
-  ud$pk_export_cleanup_paths <- unique(c(as.character(mevcut %||% character(0)), yollar))
-
-  if (isTRUE(tryCatch(ud$pk_export_cleanup_registered, error = function(e) FALSE))) {
-    return(invisible(TRUE))
-  }
-  if (!is.function(session$onSessionEnded)) return(invisible(FALSE))
-
-  ud$pk_export_cleanup_registered <- TRUE
-  try(session$onSessionEnded(function() {
-    hedefler <- tryCatch(ud$pk_export_cleanup_paths, error = function(e) character(0))
-    hedefler <- as.character(hedefler %||% character(0))
-    for (h in hedefler) try(unlink(h, force = TRUE), silent = TRUE)
-
-    # Tekil çalışma dizinleri boşalınca kaldırılır; yalnızca bu dışa aktarım
-    # için üretilmiş "run_" dizinlerine dokunulur.
-    for (d in unique(dirname(hedefler))) {
-      if (grepl("(^|/)run_[^/]*$", d) && dir.exists(d) && !length(list.files(d))) {
-        try(unlink(d, recursive = TRUE, force = TRUE), silent = TRUE)
-      }
-    }
-    tryCatch(ud$pk_export_cleanup_paths <- character(0), error = function(e) NULL)
-  }), silent = TRUE)
-
-  invisible(TRUE)
 }

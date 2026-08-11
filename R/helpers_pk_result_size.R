@@ -70,6 +70,15 @@ pk_column_width_upper_bound <- function(sql_type, max_length = NA) {
   tip <- .pk_result_type_key(sql_type)
   if (!nzchar(tip)) return(NA_real_)
 
+  # ODBC tip KODUNDAN türetilmiş, ZATEN bayta çevrilmiş üst sınır.
+  if (identical(tip, "__bounded__")) {
+    uzunluk <- suppressWarnings(as.numeric(max_length)[1])
+    if (length(uzunluk) != 1L || is.na(uzunluk) || !is.finite(uzunluk) || uzunluk <= 0) {
+      return(NA_real_)
+    }
+    return(as.numeric(uzunluk))
+  }
+
   sabit <- .PK_FIXED_TYPE_BYTES[[tip]]
   if (!is.null(sabit)) return(as.numeric(sabit))
 
@@ -110,6 +119,7 @@ pk_result_width_upper_bound <- function(columns) {
 
   toplam <- 0
   sinirsiz <- character(0)
+  lob <- character(0)
 
   for (i in seq_along(columns)) {
     sutun <- columns[[i]]
@@ -121,16 +131,42 @@ pk_result_width_upper_bound <- function(columns) {
     sinir <- pk_column_width_upper_bound(sutun$type, sutun$max_length %||% NA)
     if (is.na(sinir)) {
       sinirsiz <- c(sinirsiz, ad)
+      # "Bilinmeyen tip" ile "GERÇEK LOB" AYRI risklerdir: bilinmeyen tipte
+      # küçük parça getirimi yeterli bir savunmadır, ama TEK bir LOB HÜCRESİ
+      # tek başına tavanı aşabilir ve satır granülaritesi onu kesemez.
+      if (.pk_result_type_is_lob(sutun$type, sutun$max_length %||% NA)) {
+        lob <- c(lob, ad)
+      }
       next
     }
     toplam <- toplam + sinir
   }
 
   if (length(sinirsiz) > 0L) {
-    return(list(bounded = FALSE, bytes_per_row = NA_real_, unbounded_columns = sinirsiz))
+    return(list(bounded = FALSE, bytes_per_row = NA_real_,
+                unbounded_columns = sinirsiz, lob_columns = lob))
   }
 
-  list(bounded = TRUE, bytes_per_row = toplam, unbounded_columns = character(0))
+  list(bounded = TRUE, bytes_per_row = toplam,
+       unbounded_columns = character(0), lob_columns = character(0))
+}
+
+# Sütun GERÇEK bir LOB mu (tek hücresi tavanı aşabilir)?
+#
+# `__unknown__` bilinmeyen METADATA'dır: küçük parça getirimi + birikimli bayt
+# kapısı onu güvenle sınırlar. LOB ise farklıdır: `dbFetch(n = 1)` bile hücrenin
+# TAMAMINI belleğe alır.
+.pk_result_type_is_lob <- function(sql_type, max_length = NA) {
+  tip <- .pk_result_type_key(sql_type)
+  if (!nzchar(tip)) return(FALSE)
+  if (tip %in% .PK_ALWAYS_UNBOUNDED_TYPES) return(TRUE)
+
+  # `varchar(max)` / `nvarchar(max)` sürücüde `-1` uzunlukla gelir.
+  if (tip %in% .PK_VARWIDTH_TYPES) {
+    uzunluk <- suppressWarnings(as.numeric(max_length)[1])
+    return(length(uzunluk) == 1L && !is.na(uzunluk) && is.finite(uzunluk) && uzunluk < 0)
+  }
+  FALSE
 }
 
 #' Materyalizasyon ön kontrolü
@@ -179,66 +215,17 @@ pk_result_size_preflight <- function(row_count, width, max_result_mb,
   list(decision = "materialize", estimated_bytes = tahmin, reason = "bounded_within_ceiling")
 }
 
-# ------------------------------------------------------------------------------
-# ODBC SONUÇ METADATA'SINDAN GÜVENLİ PARÇA BOYUTU
-# ------------------------------------------------------------------------------
-# `DBI::dbColumnInfo()` üretimdeki `odbc::OdbcResult` yolunda yalnızca `name` ve
-# `type` döndürür ve `type` SQL Server tip ADI değil, metne çevrilmiş SAYISAL
-# ODBC tip kodudur. Bu yüzden:
+# Sınırsız LOB sütunlu sonuçlara AÇIK opt-in ile izin verilebilir.
 #
-#   * tip adı regex'leri (nvarchar(max), xml, ...) üretimde ESLESMEZ; yalnızca
-#     bir KOLON TAKMA ADI o kelimelerden biri olduğunda yanlışlıkla eşleşir —
-#     yani kontrol hem yanlış-negatif hem yanlış-pozitif üretir;
-#   * `name` alanı tip sınıflandırmasına HİÇ girmemelidir.
-#
-# Aşağıdaki eşleme SQL/ODBC tip kodlarını kullanır. Bilinmeyen kod "kanıtlanmış
-# üst sınır YOK" demektir; bu bir REDDETME değil, ZORUNLU küçük-parça getirim
-# sinyalidir.
-.PK_ODBC_LOB_TYPE_CODES <- c(
-  -1L,   # SQL_LONGVARCHAR  (text)
-  -4L,   # SQL_LONGVARBINARY (image / varbinary(max))
-  -10L,  # SQL_WLONGVARCHAR (ntext / nvarchar(max))
-  -152L, # SQL_SS_XML
-  -151L, # SQL_SS_UDT
-  -98L,  # SQL Server sql_variant (sürücüye göre)
-  -370L  # SQL_SS_TABLE
-)
-
-.pk_sql_metadata_field <- function(column_info, adaylar) {
-  alanlar <- tolower(names(column_info))
-  idx <- which(alanlar %in% adaylar)
-  if (!length(idx)) return(NULL)
-  column_info[[idx[1L]]]
-}
-
-#' Sonuç metadata'sından sütun tip/genişlik tanımları çıkar
-#'
-#' `name` alanı BİLİNÇLİ OLARAK YOK SAYILIR: kolon takma adı bir tip adına
-#' benzediği için sonuç reddedilmemelidir.
-pk_sql_columns_from_metadata <- function(column_info) {
-  if (!is.data.frame(column_info) || nrow(column_info) == 0L) return(list())
-
-  tipler <- .pk_sql_metadata_field(column_info, c("type", "data_type", "sql_type",
-                                                  "type_name", "typename", "field.type"))
-  boyutlar <- .pk_sql_metadata_field(column_info, c("max_length", "column_size",
-                                                    "length", "precision"))
-
-  lapply(seq_len(nrow(column_info)), function(i) {
-    tip <- if (is.null(tipler)) NA_character_ else as.character(tipler[i])
-    boyut <- if (is.null(boyutlar)) NA_real_ else suppressWarnings(as.numeric(boyutlar[i]))
-
-    kod <- suppressWarnings(as.integer(tip))
-    if (!is.na(kod)) {
-      # Sayısal ODBC kodu: LOB kodları üst sınır ÜRETMEZ.
-      if (kod %in% .PK_ODBC_LOB_TYPE_CODES) {
-        return(list(type = "text", max_length = NA_real_))
-      }
-      # Kod bilinen bir LOB değil ama tip adı da yok: genişlik kanıtlanamaz.
-      return(list(type = "__unknown__", max_length = boyut))
-    }
-
-    list(type = tip, max_length = boyut)
-  })
+# VARSAYILAN KAPALIDIR: tek bir LOB hücresi işçiyi OOM edebilir ve satır
+# granülaritesi bunu kesemez. Gerçekten LOB döndüren bir sorgusu olan operatör
+# riski bilerek üstlenebilir; sessiz varsayılan olamaz.
+pk_allow_unbounded_lob <- function(query_meta = NULL) {
+  if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) return(FALSE)
+  isTRUE(tryCatch(
+    pk_config_resolve("MERGEN_PK_ALLOW_UNBOUNDED_LOB", query_meta),
+    error = function(e) FALSE
+  ))
 }
 
 #' Bir parçada GÜVENLE getirilebilecek satır sayısını planla
@@ -268,12 +255,26 @@ pk_sql_plan_chunk_rows <- function(column_info, chunk_rows = 5000L,
 
   sutunlar <- pk_sql_columns_from_metadata(column_info)
   if (!length(sutunlar)) {
-    return(list(rows = istenen, bounded = FALSE, bytes_per_row = NA_real_,
+    # METADATA YOKSA satır genişliği TAM OLARAK kanıtlanamayan durumdur;
+    # çağıranın istediği parçayı (normalde 5.000) döndürmek, ilk `dbFetch()`
+    # ile gigabaytları materyalize edip bayt kapısının ÖNÜNDE belleği
+    # tüketebilirdi. Kanıt yoksa granülarite bir satırdır.
+    return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
                 reason = "metadata_unavailable"))
   }
 
   genislik <- pk_result_width_upper_bound(sutunlar)
   if (!isTRUE(genislik$bounded)) {
+    # GERÇEK LOB sütunu varsa satır granülaritesi YETMEZ: `dbFetch(n = 1)` bile
+    # tek bir `nvarchar(max)`/XML/image hücresinin TAMAMINI belleğe alır ve
+    # `MERGEN_PK_MAX_RESULT_MB` bayt kapısı ancak SONRASINDA çalışırdı. Bu
+    # yüzden materyalizasyondan ÖNCE reddedilir (kapalı başarısız).
+    lob <- as.character(genislik$lob_columns %||% character(0))
+    if (length(lob) > 0L && !isTRUE(pk_allow_unbounded_lob())) {
+      return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
+                  reason = "unbounded_lob_column", refuse = TRUE,
+                  lob_columns = lob))
+    }
     return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
                 reason = "width_not_provably_bounded"))
   }
@@ -453,13 +454,21 @@ pk_row_cap_stage <- function(data, query_meta = NULL, active = NULL) {
   if (!is.data.frame(data) || nrow(data) == 0L) return(bos)
   if (!exists("pk_row_cap_plan", mode = "function", inherits = TRUE)) return(bos)
 
-  etkin <- if (is.null(active)) {
-    exists("pk_async_mode_active", mode = "function", inherits = TRUE) &&
-      isTRUE(tryCatch(pk_async_mode_active(query_meta), error = function(e) FALSE))
-  } else {
-    isTRUE(active)
-  }
-  if (!isTRUE(etkin)) return(bos)
+  # SATIR TAVANI HER İKİ KİPTE DE UYGULANIR.
+  #
+  # Faz 6 ÖNCESİNDE tavan `apply_rls_to_data()` içinde KOŞULSUZ çalışıyordu.
+  # Tavanı yalnızca asenkron kipe bağlamak, `MERGEN_PK_ASYNC=false` (geri alma)
+  # yolunda mevcut korumayı TAMAMEN KALDIRIR ve keyfî büyüklükte yetkili
+  # çerçeveler filtre/istatistik aşamasına girebilirdi.
+  #
+  # GERİ ALMA SEMANTİĞİ KORUNUR: tavan artık FİLTRELERDEN SONRA ölçülür, yani
+  # eski (RLS sonrası) konuma göre satır sayısı yalnızca AZALABİLİR. Bu yüzden
+  # bu değişiklik geri alma yolunda YENİ bir reddetme üretemez; yalnızca eskiden
+  # var olan tavanı geri getirir.
+  #
+  # `active` parametresi ÇAĞRI YERİNDE açıkça kapatmak isteyen (test/derin
+  # bağlam) çağıranlar için korunur.
+  if (!is.null(active) && !isTRUE(active)) return(bos)
 
   row_cap <- if (exists("pk_config_resolve", mode = "function", inherits = TRUE)) {
     tryCatch(pk_config_resolve("MERGEN_PK_ROW_CAP", query_meta), error = function(e) 50000L)

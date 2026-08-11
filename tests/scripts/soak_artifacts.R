@@ -514,8 +514,10 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
         sprintf("%s/%s", as.character(pk_lane$db$acquired %||% NA),
                 as.character(pk_lane$db$released %||% NA)), "esit",
         isTRUE(pk_lane$db$acquire_release_balanced),
-        paste0("Her tur al/birak sarmalayicisindan gecmeli; sayaclar ",
-               "dengelenmezse istek basina baglanti sizintisi vardir."))
+        sprintf(paste0("Her tur URETIMDEKI al/birak ciftinden gecmeli; uretim ",
+                       "sizinti sayaci 0 olmali (enstrumante=%s, sizinti=%s)."),
+                as.character(pk_lane$db$instrumented %||% FALSE),
+                as.character(pk_lane$db$pool_leaked %||% NA)))
 
     # GERCEK PSOCK yolu: bu prob olmadan serit, `MERGEN_PK_ASYNC=true` ile
     # fiilen etkinlesen kodu (serilestirme + temiz iscide bootstrap + future
@@ -525,6 +527,17 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
         "cancelled", isTRUE(pk_lane$psock$ok),
         paste0("GERCEK PSOCK iscisinde anlik goruntu serilestirme ve ",
                "bootstrap-oncesi kapi calismali (terminal durum: cancelled)."))
+
+    # GERCEK BOOTSTRAP: yukaridaki tur jetonu ONCEDEN sinyalledigi icin isci
+    # hicbir dosya SOURCE ETMEDEN doner. Tek basina birakilirsa, TEMIZ bir
+    # PSOCK iscisinde bootstrap'in tamamen bozuk olmasi (eksik globals, kirik
+    # kaynak sirasi, eksik giris noktasi) bu kapiyi HALA gecerdi. Ayri bir
+    # IPTAL EDILMEMIS tur zorunlu dosya kumesini gercekten yukler.
+    add("pk_psock_worker_bootstrap", TRUE,
+        as.character(pk_lane$psock$bootstrap_status %||% NA_character_),
+        "not_bootstrap_failed", isTRUE(pk_lane$psock$bootstrap_ok),
+        paste0("Iptal edilmemis PSOCK turu TEMIZ iscide bootstrap'i ve giris ",
+               "noktasi dogrulamasini TAMAMLAMALI (bootstrap_failed OLMAMALI)."))
 
     # SINIRLI GETIRIM: `ok` donen tur TAM sonucu uretmeli. Sessizce kirpan bir
     # regresyon yine `ok` dondurup %100 basari orani uretebilirdi.
@@ -556,6 +569,17 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
         sprintf(paste0("Ayrik giris sayisi LRU tavanini (%s) asmali ve TAHLIYE ",
                        "yolu calistirilmali."),
                 as.character(pk_lane$cache$entries_ceiling %||% NA)))
+    # TEK GIRIS TAVANI: toplam bayt butcesinden AYRI bir sinirdir. Yalnizca
+    # `total_mb` olculdugunde, tek giris tavanini yok sayan bir regresyon
+    # (toplam butcenin altinda kalan tek buyuk giris) sessizce gecerdi.
+    add("pk_cache_oversize_entry_rejected", TRUE,
+        as.character(pk_lane$cache$oversize_reason %||% NA_character_),
+        "entry_too_large", isTRUE(pk_lane$cache$oversize_rejected),
+        sprintf(paste0("Tek giris tavanini asan sonuc ONBELLEGE ALINMAMALI ",
+                       "(prob calisti=%s, red_farki=%s)."),
+                as.character(pk_lane$cache$oversize_probe_ran %||% FALSE),
+                as.character(pk_lane$cache$oversize_rejected_delta %||% 0L)))
+
     add("pk_cache_scope_isolated", TRUE, isTRUE(pk_lane$cache$scope_isolated), TRUE,
         isTRUE(pk_lane$cache$scope_isolated),
         "Onbellek girisi YALNIZCA kendi yetki kapsamina donmeli (capraz sizinti YOK).")

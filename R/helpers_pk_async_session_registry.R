@@ -33,7 +33,14 @@
 #' Kapanan bir oturumda `onSessionEnded` kancası kayıt defterini boşaltır ve
 #' bu bayrağı düşürür; geç gelen geri çağrılar korumayı GEÇEMEZ.
 mergen_pk_session_open <- function(session) {
-  !isTRUE(try(session$userData[["pk_session_closed"]], silent = TRUE))
+  durum <- try(session$userData[["pk_session_closed"]], silent = TRUE)
+  # KAPALI BAŞARISIZ: `userData` artık OKUNAMIYORSA (oturum yıkıldı, ortam
+  # geçersiz) `try()` bir `try-error` döndürür ve `!isTRUE(try-error)` bunu
+  # AÇIK oturum sayardı — tam da bu okumanın başarısız olduğu anda tamamlanmış
+  # bir future artifact sunmaya, oturum yazımı uygulamaya ve nihai LLM'i
+  # tetiklemeye devam ederdi. Okunamayan canlılık durumu KAPALI kabul edilir.
+  if (inherits(durum, "try-error")) return(FALSE)
+  !isTRUE(durum)
 }
 
 mergen_pk_active_registry <- function(session) {
@@ -42,7 +49,16 @@ mergen_pk_active_registry <- function(session) {
   kayit <- try(ud[["pk_active_requests"]], silent = TRUE)
   if (!is.environment(kayit)) {
     kayit <- new.env(parent = emptyenv())
-    try(ud[["pk_active_requests"]] <- kayit, silent = TRUE)
+    yazildi <- try({ ud[["pk_active_requests"]] <- kayit; TRUE }, silent = TRUE)
+    # Kayıt defteri OTURUMA BAĞLANAMADIYSA yerel ortamı döndürmek, "kayıt
+    # başarılı" görüntüsü verip ERİŞİLEMEYEN bir deftere yazmak olurdu: sonraki
+    # Durdur/oturum-sonu araması o isteği ne iptal edebilir ne serbest bırakabilirdi.
+    if (!identical(yazildi, TRUE)) return(NULL)
+    # Geri okuma DOĞRULAMASI: bazı sahte/salt-okunur `userData` uygulamaları
+    # atamayı sessizce yutar.
+    dogrulama <- try(ud[["pk_active_requests"]], silent = TRUE)
+    if (!is.environment(dogrulama)) return(NULL)
+    kayit <- dogrulama
   }
   kayit
 }
@@ -67,7 +83,16 @@ mergen_pk_register_active_request <- function(session, request_id, cancel_token,
       })
       TRUE
     }, silent = TRUE)
-    if (identical(ok, TRUE)) try(ud[["pk_session_end_hook"]] <- TRUE, silent = TRUE)
+    # KANCA KURULAMADIYSA kayıt GERİ ALINIR ve `FALSE` döner. Aksi hâlde çağıran
+    # yaşam döngüsü korumasının VAR OLDUĞUNU varsayar: oturum kapanışı ne
+    # `pk_session_closed` yazar, ne jetonu işaretler, ne de serbest bırakma
+    # kapanışını çalıştırır — geç geri çağrılar ölü bir oturumu hedefler ve
+    # backpressure tutulu kalır.
+    if (!identical(ok, TRUE)) {
+      try(rm(list = kimlik, envir = kayit), silent = TRUE)
+      return(invisible(FALSE))
+    }
+    try(ud[["pk_session_end_hook"]] <- TRUE, silent = TRUE)
   }
   invisible(TRUE)
 }
@@ -104,8 +129,15 @@ mergen_pk_abandon_active_requests <- function(session, release = FALSE) {
     try(pk_cancel_token_signal(giris$cancel_token), silent = TRUE)
     if (isTRUE(release) && is.function(giris$release)) try(giris$release(), silent = TRUE)
   }
+
+  # İSTEK KİMLİKLERİ AÇIKÇA GEÇERSİZLENİR. Yalnızca jetonu işaretlemek yetmez:
+  # kullanıcı A -> B -> A gezinirse `active_request_id` HÂLÂ req1 olabilir ve
+  # `mergen_pk_chat_identity()` yeniden `chat:A` üretir; koruma o zaman AÇIKÇA
+  # TERK EDİLMİŞ bir sonucu kabul edip bayat yanıt/oturum yazımlarını uygulardı.
+  mergen_pk_invalidate_requests(session, adlar)
   invisible(length(adlar))
 }
+
 
 mergen_pk_bump_chat_epoch <- function(session) {
   ud <- tryCatch(session$userData, error = function(e) NULL)
@@ -134,31 +166,4 @@ mergen_pk_chat_identity <- function(session, values) {
   ))[1])
   if (length(nesil) != 1L || is.na(nesil)) nesil <- 0L
   paste0("<new-chat>:", nesil)
-}
-
-# ------------------------------------------------------------------------------
-# JETON SAHİPLİĞİ KAYDI
-# ------------------------------------------------------------------------------
-# Durdur gözlemcisi HER istek için çalışır (sohbet, görsel, özetleme...).
-# Yalnızca PK dağıtıcısının SAHİP OLDUĞU istekler için jeton yazılmalıdır;
-# aksi hâlde hiçbir tamamlanma yolunun temizlemediği `.flag` dosyaları birikir.
-mergen_pk_register_cancel_token <- function(session, request_id) {
-  ud <- tryCatch(session$userData, error = function(e) NULL)
-  if (is.null(ud)) return(invisible(FALSE))
-  kimlik <- tryCatch(as.character(request_id)[1], error = function(e) NA_character_)
-  if (is.na(kimlik) || !nzchar(kimlik)) return(invisible(FALSE))
-
-  mevcut <- tryCatch(ud[["pk_cancel_token_owners"]], error = function(e) NULL)
-  if (!is.character(mevcut)) mevcut <- character(0)
-  # Kayıt penceresi sınırlı tutulur: oturum ömrü boyunca sınırsız büyümemeli.
-  mevcut <- utils::tail(unique(c(mevcut, kimlik)), 50L)
-  try(ud[["pk_cancel_token_owners"]] <- mevcut, silent = TRUE)
-  invisible(TRUE)
-}
-
-mergen_pk_request_has_cancel_token <- function(session, request_id) {
-  kimlik <- tryCatch(as.character(request_id)[1], error = function(e) NA_character_)
-  if (is.na(kimlik) || !nzchar(kimlik)) return(FALSE)
-  sahipler <- tryCatch(session$userData[["pk_cancel_token_owners"]], error = function(e) NULL)
-  is.character(sahipler) && kimlik %in% sahipler
 }

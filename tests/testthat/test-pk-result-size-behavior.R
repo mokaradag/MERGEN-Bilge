@@ -26,6 +26,9 @@ local({
          encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_pk_exec_context.R"),
          encoding = "UTF-8", local = globalenv())
+  # Sürücü metadata YORUMU ayrı dosyadadır ve boyut matematiğinden ÖNCE gelir.
+  source(file.path(repo_root, "R", "helpers_pk_result_columns.R"),
+         encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_pk_result_size.R"),
          encoding = "UTF-8", local = globalenv())
 })

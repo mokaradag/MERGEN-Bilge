@@ -24,7 +24,7 @@
 #                              olmayan sonuç NA/NaN/Inf olarak değil,
 #                              kullanılamaz durum olarak raporlanır.
 #
-#           KİMLİK ÇAKIŞMASI (PR #698 incelemesi): olgu kimliği ASCII'ye
+#           KİMLİK ÇAKIŞMASI (inceleme bulgusu): olgu kimliği ASCII'ye
 #           indirgenip 60 karaktere kırpılır. `A-B` ile `A B`, ya da ilk 60
 #           normalleştirilmiş karakteri aynı olan iki uzun proje adı aynı
 #           kimliği alırdı ve `pk_facts_index()` birini SESSİZCE ezerdi; doğru

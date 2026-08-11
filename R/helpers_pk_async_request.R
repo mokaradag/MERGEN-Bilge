@@ -70,6 +70,15 @@ pk_async_build_request <- function(user_prompt, chat_history, username,
     # Ana süreçte çözülmüş yapılandırma (options() basamağı dahil) işçiye
     # taşınır; aksi hâlde işçi farklı güvenlik sınırlarıyla çalışabilir.
     pk_config = if (is.list(config_snapshot)) config_snapshot else pk_async_config_snapshot(),
+    # DB havuzu AÇILIŞI `options()` üzerinden de yapılabilir; temiz bir PSOCK
+    # işçisi ana sürecin rastgele option'larını GÖRMEZ ve havuz sessizce
+    # kapalı sanılırdı (doğrudan `dbConnect()` = admisyon tavanı yok).
+    db_pool_options = tryCatch(pk_async_db_pool_option_snapshot(), error = function(e) list()),
+    # Yalnızca telemetri parmak izi anahtarı; hiçbir log/artifact'a yazılmaz.
+    pk_secrets = tryCatch(pk_async_secret_snapshot(), error = function(e) list()),
+    # Agregat DB admisyon payı işçi sayısına bağlıdır; işçi bunu kendisi
+    # ÖLÇEMEZ (kendi süreci tek bir işçidir).
+    worker_count = tryCatch(pk_async_worker_count(), error = function(e) 1L),
     started_at_epoch = as.numeric(started_at)
   )
 }
@@ -117,74 +126,6 @@ pk_async_enabled <- function(query_meta = NULL) {
   isTRUE(tryCatch(pk_config_resolve("MERGEN_PK_ASYNC", query_meta), error = function(e) FALSE))
 }
 
-# Plan sınıfı TEK BAŞINA yeterli değildir:
-#   * `multisession`/`multicore` tek işçiyle KURULDUĞUNDA future sequential'a
-#     düşer; iş yine olay döngüsünde çalışır (tam olarak D15 donması).
-#   * `multicore` fork tabanlıdır: işçi ana sürecin durumunu (ve `.GlobalEnv$pool`
-#     üzerinden CANLI DB havuzunu) devralır. ODBC/Pool tutamaçları fork sonrası
-#     paylaşılamaz ve bu Faz 6'nın "bağlantı işçiye geçmez" sınırını ihlal eder.
-#   * Uzak `cluster` işçileri ana sürecin dosya sistemini GÖRMEZ: `repo_root`
-#     bootstrap'ı ve dosya tabanlı iptal jetonu orada anlamsızdır.
-.PK_ASYNC_REJECTED_PLAN_CLASSES <- c(
-  "sequential", "uniprocess", "transparent", "multicore"
-)
-
-pk_async_plan_capability <- function() {
-  if (!requireNamespace("future", quietly = TRUE)) {
-    return(list(ok = FALSE, reason = "future_missing"))
-  }
-
-  tryCatch({
-    strateji <- future::plan("list")[[1]]
-    siniflar <- class(strateji)
-
-    carpisan <- intersect(siniflar, .PK_ASYNC_REJECTED_PLAN_CLASSES)
-    if (length(carpisan) > 0L) {
-      return(list(ok = FALSE, reason = paste0("plan_", carpisan[1])))
-    }
-
-    isci_sayisi <- suppressWarnings(as.numeric(
-      tryCatch(future::nbrOfWorkers(), error = function(e) NA_real_)
-    )[1])
-    if (!is.na(isci_sayisi) && is.finite(isci_sayisi) && isci_sayisi < 2) {
-      # Tek işçi = etkin sequential fallback.
-      return(list(ok = FALSE, reason = "single_worker_plan"))
-    }
-
-    if ("cluster" %in% siniflar && !isTRUE(.pk_async_cluster_is_local(strateji))) {
-      return(list(ok = FALSE, reason = "remote_cluster_plan"))
-    }
-
-    list(ok = TRUE, reason = "ok")
-  }, error = function(e) list(ok = FALSE, reason = "plan_probe_failed"))
-}
-
-# Uzak küme tespiti: düğüm adları yalnızca localhost/127.0.0.1 ise ana süreçle
-# aynı dosya sistemi paylaşılır. Ad çözülemezse UZAK varsayılır (kapalı başarısız).
-.pk_async_cluster_is_local <- function(strategy) {
-  dugumler <- tryCatch(environment(strategy)$workers, error = function(e) NULL)
-  if (is.null(dugumler)) dugumler <- tryCatch(attr(strategy, "workers"), error = function(e) NULL)
-
-  adlar <- tryCatch({
-    if (is.character(dugumler)) {
-      dugumler
-    } else if (is.numeric(dugumler)) {
-      rep("localhost", length.out = 1L)
-    } else if (is.list(dugumler)) {
-      vapply(dugumler, function(n) as.character(n$host %||% "")[1], character(1))
-    } else {
-      character(0)
-    }
-  }, error = function(e) character(0))
-
-  adlar <- adlar[!is.na(adlar) & nzchar(adlar)]
-  if (!length(adlar)) return(FALSE)
-  all(tolower(adlar) %in% c("localhost", "127.0.0.1", "::1"))
-}
-
-pk_async_plan_is_async <- function() {
-  isTRUE(pk_async_plan_capability()$ok)
-}
 
 #' Faz 6 asenkron çalışma zamanı ETKİN Mİ?
 #'
@@ -251,21 +192,55 @@ pk_async_worker_globals <- function(force = FALSE) {
     pk_async_stage_gate = pk_async_stage_gate,
     pk_async_halt_message = pk_async_halt_message,
     pk_async_config_install = pk_async_config_install,
+    pk_async_config_install_env = pk_async_config_install_env,
+    pk_async_secret_install = pk_async_secret_install,
+    .PK_ASYNC_WORKER_SECRET_KEYS = .PK_ASYNC_WORKER_SECRET_KEYS,
     pk_async_worker_bootstrap = pk_async_worker_bootstrap,
     pk_async_worker_session = pk_async_worker_session,
     pk_async_harvest_session = pk_async_harvest_session,
     pk_async_worker_ready = pk_async_worker_ready,
     pk_async_worker_entry_points = pk_async_worker_entry_points,
+    # `pk_async_worker_bootstrap()` gövdesinde çağırdığı HER sembol de
+    # bootstrap ÖNCESİ gereklidir; explicit-mode özyinelemeli genişletme
+    # YAPMAZ. Eksikse temiz bir PSOCK işçisi HER istekte bootstrap'ta ölür ve
+    # asenkron yol sessizce senkron yola düşerdi.
+    pk_async_worker_required_files = pk_async_worker_required_files,
+    pk_async_bootstrap_fingerprint = pk_async_bootstrap_fingerprint,
+    pk_async_worker_sql_dependencies = pk_async_worker_sql_dependencies,
+    .pk_async_file_digest = .pk_async_file_digest,
+    pk_async_worker_stage_env = pk_async_worker_stage_env,
+    pk_async_worker_commit_env = pk_async_worker_commit_env,
+    pk_async_worker_install_globals = pk_async_worker_install_globals,
+    .pk_async_worker_pool_ensure = .pk_async_worker_pool_ensure,
+    .pk_async_worker_db_pool_init = .pk_async_worker_db_pool_init,
+    pk_async_worker_pool_admission = pk_async_worker_pool_admission,
+    pk_async_worker_pool_apply_share = pk_async_worker_pool_apply_share,
+    pk_async_worker_pool_retire = pk_async_worker_pool_retire,
+    pk_async_db_pool_option_install = pk_async_db_pool_option_install,
+    .pk_async_pool_log = .pk_async_pool_log,
+    # Artifact kaydı: iptal/hata yollarında ÖKSÜZ dosya bırakmamak için işçide
+    # bootstrap'tan bağımsız olarak da bulunmalıdır.
+    pk_artifact_track = pk_artifact_track,
+    pk_artifact_release_tracked = pk_artifact_release_tracked,
+    pk_artifact_discard_tracked = pk_artifact_discard_tracked,
+    pk_async_discard_worker_artifact = pk_async_discard_worker_artifact,
     pk_async_run_analysis = if (exists("pk_async_run_analysis", mode = "function", inherits = TRUE)) {
       get("pk_async_run_analysis", mode = "function", inherits = TRUE)
     } else {
       NULL
     },
     .PK_ASYNC_BOOTSTRAP_FLAG = .PK_ASYNC_BOOTSTRAP_FLAG,
+    .PK_ASYNC_POOL_READY_FLAG = .PK_ASYNC_POOL_READY_FLAG,
+    .PK_ASYNC_OWNED_NAMES_SLOT = .PK_ASYNC_OWNED_NAMES_SLOT,
+    .PK_ASYNC_DB_POOL_OPTIONS = .PK_ASYNC_DB_POOL_OPTIONS,
     .PK_ASYNC_HARVEST_SLOTS = .PK_ASYNC_HARVEST_SLOTS,
     .PK_ASYNC_USER_DATA_FIELDS = .PK_ASYNC_USER_DATA_FIELDS,
+    .PK_ASYNC_WORKER_BUNDLE_MARK = .PK_ASYNC_WORKER_BUNDLE_MARK,
     bootstrap_files = pk_async_worker_bootstrap_files()
   )
+  # Paketin İŞÇİ PAKETİ olduğunu kanıtlayan işaret: `pk_async_worker_install_globals()`
+  # bu işaret olmadan hiçbir ortamı `globalenv()`'e kopyalamaz.
+  paket[[.PK_ASYNC_WORKER_BUNDLE_MARK]] <- TRUE
 
   paket <- paket[!vapply(paket, is.null, logical(1))]
   .pk_async_globals_cache$bundle <- paket

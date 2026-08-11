@@ -70,8 +70,11 @@ pk_async_worker_bootstrap_files <- function(sections = NULL, manifest = NULL) {
     # Ana süreçte `server_*` katmanının kurduğu PK gözlemci sarmalayıcıları
     # işçide de gereklidir; aksi hâlde asenkron istekler yalnızca bayrak açık
     # diye doğrudan-çıkış telemetrisini ve v2 derin gözlemci kapsamını kaybeder.
-    # Shiny wiring İŞÇİYE GİRMEZ: sarmalayıcılar bu tek amaçlı dosyadadır.
-    yollar <- c(yollar, "R/helpers_pk_worker_observers.R")
+    # Shiny wiring İŞÇİYE GİRMEZ: sarmalayıcılar bu tek amaçlı dosyalardadır.
+    # SIRA ZORUNLU: doğrudan-çıkış sarmalayıcısı, gözlemci dosyasında tanımlı
+    # `.pk_worker_is_wrapped()` yardımcısını kullanır.
+    yollar <- c(yollar, "R/helpers_pk_worker_observers.R",
+                "R/helpers_pk_worker_direct_exit.R")
   }
 
   # Manifest sırası korunur; yalnızca yinelenenler (bölümler arası) tekilleşir.
@@ -87,35 +90,27 @@ pk_async_worker_required_files <- function() {
     "R/module_proje_kaynak_analizi.R",
     "R/helpers_deep_analysis.R",
     "R/helpers_pk_sql_execute.R",
+    # Sınırlı SQL KÖPRÜSÜ de zorunludur: `pk_async_run_analysis()` bunu
+    # `pk_async_worker_ready()` denetiminden HEMEN SONRA çağırır. Kısmi bir
+    # dağıtımda dosya yoksa bootstrap "hazır" derdi, işçi boru hattı
+    # `tryCatch`'inin DIŞINDA hata verirdi ve ana süreç bunu altyapı reddi
+    # sayıp SENKRON analize düşerdi — yani tam da bu rollout'un engellemek
+    # istediği olay-döngüsü bloklaması geri gelirdi.
+    "R/helpers_pk_async_worker_sql.R",
     "R/helpers_pk_analysis_security_summary.R"
   )
-}
-
-# Kaynak parmak izi: kalıcı bir PSOCK işçisi ilk yüklediği uygulamayı işçi
-# ömrü boyunca saklar. `global.R` yeniden source edildiğinde ana süreç YENİ
-# kodu çalıştırırken bootstrap edilmiş her işçi ESKİ kodu çalıştırmaya devam
-# ederdi. Parmak izi (dosya listesi + mtime + boyut) değiştiğinde önbellek
-# geçersizleşir ve işçi yeniden yüklenir.
-.pk_async_bootstrap_fingerprint <- function(repo_root, files) {
-  tam <- file.path(repo_root, files)
-  bilgi <- suppressWarnings(file.info(tam))
-  parcalar <- paste(
-    files,
-    if (is.data.frame(bilgi)) as.numeric(bilgi$mtime) else NA_real_,
-    if (is.data.frame(bilgi)) bilgi$size else NA_real_,
-    sep = ":"
-  )
-  ham <- paste(parcalar, collapse = "|")
-  if (requireNamespace("digest", quietly = TRUE)) {
-    return(digest::digest(ham, algo = "sha256"))
-  }
-  paste0(length(files), ":", nchar(ham), ":", sum(utf8ToInt(ham)) %% .Machine$integer.max)
 }
 
 # İşçi bootstrap'ının SÜREÇ BAŞINA bir kez çalıştığını işaretleyen yuva adı.
 # İşçinin global ortamında tutulur; ana süreçte de aynı ad kullanılır ama ana
 # süreç zaten yüklü olduğu için bootstrap NO-OP'tur.
 .PK_ASYNC_BOOTSTRAP_FLAG <- ".mergen_pk_async_bootstrapped"
+
+# Havuz HAZIRLIĞI kaynak yüklemesinden AYRI izlenir. `.pk_async_worker_db_pool_init()`
+# ölümcül olmayan bir hatayı yutabilir; parmak izi değişmediği için sonraki her
+# istek önbellekli yoldan dönerse geçici bir başlangıç hatası havuzu O İŞÇİNİN
+# ÖMRÜ BOYUNCA devre dışı bırakırdı.
+.PK_ASYNC_POOL_READY_FLAG <- ".mergen_pk_async_pool_ready"
 
 #' İşçi tarafında gerekli yardımcıları SÜREÇ BAŞINA BİR KEZ yükle
 #'
@@ -128,8 +123,23 @@ pk_async_worker_required_files <- function() {
 #' @param files Repo köküne göreli dosya yolları.
 #' @return `list(ok = TRUE/FALSE, loaded = <int>, failed = <chr>, cached = TRUE/FALSE)`.
 pk_async_worker_bootstrap <- function(repo_root, files,
-                                      required_files = pk_async_worker_required_files()) {
+                                      required_files = pk_async_worker_required_files(),
+                                      stage_gate = NULL,
+                                      workers = NULL,
+                                      db_pool_options = NULL) {
   hedef <- globalenv()
+
+  # BOOTSTRAP KENDİSİ SINIRLIDIR. Yalnızca bootstrap ÖNCESİ bir kapı koymak,
+  # zaten GERÇEKLEŞMİŞ bir iptali yakalar; `file.info()`/`sys.source()`/havuz
+  # kurulumu askıda kalırsa sonraki bir Durdur veya mutlak son tarih bootstrap
+  # dönene kadar GÖZLENEMEZDİ. Bu yüzden kapı her dosya arasında yoklanır.
+  kapi <- if (is.function(stage_gate)) stage_gate else function() list(halt = FALSE, status = "ok")
+  durdur <- function(loaded) {
+    durum <- tryCatch(kapi(), error = function(e) list(halt = FALSE))
+    if (!isTRUE(durum$halt)) return(NULL)
+    list(ok = FALSE, loaded = loaded, failed = "halted", cached = FALSE,
+         halted = TRUE, halt_status = as.character(durum$status %||% "cancelled")[1])
+  }
 
   kok <- tryCatch(as.character(repo_root)[1], error = function(e) NA_character_)
   if (is.na(kok) || !nzchar(kok) || !dir.exists(kok)) {
@@ -141,10 +151,25 @@ pk_async_worker_bootstrap <- function(repo_root, files,
     return(list(ok = FALSE, loaded = 0L, failed = "empty_file_list", cached = FALSE))
   }
 
-  parmak <- tryCatch(.pk_async_bootstrap_fingerprint(kok, dosyalar),
+  # Havuz seçenekleri (option basamağı) kaynak yüklemeden ÖNCE kurulur: aksi
+  # hâlde `is_db_pool_enabled()` işçide her zaman ortam değişkenine düşerdi.
+  if (is.list(db_pool_options) && length(db_pool_options) > 0L) {
+    try(pk_async_db_pool_option_install(db_pool_options), silent = TRUE)
+  }
+
+  erken <- durdur(0L)
+  if (!is.null(erken)) return(erken)
+
+  parmak <- tryCatch(pk_async_bootstrap_fingerprint(kok, dosyalar),
                      error = function(e) NA_character_)
   onceki <- get0(.PK_ASYNC_BOOTSTRAP_FLAG, envir = hedef, ifnotfound = NULL)
   if (!is.null(onceki) && !is.na(parmak) && identical(as.character(onceki)[1], parmak)) {
+    # Kaynaklar TAZE ama havuz hazır DEĞİLSE (ilk denemede geçici bir hata
+    # olduysa) yeniden denenir; aksi hâlde havuz o işçide kalıcı olarak ölürdü.
+    havuz <- .pk_async_worker_pool_ensure(hedef, workers)
+    if (isTRUE(havuz$fatal)) {
+      return(list(ok = FALSE, loaded = 0L, failed = "db_pool_fail_fast", cached = TRUE))
+    }
     return(list(ok = TRUE, loaded = 0L, failed = character(0), cached = TRUE))
   }
 
@@ -153,12 +178,16 @@ pk_async_worker_bootstrap <- function(repo_root, files,
   # BAŞKA BİR YER olabilir; o zaman dosyalar yüklenir ama SQL kütüphanesi
   # bulunamaz. Bootstrap süresince çalışma dizini repo köküne alınır.
   eski_wd <- tryCatch(getwd(), error = function(e) NULL)
-  wd_degisti <- FALSE
   if (!is.null(eski_wd) && !identical(normalizePath(eski_wd, winslash = "/", mustWork = FALSE),
                                       normalizePath(kok, winslash = "/", mustWork = FALSE))) {
-    wd_degisti <- isTRUE(tryCatch({ setwd(kok); TRUE }, error = function(e) FALSE))
+    # chdir BAŞARISIZSA devam etmek, uzun ömürlü bir işçinin SQL'i ÖNCEKİ
+    # checkout'undan çözmesine (veya hiç bulamamasına) yol açar; bootstrap yine
+    # "hazır" derdi. Bu bir bootstrap BAŞARISIZLIĞIDIR.
+    if (!isTRUE(tryCatch({ setwd(kok); TRUE }, error = function(e) FALSE))) {
+      return(list(ok = FALSE, loaded = 0L, failed = "repo_root_chdir", cached = FALSE))
+    }
+    on.exit(try(setwd(eski_wd), silent = TRUE), add = TRUE)
   }
-  if (isTRUE(wd_degisti)) on.exit(try(setwd(eski_wd), silent = TRUE), add = TRUE)
 
   # Kaynak-zamanı yan etkileri (tüm uygulama paket setinin attach edilmesi,
   # günlük log dosyası + sahte "uygulama başladı" başlığı) İŞÇİDE İSTENMEZ.
@@ -173,7 +202,16 @@ pk_async_worker_bootstrap <- function(repo_root, files,
   yuklenen <- 0L
   basarisiz <- character(0)
 
+  # SICAK işçi TEMİZ bir ortama yüklenir: yeni revizyonu doğrudan `globalenv()`
+  # üzerine yazmak, KALDIRILMIŞ/YENİDEN ADLANDIRILMIŞ sembolleri geride bırakır
+  # ve işçi eski+yeni güvenlik mantığının KARIŞIMINI çalıştırabilirdi. Sahneleme
+  # ortamı yalnızca TAMAMI başarılı olduğunda devreye alınır.
+  sahne <- pk_async_worker_stage_env()
+
   for (goreli in dosyalar) {
+    ara <- durdur(yuklenen)
+    if (!is.null(ara)) return(ara)
+
     tam <- file.path(kok, goreli)
     if (!file.exists(tam)) {
       # Opsiyonel katmanlar (ör. VM'e özel metadata dosyaları) yokluğu NORMALDİR;
@@ -184,9 +222,25 @@ pk_async_worker_bootstrap <- function(repo_root, files,
       next
     }
 
+    # `toplevel.env = globalenv()` ZORUNLUDUR.
+    #
+    # `sys.source()` varsayılan olarak `options(topLevelEnvironment = envir)`
+    # ayarlar. Sahneleme ortamı ADSIZ bir `new.env()` olduğu için `topenv()`
+    # onu döndürür ve `environmentName()` BOŞ dize verir. `logger` (ve
+    # `topenv()` ile arayanın ad alanını çözen diğer paketler) bu boş adı ad
+    # alanı anahtarı olarak kullanır ve `library(logger)` doğrudan
+    # `exists("", envir = namespaces, inherits = FALSE)` -> "invalid first
+    # argument" ile PATLAR. Sonuç: `R/config_logging.R` (ve ona bağlı her
+    # dosya) TEMİZ bir işçide YÜKLENEMEZ, bootstrap `bootstrap_failed` döner
+    # ve `MERGEN_PK_ASYNC=true` her istekte senkron yedeğe düşerdi.
+    #
+    # Ana süreçte dosyalar `globalenv()` içine yüklendiği için `topenv()`
+    # zaten `globalenv()`'tir; bu argüman işçiyi AYNI davranışa hizalar.
+    # Sembol izolasyonu KORUNUR: değerler hâlâ `sahne` içine yazılır.
     ok <- tryCatch({
       suppressWarnings(suppressMessages(
-        sys.source(tam, envir = hedef, keep.source = FALSE)
+        sys.source(tam, envir = sahne, keep.source = FALSE,
+                   toplevel.env = globalenv())
       ))
       TRUE
     }, error = function(e) FALSE)
@@ -200,39 +254,36 @@ pk_async_worker_bootstrap <- function(repo_root, files,
   }
 
   if (length(basarisiz) > 0L) {
+    # Sahneleme ortamı ATILIR: `globalenv()` eski (çalışan) revizyonda kalır.
     return(list(ok = FALSE, loaded = yuklenen, failed = basarisiz, cached = FALSE))
   }
 
+  son <- durdur(yuklenen)
+  if (!is.null(son)) return(son)
+
+  pk_async_worker_commit_env(sahne, hedef)
   assign(.PK_ASYNC_BOOTSTRAP_FLAG, parmak %||% TRUE, envir = hedef)
-  .pk_async_worker_db_pool_init(hedef)
+  # Yeni revizyon devreye alındı: havuz hazırlığı da sıfırlanır (kaynak yeniden
+  # yüklendiği için `.mergen_db_pool_state` TAZEDİR ve eski havuz ÖKSÜZDÜR).
+  assign(.PK_ASYNC_POOL_READY_FLAG, FALSE, envir = hedef)
+
+  havuz <- .pk_async_worker_pool_ensure(hedef, workers)
+  if (isTRUE(havuz$fatal)) {
+    return(list(ok = FALSE, loaded = yuklenen, failed = "db_pool_fail_fast", cached = FALSE))
+  }
   list(ok = TRUE, loaded = yuklenen, failed = character(0), cached = FALSE)
 }
 
-# İŞÇİ TARAFI DB HAVUZU ADMİSYONU
-#
-# PSOCK işçisi AYRI bir süreçtir: ana sürecin `.GlobalEnv$pool` nesnesini
-# GÖREMEZ. Havuz açıkken bile her asenkron PK isteği doğrudan `dbConnect()`
-# yoluna düşerdi; bu, `MERGEN_DB_POOL_MAX_SIZE` ve havuz sağlık/admisyon
-# politikasını TAM OLARAK Faz 6'nın eşzamanlı işçi eklediği anda devre dışı
-# bırakır ve canlı SQL Server oturum sayısını DB tavanı yerine future havuzu
-# belirlerdi.
-#
-# Havuz SÜREÇ-YERELDİR (bkz. CLAUDE.md DB pool sözleşmesi), bu yüzden doğru
-# davranış işçide KENDİ havuzunu kurmaktır: böylece yapılandırılmış tavan ve
-# checkout doğrulaması işçide de geçerli olur. Havuz kapalıysa (varsayılan)
-# hiçbir şey değişmez.
-.pk_async_worker_db_pool_init <- function(hedef) {
-  etkin <- tryCatch(
-    is.function(get0("is_db_pool_enabled", envir = hedef, inherits = TRUE)) &&
-      isTRUE(get("is_db_pool_enabled", envir = hedef)()),
-    error = function(e) FALSE
-  )
-  if (!isTRUE(etkin)) return(invisible(FALSE))
-  baslat <- get0("init_db_pool_once", envir = hedef, inherits = TRUE)
-  if (!is.function(baslat)) return(invisible(FALSE))
-  # HATA ASLA bootstrap'ı düşürmez: havuz kurulamazsa doğrudan bağlantı yolu
-  # zaten çalışır (yalnızca admisyon tavanı uygulanmaz).
-  isTRUE(tryCatch({ baslat("primary"); TRUE }, error = function(e) FALSE))
+# Havuz kurulumunu SÜREÇ BAŞINA bir kez başarıyla tamamla; başarısızsa sonraki
+# istekte YENİDEN DENE (geçici DB hataları havuzu kalıcı olarak öldürmemelidir).
+.pk_async_worker_pool_ensure <- function(hedef, workers = NULL) {
+  hazir <- get0(.PK_ASYNC_POOL_READY_FLAG, envir = hedef, ifnotfound = FALSE)
+  if (isTRUE(hazir)) return(list(ok = TRUE, fatal = FALSE))
+
+  sonuc <- tryCatch(.pk_async_worker_db_pool_init(hedef, workers = workers),
+                    error = function(e) list(ok = FALSE, enabled = TRUE, fatal = FALSE))
+  if (isTRUE(sonuc$ok)) assign(.PK_ASYNC_POOL_READY_FLAG, TRUE, envir = hedef)
+  sonuc
 }
 
 #' İşçinin ihtiyaç duyduğu MİNİMUM giriş noktalarının varlığını doğrula
@@ -245,6 +296,11 @@ pk_async_worker_entry_points <- function() {
     # hattına sessizce düşmek kullanıcıya istemediği bir analizi vermek olurdu.
     "pk_deep_analysis_process",
     "pk_sql_execute_bounded",
+    # Sınırlı SQL köprüsü: `pk_async_run_analysis()` bu ikisini bootstrap
+    # doğrulamasından hemen sonra çağırır. Eksiklerse hata boru hattı
+    # `tryCatch`'inin DIŞINDA oluşur ve istek sessizce senkron yola düşerdi.
+    "pk_async_sql_status_box",
+    "pk_async_bounded_sql_executor",
     "get_connection",
     "release_connection",
     "resolve_pk_analysis_username",

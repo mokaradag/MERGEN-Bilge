@@ -136,16 +136,38 @@ call_local_llm <- function(chat_history, current_settings) {
     api_url
   ))
 
+  # Faz 6 (§5.10): PK analizinde bloklayan LLM çağrısı GERÇEKTEN iptal
+  # edilebilir olmalıdır. curl'ün ilerleme geri çağrısı `FALSE` döndüğünde
+  # aktarım anında kesilir; böylece Durdur, çağrı bitene kadar beklemek yerine
+  # tek bir yoklama aralığında gözlenir. Aktif bir PK kapısı yoksa BOŞ
+  # yapılandırma döner ve diğer LLM yolları etkilenmez.
+  iptal_cfg <- if (exists("pk_http_cancel_config", mode = "function", inherits = TRUE)) {
+    tryCatch(pk_http_cancel_config(), error = function(e) NULL)
+  } else {
+    NULL
+  }
+
   response <- mergen_perf_time(
     "llm.http_post",
     tryCatch({
-      httr::POST(
-        url = api_url,
-        body = body,
-        encode = "json",
-        do.call(httr::add_headers, hds),
-        httr::timeout(request_timeout_sec)
-      )
+      if (is.null(iptal_cfg)) {
+        httr::POST(
+          url = api_url,
+          body = body,
+          encode = "json",
+          do.call(httr::add_headers, hds),
+          httr::timeout(request_timeout_sec)
+        )
+      } else {
+        httr::POST(
+          url = api_url,
+          body = body,
+          encode = "json",
+          do.call(httr::add_headers, hds),
+          httr::timeout(request_timeout_sec),
+          iptal_cfg
+        )
+      }
     }, error = function(e) {
       stop(sprintf("API_CONNECTION_ERROR: %s", conditionMessage(e)))
     }),

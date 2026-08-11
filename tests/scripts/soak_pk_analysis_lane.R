@@ -48,19 +48,34 @@ soak_pk_repo_root <- function() {
 soak_pk_bootstrap <- function() {
   root <- soak_pk_repo_root()
   files <- c(
+    # Manifest bolumleri: `pk_async_worker_bootstrap_files()` uretimdeki isci
+    # dosya kumesini BURADAN turetir. Yuklenmezse liste bos kalir ve PSOCK
+    # bootstrap turu `empty_file_list` ile duser (yani hicbir sey kanitlamaz).
+    "R/config_source_manifest.R",
     "R/utils_common.R", "R/utils_text_encoding.R",
     "R/helpers_db_unicode_escape.R", "R/helpers_db_encoding.R",
+    "R/helpers_db_connection.R",
+    "R/helpers_db_pool.R",
     "R/helpers_pk_config.R",
     "R/helpers_pk_async_cancel.R",
     "R/helpers_pk_exec_context.R",
+    "R/helpers_pk_cancel_http.R",
+    "R/helpers_pk_result_columns.R",
     "R/helpers_pk_result_size.R",
+    "R/helpers_pk_cache_key.R",
     "R/helpers_pk_cache.R",
     "R/helpers_pk_sql_execute.R",
+    "R/helpers_pk_sql_connection.R",
+    "R/helpers_pk_async_worker_env.R",
+    "R/helpers_pk_async_worker_pool.R",
     "R/helpers_pk_async_bootstrap.R",
+    "R/helpers_pk_async_snapshot_validate.R",
     "R/helpers_pk_async_snapshot.R",
+    "R/helpers_pk_async_plan.R",
     "R/helpers_pk_async_request.R",
     "R/helpers_pk_async_worker_sql.R",
     "R/helpers_pk_async_worker.R",
+    "R/helpers_deep_analysis_sql.R",
     "R/helpers_deep_analysis_reconcile.R"
   )
   ok <- TRUE
@@ -80,7 +95,8 @@ soak_pk_bootstrap <- function() {
     "pk_cache_stats", "pk_cache_reset", "pk_cache_rls_signature",
     "pk_sql_execute_bounded", "pk_row_cap_plan", "pk_deep_reconcile_packets",
     "pk_deep_execute_sql", "pk_config_resolve", "pk_deadline_remaining_sec",
-    "pk_cache_entry_within_limit", "pk_async_run_analysis"
+    "pk_cache_entry_within_limit", "pk_async_run_analysis",
+    "pk_async_worker_bootstrap_files", "pk_async_worker_globals"
   )
   present <- vapply(required_fns, function(fn) exists(fn, mode = "function"), logical(1))
 
@@ -198,6 +214,8 @@ soak_pk_one_session <- function(idx, conn, token_root, cfg_lane) {
   # "olculmedi" esik degerlendirmesinden DISLANIR, "basarisiz" ise SERIDI DUSURUR.
   cache_scope_ok <- NA
   rows_complete <- NA
+  # NA = bu tur ucus-ici iptal turu DEGILDI (olcum yapilmadi).
+  inflight_after_fetch <- NA
 
   gate <- pk_async_stage_gate(token, deadline)
   if (isTRUE(gate$halt)) {
@@ -226,12 +244,20 @@ soak_pk_one_session <- function(idx, conn, token_root, cfg_lane) {
         outcome <- "deadline"
         sql_status <- "not_dispatched"
       } else {
-        # Parca-arasi kapi sayaci: ucus-ici iptal turlerinde N. cagrida
-        # GERCEK jeton dosyasi yazilir, boylece getirim TAM ORTASINDA durur.
+        # Parca-arasi kapi sayaci: ucus-ici iptal turlerinde jeton dosyasi
+        # ILK GETIRIM TAMAMLANDIKTAN SONRA yazilir.
+        #
+        # NEDEN 3. CAGRI: `pk_sql_execute_bounded()` kapiyi (1) fonksiyon
+        # girisinde, (2) getirim dongusunun ILK turunun basinda - yani HENUZ
+        # HIC `dbFetch()` yapilmadan - ve (3) IKINCI turun basinda cagirir.
+        # 2. cagrida iptal etmek, "getirim baslamadan once iptal" senaryosunu
+        # test ederdi; parca SINIRINDAKI iptal yolu (asil dogrulanmak istenen
+        # sey) hic calistirilmazdi. 3. cagri, ilk parcanin GERCEKTEN
+        # getirildigini garanti eder ve `res$chunks >= 1` ile DOGRULANIR.
         kapi_sayaci <- 0L
         parca_kapisi <- function() {
           kapi_sayaci <<- kapi_sayaci + 1L
-          if (isTRUE(inflight_cancel) && kapi_sayaci == 2L) {
+          if (isTRUE(inflight_cancel) && kapi_sayaci == 3L) {
             pk_cancel_token_signal(token)
           }
           pk_async_stage_gate(token, deadline)
@@ -249,6 +275,15 @@ soak_pk_one_session <- function(idx, conn, token_root, cfg_lane) {
         )
         sql_status <- res$status
         sql_rows <- res$rows
+        # UCUS-ICI IPTAL KANITI: iptal GERCEKTEN bir parca getirildikten
+        # SONRA gerceklesmis olmalidir. `chunks == 0` demek, iptalin getirim
+        # baslamadan once yakalandigi (dolayisiyla parca-arasi kapinin HIC
+        # test edilmedigi) anlamina gelir; bu tur "olculmedi" degil,
+        # BASARISIZ sayilir.
+        if (isTRUE(inflight_cancel)) {
+          inflight_after_fetch <- identical(res$status, "cancelled") &&
+            isTRUE(as.integer(res$chunks %||% 0L) >= 1L)
+        }
 
         if (identical(res$status, "ok")) {
           # Sinirli getirim TAM sonucu uretmelidir: sessizce kirpan bir
@@ -290,6 +325,7 @@ soak_pk_one_session <- function(idx, conn, token_root, cfg_lane) {
     cache_hit = cache_hit,
     cache_scope_ok = cache_scope_ok,
     rows_complete = rows_complete,
+    inflight_after_fetch = inflight_after_fetch,
     sql_status = sql_status,
     sql_rows = sql_rows,
     timeout_dispatch = timeout_dispatch,
@@ -315,21 +351,34 @@ soak_pk_deep_budget_probe <- function(conn, token_root, cfg_lane) {
   deadline <- pk_deadline_at(started, cfg_lane$deadline_sec)
   sql <- sprintf("SELECT * FROM pk_veri WHERE id <= %d", cfg_lane$chunk_rows)
 
+  # TEK MUTLAK SON TARIH + GERCEK GECEN ZAMAN.
+  #
+  # Onceki surum her tur icin `sum(effective)` uzerinden TAZE bir son tarih
+  # uretiyordu; azalan butce testin KENDI aritmetigi tarafindan garanti
+  # ediliyordu. Bu, "her sorgu icin son tarihi sifirlayan" bir uretim
+  # regresyonunu gizlerdi. Simdi ayni `derin_son` NESNESI butun cagrilara
+  # verilir ve turlar arasinda GERCEK duvar saati tuketilir; azalma yalnizca
+  # uretim tarafi kalan butceyi dogru aktardiginda gozlenir.
+  #
+  # Butce BILINCLI olarak kucuktur: `MERGEN_PK_SQL_TIMEOUT_SEC` (120 sn)
+  # baglayici olmamalidir; aksi halde her tur ayni degeri dondurur ve azalma
+  # HIC olculemez.
+  derin_butce <- cfg_lane$deep_budget_sec
+  derin_son <- pk_deadline_at(Sys.time(), derin_butce)
+
   effective <- numeric(0)
   statuses <- character(0)
   for (i in seq_len(cfg_lane$deep_max_queries)) {
-    # Her tur, o ana kadar TUKETILDIGI varsayilan butceyi dusen bir son
-    # tarihle cagrilir; boylece kalan butce gercekten daralir.
-    kalan <- cfg_lane$deadline_sec - sum(effective)
-    if (kalan <= 0) break
-    tur_son <- pk_deadline_at(Sys.time(), kalan)
-    res <- pk_deep_execute_sql(conn, sql, deadline_at = tur_son,
+    res <- pk_deep_execute_sql(conn, sql, deadline_at = derin_son,
                                cancel_token = token, unicode_param = FALSE)
     statuses <- c(statuses, as.character(res$status)[1])
     if (!identical(res$status, "ok")) break
     ts <- suppressWarnings(as.numeric(res$timeout_sec %||% NA_real_)[1])
     if (!is.finite(ts) || ts <= 0) break
     effective <- c(effective, ts)
+    # Gercek zaman tuket: SQLite sorgusu milisaniyeler surer, dolayisiyla
+    # butce kendiliginden daralmazdi.
+    if (i < cfg_lane$deep_max_queries) Sys.sleep(cfg_lane$deep_step_sleep_sec)
   }
 
   # Son tarihi GECMIS bir derin tur: derin yol ardisik sorgular arasinda
@@ -348,12 +397,16 @@ soak_pk_deep_budget_probe <- function(conn, token_root, cfg_lane) {
   list(
     dispatched = length(effective),
     total_effective_sec = sum(effective),
-    budget_sec = cfg_lane$deadline_sec,
+    budget_sec = derin_butce,
+    # Her tur AYRI AYRI kalan butcenin altinda kalmalidir. (Toplami
+    # karsilastirmak yanlis olurdu: butce takvim degil, MUTLAK SON TARIHTIR;
+    # ardisik turlarin toplami son tarihi asabilir, onemli olan her turun o
+    # anki KALAN butceyi asmamasidir.)
     budget_respected = length(effective) > 0L &&
-      sum(effective) <= cfg_lane$deadline_sec,
-    # Ardisik sorgular AZALAN butce almalidir; hepsi esitse kalan butce
-    # aktarilmiyor demektir.
-    budget_decreases = length(effective) < 2L ||
+      all(effective <= derin_butce),
+    # EN AZ IKI sorgu ZORUNLUDUR. Tek sorguyla "gecti" saymak, capraz-sorgu
+    # butce aktariminin HIC calistirilmadigi bir kosumu yesil gosterirdi.
+    budget_decreases = length(effective) >= 2L &&
       all(diff(effective) <= 0) && effective[1] > effective[length(effective)],
     statuses = statuses,
     deadline_halts_between_queries = identical(as.character(gecmis$status)[1], "deadline"),
@@ -368,9 +421,36 @@ soak_pk_deep_budget_probe <- function(conn, token_root, cfg_lane) {
 # yanit verebilirligini KANITLAMAZ (o hala VM isidir).
 soak_pk_psock_probe <- function(cfg_lane) {
   bos <- function(reason) list(ran = FALSE, ok = FALSE, reason = reason,
-                               status = NA_character_)
+                               status = NA_character_,
+                               bootstrap_ran = FALSE, bootstrap_ok = FALSE,
+                               bootstrap_status = NA_character_)
   if (!requireNamespace("future", quietly = TRUE)) return(bos("future_missing"))
   if (!requireNamespace("promises", quietly = TRUE)) return(bos("promises_missing"))
+
+  # ISCI ORTAMI: temiz PSOCK iscileri `R/config_file_store.R` icindeki zorunlu
+  # ortam degiskeni denetiminden gecer. Uretimde bunlar `.Renviron`'dan gelir;
+  # seritte YER TUTUCU degerler kullanilir (GERCEK SIR/DSN/ENDPOINT DEGIL).
+  # Yalnizca TANIMSIZ olanlar doldurulur; cikista geri alinir. Degerler
+  # `future::plan()` ONCESINDE ayarlanmalidir: PSOCK iscileri ortami dogum
+  # aninda devralir.
+  yer_tutucu <- list(
+    LOCAL_LLM_ENDPOINT = "http://127.0.0.1:1/v1",
+    DB_DSN = "soak_lane_placeholder_dsn",
+    AI_KEYS_MASTER = "soak-lane-placeholder-master",
+    MCP_FILES_BASE = file.path(tempdir(), "soak_pk_mcp"),
+    MERGEN_MCP_BASE_DIR = file.path(tempdir(), "soak_pk_mcp"),
+    MERGEN_FILES_ROOT = file.path(tempdir(), "soak_pk_files"),
+    MERGEN_UPLOADS_DIR = file.path(tempdir(), "soak_pk_uploads"),
+    MERGEN_INDEX_PATH = file.path(tempdir(), "soak_pk_index.json")
+  )
+  eklenen <- character(0)
+  for (ad in names(yer_tutucu)) {
+    if (!nzchar(Sys.getenv(ad, unset = ""))) {
+      do.call(Sys.setenv, stats::setNames(list(yer_tutucu[[ad]]), ad))
+      eklenen <- c(eklenen, ad)
+    }
+  }
+  on.exit(if (length(eklenen)) try(Sys.unsetenv(eklenen), silent = TRUE), add = TRUE)
 
   eski_plan <- future::plan()
   on.exit(try(future::plan(eski_plan), silent = TRUE), add = TRUE)
@@ -419,19 +499,193 @@ soak_pk_psock_probe <- function(cfg_lane) {
     future::value(f)
   }, error = function(e) structure(list(message = conditionMessage(e)),
                                    class = "soak_psock_error"))
-  if (inherits(sonuc, "soak_psock_error")) {
-  }
   pk_cancel_token_clear(token)
+
+  if (inherits(sonuc, "soak_psock_error")) {
+    return(list(ran = TRUE, ok = FALSE, reason = "future_error",
+                status = NA_character_,
+                bootstrap_ran = FALSE, bootstrap_ok = FALSE,
+                bootstrap_status = NA_character_,
+                error = as.character(sonuc$message)[1]))
+  }
+  durum <- as.character((sonuc %||% list())$status %||% NA_character_)[1]
+
+  # IKINCI TUR: IPTAL EDILMEMIS, GERCEK BOOTSTRAP.
+  #
+  # Yukaridaki tur jetonu ONCEDEN sinyalledigi icin isci hicbir dosya
+  # SOURCE ETMEDEN `cancelled` doner. Tek basina birakilsaydi, TEMIZ bir
+  # PSOCK iscisinde bootstrap'in tamamen bozuk olmasi (eksik globals, kirik
+  # kaynak sirasi, eksik giris noktasi) bu kapiyi HALA yesil gecerdi.
+  # Bu tur GERCEK zorunlu dosya kumesini source eder ve giris noktalarini
+  # dogrular; analizin kendisi DB/LLM olmadan basarisiz olabilir, kabul
+  # edilen SEY bootstrap'in tamamlanmis olmasidir.
+  bs <- soak_pk_psock_bootstrap_round(cfg_lane, root, token_dir, paket)
+
+  list(ran = TRUE, ok = identical(durum, "cancelled"),
+       reason = if (identical(durum, "cancelled")) "ok" else "unexpected_status",
+       status = durum,
+       bootstrap_ran = isTRUE(bs$ran),
+       bootstrap_ok = isTRUE(bs$ok),
+       bootstrap_status = as.character(bs$status %||% NA_character_)[1],
+       bootstrap_reason = as.character(bs$reason %||% NA_character_)[1])
+}
+
+# Temiz PSOCK iscisinde GERCEK bootstrap + giris noktasi dogrulamasi.
+#
+# `bootstrap_failed` KABUL EDILMEZ: bu, uretimdeki `MERGEN_PK_ASYNC=true`
+# yolunun her istekte senkron yedege dusecegi anlamina gelir. Diger her durum
+# (DB/LLM olmadigi icin olusan hata dahil) bootstrap'in TAMAMLANDIGINI
+# kanitlar; serit LLM/DB kanitlamaz, yalnizca isci giris yolunu kanitlar.
+soak_pk_psock_bootstrap_round <- function(cfg_lane, root, token_dir, paket) {
+  bos <- function(reason) list(ran = FALSE, ok = FALSE, reason = reason,
+                               status = NA_character_)
+
+  token <- pk_cancel_token_path("soak_pk_psock_boot", base_dir = token_dir)
+  pk_cancel_token_clear(token)
+  on.exit(try(pk_cancel_token_clear(token), silent = TRUE), add = TRUE)
+
+  istek <- tryCatch(pk_async_build_request(
+    user_prompt = "PSOCK bootstrap dogruluk turu", chat_history = list(),
+    username = "soak.psock.boot", request_id = "soak_pk_psock_boot",
+    deep_thinking = FALSE,
+    api_key_plan = list(key = "sk-soak-fake", source = "personal"),
+    user_session_snapshot = list(system_username = "soak.psock.boot", user_id = 1L),
+    repo_root = root, cancel_token = token,
+    # URETIMDEKI manifest turevli TAM kume. `pk_async_build_request()` bos
+    # birakilan listeyi `character(0)` yapar ve isci `empty_file_list` ile
+    # dogrudan `bootstrap_failed` doner; o zaman prob yine hicbir sey
+    # kanitlamazdi.
+    bootstrap_files = pk_async_worker_bootstrap_files(),
+    deadline_sec = cfg_lane$psock_bootstrap_deadline_sec, engine = "v2",
+    started_at = Sys.time()
+  ), error = function(e) NULL)
+  if (!is.list(istek)) return(bos("request_build_failed"))
+  if (!isTRUE(pk_async_validate_request(istek)$safe)) return(bos("snapshot_unsafe"))
+
+  paket$istek <- istek
+  sonuc <- tryCatch({
+    f <- future::future({ pk_async_run_analysis(istek) },
+                        globals = paket, packages = c("stats", "utils"), seed = TRUE)
+    future::value(f)
+  }, error = function(e) structure(list(message = conditionMessage(e)),
+                                   class = "soak_psock_error"))
 
   if (inherits(sonuc, "soak_psock_error")) {
     return(list(ran = TRUE, ok = FALSE, reason = "future_error",
                 status = NA_character_,
                 error = as.character(sonuc$message)[1]))
   }
+
   durum <- as.character((sonuc %||% list())$status %||% NA_character_)[1]
-  list(ran = TRUE, ok = identical(durum, "cancelled"),
-       reason = if (identical(durum, "cancelled")) "ok" else "unexpected_status",
+  bootstrap_dustu <- identical(durum, "bootstrap_failed")
+  list(ran = TRUE, ok = !isTRUE(bootstrap_dustu) && !is.na(durum),
+       reason = if (isTRUE(bootstrap_dustu)) "bootstrap_failed" else "ok",
        status = durum)
+}
+
+# TEK GIRIS TAVANI PROBU.
+#
+# Toplam bayt butcesi (`MERGEN_PK_CACHE_MAX_MB`) ile TEK GIRIS tavani
+# (`MERGEN_PK_CACHE_MAX_ENTRY_MB`) FARKLI sinirlardir. Yalnizca toplami
+# olcen bir kapi, tek giris tavanini yok sayan bir regresyonu gecirirdi:
+# toplam butcenin altinda kalan tek bir buyuk giris kabul edilir ve butun
+# onbellek kapilari yine yesil olurdu.
+#
+# Prob, tavani kucuk bir degere cekip TAVANI ASAN bir giris yazmayi dener;
+# giris REDDEDILMELIDIR (`stored = FALSE`, `reason = "entry_too_large"`) ve
+# `rejected_oversize` sayaci artmalidir.
+soak_pk_cache_oversize_probe <- function() {
+  bos <- list(ran = FALSE, rejected = FALSE, stored = NA, reason = NA_character_,
+              rejected_delta = 0L)
+  if (!exists("pk_cache_put", mode = "function") ||
+      !exists("pk_cache_stats", mode = "function")) {
+    return(bos)
+  }
+
+  onceki <- tryCatch(as.integer(pk_cache_stats()$rejected_oversize %||% 0L),
+                     error = function(e) NA_integer_)
+  if (is.na(onceki)) return(bos)
+
+  # 1 MB tavan + ~4 MB'lik cerceve: tavan KESINLIKLE asilir, ama serit
+  # bellegi zorlanmaz.
+  eski <- options(mergen.pk.cache_max_entry_mb = 1L)
+  on.exit(options(eski), add = TRUE)
+
+  # BENZERSIZ metinler ZORUNLUDUR: R ayni karakter degerini tek bir CHARSXP
+  # olarak paylasir, dolayisiyla tekrarlanan bir dizgi `object.size()` ile
+  # yalnizca isaretci maliyeti uretir ve tavan HIC asilmazdi.
+  n <- 60000L
+  buyuk <- data.frame(
+    id = seq_len(n),
+    metin = paste0("soak-", sprintf("%08d", seq_len(n)), "-", strrep("x", 48L)),
+    stringsAsFactors = FALSE
+  )
+  sonuc <- tryCatch(pk_cache_put("soak_pk_oversize", buyuk), error = function(e) NULL)
+  sonrasi <- tryCatch(as.integer(pk_cache_stats()$rejected_oversize %||% 0L),
+                      error = function(e) NA_integer_)
+
+  if (!is.list(sonuc) || is.na(sonrasi)) return(bos)
+
+  # Giris ONBELLEGE ALINMAMIS olmalidir: okuma da ISKA donmelidir.
+  okundu <- tryCatch(pk_cache_get("soak_pk_oversize"), error = function(e) list(hit = TRUE))
+
+  list(
+    ran = TRUE,
+    stored = isTRUE(sonuc$stored),
+    reason = as.character(sonuc$reason %||% NA_character_)[1],
+    rejected_delta = as.integer(sonrasi - onceki),
+    rejected = !isTRUE(sonuc$stored) && !isTRUE(okundu$hit) &&
+      identical(as.character(sonuc$reason)[1], "entry_too_large") &&
+      as.integer(sonrasi - onceki) >= 1L
+  )
+}
+
+# URETIM HAVUZUNU serit-yerel SQLite uzerine kurar.
+#
+# `init_db_pool_once()` test enjeksiyonu icin `factory` argumanini kabul eder
+# (CLAUDE.md havuz sozlesmesi). Boylece serit, ODBC/SQL Server olmadan GERCEK
+# `db_acquire_tx_connection()` / `db_release_tx_connection()` yolunu ve onun
+# checkout/return muhasebesini calistirir.
+soak_pk_install_pool <- function(db_path) {
+  gerekli <- c("init_db_pool_once", "db_acquire_tx_connection",
+               "db_release_tx_connection", "db_pool_status_snapshot",
+               "close_db_pool_once")
+  if (!all(vapply(gerekli, function(f) exists(f, mode = "function"), logical(1)))) {
+    return(FALSE)
+  }
+  if (!requireNamespace("pool", quietly = TRUE)) return(FALSE)
+
+  fabrika <- function() {
+    pool::dbPool(
+      drv = RSQLite::SQLite(), dbname = db_path,
+      minSize = 1L, maxSize = 4L, idleTimeout = 60,
+      validationInterval = 0
+    )
+  }
+  havuz <- tryCatch(init_db_pool_once("primary", factory = fabrika, force = TRUE,
+                                      fail_fast = FALSE),
+                    error = function(e) NULL)
+  !is.null(havuz) && inherits(havuz, "Pool")
+}
+
+soak_pk_teardown_pool <- function() {
+  if (exists("close_db_pool_once", mode = "function")) {
+    try(close_db_pool_once("primary"), silent = TRUE)
+  }
+  if (exists("pool", envir = .GlobalEnv, inherits = FALSE)) {
+    try(rm("pool", envir = .GlobalEnv), silent = TRUE)
+  }
+  invisible(NULL)
+}
+
+# Uretim havuzunun KENDI checkout/return muhasebesi. Serit sayaclari yalnizca
+# "kac tur calisti" bilgisidir; SIZINTI kanitini bu fonksiyon uretir.
+soak_pk_pool_leak <- function() {
+  if (!exists("db_pool_status_snapshot", mode = "function")) return(NA_integer_)
+  anlik <- tryCatch(db_pool_status_snapshot(), error = function(e) NULL)
+  if (!is.list(anlik)) return(NA_integer_)
+  # `checkout - returned`; havuz sayaclari `counters` altindadir.
+  as.integer(anlik$counters$outstanding_checkouts %||% NA_integer_)
 }
 
 #' PK-analiz soak seridini calistir
@@ -463,7 +717,14 @@ soak_pk_analysis_lane <- function(cfg) {
     cancel_every = max(2L, as.integer(cfg$pk_lane_cancel_every %||% 7L)),
     stale_every = max(2L, as.integer(cfg$pk_lane_stale_every %||% 5L)),
     deep_every = max(2L, as.integer(cfg$pk_lane_deep_every %||% 9L)),
-    deep_max_queries = max(1L, as.integer(cfg$pk_lane_deep_max_queries %||% 5L))
+    deep_max_queries = max(2L, as.integer(cfg$pk_lane_deep_max_queries %||% 5L)),
+    # Derin butce KUCUK tutulur ki `MERGEN_PK_SQL_TIMEOUT_SEC` degil KALAN
+    # BUTCE baglayici olsun; aksi halde azalma olculemez.
+    deep_budget_sec = max(4, as.numeric(cfg$pk_lane_deep_budget_sec %||% 10)),
+    deep_step_sleep_sec = max(0.2, as.numeric(cfg$pk_lane_deep_step_sleep_sec %||% 1.2)),
+    # Bootstrap turu GERCEKTEN kaynak yukler; son tarih bunun icin yeterli
+    # olmalidir (yoksa tur "deadline" doner ve bootstrap hic olculmez).
+    psock_bootstrap_deadline_sec = max(30, as.numeric(cfg$pk_lane_psock_bootstrap_deadline_sec %||% 120))
   )
 
   token_root <- file.path(tempdir(), paste0("soak_pk_tokens_", as.integer(Sys.time())))
@@ -496,17 +757,39 @@ soak_pk_analysis_lane <- function(cfg) {
     unlink(token_root, recursive = TRUE, force = TRUE)
   }, add = TRUE)
 
-  # BAGLANTI MUHASEBESI: her tur uretim seklindeki bir AL/BIRAK sarmalayicisindan
-  # gecer. Onceden her tur ayni acik baglantiyi yeniden kullaniyordu; istek
-  # basina bir baglanti sizdiran bir yol bu seritte GORUNMEZDI. Sayaclar
-  # dengelenmezse kapi FAIL olur.
+  # BAGLANTI MUHASEBESI: her tur URETIMDEKI al/birak ciftinden gecer.
+  #
+  # ONCEKI SURUM KENDINI DOGRULUYORDU: sarmalayici `get_connection()` /
+  # `release_connection()` cagirmiyor, yalnizca kendi sayaclarini artirip
+  # azaltiyordu. `on.exit()` sayesinde `acquired == released` HER ZAMAN
+  # dogruydu; uretim yolu her istekte bir baglanti sizdirsa bile serit yesil
+  # kalirdi. Simdi sarmalayici GERCEK `db_acquire_tx_connection()` /
+  # `db_release_tx_connection()` ciftini kullanir ve muhasebe uretimin KENDI
+  # checkout/return sayaclarindan (`db_pool_status_snapshot()`) okunur; bir
+  # sizinti dogrudan `leaked > 0` olarak gorunur.
+  #
+  # `pool` paketi yoksa serit-yerel SQLite baglantisina duser (davranis
+  # onceki gibidir) ve bu durum artifact'ta `instrumented = FALSE` olarak
+  # ACIKCA raporlanir; "olculmedi" ile "gecti" karistirilmaz.
+  havuz_kuruldu <- soak_pk_install_pool(db$path)
+  on.exit(try(soak_pk_teardown_pool(), silent = TRUE), add = TRUE)
+
   conn_counts <- new.env(parent = emptyenv())
   conn_counts$acquired <- 0L
   conn_counts$released <- 0L
   al_birak <- function(fn) {
+    if (!isTRUE(havuz_kuruldu)) {
+      conn_counts$acquired <- conn_counts$acquired + 1L
+      on.exit(conn_counts$released <- conn_counts$released + 1L, add = TRUE)
+      return(fn(db$conn))
+    }
+    bilgi <- db_acquire_tx_connection("primary")
     conn_counts$acquired <- conn_counts$acquired + 1L
-    on.exit(conn_counts$released <- conn_counts$released + 1L, add = TRUE)
-    fn(db$conn)
+    on.exit({
+      db_release_tx_connection(bilgi)
+      conn_counts$released <- conn_counts$released + 1L
+    }, add = TRUE)
+    fn(bilgi$conn)
   }
 
   rows <- vector("list", sessions)
@@ -517,6 +800,7 @@ soak_pk_analysis_lane <- function(cfg) {
         idx = i, duration_ms = NA_real_, snapshot_safe = FALSE,
         cancelled_round = FALSE, inflight_cancel = FALSE, stale_round = FALSE,
         cache_hit = FALSE, cache_scope_ok = NA, rows_complete = NA,
+        inflight_after_fetch = NA,
         sql_status = "error", sql_rows = 0L, outcome = "error",
         guard_apply = FALSE, guard_reason = "error"
       )
@@ -537,6 +821,9 @@ soak_pk_analysis_lane <- function(cfg) {
   scope_seen <- vapply(rows, function(r) isTRUE(r$cache_scope_ok), logical(1))
   rows_bad <- vapply(rows, function(r) isFALSE(r$rows_complete), logical(1))
   rows_seen <- vapply(rows, function(r) isTRUE(r$rows_complete), logical(1))
+  # UCUS-ICI iptal, GERCEKTEN bir parca getirildikten SONRA gerceklesmis olmali.
+  inflight_bad <- vapply(rows, function(r) isFALSE(r$inflight_after_fetch), logical(1))
+  inflight_seen <- vapply(rows, function(r) isTRUE(r$inflight_after_fetch), logical(1))
 
   # SOZLESME dogrulamalari (olculemeyen esik SESSIZCE GECMEZ).
   # Iptal edilen tur TAM OLARAK "cancelled" bitmelidir: "deadline" da kabul
@@ -549,22 +836,34 @@ soak_pk_analysis_lane <- function(cfg) {
   # SIFIR tur calistirilmadiysa yukaridaki `all(...)` bos vektor uzerinde
   # TRUE doner; serit hicbir sey kanitlamadan yesil gorunurdu.
   cancel_exercised <- sum(cancelled) > 0L
-  inflight_exercised <- sum(inflight) > 0L
+  # OLCULDU + HEPSI DOGRU: getirim baslamadan yakalanan bir "ucus-ici" tur
+  # bu boyutu DUSURUR (aksi halde parca-arasi kapi hic test edilmeden gecerdi).
+  inflight_exercised <- sum(inflight) > 0L && !any(inflight_bad) && any(inflight_seen)
   stale_exercised <- sum(stale & !cancelled) > 0L
   cache_scope_isolated <- !any(scope_bad) && any(scope_seen)
   rows_always_complete <- !any(rows_bad) && any(rows_seen)
 
+  # Tek giris tavani probu istatistikler OKUNMADAN ONCE calisir; kendi
+  # sayac farkini kendisi olcer ve serit sayaclarini bozmaz (giris zaten
+  # REDDEDILDIGI icin toplam bayt/giris sayisi degismez).
+  oversize <- tryCatch(soak_pk_cache_oversize_probe(),
+                       error = function(e) list(ran = FALSE, rejected = FALSE,
+                                                stored = NA, reason = "probe_error",
+                                                rejected_delta = 0L))
   cache_stats <- pk_cache_stats()
   psock <- tryCatch(soak_pk_psock_probe(cfg_lane),
                     error = function(e) list(ran = FALSE, ok = FALSE,
                                              reason = "probe_error",
-                                             status = NA_character_))
+                                             status = NA_character_,
+                                             bootstrap_ran = FALSE,
+                                             bootstrap_ok = FALSE,
+                                             bootstrap_status = NA_character_))
 
   deep <- tryCatch(
     soak_pk_deep_budget_probe(db$conn, token_root, cfg_lane),
     error = function(e) list(
       dispatched = 0L, total_effective_sec = NA_real_,
-      budget_sec = cfg_lane$deadline_sec, budget_respected = FALSE,
+      budget_sec = cfg_lane$deep_budget_sec, budget_respected = FALSE,
       budget_decreases = FALSE, statuses = "error",
       deadline_halts_between_queries = FALSE,
       cancel_halts_between_queries = FALSE
@@ -578,9 +877,19 @@ soak_pk_analysis_lane <- function(cfg) {
     is.data.frame(probe) && nrow(probe) == 1L
   }, error = function(e) FALSE))
 
-  conn_counts <- list(acquired = conn_counts$acquired, released = conn_counts$released)
+  # SIZINTI KANITI URETIMDEN OKUNUR. Serit sayaclari `on.exit()` sayesinde her
+  # zaman dengelidir; asil kanit uretim havuzunun checkout-return farkidir.
+  pool_leaked <- soak_pk_pool_leak()
+  conn_counts <- list(acquired = conn_counts$acquired,
+                      released = conn_counts$released,
+                      instrumented = isTRUE(havuz_kuruldu),
+                      pool_leaked = pool_leaked)
   conn_balanced <- identical(conn_counts$acquired, conn_counts$released) &&
-    conn_counts$acquired >= sessions
+    conn_counts$acquired >= sessions &&
+    # Enstrumante kosumda uretim muhasebesi de DENGELI olmalidir. NA =
+    # olculmedi (havuz kurulamadi); bu durumda kapi seride guvenmez ve
+    # `instrumented = FALSE` artifact'ta acikca raporlanir.
+    (!isTRUE(havuz_kuruldu) || identical(as.integer(pool_leaked %||% -1L), 0L))
 
   ok_count <- sum(outcomes == "ok")
   measurable <- sum(!cancelled)
@@ -603,6 +912,7 @@ soak_pk_analysis_lane <- function(cfg) {
       inflight_rounds = sum(inflight),
       exercised = cancel_exercised,
       inflight_exercised = inflight_exercised,
+      inflight_after_fetch_rounds = sum(inflight_seen),
       honoured = cancel_honoured,
       never_applied = cancel_never_applied
     ),
@@ -625,7 +935,12 @@ soak_pk_analysis_lane <- function(cfg) {
       # Tahliye GOZLENDI mi: LRU giris tavani gercekten asilmadiysa bozuk
       # bir tahliye yolu sessizce gecerdi.
       eviction_observed = isTRUE(as.numeric(cache_stats$evicted %||% 0)[1] > 0),
-      scope_isolated = cache_scope_isolated
+      scope_isolated = cache_scope_isolated,
+      # TEK GIRIS tavani AYRI bir sinirdir; ayri kanit uretilir.
+      oversize_probe_ran = isTRUE(oversize$ran),
+      oversize_rejected = isTRUE(oversize$rejected),
+      oversize_reason = oversize$reason,
+      oversize_rejected_delta = oversize$rejected_delta
     ),
     fetch = list(
       rows_always_complete = rows_always_complete,
@@ -635,13 +950,18 @@ soak_pk_analysis_lane <- function(cfg) {
     psock = psock,
     db = list(connection_usable_after_bounded_fetch = conn_usable,
               acquire_release_balanced = conn_balanced,
-              acquired = conn_counts$acquired, released = conn_counts$released),
+              acquired = conn_counts$acquired, released = conn_counts$released,
+              # URETIM al/birak ciftinden mi gecildi (yoksa serit-yerel
+              # baglanti mi kullanildi) ve uretimin KENDI sizinti sayaci.
+              instrumented = isTRUE(conn_counts$instrumented),
+              pool_leaked = conn_counts$pool_leaked),
     does_prove = c(
       "Iptal jetonu YUK ALTINDA gorulur ve iptal edilen tur ASLA uygulanmaz",
       "UCUS-ICI iptal: getirim parcalar arasinda durur (tam olarak 'cancelled')",
       "Bayat tamamlanma daha yeni istegi EZMEZ; taze istek her zaman uygulanir",
       "Isci anlik goruntusu her turda oturum/reaktif/baglanti TASIMAZ",
-      "Ardisik derin sorgular GERCEK pk_deep_execute_sql uzerinden AZALAN butce alir",
+      "Ardisik derin sorgular TEK MUTLAK son tarih uzerinden AZALAN butce alir",
+      "TEK GIRIS onbellek tavanini asan sonuc REDDEDILIR (toplam butceden AYRI)",
       "Derin yol son tarih/iptal durumunda sorgular ARASINDA durur",
       "Sinirli getirim TAM sonuc uretir ve tekrar yuk altinda sonuc kumesini birakir",
       "Boyut sinirli LRU onbellek hit + TAHLIYE uretir ve yetki kapsamlari CAPRAZ SIZMAZ",

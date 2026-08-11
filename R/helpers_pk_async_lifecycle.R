@@ -69,7 +69,7 @@ mergen_pk_residual_budget_sec <- function(request) {
 # v2 seçicisi düşük güven/yakın beraberlik durumlarında TIKLANABİLİR seçenekler
 # üretir. Yalnızca prozayı eklemek, kullanıcıdan seçmesini isteyip seçenekleri
 # göstermemek olurdu.
-mergen_pk_emit_chips <- function(ctx, chips) {
+mergen_pk_emit_chips <- function(ctx, chips, message_id = NULL) {
   if (!is.list(chips) || length(chips) == 0L) return(invisible(FALSE))
   gonder <- tryCatch(ctx$emit_chips_fn, error = function(e) NULL)
   if (is.function(gonder)) {
@@ -80,9 +80,23 @@ mergen_pk_emit_chips <- function(ctx, chips) {
   if (is.null(oturum) || !is.function(tryCatch(oturum$sendCustomMessage, error = function(e) NULL))) {
     return(invisible(FALSE))
   }
+
+  # TARAYICI SÖZLEŞMESİ: `updateFollowupSuggestions` işleyicisi `data.id` ve
+  # `data.followups` alanlarını ZORUNLU kılar; ikisinden biri yoksa HEMEN
+  # döner. Eski `message_id`/`suggestions` alanları sessizce düşüyordu.
+  #
+  # HEDEF DE DOĞRU OLMALIDIR: işleyici `message_wrapper_<data.id>` düğümünü
+  # arar. `req_id` gönderim yaşam döngüsü kimliğidir (`req_...`); DOM düğümü
+  # ise `add_message_fn()`'in döndürdüğü SOHBET MESAJI kimliğiyle (`msg_...`
+  # veya kalıcı DB kimliği) oluşturulur. Mesaj kimliği yoksa hiç gönderilmez:
+  # var olmayan bir düğümü hedeflemek chip'leri sessizce kaybetmek olurdu.
+  kimlik <- tryCatch(as.character(message_id %||% "")[1], error = function(e) "")
+  if (is.na(kimlik) || !nzchar(kimlik)) return(invisible(FALSE))
+
   try(oturum$sendCustomMessage("updateFollowupSuggestions", list(
-    message_id = as.character(ctx$req_id %||% "")[1],
-    suggestions = chips
+    id = kimlik,
+    followups = chips,
+    pending = FALSE
   )), silent = TRUE)
   invisible(TRUE)
 }
@@ -107,10 +121,15 @@ mergen_pk_worker_outcome_text <- function(status, error = NA_character_) {
       "indirilebilir dosya bu oturumda sunulamadı. Lütfen tekrar deneyin."
     ))
   }
-  if (identical(status, "bootstrap_failed")) {
+  # ALTYAPI ARIZASI: analiz arka plan işçisinde başlatılamadı. Senkron TEKRAR
+  # OYNATMA YAPILMAZ (bu, promise geri çağrısında olay döngüsünü bloklardı ve
+  # kullanıcının Durdur olayı da işlenemezdi), bu yüzden mesaj kullanıcıya
+  # gerçekte ne olduğunu ve ne yapması gerektiğini söyler.
+  if (identical(status, "bootstrap_failed") || identical(status, "infrastructure")) {
     return(paste0(
       "\U000026A0\U0000FE0F **Analiz Altyapısı Hazır Değil:** Analiz arka plan ",
-      "işçisinde başlatılamadı. Analiz senkron olarak yeniden denendi."
+      "işçisinde başlatılamadı. Lütfen sorunuzu tekrar gönderin; sorun sürerse ",
+      "sistem yöneticinize bildirin."
     ))
   }
   mesaj <- try(as.character(error)[1], silent = TRUE)

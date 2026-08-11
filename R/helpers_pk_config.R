@@ -431,6 +431,16 @@ pk_config_spec <- list(
     default = 512L,
     min = 1L
   ),
+  # SINIRSIZ LOB sütunlu sonuçlara (nvarchar(max)/XML/image/UDT) izin ver.
+  #
+  # VARSAYILAN KAPALI: satır granülaritesi bir LOB HÜCRESİNİ kesemez;
+  # `dbFetch(n = 1)` bile hücrenin tamamını belleğe alır ve
+  # `MERGEN_PK_MAX_RESULT_MB` kapısı ancak SONRASINDA çalışır. Gerçekten LOB
+  # döndüren bir sorgusu olan operatör riski AÇIKÇA üstlenebilir.
+  MERGEN_PK_ALLOW_UNBOUNDED_LOB = list(
+    type = "logical",
+    default = FALSE
+  ),
   # Sonuç-boyutu ön kontrolünde R/sürücü nesne yükü için muhafazakâr çarpan.
   # Beyan edilmiş maksimum sütun genişliklerinin toplamı, R karakter
   # vektörlerinin gerçek bellek maliyetini OLDUĞU GİBİ vermez.

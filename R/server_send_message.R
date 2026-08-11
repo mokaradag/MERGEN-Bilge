@@ -611,13 +611,13 @@ sendMessageInit <- function(
       if (!identical(pk_outcome$action, "continue")) {
         if (!identical(pk_outcome$action, "deferred")) cleanup_send_message()
         if (identical(pk_outcome$action, "answer")) {
-          add_message_fn(pk_outcome$answer, "ai")
-          # v2 netleştirme çipleri (düşük güven / yakın beraberlik) yanıtla
-          # BİRLİKTE gösterilir; yalnızca prozayı eklemek kullanıcıdan seçmesini
-          # isteyip seçenekleri göstermemek olurdu.
+          # Çipler SOHBET MESAJI kimliğini hedefler: tarayıcı `message_wrapper_<id>`
+          # arar, `req_id` böyle bir düğüme KARŞILIK GELMEZ. Çipler yanıtla BİRLİKTE.
+          pk_message_id <- add_message_fn(pk_outcome$answer, "ai")
           if (exists("mergen_pk_emit_chips", mode = "function", inherits = TRUE)) {
             try(mergen_pk_emit_chips(list(session = session, req_id = req_id),
-                                     pk_outcome$chips), silent = TRUE)
+                                     pk_outcome$chips,
+                                     message_id = pk_message_id), silent = TRUE)
           }
         }
         return(invisible(NULL))

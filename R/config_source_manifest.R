@@ -4,10 +4,9 @@
 #           Bu dosya uygulama kodu yüklemez; yalnızca açık, sıralı ve
 #           incelenebilir kaynak listesini tanımlar.
 #
-#           Manifest, özellik/katman ailelerine göre adlandırılmış bölümlere
-#           (source_manifest_sections) ayrılmıştır. Bölümler yalnızca
-#           okunabilirlik içindir; çalışma zamanı yükleme sırası bölümlerin
-#           sırayla birleştirilmesiyle BİREBİR korunur.
+#           Manifest, adlandırılmış bölümlere (source_manifest_sections)
+#           ayrılmıştır. Bölümler yalnızca okunabilirlik içindir; yükleme sırası
+#           bölümlerin sırayla birleştirilmesiyle BİREBİR korunur.
 #
 #           Üç kanonik nesne bölümlerden türetilir ve global.R ile bootstrap
 #           doğrulaması bu nesneleri kullanmaya devam eder:
@@ -15,18 +14,16 @@
 #             - source_manifest_after_future_paths (foundation dışındaki bölümler)
 #             - source_manifest_runtime_paths      (ikisinin birleşimi)
 #
-#           Bölüm sırası/üyeliği değiştirilirken:
-#             - tests/testthat/test-source-manifest-sections-contract.R bölüm
-#               sırasını, türetme bütünlüğünü ve sınır dosyalarını dondurur,
-#             - R/bootstrap_source_manifest.R içindeki source_manifest_required_order
-#               kritik ikili yükleme sırası kurallarını doğrular.
-#           Dosyaya yeni bir kaynak eklerken ilgili bölüme doğru sırada ekleyin.
+#           Bölüm sırası/üyeliği değiştirilirken
+#           tests/testthat/test-source-manifest-sections-contract.R bölüm
+#           sırasını/türetme bütünlüğünü, R/bootstrap_source_manifest.R
+#           içindeki source_manifest_required_order ise kritik ikili yükleme
+#           sırası kurallarını doğrular. Yeni kaynağı doğru bölüme ekleyin.
 # ==============================================================================
 
 source_manifest_sections <- list(
-  # foundation: Temel altyapı (future cluster başlamadan önce yüklenir): paket
-  # doğrulama, ortak yardımcılar, metin ve mailto encoding, loglama, rate
-  # limiter ve worker monitor.
+  # foundation: Temel altyapı (future cluster'dan ÖNCE): paket doğrulama, ortak
+  # yardımcılar, metin/mailto encoding, loglama, rate limiter, worker monitor.
   foundation = c(
     "R/config_packages.R",
     "R/utils_common.R",
@@ -43,9 +40,9 @@ source_manifest_sections <- list(
     "R/helpers_worker_monitor.R"
   ),
 
-  # post_future_utils: Future cluster sonrası temel yardımcılar: yol/güvenli
-  # yol, atomik yazma, upload doğrulama, log redaksiyonu, oturum temizliği,
-  # güvenli worker koşumu, dosya indeks ve Excel okuyucu.
+  # post_future_utils: Future cluster SONRASI yardımcılar: yol/güvenli yol,
+  # atomik yazma, upload doğrulama, log redaksiyonu, oturum temizliği, güvenli
+  # worker koşumu, dosya indeks ve Excel okuyucu.
   post_future_utils = c(
     "R/utils_path_helpers.R",
     "R/utils_safe_path.R",
@@ -58,8 +55,8 @@ source_manifest_sections <- list(
     "R/utils_excel_reader.R"
   ),
 
-  # config_app_core: Çekirdek yapılandırma: SSO, dosya deposu
-  # (kilit/indeks/listeleme/registry), karakter/persona ve sürüm geçmişi.
+  # config_app_core: SSO, dosya deposu (kilit/indeks/listeleme/registry),
+  # karakter/persona ve sürüm geçmişi.
   config_app_core = c(
     "R/config_sso.R",
     "R/config_file_store.R",
@@ -71,9 +68,9 @@ source_manifest_sections <- list(
     "R/config_version_history.R"
   ),
 
-  # config_api_model_keys: Model yeteneği/görsel anlama/derin düşünme işaretleme,
-  # API yapılandırması (config_api.R), model/araç runtime çözümleme ve API
-  # anahtarı kripto/kimlik/özellik yardımcıları. Yetenek işaretleme helper'ları
+  # config_api_model_keys: Model yeteneği/görsel/derin düşünme işaretleme, API
+  # yapılandırması, model/araç runtime çözümleme ve API anahtarı
+  # kripto/kimlik/özellik yardımcıları. Yetenek işaretleme helper'ları
   # config_api.R'den ÖNCE yüklenmelidir (source-time guard'lı çağrı).
   config_api_model_keys = c(
     "R/helpers_vision_model_capabilities.R",
@@ -87,17 +84,14 @@ source_manifest_sections <- list(
     "R/helpers_api_key_password_toggle.R"
   ),
 
-  # config_claude_code: Bilge Yolaç (Claude Code) yapılandırması ve eklenti
-  # yapılandırması.
+  # config_claude_code: Bilge Yolaç (Claude Code) + eklenti yapılandırması.
   config_claude_code = c(
     "R/config_claude_code.R",
     "R/config_claude_code_plugins.R"
   ),
 
-  # config_ui_assets: Frontend CSS/JS varlık manifesti (yükleme sırası
-  # sözleşmesi) ve frontend bölge sahiplik haritası. VERİ -> SAF DOĞRULAYICI ->
-  # RENDER olarak bölünmüştür; doğrulayıcılar veriyi ÇAĞRI ANINDA çözer. Bölge
-  # haritası varlık manifestinden SONRA gelir; sıranın TEK sahibi manifesttir.
+  # config_ui_assets: Frontend CSS/JS varlık manifesti + bölge sahiplik
+  # haritası. VERİ -> DOĞRULAYICI -> RENDER; bölge haritası manifestten SONRA.
   config_ui_assets = c(
     "R/config_ui_assets.R",
     "R/config_ui_asset_validators.R",
@@ -107,18 +101,16 @@ source_manifest_sections <- list(
   ),
 
   # architecture_governance: Üretim-kritik dikiş (seam) kayıt defteri. Saf veri
-  # + saf doğrulayıcılar; çalışma zamanı davranışı değiştirmez. Bölüm -> seam
-  # sahipliği test-seam-registry-contract.R ile doğrulanır. Guard test listesi
-  # AYRI veri dosyasındadır ve kayıt defteri onu birleştirdiği için ÖNCE gelir.
+  # + doğrulayıcılar. Bölüm -> seam sahipliği test-seam-registry-contract.R ile
+  # doğrulanır; guard test listesi AYRI dosyadadır ve defterden ÖNCE gelir.
   architecture_governance = c(
     "R/config_seam_guard_tests.R",
     "R/config_seam_registry.R"
   ),
 
-  # database: DB sınırları: Unicode escape, encoding guard, bağlantı, işlem-güvenli
-  # bağlantı havuzu (helpers_db_pool.R; bağlantıdan SONRA), kullanıcı encoding,
-  # doğrulama, markdown güvenliği, mesaj formatlama, sohbet okuyucu/mutasyon,
-  # geri bildirim ve üst seviye DB orkestrasyonu.
+  # database: Unicode escape, encoding guard, bağlantı, işlem güvenli havuz
+  # (bağlantıdan SONRA), kullanıcı encoding, doğrulama, markdown güvenliği,
+  # mesaj formatlama, sohbet okuyucu/mutasyon, geri bildirim, DB orkestrasyonu.
   database = c(
     "R/helpers_db_unicode_escape.R",
     "R/helpers_db_encoding.R",
@@ -145,10 +137,9 @@ source_manifest_sections <- list(
   ),
 
   # pk_query_metadata: PK sorgu metadata SÖZLEŞMESİ (Faz 3a). Sıra §6 ile
-  # ZORUNLU: Türkçe katlama önce, sonra dört veri katmanı (iskelet -> üretilen
-  # -> küre edilmiş -> yerel alias); hepsi config_sql_loader.R'den ÖNCE biter.
-  # Yerel iki dosya BİLİNÇLİ opsiyoneldir (gitignore'lu); bulut checkout'unda
-  # yoklukları NORMALDİR.
+  # ZORUNLU: Türkçe katlama önce, sonra dört veri katmanı; hepsi
+  # config_sql_loader.R'den ÖNCE biter. Yerel iki dosya BİLİNÇLİ opsiyoneldir
+  # (gitignore'lu); bulut checkout'unda yoklukları NORMALDİR.
   pk_query_metadata = c(
     "R/helpers_pk_text_turkish.R",
     "R/helpers_pk_query_meta_schema.R",
@@ -160,21 +151,20 @@ source_manifest_sections <- list(
     "R/helpers_pk_query_meta.R"
   ),
 
-  # sql_library: SQL kütüphane sorguları ve SQL loader.
+  # sql_library: SQL kütüphane sorguları + loader.
   sql_library = c(
     "R/library_queries.R",
     "R/config_sql_loader.R"
   ),
 
-  # language_messaging: Dil tespiti ve mesaj render/işleme yardımcıları.
+  # language_messaging: Dil tespiti + mesaj render/işleme.
   language_messaging = c(
     "R/helpers_language.R",
     "R/helpers_messaging.R"
   ),
 
   # mcp_tools: MCP zinciri: context, bootstrap, tablo okuyucu, dosya
-  # çözümleyici, şema, temel araçlar, grafik araçları, analiz+görsel ve araç
-  # router.
+  # çözümleyici, şema, temel/grafik araçlar, analiz+görsel ve araç router.
   mcp_tools = c(
     "R/helpers_mcp_context.R",
     "R/helpers_mcp_bootstrap.R",
@@ -268,11 +258,21 @@ source_manifest_sections <- list(
     # Faz 6 (§5.10) bloklamayan yürütme; sıra ZORUNLU (bkz. dosya başlıkları).
     "R/helpers_pk_async_cancel.R",
     "R/helpers_pk_exec_context.R",
+    # Sira ZORUNLU: HTTP iptali -> metadata -> boyut -> onbellek -> getirim.
+    "R/helpers_pk_cancel_http.R",
+    "R/helpers_pk_result_columns.R",
     "R/helpers_pk_result_size.R",
+    "R/helpers_pk_cache_key.R",
     "R/helpers_pk_cache.R",
     "R/helpers_pk_sql_execute.R",
+    "R/helpers_pk_sql_connection.R",
+    # İşçi ortamı + havuz admisyonu bootstrap'tan ÖNCE.
+    "R/helpers_pk_async_worker_env.R",
+    "R/helpers_pk_async_worker_pool.R",
     "R/helpers_pk_async_bootstrap.R",
+    "R/helpers_pk_async_snapshot_validate.R",
     "R/helpers_pk_async_snapshot.R",
+    "R/helpers_pk_async_plan.R",
     "R/helpers_pk_async_request.R",
     "R/helpers_pk_async_worker_sql.R",
     "R/helpers_pk_async_worker.R",
@@ -321,10 +321,12 @@ source_manifest_sections <- list(
     "R/helpers_pk_export_plan.R",
     "R/helpers_pk_export_csv.R",
     "R/helpers_pk_export_xlsx.R",
+    "R/helpers_pk_export_serve.R",
     "R/helpers_pk_answer_compose.R",
     "R/helpers_pk_analysis_result.R",
     # Derin analiz: detay kataloğu + bağlam kurucu orkestratörden ÖNCE; Faz 6
     # (D16) uzlaştırma katmanı ikisinden de ÖNCE (ikisi de onu çağırır).
+    "R/helpers_deep_analysis_sql.R",
     "R/helpers_deep_analysis_reconcile.R",
     "R/helpers_deep_analysis_phase6.R",
     "R/helpers_deep_analysis_selector.R",
@@ -390,9 +392,7 @@ source_manifest_sections <- list(
   # ai_expert_helpers: AI Uzman konuşma ve TTS metin parçalama yardımcıları.
   # Worker-safe DB okuyucuları (helpers_ai_expert_user_data.R) önce yüklenir;
   # helpers_ai_expert.R::build_ai_expert_user_context() bunları çağırır.
-  # helpers_ai_expert_handlers_support.R, R/server_ai_expert_handlers.R'nin
-  # kullandığı saf karar yardımcılarını (sayfa adı, sıklık, boşta bağlam) taşır;
-  # handler dosyasından çok önce yüklenir.
+  # helpers_ai_expert_handlers_support.R saf karar yardımcılarını taşır.
   ai_expert_helpers = c(
     "R/helpers_ai_expert_user_data.R",
     "R/helpers_ai_expert.R",
@@ -401,13 +401,9 @@ source_manifest_sections <- list(
     "R/helpers_ai_expert_handlers_support.R"
   ),
 
-  # speech_assets: Hibrit VoxCPM2 konuşma katmanı: varlık ağacı yapılandırması,
-  # WAV ayrıştırma, persona ses profilleri + kilitli referans (voice-lock)
-  # doğrulaması, VoxCPM2 adaptörü, manifest üret/yükle, oynatma politikası
-  # (rehberlik/öncelik/karışık torba) ve süreç kapsamlı ısındırma. Sıra
-  # bağımlıdır: yapılandırma -> WAV -> profiller -> adaptör -> manifest ->
-  # politika -> ısındırma. module_ai_audio ve server handler katmanı bu
-  # yardımcılara dayanır.
+  # speech_assets: Hibrit VoxCPM2 konuşma katmanı. Sıra BAĞIMLIDIR:
+  # yapılandırma -> WAV -> persona profilleri/voice-lock -> VoxCPM2 adaptörü ->
+  # manifest -> oynatma politikası -> ısındırma.
   speech_assets = c(
     "R/config_speech_assets.R",
     "R/config_speech_asset_paths.R",
@@ -552,12 +548,11 @@ source_manifest_sections <- list(
   ),
 
   # module_identity_startup: Kimlik/başlangıç modülleri: SSO, oturum zaman
-  # aşımı, performans, kullanıcı kimliği, başlangıç şeridi yardımcıları,
-  # boot hazırlığı, başlangıç ekranı, yükleme overlay, araç arka planı,
-  # kenar çubuğu kullanıcı paneli (saf görünüm yardımcıları + modül) ve
-  # hızlı eylemler. R/helpers_startup_lane.R saf şerit çözümleme
-  # yardımcılarıdır ve appLoadingUI() ortam varsayılanını gömdüğü için
-  # R/module_app_loading.R'den ÖNCE yüklenmelidir.
+  # aşımı, performans, kullanıcı kimliği, başlangıç şeridi, boot hazırlığı,
+  # başlangıç ekranı, yükleme overlay, araç arka planı, kenar çubuğu kullanıcı
+  # paneli ve hızlı eylemler. R/helpers_startup_lane.R saf şerit çözümlemesidir
+  # ve appLoadingUI() ortam varsayılanını gömdüğü için R/module_app_loading.R'den
+  # ÖNCE yüklenmelidir.
   module_identity_startup = c(
     "R/module_sso.R",
     "R/module_session_timeout.R",
@@ -641,7 +636,9 @@ source_manifest_sections <- list(
   module_analysis = c(
     "R/module_proje_kaynak_analizi.R",
     # Faz 6: PK gözlemci sarmalayıcıları (işçi-güvenli; bootstrap yüzeyinde de).
-    "R/helpers_pk_worker_observers.R"
+    # Doğrudan-çıkış sarmalayıcısı `.pk_worker_is_wrapped()` kullanır: SIRA ÖNEMLİ.
+    "R/helpers_pk_worker_observers.R",
+    "R/helpers_pk_worker_direct_exit.R"
   ),
 
   # module_support: Destek modülleri: Yardım Merkezi, Hakkında, Yenilikler,
@@ -768,7 +765,10 @@ source_manifest_sections <- list(
     "R/server_handler_streaming_tts.R",
     # Faz 6: PK gönderim katmanı; uygulama yardımcıları orkestratörden, ikisi de
     # send_message'dan ÖNCE (o DELEGE eder).
+    # Sıra: istek işaretleri -> kayıt defteri -> yönlendirme -> yaşam döngüsü.
+    "R/helpers_pk_async_request_markers.R",
     "R/helpers_pk_async_session_registry.R",
+    "R/helpers_pk_async_routing.R",
     "R/helpers_pk_async_lifecycle.R",
     "R/helpers_pk_async_apply.R",
     "R/server_handler_pk_async.R",

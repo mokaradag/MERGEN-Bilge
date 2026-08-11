@@ -122,6 +122,29 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     )
   }
 
+  # KISMİ DURMA notu GERÇEKTEN prompta girer. Yalnızca `detail_config` içinde
+  # taşımak, iptal/son tarih nedeniyle EKSİK kalmış bir analizin nihai LLM'e
+  # SIRADAN ve TAM bir analiz gibi sunulması demekti (§5.11: sessizce başarı
+  # gibi görünen bozulma yasak). Hem sistem hem kullanıcı bağlamına yazılır ki
+  # model uyarıyı yanıtına taşımak zorunda kalsın.
+  kismi_not <- as.character(detail_config$pk_partial_halt_note %||% "")[1]
+  kismi_bolum <- if (nzchar(kismi_not)) {
+    paste0("\n\n==========================================\n",
+           "\U000026A0\U0000FE0F EKSİK ANALİZ UYARISI\n",
+           "==========================================\n", kismi_not, "\n")
+  } else {
+    ""
+  }
+  if (nzchar(kismi_not)) {
+    system_prompt <- paste0(
+      system_prompt,
+      "\n### EKSİK ANALİZ (ZORUNLU):\n",
+      kismi_not,
+      "\nYanıtının BAŞINDA bu analizin TAMAMLANMADIĞINI açıkça belirt; ",
+      "bulguları kesin/tam sonuç gibi sunma.\n"
+    )
+  }
+
   user_context <- paste0(
     "KULLANICI SORUSU:\n",
     user_prompt,
@@ -129,6 +152,7 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     sprintf("Toplam %d sorgu başarıyla çalıştırıldı.\n", query_count),
     combined_data,
     failed_note,
+    kismi_bolum,
     "\n\n--- SONUÇLAR SONU ---\n\n",
     "Talimat: Yukarıdaki TÜM sorgu sonuçlarını bireysel ve bütünsel olarak analiz et. ",
     "Her sorguyu kendi bölümünde değerlendir, sonra genel bir sentez yap."

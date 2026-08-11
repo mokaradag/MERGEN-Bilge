@@ -384,18 +384,27 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
     guard = list(stale_rounds = 12L, stale_exercised = TRUE,
                  stale_never_applied = TRUE,
                  fresh_always_applied = TRUE, snapshot_all_worker_safe = TRUE),
+    # TEK GIRIS tavani toplam bayt butcesinden AYRIDIR: seride ozel bir prob
+    # tavani asan bir giris yazmayi dener ve REDDEDILMIS olmalidir.
     cache = list(entries = 12L, total_mb = 9.5, hit = 22L, miss = 38L,
-                 evicted = 16L, rejected_oversize = 0L, entries_ceiling = 12L,
+                 evicted = 16L, rejected_oversize = 1L, entries_ceiling = 12L,
                  hit_observed = TRUE, eviction_observed = TRUE,
-                 scope_isolated = TRUE),
+                 scope_isolated = TRUE,
+                 oversize_probe_ran = TRUE, oversize_rejected = TRUE,
+                 oversize_reason = "entry_too_large", oversize_rejected_delta = 1L),
     fetch = list(rows_always_complete = TRUE, complete_rounds = 28L),
-    psock = list(ran = TRUE, ok = TRUE, reason = "ok", status = "cancelled"),
+    # On-iptalli tur bootstrap'i HIC calistirmaz; ayri bir IPTAL EDILMEMIS tur
+    # temiz iscide bootstrap + giris noktasi dogrulamasini kanitlar.
+    psock = list(ran = TRUE, ok = TRUE, reason = "ok", status = "cancelled",
+                 bootstrap_ran = TRUE, bootstrap_ok = TRUE,
+                 bootstrap_status = "error", bootstrap_reason = "ok"),
     deep = list(dispatched = 3L, total_effective_sec = 300, budget_sec = 300,
                 budget_respected = TRUE, budget_decreases = TRUE,
                 deadline_halts_between_queries = TRUE,
                 cancel_halts_between_queries = TRUE),
     db = list(connection_usable_after_bounded_fetch = TRUE,
-              acquire_release_balanced = TRUE, acquired = 60L, released = 60L),
+              acquire_release_balanced = TRUE, acquired = 60L, released = 60L,
+              instrumented = TRUE, pool_leaked = 0L),
     does_prove = "test", does_not_prove = "test"
   )
 

@@ -24,8 +24,8 @@
   # çözümleyicisini ve derin uzlaştırma katmanını (D16) kullanır. CLAUDE.md
   # kuralı gereği izole test GERÇEK sahip dosyaları yükler; stub'lanmaz.
   for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
-                  "helpers_pk_exec_context.R", "helpers_pk_result_size.R", "helpers_pk_sql_execute.R",
-                  "helpers_deep_analysis_reconcile.R",
+                  "helpers_pk_exec_context.R", "helpers_pk_result_columns.R", "helpers_pk_result_size.R", "helpers_pk_sql_execute.R", "helpers_pk_sql_connection.R",
+                  "helpers_deep_analysis_sql.R", "helpers_deep_analysis_reconcile.R",
                      "helpers_deep_analysis_phase6.R",
                      "helpers_deep_analysis_selector.R")) {
     source(file.path(kok, "R", dosya), encoding = "UTF-8", local = env)
@@ -45,7 +45,7 @@
   env$release_connection <- function(x) invisible(NULL)
   # Türkçe yorum: varsayılan yetkili kullanıcı; testler gerektikçe ezer
   env$get_user_rls_info <- function(username, conn) list(authorized = TRUE, rls_filter = "")
-  env$find_multiple_queries_with_ai <- function(user_prompt, library, session, max_queries = 5) {
+  env$find_multiple_queries_with_ai <- function(user_prompt, library, session, max_queries = 5, ...) {
     list(list(id = 1L, name = "Sorgu A"))
   }
   env$select_smart_query <- function(prompt, library, chat_history, ...) NULL
@@ -96,7 +96,7 @@ test_that("pk_deep_analysis_process RLS sonrası durdurma talebinde iptal mesaj�
 test_that("pk_deep_analysis_process çoklu sorgu seçip bağlamı oluşturur", {
   env <- .deepProcessEnv()
   yakalanan <- new.env(parent = emptyenv())
-  env$find_multiple_queries_with_ai <- function(user_prompt, library, session, max_queries = 5) {
+  env$find_multiple_queries_with_ai <- function(user_prompt, library, session, max_queries = 5, ...) {
     list(list(id = 1L, name = "Sorgu A"), list(id = 2L, name = "Sorgu B"))
   }
   env$build_deep_analysis_context <- function(query_results, user_prompt, detail_config) {

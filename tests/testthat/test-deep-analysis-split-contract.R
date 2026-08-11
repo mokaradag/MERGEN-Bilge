@@ -130,7 +130,7 @@ test_that("bölünme sonrası orkestratör ratchet bütçesinin altındadır", {
   eslesme <- gregexpr("(<-|=)\\s*function\\s*\\(", metin, perl = TRUE)[[1]]
   fonksiyon_sayisi <- if (identical(eslesme[1], -1L)) 0L else length(eslesme)
 
-  # PR #702 inceleme düzeltmeleri: Faz 6 kurulumu (son tarih/iptal jetonu/
+  # inceleme düzeltmeleri: Faz 6 kurulumu (son tarih/iptal jetonu/
   # option yayını), kısmi-durma notu ve bozulmuş-filtre kararı
   # helpers_deep_analysis_phase6.R'ye; v1 çoklu seçici
   # helpers_deep_analysis_selector.R'ye taşındı. Ölçülen taban 598/10;

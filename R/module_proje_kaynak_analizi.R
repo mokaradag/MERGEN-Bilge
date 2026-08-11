@@ -259,6 +259,19 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     pk_select_log_selection(selected_query)
   }
 
+  # Faz 6 (§5.10): YURUTME BAGLAMI SECIMDEN HEMEN SONRA kurulur; per-query
+  # `analysis_deadline_sec` override'ini uygular. Daha once SQL hazirligindan ve
+  # `target_db != "primary"` dalindaki YENIDEN BAGLANMADAN SONRA kuruluyordu; o
+  # reconnect kuresel son tarihi kullaniyor ve yavas bir ikincil DSN, sorguya
+  # ozel butcenin cok otesinde bloklayabiliyordu. RLS kapsami henuz bilinmedigi
+  # icin once yalnizca sorguyla kurulur, kapsam cozulunce TAZELENIR.
+  pk_exec_ctx_restore <- NULL
+  if (exists("pk_set_exec_context", mode = "function", inherits = TRUE)) {
+    pk_exec_ctx_restore <- pk_set_exec_context(
+      query = selected_query, rls_info = NULL, engine = pk_engine_mode()
+    )
+    on.exit(try(pk_exec_ctx_restore(), silent = TRUE), add = TRUE)
+  }
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (sorgu secimi sonrasi)\n")
@@ -365,15 +378,14 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	  return(sql_gate$message)
 	}
 
-	# Faz 6 (§5.10): SEÇİLEN sorgunun metadata'sı ve yetki kapsamı, imzalar
-	# değişmeden aşağı akışa (sınırlı SQL yürütücüsü, sonuç önbelleği, satır
-	# tavanı) görünür kılınır. Yapılandırma sözleşmesi sorgu metadata'sına EN
-	# YÜKSEK önceliği verir; bağlam olmadan bu basamak sessizce atlanıyordu.
+	# Faz 6 (§5.10): baglam SECIMDEN HEMEN SONRA zaten kuruldu (son tarih
+	# override'i reconnect'i de kapsasin diye). Burada YALNIZCA yetki kapsami
+	# eklenerek TAZELENIR; onceki geri yukleyici `on.exit` ile kayitlidir.
 	if (exists("pk_set_exec_context", mode = "function", inherits = TRUE)) {
-	  pk_exec_ctx_restore <- pk_set_exec_context(
+	  pk_exec_ctx_refresh <- pk_set_exec_context(
 		query = selected_query, rls_info = rls_info, engine = pk_engine_mode()
 	  )
-	  on.exit(try(pk_exec_ctx_restore(), silent = TRUE), add = TRUE)
+	  on.exit(try(pk_exec_ctx_refresh(), silent = TRUE), add = TRUE)
 	}
 
 	raw_data <- tryCatch({

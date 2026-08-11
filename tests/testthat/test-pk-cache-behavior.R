@@ -22,6 +22,9 @@ local({
 
   source(file.path(repo_root, "R", "helpers_pk_config.R"),
          encoding = "UTF-8", local = globalenv())
+  # Anahtar üretimi (yetki kapsamı imzası) AYRI dosyadadır ve depodan ÖNCE gelir.
+  source(file.path(repo_root, "R", "helpers_pk_cache_key.R"),
+         encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_pk_cache.R"),
          encoding = "UTF-8", local = globalenv())
 })

@@ -61,13 +61,25 @@ pk_async_run_analysis <- function(request) {
   bootstrap_oncesi <- pk_async_stage_gate(jeton, son_tarih)
   if (isTRUE(bootstrap_oncesi$halt)) return(bitir(bootstrap_oncesi$status))
 
+  # Bootstrap'ın KENDİSİ de iptal/son tarih farkındadır: kaynak yükleme veya
+  # havuz kurulumu askıda kalırsa tek bir ön kapı yeterli olmazdı.
   boot <- tryCatch(
-    pk_async_worker_bootstrap(request$repo_root, request$bootstrap_files),
+    pk_async_worker_bootstrap(
+      request$repo_root, request$bootstrap_files,
+      stage_gate = function() pk_async_stage_gate(jeton, son_tarih),
+      workers = request$worker_count,
+      db_pool_options = request$db_pool_options
+    ),
     error = function(e) list(ok = FALSE, loaded = 0L, failed = conditionMessage(e), cached = FALSE)
   )
   tanilama$bootstrap_cached <- isTRUE(boot$cached)
   tanilama$bootstrap_loaded <- as.integer(boot$loaded %||% 0L)
   tanilama$bootstrap_failed <- as.character(boot$failed %||% character(0))
+  # Bootstrap içinde gözlenen iptal/son tarih, "altyapı arızası" DEĞİLDİR:
+  # senkron yeniden denemeye düşmek kullanıcının Durdur'unu yok saymak olurdu.
+  if (isTRUE(boot$halted)) {
+    return(bitir(as.character(boot$halt_status %||% "cancelled")[1]))
+  }
   if (!isTRUE(boot$ok)) {
     .pk_async_log("[PK_ASYNC] Isci bootstrap basarisiz: %s",
                   paste(utils::head(tanilama$bootstrap_failed, 5L), collapse = ", "))
@@ -85,10 +97,28 @@ pk_async_run_analysis <- function(request) {
   # aksi hâlde kalıcı PSOCK işçisi ana süreçten FARKLI güvenlik sınırlarıyla
   # (ör. daha gevşek MERGEN_PK_MAX_RESULT_MB) çalışırdı.
   if (is.list(request$pk_config) && length(request$pk_config) > 0L) {
-    eski_config <- tryCatch(pk_async_config_install(request$pk_config), error = function(e) list())
-    if (is.list(eski_config) && length(eski_config) > 0L) {
-      on.exit(try(do.call(options, eski_config), silent = TRUE), add = TRUE)
+    eski_config <- tryCatch(pk_async_config_install(request$pk_config), error = function(e) NULL)
+    # BOŞ dönüş, anlık görüntünün UYGULANAMADIĞI anlamına gelir (ör. option
+    # anahtarı çözücüsü eksik). Devam etmek, işçinin gönderenin sınırları yerine
+    # BAYAT ortam değerleriyle veya köprünün 512 MB / 5000 satır yerleşik
+    # varsayılanlarıyla çalışması demektir; bu bir yapılandırma ARIZASIDIR.
+    if (!is.list(eski_config) || length(eski_config) == 0L) {
+      return(bitir("bootstrap_failed", error = "Istek yapilandirmasi iscide kurulamadi."))
     }
+    on.exit(try(do.call(options, eski_config), silent = TRUE), add = TRUE)
+
+    # ORTAM basamağı da eşitlenir: `pk_config_resolve()` ortamı options'tan
+    # ÖNCE okur ve kalıcı bir işçinin BAYAT ortamı taze isteğin sınırlarını
+    # yenerdi (ör. sıkılaştırılmış `MERGEN_PK_MAX_RESULT_MB` yok sayılırdı).
+    ortam_geri <- tryCatch(pk_async_config_install_env(request$pk_config),
+                           error = function(e) NULL)
+    if (is.function(ortam_geri)) on.exit(try(ortam_geri(), silent = TRUE), add = TRUE)
+  }
+
+  # Sözde-anonim soru korelasyonu için taşınan TEK sır; hiçbir yere yazılmaz.
+  if (is.list(request$pk_secrets) && length(request$pk_secrets) > 0L) {
+    sir_geri <- tryCatch(pk_async_secret_install(request$pk_secrets), error = function(e) NULL)
+    if (is.function(sir_geri)) on.exit(try(sir_geri(), silent = TRUE), add = TRUE)
   }
 
   stop_check <- function() isTRUE(pk_async_stage_gate(jeton, etkin_son_tarih())$halt)
@@ -181,16 +211,32 @@ pk_async_run_analysis <- function(request) {
   })
 
   yazimlar <- tryCatch(pk_async_harvest_session(vekil), error = function(e) list())
+
+  # KISMİ DERİN SONUÇ: `pk_deep_analysis_process()` bazı sorgular tamamlandıktan
+  # sonra iptal/son tarih gördüğünde bağlamı `pk_partial_halt_status` ile
+  # işaretleyip DÖNDÜRÜR. Aynı jeton/son tarih burada da hâlâ aktif olduğu için
+  # koşulsuz bir son kapı bu kısmi sonucu ATAR ve yeni kısmi-sonuç yolu asenkron
+  # kipte kullanıcıya HİÇ ULAŞAMAZDI. Zaten ELE ALINMIŞ bir halt tekrar
+  # cezalandırılmaz.
+  kismi <- is.list(sonuc) &&
+    nzchar(as.character(sonuc$pk_partial_halt_status %||% "")[1])
+
   son_kapi <- pk_async_stage_gate(jeton, etkin_son_tarih())
-  if (isTRUE(son_kapi$halt)) {
+  if (isTRUE(son_kapi$halt) && !isTRUE(kismi)) {
     # Boru hattı iptal/son tarih GÖZLENMEDEN önce büyük bir XLSX/CSV artifact'i
     # üretmiş olabilir. `sonuc` burada DÜŞÜRÜLDÜĞÜ için ana sürecin temizleyecek
     # bir yol listesi kalmazdı; dosyalar işçinin kalıcı temp dizininde ÖKSÜZ
     # kalırdı. Bu yüzden yerelde silinirler.
     try(pk_async_discard_worker_artifact(sonuc), silent = TRUE)
+    # `sonuc` üzerinden ERİŞİLEMEYEN artifact'ler de vardır: `.pk_result_v2()`
+    # dışa aktarımı ürettikten HEMEN SONRA Durdur gelirse `list(type =
+    # "pk_stopped")` döner ve yollar kaybolur. Bu yüzden üretim anında
+    # KAYDEDİLEN artifact kaydı da boşaltılır.
+    try(pk_artifact_discard_tracked(), silent = TRUE)
     return(bitir(son_kapi$status, session_writes = yazimlar))
   }
   if (inherits(sonuc, "pk_async_pipeline_error")) {
+    try(pk_artifact_discard_tracked(), silent = TRUE)
     return(bitir("error", session_writes = yazimlar,
                  error = .pk_async_safe_error_text(sonuc$message)))
   }
@@ -200,9 +246,14 @@ pk_async_run_analysis <- function(request) {
   # raporlanır ve tipli-sonuç sözleşmesi (§5.11) sessizce bozulurdu.
   if (!is.na(sql_durum$status) && is.character(sonuc)) {
     try(pk_async_discard_worker_artifact(sonuc), silent = TRUE)
+    try(pk_artifact_discard_tracked(), silent = TRUE)
     return(bitir(sql_durum$status, session_writes = yazimlar,
                  error = as.character(sonuc)[1]))
   }
+
+  # BAŞARILI yolda artifact ana sürece TESLİM EDİLİR; kayıt yalnızca sahiplik
+  # devri olarak boşaltılır (dosyalar SİLİNMEZ).
+  try(pk_artifact_release_tracked(), silent = TRUE)
 
   # Ana süreç data'yı tüketmez; büyük frame future IPC'den önce bırakılır.
   if (is.list(sonuc) && !is.null(sonuc$data)) sonuc$data <- NULL

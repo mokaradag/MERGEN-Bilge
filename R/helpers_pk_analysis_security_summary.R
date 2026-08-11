@@ -46,7 +46,18 @@ resolve_pk_analysis_username <- function(session, fallback = "Unknown") {
 # SQL'inden ÖNCE çalışır; sınırlanmazsa askıda kalan bir DB/ağ, dosya tabanlı
 # iptal jetonu işaretlense bile işçiyi ve bağlantıyı süresiz tutar — sert
 # analiz son tarihi HİÇ gözlenemez. Bütçe yoksa (`Inf`) davranış değişmez.
+#
+# İPTAL DE GÖZLENİR: Durdur bir DOSYA jetonu işaretler ve elapsed zamanlayıcıyı
+# tetiklemez. Analiz SQL'iyle AYNI aşama kapısı burada da yoklanır; böylece
+# durdurulmuş bir istek yetki okumalarına HİÇ başlamaz. (Bloklayan ODBC çağrısı
+# tek iş parçacığında sinyalle kesilemez; sınır KALAN BÜTÇEDİR ve kapı çağrılar
+# ARASINDA yoklanır — bu, analiz yolundaki sözleşmenin aynısıdır.)
 .pk_rls_bounded_query <- function(conn, statement, params = NULL) {
+  if (exists("pk_active_stage_halt", mode = "function", inherits = TRUE) &&
+      isTRUE(tryCatch(pk_active_stage_halt(), error = function(e) FALSE))) {
+    stop("PK istegi durduruldu; yetki okumasi baslatilmadi.", call. = FALSE)
+  }
+
   cagri <- function() {
     if (is.null(params)) DBI::dbGetQuery(conn, statement)
     else DBI::dbGetQuery(conn, statement, params = params)
@@ -58,16 +69,39 @@ resolve_pk_analysis_username <- function(session, fallback = "Unknown") {
   .db_with_elapsed_budget(.db_pk_residual_budget_sec(), cagri)
 }
 
+# Bir yetki okuması BÜTÇE/İPTAL nedeniyle mi düştü?
+#
+# `get_user_rls_info()` her hatayı boş çerçeveye indirirse, bir son tarih/DB
+# zaman aşımı "Kullanıcı DC01 tablosunda bulunamadı" YETKİ HATASI olarak
+# raporlanırdı — kullanıcıya tamamen yanlış bir neden.
+.pk_rls_halt_error <- function(e) {
+  metin <- tryCatch(conditionMessage(e), error = function(x) "")
+  if (is.null(metin) || is.na(metin) || !nzchar(metin)) return(FALSE)
+  isaretler <- c("durduruldu", "butcesi tukendi", "butcesi tukendi;",
+                 "reached elapsed time limit", "time limit")
+  any(vapply(isaretler, function(p) grepl(p, metin, fixed = TRUE), logical(1)))
+}
+
 get_user_rls_info <- function(username, conn) {
   cat(sprintf("[PK_ANALIZ] get_user_rls_info calistiriliyor. Kullanici: %s\n", username))
 
   base_query <- "SELECT TOP 1 * FROM DC01_user_base WHERE KullaniciAdi = ?"
+  halt_reason <- NULL
   user_base <- tryCatch({
     .pk_rls_bounded_query(conn, base_query, params = list(username))
   }, error = function(e) {
     cat(sprintf("[PK_ANALIZ] HATA (DC01_user_base): %s\n", e$message))
+    # SON TARİH/İPTAL bir YETKİ SONUCU DEĞİLDİR; tipli olarak korunur.
+    if (isTRUE(.pk_rls_halt_error(e))) halt_reason <<- conditionMessage(e)
     data.frame()
   })
+
+  if (!is.null(halt_reason)) {
+    return(list(authorized = FALSE, halted = TRUE, reason = paste0(
+      "Analiz süre sınırı veya kullanıcı iptali nedeniyle yetki bilgisi ",
+      "okunamadı. Lütfen tekrar deneyin."
+    )))
+  }
 
   if (nrow(user_base) == 0) {
     cat("[PK_ANALIZ] Kullanici DC01 tablosunda bulunamadi.\n")

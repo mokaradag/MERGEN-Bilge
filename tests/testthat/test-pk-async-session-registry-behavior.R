@@ -25,6 +25,10 @@ local({
 
   source(file.path(repo_root, "R", "helpers_pk_async_cancel.R"),
          encoding = "UTF-8", local = globalenv())
+  # İstek işaretleri (terk edilmiş kimlikler + jeton sahipliği) AYRI dosyadadır
+  # ve kayıt defterinden ÖNCE yüklenir; defter terk etme sırasında onu çağırır.
+  source(file.path(repo_root, "R", "helpers_pk_async_request_markers.R"),
+         encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_pk_async_session_registry.R"),
          encoding = "UTF-8", local = globalenv())
 })

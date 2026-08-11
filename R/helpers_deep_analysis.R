@@ -219,6 +219,23 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     }
 
     filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
+
+    # `filter_criteria$status` yalnızca PLANLAYICI durumudur. v2 yürütücüsü
+    # NİHAİ kararı döndürülen çerçeveye `PK_FILTER_V2_ATTR` ile iliştirir ve
+    # standart yol `action == "refuse"` gördüğünde AÇIKÇA durur. Derin yol bu
+    # uygulama-sonrası politikayı hiç okumadığı için reddedilmiş/sıfır eşleşen
+    # bir v2 filtresi TÜM yetkili küme üzerinden istatistiğe düşebiliyordu.
+    v2_karar <- .pk_deep_filter_v2_decision(filtered_data)
+    if (identical(as.character(v2_karar$action %||% "")[1], "refuse")) {
+      return(finish_result(
+        list(query_name = query_name, success = FALSE,
+             error_msg = as.character(v2_karar$refusal_message %||%
+               "Filtre politikasi bu sorgu icin sonucu reddetti.")[1]),
+        filter_status = filter_criteria$status %||% "refused", filters = list(),
+        pre_rls_rows = nrow(raw_data), authorized_rows = nrow(secure_data),
+        filtered_rows = 0L, outcome = "Reddedildi"
+      ))
+    }
   }
 
   # Faz 6 (§5.10): yetki VE filtre sonrası satır tavanı (asenkron kipte).
@@ -260,15 +277,19 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     ))
   }
 
-  if (is.function(stop_check) && isTRUE(stop_check())) return(NULL)
+  if (is.function(stop_check) && isTRUE(stop_check())) return(pk_deep_halt_result("cancelled"))
 
   # Faz 6: İSTATİSTİK ÜRETİMİ de pahalı bir aşamadır (tüm frame üzerinde
   # sıralama/özetleme). SQL'den sonra kapı yoklanmazsa, durdurulmuş bir istek
   # DB bağlantısını ve işçiyi bu iş bitene kadar tutmaya devam ederdi.
+  #
+  # HALT DURUMU TİPLİ DÖNER: `NULL` döndürmek, halt SON seçilen sorguda
+  # gerçekleştiğinde durumu KAYBEDER (dış döngüde keşfedilecek bir sonraki
+  # yineleme yoktur) ve kısmi sonuç sıradan bir başarı gibi sunulurdu.
   post_sql_gate <- pk_async_stage_gate(
     detail_config$pk_cancel_token, detail_config$pk_deadline_at
   )
-  if (isTRUE(post_sql_gate$halt)) return(NULL)
+  if (isTRUE(post_sql_gate$halt)) return(pk_deep_halt_result(post_sql_gate$status))
 
   preview_rows <- detail_config$preview_rows %||% 20
   stat_summary <- generate_statistical_summary(
@@ -279,6 +300,15 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     user_filter_applied = (nrow(filtered_data) < nrow(secure_data)),
     pre_aggregated_columns = query$pre_aggregated_columns
   )
+
+  # ÖZET SONRASI kapı: özet üretimi kendi içinde iptal gözlemez, bu yüzden
+  # sırasında gelen bir Durdur/son tarih ancak burada görülebilir. Sonucu
+  # kullanmadan önce yoklanır ki bütçe dolmuş bir istek ilerlemeye devam
+  # etmesin.
+  post_stat_gate <- pk_async_stage_gate(
+    detail_config$pk_cancel_token, detail_config$pk_deadline_at
+  )
+  if (isTRUE(post_stat_gate$halt)) return(pk_deep_halt_result(post_stat_gate$status))
 
   preview_json <- if (!is.null(stat_summary$preview_data) && nrow(stat_summary$preview_data) > 0) {
     jsonlite::toJSON(head(stat_summary$preview_data, min(10, nrow(stat_summary$preview_data))),
@@ -407,25 +437,12 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
     isTRUE(pk_engine_is_v2()) &&
     exists("pk_select_query_v2", mode = "function", inherits = TRUE)
 
-  # Faz 6: sıralı-küme tavanı YAPILANDIRMADAN gelir (§9/§10); kodda sabit 5 kalmaz.
-  deep_query_ceiling <- pk_deep_max_queries()
-
-  # v1 çoklu seçici KENDİ sabit zaman aşımını kullanır ve kalan analiz
-  # bütçesini görmez. Kalan bütçe seçici zaman aşımından küçükse çağrı
-  # dispatch EDİLMEZ; aksi hâlde işçi (ve az önce açılan DB bağlantısı) tüm
-  # seçici süresi boyunca meşgul kalırdı.
+  # Faz 6: sıralı-küme tavanı YAPILANDIRMADAN gelir (§9/§10); kodda sabit 5
+  # kalmaz. Seçim aşaması tavanı, bütçe kapısı ve etkin zaman aşımı kararı
+  # `pk_deep_select_multi_queries()` içindedir (bkz. helpers_deep_analysis_phase6.R).
   selected_queries <- if (pk_v2_secim) NULL else {
-    secim_plani <- pk_sql_timeout_plan(
-      Inf, pk_deadline_remaining_sec(detail_config$pk_deadline_at)
-    )
-    if (!isTRUE(secim_plani$dispatch)) {
-      cat("[DEEP_ANALYSIS] Kalan butce yok; coklu secici calistirilmadi.\n")
-      NULL
-    } else {
-      find_multiple_queries_with_ai(
-        user_prompt, query_library, session, max_queries = deep_query_ceiling
-      )
-    }
+    pk_deep_select_multi_queries(user_prompt, query_library, session,
+                                 detail_config, stop_check)
   }
 
   if (is.null(selected_queries) || length(selected_queries) == 0) {
@@ -537,6 +554,17 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
       }
     )
 
+    # SORGU İÇİNDE gözlenen halt DIŞ DÖNGÜYE taşınır. Aksi hâlde son seçilen
+    # sorguda gerçekleşen bir iptal/son tarih durumu kaybolur; kısmi sonuç
+    # sıradan bir başarı gibi sunulur (tek sorguluk kümede ise "hiç sorgu
+    # çalışmadı" gibi yanlış bir genel hata üretilirdi).
+    if (pk_deep_is_halt_result(result)) {
+      deep_halt_status <- as.character(result$pk_halt_status)[1]
+      cat(sprintf("[DEEP_ANALYSIS] Sorgu %d/%d - durum=%s (sorgu ici).\n",
+                  i, length(selected_queries), deep_halt_status))
+      break
+    }
+
     if (!is.null(result)) {
       if (is.null(result$pk_observation)) {
         result$pk_observation <- list(
@@ -577,6 +605,13 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   reconciliation <- pk_deep_reconcile_packets(query_results)
   detail_config$pk_cross_query_instruction <- reconciliation$instruction
 
+  # UZLAŞTIRILMIŞ paketler NİHAİ BAĞLAMI besler. Aksi hâlde bozulmuş filtre
+  # nedeniyle burada DÜŞÜRÜLEN bir paket, LLM'e gönderilen veride hâlâ
+  # `success = TRUE` kalırdı ve bu güvenlik kararının HİÇBİR etkisi olmazdı.
+  if (is.list(reconciliation$packets) && length(reconciliation$packets) > 0L) {
+    query_results <- reconciliation$packets
+  }
+
   successful_count <- reconciliation$successful
   failed_count <- reconciliation$failed
   cat(sprintf("[DEEP_ANALYSIS] %d sorgu tamamlandı (%d başarılı, %d başarısız), bağlam oluşturuluyor...\n",
@@ -592,6 +627,13 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   }
 
   context <- build_deep_analysis_context(query_results, user_prompt, detail_config)
+
+  # KISMİ durum bağlamın KENDİSİNDE taşınır: asenkron işçinin son kapısı bu
+  # işareti görüp sonucu ATMAMALIDIR (halt zaten ELE ALINDI ve kısmi sonuç
+  # kullanıcıya ulaşmalıdır).
+  if (is.list(context) && nzchar(as.character(detail_config$pk_partial_halt_status %||% "")[1])) {
+    context$pk_partial_halt_status <- as.character(detail_config$pk_partial_halt_status)[1]
+  }
 
   cat("[DEEP_ANALYSIS] >>> DERİN ANALİZ BAĞLAMI HAZIR <<<\n")
   return(context)

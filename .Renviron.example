@@ -35,6 +35,11 @@ MERGEN_DB_POOL_IDLE_TIMEOUT=600
 MERGEN_DB_POOL_FAIL_FAST=FALSE
 MERGEN_DB_POOL_WRITE_TEST=FALSE
 
+# ODBC LOGIN ZAMAN ASIMI (saniye). Asili bir DSN/login, dosya tabanli iptal
+# jetonu ile kesilemez ve isciyi (bagli DB oturumuyla birlikte) sert analiz son
+# tarihinin otesinde mesgul tutar. Bos birakilirsa surucu varsayilani gecerlidir.
+# MERGEN_DB_LOGIN_TIMEOUT_SEC=15
+
 # NOT: Havuz, bağlantıları yalnızca CHECKOUT anında (SELECT 1) doğrular. pool'un
 # `later` üzerindeki TEKRARLAYAN arka plan doğrulaması bilerek KAPALIDIR
 # (validationInterval=0): geçici SQL Server kopmasında o görevdeki yakalanmamış
@@ -754,3 +759,11 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 # MERGEN_PK_MAX_RESULT_MB=512
 # MERGEN_PK_RESULT_OVERHEAD_FACTOR=2.5
 # MERGEN_PK_FETCH_CHUNK_ROWS=5000
+#
+#   OPERATOR KACIS KAPISI. Kanitlanmis genislik ust siniri OLMAYAN bir sutun
+#   (nvarchar(max)/varbinary(max)/text/xml, ya da bildirilmemis uzunluk) iceren
+#   sonuclarin getirilmesine izin verir. VARSAYILAN KAPALIDIR: acik olsa bile
+#   MERGEN_PK_MAX_RESULT_MB tavani KALDIRILMAZ; yalnizca dusuk-granulariteli
+#   parcali getirim yolu kullanilir. Yalnizca ilgili sorgunun LOB sutununun
+#   pratikte kucuk oldugu BILINIYORSA acin.
+# MERGEN_PK_ALLOW_UNBOUNDED_LOB=FALSE

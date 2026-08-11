@@ -4266,6 +4266,14 @@ Non-negotiable rules:
   strategy — it keeps an arbitrary prefix and the statistics over it are simply
   wrong. Any truncation that can affect interpretation is surfaced by
   `pk_row_cap_truncation_note()`.
+- **Two settings govern the new bounds.** `MERGEN_PK_ALLOW_UNBOUNDED_LOB`
+  (logical, default `FALSE`) is the ONLY way to let a result set with an
+  unbounded LOB column through the pre-fetch guard; it is an operator escape
+  hatch, never a default, and it does not disable the byte ceiling — it only
+  permits the reduced-granularity chunk path. `MERGEN_DB_LOGIN_TIMEOUT_SEC`
+  bounds `odbc::dbConnect()` login (`.db_connect_timeout_sec()`), because a
+  hung login blocks the worker just as effectively as a hung fetch and is not
+  observable through the stop-file gate.
 - **Materialization needs a PROVEN upper bound.**
   `pk_column_width_upper_bound()` returns `NA` for `varchar(max)`,
   `varbinary(max)`, `text`/`ntext`/`xml`, unknown types and any undeclared length;
@@ -4377,6 +4385,59 @@ Non-negotiable rules:
   cancel/deadline helpers in `pk_async_worker_globals()`. It does NOT prove
   event-loop responsiveness, real worker-pool saturation under load, real LLM
   behavior, or SQL Server timeout behavior.
+- **The clean-worker bootstrap round is the lane's most valuable probe.** The
+  pre-cancelled PSOCK round returns `cancelled` WITHOUT sourcing a single file,
+  so on its own it cannot prove the worker entry path works at all. A SECOND,
+  NON-cancelled round (`pk_psock_worker_bootstrap`) sources the production
+  manifest-derived file set (`pk_async_worker_bootstrap_files()`) in a real PSOCK
+  worker and must NOT return `bootstrap_failed`; the analysis itself is expected
+  to fail afterwards on the absent DSN, and that is fine — the gate is bootstrap
+  completion plus entry-point validation. This probe found three production
+  defects that made `MERGEN_PK_ASYNC=true` fall back to SYNC on EVERY request,
+  all of which are now protected boundaries:
+  1. `sys.source()` defaults `options(topLevelEnvironment = envir)`. The staging
+     env is an anonymous `new.env()`, so `topenv()` resolved to it and
+     `environmentName()` returned `""`; `library(logger)` then died with
+     `exists("", envir = namespaces, inherits = FALSE)` -> "invalid first
+     argument". `pk_async_worker_bootstrap()` MUST pass
+     `toplevel.env = globalenv()` — symbol isolation is unaffected (values still
+     land in the staging env) and the main process already behaves this way.
+  2. `DB_TARGETS` lived only in `global.R`, which the worker never loads, so
+     `R/library_queries.R` failed with "object 'DB_TARGETS' not found". It now
+     lives in `R/helpers_db_connection.R` (manifest `database` loads before
+     `sql_library`, so main-process order is unchanged). Do not move it back.
+  3. `R/config_sql_loader.R` pinned its `query_library` guard to
+     `envir = globalenv(), inherits = FALSE`, which can never see the staging
+     env, so the loader threw even though `R/library_queries.R` had just loaded
+     successfully. The guard uses `environment()` with `inherits = TRUE` (in the
+     main process that IS `globalenv()`).
+  Any new manifest file that reads a symbol only `global.R` defines, or that
+  pins a lookup to `globalenv()`, reintroduces this class of failure.
+- **Soak probes must not be self-fulfilling.** Four lane gates were tightened
+  because they could pass while the production path was broken:
+  `pk_connection_acquire_release_balanced` now acquires through the REAL
+  `db_acquire_tx_connection()`/`db_release_tx_connection()` pair (an RSQLite pool
+  injected via `init_db_pool_once(factory = ...)`) and asserts production's own
+  `outstanding_checkouts` counter is 0 — the old wrapper only incremented and
+  decremented its own counters under `on.exit()`, so it was true by construction;
+  the in-flight cancel signals the token on the THIRD stage-gate call (entry,
+  loop-iteration-1 pre-fetch, loop-iteration-2) and requires `chunks >= 1`, so a
+  cancel that lands before any `dbFetch()` FAILS the round instead of counting as
+  in-flight; `pk_deep_budget_decreases` reuses ONE absolute deadline across calls
+  and consumes real wall time (the probe no longer synthesizes the shrinking
+  budget) and requires at least TWO dispatched queries; and
+  `pk_cache_oversize_entry_rejected` explicitly writes an entry above
+  `MERGEN_PK_CACHE_MAX_ENTRY_MB` and requires `entry_too_large` — the aggregate
+  `total_mb` gate could not see a per-entry ceiling regression. The oversize
+  fixture must use DISTINCT strings: R shares one CHARSXP for repeated values, so
+  `strrep()`-style fixtures never exceed the ceiling.
+- **The worker surface must list every worker-only file.** `R/helpers_pk_worker_observers.R`
+  keeps only the deep-observer factory wrapper plus `.pk_worker_is_wrapped()`;
+  the direct-exit wrapper is `R/helpers_pk_worker_direct_exit.R` (split to hold
+  the per-file budget, loaded IMMEDIATELY after it because it uses that helper;
+  budgets are 90/5 and 135/10 in `test-pk-async-contract.R`).
+  Both are appended by `pk_async_worker_bootstrap_files()`; dropping either from
+  that append silently removes worker telemetry.
 
 Protected by:
 

@@ -50,80 +50,6 @@ pk_cache_reset <- function() {
   invisible(TRUE)
 }
 
-.pk_cache_scalar <- function(x, default = "") {
-  ham <- tryCatch(as.character(x)[1], error = function(e) NA_character_)
-  if (is.null(ham) || length(ham) == 0L || is.na(ham)) return(default)
-  ham
-}
-
-#' Önbellek anahtarı üret
-#'
-#' Sonucu etkileyebilen HER boyut anahtara girer. `rls_signature` yetki
-#' kapsamının kararlı özetidir; onu dışarıda bırakmak kullanıcılar arası
-#' sızıntı demektir. `query_version` ise sorgu tanımı/SQL değiştiğinde
-#' deterministik geçersizleştirme sağlar.
-#'
-#' @return Tek elemanlı karakter anahtar.
-pk_cache_key <- function(query_id, rls_signature, filter_signature,
-                         query_version = "", engine = "", extra = NULL) {
-  parcalar <- c(
-    paste0("q=", .pk_cache_scalar(query_id, "?")),
-    paste0("v=", .pk_cache_scalar(query_version)),
-    paste0("e=", .pk_cache_scalar(engine)),
-    # Yetki kapsamı: ASLA çıkarılmaz.
-    paste0("r=", .pk_cache_scalar(rls_signature, "__no_scope__")),
-    paste0("f=", .pk_cache_scalar(filter_signature))
-  )
-
-  if (!is.null(extra) && length(extra) > 0L) {
-    adlar <- names(extra)
-    if (is.null(adlar)) adlar <- paste0("x", seq_along(extra))
-    sira <- order(adlar, method = "radix")
-    for (i in sira) {
-      parcalar <- c(parcalar, paste0(adlar[i], "=", .pk_cache_scalar(extra[[i]])))
-    }
-  }
-
-  paste(parcalar, collapse = "|")
-}
-
-#' Yetki kapsamı imzası (RLS bilgisinden kararlı özet)
-#'
-#' Anahtara ham yetki listesi gömmek yerine kararlı bir özet kullanılır; imza
-#' hem kısa hem de kapsam değiştiğinde kesin olarak değişir. Kullanıcı adı
-#' TEK BAŞINA yeterli değildir: aynı kullanıcının yetkisi DB'de değişebilir.
-pk_cache_rls_signature <- function(rls_info) {
-  if (!is.list(rls_info)) return("__no_scope__")
-  if (!isTRUE(rls_info$authorized)) return("__unauthorized__")
-
-  alanlar <- setdiff(names(rls_info), c("conn", "connection", "session"))
-  alanlar <- sort(alanlar, method = "radix")
-
-  # KISALTMA YOK. Uzun bir `allowed_projects`/`allowed_eps` listesinde yalnızca
-  # KUYRUK farklıysa, kısaltılmış bir ön ek AYNI imzayı üretir ve iki FARKLI
-  # yetki kapsamı aynı önbellek girişini paylaşırdı. Karma girdisi bu yüzden
-  # TAM serileştirilmiş kapsamdır; kısaltma yalnızca tanılama metnine uygulanır.
-  parcalar <- vapply(alanlar, function(ad) {
-    deger <- rls_info[[ad]]
-    if (is.function(deger) || is.environment(deger)) return(paste0(ad, "=<opaque>"))
-    metin <- tryCatch(
-      paste(as.character(unlist(deger, use.names = FALSE)), collapse = ","),
-      error = function(e) "<unserializable>"
-    )
-    paste0(ad, "=", metin)
-  }, character(1), USE.NAMES = FALSE)
-
-  ham <- paste(parcalar, collapse = ";")
-  if (requireNamespace("digest", quietly = TRUE)) {
-    return(paste0("h:", digest::digest(ham, algo = "sha256")))
-  }
-
-  # digest yokken kapsam ayrımı KORUNMALIDIR: ham metin kısaltılırsa yalnızca
-  # kuyruğu farklı iki kapsam çakışır. Bu yüzden kısaltılmış ön ekin YANINA
-  # tam metnin uzunluğu ve kararlı bir sağlama toplamı eklenir.
-  saglama <- sum(utf8ToInt(ham) * seq_along(utf8ToInt(ham))) %% .Machine$integer.max
-  paste0("t:", nchar(ham), ":", saglama, ":", substr(ham, 1L, 4000L))
-}
 
 #' Bir önbellek değeri GÜNCEL sonuç tavanına sığıyor mu?
 #'
@@ -211,6 +137,67 @@ pk_cache_entry_within_limit <- function(value, max_result_mb) {
   invisible(TRUE)
 }
 
+# TÜM mağazayı GÜNCEL sınırlara göre uzlaştır.
+#
+# Sırasıyla: (1) süresi dolmuş girişler, (2) tek başına tavanı aşan girişler,
+# (3) sayı/bayt bütçesi için LRU tahliyesi. `protect` yalnızca LRU adımında
+# geçerlidir: çağıran o anda o girişi okumaktadır, ama süresi dolmuş veya tek
+# başına çok büyük bir giriş KORUNMAZ.
+.pk_cache_reconcile <- function(limits, now = Sys.time(), protect = NULL) {
+  girisler <- .pk_cache_store$entries
+  if (!length(girisler)) return(invisible(FALSE))
+
+  korunan_anahtar <- as.character(protect %||% "")[1]
+
+  for (ad in names(girisler)) {
+    giris <- girisler[[ad]]
+    if (!is.list(giris)) next
+    # Çağıranın okuduğu giriş YUKARIDA ayrıca doğrulandı; burada TEKRAR
+    # değerlendirmek `expired` sayacını iki kez artırırdı.
+    if (nzchar(korunan_anahtar) && identical(ad, korunan_anahtar)) next
+
+    if (is.finite(limits$ttl_sec) && limits$ttl_sec >= 0) {
+      yas <- suppressWarnings(as.numeric(difftime(now, giris$stored_at, units = "secs")))
+      if (is.na(yas) || yas > limits$ttl_sec) {
+        .pk_cache_drop_entry(ad, giris)
+        .pk_cache_store$stats$expired <- .pk_cache_store$stats$expired + 1L
+        next
+      }
+    }
+
+    bayt <- as.numeric(giris$bytes %||% NA_real_)
+    if (is.finite(limits$max_entry_bytes) && !is.na(bayt) && bayt > limits$max_entry_bytes) {
+      .pk_cache_drop_entry(ad, giris)
+      .pk_cache_store$stats$evicted <- .pk_cache_store$stats$evicted + 1L
+    }
+  }
+
+  # Sayı/bayt bütçesi: en eski kullanılan giriş ilk gider.
+  korunan <- korunan_anahtar
+  repeat {
+    girisler <- .pk_cache_store$entries
+    n <- length(girisler)
+    if (n == 0L) break
+
+    sayi_asim <- is.finite(limits$max_entries) && n > limits$max_entries
+    bayt_asim <- is.finite(limits$max_bytes) &&
+      .pk_cache_store$total_bytes > limits$max_bytes
+    if (!sayi_asim && !bayt_asim) break
+
+    adaylar <- setdiff(names(girisler), korunan)
+    if (!length(adaylar)) break
+
+    saatler <- vapply(girisler[adaylar], function(g) as.numeric(g$last_used %||% 0), numeric(1))
+    kurban <- adaylar[which.min(saatler)][1]
+    if (is.na(kurban) || !nzchar(kurban)) break
+
+    .pk_cache_drop_entry(kurban, girisler[[kurban]])
+    .pk_cache_store$stats$evicted <- .pk_cache_store$stats$evicted + 1L
+  }
+
+  invisible(TRUE)
+}
+
 #' Önbellekten oku
 #'
 #' @return `list(hit = TRUE/FALSE, value = , reason = )`.
@@ -254,6 +241,16 @@ pk_cache_get <- function(key, query_meta = NULL, now = Sys.time()) {
       return(list(hit = FALSE, value = NULL, reason = "expired"))
     }
   }
+
+  # SIKILAŞTIRILAN sayı/bayt bütçeleri de HEMEN etkili olmalıdır. Yalnızca
+  # "önbellek tamamen kapalı" ve "bu giriş tek başına çok büyük" hâllerini ele
+  # almak yetmez: kalıcı bir işçi 50 giriş / 500 MB tutarken operatör sınırları
+  # 10 giriş / 100 MB'a indirirse, SALT-OKUMA iş yükünde hiçbir tahliye
+  # tetiklenmez ve süreç yeni bütçenin ÇOK üstünde SÜRESİZ kalırdı.
+  #
+  # Bu giriş YUKARIDA zaten doğrulandı (süresi dolmamış, tek başına sığıyor);
+  # uzlaştırma yalnızca DİĞER girişleri temizler.
+  .pk_cache_reconcile(limitler, now = now, protect = anahtar)
 
   .pk_cache_store$clock <- .pk_cache_store$clock + 1
   giris$last_used <- .pk_cache_store$clock

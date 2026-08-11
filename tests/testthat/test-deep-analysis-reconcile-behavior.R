@@ -19,8 +19,8 @@
   env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
-                  "helpers_pk_exec_context.R", "helpers_pk_result_size.R", "helpers_pk_sql_execute.R",
-                  "helpers_deep_analysis_reconcile.R")) {
+                  "helpers_pk_exec_context.R", "helpers_pk_result_columns.R", "helpers_pk_result_size.R", "helpers_pk_sql_execute.R", "helpers_pk_sql_connection.R",
+                  "helpers_deep_analysis_sql.R", "helpers_deep_analysis_reconcile.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }
   env
@@ -383,6 +383,8 @@ test_that("kısıt metni istem bağlamında SABİTTİR (yapılandırma anahtarı
 
 test_that("önbellek anahtarı YETKİ İMZASINI taşır ve SQL metnini içerir", {
   env <- .pk_reconcile_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_cache_key.R"),
+         encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_cache.R"),
          encoding = "UTF-8", local = env)
 
@@ -402,6 +404,8 @@ test_that("önbellek anahtarı YETKİ İMZASINI taşır ve SQL metnini içerir",
 
 test_that("kimlik/kapsam/SQL eksikse önbellek ATLANIR (boş anahtar)", {
   env <- .pk_reconcile_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_cache_key.R"),
+         encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_cache.R"),
          encoding = "UTF-8", local = env)
 
@@ -416,6 +420,8 @@ test_that("kimlik/kapsam/SQL eksikse önbellek ATLANIR (boş anahtar)", {
 test_that("önbellek isabeti SQL'i ATLAR ama sonucu birebir döner", {
   skip_if_not_installed("RSQLite")
   env <- .pk_reconcile_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_cache_key.R"),
+         encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_cache.R"),
          encoding = "UTF-8", local = env)
   env$pk_cache_reset()
@@ -450,6 +456,8 @@ test_that("önbellek isabeti SQL'i ATLAR ama sonucu birebir döner", {
 test_that("BAŞARISIZ sonuç önbelleğe ALINMAZ", {
   skip_if_not_installed("RSQLite")
   env <- .pk_reconcile_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_cache_key.R"),
+         encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_cache.R"),
          encoding = "UTF-8", local = env)
   env$pk_cache_reset()
@@ -485,6 +493,8 @@ test_that("BAŞARISIZ sonuç önbelleğe ALINMAZ", {
 test_that("anahtar YOKSA önbellek hiç kullanılmaz", {
   skip_if_not_installed("RSQLite")
   env <- .pk_reconcile_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_cache_key.R"),
+         encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_cache.R"),
          encoding = "UTF-8", local = env)
   env$pk_cache_reset()
