@@ -710,3 +710,47 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   sorularında ("peki 2024 için?") önceki kararlı sorgu kimliği de Geçiş A'ya
 #   tohumlanır ve recall sınırı UYGULANMADAN ÖNCE korunur.
 # MERGEN_PK_SELECT_HISTORY_TURNS=2
+#
+# ------------------------------------------------------------------------------
+# FAZ 6 (§5.10): BLOKLAMAYAN YÜRÜTME VE PERFORMANS
+# ------------------------------------------------------------------------------
+#   MERGEN_PK_ASYNC, MERGEN_PK_ENGINE'DEN BAĞIMSIZ ayrı bir kill switch'tir.
+#   Böylece v2 motoru VM'de benimsenirken yürütme senkron kalabilir ve en riskli
+#   değişiklik tek başına doğrulanır. VARSAYILAN KAPALIDIR: bu bayrağın ana
+#   faydası (Shiny olay döngüsünün yanıt verebilirliği) OFFLINE KANITLANAMAZ.
+#
+#   Açmadan ÖNCE en az operasyonel soak kapısının fake-lane smoke profili
+#   geçmelidir (docs/operational-soak-gate.md). Geri alma: bu satırı false yapıp
+#   R sürecini TAMAMEN yeniden başlatmak (tarayıcı yenilemek YETMEZ).
+# MERGEN_PK_ASYNC=false
+#
+#   ODBC ifade zaman aşımı (saniye). Asılı kalan bir sorgu bağlantıyı sonsuza
+#   kadar tutmasın. Ağır bir sorgu metadata ile bu değeri YÜKSELTEBİLİR, ancak
+#   asla kalan analiz bütçesinin ötesine geçemez.
+# MERGEN_PK_SQL_TIMEOUT_SEC=120
+#
+#   TÜM analizin duvar-saati bütçesi (saniye). İşçi bu bütçe tükendiğinde durur
+#   ve bağlantısını serbest bırakır. Ardışık geçerli SQL zaman aşımlarının
+#   toplamı bu bütçeyi AŞAMAZ; sonraki derin sorgu yalnızca KALAN bütçeyi alır.
+# MERGEN_PK_ANALYSIS_DEADLINE_SEC=300
+#
+#   Sonuç önbelleği (query_id + yetki imzası + filtre imzası). TTL TEK BAŞINA
+#   yeterli değildir; bu yüzden giriş sayısı VE toplam bayt bütçesi birlikte
+#   uygulanır. Tek giriş tavanını aşan sonuç HİÇ önbelleğe alınmaz (diğer her
+#   şeyi tahliye ederek kendine yer açması YASAKTIR).
+#   Önbellek SÜREÇ-YERELDİR: her future işçisi kendi deposunu taşır.
+# MERGEN_PK_CACHE_MAX_ENTRIES=50
+# MERGEN_PK_CACHE_MAX_MB=512
+# MERGEN_PK_CACHE_MAX_ENTRY_MB=128
+# MERGEN_PK_CACHE_TTL_SEC=300
+#
+#   Derin Düşünme sıralı-küme tavanı. Her aday KENDİ güven eşiğini geçmek
+#   zorundadır; eşiğin altındakiler çalıştırılmaz, düşürülür.
+# MERGEN_PK_DEEP_MAX_QUERIES=5
+#
+#   TEK bir materyalize sonucun aktif bellek tavanı (MB). Karar frame
+#   YÜKLENMEDEN ÖNCE verilir. Kanıtlanmış bir genişlik üst sınırı yoksa
+#   (ör. nvarchar(max)) zorunlu sınırlı-parça getirim yolu kullanılır.
+# MERGEN_PK_MAX_RESULT_MB=512
+# MERGEN_PK_RESULT_OVERHEAD_FACTOR=2.5
+# MERGEN_PK_FETCH_CHUNK_ROWS=5000

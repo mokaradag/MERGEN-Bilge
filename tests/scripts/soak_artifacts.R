@@ -210,7 +210,8 @@ soak_capacity_ladder_summarize <- function(step_rows, ladder_users, stable_min =
 soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
                                      memory_growth, temp_growth_mb,
                                      server_alive_at_end, injected_faults = 0L,
-                                     interactive = NULL, capacity_ladder = NULL) {
+                                     interactive = NULL, capacity_ladder = NULL,
+                                     pk_lane = NULL) {
   th <- cfg$thresholds
   checks <- list()
 
@@ -439,6 +440,66 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
     }
   }
 
+  # 15b) FAZ 6 PK-analiz seridi. MERGEN_PK_ASYNC=true ACILMADAN ONCE en az bu
+  # seridin fake-lane smoke profilinde GECMESI gerekir (master plan bolum 8, Faz 6).
+  # Skipped serit ASLA kanit degildir.
+  if (!is.null(pk_lane) && isTRUE(pk_lane$available)) {
+    psum <- pk_lane$summary
+    if (is.finite(psum$success_rate %||% NA_real_)) {
+      add("pk_analysis_success_rate", TRUE, psum$success_rate, th$success_rate_min,
+          psum$success_rate >= th$success_rate_min,
+          "Iptal edilen turlar haric PK analiz basari orani.")
+    } else {
+      add("pk_analysis_success_rate", FALSE, NA, th$success_rate_min, NA, "olculemedi.")
+    }
+
+    # Iptal SOZLESMESI: iptal edilen tur TIPLI durum dondurur ve ASLA uygulanmaz.
+    add("pk_cancel_honoured", TRUE, isTRUE(pk_lane$cancel$honoured), TRUE,
+        isTRUE(pk_lane$cancel$honoured),
+        "Iptal edilen her tur cancelled/deadline durumu dondurmeli.")
+    add("pk_cancelled_never_applied", TRUE, isTRUE(pk_lane$cancel$never_applied), TRUE,
+        isTRUE(pk_lane$cancel$never_applied),
+        "Durdurulmus istek geri cagrisi durumu MUTASYONA UGRATMAMALI.")
+
+    # ISTEK-KIMLIGI yasam dongusu.
+    add("pk_stale_never_applied", TRUE, isTRUE(pk_lane$guard$stale_never_applied), TRUE,
+        isTRUE(pk_lane$guard$stale_never_applied),
+        "Bayat tamamlanma daha yeni istegi EZMEMELI.")
+    add("pk_fresh_always_applied", TRUE, isTRUE(pk_lane$guard$fresh_always_applied), TRUE,
+        isTRUE(pk_lane$guard$fresh_always_applied),
+        "Taze istek geri cagrisi her zaman uygulanmali (asiri koruma da hatadir).")
+    add("pk_snapshot_worker_safe", TRUE,
+        isTRUE(pk_lane$guard$snapshot_all_worker_safe), TRUE,
+        isTRUE(pk_lane$guard$snapshot_all_worker_safe),
+        "Her turda isci anlik goruntusu oturum/reaktif/baglanti TASIMAMALI.")
+
+    # SON TARIH: ardisik derin sorgularin toplami butceyi ASMAMALI.
+    add("pk_deep_deadline_respected", TRUE, isTRUE(pk_lane$deep$budget_respected), TRUE,
+        isTRUE(pk_lane$deep$budget_respected),
+        sprintf("Toplam etkin zaman asimi %ss <= butce %ss olmali.",
+                as.character(pk_lane$deep$total_effective_sec %||% NA),
+                as.character(pk_lane$deep$budget_sec %||% NA)))
+
+    # BAGLANTI: sinirli getirim her cikis yolunda sonuc kumesini birakmali.
+    add("pk_connection_usable_after_fetch", TRUE,
+        isTRUE(pk_lane$db$connection_usable_after_bounded_fetch), TRUE,
+        isTRUE(pk_lane$db$connection_usable_after_bounded_fetch),
+        "Sinirli getirimden sonra baglanti hala kullanilabilir olmali.")
+
+    # ONBELLEK: butce ASILMAMALI (hit orani raporlanir, esik yok).
+    cache_ok <- is.finite(pk_lane$cache$total_mb %||% NA_real_) &&
+      pk_lane$cache$total_mb <= as.numeric(cfg$pk_lane_max_result_mb %||% 512)
+    add("pk_cache_within_budget", TRUE, pk_lane$cache$total_mb,
+        cfg$pk_lane_max_result_mb %||% 512L, cache_ok,
+        sprintf("Onbellek bayt butcesi asilmamali. hit=%s miss=%s tahliye=%s",
+                as.character(pk_lane$cache$hit), as.character(pk_lane$cache$miss),
+                as.character(pk_lane$cache$evicted)))
+  } else if (isTRUE(cfg$pk_lane)) {
+    add("pk_analysis_lane_available", TRUE, FALSE, TRUE, FALSE,
+        paste0("PK-analiz seridi istendi ama calismadi; Faz 6 bloklamayan ",
+               "yurutme kapsami KAYBEDILDI. MERGEN_PK_ASYNC acilmamalidir."))
+  }
+
   # 16) Kademeli kapasite merdiveni: HER calistirilan adim stabil esigi gecmeli.
   # Bu, mevcut hicbir esigi DUSURMEZ; aksine STRICTER bir kademeli kontrol ekler:
   # sonraki bir adim basarisizsa kapi FAIL olur ("son stabil adim" yine de
@@ -585,7 +646,8 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
                                 capacity_ladder = NULL, timeout_attribution = NULL,
                                 real_canary_classification = NULL,
                                 real_llm_throughput = NULL,
-                                load_driver = NULL, http_loadgen = NULL) {
+                                load_driver = NULL, http_loadgen = NULL,
+                                pk_lane = NULL) {
   observed_faults <- summary$errors + summary$timeouts
   unexpected_faults <- max(0L, observed_faults - as.integer(injected_faults %||% 0L))
   effective_success_rate <- if (summary$requests > 0L) {
@@ -688,6 +750,28 @@ soak_build_evidence <- function(cfg, summary, inprocess, proxy_summary,
            reason = interactive$reason %||% "etkilesimli serit calismadi (olculemeyen)")
     } else {
       "etkilesimli serit kapali"
+    },
+    # FAZ 6: PK-analiz seridi. MERGEN_PK_ASYNC=true ACILMADAN ONCE en az bu
+    # seridin GECMESI gerekir (master plan bolum 8, Faz 6). Skipped serit ASLA kanit
+    # degildir; bu yuzden available=FALSE acik bir sebeple raporlanir.
+    pk_analysis_lane = if (!is.null(pk_lane) && isTRUE(pk_lane$available)) {
+      list(
+        available = TRUE,
+        sessions = pk_lane$sessions,
+        metrics = pk_lane$summary,
+        cancellation = pk_lane$cancel,
+        request_lifecycle = pk_lane$guard,
+        cache = pk_lane$cache,
+        deep_thinking_budget = pk_lane$deep,
+        db = pk_lane$db,
+        does_prove = pk_lane$does_prove,
+        does_not_prove = pk_lane$does_not_prove
+      )
+    } else if (isTRUE(cfg$pk_lane)) {
+      list(available = FALSE,
+           reason = pk_lane$reason %||% "PK-analiz seridi calismadi (olculemeyen)")
+    } else {
+      "PK-analiz seridi kapali"
     },
     capacity_curve = capacity_rows %||% list(),
     capacity_ladder = if (!is.null(capacity_ladder) && isTRUE(capacity_ladder$ran)) {

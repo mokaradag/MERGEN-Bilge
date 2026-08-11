@@ -98,7 +98,14 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     "- Markdown tablo formatını listeleme/sıralama için kullan\n",
     "- FİLTRELEME UYARISI varsa, oran belirtirken dikkatli ol\n",
     "- Başarısız sorgular varsa, bunları da raporla (hangileri ve neden başarısız olduklarını kısaca belirt)\n",
-    "- TÜM başarılı sorguları mutlaka raporla - hiçbirini atlama!\n"
+    "- TÜM başarılı sorguları mutlaka raporla - hiçbirini atlama!\n",
+    # Faz 6 (D16, §10): paketler arası ARİTMETİK yasağı. "Sorgular arası
+    # ilişkiler" DÜZYAZI sentezi içindir; sayıları birleştirmek için DEĞİL.
+    # Eşleşen kırılım (grain) toplama izni değildir.
+    "\n### PAKET SINIRI (ZORUNLU):\n",
+    detail_config$pk_cross_query_instruction %||%
+      get0("PK_DEEP_NO_CROSS_ARITHMETIC_INSTRUCTION", ifnotfound = ""),
+    "\n"
   )
 
   failed_note <- ""

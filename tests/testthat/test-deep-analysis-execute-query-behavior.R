@@ -5,7 +5,9 @@
 #           güvenlik dalları kapsanır: durdurma talebi, DB bağlantısı yok, boş
 #           SQL, tehlikeli SQL (DROP/DELETE/TRUNCATE/ALTER) reddi, boş sonuç ve
 #           başarılı orkestrasyon. get_connection/release_connection env'e,
-#           DBI::dbGetQuery local_mocked_bindings ile stub edilir; gerçek DB yok.
+#           SQL yürütme sınırı (Faz 6: pk_deep_execute_sql) env'e stub edilir;
+#           gerçek DB yok. Sınırlı getirimin KENDİSİ ayrı dosyada test edilir
+#           (test-pk-sql-execute-bounded-behavior.R).
 #           Çevrimdışı ve deterministik.
 # ==============================================================================
 
@@ -16,8 +18,14 @@
   kok <- resolve_repo_root_for_tests()
   # Faz 1: derin mod artik ANA YOL ile ayni salt-okunur SQL kapisini ve kapali
   # basarisiz RLS/gercek-sutun kapisini kullanir; yalitilmis ortam da yuklemeli.
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  # Faz 6 (D16): SQL kaynagi/yurutmesi ve iptal/son tarih aritmetigi kendi sahip
+  # dosyalarina tasindi; izole ortam GERCEK sahipleri yukler.
   for (yardimci in c("helpers_pk_sql_readonly.R", "helpers_pk_query_meta_schema.R",
-                     "helpers_pk_query_meta_access.R", "helpers_pk_rls.R")) {
+                     "helpers_pk_query_meta_access.R", "helpers_pk_rls.R",
+                     "helpers_pk_config.R", "helpers_pk_async_cancel.R",
+                     "helpers_pk_result_size.R", "helpers_pk_sql_execute.R",
+                     "helpers_deep_analysis_reconcile.R")) {
     source(file.path(kok, "R", yardimci), encoding = "UTF-8", local = env)
   }
   source(file.path(kok, "R", "helpers_deep_analysis.R"), encoding = "UTF-8", local = env)
@@ -29,6 +37,12 @@
     invisible(TRUE)
   }
   # Başarı yolu yardımcıları (erken dönüşlerde çağrılmaz; başarı testinde stub)
+  # Faz 6: burada ORKESTRASYON test edilir, bu yuzden YURUTME SINIRI stub'lanir.
+  env$.sql_exec_calls <- 0L
+  env$pk_deep_execute_sql <- function(conn, sql_text, ...) {
+    env$.sql_exec_calls <- env$.sql_exec_calls + 1L
+    list(status = "ok", data = data.frame(), rows = 0L, error = NA_character_)
+  }
   env$convert_date_columns <- function(df, cols) df
   env$apply_rls_to_data <- function(df, rls_info, cols) df
   env$generate_statistical_summary <- function(df, ...) {
@@ -93,12 +107,12 @@ test_that("execute_single_deep_query tehlikeli SQL'i (DROP/DELETE/TRUNCATE/ALTER
     "select * from t; drop table t"   # küçük harf + noktalı virgül
   )) {
     env <- .deepQueryEnv()
-    # Türkçe yorum: dbGetQuery'ye ASLA ulaşılmamalı (güvenlik dalı önce reddetmeli)
+    # Türkçe yorum: SQL yürütmeye ASLA ulaşılmamalı (güvenlik dalı önce reddetmeli)
     db_called <- FALSE
-    testthat::local_mocked_bindings(
-      dbGetQuery = function(conn, statement, ...) { db_called <<- TRUE; data.frame() },
-      .package = "DBI"
-    )
+    env$pk_deep_execute_sql <- function(conn, sql_text, ...) {
+      db_called <<- TRUE
+      list(status = "ok", data = data.frame(), rows = 0L, error = NA_character_)
+    }
     res <- env$execute_single_deep_query(
       query = list(name = "Tehlike", sql = kotu),
       user_prompt = "soru", session = NULL, rls_info = list(),
@@ -114,10 +128,9 @@ test_that("execute_single_deep_query tehlikeli SQL'i (DROP/DELETE/TRUNCATE/ALTER
 
 test_that("execute_single_deep_query boş sorgu sonucunda hata döndürür", {
   env <- .deepQueryEnv()
-  testthat::local_mocked_bindings(
-    dbGetQuery = function(conn, statement, ...) data.frame(),  # 0 satır
-    .package = "DBI"
-  )
+  env$pk_deep_execute_sql <- function(conn, sql_text, ...) {
+    list(status = "ok", data = data.frame(), rows = 0L, error = NA_character_)  # 0 satır
+  }
   res <- env$execute_single_deep_query(
     query = list(name = "BoşSonuç", sql = "SELECT * FROM t WHERE 1=0"),
     user_prompt = "soru", session = NULL, rls_info = list(),
@@ -131,10 +144,9 @@ test_that("execute_single_deep_query RLS sonrası boş veride yetki hatası dön
   env <- .deepQueryEnv()
   # Türkçe yorum: RLS uygulaması tüm satırları kaldırınca yetki hatası beklenir
   env$apply_rls_to_data <- function(df, rls_info, cols) df[0, , drop = FALSE]
-  testthat::local_mocked_bindings(
-    dbGetQuery = function(conn, statement, ...) data.frame(a = 1:3),
-    .package = "DBI"
-  )
+  env$pk_deep_execute_sql <- function(conn, sql_text, ...) {
+    list(status = "ok", data = data.frame(a = 1:3), rows = 3L, error = NA_character_)
+  }
   res <- env$execute_single_deep_query(
     query = list(name = "YetkiYok", sql = "SELECT * FROM t"),
     user_prompt = "soru", session = NULL, rls_info = list(rol = "kisitli"),
@@ -146,10 +158,13 @@ test_that("execute_single_deep_query RLS sonrası boş veride yetki hatası dön
 
 test_that("execute_single_deep_query başarılı orkestrasyonda özet + önizleme döndürür", {
   env <- .deepQueryEnv()
-  testthat::local_mocked_bindings(
-    dbGetQuery = function(conn, statement, ...) data.frame(ad = c("a", "b", "c"), tutar = c(10, 20, 30)),
-    .package = "DBI"
-  )
+  env$pk_deep_execute_sql <- function(conn, sql_text, ...) {
+    list(
+      status = "ok",
+      data = data.frame(ad = c("a", "b", "c"), tutar = c(10, 20, 30)),
+      rows = 3L, error = NA_character_
+    )
+  }
   res <- env$execute_single_deep_query(
     query = list(
       name = "Satış Analizi",

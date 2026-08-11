@@ -66,15 +66,27 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
       api_key_val <- creds$default_api_key
     }
 
-    # LLM Çağrısı
-    result <- call_local_llm(messages, list(
+    # LLM Çağrısı. Async işçide mutlak istek son tarihi option üzerinden
+    # taşınır; v1 seçicisi de bloklayan ağ çağrısını KALAN bütçeyle sınırlar.
+    llm_config <- list(
       model_selection = model_name,
       temperature = 0.0,
       max_output_tokens = 200,
       enable_mcp_tools = FALSE,
       shiny_session = session,
       api_key_override = api_key_val
-    ))
+    )
+    async_deadline <- getOption("mergen.pk.async.deadline_at", NULL)
+    if (!is.null(async_deadline) &&
+        exists("pk_deadline_remaining_sec", mode = "function", inherits = TRUE)) {
+      remaining_sec <- tryCatch(pk_deadline_remaining_sec(async_deadline), error = function(e) Inf)
+      if (is.finite(remaining_sec)) {
+        if (remaining_sec <= 0) return(NULL)
+        llm_config$request_timeout_sec <- max(1L, as.integer(floor(remaining_sec)))
+      }
+    }
+
+    result <- call_local_llm(messages, llm_config)
     
     if (is.null(result)) return(NULL)
     

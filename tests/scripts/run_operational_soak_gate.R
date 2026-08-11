@@ -78,6 +78,7 @@ soak_src("mock_llm_server.R")
 soak_src("proxy_llm_server.R")
 soak_src("soak_client.R")
 soak_src("soak_interactive_lane.R")
+soak_src("soak_pk_analysis_lane.R")
 soak_src("soak_artifacts.R")
 
 cfg <- soak_resolve_config()
@@ -179,6 +180,7 @@ main_error <- NULL
 attach_result <- list(configured = FALSE, reachable = FALSE)
 inprocess <- list(available = FALSE, reason = "calismadi")
 interactive_result <- NULL
+pk_result <- NULL
 telemetry_handle <- NULL
 telemetry_summary <- NULL
 capacity_ladder_result <- NULL
@@ -253,6 +255,35 @@ main_result <- tryCatch({
     }
   } else {
     skipped_vec <- c(skipped_vec, "interactive_lane (kapali)")
+  }
+
+  # --- FAZ 6 PK-analiz seridi: bloklamayan yurutme katmani yuk altinda -------
+  if (isTRUE(cfg$pk_lane)) {
+    cat(sprintf("[soak] PK-analiz seridi: %d in-process analiz oturumu...\n",
+                cfg$pk_lane_sessions))
+    pk_result <- tryCatch(
+      soak_pk_analysis_lane(cfg),
+      error = function(e) list(available = FALSE,
+                               reason = soak_redact_text(conditionMessage(e)))
+    )
+    if (!isTRUE(pk_result$available)) {
+      warnings_vec <- c(warnings_vec,
+        sprintf("PK-analiz seridi calismadi: %s", pk_result$reason %||% "bilinmeyen"))
+      skipped_vec <- c(skipped_vec, "pk_analysis_lane")
+    } else {
+      cat(sprintf(
+        "  -> %d oturum | basari=%s | iptal=%d (uygulanmadi=%s) | bayat=%d (uygulanmadi=%s) | onbellek hit=%d\n",
+        pk_result$sessions,
+        as.character(pk_result$summary$success_rate),
+        pk_result$cancel$storm_rounds,
+        as.character(pk_result$cancel$never_applied),
+        pk_result$guard$stale_rounds,
+        as.character(pk_result$guard$stale_never_applied),
+        pk_result$cache$hit
+      ))
+    }
+  } else {
+    skipped_vec <- c(skipped_vec, "pk_analysis_lane (kapali)")
   }
 
   # --- Attach modu (calisan uygulama) ---
@@ -537,7 +568,8 @@ if (!is.null(interactive_result) && isTRUE(interactive_result$available) &&
 
 threshold_checks <- soak_evaluate_thresholds(
   cfg, summary, inprocess, redaction0, memory_growth, temp_growth_mb,
-  server_alive_at_end, injected_faults, interactive_result, capacity_ladder_result
+  server_alive_at_end, injected_faults, interactive_result, capacity_ladder_result,
+  pk_result
 )
 threshold_outcome <- soak_threshold_outcome(threshold_checks)
 proofs <- soak_proof_statements(cfg, summary, inprocess, attach_result, interactive_result,
@@ -550,7 +582,7 @@ evidence <- soak_build_evidence(
   duration_actual, warnings_vec, skipped_vec, server_alive_at_end, injected_faults,
   interactive_result, telemetry_summary, capacity_ladder_result, timeout_attribution,
   real_canary_classification, real_llm_throughput_result,
-  cfg$load_driver, http_loadgen
+  cfg$load_driver, http_loadgen, pk_result
 )
 
 redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
@@ -559,7 +591,8 @@ redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
 # Redaksiyon sonucunu esik + evidence'a yansit ve FINALIZE et.
 threshold_checks <- soak_evaluate_thresholds(
   cfg, summary, inprocess, redaction, memory_growth, temp_growth_mb,
-  server_alive_at_end, injected_faults, interactive_result, capacity_ladder_result
+  server_alive_at_end, injected_faults, interactive_result, capacity_ladder_result,
+  pk_result
 )
 threshold_outcome <- soak_threshold_outcome(threshold_checks)
 evidence <- soak_build_evidence(
@@ -569,7 +602,7 @@ evidence <- soak_build_evidence(
   duration_actual, warnings_vec, skipped_vec, server_alive_at_end, injected_faults,
   interactive_result, telemetry_summary, capacity_ladder_result, timeout_attribution,
   real_canary_classification, real_llm_throughput_result,
-  cfg$load_driver, http_loadgen
+  cfg$load_driver, http_loadgen, pk_result
 )
 redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
                                   proxy_summary, capacity_rows, NULL)

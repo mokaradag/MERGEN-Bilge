@@ -17,9 +17,25 @@ reads only one of the two will make avoidable mistakes.
 | 1 | Surgical correctness | `merged_to_rebuild` | `f1368b2` (PR #697) |
 | 2 | Deterministic analysis + export | `merged_to_rebuild` | `e3893dd` (PR #698) |
 | 4 | Entity resolution | `merged_to_rebuild` | `6ad9c55` (PR #699) |
-| 5 | Selection rebuild | `in_review` | — (PR #700 open) |
+| 5 | Selection rebuild | `merged_to_rebuild` | `d8c33f0` (PR #700) + `b1e379e` (PR #701 follow-up) |
+| 6 | Non-blocking + performance | `in_review` | — (this PR, branch `claude/pk-phase-6-async`) |
 
 Planned order (§11): **0 → 3a → 1 → 2 → 4 → 5 → 6**, with **3b on the VM**.
+
+> **Stale-record correction (made at the start of the Phase-6 session).** Phase 5's
+> row read `in_review` / `— (PR #700 open)`. The repository arrived **shallow**, so
+> `bash tools/pk_phase_status.sh` aborted with `HATA: Depo sig (shallow) klondur`
+> — the script's own hard-error path working as designed. After
+> `git fetch --unshallow`, `git log --first-parent --oneline origin/pk/rebuild`
+> shows `b1e379e Merge pull request #701 from mokaradag/fix/pr700-codex-final` at
+> the tip, directly above `d8c33f0 Merge pull request #700 …`. Per §11 the log wins:
+> Phase 5 **and** its Codex-fix follow-up are both merged. This is the **sixth
+> consecutive phase** to open with a stale table; durable fix item 2 below
+> ("status should be written at merge time") remains unimplemented and is now by
+> far the most repeated avoidable friction in this project.
+>
+> Operational note for the next session: **run `git fetch --unshallow` first.**
+> A shallow clone makes `tools/pk_phase_status.sh` refuse to report at all.
 
 > **Stale-record correction (made at the start of the Phase-5 session).** Phase 4's
 > row read `in_review` / `—`. `bash tools/pk_phase_status.sh` reports
@@ -2344,3 +2360,341 @@ encountered during the sweep was `test-pk-entity-history-behavior.R`, caused by
 this phase adding a fourth `chat_history` site; it was resolved by extending the
 allowed set, as documented under "Intentional test change". No other test needed
 modification.
+
+---
+
+## Phase 6 — Non-blocking + performance (highest runtime risk)
+
+* **Status:** `in_review`
+* **Branch:** `claude/pk-phase-6-async` (harness-assigned; cut from `origin/pk/rebuild` tip `b1e379e`)
+* **PR:** base `pk/rebuild` ← head `claude/pk-phase-6-async`
+* **Merge SHA:** _pending_
+
+### Defects re-verified in the CURRENT code before writing any code (§0.1)
+
+| Defect | Verdict | Evidence in the checkout at `b1e379e` |
+|---|---|---|
+| **D15** — blocking the Shiny event loop | **REPRODUCES** | `R/server_send_message.R` called `pk_analiz_process_request(...)` / `pk_deep_analysis_process(...)` **directly** inside `send_message()` (the inline `analiz_result <- tryCatch(...)` block). SQL fetch + 2 serial LLM calls on the main process; deep mode 1 + up to 5 LLM calls plus 5 SQL round trips. |
+| **D16** — deep path diverged from the main path | **PARTLY FIXED, 3 items STILL REPRODUCE** | *Fixed already:* the locale-dependent `toupper` gate (now `pk_sql_readonly_guard`) and the actual-column gate (bridged by `helpers_pk_query_selection_deep.R`). *Still reproduced:* (1) `username <- session$userData$system_username %||% "Unknown"` bypassing `resolve_pk_analysis_username()`; (2) request-time SQL **file re-read** (UTF-16LE/1254 branch) instead of the preloaded `query$sql`; (3) plain `DBI::dbGetQuery(conn, trimws(sql_query_text))` instead of the main path's Unicode parameter route. |
+| **D24** (Phase-6 slice) — no row cap, no caching | **REPRODUCES** | `MERGEN_PK_ROW_CAP` was registered in Phase 3a but **never consumed**; no cache existed; no result-size preflight; no SQL/analysis deadline. |
+| Cancellation reaching the worker | **N/A before this phase** (synchronous) — but the *design* hazard is real: `stop_check` is a reactive closure and cannot be serialized into an explicit-mode future. |
+| `MERGEN_PK_DEEP_MAX_QUERIES` | **NOT WIRED** | `max_queries = 5` was hard-coded in three places. |
+
+Nothing in the plan was found withdrawn. Two Phase-6 config knobs the plan lists
+(`MERGEN_PK_SQL_TIMEOUT_SEC`, `MERGEN_PK_ANALYSIS_DEADLINE_SEC`, cache trio,
+`MERGEN_PK_MAX_RESULT_MB`, `MERGEN_PK_DEEP_MAX_QUERIES`, `MERGEN_PK_ASYNC`) were
+absent from `pk_config_spec` and are added here.
+
+### Files added
+
+| File | Purpose |
+|---|---|
+| `R/helpers_pk_async_cancel.R` | Worker-visible stop-file cancellation token + wall-clock deadline arithmetic + `pk_sql_timeout_plan()` + `pk_async_stage_gate()`. Pure. |
+| `R/helpers_pk_result_size.R` | Proven column/row byte upper bounds, materialization preflight, bounded-chunk accept/abort, **and** the authorization-aware row-cap plan. Pure. |
+| `R/helpers_pk_cache.R` | Size-bounded LRU cache: entry-count + byte budget + per-entry rejection + TTL, RLS-scoped keys. Process-local. |
+| `R/helpers_pk_sql_execute.R` | `pk_sql_execute_bounded()`: `dbSendQuery` + chunked `dbFetch`, cancellation/deadline between chunks, guaranteed `dbClearResult`, statement-timeout application. |
+| `R/helpers_pk_async_bootstrap.R` | Frozen manifest-SECTION list, worker-side once-per-process bootstrap, entry-point readiness, session surrogate, harvest/apply of session writes. Pure. |
+| `R/helpers_pk_async_request.R` | Plain immutable request snapshot, defensive worker-safety validation, request-id guard, async availability, memoized globals bundle. Pure. |
+| `R/helpers_pk_async_worker.R` | Worker entry point: bootstrap → surrogate → local `stop_check` → pipeline → harvest, typed outcomes only, D22 redaction in the worker. |
+| `R/helpers_pk_async_apply.R` | Result→message-context application (ONE body for sync and async), synchronous run path, worker-status→Turkish text, async request preparation. |
+| `R/server_handler_pk_async.R` | Dispatch layer: sync/async decision, explicit-mode dispatch, request-id-guarded callbacks, `onSessionEnded` cancellation, `mergen_pk_signal_cancel()`. |
+| `R/helpers_deep_analysis_reconcile.R` | D16 reconciliation: identity gate, preloaded-SQL source, Unicode+bounded execution, config-driven ceiling, packet reconciliation, observation/footer factory. |
+| `tests/scripts/soak_pk_analysis_lane.R` | Soak gate **Lane E**: cancellation storms, stale completions, cache pressure, bounded fetch, deep budget split. ASCII-only. |
+
+### Files modified
+
+| File | Change |
+|---|---|
+| `R/server_send_message.R` | Inline PK block → delegation to `mergen_pk_analysis_execute()`. Tail (prompt plan → LLM dispatch) wrapped in the named continuation closure `run_llm_request_stage()`; sync calls it inline, async calls it from the guarded callback. **Review with `git diff -w`** — most of the diff is a mechanical +2-space re-indent. 634 → 625 lines (budget 634, unchanged). |
+| `R/helpers_deep_analysis.R` | D16 fixes (identity gate, preloaded SQL, `pk_deep_execute_sql`), deadline/cancel token threaded through `detail_config`, between-query stage gate, `pk_deep_max_queries()`, packet reconciliation. Observation/footer closures moved to the reconcile factory to stay under the 659-line budget (695 → 656). |
+| `R/helpers_deep_analysis_context.R` | Cross-query arithmetic prohibition written into the system prompt (`PAKET SINIRI`). |
+| `R/helpers_pk_query_selection_deep.R` | `max_queries` defaults now resolve through `pk_deep_max_queries()`. |
+| `R/helpers_pk_config.R` | 11 Phase-6 knobs registered (async, SQL timeout, analysis deadline, cache trio + TTL, deep ceiling, max result MB, overhead factor, chunk rows). |
+| `R/server_observers_chat_input.R` | Stop observer signals the cancellation token **before** changing `active_request_id`. |
+| `R/config_source_manifest.R` | 9 new runtime files in dependency order; verbose comments compressed to stay at 794 lines (ratchet max is 795 and this file WAS the max). |
+| `tests/scripts/soak_config.R`, `run_operational_soak_gate.R`, `soak_artifacts.R` | Lane E wiring: config knobs, lane execution, evidence block, **9 gate-enforced thresholds**, requested-but-unavailable = FAIL. All kept ASCII-only. |
+| `docs/operational-soak-gate.md` | Lane E section + env-var table. |
+| `CLAUDE.md` | Phase-6 non-blocking execution contract. |
+| `.Renviron.example` | 11 knobs with Turkish comments. |
+
+### Tests added, and what each **proves**
+
+| Test | Assertions | Proves |
+|---|---|---|
+| `test-pk-async-cancel-behavior.R` | 57 | Token absence ≠ cancel; a **directory** is not a stop flag; stale-token age cleanup spares fresh tokens; `min(configured, floor(remaining))`; **zero budget → statement NOT dispatched**; a 600 s per-query override under a 300 s deadline yields 300 s; five 120 s deep queries under 300 s dispatch **3** and total exactly 300; cancel is evaluated **before** deadline; cancel and timeout produce **different** Turkish messages. |
+| `test-pk-cache-behavior.R` | 53 | Every key dimension separates; extra fields are order-independent; **different RLS scopes never share** (same user with changed authorization also separates); TTL expiry refunds bytes; LRU order follows real access; count **and** byte budgets both evict; an oversized entry is rejected **without evicting anything**; replacement does not drift the byte total; disabled cache writes nothing; stats never expose the key text. |
+| `test-pk-result-size-behavior.R` | 78 | `varchar(max)`/`varbinary(max)`/`text`/unknown produce **no** bound; locale-independent type folding; one unbounded column makes the whole row unbounded; preflight → `materialize`/`refuse`/`chunk_required` incl. unknown row count and unresolved ceiling; the chunk that would cross the ceiling is rejected **before** acceptance; unknown chunk bytes abort; row-cap strategies incl. the explicit `refuse`; an unresolved cap performs **no** truncation; `PK_ROW_CAP_STRATEGIES` contains no naked-TOP option. |
+| `test-pk-sql-execute-bounded-behavior.R` | 40 | **Real RSQLite**: chunked fetch reproduces the full result and column contract; empty result keeps the schema; Turkish text survives chunk boundaries; mid-fetch cancellation returns typed `cancelled` with **no data**; deadline ≠ cancel; a real token file stops the fetch; ceiling breach returns `too_large`; typed errors instead of `stop()`; **`dbClearResult` is called on every exit path** (counted via a mocked binding, not the deprecated `dbListResults`). |
+| `test-pk-async-request-behavior.R` | 96 | Snapshot rejects functions/environments/`ShinySession`/`reactivevalues`/`DBIConnection` and reports the **path** of a deeply nested violation; a real snapshot validates clean; **institutional default key is NOT carried**; history carries only role/content/type; userData snapshot takes only atomic fields (never `ai_api_key`); surrogate `userData` is an **environment** so worker writes persist; harvest/apply honour an allow-list; guard distinguishes ok/stale/stopped/unknown and fails closed; `cancelled_*` active id reads as stale; bootstrap file list derives from sections in order and excludes UI/module sections; bootstrap runs **once per process** (proved with a load counter); globals bundle is memoized and **< 20 entries**; `MERGEN_PK_ASYNC` is independent of `MERGEN_PK_ENGINE` in both directions; a sequential future plan reports `future_plan_not_async`. |
+| `test-pk-async-worker-behavior.R` | 49 | Worker never lets an error escape; bootstrap/entry-point failure does **not** run the pipeline; pre-signalled token and expired deadline skip the pipeline; the surrogate carries identity + personal key + prior selection + request id, and `stop_check` **is a function**; mid-pipeline cancellation yields typed `cancelled` (not `ok` + text); raw ODBC/DSN diagnostics never reach the main process; engine mode is pinned in the worker and **restored on exit**. |
+| `test-pk-async-dispatch-behavior.R` | 77 | Result application is one shared body (character → answer, `error_message` → answer + chips, contexts → system message prepended + last user content replaced); flag off → sync, worker never dispatched; SSO-not-ready → worker never started; dispatch is explicit-mode with a worker-safe globals bundle and correct `task_type`; success calls the continuation and applies session writes; **stale and stopped callbacks mutate nothing** (no continuation, no message, no session write); cancel vs deadline produce different messages; `bootstrap_failed` retries synchronously so the user still gets the answer; dispatch error and unsafe snapshot fall back to sync; `onSessionEnded` signals the token; a stale token is cleared before dispatch. |
+| `test-deep-analysis-reconcile-behavior.R` | 69 | Identity gate fails closed (resolver injectable, so the test does not depend on global state) and never returns `"Unknown"`; preloaded SQL wins and the file is **not** re-read; BOM/CRLF normalization matches the main path; real RSQLite execution with default 120 s timeout; exhausted budget → `deadline` without dispatch; timeout bounded by remaining budget; a 600 s query override under 300 s is clamped; token cancels the fetch; sequential deep queries consume only residual budget; ceiling comes from config (env + query metadata, invalid → default); each packet keeps its own provenance; **cross-query arithmetic is FALSE even with matching `grain` and even when an env var/option tries to enable it**; one failure does not drop siblings. |
+| `test-pk-async-contract.R` | 130 | All 9 files exist and load in dependency order; explicit mode, no raw `promises::future_promise`; guard + `shiny::isolate` + session-write ordering + `onSessionEnded` in the dispatcher; `send_message` delegates and the old inline block is gone; the stop observer signals **before** the id change; snapshot forbidden-class list present; 11 knobs registered with §9 defaults and documented in `.Renviron.example`; async decision never reads the engine flag; **all six D16 items closed** (asserted on the code, not on comments); prompt-context prohibition present; frozen section list excludes UI/module/observer sections; cache key requires RLS scope; per-file maintainability budgets. |
+
+Total: **~650 new assertions**, all offline — no DB server, LLM, browser, SSO,
+network, real future worker or real secret. Real RSQLite (in-memory / temp file) is
+used where a real DBI backend is the point, per the repo precedent
+(`test-ortak-oturum-db-behavior.R`, `test-db-pool-behavior.R`).
+
+### Tests modified (and why that is the correct fix, not a weakening)
+
+Four existing test files sourced `helpers_deep_analysis.R` in isolation and broke
+because its dependencies moved into new owner files. Per CLAUDE.md ("behavior tests
+affected by helper-file refactors must source the real owning helper file") the
+bootstraps were extended rather than the production code softened:
+
+* `test-deep-analysis-process-behavior.R`, `test-deep-analysis-multi-query-behavior.R`,
+  `test-pk-provenance-delivery-contract.R` — now source the Phase-6 chain and stub
+  `resolve_pk_analysis_username()` (the new identity gate).
+* `test-deep-analysis-execute-query-behavior.R` — the SQL boundary moved from
+  `DBI::dbGetQuery` to `pk_deep_execute_sql()`, so the five `local_mocked_bindings`
+  mocks became env-level stubs of the **new** boundary. The bounded fetch itself is
+  now covered by its own dedicated file.
+* `test-operational-soak-gate-contract.R` — registers `soak_pk_analysis_lane.R` in
+  the ASCII-safety/parse list and was **strengthened**: it now proves both that a
+  passing lane makes all nine thresholds PASS *and* that a requested-but-missing
+  lane produces an enforced FAIL.
+
+### Design decisions, with reasoning
+
+**P1 — Worker-side bootstrap from a frozen SECTION list, not a 300-name globals list.**
+PSOCK workers do not have the app sourced, and the PK pipeline's transitive closure
+is 300+ functions. Enumerating them by hand would be unreviewable and would drift
+silently; enumerating them programmatically would not be "explicit" in any useful
+sense. So the globals bundle stays ~10 entries and the worker sources 143 files from
+`pk_async_worker_manifest_sections()` **once per process**. This is the same pattern
+`R/helpers_mcp_bootstrap.R` already uses for worker/isolated contexts, and freezing
+by SECTION (not by file) means adding a helper to a listed section needs no change
+here. `tracked_future_promise`'s explicit mode re-parents `task_fn` to an env whose
+parent is `globalenv()`, so the worker's freshly-sourced globals are visible.
+
+**P2 — Cancellation via the existing `stop_check` seam, so the pipeline is untouched.**
+Inside the worker, `stop_check` is a LOCAL closure over the token path and the
+deadline. The pipeline already calls `stop_check` at every stage boundary, so it
+became cancellation- and deadline-aware **without a single change to its stage
+checks**. This was the single highest-leverage decision in the phase: it avoided
+editing `pk_analiz_process_request()` at all.
+
+**P3 — The tail of `send_message()` became a named closure, not a new ctx-based file.**
+A ctx handler would have required threading ~40 variables and every miss would be a
+runtime bug. A closure captures everything lexically, so the risk is ~zero, and
+`git diff -w` shows only 51 insertions / 60 deletions of real change. Cost: one
+function (9 → 10 of an 11 budget) and a mechanical re-indent. The closure is the
+last statement of `send_message()`, so the `return()` calls inside it behave
+identically.
+
+**P4 — Bootstrap failure retries synchronously instead of showing an error.**
+A worker that cannot load its helpers is an OPERATOR environment problem, unrelated
+to the user's question. Showing "analysis failed" would be a false statement about
+the question. So the request is retried once on the main thread with a loud
+`log_warn` naming the rollback (`MERGEN_PK_ASYNC=false`). Same reasoning for a
+non-async future plan, a dispatch error, and an unsafe snapshot: async is an
+optimization, never a correctness requirement.
+
+**P5 — A sequential future plan REFUSES async instead of pretending.**
+"Async" on `future::sequential` runs the work on the event loop anyway — it would
+destroy the phase's only benefit while reporting success. `pk_async_available()`
+returns `future_plan_not_async` and the sync path is taken, honestly.
+
+**P6 — The institutional default key is deliberately NOT carried to the worker.**
+Only a key whose resolved source is `personal` travels (with its ownership marker,
+so the ownership check reaches the identical verdict). A `default` key is resolved
+by the worker from its own environment. This preserves the §1F personal/default
+semantics exactly and avoids shipping a secret that does not need to move.
+
+**P7 — SQL statement timeout is honest about what it can enforce.**
+The R `odbc` package exposes no per-query timeout. So three layers are applied and
+the applied mechanism is reported: `SET LOCK_TIMEOUT` (the most common real hang),
+chunked fetch with cancellation/deadline polling between chunks (makes long scans
+interruptible), and the wall-clock analysis deadline (always works). Layer 1 can
+only be verified on the VM against real SQL Server; `pk_sql_apply_statement_timeout()`
+returns `mechanism = "none"` when it cannot apply, and that never aborts the analysis.
+
+**P8 — `pk_deep_resolve_username()` takes an injectable resolver.**
+The fail-closed branch was originally tested by the resolver being absent. That
+passed in isolation and failed in the full suite, because another test file leaves
+`resolve_pk_analysis_username` in the global environment. Rather than weaken the
+assertion, the resolver became an argument — the branch is now tested explicitly and
+the test no longer depends on global state at all.
+
+**P9 — Row cap and result size live in ONE file.**
+They are the same decision family ("how much of this result may we materialize and
+deliver"), and merging them removed one manifest entry, which mattered because
+`config_source_manifest.R` was **exactly at** the 795-line ratchet max.
+
+**P10 — No maintainability budget was raised.**
+Two files exceeded the 25-function ceiling and were SPLIT
+(`helpers_pk_async_request.R` → + `_bootstrap.R`; `server_handler_pk_async.R` →
++ `helpers_pk_async_apply.R`), `helpers_deep_analysis.R` was brought back under its
+659-line budget by moving the observation/footer closures into the reconcile
+factory, and `config_source_manifest.R` was brought back to 794 by compressing
+**redundant** comment text (two blocks described the same dependency chain twice).
+Score returned to 100/100 with max 795 lines / 24 functions — identical to the
+pre-phase baseline.
+
+### Deviations from the plan
+
+1. **Branch name** — the harness assigned `claude/pk-phase-6-async`; cut from the
+   same `origin/pk/rebuild` tip, one phase, PR targets `pk/rebuild`.
+2. **Row cap is not a separate file.** §5.10 describes it as its own concern; it
+   lives in `helpers_pk_result_size.R` (see P9). Behavior is unchanged.
+3. **Two extra knobs** beyond §9: `MERGEN_PK_RESULT_OVERHEAD_FACTOR` and
+   `MERGEN_PK_FETCH_CHUNK_ROWS`. §5.10 requires "a conservative documented
+   allowance for R/driver object overhead" and a "fixed chunk", and §9 forbids
+   hard-coded magic numbers — so both had to be configurable.
+4. **`MERGEN_PK_ENABLED` is still not registered.** It is the rollback for an RLS
+   contract problem, not a Phase-6 concern; registering it here would be dead
+   configuration (the Phase-0 D5 precedent).
+
+### Review findings received and how each was resolved
+
+None yet — PR just opened.
+
+### What remains unproven and needs the VM
+
+* **The entire point of the phase.** Event-loop responsiveness (a second browser
+  session staying usable while a large analysis runs) cannot be measured offline.
+* Real future worker-pool saturation, queueing and prewarm cost of the 143-file
+  worker bootstrap on the VM's UNC-backed checkout.
+* Whether `SET LOCK_TIMEOUT` is actually applied by the production ODBC driver, and
+  how a genuinely hung SQL Server statement behaves.
+* DB connection release under real ODBC when the worker is cancelled mid-statement.
+* SSO identity/RLS correctness for the worker surrogate against real `MB_Users`
+  and the real 169-query library.
+* Deep Thinking producing the **same** answer as before the reconciliation, on real
+  data, and the real `filter_status` / cancellation distribution under load.
+* Turkish text at rest under `DB_CLIENT_ENCODING=WINDOWS-1254` through the async
+  path (the worker writes via the same helpers, but that is unproven here).
+* Cache hit rate and eviction behavior against real result sizes.
+
+### Exact validation commands run, and their real results
+
+Environment note: this container starts in a **POSIX/C locale**, which makes R fail
+to read the repo's UTF-8 sources. Every command below was run with
+`LC_ALL=C.utf8 LANG=C.utf8`, plus placeholder `LOCAL_LLM_ENDPOINT` / `DB_DSN` /
+`AI_KEYS_MASTER` (required by `R/config_file_store.R`; no real secret).
+
+| Command | Result |
+|---|---|
+| `Rscript tests/scripts/parse_sanity_check.R` | `OK: 1150 dosya parse edildi.` |
+| 9 new Phase-6 test files (individually) | `FAIL 0, WARN 0, SKIP 0` — 57 / 53 / 78 / 40 / 96 / 49 / 77 / 69 / 130 passed |
+| `test_dir` over `pk-*`, `deep-analysis*`, manifest/seam/ratchet/production/secret/network/frontend-selector/send-message/server-*/db-*/streaming*/e2e-* (133 files) | `PASS 6347, FAIL 0, WARN 0, SKIP 0, ERR 0` |
+| `bash tools/seam_doctor.sh` | `SEAM_DOCTOR_RESULT: OK (yapısal sorun yok)` |
+| `source("tests/scripts/maintainability_report.R")` | Score **100/100**; 800+ line files **0**; 25+ function files **0**; max file **795** lines; max functions **24** — identical to the pre-phase baseline, no budget raised |
+| app source smoke (`MERGEN_RUN_APP=false`) | `BOOT_OK`; `pk_async_enabled=FALSE` (`flag_off`); 143 bootstrap files; globals bundle **10** entries; `validate_boot_state()` TRUE; `create_mergen_app()` → `shiny.appobj` |
+| `MERGEN_SOAK_PROFILE=smoke MERGEN_SOAK_HTTP_LANE=false Rscript tests/scripts/run_operational_soak_gate.R` | **PASS**. Lane E: 60 sessions, success rate 1, 8 cancel-storm rounds (never applied), 12 stale rounds (never applied), 22 cache hits, cache 9.64 MB. All **9** PK thresholds PASS. Artifact: `artifacts/soak/20260809-092636/soak_evidence.json` |
+| `bash tools/ai_validate.sh quick` | **PASSED** — `failed_steps: 0`, `skipped_steps: 0`. Artifact: `artifacts/ai-validation/20260809-090415/summary.json` |
+| `bash tools/ai_validate.sh full --boot-smoke` | **PASSED** — `failed_steps: 0`, `skipped_steps: 0`. Artifact: `artifacts/ai-validation/20260809-092009/summary.json` |
+
+`full --boot-smoke` proof fields (verbatim from `summary.json`):
+
+```
+validation_execution_status                    ran_by_ai_repo_check
+profile_requested: full                        profile_effective: full
+failed_steps: 0                                skipped_steps: 0
+app_source_smoke_status                        passed
+full_testthat_suite_status                     passed      (346.8s)
+shiny_boot_smoke_status                        passed
+browser_smoke_status                           skipped     <-- no Chrome/Chromium/Edge binary
+db_sso_vm_validation_status                    not_performed_by_ai_validate
+sql_server_turkish_encoding_preflight_status   not_performed_by_ai_validate
+manual_fragile_flow_evidence_status            not_performed_by_ai_validate
+```
+
+**Honesty boundary.** The mandatory `full --boot-smoke` gate **did run and did
+pass**, including app source smoke, the complete testthat suite and Shiny boot
+smoke. Browser UX smoke **SKIPPED** (no browser binary; the runner exits 0 on that
+skip by design, so it is *not* browser proof). Nothing here proves runtime, VM,
+SSO, real DB, SQL Server Turkish encoding, or browser behavior — and in particular
+nothing here proves the event-loop responsiveness that is the whole point of this
+phase.
+
+### VM validation checklist required BEFORE enabling `MERGEN_PK_ASYNC=true`
+
+Run in this order; stop and report at the first failure.
+
+1. **Baseline, async OFF.** `MERGEN_PK_ENGINE=v1`, `MERGEN_PK_ASYNC=false`, full R
+   process restart. Confirm single-query and Deep Thinking analyses still answer
+   exactly as before this PR (this is the regression gate for the `send_message`
+   restructure, which is active even with async off).
+2. **Soak prerequisite.** `Rscript tests/scripts/run_operational_soak_gate.R` on the
+   VM; Lane E must PASS with all nine `pk_*` thresholds. A skipped lane is not
+   evidence.
+3. Only then set `MERGEN_PK_ASYNC=true` and **restart the R process** (a browser
+   refresh is not enough).
+4. Normal single-query analysis: correct answer, provenance footer present, no
+   duplicate assistant message, Stop button returns to send mode.
+5. Deep Thinking: multiple queries reported individually, per-packet provenance,
+   **no** cross-query totals, one failing query does not drop the others.
+6. **Two browser sessions.** User A starts a large analysis; user B's session must
+   stay responsive (welcome screen, quick actions, a short chat). This is the
+   measurement Phase 6 exists for.
+7. **Cancellation while another request continues.** A cancels mid-analysis; B's
+   concurrent analysis must complete normally. Check the log for
+   `[PK_ASYNC] Bayat/durdurulmus geri cagri yok sayildi`.
+8. **Rapid stop/new-request sequences** (5–10 in a row): no stale answer appears, no
+   duplicate message, send button always recovers.
+9. **Stale-answer protection.** Start an analysis, immediately ask a different
+   question; the first result must never overwrite the second.
+10. **SQL timeout.** Force a long-running statement; confirm it fails instead of
+    hanging and that `[PK_ASYNC]` / `[DEEP_QUERY]` logs report the status.
+11. **Whole-analysis timeout.** Lower `MERGEN_PK_ANALYSIS_DEADLINE_SEC` (e.g. 30) and
+    confirm the deadline message differs from the cancel message and that the
+    connection is released.
+12. **Connection release** after success, error, cancel and deadline — check the DB
+    session count in SSMS across a series of each.
+13. **Repeated query (cache).** Ask the same question twice with the same filters:
+    the second should be visibly faster; a **different user** must NOT get the first
+    user's result (verify with two SSO accounts whose RLS scopes differ).
+14. **Large result / row cap.** A query over the cap: confirm the truncation note
+    appears and says which set the statistics were computed over, or that the
+    analysis is explicitly refused.
+15. **SSO identity/RLS.** Confirm the worker surrogate resolves the same username and
+    RLS scope as the synchronous path (compare `MB_Analiz_Log` rows).
+16. **Turkish SQL/data** end to end; then verify newest `MB_Analiz_Log` /
+    `MB_Messages` rows in SSMS for mojibake.
+17. **Real 169-query library** and **worker-pool saturation**: 4–6 concurrent
+    analyses with the configured worker count; observe queueing rather than freezing.
+18. **Sustained usage**, not a two-browser happy path: run normal work for 30+
+    minutes and watch memory, cache size and DB session count.
+
+Rollback at any point: set `MERGEN_PK_ASYNC=false` in `.Renviron` and restart the R
+process.
+
+### Newly discovered risks (flagged, not silently absorbed)
+
+* **Worker bootstrap cost on the VM.** 143 files sourced once per worker process,
+  from a UNC-backed checkout, includes `config_sql_loader.R` — which re-reads the
+  SQL library in each worker. Offline this is fast; on the VM it may add noticeable
+  first-request latency per worker. Mitigation if needed: prewarm the workers, or
+  narrow the frozen section list. Measure before optimizing.
+* **`config_sql_loader.R` runs in the worker.** It is a top-level script with a
+  `stop()` path. A worker whose environment cannot read the SQL files will report
+  `bootstrap_failed` and fall back to sync (safe), but it will do so **per request**
+  until the environment is fixed. The loud `log_warn` names the rollback.
+* **Cache is process-local.** With N workers there are N+1 caches, so the effective
+  hit rate on the VM will be lower than the lane suggests and total memory is
+  `(N+1) × MERGEN_PK_CACHE_MAX_MB` in the worst case. Consider lowering
+  `MERGEN_PK_CACHE_MAX_MB` for multi-worker deployments.
+* **`SET LOCK_TIMEOUT` is a partial guard.** It bounds lock waits, not long scans.
+  Long scans are bounded by chunked-fetch polling and the analysis deadline; a
+  statement that blocks *inside the driver before returning any row* is bounded only
+  by the deadline plus whatever the driver does.
+* **Row-cap plan is not yet wired into the pipeline.** `pk_row_cap_plan()` and
+  `pk_result_size_preflight()` are implemented, tested and available, but
+  `pk_analiz_process_request()` still fetches without them; only the deep path uses
+  the bounded fetch. Wiring the cap into the single-query path needs the RLS-pushdown
+  decision that Phase 3b's real metadata provides. **Recorded as the one loose end
+  this phase deliberately leaves** — same pattern as Phase 3a's M8. The result cache
+  is *not* part of this loose end: `pk_query_result_cache_key()` is wired into
+  `pk_deep_execute_sql()` / `execute_single_deep_query()`, so the deep path does
+  read and populate the bounded LRU. The single-query path still executes uncached.
+* **Cache stores pre-RLS frames, keyed by RLS scope.** A hit returns the raw frame
+  exactly as the SQL returned it; the actual-column metadata gate and
+  `apply_rls_to_data()` still run afterwards on every request, hit or miss. The key
+  carries `rls_signature` plus a SHA-256 of the SQL text and the DB target, and it is
+  empty (cache skipped entirely) when the query id, the scope or the SQL text is
+  missing, or when the scope is `__no_scope__` / `__unauthorized__`. Non-`ok`
+  outcomes (cancelled, deadline, too_large, error) are never written, so a halted
+  query cannot become a cached "empty result". Do not relax the empty-key conditions
+  to raise the hit rate.

@@ -158,7 +158,11 @@
   # ekledi (getirim -> istem -> ayrıştırma/karar -> LLM -> bağlama); 40 -> 45.
   # PR #701 inceleme düzeltmeleri: history/seed/deep sahipleri ayrıştırıldı;
   # analysis_helpers bölümüne üç kayıt daha eklendi. 53 -> 56.
-  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 56L),
+  # Bilinçli güncelleme: Faz 6 (§5.10) bloklamayan yürütme katmanı altı dosya
+  # (iptal/son tarih, sonuç boyutu+satır tavanı, LRU önbellek, sınırlı SQL
+  # getirimi, işçi bootstrap/vekil, istek anlık görüntüsü, işçi giriş noktası)
+  # ve derin analiz uzlaştırma katmanı (D16) bir dosya ekledi. 56 -> 64.
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 64L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -243,7 +247,9 @@
   # (R/server_speech_assets_runtime.R) ve PCM akış köprüsü
   # (R/server_speech_pcm_stream.R) bölüm başına eklendi; ai_expert
   # handler'larından önce yüklenirler.
-  server_handlers_send_message = list(first = "R/server_speech_assets_runtime.R", last = "R/server_send_message.R", n = 13L)
+  # Bilinçli güncelleme: Faz 6 PK gönderim katmanı (uygulama yardımcıları +
+  # gönderim işleyicisi) server_send_message.R'den ÖNCE eklendi. 13 -> 15.
+  server_handlers_send_message = list(first = "R/server_speech_assets_runtime.R", last = "R/server_send_message.R", n = 15L)
 )
 
 test_that("source_manifest_sections beklenen sırada ve adlarda bölümler içerir", {
@@ -503,7 +509,12 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 416 -> 423: Faz 5 inceleme düzeltmeleri (json/config/payload/requirements/
   # decide/degraded/session bölünmeleri; ratchet bütçeleri korunur).
   # 424 -> 427: PR #701 history/seed/deep seçim sahiplerini manifeste ekledi.
-  expect_equal(length(runtime), 427L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 427 -> 437: Faz 6 (bloklamayan yürütme + performans) dokuz dosya ekledi:
+  # analysis_helpers +7 (iptal/son tarih, sonuç boyutu+satır tavanı, LRU
+  # önbellek, sınırlı SQL getirimi, işçi bootstrap/vekil, istek anlık görüntüsü,
+  # işçi girişi) ve derin uzlaştırma; server_handlers_send_message +2 (uygulama
+  # yardımcıları + gönderim işleyicisi). Toplam 427 -> 437.
+  expect_equal(length(runtime), 437L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

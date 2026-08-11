@@ -233,6 +233,16 @@ soak_resolve_config <- function() {
   interactive_iterations <- soak_env_int("MERGEN_SOAK_INTERACTIVE_ITERATIONS", 1L)
   if (interactive_iterations < 1L) interactive_iterations <- 1L
 
+  # FAZ 6 PK-analiz seridi: bloklamayan yurutme katmanini (iptal jetonu, son
+  # tarih, boyut sinirli LRU onbellek, sinirli SQL getirimi, istek-kimligi
+  # korumasi) yuk altinda calistirir. Varsayilan ACIK: gercek LLM/DB gerektirmez,
+  # lane-yerel SQLite kullanir. MERGEN_PK_ASYNC=true ACILMADAN ONCE en az bu
+  # seridin fake-lane smoke profilinde gecmesi gerekir (master plan bolum 8, Faz 6).
+  pk_lane <- soak_env_flag("MERGEN_SOAK_PK_LANE", TRUE)
+  pk_lane_sessions_default <- min(max(users * 3L, 60L), 400L)
+  pk_lane_sessions <- soak_env_int("MERGEN_SOAK_PK_SESSIONS", pk_lane_sessions_default)
+  if (pk_lane_sessions < 1L) pk_lane_sessions <- 1L
+
   # HTTP yuk seridi: calisan bir uygulama (MERGEN_SOAK_APP_URL) gerektirir.
   # Varsayilan ACIK (mevcut davranis). KAPALI yapildiginda gate yalnizca
   # in-process + etkilesimli seritleri calistirir (bulut/uygulamasiz kanit).
@@ -343,6 +353,20 @@ soak_resolve_config <- function() {
     interactive_lane = interactive_lane,
     interactive_users = interactive_users,
     interactive_iterations = interactive_iterations,
+    pk_lane = pk_lane,
+    pk_lane_sessions = pk_lane_sessions,
+    pk_lane_distinct_users = soak_env_int("MERGEN_SOAK_PK_DISTINCT_USERS", 6L),
+    pk_lane_distinct_queries = soak_env_int("MERGEN_SOAK_PK_DISTINCT_QUERIES", 5L),
+    pk_lane_deadline_sec = soak_env_int("MERGEN_SOAK_PK_DEADLINE_SEC", 300L),
+    pk_lane_sql_timeout_sec = soak_env_int("MERGEN_SOAK_PK_SQL_TIMEOUT_SEC", 120L),
+    pk_lane_row_cap = soak_env_int("MERGEN_SOAK_PK_ROW_CAP", 50000L),
+    pk_lane_rows_per_query = soak_env_int("MERGEN_SOAK_PK_ROWS_PER_QUERY", 4000L),
+    pk_lane_chunk_rows = soak_env_int("MERGEN_SOAK_PK_CHUNK_ROWS", 1000L),
+    pk_lane_max_result_mb = soak_env_int("MERGEN_SOAK_PK_MAX_RESULT_MB", 512L),
+    pk_lane_cancel_every = soak_env_int("MERGEN_SOAK_PK_CANCEL_EVERY", 7L),
+    pk_lane_stale_every = soak_env_int("MERGEN_SOAK_PK_STALE_EVERY", 5L),
+    pk_lane_deep_every = soak_env_int("MERGEN_SOAK_PK_DEEP_EVERY", 9L),
+    pk_lane_deep_max_queries = soak_env_int("MERGEN_SOAK_PK_DEEP_MAX_QUERIES", 5L),
     capacity_curve_enabled = capacity_enabled,
     capacity_curve_users = soak_default_capacity_curve(),
     capacity_step_seconds = soak_env_int("MERGEN_SOAK_CAPACITY_STEP_SECONDS", 30L),
@@ -422,6 +446,8 @@ soak_config_public <- function(cfg) {
     interactive_lane = cfg$interactive_lane,
     interactive_users = cfg$interactive_users,
     interactive_iterations = cfg$interactive_iterations,
+    pk_lane = cfg$pk_lane,
+    pk_lane_sessions = cfg$pk_lane_sessions,
     capacity_curve_enabled = cfg$capacity_curve_enabled,
     capacity_curve_users = cfg$capacity_curve_users,
     capacity_ladder_enabled = cfg$capacity_ladder_enabled,
