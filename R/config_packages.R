@@ -11,7 +11,7 @@
 required_packages <- c(
   "arrow", "base64enc", "cellranger", "cli", "commonmark", "curl",
   "data.table", "DBI", "dplyr", "DT", "duckdb", "fastmatch",
-  "future", "glue", "htmltools", "httr", "jsonlite", "later",
+  "future", "glue", "highcharter", "htmltools", "httr", "jsonlite", "later",
   "logger", "lubridate", "markdown", "odbc", "openssl", "pdftools", "pool",
   "promises", "purrr", "readr", "readxl", "RSQLite", "shiny", "shinyBS",
   "shinycssloaders", "shinydashboard", "shinyjs", "shinyWidgets",
