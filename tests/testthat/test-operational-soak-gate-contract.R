@@ -379,14 +379,32 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
     available = TRUE, sessions = 60L,
     summary = list(success_rate = 1, ok = 52L, cancelled = 8L, stale = 12L,
                    p50_ms = 3, p95_ms = 9, p99_ms = 14),
-    cancel = list(storm_rounds = 8L, honoured = TRUE, never_applied = TRUE),
-    guard = list(stale_rounds = 12L, stale_never_applied = TRUE,
+    cancel = list(storm_rounds = 8L, inflight_rounds = 4L, exercised = TRUE,
+                  inflight_exercised = TRUE, honoured = TRUE, never_applied = TRUE),
+    guard = list(stale_rounds = 12L, stale_exercised = TRUE,
+                 stale_never_applied = TRUE,
                  fresh_always_applied = TRUE, snapshot_all_worker_safe = TRUE),
-    cache = list(entries = 20L, total_mb = 9.5, hit = 22L, miss = 38L,
-                 evicted = 0L, rejected_oversize = 0L, hit_observed = TRUE),
+    # TEK GIRIS tavani toplam bayt butcesinden AYRIDIR: seride ozel bir prob
+    # tavani asan bir giris yazmayi dener ve REDDEDILMIS olmalidir.
+    cache = list(entries = 12L, total_mb = 9.5, hit = 22L, miss = 38L,
+                 evicted = 16L, rejected_oversize = 1L, entries_ceiling = 12L,
+                 hit_observed = TRUE, eviction_observed = TRUE,
+                 scope_isolated = TRUE,
+                 oversize_probe_ran = TRUE, oversize_rejected = TRUE,
+                 oversize_reason = "entry_too_large", oversize_rejected_delta = 1L),
+    fetch = list(rows_always_complete = TRUE, complete_rounds = 28L),
+    # On-iptalli tur bootstrap'i HIC calistirmaz; ayri bir IPTAL EDILMEMIS tur
+    # temiz iscide bootstrap + giris noktasi dogrulamasini kanitlar.
+    psock = list(ran = TRUE, ok = TRUE, reason = "ok", status = "cancelled",
+                 bootstrap_ran = TRUE, bootstrap_ok = TRUE,
+                 bootstrap_status = "error", bootstrap_reason = "ok"),
     deep = list(dispatched = 3L, total_effective_sec = 300, budget_sec = 300,
-                budget_respected = TRUE),
-    db = list(connection_usable_after_bounded_fetch = TRUE),
+                budget_respected = TRUE, budget_decreases = TRUE,
+                deadline_halts_between_queries = TRUE,
+                cancel_halts_between_queries = TRUE),
+    db = list(connection_usable_after_bounded_fetch = TRUE,
+              acquire_release_balanced = TRUE, acquired = 60L, released = 60L,
+              instrumented = TRUE, pool_leaked = 0L),
     does_prove = "test", does_not_prove = "test"
   )
 
@@ -427,7 +445,16 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
                  "pk_cancelled_never_applied", "pk_stale_never_applied",
                  "pk_fresh_always_applied", "pk_snapshot_worker_safe",
                  "pk_deep_deadline_respected", "pk_connection_usable_after_fetch",
-                 "pk_cache_within_budget")
+                 "pk_cache_within_budget",
+                 # Bir boyutun GERCEKTEN calistirildigini kanitlayan esikler:
+                 # sifir iptal/bayat turunda `all(...)` bos vektor uzerinde TRUE
+                 # doner ve serit hicbir sey kanitlamadan yesil gorunurdu.
+                 "pk_cancel_exercised", "pk_cancel_inflight_exercised",
+                 "pk_stale_exercised", "pk_bounded_fetch_complete",
+                 "pk_cache_hit_observed", "pk_cache_eviction_observed",
+                 "pk_cache_scope_isolated", "pk_deep_budget_decreases",
+                 "pk_deep_halts_between_queries",
+                 "pk_connection_acquire_release_balanced", "pk_psock_async_path")
   for (ad in pk_adlari) {
     kontrol <- Filter(function(c) identical(c$name, ad), checks)
     testthat::expect_length(kontrol, 1L)
@@ -436,6 +463,44 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
   }
   testthat::expect_true("pk_analysis_lane" %in% names(ev))
   testthat::expect_true(isTRUE(ev$pk_analysis_lane$available))
+  testthat::expect_true(is.list(ev$pk_analysis_lane$bounded_fetch))
+
+  # FAZ 6 ENFORCEMENT (2): serit KAPALI ise de kapi FAIL olmali. Onceki
+  # davranista kapali serit HICBIR kontrol eklemiyordu, yani seridi kapatmak
+  # kapiyi Faz 6 kapsami OLMADAN yesil birakiyordu.
+  cfg_kapali <- cfg
+  cfg_kapali$pk_lane <- FALSE
+  checks_kapali <- env$soak_evaluate_thresholds(
+    cfg_kapali, s, inproc, list(total_leaks = 0L), mg, 0, TRUE, 0L, NULL, NULL, NULL
+  )
+  pk_kapali <- Filter(function(c) identical(c$name, "pk_analysis_lane_enabled"),
+                      checks_kapali)
+  testthat::expect_length(pk_kapali, 1L)
+  testthat::expect_false(isTRUE(pk_kapali[[1]]$pass))
+  testthat::expect_false(isTRUE(env$soak_threshold_outcome(checks_kapali)$pass))
+
+  # Yeni boyutlar EKSIK/YANLIS oldugunda ilgili esikler FAIL uretmeli; aksi
+  # halde sikilastirma sadece kozmetik olurdu.
+  pk_zayif <- pk_ok
+  pk_zayif$cancel$inflight_exercised <- FALSE
+  pk_zayif$cache$eviction_observed <- FALSE
+  pk_zayif$cache$scope_isolated <- FALSE
+  pk_zayif$fetch$rows_always_complete <- FALSE
+  pk_zayif$deep$budget_decreases <- FALSE
+  pk_zayif$db$acquire_release_balanced <- FALSE
+  pk_zayif$psock$ok <- FALSE
+  checks_zayif <- env$soak_evaluate_thresholds(
+    cfg, s, inproc, list(total_leaks = 0L), mg, 0, TRUE, 0L, NULL, NULL, pk_zayif
+  )
+  for (ad in c("pk_cancel_inflight_exercised", "pk_cache_eviction_observed",
+               "pk_cache_scope_isolated", "pk_bounded_fetch_complete",
+               "pk_deep_budget_decreases", "pk_connection_acquire_release_balanced",
+               "pk_psock_async_path")) {
+    kontrol <- Filter(function(c) identical(c$name, ad), checks_zayif)
+    testthat::expect_length(kontrol, 1L)
+    testthat::expect_false(isTRUE(kontrol[[1]]$pass), info = ad)
+  }
+  testthat::expect_false(isTRUE(env$soak_threshold_outcome(checks_zayif)$pass))
 
   # Artifact yazimi + redaksiyon self-check (gecici dizinde).
   tmp <- file.path(tempdir(), paste0("soak_art_", as.integer(stats::runif(1, 1, 1e6))))

@@ -232,7 +232,7 @@ test_that("Her olgu kararli ASCII kimlik ve anlamsal baglam tasir", {
   )
 
   toplam <- .pk_packet_fact(olgular, "KalanIscilik_sa", "sum")
-  # PR #698 incelemesi: kimliğe, KIRPILMAMIŞ özgün kimlikten türetilen kararlı
+  # inceleme bulgusu: kimliğe, KIRPILMAMIŞ özgün kimlikten türetilen kararlı
   # bir sağlama eklenir. `A-B` ile `A B` gibi normalleştirmede aynı slug'a
   # düşen iki ölçü artık AYNI kimliği alamaz (sessiz üzerine yazma yoktu).
   expect_true(startsWith(toplam$fact_id, "labor_remaining_hours.sum.overall."))
@@ -294,7 +294,7 @@ test_that("D17: ilk-K disinda kalan degerler 'Diger' olarak toplanir", {
   expect_equal(kat$distinct, 25L)
   expect_length(kat$top, 10L)
   expect_equal(kat$other_values, 15L)
-  # PR #698 incelemesi: "Diğer" artık yalnızca kaç FARKLI değer kaldığını
+  # inceleme bulgusu: "Diğer" artık yalnızca kaç FARKLI değer kaldığını
   # değil, KAÇ SATIR tuttuğunu ve payını da söyler (uzun kuyruk sayısız bir
   # dipnot olarak görünemez).
   expect_true(grepl("Diger (15 deger, 15 satir, %60,0)",

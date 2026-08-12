@@ -147,7 +147,7 @@
   # (safe_errors / sql_readonly / rls) + v2 davranış katmanı (filter_compile /
   # filter_policy / filters_v2) + saf istem katmanı (prompt_budget /
   # analysis_prompts) eklendi + saf istatistiksel özet kurucusu; 13 -> 22 dosya.
-  # Bilinçli güncelleme: PR #698 inceleme düzeltmeleri —
+  # Bilinçli güncelleme: inceleme düzeltmeleri —
   # R/helpers_pk_export_csv.R (akışlı + doğrulanmış CSV yedeği ve çakışmasız
   # dosya yolu tabanı) export_plan ile export_xlsx arasına eklendi; 30 -> 31.
   # n 31 -> 35: Faz 4 varlık çözümleme dört saf dosya ekledi.
@@ -156,13 +156,25 @@
   # karar -> geçmiş -> filtre hattına bağlama); 35 -> 40 dosya.
   # Bilinçli güncelleme: Faz 5 (§5.2) iki geçişli sorgu seçimi beş dosya
   # ekledi (getirim -> istem -> ayrıştırma/karar -> LLM -> bağlama); 40 -> 45.
-  # PR #701 inceleme düzeltmeleri: history/seed/deep sahipleri ayrıştırıldı;
+  # inceleme düzeltmeleri: history/seed/deep sahipleri ayrıştırıldı;
   # analysis_helpers bölümüne üç kayıt daha eklendi. 53 -> 56.
   # Bilinçli güncelleme: Faz 6 (§5.10) bloklamayan yürütme katmanı altı dosya
   # (iptal/son tarih, sonuç boyutu+satır tavanı, LRU önbellek, sınırlı SQL
   # getirimi, işçi bootstrap/vekil, istek anlık görüntüsü, işçi giriş noktası)
   # ve derin analiz uzlaştırma katmanı (D16) bir dosya ekledi. 56 -> 64.
-  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 64L),
+  # 69L -> 79L BİLİNÇLİ güncelleme (PR #703 inceleme düzeltmeleri): bakım
+  # ratchet'ini (795 satır / 24 fonksiyon) ihlal etmemek için on saf bölünme:
+  # helpers_pk_cancel_http.R (HTTP iptal köprüsü),
+  # helpers_pk_result_columns.R (ODBC tip kodu haritaları),
+  # helpers_pk_sql_connection.R (bağlantı düzeyi zaman aşımı/geçersizleştirme),
+  # helpers_pk_cache_key.R (önbellek anahtarı + RLS imzası),
+  # helpers_pk_async_worker_env.R (işçi ortam yaşam döngüsü),
+  # helpers_pk_async_worker_pool.R (işçi DB havuzu payı),
+  # helpers_pk_async_snapshot_validate.R (anlık görüntü sınıf/tip doğrulaması),
+  # helpers_pk_async_plan.R (future planı yetenek kararı),
+  # helpers_pk_async_request_markers.R (istek geçersizleştirme işaretleri),
+  # helpers_pk_async_routing.R (yönlendirme metadata'sı).
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 79L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -224,7 +236,10 @@
   # (R/module_ortak_oturum_by_calistirma.R; stream-json ajan yürütmesi +
   # KismiYanit ilerleme yayını + durdurma) eklendi.
   ortak_oturumlar = list(first = "R/helpers_ortak_oturum_permissions.R", last = "R/module_ortak_calismalar.R", n = 27L),
-  module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/module_proje_kaynak_analizi.R", n = 1L),
+  # 2L -> 3L BİLİNÇLİ güncelleme (PR #703): doğrudan-çıkış gözlemci
+  # sarmalayıcısı `R/helpers_pk_worker_direct_exit.R` içine BÖLÜNDÜ; ayrı
+  # sorumluluk (telemetri + kısa ömürlü DB bağlantısı) ve dosya bütçesi.
+  module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/helpers_pk_worker_direct_exit.R", n = 3L),
   module_support = list(first = "R/module_destek_yardim.R", last = "R/module_destek.R", n = 6L),
   # Bilinçli güncelleme: at-budget admin modüllerinin inline highcharter/DT
   # renderer'ları *_outputs() dosyalarına çıkarıldı (geri_bildirim + yanit);
@@ -249,7 +264,10 @@
   # handler'larından önce yüklenirler.
   # Bilinçli güncelleme: Faz 6 PK gönderim katmanı (uygulama yardımcıları +
   # gönderim işleyicisi) server_send_message.R'den ÖNCE eklendi. 13 -> 15.
-  server_handlers_send_message = list(first = "R/server_speech_assets_runtime.R", last = "R/server_send_message.R", n = 15L)
+  # 17L -> 19L BİLİNÇLİ güncelleme (PR #703): derin analiz SQL yürütme
+  # (R/helpers_deep_analysis_sql.R) ve dışa aktarım sunumu
+  # (R/helpers_pk_export_serve.R) ratchet için ayrı dosyalara BÖLÜNDÜ.
+  server_handlers_send_message = list(first = "R/server_speech_assets_runtime.R", last = "R/server_send_message.R", n = 19L)
 )
 
 test_that("source_manifest_sections beklenen sırada ve adlarda bölümler içerir", {
@@ -503,18 +521,36 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 392 -> 400: Faz 2 (deterministik analiz + dışa aktarım) sekiz yeni PK
   # yardımcı dosyası: paket istatistikleri/kurucusu/metni, sayısal köken,
   # dışa aktarım planı/G-Ç, yanıt kompozisyonu ve sonuç kurucusu.
-  # 400 -> 401: PR #698 inceleme düzeltmeleri, R/helpers_pk_export_csv.R.
+  # 400 -> 401: inceleme düzeltmeleri, R/helpers_pk_export_csv.R.
   # 401 -> 405: Faz 4 varlık çözümleme (normalize/score/resolver/history).
   # 411 -> 416: Faz 5 sorgu seçimi (retrieval/prompt/parse/ai/apply).
   # 416 -> 423: Faz 5 inceleme düzeltmeleri (json/config/payload/requirements/
   # decide/degraded/session bölünmeleri; ratchet bütçeleri korunur).
   # 424 -> 427: PR #701 history/seed/deep seçim sahiplerini manifeste ekledi.
   # 427 -> 437: Faz 6 (bloklamayan yürütme + performans) dokuz dosya ekledi:
+  # inceleme düzeltmeleri: analysis_helpers +4
+  # (helpers_pk_async_snapshot.R = işçi-güvenli anlık görüntü doğrulaması,
+  # helpers_pk_async_worker_sql.R = işçi sınırlı-SQL köprüsü,
+  # helpers_deep_analysis_phase6.R = derin Faz 6 kurulum/karar katmanı,
+  # helpers_deep_analysis_selector.R = v1 çoklu seçici);
+  # module_analysis +1 (helpers_pk_worker_observers.R = işçi-güvenli PK
+  # gözlemci sarmalayıcıları); server_handlers_send_message +2
+  # (helpers_pk_async_lifecycle.R = tek-istek yaşam döngüsü,
+  # helpers_pk_async_session_registry.R = oturum kapsamlı aktif istek defteri).
+  # Dördü de bakım ratchet'i (25 fonksiyon / 800 satır) ihlal etmemek için
+  # yapılan BİLİNÇLİ bölünmelerdir.
+  #
   # analysis_helpers +7 (iptal/son tarih, sonuç boyutu+satır tavanı, LRU
   # önbellek, sınırlı SQL getirimi, işçi bootstrap/vekil, istek anlık görüntüsü,
   # işçi girişi) ve derin uzlaştırma; server_handlers_send_message +2 (uygulama
   # yardımcıları + gönderim işleyicisi). Toplam 427 -> 437.
-  expect_equal(length(runtime), 437L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # PR #702: `helpers_pk_exec_context.R` (istek kapsamlı yürütme bağlamı)
+  # `helpers_pk_result_size.R` içinden BÖLÜNDÜ. 444 -> 445.
+  # PR #703 inceleme düzeltmeleri: 445 -> 458. On üç dosya, bakım ratchet'i
+  # (795 satır / 24 fonksiyon) ihlal edilmeden düzeltme yapabilmek için
+  # BÖLÜNDÜ; hiçbiri yeni davranış eklemez, mevcut sorumlulukları ayırır.
+  # analysis_helpers +10, module_analysis +1, server_handlers_send_message +2.
+  expect_equal(length(runtime), 458L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

@@ -30,13 +30,24 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
 
   faz6 <- c(
     "R/helpers_pk_async_cancel.R",
+    "R/helpers_pk_exec_context.R",
     "R/helpers_pk_result_size.R",
     "R/helpers_pk_cache.R",
     "R/helpers_pk_sql_execute.R",
     "R/helpers_pk_async_bootstrap.R",
+    "R/helpers_pk_async_snapshot_validate.R",
+    "R/helpers_pk_async_snapshot.R",
+    "R/helpers_pk_async_plan.R",
     "R/helpers_pk_async_request.R",
+    "R/helpers_pk_async_worker_sql.R",
     "R/helpers_pk_async_worker.R",
+    "R/helpers_pk_worker_observers.R",
+    "R/helpers_pk_worker_direct_exit.R",
+    "R/helpers_deep_analysis_sql.R",
     "R/helpers_deep_analysis_reconcile.R",
+    "R/helpers_deep_analysis_phase6.R",
+    "R/helpers_pk_async_session_registry.R",
+    "R/helpers_pk_async_lifecycle.R",
     "R/helpers_pk_async_apply.R",
     "R/server_handler_pk_async.R"
   )
@@ -51,16 +62,22 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
   expect_source_manifest_order_for_tests(c(
     "R/helpers_pk_config.R",
     "R/helpers_pk_async_cancel.R",
+    "R/helpers_pk_exec_context.R",
     "R/helpers_pk_result_size.R",
     "R/helpers_pk_cache.R",
     "R/helpers_pk_sql_execute.R",
     "R/helpers_pk_async_bootstrap.R",
+    "R/helpers_pk_async_snapshot_validate.R",
+    "R/helpers_pk_async_snapshot.R",
+    "R/helpers_pk_async_plan.R",
     "R/helpers_pk_async_request.R",
+    "R/helpers_pk_async_worker_sql.R",
     "R/helpers_pk_async_worker.R"
   ))
 
   # Uzlaştırma katmanı bağlam kurucudan ve orkestratörden ÖNCE yüklenmelidir.
   expect_source_manifest_order_for_tests(c(
+    "R/helpers_deep_analysis_sql.R",
     "R/helpers_deep_analysis_reconcile.R",
     "R/helpers_deep_analysis_context.R",
     "R/helpers_deep_analysis.R"
@@ -68,6 +85,8 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
 
   # Gönderim işleyicisi send_message'dan ÖNCE yüklenmelidir (o buna delege eder).
   expect_source_manifest_order_for_tests(c(
+    "R/helpers_pk_async_session_registry.R",
+    "R/helpers_pk_async_lifecycle.R",
     "R/helpers_pk_async_apply.R",
     "R/server_handler_pk_async.R",
     "R/server_send_message.R"
@@ -98,9 +117,17 @@ test_that("gönderim katmanı geri çağrılarda istek-kimliği koruması ve iso
   expect_true(.pk_async_has(metin, "shiny::isolate(ctx$stop_generation())"))
   # Oturum yazımları YALNIZCA koruma geçtikten sonra uygulanır.
   expect_true(.pk_async_has(metin, "pk_async_apply_session_writes("))
-  # Oturum kapanışı işçiyi durdurur (geri çağrıyı atmak YETMEZ).
-  expect_true(.pk_async_has(metin, "onSessionEnded"))
-  expect_true(.pk_async_has(metin, "pk_cancel_token_signal("))
+  # Oturum kapanışı işçiyi durdurur (geri çağrıyı atmak YETMEZ). Kanca artık
+  # OTURUM BAŞINA TEKTİR ve kayıt defterindedir: istek başına bir kapanış
+  # kaydetmek, tamamlanan HER isteğin gönderim çerçevesini oturum ömrü boyunca
+  # canlı tutuyordu (bellek istek sayısıyla doğrusal büyüyordu).
+  expect_true(.pk_async_has(metin, "mergen_pk_register_active_request("))
+  expect_true(.pk_async_has(metin, "mergen_pk_session_open("))
+  kayit_defteri <- .pk_async_read_bytes(
+    file.path(.pk_async_repo(), "R/helpers_pk_async_session_registry.R")
+  )
+  expect_true(.pk_async_has(kayit_defteri, "onSessionEnded"))
+  expect_true(.pk_async_has(kayit_defteri, "pk_cancel_token_signal("))
 })
 
 test_that("send_message PK yolunu DELEGE eder ve devam kapanışı TEK gövdedir", {
@@ -134,7 +161,13 @@ test_that("durdur gözlemcisi iptali İŞÇİYE ulaştırır", {
 
 test_that("işçi kendi bağlantısını açar; ana süreç bağlantısı TAŞINMAZ", {
   isci <- .pk_async_read_bytes(file.path(.pk_async_repo(), "R/helpers_pk_async_worker.R"))
-  istek <- .pk_async_read_bytes(file.path(.pk_async_repo(), "R/helpers_pk_async_request.R"))
+  # Anlık görüntü DOĞRULAMASI ayrı dosyaya taşındı (ratchet bölünmesi); test
+  # runtime kodunu geri taşımak yerine YENİ SAHİBİ doğrular.
+  istek <- paste(
+    .pk_async_read_bytes(file.path(.pk_async_repo(), "R/helpers_pk_async_snapshot_validate.R")),
+    .pk_async_read_bytes(file.path(.pk_async_repo(), "R/helpers_pk_async_snapshot.R")),
+    sep = "\n"
+  )
 
   # İşçi boru hattını çağırır; boru hattı `get_connection()`/`on.exit` ile
   # bağlantıyı İŞÇİDE açar ve bırakır.
@@ -183,7 +216,11 @@ test_that("Faz 6 yapılandırma anahtarları KAYITLI ve .Renviron.example'da bel
 
 test_that("MERGEN_PK_ASYNC, MERGEN_PK_ENGINE'den BAĞIMSIZ bir kill switch'tir", {
   kok <- .pk_async_repo()
-  istek <- .pk_async_read_bytes(file.path(kok, "R/helpers_pk_async_request.R"))
+  istek <- paste(
+    .pk_async_read_bytes(file.path(kok, "R/helpers_pk_async_plan.R")),
+    .pk_async_read_bytes(file.path(kok, "R/helpers_pk_async_request.R")),
+    sep = "\n"
+  )
 
   # Asenkron uygunluk kararı motor bayrağını OKUMAZ.
   expect_true(.pk_async_has(istek, 'pk_config_resolve("MERGEN_PK_ASYNC"'))
@@ -212,8 +249,11 @@ test_that("D16 sapmaları KAPATILDI: derin mod ana yolun kapılarını kullanır
   # (4) Sıralı-küme tavanı yapılandırmadan gelir: ÇAĞRI yerinde sabit 5 kalmaz.
   # (v1 seçicisinin fonksiyon imzasındaki varsayılan korunur; çağıran her zaman
   # açıkça geçirir.)
-  expect_true(.pk_async_has(derin, "deep_query_ceiling <- pk_deep_max_queries()"))
-  expect_true(.pk_async_has(derin, "max_queries = deep_query_ceiling"))
+  # Seçim aşamasındaki tavan/bütçe kararı ratchet nedeniyle
+  # `pk_deep_select_multi_queries()` içine taşındı (helpers_deep_analysis_phase6.R);
+  # orkestratör kesin tavanı metadata bilindikten SONRA uygular.
+  expect_true(.pk_async_has(derin, "pk_deep_select_multi_queries("))
+  expect_true(.pk_async_has(derin, "deep_query_ceiling <- pk_deep_max_queries(birincil_meta)"))
   expect_false(.pk_async_has(derin, "session, max_queries = 5)"))
 
   # (5) Sorgular ARASINDA son tarih/iptal kapısı.
@@ -275,17 +315,52 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
 
   # Ölçülen taban çizgisi + küçük baş boşluk. GLOBAL tavan (800 satır /
   # 25 fonksiyon) ihlal edilmemelidir; bu yüzden hiçbir bütçe 24'ü aşmaz.
+  # inceleme düzeltmeleri sonrası ÖLÇÜLEN taban çizgisi + küçük baş
+  # boşluk. GLOBAL tavan (800 satır / 25 fonksiyon) ihlal edilmemelidir; bu
+  # yüzden hiçbir bütçe 24'ü aşmaz. Sınıra dayanan yerler BÖLÜNEREK çözüldü:
+  # anlık görüntü doğrulaması, işçi SQL köprüsü, ana-süreç yaşam döngüsü,
+  # derin Faz 6 kurulumu ve v1 çoklu seçici ayrı dosyalardadır.
+  # PR #703 İNCELEME GÜNCELLEMESİ: aşağıdaki bütçeler, incelemede talep edilen
+  # GÜVENLİK mantığı eklendikten sonra ÖLÇÜLEN yeni taban çizgisidir (kapalı
+  # başarısız yapılandırma anlık görüntüsü, sürücü tanımlayıcı sondası, tek
+  # yönlü async kill switch, doğrulanmış oturum yazımları, sınırlı bootstrap
+  # G/Ç, agregat DB admisyonu, artefakt kapsamı). Tavanlar TAM olarak ölçülen
+  # değere çekilmiştir: sonraki bir büyüme yine BAŞARISIZ olur.
+  #
+  # KÜRESEL ratchet (795 satır / 24 fonksiyon) DEĞİŞMEMİŞTİR ve bu dosyaların
+  # hiçbiri ona yaklaşmamaktadır.
   butceler <- list(
-    "R/helpers_pk_async_cancel.R" = c(290L, 24L),
-    "R/helpers_pk_result_size.R" = c(345L, 10L),
-    "R/helpers_pk_cache.R" = c(355L, 19L),
-    "R/helpers_pk_sql_execute.R" = c(215L, 17L),
-    "R/helpers_pk_async_bootstrap.R" = c(255L, 16L),
-    "R/helpers_pk_async_request.R" = c(305L, 21L),
-    "R/helpers_pk_async_worker.R" = c(190L, 17L),
-    "R/helpers_deep_analysis_reconcile.R" = c(375L, 24L),
-    "R/helpers_pk_async_apply.R" = c(195L, 14L),
-    "R/server_handler_pk_async.R" = c(220L, 19L)
+    "R/helpers_pk_async_cancel.R" = c(295L, 24L),
+    "R/helpers_pk_exec_context.R" = c(135L, 11L),
+    "R/helpers_pk_cancel_http.R" = c(109L, 10L),
+    "R/helpers_pk_result_columns.R" = c(245L, 8L),
+    "R/helpers_pk_result_size.R" = c(551L, 19L),
+    "R/helpers_pk_cache_key.R" = c(140L, 11L),
+    "R/helpers_pk_cache.R" = c(403L, 19L),
+    "R/helpers_pk_sql_execute.R" = c(429L, 22L),
+    "R/helpers_pk_sql_connection.R" = c(125L, 6L),
+    "R/helpers_pk_async_worker_env.R" = c(372L, 22L),
+    "R/helpers_pk_async_worker_pool.R" = c(335L, 23L),
+    "R/helpers_pk_async_bootstrap.R" = c(504L, 24L),
+    "R/helpers_pk_async_snapshot_validate.R" = c(135L, 9L),
+    "R/helpers_pk_async_snapshot.R" = c(253L, 20L),
+    "R/helpers_pk_async_plan.R" = c(196L, 18L),
+    "R/helpers_pk_async_request.R" = c(295L, 16L),
+    "R/helpers_pk_async_worker_sql.R" = c(165L, 11L),
+    "R/helpers_pk_async_worker.R" = c(330L, 22L),
+    "R/helpers_pk_worker_observers.R" = c(90L, 5L),
+    "R/helpers_pk_worker_direct_exit.R" = c(138L, 10L),
+    "R/helpers_deep_analysis_sql.R" = c(210L, 15L),
+    "R/helpers_deep_analysis_reconcile.R" = c(215L, 15L),
+    "R/helpers_deep_analysis_phase6.R" = c(250L, 19L),
+    "R/helpers_deep_analysis_selector.R" = c(205L, 8L),
+    "R/helpers_pk_async_request_markers.R" = c(225L, 16L),
+    "R/helpers_pk_async_session_registry.R" = c(196L, 16L),
+    "R/helpers_pk_async_routing.R" = c(210L, 20L),
+    "R/helpers_pk_async_lifecycle.R" = c(215L, 16L),
+    "R/helpers_pk_async_apply.R" = c(218L, 16L),
+    "R/helpers_pk_export_serve.R" = c(145L, 10L),
+    "R/server_handler_pk_async.R" = c(438L, 14L)
   )
 
   for (dosya in names(butceler)) {

@@ -3,152 +3,6 @@
 # Açıklama: Faz 6 (D16, §10) — Derin Düşünme'nin ana PK yolu ile uzlaştırılması.
 # ==============================================================================
 
-#' Derin mod için kimlik: ana yol ile aynı fail-closed kapı.
-pk_deep_resolve_username <- function(session, resolver = NULL) {
-  if (is.null(resolver) &&
-      exists("resolve_pk_analysis_username", mode = "function", inherits = TRUE)) {
-    resolver <- get("resolve_pk_analysis_username", mode = "function", inherits = TRUE)
-  }
-
-  if (!is.function(resolver)) {
-    return(list(
-      ready = FALSE, username = NA_character_, reason = "resolver_missing",
-      message = paste0(
-        "\U000026A0\U0000FE0F **Kimlik Doğrulama Hatası:** Kullanıcı kimliği ",
-        "güvenli biçimde çözümlenemedi; derin analiz sürdürülmedi."
-      )
-    ))
-  }
-
-  durum <- tryCatch(resolver(session), error = function(e) NULL)
-  if (!is.list(durum) || !isTRUE(durum$ready)) {
-    return(list(
-      ready = FALSE,
-      username = NA_character_,
-      reason = as.character(durum$reason %||% "unknown")[1],
-      message = paste0(
-        "\U000023F3 **Kimlik Doğrulama Hazırlanıyor:** ",
-        "Derin analiz için kullanıcı kimliğiniz henüz hazır değil. ",
-        "Lütfen SSO oturumunuz tamamlandıktan sonra tekrar deneyin."
-      )
-    ))
-  }
-
-  list(
-    ready = TRUE,
-    username = as.character(durum$username)[1],
-    reason = "ok",
-    message = NA_character_
-  )
-}
-
-#' Sorgu için SQL metnini çöz.
-#'
-#' Runtime'da tek kanonik kaynak startup sırasında önyüklenen `query$sql`'dir.
-#' Eksik önyükleme artık kendiliğinden disk/UNC yeniden okumasına DÜŞMEZ.
-#' `read_file_fn` yalnızca çevrimdışı/izole testlerin açıkça enjekte edebildiği
-#' uyumluluk kancasıdır; üretim çağrıları bu argümanı vermez.
-pk_deep_query_sql_text <- function(query, read_file_fn = NULL) {
-  onyuklu <- tryCatch(as.character(query$sql %||% "")[1], error = function(e) "")
-  if (!is.na(onyuklu) && nzchar(trimws(onyuklu))) {
-    return(list(sql = pk_deep_normalize_sql_text(onyuklu), source = "preloaded"))
-  }
-
-  # Otomatik dosya okuyucu YOKTUR. Yalnızca çağıranın AÇIKÇA enjekte ettiği
-  # test/uyumluluk okuyucusu kullanılabilir; böylece runtime fail-closed kalır.
-  if (is.function(read_file_fn)) {
-    dosya <- tryCatch(as.character(query$sql_file %||% "")[1], error = function(e) "")
-    if (!is.na(dosya) && nzchar(dosya)) {
-      metin <- tryCatch(as.character(read_file_fn(dosya))[1], error = function(e) "")
-      if (!is.na(metin) && nzchar(trimws(metin))) {
-        return(list(sql = pk_deep_normalize_sql_text(metin), source = "file"))
-      }
-    }
-  }
-
-  list(sql = "", source = "missing")
-}
-
-#' SQL metnini ana yolla aynı biçimde normalize et (BOM + satır sonu).
-pk_deep_normalize_sql_text <- function(sql_text) {
-  metin <- tryCatch(as.character(sql_text)[1], error = function(e) "")
-  if (is.na(metin) || !nzchar(metin)) return("")
-
-  metin <- enc2utf8(metin)
-  bom <- intToUtf8(65279L)
-  if (startsWith(metin, bom)) metin <- substring(metin, 2L)
-  gsub("\r\n?|\r", "\n", metin, perl = TRUE)
-}
-
-#' Derin mod SQL yürütme: Unicode yol + kalan request deadline + Faz 6 sınırları.
-pk_deep_execute_sql <- function(conn, sql_text, deadline_at = NULL,
-                                cancel_token = NULL, query_meta = NULL,
-                                unicode_param = TRUE, cache_key = NULL) {
-  coz <- function(key, fallback) {
-    if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) return(fallback)
-    tryCatch(pk_config_resolve(key, query_meta), error = function(e) fallback)
-  }
-
-  onbellek_anahtari <- as.character(cache_key %||% "")[1]
-  if (nzchar(onbellek_anahtari) &&
-      exists("pk_cache_get", mode = "function", inherits = TRUE)) {
-    isabet <- tryCatch(
-      pk_cache_get(onbellek_anahtari, query_meta = query_meta),
-      error = function(e) list(hit = FALSE)
-    )
-    if (isTRUE(isabet$hit) && is.data.frame(isabet$value)) {
-      return(list(
-        status = "ok", data = isabet$value, rows = nrow(isabet$value),
-        error = NA_character_, timeout_sec = 0L, timeout_reason = "cache_hit",
-        timeout_mechanism = "none", cached = TRUE
-      ))
-    }
-  }
-
-  kalan <- pk_deadline_remaining_sec(deadline_at)
-  plan <- pk_sql_timeout_plan(coz("MERGEN_PK_SQL_TIMEOUT_SEC", 120L), kalan)
-  if (!isTRUE(plan$dispatch)) {
-    return(list(
-      status = "deadline", data = NULL, rows = 0L,
-      error = NA_character_, timeout_sec = 0L,
-      timeout_reason = plan$reason
-    ))
-  }
-
-  zaman_asimi <- pk_sql_apply_statement_timeout(conn, plan$timeout_sec)
-
-  sonuc <- pk_sql_execute_bounded(
-    conn = conn,
-    sql_text = sql_text,
-    unicode_param = isTRUE(unicode_param),
-    chunk_rows = coz("MERGEN_PK_FETCH_CHUNK_ROWS", 5000L),
-    max_result_mb = coz("MERGEN_PK_MAX_RESULT_MB", 512L),
-    stage_gate = function() pk_async_stage_gate(cancel_token, deadline_at),
-    timeout_sec = plan$timeout_sec,
-    deadline_at = deadline_at
-  )
-
-  if (identical(sonuc$status, "ok") && nzchar(onbellek_anahtari) &&
-      is.data.frame(sonuc$data) &&
-      exists("pk_cache_put", mode = "function", inherits = TRUE)) {
-    try(
-      pk_cache_put(onbellek_anahtari, sonuc$data, query_meta = query_meta),
-      silent = TRUE
-    )
-  }
-
-  list(
-    status = sonuc$status,
-    data = sonuc$data,
-    rows = sonuc$rows,
-    error = sonuc$error,
-    timeout_sec = plan$timeout_sec,
-    timeout_reason = plan$reason,
-    timeout_mechanism = zaman_asimi$mechanism,
-    cached = FALSE
-  )
-}
-
 #' Derin Düşünme sıralı-küme tavanı.
 pk_deep_max_queries <- function(query_meta = NULL) {
   if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) return(5L)
@@ -161,9 +15,40 @@ pk_deep_max_queries <- function(query_meta = NULL) {
   tavan
 }
 
+# SEÇİM aşamasında uygulanabilecek EN YÜKSEK tavan.
+#
+# Sıralı-küme tavanı sorgu metadata'sıyla YÜKSELTİLEBİLİR, ama metadata ancak
+# BİRİNCİL SORGU SEÇİLDİKTEN sonra bilinir. Seçiciye yalnızca küresel tavan
+# verilirse (ör. küresel 5, sorgu override'ı 10) aday sayısı 5'te kalır ve
+# override tavanı ASLA yükseltemez. Bu yüzden seçim, şema tarafından izin
+# verilen üst sınıra kadar aday üretir; kesin tavan metadata bilindikten sonra
+# uygulanır. Şema sınırı okunamazsa küresel tavan korunur (davranış değişmez).
+pk_deep_max_queries_upper_bound <- function() {
+  kuresel <- pk_deep_max_queries()
+
+  ust <- tryCatch({
+    if (!exists("pk_config_spec", inherits = TRUE)) return(kuresel)
+    spec <- get("pk_config_spec", inherits = TRUE)
+    aday <- spec[["MERGEN_PK_DEEP_MAX_QUERIES"]]$max
+    suppressWarnings(as.integer(aday)[1])
+  }, error = function(e) NA_integer_)
+
+  if (length(ust) != 1L || is.na(ust) || ust < kuresel) return(kuresel)
+  ust
+}
+
 # ------------------------------------------------------------------------------
 # Paket seviyesi uzlaştırma
 # ------------------------------------------------------------------------------
+
+# `NULL`, `NA` ve boş metni AYNI ŞEKİLDE "eksik" sayan birleştirici.
+.pk_deep_coalesce_text <- function(value, fallback) {
+  metin <- tryCatch(as.character(value)[1], error = function(e) NA_character_)
+  if (length(metin) != 1L || is.na(metin) || !nzchar(trimws(metin))) {
+    return(as.character(fallback)[1])
+  }
+  metin
+}
 
 pk_deep_reconcile_packets <- function(query_results) {
   paketler <- if (is.list(query_results)) Filter(is.list, query_results) else list()
@@ -184,6 +69,32 @@ pk_deep_reconcile_packets <- function(query_results) {
     )
   })
 
+  # BOZULMUŞ filtre durumu (zaman aşımı / bozuk LLM yanıtı) taşıyan bir paket
+  # BAŞARILI KANIT DEĞİLDİR. Filtre üretilemediğinde v2 yürütücüsü tüm yetkili
+  # kümeyi döndürebilir; paketi "başarılı" saymak, filtreli bir soruya tam-küme
+  # istatistiğini KENDİNDEN EMİN biçimde raporlamak olurdu.
+  bozuk_filtre <- vapply(koken, function(k) {
+    if (!exists("pk_filter_status_is_degraded", mode = "function", inherits = TRUE)) {
+      return(FALSE)
+    }
+    isTRUE(tryCatch(pk_filter_status_is_degraded(k$filter_status), error = function(e) FALSE))
+  }, logical(1))
+
+  if (any(bozuk_filtre)) {
+    # `%||%` bu repoda YALNIZCA `NULL` için yedeğe düşer. `koken[[i]]$error`
+    # yukarıda `NA_character_` ile ilklendirildiği için `%||%` kullanmak
+    # açıklama yerine `NA` KORURDU (aynı desen `error_msg` için de geçerli).
+    dusurme_sebebi <- "Filtre planı üretilemedi; paket kanıt olarak kullanılmadı."
+    for (i in which(bozuk_filtre)) {
+      koken[[i]]$success <- FALSE
+      koken[[i]]$error <- .pk_deep_coalesce_text(koken[[i]]$error, dusurme_sebebi)
+      if (i <= length(paketler) && is.list(paketler[[i]])) {
+        paketler[[i]]$success <- FALSE
+        paketler[[i]]$error_msg <- .pk_deep_coalesce_text(paketler[[i]]$error_msg, dusurme_sebebi)
+      }
+    }
+  }
+
   basarili <- vapply(koken, function(k) isTRUE(k$success), logical(1))
 
   list(
@@ -191,6 +102,7 @@ pk_deep_reconcile_packets <- function(query_results) {
     provenance = koken,
     successful = sum(basarili),
     failed = length(koken) - sum(basarili),
+    degraded_filter = sum(bozuk_filtre),
     cross_query_arithmetic_allowed = FALSE,
     instruction = PK_DEEP_NO_CROSS_ARITHMETIC_INSTRUCTION,
     comparability = pk_deep_packet_comparability(koken)

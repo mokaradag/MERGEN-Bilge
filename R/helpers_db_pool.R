@@ -86,11 +86,33 @@ db_pool_config <- function() {
     isTRUE(getOption("mergen.db.pool_fail_fast", FALSE))
   }
 
+  # KÜRESEL ADMİSYON TAVANI ve BU SÜRECİN PAYI (PR #703 incelemesi).
+  #
+  # `MERGEN_DB_POOL_MAX_SIZE` her `Pool` nesnesi İÇİNDE uygulanır, süreçler
+  # ARASINDA değil. Faz 6 eşzamanlı PSOCK işçileri eklediği için ana sürecin
+  # tavanın TAMAMINI alması toplam canlı oturumu `cap + workers * pay` yapardı.
+  # Pay hesabı TEK yerdedir (`pk_db_admission_plan()`), ana süreç ve işçi AYNI
+  # bölüşümü uygular. Asenkron KAPALIYKEN bölüşüm devreye girmez ve davranış
+  # bit bazında korunur.
+  admission_cap <- max(1L, as.integer(.db_pool_env_num("MERGEN_DB_POOL_MAX_SIZE", 8)))
+  process_max <- admission_cap
+  if (exists("pk_db_pool_process_share", mode = "function", inherits = TRUE)) {
+    pay <- try(suppressWarnings(as.integer(pk_db_pool_process_share(admission_cap))[1]),
+               silent = TRUE)
+    if (!inherits(pay, "try-error") && length(pay) == 1L && !is.na(pay) && pay >= 1L) {
+      process_max <- pay
+    }
+  }
+
+  # Bölüşüm sonrası `min_size > max_size` kalırsa havuz kurulumu tutarsız olur.
+  min_size <- max(0L, as.integer(.db_pool_env_num("MERGEN_DB_POOL_MIN_SIZE", 1)))
+
   list(
     enabled = is_db_pool_enabled(),
     fail_fast = fail_fast,
-    min_size = max(0L, as.integer(.db_pool_env_num("MERGEN_DB_POOL_MIN_SIZE", 1))),
-    max_size = max(1L, as.integer(.db_pool_env_num("MERGEN_DB_POOL_MAX_SIZE", 8))),
+    min_size = min(min_size, process_max),
+    admission_cap = admission_cap,
+    max_size = process_max,
     idle_timeout_sec = max(1, .db_pool_env_num("MERGEN_DB_POOL_IDLE_TIMEOUT", 600)),
     validation_interval_sec = max(1, .db_pool_env_num("MERGEN_DB_POOL_VALIDATION_INTERVAL", 60))
   )
@@ -276,7 +298,26 @@ init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE,
   # ancak ARTIK havuzun arka plan döngüsünü SÜRMEZ; üretim Shiny + later
   # bağlamında güvenli olan tek değer 0'dır. Bunu cfg$validation_interval_sec'e
   # geri bağlamayın (çökme regresyonu yaratır).
-  pool::dbPool(
+  # SÜRÜCÜ SEVİYESİ LOGIN ZAMAN AŞIMI (PR #703 incelemesi).
+  #
+  # `interruptible = TRUE` yalnızca bir ODBC İFADESİ çalışırken yardımcı olur;
+  # FİZİKSEL BAĞLANTI KURULUMUNU sınırlamaz. `poolCheckout()` havuz büyürken
+  # yeni bir fiziksel bağlantı kurabilir ve çağıranın `setTimeLimit()` sarmalı
+  # derlenmiş DSN/login çağrısını GÜVENİLİR biçimde kesemez (bkz.
+  # `helpers_db_connection.R` gerekçesi). Yavaş/erişilemez bir DSN bu yüzden
+  # havuzlu yolda PK son tarihini aşabiliyordu.
+  #
+  # Havuz bağlantıları UZUN ÖMÜRLÜDÜR ve HANGİ isteğin onları oluşturacağı
+  # önceden bilinemez; bu yüzden buraya İSTEK KALAN BÜTÇESİ değil, SABİT bir
+  # operatör sınırı (`MERGEN_DB_LOGIN_TIMEOUT_SEC`, yoksa 30 sn) konur. İstek
+  # bütçesi ayrıca checkout sarmalayıcısında uygulanmaya devam eder; ikisinin
+  # ilişkisi: sürücü sınırı ÜST SINIR, istek bütçesi DAHA SIKI olandır.
+  login_plan <- if (exists(".db_login_timeout_plan", mode = "function", inherits = TRUE)) {
+    .db_login_timeout_plan(Inf)
+  } else {
+    list(mode = "bounded", timeout = 30L)
+  }
+  havuz_args <- list(
     drv = odbc::odbc(),
     dsn = dsn_name,
     encoding = .DEFAULT_DB_CLIENT_ENCODING,
@@ -285,8 +326,27 @@ init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE,
     maxSize = cfg$max_size,
     idleTimeout = cfg$idle_timeout_sec,
     validationInterval = 0,
-    validateQuery = "SELECT 1"
+    validateQuery = "SELECT 1",
+    # Faz 6 (§5.10): havuzun ürettiği FİZİKSEL ODBC bağlantıları da kesilebilir
+    # olmalıdır. Doğrudan bağlantı kurucusu bunu zaten geçiriyordu; havuz
+    # geçirmediği için `pk_sql_execute_bounded()` içindeki setTimeLimit
+    # interrupt'ı, SQLExecute bloklanmışken SQLCancel yoluna ULAŞAMIYORDU.
+    interruptible = TRUE
   )
+  # HAVUZ İÇİN "sürücü varsayılanı" KABUL EDİLMEZ: `driver_default` (operatör
+  # hiçbir sınır tanımlamamış) hâlinde de yerleşik 30 sn uygulanır.
+  #
+  # Bu, doğrudan bağlantı sözleşmesiyle ÇELİŞMEZ: orada PK-DIŞI çağıranların
+  # sürücü varsayılanı korunur, çünkü doğrudan yol VARSAYILAN yoldur. Havuz ise
+  # AÇIKÇA opt-in'dir (`MERGEN_DB_POOL_ENABLED`, varsayılan kapalı), uzun ömürlü
+  # ve PAYLAŞIMLIDIR: sınırsız bir login burada tek bir yavaş DSN yüzünden hem
+  # PK son tarihini hem de havuzu bekleyen tüm oturumları askıda bırakır.
+  havuz_args$timeout <- if (identical(login_plan$mode, "bounded")) {
+    login_plan$timeout
+  } else {
+    .DB_DEFAULT_LOGIN_TIMEOUT_SEC
+  }
+  do.call(pool::dbPool, havuz_args)
 }
 
 # ------------------------------------------------------------------------------

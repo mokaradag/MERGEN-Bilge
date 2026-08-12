@@ -64,16 +64,16 @@ if (!exists("safe_source", mode = "function")) {
   source("R/utils_safe_source.R", encoding = "UTF-8", local = globalenv())
 }
 
-# ------------------------------------------------------------------------------
-# VERİTABANI HEDEF TANIMLARI (DATABASE TARGET CONSTANTS)
-# ------------------------------------------------------------------------------
-# Uygulama genelinde hangi veritabanına gidileceğini belirten standart etiketler.
-# 'library_queries.R' içindeki sorgularda bu etiketleri kullanacağız.
-DB_TARGETS <- list(
-  PRIMARY   = "primary",   # Ana veritabanı (Varsayılan) -> .Renviron: DB_DSN
-  SECONDARY = "secondary", # İkincil veritabanı          -> .Renviron: DB_DSN_2
-  TERTIARY  = "tertiary"   # Üçüncül veritabanı          -> .Renviron: DB_DSN_3
-)
+# VERİTABANI HEDEF TANIMLARI (`DB_TARGETS`) ARTIK BURADA DEĞİLDİR.
+#
+# Tanım `R/helpers_db_connection.R` içine taşındı. Sebep: `R/library_queries.R`
+# (ve `R/module_proje_kaynak_analizi.R`) `DB_TARGETS` kullanır ve bu dosyalar
+# Faz 6 PK işçisinin bootstrap yüzeyindedir. `global.R` işçide HİÇ yüklenmediği
+# için tanım burada kaldığı sürece TEMİZ bir PSOCK işçisinde
+# `R/library_queries.R` "object 'DB_TARGETS' not found" ile düşüyor, bootstrap
+# `bootstrap_failed` dönüyor ve `MERGEN_PK_ASYNC=true` HER istekte senkron
+# yedeğe düşüyordu. Manifest `database` bölümünü `sql_library`den ÖNCE
+# yüklediğinden ana süreçte yükleme sırası DEĞİŞMEZ.
 
 # Yorumlu yanıtlara izin ver (LLM'in ikinci yazım geçişi açık kalsın)
 options(mergen.ai.strict_data_only = FALSE)

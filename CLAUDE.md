@@ -4185,19 +4185,36 @@ Non-negotiable rules:
   full R process restart.
 - **Dispatch is `tracked_future_promise(..., dependency_mode = "explicit")`.** Auto
   mode runs `codetools::findGlobals()` on the event loop, which is the very freeze
-  Phase 6 removes. The globals bundle is memoized once per process
-  (`pk_async_worker_globals()`) and stays SMALL (~10 entries): the pipeline's
+  Phase 6 removes. Explicit mode does NO recursive global expansion, so every
+  symbol the worker touches BEFORE bootstrap must be listed by hand: the bundle
+  therefore carries `%||%` plus the cancel/deadline helpers (`pk_deadline_at`,
+  `pk_deadline_expired`, `pk_deadline_remaining_sec`,
+  `pk_cancel_token_is_signalled`, `pk_async_stage_gate`, `pk_async_halt_message`)
+  alongside the bootstrap/session entry points. Omitting one does not fail any
+  offline test — it kills a clean PSOCK worker with a raw
+  "could not find function" — which is exactly why the soak gate now runs a real
+  PSOCK round. The globals bundle is memoized once per process
+  (`pk_async_worker_globals()`) and stays SMALL (~16 entries): the pipeline's
   hundreds of functions are loaded IN THE WORKER by
   `pk_async_worker_bootstrap()`, from the FROZEN manifest-section list
   `pk_async_worker_manifest_sections()`. The list is frozen by SECTION, not by
   file, so adding a helper to a listed section needs no change here; UI/module/
   observer sections are deliberately excluded (there is no Shiny in the worker).
 - **No `session`, reactive value, or DB connection is ever serialized.**
-  `pk_async_build_request()` produces a plain immutable snapshot and
-  `pk_async_validate_request()` defensively rejects functions, environments and
-  `ShinySession`/`reactivevalues`/`DBIConnection`-shaped objects — a silent leak
-  becomes an unreadable worker serialization error in production. A snapshot that
+  `pk_async_build_request()` (`R/helpers_pk_async_request.R`) produces a plain
+  immutable snapshot and `pk_async_validate_request()`
+  (`R/helpers_pk_async_snapshot.R`) defensively rejects functions, environments,
+  promises, S4 objects and `ShinySession`/`reactivevalues`/`DBIConnection`-shaped
+  objects — a silent leak becomes an unreadable worker serialization error in
+  production. The validator recurses into ATTRIBUTES too and FAILS CLOSED past a
+  depth budget (an unaudited subtree is never reported safe). A snapshot that
   fails validation falls back to the SYNCHRONOUS path; it is never sent anyway.
+  Keep `R/helpers_pk_async_snapshot.R` loaded BEFORE
+  `R/helpers_pk_async_request.R`; it also owns the plain history/user-data
+  sanitizers and the `pk_async_config_snapshot()` / `pk_async_config_install()`
+  pair. That pair deliberately EXCLUDES `MERGEN_PK_ENGINE` / `MERGEN_PK_ASYNC`:
+  re-installing the two kill switches inside the worker would let a snapshot
+  round-trip resurrect a mode the operator had turned off.
 - **Identity and the API key are resolved in the MAIN process.**
   `resolve_pk_analysis_username()` runs before dispatch, so an SSO-not-ready
   request never starts a worker (this also closes the D16 identity hole). Only a
@@ -4213,6 +4230,27 @@ Non-negotiable rules:
   `onSessionEnded` signals it too. Inside the worker the token plus the deadline
   become a LOCAL `stop_check` closure, so the pipeline's existing stage checks
   become cancellation-aware with no pipeline change.
+- **Active requests live in ONE session-scoped registry**
+  (`R/helpers_pk_async_session_registry.R`). Registering an `onSessionEnded` hook
+  per request leaked one hook per analysis; the registry installs exactly one hook
+  per session and marks the session closed so late callbacks can check
+  `mergen_pk_session_open()` before touching UI. `mergen_pk_abandon_active_requests()`
+  defaults to `release = FALSE` — on Yeni Söyleşi / saved-chat load the previous
+  request's release closure must NOT run over already-reset FRESH state; only the
+  session-end hook passes `release = TRUE`. Unsaved chats all share a `NULL` chat
+  id, so `mergen_pk_bump_chat_epoch()` / `mergen_pk_chat_identity()` add a
+  generation counter: without it a worker finishing after Yeni Söyleşi would land
+  its answer in the new conversation. The per-request main-process lifecycle
+  (send-time snapshot, residual budget, clarification chips, worker artifact
+  serving/cleanup) is the separate `R/helpers_pk_async_lifecycle.R`; do not merge
+  these three files back into `R/helpers_pk_async_apply.R`, which sat at the
+  25-function ceiling.
+- **Worker-side PK observer wrappers are idempotent**
+  (`R/helpers_pk_worker_observers.R`). The deep-observer wrapper is always
+  installed and guarded by a `.pk_deep_observation_helpers_core` sentinel so a
+  repeated bootstrap cannot wrap a wrapper; the standard direct-exit observer
+  wrapper is installed ONLY when `MERGEN_PK_WORKER_BOOTSTRAP` is set, so the main
+  process never picks up worker-only behavior.
 - **Timeouts are always bounded by the remaining whole-analysis budget.**
   `pk_sql_timeout_plan(configured, remaining)` returns
   `min(configured, floor(remaining))` and refuses to dispatch at zero budget. A
@@ -4228,6 +4266,14 @@ Non-negotiable rules:
   strategy — it keeps an arbitrary prefix and the statistics over it are simply
   wrong. Any truncation that can affect interpretation is surfaced by
   `pk_row_cap_truncation_note()`.
+- **Two settings govern the new bounds.** `MERGEN_PK_ALLOW_UNBOUNDED_LOB`
+  (logical, default `FALSE`) is the ONLY way to let a result set with an
+  unbounded LOB column through the pre-fetch guard; it is an operator escape
+  hatch, never a default, and it does not disable the byte ceiling — it only
+  permits the reduced-granularity chunk path. `MERGEN_DB_LOGIN_TIMEOUT_SEC`
+  bounds `odbc::dbConnect()` login (`.db_connect_timeout_sec()`), because a
+  hung login blocks the worker just as effectively as a hung fetch and is not
+  observable through the stop-file gate.
 - **Materialization needs a PROVEN upper bound.**
   `pk_column_width_upper_bound()` returns `NA` for `varchar(max)`,
   `varbinary(max)`, `text`/`ntext`/`xml`, unknown types and any undeclared length;
@@ -4237,7 +4283,24 @@ Non-negotiable rules:
   deadline polled between chunks, `dbClearResult` guaranteed by
   `on.exit(..., after = FALSE)`, and the chunk that WOULD cross
   `MERGEN_PK_MAX_RESULT_MB` rejected before acceptance). Observed sample widths,
-  averages and heuristics are not upper bounds.
+  averages and heuristics are not upper bounds. Unbounded LOB columns are detected
+  from ODBC **type codes** (`.PK_ODBC_LOB_TYPE_CODES` in
+  `R/helpers_pk_result_size.R`), never from type NAMES — a name-based check
+  misses driver-specific spellings — and an unbounded column reduces chunk
+  granularity via `pk_sql_plan_chunk_rows()` instead of rejecting the result
+  outright. `rbind` assembly is itself gated: the peak is DOUBLE the accumulated
+  bytes, so a result that fits the ceiling but would not fit while being combined
+  is refused before the allocation. EVERY blocking DBI call in that path
+  (`poolCheckout`, `SET LOCK_TIMEOUT`, `dbColumnInfo`, `dbClearResult`,
+  `poolReturn`, `dbConnect`/`dbDisconnect`) runs under an elapsed budget, because
+  a hung teardown blocks just as effectively as a hung fetch.
+- **Selected-query metadata reaches the executor without threading it through
+  every signature.** `pk_set_exec_context()` / `pk_active_exec_context()` carry
+  the selected query, its per-query overrides and the RLS scope; the worker's
+  bounded-SQL bridge (`R/helpers_pk_async_worker_sql.R`) reads them to resolve
+  limits and the cache key, and preserves the TYPED status (`timeout`,
+  `too_large`, `cancelled`) across the module boundary so a resource outcome is
+  never reported as a generic "module error".
 - **The cache is bounded by count AND bytes, and is authorization-scoped.**
   `pk_cache_key()` always includes an RLS signature (`pk_cache_rls_signature()`),
   so one user's authorized result can never be served to a different scope; a miss
@@ -4259,6 +4322,15 @@ Non-negotiable rules:
   calls it inline and the async callback calls it after the guard. ONE body is
   deliberate — two copies would drift silently once `MERGEN_PK_ASYNC` is on. Do
   not restore the old inline `analiz_result <- tryCatch(...)` block.
+- **Workers keep the configured DB admission ceiling.** A PSOCK worker cannot see
+  the main process's `.GlobalEnv$pool`, so with pooling enabled every async PK
+  request used to fall through to a direct `dbConnect()` — disabling
+  `MERGEN_DB_POOL_MAX_SIZE` and the pool health/admission policy exactly when
+  Phase 6 adds concurrent workers. `pk_async_worker_bootstrap()` therefore calls
+  `init_db_pool_once("primary")` in the worker when `is_db_pool_enabled()` is
+  true (the pool is process-local by contract, so a per-worker pool is the
+  correct shape). It is best-effort: a failure never fails bootstrap, it only
+  falls back to the direct-connection path.
 - **Async is an optimization, never a correctness requirement.** A non-async future
   plan, a dispatch error, an unsafe snapshot or a worker `bootstrap_failed` all
   fall back to the SYNCHRONOUS path with a loud operator warning, so the user still
@@ -4275,15 +4347,242 @@ Non-negotiable rules:
   siblings, and `cross_query_arithmetic_allowed` is a CONSTANT `FALSE` —
   there is deliberately no config key to enable cross-query arithmetic, and matching
   `grain` is not permission. The prohibition is written into the prompt context.
+- **Phase-6 setup is a ROLLBACK boundary in the deep path too.**
+  `pk_deep_phase6_setup()` (`R/helpers_deep_analysis_phase6.R`) installs the
+  deadline, cancel token and options ONLY when `pk_async_mode_active()` is true,
+  so `MERGEN_PK_ASYNC=false` really is a one-step rollback with no behavior
+  change. It also owns `pk_deep_apply_partial_halt()` (a halt mid-ranked-set keeps
+  the packets already produced instead of discarding the whole analysis) and
+  `pk_deep_filter_degraded_decision()`. The v1 multi-query selector lives in
+  `R/helpers_deep_analysis_selector.R`. Do not move either back into
+  `R/helpers_deep_analysis.R`; the split-contract budget was TIGHTENED to
+  640 lines / 14 functions, not loosened.
 - **The operational soak gate carries a PK lane** (`tests/scripts/soak_pk_analysis_lane.R`,
-  Lane E in `docs/operational-soak-gate.md`) with nine gate-enforced thresholds. Its
+  Lane E in `docs/operational-soak-gate.md`) with twenty-one gate-enforced thresholds. Its
   fake-lane smoke profile must PASS before `MERGEN_PK_ASYNC=true` is enabled; a
-  requested-but-unavailable lane FAILS the gate, because a skipped lane is never
-  evidence. It does NOT prove event-loop responsiveness, real worker-pool
-  saturation, real LLM behavior, or SQL Server timeout behavior.
+  requested-but-unavailable lane FAILS the gate, AND a DISABLED lane
+  (`MERGEN_SOAK_PK_LANE=false`) now fails it too — previously turning the lane off
+  removed every PK check and left the gate green with zero Phase-6 coverage.
+  Beyond outcome thresholds the lane must prove each dimension was ACTUALLY
+  exercised (`pk_cancel_exercised`, `pk_cancel_inflight_exercised`,
+  `pk_stale_exercised`, `pk_cache_hit_observed`, `pk_cache_eviction_observed`,
+  `pk_bounded_fetch_complete`), because `all(...)` over an empty vector is TRUE and
+  a lane that ran zero cancel rounds would otherwise look green. Cancellation is
+  driven BOTH pre-dispatch and IN-FLIGHT (the token is written from the
+  between-chunk gate) and a cancelled round must end EXACTLY `"cancelled"`, never
+  `"deadline"`. The cache access pattern is deliberately HOT-SET + COLD-TAIL:
+  uniform cyclic access is LRU's worst case and cannot produce hits and evictions
+  in the same run. The deep budget is driven through the REAL `pk_deep_execute_sql()`
+  (decreasing effective timeouts, plus halt-between-queries probes for deadline and
+  cancel), not local arithmetic. Cache budget is compared against
+  `MERGEN_PK_CACHE_MAX_MB`, which is a DIFFERENT limit from the single-result
+  ceiling `MERGEN_PK_MAX_RESULT_MB`. Each round goes through a production-shaped
+  acquire/release wrapper whose counters must balance, and ONE round dispatches
+  `pk_async_run_analysis()` through a REAL PSOCK `multisession` worker
+  (`pk_psock_async_path`) — without it the lane could pass every threshold while
+  the code `MERGEN_PK_ASYNC=true` actually enables was broken at serialization or
+  clean-worker bootstrap. That probe is what caught the missing pre-bootstrap
+  cancel/deadline helpers in `pk_async_worker_globals()`. It does NOT prove
+  event-loop responsiveness, real worker-pool saturation under load, real LLM
+  behavior, or SQL Server timeout behavior.
+- **The clean-worker bootstrap round is the lane's most valuable probe.** The
+  pre-cancelled PSOCK round returns `cancelled` WITHOUT sourcing a single file,
+  so on its own it cannot prove the worker entry path works at all. A SECOND,
+  NON-cancelled round (`pk_psock_worker_bootstrap`) sources the production
+  manifest-derived file set (`pk_async_worker_bootstrap_files()`) in a real PSOCK
+  worker and must NOT return `bootstrap_failed`; the analysis itself is expected
+  to fail afterwards on the absent DSN, and that is fine — the gate is bootstrap
+  completion plus entry-point validation. This probe found three production
+  defects that made `MERGEN_PK_ASYNC=true` fall back to SYNC on EVERY request,
+  all of which are now protected boundaries:
+  1. `sys.source()` defaults `options(topLevelEnvironment = envir)`. The staging
+     env is an anonymous `new.env()`, so `topenv()` resolved to it and
+     `environmentName()` returned `""`; `library(logger)` then died with
+     `exists("", envir = namespaces, inherits = FALSE)` -> "invalid first
+     argument". `pk_async_worker_bootstrap()` MUST pass
+     `toplevel.env = globalenv()` — symbol isolation is unaffected (values still
+     land in the staging env) and the main process already behaves this way.
+  2. `DB_TARGETS` lived only in `global.R`, which the worker never loads, so
+     `R/library_queries.R` failed with "object 'DB_TARGETS' not found". It now
+     lives in `R/helpers_db_connection.R` (manifest `database` loads before
+     `sql_library`, so main-process order is unchanged). Do not move it back.
+  3. `R/config_sql_loader.R` pinned its `query_library` guard to
+     `envir = globalenv(), inherits = FALSE`, which can never see the staging
+     env, so the loader threw even though `R/library_queries.R` had just loaded
+     successfully. The guard uses `environment()` with `inherits = TRUE` (in the
+     main process that IS `globalenv()`).
+  Any new manifest file that reads a symbol only `global.R` defines, or that
+  pins a lookup to `globalenv()`, reintroduces this class of failure.
+- **Soak probes must not be self-fulfilling.** Four lane gates were tightened
+  because they could pass while the production path was broken:
+  `pk_connection_acquire_release_balanced` now acquires through the REAL
+  `db_acquire_tx_connection()`/`db_release_tx_connection()` pair (an RSQLite pool
+  injected via `init_db_pool_once(factory = ...)`) and asserts production's own
+  `outstanding_checkouts` counter is 0 — the old wrapper only incremented and
+  decremented its own counters under `on.exit()`, so it was true by construction;
+  the in-flight cancel signals the token on the THIRD stage-gate call (entry,
+  loop-iteration-1 pre-fetch, loop-iteration-2) and requires `chunks >= 1`, so a
+  cancel that lands before any `dbFetch()` FAILS the round instead of counting as
+  in-flight; `pk_deep_budget_decreases` reuses ONE absolute deadline across calls
+  and consumes real wall time (the probe no longer synthesizes the shrinking
+  budget) and requires at least TWO dispatched queries; and
+  `pk_cache_oversize_entry_rejected` explicitly writes an entry above
+  `MERGEN_PK_CACHE_MAX_ENTRY_MB` and requires `entry_too_large` — the aggregate
+  `total_mb` gate could not see a per-entry ceiling regression. The oversize
+  fixture must use DISTINCT strings: R shares one CHARSXP for repeated values, so
+  `strrep()`-style fixtures never exceed the ceiling.
+- **The worker surface must list every worker-only file.** `R/helpers_pk_worker_observers.R`
+  keeps only the deep-observer factory wrapper plus `.pk_worker_is_wrapped()`;
+  the direct-exit wrapper is `R/helpers_pk_worker_direct_exit.R` (split to hold
+  the per-file budget, loaded IMMEDIATELY after it because it uses that helper;
+  budgets are 90/5 and 135/10 in `test-pk-async-contract.R`).
+  Both are appended by `pk_async_worker_bootstrap_files()`; dropping either from
+  that append silently removes worker telemetry.
+
+PR #703 review hardening (these are now part of the same contract):
+
+- **`MERGEN_PK_ASYNC=false` is a ONE-WAY kill switch.** `pk_async_enabled()`
+  resolves the GLOBAL value first; when it is off no query metadata can turn it
+  back on. Metadata may only TIGHTEN (`async = FALSE` with the global on), and
+  that case is reported as a DISTINCT reason (`query_opt_out`, not `flag_off`)
+  so the degraded synchronous path still installs the Phase-6 bounds. Routing
+  finds the opt-out through the repo's PURE heuristic scorer
+  (`pk_compute_heuristic_query_scores()`), never through a prompt substring
+  match — a normal natural-language prompt does not contain the query name.
+- **One absolute wall-clock deadline, published on every path.**
+  `mergen_pk_force_bounded_sync(stop_check, started_at, deadline_at)` publishes
+  the ORIGINAL request start/deadline and installs a REAL stage gate (Stop +
+  deadline) before any degraded synchronous run; the post-capability fallbacks
+  (unsafe snapshot, active-registry failure, dispatch failure) all go through
+  the same `sinirli_senkron()` helper. `pk_deep_phase6_setup()` keeps the
+  already-published `started_at` instead of resetting it, so bootstrap/setup
+  time is never refunded to a per-query override.
+- **A main-process DEADLINE WATCHDOG makes the hard deadline truthful.** The
+  worker's stage gate can only be polled BETWEEN stages, so a blocking native
+  call (stalled UNC bootstrap read, hung ODBC login/disconnect) is invisible to
+  it. `mergen_pk_dispatch_async()` therefore arms a `later::later` watchdog at
+  the absolute deadline: it signals the cancel token, marks the request
+  abandoned, releases backpressure and delivers the typed deadline message. It
+  is cancelled by `bitir_istek()` on every terminal path. Never claim the
+  deadline is enforced by gate polling alone.
+- **Session state writes are VERIFIED and fail closed.**
+  `pk_session_state_write()` writes and READS BACK; cancel-token ownership,
+  abandoned-request invalidation and the once-per-session end-hook marker all go
+  through it. Ownership is registered at the END of preparation (never before —
+  an aborted preparation used to leave a stale owner) and a failed registration
+  REFUSES async dispatch. A process-local mirror keyed by the `userData`
+  environment address carries the two FAIL-SAFE markers (abandoned, ownership
+  revoked) when `userData` cannot be written, so those protections can never
+  silently disappear.
+- **One global DB admission ceiling.** `pk_db_admission_plan(cap, workers)`
+  partitions `MERGEN_DB_POOL_MAX_SIZE` across the main process AND the workers
+  so `main_share + workers * worker_share <= cap`; `db_pool_config()` applies
+  the main share (workers set `MERGEN_DB_POOL_SHARE_APPLIED=1` so the share is
+  never applied twice). Partitioning is skipped entirely when async is off.
+- **Dirty connections never re-enter a pool.** `.pk_sql_invalidate_connection()`
+  returns the checkout ONLY after a CONFIRMED physical close; an unconfirmed
+  close drops the slot instead of handing leaked `LOCK_TIMEOUT`/result state to
+  the next request. A failed `poolReturn()` is no longer swallowed — the
+  checkout is retired explicitly. `release_connection()` does NOT retry a
+  timed-out `dbDisconnect()` without a bound; it declares the connection dirty
+  and logs it.
+- **Login timeout has three outcomes** (`.db_login_timeout_plan()`):
+  `driver_default` (no PK budget, nothing configured — `timeout` is NOT passed,
+  so non-PK behavior is unchanged), `bounded`, and `refuse` when the residual
+  budget is under one second (ODBC cannot represent it and rounding UP would
+  block past the budget). Pools always pass a bounded login timeout because they
+  are opt-in, shared and long-lived.
+- **Result-size safety uses the DRIVER DESCRIPTOR.** Production `dbColumnInfo()`
+  yields only numeric ODBC codes, where `varchar(max)` and `varchar(200)` are
+  indistinguishable. `pk_sql_describe_result_schema()` asks SQL Server itself
+  (`sys.dm_exec_describe_first_result_set`) BEFORE `dbSendQuery()` (an open
+  result set would block a second statement) and only for ODBC connections. With
+  the descriptor, ordinary bounded text columns keep multi-row chunks; without
+  it, a variable-width column with no declared length is `__unproven__` and is
+  REFUSED before materialization unless `pk_allow_unbounded_lob(query_meta)`
+  explicitly allows it. `pk_sql_plan_chunk_rows()` now receives `query_meta`, so
+  the highest-priority query override is live, and a single PROVEN row that
+  cannot fit the chunk budget is refused instead of clamped to one row.
+- **Typed terminal results never fall through.** `mergen_pk_apply_analysis_result()`
+  handles `pk_stopped` explicitly and allows `action = "continue"` only for the
+  known success shapes (`user_context`/`prompt_context`); anything else fails
+  closed instead of sending the user's raw prompt to the final LLM ungrounded.
+  In the deep path EVERY Stop/deadline exit is a `pk_deep_halt_result()` —
+  initial checkpoint, post-SQL/pre-RLS, SQL-level `cancelled`/`deadline` — so a
+  halt on the LAST selected query still reaches the partial-analysis disclosure.
+  The deep row cap is no longer gated on Phase-6 activity, restoring the rollback
+  baseline.
+- **RLS halt is not an authorization failure.** `get_user_rls_info()` returns
+  `halted = TRUE` for Stop/deadline (base, PY and EPS reads), and both callers
+  check `halted` BEFORE the `authorized` branch via `pk_rls_halt_message()`.
+- **Expensive R-side stages are bounded.** `pk_async_bounded_fs()` wraps the
+  bootstrap fingerprint/sourcing, the deep statistical summary, and the XLSX
+  write/verification with the remaining budget. This is honest about its limit:
+  `setTimeLimit()` interrupts R/Rcpp work, NOT a hung native syscall — that is
+  what the main-process watchdog is for. Cancellation also stops STARTING new
+  blocking work: `pk_sql_execute_bounded()` polls the gate before EVERY driver
+  call, and the worker direct-exit wrapper skips its optional DB telemetry once
+  Stop is observed.
+- **Worker config/env is complete or the request is refused.**
+  `pk_async_config_snapshot()` reports missing safety keys through a
+  `pk_missing_keys` attribute and preparation refuses async dispatch when the
+  snapshot is incomplete; `pk_async_config_install_env()` returns `NULL` (not a
+  no-op restorer) when it can install nothing, and the worker treats that as
+  `bootstrap_failed`. DB-pool options transport an explicit
+  `.PK_ASYNC_OPTION_UNSET` sentinel so a REMOVED option is cleared in warm
+  workers, and `.pk_async_worker_pool_ensure()` keys its ready flag on a POOL
+  CONFIG FINGERPRINT so runtime enable/disable, fail-fast and admission changes
+  are re-applied instead of frozen at first init.
+- **Hot reload is atomic or it fails.** `pk_async_worker_stage_env()` parents the
+  staging env at `parent.env(globalenv())` — previous bootstrap symbols are
+  invisible during staging (this is what let `config_sql_loader.R` pick up a
+  stale `query_library`) — and injects only the deliberately installed globals
+  bundle. `pk_async_worker_commit_env()` checks EVERY remove/assign and returns
+  `ok = FALSE` on partial commit; the bootstrap then clears the fingerprint and
+  reports failure instead of marking a mixed-revision worker as updated.
+- **The staging parent is REFRESHED before every sourced file.** `library()`
+  inserts a package at the FRONT of the search path — i.e. at
+  `parent.env(globalenv())`. Freezing the staging parent at creation time makes
+  every package attached DURING bootstrap by `R/config_packages.R` (logger, DBI,
+  …) invisible to the files that follow, and `R/config_logging.R` dies with
+  `could not find function "log_threshold"` at file 156 of 159 — so
+  `MERGEN_PK_ASYNC=true` fell back to SYNC on every request. The bootstrap loop
+  therefore calls `pk_async_worker_stage_refresh(sahne, hedef)` before each
+  `sys.source()`. Isolation is preserved: the parent is re-bound to
+  `parent.env(target)`, never to `target` itself, so the previous revision's
+  `globalenv()` symbols stay invisible.
+- **The worker globals bundle must be CLOSED over the pre-bootstrap call
+  graph.** `dependency_mode = "explicit"` performs NO scanning, so any repo
+  symbol named in a bundled function's body must itself be in the bundle —
+  including internal dot-prefixed helpers and sentinels (`.pk_async_chr0`,
+  `.pk_async_pool_close_bounded`, `.PK_ASYNC_OPTION_UNSET`). A missing one
+  breaks NO offline test; it kills a clean PSOCK worker with a raw
+  "object not found" and silently degrades production to synchronous. The
+  closure is enforced by walking the call graph from the pre-bootstrap entry
+  points in `tests/testthat/test-pk-review-703-hardening-behavior.R`, and a
+  failed fingerprint now carries the underlying error text so the operator can
+  tell a hung path from a missing symbol.
+- **Artifacts are request-scoped.** `pk_artifact_track()` records nothing unless
+  `pk_artifact_scope_begin()` opened a scope (only the async request runner
+  does), so synchronous exports no longer accumulate in a process-global
+  registry that a later discard could delete. Served exports register under a
+  per-artifact nonce (same-second filenames could overwrite each other's data
+  object), a URL-less registration is treated as an export FAILURE, the
+  session-end cleanup marker is set only after the hook actually installs, and
+  the dispatcher releases artifact ownership only for the `answer` action (the
+  `continue` action hands off to a streaming LLM that has not delivered yet).
+- **Cancellation classification stays honest.** `pk_http_cancelled_error()`
+  treats only callback-specific curl errors as proof; generic `Failed writing
+  body` / `transfer closed` count as cancellation ONLY when the stage gate is
+  actually halted, so an LLM outage is not mislabelled as a user cancel.
+- **Navigation only abandons on a REAL identity change.** `do_load_chat()`
+  compares the destination chat id with the current one; re-selecting the
+  already-open chat no longer cancels a valid in-flight PK analysis, while
+  A -> B -> A stale-callback protection is unchanged.
 
 Protected by:
 
+- `tests/testthat/test-pk-review-703-hardening-behavior.R`
 - `tests/testthat/test-pk-async-contract.R`
 - `tests/testthat/test-pk-async-cancel-behavior.R`
 - `tests/testthat/test-pk-async-request-behavior.R`
@@ -4293,9 +4592,12 @@ Protected by:
 - `tests/testthat/test-pk-result-size-behavior.R`
 - `tests/testthat/test-pk-sql-execute-bounded-behavior.R`
 - `tests/testthat/test-deep-analysis-reconcile-behavior.R`
+- `tests/testthat/test-deep-analysis-split-contract.R`
 - `tests/testthat/test-operational-soak-gate-contract.R`
+- `tests/testthat/test-soak-readiness-scripts-contract.R`
 - `tests/testthat/test-source-manifest-sections-contract.R`
 - `tests/testthat/test-maintainability-ratchet.R`
+- `tests/testthat/test-maintainability-ratchet-contract.R`
 
 VM-only proof (NOT provable in cloud): a second browser session staying responsive
 while a large analysis runs; real future worker-pool saturation and queueing; real

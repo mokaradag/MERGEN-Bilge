@@ -169,6 +169,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   # B. Kullanıcı RLS Bilgisini Çek
   rls_info <- get_user_rls_info(username, conn)
+  # PR #703: TİPLİ Durdur/son tarih, `authorized`'dan ÖNCE ele alınmalıdır.
+  if (isTRUE(rls_info$halted)) return(pk_rls_halt_message(rls_info))
   if (!isTRUE(rls_info$authorized)) {
     cat("[PK_ANALIZ] Yetki Hatasi: Kullanici bulunamadi.\n")
     return("\U000026A0\U0000FE0F **Yetki Hatası:** Sistemde kullanıcı kaydınız (DC01_user_base) bulunamadı. Lütfen yönetici ile iletişime geçin.")
@@ -259,6 +261,19 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     pk_select_log_selection(selected_query)
   }
 
+  # Faz 6 (§5.10): YURUTME BAGLAMI SECIMDEN HEMEN SONRA kurulur; per-query
+  # `analysis_deadline_sec` override'ini uygular. Daha once SQL hazirligindan ve
+  # `target_db != "primary"` dalindaki YENIDEN BAGLANMADAN SONRA kuruluyordu; o
+  # reconnect kuresel son tarihi kullaniyor ve yavas bir ikincil DSN, sorguya
+  # ozel butcenin cok otesinde bloklayabiliyordu. RLS kapsami henuz bilinmedigi
+  # icin once yalnizca sorguyla kurulur, kapsam cozulunce TAZELENIR.
+  pk_exec_ctx_restore <- NULL
+  if (exists("pk_set_exec_context", mode = "function", inherits = TRUE)) {
+    pk_exec_ctx_restore <- pk_set_exec_context(
+      query = selected_query, rls_info = NULL, engine = pk_engine_mode()
+    )
+    on.exit(try(pk_exec_ctx_restore(), silent = TRUE), add = TRUE)
+  }
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (sorgu secimi sonrasi)\n")
@@ -363,6 +378,16 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 		selected_query$sql_file %||% "inline"
 	  ))
 	  return(sql_gate$message)
+	}
+
+	# Faz 6 (§5.10): baglam SECIMDEN HEMEN SONRA zaten kuruldu (son tarih
+	# override'i reconnect'i de kapsasin diye). Burada YALNIZCA yetki kapsami
+	# eklenerek TAZELENIR; onceki geri yukleyici `on.exit` ile kayitlidir.
+	if (exists("pk_set_exec_context", mode = "function", inherits = TRUE)) {
+	  pk_exec_ctx_refresh <- pk_set_exec_context(
+		query = selected_query, rls_info = rls_info, engine = pk_engine_mode()
+	  )
+	  on.exit(try(pk_exec_ctx_refresh(), silent = TRUE), add = TRUE)
 	}
 
 	raw_data <- tryCatch({
@@ -530,9 +555,24 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     return(list(type = "error_message", content = pk_filter_policy$refusal_message))
   }
   
-  cat(sprintf("[PK_ANALIZ] Filtreleme sonrası: %d satır (Orijinal: %d)\n", 
+  cat(sprintf("[PK_ANALIZ] Filtreleme sonrası: %d satır (Orijinal: %d)\n",
               nrow(filtered_data), nrow(secure_data)))
-  
+
+  # Faz 6 (§5.10): YETKİ VE FİLTRE SONRASI satır tavanı. RLS'in içinde
+  # çalıştırılmaz (geniş bir yetkili küme, soru onu birkaç satıra indirse bile
+  # reddedilirdi) ve `MERGEN_PK_ASYNC=false` iken devreye girmez.
+  pk_cap_stage <- pk_row_cap_stage(filtered_data, query_meta = selected_query$meta)
+  if (identical(pk_cap_stage$status, "too_large")) {
+    cat("[PK_ANALIZ] Satir tavani asildi; analiz reddedildi.\n")
+    pk_observe(
+      query_id = selected_query$id, query_name = selected_query$name,
+      filter_status = filter_criteria$status, filters = filter_criteria$filters,
+      pre_rls_rows = nrow(raw_data), authorized_rows = nrow(secure_data),
+      filtered_rows = nrow(filtered_data), outcome = "SonucCokBuyuk"
+    )
+    return(list(type = "error_message", content = pk_row_cap_refuse_message()))
+  }
+
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (filtreleme sonrasi)\n")
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
@@ -638,7 +678,6 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 # ==============================================================================
 # 3. AKILLI SORGU SEÇİMİ (AI + HEURISTIC HYBRID ENGINE)
 # ==============================================================================
-
 
 select_smart_query <- function(prompt, library, chat_history,
                                session = NULL, stop_check = NULL) {

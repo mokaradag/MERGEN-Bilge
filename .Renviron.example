@@ -35,6 +35,17 @@ MERGEN_DB_POOL_IDLE_TIMEOUT=600
 MERGEN_DB_POOL_FAIL_FAST=FALSE
 MERGEN_DB_POOL_WRITE_TEST=FALSE
 
+# ODBC LOGIN ZAMAN ASIMI (saniye). Asili bir DSN/login, dosya tabanli iptal
+# jetonu ile kesilemez ve isciyi (bagli DB oturumuyla birlikte) sert analiz son
+# tarihinin otesinde mesgul tutar. Bos birakilirsa surucu varsayilani gecerlidir.
+# MERGEN_DB_LOGIN_TIMEOUT_SEC=15
+#
+#   KAPSAM (PR #703): bos birakildiginda DOGRUDAN baglantilar surucu
+#   varsayilanini korur (PK disi davranis DEGISMEZ). HAVUZ ise acikca opt-in ve
+#   PAYLASIMLI oldugu icin bos birakilsa da 30 sn'lik yerlesik sinirla kurulur.
+#   PK istegi aktifken sinir ayrica KALAN BUTCE ile daraltilir; kalan butce 1
+#   saniyenin altina duserse baglanti HIC acilmaz (surucu bunu temsil edemez).
+
 # NOT: Havuz, bağlantıları yalnızca CHECKOUT anında (SELECT 1) doğrular. pool'un
 # `later` üzerindeki TEKRARLAYAN arka plan doğrulaması bilerek KAPALIDIR
 # (validationInterval=0): geçici SQL Server kopmasında o görevdeki yakalanmamış
@@ -754,3 +765,28 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 # MERGEN_PK_MAX_RESULT_MB=512
 # MERGEN_PK_RESULT_OVERHEAD_FACTOR=2.5
 # MERGEN_PK_FETCH_CHUNK_ROWS=5000
+#
+#   OPERATOR KACIS KAPISI. Kanitlanmis genislik ust siniri OLMAYAN bir sutun
+#   (nvarchar(max)/varbinary(max)/text/xml, ya da bildirilmemis uzunluk) iceren
+#   sonuclarin getirilmesine izin verir. VARSAYILAN KAPALIDIR: acik olsa bile
+#   MERGEN_PK_MAX_RESULT_MB tavani KALDIRILMAZ; yalnizca dusuk-granulariteli
+#   parcali getirim yolu kullanilir. Yalnizca ilgili sorgunun LOB sutununun
+#   pratikte kucuk oldugu BILINIYORSA acin.
+# MERGEN_PK_ALLOW_UNBOUNDED_LOB=FALSE
+#
+#   PR #703 GUNCELLEMESI: bu bayrak artik SORGU METADATA'SINDAN da cozulur
+#   (`allow_unbounded_lob`) ve sorgu duzeyindeki deger EN YUKSEK onceliklidir.
+#   Ayrica surucunun BEYAN ETMEDIGI degisken genislikli sutunlar (varchar(max)
+#   ile varchar(200) ayirt edilemedigi durum) da "kanitlanmamis" sayilir ve bu
+#   bayrak acilmadikca MATERYALIZASYONDAN ONCE reddedilir.
+
+# SONUC SEMASI TANIMLAYICI SONDASI (varsayilan ACIK)
+#
+#   SQL Server'in kendi tanimlayicisi (sys.dm_exec_describe_first_result_set)
+#   sorularak her sutunun system_type_name/max_length degeri alinir. Bu, hem
+#   guvenligi (MAX sutunu getirimden ONCE yakalanir) hem performansi (siradan
+#   metin sutunlari tek satirlik getirime dusmez) saglar. Sonda YALNIZCA ODBC
+#   baglantilarinda ve sorgu GONDERILMEDEN ONCE calisir (tek ek gidis-donus).
+#   Kapatirsaniz, beyani olmayan degisken genislikli sutunlar kanitlanmamis
+#   sayilir ve MERGEN_PK_ALLOW_UNBOUNDED_LOB acik degilse reddedilir.
+# MERGEN_PK_RESULT_SCHEMA_PROBE=TRUE

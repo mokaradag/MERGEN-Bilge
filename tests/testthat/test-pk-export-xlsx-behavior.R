@@ -37,6 +37,7 @@
                   "helpers_pk_packet_stats.R", "helpers_pk_analysis_packet.R",
                   "helpers_pk_packet_render.R", "helpers_pk_export_plan.R",
                   "helpers_pk_export_csv.R", "helpers_pk_export_xlsx.R",
+                  "helpers_pk_export_serve.R",
                   "helpers_pk_answer_compose.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }
@@ -220,7 +221,7 @@ test_that("5.000 satirlik sonuc dogru bir XLSX uretir ve geri okunur", {
   okunan <- as.data.frame(readxl::read_excel(yol, sheet = "Veri"))
   expect_equal(nrow(okunan), 5000L)
 
-  # PR #698 incelemesi: BEYAN EDILEN BIRIM basliga tasinir; aksi halde veri
+  # inceleme bulgusu: BEYAN EDILEN BIRIM basliga tasinir; aksi halde veri
   # sayfasi "saat mi gun mu TL mi" sorusunu yanitlayamiyordu.
   expect_true("Tutar (TL)" %in% names(okunan))
   # Yerel tipler: sayisal sayisal kalir, as.character()'a cevrilmez.
@@ -378,7 +379,7 @@ test_that("Dogrulama basarisiz olursa XLSX SUNULMAZ; BOM'lu CSV yedegine dusulur
                                   base_name = "sentetik", dir = .pk_export_dir())
 
   expect_identical(artefakt$status, "csv_fallback")
-  # PR #698 incelemesi: yedek yalnizca ham veri parcasini degil, XLSX'teki
+  # inceleme bulgusu: yedek yalnizca ham veri parcasini degil, XLSX'teki
   # `Ozet`/`Bilgi` denetim baglamini da yan dosya olarak yazar; aksi halde
   # indirilen/paylasilan CSV hangi populasyonu ve filtreleri temsil ettigini
   # kaybediyordu.
@@ -406,7 +407,8 @@ test_that("Dogrulama basarisiz olursa XLSX SUNULMAZ; BOM'lu CSV yedegine dusulur
 # --- Guvenlik: global indirme dizini KULLANILMAZ ------------------------------
 
 test_that("Disa aktarim bilge_yolac_downloads altina YAZMAZ", {
-  for (dosya in c("R/helpers_pk_export_xlsx.R", "R/helpers_pk_export_plan.R",
+  for (dosya in c("R/helpers_pk_export_xlsx.R", "R/helpers_pk_export_serve.R",
+                  "R/helpers_pk_export_plan.R",
                   "R/helpers_pk_analysis_result.R")) {
     kod <- .pk_export_code_only(dosya)
     expect_false(grepl("bilge_yolac_downloads", kod, fixed = TRUE, useBytes = TRUE),
@@ -415,9 +417,11 @@ test_that("Disa aktarim bilge_yolac_downloads altina YAZMAZ", {
                  info = sprintf("%s global kaynak yolu kaydetmemelidir.", dosya))
   }
 
-  kod <- .pk_export_code_only("R/helpers_pk_export_xlsx.R")
+  # Sunma/temizleme katmani AYRI dosyadadir (helpers_pk_export_serve.R); uretim
+  # katmani Shiny oturumuna DOKUNMAZ.
+  kod <- .pk_export_code_only("R/helpers_pk_export_serve.R")
   expect_true(grepl("registerDataObj", kod, fixed = TRUE, useBytes = TRUE))
-  # PR #698 incelemesi: `register_session_cleanup_on_end()` oturum basina
+  # inceleme bulgusu: `register_session_cleanup_on_end()` oturum basina
   # YALNIZCA BIR KEZ kayit kabul eder ve sonraki extra_cleanup listelerini
   # eklemez; disa aktarim temizligi bu yuzden hic calismayabiliyordu. Yollar
   # artik oturum defterine yazilir ve defteri bosaltan TEK bir geri cagri

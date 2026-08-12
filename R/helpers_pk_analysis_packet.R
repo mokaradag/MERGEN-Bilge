@@ -18,7 +18,7 @@
 #                   düşüyordu. Paketteki her sayı `pk_fmt_number()` ile
 #                   biçimlenir.
 #
-#           KAYNAK SINIRLARI (PR #698 incelemesi): bu dosya PAYLAŞILAN Shiny
+#           KAYNAK SINIRLARI (inceleme bulgusu): bu dosya PAYLAŞILAN Shiny
 #           sürecinde, yetkili sonucun TAMAMI üzerinde çalışır. Bu yüzden hiçbir
 #           adım "önce her şeyi materyalize et, sonra ilk-N'i al" yapmaz:
 #           gruplar önce SAYILIR (satır indeksleri yalnızca görünür gruplar

@@ -66,6 +66,48 @@ pk_telemetry_enabled <- function() {
   }, error = function(e) invisible(NULL))
 }
 
+# Faz 6 (§5.10): telemetri GÖZLENEBİLİRLİKTİR; iptal/son tarih garantisini
+# BOZAMAZ. Bu iki senkron DB çağrısı analizin TERMİNAL yollarında çalışır;
+# sınırlanmazlarsa askıda kalan bir DB/ağ, analizi bitmiş bir isteğin işçisini
+# ve bağlantısını süresiz tutar. Bütçe yoksa (`Inf`) davranış DEĞİŞMEZ.
+#
+# BÜTÇE KAYNAĞI TEARDOWN DEĞİL, KALAN ANALİZ BÜTÇESİDİR. `.db_pk_teardown_budget_sec()`
+# analiz bütçesi tükendikten SONRA bile en az 2 saniye TANIR; bu lütuf
+# KAYNAKLARI BIRAKMAK içindir. Onu opsiyonel telemetriye harcamak, süresi ZATEN
+# dolmuş bir isteğin (muhtemelen iki kez) yeni DB işi başlatması ve sert son
+# tarihi aşarken işçiyi/bağlantıyı tutması demekti. Bütçe kalmadığında telemetri
+# ATLANIR — gözlenebilirlik, son tarih garantisini bozamaz.
+.pk_telemetry_bounded <- function(fn) {
+  if (!exists(".db_with_elapsed_budget", mode = "function", inherits = TRUE) ||
+      !exists(".db_pk_residual_budget_sec", mode = "function", inherits = TRUE)) {
+    return(fn())
+  }
+
+  kalan <- tryCatch(.db_pk_residual_budget_sec(), error = function(e) Inf)
+  if (length(kalan) != 1L || is.na(kalan)) kalan <- Inf
+  if (is.finite(kalan) && kalan <= 0) {
+    stop("PK analiz butcesi tukendi; telemetri atlandi.", call. = FALSE)
+  }
+
+  .db_with_elapsed_budget(kalan, fn)
+}
+
+# Bir telemetri hatası KALICI mı (tablo yok/kullanılamaz) yoksa GEÇİCİ mi
+# (zaman aşımı/bağlantı) ?
+#
+# Yalnızca KALICI sonuçlar süreç-global durumda önbelleklenir: son tarihine
+# yakın TEK bir istek, tablo ve DB sağlıklıyken bile telemetriyi o sürecin
+# ÖMRÜ BOYUNCA kapatabilirdi.
+.pk_telemetry_error_is_transient <- function(e) {
+  metin <- tryCatch(conditionMessage(e), error = function(x) "")
+  if (is.null(metin) || is.na(metin) || !nzchar(metin)) return(TRUE)
+
+  isaretler <- c("butcesi tukendi", "reached elapsed time limit", "time limit",
+                 "timeout", "Timeout", "connection", "Connection",
+                 "Communication link", "TCP Provider")
+  any(vapply(isaretler, function(p) grepl(p, metin, fixed = TRUE), logical(1)))
+}
+
 #' MB_Analiz_Log tablosunun kullanılabilirliğini süreç başına bir kez tespit et
 #'
 #' @return TRUE (yazılabilir) / FALSE (yok veya erişilemiyor).
@@ -76,12 +118,25 @@ pk_telemetry_table_ready <- function(conn) {
 
   if (is.null(conn)) return(FALSE)
 
+  gecici <- FALSE
   ready <- tryCatch({
-    DBI::dbGetQuery(conn, "SELECT AnalizLogID FROM MB_Analiz_Log WHERE 1 = 0")
+    .pk_telemetry_bounded(function() {
+      DBI::dbGetQuery(conn, "SELECT AnalizLogID FROM MB_Analiz_Log WHERE 1 = 0")
+    })
     TRUE
-  }, error = function(e) FALSE)
+  }, error = function(e) {
+    gecici <<- isTRUE(.pk_telemetry_error_is_transient(e))
+    FALSE
+  })
 
-  .pk_telemetry_state$ready <- ready
+  # GEÇİCİ başarısızlık (zaman aşımı / bağlantı) ÖNBELLEKLENMEZ: aksi hâlde son
+  # tarihine yakın TEK bir istek, tablo ve DB sonrasında sağlıklı olsa bile bu
+  # sürecin/işçinin ÖMRÜ BOYUNCA telemetriyi kapatırdı. Yalnızca KESİN sonuç
+  # ("tablo yok/kullanılamaz") saklanır.
+  if (isTRUE(ready) || !isTRUE(gecici)) {
+    .pk_telemetry_state$ready <- ready
+  }
+  if (isTRUE(gecici)) return(FALSE)
 
   if (!ready && !isTRUE(.pk_telemetry_state$warned)) {
     .pk_telemetry_state$warned <- TRUE
@@ -125,7 +180,7 @@ pk_telemetry_log_analysis <- function(info, conn) {
       params <- tryCatch(normalize_db_params(params), error = function(e) params)
     }
 
-    DBI::dbExecute(conn, sql, params = params)
+    .pk_telemetry_bounded(function() DBI::dbExecute(conn, sql, params = params))
     invisible(TRUE)
 
   }, error = function(e) {

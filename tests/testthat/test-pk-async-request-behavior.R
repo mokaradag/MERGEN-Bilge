@@ -23,7 +23,8 @@ local({
   }
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
-                  "helpers_pk_async_bootstrap.R", "helpers_pk_async_request.R")) {
+                  "helpers_pk_async_worker_env.R", "helpers_pk_async_worker_pool.R", "helpers_pk_async_bootstrap.R", "helpers_pk_async_snapshot_validate.R", "helpers_pk_async_snapshot.R",
+                  "helpers_pk_async_plan.R", "helpers_pk_async_request.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
   }
 })
@@ -284,13 +285,15 @@ test_that("bootstrap SÜREÇ BAŞINA BİR KEZ çalışır (memoize) ve tekrar ok
 
   suppressWarnings(rm(list = .PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv()))
 
-  ilk <- pk_async_worker_bootstrap(kok, "R/sayac.R")
+  # Sentetik dosya listesi: ZORUNLU giriş dosyası sözleşmesi burada
+  # kapsam dışıdır (test bootstrap MEKANİĞİNİ ölçer, üretim yüzeyini değil).
+  ilk <- pk_async_worker_bootstrap(kok, "R/sayac.R", required_files = character(0))
   expect_true(ilk$ok)
   expect_false(ilk$cached)
   expect_equal(ilk$loaded, 1L)
   expect_equal(get(".pk_boot_test_counter", envir = globalenv()), 1L)
 
-  ikinci <- pk_async_worker_bootstrap(kok, "R/sayac.R")
+  ikinci <- pk_async_worker_bootstrap(kok, "R/sayac.R", required_files = character(0))
   expect_true(ikinci$ok)
   expect_true(ikinci$cached)
   # KRİTİK: dosya İKİNCİ KEZ yüklenmedi.
@@ -327,7 +330,23 @@ test_that("globals paketi KÜÇÜK kalır ve memoize edilir", {
 
   expect_identical(ilk, ikinci)  # aynı nesne: memoize
   # Yüzlerce boru hattı fonksiyonu SERİLEŞTİRİLMEZ; işçide bootstrap ile yüklenir.
-  expect_true(length(ilk) < 20L)
+  #
+  # Tavan `explicit` kip yüzünden bilinçli olarak yükseltildi: özyinelemeli
+  # global genişletme YOKTUR, bu yüzden bootstrap ÖNCESİ kullanılan HER sembol
+  # (parmak izi, sahneleme ortamı, havuz admisyonu, artifact kaydı, sır kurulumu)
+  # AÇIKÇA taşınmalıdır. Eksik biri offline hiçbir testi kırmaz — temiz bir PSOCK
+  # işçisi ham "could not find function" ile ölür. Sınır yine de KÜÇÜKTÜR:
+  # boru hattının kendisi taşınmaz.
+  # PR #703: sınır 45 -> 56. İnceleme, bootstrap ÖNCESİ çalışan yeni güvenlik
+  # yardımcılarını gerektirdi (sınırlı dosya sistemi sarmalayıcısı, havuz
+  # yapılandırma parmak izi, agregat admisyon planı, artefakt KAPSAMI, kurulan
+  # globals kaydı). Explicit-mode özyinelemeli genişletme YAPMADIĞI için bunlar
+  # açıkça taşınmalıdır; eksik biri offline hiçbir testi kırmaz ama TEMİZ bir
+  # PSOCK işçisi ham "could not find function" ile ölür.
+  # PAKET KAPALILIĞI ayrıca `test-pk-review-703-hardening-behavior.R` içinde
+  # çağrı grafiği gezilerek kanıtlanır; buradaki sınır yalnızca "boru hattının
+  # tamamı taşınmasın" korumasıdır.
+  expect_true(length(ilk) < 56L)
   expect_true("pk_async_worker_bootstrap" %in% names(ilk))
   expect_true("bootstrap_files" %in% names(ilk))
   expect_false("pk_analiz_process_request" %in% names(ilk))
@@ -376,7 +395,10 @@ test_that("sequential future planında asenkron gönderim UYGUN DEĞİLDİR", {
   expect_false(pk_async_plan_is_async())
   uygun <- pk_async_available()
   expect_false(uygun$available)
-  expect_equal(uygun$reason, "future_plan_not_async")
+  # Faz 6 inceleme düzeltmesi: plan reddi ARTIK NEDENİYLE raporlanır
+  # (sequential / tek-işçi / multicore-fork / uzak cluster ayrı ayrı görünür).
+  expect_true(grepl("^(plan_|single_worker|remote_cluster|future_plan_not_async)",
+                    uygun$reason))
 })
 
 test_that("bayrak kapalıyken sebep flag_off olur", {

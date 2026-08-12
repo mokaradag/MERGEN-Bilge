@@ -202,7 +202,10 @@
           authorized_rows = nrow(secure_data), filtered_rows = nrow(filtered_data),
           rls_scope = "Kullanici yetkisi uygulandi"
         ),
-        base_name = query$id %||% "pk_analiz", query = query, format = karar$format
+        base_name = query$id %||% "pk_analiz", query = query, format = karar$format,
+        # Yazım + geri okuma DOĞRULAMASI uzun sürer; iptal jetonu oraya da
+        # geçirilmezse Durdur tüm I/O bitene kadar GÖZLENEMEZDİ.
+        stop_check = stop_check
       ),
       error = function(e) {
         cat(sprintf("[PK_ANALIZ] Disa aktarim hatasi: %s\n", conditionMessage(e)))

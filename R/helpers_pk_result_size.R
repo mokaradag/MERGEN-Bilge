@@ -70,6 +70,15 @@ pk_column_width_upper_bound <- function(sql_type, max_length = NA) {
   tip <- .pk_result_type_key(sql_type)
   if (!nzchar(tip)) return(NA_real_)
 
+  # ODBC tip KODUNDAN türetilmiş, ZATEN bayta çevrilmiş üst sınır.
+  if (identical(tip, "__bounded__")) {
+    uzunluk <- suppressWarnings(as.numeric(max_length)[1])
+    if (length(uzunluk) != 1L || is.na(uzunluk) || !is.finite(uzunluk) || uzunluk <= 0) {
+      return(NA_real_)
+    }
+    return(as.numeric(uzunluk))
+  }
+
   sabit <- .PK_FIXED_TYPE_BYTES[[tip]]
   if (!is.null(sabit)) return(as.numeric(sabit))
 
@@ -110,6 +119,8 @@ pk_result_width_upper_bound <- function(columns) {
 
   toplam <- 0
   sinirsiz <- character(0)
+  lob <- character(0)
+  kanitsiz <- character(0)
 
   for (i in seq_along(columns)) {
     sutun <- columns[[i]]
@@ -121,16 +132,50 @@ pk_result_width_upper_bound <- function(columns) {
     sinir <- pk_column_width_upper_bound(sutun$type, sutun$max_length %||% NA)
     if (is.na(sinir)) {
       sinirsiz <- c(sinirsiz, ad)
+      # "Bilinmeyen tip" ile "GERÇEK LOB" AYRI risklerdir: bilinmeyen tipte
+      # küçük parça getirimi yeterli bir savunmadır, ama TEK bir LOB HÜCRESİ
+      # tek başına tavanı aşabilir ve satır granülaritesi onu kesemez.
+      if (.pk_result_type_is_lob(sutun$type, sutun$max_length %||% NA)) {
+        lob <- c(lob, ad)
+      }
+      # KANITLANMAMIŞ DEĞİŞKEN GENİŞLİK (PR #703): sürücü sayısal kod verdi ama
+      # beyan edilen uzunluk YOK. Sütun `varchar(max)` OLABİLİR; LOB gibi ele
+      # alınır (tek satır getirmek yeterli savunma DEĞİLDİR).
+      if (identical(.pk_result_type_key(sutun$type), "__unproven__")) {
+        kanitsiz <- c(kanitsiz, ad)
+      }
       next
     }
     toplam <- toplam + sinir
   }
 
   if (length(sinirsiz) > 0L) {
-    return(list(bounded = FALSE, bytes_per_row = NA_real_, unbounded_columns = sinirsiz))
+    return(list(bounded = FALSE, bytes_per_row = NA_real_,
+                unbounded_columns = sinirsiz, lob_columns = lob,
+                unproven_columns = kanitsiz))
   }
 
-  list(bounded = TRUE, bytes_per_row = toplam, unbounded_columns = character(0))
+  list(bounded = TRUE, bytes_per_row = toplam,
+       unbounded_columns = character(0), lob_columns = character(0),
+       unproven_columns = character(0))
+}
+
+# Sütun GERÇEK bir LOB mu (tek hücresi tavanı aşabilir)?
+#
+# `__unknown__` bilinmeyen METADATA'dır: küçük parça getirimi + birikimli bayt
+# kapısı onu güvenle sınırlar. LOB ise farklıdır: `dbFetch(n = 1)` bile hücrenin
+# TAMAMINI belleğe alır.
+.pk_result_type_is_lob <- function(sql_type, max_length = NA) {
+  tip <- .pk_result_type_key(sql_type)
+  if (!nzchar(tip)) return(FALSE)
+  if (tip %in% .PK_ALWAYS_UNBOUNDED_TYPES) return(TRUE)
+
+  # `varchar(max)` / `nvarchar(max)` sürücüde `-1` uzunlukla gelir.
+  if (tip %in% .PK_VARWIDTH_TYPES) {
+    uzunluk <- suppressWarnings(as.numeric(max_length)[1])
+    return(length(uzunluk) == 1L && !is.na(uzunluk) && is.finite(uzunluk) && uzunluk < 0)
+  }
+  FALSE
 }
 
 #' Materyalizasyon ön kontrolü
@@ -177,6 +222,116 @@ pk_result_size_preflight <- function(row_count, width, max_result_mb,
   }
 
   list(decision = "materialize", estimated_bytes = tahmin, reason = "bounded_within_ceiling")
+}
+
+# Sınırsız LOB sütunlu sonuçlara AÇIK opt-in ile izin verilebilir.
+#
+# VARSAYILAN KAPALIDIR: tek bir LOB hücresi işçiyi OOM edebilir ve satır
+# granülaritesi bunu kesemez. Gerçekten LOB döndüren bir sorgusu olan operatör
+# riski bilerek üstlenebilir; sessiz varsayılan olamaz.
+pk_allow_unbounded_lob <- function(query_meta = NULL) {
+  if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) return(FALSE)
+  isTRUE(tryCatch(
+    pk_config_resolve("MERGEN_PK_ALLOW_UNBOUNDED_LOB", query_meta),
+    error = function(e) FALSE
+  ))
+}
+
+#' Bir parçada GÜVENLE getirilebilecek satır sayısını planla
+#'
+#' Satır sayısını sınırlamak TEK BAŞINA yetmez: onlarca `nvarchar(4000)` sütunu
+#' olan bir sonuçta 5.000 satırlık tek bir `dbFetch()` tavanı aşabilir ve
+#' reddetme kararı verilmeden ÖNCE belleği tüketebilir. Bu yüzden parça boyutu
+#' KANITLANMIŞ satır genişliğinden türetilir.
+#'
+#' Genişlik kanıtlanamıyorsa (LOB veya bilinmeyen tip) sonuç REDDEDİLMEZ —
+#' materyalizasyon granülaritesi bir satıra indirilir; birikimli bayt kapısı
+#' gerçekten aşıldığında durur. Tipin tek başına "çok büyük" sayılması, tek
+#' satırlık kısa bir `nvarchar(max)` sonucunu da reddederdi.
+#'
+#' @return `list(rows = <int>, bounded = TRUE/FALSE, bytes_per_row = <num>,
+#'   reason = <chr>)`.
+pk_sql_plan_chunk_rows <- function(column_info, chunk_rows = 5000L,
+                                   max_result_mb = 512, overhead_factor = 2.5,
+                                   query_meta = NULL, schema = NULL) {
+  istenen <- suppressWarnings(as.integer(chunk_rows)[1])
+  if (length(istenen) != 1L || is.na(istenen) || istenen < 1L) istenen <- 5000L
+
+  # SEÇİLEN SORGU METADATA'SI POLİTİKAYA GİRER (PR #703 incelemesi).
+  #
+  # `pk_allow_unbounded_lob()` `query_meta` alır ama planlayıcı onu HİÇ
+  # geçirmiyordu ve `pk_config_resolve()` `pk_active_query_meta()`'yı ÖRTÜK
+  # okumaz; yani EN YÜKSEK öncelikli sorgu override'ı ölü bir yapılandırmaydı.
+  # Metadata verilmediyse etkin yürütme bağlamındaki sorgudan türetilir.
+  meta <- query_meta
+  if (is.null(meta) && exists("pk_active_query_meta", mode = "function", inherits = TRUE)) {
+    meta <- tryCatch(pk_active_query_meta(), error = function(e) NULL)
+  }
+  lob_izinli <- isTRUE(tryCatch(pk_allow_unbounded_lob(meta), error = function(e) FALSE))
+
+  tavan_mb <- suppressWarnings(as.numeric(max_result_mb)[1])
+  if (length(tavan_mb) != 1L || is.na(tavan_mb) || !is.finite(tavan_mb) || tavan_mb <= 0) {
+    return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
+                reason = "ceiling_unresolved"))
+  }
+
+  sutunlar <- pk_sql_columns_from_metadata(column_info, schema = schema)
+  if (!length(sutunlar)) {
+    # METADATA YOKSA satır genişliği TAM OLARAK kanıtlanamayan durumdur;
+    # çağıranın istediği parçayı (normalde 5.000) döndürmek, ilk `dbFetch()`
+    # ile gigabaytları materyalize edip bayt kapısının ÖNÜNDE belleği
+    # tüketebilirdi. Kanıt yoksa granülarite bir satırdır.
+    return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
+                reason = "metadata_unavailable"))
+  }
+
+  genislik <- pk_result_width_upper_bound(sutunlar)
+  if (!isTRUE(genislik$bounded)) {
+    # GERÇEK LOB sütunu varsa satır granülaritesi YETMEZ: `dbFetch(n = 1)` bile
+    # tek bir `nvarchar(max)`/XML/image hücresinin TAMAMINI belleğe alır ve
+    # `MERGEN_PK_MAX_RESULT_MB` bayt kapısı ancak SONRASINDA çalışırdı. Bu
+    # yüzden materyalizasyondan ÖNCE reddedilir (kapalı başarısız).
+    lob <- as.character(genislik$lob_columns %||% character(0))
+    if (length(lob) > 0L && !isTRUE(lob_izinli)) {
+      return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
+                  reason = "unbounded_lob_column", refuse = TRUE,
+                  lob_columns = lob))
+    }
+    # KANITLANMAMIŞ DEĞİŞKEN GENİŞLİK de reddedilir: sürücü `varchar(max)` ile
+    # `varchar(200)` arasında ayrım vermediğinde tek satır getirmek GÜVENLİ
+    # DEĞİLDİR (tek hücre gigabaytlarca olabilir). Operatör `allow_unbounded_lob`
+    # ile açıkça izin verebilir; sessiz varsayılan olamaz.
+    kanitsiz <- as.character(genislik$unproven_columns %||% character(0))
+    if (length(kanitsiz) > 0L && !isTRUE(lob_izinli)) {
+      return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
+                  reason = "unproven_variable_width_column", refuse = TRUE,
+                  lob_columns = kanitsiz))
+    }
+    return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
+                reason = "width_not_provably_bounded"))
+  }
+
+  yuk <- suppressWarnings(as.numeric(overhead_factor)[1])
+  if (length(yuk) != 1L || is.na(yuk) || !is.finite(yuk) || yuk < 1) yuk <- 2.5
+
+  satir_bayt <- max(1, as.numeric(genislik$bytes_per_row) * yuk)
+  # Parça bütçesi tavanın YARISIDIR: birikmiş frame ile yeni parça bir an için
+  # AYNI ANDA bellekte bulunur.
+  parca_butcesi <- tavan_mb * .PK_RESULT_MB / 2
+  guvenli <- floor(parca_butcesi / satir_bayt)
+  if (!is.finite(guvenli) || guvenli < 1) {
+    # TEK KANITLANMIŞ SATIR bile ilk parça bütçesine SIĞMIYOR (PR #703).
+    #
+    # Eskiden 1'e KIRPILIYORDU: `expected_rows` normalde bilinmediği için
+    # `pk_sql_execute_bounded()` birikimli bayt kapısından ÖNCE `dbFetch(n = 1)`
+    # yapar ve o TEK satır yapılandırılmış tavanın ötesinde bellek ayırabilirdi.
+    # Kanıt zaten elimizde olduğuna göre doğru cevap GETİRMEDEN reddetmektir.
+    return(list(rows = 1L, bounded = TRUE, bytes_per_row = satir_bayt,
+                reason = "single_row_exceeds_result_ceiling", refuse = TRUE))
+  }
+
+  list(rows = as.integer(min(istenen, guvenli)), bounded = TRUE,
+       bytes_per_row = satir_bayt, reason = "bounded_by_declared_width")
 }
 
 #' Sınırlı-parça getiriminde bir parçayı kabul et/reddet
@@ -320,6 +475,72 @@ pk_row_cap_truncation_note <- function(plan) {
     "uygulandıktan SONRA çalıştığı için sonuç yetkili kümenin ilk ",
     toplam_txt, " satırıdır."
   )
+}
+
+# ------------------------------------------------------------------------------
+# SATIR TAVANI — YETKİ VE FİLTRE SONRASI AŞAMA
+# ------------------------------------------------------------------------------
+# Tavan `apply_rls_to_data()` İÇİNDE ÇALIŞMAZ. İki ayrı nedenle:
+#
+#   1) DOĞRULUK: RLS'ten hemen sonra ölçmek, kullanıcının sorusunun kümeyi
+#      birkaç satıra indireceği durumlarda bile geniş bir yetkili kümeyi
+#      reddederdi. Tavan, filtreler UYGULANDIKTAN SONRA anlamlıdır.
+#   2) GERİ ALMA: `apply_rls_to_data()` senkron yolun da ortak yardımcısıdır;
+#      tavanı oraya koymak, `MERGEN_PK_ASYNC=false` iken de çalışma zamanı
+#      davranışını değiştirir ve ilan edilen tek adımlık geri almayı bozardı.
+#
+# Sonuç TİPLİDİR: tavan aşımı bir "modül hatası" değil, bir KAYNAK SINIRI
+# sonucudur ve boru hattı tarafından öyle raporlanmalıdır.
+pk_row_cap_stage <- function(data, query_meta = NULL, active = NULL) {
+  bos <- list(status = "ok", data = data, plan = NULL, note = "")
+  if (!is.data.frame(data) || nrow(data) == 0L) return(bos)
+  if (!exists("pk_row_cap_plan", mode = "function", inherits = TRUE)) return(bos)
+
+  # SATIR TAVANI HER İKİ KİPTE DE UYGULANIR.
+  #
+  # Faz 6 ÖNCESİNDE tavan `apply_rls_to_data()` içinde KOŞULSUZ çalışıyordu.
+  # Tavanı yalnızca asenkron kipe bağlamak, `MERGEN_PK_ASYNC=false` (geri alma)
+  # yolunda mevcut korumayı TAMAMEN KALDIRIR ve keyfî büyüklükte yetkili
+  # çerçeveler filtre/istatistik aşamasına girebilirdi.
+  #
+  # GERİ ALMA SEMANTİĞİ KORUNUR: tavan artık FİLTRELERDEN SONRA ölçülür, yani
+  # eski (RLS sonrası) konuma göre satır sayısı yalnızca AZALABİLİR. Bu yüzden
+  # bu değişiklik geri alma yolunda YENİ bir reddetme üretemez; yalnızca eskiden
+  # var olan tavanı geri getirir.
+  #
+  # `active` parametresi ÇAĞRI YERİNDE açıkça kapatmak isteyen (test/derin
+  # bağlam) çağıranlar için korunur.
+  if (!is.null(active) && !isTRUE(active)) return(bos)
+
+  row_cap <- if (exists("pk_config_resolve", mode = "function", inherits = TRUE)) {
+    tryCatch(pk_config_resolve("MERGEN_PK_ROW_CAP", query_meta), error = function(e) 50000L)
+  } else {
+    50000L
+  }
+
+  plan <- pk_row_cap_plan(
+    row_cap = row_cap,
+    authorized_rows = nrow(data),
+    rls_pushdown = FALSE,
+    aggregates_over_full_set = FALSE
+  )
+
+  if (identical(plan$strategy, "refuse")) {
+    return(list(status = "too_large", data = NULL, plan = plan, note = ""))
+  }
+
+  not <- if (exists("pk_row_cap_truncation_note", mode = "function", inherits = TRUE)) {
+    tryCatch(pk_row_cap_truncation_note(plan), error = function(e) "")
+  } else {
+    ""
+  }
+  list(status = "ok", data = data, plan = plan, note = as.character(not)[1])
+}
+
+#' Tavan reddini KULLANICIYA GÖRÜNEN metne çevir
+pk_row_cap_refuse_message <- function() {
+  get0("PK_ROW_CAP_REFUSE_MESSAGE", inherits = TRUE,
+       ifnotfound = "Sonuç kümesi çok büyük; lütfen sorunuzu daraltın.")
 }
 
 # Güvenli bir tavan stratejisi bulunamadığında kullanıcıya dönen mesaj.

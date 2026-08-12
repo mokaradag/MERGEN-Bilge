@@ -32,7 +32,38 @@ attach_required_packages <- function(packages = required_packages) {
   }))
 }
 
-missing_packages <- validate_required_packages()
+# Faz 6 (§5.10): PK future işçisi bu manifesti KENDİ sürecinde source eder.
+# Orada UI/medya/analitik yığınını attach etmek her işçide ayrı bir native heap
+# açar (arrow/duckdb/av/pdftools bellek-kısıtlı bir dağıtımı OOM'a taşıyabilir)
+# ve PK boru hattı bu paketlerin HİÇBİRİNE girmez. Namespace'ler yine kurulu
+# kalır: bir yerde `pkg::fn` kullanılıyorsa çalışmaya devam eder.
+mergen_worker_skip_packages <- function() {
+  c("arrow", "duckdb", "av", "pdftools",
+    "shinyBS", "shinycssloaders", "shinydashboard", "shinyjs", "shinyWidgets")
+}
+
+mergen_worker_bootstrap_mode <- function() {
+  isTRUE(tolower(trimws(Sys.getenv("MERGEN_PK_WORKER_BOOTSTRAP", unset = ""))) %in%
+           c("1", "true", "t", "yes", "on"))
+}
+
+# DOĞRULAMA LİSTESİ DE İŞÇİDE FİLTRELENİR.
+#
+# `validate_required_packages()` her girdi için `requireNamespace()` çağırır ve
+# bu, paket NAMESPACE'ini (ve native DLL'lerini) YÜKLER. Yalnızca `library()`
+# adımını atlamak bu yüzden yetersizdi: arrow/duckdb/av/pdftools işçi belleğini
+# tam da bu daldan kaçınılmak istenen şekilde ZATEN ödemiş oluyordu.
+#
+# Atlanan paketler işçide DOĞRULANMAZ da: PK boru hattı hiçbirine girmez ve
+# `pkg::fn` kullanımları gerektiğinde namespace'i kendisi yükler.
+mergen_startup_validation_packages <- function() {
+  if (isTRUE(mergen_worker_bootstrap_mode())) {
+    return(setdiff(required_packages, mergen_worker_skip_packages()))
+  }
+  required_packages
+}
+
+missing_packages <- validate_required_packages(mergen_startup_validation_packages())
 
 if (length(missing_packages) > 0) {
   stop(
@@ -49,4 +80,8 @@ if (length(missing_packages) > 0) {
   )
 }
 
-attach_required_packages()
+if (isTRUE(mergen_worker_bootstrap_mode())) {
+  attach_required_packages(setdiff(required_packages, mergen_worker_skip_packages()))
+} else {
+  attach_required_packages()
+}

@@ -45,8 +45,18 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       # active_request_id değişimi) işçiyi ÇALIŞMAYA DEVAM ETTİRİR; DB
       # bağlantısını ve işçi yuvasını tutar. Jeton artık OTURUM + istek kimliği
       # ile adlandırılır; başka bir oturumun aynı request_1 sayacına dokunamaz.
-      if (exists("mergen_pk_signal_cancel", mode = "function", inherits = TRUE)) {
-        try(mergen_pk_signal_cancel(isolate(active_request_id()), session = session), silent = TRUE)
+      #
+      # Jeton YALNIZCA gerçekten bir PK isteği sahipse yazılır. Bu gözlemci her
+      # gönderen/yazan istek için çalışır; normal sohbet/görsel isteklerinde
+      # jetonun sahibi olan bir dağıtıcı YOKTUR ve hiçbir tamamlanma yolu onu
+      # temizlemez — art arda durdurmalar süreç ömrü boyunca birer dosya
+      # sızdırırdı.
+      if (exists("mergen_pk_signal_cancel", mode = "function", inherits = TRUE) &&
+          exists("mergen_pk_request_has_cancel_token", mode = "function", inherits = TRUE)) {
+        aktif_kimlik <- isolate(active_request_id())
+        if (isTRUE(mergen_pk_request_has_cancel_token(session, aktif_kimlik))) {
+          try(mergen_pk_signal_cancel(aktif_kimlik, session = session), silent = TRUE)
+        }
       }
 
       stop_generation(TRUE)

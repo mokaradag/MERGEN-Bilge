@@ -223,8 +223,27 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     all_feedback <- load_feedback_from_db(effective_user_id)
     values$liked_messages <- all_feedback$liked
     values$disliked_messages <- all_feedback$disliked
+    # Faz 6 (§5.10): başka bir sohbete geçildiğinde, sonucu ZATEN atılacak bir
+    # PK işçisi DB bağlantısını ve işçi yuvasını doğal bitişine kadar tutmaya
+    # devam ederdi. Terk edilen istekler burada iptal edilir.
+    #
+    # YALNIZCA KİMLİK GERÇEKTEN DEĞİŞİYORSA (PR #703 incelemesi): `do_load_chat()`
+    # kullanıcı ZATEN AÇIK olan kayıtlı sohbete yeniden tıkladığında da çalışır.
+    # O durumda istek hâlâ AYNI sohbete aittir; koşulsuz terk etmek, geçerli ve
+    # uçuştaki bir PK analizini yalnızca liste öğesine tekrar tıklandığı için
+    # iptal ederdi. A -> B -> A gezinmesindeki bayat-geri-çağrı koruması
+    # KORUNUR: orada hedef kimlik gerçekten değişir.
+    onceki_chat_id <- tryCatch(shiny::isolate(values$current_chat_id), error = function(e) NULL)
+    hedef_degisti <- !identical(as.character(onceki_chat_id %||% "")[1],
+                                as.character(chat_id %||% "")[1])
+
     values$current_chat_id <- chat_id
     values$show_welcome <- FALSE
+
+    if (isTRUE(hedef_degisti) &&
+        exists("mergen_pk_abandon_active_requests", mode = "function", inherits = TRUE)) {
+      try(mergen_pk_abandon_active_requests(session, release = FALSE), silent = TRUE)
+    }
 
     # Mesaj içeriğinden aktif aracı tespit et ve etkinleştir
     # Görsel Uzmanı tespiti güvenilir çalışıyor (görsel yanıtlar belirgin işaretçiler içerir).

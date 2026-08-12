@@ -50,72 +50,19 @@ pk_cache_reset <- function() {
   invisible(TRUE)
 }
 
-.pk_cache_scalar <- function(x, default = "") {
-  ham <- tryCatch(as.character(x)[1], error = function(e) NA_character_)
-  if (is.null(ham) || length(ham) == 0L || is.na(ham)) return(default)
-  ham
-}
 
-#' Önbellek anahtarı üret
+#' Bir önbellek değeri GÜNCEL sonuç tavanına sığıyor mu?
 #'
-#' Sonucu etkileyebilen HER boyut anahtara girer. `rls_signature` yetki
-#' kapsamının kararlı özetidir; onu dışarıda bırakmak kullanıcılar arası
-#' sızıntı demektir. `query_version` ise sorgu tanımı/SQL değiştiğinde
-#' deterministik geçersizleştirme sağlar.
-#'
-#' @return Tek elemanlı karakter anahtar.
-pk_cache_key <- function(query_id, rls_signature, filter_signature,
-                         query_version = "", engine = "", extra = NULL) {
-  parcalar <- c(
-    paste0("q=", .pk_cache_scalar(query_id, "?")),
-    paste0("v=", .pk_cache_scalar(query_version)),
-    paste0("e=", .pk_cache_scalar(engine)),
-    # Yetki kapsamı: ASLA çıkarılmaz.
-    paste0("r=", .pk_cache_scalar(rls_signature, "__no_scope__")),
-    paste0("f=", .pk_cache_scalar(filter_signature))
-  )
+#' Önbellek girişleri TTL boyunca (kalıcı işçilerde daha da uzun) yaşar. Operatör
+#' `MERGEN_PK_MAX_RESULT_MB` değerini düşürdüğünde, eski ve daha gevşek tavan
+#' altında kabul edilmiş bir giriş yeni sınırı ATLAYAMAMALIDIR.
+pk_cache_entry_within_limit <- function(value, max_result_mb) {
+  tavan <- suppressWarnings(as.numeric(max_result_mb)[1])
+  if (length(tavan) != 1L || is.na(tavan) || !is.finite(tavan) || tavan <= 0) return(FALSE)
 
-  if (!is.null(extra) && length(extra) > 0L) {
-    adlar <- names(extra)
-    if (is.null(adlar)) adlar <- paste0("x", seq_along(extra))
-    sira <- order(adlar, method = "radix")
-    for (i in sira) {
-      parcalar <- c(parcalar, paste0(adlar[i], "=", .pk_cache_scalar(extra[[i]])))
-    }
-  }
-
-  paste(parcalar, collapse = "|")
-}
-
-#' Yetki kapsamı imzası (RLS bilgisinden kararlı özet)
-#'
-#' Anahtara ham yetki listesi gömmek yerine kararlı bir özet kullanılır; imza
-#' hem kısa hem de kapsam değiştiğinde kesin olarak değişir. Kullanıcı adı
-#' TEK BAŞINA yeterli değildir: aynı kullanıcının yetkisi DB'de değişebilir.
-pk_cache_rls_signature <- function(rls_info) {
-  if (!is.list(rls_info)) return("__no_scope__")
-  if (!isTRUE(rls_info$authorized)) return("__unauthorized__")
-
-  alanlar <- setdiff(names(rls_info), c("conn", "connection", "session"))
-  alanlar <- sort(alanlar, method = "radix")
-
-  parcalar <- vapply(alanlar, function(ad) {
-    deger <- rls_info[[ad]]
-    if (is.function(deger) || is.environment(deger)) return(paste0(ad, "=<opaque>"))
-    metin <- tryCatch(
-      paste(as.character(unlist(deger, use.names = FALSE)), collapse = ","),
-      error = function(e) "<unserializable>"
-    )
-    paste0(ad, "=", substr(metin, 1L, 2000L))
-  }, character(1), USE.NAMES = FALSE)
-
-  ham <- paste(parcalar, collapse = ";")
-  if (requireNamespace("digest", quietly = TRUE)) {
-    return(paste0("h:", digest::digest(ham, algo = "sha256")))
-  }
-
-  # digest yokken bile kapsam ayrımı KORUNUR: ham metin kısaltılarak kullanılır.
-  paste0("t:", substr(ham, 1L, 4000L))
+  bayt <- .pk_cache_object_bytes(value)
+  if (is.na(bayt)) return(FALSE)
+  bayt <= tavan * .PK_CACHE_MB
 }
 
 .pk_cache_object_bytes <- function(value) {
@@ -136,6 +83,29 @@ pk_cache_rls_signature <- function(rls_info) {
     max_entry_bytes = as.numeric(coz("MERGEN_PK_CACHE_MAX_ENTRY_MB", 128L)) * .PK_CACHE_MB,
     ttl_sec = as.numeric(coz("MERGEN_PK_CACHE_TTL_SEC", 300L))
   )
+}
+
+# Önbellek KAPALI sayılan yapılandırmalar. `ttl_sec == 0` da buradadır:
+# `pk_cache_get()` yaşı sıfırdan büyük olan girişi hemen süresi dolmuş sayar,
+# yani TTL=0 ile saklanan hiçbir şey yeniden kullanılamaz — ama saklama devam
+# ederse işçi başına tüm bayt bütçesi boşuna tutulurdu.
+.pk_cache_disabled <- function(limits) {
+  if (is.finite(limits$max_entries) && limits$max_entries < 1) return(TRUE)
+  if (is.finite(limits$max_bytes) && limits$max_bytes <= 0) return(TRUE)
+  if (is.finite(limits$ttl_sec) && limits$ttl_sec <= 0) return(TRUE)
+  FALSE
+}
+
+# Girişi düşür ve bayt muhasebesini DÜZELT. Muhasebe tek yerde yapılmazsa
+# toplam sürüklenir ve bayt bütçesi anlamsızlaşır.
+.pk_cache_drop_entry <- function(key, entry = NULL) {
+  giris <- if (is.list(entry)) entry else .pk_cache_store$entries[[key]]
+  if (!is.list(giris)) return(invisible(FALSE))
+  .pk_cache_store$total_bytes <- max(
+    0, .pk_cache_store$total_bytes - as.numeric(giris$bytes %||% 0)
+  )
+  .pk_cache_store$entries[[key]] <- NULL
+  invisible(TRUE)
 }
 
 # LRU tahliyesi: en KÜÇÜK `last_used` saatine sahip giriş ilk gider. Sayaç
@@ -160,10 +130,68 @@ pk_cache_rls_signature <- function(rls_info) {
     kurban <- names(girisler)[which.min(saatler)][1]
     if (is.na(kurban) || !nzchar(kurban)) break
 
-    .pk_cache_store$total_bytes <- max(
-      0, .pk_cache_store$total_bytes - as.numeric(girisler[[kurban]]$bytes %||% 0)
-    )
-    .pk_cache_store$entries[[kurban]] <- NULL
+    .pk_cache_drop_entry(kurban, girisler[[kurban]])
+    .pk_cache_store$stats$evicted <- .pk_cache_store$stats$evicted + 1L
+  }
+
+  invisible(TRUE)
+}
+
+# TÜM mağazayı GÜNCEL sınırlara göre uzlaştır.
+#
+# Sırasıyla: (1) süresi dolmuş girişler, (2) tek başına tavanı aşan girişler,
+# (3) sayı/bayt bütçesi için LRU tahliyesi. `protect` yalnızca LRU adımında
+# geçerlidir: çağıran o anda o girişi okumaktadır, ama süresi dolmuş veya tek
+# başına çok büyük bir giriş KORUNMAZ.
+.pk_cache_reconcile <- function(limits, now = Sys.time(), protect = NULL) {
+  girisler <- .pk_cache_store$entries
+  if (!length(girisler)) return(invisible(FALSE))
+
+  korunan_anahtar <- as.character(protect %||% "")[1]
+
+  for (ad in names(girisler)) {
+    giris <- girisler[[ad]]
+    if (!is.list(giris)) next
+    # Çağıranın okuduğu giriş YUKARIDA ayrıca doğrulandı; burada TEKRAR
+    # değerlendirmek `expired` sayacını iki kez artırırdı.
+    if (nzchar(korunan_anahtar) && identical(ad, korunan_anahtar)) next
+
+    if (is.finite(limits$ttl_sec) && limits$ttl_sec >= 0) {
+      yas <- suppressWarnings(as.numeric(difftime(now, giris$stored_at, units = "secs")))
+      if (is.na(yas) || yas > limits$ttl_sec) {
+        .pk_cache_drop_entry(ad, giris)
+        .pk_cache_store$stats$expired <- .pk_cache_store$stats$expired + 1L
+        next
+      }
+    }
+
+    bayt <- as.numeric(giris$bytes %||% NA_real_)
+    if (is.finite(limits$max_entry_bytes) && !is.na(bayt) && bayt > limits$max_entry_bytes) {
+      .pk_cache_drop_entry(ad, giris)
+      .pk_cache_store$stats$evicted <- .pk_cache_store$stats$evicted + 1L
+    }
+  }
+
+  # Sayı/bayt bütçesi: en eski kullanılan giriş ilk gider.
+  korunan <- korunan_anahtar
+  repeat {
+    girisler <- .pk_cache_store$entries
+    n <- length(girisler)
+    if (n == 0L) break
+
+    sayi_asim <- is.finite(limits$max_entries) && n > limits$max_entries
+    bayt_asim <- is.finite(limits$max_bytes) &&
+      .pk_cache_store$total_bytes > limits$max_bytes
+    if (!sayi_asim && !bayt_asim) break
+
+    adaylar <- setdiff(names(girisler), korunan)
+    if (!length(adaylar)) break
+
+    saatler <- vapply(girisler[adaylar], function(g) as.numeric(g$last_used %||% 0), numeric(1))
+    kurban <- adaylar[which.min(saatler)][1]
+    if (is.na(kurban) || !nzchar(kurban)) break
+
+    .pk_cache_drop_entry(kurban, girisler[[kurban]])
     .pk_cache_store$stats$evicted <- .pk_cache_store$stats$evicted + 1L
   }
 
@@ -187,18 +215,56 @@ pk_cache_get <- function(key, query_meta = NULL, now = Sys.time()) {
   }
 
   limitler <- .pk_cache_limits(query_meta)
+
+  # Önbellek KAPATILDIYSA veya sınırlar SIKILAŞTIRILDIYSA bu HEMEN etkili
+  # olmalıdır. Aksi hâlde kalıcı bir işçide, operatör önbelleği kapattıktan
+  # sonra bile mevcut girişler TTL süresince servis edilmeye devam ederdi.
+  if (isTRUE(.pk_cache_disabled(limitler))) {
+    .pk_cache_drop_entry(anahtar, giris)
+    .pk_cache_store$stats$miss <- .pk_cache_store$stats$miss + 1L
+    return(list(hit = FALSE, value = NULL, reason = "cache_disabled"))
+  }
+  giris_bayt <- as.numeric(giris$bytes %||% NA_real_)
+  if (is.finite(limitler$max_entry_bytes) && !is.na(giris_bayt) &&
+      giris_bayt > limitler$max_entry_bytes) {
+    .pk_cache_drop_entry(anahtar, giris)
+    .pk_cache_store$stats$miss <- .pk_cache_store$stats$miss + 1L
+    return(list(hit = FALSE, value = NULL, reason = "entry_over_current_limit"))
+  }
+  # GİRİŞ BAŞINA TAVAN ile TOPLAM BÜTÇE FARKLI SINIRLARDIR (PR #703 incelemesi).
+  #
+  # `max_entry_bytes = 128 MB`, mevcut giriş 120 MB iken operatör toplam
+  # `max_bytes` değerini 100 MB'a indirirse giriş, giriş-başına denetimden
+  # GEÇER; uzlaştırma diğer TÜM anahtarları tahliye eder ama korunan giriş
+  # yüzünden toplam 120 MB'ta KALIR ve isabet yine servis edilirdi. Kendi başına
+  # toplam bütçeyi aşan bir giriş DÜŞÜRÜLÜR; aksi hâlde salt-okuma iş yükünde
+  # süreç `MERGEN_PK_CACHE_MAX_MB` üstünde SÜRESİZ kalırdı.
+  if (is.finite(limitler$max_bytes) && !is.na(giris_bayt) &&
+      giris_bayt > limitler$max_bytes) {
+    .pk_cache_drop_entry(anahtar, giris)
+    .pk_cache_store$stats$miss <- .pk_cache_store$stats$miss + 1L
+    return(list(hit = FALSE, value = NULL, reason = "entry_over_total_budget"))
+  }
+
   if (is.finite(limitler$ttl_sec) && limitler$ttl_sec >= 0) {
     yas <- suppressWarnings(as.numeric(difftime(now, giris$stored_at, units = "secs")))
     if (is.na(yas) || yas > limitler$ttl_sec) {
-      .pk_cache_store$total_bytes <- max(
-        0, .pk_cache_store$total_bytes - as.numeric(giris$bytes %||% 0)
-      )
-      .pk_cache_store$entries[[anahtar]] <- NULL
+      .pk_cache_drop_entry(anahtar, giris)
       .pk_cache_store$stats$expired <- .pk_cache_store$stats$expired + 1L
       .pk_cache_store$stats$miss <- .pk_cache_store$stats$miss + 1L
       return(list(hit = FALSE, value = NULL, reason = "expired"))
     }
   }
+
+  # SIKILAŞTIRILAN sayı/bayt bütçeleri de HEMEN etkili olmalıdır. Yalnızca
+  # "önbellek tamamen kapalı" ve "bu giriş tek başına çok büyük" hâllerini ele
+  # almak yetmez: kalıcı bir işçi 50 giriş / 500 MB tutarken operatör sınırları
+  # 10 giriş / 100 MB'a indirirse, SALT-OKUMA iş yükünde hiçbir tahliye
+  # tetiklenmez ve süreç yeni bütçenin ÇOK üstünde SÜRESİZ kalırdı.
+  #
+  # Bu giriş YUKARIDA zaten doğrulandı (süresi dolmamış, tek başına sığıyor);
+  # uzlaştırma yalnızca DİĞER girişleri temizler.
+  .pk_cache_reconcile(limitler, now = now, protect = anahtar)
 
   .pk_cache_store$clock <- .pk_cache_store$clock + 1
   giris$last_used <- .pk_cache_store$clock
@@ -217,11 +283,8 @@ pk_cache_put <- function(key, value, query_meta = NULL, now = Sys.time()) {
 
   limitler <- .pk_cache_limits(query_meta)
 
-  # Önbellek kapatılmış (0 giriş veya 0 bayt): yazma YAPILMAZ.
-  if (is.finite(limitler$max_entries) && limitler$max_entries < 1) {
-    return(list(stored = FALSE, bytes = NA_real_, reason = "cache_disabled"))
-  }
-  if (is.finite(limitler$max_bytes) && limitler$max_bytes <= 0) {
+  # Önbellek kapatılmış (0 giriş, 0 bayt veya 0 TTL): yazma YAPILMAZ.
+  if (isTRUE(.pk_cache_disabled(limitler))) {
     return(list(stored = FALSE, bytes = NA_real_, reason = "cache_disabled"))
   }
 
@@ -245,13 +308,7 @@ pk_cache_put <- function(key, value, query_meta = NULL, now = Sys.time()) {
 
   # Aynı anahtar güncelleniyorsa ESKİ baytı önce muhasebeden düş; aksi hâlde
   # toplam sürüklenir ve bütçe anlamsızlaşır.
-  mevcut <- .pk_cache_store$entries[[anahtar]]
-  if (is.list(mevcut)) {
-    .pk_cache_store$total_bytes <- max(
-      0, .pk_cache_store$total_bytes - as.numeric(mevcut$bytes %||% 0)
-    )
-    .pk_cache_store$entries[[anahtar]] <- NULL
-  }
+  .pk_cache_drop_entry(anahtar)
 
   .pk_cache_evict_until(limitler, incoming_bytes = bayt)
 
@@ -269,15 +326,7 @@ pk_cache_put <- function(key, value, query_meta = NULL, now = Sys.time()) {
 
 #' Tek anahtarı geçersizleştir
 pk_cache_invalidate <- function(key) {
-  anahtar <- .pk_cache_scalar(key)
-  giris <- .pk_cache_store$entries[[anahtar]]
-  if (!is.list(giris)) return(invisible(FALSE))
-
-  .pk_cache_store$total_bytes <- max(
-    0, .pk_cache_store$total_bytes - as.numeric(giris$bytes %||% 0)
-  )
-  .pk_cache_store$entries[[anahtar]] <- NULL
-  invisible(TRUE)
+  .pk_cache_drop_entry(.pk_cache_scalar(key))
 }
 
 #' Önbellek durumu (SIR İÇERMEZ: yalnızca sayaç ve bayt)
@@ -327,10 +376,20 @@ pk_query_result_cache_key <- function(query, rls_info, sql_text, engine = "") {
   metin <- .pk_cache_scalar(sql_text, "")
   if (!nzchar(metin)) return("")
 
+  # ÇARPIŞMAYA DAYANIKLI SQL İMZASI ZORUNLUDUR (PR #703 incelemesi).
+  #
+  # Eskiden `digest` yokken imza `nchar(sql_text)` idi. Anahtar aynı zamanda
+  # BOŞ filtre imzası taşıdığından, aynı sorgu/kapsam/DB için AYNI KARAKTER
+  # SAYISINA sahip İKİ FARKLI dinamik SQL ifadesi AYNI anahtara düşer ve ikinci
+  # istek birincinin RLS ÖNCESİ çerçevesini yeniden kullanırdı. Uzunluk bir
+  # imza değildir. `openssl` da kabul edilir (repoda başka yerlerde de yedek
+  # olarak kullanılır); ikisi de yoksa ÖNBELLEK DEVRE DIŞI kalır (`""`).
   sql_imza <- if (requireNamespace("digest", quietly = TRUE)) {
     paste0("h:", digest::digest(metin, algo = "sha256"))
+  } else if (requireNamespace("openssl", quietly = TRUE)) {
+    paste0("h:", paste(as.character(openssl::sha256(charToRaw(enc2utf8(metin)))), collapse = ""))
   } else {
-    paste0("n:", nchar(metin))
+    return("")
   }
 
   pk_cache_key(

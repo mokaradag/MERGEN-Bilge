@@ -21,6 +21,14 @@ local({
 
   # Satır tavanı planı Faz 6 bölünme sonrası AYNI dosyada tutulur (boyut ve
   # tavan kararları aynı sorumluluk ailesidir).
+  # Per-query son tarih override'ı `pk_config_resolve()` üzerinden çözülür.
+  source(file.path(repo_root, "R", "helpers_pk_config.R"),
+         encoding = "UTF-8", local = globalenv())
+  source(file.path(repo_root, "R", "helpers_pk_exec_context.R"),
+         encoding = "UTF-8", local = globalenv())
+  # Sürücü metadata YORUMU ayrı dosyadadır ve boyut matematiğinden ÖNCE gelir.
+  source(file.path(repo_root, "R", "helpers_pk_result_columns.R"),
+         encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_pk_result_size.R"),
          encoding = "UTF-8", local = globalenv())
 })
@@ -223,4 +231,50 @@ test_that("satır sayısı bilinmiyorsa tavan uygulanır ama kesme İDDİA EDİL
   expect_true(plan$applies)
   expect_false(plan$truncated)
   expect_equal(pk_row_cap_truncation_note(plan), "")
+})
+
+# ------------------------------------------------------------------------------
+# PER-QUERY ANALİZ SON TARİHİ OVERRIDE'I
+# ------------------------------------------------------------------------------
+# Dispatch anında seçilen sorgu HENÜZ bilinmediği için istek küresel bütçeyle
+# dondurulur; `pk_config_resolve()` sözleşmesi ise sorgu metadata'sına EN YÜKSEK
+# önceliği verir. Seçimden sonra yeniden çözmezsek `analysis_deadline_sec`
+# override'ı SESSİZCE ÖLÜ bir yapılandırma olurdu.
+test_that("seçilen sorgu analiz son tarihini override edebilir", {
+  skip_if_not(exists("pk_set_exec_context", mode = "function"))
+
+  baslangic <- as.POSIXct("2026-01-01 00:00:00", tz = "UTC")
+  eski <- options(mergen.pk.async.started_at = baslangic,
+                  mergen.pk.async.deadline_at = baslangic + 300,
+                  mergen.pk.analysis_deadline_sec = 300L)
+  on.exit(options(eski), add = TRUE)
+
+  # Override YOKSA hiçbir şey değişmez (varsayılan davranış bit bazında korunur).
+  geri <- pk_set_exec_context(query = list(id = "q1", meta = list()), engine = "v2")
+  expect_equal(as.numeric(getOption("mergen.pk.async.deadline_at")),
+               as.numeric(baslangic + 300))
+  geri()
+
+  # Override VARSA mutlak son tarih AYNI başlangıçtan yeniden hesaplanır
+  # (geçen süre SIFIRLANMAZ).
+  geri2 <- pk_set_exec_context(
+    query = list(id = "q2", meta = list(analysis_deadline_sec = 30L)),
+    engine = "v2"
+  )
+  expect_equal(as.numeric(getOption("mergen.pk.async.deadline_at")),
+               as.numeric(baslangic + 30))
+  geri2()
+  # Geri yükleyici ÖNCEKİ son tarihi geri getirir.
+  expect_equal(as.numeric(getOption("mergen.pk.async.deadline_at")),
+               as.numeric(baslangic + 300))
+
+  # `started_at` yayınlanmamışsa override UYGULANMAZ (kapalı başarısız).
+  options(mergen.pk.async.started_at = NULL)
+  geri3 <- pk_set_exec_context(
+    query = list(id = "q3", meta = list(analysis_deadline_sec = 30L)),
+    engine = "v2"
+  )
+  expect_equal(as.numeric(getOption("mergen.pk.async.deadline_at")),
+               as.numeric(baslangic + 300))
+  geri3()
 })

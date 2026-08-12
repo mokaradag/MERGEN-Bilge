@@ -24,8 +24,10 @@
   for (yardimci in c("helpers_pk_sql_readonly.R", "helpers_pk_query_meta_schema.R",
                      "helpers_pk_query_meta_access.R", "helpers_pk_rls.R",
                      "helpers_pk_config.R", "helpers_pk_async_cancel.R",
-                     "helpers_pk_result_size.R", "helpers_pk_sql_execute.R",
-                     "helpers_deep_analysis_reconcile.R")) {
+                     "helpers_pk_exec_context.R", "helpers_pk_result_columns.R", "helpers_pk_result_size.R", "helpers_pk_sql_execute.R", "helpers_pk_sql_connection.R",
+                     "helpers_deep_analysis_sql.R", "helpers_deep_analysis_reconcile.R",
+                     "helpers_deep_analysis_phase6.R",
+                     "helpers_deep_analysis_selector.R")) {
     source(file.path(kok, "R", yardimci), encoding = "UTF-8", local = env)
   }
   source(file.path(kok, "R", "helpers_deep_analysis.R"), encoding = "UTF-8", local = env)
@@ -53,7 +55,7 @@
 
 .detailCfg <- list(preview_rows = 10)
 
-test_that("execute_single_deep_query durdurma talebinde NULL döner (bağlantı kurmadan)", {
+test_that("execute_single_deep_query durdurma talebinde TİPLİ HALT döner (bağlantı kurmadan)", {
   env <- .deepQueryEnv()
   baglandi <- FALSE
   env$get_connection <- function(target = "primary") { baglandi <<- TRUE; list(conn = "X") }
@@ -66,7 +68,11 @@ test_that("execute_single_deep_query durdurma talebinde NULL döner (bağlantı 
     detail_config = .detailCfg,
     stop_check = function() TRUE
   )
-  expect_null(res)
+  # PR #703: erken Durdur artık `NULL` DEĞİL TİPLİ halt döndürür. `NULL`, halt
+  # SON seçilen sorguda gerçekleştiğinde dış döngüde durumu KAYBEDİYOR ve kısmi
+  # sonuç "tam analiz" gibi sunuluyordu.
+  expect_true(env$pk_deep_is_halt_result(res))
+  expect_identical(res$pk_halt_status, "cancelled")
   # Türkçe yorum: durdurma en başta olduğu için DB bağlantısı hiç kurulmamalı
   expect_false(baglandi)
 })

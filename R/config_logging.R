@@ -143,17 +143,45 @@ if (!exists("mergen_daily_file_appender", mode = "function",
 # Geriye dönük uyumluluk: bazı testler/çağıranlar log_file_path değişkenini okur.
 log_file_path <- current_mergen_log_file_path()
 
+# Faz 6 (§5.10): PK future işçisi bu dosyayı KENDİ sürecinde source eder.
+# Orada günlük dosya appender'ını kurmak ve açılış başlığını yazmak, her temiz
+# PSOCK işçisinin PAYLAŞILAN günlük log dosyasına sahte bir "uygulama başladı"
+# kaydı düşürmesi ve ana süreçle eşzamanlı append yapması demektir. Faz 6
+# arızaları tam da güvenilir başlangıç/hata kronolojisi gerektirdiğinden bu
+# kaynak-zamanı kurulum ANA SÜREÇLE SINIRLIDIR; konsol appender'ı işçide de
+# çalışır, dolayısıyla `log_*()` çağrıları sessizleşmez.
+mergen_logging_worker_mode <- isTRUE(tolower(trimws(
+  Sys.getenv("MERGEN_PK_WORKER_BOOTSTRAP", unset = "")
+)) %in% c("1", "true", "t", "yes", "on"))
+
 # Çoklu appender yapılandırması
 # Dosya logu düz metin olmalı
-log_appender(mergen_daily_file_appender, index = 1)
-log_layout(layout_glue, index = 1)
+#
+# İŞÇİ KİPİ SADECE "KURMA" DEĞİL, "TEMİZLE" DEMEKTİR: sıcak (yeniden
+# kullanılan) bir PSOCK işçisi ÖNCEKİ kod sürümüyle önyüklenmiş olabilir ve
+# index 1'de HÂLÂ `mergen_daily_file_appender` taşıyabilir. Kurulumu yalnızca
+# ATLAMAK o işçiyi düzeltmez; paylaşılan günlük dosyaya eşzamanlı append
+# sürerdi. Bu yüzden işçide index 1 AÇIKÇA sessiz bir appender'a çekilir.
+if (!isTRUE(mergen_logging_worker_mode)) {
+  log_appender(mergen_daily_file_appender, index = 1)
+  log_layout(layout_glue, index = 1)
+} else {
+  # Sessiz appender: satırları yutar. `logger` index 1'i kaldırmaya izin
+  # vermediğinden (kaldırma indeksleri kaydırıp konsol appender'ını bozardı)
+  # yerine no-op yazılır. Konsol appender'ı index 2'de kalır; `log_*()`
+  # çağrıları işçide de görünür olmayı sürdürür.
+  log_appender(function(lines) invisible(NULL), index = 1)
+  log_layout(layout_glue, index = 1)
+}
 
 # --- AÇILIŞTA GÜNLÜK DOSYAYI GARANTİLE (THRESHOLD-BAĞIMSIZ) ---
 # Açılış dosyasını HEMEN oluştur: mergen_ensure_daily_log_file() günün
 # mergen_YYYYMMDD.log dosyasını DOĞRUDAN cat() ile (logger/threshold'dan
 # bağımsız) oluşturup açılış başlığını yazar; böylece dosya her gün, her
 # yeniden başlatmada var olur. Tanım R/config_logging_daily_file.R içindedir.
-mergen_ensure_daily_log_file()
+# İŞÇİ KİPİNDE atlanır: temiz her PSOCK işçisi aksi hâlde paylaşılan günlük
+# dosyaya sahte bir açılış kaydı yazardı.
+if (!isTRUE(mergen_logging_worker_mode)) mergen_ensure_daily_log_file()
 
 # Konsol renkleri üretimde varsayılan kapalıdır.
 # Windows servis/VM koşullarında ANSI escape dizilerinin loglara karışmasını önler.

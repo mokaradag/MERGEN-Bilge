@@ -127,16 +127,48 @@ eşzamanlılık değişikliğidir.
   yetki farkında satır tavanı planı → **istek-kimliği koruması**
   (`pk_async_should_apply`).
 - Üretilen baskılar: **iptal fırtınası** (her N. istek gerçek jeton dosyasıyla
-  iptal edilir), **bayat tamamlanma** (daha yeni istek eski geri çağrıyı
-  geçersiz kılar), **tekrarlayan/önbelleklenebilir istekler** (hit oranı +
-  tahliye), **çoklu yetki kapsamı** (kullanıcılar arası önbellek izolasyonu) ve
-  **Derin Düşünme bütçe bölüşümü**.
-- Gate-enforced eşikler: `pk_analysis_success_rate`, `pk_cancel_honoured`,
-  `pk_cancelled_never_applied`, `pk_stale_never_applied`,
+  iptal edilir; turların **yarısı UÇUŞ-İÇİ** iptaldir — jeton getirim
+  başladıktan sonra, parçalar arası kapıdan yazılır), **bayat tamamlanma**
+  (daha yeni istek eski geri çağrıyı geçersiz kılar), **tekrarlayan/
+  önbelleklenebilir istekler** (SICAK KÜME + SOĞUK KUYRUK deseniyle hem **hit**
+  hem **tahliye**), **çoklu yetki kapsamı** (kullanıcılar arası önbellek
+  izolasyonu, giriş başına kapsam sahibi işaretiyle doğrulanır) ve **Derin
+  Düşünme bütçe bölüşümü** (gerçek `pk_deep_execute_sql` üzerinden).
+- Gate-enforced eşikler (21): `pk_analysis_success_rate`, `pk_cancel_exercised`,
+  `pk_cancel_inflight_exercised`, `pk_cancel_honoured`,
+  `pk_cancelled_never_applied`, `pk_stale_exercised`, `pk_stale_never_applied`,
   `pk_fresh_always_applied`, `pk_snapshot_worker_safe`,
-  `pk_deep_deadline_respected`, `pk_connection_usable_after_fetch`,
-  `pk_cache_within_budget`. Serit **istendi ama çalışmadıysa**
-  `pk_analysis_lane_available` FAIL olur — atlanmış serit asla kanıt değildir.
+  `pk_deep_deadline_respected`, `pk_deep_budget_decreases`,
+  `pk_deep_halts_between_queries`, `pk_connection_usable_after_fetch`,
+  `pk_bounded_fetch_complete`, `pk_cache_within_budget`,
+  `pk_cache_hit_observed`, `pk_cache_eviction_observed`,
+  `pk_cache_scope_isolated`, `pk_connection_acquire_release_balanced`,
+  `pk_psock_async_path`.
+- **GERÇEK PSOCK turu:** serit ayrıca `pk_async_run_analysis()`'ı gerçek bir
+  `multisession` işçisine gönderir (jeton önceden sinyallendiği için sonuç
+  DETERMİNİSTİK olarak `cancelled`'dır; LLM/DB gerekmez). Bu prob olmadan serit,
+  `MERGEN_PK_ASYNC=true` ile fiilen etkinleşen kodu — anlık görüntü
+  serileştirme, temiz işçide bootstrap, future tamamlanma — hiç çalıştırmadan
+  tüm eşikleri geçebilirdi. Nitekim eklendiğinde `pk_async_worker_globals()`
+  paketinde bootstrap ÖNCESİ kullanılan iptal/son tarih yardımcılarının eksik
+  olduğunu ortaya çıkardı. Yük/olay döngüsü kanıtı DEĞİLDİR; yalnızca DOĞRULUK.
+- **Bağlantı muhasebesi:** her tur üretim şeklindeki bir al/bırak
+  sarmalayıcısından geçer; `acquired`/`released` sayaçları dengelenmezse istek
+  başına bağlantı sızıntısı var demektir ve kapı FAIL olur.
+- **"Gerçekten çalıştırıldı mı" eşikleri kozmetik değildir:** sıfır iptal/bayat
+  turunda `all(...)` boş vektör üzerinde `TRUE` döner ve serit hiçbir şey
+  kanıtlamadan yeşil görünürdü. `*_exercised` / `*_observed` eşikleri bunu
+  kapatır. Aynı nedenle iptal edilen tur **tam olarak `"cancelled"`** bitmelidir;
+  `"deadline"` kabul edilseydi jetonu hiç okumayan bir regresyon geçerdi.
+- **Önbellek bütçesi** `MERGEN_PK_CACHE_MAX_MB` ile karşılaştırılır — bu, tek
+  sonuç tavanı `MERGEN_PK_MAX_RESULT_MB`'den **FARKLI** bir sınırdır.
+- Serit **istendi ama çalışmadıysa** `pk_analysis_lane_available` FAIL olur;
+  serit **KAPALI** ise (`MERGEN_SOAK_PK_LANE=false`) `pk_analysis_lane_enabled`
+  FAIL olur. Atlanmış da kapatılmış da serit asla kanıt değildir.
+- Kapının hangi güvenlik parametreleri altında geçtiği `config.json` içindeki
+  `pk_safety` bloğuna yazılır (son tarih, SQL zaman aşımı, satır tavanı, sonuç
+  tavanı, önbellek bütçeleri, derin sorgu tavanı), böylece kanıt sonradan
+  yeniden kurulabilir.
 - **Sınır:** tek-süreçte **ardışık** oturumlardır (gerçek tarayıcı/websocket
   eşzamanlılığı DEĞİL), **gerçek future işçi havuzu doygunluğu DEĞİL**, **gerçek
   LLM davranışı DEĞİL**, **lane-yerel SQLite** kullanır (üretim T-SQL/ODBC

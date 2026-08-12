@@ -89,6 +89,29 @@ pk_select_llm_invoke <- function(messages, cfg, session = NULL, llm_fn = NULL,
     error = function(e) list()
   )
 
+  # Faz 6 (§5.10): her geçiş KALAN analiz bütçesiyle de sınırlanır. Yalnızca
+  # `cfg$timeout_sec` (120s'e kadar) kullanmak, kuyruk/bootstrap/RLS sonrası
+  # birkaç saniye kalmış bir istekte işçiyi ve DB bağlantısını seçici zaman
+  # aşımı dolana kadar meşgul ederdi.
+  etkin_timeout <- cfg$timeout_sec
+  .select_deadline <- getOption("mergen.pk.async.deadline_at", NULL)
+  if (!is.null(.select_deadline) &&
+      exists("pk_sql_timeout_plan", mode = "function", inherits = TRUE) &&
+      exists("pk_deadline_remaining_sec", mode = "function", inherits = TRUE)) {
+    .select_plan <- tryCatch(
+      pk_sql_timeout_plan(cfg$timeout_sec, pk_deadline_remaining_sec(.select_deadline)),
+      error = function(e) list(dispatch = TRUE, timeout_sec = cfg$timeout_sec)
+    )
+    if (!isTRUE(.select_plan$dispatch)) {
+      # Bütçe TÜKENMESİ bir "LLM servisi yok" durumu DEĞİLDİR: hiç istek
+      # gönderilmedi. Genel LLM-hata sınıflandırmasından geçirmek, isteği
+      # yanlışlıkla "AI servisi kullanılamıyor" / clarify yoluna sokardı.
+      # Tipli TIMEOUT döndürülür ve dış istek son tarih olarak sonlanır.
+      return(list(ok = FALSE, text = NA_character_, status = PK_SELECT_STATUS_TIMEOUT))
+    }
+    etkin_timeout <- as.integer(.select_plan$timeout_sec)
+  }
+
   ayarlar <- list(
     model_selection = model,
     temperature = 0.0,
@@ -97,8 +120,23 @@ pk_select_llm_invoke <- function(messages, cfg, session = NULL, llm_fn = NULL,
     shiny_session = session,
     api_key_override = .pk_select_api_key(session, creds),
     # D14: v1'de bu alan HİÇ YOKTU.
-    request_timeout_sec = cfg$timeout_sec
+    request_timeout_sec = etkin_timeout
   )
+
+  # İPTAL BLOKLAYAN ÇAĞRIYA DA ULAŞIR: PK kapısı yayınlanmışken `call_local_llm()`
+  # curl ilerleme geri çağrısını bağlar ve kapı ateşlendiğinde aktarım ANINDA
+  # kesilir (bkz. helpers_pk_cancel_http.R). Kesilen aktarım sıradan bir HTTP
+  # hatası gibi görünür; bu yüzden burada TİPLİ bir zaman aşımı/iptal sonucuna
+  # dönüştürülür — aksi hâlde Durdur "AI servisi kullanılamıyor" olarak rapor
+  # edilirdi.
+  .select_halted <- if (exists("pk_stage_halted", mode = "function", inherits = TRUE)) {
+    pk_stage_halted
+  } else {
+    function() FALSE
+  }
+  if (.select_halted()) {
+    return(list(ok = FALSE, text = NA_character_, status = PK_SELECT_STATUS_TIMEOUT))
+  }
 
   sonuc <- tryCatch(
     llm_fn(messages, ayarlar),
@@ -108,10 +146,21 @@ pk_select_llm_invoke <- function(messages, cfg, session = NULL, llm_fn = NULL,
   )
 
   if (inherits(sonuc, "pk_select_llm_error")) {
+    ileti <- attr(sonuc, "message")
+    iptal <- .select_halted() ||
+      (exists("pk_http_cancelled_error", mode = "function", inherits = TRUE) &&
+         isTRUE(tryCatch(pk_http_cancelled_error(ileti), error = function(e) FALSE)))
+    if (isTRUE(iptal)) {
+      return(list(ok = FALSE, text = NA_character_, status = PK_SELECT_STATUS_TIMEOUT))
+    }
     return(list(
       ok = FALSE, text = NA_character_,
-      status = .pk_select_classify_error(attr(sonuc, "message"))
+      status = .pk_select_classify_error(ileti)
     ))
+  }
+
+  if (.select_halted()) {
+    return(list(ok = FALSE, text = NA_character_, status = PK_SELECT_STATUS_TIMEOUT))
   }
 
   if (is.null(sonuc)) {

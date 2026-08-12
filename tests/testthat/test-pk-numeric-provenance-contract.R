@@ -334,7 +334,7 @@ test_that("Olgu indeksi kimliğe gore kurulur; CAKISAN kimlik alintilanamaz olur
   expect_true(all(grepl("^[A-Za-z0-9_.]+$", names(index))))
   expect_equal(index[[kimlik]]$value, 18420.5)
 
-  # PR #698 incelemesi: aynı kimliğe iki FARKLI olgu düşerse sessizce biri
+  # inceleme bulgusu: aynı kimliğe iki FARKLI olgu düşerse sessizce biri
   # ezilmez; ikisi de kullanılamaz olur. Aksi hâlde doğru alıntılanmış bir sayı
   # YANLIŞ ölçüye karşı doğrulanırdı.
   catisan <- index[[kimlik]]

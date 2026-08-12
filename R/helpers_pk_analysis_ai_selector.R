@@ -78,15 +78,32 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
     )
     async_deadline <- getOption("mergen.pk.async.deadline_at", NULL)
     if (!is.null(async_deadline) &&
+        exists("pk_sql_timeout_plan", mode = "function", inherits = TRUE) &&
         exists("pk_deadline_remaining_sec", mode = "function", inherits = TRUE)) {
       remaining_sec <- tryCatch(pk_deadline_remaining_sec(async_deadline), error = function(e) Inf)
+      # `max(1L, floor(...))` saniyenin altındaki bir bakiyeyi TAZE bir saniyeye
+      # yuvarlıyordu: 100 ms kalmışken bile neredeyse tam bir saniye daha
+      # bloklanabiliyordu. `pk_sql_timeout_plan()` ile AYNI aritmetik kullanılır:
+      # aşağı yuvarlama 0 üretiyorsa çağrı HİÇ gönderilmez.
+      secim_plani <- pk_sql_timeout_plan(Inf, remaining_sec)
+      if (!isTRUE(secim_plani$dispatch)) return(NULL)
       if (is.finite(remaining_sec)) {
-        if (remaining_sec <= 0) return(NULL)
-        llm_config$request_timeout_sec <- max(1L, as.integer(floor(remaining_sec)))
+        llm_config$request_timeout_sec <- as.integer(secim_plani$timeout_sec)
       }
     }
 
+    # Durdur artık bloklayan HTTP çağrısına DA ULAŞIR: `call_local_llm()` PK
+    # kapısı yayınlanmışken curl ilerleme geri çağrısını bağlar ve kapı
+    # ateşlendiğinde aktarım ANINDA kesilir (bkz. helpers_pk_cancel_http.R).
+    # Buradaki ön/son yoklamalar, iptal edilmiş bir seçim sonucunun
+    # KULLANILMAMASINI garanti eder.
+    # (`try()` kullanılır: ek anonim hata kapanışı bu dosyanın fonksiyon
+    # bütçesini tüketirdi.)
+    kapi_var <- exists("pk_active_stage_halt", mode = "function", inherits = TRUE)
+    if (kapi_var && isTRUE(try(pk_active_stage_halt(), silent = TRUE))) return(NULL)
+
     result <- call_local_llm(messages, llm_config)
+    if (kapi_var && isTRUE(try(pk_active_stage_halt(), silent = TRUE))) return(NULL)
     
     if (is.null(result)) return(NULL)
     

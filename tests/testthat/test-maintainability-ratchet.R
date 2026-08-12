@@ -216,7 +216,13 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # 694/14 -> 590/9'a indi. Bütçeler geri birleşmeyi ve büyümeyi kilitler.
   # Bilinçli güncelleme: Süreç/Uygulama Uzmanı için Langflow dispatch dalı
   # eklendi (handle_langflow_chat_mode'a delege eder); 620 -> 634.
-  assert_current_budget("R/server_send_message.R", 634L, 11L)
+  # PR #702 inceleme düzeltmesi: PK asenkron yolunda GÖNDERİM ANI anlık
+  # görüntüsü (ayarlar + etkin API anahtarı planı) eklendi; canlı reaktif
+  # nesneyi devam kapanışında yeniden okumak, aynı isteği İKİ farklı ayar
+  # durumundan derliyordu. Anlık görüntü üretimi ayrı yardımcıdadır
+  # (mergen_pk_send_snapshot); burada yalnızca çağrı ve tüketim kaldı.
+  # 634 -> 643 (fonksiyon sayısı DÜŞTÜ: 11 -> 9).
+  assert_current_budget("R/server_send_message.R", 643L, 11L)
   assert_current_budget("R/server_handler_streaming_tts.R", 200L, 8L)
   assert_current_budget("R/module_admin_hata_analizi.R", 640L, 7L)
   assert_current_budget("R/helpers_admin_hata_detail_runtime.R", 380L, 12L)

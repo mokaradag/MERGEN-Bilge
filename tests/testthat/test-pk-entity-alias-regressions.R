@@ -1,10 +1,10 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-pr692-p2-regressions.R
-# Açıklama: PR #692 için Codex tarafından bildirilen P1/P2 gerilemelerini
-#           doğrudan sözleşme düzeyinde doğrular.
+# Dosya Yolu: tests/testthat/test-pk-entity-alias-regressions.R
+# Açıklama: Varlık/alias çözümleme ve ilgili sözleşme gerilemelerini doğrudan
+#           sözleşme düzeyinde doğrular.
 # ==============================================================================
 
-.find_repo_root_pr692 <- function() {
+.find_repo_root_pk_entity_alias <- function() {
   candidates <- unique(normalizePath(
     c(
       getwd(),
@@ -25,18 +25,18 @@
   stop("Repo kökü bulunamadı.", call. = FALSE)
 }
 
-repo_root_pr692 <- .find_repo_root_pr692()
+repo_root_pk_entity_alias <- .find_repo_root_pk_entity_alias()
 
-.read_pr692 <- function(...) {
+.read_pk_entity_alias <- function(...) {
   paste(readLines(
-    file.path(repo_root_pr692, ...),
+    file.path(repo_root_pk_entity_alias, ...),
     warn = FALSE,
     encoding = "UTF-8"
   ), collapse = "\n")
 }
 
 test_that("Selectize açıkken yapılandırma ipucu bastırılır", {
-  css <- .read_pr692("www", "css", "settings_page.css")
+  css <- .read_pk_entity_alias("www", "css", "settings_page.css")
 
   expect_true(grepl(
     ":has\\(\\.selectize-input\\.dropdown-active\\)::after",
@@ -53,7 +53,7 @@ test_that("Selectize açıkken yapılandırma ipucu bastırılır", {
 test_that("mesaj güvenlik tavanı tamsayı taşmasında varsayılana düşer", {
   validation_env <- new.env(parent = baseenv())
   source(
-    file.path(repo_root_pr692, "R", "helpers_db_validation.R"),
+    file.path(repo_root_pk_entity_alias, "R", "helpers_db_validation.R"),
     local = validation_env,
     encoding = "UTF-8"
   )
@@ -71,7 +71,7 @@ test_that("mesaj güvenlik tavanı tamsayı taşmasında varsayılana düşer", 
 test_that("MCP ikinci geçişi çıktı token ortam ayarını uygular", {
   second_pass_env <- new.env(parent = baseenv())
   source(
-    file.path(repo_root_pr692, "R", "helpers_llm_worker_second_pass.R"),
+    file.path(repo_root_pk_entity_alias, "R", "helpers_llm_worker_second_pass.R"),
     local = second_pass_env,
     encoding = "UTF-8"
   )
@@ -101,9 +101,9 @@ test_that("MCP ikinci geçişi çıktı token ortam ayarını uygular", {
 })
 
 test_that("yerel CodeMirror yapısı tam çizim ve ucuz refresh sağlar", {
-  core_js <- .read_pr692("www", "js", "codemirror_compat.js")
-  manager_js <- .read_pr692("www", "js", "codemirror-manager.js")
-  core_css <- .read_pr692("www", "css", "codemirror_compat.css")
+  core_js <- .read_pk_entity_alias("www", "js", "codemirror_compat.js")
+  manager_js <- .read_pk_entity_alias("www", "js", "codemirror-manager.js")
+  core_css <- .read_pk_entity_alias("www", "css", "codemirror_compat.css")
 
   expect_false(grepl("extension placeholder", core_js, fixed = TRUE))
   expect_true(grepl("OfflineCodeMirror.prototype.on", core_js, fixed = TRUE))
@@ -120,7 +120,7 @@ test_that("yerel CodeMirror yapısı tam çizim ve ucuz refresh sağlar", {
 })
 
 test_that("özel CodeMirror varlıkları app-owned ratchet kapsamındadır", {
-  manifest <- .read_pr692("R", "config_ui_assets.R")
+  manifest <- .read_pk_entity_alias("R", "config_ui_assets.R")
 
   expect_true(grepl('"js/codemirror_compat.js"', manifest, fixed = TRUE))
   expect_true(grepl('"css/codemirror_compat.css"', manifest, fixed = TRUE))
@@ -129,7 +129,7 @@ test_that("özel CodeMirror varlıkları app-owned ratchet kapsamındadır", {
 })
 
 test_that("yapılandırma ipuçları erişilebilir açıklamalara bağlanır", {
-  settings_js <- .read_pr692("www", "js", "settings_model_info.js")
+  settings_js <- .read_pk_entity_alias("www", "js", "settings_model_info.js")
 
   expect_true(grepl("[data-settings-tooltip]", settings_js, fixed = TRUE))
   expect_true(grepl("aria-describedby", settings_js, fixed = TRUE))

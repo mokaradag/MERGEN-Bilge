@@ -27,8 +27,12 @@
   env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
-                  "helpers_pk_async_bootstrap.R", "helpers_pk_async_request.R",
-                  "helpers_pk_async_apply.R")) {
+                  "helpers_pk_async_worker_env.R", "helpers_pk_async_worker_pool.R", "helpers_pk_async_bootstrap.R", "helpers_pk_async_snapshot_validate.R", "helpers_pk_async_snapshot.R",
+                  "helpers_pk_async_plan.R", "helpers_pk_async_request.R", "helpers_pk_exec_context.R", "helpers_pk_result_columns.R", "helpers_pk_result_size.R",
+                  "helpers_pk_async_request_markers.R",
+                  "helpers_pk_async_session_registry.R",
+                  "helpers_pk_async_routing.R",
+                  "helpers_pk_async_lifecycle.R", "helpers_pk_async_apply.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }
   source(file.path(repo_root, "R", "server_handler_pk_async.R"),
@@ -142,11 +146,16 @@ test_that("bağlam dönüşü sistem mesajını BAŞA ekler ve son kullanıcı i
   expect_equal(sonuc$messages_to_process[[2]]$content, "eski")
 })
 
-test_that("beklenmeyen dönüş tipinde mesajlar DEĞİŞMEDEN devam eder", {
+test_that("beklenmeyen dönüş tipi KAPALI BAŞARISIZ olur (devam ETMEZ)", {
+  # Faz 6 inceleme düzeltmesi: liste/karakter olmayan bir sonuç "devam et"
+  # sayılırsa, SQL Analizi kipinde kullanıcının ham istemi HİÇBİR veritabanı
+  # bağlamı olmadan nihai LLM'e giderdi. Bir sözleşme ihlali, sessizce
+  # temelsiz ama normal görünen bir yanıta dönüşmemelidir.
   env <- .pk_dispatch_env()
   mesajlar <- list(list(role = "user", content = "x"))
   sonuc <- env$mergen_pk_apply_analysis_result(42L, mesajlar)
-  expect_equal(sonuc$action, "continue")
+  expect_equal(sonuc$action, "answer")
+  expect_true(grepl("Analiz Tamamlanamadı", sonuc$answer, fixed = TRUE))
   expect_identical(sonuc$messages_to_process, mesajlar)
 })
 
@@ -195,7 +204,12 @@ test_that("senkron yolda boru hattı hatası kullanıcıya görünen mesaja çev
   h <- .pk_ctx(env)
   sonuc <- env$mergen_pk_analysis_execute(h$ctx)
   expect_equal(sonuc$action, "answer")
-  expect_true(grepl("Analiz modülü hatası", sonuc$answer, fixed = TRUE))
+  # Faz 6 inceleme düzeltmesi: senkron yol VARSAYILAN üretim yoludur; ham
+  # `conditionMessage()` (ODBC/DSN/sürücü tanılaması olabilir) sohbete
+  # gömülmez. Kullanıcıya genel Türkçe mesaj döner, redakte edilmiş orijinal
+  # sunucu logunda kalır.
+  expect_true(grepl("Analiz Hatası", sonuc$answer, fixed = TRUE))
+  expect_false(grepl("beklenmeyen R hatasi", sonuc$answer, fixed = TRUE))
 })
 
 test_that("SSO kimliği hazır değilse işçi HİÇ başlatılmaz (D16 kapısı)", {
@@ -373,9 +387,11 @@ test_that("DURDURULMUŞ istek geri çağrısı hiçbir şeyi mutasyona uğratmaz
 
 test_that("worker export URL'si provenance footer kopyasına da taşınır", {
   env <- .pk_dispatch_env()
+  # Faz 6 inceleme düzeltmesi: sunum artık TİPLİ döner (`ok` + `result`);
+  # servis edilemeyen bir ek sessizce URL'siz karta geri DÖNMEZ.
   env$mergen_pk_serve_worker_artifact <- function(result, session) {
     result$pk_answer_block <- "YENI_KART"
-    result
+    list(ok = TRUE, result = result)
   }
   arm <- .pk_arm_async(env, worker_result = list(
     status = "ok",
@@ -416,8 +432,21 @@ test_that("iptal ve zaman aşımı AYRI kullanıcı mesajları üretir", {
   expect_true(grepl("Zaman Aşımı", sure_metni, fixed = TRUE))
 })
 
-test_that("bootstrap başarısızlığı SENKRON yeniden denemeye düşer", {
+# PROMISE GERİ ÇAĞRISI ANA SHINY SÜRECİNDE çalışır. Orada `mergen_pk_run_sync()`
+# çağırmak uzun bir SQL/LLM turunu OLAY DÖNGÜSÜNE taşır ve o R sürecindeki HER
+# oturumu dondurur; üstelik geri çağrı bloklandığı sürece kullanıcının Durdur
+# olayı da işlenemez — yani Faz 6'nın ortadan kaldırdığı D15 donması geri gelir.
+# Bu yüzden geri çağrı yolunda TİPLİ ALTYAPI HATASI döner, senkron tekrar
+# oynatma YAPILMAZ.
+test_that("bootstrap başarısızlığı SENKRON TEKRAR OYNATMAZ (tipli altyapı hatası)", {
   env <- .pk_dispatch_env()
+  senkron_cagrildi <- FALSE
+  eski_senkron <- env$mergen_pk_run_sync
+  env$mergen_pk_run_sync <- function(...) {
+    senkron_cagrildi <<- TRUE
+    eski_senkron(...)
+  }
+
   arm <- .pk_arm_async(env, worker_result = list(
     status = "bootstrap_failed", error = "Isci yardimcilari yuklenemedi.",
     session_writes = list()
@@ -427,23 +456,33 @@ test_that("bootstrap başarısızlığı SENKRON yeniden denemeye düşer", {
   env$mergen_pk_analysis_execute(h$ctx)
   arm$fire()
 
-  expect_length(h$kayit$devam, 1L)
-  expect_equal(h$kayit$devam[[1]]$messages[[1]]$content, "SENKRON SISTEM")
-  expect_length(h$kayit$mesajlar, 0L)
+  expect_false(senkron_cagrildi)
+  expect_length(h$kayit$devam, 0L)
+  expect_length(h$kayit$mesajlar, 1L)
+  expect_true(grepl("Analiz Altyapısı Hazır Değil", h$kayit$mesajlar[[1]]$content,
+                    fixed = TRUE))
 })
 
-test_that("işçi reddi kullanıcıya görünen hata üretir ve devam ÇAĞRILMAZ", {
+test_that("işçi reddi (ALTYAPI hatası) SENKRON TEKRAR OYNATMAZ", {
   env <- .pk_dispatch_env()
+  senkron_cagrildi <- FALSE
+  eski_senkron <- env$mergen_pk_run_sync
+  env$mergen_pk_run_sync <- function(...) {
+    senkron_cagrildi <<- TRUE
+    eski_senkron(...)
+  }
+
   arm <- .pk_arm_async(env, reject = simpleError("isci coktu"))
 
   h <- .pk_ctx(env)
   env$mergen_pk_analysis_execute(h$ctx)
   arm$fire()
 
+  expect_false(senkron_cagrildi)
   expect_length(h$kayit$devam, 0L)
   expect_length(h$kayit$mesajlar, 1L)
-  expect_equal(h$kayit$cleanup, 1L)
-  expect_true(grepl("Analiz modülü hatası", h$kayit$mesajlar[[1]]$content, fixed = TRUE))
+  expect_true(grepl("Analiz Altyapısı Hazır Değil", h$kayit$mesajlar[[1]]$content,
+                    fixed = TRUE))
 })
 
 test_that("BAYAT red geri çağrısı da hiçbir şeyi mutasyona uğratmaz", {
