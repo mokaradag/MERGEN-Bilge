@@ -1,23 +1,8 @@
 # ==============================================================================
-# Dosya Yolu: R/helpers_deep_analysis.R
-# Açıklama:   Derin Düşünme (Deep Thinking) modu için çoklu sorgu seçimi,
-#              bireysel sorgu çalıştırma ve orkestrasyon.
-#              Proje ve Kaynak Analizi aracının gelişmiş analiz motoru.
-#
-# BÖLÜNME NOTU (bakım borcu ratchet'i):
-#   Bu dosya ratchet bütçesini (659 satır / 15 fonksiyon) aştığı için iki saf
-#   yardımcıya bölünmüştür ve bunlar manifestte BU DOSYADAN ÖNCE yüklenir:
-#     * R/helpers_deep_analysis_detail.R  -> detay seviyesi kataloğu ve
-#       get_analysis_detail_config() / get_analysis_detail_instruction()
-#     * R/helpers_deep_analysis_context.R -> build_deep_analysis_context()
-#   Bu fonksiyonları buraya geri taşımayın; bütçe yeniden aşılır. Bu dosyayı
-#   yalıtılmış olarak source eden testler, ihtiyaç duydukları yardımcının
-#   dosyasını da source etmelidir.
+# R/helpers_deep_analysis.R
+# Derin Düşünme modu için tekil sorgu çalıştırma ve orkestrasyon.
+# Detay ve bağlam yardımcıları manifestte bu dosyadan önce yüklenir.
 # ==============================================================================
-
-# ------------------------------------------------------------------------------
-# TEKİL SORGU İŞLEME (Bağımsız BağLAM PENCERESİ)
-# ------------------------------------------------------------------------------
 
 #' Tek bir sorguyu çalıştır ve istatistiksel özet oluştur
 #' @param query Sorgu tanımı (library öğesi)
@@ -61,8 +46,6 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat(sprintf("[DEEP_QUERY] '%s' - Durdurma talebi alındı.\n", query_name))
-    # TİPLİ HALT (PR #703): `NULL`, halt SON sorguda olduğunda durumu KAYBEDER
-    # ve kısmi sonuç "tam analiz" gibi sunulurdu.
     return(pk_deep_halt_result("cancelled"))
   }
 
@@ -78,9 +61,6 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
   conn <- conn_list$conn
   on.exit(release_connection(conn_list), add = TRUE)
 
-  # D16: SQL kayna\u011f\u0131 ANA YOL ile ayn\u0131d\u0131r \u2014 startup'ta \u00f6ny\u00fcklenen `query$sql`
-  # B\u0130R\u0130NC\u0130LD\u0130R. Eski kod dosyay\u0131 \u0130STEK ANINDA yeniden okuyordu; UNC'de yava\u015ft\u0131
-  # ve tekil modun \u00e7al\u0131\u015ft\u0131rd\u0131\u011f\u0131 metinden sapabiliyordu.
   sql_source <- pk_deep_query_sql_text(query)
   sql_query_text <- sql_source$sql
   if (!identical(sql_source$source, "preloaded") && nzchar(sql_query_text)) {
@@ -95,9 +75,6 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     )))
   }
 
-  # D23 + D16: Derin mod da ANA YOL ile ayni salt-okunur kapisini kullanir.
-  # Eski satir toupper() ile yerel bagimliydi (Turkce Windows'ta "I" sorunu) ve
-  # yalnizca dort komutu engelleyen bir KARA LISTE idi.
   sql_gate <- pk_sql_readonly_guard(sql_query_text, context_label = "DEEP_QUERY")
   if (!isTRUE(sql_gate$allowed)) {
     return(finish_result(list(
@@ -107,12 +84,6 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     )))
   }
 
-  # D16 + Faz 6 (§5.10): ANA YOL ile aynı Unicode parametre yolu (Türkçe/köşeli
-  # parantezli sütun adları), ifade zaman aşımı, sınırlı parça getirimi ve
-  # parçalar arasında iptal/son tarih yoklaması. Eski satır düz
-  # `DBI::dbGetQuery()` idi ve iki mod Türkçe tanımlayıcılarda FARKLI davranıyordu.
-  # Önbellek anahtarı YETKİ İMZASINI taşır; isabet hiçbir kapıyı atlamaz (aşağıda
-  # gerçek-sütun doğrulaması ve RLS koşulsuz çalışır).
   sql_exec <- pk_deep_execute_sql(
     conn = conn, sql_text = sql_query_text,
     deadline_at = detail_config$pk_deadline_at,
@@ -121,8 +92,6 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     cache_key = pk_query_result_cache_key(query, rls_info, sql_query_text, engine = "deep")
   )
 
-  # SQL katmanının TİPLİ iptal/son tarihi de derin halt yoluna taşınır (PR #703);
-  # `deadline` tüm analiz bütçesidir, "başarısız sorgu" gibi raporlanamaz.
   if (identical(sql_exec$status, "cancelled")) return(pk_deep_halt_result("cancelled"))
   if (identical(sql_exec$status, "deadline")) return(pk_deep_halt_result("deadline"))
 
@@ -131,9 +100,6 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     return(finish_result(list(
       query_name = query_name,
       success = FALSE,
-      # `timeout` (tek ifadenin zaman aşımı) ile `deadline` (tüm analiz
-      # bütçesinin dolması) AYRI nedenlerdir; ikisini genel hataya katlamak
-      # tipli sonuç sözleşmesini ve telemetriyi bozardı.
       error_msg = switch(
         sql_exec$status,
         deadline = "Analiz zaman aşımına uğradı; sorgu çalıştırılamadı.",
@@ -164,15 +130,12 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     ))
   }
 
-  # SQL sonrası / RLS öncesi Durdur da TİPLİ halttır (PR #703).
   if (is.function(stop_check) && isTRUE(stop_check())) return(pk_deep_halt_result("cancelled"))
 
   if (!is.null(query$date_columns)) {
     raw_data <- convert_date_columns(raw_data, query$date_columns)
   }
 
-  # D6/D6b: RLS kapali basarisiz oldugunda derin modda TEK sorgu basarisiz olur;
-  # calisma devam eder ve hata build_deep_analysis_context() ile raporlanir.
   meta_gate <- pk_meta_actual_column_gate(query, names(raw_data), FALSE)
   if (isTRUE(meta_gate$abort)) {
     return(finish_result(list(
@@ -212,8 +175,6 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
       user_prompt, secure_data, available_columns, conn, session, stop_check = stop_check
     )
 
-    # D9 (ana yol ile PARİTE): bozulmuş filtre planı ile TÜM yetkili küme
-    # üzerinden sessizce devam EDİLMEZ.
     bozuk_kapi <- pk_deep_filter_degraded_decision(filter_criteria$status)
     if (isTRUE(bozuk_kapi$refuse)) {
       return(finish_result(
@@ -226,11 +187,6 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
 
     filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
 
-    # `filter_criteria$status` yalnızca PLANLAYICI durumudur. v2 yürütücüsü
-    # NİHAİ kararı döndürülen çerçeveye `PK_FILTER_V2_ATTR` ile iliştirir ve
-    # standart yol `action == "refuse"` gördüğünde AÇIKÇA durur. Derin yol bu
-    # uygulama-sonrası politikayı hiç okumadığı için reddedilmiş/sıfır eşleşen
-    # bir v2 filtresi TÜM yetkili küme üzerinden istatistiğe düşebiliyordu.
     v2_karar <- .pk_deep_filter_v2_decision(filtered_data)
     if (identical(as.character(v2_karar$action %||% "")[1], "refuse")) {
       return(finish_result(
@@ -244,10 +200,6 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     }
   }
 
-  # Faz 6 (§5.10): yetki VE filtre sonrası satır tavanı (asenkron kipte).
-  # SATIR TAVANI GERİ ALMA KİPİNDE DE ETKİNDİR (PR #703): `pk_phase6_active`
-  # bayrağını `active` olarak geçirmek, `MERGEN_PK_ASYNC=false` yolunda tavanı
-  # TAMAMEN kapatıyordu (bu PR tavanı `apply_rls_to_data()` içinden buraya aldı).
   deep_cap <- pk_row_cap_stage(filtered_data, query_meta = query$meta)
   if (identical(deep_cap$status, "too_large")) {
     return(finish_result(
@@ -287,27 +239,15 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
 
   if (is.function(stop_check) && isTRUE(stop_check())) return(pk_deep_halt_result("cancelled"))
 
-  # Faz 6: İSTATİSTİK ÜRETİMİ de pahalı bir aşamadır (tüm frame üzerinde
-  # sıralama/özetleme). SQL'den sonra kapı yoklanmazsa, durdurulmuş bir istek
-  # DB bağlantısını ve işçiyi bu iş bitene kadar tutmaya devam ederdi.
-  #
-  # HALT DURUMU TİPLİ DÖNER: `NULL` döndürmek, halt SON seçilen sorguda
-  # gerçekleştiğinde durumu KAYBEDER (dış döngüde keşfedilecek bir sonraki
-  # yineleme yoktur) ve kısmi sonuç sıradan bir başarı gibi sunulurdu.
   post_sql_gate <- pk_async_stage_gate(
     detail_config$pk_cancel_token, detail_config$pk_deadline_at
   )
   if (isTRUE(post_sql_gate$halt)) return(pk_deep_halt_result(post_sql_gate$status))
 
   preview_rows <- detail_config$preview_rows %||% 20
-  # İSTATİSTİK ÜRETİMİNİN KENDİSİ SINIRLIDIR (PR #703): yalnızca önce/sonra kapı
-  # koymak, dakikalarca sürebilen bu aşamanın Durdur'u ve mutlak son tarihi
-  # aşmasını engellemez. Aşama SAF R hesabıdır, `setTimeLimit()` onu gerçekten
-  # keser. Bütçe yoksa (geri alma kipi) davranış DEĞİŞMEZ.
   sinirli_ozet <- if (exists("pk_async_bounded_fs", mode = "function", inherits = TRUE)) {
     pk_async_bounded_fs
   } else {
-    # İzole test/eski yükleme yolu: sınırlayıcı yoksa davranış DEĞİŞMEZ.
     function(fn, deadline_at = NULL) list(ok = TRUE, value = fn())
   }
   ozet_sonucu <- sinirli_ozet(function() {
@@ -322,15 +262,10 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
   }, detail_config$pk_deadline_at)
 
   if (!isTRUE(ozet_sonucu$ok)) {
-    # Bütçe içinde bitmedi: bu bir SORGU HATASI değil, ANALİZ SON TARİHİDİR.
     return(pk_deep_halt_result("deadline"))
   }
   stat_summary <- ozet_sonucu$value
 
-  # ÖZET SONRASI kapı: özet üretimi kendi içinde iptal gözlemez, bu yüzden
-  # sırasında gelen bir Durdur/son tarih ancak burada görülebilir. Sonucu
-  # kullanmadan önce yoklanır ki bütçe dolmuş bir istek ilerlemeye devam
-  # etmesin.
   post_stat_gate <- pk_async_stage_gate(
     detail_config$pk_cancel_token, detail_config$pk_deadline_at
   )
@@ -365,10 +300,6 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
   )
 }
 
-# ------------------------------------------------------------------------------
-# ANA DERİN ANALİZ ORKESTRATÖRÜ
-# ------------------------------------------------------------------------------
-
 #' Derin düşünme modunda çoklu sorgu analizi yap
 #' @param user_prompt Kullanıcı sorusu
 #' @param chat_history Sohbet geçmişi
@@ -395,21 +326,10 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   }
 
   detail_config <- get_analysis_detail_config(detail_level)
-
-  # Faz 6 (§5.10): TÜM analizin duvar-saati son tarihi ve iptal jetonu, her
-  # sorgunun SQL yürütmesine taşınır. Ardışık geçerli SQL zaman aşımlarının
-  # toplamı bu bütçeyi AŞAMAZ; sonraki derin sorgu yalnızca KALAN bütçeyi alır.
-  # Faz 6 (§5.10) kurulum: mutlak son tarih + oturum kapsamlı iptal jetonu +
-  # ara katmanların göreceği option'lar. YALNIZCA asenkron kipte etkindir
-  # (`MERGEN_PK_ASYNC=false` ilan edilen tek adımlık geri alma yoludur).
   faz6 <- pk_deep_phase6_setup(detail_config, session, pk_request_id, pk_started_at)
   detail_config <- faz6$detail_config
   if (is.function(faz6$restore)) on.exit(faz6$restore(), add = TRUE)
 
-  # D16: kimlik ANA YOL ile AYNI kapıdan geçer. Eski satır
-  # `session$userData$system_username %||% "Unknown"` idi ve SSO hazırlık
-  # kapısını ATLIYORDU: derin mod RLS aramasını "Unknown" olarak yapabiliyordu.
-  # Kimlik hazır değilse DB'ye HİÇ gidilmez.
   identity_state <- pk_deep_resolve_username(session)
   if (!isTRUE(identity_state$ready)) {
     cat(sprintf("[DEEP_ANALYSIS] Kimlik hazir degil. Sebep: %s\n", identity_state$reason))
@@ -421,9 +341,6 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   conn <- conn_list$conn
   on.exit(release_connection(conn_list), add = TRUE)
 
-  # Gözlem + birleşik köken alt bilgisi kapanışları FABRİKADADIR
-  # (R/helpers_deep_analysis_reconcile.R): orkestratör bakım ratchet bütçesinin
-  # (659 satır) altında kalmalıdır. Davranış BİREBİR korunur.
   deep_observers <- pk_deep_observation_helpers(
     session = session, conn = conn, username = username,
     user_prompt = user_prompt, request_id = pk_request_id,
@@ -434,7 +351,6 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
 
   rls_info <- get_user_rls_info(username, conn)
 
-  # TİPLİ DURDURMA/SON TARİH yetki hatası DEĞİLDİR (PR #703).
   if (isTRUE(rls_info$halted)) {
     pk_observe_deep(list(
       query_name = "Derin analiz",
@@ -465,18 +381,10 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz iptal edildi.")
   }
 
-  # Faz 5 motor sınırı (§5.2 / §10): `MERGEN_PK_ENGINE=v2` iken Derin Düşünme de
-  # kapılardan geçer. Eski akış `find_multiple_queries_with_ai()` kullanıyordu;
-  # o seçici KONUM kimliğiyle çalışır ve kararlı kimlik/yetenek/güven/marj ile
-  # reddetme kapılarının HİÇBİRİNİ uygulamaz — yani Derin Düşünme açıkken
-  # v2'nin tüm güvenlik sözleşmesi sessizce devre dışı kalıyordu.
   pk_v2_secim <- exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
     isTRUE(pk_engine_is_v2()) &&
     exists("pk_select_query_v2", mode = "function", inherits = TRUE)
 
-  # Faz 6: sıralı-küme tavanı YAPILANDIRMADAN gelir (§9/§10); kodda sabit 5
-  # kalmaz. Seçim aşaması tavanı, bütçe kapısı ve etkin zaman aşımı kararı
-  # `pk_deep_select_multi_queries()` içindedir (bkz. helpers_deep_analysis_phase6.R).
   selected_queries <- if (pk_v2_secim) NULL else {
     pk_deep_select_multi_queries(user_prompt, query_library, session,
                                  detail_config, stop_check)
@@ -489,7 +397,6 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
       session = session, stop_check = stop_check
     )
 
-    # v2 acikca "bilmiyorum" dediyse Derin Dusunme de calistirmaz.
     if (is.list(single) && is.null(single$id) && !is.null(single$refusal_message)) {
       pk_observe_deep(list(
         query_name = "Derin analiz", filter_status = "not_reached",
@@ -511,10 +418,6 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
     }
   }
 
-  # SEÇİLEN birincil sorgunun metadata'sı tavanı EZEBİLİR (yapılandırma
-  # sözleşmesi metadata'ya en yüksek önceliği verir). Tavan seçimden ÖNCE
-  # çözüldüğü için `deep_max_queries = 1` işaretli bir sorgu yine de global
-  # varsayılan kümeyi çalıştırıyordu.
   birincil_meta <- tryCatch(selected_queries[[1]]$meta, error = function(e) NULL)
   deep_query_ceiling <- pk_deep_max_queries(birincil_meta)
   if (length(selected_queries) > deep_query_ceiling) {
@@ -536,9 +439,6 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   }
 
   query_results <- list()
-  # Kısmi durum AÇIKÇA taşınır. `break` ile çıkıp normal bir bağlam üretmek,
-  # kullanıcıya "tam analiz" gibi görünen ama sessizce eksik bir yanıt vermek
-  # olurdu (§5.11: sessizce başarı gibi görünen bozulma yasak).
   deep_halt_status <- NA_character_
   for (i in seq_along(selected_queries)) {
     if (is.function(stop_check) && isTRUE(stop_check())) {
@@ -547,8 +447,6 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
       break
     }
 
-    # Faz 6: SORGULAR ARASINDA son tarih/iptal kapısı. Aksi hâlde bütçe dolmuş
-    # olsa bile kalan sorgular sırayla çalışıp bağlantıyı tutmaya devam ederdi.
     deep_gate <- pk_async_stage_gate(
       detail_config$pk_cancel_token, detail_config$pk_deadline_at
     )
@@ -591,10 +489,6 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
       }
     )
 
-    # SORGU İÇİNDE gözlenen halt DIŞ DÖNGÜYE taşınır. Aksi hâlde son seçilen
-    # sorguda gerçekleşen bir iptal/son tarih durumu kaybolur; kısmi sonuç
-    # sıradan bir başarı gibi sunulur (tek sorguluk kümede ise "hiç sorgu
-    # çalışmadı" gibi yanlış bir genel hata üretilirdi).
     if (pk_deep_is_halt_result(result)) {
       deep_halt_status <- as.character(result$pk_halt_status)[1]
       cat(sprintf("[DEEP_ANALYSIS] Sorgu %d/%d - durum=%s (sorgu ici).\n",
@@ -627,8 +521,6 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
     return("\U000026A0\U0000FE0F **Derin Analiz:** Hiçbir sorgu çalıştırılamadı. Lütfen tekrar deneyin.")
   }
 
-  # KISMİ küme (iptal/son tarih kalan sorguları durdurdu) SIRADAN BİR BAŞARI
-  # gibi sunulamaz; durum bağlama AÇIKÇA yazılır.
   detail_config <- pk_deep_apply_partial_halt(detail_config, deep_halt_status,
                                               length(query_results))
 
@@ -637,14 +529,9 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   }, character(1))
   stash_deep_footer(deep_footers)
 
-  # Faz 6 (D16, §10): PAKET seviyesinde uzlaştırma. Her paket kendi kökenini
-  # taşır; çapraz sorgu aritmetiği YASAKTIR ve kısıt istem bağlamına yazılır.
   reconciliation <- pk_deep_reconcile_packets(query_results)
   detail_config$pk_cross_query_instruction <- reconciliation$instruction
 
-  # UZLAŞTIRILMIŞ paketler NİHAİ BAĞLAMI besler. Aksi hâlde bozulmuş filtre
-  # nedeniyle burada DÜŞÜRÜLEN bir paket, LLM'e gönderilen veride hâlâ
-  # `success = TRUE` kalırdı ve bu güvenlik kararının HİÇBİR etkisi olmazdı.
   if (is.list(reconciliation$packets) && length(reconciliation$packets) > 0L) {
     query_results <- reconciliation$packets
   }
@@ -665,9 +552,6 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
 
   context <- build_deep_analysis_context(query_results, user_prompt, detail_config)
 
-  # KISMİ durum bağlamın KENDİSİNDE taşınır: asenkron işçinin son kapısı bu
-  # işareti görüp sonucu ATMAMALIDIR (halt zaten ELE ALINDI ve kısmi sonuç
-  # kullanıcıya ulaşmalıdır).
   if (is.list(context) && nzchar(as.character(detail_config$pk_partial_halt_status %||% "")[1])) {
     context$pk_partial_halt_status <- as.character(detail_config$pk_partial_halt_status)[1]
   }
