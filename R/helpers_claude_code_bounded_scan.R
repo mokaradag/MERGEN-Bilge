@@ -168,7 +168,7 @@ cc_path_is_reparse_link <- function(path) {
   # bir paylaşım için de boş döner. Bu yüzden boş sonuçta `fs` yedeğine düşülür;
   # `fs` de doğru kodlanmış adlar döndürdüğü için Türkçe adlar korunur.
   if (!length(entries) && requireNamespace("fs", quietly = TRUE)) {
-    yedek <- try(fs::dir_ls(path, recurse = FALSE, all = FALSE, fail = FALSE), silent = TRUE)
+    yedek <- suppressWarnings(try(fs::dir_ls(path, recurse = FALSE, all = FALSE, fail = FALSE), silent = TRUE))
     if (!inherits(yedek, "try-error")) entries <- as.character(yedek)
   }
 
