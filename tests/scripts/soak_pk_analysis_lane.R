@@ -121,6 +121,44 @@ soak_pk_make_db <- function(rows = 20000L) {
   list(conn = conn, path = path)
 }
 
+# UCUS-ICI IPTAL TETIKLEYICISININ KENDI KENDINE KALIBRASYONU
+#
+# Eskiden "3. kapi cagrisinda iptal et" seklinde SABIT bir ordinal kullaniliyordu.
+# O sayi `pk_sql_execute_bounded()` icindeki kapi yerlesimine (giris + dongu
+# basi) baglidir. PR #703 incelemesi "hicbir yeni bloklayan surucu cagrisi
+# Durdur sonrasinda BASLATILMAZ" sozlesmesini ekleyince her bloklayan cagri da
+# kapiyi yokluyor; sabit ordinal artik GETIRIM BASLAMADAN once dusuyor ve
+# `chunks == 0` uretiyordu. Serit bunu dogru sekilde BASARISIZ saydi.
+#
+# Cozum ordinali buyutmek DEGIL, KALIBRE ETMEKTIR: ayni sorgu, artan k
+# degerleriyle iptal edilerek `chunks >= 1` veren ILK k bulunur. Boylece serit
+# ileride kapi yerlesimi yeniden degistiginde de kendini duzeltir. Bulunamazsa
+# `NA` doner ve cagiran turu "olculmedi" degil BASARISIZ sayar (kapi zaten
+# `chunks >= 1` dogrulamasini yapar).
+soak_pk_calibrate_inflight_gate <- function(conn, sql, cfg_lane, max_k = 40L) {
+  for (k in seq.int(2L, max_k)) {
+    sayac <- 0L
+    kapi <- function() {
+      sayac <<- sayac + 1L
+      if (sayac >= k) return(list(halt = TRUE, status = "cancelled"))
+      list(halt = FALSE, status = "ok")
+    }
+    res <- tryCatch(pk_sql_execute_bounded(
+      conn, sql, unicode_param = FALSE, chunk_rows = cfg_lane$chunk_rows,
+      max_result_mb = cfg_lane$max_result_mb, timeout_sec = cfg_lane$sql_timeout_sec,
+      deadline_at = NULL, stage_gate = kapi
+    ), error = function(e) NULL)
+    if (is.null(res)) next
+    if (identical(res$status, "cancelled") &&
+        isTRUE(as.integer(res$chunks %||% 0L) >= 1L)) {
+      return(k)
+    }
+    # Iptal edilmeden TAMAMLANDIYSA daha buyuk k denemenin anlami yok.
+    if (identical(res$status, "ok")) break
+  }
+  NA_integer_
+}
+
 soak_pk_quantile <- function(x, p) {
   x <- x[is.finite(x)]
   if (!length(x)) return(NA_real_)
@@ -130,7 +168,8 @@ soak_pk_quantile <- function(x, p) {
 # Bir "oturum": istek kimligi uret -> anlik goruntu kur ve DOGRULA -> onbellek
 # yokla -> sinirli SQL getir -> satir tavani plani -> istek-kimligi korumasini
 # uygula. Iptal edilen turlarda GERCEK jeton dosyasi yazilir.
-soak_pk_one_session <- function(idx, conn, token_root, cfg_lane) {
+soak_pk_one_session <- function(idx, conn, token_root, cfg_lane,
+                                inflight_gate_k = NA_integer_) {
   started <- Sys.time()
   req_id <- sprintf("soak_pk_%06d", idx)
   # Onbellek erisim deseni BILINCLI olarak SICAK KUME + SOGUK KUYRUK'tur.
@@ -247,17 +286,19 @@ soak_pk_one_session <- function(idx, conn, token_root, cfg_lane) {
         # Parca-arasi kapi sayaci: ucus-ici iptal turlerinde jeton dosyasi
         # ILK GETIRIM TAMAMLANDIKTAN SONRA yazilir.
         #
-        # NEDEN 3. CAGRI: `pk_sql_execute_bounded()` kapiyi (1) fonksiyon
-        # girisinde, (2) getirim dongusunun ILK turunun basinda - yani HENUZ
-        # HIC `dbFetch()` yapilmadan - ve (3) IKINCI turun basinda cagirir.
-        # 2. cagrida iptal etmek, "getirim baslamadan once iptal" senaryosunu
-        # test ederdi; parca SINIRINDAKI iptal yolu (asil dogrulanmak istenen
-        # sey) hic calistirilmazdi. 3. cagri, ilk parcanin GERCEKTEN
-        # getirildigini garanti eder ve `res$chunks >= 1` ile DOGRULANIR.
+        # TETIKLEYICI ORDINALI SABIT DEGIL, KALIBREDIR: `pk_sql_execute_bounded()`
+        # kapiyi hem girisde, hem getirim dongusunun her turunda, hem de HER
+        # BLOKLAYAN SURUCU CAGRISINDAN once yoklar. Bu yerlesim degistiginde
+        # sabit bir ordinal iptali getirim BASLAMADAN once atar ve parca
+        # SINIRINDAKI kapi hic test edilmezdi. `soak_pk_calibrate_inflight_gate()`
+        # `chunks >= 1` veren ILK ordinali olcerek verir; asagidaki
+        # `res$chunks >= 1` dogrulamasi da bunu her turda YENIDEN kanitlar.
+        esik_k <- suppressWarnings(as.integer(inflight_gate_k)[1])
+        if (length(esik_k) != 1L || is.na(esik_k) || esik_k < 2L) esik_k <- 3L
         kapi_sayaci <- 0L
         parca_kapisi <- function() {
           kapi_sayaci <<- kapi_sayaci + 1L
-          if (isTRUE(inflight_cancel) && kapi_sayaci == 3L) {
+          if (isTRUE(inflight_cancel) && kapi_sayaci == esik_k) {
             pk_cancel_token_signal(token)
           }
           pk_async_stage_gate(token, deadline)
@@ -792,10 +833,22 @@ soak_pk_analysis_lane <- function(cfg) {
     fn(bilgi$conn)
   }
 
+  # UCUS-ICI iptal tetikleyicisi TURLERDEN ONCE bir kez kalibre edilir; ayni
+  # sorgu sekli tum turlerde kullanildigi icin tek olcum yeterlidir.
+  inflight_gate_k <- tryCatch(
+    al_birak(function(baglanti) soak_pk_calibrate_inflight_gate(
+      baglanti,
+      sprintf("SELECT * FROM pk_veri WHERE id <= %d", cfg_lane$rows_per_query),
+      cfg_lane
+    )),
+    error = function(e) NA_integer_
+  )
+
   rows <- vector("list", sessions)
   for (i in seq_len(sessions)) {
     rows[[i]] <- tryCatch(
-      al_birak(function(baglanti) soak_pk_one_session(i, baglanti, token_root, cfg_lane)),
+      al_birak(function(baglanti) soak_pk_one_session(i, baglanti, token_root, cfg_lane,
+                                                     inflight_gate_k = inflight_gate_k)),
       error = function(e) list(
         idx = i, duration_ms = NA_real_, snapshot_safe = FALSE,
         cancelled_round = FALSE, inflight_cancel = FALSE, stale_round = FALSE,

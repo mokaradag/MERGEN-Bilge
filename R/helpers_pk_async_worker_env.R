@@ -30,11 +30,17 @@
 # Paket, işçi globals paketi olduğunu kanıtlayan bir İŞARET taşır; işaretsiz
 # hiçbir ortam `globalenv()`'e kopyalanmaz.
 .PK_ASYNC_WORKER_BUNDLE_MARK <- ".pk_async_worker_bundle"
+
+# ORTAK `tryCatch` HATA İŞLEYİCİSİ: "boş karakter vektörüne düş" davranışı bu
+# dosyada dört ayrı yerde geçiyordu. Tek isimli işleyiciyi paylaşmak davranışı
+# AYNI tutar ve bakım oranı fonksiyon bütçesini adsız kopyalarla tüketmez.
+.pk_async_chr0 <- function(e) character(0)
+
 pk_async_worker_install_globals <- function(env, exclude = c("request", "task_fn")) {
   if (!is.environment(env)) return(invisible(character(0)))
 
   hedef <- globalenv()
-  adlar <- tryCatch(ls(env, all.names = TRUE), error = function(e) character(0))
+  adlar <- tryCatch(ls(env, all.names = TRUE), error = .pk_async_chr0)
 
   # GÜVENLİK KAPISI: yalnızca AÇIKÇA işaretlenmiş işçi paketi kurulur. Bu
   # olmadan, kip yanlışlıkla "auto"ya çevrilirse bir gözlemci/oturum kapanışının
@@ -162,7 +168,7 @@ pk_async_worker_sql_dependencies <- function(repo_root) {
 #' Bootstrap kaynak parmak izi (İÇERİK tabanlı, SQL bağımlılıkları dahil)
 pk_async_bootstrap_fingerprint <- function(repo_root, files) {
   tam <- file.path(repo_root, files)
-  sql <- tryCatch(pk_async_worker_sql_dependencies(repo_root), error = function(e) character(0))
+  sql <- tryCatch(pk_async_worker_sql_dependencies(repo_root), error = .pk_async_chr0)
 
   hedefler <- c(tam, sql)
   parcalar <- vapply(hedefler, function(p) {
@@ -204,6 +210,23 @@ pk_async_bootstrap_fingerprint <- function(repo_root, files) {
 #' kullanılır: paketler görünür kalır, ÖNCEKİ bootstrap SEMBOLLERİ görünmez.
 #' Ana süreçten AÇIKÇA kurulan globals paketi (bayat değildir; bu isteğe aittir)
 #' bilinçli olarak enjekte edilir.
+#' Sahneleme ebeveynini TAZELE (yeni attach edilen paketleri görünür kılar)
+#'
+#' ZORUNLUDUR: `library()` paketi arama yolunun BAŞINA, yani
+#' `parent.env(globalenv())` konumuna ekler. Sahneleme ortamı ebeveynini
+#' KURULUM ANINDA dondurursa, bootstrap sırasında `R/config_packages.R`
+#' tarafından attach edilen paketler (logger, DBI, ...) sonraki dosyalara
+#' GÖRÜNMEZ ve `R/config_logging.R` "could not find function log_threshold"
+#' ile düşer. Ebeveyn her dosyadan ÖNCE yeniden bağlanır; böylece hem paketler
+#' güncel kalır hem de ÖNCEKİ bootstrap'ın `globalenv()` sembolleri görünmez.
+pk_async_worker_stage_refresh <- function(stage, target = globalenv()) {
+  if (!is.environment(stage)) return(invisible(FALSE))
+  yeni_ebeveyn <- tryCatch(parent.env(target), error = function(e) NULL)
+  if (!is.environment(yeni_ebeveyn)) return(invisible(FALSE))
+  if (identical(parent.env(stage), yeni_ebeveyn)) return(invisible(TRUE))
+  isTRUE(tryCatch({ parent.env(stage) <- yeni_ebeveyn; TRUE }, error = function(e) FALSE))
+}
+
 pk_async_worker_stage_env <- function(target = globalenv()) {
   sahne <- new.env(parent = parent.env(target))
 
@@ -232,7 +255,7 @@ pk_async_worker_commit_env <- function(stage, target = globalenv()) {
   onceki <- get0(.PK_ASYNC_OWNED_NAMES_SLOT, envir = target, inherits = FALSE)
   onceki <- as.character(onceki %||% character(0))
 
-  yeni <- tryCatch(ls(stage, all.names = TRUE), error = function(e) character(0))
+  yeni <- tryCatch(ls(stage, all.names = TRUE), error = .pk_async_chr0)
   basarisiz <- character(0)
 
   # Yeni revizyonda ARTIK OLMAYAN eski bootstrap sembolleri kaldırılır.
@@ -317,7 +340,7 @@ pk_artifact_scope_active <- function() {
 #' Üretilen artifact yollarını kaydet (YALNIZCA açık kapsamda)
 pk_artifact_track <- function(paths) {
   if (!isTRUE(pk_artifact_scope_active())) return(invisible(character(0)))
-  yollar <- tryCatch(as.character(paths %||% character(0)), error = function(e) character(0))
+  yollar <- tryCatch(as.character(paths %||% character(0)), error = .pk_async_chr0)
   yollar <- yollar[!is.na(yollar) & nzchar(yollar)]
   if (!length(yollar)) return(invisible(character(0)))
   .pk_artifact_registry$paths <- unique(c(.pk_artifact_registry$paths, yollar))

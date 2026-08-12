@@ -41,6 +41,10 @@ local({
   yukle("helpers_pk_async_session_registry.R")
   yukle("helpers_pk_async_routing.R")
   yukle("helpers_db_connection.R")
+  # `pk_async_worker_globals()` bootstrap giriş noktalarını da paketler;
+  # globals KAPALILIK testi için bunlar YÜKLÜ olmalıdır.
+  yukle("config_source_manifest.R")
+  yukle("helpers_pk_async_bootstrap.R")
 })
 
 # Yazılabilir sahte oturum: `userData` gerçek bir ORTAMDIR.
@@ -435,6 +439,93 @@ test_that("sahneleme ortamı ÖNCEKİ bootstrap sembollerini GÖRMEZ", {
   sahne <- pk_async_worker_stage_env(target = hedef)
   # `inherits = TRUE` ile bile bayat sembol GÖRÜNMEMELİDİR.
   expect_false(exists("bayat_sembol", envir = sahne, inherits = TRUE))
+})
+
+test_that("sahneleme ebeveyni TAZELENİNCE yeni eklenen arama yolu GÖRÜNÜR olur", {
+  # GERİLEME: `library()` arama yolunun BAŞINA ekler. Sahne ebeveyni kurulum
+  # anında dondurulursa, bootstrap sırasında `R/config_packages.R` tarafından
+  # attach edilen paketler sonraki dosyalara GÖRÜNMEZ kalır ve
+  # `R/config_logging.R` "could not find function log_threshold" ile düşer.
+  hedef <- new.env(parent = globalenv())
+  assign("bayat_sembol", "ESKI", envir = hedef)
+  sahne <- pk_async_worker_stage_env(target = hedef)
+
+  # `attach()` ile arama yolunun BAŞINA yeni bir katman eklenir (library()'nin
+  # ortam düzeyindeki karşılığı); kurulmuş sahne bunu HENÜZ görmez.
+  yeni_katman <- new.env()
+  assign("sonradan_eklenen_islev", function() "TAZE", envir = yeni_katman)
+  eski_ebeveyn <- parent.env(hedef)
+  parent.env(hedef) <- yeni_katman
+  parent.env(yeni_katman) <- eski_ebeveyn
+  on.exit(parent.env(hedef) <- eski_ebeveyn, add = TRUE)
+
+  expect_false(exists("sonradan_eklenen_islev", envir = sahne, inherits = TRUE))
+
+  expect_true(isTRUE(pk_async_worker_stage_refresh(sahne, hedef)))
+  expect_true(exists("sonradan_eklenen_islev", envir = sahne, inherits = TRUE))
+  # İZOLASYON KORUNUR: tazeleme sonrası da bayat sembol GÖRÜNMEZ.
+  expect_false(exists("bayat_sembol", envir = sahne, inherits = TRUE))
+})
+
+test_that("işçi globals paketi BOOTSTRAP ÖNCESİ çağrı grafiği için KAPALIDIR", {
+  # GERİLEME: `dependency_mode = "explicit"` HİÇBİR otomatik tarama yapmaz.
+  # Paketlenen bir fonksiyonun gövdesinde adı geçen repo sembolü pakete
+  # eklenmezse, işçi bootstrap'tan ÖNCE `object '...' not found` ile düşer ve
+  # `MERGEN_PK_ASYNC=true` her istekte SESSİZCE senkron yedeğe geçerdi.
+  # Bu test bootstrap-öncesi çağrı grafiğini gezerek paketin KAPALI olduğunu
+  # kanıtlar (bootstrap SONRASI semboller kaynak dosyalardan gelir; onlar
+  # kapsam dışıdır).
+  skip_if_not_installed("codetools")
+
+  paket <- pk_async_worker_globals(force = TRUE)
+  expect_true(is.list(paket) && length(paket) > 0L)
+
+  # Repo'ya ait sembol ön ekleri: yalnızca bunlar paketten çözülmek ZORUNDA.
+  repo_sembolu <- function(ad) grepl("^\\.?(pk_|PK_|mergen_pk_)", ad)
+
+  # Bootstrap TAMAMLANMADAN önce çalışan giriş noktaları.
+  tohumlar <- c("pk_async_worker_bootstrap", "pk_async_bounded_fs",
+                "pk_async_bootstrap_fingerprint", "pk_async_worker_stage_env",
+                "pk_async_worker_stage_refresh", "pk_async_worker_commit_env",
+                "pk_async_worker_install_globals",
+                "pk_async_worker_sql_dependencies")
+  tohumlar <- intersect(tohumlar, names(paket))
+  expect_true(length(tohumlar) > 0L)
+
+  gorulen <- character(0)
+  eksik <- character(0)
+  kuyruk <- tohumlar
+  while (length(kuyruk)) {
+    ad <- kuyruk[1]; kuyruk <- kuyruk[-1]
+    if (ad %in% gorulen) next
+    gorulen <- c(gorulen, ad)
+    fn <- paket[[ad]]
+    if (!is.function(fn)) next
+    globaller <- tryCatch(codetools::findGlobals(fn, merge = TRUE),
+                          error = function(e) character(0))
+    for (g in globaller) {
+      if (!repo_sembolu(g)) next
+      if (!(g %in% names(paket))) {
+        eksik <- c(eksik, sprintf("%s -> %s", ad, g))
+      } else if (is.function(paket[[g]])) {
+        kuyruk <- c(kuyruk, g)
+      }
+    }
+  }
+
+  expect_identical(unique(eksik), character(0))
+})
+
+test_that("bootstrap kaynak döngüsü sahne ebeveynini HER DOSYADAN ÖNCE tazeler", {
+  kaynak <- readLines("../../R/helpers_pk_async_bootstrap.R",
+                      warn = FALSE, encoding = "UTF-8")
+  metin <- paste(kaynak, collapse = "\n")
+  expect_true(grepl("pk_async_worker_stage_refresh(sahne, hedef)", metin, fixed = TRUE))
+  # Tazeleme `sys.source()` ÖNCESİNDE olmalıdır.
+  expect_lt(
+    which(grepl("pk_async_worker_stage_refresh(sahne, hedef)", kaynak, fixed = TRUE))[1],
+    which(grepl("sys.source(tam, envir = sahne", kaynak, fixed = TRUE))[1]
+  )
 })
 
 test_that("commit KISMİ yazımda BAŞARISIZ döner", {

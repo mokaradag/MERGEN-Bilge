@@ -229,6 +229,11 @@ pk_async_worker_globals <- function(force = FALSE) {
     pk_async_bootstrap_fingerprint = pk_async_bootstrap_fingerprint,
     pk_async_worker_sql_dependencies = pk_async_worker_sql_dependencies,
     .pk_async_file_digest = .pk_async_file_digest,
+    # ORTAK `tryCatch` işleyicisi: paketlenen fonksiyonların gövdesinde
+    # ADIYLA geçer. `dependency_mode = "explicit"` otomatik tarama YAPMAZ, bu
+    # yüzden eksik bırakılırsa işçi `object '.pk_async_chr0' not found` ile
+    # bootstrap'ı düşürür (üretimde her istek senkron yedeğe düşerdi).
+    .pk_async_chr0 = .pk_async_chr0,
     # Bootstrap'ın SINIRLI dosya sistemi sarmalayıcısı ve havuz yapılandırma
     # parmak izi de bootstrap ÖNCESİ gereklidir (explicit-mode özyinelemeli
     # global genişletme YAPMAZ).
@@ -237,6 +242,7 @@ pk_async_worker_globals <- function(force = FALSE) {
     pk_db_admission_plan = pk_db_admission_plan,
     .PK_ASYNC_INSTALLED_GLOBALS_SLOT = .PK_ASYNC_INSTALLED_GLOBALS_SLOT,
     pk_async_worker_stage_env = pk_async_worker_stage_env,
+    pk_async_worker_stage_refresh = pk_async_worker_stage_refresh,
     pk_async_worker_commit_env = pk_async_worker_commit_env,
     pk_async_worker_install_globals = pk_async_worker_install_globals,
     .pk_async_worker_pool_ensure = .pk_async_worker_pool_ensure,
@@ -244,7 +250,13 @@ pk_async_worker_globals <- function(force = FALSE) {
     pk_async_worker_pool_admission = pk_async_worker_pool_admission,
     pk_async_worker_pool_apply_share = pk_async_worker_pool_apply_share,
     pk_async_worker_pool_retire = pk_async_worker_pool_retire,
+    # `pk_async_worker_pool_retire()` gövdesinde ADIYLA geçer: eksik bırakılırsa
+    # işçi havuzu SINIRSIZ kapatmaya düşemez, doğrudan hata verir.
+    .pk_async_pool_close_bounded = .pk_async_pool_close_bounded,
     pk_async_db_pool_option_install = pk_async_db_pool_option_install,
+    # SİLİNMİŞ option'ı temsil eden sentinel; kurulum fonksiyonu onunla
+    # karşılaştırma yapar.
+    .PK_ASYNC_OPTION_UNSET = .PK_ASYNC_OPTION_UNSET,
     .pk_async_pool_log = .pk_async_pool_log,
     # Artifact kaydı: iptal/hata yollarında ÖKSÜZ dosya bırakmamak için işçide
     # bootstrap'tan bağımsız olarak da bulunmalıdır.

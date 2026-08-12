@@ -337,13 +337,16 @@ test_that("globals paketi KÜÇÜK kalır ve memoize edilir", {
   # AÇIKÇA taşınmalıdır. Eksik biri offline hiçbir testi kırmaz — temiz bir PSOCK
   # işçisi ham "could not find function" ile ölür. Sınır yine de KÜÇÜKTÜR:
   # boru hattının kendisi taşınmaz.
-  # PR #703: sınır 45 -> 52. İnceleme, bootstrap ÖNCESİ çalışan yeni güvenlik
+  # PR #703: sınır 45 -> 56. İnceleme, bootstrap ÖNCESİ çalışan yeni güvenlik
   # yardımcılarını gerektirdi (sınırlı dosya sistemi sarmalayıcısı, havuz
   # yapılandırma parmak izi, agregat admisyon planı, artefakt KAPSAMI, kurulan
   # globals kaydı). Explicit-mode özyinelemeli genişletme YAPMADIĞI için bunlar
   # açıkça taşınmalıdır; eksik biri offline hiçbir testi kırmaz ama TEMİZ bir
   # PSOCK işçisi ham "could not find function" ile ölür.
-  expect_true(length(ilk) < 52L)
+  # PAKET KAPALILIĞI ayrıca `test-pk-review-703-hardening-behavior.R` içinde
+  # çağrı grafiği gezilerek kanıtlanır; buradaki sınır yalnızca "boru hattının
+  # tamamı taşınmasın" korumasıdır.
+  expect_true(length(ilk) < 56L)
   expect_true("pk_async_worker_bootstrap" %in% names(ilk))
   expect_true("bootstrap_files" %in% names(ilk))
   expect_false("pk_analiz_process_request" %in% names(ilk))

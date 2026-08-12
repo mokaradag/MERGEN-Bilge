@@ -172,7 +172,13 @@ pk_async_worker_bootstrap <- function(repo_root, files,
   if (!isTRUE(parmak_sonuc$ok)) {
     # Parmak izi HESAPLANAMADI: repo yolu askıda/erişilemez. Devam etmek, aynı
     # askıda yolda dosya dosya `sys.source()` denemek olurdu.
-    return(list(ok = FALSE, loaded = 0L, failed = "fingerprint_unavailable",
+    # SEBEP TAŞINIR: "fingerprint_unavailable" tek başına askıda yolu, bütçe
+    # tükenmesini ve gerçek bir R hatasını AYIRT ETTİRMEZ; alan teşhisinde
+    # operatör yanlış tarafa bakardı.
+    neden <- as.character(parmak_sonuc$error %||% NA_character_)[1]
+    return(list(ok = FALSE, loaded = 0L,
+                failed = c("fingerprint_unavailable",
+                           if (!is.na(neden) && nzchar(neden)) neden else NULL),
                 cached = FALSE))
   }
   parmak <- parmak_sonuc$value
@@ -221,11 +227,25 @@ pk_async_worker_bootstrap <- function(repo_root, files,
   # üzerine yazmak, KALDIRILMIŞ/YENİDEN ADLANDIRILMIŞ sembolleri geride bırakır
   # ve işçi eski+yeni güvenlik mantığının KARIŞIMINI çalıştırabilirdi. Sahneleme
   # ortamı yalnızca TAMAMI başarılı olduğunda devreye alınır.
-  sahne <- pk_async_worker_stage_env()
+  sahne <- pk_async_worker_stage_env(hedef)
 
   for (goreli in dosyalar) {
     ara <- durdur(yuklenen)
     if (!is.null(ara)) return(ara)
+
+    # SAHNELEME EBEVEYNİ HER DOSYADAN ÖNCE TAZELENİR.
+    #
+    # `library()` paketi arama yolunun BAŞINA, yani `parent.env(globalenv())`
+    # konumuna ekler. Ebeveyni kurulum anında dondurursak, bootstrap sırasında
+    # `R/config_packages.R` tarafından attach edilen paketler (logger, DBI, ...)
+    # SONRAKİ dosyalara GÖRÜNMEZ olur ve `R/config_logging.R`
+    # "could not find function log_threshold" ile düşer; bootstrap 156/159
+    # dosyada `bootstrap_failed` döner. Sembol izolasyonu KORUNUR: ebeveyn
+    # `parent.env(hedef)`'tir, `hedef`'in KENDİSİ değil; önceki bootstrap'ın
+    # `globalenv()` sembolleri hâlâ görünmez.
+    if (exists("pk_async_worker_stage_refresh", mode = "function", inherits = TRUE)) {
+      pk_async_worker_stage_refresh(sahne, hedef)
+    }
 
     tam <- file.path(kok, goreli)
     if (!file.exists(tam)) {

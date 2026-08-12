@@ -4540,6 +4540,28 @@ PR #703 review hardening (these are now part of the same contract):
   bundle. `pk_async_worker_commit_env()` checks EVERY remove/assign and returns
   `ok = FALSE` on partial commit; the bootstrap then clears the fingerprint and
   reports failure instead of marking a mixed-revision worker as updated.
+- **The staging parent is REFRESHED before every sourced file.** `library()`
+  inserts a package at the FRONT of the search path — i.e. at
+  `parent.env(globalenv())`. Freezing the staging parent at creation time makes
+  every package attached DURING bootstrap by `R/config_packages.R` (logger, DBI,
+  …) invisible to the files that follow, and `R/config_logging.R` dies with
+  `could not find function "log_threshold"` at file 156 of 159 — so
+  `MERGEN_PK_ASYNC=true` fell back to SYNC on every request. The bootstrap loop
+  therefore calls `pk_async_worker_stage_refresh(sahne, hedef)` before each
+  `sys.source()`. Isolation is preserved: the parent is re-bound to
+  `parent.env(target)`, never to `target` itself, so the previous revision's
+  `globalenv()` symbols stay invisible.
+- **The worker globals bundle must be CLOSED over the pre-bootstrap call
+  graph.** `dependency_mode = "explicit"` performs NO scanning, so any repo
+  symbol named in a bundled function's body must itself be in the bundle —
+  including internal dot-prefixed helpers and sentinels (`.pk_async_chr0`,
+  `.pk_async_pool_close_bounded`, `.PK_ASYNC_OPTION_UNSET`). A missing one
+  breaks NO offline test; it kills a clean PSOCK worker with a raw
+  "object not found" and silently degrades production to synchronous. The
+  closure is enforced by walking the call graph from the pre-bootstrap entry
+  points in `tests/testthat/test-pk-review-703-hardening-behavior.R`, and a
+  failed fingerprint now carries the underlying error text so the operator can
+  tell a hung path from a missing symbol.
 - **Artifacts are request-scoped.** `pk_artifact_track()` records nothing unless
   `pk_artifact_scope_begin()` opened a scope (only the async request runner
   does), so synchronous exports no longer accumulate in a process-global
