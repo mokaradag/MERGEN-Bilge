@@ -30,9 +30,19 @@ pk_export_serve <- function(session, artifact) {
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     }
 
+    # KAYIT ADI ARTEFAKT BAŞINA BENZERSİZDİR (PR #703 incelemesi).
+    #
+    # `registerDataObj()` işleyiciyi ADA göre saklar; AYNI ad yeniden
+    # kaydedildiğinde eski yuva DEĞİŞTİRİLİR. Dosya adı yalnızca SANİYE
+    # çözünürlüklü bir zaman damgası taşıdığı için aynı sorgunun aynı saniyedeki
+    # iki dışa aktarımı (veya aynı biçime sanitize olan iki ad) aynı adı üretir;
+    # dosya YOLLARI farklı olsa da ESKİ sohbet mesajındaki URL yeni dışa
+    # aktarımın baytlarını indirirdi. Bu yüzden ada süreç-yerel bir nonce eklenir.
+    kayit_adi <- paste0("pk_export_", gsub("[^A-Za-z0-9]", "_", dosya$name),
+                        "_", .pk_export_object_nonce())
     url <- tryCatch(
       session$registerDataObj(
-        name = paste0("pk_export_", gsub("[^A-Za-z0-9]", "_", dosya$name)),
+        name = kayit_adi,
         data = list(path = yol, ctype = tur, fname = dosya$name),
         filterFunc = function(data, req) {
           if (!file.exists(data$path)) {
@@ -67,6 +77,15 @@ pk_export_serve <- function(session, artifact) {
   artifact
 }
 
+# Süreç-yerel, monoton kayıt nonce'u (aynı ada iki kez kayıt YAPILMAZ).
+.pk_export_nonce_state <- new.env(parent = emptyenv())
+.pk_export_nonce_state$n <- 0L
+
+.pk_export_object_nonce <- function() {
+  .pk_export_nonce_state$n <- .pk_export_nonce_state$n + 1L
+  paste0(as.integer(Sys.time()), "_", .pk_export_nonce_state$n)
+}
+
 # Oturum kapsamlı temizlik DEFTERİ
 #
 # `register_session_cleanup_on_end()` oturum başına YALNIZCA BİR KEZ kayıt
@@ -91,21 +110,36 @@ pk_export_serve <- function(session, artifact) {
   }
   if (!is.function(session$onSessionEnded)) return(invisible(FALSE))
 
-  ud$pk_export_cleanup_registered <- TRUE
-  try(session$onSessionEnded(function() {
-    hedefler <- tryCatch(ud$pk_export_cleanup_paths, error = function(e) character(0))
-    hedefler <- as.character(hedefler %||% character(0))
-    for (h in hedefler) try(unlink(h, force = TRUE), silent = TRUE)
+  # İŞARET YALNIZCA KAYIT BAŞARILI OLDUKTAN SONRA KONUR (PR #703 incelemesi).
+  #
+  # Eskiden bayrak kancadan ÖNCE yazılıyor ve kayıt çağrısı sonucu
+  # denetlenmeyen bir `try()` içindeydi: kurulum başarısız olsa da (ör. oturum
+  # yıkılırken) bayrak `TRUE` kalıyor, sonraki HER dışa aktarım kaydı atlıyor ve
+  # biriken tüm dosyalar oturum-sonu temizliğini KAYBEDİYORDU.
+  kuruldu <- try({
+    session$onSessionEnded(function() {
+      hedefler <- tryCatch(ud$pk_export_cleanup_paths, error = function(e) character(0))
+      hedefler <- as.character(hedefler %||% character(0))
+      for (h in hedefler) try(unlink(h, force = TRUE), silent = TRUE)
 
-    # Tekil çalışma dizinleri boşalınca kaldırılır; yalnızca bu dışa aktarım
-    # için üretilmiş "run_" dizinlerine dokunulur.
-    for (d in unique(dirname(hedefler))) {
-      if (grepl("(^|/)run_[^/]*$", d) && dir.exists(d) && !length(list.files(d))) {
-        try(unlink(d, recursive = TRUE, force = TRUE), silent = TRUE)
+      # Tekil çalışma dizinleri boşalınca kaldırılır; yalnızca bu dışa aktarım
+      # için üretilmiş "run_" dizinlerine dokunulur.
+      for (d in unique(dirname(hedefler))) {
+        if (grepl("(^|/)run_[^/]*$", d) && dir.exists(d) && !length(list.files(d))) {
+          try(unlink(d, recursive = TRUE, force = TRUE), silent = TRUE)
+        }
       }
-    }
-    tryCatch(ud$pk_export_cleanup_paths <- character(0), error = function(e) NULL)
-  }), silent = TRUE)
+      tryCatch(ud$pk_export_cleanup_paths <- character(0), error = function(e) NULL)
+    })
+    TRUE
+  }, silent = TRUE)
 
+  if (!identical(kuruldu, TRUE)) {
+    # Kanca kurulamadı: bayrak KONMAZ ki bir sonraki dışa aktarım tekrar
+    # denesin. Yollar deftere yazıldığı için kayıt başarılı olduğunda hepsi
+    # tek seferde temizlenir.
+    return(invisible(FALSE))
+  }
+  ud$pk_export_cleanup_registered <- TRUE
   invisible(TRUE)
 }

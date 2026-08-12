@@ -55,7 +55,7 @@
 
 .detailCfg <- list(preview_rows = 10)
 
-test_that("execute_single_deep_query durdurma talebinde NULL döner (bağlantı kurmadan)", {
+test_that("execute_single_deep_query durdurma talebinde TİPLİ HALT döner (bağlantı kurmadan)", {
   env <- .deepQueryEnv()
   baglandi <- FALSE
   env$get_connection <- function(target = "primary") { baglandi <<- TRUE; list(conn = "X") }
@@ -68,7 +68,11 @@ test_that("execute_single_deep_query durdurma talebinde NULL döner (bağlantı 
     detail_config = .detailCfg,
     stop_check = function() TRUE
   )
-  expect_null(res)
+  # PR #703: erken Durdur artık `NULL` DEĞİL TİPLİ halt döndürür. `NULL`, halt
+  # SON seçilen sorguda gerçekleştiğinde dış döngüde durumu KAYBEDİYOR ve kısmi
+  # sonuç "tam analiz" gibi sunuluyordu.
+  expect_true(env$pk_deep_is_halt_result(res))
+  expect_identical(res$pk_halt_status, "cancelled")
   # Türkçe yorum: durdurma en başta olduğu için DB bağlantısı hiç kurulmamalı
   expect_false(baglandi)
 })

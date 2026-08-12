@@ -149,6 +149,15 @@ mergen_pk_serve_worker_artifact <- function(result, session) {
 
   eski <- result$pk_attachment
   yeni <- try(pk_export_serve(session, eski), silent = TRUE)
+  # URL'SİZ KAYIT DA BAŞARISIZLIKTIR (PR #703 incelemesi).
+  #
+  # `pk_export_serve()` `session$registerDataObj()` hatasını KENDİ İÇİNDE
+  # yakalar ve `url = NULL` taşıyan NORMAL bir artefakt döndürür; bu `try()`
+  # ona HİÇ düşmez. Sonuç: indirme bağlantısı kurulamadığı hâlde `ok = TRUE`
+  # raporlanıyor, tipli `export_failed` yolu ve artefakt temizliği atlanıyordu.
+  if (!inherits(yeni, "try-error") && !isTRUE(.pk_artifact_urls_ok(yeni))) {
+    return(list(ok = FALSE, result = result))
+  }
   if (inherits(yeni, "try-error")) {
     # SESSİZCE URL'siz eke geri dönmek, kullanıcıya ÇALIŞMAYAN bir indirme
     # kartı göstermek olurdu; üstelik başarı yolu artifact'i temizlemediği
@@ -170,6 +179,18 @@ mergen_pk_serve_worker_artifact <- function(result, session) {
     }
   }
   list(ok = TRUE, result = result)
+}
+
+# Sunulan artefaktın HER dosyası kullanılabilir bir URL aldı mı?
+.pk_artifact_urls_ok <- function(artifact) {
+  if (!is.list(artifact)) return(FALSE)
+  dosyalar <- artifact$files %||% list()
+  if (!is.list(dosyalar) || !length(dosyalar)) return(FALSE)
+  all(vapply(dosyalar, function(x) {
+    if (!is.list(x)) return(FALSE)
+    adres <- tryCatch(as.character(x$url %||% "")[1], error = function(e) "")
+    !is.null(adres) && length(adres) == 1L && !is.na(adres) && nzchar(adres)
+  }, logical(1)))
 }
 
 mergen_pk_cleanup_worker_artifact <- function(result) {

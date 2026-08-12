@@ -62,24 +62,47 @@ if (!exists("resolve_db_client_encoding", mode = "function", inherits = TRUE) ||
   max(2, min(10, kalan))
 }
 
-# Kalan bütçeden SÜRÜCÜ login zaman aşımı (saniye, tam sayı).
+# Kalan bütçeden SÜRÜCÜ login zaman aşımı PLANI.
 #
 # ODBC `SQL_ATTR_LOGIN_TIMEOUT` saniye çözünürlüğündedir ve `0` = SINIRSIZ
-# demektir; bu yüzden taban 1 saniyedir. Bütçe yoksa yapılandırılmış varsayılan
-# kullanılır ve PK dışı çağıranların davranışı DEĞİŞMEZ.
+# demektir; bu yüzden temsil edilebilir en küçük sınır 1 saniyedir.
+#
+# ÜÇ AYRI SONUÇ (PR #703 incelemesi):
+#
+#   * `mode = "driver_default"` — ne PK bütçesi ne de yapılandırılmış bir
+#     değer var. `timeout` HİÇ GEÇİLMEZ ve sürücü varsayılanı korunur. Eskiden
+#     burada sabit 30 sn dayatılıyordu; bu, `.Renviron.example`'ın "boş bırakın =
+#     sürücü varsayılanı" sözleşmesini ihlal eden bir PK-DIŞI davranış
+#     değişikliğiydi.
+#   * `mode = "bounded"` — geçilecek tam saniye.
+#   * `mode = "refuse"` — kalan bütçe 1 saniyenin ALTINDA. Sürücü bu bütçeyi
+#     TEMSİL EDEMEZ; 1 saniyeye YUVARLAMAK, `setTimeLimit()` bağlantı kurulumunu
+#     kesemediği için bütçeyi aşan gerçek bir blok demektir. Bağlantı HİÇ
+#     başlatılmaz.
 .DB_DEFAULT_LOGIN_TIMEOUT_SEC <- 30L
 
-.db_connect_timeout_sec <- function(budget_sec) {
-  varsayilan <- suppressWarnings(as.integer(
+.db_login_timeout_plan <- function(budget_sec) {
+  yapilandirilmis <- suppressWarnings(as.integer(
     Sys.getenv("MERGEN_DB_LOGIN_TIMEOUT_SEC", unset = NA_character_)
   ))
-  if (length(varsayilan) != 1L || is.na(varsayilan) || varsayilan < 1L) {
-    varsayilan <- .DB_DEFAULT_LOGIN_TIMEOUT_SEC
+  if (length(yapilandirilmis) != 1L || is.na(yapilandirilmis) || yapilandirilmis < 1L) {
+    yapilandirilmis <- NA_integer_
   }
 
   butce <- suppressWarnings(as.numeric(budget_sec)[1])
-  if (length(butce) != 1L || is.na(butce) || !is.finite(butce)) return(varsayilan)
-  max(1L, min(varsayilan, as.integer(floor(butce))))
+  butce_var <- length(butce) == 1L && !is.na(butce) && is.finite(butce)
+
+  if (!butce_var) {
+    if (is.na(yapilandirilmis)) return(list(mode = "driver_default", timeout = NA_integer_))
+    return(list(mode = "bounded", timeout = yapilandirilmis))
+  }
+
+  saniye <- suppressWarnings(as.integer(floor(butce)))
+  if (is.na(saniye) || saniye < 1L) {
+    return(list(mode = "refuse", timeout = 0L))
+  }
+  tavan <- if (is.na(yapilandirilmis)) .DB_DEFAULT_LOGIN_TIMEOUT_SEC else yapilandirilmis
+  list(mode = "bounded", timeout = min(tavan, saniye))
 }
 
 .db_with_elapsed_budget <- function(budget_sec, fn) {
@@ -212,19 +235,28 @@ get_connection <- function(target = "primary") {
   # `SQLExecute`/`SQLExecuteDirect` içindir — BAĞLANTI KURULUMUNU kapsamaz.
   # Yavaş bir DSN/login bu yüzden yalnızca elapsed sınırıyla GARANTİ altına
   # alınamaz. `odbc::dbConnect(..., timeout = )` bunu sürücüye devreder.
-  login_timeout <- .db_connect_timeout_sec(conn_budget)
+  login_plan <- .db_login_timeout_plan(conn_budget)
+  if (identical(login_plan$mode, "refuse")) {
+    stop("PK istek butcesi login zaman asimini temsil edemiyor; baglanti acilmadi.",
+         call. = FALSE)
+  }
   conn <- .db_with_elapsed_budget(conn_budget, function() {
-    DBI::dbConnect(
+    baglanti_args <- list(
       odbc::odbc(),
       dsn = dsn_name,
       encoding = .DEFAULT_DB_CLIENT_ENCODING,
       name_encoding = .DEFAULT_DB_NAME_ENCODING,
-      timeout = login_timeout,
       # PSOCK workers are non-interactive, so odbc otherwise defaults this to
       # FALSE. The bounded PK executor relies on R interrupts to trigger
       # odbc's SQLCancel path while SQLExecute/SQLExecuteDirect is blocked.
       interruptible = TRUE
     )
+    # `driver_default` kipinde `timeout` HİÇ GEÇİLMEZ: PK dışı çağıranların
+    # sürücü varsayılanı korunur.
+    if (identical(login_plan$mode, "bounded")) {
+      baglanti_args$timeout <- login_plan$timeout
+    }
+    do.call(DBI::dbConnect, baglanti_args)
   })
   .db_perf_log("db.connection_open", start = conn_start,
                fields = list(target = target, pooled = FALSE))
@@ -256,17 +288,26 @@ release_connection <- function(conn_info) {
     return(invisible(NULL))
   }
 
-  # SINIRLI KAPATMA BAŞARISIZ. Hatayı yutup tek uygulama referansını düşürmek,
-  # fiziksel SQL Server oturumunu bir finalizer/GC'ye kadar AÇIK bırakır; arka
-  # arkaya yavaş kapanışlar bağlantı kapasitesini tüketebilir. Bu yüzden
-  # BÜTÇESİZ (son çare) bir kapatma denenir ve sonuç AÇIKÇA loglanır.
-  yeniden <- tryCatch({ DBI::dbDisconnect(conn_info$conn); TRUE }, error = function(e) FALSE)
+  # SINIRLI KAPATMA BAŞARISIZ.
+  #
+  # AYNI SÜRÜCÜ ÇAĞRISI BÜTÇESİZ TEKRARLANMAZ (PR #703 incelemesi): bu dal tam
+  # olarak `dbDisconnect()`'in teardown bütçesini AŞTIĞI (veya hata verdiği)
+  # yerdir; `setTimeLimit()` derlenmiş ODBC çağrısını kesemediği için bütçesiz
+  # ikinci bir deneme PSOCK işçisini SÜRESİZ bloklayabilir ve sert analiz son
+  # tarihini bu kez temizlik aşamasında aşardı.
+  #
+  # Bunun yerine bağlantı KİRLİ ilan edilir: uygulama referansı düşürülür (R
+  # finalizer'ı fiziksel oturumu er ya da geç kapatır) ve durum AÇIKÇA loglanır.
+  # Bu bilinçli bir dürüstlük tercihidir: "kapatamadım" demek, "kapattım" diye
+  # sonsuza kadar bloklamaktan iyidir.
   .db_perf_log("db.connection_close", start = close_start,
                fields = list(pooled = FALSE, bounded_close_failed = TRUE,
-                             forced_close_ok = isTRUE(yeniden)))
-  if (!isTRUE(yeniden) && exists("log_warn", mode = "function", inherits = TRUE)) {
-    try(log_warn("[DB] Baglanti kapatilamadi; fiziksel oturum ACIK kalmis olabilir."),
-        silent = TRUE)
+                             forced_close_ok = FALSE))
+  if (exists("log_warn", mode = "function", inherits = TRUE)) {
+    try(log_warn(paste0(
+      "[DB] Sinirli kapatma basarisiz; baglanti KIRLI sayildi ve butcesiz ",
+      "yeniden deneme YAPILMADI. Fiziksel oturum finalizer'a kadar acik kalabilir."
+    )), silent = TRUE)
   }
 
   invisible(NULL)

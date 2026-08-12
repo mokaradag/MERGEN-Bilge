@@ -231,6 +231,20 @@ pk_cache_get <- function(key, query_meta = NULL, now = Sys.time()) {
     .pk_cache_store$stats$miss <- .pk_cache_store$stats$miss + 1L
     return(list(hit = FALSE, value = NULL, reason = "entry_over_current_limit"))
   }
+  # GİRİŞ BAŞINA TAVAN ile TOPLAM BÜTÇE FARKLI SINIRLARDIR (PR #703 incelemesi).
+  #
+  # `max_entry_bytes = 128 MB`, mevcut giriş 120 MB iken operatör toplam
+  # `max_bytes` değerini 100 MB'a indirirse giriş, giriş-başına denetimden
+  # GEÇER; uzlaştırma diğer TÜM anahtarları tahliye eder ama korunan giriş
+  # yüzünden toplam 120 MB'ta KALIR ve isabet yine servis edilirdi. Kendi başına
+  # toplam bütçeyi aşan bir giriş DÜŞÜRÜLÜR; aksi hâlde salt-okuma iş yükünde
+  # süreç `MERGEN_PK_CACHE_MAX_MB` üstünde SÜRESİZ kalırdı.
+  if (is.finite(limitler$max_bytes) && !is.na(giris_bayt) &&
+      giris_bayt > limitler$max_bytes) {
+    .pk_cache_drop_entry(anahtar, giris)
+    .pk_cache_store$stats$miss <- .pk_cache_store$stats$miss + 1L
+    return(list(hit = FALSE, value = NULL, reason = "entry_over_total_budget"))
+  }
 
   if (is.finite(limitler$ttl_sec) && limitler$ttl_sec >= 0) {
     yas <- suppressWarnings(as.numeric(difftime(now, giris$stored_at, units = "secs")))
@@ -362,10 +376,20 @@ pk_query_result_cache_key <- function(query, rls_info, sql_text, engine = "") {
   metin <- .pk_cache_scalar(sql_text, "")
   if (!nzchar(metin)) return("")
 
+  # ÇARPIŞMAYA DAYANIKLI SQL İMZASI ZORUNLUDUR (PR #703 incelemesi).
+  #
+  # Eskiden `digest` yokken imza `nchar(sql_text)` idi. Anahtar aynı zamanda
+  # BOŞ filtre imzası taşıdığından, aynı sorgu/kapsam/DB için AYNI KARAKTER
+  # SAYISINA sahip İKİ FARKLI dinamik SQL ifadesi AYNI anahtara düşer ve ikinci
+  # istek birincinin RLS ÖNCESİ çerçevesini yeniden kullanırdı. Uzunluk bir
+  # imza değildir. `openssl` da kabul edilir (repoda başka yerlerde de yedek
+  # olarak kullanılır); ikisi de yoksa ÖNBELLEK DEVRE DIŞI kalır (`""`).
   sql_imza <- if (requireNamespace("digest", quietly = TRUE)) {
     paste0("h:", digest::digest(metin, algo = "sha256"))
+  } else if (requireNamespace("openssl", quietly = TRUE)) {
+    paste0("h:", paste(as.character(openssl::sha256(charToRaw(enc2utf8(metin)))), collapse = ""))
   } else {
-    paste0("n:", nchar(metin))
+    return("")
   }
 
   pk_cache_key(

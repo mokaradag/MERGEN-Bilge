@@ -31,6 +31,41 @@ mergen_pk_apply_analysis_result <- function(analiz_result, messages_to_process) 
                 messages_to_process = messages_to_process,
                 chips = analiz_result$pk_chips %||% list()))
   }
+  # TİPLİ TERMİNAL SONUÇ "devam et" DEĞİLDİR (PR #703 incelemesi).
+  # `.pk_result_v2()` paket/dışa aktarım sırasında Durdur gelirse
+  # `list(type = "pk_stopped")` döndürür. Eskiden yalnızca `error_message`
+  # ele alınıyordu; bu liste her iki kapıdan da geçip `action = "continue"`
+  # üretiyordu — yani iptal edilmiş bir analizde kullanıcının HAM istemi
+  # hiçbir veri bağlamı olmadan nihai LLM'e gidiyor ve TEMELSİZ ama normal
+  # görünen bir yanıt üretiliyordu.
+  if (identical(analiz_result$type, "pk_stopped")) {
+    return(list(action = "answer",
+                answer = if (exists("pk_async_halt_message", mode = "function", inherits = TRUE)) {
+                  pk_async_halt_message("cancelled")
+                } else {
+                  "\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi."
+                },
+                messages_to_process = messages_to_process, chips = list()))
+  }
+  # KAPALI BAŞARISIZ BEYAZ LİSTE: yalnızca BİLİNEN başarı şekilleri devam
+  # edebilir. Hem tekil (`.pk_result_v1/v2`) hem derin analiz bağlamı
+  # `prompt_context` + `user_context` taşır; bunları taşımayan bir liste
+  # (yeni bir terminal tip, bozuk paket) sessizce "bağlamsız devam"a
+  # dönüşmemelidir.
+  if (is.null(analiz_result$user_context) && is.null(analiz_result$prompt_context)) {
+    try(log_warn(sprintf(
+      "[PK] Analiz sonucu bilinmeyen terminal tip (%s); istek kapali basarisiz.",
+      as.character(analiz_result$type %||% "<tipsiz>")[1]
+    )), silent = TRUE)
+    return(list(
+      action = "answer",
+      answer = paste0(
+        "\U000026A0\U0000FE0F **Analiz Tamamlanamadı:** Analiz beklenmeyen bir ",
+        "sonuç üretti ve güvenli biçimde sürdürülemedi. Lütfen tekrar deneyin."
+      ),
+      messages_to_process = messages_to_process, chips = list()
+    ))
+  }
 
   son <- length(messages_to_process)
   if (son > 0L && !is.null(analiz_result$user_context)) {
@@ -110,10 +145,26 @@ mergen_pk_prepare_async_request <- function(ctx) {
     error = function(e) list(key = "", source = "missing", owner = NULL)
   )
 
+  # GÜVENLİK YAPILANDIRMASI EKSİKSİZ OLMALIDIR.
+  #
+  # Tek bir güvenlik anahtarı çözülemediğinde (geçersiz değer, bozuk spec)
+  # anlık görüntü onu TAŞIMAZ ve işçi kurulumu yalnızca VAR OLAN anahtarları
+  # yazar; sıcak bir PSOCK işçisi o anahtarda BAYAT (daha gevşek olabilen)
+  # değerini korurdu. Eksik anlık görüntü bir YAPILANDIRMA ARIZASIDIR: istek
+  # asenkron gönderilmez, sınırlı senkron yola düşer.
+  config_ss <- tryCatch(pk_async_config_snapshot(), error = function(e) NULL)
+  if (!is.list(config_ss) || !isTRUE(pk_async_config_snapshot_complete(config_ss))) {
+    eksik <- as.character(attr(config_ss, "pk_missing_keys", exact = TRUE) %||% character(0))
+    log_warn(paste0(
+      "[PK_ASYNC] Guvenlik yapilandirmasi anlik goruntusu EKSIK; senkron yola donuluyor: ",
+      paste(utils::head(eksik, 5L), collapse = ", ")
+    ))
+    return(list(ok = FALSE, fallback_sync = TRUE))
+  }
+  config_ss <- pk_async_config_snapshot_plain(config_ss)
+
   jeton <- mergen_pk_cancel_token_for_session(ctx$session, ctx$req_id)
   pk_cancel_token_clear(jeton)
-  # Durdur gözlemcisi yalnızca KAYITLI istekler için jeton yazar.
-  mergen_pk_register_cancel_token(ctx$session, ctx$req_id)
   motor <- if (exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
                isTRUE(tryCatch(pk_engine_is_v2(), error = function(e) FALSE))) "v2" else "v1"
 
@@ -130,7 +181,7 @@ mergen_pk_prepare_async_request <- function(ctx) {
     started_at = Sys.time(),
     # Ana süreçte çözülmüş `options()` basamağı işçiye taşınır; aksi hâlde
     # kalıcı PSOCK işçisi farklı güvenlik sınırlarıyla çalışabilir.
-    config_snapshot = tryCatch(pk_async_config_snapshot(), error = function(e) list())
+    config_snapshot = config_ss
   )
 
   dogrulama <- pk_async_validate_request(istek)
@@ -139,6 +190,20 @@ mergen_pk_prepare_async_request <- function(ctx) {
       "[PK_ASYNC] Istek anlik goruntusu isci-guvenli degil; senkron yola donuluyor: ",
       paste(utils::head(dogrulama$violations, 5L), collapse = ", ")
     ))
+    return(list(ok = FALSE, fallback_sync = TRUE))
+  }
+
+  # JETON SAHİPLİĞİ EN SON ve KAPALI BAŞARISIZ kaydedilir.
+  #
+  # (a) Hazırlık başarısız olan yollarda (kimlik hazır değil, anlık görüntü
+  #     işçi-güvenli değil) sahiplik HİÇ kaydedilmez; aksi hâlde senkron yolda
+  #     basılan Durdur, hiçbir PK yolunun temizlemediği bir `.flag` bırakırdı.
+  # (b) Sahiplik KALICI OLARAK yazılamıyorsa gönderim YAPILMAZ: o durumda Durdur
+  #     gözlemcisi bu isteği sahiplenmediği için işçinin dosya jetonunu HİÇ
+  #     işaretlemez — yani iptal edilemeyen bir işçi kalırdı. Senkron yola
+  #     dönmek (orada Durdur `stop_check` ile çalışır) DAHA GÜVENLİDİR.
+  if (!isTRUE(mergen_pk_register_cancel_token(ctx$session, ctx$req_id))) {
+    log_warn("[PK_ASYNC] Iptal jetonu sahipligi kaydedilemedi; senkron yola donuluyor.")
     return(list(ok = FALSE, fallback_sync = TRUE))
   }
   list(ok = TRUE, request = istek, cancel_token = jeton)

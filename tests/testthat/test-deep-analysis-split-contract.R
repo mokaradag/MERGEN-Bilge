@@ -133,8 +133,17 @@ test_that("bölünme sonrası orkestratör ratchet bütçesinin altındadır", {
   # inceleme düzeltmeleri: Faz 6 kurulumu (son tarih/iptal jetonu/
   # option yayını), kısmi-durma notu ve bozulmuş-filtre kararı
   # helpers_deep_analysis_phase6.R'ye; v1 çoklu seçici
-  # helpers_deep_analysis_selector.R'ye taşındı. Ölçülen taban 598/10;
-  # izin 640 ve 14 (bütçe YÜKSELTİLMEDİ, dosya KÜÇÜLDÜ).
-  expect_lte(satir_sayisi, 640L)
+  # helpers_deep_analysis_selector.R'ye taşındı.
+  #
+  # PR #703 İNCELEME GÜNCELLEMESİ: 640 -> 680. Büyüme, incelemenin AÇIKÇA
+  # talep ettiği güvenlik davranışıdır ve hepsi TEKİL SORGU yürütücüsüne
+  # aittir (dolayısıyla bir yardımcıya taşınamaz):
+  #   * her Durdur/son tarih çıkışının TİPLİ halt döndürmesi (ilk kapı,
+  #     RLS öncesi, SQL katmanı `cancelled`/`deadline`),
+  #   * RLS `halted` sonucunun yetki hatasından AYRILMASI,
+  #   * istatistik üretim aşamasının kalan bütçeyle SINIRLANMASI,
+  #   * satır tavanının geri alma kipinde de etkin kalması.
+  # Ölçülen yeni taban 677/10; küresel ratchet (795/24) DEĞİŞMEDİ.
+  expect_lte(satir_sayisi, 680L)
   expect_lte(fonksiyon_sayisi, 14L)
 })

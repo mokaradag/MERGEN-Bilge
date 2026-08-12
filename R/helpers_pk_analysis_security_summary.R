@@ -74,6 +74,27 @@ resolve_pk_analysis_username <- function(session, fallback = "Unknown") {
 # `get_user_rls_info()` her hatayı boş çerçeveye indirirse, bir son tarih/DB
 # zaman aşımı "Kullanıcı DC01 tablosunda bulunamadı" YETKİ HATASI olarak
 # raporlanırdı — kullanıcıya tamamen yanlış bir neden.
+#' Tipli RLS durdurma sonucundan kullanıcıya görünen mesaj
+#'
+#' Çağıranlar (`pk_analiz_process_request()`, `pk_deep_analysis_process()`)
+#' `authorized` dalına GİRMEDEN ÖNCE bunu kullanır: bir Durdur/son tarih
+#' "kullanıcı kaydınız bulunamadı" diye raporlanmamalıdır.
+pk_rls_halt_message <- function(rls_info) {
+  if (exists("pk_active_stage_halt", mode = "function", inherits = TRUE)) {
+    durum <- tryCatch(getOption("mergen.pk.async.deadline_at", NULL), error = function(e) NULL)
+    if (!is.null(durum) && exists("pk_deadline_expired", mode = "function", inherits = TRUE) &&
+        isTRUE(tryCatch(pk_deadline_expired(durum), error = function(e) FALSE)) &&
+        exists("pk_async_halt_message", mode = "function", inherits = TRUE)) {
+      return(pk_async_halt_message("deadline"))
+    }
+  }
+  if (exists("pk_async_halt_message", mode = "function", inherits = TRUE)) {
+    return(pk_async_halt_message("cancelled"))
+  }
+  as.character(rls_info$reason %||%
+    "\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz tamamlanamadı.")[1]
+}
+
 .pk_rls_halt_error <- function(e) {
   metin <- tryCatch(conditionMessage(e), error = function(x) "")
   if (is.null(metin) || is.na(metin) || !nzchar(metin)) return(FALSE)
@@ -125,7 +146,19 @@ get_user_rls_info <- function(username, conn) {
 
   if (identical(info$Yetki, "PY")) {
     cat("[PK_ANALIZ] PY yetkisi kontrol ediliyor...\n")
-    py_res <- tryCatch(.pk_rls_bounded_query(conn, sql_permission_py), error = function(e) NULL)
+    # DURDURMA/SON TARİH burada da TİPLİ kalır: `NULL`'a indirgemek, iptal
+    # edilmiş bir isteği "kapsam çözülemedi" diye RAPORLAYIP analize devam
+    # etmek olurdu (PR #703 incelemesi).
+    py_res <- tryCatch(.pk_rls_bounded_query(conn, sql_permission_py), error = function(e) {
+      if (isTRUE(.pk_rls_halt_error(e))) halt_reason <<- conditionMessage(e)
+      NULL
+    })
+    if (!is.null(halt_reason)) {
+      return(list(authorized = FALSE, halted = TRUE, reason = paste0(
+        "Analiz süre sınırı veya kullanıcı iptali nedeniyle yetki bilgisi ",
+        "okunamadı. Lütfen tekrar deneyin."
+      )))
+    }
     if (is.null(py_res)) {
       info$scope_state_projects <- "unavailable"
       cat("[PK_ANALIZ] UYARI: PY izin sorgusu calistirilamadi; kapsam COZULEMEDI.\n")
@@ -145,7 +178,16 @@ get_user_rls_info <- function(username, conn) {
 
   if (info$Yetki %in% c("KY-P", "DIR-P")) {
     cat("[PK_ANALIZ] Program (EPS) yetkisi kontrol ediliyor...\n")
-    eps_res <- tryCatch(.pk_rls_bounded_query(conn, sql_permission_eps), error = function(e) NULL)
+    eps_res <- tryCatch(.pk_rls_bounded_query(conn, sql_permission_eps), error = function(e) {
+      if (isTRUE(.pk_rls_halt_error(e))) halt_reason <<- conditionMessage(e)
+      NULL
+    })
+    if (!is.null(halt_reason)) {
+      return(list(authorized = FALSE, halted = TRUE, reason = paste0(
+        "Analiz süre sınırı veya kullanıcı iptali nedeniyle yetki bilgisi ",
+        "okunamadı. Lütfen tekrar deneyin."
+      )))
+    }
     if (is.null(eps_res)) {
       info$scope_state_eps <- "unavailable"
       cat("[PK_ANALIZ] UYARI: EPS izin sorgusu calistirilamadi; kapsam COZULEMEDI.\n")

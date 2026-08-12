@@ -56,7 +56,49 @@ pk_async_worker_install_globals <- function(env, exclude = c("request", "task_fn
     if (isTRUE(ok)) kurulan <- c(kurulan, ad)
   }
 
+  # KURULAN ADLAR KAYDEDİLİR: sahneleme ortamı bu "bilinçli kararlı bağımlılık"
+  # kümesini AÇIKÇA enjekte eder (bkz. `pk_async_worker_stage_env()`), çünkü
+  # sahneleme artık `globalenv()`'i ebeveyn olarak KULLANMAZ.
+  try(assign(.PK_ASYNC_INSTALLED_GLOBALS_SLOT, kurulan, envir = hedef), silent = TRUE)
   invisible(kurulan)
+}
+
+# Ana süreçten kurulan (bayat OLMAYAN) global adların kaydı.
+.PK_ASYNC_INSTALLED_GLOBALS_SLOT <- ".mergen_pk_async_installed_globals"
+
+# ------------------------------------------------------------------------------
+# SINIRLI DOSYA SİSTEMİ ÇAĞRISI
+# ------------------------------------------------------------------------------
+# Bootstrap dosya sistemine SENKRON dokunur (`file.info()`, `file()`/`readBin()`,
+# `file.exists()`, `sys.source()`). Repo/SQL ağacı ASKIDA bir UNC/NFS yolundaysa
+# bu çağrılardan HERHANGİ BİRİ analiz son tarihini aşabilir ve dönene kadar
+# Durdur GÖZLENEMEZ; aşamalar arasına kapı koymak bunu ÇÖZMEZ (PR #703).
+#
+# DÜRÜSTLÜK NOTU: `setTimeLimit()` İŞ BİRLİĞİNE dayalıdır ve tek bir askıda
+# yerli syscall'ı GARANTİLİ kesemez. Bu yüzden Faz 6'nın sert son tarih iddiası
+# ANA SÜREÇTEKİ BEKÇİYE dayanır (bkz. `server_handler_pk_async.R`): işçi askıda
+# kalsa bile kullanıcı ve oturum beklemez. Buradaki sınır, kesilebilir olan
+# çoğu durumu (R döngüleri, yeniden denenen G/Ç) erken keser.
+pk_async_bounded_fs <- function(fn, deadline_at = NULL) {
+  butce <- Inf
+  if (!is.null(deadline_at) &&
+      exists("pk_deadline_remaining_sec", mode = "function", inherits = TRUE)) {
+    butce <- suppressWarnings(as.numeric(tryCatch(
+      pk_deadline_remaining_sec(deadline_at), error = function(e) Inf
+    ))[1])
+  }
+  if (length(butce) != 1L || is.na(butce)) butce <- Inf
+  if (is.finite(butce) && butce <= 0) {
+    return(list(ok = FALSE, value = NULL, error = "budget_exhausted"))
+  }
+  if (is.finite(butce)) {
+    on.exit(try(setTimeLimit(cpu = Inf, elapsed = Inf, transient = TRUE), silent = TRUE),
+            add = TRUE)
+    setTimeLimit(cpu = Inf, elapsed = max(0.05, butce), transient = TRUE)
+  }
+  tryCatch(list(ok = TRUE, value = fn(), error = NA_character_),
+           error = function(e) list(ok = FALSE, value = NULL,
+                                    error = conditionMessage(e)))
 }
 
 # ------------------------------------------------------------------------------
@@ -148,31 +190,85 @@ pk_async_bootstrap_fingerprint <- function(repo_root, files) {
 # temizlenir.
 .PK_ASYNC_OWNED_NAMES_SLOT <- ".mergen_pk_async_bootstrap_names"
 
-pk_async_worker_stage_env <- function() {
-  new.env(parent = globalenv())
+#' TEMİZ sahneleme ortamı
+#'
+#' EBEVEYN `globalenv()` DEĞİLDİR (PR #703 incelemesi). `globalenv()` ebeveyn
+#' olduğunda sahneleme sırasındaki `exists(..., inherits = TRUE)` /
+#' `get(..., inherits = TRUE)` çağrıları ÖNCEKİ bootstrap'ın sembollerini
+#' görebilir. Somut vaka: `config_sql_loader.R` guard'ı, yeni `library_queries.R`
+#' yerel bir `query_library` üretemediğinde ESKİ işçinin global `query_library`
+#' değerini bulup BAYAT SQL ile devam edebilirdi — yani "atomik temiz yeniden
+#' yükleme" garantisi kırılır ve eski SQL + yeni kod KARIŞIMI commit edilirdi.
+#'
+#' Ebeveyn olarak `parent.env(globalenv())` (attach edilmiş paket arama yolu)
+#' kullanılır: paketler görünür kalır, ÖNCEKİ bootstrap SEMBOLLERİ görünmez.
+#' Ana süreçten AÇIKÇA kurulan globals paketi (bayat değildir; bu isteğe aittir)
+#' bilinçli olarak enjekte edilir.
+pk_async_worker_stage_env <- function(target = globalenv()) {
+  sahne <- new.env(parent = parent.env(target))
+
+  adlar <- get0(.PK_ASYNC_INSTALLED_GLOBALS_SLOT, envir = target, inherits = FALSE)
+  adlar <- as.character(adlar %||% character(0))
+  for (ad in adlar) {
+    deger <- get0(ad, envir = target, inherits = FALSE)
+    if (is.null(deger)) next
+    try(assign(ad, deger, envir = sahne), silent = TRUE)
+  }
+  sahne
 }
 
 #' Sahneleme ortamını `globalenv()`'e al (önceki bootstrap isimlerini temizler)
+#'
+#' ATOMİK COMMIT SÖZLEŞMESİ (PR #703 incelemesi): her `rm`/`assign` DENETLENİR.
+#' Bir tek hedef bile yazılamazsa commit BAŞARISIZDIR; çağıran bootstrap'ı
+#' düşürür. Eskiden hatalar yutuluyordu, bu yüzden kilitli/aktif bir bağ eski
+#' uygulamayı YERİNDE bırakırken işçi "tam güncellendi" işaretleniyor ve
+#' `pk_async_worker_ready()` (yalnızca ad varlığına bakar) bunu onaylıyordu.
+#'
+#' @return `list(ok = TRUE/FALSE, names = <chr>, failed = <chr>)`.
 pk_async_worker_commit_env <- function(stage, target = globalenv()) {
-  if (!is.environment(stage)) return(invisible(character(0)))
+  if (!is.environment(stage)) return(list(ok = FALSE, names = character(0), failed = "stage"))
 
   onceki <- get0(.PK_ASYNC_OWNED_NAMES_SLOT, envir = target, inherits = FALSE)
   onceki <- as.character(onceki %||% character(0))
 
   yeni <- tryCatch(ls(stage, all.names = TRUE), error = function(e) character(0))
+  basarisiz <- character(0)
 
   # Yeni revizyonda ARTIK OLMAYAN eski bootstrap sembolleri kaldırılır.
   atilacak <- setdiff(onceki, yeni)
   for (ad in atilacak) {
-    try(rm(list = ad, envir = target), silent = TRUE)
+    if (!exists(ad, envir = target, inherits = FALSE)) next
+    silindi <- try({ rm(list = ad, envir = target); TRUE }, silent = TRUE)
+    if (!identical(silindi, TRUE) || exists(ad, envir = target, inherits = FALSE)) {
+      basarisiz <- c(basarisiz, paste0(ad, " (silinemedi)"))
+    }
   }
 
   for (ad in yeni) {
-    try(assign(ad, get(ad, envir = stage, inherits = FALSE), envir = target), silent = TRUE)
+    yazildi <- try({
+      deger <- get(ad, envir = stage, inherits = FALSE)
+      # TOP-LEVEL kapanışlar `globalenv()` üzerinden çözülmeye devam etsin:
+      # sahneleme ebeveyni artık `globalenv()` DEĞİL, bu yüzden commit edilen
+      # fonksiyonların ortamı hedefe çevrilir (davranış commit ÖNCESİ hâlle
+      # aynıdır; sahnedeki her sembol zaten hedefe kopyalanır).
+      if (is.function(deger) && identical(environment(deger), stage)) {
+        environment(deger) <- target
+      }
+      assign(ad, deger, envir = target)
+      TRUE
+    }, silent = TRUE)
+    if (!identical(yazildi, TRUE)) basarisiz <- c(basarisiz, paste0(ad, " (yazilamadi)"))
+  }
+
+  if (length(basarisiz)) {
+    # KISMİ COMMIT: sahiplik listesi GÜNCELLENMEZ, böylece bir sonraki bootstrap
+    # eski isimleri hâlâ kendi sahipliğinde görür ve temizleyebilir.
+    return(list(ok = FALSE, names = yeni, failed = basarisiz))
   }
 
   assign(.PK_ASYNC_OWNED_NAMES_SLOT, yeni, envir = target)
-  invisible(yeni)
+  list(ok = TRUE, names = yeni, failed = character(0))
 }
 
 # ------------------------------------------------------------------------------
@@ -184,11 +280,43 @@ pk_async_worker_commit_env <- function(stage, target = globalenv()) {
 # istisna `pk_async_pipeline_error`'a dönüşürken de aynı şey olur. Her iki
 # durumda da büyük XLSX/CSV dosyaları işçinin kalıcı temp dizininde ÖKSÜZ
 # kalırdı. Bu yüzden dosyalar ÜRETİLDİKLERİ anda kaydedilir.
+#
+# KAYIT İSTEK KAPSAMLIDIR (PR #703 incelemesi).
+#
+# `pk_artifact_track()` NORMAL çalışma zamanında da tanımlıdır, yani
+# `MERGEN_PK_ASYNC=false` (varsayılan) iken ANA SHINY SÜRECİNDE de çalışıyordu.
+# Serbest bırakma ise YALNIZCA `pk_async_run_analysis()` içindeydi: başarılı her
+# SENKRON dışa aktarım yolunu süreç-global deftere ekliyor ve orada SONSUZA
+# KADAR bırakıyordu. Sonuç iki yönlü kötüydü — defter sınırsız büyüyordu ve
+# sonraki HERHANGİ bir `pk_artifact_discard_tracked()` çağrısı ÖNCEKİ başarılı
+# isteklerin dosyalarını silebiliyordu.
+#
+# Artık kayıt yalnızca AÇIK BİR KAPSAM içinde tutulur. Kapsamı açan tek yer
+# asenkron istek yürütücüsüdür; kapsam yokken `pk_artifact_track()` NO-OP'tur
+# ve senkron dışa aktarımların yaşam döngüsü (oturum-sonu temizlik defteri)
+# değişmeden kalır.
 .pk_artifact_registry <- new.env(parent = emptyenv())
 .pk_artifact_registry$paths <- character(0)
+.pk_artifact_registry$scope <- NA_character_
 
-#' Üretilen artifact yollarını kaydet (istek kapsamı)
+#' İSTEK KAPSAMINI aç (yalnızca asenkron istek yürütücüsü çağırır)
+pk_artifact_scope_begin <- function(scope_id = NULL) {
+  kimlik <- tryCatch(as.character(scope_id %||% "")[1], error = function(e) "")
+  if (is.null(kimlik) || is.na(kimlik) || !nzchar(kimlik)) kimlik <- "pk_request"
+  # Önceki kapsamdan artakalan yollar yeni isteğe TAŞINMAZ.
+  .pk_artifact_registry$paths <- character(0)
+  .pk_artifact_registry$scope <- kimlik
+  invisible(kimlik)
+}
+
+#' Kapsam AÇIK MI?
+pk_artifact_scope_active <- function() {
+  !is.na(.pk_artifact_registry$scope)
+}
+
+#' Üretilen artifact yollarını kaydet (YALNIZCA açık kapsamda)
 pk_artifact_track <- function(paths) {
+  if (!isTRUE(pk_artifact_scope_active())) return(invisible(character(0)))
   yollar <- tryCatch(as.character(paths %||% character(0)), error = function(e) character(0))
   yollar <- yollar[!is.na(yollar) & nzchar(yollar)]
   if (!length(yollar)) return(invisible(character(0)))
@@ -196,10 +324,11 @@ pk_artifact_track <- function(paths) {
   invisible(.pk_artifact_registry$paths)
 }
 
-#' Kaydı SİLMEDEN boşalt (başarılı yolda sahiplik ana sürece geçer)
+#' Kaydı SİLMEDEN boşalt ve KAPSAMI KAPAT (başarılı yolda sahiplik geçer)
 pk_artifact_release_tracked <- function() {
   onceki <- .pk_artifact_registry$paths
   .pk_artifact_registry$paths <- character(0)
+  .pk_artifact_registry$scope <- NA_character_
   invisible(onceki)
 }
 

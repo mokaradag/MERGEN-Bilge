@@ -38,17 +38,35 @@ pk_async_plan_capability <- function() {
       return(list(ok = FALSE, reason = paste0("plan_", carpisan[1])))
     }
 
-    # İŞÇİ SAYISI TEK BAŞINA KARAR VERMEZ. `future` bilinçli olarak
-    # `plan(multisession, workers = I(1))` biçimini destekler: bu, işi ana
-    # süreçte DEĞİL ayrı bir arka plan R oturumunda çalıştırır. Yalnızca
-    # `nbrOfWorkers() == 1` diye reddetmek GEÇERLİ bir asenkron yapılandırmayı
-    # bloklayan senkron yola zorlardı. Sequential davranış zaten yukarıdaki
-    # SINIF denetiminde reddedilir; burada yalnızca "hiç işçi yok" hâli kalır.
+    # İŞÇİ SAYISI TEK BAŞINA KARAR VERMEZ ama TEK İŞÇİ AMBİVALANTTIR.
+    #
+    # `future` sözleşmesi: SIRADAN sayısal `plan(multisession, workers = 1)`
+    # BİLİNÇLİ OLARAK ana R oturumunda değerlendirmeye düşer; yalnızca
+    # `workers = I(1)` (AsIs) ayrı bir arka plan oturumunu korur. Strateji her
+    # iki hâlde de `multisession` SINIFINI taşıdığı için yukarıdaki sınıf
+    # denetimi bu farkı GÖREMEZ (PR #703 incelemesi). Sayısal 1 kabul edilirse
+    # PK analizi Shiny olay döngüsünde çalışır — tam olarak D15 donması.
     isci_sayisi <- suppressWarnings(as.numeric(
       tryCatch(future::nbrOfWorkers(), error = function(e) NA_real_)
     )[1])
     if (!is.na(isci_sayisi) && is.finite(isci_sayisi) && isci_sayisi < 1) {
       return(list(ok = FALSE, reason = "no_worker_plan"))
+    }
+
+    belirtim <- .pk_async_plan_worker_spec(strategy = strateji)
+    if (.pk_async_spec_is_plain_single(belirtim)) {
+      return(list(ok = FALSE, reason = "single_worker_falls_back"))
+    }
+
+    # TEK İŞÇİLİ yapılandırma AsIs işaretiyle geçerlidir; yine de KANIT aranır:
+    # işçi PID'i ana sürecin PID'i ise iş olay döngüsünde çalışıyor demektir.
+    # Sonda SÜREÇ BAŞINA BİR KEZ çalışır ve yalnızca bu AMBİVALANT durumda
+    # (tek işçi) yapılır; 2+ işçili planlarda belirsizlik yoktur.
+    if (!is.na(isci_sayisi) && is.finite(isci_sayisi) && isci_sayisi == 1) {
+      sonda <- .pk_async_worker_pid_probe()
+      if (identical(sonda, FALSE)) {
+        return(list(ok = FALSE, reason = "worker_shares_main_process"))
+      }
     }
 
     if ("cluster" %in% siniflar && !isTRUE(.pk_async_cluster_is_local(strateji))) {
@@ -87,6 +105,59 @@ pk_async_plan_capability <- function() {
     return(deger)
   }
   NULL
+}
+
+# SIRADAN (AsIs OLMAYAN) tek işçi belirtimi mi?
+#
+# `I(1)` sınıfı `AsIs` taşır ve future bunu "gerçekten tek bir ARKA PLAN
+# oturumu" diye yorumlar. `1` ise ana oturuma düşer. Belirtim ÇÖZÜLEMEZSE
+# (NULL) karar verilmez: sonda/diğer denetimler devreye girer.
+.pk_async_spec_is_plain_single <- function(spec) {
+  if (is.null(spec)) return(FALSE)
+  if (inherits(spec, "AsIs")) return(FALSE)
+  if (!is.numeric(spec) || length(spec) != 1L) return(FALSE)
+  deger <- suppressWarnings(as.numeric(spec)[1])
+  !is.na(deger) && deger == 1
+}
+
+# İşçi PID sondası (SÜREÇ BAŞINA MEMOIZE)
+#
+# @return `TRUE` işçi AYRI süreçte, `FALSE` işçi ANA süreçte, `NA` ölçülemedi.
+.pk_async_plan_probe_cache <- new.env(parent = emptyenv())
+
+.pk_async_worker_pid_probe <- function(force = FALSE, plan_key = NULL) {
+  anahtar <- tryCatch(as.character(plan_key %||% .pk_async_plan_key())[1],
+                      error = function(e) "plan")
+  if (!isTRUE(force) && !is.null(.pk_async_plan_probe_cache$result) &&
+      identical(.pk_async_plan_probe_cache$key, anahtar)) {
+    return(.pk_async_plan_probe_cache$result)
+  }
+  .pk_async_plan_probe_cache$key <- anahtar
+  sonuc <- tryCatch({
+    f <- future::future(Sys.getpid(), lazy = FALSE, seed = TRUE)
+    isci_pid <- future::value(f)
+    isci_pid <- suppressWarnings(as.integer(isci_pid)[1])
+    if (is.na(isci_pid)) NA else !identical(isci_pid, Sys.getpid())
+  }, error = function(e) NA)
+  .pk_async_plan_probe_cache$result <- sonuc
+  sonuc
+}
+
+#' Sonda önbelleğini sıfırla (plan değiştiğinde / testlerde)
+pk_async_plan_probe_reset <- function() {
+  .pk_async_plan_probe_cache$result <- NULL
+  .pk_async_plan_probe_cache$key <- NULL
+  invisible(TRUE)
+}
+
+# Plan KİMLİĞİ: sonda önbelleği plan değiştiğinde KENDİLİĞİNDEN geçersizleşir.
+.pk_async_plan_key <- function() {
+  tryCatch({
+    strateji <- future::plan("list")[[1]]
+    paste(c(class(strateji),
+            as.character(suppressWarnings(future::nbrOfWorkers()))),
+          collapse = "/")
+  }, error = function(e) "plan")
 }
 
 .pk_async_cluster_is_local <- function(strategy) {

@@ -169,6 +169,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   # B. Kullanıcı RLS Bilgisini Çek
   rls_info <- get_user_rls_info(username, conn)
+  # PR #703: TİPLİ Durdur/son tarih, `authorized`'dan ÖNCE ele alınmalıdır.
+  if (isTRUE(rls_info$halted)) return(pk_rls_halt_message(rls_info))
   if (!isTRUE(rls_info$authorized)) {
     cat("[PK_ANALIZ] Yetki Hatasi: Kullanici bulunamadi.\n")
     return("\U000026A0\U0000FE0F **Yetki Hatası:** Sistemde kullanıcı kaydınız (DC01_user_base) bulunamadı. Lütfen yönetici ile iletişime geçin.")
@@ -571,7 +573,6 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     return(list(type = "error_message", content = pk_row_cap_refuse_message()))
   }
 
-
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (filtreleme sonrasi)\n")
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
@@ -677,7 +678,6 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 # ==============================================================================
 # 3. AKILLI SORGU SEÇİMİ (AI + HEURISTIC HYBRID ENGINE)
 # ==============================================================================
-
 
 select_smart_query <- function(prompt, library, chat_history,
                                session = NULL, stop_check = NULL) {

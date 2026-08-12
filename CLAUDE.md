@@ -4439,8 +4439,128 @@ Non-negotiable rules:
   Both are appended by `pk_async_worker_bootstrap_files()`; dropping either from
   that append silently removes worker telemetry.
 
+PR #703 review hardening (these are now part of the same contract):
+
+- **`MERGEN_PK_ASYNC=false` is a ONE-WAY kill switch.** `pk_async_enabled()`
+  resolves the GLOBAL value first; when it is off no query metadata can turn it
+  back on. Metadata may only TIGHTEN (`async = FALSE` with the global on), and
+  that case is reported as a DISTINCT reason (`query_opt_out`, not `flag_off`)
+  so the degraded synchronous path still installs the Phase-6 bounds. Routing
+  finds the opt-out through the repo's PURE heuristic scorer
+  (`pk_compute_heuristic_query_scores()`), never through a prompt substring
+  match — a normal natural-language prompt does not contain the query name.
+- **One absolute wall-clock deadline, published on every path.**
+  `mergen_pk_force_bounded_sync(stop_check, started_at, deadline_at)` publishes
+  the ORIGINAL request start/deadline and installs a REAL stage gate (Stop +
+  deadline) before any degraded synchronous run; the post-capability fallbacks
+  (unsafe snapshot, active-registry failure, dispatch failure) all go through
+  the same `sinirli_senkron()` helper. `pk_deep_phase6_setup()` keeps the
+  already-published `started_at` instead of resetting it, so bootstrap/setup
+  time is never refunded to a per-query override.
+- **A main-process DEADLINE WATCHDOG makes the hard deadline truthful.** The
+  worker's stage gate can only be polled BETWEEN stages, so a blocking native
+  call (stalled UNC bootstrap read, hung ODBC login/disconnect) is invisible to
+  it. `mergen_pk_dispatch_async()` therefore arms a `later::later` watchdog at
+  the absolute deadline: it signals the cancel token, marks the request
+  abandoned, releases backpressure and delivers the typed deadline message. It
+  is cancelled by `bitir_istek()` on every terminal path. Never claim the
+  deadline is enforced by gate polling alone.
+- **Session state writes are VERIFIED and fail closed.**
+  `pk_session_state_write()` writes and READS BACK; cancel-token ownership,
+  abandoned-request invalidation and the once-per-session end-hook marker all go
+  through it. Ownership is registered at the END of preparation (never before —
+  an aborted preparation used to leave a stale owner) and a failed registration
+  REFUSES async dispatch. A process-local mirror keyed by the `userData`
+  environment address carries the two FAIL-SAFE markers (abandoned, ownership
+  revoked) when `userData` cannot be written, so those protections can never
+  silently disappear.
+- **One global DB admission ceiling.** `pk_db_admission_plan(cap, workers)`
+  partitions `MERGEN_DB_POOL_MAX_SIZE` across the main process AND the workers
+  so `main_share + workers * worker_share <= cap`; `db_pool_config()` applies
+  the main share (workers set `MERGEN_DB_POOL_SHARE_APPLIED=1` so the share is
+  never applied twice). Partitioning is skipped entirely when async is off.
+- **Dirty connections never re-enter a pool.** `.pk_sql_invalidate_connection()`
+  returns the checkout ONLY after a CONFIRMED physical close; an unconfirmed
+  close drops the slot instead of handing leaked `LOCK_TIMEOUT`/result state to
+  the next request. A failed `poolReturn()` is no longer swallowed — the
+  checkout is retired explicitly. `release_connection()` does NOT retry a
+  timed-out `dbDisconnect()` without a bound; it declares the connection dirty
+  and logs it.
+- **Login timeout has three outcomes** (`.db_login_timeout_plan()`):
+  `driver_default` (no PK budget, nothing configured — `timeout` is NOT passed,
+  so non-PK behavior is unchanged), `bounded`, and `refuse` when the residual
+  budget is under one second (ODBC cannot represent it and rounding UP would
+  block past the budget). Pools always pass a bounded login timeout because they
+  are opt-in, shared and long-lived.
+- **Result-size safety uses the DRIVER DESCRIPTOR.** Production `dbColumnInfo()`
+  yields only numeric ODBC codes, where `varchar(max)` and `varchar(200)` are
+  indistinguishable. `pk_sql_describe_result_schema()` asks SQL Server itself
+  (`sys.dm_exec_describe_first_result_set`) BEFORE `dbSendQuery()` (an open
+  result set would block a second statement) and only for ODBC connections. With
+  the descriptor, ordinary bounded text columns keep multi-row chunks; without
+  it, a variable-width column with no declared length is `__unproven__` and is
+  REFUSED before materialization unless `pk_allow_unbounded_lob(query_meta)`
+  explicitly allows it. `pk_sql_plan_chunk_rows()` now receives `query_meta`, so
+  the highest-priority query override is live, and a single PROVEN row that
+  cannot fit the chunk budget is refused instead of clamped to one row.
+- **Typed terminal results never fall through.** `mergen_pk_apply_analysis_result()`
+  handles `pk_stopped` explicitly and allows `action = "continue"` only for the
+  known success shapes (`user_context`/`prompt_context`); anything else fails
+  closed instead of sending the user's raw prompt to the final LLM ungrounded.
+  In the deep path EVERY Stop/deadline exit is a `pk_deep_halt_result()` —
+  initial checkpoint, post-SQL/pre-RLS, SQL-level `cancelled`/`deadline` — so a
+  halt on the LAST selected query still reaches the partial-analysis disclosure.
+  The deep row cap is no longer gated on Phase-6 activity, restoring the rollback
+  baseline.
+- **RLS halt is not an authorization failure.** `get_user_rls_info()` returns
+  `halted = TRUE` for Stop/deadline (base, PY and EPS reads), and both callers
+  check `halted` BEFORE the `authorized` branch via `pk_rls_halt_message()`.
+- **Expensive R-side stages are bounded.** `pk_async_bounded_fs()` wraps the
+  bootstrap fingerprint/sourcing, the deep statistical summary, and the XLSX
+  write/verification with the remaining budget. This is honest about its limit:
+  `setTimeLimit()` interrupts R/Rcpp work, NOT a hung native syscall — that is
+  what the main-process watchdog is for. Cancellation also stops STARTING new
+  blocking work: `pk_sql_execute_bounded()` polls the gate before EVERY driver
+  call, and the worker direct-exit wrapper skips its optional DB telemetry once
+  Stop is observed.
+- **Worker config/env is complete or the request is refused.**
+  `pk_async_config_snapshot()` reports missing safety keys through a
+  `pk_missing_keys` attribute and preparation refuses async dispatch when the
+  snapshot is incomplete; `pk_async_config_install_env()` returns `NULL` (not a
+  no-op restorer) when it can install nothing, and the worker treats that as
+  `bootstrap_failed`. DB-pool options transport an explicit
+  `.PK_ASYNC_OPTION_UNSET` sentinel so a REMOVED option is cleared in warm
+  workers, and `.pk_async_worker_pool_ensure()` keys its ready flag on a POOL
+  CONFIG FINGERPRINT so runtime enable/disable, fail-fast and admission changes
+  are re-applied instead of frozen at first init.
+- **Hot reload is atomic or it fails.** `pk_async_worker_stage_env()` parents the
+  staging env at `parent.env(globalenv())` — previous bootstrap symbols are
+  invisible during staging (this is what let `config_sql_loader.R` pick up a
+  stale `query_library`) — and injects only the deliberately installed globals
+  bundle. `pk_async_worker_commit_env()` checks EVERY remove/assign and returns
+  `ok = FALSE` on partial commit; the bootstrap then clears the fingerprint and
+  reports failure instead of marking a mixed-revision worker as updated.
+- **Artifacts are request-scoped.** `pk_artifact_track()` records nothing unless
+  `pk_artifact_scope_begin()` opened a scope (only the async request runner
+  does), so synchronous exports no longer accumulate in a process-global
+  registry that a later discard could delete. Served exports register under a
+  per-artifact nonce (same-second filenames could overwrite each other's data
+  object), a URL-less registration is treated as an export FAILURE, the
+  session-end cleanup marker is set only after the hook actually installs, and
+  the dispatcher releases artifact ownership only for the `answer` action (the
+  `continue` action hands off to a streaming LLM that has not delivered yet).
+- **Cancellation classification stays honest.** `pk_http_cancelled_error()`
+  treats only callback-specific curl errors as proof; generic `Failed writing
+  body` / `transfer closed` count as cancellation ONLY when the stage gate is
+  actually halted, so an LLM outage is not mislabelled as a user cancel.
+- **Navigation only abandons on a REAL identity change.** `do_load_chat()`
+  compares the destination chat id with the current one; re-selecting the
+  already-open chat no longer cancels a valid in-flight PK analysis, while
+  A -> B -> A stale-callback protection is unchanged.
+
 Protected by:
 
+- `tests/testthat/test-pk-review-703-hardening-behavior.R`
 - `tests/testthat/test-pk-async-contract.R`
 - `tests/testthat/test-pk-async-cancel-behavior.R`
 - `tests/testthat/test-pk-async-request-behavior.R`

@@ -320,38 +320,47 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
   # yüzden hiçbir bütçe 24'ü aşmaz. Sınıra dayanan yerler BÖLÜNEREK çözüldü:
   # anlık görüntü doğrulaması, işçi SQL köprüsü, ana-süreç yaşam döngüsü,
   # derin Faz 6 kurulumu ve v1 çoklu seçici ayrı dosyalardadır.
+  # PR #703 İNCELEME GÜNCELLEMESİ: aşağıdaki bütçeler, incelemede talep edilen
+  # GÜVENLİK mantığı eklendikten sonra ÖLÇÜLEN yeni taban çizgisidir (kapalı
+  # başarısız yapılandırma anlık görüntüsü, sürücü tanımlayıcı sondası, tek
+  # yönlü async kill switch, doğrulanmış oturum yazımları, sınırlı bootstrap
+  # G/Ç, agregat DB admisyonu, artefakt kapsamı). Tavanlar TAM olarak ölçülen
+  # değere çekilmiştir: sonraki bir büyüme yine BAŞARISIZ olur.
+  #
+  # KÜRESEL ratchet (795 satır / 24 fonksiyon) DEĞİŞMEMİŞTİR ve bu dosyaların
+  # hiçbiri ona yaklaşmamaktadır.
   butceler <- list(
     "R/helpers_pk_async_cancel.R" = c(295L, 24L),
     "R/helpers_pk_exec_context.R" = c(135L, 11L),
-    "R/helpers_pk_cancel_http.R" = c(100L, 9L),
-    "R/helpers_pk_result_columns.R" = c(155L, 4L),
-    "R/helpers_pk_result_size.R" = c(525L, 19L),
+    "R/helpers_pk_cancel_http.R" = c(109L, 10L),
+    "R/helpers_pk_result_columns.R" = c(245L, 8L),
+    "R/helpers_pk_result_size.R" = c(551L, 19L),
     "R/helpers_pk_cache_key.R" = c(140L, 11L),
-    "R/helpers_pk_cache.R" = c(400L, 19L),
-    "R/helpers_pk_sql_execute.R" = c(400L, 22L),
+    "R/helpers_pk_cache.R" = c(403L, 19L),
+    "R/helpers_pk_sql_execute.R" = c(429L, 22L),
     "R/helpers_pk_sql_connection.R" = c(125L, 6L),
-    "R/helpers_pk_async_worker_env.R" = c(240L, 18L),
-    "R/helpers_pk_async_worker_pool.R" = c(225L, 15L),
-    "R/helpers_pk_async_bootstrap.R" = c(450L, 24L),
+    "R/helpers_pk_async_worker_env.R" = c(349L, 22L),
+    "R/helpers_pk_async_worker_pool.R" = c(335L, 23L),
+    "R/helpers_pk_async_bootstrap.R" = c(484L, 24L),
     "R/helpers_pk_async_snapshot_validate.R" = c(135L, 9L),
-    "R/helpers_pk_async_snapshot.R" = c(245L, 20L),
-    "R/helpers_pk_async_plan.R" = c(145L, 13L),
-    "R/helpers_pk_async_request.R" = c(275L, 16L),
+    "R/helpers_pk_async_snapshot.R" = c(253L, 20L),
+    "R/helpers_pk_async_plan.R" = c(196L, 18L),
+    "R/helpers_pk_async_request.R" = c(283L, 16L),
     "R/helpers_pk_async_worker_sql.R" = c(165L, 11L),
-    "R/helpers_pk_async_worker.R" = c(320L, 22L),
+    "R/helpers_pk_async_worker.R" = c(330L, 22L),
     "R/helpers_pk_worker_observers.R" = c(90L, 5L),
-    "R/helpers_pk_worker_direct_exit.R" = c(135L, 10L),
+    "R/helpers_pk_worker_direct_exit.R" = c(138L, 10L),
     "R/helpers_deep_analysis_sql.R" = c(210L, 15L),
     "R/helpers_deep_analysis_reconcile.R" = c(215L, 15L),
     "R/helpers_deep_analysis_phase6.R" = c(250L, 19L),
     "R/helpers_deep_analysis_selector.R" = c(205L, 8L),
-    "R/helpers_pk_async_request_markers.R" = c(105L, 20L),
-    "R/helpers_pk_async_session_registry.R" = c(190L, 16L),
-    "R/helpers_pk_async_routing.R" = c(120L, 13L),
+    "R/helpers_pk_async_request_markers.R" = c(225L, 16L),
+    "R/helpers_pk_async_session_registry.R" = c(196L, 16L),
+    "R/helpers_pk_async_routing.R" = c(210L, 20L),
     "R/helpers_pk_async_lifecycle.R" = c(215L, 16L),
-    "R/helpers_pk_async_apply.R" = c(175L, 16L),
-    "R/helpers_pk_export_serve.R" = c(135L, 10L),
-    "R/server_handler_pk_async.R" = c(385L, 14L)
+    "R/helpers_pk_async_apply.R" = c(218L, 16L),
+    "R/helpers_pk_export_serve.R" = c(145L, 10L),
+    "R/server_handler_pk_async.R" = c(438L, 14L)
   )
 
   for (dosya in names(butceler)) {

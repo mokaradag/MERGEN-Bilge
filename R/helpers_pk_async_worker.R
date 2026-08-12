@@ -31,10 +31,29 @@ pk_async_run_analysis <- function(request) {
 
   bitir <- function(status, result = NULL, session_writes = list(), error = NA_character_) {
     tanilama$duration_ms <- as.numeric(difftime(Sys.time(), basladi, units = "secs")) * 1000
+    # TERMİNAL YOL ARTIFACT KAPSAMINI KAPATIR. Başarı yolu kaydı ZATEN
+    # `pk_artifact_release_tracked()` ile devreder; başarısız/iptal yollarının
+    # bir kısmı da açıkça `discard` çağırır. Buradaki güvenlik ağı, ERKEN
+    # dönüşlerin (bootstrap/config arızası) kapsamı AÇIK bırakmasını önler:
+    # açık kalan bir kapsam sonraki isteğin dosyalarını izlemeye başlardı.
+    if (!identical(status, "ok") &&
+        exists("pk_artifact_discard_tracked", mode = "function", inherits = TRUE)) {
+      try(pk_artifact_discard_tracked(), silent = TRUE)
+    }
     list(status = status, result = result, session_writes = session_writes,
          error = error, diagnostics = tanilama)
   }
   if (!is.list(request)) return(bitir("error", error = "Gecersiz istek anlik goruntusu."))
+
+  # ARTIFACT KAYIT KAPSAMI BU İSTEĞE AİTTİR (PR #703 incelemesi).
+  #
+  # Kapsam açılmadıkça `pk_artifact_track()` NO-OP'tur; böylece senkron/geri
+  # alma yolundaki başarılı dışa aktarımlar süreç-global bir deftere BİRİKMEZ
+  # ve sonraki bir isteğin `pk_artifact_discard_tracked()` çağrısı onları
+  # SİLEMEZ. Kapsam her terminal yolda (release/discard) kapanır.
+  if (exists("pk_artifact_scope_begin", mode = "function", inherits = TRUE)) {
+    try(pk_artifact_scope_begin(request$request_id), silent = TRUE)
+  }
 
   # Token/son tarih BOOTSTRAP'TAN ÖNCE türetilir. Temiz bir işçide bootstrap
   # manifest kaynaklarını ve SQL kütüphanesini yükler; yavaş/askıda bir repo
@@ -68,7 +87,9 @@ pk_async_run_analysis <- function(request) {
       request$repo_root, request$bootstrap_files,
       stage_gate = function() pk_async_stage_gate(jeton, son_tarih),
       workers = request$worker_count,
-      db_pool_options = request$db_pool_options
+      db_pool_options = request$db_pool_options,
+      # Bootstrap'ın KENDİ dosya sistemi çağrıları da bu son tarihle sınırlanır.
+      deadline_at = son_tarih
     ),
     error = function(e) list(ok = FALSE, loaded = 0L, failed = conditionMessage(e), cached = FALSE)
   )
@@ -112,7 +133,16 @@ pk_async_run_analysis <- function(request) {
     # yenerdi (ör. sıkılaştırılmış `MERGEN_PK_MAX_RESULT_MB` yok sayılırdı).
     ortam_geri <- tryCatch(pk_async_config_install_env(request$pk_config),
                            error = function(e) NULL)
-    if (is.function(ortam_geri)) on.exit(try(ortam_geri(), silent = TRUE), add = TRUE)
+    # ORTAM BASAMAĞI DA KAPALI BAŞARISIZDIR (PR #703 incelemesi).
+    #
+    # `pk_config_resolve()` ORTAMI options'tan ÖNCE okur. Ortam eşitlemesi
+    # sessizce başarısız olursa, options anlık görüntüsü doğru kurulmuş olsa
+    # bile SICAK bir işçinin ESKİ ve daha GEVŞEK ortam değeri isteği yönetirdi.
+    if (!is.function(ortam_geri)) {
+      return(bitir("bootstrap_failed",
+                   error = "Istek yapilandirmasi isci ortamina kurulamadi."))
+    }
+    on.exit(try(ortam_geri(), silent = TRUE), add = TRUE)
   }
 
   # Sözde-anonim soru korelasyonu için taşınan TEK sır; hiçbir yere yazılmaz.

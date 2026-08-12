@@ -121,8 +121,23 @@ pk_async_should_apply <- function(active_request_id, req_id, stopped = FALSE) {
 #' Sequential future planında "asenkron" çalıştırmak, işi ana olay döngüsünde
 #' yapmakla AYNI ŞEYDİR — yani Faz 6'nın tek faydasını yok eder ve son tarih
 #' zamanlayıcısı asla ateşlenemez. Bu durumda senkron yola dönmek DAHA DÜRÜSTTÜR.
+#' `MERGEN_PK_ASYNC` TEK YÖNLÜ bir acil geri alma anahtarıdır
+#'
+#' Bayrak KÜRESEL olarak kapalıysa hiçbir sorgu metadata'sı onu AÇAMAZ. Genel
+#' yapılandırma önceliği (metadata > ortam > option > varsayılan) bu anahtar
+#' için BİLİNÇLİ OLARAK UYGULANMAZ: `MERGEN_PK_ASYNC=false` ilan edilmiş tek
+#' adımlık geri alma yoludur ve `async = TRUE` işaretli tek bir sorgu kaydının
+#' onu delebilmesi o ilanı geçersiz kılardı (PR #703 incelemesi).
+#'
+#' Metadata YALNIZCA SIKILAŞTIRABİLİR: küresel bayrak açıkken `async = FALSE`
+#' o isteği senkron yola alır.
 pk_async_enabled <- function(query_meta = NULL) {
   if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) return(FALSE)
+  kuresel <- isTRUE(tryCatch(pk_config_resolve("MERGEN_PK_ASYNC", NULL),
+                             error = function(e) FALSE))
+  if (!isTRUE(kuresel)) return(FALSE)
+  # Küresel AÇIK: burada metadata basamağı normal önceliğiyle okunur; değeri
+  # `TRUE` olsa bile sonuç değişmez, `FALSE` ise sıkılaştırır.
   isTRUE(tryCatch(pk_config_resolve("MERGEN_PK_ASYNC", query_meta), error = function(e) FALSE))
 }
 
@@ -141,8 +156,14 @@ pk_async_mode_active <- function(query_meta = NULL) {
 
 #' Asenkron gönderim yapılabilir mi? (niyet + yetenek + bağımlılıklar)
 pk_async_available <- function(query_meta = NULL) {
-  if (!isTRUE(pk_async_enabled(query_meta))) {
+  # KÜRESEL kapalı (bilinçli geri alma) ile SORGU MUAFİYETİ AYRI raporlanır:
+  # ilki eski davranışın aynen korunmasını, ikincisi Faz 6 güvenlik sınırlarının
+  # senkron yolda da uygulanmasını gerektirir.
+  if (!isTRUE(pk_async_enabled(NULL))) {
     return(list(available = FALSE, reason = "flag_off"))
+  }
+  if (!isTRUE(pk_async_enabled(query_meta))) {
+    return(list(available = FALSE, reason = "query_opt_out"))
   }
   plan_durumu <- pk_async_plan_capability()
   if (!isTRUE(plan_durumu$ok)) {
@@ -208,6 +229,13 @@ pk_async_worker_globals <- function(force = FALSE) {
     pk_async_bootstrap_fingerprint = pk_async_bootstrap_fingerprint,
     pk_async_worker_sql_dependencies = pk_async_worker_sql_dependencies,
     .pk_async_file_digest = .pk_async_file_digest,
+    # Bootstrap'ın SINIRLI dosya sistemi sarmalayıcısı ve havuz yapılandırma
+    # parmak izi de bootstrap ÖNCESİ gereklidir (explicit-mode özyinelemeli
+    # global genişletme YAPMAZ).
+    pk_async_bounded_fs = pk_async_bounded_fs,
+    pk_async_worker_pool_fingerprint = pk_async_worker_pool_fingerprint,
+    pk_db_admission_plan = pk_db_admission_plan,
+    .PK_ASYNC_INSTALLED_GLOBALS_SLOT = .PK_ASYNC_INSTALLED_GLOBALS_SLOT,
     pk_async_worker_stage_env = pk_async_worker_stage_env,
     pk_async_worker_commit_env = pk_async_worker_commit_env,
     pk_async_worker_install_globals = pk_async_worker_install_globals,
@@ -220,6 +248,8 @@ pk_async_worker_globals <- function(force = FALSE) {
     .pk_async_pool_log = .pk_async_pool_log,
     # Artifact kaydı: iptal/hata yollarında ÖKSÜZ dosya bırakmamak için işçide
     # bootstrap'tan bağımsız olarak da bulunmalıdır.
+    pk_artifact_scope_begin = pk_artifact_scope_begin,
+    pk_artifact_scope_active = pk_artifact_scope_active,
     pk_artifact_track = pk_artifact_track,
     pk_artifact_release_tracked = pk_artifact_release_tracked,
     pk_artifact_discard_tracked = pk_artifact_discard_tracked,

@@ -61,7 +61,9 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat(sprintf("[DEEP_QUERY] '%s' - Durdurma talebi alındı.\n", query_name))
-    return(NULL)
+    # TİPLİ HALT (PR #703): `NULL`, halt SON sorguda olduğunda durumu KAYBEDER
+    # ve kısmi sonuç "tam analiz" gibi sunulurdu.
+    return(pk_deep_halt_result("cancelled"))
   }
 
   conn_list <- tryCatch(get_connection(target = query$db_target %||% "primary"), error = function(e) NULL)
@@ -119,7 +121,10 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     cache_key = pk_query_result_cache_key(query, rls_info, sql_query_text, engine = "deep")
   )
 
-  if (identical(sql_exec$status, "cancelled")) return(NULL)
+  # SQL katmanının TİPLİ iptal/son tarihi de derin halt yoluna taşınır (PR #703);
+  # `deadline` tüm analiz bütçesidir, "başarısız sorgu" gibi raporlanamaz.
+  if (identical(sql_exec$status, "cancelled")) return(pk_deep_halt_result("cancelled"))
+  if (identical(sql_exec$status, "deadline")) return(pk_deep_halt_result("deadline"))
 
   if (!identical(sql_exec$status, "ok")) {
     cat(sprintf("[DEEP_QUERY] '%s' - SQL durumu: %s\n", query_name, sql_exec$status))
@@ -159,7 +164,8 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     ))
   }
 
-  if (is.function(stop_check) && isTRUE(stop_check())) return(NULL)
+  # SQL sonrası / RLS öncesi Durdur da TİPLİ halttır (PR #703).
+  if (is.function(stop_check) && isTRUE(stop_check())) return(pk_deep_halt_result("cancelled"))
 
   if (!is.null(query$date_columns)) {
     raw_data <- convert_date_columns(raw_data, query$date_columns)
@@ -239,8 +245,10 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
   }
 
   # Faz 6 (§5.10): yetki VE filtre sonrası satır tavanı (asenkron kipte).
-  deep_cap <- pk_row_cap_stage(filtered_data, query_meta = query$meta,
-                               active = isTRUE(detail_config$pk_phase6_active))
+  # SATIR TAVANI GERİ ALMA KİPİNDE DE ETKİNDİR (PR #703): `pk_phase6_active`
+  # bayrağını `active` olarak geçirmek, `MERGEN_PK_ASYNC=false` yolunda tavanı
+  # TAMAMEN kapatıyordu (bu PR tavanı `apply_rls_to_data()` içinden buraya aldı).
+  deep_cap <- pk_row_cap_stage(filtered_data, query_meta = query$meta)
   if (identical(deep_cap$status, "too_large")) {
     return(finish_result(
       list(query_name = query_name, success = FALSE,
@@ -292,14 +300,32 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
   if (isTRUE(post_sql_gate$halt)) return(pk_deep_halt_result(post_sql_gate$status))
 
   preview_rows <- detail_config$preview_rows %||% 20
-  stat_summary <- generate_statistical_summary(
-    filtered_data,
-    max_preview_rows = min(preview_rows, nrow(filtered_data)),
-    mode = "summary",
-    rls_total_rows = nrow(secure_data),
-    user_filter_applied = (nrow(filtered_data) < nrow(secure_data)),
-    pre_aggregated_columns = query$pre_aggregated_columns
-  )
+  # İSTATİSTİK ÜRETİMİNİN KENDİSİ SINIRLIDIR (PR #703): yalnızca önce/sonra kapı
+  # koymak, dakikalarca sürebilen bu aşamanın Durdur'u ve mutlak son tarihi
+  # aşmasını engellemez. Aşama SAF R hesabıdır, `setTimeLimit()` onu gerçekten
+  # keser. Bütçe yoksa (geri alma kipi) davranış DEĞİŞMEZ.
+  sinirli_ozet <- if (exists("pk_async_bounded_fs", mode = "function", inherits = TRUE)) {
+    pk_async_bounded_fs
+  } else {
+    # İzole test/eski yükleme yolu: sınırlayıcı yoksa davranış DEĞİŞMEZ.
+    function(fn, deadline_at = NULL) list(ok = TRUE, value = fn())
+  }
+  ozet_sonucu <- sinirli_ozet(function() {
+    generate_statistical_summary(
+      filtered_data,
+      max_preview_rows = min(preview_rows, nrow(filtered_data)),
+      mode = "summary",
+      rls_total_rows = nrow(secure_data),
+      user_filter_applied = (nrow(filtered_data) < nrow(secure_data)),
+      pre_aggregated_columns = query$pre_aggregated_columns
+    )
+  }, detail_config$pk_deadline_at)
+
+  if (!isTRUE(ozet_sonucu$ok)) {
+    # Bütçe içinde bitmedi: bu bir SORGU HATASI değil, ANALİZ SON TARİHİDİR.
+    return(pk_deep_halt_result("deadline"))
+  }
+  stat_summary <- ozet_sonucu$value
 
   # ÖZET SONRASI kapı: özet üretimi kendi içinde iptal gözlemez, bu yüzden
   # sırasında gelen bir Durdur/son tarih ancak burada görülebilir. Sonucu
@@ -407,6 +433,17 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   stash_deep_footer <- deep_observers$stash
 
   rls_info <- get_user_rls_info(username, conn)
+
+  # TİPLİ DURDURMA/SON TARİH yetki hatası DEĞİLDİR (PR #703).
+  if (isTRUE(rls_info$halted)) {
+    pk_observe_deep(list(
+      query_name = "Derin analiz",
+      filter_status = "stopped",
+      filters = list(),
+      outcome = "Durduruldu"
+    ))
+    return(pk_rls_halt_message(rls_info))
+  }
 
   if (!isTRUE(rls_info$authorized)) {
     pk_observe_deep(list(

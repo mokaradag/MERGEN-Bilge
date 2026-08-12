@@ -76,6 +76,7 @@ pk_async_config_snapshot <- function() {
   if (!is.list(spec)) return(list())
 
   cikti <- list()
+  eksik <- character(0)
   for (anahtar in names(spec)) {
     if (isTRUE(spec[[anahtar]]$secret)) next
     # Motor kipi ve async bayrağı DIŞARIDA bırakılır: ikisi de isteğin KENDİ
@@ -84,11 +85,38 @@ pk_async_config_snapshot <- function() {
     # yüzünden işçi çıkışında süreç durumunu kirletirdi.
     if (anahtar %in% c("MERGEN_PK_ENGINE", "MERGEN_PK_ASYNC")) next
     deger <- tryCatch(pk_config_resolve(anahtar), error = function(e) NULL)
-    if (is.null(deger) || length(deger) != 1L) next
-    if (is.function(deger) || is.environment(deger) || is.list(deger)) next
+    tasinabilir <- !is.null(deger) && length(deger) == 1L &&
+      !is.function(deger) && !is.environment(deger) && !is.list(deger)
+    if (!tasinabilir) {
+      # ANAHTARI SESSİZCE ATLAMA (PR #703 incelemesi): işçi kurulumu YALNIZCA
+      # anlık görüntüde bulunan anahtarları yazar, dolayısıyla atlanan bir
+      # güvenlik anahtarı için SICAK işçi kendi BAYAT (ve daha gevşek olabilen)
+      # değerini korurdu. Eksik anahtar bir YAPILANDIRMA ARIZASIDIR.
+      eksik <- c(eksik, anahtar)
+      next
+    }
     cikti[[anahtar]] <- deger
   }
+  # Eksik anahtarlar ÇAĞIRANA bildirilir; karar (gönderimi reddetmek) orada
+  # verilir. Değerin kendisi düz veri olarak kalır.
+  attr(cikti, "pk_missing_keys") <- eksik
   cikti
+}
+
+#' Anlık görüntü EKSİKSİZ mi? (güvenlik yapılandırması kapalı başarısız)
+pk_async_config_snapshot_complete <- function(snapshot) {
+  if (!is.list(snapshot)) return(FALSE)
+  eksik <- attr(snapshot, "pk_missing_keys", exact = TRUE)
+  length(as.character(eksik %||% character(0))) == 0L
+}
+
+#' Taşınacak DÜZ hâl (tanılama attribute'ları çıkarılır)
+pk_async_config_snapshot_plain <- function(snapshot) {
+  if (!is.list(snapshot)) return(list())
+  adlar <- names(snapshot)
+  duz <- unname(snapshot)
+  names(duz) <- adlar
+  duz
 }
 
 #' Anlık görüntüyü işçi sürecinde `options()` basamağına kur
@@ -136,7 +164,10 @@ pk_async_config_install_env <- function(snapshot) {
     eski[[anahtar]] <- Sys.getenv(anahtar, unset = NA_character_)
     yeni[[anahtar]] <- as.character(deger)[1]
   }
-  if (!length(yeni)) return(bos)
+  # BOŞ OLMAYAN bir anlık görüntüden HİÇBİR anahtar kurulamadıysa bu bir
+  # ARIZADIR: `NULL` döndürerek çağıranın kapalı başarısız olmasını sağlar
+  # (aksi hâlde işçinin BAYAT ortamı taze isteğin sınırlarını yenerdi).
+  if (!length(yeni)) return(NULL)
 
   do.call(Sys.setenv, yeni)
 

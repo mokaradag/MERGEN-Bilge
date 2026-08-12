@@ -120,6 +120,7 @@ pk_result_width_upper_bound <- function(columns) {
   toplam <- 0
   sinirsiz <- character(0)
   lob <- character(0)
+  kanitsiz <- character(0)
 
   for (i in seq_along(columns)) {
     sutun <- columns[[i]]
@@ -137,6 +138,12 @@ pk_result_width_upper_bound <- function(columns) {
       if (.pk_result_type_is_lob(sutun$type, sutun$max_length %||% NA)) {
         lob <- c(lob, ad)
       }
+      # KANITLANMAMIŞ DEĞİŞKEN GENİŞLİK (PR #703): sürücü sayısal kod verdi ama
+      # beyan edilen uzunluk YOK. Sütun `varchar(max)` OLABİLİR; LOB gibi ele
+      # alınır (tek satır getirmek yeterli savunma DEĞİLDİR).
+      if (identical(.pk_result_type_key(sutun$type), "__unproven__")) {
+        kanitsiz <- c(kanitsiz, ad)
+      }
       next
     }
     toplam <- toplam + sinir
@@ -144,11 +151,13 @@ pk_result_width_upper_bound <- function(columns) {
 
   if (length(sinirsiz) > 0L) {
     return(list(bounded = FALSE, bytes_per_row = NA_real_,
-                unbounded_columns = sinirsiz, lob_columns = lob))
+                unbounded_columns = sinirsiz, lob_columns = lob,
+                unproven_columns = kanitsiz))
   }
 
   list(bounded = TRUE, bytes_per_row = toplam,
-       unbounded_columns = character(0), lob_columns = character(0))
+       unbounded_columns = character(0), lob_columns = character(0),
+       unproven_columns = character(0))
 }
 
 # Sütun GERÇEK bir LOB mu (tek hücresi tavanı aşabilir)?
@@ -243,9 +252,22 @@ pk_allow_unbounded_lob <- function(query_meta = NULL) {
 #' @return `list(rows = <int>, bounded = TRUE/FALSE, bytes_per_row = <num>,
 #'   reason = <chr>)`.
 pk_sql_plan_chunk_rows <- function(column_info, chunk_rows = 5000L,
-                                   max_result_mb = 512, overhead_factor = 2.5) {
+                                   max_result_mb = 512, overhead_factor = 2.5,
+                                   query_meta = NULL, schema = NULL) {
   istenen <- suppressWarnings(as.integer(chunk_rows)[1])
   if (length(istenen) != 1L || is.na(istenen) || istenen < 1L) istenen <- 5000L
+
+  # SEÇİLEN SORGU METADATA'SI POLİTİKAYA GİRER (PR #703 incelemesi).
+  #
+  # `pk_allow_unbounded_lob()` `query_meta` alır ama planlayıcı onu HİÇ
+  # geçirmiyordu ve `pk_config_resolve()` `pk_active_query_meta()`'yı ÖRTÜK
+  # okumaz; yani EN YÜKSEK öncelikli sorgu override'ı ölü bir yapılandırmaydı.
+  # Metadata verilmediyse etkin yürütme bağlamındaki sorgudan türetilir.
+  meta <- query_meta
+  if (is.null(meta) && exists("pk_active_query_meta", mode = "function", inherits = TRUE)) {
+    meta <- tryCatch(pk_active_query_meta(), error = function(e) NULL)
+  }
+  lob_izinli <- isTRUE(tryCatch(pk_allow_unbounded_lob(meta), error = function(e) FALSE))
 
   tavan_mb <- suppressWarnings(as.numeric(max_result_mb)[1])
   if (length(tavan_mb) != 1L || is.na(tavan_mb) || !is.finite(tavan_mb) || tavan_mb <= 0) {
@@ -253,7 +275,7 @@ pk_sql_plan_chunk_rows <- function(column_info, chunk_rows = 5000L,
                 reason = "ceiling_unresolved"))
   }
 
-  sutunlar <- pk_sql_columns_from_metadata(column_info)
+  sutunlar <- pk_sql_columns_from_metadata(column_info, schema = schema)
   if (!length(sutunlar)) {
     # METADATA YOKSA satır genişliği TAM OLARAK kanıtlanamayan durumdur;
     # çağıranın istediği parçayı (normalde 5.000) döndürmek, ilk `dbFetch()`
@@ -270,10 +292,20 @@ pk_sql_plan_chunk_rows <- function(column_info, chunk_rows = 5000L,
     # `MERGEN_PK_MAX_RESULT_MB` bayt kapısı ancak SONRASINDA çalışırdı. Bu
     # yüzden materyalizasyondan ÖNCE reddedilir (kapalı başarısız).
     lob <- as.character(genislik$lob_columns %||% character(0))
-    if (length(lob) > 0L && !isTRUE(pk_allow_unbounded_lob())) {
+    if (length(lob) > 0L && !isTRUE(lob_izinli)) {
       return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
                   reason = "unbounded_lob_column", refuse = TRUE,
                   lob_columns = lob))
+    }
+    # KANITLANMAMIŞ DEĞİŞKEN GENİŞLİK de reddedilir: sürücü `varchar(max)` ile
+    # `varchar(200)` arasında ayrım vermediğinde tek satır getirmek GÜVENLİ
+    # DEĞİLDİR (tek hücre gigabaytlarca olabilir). Operatör `allow_unbounded_lob`
+    # ile açıkça izin verebilir; sessiz varsayılan olamaz.
+    kanitsiz <- as.character(genislik$unproven_columns %||% character(0))
+    if (length(kanitsiz) > 0L && !isTRUE(lob_izinli)) {
+      return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
+                  reason = "unproven_variable_width_column", refuse = TRUE,
+                  lob_columns = kanitsiz))
     }
     return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
                 reason = "width_not_provably_bounded"))
@@ -285,8 +317,18 @@ pk_sql_plan_chunk_rows <- function(column_info, chunk_rows = 5000L,
   satir_bayt <- max(1, as.numeric(genislik$bytes_per_row) * yuk)
   # Parça bütçesi tavanın YARISIDIR: birikmiş frame ile yeni parça bir an için
   # AYNI ANDA bellekte bulunur.
-  guvenli <- floor((tavan_mb * .PK_RESULT_MB / 2) / satir_bayt)
-  if (!is.finite(guvenli) || guvenli < 1) guvenli <- 1
+  parca_butcesi <- tavan_mb * .PK_RESULT_MB / 2
+  guvenli <- floor(parca_butcesi / satir_bayt)
+  if (!is.finite(guvenli) || guvenli < 1) {
+    # TEK KANITLANMIŞ SATIR bile ilk parça bütçesine SIĞMIYOR (PR #703).
+    #
+    # Eskiden 1'e KIRPILIYORDU: `expected_rows` normalde bilinmediği için
+    # `pk_sql_execute_bounded()` birikimli bayt kapısından ÖNCE `dbFetch(n = 1)`
+    # yapar ve o TEK satır yapılandırılmış tavanın ötesinde bellek ayırabilirdi.
+    # Kanıt zaten elimizde olduğuna göre doğru cevap GETİRMEDEN reddetmektir.
+    return(list(rows = 1L, bounded = TRUE, bytes_per_row = satir_bayt,
+                reason = "single_row_exceeds_result_ceiling", refuse = TRUE))
+  }
 
   list(rows = as.integer(min(istenen, guvenli)), bounded = TRUE,
        bytes_per_row = satir_bayt, reason = "bounded_by_declared_width")

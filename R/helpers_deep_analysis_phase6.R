@@ -92,9 +92,21 @@ pk_deep_phase6_setup <- function(detail_config, session, request_id, started_at)
   # `started_at`: sorgu seçildikten SONRA uygulanan per-query
   # `analysis_deadline_sec` override'ı mutlak son tarihi AYNI başlangıçtan
   # yeniden hesaplar; geçen süre sıfırlanmaz.
+  #
+  # ORİJİNAL DİSPATCH BAŞLANGICI KORUNUR (PR #703 incelemesi): burada
+  # `Sys.time()` yazmak, bootstrap + kurulum süresini İSTEĞE GERİ VERİR ve
+  # per-query override'lı her derin istek ilan edilen duvar-saati son tarihinin
+  # ötesine geçebilirdi. İşçi (ve sınırlı senkron yol) başlangıcı ZATEN
+  # yayınlar; yalnızca hiç yayınlanmamışsa şimdiki an kullanılır.
+  yayinlanan_baslangic <- eski_start
+  if (is.null(yayinlanan_baslangic) ||
+      !inherits(yayinlanan_baslangic, "POSIXct") ||
+      length(yayinlanan_baslangic) != 1L || is.na(yayinlanan_baslangic)) {
+    yayinlanan_baslangic <- Sys.time()
+  }
   options(mergen.pk.async.deadline_at = detail_config$pk_deadline_at,
           mergen.pk.async.cancel_token = detail_config$pk_cancel_token,
-          mergen.pk.async.started_at = Sys.time())
+          mergen.pk.async.started_at = yayinlanan_baslangic)
 
   list(
     detail_config = detail_config,

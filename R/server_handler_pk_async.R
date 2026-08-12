@@ -11,6 +11,11 @@ mergen_pk_analysis_execute <- function(ctx) {
   stopped <- try(ctx$stop_generation(), silent = TRUE)
   if (!inherits(stopped, "try-error") && isTRUE(stopped)) return(list(action = "stop"))
 
+  # İSTEĞİN ORİJİNAL BAŞLANGICI. Bu andan türetilen MUTLAK son tarih, hangi
+  # yola gidilirse gidilsin (işçi, degrade senkron, hazırlık sonrası senkron
+  # yedek) TEK kalır: hiçbir yeniden deneme taze bir bütçe almaz.
+  istek_baslangici <- Sys.time()
+
   # JETON SAHİPLİĞİ YALNIZCA JETONU TÜKETEN YOL İÇİN KAYDEDİLİR.
   #
   # `MERGEN_PK_ASYNC=false` (geri alma) durumunda senkron yol `stop_generation`
@@ -34,17 +39,26 @@ mergen_pk_analysis_execute <- function(ctx) {
     # bellek/son tarih sınırlarını ATLAR. Bu yüzden o yolda sınırlı yürütücü
     # AÇIKÇA etkinleştirilir.
     if (!identical(uygun$reason, "flag_off")) {
-      geri_al <- mergen_pk_force_bounded_sync()
+      geri_al <- mergen_pk_force_bounded_sync(stop_check = ctx$stop_generation,
+                                              started_at = istek_baslangici)
       on.exit(try(geri_al(), silent = TRUE), add = TRUE)
     }
     return(mergen_pk_apply_analysis_result(mergen_pk_run_sync(ctx), ctx$messages_to_process))
   }
 
-  try(mergen_pk_register_cancel_token(ctx$session, ctx$req_id), silent = TRUE)
-
+  # JETON SAHİPLİĞİ hazırlığın SONUNDA (ve kapalı başarısız olarak) kaydedilir;
+  # bkz. `mergen_pk_prepare_async_request()`. Burada ÖN kayıt yapmak, hazırlık
+  # iptal olduğunda (kimlik hazır değil, anlık görüntü güvensiz) hiçbir yolun
+  # temizlemediği bayat bir sahiplik bırakırdı.
   hazirlik <- mergen_pk_prepare_async_request(ctx)
   if (!isTRUE(hazirlik$ok)) {
     if (isTRUE(hazirlik$fallback_sync)) {
+      # ASENKRON NİYETİ AÇIKTI: senkron yola düşülse bile Faz 6 sınırları
+      # (parçalı getirim, sonuç tavanı, mutlak son tarih, Durdur kapısı)
+      # KORUNUR ve bütçe orijinal başlangıçtan sayılır.
+      geri_al <- mergen_pk_force_bounded_sync(stop_check = ctx$stop_generation,
+                                              started_at = istek_baslangici)
+      on.exit(try(geri_al(), silent = TRUE), add = TRUE)
       return(mergen_pk_apply_analysis_result(mergen_pk_run_sync(ctx), ctx$messages_to_process))
     }
     return(list(action = "answer", answer = hazirlik$answer, chips = list()))
@@ -64,6 +78,7 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   kaynak_chat_key <- mergen_pk_chat_identity(oturum, ctx$values)
 
   request_done <- FALSE
+  bekci_iptal <- NULL
 
   butce_birak <- function() {
     try(shiny::isolate(
@@ -73,6 +88,11 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
 
   bitir_istek <- function() {
     request_done <<- TRUE
+    # Son tarih bekçisi ARTIK GEREKSİZ: istek terminal duruma ulaştı.
+    if (is.function(bekci_iptal)) {
+      try(bekci_iptal(), silent = TRUE)
+      bekci_iptal <<- NULL
+    }
     pk_cancel_token_clear(cancel_token)
     try(mergen_pk_unregister_active_request(oturum, req_id), silent = TRUE)
     # SAHİPLİK DE KALDIRILIR. Bu fonksiyon başarılı analizde `devam_et()`'in
@@ -82,6 +102,32 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     # yazılır. O dosyayı temizleyecek bir PK yolu artık yoktur.
     try(mergen_pk_unregister_cancel_token(oturum, req_id), silent = TRUE)
   }
+
+  # SENKRON YEDEK: SADECE GÖNDERİM ÖNCESİ yollarda kullanılır (kayıt defteri
+  # hatası, dispatch hatası). Orada henüz bir promise geri çağrısında değiliz ve
+  # çağıran zaten senkron akıştadır.
+  #
+  # İKİ SÖZLEŞME BİRDEN korunur:
+  #   1) ORİJİNAL BÜTÇE: gönderim hatası zaten süre harcadı; taze bir son tarih
+  #      vermek toplam duvar saatini ikiye katlar.
+  #   2) SINIRLI SQL: asenkron niyeti AÇIKTI, bu yüzden parçalı getirim/sonuç
+  #      tavanı/Durdur kapısı senkron yolda da uygulanır (aksi hâlde bir gönderim
+  #      hatası tam `dbGetQuery()` materyalizasyonuna geri dönerdi).
+  sinirli_senkron <- function(etiket) shiny::isolate({
+    kalan <- mergen_pk_residual_budget_sec(request)
+    if (is.finite(kalan) && kalan <= 0) {
+      log_warn(sprintf("[PK_ASYNC] %s: kalan butce yok; senkron yeniden deneme YAPILMADI.", etiket))
+      return(list(action = "answer", answer = pk_async_halt_message("deadline"),
+                  messages_to_process = mesajlar, chips = list()))
+    }
+    geri_al <- mergen_pk_force_bounded_sync(
+      stop_check = ctx$stop_generation,
+      started_at = mergen_pk_request_started_at(request) %||% Sys.time(),
+      deadline_at = mergen_pk_request_deadline_at(request)
+    )
+    on.exit(try(geri_al(), silent = TRUE), add = TRUE)
+    mergen_pk_apply_analysis_result(mergen_pk_run_sync(ctx), mesajlar)
+  })
 
   # Oturum-sonu kancası OTURUM BAŞINA TEKTİR (bkz. helpers_pk_async_lifecycle.R):
   # istek başına bir kapanış kaydetmek, tamamlanan HER isteğin gönderim
@@ -102,7 +148,7 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     # yolun bloklamasından daha kötüdür.
     pk_cancel_token_clear(cancel_token)
     try(mergen_pk_unregister_cancel_token(oturum, req_id), silent = TRUE)
-    return(mergen_pk_apply_analysis_result(mergen_pk_run_sync(ctx), mesajlar))
+    return(sinirli_senkron("active_registry_failed"))
   }
 
   # continuation ve message insertion alt çağrıları da reactive okuyabildiği için
@@ -185,31 +231,6 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
          messages_to_process = mesajlar, chips = list())
   }
 
-  # Senkron yedeğe düşerken ORİJİNAL bütçe korunur. Bootstrap/gönderim hatası
-  # zaten süre harcadı; taze bir son tarih vermek toplam duvar saatini ikiye
-  # katlar ve olay döngüsünü tam da kaçınılmak istenen süre kadar bloklardı.
-  #
-  # SADECE GÖNDERİM ÖNCESİ yollarda kullanılır (dispatch hatası): orada henüz
-  # bir promise geri çağrısında değiliz ve çağıran zaten senkron akıştadır.
-  senkron_yedek <- function(etiket) shiny::isolate({
-    kalan <- mergen_pk_residual_budget_sec(request)
-    if (is.finite(kalan) && kalan <= 0) {
-      log_warn(sprintf("[PK_ASYNC] %s: kalan butce yok; senkron yeniden deneme YAPILMADI.", etiket))
-      return(list(action = "answer", answer = pk_async_halt_message("deadline"),
-                  messages_to_process = mesajlar, chips = list()))
-    }
-    eski <- getOption("mergen.pk.async.deadline_at", NULL)
-    eski_baslangic <- getOption("mergen.pk.async.started_at", NULL)
-    # Son tarih ORİJİNAL dispatch anından türetilir (senkron yeniden deneme
-    # bütçeyi SIFIRLAMAZ); `started_at` da yayınlanır ki sorgu seçildikten
-    # sonraki per-query override aynı başlangıcı kullansın.
-    options(mergen.pk.async.deadline_at = mergen_pk_request_deadline_at(request),
-            mergen.pk.async.started_at = mergen_pk_request_started_at(request))
-    on.exit(options(mergen.pk.async.deadline_at = eski,
-                    mergen.pk.async.started_at = eski_baslangic), add = TRUE)
-    mergen_pk_apply_analysis_result(mergen_pk_run_sync(ctx), mesajlar)
-  })
-
   # SUNULMUŞ artifact temizlik kapsamında tutulur: devam kapanışı hata verirse
   # (LLM kesintisi, mesaj ekleme hatası) bağlantısını içeren bir yanıt HİÇ
   # işlenmez ve işçinin ürettiği XLSX/CSV oturum sonuna kadar erişilemez biçimde
@@ -243,7 +264,50 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   if (inherits(vaat, "try-error")) {
     bitir_istek()
     log_warn("[PK_ASYNC] Gonderim basarisiz; senkron yol.")
-    return(senkron_yedek("dispatch_failed"))
+    return(sinirli_senkron("dispatch_failed"))
+  }
+
+  # ------------------------------------------------------------------------
+  # MUTLAK SON TARİH BEKÇİSİ (ANA SÜREÇTE)
+  # ------------------------------------------------------------------------
+  # İşçi TARAFINDAKİ aşama kapısı yalnızca İKİ AŞAMA ARASINDA yoklanabilir.
+  # Bloklayan bir yerli çağrı (askıda UNC/NFS üzerinde bootstrap dosya okuması,
+  # sürücü içinde asılı bir ODBC login/disconnect) dönene kadar ne Durdur ne de
+  # son tarih GÖRÜLEBİLİR. Bu yüzden "sert son tarih" iddiası, ANA SÜREÇTE
+  # bekleyen bir bekçi olmadan DOĞRU DEĞİLDİR (PR #703 incelemesi).
+  #
+  # Bekçi işçiyi ÖLDÜRMEZ (PSOCK işçisi güvenilir biçimde sonlandırılamaz); ama:
+  #   * iptal jetonunu İŞARETLER (işçi bir sonraki kapıda kendi kendine durur),
+  #   * isteği AÇIKÇA TERK EDİLMİŞ işaretler (geç gelen sonuç UYGULANMAZ),
+  #   * backpressure yuvasını BIRAKIR ve kullanıcıya TİPLİ son tarih mesajı verir.
+  # Böylece kullanıcı ve oturum, bloklayan yerli çağrının insafına kalmaz.
+  son_tarih_ani <- mergen_pk_request_deadline_at(request)
+  if (!is.null(son_tarih_ani) && requireNamespace("later", quietly = TRUE)) {
+    # Küçük bir tolerans: işçinin KENDİ tipli son tarih sonucu normalde önce
+    # gelir ve daha iyi bir mesaj üretir; bekçi yalnızca o gelmediğinde konuşur.
+    gecikme <- max(1, pk_deadline_remaining_sec(son_tarih_ani) + 3)
+    bekci_iptal <- try(later::later(function() {
+      if (isTRUE(request_done)) return(invisible(NULL))
+      log_warn("[PK_ASYNC] Mutlak son tarih asildi; istek terk ediliyor (isci yaniti beklenmiyor).")
+      try(pk_cancel_token_signal(cancel_token), silent = TRUE)
+      # Geç gelen işçi sonucu UYGULANAMAZ.
+      try(mergen_pk_invalidate_requests(oturum, req_id), silent = TRUE)
+      request_done <<- TRUE
+      try(mergen_pk_unregister_active_request(oturum, req_id), silent = TRUE)
+      try(mergen_pk_unregister_cancel_token(oturum, req_id), silent = TRUE)
+      butce_birak()
+      # Jeton dosyası işçi için BIRAKILIR (o hâlâ çalışıyor olabilir) ve
+      # gecikmeli olarak temizlenir; aksi hâlde `.flag` sızıntısı olurdu.
+      try(later::later(function() try(pk_cancel_token_clear(cancel_token), silent = TRUE),
+                       delay = 300), silent = TRUE)
+      try(shiny::isolate({
+        if (!isTRUE(mergen_pk_session_open(oturum))) return(invisible(NULL))
+        ctx$cleanup_send_message()
+        ctx$add_message_fn(mergen_pk_worker_outcome_text("deadline"), "ai")
+      }), silent = TRUE)
+      invisible(NULL)
+    }, delay = gecikme), silent = TRUE)
+    if (inherits(bekci_iptal, "try-error")) bekci_iptal <- NULL
   }
 
   tamamlandi <- promises::then(
@@ -291,10 +355,19 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
           worker_result$session_writes$pk_provenance_pending <- pending
         }
         try(pk_async_apply_session_writes(oturum, worker_result$session_writes), silent = TRUE)
-        devam_et(mergen_pk_apply_analysis_result(sonuc, mesajlar))
-        # Buraya ULAŞILDIYSA yanıt teslim edildi: artifact sahipliği oturuma
-        # geçti ve hata yolunda SİLİNMEMELİDİR.
-        sunulan_sonuc <<- NULL
+        uygulama <- mergen_pk_apply_analysis_result(sonuc, mesajlar)
+        devam_et(uygulama)
+        # SAHİPLİK YALNIZCA GERÇEK TESLİMATTA BIRAKILIR (PR #703 incelemesi).
+        #
+        # `action == "answer"` yolunda mesaj bu satıra gelindiğinde EKLENMİŞTİR.
+        # `action == "continue"` yolunda ise `run_llm_request_stage()`
+        # `handle_true_streaming_mode()`'a girip KENDİ promise'ini kurarak HEMEN
+        # dönebilir: bağlantıyı içeren yanıt HENÜZ teslim edilmemiştir.
+        # Sahipliği orada bırakmak, devam kapanışı sonradan hata verdiğinde
+        # ERİŞİLEMEZ dosyayı oturum sonuna kadar diskte tutardı. Dosya her
+        # hâlükârda oturum-sonu defterine kayıtlıdır (bkz. `pk_export_serve()`);
+        # bu kapsam yalnızca ERKEN temizliği mümkün kılar.
+        if (identical(uygulama$action, "answer")) sunulan_sonuc <<- NULL
         return(invisible(NULL))
       }
 

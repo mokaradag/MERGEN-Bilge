@@ -77,11 +77,22 @@ if (isTRUE(.pk_worker_direct_exit_mode) &&
       return(sonuc)
     }
 
-    if (exists("pk_analysis_observe", mode = "function", inherits = TRUE)) {
-      durduruldu <- isTRUE(tryCatch(
-        is.function(stop_check) && isTRUE(stop_check()), error = function(e) FALSE
-      ))
+    durduruldu <- isTRUE(tryCatch(
+      is.function(stop_check) && isTRUE(stop_check()), error = function(e) FALSE
+    ))
 
+    # DURDURMA GÖZLENDİKTEN SONRA YENİ DB İŞİ BAŞLATILMAZ (PR #703 incelemesi).
+    #
+    # Telemetri OPSİYONELDİR; iptal ise kullanıcının AÇIK talebidir. Burada bir
+    # havuz checkout'u/login'i açmak, Durdur'u zaten gözlemiş bir isteği yavaş
+    # bir DSN veya telemetri yazımı kadar daha bekletir ve işçi yuvası + DB
+    # oturumu o süre boyunca meşgul kalır. İptal TEARDOWN'a doğru ilerlemelidir.
+    if (isTRUE(durduruldu)) {
+      if (istisna) stop(yakalanan)
+      return(sonuc)
+    }
+
+    if (exists("pk_analysis_observe", mode = "function", inherits = TRUE)) {
       # CANLI BAĞLANTI ZORUNLUDUR: `pk_telemetry_log_analysis()` `conn = NULL`
       # iken HEMEN `FALSE` döner, yani bu sarmalayıcı geri getirmesi gereken
       # doğrudan çıkışların HİÇBİRİNİ `MB_Analiz_Log`'a yazmaz; yalnızca köken

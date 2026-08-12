@@ -92,13 +92,34 @@ pk_sql_apply_statement_timeout <- function(conn, timeout_sec, budget_fn = NULL) 
 # ödünç alana devredilirdi. `pool::poolClose()` bir havuz nesnesi içindir;
 # TEK bir checkout'u emekliye ayırmanın doğru yolu fiziksel bağlantıyı
 # kapatmaktır — havuz eksik bağlantıyı gerektiğinde yeniden kurar.
+#' @return `TRUE` yalnızca fiziksel bağlantının KAPATILDIĞI doğrulandıysa.
 .pk_sql_invalidate_connection <- function(conn, budget_fn) {
   kapatildi <- try(pk_sql_bounded_call(
     function() DBI::dbDisconnect(conn), budget_fn
   ), silent = TRUE)
+  # SINIRLI ÇAĞRI SONUCU DENETLENİR: `pk_sql_bounded_call()` hata ATMAZ,
+  # `list(ok = FALSE, ...)` DÖNER. Eskiden yalnızca `try-error` bakılıyordu, bu
+  # yüzden zaman aşımına uğramış bir kapatma BAŞARI raporlanıyordu.
+  ok <- !inherits(kapatildi, "try-error") && isTRUE(kapatildi$ok)
 
-  # `poolReturn()` yine de çağrılır: havuzun muhasebesi checkout'u AÇIK
-  # saymamalıdır. Kapatılmış bağlantı havuzun kendi doğrulamasında elenir.
-  try(pk_sql_bounded_call(function() pool::poolReturn(conn), budget_fn), silent = TRUE)
-  invisible(!inherits(kapatildi, "try-error"))
+  if (isTRUE(ok)) {
+    # Bağlantı GERÇEKTEN kapandı: `poolReturn()` yalnızca havuzun muhasebesini
+    # düzeltir; kapalı bağlantı havuzun checkout doğrulamasında elenir.
+    try(pk_sql_bounded_call(function() pool::poolReturn(conn), budget_fn), silent = TRUE)
+    return(invisible(TRUE))
+  }
+
+  # KAPATMA DOĞRULANAMADI => bağlantı HÂLÂ CANLI ve KİRLİ olabilir.
+  #
+  # `poolReturn()` ÇAĞRILMAZ (PR #703 incelemesi): iade edilen canlı bağlantı,
+  # geri yüklenememiş `LOCK_TIMEOUT` / temizlenmemiş sonuç kümesi ile bir
+  # sonraki isteğe devredilirdi. Yuvayı kaybetmek (havuz onu idle timeout /
+  # finalizer ile toplar) KİRLİ durumu yaymaktan iyidir.
+  if (exists("log_warn", mode = "function", inherits = TRUE)) {
+    try(log_warn(paste0(
+      "[PK_SQL] Kirli baglanti emekliye ayrilamadi; havuza IADE EDILMEDI ",
+      "(checkout yuvasi kaybedildi, kirli oturum durumu yayilmadi)."
+    )), silent = TRUE)
+  }
+  invisible(FALSE)
 }

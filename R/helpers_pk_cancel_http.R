@@ -67,13 +67,34 @@ pk_http_cancel_config <- function(stop_check = NULL) {
 #'
 #' curl iptali sıradan bir aktarım hatası gibi görünür; tipli sonuç üretebilmek
 #' için hata metni ile kapının durumu birlikte değerlendirilir.
-pk_http_cancelled_error <- function(message) {
+#' @param halted Aşama kapısı GERÇEKTEN durmuş mu? (varsayılan: canlı yoklama)
+pk_http_cancelled_error <- function(message, halted = NULL) {
   metin <- tryCatch(as.character(message)[1], error = function(e) "")
   if (is.null(metin) || is.na(metin) || !nzchar(metin)) return(FALSE)
 
-  isaretler <- c("Callback aborted", "aborted by callback", "Operation was aborted",
-                 "Failed writing body", "transfer closed")
-  any(vapply(isaretler, function(p) grepl(p, metin, fixed = TRUE), logical(1)))
+  # GERİ ÇAĞRIYA ÖZGÜ imzalar: yalnızca curl'ün iptal geri çağrısı üretir.
+  # Bunlar tek başına iptal KANITIDIR.
+  kesin <- c("Callback aborted", "aborted by callback", "Operation was aborted")
+  if (any(vapply(kesin, function(p) grepl(p, metin, fixed = TRUE), logical(1)))) return(TRUE)
+
+  # GENEL AKTARIM HATALARI TEK BAŞINA İPTAL DEĞİLDİR (PR #703 incelemesi).
+  #
+  # `Failed writing body` ve `transfer closed` sıradan bir sunucu/ağ kopmasında
+  # da üretilir. Bunları koşulsuz iptal saymak, GERÇEK bir LLM kesintisini
+  # "kullanıcı iptal etti / son tarih doldu" diye raporlar ve yanlış
+  # seçici/yedek yoluna sokardı. Bu yüzden yalnızca aşama kapısı GERÇEKTEN
+  # durmuşken iptal sayılırlar.
+  belirsiz <- c("Failed writing body", "transfer closed")
+  if (!any(vapply(belirsiz, function(p) grepl(p, metin, fixed = TRUE), logical(1)))) {
+    return(FALSE)
+  }
+
+  durdu <- if (is.null(halted)) {
+    isTRUE(tryCatch(pk_stage_halted(), error = function(e) FALSE))
+  } else {
+    isTRUE(halted)
+  }
+  isTRUE(durdu)
 }
 
 #' AKTİF PK isteği durdurulmuş / süresi dolmuş mu? (güvenli yoklama)

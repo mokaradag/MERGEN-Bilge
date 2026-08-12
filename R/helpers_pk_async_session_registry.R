@@ -73,9 +73,14 @@ mergen_pk_register_active_request <- function(session, request_id, cancel_token,
   kayit[[kimlik]] <- list(cancel_token = cancel_token, release = release_fn)
 
   # Oturum-sonu kancası oturum başına BİR KEZ kurulur.
-  ud <- tryCatch(session$userData, error = function(e) NULL)
-  kurulu <- isTRUE(try(ud[["pk_session_end_hook"]], silent = TRUE))
-  if (!kurulu) {
+  #
+  # İŞARET YAZIMI DOĞRULANIR (PR #703): işaret kalıcı olmazsa SONRAKİ her istek
+  # `kurulu = FALSE` görür ve yeni bir `onSessionEnded` kapanışı kurar — tam da
+  # bu defterin ortadan kaldırdığı istek-başına kapanış birikmesi geri gelir ve
+  # aynı terk/serbest bırakma temizliği kopmada defalarca çalışır. `userData`
+  # yazımı yutulursa SÜREÇ-YEREL ayna işareti taşır (kanca ve gözlemciler aynı
+  # süreçtedir), böylece kurulum yine oturum başına TEK kalır.
+  if (!isTRUE(.pk_session_hook_installed(session))) {
     ok <- try({
       session$onSessionEnded(function() {
         try(session$userData[["pk_session_closed"]] <- TRUE, silent = TRUE)
@@ -92,9 +97,31 @@ mergen_pk_register_active_request <- function(session, request_id, cancel_token,
       try(rm(list = kimlik, envir = kayit), silent = TRUE)
       return(invisible(FALSE))
     }
-    try(ud[["pk_session_end_hook"]] <- TRUE, silent = TRUE)
+    if (!isTRUE(.pk_session_hook_mark(session))) {
+      try(rm(list = kimlik, envir = kayit), silent = TRUE)
+      return(invisible(FALSE))
+    }
   }
   invisible(TRUE)
+}
+
+# Oturum-sonu kancası kurulu mu? (`userData` VEYA süreç-yerel ayna)
+.pk_session_hook_installed <- function(session) {
+  if (.pk_marker_has("hooked", .pk_marker_key(session, "<session-end-hook>"))) return(TRUE)
+  isTRUE(try(session$userData[["pk_session_end_hook"]], silent = TRUE))
+}
+
+# Kancayı işaretle; işaret HİÇBİR yolda kalıcı olamazsa `FALSE`.
+.pk_session_hook_mark <- function(session) {
+  kalici <- isTRUE(pk_session_state_write(session, "pk_session_end_hook", TRUE))
+  aynali <- isTRUE(.pk_marker_note("hooked", .pk_marker_key(session, "<session-end-hook>")))
+  if (!kalici) {
+    try(log_warn(paste0(
+      "[PK_ASYNC] Oturum-sonu kanca isareti oturuma yazilamadi; ",
+      "surec-yerel ayna kullaniliyor."
+    )), silent = TRUE)
+  }
+  isTRUE(kalici || aynali)
 }
 
 mergen_pk_unregister_active_request <- function(session, request_id) {

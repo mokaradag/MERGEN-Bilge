@@ -126,8 +126,14 @@ pk_async_worker_bootstrap <- function(repo_root, files,
                                       required_files = pk_async_worker_required_files(),
                                       stage_gate = NULL,
                                       workers = NULL,
-                                      db_pool_options = NULL) {
+                                      db_pool_options = NULL,
+                                      deadline_at = NULL) {
   hedef <- globalenv()
+
+  # BOOTSTRAP DOSYA SİSTEMİ ÇAĞRILARI SINIRLIDIR (PR #703 incelemesi).
+  # Askıda bir UNC/NFS yolunda `file.info()`/`readBin()`/`sys.source()` tek
+  # başına son tarihi aşabilir; aşamalar arası kapı bunu göremez. Sınır,
+  # `pk_async_bounded_fs()` içinde MUTLAK son tarihten türetilir.
 
   # BOOTSTRAP KENDİSİ SINIRLIDIR. Yalnızca bootstrap ÖNCESİ bir kapı koymak,
   # zaten GERÇEKLEŞMİŞ bir iptali yakalar; `file.info()`/`sys.source()`/havuz
@@ -160,8 +166,17 @@ pk_async_worker_bootstrap <- function(repo_root, files,
   erken <- durdur(0L)
   if (!is.null(erken)) return(erken)
 
-  parmak <- tryCatch(pk_async_bootstrap_fingerprint(kok, dosyalar),
-                     error = function(e) NA_character_)
+  parmak_sonuc <- pk_async_bounded_fs(
+    function() pk_async_bootstrap_fingerprint(kok, dosyalar), deadline_at
+  )
+  if (!isTRUE(parmak_sonuc$ok)) {
+    # Parmak izi HESAPLANAMADI: repo yolu askıda/erişilemez. Devam etmek, aynı
+    # askıda yolda dosya dosya `sys.source()` denemek olurdu.
+    return(list(ok = FALSE, loaded = 0L, failed = "fingerprint_unavailable",
+                cached = FALSE))
+  }
+  parmak <- parmak_sonuc$value
+  if (is.null(parmak) || length(parmak) != 1L) parmak <- NA_character_
   onceki <- get0(.PK_ASYNC_BOOTSTRAP_FLAG, envir = hedef, ifnotfound = NULL)
   if (!is.null(onceki) && !is.na(parmak) && identical(as.character(onceki)[1], parmak)) {
     # Kaynaklar TAZE ama havuz hazır DEĞİLSE (ilk denemede geçici bir hata
@@ -237,15 +252,15 @@ pk_async_worker_bootstrap <- function(repo_root, files,
     # Ana süreçte dosyalar `globalenv()` içine yüklendiği için `topenv()`
     # zaten `globalenv()`'tir; bu argüman işçiyi AYNI davranışa hizalar.
     # Sembol izolasyonu KORUNUR: değerler hâlâ `sahne` içine yazılır.
-    ok <- tryCatch({
+    yukleme <- pk_async_bounded_fs(function() {
       suppressWarnings(suppressMessages(
         sys.source(tam, envir = sahne, keep.source = FALSE,
                    toplevel.env = globalenv())
       ))
       TRUE
-    }, error = function(e) FALSE)
+    }, deadline_at)
 
-    if (isTRUE(ok)) yuklenen <- yuklenen + 1L else basarisiz <- c(basarisiz, goreli)
+    if (isTRUE(yukleme$ok)) yuklenen <- yuklenen + 1L else basarisiz <- c(basarisiz, goreli)
   }
 
   eksik_zorunlu <- setdiff(basename(zorunlu), basename(dosyalar))
@@ -261,7 +276,18 @@ pk_async_worker_bootstrap <- function(repo_root, files,
   son <- durdur(yuklenen)
   if (!is.null(son)) return(son)
 
-  pk_async_worker_commit_env(sahne, hedef)
+  # ATOMİK COMMIT: kısmî yazım BOOTSTRAP BAŞARISIZLIĞIDIR. Aksi hâlde eski
+  # uygulama yerinde kalırken parmak izi "yeni revizyon" diye işaretlenir ve
+  # işçi ESKİ+YENİ KARIŞIMINI çalıştırmaya devam ederdi.
+  commit <- pk_async_worker_commit_env(sahne, hedef)
+  if (!isTRUE(commit$ok)) {
+    # Parmak izi YAZILMAZ: sonraki istek yeniden dener. Bu işçi karışık
+    # durumda olabileceği için bootstrap AÇIKÇA başarısız döner.
+    try(assign(.PK_ASYNC_BOOTSTRAP_FLAG, NULL, envir = hedef), silent = TRUE)
+    return(list(ok = FALSE, loaded = yuklenen,
+                failed = c("commit_partial", utils::head(commit$failed, 5L)),
+                cached = FALSE))
+  }
   assign(.PK_ASYNC_BOOTSTRAP_FLAG, parmak %||% TRUE, envir = hedef)
   # Yeni revizyon devreye alındı: havuz hazırlığı da sıfırlanır (kaynak yeniden
   # yüklendiği için `.mergen_db_pool_state` TAZEDİR ve eski havuz ÖKSÜZDÜR).
@@ -277,12 +303,24 @@ pk_async_worker_bootstrap <- function(repo_root, files,
 # Havuz kurulumunu SÜREÇ BAŞINA bir kez başarıyla tamamla; başarısızsa sonraki
 # istekte YENİDEN DENE (geçici DB hataları havuzu kalıcı olarak öldürmemelidir).
 .pk_async_worker_pool_ensure <- function(hedef, workers = NULL) {
+  # HAZIR BAYRAĞI ARTIK YAPILANDIRMA PARMAK İZİDİR (PR #703 incelemesi).
+  #
+  # Eskiden `TRUE` saklanıyordu ve kod parmak izi değişmediği sürece havuz bir
+  # daha HİÇ kurulmuyordu: `MERGEN_DB_POOL_ENABLED` true -> false çalışma zamanı
+  # geri alması, fail-fast/boyut değişiklikleri ve işçi sayısına bağlı admisyon
+  # payı sıcak işçilerde sessizce ESKİ değerlerde kalıyordu.
+  parmak <- tryCatch(pk_async_worker_pool_fingerprint(workers),
+                     error = function(e) NA_character_)
   hazir <- get0(.PK_ASYNC_POOL_READY_FLAG, envir = hedef, ifnotfound = FALSE)
-  if (isTRUE(hazir)) return(list(ok = TRUE, fatal = FALSE))
+  if (!is.na(parmak) && identical(as.character(hazir)[1], parmak)) {
+    return(list(ok = TRUE, fatal = FALSE))
+  }
 
   sonuc <- tryCatch(.pk_async_worker_db_pool_init(hedef, workers = workers),
                     error = function(e) list(ok = FALSE, enabled = TRUE, fatal = FALSE))
-  if (isTRUE(sonuc$ok)) assign(.PK_ASYNC_POOL_READY_FLAG, TRUE, envir = hedef)
+  if (isTRUE(sonuc$ok)) {
+    assign(.PK_ASYNC_POOL_READY_FLAG, parmak %||% TRUE, envir = hedef)
+  }
   sonuc
 }
 

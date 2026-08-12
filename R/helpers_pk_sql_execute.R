@@ -180,8 +180,21 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
       if (kirli) {
         .pk_sql_invalidate_connection(query_conn, temizlik_butce)
       } else {
-        try(pk_sql_bounded_call(function() pool::poolReturn(query_conn), temizlik_butce),
-            silent = TRUE)
+        # `poolReturn()` SONUCU DENETLENİR (PR #703 incelemesi): `pk_sql_bounded_call()`
+        # hata ATMAZ, `list(ok = FALSE, ...)` DÖNER. Eskiden `try()` bunu yutuyor
+        # ve iade edilememiş checkout SESSİZCE kayboluyordu; tekrarı havuz
+        # yuvalarını tüketip sonraki istekleri checkout'ta bloklardı.
+        iade <- try(pk_sql_bounded_call(function() pool::poolReturn(query_conn),
+                                        temizlik_butce), silent = TRUE)
+        if (inherits(iade, "try-error") || !isTRUE(iade$ok)) {
+          # İade edilemedi: bağlantı belirsiz durumda ve HÂLÂ ödünç alınmış
+          # sayılıyor. Açıkça emekliye ayrılır (fiziksel kapatma) ve loglanır.
+          .pk_sql_invalidate_connection(query_conn, temizlik_butce)
+          if (exists("log_warn", mode = "function", inherits = TRUE)) {
+            try(log_warn("[PK_SQL] Havuz iadesi basarisiz; checkout emekliye ayrildi."),
+                silent = TRUE)
+          }
+        }
       }
     }
   }, add = TRUE)
@@ -197,6 +210,24 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   }
 
   bloklayan <- function(fn) {
+    # HİÇBİR YENİ BLOKLAYAN ÇAĞRI DURDUR/SON TARİH SONRASINDA BAŞLATILMAZ.
+    #
+    # Yürütme birden çok bloklayan sürücü çağrısından oluşur (gönderim, kolon
+    # metadata'sı, tanımlayıcı sondası, her parça getirimi). Kapı yalnızca
+    # getirim döngüsünde yoklanıyordu; Durdur bir çağrının HEMEN ÖNCESİNDE
+    # geldiğinde o çağrı yine de başlatılıyor ve işçi + DB oturumu tam bir
+    # zaman aşımı süresi daha meşgul kalıyordu.
+    #
+    # DÜRÜSTLÜK NOTU: bu, ZATEN ÇALIŞAN bir ifadeyi kesmez. Uçuştaki bir ODBC
+    # ifadesi için tek gerçek sınır `min(SQL zaman aşımı, kalan analiz bütçesi)`
+    # elapsed sınırıdır (`interruptible = TRUE` ile odbc R kesmesini SQLCancel'a
+    # çevirir). Kullanıcının BEKLEMEMESİ ise ana süreçteki son tarih bekçisiyle
+    # garanti edilir (bkz. `server_handler_pk_async.R`).
+    on_kapi <- kapi()
+    if (!identical(on_kapi, "ok")) {
+      return(list(ok = FALSE, status = on_kapi, error = NA_character_))
+    }
+
     kalan_analiz <- analiz_kalan()
     kalan_ifade <- ifade_kalan()
     kalan <- min(kalan_analiz, kalan_ifade)
@@ -216,6 +247,24 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   }
 
   metin <- enc2utf8(trimws(as.character(sql_text)[1]))
+
+  # SÜRÜCÜ TANIMLAYICI SONDASI — `dbSendQuery()`'DEN ÖNCE.
+  #
+  # `dbColumnInfo()` üretimde yalnızca sayısal ODBC kodları verir ve orada
+  # `varchar(max)` ile `varchar(200)` AYIRT EDİLEMEZ. SQL Server'ın kendi
+  # tanımlayıcısı (`sys.dm_exec_describe_first_result_set`) hem GÜVENLİĞİ
+  # (MAX sütunu materyalizasyondan ÖNCE yakalanır) hem PERFORMANSI (sıradan
+  # metin sütunları tek satırlık getirime düşmez) sağlar.
+  #
+  # SIRA ZORUNLUDUR: aynı bağlantıda AÇIK bir sonuç kümesi varken ikinci bir
+  # ifade çalıştırılamaz (MARS kapalı); bu yüzden sonda gönderimden ÖNCEDİR.
+  sema <- if (exists("pk_sql_describe_result_schema", mode = "function", inherits = TRUE)) {
+    tryCatch(pk_sql_describe_result_schema(query_conn, metin, call_fn = bloklayan),
+             error = function(e) NULL)
+  } else {
+    NULL
+  }
+
   gonderim <- bloklayan(function() {
     if (isTRUE(unicode_param)) {
       params <- if (exists("normalize_db_params", mode = "function", inherits = TRUE)) {
@@ -251,6 +300,7 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   parca_plani <- tryCatch(
     pk_sql_plan_chunk_rows(kolon_bilgisi, chunk_rows = parca_satir,
                            max_result_mb = tavan_mb,
+                           schema = sema,
                            # Yapılandırılmış yük çarpanı planlamaya da GİRER;
                            # aksi hâlde `MERGEN_PK_RESULT_OVERHEAD_FACTOR`
                            # override'ı sıradan getirimlerde ÖLÜ kalırdı
@@ -284,7 +334,7 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   if (is.finite(beklenen_satir) && beklenen_satir >= 0 &&
       exists("pk_result_size_preflight", mode = "function", inherits = TRUE)) {
     genislik <- tryCatch(
-      pk_result_width_upper_bound(pk_sql_columns_from_metadata(kolon_bilgisi)),
+      pk_result_width_upper_bound(pk_sql_columns_from_metadata(kolon_bilgisi, schema = sema)),
       error = function(e) NULL
     )
     on_denetim <- tryCatch(

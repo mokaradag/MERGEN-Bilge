@@ -83,11 +83,116 @@
   column_info[[idx[1L]]]
 }
 
+# ------------------------------------------------------------------------------
+# SÜRÜCÜ TANIMLAYICI (DESCRIPTOR) SONDASI
+# ------------------------------------------------------------------------------
+# SQL Server ODBC arayüzü `varchar(max)`/`nvarchar(max)`/`varbinary(max)`
+# sütunlarını SIRADAN `SQL_VARCHAR` (12) / `SQL_WVARCHAR` (-9) /
+# `SQL_VARBINARY` (-3) kodlarıyla sunabilir; `dbColumnInfo()` yalnızca `name` ve
+# sayısal `type` verdiği için SINIRLI bir VARCHAR ile MAX ayırt EDİLEMEZ
+# (PR #703 incelemesi). "Bilinmeyen genişlik = tek satır getir" yaklaşımı da iki
+# yönden yanlıştır: tek bir MAX hücresi zaten belleğe TAMAMEN alınır (güvenlik),
+# sıradan metin sütunlu 50 bin satırlık bir sonuç ise on binlerce gidiş-dönüşe
+# dönüşür (performans).
+#
+# Bu yüzden SQL Server'ın KENDİ tanımlayıcısı sorulur:
+# `sys.dm_exec_describe_first_result_set` her sütun için `system_type_name`
+# (ör. `varchar(max)`) ve `max_length` (bayt; MAX için `-1`) döndürür.
+#
+# Sonda BAŞARISIZ olursa sınıflandırma KAPALI BAŞARISIZ olur (aşağıya bakınız):
+# kanıtlanamayan değişken genişlikli sütun `__unproven__` sayılır ve
+# `pk_allow_unbounded_lob()` açıkça izin vermedikçe sonuç materyalizasyondan
+# ÖNCE reddedilir.
+pk_sql_result_schema_probe_enabled <- function() {
+  ham <- Sys.getenv("MERGEN_PK_RESULT_SCHEMA_PROBE", unset = "")
+  if (!nzchar(ham)) return(TRUE)
+  !(tolower(trimws(ham)) %in% c("false", "f", "0", "no", "off", "hayir", "hayır", "kapali", "kapalı"))
+}
+
+#' Sonuç kümesi şemasını SQL Server tanımlayıcısından oku
+#'
+#' @param call_fn Bloklamayı sınırlayan sarmalayıcı: `function(fn)` ->
+#'   `list(ok=, value=)`. Verilmezse çağrı doğrudan yapılır.
+#' @return Sütun başına `list(name, system_type_name, max_length)` listesi veya
+#'   `NULL` (sonda yapılamadı).
+pk_sql_describe_result_schema <- function(conn, sql_text, call_fn = NULL) {
+  if (!isTRUE(pk_sql_result_schema_probe_enabled())) return(NULL)
+  if (is.null(conn) || !requireNamespace("DBI", quietly = TRUE)) return(NULL)
+  # SONDA YALNIZCA ODBC/SQL Server yolunda anlamlıdır: `dbColumnInfo()` yalnızca
+  # orada sayısal tip kodlarına düşer. Diğer sürücüler (ör. testlerdeki SQLite)
+  # tip ADI verdiği için sınıflandırma zaten kanıtlıdır ve gereksiz bir
+  # gidiş-dönüş yapılmaz.
+  if (!inherits(conn, "OdbcConnection") && !inherits(conn, "Microsoft SQL Server")) {
+    return(NULL)
+  }
+
+  metin <- tryCatch(as.character(sql_text)[1], error = function(e) NA_character_)
+  if (is.na(metin) || !nzchar(metin)) return(NULL)
+
+  sorgu <- paste(
+    "SELECT name, system_type_name, max_length",
+    "FROM sys.dm_exec_describe_first_result_set(CAST(? AS NVARCHAR(MAX)), NULL, 0)",
+    "ORDER BY column_ordinal"
+  )
+  cagir <- if (is.function(call_fn)) call_fn else function(fn) list(ok = TRUE, value = fn())
+  sonuc <- tryCatch(cagir(function() DBI::dbGetQuery(conn, sorgu, params = list(metin))),
+                    error = function(e) list(ok = FALSE, value = NULL))
+  if (!isTRUE(sonuc$ok)) return(NULL)
+
+  cerceve <- sonuc$value
+  if (!is.data.frame(cerceve) || nrow(cerceve) == 0L) return(NULL)
+
+  lapply(seq_len(nrow(cerceve)), function(i) {
+    list(
+      name = as.character(cerceve$name[i]),
+      system_type_name = as.character(cerceve$system_type_name[i]),
+      max_length = suppressWarnings(as.numeric(cerceve$max_length[i]))
+    )
+  })
+}
+
+# Tanımlayıcı satırından sütun tanımı üret.
+#
+# `max_length = -1` SQL Server'da MAX/`unlimited` demektir: KANITLANMIŞ üst sınır
+# YOKTUR. `xml`/`text`/`ntext`/`image`/`sql_variant` da sınırsızdır.
+.pk_sql_column_from_descriptor <- function(satir) {
+  tip <- tolower(as.character(satir$system_type_name %||% ""))
+  boyut <- suppressWarnings(as.numeric(satir$max_length %||% NA_real_)[1])
+
+  sinirsiz_tipler <- c("xml", "text", "ntext", "image", "sql_variant", "hierarchyid")
+  if (any(vapply(sinirsiz_tipler, function(t) grepl(t, tip, fixed = TRUE), logical(1)))) {
+    return(list(type = "text", max_length = NA_real_))
+  }
+  if (grepl("(max)", tip, fixed = TRUE)) return(list(type = "text", max_length = NA_real_))
+  if (length(boyut) == 1L && !is.na(boyut) && boyut < 0) {
+    return(list(type = "text", max_length = NA_real_))
+  }
+  if (length(boyut) == 1L && !is.na(boyut) && is.finite(boyut) && boyut > 0) {
+    return(list(type = "__bounded__", max_length = boyut))
+  }
+  # Beyan yok: SABİT genişlikli tipler için tip adından türetilebilir.
+  sabit <- c(bit = 1, tinyint = 1, smallint = 2, int = 4, bigint = 8, real = 4,
+             float = 8, money = 8, smallmoney = 4, date = 8, time = 8,
+             datetime = 8, datetime2 = 8, smalldatetime = 8,
+             datetimeoffset = 12, uniqueidentifier = 16)
+  for (ad in names(sabit)) {
+    if (identical(tip, ad)) return(list(type = "__bounded__", max_length = sabit[[ad]]))
+  }
+  list(type = "__unproven__", max_length = NA_real_)
+}
+
 #' Sonuç metadata'sından sütun tip/genişlik tanımları çıkar
 #'
 #' `name` alanı BİLİNÇLİ OLARAK YOK SAYILIR: kolon takma adı bir tip adına
 #' benzediği için sonuç reddedilmemelidir.
-pk_sql_columns_from_metadata <- function(column_info) {
+#'
+#' @param schema `pk_sql_describe_result_schema()` çıktısı (varsa OTORİTEDİR).
+pk_sql_columns_from_metadata <- function(column_info, schema = NULL) {
+  # SÜRÜCÜ TANIMLAYICISI VARSA O KULLANILIR: sayısal ODBC kodları MAX ile
+  # sınırlı değişken genişliği ayırt edemez, tanımlayıcı ayırt eder.
+  if (is.list(schema) && length(schema) > 0L) {
+    return(lapply(schema, .pk_sql_column_from_descriptor))
+  }
   if (!is.data.frame(column_info) || nrow(column_info) == 0L) return(list())
 
   tipler <- .pk_sql_metadata_field(column_info, c("type", "data_type", "sql_type",
@@ -110,10 +215,16 @@ pk_sql_columns_from_metadata <- function(column_info) {
       birim <- .PK_ODBC_FIXED_TYPE_BYTES[[anahtar]]
       if (!is.null(birim)) {
         if (anahtar %in% .PK_ODBC_VARIABLE_TYPE_CODES) {
-          # Değişken genişlik: BEYAN EDİLEN uzunluk zorunludur. Beyan yoksa
-          # (veya `-1` = max) üst sınır KANITLANAMAZ.
+          # Değişken genişlik: BEYAN EDİLEN uzunluk zorunludur.
+          #
+          # Beyan yoksa (veya `-1`/`0` = sürücünün "sınırsız" sentinel'i) bu
+          # sütun `varchar(max)`/`nvarchar(max)`/`varbinary(max)` OLABİLİR ve
+          # tek bir hücresi işçiyi OOM edebilir. Bu KANITLANMAMIŞ durum
+          # `__unknown__`'dan AYRI raporlanır (`__unproven__`): "bilinmeyen tip"
+          # yalnızca granülariteyi düşürürken, kanıtlanmamış DEĞİŞKEN genişlik
+          # açık izin olmadıkça REDDEDİLİR (PR #703 incelemesi).
           if (is.na(boyut) || !is.finite(boyut) || boyut <= 0) {
-            return(list(type = "__unknown__", max_length = NA_real_))
+            return(list(type = "__unproven__", max_length = NA_real_))
           }
           return(list(type = "__bounded__", max_length = boyut * birim))
         }

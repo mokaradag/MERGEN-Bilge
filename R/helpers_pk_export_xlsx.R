@@ -187,6 +187,21 @@ pk_export_build <- function(data, packet = list(), context = list(),
          total_rows = rows, cols = cols, format = NA_character_, notes = character(0))
   }
 
+  # YAZIM VE DOĞRULAMA AŞAMALARININ KENDİSİ SINIRLIDIR (PR #703 incelemesi).
+  #
+  # Yalnızca yazımdan ÖNCE/SONRA kapı yoklamak, büyük ama izinli bir dışa
+  # aktarımda Durdur'un ve mutlak son tarihin dosya TAMAMEN üretilene kadar
+  # GÖRÜLMEMESİ demekti; işçi o süre boyunca meşgul kalıyordu. Bu aşamalar
+  # R/Rcpp hesabıdır, dolayısıyla `setTimeLimit()` onları gerçekten kesebilir.
+  #
+  # Bütçe yoksa (geri alma kipi / son tarih yayınlanmamış) davranış DEĞİŞMEZ.
+  sinirli_asama <- function(fn) {
+    if (!exists("pk_async_bounded_fs", mode = "function", inherits = TRUE)) {
+      return(list(ok = TRUE, value = fn()))
+    }
+    pk_async_bounded_fs(fn, getOption("mergen.pk.async.deadline_at", NULL))
+  }
+
   plan <- pk_export_plan(data, base_name = "Veri", query_meta = meta)
 
   if (identical(plan$status, "empty")) {
@@ -251,20 +266,28 @@ pk_export_build <- function(data, packet = list(), context = list(),
     yol <- file.path(dizin, .pk_export_filename(base_name, "xlsx"))
     if (durduruldu()) return(iptal_sonucu(plan$total_rows, ncol(govde)))
 
-    yazildi <- tryCatch({
-      if (bicimli) {
-        .pk_export_write_openxlsx(yol, sayfalar, meta, hazir$percent_columns)
-      } else {
-        writexl::write_xlsx(lapply(sayfalar, function(s) {
-          attr(s, "pk_source_columns") <- NULL
-          s
-        }), path = yol)
-      }
-      TRUE
-    }, error = function(e) {
-      cat(sprintf("[PK_ANALIZ] XLSX yazimi basarisiz: %s\n", conditionMessage(e)))
-      FALSE
+    yazim <- sinirli_asama(function() {
+      tryCatch({
+        if (bicimli) {
+          .pk_export_write_openxlsx(yol, sayfalar, meta, hazir$percent_columns)
+        } else {
+          writexl::write_xlsx(lapply(sayfalar, function(s) {
+            attr(s, "pk_source_columns") <- NULL
+            s
+          }), path = yol)
+        }
+        TRUE
+      }, error = function(e) {
+        cat(sprintf("[PK_ANALIZ] XLSX yazimi basarisiz: %s\n", conditionMessage(e)))
+        FALSE
+      })
     })
+    # Bütçe içinde bitmediyse YARIM dosya diskte kalmamalıdır.
+    if (!isTRUE(yazim$ok)) {
+      if (!is.na(yol)) safe_unlink_if_exists(yol)
+      return(iptal_sonucu(plan$total_rows, ncol(govde)))
+    }
+    yazildi <- isTRUE(yazim$value)
 
     # Yazım BİTTİ: dosya artık diskte. Bundan sonraki her başarısız/iptal
     # yolunda temizlenebilmesi için ANINDA kaydedilir.
@@ -276,7 +299,13 @@ pk_export_build <- function(data, packet = list(), context = list(),
     }
 
     dogrulama <- if (yazildi) {
-      pk_export_verify_file(yol, plan, sayfalar)
+      # Geri okuma/doğrulama da SINIRLIDIR: aynı gerekçe (bkz. `sinirli_asama`).
+      dogrulama_sonucu <- sinirli_asama(function() pk_export_verify_file(yol, plan, sayfalar))
+      if (!isTRUE(dogrulama_sonucu$ok)) {
+        if (!is.na(yol)) safe_unlink_if_exists(yol)
+        return(iptal_sonucu(plan$total_rows, ncol(govde)))
+      }
+      dogrulama_sonucu$value
     } else {
       list(ok = FALSE, reason = "XLSX dosyasi yazilamadi.")
     }
