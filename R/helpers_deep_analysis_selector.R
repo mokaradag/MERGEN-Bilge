@@ -85,11 +85,24 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session,
     model_name <- getOption("mergen.filter_model", api_config$local_models[1])
     creds <- resolve_local_llm_credentials(model_name)
 
-    api_key_val <- NULL
-    if (!is.null(session) && !is.null(session$userData$ai_api_key)) {
-      api_key_val <- as.character(session$userData$ai_api_key)[1]
+    # SAHİPLİK DENETİMLİ ANAHTAR ÇÖZÜMLEMESİ (§1F).
+    #
+    # `session$userData$ai_api_key` DOĞRUDAN OKUNAMAZ: SSO kimlik değişimi
+    # sonrasında o yuva BAŞKA bir uygulama kullanıcısının kişisel kimlik
+    # bilgisini taşıyor olabilir ve bu çağrı onu kullanırdı. Merkezî yardımcı
+    # sahibi doğrular, uyuşmazlıkta yuvayı temizler ve izinli kurumsal
+    # varsayılana düşer. Yardımcı yoksa yalnızca varsayılan anahtar kullanılır.
+    api_key_val <- if (exists("mb_api_key_get_feature_key_value", mode = "function", inherits = TRUE)) {
+      tryCatch(
+        mb_api_key_get_feature_key_value(
+          session = session, fallback_key = creds$default_api_key %||% ""
+        ),
+        error = function(e) creds$default_api_key
+      )
+    } else {
+      creds$default_api_key
     }
-    if (is.null(api_key_val) || !nzchar(api_key_val)) {
+    if (length(api_key_val) != 1L || is.na(api_key_val) || !nzchar(as.character(api_key_val)[1])) {
       api_key_val <- creds$default_api_key
     }
 

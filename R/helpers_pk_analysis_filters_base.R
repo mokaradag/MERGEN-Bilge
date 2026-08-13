@@ -186,16 +186,23 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
     filter_model <- getOption("mergen.filter_model", api_config$local_models[1])
     creds <- resolve_local_llm_credentials(filter_model)
 
-    api_key_val <- NULL
-    if (!is.null(session) && !is.null(session$userData$ai_api_key)) {
-      api_key_val <- as.character(session$userData$ai_api_key)[1]
+    # SAHİPLİK DENETİMLİ ANAHTAR ÇÖZÜMLEMESİ (§1F): `session$userData$ai_api_key`
+    # doğrudan okunamaz; SSO kimlik değişimi sonrasında o yuva BAŞKA bir
+    # kullanıcının kişisel anahtarını taşıyor olabilir.
+    api_key_val <- if (exists("mb_api_key_get_feature_key_value", mode = "function", inherits = TRUE)) {
+      tryCatch(
+        mb_api_key_get_feature_key_value(
+          session = session, fallback_key = creds$default_api_key %||% ""
+        ),
+        error = function(e) NULL
+      )
+    } else {
+      NULL
     }
 
-    if (is.null(api_key_val) || !nzchar(api_key_val)) {
+    if (length(api_key_val) != 1L || is.na(api_key_val) || !nzchar(as.character(api_key_val)[1])) {
       default_key <- creds$default_api_key %||% ""
-      if (nzchar(default_key)) {
-        api_key_val <- as.character(default_key)[1]
-      }
+      api_key_val <- if (nzchar(default_key)) as.character(default_key)[1] else NULL
     }
 
 	# D9: v1'in sabit 8 saniyesi fazla agresifti ve zaman asimi "filtre

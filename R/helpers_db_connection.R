@@ -210,7 +210,19 @@ get_connection <- function(target = "primary") {
     stop("Worker/process requires 'odbc' and 'DBI' packages installed.", call. = FALSE)
   }
 
-  dsn_name <- Sys.getenv(dsn_var, .DEFAULT_DSN)
+  # BİRİNCİL OLMAYAN HEDEF, BİRİNCİL DSN'E SESSİZCE DÜŞMEZ.
+  #
+  # `.DEFAULT_DSN` birincil (`DB_DSN`) bağlantısıdır. Yedek olarak HER hedefe
+  # verildiğinde, `DB_DSN_2` tanımsız bir kurulumda `secondary` hedefli bir
+  # sorgu fark edilmeden BİRİNCİL veritabanına gidiyordu: yanlış veri kümesi
+  # üzerinden üretilen sonuç, doğru veritabanından gelmiş gibi raporlanır ve
+  # yetkilendirme/kapsam varsayımları da o veritabanına aittir. Yapılandırılmamış
+  # bir ikincil hedef KAPALI BAŞARISIZ olmalıdır.
+  dsn_name <- if (identical(target, "primary")) {
+    Sys.getenv(dsn_var, .DEFAULT_DSN)
+  } else {
+    Sys.getenv(dsn_var, "")
+  }
 
   if (identical(dsn_name, "")) {
     stop(
