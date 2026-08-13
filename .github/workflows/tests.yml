@@ -101,6 +101,7 @@ jobs:
             any::fs
             any::future
             any::glue
+            any::highcharter
             any::htmltools
             any::httr
             any::jsonlite
