@@ -143,11 +143,23 @@ pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
   pk_observe_deep <- function(observation) {
     if (!exists("pk_analysis_observe", mode = "function", inherits = TRUE)) return("")
 
+    # ETKİN MOTOR TELEMETRİYE GERÇEK DEĞERİYLE YAZILIR.
+    #
+    # `engine = "v1"` sabitlenmişti; Derin Düşünme v2 seçim/filtre yolundan
+    # geçtiğinde bile tüm gözlemler v1 diye kaydediliyordu. Bu, motora göre
+    # bölümlenmiş telemetri ve soak sonuçlarını kullanılamaz hâle getiriyor,
+    # yani bu PR'ın doğrulamak istediği davranış ölçülemiyordu.
+    etkin_motor <- if (exists("pk_engine_is_v2", mode = "function", inherits = TRUE)) {
+      if (isTRUE(tryCatch(pk_engine_is_v2(), error = function(e) FALSE))) "v2" else "v1"
+    } else {
+      "v1"
+    }
+
     info <- list(
       request_id = pk_request_id,
       question = user_prompt,
       username = username,
-      engine = "v1",
+      engine = etkin_motor,
       deep_thinking = TRUE,
       duration_ms = as.numeric(difftime(Sys.time(), pk_started_at, units = "secs")) * 1000
     )

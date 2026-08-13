@@ -265,6 +265,18 @@ pk_select_config_for_query <- function(cfg, query_meta) {
   yeni <- pk_select_config(query_meta = query_meta)
   if (!isTRUE(yeni$valid)) return(yeni)
 
-  for (alan in .PK_SELECT_DECISION_FIELDS) cfg[[alan]] <- yeni[[alan]]
+  # YALNIZCA METADATA'NIN GERÇEKTEN GEÇERSİZ KILDIĞI ALANLAR KOPYALANIR.
+  #
+  # `pk_select_config(query_meta = ...)` üç karar alanını da ortam/seçenek/
+  # varsayılan basamağından YENİDEN çözer. Eski döngü üçünü birden yazdığı için,
+  # sorgu yalnızca `select_min_confidence`'ı geçersiz kıldığında çağıranın
+  # İSTEK KAPSAMLI `min_margin` değeri de sessizce süreç varsayılanıyla
+  # değiştiriliyordu; bu, istek için sıkılaştırılmış bir seçim kapısını
+  # gevşetip AUTO/red davranışını değiştirebilirdi.
+  for (i in seq_along(.PK_SELECT_DECISION_FIELDS)) {
+    if (!isTRUE(ilgili[[i]])) next
+    alan <- .PK_SELECT_DECISION_FIELDS[[i]]
+    cfg[[alan]] <- yeni[[alan]]
+  }
   cfg
 }

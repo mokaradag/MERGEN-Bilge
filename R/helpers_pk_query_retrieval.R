@@ -362,7 +362,22 @@ pk_retrieval_agreement <- function(index, prompt, selected_id, top_n, library = 
   kimlik <- trimws(as.character(selected_id)[1])
 
   if (!is.null(library)) {
-    dislanan <- setdiff(pk_retrieval_excluded_ids(library, prompt), kimlik)
+    tum_dislanan <- pk_retrieval_excluded_ids(library, prompt)
+
+    # SEÇİLEN SORGUNUN KENDİ `not_for` KAYDI DA BAĞLAYICIDIR.
+    #
+    # `not_for` bu isteğin o sorguya UYGUN OLMADIĞINA dair AÇIK olumsuz
+    # kanıttır. Eski `setdiff(..., kimlik)` seçileni dışlama kümesinden
+    # çıkarıyordu; yani sorgunun kendi `not_for` kaydı isteme uysa bile bu kapı
+    # "sözlüksel uyuşmazlık yok" diyebiliyor ve seçim geçebiliyordu.
+    if (kimlik %in% tum_dislanan) {
+      return(list(
+        available = TRUE, rank = NA_integer_, score = NA_real_,
+        disagrees = TRUE, excluded_by_not_for = TRUE
+      ))
+    }
+
+    dislanan <- setdiff(tum_dislanan, kimlik)
     if (length(dislanan)) {
       siralama <- siralama[!(siralama$query_id %in% dislanan), , drop = FALSE]
       if (!nrow(siralama)) return(bos)

@@ -137,12 +137,36 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     raw_data <- convert_date_columns(raw_data, query$date_columns)
   }
 
-  meta_gate <- pk_meta_actual_column_gate(query, names(raw_data), FALSE)
+  # v2 METADATA KAPISI DERİN ANALİZDE DE UYGULANIR.
+  #
+  # Motor bayrağı burada `FALSE` sabitlenmişti; yani v2 altında çalışan bir
+  # Derin Düşünme isteği, standart v2 yolunun REDDETTİĞİ bir şema uyuşmazlığını
+  # (beyan edilen ölçü/tarih sütunu sonuçta yok ya da tipi değişmiş) fark
+  # etmeden özetlemeye devam ediyordu. Metadata dönen çerçeveyi tarif etmiyorsa
+  # filtre düşebilir ya da yanlış ölçü anlambilimi hesaplanabilir.
+  deep_engine_v2 <- exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
+    isTRUE(tryCatch(pk_engine_is_v2(query$meta), error = function(e) FALSE))
+
+  meta_gate <- pk_meta_actual_column_gate(query, names(raw_data), deep_engine_v2)
+  if (length(meta_gate$warn) > 0) {
+    cat(sprintf("[DEEP_ANALYSIS] METADATA SUTUN UYUSMAZLIGI | sorgu=%s | %s\n",
+                query$id %||% "?", paste(meta_gate$warn, collapse = " ; ")))
+  }
   if (isTRUE(meta_gate$abort)) {
     return(finish_result(list(
       query_name = query_name,
       success = FALSE,
       error_msg = "Yetki sütunu doğrulanamadı; sorgu güvenli biçimde çalıştırılamadı."
+    )))
+  }
+  if (isTRUE(meta_gate$engine_abort)) {
+    return(finish_result(list(
+      query_name = query_name,
+      success = FALSE,
+      error_msg = paste0(
+        "Sorgu sonucu, tanımlı sorgu metadatası ile uyuşmuyor; analiz güvenli ",
+        "biçimde sürdürülemedi."
+      )
     )))
   }
 

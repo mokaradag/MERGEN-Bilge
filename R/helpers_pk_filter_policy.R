@@ -156,25 +156,36 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
   uygulanan_sutunlar <- vapply(compiled$groups %||% list(), function(g) g$column, character(1))
   birincil_on <- pk_filter_primary_column(query, unique(c(uygulanan_sutunlar, dusen_sutunlar)))
 
+  # RED kararında maske de KAPALI hâle getirilir.
+  #
+  # Çağıranlar bugün `action` alanını okuyup boş çerçeve döndürüyor; ancak
+  # düşürülmüş filtre durumunda derleyicinin maskesi TÜMÜ-TRUE'dur. `action`
+  # denetimini atlayan/ileride eklenen bir tüketici, reddedilmiş bir istekte
+  # TÜM yetkili kümeyi analiz ederdi. Maske reddin kendisiyle tutarlı olmalıdır.
+  reddet <- function(mesaj, sutun = NULL) {
+    sonuc$primary_column <- sutun
+    sonuc$action <- "refuse"
+    sonuc$refusal_message <- mesaj
+    sonuc$mask <- rep(FALSE, nrow(data))
+    sonuc
+  }
+
   # 0a) Kullanıcının istediği HER filtre düşürüldü -> analiz yapılmaz.
   if (isTRUE(compiled$all_dropped)) {
-    sonuc$primary_column <- birincil_on
-    sonuc$action <- "refuse"
-    sonuc$refusal_message <- .pk_policy_dropped_message(compiled$dropped)
-    return(sonuc)
+    return(reddet(.pk_policy_dropped_message(compiled$dropped), birincil_on))
   }
 
   # 0b) BİRİNCİL varlık filtresi düşürüldü -> ikincil daraltmalarla devam etmek
   # popülasyonu sessizce genişletir; RED.
   if (!is.null(birincil_on) && birincil_on %in% dusen_sutunlar &&
       !(birincil_on %in% uygulanan_sutunlar)) {
-    sonuc$primary_column <- birincil_on
-    sonuc$action <- "refuse"
-    sonuc$refusal_message <- .pk_policy_dropped_message(
-      Filter(function(d) identical(as.character(d$leaf$column %||% "")[1], birincil_on),
-             compiled$dropped)
-    )
-    return(sonuc)
+    return(reddet(
+      .pk_policy_dropped_message(
+        Filter(function(d) identical(as.character(d$leaf$column %||% "")[1], birincil_on),
+               compiled$dropped)
+      ),
+      birincil_on
+    ))
   }
 
   sifir_gruplar <- Filter(function(g) isTRUE(g$zero_match), compiled$groups)
