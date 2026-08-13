@@ -134,10 +134,22 @@ pk_rls_scope_state <- function(values, declared_state = NULL, applicable = TRUE)
 
   sutun <- if (is.null(column)) NA_character_ else as.character(column)[1]
   if (is.na(sutun) || !nzchar(trimws(sutun))) {
-    # Sorgu bu boyut için sütun beyan etmemiş. Kapsam çözülmüştür ama
-    # uygulanamaz; bu bilinçli ve BELGELİ bir sınırdır (uzun vadeli çözüm
-    # predikatı SQL tarafına taşımaktır). Sessiz kalmamak için raporlanır.
-    return(list(state = durum, unenforced = TRUE, label = label))
+    # UYGULANAMAYAN KAPSAM ARTIK KAPALI BAŞARISIZDIR.
+    #
+    # Eskiden bu dal yalnızca `unenforced` işaretini kaldırıyor ve çağıran
+    # taraf bir `cat()` uyarısı yazıp DEVAM EDİYORDU. Sonuç, yetki sistemi
+    # kullanıcı için bir kapsam ÇÖZMÜŞken (yani kısıtlı bir kullanıcıyken) o
+    # boyutta HİÇBİR kısıt uygulanmadan satır döndürmekti; kısıtlı kullanıcı
+    # kapsamı dışındaki kayıtları görebiliyordu. Bir yetkilendirme sınırının
+    # "beyan edilmemiş" olması, o sınırın YOK sayılması anlamına gelemez.
+    #
+    # `not_applicable` ve `empty` durumları bu dala GELMEZ: rol için kısıt
+    # tanımlı değilse zaten yukarıda dönülür, izin tablosu boşsa sıfır satır
+    # verilir. Buraya yalnızca ÇÖZÜLMÜŞ ama uygulanamayan kapsam düşer.
+    return(list(
+      state = durum, abort = TRUE, reason = "unenforceable_column",
+      unenforced = TRUE, label = label
+    ))
   }
 
   sutun <- trimws(sutun)
@@ -260,6 +272,10 @@ pk_rls_plan <- function(user_info, rls_cols, actual_columns) {
         code_collision = sprintf(
           "Farkli yetkilendirme kodlari ayni anahtara cokuyor (%s): %s",
           adim$label %||% "?", paste(adim$collisions, collapse = "; ")
+        ),
+        unenforceable_column = sprintf(
+          "Kullanici icin cozulmus yetki kapsami var ama sorgu bu boyut icin sutun beyan etmiyor (%s); kisit uygulanamaz.",
+          adim$label %||% "?"
         ),
         sprintf("RLS plani uretilemedi (%s).", adim$label %||% "?")
       )

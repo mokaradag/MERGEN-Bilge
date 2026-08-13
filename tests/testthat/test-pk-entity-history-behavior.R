@@ -56,7 +56,15 @@ test_that("D11 hâlâ geçerlidir: v1 yolu chat_history'yi OKUMAZ", {
     # gövde okuması değildir — v1 dalı `chat_history`'yi hâlâ hiç incelemez
     # ve motor bayrağı v1 iken bu satır zaten çalışmaz. Koşul/indeksleme/
     # uzunluk/eleman erişimi eklenirse test yine kırmızıya döner.
-    "prompt, library, chat_history,"
+    "prompt, library, chat_history,",
+    # D11 KAPANIŞI (v2): geçmiş farkındalıklı varlık çözümleyicisine giden
+    # bağlam artık ÜRETİM yolunda gerçekten bağlanıyor. Bu satır da bir
+    # PASS-THROUGH'tur: `chat_history` burada okunmaz/incelenmez, yalnızca
+    # `pk_filter_instructions_with_context()` üzerinden filtre talimatlarına
+    # iliştirilir ve çözümleyici onu v2 dalında tüketir.
+    paste0("if (exists(\"pk_filter_instructions_with_context\", mode = \"function\", ",
+           "inherits = TRUE)) filter_criteria <- pk_filter_instructions_with_context(",
+           "filter_criteria, chat_history, session)")
   )
 
   expect_equal(

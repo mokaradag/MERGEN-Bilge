@@ -160,8 +160,14 @@ test_that("yükleme sırası: Türkçe katlama yardımcısı metadata katmanlar�
 
   sira <- function(dosya) match(dosya, bolum)
 
-  expect_equal(sira("R/helpers_pk_text_turkish.R"), 1L,
-               info = "Turkce katlama yardimcisi bolumun ilk dosyasi olmalidir.")
+  # Bolumun ILK dosyasi makine/protokol belirtecleri icin ASCII katlamadir;
+  # Turkce katlama HEMEN ardindan gelir. Ikisi bilerek AYRI dosyalardir:
+  # `helpers_pk_text_turkish.R` insan metnini katlar ve `chartr()` kullanimi
+  # orada olculerek basarisiz bulunup sozlesme testiyle yasaklanmistir.
+  expect_equal(sira("R/helpers_pk_ascii_tokens.R"), 1L,
+               info = "ASCII belirtec yardimcisi bolumun ilk dosyasi olmalidir.")
+  expect_equal(sira("R/helpers_pk_text_turkish.R"), 2L,
+               info = "Turkce katlama yardimcisi ASCII yardimcisindan hemen sonra gelmelidir.")
 
   # Master plan §6 zorunlu veri katmanı sırası.
   expect_true(sira("R/helpers_pk_text_turkish.R") < sira("R/library_query_meta_auto.R"))

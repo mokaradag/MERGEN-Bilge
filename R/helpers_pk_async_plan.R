@@ -73,6 +73,15 @@ pk_async_plan_capability <- function() {
       return(list(ok = FALSE, reason = "remote_cluster_plan"))
     }
 
+    # KURESEL DB ADMISYON TAVANI SERT SINIRDIR: bolusulemiyorsa asenkron bu
+    # istek icin KAPATILIR ve mevcut sinirli senkron yola dusulur (sonuc
+    # kaybolmaz, yalnizca eszamanlilik kaybedilir). Karar sahibi tek yer
+    # `pk_db_admission_fits()`; havuz kapaliyken davranis DEGISMEZ.
+    if (exists("pk_db_admission_fits", mode = "function", inherits = TRUE) &&
+        !isTRUE(pk_db_admission_fits(pk_async_worker_count()))) {
+      return(list(ok = FALSE, reason = "db_pool_cap_exceeded"))
+    }
+
     list(ok = TRUE, reason = "ok")
   }, error = function(e) list(ok = FALSE, reason = "plan_probe_failed"))
 }

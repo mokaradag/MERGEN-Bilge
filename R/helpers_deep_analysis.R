@@ -13,7 +13,8 @@
 #' @param stop_check Durdurma kontrol fonksiyonu
 #' @return İşlenmiş sorgu sonucu listesi veya NULL (hata durumunda)
 execute_single_deep_query <- function(query, user_prompt, session, rls_info,
-                                      detail_config, stop_check = NULL) {
+                                      detail_config, stop_check = NULL,
+                                      chat_history = NULL) {
   query_name <- query$name %||% "Bilinmeyen Sorgu"
   query_started_at <- Sys.time()
 
@@ -183,6 +184,13 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
         pre_rls_rows = nrow(raw_data), authorized_rows = nrow(secure_data),
         filtered_rows = 0L, outcome = "Hata"
       ))
+    }
+
+    # Derin analiz de AYNI baglami gorur (bkz. module_proje_kaynak_analizi.R).
+    if (exists("pk_filter_instructions_with_context", mode = "function", inherits = TRUE)) {
+      filter_criteria <- pk_filter_instructions_with_context(
+        filter_criteria, chat_history = chat_history, session = session
+      )
     }
 
     filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
@@ -470,7 +478,8 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
         session = session,
         rls_info = rls_info,
         detail_config = detail_config,
-        stop_check = stop_check
+        stop_check = stop_check,
+        chat_history = chat_history
       ),
       error = function(e) {
         cat(sprintf("[DEEP_ANALYSIS] Sorgu hatası: %s\n", e$message))

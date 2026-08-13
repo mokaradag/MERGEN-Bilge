@@ -114,6 +114,23 @@ pk_async_worker_pool_admission <- function(cap, workers) {
   pk_db_admission_plan(cap, workers)
 }
 
+#' Yapılandırılan DB tavanı ana süreç + `workers` işçiyi karşılıyor mu?
+#'
+#' Havuz KAPALIYKEN (varsayılan) bölüşüm devrede değildir ve TRUE döner;
+#' böylece bu kapı senkron/havuzsuz kurulumların davranışını değiştirmez.
+pk_db_admission_fits <- function(workers) {
+  acik <- isTRUE(tryCatch(
+    exists("is_db_pool_enabled", mode = "function", inherits = TRUE) && is_db_pool_enabled(),
+    error = function(e) FALSE
+  ))
+  if (!acik) return(TRUE)
+
+  tavan <- suppressWarnings(as.integer(Sys.getenv("MERGEN_DB_POOL_MAX_SIZE", "8"))[1])
+  if (length(tavan) != 1L || is.na(tavan) || tavan < 1L) tavan <- 8L
+
+  isTRUE(tryCatch(pk_db_admission_plan(tavan, workers)$fits, error = function(e) TRUE))
+}
+
 #' BU SÜRECİN havuz tavanı payı
 #'
 #' `db_pool_config()` bunu çağırır. İşçi tarafında pay ZATEN ortam değişkeniyle
@@ -309,10 +326,13 @@ pk_async_worker_pool_retire <- function(hedef) {
   on.exit(try(geri_yukle(), silent = TRUE), add = TRUE)
 
   if (!isTRUE(pay$fits)) {
+    # TAVAN SERT SINIRDIR: bolusulemiyorsa isci havuzu KURULMAZ (eskiden
+    # yalnizca uyarilip devam ediliyor, toplam oturum tavani asabiliyordu).
     .pk_async_pool_log(
-      "[PK_ASYNC] DB havuz tavani (%d) isci sayisina (%d) BOLUNEMIYOR; agregat oturum sayisi tavani asabilir.",
+      "[PK_ASYNC] DB havuz tavani (%d) isci sayisina (%d) BOLUNEMIYOR; isci havuzu KURULMADI.",
       pay$cap, pay$workers
     )
+    return(list(ok = FALSE, enabled = TRUE, fatal = isTRUE(kapali_basarisiz)))
   }
 
   sonuc <- tryCatch({ baslat("primary"); TRUE }, error = function(e) {
