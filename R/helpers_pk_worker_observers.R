@@ -69,3 +69,42 @@ if (exists("pk_deep_observation_helpers", mode = "function", inherits = TRUE) &&
   }
   attr(pk_deep_observation_helpers, "pk_worker_deep_wrapper") <- TRUE
 }
+
+# ==============================================================================
+# DOĞRUDAN ÇIKIŞ SONUÇ SINIFLANDIRMASI — ANA SÜREÇ İLE İŞÇİ AYNI EŞLEMEYİ
+# KULLANIR
+#
+# İşçi sarmalayıcısı her istisna/durdurma DIŞI karakter çıkışını
+# `DogrudanYanit` olarak kaydediyordu; ana süreçteki karşılığı ise aynı
+# yanıtları `Yetkisiz` ve `EslesmeYok` olarak sınıflandırıyor. Telemetri bu
+# yüzden YALNIZCA asenkron yönlendirme kullanıldığı için anlam değiştiriyor ve
+# denetim/rollout ölçümleri bozuluyordu. Eşleme TEK yerdedir.
+# ==============================================================================
+pk_direct_exit_outcome <- function(response_text, stopped = FALSE, error = FALSE) {
+  if (isTRUE(error)) return("Hata")
+  if (isTRUE(stopped)) return("Durduruldu")
+
+  metin <- tryCatch(as.character(response_text %||% "")[1], error = function(e) "")
+  if (is.na(metin)) metin <- ""
+
+  if (grepl("\u0130\u015flem Durduruldu", metin, fixed = TRUE)) return("Durduruldu")
+  if (grepl("Yetki Hatas\u0131", metin, fixed = TRUE)) return("Yetkisiz")
+  if (grepl("mevcut analiz k\u00fct\u00fcphanesinde bulunamad\u0131", metin, fixed = TRUE)) {
+    return("EslesmeYok")
+  }
+
+  "DogrudanYanit"
+}
+
+# İşçi çıkışı bir VERİTABANI/ODBC hatası mı? Öyleyse telemetri için YENİ bir
+# bağlantı açılmaz: DSN/oturum açma erişilemezken aynı bloklayan denemeyi
+# tekrarlamak, işçiyi kullanıcıya dönen hatanın ve son tarihin ötesinde meşgul
+# tutardı.
+pk_direct_exit_is_db_failure <- function(response_text) {
+  metin <- tryCatch(as.character(response_text %||% "")[1], error = function(e) "")
+  if (is.na(metin) || !nzchar(metin)) return(FALSE)
+
+  desenler <- c("nanodbc", "SQLSTATE", "ODBC", "Veritaban", "DSN", "Login timeout",
+                "Connection", "dbConnect")
+  any(vapply(desenler, function(d) grepl(d, metin, fixed = TRUE), logical(1)))
+}
