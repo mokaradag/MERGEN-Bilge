@@ -398,6 +398,41 @@ pk_query_result_cache_key <- function(query, rls_info, sql_text, engine = "") {
     filter_signature = "",
     query_version = sql_imza,
     engine = engine,
-    extra = list(db = .pk_cache_scalar(query$db_target, "primary"))
+    # DB HEDEF KİMLİĞİ MANTIKSAL ADDAN İBARET DEĞİLDİR.
+    #
+    # Yalnızca `db_target` ("primary"/"secondary") anahtara girdiğinde,
+    # desteklenen çalışma zamanı DSN değişimi/failover'ından SONRA aynı
+    # sorgu/RLS/SQL üçlüsü ESKİ girdiye çarpıyor ve yeni bağlantı HİÇ
+    # çalıştırılmadan ÖNCEKİ veritabanının satırları dönüyordu; ortamlar
+    # TTL/tahliye olana kadar sessizce karışabiliyordu. Çözümlenmiş DSN adının
+    # SIR OLMAYAN parmak izi de anahtara girer.
+    extra = list(
+      db = .pk_cache_scalar(query$db_target, "primary"),
+      dsn = .pk_cache_db_fingerprint(query$db_target)
+    )
   )
+}
+
+# Çözümlenmiş DSN adının sır olmayan kısa parmak izi.
+#
+# DSN ADI loglanmaz/dönmez; yalnızca sağlaması anahtara girer. DSN
+# çözümlenemezse boş dize döner ve davranış eski hâliyle aynı kalır.
+.pk_cache_db_fingerprint <- function(db_target) {
+  hedef <- .pk_cache_scalar(db_target, "primary")
+  degisken <- switch(hedef,
+    "secondary" = "DB_DSN_2",
+    "tertiary"  = "DB_DSN_3",
+    "DB_DSN"
+  )
+
+  ad <- tryCatch(Sys.getenv(degisken, ""), error = function(e) "")
+  if (!nzchar(ad)) return("")
+
+  if (requireNamespace("openssl", quietly = TRUE)) {
+    return(substr(paste(as.character(openssl::sha256(charToRaw(enc2utf8(ad)))),
+                        collapse = ""), 1L, 16L))
+  }
+  # openssl yoksa anahtar yine de hedefe göre AYRIŞSIN diye uzunluk kullanılır;
+  # DSN adının kendisi hiçbir koşulda anahtara yazılmaz.
+  paste0("len", nchar(ad))
 }

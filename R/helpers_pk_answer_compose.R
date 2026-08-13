@@ -208,6 +208,17 @@ pk_compose_close_markdown <- function(text) {
     return(.pk_compose_escape(format(x), max_chars))
   }
 
+  # integer64 KESİNLİĞİ TABLODA DA KORUNUR.
+  #
+  # `bit64::integer64` için `is.numeric()` FALSE'tur, bu yüzden eskiden en
+  # alttaki `as.character(x)` dalına düşüyordu ve o dal doğru davranıyordu.
+  # Ancak bir ölçü sütunu double'a çevrilmiş integer64 taşıdığında (2^53 üstü)
+  # `pk_fmt_number()` yuvarlanmış bir sayı basardı. Değer zaten integer64 ise
+  # KAYIPSIZ metin gösterimi kullanılır; biçimlendirici devreye girmez.
+  if (inherits(x, "integer64")) {
+    return(.pk_compose_escape(format(x, scientific = FALSE), max_chars))
+  }
+
   if (is.numeric(x)) {
     birim <- as.character(cmeta$unit %||% "")[1]
     if (is.na(birim)) birim <- ""

@@ -160,9 +160,26 @@ pk_export_csv_verify <- function(path, expected) {
             "'%s' sutununda bos deger deseni degismis.", names(expected)[i]
           )))
         }
-        if (any(!bos) &&
-            any(abs(ger_sayi[!bos] - bek_sayi[!bos]) >
-                  pmax(1e-9, abs(bek_sayi[!bos]) * 1e-12))) {
+        # SONSUZ DEĞERLER AYRI KARŞILAŞTIRILIR.
+        #
+        # Geçerli bir sonuç `Inf`/`-Inf` içerdiğinde (ör. sıfıra bölünen bir
+        # oran) başarılı bir gidiş-dönüş aynı sonsuz değeri üretir; ancak
+        # `Inf - Inf` = `NaN` olur, karşılaştırma `NA` döner, `any(...)` `NA`
+        # döner ve saran `if` HATA atardı. Dıştaki tryCatch bunu "doğrulama
+        # başarısız" sayıp GEÇERLİ CSV'yi siliyordu.
+        sonsuz_bek <- !bos & is.infinite(bek_sayi)
+        sonsuz_ger <- !bos & is.infinite(ger_sayi)
+        if (!identical(sonsuz_bek, sonsuz_ger) ||
+            any(sonsuz_bek & (sign(bek_sayi) != sign(ger_sayi)))) {
+          return(list(ok = FALSE, reason = sprintf(
+            "'%s' sutununda sonsuz deger deseni degismis.", names(expected)[i]
+          )))
+        }
+
+        sonlu <- !bos & !sonsuz_bek
+        if (any(sonlu) &&
+            any(abs(ger_sayi[sonlu] - bek_sayi[sonlu]) >
+                  pmax(1e-9, abs(bek_sayi[sonlu]) * 1e-12))) {
           return(list(ok = FALSE, reason = sprintf(
             "'%s' sutununda sayisal deger degismis.", names(expected)[i]
           )))
