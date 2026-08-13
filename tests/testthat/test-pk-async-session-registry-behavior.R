@@ -66,7 +66,7 @@ test_that("oturum-sonu kancası OTURUM BAŞINA BİR KEZ kurulur", {
   expect_length(oturum$.kancalar, 1L)
 })
 
-test_that("terk etme jetonu SİNYALLER ama varsayılan olarak SERBEST BIRAKMAZ", {
+test_that("terk etme jetonu SİNYALLER ve backpressure yuvasını BIRAKIR", {
   oturum <- .pk_kayit_oturumu()
   jeton <- .pk_kayit_jetonu("kayit_c")
   birakildi <- 0L
@@ -76,13 +76,17 @@ test_that("terk etme jetonu SİNYALLER ama varsayılan olarak SERBEST BIRAKMAZ",
     release_fn = function() birakildi <<- birakildi + 1L
   )
 
-  # Gezinme/yeni sohbet yolu: iptal EVET, serbest bırakma HAYIR.
+  # Gezinme/yeni sohbet yolu: iptal EVET ve yuva bırakma DA EVET.
+  #
+  # Eskiden gezinme yalnizca iptal sinyali gonderiyordu. ODBC/LLM/yerel kod
+  # icinde takilmis bir isci iptal bayragini hemen goremediginde, her gezinme
+  # surec genelinde bir admisyon yuvasini isci/son tarih bitene kadar tutuyor
+  # ve bir sure sonra ILGISIZ taze istekler "sunucu mesgul" ile basarisiz
+  # oluyordu. Kayitli kapanis YALNIZCA sahiplik denetimli yuva birakmadir
+  # (`mergen_send_message_release_values_token`), bu yuzden daha yeni bir
+  # istegin yuvasini ya da sifirlanmis TAZE durumu ezemez.
   mergen_pk_abandon_active_requests(oturum)
   expect_true(pk_cancel_token_is_signalled(jeton))
-  expect_equal(birakildi, 0L)
-
-  # Oturum kapanışı: serbest bırakma kapanışı DA çalışmalıdır.
-  mergen_pk_abandon_active_requests(oturum, release = TRUE)
   expect_equal(birakildi, 1L)
 
   pk_cancel_token_clear(jeton)

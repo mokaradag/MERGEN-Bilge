@@ -26,10 +26,26 @@
 #' farklı ayar durumundan derlenmesine (ve analiz başarılıyken "API anahtarı
 #' eksik" ile bitmesine) yol açardı.
 mergen_pk_send_snapshot <- function(session, settings_data) {
+  # ANLIK GÖRÜNTÜ ALINAMAZSA CANLI REAKTİF NESNEYE DÜŞÜLMEZ.
+  #
+  # `server_send_message.R` bu değeri `pk_dispatch_snapshot$settings %||%
+  # settings_data` ile tüketiyor; `NULL` dönmek TAM OLARAK dondurulmak istenen
+  # CANLI `reactiveValues` nesnesini geri getirirdi. Asenkron bir istekte
+  # `run_llm_request_stage()` dakikalar sonra çalışıp o an geçerli olan
+  # karakter/TTS/akış ayarlarını okurdu — yani anlık görüntünün var olma
+  # sebebi ortadan kalkardı. Başarısızlıkta deterministik bir DÜZ kopya
+  # üretilir; o da olmazsa boş liste döner (yine canlı nesne DEĞİL).
   ayarlar <- tryCatch(
     shiny::isolate(shiny::reactiveValuesToList(settings_data)),
     error = function(e) NULL
   )
+
+  if (!is.list(ayarlar)) {
+    ayarlar <- tryCatch({
+      duz <- shiny::isolate(as.list(settings_data))
+      if (is.list(duz)) duz else list()
+    }, error = function(e) list())
+  }
   anahtar <- tryCatch(
     mb_api_key_get_cached_for_send(
       session = session, require_auth = TRUE,

@@ -355,9 +355,9 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     "R/helpers_deep_analysis_phase6.R" = c(250L, 19L),
     "R/helpers_deep_analysis_selector.R" = c(205L, 8L),
     "R/helpers_pk_async_request_markers.R" = c(225L, 16L),
-    "R/helpers_pk_async_session_registry.R" = c(196L, 16L),
+    "R/helpers_pk_async_session_registry.R" = c(208L, 16L),
     "R/helpers_pk_async_routing.R" = c(239L, 21L),
-    "R/helpers_pk_async_lifecycle.R" = c(215L, 16L),
+    "R/helpers_pk_async_lifecycle.R" = c(232L, 17L),
     "R/helpers_pk_async_apply.R" = c(218L, 16L),
     "R/helpers_pk_export_serve.R" = c(145L, 10L),
     "R/server_handler_pk_async.R" = c(438L, 14L)
