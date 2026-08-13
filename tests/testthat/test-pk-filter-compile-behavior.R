@@ -15,6 +15,8 @@
          encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "helpers_pk_filter_compile.R"),
          encoding = "UTF-8", local = env)
+  source(file.path(repo_root, "R", "helpers_pk_filter_group.R"),
+         encoding = "UTF-8", local = env)
   env
 }
 
@@ -393,6 +395,8 @@ test_that("Turkce katlama otoritesi yoksa derleyici KAPALI BASARISIZ olur", {
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
   env$exists <- function(...) FALSE
   source(file.path(repo_root, "R", "helpers_pk_filter_compile.R"),
+         encoding = "UTF-8", local = env)
+  source(file.path(repo_root, "R", "helpers_pk_filter_group.R"),
          encoding = "UTF-8", local = env)
 
   # pk_tr_fold yoksa SESSIZCE tolower()'a DUSULMEZ; hata yukselir (D3).

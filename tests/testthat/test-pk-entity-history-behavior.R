@@ -64,7 +64,8 @@ test_that("D11 hâlâ geçerlidir: v1 yolu chat_history'yi OKUMAZ", {
     # iliştirilir ve çözümleyici onu v2 dalında tüketir.
     paste0("if (exists(\"pk_filter_instructions_with_context\", mode = \"function\", ",
            "inherits = TRUE)) filter_criteria <- pk_filter_instructions_with_context(",
-           "filter_criteria, chat_history, session)")
+           "filter_criteria, chat_history, session)  # D11: gecmis + onceki tur ",
+           "varlik baglami cozumleyiciye BURADA baglanir")
   )
 
   expect_equal(

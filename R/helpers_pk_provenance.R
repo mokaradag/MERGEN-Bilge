@@ -403,7 +403,7 @@ pk_provenance_take <- function(session, request_id = NULL, full = FALSE) {
 pk_provenance_decorate <- function(text, session, request_id = NULL) {
   # KAYIT TÜKETİLDİKTEN SONRAKİ HER HATA İÇİN GÜVENLİ GERİ DÜŞME.
   #
-  # Dıştaki `tryCatch(..., error = function(e) text)` kaydı tükettikten SONRA
+  # Dıştaki hata yakalayıcı, kaydı TÜKETTİKTEN SONRA
   # oluşan bir hatada da ham model metnini döndürüyordu. `block` kipinde bu,
   # doğrulanmamış düzyazının kullanıcıya gitmesi demektir ve kayıt tüketildiği
   # için yeniden denemek de mümkün değildir. Bu yüzden tüketilen kaydın
@@ -414,6 +414,7 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
     pending <- pk_provenance_take(session, request_id = request_id, full = TRUE)
     if (is.null(pending) || !is.list(pending)) return(text)
 
+    # `block` kipinde TÜKETİLMİŞ kayıt için güvenli geri düşme metni hazırlanır.
     if (identical(as.character(pending$mode %||% "")[1], "block")) {
       yedek <- as.character(pending$fallback_text %||% "")[1]
       if (!is.na(yedek) && nzchar(yedek)) {

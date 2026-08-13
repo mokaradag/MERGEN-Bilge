@@ -15,7 +15,7 @@
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
   for (f in c("helpers_pk_config.R", "helpers_pk_text_turkish.R",
-              "helpers_pk_provenance.R", "helpers_pk_filter_compile.R",
+              "helpers_pk_provenance.R", "helpers_pk_filter_compile.R", "helpers_pk_filter_group.R",
               "helpers_pk_filter_policy.R", "helpers_pk_analysis_filters_v2.R")) {
     source(file.path(repo_root, "R", f), encoding = "UTF-8", local = env)
   }

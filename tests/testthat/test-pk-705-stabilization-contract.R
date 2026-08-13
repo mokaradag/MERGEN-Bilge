@@ -65,7 +65,7 @@ test_that("P0: cikarim istemi artik calistirilabilir ifade ISTEMEZ", {
 
 .pk705_filtre_env <- function() {
   .pk705_env(c("helpers_pk_ascii_tokens.R", "helpers_pk_text_turkish.R",
-               "helpers_pk_filter_compile.R"))
+               "helpers_pk_filter_compile.R", "helpers_pk_filter_group.R"))
 }
 
 .pk705_veri <- function() {
@@ -113,7 +113,7 @@ test_that("integer64 filtre degerleri double uzerinden KAYBEDILMEZ", {
 
 test_that("politika: uygulanamayan filtre TUM kume uzerinden devam ETTIRMEZ", {
   env <- .pk705_env(c("helpers_pk_ascii_tokens.R", "helpers_pk_text_turkish.R",
-                      "helpers_pk_filter_compile.R", "helpers_pk_filter_policy.R"))
+                      "helpers_pk_filter_compile.R", "helpers_pk_filter_group.R", "helpers_pk_filter_policy.R"))
   veri <- .pk705_veri()
 
   filtreler <- list(list(column = "Ad", value = "SENTETIK ALFA", operation = "regex_match"))

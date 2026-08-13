@@ -250,28 +250,9 @@ chat_store_message_in_saved_chats <- function(values, message) {
 
 chat_simulate_streaming <- function(full_response, session, values, settings_data, output, stop_generation,
                                    followups = NULL, on_complete = NULL, on_start = NULL,
-                                   tts_engine = NULL, tts_voice = NULL,
-                                   request_id = NULL) {
-
-  # İSTEK KİMLİĞİ GÖZLEMCİ KURULMADAN ÖNCE YAKALANIR.
-  #
-  # Sonlandırıcı `observe()` içinde ve gecikmeli çalışır. Kimlik o anda
-  # oturumdan okunursa, akış yavaşladığında/durdurulduğunda DAHA YENİ bir
-  # isteğin kimliği okunur ve bekleyen köken kaydı yanlış mesaja iliştirilir.
-  # Çağıran kimlik vermezse gönderim anındaki etkin kimliğe düşülür.
-  pk_request_id <- as.character(request_id %||% "")[1]
-  if (is.na(pk_request_id) || !nzchar(pk_request_id)) {
-    pk_request_id <- tryCatch({
-      if (exists("pk_provenance_current_request_id", mode = "function", inherits = TRUE)) {
-        as.character(pk_provenance_current_request_id(session) %||% "")[1]
-      } else {
-        ""
-      }
-    }, error = function(e) "")
-  }
-  if (is.na(pk_request_id) || !nzchar(pk_request_id)) pk_request_id <- NULL
-
-  # -- 1. SETUP PREPARATION --
+                                   tts_engine = NULL, tts_voice = NULL, request_id = NULL) {
+  # Bayat kayit korumasi: kimlik GOZLEMCI KURULMADAN ONCE yakalanir (sonlandirici gecikmeli calisir; o anda okunan kimlik DAHA YENI bir isteğe ait olabilir).
+  pk_request_id <- tryCatch({ rid <- as.character(request_id %||% "")[1]; if (is.na(rid) || !nzchar(rid)) rid <- as.character(pk_provenance_current_request_id(session) %||% "")[1]; if (is.na(rid) || !nzchar(rid)) NULL else rid }, error = function(e) NULL)  # -- 1. SETUP PREPARATION --
   msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
   timestamp <- format_timestamp()
   
@@ -383,9 +364,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
             # `full_response` ile ÇOKTAN çağrıldığı için alt bilgi burada
             # eklendiğinde yalnızca ekrana/DB'ye gider, SESLENDİRİLMEZ.
             if (exists("pk_provenance_decorate", mode = "function", inherits = TRUE)) {
-              final_text <- pk_provenance_decorate(
-                final_text, session, request_id = pk_request_id
-              )
+              final_text <- pk_provenance_decorate(final_text, session, request_id = pk_request_id)
             }
 
             chart_info <- build_chartlab_message(final_text, streaming_state$msg_id, session)

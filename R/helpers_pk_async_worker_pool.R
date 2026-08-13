@@ -119,16 +119,15 @@ pk_async_worker_pool_admission <- function(cap, workers) {
 #' Havuz KAPALIYKEN (varsayılan) bölüşüm devrede değildir ve TRUE döner;
 #' böylece bu kapı senkron/havuzsuz kurulumların davranışını değiştirmez.
 pk_db_admission_fits <- function(workers) {
-  acik <- isTRUE(tryCatch(
-    exists("is_db_pool_enabled", mode = "function", inherits = TRUE) && is_db_pool_enabled(),
-    error = function(e) FALSE
-  ))
-  if (!acik) return(TRUE)
+  acik_fn <- get0("is_db_pool_enabled", mode = "function", ifnotfound = NULL)
+  if (!is.function(acik_fn) || !isTRUE(try(acik_fn(), silent = TRUE))) return(TRUE)
 
   tavan <- suppressWarnings(as.integer(Sys.getenv("MERGEN_DB_POOL_MAX_SIZE", "8"))[1])
   if (length(tavan) != 1L || is.na(tavan) || tavan < 1L) tavan <- 8L
 
-  isTRUE(tryCatch(pk_db_admission_plan(tavan, workers)$fits, error = function(e) TRUE))
+  pay <- try(pk_db_admission_plan(tavan, workers), silent = TRUE)
+  if (inherits(pay, "try-error")) return(TRUE)
+  isTRUE(pay$fits)
 }
 
 #' BU SÜRECİN havuz tavanı payı

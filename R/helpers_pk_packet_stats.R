@@ -38,13 +38,6 @@
 
 # Olgu durumları. Kullanıcıya görünen metinde değil, olgu kaydında taşınır.
 
-# Yerelden BAĞIMSIZ ASCII küçük harf (makine/protokol belirteçleri için).
-# Ortak yardımcı `R/helpers_pk_text_turkish.R` içindedir; bu dosya izole
-# testlerde tek başına source edilebildiği için yerel bir yedeği vardır.
-.pk_stats_ascii_lower <- function(x) {
-  if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) return(pk_ascii_lower(x))
-  chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", as.character(x))
-}
 
 PK_FACT_OK <- "ok"
 PK_FACT_SINGLE <- "single_observation"
@@ -135,7 +128,9 @@ pk_fact_slug <- function(x) {
   # `tolower("I")` noktasız `ı` (ASCII DIŞI) üretir ve kimlik VM ile CI
   # arasında farklılaşır. Aynı olgu iki farklı `[fact:...]` kimliği alır,
   # modelin işareti doğrulamada bulunamaz ve geçerli sayı reddedilir.
-  txt <- .pk_stats_ascii_lower(txt)
+  # Yerelden BAGIMSIZ ASCII kucuk harf; Turkce yerelde tolower("I") -> "i"
+  # (noktasiz) uretir ve olgu kimligi VM ile CI arasinda FARKLILASIR.
+  txt <- chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", txt)
   if (!nzchar(txt)) return("bilinmeyen")
   substr(txt, 1L, 60L)
 }
@@ -508,13 +503,18 @@ pk_latest_fact <- function(data, column, spec = list(), scope = NULL,
   # yüzden değişken genişlikli metin tie sütunlarında YANLIŞ satır seçilip
   # yanlış "en yeni" olgusu yayımlanabiliyordu. Sıralama HAM kanonik değerlerle
   # yapılır; uzunluk öneki yalnızca benzersizlik denetiminde kullanılır.
-  ham_tie <- lapply(esitlik, function(s) as.character(data[[s]])[aday])
+  ham_tie <- lapply(as.list(data[esitlik]), function(sutun) as.character(sutun)[aday])
 
-  anahtar <- do.call(paste, c(lapply(ham_tie, function(ch) {
-    out <- paste0(nchar(ch, type = "bytes"), ":", ch)
-    out[is.na(ch)] <- "<NA>:"
-    out
-  }), list(sep = "|")))
+  # Uzunluk öneki ÇAKIŞMASIZ bir KİMLİKTİR ama SIRA KORUYUCU DEĞİLDİR; bu
+  # yüzden yalnızca benzersizlik denetiminde kullanılır, sıralamada DEĞİL.
+  onekli <- ham_tie
+  for (i in seq_along(onekli)) {
+    ch <- onekli[[i]]
+    yeni <- paste0(nchar(ch, type = "bytes"), ":", ch)
+    yeni[is.na(ch)] <- "<NA>:"
+    onekli[[i]] <- yeni
+  }
+  anahtar <- do.call(paste, c(onekli, list(sep = "|")))
 
   # BİLEŞİK anahtarın HERHANGİ bir sütununda eksik değer varsa anahtar
   # benzersiz sayılamaz. Eski denetim `^<NA>:` ile YALNIZCA İLK sütunu
