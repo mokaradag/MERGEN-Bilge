@@ -103,6 +103,23 @@ pk_rls_halt_message <- function(rls_info) {
   any(vapply(isaretler, function(p) grepl(p, metin, fixed = TRUE), logical(1)))
 }
 
+# YETKİ KAPSAMI KODLARINI GÜVENLİ AYRIŞTIR (kapalı başarısız).
+#
+# `paste(x, collapse = ",")` bir `NA` girdisini SIRADAN `"NA"` metnine çevirir;
+# `strsplit()` sonrasında bu değer GERÇEK bir kapsam kodundan ayırt edilemez.
+# İzin tablosunda eksik bir kod bulunduğunda hesaplanan kapsam tablodan
+# FARKLILAŞIR ve `"NA"` adlı bir kod varmış gibi davranılır. `NA`/boş girdiler
+# birleştirmeden ÖNCE atılır.
+.pk_rls_scope_codes <- function(values) {
+  ham <- as.character(values %||% character(0))
+  ham <- ham[!is.na(ham)]
+  if (!length(ham)) return(character(0))
+
+  parcalar <- trimws(unlist(strsplit(ham, ",", fixed = TRUE), use.names = FALSE))
+  parcalar <- parcalar[!is.na(parcalar) & nzchar(parcalar)]
+  unique(parcalar)
+}
+
 get_user_rls_info <- function(username, conn) {
   cat(sprintf("[PK_ANALIZ] get_user_rls_info calistiriliyor. Kullanici: %s\n", username))
 
@@ -165,8 +182,7 @@ get_user_rls_info <- function(username, conn) {
     } else {
       user_rows <- py_res[py_res$KullaniciAdi == username, ]
       if (nrow(user_rows) > 0) {
-        all_projs <- paste(user_rows$ProjeKodu, collapse = ",")
-        info$allowed_projects <- unique(trimws(unlist(strsplit(all_projs, ","))))
+        info$allowed_projects <- .pk_rls_scope_codes(user_rows$ProjeKodu)
         info$scope_state_projects <- "available"
         cat(sprintf("[PK_ANALIZ] PY Projeleri: %s\n", paste(info$allowed_projects, collapse = ",")))
       } else {
@@ -194,8 +210,7 @@ get_user_rls_info <- function(username, conn) {
     } else {
       user_rows <- eps_res[eps_res$KullaniciAdi == username, ]
       if (nrow(user_rows) > 0) {
-        all_eps <- paste(user_rows$EPSKodu, collapse = ",")
-        info$allowed_eps <- unique(trimws(unlist(strsplit(all_eps, ","))))
+        info$allowed_eps <- .pk_rls_scope_codes(user_rows$EPSKodu)
         info$scope_state_eps <- "available"
         cat(sprintf("[PK_ANALIZ] EPS Kodlari: %s\n", paste(info$allowed_eps, collapse = ",")))
       } else {

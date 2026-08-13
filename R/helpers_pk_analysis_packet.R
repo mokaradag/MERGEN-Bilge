@@ -614,7 +614,23 @@ pk_packet_build <- function(data, query, context = list()) {
 
     if (identical(spec$aggregate, "weighted_mean")) {
       agirlik <- spec$weight_by
-      if (is.character(agirlik) && length(agirlik) == 1L && agirlik %in% names(data)) {
+
+      # TANECİK İHLALİ AĞIRLIKLI ORTALAMAYI DA BLOKLAR.
+      #
+      # `pk_measure_facts()` mükerrer satır varken `sum`/`mean` olgularını
+      # ihlal olarak işaretliyordu, ama bu AYRI çağrı aynı mükerrer satırlar
+      # üzerinden `ok` durumlu bir ağırlıklı ortalama YAYIMLIYORDU. Yalnızca
+      # BAZI tanecik varlıklarının çoğallanması hem payı hem paydayı değiştirir
+      # ve sonucu belirgin biçimde yanlıltabilir; bu yüzden ihlal buraya da
+      # taşınır ve tipli bir ihlal olgusu üretilir.
+      if (isTRUE(tanecik_ihlali)) {
+        olgular <- c(olgular, list(pk_fact_record(
+          kind = "measure", column = sutun, aggregation = "weighted_mean",
+          value = NULL, spec = spec, status = PK_FACT_GRAIN_VIOLATION,
+          scope = kapsam, time_window = zaman_penceresi,
+          note = "Beyan edilen tanecikte mukerrer satir var; cift sayim riski nedeniyle URETILMEDI."
+        )))
+      } else if (is.character(agirlik) && length(agirlik) == 1L && agirlik %in% names(data)) {
         olgular <- c(olgular, list(pk_weighted_mean_fact(
           data[[sutun]], data[[agirlik]], sutun, spec, scope = kapsam,
           time_window = zaman_penceresi, weight_column = agirlik

@@ -344,6 +344,45 @@ pk_select_confirmed_decision <- function(session, prompt, library_index, chat_ke
   secilen <- library_index[[kimlik]]
   if (is.null(secilen)) return(NULL)
 
+  # ONAYLANAN ÇİP YETENEK KAPISINI ATLAYAMAZ.
+  #
+  # Çip onayı doğrudan `AUTO` + `capability_status = "not_asserted"` üretiyordu
+  # ve böylece normal karar yolundaki kapalı-başarısız
+  # `pk_select_validate_requirements()` kapısı BYPASS ediliyordu. Anlamsal
+  # başarısızlıklar (`capability_missing`, `unsupported_requirement`) AYNI
+  # sıralı çipleri döndürdüğü için, istenen ölçüyü/tarihi/boyutu SAĞLAMAYAN bir
+  # aday da listede olabiliyordu; kullanıcı onu seçtiğinde bir önceki turun
+  # "yetersiz" diye AÇIKÇA reddettiği SQL çalışabiliyordu. Teklifle saklanan
+  # gereksinimler burada yeniden doğrulanır.
+  gereksinimler <- tryCatch(
+    pk_select_offer_requirements(session, chat_key), error = function(e) NULL
+  )
+
+  if (!is.null(gereksinimler) &&
+      exists("pk_select_validate_requirements", mode = "function", inherits = TRUE)) {
+    kontrol <- tryCatch(
+      pk_select_validate_requirements(secilen, gereksinimler),
+      error = function(e) NULL
+    )
+    if (is.list(kontrol) && isTRUE(kontrol$asserted) &&
+        !identical(kontrol$status, "ok")) {
+      # Durum, doğrulayıcının TİPLİ sonucudur (normal karar yoluyla aynı küme:
+      # capability_missing / unknown_capability / unsupported_requirement /
+      # validator_error), böylece aşağı akış mesajlaşması değişmeden çalışır.
+      return(.pk_select_decision(
+        kontrol$status,
+        message_tr = paste0(
+          "Sectiginiz analiz, sorunuzun gerektirdigi alanlari saglamiyor; ",
+          "bu nedenle calistirilmadi. Lutfen sorunuzu yeniden ifade edin."
+        ),
+        query_id = kimlik,
+        capability_status = kontrol$status,
+        selection_method = "user_confirmed",
+        reason = "Onaylanan aday yetenek kapisindan gecemedi."
+      ))
+    }
+  }
+
   .pk_select_decision(
     PK_SELECT_STATUS_AUTO,
     message_tr = NA_character_,
