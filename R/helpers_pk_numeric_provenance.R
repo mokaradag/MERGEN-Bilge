@@ -189,21 +189,33 @@ pk_parse_number_tr <- function(txt) {
   txt <- .pk_prov_unit_fold(context)
   if (!nzchar(txt)) return(NULL)
 
-  bulunan <- character(0)
+  # İDDİAYA EN YAKIN TOPLULAŞTIRMA SÖZCÜĞÜ KAZANIR.
+  #
+  # Eskiden pencerede birden fazla FARKLI toplulaştırma sözcüğü geçtiğinde
+  # `NULL` dönülüyor ve denetim TAMAMEN atlanıyordu. Bu, denetimi atlatmak için
+  # yeterliydi: "Toplam 100 [fact:mean]" doğru biçimde reddedilirken
+  # "Önce ortalama incelendi. Toplam 100 [fact:mean]" geçiyordu. Sözcüğün
+  # KONUMU kullanılır; iddiaya en yakın (en sağdaki) terim iddianın terimidir.
+  en_yakin <- NULL
+  en_yakin_konum <- -1L
+
   for (agg in names(.PK_PROV_AGG_WORDS)) {
     for (sozcuk in .PK_PROV_AGG_WORDS[[agg]]) {
-      if (grepl(.pk_prov_unit_fold(sozcuk), txt, fixed = TRUE)) {
-        bulunan <- c(bulunan, agg)
-        break
+      kalip <- .pk_prov_unit_fold(sozcuk)
+      konumlar <- gregexpr(kalip, txt, fixed = TRUE)[[1]]
+      son <- max(as.integer(konumlar))
+      if (is.na(son) || son < 1L) next
+      # Eşit konumda daha UZUN eşleşme daha özgüldür ("agirlikli ortalama"
+      # yalnız "ortalama"yı yener).
+      if (son > en_yakin_konum ||
+          (son == en_yakin_konum && nchar(kalip) > nchar(.pk_prov_unit_fold(en_yakin %||% "")))) {
+        en_yakin_konum <- son
+        en_yakin <- agg
       }
     }
   }
 
-  # "agirlikli ortalama" hem weighted_mean hem mean eşleşir; en özgül olan
-  # kazanır ve belirsiz kalan durumda hiç iddia edilmemiş sayılır.
-  if ("weighted_mean" %in% bulunan) return("weighted_mean")
-  if (length(unique(bulunan)) != 1L) return(NULL)
-  bulunan[1]
+  en_yakin
 }
 
 #' Olguları kimliğe göre indeksle
@@ -351,6 +363,19 @@ pk_numeric_provenance_validate <- function(text, facts) {
         !identical(iddia_birimi, olgu_birimi)) {
       ekle(fact_id = iddia$fact_id, reason = "unit_mismatch",
            claimed = iddia$unit, actual = olgu_birimi)
+      next
+    }
+
+    # OLGU BİR BİRİM BEYAN EDİYORSA, İDDİA ONU ATLAYAMAZ.
+    #
+    # Eski denetimlerin hepsi `nzchar(iddia_birimi)` koşuluna bağlıydı; yani
+    # birimi HİÇ yazmamak doğrulamayı sessizce geçiyordu. Yüzde bir olgu
+    # "%61,3" yerine yalnızca "61,3" diye sunulduğunda okuyucu bunu mutlak bir
+    # sayı sanar. Aynı şey para/saat gibi beyan edilmiş birimler için de
+    # geçerlidir: birimsiz sunulan bir tutar ölçek bilgisini kaybeder.
+    if (nzchar(olgu_birimi) && !nzchar(iddia_birimi) && !isTRUE(iddia$percent)) {
+      ekle(fact_id = iddia$fact_id, reason = "unit_missing",
+           claimed = "(birimsiz)", actual = olgu_birimi)
       next
     }
 

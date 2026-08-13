@@ -8,12 +8,19 @@
 # sabitlenir (Windows VM R 4.6.0'da üretilir). Ayrıntı: docs/dependency-locking.md
 # ==============================================================================
 
+# TEST-ONLY BAĞIMLILIKLAR BURADA YER ALMAZ.
+#
+# `required_packages` açılışta DOĞRULANIR ve eksik bir paket uygulamayı
+# başlatmaz. `RSQLite` yalnızca çevrimdışı testlerde (gerçek SQLite ile DB
+# havuzu / Ortak Oturum davranış testleri) ve soak betiklerinde kullanılır;
+# çalışma zamanı hiçbir yolu ona dokunmaz. Listeye eklemek, üretim kurulumunda
+# yokluğunda uygulamayı gereksiz yere durdururdu. CI iş akışı onu ayrıca kurar.
 required_packages <- c(
   "arrow", "base64enc", "cellranger", "cli", "commonmark", "curl",
   "data.table", "DBI", "dplyr", "DT", "duckdb", "fastmatch",
   "future", "glue", "highcharter", "htmltools", "httr", "jsonlite", "later",
   "logger", "lubridate", "markdown", "odbc", "openssl", "pdftools", "pool",
-  "promises", "purrr", "readr", "readxl", "RSQLite", "shiny", "shinyBS",
+  "promises", "purrr", "readr", "readxl", "shiny", "shinyBS",
   "shinycssloaders", "shinydashboard", "shinyjs", "shinyWidgets",
   "stringdist", "stringi", "stringr", "tibble", "tidyr", "urltools",
   "writexl", "xml2", "av"
