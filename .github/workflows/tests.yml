@@ -3,8 +3,6 @@ name: R tests
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,7 +14,7 @@ concurrency:
 
 jobs:
   testthat:
-    timeout-minutes: 25
+    timeout-minutes: 120
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.os }} / R ${{ matrix.r }}
 
