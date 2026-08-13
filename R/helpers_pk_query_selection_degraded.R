@@ -21,6 +21,15 @@
 # aşımı DEĞİL, anında reddedilmiş bir bağlantıdır ve ölçüldüğünde `timeout`
 # olarak sınıflanıyordu. Gerçek zaman aşımı metinleri ("Connection timed out"
 # dâhil) zaten "timed out" ile yakalanır.
+
+# Yerelden BAĞIMSIZ ASCII küçük harf (makine/protokol belirteçleri için).
+# Ortak yardımcı `R/helpers_pk_text_turkish.R` içindedir; bu dosya izole
+# testlerde tek başına source edilebildiği için yerel bir yedeği vardır.
+.pk_select_ascii_lower <- function(x) {
+  if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) return(pk_ascii_lower(x))
+  chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", as.character(x))
+}
+
 .PK_SELECT_TIMEOUT_PATTERNS <- c(
   "timeout", "timed out", "zaman a", "operation was aborted",
   "resolving timed out"
@@ -36,7 +45,10 @@
 
 #' LLM hata metnini KARAR DURUMUNA çevir
 .pk_select_classify_error <- function(message) {
-  metin <- tolower(as.character(message)[1] %||% "")
+  # Eşleşme desenleri (`timeout`, `api_http_error_401`, ...) MAKİNE
+  # işaretleridir; Türkçe yerelde `tolower()` bunları bozar ve zaman aşımı
+  # "servis kullanılamıyor" gibi yanlış bir duruma sınıflanır.
+  metin <- .pk_select_ascii_lower(as.character(message)[1] %||% "")
 
   esles <- function(desenler) {
     any(vapply(desenler, function(p) grepl(p, metin, fixed = TRUE), logical(1)))

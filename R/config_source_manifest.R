@@ -141,6 +141,9 @@ source_manifest_sections <- list(
   # config_sql_loader.R'den ÖNCE biter. Yerel iki dosya BİLİNÇLİ opsiyoneldir
   # (gitignore'lu); bulut checkout'unda yoklukları NORMALDİR.
   pk_query_metadata = c(
+    # Makine/protokol belirteçleri için ASCII katlama; Türkçe katlamadan
+    # AYRI tutulur (bkz. dosya başlığı) ve ondan ÖNCE yüklenir.
+    "R/helpers_pk_ascii_tokens.R",
     "R/helpers_pk_text_turkish.R",
     "R/helpers_pk_query_meta_schema.R",
     "R/helpers_pk_query_meta_access.R",

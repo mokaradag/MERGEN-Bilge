@@ -118,7 +118,7 @@
   # doğrulayıcı + erişimci yardımcıları, ardından dört veri katmanı
   # (iskelet -> üretilen -> küre edilmiş -> yerel alias) ve birleştirici;
   # hepsi R/config_sql_loader.R'den ÖNCE (master plan §6 zorunlu sırası).
-  pk_query_metadata = list(first = "R/helpers_pk_text_turkish.R", last = "R/helpers_pk_query_meta.R", n = 8L),
+  pk_query_metadata = list(first = "R/helpers_pk_ascii_tokens.R", last = "R/helpers_pk_query_meta.R", n = 9L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
   language_messaging = list(first = "R/helpers_language.R", last = "R/helpers_messaging.R", n = 2L),
   mcp_tools = list(first = "R/helpers_mcp_context.R", last = "R/helpers_mcp_tools.R", n = 9L),
@@ -550,7 +550,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # (795 satır / 24 fonksiyon) ihlal edilmeden düzeltme yapabilmek için
   # BÖLÜNDÜ; hiçbiri yeni davranış eklemez, mevcut sorumlulukları ayırır.
   # analysis_helpers +10, module_analysis +1, server_handlers_send_message +2.
-  expect_equal(length(runtime), 458L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 459L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

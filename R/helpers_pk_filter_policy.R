@@ -97,6 +97,31 @@ pk_filter_primary_column <- function(query, filter_columns) {
   )
 }
 
+#' Uygulanamayan (düşürülen) filtreler için kullanıcıya dönecek red mesajı.
+.pk_policy_dropped_message <- function(dropped) {
+  dropped <- dropped %||% list()
+
+  satirlar <- vapply(utils::head(dropped, 5L), function(d) {
+    sutun <- as.character(d$leaf$column %||% "?")[1]
+    degerler <- unique(as.character(d$leaf$values %||% d$leaf$value %||% character(0)))
+    degerler <- degerler[nzchar(degerler)]
+    gosterim <- if (length(degerler)) {
+      paste0(" (`", paste(utils::head(degerler, 3L), collapse = "`, `"), "`)")
+    } else {
+      ""
+    }
+    sprintf("`%s`%s -> %s", sutun, gosterim, d$reason %||% "bilinmeyen sebep")
+  }, character(1))
+
+  paste0(
+    "\U000026A0\U0000FE0F **Filtre uygulanamadı:** Sorunuzda belirttiğiniz daraltma ",
+    "kriterleri işlenemedi:\n- ", paste(satirlar, collapse = "\n- "), "\n\n",
+    "Bu nedenle analiz YAPILMADI. Kriterleri yok sayıp tüm kayıtlar üzerinden ",
+    "istatistik üretmek, sorduğunuz sorudan başka bir soruyu yanıtlardı. ",
+    "Lütfen kriteri sadeleştirip tekrar deneyin."
+  )
+}
+
 #' Sıfır eşleşme politikasını uygula (D4)
 #'
 #' @param compiled `pk_filter_compile()` çıktısı.
@@ -112,6 +137,45 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
     disclosures = character(0),
     dropped_columns = character(0)
   )
+
+  # --- DÜŞÜRÜLEN YAPRAK KAPISI (kapalı başarısız) ---------------------------
+  #
+  # Sıfır eşleşme, "filtre uygulandı ama hiçbir satır tutmadı" demektir.
+  # DÜŞÜRÜLEN yaprak ise "filtre HİÇ UYGULANAMADI" demektir (bilinmeyen işlem,
+  # çevrilemeyen değer, metadata kapısı, bulunmayan sütun). Eski kod ikinciyi
+  # hiç incelemiyordu: kullanıcı bir daraltma istediği hâlde derleyici onu
+  # düşürdüğünde analiz TÜM YETKİLİ KÜME üzerinde sürüyor ve sonuç, sorulan
+  # sorudan başka bir soruyu yanıtlıyordu.
+  dusen_sutunlar <- unique(vapply(
+    compiled$dropped %||% list(),
+    function(d) as.character(d$leaf$column %||% "")[1],
+    character(1)
+  ))
+  dusen_sutunlar <- dusen_sutunlar[nzchar(dusen_sutunlar) & !is.na(dusen_sutunlar)]
+
+  uygulanan_sutunlar <- vapply(compiled$groups %||% list(), function(g) g$column, character(1))
+  birincil_on <- pk_filter_primary_column(query, unique(c(uygulanan_sutunlar, dusen_sutunlar)))
+
+  # 0a) Kullanıcının istediği HER filtre düşürüldü -> analiz yapılmaz.
+  if (isTRUE(compiled$all_dropped)) {
+    sonuc$primary_column <- birincil_on
+    sonuc$action <- "refuse"
+    sonuc$refusal_message <- .pk_policy_dropped_message(compiled$dropped)
+    return(sonuc)
+  }
+
+  # 0b) BİRİNCİL varlık filtresi düşürüldü -> ikincil daraltmalarla devam etmek
+  # popülasyonu sessizce genişletir; RED.
+  if (!is.null(birincil_on) && birincil_on %in% dusen_sutunlar &&
+      !(birincil_on %in% uygulanan_sutunlar)) {
+    sonuc$primary_column <- birincil_on
+    sonuc$action <- "refuse"
+    sonuc$refusal_message <- .pk_policy_dropped_message(
+      Filter(function(d) identical(as.character(d$leaf$column %||% "")[1], birincil_on),
+             compiled$dropped)
+    )
+    return(sonuc)
+  }
 
   sifir_gruplar <- Filter(function(g) isTRUE(g$zero_match), compiled$groups)
   if (!length(sifir_gruplar)) return(sonuc)
@@ -139,7 +203,14 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
   # kullanıcı adını verdiği kayıt bulunamamışken tüm veri setinin özetini alır.
   # Kapalı başarısız karar REDdir; metadata birincil varlığı beyan ettiğinde
   # (Faz 3b) bu dal yerini yukarıdaki birincil sütun kuralına bırakır.
-  if (is.null(birincil) && length(sifir_gruplar) == length(compiled$groups)) {
+  #
+  # KAPSAM: kural, sıfır eşleşen grupların HEPSİ olmasını beklemez. Birincil
+  # varlık BİLİNMİYORKEN hangi daraltmanın sorunun ÖZNESİ olduğu da bilinemez;
+  # bu yüzden TEK bir grubun bile sıfır eşleşmesi, o grubun özne olma ihtimali
+  # nedeniyle RED gerektirir. Aksi hâlde "ANKA projesinde 2024 harcamaları"
+  # sorusunda `ProjeAdi` sıfır eşleşip düşürülür ve kullanıcı, adını verdiği
+  # proje bulunamamışken 2024'ün TÜM projelerinin özetini alır.
+  if (is.null(birincil)) {
     degerler <- unlist(
       lapply(sifir_gruplar, function(g) {
         unlist(lapply(g$applied, function(l) l$values), use.names = FALSE)

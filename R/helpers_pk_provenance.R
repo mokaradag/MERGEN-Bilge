@@ -371,8 +371,17 @@ pk_provenance_take <- function(session, request_id = NULL, full = FALSE) {
 
   # Kimlik ÖNCE karşılaştırılır: uyuşmayan bayat bir tamamlama, yuvayı
   # tüketerek YENİ isteğin kaydını silmemelidir.
-  if (!is.null(request_id) && !is.null(pending$request_id) &&
-      !identical(as.character(request_id)[1], pending$request_id)) {
+  #
+  # KİMLİKSİZ ÇAĞRI DA REDDEDİLİR. Eski davranışta muhafız YALNIZCA çağıran
+  # `request_id` verdiğinde çalışıyordu; kimliksiz bir tamamlama yolu (eş
+  # zamanlı olmayan yanıt işleyicisi, benzetilmiş akış, hata temizliği) o an
+  # bekleyen HANGİ kayıt varsa onu tüketiyordu. A isteği B'den sonra bittiğinde
+  # A, B'nin olgularına göre doğrulanıyor ve B'nin alt bilgisini/ekini alıyor;
+  # B ise kaydını kaybediyordu. Kayıt bir isteğe AİTSE, sahibini kanıtlamayan
+  # çağrı onu ne okuyabilir ne de silebilir.
+  if (!is.null(pending$request_id) &&
+      (is.null(request_id) ||
+       !identical(as.character(request_id)[1], pending$request_id))) {
     return(NULL)
   }
 
@@ -392,9 +401,25 @@ pk_provenance_take <- function(session, request_id = NULL, full = FALSE) {
 #'
 #' Hiçbir koşulda hata fırlatmaz; başarısızlıkta metin değişmeden döner.
 pk_provenance_decorate <- function(text, session, request_id = NULL) {
+  # KAYIT TÜKETİLDİKTEN SONRAKİ HER HATA İÇİN GÜVENLİ GERİ DÜŞME.
+  #
+  # Dıştaki `tryCatch(..., error = function(e) text)` kaydı tükettikten SONRA
+  # oluşan bir hatada da ham model metnini döndürüyordu. `block` kipinde bu,
+  # doğrulanmamış düzyazının kullanıcıya gitmesi demektir ve kayıt tüketildiği
+  # için yeniden denemek de mümkün değildir. Bu yüzden tüketilen kaydın
+  # deterministik yedek metni burada tutulur ve hata hâlinde O kullanılır.
+  guvenli_yedek <- NULL
+
   tryCatch({
     pending <- pk_provenance_take(session, request_id = request_id, full = TRUE)
     if (is.null(pending) || !is.list(pending)) return(text)
+
+    if (identical(as.character(pending$mode %||% "")[1], "block")) {
+      yedek <- as.character(pending$fallback_text %||% "")[1]
+      if (!is.na(yedek) && nzchar(yedek)) {
+        guvenli_yedek <- paste0(yedek, as.character(pending$footer %||% "")[1])
+      }
+    }
 
     footer <- pending$footer
     if (is.null(footer) || !nzchar(footer)) return(text)
@@ -439,5 +464,8 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
     }
 
     paste0(base_txt, footer)
-  }, error = function(e) text)
+  }, error = function(e) {
+    if (!is.null(guvenli_yedek)) return(guvenli_yedek)
+    text
+  })
 }

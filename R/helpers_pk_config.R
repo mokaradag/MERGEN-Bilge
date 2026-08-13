@@ -19,6 +19,15 @@
 
 # Desteklenen anahtarların tek kaynağı. Yeni faz yeni anahtar eklerken bu
 # listeye girdi ekler; çözümleyici kodu değişmez.
+
+# Yerelden BAĞIMSIZ ASCII küçük harf (makine/protokol belirteçleri için).
+# Ortak yardımcı `R/helpers_pk_text_turkish.R` içindedir; bu dosya izole
+# testlerde tek başına source edilebildiği için yerel bir yedeği vardır.
+.pk_config_ascii_lower <- function(x) {
+  if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) return(pk_ascii_lower(x))
+  chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", as.character(x))
+}
+
 pk_config_spec <- list(
   MERGEN_PK_ENGINE = list(
     type = "character",
@@ -481,7 +490,10 @@ pk_config_option_key <- function(key) {
   if (is.logical(value) && length(value) == 1L && !is.na(value)) return(value)
   if (length(value) != 1L) return(NULL)
 
-  txt <- tolower(trimws(as.character(value)[1]))
+  # Yapılandırma bayrağı ASCII protokol belirtecidir: Türkçe yerelde
+  # `tolower("TRUE")` -> "trve" değil ama `tolower("I")` -> "ı" davranışı
+  # "ON"/"OFF" gibi girdilerde sessiz uyumsuzluk üretir.
+  txt <- .pk_config_ascii_lower(trimws(as.character(value)[1]))
   if (is.na(txt) || !nzchar(txt)) return(NULL)
 
   if (txt %in% c("true", "t", "1", "yes", "y", "on", "evet", "acik", "açık")) return(TRUE)

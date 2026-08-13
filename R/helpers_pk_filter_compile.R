@@ -20,13 +20,39 @@
 #           Yalnızca MERGEN_PK_ENGINE=v2 altında çağrılır (master plan §10).
 # ==============================================================================
 
-# Eşdeğer/alternatif seçim üreten işlemler (sütun içinde VEYA'lanır).
+# Eşdeğer/alternatif seçim üreten işlemler.
 PK_FILTER_ALTERNATIVE_OPS <- c("exact_match", "equals", "contains", "in", "starts_with")
 # Aralık sınırı üreten işlemler (sütun içinde VE'lenir).
 PK_FILTER_LOWER_OPS <- c("greater_than", "greater_or_equal", "from", "min")
 PK_FILTER_UPPER_OPS <- c("less_than", "less_or_equal", "to", "max")
 # Dışlama üreten işlemler (sütun içinde VE'lenen NOT).
 PK_FILTER_EXCLUDE_OPS <- c("not_equals", "exclude", "not_in", "not_contains")
+
+# İZİN VERİLEN İŞLEMLERİN TEK LİSTESİ.
+#
+# Bu liste KAPALIDIR: burada olmayan bir işlem adı SESSİZCE eşitliğe
+# düşürülmez, yaprak DÜŞÜRÜLÜR. Eski davranışta `switch(...)`'in varsayılan
+# dalı ve `.pk_filter_leaf_role()`'un "alternative" yedeği, LLM'den gelen
+# tanınmayan bir işlemi (örn. `regex`, `between`, `like`) fark edilmeden TAM
+# EŞLEŞMEYE çeviriyordu; kullanıcı "1000'den büyük" derken sistem "== 1000"
+# uyguluyor ve yanlış bir kümeyi doğruymuş gibi raporluyordu.
+PK_FILTER_KNOWN_OPS <- c(
+  PK_FILTER_ALTERNATIVE_OPS,
+  PK_FILTER_LOWER_OPS,
+  PK_FILTER_UPPER_OPS,
+  PK_FILTER_EXCLUDE_OPS
+)
+
+# Sütun içi birleştirme YALNIZCA açıkça beyan edildiğinde VEYA olur.
+#
+# Eski davranış aynı sütuna gelen her alternatifi otomatik VEYA'lıyordu; bu,
+# "birden çok yüklem aynı sütuna değiniyor" gözleminden VEYA anlamı ÇIKARMAK
+# demektir ve kullanıcının "hem X hem Y içeren" isteğini sessizce "X veya Y"
+# hâline getirir. Tek bir yaprağın çok değerli olması (`values` vektörü) zaten
+# AÇIK bir VEYA'dır (D2) ve o davranış korunur; AYRI yapraklar ise açık bir
+# `logic = "or"` beyanı olmadıkça VE'lenir.
+PK_FILTER_OR_TOKENS <- c("or", "veya", "any", "herhangi")
+PK_FILTER_AND_TOKENS <- c("and", "ve", "all", "tumu", "hepsi")
 
 # İşlem adı gibi SAF ASCII belirteçleri için yerelden BAĞIMSIZ küçük harf.
 #
@@ -42,7 +68,31 @@ PK_FILTER_EXCLUDE_OPS <- c("not_equals", "exclude", "not_in", "not_contains")
 # R/helpers_pk_text_turkish.R başlığındaki "Türkçe katlama için chartr
 # kullanma" uyarısı Türkçe harfler içindir ve ihlal edilmez.
 .pk_filter_ascii_lower <- function(x) {
+  if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) {
+    return(pk_ascii_lower(x))
+  }
   chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", as.character(x))
+}
+
+# Mantıksal sütunlar için KAPALI sözlük. Sözlükte olmayan bir değer FALSE'a
+# çevrilmez; yaprak düşürülür (aksi hâlde "Durum = belirsiz" sessizce
+# "Durum = FALSE" olur ve yanlış bir alt küme doğruymuş gibi raporlanır).
+.PK_FILTER_TRUE_TOKENS <- c("true", "t", "1", "evet", "e", "yes", "y", "aktif", "var")
+.PK_FILTER_FALSE_TOKENS <- c("false", "f", "0", "hayir", "h", "no", "n", "pasif", "yok")
+
+# bit64::integer64 sütunlarını KAYIPSIZ karşılaştır.
+#
+# `as.numeric()` 2^53 üstü BIGINT değerlerini bozar; iki farklı kimlik aynı
+# double'a düşer ve filtre yanlış satırı seçer. Değerler bu yüzden integer64
+# uzayında karşılaştırılır ve dönüştürülemeyen bir değer sessizce eşitliğe
+# düşmek yerine yaprağı düşürür.
+.pk_filter_is_integer64 <- function(x) inherits(x, "integer64")
+
+.pk_filter_as_integer64 <- function(x) {
+  if (!requireNamespace("bit64", quietly = TRUE)) return(NULL)
+  out <- suppressWarnings(tryCatch(bit64::as.integer64(x), error = function(e) NULL))
+  if (is.null(out)) return(NULL)
+  out
 }
 
 .pk_filter_fold <- function(x) {
@@ -75,15 +125,28 @@ pk_filter_normalize_leaf <- function(f) {
   degerler <- trimws(degerler[!is.na(degerler)])
   degerler <- degerler[nzchar(degerler)]
 
+  # Sütun içi birleştirme AÇIK beyandan okunur; beyan yoksa VE.
+  birlesim <- .pk_filter_ascii_lower(trimws(as.character(
+    f$logic %||% f$combine %||% f$join %||% ""
+  )[1]))
+  if (is.na(birlesim)) birlesim <- ""
+  birlesim <- if (birlesim %in% PK_FILTER_OR_TOKENS) "or" else "and"
+
+  bilinen_islem <- islem %in% PK_FILTER_KNOWN_OPS
+
   list(
     column = sutun,
     operation = islem,
     values = degerler,
-    ok = nzchar(sutun) && length(degerler) > 0L,
+    logic = birlesim,
+    ok = nzchar(sutun) && length(degerler) > 0L && bilinen_islem,
     reason = if (!nzchar(sutun)) {
       "filtre sutunu belirtilmemis"
     } else if (!length(degerler)) {
       "filtre degeri bos"
+    } else if (!bilinen_islem) {
+      # Tanınmayan işlem SESSİZCE eşitliğe düşürülmez.
+      sprintf("desteklenmeyen filtre islemi: '%s'", islem)
     } else {
       NA_character_
     }
@@ -114,29 +177,59 @@ pk_filter_normalize_leaf <- function(f) {
   metin %in% aranan
 }
 
-# Sayısal sütun için bir yaprağın maskesi.
-.pk_filter_mask_numeric <- function(col_vals, leaf) {
-  sayilar <- suppressWarnings(as.numeric(leaf$values))
-  sayilar <- sayilar[!is.na(sayilar)]
-  if (!length(sayilar)) return(NULL)
-
-  degerler <- as.numeric(col_vals)
+# Bir sıralı/karşılaştırılabilir sütun için ortak maske üretimi.
+#
+# `degerler` sütun değerleri, `sinirlar` filtre değerleridir; ikisi de AYNI
+# uzayda (numeric / integer64 / Date / POSIXct) olmalıdır. Bilinmeyen işlem
+# buraya ULAŞMAZ (yaprak normalleştirmede reddedilir); yine de savunmacı
+# olarak NULL döner.
+.pk_filter_compare_mask <- function(degerler, sinirlar, operation) {
   gecerli <- !is.na(degerler)
 
   maske <- switch(
-    leaf$operation,
-    greater_than     = degerler > min(sayilar),
-    greater_or_equal = degerler >= min(sayilar),
-    from             = degerler >= min(sayilar),
-    min              = degerler >= min(sayilar),
-    less_than        = degerler < max(sayilar),
-    less_or_equal    = degerler <= max(sayilar),
-    to               = degerler <= max(sayilar),
-    max              = degerler <= max(sayilar),
-    degerler %in% sayilar
+    operation,
+    greater_than     = degerler >  min(sinirlar),
+    greater_or_equal = degerler >= min(sinirlar),
+    from             = degerler >= min(sinirlar),
+    min              = degerler >= min(sinirlar),
+    less_than        = degerler <  max(sinirlar),
+    less_or_equal    = degerler <= max(sinirlar),
+    to               = degerler <= max(sinirlar),
+    max              = degerler <= max(sinirlar),
+    exact_match      = degerler %in% sinirlar,
+    equals           = degerler %in% sinirlar,
+    `in`             = degerler %in% sinirlar,
+    not_equals       = degerler %in% sinirlar,
+    not_in           = degerler %in% sinirlar,
+    exclude          = degerler %in% sinirlar,
+    NULL
   )
 
-  maske & gecerli
+  if (is.null(maske)) return(NULL)
+  as.logical(maske) & gecerli
+}
+
+# Sayısal sütun için bir yaprağın maskesi.
+#
+# İki kapalı-başarısız kural:
+#   * BİR değer bile sayıya çevrilemiyorsa yaprak DÜŞÜRÜLÜR (NULL). Eskiden
+#     çevrilemeyen değerler sessizce atılıyor ve kalan alt küme uygulanıyordu;
+#     "bütçesi 1000'den büyük ve 'yüksek' olanlar" isteği fark edilmeden
+#     yalnızca 1000 sınırına indirgeniyordu.
+#   * integer64 sütunlar double'a DÜŞÜRÜLMEZ; 2^53 üstü kimlikler çakışır.
+.pk_filter_mask_numeric <- function(col_vals, leaf) {
+  if (!length(leaf$values)) return(NULL)
+
+  if (.pk_filter_is_integer64(col_vals)) {
+    sinirlar <- .pk_filter_as_integer64(leaf$values)
+    if (is.null(sinirlar) || anyNA(sinirlar)) return(NULL)
+    return(.pk_filter_compare_mask(col_vals, sinirlar, leaf$operation))
+  }
+
+  sayilar <- suppressWarnings(as.numeric(leaf$values))
+  if (anyNA(sayilar)) return(NULL)
+
+  .pk_filter_compare_mask(as.numeric(col_vals), sayilar, leaf$operation)
 }
 
 # Tarih sütunu için bir yaprağın maskesi.
@@ -153,33 +246,62 @@ pk_filter_normalize_leaf <- function(f) {
   }
 
   tarihler <- guvenli_tarih(leaf$values)
-  tarihler <- tarihler[!is.na(tarihler)]
-  if (!length(tarihler)) return(NULL)
+  # Kapalı başarısız: bir değer bile tarihe çevrilemiyorsa yaprak düşürülür.
+  if (!length(tarihler) || anyNA(tarihler)) return(NULL)
 
   degerler <- guvenli_tarih(col_vals)
   if (!inherits(degerler, "Date") || length(degerler) != length(col_vals)) return(NULL)
-  gecerli <- !is.na(degerler)
 
-  maske <- switch(
-    leaf$operation,
-    greater_than     = degerler > min(tarihler),
-    greater_or_equal = degerler >= min(tarihler),
-    from             = degerler >= min(tarihler),
-    min              = degerler >= min(tarihler),
-    less_than        = degerler < max(tarihler),
-    less_or_equal    = degerler <= max(tarihler),
-    to               = degerler <= max(tarihler),
-    max              = degerler <= max(tarihler),
-    degerler %in% tarihler
-  )
+  .pk_filter_compare_mask(degerler, tarihler, leaf$operation)
+}
 
-  maske & gecerli
+# POSIXct/POSIXlt sütunu için maske — GÜN İÇİ SAAT KORUNUR.
+#
+# Eskiden zaman damgalı sütunlar da `as.Date()` üzerinden geçiyordu; bu, günü
+# 00:00'a yuvarlar. "16:00'dan sonra" gibi bir sınır tamamen kaybolur ve
+# `less_than "2024-05-01"` sorgusu 2024-05-01 00:30'daki kaydı YANLIŞLIKLA
+# dışarıda bırakır (ya da `greater_or_equal` onu yanlışlıkla içeri alır).
+#
+# Filtre değeri yalnızca tarih içeriyorsa (saat yoksa) sınır o günün
+# başlangıcı/sonu olarak yorumlanır; böylece "1 Mayıs'a kadar" isteği o günün
+# tamamını kapsar ve gün içi bilgi de kaybolmaz.
+.pk_filter_mask_posix <- function(col_vals, leaf) {
+  if (!length(leaf$values)) return(NULL)
+
+  tz <- attr(col_vals, "tzone")
+  if (is.null(tz) || !nzchar(tz[1])) tz <- ""
+
+  yalniz_tarih <- grepl("^\\d{4}-\\d{2}-\\d{2}$", trimws(leaf$values))
+
+  ayrist <- function(metin, gun_sonu) {
+    suppressWarnings(tryCatch({
+      if (grepl("^\\d{4}-\\d{2}-\\d{2}$", trimws(metin))) {
+        temel <- as.POSIXct(paste0(trimws(metin), " 00:00:00"), tz = tz)
+        if (isTRUE(gun_sonu)) temel <- temel + 86399.999
+        temel
+      } else {
+        as.POSIXct(trimws(metin), tz = tz)
+      }
+    }, error = function(e) as.POSIXct(NA)))
+  }
+
+  # Üst sınır işlemlerinde yalnız-tarih değeri GÜN SONU olarak yorumlanır.
+  gun_sonu <- leaf$operation %in% PK_FILTER_UPPER_OPS
+
+  sinirlar <- do.call(c, lapply(seq_along(leaf$values), function(i) {
+    ayrist(leaf$values[i], gun_sonu && yalniz_tarih[i])
+  }))
+
+  if (is.null(sinirlar) || !length(sinirlar) || anyNA(sinirlar)) return(NULL)
+
+  degerler <- as.POSIXct(col_vals)
+  .pk_filter_compare_mask(degerler, sinirlar, leaf$operation)
 }
 
 #' Tek yaprağın satır maskesini üret
 #'
 #' @return list(ok, mask, reason)
-pk_filter_leaf_mask <- function(data, leaf) {
+pk_filter_leaf_mask <- function(data, leaf, query = NULL) {
   if (!isTRUE(leaf$ok)) {
     return(list(ok = FALSE, mask = NULL, reason = leaf$reason %||% "gecersiz filtre"))
   }
@@ -187,17 +309,34 @@ pk_filter_leaf_mask <- function(data, leaf) {
     return(list(ok = FALSE, mask = NULL, reason = "sütun veri kümesinde bulunamadı"))
   }
 
+  # METADATA `filterable` KAPISI (kapalı başarısız).
+  #
+  # `pk_meta_is_filterable()` vardı ama derleyici onu HİÇ çağırmıyordu; yani
+  # metadata "bu sütun filtrelenemez" dese bile üretim yolu filtreyi yine de
+  # uyguluyordu. Kapı yalnızca metadata GERÇEKTEN sütun tanımı taşıdığında
+  # uygulanır; Tier-0 / metadata'sız sorgularda davranış değişmez.
+  if (!is.null(query) && exists("pk_meta_is_filterable", mode = "function", inherits = TRUE)) {
+    kapali <- tryCatch(.pk_filter_meta_blocks(query, leaf$column), error = function(e) FALSE)
+    if (isTRUE(kapali)) {
+      return(list(
+        ok = FALSE, mask = NULL,
+        reason = "sütun metadata tarafından filtrelenebilir işaretlenmemiş"
+      ))
+    }
+  }
+
   col_vals <- data[[leaf$column]]
 
   maske <- if (is.character(col_vals) || is.factor(col_vals)) {
     .pk_filter_mask_character(col_vals, leaf)
-  } else if (inherits(col_vals, "Date") || inherits(col_vals, "POSIXt")) {
+  } else if (inherits(col_vals, "POSIXt")) {
+    .pk_filter_mask_posix(col_vals, leaf)
+  } else if (inherits(col_vals, "Date")) {
     .pk_filter_mask_date(col_vals, leaf)
-  } else if (is.numeric(col_vals)) {
-    .pk_filter_mask_numeric(col_vals, leaf)
   } else if (is.logical(col_vals)) {
-    mantik <- .pk_filter_ascii_lower(leaf$values) %in% c("true", "1", "evet")
-    if (!length(leaf$values)) NULL else col_vals %in% unique(mantik)
+    .pk_filter_mask_logical(col_vals, leaf)
+  } else if (is.numeric(col_vals) || .pk_filter_is_integer64(col_vals)) {
+    .pk_filter_mask_numeric(col_vals, leaf)
   } else {
     NULL
   }
@@ -210,6 +349,29 @@ pk_filter_leaf_mask <- function(data, leaf) {
   list(ok = TRUE, mask = maske, reason = NA_character_)
 }
 
+# Metadata sütun tanımı taşıyorsa ve sütun filtrelenebilir değilse TRUE.
+.pk_filter_meta_blocks <- function(query, column) {
+  meta <- if (is.list(query)) (query$meta %||% query) else NULL
+  sutunlar <- if (is.list(meta)) meta$column_meta else NULL
+  if (!is.list(sutunlar) || !length(sutunlar)) return(FALSE)
+  if (!(column %in% names(sutunlar))) return(FALSE)
+  !isTRUE(pk_meta_is_filterable(query, column))
+}
+
+# Mantıksal sütun maskesi — sözlük dışı değer FALSE'a ÇEVRİLMEZ.
+.pk_filter_mask_logical <- function(col_vals, leaf) {
+  if (!length(leaf$values)) return(NULL)
+
+  belirtec <- .pk_filter_ascii_lower(trimws(leaf$values))
+  dogru <- belirtec %in% .PK_FILTER_TRUE_TOKENS
+  yanlis <- belirtec %in% .PK_FILTER_FALSE_TOKENS
+
+  # Tanınmayan bir mantıksal değer varsa yaprak düşürülür.
+  if (any(!(dogru | yanlis))) return(NULL)
+
+  col_vals %in% unique(dogru)
+}
+
 # Yaprakları rolüne göre ayır: alternatif / alt sınır / üst sınır / dışlama.
 .pk_filter_leaf_role <- function(operation) {
   if (operation %in% PK_FILTER_EXCLUDE_OPS) return("exclude")
@@ -220,9 +382,16 @@ pk_filter_leaf_mask <- function(data, leaf) {
 }
 
 # Tek bir sütun grubunun maskesini kurar.
-.pk_filter_column_group_mask <- function(data, leaves) {
+#
+# Birleştirme kuralı:
+#   * Aralık sınırları (lower/upper) her zaman VE'lenir.
+#   * Dışlamalar her zaman VE'lenen NOT'tur.
+#   * Alternatifler VARSAYILAN OLARAK VE'lenir; yalnızca yaprak açıkça
+#     `logic = "or"` beyan ettiyse kendi aralarında VEYA'lanır. Tek bir
+#     yaprağın çok değerli olması zaten VEYA'dır ve maske üretiminde ele alınır.
+.pk_filter_column_group_mask <- function(data, leaves, query = NULL) {
   n <- nrow(data)
-  alternatif <- NULL
+  veya_havuzu <- NULL
   kisit <- rep(TRUE, n)
   uygulanan <- list()
   dusen <- list()
@@ -230,7 +399,7 @@ pk_filter_leaf_mask <- function(data, leaf) {
   ust_sinir_sayisi <- 0L
 
   for (leaf in leaves) {
-    sonuc <- pk_filter_leaf_mask(data, leaf)
+    sonuc <- pk_filter_leaf_mask(data, leaf, query = query)
     if (!isTRUE(sonuc$ok)) {
       dusen[[length(dusen) + 1L]] <- list(leaf = leaf, reason = sonuc$reason)
       next
@@ -238,14 +407,11 @@ pk_filter_leaf_mask <- function(data, leaf) {
 
     rol <- .pk_filter_leaf_role(leaf$operation)
 
-    if (identical(rol, "alternative")) {
-      # D1: AYNI sütundaki alternatifler VEYA'lanır, kesiştirilmez.
-      alternatif <- if (is.null(alternatif)) sonuc$mask else (alternatif | sonuc$mask)
-    } else if (identical(rol, "exclude")) {
+    if (identical(rol, "exclude")) {
       kisit <- kisit & !sonuc$mask
+    } else if (identical(rol, "alternative") && identical(leaf$logic, "or")) {
+      veya_havuzu <- if (is.null(veya_havuzu)) sonuc$mask else (veya_havuzu | sonuc$mask)
     } else {
-      # Tamamlayıcı aralık sınırları VE'lenir; aksi halde ">= baslangic VEYA
-      # <= bitis" neredeyse evrensel bir predikat olurdu.
       kisit <- kisit & sonuc$mask
       if (identical(rol, "lower")) alt_sinir_sayisi <- alt_sinir_sayisi + 1L
       if (identical(rol, "upper")) ust_sinir_sayisi <- ust_sinir_sayisi + 1L
@@ -254,7 +420,7 @@ pk_filter_leaf_mask <- function(data, leaf) {
     uygulanan[[length(uygulanan) + 1L]] <- leaf
   }
 
-  maske <- if (is.null(alternatif)) kisit else (alternatif & kisit)
+  maske <- if (is.null(veya_havuzu)) kisit else (veya_havuzu & kisit)
 
   list(
     mask = maske,
@@ -271,15 +437,52 @@ pk_filter_leaf_mask <- function(data, leaf) {
 #' arasında VE alınır.
 #'
 #' @return list(mask, groups, dropped, noop_columns, ok)
-pk_filter_compile <- function(data, filters, noop_ratio = NULL) {
+pk_filter_compile <- function(data, filters, noop_ratio = NULL, query = NULL) {
   n <- nrow(data)
   bos <- list(
     mask = rep(TRUE, n), groups = list(), dropped = list(),
-    noop_columns = character(0), ok = TRUE
+    noop_columns = character(0), ok = TRUE, requested = 0L, all_dropped = FALSE
   )
 
   filters <- if (is.list(filters)) filters else list()
   if (!length(filters) || n == 0L) return(bos)
+
+  # AÇIK MANTIK GRUPLARI (inert veri yapısı).
+  #
+  # `filter_expression` (çalıştırılabilir R metni) kaldırıldığı için iç içe
+  # VEYA/VE gereksinimi burada VERİ olarak temsil edilir:
+  #   list(operator = "or", children = list(<yaprak>, <yaprak veya grup>))
+  # Hiçbir aşamada `parse()`/`eval()` yoktur; yalnızca izin verilen işlemler
+  # değerlendirilir.
+  gruplar_agac <- Filter(.pk_filter_is_group_node, filters)
+  filters <- Filter(function(x) !.pk_filter_is_group_node(x), filters)
+
+  agac_maskesi <- rep(TRUE, n)
+  agac_dusen <- list()
+  agac_uygulanan <- list()
+  for (dugum in gruplar_agac) {
+    sonuc <- .pk_filter_eval_group(data, dugum, query = query)
+    agac_dusen <- c(agac_dusen, sonuc$dropped)
+    agac_uygulanan <- c(agac_uygulanan, sonuc$applied)
+    if (!is.null(sonuc$mask)) agac_maskesi <- agac_maskesi & sonuc$mask
+  }
+
+  if (!length(filters)) {
+    if (!length(gruplar_agac)) return(bos)
+    bos$mask <- agac_maskesi
+    bos$dropped <- agac_dusen
+    bos$requested <- length(agac_uygulanan) + length(agac_dusen)
+    bos$all_dropped <- !length(agac_uygulanan) && length(agac_dusen) > 0L
+    if (length(agac_uygulanan)) {
+      bos$groups <- list(list(
+        column = "__group__", applied = agac_uygulanan,
+        rows_before = n, rows_after = sum(agac_maskesi),
+        group_matches = sum(agac_maskesi), zero_match = sum(agac_maskesi) == 0L,
+        contradictory_bounds = FALSE
+      ))
+    }
+    return(bos)
+  }
 
   if (is.null(noop_ratio) && exists("pk_config_resolve", mode = "function", inherits = TRUE)) {
     noop_ratio <- tryCatch(pk_config_resolve("MERGEN_PK_NOOP_FILTER_RATIO"), error = function(e) 0.95)
@@ -291,32 +494,47 @@ pk_filter_compile <- function(data, filters, noop_ratio = NULL) {
   gecersiz <- Filter(function(x) !isTRUE(x$ok), yapraklar)
   gecerli <- Filter(function(x) isTRUE(x$ok), yapraklar)
 
-  dusen <- lapply(gecersiz, function(x) list(leaf = x, reason = x$reason))
+  dusen <- c(agac_dusen, lapply(gecersiz, function(x) list(leaf = x, reason = x$reason)))
+  istenen <- length(yapraklar) + length(agac_uygulanan) + length(agac_dusen)
 
   if (!length(gecerli)) {
     # Düz atama; `utils::modifyList()` adsız listeleri (dropped) düşürür.
+    bos$mask <- agac_maskesi
     bos$dropped <- dusen
+    bos$requested <- istenen
+    # HİÇBİR yaprak uygulanamadı: çağıran taraf bunu "filtre yoktu" ile
+    # KARIŞTIRMAMALIDIR; politika katmanı bu bayrağı görüp reddeder.
+    bos$all_dropped <- !length(agac_uygulanan)
     return(bos)
   }
 
   sutunlar <- unique(vapply(gecerli, function(x) x$column, character(1)))
-  toplam_maske <- rep(TRUE, n)
+  toplam_maske <- agac_maskesi
   gruplar <- list()
   etkisiz <- character(0)
+  uygulanan_sayisi <- length(agac_uygulanan)
 
   for (sutun in sutunlar) {
     grup_yapraklari <- Filter(function(x) identical(x$column, sutun), gecerli)
-    grup <- .pk_filter_column_group_mask(data, grup_yapraklari)
+    grup <- .pk_filter_column_group_mask(data, grup_yapraklari, query = query)
     dusen <- c(dusen, grup$dropped)
 
     if (!length(grup$applied)) next
+    uygulanan_sayisi <- uygulanan_sayisi + length(grup$applied)
 
     onceki <- sum(toplam_maske)
     toplam_maske <- toplam_maske & grup$mask
     sonraki <- sum(toplam_maske)
     grup_eslesme <- sum(grup$mask)
 
-    if (grup_eslesme > 0L && (grup_eslesme / n) > noop_ratio) {
+    # ETKİSİZLİK (no-op) HAYATTA KALAN SATIRLARA GÖRE ÖLÇÜLÜR.
+    #
+    # Eskiden oran TÜM veri kümesine (`n`) bölünüyordu. Diğer filtreler
+    # kümeyi 5 satıra indirdiğinde, o 5 satırın hepsini koruyan bir filtre
+    # 5/1000 = %0.5 hesaplanıyor ve GERÇEKTEN etkisiz olduğu hâlde etkili
+    # sayılıyordu; ifşa hattı da bu yüzden sessiz kalıyordu.
+    payda <- max(onceki, 1L)
+    if (onceki > 0L && sonraki > 0L && (sonraki / payda) > noop_ratio) {
       etkisiz <- c(etkisiz, sutun)
     }
 
@@ -336,6 +554,77 @@ pk_filter_compile <- function(data, filters, noop_ratio = NULL) {
     groups = gruplar,
     dropped = dusen,
     noop_columns = etkisiz,
-    ok = TRUE
+    ok = TRUE,
+    requested = istenen,
+    all_dropped = uygulanan_sayisi == 0L && length(dusen) > 0L
   )
+}
+
+# --- AÇIK MANTIK GRUBU DEĞERLENDİRİCİSİ ---------------------------------------
+#
+# Bu, `eval(parse())` yolunun YERİNE geçen inert değerlendiricidir. Yalnızca
+# `PK_FILTER_KNOWN_OPS` içindeki işlemler ve `and`/`or` birleştiricileri
+# yorumlanır; hiçbir R ifadesi ayrıştırılmaz veya çalıştırılmaz.
+.pk_filter_is_group_node <- function(x) {
+  is.list(x) && !is.null(x$children) && is.list(x$children)
+}
+
+.pk_filter_group_operator <- function(x) {
+  belirtec <- .pk_filter_ascii_lower(trimws(as.character(x$operator %||% x$logic %||% "and")[1]))
+  if (is.na(belirtec)) belirtec <- "and"
+  if (belirtec %in% PK_FILTER_OR_TOKENS) "or" else "and"
+}
+
+.pk_filter_eval_group <- function(data, node, query = NULL, depth = 0L) {
+  n <- nrow(data)
+  bos <- list(mask = NULL, applied = list(), dropped = list())
+
+  # Derinlik sınırı: kötü biçimli/özyinelemeli bir yapı derleyiciyi kilitlemez.
+  if (depth > 8L) {
+    return(list(mask = NULL, applied = list(), dropped = list(list(
+      leaf = list(column = "__group__", values = character(0)),
+      reason = "filtre grubu izin verilen derinligi asti"
+    ))))
+  }
+
+  islec <- .pk_filter_group_operator(node)
+  cocuklar <- node$children
+  if (!length(cocuklar)) return(bos)
+
+  maskeler <- list()
+  uygulanan <- list()
+  dusen <- list()
+
+  for (cocuk in cocuklar) {
+    if (.pk_filter_is_group_node(cocuk)) {
+      alt <- .pk_filter_eval_group(data, cocuk, query = query, depth = depth + 1L)
+      dusen <- c(dusen, alt$dropped)
+      uygulanan <- c(uygulanan, alt$applied)
+      if (!is.null(alt$mask)) maskeler[[length(maskeler) + 1L]] <- alt$mask
+      next
+    }
+
+    yaprak <- pk_filter_normalize_leaf(cocuk)
+    sonuc <- pk_filter_leaf_mask(data, yaprak, query = query)
+    if (!isTRUE(sonuc$ok)) {
+      dusen[[length(dusen) + 1L]] <- list(leaf = yaprak, reason = sonuc$reason)
+      next
+    }
+
+    maske <- sonuc$mask
+    if (.pk_filter_leaf_role(yaprak$operation) %in% "exclude") maske <- !maske
+    maskeler[[length(maskeler) + 1L]] <- maske
+    uygulanan[[length(uygulanan) + 1L]] <- yaprak
+  }
+
+  if (!length(maskeler)) return(list(mask = NULL, applied = uygulanan, dropped = dusen))
+
+  birlesik <- maskeler[[1]]
+  if (length(maskeler) > 1L) {
+    for (i in 2:length(maskeler)) {
+      birlesik <- if (identical(islec, "or")) (birlesik | maskeler[[i]]) else (birlesik & maskeler[[i]])
+    }
+  }
+
+  list(mask = birlesik, applied = uygulanan, dropped = dusen)
 }

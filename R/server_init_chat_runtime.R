@@ -25,9 +25,18 @@ serverInitChatRuntime <- function(session, values, settings_data, output,
     # SQL analizinin doğrudan dönen karakter/hata yanıtları normal LLM
     # sonlandırıcılarına uğramaz. Mesaj ekleme sınırı, bekleyen köken alt
     # bilgisini bütün AI yanıtlarında son bir kez ve idempotent biçimde tüketir.
+    #
+    # Bu sınırda çağıranın yakalanmış bir istek kimliği YOKTUR; kimlik oturumun
+    # ETKİN PK isteğinden okunur. Kimliksiz çağrı artık kabul edilmiyor: aksi
+    # hâlde geç biten bir yanıt, daha yeni bir isteğin bekleyen kaydını tüketir.
     if ((identical(type, "ai") || identical(type, "assistant")) &&
         exists("pk_provenance_decorate", mode = "function", inherits = TRUE)) {
-      content <- pk_provenance_decorate(content, session)
+      etkin_pk_id <- if (exists("pk_provenance_current_request_id", mode = "function", inherits = TRUE)) {
+        tryCatch(pk_provenance_current_request_id(session), error = function(e) NULL)
+      } else {
+        NULL
+      }
+      content <- pk_provenance_decorate(content, session, request_id = etkin_pk_id)
     }
 
     effective_user_id <- resolve_current_user_id()
@@ -60,8 +69,10 @@ serverInitChatRuntime <- function(session, values, settings_data, output,
   # ---------------------------------------------------------------------------
   simulate_streaming_stoppable <- function(full_response, followups = NULL,
                                            on_complete = NULL, on_start = NULL,
-                                           tts_engine = NULL, tts_voice = NULL) {
+                                           tts_engine = NULL, tts_voice = NULL,
+                                           request_id = NULL) {
     chat_simulate_streaming(
+      request_id = request_id,
       full_response = full_response,
       session = session,
       values = values,

@@ -249,20 +249,67 @@ test_that("D4: birincil belirlenemez VE her filtre sifir eslesirse analiz REDDED
   expect_equal(sum(politika$mask), 0L)
 })
 
-test_that("D4: filtrelerden EN AZ BIRI eslesiyorsa ikincil dusurme davranisi korunur", {
+test_that("birincil BILINMIYORKEN tek bir sifir eslesme bile genisletmeye izin vermez", {
   env <- .pk_policy_env()
   veri <- .pk_policy_data()
 
-  # Yukaridaki kapali basarisiz dal, calisan bir daraltma varken DEVREYE
-  # GIRMEMELIDIR; aksi halde mesru ikincil-dusurme yolu kaybolurdu.
+  # "X projesinin 2024 harcamalari" bicimindeki istek: proje adi yanlis
+  # yazilmis olabilir ve sifir eslesir, yil filtresi ise satir tutar. Birincil
+  # varlik metadata'da beyan edilmediginden HANGI daraltmanin sorunun OZNESI
+  # oldugu bilinemez; proje kriterini "ikincil" sayip dusurmek, kullaniciya
+  # bulunamayan projenin yerine TUM 2024 kayitlarinin ozetini verir.
+  filtreler <- list(
+    list(column = "ProjeAdi", value = "HIC OLMAYAN PROJE", operation = "exact_match"),
+    list(column = "Durum", value = "Aktif", operation = "exact_match")
+  )
+  derleme <- env$pk_filter_compile(veri, filtreler)
+  politika <- env$pk_filter_zero_match_policy(veri, filtreler, derleme, NULL)
+
+  expect_null(politika$primary_column)
+  expect_identical(politika$action, "refuse")
+  expect_equal(sum(politika$mask), 0L)
+})
+
+test_that("D4: birincil BILINIYORKEN ikincil dusurme davranisi korunur", {
+  env <- .pk_policy_env()
+  veri <- .pk_policy_data()
+
+  # Mesru ikincil-dusurme yolu kaybolmamalidir: metadata birincil varligi
+  # beyan ettiginde, birincil eslesiyorken sifir eslesen IKINCIL sutun
+  # dusurulur, ifsa edilir ve analiz surer.
+  env$pk_meta_primary_entity <- function(query, filter_columns = character(0)) {
+    query$meta$primary_entity
+  }
+  sorgu <- list(meta = list(primary_entity = "ProjeAdi"))
+
   filtreler <- list(
     list(column = "ProjeAdi", value = "SENTETIK ALFA", operation = "exact_match"),
     list(column = "Durum", value = "HIC OLMAYAN DURUM", operation = "exact_match")
   )
   derleme <- env$pk_filter_compile(veri, filtreler)
-  politika <- env$pk_filter_zero_match_policy(veri, filtreler, derleme, NULL)
+  politika <- env$pk_filter_zero_match_policy(veri, filtreler, derleme, sorgu)
 
+  expect_identical(politika$primary_column, "ProjeAdi")
   expect_identical(politika$action, "dropped_secondary")
   expect_identical(politika$dropped_columns, "Durum")
   expect_equal(sum(politika$mask), 1L)
+})
+
+test_that("DUSURULEN birincil/tek filtre analizi durdurur", {
+  env <- .pk_policy_env()
+  veri <- .pk_policy_data()
+
+  # Derleyici yapragi hic uygulayamadiginda (bilinmeyen islem, cevrilemeyen
+  # deger, olmayan sutun) grup listesine HIC girmez. Eskiden bu durumda sifir
+  # eslesen grup bulunmadigi icin politika "proceed" diyor ve tumu-TRUE maske
+  # ile TUM yetkili kume analiz ediliyordu.
+  filtreler <- list(
+    list(column = "ProjeAdi", value = "SENTETIK ALFA", operation = "between")
+  )
+  derleme <- env$pk_filter_compile(veri, filtreler)
+  politika <- env$pk_filter_zero_match_policy(veri, filtreler, derleme, NULL)
+
+  expect_identical(politika$action, "refuse")
+  expect_true(nzchar(politika$refusal_message))
+  expect_true(grepl("uygulanamad", politika$refusal_message))
 })

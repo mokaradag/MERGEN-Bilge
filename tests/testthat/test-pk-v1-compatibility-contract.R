@@ -89,8 +89,17 @@ test_that("D1: v1 AYNI sutundaki filtreleri HALA kesistirir (davranis degismedi)
   })
 
   withr::with_envvar(list(MERGEN_PK_ENGINE = "v2"), {
+    # v2 artik ayni sutundaki AYRI yapraklari da VE'ler: "birden cok yuklem
+    # ayni sutuna deginiyor" gozleminden VEYA anlami CIKARILMAZ. VEYA istegi
+    # ACIK olmalidir (cok degerli tek yaprak ya da `logic = "or"`).
     v2 <- .pk_v1_apply(env, veri, talimat)
-    expect_equal(nrow(v2), 2L)
+    expect_equal(nrow(v2), 0L)
+
+    acik <- .pk_v1_apply(env, veri, list(filters = list(
+      list(column = "ProjeAdi", value = c("RADAR", "ELEKTRONIK HARP"),
+           operation = "contains")
+    )))
+    expect_equal(nrow(acik), 2L)
   })
 })
 
@@ -115,28 +124,30 @@ test_that("D2: v1 cok degerli filtreyi HALA kirpar (davranis degismedi)", {
   })
 })
 
-test_that("D5: v1 filter_expression'i HALA calistirir, v2 ASLA calistirmaz", {
+test_that("P0: HICBIR motor model uretimi filter_expression'i CALISTIRMAZ", {
   env <- .pk_v1_env()
   veri <- .pk_v1_data()
 
+  # BU TEST ESKIDEN TERSINI SOYLUYORDU ("v1 filter_expression'i HALA
+  # calistirir") ve boylece bir UZAKTAN KOD CALISTIRMA yolunu kasitli davranis
+  # olarak belgeliyordu. `filter_expression` metni tamamen LLM uretimidir ve
+  # LLM girdisi kullanici istemi ile sohbet gecmisinden beslenir; istem
+  # enjeksiyonu ile buraya rastgele R kodu tasinabiliyordu. Mekanizma HER IKI
+  # motordan da kaldirilmistir.
   talimat <- list(
     filters = list(),
     filter_expression = "{ .pk_v1_sayac <<- .pk_v1_sayac + 1L; Butce > 15 }"
   )
 
-  withr::with_envvar(list(MERGEN_PK_ENGINE = "v1"), {
-    env$.pk_v1_sayac <- 0L
-    v1 <- .pk_v1_apply(env, veri, talimat)
-    expect_equal(nrow(v1), 2L)
-    expect_true(env$.pk_v1_sayac > 0L)   # ifade GERCEKTEN calistirildi
-  })
-
-  withr::with_envvar(list(MERGEN_PK_ENGINE = "v2"), {
-    env$.pk_v1_sayac <- 0L
-    v2 <- .pk_v1_apply(env, veri, talimat)
-    expect_equal(nrow(v2), 3L)           # ifade yok sayildi
-    expect_identical(env$.pk_v1_sayac, 0L)
-  })
+  for (motor in c("v1", "v2")) {
+    withr::with_envvar(list(MERGEN_PK_ENGINE = motor), {
+      env$.pk_v1_sayac <- 0L
+      sonuc <- .pk_v1_apply(env, veri, talimat)
+      # Ifade YOK SAYILIR: hicbir satir elenmez ve sayac artmaz.
+      expect_equal(nrow(sonuc), 3L, info = paste("motor:", motor))
+      expect_identical(env$.pk_v1_sayac, 0L, info = paste("motor:", motor))
+    })
+  }
 })
 
 test_that("D4: v1'de sifir eslesme politikasi YOKTUR", {

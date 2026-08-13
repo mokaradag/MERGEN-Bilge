@@ -37,6 +37,15 @@
 # ==============================================================================
 
 # Olgu durumları. Kullanıcıya görünen metinde değil, olgu kaydında taşınır.
+
+# Yerelden BAĞIMSIZ ASCII küçük harf (makine/protokol belirteçleri için).
+# Ortak yardımcı `R/helpers_pk_text_turkish.R` içindedir; bu dosya izole
+# testlerde tek başına source edilebildiği için yerel bir yedeği vardır.
+.pk_stats_ascii_lower <- function(x) {
+  if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) return(pk_ascii_lower(x))
+  chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", as.character(x))
+}
+
 PK_FACT_OK <- "ok"
 PK_FACT_SINGLE <- "single_observation"
 PK_FACT_INSUFFICIENT <- "insufficient_data"
@@ -120,7 +129,13 @@ pk_fact_slug <- function(x) {
   )
   txt <- gsub("[^A-Za-z0-9]+", "_", txt)
   txt <- gsub("^_+|_+$", "", txt)
-  txt <- tolower(txt)
+  # OLGU KİMLİĞİ ASCII OLMAK ZORUNDA.
+  #
+  # Bu noktada metin zaten ASCII'ye indirgenmiştir; ancak Türkçe yerelde
+  # `tolower("I")` noktasız `ı` (ASCII DIŞI) üretir ve kimlik VM ile CI
+  # arasında farklılaşır. Aynı olgu iki farklı `[fact:...]` kimliği alır,
+  # modelin işareti doğrulamada bulunamaz ve geçerli sayı reddedilir.
+  txt <- .pk_stats_ascii_lower(txt)
   if (!nzchar(txt)) return("bilinmeyen")
   substr(txt, 1L, 60L)
 }

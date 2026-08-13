@@ -20,7 +20,12 @@ test_that("doğrudan AI yanıtları mesaj sınırında bekleyen köken alt bilgi
   )
 
   captured <- new.env(parent = emptyenv())
-  env$pk_provenance_decorate <- function(content, session) paste0(content, "|KOKEN")
+  # Dekorasyon artik ISTEK KIMLIGI ile cagrilir; sahte de bunu kabul etmelidir.
+  env$pk_provenance_current_request_id <- function(session) "req_test_1"
+  env$pk_provenance_decorate <- function(content, session, request_id = NULL) {
+    captured$request_id <- request_id
+    paste0(content, "|KOKEN")
+  }
   env$chat_add_message <- function(...) {
     args <- list(...)
     captured$content <- args$content
@@ -38,6 +43,9 @@ test_that("doğrudan AI yanıtları mesaj sınırında bekleyen köken alt bilgi
 
   runtime$add_message("Boş sonuç", "ai")
   expect_identical(captured$content, "Boş sonuç|KOKEN")
+  # Kimliksiz tuketim, gec biten bir yanitin DAHA YENI bir istegin kaydini
+  # almasina yol aciyordu; sinir artik etkin istek kimligini gecirir.
+  expect_identical(captured$request_id, "req_test_1")
 
   runtime$add_message("Kullanıcı metni", "user")
   expect_identical(captured$content, "Kullanıcı metni")

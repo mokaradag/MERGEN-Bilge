@@ -287,8 +287,12 @@ llmResponseHandlersInit <- function(
 
           # Proje ve Kaynak Analizi köken alt bilgisi (sahibi R'dir, model
           # değil). PK dışı yanıtlarda içerik aynen kalır.
+          #
+          # `req_id` AÇIKÇA verilir: kimliksiz çağrı, bu istek geç bittiğinde
+          # DAHA YENİ bir isteğin bekleyen kaydını tüketip onun olgularına göre
+          # doğrulanmasına ve alt bilgisini/ekini almasına yol açardı.
           if (exists("pk_provenance_decorate", mode = "function", inherits = TRUE)) {
-            result$content <- pk_provenance_decorate(result$content, session)
+            result$content <- pk_provenance_decorate(result$content, session, request_id = req_id)
           }
 
           # AI mesajını ekle
