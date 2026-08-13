@@ -44,12 +44,16 @@ test_that("split PK helpers source correctly outside the repository working dire
   expect_true(exists("pk_analysis_observe", envir = telemetry_env, inherits = FALSE))
 })
 
-test_that("stateful filter expressions execute exactly once", {
+test_that("model uretimi filtre ifadesi CALISTIRILMAZ ve dusurulmus olarak raporlanir", {
   env <- .pk_final_source_env(c(
     "R/helpers_pk_analysis_core.R",
     "R/helpers_pk_analysis_filters.R"
   ))
 
+  # BU TEST ESKIDEN "stateful filter expressions execute exactly once" adiyla
+  # ifadenin CALISTIRILDIGINI dogruluyordu. `filter_expression` LLM uretimidir;
+  # calistirilmasi istem enjeksiyonuyla erisilebilen bir RCE yoluydu. Artik
+  # ifade yok sayilir ve gozlem hattina DUSURULMUS filtre olarak girer.
   env$counter <- 0L
   result <- env$apply_smart_filters(
     data.frame(x = 1:4),
@@ -62,8 +66,9 @@ test_that("stateful filter expressions execute exactly once", {
     "x birden büyük"
   )
 
-  expect_identical(env$counter, 1L)
-  expect_identical(nrow(result), 3L)
+  # Yan etki OLUSMADI ve hicbir satir elenmedi.
+  expect_identical(env$counter, 0L)
+  expect_identical(nrow(result), 4L)
 
   observation <- env$pk_filter_observation_take(list(
     request_id = NULL,
@@ -71,8 +76,9 @@ test_that("stateful filter expressions execute exactly once", {
     query_name = NULL,
     question = "x birden büyük"
   ))
-  expect_identical(observation$matched_rows, 3L)
-  expect_identical(observation$applied_filters[[1]]$operation, "expression")
+  expect_identical(observation$matched_rows, 4L)
+  expect_length(observation$applied_filters, 0L)
+  expect_identical(observation$dropped_filters[[1]]$filter$column, "filter_expression")
 })
 
 test_that("pk_analysis_observe fills KullaniciID from the authenticated session", {

@@ -391,6 +391,32 @@ pk_entity_resolve <- function(phrase, candidates, aliases = NULL,
     ))
   }
 
+  # --- KIRPILMIŞ TARAMADAN OTOMATİK ÇÖZÜMLEME YAPILMAZ ---------------------
+  #
+  # `MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES` aşıldığında kısa liste PUANA göre
+  # değil, karakter uzunluğu yakınlığına göre kırpılır ve `scan_truncated`
+  # bayrağı kalkar. Bu durumda `fark` (tepe ile ikinci arasındaki marj)
+  # ÖLÇÜLMEMİŞTİR: elenen bir aday tepe puanla eşit olabilir ve gerçekte
+  # netleştirme gerekirdi. Tek aday kaldığında marj `Inf` görünür ve karar
+  # sessizce `auto` olur; yani kullanıcının kastetmediği bir varlık üzerinden
+  # analiz üretilir. Ölçülmemiş marj üzerinden otomatik/onaylı karar verilmez;
+  # kullanıcıya SORULUR.
+  # `phrase_truncated` aynı sınıftan bir kusurdur: ifade kırpıldıysa puanlama
+  # kullanıcının SÖYLEDİĞİ metnin tamamı üzerinden yapılmamıştır.
+  if ((isTRUE(puanlar$scan_truncated) || isTRUE(puanlar$phrase_truncated)) &&
+      !.pk_entity_has_unique_exact(eslesmeler)) {
+    netlestirme <- pk_entity_clarification(eslesmeler, esikler$max_candidates)
+    return(.pk_entity_decision(
+      "clarify", rule = 2L,
+      message_tr = paste0(
+        "Bu alanda çok sayıda benzer kayıt var ve adayların tamamı ",
+        "karşılaştırılamadı. Hangisini kastettiniz?"
+      ),
+      scored = puanlar, clarification = netlestirme, thresholds = esikler,
+      plural = cogul, margin = fark
+    ))
+  }
+
   # --- Boş eşleşme kümesi: eşik dallarından ÖNCE ---------------------------
   # `MIN_SCORE=0` / `AUTO_SCORE=0` desteklenen yapılandırmalardır; boş küme
   # denetimi olmadan kural 4/5 `eslesmeler[[1]]` diyerek "subscript out of

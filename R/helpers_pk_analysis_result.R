@@ -92,7 +92,17 @@
   }
   if (length(butce) != 1L || is.na(butce) || butce <= 0L) butce <- 120000L
 
-  max(1000L, butce - as.integer(overhead_chars))
+  # SABİT YÜK BÜTÇEYİ TÜKETİYORSA YAPAY ASGARİ AYRILMAZ.
+  #
+  # Eski `max(1000L, ...)` tabanı, zorunlu metin (sistem istemi + kullanıcı
+  # sorusu + ifşalar + kuyruk talimatları) bütçeyi ZATEN aşmışken pakete 1000
+  # karakter daha veriyordu. Sonuç, uç noktanın bağlam sınırının sessizce
+  # aşılması ve isteğin TAMAMEN düşmesiydi. Negatif/ sıfır kalan bütçe artık
+  # `0` olarak bildirilir; çağıran bunu `over_budget` olarak görür ve
+  # deterministik özete iner.
+  kalan <- as.integer(butce) - as.integer(overhead_chars)
+  if (is.na(kalan) || kalan <= 0L) return(0L)
+  kalan
 }
 
 # v2 kuyruğu: analiz paketi + kompozisyon + dışa aktarım.

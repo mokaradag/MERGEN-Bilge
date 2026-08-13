@@ -157,11 +157,17 @@ test_that("Proje/Kaynak Analizi helper extraction maintainability kazanımı kor
   # PR #703: 5 -> 6. Eklenen tek fonksiyon `pk_rls_halt_message()`; TİPLİ
   # RLS durdurma/son tarih sonucunun "kullanıcı kaydı bulunamadı" YETKİ
   # hatasından ayrılmasını sağlar ve iki çağıran (tekil + derin yol) tarafından
-  # paylaşılır. Dosya hâlâ küçük bir yardımcıdır.
+  # paylaşılır.
+  #
+  # PR #705 stabilizasyonu: 6 -> 7. Eklenen tek fonksiyon
+  # `.pk_rls_scope_codes()`; izin tablosundaki `NA`/boş kodların
+  # `paste(collapse = ",")` yüzünden SIRADAN `"NA"` metnine dönüşüp GERÇEK bir
+  # kapsam kodu gibi davranmasını engeller ve PY/EPS dallarının İKİSİ
+  # tarafından paylaşılır. Dosya hâlâ küçük bir yardımcıdır.
   expect_true(
-    helper_functions <= 6L,
+    helper_functions <= 7L,
     info = sprintf(
-      "R/helpers_pk_analysis_security_summary.R fonksiyon sayısı kontrollü kalmalıdır: %d > 6.",
+      "R/helpers_pk_analysis_security_summary.R fonksiyon sayısı kontrollü kalmalıdır: %d > 7.",
       helper_functions
     )
   )

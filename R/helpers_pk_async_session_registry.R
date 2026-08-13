@@ -139,10 +139,21 @@ mergen_pk_unregister_active_request <- function(session, request_id) {
 #' kapandığında çağrılır. Aksi hâlde sonucu ZATEN atılacak bir işçi, DB
 #' bağlantısını ve işçi yuvasını doğal bitişine veya tam analiz son tarihine
 #' kadar tutmaya devam ederdi.
-# `release` VARSAYILAN OLARAK FALSE'tur: gezinme/yeni sohbet yollarında eski
-# isteğin serbest bırakma kapanışını çalıştırmak, ZATEN sıfırlanmış TAZE durumu
-# ezerdi. Yalnızca oturum kapanışı `release = TRUE` ile çağırır (orada ezilecek
-# taze durum yoktur ve yazma/temizleme kapanışlarının koşması gerekir).
+# BACKPRESSURE YUVASI HER ZAMAN BIRAKILIR.
+#
+# Kayıtlı `release` kapanışı YALNIZCA `mergen_send_message_release_values_token()`
+# çağırır ve o yardımcı zaten SAHİPLİK denetimlidir: `backpressure_request_id`
+# hâlâ bu isteğe ait değilse hiçbir şey yapmaz. Dolayısıyla daha yeni bir
+# isteğin yuvasını ya da sıfırlanmış TAZE durumu ezmesi mümkün değildir.
+#
+# Eski `release = FALSE` varsayılanı yalnızca iptal sinyali gönderiyordu; ODBC/
+# LLM/yerel kod içinde takılmış bir işçi iptal bayrağını hemen göremediğinde
+# her gezinme süreç genelinde bir admisyon yuvasını işçi/son tarih bitene kadar
+# TUTUYOR ve bir süre sonra ilgisiz TAZE istekler "sunucu meşgul" ile
+# başarısız oluyordu.
+#
+# `release` parametresi geriye dönük uyumluluk için KORUNUR; bugün yuva
+# bırakma ondan bağımsızdır ve yalnızca ek temizleme kapanışları için ayrılmıştır.
 mergen_pk_abandon_active_requests <- function(session, release = FALSE) {
   kayit <- mergen_pk_active_registry(session)
   if (is.null(kayit)) return(invisible(0L))
@@ -154,7 +165,8 @@ mergen_pk_abandon_active_requests <- function(session, release = FALSE) {
     giris <- try(kayit[[kimlik]], silent = TRUE)
     if (!is.list(giris)) next
     try(pk_cancel_token_signal(giris$cancel_token), silent = TRUE)
-    if (isTRUE(release) && is.function(giris$release)) try(giris$release(), silent = TRUE)
+    # Sahiplik denetimli yuva bırakma her yolda çalışır (bkz. yukarıdaki not).
+    if (is.function(giris$release)) try(giris$release(), silent = TRUE)
   }
 
   # İSTEK KİMLİKLERİ AÇIKÇA GEÇERSİZLENİR. Yalnızca jetonu işaretlemek yetmez:

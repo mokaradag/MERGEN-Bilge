@@ -343,7 +343,7 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # `ai` 380 -> 520 (orkestrasyon iptal/teşhis/onay yollarını da üstlendi),
   # `apply` 250 -> 320, `retrieval` 360 -> 400 (not_for olumsuz kanıtı).
   assert_current_budget("R/helpers_pk_query_retrieval.R", 400L, 17L)
-  assert_current_budget("R/helpers_pk_query_selection_json.R", 220L, 10L)
+  assert_current_budget("R/helpers_pk_query_selection_json.R", 240L, 10L)
   assert_current_budget("R/helpers_pk_query_selection_config.R", 300L, 10L)
   assert_current_budget("R/helpers_pk_query_selection_payload.R", 460L, 18L)
   assert_current_budget("R/helpers_pk_query_selection_prompt.R", 400L, 16L)
@@ -352,12 +352,20 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/helpers_pk_query_selection_decide.R", 400L, 10L)
   assert_current_budget("R/helpers_pk_query_selection_degraded.R", 190L, 7L)
   assert_current_budget("R/helpers_pk_query_selection_session.R", 220L, 14L)
-  assert_current_budget("R/helpers_pk_query_selection_ai.R", 520L, 21L)
+  assert_current_budget("R/helpers_pk_query_selection_ai.R", 560L, 22L)
   assert_current_budget("R/helpers_pk_query_selection_apply.R", 320L, 14L)
 
+  # PR #705 dengeleme (inceleme borcu kok neden duzeltmeleri). Bu uc butce
+  # OLCULEN yeni tabanla guncellendi; hicbir KURESEL esik gevsetilmedi
+  # (skor 100/100, 800+ satir 0, 25+ fonksiyon 0, en buyuk dosya 795):
+  #   * `json` 220 -> 240: ayristirici katiligi (kacis dizisi/kontrol karakteri
+  #     dogrulamasi, yinelenen anahtar taramasinin dize-farkindaligi).
+  #   * `ai` 520 -> 560 ve 21 -> 22: onaylanmis secim yolunun oturum durumu
+  #     okumalari FAIL-SOFT sarmalandi (iki tryCatch isleyicisi).
+  #   * `analysis_ai_selector` 140 -> 155: v1 seciciye tipli reddetme durumu.
   # v1 AI seçicisi modülden çıkarıldı (davranış BİREBİR); modül orkestrasyona
   # odaklı kalır ve 800 satır tavanına geri dayanmaz.
-  assert_current_budget("R/helpers_pk_analysis_ai_selector.R", 140L, 4L)
+  assert_current_budget("R/helpers_pk_analysis_ai_selector.R", 155L, 4L)
 
   # Varlık manifesti VERİ/DOĞRULAYICI/RENDER olarak üç dosyaya bölündü
   # (config_ui_asset_zones.R deseni): config_ui_assets.R 690 satırdan VERİ-odaklı

@@ -37,6 +37,8 @@
 # ==============================================================================
 
 # Olgu durumları. Kullanıcıya görünen metinde değil, olgu kaydında taşınır.
+
+
 PK_FACT_OK <- "ok"
 PK_FACT_SINGLE <- "single_observation"
 PK_FACT_INSUFFICIENT <- "insufficient_data"
@@ -120,7 +122,15 @@ pk_fact_slug <- function(x) {
   )
   txt <- gsub("[^A-Za-z0-9]+", "_", txt)
   txt <- gsub("^_+|_+$", "", txt)
-  txt <- tolower(txt)
+  # OLGU KİMLİĞİ ASCII OLMAK ZORUNDA.
+  #
+  # Bu noktada metin zaten ASCII'ye indirgenmiştir; ancak Türkçe yerelde
+  # `tolower("I")` noktasız `ı` (ASCII DIŞI) üretir ve kimlik VM ile CI
+  # arasında farklılaşır. Aynı olgu iki farklı `[fact:...]` kimliği alır,
+  # modelin işareti doğrulamada bulunamaz ve geçerli sayı reddedilir.
+  # Yerelden BAGIMSIZ ASCII kucuk harf; Turkce yerelde tolower("I") -> "i"
+  # (noktasiz) uretir ve olgu kimligi VM ile CI arasinda FARKLILASIR.
+  txt <- chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", txt)
   if (!nzchar(txt)) return("bilinmeyen")
   substr(txt, 1L, 60L)
 }
@@ -198,6 +208,20 @@ pk_fact_record <- function(kind, column, aggregation, value = NULL, spec = list(
 
   sayisal <- status %in% c(PK_FACT_OK, PK_FACT_SINGLE) &&
     is.numeric(value) && length(value) == 1L && is.finite(value)
+
+  # KESİR TABANLI YÜZDELER OLGU KURULURKEN PUANA ÇEVRİLİR.
+  #
+  # Metadata `unit = "%"` ve `percent_scale = "fraction"` ilan ettiğinde ham
+  # değer 0..1 aralığındadır. Satır içi tablo ve dışa aktarım yolları bunu
+  # ZATEN 100 ile ölçekliyor; olgu yolu ölçeklemiyordu. Sonuç iki yönlü
+  # bozuktu: model `0,6 %` gibi YANLIŞ bir olgu görüyordu ve kullanıcı doğru
+  # biçimde `%61,3` yazdığında sayısal köken doğrulaması bunu değer
+  # uyuşmazlığı sayıp REDDEDİYORDU. Kanonik değer ile gösterim artık aynı
+  # ölçekte üretilir.
+  if (sayisal && identical(as.character(spec$unit %||% "")[1], "%") &&
+      identical(as.character(spec$percent_scale %||% "")[1], "fraction")) {
+    value <- as.numeric(value) * 100
+  }
 
   list(
     fact_id = fact_id,
@@ -471,14 +495,33 @@ pk_latest_fact <- function(data, column, spec = list(), scope = NULL,
   en_yeni <- max(damga[gecerli])
   aday <- gecerli[damga[gecerli] == en_yeni]
 
-  anahtar <- do.call(paste, c(lapply(esitlik, function(s) {
-    ch <- as.character(data[[s]])[aday]
-    out <- paste0(nchar(ch, type = "bytes"), ":", ch)
-    out[is.na(ch)] <- "<NA>:"
-    out
-  }), list(sep = "|")))
+  # BENZERSİZLİK ANAHTARI ile SIRALAMA ANAHTARI AYRIDIR.
+  #
+  # Uzunluk önekli seri hâl (`3:abc`) çakışmasız bir KİMLİKTİR ama SIRA
+  # KORUYUCU DEĞİLDİR: `z` -> `1:z`, `aa` -> `2:aa` olur ve radix sıralaması
+  # `aa`yı son sıraya koyar; oysa ham artan sıralamada son değer `z`dir. Bu
+  # yüzden değişken genişlikli metin tie sütunlarında YANLIŞ satır seçilip
+  # yanlış "en yeni" olgusu yayımlanabiliyordu. Sıralama HAM kanonik değerlerle
+  # yapılır; uzunluk öneki yalnızca benzersizlik denetiminde kullanılır.
+  ham_tie <- lapply(as.list(data[esitlik]), function(sutun) as.character(sutun)[aday])
 
-  if (any(grepl("^<NA>:", anahtar)) || anyDuplicated(anahtar) > 0L) {
+  # Uzunluk öneki ÇAKIŞMASIZ bir KİMLİKTİR ama SIRA KORUYUCU DEĞİLDİR; bu
+  # yüzden yalnızca benzersizlik denetiminde kullanılır, sıralamada DEĞİL.
+  onekli <- ham_tie
+  for (i in seq_along(onekli)) {
+    ch <- onekli[[i]]
+    yeni <- paste0(nchar(ch, type = "bytes"), ":", ch)
+    yeni[is.na(ch)] <- "<NA>:"
+    onekli[[i]] <- yeni
+  }
+  anahtar <- do.call(paste, c(onekli, list(sep = "|")))
+
+  # BİLEŞİK anahtarın HERHANGİ bir sütununda eksik değer varsa anahtar
+  # benzersiz sayılamaz. Eski denetim `^<NA>:` ile YALNIZCA İLK sütunu
+  # görüyordu; ikinci/üçüncü tie sütunundaki NA fark edilmeden geçiyordu.
+  eksik_var <- Reduce(`|`, lapply(ham_tie, is.na), init = rep(FALSE, length(aday)))
+
+  if (any(eksik_var) || anyDuplicated(anahtar) > 0L) {
     return(yap(NULL, PK_FACT_AMBIGUOUS_LATEST, sprintf(
       "En yeni damgada %d satir var ve latest_tie_by benzersiz degil; deger SECILMEDI.",
       length(aday)
@@ -488,7 +531,19 @@ pk_latest_fact <- function(data, column, spec = list(), scope = NULL,
   secilen <- if (length(aday) == 1L) {
     aday
   } else {
-    aday[order(anahtar, method = "radix")][length(aday)]
+    aday[do.call(order, c(ham_tie, list(method = "radix")))][length(aday)]
+  }
+
+  # integer64 KESİNLİK MUHAFAZASI "en yeni" olgusunda da geçerlidir.
+  #
+  # Ölçü istatistiklerinde `.pk_precision_loss()` uygulanıyordu ama bu yol
+  # doğrudan `as.numeric()` çağırıyordu; 2^53 üstü bir BIGINT sessizce
+  # yuvarlanıp GERÇEK olmayan bir sayı olgu olarak yayımlanabiliyordu.
+  if (.pk_precision_loss(data[[column]][secilen])) {
+    return(yap(NULL, PK_FACT_PRECISION, paste(
+      "En yeni satirdaki deger 2^53 ustunde tam sayi tasiyor (BIGINT/integer64);",
+      "kayipsiz temsil edilemedigi icin SECILMEDI."
+    )))
   }
 
   deger <- .pk_guarded(suppressWarnings(as.numeric(data[[column]][secilen])))
@@ -611,13 +666,29 @@ pk_packet_all_facts <- function(packet) {
   hepsi <- c(packet$facts %||% list(), grup_olgulari %||% list(),
              pk_packet_context_facts(packet, scope = packet$scope$scope_signature))
 
+  # ÇAKIŞAN KİMLİKLER DOĞRULAYICIYA ULAŞMADAN ATILMAZ.
+  #
+  # `pk_facts_index()` aynı kimliğe düşen İKİ FARKLI olguyu bilerek "belirsiz"
+  # işaretler ve o kimlik üzerinden hiçbir iddiayı kabul etmez. Eski "ilk
+  # kazanır" tekilleştirmesi ikinci olguyu doğrulayıcı görmeden siliyordu;
+  # kimlik yeteneğe/toplulaştırmaya göre üretildiği için aynı yeteneği paylaşan
+  # iki ölçü sütunu meşru biçimde çakışabiliyor ve provenans, ikinci sütuna
+  # atfedilen bir sayıyı BİRİNCİ sütunun değeriyle doğrulayabiliyordu.
+  #
+  # BİREBİR AYNI olgu (aynı kimlik + aynı değer + aynı durum) yinelemesi
+  # gerçek bir çakışma değildir; yalnızca o eleniyor.
   out <- list()
+  imza <- character(0)
   for (o in hepsi) {
     if (!is.list(o) || !is.character(o$fact_id) || !nzchar(o$fact_id)) next
-    if (is.null(out[[o$fact_id]])) out[[o$fact_id]] <- o
+    kimlik <- paste(o$fact_id, o$column %||% "", o$aggregation %||% "",
+                    o$status %||% "", format(o$value %||% NA), sep = "\u0001")
+    if (kimlik %in% imza) next
+    imza <- c(imza, kimlik)
+    out[[length(out) + 1L]] <- o
   }
 
-  unname(out)
+  out
 }
 
 #' Ağırlıklı ortalama olgusu (§5.7 geçersiz ağırlık sözleşmesi)

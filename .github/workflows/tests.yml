@@ -75,9 +75,10 @@ jobs:
       # NOT: asagidaki `packages: |` blok skaleri yalnizca paket belirtimi icermelidir.
       # Icine yazilan `# ...` satirlari YAML yorumu degil, girdi degerinin parcasidir ve
       # pak::lockfile_create() tarafindan paket adi gibi ayristirilir. Aciklamalar bu
-      # blogun disinda tutulmalidir. RSQLite, config_packages.R icindeki
-      # `required_packages` listesinde oldugu icin zorunludur: eksik oldugunda acilis
-      # stop() eder ve 'App boot smoke' adimi kirilir.
+      # blogun disinda tutulmalidir. RSQLite TEST-ONLY bir bagimliliktir
+      # (gercek SQLite ile DB havuzu / Ortak Oturum davranis testleri ve soak
+      # betikleri); `required_packages` icinde YER ALMAZ ama testthat adimi
+      # icin burada kurulmalidir.
       - name: Install R package dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:

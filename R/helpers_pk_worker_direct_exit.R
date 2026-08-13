@@ -97,7 +97,11 @@ if (isTRUE(.pk_worker_direct_exit_mode) &&
       # iken HEMEN `FALSE` döner, yani bu sarmalayıcı geri getirmesi gereken
       # doğrudan çıkışların HİÇBİRİNİ `MB_Analiz_Log`'a yazmaz; yalnızca köken
       # kaydını bırakırdı. Ana süreçteki karşılığı da bağlantıyı açıp bırakır.
-      baglanti <- .pk_worker_observer_connection()
+      # DB HATASINDAN SONRA YENİDEN BAĞLANILMAZ.
+      db_hatasi <- exists("pk_direct_exit_is_db_failure", mode = "function", inherits = TRUE) &&
+        isTRUE(tryCatch(pk_direct_exit_is_db_failure(sonuc), error = function(e) FALSE))
+
+      baglanti <- if (db_hatasi) list(conn = NULL, conn_info = NULL) else .pk_worker_observer_connection()
       if (!is.null(baglanti$conn_info)) {
         on.exit(try(release_connection(baglanti$conn_info), silent = TRUE), add = TRUE)
       }
@@ -124,7 +128,10 @@ if (isTRUE(.pk_worker_direct_exit_mode) &&
         # bildirimi gitmesi kabul edilemez.
         filter_status = if (isTRUE(durduruldu)) "stopped" else "not_reached",
         filters = list(),
-        outcome = if (istisna) "Hata" else if (isTRUE(durduruldu)) "Durduruldu" else "DogrudanYanit",
+        # Ana süreçle AYNI eşleme (bkz. helpers_pk_worker_observers.R).
+        outcome = if (exists("pk_direct_exit_outcome", mode = "function", inherits = TRUE)) {
+          pk_direct_exit_outcome(sonuc, stopped = isTRUE(durduruldu), error = istisna)
+        } else if (istisna) "Hata" else if (isTRUE(durduruldu)) "Durduruldu" else "DogrudanYanit",
         duration_ms = as.numeric(difftime(Sys.time(), basladi, units = "secs")) * 1000
       )), silent = TRUE)
     }

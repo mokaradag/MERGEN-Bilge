@@ -106,6 +106,7 @@ pk_entity_apply_enabled <- function(query_meta = NULL) {
 #'
 #' @return `list(action, filters, decisions, disclosures, message_tr)`.
 #'   `action`: "proceed" (derlemeye devam) veya "halt" (analiz yapılmaz).
+
 pk_entity_resolve_filter_plan <- function(data, filters, query = NULL,
                                           chat_history = NULL,
                                           prior_context = NULL) {
@@ -192,7 +193,15 @@ pk_entity_resolve_filter_plan <- function(data, filters, query = NULL,
       query_meta = meta_kok,
       entity_kinds = cmeta$entity_kinds,
       prior_context = prior_context,
-      context_key = list(column = sutun)
+      # BAĞLAM ANAHTARI SORGU KİMLİĞİNİ DE İÇERİR.
+      #
+      # `pk_entity_resolve_with_history()` anahtarı TAM KİMLİK olarak
+      # karşılaştırır ve sözleşmesi query_id + column + entity_kind'dir.
+      # Yalnızca `column` vermek iki yönlü bozuktu: doğru kurulmuş bir bağlam
+      # ASLA eşleşemiyordu (devralma ölü koddu) ve eşleşseydi bile iki FARKLI
+      # sorgudaki aynı adlı sütun (ör. `ProjeAdi`) birbirinin bağlamını
+      # devralabilirdi.
+      context_key = .pk_entity_context_key(query, sutun, cmeta)
     )
 
     karar$column <- sutun

@@ -16,6 +16,15 @@
 # Bu yardımcı YALNIZCA gözlem amaçlıdır: `filters` / `aggregation` alanlarının
 # şekli ve içeriği DEĞİŞMEZ, yanına yalnızca `status` eklenir. v1 motorunun
 # hangi filtreyi uyguladığı bu değişiklikle aynen korunur.
+
+# Yerelden BAĞIMSIZ ASCII küçük harf (makine/protokol belirteçleri için).
+# Ortak yardımcı `R/helpers_pk_text_turkish.R` içindedir; bu dosya izole
+# testlerde tek başına source edilebildiği için yerel bir yedeği vardır.
+.pk_filter_base_ascii_lower <- function(x) {
+  if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) return(pk_ascii_lower(x))
+  chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", as.character(x))
+}
+
 .pk_filter_empty_result <- function(status) {
   list(filters = list(), aggregation = NULL, status = status)
 }
@@ -23,7 +32,9 @@
 # LLM çağrısının hata mesajından zaman aşımını ayırt eder. httr/curl zaman
 # aşımı hata olarak yüzeye çıktığı için sınıflandırma mesaj üzerinden yapılır.
 .pk_filter_classify_llm_error <- function(message_text) {
-  txt <- tolower(as.character(message_text %||% "")[1])
+  # `timeout`/`timed out` ASCII makine işaretleridir (bkz. aynı gerekçe
+  # helpers_pk_query_selection_degraded.R içinde).
+  txt <- .pk_filter_base_ascii_lower(as.character(message_text %||% "")[1])
   if (grepl("timeout|timed out|zaman a", txt, useBytes = TRUE)) "timeout" else "error"
 }
 
@@ -101,22 +112,19 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
     "4. **Esnek Eşleştirme:** Kullanıcının 'Mühendisler' dediği şeyi veride 'Mühendis' veya 'Engineer' olarak bulabilirsin. 'operation' alanını buna göre seç.\n",
     "5. **Büyük/Küçük Harf Duyarsız:** Filtre değerlerini olduğu gibi al, kod tarafında case-insensitive arama yapılacaktır.\n\n",
 
-    "### MANTIKSAL OPERATÖRLER VE KOMPLEKS FİLTRELER:\n",
-    "Standart 'filters' listesi her zaman 'AND' (VE) ile birleştirilir. Eğer 'OR' (VEYA) mantığı gerekiyorsa veya karmaşık parantezli işlemler varsa (A ve (B veya C)):\n",
-    "- 'filter_expression' alanını doldur. Bu alan geçerli bir R data.table filtreleme stringi olmalıdır.\n",
-    "- Örnek: \"(Durum == 'In Progress') & (KalanIscilik_sa > 5000 | MasrafYeri == 'IT')\"\n",
-    "- String içinde sütun isimlerini aynen kullan.\n",
-    "- String operatörleri: ==, !=, >, <, >=, <=, &, |, %in%\n",
-    "- 'contains' benzeri işler için: grepl('değer', SutunAdi, ignore.case=TRUE)\n",
-    "\U000026A0\U0000FE0F KRİTİK KURALLAR:\n",
-    "1. Parantezleri mutlaka dengele! Açılan her '(' kapatılmalıdır.\n",
-    "2. String içindeki değerler için TEK TIRNAK (') kullan. Çift tırnak (\") JSON yapısını bozar.\n",
-    "3. Örnek: \"(Durum == 'Completed') | (grepl('Analiz', Aciklama))\"\n\n",
+    "### MANTIKSAL OPERATÖRLER (VE / VEYA):\n",
+    "Standart 'filters' listesi her zaman 'AND' (VE) ile birleştirilir. VEYA gerektiğinde AŞAĞIDAKİ İKİ YOLDAN birini kullan:\n",
+    "1. **Aynı sütunda birden çok değer** -> TEK bir filtre yaz ve 'value' alanına DİZİ ver.\n",
+    "   Örn: {\"column\":\"Durum\",\"value\":[\"Aktif\",\"Beklemede\"],\"operation\":\"exact_match\"}\n",
+    "2. **Farklı sütunlar arasında VEYA / parantezli mantık** -> 'filters' içine bir GRUP nesnesi koy:\n",
+    "   {\"operator\":\"or\",\"children\":[ {<filtre>}, {<filtre>} ]}\n",
+    "   Gruplar iç içe olabilir ve 'operator' yalnızca \"and\" veya \"or\" alır.\n",
+    "\U000026A0\U0000FE0F ASLA R kodu, ifade metni, fonksiyon çağrısı veya 'filter_expression' ÜRETME.\n",
+    "   Yalnızca yukarıdaki JSON yapıları kabul edilir; kod içeren yanıt REDDEDİLİR.\n\n",
 
     "### ÇIKTI FORMATI (JSON):\n",
     "{\n",
     "  \"filters\": [ ... ], \n",
-    "  \"filter_expression\": null, // Karmaşık mantık (OR/AND) gerekiyorsa string ifade. Örn: \"(A==1 | B==2)\". Yoksa null.\n",
     "  \"aggregation\": \"count\",\n",
     "  \"group_column\": null\n",
     "}\n\n",
@@ -178,16 +186,23 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
     filter_model <- getOption("mergen.filter_model", api_config$local_models[1])
     creds <- resolve_local_llm_credentials(filter_model)
 
-    api_key_val <- NULL
-    if (!is.null(session) && !is.null(session$userData$ai_api_key)) {
-      api_key_val <- as.character(session$userData$ai_api_key)[1]
+    # SAHİPLİK DENETİMLİ ANAHTAR ÇÖZÜMLEMESİ (§1F): `session$userData$ai_api_key`
+    # doğrudan okunamaz; SSO kimlik değişimi sonrasında o yuva BAŞKA bir
+    # kullanıcının kişisel anahtarını taşıyor olabilir.
+    api_key_val <- if (exists("mb_api_key_get_feature_key_value", mode = "function", inherits = TRUE)) {
+      tryCatch(
+        mb_api_key_get_feature_key_value(
+          session = session, fallback_key = creds$default_api_key %||% ""
+        ),
+        error = function(e) NULL
+      )
+    } else {
+      NULL
     }
 
-    if (is.null(api_key_val) || !nzchar(api_key_val)) {
+    if (length(api_key_val) != 1L || is.na(api_key_val) || !nzchar(as.character(api_key_val)[1])) {
       default_key <- creds$default_api_key %||% ""
-      if (nzchar(default_key)) {
-        api_key_val <- as.character(default_key)[1]
-      }
+      api_key_val <- if (nzchar(default_key)) as.character(default_key)[1] else NULL
     }
 
 	# D9: v1'in sabit 8 saniyesi fazla agresifti ve zaman asimi "filtre
@@ -405,21 +420,15 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     }
   }
 
+  # GÜVENLİK SINIRI — model üretimi ifade ASLA çalıştırılmaz (bkz.
+  # R/helpers_pk_analysis_filters.R içindeki aynı sınır). Bu gövde çalışma
+  # zamanında `helpers_pk_analysis_filters.R` tarafından gölgelenir, ancak
+  # izole test/hata ayıklama oturumlarında doğrudan source edilebildiği için
+  # `eval(parse())` yolu BURADA DA bulunmamalıdır.
   applied_expression_success <- FALSE
 
   if (!is.null(filter_instructions$filter_expression) && nzchar(filter_instructions$filter_expression)) {
-    cat(sprintf("[SMART_FILTER] Kompleks İfade Tespit Edildi: %s\n", filter_instructions$filter_expression))
-
-    tryCatch({
-      expr_str <- filter_instructions$filter_expression
-      dt <- subset(dt, eval(parse(text = expr_str)))
-
-      cat(sprintf("[SMART_FILTER] İfade başarıyla uygulandı. Kalan satır: %d\n", nrow(dt)))
-      applied_expression_success <- TRUE
-    }, error = function(e) {
-      cat(sprintf("[SMART_FILTER] HATA: İfade uygulanamadı (%s). Standart filtre listesine (AND) dönülüyor.\n", e$message))
-      applied_expression_success <- FALSE
-    })
+    cat("[SMART_FILTER] filter_expression yok sayildi (calistirilabilir ifade kabul edilmez).\n")
   }
 
   if (!applied_expression_success) {

@@ -141,7 +141,7 @@ source_manifest_sections <- list(
   # config_sql_loader.R'den ÖNCE biter. Yerel iki dosya BİLİNÇLİ opsiyoneldir
   # (gitignore'lu); bulut checkout'unda yoklukları NORMALDİR.
   pk_query_metadata = c(
-    "R/helpers_pk_text_turkish.R",
+    "R/helpers_pk_ascii_tokens.R", "R/helpers_pk_text_turkish.R",  # makine belirteçleri (ASCII katlama), sonra Türkçe metin
     "R/helpers_pk_query_meta_schema.R",
     "R/helpers_pk_query_meta_access.R",
     "R/library_query_meta_auto.R",
@@ -300,12 +300,12 @@ source_manifest_sections <- list(
     "R/helpers_pk_entity_scan.R",
     "R/helpers_pk_entity_resolver.R",
     "R/helpers_pk_entity_history.R",
-    "R/helpers_pk_entity_apply.R",
+    "R/helpers_pk_entity_context.R", "R/helpers_pk_entity_apply.R",  # ilki: D11 devralınan bağlam anahtarı/kaydı
     # Faz 1 v2 davranış katmanı (MERGEN_PK_ENGINE=v2 arkasında): saf filtre
     # derleyicisi -> saf sıfır-eşleşme politikası -> v2 yürütücüsü. Yürütücü
     # ikisini de kullandığı için en sonda gelir; üçü de v1 uyumluluk yüzeyi
     # olan helpers_pk_analysis_filters.R'den ÖNCE yüklenmelidir.
-    "R/helpers_pk_filter_compile.R",
+    "R/helpers_pk_filter_compile.R", "R/helpers_pk_filter_group.R",  # ikincisi: açık AND/OR gruplarının inert değerlendiricisi
     "R/helpers_pk_filter_policy.R",
     "R/helpers_pk_analysis_filters_v2.R",
     # Saf istem bütçesi/yük kurucusu ve saf sistem istemi kurucusu; modül

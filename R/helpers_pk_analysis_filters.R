@@ -303,31 +303,28 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     }
   }
 
+  # GÜVENLİK SINIRI — MODEL ÜRETİMİ İFADE ASLA ÇALIŞTIRILMAZ.
+  #
+  # Bu blok eskiden `subset(dt, eval(parse(text = expr_str)))` çağırıyordu.
+  # `expr_str` tamamen LLM üretimidir ve LLM girdisi kullanıcı istemi ile
+  # sohbet geçmişinden beslenir; yani istem enjeksiyonuyla erişilebilen bir
+  # UZAKTAN KOD ÇALIŞTIRMA yoluydu. `eval(parse())`'ı "güvenli hâle getirmek"
+  # için ifadeyi ayıklamak mümkün değildir; mekanizmanın kendisi kaldırılmıştır.
+  #
+  # Yerine geçen yol: yapılandırılmış `filters` listesi (ve v2'de açık
+  # `children`/`operator` mantık grupları) — bunlar VERİdir, kod değildir ve
+  # yalnızca izin verilen işlemlerle değerlendirilir. Bu, ifadenin
+  # ayrıştırılamadığı durumda zaten var olan ve sınanmış geri düşme yoludur.
   applied_expression_success <- FALSE
 
   if (!is.null(filter_instructions$filter_expression) &&
       nzchar(as.character(filter_instructions$filter_expression)[1])) {
     expr_str <- as.character(filter_instructions$filter_expression)[1]
-    cat(sprintf("[SMART_FILTER] Kompleks İfade Tespit Edildi: %s\n", expr_str))
-
-    tryCatch({
-      # Bu ifade gerçek motor geçişidir ve yalnızca burada değerlendirilir.
-      dt <- subset(dt, eval(parse(text = expr_str)))
-      cat(sprintf("[SMART_FILTER] İfade başarıyla uygulandı. Kalan satır: %d\n", nrow(dt)))
-      applied_expression_success <- TRUE
-      applied <- list(list(
-        column = "filter_expression",
-        value = expr_str,
-        operation = "expression"
-      ))
-    }, error = function(e) {
-      cat(sprintf("[SMART_FILTER] HATA: İfade uygulanamadı (%s). Standart filtre listesine (AND) dönülüyor.\n", e$message))
-      dropped[[length(dropped) + 1L]] <<- .pk_filter_dropped(
-        list(column = "filter_expression", value = expr_str, operation = "expression"),
-        paste0("ifade uygulanamadı: ", conditionMessage(e))
-      )
-      applied_expression_success <<- FALSE
-    })
+    cat("[SMART_FILTER] filter_expression yok sayildi (calistirilabilir ifade kabul edilmez).\n")
+    dropped[[length(dropped) + 1L]] <- .pk_filter_dropped(
+      list(column = "filter_expression", value = expr_str, operation = "expression"),
+      "çalıştırılabilir ifade kabul edilmez"
+    )
   }
 
   if (!applied_expression_success) {

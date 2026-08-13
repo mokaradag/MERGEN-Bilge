@@ -65,8 +65,15 @@ pk_safe_error_message <- function(raw_message) {
     return(PK_GENERIC_DB_ERROR_MESSAGE)
   }
 
+  # REDAKSİYON BAŞARISIZSA HAM METNE DÖNÜLMEZ.
+  #
+  # Eski yedek yol (`error = function(e) metin`) tam olarak korunmak istenen
+  # şeyi sızdırıyordu: redaktör bir DSN/parola/anahtar içeren metinde hata
+  # verdiğinde, o ham metin kullanıcıya ve loga aynen gidiyordu. Redaksiyon
+  # yapılamıyorsa doğru davranış GENEL mesaja düşmektir.
   if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
-    metin <- tryCatch(redact_sensitive_text(metin), error = function(e) metin)
+    metin <- tryCatch(redact_sensitive_text(metin),
+                      error = function(e) PK_GENERIC_DB_ERROR_MESSAGE)
   }
 
   metin
@@ -105,8 +112,11 @@ pk_report_db_error <- function(raw_message, context_label = "PK_ANALIZ",
   ham <- as.character(raw_message %||% "")[1]
   if (is.na(ham)) ham <- ""
 
+  # Aynı kapalı-başarısız kural sunucu logu için de geçerlidir: redaktör hata
+  # verdiğinde ham metin DİSKE YAZILMAZ.
   if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
-    ham <- tryCatch(redact_sensitive_text(ham), error = function(e) ham)
+    ham <- tryCatch(redact_sensitive_text(ham),
+                    error = function(e) "[redaksiyon basarisiz - ham metin gizlendi]")
   }
 
   try(

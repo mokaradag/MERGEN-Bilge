@@ -4,6 +4,15 @@
 #           getirme-sonrası gerçek sütun doğrulaması.
 # ==============================================================================
 
+
+# Yerelden BAĞIMSIZ ASCII küçük harf (makine/protokol belirteçleri için).
+# Ortak yardımcı `R/helpers_pk_text_turkish.R` içindedir; bu dosya izole
+# testlerde tek başına source edilebildiği için yerel bir yedeği vardır.
+.pk_meta_ascii_lower <- function(x) {
+  if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) return(pk_ascii_lower(x))
+  chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", as.character(x))
+}
+
 PK_META_STATUS_NO_SEMANTICS <- "unknown_no_semantic_metadata"
 PK_META_STATUS_OK <- "ok"
 PK_META_RLS_FIELDS <- c("masraf_yeri_col", "proje_kodu_col", "eps_kodu_col")
@@ -35,7 +44,12 @@ pk_meta_tier0_fallbacks <- function() {
 }
 
 .pk_meta_role_from_class <- function(tip) {
-  tip <- tolower(as.character(tip)[1])
+  # ŞEMA TİPİ BİR PROTOKOL BELİRTECİDİR, İNSAN METNİ DEĞİL.
+  #
+  # Türkçe yerelde `tolower("POSIXct")` -> "posıxct" (noktasız ı) üretir ve
+  # eşleşme listesiyle uyuşmaz; tarih sütunu sessizce "dimension" rolüne düşer,
+  # zaman kapsamı/olgu üretimi ve filtre yolu yanlış davranır.
+  tip <- .pk_meta_ascii_lower(as.character(tip)[1])
   if (tip %in% c("date", "posixct", "posixt", "posixlt", "datetime", "idate")) return("date")
   if (tip %in% c("numeric", "double", "integer", "int", "num", "integer64", "decimal", "float")) {
     return("measure")

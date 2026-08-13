@@ -27,9 +27,37 @@
   metin <- trimws(text)
   if (!grepl("^```", metin)) return(metin)
 
-  metin <- sub("^```[[:alnum:]_+-]*[[:space:]]*", "", metin)
-  metin <- sub("```[[:space:]]*$", "", metin)
-  trimws(metin)
+  # KAPANMAMIŞ ÇİT SOYULMAZ.
+  #
+  # Eskiden yalnızca AÇILIŞ çiti aranıyordu; kesilmiş (truncated) bir model
+  # yanıtı olan "```json\n{...kesildi" açılışı soyulup gövde JSON gibi
+  # değerlendiriliyordu. Kapanış çiti YOKSA yanıt EKSİKTİR ve ayrıştırma
+  # denenmemelidir: metin olduğu gibi döner ve dıştaki katı `{...}` denetimi
+  # onu reddeder.
+  govde <- sub("^```[[:alnum:]_+-]*[[:space:]]*", "", metin)
+  if (!grepl("```[[:space:]]*$", govde)) return(metin)
+
+  trimws(sub("```[[:space:]]*$", "", govde))
+}
+
+# JSON dize kaçışlarını çöz (yalnızca anahtar KARŞILAŞTIRMASI için).
+#
+# `"model"` ile `"\u006dodel"` AYNI JSON üye adıdır; ham metinde ise farklı
+# görünürler. Kaçışlar çözülmeden yapılan yineleme denetimi bu yüzden
+# atlatılabiliyordu: çelişkili iki `confidence` alanından biri kaçışla
+# yazıldığında denetim kaçırıyor ve `jsonlite` sessizce birini seçiyordu.
+.pk_select_decode_json_name <- function(name) {
+  if (!nzchar(name)) return(name)
+  if (!grepl("\\", name, fixed = TRUE)) return(name)
+
+  cozulmus <- tryCatch(
+    jsonlite::fromJSON(paste0("\"", name, "\""), simplifyVector = TRUE),
+    error = function(e) NULL
+  )
+  if (is.character(cozulmus) && length(cozulmus) == 1L && !is.na(cozulmus)) {
+    return(cozulmus)
+  }
+  name
 }
 
 #' Aynı JSON nesnesinde tekrar eden anahtarları bul
@@ -64,6 +92,7 @@ pk_select_json_duplicate_keys <- function(text) {
         j <- j + 1L
       }
       bekleyen <- if (j > basla) paste(karakterler[basla:(j - 1L)], collapse = "") else ""
+      bekleyen <- .pk_select_decode_json_name(bekleyen)
       i <- j + 1L
       next
     }
@@ -162,10 +191,14 @@ pk_select_string_array <- function(x) {
   if (is.null(x)) return(list(ok = FALSE, values = character(0)))
   if (is.character(x) && !is.null(names(x))) return(list(ok = FALSE, values = character(0)))
 
-  # JSON dizisi liste olarak gelir; tek elemanlı bir dize de kabul edilir
-  # (model tek aday döndürdüğünde `simplifyVector = FALSE` yine liste verir,
-  # ama elle kurulan test/çağrı şekilleri için toleranslıdır).
-  ogeler <- if (is.list(x)) x else as.list(x)
+  # DİZİ İSTENEN YERDE SKALER DİZE KABUL EDİLMEZ.
+  #
+  # `simplifyVector = FALSE` ile ayrıştırılan GERÇEK bir JSON dizisi HER ZAMAN
+  # listedir. Skaleri `as.list()` ile diziye yükseltmek, sözleşmeyi ihlal eden
+  # bir yanıtı (`"aday": "Q1"` yerine `["Q1"]`) sessizce kabul etmek demekti;
+  # model dizi sözleşmesini bozduğunda bunu görmemiz gerekir.
+  if (!is.list(x)) return(list(ok = FALSE, values = character(0)))
+  ogeler <- x
   if (!length(ogeler)) return(list(ok = TRUE, values = character(0)))
   if (!is.null(names(ogeler)) && any(nzchar(names(ogeler)))) {
     return(list(ok = FALSE, values = character(0)))

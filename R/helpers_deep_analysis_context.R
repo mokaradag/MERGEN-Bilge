@@ -158,6 +158,30 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     "Her sorguyu kendi bölümünde değerlendir, sonra genel bir sentez yap."
   )
 
+  # İSTEK GENELİ İSTEM BÜTÇESİ (birleşik bağlam).
+  #
+  # Her sorgu özeti KENDİ sınırıyla bağlıydı ve her birinin ayrı
+  # serileştirilmiş `preview_json` bloğu o sınıra hiç girmiyordu. Birkaç sorgu
+  # seçildiğinde (ya da geniş/uzun önizleme değerlerinde) NİHAİ girdi
+  # `MERGEN_PK_PROMPT_CHAR_BUDGET` / model bağlam sınırını aşabiliyor ve
+  # geçerli bir derin analiz son LLM çağrısında TAMAMEN düşüyordu. Bütçe artık
+  # sistem metni + soru + tüm sorgu blokları + başarısız/kısmi notları
+  # EKLENDİKTEN SONRA, yani modelin gerçekten göreceği yük üzerinde uygulanır.
+  #
+  # Deterministik bozulma: önizleme JSON blokları SONDAN başlayarak düşürülür
+  # (istatistik özetleri korunur, çünkü asıl analiz onlara dayanır) ve düşürme
+  # AÇIKÇA ifşa edilir. Hiçbir sorgu sessizce kaybolmaz.
+  if (exists("pk_deep_fit_context_budget", mode = "function", inherits = TRUE)) {
+    sigdirma <- tryCatch(
+      pk_deep_fit_context_budget(system_prompt, user_context, data_blocks,
+                                 detail_config = detail_config),
+      error = function(e) NULL
+    )
+    if (is.list(sigdirma) && is.character(sigdirma$user_context)) {
+      user_context <- sigdirma$user_context
+    }
+  }
+
   return(list(
     type = "data_analysis",
     prompt_context = system_prompt,
@@ -165,5 +189,61 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     query_count = query_count,
     max_tokens = max_tokens
   ))
+}
+
+#' Birleşik derin analiz bağlamını istek geneli istem bütçesine sığdır
+#'
+#' Saftır: Shiny/DB/ağ bağımlılığı yoktur. Bütçeye SIĞIYORSA metin aynen döner.
+pk_deep_fit_context_budget <- function(system_prompt, user_context, data_blocks,
+                                       detail_config = NULL) {
+  butce <- if (exists("pk_prompt_char_budget", mode = "function", inherits = TRUE)) {
+    suppressWarnings(as.integer(pk_prompt_char_budget(
+      query_meta = if (is.list(detail_config)) detail_config$query_meta else NULL
+    ))[1])
+  } else {
+    NA_integer_
+  }
+  if (length(butce) != 1L || is.na(butce) || butce <= 0L) {
+    return(list(user_context = user_context, trimmed = FALSE))
+  }
+
+  sabit <- nchar(system_prompt, type = "chars")
+  toplam <- function(txt) sabit + nchar(txt, type = "chars")
+
+  if (toplam(user_context) <= butce) {
+    return(list(user_context = user_context, trimmed = FALSE))
+  }
+
+  # Önizleme JSON bölümlerini sondan başlayarak düşür.
+  kirpilmis <- user_context
+  dusurulen <- 0L
+  desen <- "\n\n--- \u00d6RNEK VER\u0130 \\(JSON\\) ---\n[^\n]*"
+
+  while (toplam(kirpilmis) > butce && grepl(desen, kirpilmis)) {
+    # Yerine konan metin desenle ESLESMEMELIDIR; aksi halde dongu ayni blogu
+    # sonsuza kadar "dusurmeye" calisir ve metin hic kucullmez.
+    konumlar <- gregexpr(desen, kirpilmis)[[1]]
+    if (konumlar[1] < 1L) break
+    son <- length(konumlar)
+    bas <- konumlar[son]
+    boy <- attr(konumlar, "match.length")[son]
+    kirpilmis <- paste0(
+      substr(kirpilmis, 1L, bas - 1L),
+      "\n\n[ORNEK VERI: istem butcesi nedeniyle GONDERILMEDI]",
+      substr(kirpilmis, bas + boy, nchar(kirpilmis))
+    )
+    dusurulen <- dusurulen + 1L
+  }
+
+  if (dusurulen > 0L) {
+    kirpilmis <- paste0(
+      kirpilmis,
+      sprintf(paste0("\n\n\U000026A0\U0000FE0F İSTEM BÜTÇESİ: %d sorgunun örnek veri (JSON) ",
+                     "bloğu bütçeye sığmadığı için GÖNDERİLMEDİ; istatistiksel özetler korundu."),
+              dusurulen)
+    )
+  }
+
+  list(user_context = kirpilmis, trimmed = dusurulen > 0L, dropped_previews = dusurulen)
 }
 

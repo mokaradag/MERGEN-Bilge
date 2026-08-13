@@ -107,7 +107,7 @@ mergen_pk_run_sync <- function(ctx) {
   }, error = function(e) {
     ham <- tryCatch(conditionMessage(e), error = function(x) "")
     if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
-      ham <- tryCatch(redact_sensitive_text(ham), error = function(x) ham)
+      ham <- tryCatch(redact_sensitive_text(ham), error = function(x) "[redaksiyon yok]")  # fail-closed
     }
     try(log_error(sprintf("[PK_SYNC] Analiz modulu hatasi: %s", substr(ham, 1L, 400L))),
         silent = TRUE)

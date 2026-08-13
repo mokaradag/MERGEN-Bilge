@@ -124,11 +124,35 @@ pk_build_analysis_payload <- function(stat_summary, query, engine_is_v2 = FALSE,
     return(kur(stat_summary$summary_text, json, NULL))
   }
 
+  # İFŞALAR SIĞDIRMADAN ÖNCE HESAPLANIR VE BÜTÇEDEN DÜŞÜLÜR.
+  #
+  # Eskiden yük bütçeye sığdırılıyor, ARDINDAN bütçe notu ve politika ifşa
+  # bloğu sonuna EKLENİYORDU; yani nihai model yükü bütçeyi aşabiliyordu.
+  # Bütçe, modelin GÖRDÜĞÜ nihai yükün tamamı için geçerlidir.
+  ifsa <- if (is.list(policy) &&
+              exists("pk_filter_policy_disclosure_block", mode = "function", inherits = TRUE)) {
+    pk_filter_policy_disclosure_block(
+      policy,
+      dropped = policy$dropped %||% list(),
+      noop_columns = policy$noop_columns %||% character(0)
+    )
+  } else {
+    NULL
+  }
+
+  ifsa_metni <- if (is.null(ifsa)) "" else paste0("\n\n", ifsa)
+
+  # Bütçe notunun kendisi de yüke girer; en uzun biçimi için pay ayrılır.
+  not_payi <- 220L
+  toplam_butce <- pk_prompt_char_budget(if (is.list(query)) query$meta else NULL)
+  fit_butcesi <- max(0L, as.integer(toplam_butce) -
+                       nchar(ifsa_metni, type = "chars") - not_payi)
+
   fit <- pk_prompt_fit_payload(
     stat_summary$summary_text,
     stat_summary$preview_data,
     kur,
-    budget = pk_prompt_char_budget(if (is.list(query)) query$meta else NULL)
+    budget = fit_butcesi
   )
 
   data_str <- fit$payload
@@ -143,14 +167,7 @@ pk_build_analysis_payload <- function(stat_summary, query, engine_is_v2 = FALSE,
     data_str <- paste0(data_str, not)
   }
 
-  if (is.list(policy) && exists("pk_filter_policy_disclosure_block", mode = "function", inherits = TRUE)) {
-    ifsa <- pk_filter_policy_disclosure_block(
-      policy,
-      dropped = policy$dropped %||% list(),
-      noop_columns = policy$noop_columns %||% character(0)
-    )
-    if (!is.null(ifsa)) data_str <- paste0(data_str, "\n\n", ifsa)
-  }
+  if (nzchar(ifsa_metni)) data_str <- paste0(data_str, ifsa_metni)
 
   data_str
 }

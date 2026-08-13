@@ -201,7 +201,7 @@ test_that("v2 yürütücüsü çözümlemeyi derlemeden ÖNCE çağırır", {
   metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
 
   cozumleme <- regexpr("pk_entity_resolve_filter_plan", metin, fixed = TRUE)
-  derleme <- regexpr("pk_filter_compile(data, filters)", metin, fixed = TRUE)
+  derleme <- regexpr("pk_filter_compile(data, filters, query = query)", metin, fixed = TRUE)
 
   expect_true(cozumleme > 0L, info = "Cozumleyici v2 yolunda cagrilmiyor.")
   expect_true(derleme > 0L)

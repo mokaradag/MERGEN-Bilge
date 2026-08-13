@@ -49,7 +49,7 @@
     list(list(id = 1L, name = "Sorgu A"))
   }
   env$select_smart_query <- function(prompt, library, chat_history, ...) NULL
-  env$execute_single_deep_query <- function(query, user_prompt, session, rls_info, detail_config, stop_check = NULL) {
+  env$execute_single_deep_query <- function(query, user_prompt, session, rls_info, detail_config, stop_check = NULL, chat_history = NULL) {
     list(query_name = query$name, success = TRUE, row_count = 3L)
   }
   env$build_deep_analysis_context <- function(query_results, user_prompt, detail_config) {

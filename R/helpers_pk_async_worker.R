@@ -303,7 +303,8 @@ PK_ASYNC_GENERIC_ERROR_MESSAGE <- "Analiz sirasinda beklenmeyen bir hata olustu.
     return("Bilinmeyen analiz hatasi.")
   }
   if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
-    ham <- tryCatch(redact_sensitive_text(ham), error = function(e) ham)
+    ham <- tryCatch(redact_sensitive_text(ham),
+                    error = function(e) "[redaksiyon basarisiz - ham metin gizlendi]")
   }
   substr(ham, 1L, 400L)
 }

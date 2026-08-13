@@ -82,6 +82,16 @@ pk_set_exec_context <- function(query = NULL, rls_info = NULL, engine = "") {
 
   an <- tryCatch(as.POSIXct(baslangic), error = function(e) NA)
   if (length(an) != 1L || is.na(an)) return(NULL)
+
+  # SORGU BAZLI SON TARİH KÜRESEL TAVANI AŞAMAZ.
+  #
+  # Metadata `analysis_deadline_sec` değerini küresel değerin ÜSTÜNE
+  # koyduğunda, üretilen yürütme bağlamı ve bekçi köpeği o sorgunun — ve
+  # dolayısıyla İSTEĞİN TAMAMININ — operatörün beyan ettiği sert analiz
+  # tavanının ötesinde çalışmasına izin veriyordu. Sorgu bazlı değer yalnızca
+  # SIKILAŞTIRABİLİR; gevşetemez.
+  if (is.finite(kuresel) && kuresel > 0 && butce > kuresel) butce <- kuresel
+
   an + butce
 }
 

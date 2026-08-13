@@ -40,7 +40,17 @@ mergen_pk_routing_query_meta <- function(ctx) {
   kutuphane <- get0("query_library", inherits = TRUE)
   if (!is.list(kutuphane) || !length(kutuphane)) return(NULL)
 
-  istem <- tryCatch(as.character(ctx$user_prompt %||% "")[1], error = function(e) "")
+  # ÜRETİM BAĞLAMININ GERÇEKTEN TAŞIDIĞI ALAN OKUNUR.
+  #
+  # `server_send_message.R` bu bağlamı `user_message_text` ile kurar;
+  # `user_prompt` alanı YOKTUR. Yalnızca `user_prompt` okunduğunda istem HER
+  # ZAMAN boş çıkıyor, sezgisel muafiyet taraması hiç çalışmıyor ve
+  # `meta$async = FALSE` işaretli bir sorgu küresel bayrak açıkken yine işçiye
+  # gönderiliyordu; yani sorgu bazlı kapatma anahtarı sessizce etkisizdi.
+  istem <- tryCatch(
+    as.character(ctx$user_message_text %||% ctx$user_prompt %||% "")[1],
+    error = function(e) ""
+  )
   if (is.na(istem) || !nzchar(istem)) return(NULL)
 
   adaylar <- .pk_routing_candidate_indexes(istem, kutuphane)
@@ -89,6 +99,25 @@ mergen_pk_routing_query_meta <- function(ctx) {
       en_iyi <- suppressWarnings(as.integer(skorlar$best_idx)[1])
       if (isTRUE(skorlar$passes_threshold) && !is.na(en_iyi)) {
         indeksler <- unique(c(indeksler, en_iyi))
+      }
+
+      # SENKRON-ONLY SORGULAR İÇİN EŞİK DAHA GENİŞTİR.
+      #
+      # 30 puanlık yönlendirme eşiği, sezgisel ile semantik seçicinin AYRIŞTIĞI
+      # durumda sorgu bazlı kapatma anahtarını atlıyordu: `async = FALSE`
+      # işaretli bir sorgu eşiğin altında kalıp adaylardan düşüyor, ama AI
+      # seçici onu seçiyordu. Muafiyet yönü tek taraflı GÜVENLİDİR (yanlış
+      # pozitif = istek senkron çalışır, eski davranış), bu yüzden HERHANGİ bir
+      # sözlüksel sinyali olan senkron-only sorgu aday kabul edilir. Sinyali
+      # SIFIR olan sorgu yine dışarıda kalır; aksi hâlde tek bir senkron-only
+      # kayıt tüm kütüphane için asenkronu kapatırdı.
+      senkron_only <- which(vapply(seq_along(library), function(i) {
+        meta <- tryCatch(library[[i]]$meta, error = function(e) NULL)
+        identical(.pk_routing_meta_async(meta), FALSE)
+      }, logical(1)))
+
+      if (length(senkron_only)) {
+        indeksler <- unique(c(indeksler, senkron_only[yuzde[senkron_only] > 0]))
       }
       if (length(indeksler)) return(indeksler)
       return(integer(0))

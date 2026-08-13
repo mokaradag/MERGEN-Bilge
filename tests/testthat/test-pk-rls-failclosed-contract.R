@@ -122,19 +122,31 @@ test_that("ADMIN filtresiz kalir, kapsamli rol predikat uretir", {
                   c("MasrafYeri", "ProjeKodu"))
 })
 
-test_that("kapsam cozulmus ama sutun beyan edilmemisse durum SESSIZ kalmaz", {
+test_that("kapsam cozulmus ama sutun beyan edilmemisse analiz DURDURULUR", {
   env <- .pk_rls_env()
 
-  # BELGELI SINIR: sorgu bu boyut icin sutun beyan etmediyse predikat
-  # uygulanamaz; bu, uzun vadede SQL tarafina tasinacak bilinen bir bosluktur.
-  # Sessiz kalmamasi icin `unenforced` alaninda raporlanir.
+  # ESKIDEN bu durum yalnizca `unenforced` alaninda raporlanip analiz DEVAM
+  # EDIYORDU. Kullanici icin bir kapsam COZULMUS (yani kisitli bir kullanici)
+  # iken o boyutta hicbir kisit uygulanmadan satir donmek, kullanicinin kapsami
+  # disindaki kayitlari gormesi demektir. Yetkilendirme siniri "beyan
+  # edilmemis" oldugu icin yok sayilamaz: karar KAPALI BASARISIZ'dir.
   plan <- env$pk_rls_plan(
     list(Yetki = "PY", allowed_projects = "P1", scope_state_projects = "available"),
     list(),
     c("Deger")
   )
-  expect_false(isTRUE(plan$abort))
-  expect_true("proje" %in% plan$unenforced)
+  expect_true(isTRUE(plan$abort))
+  expect_identical(plan$reason, "unenforceable_column")
+  expect_true(grepl("sutun beyan etmiyor", plan$detail, fixed = TRUE))
+
+  # Rol bu boyutu HIC ima etmiyorsa (kapsam yok) durdurma da YOKTUR.
+  serbest <- env$pk_rls_plan(
+    list(Yetki = "KY-P", allowed_eps = NULL, scope_state_eps = "not_applicable",
+         allowed_depts = NULL),
+    list(),
+    c("Deger")
+  )
+  expect_false(isTRUE(serbest$abort))
 })
 
 test_that("pk_rls_code_norm asgari kalir ve pk_tr_fold boru hattini KULLANMAZ", {

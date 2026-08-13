@@ -15,6 +15,8 @@
          encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "helpers_pk_filter_compile.R"),
          encoding = "UTF-8", local = env)
+  source(file.path(repo_root, "R", "helpers_pk_filter_group.R"),
+         encoding = "UTF-8", local = env)
   env
 }
 
@@ -51,25 +53,193 @@
   )
 }
 
-test_that("D1: AYNI sutundaki iki filtre VEYA'lanir, kesistirilmez", {
+test_that("D1: AYNI sutundaki alternatifler VEYA'yi ACIK olarak ister", {
   env <- .pk_compile_env()
   veri <- .pk_compile_data()
 
-  filtreler <- list(
+  # VEYA anlami ARTIK CIKARSANMAZ: "ayni sutuna iki yuklem geldi" gozleminden
+  # VEYA uretmek, kullanicinin "hem X hem Y iceren" istegini sessizce
+  # genisletir. Beyansiz iki yaprak VE'lenir ve burada hicbir satir tutmaz.
+  ortulu <- env$pk_filter_compile(veri, list(
     list(column = "ProjeAdi", value = "RADAR", operation = "contains"),
     list(column = "ProjeAdi", value = "ELEKTRONIK HARP", operation = "contains")
-  )
+  ))
+  expect_equal(sum(ortulu$mask), 0L)
 
-  derleme <- env$pk_filter_compile(veri, filtreler)
-  sonuc <- veri[derleme$mask, , drop = FALSE]
-
-  # v1'de bu tam olarak 0 satir donduruyordu (bir proje adi HER IKI ifadeyi
-  # birden icermek zorundaydi). Dogru anlam BIRLESIM'dir.
+  # 1) ACIK yol: tek yaprak, COK DEGERLI (D2). Bu, dogal ve tercih edilen
+  #    VEYA ifadesidir; degerler zaten yaprak icinde birlesir.
+  cok_degerli <- env$pk_filter_compile(veri, list(
+    list(column = "ProjeAdi", value = c("RADAR", "ELEKTRONIK HARP"),
+         operation = "contains")
+  ))
+  sonuc <- veri[cok_degerli$mask, , drop = FALSE]
   expect_equal(nrow(sonuc), 2L)
   expect_setequal(
     sonuc$ProjeAdi,
     c("SENTETIK RADAR MODERNIZASYON", "SENTETIK ELEKTRONIK HARP MODERNIZASYON")
   )
+
+  # 2) ACIK yol: yapraklar `logic = "or"` beyan eder.
+  beyanli <- env$pk_filter_compile(veri, list(
+    list(column = "ProjeAdi", value = "RADAR", operation = "contains", logic = "or"),
+    list(column = "ProjeAdi", value = "ELEKTRONIK HARP", operation = "contains", logic = "or")
+  ))
+  expect_equal(sum(beyanli$mask), 2L)
+})
+
+test_that("P0: model uretimi filtre metni R kodu olarak CALISTIRILAMAZ", {
+  env <- .pk_compile_env()
+  veri <- .pk_compile_data()
+
+  # Filtre degerleri LLM uretimidir. Derleyici bunlari YALNIZCA veri olarak
+  # karsilastirir; hicbir yolda parse()/eval() yoktur. Yan etkili bir ifade
+  # yalnizca eslesmeyen bir METIN olarak ele alinir.
+  isaret <- new.env(parent = emptyenv())
+  isaret$calisti <- FALSE
+  assign("pk_test_rce_kanit", function() isaret$calisti <<- TRUE, envir = globalenv())
+  on.exit(rm("pk_test_rce_kanit", envir = globalenv()), add = TRUE)
+
+  zararli <- env$pk_filter_compile(veri, list(
+    list(column = "ProjeAdi", value = "pk_test_rce_kanit()", operation = "exact_match")
+  ))
+
+  expect_false(isaret$calisti)
+  expect_equal(sum(zararli$mask), 0L)
+
+  # Ayni sey acik mantik gruplarinin icinde de gecerlidir.
+  grup <- env$pk_filter_compile(veri, list(
+    list(operator = "or", children = list(
+      list(column = "ProjeAdi", value = "pk_test_rce_kanit()", operation = "contains"),
+      list(column = "Durum", value = "system('true')", operation = "exact_match")
+    ))
+  ))
+  expect_false(isaret$calisti)
+  expect_equal(sum(grup$mask), 0L)
+})
+
+test_that("acik mantik gruplari VE/VEYA'yi veri olarak temsil eder", {
+  env <- .pk_compile_env()
+  veri <- .pk_compile_data()
+
+  # (Durum == 'Pasif') VEYA (Butce >= 400) -> 3 satir (Pasif x2, 400'luk kayit)
+  grup <- env$pk_filter_compile(veri, list(
+    list(operator = "or", children = list(
+      list(column = "Durum", value = "Pasif", operation = "exact_match"),
+      list(column = "Butce", value = "400", operation = "greater_or_equal")
+    ))
+  ))
+  expect_equal(sum(grup$mask), 3L)
+
+  # Grup + duz yaprak birlikte VE'lenir: yukaridaki VEYA ile Durum == 'Aktif'
+  # kesisimi yalnizca 400 butceli aktif kaydi birakir.
+  karma <- env$pk_filter_compile(veri, list(
+    list(operator = "or", children = list(
+      list(column = "Durum", value = "Pasif", operation = "exact_match"),
+      list(column = "Butce", value = "400", operation = "greater_or_equal")
+    )),
+    list(column = "Durum", value = "Aktif", operation = "exact_match")
+  ))
+  expect_equal(sum(karma$mask), 1L)
+})
+
+test_that("bilinmeyen islem SESSIZCE esitlige dusurulmez", {
+  env <- .pk_compile_env()
+  veri <- .pk_compile_data()
+
+  derleme <- env$pk_filter_compile(veri, list(
+    list(column = "Butce", value = "100", operation = "between")
+  ))
+
+  # Eski davranista `between` -> "alternative" -> `%in%` idi ve 100'e ESIT
+  # satiri dondururdu; kullanici aralik isterken esitlik uygulaniyordu.
+  expect_equal(length(derleme$dropped), 1L)
+  expect_true(grepl("desteklenmeyen", derleme$dropped[[1]]$reason))
+  expect_true(isTRUE(derleme$all_dropped))
+  expect_equal(sum(derleme$mask), 5L)
+})
+
+test_that("cevrilemeyen deger yapragi DUSURUR, kismi uygulanmaz", {
+  env <- .pk_compile_env()
+  veri <- .pk_compile_data()
+
+  # Cok degerli sayisal filtrede tek bir gecersiz deger bile yapragi dusurur;
+  # eskiden gecersiz deger sessizce atilip kalan alt kume uygulaniyordu.
+  sayisal <- env$pk_filter_compile(veri, list(
+    list(column = "Butce", value = c("100", "yuksek"), operation = "in")
+  ))
+  expect_equal(length(sayisal$dropped), 1L)
+  expect_equal(sum(sayisal$mask), 5L)
+
+  tarih <- env$pk_filter_compile(veri, list(
+    list(column = "Baslangic", value = "gecen ay", operation = "greater_than")
+  ))
+  expect_equal(length(tarih$dropped), 1L)
+})
+
+test_that("mantiksal sutunda tanimsiz deger FALSE'a cevrilmez", {
+  env <- .pk_compile_env()
+  veri <- .pk_compile_data()
+  veri$Onayli <- c(TRUE, TRUE, FALSE, TRUE, FALSE)
+
+  gecerli <- env$pk_filter_compile(veri, list(
+    list(column = "Onayli", value = "evet", operation = "exact_match")
+  ))
+  expect_equal(sum(gecerli$mask), 3L)
+
+  # "belirsiz" sozlukte yok: eskiden FALSE olarak yorumlanip onaysiz kayitlar
+  # donuyordu. Artik yaprak dusurulur.
+  gecersiz <- env$pk_filter_compile(veri, list(
+    list(column = "Onayli", value = "belirsiz", operation = "exact_match")
+  ))
+  expect_equal(length(gecersiz$dropped), 1L)
+  expect_true(isTRUE(gecersiz$all_dropped))
+})
+
+test_that("POSIXct filtresinde gun ici saat KORUNUR", {
+  env <- .pk_compile_env()
+  veri <- data.frame(
+    Kayit = c("a", "b", "c"),
+    Zaman = as.POSIXct(c("2024-05-01 00:30:00", "2024-05-01 23:45:00",
+                         "2024-05-02 08:00:00"), tz = "UTC"),
+    stringsAsFactors = FALSE
+  )
+
+  # Yalniz-tarih ust sinir GUN SONU olarak yorumlanir: 1 Mayis'in tamami girer.
+  ust <- env$pk_filter_compile(veri, list(
+    list(column = "Zaman", value = "2024-05-01", operation = "less_or_equal")
+  ))
+  expect_equal(sum(ust$mask), 2L)
+
+  # Saat iceren sinir tam olarak uygulanir; as.Date()'e yuvarlanmaz.
+  saatli <- env$pk_filter_compile(veri, list(
+    list(column = "Zaman", value = "2024-05-01 12:00:00", operation = "greater_than")
+  ))
+  expect_equal(sum(saatli$mask), 2L)
+})
+
+test_that("metadata filterable kapisi derleyicide uygulanir", {
+  env <- .pk_compile_env()
+  veri <- .pk_compile_data()
+
+  env$pk_meta_is_filterable <- function(query, column) {
+    isTRUE(query$meta$column_meta[[column]]$filterable)
+  }
+
+  sorgu <- list(meta = list(column_meta = list(
+    Durum = list(role = "dimension", filterable = TRUE),
+    Butce = list(role = "measure", filterable = FALSE)
+  )))
+
+  acik <- env$pk_filter_compile(veri, list(
+    list(column = "Durum", value = "Aktif", operation = "exact_match")
+  ), query = sorgu)
+  expect_equal(sum(acik$mask), 3L)
+
+  kapali <- env$pk_filter_compile(veri, list(
+    list(column = "Butce", value = "100", operation = "greater_than")
+  ), query = sorgu)
+  expect_equal(length(kapali$dropped), 1L)
+  expect_true(grepl("filtrelenebilir", kapali$dropped[[1]]$reason))
 })
 
 test_that("D1: FARKLI sutunlar arasinda VE korunur", {
@@ -225,6 +395,8 @@ test_that("Turkce katlama otoritesi yoksa derleyici KAPALI BASARISIZ olur", {
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
   env$exists <- function(...) FALSE
   source(file.path(repo_root, "R", "helpers_pk_filter_compile.R"),
+         encoding = "UTF-8", local = env)
+  source(file.path(repo_root, "R", "helpers_pk_filter_group.R"),
          encoding = "UTF-8", local = env)
 
   # pk_tr_fold yoksa SESSIZCE tolower()'a DUSULMEZ; hata yukselir (D3).

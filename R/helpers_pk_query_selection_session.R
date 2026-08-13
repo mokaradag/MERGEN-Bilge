@@ -76,8 +76,16 @@ pk_select_forget_query_id <- function(session, chat_key = "__yeni__") {
 }
 
 #' Kullanıcıya sunulan netleştirme seçeneklerini hatırla
-pk_select_remember_offer <- function(session, chips, chat_key = "__yeni__") {
-  if (is.null(session) || !length(chips)) return(invisible(FALSE))
+pk_select_remember_offer <- function(session, chips, chat_key = "__yeni__",
+                                     requirements = NULL) {
+  if (is.null(session)) return(invisible(FALSE))
+
+  # SEÇENEKSİZ RED, ÖNCEKİ TEKLİFİ GEÇERSİZ KILAR.
+  #
+  # Eskiden `!length(chips)` durumunda erken dönülüyor ve ESKİ teklif oturumda
+  # kalıyordu. Kullanıcının bir sonraki turda yazdığı sıradan bir "2" ya da
+  # eski bir sorgu adı, ARTIK sunulmamış bir seçeneği onaylamış sayılabiliyordu.
+  if (!length(chips)) return(pk_select_forget_offer(session, chat_key))
 
   secenekler <- lapply(chips, function(cip) {
     list(
@@ -89,8 +97,20 @@ pk_select_remember_offer <- function(session, chips, chat_key = "__yeni__") {
   durum <- .pk_select_state_read(session)
   kayit <- if (is.list(durum[[chat_key]])) durum[[chat_key]] else list()
   kayit$offer <- secenekler
+  # GEREKSİNİMLER TEKLİFLE BİRLİKTE SAKLANIR: onaylanan aday, teklifi üreten
+  # isteğin yetenek gereksinimlerine karşı YENİDEN doğrulanır (bkz.
+  # `pk_select_confirmed_decision`).
+  kayit$offer_requirements <- requirements
   durum[[chat_key]] <- kayit
   .pk_select_state_write(session, durum)
+}
+
+#' Teklifle birlikte saklanmış yetenek gereksinimlerini oku
+pk_select_offer_requirements <- function(session, chat_key = "__yeni__") {
+  durum <- .pk_select_state_read(session)
+  kayit <- durum[[chat_key]]
+  if (!is.list(kayit)) return(NULL)
+  kayit$offer_requirements
 }
 
 #' Kullanıcının cevabını sunulan seçeneklerden birine deterministik olarak eşle

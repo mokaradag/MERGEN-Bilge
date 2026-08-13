@@ -385,7 +385,7 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
         # oturumda durabilir; `add_message()` içindeki dekorasyon o BAYAT alt
         # bilgiyi bu ilgisiz hata mesajına iliştirirdi.
         if (exists("pk_provenance_take", mode = "function", inherits = TRUE)) {
-          try(pk_provenance_take(oturum), silent = TRUE)
+          try(pk_provenance_take(oturum, request_id = req_id), silent = TRUE)  # kimlik zorunlu
         }
         ctx$add_message_fn(mergen_pk_worker_outcome_text(durum, worker_result$error), "ai")
       })
