@@ -9,7 +9,6 @@
 #     ikinci-aday marjı ölçtüğünü sanan bir kapıya dönüşür (§5.2),
 #   * `requirements` ve `missing_info` ZORUNLUDUR; eksik alan "iddia yok" ya da
 #     "eksik bilgi yok" ANLAMINA GELMEZ.
-#
 # TASARIM KARARI — SESSİZ NORMALLEŞTİRME YERİNE ONARIM:
 #   Sözleşme dışı her şekil `malformed` üretir ve orkestrasyon katmanı TEK bir
 #   onarım denemesi yapar. Eskiden bu şekiller sessizce düzeltiliyordu; bir
@@ -79,13 +78,10 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
     return(hata("'candidates' alani DUZ bir kararli kimlik dizisi olmalidir."))
   }
 
-  # ÇELİŞKİLİ TAKMA ALANLAR REDDEDİLİR.
-  #
-  # Üç ad da kabul edilir, ancak birden fazlası VARSA eskiden SESSİZCE ilki
-  # kullanılıyordu: `{"candidates":["q001"],"ids":["q002"]}` gibi İKİ FARKLI
-  # aday kümesi taşıyan bir yanıt katı ayrıştırmayı geçip otomatik seçime
-  # ilerleyebiliyordu. Modelin hangisini kastettiği bilinemez; sözleşme
-  # ihlali onarım yoluna gönderilir.
+  # ÇELİŞKİLİ TAKMA ALANLAR REDDEDİLİR: birden fazla ad VARSA eskiden SESSİZCE
+  # ilki kullanılıyordu (`{"candidates":["q001"],"ids":["q002"]}` gibi İKİ
+  # FARKLI aday kümesi otomatik seçime ilerleyebiliyordu); sözleşme ihlali
+  # onarım yoluna gönderilir.
   if (length(alan) > 1L) {
     for (ek in alan[-1L]) {
       ek_dizi <- pk_select_string_array(ayrisik[[ek]])
@@ -225,14 +221,10 @@ pk_select_parse_pass_b <- function(text, candidate_ids) {
     )))
   }
 
-  # KATI ÜST DÜZEY ANAHTAR KÜMESİ.
-  #
-  # Geçiş B sözleşmesi KATI olarak belgelenir, ancak ayrıştırıcı yalnızca
-  # beklenen adları OKUYUP diğer her üst düzey alanı SESSİZCE yok sayıyordu.
-  # `{"id":"q1","selected_id":"q2",...}` gibi bir şema kayması yanıtı bu yüzden
-  # tüm denetimlerden geçiyor ve model ÇELİŞKİLİ bir seçim bildirmişken `q1`
-  # otomatik çalıştırılabiliyordu. Sözleşme dışı alan taşıyan çıktı onarım
-  # yoluna gönderilir.
+  # KATI ÜST DÜZEY ANAHTAR KÜMESİ: ayrıştırıcı eskiden yalnızca beklenen adları
+  # OKUYUP diğer alanları SESSİZCE yok sayıyordu, bu da şema kaymasında
+  # ÇELİŞKİLİ bir seçimin otomatik çalışmasına yol açabiliyordu; sözleşme dışı
+  # alan taşıyan çıktı onarım yoluna gönderilir.
   izinli_alanlar <- c("id", "confidence", "reason", "alternates",
                       "requirements", "missing_info")
   fazla <- setdiff(names(ayrisik), izinli_alanlar)

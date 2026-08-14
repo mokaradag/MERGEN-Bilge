@@ -281,21 +281,15 @@ pk_entity_nearest_candidates <- function(phrase, candidates, n = 3L,
 
   .pk_entity_require_stringdist()
 
-  # TARAMA TAVANI BURADA DA UYGULANIR — HEM DE NORMALLEŞTİRMEDEN ÖNCE.
-  #
-  # Eşik altı kurtarma yolu bu yardımcıyı sütundaki HER ayrık değerle çağırır
-  # ve `MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES` tavanını YOK SAYIYORDU: yüksek
-  # kardinaliteli bir proje/kişi sütununda tek bir yazım hatası, sınırlı kısa
-  # listenin önlemek için var olduğu on binlerce hesabı geri getiriyor ve
-  # asenkron kapalıyken paylaşılan Shiny olay döngüsünü blokluyordu.
-  #
-  # Kırpma `.pk_entity_coarse_view()` ÇAĞRILMADAN ÖNCE yapılır: baskın maliyet
-  # Levenshtein değil, TÜM değerler üzerinde çalışan katlama/ASCII
-  # normalleştirmesidir. Tavan normalleştirmeden sonra uygulansaydı iş hiç
-  # azalmazdı.
-  #
-  # Ön eleme `.pk_entity_shortlist()` ile AYNI uzunluk bandını kullanır
-  # (d <= 0.20 için GEREKLİ koşul); ham `nchar` ucuzdur ve sıralama YOKTUR.
+  # TARAMA TAVANI BURADA DA UYGULANIR — HEM DE NORMALLEŞTİRMEDEN ÖNCE. Eşik altı
+  # kurtarma yolu bu yardımcıyı sütundaki HER ayrık değerle çağırır ve
+  # `MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES` tavanını YOK SAYIYORDU: yüksek
+  # kardinaliteli bir sütunda tek yazım hatası on binlerce hesabı geri getirip
+  # asenkron kapalıyken paylaşılan Shiny olay döngüsünü blokluyordu. Kırpma
+  # `.pk_entity_coarse_view()` ÇAĞRILMADAN ÖNCE yapılır (baskın maliyet TÜM
+  # değerler üzerindeki katlama/ASCII normalleştirmesidir); ön eleme
+  # `.pk_entity_shortlist()` ile AYNI uzunluk bandını kullanır (ham `nchar`
+  # ucuzdur, sıralama YOKTUR).
   azami_tarama <- .pk_entity_scan_limit(
     "MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES", 2000L, query_meta
   )
