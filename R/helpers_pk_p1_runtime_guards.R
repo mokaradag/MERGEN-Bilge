@@ -2,6 +2,8 @@
 # PR #705 P1: doğrudan DB süreç sınırı ve Derin Düşünme v2 paket köprüsü.
 # ==============================================================================
 
+if (!isTRUE(get0(".pk_p1_runtime_guards_loaded", inherits = FALSE,
+                 ifnotfound = FALSE))) {
 .pk_p1_direct_child_marker <- "MERGEN_PK_DIRECT_DB_CHILD"
 
 .pk_p1_pool_enabled_for_request <- function(request) {
@@ -136,9 +138,9 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
 
   filtered <- holder$data
   filters <- result$pk_observation$filters %||% list()
-  criteria <- list(filters = filters, aggregation = NULL)
   effective <- .pk_result_effective_filters(
-    filter_criteria = criteria, query = query, policy = list()
+    policy = list(applied = NULL),
+    filter_criteria = list(filters = filters)
   )
   authorized_rows <- suppressWarnings(as.integer(result$pk_observation$authorized_rows)[1])
   if (length(authorized_rows) != 1L || is.na(authorized_rows) || authorized_rows < nrow(filtered)) {
@@ -146,10 +148,16 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
   }
 
   packet <- pk_packet_build(
-    query, filtered,
-    unfiltered_rows = authorized_rows,
-    effective_filters = effective,
-    policy = list()
+    filtered,
+    query,
+    list(
+      authorized_rows = authorized_rows,
+      filtered_rows = nrow(filtered),
+      filters = effective,
+      filter_status = result$pk_observation$filter_status %||% "ok",
+      degradations = list(),
+      pre_aggregated_columns = query$pre_aggregated_columns
+    )
   )
   rendered <- pk_packet_render(packet)
 
@@ -161,4 +169,7 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
   result$pk_packet_render_mode <- rendered$mode
   result$pk_facts <- pk_packet_all_facts(packet)
   result
+}
+
+.pk_p1_runtime_guards_loaded <- TRUE
 }
