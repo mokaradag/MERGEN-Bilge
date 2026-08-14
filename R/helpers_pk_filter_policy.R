@@ -241,7 +241,15 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
     !(yaprak$column %in% dusurulen)
   }, filters)
 
-  yeniden <- pk_filter_compile(data, kalan)
+  # KURTARMA DERLEMESİ AYNI METADATA İLE YAPILIR.
+  #
+  # İlk derleme `query`'yi taşır ve `pk_filter_leaf_mask()` bu sayede
+  # `column_meta$filterable = FALSE` olan sütunda kapalı başarısız olur.
+  # Burada `query` düşürülürse, metadata tarafından ENGELLENMİŞ bir ikincil
+  # filtre (sıfır eşleşmediği için `kalan` içinde durur) bu kez kapıdan
+  # geçerdi: kurtarma yolu, ilk derlemenin bilinçli olarak reddettiği bir
+  # kriteri uygulayarak anlamsal kapıyı ZAYIFLATIRDI.
+  yeniden <- pk_filter_compile(data, kalan, query = query)
 
   sonuc$action <- "dropped_secondary"
   sonuc$mask <- yeniden$mask

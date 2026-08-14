@@ -344,6 +344,20 @@ pk_config_spec <- list(
     min = 2000L,
     max = 120000L
   ),
+  # Geçiş A kütüphane yükünün TOPLAM karakter bütçesi.
+  #
+  # Alan başına kırpma (DESC/NAME/KEYWORD/SAMPLE_CHARS) tek başına YETMEZ:
+  # sorgu SAYISI sınırlı değildir ve gerçek kütüphane 169 sorguludur. Alanları
+  # izin verilen üst sınırlara yakın, daha büyük bir kütüphane Geçiş A'yı
+  # seçici modelin bağlamının ötesine itebilir. Geçiş B'nin `PASS_B_CHARS`
+  # toplam kapısının Geçiş A karşılığıdır; aşıldığında sessiz kırpma değil,
+  # AÇIK kapalı-başarısız rapor üretilir.
+  MERGEN_PK_SELECT_PASS_A_CHARS = list(
+    type = "integer",
+    default = 60000L,
+    min = 2000L,
+    max = 400000L
+  ),
   # Geçiş A satırına giren örnek soru sayısı (§5.2: `sample_questions[1:2]`).
   # ÜST SINIR sözleşmenin kendisidir: §5.2 iki örnek soru der ve 169 sorguluk
   # gerçek kütüphanede bu alan yükün en büyük bileşenidir.

@@ -28,7 +28,7 @@ pk_select_source_chain_for_tests()
     timeout_sec = 20L, recall_n = 5L, min_confidence = 50L, min_margin = 15L,
     disagree_penalty = 15L, desc_chars = 220L, sample_chars = 120L,
     sample_n = 2L, history_turns = 2L, name_chars = 120L, keyword_chars = 160L,
-    history_chars = 240L, pass_b_chars = 24000L
+    history_chars = 240L, pass_b_chars = 24000L, pass_a_chars = 60000L
   )
   if (length(ust)) taban[names(ust)] <- ust
   pk_select_normalize_config(taban)
@@ -361,7 +361,7 @@ test_that("dışarıdan verilen `cfg` YENİDEN doğrulanır", {
     timeout_sec = 20L, recall_n = 1L, min_confidence = 50L, min_margin = 15L,
     disagree_penalty = 15L, desc_chars = 220L, sample_chars = 120L,
     sample_n = 2L, history_turns = 2L, name_chars = 120L, keyword_chars = 160L,
-    history_chars = 240L, pass_b_chars = 24000L
+    history_chars = 240L, pass_b_chars = 24000L, pass_a_chars = 60000L
   )
   karar <- pk_select_run("soru", pk_select_test_library(),
                          llm_fn = function(...) stop("cagrilmamali"), cfg = sahte)
@@ -618,4 +618,35 @@ test_that("Geçiş B istemi varlık türlerini yetenek kimliğinden AYIRIR", {
   # Örnek, GERÇEK adaylardan üretilir.
   expect_true(grepl("\"id\":\"q001\"", sistem, fixed = TRUE))
   expect_false(grepl("q042", sistem, fixed = TRUE))
+})
+
+test_that("Gecis A TOPLAM butcesi asilirsa kapali basarisiz olunur", {
+  # KUSUR: alan basina kirpma sorgu SAYISINI sinirlamiyordu; daha buyuk bir
+  # kutuphane Gecis A'yi secici modelin baglaminin otesine itebiliyor ve
+  # satirlar sessizce dusuyordu. Gorunmeyen bir sorgu asla secilemez; bu
+  # `skipped` ile ayni sinif recall kaybidir.
+  # Gercek kutuphane 169 sorguludur; sentetik kutuphane bilincli olarak
+  # BUYUTULUR ki toplam butce kapisi anlamli bicimde sinansin.
+  taban <- pk_select_test_library()
+  lib <- list()
+  for (k in seq_len(40L)) {
+    for (q in taban) {
+      q$id <- sprintf("%s_kopya%02d", as.character(q$id %||% "q")[1], k)
+      lib[[length(lib) + 1L]] <- q
+    }
+  }
+
+  genis <- pk_select_pass_a_payload(lib, .pk_selhard_cfg())
+  expect_false(isTRUE(genis$truncated))
+  expect_true(genis$chars > 0L)
+
+  # Butce gercek yukun ALTINDA: kapali basarisiz raporlanir.
+  dar_butce <- max(2000L, as.integer(genis$chars / 2L))
+  dar <- pk_select_pass_a_payload(lib, .pk_selhard_cfg(pass_a_chars = dar_butce))
+  expect_true(isTRUE(dar$truncated))
+  expect_identical(dar$budget, dar_butce)
+  expect_true(dar$chars > dar$budget)
+
+  # Satirlar SESSIZCE kirpilmaz: kimlikler korunur, karar katmani reddeder.
+  expect_identical(dar$ids, genis$ids)
 })

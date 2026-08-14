@@ -29,6 +29,24 @@
   list(filters = list(), aggregation = NULL, status = status)
 }
 
+# AÇIK mantık grubu (`{operator, children}`) şekli mi?
+#
+# İstem (bkz. system_instruction) modele iç içe VEYA/VE isteğini bu şekilde
+# temsil etmesini SÖYLER ve `R/helpers_pk_filter_group.R` bunun inert
+# değerlendiricisini sağlar. Bu yüzden doğrulama yaprak ve grup şekillerini
+# AYRI ayrı ele almalıdır; grup düğümünü yaprak kuralıyla elemek, modelin
+# ürettiği VEYA dalını derleyiciye HİÇ ulaştırmaz.
+#
+# Tek doğruluk kaynağı yüklüyse o kullanılır; izole test/hata ayıklama
+# oturumlarında dosya tek başına source edilebildiği için yerel şekil kontrolü
+# yedektir.
+.pk_filter_base_is_group <- function(f) {
+  if (exists(".pk_filter_is_group_node", mode = "function", inherits = TRUE)) {
+    return(isTRUE(.pk_filter_is_group_node(f)))
+  }
+  is.list(f) && !is.null(f$children) && is.list(f$children)
+}
+
 # LLM çağrısının hata mesajından zaman aşımını ayırt eder. httr/curl zaman
 # aşımı hata olarak yüzeye çıktığı için sınıflandırma mesaj üzerinden yapılır.
 .pk_filter_classify_llm_error <- function(message_text) {
@@ -313,11 +331,27 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
 
     if (length(filters) > 0) {
       filters <- lapply(filters, function(f) {
+        # Grup düğümünde `column`/`value` yoktur; durum kısayolu YALNIZCA
+        # yapraklar içindir.
+        if (.pk_filter_base_is_group(f)) return(f)
+
         col_lower <- tolower(f$column %||% "")
         val_raw <- f$value %||% ""
 
+        # ÇOK DEĞERLİ YAPRAK (aynı sütun içi VEYA) bu kısayoldan MUAFTIR.
+        #
+        # `value` bir dizi olabilir (`["Aktif","Beklemede"]`); `simplifyVector
+        # = FALSE` altında bu bir listedir. Eskiden `as.character(val_raw)`
+        # uzunluğu >1 bir vektör üretiyor, `val_lower %in% c(...)` de vektör
+        # dönüyordu; skaler `if` bunun üzerinde HATA yükseltir ("the condition
+        # has length > 1") ve dış tryCatch geçerli yanıtı `error` durumuna
+        # çevirirdi. Ayrıca tek bir "1"/"0" ataması çok değerli VEYA isteğinin
+        # anlamını da bozardı. Kısayol bu yüzden tek değerli yaprakla sınırlıdır.
+        val_flat <- as.character(unlist(val_raw, use.names = FALSE))
+        if (length(val_flat) != 1L) return(f)
+
         if (grepl("aktif|active|durum|status", col_lower, perl = TRUE)) {
-          val_lower <- tolower(as.character(val_raw))
+          val_lower <- tolower(val_flat)
           if (val_lower %in% c("y", "yes", "evet", "aktif", "active", "1", "true")) {
             f$value <- "1"
             f$operation <- "exact_match"
@@ -340,7 +374,16 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
     }
 
     if (length(filters) > 0) {
+      # YAPRAK ve GRUP şekilleri AYRI doğrulanır.
+      #
+      # Grup düğümünde `column`/`value` bulunmaz; yalnızca yaprak kuralı
+      # uygulandığında her `{operator, children}` düğümü derleyiciye
+      # ULAŞMADAN elenirdi. Sonuç: grup-yalnız yanıt "malformed" olur,
+      # yaprakla karışık yanıt ise VEYA dalını SESSİZCE kaybedip farklı bir
+      # alt kümeyi analiz ederdi. Grup, en az bir çocuğu olduğunda geçerlidir;
+      # çocukların kendisi `.pk_filter_eval_group()` içinde doğrulanır.
       valid_filters <- Filter(function(f) {
+        if (.pk_filter_base_is_group(f)) return(length(f$children) > 0L)
         !is.null(f$column) && nzchar(f$column) && !is.null(f$value)
       }, filters)
 

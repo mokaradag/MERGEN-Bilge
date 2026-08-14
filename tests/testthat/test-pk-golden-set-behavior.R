@@ -142,7 +142,7 @@ test_that("recall@N: beklenen sorgu Geçiş A YÜKÜNDE görünür kalır", {
     timeout_sec = 20L, recall_n = 5L, min_confidence = 50L, min_margin = 15L,
     disagree_penalty = 15L, desc_chars = 220L, sample_chars = 120L,
     sample_n = 2L, history_turns = 2L, name_chars = 120L, keyword_chars = 160L,
-    history_chars = 240L, pass_b_chars = 24000L
+    history_chars = 240L, pass_b_chars = 24000L, pass_a_chars = 60000L
   ))
 
   payload <- pk_select_pass_a_payload(lib, cfg)
@@ -190,7 +190,7 @@ test_that("recall@N: beklenen sorgu Geçiş A ÇIKTISINDA (ilk N aday) yer alır
     timeout_sec = 20L, recall_n = 2L, min_confidence = 50L, min_margin = 15L,
     disagree_penalty = 15L, desc_chars = 220L, sample_chars = 120L,
     sample_n = 2L, history_turns = 2L, name_chars = 120L, keyword_chars = 160L,
-    history_chars = 240L, pass_b_chars = 24000L
+    history_chars = 240L, pass_b_chars = 24000L, pass_a_chars = 60000L
   ))
   payload <- pk_select_pass_a_payload(lib, cfg)
 
@@ -266,7 +266,7 @@ test_that("uçtan uca: altın küme vakaları kaydedilmiş LLM çıktısıyla ç
     timeout_sec = 20L, recall_n = 5L, min_confidence = 50L, min_margin = 15L,
     disagree_penalty = 15L, desc_chars = 220L, sample_chars = 120L,
     sample_n = 2L, history_turns = 2L, name_chars = 120L, keyword_chars = 160L,
-    history_chars = 240L, pass_b_chars = 24000L
+    history_chars = 240L, pass_b_chars = 24000L, pass_a_chars = 60000L
   ))
 
   # Kütüphanedeki TÜM kararlı kimlikler; `recall_n = 5` ve dört sorgu olduğu
@@ -341,7 +341,7 @@ test_that("eksiltili vaka, önceki kimlik OLMADAN aday kümesine giremez", {
     timeout_sec = 20L, recall_n = 2L, min_confidence = 50L, min_margin = 15L,
     disagree_penalty = 15L, desc_chars = 220L, sample_chars = 120L,
     sample_n = 2L, history_turns = 2L, name_chars = 120L, keyword_chars = 160L,
-    history_chars = 240L, pass_b_chars = 24000L
+    history_chars = 240L, pass_b_chars = 24000L, pass_a_chars = 60000L
   ))
 
   # Geçiş A, eksiltili soruda beklenen sorguyu bulamaz (gerçekçi senaryo).

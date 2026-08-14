@@ -31,7 +31,7 @@ pk_select_source_chain_for_tests()
     timeout_sec = 20L, recall_n = 5L, min_confidence = 50L, min_margin = 15L,
     disagree_penalty = 15L, desc_chars = 220L, sample_chars = 120L,
     sample_n = 2L, history_turns = 2L, name_chars = 120L, keyword_chars = 160L,
-    history_chars = 240L, pass_b_chars = 24000L
+    history_chars = 240L, pass_b_chars = 24000L, pass_a_chars = 60000L
   )
   if (length(ust)) taban[names(ust)] <- ust
   pk_select_normalize_config(taban)

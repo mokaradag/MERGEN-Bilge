@@ -327,6 +327,37 @@ pk_filter_leaf_mask <- function(data, leaf, query = NULL) {
 
   col_vals <- data[[leaf$column]]
 
+  # TÜR/İŞLEM UYUMU KAPISI (kapalı başarısız).
+  #
+  # `PK_FILTER_KNOWN_OPS` işlemin GENEL olarak tanınıp tanınmadığını denetler;
+  # ancak genel olarak geçerli bir işlem, ÇALIŞMA ZAMANI sütun türünde
+  # UYGULANAMIYOR olabilir. Metin/faktör sütununda `greater_than` gibi bir
+  # aralık işlemi `.pk_filter_mask_character()` içindeki son `%in%` dalına
+  # düşer ve istek SESSİZCE eşitliğe dönerdi; mantıksal sütunda da işlem
+  # tamamen yok sayılıyordu. Bu, dosyanın başındaki "tanınmayan işlem sessizce
+  # eşitliğe düşürülmez" kuralının TÜR düzeyindeki karşılığıdır: yüklem anlamı
+  # değiştirilmez, yaprak DÜŞÜRÜLÜR ve gerekçesi ifşa edilir.
+  metinsel <- is.character(col_vals) || is.factor(col_vals)
+  mantiksal <- is.logical(col_vals)
+  if (metinsel || mantiksal) {
+    if (leaf$operation %in% c(PK_FILTER_LOWER_OPS, PK_FILTER_UPPER_OPS)) {
+      return(list(
+        ok = FALSE, mask = NULL,
+        reason = sprintf(
+          "'%s' araliksal islemi bu sutun turunde uygulanamaz", leaf$operation
+        )
+      ))
+    }
+  }
+  if (mantiksal && leaf$operation %in% c("contains", "not_contains", "starts_with")) {
+    return(list(
+      ok = FALSE, mask = NULL,
+      reason = sprintf(
+        "'%s' metinsel islemi mantiksal sutunda uygulanamaz", leaf$operation
+      )
+    ))
+  }
+
   maske <- if (is.character(col_vals) || is.factor(col_vals)) {
     .pk_filter_mask_character(col_vals, leaf)
   } else if (inherits(col_vals, "POSIXt")) {

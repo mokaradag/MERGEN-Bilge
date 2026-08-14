@@ -34,7 +34,8 @@
   "MERGEN_PK_SELECT_NAME_CHARS",
   "MERGEN_PK_SELECT_KEYWORD_CHARS",
   "MERGEN_PK_SELECT_HISTORY_CHARS",
-  "MERGEN_PK_SELECT_PASS_B_CHARS"
+  "MERGEN_PK_SELECT_PASS_B_CHARS",
+  "MERGEN_PK_SELECT_PASS_A_CHARS"
 )
 
 # Yapılandırma alan adı -> anahtar eşlemesi. Tek kaynak: hem çözümleme hem de
@@ -52,7 +53,8 @@
   name_chars        = "MERGEN_PK_SELECT_NAME_CHARS",
   keyword_chars     = "MERGEN_PK_SELECT_KEYWORD_CHARS",
   history_chars     = "MERGEN_PK_SELECT_HISTORY_CHARS",
-  pass_b_chars      = "MERGEN_PK_SELECT_PASS_B_CHARS"
+  pass_b_chars      = "MERGEN_PK_SELECT_PASS_B_CHARS",
+  pass_a_chars      = "MERGEN_PK_SELECT_PASS_A_CHARS"
 )
 
 # Karar aşamasında sorgu metadata'sının GEÇERSİZ KILABİLECEĞİ alanlar.
