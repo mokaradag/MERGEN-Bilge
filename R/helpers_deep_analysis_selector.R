@@ -114,21 +114,28 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session,
       etkin_timeout <- 12
     }
 
+    # Türkçe yorum: R.utils::withTimeout() harici bir paket bağımlılığı
+    # gerektirir ve `required_packages`/CI kurulum listesinde yer almaz; bu
+    # da paket eksik olduğunda çağrının SESSİZCE her zaman NULL dönmesine
+    # yol açar. Repo genelinde kullanılan `setTimeLimit()` deseniyle
+    # (bkz. `helpers_pk_sql_execute.R::pk_sql_bounded_call()`) aynı
+    # zaman-aşımı/hata davranışı, ek bağımlılık olmadan base R ile sağlanır.
     result <- tryCatch({
-      R.utils::withTimeout({
-        call_local_llm(messages, list(
-          model_selection = model_name,
-          temperature = 0.0,
-          max_output_tokens = 500,
-          enable_mcp_tools = FALSE,
-          shiny_session = session,
-          api_key_override = api_key_val,
-          request_timeout_sec = etkin_timeout
-        ))
-      }, timeout = etkin_timeout, onTimeout = "silent")
+      setTimeLimit(cpu = Inf, elapsed = etkin_timeout, transient = TRUE)
+      call_local_llm(messages, list(
+        model_selection = model_name,
+        temperature = 0.0,
+        max_output_tokens = 500,
+        enable_mcp_tools = FALSE,
+        shiny_session = session,
+        api_key_override = api_key_val,
+        request_timeout_sec = etkin_timeout
+      ))
     }, error = function(e) {
       cat(sprintf("[DEEP_ANALYSIS] AI çoklu seçim zaman aşımı/hata: %s\n", e$message))
       NULL
+    }, finally = {
+      try(setTimeLimit(cpu = Inf, elapsed = Inf, transient = TRUE), silent = TRUE)
     })
 
     if (durduruldu()) {
