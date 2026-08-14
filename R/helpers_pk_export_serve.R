@@ -24,6 +24,7 @@ pk_export_serve <- function(session, artifact) {
 
   artifact$files <- lapply(artifact$files, function(dosya) {
     yol <- normalizePath(dosya$path, winslash = "/", mustWork = FALSE)
+    dosya$path <- yol
     tur <- if (identical(dosya$format, "csv")) {
       "text/csv; charset=UTF-8"
     } else {
