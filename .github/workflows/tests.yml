@@ -110,6 +110,7 @@ jobs:
             any::markdown
             any::odbc
             any::openssl
+            any::openxlsx
             any::pdftools
             any::pool
             any::promises
