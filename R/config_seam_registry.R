@@ -156,7 +156,8 @@ mergen_seam_registry <- function() {
         "analysis_helpers",
         "module_analysis"
       ),
-      extra_runtime_files = character(0),
+      # R/helpers_pk_analysis_core.R bu iki kardeş dosyayı manifest DIŞINDA source eder.
+      extra_runtime_files = c("R/helpers_pk_analysis_core_impl.R", "R/helpers_pk_p1_runtime_guards.R"),
       related_seams = c("dosya_yasam_dongusu", "sohbet_llm_akis")
     ),
 

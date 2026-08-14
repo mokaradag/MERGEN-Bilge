@@ -483,14 +483,8 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
   values$show_welcome <- TRUE
   session_files(list())
 
-  # Faz 6 (§5.10): kaydedilmemiş sohbetler `NULL` kimliği PAYLAŞIR; nesil
-  # sayacı olmadan "kaydedilmemiş sohbet A" ile Yeni Söyleşi'den sonraki
-  # "kaydedilmemiş sohbet B" ayırt edilemez ve tamamlanan bir PK işçisinin
-  # sonucu taze sohbete düşerdi. Ayrıca sonucu ZATEN atılacak işçi, DB
-  # bağlantısını ve işçi yuvasını doğal bitişine kadar tutmamalıdır.
-  # D11 devralinan varlik baglami SOHBETE aittir: Yeni Soylesi'de dusurulmezse
-  # taze sohbet, sorgu/sutun kimligi eslestigi anda onceki sohbetin oznesini
-  # devralirdi.
+  # Faz 6 (§5.10): kaydedilmemiş sohbetler `NULL` kimliği PAYLAŞIR; nesil sayacı olmadan ayırt edilemez ve tamamlanan bir PK işçisinin sonucu taze sohbete düşerdi.
+  # D11 devralinan varlik baglami SOHBETE aittir: Yeni Soylesi'de dusurulmezse taze sohbet onceki sohbetin oznesini devralirdi.
   for (fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch",
                "mergen_pk_abandon_active_requests")) {
     if (exists(fn, mode = "function", inherits = TRUE)) {
