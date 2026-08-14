@@ -23,6 +23,33 @@
   rawToChar(ham)
 }
 
+# Windows CI çalıştırıcılarında C:/Windows/System32/bash.exe (WSL başlatıcısı)
+# PATH üzerinde Git for Windows'un gerçek POSIX kabuğunun önüne geçebilir.
+# Dağıtım kurulu değilse bu ikili sessizce hata verir; System32 eşleşmesi
+# reddedilir ve Git'in kendi bash'i açıkça aranır.
+.pk_phase_locate_bash <- function() {
+  aday <- Sys.which("bash")
+  aday <- if (length(aday)) unname(aday)[1] else ""
+
+  system32_mi <- FALSE
+  if (nzchar(aday)) {
+    aday_norm <- tolower(normalizePath(aday, winslash = "/", mustWork = FALSE))
+    system32_mi <- grepl("/system32/", aday_norm, fixed = TRUE)
+  }
+  if (nzchar(aday) && !system32_mi) return(aday)
+
+  git_adaylari <- c(
+    file.path(Sys.getenv("ProgramFiles"), "Git", "bin", "bash.exe"),
+    file.path(Sys.getenv("ProgramFiles"), "Git", "usr", "bin", "bash.exe"),
+    file.path(Sys.getenv("ProgramFiles(x86)"), "Git", "bin", "bash.exe")
+  )
+  for (y in git_adaylari) {
+    if (nzchar(y) && file.exists(y)) return(y)
+  }
+
+  ""
+}
+
 test_that("betik BAYT DÜZEYİNDE ASCII'dir", {
   yol <- .pk_phase_script_path()
   expect_true(file.exists(yol))
@@ -41,10 +68,11 @@ test_that("betik BAYT DÜZEYİNDE ASCII'dir", {
 })
 
 test_that("kabuk sözdizimi geçerlidir", {
-  testthat::skip_if_not(nzchar(Sys.which("bash")))
+  bash_bin <- .pk_phase_locate_bash()
+  testthat::skip_if_not(nzchar(bash_bin))
 
   sonuc <- suppressWarnings(system2(
-    "bash", c("-n", shQuote(.pk_phase_script_path())),
+    bash_bin, c("-n", shQuote(.pk_phase_script_path())),
     stdout = TRUE, stderr = TRUE
   ))
   durum <- attr(sonuc, "status")
@@ -54,12 +82,13 @@ test_that("kabuk sözdizimi geçerlidir", {
 })
 
 test_that("seçenek biçimli ref argümanı REDDEDİLİR", {
-  testthat::skip_if_not(nzchar(Sys.which("bash")))
+  bash_bin <- .pk_phase_locate_bash()
+  testthat::skip_if_not(nzchar(bash_bin))
 
   # `--all` gecirmek `git log ... --all` etkisi yaratir ve YALNIZCA ozellik
   # dalinda kalan birlesmeler entegre olmus gibi raporlanir.
   sonuc <- suppressWarnings(system2(
-    "bash", c(shQuote(.pk_phase_script_path()), "--all"),
+    bash_bin, c(shQuote(.pk_phase_script_path()), "--all"),
     stdout = TRUE, stderr = TRUE
   ))
   durum <- attr(sonuc, "status")
