@@ -227,8 +227,10 @@ test_that("5.000 satirlik sonuc dogru bir XLSX uretir ve geri okunur", {
   # Yerel tipler: sayisal sayisal kalir, as.character()'a cevrilmez.
   expect_true(is.numeric(okunan[["Tutar (TL)"]]))
   expect_equal(okunan[["Tutar (TL)"]][1], -125.50)
-  expect_true(is.numeric(okunan[["Tamamlanma (%)"]]))
-  expect_equal(okunan[["Tamamlanma (%)"]][1], 61.3)
+  bicimli <- env$.pk_export_openxlsx_available()
+  yuzde_basligi <- if (bicimli) "Tamamlanma" else "Tamamlanma (%)"
+  expect_true(is.numeric(okunan[[yuzde_basligi]]))
+  expect_equal(okunan[[yuzde_basligi]][1], if (bicimli) 0.613 else 61.3)
 
   # Turkce metin bozulmadan gidip gelir.
   expect_true(any(grepl("SENTETIK ÇALIŞMA İSTANBUL", okunan[["Proje Adı"]], fixed = TRUE)))
