@@ -27,16 +27,6 @@ Sys.setenv(
 
 testthat::local_edition(3)
 
-# CI paket ikilileri çalışan R yamasından (ör. R 4.6.0) daha yeni bir R ile
-# derlenmiş olabilir. Zararsız tek-seferlik "was built under R version" uyarıları
-# testthat'ın uyarı yakalama penceresi başlamadan tüketilir; paketler arama
-# yoluna EKLENMEZ. Gerçek test/kod uyarıları stop_on_warning = TRUE ile kalır.
-.mergen_test_pkg_warmup <- c("shiny", "DT", "highcharter", "htmlwidgets", "promises")
-suppressWarnings(invisible(lapply(.mergen_test_pkg_warmup, function(pkg) {
-  requireNamespace(pkg, quietly = TRUE)
-})))
-rm(.mergen_test_pkg_warmup)
-
 results <- testthat::test_dir(
   file.path("tests", "testthat"),
   reporter = "summary",
