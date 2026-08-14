@@ -44,6 +44,23 @@
 
 .PK_ENTITY_CONTEXT_SLOT <- "pk_entity_prior_context"
 
+#' Devralınan varlık bağlamını SOHBET SINIRINDA temizle
+#'
+#' Kayıt oturum kapsamlıdır ve `pk_entity_resolve_with_history()` eksiltili
+#' takip sorularında onu sohbet geçmişinden ÖNCE tüketebilir. Sohbet
+#' değiştiğinde temizlenmezse, yeni bir sohbet sorgu/sütun kimliği eşleştiği
+#' anda ÖNCEKİ sohbetin öznesini devralırdı — kullanıcının bu sohbette hiç
+#' adını anmadığı bir projeye göre filtrelenmiş sonuç demektir.
+#'
+#' Bu yüzden hem "Yeni Söyleşi" hem de BAŞKA bir sohbete geçiş kaydı düşürür.
+pk_entity_context_clear <- function(session) {
+  if (is.null(session)) return(invisible(FALSE))
+  ud <- tryCatch(session$userData, error = function(e) NULL)
+  if (is.null(ud)) return(invisible(FALSE))
+  tryCatch(ud[[.PK_ENTITY_CONTEXT_SLOT]] <- NULL, error = function(e) NULL)
+  invisible(TRUE)
+}
+
 #' Oturumda saklanan önceki varlık bağlamını oku.
 pk_entity_context_recall <- function(session) {
   if (is.null(session)) return(NULL)

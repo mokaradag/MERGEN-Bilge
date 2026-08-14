@@ -352,7 +352,10 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/helpers_pk_query_selection_decide.R", 400L, 10L)
   assert_current_budget("R/helpers_pk_query_selection_degraded.R", 190L, 7L)
   assert_current_budget("R/helpers_pk_query_selection_session.R", 220L, 14L)
-  assert_current_budget("R/helpers_pk_query_selection_ai.R", 560L, 22L)
+  # BILINCLI GUNCELLEME (PR #705 kararlilik): Gecis A TOPLAM yuk butcesi
+  # asildiginda kapali basarisiz olan dal eklendi (sessiz kirpma, gorunmeyen
+  # sorgu = geri alinamaz recall kaybi). Fonksiyon sayisi ARTMAMISTIR.
+  assert_current_budget("R/helpers_pk_query_selection_ai.R", 578L, 22L)
   assert_current_budget("R/helpers_pk_query_selection_apply.R", 320L, 14L)
 
   # PR #705 dengeleme (inceleme borcu kok neden duzeltmeleri). Bu uc butce

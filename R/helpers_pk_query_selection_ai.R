@@ -446,6 +446,26 @@ pk_select_run <- function(user_prompt, library, chat_history = NULL,
     )))
   }
 
+  # Geçiş A TOPLAM bütçesi aşıldıysa da kapalı başarısız olunur.
+  #
+  # Alan başına kırpma kütüphane BÜYÜKLÜĞÜNÜ sınırlamaz; yük seçici modelin
+  # bağlamını taşırırsa satırlar sessizce düşer ve bu, `skipped` ile aynı
+  # sınıf recall kaybıdır: görünmeyen bir sorgu asla seçilemez, seçici de
+  # kalan kümeden güvenle yanlış bir sorgu çalıştırabilir.
+  if (isTRUE(payload$truncated)) {
+    return(bitir(.pk_select_decision(
+      PK_SELECT_STATUS_LIBRARY_ERROR,
+      message_tr = paste0(
+        "Analiz kütüphanesi sorgu seçimi istemine sığmadığı için seçim ",
+        "güvenle yapılamadı. Bu bir yapılandırma sorunudur; operatöre bildirin."
+      ),
+      disclosures = sprintf(
+        "Geçiş A yükü toplam bütçeyi aştı: %d / %d karakter (%d sorgu).",
+        as.integer(payload$chars), as.integer(payload$budget), length(payload$ids)
+      )
+    )))
+  }
+
   if (is.null(index)) index <- pk_retrieval_build_index(library)
   baglam <- pk_select_follow_up_context(
     chat_history, prior_query_id, payload$ids, cfg, user_prompt = user_prompt

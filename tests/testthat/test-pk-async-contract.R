@@ -336,15 +336,23 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     "R/helpers_pk_result_columns.R" = c(245L, 8L),
     "R/helpers_pk_result_size.R" = c(551L, 19L),
     "R/helpers_pk_cache_key.R" = c(140L, 11L),
-    "R/helpers_pk_cache.R" = c(438L, 26L),
+    # BILINCLI GUNCELLEME (PR #705): sinirlar artik KAYIP anahtarda da
+    # uzlastirilir (kapali onbellek/dusurulmus tavan ANINDA etkilidir).
+    "R/helpers_pk_cache.R" = c(446L, 26L),
     "R/helpers_pk_sql_execute.R" = c(429L, 22L),
     "R/helpers_pk_sql_connection.R" = c(125L, 6L),
     "R/helpers_pk_async_worker_env.R" = c(372L, 22L),
     "R/helpers_pk_async_worker_pool.R" = c(355L, 26L),
     "R/helpers_pk_async_bootstrap.R" = c(504L, 24L),
     "R/helpers_pk_async_snapshot_validate.R" = c(135L, 9L),
-    "R/helpers_pk_async_snapshot.R" = c(253L, 20L),
-    "R/helpers_pk_async_plan.R" = c(205L, 18L),
+    # BILINCLI GUNCELLEME (PR #705): D11 devralinan varlik baglami isciye
+    # ACIKCA duz veri olarak tasinir (genel dongu list alanlari atliyordu).
+    "R/helpers_pk_async_snapshot.R" = c(279L, 20L),
+    # BILINCLI GUNCELLEME (PR #705 kararlilik): yetenek sondasi artik
+    # `future::value()` ile ana olay dongusunu BLOKE ETMEZ; `resolved()`
+    # sinirli bir butce boyunca yoklanir ve SONUCSUZ sonda basari sayilmaz.
+    # Tavan yine TAM olculen degere cekilmistir; fonksiyon sayisi ARTMAMISTIR.
+    "R/helpers_pk_async_plan.R" = c(242L, 18L),
     "R/helpers_pk_async_request.R" = c(295L, 16L),
     "R/helpers_pk_async_worker_sql.R" = c(165L, 11L),
     "R/helpers_pk_async_worker.R" = c(330L, 22L),
@@ -358,7 +366,9 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     "R/helpers_pk_async_session_registry.R" = c(208L, 16L),
     "R/helpers_pk_async_routing.R" = c(239L, 21L),
     "R/helpers_pk_async_lifecycle.R" = c(232L, 17L),
-    "R/helpers_pk_async_apply.R" = c(218L, 16L),
+    # BILINCLI GUNCELLEME (PR #705): `pk_stopped` artik tipli `pk_halt_status`
+    # tasir; son tarih kullanici iptali gibi raporlanmaz.
+    "R/helpers_pk_async_apply.R" = c(222L, 16L),
     "R/helpers_pk_export_serve.R" = c(145L, 10L),
     "R/server_handler_pk_async.R" = c(438L, 14L)
   )

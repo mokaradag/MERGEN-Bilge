@@ -81,20 +81,42 @@ test_that("butceye zaten sigan yuk kirpilmaz", {
   expect_null(env$pk_prompt_budget_note(fit, 3L))
 })
 
-test_that("v1 yuk kurucusu DEGISMEZ: butce muhasebesi uygulanmaz", {
+test_that("v1 butce ALTINDA kalan yuk BIREBIR degismez", {
   env <- .pk_budget_env("v1")
-  onizleme <- .pk_budget_frame(200L, 12L)
+  onizleme <- .pk_budget_frame(5L, 3L)
 
   yuk <- env$pk_build_analysis_payload(
-    stat_summary = list(summary_text = "OZET", preview_data = onizleme, row_count = 200L),
+    stat_summary = list(summary_text = "OZET", preview_data = onizleme, row_count = 5L),
     query = NULL,
     engine_is_v2 = FALSE
   )
 
-  # Tum satirlar JSON'a girdi; kirpilma YOK ve butce notu YOK.
-  expect_true(nchar(yuk) > 100000L)
+  # Butcenin altinda: kirpilma YOK, butce notu YOK, sekil ayni.
   expect_false(grepl("İSTEM BÜTÇESİ", yuk, fixed = TRUE))
   expect_true(grepl("--- ORNEK SATIRLAR (JSON) ---", yuk, fixed = TRUE))
+  expect_true(grepl("Sutun_1", yuk, fixed = TRUE))
+})
+
+test_that("v1 yolu da istek boyutu sinirini UYGULAR", {
+  # KUSUR: `MERGEN_PK_ENGINE` varsayilani v1'ken bu dal ornek satirlarin
+  # TAMAMINI serilestirip butceye hic bakmadan donuyordu; istem guvenligi
+  # v2'ye gecmeye bagli kaliyordu.
+  env <- .pk_budget_env("v1")
+  onizleme <- .pk_budget_frame(200L, 12L)
+
+  withr::with_envvar(list(MERGEN_PK_PROMPT_CHAR_BUDGET = "8000"), {
+    yuk <- env$pk_build_analysis_payload(
+      stat_summary = list(summary_text = "OZET", preview_data = onizleme, row_count = 200L),
+      query = NULL,
+      engine_is_v2 = FALSE
+    )
+
+    # Kirpma GERCEKLESIR ve ACIKCA ifsa edilir.
+    expect_true(grepl("İSTEM BÜTÇESİ", yuk, fixed = TRUE))
+    # Nihai yuk, butce + not payi mertebesinde kalir; eski davranista
+    # 100.000+ karakterdi.
+    expect_true(nchar(yuk) < 20000L)
+  })
 })
 
 test_that("v2 yuk kurucusu butceyi uygular ve notu ekler", {
@@ -168,6 +190,65 @@ test_that("butce anahtari yapilandirma oncelik zincirini izler", {
 
   # Gecersiz deger sessizce varsayilana duser.
   withr::with_envvar(list(MERGEN_PK_PROMPT_CHAR_BUDGET = "sayi-degil"), {
+    expect_identical(env$pk_prompt_char_budget(), 120000L)
+  })
+})
+
+test_that("ACIK sifir butce TUKENMIS demektir, varsayilana DUSMEZ", {
+  # KUSUR: `pk_build_analysis_payload()` ifsa blogu + not payi toplam butceyi
+  # tukettiginde `fit_butcesi`'ni bilincli olarak 0'a kenetler. Eskiden bu
+  # deger `budget <= 0L` dalina dusup 120.000 karakterlik TAZE bir izin
+  # kazaniyordu; yani butce muhasebesi tamamen devre disi kaliyordu.
+  env <- .pk_budget_env("v2")
+  onizleme <- .pk_budget_frame(50L, 8L)
+
+  fit <- env$pk_prompt_fit_payload(
+    "OZET", onizleme,
+    function(ozet, json, satir) paste0(ozet, json),
+    budget = 0L
+  )
+
+  expect_identical(fit$budget, 0L)
+  expect_identical(fit$preview_rows, 0L)
+  expect_true(isTRUE(fit$over_budget))
+  # Tukenmis butce ACIKCA ifsa edilir.
+  expect_true(grepl(
+    "İSTEM BÜTÇESİ AŞILDI",
+    env$pk_prompt_budget_note(fit, 50L), fixed = TRUE
+  ))
+
+  # Negatif deger de tukenmis sayilir.
+  fit_neg <- env$pk_prompt_fit_payload(
+    "OZET", onizleme,
+    function(ozet, json, satir) paste0(ozet, json),
+    budget = -10L
+  )
+  expect_identical(fit_neg$budget, 0L)
+  expect_identical(fit_neg$preview_rows, 0L)
+})
+
+test_that("AYARLANMAMIS/GECERSIZ butce varsayilan yolu KORUR", {
+  env <- .pk_budget_env("v2")
+  onizleme <- .pk_budget_frame(3L, 3L)
+
+  # NULL -> yapilandirma/varsayilan.
+  fit_null <- env$pk_prompt_fit_payload(
+    "OZET", onizleme, function(ozet, json, satir) paste0(ozet, json), budget = NULL
+  )
+  expect_true(fit_null$budget > 0L)
+  expect_identical(fit_null$preview_rows, 3L)
+
+  # NA -> gecersiz girdi, varsayilana duser (tukenmis DEGIL).
+  fit_na <- env$pk_prompt_fit_payload(
+    "OZET", onizleme, function(ozet, json, satir) paste0(ozet, json),
+    budget = NA_integer_
+  )
+  expect_identical(fit_na$budget, 120000L)
+  expect_identical(fit_na$preview_rows, 3L)
+
+  # Yapilandirma 0/negatif dondururse TOPLAM butce varsayilana duser; yalnizca
+  # HESAPLANAN kalan sifir "tukenmis" anlamina gelir.
+  withr::with_envvar(list(MERGEN_PK_PROMPT_CHAR_BUDGET = "0"), {
     expect_identical(env$pk_prompt_char_budget(), 120000L)
   })
 })

@@ -344,6 +344,34 @@ pk_config_spec <- list(
     min = 2000L,
     max = 120000L
   ),
+  # XLSX yolunun TAHMİNİ BAYT tavanı (MB).
+  #
+  # Hücre SAYISI hücre GENİŞLİĞİ hakkında hiçbir şey söylemez: tek bir çok-KB
+  # metin sütununun 100.000 satırı hücre tavanının çok altında kalırken kabul
+  # edilen sonuç yüzlerce MB olabilir. XLSX yolu çerçeveyi normalleştirip
+  # kopyalar ve çalışma kitabını onun YANINDA kurar; bu, `MERGEN_PK_MAX_RESULT_MB`
+  # sınırını geçmiş bir sonuçta bile işçiyi tüketebilir. Tavan geçici kopya
+  # payını da kapsar.
+  MERGEN_PK_EXPORT_MAX_BYTES_MB = list(
+    type = "integer",
+    default = 128L,
+    min = 1L,
+    max = 4096L
+  ),
+  # Geçiş A kütüphane yükünün TOPLAM karakter bütçesi.
+  #
+  # Alan başına kırpma (DESC/NAME/KEYWORD/SAMPLE_CHARS) tek başına YETMEZ:
+  # sorgu SAYISI sınırlı değildir ve gerçek kütüphane 169 sorguludur. Alanları
+  # izin verilen üst sınırlara yakın, daha büyük bir kütüphane Geçiş A'yı
+  # seçici modelin bağlamının ötesine itebilir. Geçiş B'nin `PASS_B_CHARS`
+  # toplam kapısının Geçiş A karşılığıdır; aşıldığında sessiz kırpma değil,
+  # AÇIK kapalı-başarısız rapor üretilir.
+  MERGEN_PK_SELECT_PASS_A_CHARS = list(
+    type = "integer",
+    default = 60000L,
+    min = 2000L,
+    max = 400000L
+  ),
   # Geçiş A satırına giren örnek soru sayısı (§5.2: `sample_questions[1:2]`).
   # ÜST SINIR sözleşmenin kendisidir: §5.2 iki örnek soru der ve 169 sorguluk
   # gerçek kütüphanede bu alan yükün en büyük bileşenidir.

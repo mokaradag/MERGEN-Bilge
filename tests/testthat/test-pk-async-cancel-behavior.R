@@ -202,3 +202,113 @@ test_that("kullanıcı mesajları iptal ile zaman aşımını KARIŞTIRMAZ", {
   # Zaman aşımını "siz iptal ettiniz" diye raporlamak YANLIŞTIR.
   expect_false(grepl("kullanıcı tarafından iptal", zaman, fixed = TRUE))
 })
+
+test_that("isci PID sondasi ana olay dongusunu BLOKE ETMEZ ve sonucsuz sonda basari degildir", {
+  repo_root <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  source(file.path(repo_root, "R", "helpers_pk_async_plan.R"),
+         encoding = "UTF-8", local = env)
+
+  # KUSUR 1: sonda `future::value()` ile SINIRSIZ bekliyordu; tek iscili bir
+  # planda o isci mesgulken TUM oturumlarin olay dongusu donuyordu.
+  # Cozulmeyen bir future taklit edilir; sonda BUTCE kadar bekleyip NA doner.
+  testthat::local_mocked_bindings(
+    future = function(...) structure(list(), class = "sahte_future"),
+    resolved = function(...) FALSE,
+    value = function(...) stop("BLOKE ETMEMELIYDI"),
+    .package = "future"
+  )
+
+  withr::with_envvar(list(MERGEN_PK_ASYNC_PROBE_TIMEOUT_SEC = "0.2"), {
+    env$pk_async_plan_probe_reset()
+    baslangic <- Sys.time()
+    sonuc <- env$.pk_async_worker_pid_probe(force = TRUE)
+    gecen <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
+
+    expect_true(is.na(sonuc), info = "Cozulmeyen sonda OLCULEMEDI (NA) olmalidir.")
+    # Sinirli: butcenin biraz uzerinde ama SINIRSIZ degil.
+    expect_true(gecen < 5, info = sprintf("Sonda sinirli olmalidir (%.2f sn).", gecen))
+  })
+
+  # KUSUR 2: OLCULEMEYEN sonda onbellege ALINMAZ; isci bosalinca yeniden denenir.
+  expect_null(env$.pk_async_plan_probe_cache$result)
+})
+
+test_that("taban R baglanti tutamaclari isci sinirinda REDDEDILIR", {
+  repo_root <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  source(file.path(repo_root, "R", "helpers_pk_async_snapshot_validate.R"),
+         encoding = "UTF-8", local = env)
+
+  # KUSUR: yasakli sinif listesi yalnizca DBI/pool sinirlarini kapsiyordu.
+  # Taban R `file()`/`textConnection()` tutamaci `connection` sinifi tasir ama
+  # `externalptr` DEGIL `integer` tipindedir; kapidan geciyordu.
+  dosya_yolu <- tempfile()
+  fcon <- file(dosya_yolu, open = "w")
+  tcon <- textConnection("sentetik")
+  on.exit({
+    try(close(fcon), silent = TRUE)
+    try(close(tcon), silent = TRUE)
+    try(unlink(dosya_yolu, force = TRUE), silent = TRUE)
+  }, add = TRUE)
+
+  for (tutamac in list(fcon, tcon)) {
+    sonuc <- env$pk_async_validate_request(list(payload = tutamac))
+    expect_false(isTRUE(sonuc$safe))
+    expect_true(any(grepl("connection", sonuc$violations, fixed = TRUE)))
+  }
+
+  # Iç içe ve OZNITELIK icindeki tutamaclar da yakalanir.
+  ic_ice <- env$pk_async_validate_request(list(a = list(b = list(c = fcon))))
+  expect_false(isTRUE(ic_ice$safe))
+
+  ozellikli <- structure(list(x = 1), tutamac = fcon)
+  expect_false(isTRUE(env$pk_async_validate_request(ozellikli)$safe))
+
+  # DUZ veri hala guvenlidir (yanlis pozitif yok).
+  duz <- env$pk_async_validate_request(list(
+    a = 1L, b = "metin", c = list(d = TRUE), e = as.Date("2026-01-01"),
+    f = c(1.5, NA_real_)
+  ))
+  expect_true(isTRUE(duz$safe))
+})
+
+test_that("onbellek sinirlari KAYIP anahtarda da uzlastirilir", {
+  repo_root <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  for (f in c("helpers_pk_config.R", "helpers_pk_cache_key.R", "helpers_pk_cache.R")) {
+    source(file.path(repo_root, "R", f), encoding = "UTF-8", local = env)
+  }
+
+  env$pk_cache_reset()
+  for (i in 1:5) env$pk_cache_put(sprintf("anahtar_%d", i), data.frame(x = 1:10))
+  expect_length(env$.pk_cache_store$entries, 5L)
+
+  # KUSUR: eksik anahtar, sinirlar cozulmeden ONCE donuyordu; kalici bir iscide
+  # operator onbellegi kapatsa bile eski girisler yerlesik kaliyordu.
+  withr::with_envvar(list(MERGEN_PK_CACHE_MAX_ENTRIES = "0"), {
+    sonuc <- env$pk_cache_get("hic_olmayan_anahtar")
+    expect_false(isTRUE(sonuc$hit))
+    expect_identical(sonuc$reason, "cache_disabled")
+    expect_length(env$.pk_cache_store$entries, 0L)
+    expect_equal(env$.pk_cache_store$total_bytes, 0)
+  })
+
+  # Sinir DUSURULDUGUNDE de kayip anahtarda uzlastirma calisir.
+  env$pk_cache_reset()
+  for (i in 1:5) env$pk_cache_put(sprintf("anahtar_%d", i), data.frame(x = 1:10))
+  withr::with_envvar(list(MERGEN_PK_CACHE_MAX_ENTRIES = "2"), {
+    sonuc <- env$pk_cache_get("hic_olmayan_anahtar")
+    expect_identical(sonuc$reason, "miss")
+    expect_true(length(env$.pk_cache_store$entries) <= 2L)
+  })
+
+  # Sinirlar normalken ISABET davranisi DEGISMEZ.
+  env$pk_cache_reset()
+  env$pk_cache_put("kalici", data.frame(x = 1:3))
+  isabet <- env$pk_cache_get("kalici")
+  expect_true(isTRUE(isabet$hit))
+})

@@ -244,6 +244,68 @@ pk_deep_fit_context_budget <- function(system_prompt, user_context, data_blocks,
     )
   }
 
-  list(user_context = kirpilmis, trimmed = dusurulen > 0L, dropped_previews = dusurulen)
+  # 2. AŞAMA — ÖNİZLEMELER GİTTİKTEN SONRA HÂLÂ AŞILIYORSA.
+  #
+  # Birinci aşama YALNIZCA önizleme JSON bloklarını düşürür. Sabit sistem
+  # metni + kullanıcı bağlamı + istatistiksel özetler tek başına bütçeyi
+  # aşıyorsa (ya da hiç önizleme bloğu yoksa) döngü sona erer ve fonksiyon
+  # eskiden bütçe ÜSTÜ yükü SESSİZCE değişmeden döndürürdü; yani çok sorgulu
+  # bir derin istek, yeni toplam muhafıza rağmen nihai LLM çağrısında
+  # `MERGEN_PK_PROMPT_CHAR_BUDGET` sınırını aşabiliyordu.
+  #
+  # Deterministik ikinci bozulma: TÜM sorgu blokları SONDAN başlayarak
+  # düşürülür. Hiçbir sorgu sessizce kaybolmaz; her düşürme AÇIKÇA ifşa edilir
+  # ve model eksik analiz yaptığını bilir.
+  blok_isareti <- "\n\n==========================================\n\U0001F4CA SORGU "
+  sonuc_sonu <- "\n\n--- SONUÇLAR SONU ---"
+  dusen_blok <- 0L
+
+  while (toplam(kirpilmis) > butce) {
+    konumlar <- gregexpr(blok_isareti, kirpilmis, fixed = TRUE)[[1]]
+    if (konumlar[1] < 1L) break
+
+    bas <- konumlar[length(konumlar)]
+    kuyruk <- regexpr(sonuc_sonu, substr(kirpilmis, bas, nchar(kirpilmis)), fixed = TRUE)
+    son <- if (kuyruk[1] > 0L) bas + kuyruk[1] - 1L else nchar(kirpilmis) + 1L
+
+    # Yerine konan metin blok işaretiyle EŞLEŞMEZ; döngü her turda kısalır.
+    kirpilmis <- paste0(
+      substr(kirpilmis, 1L, bas - 1L),
+      "\n\n[SORGU BLOGU: istem butcesi nedeniyle GONDERILMEDI]",
+      substr(kirpilmis, son, nchar(kirpilmis))
+    )
+    dusen_blok <- dusen_blok + 1L
+  }
+
+  if (dusen_blok > 0L) {
+    kirpilmis <- paste0(
+      kirpilmis,
+      sprintf(paste0("\n\n\U000026A0\U0000FE0F İSTEM BÜTÇESİ: %d sorgunun sonuç bloğu ",
+                     "bütçeye sığmadığı için GÖNDERİLMEDİ. Bu analiz EKSİKTİR; ",
+                     "bulguları tam sonuç gibi sunma."),
+              dusen_blok)
+    )
+  }
+
+  # Nihai denetim: sabit sistem metni tek başına bütçeyi aşıyorsa (operatör
+  # yapılandırma hatası) daha fazla deterministik kırpma yapılamaz. Durum
+  # SESSİZ geçmez; çağıran `over_budget` ile görür ve log'a yazılır.
+  asildi <- toplam(kirpilmis) > butce
+  if (asildi) {
+    cat(sprintf(
+      "[PK_DERIN] UYARI: Istem butcesi tum bozulmalara ragmen asiliyor: %d/%d karakter.\n",
+      toplam(kirpilmis), butce
+    ))
+  }
+
+  list(
+    user_context = kirpilmis,
+    trimmed = (dusurulen > 0L) || (dusen_blok > 0L),
+    dropped_previews = dusurulen,
+    dropped_blocks = dusen_blok,
+    over_budget = asildi,
+    chars = toplam(kirpilmis),
+    budget = butce
+  )
 }
 

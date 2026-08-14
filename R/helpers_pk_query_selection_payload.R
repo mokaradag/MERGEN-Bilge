@@ -226,7 +226,8 @@ PK_SELECT_PASS_A_HEADER <- paste0(
 #' recall kaybıdır.
 pk_select_pass_a_payload <- function(library, cfg) {
   if (!is.list(library) || !length(library)) {
-    return(list(text = "", ids = character(0), skipped = character(0)))
+    return(list(text = "", ids = character(0), skipped = character(0),
+                truncated = FALSE, chars = 0L, budget = NA_integer_))
   }
 
   satirlar <- vapply(library, function(q) pk_select_pass_a_line(q, cfg), character(1))
@@ -242,10 +243,28 @@ pk_select_pass_a_payload <- function(library, cfg) {
   kimlikler <- kimlikler[gecerli]
   sira <- order(kimlikler, method = "radix")
 
+  metin <- paste(satirlar[sira], collapse = "\n")
+
+  # TOPLAM GEÇİŞ A BÜTÇESİ (Geçiş B'deki `pass_b_chars` kapısının karşılığı).
+  #
+  # Alan başına kırpma sorgu SAYISINI sınırlamaz; daha büyük bir kütüphane ya
+  # da izin verilen üst sınırlara yakın metadata, Geçiş A'yı seçici modelin
+  # bağlamının ötesine itebilir. Sessiz kırpma DOĞRU DEĞİLDİR: eksik bir satır
+  # o sorguyu geri alınamaz biçimde görünmez yapar ve seçici kalan kümeden
+  # güvenle yanlış bir sorguyu seçebilir — `skipped` ile aynı sınıf hata.
+  # Bu yüzden durum `truncated` ile AÇIKÇA raporlanır ve çağıran kapalı
+  # başarısız olur.
+  butce <- suppressWarnings(as.integer(cfg$pass_a_chars %||% 60000L))
+  if (is.na(butce) || butce <= 0L) butce <- 60000L
+  uzunluk <- nchar(metin, type = "chars")
+
   list(
-    text = paste(satirlar[sira], collapse = "\n"),
+    text = metin,
     ids = kimlikler[sira],
-    skipped = atlanan
+    skipped = atlanan,
+    truncated = uzunluk > butce,
+    chars = uzunluk,
+    budget = butce
   )
 }
 

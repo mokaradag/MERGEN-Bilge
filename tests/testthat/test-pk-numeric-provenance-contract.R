@@ -345,3 +345,56 @@ test_that("Olgu indeksi kimliğe gore kurulur; CAKISAN kimlik alintilanamaz olur
   expect_null(cakisik[[kimlik]]$value)
   expect_identical(cakisik[[kimlik]]$status, "ambiguous_fact_id")
 })
+
+# --- PR #705: ISARETSIZ SAYISAL IDDIALAR ------------------------------------
+
+test_that("isaretsiz sayisal iddia UYUSMAZLIK sayilir", {
+  env <- .pk_prov_env()
+  olgular <- list(list(fact_id = "f1", value = 1234.5, column = "Saat",
+                       aggregation = "sum", unit = "saat"))
+
+  # KUSUR: model istem kuralini yok sayip isaretsiz bir sayi yazdiginda iddia
+  # kumesi BOS kaliyor, dogrulayici "uyusmazlik yok" diyor ve `warn`/`block`
+  # kipleri bile halusinasyon sayiyi DEGISMEDEN yayimliyordu.
+  sonuc <- env$pk_numeric_provenance_validate("Toplam 99.999 saat harcandi.", olgular)
+  expect_identical(sonuc$checked, 1L)
+  expect_length(sonuc$mismatches, 1L)
+  expect_identical(sonuc$mismatches[[1]]$reason, "missing_fact_marker")
+  expect_true(sonuc$rate > 0)
+
+  # Dogru alintilanan sayi UYUSMAZLIK DEGILDIR.
+  temiz <- env$pk_numeric_provenance_validate(
+    "Toplam 1.234,5 saat [fact:f1] harcandi.", olgular
+  )
+  expect_length(temiz$mismatches, 0L)
+
+  # Karisik metin: yalnizca isaretsiz olan yakalanir.
+  karisik <- env$pk_numeric_provenance_validate(
+    "Once 1.234,5 saat [fact:f1], ayrica 88.888 saat daha.", olgular
+  )
+  expect_identical(karisik$checked, 2L)
+  expect_length(karisik$mismatches, 1L)
+  expect_identical(karisik$mismatches[[1]]$reason, "missing_fact_marker")
+})
+
+test_that("siradan sayilar YANLIS POZITIF uretmez", {
+  env <- .pk_prov_env()
+  olgular <- list(list(fact_id = "f1", value = 1L, column = "Adet",
+                       aggregation = "count", unit = "adet"))
+
+  # Yil, kucuk tam sayi ve madde numarasi veri iddiasi DEGILDIR; `block`
+  # kipinde gecerli yanitlari dusurmemelidirler.
+  for (metin in c("2024 yilinda 3 kez incelendi.",
+                  "1. Birinci bulgu\n2. Ikinci bulgu",
+                  "Yaklasik 5 proje etkilendi.",
+                  "")) {
+    sonuc <- env$pk_numeric_provenance_validate(metin, olgular)
+    expect_equal(length(sonuc$mismatches), 0L, info = metin)
+  }
+
+  # Olcek isareti tasiyan sayilar YAKALANIR.
+  for (metin in c("Toplam 1500 saat.", "Oran %61,3 seviyesinde.", "Butce 12.500 TL.")) {
+    sonuc <- env$pk_numeric_provenance_validate(metin, olgular)
+    expect_true(length(sonuc$mismatches) >= 1L, info = metin)
+  }
+})

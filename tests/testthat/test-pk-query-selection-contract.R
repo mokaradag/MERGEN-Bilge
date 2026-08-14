@@ -31,7 +31,7 @@ pk_select_source_chain_for_tests()
     timeout_sec = 20L, recall_n = 5L, min_confidence = 50L, min_margin = 15L,
     disagree_penalty = 15L, desc_chars = 220L, sample_chars = 120L,
     sample_n = 2L, history_turns = 2L, name_chars = 120L, keyword_chars = 160L,
-    history_chars = 240L, pass_b_chars = 24000L
+    history_chars = 240L, pass_b_chars = 24000L, pass_a_chars = 60000L
   )
   if (length(ust)) taban[names(ust)] <- ust
   pk_select_normalize_config(taban)
@@ -1211,4 +1211,38 @@ test_that("dokuz seçim anahtarı da yapılandırma sözleşmesinde kayıtlıdı
   expect_equal(pk_config_spec$MERGEN_PK_SELECT_TIMEOUT_SEC$default, 20L)
   expect_equal(pk_config_spec$MERGEN_PK_SELECT_MIN_CONFIDENCE$default, 50L)
   expect_equal(pk_config_spec$MERGEN_PK_SELECT_MIN_MARGIN$default, 15L)
+})
+
+test_that("CELISKILI Gecis A takma alanlari REDDEDILIR", {
+  kimlikler <- pk_select_pass_a_payload(.pk_sel_lib(), .pk_sel_cfg())$ids
+
+  # KUSUR: uc ad da kabul ediliyor ama birden fazlasi varsa SESSIZCE ilki
+  # kullaniliyordu; iki FARKLI aday kumesi tasiyan yanit kati ayristirmayi
+  # gecip otomatik secime ilerleyebiliyordu.
+  celiskili <- sprintf('{"candidates":["%s"],"ids":["%s"]}', kimlikler[1], kimlikler[2])
+  sonuc <- pk_select_parse_pass_a(celiskili, kimlikler)
+  expect_false(isTRUE(sonuc$ok))
+  expect_true(grepl("CELISKILI", sonuc$error, fixed = TRUE))
+
+  # AYNI kumeyi tasiyan takma adlar KABUL EDILIR (geriye donuk uyum).
+  ayni <- sprintf('{"candidates":["%s"],"ids":["%s"]}', kimlikler[1], kimlikler[1])
+  expect_true(isTRUE(pk_select_parse_pass_a(ayni, kimlikler)$ok))
+
+  # TEK alan davranisi DEGISMEZ.
+  tek <- sprintf('{"candidates":["%s"]}', kimlikler[1])
+  expect_true(isTRUE(pk_select_parse_pass_a(tek, kimlikler)$ok))
+})
+
+test_that("Gecis B SOZLESME DISI ust duzey alanlari REDDEDER", {
+
+  gecerli <- .pk_sel_pass_b(id = "q002")
+  expect_true(isTRUE(pk_select_parse_pass_b(gecerli, c("q001", "q002", "q003", "q004"))$ok))
+
+  # KUSUR: ayristirici yalnizca beklenen adlari OKUYUP diger her ust duzey
+  # alani SESSIZCE yok sayiyordu; sema kaymasi yanit tum denetimlerden gecip
+  # CELISKILI bir secimle otomatik calistirilabiliyordu.
+  kaymis <- sub("^\\{", '{"selected_id":"q003",', gecerli)
+  sonuc <- pk_select_parse_pass_b(kaymis, c("q001", "q002", "q003", "q004"))
+  expect_false(isTRUE(sonuc$ok))
+  expect_true(grepl("sozlesme disi", sonuc$error, fixed = TRUE))
 })

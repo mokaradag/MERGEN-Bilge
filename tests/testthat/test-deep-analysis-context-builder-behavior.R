@@ -73,3 +73,99 @@ test_that("başarılı + başarısız karışımı başarısız notu ekler", {
   expect_true(grepl("FAIL", out$user_context, fixed = TRUE))
   expect_true(grepl("neden-x", out$user_context, fixed = TRUE))
 })
+
+# --- İSTEM BÜTÇESİ: ÖNİZLEME SONRASI İKİNCİ DETERMİNİSTİK BOZULMA -------------
+#
+# KUSUR: `pk_deep_fit_context_budget()` YALNIZCA önizleme JSON bloklarını
+# düşürüyordu. Sabit sistem metni + istatistiksel özetler tek başına bütçeyi
+# aşıyorsa (ya da hiç önizleme bloğu yoksa) döngü sona eriyor ve fonksiyon
+# bütçe ÜSTÜ yükü SESSİZCE değişmeden döndürüyordu.
+
+# Bütçe uygulayıcısı `pk_prompt_char_budget()`/`pk_config_resolve()` gerektirir;
+# dosya başındaki ortam bunları taşımaz.
+.dac_butce_env <- local({
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+  for (f in c("R/helpers_pk_config.R", "R/helpers_pk_prompt_budget.R",
+              "R/helpers_deep_analysis_context.R")) {
+    suppressWarnings(source(file.path(repo_root_dac, f),
+                            encoding = "UTF-8", local = env))
+  }
+  env
+})
+
+.dac_blok <- function(i, ozet_uzunluk = 2000L, onizleme = TRUE) {
+  paste0(
+    "\n\n==========================================\n",
+    sprintf("\U0001F4CA SORGU %d/3: SENTETIK %d\n", i, i),
+    "==========================================\n",
+    strrep("OZET ", ozet_uzunluk),
+    if (isTRUE(onizleme)) paste0("\n\n--- ÖRNEK VERİ (JSON) ---\n",
+                                 strrep("{\"a\":1},", 400L)) else "",
+    sprintf("\n(Bu sorgu %d satirlik veri icermektedir)\n", i)
+  )
+}
+
+.dac_baglam <- function(n = 3L, ozet_uzunluk = 2000L, onizleme = TRUE) {
+  paste0(
+    "KULLANICI SORUSU:\nsentetik soru\n",
+    "\n\n--- R TARAFINDAN HAZIRLANAN ÇOKLU SORGU SONUÇLARI ---\n",
+    paste(vapply(seq_len(n), function(i) .dac_blok(i, ozet_uzunluk, onizleme),
+                 character(1)), collapse = "\n"),
+    "\n\n--- SONUÇLAR SONU ---\n\nTalimat: analiz et."
+  )
+}
+
+test_that("onizlemeler yetmezse SORGU BLOKLARI dusurulur ve butce UYGULANIR", {
+  sistem <- strrep("S", 500L)
+  baglam <- .dac_baglam()
+
+  withr::with_envvar(list(MERGEN_PK_PROMPT_CHAR_BUDGET = "12000"), {
+    sonuc <- .dac_butce_env$pk_deep_fit_context_budget(sistem, baglam, NULL)
+
+    # Butce GERCEKTEN uygulanir.
+    expect_false(isTRUE(sonuc$over_budget))
+    expect_true(sonuc$chars <= sonuc$budget)
+
+    # Onizlemeler once, ardindan blok duserek; ikisi de ACIKCA ifsa edilir.
+    expect_true(sonuc$dropped_previews > 0L)
+    expect_true(sonuc$dropped_blocks > 0L)
+    expect_true(grepl("sonuç bloğu", sonuc$user_context, fixed = TRUE))
+    expect_true(grepl("EKSİKTİR", sonuc$user_context, fixed = TRUE))
+  })
+})
+
+test_that("hic onizleme blogu olmayan asim da bloklarla cozulur", {
+  sistem <- strrep("S", 500L)
+  baglam <- .dac_baglam(onizleme = FALSE)
+
+  withr::with_envvar(list(MERGEN_PK_PROMPT_CHAR_BUDGET = "8000"), {
+    sonuc <- .dac_butce_env$pk_deep_fit_context_budget(sistem, baglam, NULL)
+    expect_identical(sonuc$dropped_previews, 0L)
+    expect_true(sonuc$dropped_blocks > 0L)
+    expect_true(sonuc$chars <= sonuc$budget)
+  })
+})
+
+test_that("butceye sigan baglam DEGISMEDEN doner", {
+  sistem <- strrep("S", 100L)
+  baglam <- .dac_baglam(n = 1L, ozet_uzunluk = 5L)
+
+  withr::with_envvar(list(MERGEN_PK_PROMPT_CHAR_BUDGET = "120000"), {
+    sonuc <- .dac_butce_env$pk_deep_fit_context_budget(sistem, baglam, NULL)
+    expect_false(isTRUE(sonuc$trimmed))
+    expect_identical(sonuc$user_context, baglam)
+  })
+})
+
+test_that("sabit sistem metni tek basina asiyorsa SONSUZ DONGU olmaz", {
+  # Daha fazla deterministik kirpma mumkun degildir; durum sessiz gecmez.
+  sistem <- strrep("S", 5000L)
+  baglam <- .dac_baglam(n = 2L, ozet_uzunluk = 200L)
+
+  withr::with_envvar(list(MERGEN_PK_PROMPT_CHAR_BUDGET = "1000"), {
+    sonuc <- .dac_butce_env$pk_deep_fit_context_budget(sistem, baglam, NULL)
+    expect_true(isTRUE(sonuc$over_budget))
+    expect_true(sonuc$dropped_blocks > 0L)
+  })
+})

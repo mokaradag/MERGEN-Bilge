@@ -695,3 +695,96 @@ test_that("ZAYIF doğrudan eşleşme geçmişi bastırmaz", {
   expect_true(isTRUE(karar$inherited))
   expect_equal(karar$chips[[1]]$value, "ANKA")
 })
+
+# --- PR #705 KARARLILIK: tarama siniri / sohbet kapsami / isci tasima ---------
+
+test_that("en yakin aday onerileri TARAMA TAVANINA uyar", {
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  pk_entity_source_chain_for_tests(env = env)
+
+  # KUSUR: esik alti kurtarma yolu sutundaki HER ayrik degerle cagriliyor ve
+  # `MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES` tavanini YOK SAYIYORDU.
+  adaylar <- paste0("SENTETIK PROJE ", sprintf("%05d", 1:20000))
+
+  withr::with_envvar(list(MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES = "200"), {
+    sonuc <- env$pk_entity_nearest_candidates("SENTETIK PROJE 00042X", adaylar, 3L)
+    expect_length(sonuc, 3L)
+    expect_true(all(vapply(sonuc, function(x) identical(x$tier, "suggestion"), logical(1))))
+    # Oneri KALITESI korunur: dogru aday hala listede.
+    expect_true(any(vapply(sonuc, function(x) x$value == "SENTETIK PROJE 00042", logical(1))))
+  })
+
+  # Tavan yuksekken sonuc AYNI kalir (kirpma oneri kalitesini bozmaz).
+  withr::with_envvar(list(MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES = "50000"), {
+    genis <- env$pk_entity_nearest_candidates("SENTETIK PROJE 00042X", adaylar, 3L)
+    expect_true(any(vapply(genis, function(x) x$value == "SENTETIK PROJE 00042", logical(1))))
+  })
+
+  # Kucuk sozlukte davranis DEGISMEZ.
+  kucuk <- env$pk_entity_nearest_candidates("ANKARA", c("ANKARA", "ISTANBUL", "IZMIR"), 2L)
+  expect_length(kucuk, 2L)
+  expect_identical(kucuk[[1]]$value, "ANKARA")
+})
+
+test_that("devralinan varlik baglami SOHBET SINIRINDA temizlenir", {
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  pk_entity_source_chain_for_tests(extra = "helpers_pk_entity_context.R", env = env)
+
+  oturum <- list(userData = new.env(parent = emptyenv()))
+
+  kararlar <- list(list(
+    decision = "auto", values = "SENTETIK ALFA", entity_role = "subject",
+    column = "ProjeAdi", column_meta = list(entity_kind = "proje")
+  ))
+  env$pk_entity_context_remember(oturum, kararlar, list(id = "q001"))
+
+  # Ayni sohbette devam: baglam KORUNUR.
+  expect_false(is.null(env$pk_entity_context_recall(oturum)))
+  expect_identical(env$pk_entity_context_recall(oturum)$values, "SENTETIK ALFA")
+
+  # KUSUR: kayit oturum genelindeydi ve sohbet degisince dusurulmuyordu; yeni
+  # sohbet, sorgu/sutun kimligi eslestigi anda ONCEKI sohbetin oznesini
+  # devraliyordu.
+  env$pk_entity_context_clear(oturum)
+  expect_null(env$pk_entity_context_recall(oturum))
+
+  # Temizleme bozuk/eksik oturumda HATA vermez.
+  expect_silent(env$pk_entity_context_clear(NULL))
+})
+
+test_that("devralinan varlik baglami isciye DUZ VERI olarak tasinir", {
+  repo_root <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  for (f in c("helpers_pk_async_snapshot_validate.R", "helpers_pk_async_snapshot.R")) {
+    source(file.path(repo_root, "R", f), encoding = "UTF-8", local = env)
+  }
+
+  anlik <- list(
+    system_username = "sentetik_kullanici",
+    user_id = 42L,
+    pk_entity_prior_context = list(
+      values = c("SENTETIK ALFA"),
+      key = list(query_id = "q001", column = "ProjeAdi", entity_kind = "proje")
+    )
+  )
+
+  # KUSUR: genel dongu `is.list(deger)` olan HER alani atliyordu; kayit tam
+  # olarak o sekildedir, dolayisiyla isciye HIC ulasmiyordu.
+  duz <- env$.pk_async_plain_user_data(anlik)
+  expect_false(is.null(duz$pk_entity_prior_context))
+  expect_identical(duz$pk_entity_prior_context$values, "SENTETIK ALFA")
+  expect_identical(duz$pk_entity_prior_context$key$query_id, "q001")
+  expect_identical(duz$pk_entity_prior_context$key$column, "ProjeAdi")
+
+  # Tasinan sekil ISCI SINIRI dogrulamasindan GECER.
+  expect_true(isTRUE(env$pk_async_validate_request(list(user_session = duz))$safe))
+
+  # Bos/bozuk kayit tasinmaz (yanlis pozitif yok).
+  expect_null(env$.pk_async_plain_user_data(
+    list(pk_entity_prior_context = list(values = character(0)))
+  )$pk_entity_prior_context)
+  expect_null(env$.pk_async_plain_user_data(list(user_id = 1L))$pk_entity_prior_context)
+})

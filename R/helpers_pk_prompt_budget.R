@@ -21,12 +21,23 @@
 # ==============================================================================
 
 #' Çözülmüş toplam yük karakter bütçesi
+#'
+#' Dönüş HER ZAMAN pozitiftir. Bu, "yapılandırma ayarlanmamış/geçersiz" ile
+#' "kalan bütçe tükendi" ayrımının tek yerde çözülmesini sağlar: sıfır bir
+#' TOPLAM bütçe anlamsızdır ve varsayılana düşer, buna karşılık
+#' `pk_build_analysis_payload()` içinde ifşa payı düşüldükten sonra HESAPLANAN
+#' sıfır gerçekten tükenmiş bir kalan bütçedir ve öyle ele alınır.
 pk_prompt_char_budget <- function(query_meta = NULL) {
-  if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) return(120000L)
-  tryCatch(
-    pk_config_resolve("MERGEN_PK_PROMPT_CHAR_BUDGET", query_meta = query_meta),
-    error = function(e) 120000L
-  )
+  ham <- if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) {
+    120000L
+  } else {
+    tryCatch(
+      pk_config_resolve("MERGEN_PK_PROMPT_CHAR_BUDGET", query_meta = query_meta),
+      error = function(e) 120000L
+    )
+  }
+  ham <- suppressWarnings(as.integer(ham))
+  if (is.na(ham) || ham <= 0L) 120000L else ham
 }
 
 #' Örnek satırları JSON'a çevir
@@ -54,9 +65,27 @@ pk_prompt_preview_json <- function(preview_data) {
 #'   `function(summary_text, preview_json, preview_rows)`.
 #' @return list(payload, preview_rows, preview_json, trimmed, budget, chars, over_budget)
 pk_prompt_fit_payload <- function(summary_text, preview_data, assemble, budget = NULL) {
-  if (is.null(budget)) budget <- pk_prompt_char_budget()
+  # AÇIK SIFIR "TÜKENMİŞ" DEMEKTİR, "AYARLANMAMIŞ" DEĞİL.
+  #
+  # `pk_build_analysis_payload()`, ifşa bloğu ve not payı toplam bütçeyi
+  # tükettiğinde `fit_butcesi`'ni BİLİNÇLİ olarak 0'a kenetler. Eskiden bu
+  # değer buradaki `budget <= 0L` dalına düşüyor ve 120.000 karakterlik TAZE
+  # bir izin kazanıyordu; yani küçük bir sorgu bütçesi veya büyük bir ifşa
+  # bloğu, tüm istek bütçesi muhasebesini SESSİZCE devre dışı bırakıyordu.
+  #
+  # Ayrım korunur: bütçe verilmediyse (NULL) yapılandırma/varsayılan geçerlidir;
+  # açıkça verilen 0 ya da negatif değer TÜKENMİŞ bütçedir ve örnek satır
+  # gönderilmemesine yol açar.
+  acik_butce <- !is.null(budget)
+  if (!acik_butce) budget <- pk_prompt_char_budget()
   budget <- suppressWarnings(as.integer(budget))
-  if (is.na(budget) || budget <= 0L) budget <- 120000L
+  if (is.na(budget)) {
+    budget <- 120000L
+  } else if (budget < 0L) {
+    budget <- 0L
+  } else if (budget == 0L && !acik_butce) {
+    budget <- 120000L
+  }
 
   summary_text <- as.character(summary_text %||% "")[1]
   if (is.na(summary_text)) summary_text <- ""
@@ -110,18 +139,37 @@ pk_build_analysis_payload <- function(stat_summary, query, engine_is_v2 = FALSE,
   }
 
   if (!isTRUE(engine_is_v2)) {
-    onizleme <- stat_summary$preview_data
-    json <- if (!is.null(onizleme) && nrow(onizleme) > 0) {
-      guvenli <- if (exists("normalize_pk_dataframe_utf8", mode = "function", inherits = TRUE)) {
-        normalize_pk_dataframe_utf8(onizleme)
-      } else {
-        onizleme
-      }
-      jsonlite::toJSON(guvenli, auto_unbox = TRUE, pretty = FALSE, na = "null")
-    } else {
-      "{}"
+    # v1 KARAR anlamı korunur (politika ifşası, olgu/paket makinesi YOK), ancak
+    # İSTEK BOYUTU sınırı burada da uygulanır.
+    #
+    # `MERGEN_PK_ENGINE` varsayılanı hâlâ `v1`'dir. Bu dal eskiden örnek
+    # satırların TAMAMINI serileştirip bütçeye hiç bakmadan dönüyordu; yani
+    # geniş/uzun bir izinli sonuç, varsayılan dağıtımda yerel modelin bağlam
+    # sınırını taşırabiliyordu. İstem güvenliğinin v2'ye geçmeye bağlı olması
+    # doğru değildir: bütçe modelin GÖRDÜĞÜ nihai yük için geçerlidir.
+    #
+    # Bütçenin altındaki yükte çıktı BİREBİR aynıdır (aynı `kur()`, aynı JSON
+    # seçenekleri); yalnızca bütçe aşıldığında örnek satır sayısı kırpılır ve
+    # kırpma açıkça ifşa edilir.
+    fit_v1 <- pk_prompt_fit_payload(
+      stat_summary$summary_text,
+      stat_summary$preview_data,
+      kur,
+      budget = pk_prompt_char_budget(if (is.list(query)) query$meta else NULL)
+    )
+
+    data_str_v1 <- fit_v1$payload
+    istenen_v1 <- if (is.null(stat_summary$preview_data)) 0L else nrow(stat_summary$preview_data)
+    not_v1 <- pk_prompt_budget_note(fit_v1, istenen_v1)
+    if (!is.null(not_v1)) {
+      cat(sprintf(
+        "[PK_ANALIZ] Istem butcesi (v1): %d/%d karakter, ornek satir: %d\n",
+        fit_v1$chars, fit_v1$budget, fit_v1$preview_rows
+      ))
+      data_str_v1 <- paste0(data_str_v1, not_v1)
     }
-    return(kur(stat_summary$summary_text, json, NULL))
+
+    return(data_str_v1)
   }
 
   # İFŞALAR SIĞDIRMADAN ÖNCE HESAPLANIR VE BÜTÇEDEN DÜŞÜLÜR.

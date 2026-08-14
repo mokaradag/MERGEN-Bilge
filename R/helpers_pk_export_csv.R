@@ -51,13 +51,23 @@
 #' Aynı saniyede aynı sorguyu dışa aktaran iki kullanıcı ayrı dizinlere yazar;
 #' kayıtlı indirme bağlantısı böylece DEĞİŞMEZ kalır ve bir oturumun temizliği
 #' diğerinin dosyasını silemez.
+#' @return Yalnızca ve yalnızca izole dizin; oluşturulamazsa `NULL`.
 pk_export_run_dir <- function(base_dir = NULL) {
   kok <- base_dir %||% file.path(tempdir(), "pk_export")
   if (!dir.exists(kok)) dir.create(kok, recursive = TRUE, showWarnings = FALSE)
 
   yol <- tempfile(pattern = "run_", tmpdir = kok)
   dir.create(yol, recursive = TRUE, showWarnings = FALSE)
-  if (!dir.exists(yol)) return(kok)
+
+  # PAYLAŞILAN KÖKE GERİ DÜŞÜLMEZ (güvenlik sınırı).
+  #
+  # Eskiden izole `run_` dizini oluşturulamadığında paylaşılan `pk_export`
+  # kökü dönüyordu. Dosya adları yalnızca sorgudan türeyen taban ad ve SANİYE
+  # çözünürlüklü zaman damgası taşır; aynı saniyede aynı sorguyu dışa aktaran
+  # iki oturum böylece AYNI yola yazabilir ve ilk oturumun kayıtlı indirme
+  # bağlantısı ikinci kullanıcının RLS ile süzülmüş verisini sunabilirdi.
+  # İzolasyon sağlanamıyorsa dışa aktarım BAŞARISIZ olur.
+  if (!dir.exists(yol)) return(NULL)
   yol
 }
 
@@ -121,34 +131,23 @@ pk_export_csv_verify <- function(path, expected) {
     return(list(ok = FALSE, reason = "Karsilastirilacak cerceve yok."))
   }
 
-  tryCatch({
-    okunan <- utils::read.csv(
-      path, colClasses = "character", check.names = FALSE,
-      fileEncoding = "UTF-8-BOM", na.strings = character(0),
-      stringsAsFactors = FALSE
-    )
-
-    if (ncol(okunan) != ncol(expected)) {
-      return(list(ok = FALSE, reason = sprintf(
-        "Sutun sayisi uyusmuyor: beklenen %d, okunan %d.", ncol(expected), ncol(okunan)
-      )))
+  # DOĞRULAMA BELLEK SINIRLIDIR (PARÇA PARÇA GERİ OKUMA).
+  #
+  # Eskiden tüm CSV parçası `read.csv(..., colClasses = "character")` ile
+  # BİR KEREDE belleğe alınıyordu. Bu yol tam da XLSX'in bellek açısından
+  # ağır bulunduğu sonuçlar için seçilir; hâlâ canlı olan kaynak/sonuç
+  # çerçevelerinin ÜZERİNE çok büyük bir karakter çerçevesi eklemek, bellek
+  # güvenliği için yönlendirilen isteği işçiyi tüketerek düşürebiliyordu.
+  #
+  # `read.csv()` AÇIK bir bağlantıdan `nrows` ile okurken KAYIT bazlı çalışır;
+  # tırnak içine alınmış gömülü satır sonları doğru ayrıştırılır. Karşılaştırma
+  # da aynı dilim üzerinde yapılır, böylece bellek parça boyutuyla sınırlıdır.
+  karsilastir_dilim <- function(okunan, bek_dilim, sutun_adlari) {
+    if (!identical(names(okunan), sutun_adlari)) {
+      return("Sutun basliklari kaynakla ayni degil.")
     }
-    if (nrow(okunan) != nrow(expected)) {
-      return(list(ok = FALSE, reason = sprintf(
-        "Satir sayisi uyusmuyor: beklenen %d, okunan %d.", nrow(expected), nrow(okunan)
-      )))
-    }
-    if (!identical(names(okunan), names(expected))) {
-      return(list(ok = FALSE, reason = "Sutun basliklari kaynakla ayni degil."))
-    }
-    if (anyDuplicated(names(expected)) > 0L) {
-      return(list(ok = FALSE, reason = "Mukerrer sutun basligi: etiketler belirsiz."))
-    }
-
-    if (!nrow(expected)) return(list(ok = TRUE, reason = NULL))
-
-    for (i in seq_along(expected)) {
-      bek <- expected[[i]]
+    for (i in seq_along(bek_dilim)) {
+      bek <- bek_dilim[[i]]
       ger <- okunan[[i]]
 
       if (is.numeric(bek)) {
@@ -156,42 +155,90 @@ pk_export_csv_verify <- function(path, expected) {
         bek_sayi <- as.numeric(bek)
         bos <- is.na(bek_sayi)
         if (!identical(bos, is.na(ger_sayi))) {
-          return(list(ok = FALSE, reason = sprintf(
-            "'%s' sutununda bos deger deseni degismis.", names(expected)[i]
-          )))
+          return(sprintf("'%s' sutununda bos deger deseni degismis.", sutun_adlari[i]))
         }
-        # SONSUZ DEĞERLER AYRI KARŞILAŞTIRILIR.
-        #
-        # Geçerli bir sonuç `Inf`/`-Inf` içerdiğinde (ör. sıfıra bölünen bir
-        # oran) başarılı bir gidiş-dönüş aynı sonsuz değeri üretir; ancak
-        # `Inf - Inf` = `NaN` olur, karşılaştırma `NA` döner, `any(...)` `NA`
-        # döner ve saran `if` HATA atardı. Dıştaki tryCatch bunu "doğrulama
-        # başarısız" sayıp GEÇERLİ CSV'yi siliyordu.
         sonsuz_bek <- !bos & is.infinite(bek_sayi)
         sonsuz_ger <- !bos & is.infinite(ger_sayi)
         if (!identical(sonsuz_bek, sonsuz_ger) ||
             any(sonsuz_bek & (sign(bek_sayi) != sign(ger_sayi)))) {
-          return(list(ok = FALSE, reason = sprintf(
-            "'%s' sutununda sonsuz deger deseni degismis.", names(expected)[i]
-          )))
+          return(sprintf("'%s' sutununda sonsuz deger deseni degismis.", sutun_adlari[i]))
         }
-
         sonlu <- !bos & !sonsuz_bek
         if (any(sonlu) &&
             any(abs(ger_sayi[sonlu] - bek_sayi[sonlu]) >
                   pmax(1e-9, abs(bek_sayi[sonlu]) * 1e-12))) {
-          return(list(ok = FALSE, reason = sprintf(
-            "'%s' sutununda sayisal deger degismis.", names(expected)[i]
-          )))
+          return(sprintf("'%s' sutununda sayisal deger degismis.", sutun_adlari[i]))
         }
         next
       }
 
       if (!identical(.pk_csv_expected_chr(bek), as.character(ger))) {
-        return(list(ok = FALSE, reason = sprintf(
-          "'%s' sutununda metin degeri degismis.", names(expected)[i]
-        )))
+        return(sprintf("'%s' sutununda metin degeri degismis.", sutun_adlari[i]))
       }
+    }
+    NA_character_
+  }
+
+  tryCatch({
+    baglanti <- file(path, open = "r", encoding = "UTF-8-BOM")
+    on.exit(try(close(baglanti), silent = TRUE), add = TRUE)
+
+    parca_satir <- .PK_CSV_CHUNK_ROWS
+    ilk <- utils::read.csv(
+      baglanti, nrows = parca_satir, header = TRUE,
+      colClasses = "character", check.names = FALSE,
+      na.strings = character(0), stringsAsFactors = FALSE
+    )
+    okunan <- ilk
+    sutun_adlari <- names(ilk)
+
+    if (ncol(okunan) != ncol(expected)) {
+      return(list(ok = FALSE, reason = sprintf(
+        "Sutun sayisi uyusmuyor: beklenen %d, okunan %d.", ncol(expected), ncol(okunan)
+      )))
+    }
+    if (!identical(sutun_adlari, names(expected))) {
+      return(list(ok = FALSE, reason = "Sutun basliklari kaynakla ayni degil."))
+    }
+    if (anyDuplicated(names(expected)) > 0L) {
+      return(list(ok = FALSE, reason = "Mukerrer sutun basligi: etiketler belirsiz."))
+    }
+
+    toplam_beklenen <- nrow(expected)
+    okunan_toplam <- 0L
+
+    repeat {
+      okunan_satir <- nrow(okunan)
+      if (okunan_satir > 0L) {
+        if (okunan_toplam + okunan_satir > toplam_beklenen) {
+          return(list(ok = FALSE, reason = sprintf(
+            "Satir sayisi uyusmuyor: beklenen %d, okunan en az %d.",
+            toplam_beklenen, okunan_toplam + okunan_satir
+          )))
+        }
+
+        dilim <- expected[(okunan_toplam + 1L):(okunan_toplam + okunan_satir), ,
+                          drop = FALSE]
+        hata <- karsilastir_dilim(okunan, dilim, sutun_adlari)
+        if (!is.na(hata)) return(list(ok = FALSE, reason = hata))
+
+        okunan_toplam <- okunan_toplam + okunan_satir
+      }
+
+      if (okunan_satir < parca_satir) break
+
+      okunan <- utils::read.csv(
+        baglanti, nrows = parca_satir, header = FALSE,
+        col.names = sutun_adlari, colClasses = "character", check.names = FALSE,
+        na.strings = character(0), stringsAsFactors = FALSE
+      )
+      if (!nrow(okunan)) break
+    }
+
+    if (okunan_toplam != toplam_beklenen) {
+      return(list(ok = FALSE, reason = sprintf(
+        "Satir sayisi uyusmuyor: beklenen %d, okunan %d.", toplam_beklenen, okunan_toplam
+      )))
     }
 
     list(ok = TRUE, reason = NULL)
@@ -241,8 +288,15 @@ pk_export_csv_verify <- function(path, expected) {
 #'
 #' @param body Yüzde sözleşmesi CSV için hazırlanmış (ölçeklenmemiş) gövde.
 #' @return `list(ok=, files=, reason=)`
+#' @param transform İSTEĞE BAĞLI, parça başına uygulanan saf dönüşüm. `NULL`
+#'   ise `body` zaten hazırlanmış kabul edilir (eski davranış). Verildiğinde
+#'   `body` HAM çerçevedir ve dönüşüm her dilime AYRI uygulanır; böylece tam
+#'   boyutlu ikinci bir kopya hiç oluşturulmaz.
+#' @param stop_check İSTEĞE BAĞLI iptal/son tarih kapısı; PARÇALAR ARASINDA
+#'   yoklanır.
 pk_export_csv_bundle <- function(dir, base_name, plan, body,
-                                 summary_sheet = NULL, info_sheet = NULL) {
+                                 summary_sheet = NULL, info_sheet = NULL,
+                                 transform = NULL, stop_check = NULL) {
   dosyalar <- list()
   uretilenler <- character(0)
 
@@ -253,10 +307,26 @@ pk_export_csv_bundle <- function(dir, base_name, plan, body,
     list(ok = FALSE, files = list(), reason = reason)
   }
 
+  # İPTAL/SON TARİH PARÇALAR ARASINDA YOKLANIR.
+  #
+  # Eskiden kapı yalnızca tüm paket üretildikten SONRA yoklanıyordu; büyük ama
+  # izinli bir dışa aktarım Durdur'a ya da mutlak son tarihe rağmen her parçayı
+  # yazıp geri okumaya devam ediyor, senkron geri düşmede tüm oturumları
+  # bloke ediyordu.
+  durduruldu <- function() {
+    is.function(stop_check) && isTRUE(tryCatch(stop_check(), error = function(e) FALSE))
+  }
+
   for (parca in plan$parts) {
+    if (durduruldu()) return(geri_al("Dışa aktarım durduruldu."))
+
     alt <- body[parca$ordinals, , drop = FALSE]
     rownames(alt) <- NULL
     attr(alt, "pk_source_columns") <- NULL
+    # Dönüşüm PARÇA BAŞINA uygulanır: yüzde/etiket hazırlığı yalnızca
+    # metadata'ya bağlıdır, dolayısıyla dilim dilim uygulamak tüm çerçeveyi
+    # dönüştürüp bölmekle AYNI sonucu verir ve ikinci tam kopyayı önler.
+    if (is.function(transform)) alt <- transform(alt)
     alt <- pk_export_neutralize_csv(alt)
 
     ad <- .pk_export_filename(base_name, "csv", parca$index, length(plan$parts))

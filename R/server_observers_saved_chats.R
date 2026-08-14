@@ -245,6 +245,14 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       try(mergen_pk_abandon_active_requests(session, release = FALSE), silent = TRUE)
     }
 
+    # D11 devralinan varlik baglami SOHBETE aittir. Ayni gerekcyle yalnizca
+    # kimlik GERCEKTEN degistiginde dusurulur; ayni sohbete yeniden tiklamak
+    # gecerli bir devam baglamini silmemelidir.
+    if (isTRUE(hedef_degisti) &&
+        exists("pk_entity_context_clear", mode = "function", inherits = TRUE)) {
+      try(pk_entity_context_clear(session), silent = TRUE)
+    }
+
     # Mesaj içeriğinden aktif aracı tespit et ve etkinleştir
     # Görsel Uzmanı tespiti güvenilir çalışıyor (görsel yanıtlar belirgin işaretçiler içerir).
     # Diğer araçlar için içerik tabanlı tespit yapılır; eşleşme yoksa araç durumu değiştirilmez.

@@ -17,10 +17,18 @@
 # İşçiye ASLA gitmemesi gereken nesne sınıfları. `ShinySession` sınıf adı
 # sürüme göre değişebildiği için ayrıca `environment` ve `DBIConnection`
 # kontrolü de yapılır.
+#
+# `connection` GENEL sınıfı da buradadır: taban R `file()`/`textConnection()`/
+# `url()`/`socketConnection()` tutamaçları `connection` sınıfını taşır ama
+# `externalptr` DEĞİL `integer` tipindedir; yalnızca DBI/pool sınıflarını
+# saymak onları kapıdan geçiriyordu. Bir bağlantı numarası yalnızca ONU AÇAN
+# süreçte geçerlidir; PSOCK işçisinde aynı numara ya geçersizdir ya da BAŞKA
+# bir dosyayı gösterir.
 .PK_ASYNC_FORBIDDEN_CLASSES <- c(
   "ShinySession", "MockShinySession", "session_proxy",
   "reactivevalues", "reactive", "reactiveVal", "Observer",
-  "DBIConnection", "Pool", "OdbcConnection", "SQLiteConnection"
+  "DBIConnection", "Pool", "OdbcConnection", "SQLiteConnection",
+  "connection"
 )
 
 # Süreç-yerel TUTAMAÇLAR. Sınıf adına güvenmek yetmez: `externalptr`, zayıf
