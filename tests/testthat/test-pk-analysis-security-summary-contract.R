@@ -363,3 +363,38 @@ test_that("generate_statistical_summary filtre ve pre-aggregated uyarılarını 
   expect_true(grepl("ÖNCEDEN TOPLULAŞTIRILMIŞ SÜTUN UYARISI", result$summary_text, fixed = TRUE))
   expect_true(grepl("SAYISAL SUTUNLAR OZETI", result$summary_text, fixed = TRUE))
 })
+test_that("RLS veritabani hatasi KULLANICI BULUNAMADI olarak raporlanmaz", {
+  repo_root <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  source(file.path(repo_root, "R", "helpers_pk_analysis_security_summary.R"),
+         encoding = "UTF-8", local = env)
+
+  # KUSUR: SON TARIH/IPTAL disindaki HER hata (baglanti kopmasi, ODBC/surucu
+  # hatasi, SQL hatasi) bos bir cerceveye indirgeniyor, bir sonraki dal da
+  # bunu "Kullanici DC01 tablosunda bulunamadi" diye raporluyordu. Yani gecici
+  # bir DC01 kesintisi HER kullaniciya YANLIS bir yetki teshisiyle erisimi
+  # kapatiyordu.
+  env$.pk_rls_bounded_query <- function(...) stop("ODBC: baglanti kesildi")
+  sonuc <- env$get_user_rls_info("sentetik_kullanici", NULL)
+
+  expect_false(isTRUE(sonuc$authorized))          # KAPALI BASARISIZ korunur
+  expect_true(isTRUE(sonuc$db_error))             # ama TESHIS dogrudur
+  expect_false(isTRUE(sonuc$halted))
+  expect_false(grepl("bulunamadı", sonuc$reason, fixed = TRUE))
+  # Ham surucu/SQL metni kullaniciya SIZDIRILMAZ.
+  expect_false(grepl("ODBC", sonuc$reason, fixed = TRUE))
+
+  # GERCEKTEN bos sonuc hala "kullanici bulunamadi" demektir.
+  env$.pk_rls_bounded_query <- function(...) data.frame()
+  bos <- env$get_user_rls_info("sentetik_kullanici", NULL)
+  expect_false(isTRUE(bos$authorized))
+  expect_false(isTRUE(bos$db_error))
+  expect_true(grepl("bulunamadı", bos$reason, fixed = TRUE))
+
+  # SON TARIH/IPTAL hala TIPLI kalir (db_error DEGILDIR).
+  env$.pk_rls_bounded_query <- function(...) stop("islem durduruldu")
+  durdu <- env$get_user_rls_info("sentetik_kullanici", NULL)
+  expect_true(isTRUE(durdu$halted))
+  expect_false(isTRUE(durdu$db_error))
+})

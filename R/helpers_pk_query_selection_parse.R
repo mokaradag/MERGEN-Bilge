@@ -79,6 +79,25 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
     return(hata("'candidates' alani DUZ bir kararli kimlik dizisi olmalidir."))
   }
 
+  # ÇELİŞKİLİ TAKMA ALANLAR REDDEDİLİR.
+  #
+  # Üç ad da kabul edilir, ancak birden fazlası VARSA eskiden SESSİZCE ilki
+  # kullanılıyordu: `{"candidates":["q001"],"ids":["q002"]}` gibi İKİ FARKLI
+  # aday kümesi taşıyan bir yanıt katı ayrıştırmayı geçip otomatik seçime
+  # ilerleyebiliyordu. Modelin hangisini kastettiği bilinemez; sözleşme
+  # ihlali onarım yoluna gönderilir.
+  if (length(alan) > 1L) {
+    for (ek in alan[-1L]) {
+      ek_dizi <- pk_select_string_array(ayrisik[[ek]])
+      if (!isTRUE(ek_dizi$ok) || !identical(ek_dizi$values, dizi$values)) {
+        return(hata(sprintf(
+          "Gecis A ciktisi CELISKILI aday alanlari iceriyor: %s",
+          paste(alan, collapse = ", ")
+        )))
+      }
+    }
+  }
+
   ham <- dizi$values
   if (anyDuplicated(ham)) {
     return(hata(sprintf(
@@ -203,6 +222,24 @@ pk_select_parse_pass_b <- function(text, candidate_ids) {
     return(.pk_select_pass_b_empty(paste0(
       "Gecis B ciktisi tek bir gecerli JSON nesnesi degil (sarmalayici metin, ",
       "tekrar eden anahtar ya da bozuk JSON)."
+    )))
+  }
+
+  # KATI ÜST DÜZEY ANAHTAR KÜMESİ.
+  #
+  # Geçiş B sözleşmesi KATI olarak belgelenir, ancak ayrıştırıcı yalnızca
+  # beklenen adları OKUYUP diğer her üst düzey alanı SESSİZCE yok sayıyordu.
+  # `{"id":"q1","selected_id":"q2",...}` gibi bir şema kayması yanıtı bu yüzden
+  # tüm denetimlerden geçiyor ve model ÇELİŞKİLİ bir seçim bildirmişken `q1`
+  # otomatik çalıştırılabiliyordu. Sözleşme dışı alan taşıyan çıktı onarım
+  # yoluna gönderilir.
+  izinli_alanlar <- c("id", "confidence", "reason", "alternates",
+                      "requirements", "missing_info")
+  fazla <- setdiff(names(ayrisik), izinli_alanlar)
+  if (length(fazla)) {
+    return(.pk_select_pass_b_empty(sprintf(
+      "Gecis B ciktisi sozlesme disi alan iceriyor: %s",
+      paste(sort(fazla), collapse = ", ")
     )))
   }
 

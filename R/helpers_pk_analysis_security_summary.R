@@ -125,12 +125,17 @@ get_user_rls_info <- function(username, conn) {
 
   base_query <- "SELECT TOP 1 * FROM DC01_user_base WHERE KullaniciAdi = ?"
   halt_reason <- NULL
+  db_error <- NULL
   user_base <- tryCatch({
     .pk_rls_bounded_query(conn, base_query, params = list(username))
   }, error = function(e) {
     cat(sprintf("[PK_ANALIZ] HATA (DC01_user_base): %s\n", e$message))
     # SON TARİH/İPTAL bir YETKİ SONUCU DEĞİLDİR; tipli olarak korunur.
-    if (isTRUE(.pk_rls_halt_error(e))) halt_reason <<- conditionMessage(e)
+    if (isTRUE(.pk_rls_halt_error(e))) {
+      halt_reason <<- conditionMessage(e)
+    } else {
+      db_error <<- conditionMessage(e)
+    }
     data.frame()
   })
 
@@ -138,6 +143,25 @@ get_user_rls_info <- function(username, conn) {
     return(list(authorized = FALSE, halted = TRUE, reason = paste0(
       "Analiz süre sınırı veya kullanıcı iptali nedeniyle yetki bilgisi ",
       "okunamadı. Lütfen tekrar deneyin."
+    )))
+  }
+
+  # ALTYAPI HATASI "KULLANICI BULUNAMADI" DEĞİLDİR.
+  #
+  # Eskiden SON TARİH/İPTAL dışındaki HER hata (bağlantı kopması, ODBC/sürücü
+  # hatası, SQL hatası) boş bir çerçeveye indirgeniyordu; bir sonraki dal da
+  # bunu "Kullanıcı DC01 tablosunda bulunamadı" diye raporluyordu. Yani geçici
+  # bir DC01 kesintisi, HER kullanıcıya YANLIŞ bir yetki teşhisiyle erişimi
+  # kapatıyor ve gerçek altyapı arızasını gizliyordu.
+  #
+  # Karar her iki hâlde de KAPALI BAŞARISIZ kalır (yetki verilmez); değişen
+  # yalnızca TEŞHİStir. Ham sürücü/SQL metni kullanıcıya SIZDIRILMAZ; ayrıntı
+  # sunucu log'undadır.
+  if (!is.null(db_error)) {
+    return(list(authorized = FALSE, db_error = TRUE, reason = paste0(
+      "Yetki bilgisi okunamadı (veritabanı erişim hatası). Bu bir yetki ",
+      "kararı değildir; lütfen daha sonra tekrar deneyin, sorun sürerse ",
+      "sistem yöneticisine bildirin."
     )))
   }
 

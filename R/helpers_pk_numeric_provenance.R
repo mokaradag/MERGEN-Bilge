@@ -300,6 +300,79 @@ pk_facts_index <- function(facts) {
   out
 }
 
+# İŞARETSİZ (KÖKENSİZ) SAYISAL İDDİALARI BUL.
+#
+# `.pk_prov_claims()` YALNIZCA bir `[fact:...]` işaretinin ÖNÜNDEKİ sayıyı
+# görür. Model istem kuralını yok sayıp `Toplam 99.999 saat` yazdığında iddia
+# kümesi BOŞ kalıyor, doğrulayıcı "uyuşmazlık yok" diyor ve `warn`/`block`
+# kipleri bile halüsinasyon sayıyı DEĞİŞMEDEN yayımlıyordu; yani yapılandırılan
+# köken zorunluluğu bozuk model çıktısıyla ATLATILABİLİYORDU.
+#
+# Yanlış pozitiften kaçınmak için yalnızca VERİ görünümlü sayılar sayılır:
+# ondalık/binlik ayraç taşıyanlar, yüzde işaretliler, birim ekli olanlar ya da
+# dört haneden uzun tam sayılar. Yıl (1900-2100), madde numarası ve birimsiz
+# küçük tam sayılar KAPSAM DIŞIDIR.
+.pk_prov_uncited_claims <- function(text) {
+  txt <- as.character(text %||% "")[1]
+  if (is.na(txt) || !nzchar(txt)) return(list())
+
+  # Isaretin kendisi taranmaz, ancak YERI korunur: bir sayinin ARDINDAN
+  # gelen nobetci, o sayinin ALINTILANDIGINI gosterir.
+  nobetci <- intToUtf8(1L)
+  maskeli <- gsub(.PK_PROV_MARKER, nobetci, txt, perl = TRUE)
+
+  desen <- paste0("(%\\s*)?-?[0-9][0-9.,]*\\s*",
+                  "(%|[A-Za-zÇĞİÖŞÜçğıöşü₺²³$€]",
+                  "[A-Za-zÇĞİÖŞÜçğıöşü₺²³$€/.-]{0,23})?")
+
+  konum <- gregexpr(desen, maskeli, perl = TRUE)[[1]]
+  if (identical(konum[1], -1L)) return(list())
+  uzunluk <- attr(konum, "match.length")
+
+  out <- list()
+  for (i in seq_along(konum)) {
+    ham <- trimws(substr(maskeli, konum[i], konum[i] + uzunluk[i] - 1L))
+    if (!nzchar(ham)) next
+
+    # Hemen ARDINDAN gelen nobetci bu sayinin ALINTILANDIGI anlamina gelir.
+    kuyruk <- substr(maskeli, konum[i] + uzunluk[i],
+                     min(nchar(maskeli), konum[i] + uzunluk[i] + 4L))
+    if (startsWith(trimws(kuyruk), nobetci)) next
+
+    yuzde <- grepl("%", ham, fixed = TRUE)
+    sayi_metni <- trimws(gsub("%", "", ham))
+    birim <- trimws(sub("^-?[0-9][0-9.,]*\\s*", "", sayi_metni))
+    rakam <- regmatches(sayi_metni, regexpr("^-?[0-9][0-9.,]*", sayi_metni))
+    rakam <- if (length(rakam)) rakam[1] else ""
+    if (!nzchar(rakam)) next
+
+    # Sondaki nokta/virgul AYRAC DEGILDIR: "1." bir madde numarasidir.
+    rakam <- sub("[.,]+$", "", rakam)
+    if (!nzchar(rakam)) next
+
+    ayrac <- grepl("[.,]", rakam, perl = TRUE)
+    sade <- gsub("[^0-9]", "", rakam)
+    haneler <- nchar(sade)
+
+    # Yıl gibi görünen çıplak sayı: veri iddiası sayılmaz.
+    # Yil, ARDINDAN bir sozcuk gelse de ("2024 yilinda") yil sayilir.
+    yil_gibi <- !ayrac && !yuzde && haneler == 4L &&
+      suppressWarnings(!is.na(as.integer(sade))) &&
+      as.integer(sade) >= 1900L && as.integer(sade) <= 2100L
+    if (isTRUE(yil_gibi)) next
+
+    # BIRIM VARLIGI TEK BASINA YETMEZ: "3 kez" / "2. madde" gibi sıradan
+    # ifadeler veri iddiasi degildir ve `block` kipinde gecerli yanitlari
+    # dusurmemelidir. Olcek isareti aranir: ayrac, yuzde ya da 4+ hane.
+    veri_gibi <- ayrac || yuzde || haneler >= 4L
+    if (!veri_gibi) next
+
+    out[[length(out) + 1L]] <- list(raw = ham, number = rakam, unit = birim,
+                                    percent = yuzde)
+  }
+  out
+}
+
 #' Sayısal iddiaları olgulara karşı doğrula
 #'
 #' @return `list(checked=, mismatches=, rate=, claims=)`
@@ -401,11 +474,26 @@ pk_numeric_provenance_validate <- function(text, facts) {
     }
   }
 
+  # İŞARETSİZ SAYISAL İDDİALAR DA UYUŞMAZLIKTIR.
+  #
+  # Bunlar `iddialar` içinde YER ALMAZ (bir olguya bağlı değiller), bu yüzden
+  # hem `checked` hem de payda onları KAPSAYACAK biçimde genişletilir; aksi
+  # hâlde tamamı işaretsiz bir yanıtta `rate` sıfır çıkar ve eşik tabanlı
+  # kipler hiçbir şey yakalamaz.
+  kokensizler <- .pk_prov_uncited_claims(text)
+  for (k in kokensizler) {
+    ekle(fact_id = NA_character_, reason = "missing_fact_marker",
+         claimed = k$raw, actual = NA_character_)
+  }
+
+  toplam <- length(iddialar) + length(kokensizler)
+
   list(
-    checked = length(iddialar),
+    checked = toplam,
     mismatches = uyusmazliklar,
-    rate = if (length(iddialar)) length(uyusmazliklar) / length(iddialar) else 0,
-    claims = iddialar
+    rate = if (toplam) length(uyusmazliklar) / toplam else 0,
+    claims = iddialar,
+    uncited = kokensizler
   )
 }
 
