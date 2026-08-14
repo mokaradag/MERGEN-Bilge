@@ -22,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest]
-        r: ["4.6.0"]
+        r: ["4.6"]
 
     env:
       # MERGEN paralel cluster ve gc scheduler gibi arka plan kancaları
