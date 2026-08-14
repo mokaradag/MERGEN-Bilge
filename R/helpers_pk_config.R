@@ -344,6 +344,20 @@ pk_config_spec <- list(
     min = 2000L,
     max = 120000L
   ),
+  # XLSX yolunun TAHMİNİ BAYT tavanı (MB).
+  #
+  # Hücre SAYISI hücre GENİŞLİĞİ hakkında hiçbir şey söylemez: tek bir çok-KB
+  # metin sütununun 100.000 satırı hücre tavanının çok altında kalırken kabul
+  # edilen sonuç yüzlerce MB olabilir. XLSX yolu çerçeveyi normalleştirip
+  # kopyalar ve çalışma kitabını onun YANINDA kurar; bu, `MERGEN_PK_MAX_RESULT_MB`
+  # sınırını geçmiş bir sonuçta bile işçiyi tüketebilir. Tavan geçici kopya
+  # payını da kapsar.
+  MERGEN_PK_EXPORT_MAX_BYTES_MB = list(
+    type = "integer",
+    default = 128L,
+    min = 1L,
+    max = 4096L
+  ),
   # Geçiş A kütüphane yükünün TOPLAM karakter bütçesi.
   #
   # Alan başına kırpma (DESC/NAME/KEYWORD/SAMPLE_CHARS) tek başına YETMEZ:

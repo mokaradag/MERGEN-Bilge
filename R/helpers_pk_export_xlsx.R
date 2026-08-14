@@ -38,6 +38,25 @@
   isTRUE(requireNamespace("openxlsx", quietly = TRUE))
 }
 
+# XLSX yolunun tahmini bayt tavanı (bayt cinsinden).
+#
+# `object.size()` çerçeveyi KOPYALAMAZ; yalnızca yürür. Geçici kopya payı
+# çarpanı burada uygulanır: XLSX yolu normalleştirilmiş bir kopya ve onun
+# yanında çalışma kitabı kurar.
+.pk_export_byte_ceiling <- function(query_meta = NULL) {
+  mb <- if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) {
+    128L
+  } else {
+    tryCatch(
+      pk_config_resolve("MERGEN_PK_EXPORT_MAX_BYTES_MB", query_meta = query_meta),
+      error = function(e) 128L
+    )
+  }
+  mb <- suppressWarnings(as.integer(mb))
+  if (length(mb) != 1L || is.na(mb) || mb < 1L) mb <- 128L
+  as.numeric(mb) * 1024 * 1024
+}
+
 .pk_export_cell_ceiling <- function(query_meta = NULL) {
   if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) return(2000000L)
   deger <- tryCatch(
@@ -174,16 +193,46 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # I/O bitene kadar meşgul kalır, yani ilan edilen sert analiz son tarihi
   # aşılırdı. Kapı aşamalar ARASINDA yoklanır; jeton/son tarih yoksa
   # `pk_active_stage_halt()` `FALSE` döner ve davranış DEĞİŞMEZ.
-  durduruldu <- function() {
-    if (is.function(stop_check)) {
-      return(isTRUE(tryCatch(stop_check(), error = function(e) FALSE)))
+  # DURDURMA NEDENİ TİPLİDİR: kullanıcı Stop'u ile mutlak son tarih AYRI
+  # sonuçlardır.
+  #
+  # `pk_active_stage_halt()` ikisini tek bir mantıksal değere indirger ve
+  # `iptal_sonucu()` eskiden her yolu `status = "cancelled"` olarak sabitleyip
+  # kullanıcıya "siz durdurdunuz" diyordu. Yalnızca analiz son tarihine ulaşan
+  # büyük bir dışa aktarım böylece kullanıcı iptali gibi raporlanıyor, terminal
+  # telemetrisi bozuluyor ve bir kapasite/son tarih sorunu gizleniyordu.
+  #
+  # Durdurma yoksa `NULL` döner; böylece `%||%` zinciri doğal çalışır.
+  halt_durumu <- function() {
+    if (is.function(stop_check) &&
+        isTRUE(tryCatch(stop_check(), error = function(e) FALSE))) {
+      return("cancelled")
     }
-    if (!exists("pk_active_stage_halt", mode = "function", inherits = TRUE)) return(FALSE)
-    isTRUE(tryCatch(pk_active_stage_halt(), error = function(e) FALSE))
+    if (!exists("pk_async_stage_gate", mode = "function", inherits = TRUE)) return(NULL)
+    jeton <- getOption("mergen.pk.async.cancel_token", NULL)
+    son_tarih <- getOption("mergen.pk.async.deadline_at", NULL)
+    if (is.null(jeton) && is.null(son_tarih)) return(NULL)
+    kapi <- tryCatch(pk_async_stage_gate(jeton, son_tarih), error = function(e) NULL)
+    if (!is.list(kapi) || !isTRUE(kapi$halt)) return(NULL)
+    as.character(kapi$status %||% "cancelled")[1]
   }
-  iptal_sonucu <- function(rows = 0L, cols = 0L) {
-    list(status = "cancelled", files = list(),
-         message = "Dışa aktarım kullanıcı isteğiyle durduruldu.",
+  durduruldu <- function() !is.null(halt_durumu())
+  iptal_sonucu <- function(rows = 0L, cols = 0L, status = NULL) {
+    durum <- as.character(status %||% halt_durumu() %||% "cancelled")[1]
+    if (is.na(durum) || !nzchar(durum)) durum <- "cancelled"
+    mesaj <- if (exists("pk_async_halt_message", mode = "function", inherits = TRUE)) {
+      tryCatch(pk_async_halt_message(durum), error = function(e) NULL)
+    } else {
+      NULL
+    }
+    if (is.null(mesaj)) {
+      mesaj <- if (identical(durum, "deadline")) {
+        "Dışa aktarım ayrılan süre içinde tamamlanamadı."
+      } else {
+        "Dışa aktarım kullanıcı isteğiyle durduruldu."
+      }
+    }
+    list(status = durum, files = list(), message = mesaj,
          total_rows = rows, cols = cols, format = NA_character_, notes = character(0))
   }
 
@@ -219,6 +268,14 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # iki oturum birbirinin dosyasını ezemez ve birinin temizliği diğerininkini
   # silemez.
   dizin <- pk_export_run_dir(dir)
+  # İzole dizin YOKSA dışa aktarım yapılmaz: paylaşılan köke yazmak, aynı
+  # saniyede aynı sorguyu aktaran başka bir oturumun dosyasını ezebilir.
+  if (is.null(dizin) || !nzchar(as.character(dizin)[1])) {
+    return(list(status = "failed", files = list(),
+                message = "Dışa aktarım için yalıtılmış çalışma dizini oluşturulamadı.",
+                total_rows = plan$total_rows, cols = ncol(data),
+                format = NA_character_, notes = character(0)))
+  }
 
   ozet_sayfasi <- pk_export_summary_sheet(packet)
   bilgi_sayfasi <- pk_export_info_sheet(context, plan)
@@ -228,7 +285,21 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # XLSX hiç denenmez ve parçaları teker teker yazan akışlı CSV yoluna geçilir.
   hucre_tavani <- .pk_export_cell_ceiling(meta)
   toplam_hucre <- as.numeric(plan$total_rows) * max(1L, ncol(data))
-  bellek_reddi <- toplam_hucre > hucre_tavani
+
+  # BAYT TAVANI HÜCRE TAVANINDAN AYRIDIR.
+  #
+  # Hücre sayısı hücre GENİŞLİĞİNİ ölçmez: tek bir çok-KB metin sütununun
+  # 100.000 satırı 2M hücre varsayılanının çok altındadır ama kabul edilen
+  # sonuç yüzlerce MB olabilir. XLSX dalı çerçeveyi normalleştirip kopyalar ve
+  # çalışma kitabını onun YANINDA kurar; bu yüzden bayt tahmini de kapıya
+  # girer ve aşıldığında akışlı CSV yoluna geçilir.
+  bayt_tavani <- .pk_export_byte_ceiling(meta)
+  tahmini_bayt <- tryCatch(
+    as.numeric(utils::object.size(data)), error = function(e) NA_real_
+  )
+  bayt_reddi <- is.finite(tahmini_bayt) && tahmini_bayt > bayt_tavani
+
+  bellek_reddi <- (toplam_hucre > hucre_tavani) || bayt_reddi
   # Kullanıcı AÇIKÇA "CSV olarak indir" dediyse XLSX denenmez.
   csv_istendi <- identical(as.character(format %||% NA_character_)[1], "csv")
 
@@ -238,9 +309,15 @@ pk_export_build <- function(data, packet = list(), context = list(),
   dogrulama <- list(ok = FALSE, reason = if (csv_istendi) {
     "Kullanici acikca CSV istedi; XLSX uretilmedi."
   } else {
-    sprintf("Sonuc %s hucre; XLSX bellek tavani (%s) asildi, dogrudan CSV yazildi.",
-            format(toplam_hucre, scientific = FALSE),
-            format(hucre_tavani, scientific = FALSE))
+    if (isTRUE(bayt_reddi)) {
+      sprintf("Sonuc ~%s MB; XLSX bayt tavani (%s MB) asildi, dogrudan CSV yazildi.",
+              format(round(tahmini_bayt / 1024 / 1024, 1L), scientific = FALSE),
+              format(round(bayt_tavani / 1024 / 1024), scientific = FALSE))
+    } else {
+      sprintf("Sonuc %s hucre; XLSX bellek tavani (%s) asildi, dogrudan CSV yazildi.",
+              format(toplam_hucre, scientific = FALSE),
+              format(hucre_tavani, scientific = FALSE))
+    }
   })
 
   if (!bellek_reddi && !csv_istendi) {
@@ -282,10 +359,12 @@ pk_export_build <- function(data, packet = list(), context = list(),
         FALSE
       })
     })
-    # Bütçe içinde bitmediyse YARIM dosya diskte kalmamalıdır.
+    # Bütçe içinde bitmediyse YARIM dosya diskte kalmamalıdır. Sınırlı aşamanın
+    # bütçesi dolduysa neden SON TARİHtir, kullanıcı iptali değil.
     if (!isTRUE(yazim$ok)) {
       if (!is.na(yol)) safe_unlink_if_exists(yol)
-      return(iptal_sonucu(plan$total_rows, ncol(govde)))
+      return(iptal_sonucu(plan$total_rows, ncol(govde),
+                          status = halt_durumu() %||% "deadline"))
     }
     yazildi <- isTRUE(yazim$value)
 
@@ -303,7 +382,8 @@ pk_export_build <- function(data, packet = list(), context = list(),
       dogrulama_sonucu <- sinirli_asama(function() pk_export_verify_file(yol, plan, sayfalar))
       if (!isTRUE(dogrulama_sonucu$ok)) {
         if (!is.na(yol)) safe_unlink_if_exists(yol)
-        return(iptal_sonucu(plan$total_rows, ncol(govde)))
+        return(iptal_sonucu(plan$total_rows, ncol(govde),
+                            status = halt_durumu() %||% "deadline"))
       }
       dogrulama_sonucu$value
     } else {
@@ -331,9 +411,40 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # yarım küme SUNULMAZ.
   if (durduruldu()) return(iptal_sonucu(plan$total_rows, ncol(data)))
 
-  csv <- .pk_export_csv_body(data, meta)
-  paket <- pk_export_csv_bundle(dizin, base_name, plan, csv$body,
-                                summary_sheet = ozet_sayfasi, info_sheet = bilgi_sayfasi)
+  # TAM BOYUTLU İKİNCİ KOPYA OLUŞTURULMAZ.
+  #
+  # `.pk_export_csv_body(data, meta)` tüm sonucu dönüştürülmüş İKİNCİ bir
+  # çerçeveye kopyalıyordu; kaynak hâlâ canlıyken bu, tam da XLSX bellek
+  # baskısından kaçınmak için seçilen yolda canlı ayak izini yaklaşık iki
+  # katına çıkarıyordu. Yüzde/etiket hazırlığı YALNIZCA metadata'ya bağlı
+  # olduğundan (veriye değil), dönüşümü parça başına uygulamak tüm çerçeveyi
+  # dönüştürüp bölmekle AYNI sonucu verir.
+  csv_notlari <- tryCatch(
+    .pk_export_csv_body(data[0L, , drop = FALSE], meta)$notes,
+    error = function(e) character(0)
+  )
+  csv_sutun <- tryCatch(
+    ncol(.pk_export_csv_body(data[0L, , drop = FALSE], meta)$body),
+    error = function(e) ncol(data)
+  )
+  csv <- list(body = NULL, notes = csv_notlari)
+
+  # Hazırlık/yazım/doğrulama aşamaları da SINIRLIDIR ve iptal parçalar arasında
+  # yoklanır: büyük ama izinli bir dışa aktarım Durdur'a ya da mutlak son
+  # tarihe rağmen sonuna kadar çalışmaz.
+  paket_sonucu <- sinirli_asama(function() {
+    pk_export_csv_bundle(
+      dizin, base_name, plan, data,
+      summary_sheet = ozet_sayfasi, info_sheet = bilgi_sayfasi,
+      transform = function(dilim) .pk_export_csv_body(dilim, meta)$body,
+      stop_check = durduruldu
+    )
+  })
+  if (!isTRUE(paket_sonucu$ok)) {
+    return(iptal_sonucu(plan$total_rows, csv_sutun,
+                        status = halt_durumu() %||% "deadline"))
+  }
+  paket <- paket_sonucu$value
   .pk_export_track_artifact(vapply(
     paket$files %||% list(), function(f) as.character(f$path %||% "")[1], character(1)
   ))
@@ -342,13 +453,13 @@ pk_export_build <- function(data, packet = list(), context = list(),
     for (dosya in paket$files %||% list()) {
       try(safe_unlink_if_exists(as.character(dosya$path %||% "")[1]), silent = TRUE)
     }
-    return(iptal_sonucu(plan$total_rows, ncol(csv$body)))
+    return(iptal_sonucu(plan$total_rows, csv_sutun))
   }
 
   if (!isTRUE(paket$ok)) {
     return(list(status = "failed", files = list(),
                 message = "Dışa aktarım dosyası üretilemedi.",
-                total_rows = plan$total_rows, cols = ncol(csv$body),
+                total_rows = plan$total_rows, cols = csv_sutun,
                 format = NA_character_,
                 notes = c(hazir_notlar, csv$notes, as.character(paket$reason %||% ""))))
   }
@@ -368,7 +479,7 @@ pk_export_build <- function(data, packet = list(), context = list(),
         "CSV olarak aktarıldı."
       )
     },
-    total_rows = plan$total_rows, cols = ncol(csv$body), format = "csv",
+    total_rows = plan$total_rows, cols = csv_sutun, format = "csv",
     parts = length(plan$parts),
     notes = c(hazir_notlar, csv$notes, as.character(dogrulama$reason %||% ""))
   )
