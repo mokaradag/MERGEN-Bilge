@@ -1,4 +1,4 @@
-# ============================================================================== 
+# ==============================================================================
 # Dosya Yolu: R/helpers_pk_export_serve.R
 # Açıklama: PK dışa aktarım artefaktının OTURUMA SUNULMASI (session-scoped
 #           indirme URL'i) ve oturum sonu dosya temizliği.
@@ -21,9 +21,9 @@ pk_export_serve <- function(session, artifact) {
   if (is.null(session) || is.null(session$registerDataObj)) return(artifact)
 
   temizlenecek <- character(0)
-
   artifact$files <- lapply(artifact$files, function(dosya) {
-    yol <- normalizePath(dosya$path, winslash = "/", mustWork = FALSE); dosya$path <- yol
+    yol <- normalizePath(dosya$path, winslash = "/", mustWork = FALSE)
+    dosya$path <- yol
     tur <- if (identical(dosya$format, "csv")) {
       "text/csv; charset=UTF-8"
     } else {
