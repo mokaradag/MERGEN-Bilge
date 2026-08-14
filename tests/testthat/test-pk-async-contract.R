@@ -345,7 +345,9 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     "R/helpers_pk_async_worker_pool.R" = c(355L, 26L),
     "R/helpers_pk_async_bootstrap.R" = c(504L, 24L),
     "R/helpers_pk_async_snapshot_validate.R" = c(135L, 9L),
-    "R/helpers_pk_async_snapshot.R" = c(253L, 20L),
+    # BILINCLI GUNCELLEME (PR #705): D11 devralinan varlik baglami isciye
+    # ACIKCA duz veri olarak tasinir (genel dongu list alanlari atliyordu).
+    "R/helpers_pk_async_snapshot.R" = c(279L, 20L),
     # BILINCLI GUNCELLEME (PR #705 kararlilik): yetenek sondasi artik
     # `future::value()` ile ana olay dongusunu BLOKE ETMEZ; `resolved()`
     # sinirli bir butce boyunca yoklanir ve SONUCSUZ sonda basari sayilmaz.

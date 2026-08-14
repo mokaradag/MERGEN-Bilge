@@ -267,7 +267,8 @@ pk_entity_score_candidates <- function(phrase, candidates, aliases = NULL,
 #'
 #' Bu yardımcı o boşluğu doldurur. Döndürülen kayıtlar `tier = "suggestion"`
 #' taşır ve FİLTRELEMEYE UYGUN DEĞİLDİR; yalnızca gösterilir.
-pk_entity_nearest_candidates <- function(phrase, candidates, n = 3L) {
+pk_entity_nearest_candidates <- function(phrase, candidates, n = 3L,
+                                         query_meta = NULL) {
   n <- suppressWarnings(as.integer(n)[1])
   if (is.na(n) || n < 1L) n <- 3L
 
@@ -279,6 +280,39 @@ pk_entity_nearest_candidates <- function(phrase, candidates, n = 3L) {
   if (isTRUE(user_norm$blank)) return(list())
 
   .pk_entity_require_stringdist()
+
+  # TARAMA TAVANI BURADA DA UYGULANIR — HEM DE NORMALLEŞTİRMEDEN ÖNCE.
+  #
+  # Eşik altı kurtarma yolu bu yardımcıyı sütundaki HER ayrık değerle çağırır
+  # ve `MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES` tavanını YOK SAYIYORDU: yüksek
+  # kardinaliteli bir proje/kişi sütununda tek bir yazım hatası, sınırlı kısa
+  # listenin önlemek için var olduğu on binlerce hesabı geri getiriyor ve
+  # asenkron kapalıyken paylaşılan Shiny olay döngüsünü blokluyordu.
+  #
+  # Kırpma `.pk_entity_coarse_view()` ÇAĞRILMADAN ÖNCE yapılır: baskın maliyet
+  # Levenshtein değil, TÜM değerler üzerinde çalışan katlama/ASCII
+  # normalleştirmesidir. Tavan normalleştirmeden sonra uygulansaydı iş hiç
+  # azalmazdı.
+  #
+  # Ön eleme `.pk_entity_shortlist()` ile AYNI uzunluk bandını kullanır
+  # (d <= 0.20 için GEREKLİ koşul); ham `nchar` ucuzdur ve sıralama YOKTUR.
+  azami_tarama <- .pk_entity_scan_limit(
+    "MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES", 2000L, query_meta
+  )
+  if (length(degerler) > azami_tarama) {
+    kullanici_n <- nchar(user_norm$ascii)
+    if (is.na(kullanici_n) || kullanici_n < 1L) kullanici_n <- 1L
+    ham_n <- nchar(degerler)
+    bant <- abs(ham_n - kullanici_n) * 5L <= pmax(ham_n, kullanici_n)
+    bant[is.na(bant)] <- FALSE
+    tut <- which(bant)
+    # Bant hiçbir şey bırakmazsa ya da hâlâ tavanı aşıyorsa deterministik
+    # biçimde ilk N aday alınır; bunlar zaten yalnızca GÖSTERİLEN önerilerdir
+    # (`tier = "suggestion"`, filtrelemeye uygun DEĞİLDİR).
+    if (!length(tut)) tut <- seq_along(degerler)
+    if (length(tut) > azami_tarama) tut <- tut[seq_len(azami_tarama)]
+    degerler <- degerler[tut]
+  }
 
   kaba <- .pk_entity_coarse_view(degerler)
   gecerli <- !is.na(kaba$ascii) & nzchar(kaba$ascii)

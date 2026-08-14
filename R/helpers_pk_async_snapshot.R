@@ -230,6 +230,32 @@ pk_async_secret_install <- function(secrets) {
     cikti[[alan]] <- deger
   }
 
+  # D11 DEVRALINAN VARLIK BAĞLAMI AÇIKÇA TAŞINIR.
+  #
+  # Yukarıdaki genel döngü `is.list(deger)` olan HER alanı atlar ve kayıt tam
+  # olarak o şekildedir (`values` + `key`). Taşınmadığı için PSOCK işçileri
+  # önceki turda çözülmüş kanonik varlığı HİÇ görmüyor, yani asenkron takip
+  # soruları senkron isteklerin kullanabildiği bağlamı kaybediyordu.
+  #
+  # Yalnızca DÜZ veri kopyalanır (karakter vektörü + karakter alanlı anahtar);
+  # bu, işçi sınırı doğrulayıcısının kabul ettiği şekildir.
+  kayit <- snapshot[["pk_entity_prior_context"]]
+  if (is.list(kayit) && length(kayit$values)) {
+    degerler <- as.character(kayit$values)
+    degerler <- degerler[!is.na(degerler) & nzchar(degerler)]
+    anahtar <- kayit$key
+    if (length(degerler)) {
+      cikti[["pk_entity_prior_context"]] <- list(
+        values = degerler,
+        key = if (is.list(anahtar)) list(
+          query_id    = as.character(anahtar$query_id %||% "")[1],
+          column      = as.character(anahtar$column %||% "")[1],
+          entity_kind = as.character(anahtar$entity_kind %||% "")[1]
+        ) else NULL
+      )
+    }
+  }
+
   cikti
 }
 

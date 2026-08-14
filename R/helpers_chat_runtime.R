@@ -488,7 +488,11 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
   # "kaydedilmemiş sohbet B" ayırt edilemez ve tamamlanan bir PK işçisinin
   # sonucu taze sohbete düşerdi. Ayrıca sonucu ZATEN atılacak işçi, DB
   # bağlantısını ve işçi yuvasını doğal bitişine kadar tutmamalıdır.
-  for (fn in c("mergen_pk_bump_chat_epoch", "mergen_pk_abandon_active_requests")) {
+  # D11 devralinan varlik baglami SOHBETE aittir: Yeni Soylesi'de dusurulmezse
+  # taze sohbet, sorgu/sutun kimligi eslestigi anda onceki sohbetin oznesini
+  # devralirdi.
+  for (fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch",
+               "mergen_pk_abandon_active_requests")) {
     if (exists(fn, mode = "function", inherits = TRUE)) {
       try(get(fn, mode = "function")(session), silent = TRUE)
     }
