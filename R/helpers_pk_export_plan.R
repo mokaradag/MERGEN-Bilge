@@ -394,3 +394,22 @@ pk_export_verify_multiset <- function(expected, actual) {
 
   list(ok = TRUE, reason = NULL)
 }
+
+# XLSX yolunun tahmini bayt tavanı (bayt cinsinden).
+#
+# `object.size()` çerçeveyi KOPYALAMAZ; yalnızca yürür. Geçici kopya payı
+# çarpanı burada uygulanır: XLSX yolu normalleştirilmiş bir kopya ve onun
+# yanında çalışma kitabı kurar.
+.pk_export_byte_ceiling <- function(query_meta = NULL) {
+  mb <- if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) {
+    128L
+  } else {
+    tryCatch(
+      pk_config_resolve("MERGEN_PK_EXPORT_MAX_BYTES_MB", query_meta = query_meta),
+      error = function(e) 128L
+    )
+  }
+  mb <- suppressWarnings(as.integer(mb))
+  if (length(mb) != 1L || is.na(mb) || mb < 1L) mb <- 128L
+  as.numeric(mb) * 1024 * 1024
+}

@@ -110,24 +110,78 @@
                           analysis_mode, policy, filter_criteria, session,
                           username = NULL, stop_check = NULL) {
   durduruldu <- function() is.function(stop_check) && isTRUE(tryCatch(stop_check(), error = function(e) FALSE))
-  iptal <- list(type = "pk_stopped")
+
+  # Durdurma NEDENİ tiplidir: kullanıcı Stop'u ile son tarih AYRI sonuçlardır.
+  halt_durumu <- function() {
+    if (durduruldu()) return("cancelled")
+    if (!exists("pk_async_stage_gate", mode = "function", inherits = TRUE)) return(NULL)
+    jeton <- getOption("mergen.pk.async.cancel_token", NULL)
+    son_tarih <- getOption("mergen.pk.async.deadline_at", NULL)
+    if (is.null(jeton) && is.null(son_tarih)) return(NULL)
+    kapi <- tryCatch(pk_async_stage_gate(jeton, son_tarih), error = function(e) NULL)
+    if (!is.list(kapi) || !isTRUE(kapi$halt)) return(NULL)
+    as.character(kapi$status %||% "cancelled")[1]
+  }
+  iptal_sonucu <- function(status = NULL) {
+    list(type = "pk_stopped",
+         pk_halt_status = as.character(status %||% halt_durumu() %||% "cancelled")[1])
+  }
+  iptal <- iptal_sonucu()
 
   meta <- .pk_result_meta(query)
   etkin_filtreler <- .pk_result_effective_filters(policy, filter_criteria)
 
-  paket <- pk_packet_build(filtered_data, query, list(
-    authorized_rows = nrow(secure_data),
-    filtered_rows = nrow(filtered_data),
-    filters = etkin_filtreler,
-    filter_status = filter_criteria$status,
-    degradations = if (exists("pk_degradations_from_filter_status", mode = "function",
-                              inherits = TRUE)) {
-      pk_degradations_from_filter_status(filter_criteria$status)
-    } else {
-      list()
-    },
-    pre_aggregated_columns = query$pre_aggregated_columns
-  ))
+  # PAKET KURULUMU KALAN BÜTÇEYLE SINIRLIDIR.
+  #
+  # `pk_packet_build()` büyük ama izinli bir sonuçta TÜM ÇERÇEVE üzerinde
+  # kapsam/kategorik/gruplama/örnekleme işi yapar ve bu iş ilk iptal
+  # denetiminden ÖNCE gelirdi. Sınırlı senkron geri düşmede bu, ana Shiny olay
+  # döngüsünü bloke eder; işçide ise son tarih gözcüsü kullanıcıya çoktan yanıt
+  # verdikten SONRA bile işçiyi meşgul tutardı. İş R/Rcpp hesabıdır, dolayısıyla
+  # geçen süre bütçesi onu gerçekten kesebilir.
+  if (!is.null(halt_durumu())) return(iptal_sonucu())
+
+  paket_sonucu <- if (exists("pk_async_bounded_fs", mode = "function", inherits = TRUE)) {
+    pk_async_bounded_fs(
+      function() {
+        pk_packet_build(filtered_data, query, list(
+          authorized_rows = nrow(secure_data),
+          filtered_rows = nrow(filtered_data),
+          filters = etkin_filtreler,
+          filter_status = filter_criteria$status,
+          degradations = if (exists("pk_degradations_from_filter_status", mode = "function",
+                                    inherits = TRUE)) {
+            pk_degradations_from_filter_status(filter_criteria$status)
+          } else {
+            list()
+          },
+          pre_aggregated_columns = query$pre_aggregated_columns
+        ))
+      },
+      getOption("mergen.pk.async.deadline_at", NULL)
+    )
+  } else {
+    NULL
+  }
+
+  if (is.list(paket_sonucu)) {
+    if (!isTRUE(paket_sonucu$ok)) return(iptal_sonucu(halt_durumu() %||% "deadline"))
+    paket <- paket_sonucu$value
+  } else {
+    paket <- pk_packet_build(filtered_data, query, list(
+      authorized_rows = nrow(secure_data),
+      filtered_rows = nrow(filtered_data),
+      filters = etkin_filtreler,
+      filter_status = filter_criteria$status,
+      degradations = if (exists("pk_degradations_from_filter_status", mode = "function",
+                                inherits = TRUE)) {
+        pk_degradations_from_filter_status(filter_criteria$status)
+      } else {
+        list()
+      },
+      pre_aggregated_columns = query$pre_aggregated_columns
+    ))
+  }
 
   ifsa <- if (is.list(policy) &&
               exists("pk_filter_policy_disclosure_block", mode = "function", inherits = TRUE)) {

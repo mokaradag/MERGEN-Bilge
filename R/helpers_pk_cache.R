@@ -208,22 +208,30 @@ pk_cache_get <- function(key, query_meta = NULL, now = Sys.time()) {
     return(list(hit = FALSE, value = NULL, reason = "invalid_key"))
   }
 
+  # SINIRLAR KAYIP ANAHTARDA DA UZLAŞTIRILIR.
+  #
+  # Eskiden eksik anahtar, `.pk_cache_limits()` ve `.pk_cache_reconcile()`
+  # çalışmadan ÖNCE dönüyordu. Kalıcı bir işçide operatör önbelleği kapatır ya
+  # da `MAX_ENTRIES`/`MAX_MB` değerini düşürür ve sonraki istekler hep YENİ
+  # anahtarlar olursa, eski girişler süresiz yerleşik kalırdı: ne bu yol ne de
+  # kapalı `pk_cache_put()` yolu onları temizliyordu. Dosyanın ilan ettiği
+  # "sınırlar ANINDA etkilidir" davranışı böylece ihlal ediliyor ve her işçi
+  # ÖNCEKİ bütçeyi taşımaya devam ediyordu.
+  limitler <- .pk_cache_limits(query_meta)
+
+  if (isTRUE(.pk_cache_disabled(limitler))) {
+    for (ad in names(.pk_cache_store$entries)) .pk_cache_drop_entry(ad)
+    .pk_cache_store$stats$miss <- .pk_cache_store$stats$miss + 1L
+    return(list(hit = FALSE, value = NULL, reason = "cache_disabled"))
+  }
+
   giris <- .pk_cache_store$entries[[anahtar]]
   if (!is.list(giris)) {
+    .pk_cache_reconcile(limitler, now = now)
     .pk_cache_store$stats$miss <- .pk_cache_store$stats$miss + 1L
     return(list(hit = FALSE, value = NULL, reason = "miss"))
   }
 
-  limitler <- .pk_cache_limits(query_meta)
-
-  # Önbellek KAPATILDIYSA veya sınırlar SIKILAŞTIRILDIYSA bu HEMEN etkili
-  # olmalıdır. Aksi hâlde kalıcı bir işçide, operatör önbelleği kapattıktan
-  # sonra bile mevcut girişler TTL süresince servis edilmeye devam ederdi.
-  if (isTRUE(.pk_cache_disabled(limitler))) {
-    .pk_cache_drop_entry(anahtar, giris)
-    .pk_cache_store$stats$miss <- .pk_cache_store$stats$miss + 1L
-    return(list(hit = FALSE, value = NULL, reason = "cache_disabled"))
-  }
   giris_bayt <- as.numeric(giris$bytes %||% NA_real_)
   if (is.finite(limitler$max_entry_bytes) && !is.na(giris_bayt) &&
       giris_bayt > limitler$max_entry_bytes) {

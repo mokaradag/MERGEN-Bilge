@@ -38,10 +38,14 @@ mergen_pk_apply_analysis_result <- function(analiz_result, messages_to_process) 
   # üretiyordu — yani iptal edilmiş bir analizde kullanıcının HAM istemi
   # hiçbir veri bağlamı olmadan nihai LLM'e gidiyor ve TEMELSİZ ama normal
   # görünen bir yanıt üretiliyordu.
+  # SON TARİH ile KULLANICI İPTALİ AYRI raporlanır: `pk_stopped` taşıdığı
+  # `pk_halt_status` ile gelir; taşımıyorsa eski davranış (`cancelled`) geçerlidir.
   if (identical(analiz_result$type, "pk_stopped")) {
+    halt_durumu <- as.character(analiz_result$pk_halt_status %||% "cancelled")[1]
+    if (is.na(halt_durumu) || !nzchar(halt_durumu)) halt_durumu <- "cancelled"
     return(list(action = "answer",
                 answer = if (exists("pk_async_halt_message", mode = "function", inherits = TRUE)) {
-                  pk_async_halt_message("cancelled")
+                  pk_async_halt_message(halt_durumu)
                 } else {
                   "\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi."
                 },

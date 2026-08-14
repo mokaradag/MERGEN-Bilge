@@ -38,25 +38,6 @@
   isTRUE(requireNamespace("openxlsx", quietly = TRUE))
 }
 
-# XLSX yolunun tahmini bayt tavanı (bayt cinsinden).
-#
-# `object.size()` çerçeveyi KOPYALAMAZ; yalnızca yürür. Geçici kopya payı
-# çarpanı burada uygulanır: XLSX yolu normalleştirilmiş bir kopya ve onun
-# yanında çalışma kitabı kurar.
-.pk_export_byte_ceiling <- function(query_meta = NULL) {
-  mb <- if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) {
-    128L
-  } else {
-    tryCatch(
-      pk_config_resolve("MERGEN_PK_EXPORT_MAX_BYTES_MB", query_meta = query_meta),
-      error = function(e) 128L
-    )
-  }
-  mb <- suppressWarnings(as.integer(mb))
-  if (length(mb) != 1L || is.na(mb) || mb < 1L) mb <- 128L
-  as.numeric(mb) * 1024 * 1024
-}
-
 .pk_export_cell_ceiling <- function(query_meta = NULL) {
   if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) return(2000000L)
   deger <- tryCatch(
@@ -203,34 +184,26 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # telemetrisi bozuluyor ve bir kapasite/son tarih sorunu gizleniyordu.
   #
   # Durdurma yoksa `NULL` döner; böylece `%||%` zinciri doğal çalışır.
-  halt_durumu <- function() {
-    if (is.function(stop_check) &&
-        isTRUE(tryCatch(stop_check(), error = function(e) FALSE))) {
-      return("cancelled")
-    }
+  halt_durumu <- function() tryCatch({
+    if (is.function(stop_check) && isTRUE(stop_check())) return("cancelled")
     if (!exists("pk_async_stage_gate", mode = "function", inherits = TRUE)) return(NULL)
     jeton <- getOption("mergen.pk.async.cancel_token", NULL)
     son_tarih <- getOption("mergen.pk.async.deadline_at", NULL)
     if (is.null(jeton) && is.null(son_tarih)) return(NULL)
-    kapi <- tryCatch(pk_async_stage_gate(jeton, son_tarih), error = function(e) NULL)
+    kapi <- pk_async_stage_gate(jeton, son_tarih)
     if (!is.list(kapi) || !isTRUE(kapi$halt)) return(NULL)
     as.character(kapi$status %||% "cancelled")[1]
-  }
+  }, error = function(e) NULL)
   durduruldu <- function() !is.null(halt_durumu())
   iptal_sonucu <- function(rows = 0L, cols = 0L, status = NULL) {
     durum <- as.character(status %||% halt_durumu() %||% "cancelled")[1]
     if (is.na(durum) || !nzchar(durum)) durum <- "cancelled"
     mesaj <- if (exists("pk_async_halt_message", mode = "function", inherits = TRUE)) {
-      tryCatch(pk_async_halt_message(durum), error = function(e) NULL)
+      pk_async_halt_message(durum)
+    } else if (identical(durum, "deadline")) {
+      "Dışa aktarım ayrılan süre içinde tamamlanamadı."
     } else {
-      NULL
-    }
-    if (is.null(mesaj)) {
-      mesaj <- if (identical(durum, "deadline")) {
-        "Dışa aktarım ayrılan süre içinde tamamlanamadı."
-      } else {
-        "Dışa aktarım kullanıcı isteğiyle durduruldu."
-      }
+      "Dışa aktarım kullanıcı isteğiyle durduruldu."
     }
     list(status = durum, files = list(), message = mesaj,
          total_rows = rows, cols = cols, format = NA_character_, notes = character(0))
@@ -419,14 +392,12 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # katına çıkarıyordu. Yüzde/etiket hazırlığı YALNIZCA metadata'ya bağlı
   # olduğundan (veriye değil), dönüşümü parça başına uygulamak tüm çerçeveyi
   # dönüştürüp bölmekle AYNI sonucu verir.
-  csv_notlari <- tryCatch(
-    .pk_export_csv_body(data[0L, , drop = FALSE], meta)$notes,
-    error = function(e) character(0)
+  csv_sonda <- tryCatch(
+    .pk_export_csv_body(data[0L, , drop = FALSE], meta),
+    error = function(e) NULL
   )
-  csv_sutun <- tryCatch(
-    ncol(.pk_export_csv_body(data[0L, , drop = FALSE], meta)$body),
-    error = function(e) ncol(data)
-  )
+  csv_notlari <- if (is.list(csv_sonda)) csv_sonda$notes else character(0)
+  csv_sutun <- if (is.list(csv_sonda)) ncol(csv_sonda$body) else ncol(data)
   csv <- list(body = NULL, notes = csv_notlari)
 
   # Hazırlık/yazım/doğrulama aşamaları da SINIRLIDIR ve iptal parçalar arasında
