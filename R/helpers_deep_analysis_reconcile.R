@@ -174,7 +174,13 @@ pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
     }, error = function(e) "")
   }
 
-  stash_deep_footer <- function(footers) {
+  # Birleşik Deep Thinking alt bilgisi, v2 altında yalnızca görünen footer'ı
+  # değil uzlaştırılmış kanonik olgu kayıtlarını da taşır. Böylece nihai model
+  # yanıtı standart v2 yolu ile AYNI numeric-provenance doğrulamasından geçer.
+  # v1 çağrılarında yeni argümanların tamamı NULL'dur ve eski footer davranışı
+  # değişmez.
+  stash_deep_footer <- function(footers, facts = NULL, fallback_text = NULL,
+                                query_id = NULL, mode = NULL) {
     if (!exists("pk_provenance_stash", mode = "function", inherits = TRUE)) {
       return(invisible(FALSE))
     }
@@ -200,7 +206,11 @@ pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
       "\n"
     )
 
-    pk_provenance_stash(session, combined_footer, request_id = pk_request_id)
+    pk_provenance_stash(
+      session, combined_footer, request_id = pk_request_id,
+      facts = facts, fallback_text = fallback_text,
+      query_id = query_id, mode = mode
+    )
   }
 
   list(observe = pk_observe_deep, stash = stash_deep_footer)
