@@ -83,11 +83,13 @@ test_that("uzlaştırılmış v2 facts provenance stash'e taşınır ve başarı
     started_at = Sys.time()
   )
 
-  ok <- do.call(observers$stash, c(
-    list(footers = "\n\n---\n**Analiz Kaynağı**\n- **Sorgu:** q_good · İyi v2\n"),
-    collected,
-    list(mode = "block")
-  ))
+  ok <- observers$stash(
+    footers = "\n\n---\n**Analiz Kaynağı**\n- **Sorgu:** q_good · İyi v2\n",
+    facts = collected$facts,
+    fallback_text = collected$fallback_text,
+    query_id = collected$query_id,
+    mode = "block"
+  )
   expect_true(isTRUE(ok))
 
   pending <- env$pk_provenance_take(session, request_id = "req-deep-v2", full = TRUE)
