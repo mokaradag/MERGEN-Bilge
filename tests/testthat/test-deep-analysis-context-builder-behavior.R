@@ -74,6 +74,53 @@ test_that("başarılı + başarısız karışımı başarısız notu ekler", {
   expect_true(grepl("neden-x", out$user_context, fixed = TRUE))
 })
 
+test_that("v2 bağlamı reconciled kanonik packet metnini kullanır, legacy özete düşmez", {
+  qr <- list(list(
+    success = TRUE,
+    query_name = "V2",
+    query_desc = "kanonik",
+    row_count = 3L,
+    relevance = 90,
+    pk_engine_mode = "v2",
+    pk_packet_text = "KANONIK-V2-DEGER %60,0 [fact:progress.weighted.weighted_mean.overall.abc123]",
+    summary_text = "LEGACY-OZET-YASAK",
+    preview_json = "LEGACY-JSON-YASAK"
+  ))
+
+  out <- .dac_env$build_deep_analysis_context(
+    qr, "soru", list(instruction = "", max_tokens = 3000)
+  )
+
+  expect_identical(out$type, "data_analysis")
+  expect_true(grepl("KANONIK-V2-DEGER", out$user_context, fixed = TRUE))
+  expect_true(grepl("[fact:", out$user_context, fixed = TRUE))
+  expect_false(grepl("LEGACY-OZET-YASAK", out$user_context, fixed = TRUE))
+  expect_false(grepl("LEGACY-JSON-YASAK", out$user_context, fixed = TRUE))
+  expect_true(grepl("v2 SAYISAL KÖKEN KURALI", out$prompt_context, fixed = TRUE))
+})
+
+test_that("v2 başarılı kayıt kanonik packet metni yoksa legacy summary fail-closed kullanılmaz", {
+  qr <- list(list(
+    success = TRUE,
+    query_name = "V2-Eksik",
+    query_desc = "kanonik yok",
+    row_count = 2L,
+    relevance = 80,
+    pk_engine_mode = "v2",
+    pk_packet_text = "",
+    summary_text = "LEGACY-SAYI-99999",
+    preview_json = "[]"
+  ))
+
+  out <- .dac_env$build_deep_analysis_context(
+    qr, "soru", list(instruction = "", max_tokens = 3000)
+  )
+
+  expect_identical(out$type, "error_message")
+  expect_true(grepl("Kanonik v2 analiz paketi", out$content, fixed = TRUE))
+  expect_false(grepl("LEGACY-SAYI-99999", out$content, fixed = TRUE))
+})
+
 # --- İSTEM BÜTÇESİ: ÖNİZLEME SONRASI İKİNCİ DETERMİNİSTİK BOZULMA -------------
 #
 # KUSUR: `pk_deep_fit_context_budget()` YALNIZCA önizleme JSON bloklarını
