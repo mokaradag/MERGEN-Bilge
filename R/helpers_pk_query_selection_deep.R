@@ -210,3 +210,210 @@ if (exists(".pk_deep_analysis_process_base", inherits = FALSE)) {
     )
   }
 }
+
+# ------------------------------------------------------------------------------
+# Deep Thinking v2 paket/fact köprüsü
+# ------------------------------------------------------------------------------
+# Bu yardımcılar seçilmiş v2 sorgusunu standart PK paket/fact çekirdeğine bağlar.
+# İstatistik/aggregation semantiği burada yeniden uygulanmaz.
+
+pk_deep_query_is_v2 <- function(query) {
+  if (isTRUE(query$pk_engine_v2) ||
+      identical(as.character(query$pk_engine_mode %||% "")[1], "v2")) {
+    return(TRUE)
+  }
+  if (!exists("pk_engine_is_v2", mode = "function", inherits = TRUE)) return(FALSE)
+  durum <- try(pk_engine_is_v2(query$meta), silent = TRUE)
+  !inherits(durum, "try-error") && isTRUE(durum)
+}
+
+pk_deep_effective_filters <- function(policy, filter_criteria, engine_v2 = FALSE) {
+  if (isTRUE(engine_v2) &&
+      exists(".pk_result_effective_filters", mode = "function", inherits = TRUE)) {
+    sonuc <- try(.pk_result_effective_filters(policy, filter_criteria), silent = TRUE)
+    if (!inherits(sonuc, "try-error")) return(sonuc)
+  }
+  filter_criteria$filters %||% list()
+}
+
+pk_deep_v2_halt_status <- function(detail_config, stop_check = NULL) {
+  if (is.function(stop_check)) {
+    durdur <- try(stop_check(), silent = TRUE)
+    if (!inherits(durdur, "try-error") && isTRUE(durdur)) return("cancelled")
+  }
+  if (!exists("pk_async_stage_gate", mode = "function", inherits = TRUE)) return(NULL)
+  kapi <- try(
+    pk_async_stage_gate(detail_config$pk_cancel_token, detail_config$pk_deadline_at),
+    silent = TRUE
+  )
+  if (!inherits(kapi, "try-error") && is.list(kapi) && isTRUE(kapi$halt)) {
+    return(as.character(kapi$status)[1])
+  }
+  NULL
+}
+
+pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
+                                           filter_status, applied_filters,
+                                           detail_config, finish_result,
+                                           pre_rls_rows, stop_check = NULL) {
+  query_name <- query$name %||% "Bilinmeyen Sorgu"
+  gerekli <- c("pk_packet_build", "pk_packet_render", "pk_packet_all_facts",
+               "pk_compose_facts_summary")
+  if (any(!vapply(gerekli, exists, logical(1), mode = "function", inherits = TRUE))) {
+    return(finish_result(
+      list(query_name = query_name, success = FALSE,
+           error_msg = paste0("Kanonik v2 analiz paketi bileşenleri yüklenmedi; ",
+                              "legacy özete güvenlik gereği geri düşülmedi.")),
+      filter_status = filter_status, filters = applied_filters,
+      pre_rls_rows = pre_rls_rows, authorized_rows = nrow(secure_data),
+      filtered_rows = nrow(filtered_data), outcome = "Hata"
+    ))
+  }
+
+  durdurma <- pk_deep_v2_halt_status(detail_config, stop_check)
+  if (!is.null(durdurma)) return(pk_deep_halt_result(durdurma))
+
+  packet_context <- list(
+    authorized_rows = nrow(secure_data), filtered_rows = nrow(filtered_data),
+    filters = applied_filters, filter_status = filter_status,
+    degradations = if (exists("pk_degradations_from_filter_status", mode = "function",
+                              inherits = TRUE)) {
+      pk_degradations_from_filter_status(filter_status)
+    } else list(),
+    pre_aggregated_columns = query$pre_aggregated_columns
+  )
+  build_call <- function() pk_packet_build(filtered_data, query, packet_context)
+  paket_sonucu <- if (exists("pk_async_bounded_fs", mode = "function", inherits = TRUE)) {
+    pk_async_bounded_fs(build_call, detail_config$pk_deadline_at)
+  } else {
+    list(ok = TRUE, value = build_call())
+  }
+  if (!isTRUE(paket_sonucu$ok)) {
+    durdurma <- pk_deep_v2_halt_status(detail_config, stop_check) %||% "deadline"
+    return(pk_deep_halt_result(durdurma))
+  }
+  paket <- paket_sonucu$value
+
+  durdurma <- pk_deep_v2_halt_status(detail_config, stop_check)
+  if (!is.null(durdurma)) return(pk_deep_halt_result(durdurma))
+
+  paket_yazi <- pk_packet_render(paket, query_meta = query$meta)
+  if (isTRUE(paket_yazi$over_budget)) {
+    return(finish_result(
+      list(query_name = query_name, success = FALSE,
+           error_msg = paste0("Kanonik v2 analiz paketi güvenli istem bütçesine sığmadı; ",
+                              "legacy özete geri düşülmeden sorgu atlandı.")),
+      filter_status = filter_status, filters = applied_filters,
+      pre_rls_rows = pre_rls_rows, authorized_rows = nrow(secure_data),
+      filtered_rows = nrow(filtered_data), outcome = "Reddedildi"
+    ))
+  }
+
+  durdurma <- pk_deep_v2_halt_status(detail_config, stop_check)
+  if (!is.null(durdurma)) return(pk_deep_halt_result(durdurma))
+
+  cat(sprintf("[DEEP_QUERY] '%s' - Başarılı: %d satır, kanonik v2 paket oluşturuldu.\n",
+              query_name, nrow(filtered_data)))
+  finish_result(
+    list(
+      query_name = query_name, query_desc = query$description %||% "",
+      query_id = query$id, query_meta = query$meta, success = TRUE,
+      row_count = nrow(filtered_data), relevance = query$relevance_score %||% 0,
+      pk_engine_mode = "v2", pk_packet = paket,
+      pk_packet_text = paket_yazi$text, pk_packet_chars = paket_yazi$chars,
+      pk_facts = pk_packet_all_facts(paket),
+      pk_fallback_text = pk_compose_facts_summary(paket$facts), data = filtered_data
+    ),
+    filter_status = filter_status, filters = applied_filters,
+    pre_rls_rows = pre_rls_rows, authorized_rows = nrow(secure_data),
+    filtered_rows = nrow(filtered_data), outcome = "Basarili"
+  )
+}
+
+# Uzlaştırma SONRASI yalnız başarılı v2 paketleri numeric provenance'a girer.
+pk_deep_collect_v2_provenance <- function(query_results, primary_meta = NULL) {
+  v2 <- list()
+  for (sonuc in (query_results %||% list())) {
+    if (is.list(sonuc) && isTRUE(sonuc$success) &&
+        identical(as.character(sonuc$pk_engine_mode %||% "")[1], "v2")) {
+      v2[[length(v2) + 1L]] <- sonuc
+    }
+  }
+  if (!length(v2)) {
+    return(list(facts = NULL, fallback_text = NULL, query_id = NULL, mode = NULL))
+  }
+
+  facts <- list()
+  fallback <- character(0)
+  ids <- character(0)
+  for (sonuc in v2) {
+    for (fact in (sonuc$pk_facts %||% list())) facts[[length(facts) + 1L]] <- fact
+    metin <- as.character(sonuc$pk_fallback_text %||% "")[1]
+    if (!is.na(metin) && nzchar(metin)) {
+      fallback <- c(fallback, paste0("### ", sonuc$query_name %||% "Sorgu", "\n", metin))
+    }
+    kimlik <- as.character(sonuc$query_id %||% sonuc$pk_observation$query_id %||% "")[1]
+    if (!is.na(kimlik) && nzchar(kimlik)) ids <- c(ids, kimlik)
+  }
+
+  mode <- NULL
+  if (exists("pk_numeric_provenance_mode", mode = "function", inherits = TRUE)) {
+    aday <- try(pk_numeric_provenance_mode(primary_meta), silent = TRUE)
+    if (!inherits(aday, "try-error")) mode <- aday
+  }
+
+  list(
+    facts = if (length(facts)) facts else NULL,
+    fallback_text = if (length(fallback)) paste(fallback, collapse = "\n\n") else NULL,
+    query_id = if (length(ids)) paste(ids, collapse = ",") else NULL,
+    mode = mode
+  )
+}
+
+# Baseline Deep gözlem fabrikasını değiştirmeden, v2 olgularını aynı birleşik
+# footer ile request-scope provenance yuvasına taşıyan dar sarmalayıcı.
+if (!exists(".pk_deep_observation_helpers_base", inherits = FALSE) &&
+    exists("pk_deep_observation_helpers", mode = "function", inherits = TRUE)) {
+  .pk_deep_observation_helpers_base <- get(
+    "pk_deep_observation_helpers", mode = "function", inherits = TRUE
+  )
+}
+if (exists(".pk_deep_observation_helpers_base", inherits = FALSE)) {
+  pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
+                                          request_id, started_at) {
+    helpers <- .pk_deep_observation_helpers_base(
+      session, conn, username, user_prompt, request_id, started_at
+    )
+    base_stash <- helpers$stash
+    helpers$stash <- function(footers, facts = NULL, fallback_text = NULL,
+                              query_id = NULL, mode = NULL) {
+      if (is.null(facts) && is.null(fallback_text) && is.null(query_id) && is.null(mode)) {
+        return(base_stash(footers))
+      }
+      if (!exists("pk_provenance_stash", mode = "function", inherits = TRUE)) {
+        return(invisible(FALSE))
+      }
+      footers <- as.character(footers)
+      footers <- footers[!is.na(footers) & nzchar(footers)]
+      if (!length(footers)) return(invisible(FALSE))
+
+      standard_prefix <- "\n\n---\n**Analiz Kaynağı**\n"
+      bodies <- character(length(footers))
+      for (i in seq_along(footers)) {
+        body <- if (startsWith(footers[i], standard_prefix)) {
+          substring(footers[i], nchar(standard_prefix) + 1L)
+        } else footers[i]
+        bodies[i] <- sub("\n$", "", body)
+      }
+      combined_footer <- paste0(
+        "\n\n---\n**Analiz Kaynağı (Derin Analiz)**\n",
+        paste(bodies, collapse = "\n\n"), "\n"
+      )
+      pk_provenance_stash(
+        session, combined_footer, request_id = request_id,
+        facts = facts, fallback_text = fallback_text, query_id = query_id, mode = mode
+      )
+    }
+    helpers
+  }
+}
