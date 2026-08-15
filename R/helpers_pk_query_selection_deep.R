@@ -184,7 +184,8 @@ if (exists(".pk_deep_analysis_process_base", inherits = FALSE)) {
       "execute_single_deep_query", mode = "function", envir = yerel, inherits = TRUE
     )
     yerel$execute_single_deep_query <- function(query, user_prompt, session, rls_info,
-                                                detail_config, stop_check = NULL) {
+                                                detail_config, stop_check = NULL,
+                                                chat_history = NULL) {
       # Tekil yürütücü de girişte aynı kapıyı uygular. Commit bu kapının ÖNÜNE
       # geçmemelidir: kullanıcı durdurduysa seçilmeyen sorgu takip durumuna
       # yazılmamalıdır. Shiny ana olay döngüsünde bu kontrol ile commit arasında
@@ -198,7 +199,7 @@ if (exists(".pk_deep_analysis_process_base", inherits = FALSE)) {
       }
       temel_execute(
         query, user_prompt, session, rls_info, detail_config,
-        stop_check = stop_check
+        stop_check = stop_check, chat_history = chat_history
       )
     }
 
