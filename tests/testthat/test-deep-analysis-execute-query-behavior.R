@@ -13,7 +13,7 @@
 
 # Türkçe yorum: helpers_deep_analysis.R'yi yalıtılmış ortama yükler ve erken-dönüş
 # dalları için en az bağımlılığı (get_connection/release_connection) env'e koyar.
-.deepQueryEnv <- function() {
+.deepQueryEnv <- function(v2_packets = FALSE) {
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
   # Faz 1: derin mod artik ANA YOL ile ayni salt-okunur SQL kapisini ve kapali
@@ -31,6 +31,18 @@
     source(file.path(kok, "R", yardimci), encoding = "UTF-8", local = env)
   }
   source(file.path(kok, "R", "helpers_deep_analysis.R"), encoding = "UTF-8", local = env)
+
+  # v2 regresyonları gerçek paket/fact sahiplerini yükler. Legacy özet
+  # implementation'ı yeniden taklit edilmez; üretim ile aynı helper'lar çağrılır.
+  if (isTRUE(v2_packets)) {
+    for (yardimci in c("helpers_pk_text_turkish.R", "helpers_pk_prompt_budget.R",
+                       "helpers_pk_packet_stats.R", "helpers_pk_analysis_packet.R",
+                       "helpers_pk_packet_render.R", "helpers_pk_answer_compose.R",
+                       "helpers_pk_numeric_provenance.R")) {
+      source(file.path(kok, "R", yardimci), encoding = "UTF-8", local = env)
+    }
+  }
+
   # Varsayılan: geçerli bir bağlantı listesi döndüren stub
   env$.release_calls <- 0L
   env$get_connection <- function(target = "primary") list(conn = "FAKE_CONN", target = target)
@@ -54,6 +66,56 @@
 }
 
 .detailCfg <- list(preview_rows = 10)
+
+.deepV2Query <- function() {
+  list(
+    id = "q_deep_v2_sentetik",
+    name = "v2 Sentetik Analiz",
+    description = "Ağırlıklı ilerleme ve en güncel maliyet",
+    sql = "SELECT * FROM sentetik",
+    relevance_score = 93,
+    disable_ai_filters = TRUE,
+    pk_engine_v2 = TRUE,
+    date_columns = "Snapshot",
+    meta = list(
+      grain = "row",
+      grain_columns = "RowId",
+      default_measures = c("Progress", "Cost"),
+      default_group_by = character(0),
+      column_meta = list(
+        Project = list(role = "dimension", label = "Proje"),
+        Progress = list(
+          role = "measure", label = "İlerleme", unit = "%", decimals = 1L,
+          additive = FALSE, aggregate = "weighted_mean", weight_by = "Weight",
+          percent_scale = "fraction", capability = "progress.weighted"
+        ),
+        Weight = list(
+          role = "measure", label = "Ağırlık", decimals = 0L,
+          additive = TRUE, aggregate = "sum", capability = "progress.weight"
+        ),
+        Snapshot = list(role = "date", label = "Dönem"),
+        RowId = list(role = "id", label = "Kayıt"),
+        Cost = list(
+          role = "measure", label = "Maliyet", unit = "TL", decimals = 0L,
+          additive = FALSE, aggregate = "latest", latest_by = "Snapshot",
+          latest_tie_by = "RowId", capability = "cost.latest"
+        )
+      )
+    )
+  )
+}
+
+.deepV2Data <- function() {
+  data.frame(
+    Project = c("A", "B", "C"),
+    Progress = c(0.2, 0.8, 0.5),
+    Weight = c(1, 3, 2),
+    Snapshot = as.Date(c("2026-01-01", "2026-03-01", "2026-02-01")),
+    RowId = c("r1", "r2", "r3"),
+    Cost = c(100, 250, 150),
+    stringsAsFactors = FALSE
+  )
+}
 
 test_that("execute_single_deep_query durdurma talebinde TİPLİ HALT döner (bağlantı kurmadan)", {
   env <- .deepQueryEnv()
@@ -192,4 +254,120 @@ test_that("execute_single_deep_query başarılı orkestrasyonda özet + önizlem
   expect_true(grepl("ad", res$preview_json, fixed = TRUE))
   parsed <- jsonlite::fromJSON(res$preview_json)
   expect_equal(nrow(parsed), 3L)
+})
+
+test_that("v2 Deep Thinking legacy özet yerine gerçek kanonik packet/fact hattını kullanır", {
+  env <- .deepQueryEnv(v2_packets = TRUE)
+  veri <- .deepV2Data()
+  env$pk_deep_execute_sql <- function(conn, sql_text, ...) {
+    list(status = "ok", data = veri, rows = nrow(veri), error = NA_character_)
+  }
+  # Seçim köprüsündeki gerçek durumu taklit et: global motor görünümü FALSE,
+  # fakat seçilmiş sorgu istek-yerel `pk_engine_v2=TRUE` işaretini taşır.
+  env$pk_engine_is_v2 <- function(...) FALSE
+  env$generate_statistical_summary <- function(...) {
+    stop("v2 Deep Thinking legacy generate_statistical_summary çağırmamalı")
+  }
+
+  res <- env$execute_single_deep_query(
+    query = .deepV2Query(), user_prompt = "ilerleme ve son maliyet",
+    session = NULL, rls_info = list(), detail_config = .detailCfg
+  )
+
+  expect_true(res$success)
+  expect_identical(res$pk_engine_mode, "v2")
+  expect_true(is.list(res$pk_packet))
+  expect_true(length(res$pk_facts) > 0L)
+  expect_true(grepl("[fact:", res$pk_packet_text, fixed = TRUE))
+  expect_null(res$summary_text)
+  expect_identical(res$query_id, "q_deep_v2_sentetik")
+  expect_identical(res$query_meta, .deepV2Query()$meta)
+  expect_identical(res$data, veri)
+})
+
+test_that("v2 Deep Thinking weighted/non-additive, latest ve yüzde ölçeğini kanonik korur", {
+  env <- .deepQueryEnv(v2_packets = TRUE)
+  veri <- .deepV2Data()
+  env$pk_deep_execute_sql <- function(conn, sql_text, ...) {
+    list(status = "ok", data = veri, rows = nrow(veri), error = NA_character_)
+  }
+  env$generate_statistical_summary <- function(...) stop("legacy özet çağrıldı")
+
+  res <- env$execute_single_deep_query(
+    query = .deepV2Query(), user_prompt = "özetle",
+    session = NULL, rls_info = list(), detail_config = .detailCfg
+  )
+  expect_true(res$success)
+
+  fact <- function(column, aggregation) {
+    x <- Filter(function(f) is.list(f) && identical(f$column, column) &&
+                  identical(f$aggregation, aggregation), res$pk_facts)
+    if (length(x)) x[[1]] else NULL
+  }
+
+  weighted <- fact("Progress", "weighted_mean")
+  expect_true(is.list(weighted))
+  expect_identical(weighted$status, "ok")
+  expect_equal(weighted$value, 60)
+  expect_identical(weighted$unit, "%")
+  expect_true(grepl("60", weighted$display, fixed = TRUE))
+  expect_true(grepl("%", weighted$display, fixed = TRUE))
+
+  # Non-additive Progress için düz toplam/ortalama yetkili sayısal olgu olamaz.
+  progress_sum <- fact("Progress", "sum")
+  progress_mean <- fact("Progress", "mean")
+  expect_true(is.null(progress_sum) || is.null(progress_sum$value))
+  expect_true(is.null(progress_mean) || is.null(progress_mean$value))
+
+  latest <- fact("Cost", "latest")
+  expect_true(is.list(latest))
+  expect_identical(latest$status, "ok")
+  expect_equal(latest$value, 250)
+  expect_identical(latest$unit, "TL")
+})
+
+test_that("v2 Deep Thinking fact registry halüsinasyon sayıyı provenance block modunda engeller", {
+  env <- .deepQueryEnv(v2_packets = TRUE)
+  veri <- .deepV2Data()
+  env$pk_deep_execute_sql <- function(conn, sql_text, ...) {
+    list(status = "ok", data = veri, rows = nrow(veri), error = NA_character_)
+  }
+  env$generate_statistical_summary <- function(...) stop("legacy özet çağrıldı")
+
+  res <- env$execute_single_deep_query(
+    query = .deepV2Query(), user_prompt = "özetle",
+    session = NULL, rls_info = list(), detail_config = .detailCfg
+  )
+  expect_true(res$success)
+
+  weighted <- Filter(function(f) is.list(f) && identical(f$column, "Progress") &&
+                       identical(f$aggregation, "weighted_mean"), res$pk_facts)[[1]]
+  model_text <- sprintf("İlerleme %%99,0 [fact:%s].", weighted$fact_id)
+  checked <- env$pk_numeric_provenance_apply(
+    model_text, res$pk_facts, mode = "block", fallback_text = res$pk_fallback_text
+  )
+
+  expect_true(checked$blocked)
+  expect_true(any(vapply(checked$mismatches,
+                         function(x) identical(x$reason, "value_mismatch"), logical(1))))
+  expect_false(grepl("99,0", checked$text, fixed = TRUE))
+  expect_true(grepl("R tarafından hesaplanmıştır", checked$text, fixed = TRUE))
+})
+
+test_that("v2 Deep Thinking paket kurulumu deadline olursa typed halt döner", {
+  env <- .deepQueryEnv(v2_packets = TRUE)
+  veri <- .deepV2Data()
+  env$pk_deep_execute_sql <- function(conn, sql_text, ...) {
+    list(status = "ok", data = veri, rows = nrow(veri), error = NA_character_)
+  }
+  env$pk_async_bounded_fs <- function(fn, deadline_at = NULL) list(ok = FALSE, value = NULL)
+  env$generate_statistical_summary <- function(...) stop("legacy özet çağrıldı")
+
+  res <- env$execute_single_deep_query(
+    query = .deepV2Query(), user_prompt = "özetle",
+    session = NULL, rls_info = list(), detail_config = .detailCfg
+  )
+
+  expect_true(env$pk_deep_is_halt_result(res))
+  expect_identical(res$pk_halt_status, "deadline")
 })
