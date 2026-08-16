@@ -213,7 +213,7 @@ mergen_post_deploy_smoke_evaluate <- function(checks,
 #   critical_ids     : kapıda kullanılan kritik kontrol kimlikleri (kayda işlenir).
 #   fail_on_unknown  : kritik unknown'ın bloklayıp bloklamadığı (kayda işlenir).
 #   generated_at_utc : NULL ise UTC ISO zaman damgası üretilir (test için enjekte
-#                      edilebilir → deterministik).
+#                      edilebilir -> deterministik).
 #   git_info         : list(branch=, sha=, dirty=); NULL ise boş. Git çağrısı SAF
 #                      fonksiyonun dışındadır; çağıran toplar (en iyi çaba).
 #   r_version        : NULL ise R.version'dan türetilir.
@@ -247,7 +247,7 @@ mergen_post_deploy_smoke_artifact_record <- function(result,
     unique(out)
   }
 
-  # counts (table veya isimli vektör) → deterministik, isimli tam-sayı listesi.
+  # counts (table veya isimli vektör) -> deterministik, isimli tam-sayı listesi.
   ham_counts <- result$counts
   counts_list <- list()
   if (!is.null(ham_counts) && length(ham_counts) > 0L) {

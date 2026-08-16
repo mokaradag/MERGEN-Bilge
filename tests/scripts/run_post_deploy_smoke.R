@@ -98,9 +98,9 @@ fail_on_unknown <- .smoke_normalize_bool(
   default = FALSE
 )
 
-# Değerlendirici sonucundan secret-safe artifact'ı yazar; yol döndürür (hata →
+# Değerlendirici sonucundan secret-safe artifact'ı yazar; yol döndürür (hata ->
 # WARN + ""). Redaksiyon yalnızca yapısal string DEĞERLERE uygulanır (anahtarlar/
-# sayaçlar/enum'lar korunur), sonra serileştirilir → şema asla bozulmaz.
+# sayaçlar/enum'lar korunur), sonra serileştirilir -> şema asla bozulmaz.
 .smoke_write_artifact <- function(result) {
   tryCatch({
     if (!requireNamespace("jsonlite", quietly = TRUE)) {

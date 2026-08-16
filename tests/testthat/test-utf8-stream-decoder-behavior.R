@@ -48,7 +48,7 @@ testthat::test_that("create_utf8_stream_decoder bölünmüş çok baytlı karakt
   c3 <- dec2$decode(as.raw(0x80))
   testthat::expect_identical(a, "")
   testthat::expect_identical(b, "")
-  testthat::expect_identical(c3, "\U0001F680")  # 🚀
+  testthat::expect_identical(c3, "\U0001F680")  # roket emojisi (U+1F680)
 })
 
 testthat::test_that("create_utf8_stream_decoder reset ve flush tutarlı çalışır", {

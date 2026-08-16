@@ -1307,6 +1307,32 @@ Focused validation:
 ### 1A) Keep new code identifiers ASCII-safe when practical
 Preserve Turkish text integrity in user-facing strings, docs, comments, DB text, JSON text, and rendered UI. However, for Windows VM parser robustness, **new code identifiers** should be ASCII-only where practical (variable/helper names, unquoted `data.frame(...)` column names, `$field_name` accessors, and similar code symbols that can become mojibake-sensitive). This is **not** permission to Latinize visible product text; it applies only to code symbols/identifiers.
 
+### 1G) WINDOWS-1254 source-safety contract (Windows VM parse boundary)
+
+Every `.R` file in the repository MUST be convertible to `WINDOWS-1254`. On the Windows VM R's native code page is `WINDOWS-1254`, and `source(file, encoding = "UTF-8")` re-encodes the file to that page. A character with NO CP1254 mapping makes the conversion fail: R emits `giriş bağlantısında geçersiz giriş bulundu` ("invalid input found on input connection") and **truncates the file at that byte**. The truncated file then fails to parse with `unexpected end of input`, every function defined after that point silently disappears, and the suite produces hundreds of cascading errors far away from the real cause.
+
+This is NOT in tension with rule 1 (preserve Turkish text). All Turkish letters — `ç ğ ı İ ö ş ü Ç Ğ Ö Ş Ü` — ARE representable in CP1254 and stay literal. Only characters with no CP1254 mapping are forbidden, for example: `₺` (U+20BA), `∩`/`∪` (U+2229/U+222A), `→`/`↔` (U+2192/U+2194), `ž` (U+017E), combining marks (U+0307, U+0308), and emoji.
+
+Rules:
+
+- In **strings and live code**, write the character as a `"\uXXXX"` escape. The escape is pure ASCII in the file while the evaluated R value stays byte-identical, so behavior and user-visible text do not change. This is the required form for user-visible Turkish text (e.g. `"... → ..."`), regex character classes, and deterministic mojibake fixtures (e.g. `"Åž"`).
+- In **comments**, use an ASCII equivalent (`->` instead of `→`, `TL` instead of `₺`) or name the codepoint (`U+0307`). Never illustrate a forbidden character literally.
+- Prefer `intToUtf8(...)` where a test fixture needs a constructed character (existing rule for emoji fixtures).
+- Do NOT "fix" this by changing `source(..., encoding = "UTF-8")` call sites or by weakening the guard test; the file content is what must be safe.
+
+Report-path corollary: `tests/scripts/maintainability_report.R` builds its `file` column by stripping the repo-root prefix. On the VM the repo root is a UNC share containing Turkish characters, so a PCRE-based strip can silently fail to match and leave an ABSOLUTE path in `file`, which breaks every `report$file == "R/x.R"` exact-equality lookup while suffix lookups (`grepl("(^|/)R/x\\.R$", ...)`) keep working. Both reports now use the same regex-free `relative_path()` helper (`enc2utf8()` on both sides, then `startsWith()`/`substring()` with a case-insensitive fallback). Keep that helper; prefer the `(^|/)…$` suffix form in new tests.
+
+Scoping corollary: never pass `exists` DIRECTLY as the `FUN` of `vapply`/`sapply` when relying on `inherits = TRUE`. `exists()` defaults to `where = -1`, which under `*apply` resolves to the apply frame (enclosed by `namespace:base`), so the CALLER's lexical environment is skipped and only the search path/`globalenv()` is scanned. This looks correct in production (everything is in `globalenv()`) but reports every helper as missing inside an isolated test or worker-bootstrap environment. Wrap it: `vapply(names, function(ad) exists(ad, mode = "function", inherits = TRUE), logical(1))`.
+
+Protected by:
+
+- `tests/testthat/test-windows-cp1254-source-safety-contract.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-windows-cp1254-source-safety-contract.R")`
+- `source("tests/scripts/parse_sanity_check.R", encoding = "UTF-8")`
+
 ### 2) Comments added to code must be in Turkish
 If you add comments in code, write them in Turkish.
 

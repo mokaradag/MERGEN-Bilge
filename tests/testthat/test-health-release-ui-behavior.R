@@ -3,7 +3,7 @@
 # Açıklama: module_health_release.R "Doğrulama Kanıtı" sekmesi UI yardımcıları için
 #           davranış testleri. health_release_ui ve iç yardımcıların
 #           (.health_release_pill, .health_release_steps_table) gerçek
-#           girdi→çıktı davranışı, kanıt-yok dürüstlüğü ve secret-safe sınır
+#           girdi->çıktı davranışı, kanıt-yok dürüstlüğü ve secret-safe sınır
 #           (artifact yolu / ham log içeriği render edilmemesi) doğrulanır.
 #           Çevrimdışı ve deterministik; gerçek artifact/DB/ağ gerektirmez.
 # ==============================================================================
@@ -117,7 +117,7 @@ testthat::test_that("health_release_ui tam kanıt özetini gerçek alanlarla ren
   testthat::expect_true(grepl("Dağıtım Sonrası Duman Testi", html, fixed = TRUE))
   testthat::expect_true(grepl("Dağıtım Sonrası", html, fixed = TRUE))
   testthat::expect_true(grepl("3 ok / 1 uyarı / 0 kritik", html, fixed = TRUE))
-  # Genel sonuç "degraded" → kart pill'inde de "Kısmi" + uyarı rengi olmalı
+  # Genel sonuç "degraded" -> kart pill'inde de "Kısmi" + uyarı rengi olmalı
   # (nötr/ham "degraded" değil); hem metrik kutusu hem kart pill warning gösterir.
   testthat::expect_true(grepl("Kısmi", html, fixed = TRUE))
   testthat::expect_true(grepl("health-status-warning", html, fixed = TRUE))

@@ -259,7 +259,19 @@ pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
   query_name <- query$name %||% "Bilinmeyen Sorgu"
   gerekli <- c("pk_packet_build", "pk_packet_render", "pk_packet_all_facts",
                "pk_compose_facts_summary")
-  if (any(!vapply(gerekli, exists, logical(1), mode = "function", inherits = TRUE))) {
+  # `exists` DOGRUDAN `vapply` FUN'i olarak verilmemelidir: `exists()` icin
+  # varsayilan `where = -1` CAGIRAN CERCEVEyi cozer ve `vapply` altinda bu
+  # cerceve `namespace:base`e baglidir. Boylece `inherits = TRUE` bu fonksiyonun
+  # LEKSIK ortamini ATLAR ve yalnizca arama yolunu/globalenv'i tarar. Uretimde
+  # tum yardimcilar globalenv'de oldugu icin sorun gorunmezdi; izole ortamda
+  # (test/worker bootstrap) ise TUM yardimcilar "yok" sayilip v2 hatti sessizce
+  # devre disi kaliyordu. Anonim sarmalayici leksik kapsami korur.
+  eksik_var <- any(!vapply(
+    gerekli,
+    function(ad) exists(ad, mode = "function", inherits = TRUE),
+    logical(1)
+  ))
+  if (eksik_var) {
     return(finish_result(
       list(query_name = query_name, success = FALSE,
            error_msg = paste0("Kanonik v2 analiz paketi bileşenleri yüklenmedi; ",

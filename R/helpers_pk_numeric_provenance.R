@@ -267,7 +267,7 @@ pk_facts_index <- function(facts) {
     onceki <- substr(txt, max(1L, konum[i] - 160L), konum[i] - 1L)
     yakin <- substr(onceki, max(1L, nchar(onceki) - 60L), nchar(onceki))
 
-    # Birim yalnızca 1-12 harf değildir: `kişi/saat`, `adam-saat`, `m²`, `₺`
+    # Birim yalnızca 1-12 harf değildir: `kişi/saat`, `adam-saat`, `m²`, `TL`
     # gibi bileşik/simgesel birimler de olgunun gösteriminde geçebilir.
     eslesme <- regmatches(
       yakin,
@@ -322,8 +322,8 @@ pk_facts_index <- function(facts) {
   maskeli <- gsub(.PK_PROV_MARKER, nobetci, txt, perl = TRUE)
 
   desen <- paste0("(%\\s*)?-?[0-9][0-9.,]*\\s*",
-                  "(%|[A-Za-zÇĞİÖŞÜçğıöşü₺²³$€]",
-                  "[A-Za-zÇĞİÖŞÜçğıöşü₺²³$€/.-]{0,23})?")
+                  "(%|[A-Za-zÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac]",
+                  "[A-Za-zÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac/.-]{0,23})?")
 
   konum <- gregexpr(desen, maskeli, perl = TRUE)[[1]]
   if (identical(konum[1], -1L)) return(list())

@@ -34,6 +34,38 @@ read_text <- function(path) {
   enc2utf8(txt)
 }
 
+# Repo koku onekini ayirir ve repoya GORE yolu dondurur.
+#
+# Eski surum onegi PCRE ile ayiriyordu:
+#   sub(paste0("^", <kacisli repo_root>), "", normalizePath(path), perl = TRUE)
+# Windows VM'de repo koku bir UNC paylasimidir ve Turkce karakter icerir
+# ("//sunucu/.../04 - Gelistirme/MERGEN Bilge"). Desen ile hedef dizenin
+# kodlama isaretleri ayrisabildigi icin PCRE eslesmesi SESSIZCE bosa dusuyor,
+# onek ayrilmiyor ve `file` sutununda MUTLAK yol kaliyordu. Bu da
+# `report$file == "R/x.R"` bicimindeki TAM esitlik aramalarini bozuyordu
+# (suffix eslesmesi kullanan testler etkilenmedigi icin sorun uzun sure
+# gorunmez kaldi). Asagidaki yaklasim regex kullanmaz; her iki tarafi da
+# `enc2utf8()` ile ayni kodlamaya getirir ve `startsWith()` ile karsilastirir.
+# Ayni yontem `tests/scripts/frontend_maintainability_report.R` icinde
+# zaten VM'de dogrulanmis durumdadir.
+relative_path <- function(path) {
+  root_norm <- enc2utf8(normalizePath(repo_root, winslash = "/", mustWork = TRUE))
+  path_norm <- enc2utf8(normalizePath(path, winslash = "/", mustWork = TRUE))
+
+  root_prefix <- paste0(root_norm, "/")
+
+  if (startsWith(path_norm, root_prefix)) {
+    return(substring(path_norm, nchar(root_prefix) + 1L))
+  }
+
+  # Windows/ag yolu guvenligi: buyuk/kucuk harf farki olsa da ayni onegi ayir.
+  if (startsWith(tolower(path_norm), tolower(root_prefix))) {
+    return(substring(path_norm, nchar(root_prefix) + 1L))
+  }
+
+  path_norm
+}
+
 runtime_files <- c(
   file.path(repo_root, "app.R"),
   file.path(repo_root, "global.R"),
@@ -61,7 +93,7 @@ report <- lapply(runtime_files, function(path) {
   }
 
   data.frame(
-    file = sub(paste0("^", gsub("([\\^$.|?*+(){}\\[\\]\\\\])", "\\\\\\1", repo_root), "/?"), "", normalizePath(path, winslash = "/", mustWork = TRUE), perl = TRUE),
+    file = relative_path(path),
     lines = length(lines),
     functions = function_count,
     stringsAsFactors = FALSE

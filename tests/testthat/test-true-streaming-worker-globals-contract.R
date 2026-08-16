@@ -5,7 +5,7 @@
 #           R/helpers_llm_true_streaming_worker.R'de yaşar; handler onu delege
 #           eder. Worker-export sözleşmesi (reasoning delta / stop-file / model
 #           request override yardımcıları) korunmalıdır. Uygulamayı başlatmaz;
-#           tüm global semboller stub'lanır → deterministik ve çevrimdışı.
+#           tüm global semboller stub'lanır -> deterministik ve çevrimdışı.
 # ==============================================================================
 
 .tsw_repo_root <- function() {
