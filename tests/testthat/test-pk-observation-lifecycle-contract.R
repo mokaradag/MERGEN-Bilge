@@ -119,7 +119,7 @@ test_that("direct single-analysis exits receive an observation exactly once", {
 
   env$pk_analiz_process_request <- function(user_prompt, chat_history, session,
                                             stop_check = NULL) {
-    "⚠️ **Yetki Hatası:** kullanıcı bulunamadı."
+    "**Yetki Hatası:** kullanıcı bulunamadı."
   }
 
   captured <- new.env(parent = emptyenv())
@@ -197,7 +197,7 @@ test_that("pending SSO identity never opens a DB connection for telemetry", {
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
   env$pk_analiz_process_request <- function(...) {
-    "⏳ **Kimlik Doğrulama Hazırlanıyor:** Lütfen tekrar deneyin."
+    "**Kimlik Doğrulama Hazırlanıyor:** Lütfen tekrar deneyin."
   }
 
   captured <- new.env(parent = emptyenv())
